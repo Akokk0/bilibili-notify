@@ -5,7 +5,6 @@ import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
-import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
 
 /**
  * 按订阅分文件的「UP 产出」时序持久化 —— 数据统计页 Tab 的原始数据源。
@@ -14,12 +13,11 @@ import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
  *   `<dataDir>/stats/dyn/<key>.jsonl`   每行一条 {@link UpDynamicEvent}
  *   `<dataDir>/stats/live/<key>.jsonl`  每行一帧 {@link LiveFrame}
  *   `<dataDir>/stats/seen/<key>.jsonl`  每行一条 {@link StatsSeenRow}(「在记」的证据,只有拓展订阅有)
- * 老版本的 B 站文件叫 `<uid>.jsonl`,开机迁移把它们并进订阅 id 那份(`migrate-file-keys.ts`);`seen` 从一开始
- * 就按订阅 id 命名,迁移不认它。
+ * 0.x 按 uid 命名的 B 站文件由迁移器改成订阅 id(`migration/stats.ts`)。
  *
  * **盘上的行是中立的**(ADR-0020 决策 16):作品行记 `video` / `post` / `live`,峰值存数字。平台的
- * 写法由各来源的适配在交进来之前翻好;这一层唯一认得 B 站写法的地方是下面的「老 B 站行的
- * 翻译」,只给改之前落盘的老行用 —— 老数据不迁移,读的时候翻。
+ * 写法由各来源的适配在交进来之前翻好;0.x 落盘的老 B 站行由迁移器一次翻好(`migration/stats.ts`),
+ * 这一层不认任何平台的写法。
  *
  * 与 FansStore 同构:append-only、逐行 JSON、坏行跳过、缺文件视为空。区别在于
  * 直播场次天然是「区间」而非「采样点」,而 append-only 又写不了区间,所以落盘的
@@ -60,10 +58,7 @@ export interface UpDynamicEvent {
 export interface LiveSessionRecord {
 	startedAt: string;
 	endedAt?: string;
-	/**
-	 * 本场累计观看(看过的人数,ADR-0020 决策 7);未采到时缺失。老 B 站行的字符串读的时候
-	 * 已经解析成数字。
-	 */
+	/** 本场累计观看(看过的人数,ADR-0020 决策 7);未采到时缺失。 */
 	peakViewers?: number;
 	/**
 	 * 帧流读完时**仍敞开**的那一场 —— 至多一个。
@@ -87,16 +82,16 @@ export interface StatsSeenRow {
 interface LiveFrame {
 	k: "start" | "end";
 	ts: string;
-	/** 本场累计观看。老 B 站帧这里是字符串,见 {@link fromLegacyBiliPeak}。 */
+	/** 本场累计观看。 */
 	peak?: number;
 }
 
 export interface StatsStore {
-	/** 追加一条作品。同一个键下同 id 重复调用只保留首条(引擎重放不虚增计数),新老行都算。 */
+	/** 追加一条作品。同一个键下同 id 重复调用只保留首条(引擎重放不虚增计数)。 */
 	appendDynamic(key: string, event: UpDynamicEvent): Promise<void>;
 	/**
-	 * 读回 ts >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。老 B 站行已翻成
-	 * 中立种类(开播公告是 `live`,调用方自己决定它算不算作品)。
+	 * 读回 ts >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。开播公告是 `live`,调用方
+	 * 自己决定它算不算作品。
 	 */
 	listDynamics(key: string, sinceIso: string): Promise<UpDynamicEvent[]>;
 	/** 记一帧开播。 */
@@ -122,49 +117,14 @@ export interface StatsStore {
 	drop(key: string): Promise<void>;
 }
 
-// ── 老 B 站行的翻译 ─────────────────────────────────────────────────────────────
-//
-// 这一层**唯一**认得 B 站写法的地方,而且只给改之前落盘的老行用(ADR-0020 决策 5 / 7 的 🔗:
-// 老数据不迁移,读的时候照原来的规矩翻)。新写的行一律是中立的,平台的写法归各来源的适配。
-// 规矩本身与 B 站适配共用 `bili-format` 那一份,两边不会各翻各的。
-
-/** 老作品行 `{id, type, ts}` 的 `type` → 中立种类(开播那两种 → `live`)。 */
-function fromLegacyBiliPostType(type: string): StatsFeedKind {
-	return classifyBiliDynamic(type);
-}
-
-/** 老下播帧的字符串峰值("1.2万")→ 数字;解析不出 → `undefined`(这一场当没采到)。 */
-function fromLegacyBiliPeak(raw: string): number | undefined {
-	const n = parseBiliViewers(raw);
-	return Number.isFinite(n) ? n : undefined;
-}
-
-// ────────────────────────────────────────────────────────────────────────────────
-
 const FEED_KINDS: ReadonlySet<unknown> = new Set<StatsFeedKind>(["video", "post", "live"]);
 
 /** 读一行作品。返回 `undefined` = 这行不认(坏行、种类不认识),跳过。 */
 function readPostRow(parsed: unknown): UpDynamicEvent | undefined {
-	const row = parsed as { id?: unknown; kind?: unknown; type?: unknown; ts?: unknown } | null;
+	const row = parsed as { id?: unknown; kind?: unknown; ts?: unknown } | null;
 	if (typeof row?.id !== "string" || typeof row.ts !== "string") return undefined;
-	if (FEED_KINDS.has(row.kind)) {
-		return { id: row.id, kind: row.kind as StatsFeedKind, ts: row.ts };
-	}
-	// 没有 kind、带着 type 串的是改之前写的老 B 站行。
-	if (row.kind === undefined && typeof row.type === "string") {
-		return { id: row.id, kind: fromLegacyBiliPostType(row.type), ts: row.ts };
-	}
-	return undefined;
-}
-
-/**
- * 读一帧的峰值:数字原样收(新帧),字符串按老 B 站写法解析(老帧)。
- * 返回 `"absent"` = 这帧没带峰值(或带的是认不得的形状),不动这一场已有的峰值。
- */
-function readFramePeak(peak: unknown): number | undefined | "absent" {
-	if (typeof peak === "number") return Number.isFinite(peak) ? peak : undefined;
-	if (typeof peak === "string") return fromLegacyBiliPeak(peak);
-	return "absent";
+	if (!FEED_KINDS.has(row.kind)) return undefined;
+	return { id: row.id, kind: row.kind as StatsFeedKind, ts: row.ts };
 }
 
 /**
@@ -275,9 +235,9 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	 * 读回这个键的全部作品行,同 id 只留先落盘的那条。
 	 *
 	 * append 那头已经按 id 挡过一道,读这头还要再挡一道:append 是「先读再追加」,挡不住
-	 * 两个版本各写各的 —— 旧版的去重只认得带 `type` 的老行、看不见新行的 id,而
-	 * `dynamic-detected` 又不保证只发一次(投递失败走 markFail,下轮重发)。降级跑过一阵
-	 * 再升级回来,同一条作品在盘上就有两行,不去重的话计数全部翻倍。
+	 * 两个版本各写各的 —— 0.x 里旧版的去重只认得带 `type` 的老行、看不见新行的 id,而
+	 * `dynamic-detected` 又不保证只发一次(投递失败走 markFail,下轮重发)。0.x 之间降级跑过
+	 * 一阵再升级回来,同一条作品在盘上就有两行,迁移器翻完行也还是两行,不去重的话计数全部翻倍。
 	 */
 	async function readDynamics(key: string): Promise<UpDynamicEvent[]> {
 		const posts: UpDynamicEvent[] = [];
@@ -306,7 +266,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			await ensureRoots();
 			// 幂等靠读时去重代价更低,但那样 jsonl 会无限增长且 listDynamics 每次
 			// 都要建 Set;动态写入频率极低(一轮 cron 至多几条),这里直接读一遍
-			// 现有 id 挡掉重复,换取文件本身就是干净的。新老两种行的 id 一起算。
+			// 现有 id 挡掉重复,换取文件本身就是干净的。
 			const existing = await readDynamics(key);
 			if (existing.some((e) => e.id === event.id)) return;
 			// 只写这三格:行格式是契约(决策 16),调用方对象上多带的东西不许漏进盘。
@@ -374,13 +334,9 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 				// 同一场有几帧 end(关服截断一帧、接回之后真下播一帧)时,峰值取**最大的**:它是本场累计观看,
 				// 只增不减(ADR-0020 决策 7)。接回之后那一段是从重新认出这一场才开始取的 —— 平台这回少报了、
 				// 或压根没报,都不该把前一段已经记下的数拽下去(没带的帧本来就不动它)。
-				// 解析不出的老字符串照旧盖掉,这一场于是当没采到:与改之前「字符串原样盖上、aggregate 解析
-				// 失败就跳过」同一个结果。
-				const peak = readFramePeak(f.peak);
-				if (peak === undefined) delete open.peakViewers;
-				else if (peak !== "absent") {
+				if (typeof f.peak === "number") {
 					open.peakViewers =
-						open.peakViewers === undefined ? peak : Math.max(open.peakViewers, peak);
+						open.peakViewers === undefined ? f.peak : Math.max(open.peakViewers, f.peak);
 				}
 				open = undefined;
 			});

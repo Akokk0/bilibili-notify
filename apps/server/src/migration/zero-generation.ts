@@ -33,15 +33,22 @@ import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.j
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 import { migrateConnectionFiles } from "./connections.js";
+import { migrateHistoryFiles } from "./history.js";
+import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSettingsFile } from "./settings.js";
-import { migrateSubscriptionFiles } from "./subscriptions.js";
+import { migrateStatsFiles } from "./stats.js";
+import {
+	type BiliSubscriptionKey,
+	migrateSubscriptionFiles,
+	readBiliSubscriptionKeys,
+} from "./subscriptions.js";
 
 /**
  * 迁移修订号(见 `runtime/generations.ts`):开发期每改一次迁移的产出(搬什么、搬到哪、怎么搬、丢下什么、
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 6;
+export const MIGRATION_REVISION = 7;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -153,7 +160,11 @@ export interface ZeroMigrationResult {
 	transfers: { from: string; to: string; method: "copy" | "link" | "symlink" }[];
 	/** 没带过来的,和为什么。 */
 	skipped: { path: string; reason: string }[];
-	/** 搬过来之后改写成最新形状的文件(相对新代根,`/` 分隔)。 */
+	/**
+	 * 搬过来之后改写成最新形状的文件(相对新代根,`/` 分隔)。统计文件改了名的记新名字 —— 旧名字在
+	 * `transfers` 里,搬过来之后被并进新名字、删掉了。0.x 自己已经并好、只差删 uid 那份的,只删不写,
+	 * 不记在这里(修订号的摘要因此也看不到这一步)。
+	 */
 	rewritten: string[];
 }
 
@@ -246,7 +257,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 设置 → 订阅 → 要订阅列表的统计文件名与锐评草稿。每一项回它改写过的文件(绝对路径)。
+ * 开机时做)→ 设置 → 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿。每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
 	label: string;
@@ -265,7 +276,36 @@ const REWRITES: readonly {
 		label: "订阅",
 		run: (opts) => migrateSubscriptionFiles(dataPath(opts.targetDir, ...CONFIG_DIR)),
 	},
+	{ label: "推送历史", run: (opts) => migrateHistoryFiles(opts.targetDir) },
+	{
+		label: "统计",
+		run: withBiliSubscriptions((opts, subscriptions) =>
+			migrateStatsFiles(opts.targetDir, subscriptions),
+		),
+	},
+	{
+		label: "锐评草稿",
+		run: withBiliSubscriptions((opts, subscriptions) =>
+			migrateRoastDraftsFile(dataPath(opts.targetDir, ...ROAST_DRAFTS_FILE), subscriptions),
+		),
+	},
 ];
+
+/**
+ * 要按 uid 找回订阅的那几步:读新代里迁好的 B 站订阅交给它。订阅文件读不懂就整步跳过 —— 配置仓开机时会拒收
+ * 它,别在它上面改别的文件。
+ */
+function withBiliSubscriptions(
+	run: (
+		opts: MigrateZeroGenerationOptions,
+		subscriptions: BiliSubscriptionKey[],
+	) => Promise<string[]>,
+): (opts: MigrateZeroGenerationOptions) => Promise<string[]> {
+	return async (opts) => {
+		const subscriptions = await readBiliSubscriptionKeys(dataPath(opts.targetDir, ...CONFIG_DIR));
+		return subscriptions ? run(opts, subscriptions) : [];
+	};
+}
 
 interface MigrationContext {
 	zeroRoot: string;

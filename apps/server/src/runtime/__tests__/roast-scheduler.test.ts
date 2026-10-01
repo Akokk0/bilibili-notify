@@ -104,7 +104,7 @@ let ctx: TrackingContext;
 
 /** 真实临时目录 —— 草稿库本来就要落盘,假目录只会测出 ENOENT。 */
 function memDrafts() {
-	return createRoastDraftStore({ dataRoot: dataDir, logger, subscriptionIdOfUid: () => undefined });
+	return createRoastDraftStore({ dataRoot: dataDir, logger });
 }
 
 let globals: GlobalConfig;

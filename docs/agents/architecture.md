@@ -80,7 +80,7 @@ src/
   app.ts                Hono app 组装 + 鉴权 + 路由挂载
   auth/                 经 @bilibili-notify/api LoginFlow 的扫码 + cookie 状态;bare-auth-policy / session / ws-ticket
   config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <数据根>/config/*.json,emit config-changed)+ schema
-  migration/            0.x → 数据代的一次性迁移:第 0 代(宿主根上 0.x 的文件)只读,先按代布局搬进 <序号>.partial,再逐族把 0.x 各版本的形状改写成 0.x 最新的形状(connections.ts 连接与目标、settings.ts 设置、subscriptions.ts 订阅,features.ts / ai.ts / link-parsing.ts / templates.ts 是各组老形状的变换,files.ts 共用的读写);旧格式的知识只住这里,各个 store 只认最新形状(ADR-0022)
+  migration/            0.x → 数据代的一次性迁移:第 0 代(宿主根上 0.x 的文件)只读,先按代布局搬进 <序号>.partial,再逐族把 0.x 各版本的形状改写成 0.x 最新的形状(connections.ts 连接与目标、settings.ts 设置、subscriptions.ts 订阅,history.ts 推送历史,stats.ts 统计的文件名与行,roast-drafts.ts 锐评草稿,features.ts / ai.ts / link-parsing.ts / templates.ts 是各组老形状的变换,files.ts 共用的读写);旧格式的知识只住这里,各个 store 只认最新形状(ADR-0022)
   runtime/
     bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...);宿主根取配置的 dataDir,数据根由开机选代交进来(构造期不碰盘)
     roots.ts              宿主根(versions/ logs/ generations/)与数据根(一代)的目录表 + hostPath / dataPath;本文写的 <数据根>/… 就是选中的那一代 <dataDir>/generations/<序号>/
@@ -95,7 +95,7 @@ src/
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
   fans/store.ts         append-only jsonl 时序(<数据根>/stats/followers/<订阅 id>.jsonl)
-  stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评;migrate-file-keys.ts 每次开机把老的 <uid>.jsonl 并进订阅 id 那份(ADR-0020)
+  stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评(ADR-0020);0.x 按 uid 命名的文件与老行由迁移器一次改好(migration/stats.ts)
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention + view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<数据根>/skins/dashboard/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin

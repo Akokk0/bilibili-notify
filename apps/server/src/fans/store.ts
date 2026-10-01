@@ -11,7 +11,7 @@ import { dataPath } from "../runtime/roots.js";
  *
  * 文件布局:`<dataDir>/fans/<key>.jsonl`,每行 `{ ts: ISO, value: number }`。`<key>` 与统计仓
  * 同一个规矩({@link statsFileKey}):订阅 id(ADR-0020 决策 2 的 🔗 / 16)。老版本的 B 站文件
- * 叫 `<uid>.jsonl`,开机迁移把它们并进订阅 id 那份(`stats/migrate-file-keys.ts`)。
+ * 叫 `<uid>.jsonl`,迁移器把它们并进订阅 id 那份(`migration/stats.ts`)。
  * append-only — FansPoller 每个 cron tick 拉到一个 UP 的当前 fans 数就在该
  * UP 的 jsonl 末尾追加一行。拓展订阅的样本来自它报的资料(统计的拓展适配经记录器写,
  * 稀释到不密过粉丝轮询,ADR-0020 决策 8)。计算 24h / 7d delta 时通过 `findNearestBefore`

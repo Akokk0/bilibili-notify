@@ -602,7 +602,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 
 	/**
 	 * 一批 jsonl 原文行 → entry,补丁行并回它的行;坏行、不合 schema 的行、找不到
-	 * 亲的补丁行静默跳过。老格式行由 schema 读时映射。
+	 * 亲的补丁行静默跳过。
 	 */
 	function parseLines(lines: readonly string[]): HistoryEntry[] {
 		const byId = new Map<string, HistoryEntry>();
@@ -820,8 +820,8 @@ async function readRawLines(path: string): Promise<string[]> {
 	return lines;
 }
 
-/** 补丁行的键序固定 `patch` 打头(见 record),行首一眼认出,不用先 JSON.parse。 */
-function isPatchLine(line: string): boolean {
+/** 补丁行的键序固定 `patch` 打头(见 record),行首一眼认出,不用先 JSON.parse。迁移器认补丁行也用它。 */
+export function isPatchLine(line: string): boolean {
 	return line.startsWith('{"patch":');
 }
 

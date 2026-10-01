@@ -5,7 +5,7 @@
  * `extensionId` / `externalId`、**不带 `uid`** —— 外部 id 恰好是一串等于某个 B 站 uid 的数字时,
  * 塞进 `uid` 那一格就会在订阅删掉之后被认成那位 B 站 UP。
  *
- * 钉的是:拓展行读得进来且两格原样保留;B 站行与老格式行照旧。
+ * 钉的是:拓展行读得进来且两格原样保留;B 站行照旧;老格式行读不进来(那是迁移器的事)。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -43,8 +43,11 @@ describe("HistoryEntrySchema — 行的身份", () => {
 		expect(parsed).not.toHaveProperty("externalId");
 	});
 
-	it("老格式行(source / result / payload)照样读得进来,映射成 B 站行", () => {
-		const parsed = HistoryEntrySchema.parse({
+	// 0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)由迁移器在搬家时改写
+	// (`apps/server/src/migration/history.ts`,等价性在 `migration/__tests__/zero-generation-history.test.ts` 钉着)。
+	// 活的 schema 不再认老形状:没人改写就拿到这样的行,是该报错的 —— 静默映射等于把迁移器该做的事又在读这头做一遍。
+	it("老格式行(source / result / payload)读不进来 —— 那是迁移器的事,活 schema 只认现在的形状", () => {
+		const legacy = {
 			id: BASE.id,
 			ts: BASE.ts,
 			source: "live-summary",
@@ -54,16 +57,7 @@ describe("HistoryEntrySchema — 行的身份", () => {
 			payload: { kind: "text", text: "词云" },
 			result: { ok: true, per: [{ ok: true, latencyMs: 4 }] },
 			unameSnapshot: "老UP",
-		});
-		expect(parsed).toMatchObject({
-			pushId: BASE.id,
-			kind: "live-end",
-			uid: "u7",
-			targetId: BASE.targetId,
-			status: "delivered",
-			unameSnapshot: "老UP",
-		});
-		expect(parsed.extensionId).toBeUndefined();
-		expect(parsed.externalId).toBeUndefined();
+		};
+		expect(HistoryEntrySchema.safeParse(legacy).success).toBe(false);
 	});
 });

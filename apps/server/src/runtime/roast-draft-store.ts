@@ -17,8 +17,8 @@ import { dataPath } from "./roots.js";
  * 过期是主动清的,不是读的时候顺手滤掉:48 小时没人理要**告诉主人一声**,悄悄消失
  * 的话主人只会以为这周的周报又没发 —— 那正是他让女仆修掉的那种沉默。
  *
- * **UP 一律按订阅 id 记**(ADR-0020 决策 18):单人草稿的 `subscriptionId`、结果里每一处回指。升级之前
- * 写下的老草稿按 uid 记,读盘时翻译过来(见 {@link upgradeLegacyDraft})。
+ * **UP 一律按订阅 id 记**(ADR-0020 决策 18):单人草稿的 `subscriptionId`、结果里每一处回指。0.x 写下的
+ * 老草稿按 uid 记,由迁移器换成订阅 id(`migration/roast-drafts.ts`)。
  */
 
 /** 草稿的存活时长。超过就丢,并告知主人。 */
@@ -77,64 +77,6 @@ export interface RoastDraftStore {
 export interface CreateRoastDraftStoreOptions {
 	dataRoot: string;
 	logger: Logger;
-	/**
-	 * 老草稿翻译用:这个 uid 现在是哪条 B 站订阅(同一个 uid 订了几条时取第一条 —— 改之前按 uid 找订阅
-	 * 也是取第一条)。对不上回 `undefined`。只在读盘时问,由接线层现查订阅表。
-	 */
-	subscriptionIdOfUid: (uid: string) => string | undefined;
-}
-
-/** 老草稿里「按 uid 回指一位 UP」的那一格。 */
-type LegacyRef<T> = T & { uid?: unknown; subscriptionId?: unknown };
-
-/**
- * 盘上一份老草稿(升级之前写的,按 uid 记)→ 新形状;认不出来 / 对不上订阅回一句为什么丢(交给调用方记日志)。
- * 已经是新形状的原样放行。
- *
- * - 单人:草稿的 `uid` 与结果的 `uid` 都换成那条订阅的 id。
- * - 榜单:鸽王 / 勤奋 UP 任一对不上 → 整份丢(同 `parseRoastReply`:卡的主体缺一半没什么可发的);锐评与
- *   评分里对不上的那几条丢掉,其余照发。
- */
-function upgradeLegacyDraft(
-	raw: RoastDraft & { uid?: unknown },
-	idOf: (uid: string) => string | undefined,
-): RoastDraft | string {
-	const lookup = (uid: unknown) => (typeof uid === "string" ? idOf(uid) : undefined);
-	const result = raw.result as Record<string, unknown> | null | undefined;
-	if (raw.kind === "solo") {
-		if (raw.uid === undefined) return raw;
-		const { uid, ...rest } = raw;
-		const subscriptionId = lookup(uid);
-		if (!subscriptionId) return `单人草稿的 uid=${String(uid)} 已对不上任何订阅`;
-		const { uid: _resultUid, ...resultRest } = (result ?? {}) as Record<string, unknown>;
-		return { ...rest, subscriptionId, result: { ...resultRest, subscriptionId } };
-	}
-	const pigeon = result?.pigeon as LegacyRef<{ reason: string }> | undefined;
-	if (!result || pigeon?.uid === undefined) return raw;
-	const swap = <T extends object>(ref: LegacyRef<T>): (T & { subscriptionId: string }) | null => {
-		const { uid, ...rest } = ref;
-		const subscriptionId = lookup(uid);
-		return subscriptionId ? ({ ...rest, subscriptionId } as T & { subscriptionId: string }) : null;
-	};
-	const diligent = result.diligent as LegacyRef<{ reason: string }> | undefined;
-	const newPigeon = swap(pigeon);
-	const newDiligent = diligent ? swap(diligent) : null;
-	if (!newPigeon || !newDiligent) return "榜单草稿的鸽王 / 勤奋 UP 已对不上任何订阅";
-	const list = (key: "roast" | "scores") =>
-		(Array.isArray(result[key]) ? (result[key] as LegacyRef<object>[]) : []).flatMap((r) => {
-			const one = swap(r);
-			return one ? [one] : [];
-		});
-	return {
-		...raw,
-		result: {
-			...result,
-			pigeon: newPigeon,
-			diligent: newDiligent,
-			roast: list("roast"),
-			scores: list("scores"),
-		},
-	};
 }
 
 /** 锐评草稿在代里的位置。 */
@@ -241,17 +183,7 @@ export function createRoastDraftStore(opts: CreateRoastDraftStoreOptions): Roast
 				const raw = await readFile(file, "utf8");
 				const parsed = JSON.parse(raw);
 				if (Array.isArray(parsed)) {
-					// 升级之前写下的老草稿按 uid 记,这里翻译成订阅 id(ADR-0020 决策 18)。只在内存里翻,下一次
-					// 落盘(新草稿 / 批 / 清过期)自然写成新形状 —— 读盘不写盘,开机不因为这一步多一次 I/O 失败。
-					records = [];
-					for (const raw of parsed as Array<RoastDraft & { uid?: unknown }>) {
-						const upgraded = upgradeLegacyDraft(raw, opts.subscriptionIdOfUid);
-						if (typeof upgraded === "string") {
-							opts.logger.debug(`[roast-draft] 丢掉老草稿 ${raw.id}:${upgraded}`);
-						} else {
-							records.push(upgraded);
-						}
-					}
+					records = parsed as RoastDraft[];
 				} else {
 					opts.logger.warn("[roast-draft] 文件不是数组,当空的起");
 				}

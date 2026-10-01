@@ -7,8 +7,8 @@
  * 它自己的「在记」(决策 9);两支混在一张榜上、平台一列各写各的(决策 12);拓展的名字走资料那条链(决策 3)。
  * 路由测试用的是替身仓与替身引擎,这几根线在真 BN 里接没接上只有这里看得出来。
  *
- * - B 站那位:**停用**的(不连 B 站),盘上是升级之前的老数据(`<uid>.jsonl`、`{id, type, ts}` 行、字符串峰值),
- *   开机迁移挪到订阅 id 名下、读的时候翻。
+ * - B 站那位:**停用**的(不连 B 站),盘上是升级之前的老数据(0.x 的 `<uid>.jsonl`、`{id, type, ts}` 行、字符串
+ *   峰值),原样摆在 0.x 的根布局里,第一趟开机由迁移器搬进新的一代:挪到订阅 id 名下、行翻成现在的形状。
  * - 拓展那位:假源,盘上先摆好前几天的「在记」、一条视频与两条粉丝样本(按订阅 id 命名),再按「报资料」——
  *   今天的「在记」、粉丝样本、资料缓存(名字、粉丝数、头像)都是真接线写的。
  *
@@ -254,8 +254,39 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		});
 		hookServer = hook.server;
 
-		// 第一趟:空启动拿到完整的 globals,顺手按面板那条路建一条 webhook 连接(它的目标由连接带出来)。
+		// B 站那位:停用(不连 B 站),盘上的订阅没有 kind(ADR-0019 决策 47)。盘上是升级之前的老数据(按 uid 命名)。
+		// 它们原样摆在 0.x 的根布局里(第 0 代):第一趟开机还没有一代,迁移器把它们迁进新的一代 —— 老数据走的
+		// 是真的迁移路径,不是直接写进代目录。粉丝采样五天前到昨天,今天没有(停用的不采)。
 		dataDir = await mkdtemp(join(tmpdir(), "bn-stats-mixed-e2e-"));
+		for (const dir of ["state", "fans", join("stats", "dyn"), join("stats", "live")]) {
+			await mkdir(join(dataDir, dir), { recursive: true });
+		}
+		const { kind: _kind, ...bili } = {
+			...makeEmptySubscription({ id: S_BILI, uid: UID }),
+			enabled: false,
+		};
+		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify([bili]));
+		await writeFile(
+			join(dataDir, "fans", `${UID}.jsonl`),
+			jsonl([5, 4, 3, 2, 1].map((d, i) => ({ ts: at(d), value: 1000 + 10 * i }))),
+		);
+		await writeFile(
+			join(dataDir, "stats", "dyn", `${UID}.jsonl`),
+			jsonl([
+				{ id: "b-av", type: "DYNAMIC_TYPE_AV", ts: at(2) },
+				{ id: "b-draw", type: "DYNAMIC_TYPE_DRAW", ts: at(3) },
+				{ id: "b-live", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: at(1) },
+			]),
+		);
+		await writeFile(
+			join(dataDir, "stats", "live", `${UID}.jsonl`),
+			jsonl([
+				{ k: "start", ts: at(4) },
+				{ k: "end", ts: at(4, 2), peak: "1.2万" },
+			]),
+		);
+
+		// 第一趟:迁出一代,拿到完整的 globals,顺手按面板那条路建一条 webhook 连接(它的目标由连接带出来)。
 		await boot();
 		await ok(
 			await api("/api/connections", {
@@ -304,12 +335,6 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await writeFile(globalsPath, JSON.stringify(globals));
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 
-		// B 站那位:停用(不连 B 站),盘上的订阅没有 kind(ADR-0019 决策 47)。
-		const { kind: _kind, ...bili } = {
-			...makeEmptySubscription({ id: S_BILI, uid: UID }),
-			enabled: false,
-		};
-		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify([bili]));
 		// 拓展那位:开着,主人起过别名(资料里的名字要压过它,决策 3);单人锐评发到那条 webhook。
 		const ext = makeExtensionSubscription({
 			id: S_EXT,
@@ -329,26 +354,6 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		for (const dir of [FOLLOWERS_DIR, ["stats", "dyn"], ["stats", "live"], ["stats", "seen"]]) {
 			await mkdir(join(gen, ...dir), { recursive: true });
 		}
-		// B 站老数据(升级之前的写法,按 uid 命名)。粉丝采样五天前到昨天,今天没有(停用的不采)。
-		await writeFile(
-			join(gen, ...FOLLOWERS_DIR, `${UID}.jsonl`),
-			jsonl([5, 4, 3, 2, 1].map((d, i) => ({ ts: at(d), value: 1000 + 10 * i }))),
-		);
-		await writeFile(
-			join(gen, "stats", "dyn", `${UID}.jsonl`),
-			jsonl([
-				{ id: "b-av", type: "DYNAMIC_TYPE_AV", ts: at(2) },
-				{ id: "b-draw", type: "DYNAMIC_TYPE_DRAW", ts: at(3) },
-				{ id: "b-live", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: at(1) },
-			]),
-		);
-		await writeFile(
-			join(gen, "stats", "live", `${UID}.jsonl`),
-			jsonl([
-				{ k: "start", ts: at(4) },
-				{ k: "end", ts: at(4, 2), peak: "1.2万" },
-			]),
-		);
 		// 拓展前几天的(按订阅 id 命名):三天前、昨天在记;三天前一支视频;两条粉丝样本。
 		await writeFile(
 			join(gen, "stats", "seen", `${S_EXT}.jsonl`),

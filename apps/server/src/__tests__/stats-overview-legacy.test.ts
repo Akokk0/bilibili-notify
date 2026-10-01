@@ -3,8 +3,8 @@
  *
  * 两条路径各钉一份,期望值全部是**改之前的 route + store + aggregate + recorder** 对同一份
  * 数据真跑出来的(S1 施工时从 git 取出老代码并排跑过,响应逐字节相同),不是按新代码抄的:
- *   A. 盘上的老数据(`<uid>.jsonl`、`{id, type, ts}` 行、字符串峰值)经开机迁移改成按订阅 id
- *      命名(ADR-0020 决策 2 的 🔗),行本身不改写,读的时候翻 —— 升级后数字不变;
+ *   A. 盘上的老数据(0.x 的 `<uid>.jsonl`、`{id, type, ts}` 行、字符串峰值)经迁移器(第 0 代 → 新的一代,
+ *      `migration/stats.ts`)改成按订阅 id 命名(ADR-0020 决策 2 的 🔗)、行翻成现在的形状 —— 升级后数字不变;
  *   B. 同一串 B 站总线事件经新的 B 站适配(uid → 订阅 id)落盘,再读出来 —— 新数据与老版本
  *      记的同口径。
  *
@@ -22,9 +22,9 @@ import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createFansStore, FOLLOWERS_DIR } from "../fans/store.js";
+import { migrateZeroGeneration } from "../migration/zero-generation.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
-import { migrateStatsFileKeys } from "../stats/migrate-file-keys.js";
 import { createStatsRecorder } from "../stats/recorder.js";
 import { createStatsStore } from "../stats/store.js";
 
@@ -101,11 +101,16 @@ afterEach(async () => {
 
 describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 	async function writeLegacyFixture() {
-		await mkdir(join(dataDir, "stats", "dyn"), { recursive: true });
-		await mkdir(join(dataDir, "stats", "live"), { recursive: true });
-		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
-		await writeFile(join(dataDir, "stats", "since"), at(3, 2));
-		const w = (p: string, rows: unknown[]) => writeFile(join(dataDir, p), jsonl(rows));
+		// 0.x 的布局原样摆在第 0 代里(`zero`):作品 / 直播在 `stats/`、粉丝在 `fans/`、订阅在 `state/`
+		// (盘上的 B 站订阅没有 kind),迁移器把它们迁进新的一代(`generation`),路由在新的一代上读。
+		const zero = join(dataDir, "zero");
+		const generation = join(dataDir, "generation");
+		await mkdir(join(zero, "stats", "dyn"), { recursive: true });
+		await mkdir(join(zero, "stats", "live"), { recursive: true });
+		await mkdir(join(zero, "fans"), { recursive: true });
+		await mkdir(join(zero, "state"), { recursive: true });
+		await writeFile(join(zero, "stats", "since"), at(3, 2));
+		const w = (p: string, rows: unknown[]) => writeFile(join(zero, p), jsonl(rows));
 		// 101:直播推送全关(没有场次),最近的动静是一条开播公告。
 		await w("stats/dyn/101.jsonl", [
 			{ id: "a", type: "DYNAMIC_TYPE_AV", ts: at(5) },
@@ -114,7 +119,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			{ id: "d", type: "DYNAMIC_TYPE_DRAW", ts: at(40) },
 		]);
 		await w(
-			join(...FOLLOWERS_DIR, "101.jsonl"),
+			"fans/101.jsonl",
 			Array.from({ length: 12 }, (_, i) => ({ ts: at(11 - i, 2), value: 1000 + 10 * i })),
 		);
 		// 102:窗口里只有开播公告,没有粉丝采样、没有场次 —— 计数该是 0,不是 null。
@@ -137,7 +142,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			{ id: "r", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: at(0, 2, 5) },
 		]);
 		await w(
-			join(...FOLLOWERS_DIR, "103.jsonl"),
+			"fans/103.jsonl",
 			Array.from({ length: 4 }, (_, i) => ({ ts: at(3 - i, 1), value: 50_000 + 300 * i })),
 		);
 		// 104:一无所知。105:窗口外的老开播公告、坏行、孤立的 end、解析不出的峰值、亿。
@@ -156,14 +161,27 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			{ k: "end", ts: at(8, 1), peak: "1.5亿" },
 		]);
 		const uids = ["101", "102", "103", "104", "105"];
-		// 老数据按 uid 命名;开机迁移把它们改成订阅 id(`s101` …),路由按订阅 id 读。
-		const moved = await migrateStatsFileKeys({
-			dataRoot: dataDir,
-			subscriptions: bilibili(uids) as never,
-			logger,
-		});
-		expect(moved).toEqual({ renamed: 8, merged: 0, copied: 0 });
-		return makeDeps(dataDir, uids, ["103"]);
+		await writeFile(
+			join(zero, "state", "subscriptions.json"),
+			JSON.stringify(bilibili(uids).map(({ kind: _kind, ...onDisk }) => onDisk)),
+		);
+		// 老数据按 uid 命名;迁移器把它们改成订阅 id(`s101` …)、行翻成现在的形状,路由按订阅 id 读。
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: generation });
+		// 原件断言的是旧函数的计数 `{ renamed: 8, merged: 0, copied: 0 }`;迁移器回的是改写过的文件:
+		// 就是这八份(改名与翻行并成一条,粉丝文件只改名)。
+		expect(
+			report.rewritten.filter((path) => /^stats\/(dyn|live|followers)\//.test(path)).sort(),
+		).toEqual([
+			"stats/dyn/s101.jsonl",
+			"stats/dyn/s102.jsonl",
+			"stats/dyn/s103.jsonl",
+			"stats/dyn/s105.jsonl",
+			"stats/followers/s101.jsonl",
+			"stats/followers/s103.jsonl",
+			"stats/live/s103.jsonl",
+			"stats/live/s105.jsonl",
+		]);
+		return makeDeps(generation, uids, ["103"]);
 	}
 
 	it("近 7 日(UTC+8)", async () => {

@@ -2,8 +2,8 @@
  * 单元测试 — stats 聚合层(纯函数,无 IO)。
  *
  * 这层只认中立的种类(`video` / `post`)与数字峰值(ADR-0020 决策 5 / 7 的 🔗)。
- * B 站类型怎么归类、「1.2万」怎么解析,钉在 bili-format.test.ts;老 B 站行读回来
- * 与改之前算出同样的数,钉在 legacy-rows.test.ts。
+ * B 站类型怎么归类、「1.2万」怎么解析,钉在 bili-format.test.ts;0.x 的老 B 站行改写成中立形状之后
+ * 算出与改之前同样的数,钉在 migration/__tests__/zero-generation-stats.test.ts。
  */
 
 import { describe, expect, it } from "vite-plus/test";

@@ -92,7 +92,6 @@ import { dataPath, hostPath } from "./runtime/roots.js";
 import { createStatusCommand } from "./runtime/status-command.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
-import { migrateStatsFileKeys } from "./stats/migrate-file-keys.js";
 import { createUpdateService } from "./update/service.js";
 import {
 	EXTENSION_MARKETPLACE_URL,
@@ -396,18 +395,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// Per-sub runtime data (cachedProfile / fansBaseline). Independent file,
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
-
-		// 统计与粉丝文件改按订阅 id 命名(ADR-0020 决策 2 的 🔗):老的 / 回退期间写下的
-		// `<uid>.jsonl` 并进 `<订阅 id>.jsonl`。**每次开机都跑,而且必须在这里** —— 要读完订阅才知道
-		// uid 对哪个 id,又必须赶在写这三处的人之前:粉丝轮询(下面 startFansPoller,一起来就按
-		// 订阅 id 读盘恢复、之后往里写)与统计记录器(它早就挂在总线上了,但只在引擎发事件时写,
-		// 引擎在下面 createEngines 才建)。HTTP 也要到最后才 serve。挪位置之前先看
-		// __tests__/stats-file-key-migration-boot-e2e.test.ts。
-		await migrateStatsFileKeys({
-			dataRoot: runtime.dataRoot,
-			subscriptions: runtime.configStore.getSubscriptions(),
-			logger: log,
-		});
 
 		// Stage 2.4: assemble the auth stack (StorageManager → BilibiliAPI → LoginFlow). Bus
 		// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
@@ -793,14 +780,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
 		// (statsRoute 要等 createApp,engines 上面刚建好)。
-		const roastDrafts = createRoastDraftStore({
-			dataRoot: runtime.dataRoot,
-			logger: log,
-			// 升级之前写下的待审草稿按 uid 记,读盘时按 uid 找回那位 B 站订阅(ADR-0020 决策 18)。
-			subscriptionIdOfUid: (uid) =>
-				runtime.configStore.getSubscriptions().find((s) => isBiliSubscription(s) && s.uid === uid)
-					?.id,
-		});
+		const roastDrafts = createRoastDraftStore({ dataRoot: runtime.dataRoot, logger: log });
 		await roastDrafts.load();
 		runtime.serviceCtx.onDispose(() => roastDrafts.close(), "flush");
 

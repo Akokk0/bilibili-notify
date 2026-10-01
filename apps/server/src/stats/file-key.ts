@@ -14,7 +14,7 @@ export type StatsSubscription = KeyedSubscription & { enabled: boolean };
  * 盘上的键因此与统计行的键(决策 1 的 🔗)、锐评的回指是同一个,uid / 外部 id 退成只管
  * 「这是谁」。订阅 id 是 UUID(schema 钉着),当文件名安全,也不会与老的数字 uid 文件撞名。
  *
- * 老的 B 站文件按 uid 命名(`<uid>.jsonl`),由开机迁移并进来,见 `migrate-file-keys.ts`。
+ * 0.x 的 B 站文件按 uid 命名(`<uid>.jsonl`),由迁移器并进来,见 `migration/stats.ts`。
  */
 export function statsFileKey(sub: Pick<KeyedSubscription, "id">): string {
 	return sub.id;

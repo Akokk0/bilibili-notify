@@ -11,10 +11,10 @@
  *   - drop:三类文件(作品 / 直播 / 「在记」)一并删;缺文件时静默
  *   - 「在记」:`{ts}` 逐行追加,按 since 读回(ADR-0020 决策 16)
  *   - 盘上的行是中立的(ADR-0020 决策 16):作品 `{id, kind, ts}`、下播帧的 `peak` 是数字
- *   - 文件按订阅 id 命名,两支一样(`statsFileKey`);老的 B 站 `<uid>.jsonl` 由开机迁移改名,
- *     见 migrate-file-keys.test.ts
- *
- * 老 B 站行(`type` 串 / 字符串峰值)的读法见 legacy-rows.test.ts。
+ *   - 文件按订阅 id 命名,两支一样(`statsFileKey`)
+ *   - 盘上已有的行:同 id 不追加、同 id 两行只认先落盘的那条
+ *   - 不认老形状:0.x 的老 B 站行(`{id, type, ts}`、字符串峰值)和 `<uid>.jsonl` 文件名由迁移器改写
+ *     (`migration/__tests__/zero-generation-stats.test.ts`),这一层读到就当没带、不翻
  */
 
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
@@ -383,6 +383,84 @@ describe("StatsStore — 盘上的行是中立的", () => {
 		);
 		expect(await store.listDynamics("1", T(0))).toEqual([]);
 	});
+});
+
+/** 往 `stats/<dir>/<key>.jsonl` 摆一份盘上已有的行(一行一条,末尾带换行)。 */
+async function putRows(
+	dir: "dyn" | "live",
+	key: string,
+	rows: readonly unknown[],
+): Promise<string> {
+	await mkdir(join(dataDir, "stats", dir), { recursive: true });
+	const text = `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`;
+	await writeFile(join(dataDir, "stats", dir, `${key}.jsonl`), text);
+	return text;
+}
+
+describe("StatsStore — 盘上已有的行", () => {
+	it("同 id 已在盘上 → 不追加(盘上字节不变),读回只有一条", async () => {
+		const text = await putRows("dyn", "1", [
+			{ id: "a", kind: "video", ts: T(1) },
+			{ id: "b", kind: "post", ts: T(2) },
+		]);
+		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
+		expect(await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8")).toBe(text);
+		expect((await store.listDynamics("1", T(0))).filter((e) => e.id === "a")).toHaveLength(1);
+	});
+
+	it("kind: live 的开播公告行也挡得住同 id 重写", async () => {
+		const text = await putRows("dyn", "1", [{ id: "c", kind: "live", ts: T(1) }]);
+		await store.appendDynamic("1", { id: "c", kind: "post", ts: T(1) });
+		expect(await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8")).toBe(text);
+	});
+
+	it("同 id 两行(降级期间别的版本又追加了一行)→ 读的时候只认先落盘的那条,不重复计数", async () => {
+		// `dynamic-detected` 不保证只发一次(投递失败走 markFail,下轮重发);两个版本各写各的、
+		// append 那头的「先读再追加」挡不住,同一条作品在盘上就有两行 —— 不按 id 去重的话计数翻倍。
+		await putRows("dyn", "5", [
+			{ id: "n1", kind: "video", ts: T(1) },
+			{ id: "n1", kind: "post", ts: T(1) },
+			{ id: "n2", kind: "post", ts: T(2) },
+			{ id: "n2", kind: "post", ts: T(2) },
+		]);
+		expect(await store.listDynamics("5", T(0))).toEqual([
+			{ id: "n1", kind: "video", ts: T(1) },
+			{ id: "n2", kind: "post", ts: T(2) },
+		]);
+	});
+});
+
+describe("StatsStore — 不认老形状(0.x 的老行归迁移器改写,这一层不翻)", () => {
+	it("盘上一行 {id, type, ts}(没有 kind)→ 读不出它,别的行照读", async () => {
+		await putRows("dyn", "1", [
+			{ id: "old", type: "DYNAMIC_TYPE_AV", ts: T(1) },
+			{ id: "new", kind: "video", ts: T(2) },
+		]);
+		expect(await store.listDynamics("1", T(0))).toEqual([{ id: "new", kind: "video", ts: T(2) }]);
+	});
+
+	it("老下播帧的字符串峰值当没带:这一场没有峰值", async () => {
+		await putRows("live", "1", [
+			{ k: "start", ts: T(1) },
+			{ k: "end", ts: T(3), peak: "1.2万" },
+		]);
+		expect(await store.listLiveSessions("1", T(0))).toEqual([{ startedAt: T(1), endedAt: T(3) }]);
+	});
+
+	it.each(["1.2万", "看不懂"])(
+		"同一场接回之后那帧 end 的峰值是字符串 %s → 当没带,前一帧的数字峰值不被抹掉",
+		async (peak) => {
+			await putRows("live", "1", [
+				{ k: "start", ts: T(1) },
+				{ k: "end", ts: T(2), peak: 5_000 },
+				{ k: "start", ts: T(1) },
+				{ k: "end", ts: T(3), peak },
+			]);
+			expect(await store.listLiveSessions("1", T(0))).toEqual([
+				{ startedAt: T(1), endedAt: T(3), peakViewers: 5_000 },
+			]);
+		},
+	);
 });
 
 describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 16)", () => {

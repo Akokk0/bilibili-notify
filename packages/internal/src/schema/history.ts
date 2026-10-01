@@ -178,49 +178,10 @@ export type HistoryRowIdentity = Pick<
 >;
 
 /**
- * 老格式(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)读时映射成新形状,
- * 盘上不重写,30 天保留期到了自然淘汰。`live` 只当开播(老格式分不出周期复推),
- * `live-summary`(词云 / 总结)归到下播。pushId 借行 id —— 老行本来就一行一次推送。
+ * 一行历史。0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)由迁移器改写
+ * (`apps/server/src/migration/history.ts`),这里只认现在的形状。
  */
-const LEGACY_SOURCE_TO_KIND: Record<string, PushKind> = {
-	dynamic: "dynamic",
-	live: "live",
-	sc: "sc",
-	guard: "guard",
-	"special-danmaku": "special-danmaku",
-	"special-enter": "special-enter",
-	"live-summary": "live-end",
-};
-
-function migrateLegacyHistoryEntry(raw: unknown): unknown {
-	if (typeof raw !== "object" || raw === null) return raw;
-	const r = raw as Record<string, unknown>;
-	if (!("source" in r) || "kind" in r) return raw;
-	const result = r.result as { ok?: unknown; per?: unknown[] } | undefined;
-	const per = result?.per?.[0] as { ok?: unknown; latencyMs?: unknown; err?: unknown } | undefined;
-	const targetIds = Array.isArray(r.targetIds) ? r.targetIds : [];
-	return {
-		id: r.id,
-		pushId: r.id,
-		ts: r.ts,
-		kind: LEGACY_SOURCE_TO_KIND[String(r.source)] ?? r.source,
-		uid: r.uid,
-		subscriptionId: r.subscriptionId,
-		targetId: targetIds[0] ?? null,
-		status: result?.ok === true ? "delivered" : "failed",
-		messages: [
-			{
-				payload: r.payload,
-				role: "main",
-				result: per ? { ok: per.ok, latencyMs: per.latencyMs, err: per.err } : undefined,
-			},
-		],
-		unameSnapshot: r.unameSnapshot,
-		uavatarSnapshot: r.uavatarSnapshot,
-	};
-}
-
-export const HistoryEntrySchema = z.preprocess(migrateLegacyHistoryEntry, HistoryEntryObjectSchema);
+export const HistoryEntrySchema = HistoryEntryObjectSchema;
 
 /**
  * 补丁行:同一次推送的后续消息(词云 / 总结 / 图集 / @全体)落地后追加在行后面,

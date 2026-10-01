@@ -1,8 +1,9 @@
 /**
- * 第 0 代 → 新的一代(ADR-0022 决策 4、7;⑥b 第一版:只搬位置,格式一律不动)。
+ * 第 0 代 → 新的一代(ADR-0022 决策 4、7)。
  *
  * 摆一棵 0.x 的夹具树,迁完看新代:每条 0.x 路径都到了代布局里该去的地方;追加写的 jsonl 是复制,
- * 其余是硬链接,软链重建同样的一条;残留、卡片皮肤、宿主的东西不带过来;第 0 代一个字节都没动。
+ * 其余是硬链接,软链重建同样的一条;老形状的几族改写成最新的形状(各族的细节在各自的
+ * `zero-generation-*.test.ts`);残留、卡片皮肤、宿主的东西不带过来;第 0 代一个字节都没动。
  *
  * 最后一条是修订号的闸:迁移的产出(搬了什么、搬到哪、怎么搬、丢下了什么)变了,就必须抬
  * `MIGRATION_REVISION` —— 否则开发期迁出来的那一代不会重迁,新代码读着旧产出。
@@ -95,18 +96,48 @@ const ZERO_FILES: Record<string, string> = {
 	]),
 	"state/adapters.json": "[]",
 	"state/sub-runtime.json": "{}",
-	"state/roast-drafts.json": "[]",
+	// 0.x 按 uid 回指的待审草稿:第二遍换成订阅 id。
+	"state/roast-drafts.json": JSON.stringify([
+		{
+			id: "ab",
+			kind: "solo",
+			uid: "12345",
+			days: 7,
+			targets: ["22222222-2222-4222-8222-222222222222"],
+			result: { uid: "12345", text: "锐评" },
+			createdAt: "2026-09-30T00:00:00.000Z",
+			expiresAt: "2026-10-02T00:00:00.000Z",
+		},
+	]),
 	"secrets/master.key": "ab".repeat(32),
 	"secrets/kdf.salt": "cd".repeat(16),
 	"secrets/config-secrets.enc": "enc",
 	"secrets/cookies.json": "{}",
-	"history/2026-09-30.jsonl": '{"id":1}\n',
+	// 坏行原样留着;0.x 的老行(一行 = 一个目标 × 一条消息)第二遍改写成现在的行。
+	"history/2026-09-30.jsonl": `{"id":1}\n${JSON.stringify({
+		id: "44444444-4444-4444-8444-444444444444",
+		ts: "2026-09-30T01:00:00.000Z",
+		source: "live-summary",
+		uid: "12345",
+		subscriptionId: "33333333-3333-4333-8333-333333333333",
+		targetIds: ["22222222-2222-4222-8222-222222222222"],
+		result: {
+			ok: true,
+			per: [{ targetId: "22222222-2222-4222-8222-222222222222", ok: true, latencyMs: 3 }],
+		},
+		payload: { kind: "text", text: "下播了" },
+	})}\n`,
 	"history/img/a.png": "png",
 	"history/repush/2026-09-30/row-1.json": "{}",
 	"stats/dyn/sub-1.jsonl": '{"k":"post"}\n',
 	"stats/live/sub-1.jsonl": '{"k":"start"}\n',
 	"stats/seen/sub-1.jsonl": '{"d":"2026-09-30"}\n',
 	"stats/since": "2026-09-01",
+	// 0.x 按 uid 命名的 B 站统计与粉丝文件(老作品行、字符串峰值):第二遍改名成订阅 id、翻成新行。
+	"stats/dyn/12345.jsonl": '{"id":"d1","type":"DYNAMIC_TYPE_AV","ts":"2026-09-30T00:00:00.000Z"}\n',
+	"stats/live/12345.jsonl":
+		'{"k":"start","ts":"2026-09-30T10:00:00.000Z"}\n{"k":"end","ts":"2026-09-30T12:00:00.000Z","peak":"1.2万"}\n',
+	"fans/12345.jsonl": '{"ts":"2026-09-30T00:00:00.000Z","fans":10}\n',
 	"fans/sub-1.jsonl": '{"value":1}\n',
 	"assets/card-bg/0123abcd.png": "bg",
 	"assets/font/index.json": "{}",
@@ -136,7 +167,7 @@ const ZERO_FILES: Record<string, string> = {
 	"notes.txt": "hello",
 };
 
-/** 期望的去向:相对第 0 代根 → 相对新代根。 */
+/** 期望的去向:相对第 0 代根 → 相对新代根(按 uid 命名的统计文件改名成订阅 id)。 */
 const EXPECTED_MOVES: Record<string, string> = {
 	"state/globals.json": "config/globals.json",
 	"state/subscriptions.json": "config/subscriptions.json",
@@ -156,6 +187,9 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"stats/live/sub-1.jsonl": "stats/live/sub-1.jsonl",
 	"stats/seen/sub-1.jsonl": "stats/seen/sub-1.jsonl",
 	"stats/since": "stats/since",
+	"stats/dyn/12345.jsonl": "stats/dyn/33333333-3333-4333-8333-333333333333.jsonl",
+	"stats/live/12345.jsonl": "stats/live/33333333-3333-4333-8333-333333333333.jsonl",
+	"fans/12345.jsonl": "stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
 	"fans/sub-1.jsonl": "stats/followers/sub-1.jsonl",
 	"assets/card-bg/0123abcd.png": "library/images/0123abcd.png",
 	"assets/font/index.json": "library/fonts/index.json",
@@ -179,6 +213,11 @@ const REWRITTEN = [
 	"config/globals.json",
 	"config/subscriptions.json",
 	"config/targets.json",
+	"history/2026-09-30.jsonl",
+	"runtime/roast-drafts.json",
+	"stats/dyn/33333333-3333-4333-8333-333333333333.jsonl",
+	"stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
+	"stats/live/33333333-3333-4333-8333-333333333333.jsonl",
 ];
 
 async function placeZeroGeneration(): Promise<void> {
@@ -258,6 +297,43 @@ describe("migrateZeroGeneration", () => {
 				connectionId: "11111111-1111-4111-8111-111111111111",
 				kind: "session",
 				address: "111",
+			}),
+		]);
+	});
+
+	it("历史、统计、锐评草稿改写成最新的形状", async () => {
+		await placeZeroGeneration();
+
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+
+		const lines = async (path: string) =>
+			(await readFile(join(target, path), "utf8")).split("\n").filter(Boolean);
+		const [bad, row] = await lines("history/2026-09-30.jsonl");
+		expect(bad).toBe('{"id":1}');
+		expect(JSON.parse(row ?? "")).toMatchObject({
+			kind: "live-end",
+			targetId: "22222222-2222-4222-8222-222222222222",
+			status: "delivered",
+			messages: [{ role: "main", payload: { text: "下播了" } }],
+		});
+		expect(
+			(await lines("stats/dyn/33333333-3333-4333-8333-333333333333.jsonl")).map((l) =>
+				JSON.parse(l),
+			),
+		).toEqual([{ id: "d1", kind: "video", ts: "2026-09-30T00:00:00.000Z" }]);
+		expect(
+			JSON.parse((await lines("stats/live/33333333-3333-4333-8333-333333333333.jsonl"))[1] ?? ""),
+		).toEqual({
+			k: "end",
+			ts: "2026-09-30T12:00:00.000Z",
+			peak: 12_000,
+		});
+		expect(
+			JSON.parse(await readFile(join(target, "runtime", "roast-drafts.json"), "utf8")),
+		).toEqual([
+			expect.objectContaining({
+				subscriptionId: "33333333-3333-4333-8333-333333333333",
+				result: { subscriptionId: "33333333-3333-4333-8333-333333333333", text: "锐评" },
 			}),
 		]);
 	});
@@ -349,8 +425,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 6,
-			output: "1852a9342ac57d9ab79bb993d2dfd6c665f0e03011539f9700e2c2f4318aade9",
+			revision: 7,
+			output: "60002f8e6a942860dfeffc14f8dd63ff1c46ba3004803697b3065d3983cad865",
 		});
 	});
 });

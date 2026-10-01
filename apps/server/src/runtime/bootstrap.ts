@@ -212,9 +212,6 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// Recorder 只订阅总线、不碰引擎,所以在这里就能起 —— 不必等 attachEngines。
 	// 早起一点反而更稳:引擎一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
 	//
-	// 它在这里就挂上了,但只在引擎发事件时才写盘 —— 引擎在 index.ts 里建,晚于那边的开机迁移
-	// (`migrateStatsFileKeys`),所以老的 `<uid>.jsonl` 一定先挪到订阅 id 名下,它才会往里写。
-	//
 	// 拓展那一支(ADR-0020 S3)也在这里挂上:它听订阅上报与 `extension-live-session`(场次在引擎里建)。
 	const statsRecorder = createStatsRecorder({
 		bus,

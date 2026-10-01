@@ -1,10 +1,10 @@
 /**
  * 迁移器改写文件的共用几件:读一份 JSON(分得清没有 / 读不懂 / 读到了)、写一份新文件替掉旧的(原子换名、
- * 沿用原件的权限)、判一坨东西是不是普通对象。
+ * 沿用原件的权限)、逐行改写一份 jsonl、判一坨东西是不是普通对象。
  */
 
-import { readFile, stat } from "node:fs/promises";
-import { atomicWriteJson } from "@bilibili-notify/storage";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 
 export type JsonFile =
 	| { kind: "missing" }
@@ -37,8 +37,58 @@ export async function rewriteJsonFile(
 	value: unknown,
 	modeFrom = path,
 ): Promise<void> {
-	const mode = await modeOf(modeFrom);
-	await atomicWriteJson(path, value, mode === undefined ? {} : { mode });
+	await atomicWriteJson(path, value, await modeOptions(modeFrom));
+}
+
+/** {@link rewriteJsonFile} 的原文版:写的是现成的一段文本。 */
+export async function rewriteTextFile(path: string, text: string, modeFrom = path): Promise<void> {
+	await atomicWriteFile(path, text, await modeOptions(modeFrom));
+}
+
+/**
+ * 逐行改写一份 jsonl:整份按 `\n` 切开交给 `rewrite`(回同样多的行),有一行变了才写,回写没写。没变的行
+ * 一个字节不动 —— 空行、坏行、带 `\r` 的行都原样留着。文件不在回 false。
+ */
+export async function rewriteJsonlFile(
+	path: string,
+	rewrite: (lines: readonly string[]) => string[],
+): Promise<boolean> {
+	let text: string;
+	try {
+		text = await readFile(path, "utf8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw err;
+	}
+	const lines = text.split("\n");
+	const next = rewrite(lines);
+	if (next.every((line, i) => line === lines[i])) return false;
+	await rewriteTextFile(path, next.join("\n"));
+	return true;
+}
+
+/** jsonl 的一行解开;解不开回 `undefined`(和读的人一样当坏行跳过)。 */
+export function parseJsonLine(line: string): unknown {
+	try {
+		return JSON.parse(line) as unknown;
+	} catch {
+		return undefined;
+	}
+}
+
+/** 一个目录里的 `*.jsonl`(按名字排好);目录不在回空。 */
+export async function listJsonlFiles(dir: string): Promise<string[]> {
+	try {
+		return (await readdir(dir)).filter((name) => name.endsWith(".jsonl")).sort();
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw err;
+	}
+}
+
+async function modeOptions(path: string): Promise<{ mode?: number }> {
+	const mode = await modeOf(path);
+	return mode === undefined ? {} : { mode };
 }
 
 async function modeOf(path: string): Promise<number | undefined> {

@@ -7,12 +7,11 @@
  *   - jsonl 仍 append-only:追加写的是**补丁行**,读回来按行 id 合并
  *   - 四态:全到 = delivered;本体到了附加没到 = partial;本体没到 = failed;`target: null` = no-targets
  *   - 无目标行消息照存、图照落盘,只是没有结果
- *   - 老格式(source / result / payload)读时映射成新形状,不重写盘
  *   - 按日聚合:total 数行、不计无目标;failures = failed + partial;counts 按 8 类
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
@@ -268,62 +267,6 @@ describe("record — 图片落盘", () => {
 			input({ kind: "live-end", messages: [{ payload: png("C"), role: "main", result: OK }] }),
 		);
 		expect(card.messages[0]?.payload.text).toBe("[卡片图]");
-	});
-});
-
-describe("老格式读时映射", () => {
-	async function writeDay(date: string, lines: string[]) {
-		await mkdir(join(dataDir, "history"), { recursive: true });
-		await writeFile(join(dataDir, "history", `${date}.jsonl`), `${lines.join("\n")}\n`, "utf8");
-	}
-	function legacy(over: Record<string, unknown>) {
-		return JSON.stringify({
-			id: randomUUID(),
-			ts: "2026-05-10T01:00:00.000Z",
-			source: "dynamic",
-			uid: "u9",
-			subscriptionId: SUB,
-			targetIds: [T2],
-			result: { ok: true, per: [{ targetId: T2, ok: true, latencyMs: 3 }] },
-			payload: { kind: "text", text: "老的" },
-			unameSnapshot: "老UP",
-			...over,
-		});
-	}
-
-	it("老行:source → kind、ok → status、首个目标 → targetId、payload → 单条 main 消息;pushId 借行 id", async () => {
-		await writeDay("2026-05-10", [legacy({})]);
-		const [e] = await store.query({});
-		expect(e).toMatchObject({
-			kind: "dynamic",
-			status: "delivered",
-			targetId: T2,
-			uid: "u9",
-			unameSnapshot: "老UP",
-		});
-		expect(e?.pushId).toBe(e?.id);
-		expect(e?.messages).toEqual([
-			{ payload: { kind: "text", text: "老的" }, role: "main", result: { ok: true, latencyMs: 3 } },
-		]);
-	});
-
-	it.each<[string, string, boolean, string]>([
-		["live", "live", true, "delivered"],
-		["live-summary", "live-end", true, "delivered"],
-		["sc", "sc", false, "failed"],
-		["guard", "guard", true, "delivered"],
-		["special-danmaku", "special-danmaku", true, "delivered"],
-		["special-enter", "special-enter", true, "delivered"],
-	])("老 source %s → kind %s", async (source, kind, ok, status) => {
-		await writeDay("2026-05-10", [
-			legacy({
-				source,
-				result: { ok, per: [{ targetId: T2, ok, latencyMs: 1, err: ok ? undefined : "x" }] },
-			}),
-		]);
-		const [e] = await store.query({});
-		expect(e?.kind).toBe(kind);
-		expect(e?.status).toBe(status);
 	});
 });
 

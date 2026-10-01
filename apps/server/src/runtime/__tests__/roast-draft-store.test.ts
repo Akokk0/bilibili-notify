@@ -38,12 +38,9 @@ const logger = {
 let dir: string;
 let store: RoastDraftStore;
 
-/** 没有老草稿要翻译的用例:哪个 uid 都对不上订阅。 */
-const noLegacy = () => undefined;
-
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "roast-draft-"));
-	store = createRoastDraftStore({ dataRoot: dir, logger, subscriptionIdOfUid: noLegacy });
+	store = createRoastDraftStore({ dataRoot: dir, logger });
 	await store.load();
 });
 
@@ -113,11 +110,7 @@ describe("RoastDraftStore", () => {
 	it("重启后草稿还在 —— 主人隔夜回的那句 y 得还有东西可批", async () => {
 		const d = await store.add(board(["t1", "t2"]));
 
-		const reopened = createRoastDraftStore({
-			dataRoot: dir,
-			logger,
-			subscriptionIdOfUid: noLegacy,
-		});
+		const reopened = createRoastDraftStore({ dataRoot: dir, logger });
 		await reopened.load();
 		const got = reopened.get(d.id);
 		expect(got?.id).toBe(d.id);
@@ -131,11 +124,7 @@ describe("RoastDraftStore", () => {
 		await mkdir(dirname(join(dir, ...ROAST_DRAFTS_FILE)), { recursive: true });
 		await writeFile(join(dir, ...ROAST_DRAFTS_FILE), "{ 这不是 json");
 
-		const reopened = createRoastDraftStore({
-			dataRoot: dir,
-			logger,
-			subscriptionIdOfUid: noLegacy,
-		});
+		const reopened = createRoastDraftStore({ dataRoot: dir, logger });
 		await reopened.load();
 		expect(reopened.list()).toEqual([]);
 		// 还得能继续用,不是只读一个废墟。
@@ -144,123 +133,32 @@ describe("RoastDraftStore", () => {
 });
 
 /**
- * 盘上的老草稿(ADR-0020 决策 18):升级之前生成、还没批的草稿按 uid 记着「评的是谁」,结果里的 UP 也按 uid
- * 回指。读盘时按 uid 找回那位 B 站订阅、换成订阅 id —— 升级前一刻私聊出去的「回复 y xx」升级后照样批得动,
- * 卡上照样是那几位的名字。对不上任何订阅的(期间退订了)丢掉,记一笔 debug。
+ * 草稿一律按订阅 id 记(ADR-0020 决策 18)。0.x 留下的、按 uid 记的老草稿由迁移器在搬家时换成订阅 id
+ * (`migration/roast-drafts.ts`,等价性在 `migration/__tests__/zero-generation-roast-drafts.test.ts` 钉着);
+ * 草稿库开机只认现在的形状,读盘直接收数组、不翻。
  */
-describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
+describe("RoastDraftStore — 草稿按订阅 id 记", () => {
 	const NOW = Date.parse("2026-09-24T00:00:00.000Z");
-	const alive = {
-		createdAt: new Date(NOW).toISOString(),
-		expiresAt: new Date(NOW + DRAFT_TTL_MS).toISOString(),
-	};
-	const SUBS: Record<string, string> = { "100": "sub-100", "200": "sub-200" };
 
-	async function openWith(records: unknown[]) {
+	it("盘上带 uid、没有 subscriptionId 的老单人草稿 → 原样读回(仓不翻,不凭空造 subscriptionId)", async () => {
+		const legacy = {
+			id: "a3",
+			kind: "solo",
+			uid: "200",
+			days: 7,
+			targets: ["t1"],
+			result: { uid: "200", verdict: "鸽", score: 10, highlights: [], pushText: "" },
+			createdAt: new Date(NOW).toISOString(),
+			expiresAt: new Date(NOW + DRAFT_TTL_MS).toISOString(),
+		};
 		await mkdir(dirname(join(dir, ...ROAST_DRAFTS_FILE)), { recursive: true });
-		await writeFile(join(dir, ...ROAST_DRAFTS_FILE), JSON.stringify(records));
-		const debug = vi.fn();
-		const reopened = createRoastDraftStore({
-			dataRoot: dir,
-			logger: { ...logger, debug },
-			subscriptionIdOfUid: (uid) => SUBS[uid],
-		});
+		await writeFile(join(dir, ...ROAST_DRAFTS_FILE), JSON.stringify([legacy]));
+
+		const reopened = createRoastDraftStore({ dataRoot: dir, logger });
 		await reopened.load();
-		return { reopened, debug };
-	}
-
-	it("老的单人草稿 → 换成那位 B 站订阅的 id,结果里的 uid 也换;不再带 uid", async () => {
-		const { reopened } = await openWith([
-			{
-				id: "a3",
-				kind: "solo",
-				uid: "200",
-				days: 7,
-				targets: ["t1"],
-				result: { uid: "200", verdict: "鸽", score: 10, highlights: [], pushText: "" },
-				...alive,
-			},
-		]);
 		const got = reopened.get("a3", NOW);
-		expect(got).toMatchObject({ kind: "solo", subscriptionId: "sub-200", targets: ["t1"] });
-		expect(got && "uid" in got).toBe(false);
-		expect(got?.result).toEqual({
-			subscriptionId: "sub-200",
-			verdict: "鸽",
-			score: 10,
-			highlights: [],
-			pushText: "",
-		});
-	});
-
-	it("老的单人草稿对不上任何订阅(期间退订了)→ 丢掉,记一笔 debug", async () => {
-		const { reopened, debug } = await openWith([
-			{
-				id: "b4",
-				kind: "solo",
-				uid: "999",
-				days: 7,
-				targets: ["t1"],
-				result: { uid: "999", verdict: "鸽", score: 10, highlights: [], pushText: "" },
-				...alive,
-			},
-		]);
-		expect(reopened.list(NOW)).toEqual([]);
-		expect(debug).toHaveBeenCalledTimes(1);
-		expect(String(debug.mock.calls[0]?.[0])).toContain("b4");
-	});
-
-	it("老的榜单草稿:结果里每一处 uid 换成订阅 id;锐评 / 评分里对不上的那几条丢掉", async () => {
-		const { reopened } = await openWith([
-			{
-				id: "c5",
-				kind: "board",
-				days: 30,
-				targets: ["t1", "t2"],
-				result: {
-					pigeon: { uid: "200", reason: "鸽" },
-					diligent: { uid: "100", reason: "勤" },
-					roast: [
-						{ uid: "200", comment: "咕" },
-						{ uid: "999", comment: "退订了" },
-					],
-					scores: [
-						{ uid: "100", score: 90 },
-						{ uid: "999", score: 5 },
-					],
-					pushText: "周报",
-				},
-				...alive,
-			},
-		]);
-		expect(reopened.get("c5", NOW)?.result).toEqual({
-			pigeon: { subscriptionId: "sub-200", reason: "鸽" },
-			diligent: { subscriptionId: "sub-100", reason: "勤" },
-			roast: [{ subscriptionId: "sub-200", comment: "咕" }],
-			scores: [{ subscriptionId: "sub-100", score: 90 }],
-			pushText: "周报",
-		});
-	});
-
-	it("老的榜单草稿里鸽王或勤奋 UP 对不上 → 整份丢掉(卡的主体缺一半),记一笔 debug", async () => {
-		const { reopened, debug } = await openWith([
-			{
-				id: "d6",
-				kind: "board",
-				days: 30,
-				targets: ["t1"],
-				result: {
-					pigeon: { uid: "999", reason: "鸽" },
-					diligent: { uid: "100", reason: "勤" },
-					roast: [],
-					scores: [],
-					pushText: "周报",
-				},
-				...alive,
-			},
-		]);
-		expect(reopened.list(NOW)).toEqual([]);
-		expect(String(debug.mock.calls[0]?.[0])).toContain("d6");
+		expect(got).toEqual(legacy);
+		expect(got?.subscriptionId).toBeUndefined();
 	});
 
 	it("新写的草稿按订阅 id 存,重启原样读回(不经翻译)", async () => {
@@ -272,11 +170,7 @@ describe("RoastDraftStore — 盘上的老草稿按 uid 找回订阅", () => {
 			result: { subscriptionId: "ext-1", verdict: "v", score: 1, highlights: [], pushText: "" },
 		});
 		expect(d.subscriptionId).toBe("ext-1");
-		const reopened = createRoastDraftStore({
-			dataRoot: dir,
-			logger,
-			subscriptionIdOfUid: noLegacy,
-		});
+		const reopened = createRoastDraftStore({ dataRoot: dir, logger });
 		await reopened.load();
 		expect(reopened.get(d.id)).toEqual(d);
 	});

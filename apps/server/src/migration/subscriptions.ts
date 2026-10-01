@@ -46,6 +46,33 @@ const FILES = [
 	["extension-subscriptions.json", migrateExtensionSubscriptionRow],
 ] as const;
 
+/** 一条 B 站订阅的订阅 id 与 uid:统计文件名与锐评草稿按 uid 找回订阅时用。 */
+export interface BiliSubscriptionKey {
+	id: string;
+	uid: string;
+}
+
+/**
+ * 新代里(已经迁好的)B 站订阅,按 `subscriptions.json` 里的顺序 —— 同一个 uid 订了几条时谁在前,和配置仓
+ * 读出来的一样。文件不在当空表(全新安装,和配置仓同口径);读不懂、不是数组回 `undefined`:配置仓开机时会
+ * 拒收它,要它的那几步别在它上面改别的文件。
+ */
+export async function readBiliSubscriptionKeys(
+	configDir: string,
+): Promise<BiliSubscriptionKey[] | undefined> {
+	const file = await readJsonFile(join(configDir, "subscriptions.json"));
+	if (file.kind === "missing") return [];
+	if (file.kind === "unreadable" || !Array.isArray(file.value)) return undefined;
+	return file.value.flatMap((row) =>
+		isPlainObject(row) &&
+		row.kind !== "extension" &&
+		typeof row.id === "string" &&
+		typeof row.uid === "string"
+			? [{ id: row.id, uid: row.uid }]
+			: [],
+	);
+}
+
 /**
  * 新代里的两份订阅文件迁成最新的形状,回改写过的文件(绝对路径)。没变的不写 —— 新代里还是搬过来的那个文件。
  * 读不懂的、不是数组的原样留着,由配置仓开机时报出来。

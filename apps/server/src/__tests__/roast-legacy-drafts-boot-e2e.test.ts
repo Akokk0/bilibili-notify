@@ -1,13 +1,14 @@
 /**
  * 🔴 **升级之前落盘的待审锐评草稿(按 uid 记),在真 BN 上批得动、发出去认得出人**(ADR-0020 决策 18)。
  *
- * 草稿库读盘时把老草稿的 uid 翻成订阅 id(`roast-draft-store.ts` 的 `upgradeLegacyDraft`),「这个 uid 现在是
- * 哪条 B 站订阅」由接线层现查订阅表递进去(`index.ts` 的 `subscriptionIdOfUid`)。草稿库的单元测试用的是自己
- * 造的查表函数;真 BN 里这根线只有类型兜着 —— 递一个永远回 `undefined` 的、或把 uid 原样当订阅 id 回的,
- * 类型、构建、单元测试全绿,症状是主人回了「y」没有下文(草稿读盘时全被丢了),或者群里收到一份「未知 UP」的周报。
+ * 老草稿的 uid 翻成订阅 id 由迁移器在搬家时做(`migration/roast-drafts.ts`,接在 `migrateZeroGeneration` 的
+ * 改写步骤里、订阅之后):「这个 uid 现在是哪条 B 站订阅」读的是迁好的订阅文件。迁移器自己的单元测试各摆各的
+ * 订阅;真 BN 里这根线(改写步骤接没接上、接的位置在不在订阅之后、草稿库开机读的是不是迁好的那份)只有这里看得见 ——
+ * 接歪了,类型、构建、单元测试全绿,症状是主人回了「y」没有下文(草稿被全丢了),或者群里收到一份「未知 UP」的周报。
  *
- * 所以走真的那条路:盘上摆好老草稿 → 开机 → 主人私聊「y <编号>」(devtools 的「私聊指令」,与 adapter 收到真帧
- * 之后调的是同一个入口)→ 审批 → 调度器按草稿里那份目标快照发 → 本地 webhook 收到的正文里写的是那几位的名字。
+ * 所以走真的那条路:0.x 的根布局里摆好订阅与老草稿 → 开机(没有一代,迁移器把它们迁进新的一代)→ 主人私聊
+ * 「y <编号>」(devtools 的「私聊指令」,与 adapter 收到真帧之后调的是同一个入口)→ 审批 → 调度器按草稿里那份
+ * 目标快照发 → 本地 webhook 收到的正文里写的是那几位的名字。
  *
  * B 站订阅都是**停用**的:草稿批出去不看订阅停没停,而停用的订阅不会让引擎或粉丝轮询去连 B 站。主人那条私聊
  * 目标挂在一条**停用**的 OneBot 连接上 —— 认主人只看目标的平台与地址,连接停着就不会去连一个不存在的 bot。
@@ -17,10 +18,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { makeEmptySubscription } from "@bilibili-notify/internal";
+import { join } from "node:path";
+import { deterministicUuid, makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { CONFIG_DIR } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { activeGeneration } from "./support/generation.js";
@@ -56,7 +56,7 @@ async function findFreePort(): Promise<number> {
 
 describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得动、发出去写的是对的人", () => {
 	let dataDir: string;
-	/** 第一趟开机之后在用的那一代;老草稿摆进它、之后的盘上读写都对它。 */
+	/** 开机迁出来的那一代;之后的盘上读写都对它。 */
 	let gen: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
@@ -116,8 +116,76 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		const address = hookServer.address();
 		if (!address || typeof address === "string") throw new Error("webhook 没起来");
 
-		// 第一趟:按面板那条路配连接、目标、主人(存盘时有校验)。
+		// 0.x 的布局原样摆在根上(第 0 代):两位 B 站 UP(停用,不连 B 站;盘上的订阅没有 kind,ADR-0019 决策 47)
+		// 与升级之前写下的三份待审草稿(按 uid 记,第三份的 uid 已经对不上任何订阅 —— 期间退订了)。开机前不能先开
+		// 一代 —— 有了合用的一代就不迁了。第一趟开机把它们迁进新的一代:订阅的 uid 找回订阅 id、草稿翻成新形状。
 		dataDir = await mkdtemp(join(tmpdir(), "bn-roast-legacy-drafts-e2e-"));
+		await mkdir(join(dataDir, "state"), { recursive: true });
+		const subs = [
+			{ ...makeEmptySubscription({ id: S101, uid: "101" }), enabled: false },
+			{ ...makeEmptySubscription({ id: S102, uid: "102" }), enabled: false },
+		].map(({ kind: _kind, ...onDisk }) => onDisk);
+		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify(subs));
+
+		// webhook 连接的托管目标 id 是连接 id 算出来的(config/store.ts 的 `managedWebhookTargetId`,那个种子是
+		// 冻住的),所以草稿里那份目标快照在连接建出来之前就写得出来;下面建好连接之后再核一遍对不对得上。
+		webhookTarget = deterministicUuid(`push-target:webhook-adapter:${WEBHOOK}`);
+		const now = Date.now();
+		const stamp = {
+			createdAt: new Date(now).toISOString(),
+			expiresAt: new Date(now + 3_600_000).toISOString(),
+		};
+		await writeFile(
+			join(dataDir, "state", "roast-drafts.json"),
+			JSON.stringify([
+				{
+					id: "s2",
+					kind: "solo",
+					uid: "101",
+					days: 7,
+					targets: [webhookTarget],
+					result: {
+						uid: "101",
+						verdict: "一周只发了一条",
+						score: 30,
+						highlights: [],
+						pushText: "",
+					},
+					...stamp,
+				},
+				{
+					id: "b3",
+					kind: "board",
+					days: 7,
+					targets: [webhookTarget],
+					result: {
+						pigeon: { uid: "102", reason: "整周没动静" },
+						diligent: { uid: "101", reason: "好歹发了一条" },
+						roast: [
+							{ uid: "101", comment: "勉强及格" },
+							{ uid: "999", comment: "早就退订了" },
+						],
+						scores: [
+							{ uid: "101", score: 60 },
+							{ uid: "102", score: 10 },
+						],
+						pushText: "",
+					},
+					...stamp,
+				},
+				{
+					id: "g4",
+					kind: "solo",
+					uid: "999",
+					days: 7,
+					targets: [webhookTarget],
+					result: { uid: "999", verdict: "查无此人", score: 0, highlights: [], pushText: "" },
+					...stamp,
+				},
+			]),
+		);
+
+		// 第一趟(迁出一代):按面板那条路配连接、目标、主人(存盘时有校验)。
 		await boot();
 		await ok(
 			await api("/api/connections", {
@@ -174,76 +242,12 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		}>;
 		const found = targets.find((t) => t.connectionId === WEBHOOK);
 		if (!found) throw new Error("webhook 连接没带出目标");
-		webhookTarget = found.id;
+		if (found.id !== webhookTarget) {
+			throw new Error(`托管目标 id ${found.id} 与草稿里写的 ${webhookTarget} 对不上`);
+		}
 		await handle?.close("seed");
 		handle = undefined;
-		// 第一趟已经开出了一代:再往 `dataDir` 根上摆 0.x 的文件不会被迁。这条守的是草稿**内容**的老格式(按 uid 记)
-		// 开机翻得动,不是 0.x 目录搬进代 —— 所以老文件直接摆进这一代、照代的布局(仍是老格式的内容)。
 		gen = await activeGeneration(dataDir);
-
-		// 两位 B 站 UP(停用,不连 B 站);盘上的订阅没有 kind(ADR-0019 决策 47)。
-		const subs = [
-			{ ...makeEmptySubscription({ id: S101, uid: "101" }), enabled: false },
-			{ ...makeEmptySubscription({ id: S102, uid: "102" }), enabled: false },
-		].map(({ kind: _kind, ...onDisk }) => onDisk);
-		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify(subs));
-
-		// 升级之前写下的三份待审草稿 —— 按 uid 记。第三份的 uid 已经对不上任何订阅(期间退订了)。
-		const now = Date.now();
-		const stamp = {
-			createdAt: new Date(now).toISOString(),
-			expiresAt: new Date(now + 3_600_000).toISOString(),
-		};
-		await mkdir(dirname(join(gen, ...ROAST_DRAFTS_FILE)), { recursive: true });
-		await writeFile(
-			join(gen, ...ROAST_DRAFTS_FILE),
-			JSON.stringify([
-				{
-					id: "s2",
-					kind: "solo",
-					uid: "101",
-					days: 7,
-					targets: [webhookTarget],
-					result: {
-						uid: "101",
-						verdict: "一周只发了一条",
-						score: 30,
-						highlights: [],
-						pushText: "",
-					},
-					...stamp,
-				},
-				{
-					id: "b3",
-					kind: "board",
-					days: 7,
-					targets: [webhookTarget],
-					result: {
-						pigeon: { uid: "102", reason: "整周没动静" },
-						diligent: { uid: "101", reason: "好歹发了一条" },
-						roast: [
-							{ uid: "101", comment: "勉强及格" },
-							{ uid: "999", comment: "早就退订了" },
-						],
-						scores: [
-							{ uid: "101", score: 60 },
-							{ uid: "102", score: 10 },
-						],
-						pushText: "",
-					},
-					...stamp,
-				},
-				{
-					id: "g4",
-					kind: "solo",
-					uid: "999",
-					days: 7,
-					targets: [webhookTarget],
-					result: { uid: "999", verdict: "查无此人", score: 0, highlights: [], pushText: "" },
-					...stamp,
-				},
-			]),
-		);
 
 		await boot();
 	});
