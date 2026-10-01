@@ -75,6 +75,7 @@ import {
 	createGeneration,
 	FORMAT_VERSION,
 	type GenerationSelection,
+	markGenerationActive,
 	selectGeneration,
 } from "./runtime/generations.js";
 import { createLinkParser } from "./runtime/link-parser.js";
@@ -156,6 +157,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		(report) => ({ report }) as const,
 		(error: unknown) => ({ error }) as const,
 	);
+	// 用到已有的一代就记一笔最后使用时间(只给系统页显示)。排在清扫之后:原子写会先落临时文件。
+	if (selection.kind === "use") await markGenerationActive(selection.dir);
 	// 空的一代(新装)当场开:什么都不用搬,不必等到 listen 之后。
 	const generation: GenerationSelection =
 		selection.kind === "create" && selection.source.kind === "empty"

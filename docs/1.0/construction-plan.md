@@ -71,7 +71,7 @@
 | ⑥d | 订阅合一 + `Identity`：一个 `config/subscriptions.json`，行带 `identity`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉，wire 跟着变；B 站替身棘轮开 | ✅ 已落（身份读法、备份只收 1.0 格式、单一形状、棘轮四片） |
 | ⑥e | 身份唯一闸 + 守卫 9：`writeSubscriptions` 与恢复备份的 `replaceSections` 两条写路径都拦 | ✅ 已落（恢复先按身份并入、备份自带重复整份拒收；健康页显示随第 4 期健康卡，见 data-model） |
 | ⑥f | 设置分文件 + 守卫 12：`config/settings/core.json`、`bilibili.json`、`extensions/<id>.json`（ADR-0021 决策 42 下 10-01 的 🔗），只挪位置、不改键名（改名随第 2、3 期）；内存里核心读法不动，B 站与各拓展各有自己的读口；拓展开关留 `core.json`；`userAgent` 先落 `bilibili.json`，第 2 期随 `packages/http` 删 | ✅ 已落（核心挪进 `settings/core.json`；B 站三格拆进 `settings/bilibili.json`，通用的集成设置登记，`bilibili/` 进 B 站替身白名单，`System.tsx` 上限 25 → 27，主人 10-01 同意；各拓展的设置拆进 `settings/extensions/<id>.json`，开关留核心，备份多一节 `extensionSettings`，旧的「不搬」随数据代作废；守卫 12 按 import 判，`engines.ts`、`index.ts` 进棘轮、3a 清零） |
-| ⑦ | 各代互不干涉（ADR-0022 决策 3 下 10-01 的 🔗，原定的回退指纹与自动重迁作废）：定案改写；开机用到一代就更新它的 `lastActiveAt`（只给系统页显示） | |
+| ⑦ | 各代互不干涉（ADR-0022 决策 3 下 10-01 的 🔗，原定的回退指纹与自动重迁作废）：定案改写；开机用到一代就更新它的 `lastActiveAt`（只给系统页显示） | ✅ 已落（`lastActiveAt` 在原文上改这一格再写回，以后的版本加的格不剥掉） |
 | ⑧ | 全新开始 + 「从旧代重新迁移」（同一条开新代的路：记标记、重启、开机照标记开代）+ 首访页 API + 自愈退回的提示（读 `boot-state.json` 的判死名单）（拒收 1.0 之前的备份已提前到 ⑥d 落地，见 ADR-0022 决策 6 的 🔗） | |
 | ⑨ | 迁移耗时测试（365 天合成数据） | |
 

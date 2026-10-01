@@ -165,6 +165,17 @@ export async function createGeneration(
 	);
 }
 
+/**
+ * 开机用到这一代:把它的 `lastActiveAt` 记成此刻。只给系统页显示「最后使用时间」,不拿来判断(各代互不干涉,
+ * ADR-0022 决策 3 下 10-01 的 🔗)。在原文上改这一格再写回,不经 schema:以后的版本往 generation.json 里加的格,
+ * 这一版认不得也不剥掉 —— 那一代以后还要给那个版本用。
+ */
+export async function markGenerationActive(dir: string): Promise<void> {
+	const path = join(dir, GENERATION_FILE);
+	const raw = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+	await atomicWriteJson(path, { ...raw, lastActiveAt: new Date().toISOString() });
+}
+
 async function listGenerationNames(hostRoot: string): Promise<string[]> {
 	try {
 		return await readdir(hostPath(hostRoot, "generations"));

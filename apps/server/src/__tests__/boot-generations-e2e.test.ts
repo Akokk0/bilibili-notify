@@ -8,6 +8,8 @@
  *   这也是 ⑤ 欠的那一条:两个根不是同一个目录时,没有谁把东西写回宿主根。
  * - 迁移期间登录拿到的 cookie,迁完照样有效:会话签名的密钥是从第 0 代只读取的那一把,和迁过去的是同一把。
  * - 再开机用同一代,不再迁;迁移修订号对不上就从第 0 代重迁、开第 2 代,第 1 代原地留着。
+ * - 再开机用到已有的一代,它的 `lastActiveAt` 往前走(只给系统页显示「最后使用时间」);以后的版本往
+ *   generation.json 里加的格不剥掉 —— 那一代以后还要给那个版本用。
  * - 新装(宿主根上没有 0.x 数据):开一代空的,不迁。
  * - 拓展页拿到的手放拓展目录是在用那一代的 `extensions/`(装载器读的那一个),不是宿主根上 0.x 的那个。
  * - 迁移抛错:启动入口抛出去,不留下半截的一代。
@@ -254,6 +256,27 @@ describe("数据代接在开机路径上 e2e", () => {
 		expect(
 			await readFile(join(generationsDir(), "2", "maid-skills", "weekly", "SKILL.md"), "utf8"),
 		).toBe("# 周报");
+	});
+
+	it("再开机用到已有的一代 → 它的 lastActiveAt 往前走,别的格原样,以后的版本加的格也留着", async () => {
+		handle = await start();
+		await handle.close("test");
+		handle = undefined;
+		const fileOf1 = join(generationsDir(), "1", GENERATION_FILE);
+		const file = JSON.parse(await readFile(fileOf1, "utf8")) as GenerationFile;
+		const longAgo = "2020-01-01T00:00:00.000Z";
+		await writeFile(
+			fileOf1,
+			JSON.stringify({ ...file, lastActiveAt: longAgo, addedLater: { x: 1 } }),
+		);
+
+		handle = await start();
+		await handle.close("test");
+		handle = undefined;
+
+		const after = JSON.parse(await readFile(fileOf1, "utf8")) as GenerationFile;
+		expect(Date.parse(after.lastActiveAt)).toBeGreaterThan(Date.parse(longAgo));
+		expect(after).toEqual({ ...file, lastActiveAt: after.lastActiveAt, addedLater: { x: 1 } });
 	});
 
 	it("新装(宿主根上没有 0.x 的数据)→ 开一代空的,不迁", async () => {
