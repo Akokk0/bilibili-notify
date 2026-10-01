@@ -68,7 +68,7 @@ if (adapter.capabilities.atAll) addAtAll(msg);
 | 咽喉 | 咽喉 e2e | 逐条驱动全部发送路径，每条恰好一条截流记录、零外连 | 3a |
 | 咽喉 | 出图器零联网 | 渲染页拦截请求；`packages/image/src` 里不许出现 `fetch(`、`node:http(s)`、`undici` | 2 |
 | 静态扫描 | 守卫 1 与推送守卫① | 核心不许 import `bilibili/`、`platforms/`，例外只有 `compose.ts` | 3a |
-| 静态扫描 | 守卫 12 | 核心不读设置的 `bilibili` 段（含解构与下标） | 1⑥ |
+| 静态扫描 | 守卫 12 | 核心不读 B 站的设置。只有组装处（今天 `runtime/bootstrap.ts`，3a 起 `compose.ts`）能引 `bilibili/settings.ts`；B 站接线（今天 `engines.ts`、`index.ts`）在 3a 搬进 `bilibili/` 之前按棘轮记账、3a 清零。解构与下标的写法由 B 站替身棘轮兜底。 | 1⑥ 棘轮开，3a 清零 |
 | 静态扫描 | B 站替身 | 核心、面板、contract 里正好是 `"bilibili"` / `"@bilibili"` 的字面量，以及按驼峰段与下划线段切开后有一段是 `bili` / `bilibili` 的标识符（`isBiliSubscription`、`BILI_ONLY_EXTRAS`、`fromBilibili` 都算） | 1⑥ 棘轮开，4 末清零 |
 | 静态扫描 | 守卫 11 与推送守卫② | B 站专有词、推送平台专有词，先剥注释 | 3a 棘轮开，3b 末清零 |
 | 静态扫描 | uid 棘轮 | `bilibili/` 与迁移模块以外出现 `uid` | 3a 棘轮开，3b 末清零 |
