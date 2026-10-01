@@ -311,3 +311,46 @@ describe("迁移器自己的钉", () => {
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("broken.json"));
 	});
 });
+
+describe("卡片皮肤不迁,会话里对它们的引用剥掉、文字保留(ADR-0022 决策 4)", () => {
+	it("账本与每条回复碰过的皮肤都剥掉;正文、工具痕迹、面孔原样", async () => {
+		const tools = [{ name: "write_card", summary: "写进了 skin-9" }];
+		await sandbox.placeZero("ai/chat/workshop.json", {
+			id: "workshop",
+			title: "做张卡",
+			mode: "skin",
+			persona: false,
+			skinTarget: "card",
+			cardSkinLedger: { owned: ["skin-9"], forks: { "skin-1": "skin-9" } },
+			messages: [
+				{ role: "user", content: "做一张粉色的" },
+				{
+					role: "assistant",
+					content: "做好啦,叫「樱花」",
+					tools,
+					cardSkins: [{ id: "skin-9", kinds: ["dynamic"] }],
+				},
+			],
+		});
+
+		await sandbox.migrate();
+
+		const file = JSON.parse(
+			await readFile(join(sandbox.target, ...CONVERSATIONS_DIR, "workshop.json"), "utf8"),
+		);
+		expect(file.cardSkinLedger).toBeUndefined();
+		expect(file.messages.map((m: { cardSkins?: unknown }) => m.cardSkins)).toEqual([
+			undefined,
+			undefined,
+		]);
+		expect(file).toMatchObject({
+			mode: "skin",
+			persona: false,
+			skinTarget: "card",
+			messages: [
+				{ role: "user", content: "做一张粉色的" },
+				{ role: "assistant", content: "做好啦,叫「樱花」", tools },
+			],
+		});
+	});
+});

@@ -1,12 +1,17 @@
 /**
- * 女仆对话 `ai/conversations/<id>.json`:0.x 早期的会话文件里没有「面孔」那三格(`mode` / `persona` /
- * `skinTarget`)→ 补齐。一项一项收进来(⑥c);从前是会话库读盘时补、不回写,会话库开机只认带齐三格的文件。
+ * 女仆对话 `ai/conversations/<id>.json`:
+ *
+ * - 0.x 早期的会话文件里没有「面孔」那三格(`mode` / `persona` / `skinTarget`)→ 补齐。一项一项收进来(⑥c);
+ *   从前是会话库读盘时补、不回写,会话库开机只认带齐三格的文件。
+ * - 卡片皮肤不迁(ADR-0022 决策 12),会话里对它们的引用剥掉、文字保留(决策 4):整场对话的账本
+ *   `cardSkinLedger`、每条回复碰过的皮肤 `cardSkins`。新代里没有这些皮肤,留着只会指向空处。工具痕迹里提到的
+ *   皮肤是文字,留着。
  */
 
 import { join } from "node:path";
 import { CONVERSATIONS_DIR } from "../ai/conversation-store.js";
 import { dataPath } from "../runtime/roots.js";
-import { listFiles, readJsonFile, rewriteJsonFile } from "./files.js";
+import { isPlainObject, listFiles, readJsonFile, rewriteJsonFile } from "./files.js";
 
 /**
  * 0.x 的工具名:老会话里记下的就是这些。冻在这里,不跟着现在的工具改名走 —— 改了名,认的就不再是老文件里
@@ -30,6 +35,7 @@ interface ZeroConversation {
 	mode?: unknown;
 	persona?: unknown;
 	skinTarget?: unknown;
+	cardSkinLedger?: unknown;
 }
 
 /** 用过哪样工具 —— 结论级的证据,不是猜。 */
@@ -37,11 +43,16 @@ function usedTool(conv: ZeroConversation, pick: (name: string) => boolean): bool
 	return conv.messages.some((m) => m.tools?.some((t) => pick(t.name)));
 }
 
+/** 一场会话迁成最新的形状:补面孔,剥卡片皮肤的引用。 */
+export function migrateConversation(conv: ZeroConversation): ZeroConversation {
+	return stripCardSkinRefs(fillFace(conv));
+}
+
 /**
  * 缺的那几格补上(`null` 也算缺):做过皮肤的是皮肤工坊,做过卡片皮肤的是卡片(这一格上线之前,工坊只做得了
  * 界面皮肤),人格默认带着。写着的永远优先。
  */
-export function migrateConversation(conv: ZeroConversation): ZeroConversation {
+function fillFace(conv: ZeroConversation): ZeroConversation {
 	return {
 		...conv,
 		mode:
@@ -53,6 +64,19 @@ export function migrateConversation(conv: ZeroConversation): ZeroConversation {
 		skinTarget:
 			conv.skinTarget ??
 			(usedTool(conv, (name) => ZERO_CARD_TOOLS.has(name)) ? "card" : "dashboard"),
+	};
+}
+
+/** 账本整个拿掉;每条消息上碰过的皮肤拿掉,别的原样。 */
+function stripCardSkinRefs(conv: ZeroConversation): ZeroConversation {
+	const { cardSkinLedger: _ledger, ...rest } = conv;
+	return {
+		...rest,
+		messages: conv.messages.map((message) => {
+			if (!isPlainObject(message) || !("cardSkins" in message)) return message;
+			const { cardSkins: _touched, ...kept } = message;
+			return kept;
+		}),
 	};
 }
 
