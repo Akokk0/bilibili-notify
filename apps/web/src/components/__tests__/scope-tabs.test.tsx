@@ -10,9 +10,14 @@
  */
 
 import { TAB_ACTIVE_LANGUAGE, TAB_IDLE_LANGUAGE } from "@bilibili-notify/ui";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { type BiliSubscription, makeEmptySubscription } from "../../types/domain";
+import {
+	type BiliSubscription,
+	makeEmptyExtensionSubscription,
+	makeEmptySubscription,
+	type Subscription,
+} from "../../types/domain";
 import { ScopeTabs } from "../scope-tabs";
 
 afterEach(cleanup);
@@ -95,5 +100,56 @@ describe("ScopeTabs 的两种 tab 说同一句选中语汇", () => {
 		renderTabs("__global");
 		const closeIdle = screen.getByLabelText(/移除 UP甲/);
 		expect(closeIdle.getAttribute("data-bn")).toBe("btn");
+	});
+});
+
+/**
+ * 「是谁」那一行读订阅的身份(来源 + 来源那头的 id):B 站只写那串 uid;拓展订阅写「平台名 · 外部 id」,
+ * 平台名由调用方按来源键(拓展 id)去取,取不到就写来源键本身。
+ */
+describe("ScopeTabs 的「是谁」那一行", () => {
+	const EXT: Subscription = {
+		...makeEmptyExtensionSubscription("douyin", "sec-2"),
+		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
+	};
+
+	function renderWith(
+		scope: string,
+		platformLabelOf?: (extensionId: string) => string | undefined,
+	) {
+		return render(
+			<ScopeTabs
+				scope={scope}
+				onChange={vi.fn()}
+				tabSubs={[SUB, EXT]}
+				availableSubs={[SUB, EXT]}
+				onAddSub={vi.fn()}
+				onRemoveSub={vi.fn()}
+				overridesCountFor={() => 0}
+				platformLabelOf={platformLabelOf}
+			/>,
+		);
+	}
+
+	it("右侧提示:B 站只写 uid", () => {
+		renderWith(SUB.id);
+		expect(screen.getByText("111", { selector: "b" })).toBeTruthy();
+	});
+
+	it("右侧提示:拓展写「平台名 · 外部 id」;平台名取不到 → 写拓展 id", () => {
+		const { unmount } = renderWith(EXT.id, (extensionId) =>
+			extensionId === "douyin" ? "抖音" : undefined,
+		);
+		expect(screen.getByText("抖音 · sec-2", { selector: "b" })).toBeTruthy();
+		unmount();
+		renderWith(EXT.id, () => undefined);
+		expect(screen.getByText("douyin · sec-2", { selector: "b" })).toBeTruthy();
+	});
+
+	it("「添加 UP」下拉:B 站「UID xxx」,拓展「平台名 · 外部 id」", () => {
+		renderWith("__global", () => "抖音");
+		fireEvent.click(screen.getByTitle("从订阅列表添加 UP 主的个性化配置"));
+		expect(screen.getByText("UID 111")).toBeTruthy();
+		expect(screen.getByText("抖音 · sec-2")).toBeTruthy();
 	});
 });

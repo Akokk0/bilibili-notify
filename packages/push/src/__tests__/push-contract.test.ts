@@ -13,12 +13,13 @@
 
 import {
 	type DeliveryResult,
-	isBiliSubscription,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type NotificationSink,
 	type PushTarget,
 	type Subscription,
+	sameIdentity,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -76,7 +77,8 @@ function makeSink(opts: SinkOptions = {}) {
 function makeStore(subs: Subscription[]): SubscriptionStore {
 	return {
 		list: () => [...subs],
-		findByUid: (uid) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
+		findByIdentity: (identity) =>
+			subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 		findById: (id) => subs.find((s) => s.id === id),
 		upsert: () => {},
 		removeById: () => undefined,

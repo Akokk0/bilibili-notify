@@ -1,4 +1,9 @@
-import { type Disposable, isBiliSubscription, type MessageBus } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Disposable,
+	type MessageBus,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
 import { type KeyedSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
@@ -77,10 +82,11 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	const buildIndex = () => {
 		const index = new Map<string, string[]>();
 		for (const sub of opts.subscriptions()) {
-			if (!isBiliSubscription(sub)) continue;
-			const ids = index.get(sub.uid) ?? [];
+			const identity = subscriptionIdentityOf(sub);
+			if (identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
+			const ids = index.get(identity.externalId) ?? [];
 			ids.push(statsFileKey(sub));
-			index.set(sub.uid, ids);
+			index.set(identity.externalId, ids);
 		}
 		return index;
 	};
@@ -159,11 +165,13 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 			idsByUid = undefined;
 			for (const op of ops) {
 				// 拓展订阅的统计文件由拓展适配自己删(ADR-0020 S3);这里只管 B 站这一支。
-				if (op.type !== "remove" || !isBiliSubscription(op.sub)) continue;
+				if (op.type !== "remove") continue;
+				const identity = subscriptionIdentityOf(op.sub);
+				if (identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
 				const key = statsFileKey(op.sub);
 				// 取消订阅就把这条订阅的统计文件一并删掉,与 FansStore 的处置一致 ——
 				// 否则退订过的 UP 会在 stats 目录里永久留一份读不到、也删不掉的孤儿。
-				openStart.delete(op.sub.uid);
+				openStart.delete(identity.externalId);
 				keys.delete(key);
 				recorder.drop(key);
 			}

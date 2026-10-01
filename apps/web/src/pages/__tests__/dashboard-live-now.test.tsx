@@ -158,3 +158,34 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(screen.getByText("● 2 人在播")).toBeTruthy();
 	});
 });
+
+/**
+ * 「未配置直播推送目标」的提示只数 B 站订阅(拓展订阅的直播不走这条监听):订阅的身份来源是 B 站、
+ * 启用着、没有任何直播类路由的才算。
+ */
+describe("正在直播 · 没配直播目标的提示", () => {
+	function renderEmpty(subs: Subscription[]) {
+		render(
+			<MemoryRouter initialEntries={["/"]}>
+				<LiveNowPanel live={[]} subs={subs} />
+			</MemoryRouter>,
+		);
+	}
+
+	it("只数启用着、没配直播目标的 B 站订阅;拓展订阅与停用的不数", () => {
+		renderEmpty([
+			biliSub("s-1", "u1", "甲"),
+			biliSub("s-2", "u2", "乙"),
+			{ ...biliSub("s-off", "u3", "丙"), enabled: false },
+			extSub("s-ext", "抖音丁"),
+		]);
+		expect(screen.getByText(/有 2 位订阅未配置直播推送目标/)).toBeTruthy();
+	});
+
+	it("配了直播目标的 B 站订阅不数;都配了就没有这句", () => {
+		const routed = biliSub("s-1", "u1", "甲");
+		routed.routing.live = ["t-1"];
+		renderEmpty([routed, extSub("s-ext", "抖音丁")]);
+		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
+	});
+});

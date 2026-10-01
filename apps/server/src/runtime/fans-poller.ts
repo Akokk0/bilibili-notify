@@ -1,15 +1,14 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
-	type BiliSubscription,
+	BILIBILI_SOURCE_KEY,
 	type CachedProfile,
 	type Disposable,
-	type ExtensionSubscription,
 	type FansRefreshEntry,
-	isBiliSubscription,
-	isExtensionSubscription,
 	type Logger,
 	type MessageBus,
 	type ServiceContext,
+	type Subscription,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
@@ -38,6 +37,10 @@ const RISK_CONTROL_CODES = new Set([-352, -403, -412, -799]);
 const FANS_RISK_BACKOFF_MS = 5 * 60_000;
 /** 冷刷 name/avatar 的批量端点单次上限(B 站 user/cards 契约:≤50)。 */
 const CARDS_BATCH_SIZE = 50;
+
+/** 这条订阅订的是 B 站吗 —— 粉丝轮询只问 B 站订阅(ADR-0019 决策 12)。 */
+const fromBilibili = (sub: Subscription): boolean =>
+	subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 
 export interface FansPollerOptions {
 	bus: MessageBus;
@@ -133,19 +136,19 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	 * 粉丝轮询只问 B 站订阅(ADR-0019 决策 12:粉丝曲线第一版不含拓展订阅)。拓展订阅没有
 	 * uid,拿它去问 B 站等于拿别的平台的 id 查一个不相干的人。
 	 */
-	function biliSubs(): BiliSubscription[] {
-		return subscriptionStore.list().filter(isBiliSubscription);
+	function biliSubs(): Subscription[] {
+		return subscriptionStore.list().filter(fromBilibili);
 	}
 
-	function enabledBiliSubs(): BiliSubscription[] {
+	function enabledBiliSubs(): Subscription[] {
 		return biliSubs().filter((s) => s.enabled);
 	}
 
 	/** 启用着的拓展订阅 —— 面板上那一行从它们的粉丝时序算,不拿外部 id 去问 B 站。 */
-	function enabledExtensionSubs(): ExtensionSubscription[] {
+	function enabledExtensionSubs(): Subscription[] {
 		return subscriptionStore
 			.list()
-			.filter(isExtensionSubscription)
+			.filter((s) => !fromBilibili(s))
 			.filter((s) => s.enabled);
 	}
 
@@ -158,10 +161,11 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	 *   - 24h / 7d:那一刻之前最近的一条样本,同 B 站。
 	 */
 	async function extensionEntry(
-		sub: ExtensionSubscription,
+		sub: Subscription,
 		nowMs: number,
 	): Promise<FansRefreshEntry | undefined> {
 		const key = statsFileKey(sub);
+		const identity = subscriptionIdentityOf(sub);
 		const [latest, first, near24h, near7d] = await Promise.all([
 			fansStore.findNearestBefore(key, FUTURE_ISO),
 			fansStore.findEarliest(key),
@@ -174,8 +178,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		const current = reported ?? latest.value;
 		return {
 			subscriptionId: sub.id,
-			extensionId: sub.extensionId,
-			externalId: sub.externalId,
+			extensionId: identity.sourceKey,
+			externalId: identity.externalId,
 			current,
 			ts: reported !== undefined && profile ? profile.lastRefreshedAt : latest.ts,
 			deltaSubscribed: first ? current - first.value : null,
@@ -343,6 +347,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			// 每个 await 之后必须重新 check disposed,否则 await 期间 dispose 触发,
 			// 返回后会继续 append/patch/emit 出残留副作用。
 			if (disposed) return;
+			const uid = subscriptionIdentityOf(sub).externalId;
 			try {
 				const prev = subRuntimeStore.get(sub.id);
 				// ⑥ 稳态用轻量的 relation/stat 取 follower;仅在 cachedProfile 尚未 seed
@@ -350,19 +355,19 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				let current: number | undefined;
 				let seedCard: { name?: string; face?: string; sign?: string } | undefined;
 				if (prev?.cachedProfile) {
-					const stat = await api.getRelationStat(sub.uid);
+					const stat = await api.getRelationStat(uid);
 					if (disposed) return;
 					if (RISK_CONTROL_CODES.has(stat.code)) {
 						enterRiskBackoff(stat.code); // ② 中止 sweep
 						break;
 					}
 					if (stat.code !== 0 || !stat.data) {
-						logger.warn(`[fans-poller] uid=${sub.uid} relation/stat code=${stat.code}`);
+						logger.warn(`[fans-poller] uid=${uid} relation/stat code=${stat.code}`);
 						continue;
 					}
 					current = stat.data.follower;
 				} else {
-					const res = await api.getUserCardInfo(sub.uid);
+					const res = await api.getUserCardInfo(uid);
 					if (disposed) return;
 					if (RISK_CONTROL_CODES.has(res.code)) {
 						enterRiskBackoff(res.code); // ② 中止 sweep
@@ -370,7 +375,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					}
 					if (res.code !== 0 || !res.data?.card) {
 						logger.warn(
-							`[fans-poller] uid=${sub.uid} upstream code=${res.code} msg=${
+							`[fans-poller] uid=${uid} upstream code=${res.code} msg=${
 								(res as { message?: string }).message ?? "?"
 							}`,
 						);
@@ -409,7 +414,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				// 的 seedCard)兜底。稳态走 relation/stat 时 seedCard 为空,直接用既有 profile。
 				const cachedProfile: CachedProfile = {
 					...(prev?.cachedProfile ?? {
-						name: seedCard?.name ?? sub.uid,
+						name: seedCard?.name ?? uid,
 						avatar: seedCard?.face ?? "",
 						sign: seedCard?.sign ?? "",
 					}),
@@ -421,13 +426,13 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				try {
 					await subRuntimeStore.patch(sub.id, runtimePatch);
 				} catch (err) {
-					logger.warn(`[fans-poller] persist ${sub.uid} failed: ${String(err)}`);
+					logger.warn(`[fans-poller] persist ${uid} failed: ${String(err)}`);
 				}
 				if (disposed) return;
 
 				const entry: FansRefreshEntry = {
 					subscriptionId: sub.id,
-					uid: sub.uid,
+					uid,
 					current,
 					ts: nowIso,
 					deltaSubscribed,
@@ -436,7 +441,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				};
 				lastBySub.set(sub.id, entry);
 			} catch (err) {
-				logger.warn(`[fans-poller] uid=${sub.uid} failed: ${String(err)}`);
+				logger.warn(`[fans-poller] uid=${uid} failed: ${String(err)}`);
 			}
 			// 200ms 间隔,串行 + 节流,避免 cookies 风控。
 			await new Promise((r) => setTimeout(r, 200));
@@ -480,6 +485,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		const subs = enabledBiliSubs();
 		for (const sub of subs) {
 			if (disposed) return;
+			const uid = subscriptionIdentityOf(sub).externalId;
 			try {
 				const last = await fansStore.findNearestBefore(statsFileKey(sub), FUTURE_ISO);
 				if (!last) continue;
@@ -491,19 +497,19 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				const earliest = await fansStore.findEarliest(statsFileKey(sub));
 				if (earliest && baseline && earliest.ts < baseline.ts) {
 					logger.info(
-						`[fans-poller] baseline self-heal uid=${sub.uid}: ${baseline.ts}(${baseline.value}) → ${earliest.ts}(${earliest.value})`,
+						`[fans-poller] baseline self-heal uid=${uid}: ${baseline.ts}(${baseline.value}) → ${earliest.ts}(${earliest.value})`,
 					);
 					try {
 						await subRuntimeStore.patch(sub.id, { fansBaseline: earliest });
 						baseline = earliest;
 					} catch (err) {
-						logger.warn(`[fans-poller] baseline self-heal ${sub.uid} failed: ${String(err)}`);
+						logger.warn(`[fans-poller] baseline self-heal ${uid} failed: ${String(err)}`);
 					}
 				}
 				const deltaSubscribed = baseline ? last.value - baseline.value : 0;
 				lastBySub.set(sub.id, {
 					subscriptionId: sub.id,
-					uid: sub.uid,
+					uid,
 					current: last.value,
 					ts: last.ts,
 					deltaSubscribed,
@@ -511,7 +517,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					delta7d: null,
 				});
 			} catch (err) {
-				logger.debug(`[fans-poller] restore ${sub.uid} skipped: ${String(err)}`);
+				logger.debug(`[fans-poller] restore ${uid} skipped: ${String(err)}`);
 			}
 		}
 		await refreshExtensionEntries();
@@ -534,7 +540,9 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			if (disposed) return;
 			const chunk = targets.slice(i, i + CARDS_BATCH_SIZE);
 			try {
-				const res = await api.getUserCardsBatch(chunk.map((s) => s.uid));
+				const res = await api.getUserCardsBatch(
+					chunk.map((s) => subscriptionIdentityOf(s).externalId),
+				);
 				if (disposed) return;
 				if (RISK_CONTROL_CODES.has(res.code)) {
 					enterRiskBackoff(res.code);
@@ -543,7 +551,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				if (res.code !== 0 || !res.data) continue;
 				const data = res.data;
 				for (const sub of chunk) {
-					const brief = data[sub.uid];
+					const uid = subscriptionIdentityOf(sub).externalId;
+					const brief = data[uid];
 					const prevProfile = subRuntimeStore.get(sub.id)?.cachedProfile;
 					if (!brief || !prevProfile) continue;
 					const name = brief.name || prevProfile.name;
@@ -554,7 +563,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 							cachedProfile: { ...prevProfile, name, avatar },
 						});
 					} catch (err) {
-						logger.warn(`[fans-poller] 冷刷 profile ${sub.uid} 持久化失败: ${String(err)}`);
+						logger.warn(`[fans-poller] 冷刷 profile ${uid} 持久化失败: ${String(err)}`);
 					}
 				}
 			} catch (err) {
@@ -599,7 +608,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			hadRemove = true;
 			if (lastBySub.delete(op.sub.id)) removedAny = true;
 			// 粉丝文件:B 站的归这里删;拓展的归统计的拓展适配删(它写的,`stats/extension-source.ts`)。
-			if (!isBiliSubscription(op.sub)) continue;
+			if (!fromBilibili(op.sub)) continue;
 			const key = statsFileKey(op.sub);
 			writtenKeys.delete(key);
 			dropSeries(key);

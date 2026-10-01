@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	BILIBILI_SOURCE_KEY,
 	type BusEvents,
 	type ConfigScope,
 	type Connection,
 	type Disposable,
 	deterministicUuid,
 	FEATURE_KEYS,
-	isBiliSubscription,
 	isDirectConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
@@ -18,6 +18,7 @@ import {
 	type ServiceContext,
 	type Subscription,
 	SubscriptionSchema,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createBackupService } from "../backup/service.js";
@@ -342,7 +343,11 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("11111");
 		await store.upsertSubscription(sub);
 		expect(store.getSubscriptions()).toHaveLength(1);
-		expect(store.getSubscriptions().filter(isBiliSubscription)[0]?.uid).toBe("11111");
+		const stored = store.getSubscriptions()[0];
+		expect(stored && subscriptionIdentityOf(stored)).toEqual({
+			sourceKey: BILIBILI_SOURCE_KEY,
+			externalId: "11111",
+		});
 
 		// Update the same id (cannot mutate uid past schema regex, but we can flip enabled / notes)
 		const updated: Subscription = { ...sub, enabled: false, notes: "paused" };

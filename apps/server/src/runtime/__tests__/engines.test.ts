@@ -32,9 +32,11 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	DEFAULT_MESSAGE_LAYOUT,
-	isBiliSubscription,
+	type Identity,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	sameIdentity,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
@@ -410,7 +412,8 @@ function setup(opts?: {
 		historyStore: (opts?.overrides?.historyStore ?? { record: vi.fn(async () => {}) }) as any,
 		subscriptionStore: {
 			list: () => subs,
-			findByUid: (uid: string) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
+			findByIdentity: (identity: Identity) =>
+				subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 			findById: (id: string) => subs.find((s) => s.id === id),
 		} as any,
 		subRuntimeStore: {

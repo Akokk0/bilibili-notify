@@ -45,7 +45,12 @@ import { PUSH_TONE } from "../config/push-kinds";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
-import { isBiliSubscription, type PushTarget, type Subscription } from "../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	type PushTarget,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../types/domain";
 import type { CardStyle, GlobalConfig } from "../types/globals";
 import { walkTreeDiff } from "../utils/walkTreeDiff";
 import { CardSkinKnobsSection } from "./cards/CardSkinKnobs";
@@ -683,7 +688,10 @@ export default function Cards() {
 
 	// 卡片页的按 UP 预览按 uid 取真实数据,第一版只有 B 站订阅(ADR-0019 决策 12)。
 	const allSubs = useMemo(
-		() => (subsQuery.data ?? []).filter(isBiliSubscription),
+		() =>
+			(subsQuery.data ?? []).filter(
+				(s) => subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY,
+			),
 		[subsQuery.data],
 	);
 	const isGlobalScope = scope === "__global";
@@ -907,12 +915,14 @@ export default function Cards() {
 	const previewFallback = !isGlobalScope;
 	const previewContent = useMemo<Record<string, unknown>>(() => {
 		if (isGlobalScope || !focusedSub) return content[kind];
-		if (kind === "live") return { uid: focusedSub.uid };
+		// 这里只有 B 站订阅(见 allSubs),身份里的外部 id 就是后端要的 uid。
+		const uid = subscriptionIdentityOf(focusedSub).externalId;
+		if (kind === "live") return { uid };
 		// 动态:用「第几条」选择器的 offset(默认 1),后端按 offset 从该 UP 动态列表取一条。
-		if (kind === "dyn") return { uid: focusedSub.uid, offset: content.dyn.offset };
+		if (kind === "dyn") return { uid, offset: content.dyn.offset };
 		// sc / guard:发送者 / 新舰长由后端取当前登录账号(与全局一致);带上该 UP 的 uid,
 		// 后端据此把卡片**接收方**渲染成真实的该 UP(失败回退示例)。内容沿用固定示例。
-		return { ...content[kind], uid: focusedSub.uid };
+		return { ...content[kind], uid };
 	}, [isGlobalScope, focusedSub, kind, content]);
 
 	useDirtyDraft({
@@ -970,9 +980,10 @@ export default function Cards() {
 	// dyn 带「第几条」offset;sc/guard 带 uid 渲染真实接收方)。
 	const contentFor = (k: CardKind): Record<string, unknown> => {
 		if (isGlobalScope || !focusedSub) return content[k];
-		if (k === "live") return { uid: focusedSub.uid };
-		if (k === "dyn") return { uid: focusedSub.uid, offset: content.dyn.offset };
-		return { ...content[k], uid: focusedSub.uid };
+		const uid = subscriptionIdentityOf(focusedSub).externalId;
+		if (k === "live") return { uid };
+		if (k === "dyn") return { uid, offset: content.dyn.offset };
+		return { ...content[k], uid };
 	};
 	// 全局 tab:右侧四张卡「全家福」,逐类型用各自生效样式 + 内容渲染。
 	const familyPreviews = (["live", "dyn", "sc", "guard"] as const).map((fk) => ({
@@ -1036,7 +1047,8 @@ export default function Cards() {
 				perUpHint={(sub) =>
 					sub ? (
 						<>
-							仅作用于 <b className="text-bn-pink">{sub.uid}</b>,未开启的覆盖继承全局
+							仅作用于 <b className="text-bn-pink">{subscriptionIdentityOf(sub).externalId}</b>
+							,未开启的覆盖继承全局
 						</>
 					) : null
 				}

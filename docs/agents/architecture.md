@@ -22,7 +22,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 | `packages/api` | `@bilibili-notify/api` | `BilibiliAPI`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
 | `packages/storage` | `@bilibili-notify/storage` | `StorageManager` —— cookie/密钥持久化 + AES 加密 |
 | `packages/push` | `@bilibili-notify/push` | `BilibiliPush` —— 经 `PushLike` 适配器做推送路由;只把**启用的**目标当候选,每个目标收完一段序列回调一次 `onSend`(带 `pushId` / `kind` / 逐条结果),一个可用目标都没有时以 `target: null` 回调一次(见 events.md「推送历史的行模型」) |
-| `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff。B 站与拓展两支同一份联合列表;`findById` 两支都找,`findByUid` 只找 B 站 |
+| `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff。B 站与拓展两支同一份联合列表;`findById` 按订阅 id 找,`findByIdentity` 按身份(来源 + 外部 id)找 |
 | `packages/dynamic` | `@bilibili-notify/dynamic` | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发。另有**中立作品装配** `deliverWork`(出卡 → AI → 模板 → 版式 → 推送 → 图集,不认 uid;B 站动态与拓展作品共用)、出图失败计数 `createCardFailureTracker`、只看文字的 `filterByText`(拓展作品只走它)。见 push.md ① |
 | `packages/live` | `@bilibili-notify/live` | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester)。另有**中立直播装配** `pushLiveNotify`(吃 `LiveCardInput`,不认 uid)与串行闸 `createSerialGate` |
 | `packages/blive` | `@bilibili-notify/blive` | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |

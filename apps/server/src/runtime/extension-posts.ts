@@ -10,13 +10,13 @@ import {
 } from "@bilibili-notify/dynamic";
 import type {
 	Disposable,
-	ExtensionSubscription,
 	Logger,
 	MessageBus,
 	ServiceContext,
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
+import { subscriptionIdentityOf } from "@bilibili-notify/internal";
 import { createSerialGate, type SerialGate } from "@bilibili-notify/live";
 import { extensionPostFilterText, extensionPostWork } from "./extension-post-work.js";
 import {
@@ -63,7 +63,7 @@ export interface BindExtensionPostsOptions {
 	/** 订阅资料里的名字(资料缓存,现取)。 */
 	profileName(id: string): string | undefined;
 	/** 这条订阅折好的作品设置(现折,与 B 站那头同一份,见 `dynamicWorkSettings`)。 */
-	settings(sub: ExtensionSubscription): ExtensionPostSettings;
+	settings(sub: Subscription): ExtensionPostSettings;
 	/** 拓展在不在跑、平台叫法、存下的头像。 */
 	sources: ExtensionSourceLookups;
 	/** 绑到这条订阅上的作品发送(`boundWorkPush(bindSubscriptionPush(push, id))`)。 */
@@ -95,7 +95,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 	};
 
 	/** 这条订阅现在还该推吗。关机之后一律不推。 */
-	const pushable = (id: string): ExtensionSubscription | undefined => {
+	const pushable = (id: string): Subscription | undefined => {
 		if (disposed) return undefined;
 		const sub = opts.subscription(id);
 		return extensionSubscriptionPushable(sub, opts.sources.running) ? sub : undefined;
@@ -112,7 +112,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			log.debug(`[ext-post] 订阅 ${id} 的动态推送关着,作品 ${post.id} 不推`);
 			return;
 		}
-		const postNoun = opts.sources.postNoun(sub.extensionId);
+		const postNoun = opts.sources.postNoun(subscriptionIdentityOf(sub).sourceKey);
 		const profileName = opts.profileName(id);
 		const push = opts.pushFor(id);
 

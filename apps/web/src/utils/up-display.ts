@@ -6,7 +6,12 @@
 
 import type { HistoryRowIdentity } from "@bilibili-notify/internal";
 import { upColor } from "@bilibili-notify/internal/constants";
-import { isBiliSubscription, type Subscription } from "../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	identityColor,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../types/domain";
 
 /**
  * B 站订阅没拿到资料时回落到「UID xxx」;拓展订阅(ADR-0019 决策 9)没有 uid,回落到主人起的
@@ -15,21 +20,18 @@ import { isBiliSubscription, type Subscription } from "../types/domain";
 export function displayName(sub: Subscription): string {
 	const cached = sub.cachedProfile?.name?.trim();
 	if (cached) return cached;
-	if (isBiliSubscription(sub)) return `UID ${sub.uid}`;
-	return sub.name?.trim() || sub.externalId;
+	const identity = subscriptionIdentityOf(sub);
+	if (identity.sourceKey === BILIBILI_SOURCE_KEY) return `UID ${identity.externalId}`;
+	return sub.name?.trim() || identity.externalId;
 }
 
 /**
  * 这条订阅在页面上的颜色 —— 跟着人走。B 站订阅按 uid 取,拓展订阅按「拓展 id:外部 id」取(决策 73):
- * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `upColor`(ADR-0020 决策 15),服务端出图(周报 /
+ * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `identityColor` / `upColor`(ADR-0020 决策 15),服务端出图(周报 /
  * 锐评卡)用的是同一份,同一个人在页面与图上是同一个颜色。历史行用 {@link historyRowColor}。
  */
 export function subscriptionColor(sub: Subscription): string {
-	return upColor(
-		isBiliSubscription(sub)
-			? { uid: sub.uid }
-			: { extensionId: sub.extensionId, externalId: sub.externalId },
-	);
+	return identityColor(subscriptionIdentityOf(sub));
 }
 
 /** 这一行历史是拓展行吗(决策 73:两格都有就是拓展行)。 */

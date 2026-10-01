@@ -38,7 +38,6 @@ import {
 } from "@bilibili-notify/dynamic";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
-	BiliSubscription,
 	CardKind,
 	CardSkinKind,
 	CardSkinManifest,
@@ -51,6 +50,7 @@ import type {
 	GlobalConfig,
 	GlobalDefaults,
 	GuardBundle,
+	Identity,
 	LinkParsingConfig,
 	LinkParsingPolicy,
 	NotificationPayload,
@@ -63,12 +63,13 @@ import type {
 	SubscriptionOverrides,
 } from "@bilibili-notify/internal";
 import {
+	BILIBILI_SOURCE_KEY,
 	featureToPushKind,
-	isBiliSubscription,
 	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
 	resolveCardStyleForKind,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import {
 	type CustomGuardBuyLike,
@@ -395,7 +396,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 * 在这条边上先翻一次。同一个 uid 配了两条订阅时先出现的那条说了算(引擎本来就只按 uid 认人)。
 	 */
 	const subscriptionIdOfUid = (uid: string): string | undefined => {
-		const id = opts.subscriptionStore.findByUid(uid)?.id;
+		const id = opts.subscriptionStore.findByIdentity(biliIdentity(uid))?.id;
 		if (id === undefined) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
 		return id;
 	};
@@ -641,7 +642,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,
 		// 省掉逐 UP 的 getUserInfo 房号解析请求。
 		onRoomIdResolved: (uid, roomId) => {
-			const sub = opts.subscriptionStore.findByUid(uid);
+			const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
 			if (!sub) return;
 			if (opts.subRuntimeStore.get(sub.id)?.roomId === roomId) return;
 			opts.serviceCtx.track(
@@ -735,13 +736,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
 				settings: (sub) => liveWorkSettings(sub, globals()),
 				// 按种类 ?? 基准,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
-				cardStyle: (sub, settings) =>
-					rotateLiveCover(
+				cardStyle: (sub, settings) => {
+					const identity = subscriptionIdentityOf(sub);
+					return rotateLiveCover(
 						settings.customCardStyleByKind?.live ?? settings.customCardStyle,
 						globals().defaults.cardStyle.liveCoverImages,
 						pickExistingCardBg,
-						`${sub.extensionId}:${sub.externalId}:live-cover`,
-					),
+						`${identity.sourceKey}:${identity.externalId}:live-cover`,
+					);
+				},
 				sources: extensionSources,
 				sendFor: (id) => boundLivePush(bindSubscriptionPush(push, id)),
 				renderer: () => (globals().defaults.cardStyle.enabled ? imageRenderer : null),
@@ -766,7 +769,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				globals(),
 			);
 			live.applyOps(liveOps, (uid) => {
-				const sub = opts.subscriptionStore.findByUid(uid);
+				const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
 				return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, globals()) : undefined;
 			});
 		}),
@@ -1031,7 +1034,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						g,
 					);
 					live.applyOps(refreshOps, (uid) => {
-						const sub = opts.subscriptionStore.findByUid(uid);
+						const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
 						return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, g) : undefined;
 					});
 				}
@@ -1151,7 +1154,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
 			const liveReady = opts.subscriptionStore
 				.list()
-				.filter(isBiliSubscription)
+				.filter(fromBilibili)
 				.some((sub) => {
 					if (!sub.enabled) return false;
 					const eff = resolve(sub, g.defaults);
@@ -1605,6 +1608,16 @@ function buildCardStyleByKind(
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** B 站引擎说的 uid → 订阅身份(B 站的外部 id 就是 uid)。 */
+function biliIdentity(uid: string): Identity {
+	return { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid };
+}
+
+/** 这条订阅订的是 B 站吗 —— B 站引擎(动态 / 直播)只看这样的订阅,拓展订阅不进它(ADR-0019 决策 9)。 */
+function fromBilibili(sub: Subscription): boolean {
+	return subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
+}
+
 export function buildDynamicSubsView(
 	store: SubscriptionStore,
 	subRuntimeStore: SubRuntimeStore,
@@ -1612,9 +1625,13 @@ export function buildDynamicSubsView(
 ): DynamicSubsView {
 	const view: DynamicSubsView = {};
 	// B 站引擎只看 B 站订阅(ADR-0019 决策 9):拓展订阅没有 uid,不拿别的平台的 id 去问 B 站。
-	for (const sub of store.list().filter(isBiliSubscription)) {
+	for (const sub of store.list().filter(fromBilibili)) {
 		if (!sub.enabled) continue;
-		view[sub.uid] = buildDynamicSubViewSingle(sub, subRuntimeStore, globals);
+		view[subscriptionIdentityOf(sub).externalId] = buildDynamicSubViewSingle(
+			sub,
+			subRuntimeStore,
+			globals,
+		);
 	}
 	return view;
 }
@@ -1653,14 +1670,16 @@ export function resolveDynamicCardStyle(
 }
 
 export function buildDynamicSubViewSingle(
-	sub: BiliSubscription,
+	sub: Subscription,
 	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): DynamicSubsView[string] {
 	const eff = resolve(sub, globals.defaults);
+	// B 站引擎以 uid 为键:B 站订阅的外部 id 就是 uid。调用方只给 B 站订阅。
+	const uid = subscriptionIdentityOf(sub).externalId;
 	return {
-		uid: sub.uid,
-		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
+		uid,
+		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 		// enabled 门 + features.dynamic:add op 可能收到 disabled sub,engine applyOps
 		// add 用 `if(!op.sub.dynamic) break` 拦截。buildDynamicSubsView 已 continue 跳
 		// disabled,这里 `sub.enabled &&` 对它是恒真无副作用。
@@ -1730,9 +1749,13 @@ function buildLiveSubsView(
 ): LiveSubsView {
 	const view: LiveSubsView = {};
 	// 同 buildDynamicSubsView:只有 B 站订阅进直播引擎。
-	for (const sub of store.list().filter(isBiliSubscription)) {
+	for (const sub of store.list().filter(fromBilibili)) {
 		if (!sub.enabled) continue;
-		view[sub.uid] = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
+		view[subscriptionIdentityOf(sub).externalId] = buildLiveSubViewSingle(
+			sub,
+			subRuntimeStore,
+			globals,
+		);
 	}
 	return view;
 }
@@ -1814,18 +1837,20 @@ export function liveWorkSettings(
 }
 
 export function buildLiveSubViewSingle(
-	sub: BiliSubscription,
+	sub: Subscription,
 	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): LiveSubView {
 	const eff = resolve(sub, globals.defaults);
+	// 同 buildDynamicSubViewSingle:B 站引擎以 uid 为键,调用方只给 B 站订阅。
+	const uid = subscriptionIdentityOf(sub).externalId;
 	const danmakuUsers = sub.specialUsers.filter((u) => u.kinds.includes("danmaku"));
 	const enterUsers = sub.specialUsers.filter((u) => u.kinds.includes("enter"));
 	// SubItemView 上每个 feature 的布尔字段 = features.X(source-side gate),同 liveWorkSettings。
 	const feat = (k: keyof typeof eff.routing) => eff.features[k];
 	return {
-		uid: sub.uid,
-		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
+		uid,
+		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
 		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
 		dynamic: feat("dynamic"),
@@ -1877,7 +1902,7 @@ function subscriptionOpsToDynamic(
 	globals: GlobalConfig,
 ): DynamicSubOp[] {
 	const out: DynamicSubOp[] = [];
-	const hasDyn = (sub: BiliSubscription): boolean => {
+	const hasDyn = (sub: Subscription): boolean => {
 		// 禁用订阅一律不纳入动态轮询。与 buildDynamicSubsView 的 `if(!sub.enabled)`
 		// gate 保持一致 —— op 翻译层也 gate 后,禁用立即经 applyOps 走 stopDynamicForUid,
 		// 不必等下一个 cron tick 重读 getSubs()。
@@ -1887,7 +1912,8 @@ function subscriptionOpsToDynamic(
 	};
 	for (const op of ops) {
 		// B 站动态引擎只管 B 站订阅(ADR-0019 决策 9),拓展订阅的增删改与它无关。
-		if (!isBiliSubscription(op.sub)) continue;
+		if (!fromBilibili(op.sub)) continue;
+		const identity = subscriptionIdentityOf(op.sub);
 		if (op.type === "add") {
 			// 全量视图(filter/imageGroup/ai/模板 per-UP 覆盖一并带上),与
 			// buildDynamicSubsView 投影一致 —— 新增即带覆盖的订阅首推就生效,
@@ -1897,13 +1923,13 @@ function subscriptionOpsToDynamic(
 				sub: buildDynamicSubViewSingle(op.sub, subRuntimeStore, globals),
 			});
 		} else if (op.type === "remove") {
-			out.push({ type: "delete", uid: op.sub.uid });
+			out.push({ type: "delete", uid: identity.externalId });
 		} else {
-			const sub = store.findByUid(op.sub.uid);
+			const sub = store.findByIdentity(identity);
 			if (!sub) continue;
 			out.push({
 				type: "update",
-				uid: op.sub.uid,
+				uid: identity.externalId,
 				changes: [{ scope: "dynamic", dynamic: hasDyn(sub) }],
 			});
 		}
@@ -1920,15 +1946,16 @@ function subscriptionOpsToLive(
 	const out: LiveSubscriptionOp[] = [];
 	for (const op of ops) {
 		// 同 subscriptionOpsToDynamic:直播引擎只管 B 站订阅。
-		if (!isBiliSubscription(op.sub)) continue;
+		if (!fromBilibili(op.sub)) continue;
+		const identity = subscriptionIdentityOf(op.sub);
 		if (op.type === "add") {
 			// 禁用态新增不开监听器。新增订阅默认 enabled,此处为防御性兜底。
 			if (!op.sub.enabled) continue;
 			out.push({ type: "add", sub: buildLiveSubViewSingle(op.sub, subRuntimeStore, globals) });
 		} else if (op.type === "remove") {
-			out.push({ type: "delete", uid: op.sub.uid });
+			out.push({ type: "delete", uid: identity.externalId });
 		} else {
-			const sub = store.findByUid(op.sub.uid);
+			const sub = store.findByIdentity(identity);
 			if (!sub) continue;
 			// 禁用订阅 = 拆掉直播监听器。LiveEngine 是事件驱动(常驻 WS),不像
 			// DynamicEngine 有 cron 每轮重读 getSubs() 兜底 —— update op 必须显式翻译
@@ -1936,7 +1963,7 @@ function subscriptionOpsToLive(
 			// 走下面的 update 分支发完整 LiveScopedChange,LiveEngine.applyOps 见无
 			// 活跃 listener → lookupFullSub → startForUid 重新拉起。
 			if (!sub.enabled) {
-				out.push({ type: "delete", uid: op.sub.uid });
+				out.push({ type: "delete", uid: identity.externalId });
 				continue;
 			}
 			// 用完整 SubItemView 投影出所有 LiveScopedChange 支持的字段——路由布尔、
@@ -1946,7 +1973,7 @@ function subscriptionOpsToLive(
 			const view = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
 			out.push({
 				type: "update",
-				uid: op.sub.uid,
+				uid: identity.externalId,
 				changes: [
 					{
 						scope: "live",
@@ -1985,7 +2012,7 @@ function subscriptionOpsToLive(
 
 function listLiveRooms(
 	live: LiveEngine,
-	subscriptionStore: Pick<SubscriptionStore, "findByUid">,
+	subscriptionStore: Pick<SubscriptionStore, "findByIdentity">,
 ): LiveListenerSnapshot[] {
 	// Only rooms that have reported `liveStatus === true` via the WS dispatcher
 	// surface to the Dashboard. Monitored-but-idle rooms are filtered so the
@@ -1996,7 +2023,7 @@ function listLiveRooms(
 	const out: LiveListenerSnapshot[] = [];
 	for (const s of live.listLiveSnapshots()) {
 		if (!s.isLive) continue;
-		const subscriptionId = subscriptionStore.findByUid(s.uid)?.id;
+		const subscriptionId = subscriptionStore.findByIdentity(biliIdentity(s.uid))?.id;
 		if (subscriptionId === undefined) continue;
 		out.push({
 			subscriptionId,

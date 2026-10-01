@@ -49,6 +49,7 @@ import {
 	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
 import {
+	BILIBILI_SOURCE_KEY,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_UPLOAD_PREFIX,
 	CardSkinIdSchema,
@@ -65,6 +66,7 @@ import {
 	type NotificationPayload,
 	ok,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -243,9 +245,12 @@ export function testPushCaption(kind: PreviewKind): string {
 	return `【bilibili-notify 测试推送】${KIND_LABEL[kind]}卡片`;
 }
 
-/** 引用列表里怎么称呼一条订阅。拓展订阅没有 uid,用名字 / 外部 id 指认。 */
+/** 引用列表里怎么称呼一条订阅。B 站的写 `UP <uid>`,别的来源用名字 / 外部 id 指认。 */
 function subscriptionLabel(s: Subscription): string {
-	return s.kind === "extension" ? `订阅「${s.name || s.externalId}」` : `UP ${s.uid}`;
+	const identity = subscriptionIdentityOf(s);
+	return identity.sourceKey === BILIBILI_SOURCE_KEY
+		? `UP ${identity.externalId}`
+		: `订阅「${s.name || identity.externalId}」`;
 }
 
 /**

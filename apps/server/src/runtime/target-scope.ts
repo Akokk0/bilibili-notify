@@ -26,7 +26,11 @@ import type {
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
-import { isBiliSubscription, isTargetPaused } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	isTargetPaused,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 
 /** 折好的一张答案表。几问都是 O(1) 查表,不含任何深拷贝。 */
@@ -77,16 +81,17 @@ export function resolveTargetScope({
 	const byExternal = new Map<string, Map<string, string>>();
 	for (const sub of subscriptions) {
 		routing.set(sub.id, sub.routing);
-		if (isBiliSubscription(sub)) {
-			if (!byUid.has(sub.uid)) byUid.set(sub.uid, sub.id);
+		const identity = subscriptionIdentityOf(sub);
+		if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
+			if (!byUid.has(identity.externalId)) byUid.set(identity.externalId, sub.id);
 			continue;
 		}
-		let ofExtension = byExternal.get(sub.extensionId);
+		let ofExtension = byExternal.get(identity.sourceKey);
 		if (!ofExtension) {
 			ofExtension = new Map();
-			byExternal.set(sub.extensionId, ofExtension);
+			byExternal.set(identity.sourceKey, ofExtension);
 		}
-		if (!ofExtension.has(sub.externalId)) ofExtension.set(sub.externalId, sub.id);
+		if (!ofExtension.has(identity.externalId)) ofExtension.set(identity.externalId, sub.id);
 	}
 	const enabled = new Set<string>();
 	for (const target of targets) if (!isTargetPaused(target, connections)) enabled.add(target.id);

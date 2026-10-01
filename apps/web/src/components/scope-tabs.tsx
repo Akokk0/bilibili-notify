@@ -24,7 +24,12 @@ import {
 	useDismiss,
 } from "@bilibili-notify/ui";
 import { useRef, useState } from "react";
-import { type ExtensionSubscription, isBiliSubscription, type Subscription } from "../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Identity,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../types/domain";
 // 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套。
 import { displayName, subscriptionColor } from "../utils/up-display";
 
@@ -71,17 +76,18 @@ export function ScopeTabs<S extends Subscription>({
 	useDismiss(dropdownRef, () => setAdding(false), { enabled: adding });
 
 	const isGlobal = scope === "__global";
-	const extensionIdLabel = (sub: ExtensionSubscription): string =>
-		`${platformLabelOf?.(sub.extensionId) ?? sub.extensionId} · ${sub.externalId}`;
+	// 拓展订阅「是谁」那一行:「平台名 · 外部 id」。平台名拿来源键去取(拓展 id)。
+	const extensionIdLabel = (identity: Identity): string =>
+		`${platformLabelOf?.(identity.sourceKey) ?? identity.sourceKey} · ${identity.externalId}`;
 	// 右侧提示里的「是谁」:B 站照旧只写那串 uid 数字;拓展订阅写「平台名 · 外部 id」。
-	// 先放宽成联合再收窄 —— 泛型 S 上的类型守卫只收窄真分支,假分支拿不到拓展那一支的字段。
-	const focused: Subscription | undefined = tabSubs.find((s) => s.id === scope);
+	const focused = tabSubs.find((s) => s.id === scope);
+	const focusedIdentity = focused === undefined ? undefined : subscriptionIdentityOf(focused);
 	const focusedIdLabel =
-		focused === undefined
+		focusedIdentity === undefined
 			? undefined
-			: isBiliSubscription(focused)
-				? focused.uid
-				: extensionIdLabel(focused);
+			: focusedIdentity.sourceKey === BILIBILI_SOURCE_KEY
+				? focusedIdentity.externalId
+				: extensionIdLabel(focusedIdentity);
 
 	return (
 		<TabBarShell>
@@ -190,7 +196,7 @@ export function ScopeTabs<S extends Subscription>({
 							<div className="max-h-72 overflow-y-auto py-1">
 								{availableSubs.map((sub) => {
 									const color = subscriptionColor(sub);
-									const one: Subscription = sub;
+									const identity = subscriptionIdentityOf(sub);
 									return (
 										<MenuItem
 											key={sub.id}
@@ -210,7 +216,11 @@ export function ScopeTabs<S extends Subscription>({
 													{displayName(sub)}
 												</div>
 												<div className="text-bn-2xs text-bn-text-tertiary tabular-nums">
-													{isBiliSubscription(one) ? <>UID {one.uid}</> : extensionIdLabel(one)}
+													{identity.sourceKey === BILIBILI_SOURCE_KEY ? (
+														<>UID {identity.externalId}</>
+													) : (
+														extensionIdLabel(identity)
+													)}
 												</div>
 											</div>
 											{sub.state.liveStatus === "live" ? (

@@ -7,14 +7,14 @@ import type {
 	UpStatsRow,
 } from "@bilibili-notify/contract";
 import {
+	BILIBILI_SOURCE_KEY,
 	fail,
-	isBiliSubscription,
-	isExtensionSubscription,
 	issuesFromZod,
 	ok,
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
@@ -36,6 +36,10 @@ import {
 	respondFailure,
 } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
+
+/** 这条订阅订的是 B 站吗 —— 统计页两支的取数各算各的(ADR-0020 决策 9),分岔都看身份的来源。 */
+const fromBilibili = (sub: Subscription): boolean =>
+	subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 
 /**
  * `GET /api/stats/overview?days=30&tz=-480` —— 数据统计 Tab 的唯一数据源。
@@ -174,8 +178,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			(deps.runtime.engines?.listLiveRooms() ?? []).filter((r) => r.isLive).map((r) => r.uid),
 		);
 		const isLive = (sub: Subscription): boolean =>
-			isBiliSubscription(sub)
-				? liveUids.has(sub.uid)
+			fromBilibili(sub)
+				? liveUids.has(subscriptionIdentityOf(sub).externalId)
 				: deps.runtime.engines?.extensionLiveSession(sub.id) !== undefined;
 		// 此刻的粉丝数:B 站取粉丝轮询的快照(比 jsonl 末行新,只含启用着的);拓展取它最近报的资料
 		// (决策 8,每报一次就更新,比稀释过的样本新)—— 只认启用着的,同 B 站的快照:停用的曲线停了,
@@ -185,7 +189,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			(deps.runtime.fansPoller?.getLastEntries() ?? []).map((e) => [e.subscriptionId, e]),
 		);
 		const currentFans = (sub: Subscription): number | undefined =>
-			isBiliSubscription(sub)
+			fromBilibili(sub)
 				? fansBySub.get(sub.id)?.current
 				: sub.enabled
 					? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.fans
@@ -239,9 +243,9 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 					deps.runtime.statsStore.listDynamics(key, since),
 					deps.runtime.statsStore.listLiveSessions(key, since),
 					// 「在记」只有拓展订阅有(决策 9 / 16),B 站行「那天有没有记录」看粉丝采样(见下)。
-					isExtensionSubscription(sub)
-						? deps.runtime.statsStore.listSeenSince(key, since)
-						: Promise.resolve([]),
+					fromBilibili(sub)
+						? Promise.resolve([])
+						: deps.runtime.statsStore.listSeenSince(key, since),
 				]);
 				return {
 					sub,
@@ -271,7 +275,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		// 拿拓展的样本把 B 站行那天判成「在记、是 0」就是撒谎。拓展行也不借这一份,见 extensionActivity。
 		const coveredDays = new Set<string>();
 		for (const { sub, samples } of perSub) {
-			if (!isBiliSubscription(sub)) continue;
+			if (!fromBilibili(sub)) continue;
 			for (const s of samples) {
 				const d = localDayKey(s.ts, tzOffsetMin);
 				if (d) coveredDays.add(d);
@@ -359,11 +363,12 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 
 		const rows = perSub.map((one): UpStatsRow => {
 			const { sub, samples, events, sessions } = one;
+			const identity = subscriptionIdentityOf(sub);
 			const daily = dailyFansSeries(samples, { days, tzOffsetMin });
 			const series = daily.map((p) => p.net);
 			// 计数、场次、峰值、粉丝两支同一套聚合;只有「那天有没有记录」各算各的(决策 9)。
 			const activityCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
-			const activity = isBiliSubscription(sub)
+			const activity = fromBilibili(sub)
 				? biliActivity(activityCounts, daily, one)
 				: extensionActivity(activityCounts, daily, one);
 			// 窗口内是否有**任何**采集覆盖。三种证据取并集:
@@ -400,9 +405,9 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			return {
 				// 键是订阅 id,身份两支随行带着(ADR-0020 决策 1 的 🔗 / 18,同推送历史)。
 				subscriptionId: sub.id,
-				...(isBiliSubscription(sub)
-					? { uid: sub.uid }
-					: { extensionId: sub.extensionId, externalId: sub.externalId }),
+				...(identity.sourceKey === BILIBILI_SOURCE_KEY
+					? { uid: identity.externalId }
+					: { extensionId: identity.sourceKey, externalId: identity.externalId }),
 				// 当前粉丝优先用内存里的最新值(B 站的轮询快照 / 拓展的资料),它比 jsonl 末行更新;
 				// 没有(轮询还没起来、停用了、拓展还没报过)时回退到采样末值。
 				fans: one.fans ?? samples.at(-1)?.value ?? null,

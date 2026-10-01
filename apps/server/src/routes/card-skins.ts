@@ -34,6 +34,7 @@ import {
 	issuesFromZod,
 	ok,
 	parseCardSkin,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -210,12 +211,12 @@ export function createCardSkinsRoute(deps: {
 		}
 		if (!store.has(id)) return notFound(c);
 		const global = config.getGlobals().defaults.cardSkin === id;
-		// 两支订阅都算(ADR-0019 决策 47):拓展订阅也能单独指定皮肤,漏看它就会删掉一套
-		// 还有人在用的皮肤。拓展订阅没有 uid,没起名字时用它的外部 id 指认。
+		// 所有订阅都算(ADR-0019 决策 47):拓展订阅也能单独指定皮肤,漏看它就会删掉一套
+		// 还有人在用的皮肤。没起名字时用身份里的外部 id 指认(B 站就是 uid)。
 		const subscriptions = config
 			.getSubscriptions()
 			.filter((s) => s.overrides?.cardSkin === id)
-			.map((s) => s.name || (s.kind === "extension" ? s.externalId : s.uid));
+			.map((s) => s.name || subscriptionIdentityOf(s).externalId);
 		if (global || subscriptions.length > 0) {
 			// 用家点名并进 `message`(不另占一格 `usedBy`):订阅多了只列前几个,后面报个数。
 			const who = [

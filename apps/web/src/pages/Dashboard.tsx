@@ -52,7 +52,12 @@ import {
 } from "../services/dashboard";
 import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
-import { isBiliSubscription, type PushTarget, type Subscription } from "../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	type PushTarget,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { historyRowColor, historyRowIdentity, isExtensionRow } from "../utils/up-display";
@@ -140,7 +145,13 @@ export function LiveNowPanel({
 	// 用户订阅了但没给 live 类 feature 配 target 的数量 —— 这些订阅的直播状态
 	// 永远不会出现在面板里。empty state 里露出 hint 让用户知道该去哪配置。
 	const unmonitoredCount = useMemo(
-		() => subs.filter((s) => isBiliSubscription(s) && s.enabled && !hasAnyLiveTarget(s)).length,
+		() =>
+			subs.filter(
+				(s) =>
+					subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY &&
+					s.enabled &&
+					!hasAnyLiveTarget(s),
+			).length,
 		[subs],
 	);
 	return (

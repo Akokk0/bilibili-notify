@@ -54,7 +54,7 @@ function makeSink(box: { up: boolean }): { sink: NotificationSink; sent: string[
 
 const emptyStore: SubscriptionStore = {
 	list: () => [],
-	findByUid: () => undefined,
+	findByIdentity: () => undefined,
 	findById: () => undefined,
 	upsert: () => {},
 	removeById: () => undefined,

@@ -10,12 +10,12 @@ import type { SubscriptionEventKind } from "@bilibili-notify/internal";
 import { SUBSCRIPTION_EVENT_FEATURES } from "@bilibili-notify/internal/constants";
 import { isExtensionPresent } from "../../hooks/useExtensions";
 import {
-	type ExtensionSubscription,
+	BILIBILI_SOURCE_KEY,
 	FEATURE_KEYS,
 	FEATURE_LABELS,
 	type FeatureKey,
-	isBiliSubscription,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "../../types/domain";
 
 /** 开了订阅那一口、交了外观与事件的拓展。 */
@@ -76,7 +76,7 @@ export interface SubscriptionPlatform {
  * 只看订阅记在哪个拓展名下 —— 首页在播那一行在订阅列表回来之前就要画徽章,手里只有拓展 id。
  */
 export function subscriptionPlatformOf(
-	sub: Pick<ExtensionSubscription, "extensionId">,
+	sub: { extensionId: string },
 	extensions: readonly ExtensionDTO[] | undefined,
 ): SubscriptionPlatform {
 	const ext = extensions?.find((one) => one.id === sub.extensionId);
@@ -99,7 +99,7 @@ export function visibleFeaturesOf(
 	sub: Subscription,
 	platform: SubscriptionPlatform | undefined,
 ): readonly FeatureKey[] {
-	if (isBiliSubscription(sub)) return FEATURE_KEYS;
+	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return FEATURE_KEYS;
 	return platform?.features ?? EXTENSION_FEATURES_AT_MOST;
 }
 

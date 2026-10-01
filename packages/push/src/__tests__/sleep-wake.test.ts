@@ -34,7 +34,10 @@ function makeUnreachableSink(): NotificationSink {
 	};
 }
 
-const emptyStore = { list: () => [], findByUid: () => undefined } as unknown as SubscriptionStore;
+const emptyStore = {
+	list: () => [],
+	findByIdentity: () => undefined,
+} as unknown as SubscriptionStore;
 
 /** Permissive fake store — `targetIds` 对每个 feature 都视为已路由,供无关 routing 复检的用例复用。 */
 function permissiveStore(subscriptionId: string, targetIds: string[]): SubscriptionStore {

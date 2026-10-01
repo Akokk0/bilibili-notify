@@ -26,7 +26,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`，联合类型 `Subsc
 
 ### 内存一份，盘上两个文件（决策 47 / 48）
 
-- `SubscriptionStore`（`packages/subscription`）只握**一份联合列表**，`subscription-changed` 的 diff 两支都发。`findById` 两支都找；`findByUid` 只找 B 站（外部 id 恰好是同一串数字也找不到）。
+- `SubscriptionStore`（`packages/subscription`）只握**一份联合列表**，`subscription-changed` 的 diff 两支都发。`findById` 按订阅 id 找；`findByIdentity` 按身份找，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
 - `ConfigStore`（`apps/server/src/config/store.ts`）的 `writeSubscriptions` 按 `kind` 拆开、**只写真变了的那个文件**（改 B 站订阅不会凭空建出拓展那个文件）。B 站行落盘剥掉 `kind`（`toDiskBiliRow`）—— 应用内更新退回旧载荷时，它读到的就是它自己写的形状。旧载荷不认拓展那个文件，照常开机；再升回来拓展订阅都在。
 - 两个文件**各用各的那支校验**，任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
 - **身份不许改**（`assertSubscriptionIdentityUnchanged`，决策 50）：换 uid / 外部 id / 平台就是另一个人，而资料缓存、历史、头像文件都挂在订阅 `id` 上。要换人就删了重加。

@@ -54,6 +54,7 @@ function sub(extensionId = "douyin"): ExtensionSubscription {
 		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},
 		roastSchedule: { ...DEFAULT_ROAST_SCHEDULE },
+		specialUsers: [],
 		state: { lastPushedAt: {}, liveStatus: "unknown" },
 	};
 }

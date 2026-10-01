@@ -147,6 +147,76 @@ describe("Cards per-UP 作用域接线", () => {
 		);
 	});
 
+	it("per-UP 的全局 tab 全家福:四种卡各自带该 UP 的 uid(动态另带 offset)", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+
+		await waitFor(
+			() => {
+				const contentOf = (kind: string) =>
+					vi
+						.mocked(api.post)
+						.mock.calls.filter(([url, body]) => {
+							const b = body as { kind?: string; fallback?: boolean };
+							return url === "/api/cards/preview" && b?.kind === kind && b.fallback === true;
+						})
+						.map(([, body]) => (body as { content: Record<string, unknown> }).content);
+				for (const kind of ["live", "dyn", "sc", "guard"]) {
+					expect(
+						contentOf(kind).some((c) => c.uid === "123456"),
+						kind,
+					).toBe(true);
+				}
+				expect(contentOf("live")).toContainEqual({ uid: "123456" });
+				expect(contentOf("dyn")).toContainEqual({ uid: "123456", offset: 1 });
+			},
+			{ timeout: 2000 },
+		);
+	});
+
+	it("per-UP 切到「直播开播」→ 预览带该 UP 的 uid", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		// 全局 tab 的全家福先把四张卡各发一次;等它们都落地、清掉,再切到单张,免得拿全家福那一发充数。
+		await waitFor(
+			() => {
+				const kinds = new Set(
+					vi
+						.mocked(api.post)
+						.mock.calls.filter(([url]) => url === "/api/cards/preview")
+						.map(([, body]) => (body as { kind?: string }).kind),
+				);
+				expect(kinds).toEqual(new Set(["live", "dyn", "sc", "guard"]));
+			},
+			{ timeout: 2000 },
+		);
+		vi.mocked(api.post).mockClear();
+		fireEvent.click(screen.getAllByRole("button", { name: "直播开播" })[0] as HTMLElement);
+
+		await waitFor(
+			() => {
+				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
+					const b = body as { kind?: string; content?: { uid?: string } };
+					return url === "/api/cards/preview" && b?.kind === "live" && b.content?.uid === "123456";
+				});
+				expect(call).toBeTruthy();
+			},
+			{ timeout: 2000 },
+		);
+	});
+
+	it("per-UP 的右侧提示写该 UP 的 uid", async () => {
+		renderCards();
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
+		fireEvent.click(await screen.findByText("UID 123456"));
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
+		expect(screen.getByText("123456", { selector: "b" })).toBeTruthy();
+	});
+
 	it("per-UP 切到 SC → 预览带该 UP 的 uid(后端据此渲染真实接收方)", async () => {
 		renderCards();
 		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));

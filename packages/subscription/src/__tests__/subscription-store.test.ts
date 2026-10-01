@@ -9,10 +9,11 @@
  *   - upsert 区分 add / update
  *   - removeById 不存在时不发事件
  *   - replaceAll 计算 diff(add / update / remove 三类 op),没变化不发空事件
- *   - findByUid / findById 查询正常
+ *   - findByIdentity / findById 查询正常
  */
 
 import {
+	BILIBILI_SOURCE_KEY,
 	type BusEvents,
 	type Disposable,
 	type MessageBus,
@@ -53,15 +54,7 @@ function makeSub(uid: string, id = `sub-${uid}`): Subscription {
 
 /** 一条拓展订阅(ADR-0019 决策 9):没有 uid,身份是 (extensionId, externalId)。 */
 function makeExtSub(externalId: string, id = `ext-${externalId}`): Subscription {
-	const {
-		kind: _k,
-		uid: _u,
-		specialUsers: _s,
-		...common
-	} = makeEmptySubscription({
-		id,
-		uid: "0",
-	});
+	const { kind: _k, uid: _u, ...common } = makeEmptySubscription({ id, uid: "0" });
 	return { ...common, kind: "extension", extensionId: "douyin", externalId };
 }
 
@@ -80,7 +73,9 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		store.upsert(sub);
 
 		expect(store.list()).toHaveLength(1);
-		expect(store.findByUid("u1")?.id).toBe("sub-u1");
+		expect(store.findByIdentity({ sourceKey: BILIBILI_SOURCE_KEY, externalId: "u1" })?.id).toBe(
+			"sub-u1",
+		);
 		expect(store.findById("sub-u1")?.id).toBe("sub-u1");
 		expect(lastOps(bus)).toEqual([{ type: "add", sub }]);
 	});
@@ -111,13 +106,35 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		expect(lastOps(bus)).toEqual([{ type: "remove", sub }]);
 	});
 
-	it("findByUid 只在 B 站订阅里找 —— 外部 id 恰好是同一串数字的拓展订阅不算", () => {
+	it("findByIdentity 两格都相等才算 —— 同一个外部 id 在 B 站与某个拓展下各有一条,按身份各找各的", () => {
 		const bus = makeFakeBus();
 		const store = createSubscriptionStore(bus);
+		const bili = (externalId: string) => ({ sourceKey: BILIBILI_SOURCE_KEY, externalId });
+		const douyin = (externalId: string) => ({ sourceKey: "douyin", externalId });
 		store.upsert(makeExtSub("123"));
-		expect(store.findByUid("123")).toBeUndefined();
+		// 只有拓展那条在册时,B 站的 123 找不到(拓展的外部 id 恰好也是这串数字,不算)。
+		expect(store.findByIdentity(bili("123"))).toBeUndefined();
 		store.upsert(makeSub("123"));
-		expect(store.findByUid("123")?.id).toBe("sub-123");
+		expect(store.findByIdentity(bili("123"))?.id).toBe("sub-123");
+		expect(store.findByIdentity(douyin("123"))?.id).toBe("ext-123");
+		// 来源对、外部 id 不对,或外部 id 对、来源不对,都不算。
+		expect(store.findByIdentity(douyin("124"))).toBeUndefined();
+		expect(store.findByIdentity({ sourceKey: "kuaishou", externalId: "123" })).toBeUndefined();
+	});
+
+	it("findByIdentity 同一身份订了几条时取第一条(服务端不判重,先出现的说了算)", () => {
+		const bus = makeFakeBus();
+		const store = createSubscriptionStore(bus);
+		store.upsert(makeSub("123", "first"));
+		store.upsert(makeSub("123", "second"));
+		store.upsert(makeExtSub("sec-1", "ext-first"));
+		store.upsert(makeExtSub("sec-1", "ext-second"));
+		expect(store.findByIdentity({ sourceKey: BILIBILI_SOURCE_KEY, externalId: "123" })?.id).toBe(
+			"first",
+		);
+		expect(store.findByIdentity({ sourceKey: "douyin", externalId: "sec-1" })?.id).toBe(
+			"ext-first",
+		);
 	});
 
 	it("删掉拓展订阅 → remove op 带着整条,消费方按 kind 收窄", () => {

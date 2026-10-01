@@ -15,15 +15,16 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
 import {
+	BILIBILI_SOURCE_KEY,
 	DEFAULT_FEATURE_FLAGS,
 	EXTRA_KEYS,
 	type ExtraKey,
 	FEATURE_KEYS,
 	type FeatureKey,
-	isBiliSubscription,
 	PUSH_EXTRAS,
 	type PushTarget,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "../../types/domain";
 import {
 	displayName,
@@ -104,7 +105,7 @@ function featureGroupsFor(
 	visible: readonly FeatureKey[],
 	labelOf: FeatureLabelOf,
 ): ReadonlyArray<FeatureGroup> {
-	if (isBiliSubscription(sub)) return FEATURE_GROUPS;
+	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return FEATURE_GROUPS;
 	return FEATURE_GROUPS.map((g) => ({
 		label: g.keys.some(({ key }) => key === "dynamic") ? labelOf("dynamic") : g.label,
 		keys: g.keys
@@ -298,15 +299,15 @@ export function UpDialog({
 	if (!draft) return null;
 
 	const color = subscriptionColor(draft);
+	const identity = subscriptionIdentityOf(draft);
+	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
 	// 拓展订阅只列它那个源报得出的那几把特性(决策 5);B 站订阅全列,一切照旧。
-	const ext = isBiliSubscription(draft) ? undefined : platform;
+	const ext = isBili ? undefined : platform;
 	const visibleFeatures = visibleFeaturesOf(draft, ext);
 	const labelOf: FeatureLabelOf = (k) => featureLabelOf(k, ext);
 	const featureGroups = featureGroupsFor(draft, visibleFeatures, labelOf);
 	const extrasFor = (feature: FeatureKey): ExtraKey[] =>
-		isBiliSubscription(draft)
-			? extrasUnder(feature)
-			: extrasUnder(feature).filter((k) => !BILI_ONLY_EXTRAS.has(k));
+		isBili ? extrasUnder(feature) : extrasUnder(feature).filter((k) => !BILI_ONLY_EXTRAS.has(k));
 	// create 模式下 draft 本身就是「待提交」,无论用户改没改字段都视为 dirty——保存按钮
 	// 始终可点 + 关闭时一律走丢弃确认。
 	const dirty = mode === "create" || (sub ? stableStr(sub) !== stableStr(draft) : false);
@@ -577,8 +578,8 @@ export function UpDialog({
 							style={{ color, textShadow: "0 1px 4px rgba(255,255,255,0.4)" }}
 						>
 							{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格写它是哪个平台的。 */}
-							{isBiliSubscription(draft) ? (
-								<span className="tabular-nums">UID {draft.uid}</span>
+							{isBili ? (
+								<span className="tabular-nums">UID {identity.externalId}</span>
 							) : ext ? (
 								<Pill size="sm" color={ext.color ?? "var(--color-bn-inactive)"}>
 									{ext.label}
@@ -586,9 +587,7 @@ export function UpDialog({
 							) : null}
 							{draft.cachedProfile?.fans != null ? (
 								<>
-									{isBiliSubscription(draft) || ext ? (
-										<span className="mx-1 opacity-70">·</span>
-									) : null}
+									{isBili || ext ? <span className="mx-1 opacity-70">·</span> : null}
 									<span>
 										{draft.cachedProfile.fans >= 10_000
 											? `${(draft.cachedProfile.fans / 10_000).toFixed(1)}万`

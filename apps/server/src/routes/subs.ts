@@ -1,17 +1,17 @@
 import { ensureFollowed } from "@bilibili-notify/api";
-import type { SubscriptionDTO } from "@bilibili-notify/contract";
+import type { BiliSubscriptionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
 import {
-	type BiliSubscription,
+	BILIBILI_SOURCE_KEY,
 	type CachedProfile,
 	type ExtensionSubscription,
 	ExtensionSubscriptionSchema,
 	type Failure,
 	fail,
 	formatZodIssues,
-	isBiliSubscription,
-	isExtensionSubscription,
 	issuesFromZod,
 	type Subscription,
+	sameIdentity,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
@@ -99,8 +99,15 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			state: { lastPushedAt: {}, liveStatus: "unknown" as const },
 		};
 		// 关注状态只对 B 站订阅有意义(动态走 B 站的关注流)。
-		if (!isBiliSubscription(sub)) return { ...sub, ...runtime };
-		return { ...sub, ...runtime, followed: rt?.followed, followError: rt?.followError };
+		if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY)
+			return { ...sub, ...runtime };
+		// 身份是读出来的、不再靠 `kind` 收窄:TS 认不出这一支是 B 站的 DTO,在这里断言一次。
+		return {
+			...sub,
+			...runtime,
+			followed: rt?.followed,
+			followError: rt?.followError,
+		} as BiliSubscriptionDTO;
 	}
 
 	/**
@@ -111,13 +118,14 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	 * 如实写进 runtime 状态,前端在订阅卡片上持续显示,而不是弹一个转瞬即逝的 toast。
 	 * 启动时的 follow-sync 会再试一次,所以未登录 / 临时风控都能自愈。
 	 */
-	async function followUp(sub: BiliSubscription): Promise<void> {
+	async function followUp(sub: Subscription): Promise<void> {
 		const engines = deps.runtime.engines;
 		if (!engines) return; // 启动中 / 未登录 —— 交给启动时的 follow-sync 兜底。
-		const outcome = await ensureFollowed(engines.api, sub.uid);
+		const uid = subscriptionIdentityOf(sub).externalId;
+		const outcome = await ensureFollowed(engines.api, uid);
 		if (!outcome.ok) {
 			log.warn(
-				`[sub] 关注 UID ${sub.uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
+				`[sub] 关注 UID ${uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
 			);
 		}
 		await deps.runtime.subRuntimeStore.patch(sub.id, {
@@ -134,16 +142,17 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	 * any failure just leaves it for the first FansPoller tick (~2min). Skipped
 	 * when a cachedProfile already exists (re-POST / edit) to bound the call.
 	 */
-	async function seedCachedProfile(sub: BiliSubscription): Promise<void> {
+	async function seedCachedProfile(sub: Subscription): Promise<void> {
 		if (deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile) return;
 		const engines = deps.runtime.engines;
 		if (!engines) return;
+		const uid = subscriptionIdentityOf(sub).externalId;
 		try {
-			const res = await engines.api.getUserCardInfo(sub.uid);
+			const res = await engines.api.getUserCardInfo(uid);
 			if (res.code !== 0 || !res.data?.card) return;
 			const card = res.data.card;
 			const cachedProfile: CachedProfile = {
-				name: card.name ?? sub.uid,
+				name: card.name ?? uid,
 				avatar: card.face ?? "",
 				sign: card.sign ?? "",
 				fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
@@ -151,7 +160,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			};
 			await deps.runtime.subRuntimeStore.patch(sub.id, { cachedProfile });
 		} catch (err) {
-			log.warn(`/api/subs seed cachedProfile uid=${sub.uid} failed: ${String(err)}`);
+			log.warn(`/api/subs seed cachedProfile uid=${uid} failed: ${String(err)}`);
 		}
 	}
 
@@ -174,6 +183,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			);
 		}
 		const sub = parsed.data;
+		const identity = subscriptionIdentityOf(sub);
 
 		const profile = CreateProfileBodySchema.safeParse({ cachedProfile: rawProfile });
 		if (!profile.success) {
@@ -199,18 +209,13 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			}
 		}
 
-		const refusal = subscriptionSourceRefusal(sub.extensionId, opts.extensions?.() ?? []);
+		const refusal = subscriptionSourceRefusal(identity.sourceKey, opts.extensions?.() ?? []);
 		if (refusal) return respondFailure(c, refusal);
 
 		// 身份判重(决策 50):同一个人订两条,等 ④ 按订阅 id 推送时就会推两遍。
 		const duplicate = deps.store
 			.getSubscriptions()
-			.find(
-				(s) =>
-					isExtensionSubscription(s) &&
-					s.extensionId === sub.extensionId &&
-					s.externalId === sub.externalId,
-			);
+			.find((s) => sameIdentity(subscriptionIdentityOf(s), identity));
 		if (duplicate) {
 			const name =
 				duplicate.name ?? deps.runtime.subRuntimeStore.get(duplicate.id)?.cachedProfile?.name;
@@ -218,7 +223,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 				c,
 				fail(
 					"conflict",
-					`拓展「${sub.extensionId}」名下的「${sub.externalId}」已经订阅过了${name ? `(${name})` : ""}`,
+					`拓展「${identity.sourceKey}」名下的「${identity.externalId}」已经订阅过了${name ? `(${name})` : ""}`,
 				),
 			);
 		}
@@ -407,7 +412,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			const id = (body as { id?: unknown }).id;
 			const created =
 				typeof id === "string" ? deps.store.getSubscriptions().find((s) => s.id === id) : undefined;
-			if (created && isBiliSubscription(created)) {
+			if (created && subscriptionIdentityOf(created).sourceKey === BILIBILI_SOURCE_KEY) {
 				// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
 				// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
 				await followUp(created);

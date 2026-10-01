@@ -19,10 +19,11 @@ import { InheritNote } from "../../components/inherit-note";
 import { GUARD_LEVELS } from "../../config/guard-levels";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import {
+	BILIBILI_SOURCE_KEY,
 	type FeatureKey,
-	isBiliSubscription,
 	type MessageKindLayoutFull,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "../../types/domain";
 import type {
 	ContentFilters,
@@ -207,7 +208,7 @@ export function perUpSectionsFor(
 	sub: Subscription,
 	features: readonly FeatureKey[],
 ): SectionMeta[] {
-	if (isBiliSubscription(sub)) return PERUP_SECTIONS;
+	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return PERUP_SECTIONS;
 	const post = features.includes("dynamic");
 	const live = features.includes("live") || features.includes("liveEnd");
 	const out: SectionMeta[] = [];

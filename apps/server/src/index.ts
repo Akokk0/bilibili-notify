@@ -5,15 +5,15 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import {
+	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
-	isBiliSubscription,
 	isExtensionEnabled,
-	isExtensionSubscription,
 	type Logger,
 	type NotificationPayload,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { createKeyProvider, type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import { type ServerType, serve } from "@hono/node-server";
@@ -600,16 +600,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subs: () =>
 				subStore
 					.list()
-					.filter(isBiliSubscription)
-					.map((sub) => ({
-						id: sub.id,
-						uid: sub.uid,
-						name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? sub.uid,
-						enabled: sub.enabled,
-						roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
-						specialUsers: sub.specialUsers.map((u) => u.uid),
-						avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar,
-					})),
+					.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
+					.map((sub) => {
+						const uid = subscriptionIdentityOf(sub).externalId;
+						return {
+							id: sub.id,
+							uid,
+							name: sub.name ?? runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
+							enabled: sub.enabled,
+							roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
+							specialUsers: sub.specialUsers.map((u) => u.uid),
+							avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar,
+						};
+					}),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
 			dynamic: () => engines?.dynamic,
 			inbound: () => ({ private: onInboundPrivate, group: onInboundGroup }),
@@ -1069,7 +1072,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					if (scope === "connections") fn();
 				}),
 			// 订阅源拓展读自己名下的订阅(ADR-0019 决策 52):只递拓展那一支,归属由 ctx 按 id 筛。
-			subscriptions: () => runtime.configStore.getSubscriptions().filter(isExtensionSubscription),
+			subscriptions: () =>
+				runtime.configStore
+					.getSubscriptions()
+					.filter((sub) => subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY)
+					.map((sub) => {
+						const identity = subscriptionIdentityOf(sub);
+						return {
+							id: sub.id,
+							extensionId: identity.sourceKey,
+							externalId: identity.externalId,
+							enabled: sub.enabled,
+						};
+					}),
 			onSubscriptionsChanged: (fn) =>
 				runtime.bus.on("config-changed", ({ scope }) => {
 					if (scope === "subscriptions") fn();

@@ -53,7 +53,6 @@ function extSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscriptio
 	const {
 		kind: _k,
 		uid: _u,
-		specialUsers: _s,
 		followed: _f,
 		followError: _e,
 		...common
@@ -305,6 +304,15 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 		expect(api.patch).toHaveBeenCalledWith(`/api/subs/${ext.id}`, {
 			overrides: { templates: null },
 		});
+	});
+
+	it("移除的确认文案不提特别关注(拓展订阅没有这一项)", async () => {
+		subs = [BILI, extSub({ overrides: { templates: { dynamic: "新作品!" } } })];
+		renderRules();
+		fireEvent.click(await screen.findByTitle("移除 抖音乙 的个性化配置"));
+		await screen.findByText("移除该 UP 的个性化配置?");
+		expect(screen.getByText(/的所有覆盖项,该 UP 之后跟随全局规则。此操作不可撤销。/)).toBeTruthy();
+		expect(screen.queryByText(/特别关注/)).toBeNull();
 	});
 
 	it("移除整条的个性化配置:每一格发 null,不带特别关注", async () => {

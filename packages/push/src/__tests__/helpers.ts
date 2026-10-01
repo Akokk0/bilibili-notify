@@ -73,12 +73,7 @@ export function makeExtensionSub(opts: {
 	externalId: string;
 	extensionId?: string;
 }): ExtensionSubscription {
-	const {
-		kind: _kind,
-		uid: _uid,
-		specialUsers: _special,
-		...common
-	} = makeEmptySubscription({ id: opts.id, uid: "0" });
+	const { kind: _kind, uid: _uid, ...common } = makeEmptySubscription({ id: opts.id, uid: "0" });
 	return {
 		...common,
 		kind: "extension",

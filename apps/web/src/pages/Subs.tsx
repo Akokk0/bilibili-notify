@@ -27,13 +27,15 @@ import { useSearchParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
 import {
+	BILIBILI_SOURCE_KEY,
 	type ExtensionSubscription,
-	isBiliSubscription,
-	isExtensionSubscription,
+	type Identity,
 	makeEmptyExtensionSubscription,
 	makeEmptySubscription,
 	type PushTarget,
+	type SourceKey,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
 import { GroupEditDialog } from "./up/GroupEditDialog";
@@ -134,6 +136,19 @@ const BILI_PLATFORM = "@bilibili";
 /** 订阅源拓展没交 `lookupPlaceholder` 时输入框里那句(ADR-0019 决策 51 的「通用说法」)。 */
 const GENERIC_LOOKUP_PLACEHOLDER = "输入主页链接或账号 id";
 
+/** 已经订阅了的身份:来源键 → 它名下的外部 id。B 站这个来源的键是 `bilibili`,外部 id 就是 uid。 */
+type ExistingIdentities = ReadonlyMap<SourceKey, ReadonlySet<string>>;
+
+/** 这个身份已经订阅了吗。 */
+function isSubscribed(existing: ExistingIdentities, identity: Identity): boolean {
+	return existing.get(identity.sourceKey)?.has(identity.externalId) ?? false;
+}
+
+/** 输入框里敲的 / B 站搜到的 uid,换成身份去已订阅的索引里查。 */
+function biliIdentityOf(uid: string): Identity {
+	return { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid };
+}
+
 /**
  * "添加 UP" 弹窗。输入纯数字时走 `/api/subs/lookup` 单条 preview(原 UID 流程);
  * 输入非数字时走 `/api/subs/search` 列出 5 条结果,翻页 + 整行点击直接提交订阅。
@@ -149,9 +164,8 @@ function NewSubDialog({
 	onCancel,
 	pending,
 	error,
-	existingUids,
+	existing,
 	sources,
-	existingExternal,
 }: {
 	onSubmit: (profile: UpProfileLookup) => void;
 	onPickCandidate: (
@@ -161,11 +175,10 @@ function NewSubDialog({
 	onCancel: () => void;
 	pending: boolean;
 	error: string | null;
-	existingUids: Set<string>;
+	/** 已经订阅了的身份。B 站的输入 / 搜索结果与拓展的候选撞上的,标「已订阅」、挑不了。 */
+	existing: ExistingIdentities;
 	/** 此刻在跑的订阅源拓展 —— 空的就不画平台选择。 */
 	sources: readonly SubscriptionSourceExtension[];
-	/** 已经订阅了的拓展订阅:拓展 id → 它名下的外部 id。候选撞上的标「已订阅」、挑不了。 */
-	existingExternal: ReadonlyMap<string, ReadonlySet<string>>;
 }) {
 	const [platformId, setPlatformId] = useState(BILI_PLATFORM);
 	// 选中的拓展中途停了(拓展列表刷新后不在里面)就退回 B 站 —— 问一个不在场的解析门只会 404。
@@ -182,7 +195,8 @@ function NewSubDialog({
 
 	const trimmed = input.trim();
 	const mode: "uid" | "name" = /^\d+$/.test(trimmed) ? "uid" : "name";
-	const duplicate = mode === "uid" && trimmed.length > 0 && existingUids.has(trimmed);
+	const duplicate =
+		mode === "uid" && trimmed.length > 0 && isSubscribed(existing, biliIdentityOf(trimmed));
 
 	const lookup = useMutation({
 		mutationFn: (q: string) =>
@@ -349,12 +363,15 @@ function NewSubDialog({
 			) : null}
 			{opErr ? <ErrorNote className="mt-3">{opErr}</ErrorNote> : null}
 			{profile ? (
-				<ProfilePreview profile={profile} subscribed={existingUids.has(profile.uid)} />
+				<ProfilePreview
+					profile={profile}
+					subscribed={isSubscribed(existing, biliIdentityOf(profile.uid))}
+				/>
 			) : null}
 			{source && candidates ? (
 				<CandidateList
 					candidates={candidates}
-					existing={existingExternal.get(source.id) ?? NO_EXTERNAL_IDS}
+					existing={existing.get(source.id) ?? NO_EXTERNAL_IDS}
 					pending={pending}
 					onPick={(candidate) => onPickCandidate(source, candidate)}
 				/>
@@ -364,7 +381,7 @@ function NewSubDialog({
 					data={searchData}
 					page={page}
 					totalPages={totalPages}
-					existingUids={existingUids}
+					existing={existing}
 					pending={pending}
 					onPick={onSubmit}
 					onPrev={() => gotoPage(page - 1)}
@@ -381,7 +398,7 @@ function NewSubDialog({
 						variant="primary"
 						size="sm"
 						onClick={() => onSubmit(profile)}
-						disabled={existingUids.has(profile.uid) || pending}
+						disabled={isSubscribed(existing, biliIdentityOf(profile.uid)) || pending}
 					>
 						下一步
 					</Btn>
@@ -481,7 +498,7 @@ function SearchResultList({
 	data,
 	page,
 	totalPages,
-	existingUids,
+	existing,
 	pending,
 	onPick,
 	onPrev,
@@ -490,7 +507,7 @@ function SearchResultList({
 	data: SearchResponse;
 	page: number;
 	totalPages: number;
-	existingUids: Set<string>;
+	existing: ExistingIdentities;
 	pending: boolean;
 	onPick: (profile: UpProfileLookup) => void;
 	onPrev: () => void;
@@ -502,7 +519,7 @@ function SearchResultList({
 				<EmptyNote>没有匹配的 UP 主</EmptyNote>
 			) : (
 				data.results.map((r) => {
-					const subscribed = existingUids.has(r.uid);
+					const subscribed = isSubscribed(existing, biliIdentityOf(r.uid));
 					const disabled = subscribed || pending;
 					return (
 						<button
@@ -668,15 +685,19 @@ export default function Subs() {
 	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没在跑」的结论。 */
 	const extensions = extensionsQuery.data?.extensions;
 	const sources = useMemo(() => runningSubscriptionSources(extensions), [extensions]);
-	const platformOf = (s: Subscription): SubscriptionPlatform | undefined =>
-		isExtensionSubscription(s) ? subscriptionPlatformOf(s, extensions) : undefined;
-	const existingExternal = useMemo(() => {
-		const out = new Map<string, Set<string>>();
+	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
+		const { sourceKey } = subscriptionIdentityOf(s);
+		return sourceKey === BILIBILI_SOURCE_KEY
+			? undefined
+			: subscriptionPlatformOf({ extensionId: sourceKey }, extensions);
+	};
+	const existing = useMemo(() => {
+		const out = new Map<SourceKey, Set<string>>();
 		for (const s of subs) {
-			if (!isExtensionSubscription(s)) continue;
-			const ids = out.get(s.extensionId) ?? new Set<string>();
-			ids.add(s.externalId);
-			out.set(s.extensionId, ids);
+			const { sourceKey, externalId } = subscriptionIdentityOf(s);
+			const ids = out.get(sourceKey) ?? new Set<string>();
+			ids.add(externalId);
+			out.set(sourceKey, ids);
 		}
 		return out;
 	}, [subs]);
@@ -759,8 +780,8 @@ export default function Subs() {
 			if (groupFilter && groupFilter !== UNGROUPED && !s.groups.includes(groupFilter)) return false;
 			if (!ql) return true;
 			return (
-				// 拓展订阅没有 uid,按它的外部 id 搜(ADR-0019 决策 9)。
-				(isBiliSubscription(s) ? s.uid : s.externalId).toLowerCase().includes(ql) ||
+				// 按身份里的外部 id 搜:B 站就是 uid,拓展订阅没有 uid、是它的外部 id(ADR-0019 决策 9)。
+				subscriptionIdentityOf(s).externalId.toLowerCase().includes(ql) ||
 				displayName(s).toLowerCase().includes(ql) ||
 				(s.notes ?? "").toLowerCase().includes(ql)
 			);
@@ -775,6 +796,10 @@ export default function Subs() {
 
 	const drawerSub = drawerSubId ? (subs.find((s) => s.id === drawerSubId) ?? null) : null;
 	const menuSub = menuAt ? (subs.find((s) => s.id === menuAt.subId) ?? null) : null;
+	// 「复制 UID」只 B 站订阅有:身份的来源键是 B 站,外部 id 就是 uid。
+	const menuIdentity = menuSub ? subscriptionIdentityOf(menuSub) : undefined;
+	const menuBiliUid =
+		menuIdentity?.sourceKey === BILIBILI_SOURCE_KEY ? menuIdentity.externalId : undefined;
 	const groupSub = groupEditId ? (subs.find((s) => s.id === groupEditId) ?? null) : null;
 	const menuPos =
 		menuAt && menuSub
@@ -1115,9 +1140,8 @@ export default function Subs() {
 					}}
 					pending={upsert.isPending}
 					error={error}
-					existingUids={new Set(subs.filter(isBiliSubscription).map((s) => s.uid))}
+					existing={existing}
 					sources={sources}
-					existingExternal={existingExternal}
 				/>
 			) : null}
 
@@ -1132,9 +1156,9 @@ export default function Subs() {
 						patchSub.mutate({ id: menuSub.id, patch: { enabled: !menuSub.enabled } })
 					}
 					onCopyUid={
-						isBiliSubscription(menuSub)
+						menuBiliUid !== undefined
 							? () => {
-									void copyToClipboard(menuSub.uid).then((ok) =>
+									void copyToClipboard(menuBiliUid).then((ok) =>
 										setCopyMsg(ok ? "已复制 UID" : "复制失败,请手动复制"),
 									);
 								}

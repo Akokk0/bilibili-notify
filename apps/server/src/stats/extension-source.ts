@@ -1,7 +1,8 @@
 import {
+	BILIBILI_SOURCE_KEY,
 	type Disposable,
-	isExtensionSubscription,
 	type MessageBus,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
@@ -89,7 +90,9 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 	const buildIndex = () => {
 		const index = new Map<string, boolean>();
 		for (const sub of opts.subscriptions()) {
-			if (isExtensionSubscription(sub)) index.set(sub.id, sub.enabled);
+			if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY) {
+				index.set(sub.id, sub.enabled);
+			}
 		}
 		return index;
 	};
@@ -150,7 +153,8 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 			enabledById = undefined;
 			for (const op of ops) {
 				// B 站那一支由 B 站适配删;这里只管拓展这一支。停用的文件留着。
-				if (op.type !== "remove" || !isExtensionSubscription(op.sub)) continue;
+				if (op.type !== "remove") continue;
+				if (subscriptionIdentityOf(op.sub).sourceKey === BILIBILI_SOURCE_KEY) continue;
 				const key = statsFileKey(op.sub);
 				open.delete(key);
 				recorder.drop(key);

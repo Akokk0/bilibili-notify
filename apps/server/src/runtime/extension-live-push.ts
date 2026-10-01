@@ -1,13 +1,13 @@
 import { type ImageRenderer, type LiveCardInput, liveDuration } from "@bilibili-notify/image";
 import type {
 	Disposable,
-	ExtensionSubscription,
 	Logger,
 	MessageBus,
 	ServiceContext,
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
+import { subscriptionIdentityOf } from "@bilibili-notify/internal";
 import {
 	type CustomCardStyleLike,
 	createSerialGate,
@@ -116,12 +116,9 @@ export interface BindExtensionLivePushOptions {
 	/** 订阅资料里的名字与粉丝数(资料缓存,现取)。 */
 	profile(id: string): { name?: string; fans?: number } | undefined;
 	/** 这条订阅折好的直播设置(现折,与 B 站那头同一份,见 `liveWorkSettings`)。 */
-	settings(sub: ExtensionSubscription): LiveWorkSettings;
+	settings(sub: Subscription): LiveWorkSettings;
 	/** 这一张直播卡的生效样式(按种类 ?? 基准,再轮一张自定义封面)。每推一张调一次。 */
-	cardStyle(
-		sub: ExtensionSubscription,
-		settings: LiveWorkSettings,
-	): CustomCardStyleLike | undefined;
+	cardStyle(sub: Subscription, settings: LiveWorkSettings): CustomCardStyleLike | undefined;
 	/** 拓展在不在跑、存下的头像。 */
 	sources: Pick<ExtensionSourceLookups, "running" | "readAvatar">;
 	/** 绑到这条订阅上的直播发送(`boundLivePush(bindSubscriptionPush(push, id))`)。 */
@@ -192,7 +189,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	let disposed = false;
 
 	/** 这条订阅现在还该推吗:还在、启用着、拓展在跑。关机之后一律不推。 */
-	const pushable = (id: string): ExtensionSubscription | undefined => {
+	const pushable = (id: string): Subscription | undefined => {
 		if (disposed) return undefined;
 		const sub = opts.subscription(id);
 		return extensionSubscriptionPushable(sub, opts.sources.running) ? sub : undefined;
@@ -373,7 +370,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 				extensionId: run.session.extensionId,
 				at: now(),
 				kind: "liveStatus",
-				externalId: sub.externalId,
+				externalId: subscriptionIdentityOf(sub).externalId,
 				subscriptionIds: [id],
 				outcome: "skipped",
 				reasons: [reason],
@@ -385,9 +382,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	}
 
 	/** 这一场该推送了吗:订阅还该推、开播与下播推送没全关。全关着的放下这一场。 */
-	function pushSettings(
-		id: string,
-	): { sub: ExtensionSubscription; settings: LiveWorkSettings } | undefined {
+	function pushSettings(id: string): { sub: Subscription; settings: LiveWorkSettings } | undefined {
 		const sub = pushable(id);
 		if (!sub) return undefined;
 		const settings = opts.settings(sub);
@@ -404,7 +399,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		const ready = pushSettings(id);
 		if (!ready) return;
 		const { sub, settings } = ready;
-		seen.set(id, sub.extensionId);
+		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
 		dropRun(id, "新的一场开播了");
 		const at = session.detectedAt;
 		const run: LiveRun = { session, fresh: false };
@@ -431,7 +426,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		const ready = pushSettings(id);
 		if (!ready) return;
 		const { sub, settings } = ready;
-		seen.set(id, sub.extensionId);
+		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
 		let run = runs.get(id);
 		if (run?.session !== session) {
 			run = { session, fresh: false };
@@ -449,7 +444,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		if (!settings.live && !settings.liveEnd) return;
 		// 在播、不在播都算见过(决策 57 的 09-24 🔗):之后再报在播就不是「BN 看到的第一份」了。
 		const first = !seen.has(id);
-		seen.set(id, sub.extensionId);
+		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
 		// 报了不在播:BN 不拿它猜下播(决策 53),在播表自己出表;这一场的计时器等下播事件来收。
 		if (!live || !session) return;
 		const current = runs.get(id);

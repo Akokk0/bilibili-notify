@@ -61,7 +61,7 @@
 
 动态端同理，`broadcastOptsForDynamicKind` 把 `dynamic-images`（图集）标成 `role: "extra"` 且 `allowAtAll: false`，否则一条 DRAW 动态会在主卡和图集各 @ 一次。
 
-身份也在这儿翻：引擎说的是 B 站 uid，推送链认的是**订阅自己的 id**（ADR-0019 决策 50）。两个适配器（`makeDynamicPushLike` / `makeLivePushLike`）先用 `subscriptionIdOfUid`（`findByUid(uid)?.id`）翻一次，查不到就不往下交，只记一行 debug「uid=… 无订阅记录，跳过」。同一个 uid 配了两条订阅时，引擎那侧先出现的那条说了算 —— 引擎本来就只按 uid 认人。
+身份也在这儿翻：引擎说的是 B 站 uid，推送链认的是**订阅自己的 id**（ADR-0019 决策 50）。两个适配器（`makeDynamicPushLike` / `makeLivePushLike`）先用 `subscriptionIdOfUid`（按 `{ 来源: B 站, 外部 id: uid }` 的身份 `findByIdentity(...)?.id`）翻一次，查不到就不往下交，只记一行 debug「uid=… 无订阅记录，跳过」。同一个 uid 配了两条订阅时，引擎那侧先出现的那条说了算 —— 引擎本来就只按 uid 认人。
 
 **把发送钉到一条订阅上**的两件也在 `engines.ts`，挨着这两个适配器：`bindSubscriptionPush(push, subscriptionId)` 回一个 `(feature, payload, opts)` 的发送，只做「把订阅 id 钉上」；`boundWorkPush(send)` 把它包成 `deliverWork` 要的 `BoundWorkPush`（段 → 载荷、特性恒为 `dynamic`、`broadcastOptsForDynamicKind`）。B 站动态（`makeDynamicPushLike` 先翻 uid）与拓展作品（`pushFor(id)`）走的是同一跳。
 
@@ -125,7 +125,7 @@
 | 6 | 无可用目标 | `routing[feature] ∩ isEnabled` | **回调 `target: null`** → 历史落「无目标」行 |
 | 7 | 附加项收窄成空 | `extras[key][id] ?? 折叠默认` | 静默 —— **不是「无目标」**，见下 |
 
-第 2 步说的「所有查询」只管推送层自己：B 站引擎那条边在 ② 把 uid 翻成订阅 id 的那一次 `findByUid` 在它上游，静音期间照做（内存里扫一遍数组，不深拷贝）。
+第 2 步说的「所有查询」只管推送层自己：B 站引擎那条边在 ② 把 uid 翻成订阅 id 的那一次 `findByIdentity` 在它上游，静音期间照做（内存里扫一遍数组，不深拷贝）。
 
 第 4 步的 `eff` 是 `resolve(sub, globals.defaults)` 的产出：全局 + per-UP 折叠。第 6 步与第 7 步的区别是这条链最容易看岔的一处：本体那一行明明已送达，附加项只是谁都没订，落一行「无目标」等于把配置意图报成故障。
 

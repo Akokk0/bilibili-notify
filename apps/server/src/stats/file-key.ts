@@ -1,11 +1,9 @@
-import type { BiliSubscription, ExtensionSubscription } from "@bilibili-notify/internal";
+import type { SubscriptionIdentitySource } from "@bilibili-notify/internal";
 
-/** 判得出是哪一支、带着订阅 id 的最小订阅形状 —— 线上的 DTO、测试里的半截订阅都能直接传。 */
-export type KeyedSubscription =
-	| Pick<BiliSubscription, "kind" | "id" | "uid">
-	| Pick<ExtensionSubscription, "kind" | "id">;
+/** 认得出订的是谁、带着订阅 id 的最小订阅形状 —— 线上的 DTO、测试里的半截订阅都能直接传。 */
+export type KeyedSubscription = SubscriptionIdentitySource & { id: string };
 
-/** 统计的来源适配看订阅看这几样:哪一支、订阅 id、B 站的 uid、启用着没有。 */
+/** 统计的来源适配看订阅看这几样:订的是谁(身份)、订阅 id、启用着没有。 */
 export type StatsSubscription = KeyedSubscription & { enabled: boolean };
 
 /**

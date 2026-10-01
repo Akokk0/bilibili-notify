@@ -29,6 +29,7 @@ import type {
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
 import {
+	BILIBILI_SOURCE_KEY,
 	CONNECTION_PLATFORMS,
 	countsAsDelivery,
 	countsAsFailure,
@@ -39,6 +40,8 @@ import {
 	type ExtraKey,
 	FEATURE_KEYS,
 	type FeatureKey,
+	type Identity,
+	identityColor,
 	isBiliSubscription,
 	isExtensionSubscription,
 	isTargetPaused,
@@ -47,20 +50,27 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PLATFORM_REGISTRY,
 	PUSH_EXTRAS,
+	type SourceKey,
+	sameIdentity,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal/constants";
 
-export type { ExtraKey, FeatureKey };
+export type { ExtraKey, FeatureKey, Identity, SourceKey };
 export {
+	BILIBILI_SOURCE_KEY,
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
 	EXTRA_KEYS,
 	FEATURE_KEYS,
+	identityColor,
 	isBiliSubscription,
 	isExtensionSubscription,
 	isTargetPaused,
 	isWebhookConnection,
 	PUSH_EXTRAS,
+	sameIdentity,
+	subscriptionIdentityOf,
 };
 
 /**
@@ -70,8 +80,9 @@ export {
 export type Subscription = SubscriptionDTO;
 /**
  * 订阅分两支(ADR-0019 决策 9):B 站订阅带 uid / 特别关注 / 关注状态,拓展订阅带
- * `(extensionId, externalId)`;单人定时锐评两支都有(ADR-0020 决策 14)。读任何一支独有的字段前先用
- * `isBiliSubscription` 收窄。
+ * `(extensionId, externalId)`;单人定时锐评两支都有(ADR-0020 决策 14)。「这条订阅订的是谁」一律读
+ * `subscriptionIdentityOf(sub)` 的身份(`sourceKey` + `externalId`),别按支分别读 `uid` /
+ * `extensionId`;读任何一支独有的**非身份**字段(特别关注、关注状态)前才用 `isBiliSubscription` 收窄。
  */
 export type BiliSubscription = BiliSubscriptionDTO;
 export type ExtensionSubscription = ExtensionSubscriptionDTO;
@@ -283,6 +294,8 @@ export function makeEmptyExtensionSubscription(
 		extras: emptyExtras(),
 		overrides: {},
 		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
+		// internal 的拓展订阅也带这一格了(特别关注是两支的公共形状),拓展订阅今天恒空。
+		specialUsers: [],
 		state: {
 			lastDynamicId: undefined,
 			lastPushedAt: {},

@@ -15,11 +15,12 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import {
+	BILIBILI_SOURCE_KEY,
 	featureToPushKind,
 	inQuietHours,
-	isBiliSubscription,
 	platformSupportsAtAll,
 	resolve,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 
@@ -42,7 +43,10 @@ function makeAtAllPayload(): NotificationPayload {
  * 只拿来给人看 —— 推送链认的是订阅自己的 id(ADR-0019 决策 50),查不到订阅时日志就写 `sub=<id>`。
  */
 function subscriptionLabel(sub: Subscription): string {
-	return isBiliSubscription(sub) ? `uid=${sub.uid}` : `${sub.extensionId}:${sub.externalId}`;
+	const identity = subscriptionIdentityOf(sub);
+	return identity.sourceKey === BILIBILI_SOURCE_KEY
+		? `uid=${identity.externalId}`
+		: `${identity.sourceKey}:${identity.externalId}`;
 }
 
 const INITIAL_RETRY_DELAY_MS = 3000;

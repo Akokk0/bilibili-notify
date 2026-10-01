@@ -8,10 +8,12 @@
 
 import type { RoastCardUp } from "@bilibili-notify/image";
 import {
-	isBiliSubscription,
+	BILIBILI_SOURCE_KEY,
+	identityColor,
 	isTargetPaused,
 	type NotificationPayload,
 	type Subscription,
+	subscriptionIdentityOf,
 	upColor,
 } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
@@ -80,16 +82,15 @@ async function cardUp(
 ): Promise<RoastCardUp> {
 	if (!sub) return { name: UNKNOWN_UP_NAME, color: upColor({}, subscriptionId) };
 	const name = roastSubjectName(deps, sub);
-	if (isBiliSubscription(sub)) {
+	const identity = subscriptionIdentityOf(sub);
+	// 颜色跟着人走:种子与面板的 `upColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
+	const color = identityColor(identity);
+	if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
 		// B 站照旧:头像是 CDN 图链,渲染器出图前自己内联。
 		const avatar = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar;
-		return { name, avatar: avatar || undefined, color: upColor({ uid: sub.uid }) };
+		return { name, avatar: avatar || undefined, color };
 	}
-	return {
-		name,
-		avatar: await extensionAvatar(deps, sub.id),
-		color: upColor({ extensionId: sub.extensionId, externalId: sub.externalId }),
-	};
+	return { name, avatar: await extensionAvatar(deps, sub.id), color };
 }
 
 /**

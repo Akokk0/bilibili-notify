@@ -15,7 +15,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ExtensionViewBoundary } from "../components/error-boundary";
 import { EXTENSIONS_QUERY_KEY, useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import { isExtensionSubscription, type Subscription } from "../types/domain";
+import { type Subscription, subscriptionIdentityOf } from "../types/domain";
 import { CardMotionStage } from "./extensions/card-motion-stage";
 import {
 	DeclarativeConfig,
@@ -93,8 +93,9 @@ export default function ExtensionDetail() {
 		queryFn: () => api.get<Subscription[]>("/api/subs"),
 		enabled: confirming || hasReportProblems,
 	});
+	// 来源键就是拓展 id:订阅的身份记在这个拓展名下的有几条(B 站来源的键是保留 id,不会等于任何拓展 id)。
 	const keptSubs = (subsQuery.data ?? []).filter(
-		(sub) => isExtensionSubscription(sub) && sub.extensionId === id,
+		(sub) => subscriptionIdentityOf(sub).sourceKey === id,
 	).length;
 
 	/**

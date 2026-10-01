@@ -1,6 +1,11 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "@bilibili-notify/api";
-import { isBiliSubscription, type Logger, type Subscription } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Logger,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
@@ -114,12 +119,16 @@ async function queryFollowed(
 
 export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResult> {
 	// 关注是 B 站的事:拓展订阅没有 uid,不在这里(ADR-0019 决策 9)。
-	const subs = deps.subs().filter(isBiliSubscription);
+	const subs = deps
+		.subs()
+		.filter((s) => subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY);
 	if (subs.length === 0) {
 		return { checked: 0, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false };
 	}
 
-	const uids = [...new Set(subs.map((s) => s.uid))];
+	// B 站订阅的外部 id 就是 uid。
+	const uidOf = (s: Subscription): string => subscriptionIdentityOf(s).externalId;
+	const uids = [...new Set(subs.map(uidOf))];
 	const alreadyFollowed = await queryFollowed(deps.api, uids, deps.logger);
 	const degraded = alreadyFollowed === null;
 	const interrupted = (): boolean => deps.signal?.aborted === true;
@@ -129,7 +138,7 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	}
 
 	// 降级时对现状一无所知 → 每个都得 follow 一遍(幂等)。
-	const needFollow = subs.filter((s) => degraded || !alreadyFollowed?.has(s.uid));
+	const needFollow = subs.filter((s) => degraded || !alreadyFollowed?.has(uidOf(s)));
 
 	if (needFollow.length === 0) {
 		deps.logger.debug(`[follow] ${subs.length} 个订阅的 UP 均已关注,无需补关注`);
@@ -158,13 +167,13 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	for (const [i, sub] of needFollow.entries()) {
 		if (i > 0) await sleep(FOLLOW_GAP_MS, deps.signal); // 写接口连发最招风控
 		if (interrupted()) break;
-		const outcome = await ensureFollowed(deps.api, sub.uid);
+		const outcome = await ensureFollowed(deps.api, uidOf(sub));
 		if (outcome.ok) {
 			followed++;
 		} else {
 			failed++;
 			deps.logger.warn(
-				`[follow] 关注 UID ${sub.uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
+				`[follow] 关注 UID ${uidOf(sub)} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
 			);
 		}
 		await deps.rt.patch(sub.id, {

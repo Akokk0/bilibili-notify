@@ -79,3 +79,24 @@ describe("UpDialog · QQ 官方 @全体 提示", () => {
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 	});
 });
+
+/** B 站订阅的头部:「UID xxx」读的是订阅的身份(外部 id 就是 uid)。 */
+describe("UpDialog · B 站订阅的头部", () => {
+	it("写「UID xxx」", () => {
+		const sub = {
+			...makeEmptySubscription("100"),
+			cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
+		};
+		render(
+			<UpDialog
+				sub={sub}
+				targets={[]}
+				onClose={noop}
+				onSave={noop}
+				onDelete={noop}
+				saving={false}
+			/>,
+		);
+		expect(screen.getByText("UID 100")).toBeTruthy();
+	});
+});

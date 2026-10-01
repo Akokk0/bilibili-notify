@@ -72,13 +72,13 @@ describe("B 站那支", () => {
 });
 
 describe("拓展那支", () => {
-	it("经联合解析 → kind extension,身份两格都在,没有 uid / 特别关注", () => {
+	it("经联合解析 → kind extension,身份两格都在,没有 uid;特别关注是空表(ADR-0021 决策 17:公共形状)", () => {
 		const parsed = SubscriptionSchema.parse(extRow({ uid: "999", specialUsers: [] }));
 		expect(parsed.kind).toBe("extension");
 		expect(isExtensionSubscription(parsed) && parsed.externalId).toBe("MS4wLjABAAAA-sec_uid");
 		expect(isExtensionSubscription(parsed) && parsed.extensionId).toBe("douyin");
 		expect("uid" in parsed).toBe(false);
-		expect("specialUsers" in parsed).toBe(false);
+		expect(parsed.specialUsers).toEqual([]);
 	});
 
 	it("单人定时锐评也长在拓展订阅上(ADR-0020 决策 14):写了就留着,形状同 B 站那一格", () => {
@@ -175,7 +175,7 @@ describe("类型收窄与折叠", () => {
 		]);
 	});
 
-	it("resolve() 折叠拓展订阅:带身份两格,不带 uid / 特别关注", () => {
+	it("resolve() 折叠拓展订阅:带身份两格,不带 uid;特别关注是空表", () => {
 		const eff = resolve(
 			ExtensionSubscriptionSchema.parse(extRow({ routing: { ...emptyRouting(), live: [T1] } })),
 			makeDefaultGlobalConfig().defaults,
@@ -185,7 +185,7 @@ describe("类型收窄与折叠", () => {
 		expect(eff.externalId).toBe("MS4wLjABAAAA-sec_uid");
 		expect(eff.routing.live).toEqual([T1]);
 		expect("uid" in eff).toBe(false);
-		expect("specialUsers" in eff).toBe(false);
+		expect(eff.specialUsers).toEqual([]);
 	});
 
 	it("resolve() 折叠 B 站订阅:kind / uid / 特别关注都在", () => {

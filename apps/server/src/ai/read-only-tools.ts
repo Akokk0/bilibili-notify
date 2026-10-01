@@ -1,5 +1,9 @@
 import type { ExtensionLiveNow, SubItemView, Subscriptions } from "@bilibili-notify/ai";
-import { isBiliSubscription, type Subscription } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 
 /**
  * 只按**真正读到的那点东西**声明依赖,而不是整个 `SubscriptionStore` /
@@ -111,17 +115,23 @@ export function buildAiSubsView(
 			dynamic: sub.routing.dynamic.length > 0,
 			live: sub.routing.live.length > 0,
 		};
-		const item: SubItemView = isBiliSubscription(sub)
-			? { uid: sub.uid, uname: sub.name?.trim() || cached || `UID ${sub.uid}`, ...common }
-			: {
-					platform: platforms?.label(sub.extensionId) || sub.extensionId,
-					externalId: sub.externalId,
-					uname: sub.name?.trim() || cached || sub.externalId,
-					...common,
-					...(extensionLive
-						? { liveNow: extensionLiveNow(extensionLive, sub.id, sub.extensionId) }
-						: {}),
-				};
+		const identity = subscriptionIdentityOf(sub);
+		const item: SubItemView =
+			identity.sourceKey === BILIBILI_SOURCE_KEY
+				? {
+						uid: identity.externalId,
+						uname: sub.name?.trim() || cached || `UID ${identity.externalId}`,
+						...common,
+					}
+				: {
+						platform: platforms?.label(identity.sourceKey) || identity.sourceKey,
+						externalId: identity.externalId,
+						uname: sub.name?.trim() || cached || identity.externalId,
+						...common,
+						...(extensionLive
+							? { liveNow: extensionLiveNow(extensionLive, sub.id, identity.sourceKey) }
+							: {}),
+					};
 		view[sub.id] = item;
 	}
 	return view;

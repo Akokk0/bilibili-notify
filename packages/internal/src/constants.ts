@@ -1203,6 +1203,72 @@ export function isExtensionSubscription<T extends { kind: SubscriptionKind }>(
 	return sub.kind === "extension";
 }
 
+// ---- 订阅的身份(ADR-0021 决策 14)-------------------------------------------------
+//
+// 「这条订阅订的是谁」只看两格:哪个来源、来源那头的 id。分派、查找、取色都从这里取,不再按订阅
+// 的两支分别读 `uid` 或 `extensionId` + `externalId`。
+
+/** 订阅来源的键:`bilibili` 或拓展 id,不加前缀(拓展 id 不许用保留 id,见 {@link RESERVED_INTEGRATION_KEYS})。 */
+export type SourceKey = string;
+
+/**
+ * B 站这个来源的键。长期只用在保留 id 表里;核心里拿它判「是不是 B 站」做分派是过渡写法(替掉原来的
+ * `isBiliSubscription`),第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了(「B 站替身」棘轮盯着)。
+ */
+export const BILIBILI_SOURCE_KEY = "bilibili";
+
+/**
+ * 保留 id:内置集成的键 —— B 站这个来源与三个内置平台适配器。拓展 id 不许用它们:订阅身份与登记表的键
+ * 不加前缀,拓展叫 `bilibili` 就会和 B 站的订阅撞成同一个人。
+ */
+export const RESERVED_INTEGRATION_KEYS: readonly string[] = [
+	BILIBILI_SOURCE_KEY,
+	"onebot",
+	"qq-official",
+	"webhook",
+];
+
+/** 一条订阅订的是谁。判重看这两格是否都相等。 */
+export interface Identity {
+	sourceKey: SourceKey;
+	/** 来源那头的 id,BN 不解读;B 站就是 uid。 */
+	externalId: string;
+}
+
+/**
+ * {@link subscriptionIdentityOf} 认得的订阅形状:订阅本体、wire DTO、折叠后的视图都是。
+ *
+ * ⚠️ 过渡写法(⑥d):订阅还分 B 站 / 拓展两支时才需要它。订阅每行直接带 `identity` 以后,这个类型删掉,
+ * 函数只剩读那一格 —— 中立包里不留按来源分支的代码。
+ */
+export type SubscriptionIdentitySource =
+	| { kind: "bilibili"; uid: string }
+	| { kind: "extension"; extensionId: string; externalId: string };
+
+/**
+ * 这条订阅订的是谁 —— 全仓唯一认得订阅两支身份格的函数,别处一律读它的结果(过渡写法,见上)。
+ */
+export function subscriptionIdentityOf(sub: SubscriptionIdentitySource): Identity {
+	return sub.kind === "extension"
+		? { sourceKey: sub.extensionId, externalId: sub.externalId }
+		: { sourceKey: BILIBILI_SOURCE_KEY, externalId: sub.uid };
+}
+
+/** 两个身份是不是同一个人。 */
+export function sameIdentity(a: Identity, b: Identity): boolean {
+	return a.sourceKey === b.sourceKey && a.externalId === b.externalId;
+}
+
+/**
+ * 这个人的颜色(身份版的 {@link upColor}):种子与 `upColor` 逐字节相同 —— B 站是 uid,拓展是
+ * {@link extensionColorSeed} —— 主人屏幕上谁是什么颜色不因为换了读法而变。
+ */
+export function identityColor(identity: Identity): string {
+	return identity.sourceKey === BILIBILI_SOURCE_KEY
+		? upColor({ uid: identity.externalId })
+		: upColor({ extensionId: identity.sourceKey, externalId: identity.externalId });
+}
+
 /**
  * 订阅源报的事件种类 → BN 自己的特性键(ADR-0019 决策 4)。拓展只说中立名,映射归 BN:配置
  * 弹层照它只列这个源报的那几种(决策 5),推送链收到事件时照它找路由。

@@ -559,6 +559,25 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 		expect(String(tellMaster.mock.calls[0]?.[0])).not.toContain("UID");
 	});
 
+	it("B 站订阅的名字:主人起的别名优先,没有就写 UID(与改成按身份读之前一字不差)", async () => {
+		generateSoloRoast.mockResolvedValue(NO_DATA);
+		const bili = (name?: string) => ({
+			kind: "bilibili",
+			id: "b1",
+			uid: "42",
+			name,
+			overrides: {},
+			roastSchedule: { ...EXT.roastSchedule },
+		});
+		const bare = makeScheduler({ subs: [bili()] });
+		await bare.sched.runSoloOnce("b1");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("UID 42 的锐评");
+
+		const aliased = makeScheduler({ subs: [bili("别名乙")] });
+		await aliased.sched.runSoloOnce("b1");
+		expect(String(tellMaster.mock.calls[0]?.[0])).toContain("别名乙 的锐评");
+	});
+
 	it("审批开着 → 草稿记的是订阅 id;批下来之后按这条订阅的出错通知开关发,失败明细写它的名字", async () => {
 		const sub = { ...EXT, roastSchedule: { ...EXT.roastSchedule, approval: true } };
 		const { sched, drafts } = makeScheduler({ subs: [sub] });

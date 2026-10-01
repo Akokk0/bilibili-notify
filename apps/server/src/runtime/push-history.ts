@@ -1,4 +1,8 @@
-import { isBiliSubscription, type Subscription } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 import type { PushSendInfo } from "@bilibili-notify/push";
 import type { HistoryRecordInput } from "../history/store.js";
 
@@ -35,10 +39,13 @@ export function historyRecordFromSend(
 	const found = lookups.subscriptionOf(info.subscriptionId);
 	if (found === undefined) return null;
 	const { subscription, profile } = found;
-	const who = isBiliSubscription(subscription)
-		? { uid: subscription.uid, uavatarSnapshot: profile?.avatar }
-		: { extensionId: subscription.extensionId, externalId: subscription.externalId };
-	const unameSnapshot = isBiliSubscription(subscription)
+	const identity = subscriptionIdentityOf(subscription);
+	const fromBilibili = identity.sourceKey === BILIBILI_SOURCE_KEY;
+	// 历史行的身份格照旧:B 站写 `uid`,别的来源写 `extensionId` + `externalId`(行的形状不在这一步动)。
+	const who = fromBilibili
+		? { uid: identity.externalId, uavatarSnapshot: profile?.avatar }
+		: { extensionId: identity.sourceKey, externalId: identity.externalId };
+	const unameSnapshot = fromBilibili
 		? profile?.name
 		: (filled(profile?.name) ?? filled(subscription.name));
 	return {

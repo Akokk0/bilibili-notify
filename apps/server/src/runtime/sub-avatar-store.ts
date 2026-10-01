@@ -3,15 +3,16 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	BILIBILI_SOURCE_KEY,
 	createSerialQueue,
 	type Disposable,
-	isExtensionSubscription,
 	type Logger,
 	type MessageBus,
 	type ServiceContext,
 	SUBSCRIPTION_AVATAR_MAX_BYTES,
 	SubscriptionAvatarSchema,
 	sniffImageFormat,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile } from "@bilibili-notify/storage";
 import { z } from "zod";
@@ -273,7 +274,12 @@ export function bindSubAvatarCleanup(opts: {
 }): Disposable {
 	return opts.bus.on("subscription-changed", ({ ops }) => {
 		for (const op of ops) {
-			if (op.type !== "remove" || !isExtensionSubscription(op.sub)) continue;
+			if (
+				op.type !== "remove" ||
+				subscriptionIdentityOf(op.sub).sourceKey === BILIBILI_SOURCE_KEY
+			) {
+				continue;
+			}
 			const id = op.sub.id;
 			opts.serviceCtx.track(
 				opts.avatars.remove(id).catch((err) => {

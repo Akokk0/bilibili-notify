@@ -1,10 +1,10 @@
 import { Buffer } from "node:buffer";
 import { BLOCKED_IMG_PLACEHOLDER } from "@bilibili-notify/image";
 import {
-	type ExtensionSubscription,
-	isExtensionSubscription,
+	BILIBILI_SOURCE_KEY,
 	type Subscription,
 	sniffImageFormat,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 
 /**
@@ -64,11 +64,13 @@ export interface ExtensionNameSources {
  * ⚠️ 面板上标「备注」的是 `notes`,那是自由文字(「推给一群,周末别推」),**不当名字用** —— 印进卡里、
  * 套进文案就成了一句莫名其妙的话。
  */
-export function extensionSubscriptionName(
-	sub: ExtensionSubscription,
-	from: ExtensionNameSources,
-): string {
-	return filled(from.eventName) ?? filled(from.profileName) ?? filled(sub.name) ?? sub.externalId;
+export function extensionSubscriptionName(sub: Subscription, from: ExtensionNameSources): string {
+	return (
+		filled(from.eventName) ??
+		filled(from.profileName) ??
+		filled(sub.name) ??
+		subscriptionIdentityOf(sub).externalId
+	);
 }
 
 /** 卡上的作者:名字与一张卡里加载得到的头像地址。 */
@@ -94,7 +96,7 @@ export interface ExtensionCardAuthorSources {
  * 哪儿都没有头像(或者读文件抛了)给透明占位:卡上留一块空的头像位,不画一张裂图。
  */
 export async function extensionCardAuthor(
-	sub: ExtensionSubscription,
+	sub: Subscription,
 	from: ExtensionCardAuthorSources,
 ): Promise<ExtensionCardAuthor> {
 	const name = extensionSubscriptionName(sub, {
@@ -124,11 +126,12 @@ export async function extensionCardAuthor(
 export function extensionSubscriptionPushable(
 	sub: Subscription | undefined,
 	extensionRunning: (extensionId: string) => boolean,
-): sub is ExtensionSubscription {
+): boolean {
+	if (sub === undefined) return false;
+	const identity = subscriptionIdentityOf(sub);
 	return (
-		sub !== undefined &&
-		isExtensionSubscription(sub) &&
+		identity.sourceKey !== BILIBILI_SOURCE_KEY &&
 		sub.enabled &&
-		extensionRunning(sub.extensionId)
+		extensionRunning(identity.sourceKey)
 	);
 }

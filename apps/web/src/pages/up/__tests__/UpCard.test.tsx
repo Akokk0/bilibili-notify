@@ -109,7 +109,6 @@ function makeExtSub(over: Partial<ExtensionSubscription> = {}): ExtensionSubscri
 	const {
 		kind: _k,
 		uid: _u,
-		specialUsers: _s,
 		followed: _f,
 		followError: _e,
 		...common
@@ -196,5 +195,17 @@ describe("UpCard × 订阅源的平台", () => {
 		const { queryByText, getByText } = render(<UpCard {...props({ sub })} />);
 		expect(getByText("动态")).toBeTruthy();
 		expect(queryByText("上舰")).toBeNull();
+	});
+});
+
+/** B 站订阅的身份行:「UID xxx」读的是订阅的身份(外部 id 就是 uid)。 */
+describe("UpCard × B 站订阅的身份行", () => {
+	it("写「UID xxx」", () => {
+		const sub = {
+			...makeEmptySubscription("100"),
+			cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
+		};
+		const { getByText } = render(<UpCard {...props({ sub })} />);
+		expect(getByText("UID 100")).toBeTruthy();
 	});
 });

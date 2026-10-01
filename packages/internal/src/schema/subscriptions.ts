@@ -257,7 +257,8 @@ export const EXTENSION_SUBSCRIPTION_EXTERNAL_ID_MAX = 256;
  *   `externalId` 是拓展给的不透明字符串,BN 原样交回、从不解读。
  * - **不带 `uid`** —— 连 `uid?: never` 都不写:键不在,编译器才会把每一处直接读 `sub.uid`
  *   的地方列出来逐个分流,「遍历订阅去 B 站拉资料」这类循环不会拿别的平台的 id 去问 B 站。
- * - **没有特别关注**(决策 12:B 站专属)。**单人定时锐评有**(ADR-0020 决策 14 推翻了决策 12 里锐评那一半):
+ * - **特别关注两支都有**(1.0 的公共形状,data-model「键、身份与订阅」):露不露这项设置看来源支不支持,今天只有
+ *   B 站支持,拓展订阅那一格一直是空的。**单人定时锐评有**(ADR-0020 决策 14 推翻了决策 12 里锐评那一半):
  *   与 B 站那一格同形、同默认;老的 `extension-subscriptions.json` 没有这一格,读进来补出厂默认(关着)。
  */
 export const ExtensionSubscriptionSchema = z
@@ -276,6 +277,7 @@ export const ExtensionSubscriptionSchema = z
 		overrides: SubscriptionOverridesSchema,
 		/** 这位的单人锐评定时推送 —— 同 B 站那一格(放顶层、不参与 `resolve()` 折叠的理由也同)。 */
 		roastSchedule: RoastScheduleSchema.default(() => structuredClone(DEFAULT_ROAST_SCHEDULE)),
+		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
 	.superRefine(refineExtrasWithinRouting);
 export type ExtensionSubscription = z.infer<typeof ExtensionSubscriptionSchema>;

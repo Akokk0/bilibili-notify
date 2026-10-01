@@ -1,13 +1,13 @@
 import type {
 	Disposable,
 	ExtensionLiveSessionEndReason,
-	ExtensionSubscription,
 	Logger,
 	MessageBus,
 	ServiceContext,
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
+import { subscriptionIdentityOf } from "@bilibili-notify/internal";
 import { liveEndGraceMinutes } from "@bilibili-notify/live";
 import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
@@ -142,9 +142,7 @@ export interface CreateExtensionLiveSessionsOptions {
 	/** 订阅资料里的粉丝数(资料缓存,现取)。 */
 	fans(id: string): number | undefined;
 	/** 这条订阅折好的直播设置(现折,见 `liveWorkSettings`)—— 只看断流接续那两格。 */
-	settings(
-		sub: ExtensionSubscription,
-	): Pick<LiveWorkSettings, "liveEndGrace" | "liveEndGraceMinutes">;
+	settings(sub: Subscription): Pick<LiveWorkSettings, "liveEndGrace" | "liveEndGraceMinutes">;
 	/** 断流等待的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
 	timers: Pick<ServiceContext, "setTimeout">;
 	/** 只有测试会换。 */
@@ -226,7 +224,7 @@ export function createExtensionLiveSessions(
 	}
 
 	/** 这条订阅现在记不记:还在、启用着、拓展在跑。关机之后一律不记。 */
-	function trackable(id: string): ExtensionSubscription | undefined {
+	function trackable(id: string): Subscription | undefined {
 		if (disposed) return undefined;
 		const sub = opts.subscription(id);
 		return extensionSubscriptionPushable(sub, opts.running) ? sub : undefined;
@@ -252,15 +250,11 @@ export function createExtensionLiveSessions(
 		publishEnd(session, reason, at);
 	}
 
-	function begin(
-		id: string,
-		sub: ExtensionSubscription,
-		value: LiveStart | LiveStatus,
-	): SessionState {
+	function begin(id: string, sub: Subscription, value: LiveStart | LiveStatus): SessionState {
 		const detectedAt = now();
 		const session: SessionState = {
 			subscriptionId: id,
-			extensionId: sub.extensionId,
+			extensionId: subscriptionIdentityOf(sub).sourceKey,
 			startedAt: value.startedAt,
 			// 状态没带开播时刻:取认出它的那一刻(ADR-0020 决策 6)。
 			busStartedAt: iso(value.startedAt ?? detectedAt),

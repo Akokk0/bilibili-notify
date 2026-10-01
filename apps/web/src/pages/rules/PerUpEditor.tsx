@@ -31,6 +31,7 @@ import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
 import {
 	type AIOverride,
+	BILIBILI_SOURCE_KEY,
 	type ContentFiltersOverride,
 	type ImageGroupOverride,
 	isBiliSubscription,
@@ -39,6 +40,7 @@ import {
 	type ScheduleOverride,
 	type SpecialUser,
 	type Subscription,
+	subscriptionIdentityOf,
 	type TemplateOverride,
 } from "../../types/domain";
 import type {
@@ -121,8 +123,10 @@ const NO_SPECIAL_USERS: SpecialUser[] = [];
 
 export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorProps) {
 	const qc = useQueryClient();
-	const isBili = isBiliSubscription(sub);
-	const specialUsers = isBili ? sub.specialUsers : NO_SPECIAL_USERS;
+	const identity = subscriptionIdentityOf(sub);
+	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
+	// 特别关注是 B 站支独有的非身份字段,DTO 形状这一片不动,所以这一处仍靠收窄来读。
+	const specialUsers = isBiliSubscription(sub) ? sub.specialUsers : NO_SPECIAL_USERS;
 	// 拓展订阅按源报得出的事件给格;认不出是哪个源(没传)时按最多的给,同配置弹层。
 	const features = platform?.features;
 	const reportsPost = isBili || !features || features.includes("dynamic");
@@ -214,9 +218,9 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 					<div className="text-bn-sm text-bn-text-secondary">
 						{/* 拓展订阅没有 uid,写「平台名 · 外部 id」(ADR-0019 决策 73 的口径)。 */}
 						{isBili ? (
-							<>UID {sub.uid}</>
+							<>UID {identity.externalId}</>
 						) : (
-							`${platform?.label ?? sub.extensionId} · ${sub.externalId}`
+							`${platform?.label ?? identity.sourceKey} · ${identity.externalId}`
 						)}{" "}
 						· 关闭一个分组 = 恢复继承全局默认
 					</div>

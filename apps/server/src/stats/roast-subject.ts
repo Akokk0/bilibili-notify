@@ -10,7 +10,11 @@
  */
 
 import type { UpStatsRow } from "@bilibili-notify/contract";
-import { isBiliSubscription, type Subscription } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
 import { extensionSubscriptionName } from "../runtime/extension-push-common.js";
 
@@ -22,7 +26,10 @@ export const BILIBILI_PLATFORM_LABEL = "B 站";
 /** 这条订阅在锐评里叫什么。见文件头的两条链。 */
 export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): string {
 	const profileName = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name;
-	if (isBiliSubscription(sub)) return profileName?.trim() || `UID ${sub.uid}`;
+	const identity = subscriptionIdentityOf(sub);
+	if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
+		return profileName?.trim() || `UID ${identity.externalId}`;
+	}
 	return extensionSubscriptionName(sub, { profileName });
 }
 

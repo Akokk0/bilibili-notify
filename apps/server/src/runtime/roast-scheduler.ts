@@ -12,13 +12,14 @@
  */
 
 import {
+	BILIBILI_SOURCE_KEY,
 	type FailureCode,
-	isBiliSubscription,
 	isTargetPaused,
 	type Logger,
 	type NotificationPayload,
 	type RoastSchedule,
 	type Subscription,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import {
@@ -310,9 +311,11 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 	 * 外部 id,`roast-subject.ts`)—— 拓展订阅没有 uid,写成「UID undefined」主人认不出是谁。
 	 */
 	function soloLabel(sub: Subscription): string {
-		const name = isBiliSubscription(sub)
-			? sub.name?.trim() || `UID ${sub.uid}`
-			: roastSubjectName(deps, sub);
+		const identity = subscriptionIdentityOf(sub);
+		const name =
+			identity.sourceKey === BILIBILI_SOURCE_KEY
+				? sub.name?.trim() || `UID ${identity.externalId}`
+				: roastSubjectName(deps, sub);
 		return `${name} 的锐评`;
 	}
 

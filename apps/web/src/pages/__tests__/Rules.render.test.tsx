@@ -76,6 +76,15 @@ describe("高级规则 tab 关闭确认", () => {
 		expect(api.patch).not.toHaveBeenCalled();
 	});
 
+	it("B 站订阅的确认文案说「所有覆盖项与特别关注」", async () => {
+		renderRules();
+		fireEvent.click(await screen.findByTitle(/移除 .* 的个性化配置/));
+		await screen.findByText("移除该 UP 的个性化配置?");
+		expect(
+			screen.getByText(/的所有覆盖项与特别关注,该 UP 之后跟随全局规则。此操作不可撤销。/),
+		).toBeTruthy();
+	});
+
 	it("确认 dialog 点『取消』→ 关闭弹窗,不动 backend", async () => {
 		renderRules();
 		fireEvent.click(await screen.findByTitle(/移除 .* 的个性化配置/));

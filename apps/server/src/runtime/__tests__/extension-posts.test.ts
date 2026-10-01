@@ -252,3 +252,65 @@ describe("bindExtensionPosts — 登记进 track", () => {
 		handle.dispose();
 	});
 });
+
+/**
+ * 屏蔽提醒里平台对作品的叫法(ADR-0019 决策 70):按**这条订阅所属的拓展**去取,不是随便哪个。
+ * 别的测试里 `postNoun` 都是不看参数的桩,取错拓展也一样绿 —— 这里让它只认这条订阅的拓展。
+ */
+describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展取", () => {
+	it("屏蔽提醒里写的是这个拓展的叫法(别的拓展没有叫法、会落回「作品」)", async () => {
+		const bus = createNodeMessageBus();
+		const image = {
+			generateNeutralDynamicCard: vi.fn(async () => Buffer.from("card")),
+		} as unknown as ImageRenderer;
+		const sent: PushSegment[][] = [];
+		const push: BoundWorkPush = {
+			broadcast: async (segments: PushSegment[]) => {
+				sent.push(segments);
+			},
+			broadcastSequence: async () => {},
+		};
+		const asked: string[] = [];
+		const handle = bindExtensionPosts({
+			bus,
+			logger,
+			serviceCtx: makeTrackingContext(),
+			subscription: (id) => (id === SUB.id ? SUB : undefined),
+			profileName: () => "资料名",
+			settings: () => ({
+				messageLayout: defaultMessageKindLayout("dynamic"),
+				filter: { enable: true, keywords: ["海边"], notify: true },
+				dynamic: true,
+			}),
+			sources: {
+				running: () => true,
+				postNoun: (extensionId) => {
+					asked.push(extensionId);
+					return extensionId === SUB.extensionId ? "视频" : undefined;
+				},
+				readAvatar: async () => undefined,
+			},
+			pushFor: () => push,
+			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryDeps: () => ({
+				logger,
+				image,
+				cardFailures: createCardFailureTracker(),
+				sendErrorMsg: async () => {},
+				emitEngineError: () => {},
+			}),
+		});
+
+		bus.emit("subscription-reported", {
+			extensionId: SUB.extensionId,
+			externalId: SUB.externalId,
+			subscriptionIds: [SUB.id],
+			report: { kind: "post", value: { ...post(1), text: "今天去海边" } },
+		});
+
+		await vi.waitFor(() => expect(sent).toHaveLength(1));
+		expect(asked).toEqual([SUB.extensionId]);
+		expect(sent[0]).toEqual([{ type: "text", text: "资料名发布了一条含有屏蔽关键字的视频" }]);
+		handle.dispose();
+	});
+});

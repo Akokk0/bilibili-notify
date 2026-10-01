@@ -3,6 +3,7 @@ import {
 	EXTENSION_IMAGE_DATA_URL_RE,
 	EXTENSION_IMAGE_MAX_CHARS,
 	LIST_ITEM_ID_KEY,
+	RESERVED_INTEGRATION_KEYS,
 } from "../constants";
 
 // 本体住零依赖的 constants(面板经 /constants 拿值),这里给根入口补一条路 —— 两路一值。
@@ -166,7 +167,12 @@ export const ExtensionIdSchema = z
 		"拓展 id 只能是小写字母、数字与连字符(可用一个点分出命名空间),且每段首尾必须是字母或数字",
 	)
 	// 小写那几个里正则放得过的只有 `constructor`,但 id 是 `globals.extensions` 等处的键。
-	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "));
+	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "))
+	// 订阅身份与登记表的键不加前缀:拓展叫 `bilibili` 就和 B 站的订阅撞成同一个人(ADR-0021 决策 14)。
+	.refine(
+		(id) => !RESERVED_INTEGRATION_KEYS.includes(id),
+		`拓展 id 不能用内置集成的保留 id(${RESERVED_INTEGRATION_KEYS.join("、")})`,
+	);
 
 /** 命名空间那一段;没有点 = 官方源的拓展,回 `undefined`。 */
 export function extensionNamespaceOf(id: string): string | undefined {

@@ -19,7 +19,12 @@ import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
-import { isBiliSubscription, isExtensionSubscription, type Subscription } from "../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	isBiliSubscription,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch, GlobalDefaults } from "../types/globals";
 import { buildOverridesPatch } from "./rules/overrides-patch";
 import { PerUpEditor, type PerUpOverrideKey, perUpOverrideKeys } from "./rules/PerUpEditor";
@@ -266,9 +271,10 @@ export default function Rules() {
 			// 现存 slice 显式置 null(清除哨兵),buildOverridesPatch({}, base) 正好生成。
 			const overrides = buildOverridesPatch({}, sub.overrides);
 			// 特别关注只有 B 站订阅有,拓展订阅那一支没有这一格,不发。
+			const isBili = subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 			return api.patch<Subscription>(
 				`/api/subs/${sub.id}`,
-				isBiliSubscription(sub) ? { overrides, specialUsers: [] } : { overrides },
+				isBili ? { overrides, specialUsers: [] } : { overrides },
 			);
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
@@ -342,8 +348,12 @@ export default function Rules() {
 	// (还在读 / 读失败)时按拓展订阅最多能有的那几种画,同配置弹层。
 	const extensionsQuery = useExtensions({ retry: false });
 	const extensions = extensionsQuery.data?.extensions;
-	const platformOf = (s: Subscription): SubscriptionPlatform | undefined =>
-		isExtensionSubscription(s) ? subscriptionPlatformOf(s, extensions) : undefined;
+	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
+		const { sourceKey } = subscriptionIdentityOf(s);
+		return sourceKey === BILIBILI_SOURCE_KEY
+			? undefined
+			: subscriptionPlatformOf({ extensionId: sourceKey }, extensions);
+	};
 	const sectionsOf = (s: Subscription): SectionMeta[] =>
 		perUpSectionsFor(s, visibleFeaturesOf(s, platformOf(s)));
 
@@ -525,7 +535,10 @@ export default function Rules() {
 					message={
 						<>
 							将清空 <b className="text-bn-text-primary">{displayName(pendingRemoval)}</b>{" "}
-							的所有覆盖项{isBiliSubscription(pendingRemoval) ? "与特别关注" : ""}
+							的所有覆盖项
+							{subscriptionIdentityOf(pendingRemoval).sourceKey === BILIBILI_SOURCE_KEY
+								? "与特别关注"
+								: ""}
 							,该 UP 之后跟随全局规则。此操作不可撤销。
 						</>
 					}

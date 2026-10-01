@@ -2,7 +2,12 @@ import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notif
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
-import { isBiliSubscription, type Subscription } from "../../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	isBiliSubscription,
+	type Subscription,
+	subscriptionIdentityOf,
+} from "../../types/domain";
 import { displayName, subscribedFeatures, subscriptionColor } from "./helpers";
 import { RelativeTime } from "./relative-time";
 import {
@@ -64,7 +69,9 @@ export function UpCard({
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
 	const color = subscriptionColor(sub);
-	const ext = isBiliSubscription(sub) ? undefined : platform;
+	const identity = subscriptionIdentityOf(sub);
+	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
+	const ext = isBili ? undefined : platform;
 	// 拓展订阅只列它那个源报得出的(决策 5):B 站独有的开着也不摆 —— 那是一个永远不会响的开关。
 	const visible = visibleFeaturesOf(sub, ext);
 	const features = subscribedFeatures(sub).filter((k) => visible.includes(k));
@@ -162,9 +169,9 @@ export function UpCard({
 				</div>
 				<div className="mb-2.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
 					{/* 拓展订阅没有 uid(ADR-0019 决策 9),那一格换成平台徽章。 */}
-					{isBiliSubscription(sub) ? (
+					{isBili ? (
 						<>
-							<span>UID {sub.uid}</span>
+							<span>UID {identity.externalId}</span>
 							<span>·</span>
 						</>
 					) : ext ? (
@@ -184,6 +191,7 @@ export function UpCard({
 				 * 这条订阅看着正常,实际是哑的。所以是**故障**不是提示:显眼、常驻,而不是创建
 				 * 时一闪而过的 toast。followed===undefined(服务端没检查过 / 老数据)不显示,
 				 * 那不等于「未关注」,别凭空吓人。
+				 * 关注状态是 B 站支独有的非身份字段(DTO 形状这一片不动),所以这一处仍靠收窄来读。
 				 */}
 				{isBiliSubscription(sub) && sub.followed === false ? (
 					<ErrorNote size="sm" icon={<Icon.warning size={12} />} className="mb-2.5">

@@ -17,13 +17,14 @@ import {
 	type DeliveryResult,
 	FEATURE_KEYS,
 	type GlobalDefaults,
-	isBiliSubscription,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type NotificationSink,
 	type PushTarget,
 	type Subscription,
+	sameIdentity,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -68,7 +69,8 @@ function makeSink(opts?: { available?: boolean; platform?: string }): {
 function makeStore(subs: Subscription[]): SubscriptionStore {
 	return {
 		list: () => [...subs],
-		findByUid: (uid) => subs.filter(isBiliSubscription).find((s) => s.uid === uid),
+		findByIdentity: (identity) =>
+			subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 		findById: (id) => subs.find((s) => s.id === id),
 		upsert: () => {},
 		removeById: () => undefined,
@@ -649,5 +651,40 @@ describe("BilibiliPush.broadcastToFeature — 按订阅 id 找订阅", () => {
 		await push.broadcastToFeature("sE", "dynamic", { kind: "text", text: "x" });
 		expect(calls.map((c) => c.targetId)).toEqual(["tE"]);
 		expect(seen.map((i) => i.subscriptionId)).toEqual(["sE"]);
+	});
+});
+
+/**
+ * 日志里认得出「是谁」(`subscriptionLabel`):B 站写 `uid=<uid>`,拓展写 `<拓展 id>:<外部 id>`。
+ * 只拿来给人看,所以没有别的测试会红 —— 这里钉住写法,免得换成按身份读的时候悄悄变样。
+ */
+describe("BilibiliPush.broadcastToFeature — 日志里的订阅标签", () => {
+	async function gateLogLine(sub: Subscription): Promise<string> {
+		const defaults = loopbackDefaults();
+		defaults.features.live = false;
+		const lines: string[] = [];
+		const { sink } = makeSink();
+		const push = new BilibiliPush({
+			...pushBase(),
+			sink,
+			store: makeStore([sub]),
+			logger: { ...silentLogger, debug: (msg: string) => lines.push(msg) },
+			defaults: () => defaults,
+		});
+		push.start();
+		await push.broadcastToFeature(sub.id, "live", { kind: "text", text: "x" });
+		return lines.find((l) => l.includes("总开关 OFF")) ?? "";
+	}
+
+	it("B 站订阅 → uid=<uid>", async () => {
+		const sub = makeEmptySubscription({ id: "s1", uid: "u1" });
+		sub.routing.live = ["t1"];
+		expect(await gateLogLine(sub)).toBe("[push] uid=u1 feature=live 总开关 OFF，跳过");
+	});
+
+	it("拓展订阅 → <拓展 id>:<外部 id>", async () => {
+		const ext = makeExtensionSub({ id: "sE", extensionId: "douyin", externalId: "sec-1" });
+		ext.routing.live = ["tE"];
+		expect(await gateLogLine(ext)).toBe("[push] douyin:sec-1 feature=live 总开关 OFF，跳过");
 	});
 });

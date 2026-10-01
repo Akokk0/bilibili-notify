@@ -1,9 +1,10 @@
 import {
-	type BiliSubscription,
-	isBiliSubscription,
+	type Identity,
 	type MessageBus,
 	type Subscription,
 	type SubscriptionOp,
+	sameIdentity,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 
 /**
@@ -35,10 +36,10 @@ export interface SubscriptionStore {
 	/** Return a snapshot of all subscriptions (shallow copy). */
 	list(): Subscription[];
 	/**
-	 * Find a **B 站** subscription by uid; returns undefined if not found. 拓展订阅没有 uid
-	 * (ADR-0019 决策 9),永远不会被它找到 —— 哪怕某个拓展的外部 id 恰好也是这串数字。
+	 * 按身份找订阅(ADR-0021 决策 14):来源与外部 id 两格都相等才算。同一个身份订了几条时取第一条
+	 * (服务端不判重,只有面板挡着)。
 	 */
-	findByUid(uid: string): BiliSubscription | undefined;
+	findByIdentity(identity: Identity): Subscription | undefined;
 	/** Find a subscription by its stable id; returns undefined if not found. */
 	findById(id: string): Subscription | undefined;
 	/**
@@ -91,8 +92,8 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 		list() {
 			return [...subs];
 		},
-		findByUid(uid) {
-			return subs.filter(isBiliSubscription).find((s) => s.uid === uid);
+		findByIdentity(identity) {
+			return subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity));
 		},
 		findById(id) {
 			return subs.find((s) => s.id === id);

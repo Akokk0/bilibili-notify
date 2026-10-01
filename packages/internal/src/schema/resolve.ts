@@ -1,4 +1,9 @@
-import { resolveActivePersona, resolveAIProfile } from "../constants";
+import {
+	type Identity,
+	resolveActivePersona,
+	resolveAIProfile,
+	subscriptionIdentityOf,
+} from "../constants";
 import type {
 	AIPersona,
 	AISettings,
@@ -28,15 +33,14 @@ import type {
  * 折叠后的"实际生效"订阅。所有业务消费方（push / dynamic / live / AI / image）
  * 只接受 EffectiveSubscription，不再各自处理 inherit / fallback 分支。
  *
- * 与 {@link Subscription} 一样分两支(ADR-0019 决策 9):身份那几格按 `kind` 收窄才读得到。
+ * 订的是谁读 `identity`(ADR-0021 决策 14);两支各自的身份格还在,只给还没改读法的地方。
  */
 export type EffectiveSubscription = EffectiveBiliSubscription | EffectiveExtensionSubscription;
 
-/** B 站订阅折叠后的样子:身份是 `uid`,另带特别关注(决策 12:B 站专属)。 */
+/** B 站订阅折叠后的样子。 */
 export interface EffectiveBiliSubscription extends EffectiveSubscriptionCommon {
 	kind: "bilibili";
 	uid: string;
-	specialUsers: SpecialUser[];
 }
 
 /** 拓展订阅折叠后的样子:身份是 `(extensionId, externalId)`(决策 50)。 */
@@ -49,6 +53,8 @@ export interface EffectiveExtensionSubscription extends EffectiveSubscriptionCom
 /** 两支共有的那部分:配置本体 + 折叠好的各层。 */
 export interface EffectiveSubscriptionCommon {
 	id: string;
+	/** 订的是谁(ADR-0021 决策 14)。 */
+	identity: Identity;
 	name: string | undefined;
 	enabled: boolean;
 	groups: string[];
@@ -56,6 +62,8 @@ export interface EffectiveSubscriptionCommon {
 	routing: SubscriptionRouting;
 	/** 附加项的 per-目标 三态表(原样带过来,没有可合并的上一层)。 */
 	extras: SubscriptionExtras;
+	/** 特别关注;来源不支持的(今天:拓展)一直是空的。 */
+	specialUsers: SpecialUser[];
 
 	features: FeatureFlags;
 	filters: ContentFilters;
@@ -190,24 +198,25 @@ export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveS
 					id: sub.id,
 					uid: sub.uid,
 					...common,
-					specialUsers: sub.specialUsers,
 				},
 	);
 }
 
-/** 两支共有的那部分折叠。身份那几格由 {@link resolve} 按 `kind` 补上。 */
+/** 两支共有的那部分折叠。两支各自的身份格由 {@link resolve} 按 `kind` 补上。 */
 function resolveCommon(
 	sub: Subscription,
 	defaults: GlobalDefaults,
 ): Omit<EffectiveSubscriptionCommon, "id"> {
 	const ov = sub.overrides;
 	return {
+		identity: subscriptionIdentityOf(sub),
 		name: sub.name,
 		enabled: sub.enabled,
 		groups: sub.groups,
 		notes: sub.notes,
 		routing: sub.routing,
 		extras: sub.extras,
+		specialUsers: sub.specialUsers,
 
 		features: mergeFeatures(defaults.features, ov.features),
 		filters: merge(defaults.filters, ov.filters),
