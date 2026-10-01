@@ -1,5 +1,7 @@
 import type { ImportResult } from "@bilibili-notify/contract";
 import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
+import { describeDuplicate } from "../config/store.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
 	type BackupEnvelope,
@@ -48,7 +50,7 @@ interface BackupCookieStore {
 /** Which scopes to include in an export (the sanitized-档 checkboxes). */
 export interface SectionSelection {
 	globals?: boolean;
-	/** 订阅 —— 两支一起:B 站那节与拓展那节(ADR-0019 决策 48)。 */
+	/** 订阅:只有一节,B 站与拓展来源的同在里面(ADR-0021 决策 15)。 */
 	subscriptions?: boolean;
 	connections?: boolean;
 	targets?: boolean;
@@ -104,6 +106,24 @@ const ALL_SECTIONS: Required<SectionSelection> = {
 	targets: true,
 };
 
+/**
+ * 恢复完不许多出同身份的重复(docs/1.0/data-model.md)。按身份并入(`planImport`)之后还剩下的,只可能是备份
+ * 自己里面就有一对(老版本留下、跟着导了出来):整份拒收、点名是谁,不悄悄丢掉其中一条的设置。
+ *
+ * 写盘那一层有同一条规矩兜底;这里提前到 dry run 之前,是让预览那一步就说清楚,而不是等主人点了确认。
+ */
+function assertNoDuplicateInBackup(
+	current: readonly Subscription[],
+	folded: readonly Subscription[] | undefined,
+): void {
+	const [dup] = folded ? findNewIdentityDuplicates(current, folded) : [];
+	if (!dup) return;
+	throw new BackupRejectedError(
+		"invalid",
+		`备份里同一个人有不止一条订阅：${describeDuplicate(dup)}。同一个人只能有一条订阅，整份没有恢复 —— 回原来那台机器删掉多余的那条，重新导出再恢复`,
+	);
+}
+
 export function createBackupService(deps: BackupServiceDeps): BackupService {
 	const now = deps.now ?? (() => new Date().toISOString());
 
@@ -158,12 +178,14 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			targets: deps.configStore.getTargets(),
 		};
 		const plan = planImport(current, sections, opts.mode);
+		const folded = foldPlan(current, plan);
+		assertNoDuplicateInBackup(current.subscriptions, folded.subscriptions);
 
 		let globalsApplied = false;
 		let cookiesRestored = false;
 		if (!opts.dryRun) {
 			// 一次落地:校验全过才写,任何一处不合法都不会留下半新半旧的配置。
-			await deps.configStore.replaceSections(foldPlan(current, plan));
+			await deps.configStore.replaceSections(folded);
 			globalsApplied = Boolean(plan.setGlobals);
 
 			if (cookies?.cookiesJson) {

@@ -1,4 +1,10 @@
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import {
+	type Connection,
+	type GlobalConfig,
+	type PushTarget,
+	type Subscription,
+	sameIdentity,
+} from "@bilibili-notify/internal";
 
 /**
  * Restore planning — turns (current state + imported sections + mode) into a
@@ -13,7 +19,8 @@ import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibi
  *   subscriptions must not clobber your own settings.
  *
  * A scope absent from the backup yields no writes for that scope in either mode.
-
+ *
+ * 订阅在两种模式下都先按 id 对、再按身份并入(见 {@link adoptLocalIds}):同一个人只能有一条订阅。
  */
 
 export type ImportMode = "overwrite" | "merge";
@@ -64,13 +71,39 @@ function planScope<T extends { id: string }>(
 	return { upsert: incoming, delete: del };
 }
 
+/**
+ * 恢复先按 id 对、再按身份并入(docs/1.0/data-model.md):备份里一行的 id 本机没有、身份却和本机某条一样,
+ * 就当它是那一条 —— 换成本机的 id,内容用备份的(和按 id 对上的行一个口径)。统计、历史、锐评都挂在本机的
+ * 订阅 id 上,备份不带这些,留本机的 id 它们才接得上。
+ *
+ * 按 id 已经对上的本机行不再拿来并;剩下的每条只认领一次,所以并完还剩的重复只可能是备份自己里面就有一对
+ * (由 `service.ts` 拒收)。覆盖与合并两种模式都这样并:覆盖模式里并上的那条因此不会被当成「备份里没有」删掉。
+ */
+function adoptLocalIds(
+	current: readonly Subscription[],
+	incoming: readonly Subscription[],
+): Subscription[] {
+	const currentIds = new Set(current.map((s) => s.id));
+	const incomingIds = new Set(incoming.map((s) => s.id));
+	const unclaimed = current.filter((s) => !incomingIds.has(s.id));
+	return incoming.map((row) => {
+		if (currentIds.has(row.id)) return row;
+		const idx = unclaimed.findIndex((s) => sameIdentity(s.identity, row.identity));
+		if (idx < 0) return row;
+		const [local] = unclaimed.splice(idx, 1);
+		return { ...row, id: (local as Subscription).id };
+	});
+}
+
 export function planImport(
 	current: CurrentState,
 	incoming: ImportSections,
 	mode: ImportMode,
 ): ImportPlan {
+	const subscriptions =
+		incoming.subscriptions && adoptLocalIds(current.subscriptions, incoming.subscriptions);
 	const plan: ImportPlan = {
-		subscriptions: planScope(current.subscriptions, incoming.subscriptions, mode),
+		subscriptions: planScope(current.subscriptions, subscriptions, mode),
 		connections: planScope(current.connections, incoming.connections, mode),
 		targets: planScope(current.targets, incoming.targets, mode),
 	};

@@ -266,6 +266,18 @@ describe("新建拓展订阅", () => {
 		expect((await post(extSub({ id: OTHER_ID, extensionId: "kuaishou" }))).status).toBe(200);
 	});
 
+	it("撞了身份、带着资料与头像 → 409,新的那条一样都不落:不存头像、不种资料", async () => {
+		expect((await post({ ...extSub(), cachedProfile: { name: "原来的" } })).status).toBe(200);
+		const dup = await post({
+			...extSub({ id: OTHER_ID }),
+			cachedProfile: { name: "后来的", avatar: avatarDataUrl("png", PNG_BYTES) },
+		});
+		expect(dup.status).toBe(409);
+		expect(await avatarFiles()).toEqual([]);
+		expect(runtime.subRuntimeStore.get(OTHER_ID)).toBeUndefined();
+		expect(runtime.subRuntimeStore.get(SUB_ID)?.cachedProfile?.name).toBe("原来的");
+	});
+
 	it("判重看身份两格:B 站来源与拓展来源的外部 id 是同一串数字也不算重(两个方向都一样)", async () => {
 		// 拓展先、B 站后。
 		expect((await post(extSub({ externalId: "12345" }))).status).toBe(200);
@@ -431,6 +443,17 @@ describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () 
 
 	it("拓展来源的订阅不核数字:外部 id 什么字符都行", async () => {
 		expect((await post(extSub({ externalId: "MS4wLjABAAAA-sec_uid" }))).status).toBe(200);
+	});
+
+	it("同一个 UID 已经订阅过 → 409 conflict,点名来源与 UID;只留原来那条", async () => {
+		expect((await post(bili("12345"))).status).toBe(200);
+		const dup = await post(bili("12345", "e1000000-0000-4000-8000-000000000006"));
+		expect(dup.status).toBe(409);
+		const body = (await dup.json()) as { code: string; message: string };
+		expect(body.code).toBe("conflict");
+		expect(body.message).toContain("bilibili");
+		expect(body.message).toContain("12345");
+		expect((await listed()).map((s) => s.id)).toEqual([OTHER_ID]);
 	});
 });
 

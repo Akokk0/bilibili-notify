@@ -8,6 +8,7 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { openFullBackup } from "../backup/assemble.js";
 import { BackupPinError } from "../backup/crypto.js";
+import { BackupRejectedError } from "../backup/rejected-error.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
@@ -374,5 +375,75 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 				.sort(),
 		).toEqual(["1@bilibili", "2@bilibili", "e1@douyin", "e2@douyin"]);
 		expect(result.subscriptions).toEqual({ upserted: 2, deleted: 0 });
+	});
+});
+
+/**
+ * 恢复完不许多出同身份的重复(docs/1.0/data-model.md)。按身份并入之后还剩下的重复,只能是备份自己里面
+ * 就有一对(老版本留下、跟着导了出来)—— 整份拒收、点名是谁(主人 10-01 定:不悄悄丢设置)。预览
+ * (dry run)那一步就拒,不等主人点了确认才说。
+ */
+describe("BackupService × 同一身份只能有一条订阅", () => {
+	/** `notes` 用来认出内容是哪一边的。 */
+	function person(id: string, uid: string, notes?: string): Subscription {
+		return {
+			...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } }),
+			notes,
+		};
+	}
+
+	function service(store: BackupStore) {
+		return createBackupService({
+			configStore: store,
+			cookieStore: makeCookieStore(null),
+			now: () => "t",
+		});
+	}
+
+	async function backupOf(subscriptions: Subscription[]) {
+		return service(makeFakeStore({ subscriptions })).exportBackup({ kind: "sanitized" });
+	}
+
+	it.each([
+		["overwrite", false],
+		["merge", false],
+		["overwrite", true],
+	] as const)(
+		"%s(dry run=%s):备份自己带一对同身份 → 拒收,点名是谁,一样都不写",
+		async (mode, dryRun) => {
+			const env = await backupOf([
+				person("b1", "12345", "第一条"),
+				person("b2", "12345", "第二条"),
+			]);
+			const store = makeFakeStore({ subscriptions: [sub("9")] });
+
+			const err = await service(store)
+				.importBackup({ envelope: env, mode, dryRun })
+				.then(
+					() => undefined,
+					(e: unknown) => e,
+				);
+			expect(err).toBeInstanceOf(BackupRejectedError);
+			const { code, message } = (err as BackupRejectedError).toFailure();
+			expect(code).toBe("invalid");
+			for (const word of ["bilibili", "12345"]) expect(message).toContain(word);
+			expect(store.replaceSections).not.toHaveBeenCalled();
+		},
+	);
+
+	it("恢复本机自己的备份、本机留着同样那一对(同样的 id)→ 不算新增,照收", async () => {
+		const pair = [person("a1", "12345"), person("a2", "12345")];
+		const env = await backupOf(pair);
+		const store = makeFakeStore({ subscriptions: pair });
+		await service(store).importBackup({ envelope: env, mode: "overwrite" });
+		expect(store.getSubscriptions().map((s) => s.id)).toEqual(["a1", "a2"]);
+	});
+
+	it("备份里同一个人换了个 id → 并进本机那条,计数照「更新了一条」算", async () => {
+		const env = await backupOf([person("backup", "12345", "备份")]);
+		const store = makeFakeStore({ subscriptions: [person("local", "12345")] });
+		const result = await service(store).importBackup({ envelope: env, mode: "merge" });
+		expect(store.getSubscriptions()).toEqual([person("local", "12345", "备份")]);
+		expect(result.subscriptions).toEqual({ upserted: 1, deleted: 0 });
 	});
 });

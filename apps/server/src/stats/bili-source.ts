@@ -19,8 +19,8 @@ import type { StatsRecorderCore } from "./recorder.js";
  *
  * **uid → 订阅 id 在这里换**(ADR-0020 决策 2 的 🔗):B 站引擎与总线照旧只带 uid,统计仓按
  * 订阅 id 分文件({@link statsFileKey})。找不到订阅的 uid 一样都不记 —— 改之前按 uid 照记,
- * 退订之后引擎补发的那帧下播会把刚删的文件重新写出来。同一个 uid 两条 B 站订阅(服务端不判重,
- * 只有面板挡着)两条都记,与改之前两行共读一个 uid 文件同一个结果。
+ * 退订之后引擎补发的那帧下播会把刚删的文件重新写出来。同一个 uid 两条 B 站订阅(老版本留下的;
+ * 写盘那一层不让新增)两条都记,与改之前两行共读一个 uid 文件同一个结果。
  */
 export interface BiliStatsSourceOptions {
 	bus: MessageBus;

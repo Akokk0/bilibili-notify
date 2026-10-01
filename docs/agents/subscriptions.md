@@ -29,12 +29,13 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 | 键 | 回答 | 用在 |
 |---|---|---|
-| **身份**：B 站 `uid` / 拓展 `(extensionId, externalId)` | 这是谁 | 判重（新建拓展订阅撞了回 409 `conflict`）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
+| **身份**：`identity { sourceKey, externalId }`（B 站是 `bilibili` + uid） | 这是谁 | 判重（同一个人只能有一条订阅，见下）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
 | **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`broadcastToFeature`）、历史行的 `subscriptionId`、资料缓存、头像文件、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
 
 - 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/up/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `upColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。
 - **绝不跨支**：外部 id 恰好等于某个 B 站 uid，也是另一个平台上的另一个人。
-- 同一个人配两条订阅时**各推各的路由**；按身份找「第一条」时先出现的那条说了算（B 站引擎那条边 `subscriptionIdOfUid` 同此）。
+- **同一个人只能有一条订阅**（守卫 9）：闸在写盘的 `ConfigStore`（规矩是 `packages/subscription` 的 `findNewIdentityDuplicates`），逐条写与整体替换都过它，新建撞了回 409 `conflict`。判据是这次写入有没有**新增**重复，所以盘上遗留的一对照样能改、能删；开机读到只记一句警告。恢复备份先按 id 对、再按身份并入（id 留本机的、内容用备份的），备份自己里面就有一对的整份拒收、点名是谁（`backup/restore.ts`、`backup/service.ts`）。
+- 老版本留下的同一个人两条订阅**各推各的路由**；按身份找「第一条」时先出现的那条说了算（B 站引擎那条边 `subscriptionIdOfUid` 同此）。
 
 ### 哪些地方故意只认 B 站
 

@@ -22,6 +22,11 @@ import {
 	SubscriptionSchema,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
+import {
+	findIdentityDuplicates,
+	findNewIdentityDuplicates,
+	type IdentityDuplicate,
+} from "@bilibili-notify/subscription";
 import { dataPath } from "../runtime/roots.js";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
@@ -531,6 +536,37 @@ function assertSubscriptionIdentityUnchanged(current: Subscription, raw: unknown
 	}
 }
 
+/**
+ * 一组同身份的订阅,拼进给人看的话里:「bilibili 的「12345」」;给了 `detail` 就在后面括号里列出各条(开机警告列
+ * 订阅 id)。写盘这道闸、开机的警告、恢复备份的拒收说同一种话。
+ */
+export function describeDuplicate(
+	dup: IdentityDuplicate,
+	detail?: (sub: Subscription) => string,
+): string {
+	const { sourceKey, externalId } = dup.identity;
+	const shown = detail ? `（${dup.subscriptions.map(detail).join("、")}）` : "";
+	return `${sourceKey} 的「${externalId}」${shown}`;
+}
+
+/**
+ * 同一身份只能有一条订阅(守卫 9,docs/1.0/data-model.md)。在真正写盘的这一层把关:订阅仓只是写盘之后才同步的
+ * 内存镜像,在那里拒收已经晚了。判据是这次写入有没有**新增**重复,见 `findNewIdentityDuplicates`。
+ *
+ * 逐条写(`writeSubscriptions`)与整体替换(`replaceSections`)都走这一份,同 {@link assertTargetOwner}。
+ */
+function assertNoNewIdentityDuplicate(
+	before: readonly Subscription[],
+	after: readonly Subscription[],
+): void {
+	const [dup] = findNewIdentityDuplicates(before, after);
+	if (!dup) return;
+	throw ConfigValidationError.conflict(
+		"subscriptions",
+		`同一个人只能有一条订阅：${describeDuplicate(dup)}已经订阅过了`,
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
@@ -595,8 +631,12 @@ class NodeConfigStore implements ConfigStore {
 		}
 	}
 
-	/** 把一份新的订阅列表落盘(一次原子写)并换进内存。调用方都在 `subscriptions` 那条队里。 */
+	/**
+	 * 把一份新的订阅列表落盘(一次原子写)并换进内存。调用方都在 `subscriptions` 那条队里。
+	 * 新增了同身份的重复就拒,盘上与内存都不动。
+	 */
 	private async writeSubscriptions(next: readonly Subscription[]): Promise<void> {
+		assertNoNewIdentityDuplicate(this.subscriptions, next);
 		await atomicWriteJson(this.path("subscriptions"), next);
 		this.subscriptions = [...next];
 	}
@@ -716,6 +756,14 @@ class NodeConfigStore implements ConfigStore {
 			this.subscriptions = parseSubscriptionFile("subscriptions.json", value);
 			this.meta.subscriptions.exists = true;
 			this.meta.subscriptions.lastUpdatedAt = existed ? null : new Date().toISOString();
+			// 老版本留下的同身份重复:照读,只记一句警告 —— 拒收会让开机起不来。
+			const duplicates = findIdentityDuplicates(this.subscriptions);
+			if (duplicates.length > 0) {
+				const listed = duplicates.map((d) => describeDuplicate(d, (s) => s.id)).join("；");
+				this.serviceCtx.logger.warn(
+					`[config] subscriptions.json 里同一个人订了不止一条：${listed}。同一个人只能有一条订阅，在订阅页删掉多余的那条`,
+				);
+			}
 		}
 
 		// connections + targets (with one-time migration from the legacy single-file
@@ -1241,6 +1289,7 @@ class NodeConfigStore implements ConfigStore {
 			for (const t of effTargets) assertTargetOwner(t, effConnections);
 			const synced = syncManagedWebhookTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
+			assertNoNewIdentityDuplicate(this.subscriptions, replaced.next);
 
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
 			const writes: Array<[string, unknown]> = [];

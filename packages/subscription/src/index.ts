@@ -36,8 +36,8 @@ export interface SubscriptionStore {
 	/** Return a snapshot of all subscriptions (shallow copy). */
 	list(): Subscription[];
 	/**
-	 * 按身份找订阅(ADR-0021 决策 14):来源与外部 id 两格都相等才算。同一个身份订了几条时取第一条
-	 * (服务端不判重,只有面板挡着)。
+	 * 按身份找订阅(ADR-0021 决策 14):来源与外部 id 两格都相等才算。同一个身份订了几条(老版本留下的
+	 * 遗留重复,见 {@link findIdentityDuplicates})时取第一条。
 	 */
 	findByIdentity(identity: Identity): Subscription | undefined;
 	/** Find a subscription by its stable id; returns undefined if not found. */
@@ -82,6 +82,85 @@ export function diff(prev: Subscription[], next: Subscription[]): SubscriptionOp
 		}
 	}
 	return ops;
+}
+
+/** 认得出订的是谁的最小订阅形状:身份判重只看这两格。 */
+type IdentifiedSubscription = Pick<Subscription, "id" | "identity">;
+
+/** 同一身份底下不止一条的一组订阅。 */
+export interface IdentityDuplicate<T extends IdentifiedSubscription = Subscription> {
+	identity: Identity;
+	/** 这个身份底下的订阅,按列表里的先后。 */
+	subscriptions: T[];
+}
+
+/** 按身份分好的组。 */
+interface IdentityGroups<T> {
+	/** 各组,按第一次出现的先后。每组至少一条。 */
+	groups: T[][];
+	/** 这个身份底下的那组;没有就是 `undefined`。 */
+	get(identity: Identity): T[] | undefined;
+}
+
+/** 按身份分组。两层 map(来源键 → 外部 id),身份不拼成字符串当键(见 docs/agents/subscriptions.md)。 */
+function groupByIdentity<T extends IdentifiedSubscription>(subs: readonly T[]): IdentityGroups<T> {
+	const index = new Map<string, Map<string, T[]>>();
+	const groups: T[][] = [];
+	for (const sub of subs) {
+		const { sourceKey, externalId } = subscriptionIdentityOf(sub);
+		let bySource = index.get(sourceKey);
+		if (!bySource) {
+			bySource = new Map();
+			index.set(sourceKey, bySource);
+		}
+		const group = bySource.get(externalId);
+		if (group) {
+			group.push(sub);
+			continue;
+		}
+		const created = [sub];
+		bySource.set(externalId, created);
+		groups.push(created);
+	}
+	return {
+		groups,
+		get: ({ sourceKey, externalId }) => index.get(sourceKey)?.get(externalId),
+	};
+}
+
+function toDuplicate<T extends IdentifiedSubscription>(group: T[]): IdentityDuplicate<T> {
+	return { identity: { ...subscriptionIdentityOf(group[0] as T) }, subscriptions: group };
+}
+
+/**
+ * 列表里同一身份不止一条的那些。同一身份只能有一条订阅(docs/1.0/data-model.md),这里找出来的是
+ * 老版本留下的遗留重复:开机照读,只记警告。
+ */
+export function findIdentityDuplicates<T extends IdentifiedSubscription>(
+	subs: readonly T[],
+): IdentityDuplicate<T>[] {
+	return groupByIdentity(subs)
+		.groups.filter((g) => g.length > 1)
+		.map(toDuplicate);
+}
+
+/**
+ * 从 `before` 写成 `after` **新增**了哪些重复:某个身份写之后的条数,比「1 与写之前的条数」里大的那个还多。
+ *
+ * 判据跟写之前比、不看整份有没有重复:盘上留着一对遗留重复时,改不相干的订阅、改那一对里的一条、删掉一条
+ * 都照常能存;往那一对上再加第三条才算新增。所有写订阅的路径(新建、保存、恢复备份)都过这一道。
+ */
+export function findNewIdentityDuplicates<T extends IdentifiedSubscription>(
+	before: readonly IdentifiedSubscription[],
+	after: readonly T[],
+): IdentityDuplicate<T>[] {
+	const prior = groupByIdentity(before);
+	return groupByIdentity(after)
+		.groups.filter((g) => {
+			const had = prior.get(subscriptionIdentityOf(g[0] as T))?.length ?? 0;
+			return g.length > Math.max(1, had);
+		})
+		.map(toDuplicate);
 }
 
 /** Factory function producing an in-memory SubscriptionStore. */

@@ -149,3 +149,71 @@ describe("planImport / foldPlan × 订阅一节里的两种来源", () => {
 		expect(folded?.find((s) => s.id === "e1")?.notes).toBe("备份里的备注");
 	});
 });
+
+/**
+ * 恢复先按 id 对、再按身份并入(docs/1.0/data-model.md):备份里一行的 id 本机没有、身份却和本机某条一样,
+ * 就当它是那一条 —— 留本机的 id(统计、历史、锐评都挂在本机的订阅 id 上,备份不带这些),内容用备份的
+ * (和按 id 对上的行一个口径)。本机每条只认领一次;覆盖与合并两种模式都这样并。
+ */
+describe("planImport / foldPlan × 按身份并入", () => {
+	/** 一条 B 站来源的订阅,id 与外部 id 分开给;`notes` 用来认出内容是哪一边的。 */
+	function person(id: string, uid: string, notes?: string): Subscription {
+		return {
+			...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } }),
+			notes,
+		};
+	}
+
+	it.each(["overwrite", "merge"] as const)(
+		"%s:备份里同一个人换了个 id → 并进本机那条:id 留本机的,内容用备份的,本机那条不删",
+		(mode) => {
+			const current = currentWith([person("local", "12345", "本机的备注"), sub("9")]);
+			const plan = planImport(
+				current,
+				{ subscriptions: [person("backup", "12345", "备份里的备注"), sub("9")] },
+				mode,
+			);
+			expect(plan.subscriptions.delete).toEqual([]);
+			const folded = foldPlan(current, plan).subscriptions;
+			expect(folded).toEqual([person("local", "12345", "备份里的备注"), sub("9")]);
+		},
+	);
+
+	it("先按 id 对:id 对上的那条认领了本机那一行,同身份的另一行不再并进来", () => {
+		const current = currentWith([person("local", "12345")]);
+		const plan = planImport(
+			current,
+			{ subscriptions: [person("local", "12345", "按 id 对上"), person("other", "12345")] },
+			"merge",
+		);
+		expect(foldPlan(current, plan).subscriptions?.map((s) => s.id)).toEqual(["local", "other"]);
+	});
+
+	it("本机每条只认领一次:备份里同一个人有两行,只有第一行并进本机那条", () => {
+		const current = currentWith([person("local", "12345")]);
+		const plan = planImport(
+			current,
+			{ subscriptions: [person("b1", "12345"), person("b2", "12345")] },
+			"overwrite",
+		);
+		expect(foldPlan(current, plan).subscriptions?.map((s) => s.id)).toEqual(["local", "b2"]);
+	});
+
+	it("本机留着遗留的一对:备份里那一行并进其中第一条,覆盖模式删掉没认领的那条", () => {
+		const current = currentWith([person("a1", "12345"), person("a2", "12345")]);
+		const plan = planImport(
+			current,
+			{ subscriptions: [person("b", "12345", "备份")] },
+			"overwrite",
+		);
+		expect(plan.subscriptions.delete).toEqual(["a2"]);
+		expect(foldPlan(current, plan).subscriptions).toEqual([person("a1", "12345", "备份")]);
+	});
+
+	it("身份要两格都相等才并:拓展来源同一串外部 id 不算同一个人", () => {
+		const current = currentWith([person("local", "12345")]);
+		const fromExtension = makeExtensionSubscription({ id: "backup", externalId: "12345" });
+		const plan = planImport(current, { subscriptions: [fromExtension] }, "merge");
+		expect(foldPlan(current, plan).subscriptions?.map((s) => s.id)).toEqual(["local", "backup"]);
+	});
+});

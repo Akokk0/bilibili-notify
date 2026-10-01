@@ -9,7 +9,6 @@ import {
 	issuesFromZod,
 	type Subscription,
 	SubscriptionSchema,
-	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
@@ -159,8 +158,8 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 
 	/**
 	 * 新建一条拓展订阅(ADR-0019 决策 9 / 10 / 49 / 50)。**能核的先全核完再落盘**:订阅的形状 →
-	 * 带来的资料(连头像的魔数)→ 它是不是装着的订阅源 → 判重。都过了才 upsert,之后存头像文件、
-	 * 种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败(同 B 站的资料种子)。
+	 * 带来的资料(连头像的魔数)→ 它是不是装着的订阅源;判重在 upsert 里(store 那道闸,B 站来源的也过它)。
+	 * 都过了才存头像文件、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败(同 B 站的资料种子)。
 	 */
 	async function createExtensionSubscription(
 		c: Context,
@@ -205,23 +204,8 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		const refusal = subscriptionSourceRefusal(identity.sourceKey, opts.extensions?.() ?? []);
 		if (refusal) return respondFailure(c, refusal);
 
-		// 身份判重(决策 50):同一个人订两条,等 ④ 按订阅 id 推送时就会推两遍。
-		const duplicate = deps.store
-			.getSubscriptions()
-			.find((s) => sameIdentity(subscriptionIdentityOf(s), identity));
-		if (duplicate) {
-			const name = deps.runtime.subRuntimeStore.get(duplicate.id)?.cachedProfile?.name;
-			return respondFailure(
-				c,
-				fail(
-					"conflict",
-					`拓展「${identity.sourceKey}」名下的「${identity.externalId}」已经订阅过了${name ? `(${name})` : ""}`,
-				),
-			);
-		}
-
 		try {
-			// upsertSubscription validates via Zod internally
+			// 形状由 schema 核、同一个人订第二条(身份判重)由 store 拒 —— 都在写盘那一层,两种来源同一道。
 			await deps.store.upsertSubscription(subBody as never);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
