@@ -326,7 +326,7 @@ function isLegacyTargetFile(rows: readonly unknown[]): boolean {
  * 最老的单文件 `targets.json` 拆成(连接, 目标)。同一平台、同一组连接参数的目标共用一条连接,迁 N 个群
  * 不会冒出 N 条一模一样的 NapCat 连接。
  *
- * 连接的 id 按「第一个用到它的那条老目标」算,确定的:从第 0 代重迁(回退后重迁、开发期抬修订号)拆出来的
+ * 连接的 id 按「第一个用到它的那条老目标」算,确定的:从第 0 代重迁(主人手动重迁、开发期抬修订号)拆出来的
  * 还是同一批 id,摘要守卫也看得见产出变没变。不拿连接参数算 —— 里面有 token 与 secret。
  */
 export function migrateLegacyTargets(raw: readonly unknown[]): {
