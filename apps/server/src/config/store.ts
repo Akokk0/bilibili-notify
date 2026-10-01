@@ -697,11 +697,8 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * Move `defaults.ai.apiKey` out of plaintext globals.json into the encrypted
-	 * SecretStore, then hydrate the in-memory value back so engines/routes see
-	 * it unchanged. One-time lift: an existing plaintext key on disk is migrated
-	 * into the secret bag and scrubbed from globals.json. No-op without a
-	 * SecretStore (legacy behaviour preserved for tests / non-secret callers).
+	 * 读出加密袋,把盘上出现的明文 key 抬进去、抹掉盘上那份,再把袋里的 key 注回内存里的 globals(引擎与路由
+	 * 照旧读 `providers.<id>.apiKey`)。没有 SecretStore 时什么都不做(只有测试走这条)。
 	 */
 	private async hydrateSecrets(): Promise<void> {
 		if (!this.secretStore) return;
@@ -719,14 +716,16 @@ class NodeConfigStore implements ConfigStore {
 			this.serviceCtx.logger.info("[secrets] 已把旧的单把 apiKey 迁进按服务商分桶的密钥袋");
 		}
 
-		// 明文密钥(功能上线前写下的、或用户手改过 globals.json)一并抬进加密袋。
+		// **盘上不留明文**(一直成立的规矩,不是 0.x 兼容):globals.json 落盘时 apiKey 一律抠成空串,所以
+		// 盘上出现非空的 key 就是明文 —— 主人手改写进去的,或 0.x 加密上线前留下的。开机抬进加密袋、抹掉盘上那份。
 		const plaintext = collectAiSecrets(this.globals);
 		const hadPlaintext = Object.keys(plaintext).length > 0;
 		if (hadPlaintext) {
-			// 袋里已有的优先 —— 盘上的明文可能是更早的残留。
+			// 明文优先:每次抬完盘上都会抹掉,所以盘上的明文只可能是之后写进去的,袋里那把才是旧的(主人手改换
+			// key 就是这样)。抬到一半崩了(袋已存、盘上还没抹)时两边是同一把,谁优先都一样。
 			this.secretBag = {
 				...this.secretBag,
-				aiApiKeys: { ...plaintext, ...(this.secretBag.aiApiKeys ?? {}) },
+				aiApiKeys: { ...(this.secretBag.aiApiKeys ?? {}), ...plaintext },
 			};
 			await this.secretStore.save(this.secretBag);
 			this.serviceCtx.logger.info(

@@ -4,14 +4,15 @@
  * 守护契约(SecretStore):
  *   - save→load round-trip;缺文件→{};换 key→{}+warn;落盘是 GCM blob 非明文
  * 守护契约(ConfigStore + secretStore):
- *   - 一次性 lift:磁盘明文 apiKey → getGlobals 仍可读(注水),globals.json 抹掉,secret 文件持有
- *     (0.x 扁平老形状的那一条走迁移器接缝,见 `migration/__tests__/zero-generation-settings.test.ts`)
+ *   - 盘上不留明文:手改写进 globals.json 的 apiKey 开机抬进加密袋、盘上抹掉、内存照用;与袋里同一格冲突时
+ *     明文优先(盘上的只可能是之后写进去的)。0.x 扁平老形状的那一条走迁移器接缝,见
+ *     `migration/__tests__/zero-generation-settings.test.ts`
  *   - patchGlobals 改 apiKey → 新值生效;globals.json 始终无 apiKey;新实例同 key 可重新注水
  *   - 清空 apiKey → bag 清除
  *   - 无 secretStore(legacy)→ apiKey 仍留在 globals.json(未破坏旧路径)
  */
 
-import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
@@ -169,6 +170,53 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const bag = await secret.load();
 		expect(bag.aiApiKeys).toEqual({ custom: "sk-in-old-bag" });
 		expect(bag.aiApiKey).toBeUndefined();
+	});
+
+	/** 主人手改盘上的 globals.json:给 deepseek 那家写一把明文 key。 */
+	const handEditKey = async (key: string) => {
+		const g = await diskGlobals();
+		g.defaults.ai.providers.deepseek.apiKey = key;
+		await writeFile(join(dataDir, ...CONFIG_DIR, "globals.json"), JSON.stringify(g));
+	};
+	/** 建好 deepseek 那一家,袋里放 `key`(空串 = 袋里没有)。 */
+	const seedDeepseek = async (key: string) => {
+		const store = mkStore(mkSecretStore());
+		await store.load();
+		await store.patchGlobals({
+			defaults: {
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { provider: "deepseek", apiKey: key } },
+				},
+			},
+		});
+	};
+
+	it("盘上不留明文:手改写进 globals.json 的 key 开机抬进加密袋,盘上抹掉,内存照用", async () => {
+		await seedDeepseek("");
+		await handEditKey("sk-hand");
+
+		const secret = mkSecretStore();
+		const store = mkStore(secret);
+		await store.load();
+
+		expect(memKey(store)).toBe("sk-hand");
+		expect((await secret.load()).aiApiKeys).toEqual({ deepseek: "sk-hand" });
+		expect(await diskKey("deepseek")).toBe("");
+	});
+
+	it("手改换 key:盘上的明文比袋里那把新,明文优先", async () => {
+		// 每次抬完盘上都会抹掉,所以盘上出现明文只可能是刚写进去的;袋里那把才是旧的。
+		await seedDeepseek("sk-old");
+		await handEditKey("sk-new");
+
+		const secret = mkSecretStore();
+		const store = mkStore(secret);
+		await store.load();
+
+		expect(memKey(store)).toBe("sk-new");
+		expect((await secret.load()).aiApiKeys).toEqual({ deepseek: "sk-new" });
+		expect(await diskKey("deepseek")).toBe("");
 	});
 
 	it("patchGlobals 改某家的 apiKey:新值生效;磁盘无明文;新实例重新注水", async () => {
