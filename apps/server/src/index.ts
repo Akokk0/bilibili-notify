@@ -79,6 +79,7 @@ import {
 	markGenerationActive,
 	selectGeneration,
 	takePendingGeneration,
+	writePendingGeneration,
 } from "./runtime/generations.js";
 import { createLinkParser } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
@@ -1307,6 +1308,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				startedAt: STARTED_AT,
 				version: payloadVersion,
 				restart: () => stopAndExit("restart requested"),
+				notices: noticeStore,
+				requestGeneration: (source) => writePendingGeneration(runtime.hostRoot, { kind: source }),
+				zeroGenerationExists: () => zeroGenerationExists(runtime.hostRoot),
 			},
 		});
 

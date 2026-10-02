@@ -47,6 +47,9 @@ describe("/api/system 挂载", () => {
 				startedAt: "2026-09-10T00:00:00.000Z",
 				version: "0.10.1",
 				restart,
+				notices: { list: async () => [], acknowledge: async () => false },
+				requestGeneration: async () => {},
+				zeroGenerationExists: async () => false,
 			},
 		});
 		expect((await app.request("/api/system/restart", { method: "POST" })).status).toBe(200);

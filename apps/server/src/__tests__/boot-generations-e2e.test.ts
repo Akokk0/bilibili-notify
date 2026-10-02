@@ -453,6 +453,44 @@ describe("数据代接在开机路径上 e2e", () => {
 		expect(await noticesOf(1)).toMatchObject([{ kind: "generation-failed", source: "zero" }]);
 	});
 
+	it("面板这一头真接上了:迁完能读到「迁好了」、标已读;点全新开始 → 写下标记、重启,被拉起来以后是新的一代", async () => {
+		await placeZeroGeneration();
+		const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+		try {
+			handle = await start(supervisedEnv);
+
+			const listed = (await (await fetch(url("/api/system/notices"))).json()) as {
+				notices: { id: string; kind: string }[];
+			};
+			expect(listed.notices).toMatchObject([{ kind: "migrated" }]);
+			const [migrated] = listed.notices;
+			if (!migrated) throw new Error("expected a notice");
+			const acked = await fetch(url(`/api/system/notices/${migrated.id}/acknowledge`), {
+				method: "POST",
+			});
+			expect(((await acked.json()) as { notices: unknown[] }).notices).toEqual([]);
+
+			const res = await fetch(url("/api/system/generations"), {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ source: "empty" }),
+			});
+			expect(res.status).toBe(200);
+			expect(existsSync(join(generationsDir(), "pending.json"))).toBe(true);
+			await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+			// 真关了、端口放掉了:退出是替身,不能拿「第二次开机没撞端口」去倒推。
+			await expect(fetch(url("/api/health"))).rejects.toThrow();
+		} finally {
+			exit.mockRestore();
+		}
+		handle = undefined;
+
+		await bootOnce();
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1", "2"]);
+		expect((await fileOf(2)).source).toEqual({ kind: "empty" });
+	});
+
 	it("启动器判死过比正在跑的新的版本 → 记一条「X 起不来」", async () => {
 		await mkdir(join(dataDir, "versions"), { recursive: true });
 		await writeFile(
