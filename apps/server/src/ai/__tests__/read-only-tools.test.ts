@@ -37,7 +37,7 @@ function makeSub(over: Partial<Omit<Subscription, "identity">> & { uid: string }
 		id: `id-${uid}`,
 		identity: { sourceKey: "bilibili", externalId: uid },
 		enabled: true,
-		groups: [],
+		tagIds: [],
 		routing: routing(),
 		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},

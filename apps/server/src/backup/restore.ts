@@ -3,6 +3,7 @@ import {
 	type GlobalConfig,
 	type PushTarget,
 	type Subscription,
+	type SubscriptionTag,
 	sameIdentity,
 } from "@bilibili-notify/internal";
 
@@ -21,7 +22,8 @@ import {
  *
  * A scope absent from the backup yields no writes for that scope in either mode.
  *
- * 订阅在两种模式下都先按 id 对、再按身份并入(见 {@link adoptLocalIds}):同一个人只能有一条订阅。
+ * 订阅在两种模式下都先按 id 对、再按身份并入(见 {@link adoptLocalIds}):同一个人只能有一条订阅。订阅标签表跟着
+ * 订阅那一节走(ADR-0034),合并时按 id、再按名字并(见 {@link planTags})。
  */
 
 export type ImportMode = "overwrite" | "merge";
@@ -29,6 +31,7 @@ export type ImportMode = "overwrite" | "merge";
 export interface CurrentState {
 	globals: GlobalConfig;
 	subscriptions: Subscription[];
+	subscriptionTags: SubscriptionTag[];
 	connections: Connection[];
 	targets: PushTarget[];
 }
@@ -38,6 +41,7 @@ export interface ImportSections {
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
+	subscriptionTags?: SubscriptionTag[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 }
@@ -48,6 +52,7 @@ export interface FoldedSections {
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
+	subscriptionTags?: SubscriptionTag[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 }
@@ -64,6 +69,8 @@ export interface ImportPlan {
 	/** 覆盖模式下备份带着的各拓展的设置(带来的那几个整份换)。 */
 	setExtensionSettings?: Record<string, unknown>;
 	subscriptions: ScopePlan<Subscription>;
+	/** 备份带着标签表时,恢复后的整张标签表(终态);没带就是 `undefined`,标签表不动。 */
+	subscriptionTags?: SubscriptionTag[];
 	connections: ScopePlan<Connection>;
 	targets: ScopePlan<PushTarget>;
 }
@@ -104,15 +111,64 @@ function adoptLocalIds(
 	});
 }
 
+/**
+ * 订阅标签(ADR-0034):覆盖模式整张用备份的。合并模式和订阅「先按 id 对、再按身份并入」一个思路 —— 先按 id 对
+ * (同一个标签本机改过名,留本机的名字),再按名字对(名字就是主人眼里的这个标签,换成本机的 id),都对不上的接在
+ * 本机那张后面、id 照用备份的(没按 id 对上,本机就没有这个 id)。回终态的标签表,以及「备份里的 id → 落地的 id」。
+ */
+function planTags(
+	current: readonly SubscriptionTag[],
+	incoming: readonly SubscriptionTag[],
+	mode: ImportMode,
+): { tags: SubscriptionTag[]; idMap: Map<string, string> } {
+	if (mode === "overwrite") {
+		return { tags: [...incoming], idMap: new Map(incoming.map((t) => [t.id, t.id])) };
+	}
+	const byId = new Map(current.map((t) => [t.id, t]));
+	const byName = new Map(current.map((t) => [t.name, t]));
+	const tags = [...current];
+	const idMap = new Map<string, string>();
+	for (const tag of incoming) {
+		const local = byId.get(tag.id) ?? byName.get(tag.name);
+		if (local) {
+			idMap.set(tag.id, local.id);
+			continue;
+		}
+		tags.push(tag);
+		idMap.set(tag.id, tag.id);
+		byId.set(tag.id, tag);
+		byName.set(tag.name, tag);
+	}
+	return { tags, idMap };
+}
+
+/** 备份订阅上挂的标签换成落地的 id;几个落到同一个上的只挂一次。 */
+function remapTagIds(
+	subs: readonly Subscription[],
+	idMap: ReadonlyMap<string, string>,
+): Subscription[] {
+	return subs.map((sub) => ({
+		...sub,
+		tagIds: [...new Set(sub.tagIds.map((id) => idMap.get(id) ?? id))],
+	}));
+}
+
 export function planImport(
 	current: CurrentState,
 	incoming: ImportSections,
 	mode: ImportMode,
 ): ImportPlan {
-	const subscriptions =
-		incoming.subscriptions && adoptLocalIds(current.subscriptions, incoming.subscriptions);
+	const tagPlan =
+		incoming.subscriptionTags &&
+		planTags(current.subscriptionTags, incoming.subscriptionTags, mode);
+	const incomingSubs =
+		incoming.subscriptions && tagPlan
+			? remapTagIds(incoming.subscriptions, tagPlan.idMap)
+			: incoming.subscriptions;
+	const subscriptions = incomingSubs && adoptLocalIds(current.subscriptions, incomingSubs);
 	const plan: ImportPlan = {
 		subscriptions: planScope(current.subscriptions, subscriptions, mode),
+		subscriptionTags: tagPlan?.tags,
 		connections: planScope(current.connections, incoming.connections, mode),
 		targets: planScope(current.targets, incoming.targets, mode),
 	};
@@ -162,6 +218,7 @@ export function foldPlan(current: CurrentState, plan: ImportPlan): FoldedSection
 		integrations: plan.setIntegrations,
 		extensionSettings: plan.setExtensionSettings,
 		subscriptions: applyScope(current.subscriptions, plan.subscriptions),
+		subscriptionTags: plan.subscriptionTags,
 		connections: applyScope(current.connections, plan.connections),
 		targets: applyScope(current.targets, plan.targets),
 	};

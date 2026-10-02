@@ -2,6 +2,7 @@ import {
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type Subscription,
+	type SubscriptionTag,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { type CurrentState, foldPlan, planImport } from "../backup/restore.js";
@@ -16,10 +17,11 @@ function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
 }
 
-function currentWith(subs: Subscription[]): CurrentState {
+function currentWith(subs: Subscription[], subscriptionTags: SubscriptionTag[] = []): CurrentState {
 	return {
 		globals: makeDefaultGlobalConfig(),
 		subscriptions: subs,
+		subscriptionTags,
 		connections: [],
 		targets: [],
 	};
@@ -299,5 +301,102 @@ describe("planImport / foldPlan × 按身份并入", () => {
 		const fromExtension = makeExtensionSubscription({ id: "backup", externalId: "12345" });
 		const plan = planImport(current, { subscriptions: [fromExtension] }, "merge");
 		expect(foldPlan(current, plan).subscriptions?.map((s) => s.id)).toEqual(["local", "backup"]);
+	});
+});
+
+describe("planImport / foldPlan × 订阅标签(ADR-0034)", () => {
+	const X = "11111111-1111-4111-8111-111111111111";
+	const Y = "22222222-2222-4222-8222-222222222222";
+	const Z = "33333333-3333-4333-8333-333333333333";
+	const tagged = (uid: string, tagIds: string[]): Subscription => ({ ...sub(uid), tagIds });
+
+	it("备份没带标签表:折出来不碰标签表,订阅上挂的原样", () => {
+		const current = currentWith([], [{ id: X, name: "游戏" }]);
+		const folded = foldPlan(
+			current,
+			planImport(current, { subscriptions: [tagged("1", [X])] }, "merge"),
+		);
+		expect(folded.subscriptionTags).toBeUndefined();
+		expect(folded.subscriptions?.map((s) => s.tagIds)).toEqual([[X]]);
+	});
+
+	it("overwrite:标签表整张用备份的,订阅上挂的原样", () => {
+		const current = currentWith([], [{ id: X, name: "游戏" }]);
+		const tags = [{ id: Y, name: "杂谈" }];
+		const folded = foldPlan(
+			current,
+			planImport(
+				current,
+				{ subscriptions: [tagged("1", [Y])], subscriptionTags: tags },
+				"overwrite",
+			),
+		);
+		expect(folded.subscriptionTags).toEqual(tags);
+		expect(folded.subscriptions?.map((s) => s.tagIds)).toEqual([[Y]]);
+	});
+
+	it("merge 先按 id 对:同一个标签在本机改过名,留本机的名字", () => {
+		const current = currentWith([], [{ id: X, name: "Games" }]);
+		const folded = foldPlan(
+			current,
+			planImport(
+				current,
+				{ subscriptions: [tagged("1", [X])], subscriptionTags: [{ id: X, name: "游戏" }] },
+				"merge",
+			),
+		);
+		expect(folded.subscriptionTags).toEqual([{ id: X, name: "Games" }]);
+		expect(folded.subscriptions?.map((s) => s.tagIds)).toEqual([[X]]);
+	});
+
+	it("merge 再按名字对:换成本机的 id,备份订阅上挂的跟着换", () => {
+		const current = currentWith([], [{ id: X, name: "杂谈" }]);
+		const folded = foldPlan(
+			current,
+			planImport(
+				current,
+				{ subscriptions: [tagged("1", [Y])], subscriptionTags: [{ id: Y, name: "杂谈" }] },
+				"merge",
+			),
+		);
+		expect(folded.subscriptionTags).toEqual([{ id: X, name: "杂谈" }]);
+		expect(folded.subscriptions?.map((s) => s.tagIds)).toEqual([[X]]);
+	});
+
+	it("merge 都对不上:接在本机那张后面,id 照用备份的", () => {
+		const current = currentWith([], [{ id: X, name: "游戏" }]);
+		const folded = foldPlan(
+			current,
+			planImport(
+				current,
+				{ subscriptions: [tagged("1", [Z])], subscriptionTags: [{ id: Z, name: "阿婆主" }] },
+				"merge",
+			),
+		);
+		expect(folded.subscriptionTags).toEqual([
+			{ id: X, name: "游戏" },
+			{ id: Z, name: "阿婆主" },
+		]);
+		expect(folded.subscriptions?.map((s) => s.tagIds)).toEqual([[Z]]);
+	});
+
+	it("merge:备份里两个标签落到本机同一个上,订阅上只挂一次", () => {
+		const current = currentWith([], [{ id: X, name: "游戏" }]);
+		const folded = foldPlan(
+			current,
+			planImport(
+				current,
+				{
+					subscriptions: [tagged("1", [X, Y])],
+					subscriptionTags: [
+						{ id: X, name: "Games" },
+						{ id: Y, name: "游戏" },
+					],
+				},
+				"merge",
+			),
+		);
+		expect(folded.subscriptionTags).toEqual([{ id: X, name: "游戏" }]);
+		expect(folded.subscriptions?.map((s) => s.tagIds)).toEqual([[X]]);
 	});
 });

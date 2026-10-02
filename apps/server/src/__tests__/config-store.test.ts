@@ -31,6 +31,7 @@ import {
 	createConfigStore,
 } from "../config/store.js";
 import { storageWriteGate } from "./support/storage-write-gate.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 // 落盘函数前的闸默认敞开;只有「close 等在途的写」那组用例才 hold(见 support/storage-write-gate.ts)。
 vi.mock("@bilibili-notify/storage", async (importOriginal) => {
@@ -203,7 +204,7 @@ describe("ConfigStore", () => {
 		const subsRaw = await readFile(join(stateDir, "subscriptions.json"), "utf8");
 		const tgtsRaw = await readFile(join(stateDir, "targets.json"), "utf8");
 		expect(JSON.parse(globalsRaw)).toEqual(makeDefaultGlobalConfig());
-		expect(JSON.parse(subsRaw)).toEqual([]);
+		expect(JSON.parse(subsRaw)).toEqual({ tags: [], subscriptions: [] });
 		expect(JSON.parse(tgtsRaw)).toEqual([]);
 		expect(store.getGlobals()).toEqual(makeDefaultGlobalConfig());
 	});
@@ -428,7 +429,7 @@ describe("ConfigStore", () => {
 			ConfigValidationError,
 		);
 		const onDisk = JSON.parse(await readFile(join(stateDir, "subscriptions.json"), "utf8"));
-		expect(onDisk).toEqual([]);
+		expect(onDisk).toEqual({ tags: [], subscriptions: [] });
 	});
 
 	it("emits 'config-changed' exactly once per successful write with correct scope", async () => {
@@ -595,7 +596,7 @@ describe("ConfigStore", () => {
 		sub.routing.dynamic = [target.id];
 		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
-		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
+		await writeFile(join(state2, "subscriptions.json"), subscriptionsFileText([sub]), "utf8");
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
@@ -918,7 +919,7 @@ describe("ConfigStore", () => {
 			JSON.stringify([makeWebhookTarget(connection, { id: legacyId, managedBy: "connection" })]),
 			"utf8",
 		);
-		await writeFile(join(stateA, "subscriptions.json"), JSON.stringify([sub]), "utf8");
+		await writeFile(join(stateA, "subscriptions.json"), subscriptionsFileText([sub]), "utf8");
 		const source = createConfigStore({
 			bootstrap: makeBootstrap(dirA),
 			dataRoot: dirA,
@@ -1133,7 +1134,7 @@ describe("ConfigStore", () => {
 		sub.extras.atAllLive[extra.id] = false;
 		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([primary, extra]), "utf8");
-		await writeFile(join(state2, "subscriptions.json"), JSON.stringify([sub]), "utf8");
+		await writeFile(join(state2, "subscriptions.json"), subscriptionsFileText([sub]), "utf8");
 
 		const store2 = createConfigStore({
 			bootstrap: makeBootstrap(dir2),
@@ -1253,10 +1254,10 @@ describe("ConfigStore.close", () => {
 		await closing;
 		await patching;
 		await expect(replacing).resolves.toEqual(["subscriptions"]);
-		const onDisk = JSON.parse(
-			await readFile(join(stateDir, "subscriptions.json"), "utf8"),
-		) as Array<{ id: string }>;
-		expect(onDisk.map((s) => s.id)).toEqual([sub.id]);
+		const onDisk = JSON.parse(await readFile(join(stateDir, "subscriptions.json"), "utf8")) as {
+			subscriptions: Array<{ id: string }>;
+		};
+		expect(onDisk.subscriptions.map((s) => s.id)).toEqual([sub.id]);
 	});
 
 	it("close 之后的写被拒且不碰盘", async () => {

@@ -137,7 +137,7 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 				}),
 				enabled: false,
 			},
-		].map(legacyBiliRow);
+		].map((sub) => legacyBiliRow(sub));
 		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify(subs));
 
 		// webhook 连接的托管目标 id 是连接 id 算出来的(config/store.ts 的 `managedWebhookTargetId`,那个种子是

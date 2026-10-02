@@ -232,6 +232,38 @@ export const IdentitySchema = z
 	.strict();
 
 /**
+ * 订阅标签(ADR-0034):主人自己建的一份表,订阅只记 id。顺序就是表里的顺序;名字去掉首尾空白后
+ * 不许为空、不许重名(重名的话,打错一个字多出一个分组那种老毛病就换个样子回来了)。
+ */
+export const SubscriptionTagSchema = z
+	.object({
+		id: z.uuid(),
+		name: z.string().trim().min(1, "标签名不能是空的"),
+	})
+	.strict();
+export type SubscriptionTag = z.infer<typeof SubscriptionTagSchema>;
+
+/** 整张标签表:id 与名字都不许重复。 */
+export const SubscriptionTagListSchema = z.array(SubscriptionTagSchema).superRefine((tags, ctx) => {
+	const ids = new Set<string>();
+	const names = new Set<string>();
+	tags.forEach((tag, i) => {
+		if (ids.has(tag.id)) {
+			ctx.addIssue({ code: "custom", path: [i, "id"], message: `标签 id ${tag.id} 重复了` });
+		}
+		if (names.has(tag.name)) {
+			ctx.addIssue({
+				code: "custom",
+				path: [i, "name"],
+				message: `已经有一个叫「${tag.name}」的标签了`,
+			});
+		}
+		ids.add(tag.id);
+		names.add(tag.name);
+	});
+});
+
+/**
  * 一条订阅(ADR-0021 决策 14、15):B 站与拓展同一种形状,盘上同一个文件 `config/subscriptions.json`,行行带
  * `identity`。订的是谁只看 `identity`;来源支不支持某项能力(特别关注、关注同步……)看来源,不看这一行。
  *
@@ -242,7 +274,8 @@ export const SubscriptionSchema = z
 		id: z.uuid(),
 		identity: IdentitySchema,
 		enabled: z.boolean(),
-		groups: z.array(z.string()).default([]),
+		/** 挂的标签,`SubscriptionTag` 的 id(ADR-0034);只许挂标签表里有的,写盘那一层核。 */
+		tagIds: z.array(z.uuid()).default([]),
 		notes: z.string().optional(),
 		routing: SubscriptionRoutingSchema,
 		extras: SubscriptionExtrasSchema.default(emptyExtras),
@@ -275,7 +308,7 @@ export function makeEmptySubscription(opts: {
 		id: opts.id,
 		identity: { ...opts.identity },
 		enabled: true,
-		groups: [],
+		tagIds: [],
 		notes: undefined,
 		routing: emptyRouting,
 		extras: emptyExtras(),

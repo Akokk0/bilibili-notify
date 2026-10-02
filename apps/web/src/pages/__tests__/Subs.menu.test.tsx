@@ -2,8 +2,8 @@
 
 /**
  * Subs 页右键 / 长按快捷菜单的接线集成测试。验证:右键弹菜单;菜单五项各自接到
- * 正确的 api(删除走二次确认后 DELETE、禁用走 PATCH enabled、编辑分组走弹框后
- * PATCH groups、复制 UID 走剪贴板);批量删除也统一走确认框。
+ * 正确的 api(删除走二次确认后 DELETE、禁用走 PATCH enabled、编辑标签走弹框后
+ * PATCH tagIds、就地新建标签先 PUT 整张标签表、复制 UID 走剪贴板);批量删除也统一走确认框。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,7 +14,7 @@ import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import Subs from "../Subs";
 
 vi.mock("../../services/api", () => ({
-	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 	ApiError: class extends Error {},
 }));
 
@@ -39,6 +39,9 @@ function makeSub(uid: string, name: string): Subscription {
 	};
 }
 
+const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };
+const TAGS = [GAME];
+
 const SUB_A = makeSub("111", "UP甲");
 const SUB_B = makeSub("222", "UP乙");
 
@@ -55,7 +58,9 @@ function renderSubs() {
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path.startsWith("/api/subs")) return Promise.resolve([SUB_A, SUB_B]);
+		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subs/tags") return Promise.resolve([...TAGS]);
+		if (path === "/api/subs") return Promise.resolve([SUB_A, SUB_B]);
 		if (path.startsWith("/api/targets")) return Promise.resolve([]);
 		return Promise.resolve([]);
 	});
@@ -112,21 +117,54 @@ describe("Subs 快捷菜单", () => {
 		);
 	});
 
-	it("菜单「编辑分组」→ 弹分组框 → 新建并确定 → PATCH groups", async () => {
+	it("菜单「编辑标签」→ 弹框 → 勾选已有的标签并确定 → PATCH tagIds,不动标签表", async () => {
 		renderSubs();
 		await screen.findByText("UP甲");
 		fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
 
-		fireEvent.click(await screen.findByText("编辑分组"));
+		fireEvent.click(await screen.findByText("编辑标签"));
 		const dialog = await screen.findByRole("dialog");
-		fireEvent.change(within(dialog).getByPlaceholderText("新建分组名"), {
-			target: { value: "重点" },
-		});
-		fireEvent.click(within(dialog).getByText("添加"));
+		fireEvent.click(await within(dialog).findByRole("checkbox", { name: "游戏" }));
 		fireEvent.click(within(dialog).getByText("确定"));
 
 		await waitFor(() =>
-			expect(api.patch).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`, { groups: ["重点"] }),
+			expect(api.patch).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`, { tagIds: [GAME.id] }),
+		);
+		expect(api.put).not.toHaveBeenCalled();
+	});
+
+	it("菜单「编辑标签」→ 就地新建并确定 → 先 PUT 整张表(末尾追加),再 PATCH tagIds 挂上新标签", async () => {
+		// 服务端回存下的那张表;这里就是请求体原样。
+		(api.put as ReturnType<typeof vi.fn>).mockImplementation((_path: string, body: unknown) =>
+			Promise.resolve(body),
+		);
+		renderSubs();
+		await screen.findByText("UP甲");
+		fireEvent.contextMenu(screen.getByText("UP甲"), { clientX: 100, clientY: 100 });
+
+		fireEvent.click(await screen.findByText("编辑标签"));
+		const dialog = await screen.findByRole("dialog");
+		// 等标签表读到(读到之前不许新建)。
+		await within(dialog).findByRole("checkbox", { name: "游戏" });
+		fireEvent.change(within(dialog).getByPlaceholderText("新建标签名"), {
+			target: { value: "重点" },
+		});
+		fireEvent.click(within(dialog).getByText("添加"));
+		await within(dialog).findByRole("checkbox", { name: "重点" });
+		fireEvent.click(within(dialog).getByText("确定"));
+
+		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+		const put = api.put as ReturnType<typeof vi.fn>;
+		expect(put).toHaveBeenCalledTimes(1);
+		const [path, table] = put.mock.calls[0] as [string, Array<{ id: string; name: string }>];
+		expect(path).toBe("/api/subs/tags");
+		expect(table).toHaveLength(2);
+		expect(table[0]).toEqual(GAME);
+		expect(table[1].name).toBe("重点");
+		expect(api.patch).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`, { tagIds: [table[1].id] });
+		// 先落标签表、再挂到订阅上:订阅上只许挂表里有的 id,次序反了会被服务端 400。
+		expect(put.mock.invocationCallOrder[0]).toBeLessThan(
+			(api.patch as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
 		);
 	});
 

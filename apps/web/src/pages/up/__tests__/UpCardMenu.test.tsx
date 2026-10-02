@@ -20,7 +20,7 @@ function baseProps(overrides: Partial<UpCardMenuProps> = {}): UpCardMenuProps {
 		onEdit: vi.fn(),
 		onToggleEnabled: vi.fn(),
 		onCopyUid: vi.fn(),
-		onAddToGroup: vi.fn(),
+		onEditTags: vi.fn(),
 		onDelete: vi.fn(),
 		...overrides,
 	};
@@ -33,8 +33,21 @@ describe("UpCardMenu", () => {
 		expect(screen.getByText("编辑详情")).toBeTruthy();
 		expect(screen.getByText("禁用订阅")).toBeTruthy();
 		expect(screen.getByText("复制 UID")).toBeTruthy();
-		expect(screen.getByText("编辑分组")).toBeTruthy();
+		expect(screen.getByText("编辑标签")).toBeTruthy();
 		expect(screen.getByText("删除订阅")).toBeTruthy();
+		// ADR-0034:分组改叫标签,旧文案不许残留。
+		expect(screen.queryByText("编辑分组")).toBeNull();
+	});
+
+	it("点「编辑标签」→ 触发 onEditTags 并请求关闭", () => {
+		const onEditTags = vi.fn();
+		const onClose = vi.fn();
+		render(<UpCardMenu {...baseProps({ onEditTags, onClose })} />);
+
+		fireEvent.click(screen.getByText("编辑标签"));
+
+		expect(onEditTags).toHaveBeenCalledTimes(1);
+		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
 	it("已禁用:开关项文案为「启用订阅」", () => {

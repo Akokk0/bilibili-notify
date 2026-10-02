@@ -79,7 +79,9 @@ beforeEach(() => {
 	subs = [BILI, extSub()];
 	events = ["post"];
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url.startsWith("/api/subs")) return Promise.resolve(subs);
+		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (url === "/api/subs/tags") return Promise.resolve([]);
+		if (url === "/api/subs") return Promise.resolve(subs);
 		if (url === "/api/ext") return Promise.resolve({ extensions: [source(events)] });
 		return Promise.resolve(globals());
 	});

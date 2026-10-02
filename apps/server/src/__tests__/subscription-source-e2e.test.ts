@@ -21,6 +21,7 @@ import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 const FIXTURE_ID = "sub-probe";
 /** 别的拓展名下的一条 —— 它不该出现在 fixture 读到的名单里。那个拓展装都没装,不影响。 */
@@ -140,7 +141,7 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 
 		await writeFile(
 			join(gen, ...CONFIG_DIR, "subscriptions.json"),
-			JSON.stringify([ENABLED_ROW, DISABLED_ROW, FOREIGN_ROW]),
+			subscriptionsFileText([ENABLED_ROW, DISABLED_ROW, FOREIGN_ROW]),
 		);
 
 		port = await findFreePort();

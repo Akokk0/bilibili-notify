@@ -28,6 +28,7 @@ import type {
 	Subscription,
 	SubscriptionReportKind,
 	SubscriptionState,
+	SubscriptionTag,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
@@ -48,6 +49,8 @@ export type {
 	HistoryMessageRole,
 	PushKind,
 	PushStatus,
+	// `/api/subs/tags` 的一格(ADR-0034):`GET` 回整张、`PUT` 收整张。
+	SubscriptionTag,
 };
 
 // ---- HTTP 非 2xx 的错误体(ADR-0026 决策 6)---------------------------------------

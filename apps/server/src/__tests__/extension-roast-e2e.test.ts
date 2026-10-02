@@ -21,6 +21,7 @@ import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 const prompts = vi.hoisted(() => [] as string[]);
 
@@ -116,7 +117,7 @@ describe("拓展订阅的锐评 e2e:两条拓展订阅进同一张榜,平台列�
 		await installRepoExtensionInto(dataDir, FAKE, "@bilibili-notify/extension-fake-source");
 		await writeFile(
 			join(gen, ...CONFIG_DIR, "subscriptions.json"),
-			JSON.stringify([
+			subscriptionsFileText([
 				makeExtensionSubscription({ id: A, extensionId: FAKE, externalId: "ext-a" }),
 				makeExtensionSubscription({ id: B, extensionId: FAKE, externalId: "ext-b" }),
 			]),

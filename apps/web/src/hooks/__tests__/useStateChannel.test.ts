@@ -2,7 +2,7 @@
  * 单元测试 — `handleStateEnvelope` 纯函数(WS `state` 频道 hydrate + config-changed)。
  *
  * 守护契约:
- *   - hydrate → 同步 invalidate ["globals"] / ["subscriptions"] / ["targets"]
+ *   - hydrate → 同步 invalidate 每一张会被服务端改的表(含订阅标签表 ["subs-tags"])
  *   - config-changed scope=globals       → invalidate ["globals"] 与拓展表 ["extensions"](不碰各拓展的设置)
  *   - config-changed scope=integration-settings → invalidate ["globals"](各集成的设置挂在 /api/globals 下发的那一份里)
  *     与各拓展的设置(拓展的设置各在自己的文件,改了发这一档);不碰拓展表
@@ -10,7 +10,7 @@
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
  *   - extension-report-problems-changed → 仅拓展表(上报问题框住在那一行上)
  *   - subscription-profiles-changed     → 仅 invalidate ["subscriptions"](拓展报的资料落盘了)
- *   - config-changed scope=subscriptions → 仅 invalidate ["subscriptions"]
+ *   - config-changed scope=subscriptions → invalidate ["subscriptions"] 与 ["subs-tags"](标签表与订阅同一档)
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
  *   - config-changed scope=secrets       → 一律不动(前端无对应缓存)
  *   - 非 state 频道帧 silent-drop
@@ -69,6 +69,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			new Set([
 				"globals",
 				"subscriptions",
+				"subs-tags",
 				"targets",
 				"connections",
 				"extensions",
@@ -210,12 +211,26 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		expect(sc.qc.getQueryState(["extensions"])?.isInvalidated).toBe(false);
 	});
 
-	it("config-changed scope=subscriptions:仅 invalidate [subscriptions]", () => {
+	/**
+	 * 🔴 标签表与订阅**同一个 scope**(ADR-0034):服务端 PUT 标签表删掉某个标签时,所有订阅上的这个 id
+	 * 在同一次写里被去掉,发的就是 `subscriptions` 这一档。只失效订阅的话,别的标签页删了标签,这一页
+	 * 的筛选胶囊还停在旧表上;只失效标签表的话,卡片角标 / 计数还认着已经被去掉的 id。
+	 */
+	it("config-changed scope=subscriptions:invalidate [subscriptions] 与 [subs-tags],不碰别的", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "subscriptions" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"], ["subs-tags"]]);
+	});
+
+	it("config-changed scope=subscriptions:标签表那一口真的过期了", () => {
+		sc.qc.setQueryData(["subs-tags"], [{ id: "t1", name: "重点" }]);
+		handleStateEnvelope(
+			env({ type: "state", event: "config-changed", data: { scope: "subscriptions" } }),
+			sc.qc,
+		);
+		expect(sc.qc.getQueryState(["subs-tags"])?.isInvalidated).toBe(true);
 	});
 
 	it("config-changed scope=targets:仅 invalidate [targets]", () => {

@@ -71,6 +71,8 @@ const ZERO_FILES: Record<string, string> = {
 		{
 			id: "33333333-3333-4333-8333-333333333333",
 			uid: "12345",
+			// 0.x 的分组(一串名字)→ 标签表 + tagIds(ADR-0034)
+			groups: ["游戏", " 杂谈 "],
 			routing: { liveEnd: [], wordcloud: ["22222222-2222-4222-8222-222222222222"] },
 			atAll: { live: { "22222222-2222-4222-8222-222222222222": true } },
 		},
@@ -466,8 +468,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 14,
-			output: "04bdcb9974f65414a1504bde0dfe30e02447680fc555899a6892375c8d79d967",
+			revision: 15,
+			output: "e284bceae41c6f167aa906e2622a155cd57b5eed8b522b0fed53e140873de098",
 		});
 	});
 });

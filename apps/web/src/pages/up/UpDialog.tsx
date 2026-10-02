@@ -25,6 +25,7 @@ import {
 	PUSH_EXTRAS,
 	type PushTarget,
 	type Subscription,
+	type SubscriptionTag,
 	subscriptionIdentityOf,
 } from "../../types/domain";
 import {
@@ -39,6 +40,8 @@ import {
 	type SubscriptionPlatform,
 	visibleFeaturesOf,
 } from "./subscription-source";
+import { TagEditDialog } from "./TagEditDialog";
+import { resolveTagNames } from "./tag-edit";
 
 type FeatureGroup = {
 	label: string;
@@ -162,6 +165,11 @@ export interface UpDialogProps {
 	 * B 站订阅不看它。
 	 */
 	platform?: SubscriptionPlatform;
+	/**
+	 * 标签表(ADR-0034):「基础 → 标签」那一行按 id 查名字,点开的挑标签弹框也吃它。`undefined` = 还没读到
+	 * (此时弹框不许新建);不给等同没读到。
+	 */
+	tags?: ReadonlyArray<SubscriptionTag>;
 }
 
 /**
@@ -251,6 +259,7 @@ export function UpDialog({
 	saving,
 	focusSection,
 	platform,
+	tags,
 }: UpDialogProps) {
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
@@ -262,6 +271,8 @@ export function UpDialog({
 	const [showPicker, setShowPicker] = useState(false);
 	// dirty 关闭时弹自定义「丢弃确认」对话框,替代浏览器原生 window.confirm。
 	const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+	// 挑标签的弹框开着(叠在本弹窗上)。
+	const [editingTags, setEditingTags] = useState(false);
 
 	useEffect(() => {
 		setDraft(sub);
@@ -306,6 +317,7 @@ export function UpDialog({
 	const ext = isBili ? undefined : platform;
 	const visibleFeatures = visibleFeaturesOf(draft, ext);
 	const labelOf: FeatureLabelOf = (k) => featureLabelOf(k, ext);
+	const tagNames = resolveTagNames(draft.tagIds, tags ?? []);
 	const featureGroups = featureGroupsFor(draft, visibleFeatures, labelOf);
 	const extrasFor = (feature: FeatureKey): ExtraKey[] =>
 		isBili ? extrasUnder(feature) : extrasUnder(feature).filter((k) => !BILI_ONLY_EXTRAS.has(k));
@@ -314,8 +326,9 @@ export function UpDialog({
 	const dirty = mode === "create" || (sub ? stableStr(sub) !== stableStr(draft) : false);
 
 	function requestClose(): void {
-		// 确认弹窗已开 → 交给它处理(ESC / 点遮罩),避免本函数重复触发。
-		if (confirmingDiscard) return;
+		// 确认弹窗 / 挑标签弹框已开 → 交给它处理(ESC / 点遮罩),避免本函数重复触发
+		// (ModalShell 的 ESC 挂在 window 上,叠着的两层会同时收到)。
+		if (confirmingDiscard || editingTags) return;
 		if (dirty) {
 			setConfirmingDiscard(true);
 			return;
@@ -331,12 +344,8 @@ export function UpDialog({
 		setDraft((d) => (d ? { ...d, notes: value || undefined } : d));
 	}
 
-	function setGroups(value: string): void {
-		const parts = value
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean);
-		setDraft((d) => (d ? { ...d, groups: parts } : d));
+	function setTagIds(next: string[]): void {
+		setDraft((d) => (d ? { ...d, tagIds: next } : d));
 	}
 
 	/**
@@ -606,13 +615,28 @@ export function UpDialog({
 						<BasicRow label="启用订阅" sub="关闭后整体停止接收推送">
 							<Toggle value={draft.enabled} onChange={setEnabled} size="sm" />
 						</BasicRow>
-						<BasicRow label="分组" sub="多个分组以英文逗号分隔">
-							<TInput
-								ariaLabel="分组"
-								width={160}
-								value={draft.groups.join(",")}
-								onChange={setGroups}
-							/>
+						<BasicRow label="标签">
+							<div className="flex min-w-0 items-center justify-end gap-2">
+								<div className="flex min-w-0 flex-wrap justify-end gap-1">
+									{tagNames.length === 0 ? (
+										<span className="text-bn-xs text-bn-text-secondary">无标签</span>
+									) : (
+										tagNames.map((name) => (
+											<Pill key={name} size="sm" subtle color="var(--color-bn-inactive)">
+												{name}
+											</Pill>
+										))
+									)}
+								</div>
+								<Btn
+									variant="outline"
+									size="sm"
+									aria-label="编辑标签"
+									onClick={() => setEditingTags(true)}
+								>
+									编辑
+								</Btn>
+							</div>
 						</BasicRow>
 						<BasicRow label="备注">
 							<TInput ariaLabel="备注" width={160} value={draft.notes ?? ""} onChange={setNotes} />
@@ -805,6 +829,17 @@ export function UpDialog({
 					</Btn>
 				</div>
 			</div>
+			{editingTags ? (
+				<TagEditDialog
+					tags={tags}
+					current={draft.tagIds}
+					onConfirm={(next) => {
+						setTagIds(next);
+						setEditingTags(false);
+					}}
+					onCancel={() => setEditingTags(false)}
+				/>
+			) : null}
 			{confirmingDiscard ? (
 				<ConfirmDialog
 					title="丢弃未保存的修改?"

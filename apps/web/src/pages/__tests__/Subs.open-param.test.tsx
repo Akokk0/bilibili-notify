@@ -68,7 +68,9 @@ beforeEach(() => {
 		scrolled.push(this);
 	};
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path.startsWith("/api/subs")) return Promise.resolve([SUB_A, SUB_B]);
+		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subs/tags") return Promise.resolve([]);
+		if (path === "/api/subs") return Promise.resolve([SUB_A, SUB_B]);
 		return Promise.resolve([]);
 	});
 });

@@ -5,6 +5,7 @@
  * `state/extension-subscriptions.json`(拓展,`kind: "extension"` + `extensionId` + `externalId`)。迁移器
  * 把两份各自迁成 0.x 最新的形状(推送特性的老形状归 `./zero-generation-features.test.ts`),再合成新代里
  * 的一个文件:**B 站的在前、拓展的在后**,每行 `{ id, identity, ...其余 }`;拓展那份只作输入、自己不进新代。
+ * 新代里的文件是 `{ tags, subscriptions }`:0.x 每行的分组(一串名字 `groups`)换成标签表与 `tagIds`(ADR-0034)。
  *
  * 接缝是「第 0 代 → `migrateZeroGeneration` → 读新代里的文件 / 在新代上开配置仓」。拓展那份读不懂就抛
  * (原样留着的话配置仓看不见它,拓展订阅会悄悄全丢);B 站那份读不懂照旧原样留着、由配置仓开机时报出来。
@@ -37,17 +38,38 @@ const bili = (
 	uid: string,
 	over: Partial<Parameters<typeof makeEmptySubscription>[0]> = {},
 	name?: string,
+	groups: string[] = [],
 ) =>
-	legacyBiliRow({
-		...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } }),
-		...over,
-		...named(name),
-	} as never);
-const ext = (id: string, extensionId: string, externalId: string, name?: string) =>
-	legacyExtensionRow({
-		...makeExtensionSubscription({ id, extensionId, externalId }),
-		...named(name),
-	} as never);
+	legacyBiliRow(
+		{
+			...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } }),
+			...over,
+			...named(name),
+		} as never,
+		groups,
+	);
+const ext = (
+	id: string,
+	extensionId: string,
+	externalId: string,
+	name?: string,
+	groups: string[] = [],
+) =>
+	legacyExtensionRow(
+		{
+			...makeExtensionSubscription({ id, extensionId, externalId }),
+			...named(name),
+		} as never,
+		groups,
+	);
+
+/** 新代里的订阅文件:标签表 + 订阅(ADR-0034)。 */
+interface NewFile<R = Row> {
+	tags: Array<{ id: string; name: string }>;
+	subscriptions: R[];
+}
+const readRows = async <R = Row>(): Promise<R[]> =>
+	(await sandbox.readConfig<NewFile<R>>("subscriptions.json")).subscriptions;
 
 /** 老键:合出来的行上一个都不许留。`name` 是退役的别名,也丢。 */
 const OLD_KEYS = ["kind", "uid", "extensionId", "externalId", "name"] as const;
@@ -72,8 +94,7 @@ describe("两份合成一个文件", () => {
 
 		await sandbox.migrate();
 
-		const rows =
-			await sandbox.readConfig<Array<{ id: string; identity: unknown }>>("subscriptions.json");
+		const rows = await readRows<{ id: string; identity: unknown }>();
 		// 钉的是顺序、不是集合:谁在前谁在后调换了就红。
 		expect(rows.map((r) => r.id)).toEqual([B1, B2, E1, E2]);
 		expect(rows.map((r) => r.identity)).toEqual([
@@ -89,7 +110,7 @@ describe("两份合成一个文件", () => {
 
 		await sandbox.migrate();
 
-		const rows = await sandbox.readConfig<Row[]>("subscriptions.json");
+		const rows = await readRows();
 		// 摆进去的确实带着别名(B 站与拓展各一行),下面那句「不许留」才不是空话。
 		expect([...biliRows(), ...extRows()].filter((r) => "name" in r)).toHaveLength(2);
 		for (const row of rows) {
@@ -97,9 +118,12 @@ describe("两份合成一个文件", () => {
 			for (const key of OLD_KEYS) expect(row, `${row.id} 上还留着 ${key}`).not.toHaveProperty(key);
 		}
 		// 别的格:路由、覆盖、锐评……与摆进去的一模一样(摆进去的就是最新形状,没有要迁的)。
+		// 0.x 的 `groups` 在原位换成 `tagIds`(这几行没有分组,所以是空的),见下面「分组换成标签」。
 		const strip = (row: Row) => {
 			const { uid: _u, kind: _k, extensionId: _e, externalId: _x, name: _n, ...rest } = row;
-			return rest;
+			return Object.fromEntries(
+				Object.entries(rest).map(([k, v]) => (k === "groups" ? ["tagIds", []] : [k, v])),
+			);
 		};
 		const expected = [...biliRows(), ...extRows()].map(strip);
 		expect(rows.map(({ identity: _identity, ...rest }) => rest)).toEqual(expected);
@@ -142,13 +166,105 @@ describe("两份合成一个文件", () => {
 	});
 });
 
+describe("0.x 的分组换成标签(ADR-0034)", () => {
+	const GAME = " 游戏 ";
+	async function placeGrouped(): Promise<void> {
+		await sandbox.placeZeroText(
+			ZERO_BILI,
+			JSON.stringify([
+				bili(B1, "101", {}, undefined, [GAME, "杂谈", ""]),
+				bili(B2, "102", {}, undefined, ["杂谈", "游戏", "游戏"]),
+			]),
+		);
+		await sandbox.placeZeroText(
+			ZERO_EXT,
+			JSON.stringify([
+				ext(E1, "douyin", "sec-a", undefined, ["阿婆主"]),
+				ext(E2, "kuaishou", "sec-b"),
+			]),
+		);
+	}
+
+	it("标签表:去掉首尾空白、丢掉空的、同名只留一个,按中文排序", async () => {
+		await placeGrouped();
+
+		await sandbox.migrate();
+
+		const file = await sandbox.readConfig<NewFile>("subscriptions.json");
+		expect(file.tags.map((t) => t.name)).toEqual(["阿婆主", "游戏", "杂谈"]);
+		for (const t of file.tags)
+			expect(t.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+	});
+
+	it("每行的 tagIds 按行里的顺序对上标签,行内同名只挂一次;groups 一行都不留", async () => {
+		await placeGrouped();
+
+		await sandbox.migrate();
+
+		const file = await sandbox.readConfig<NewFile>("subscriptions.json");
+		const idOf = (name: string) => file.tags.find((t) => t.name === name)?.id;
+		expect(file.subscriptions.map((r) => r.tagIds)).toEqual([
+			[idOf("游戏"), idOf("杂谈")],
+			[idOf("杂谈"), idOf("游戏")],
+			[idOf("阿婆主")],
+			[],
+		]);
+		for (const row of file.subscriptions) expect(row).not.toHaveProperty("groups");
+	});
+
+	it("标签的 id 迁两遍一样(重迁拆出同一批 id,订阅上挂的才对得上)", async () => {
+		await placeGrouped();
+
+		await sandbox.migrate();
+		const first = (await sandbox.readConfig<NewFile>("subscriptions.json")).tags;
+		const again = join(sandbox.target, "..", "generation-again");
+		await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: again });
+		const second = JSON.parse(
+			await readFile(join(again, ...CONFIG_DIR, "subscriptions.json"), "utf8"),
+		) as NewFile;
+
+		expect(second.tags).toEqual(first);
+	});
+
+	it("名字里带中文逗号的照原样成一个标签,不拆(主人 10-02 定)", async () => {
+		// 0.x 订阅详情那个文本框每敲一个字就按英文逗号拆开再拼回去,英文逗号敲不进去,写不出多个分组;
+		// 名字里的「，」是主人有意起的。
+		await sandbox.placeZeroText(
+			ZERO_BILI,
+			JSON.stringify([bili(B1, "101", {}, undefined, ["家人，同事"])]),
+		);
+
+		await sandbox.migrate();
+
+		const file = await sandbox.readConfig<NewFile>("subscriptions.json");
+		expect(file.tags.map((t) => t.name)).toEqual(["家人，同事"]);
+		expect(file.subscriptions[0]?.tagIds).toEqual([file.tags[0]?.id]);
+	});
+
+	it("配置仓开机读得进:标签表与各行挂的标签原样", async () => {
+		await placeGrouped();
+
+		const store = await sandbox.migrateAndLoad();
+
+		const tags = store.getSubscriptionTags();
+		expect(tags.map((t) => t.name)).toEqual(["阿婆主", "游戏", "杂谈"]);
+		const nameOf = (id: string) => tags.find((t) => t.id === id)?.name;
+		expect(store.getSubscriptions().map((s) => s.tagIds.map(nameOf))).toEqual([
+			["游戏", "杂谈"],
+			["杂谈", "游戏"],
+			["阿婆主"],
+			[],
+		]);
+	});
+});
+
 describe("只有一份的时候", () => {
 	it("只有拓展那份(B 站那份不存在)也合得出来,新代里的订阅文件就是它们", async () => {
 		await sandbox.placeZero(ZERO_EXT, [ext(E1, "douyin", "sec-a"), ext(E2, "kuaishou", "sec-b")]);
 
 		const report = await sandbox.migrate();
 
-		const rows = await sandbox.readConfig<Row[]>("subscriptions.json");
+		const rows = await readRows();
 		expect(rows.map((r) => r.id)).toEqual([E1, E2]);
 		expect(rows.map((r) => r.identity)).toEqual([
 			{ sourceKey: "douyin", externalId: "sec-a" },
@@ -164,7 +280,7 @@ describe("只有一份的时候", () => {
 
 		await sandbox.migrate();
 
-		expect(await sandbox.readConfig<Row[]>("subscriptions.json")).toEqual([
+		expect(await readRows()).toEqual([
 			expect.objectContaining({ id: B1, identity: { sourceKey: "bilibili", externalId: "101" } }),
 		]);
 		await expect(stat(sandbox.configPath("extension-subscriptions.json"))).rejects.toMatchObject({
@@ -178,7 +294,7 @@ describe("只有一份的时候", () => {
 
 		await sandbox.migrate();
 
-		expect((await sandbox.readConfig<Row[]>("subscriptions.json")).map((r) => r.id)).toEqual([B1]);
+		expect((await readRows()).map((r) => r.id)).toEqual([B1]);
 	});
 
 	it("两份都没有 → 什么都不写;配置仓开机当空表", async () => {
@@ -224,7 +340,7 @@ describe("读不懂的那几种", () => {
 
 		await sandbox.migrate();
 
-		const rows = await sandbox.readConfig<Row[]>("subscriptions.json");
+		const rows = await readRows();
 		expect(rows[1]).toEqual(odd);
 		await expect(sandbox.load()).rejects.toBeInstanceOf(ConfigValidationError);
 	});

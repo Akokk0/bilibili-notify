@@ -31,7 +31,6 @@ export interface EffectiveSubscription {
 	/** 订的是谁(ADR-0021 决策 14)。 */
 	identity: Identity;
 	enabled: boolean;
-	groups: string[];
 	notes: string | undefined;
 	routing: SubscriptionRouting;
 	/** 附加项的 per-目标 三态表(原样带过来,没有可合并的上一层)。 */
@@ -163,7 +162,6 @@ function resolveCommon(
 	return {
 		identity: { ...sub.identity },
 		enabled: sub.enabled,
-		groups: sub.groups,
 		notes: sub.notes,
 		routing: sub.routing,
 		extras: sub.extras,

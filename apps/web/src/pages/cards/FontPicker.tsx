@@ -62,7 +62,7 @@ function Row({
 			// 同 sidebar 会话行:描边与底色都在这一层,里面那个 button 只是可点区域。
 			data-bn={active ? "option option-active" : "option"}
 			// 选中态整句吃 SELECTED_LANGUAGE(border 宽度随句子走,所以闲置分支自带)——
-			// 此前是自配的 bg-bn-pink/8 纱,配方与 Subs 分组胶囊那句定案各漂各的。
+			// 此前是自配的 bg-bn-pink/8 纱,配方与 Subs 标签胶囊那句定案各漂各的。
 			className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition ${
 				active
 					? SELECTED_LANGUAGE

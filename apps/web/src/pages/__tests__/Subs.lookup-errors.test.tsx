@@ -49,7 +49,9 @@ function failLookupsWith(error: Error): void {
 		if (path.startsWith("/api/subs/lookup") || path.startsWith("/api/subs/search")) {
 			return Promise.reject(error);
 		}
-		if (path.startsWith("/api/subs")) return Promise.resolve([BILI]);
+		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subs/tags") return Promise.resolve([]);
+		if (path === "/api/subs") return Promise.resolve([BILI]);
 		if (path === "/api/ext") return Promise.resolve({ extensions: [] });
 		return Promise.resolve([]);
 	});

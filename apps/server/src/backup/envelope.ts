@@ -1,4 +1,10 @@
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	GlobalConfig,
+	PushTarget,
+	Subscription,
+	SubscriptionTag,
+} from "@bilibili-notify/internal";
 import type { EncryptedSecrets } from "./crypto.js";
 import { BackupRejectedError } from "./rejected-error.js";
 
@@ -41,6 +47,8 @@ export interface BackupSections {
 	extensionSettings?: Record<string, unknown>;
 	/** 订阅:B 站与拓展同一节,行行带 `identity`(ADR-0021 决策 15)。 */
 	subscriptions?: Subscription[];
+	/** 订阅标签表(ADR-0034):跟订阅同一个勾选、同进同出;订阅上挂的 `tagIds` 指的就是它。 */
+	subscriptionTags?: SubscriptionTag[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 }

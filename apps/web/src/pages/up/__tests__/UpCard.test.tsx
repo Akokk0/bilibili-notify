@@ -93,8 +93,68 @@ describe("UpCard 未关注警告", () => {
 });
 
 /**
+ * 卡片角标(ADR-0034):写**第一个标签的名字**,名字按 id 到标签表里查;没挂标签就什么都不写 —— 不再写
+ * 「默认」。订阅上只记 id,所以角标不会因为标签改名而过期。
+ */
+const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };
+const CHAT = { id: "22222222-2222-4222-8222-222222222222", name: "杂谈" };
+
+describe("UpCard 标签角标", () => {
+	it("挂了标签 → 写第一个标签的名字(按订阅上 id 的顺序,不是表的顺序),不写第二个", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			tagIds: [CHAT.id, GAME.id],
+		};
+		const { getByText, queryByText } = render(<UpCard {...props({ sub, tags: [GAME, CHAT] })} />);
+
+		expect(getByText("标签：").textContent).toBe("标签：杂谈");
+		expect(queryByText("游戏")).toBeNull();
+	});
+
+	it("没挂标签 → 什么都不写:没有「标签:」,更没有「默认」", () => {
+		const { queryByText, container } = render(<UpCard {...props({ tags: [GAME, CHAT] })} />);
+
+		expect(queryByText(/标签：/)).toBeNull();
+		expect(container.textContent).not.toContain("默认");
+		// 旧文案不许残留。
+		expect(container.textContent).not.toContain("分组");
+	});
+
+	it("没挂标签时「更新于」不带悬空的分隔点", () => {
+		const { container } = render(<UpCard {...props({ tags: [GAME] })} />);
+
+		expect(container.textContent).toContain("更新于");
+		expect(container.textContent).not.toContain("· 更新于");
+	});
+
+	it("挂了标签时「更新于」前有分隔点", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			tagIds: [GAME.id],
+		};
+		const { container } = render(<UpCard {...props({ sub, tags: [GAME] })} />);
+
+		expect(container.textContent).toContain("标签：游戏· 更新于");
+	});
+
+	it("标签表没读到 / 表里查不到那个 id → 当没挂,什么都不写(两张表各自重取,一时对不上不许崩)", () => {
+		const sub = {
+			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
+			tagIds: [GAME.id],
+		};
+
+		const noTable = render(<UpCard {...props({ sub })} />);
+		expect(noTable.queryByText(/标签：/)).toBeNull();
+		noTable.unmount();
+
+		const stale = render(<UpCard {...props({ sub, tags: [CHAT] })} />);
+		expect(stale.queryByText(/标签：/)).toBeNull();
+	});
+});
+
+/**
  * grid 同一行的高度由**最高的那张卡**决定。UP 卡从前没有自己的最小高度,一直是
- * 末尾那张「添加 UP 主」卡(min-h-55)在替整行撑着 —— 于是一切到分组筛选(添加卡
+ * 末尾那张「添加 UP 主」卡(min-h-55)在替整行撑着 —— 于是一切到标签筛选(添加卡
  * 按设计不出现),整排 UP 卡当场矮 21px。真机实测 220 → 199(2026-08-21 主人指出)。
  */
 describe("UpCard 的高度不靠邻居撑着", () => {

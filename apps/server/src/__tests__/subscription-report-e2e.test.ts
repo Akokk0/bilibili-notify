@@ -20,6 +20,7 @@ import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 /** bus 上收到的每一条 `subscription-reported`。 */
 const heard = vi.hoisted(() => [] as SubscriptionReportDelivery[]);
@@ -188,7 +189,7 @@ describe("订阅源上报 e2e:拓展报的,经 ctx 与 index.ts 的接线到了 
 
 		await writeFile(
 			join(gen, ...CONFIG_DIR, "subscriptions.json"),
-			JSON.stringify([ON_A, ON_B, OFF, FOREIGN]),
+			subscriptionsFileText([ON_A, ON_B, OFF, FOREIGN]),
 		);
 
 		port = await findFreePort();

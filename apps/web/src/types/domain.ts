@@ -12,7 +12,7 @@
  * (messageLayout 例外:per-UP 是「整份覆盖」,Override = 全量)。
  */
 
-import type { ExtensionBotView, SubscriptionDTO } from "@bilibili-notify/contract";
+import type { ExtensionBotView, SubscriptionDTO, SubscriptionTag } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	ConnectionPlatform,
@@ -48,7 +48,7 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal/constants";
 
-export type { ExtraKey, FeatureKey, Identity, SourceKey };
+export type { ExtraKey, FeatureKey, Identity, SourceKey, SubscriptionTag };
 export {
 	BILIBILI_SOURCE_KEY,
 	countsAsDelivery,
@@ -243,7 +243,7 @@ export function makeEmptySubscription(identity: Identity): Subscription {
 		id: newId(),
 		identity: { ...identity },
 		enabled: true,
-		groups: [],
+		tagIds: [],
 		notes: undefined,
 		cachedProfile: undefined,
 		routing: emptyRouting(),

@@ -37,7 +37,9 @@ const EXT = named(makeEmptySubscription({ sourceKey: "douyin", externalId: "Sec-
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path.startsWith("/api/subs")) return Promise.resolve([BILI, EXT]);
+		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subs/tags") return Promise.resolve([]);
+		if (path === "/api/subs") return Promise.resolve([BILI, EXT]);
 		if (path === "/api/ext") return Promise.resolve({ extensions: [] });
 		return Promise.resolve([]);
 	});

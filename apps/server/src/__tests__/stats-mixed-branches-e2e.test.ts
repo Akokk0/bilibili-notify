@@ -32,7 +32,7 @@ import type {
 	StatsRoastRunNowResponse,
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
-import { makeEmptySubscription, upColor } from "@bilibili-notify/internal";
+import { makeEmptySubscription, type SubscriptionTag, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
@@ -41,6 +41,7 @@ import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
 import { legacyBiliRow } from "./support/legacy-subscription.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
 const renderedHtml = vi.hoisted(() => [] as string[]);
@@ -343,14 +344,20 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		const ext = makeExtensionSubscription({ id: S_EXT, extensionId: FAKE, externalId: EXT_ID });
 		// 订阅只有一个文件:第一趟开机迁进来的 B 站那位已经在里面,拓展那位追加在后。
 		const subsPath = join(gen, ...CONFIG_DIR, "subscriptions.json");
-		const migrated = JSON.parse(await readFile(subsPath, "utf8")) as unknown[];
-		expect(migrated).toHaveLength(1);
+		const migrated = JSON.parse(await readFile(subsPath, "utf8")) as {
+			tags: SubscriptionTag[];
+			subscriptions: object[];
+		};
+		expect(migrated.subscriptions).toHaveLength(1);
 		await writeFile(
 			subsPath,
-			JSON.stringify([
-				...migrated,
-				{ ...ext, roastSchedule: { ...ext.roastSchedule, targets: [webhookTarget] } },
-			]),
+			subscriptionsFileText(
+				[
+					...migrated.subscriptions,
+					{ ...ext, roastSchedule: { ...ext.roastSchedule, targets: [webhookTarget] } },
+				],
+				migrated.tags,
+			),
 		);
 
 		// 采集水位线:六天前(第一趟开机盖的是「现在」,B 站那几天的老数据会被它整片遮掉)。

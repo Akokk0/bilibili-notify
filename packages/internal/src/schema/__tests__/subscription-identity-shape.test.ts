@@ -44,7 +44,7 @@ function diskRow(identity: Record<string, unknown> = BILI): Record<string, unkno
 	};
 }
 
-/** 只写必填几格的一行:带默认值的键(groups / extras / roastSchedule / specialUsers)都缺着。 */
+/** 只写必填几格的一行:带默认值的键(tagIds / extras / roastSchedule / specialUsers)都缺着。 */
 function minimalRow(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "22222222-2222-4222-8222-222222222222",

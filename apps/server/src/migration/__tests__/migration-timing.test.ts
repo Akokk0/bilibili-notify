@@ -195,10 +195,10 @@ async function expectMigrated(
 		expect(existsSync(join(generation, "stats", "dyn", `${uid}.jsonl`))).toBe(false);
 	}
 
-	// 订阅:两份合成一个文件,每行带身份。
-	const subscriptions = JSON.parse(
+	// 订阅:两份合成一个文件({ tags, subscriptions },ADR-0034),每行带身份。
+	const { subscriptions } = JSON.parse(
 		await readFile(join(generation, "config", "subscriptions.json"), "utf8"),
-	) as { id: string; identity?: unknown }[];
+	) as { subscriptions: { id: string; identity?: unknown }[] };
 	expect(subscriptions.map((s) => s.id)).toEqual(subscriptionIds);
 	expect(subscriptions.every((s) => s.identity !== undefined)).toBe(true);
 

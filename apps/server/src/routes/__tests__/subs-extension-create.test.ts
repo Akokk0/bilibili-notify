@@ -191,9 +191,9 @@ describe("新建拓展订阅", () => {
 		// 落了盘:订阅那个文件里有它(带 identity),头像文件在。
 		const disk = JSON.parse(
 			await readFile(join(dataDir, ...CONFIG_DIR, "subscriptions.json"), "utf8"),
-		) as Array<{ id: string; identity: unknown }>;
-		expect(disk.map((s) => s.id)).toEqual([SUB_ID]);
-		expect(disk[0]?.identity).toEqual({ sourceKey: "douyin", externalId: "sec-1" });
+		) as { subscriptions: Array<{ id: string; identity: unknown }> };
+		expect(disk.subscriptions.map((s) => s.id)).toEqual([SUB_ID]);
+		expect(disk.subscriptions[0]?.identity).toEqual({ sourceKey: "douyin", externalId: "sec-1" });
 		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`]);
 
 		const img = await app.request(profile?.avatar ?? "");

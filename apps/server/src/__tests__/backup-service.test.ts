@@ -4,6 +4,7 @@ import {
 	makeEmptySubscription,
 	type PushTarget,
 	type Subscription,
+	type SubscriptionTag,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { openFullBackup } from "../backup/assemble.js";
@@ -52,6 +53,7 @@ const BILIBILI_SETTINGS = { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 3
 function makeFakeStore(
 	init: Partial<{
 		subscriptions: Subscription[];
+		subscriptionTags: SubscriptionTag[];
 		connections: Connection[];
 		integrations: Record<string, unknown>;
 		extensionSettings: Record<string, unknown>;
@@ -61,6 +63,7 @@ function makeFakeStore(
 	let integrations: Record<string, unknown> = init.integrations ?? { bilibili: BILIBILI_SETTINGS };
 	let extensionSettings: Record<string, unknown> = init.extensionSettings ?? {};
 	let subs = [...(init.subscriptions ?? [])];
+	let subscriptionTags = [...(init.subscriptionTags ?? [])];
 	let connections = [...(init.connections ?? [])];
 	let targets: PushTarget[] = [];
 	const store: BackupStore = {
@@ -68,6 +71,7 @@ function makeFakeStore(
 		getAllIntegrationSettings: () => integrations,
 		getAllExtensionSettings: () => extensionSettings,
 		getSubscriptions: () => subs,
+		getSubscriptionTags: () => subscriptionTags,
 		getConnections: () => connections,
 		getTargets: () => targets,
 		// 恢复是**一次整体替换**,不是一串编辑 —— 所以这个替身也只认终态,断言跟着看
@@ -82,6 +86,7 @@ function makeFakeStore(
 				extensionSettings = { ...extensionSettings, ...next.extensionSettings };
 			}
 			if (next.subscriptions) subs = next.subscriptions;
+			if (next.subscriptionTags) subscriptionTags = next.subscriptionTags;
 			if (next.connections) connections = next.connections;
 			if (next.targets) targets = next.targets;
 			return [];
@@ -96,6 +101,44 @@ function makeCookieStore(data: { cookiesJson: string; refreshToken?: string } | 
 		save: vi.fn(async () => {}),
 	};
 }
+
+describe("BackupService × 订阅标签(ADR-0034)", () => {
+	const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };
+
+	it("导出:标签表跟订阅同进同出;只勾设置、不勾订阅的不带", async () => {
+		const tagged = { ...sub("1"), tagIds: [GAME.id] };
+		const store = makeFakeStore({ subscriptions: [tagged], subscriptionTags: [GAME] });
+		const svc = createBackupService({ configStore: store, cookieStore: makeCookieStore(null) });
+
+		const withSubs = await svc.exportBackup({ kind: "sanitized" });
+		expect(withSubs.sections.subscriptionTags).toEqual([GAME]);
+		const settingsOnly = await svc.exportBackup({
+			kind: "sanitized",
+			sections: { globals: true, subscriptions: false, connections: false, targets: false },
+		});
+		expect(settingsOnly.sections.subscriptionTags).toBeUndefined();
+	});
+
+	it("导回一台空机器(合并):标签表落地,订阅上挂的对得上", async () => {
+		const tagged = { ...sub("1"), tagIds: [GAME.id] };
+		const from = makeFakeStore({ subscriptions: [tagged], subscriptionTags: [GAME] });
+		const env = await createBackupService({
+			configStore: from,
+			cookieStore: makeCookieStore(null),
+		}).exportBackup({ kind: "sanitized" });
+
+		const to = makeFakeStore();
+		await createBackupService({ configStore: to, cookieStore: makeCookieStore(null) }).importBackup(
+			{
+				envelope: env,
+				mode: "merge",
+			},
+		);
+
+		expect(to.getSubscriptionTags()).toEqual([GAME]);
+		expect(to.getSubscriptions().map((s) => s.tagIds)).toEqual([[GAME.id]]);
+	});
+});
 
 describe("BackupService", () => {
 	it("exports a full backup whose secrets round-trip back through the PIN", async () => {
@@ -333,12 +376,13 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 				"bilibili",
 				"douyin",
 			]);
-			// 节就这六个:订阅只有一节,没有按来源再拆出第二节;各集成、各拓展的设置跟「设置」同一个勾选。
+			// 节就这七个:订阅只有一节,没有按来源再拆出第二节(标签表跟订阅同一个勾选,ADR-0034);各集成、各拓展的设置跟「设置」同一个勾选。
 			expect(Object.keys(sections).sort()).toEqual([
 				"connections",
 				"extensionSettings",
 				"globals",
 				"integrations",
+				"subscriptionTags",
 				"subscriptions",
 				"targets",
 			]);
@@ -354,6 +398,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 			"extensionSettings",
 			"globals",
 			"integrations",
+			"subscriptionTags",
 			"subscriptions",
 			"targets",
 		]);

@@ -22,6 +22,8 @@ import {
 	type ServiceContext,
 	type Subscription,
 	SubscriptionSchema,
+	type SubscriptionTag,
+	SubscriptionTagListSchema,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import {
@@ -82,6 +84,11 @@ export interface ConfigSections {
 	/** 各拓展的设置,按拓展 id;只换给了的那几个(原样存,形状归拓展自己)。 */
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
+	/**
+	 * 订阅标签表(ADR-0034),与订阅住同一个文件。只给它、不给订阅时,现有订阅上挂着的、新表里没有的 id
+	 * 一起剥掉;两个都给时,订阅只许挂新表里有的,否则整份拒收。
+	 */
+	subscriptionTags?: SubscriptionTag[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 }
@@ -138,6 +145,8 @@ export interface ConfigStore {
 	/** 全部存着的拓展设置,按拓展 id(深拷贝)。备份用。 */
 	getAllExtensionSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
+	/** 订阅标签表(ADR-0034),按表里的顺序(深拷贝)。 */
+	getSubscriptionTags(): SubscriptionTag[];
 	getConnections(): Connection[];
 	/** 只拷命中的那一条 —— 入站热路径按 id 校验归属用,别拿 getConnections() 再 find。 */
 	getConnection(id: string): Connection | undefined;
@@ -174,6 +183,11 @@ export interface ConfigStore {
 	upsertSubscription(sub: Subscription): Promise<void>;
 	patchSubscription(id: string, patch: DeepPartial<Subscription>): Promise<Subscription>;
 	deleteSubscription(id: string): Promise<boolean>;
+	/**
+	 * 整张换掉订阅标签表 —— 新建、改名、排序、删除都走它(ADR-0034)。名字去掉首尾空白后不许为空、不许重名;
+	 * 新表里没有了的标签,订阅上的 id 在同一次写里一起去掉。回存下的那张表。
+	 */
+	replaceSubscriptionTags(tags: SubscriptionTag[]): Promise<SubscriptionTag[]>;
 	upsertConnection(connection: Connection): Promise<void>;
 	patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection>;
 	deleteConnection(id: string): Promise<boolean>;
@@ -317,23 +331,76 @@ async function readJsonIfExists(absPath: string): Promise<unknown> {
 	}
 }
 
+/** 盘上的订阅文件:订阅标签表与订阅住在一起(ADR-0034),删标签清引用才是一次原子写。 */
+interface SubscriptionFile {
+	tags: SubscriptionTag[];
+	subscriptions: Subscription[];
+}
+
 /**
- * 盘上的订阅文件 → 一份订阅。不是数组、或任何一行过不了 schema,都整个拒(开机报错)。
+ * 盘上的订阅文件 → 标签表 + 一份订阅。形状不是 `{ tags, subscriptions }`、标签表不合规矩、或任何一行订阅
+ * 过不了 schema,都整个拒(开机报错)。0.x 那种裸数组由迁移改形,这里不认。
  */
-function parseSubscriptionFile(fileName: string, value: unknown): Subscription[] {
-	if (!Array.isArray(value)) {
-		throw ConfigValidationError.invalid("subscriptions", `${fileName} 里的内容不是数组`);
+function parseSubscriptionFile(fileName: string, value: unknown): SubscriptionFile {
+	if (!isPlainObject(value) || !Array.isArray(value.tags) || !Array.isArray(value.subscriptions)) {
+		throw ConfigValidationError.invalid(
+			"subscriptions",
+			`${fileName} 的形状不对:应当是 { tags, subscriptions }`,
+		);
 	}
-	return value.map((raw, idx) => {
+	const tags = SubscriptionTagListSchema.safeParse(value.tags);
+	if (!tags.success) {
+		throw ConfigValidationError.fromZod("subscriptions", tags.error, {
+			subject: `${fileName} 的标签表`,
+			prefix: ["tags"],
+		});
+	}
+	const subscriptions = value.subscriptions.map((raw, idx) => {
 		const r = SubscriptionSchema.safeParse(raw);
 		if (!r.success) {
 			throw ConfigValidationError.fromZod("subscriptions", r.error, {
 				subject: `${fileName} 第 ${idx + 1} 行`,
-				prefix: [idx],
+				prefix: ["subscriptions", idx],
 			});
 		}
 		return r.data;
 	});
+	return { tags: tags.data, subscriptions };
+}
+
+/**
+ * 订阅只许挂标签表里有的标签(ADR-0034)。逐条写与整体替换都走它:面板拿着旧快照存回去,能把刚删掉的标签
+ * 又写回订阅上,在写盘这一层拦。
+ */
+function assertKnownTags(subs: readonly Subscription[], tags: readonly SubscriptionTag[]): void {
+	const known = new Set(tags.map((t) => t.id));
+	const issues: Issue[] = [];
+	subs.forEach((sub, idx) => {
+		sub.tagIds.forEach((id, j) => {
+			if (!known.has(id)) {
+				issues.push({ path: [idx, "tagIds", j], message: `标签 ${id} 不在标签表里(可能刚被删掉)` });
+			}
+		});
+	});
+	if (issues.length > 0) {
+		throw ConfigValidationError.invalid("subscriptions", "订阅挂了不存在的标签", issues);
+	}
+}
+
+/** 去掉订阅上不在标签表里的 id;没变的订阅原样留着。`dropped` 是去掉的那些 id。 */
+function withoutUnknownTags(
+	subs: readonly Subscription[],
+	tags: readonly SubscriptionTag[],
+): { next: Subscription[]; dropped: string[] } {
+	const known = new Set(tags.map((t) => t.id));
+	const dropped: string[] = [];
+	const next = subs.map((sub) => {
+		const kept = sub.tagIds.filter((id) => known.has(id));
+		if (kept.length === sub.tagIds.length) return sub;
+		dropped.push(...sub.tagIds.filter((id) => !known.has(id)));
+		return { ...sub, tagIds: kept };
+	});
+	return { next, dropped };
 }
 
 async function fileExists(absPath: string): Promise<boolean> {
@@ -652,6 +719,8 @@ class NodeConfigStore implements ConfigStore {
 	private readonly extensionSettings = new Map<string, unknown>();
 	/** 订阅:一份列表、一个文件(ADR-0021 决策 15)。写一律走 {@link writeSubscriptions}。 */
 	private subscriptions: Subscription[];
+	/** 订阅标签表(ADR-0034),与订阅同一个文件、同一条队。 */
+	private subscriptionTags: SubscriptionTag[] = [];
 	private connections: Connection[];
 	private targets: PushTarget[];
 
@@ -738,13 +807,19 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	/**
-	 * 把一份新的订阅列表落盘(一次原子写)并换进内存。调用方都在 `subscriptions` 那条队里。
-	 * 新增了同身份的重复就拒,盘上与内存都不动。
+	 * 把一份新的订阅列表(连同标签表)落盘(一次原子写)并换进内存。调用方都在 `subscriptions` 那条队里。
+	 * 新增了同身份的重复、或挂了标签表里没有的标签就拒,盘上与内存都不动。
 	 */
-	private async writeSubscriptions(next: readonly Subscription[]): Promise<void> {
+	private async writeSubscriptions(
+		next: readonly Subscription[],
+		tags: readonly SubscriptionTag[] = this.subscriptionTags,
+	): Promise<void> {
 		assertNoNewIdentityDuplicate(this.subscriptions, next);
-		await atomicWriteJson(this.path("subscriptions"), next);
-		this.subscriptions = [...next];
+		assertKnownTags(next, tags);
+		const file: SubscriptionFile = { tags: [...tags], subscriptions: [...next] };
+		await atomicWriteJson(this.path("subscriptions"), file);
+		this.subscriptions = file.subscriptions;
+		this.subscriptionTags = file.tags;
 	}
 
 	/** Write settings/core.json. When a SecretStore owns the apiKey, the on-disk copy is stripped. */
@@ -880,11 +955,20 @@ class NodeConfigStore implements ConfigStore {
 		// subscriptions —— 一个文件(ADR-0021 决策 15)。读坏了就是开机报错:跳过坏行更糟,下次写回
 		// 那几行就永久没了。
 		{
-			const { value, existed } = await readJsonOrInit<unknown[]>(
+			const { value, existed } = await readJsonOrInit<unknown>(
 				this.path("subscriptions"),
-				() => [] as Subscription[],
+				(): SubscriptionFile => ({ tags: [], subscriptions: [] }),
 			);
-			this.subscriptions = parseSubscriptionFile("subscriptions.json", value);
+			const file = parseSubscriptionFile("subscriptions.json", value);
+			this.subscriptionTags = file.tags;
+			// 悬空的标签 id 只可能是手改了文件(删标签清引用是同一次原子写):剥掉、记一句,不挡开机;下次写盘就干净了。
+			const cleaned = withoutUnknownTags(file.subscriptions, file.tags);
+			this.subscriptions = cleaned.next;
+			if (cleaned.dropped.length > 0) {
+				this.serviceCtx.logger.warn(
+					`[config] subscriptions.json 里有订阅挂着标签表里没有的标签,已经剥掉:${[...new Set(cleaned.dropped)].join("、")}`,
+				);
+			}
 			this.meta.subscriptions.exists = true;
 			this.meta.subscriptions.lastUpdatedAt = existed ? null : new Date().toISOString();
 			// 老版本留下的同身份重复:照读,只记一句警告 —— 拒收会让开机起不来。
@@ -1013,6 +1097,10 @@ class NodeConfigStore implements ConfigStore {
 
 	getAllExtensionSettings(): Record<string, unknown> {
 		return deepClone(Object.fromEntries(this.extensionSettings));
+	}
+
+	getSubscriptionTags(): SubscriptionTag[] {
+		return deepClone(this.subscriptionTags);
 	}
 
 	getSubscriptions(): Subscription[] {
@@ -1236,6 +1324,21 @@ class NodeConfigStore implements ConfigStore {
 		});
 		if (removed) this.bus.emit("config-changed", { scope: "subscriptions" });
 		return removed;
+	}
+
+	async replaceSubscriptionTags(tags: SubscriptionTag[]): Promise<SubscriptionTag[]> {
+		const saved = await this.runScoped("subscriptions", async () => {
+			const parsed = SubscriptionTagListSchema.safeParse(tags);
+			if (!parsed.success) {
+				throw ConfigValidationError.fromZod("subscriptions", parsed.error, { subject: "标签表" });
+			}
+			const { next } = withoutUnknownTags(this.subscriptions, parsed.data);
+			await this.writeSubscriptions(next, parsed.data);
+			this.touch("subscriptions");
+			return parsed.data;
+		});
+		this.bus.emit("config-changed", { scope: "subscriptions" });
+		return deepClone(saved);
 	}
 
 	/**
@@ -1511,25 +1614,39 @@ class NodeConfigStore implements ConfigStore {
 				value,
 			}));
 			const subscriptions = next.subscriptions && parseAll("subscriptions", next.subscriptions);
+			let subscriptionTags: SubscriptionTag[] | undefined;
+			if (next.subscriptionTags !== undefined) {
+				const r = SubscriptionTagListSchema.safeParse(next.subscriptionTags);
+				if (!r.success) {
+					throw ConfigValidationError.fromZod("subscriptions", r.error, { subject: "标签表" });
+				}
+				subscriptionTags = r.data;
+			}
 			const connections = next.connections && parseAll("connections", next.connections);
 			const targets = next.targets && parseAll("targets", next.targets);
 
 			// ---- 2) 跨分区不变式 + 托管目标归一化(与 load() 同一套) ----------
 			const effConnections = connections ?? this.connections;
 			const effTargets = targets ?? this.targets;
-			const effSubs = subscriptions ?? this.subscriptions;
+			const effTags = subscriptionTags ?? this.subscriptionTags;
+			// 只换标签表时,现有订阅上的旧 id 跟着剥;订阅也给了的,挂错标签就整份拒(下面 assertKnownTags)。
+			const effSubs = subscriptions ?? withoutUnknownTags(this.subscriptions, effTags).next;
 			for (const t of effTargets) assertTargetOwner(t, effConnections);
 			const synced = syncManagedWebhookTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 			assertNoNewIdentityDuplicate(this.subscriptions, replaced.next);
+			assertKnownTags(replaced.next, effTags);
 
 			// ---- 3) 落盘:数组先写(留 .bak),globals 最后写 -------------------
 			const writes: Array<[string, unknown]> = [];
 			for (const [key, value] of integrations ?? [])
 				writes.push([this.integrationPath(key), value]);
 			for (const { path, value } of extensionSettings) writes.push([path, value]);
-			const subsTouched = Boolean(subscriptions) || replaced.changed;
-			if (subsTouched) writes.push([this.path("subscriptions"), replaced.next]);
+			const subsTouched = Boolean(subscriptions) || Boolean(subscriptionTags) || replaced.changed;
+			if (subsTouched) {
+				const file: SubscriptionFile = { tags: effTags, subscriptions: replaced.next };
+				writes.push([this.path("subscriptions"), file]);
+			}
 			if (connections) writes.push([this.path("connections"), effConnections]);
 			if (targets || synced.changed) writes.push([this.path("targets"), synced.next]);
 
@@ -1569,6 +1686,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			if (subsTouched) {
 				this.subscriptions = replaced.next;
+				this.subscriptionTags = effTags;
 				this.touch("subscriptions");
 				touched.push("subscriptions");
 			}

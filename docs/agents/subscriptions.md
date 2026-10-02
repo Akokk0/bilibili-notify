@@ -13,16 +13,16 @@
 schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，B 站与拓展的订阅都是它（ADR-0021 决策 14、15）。
 
 - **身份** `identity: { sourceKey, externalId }`：`sourceKey` 是 `bilibili` 或拓展 id（不加前缀），`externalId` 是来源那头的 id（B 站就是 uid；BN 不解读，1–256 字）。订的是谁、分派、查找、取色都只看它，一律经 `subscriptionIdentityOf(sub)` 读。拓展 id 不许用保留 id（`RESERVED_INTEGRATION_KEYS`：`bilibili` 与三个内置平台适配器的键），否则会和 B 站的订阅撞成同一个人。
-- **其余各格** `id` / `name` / `enabled` / `groups` / `notes` / `routing` / `extras` / `overrides` / `roastSchedule` / `specialUsers`：两种来源一样。特别关注是公共形状（ADR-0021 决策 17），来源不支持的（今天是拓展）一直是空的。
+- **其余各格** `id` / `enabled` / `tagIds`（挂的标签，指向 `config/subscriptions.json` 里的标签表，ADR-0034） / `notes` / `routing` / `extras` / `overrides` / `roastSchedule` / `specialUsers`：两种来源一样。特别关注是公共形状（ADR-0021 决策 17），来源不支持的（今天是拓展）一直是空的。
 - 中立的 schema 不认得哪个来源的 id 长什么样：B 站「uid 是数字」核在新建订阅那条路上（`routes/subs.ts`），身份建好以后改不动。
 - 判「是不是 B 站的」写 `subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY`：这是过渡写法，第 3a 期 B 站搬进 `bilibili/`、核心只问登记表以后就没有了，「B 站替身」棘轮盯着。
 
 ### 内存一份，盘上一个文件（ADR-0021 决策 15）
 
 - `SubscriptionStore`（`packages/subscription`）握一份列表，`subscription-changed` 的 diff 照常发。`findById` 按订阅 id 找；`findByIdentity` 按身份找，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
-- `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅写进 `<数据根>/config/subscriptions.json`，一次原子写。任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
+- `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅连同标签表写进 `<数据根>/config/subscriptions.json`（`{ tags, subscriptions }`，ADR-0034），一次原子写；删标签时订阅上的引用在同一次写里去掉，订阅只许挂表里有的标签。任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
 - **身份不许改**（`assertSubscriptionIdentityUnchanged`，ADR-0019 决策 50）：换了来源或外部 id 就是另一个人，而资料缓存、历史、头像文件都挂在订阅 `id` 上。要换人就删了重加。
-- **备份**（`apps/server/src/backup/`）：格式版本 2（1.0 起），1.0 之前导出的一律拒收、提示先装 0.12 恢复再升级（ADR-0022 决策 6）。订阅一节，行行带 `identity`。资料缓存与头像文件都不进备份。
+- **备份**（`apps/server/src/backup/`）：格式版本 3（1.0 起；10-01 设置分文件时从 2 抬到 3），1.0 之前导出的一律拒收、提示先装 0.12 恢复再升级（ADR-0022 决策 6）。订阅一节，行行带 `identity`，标签表跟它同进同出（恢复时先按 id、再按名字并）。资料缓存与头像文件都不进备份。
 - 0.x 的两个文件（`subscriptions.json` 与 `extension-subscriptions.json`）由迁移器合成这一个（`migration/subscriptions.ts`）。
 
 ## 两种键（决策 50）

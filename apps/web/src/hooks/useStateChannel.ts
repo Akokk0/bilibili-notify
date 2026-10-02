@@ -11,6 +11,7 @@ import {
 	extensionSettingsKey,
 	extensionStatusKey,
 } from "./useExtensions";
+import { SUBSCRIPTION_TAGS_QUERY_KEY } from "./useSubscriptionTags";
 
 /**
  * 处理 `state` 频道单条 envelope。两种帧:
@@ -28,7 +29,8 @@ import {
  *     只失效拓展表 —— 详情页那个框住在拓展表的那一行上。
  *
  * Server scopes (`config-changed.scope`):
- *   - "subscriptions" → invalidate ["subscriptions"]
+ *   - "subscriptions" → invalidate ["subscriptions"] + 订阅标签表(标签表与订阅同一档,ADR-0034:
+ *     PUT 标签表删掉某个标签时订阅上的 id 在同一次写里被去掉,两边一起过期才不会画出悬空的 id)
  *   - "targets"       → invalidate ["targets"]
  *   - "globals"       → invalidate ["globals"] + 拓展表(拓展的开关住在 globals 里)
  *   - "integration-settings" → invalidate ["globals"](各集成的设置挂在 `/api/globals` 下发的那一份里)+ 各拓展的
@@ -47,6 +49,8 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: ["globals"] });
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: ["targets"] });
+		// 标签表同样可能在断线期间被别的标签页(或备份恢复)换掉,没有帧会重放。
+		qc.invalidateQueries({ queryKey: SUBSCRIPTION_TAGS_QUERY_KEY });
 		// 连接表与拓展表同样是服务端会改的东西(私聊指令建连接、拓展热装卸),而断线期间
 		// 的那些变化没有帧会重放 —— 漏掉哪张,哪张就一直停在断线那一刻,界面还一切正常。
 		qc.invalidateQueries({ queryKey: ["connections"] });
@@ -88,8 +92,10 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 	}
 	if (!isWsEvent(env, "state", "config-changed")) return;
 	const scope = env.data?.scope;
-	if (scope === "subscriptions") qc.invalidateQueries({ queryKey: ["subscriptions"] });
-	else if (scope === "targets") qc.invalidateQueries({ queryKey: ["targets"] });
+	if (scope === "subscriptions") {
+		qc.invalidateQueries({ queryKey: ["subscriptions"] });
+		qc.invalidateQueries({ queryKey: SUBSCRIPTION_TAGS_QUERY_KEY });
+	} else if (scope === "targets") qc.invalidateQueries({ queryKey: ["targets"] });
 	else if (scope === "integration-settings") {
 		qc.invalidateQueries({ queryKey: ["globals"] });
 		// 拓展的设置各在自己的文件里,改了发的是这一档(ADR-0021 决策 42 下 10-01 的 🔗)。备份恢复、卸载这类不经

@@ -3,7 +3,12 @@ import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notif
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
-import { BILIBILI_SOURCE_KEY, type Subscription, subscriptionIdentityOf } from "../../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Subscription,
+	type SubscriptionTag,
+	subscriptionIdentityOf,
+} from "../../types/domain";
 import { displayName, subscribedFeatures, subscriptionColor } from "./helpers";
 import { RelativeTime } from "./relative-time";
 import {
@@ -11,6 +16,7 @@ import {
 	type SubscriptionPlatform,
 	visibleFeaturesOf,
 } from "./subscription-source";
+import { resolveTagNames } from "./tag-edit";
 
 /**
  * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送类型 PushKind 不完全对齐 ——
@@ -41,13 +47,18 @@ export interface UpCardProps {
 	 * 都照它。B 站订阅不看它。
 	 */
 	platform?: SubscriptionPlatform;
+	/**
+	 * 标签表(ADR-0034):订阅上只记标签 id,角标上写的名字得按 id 到这里查。没读到(`undefined`)
+	 * 或表里没有那个 id,都当没挂标签 —— 什么都不写。
+	 */
+	tags?: ReadonlyArray<SubscriptionTag>;
 }
 
 /**
  * UP 卡与末尾那张「添加 UP 主」卡**共用**的最小高度。
  *
  * grid 同一行的高度由最高的那张卡决定。这个值从前只写在添加卡上,UP 卡自己没有
- * —— 于是一切到分组筛选(添加卡按设计不出现),整排 UP 卡当场矮一截。两处引同一个
+ * —— 于是一切到标签筛选(添加卡按设计不出现),整排 UP 卡当场矮一截。两处引同一个
  * 常量,谁也别再替谁撑着。
  */
 export const UP_CARD_MIN_H = "min-h-55";
@@ -61,6 +72,7 @@ export function UpCard({
 	togglePending,
 	onRequestMenu,
 	platform,
+	tags,
 }: UpCardProps) {
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
@@ -75,6 +87,8 @@ export function UpCard({
 	const paused = ext?.absent === true;
 	const fans = sub.cachedProfile?.fans;
 	const fansLabel = fans == null ? "粉丝数未刷新" : `${formatCount(fans)} 粉丝`;
+	// 角标只写第一个标签的名字;没挂(或查不到)就什么都不写 —— 不再写「默认」。
+	const firstTagName = resolveTagNames(sub.tagIds, tags ?? [])[0];
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: outer card holds inner <button>s (select / enabled toggle); nested HTML <button> is invalid, so a div + role=button is the right escape.
 		<div
@@ -207,12 +221,15 @@ export function UpCard({
 					</div>
 				) : null}
 				<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
-					<span>
-						分组：
-						<span className="text-bn-text-tertiary">{sub.groups[0] ?? "默认"}</span>
-					</span>
-					<span>
-						· 更新于 <RelativeTime at={sub.cachedProfile?.lastRefreshedAt} />
+					{firstTagName !== undefined ? (
+						<span>
+							标签：
+							<span className="text-bn-text-tertiary">{firstTagName}</span>
+						</span>
+					) : null}
+					<span className="ml-auto">
+						{firstTagName !== undefined ? "· " : null}更新于{" "}
+						<RelativeTime at={sub.cachedProfile?.lastRefreshedAt} />
 					</span>
 				</div>
 			</div>

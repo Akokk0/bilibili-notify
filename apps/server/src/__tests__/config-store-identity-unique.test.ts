@@ -29,6 +29,7 @@ import {
 } from "../config/store.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 function makeServiceCtx(): ServiceContext {
 	return {
@@ -114,7 +115,7 @@ async function openWithLegacyPair(): Promise<{
 		biliSub("12345", { notes: "第二条" }),
 	];
 	const other = extSub("sec-1");
-	await writeFile(subsFile, JSON.stringify([pair[0], other, pair[1]]), "utf8");
+	await writeFile(subsFile, subscriptionsFileText([pair[0], other, pair[1]]), "utf8");
 	return { store: await open(), pair, other };
 }
 
@@ -204,7 +205,7 @@ describe("盘上遗留的一对(老版本留下的)", () => {
 	});
 
 	it("没有重复 → 开机不为这个警告", async () => {
-		await writeFile(subsFile, JSON.stringify([biliSub("1"), extSub("1")]), "utf8");
+		await writeFile(subsFile, subscriptionsFileText([biliSub("1"), extSub("1")]), "utf8");
 		await open();
 		const warnings = vi.mocked(ctx.logger.warn).mock.calls.map((c) => String(c[0]));
 		expect(warnings.filter((w) => w.includes("不止一条"))).toEqual([]);

@@ -214,11 +214,18 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			specialUserEnter: false,
 			extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false },
 		});
-		const subRows = await sandbox.readConfig<Row[]>("subscriptions.json");
+		const subFile = await sandbox.readConfig<{ tags: unknown[]; subscriptions: Row[] }>(
+			"subscriptions.json",
+		);
+		// 新代里的订阅文件是 { tags, subscriptions }(ADR-0034);两行的 groups 都是空表,标签表也就是空的。
+		expect(subFile.tags).toEqual([]);
+		const subRows = subFile.subscriptions;
 		// 两份订阅合成一个文件:B 站的在前、拓展的在后,行行带 identity。
 		expect(subRows.map((r) => r.id)).toEqual([SUB_ID, EXT_SUB_ID]);
 		const subRow = rowById(subRows, SUB_ID);
 		expect(subRow.identity).toEqual({ sourceKey: "bilibili", externalId: "12345" });
+		expect(subRow).not.toHaveProperty("groups");
+		expect(subRow.tagIds).toEqual([]);
 		expect(subRow).not.toHaveProperty("uid");
 		expect(subRow).not.toHaveProperty("atAll");
 		expect(subRow).not.toHaveProperty("atAllDefaults");
@@ -339,25 +346,37 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 				sandbox.configPath("settings/core.json"),
 			),
 		).toBe(true);
-		// 订阅:身份换了位置(0.x 的 uid / extensionId / externalId → identity)、退役的别名 `name` 丢掉,别的格一个都
-		// 没被当老形状再改一遍。
-		const { id: _freshId, uid: _uid, name: _name, ...freshRest } = fresh;
+		// 订阅:身份换了位置(0.x 的 uid / extensionId / externalId → identity)、退役的别名 `name` 丢掉、0.x 的
+		// 分组 `groups` 换成 `tagIds`(两行的分组都是空表,标签表也是空的),别的格一个都没被当老形状再改一遍。
+		const { id: _freshId, uid: _uid, name: _name, groups: _g1, ...freshRest } = fresh;
 		const {
 			id: _extId,
 			kind: _kind,
 			extensionId: _e,
 			externalId: _x,
+			groups: _g2,
 			...extRest
 		} = LEGACY_EXTENSION_SUBSCRIPTION;
-		expect(await sandbox.readConfig<Row[]>("subscriptions.json")).toEqual([
-			{ id: SUB_ID, identity: { sourceKey: "bilibili", externalId: "12345" }, ...freshRest },
-			{
-				...extRest,
-				id: EXT_SUB_ID,
-				identity: { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" },
-				overrides: { features: { extras: { wordcloud: false } } },
-			},
-		]);
+		expect(
+			await sandbox.readConfig<{ tags: unknown[]; subscriptions: Row[] }>("subscriptions.json"),
+		).toEqual({
+			tags: [],
+			subscriptions: [
+				{
+					id: SUB_ID,
+					identity: { sourceKey: "bilibili", externalId: "12345" },
+					tagIds: [],
+					...freshRest,
+				},
+				{
+					...extRest,
+					id: EXT_SUB_ID,
+					identity: { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" },
+					tagIds: [],
+					overrides: { features: { extras: { wordcloud: false } } },
+				},
+			],
+		});
 		const store = await sandbox.load();
 		expect(store.getSubscriptions().map((s) => s.id)).toEqual([SUB_ID, EXT_SUB_ID]);
 	});

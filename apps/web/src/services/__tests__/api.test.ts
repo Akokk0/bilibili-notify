@@ -47,13 +47,13 @@ describe("api.patch wire format", () => {
 	it("leaves an explicit null, real values, and arrays alone", async () => {
 		await api.patch("/api/subs/1", {
 			overrides: { cardStyle: null },
-			groups: ["重点"],
+			tagIds: ["11111111-1111-4111-8111-111111111111"],
 			enabled: false,
 		});
 
 		expect(sentBody()).toEqual({
 			overrides: { cardStyle: null },
-			groups: ["重点"],
+			tagIds: ["11111111-1111-4111-8111-111111111111"],
 			enabled: false,
 		});
 	});

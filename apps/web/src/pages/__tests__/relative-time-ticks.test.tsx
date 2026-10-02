@@ -108,8 +108,8 @@ describe("挂在页面上的相对时间会走", () => {
 				onRequestMenu={vi.fn()}
 			/>,
 		);
-		expect(screen.getByText("· 更新于 刚刚")).toBeTruthy();
+		expect(screen.getByText("更新于 刚刚")).toBeTruthy();
 		advance(60_000);
-		expect(screen.getByText("· 更新于 1 分钟前")).toBeTruthy();
+		expect(screen.getByText("更新于 1 分钟前")).toBeTruthy();
 	});
 });

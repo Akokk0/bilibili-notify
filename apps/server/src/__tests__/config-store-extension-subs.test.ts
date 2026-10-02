@@ -33,6 +33,7 @@ import {
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { legacyBiliRow } from "./support/legacy-subscription.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 function makeServiceCtx(): ServiceContext {
 	return {
@@ -139,9 +140,12 @@ async function open(): Promise<ConfigStore> {
 	return store;
 }
 
-/** 盘上那个文件里的行。 */
+/** 盘上那个文件里的订阅行(文件是 `{ tags, subscriptions }`,ADR-0034)。 */
 async function rowsOnDisk(): Promise<Array<Record<string, unknown>>> {
-	return JSON.parse(await readFile(subsFile, "utf8")) as Array<Record<string, unknown>>;
+	const file = JSON.parse(await readFile(subsFile, "utf8")) as {
+		subscriptions: Array<Record<string, unknown>>;
+	};
+	return file.subscriptions;
 }
 
 describe("开机读一个文件", () => {
@@ -150,7 +154,7 @@ describe("开机读一个文件", () => {
 		const e1 = makeExtensionSubscription({ id: randomUUID(), externalId: "x" });
 		const b2 = biliSub("2");
 		const e2 = makeExtensionSubscription({ id: randomUUID(), externalId: "y" });
-		await writeFile(subsFile, JSON.stringify([b1, e1, b2, e2]), "utf8");
+		await writeFile(subsFile, subscriptionsFileText([b1, e1, b2, e2]), "utf8");
 		const store = await open();
 		expect(store.getSubscriptions().map((s) => s.id)).toEqual([b1.id, e1.id, b2.id, e2.id]);
 		expect(store.getSubscriptions().map((s) => s.identity)).toEqual([
@@ -177,23 +181,31 @@ describe("开机读一个文件", () => {
 	it.each([
 		[
 			"一行坏的(外部 id 是空串)",
-			[{ ...biliSub("1"), identity: { ...biliSub("1").identity, externalId: "" } }],
+			subscriptionsFileText([
+				{ ...biliSub("1"), identity: { ...biliSub("1").identity, externalId: "" } },
+			]),
 		],
-		["不是数组", { not: "an array" }],
-		["0.x 的老形状(身份在顶层 uid、没有 identity)", [legacyBiliRow(biliSub("1"))]],
+		["不是 { tags, subscriptions }", JSON.stringify({ not: "a subscription file" })],
+		["0.x 的裸数组(盘上的订阅文件改成了对象)", JSON.stringify([biliSub("1")])],
+		[
+			"0.x 的老形状行(身份在顶层 uid、没有 identity)",
+			subscriptionsFileText([legacyBiliRow(biliSub("1"))]),
+		],
 		[
 			"identity 里多一格",
-			[{ ...biliSub("1"), identity: { ...biliSub("1").identity, extra: "x" } }],
+			subscriptionsFileText([
+				{ ...biliSub("1"), identity: { ...biliSub("1").identity, extra: "x" } },
+			]),
 		],
-	])("订阅文件里有%s → 开机报错,不跳过", async (_label, content) => {
-		await writeFile(subsFile, JSON.stringify(content), "utf8");
+	])("订阅文件里有%s → 开机报错,不跳过", async (_label, text) => {
+		await writeFile(subsFile, text, "utf8");
 		await expect(open()).rejects.toBeInstanceOf(ConfigValidationError);
 	});
 
 	it("好行后面跟一行坏的 → 整份拒,报错点名第几行", async () => {
 		await writeFile(
 			subsFile,
-			JSON.stringify([
+			subscriptionsFileText([
 				biliSub("1"),
 				{ ...biliSub("2"), identity: { sourceKey: "Bad!", externalId: "2" } },
 			]),
@@ -213,7 +225,9 @@ describe("写:一个文件、一次原子写", () => {
 		const store = await open();
 		const sub = biliSub("42");
 		await store.upsertSubscription(sub);
-		expect(await readFile(subsFile, "utf8")).toBe(`${JSON.stringify([sub], null, 2)}\n`);
+		expect(await readFile(subsFile, "utf8")).toBe(
+			`${JSON.stringify({ tags: [], subscriptions: [sub] }, null, 2)}\n`,
+		);
 		const [row] = await rowsOnDisk();
 		for (const key of ["kind", "uid", "extensionId"]) expect(row, key).not.toHaveProperty(key);
 		expect(row).toHaveProperty("identity", { sourceKey: "bilibili", externalId: "42" });
@@ -281,7 +295,7 @@ describe("拓展来源订阅的单人定时锐评(ADR-0020 决策 14)", () => {
 	it("上一版写的行没有 roastSchedule → 读进来补出厂默认;改了它落进那一个文件,新 store 读得回来", async () => {
 		// 上一版写出来的那种行:订阅上没有这一格。
 		const { roastSchedule: _r, ...legacy } = makeExtensionSubscription({ id: randomUUID() });
-		await writeFile(subsFile, JSON.stringify([legacy]), "utf8");
+		await writeFile(subsFile, subscriptionsFileText([legacy]), "utf8");
 		const store = await open();
 		const loaded = store.getSubscriptions()[0];
 		expect(loaded?.identity.sourceKey).toBe("douyin");
@@ -378,8 +392,11 @@ describe("身份改不动(ADR-0019 决策 50)", () => {
 	});
 
 	it("没送身份的补丁照常改别的字段;整条 upsert 缺 identity 则过不了 schema,盘上不变", async () => {
-		await store.patchSubscription(bili.id, { groups: ["g"] });
-		expect(store.getSubscriptions()[0]).toEqual({ ...bili, groups: ["g"] });
+		const tag = { id: randomUUID(), name: "游戏" };
+		await store.replaceSubscriptionTags([tag]);
+		await store.patchSubscription(bili.id, { tagIds: [tag.id] });
+		expect(store.getSubscriptions()[0]).toEqual({ ...bili, tagIds: [tag.id] });
+		expect((await rowsOnDisk())[0]).toEqual({ ...bili, tagIds: [tag.id] });
 
 		const { identity: _identity, ...noIdentity } = bili;
 		const err = await store.upsertSubscription(noIdentity as never).then(
@@ -388,7 +405,7 @@ describe("身份改不动(ADR-0019 决策 50)", () => {
 		);
 		expect(err).toBeInstanceOf(ConfigValidationError);
 		expect((err as ConfigValidationError).issues?.[0]?.path).toEqual(["identity"]);
-		expect(store.getSubscriptions()[0]).toEqual({ ...bili, groups: ["g"] });
+		expect(store.getSubscriptions()[0]).toEqual({ ...bili, tagIds: [tag.id] });
 	});
 
 	it("补丁把 identity 整个清成 null → 拒,身份清不掉", async () => {
@@ -463,7 +480,7 @@ describe("跨分区的级联对两种来源的行都覆盖", () => {
 		bili.routing.dynamic = [extra.id];
 		await writeFile(join(stateDir, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(stateDir, "targets.json"), JSON.stringify([primary, extra]), "utf8");
-		await writeFile(subsFile, JSON.stringify([bili, ext]), "utf8");
+		await writeFile(subsFile, subscriptionsFileText([bili, ext]), "utf8");
 
 		const store = await open();
 
@@ -525,7 +542,7 @@ describe("恢复备份(整体替换)", () => {
 
 	it("整体替换(清空订阅)写到一半炸了:已有的行也推回原样", async () => {
 		const ext = makeExtensionSubscription();
-		const bytes = JSON.stringify([ext]);
+		const bytes = subscriptionsFileText([ext]);
 		await writeFile(subsFile, bytes, "utf8");
 		const store = await open();
 		await rm(join(dataDir, ...CORE_SETTINGS_FILE));

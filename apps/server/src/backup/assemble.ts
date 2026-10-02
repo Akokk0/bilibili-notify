@@ -1,4 +1,10 @@
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	GlobalConfig,
+	PushTarget,
+	Subscription,
+	SubscriptionTag,
+} from "@bilibili-notify/internal";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
 import { BackupRejectedError } from "./rejected-error.js";
@@ -24,6 +30,7 @@ export interface FullBackupInput {
 	integrations?: Record<string, unknown>;
 	extensionSettings?: Record<string, unknown>;
 	subscriptions?: Subscription[];
+	subscriptionTags?: SubscriptionTag[];
 	connections?: Connection[];
 	targets?: PushTarget[];
 	cookies?: { cookiesJson?: string; refreshToken?: string };
@@ -50,6 +57,7 @@ export function assembleFullBackup(
 		integrations: input.integrations,
 		extensionSettings: input.extensionSettings,
 		subscriptions: input.subscriptions,
+		subscriptionTags: input.subscriptionTags,
 		connections: input.connections,
 		targets: input.targets,
 	};

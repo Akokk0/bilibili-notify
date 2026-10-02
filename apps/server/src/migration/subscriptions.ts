@@ -7,10 +7,13 @@
  * ({@link migrateLegacySubscription}:@全体 并进附加项、第一代 routing 时带 `force` 迁 features 覆盖),再迁
  * `routing`({@link migrateLegacyRouting})与 `overrides.features`(不带 `force` 的
  * {@link migrateLegacyFeatureFlagsPartial})。拓展订阅没有外层那一步。
+ *
+ * 合好之后,0.x 每行的分组(一串名字 `groups`)换成一张标签表与各行的 `tagIds`(ADR-0034),
+ * 新代里的文件是 `{ tags, subscriptions }`。
  */
 
 import { join } from "node:path";
-import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY, deterministicUuid } from "@bilibili-notify/internal";
 import {
 	migrateLegacyFeatureFlagsPartial,
 	migrateLegacyRouting,
@@ -60,6 +63,47 @@ export function toIdentityRow(row: unknown, kind: "bilibili" | "extension"): unk
 	return { id: rest.id, identity: { sourceKey: extensionId, externalId }, ...rest };
 }
 
+/** 0.x 一个分组名在 1.0 里成的标签名:去掉首尾空白,空的丢掉。 */
+function tagNamesOf(raw: string): string[] {
+	const name = raw.trim();
+	return name ? [name] : [];
+}
+
+/** 0.x 一行订阅的分组里认得出的标签名,按行里的顺序(可能重复)。 */
+function legacyTagNames(row: unknown): string[] {
+	if (!isPlainObject(row) || !Array.isArray(row.groups)) return [];
+	return row.groups.flatMap((g) => (typeof g === "string" ? tagNamesOf(g) : []));
+}
+
+/** 新代里的订阅文件(ADR-0034):标签表 + 订阅。 */
+export interface SubscriptionFileValue {
+	tags: Array<{ id: string; name: string }>;
+	subscriptions: unknown[];
+}
+
+/**
+ * 0.x 每行的分组 → 标签表 + 各行的 `tagIds`(ADR-0034)。同名的只成一个标签,按中文排序(和 0.x 订阅页筛选胶囊
+ * 的排法一样,主人升上来看到的顺序不变);标签 id 由名字定(`deterministicUuid`),重迁拆出同一批 id。行里的
+ * `groups` 在原位换成 `tagIds`,行内同名只挂一次;没有 `groups` 的行原样留着(schema 的默认值是空表)。
+ */
+export function toTaggedFile(rows: readonly unknown[]): SubscriptionFileValue {
+	const names = [...new Set(rows.flatMap(legacyTagNames))].sort((a, b) =>
+		a.localeCompare(b, "zh-Hans-CN"),
+	);
+	const tags = names.map((name) => ({ id: deterministicUuid(`subscription-tag:${name}`), name }));
+	const idOf = new Map(tags.map((t) => [t.name, t.id]));
+	const subscriptions = rows.map((row) => {
+		if (!isPlainObject(row) || !("groups" in row)) return row;
+		const tagIds = [...new Set(legacyTagNames(row).map((name) => idOf.get(name)))];
+		return Object.fromEntries(
+			Object.entries(row).map(([key, value]) =>
+				key === "groups" ? ["tagIds", tagIds] : [key, value],
+			),
+		);
+	});
+	return { tags, subscriptions };
+}
+
 /** 一条 B 站订阅的订阅 id 与 uid:统计文件名与锐评草稿按 uid 找回订阅时用。 */
 export interface BiliSubscriptionKey {
 	id: string;
@@ -68,7 +112,7 @@ export interface BiliSubscriptionKey {
 
 /**
  * 新代里(已经迁好、合成一个文件的)B 站订阅,按文件里的顺序 —— 同一个 uid 订了几条时谁在前,和配置仓读出来的
- * 一样。文件不在当空表(全新安装,和配置仓同口径);读不懂、不是数组回 `undefined`:配置仓开机时会拒收它,
+ * 一样。文件不在当空表(全新安装,和配置仓同口径);读不懂、不是 `{ tags, subscriptions }` 回 `undefined`:配置仓开机时会拒收它,
  * 要它的那几步别在它上面改别的文件。
  */
 export async function readBiliSubscriptionKeys(
@@ -76,8 +120,14 @@ export async function readBiliSubscriptionKeys(
 ): Promise<BiliSubscriptionKey[] | undefined> {
 	const file = await readJsonFile(join(configDir, "subscriptions.json"));
 	if (file.kind === "missing") return [];
-	if (file.kind === "unreadable" || !Array.isArray(file.value)) return undefined;
-	return file.value.flatMap((row) =>
+	if (
+		file.kind === "unreadable" ||
+		!isPlainObject(file.value) ||
+		!Array.isArray(file.value.subscriptions)
+	) {
+		return undefined;
+	}
+	return file.value.subscriptions.flatMap((row) =>
 		isPlainObject(row) &&
 		typeof row.id === "string" &&
 		isPlainObject(row.identity) &&
@@ -97,7 +147,8 @@ export interface MigrateSubscriptionFilesOptions {
 
 /**
  * 两份订阅合成新代里的一个 `subscriptions.json`(ADR-0021 决策 15):各自迁成 0.x 最新的形状,再换成带
- * `identity` 的行,B 站的在前、拓展的在后(和配置仓从前拼两份的顺序一样)。回改写过的文件(绝对路径)。
+ * `identity` 的行,B 站的在前、拓展的在后(和配置仓从前拼两份的顺序一样),分组换成标签(ADR-0034),写成
+ * `{ tags, subscriptions }`。回改写过的文件(绝对路径)。已经是这个形状的(迁过了)不再动。
  *
  * B 站那份读不懂、不是数组的原样留着,由配置仓开机时报出来。拓展那份不进新代,读不懂就**抛**:原样留着的话
  * 配置仓看不见它,拓展订阅会悄悄全丢;抛出去整代作废、下次开机重迁,主人看得到原因。
@@ -124,11 +175,10 @@ export async function migrateSubscriptionFiles(
 	const extRows = ext.kind === "ok" ? (ext.value as unknown[]) : [];
 	if (bili.kind === "missing" && extRows.length === 0) return [];
 	const biliRows = bili.kind === "ok" ? (bili.value as unknown[]) : [];
-	const next = [
+	const next = toTaggedFile([
 		...biliRows.map((row) => toIdentityRow(migrateBiliSubscriptionRow(row), "bilibili")),
 		...extRows.map((row) => toIdentityRow(migrateExtensionSubscriptionRow(row), "extension")),
-	];
-	if (bili.kind === "ok" && JSON.stringify(next) === JSON.stringify(bili.value)) return [];
+	]);
 	await rewriteJsonFile(path, next, bili.kind === "ok" ? path : opts.extensionSubscriptionsPath);
 	return [path];
 }

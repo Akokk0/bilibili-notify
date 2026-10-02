@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useExtensions } from "../hooks/useExtensions";
+import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
 import { ApiError, api } from "../services/api";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -34,10 +35,10 @@ import {
 	type PushTarget,
 	type SourceKey,
 	type Subscription,
+	type SubscriptionTag,
 	subscriptionIdentityOf,
 } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
-import { GroupEditDialog } from "./up/GroupEditDialog";
 import { displayName } from "./up/helpers";
 import { computeMenuPosition } from "./up/menu-position";
 import {
@@ -46,12 +47,13 @@ import {
 	type SubscriptionSourceExtension,
 	subscriptionPlatformOf,
 } from "./up/subscription-source";
+import { TagEditDialog } from "./up/TagEditDialog";
 import { UP_CARD_MIN_H, UpCard } from "./up/UpCard";
 import { UpCardMenu } from "./up/UpCardMenu";
 import { UpDialog } from "./up/UpDialog";
 
-/** 右键菜单只改这两格(启用开关与分组),补丁类型只带它们。 */
-type SubscriptionCommonPatch = Partial<Pick<Subscription, "enabled" | "groups">>;
+/** 右键菜单只改这两格(启用开关与标签),补丁类型只带它们。 */
+type SubscriptionCommonPatch = Partial<Pick<Subscription, "enabled" | "tagIds">>;
 
 type FilterId = "all" | "enabled" | "disabled";
 
@@ -67,8 +69,11 @@ const FILTERS: ReadonlyArray<FilterDef> = [
 	{ id: "disabled", label: "已禁用", matches: (s) => !s.enabled },
 ];
 
-/** Sentinel for "show subscriptions with no groups assigned". */
-const UNGROUPED = "__ungrouped__";
+/** Sentinel for "show subscriptions with no tags attached"(标签 id 是 uuid,撞不上它). */
+const UNTAGGED = "__untagged__";
+
+/** 标签表还没读到时的占位 —— 模块级常量,免得每次渲染一个新数组把 useMemo 的依赖冲掉。 */
+const NO_TAGS: ReadonlyArray<SubscriptionTag> = [];
 
 interface UpProfileLookup {
 	uid: string;
@@ -78,7 +83,7 @@ interface UpProfileLookup {
 	fans: number;
 }
 
-function GroupChip({
+function TagChip({
 	label,
 	count,
 	active,
@@ -94,11 +99,11 @@ function GroupChip({
 	// 圆角走皮肤的 pill 轴,别写死 rounded-full —— 像素风皮肤把 radius.pill 调到 0
 	// 求一身硬直角,写死的话唯独这排胶囊还是圆的。
 	// 底一律**不透明**:这排直接坐在页面背景上,bg-bn-pink/10 那类纱靠白页垫底才
-	// 好看,壁纸皮肤把页面换掉后选中态与未分组当场隐形(2026-08-30 主人真机指出
+	// 好看,壁纸皮肤把页面换掉后选中态与无标签当场隐形(2026-08-30 主人真机指出
 	// 「正常状态反而看不太清」)。粉调用 color-mix 落在 surface 上出,默认装等值。
 	const base =
 		"inline-flex items-center gap-1.5 rounded-bn-pill px-2.5 py-1 text-bn-xs font-semibold transition";
-	// 未分组(muted)= 普通档 + 虚线,**只差线型这一个类**(2026-08-30 主人定案:
+	// 无标签(muted)= 普通档 + 虚线,**只差线型这一个类**(2026-08-30 主人定案:
 	// hover 同样要粉描边,不是只加深文字)。测试用类差集钉着这条,别再各配各的。
 	// 选中配方从这里定案后升进了 ui 库 —— 全站选中态说的都是这一句。
 	const cls = active
@@ -106,7 +111,7 @@ function GroupChip({
 		: `border ${muted ? "border-dashed " : ""}border-bn-border bg-bn-surface text-bn-text-secondary hover:border-bn-pink/60 hover:text-bn-text-primary`;
 	return (
 		// 页面里手写的控件不在 packages/ui 那份 skin-hooks 测试的射程内,漏挂了皮肤
-		// 就静默够不到它 —— 这一类在本仓库已犯过两回。分组筛选改的是值,挂 chip。
+		// 就静默够不到它 —— 这一类在本仓库已犯过两回。标签筛选改的是值,挂 chip。
 		<button
 			type="button"
 			onClick={onClick}
@@ -676,6 +681,10 @@ export default function Subs() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	// 标签表(ADR-0034):筛选胶囊、卡片角标、挑标签的弹框都读它。没读到时是 `undefined` —— 此时没有标签胶囊可画,
+	// 弹框也不许新建(PUT 整张换,拿不到旧表就建会把表洗空)。
+	const tagsQuery = useSubscriptionTags();
+	const tags = tagsQuery.data;
 	const subs = subsQuery.data ?? [];
 	const targets = targetsQuery.data ?? [];
 	// 拓展列表只是锦上添花(平台选择、拓展订阅的平台与「没开」),拿不到就不重试 —— 同推送目标页。
@@ -702,7 +711,8 @@ export default function Subs() {
 
 	const [q, setQ] = useState("");
 	const [filterId, setFilterId] = useState<FilterId>("all");
-	const [groupFilter, setGroupFilter] = useState<string | null>(null);
+	/** 当前选中的标签筛选:标签 id、{@link UNTAGGED},或 `null`(全部)。 */
+	const [tagFilter, setTagFilter] = useState<string | null>(null);
 	const [selection, setSelection] = useState<Set<string>>(new Set());
 	const [drawerSubId, setDrawerSubId] = useState<string | null>(null);
 	/** 抽屉打开时滚到哪一节;只有 `?open=` 直达(无目标小卡的「去配置」)会要求滚到推送目标。 */
@@ -729,8 +739,8 @@ export default function Subs() {
 	const [menuAt, setMenuAt] = useState<{ subId: string; x: number; y: number } | null>(null);
 	/** 待二次确认的删除(单个来自右键 / 抽屉,多个来自批量)。 */
 	const [pendingDelete, setPendingDelete] = useState<{ ids: string[] } | null>(null);
-	/** 正在编辑所属分组的订阅。 */
-	const [groupEditId, setGroupEditId] = useState<string | null>(null);
+	/** 正在编辑标签的订阅。 */
+	const [tagEditId, setTagEditId] = useState<string | null>(null);
 	/** 复制 UID 后的轻量提示,自动消失。 */
 	const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
@@ -750,32 +760,35 @@ export default function Subs() {
 
 	const filterDef = FILTERS.find((f) => f.id === filterId) ?? FILTERS[0];
 
-	// Group catalog derived from current subs. Counts each unique group name
-	// across every subscription's groups[] (a sub can belong to multiple
-	// groups), plus a synthetic "ungrouped" bucket for subs with no groups.
-	const groupCounts = useMemo(() => {
+	// 标签的口径(ADR-0034):胶囊**照标签表的顺序**一枚一枚出(没人挂的空标签也在,计数 0),按 id 计数与筛选;
+	// 一条订阅可以挂好几个标签,各计一次;另有一个合成的「无标签」桶收没挂任何标签的订阅。
+	const tagTable = tags ?? NO_TAGS;
+	const tagStats = useMemo(() => {
 		const counts = new Map<string, number>();
-		let ungrouped = 0;
+		let untagged = 0;
 		for (const s of subs) {
-			if (s.groups.length === 0) {
-				ungrouped++;
+			if (s.tagIds.length === 0) {
+				untagged++;
 			} else {
-				for (const g of s.groups) counts.set(g, (counts.get(g) ?? 0) + 1);
+				for (const id of s.tagIds) counts.set(id, (counts.get(id) ?? 0) + 1);
 			}
 		}
-		return { groups: counts, ungrouped };
+		return { counts, untagged };
 	}, [subs]);
-	const groupNames = useMemo(
-		() => [...groupCounts.groups.keys()].sort((a, b) => a.localeCompare(b, "zh-Hans-CN")),
-		[groupCounts],
-	);
+	// 选着的那个标签被别处删掉了(标签表重取之后它不在了):退回「全部」,别留一个看不见也点不掉的筛选。
+	const activeTagFilter =
+		tagFilter === null || tagFilter === UNTAGGED || tagTable.some((t) => t.id === tagFilter)
+			? tagFilter
+			: null;
 
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
 		return subs.filter((s) => {
 			if (!filterDef.matches(s)) return false;
-			if (groupFilter === UNGROUPED && s.groups.length > 0) return false;
-			if (groupFilter && groupFilter !== UNGROUPED && !s.groups.includes(groupFilter)) return false;
+			if (activeTagFilter === UNTAGGED && s.tagIds.length > 0) return false;
+			if (activeTagFilter && activeTagFilter !== UNTAGGED && !s.tagIds.includes(activeTagFilter)) {
+				return false;
+			}
 			if (!ql) return true;
 			return (
 				// 按身份里的外部 id 搜:B 站就是 uid,拓展订阅没有 uid、是它的外部 id(ADR-0019 决策 9)。
@@ -784,7 +797,7 @@ export default function Subs() {
 				(s.notes ?? "").toLowerCase().includes(ql)
 			);
 		});
-	}, [subs, filterDef, q, groupFilter]);
+	}, [subs, filterDef, q, activeTagFilter]);
 
 	const filterCounts: Record<FilterId, number> = {
 		all: subs.length,
@@ -798,7 +811,7 @@ export default function Subs() {
 	const menuIdentity = menuSub ? subscriptionIdentityOf(menuSub) : undefined;
 	const menuBiliUid =
 		menuIdentity?.sourceKey === BILIBILI_SOURCE_KEY ? menuIdentity.externalId : undefined;
-	const groupSub = groupEditId ? (subs.find((s) => s.id === groupEditId) ?? null) : null;
+	const tagSub = tagEditId ? (subs.find((s) => s.id === tagEditId) ?? null) : null;
 	const menuPos =
 		menuAt && menuSub
 			? computeMenuPosition({
@@ -828,7 +841,7 @@ export default function Subs() {
 
 	/**
 	 * 单字段局部更新走 PATCH /:id(后端 deepMerge,数组整体替换),乐观改本地缓存,
-	 * 失败回滚。右键菜单的「启用 / 禁用」「编辑分组」都走它 —— 比整对象 POST 更轻,
+	 * 失败回滚。右键菜单的「启用 / 禁用」「编辑标签」都走它 —— 比整对象 POST 更轻,
 	 * 也不会 last-writer-wins 覆盖并发编辑的其它字段。
 	 */
 	const patchSub = useMutation({
@@ -971,7 +984,7 @@ export default function Subs() {
 				<div className="flex-1" />
 				{selection.size > 0 ? (
 					// 状态条不是「选中的某一项」,不吃整句选中语汇 —— 只吃那块不透明粉底
-					// (旧 bg-bn-pink/12 的纱在壁纸皮肤下会隐形,同分组胶囊踩过的雷)。
+					// (旧 bg-bn-pink/12 的纱在壁纸皮肤下会隐形,同标签胶囊踩过的雷)。
 					<div
 						className={`flex items-center gap-2 rounded-md ${SELECTED_TINT_BG} px-2.5 py-1 text-bn-sm font-semibold text-bn-pink`}
 					>
@@ -1004,33 +1017,33 @@ export default function Subs() {
 				</Btn>
 			</div>
 
-			{groupNames.length > 0 || groupCounts.ungrouped > 0 ? (
+			{tagTable.length > 0 || tagStats.untagged > 0 ? (
 				<div className="flex flex-wrap items-center gap-1.5">
 					{/* 这个标题**直接坐在页面背景上**,没有任何底。壁纸皮肤下 tertiary 那一档
 					    只剩 2.1~2.7:1(旁边的胶囊看着清楚,是因为它们挂了 btn、拿到了皮肤给的
 					    实底),secondary 在壁纸深处也才 3.3:1 —— 无底的文字只有 primary 稳。 */}
-					<span className="text-bn-xs font-semibold text-bn-text-primary">分组</span>
-					<GroupChip
+					<span className="text-bn-xs font-semibold text-bn-text-primary">标签</span>
+					<TagChip
 						label="全部"
 						count={subs.length}
-						active={groupFilter === null}
-						onClick={() => setGroupFilter(null)}
+						active={activeTagFilter === null}
+						onClick={() => setTagFilter(null)}
 					/>
-					{groupNames.map((g) => (
-						<GroupChip
-							key={g}
-							label={g}
-							count={groupCounts.groups.get(g) ?? 0}
-							active={groupFilter === g}
-							onClick={() => setGroupFilter(g)}
+					{tagTable.map((t) => (
+						<TagChip
+							key={t.id}
+							label={t.name}
+							count={tagStats.counts.get(t.id) ?? 0}
+							active={activeTagFilter === t.id}
+							onClick={() => setTagFilter(t.id)}
 						/>
 					))}
-					{groupCounts.ungrouped > 0 ? (
-						<GroupChip
-							label="未分组"
-							count={groupCounts.ungrouped}
-							active={groupFilter === UNGROUPED}
-							onClick={() => setGroupFilter(UNGROUPED)}
+					{tagStats.untagged > 0 ? (
+						<TagChip
+							label="无标签"
+							count={tagStats.untagged}
+							active={activeTagFilter === UNTAGGED}
+							onClick={() => setTagFilter(UNTAGGED)}
 							muted
 						/>
 					) : null}
@@ -1047,7 +1060,7 @@ export default function Subs() {
 			) : null}
 			{subsQuery.data &&
 			filtered.length === 0 &&
-			(q.trim() || filterId !== "all" || groupFilter) ? (
+			(q.trim() || filterId !== "all" || activeTagFilter) ? (
 				<EmptyNote>
 					<div className="mb-1 text-bn-base font-bold text-bn-text-primary">没有匹配的订阅</div>
 					<div>试试换个关键词或筛选条件</div>
@@ -1069,6 +1082,7 @@ export default function Subs() {
 						onToggleEnabled={(on) => toggleEnabled(s, on)}
 						onRequestMenu={(pos) => setMenuAt({ subId: s.id, x: pos.x, y: pos.y })}
 						platform={platformOf(s)}
+						tags={tags}
 					/>
 				))}
 				{/* 在 grid 末尾追加「+ 添加 UP 主」预选卡。仅在没有任何搜索 / 过滤时
@@ -1079,7 +1093,7 @@ export default function Subs() {
 
 				    最小高度**必须与 UpCard 引同一个常量**:grid 同行的高度取最高那张卡,
 				    这个值从前只写在这儿,于是它一被筛掉,整排 UP 卡就矮一截(真机 220→199)。 */}
-				{!q.trim() && filterId === "all" && !groupFilter ? (
+				{!q.trim() && filterId === "all" && !activeTagFilter ? (
 					// data-tour 与右上「添加」同名 —— 同名实例是等价入口,导览聚光灯一起亮
 					<AddCard
 						data-tour="subs-add"
@@ -1096,6 +1110,7 @@ export default function Subs() {
 					sub={newDraft}
 					targets={targets}
 					platform={platformOf(newDraft)}
+					tags={tags}
 					mode="create"
 					onClose={() => setNewDraft(null)}
 					saving={upsert.isPending}
@@ -1113,6 +1128,7 @@ export default function Subs() {
 					sub={drawerSub}
 					targets={targets}
 					platform={platformOf(drawerSub)}
+					tags={tags}
 					focusSection={drawerFocus}
 					onClose={() => {
 						setDrawerSubId(null);
@@ -1165,21 +1181,21 @@ export default function Subs() {
 								}
 							: undefined
 					}
-					onAddToGroup={() => setGroupEditId(menuSub.id)}
+					onEditTags={() => setTagEditId(menuSub.id)}
 					onDelete={() => setPendingDelete({ ids: [menuSub.id] })}
 				/>
 			) : null}
 
-			{groupSub ? (
-				<GroupEditDialog
-					allGroups={groupNames}
-					current={groupSub.groups}
+			{tagSub ? (
+				<TagEditDialog
+					tags={tags}
+					current={tagSub.tagIds}
 					saving={patchSub.isPending}
 					onConfirm={(next) => {
-						patchSub.mutate({ id: groupSub.id, patch: { groups: next } });
-						setGroupEditId(null);
+						patchSub.mutate({ id: tagSub.id, patch: { tagIds: next } });
+						setTagEditId(null);
 					}}
-					onCancel={() => setGroupEditId(null)}
+					onCancel={() => setTagEditId(null)}
 				/>
 			) : null}
 

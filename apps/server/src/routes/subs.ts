@@ -19,6 +19,7 @@ import { decodeSubscriptionAvatar } from "../runtime/sub-avatar-store.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
+import { createSubscriptionTagsRoute } from "./subscription-tags.js";
 import type { RouteDeps } from "./types.js";
 
 /** B 站接口没就绪(启动中 / 没登录,引擎还没挂上)时,查人的两个接口回的那一句。 */
@@ -249,6 +250,10 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	}
 
 	app.get("/", (c) => c.json(deps.store.getSubscriptions().map(toDTO)));
+
+	// 标签表(ADR-0034):和 `/search`、`/lookup` 一样是这一摊底下的固定子路径。这一摊没有 `GET /:id` / `PUT /:id`,
+	// 撞不上;挂在 `/:id` 那几条前面,以后真加了也先认它。
+	app.route("/tags", createSubscriptionTagsRoute(deps));
 
 	/**
 	 * 拓展订阅的头像(ADR-0019 决策 49)。在 `/api/*` 底下,吃同一道面板鉴权。地址里的 `v` 是内容

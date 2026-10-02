@@ -28,6 +28,7 @@ import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
+import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 const PROBE = "restart-probe";
 /** 推送全关(决策 4):统计照记。 */
@@ -243,7 +244,10 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 			}),
 		);
 		await writeFile(join(extDir, "index.mjs"), FIXTURE_CODE);
-		await writeFile(join(gen, ...CONFIG_DIR, "subscriptions.json"), JSON.stringify([SUB, FLICKER]));
+		await writeFile(
+			join(gen, ...CONFIG_DIR, "subscriptions.json"),
+			subscriptionsFileText([SUB, FLICKER]),
+		);
 	});
 
 	afterAll(async () => {

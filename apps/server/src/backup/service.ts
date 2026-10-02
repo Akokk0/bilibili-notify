@@ -1,5 +1,11 @@
 import type { ImportResult } from "@bilibili-notify/contract";
-import type { Connection, GlobalConfig, PushTarget, Subscription } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	GlobalConfig,
+	PushTarget,
+	Subscription,
+	SubscriptionTag,
+} from "@bilibili-notify/internal";
 import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
 import { describeDuplicate } from "../config/store.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
@@ -34,6 +40,7 @@ export interface BackupStore {
 	getAllIntegrationSettings(): Record<string, unknown>;
 	getAllExtensionSettings(): Record<string, unknown>;
 	getSubscriptions(): Subscription[];
+	getSubscriptionTags(): SubscriptionTag[];
 	getConnections(): Connection[];
 	getTargets(): PushTarget[];
 	replaceSections(next: {
@@ -41,6 +48,7 @@ export interface BackupStore {
 		integrations?: Record<string, unknown>;
 		extensionSettings?: Record<string, unknown>;
 		subscriptions?: Subscription[];
+		subscriptionTags?: SubscriptionTag[];
 		connections?: Connection[];
 		targets?: PushTarget[];
 	}): Promise<unknown>;
@@ -140,7 +148,11 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			picked.integrations = deps.configStore.getAllIntegrationSettings();
 			picked.extensionSettings = deps.configStore.getAllExtensionSettings();
 		}
-		if (sel.subscriptions) picked.subscriptions = deps.configStore.getSubscriptions();
+		if (sel.subscriptions) {
+			picked.subscriptions = deps.configStore.getSubscriptions();
+			// 标签表跟订阅同进同出(ADR-0034):订阅上挂的 tagIds 离了它就是一串认不出的 id。
+			picked.subscriptionTags = deps.configStore.getSubscriptionTags();
+		}
 		if (sel.connections) picked.connections = deps.configStore.getConnections();
 		if (sel.targets) picked.targets = deps.configStore.getTargets();
 		const createdAt = opts.createdAt ?? now();
@@ -154,6 +166,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 					integrations: picked.integrations,
 					extensionSettings: picked.extensionSettings,
 					subscriptions: picked.subscriptions,
+					subscriptionTags: picked.subscriptionTags,
 					connections: picked.connections,
 					targets: picked.targets,
 					cookies,
@@ -185,6 +198,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const current = {
 			globals: deps.configStore.getGlobals(),
 			subscriptions: deps.configStore.getSubscriptions(),
+			subscriptionTags: deps.configStore.getSubscriptionTags(),
 			connections: deps.configStore.getConnections(),
 			targets: deps.configStore.getTargets(),
 		};
