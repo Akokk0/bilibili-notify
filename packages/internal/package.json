@@ -19,6 +19,7 @@
 	"exports": {
 		".": "./lib/index.mjs",
 		"./constants": "./lib/constants.mjs",
+		"./format": "./lib/format.mjs",
 		"./patch": "./lib/patch.mjs",
 		"./template-defaults": "./lib/template-defaults.mjs",
 		"./package.json": "./package.json"

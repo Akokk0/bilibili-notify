@@ -77,6 +77,7 @@ export {
 	type WebSearchBackendMeta,
 	webSearchBackendMeta,
 } from "./constants";
+export * from "./format";
 export * from "./platform";
 /**
  * 推送源契约 —— 核心的三个 adapter 与拓展的桥都实现它。见 `push-source.ts` 的文件头。
