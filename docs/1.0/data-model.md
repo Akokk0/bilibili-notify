@@ -77,11 +77,17 @@ interface Subscription {
   id: string;                                         // uuid，运行期键
   identity: Identity;
   enabled: boolean;
+  tagIds: string[];                                   // SubscriptionTag id，见下
   features: Partial<Record<FeatureKey, boolean>>;   // 开没开；来源「支持哪些」是 descriptor.supportedFeatures
   targets: string[];                                  // PushTarget id
   // 按目标的附加项三态表叫 extraTargets（原顶层 extras）
   specialUsers?: { id: string; note?: string }[];     // 公共形状；露不露看 descriptor.supportedFeatures
   // 按订阅覆盖：形状同全局 defaults，对所有订阅开放
+}
+
+interface SubscriptionTag {           // 标签登记表的一条；顺序就是登记表里的顺序（ADR-0034）
+  id: string;
+  name: string;                        // 去掉首尾空白后非空、不重名
 }
 
 interface SubscriptionState {          // runtime/subscription-state.json，按订阅 id；存储叫 SubscriptionStateStore
@@ -113,6 +119,7 @@ interface CreatorProfile {
   - 🔗 10-01 随 ⑥d 落了别名那一半：迁移器丢掉 `name`、schema 删掉这一格，原来读它的地方去掉别名那一环（资料名 → 外部 id，B 站是「UID xxx」），单人锐评的定时推送与生成、投递同走 `roast-subject.ts`。`displayNameOf()` 这一个函数与身份标签（`externalIdNoun`）还没收，随来源描述符做。
 - **身份挂在所有行上**：推送历史、统计、在播三种行都带 `identity`，盘上直接是新形状，不留读时映射。
 - 现在判「是不是拓展行」有四种写法：只看 `extensionId`（面板 `Dashboard.tsx`、服务端 `stats/roast-subject.ts`）；两格都要有（面板 `utils/up-display.ts`、internal `constants.ts` 的 `upColor`）；只看 `externalId`（`packages/ai/src/tools.ts`）；只有一格就判无效（`runtime/target-scope.ts`、`pages/up/subscription-lookup.ts`）。行带 `identity` 以后四种一律删掉，按 `identity.sourceKey` 判。
+- **标签是一份单独的登记表，订阅只记 `tagIds`**（ADR-0034，issue 53）：改名只改登记表，没人挂的标签照样留着，删标签时所有订阅上的这个 id 一起去掉；面板上挑标签一律是同一个勾选组件（勾已有的 + 就地新建），没有自由文本框。标签只管面板上的整理（筛选、卡片角标），不参与推送与路由。登记表放在哪个文件、备份恢复时撞名怎么并，施工时定。
 - **特别关注名单只存 `{ id, note? }`**，平台由所挂的订阅决定。来源在 `descriptor.supportedFeatures` 里声明了 `specialDanmaku` 或 `specialUserEnter` 才露出这项设置。
 - internal 里没人写的旧 `SubscriptionStateSchema`（`schema/subscriptions.ts`，连同它导出的同名旧类型 `SubscriptionState` 与测试里钉它「仍 export」的那条）在数据模型期删掉：它和上面的新 `SubscriptionState` 同名，不先删会撞守卫 4，也容易有人把新形状写进这份老 schema。
 
