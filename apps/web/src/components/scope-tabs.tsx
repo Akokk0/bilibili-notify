@@ -223,11 +223,6 @@ export function ScopeTabs<S extends Subscription>({
 													)}
 												</div>
 											</div>
-											{sub.state.liveStatus === "live" ? (
-												<Pill color="var(--color-bn-pink)" subtle size="sm">
-													播
-												</Pill>
-											) : null}
 										</MenuItem>
 									);
 								})}

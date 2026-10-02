@@ -6,8 +6,9 @@
  *    cachedProfile / state(Subscription 现为纯配置)。
  *  - **不写迁移代码**:Zod 默认 strip 未知键 —— 旧 subscriptions.json 里内嵌的
  *    cachedProfile / state 在 parse 时被自动剥离,clean 加载。
- *  - CachedProfileSchema / FansBaselineSchema / SubscriptionStateSchema 仍 export
- *    (SubRuntimeStore + /api/subs join 复用),只是从 SubscriptionSchema 摘掉。
+ *  - CachedProfileSchema / FansBaselineSchema 仍 export(SubRuntimeStore 复用),只是从
+ *    SubscriptionSchema 摘掉。旧的 SubscriptionStateSchema 没人写、1.0 第 2 期 ⑫ 删掉(新的运行态
+ *    `SubscriptionState` 只剩资料缓存,见 docs/1.0/data-model.md)。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -20,7 +21,6 @@ import {
 	makeEmptySubscription,
 	type Subscription,
 	SubscriptionSchema,
-	SubscriptionStateSchema,
 } from "../subscriptions";
 
 const BASE = makeEmptySubscription({
@@ -123,12 +123,6 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 
 	it("FansBaselineSchema 仍可独立 parse", () => {
 		const r = FansBaselineSchema.safeParse({ value: 100, ts: "2026-05-19T00:00:00.000Z" });
-		expect(r.success).toBe(true);
-	});
-
-	it("SubscriptionStateSchema 仍 export(向后兼容,零风险保留)", () => {
-		expect(SubscriptionStateSchema).toBeDefined();
-		const r = SubscriptionStateSchema.safeParse({ lastPushedAt: {}, liveStatus: "unknown" });
 		expect(r.success).toBe(true);
 	});
 });

@@ -27,7 +27,6 @@ import type {
 	Result,
 	Subscription,
 	SubscriptionReportKind,
-	SubscriptionState,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
@@ -489,7 +488,6 @@ export type SubscriptionDTO = Subscription &
 /** 外置运行时字段(服务端 SubRuntimeStore join 回来的)。 */
 interface SubscriptionRuntimeDTO {
 	cachedProfile?: CachedProfile;
-	state: SubscriptionState;
 }
 
 // ---- /api/history ----------------------------------------------------------

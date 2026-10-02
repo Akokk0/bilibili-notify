@@ -1,10 +1,8 @@
 /**
  * 单元测试 — /api/subs 的「外置 runtime 字段回 join」+「POST 自 seed cachedProfile」。
  *
- * cachedProfile / state 已从 Subscription 外置(M2)。DTO 必须把:
- *  - cachedProfile 从 SubRuntimeStore join 回(有才带,无则 undefined);
- *  - state 填一个常量({lastPushedAt:{},liveStatus:"unknown"})满足 apps/web 非可选
- *    state 类型 + Rules.tsx 恒 "unknown" 读,而不凭空造数据。
+ * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubRuntimeStore join 回(有才带,
+ * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
  * POST 创建后服务端自 seed:engines 就绪且该 sub 尚无 cachedProfile 时,调
  * getUserCardInfo 拉一次写进 SubRuntimeStore;失败 best-effort 不致命;engines
  * 为 null 时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
@@ -114,7 +112,7 @@ function makeHarness(opts?: {
 describe("/api/subs GET — runtime 字段 join", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
-	it("无 cachedProfile 时返回 undefined,但 state 常量恒在", async () => {
+	it("无 cachedProfile 时返回 undefined,也不带早已删掉的 state", async () => {
 		const h = makeHarness();
 		const res = await h.app.request("/");
 		expect(res.status).toBe(200);
@@ -122,7 +120,7 @@ describe("/api/subs GET — runtime 字段 join", () => {
 		expect(body).toHaveLength(1);
 		const row = body[0] as Record<string, unknown>;
 		expect(row.cachedProfile).toBeUndefined();
-		expect(row.state).toEqual({ lastPushedAt: {}, liveStatus: "unknown" });
+		expect(row).not.toHaveProperty("state");
 		// 配置字段透传
 		expect(row.id).toBe(SUB.id);
 		expect(row.identity).toEqual(SUB.identity);
@@ -143,17 +141,7 @@ describe("/api/subs GET — runtime 字段 join", () => {
 		expect(row.cachedProfile).toEqual(PROFILE);
 		// fansBaseline 是 FansPoller 私有,绝不进 DTO
 		expect("fansBaseline" in row).toBe(false);
-		expect(row.state).toEqual({ lastPushedAt: {}, liveStatus: "unknown" });
-	});
-
-	it("Rules.tsx 的 sub.state.liveStatus 读取不会抛(常量永远是 'unknown')", async () => {
-		const h = makeHarness();
-		const res = await h.app.request("/");
-		const body = (await res.json()) as Array<{ state: { liveStatus: string } }>;
-		const row = body[0] as { state: { liveStatus: string } };
-		expect(row.state.liveStatus).toBe("unknown");
-		// 等同 Rules.tsx:236 `sub.state.liveStatus === "live"` —— 不抛,得 false
-		expect(row.state.liveStatus === "live").toBe(false);
+		expect(row).not.toHaveProperty("state");
 	});
 });
 
@@ -194,12 +182,9 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 			fans: PROFILE.fans,
 		});
 		expect(typeof patch.cachedProfile.lastRefreshedAt).toBe("string");
-		// 响应也走 toDTO(数组 + state 常量)
+		// 响应也走 toDTO(数组)
 		const body = (await res.json()) as Array<Record<string, unknown>>;
-		expect((body[0] as Record<string, unknown>).state).toEqual({
-			lastPushedAt: {},
-			liveStatus: "unknown",
-		});
+		expect(body[0]).not.toHaveProperty("state");
 	});
 
 	it("已有 cachedProfile → 跳过 seed(bounded,不重复打 B 站)", async () => {
@@ -263,7 +248,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 describe("/api/subs PATCH — 响应同样 join", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
-	it("PATCH 返回单条 joined DTO(cachedProfile + state 常量)", async () => {
+	it("PATCH 返回单条 joined DTO(cachedProfile)", async () => {
 		const h = makeHarness({ rtRecord: { [SUB.id]: { cachedProfile: PROFILE } } });
 		const res = await h.app.request(`/${SUB.id}`, {
 			method: "PATCH",
@@ -273,7 +258,7 @@ describe("/api/subs PATCH — 响应同样 join", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(body.cachedProfile).toEqual(PROFILE);
-		expect(body.state).toEqual({ lastPushedAt: {}, liveStatus: "unknown" });
+		expect(body).not.toHaveProperty("state");
 		expect(h.patchSubscription).toHaveBeenCalledWith(SUB.id, { enabled: false });
 	});
 

@@ -26,10 +26,7 @@ import type { RouteDeps } from "./types.js";
 const BILI_API_NOT_READY_MESSAGE = "B 站 API 尚未就绪，请等登录完成或稍后再试";
 
 // DTO 形状在 @bilibili-notify/contract(web 同源消费):持久化 Subscription +
-// SubRuntimeStore join 回来的外置运行时字段。`state` 发常量 —— 唯一活字段
-// (fansBaseline)是 FansPoller 私有、永不上线,其余(lastDynamicId/lastPushedAt/
-// liveStatus)无任何写入方,固定默认值即可满足 web 的非可选 `state` 与恒
-// "unknown" 的 Rules.tsx 读取,不算编造数据。
+// SubRuntimeStore join 回来的外置运行时字段。
 
 export interface SubsRouteOptions {
 	/**
@@ -93,10 +90,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 	/** Join the externalized runtime fields back onto a config Subscription. */
 	function toDTO(sub: Subscription): SubscriptionDTO {
 		const rt = deps.runtime.subRuntimeStore.get(sub.id);
-		const runtime = {
-			cachedProfile: rt?.cachedProfile,
-			state: { lastPushedAt: {}, liveStatus: "unknown" as const },
-		};
+		const runtime = { cachedProfile: rt?.cachedProfile };
 		// 关注状态只对 B 站订阅有意义(动态走 B 站的关注流);别的来源这两格缺着。
 		if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY)
 			return { ...sub, ...runtime };

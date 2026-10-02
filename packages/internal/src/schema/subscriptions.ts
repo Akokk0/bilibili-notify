@@ -168,22 +168,6 @@ export const FansBaselineSchema = z.object({
 export type FansBaseline = z.infer<typeof FansBaselineSchema>;
 
 /**
- * 运行时状态。**不再内嵌于 Subscription**——只有 fansBaseline 有真实写入方
- * (FansPoller)，其余字段全仓零写入方。fansBaseline 现由 apps/server 的
- * SubRuntimeStore 持久化；schema/type 保留导出仅为类型复用与向后兼容。
- */
-export const SubscriptionStateSchema = z.object({
-	lastDynamicId: z.string().optional(),
-	lastPushedAt: z.object({
-		dynamic: z.string().optional(),
-		live: z.string().optional(),
-	}),
-	liveStatus: z.enum(["idle", "live", "unknown"]),
-	fansBaseline: FansBaselineSchema.optional(),
-});
-export type SubscriptionState = z.infer<typeof SubscriptionStateSchema>;
-
-/**
  * 决策 3:每把附加项的目标必须是它那把主特性目标的子集 —— 遍历注册表,加一把附加项
  * 不用来这儿补一条 refine。
  */

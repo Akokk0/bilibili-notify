@@ -122,6 +122,7 @@ interface CreatorProfile {
 - **标签是一份单独的登记表，订阅只记 `tagIds`**（ADR-0034，issue 53）：改名只改登记表，没人挂的标签照样留着，删标签时所有订阅上的这个 id 一起去掉；面板上挑标签一律是同一个勾选组件（勾已有的 + 就地新建），没有自由文本框。标签只管面板上的整理（筛选、卡片角标），不参与推送与路由。标签表与订阅住同一个文件 `config/subscriptions.json`（`{ tags, subscriptions }`），读写口是 `GET` / `PUT /api/subs/tags`（整张换）；订阅只许挂表里有的标签，写盘那一层核。恢复备份时标签先按 id、再按名字并（ADR-0034 决策 3 与后果下 10-02 的 🔗）。
 - **特别关注名单只存 `{ id, note? }`**，平台由所挂的订阅决定。来源在 `descriptor.supportedFeatures` 里声明了 `specialDanmaku` 或 `specialUserEnter` 才露出这项设置。
 - internal 里没人写的旧 `SubscriptionStateSchema`（`schema/subscriptions.ts`，连同它导出的同名旧类型 `SubscriptionState` 与测试里钉它「仍 export」的那条）在数据模型期删掉：它和上面的新 `SubscriptionState` 同名，不先删会撞守卫 4，也容易有人把新形状写进这份老 schema。
+  - 🔗 10-02 ⑫ 已删：连同测试里钉它「仍 export」的那条、contract 里恒为「未知」的死字段 `SubscriptionDTO.state`、面板上读它的那颗永远不亮的「播」；`FansBaselineSchema` 还有人用，留着。
 
 ## 问题表
 

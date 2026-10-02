@@ -253,11 +253,6 @@ export function makeEmptySubscription(identity: Identity): Subscription {
 		// 与服务端的 makeEmptySubscription 保持一致。
 		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),
 		specialUsers: [],
-		state: {
-			lastDynamicId: undefined,
-			lastPushedAt: {},
-			liveStatus: "unknown",
-		},
 	};
 }
 
