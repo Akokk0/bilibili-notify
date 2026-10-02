@@ -13,6 +13,10 @@
  * - 新装(宿主根上没有 0.x 数据):开一代空的,不迁。
  * - 拓展页拿到的手放拓展目录是在用那一代的 `extensions/`(装载器读的那一个),不是宿主根上 0.x 的那个。
  * - 迁移抛错:启动入口抛出去,不留下半截的一代。
+ * - 主人要求开新代(⑧,`generations/pending.json`):全新开始开空代、主密钥带过去(不登出);从旧代重新迁移
+ *   开从第 0 代迁来的一代;新代里记一条「迁好了」。要求的新代没开成:留在原来那一代、失败原因记在它的提示里,
+ *   有人拉起来就正常退出等着被拉起,没人拉就照旧抛出去。第 0 代已经不在了就照常用原来那一代、记一条失败。
+ * - 启动器判死过比正在跑的新的版本:记一条「X 起不来」。
  *
  * 迁移卡在哪由测试决定:包一层真的迁移器(不换掉它),让它等测试放行,或者直接抛错。
  */
@@ -28,12 +32,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { MIGRATION_REVISION } from "../migration/zero-generation.js";
-import { GENERATION_FILE, type GenerationFile } from "../runtime/generations.js";
+import {
+	GENERATION_FILE,
+	type GenerationFile,
+	writePendingGeneration,
+} from "../runtime/generations.js";
+import { createSystemNoticeStore } from "../runtime/system-notices.js";
 
 const gate = vi.hoisted(() => ({
 	hold: undefined as Promise<void> | undefined,
 	failure: undefined as Error | undefined,
+	copyFailure: undefined as Error | undefined,
 }));
+
+// 复制也包一层真的(不换掉它):测试要它在全新开始拷主密钥时抛。
+vi.mock("@bilibili-notify/storage", async (importOriginal) => {
+	const real = await importOriginal<typeof import("@bilibili-notify/storage")>();
+	return {
+		...real,
+		copyFileAtomic: async (...args: Parameters<typeof real.copyFileAtomic>) => {
+			if (gate.copyFailure) throw gate.copyFailure;
+			return real.copyFileAtomic(...args);
+		},
+	};
+});
 
 vi.mock("../migration/zero-generation.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../migration/zero-generation.js")>();
@@ -149,6 +171,7 @@ describe("数据代接在开机路径上 e2e", () => {
 		port = await findFreePort();
 		gate.hold = undefined;
 		gate.failure = undefined;
+		gate.copyFailure = undefined;
 	});
 
 	afterEach(async () => {
@@ -299,6 +322,147 @@ describe("数据代接在开机路径上 e2e", () => {
 		expect(res.status, await res.clone().text()).toBe(200);
 		const body = (await res.json()) as ExtensionsResponse;
 		expect(body.root).toBe(resolve(generationsDir(), "1", "extensions"));
+	});
+
+	const quietEnv = { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" };
+	/** 有人会把退出的进程拉起来(桌面壳):开新代失败时才会正常退出、等着被拉起。 */
+	const supervisedEnv = { ...quietEnv, BN_PARENT_PID: String(process.ppid) };
+	const noticesOf = (seq: number) =>
+		createSystemNoticeStore({
+			dir: join(generationsDir(), String(seq)),
+			runningVersion: "0.0.0-dev",
+		}).list();
+	const fileOf = async (seq: number) =>
+		JSON.parse(
+			await readFile(join(generationsDir(), String(seq), GENERATION_FILE), "utf8"),
+		) as GenerationFile;
+	async function bootOnce(env: Record<string, string> = quietEnv): Promise<void> {
+		handle = await start(env);
+		await handle.close("test");
+		handle = undefined;
+	}
+
+	it("全新开始:开下一个号的空代,主密钥带过去,旧代原地留着,标记用掉就没了", async () => {
+		await placeZeroGeneration();
+		await bootOnce();
+		await writePendingGeneration(dataDir, { kind: "empty" });
+
+		await bootOnce();
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1", "2"]);
+		expect((await fileOf(2)).source).toEqual({ kind: "empty" });
+		expect(await readFile(join(generationsDir(), "2", "secrets", "master.key"))).toEqual(
+			await readFile(join(generationsDir(), "1", "secrets", "master.key")),
+		);
+		expect(existsSync(join(generationsDir(), "2", "maid-skills"))).toBe(false);
+		expect(existsSync(join(generationsDir(), "1", "maid-skills", "weekly", "SKILL.md"))).toBe(true);
+		expect(await noticesOf(2)).toEqual([]);
+	});
+
+	it("从旧代重新迁移:开下一个号、从第 0 代迁;新代里记一条「迁好了」,老卡片皮肤没迁就说出来", async () => {
+		await placeZeroGeneration();
+		await mkdir(join(dataDir, "card-skins", "old"), { recursive: true });
+		await writeFile(join(dataDir, "card-skins", "old", "skin.json"), "{}");
+		await bootOnce();
+		expect(await noticesOf(1)).toMatchObject([{ kind: "migrated", cardSkinsDropped: true }]);
+		await writePendingGeneration(dataDir, { kind: "empty" });
+		await bootOnce();
+		await writePendingGeneration(dataDir, { kind: "zero" });
+
+		await bootOnce();
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1", "2", "3"]);
+		expect((await fileOf(3)).source).toEqual({ kind: "zero" });
+		expect(
+			await readFile(join(generationsDir(), "3", "maid-skills", "weekly", "SKILL.md"), "utf8"),
+		).toBe("# 周报");
+		expect(await noticesOf(3)).toMatchObject([{ kind: "migrated", cardSkinsDropped: true }]);
+	});
+
+	it("要求的新代没开成、有人会拉起来:不留半截,失败原因记在原来那一代,正常退出;再开机接着用它", async () => {
+		await placeZeroGeneration();
+		await bootOnce();
+		await writePendingGeneration(dataDir, { kind: "zero" });
+		gate.failure = new Error("disk on fire");
+		const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+		try {
+			await expect(start(supervisedEnv)).rejects.toThrow("disk on fire");
+			expect(exit).toHaveBeenCalledWith(0);
+		} finally {
+			exit.mockRestore();
+		}
+		gate.failure = undefined;
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1"]);
+		expect(await noticesOf(1)).toMatchObject([
+			{ kind: "migrated" },
+			{
+				kind: "generation-failed",
+				source: "zero",
+				message: expect.stringContaining("disk on fire"),
+			},
+		]);
+
+		await bootOnce();
+		expect((await readdir(generationsDir())).sort()).toEqual(["1"]);
+	});
+
+	it("要求的新代没开成、没人会拉起来:照旧抛出去,失败原因照样记下", async () => {
+		await placeZeroGeneration();
+		await bootOnce();
+		await writePendingGeneration(dataDir, { kind: "zero" });
+		gate.failure = new Error("disk on fire");
+		const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+		try {
+			await expect(start()).rejects.toThrow("disk on fire");
+			expect(exit).not.toHaveBeenCalled();
+		} finally {
+			exit.mockRestore();
+		}
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1"]);
+		expect(await noticesOf(1)).toMatchObject([{ kind: "migrated" }, { kind: "generation-failed" }]);
+	});
+
+	it("全新开始没开成:不留半截,接着用原来那一代,失败原因记下", async () => {
+		await placeZeroGeneration();
+		await bootOnce();
+		await writePendingGeneration(dataDir, { kind: "empty" });
+		gate.copyFailure = new Error("copy refused");
+
+		await bootOnce();
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1"]);
+		expect(await noticesOf(1)).toMatchObject([
+			{ kind: "migrated" },
+			{
+				kind: "generation-failed",
+				source: "empty",
+				message: expect.stringContaining("copy refused"),
+			},
+		]);
+	});
+
+	it("要求从第 0 代迁、第 0 代已经不在了:照常用原来那一代,记一条失败", async () => {
+		await bootOnce();
+		await writePendingGeneration(dataDir, { kind: "zero" });
+
+		await bootOnce();
+
+		expect((await readdir(generationsDir())).sort()).toEqual(["1"]);
+		expect(await noticesOf(1)).toMatchObject([{ kind: "generation-failed", source: "zero" }]);
+	});
+
+	it("启动器判死过比正在跑的新的版本 → 记一条「X 起不来」", async () => {
+		await mkdir(join(dataDir, "versions"), { recursive: true });
+		await writeFile(
+			join(dataDir, "versions", "boot-state.json"),
+			JSON.stringify({ attempts: {}, failed: ["99.0.0"], revoked: [] }),
+		);
+
+		await bootOnce();
+
+		expect(await noticesOf(1)).toMatchObject([{ kind: "rolled-back", version: "99.0.0" }]);
 	});
 
 	it("迁移抛错 → 启动入口抛出去,不留下一代,也不留半截", async () => {

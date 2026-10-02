@@ -186,6 +186,14 @@ export interface BootView {
 }
 
 /**
+ * 自愈判死的版本(`failed`),只这一份、不并上厂商撤回的(`revoked`)。给开机记「X 起不来,已退回」用
+ * (⑧):被召回的版本不是「起不来」,不该这么说。
+ */
+export function readFailedVersions(versionsRoot: string): string[] {
+	return [...readState(versionsRoot).failed];
+}
+
+/**
  * 一次读盘,回答更新服务要问的三件事。
  *
  * 合成一个是因为它们**必须来自同一次快照**:钉子是否算数取决于判死名单和目录在不在,

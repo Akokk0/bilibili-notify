@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { StatsOverviewResponse } from "@bilibili-notify/contract";
+import type { GenerationSourceKind, StatsOverviewResponse } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
@@ -72,11 +72,13 @@ import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import {
+	copyKeyMaterial,
 	createGeneration,
 	FORMAT_VERSION,
 	type GenerationSelection,
 	markGenerationActive,
 	selectGeneration,
+	takePendingGeneration,
 } from "./runtime/generations.js";
 import { createLinkParser } from "./runtime/link-parser.js";
 import { createLoginCommand } from "./runtime/login-command.js";
@@ -94,6 +96,8 @@ import { dataPath, hostPath } from "./runtime/roots.js";
 import { createStatusCommand } from "./runtime/status-command.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
+import { createSystemNoticeStore } from "./runtime/system-notices.js";
+import { readFailedVersions } from "./update/select-version-for-boot.js";
 import { createUpdateService } from "./update/service.js";
 import {
 	EXTENSION_MARKETPLACE_URL,
@@ -132,18 +136,62 @@ export interface StartServerOptions {
 	bundleUrl?: string;
 }
 
+/** 主人要求的新代没开成:原因记进原来那一代的提示清单,交回记下的原因。 */
+async function recordGenerationFailure(
+	dir: string,
+	source: GenerationSourceKind,
+	error: unknown,
+): Promise<string> {
+	const message = error instanceof Error ? error.message : String(error);
+	await createSystemNoticeStore({ dir, runningVersion: APP_VERSION }).append({
+		kind: "generation-failed",
+		source,
+		message,
+	});
+	return message;
+}
+
+/**
+ * 开空的一代(新装、全新开始)。全新开始把主密钥从原来那一代带过去(不登出);没开成就接着用原来那一代、原因记进它的
+ * 提示清单,不让整个开机失败。新装没有原来那一代,照旧抛。
+ */
+async function openEmptyGeneration(
+	selection: Extract<GenerationSelection, { kind: "create" }>,
+): Promise<{ generation: GenerationSelection; failure?: string }> {
+	const { current } = selection;
+	try {
+		await createGeneration(selection, {
+			formatVersion: FORMAT_VERSION,
+			migrationRevision: MIGRATION_REVISION,
+			createdBy: APP_VERSION,
+			fill: async (partialDir) => {
+				if (current) await copyKeyMaterial(current.dir, partialDir);
+			},
+		});
+		return { generation: { kind: "use", seq: selection.seq, dir: selection.dir } };
+	} catch (error) {
+		if (!current) throw error;
+		await markGenerationActive(current.dir);
+		const failure = await recordGenerationFailure(current.dir, "empty", error);
+		return { generation: { kind: "use", seq: current.seq, dir: current.dir }, failure };
+	}
+}
+
 export async function startServer(options: StartServerOptions = {}): Promise<ServerHandle> {
 	const env = options.env ?? process.env;
 	const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 	const bootstrap = loadBootstrapConfig({ argv: options.argv, env });
 	// 这时运行时还没建,宿主根就直接取配置键(建好之后一律读 `runtime.hostRoot`)。
 	const hostRoot = bootstrap.dataDir;
+	// 主人要求开的新代(全新开始 / 从旧代重新迁移,⑧):面板写下的一次性标记,取一次就删。
+	const pending = await takePendingGeneration(hostRoot);
 	// 选这次开机用哪一代(ADR-0022 决策 1–3),只读盘。宿主根上 0.x 的文件是第 0 代,一个字节都不动。
 	const selection = await selectGeneration({
 		hostRoot,
 		formatVersion: FORMAT_VERSION,
 		migrationRevision: MIGRATION_REVISION,
 		zeroGenerationExists: await zeroGenerationExists(hostRoot),
+		pending,
 	});
 	// 开机清扫:收掉上个进程被杀留下的临时文件与暂存目录。**必须赶在任何写入之前** —— 它认不出哪些
 	// 临时文件是这个进程正在写的(Docker 里每次开机 pid 常常一样,靠不住),而存储与日志落盘都从
@@ -159,16 +207,23 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	);
 	// 用到已有的一代就记一笔最后使用时间(只给系统页显示)。排在清扫之后:原子写会先落临时文件。
 	if (selection.kind === "use") await markGenerationActive(selection.dir);
-	// 空的一代(新装)当场开:什么都不用搬,不必等到 listen 之后。
-	const generation: GenerationSelection =
+	// 要求从第 0 代迁、第 0 代却已经不在了:选代当没要求,接着用原来那一代,告诉主人为什么。
+	const declined =
+		pending && selection.kind === "use"
+			? await recordGenerationFailure(
+					selection.dir,
+					pending.kind,
+					"第 0 代(0.x 的数据)已经不在了,没法从它重新迁移",
+				)
+			: undefined;
+	// 空的一代(新装、全新开始)当场开:什么都不用搬,不必等到 listen 之后。
+	const opened =
 		selection.kind === "create" && selection.source.kind === "empty"
-			? await createGeneration(selection, {
-					formatVersion: FORMAT_VERSION,
-					migrationRevision: MIGRATION_REVISION,
-					createdBy: APP_VERSION,
-					fill: async () => {},
-				}).then(() => ({ kind: "use", seq: selection.seq, dir: selection.dir }) as const)
-			: selection;
+			? await openEmptyGeneration(selection)
+			: { generation: selection };
+	const generation: GenerationSelection = opened.generation;
+	// 主人要求的新代没开成的原因(已经记进原来那一代的提示清单);logger 这会儿还没建,下面再记日志。
+	const generationFailure = declined ?? opened.failure;
 	let runtime: AppRuntime | undefined;
 	let authSystem: AuthSystem | undefined;
 	let puppeteer: PuppeteerAdapter | null = null;
@@ -212,6 +267,38 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		return shutdownPromise;
 	};
 
+	// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
+	const payloadVersion = APP_VERSION;
+	// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。devtools 那道门与
+	// 「能不能重启」是同一个事实,算一次两处用。
+	const sourceRun = import.meta.url.endsWith(".ts");
+	// 按下重启还回不回得来 —— 判的是外面有没有人拉,与「是不是开发版」不是一回事。
+	const restartAbility = resolveRestartAbility({
+		parentPid: env.BN_PARENT_PID,
+		sourceRun,
+		inContainer: runningInContainer(),
+	});
+
+	/**
+	 * 优雅停机 + 退 0,等外面那位把它拉起来 —— 应用更新与「重启一下」共用这一段。
+	 *
+	 * **退出码必须是 0**:非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff;
+	 * 桌面外壳那边同样只认 0(见 sidecar_exit_disposition),非 0 会摊出一张崩溃页。
+	 */
+	const stopAndExit = async (reason: string): Promise<void> => {
+		try {
+			await close(reason);
+		} catch (err) {
+			// close() 自己不抛(钩子各自兜错),这里只是兜底。真抛了也得退 0:这时进程反正
+			// 要没了,非 0 只会让编排系统当成崩溃去退避重启。
+			log.error(
+				`${reason}: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		} finally {
+			process.exit(0);
+		}
+	};
+
 	try {
 		log.info(
 			`starting bilibili-notify server: host=${bootstrap.server.host} port=${bootstrap.server.port} dataDir=${bootstrap.dataDir} logLevel=${bootstrap.logLevel}`,
@@ -221,6 +308,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				? `[data] 用第 ${generation.seq} 代:${generation.dir}`
 				: `[data] 这次开机要从第 0 代迁出第 ${generation.seq} 代:${generation.dir}`,
 		);
+		if (generationFailure) {
+			log.error(`[data] 主人要求开的新代没开成,接着用第 ${generation.seq} 代:${generationFailure}`);
+		}
 		if ("error" in bootSweep) {
 			log.warn(
 				`[storage] 开机清扫没做完(${bootSweep.error instanceof Error ? bootSweep.error.message : String(bootSweep.error)})—— 上次留下的临时文件可能还在,不影响启动`,
@@ -358,21 +448,36 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 话里带进度;迁移抛错就和别的开机失败一样关掉 HTTP 再抛,boot.mjs 退回预装的那一版。
 		if (generation.kind === "create") {
 			let report: ZeroMigrationResult | undefined;
-			await createGeneration(generation, {
-				formatVersion: FORMAT_VERSION,
-				migrationRevision: MIGRATION_REVISION,
-				createdBy: APP_VERSION,
-				fill: async (partialDir) => {
-					report = await migrateZeroGeneration({
-						zeroRoot: hostRoot,
-						targetDir: partialDir,
-						passphrase: bootstrap.cookieEncryptionKey,
-						onProgress: ({ done, total, label }) => {
-							startupMessage = `BN 正在搬家(${done}/${total}):${label}`;
-						},
-					});
-				},
-			});
+			try {
+				await createGeneration(generation, {
+					formatVersion: FORMAT_VERSION,
+					migrationRevision: MIGRATION_REVISION,
+					createdBy: APP_VERSION,
+					fill: async (partialDir) => {
+						report = await migrateZeroGeneration({
+							zeroRoot: hostRoot,
+							targetDir: partialDir,
+							passphrase: bootstrap.cookieEncryptionKey,
+							onProgress: ({ done, total, label }) => {
+								startupMessage = `BN 正在搬家(${done}/${total}):${label}`;
+							},
+						});
+					},
+				});
+			} catch (error) {
+				// 首次迁移(与开发期重迁)没有可退回的那一代,和别的开机失败一样抛出去。
+				const { current } = generation;
+				if (!current) throw error;
+				// 主人要求的那一代没开成(⑧):原因记进原来那一代;正常退出,被拉起来时标记已经用掉、接着用原来那一代。
+				// 抛出去的话 boot.mjs 会退回预装的那一版 —— 应用内升上来的桌面用户会被送回 0.x。没人拉的话只能抛。
+				const message = await recordGenerationFailure(current.dir, generation.source.kind, error);
+				log.error(
+					`[data] 主人要求开的第 ${generation.seq} 代没开成,原来的第 ${current.seq} 代还在:${message}`,
+				);
+				if (!restartAbility.can) throw error;
+				await stopAndExit("requested generation failed");
+				throw error;
+			}
 			startupMessage = "BN 正在启动,稍等一下";
 			log.info(
 				`[data] 第 ${generation.seq} 代迁好了:搬了 ${report?.transfers.length ?? 0} 个文件,第 0 代原样留着当备份`,
@@ -382,7 +487,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					`[data] 没带过来的:${report.skipped.map((s) => `${s.path}(${s.reason})`).join("、")}`,
 				);
 			}
+			await createSystemNoticeStore({ dir: generation.dir, runningVersion: APP_VERSION }).append({
+				kind: "migrated",
+				cardSkinsDropped: report?.skipped.some((s) => s.path === "card-skins") ?? false,
+			});
 		}
+
+		// 开机之后要告诉主人的事(⑧)记在用着的那一代里。启动器判死过比我新的版本,各记一条「X 起不来」。
+		const noticeStore = createSystemNoticeStore({
+			dir: generation.dir,
+			runningVersion: APP_VERSION,
+		});
+		await noticeStore.recordRollbacks(readFailedVersions(versionsRootIn(runtime.hostRoot)));
 
 		// Load the at-rest secrets key during startup, not on the first settings write.
 		// Without this eager touch, zero-auth local runs only hit the key lazily when
@@ -472,37 +588,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 两个 adapter 都在自己那层把帧归一化成平台中立的形状,汇合点是同一个。
 		let onInboundPrivate: ((msg: InboundPrivateMessage, meta: InboundMeta) => void) | undefined;
 		let onInboundGroup: ((msg: InboundGroupMessage, meta: InboundMeta) => void) | undefined;
-		// 当前跑的这份载荷的版本 —— 启动时算过一次的那个常量,别再向上找一遍 package.json。
-		const payloadVersion = APP_VERSION;
-		// 构建产物的入口恒为 `.mjs`;只有 tsx 直跑源码时才是 `.ts`。devtools 那道门与
-		// 「能不能重启」是同一个事实,算一次两处用。
-		const sourceRun = import.meta.url.endsWith(".ts");
-		// 按下重启还回不回得来 —— 判的是外面有没有人拉,与「是不是开发版」不是一回事。
-		const restartAbility = resolveRestartAbility({
-			parentPid: process.env.BN_PARENT_PID,
-			sourceRun,
-			inContainer: runningInContainer(),
-		});
-
-		/**
-		 * 优雅停机 + 退 0,等外面那位把它拉起来 —— 应用更新与「重启一下」共用这一段。
-		 *
-		 * **退出码必须是 0**:非 0 会被编排系统当成崩溃,退避重启甚至进 CrashLoopBackOff;
-		 * 桌面外壳那边同样只认 0(见 sidecar_exit_disposition),非 0 会摊出一张崩溃页。
-		 */
-		const stopAndExit = async (reason: string): Promise<void> => {
-			try {
-				await close(reason);
-			} catch (err) {
-				// close() 自己不抛(钩子各自兜错),这里只是兜底。真抛了也得退 0:这时进程反正
-				// 要没了,非 0 只会让编排系统当成崩溃去退避重启。
-				log.error(
-					`${reason}: graceful close failed, exiting anyway: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			} finally {
-				process.exit(0);
-			}
-		};
 		// **唯一那个装载根**(`<dataRoot>/extensions/`)。市场、装载器、面板上传装包、开发版
 		// devtools 认的是同一个目录 —— 算四遍等于给「拓展装在哪」留了四个改错的机会。
 		const extensionsRoot = extensionsRootIn(runtime.dataRoot);
@@ -738,7 +823,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 孤儿自检:只有桌面版 launcher 会传 BN_PARENT_PID,Docker / 直接跑都不受影响。
 		// launcher 被强杀时不会带走我们,不自己盯着就会变成占着数据目录的孤儿。
-		const expectedParent = resolveExpectedParent(process.env.BN_PARENT_PID);
+		const expectedParent = resolveExpectedParent(env.BN_PARENT_PID);
 		if (expectedParent !== null) {
 			startParentWatch({
 				expectedParent,

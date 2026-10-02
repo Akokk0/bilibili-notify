@@ -20,9 +20,14 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { atomicWriteJson, removeDirectory, replaceDirectory } from "@bilibili-notify/storage";
+import {
+	atomicWriteJson,
+	copyFileAtomic,
+	removeDirectory,
+	replaceDirectory,
+} from "@bilibili-notify/storage";
 import { z } from "zod";
-import { hostPath } from "./roots.js";
+import { dataPath, hostPath } from "./roots.js";
 
 /** 1.0 的数据格式版本。只在发出去的版本改了盘上格式时加 1;1.0 整个开发期都是 1。 */
 export const FORMAT_VERSION = 1;
@@ -236,6 +241,18 @@ export async function markGenerationActive(dir: string): Promise<void> {
 	const path = join(dir, GENERATION_FILE);
 	const raw = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
 	await atomicWriteJson(path, { ...raw, lastActiveAt: new Date().toISOString() });
+}
+
+/**
+ * 把主密钥从一代带进另一代(全新开始,10-02 主人定):主密钥(`master.key`,配了口令时是 `kdf.salt`)只给盘上的东西
+ * 加密、本身不装数据,带过去主人不会被登出 —— 面板会话的签名密钥由它派生。密钥袋 `secrets.enc` 不带,里面的
+ * 凭据照样清空。哪一个不在就不拷。
+ */
+export async function copyKeyMaterial(fromDir: string, toDir: string): Promise<void> {
+	for (const name of ["master.key", "kdf.salt"]) {
+		const from = dataPath(fromDir, "secrets", name);
+		if (existsSync(from)) await copyFileAtomic(from, dataPath(toDir, "secrets", name));
+	}
 }
 
 async function listGenerationNames(hostRoot: string): Promise<string[]> {
