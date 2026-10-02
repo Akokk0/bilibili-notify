@@ -8,7 +8,9 @@
  *
  * 与本包「只测块装配契约、不测 HTML / CSS 拼装」的惯例仍然冲突,冲突依旧是**有意的**:
  * 任何改动只要动了出图,这里就整片红 —— 那正是它该做的事。红了**先看变化对不对**,确认
- * 是想要的再 `-u` 重生成,别反过来把标尺改短。
+ * 是想要的再 `-u` 重生成**并在批准的像素差清单(`approved-card-diffs.ts`)末尾记一条**:
+ * 光 `-u` 不记,每个样例后面那道清单检查照样红(守卫 10,ADR-0028 决策 2)。别反过来把
+ * 标尺改短。
  *
  * **挂点不再剥**(从前比的是重构前后,挂点是纯附加的所以要剥掉)。现在基准两边都是皮肤路径,
  * `data-bn` 挂点是皮肤 CSS 的公开 API,掉了就该红。挂点有没有挂串块仍归 `card-hooks.test.ts`。
@@ -19,12 +21,20 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { buildDynamicNode } from "../templates/dynamic-content";
+import { APPROVED_CARD_DIFFS } from "./approved-card-diffs";
+import { cardDiffIssues, cardHtmlHash, orphanedCardDiffIssues } from "./card-diff-check";
 import { CARD_FIXTURES, LIVE_RCMD_DYNAMIC } from "./fixtures/card-fixtures";
 import { renderViaSkin } from "./fixtures/skin-render";
 
-/** 把一份渲染结果钉进 `__snapshots__/card-baseline/<名字>.html`。 */
+/**
+ * 把一份渲染结果钉进 `__snapshots__/card-baseline/<名字>.html`,再对一遍清单。
+ *
+ * 先比快照、后比清单:变了的时候先看到字节 diff,`-u` 之后才轮到清单要那一条。hash 取的是
+ * 这次渲染出的字符串,不读快照文件(别的 checkout 上换行可能被改写)。
+ */
 async function snap(name: string, html: string): Promise<void> {
 	await expect(html).toMatchFileSnapshot(`./__snapshots__/card-baseline/${name}.html`);
+	expect(cardDiffIssues(name, cardHtmlHash(html), APPROVED_CARD_DIFFS)).toEqual([]);
 }
 
 const GROUPS = [...new Set(CARD_FIXTURES.map((f) => f.group))];
@@ -38,6 +48,17 @@ for (const group of GROUPS) {
 		}
 	});
 }
+
+describe("批准的像素差清单", () => {
+	it("清单里点名的样例都还有夹具 —— 改名、删夹具、打错字不留死条目", () => {
+		expect(
+			orphanedCardDiffIssues(
+				CARD_FIXTURES.map((f) => f.name),
+				APPROVED_CARD_DIFFS,
+			),
+		).toEqual([]);
+	});
+});
 
 describe("卡片渲染基准 — 动态卡(无快照)", () => {
 	it("dynamic-live-rcmd 没有快照 —— 开播动态在 buildDynamicNode 里直接抛，压根到不了 renderCard", async () => {
