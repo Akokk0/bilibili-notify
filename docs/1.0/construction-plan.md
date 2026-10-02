@@ -134,6 +134,7 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | --- | --- |
 | AI 写正文按目标选（ADR-0032）：`core.ai.writing` 两份，默认 `enabled: true`、`byTarget` 为空，升级后行为不变；模板正文总备好，默认开或任一例外开才生成 AI 正文；推送层逐目标挑正文，和 @全体 的分组叠成两维 | 3a（推送层与作品那份）/ 3b（直播总结那份，随 `live/` 装配） |
 | 订阅标签（ADR-0034，issue 53）：标签登记表 `SubscriptionTag` + 订阅上的 `tagIds`、读写口、0.x 迁移一条；面板同期跟上（筛选与卡片角标按登记表读名字，订阅详情的「分组」文本框换成和「编辑分组」弹框同一个勾选组件，文案「分组」→「标签」） | 第 2 期（数据模型、迁移与面板跟上）；标签管理界面（改名、删除、排序）第 4 期 |
+| 目标标出所在连接 + 下拉换成自己的组件（ADR-0035，issue 55）：目标一律标平台图标 + 连接名，由一个函数从目标与连接表算出来；`TSelect` 改用 `PopoverShell` + `MenuItem` 拼（键盘、读屏器、焦点由测试钉住），`HourSelect` 与 `Logs` / `SkinEditor` / `RoastPushBox` 三处原生 `<select>` 一并换掉，驱动原生 select 的测试改成点开再选，加守卫拦裸 `<select>`，`packages/ui` 清单同步 | 第 4 期（随连接 / 目标表单） |
 | 拓展的定时器收口（与守卫 22 同期）：宿主的 `ctx.setTimeout` 一次性定时器触发后自动从登记里放掉（今天要等拓展卸载才放）；桥的 `pendingTable` 与握手超时改用 `ctx.setTimeout`，结算或断开时 dispose | 3a |
 | 拓展契约 v3：min 抬到 3，删 v1、v2 的退路（`legacy-v1.ts` 连同过时注释）；ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`，上报改 `void`、被拒记进 `reportRejections`；推送侧加宽到 `PlatformAdapterDef`（ADR-0024 决策 3，这一版不开的见决策 11）；`pickPerId` 改成「在当前 BN 装得了的版本里取最高」；索引规则放宽成「每个契约版本各留最新一条」；桥迁 v3，1.0 alpha 期间 v3 的桥只进预发布档 | 3b |
 | 读设置的写法简化（待议，10-01 主人提）：格式只声明一处（写在集成定义里，面板要的字段由打包脚本从它导出进清单，作者不写第二份），ctx 按它定好类型，读只要一行 `ctx.settings.get().x`、读处不再传 schema；不学「改了设置就整个重启」（B 站改个间隔就要断开全部直播间） | 3a（B 站）/ 3b（契约 v3），到时拷问 |
