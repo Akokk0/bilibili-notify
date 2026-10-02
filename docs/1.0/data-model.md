@@ -499,6 +499,8 @@ interface GlobalDefaults {
   templates: { post; postVideo; membership: Record<string, MembershipTemplate>; … };
   wordcloud: { stopWords: string[] };
   quietHours: { startHour: number; endHour: number }[];
+  liveStart: { catchUpOnBoot: boolean };            // 启动时发现正在播就补报一次开播，默认关
+  liveStreaming: { streamingIntervalHours: number }; // 周期「正在直播」的间隔，1–24，默认 1；开关在 features.liveStreaming
   liveEnd: { grace: { enabled: boolean; waitSec: number } };
   superchat: { minAmount?: number };
   membership: { minRank?: Record<string, number> };

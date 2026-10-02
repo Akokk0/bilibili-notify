@@ -117,7 +117,7 @@
 | ⑩ | 出图字节门的「批准的像素差清单」（守卫 10 的本体）：清单文件、清单外的字节变化判红、更新快照必须同时补清单。快照早已覆盖全部卡种（10-02 查时 23 份：作品 10、直播 4、醒目留言 3、会员 3、榜单 2、词云 1），缺的是清单机制。后面几乎每片都改卡片字节，所以排第一 | ✅ 已落（清单 `packages/image/src/__tests__/approved-card-diffs.ts`：起点 23 个 hash + 只往末尾追加的批准；三类预批之外记 `master-approved` 带日期；`-u` 不补清单照样红） |
 | ⑪ | 格式化函数收一份：`formatCount`（含带符号的变体）、`formatAgo`、`formatDuration`、`formatClock`（`video-card.ts` 里现在叫 `formatDuration(seconds)` 的那个改名过来）；删 `{time}` 兜底与 `getTimeDifference` 钩子；守卫 4 点名表补上 | ✅ 已落（口径主人 10-02 定：带正负号用普通「-」、零写「0」，「N 分钟前」带空格，时长最大到天；放在零依赖子路径 `@bilibili-notify/internal/format`；守卫 4 开张 `scripts/__tests__/unique-homes.test.mjs`，点名表头一批是这五个；顺手修了 B 站开播时刻按服务所在时区读的两处，见 data-model「数字、时间与「不知道」」） |
 | ⑫ | 订阅标签（ADR-0034）；顺手删旧的 `SubscriptionStateSchema` 与 contract 的死字段 `SubscriptionDTO.state` | ✅ 已落（标签表与订阅同住 `config/subscriptions.json` 的 `{ tags, subscriptions }`，`GET` / `PUT /api/subs/tags` 整张换；迁移修订号 15，名字里的中文逗号不拆（主人定）；备份同进同出、合并先按 id 再按名字；面板一个 `TagEditDialog` 收掉逗号文本框与编辑分组弹框。施工时定的几点写进 ADR-0034 的 🔗） |
-| ⑬ | 特性键改名、直播拆成 `liveStart` / `liveStreaming`（独立的开关、目标、间隔与补报开播）、`PushKind` 的两层意思拆开；以特性键做键的配置一起改键（迁移表「特性键」到「文案」那几行）；守卫 13 前半开 | 未开工 |
+| ⑬ | 特性键改名、直播拆成 `liveStart` / `liveStreaming`（独立的开关、目标、间隔与补报开播）、`PushKind` 的两层意思拆开；以特性键做键的配置一起改键（迁移表「特性键」到「文案」那几行）；守卫 13 前半开（10-02 开片，切成 ⑬a–⑬e，见表下「⑬ 开片」） | 施工中 |
 | ⑭ | 抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | 未开工 |
 | ⑮ | 图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | 未开工 |
 | ⑯ | 抓图核心服务：逐跳查重定向、超时、结果形状、`storeImage`。旧引擎本期由服务端直接调它拿 `ImageRef`，3a 改走 `ctx.fetchImage` | 未开工 |
@@ -128,7 +128,7 @@
 | ㉑ | 作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | 未开工 |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 未开工 |
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；舰长图标改本地资产（10-02 从 3b 挪来） | 未开工 |
-| ㉔ | 皮肤字段改名、卡种键改名、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
+| ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 未开工 |
 | ㉖ | 统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、粉丝行 `followers` / `sampledAt`；ADR-0027 服务端那半（按特性在记、开播公告不记、多收字段、最近作品缓存并入、删 `?uid=`、CSV 合列） | 未开工 |
 | ㉗ | 运行记录 + 迁移时从 0.x 粉丝样本回填运行时长（ADR-0033 决策 3，必须先于 ㉘） | 未开工 |
@@ -137,8 +137,15 @@
 
 - 依赖：⑭ 与 ⑮ 互不依赖，都先于 ⑯；⑰ 先于 ⑲ ⑳；⑱ 要 ⑬ ⑮；⑳ 要 ⑲（超期的图不搬）；㉑–㉓ 要 ⑪ ⑮；㉔ 要 ⑬ ㉑–㉓；㉖ 要 ⑪ ⑬；㉗ 先于 ㉘；㉙ 要 ⑰ ㉖。每动一处盘上形状都抬 `MIGRATION_REVISION` 并补夹具。
 - 改 contract 形状的片（⑫ ⑬ ⑱ ⑲ ⑳ ㉖ ㉙）面板同片跟上到「照旧能用」，面板的新界面仍在第 4 期。
-- 设置键本期只改这几片碰到的：⑬ 以特性键做键的配置、⑲ 图片保留天数、㉙ 统计开关；`app` → `core.*` 的其余拆分随 3a「设置坏了只停那一处」。
+- 设置键本期只改这几片碰到的：⑬ 以特性键做键的配置、⑲ 图片保留天数、㉙ 统计开关；`app` → `core.*` 的其余拆分随 3a「设置坏了只停那一处」（`app.logLevels` 的键、文案账本挪进 `core.templatesSeen` 也随这一步，10-02 ⑬ 开片时挪出）。
 - 涨粉起点：压缩把最早那一小时换成小时末值，起点最多挪一小时，不算 data-model 里说的「截尾」，不另存起点；㉘ 落地时在 data-model 写明。
+- **⑬ 开片（10-02）**：先勘察，再切成五小片，依次提交：
+  - ⑬a 迁移器冻住 0.x 词表：`migration/` 里吃活词表的三处（附加项键与默认值、当前默认文案、推送种类）冻成 0.12 的原样，迁移测试造 0.x 输入改用冻住的字面量；产出一个字节不变，不抬修订号。
+  - ⑬b `packages/dynamic` 的 `PushKind` → `PostPushPart`（`post` / `post-images`），不落盘、不过 wire。
+  - ⑬c 纯改名、行为不变：特性键 `dynamic` → `post`、`live` → `liveStart`、`liveGuardBuy` → `membership`，附加项 `atAllDynamic` → `atAllPost`、`atAllLive` → `atAllLiveStart`；文案 `templates.dynamic` / `dynamicVideo` → `post` / `postVideo`，账本跟着换键；`messageLayout.dynamic` → `post`（`live` 那组不改名，它管开播、正在直播、下播三种消息）；订阅顶层 `extras` → `extraTargets`；测试推送的 `kind` 改用特性键。迁移加一步「0.x 最新 → 1.0 改名」。
+  - ⑬d 直播拆键：新特性 `liveStreaming`（独立的开关与目标，间隔在 `defaults.liveStreaming.streamingIntervalHours`），`restartPush` → `defaults.liveStart.catchUpOnBoot`，`templates.liveOngoing` → `templates.liveStreaming`；补报走 `liveStart` 的路由、历史记成开播、不 @全体，文字与卡照旧用「正在直播」那一套；B 站的周期计时改成开着才计（今天关着也计、到推送闸才扔）；「监听开不开」手抄的三份清单都加上 `liveStreaming`，合成一个判定随 ㉖（ADR-0027 决策 1）。`schedule` 只搬走这两格，静音时段与断流接续随 3a 的设置分拆。新装默认照今天：`liveStreaming` 关、间隔 1 小时（范围 1–24，面板上限 23 顺手对齐成 24）、`catchUpOnBoot` 关。拓展订阅声明了开播与下播两种事件就露「正在直播」开关（`has.liveStatus` 那半随 3a）。
+  - ⑬e 守卫 13 前半。
+  - 不归 ⑬ 的：`cardStyleByKind` 的键归 ㉔（它是卡种键，与卡片皮肤共用 `live` / `dynamic` / `sc` / `guard`，`live` 的新名 ㉔ 才定，分两趟改两边名字会对不上）；`app.logLevels` 归 3a（`dynamic` / `live` 并成 `bilibili` 要集成键）。历史行的推送种类 ⑬ 不改值：盘上历史行改 `feature` 与 `?kind=` → `?feature=` 都在 ⑱，⑬ 之后特性键与推送种类一一对应，`featureToPushKind` 留到 ⑱ 当桥。备份版本在 ⑬c 抬一次（⑫ 改了备份里订阅那一节的形状，当时漏抬）。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名；⑲ 图片保留天数的键名；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha
