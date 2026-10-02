@@ -37,3 +37,42 @@ export interface RestartResponse {
 	/** 现在跑的版本。重启后 `boot.mjs` 会重新选版,面板拿它当「该回到哪一版」的期望。 */
 	version: string;
 }
+
+/**
+ * 开新代的来源(ADR-0022 决策 3 下 10-01 的 🔗):`empty` 是全新开始(空的一代,回新手引导),`zero` 是从
+ * 第 0 代(0.x 留下的数据)重新迁移。两样都开下一个号的新代,当前那一代原地留着当备份。
+ */
+export type GenerationSourceKind = "empty" | "zero";
+
+/** `POST /api/system/generations` 的请求体:要开哪种新代。回话是 {@link RestartResponse} —— 开代在重启后的开机里做。 */
+export interface GenerationCreateRequest {
+	source: GenerationSourceKind;
+}
+
+interface SystemNoticeBase {
+	id: string;
+	createdAt: string;
+}
+
+/**
+ * 开机之后要告诉主人的一件事。面板只拉一张清单(`GET /api/system/notices`)、按 `kind` 画;以后多一种
+ * 提示,往这个联合里加一种。主人看过就标已读(`POST /api/system/notices/:id/acknowledge`),之后不再出现。
+ *
+ * - `migrated` —— 这一代是从 0.x 的数据迁来的:旧数据原样留着当备份;`cardSkinsDropped` 说老卡片皮肤
+ *   没迁(ADR-0022 决策 12),要重新做。
+ * - `generation-failed` —— 主人要求开的新代没开成,还在用原来那一代;`message` 是失败原因原话。
+ * - `rolled-back` —— `version` 起不来,被启动器判死、退回了现在这一版。只报比正在跑的版本新的。
+ */
+export type SystemNotice =
+	| (SystemNoticeBase & { kind: "migrated"; cardSkinsDropped: boolean })
+	| (SystemNoticeBase & {
+			kind: "generation-failed";
+			source: GenerationSourceKind;
+			message: string;
+	  })
+	| (SystemNoticeBase & { kind: "rolled-back"; version: string });
+
+/** `GET /api/system/notices` 的回话:主人还没看过的那些,先来的在前。 */
+export interface SystemNoticesResponse {
+	notices: SystemNotice[];
+}
