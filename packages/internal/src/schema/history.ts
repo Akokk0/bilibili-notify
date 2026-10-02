@@ -3,7 +3,7 @@ import { type FeatureKey, PUSH_STATUSES } from "../constants";
 
 /**
  * 推送类型 —— 配置里能单独开关的每一类算一种,共 8 种。开播与周期「正在直播」共用一把
- * 特性键(live)与一份目标,历史上却是两种推送,所以这里比特性键多一个 `live-ongoing`。
+ * 特性键(liveStart)与一份目标,历史上却是两种推送,所以这里比特性键多一个 `live-ongoing`。
  */
 export const PushKindSchema = z.enum([
 	"dynamic",
@@ -18,18 +18,18 @@ export const PushKindSchema = z.enum([
 export type PushKind = z.infer<typeof PushKindSchema>;
 
 /**
- * 特性键 → 推送类型的缺省翻译。只有 `live` 那把键分不出「开播」与周期「正在直播」,
+ * 特性键 → 推送类型的缺省翻译。只有 `liveStart` 那把键分不出「开播」与周期「正在直播」,
  * 调用方知道是哪种时显式传,不传就按开播记。
  */
 export function featureToPushKind(feature: FeatureKey): PushKind {
 	switch (feature) {
-		case "dynamic":
+		case "post":
 			return "dynamic";
-		case "live":
+		case "liveStart":
 			return "live";
 		case "liveEnd":
 			return "live-end";
-		case "liveGuardBuy":
+		case "membership":
 			return "guard";
 		case "superchat":
 			return "sc";
@@ -46,20 +46,20 @@ export function featureToPushKind(feature: FeatureKey): PushKind {
  * 一条历史行记的是 `PushKind`,而路由、闸、订阅里的开关认的是 `FeatureKey`;人工重推
  * 要复检「这个目标还在不在这条路由里」,就得从行上那个 kind 翻回那把键。
  *
- * `live` 与 `live-ongoing` 并回同一把:开播与周期「正在直播」在历史上是两件事,在配置上
+ * `live` 与 `live-ongoing` 并回 `liveStart` 同一把:开播与周期「正在直播」在历史上是两件事,在配置上
  * 共用一把键和同一份目标(所以这个方向**不是**单射,翻不回「是开播还是复推」)。
  */
 export function pushKindToFeature(kind: PushKind): FeatureKey {
 	switch (kind) {
 		case "dynamic":
-			return "dynamic";
+			return "post";
 		case "live":
 		case "live-ongoing":
-			return "live";
+			return "liveStart";
 		case "live-end":
 			return "liveEnd";
 		case "guard":
-			return "liveGuardBuy";
+			return "membership";
 		case "sc":
 			return "superchat";
 		case "special-danmaku":

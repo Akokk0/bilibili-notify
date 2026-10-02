@@ -31,7 +31,7 @@ export const WORK_COMMENT_IMAGES_MAX = 4;
 
 /**
  * 推送文本模板的内建兜底,仅在宿主没填全局模板时用(独立端恒从 `globals.defaults.templates`
- * 填)。与 `@bilibili-notify/internal` 的 `DEFAULT_TEMPLATES.dynamic/.dynamicVideo` 保持一致。
+ * 填)。与 `@bilibili-notify/internal` 的 `DEFAULT_TEMPLATES.post/.postVideo` 保持一致。
  * 变量只有 `{name}`;链接是消息版式的独立部件,不是模板变量。
  */
 const DEFAULT_DYNAMIC_TEXT = {
@@ -95,12 +95,12 @@ export type WorkSubscriptionSettings = Pick<
 export interface WorkDeliveryConfig {
 	/**
 	 * 非视频的推送文本模板,变量只有 `{name}`。链接不是模板变量:它是消息版式的独立部件,要不要带、
-	 * 放在哪由版式决定。缺省时回退到内建文案。宿主通常用 `globals.defaults.templates.dynamic` 填充。
+	 * 放在哪由版式决定。缺省时回退到内建文案。宿主通常用 `globals.defaults.templates.post` 填充。
 	 */
 	dynamicTemplate?: string;
 	/**
 	 * 视频的推送文本模板,变量同上。缺省时回退到内建文案。宿主通常用
-	 * `globals.defaults.templates.dynamicVideo` 填充。
+	 * `globals.defaults.templates.postVideo` 填充。
 	 */
 	videoTemplate?: string;
 	/**

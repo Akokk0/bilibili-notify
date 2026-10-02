@@ -481,7 +481,7 @@ export class DynamicEngine {
 				this.dynamicTimelineManager.set(sub.uid, Math.floor(DateTime.now().toSeconds()));
 				this.logger.debug(`[detector] 初始化 UID：${sub.uid} 时间戳`);
 			}
-			if (sub.dynamic) dynamicSubManager.set(sub.uid, sub);
+			if (sub.post) dynamicSubManager.set(sub.uid, sub);
 		}
 		// 清理已**退订** UID 的时间戳记录 —— 判据是「还在不在订阅里」,不是「推送开没开」。
 		for (const uid of this.dynamicTimelineManager.keys()) {
@@ -550,7 +550,7 @@ export class DynamicEngine {
 				case "add": {
 					// 锚点覆盖全部订阅(统计口径),推送订阅表只收开着开关的。
 					this.ensureTimelineAnchor(op.sub.uid);
-					if (!op.sub.dynamic) break;
+					if (!op.sub.post) break;
 					this.startDynamicForUid(op.sub.uid, op.sub);
 					opened++;
 					jobNeedsReconcile = true;
@@ -569,14 +569,14 @@ export class DynamicEngine {
 				case "update": {
 					for (const change of op.changes) {
 						if (change.scope !== "dynamic") continue;
-						if (change.dynamic) {
+						if (change.post) {
 							const fullSub = this.getSubs()?.[op.uid];
 							if (fullSub) {
 								this.startDynamicForUid(op.uid, fullSub);
 								opened++;
 							}
 							jobNeedsReconcile = true;
-						} else if (change.dynamic === false) {
+						} else if (change.post === false) {
 							// 与 delete 同护栏:UID 未在动态订阅表才跳过,避免 stopDynamicForUid
 							// no-op 时仍报 -1 移除 + 触发一次无谓 reconcileJob(审计 nit)。
 							if (!this.dynamicSubManager.has(op.uid)) continue;

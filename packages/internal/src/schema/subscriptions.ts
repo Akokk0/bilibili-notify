@@ -101,27 +101,27 @@ export const AIOverrideSchema = z.object({
 export type AIOverride = z.infer<typeof AIOverrideSchema>;
 
 /**
- * 附加项的 **per-目标** 覆写表(ADR-0016 决策 2 的第三层)。每把附加项一张 Map,三态:
+ * 附加项的 **per-目标** 覆写表(ADR-0016 决策 2 的第三层),订阅顶层的 `extraTargets`。每把附加项一张 Map,三态:
  * - Map 里没有 key → inherit(走 per-UP / 全局那两层,即 `features.extras[key]`)
- * - `extras.X[targetId] = true` → 强制 ON
- * - `extras.X[targetId] = false` → 强制 OFF
+ * - `extraTargets.X[targetId] = true` → 强制 ON
+ * - `extraTargets.X[targetId] = false` → 强制 OFF
  *
  * 约束:Map 的 key 必须出现在 `routing[PUSH_EXTRAS[key].feature]` 里 —— 能收附加项的,
  * 必须先收得到本体(决策 3)。由 SubscriptionSchema 的 superRefine 强制,违反的旧数据
  * parse 时报错。
  *
  * 作用范围:
- * - `atAllDynamic`:过了过滤器的动态都 @(任意动态类型)
- * - `atAllLive`:仅作用于 LivePushType.Live(开播),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
+ * - `atAllPost`:过了过滤器的作品都 @(任意作品类型)
+ * - `atAllLiveStart`:仅作用于 LivePushType.Live(开播),不冲 liveEnd / SC / 上舰 / 词云 / AI 总结
  * - `wordcloud` / `liveSummary`:下播那次推送的两条后续消息
  */
-export const SubscriptionExtrasSchema = z.object(
+export const SubscriptionExtraTargetsSchema = z.object(
 	extrasRecord(() => z.record(z.uuid(), z.boolean()).default({})),
 );
-export type SubscriptionExtras = z.infer<typeof SubscriptionExtrasSchema>;
+export type SubscriptionExtraTargets = z.infer<typeof SubscriptionExtraTargetsSchema>;
 
 /** 一张全空的 per-目标 三态表:四把键各一个空 Map = 每个目标都跟随上一层。 */
-function emptyExtras(): SubscriptionExtras {
+function emptyExtraTargets(): SubscriptionExtraTargets {
 	return extrasRecord(() => ({}));
 }
 
@@ -171,17 +171,17 @@ export type FansBaseline = z.infer<typeof FansBaselineSchema>;
  * 决策 3:每把附加项的目标必须是它那把主特性目标的子集 —— 遍历注册表,加一把附加项
  * 不用来这儿补一条 refine。
  */
-function refineExtrasWithinRouting(
-	s: { routing: SubscriptionRouting; extras: SubscriptionExtras },
+function refineExtraTargetsWithinRouting(
+	s: { routing: SubscriptionRouting; extraTargets: SubscriptionExtraTargets },
 	ctx: z.RefinementCtx,
 ): void {
 	for (const key of EXTRA_KEYS) {
 		const feature = PUSH_EXTRAS[key].feature;
-		if (Object.keys(s.extras[key]).every((t) => s.routing[feature].includes(t))) continue;
+		if (Object.keys(s.extraTargets[key]).every((t) => s.routing[feature].includes(t))) continue;
 		ctx.addIssue({
 			code: "custom",
-			message: `extras.${key} keys must be a subset of routing.${feature}`,
-			path: ["extras", key],
+			message: `extraTargets.${key} keys must be a subset of routing.${feature}`,
+			path: ["extraTargets", key],
 		});
 	}
 }
@@ -262,7 +262,7 @@ export const SubscriptionSchema = z
 		tagIds: z.array(z.uuid()).default([]),
 		notes: z.string().optional(),
 		routing: SubscriptionRoutingSchema,
-		extras: SubscriptionExtrasSchema.default(emptyExtras),
+		extraTargets: SubscriptionExtraTargetsSchema.default(emptyExtraTargets),
 		overrides: SubscriptionOverridesSchema,
 		/**
 		 * 这位的单人锐评定时推送。
@@ -277,7 +277,7 @@ export const SubscriptionSchema = z
 		/** 特别关注(ADR-0021 决策 17:公共形状);来源不支持的,这一格一直是空的。 */
 		specialUsers: z.array(SpecialUserSchema).default([]),
 	})
-	.superRefine(refineExtrasWithinRouting);
+	.superRefine(refineExtraTargetsWithinRouting);
 export type Subscription = z.infer<typeof SubscriptionSchema>;
 
 /** 工厂:创建一个完全继承全局默认的空订阅(routing 全空、overrides 全 undefined)。 */
@@ -295,7 +295,7 @@ export function makeEmptySubscription(opts: {
 		tagIds: [],
 		notes: undefined,
 		routing: emptyRouting,
-		extras: emptyExtras(),
+		extraTargets: emptyExtraTargets(),
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		roastSchedule: structuredClone(DEFAULT_ROAST_SCHEDULE),

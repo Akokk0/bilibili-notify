@@ -35,12 +35,12 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		uid: "u1",
 		uname: "U1",
 		roomId: "r1",
-		dynamic: false,
-		live: true,
+		post: false,
+		liveStart: true,
 		liveEnd: true,
-		liveGuardBuy: false,
+		membership: false,
 		superchat: false,
-		extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false },
+		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
@@ -175,7 +175,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			ctx,
 			makeSub({
 				liveEnd: true,
-				extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false },
+				extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: false },
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
@@ -303,7 +303,7 @@ describe("RoomSession.onGuardBuy", () => {
 		user: { uname: "船员", uid: 7 },
 	};
 
-	it("未订阅 liveGuardBuy → 早 return", async () => {
+	it("未订阅 membership → 早 return", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockReturnValue(false);
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
@@ -314,19 +314,19 @@ describe("RoomSession.onGuardBuy", () => {
 	it("guard_level 高于阈值(等级不够)→ 不推", async () => {
 		// sub.minGuardLevel=1(总督);Captain(3) > 1 → return
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
-		const s = new RoomSession(ctx, makeSub({ liveGuardBuy: true, minGuardLevel: 1 })) as AnySession;
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+		const s = new RoomSession(ctx, makeSub({ membership: true, minGuardLevel: 1 })) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
 	it("customGuardBuy.enable → 走模板渲染分支,broadcastToTargets(LiveGuardBuy)", async () => {
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
 			ctx,
 			makeSub({
-				liveGuardBuy: true,
+				membership: true,
 				customGuardBuy: {
 					enable: true,
 					captain: { template: "", imageUrl: "cap" },
@@ -370,11 +370,11 @@ describe("RoomSession.onGuardBuy", () => {
 			const real = new LiveTemplateRenderer();
 			m.renderGuardBuy.mockImplementation((p) => real.renderGuardBuy(p));
 			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
-			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(
 				ctx,
 				makeSub({
-					liveGuardBuy: true,
+					membership: true,
 					minGuardLevel: 3,
 					customGuardBuy: where.sub ?? { enable: false },
 				}),
@@ -409,12 +409,12 @@ describe("RoomSession.onGuardBuy", () => {
 
 	it("默认(custom 关)+ generateGuardCard + api code0 → 图片卡片(LiveGuardBuy)", async () => {
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		m.getUserInfoInLive.mockResolvedValueOnce({
 			code: 0,
 			data: { uname: "船员", face: "f", is_admin: false },
 		});
-		const s = new RoomSession(ctx, makeSub({ liveGuardBuy: true })) as AnySession;
+		const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateGuardCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
@@ -423,10 +423,10 @@ describe("RoomSession.onGuardBuy", () => {
 
 	it("per-UP 皮肤 id 透传给 generateGuardCard", async () => {
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
 			ctx,
-			makeSub({ liveGuardBuy: true, minGuardLevel: 3, cardSkin: "k8yyy-facade" }),
+			makeSub({ membership: true, minGuardLevel: 3, cardSkin: "k8yyy-facade" }),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({ cardSkin: "k8yyy-facade" });
@@ -435,11 +435,11 @@ describe("RoomSession.onGuardBuy", () => {
 	// 验红:把 room-session.ts 里上舰那一处的皮肤选项换回只带 `cardSkin`,这条红。
 	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateGuardCard", async () => {
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const cardSkinKnobs = { "k8yyy-facade": { accent: "#aaaaaa" } };
 		const s = new RoomSession(
 			ctx,
-			makeSub({ liveGuardBuy: true, minGuardLevel: 3, cardSkin: "k8yyy-facade", cardSkinKnobs }),
+			makeSub({ membership: true, minGuardLevel: 3, cardSkin: "k8yyy-facade", cardSkinKnobs }),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateGuardCard.mock.calls[0]?.[2]).toEqual({
@@ -450,7 +450,7 @@ describe("RoomSession.onGuardBuy", () => {
 
 	it("有 per-kind guard 样式 → generateGuardCard 收到 guard 专属 colorOptions", async () => {
 		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveGuardBuy");
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		m.getUserInfoInLive.mockResolvedValueOnce({
 			code: 0,
 			data: { uname: "船员", face: "f", is_admin: false },
@@ -458,7 +458,7 @@ describe("RoomSession.onGuardBuy", () => {
 		const s = new RoomSession(
 			ctx,
 			makeSub({
-				liveGuardBuy: true,
+				membership: true,
 				customCardStyle: { enable: true, font: "Base Sans" },
 				customCardStyleByKind: {
 					guard: { enable: true, font: "Guard Sans" },

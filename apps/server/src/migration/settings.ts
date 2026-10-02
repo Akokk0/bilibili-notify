@@ -7,6 +7,9 @@
  * - `defaults.templates`:历代旧默认原文({@link migrateOldTemplateDefaults});
  * - `linkParsing`:0.9.1 的「范围 + 白名单」({@link migrateLegacyLinkParsing})。
  *
+ * 这几项产出的是 **0.x 最新**的形状(特性键、文案键、版式键仍是 0.x 的名字);1.0 的改名是它们之后的另一步
+ * ({@link renameGlobalSettingsKeys},在 {@link migrateSettingsFiles} 里串着跑)。
+ *
  * 卡片样式那两个退役键(`hideDesc` / `hideFollower`)不用管:schema 不是 strict,读的时候自己剥掉。
  *
  * 设置按集成分文件(ADR-0021 决策 42 下 10-01 的 🔗):`app` 里 B 站的三格搬进 `config/settings/bilibili.json`,
@@ -16,12 +19,16 @@
 
 import { ExtensionIdSchema } from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
+import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
 import { migrateLegacyLinkParsing } from "./link-parsing.js";
 import { migrateOldTemplateDefaults } from "./templates.js";
 
-/** 整份全局设置的 raw → raw。认不得的形状原样放过,由配置仓开机时报出来。 */
+/**
+ * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状。认不得的形状原样放过,由配置仓开机时报出来。
+ * 不含 1.0 的改名(见文件头)。
+ */
 export function migrateGlobals(raw: unknown): unknown {
 	if (!isPlainObject(raw)) return raw;
 	const out: Record<string, unknown> = { ...raw };
@@ -106,7 +113,7 @@ export async function migrateSettingsFiles(paths: SettingsFilePaths): Promise<st
 	const corePath = paths.core;
 	const file = await readJsonFile(corePath);
 	if (file.kind !== "ok") return [];
-	const bilibiliSplit = splitBilibiliSettings(migrateGlobals(file.value));
+	const bilibiliSplit = splitBilibiliSettings(renameGlobalSettingsKeys(migrateGlobals(file.value)));
 	const { core, extensions } = splitExtensionSettings(bilibiliSplit.core);
 	const rewritten: string[] = [];
 	if (Object.keys(bilibiliSplit.bilibili).length > 0) {

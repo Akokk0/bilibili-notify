@@ -594,7 +594,7 @@ export class RoomSession extends RoomSessionBase {
 		gift_name: string;
 		user: { uname: string; uid: number };
 	}): Promise<void> {
-		if (!this.ctx.isSubscribed(this.sub, "liveGuardBuy")) return;
+		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
 		// minGuardLevel 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
 		if (body.guard_level > this.sub.minGuardLevel) return;
 		const guardImg = GUARD_LEVEL_IMG[body.guard_level];

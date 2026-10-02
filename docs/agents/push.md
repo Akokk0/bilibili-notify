@@ -23,7 +23,7 @@
 
 ### ① 引擎 —— 只认总开关
 
-直播那头 `RoomContextBase.isSubscribed(sub, type)`（`packages/live/src/room-context.ts`）就一句 `return sub[type]`，动态那头推送订阅表只收 `sub.dynamic` 开着的；当年按目标拦的 `hasTargets` 已删。渲不渲图、开不开 WS、攒不攒弹幕，全在这一层定；**一个目标都没配也照渲照发**，发不出去是下游的事。
+直播那头 `RoomContextBase.isSubscribed(sub, type)`（`packages/live/src/room-context.ts`）就一句 `return sub[type]`，动态那头推送订阅表只收 `sub.post` 开着的；当年按目标拦的 `hasTargets` 已删。渲不渲图、开不开 WS、攒不攒弹幕，全在这一层定；**一个目标都没配也照渲照发**，发不出去是下游的事。
 
 引擎拿到的是宿主折叠好的订阅视图（`SubItemView`，只含 B 站订阅），每把特性是一个**顶层裸布尔**。这个扁平形状是刻意的：`packages/live` 因此不可能知道 @全体 存在（ADR-0016 决策 6）。
 
@@ -57,15 +57,15 @@
 | `liveTypeAllowsAtAll` | `boolean` | 允不允许 @全体 |
 | `liveTypeToExtra` | `ExtraKey \| undefined` | 这是哪个附加项 |
 
-两张表只差一处：周期「正在直播」（type 0）与开播（3）共用 `feature: "live"`，历史上却是两类。⚠️ **下播卡本体（9）的 `liveTypeToExtra` 必须是 `undefined`** —— 带上键的话整张卡会被它自己的附加项三态表收窄掉。
+两张表只差一处：周期「正在直播」（type 0）与开播（3）共用 `feature: "liveStart"`，历史上却是两类。⚠️ **下播卡本体（9）的 `liveTypeToExtra` 必须是 `undefined`** —— 带上键的话整张卡会被它自己的附加项三态表收窄掉。
 
 动态端同理，`broadcastOptionsForPostPart` 把 `post-images`（图集）标成 `role: "extra"` 且 `allowAtAll: false`，否则一条 DRAW 动态会在主卡和图集各 @ 一次。
 
 身份也在这儿翻：引擎说的是 B 站 uid，推送链认的是**订阅自己的 id**（ADR-0019 决策 50）。两个适配器（`makeDynamicPushLike` / `makeLivePushLike`）先用 `subscriptionIdOfUid`（按 `{ 来源: B 站, 外部 id: uid }` 的身份 `findByIdentity(...)?.id`）翻一次，查不到就不往下交，只记一行 debug「uid=… 无订阅记录，跳过」。同一个 uid 配了两条订阅时，引擎那侧先出现的那条说了算 —— 引擎本来就只按 uid 认人。
 
-**把发送钉到一条订阅上**的两件也在 `engines.ts`，挨着这两个适配器：`bindSubscriptionPush(push, subscriptionId)` 回一个 `(feature, payload, opts)` 的发送，只做「把订阅 id 钉上」；`boundWorkPush(send)` 把它包成 `deliverWork` 要的 `BoundWorkPush`（段 → 载荷、特性恒为 `dynamic`、`broadcastOptionsForPostPart`；部件是 `PostPushPart`：正文 `post`、图集 `post-images`）。B 站动态（`makeDynamicPushLike` 先翻 uid）与拓展作品（`pushFor(id)`）走的是同一跳。
+**把发送钉到一条订阅上**的两件也在 `engines.ts`，挨着这两个适配器：`bindSubscriptionPush(push, subscriptionId)` 回一个 `(feature, payload, opts)` 的发送，只做「把订阅 id 钉上」；`boundWorkPush(send)` 把它包成 `deliverWork` 要的 `BoundWorkPush`（段 → 载荷、特性恒为 `post`、`broadcastOptionsForPostPart`；部件是 `PostPushPart`：正文 `post`、图集 `post-images`）。B 站动态（`makeDynamicPushLike` 先翻 uid）与拓展作品（`pushFor(id)`）走的是同一跳。
 
-拓展订阅不需要翻身份：它的上报在 ctx 那一步已经按 `(拓展, 外部 id)` 对到订阅 id 上（见 [subscriptions.md](./subscriptions.md)）。事件种类到特性键的映射是 `SUBSCRIPTION_EVENT_FEATURES`（`packages/internal/src/constants.ts`：`post → dynamic`、`liveStart → live`、`liveEnd → liveEnd`）。
+拓展订阅不需要翻身份：它的上报在 ctx 那一步已经按 `(拓展, 外部 id)` 对到订阅 id 上（见 [subscriptions.md](./subscriptions.md)）。事件种类到特性键的映射是 `SUBSCRIPTION_EVENT_FEATURES`（`packages/internal/src/constants.ts`：`post → post`、`liveStart → liveStart`、`liveEnd → liveEnd`，⑬d 拆出 `liveStreaming` 以后不再恒等）。
 
 ### ③ 路由与闸
 
@@ -123,7 +123,7 @@
 | 4 | **总开关** | `eff.features[feature]` | 静默 |
 | 5 | 免扰时段 | `inQuietHours(eff.schedule.quietHours)` | 静默 |
 | 6 | 无可用目标 | `routing[feature] ∩ isEnabled` | **回调 `target: null`** → 历史落「无目标」行 |
-| 7 | 附加项收窄成空 | `extras[key][id] ?? 折叠默认` | 静默 —— **不是「无目标」**，见下 |
+| 7 | 附加项收窄成空 | `extraTargets[key][id] ?? 折叠默认` | 静默 —— **不是「无目标」**，见下 |
 
 第 2 步说的「所有查询」只管推送层自己：B 站引擎那条边在 ② 把 uid 翻成订阅 id 的那一次 `findByIdentity` 在它上游，静音期间照做（内存里扫一遍数组，不深拷贝）。
 

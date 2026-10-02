@@ -125,9 +125,9 @@ function whoOf(
 function kindLabel(kind: ExtensionReportProblemView["kind"], postNoun: string | undefined): string {
 	switch (kind) {
 		case "post":
-			return featureLabelOf("dynamic", { postNoun });
+			return featureLabelOf("post", { postNoun });
 		case "liveStart":
-			return featureLabelOf("live", { postNoun });
+			return featureLabelOf("liveStart", { postNoun });
 		case "liveEnd":
 			return featureLabelOf("liveEnd", { postNoun });
 		case "liveStatus":

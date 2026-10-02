@@ -16,12 +16,11 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { activeGeneration } from "./support/generation.js";
-import { legacyBiliRow } from "./support/legacy-subscription.js";
 
 const SUB_ID = "5a000000-0000-4000-8000-000000000101";
 const UID = "101";
@@ -130,18 +129,10 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 		await mkdir(join(dataDir, "fans"), { recursive: true });
 		await mkdir(join(dataDir, "stats", "dyn"), { recursive: true });
 		await mkdir(join(dataDir, "stats", "live"), { recursive: true });
-		const sub = {
-			...makeEmptySubscription({
-				id: SUB_ID,
-				identity: { sourceKey: "bilibili", externalId: UID },
-			}),
-			enabled: false,
-		};
 		// 0.x 盘上的 B 站订阅:身份在顶层 uid、没有 identity。迁移器在开机时把它收进 identity。
-		await writeFile(
-			join(dataDir, "state", "subscriptions.json"),
-			JSON.stringify([legacyBiliRow(sub)]),
-		);
+		// 用冻住的 0.x 夹具摆(不取活工厂:活工厂的键已经是 1.0 的,摆进第 0 代迁移器就没有东西可改了)。
+		const sub = zeroBiliRow({ id: SUB_ID, uid: UID }, { enabled: false });
+		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify([sub]));
 		await writeFile(join(dataDir, "fans", `${UID}.jsonl`), FANS);
 		await writeFile(join(dataDir, "fans", `${ORPHAN_UID}.jsonl`), FANS);
 		const now = new Date().toISOString();

@@ -237,7 +237,7 @@ describe("记谁(决策 4)", () => {
 		subs = [
 			makeExtensionSubscription({
 				...SUB,
-				overrides: { features: { dynamic: false, live: false, liveEnd: false } },
+				overrides: { features: { post: false, liveStart: false, liveEnd: false } },
 			}),
 		];
 		const { bus, recorder } = boot();
@@ -297,7 +297,7 @@ describe("直播场次(决策 6)", () => {
 		subs = [
 			makeExtensionSubscription({
 				...SUB,
-				overrides: { features: { live: false, liveEnd: false } },
+				overrides: { features: { liveStart: false, liveEnd: false } },
 			}),
 		];
 		const world = boot();

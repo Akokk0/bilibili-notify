@@ -189,8 +189,9 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 		const store = await migrateAndLoad();
 
 		const [loaded] = store.getSubscriptions();
-		expect(loaded?.routing.dynamic).toEqual([ID.hook1, ID.group]);
-		expect(loaded?.routing.live).toEqual([ID.hook1]);
+		// 输入是 0.x 的键(`dynamic` / `live`),装载出来的是 1.0 的(`post` / `liveStart`)。
+		expect(loaded?.routing.post).toEqual([ID.hook1, ID.group]);
+		expect(loaded?.routing.liveStart).toEqual([ID.hook1]);
 	});
 
 	it("targets.json 已是新格式、却没有 connections.json:拒绝开机,不凭空造连接", async () => {

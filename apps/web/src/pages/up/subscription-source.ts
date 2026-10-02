@@ -108,6 +108,6 @@ export function featureLabelOf(
 	key: FeatureKey,
 	platform: Pick<SubscriptionPlatform, "postNoun"> | undefined,
 ): string {
-	if (key === "dynamic" && platform?.postNoun) return platform.postNoun;
+	if (key === "post" && platform?.postNoun) return platform.postNoun;
 	return FEATURE_LABELS[key];
 }

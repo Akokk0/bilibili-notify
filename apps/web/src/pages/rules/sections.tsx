@@ -209,8 +209,8 @@ export function perUpSectionsFor(
 	features: readonly FeatureKey[],
 ): SectionMeta[] {
 	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return PERUP_SECTIONS;
-	const post = features.includes("dynamic");
-	const live = features.includes("live") || features.includes("liveEnd");
+	const post = features.includes("post");
+	const live = features.includes("liveStart") || features.includes("liveEnd");
 	const out: SectionMeta[] = [];
 	for (const s of PERUP_SECTIONS) {
 		if (s.id === "live") {
@@ -714,8 +714,8 @@ export function LiveMsgSection({
 
 /** 动态文本 Picker 的两段定义:动态 / 视频投稿共用版式,仅模板文案不同。 */
 const DYNAMIC_TEMPLATE_TABS = [
-	{ key: "dynamic", label: "动态", code: "templates.dynamic" },
-	{ key: "dynamicVideo", label: "视频投稿", code: "templates.dynamicVideo" },
+	{ key: "post", label: "动态", code: "templates.post" },
+	{ key: "postVideo", label: "视频投稿", code: "templates.postVideo" },
 ] as const;
 
 export function DynamicMsgSection({
@@ -729,7 +729,7 @@ export function DynamicMsgSection({
 }) {
 	const setT = <K extends keyof TemplateBundle>(k: K, v: TemplateBundle[K]) =>
 		onPatch({ defaults: { templates: { [k]: v } as Partial<TemplateBundle> } });
-	const [tab, setTab] = useState<(typeof DYNAMIC_TEMPLATE_TABS)[number]["key"]>("dynamic");
+	const [tab, setTab] = useState<(typeof DYNAMIC_TEMPLATE_TABS)[number]["key"]>("post");
 	const active = DYNAMIC_TEMPLATE_TABS.find((t) => t.key === tab) ?? DYNAMIC_TEMPLATE_TABS[0];
 	return (
 		<GlassBox
@@ -740,8 +740,8 @@ export function DynamicMsgSection({
 		>
 			<MessageLayoutEditor
 				value={layout}
-				onChange={(next) => onPatch({ defaults: { messageLayout: { dynamic: next } } })}
-				separatorCode="messageLayout.dynamic.separator"
+				onChange={(next) => onPatch({ defaults: { messageLayout: { post: next } } })}
+				separatorCode="messageLayout.post.separator"
 				accent={SECTION_ACCENT.message}
 				textSlot={
 					<>

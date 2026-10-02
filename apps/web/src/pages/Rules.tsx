@@ -514,7 +514,7 @@ export default function Rules() {
 						) : section === "dynamicMsg" ? (
 							<DynamicMsgSection
 								templates={draft.defaults.templates}
-								layout={draft.defaults.messageLayout.dynamic}
+								layout={draft.defaults.messageLayout.post}
 								onPatch={patchDraft}
 							/>
 						) : section === "guard" ? (

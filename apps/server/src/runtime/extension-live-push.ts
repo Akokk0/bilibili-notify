@@ -208,7 +208,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	 * 周期「正在直播」挂成设置里那个频率:直播特性关着、频率是 0、正在断流等待里就不挂。频率没变不动它。
 	 */
 	function armPeriodic(id: string, run: LiveRun, settings: LiveWorkSettings): void {
-		const hours = settings.live && !run.session.pendingEnd ? settings.pushTime : 0;
+		const hours = settings.liveStart && !run.session.pendingEnd ? settings.pushTime : 0;
 		if (run.periodic?.hours === hours) return;
 		run.periodic?.handle.dispose();
 		run.periodic = undefined;
@@ -229,7 +229,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			return;
 		}
 		const settings = opts.settings(sub);
-		if (!settings.live && !settings.liveEnd) {
+		if (!settings.liveStart && !settings.liveEnd) {
 			dropRun(id, "开播与下播推送都关了");
 			return;
 		}
@@ -353,7 +353,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			return;
 		}
 		const settings = opts.settings(sub);
-		if (!settings.live) {
+		if (!settings.liveStart) {
 			armPeriodic(id, run, settings);
 			return;
 		}
@@ -386,7 +386,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		const sub = pushable(id);
 		if (!sub) return undefined;
 		const settings = opts.settings(sub);
-		if (!settings.live && !settings.liveEnd) {
+		if (!settings.liveStart && !settings.liveEnd) {
 			dropRun(id, "开播与下播推送都关了");
 			return undefined;
 		}
@@ -404,7 +404,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		const at = session.detectedAt;
 		const run: LiveRun = { session, fresh: false };
 		runs.set(id, run);
-		if (settings.live) {
+		if (settings.liveStart) {
 			enqueue(id, "开播", () =>
 				pushCard(id, {
 					status: "start",
@@ -441,7 +441,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		const sub = pushable(id);
 		if (!sub) return;
 		const settings = opts.settings(sub);
-		if (!settings.live && !settings.liveEnd) return;
+		if (!settings.liveStart && !settings.liveEnd) return;
 		// 在播、不在播都算见过(决策 57 的 09-24 🔗):之后再报在播就不是「BN 看到的第一份」了。
 		const first = !seen.has(id);
 		seen.set(id, subscriptionIdentityOf(sub).sourceKey);
@@ -455,7 +455,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		// 推送这头没挂着这一场:BN 起来之前就开播了、拓展停过又跑起来了,或者推送关过又打开了。
 		const run: LiveRun = { session, fresh: false };
 		runs.set(id, run);
-		if (first && settings.restartPush && settings.live) {
+		if (first && settings.restartPush && settings.liveStart) {
 			log.info(`[ext-live] 订阅 ${id} 在 BN 起来之前就开播了,补推一张「正在直播」`);
 			enqueue(id, "「正在直播」(重启补推)", () => pushOngoing(id, run));
 		} else {

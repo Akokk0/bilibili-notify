@@ -39,7 +39,7 @@ function platform(over: Partial<SubscriptionPlatform> = {}): SubscriptionPlatfor
 		shortLabel: "抖",
 		color: "#161823",
 		postNoun: "作品",
-		features: ["dynamic", "live"],
+		features: ["post", "liveStart"],
 		absent: false,
 		...over,
 	};
@@ -72,7 +72,7 @@ describe("UpDialog × 拓展订阅", () => {
 	});
 
 	it("报下播的源:有「下播」,但不挂词云 / AI 总结 —— 那两样只有 B 站报;@全体 照留", () => {
-		renderDialog(extSub(), platform({ features: ["dynamic", "live", "liveEnd"] }));
+		renderDialog(extSub(), platform({ features: ["post", "liveStart", "liveEnd"] }));
 		expect(screen.getAllByText("下播").length).toBeGreaterThan(0);
 		expect(screen.queryByText("+ 弹幕词云")).toBeNull();
 		expect(screen.queryByText("+ AI 总结")).toBeNull();
@@ -88,7 +88,7 @@ describe("UpDialog × 拓展订阅", () => {
 	it("自定义推送的目标卡:计数与矩阵只算这个源的特性", () => {
 		const sub = extSub();
 		// 只给了作品 → 路由不完整 = 自定义,矩阵直接展开。
-		sub.routing.dynamic = [TARGET.id];
+		sub.routing.post = [TARGET.id];
 		renderDialog(sub, platform(), [TARGET]);
 		expect(screen.getByText("1/2")).toBeTruthy();
 		expect(screen.queryAllByText("上舰")).toHaveLength(0);

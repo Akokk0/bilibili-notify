@@ -77,7 +77,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		sub.routing.dynamic = ["target-a", "target-b"];
+		sub.routing.post = ["target-a", "target-b"];
 		const store = makeStore(sub);
 
 		// target-a 起初不可达(触发 sleep 重试),之后翻可达。
@@ -104,7 +104,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			"target-a",
 			{ kind: "text", text: "x" },
 			{
-				routing: { subscriptionId: "sub-1", feature: "dynamic" },
+				routing: { subscriptionId: "sub-1", feature: "post" },
 			},
 		);
 
@@ -115,7 +115,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 		expect(send).not.toHaveBeenCalled();
 
 		// 用户在重试等待期间把 target-a 从该订阅的 dynamic routing 里移除。
-		sub.routing.dynamic = ["target-b"];
+		sub.routing.post = ["target-b"];
 
 		// 退避到点 + target-a 恢复可达。
 		aAvailable = true;
@@ -138,7 +138,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		sub.routing.dynamic = ["target-a"];
+		sub.routing.post = ["target-a"];
 		const store = makeStore(sub);
 
 		let available = false;
@@ -164,7 +164,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			"target-a",
 			{ kind: "text", text: "x" },
 			{
-				routing: { subscriptionId: "sub-1", feature: "dynamic" },
+				routing: { subscriptionId: "sub-1", feature: "post" },
 			},
 		);
 		await new Promise((r) => setImmediate(r));
@@ -192,12 +192,12 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			id: "sub-a",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		a.routing.dynamic = ["target-a"];
+		a.routing.post = ["target-a"];
 		const b = makeEmptySubscription({
 			id: "sub-b",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		b.routing.dynamic = ["target-a"];
+		b.routing.post = ["target-a"];
 		const store = makeStore(a, b);
 
 		let available = false;
@@ -222,7 +222,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 		const resultPromise = push.sendToTarget(
 			"target-a",
 			{ kind: "text", text: "x" },
-			{ routing: { subscriptionId: "sub-b", feature: "dynamic" } },
+			{ routing: { subscriptionId: "sub-b", feature: "post" } },
 		);
 		await new Promise((r) => setImmediate(r));
 		await new Promise((r) => setImmediate(r));

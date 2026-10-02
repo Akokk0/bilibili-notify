@@ -278,7 +278,7 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 	});
 
 	it("关掉已存的一节再保存:那一格发 null(清得掉)", async () => {
-		const ext = extSub({ overrides: { templates: { dynamic: "新作品!" } } });
+		const ext = extSub({ overrides: { templates: { post: "新作品!" } } });
 		subs = [BILI, ext];
 		const { container } = renderRules();
 		// 已有覆盖的拓展订阅本来就在 tab 条上。
@@ -295,7 +295,7 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 	});
 
 	it("移除的确认文案不提特别关注(拓展订阅没有这一项)", async () => {
-		subs = [BILI, extSub({ overrides: { templates: { dynamic: "新作品!" } } })];
+		subs = [BILI, extSub({ overrides: { templates: { post: "新作品!" } } })];
 		renderRules();
 		fireEvent.click(await screen.findByTitle("移除 抖音乙 的个性化配置"));
 		await screen.findByText("移除该 UP 的个性化配置?");
@@ -304,7 +304,7 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 	});
 
 	it("移除整条的个性化配置:每一格发 null,不带特别关注", async () => {
-		const ext = extSub({ overrides: { templates: { dynamic: "新作品!" } } });
+		const ext = extSub({ overrides: { templates: { post: "新作品!" } } });
 		subs = [BILI, ext];
 		renderRules();
 		fireEvent.click(await screen.findByTitle("移除 抖音乙 的个性化配置"));

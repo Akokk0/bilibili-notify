@@ -39,7 +39,7 @@ function makeSub(over: Partial<Omit<Subscription, "identity">> & { uid: string }
 		enabled: true,
 		tagIds: [],
 		routing: routing(),
-		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
+		extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},
 		specialUsers: [],
 		...rest,
@@ -90,8 +90,8 @@ describe("attachReadOnlyTools — 查询接线", () => {
 
 describe("buildAiSubsView — 投影", () => {
 	it("有 target 才算订了该特性 —— 路由是空的就等于没订", () => {
-		const s = makeStores([makeSub({ uid: "1", routing: routing({ dynamic: ["t1"] }) })]);
-		expect(view(s)["id-1"]).toEqual({ uid: "1", uname: "UID 1", dynamic: true, live: false });
+		const s = makeStores([makeSub({ uid: "1", routing: routing({ post: ["t1"] }) })]);
+		expect(view(s)["id-1"]).toEqual({ uid: "1", uname: "UID 1", post: true, liveStart: false });
 	});
 
 	it("名字优先用平台资料缓存,没有就回落 UID —— 不让 AI 报一串数字", () => {
@@ -108,7 +108,7 @@ describe("buildAiSubsView — 投影", () => {
 
 describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
 	it("进视图:按订阅 id 为键,带平台名与外部 id,没有 uid", () => {
-		const ext = makeExtensionSubscription({ routing: routing({ live: ["t1"] }) });
+		const ext = makeExtensionSubscription({ routing: routing({ liveStart: ["t1"] }) });
 		const s = makeStores([makeSub({ uid: "1" }), ext], { [EXT_ID]: "抖音甲" });
 		const v = view(s);
 		expect(Object.keys(v)).toEqual(["id-1", EXT_ID]);
@@ -116,8 +116,8 @@ describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
 			platform: "抖音",
 			externalId: "sec-uid-1",
 			uname: "抖音甲",
-			dynamic: false,
-			live: true,
+			post: false,
+			liveStart: true,
 		});
 	});
 

@@ -208,17 +208,17 @@ const {
 // different shells). liveTypeAllowsAtAll guards the @全体 bug fix: only
 // StartBroadcasting(3) is at-all-eligible; periodic「正在直播」(0) is NOT.
 describe("apps/server adapter live-type map (cross-end mirror)", () => {
-	it("liveTypeToFeature 完整映射表 + 未知兜底 live", () => {
-		expect(liveTypeToFeature(0)).toBe("live");
-		expect(liveTypeToFeature(3)).toBe("live");
-		expect(liveTypeToFeature(4)).toBe("liveGuardBuy");
+	it("liveTypeToFeature 完整映射表 + 未知兜底 liveStart", () => {
+		expect(liveTypeToFeature(0)).toBe("liveStart");
+		expect(liveTypeToFeature(3)).toBe("liveStart");
+		expect(liveTypeToFeature(4)).toBe("membership");
 		expect(liveTypeToFeature(5)).toBe("liveEnd");
 		expect(liveTypeToFeature(6)).toBe("superchat");
 		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
 		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
 		expect(liveTypeToFeature(10)).toBe("liveEnd");
-		expect(liveTypeToFeature(999)).toBe("live");
+		expect(liveTypeToFeature(999)).toBe("liveStart");
 	});
 
 	it("liveTypeAllowsAtAll:仅开播(3)允许,0/其它/未知一律 false", () => {
@@ -238,11 +238,11 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给推送层", () => {
 	const card = { type: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
 
-	it("开播:特性 live、允许 @全体、历史记开播;一组 = 一条载荷,卡 + 文字合成一条", async () => {
+	it("开播:特性 liveStart、允许 @全体、历史记开播;一组 = 一条载荷,卡 + 文字合成一条", async () => {
 		const send = vi.fn(async () => {});
 		await boundLivePush(send)([[card, { type: "text", text: "开播啦" }]], 3, {});
 		expect(send).toHaveBeenCalledWith(
-			"live",
+			"liveStart",
 			{
 				kind: "composite",
 				segments: [
@@ -254,11 +254,11 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 		);
 	});
 
-	it("正在直播:特性 live、不 @全体、历史记正在直播", async () => {
+	it("正在直播:特性 liveStart、不 @全体、历史记正在直播", async () => {
 		const send = vi.fn(async () => {});
 		await boundLivePush(send)([[{ type: "text", text: "还在播" }]], 0, {});
 		expect(send).toHaveBeenCalledWith(
-			"live",
+			"liveStart",
 			{ kind: "text", text: "还在播" },
 			expect.objectContaining({ allowAtAll: false, kind: "live-ongoing" }),
 		);
@@ -658,7 +658,7 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 		await vi.waitFor(() =>
 			expect(H.push[0].broadcastToFeature).toHaveBeenCalledWith(
 				sub.id,
-				"live",
+				"liveStart",
 				expect.anything(),
 				expect.objectContaining({ allowAtAll: true, kind: "live" }),
 			),
@@ -997,15 +997,15 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(cfg.dynamicCron).toBe("*/7 * * * *");
 	});
 
-	it("改全局 templates.dynamic/dynamicVideo → dynamic.updateConfig 热推新模板(templatesChanged 触发)", () => {
-		// 回归:dynamicConfig() 读 templates.dynamic/dynamicVideo,触发条件必须含
+	it("改全局 templates.post/postVideo → dynamic.updateConfig 热推新模板(templatesChanged 触发)", () => {
+		// 回归:dynamicConfig() 读 templates.post/postVideo,触发条件必须含
 		// templatesChanged,否则只改全局动态文本模板时引擎不热更、无 per-UP 覆盖的
 		// 订阅一直用旧模板。
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.templates.dynamic = "🔔 {name} {url}";
-			g.defaults.templates.dynamicVideo = "🎬 {name} {url}";
+			g.defaults.templates.post = "🔔 {name} {url}";
+			g.defaults.templates.postVideo = "🎬 {name} {url}";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
@@ -1411,7 +1411,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		return s;
 	}
 
-	it("禁用订阅 update:live.applyOps 收到 delete、dynamic.applyOps 收到 dynamic:false", () => {
+	it("禁用订阅 update:live.applyOps 收到 delete、dynamic.applyOps 收到 post:false", () => {
 		const sub = makeSub("100", false);
 		const c = setup({ subs: [sub] });
 		active = c;
@@ -1419,11 +1419,11 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "100" }]);
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ type: "update", uid: "100", changes: [{ scope: "dynamic", dynamic: false }] },
+			{ type: "update", uid: "100", changes: [{ scope: "dynamic", post: false }] },
 		]);
 	});
 
-	it("启用订阅 update:live.applyOps 收到完整 update(非 delete),dynamic 为 dynamic:true", () => {
+	it("启用订阅 update:live.applyOps 收到完整 update(非 delete),dynamic 为 post:true", () => {
 		const sub = makeSub("200", true);
 		const c = setup({ subs: [sub] });
 		active = c;
@@ -1434,7 +1434,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(liveOps[0].type).toBe("update");
 		expect(liveOps[0].uid).toBe("200");
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ type: "update", uid: "200", changes: [{ scope: "dynamic", dynamic: true }] },
+			{ type: "update", uid: "200", changes: [{ scope: "dynamic", post: true }] },
 		]);
 	});
 
@@ -1475,7 +1475,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		// buildDynamicSubViewSingle 全量投影。
 		const sub = makeSub("600", true);
 		sub.overrides.imageGroup = { enable: false };
-		sub.overrides.templates = { dynamic: "🔔 {name} {url}", dynamicVideo: "🎬 {name} {url}" };
+		sub.overrides.templates = { post: "🔔 {name} {url}", postVideo: "🎬 {name} {url}" };
 		const c = setup({ subs: [sub] });
 		active = c;
 		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
@@ -1485,7 +1485,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(dynOps[0].type).toBe("add");
 		const view = dynOps[0].sub;
 		expect(view.uid).toBe("600");
-		expect(view.dynamic).toBe(true);
+		expect(view.post).toBe(true);
 		expect(view.imageGroupEnable).toBe(false);
 		expect(view.customDynamicTemplate).toBe("🔔 {name} {url}");
 		expect(view.customVideoTemplate).toBe("🎬 {name} {url}");
@@ -1518,8 +1518,8 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
 	});
 
-	it("禁用订阅 add:dynamic add op 仍下发但 dynamic:false(engine applyOps 的 !op.sub.dynamic 拦截)", () => {
-		// buildDynamicSubViewSingle 的 `dynamic: sub.enabled && eff.features.dynamic`
+	it("禁用订阅 add:dynamic add op 仍下发但 post:false(engine applyOps 的 !op.sub.post 拦截)", () => {
+		// buildDynamicSubViewSingle 的 `post: sub.enabled && eff.features.post`
 		// 门必须对 disabled sub 产出 false —— 与旧 add 路径 hasDyn(disabled→false) 等价。
 		// engine 侧 applyOps add 分支 `if(!op.sub.dynamic) break` 据此不启动轮询。
 		const sub = makeSub("700", false);
@@ -1531,7 +1531,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(dynOps).toHaveLength(1);
 		expect(dynOps[0].type).toBe("add");
 		expect(dynOps[0].sub.uid).toBe("700");
-		expect(dynOps[0].sub.dynamic).toBe(false);
+		expect(dynOps[0].sub.post).toBe(false);
 	});
 
 	it("remove op:live 与 dynamic 均收到 delete(无视 enabled)", () => {
@@ -1604,7 +1604,7 @@ describe("createEngines — 消息版式", () => {
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
 		const dyn = buildDynamicSubViewSingle(sub, subRt, g);
-		expect(dyn.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.dynamic);
+		expect(dyn.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.post);
 		const live = buildLiveSubViewSingle(sub, subRt, g);
 		expect(live.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.live);
 	});
@@ -1617,7 +1617,7 @@ describe("createEngines — 消息版式", () => {
 		});
 		sub.overrides.messageLayout = {
 			...DEFAULT_MESSAGE_LAYOUT,
-			dynamic: {
+			post: {
 				blocks: [
 					{ id: "text", type: "text", visible: true },
 					{ id: "card", type: "card", visible: false },
@@ -1656,7 +1656,7 @@ describe("createEngines — 消息版式", () => {
 		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
 		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
 		expect(subscriptionId).toBe("s1");
-		expect(feature).toBe("dynamic");
+		expect(feature).toBe("post");
 		expect(Array.isArray(payloads)).toBe(true);
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
@@ -1682,7 +1682,7 @@ describe("createEngines — 消息版式", () => {
 		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
 		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
 		expect(subscriptionId).toBe("s1");
-		expect(feature).toBe("live");
+		expect(feature).toBe("liveStart");
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
 		expect(payloads[1]).toEqual({ kind: "text", text: "开播文案" });
@@ -1699,7 +1699,7 @@ describe("createEngines — 消息版式", () => {
 		H.dynamic[0].applyOps.mockClear();
 		H.live[0].applyOps.mockClear();
 		patchGlobals(c, (g) => {
-			const block = g.defaults.messageLayout.dynamic.blocks.find((b) => b.type === "link");
+			const block = g.defaults.messageLayout.post.blocks.find((b) => b.type === "link");
 			expect(block).toBeDefined();
 			if (block) block.visible = false;
 		});
@@ -2032,7 +2032,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			H.push[0].opts.onSend({
 				pushId: randomUUID(), // 历史行的 schema 要求 pushId 是 uuid
 				subscriptionId: SUB_ID,
-				feature: "dynamic",
+				feature: "post",
 				kind: "dynamic",
 				target: null,
 				messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
@@ -2067,7 +2067,7 @@ describe("createEngines — 后台写登记进 track", () => {
 		H.push[0].opts.onSend({
 			pushId: "p1",
 			subscriptionId: SUB_ID,
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target: null,
 			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],

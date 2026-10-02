@@ -85,11 +85,11 @@ const logger = (): Logger => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), de
 describe("resolveTargetScope — 答案", () => {
 	// 同一个 uid 配了两条订阅(路由不同),外加一条外部 id 恰好也是 "u1" 的拓展订阅。
 	const ext = makeExtensionSubscription({ id: S_EXT, externalId: "u1" });
-	ext.routing.dynamic = [T_OK];
+	ext.routing.post = [T_OK];
 	const table = resolveTargetScope({
 		subscriptions: [
-			sub(S1, "u1", { dynamic: [T_OK, T_PAUSED] }),
-			sub(S2, "u1", { dynamic: [T_UNKNOWN] }),
+			sub(S1, "u1", { post: [T_OK, T_PAUSED] }),
+			sub(S2, "u1", { post: [T_UNKNOWN] }),
 			ext,
 		],
 		targets: TARGETS,
@@ -97,21 +97,21 @@ describe("resolveTargetScope — 答案", () => {
 	});
 
 	it("routedTargets:按订阅 id + 特性键查,没配过的键是空", () => {
-		expect(table.routedTargets(S1, "dynamic")).toEqual([T_OK, T_PAUSED]);
-		expect(table.routedTargets(S1, "live")).toEqual([]);
+		expect(table.routedTargets(S1, "post")).toEqual([T_OK, T_PAUSED]);
+		expect(table.routedTargets(S1, "liveStart")).toEqual([]);
 	});
 
 	it("没有这条订阅 → 空(闸据此说「路由里把它去掉了」)", () => {
-		expect(table.routedTargets(S_GONE, "dynamic")).toEqual([]);
+		expect(table.routedTargets(S_GONE, "post")).toEqual([]);
 	});
 
 	// 按 uid 查的年代「先出现的那条说了算」,第二条的路由整条被无视(ADR-0019 决策 50)。
 	it("同一个 uid 两条订阅:各按各的 id 查,第二条的路由不被第一条盖住", () => {
-		expect(table.routedTargets(S2, "dynamic")).toEqual([T_UNKNOWN]);
+		expect(table.routedTargets(S2, "post")).toEqual([T_UNKNOWN]);
 	});
 
 	it("拓展订阅也在表里:按它的 id 查得到它的路由", () => {
-		expect(table.routedTargets(S_EXT, "dynamic")).toEqual([T_OK]);
+		expect(table.routedTargets(S_EXT, "post")).toEqual([T_OK]);
 	});
 
 	it("targetEnabled:目标停用 / 连接停用 / 连接不存在 / 目标不存在,一律不算", () => {
@@ -247,7 +247,7 @@ describe("createTargetScope — 什么时候重折", () => {
 
 	beforeEach(() => {
 		bus = createNodeMessageBus();
-		subscriptions = [sub(S1, "u1", { dynamic: [T_OK] })];
+		subscriptions = [sub(S1, "u1", { post: [T_OK] })];
 		targets = [...TARGETS];
 		getSubscriptions = vi.fn(() => subscriptions);
 		getTargets = vi.fn(() => targets);
@@ -261,7 +261,7 @@ describe("createTargetScope — 什么时候重折", () => {
 	it("一页 200 行各问一次闸 → 三个 getter 各只被问一次", () => {
 		for (let i = 0; i < 200; i++) {
 			scope.currentSubscriptionOf({ subscriptionId: S1, uid: "u1" });
-			scope.routedTargets(S1, "dynamic");
+			scope.routedTargets(S1, "post");
 			scope.targetEnabled(T_OK);
 		}
 		expect(getSubscriptions).toHaveBeenCalledTimes(1);
@@ -284,10 +284,10 @@ describe("createTargetScope — 什么时候重折", () => {
 	});
 
 	it("config-changed:subscriptions → 路由跟着变", () => {
-		expect(scope.routedTargets(S1, "dynamic")).toEqual([T_OK]);
-		subscriptions = [sub(S1, "u1", { dynamic: [] })];
+		expect(scope.routedTargets(S1, "post")).toEqual([T_OK]);
+		subscriptions = [sub(S1, "u1", { post: [] })];
 		bus.emit("config-changed", { scope: "subscriptions" });
-		expect(scope.routedTargets(S1, "dynamic")).toEqual([]);
+		expect(scope.routedTargets(S1, "post")).toEqual([]);
 	});
 
 	it("config-changed:connections → 连接停用立刻算数", () => {

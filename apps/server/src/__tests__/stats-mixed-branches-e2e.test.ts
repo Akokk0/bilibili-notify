@@ -32,15 +32,15 @@ import type {
 	StatsRoastRunNowResponse,
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
-import { makeEmptySubscription, type SubscriptionTag, upColor } from "@bilibili-notify/internal";
+import { type SubscriptionTag, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
-import { legacyBiliRow } from "./support/legacy-subscription.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 /** 假浏览器:截图恒交这串字节,灌进去的每一份 HTML 留下来。 */
@@ -263,13 +263,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		for (const dir of ["state", "fans", join("stats", "dyn"), join("stats", "live")]) {
 			await mkdir(join(dataDir, dir), { recursive: true });
 		}
-		const bili = legacyBiliRow({
-			...makeEmptySubscription({
-				id: S_BILI,
-				identity: { sourceKey: "bilibili", externalId: UID },
-			}),
-			enabled: false,
-		});
+		// 0.x 盘上的行,用冻住的 0.x 夹具摆(不取活工厂:活工厂的键已经是 1.0 的,摆进第 0 代迁移器就没有东西可改了)。
+		const bili = zeroBiliRow({ id: S_BILI, uid: UID }, { enabled: false });
 		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify([bili]));
 		await writeFile(
 			join(dataDir, "fans", `${UID}.jsonl`),

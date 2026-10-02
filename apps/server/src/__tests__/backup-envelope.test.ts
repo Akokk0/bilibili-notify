@@ -89,18 +89,34 @@ describe("backup envelope", () => {
  * overwrite 会把现有订阅全删光,而且不报错。
  */
 describe("backup envelope —— 1.0 之前的备份", () => {
-	it("schemaVersion 比当前旧 → unsupported,告诉主人先装 0.12 恢复再升级", () => {
+	it("0.x 导出的(schemaVersion 1)→ unsupported,告诉主人先装 0.12 恢复再升级", () => {
 		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
-		const err = thrownBy(() =>
-			parseBackup(JSON.stringify({ ...env, schemaVersion: BACKUP_SCHEMA_VERSION - 1 })),
-		);
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 1 })));
 		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
 		expect(err.code).toBe("unsupported");
 		expect(err.message).toMatch(/0\.12/);
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("1.0 起导出的备份是版本 3(各集成的设置单独一节 integrations)", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(3);
+	it("特性键改名以后导出的备份是版本 4(版本 3 是开发期的:各集成的设置单独一节 integrations,特性键还是 0.x 的名字)", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(4);
+	});
+
+	it("版本 3 的备份(订阅里还是 dynamic / live / liveGuardBuy)→ unsupported:不会被当成当前版本放进来", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 3 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+	});
+
+	// 「先装 0.12 恢复」只对 0.x 导出的说得通:开发期的 2 / 3、以及以后 1.x 再抬版本时 1.0 导出的那些,装 0.12 恢复不了,
+	// 照那句话做是条死路。原因要说实话:是哪个版本、比当前旧。
+	it("比当前旧、但不是 0.x 导出的 → 不叫主人去装 0.12,说出两边的版本号", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 3 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.message).not.toMatch(/0\.12/);
+		expect(err.message).toContain("（3）");
+		expect(err.message).toContain(`（${BACKUP_SCHEMA_VERSION}）`);
 	});
 });

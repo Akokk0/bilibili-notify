@@ -45,7 +45,7 @@ describe("AI 工具表 — 只读约束", () => {
 		const api = {} as BilibiliAPI;
 		for (const w of WRITE_TOOLS) {
 			const out = await executeTool(w, { uid: "123", name: "谁" }, api, () => ({
-				"123": { uid: "123", uname: "谁", dynamic: true, live: true },
+				"123": { uid: "123", uname: "谁", post: true, liveStart: true },
 			}));
 			expect(out).toContain("未知工具");
 		}

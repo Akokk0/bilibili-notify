@@ -343,7 +343,7 @@ export type PayloadSegment =
 	 * 一条 composite payload,排在本体之前发出,落历史时 `role: "extra"` —— 与下播的词云 /
 	 * AI 总结同类,都是挂在某把主特性下面的附加项。发不发由「全局 + per-UP 合并后的
 	 * `features.extras.atAll<Scope>`」定,某个目标要不要另说则看订阅上的三态表
-	 * `extras.atAll<Scope>[targetId]`。
+	 * `extraTargets.atAll<Scope>[targetId]`。
 	 */
 	| { type: "at-all" };
 

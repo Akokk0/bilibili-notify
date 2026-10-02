@@ -134,28 +134,28 @@ describe("UpDialog · 某个推送目标自己的附加项", () => {
 		await userEvent.click(extraToggle("弹幕词云 · 群 A"));
 		await save();
 		const saved = onSave.mock.calls[0]?.[0] as Subscription;
-		expect(saved.extras.wordcloud).toEqual({ [t.id]: false });
-		expect(saved.extras.liveSummary).toEqual({});
+		expect(saved.extraTargets.wordcloud).toEqual({ [t.id]: false });
+		expect(saved.extraTargets.liveSummary).toEqual({});
 		expect(saved.overrides.features).toBeUndefined();
 	});
 
 	it("显式过了才出「重置」,点它删掉那个键 = 回到跟随", async () => {
 		const t = customTarget();
 		const sub = liveEndOnlySub(t.id);
-		sub.extras.wordcloud = { [t.id]: false };
+		sub.extraTargets.wordcloud = { [t.id]: false };
 		const { onSave } = renderWithTarget(sub, t);
 		// AI 总结还在跟随,不该有它的重置钮。
 		expect(screen.queryByRole("button", { name: /重置 AI 总结/ })).toBeNull();
 		await userEvent.click(screen.getByRole("button", { name: /重置 弹幕词云/ }));
 		await save();
 		const saved = onSave.mock.calls[0]?.[0] as Subscription;
-		expect(saved.extras.wordcloud).toEqual({});
+		expect(saved.extraTargets.wordcloud).toEqual({});
 	});
 
 	it("下播没给这个目标 → 两个附加项灰掉,点了也不写(草稿没动,保存钮不可点)", async () => {
 		const t = customTarget();
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
-		sub.routing.dynamic = [t.id]; // 挂着这个目标,但没给它下播
+		sub.routing.post = [t.id]; // 挂着这个目标,但没给它下播
 		const { onSave } = renderWithTarget(sub, t);
 		expect(extraToggle("弹幕词云 · 群 A").disabled).toBe(true);
 		expect(extraToggle("弹幕词云 · 群 A").getAttribute("aria-pressed")).toBe("false");
@@ -173,6 +173,6 @@ describe("UpDialog · 某个推送目标自己的附加项", () => {
 		await userEvent.click(wc);
 		await save();
 		const saved = onSave.mock.calls[0]?.[0] as Subscription;
-		expect(saved.extras.wordcloud).toEqual({ [t.id]: false });
+		expect(saved.extraTargets.wordcloud).toEqual({ [t.id]: false });
 	});
 });

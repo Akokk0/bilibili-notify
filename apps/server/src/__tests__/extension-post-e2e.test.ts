@@ -223,7 +223,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 					method: "POST",
 					...json({
 						...base,
-						routing: { ...base.routing, dynamic: [who[key].target] },
+						routing: { ...base.routing, post: [who[key].target] },
 						// 乙按 UP 屏蔽「海边」:只有第一条作品(图文)的正文里有这两个字,视频那条没有。
 						overrides:
 							key === "b"

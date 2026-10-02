@@ -522,7 +522,7 @@ const SubscriptionDisplaySchema = z.strictObject({
 
 /**
  * 订阅源会报的事件种类(ADR-0019 决策 4)—— 中立名,BN 入口处映射到
- * `dynamic / live / liveEnd`。配置弹层只列这个源报的那几种。
+ * 特性键 `post / liveStart / liveEnd`(`SUBSCRIPTION_EVENT_FEATURES`)。配置弹层只列这个源报的那几种。
  */
 export const SUBSCRIPTION_EVENT_KINDS = ["post", "liveStart", "liveEnd"] as const;
 export type SubscriptionEventKind = (typeof SUBSCRIPTION_EVENT_KINDS)[number];

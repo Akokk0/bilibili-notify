@@ -55,16 +55,16 @@ describe("SubscriptionRouting — 重复 UUID 去重 (P1)", () => {
 	it("同 feature 重复 target 解析后归一(幂等,不 reject)", () => {
 		const dup = "550e8400-e29b-41d4-a716-446655440000";
 		const parsed = SubscriptionRoutingSchema.parse({
-			dynamic: [dup, dup, dup],
-			live: [dup],
+			post: [dup, dup, dup],
+			liveStart: [dup],
 			liveEnd: [],
-			liveGuardBuy: [],
+			membership: [],
 			superchat: [],
 			specialDanmaku: [],
 			specialUserEnter: [],
 		});
-		expect(parsed.dynamic).toEqual([dup]);
-		expect(parsed.live).toEqual([dup]);
+		expect(parsed.post).toEqual([dup]);
+		expect(parsed.liveStart).toEqual([dup]);
 	});
 });
 

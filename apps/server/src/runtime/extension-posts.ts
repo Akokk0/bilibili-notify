@@ -51,8 +51,8 @@ type Post = SubscriptionReportValue<"post">;
 export interface ExtensionPostSettings extends WorkSubscriptionSettings {
 	/** 这条订阅生效的过滤(per-UP 覆盖 ?? 全局)。 */
 	filter: DynamicFilterConfig & { notify?: boolean };
-	/** 动态总开关(全局 + per-UP 折好的 `features.dynamic`)。 */
-	dynamic: boolean;
+	/** 作品总开关(全局 + per-UP 折好的 `features.post`)。 */
+	post: boolean;
 }
 
 export interface BindExtensionPostsOptions {
@@ -108,7 +108,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			return;
 		}
 		const settings = opts.settings(sub);
-		if (!settings.dynamic) {
+		if (!settings.post) {
 			log.debug(`[ext-post] 订阅 ${id} 的动态推送关着,作品 ${post.id} 不推`);
 			return;
 		}

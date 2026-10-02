@@ -27,10 +27,10 @@ import type {
  * {@link PUSH_EXTRAS}),跟着那把特性的开关与目标走,自己没有路由。
  */
 export const FEATURE_KEYS = [
-	"dynamic",
-	"live",
+	"post",
+	"liveStart",
 	"liveEnd",
-	"liveGuardBuy",
+	"membership",
 	"superchat",
 	"specialDanmaku",
 	"specialUserEnter",
@@ -39,9 +39,17 @@ export const FEATURE_KEYS = [
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 /**
+ * 按 {@link FEATURE_KEYS} 摊一张「每把特性一格」的表 —— 和 {@link extrasRecord} 同一个安排:`Object.fromEntries`
+ * 的返回类型是宽的,收进泛型之后 `T` 由 `make` 的返回值推断,调用方不用各自补一发 `as`。
+ * 全局特性开关的 schema 就是靠它从 `FEATURE_KEYS` 摊出来的,加 / 改一把特性键不用再同改一份手写的键名。
+ */
+export const featuresRecord = <T>(make: (k: FeatureKey) => T): Record<FeatureKey, T> =>
+	Object.fromEntries(FEATURE_KEYS.map((k) => [k, make(k)])) as Record<FeatureKey, T>;
+
+/**
  * 附加项的键。加一个附加项 = 这里加一行 + {@link PUSH_EXTRAS} 里加一行(ADR-0016 决策 1)。
  */
-export const EXTRA_KEYS = ["atAllDynamic", "atAllLive", "wordcloud", "liveSummary"] as const;
+export const EXTRA_KEYS = ["atAllPost", "atAllLiveStart", "wordcloud", "liveSummary"] as const;
 
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
@@ -65,7 +73,7 @@ export const extrasRecord = <T>(make: (k: ExtraKey) => T): Record<ExtraKey, T> =
  *
  * 主特性关了它们一起关,主特性推到哪儿它们就跟到哪儿(目标是主特性目标的子集)。
  * 键是**一维**的 —— 每把键自己声明挂在哪把主特性下、面板上叫什么、出厂开不开。@全体
- * 在动态与开播下的出厂值本就不同(动态 OFF、开播 ON),走二维(`extras[附加项][主特性]`)
+ * 在作品与开播下的出厂值本就不同(作品 OFF、开播 ON),走二维(`extras[附加项][主特性]`)
  * 的话还得再开一层「同一把键在不同特性下默认不同」。
  *
  * `capability` 是这把附加项对**平台能力**的要求(ADR-0016 决策 4 的「有没有平台限制」):
@@ -82,8 +90,8 @@ export const PUSH_EXTRAS: Record<
 	ExtraKey,
 	{ feature: FeatureKey; label: string; default: boolean; capability?: "atAll" }
 > = {
-	atAllDynamic: { feature: "dynamic", label: "@全体", default: false, capability: "atAll" },
-	atAllLive: { feature: "live", label: "@全体", default: true, capability: "atAll" },
+	atAllPost: { feature: "post", label: "@全体", default: false, capability: "atAll" },
+	atAllLiveStart: { feature: "liveStart", label: "@全体", default: true, capability: "atAll" },
 	wordcloud: { feature: "liveEnd", label: "弹幕词云", default: true },
 	liveSummary: { feature: "liveEnd", label: "AI 总结", default: true },
 };
@@ -96,10 +104,10 @@ export type FeatureFlagValues = Record<FeatureKey, boolean> & { extras: PushExtr
 
 /** 默认全局值；resolve() 在 per-UP overrides 缺失字段时回退到这里。 */
 export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
-	dynamic: true,
-	live: true,
+	post: true,
+	liveStart: true,
 	liveEnd: true,
-	liveGuardBuy: false,
+	membership: false,
 	superchat: false,
 	specialDanmaku: false,
 	specialUserEnter: false,
@@ -950,8 +958,8 @@ export const DEFAULT_TEMPLATES = {
 🥉 {un3} - {dc3} 条精准狙击
 🎖️ 特别嘉奖：{un4} & {un5}
 你们的弹幕，我们都记录在案！🕵️‍♀️`,
-	dynamic: "{name}发布了一条动态",
-	dynamicVideo: "{name}发布了新视频",
+	post: "{name}发布了一条动态",
+	postVideo: "{name}发布了新视频",
 	wordcloudStopWords: "",
 	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
 	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
@@ -1238,8 +1246,8 @@ export function identityColor(identity: Identity): string {
  * 不过。住零依赖模块是因为面板也要它(见文件头)。
  */
 export const SUBSCRIPTION_EVENT_FEATURES = {
-	post: "dynamic",
-	liveStart: "live",
+	post: "post",
+	liveStart: "liveStart",
 	liveEnd: "liveEnd",
 } as const satisfies Record<SubscriptionEventKind, FeatureKey>;
 

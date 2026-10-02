@@ -51,8 +51,8 @@ export function makeDefaults(): GlobalDefaults {
 			liveOngoing: "",
 			liveEnd: "",
 			liveSummary: "",
-			dynamic: "",
-			dynamicVideo: "",
+			post: "",
+			postVideo: "",
 			wordcloudStopWords: "",
 			specialDanmaku: "",
 			specialUserEnter: "",
@@ -83,7 +83,7 @@ export function makeDefaults(): GlobalDefaults {
 		imageGroup: { enable: true, forward: false },
 		messageLayout: {
 			version: 1,
-			dynamic: {
+			post: {
 				blocks: ["card", "text", "link"].map((id) => ({ id, type: id, visible: true })),
 				separator: "\n",
 			},

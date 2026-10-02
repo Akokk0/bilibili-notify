@@ -17,7 +17,11 @@ import type { RouteDeps } from "./types.js";
  * 是非 2xx 的错误体,经 `respondFailure`。
  */
 
-const TestKindSchema = z.enum(["live", "dyn", "sc", "guard", "text"]);
+/**
+ * 测试推送的种类:四种特性键(`liveStart` / `post` / `superchat` / `membership`)各配一句样板,外加 `text`(只验通不通)。
+ * 请求体只在这一处定义,面板的「测试」按钮发的都是缺省的 `text`。
+ */
+const TestKindSchema = z.enum(["liveStart", "post", "superchat", "membership", "text"]);
 
 const TestRequestSchema = z.object({
 	targetId: z.uuid(),
@@ -28,10 +32,10 @@ const TestRequestSchema = z.object({
 // TestResponse 在 @bilibili-notify/contract(web 同源消费)。
 
 const KIND_TEXTS: Record<z.infer<typeof TestKindSchema>, string> = {
-	live: "[测试推送 · 直播开播] 老番茄 开播了！标题：测试直播",
-	dyn: "[测试推送 · 动态] 老番茄 发布了一条测试动态",
-	sc: "[测试推送 · SC] ¥30 来自 测试用户 — 主播加油！",
-	guard: "[测试推送 · 上舰] 测试用户 成为了舰长！",
+	liveStart: "[测试推送 · 直播开播] 老番茄 开播了！标题：测试直播",
+	post: "[测试推送 · 动态] 老番茄 发布了一条测试动态",
+	superchat: "[测试推送 · SC] ¥30 来自 测试用户 — 主播加油！",
+	membership: "[测试推送 · 上舰] 测试用户 成为了舰长！",
 	text: "[bilibili-notify] 测试推送已送达 ✓",
 };
 

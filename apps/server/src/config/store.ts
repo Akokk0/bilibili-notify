@@ -574,16 +574,16 @@ function removeTargetIdsFromSubscriptions(
 		}
 
 		// 附加项的 per-目标 三态表跟着 routing 一起清 —— schema 强制它的 key ⊆ 主特性目标。
-		const extras = { ...sub.extras };
+		const extraTargets = { ...sub.extraTargets };
 		for (const key of EXTRA_KEYS) {
-			const kept = Object.entries(extras[key]).filter(([id]) => !ids.has(id));
-			if (kept.length === Object.keys(extras[key]).length) continue;
-			extras[key] = Object.fromEntries(kept);
+			const kept = Object.entries(extraTargets[key]).filter(([id]) => !ids.has(id));
+			if (kept.length === Object.keys(extraTargets[key]).length) continue;
+			extraTargets[key] = Object.fromEntries(kept);
 			subChanged = true;
 		}
 		if (!subChanged) return sub;
 		changed = true;
-		return { ...sub, routing, extras };
+		return { ...sub, routing, extraTargets };
 	});
 	return { next, changed };
 }
@@ -612,9 +612,9 @@ function replaceTargetIdsInSubscriptions(
 			if (after.length !== before.length || subChanged) routing[key] = after;
 		}
 
-		const extras = { ...sub.extras };
+		const extraTargets = { ...sub.extraTargets };
 		for (const key of EXTRA_KEYS) {
-			const group = { ...extras[key] };
+			const group = { ...extraTargets[key] };
 			let groupChanged = false;
 			for (const [from, to] of aliases) {
 				if (!(from in group)) continue;
@@ -624,11 +624,11 @@ function replaceTargetIdsInSubscriptions(
 				groupChanged = true;
 				subChanged = true;
 			}
-			if (groupChanged) extras[key] = group;
+			if (groupChanged) extraTargets[key] = group;
 		}
 		if (!subChanged) return sub;
 		changed = true;
-		return { ...sub, routing, extras };
+		return { ...sub, routing, extraTargets };
 	});
 	return { next, changed };
 }

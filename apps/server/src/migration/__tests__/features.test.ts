@@ -26,14 +26,17 @@
  * 迁出来的东西里没有老键(活 schema 对老键是剥掉或拒收,漏迁的老键在 parse 出来的值里只会悄悄不见,
  * 所以要直接看迁出来的东西);迁出来的东西再迁一遍不变(幂等);features 这一层还要求迁出来的就是 0.12
  * 的最终形状(冻住的键,见 `expectZeroFeatureFlagsShape`)—— 不拿活 schema 现算一份来比,活词表改名后两者不再相等。
- * routing / 整条订阅这两层迁完仍过活 schema(去重、`extras` 目标 ⊆ 主特性目标那条约束):那是「迁完经活 schema 装载」,
- * 是 1.0 侧的期望(今天 0.x 的键与活 schema 的键还一样;活词表改名后,这两层要在迁移之后补上 1.0 改名那一步再装载)。
+ * routing / 整条订阅这两层迁完仍过活 schema(去重、`extraTargets` 目标 ⊆ 主特性目标那条约束):那是「迁完经活 schema 装载」,
+ * 是 1.0 侧的期望。活 schema 只认 1.0 的键,所以这两层在 0.x 那一遍之后先过 1.0 的改名(`../feature-renames.ts` 的
+ * `renameSubscriptionKeys`,文件级迁移里也是这个顺序)再装载,期望值里的键是 1.0 的名字;改名那一步自己的用例在
+ * `./feature-renames.test.ts`。
  *
  * 输入一律用 `./zero-fixtures.ts` 冻住的 0.x 字面量,不取 internal 的活工厂。
  */
 
 import { SubscriptionRoutingSchema, SubscriptionSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { renameSubscriptionKeys } from "../feature-renames.js";
 import {
 	migrateLegacyFeatureFlags,
 	migrateLegacyFeatureFlagsPartial,
@@ -61,6 +64,30 @@ const SUB_BASE = zeroEmptySubscription({
 	id: "11111111-1111-4111-8111-111111111111",
 	identity: { sourceKey: "bilibili", externalId: "12345" },
 });
+
+/**
+ * `SUB_BASE` 在 1.0 里的样子(期望值,字面量):特性键、附加项键是 1.0 的名字,逐目标表叫 `extraTargets`。
+ * 经 0.x 那一遍 → 1.0 改名 → 活 schema 出来的就该是这个形状。
+ */
+const SUB_BASE_1_0 = {
+	id: SUB_BASE.id,
+	identity: { sourceKey: "bilibili", externalId: "12345" },
+	enabled: true,
+	tagIds: [],
+	routing: {
+		post: [],
+		liveStart: [],
+		liveEnd: [],
+		membership: [],
+		superchat: [],
+		specialDanmaku: [],
+		specialUserEnter: [],
+	},
+	extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
+	overrides: {},
+	roastSchedule: SUB_BASE.roastSchedule,
+	specialUsers: [],
+};
 
 /** 0.12 的七把特性键(迁完 routing / features 里的就是这几把)。 */
 const NEW_KEYS = [
@@ -163,28 +190,40 @@ function parseFeaturesPartial(old: unknown) {
 	return migrated as Record<string, unknown>;
 }
 
-/** routing(单独一份):先迁移、再过 schema。schema 还管去重,所以迁出来的不必等于 parse 的结果。 */
+/**
+ * routing(单独一份):先迁移(0.x 那一遍)、再改成 1.0 的键、再过 schema。schema 还管去重,所以迁出来的不必等于 parse 的结果。
+ * 0.x 那一遍吐的是 0.x 最新的形状(下面几个 `expect…` 钉的就是它);活 schema 只认 1.0 的键,所以过 schema 之前要先过 1.0 的
+ * 改名(`renameSubscriptionKeys`,文件级迁移里就是这个顺序)。
+ */
 function parseRouting(old: unknown) {
 	const migrated = migrateLegacyRouting(old);
 	expectNoLegacyRoutingKeys(migrated);
 	expect(migrateLegacyRouting(migrated)).toEqual(migrated);
-	return SubscriptionRoutingSchema.parse(migrated);
+	const { routing } = renameSubscriptionKeys({ routing: migrated }) as { routing: unknown };
+	return SubscriptionRoutingSchema.parse(routing);
 }
 
-/** 整条 B 站订阅:先迁移、再过 schema(盘上读这份用的就是 `SubscriptionSchema`)。 */
+/** 整条 B 站订阅:先迁移(0.x 那一遍)、再改成 1.0 的键、再过 schema(盘上读这份用的就是 `SubscriptionSchema`)。 */
 function parseBili(old: unknown) {
 	const migrated = migrateBiliSubscriptionRow(old);
 	expectNoLegacyRowKeys(migrated);
 	expect(migrateBiliSubscriptionRow(migrated)).toEqual(migrated);
-	return SubscriptionSchema.parse(migrated);
+	return parseRenamed(migrated);
+}
+
+/** 0.x 最新形状的一行 → 1.0 的改名 → 活 schema。改名那一步幂等:对它的产出再跑一遍不变。 */
+function parseRenamed(migrated: unknown) {
+	const renamed = renameSubscriptionKeys(migrated);
+	expect(renameSubscriptionKeys(renamed)).toEqual(renamed);
+	return SubscriptionSchema.parse(renamed);
 }
 
 /**
- * 迁完的拓展订阅行(0.x 最新的形状:`kind` + `extensionId` + `externalId`)换成现在 schema 认的样子再过 schema。
+ * 迁完的拓展订阅行(0.x 最新的形状:`kind` + `extensionId` + `externalId`)改成 1.0 的键、换成现在 schema 认的样子再过 schema。
  * 身份收进 `identity` 那一步归文件级的合并(见头部的说明),这里只借它过 schema。
  */
 function parseExtension(migrated: unknown) {
-	return SubscriptionSchema.parse(toIdentityRow(migrated, "extension"));
+	return parseRenamed(toIdentityRow(migrated, "extension"));
 }
 
 // ── 全局 features ────────────────────────────────────────────────────────────────
@@ -408,7 +447,8 @@ describe("routing 迁移", () => {
 			},
 		});
 		expect(parsed.routing.liveEnd).toEqual([T1, T2, T3]);
-		expect(Object.keys(parsed.routing).sort()).toEqual([...NEW_KEYS].sort());
+		// 过了 1.0 的改名:键是 1.0 的七把。
+		expect(Object.keys(parsed.routing).sort()).toEqual(Object.keys(SUB_BASE_1_0.routing).sort());
 	});
 
 	it("整条第一代订阅:routing 与 overrides.features 一起迁", () => {
@@ -432,7 +472,7 @@ describe("routing 迁移", () => {
 			routing: { ...SUB_BASE.routing, wordcloud: [], liveSummary: [] },
 			overrides: { features: { liveEnd: false, dynamic: false } },
 		});
-		expect(parsed.overrides.features).toEqual({ dynamic: false, extras: {} });
+		expect(parsed.overrides.features).toEqual({ post: false, extras: {} });
 	});
 
 	it("新形状的订阅原样通过", () => {
@@ -442,7 +482,11 @@ describe("routing 迁移", () => {
 			overrides: { features: { extras: { liveSummary: false } } },
 		};
 		expect(migrateBiliSubscriptionRow(fresh)).toEqual(fresh);
-		expect(parseBili(fresh)).toEqual(fresh);
+		expect(parseBili(fresh)).toEqual({
+			...SUB_BASE_1_0,
+			routing: { ...SUB_BASE_1_0.routing, liveEnd: [T1] },
+			overrides: { features: { extras: { liveSummary: false } } },
+		});
 	});
 
 	// 原出自 p1-internal-guards.test.ts(那边现在只喂新形状、纯钉去重)。这里留着带第一代老键(词云 / 总结各一份空表)的
@@ -460,14 +504,14 @@ describe("routing 迁移", () => {
 			specialDanmaku: [],
 			specialUserEnter: [],
 		});
-		expect(parsed.dynamic).toEqual([dup]);
-		expect(parsed.live).toEqual([dup]);
+		expect(parsed.post).toEqual([dup]);
+		expect(parsed.liveStart).toEqual([dup]);
 	});
 
 	it("新形状的 routing 原样通过", () => {
 		const fresh = { ...SUB_BASE.routing, liveEnd: [T1, T2] };
 		expect(migrateLegacyRouting(fresh)).toEqual(fresh);
-		expect(parseRouting(fresh)).toEqual(fresh);
+		expect(parseRouting(fresh)).toEqual({ ...SUB_BASE_1_0.routing, liveEnd: [T1, T2] });
 	});
 });
 
@@ -494,18 +538,18 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 		};
 	}
 
-	it("atAll.<scope> 是 per-目标 三态表 → 1:1 搬进 extras.atAll<Scope>", () => {
+	it("atAll.<scope> 是 per-目标 三态表 → 1:1 搬进 extras.atAll<Scope>(过了 1.0 的改名:extraTargets.atAllPost / atAllLiveStart)", () => {
 		const parsed = parseBili(
 			legacyAtAllSub({
 				routing: { dynamic: [T1], live: [T2] },
 				atAll: { dynamic: { [T1]: true }, live: { [T2]: false } },
 			}),
 		);
-		expect(parsed.extras.atAllDynamic).toEqual({ [T1]: true });
-		expect(parsed.extras.atAllLive).toEqual({ [T2]: false });
+		expect(parsed.extraTargets.atAllPost).toEqual({ [T1]: true });
+		expect(parsed.extraTargets.atAllLiveStart).toEqual({ [T2]: false });
 		// 新长出来的那两把留空 —— 老数据里没有 per-目标 的词云 / 总结,别凭空造。
-		expect(parsed.extras.wordcloud).toEqual({});
-		expect(parsed.extras.liveSummary).toEqual({});
+		expect(parsed.extraTargets.wordcloud).toEqual({});
+		expect(parsed.extraTargets.liveSummary).toEqual({});
 	});
 
 	it("搬完仍守「附加项的目标 ⊆ 主特性目标」:key 不在 routing 里就拒收", () => {
@@ -516,19 +560,22 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 					atAll: { dynamic: { [T1]: true }, live: {} },
 				}),
 			),
-		).toThrow(/extras\.atAllDynamic keys must be a subset of routing\.dynamic/);
+		).toThrow(/extraTargets\.atAllPost keys must be a subset of routing\.post/);
 	});
 
 	it("那条约束按注册表遍历 —— 词云那把守的是 routing.liveEnd", () => {
 		const base = parseBili(legacyAtAllSub({ routing: { liveEnd: [T1] } }));
 		expect(() =>
-			parseBili({ ...base, extras: { ...base.extras, wordcloud: { [T2]: false } } }),
-		).toThrow(/extras\.wordcloud keys must be a subset of routing\.liveEnd/);
+			parseBili({
+				...base,
+				extraTargets: { ...base.extraTargets, wordcloud: { [T2]: false } },
+			}),
+		).toThrow(/extraTargets\.wordcloud keys must be a subset of routing\.liveEnd/);
 		expect(
 			parseBili({
 				...base,
-				extras: { ...base.extras, wordcloud: { [T1]: false } },
-			}).extras.wordcloud,
+				extraTargets: { ...base.extraTargets, wordcloud: { [T1]: false } },
+			}).extraTargets.wordcloud,
 		).toEqual({ [T1]: false });
 	});
 
@@ -546,8 +593,8 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 			}),
 		);
 		expect(parsed.overrides.features).toEqual({
-			dynamic: false,
-			extras: { atAllDynamic: true },
+			post: false,
+			extras: { atAllPost: true },
 		});
 	});
 
@@ -559,7 +606,7 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 			}),
 		);
 		expect(parsed.overrides.features).toEqual({
-			extras: { wordcloud: false, atAllLive: false },
+			extras: { wordcloud: false, atAllLiveStart: false },
 		});
 	});
 
@@ -570,7 +617,11 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 			extras: { ...SUB_BASE.extras, atAllLive: { [T1]: true } },
 		};
 		expect(migrateBiliSubscriptionRow(fresh)).toEqual(fresh);
-		expect(parseBili(fresh)).toEqual(fresh);
+		expect(parseBili(fresh)).toEqual({
+			...SUB_BASE_1_0,
+			routing: { ...SUB_BASE_1_0.routing, liveStart: [T1] },
+			extraTargets: { ...SUB_BASE_1_0.extraTargets, atAllLiveStart: { [T1]: true } },
+		});
 	});
 
 	// 原出自 subscription-kinds.test.ts,当时钉的是「老数据迁移经联合那一份也跑」(迁移挂在 schema 上)。现在钉的是盘上真实的
@@ -586,8 +637,8 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 		});
 		expectNoLegacyRowKeys(migrated);
 		expect(migrated).toMatchObject({ uid: "12345" });
-		const parsed = SubscriptionSchema.parse({ ...(migrated as object), identity });
-		expect(parsed.extras.atAllDynamic).toEqual({ [T1]: true });
+		const parsed = parseRenamed({ ...(migrated as object), identity });
+		expect(parsed.extraTargets.atAllPost).toEqual({ [T1]: true });
 	});
 });
 

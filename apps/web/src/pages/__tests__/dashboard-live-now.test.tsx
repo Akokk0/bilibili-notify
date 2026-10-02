@@ -179,7 +179,7 @@ describe("正在直播 · 没配直播目标的提示", () => {
 
 	it("配了直播目标的 B 站订阅不数;都配了就没有这句", () => {
 		const routed = biliSub("s-1", "u1", "甲");
-		routed.routing.live = ["t-1"];
+		routed.routing.liveStart = ["t-1"];
 		renderEmpty([routed, extSub("s-ext", "抖音丁")]);
 		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
 	});

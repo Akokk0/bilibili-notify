@@ -20,14 +20,14 @@ import { resolveTagNames } from "./tag-edit";
 
 /**
  * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送类型 PushKind 不完全对齐 ——
- * 开播与周期复推共用 live),但用的是同一套家族色,所以借 PUSH_TONE 而不是再抄
+ * 开播与周期复推共用 liveStart),但用的是同一套家族色,所以借 PUSH_TONE 而不是再抄
  * 一份十六进制。两档衍生能力(特别弹幕/特别进房)统一走 derived。
  */
 const FEATURE_TONE: Record<string, string> = {
-	dynamic: PUSH_TONE.dynamic,
-	live: PUSH_TONE.live,
+	post: PUSH_TONE.dynamic,
+	liveStart: PUSH_TONE.live,
 	liveEnd: PUSH_TONE.live,
-	liveGuardBuy: PUSH_TONE.guard,
+	membership: PUSH_TONE.guard,
 	superchat: PUSH_TONE.sc,
 	specialDanmaku: PUSH_TONE.derived,
 	specialUserEnter: PUSH_TONE.derived,

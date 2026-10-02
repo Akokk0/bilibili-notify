@@ -106,7 +106,7 @@ describe("附加项按目标收窄", () => {
 	it("默认开着、某个目标显式关 → 那个目标收不到这条附加项,别人照收", async () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
-		sub.extras.wordcloud = { t1: false };
+		sub.extraTargets.wordcloud = { t1: false };
 		const { push, calls } = makePush(sub);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
@@ -118,7 +118,7 @@ describe("附加项按目标收窄", () => {
 	it("默认关着、某个目标显式开 → 只有那个目标收得到(三态不是只能收窄)", async () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", false);
-		sub.extras.wordcloud = { t2: true };
+		sub.extraTargets.wordcloud = { t2: true };
 		const { push, calls } = makePush(sub);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
@@ -131,7 +131,7 @@ describe("附加项按目标收窄", () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
 		setExtraDefault(sub, "liveSummary", true);
-		sub.extras.wordcloud = { t1: false, t2: false };
+		sub.extraTargets.wordcloud = { t1: false, t2: false };
 		const { push, calls } = makePush(sub);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
@@ -148,7 +148,7 @@ describe("附加项按目标收窄", () => {
 		// 本体那一行本来就在、而且是「已送达」;附加项只是谁都没订,是配置意图不是故障。
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
-		sub.extras.wordcloud = { t1: false, t2: false, t3: false };
+		sub.extraTargets.wordcloud = { t1: false, t2: false, t3: false };
 		const seen: PushSendInfo[] = [];
 		const { push, calls } = makePush(sub, seen);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
@@ -189,7 +189,7 @@ describe("附加项按目标收窄", () => {
 	it("不带 opts.extra 的广播不受三态表影响(本体不会被附加项的设置收窄)", async () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
-		sub.extras.wordcloud = { t1: false, t2: false, t3: false };
+		sub.extraTargets.wordcloud = { t1: false, t2: false, t3: false };
 		const { push, calls } = makePush(sub);
 		await push.broadcastToFeature("s1", "liveEnd", { kind: "text", text: "下播卡" });
 		expect(calls).toEqual(["t1", "t2", "t3"]);
@@ -202,7 +202,7 @@ describe("附加项按目标收窄", () => {
 		});
 		sub.routing.liveEnd = ["t1", "t2"];
 		setExtraDefault(sub, "wordcloud", true);
-		sub.extras.wordcloud = { t1: false };
+		sub.extraTargets.wordcloud = { t1: false };
 		const seen: PushSendInfo[] = [];
 		const { push } = makePush(sub, seen);
 		const pushId = "p1";

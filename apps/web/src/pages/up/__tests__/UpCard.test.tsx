@@ -206,7 +206,7 @@ const DOUYIN: SubscriptionPlatform = {
 	shortLabel: "抖音",
 	color: "#161823",
 	postNoun: "作品",
-	features: ["dynamic", "live"],
+	features: ["post", "liveStart"],
 	absent: false,
 };
 
@@ -240,7 +240,7 @@ describe("UpCard × 订阅源的平台", () => {
 	});
 
 	it("没给平台 → 也不列 B 站独有的特性", () => {
-		const sub = makeExtSub({ overrides: { features: { liveGuardBuy: true } } });
+		const sub = makeExtSub({ overrides: { features: { membership: true } } });
 		const { queryByText, getByText } = render(<UpCard {...props({ sub })} />);
 		expect(getByText("动态")).toBeTruthy();
 		expect(queryByText("上舰")).toBeNull();

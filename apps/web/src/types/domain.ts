@@ -104,10 +104,10 @@ export type {
 // ---- UI 文案 -----------------------------------------------------------
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
-	dynamic: "动态",
-	live: "开播",
+	post: "动态",
+	liveStart: "开播",
 	liveEnd: "下播",
-	liveGuardBuy: "上舰",
+	membership: "上舰",
 	superchat: "SC",
 	specialDanmaku: "特别弹幕",
 	specialUserEnter: "特别用户进房",
@@ -227,10 +227,10 @@ function emptyRouting(): Subscription["routing"] {
 }
 
 /** 附加项的 per-目标 三态表:四把键各一张空表 = 每个目标都跟随上一层。 */
-function emptyExtras(): Subscription["extras"] {
-	const out: Partial<Subscription["extras"]> = {};
+function emptyExtraTargets(): Subscription["extraTargets"] {
+	const out: Partial<Subscription["extraTargets"]> = {};
 	for (const k of EXTRA_KEYS) out[k] = {};
-	return out as Subscription["extras"];
+	return out as Subscription["extraTargets"];
 }
 
 /**
@@ -247,7 +247,7 @@ export function makeEmptySubscription(identity: Identity): Subscription {
 		notes: undefined,
 		cachedProfile: undefined,
 		routing: emptyRouting(),
-		extras: emptyExtras(),
+		extraTargets: emptyExtraTargets(),
 		overrides: {},
 		// 新订阅不自带定时锐评 —— 加一个 UP 不该顺手给群里排一条周期推送。
 		// 与服务端的 makeEmptySubscription 保持一致。

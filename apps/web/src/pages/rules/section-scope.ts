@@ -104,8 +104,8 @@ export function isSectionCustomized(
 			);
 		case "dynamicMsg":
 			return (
-				sub.overrides.templates?.dynamic !== undefined ||
-				sub.overrides.templates?.dynamicVideo !== undefined
+				sub.overrides.templates?.post !== undefined ||
+				sub.overrides.templates?.postVideo !== undefined
 			);
 		case "messageLayout":
 			return sub.overrides.messageLayout !== undefined;

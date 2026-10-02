@@ -24,6 +24,9 @@
  * - 迁出来的东西再迁一遍不变(幂等);
  * - `temperature` 不在老键清单里:它是退役键,迁移器刻意留在 ai 这一层、由 schema 剥掉(见 `ai.ts`),「哪一层都没有它」
  *   只能在 parse 出来的值上看(`ai-temperature-retired` 那条)。
+ *
+ * `migrateGlobals` 吐的是 0.x 最新的形状(特性键仍是 0.x 的名字);整份过 `GlobalConfigSchema` 的几处要先过 1.0 的改名
+ * (`renameGlobalSettingsKeys`,文件级迁移里也是这个顺序),活 schema 只认 1.0 的键。
  */
 
 import {
@@ -35,6 +38,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
+import { renameGlobalSettingsKeys } from "../feature-renames.js";
 import { migrateLegacyLinkParsing } from "../link-parsing.js";
 import { migrateGlobals } from "../settings.js";
 import { migrateOldTemplateDefaults } from "../templates.js";
@@ -455,7 +459,7 @@ describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", (
 		expectMigratedAiShape(migrated.defaults.ai);
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 
-		const r = GlobalConfigSchema.safeParse(migrated);
+		const r = GlobalConfigSchema.safeParse(renameGlobalSettingsKeys(migrated));
 		expect(r.success).toBe(true);
 		const ai = r.data?.defaults.ai;
 		// 连接字段照旧搬进 custom 桶 —— 退役的只是 temperature 这一格。
@@ -673,7 +677,7 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 		expect(without(migrated)).toEqual(without(input));
 
 		expect(migrateGlobals(migrated)).toEqual(migrated);
-		expect(GlobalConfigSchema.safeParse(migrated).success).toBe(true);
+		expect(GlobalConfigSchema.safeParse(renameGlobalSettingsKeys(migrated)).success).toBe(true);
 	});
 
 	it.each([

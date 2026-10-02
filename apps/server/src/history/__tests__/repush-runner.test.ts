@@ -178,7 +178,7 @@ describe("补哪几条", () => {
 		await runner.start(entry.id, entry.ts, "missing");
 		await settled(entry);
 		expect(sent.every((s) => s.targetId === T1)).toBe(true);
-		expect(new Set(sent.map((s) => s.feature))).toEqual(new Set(["dynamic"]));
+		expect(new Set(sent.map((s) => s.feature))).toEqual(new Set(["post"]));
 	});
 });
 
@@ -338,7 +338,7 @@ describe("重推认的是哪一条订阅", () => {
 			id: randomUUID(),
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		readded.routing.dynamic = [T1];
+		readded.routing.post = [T1];
 		const r = runnerOver([readded]);
 		expect(await r.canRepush(entry)).toBeNull();
 		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(2);
@@ -357,7 +357,7 @@ describe("重推认的是哪一条订阅", () => {
 			id: SUB,
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		own.routing.dynamic = [T1];
+		own.routing.post = [T1];
 		const r = runnerOver([first, own]);
 		expect(await r.canRepush(entry)).toBeNull();
 		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(2);
@@ -371,7 +371,7 @@ describe("重推认的是哪一条订阅", () => {
 			id: randomUUID(),
 			identity: { sourceKey: "bilibili", externalId: "u2" },
 		});
-		other.routing.dynamic = [T1];
+		other.routing.post = [T1];
 		const r = runnerOver([other]);
 		expect(await r.canRepush(entry)).toContain("路由");
 		expect(sent).toHaveLength(0);
@@ -400,7 +400,7 @@ describe("重推认的是哪一条订阅", () => {
 			extensionId: "douyin",
 			externalId: "u1",
 		});
-		readded.routing.dynamic = [T1];
+		readded.routing.post = [T1];
 		const r = runnerOver([readded]);
 		expect(await r.canRepush(entry)).toBeNull();
 		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(1);
@@ -414,7 +414,7 @@ describe("重推认的是哪一条订阅", () => {
 			id: randomUUID(),
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
-		bili.routing.dynamic = [T1];
+		bili.routing.post = [T1];
 		const r = runnerOver([bili]);
 		expect(await r.canRepush(entry)).toContain("路由");
 		expect(sent).toHaveLength(0);

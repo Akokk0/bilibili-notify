@@ -129,7 +129,7 @@ export interface BroadcastOptions {
 	 */
 	extra?: ExtraKey;
 	/**
-	 * 历史里记成哪一类推送。缺省按 feature 翻译;只有 `live` 那把键分不出开播与周期
+	 * 历史里记成哪一类推送。缺省按 feature 翻译;只有 `liveStart` 那把键分不出开播与周期
 	 * 「正在直播」,调用方知道是哪种时显式传。
 	 */
 	kind?: PushKind;
@@ -289,15 +289,15 @@ export class BilibiliPush {
 	 * 不是「无目标」。过了闸再看目标:路由里**启用的**(目标启用、所属连接启用)才是候选,
 	 * 停用的既不发也不进可达性重试;一个候选都没有就是「无目标」,回调 `onSend` 落一行。
 	 *
-	 * @全体成员 修饰(仅 `feature === "dynamic" | "live"` 且 `opts.allowAtAll !== false` 进入):
+	 * @全体成员 修饰(仅 `feature === "post" | "liveStart"` 且 `opts.allowAtAll !== false` 进入):
 	 * - 全局 + per-UP 合并后的 `eff.features.extras.atAll<Scope>` 决定 inherit-state 的 target 是否 @
-	 * - per-target tristate Map `sub.extras.atAll<Scope>[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
+	 * - per-target tristate Map `sub.extraTargets.atAll<Scope>[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
 	 * - Map 里没有该 key → 走上面那个默认
 	 * - 目标平台不支持 @全体(`platformSupportsAtAll`,今天只有 QQ 官方机器人)→ 一律不 @,
 	 *   默认与覆写都不看 —— 单发的那条只含 at-all 段,到适配器就成了空消息
 	 *
-	 * `feature === "live"` 仅作用于开播。但 live adapter 把「开播」和周期「正在直播」
-	 * 复推都翻译成 `feature === "live"`(routing/总开关共用 live),仅靠 feature 无法区分。
+	 * `feature === "liveStart"` 仅作用于开播。但 live adapter 把「开播」和周期「正在直播」
+	 * 复推都翻译成 `feature === "liveStart"`(routing/总开关共用 liveStart),仅靠 feature 无法区分。
 	 * 调用方据 `LivePushType` 判定:非开播的 live 推送必须传 `opts.allowAtAll = false`
 	 * 显式抑制 @全体,否则会每条直播推送都 @全体(修过的 bug)。
 	 */
@@ -364,7 +364,7 @@ export class BilibiliPush {
 		// routing 查找全仓仍然只有上面那一处,这里只是在它的结果上再筛。
 		const extraKey = opts?.extra;
 		const targetIds = extraKey
-			? routed.filter((id) => sub.extras[extraKey][id] ?? eff.features.extras[extraKey])
+			? routed.filter((id) => sub.extraTargets[extraKey][id] ?? eff.features.extras[extraKey])
 			: routed;
 		if (targetIds.length === 0) {
 			// 收窄成空**不是「无目标」**(决策 7):本体那一行已经在了、而且是「已送达」,
@@ -378,10 +378,10 @@ export class BilibiliPush {
 		const atAllKey: ExtraKey | null =
 			opts?.allowAtAll === false
 				? null
-				: feature === "dynamic"
-					? "atAllDynamic"
-					: feature === "live"
-						? "atAllLive"
+				: feature === "post"
+					? "atAllPost"
+					: feature === "liveStart"
+						? "atAllLiveStart"
 						: null;
 
 		this.logger.info(`[push] ${who} feature=${feature} → ${targetIds.length} 个目标`);
@@ -391,7 +391,7 @@ export class BilibiliPush {
 
 		// 默认取**折叠后**那一份(全局 + per-UP 覆盖已合并);per-target 三态表挂在订阅上。
 		const defaultOn = eff.features.extras[atAllKey];
-		const overrides = sub.extras[atAllKey];
+		const overrides = sub.extraTargets[atAllKey];
 		const atAllTargets: string[] = [];
 		const plainTargets: string[] = [];
 		for (const id of targetIds) {

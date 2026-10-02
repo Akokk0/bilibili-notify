@@ -55,7 +55,7 @@ interface Sent {
 
 function baseSettings(over: Partial<LiveWorkSettings> = {}): LiveWorkSettings {
 	return {
-		live: true,
+		liveStart: true,
 		liveEnd: true,
 		customCardStyle: { enable: false },
 		messageLayout: defaultMessageKindLayout("live"),
@@ -619,7 +619,7 @@ describe("推送中途关掉又打开", () => {
 		start();
 		liveStart();
 		await settle();
-		settings = baseSettings({ pushTime: 1, live: false, liveEnd: false });
+		settings = baseSettings({ pushTime: 1, liveStart: false, liveEnd: false });
 		bus.emit("config-changed", { scope: "globals" });
 		profile = { name: "抖音甲", fans: 12_345 + 55 };
 		liveStatus();

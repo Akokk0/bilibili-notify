@@ -471,7 +471,7 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()).toHaveLength(0);
 	});
 
-	it("deleteTarget 级联清理订阅 routing / extras 并保持 schema 自洽", async () => {
+	it("deleteTarget 级联清理订阅 routing / extraTargets 并保持 schema 自洽", async () => {
 		const connection = makeOnebotConnection();
 		await store.upsertConnection(connection);
 		const target = {
@@ -498,10 +498,10 @@ describe("ConfigStore", () => {
 		await store.upsertTarget(keptTarget);
 		const sub = makeSampleSubscription("77777");
 		for (const k of FEATURE_KEYS) sub.routing[k] = [target.id, keptTarget.id];
-		sub.extras.atAllDynamic[target.id] = true;
-		sub.extras.atAllDynamic[keptTarget.id] = false;
-		sub.extras.atAllLive[target.id] = false;
-		sub.extras.atAllLive[keptTarget.id] = true;
+		sub.extraTargets.atAllPost[target.id] = true;
+		sub.extraTargets.atAllPost[keptTarget.id] = false;
+		sub.extraTargets.atAllLiveStart[target.id] = false;
+		sub.extraTargets.atAllLiveStart[keptTarget.id] = true;
 		await store.upsertSubscription(sub);
 		bus.events.length = 0;
 
@@ -514,8 +514,8 @@ describe("ConfigStore", () => {
 			expect(nextSub?.routing[k]).not.toContain(target.id);
 			expect(nextSub?.routing[k]).toContain(keptTarget.id);
 		}
-		expect(nextSub?.extras.atAllDynamic).toEqual({ [keptTarget.id]: false });
-		expect(nextSub?.extras.atAllLive).toEqual({ [keptTarget.id]: true });
+		expect(nextSub?.extraTargets.atAllPost).toEqual({ [keptTarget.id]: false });
+		expect(nextSub?.extraTargets.atAllLiveStart).toEqual({ [keptTarget.id]: true });
 		expect(SubscriptionSchema.safeParse(nextSub).success).toBe(true);
 		const scopes = configScopes(bus);
 		expect(scopes).toEqual(["targets", "subscriptions"]);
@@ -593,7 +593,7 @@ describe("ConfigStore", () => {
 		const connection = makeWebhookConnection();
 		const target = makeWebhookTarget(connection, { id: randomUUID(), name: "旧 Webhook" });
 		const sub = makeSampleSubscription("44444");
-		sub.routing.dynamic = [target.id];
+		sub.routing.post = [target.id];
 		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([target]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), subscriptionsFileText([sub]), "utf8");
@@ -613,7 +613,7 @@ describe("ConfigStore", () => {
 			managedBy: "connection",
 			scope: "channel",
 		});
-		expect(store2.getSubscriptions()[0]?.routing.dynamic).toEqual([target.id]);
+		expect(store2.getSubscriptions()[0]?.routing.post).toEqual([target.id]);
 		await rm(dir2, { recursive: true, force: true });
 	});
 
@@ -649,16 +649,16 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
-	it("deleteConnection(webhook) 级联删除托管 target 并清理订阅 routing / extras", async () => {
+	it("deleteConnection(webhook) 级联删除托管 target 并清理订阅 routing / extraTargets", async () => {
 		const connection = makeWebhookConnection();
 		await store.upsertConnection(connection);
 		const targetId = store.getTargets()[0]?.id;
 		expect(targetId).toBeDefined();
 		const sub = makeSampleSubscription("55555");
-		sub.routing.dynamic = [targetId as string];
-		sub.routing.live = [targetId as string];
-		sub.extras.atAllDynamic[targetId as string] = true;
-		sub.extras.atAllLive[targetId as string] = true;
+		sub.routing.post = [targetId as string];
+		sub.routing.liveStart = [targetId as string];
+		sub.extraTargets.atAllPost[targetId as string] = true;
+		sub.extraTargets.atAllLiveStart[targetId as string] = true;
 		await store.upsertSubscription(sub);
 		bus.events.length = 0;
 
@@ -666,10 +666,10 @@ describe("ConfigStore", () => {
 		expect(store.getConnections()).toHaveLength(0);
 		expect(store.getTargets()).toHaveLength(0);
 		const nextSub = store.getSubscriptions()[0];
-		expect(nextSub?.routing.dynamic).toEqual([]);
-		expect(nextSub?.routing.live).toEqual([]);
-		expect(nextSub?.extras.atAllDynamic).toEqual({});
-		expect(nextSub?.extras.atAllLive).toEqual({});
+		expect(nextSub?.routing.post).toEqual([]);
+		expect(nextSub?.routing.liveStart).toEqual([]);
+		expect(nextSub?.extraTargets.atAllPost).toEqual({});
+		expect(nextSub?.extraTargets.atAllLiveStart).toEqual({});
 		const scopes = configScopes(bus);
 		expect(scopes).toEqual(["connections", "targets", "subscriptions"]);
 	});
@@ -858,8 +858,8 @@ describe("ConfigStore", () => {
 		const connection = makeWebhookConnection();
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("77777");
-		sub.routing.dynamic = [legacyId];
-		sub.extras.atAllDynamic[legacyId] = true;
+		sub.routing.post = [legacyId];
+		sub.extraTargets.atAllPost[legacyId] = true;
 		await store.upsertSubscription(sub);
 		await store.upsertConnection(connection);
 
@@ -873,8 +873,8 @@ describe("ConfigStore", () => {
 		expect(store.getTargets()).toHaveLength(1);
 		expect(store.getTargets()[0]?.id).toBe(managedId);
 		const nextSub = store.getSubscriptions().find((s) => s.id === sub.id);
-		expect(nextSub?.routing.dynamic).toEqual([managedId]);
-		expect(nextSub?.extras.atAllDynamic).toEqual({ [managedId as string]: true });
+		expect(nextSub?.routing.post).toEqual([managedId]);
+		expect(nextSub?.extraTargets.atAllPost).toEqual({ [managedId as string]: true });
 	});
 
 	it("patchTarget(managed) 拒绝外部修改，recordTargetTestStatus 允许内部状态写回", async () => {
@@ -909,7 +909,7 @@ describe("ConfigStore", () => {
 		const connection = makeWebhookConnection();
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("22222");
-		sub.routing.dynamic = [legacyId];
+		sub.routing.post = [legacyId];
 		const dirA = await mkdtemp(join(tmpdir(), "bn-config-backup-src-"));
 		const stateA = join(dirA, ...CONFIG_DIR);
 		await mkdir(stateA, { recursive: true });
@@ -956,7 +956,7 @@ describe("ConfigStore", () => {
 		expect(fresh.getTargets()).toHaveLength(1);
 		// 恢复回来的是**备份里那一条**,不是照 adapter 重新生成的 —— 订阅还指着这个 id
 		expect(fresh.getTargets()[0]?.id).toBe(legacyId);
-		expect(fresh.getSubscriptions()[0]?.routing.dynamic).toEqual([legacyId]);
+		expect(fresh.getSubscriptions()[0]?.routing.post).toEqual([legacyId]);
 		await rm(dir2, { recursive: true, force: true });
 		await rm(dirA, { recursive: true, force: true });
 	});
@@ -1103,7 +1103,7 @@ describe("ConfigStore", () => {
 		const connection = makeWebhookConnection();
 		const legacyId = randomUUID();
 		const sub = makeSampleSubscription("11111");
-		sub.routing.live = [legacyId];
+		sub.routing.liveStart = [legacyId];
 		await store.upsertSubscription(sub);
 
 		await store.replaceSections({
@@ -1117,7 +1117,7 @@ describe("ConfigStore", () => {
 		// 只有一条时它就是留下的那条 —— 老 id 保住,不会被换成确定性 id
 		expect(store.getTargets()[0]?.id).toBe(legacyId);
 		expect(store.getTargets()[0]?.managedBy).toBe("connection");
-		expect(store.getSubscriptions()[0]?.routing.live).toEqual([legacyId]);
+		expect(store.getSubscriptions()[0]?.routing.liveStart).toEqual([legacyId]);
 	});
 
 	it("load() 合并同一 webhook adapter 下多余 targets 并把订阅引用迁到托管 id", async () => {
@@ -1128,10 +1128,10 @@ describe("ConfigStore", () => {
 		const primary = makeWebhookTarget(connection, { id: randomUUID(), name: "主 Webhook" });
 		const extra = makeWebhookTarget(connection, { id: randomUUID(), name: "多余 Webhook" });
 		const sub = makeSampleSubscription("66666");
-		sub.routing.dynamic = [extra.id, primary.id];
-		sub.routing.live = [extra.id];
-		sub.extras.atAllDynamic[extra.id] = true;
-		sub.extras.atAllLive[extra.id] = false;
+		sub.routing.post = [extra.id, primary.id];
+		sub.routing.liveStart = [extra.id];
+		sub.extraTargets.atAllPost[extra.id] = true;
+		sub.extraTargets.atAllLiveStart[extra.id] = false;
 		await writeFile(join(state2, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(state2, "targets.json"), JSON.stringify([primary, extra]), "utf8");
 		await writeFile(join(state2, "subscriptions.json"), subscriptionsFileText([sub]), "utf8");
@@ -1148,10 +1148,10 @@ describe("ConfigStore", () => {
 			expect.objectContaining({ id: primary.id, managedBy: "connection", name: connection.name }),
 		]);
 		const nextSub = store2.getSubscriptions()[0];
-		expect(nextSub?.routing.dynamic).toEqual([primary.id]);
-		expect(nextSub?.routing.live).toEqual([primary.id]);
-		expect(nextSub?.extras.atAllDynamic).toEqual({ [primary.id]: true });
-		expect(nextSub?.extras.atAllLive).toEqual({ [primary.id]: false });
+		expect(nextSub?.routing.post).toEqual([primary.id]);
+		expect(nextSub?.routing.liveStart).toEqual([primary.id]);
+		expect(nextSub?.extraTargets.atAllPost).toEqual({ [primary.id]: true });
+		expect(nextSub?.extraTargets.atAllLiveStart).toEqual({ [primary.id]: false });
 		await rm(dir2, { recursive: true, force: true });
 	});
 

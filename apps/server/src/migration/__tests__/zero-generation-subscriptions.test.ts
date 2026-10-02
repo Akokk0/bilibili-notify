@@ -100,13 +100,36 @@ describe("两份合成一个文件", () => {
 			expect(Object.keys(row).slice(0, 2), String(row.id)).toEqual(["id", "identity"]);
 			for (const key of OLD_KEYS) expect(row, `${row.id} 上还留着 ${key}`).not.toHaveProperty(key);
 		}
-		// 别的格:路由、覆盖、锐评……与摆进去的一模一样(摆进去的就是最新形状,没有要迁的)。
+		// 别的格:覆盖、锐评……与摆进去的一模一样(摆进去的就是 0.x 最新形状,没有要迁的)。
 		// 0.x 的 `groups` 在原位换成 `tagIds`(这几行没有分组,所以是空的),见下面「分组换成标签」。
+		// 唯一的变化是 1.0 的改名(逐键的用例在 `./feature-renames.test.ts`):`routing` 换成 1.0 的特性键,顶层的 `extras`
+		// 叫 `extraTargets`、里面是 1.0 的附加项键 —— 摆进去的两张表都是空的,所以期望值是字面量的空表。
 		const strip = (row: Row) => {
-			const { uid: _u, kind: _k, extensionId: _e, externalId: _x, name: _n, ...rest } = row;
-			return Object.fromEntries(
-				Object.entries(rest).map(([k, v]) => (k === "groups" ? ["tagIds", []] : [k, v])),
-			);
+			const {
+				uid: _u,
+				kind: _k,
+				extensionId: _e,
+				externalId: _x,
+				name: _n,
+				routing: _r,
+				extras: _ex,
+				...rest
+			} = row;
+			return {
+				...Object.fromEntries(
+					Object.entries(rest).map(([k, v]) => (k === "groups" ? ["tagIds", []] : [k, v])),
+				),
+				routing: {
+					post: [],
+					liveStart: [],
+					liveEnd: [],
+					membership: [],
+					superchat: [],
+					specialDanmaku: [],
+					specialUserEnter: [],
+				},
+				extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
+			};
 		};
 		const expected = [...biliRows(), ...extRows()].map(strip);
 		expect(rows.map(({ identity: _identity, ...rest }) => rest)).toEqual(expected);

@@ -4,11 +4,50 @@
  * 迁移器的 0.x 那一遍(`features.ts` / `templates.ts` / `history.ts`)认的是 0.12 当年的特性键、附加项键、默认文案、
  * 推送种类。它们从前直接取 internal 的活词表(`EXTRA_KEYS` / `PUSH_EXTRAS` / `makeDefaultGlobalConfig()` /
  * `PushKind`),活词表一改名,0.x 这一步就会悄悄吐出 1.0 的键。所以收成迁移模块自己的一份:每个值都以 tag `v0.12.0`
- * 的 `packages/internal/src/constants.ts` 与 `schema/history.ts` 为准核过,今天的活词表与它字节一致(改名之前)。
+ * 的 `packages/internal/src/constants.ts`、`schema/common.ts`、`schema/message-layout.ts` 与 `schema/history.ts` 为准核过,
+ * 今天的活词表与它字节一致(改名之前)。1.0 的改名一步(`feature-renames.ts`)拿这里的键类型当「改名之前」的一侧。
  *
  * ⚠️ 这张表是 0.x 的历史事实,不要因为 1.0 改了名就跟着改。1.0 改名那一步另写(把 0.x 的形状再迁成 1.0 的形状),
  * 不在这里。键序也是产出的一部分:`ZERO_EXTRA_KEYS` 的顺序决定迁出来的 `extras` 里键的先后,改了顺序就改了落盘的字节。
  */
+
+/**
+ * 0.x 的特性键(0.12 `FEATURE_KEYS`),按它的顺序 —— 全局 `defaults.features`、订阅的 `routing` 与 `overrides.features`
+ * 用的都是这一份。1.0 的改名对照(`feature-renames.ts`)用 `satisfies Record<ZeroFeatureKey, …>` 钉着:0.x 多一个键、
+ * 对照表没给去向,编译不过。
+ */
+export const ZERO_FEATURE_KEYS = [
+	"dynamic",
+	"live",
+	"liveEnd",
+	"liveGuardBuy",
+	"superchat",
+	"specialDanmaku",
+	"specialUserEnter",
+] as const;
+
+export type ZeroFeatureKey = (typeof ZERO_FEATURE_KEYS)[number];
+
+/** 0.x 的文案键(0.12 `TemplateBundleSchema`),按它的顺序;`templateDefaultsSeen` 账本点路径的第一段也是它们。 */
+export const ZERO_TEMPLATE_KEYS = [
+	"liveStart",
+	"liveOngoing",
+	"liveEnd",
+	"liveSummary",
+	"dynamic",
+	"dynamicVideo",
+	"wordcloudStopWords",
+	"specialDanmaku",
+	"specialUserEnter",
+	"guardBuy",
+] as const;
+
+export type ZeroTemplateKey = (typeof ZERO_TEMPLATE_KEYS)[number];
+
+/** 0.x 消息版式里带版式的两组(0.12 `MessageLayoutSchema` 去掉 `version`):作品叫 `dynamic`,直播叫 `live`。 */
+export const ZERO_MESSAGE_LAYOUT_KEYS = ["dynamic", "live"] as const;
+
+export type ZeroMessageLayoutKey = (typeof ZERO_MESSAGE_LAYOUT_KEYS)[number];
 
 /** 0.x 的附加项键,按 0.12 `EXTRA_KEYS` 的顺序。 */
 export const ZERO_EXTRA_KEYS = ["atAllDynamic", "atAllLive", "wordcloud", "liveSummary"] as const;

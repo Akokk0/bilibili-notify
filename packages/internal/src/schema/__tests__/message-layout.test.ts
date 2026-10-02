@@ -12,8 +12,8 @@ import {
 } from "../message-layout";
 
 describe("DEFAULT_MESSAGE_LAYOUT", () => {
-	it("dynamic/live 都是 [card,text,link] 合并一条(无分条符)、全部可见、分隔符换行", () => {
-		for (const kind of ["dynamic", "live"] as const) {
+	it("post/live 都是 [card,text,link] 合并一条(无分条符)、全部可见、分隔符换行", () => {
+		for (const kind of ["post", "live"] as const) {
 			expect(DEFAULT_MESSAGE_LAYOUT[kind].blocks.map((b) => b.type)).toEqual([
 				"card",
 				"text",
@@ -25,7 +25,7 @@ describe("DEFAULT_MESSAGE_LAYOUT", () => {
 	});
 
 	it("内容块 id===type", () => {
-		const all = [...DEFAULT_MESSAGE_LAYOUT.dynamic.blocks, ...DEFAULT_MESSAGE_LAYOUT.live.blocks];
+		const all = [...DEFAULT_MESSAGE_LAYOUT.post.blocks, ...DEFAULT_MESSAGE_LAYOUT.live.blocks];
 		expect(all.every((b) => b.id === b.type)).toBe(true);
 	});
 
@@ -54,12 +54,12 @@ describe("normalizeMessageLayout", () => {
 			{ id: "card-dup", type: "card", visible: true }, // 重复内容块 → 丢弃
 		];
 		const out = normalizeMessageLayout(
-			{ ...DEFAULT_MESSAGE_LAYOUT, dynamic: { blocks: stored, separator: "|" } },
+			{ ...DEFAULT_MESSAGE_LAYOUT, post: { blocks: stored, separator: "|" } },
 			DEFAULT_MESSAGE_LAYOUT,
 		);
-		expect(out.dynamic.blocks.map((b) => b.id)).toEqual(["text", "split-1", "card", "link"]);
-		expect(out.dynamic.blocks.find((b) => b.type === "text")?.visible).toBe(false);
-		expect(out.dynamic.separator).toBe("|");
+		expect(out.post.blocks.map((b) => b.id)).toEqual(["text", "split-1", "card", "link"]);
+		expect(out.post.blocks.find((b) => b.type === "text")?.visible).toBe(false);
+		expect(out.post.separator).toBe("|");
 	});
 
 	it("未动的 kind 原样继承 defaults", () => {
@@ -130,7 +130,7 @@ describe("assembleMessageGroups", () => {
 	const img = { type: "image", buffer: card, mime: "image/jpeg" } as const;
 
 	it("默认版式 → 一条:卡片成段,文字与链接以连接符连成一段", () => {
-		expect(assembleMessageGroups(DEFAULT_MESSAGE_LAYOUT.dynamic, ALL)).toEqual([
+		expect(assembleMessageGroups(DEFAULT_MESSAGE_LAYOUT.post, ALL)).toEqual([
 			[img, { type: "text", text: "文案\nhttps://example.com/1" }],
 		]);
 	});

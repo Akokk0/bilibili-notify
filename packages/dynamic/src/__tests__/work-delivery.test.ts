@@ -82,7 +82,7 @@ function harness(
 	const work = workOf(over.work);
 	const args: DeliverWorkArgs = {
 		work,
-		settings: { messageLayout: defaultMessageKindLayout("dynamic"), ...over.settings },
+		settings: { messageLayout: defaultMessageKindLayout("post"), ...over.settings },
 		push: { broadcast, broadcastSequence },
 		stillSubscribed: over.stillSubscribed ?? (() => true),
 		config: { imageGroup: { enable: false, forward: false }, ...over.config },

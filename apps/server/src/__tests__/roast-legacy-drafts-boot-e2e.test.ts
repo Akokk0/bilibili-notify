@@ -19,12 +19,12 @@ import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deterministicUuid, makeEmptySubscription } from "@bilibili-notify/internal";
+import { deterministicUuid } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
+import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { activeGeneration } from "./support/generation.js";
-import { legacyBiliRow } from "./support/legacy-subscription.js";
 
 const S101 = "5b000000-0000-4000-8000-000000000101";
 const S102 = "5b000000-0000-4000-8000-000000000102";
@@ -122,22 +122,11 @@ describe("老草稿开机翻译 e2e:按 uid 记的待审锐评,开机后批得�
 		// 一代 —— 有了合用的一代就不迁了。第一趟开机把它们迁进新的一代:订阅的 uid 找回订阅 id、草稿翻成新形状。
 		dataDir = await mkdtemp(join(tmpdir(), "bn-roast-legacy-drafts-e2e-"));
 		await mkdir(join(dataDir, "state"), { recursive: true });
+		// 0.x 盘上的行,用冻住的 0.x 夹具摆(不取活工厂:活工厂的键已经是 1.0 的,摆进第 0 代迁移器就没有东西可改了)。
 		const subs = [
-			{
-				...makeEmptySubscription({
-					id: S101,
-					identity: { sourceKey: "bilibili", externalId: "101" },
-				}),
-				enabled: false,
-			},
-			{
-				...makeEmptySubscription({
-					id: S102,
-					identity: { sourceKey: "bilibili", externalId: "102" },
-				}),
-				enabled: false,
-			},
-		].map((sub) => legacyBiliRow(sub));
+			zeroBiliRow({ id: S101, uid: "101" }, { enabled: false }),
+			zeroBiliRow({ id: S102, uid: "102" }, { enabled: false }),
+		];
 		await writeFile(join(dataDir, "state", "subscriptions.json"), JSON.stringify(subs));
 
 		// webhook 连接的托管目标 id 是连接 id 算出来的(config/store.ts 的 `managedWebhookTargetId`,那个种子是

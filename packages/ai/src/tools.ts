@@ -32,14 +32,14 @@ function stamp(tsSeconds: unknown, now = Date.now()): string {
  * 女仆查订阅用的订阅条目最小视图,按订阅自己的 `id` 为键(ADR-0019 决策 64)。
  * 仅包含工具实际访问的字段。
  *
- * - `dynamic` / `live`:该特性下有没有推送目标。
+ * - `post` / `liveStart`:该特性下有没有推送目标。
  * - 两种条目:B 站订阅带 `uid`;别的平台的订阅(拓展订阅)没有 `uid`,带平台名与外部 id ——
  *   外部 id 是那个平台自己的 id,**不是** B 站 UID,拿去按 UID 查会查到另一个人或查不到。
  */
 interface SubItemCommon {
 	uname: string;
-	dynamic?: boolean;
-	live?: boolean;
+	post?: boolean;
+	liveStart?: boolean;
 }
 
 export interface BiliSubItemView extends SubItemCommon {
@@ -372,7 +372,7 @@ export async function executeTool(
 					const who = isExtensionItem(s)
 						? `${s.platform} · 外部 id ${s.externalId}，不是 B 站 UID，按 UID 查的工具查不了`
 						: `UID: ${s.uid}`;
-					return `${s.uname}（${who}）动态:${s.dynamic ? "✓" : "✗"} 直播:${s.live ? "✓" : "✗"}`;
+					return `${s.uname}（${who}）动态:${s.post ? "✓" : "✗"} 直播:${s.liveStart ? "✓" : "✗"}`;
 				})
 				.join("\n");
 		}
@@ -406,7 +406,7 @@ export async function executeTool(
 		case "get_live_status": {
 			const subs = getSubs();
 			if (!subs || Object.keys(subs).length === 0) return "当前没有订阅";
-			const liveItems = Object.values(subs).filter((s) => s.live);
+			const liveItems = Object.values(subs).filter((s) => s.liveStart);
 			if (!liveItems.length) return "当前订阅中没有开启直播监控的 UP 主";
 			// 只拿 B 站订阅的 UID 去问 B 站 —— 别的平台的外部 id 问 B 站只会问到另一个人。
 			const uids = liveItems.flatMap((s) => (isExtensionItem(s) ? [] : [s.uid]));

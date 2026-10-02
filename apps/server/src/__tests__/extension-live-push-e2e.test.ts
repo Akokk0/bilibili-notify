@@ -215,7 +215,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 					method: "POST",
 					...json({
 						...base,
-						routing: { ...base.routing, live: [who[key].target], liveEnd: [who[key].target] },
+						routing: { ...base.routing, liveStart: [who[key].target], liveEnd: [who[key].target] },
 						cachedProfile: profile,
 					}),
 				}),

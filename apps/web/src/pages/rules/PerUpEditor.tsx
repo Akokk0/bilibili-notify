@@ -124,9 +124,9 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 	const specialUsers = sub.specialUsers;
 	// 拓展订阅按源报得出的事件给格;认不出是哪个源(没传)时按最多的给,同配置弹层。
 	const features = platform?.features;
-	const reportsPost = isBili || !features || features.includes("dynamic");
+	const reportsPost = isBili || !features || features.includes("post");
 	const reportsLive =
-		isBili || !features || features.includes("live") || features.includes("liveEnd");
+		isBili || !features || features.includes("liveStart") || features.includes("liveEnd");
 	const [draft, setDraft] = useState<PerUpDraft>({
 		overrides: sub.overrides,
 		specialUsers,
@@ -772,7 +772,7 @@ function MsgOverrideBox({
 	);
 }
 
-/* -------- Dynamic msg (overrides.templates.dynamic / dynamicVideo) -------- */
+/* -------- Dynamic msg (overrides.templates.post / postVideo) -------- */
 
 function DynamicMsgOverrideBox({
 	value,
@@ -783,21 +783,21 @@ function DynamicMsgOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	// 无 enable flag —— 动态推送总会发;有 dynamic / dynamicVideo 任一覆盖即「覆盖中」。
-	const enabled = value?.dynamic !== undefined || value?.dynamicVideo !== undefined;
+	// 无 enable flag —— 动态推送总会发;有 post / postVideo 任一覆盖即「覆盖中」。
+	const enabled = value?.post !== undefined || value?.postVideo !== undefined;
 	const cur = value ?? {};
-	function set<K extends "dynamic" | "dynamicVideo">(k: K, v: string): void {
+	function set<K extends "post" | "postVideo">(k: K, v: string): void {
 		onChange({ ...cur, [k]: v });
 	}
 	function toggle(on: boolean): void {
 		if (on) {
 			onChange({
 				...cur,
-				dynamic: cur.dynamic ?? baseline.dynamic,
-				dynamicVideo: cur.dynamicVideo ?? baseline.dynamicVideo,
+				post: cur.post ?? baseline.post,
+				postVideo: cur.postVideo ?? baseline.postVideo,
 			});
 		} else {
-			const { dynamic: _a, dynamicVideo: _b, ...rest } = cur;
+			const { post: _a, postVideo: _b, ...rest } = cur;
 			onChange(Object.keys(rest).length > 0 ? rest : undefined);
 		}
 	}
@@ -812,18 +812,13 @@ function DynamicMsgOverrideBox({
 			inheritNote="该 UP 将继承全局动态消息模板"
 		>
 			<DynamicMsgVariableHints />
-			<Field code="templates.dynamic" full>
-				<TArea
-					value={cur.dynamic ?? baseline.dynamic}
-					onChange={(v) => set("dynamic", v)}
-					rows={2}
-					mono
-				/>
+			<Field code="templates.post" full>
+				<TArea value={cur.post ?? baseline.post} onChange={(v) => set("post", v)} rows={2} mono />
 			</Field>
-			<Field code="templates.dynamicVideo" full>
+			<Field code="templates.postVideo" full>
 				<TArea
-					value={cur.dynamicVideo ?? baseline.dynamicVideo}
-					onChange={(v) => set("dynamicVideo", v)}
+					value={cur.postVideo ?? baseline.postVideo}
+					onChange={(v) => set("postVideo", v)}
 					rows={2}
 					mono
 				/>
@@ -867,9 +862,9 @@ function MessageLayoutOverrideBox({
 				<>
 					<div className="mb-2 text-bn-sm font-bold text-bn-text-primary">动态消息版式</div>
 					<MessageLayoutEditor
-						value={cur.dynamic}
-						onChange={(next) => onChange({ ...cur, dynamic: next })}
-						separatorCode="messageLayout.dynamic.separator"
+						value={cur.post}
+						onChange={(next) => onChange({ ...cur, post: next })}
+						separatorCode="messageLayout.post.separator"
 						accent={SECTION_ACCENT.message}
 					/>
 				</>

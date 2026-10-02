@@ -212,7 +212,7 @@ function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicInfo {
 /** 测试里写的订阅视图:除 uid / uname 外都可省,messageLayout 缺省为默认版式。 */
 type SeedView = Partial<SubItemView> & Pick<SubItemView, "uid" | "uname">;
 const viewOf = (v: SeedView): SubItemView => ({
-	messageLayout: defaultMessageKindLayout("dynamic"),
+	messageLayout: defaultMessageKindLayout("post"),
 	...v,
 });
 const viewsOf = (subs: Record<string, SeedView>): SubscriptionsView =>
@@ -576,7 +576,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
  * 到一条听起来像新故障的报错,而后者不带任何新信息 —— 那正是同一件事的第二次通知。
  */
 describe("DynamicEngine — 登录失效时不再报第二遍", () => {
-	const oneSub = { subs: { "1": { uid: "1", uname: "UP", dynamic: true } } } as const;
+	const oneSub = { subs: { "1": { uid: "1", uname: "UP", post: true } } } as const;
 	const authEc = (b: ReturnType<typeof makeEngine>) =>
 		b.emits.filter(
 			(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号未登录"),
@@ -642,7 +642,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		const after = cronMock.instances.length;
 
 		b.engine.applyOps([
-			{ type: "add", sub: { uid: "2", uname: "UP2", dynamic: true } as SubItemView },
+			{ type: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
 		]);
 
 		expect(cronMock.instances.length).toBe(after);
@@ -1165,7 +1165,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 	it("版式隐藏 link 部件 → 无链接", async () => {
 		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态" } });
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		const noLink = defaultMessageKindLayout("dynamic");
+		const noLink = defaultMessageKindLayout("post");
 		for (const blk of noLink.blocks) if (blk.type === "link") blk.visible = false;
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", messageLayout: noLink });
 		await detect(b.engine);
@@ -1555,8 +1555,8 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 			uid: "1",
 			uname: "UP",
 			messageLayout: {
-				...defaultMessageKindLayout("dynamic"),
-				blocks: defaultMessageKindLayout("dynamic").blocks.map((x) =>
+				...defaultMessageKindLayout("post"),
+				blocks: defaultMessageKindLayout("post").blocks.map((x) =>
 					x.type === "card" ? { ...x, visible: false } : x,
 				),
 			},
@@ -1616,7 +1616,7 @@ describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)"
 describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 	it("-352 退避窗口内 applyOps → 不提前重启 cron(退避不被击穿)", async () => {
 		const before = cronMock.instances.length;
-		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", dynamic: true } } });
+		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
 		b.engine.start(); // cron 实例 #1
 		const afterStart = cronMock.instances.length;
 		expect(afterStart).toBe(before + 1);
@@ -1630,7 +1630,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.isActive 会立即 startJob,提前去戳
 		// 仍在风控的端点,击穿退避。修复后应识别 detectorRestartTimer 待执行而跳过。
 		b.engine.applyOps([
-			{ type: "add", sub: { uid: "2", uname: "UP2", dynamic: true } as SubItemView },
+			{ type: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
 		]);
 
 		expect(cronMock.instances.length).toBe(afterStart); // 没有新建 cron
@@ -1639,7 +1639,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 
 describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	it("start() 有订阅快照 → 建并启动 cron;stop() → 停止", () => {
-		const subs = { "1": { uid: "1", uname: "UP", dynamic: true } };
+		const subs = { "1": { uid: "1", uname: "UP", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(1);
@@ -1677,14 +1677,14 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		engine.start();
 		expect(cronMock.instances).toHaveLength(0);
 
-		snap = viewsOf({ "1": { uid: "1", uname: "UP", dynamic: true } });
+		snap = viewsOf({ "1": { uid: "1", uname: "UP", post: true } });
 		trigger("auth-restored");
 		expect(cronMock.instances).toHaveLength(1);
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 	});
 
 	it("updateConfig 改 dynamicCron(运行中)→ 旧 job 停,新 job 用新 cronTime", () => {
-		const subs = { "1": { uid: "1", uname: "UP", dynamic: true } };
+		const subs = { "1": { uid: "1", uname: "UP", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(1);
@@ -1702,7 +1702,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("updateConfig 同 cron → 不重建 job", () => {
-		const subs = { "1": { uid: "1", uname: "UP", dynamic: true } };
+		const subs = { "1": { uid: "1", uname: "UP", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		b.engine.updateConfig({
@@ -1715,9 +1715,9 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("applyOps:add dynamic 订阅 → 起 job;delete 最后一个 → 停 job", () => {
-		const sub = viewOf({ uid: "1", uname: "UP", dynamic: true });
+		const sub = viewOf({ uid: "1", uname: "UP", post: true });
 		const b = makeEngine({ subs: { "1": sub } });
-		b.engine.start(); // 快照里 sub.dynamic=true → 已有 running job
+		b.engine.start(); // 快照里 sub.post=true → 已有 running job
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 
 		b.engine.applyOps([{ type: "delete", uid: "1" }]);
@@ -1730,7 +1730,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("回归:dynamicCron 无法解析(new CronJob 同步抛错)不炸穿 start(),记录 error 且不建 job(此前独立端会在启动期整进程崩溃,见 sidecar.stderr.log 的 CronError)", () => {
-		const subs = { "1": { uid: "1", uname: "UP", dynamic: true } };
+		const subs = { "1": { uid: "1", uname: "UP", post: true } };
 		const b = makeEngine({ subs, config: { dynamicCron: "BAD CRON" } });
 		expect(() => b.engine.start()).not.toThrow();
 		expect(cronMock.instances).toHaveLength(0);
@@ -1743,8 +1743,8 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("applyOps:per-UID 走 debug,批次收口一条 info 汇总(Q1 不刷屏)", () => {
-		const s1 = viewOf({ uid: "1", uname: "U1", dynamic: true });
-		const s2 = viewOf({ uid: "2", uname: "U2", dynamic: true });
+		const s1 = viewOf({ uid: "1", uname: "U1", post: true });
+		const s2 = viewOf({ uid: "2", uname: "U2", post: true });
 		const b = makeEngine({ subs: { "1": s1, "2": s2 } });
 		b.logs.length = 0;
 		b.engine.applyOps([
@@ -2136,13 +2136,13 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 	 * 订阅还在、但这位 UP 的动态推送被关了。
 	 *
 	 * 刻意**走 startDynamicDetector 建表**而不是直接塞锚点 —— 病灶就在建表这一步:
-	 * 锚点表只登记 `sub.dynamic` 为真的 UP。手塞锚点的话测试会空过。
+	 * 锚点表只登记 `sub.post` 为真的 UP。手塞锚点的话测试会空过。
 	 * 另配一个开着开关的 UP,否则订阅表为空、检测任务根本不起。
 	 */
 	const seedStatsOnly = (b: EngineBag, uid: string): void => {
 		b.engine.startDynamicDetector({
-			[uid]: { uid, uname: "UP", dynamic: false },
-			other: { uid: "other", uname: "别人", dynamic: true },
+			[uid]: { uid, uname: "UP", post: false },
+			other: { uid: "other", uname: "别人", post: true },
 		} as never);
 	};
 	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
@@ -2305,7 +2305,7 @@ describe("K. detectNow", () => {
 	});
 
 	it("cron tick 撞上在跑的一轮就跳过;detectNow 撞上则排在后面再跑一轮", async () => {
-		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", dynamic: true } } });
+		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
 		const first = deferred();
 		b.getAllDynamic.mockReturnValueOnce(first.promise).mockResolvedValue(resp([]));
 		b.engine.start();
@@ -2329,7 +2329,7 @@ describe("K. detectNow", () => {
 		// 锁挂在实例上,活得比 cron job 长。一轮要是永远不落定(渲染闸堆住之类),
 		// 旧写法的 tick 会全部静默丢弃 —— 而且是**永久**:登录恢复 / 改 cron 重建 job
 		// 也救不回来。停掉检测器时锁得跟着松开,重启才算真的重新武装。
-		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", dynamic: true } } });
+		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
 		const stuck = deferred();
 		b.getAllDynamic.mockReturnValueOnce(stuck.promise).mockResolvedValue(resp([]));
 		b.engine.start();

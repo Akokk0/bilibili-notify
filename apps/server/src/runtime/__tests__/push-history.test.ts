@@ -88,7 +88,7 @@ describe("historyRecordFromSend", () => {
 		const info: PushSendInfo = {
 			pushId: "p2",
 			subscriptionId: SUB_ID,
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target: null,
 			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
@@ -104,7 +104,7 @@ describe("historyRecordFromSend", () => {
 		const info: PushSendInfo = {
 			pushId: "p3",
 			subscriptionId: "44444444-4444-4444-8444-444444444444",
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target,
 			messages: [],
@@ -116,7 +116,7 @@ describe("historyRecordFromSend", () => {
 		const info: PushSendInfo = {
 			pushId: "p4",
 			subscriptionId: SUB_ID,
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target,
 			messages: [],
@@ -133,7 +133,7 @@ describe("historyRecordFromSend", () => {
 		const info: PushSendInfo = {
 			pushId: "p5",
 			subscriptionId: EXT_ID,
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target,
 			messages: [
@@ -165,7 +165,7 @@ describe("historyRecordFromSend", () => {
 		const info: PushSendInfo = {
 			pushId: "p7",
 			subscriptionId: EXT_NO_PROFILE,
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target,
 			messages: [],
@@ -227,7 +227,7 @@ describe("historyRecordFromSend", () => {
 		const info: PushSendInfo = {
 			pushId: "p6",
 			subscriptionId: SUB_ID,
-			feature: "dynamic",
+			feature: "post",
 			kind: "dynamic",
 			target,
 			messages: [],

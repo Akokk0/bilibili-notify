@@ -221,7 +221,9 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(onDisk.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(onDisk.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
-		expect(onDisk.dynamic).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
+		// 带链接那代的默认 → 无链接新默认;0.x 那一遍先认出它(认的是 `dynamic` 这个键),再过 1.0 的改名落在 `post` 上。
+		expect(onDisk.post).toBe("{name}发布了一条动态");
+		expect(onDisk).not.toHaveProperty("dynamic");
 		expect(onDisk.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
 
 		const store = await sandbox.load();
@@ -229,7 +231,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
-		expect(t.dynamic).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
+		expect(t.post).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
 		expect(t.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
 	});
 
@@ -282,9 +284,9 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		const t = store.getGlobals().defaults.templates as Record<string, unknown>;
 		// ① liveMsgEnabled 被 strip
 		expect(t.liveMsgEnabled).toBeUndefined();
-		// ② dynamic/dynamicVideo 回填成当前默认(链接不再进模板)
-		expect(t.dynamic).toBe("{name}发布了一条动态");
-		expect(t.dynamicVideo).toBe("{name}发布了新视频");
+		// ② dynamic/dynamicVideo 回填成当前默认(链接不再进模板),新代里它们叫 post / postVideo
+		expect(t.post).toBe("{name}发布了一条动态");
+		expect(t.postVideo).toBe("{name}发布了新视频");
 		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认迁移成当前默认
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
@@ -294,12 +296,13 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		);
 	});
 
-	it("加载缺 templates.dynamic/dynamicVideo 的老 globals.json → schema 回填默认,不抛", async () => {
+	it("加载缺 templates.dynamic/dynamicVideo 的老 globals.json → schema 回填默认(新键 post / postVideo),不抛", async () => {
 		// 回归:dynamic/dynamicVideo 字段加入前写入的 globals.json 没有这两项。
-		// 若 TemplateBundleSchema 把它们设为 required 无默认,旧用户升级后 load() 会
+		// 若 TemplateBundleSchema 把它们(今天叫 post / postVideo)设为 required 无默认,旧用户升级后 load() 会
 		// ConfigValidationError 直接拒绝启动。.default(...) 兜底保证旧配置仍可加载。
-		// 迁移器这一头:键缺着的对不上任何旧默认,原样放过 —— 没有要改写的,新代里还是搬过来的那个文件。
-		// 「设置迁移器无事可做」的整份(去掉 B 站那三格),再抹掉那两项。
+		// 迁移器这一头:键缺着的对不上任何旧默认、也没有要改名的键,原样放过,不替它们凭空造出来(回填是开机时 schema 的事);
+		// 整份里别的 0.x 键(特性键、版式键、账本)照样要过 1.0 的改名,所以设置文件是改写过的。
+		// 去掉 B 站那三格,再抹掉那两项。
 		const old = withoutZeroBilibiliApp(makeZeroGlobals()) as unknown as {
 			defaults: { templates: Record<string, unknown> };
 		};
@@ -310,18 +313,17 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).not.toContain("config/settings/core.json");
+		expect(report.rewritten).toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
-		expect(
-			await sameFile(
-				join(sandbox.zero, "state", "globals.json"),
-				sandbox.configPath("settings/core.json"),
-			),
-		).toBe(true);
+		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
+		expect(onDisk).not.toHaveProperty("dynamic");
+		expect(onDisk).not.toHaveProperty("dynamicVideo");
+		expect(onDisk).not.toHaveProperty("post");
+		expect(onDisk).not.toHaveProperty("postVideo");
 		const store = await sandbox.load();
 		const tpl = store.getGlobals().defaults.templates;
-		expect(tpl.dynamic).toBe("{name}发布了一条动态");
-		expect(tpl.dynamicVideo).toBe("{name}发布了新视频");
+		expect(tpl.post).toBe("{name}发布了一条动态");
+		expect(tpl.postVideo).toBe("{name}发布了新视频");
 	});
 });
 

@@ -541,8 +541,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			imageEnabled: globals().defaults.cardStyle.enabled,
 			aiEnabled: globals().defaults.ai.enabled,
 			aiWebSearch: globals().defaults.ai.search.engines.dynamic,
-			dynamicTemplate: globals().defaults.templates.dynamic,
-			videoTemplate: globals().defaults.templates.dynamicVideo,
+			dynamicTemplate: globals().defaults.templates.post,
+			videoTemplate: globals().defaults.templates.postVideo,
 			filter: dynamicFilterOf(globals().defaults.filters),
 		};
 	};
@@ -685,7 +685,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					return {
 						...work,
 						filter: work.filter ?? dynamicFilterOf(g.defaults.filters),
-						dynamic: eff.features.dynamic,
+						post: eff.features.post,
 					};
 				},
 				sources: extensionSources,
@@ -950,7 +950,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				}
 				// dynamicConfig() 的完整输入集:B 站设置的 dynamicCron(下方 `watchSettings` 那道门)+
 				// defaults.{filters,imageGroup,cardStyle.enabled,ai.enabled,
-				// templates.dynamic/dynamicVideo}。这道门必须**逐项覆盖**该集合 ——
+				// templates.post/postVideo}。这道门必须**逐项覆盖**该集合 ——
 				// 少一项就是漏热更(用户以为保存生效了,其实要重启;`imageGroup` 就曾经
 				// 整个漏在门外),多一项则是无谓扇出(此前用整个 `appChanged` 当门,
 				// 改 healthCheckMinutes 也会给 DynamicEngine 白换一次 config)。
@@ -1162,9 +1162,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					if (!sub.enabled) return false;
 					const eff = resolve(sub, g.defaults);
 					const keys: FeatureKey[] = [
-						"live",
+						"liveStart",
 						"liveEnd",
-						"liveGuardBuy",
+						"membership",
 						"superchat",
 						"specialDanmaku",
 						"specialUserEnter",
@@ -1268,7 +1268,7 @@ type SubscriptionIdOf = (uid: string) => string | undefined;
 
 /**
  * 绑到**一条订阅**上的发送(ADR-0019 决策 50 / 66 / 67):按订阅自己的 id 直接交推送层,没有 uid 那一跳。
- * 特性键由调用方给 —— 作品走 `dynamic`(见 {@link boundWorkPush}),拓展的直播走 `live` / `liveEnd`。
+ * 特性键由调用方给 —— 作品走 `post`(见 {@link boundWorkPush}),拓展的直播走 `liveStart` / `liveEnd`。
  * 开关、免扰、路由、@全体、历史都在推送层(`broadcastToFeature`)里,这里只是把订阅 id 钉上。
  */
 export type SubscriptionPush = (
@@ -1288,23 +1288,19 @@ export function bindSubscriptionPush(
 
 /**
  * 作品那一路(`deliverWork` 的 {@link BoundWorkPush}):装配交来的段 → 推送层的载荷,特性恒为
- * `dynamic`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成订阅 id)与拓展作品共用这一跳。
+ * `post`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成订阅 id)与拓展作品共用这一跳。
  */
 export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
 	return {
 		// part="post-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
 		// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
 		broadcast: (segments, part, o) =>
-			send(
-				"dynamic",
-				pushSegmentsToPayload(segments),
-				broadcastOptionsForPostPart(part, o?.pushId),
-			),
+			send("post", pushSegmentsToPayload(segments), broadcastOptionsForPostPart(part, o?.pushId)),
 		// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
 		// 某条失败中止该 target 后续条、@全体只跟首条之前)。
 		broadcastSequence: (messages, part, o) =>
 			send(
-				"dynamic",
+				"post",
 				messages.map(pushSegmentsToPayload),
 				broadcastOptionsForPostPart(part, o?.pushId),
 			),
@@ -1401,15 +1397,15 @@ export function makeLivePushLike(
 
 /**
  * LivePushType → 特性键(管开关与路由)。词云(5)/ 总结(10)是下播的附加项,跟着
- * 下播那把键走;开播(3)与周期「正在直播」(0)共用 live。
+ * 下播那把键走;开播(3)与周期「正在直播」(0)共用 liveStart。
  */
 export function liveTypeToFeature(type: number): FeatureKey {
 	switch (type) {
 		case 0:
 		case 3:
-			return "live";
+			return "liveStart";
 		case 4:
-			return "liveGuardBuy";
+			return "membership";
 		case 5:
 		case 9:
 		case 10:
@@ -1421,7 +1417,7 @@ export function liveTypeToFeature(type: number): FeatureKey {
 		case 8:
 			return "specialUserEnter";
 		default:
-			return "live";
+			return "liveStart";
 	}
 }
 
@@ -1446,7 +1442,7 @@ export function liveTypeToExtra(type: number): ExtraKey | undefined {
 
 /**
  * LivePushType → 推送类型(管历史怎么记)。与上面那张表只差一处:周期「正在直播」
- * 单列一类 —— 它跟开播共用开关与目标(所以 feature 是 live),历史上却是两种推送。
+ * 单列一类 —— 它跟开播共用开关与目标(所以 feature 是 liveStart),历史上却是两种推送。
  * 其余每一档都由「特性 → 推送类型」定死,别在这儿再抄一张会飘的表。
  */
 export function liveTypeToPushKind(type: number): PushKind {
@@ -1455,7 +1451,7 @@ export function liveTypeToPushKind(type: number): PushKind {
 
 /**
  * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补三样引擎不知道
- * 的 —— 只有开播允许 @全体(周期复推等也翻译成 feature "live",不显式抑制就每条都 @)、
+ * 的 —— 只有开播允许 @全体(周期复推等也翻译成 feature "liveStart",不显式抑制就每条都 @)、
  * 历史里记成哪一类,以及这是哪个附加项(有键推送层才按目标收窄)。
  */
 export function liveBroadcastOpts(
@@ -1473,7 +1469,7 @@ export function liveBroadcastOpts(
 
 /**
  * 一条 LivePushType 是否允许 @全体成员。仅 `StartBroadcasting`(=3,开播)允许;
- * 周期「正在直播」复推(`Live`=0)及其它都翻译成 `feature === "live"`,光看
+ * 周期「正在直播」复推(`Live`=0)及其它都翻译成 `feature === "liveStart"`,光看
  * feature 区分不出开播 vs 复推 —— push 层据本结果决定是否进 atAll 分支,否则
  * 每条直播推送都 @全体(已修 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
  * packages/live 的 LivePushType 保持一致。
@@ -1683,10 +1679,10 @@ export function buildDynamicSubViewSingle(
 	return {
 		uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
-		// enabled 门 + features.dynamic:add op 可能收到 disabled sub,engine applyOps
-		// add 用 `if(!op.sub.dynamic) break` 拦截。buildDynamicSubsView 已 continue 跳
+		// enabled 门 + features.post:add op 可能收到 disabled sub,engine applyOps
+		// add 用 `if(!op.sub.post) break` 拦截。buildDynamicSubsView 已 continue 跳
 		// disabled,这里 `sub.enabled &&` 对它是恒真无副作用。
-		dynamic: sub.enabled && eff.features.dynamic,
+		post: sub.enabled && eff.features.post,
 		...dynamicWorkSettings(sub, globals, eff),
 	};
 }
@@ -1719,15 +1715,15 @@ export function dynamicWorkSettings(
 		aiOverride: resolveAiOverride(sub, globals.defaults),
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
 		imageGroupForward: sub.overrides.imageGroup?.forward,
-		customDynamicTemplate: sub.overrides.templates?.dynamic,
-		customVideoTemplate: sub.overrides.templates?.dynamicVideo,
+		customDynamicTemplate: sub.overrides.templates?.post,
+		customVideoTemplate: sub.overrides.templates?.postVideo,
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
 		// 这位 UP 自己那层旋钮覆盖,**原样**给、不折全局(ADR-0014 决策 17 的 🔗):渲染器出图时与
 		// 它 config 里的全局那份逐枚合并。折进来的话 B 站动态引擎那份快照就把全局冻住了。
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
-		messageLayout: eff.messageLayout.dynamic,
+		messageLayout: eff.messageLayout.post,
 	};
 }
 
@@ -1770,7 +1766,7 @@ function buildLiveSubsView(
  */
 export type LiveWorkSettings = Pick<
 	LiveSubView,
-	| "live"
+	| "liveStart"
 	| "liveEnd"
 	| "customCardStyle"
 	| "customCardStyleByKind"
@@ -1802,7 +1798,7 @@ export function liveWorkSettings(
 		// 特性布尔 = features.X(source-side gate)。routing 由推送层 BilibiliPush 在 broadcastToFeature
 		// 时按 routing 空 = 无 sink 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
 		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
-		live: eff.features.live,
+		liveStart: eff.features.liveStart,
 		liveEnd: eff.features.liveEnd,
 		// customCardStyle 只在真有 per-UP override 时生成(对齐 dynamic 端 buildDynamicSubsView 同名
 		// 字段)。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
@@ -1856,8 +1852,8 @@ export function buildLiveSubViewSingle(
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。
 		roomId: subRuntimeStore.get(sub.id)?.roomId ?? "",
-		dynamic: feat("dynamic"),
-		liveGuardBuy: feat("liveGuardBuy"),
+		post: feat("post"),
+		membership: feat("membership"),
 		superchat: feat("superchat"),
 		// 四把附加项整份下发(ADR-0016);引擎只读下播那两把,@全体 归推送层。
 		extras: eff.features.extras,
@@ -1911,7 +1907,7 @@ function subscriptionOpsToDynamic(
 		// 不必等下一个 cron tick 重读 getSubs()。
 		if (!sub.enabled) return false;
 		const eff = resolve(sub, globals.defaults);
-		return eff.features.dynamic;
+		return eff.features.post;
 	};
 	for (const op of ops) {
 		// B 站动态引擎只管 B 站订阅(ADR-0019 决策 9),拓展订阅的增删改与它无关。
@@ -1920,7 +1916,7 @@ function subscriptionOpsToDynamic(
 		if (op.type === "add") {
 			// 全量视图(filter/imageGroup/ai/模板 per-UP 覆盖一并带上),与
 			// buildDynamicSubsView 投影一致 —— 新增即带覆盖的订阅首推就生效,
-			// 不必等下次全量刷新。dynamic 字段已含 enabled 门(见 buildDynamicSubViewSingle)。
+			// 不必等下次全量刷新。post 字段已含 enabled 门(见 buildDynamicSubViewSingle)。
 			out.push({
 				type: "add",
 				sub: buildDynamicSubViewSingle(op.sub, subRuntimeStore, globals),
@@ -1933,7 +1929,7 @@ function subscriptionOpsToDynamic(
 			out.push({
 				type: "update",
 				uid: identity.externalId,
-				changes: [{ scope: "dynamic", dynamic: hasDyn(sub) }],
+				changes: [{ scope: "dynamic", post: hasDyn(sub) }],
 			});
 		}
 	}
@@ -1980,9 +1976,9 @@ function subscriptionOpsToLive(
 				changes: [
 					{
 						scope: "live",
-						live: view.live,
+						liveStart: view.liveStart,
 						liveEnd: view.liveEnd,
-						liveGuardBuy: view.liveGuardBuy,
+						membership: view.membership,
 						superchat: view.superchat,
 						extras: view.extras,
 						minScPrice: view.minScPrice,

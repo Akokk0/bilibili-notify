@@ -8,12 +8,16 @@
  * `routing`({@link migrateLegacyRouting})与 `overrides.features`(不带 `force` 的
  * {@link migrateLegacyFeatureFlagsPartial})。拓展订阅没有外层那一步。
  *
+ * 迁成 0.x 最新形状的那一行再过一遍 1.0 的改名({@link renameSubscriptionKeys}:特性键、附加项键、文案键、版式键、
+ * 顶层的 `extras` → `extraTargets`),然后才换身份 —— 两步碰的是不相交的几格。
+ *
  * 合好之后,0.x 每行的分组(一串名字 `groups`)换成一张标签表与各行的 `tagIds`(ADR-0034),
  * 新代里的文件是 `{ tags, subscriptions }`。
  */
 
 import { join } from "node:path";
 import { BILIBILI_SOURCE_KEY, deterministicUuid } from "@bilibili-notify/internal";
+import { renameSubscriptionKeys } from "./feature-renames.js";
 import {
 	migrateLegacyFeatureFlagsPartial,
 	migrateLegacyRouting,
@@ -176,8 +180,12 @@ export async function migrateSubscriptionFiles(
 	if (bili.kind === "missing" && extRows.length === 0) return [];
 	const biliRows = bili.kind === "ok" ? (bili.value as unknown[]) : [];
 	const next = toTaggedFile([
-		...biliRows.map((row) => toIdentityRow(migrateBiliSubscriptionRow(row), "bilibili")),
-		...extRows.map((row) => toIdentityRow(migrateExtensionSubscriptionRow(row), "extension")),
+		...biliRows.map((row) =>
+			toIdentityRow(renameSubscriptionKeys(migrateBiliSubscriptionRow(row)), "bilibili"),
+		),
+		...extRows.map((row) =>
+			toIdentityRow(renameSubscriptionKeys(migrateExtensionSubscriptionRow(row)), "extension"),
+		),
 	]);
 	await rewriteJsonFile(path, next, bili.kind === "ok" ? path : opts.extensionSubscriptionsPath);
 	return [path];

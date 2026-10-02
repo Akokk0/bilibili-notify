@@ -20,7 +20,7 @@ const SUB = {
 	enabled: true,
 	tagIds: [],
 	routing: {},
-	extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
+	extras: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 	overrides: {},
 	specialUsers: [],
 };
@@ -412,7 +412,7 @@ describe("/api/subs × 拓展订阅", () => {
 		enabled: true,
 		tagIds: [],
 		routing: {},
-		extras: { atAllDynamic: {}, atAllLive: {}, wordcloud: {}, liveSummary: {} },
+		extraTargets: { atAllPost: {}, atAllLiveStart: {}, wordcloud: {}, liveSummary: {} },
 		overrides: {},
 	};
 

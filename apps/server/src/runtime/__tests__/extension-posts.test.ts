@@ -72,9 +72,9 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
 			settings: () => ({
-				messageLayout: defaultMessageKindLayout("dynamic"),
+				messageLayout: defaultMessageKindLayout("post"),
 				filter: {},
-				dynamic: true,
+				post: true,
 			}),
 			sources: {
 				running: () => true,
@@ -139,9 +139,9 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
 			settings: () => ({
-				messageLayout: defaultMessageKindLayout("dynamic"),
+				messageLayout: defaultMessageKindLayout("post"),
 				filter: { enable: true, keywords: ["海边"] },
-				dynamic: true,
+				post: true,
 			}),
 			sources: {
 				running: () => true,
@@ -199,9 +199,9 @@ describe("bindExtensionPosts — 登记进 track", () => {
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
 			settings: () => ({
-				messageLayout: defaultMessageKindLayout("dynamic"),
+				messageLayout: defaultMessageKindLayout("post"),
 				filter: {},
-				dynamic: true,
+				post: true,
 			}),
 			sources: { running: () => true, postNoun: () => "作品", readAvatar: async () => undefined },
 			pushFor: () => push,
@@ -278,9 +278,9 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
 			settings: () => ({
-				messageLayout: defaultMessageKindLayout("dynamic"),
+				messageLayout: defaultMessageKindLayout("post"),
 				filter: { enable: true, keywords: ["海边"], notify: true },
-				dynamic: true,
+				post: true,
 			}),
 			sources: {
 				running: () => true,

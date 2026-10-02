@@ -12,12 +12,20 @@
  *   globals 与订阅都进了 `rewritten`;两份订阅(B 站与拓展)合成了新代里的**一个** `subscriptions.json`
  *   (ADR-0021 决策 15),拓展那份自己不进新代;
  * - 配置仓开机读出来的值是最新的形状;
- * - 第 0 代那三份一个字节没变(迁移写的是新文件,不是原地改那条硬链接);已经是新形状的设置不改写。
+ * - 第 0 代那三份一个字节没变(迁移写的是新文件,不是原地改那条硬链接);已经是 1.0 形状的设置不改写。
+ *
+ * **输入是 0.x 的老形状(特性键 `dynamic` / `live` / `liveGuardBuy`、附加项 `atAllDynamic` / `atAllLive`、顶层 `extras`),
+ * 期望值是 1.0 的名字**:0.x 那一遍把老形状收成 0.x 最新形状之后,还要过 1.0 的改名(`../feature-renames.ts`,
+ * 逐键的用例在 `./feature-renames.test.ts`)。新代是 1.0 的,所以这里断言的新代文件与配置仓读出来的值用 1.0 的键。
  */
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { Connection, PushTarget } from "@bilibili-notify/internal";
+import {
+	type Connection,
+	makeDefaultGlobalConfig,
+	type PushTarget,
+} from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { useZeroSandbox } from "./support.js";
 import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
@@ -202,14 +210,14 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			"settings/core.json",
 		);
 		expect(globalsOnDisk.defaults.features).toEqual({
-			dynamic: true,
-			live: true,
+			post: true,
+			liveStart: true,
 			liveEnd: true,
-			liveGuardBuy: false,
+			membership: false,
 			superchat: false,
 			specialDanmaku: false,
 			specialUserEnter: false,
-			extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false },
+			extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: false },
 		});
 		const subFile = await sandbox.readConfig<{ tags: unknown[]; subscriptions: Row[] }>(
 			"subscriptions.json",
@@ -229,10 +237,14 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(subRow.routing).not.toHaveProperty("wordcloud");
 		expect(subRow.routing).not.toHaveProperty("liveSummary");
 		expect((subRow.routing as Record<string, unknown>).liveEnd).toEqual([T1, T2]);
-		expect(subRow.extras).toEqual({ atAllDynamic: { [T1]: true }, atAllLive: { [T2]: false } });
+		expect(subRow).not.toHaveProperty("extras");
+		expect(subRow.extraTargets).toEqual({
+			atAllPost: { [T1]: true },
+			atAllLiveStart: { [T2]: false },
+		});
 		expect((subRow.overrides as Record<string, unknown>).features).toEqual({
 			liveEnd: true,
-			extras: { wordcloud: true, atAllDynamic: true },
+			extras: { wordcloud: true, atAllPost: true },
 		});
 		const extRow = rowById(subRows, EXT_SUB_ID);
 		expect(extRow.identity).toEqual({ sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" });
@@ -253,20 +265,20 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(sub).toMatchObject({
 			identity: { sourceKey: "bilibili", externalId: "12345" },
 			// 下播目标 = 下播 ∪ 词云 ∪ 总结;老键不留。
-			routing: { dynamic: [T1], live: [T1, T2], liveEnd: [T1, T2] },
-			extras: {
-				atAllDynamic: { [T1]: true },
-				atAllLive: { [T2]: false },
+			routing: { post: [T1], liveStart: [T1, T2], liveEnd: [T1, T2] },
+			extraTargets: {
+				atAllPost: { [T1]: true },
+				atAllLiveStart: { [T2]: false },
 				wordcloud: {},
 				liveSummary: {},
 			},
-			overrides: { features: { liveEnd: true, extras: { wordcloud: true, atAllDynamic: true } } },
+			overrides: { features: { liveEnd: true, extras: { wordcloud: true, atAllPost: true } } },
 		});
 		expect(Object.keys(sub?.routing ?? {}).sort()).toEqual([
-			"dynamic",
-			"live",
 			"liveEnd",
-			"liveGuardBuy",
+			"liveStart",
+			"membership",
+			"post",
 			"specialDanmaku",
 			"specialUserEnter",
 			"superchat",
@@ -289,14 +301,14 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			"settings/core.json",
 		);
 		expect(onDisk.defaults.features).toEqual({
-			dynamic: true,
-			live: true,
+			post: true,
+			liveStart: true,
 			liveEnd: false,
-			liveGuardBuy: false,
+			membership: false,
 			superchat: false,
 			specialDanmaku: false,
 			specialUserEnter: false,
-			extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: true },
+			extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: true },
 		});
 		expect(await readFile(join(sandbox.zero, "state", "globals.json"), "utf8")).toBe(original);
 
@@ -304,7 +316,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(store.getGlobals().defaults.features).toEqual(onDisk.defaults.features);
 	});
 
-	it("已经是新形状的设置不改写(新代里还是搬过来的那个文件);订阅的新形状字段原样过去,只有身份收进 identity", async () => {
+	it("0.x 最新形状的设置与订阅(没有老代的东西要迁):只剩 1.0 的改名;订阅的别的格原样过去,只有身份收进 identity", async () => {
 		await placeConnectionsAndTargets();
 		const fresh = {
 			id: SUB_ID,
@@ -325,7 +337,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			overrides: { features: { extras: { wordcloud: false } } },
 			specialUsers: [],
 		};
-		// 「设置迁移器无事可做」的整份:去掉 B 站那三格(1.0 搬进了 settings/bilibili.json),否则搬那三格就得改写它。
+		// 去掉 B 站那三格(1.0 搬进了 settings/bilibili.json):这样设置那头要改写的就只剩 1.0 的改名。
 		await sandbox.placeZero("state/globals.json", withoutZeroBilibiliApp(makeZeroGlobals()));
 		await sandbox.placeZero("state/subscriptions.json", [fresh]);
 		await sandbox.placeZero("state/extension-subscriptions.json", [
@@ -337,24 +349,26 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		const report = await sandbox.migrate();
 
-		expect(report.rewritten).not.toContain("config/settings/core.json");
+		// 0.x 的老形状这一遍无事可做,但 0.x 最新形状里的键要换成 1.0 的:设置照样是改写过的文件。
+		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(
 			await sameFile(
 				join(sandbox.zero, "state", "globals.json"),
 				sandbox.configPath("settings/core.json"),
 			),
-		).toBe(true);
+		).toBe(false);
 		// 订阅:身份换了位置(0.x 的 uid / extensionId / externalId → identity)、退役的别名 `name` 丢掉、0.x 的
-		// 分组 `groups` 换成 `tagIds`(两行的分组都是空表,标签表也是空的),别的格一个都没被当老形状再改一遍。
-		const { id: _freshId, uid: _uid, name: _name, groups: _g1, ...freshRest } = fresh;
-		const {
-			id: _extId,
-			kind: _kind,
-			extensionId: _e,
-			externalId: _x,
-			groups: _g2,
-			...extRest
-		} = LEGACY_EXTENSION_SUBSCRIPTION;
+		// 分组 `groups` 换成 `tagIds`(两行的分组都是空表,标签表也是空的)、特性键 / 附加项键 / `extras` 换成 1.0 的名字,
+		// 别的格一个都没被当老形状再改一遍。
+		const routing1 = {
+			post: [],
+			liveStart: [T1],
+			liveEnd: [T1],
+			membership: [],
+			superchat: [],
+			specialDanmaku: [],
+			specialUserEnter: [],
+		};
 		expect(
 			await sandbox.readConfig<{ tags: unknown[]; subscriptions: Row[] }>("subscriptions.json"),
 		).toEqual({
@@ -364,18 +378,48 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 					id: SUB_ID,
 					identity: { sourceKey: "bilibili", externalId: "12345" },
 					tagIds: [],
-					...freshRest,
+					enabled: true,
+					routing: routing1,
+					extraTargets: {
+						atAllPost: {},
+						atAllLiveStart: { [T1]: true },
+						wordcloud: {},
+						liveSummary: {},
+					},
+					overrides: { features: { extras: { wordcloud: false } } },
+					specialUsers: [],
 				},
 				{
-					...extRest,
 					id: EXT_SUB_ID,
 					identity: { sourceKey: "douyin", externalId: "MS4wLjABAAAA-sec_uid" },
 					tagIds: [],
+					enabled: true,
+					routing: routing1,
 					overrides: { features: { extras: { wordcloud: false } } },
 				},
 			],
 		});
 		const store = await sandbox.load();
 		expect(store.getSubscriptions().map((s) => s.id)).toEqual([SUB_ID, EXT_SUB_ID]);
+	});
+
+	it("已经是 1.0 形状的设置不改写:新代里还是搬过来的那个文件", async () => {
+		await placeConnectionsAndTargets();
+		// 1.0 的出厂设置(特性键 / 文案键 / 版式键都是 1.0 的名字):这是「已经是新键」的输入,改名那一步对它是空操作。
+		await sandbox.placeZero("state/globals.json", makeDefaultGlobalConfig());
+
+		const report = await sandbox.migrate();
+
+		expect(report.rewritten).not.toContain("config/settings/core.json");
+		expect(
+			await sameFile(
+				join(sandbox.zero, "state", "globals.json"),
+				sandbox.configPath("settings/core.json"),
+			),
+		).toBe(true);
+		const store = await sandbox.load();
+		expect(store.getGlobals().defaults.features).toEqual(
+			makeDefaultGlobalConfig().defaults.features,
+		);
 	});
 });

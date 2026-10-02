@@ -44,7 +44,7 @@ function diskRow(identity: Record<string, unknown> = BILI): Record<string, unkno
 	};
 }
 
-/** 只写必填几格的一行:带默认值的键(tagIds / extras / roastSchedule / specialUsers)都缺着。 */
+/** 只写必填几格的一行:带默认值的键(tagIds / extraTargets / roastSchedule / specialUsers)都缺着。 */
 function minimalRow(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		id: "22222222-2222-4222-8222-222222222222",
@@ -146,12 +146,12 @@ describe("身份读不进的行", () => {
 			const r = SubscriptionSchema.safeParse(
 				minimalRow({
 					identity,
-					routing: { ...emptyRouting(), dynamic: [T1] },
-					extras: { atAllDynamic: { [T2]: true } },
+					routing: { ...emptyRouting(), post: [T1] },
+					extraTargets: { atAllPost: { [T2]: true } },
 				}),
 			);
 			expect(r.success).toBe(false);
-			expect(r.error?.issues[0]?.path).toEqual(["extras", "atAllDynamic"]);
+			expect(r.error?.issues[0]?.path).toEqual(["extraTargets", "atAllPost"]);
 		}
 	});
 });
@@ -233,12 +233,12 @@ describe("resolve() 折叠", () => {
 		(_label, identity) => {
 			const eff = resolve(
 				SubscriptionSchema.parse(
-					minimalRow({ identity, routing: { ...emptyRouting(), live: [T1] } }),
+					minimalRow({ identity, routing: { ...emptyRouting(), liveStart: [T1] } }),
 				),
 				makeDefaultGlobalConfig().defaults,
 			);
 			expect(eff.identity).toEqual(identity);
-			expect(eff.routing.live).toEqual([T1]);
+			expect(eff.routing.liveStart).toEqual([T1]);
 			expect(eff.specialUsers).toEqual([]);
 			for (const key of ["kind", "uid", "extensionId", "externalId"]) {
 				expect(key in eff, key).toBe(false);

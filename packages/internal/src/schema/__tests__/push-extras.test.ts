@@ -1,6 +1,6 @@
 /**
  * 附加项(ADR-0016):@全体 / 弹幕词云 / AI 总结是同一种东西 —— 挂在某把主特性下面、与
- * 本体分开发的一条消息。四把键一视同仁住在 `features.extras` 与订阅的 `extras` 上。
+ * 本体分开发的一条消息。四把键一视同仁住在 `features.extras` 与订阅的 `extraTargets` 上。
  *
  * 能配路由的推送类型是 7 个。0.x 的老形状 —— 第一代(wordcloud / liveSummary 各是一把特性键)、
  * 第二代(`liveEndExtras` 小对象 + 订阅上的 `atAll` / `atAllDefaults`)—— **不在这里认**:它们只在开新代时
@@ -30,21 +30,24 @@ const SUB_BASE: Subscription = makeEmptySubscription({
 });
 
 const NEW_KEYS = [
-	"dynamic",
-	"live",
+	"post",
+	"liveStart",
 	"liveEnd",
-	"liveGuardBuy",
+	"membership",
 	"superchat",
 	"specialDanmaku",
 	"specialUserEnter",
 ] as const;
 
-/** 第一代 features(9 个平铺布尔)的一份基线 —— 只拿来喂「活 schema 不再认老形状」那一组。 */
+/**
+ * 第一代 features(9 个平铺布尔)的一份基线 —— 只拿来喂「活 schema 不再认老形状」那一组。特性键写 1.0 的名字:
+ * 这一组要钉的是第一代的**形状**(顶层平铺的词云 / 总结、没有 `extras`),不该因为特性键没改名先红。
+ */
 const LEGACY_FLAGS = {
-	dynamic: true,
-	live: true,
+	post: true,
+	liveStart: true,
 	liveEnd: false,
-	liveGuardBuy: false,
+	membership: false,
 	superchat: false,
 	wordcloud: false,
 	liveSummary: false,
@@ -57,14 +60,18 @@ describe("推送类型缩到 7 个", () => {
 		expect([...FEATURE_KEYS]).toEqual([...NEW_KEYS]);
 	});
 
+	it("全局特性开关的 schema 是从 FEATURE_KEYS 摊出来的:键 = 七把特性键 + extras,不另手写一份", () => {
+		expect(Object.keys(FeatureFlagsSchema.shape)).toEqual([...FEATURE_KEYS, "extras"]);
+	});
+
 	it("makeEmptySubscription 的 routing 正好这 7 把键", () => {
 		expect(Object.keys(SUB_BASE.routing).sort()).toEqual([...NEW_KEYS].sort());
 	});
 
-	it("makeEmptySubscription 的 extras 正好这 4 把键,每把一张空表", () => {
-		expect(SUB_BASE.extras).toEqual({
-			atAllDynamic: {},
-			atAllLive: {},
+	it("makeEmptySubscription 的 extraTargets 正好这 4 把键,每把一张空表", () => {
+		expect(SUB_BASE.extraTargets).toEqual({
+			atAllPost: {},
+			atAllLiveStart: {},
 			wordcloud: {},
 			liveSummary: {},
 		});
@@ -76,18 +83,18 @@ describe("推送类型缩到 7 个", () => {
 		}
 	});
 
-	it("出厂默认:下播开着,附加项照注册表(动态 @全体 关、开播 @全体 开、词云 / 总结开)", () => {
+	it("出厂默认:下播开着,附加项照注册表(作品 @全体 关、开播 @全体 开、词云 / 总结开)", () => {
 		expect(makeDefaultGlobalConfig().defaults.features).toEqual({
-			dynamic: true,
-			live: true,
+			post: true,
+			liveStart: true,
 			liveEnd: true,
-			liveGuardBuy: false,
+			membership: false,
 			superchat: false,
 			specialDanmaku: false,
 			specialUserEnter: false,
 			extras: {
-				atAllDynamic: false,
-				atAllLive: true,
+				atAllPost: false,
+				atAllLiveStart: true,
 				wordcloud: true,
 				liveSummary: true,
 			},
@@ -105,8 +112,8 @@ describe("resolve():附加项是嵌套合并", () => {
 		const eff = resolve(sub, globals.defaults);
 		expect(eff.features.liveEnd).toBe(true);
 		expect(eff.features.extras).toEqual({
-			atAllDynamic: false,
-			atAllLive: true,
+			atAllPost: false,
+			atAllLiveStart: true,
 			wordcloud: false,
 			liveSummary: true,
 		});
@@ -115,14 +122,14 @@ describe("resolve():附加项是嵌套合并", () => {
 	it("没覆盖时附加项就是全局那份", () => {
 		const globals = makeDefaultGlobalConfig();
 		globals.defaults.features.extras = {
-			atAllDynamic: true,
-			atAllLive: false,
+			atAllPost: true,
+			atAllLiveStart: false,
 			wordcloud: false,
 			liveSummary: false,
 		};
 		expect(resolve(SUB_BASE, globals.defaults).features.extras).toEqual({
-			atAllDynamic: true,
-			atAllLive: false,
+			atAllPost: true,
+			atAllLiveStart: false,
 			wordcloud: false,
 			liveSummary: false,
 		});
@@ -139,10 +146,10 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 
 	it("第一代 routing:词云 / 总结的目标不会并进下播,老键被剥掉、liveEnd 只剩它自己那份", () => {
 		const parsed = SubscriptionRoutingSchema.parse({
-			dynamic: [],
-			live: [],
+			post: [],
+			liveStart: [],
 			liveEnd: [T1],
-			liveGuardBuy: [],
+			membership: [],
 			superchat: [],
 			wordcloud: [T2],
 			liveSummary: [T3],
@@ -159,15 +166,16 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 		});
 	});
 
-	it("订阅上的 atAll / atAllDefaults 不会并进 extras / overrides:老键被剥掉,extras 留空表", () => {
-		const { extras: _gone, ...base } = SUB_BASE;
+	it("订阅上的 atAll / atAllDefaults 不会并进 extraTargets / overrides:老键被剥掉,extraTargets 留空表", () => {
+		const { extraTargets: _gone, ...base } = SUB_BASE;
 		const parsed = SubscriptionSchema.parse({
 			...base,
-			routing: { ...SUB_BASE.routing, live: [T1] },
+			routing: { ...SUB_BASE.routing, liveStart: [T1] },
+			// 0.x 第二代的老键,故意还是 0.x 的名字:这一条钉的是「老形状不被认」。
 			atAllDefaults: { dynamic: true, live: false },
 			atAll: { live: { [T1]: true } },
 		});
-		expect(parsed.extras.atAllLive).toEqual({});
+		expect(parsed.extraTargets.atAllLiveStart).toEqual({});
 		expect(parsed.overrides.features).toBeUndefined();
 		expect(parsed).not.toHaveProperty("atAll");
 		expect(parsed).not.toHaveProperty("atAllDefaults");

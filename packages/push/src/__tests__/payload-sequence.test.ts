@@ -97,8 +97,8 @@ function subWithTargets(targets: string[], atAllLiveDefault = false): Subscripti
 		id: "s1",
 		identity: { sourceKey: "bilibili", externalId: "u1" },
 	});
-	sub.routing.dynamic = [...targets];
-	setExtraDefault(sub, "atAllDynamic", atAllLiveDefault);
+	sub.routing.post = [...targets];
+	setExtraDefault(sub, "atAllPost", atAllLiveDefault);
 	return sub;
 }
 
@@ -121,7 +121,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "dynamic", [M1, M2]);
+		await push.broadcastToFeature("s1", "post", [M1, M2]);
 		expect(calls.map((c) => [c.targetId, textOf(c.payload)])).toEqual([
 			[T1, "m1"],
 			[T1, "m2"],
@@ -140,7 +140,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "dynamic", [M1, M2, M3]);
+		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
 		expect(calls.map((c) => [c.targetId, textOf(c.payload)])).toEqual([
 			[T1, "m1"], // 失败 → m2/m3 被中止
 			[T2, "m1"],
@@ -172,7 +172,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			},
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "dynamic", [M1, M2, M3]);
+		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
 		expect(seen).toEqual([
 			[
 				T1,
@@ -201,7 +201,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "dynamic", [M1, M2, M3]);
+		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
 		expect(calls.map((c) => textOf(c.payload))).toEqual(["m1", "m2"]);
 	});
 
@@ -215,7 +215,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		const out = await push.broadcastToFeature("s1", "dynamic", []);
+		const out = await push.broadcastToFeature("s1", "post", []);
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 	});
@@ -230,7 +230,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		const out = await push.broadcastToFeature("s1", "dynamic", M1);
+		const out = await push.broadcastToFeature("s1", "post", M1);
 		expect(out).toHaveLength(2);
 		expect(calls.map((c) => [c.targetId, textOf(c.payload)])).toEqual([
 			[T1, "m1"],
@@ -248,7 +248,7 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "dynamic", [M1, M2]);
+		await push.broadcastToFeature("s1", "post", [M1, M2]);
 		// at-all 是独立 composite 一条,先于序列首条入 sink
 		expect(calls).toHaveLength(3);
 		expect(calls[0]?.payload.kind).toBe("composite");

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_TEMPLATES, extrasRecord, FEATURE_KEYS } from "../constants";
+import { DEFAULT_TEMPLATES, extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
 
 export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
@@ -35,13 +35,7 @@ export const FeatureKeySchema = z.enum(FEATURE_KEYS);
 export const PushExtrasSchema = z.object(extrasRecord(() => z.boolean()));
 
 const FeatureFlagsObjectSchema = z.object({
-	dynamic: z.boolean(),
-	live: z.boolean(),
-	liveEnd: z.boolean(),
-	liveGuardBuy: z.boolean(),
-	superchat: z.boolean(),
-	specialDanmaku: z.boolean(),
-	specialUserEnter: z.boolean(),
+	...featuresRecord(() => z.boolean()),
 	extras: PushExtrasSchema,
 });
 
@@ -157,18 +151,18 @@ export const TemplateBundleSchema = z.object({
 	liveEnd: z.string(),
 	liveSummary: z.string(),
 	/**
-	 * 动态推送文本模板(非视频动态)。变量:`{name}` UP 名;链接是消息版式的独立部件,
-	 * 不是模板变量。`.default(...)` 让缺 dynamic 字段的老 globals.json
+	 * 作品推送文本模板(非视频作品)。变量:`{name}` UP 名;链接是消息版式的独立部件,
+	 * 不是模板变量。`.default(...)` 让缺 post 字段的老 globals.json
 	 * (本字段加入前写入的)仍能通过 schema 校验 —— 与下方 imageGroup 同源的老配置兜底策略;
 	 * 默认值直接取 `DEFAULT_TEMPLATES`,不另抄一份(抄的那份 2026-08 漂过一次)。
 	 */
-	dynamic: z.string().default(DEFAULT_TEMPLATES.dynamic),
+	post: z.string().default(DEFAULT_TEMPLATES.post),
 	/** 视频投稿推送文本模板。变量:`{name}` UP 名;链接同上。 */
-	dynamicVideo: z.string().default(DEFAULT_TEMPLATES.dynamicVideo),
+	postVideo: z.string().default(DEFAULT_TEMPLATES.postVideo),
 	/**
 	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。
-	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 dynamic /
-	 * dynamicVideo 同源的老配置兜底)。per-UP override 经 merge 替换全局值,在该 UP
+	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 post /
+	 * postVideo 同源的老配置兜底)。per-UP override 经 merge 替换全局值,在该 UP
 	 * 的词云生成时额外过滤(详见 packages/live room-session dispatch)。
 	 */
 	wordcloudStopWords: z.string().default(""),
@@ -179,14 +173,14 @@ export const TemplateBundleSchema = z.object({
 export type TemplateBundle = z.infer<typeof TemplateBundleSchema>;
 
 // `.partial()` 只把顶层字段变可选,**不剥离内层 `.default()`** —— 直接 partial 会让
-// per-UP override 解析 `{ templates: { liveSummary } }` 时把 dynamic/dynamicVideo
+// per-UP override 解析 `{ templates: { liveSummary } }` 时把 post/postVideo
 // 注入成默认值,被下游(buildDynamicSubViewSingle / isSectionCustomized)误当成真有
-// per-UP 动态模板覆盖:该 UP 停止跟随全局动态模板热更、面板误标「已定制」、保存时
-// 把注入字段落盘。override 维度的 dynamic/dynamicVideo 必须是「无默认的纯可选」,
+// per-UP 作品模板覆盖:该 UP 停止跟随全局作品模板热更、面板误标「已定制」、保存时
+// 把注入字段落盘。override 维度的 post/postVideo 必须是「无默认的纯可选」,
 // 与全局 TemplateBundleSchema(带 .default 供 globals.json 缺字段回填)分开。
 export const TemplateBundlePartialSchema = TemplateBundleSchema.partial().extend({
-	dynamic: z.string().optional(),
-	dynamicVideo: z.string().optional(),
+	post: z.string().optional(),
+	postVideo: z.string().optional(),
 	wordcloudStopWords: z.string().optional(),
 });
 export type TemplateBundlePartial = z.infer<typeof TemplateBundlePartialSchema>;

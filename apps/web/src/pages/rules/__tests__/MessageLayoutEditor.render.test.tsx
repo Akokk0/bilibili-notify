@@ -29,7 +29,7 @@ function setup(value: MessageKindLayoutFull) {
 		<MessageLayoutEditor
 			value={value}
 			onChange={onChange}
-			separatorCode="messageLayout.dynamic.separator"
+			separatorCode="messageLayout.post.separator"
 		/>,
 	);
 	return { onChange };
@@ -69,7 +69,7 @@ describe("MessageLayoutEditor", () => {
 			<MessageLayoutEditor
 				value={layout}
 				onChange={vi.fn()}
-				separatorCode="messageLayout.dynamic.separator"
+				separatorCode="messageLayout.post.separator"
 				textSlot={<div data-testid="tpl-slot">模板编辑区</div>}
 			/>,
 		);
@@ -84,7 +84,7 @@ describe("MessageLayoutEditor", () => {
 					blocks: layout.blocks.map((b) => (b.type === "text" ? { ...b, visible: false } : b)),
 				}}
 				onChange={vi.fn()}
-				separatorCode="messageLayout.dynamic.separator"
+				separatorCode="messageLayout.post.separator"
 				textSlot={<div data-testid="tpl-slot">模板编辑区</div>}
 			/>,
 		);

@@ -17,13 +17,13 @@ import {
 describe("subscribedFeatures", () => {
 	it("无 overrides:返回 DEFAULT_FEATURE_FLAGS 中默认开启的特性", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
-		expect(subscribedFeatures(sub)).toEqual(["dynamic", "live", "liveEnd"]);
+		expect(subscribedFeatures(sub)).toEqual(["post", "liveStart", "liveEnd"]);
 	});
 
 	it("overrides 关掉某默认开启的特性 → 不出现", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
-		sub.overrides = { features: { dynamic: false } };
-		expect(subscribedFeatures(sub)).not.toContain("dynamic");
+		sub.overrides = { features: { post: false } };
+		expect(subscribedFeatures(sub)).not.toContain("post");
 	});
 
 	it("overrides 开启某默认关闭的特性 → 出现", () => {
@@ -36,9 +36,9 @@ describe("subscribedFeatures", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		// 模拟 follow 模式加推送目标:全部 7 个特性的 routing 都塞了同一个目标。
 		for (const k of Object.keys(sub.routing) as FeatureKey[]) sub.routing[k] = ["t-1"];
-		// 主开关只留 dynamic(其余默认开启的全关掉)。
-		sub.overrides = { features: { live: false, liveEnd: false } };
-		expect(subscribedFeatures(sub)).toEqual(["dynamic"]);
+		// 主开关只留 post(其余默认开启的全关掉)。
+		sub.overrides = { features: { liveStart: false, liveEnd: false } };
+		expect(subscribedFeatures(sub)).toEqual(["post"]);
 	});
 });
 
@@ -63,9 +63,9 @@ describe("platformSupportsAtAll", () => {
  * follow 模式灌进的全 7 项(否则自定义矩阵默认全开)。
  */
 describe("routingAlignedToFeatures", () => {
-	const DEFAULT_ON: FeatureKey[] = ["dynamic", "live", "liveEnd"];
+	const DEFAULT_ON: FeatureKey[] = ["post", "liveStart", "liveEnd"];
 	const DEFAULT_OFF: FeatureKey[] = [
-		"liveGuardBuy",
+		"membership",
 		"superchat",
 		"specialDanmaku",
 		"specialUserEnter",
@@ -82,17 +82,17 @@ describe("routingAlignedToFeatures", () => {
 	it("target 原本不在任何 routing → 只加进生效特性", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		const routing = routingAlignedToFeatures(sub, "t-1");
-		expect(routing.dynamic).toEqual(["t-1"]);
+		expect(routing.post).toEqual(["t-1"]);
 		expect(routing.superchat).toEqual([]);
 	});
 
-	it("跟随 overrides:开 superchat 则纳入,关 dynamic 则剔除", () => {
+	it("跟随 overrides:开 superchat 则纳入,关 post 则剔除", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		for (const k of FEATURE_KEYS) sub.routing[k] = ["t-1"];
-		sub.overrides = { features: { superchat: true, dynamic: false } };
+		sub.overrides = { features: { superchat: true, post: false } };
 		const routing = routingAlignedToFeatures(sub, "t-1");
 		expect(routing.superchat).toContain("t-1");
-		expect(routing.dynamic).not.toContain("t-1");
+		expect(routing.post).not.toContain("t-1");
 	});
 
 	it("不影响其它 target", () => {

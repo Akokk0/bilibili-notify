@@ -90,7 +90,7 @@ function extensionLiveNow(
 /**
  * 订阅配置 → AI 工具看得懂的视图。
  *
- * `dynamic` / `live` 的口径是「该特性下**有没有推送目标**」而不是配置里的开关:
+ * `post` / `liveStart` 的口径是「该特性下**有没有推送目标**」而不是配置里的开关:
  * 一个特性配了却没有任何目标,推不出去任何东西,对女仆来说就等于没订。
  *
  * 名字按「主人手填的备注 → 平台资料缓存 → UID 兜底」取(拓展订阅兜底的是外部 id)。
@@ -112,8 +112,8 @@ export function buildAiSubsView(
 		if (!sub.enabled) continue;
 		const cached = subRuntimeStore.get(sub.id)?.cachedProfile?.name?.trim();
 		const common = {
-			dynamic: sub.routing.dynamic.length > 0,
-			live: sub.routing.live.length > 0,
+			post: sub.routing.post.length > 0,
+			liveStart: sub.routing.liveStart.length > 0,
 		};
 		const identity = subscriptionIdentityOf(sub);
 		const item: SubItemView =

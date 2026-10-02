@@ -64,7 +64,7 @@ describe("PerUpEditor 头部的「是谁」", () => {
 		};
 		const platform: SubscriptionPlatform = {
 			label: "抖音",
-			features: ["dynamic"],
+			features: ["post"],
 			absent: false,
 		};
 		const { unmount } = renderEditor(sub, platform);

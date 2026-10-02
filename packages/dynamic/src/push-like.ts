@@ -59,7 +59,7 @@ export interface DynamicBroadcastOptions {
  *
  * 背景:一条 DYNAMIC_TYPE_DRAW 图文动态(开启图集推送时)会发**两次** —— 主卡片
  * (`part="post"`)与图集附图(`part="post-images"`),两者都映射到
- * `feature="dynamic"`,而且是**同一次推送**:图集是主卡片的附加项(`role: "extra"`,
+ * `feature="post"`,而且是**同一次推送**:图集是主卡片的附加项(`role: "extra"`,
  * 历史里追加到同一行),并且显式抑制 @全体 —— 若都进 @全体 分支,接收端会被**重复
  * 艾特全体**(主卡片 @ 一次、图集又 @ 一次)。主卡片只带 pushId,维持「按 feature
  * 决定」的 @全体。没有 pushId(屏蔽提示这类独立小推送)就什么都不带,推送层自己起一个。
@@ -116,7 +116,7 @@ export interface PushLike {
 export interface SubItemView {
 	uid: string;
 	uname: string;
-	dynamic?: boolean;
+	post?: boolean;
 	customCardStyle?: {
 		enable?: boolean;
 		// 🪦 `backgroundImage` / `backgroundImages` 2026-09-20 随整条链删掉 —— 背景图归皮肤
@@ -145,12 +145,12 @@ export interface SubItemView {
 	imageGroupForward?: boolean;
 	/**
 	 * Per-UP 非视频动态文本模板;undefined 继承 engine config `dynamicTemplate`。
-	 * Adapter 折叠 `Subscription.overrides.templates.dynamic` 后填入。
+	 * Adapter 折叠 `Subscription.overrides.templates.post` 后填入。
 	 */
 	customDynamicTemplate?: string;
 	/**
 	 * Per-UP 视频投稿文本模板;undefined 继承 engine config `videoTemplate`。
-	 * Adapter 折叠 `Subscription.overrides.templates.dynamicVideo` 后填入。
+	 * Adapter 折叠 `Subscription.overrides.templates.postVideo` 后填入。
 	 */
 	customVideoTemplate?: string;
 	/**
@@ -167,7 +167,7 @@ export interface SubItemView {
 	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	/**
 	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
-	 * `eff.messageLayout.dynamic` 后填入。引擎按版式装配消息:文本模板以 url='' 渲染
+	 * `eff.messageLayout.post` 后填入。引擎按版式装配消息:文本模板以 url='' 渲染
 	 * (模板里没有链接变量),链接独立成部件。
 	 */
 	messageLayout: MessageKindLayout;
@@ -186,5 +186,5 @@ export type SubscriptionOpView =
 	| {
 			type: "update";
 			uid: string;
-			changes: Array<{ scope: string; dynamic?: boolean }>;
+			changes: Array<{ scope: string; post?: boolean }>;
 	  };

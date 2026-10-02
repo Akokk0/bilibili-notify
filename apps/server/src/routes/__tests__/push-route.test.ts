@@ -70,7 +70,7 @@ describe("POST /api/push/test 请求级失败(非 2xx 的错误体)", () => {
 describe("POST /api/push/test 投递的结果(照旧回 200,体是 Result)", () => {
 	it("送达 → 200 { ok: true, latencyMs },发的是文字载荷", async () => {
 		const { app, sendToTarget } = makeApp({ sendToTarget: { ok: true, latencyMs: 42 } });
-		const res = await post(app, { targetId: TARGET_ID, kind: "sc" });
+		const res = await post(app, { targetId: TARGET_ID, kind: "superchat" });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true, latencyMs: 42 });
 		expect(sendToTarget).toHaveBeenCalledWith(TARGET_ID, {
@@ -86,6 +86,34 @@ describe("POST /api/push/test 投递的结果(照旧回 200,体是 Result)", () 
 		const body = await res.json();
 		expect(body).toEqual({ ok: false, code: "unavailable", message: "群不存在" });
 		expect(body).not.toHaveProperty("latencyMs");
+	});
+
+	it("kind 用特性键:liveStart / post / superchat / membership 各发各的样板句", async () => {
+		const expected = {
+			liveStart: "直播开播",
+			post: "动态",
+			superchat: "SC",
+			membership: "上舰",
+		} as const;
+		for (const [kind, word] of Object.entries(expected)) {
+			const { app, sendToTarget } = makeApp();
+			const res = await post(app, { targetId: TARGET_ID, kind });
+			expect(res.status, kind).toBe(200);
+			expect(sendToTarget, kind).toHaveBeenCalledWith(TARGET_ID, {
+				kind: "text",
+				text: expect.stringContaining(word),
+			});
+		}
+	});
+
+	it("老的种类名(live / dyn / sc / guard)不再收 → 400 invalid,不会去发", async () => {
+		for (const kind of ["live", "dyn", "sc", "guard"]) {
+			const { app, sendToTarget } = makeApp();
+			const res = await post(app, { targetId: TARGET_ID, kind });
+			expect(res.status, kind).toBe(400);
+			expect(await res.json(), kind).toMatchObject({ code: "invalid" });
+			expect(sendToTarget, kind).not.toHaveBeenCalled();
+		}
 	});
 
 	it("自带的文字优先于 kind 的预设", async () => {

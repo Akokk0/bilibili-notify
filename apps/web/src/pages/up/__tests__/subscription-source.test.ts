@@ -39,11 +39,11 @@ function sub(extensionId = "douyin"): { extensionId: string } {
 
 describe("事件 → 特性", () => {
 	it("按决策 4 那张表映射,顺序跟 FEATURE_KEYS 走", () => {
-		expect(featuresForEvents(["liveEnd", "post"])).toEqual(["dynamic", "liveEnd"]);
-		expect(featuresForEvents(["liveStart"])).toEqual(["live"]);
+		expect(featuresForEvents(["liveEnd", "post"])).toEqual(["post", "liveEnd"]);
+		expect(featuresForEvents(["liveStart"])).toEqual(["liveStart"]);
 		expect(featuresForEvents(["post", "liveStart", "liveEnd"])).toEqual([
-			"dynamic",
-			"live",
+			"post",
+			"liveStart",
 			"liveEnd",
 		]);
 	});
@@ -74,7 +74,7 @@ describe("一条拓展订阅的平台", () => {
 			postNoun: "作品",
 			absent: false,
 		});
-		expect(p.features).toEqual(["dynamic", "live"]);
+		expect(p.features).toEqual(["post", "liveStart"]);
 	});
 
 	it("停着:外观照样有(决策 41),但算不在场", () => {
@@ -87,7 +87,7 @@ describe("一条拓展订阅的平台", () => {
 		const p = subscriptionPlatformOf(sub("douyin"), []);
 		expect(p.label).toBe("douyin");
 		expect(p.absent).toBe(true);
-		expect(p.features).toEqual(["dynamic", "live", "liveEnd"]);
+		expect(p.features).toEqual(["post", "liveStart", "liveEnd"]);
 	});
 
 	it("装着但清单没交订阅那一口:退回拓展的名字", () => {

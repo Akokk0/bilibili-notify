@@ -116,7 +116,7 @@ describe("动态引擎那侧的 PushLike 真的用上了翻译表", () => {
 				pushId: "p1",
 			},
 		);
-		expect(features).toEqual(["dynamic"]);
+		expect(features).toEqual(["post"]);
 		// 掉了就是一条 DRAW 动态在主卡与图集各 @ 一次。
 		expect(opts[0]).toMatchObject({ allowAtAll: false, role: "extra", pushId: "p1" });
 	});

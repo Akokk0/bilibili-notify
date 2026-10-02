@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * 消息版式(发送侧结构)schema 版本。v1:动态 / 直播两套,块 = card(卡片图) /
+ * 消息版式(发送侧结构)schema 版本。v1:作品 / 直播两套,块 = card(卡片图) /
  * text(文本:AI 点评 ?? 模板) / link(链接) / split(分条符),外加同条内文本类
  * 相邻部件的连接符 separator。结构演进时递增,配合 `normalizeMessageLayout`。
  *
@@ -38,13 +38,13 @@ export const MessageKindLayoutSchema = z.object({
 export type MessageKindLayout = z.infer<typeof MessageKindLayoutSchema>;
 
 /**
- * 两种带消息版式的推送:动态(视频投稿共用同一套结构,仅模板文案不同)与直播
+ * 两种带消息版式的推送:作品(视频投稿共用同一套结构,仅模板文案不同)与直播
  * (开播 / 直播中 / 下播共用同一套结构,仅模板文案不同)。SC / 上舰 / 词云等维持
  * 现状,不进版式。
  */
 export const MessageLayoutSchema = z.object({
 	version: z.number().int().default(MESSAGE_LAYOUT_VERSION),
-	dynamic: MessageKindLayoutSchema,
+	post: MessageKindLayoutSchema,
 	live: MessageKindLayoutSchema,
 });
 export type MessageLayout = z.infer<typeof MessageLayoutSchema>;
@@ -58,12 +58,12 @@ const part = (type: MessagePartType): MessageBlock => ({ id: type, type, visible
  */
 export const DEFAULT_MESSAGE_LAYOUT: MessageLayout = {
 	version: MESSAGE_LAYOUT_VERSION,
-	dynamic: { blocks: [part("card"), part("text"), part("link")], separator: "\n" },
+	post: { blocks: [part("card"), part("text"), part("link")], separator: "\n" },
 	live: { blocks: [part("card"), part("text"), part("link")], separator: "\n" },
 };
 
 /** 测试夹具:某推送类型默认版式的深拷贝,改它不会污染 DEFAULT_MESSAGE_LAYOUT。 */
-export function defaultMessageKindLayout(kind: "dynamic" | "live"): MessageKindLayout {
+export function defaultMessageKindLayout(kind: "post" | "live"): MessageKindLayout {
 	return structuredClone(DEFAULT_MESSAGE_LAYOUT[kind]);
 }
 
@@ -102,9 +102,9 @@ export function normalizeMessageLayout(
 ): MessageLayout {
 	return {
 		version: MESSAGE_LAYOUT_VERSION,
-		dynamic: {
-			blocks: reconcileBlocks(stored.dynamic.blocks, defaults.dynamic.blocks),
-			separator: stored.dynamic.separator ?? defaults.dynamic.separator,
+		post: {
+			blocks: reconcileBlocks(stored.post.blocks, defaults.post.blocks),
+			separator: stored.post.separator ?? defaults.post.separator,
 		},
 		live: {
 			blocks: reconcileBlocks(stored.live.blocks, defaults.live.blocks),

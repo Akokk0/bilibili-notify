@@ -4,7 +4,7 @@
  * 一条历史行记的是 `PushKind`(8 种),而路由、闸、订阅里的开关认的是 `FeatureKey`
  * (7 把)—— 人工重推要复检「这个目标还在不在这条路由里」,就得从行上那个 kind 翻回
  * 那把键。多出来的那一种是 `live-ongoing`:开播与周期「正在直播」在历史上是两件事,
- * 在配置上却共用 `live` 那一把键和同一份目标。
+ * 在配置上却共用 `liveStart` 那一把键和同一份目标。
  *
  * 这一份钉的是**两个方向对得上**,不是复述任何一张表:
  *
@@ -41,7 +41,7 @@ describe("PushKind ↔ FeatureKey", () => {
 		const extra = PushKindSchema.options.filter((k) => !forward.has(k));
 		expect(extra).toEqual(["live-ongoing"]);
 		// 而它跟开播归同一把键 —— 配置上它们本来就共用一份开关和一份目标。
-		expect(pushKindToFeature("live-ongoing")).toBe("live");
-		expect(pushKindToFeature("live")).toBe("live");
+		expect(pushKindToFeature("live-ongoing")).toBe("liveStart");
+		expect(pushKindToFeature("live")).toBe("liveStart");
 	});
 });

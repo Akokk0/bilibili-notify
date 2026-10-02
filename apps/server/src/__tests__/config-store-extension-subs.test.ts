@@ -30,9 +30,9 @@ import {
 	ConfigValidationError,
 	createConfigStore,
 } from "../config/store.js";
+import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
-import { legacyBiliRow } from "./support/legacy-subscription.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
 function makeServiceCtx(): ServiceContext {
@@ -189,7 +189,7 @@ describe("开机读一个文件", () => {
 		["0.x 的裸数组(盘上的订阅文件改成了对象)", JSON.stringify([biliSub("1")])],
 		[
 			"0.x 的老形状行(身份在顶层 uid、没有 identity)",
-			subscriptionsFileText([legacyBiliRow(biliSub("1"))]),
+			subscriptionsFileText([zeroBiliRow({ id: randomUUID(), uid: "1" })]),
 		],
 		[
 			"identity 里多一格",
@@ -429,7 +429,7 @@ describe("跨分区的级联对两种来源的行都覆盖", () => {
 		await store.upsertTarget(kept);
 		const ext = makeExtensionSubscription();
 		for (const k of FEATURE_KEYS) ext.routing[k] = [gone.id, kept.id];
-		ext.extras.atAllDynamic = { [gone.id]: true, [kept.id]: false };
+		ext.extraTargets.atAllPost = { [gone.id]: true, [kept.id]: false };
 		await store.upsertSubscription(ext);
 
 		await store.deleteTarget(gone.id);
@@ -437,7 +437,7 @@ describe("跨分区的级联对两种来源的行都覆盖", () => {
 		const onDisk = (await rowsOnDisk()) as unknown as Subscription[];
 		for (const sub of [store.getSubscriptions()[0], onDisk[0]]) {
 			for (const k of FEATURE_KEYS) expect(sub?.routing[k]).toEqual([kept.id]);
-			expect(sub?.extras.atAllDynamic).toEqual({ [kept.id]: false });
+			expect(sub?.extraTargets.atAllPost).toEqual({ [kept.id]: false });
 		}
 	});
 
@@ -447,19 +447,18 @@ describe("跨分区的级联对两种来源的行都覆盖", () => {
 		await store.upsertConnection(connection);
 		const managedId = store.getTargets()[0]?.id as string;
 		const ext = makeExtensionSubscription();
-		ext.routing.live = [managedId];
+		ext.routing.liveStart = [managedId];
 		const bili = biliSub("9");
-		bili.routing.live = [managedId];
+		bili.routing.liveStart = [managedId];
 		await store.upsertSubscription(ext);
 		await store.upsertSubscription(bili);
 
 		await store.deleteConnection(connection.id);
 
-		expect(store.getSubscriptions().map((s) => s.routing.live)).toEqual([[], []]);
-		expect(((await rowsOnDisk()) as unknown as Subscription[]).map((s) => s.routing.live)).toEqual([
-			[],
-			[],
-		]);
+		expect(store.getSubscriptions().map((s) => s.routing.liveStart)).toEqual([[], []]);
+		expect(
+			((await rowsOnDisk()) as unknown as Subscription[]).map((s) => s.routing.liveStart),
+		).toEqual([[], []]);
 	});
 
 	it("开机合并托管目标:两种来源订阅里的老 id 一并迁到托管 id", async () => {
@@ -475,22 +474,23 @@ describe("跨分区的级联对两种来源的行都覆盖", () => {
 		};
 		const extra = { ...primary, id: randomUUID(), name: "多余" };
 		const ext = makeExtensionSubscription();
-		ext.routing.dynamic = [extra.id];
+		ext.routing.post = [extra.id];
 		const bili = biliSub("9");
-		bili.routing.dynamic = [extra.id];
+		bili.routing.post = [extra.id];
 		await writeFile(join(stateDir, "connections.json"), JSON.stringify([connection]), "utf8");
 		await writeFile(join(stateDir, "targets.json"), JSON.stringify([primary, extra]), "utf8");
 		await writeFile(subsFile, subscriptionsFileText([bili, ext]), "utf8");
 
 		const store = await open();
 
-		expect(store.getSubscriptions().map((s) => s.routing.dynamic)).toEqual([
+		expect(store.getSubscriptions().map((s) => s.routing.post)).toEqual([
 			[primary.id],
 			[primary.id],
 		]);
-		expect(
-			((await rowsOnDisk()) as unknown as Subscription[]).map((s) => s.routing.dynamic),
-		).toEqual([[primary.id], [primary.id]]);
+		expect(((await rowsOnDisk()) as unknown as Subscription[]).map((s) => s.routing.post)).toEqual([
+			[primary.id],
+			[primary.id],
+		]);
 	});
 });
 
@@ -577,7 +577,7 @@ describe("按 UP 覆盖(ADR-0019 决策 64):拓展来源的订阅存得进、清
 		const overrides = {
 			...kept,
 			schedule: { quietHours: [{ start: 23, end: 7 }] },
-			templates: { dynamic: "新作品!", liveStart: "开播啦" },
+			templates: { post: "新作品!", liveStart: "开播啦" },
 		};
 		await store.patchSubscription(ext.id, { overrides });
 		expect(store.getSubscriptions().find((s) => s.id === ext.id)?.overrides).toEqual(overrides);

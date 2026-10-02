@@ -15,9 +15,9 @@ import {
 
 describe("liveTypeToFeature", () => {
 	it("完整映射表:词云 / 总结归到 liveEnd", () => {
-		expect(liveTypeToFeature(0)).toBe("live");
-		expect(liveTypeToFeature(3)).toBe("live");
-		expect(liveTypeToFeature(4)).toBe("liveGuardBuy");
+		expect(liveTypeToFeature(0)).toBe("liveStart");
+		expect(liveTypeToFeature(3)).toBe("liveStart");
+		expect(liveTypeToFeature(4)).toBe("membership");
 		expect(liveTypeToFeature(5)).toBe("liveEnd");
 		expect(liveTypeToFeature(6)).toBe("superchat");
 		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
@@ -26,8 +26,8 @@ describe("liveTypeToFeature", () => {
 		expect(liveTypeToFeature(10)).toBe("liveEnd");
 	});
 
-	it("未知 type 兜底为 live", () => {
-		expect(liveTypeToFeature(999)).toBe("live");
+	it("未知 type 兜底为 liveStart", () => {
+		expect(liveTypeToFeature(999)).toBe("liveStart");
 	});
 });
 

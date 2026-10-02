@@ -69,14 +69,14 @@ describe("resolve()", () => {
 		const sub: Subscription = {
 			...SUB_BASE,
 			overrides: {
-				features: { live: false, liveEnd: true },
+				features: { liveStart: false, liveEnd: true },
 			},
 		};
 		const eff = resolve(sub, globals.defaults);
 
-		expect(eff.features.live).toBe(false);
+		expect(eff.features.liveStart).toBe(false);
 		expect(eff.features.liveEnd).toBe(true);
-		expect(eff.features.dynamic).toBe(globals.defaults.features.dynamic);
+		expect(eff.features.post).toBe(globals.defaults.features.post);
 	});
 
 	it("AI override 'inherit' returns base ai unchanged", () => {
@@ -236,7 +236,7 @@ describe("resolve()", () => {
 			overrides: {
 				messageLayout: {
 					...DEFAULT_MESSAGE_LAYOUT,
-					dynamic: {
+					post: {
 						blocks: [
 							{ id: "text", type: "text", visible: true },
 							{ id: "card", type: "card", visible: false },
@@ -247,11 +247,11 @@ describe("resolve()", () => {
 			},
 		};
 		const eff = resolve(sub, globals.defaults);
-		// 整份覆盖:override 的 dynamic 块序与分隔符生效
-		expect(eff.messageLayout.dynamic.blocks.slice(0, 2).map((b) => b.id)).toEqual(["text", "card"]);
-		expect(eff.messageLayout.dynamic.separator).toBe(" | ");
+		// 整份覆盖:override 的 post 块序与分隔符生效
+		expect(eff.messageLayout.post.blocks.slice(0, 2).map((b) => b.id)).toEqual(["text", "card"]);
+		expect(eff.messageLayout.post.separator).toBe(" | ");
 		// normalize:缺失的已知块(link)被追加(向前兼容)
-		expect(eff.messageLayout.dynamic.blocks.map((b) => b.id)).toContain("link");
+		expect(eff.messageLayout.post.blocks.map((b) => b.id)).toContain("link");
 	});
 
 	// 回归守护 — P2:resolve() 必须深隔离,消费方就地改不得污染 defaults / sub。
@@ -260,7 +260,7 @@ describe("resolve()", () => {
 			const globals = makeDefaultGlobalConfig();
 			const eff = resolve(SUB_BASE, globals.defaults);
 			eff.filters.blockKeywords.push("x");
-			eff.features.live = !eff.features.live;
+			eff.features.liveStart = !eff.features.liveStart;
 			eff.ai.persona.name = "MUT";
 			expect(globals.defaults.filters.blockKeywords).not.toContain("x");
 			expect(globals.defaults.ai.persona.name).not.toBe("MUT");
@@ -269,8 +269,8 @@ describe("resolve()", () => {
 		it("改 EffectiveSubscription.routing 不污染原始 sub", () => {
 			const globals = makeDefaultGlobalConfig();
 			const eff = resolve(SUB_BASE, globals.defaults);
-			eff.routing.dynamic.push("550e8400-e29b-41d4-a716-446655440000");
-			expect(SUB_BASE.routing.dynamic).toHaveLength(0);
+			eff.routing.post.push("550e8400-e29b-41d4-a716-446655440000");
+			expect(SUB_BASE.routing.post).toHaveLength(0);
 		});
 	});
 });

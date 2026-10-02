@@ -35,10 +35,10 @@ export enum LivePushType {
  * identifiers; an empty / missing list means "not subscribed for this feature".
  */
 export type LivePushFeature =
-	| "dynamic"
-	| "live"
+	| "post"
+	| "liveStart"
 	| "liveEnd"
-	| "liveGuardBuy"
+	| "membership"
 	| "superchat"
 	| "specialDanmaku"
 	| "specialUserEnter";
@@ -55,9 +55,9 @@ export type LiveMasterFeature = Exclude<LivePushFeature, "specialDanmaku" | "spe
  * WebSocket connection. Mirrors `@bilibili-notify/push`'s `LIVE_ROOM_MASTERS`.
  */
 export const LIVE_ROOM_MASTER_KEYS: readonly LiveMasterFeature[] = [
-	"live",
+	"liveStart",
 	"liveEnd",
-	"liveGuardBuy",
+	"membership",
 	"superchat",
 ];
 
@@ -158,10 +158,10 @@ export interface SubItemView {
 	uid: string;
 	uname: string;
 	roomId: string;
-	dynamic: boolean;
-	live: boolean;
+	post: boolean;
+	liveStart: boolean;
 	liveEnd: boolean;
-	liveGuardBuy: boolean;
+	membership: boolean;
 	superchat: boolean;
 	/** 见 {@link PushExtrasLike}。宿主折叠 `eff.features.extras` 后整份填入。 */
 	extras: PushExtrasLike;
@@ -233,9 +233,9 @@ export type SubscriptionsView = Record<string, SubItemView>;
 export type LiveScopedChange = { scope: "live" } & Partial<
 	Pick<
 		SubItemView,
-		| "live"
+		| "liveStart"
 		| "liveEnd"
-		| "liveGuardBuy"
+		| "membership"
 		| "superchat"
 		| "extras"
 		| "uname"
@@ -261,7 +261,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 	>
 >;
 
-export type DynamicScopedChange = { scope: "dynamic" } & Partial<Pick<SubItemView, "dynamic">>;
+export type DynamicScopedChange = { scope: "dynamic" } & Partial<Pick<SubItemView, "post">>;
 
 export type TargetScopedChange = { scope: "target" } & Pick<SubItemView, "target">;
 

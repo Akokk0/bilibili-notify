@@ -51,14 +51,14 @@ type FeatureGroup = {
 const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
 	{
 		label: "动态",
-		keys: [{ key: "dynamic", sub: "投稿 / 转发 / 专栏" }],
+		keys: [{ key: "post", sub: "投稿 / 转发 / 专栏" }],
 	},
 	{
 		label: "直播",
 		keys: [
-			{ key: "live", sub: "开播提醒" },
+			{ key: "liveStart", sub: "开播提醒" },
 			{ key: "liveEnd", sub: "下播卡片;词云 / AI 总结跟着它走" },
-			{ key: "liveGuardBuy", sub: "舰长 / 提督 / 总督" },
+			{ key: "membership", sub: "舰长 / 提督 / 总督" },
 			{ key: "superchat", sub: "Super Chat 提醒" },
 		],
 	},
@@ -76,7 +76,7 @@ const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
  * 总结从这里起走同一段代码 —— 表由注册表自己说了算,加一把键不用回这个文件补分支。
  *
  * 三层:全局默认 + per-UP 覆盖 `overrides.features.extras.X`(两层合起来就是
- * {@link effExtra})+ per-target 三态表 `extras.X[targetId]`。「key ⊆ 主特性目标」由后端
+ * {@link effExtra})+ per-target 三态表 `extraTargets.X[targetId]`。「key ⊆ 主特性目标」由后端
  * schema 强制,所以主特性没给这个目标时这儿的开关一律禁用。
  *
  * 这个函数也是「关掉某把主特性的路由时,跟着作废哪几把覆写」的依据。
@@ -96,7 +96,7 @@ const BILI_ONLY_EXTRAS: ReadonlySet<ExtraKey> = new Set(["wordcloud", "liveSumma
  * 搬到别的平台上就是假话;没有的就不写。
  */
 const EXTENSION_FEATURE_SUBS: Partial<Record<FeatureKey, string>> = {
-	live: "开播提醒",
+	liveStart: "开播提醒",
 	liveEnd: "下播卡片",
 };
 
@@ -111,7 +111,7 @@ function featureGroupsFor(
 ): ReadonlyArray<FeatureGroup> {
 	if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY) return FEATURE_GROUPS;
 	return FEATURE_GROUPS.map((g) => ({
-		label: g.keys.some(({ key }) => key === "dynamic") ? labelOf("dynamic") : g.label,
+		label: g.keys.some(({ key }) => key === "post") ? labelOf("post") : g.label,
 		keys: g.keys
 			.filter(({ key }) => visible.includes(key))
 			.map(({ key }) => ({ key, sub: EXTENSION_FEATURE_SUBS[key] })),
@@ -123,8 +123,8 @@ function featureGroupsFor(
  * 留在界面这一层;缺了也不炸 —— 新加的键先走兜底那句,补文案是另一回事。
  */
 const EXTRA_HINTS: Partial<Record<ExtraKey, string>> = {
-	atAllDynamic: "动态推送时附加 @全体",
-	atAllLive: "开播推送时附加 @全体(SC / 上舰 / 词云 / 总结 不 @)",
+	atAllPost: "动态推送时附加 @全体",
+	atAllLiveStart: "开播推送时附加 @全体(SC / 上舰 / 词云 / 总结 不 @)",
 	wordcloud: "下播时作为附加消息一起推",
 	liveSummary: "下播时作为附加消息一起推",
 };
@@ -239,14 +239,14 @@ export function detachTargetFromDraft(d: Subscription, targetId: string): Subscr
 	for (const k of FEATURE_KEYS) {
 		routing[k] = routing[k].filter((id) => id !== targetId);
 	}
-	let extras = d.extras;
+	let extraTargets = d.extraTargets;
 	for (const k of EXTRA_KEYS) {
-		if (targetId in extras[k]) {
-			const { [targetId]: _gone, ...rest } = extras[k];
-			extras = { ...extras, [k]: rest };
+		if (targetId in extraTargets[k]) {
+			const { [targetId]: _gone, ...rest } = extraTargets[k];
+			extraTargets = { ...extraTargets, [k]: rest };
 		}
 	}
-	return { ...d, routing, extras };
+	return { ...d, routing, extraTargets };
 }
 
 export function UpDialog({
@@ -451,20 +451,20 @@ export function UpDialog({
 			const next =
 				on && !has ? [...list, targetId] : !on && has ? list.filter((id) => id !== targetId) : list;
 			const routing = { ...d.routing, [k]: next };
-			let extras = d.extras;
+			let extraTargets = d.extraTargets;
 			if (!on) {
 				for (const ek of extrasUnder(k)) {
-					if (!(targetId in extras[ek])) continue;
-					const { [targetId]: _gone, ...rest } = extras[ek];
-					extras = { ...extras, [ek]: rest };
+					if (!(targetId in extraTargets[ek])) continue;
+					const { [targetId]: _gone, ...rest } = extraTargets[ek];
+					extraTargets = { ...extraTargets, [ek]: rest };
 				}
 			}
-			return { ...d, routing, extras };
+			return { ...d, routing, extraTargets };
 		});
 	}
 
 	/**
-	 * 某个目标上某把附加项的显式覆写(写 extras.X Map)。主特性没给这个目标时不允许写 ——
+	 * 某个目标上某把附加项的显式覆写(写 extraTargets.X Map)。主特性没给这个目标时不允许写 ——
 	 * 后端 schema 那条「key ⊆ routing[主特性]」本来就不收。
 	 * `explicit === undefined` 表示重置回跟随(删 Map key)。
 	 */
@@ -477,15 +477,15 @@ export function UpDialog({
 			if (!d) return d;
 			const feature = PUSH_EXTRAS[extraKey].feature;
 			if (explicit !== undefined && !d.routing[feature].includes(targetId)) return d;
-			const map = d.extras[extraKey];
+			const map = d.extraTargets[extraKey];
 			if (explicit === undefined) {
 				if (!(targetId in map)) return d;
 				const { [targetId]: _gone, ...rest } = map;
-				return { ...d, extras: { ...d.extras, [extraKey]: rest } };
+				return { ...d, extraTargets: { ...d.extraTargets, [extraKey]: rest } };
 			}
 			return {
 				...d,
-				extras: { ...d.extras, [extraKey]: { ...map, [targetId]: explicit } },
+				extraTargets: { ...d.extraTargets, [extraKey]: { ...map, [targetId]: explicit } },
 			};
 		});
 	}
@@ -506,12 +506,12 @@ export function UpDialog({
 		});
 		setDraft((d) => {
 			if (!d) return d;
-			let extras = d.extras;
+			let extraTargets = d.extraTargets;
 			const clearExtras = (feature: FeatureKey): void => {
 				for (const ek of extrasUnder(feature)) {
-					if (!(targetId in extras[ek])) continue;
-					const { [targetId]: _gone, ...rest } = extras[ek];
-					extras = { ...extras, [ek]: rest };
+					if (!(targetId in extraTargets[ek])) continue;
+					const { [targetId]: _gone, ...rest } = extraTargets[ek];
+					extraTargets = { ...extraTargets, [ek]: rest };
 				}
 			};
 			if (toCustom) {
@@ -520,7 +520,7 @@ export function UpDialog({
 				for (const k of FEATURE_KEYS) {
 					if (!routing[k].includes(targetId)) clearExtras(k);
 				}
-				return { ...d, routing, extras };
+				return { ...d, routing, extraTargets };
 			}
 			let routing = d.routing;
 			for (const k of FEATURE_KEYS) {
@@ -530,7 +530,7 @@ export function UpDialog({
 			}
 			// 切回 follow:per-target 的附加项显式覆写清掉,回归「跟订阅默认走」。
 			for (const k of FEATURE_KEYS) clearExtras(k);
-			return { ...d, routing, extras };
+			return { ...d, routing, extraTargets };
 		});
 	}
 
@@ -1010,12 +1010,12 @@ function ExtraInlineToggles({
 /**
  * 某个推送目标自己的附加项开关(自定义 panel 矩阵用),三态:
  * - 显示值 = `explicit ?? inheritedValue`
- * - 点 Toggle = 切到 explicit 反向值(写 extras.X Map)
+ * - 点 Toggle = 切到 explicit 反向值(写 extraTargets.X Map)
  * - explicit !== undefined 时旁边出 reset 图标(⟲),点击清掉 Map key = 重置为跟随
  * - parentOn=false(主特性没给这个目标)时整行 disabled —— 后端 schema 那条子集约束
  *   本来就不收,能点才是骗人
  * - unsupported 时强制禁用、显示为关、不出 reset,并在主特性已开时补一行说明。数据
- *   (extras.X Map)不动 —— 仅 UI 拦截,后端本就 best-effort 跳过。这一档只可能来自
+ *   (extraTargets.X Map)不动 —— 仅 UI 拦截,后端本就 best-effort 跳过。这一档只可能来自
  *   **平台能力**(今天只有 QQ 官机不支持 @全体),与配置面的三态是两回事。
  *
  * aria-label 带上目标名:一次能展开好几个目标,光一句「弹幕词云」读屏和测试都分不清
@@ -1177,8 +1177,8 @@ function TargetRoutingCard({
 													labelOf={labelOf}
 													parentOn={parentOn}
 													explicit={
-														Object.hasOwn(sub.extras[ek], target.id)
-															? sub.extras[ek][target.id]
+														Object.hasOwn(sub.extraTargets[ek], target.id)
+															? sub.extraTargets[ek][target.id]
 															: undefined
 													}
 													inheritedValue={effExtra(sub, ek)}

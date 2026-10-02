@@ -14,8 +14,14 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { type ExtensionSubItemView, executeTool, type Subscriptions } from "../tools";
 
 const VIEW: Subscriptions = {
-	"sub-bili": { uid: "1", uname: "晨风", dynamic: true, live: true },
-	"sub-ext": { platform: "抖音", externalId: "20001", uname: "抖音甲", dynamic: true, live: true },
+	"sub-bili": { uid: "1", uname: "晨风", post: true, liveStart: true },
+	"sub-ext": {
+		platform: "抖音",
+		externalId: "20001",
+		uname: "抖音甲",
+		post: true,
+		liveStart: true,
+	},
 };
 
 function apiStub() {

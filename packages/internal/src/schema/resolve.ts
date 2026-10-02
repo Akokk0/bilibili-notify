@@ -17,7 +17,7 @@ import type {
 	AIOverride,
 	SpecialUser,
 	Subscription,
-	SubscriptionExtras,
+	SubscriptionExtraTargets,
 	SubscriptionOverrides,
 	SubscriptionRouting,
 } from "./subscriptions";
@@ -34,7 +34,7 @@ export interface EffectiveSubscription {
 	notes: string | undefined;
 	routing: SubscriptionRouting;
 	/** 附加项的 per-目标 三态表(原样带过来,没有可合并的上一层)。 */
-	extras: SubscriptionExtras;
+	extraTargets: SubscriptionExtraTargets;
 	/** 特别关注;来源不支持的(今天:拓展)一直是空的。 */
 	specialUsers: SpecialUser[];
 
@@ -147,7 +147,7 @@ export function resolveCardStyleForKind(
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */
 export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveSubscription {
 	// P2:merge() 在 override 缺失时直接返回 base 引用,且 {...base} 仅浅拷贝 ——
-	// routing/extras/specialUsers 又是 sub 的直接引用,filters.blockKeywords
+	// routing/extraTargets/specialUsers 又是 sub 的直接引用,filters.blockKeywords
 	// 等嵌套数组与 defaults 共享。任一消费方就地改 EffectiveSubscription 即污染
 	// 全局默认 / 原始 sub。structuredClone 整体深隔离(schema 全为纯数据,无函数)。
 	return structuredClone<EffectiveSubscription>({ id: sub.id, ...resolveCommon(sub, defaults) });
@@ -164,7 +164,7 @@ function resolveCommon(
 		enabled: sub.enabled,
 		notes: sub.notes,
 		routing: sub.routing,
-		extras: sub.extras,
+		extraTargets: sub.extraTargets,
 		specialUsers: sub.specialUsers,
 
 		features: mergeFeatures(defaults.features, ov.features),

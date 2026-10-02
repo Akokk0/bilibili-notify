@@ -24,12 +24,12 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		uid: "u1",
 		uname: "U1",
 		roomId: "r1",
-		dynamic: false,
-		live: true,
+		post: false,
+		liveStart: true,
 		liveEnd: true,
-		liveGuardBuy: false,
+		membership: false,
 		superchat: false,
-		extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: true },
+		extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: true },
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
@@ -186,7 +186,7 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 		await liveSession(
 			ctx,
 			makeSub({
-				extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: true },
+				extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: true },
 			}),
 		).handleLiveEnd("ws");
 		expect(wordcloud).not.toHaveBeenCalled();
@@ -198,7 +198,7 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 		await liveSession(
 			ctx,
 			makeSub({
-				extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false },
+				extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false },
 			}),
 		).handleLiveEnd("ws");
 		expect(sendLiveNotifyCard).toHaveBeenCalledTimes(1);
@@ -292,24 +292,24 @@ describe("wantsLiveEndExtras — 弹幕采集的门", () => {
 	it.each<[string, Partial<SubItemView>, boolean]>([
 		[
 			"下播开、词云开",
-			{ extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: false } },
+			{ extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: false } },
 			true,
 		],
 		[
 			"下播开、只开总结",
-			{ extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: true } },
+			{ extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: true } },
 			true,
 		],
 		[
 			"下播开、子项全关",
-			{ extras: { atAllDynamic: false, atAllLive: true, wordcloud: false, liveSummary: false } },
+			{ extras: { atAllPost: false, atAllLiveStart: true, wordcloud: false, liveSummary: false } },
 			false,
 		],
 		[
 			"下播关、子项开着",
 			{
 				liveEnd: false,
-				extras: { atAllDynamic: false, atAllLive: true, wordcloud: true, liveSummary: true },
+				extras: { atAllPost: false, atAllLiveStart: true, wordcloud: true, liveSummary: true },
 			},
 			false,
 		],
