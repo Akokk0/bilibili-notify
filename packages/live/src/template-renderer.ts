@@ -1,3 +1,4 @@
+import { formatCount } from "@bilibili-notify/internal";
 import type { CustomLiveMsgLike, SubItemView } from "./push-like";
 import type { MasterInfo } from "./types";
 
@@ -59,21 +60,6 @@ export function applyTemplate(template: string, vars: Record<string, string>): s
 		.replaceAll("\\n", "\n");
 }
 
-/**
- * Format follower-change as a signed magnitude string with a 1万 (10K) cutoff,
- * mirroring live-service's inline formatting.
- */
-export function formatFollowerChange(n: number): string {
-	if (n > 0) return n >= 10_000 ? `+${(n / 10000).toFixed(1)}万` : `+${n}`;
-	if (n <= -10_000) return `${(n / 10000).toFixed(1)}万`;
-	return n.toString();
-}
-
-/** Format follower count, abbreviating ≥10K to `X.X万`. */
-export function formatFollowerCount(n: number): string {
-	return n >= 10_000 ? `${(n / 10000).toFixed(1)}万` : n.toString();
-}
-
 /** Build the canonical room link from `LiveRoomInfo.data` style fields. */
 export function buildRoomLink(info: { short_id: number; room_id: number }): string {
 	return `https://live.bilibili.com/${info.short_id === 0 ? info.room_id : info.short_id}`;
@@ -120,13 +106,13 @@ export function renderLiveText(
 	const vars: Record<string, string> = { name: values.name, time: values.time };
 	switch (kind) {
 		case "liveStart":
-			vars.follower = textOf(values.follower, formatFollowerCount);
+			vars.follower = textOf(values.follower, (n) => formatCount(n));
 			break;
 		case "liveOngoing":
-			vars.watched = textOf(values.watched, formatFollowerCount);
+			vars.watched = textOf(values.watched, (n) => formatCount(n));
 			break;
 		case "liveEnd":
-			vars.follower_change = textOf(values.followerChange, formatFollowerChange);
+			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));
 			break;
 	}
 	return applyTemplate(template ?? DEFAULT_LIVE_TEMPLATES[kind], vars);

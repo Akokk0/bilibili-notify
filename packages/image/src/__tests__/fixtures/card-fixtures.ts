@@ -14,8 +14,7 @@
  * 不碰真实时钟 —— 所以入参是**异步工厂**(`build()`)而不是一份现成的常量。
  */
 
-import type { CardSkinKind } from "@bilibili-notify/internal";
-import { numberToStr } from "../../format";
+import { type CardSkinKind, formatCount } from "@bilibili-notify/internal";
 import { htmlToPlain } from "../../html-to-plain";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../../styles";
 import { buildDynamicNode, type NodeFormatters } from "../../templates/dynamic-content";
@@ -94,7 +93,7 @@ const RICH_DESCRIPTION =
 
 /**
  * 照 `generateNeutralLiveCard` 排好的那一份组 props(块吃的 `LiveCardView`;数字都经
- * numberToStr)。
+ * formatCount)。
  */
 function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 	return {
@@ -107,10 +106,10 @@ function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 		cover: USER_COVER,
 		hasCover: true,
 		time: "开播时间：2026-09-13 20:00:00",
-		online: numberToStr(123_456),
+		online: formatCount(123_456),
 		likes: "",
 		totalViewers: "",
-		fans: numberToStr(88_800),
+		fans: formatCount(88_800),
 		fansChanged: "",
 		...over,
 	};
@@ -663,8 +662,8 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 			description: "",
 			time: "开播时间：2026-09-13 20:00:00",
 			cover: "http://i0.hdslb.com/bfs/album/bn-custom-live-cover-0001.png",
-			likes: numberToStr(20_133),
-			totalViewers: numberToStr(31_200),
+			likes: formatCount(20_133),
+			totalViewers: formatCount(31_200),
 			fansChanged: "+1.2万",
 		}),
 	},
@@ -688,8 +687,8 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 			{
 				status: "end",
 				time: "直播时长：2小时13分",
-				likes: numberToStr(20_133),
-				totalViewers: numberToStr(31_200),
+				likes: formatCount(20_133),
+				totalViewers: formatCount(31_200),
 			},
 			// 与 buildFontFace 出的形状一致,data URL 换成固定短串(真实的是整份字体文件)。
 			'@font-face{font-family:"bn-user-font";src:url("data:font/woff2;base64,d09GMgABAAAAAAAY");font-display:block}',

@@ -3,7 +3,6 @@
  *
  * 刻意只覆盖「逻辑承载」函数,**不测** HTML/CSS 模板拼装与 puppeteer SSR
  * (测渲染产物又脆又低价值,属集成测试地盘):
- *   - getTimeDifference:luxon UTC+8 时差格式化(过去/未来/相等)
  *   - getMimeType / isRemoteUrl / unixTimestampToString:纯映射
  *   - fetchImageAsDataUrl:缓存命中 / fetch 成功 / content-type 回退 / HTTP 错误
  *   - inlineRemoteImages:<img>+CSS url() 内联为 data:,失败保留原 URL
@@ -14,7 +13,7 @@
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
 	type ImageRendererConfig,
@@ -84,34 +83,6 @@ function fakeResponse(opts: {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
-});
-
-// ---------------------------------------------------------------------------
-// getTimeDifference
-// ---------------------------------------------------------------------------
-
-describe("ImageRenderer.getTimeDifference", () => {
-	beforeEach(() => {
-		vi.useFakeTimers();
-		// 现在 = 2026-01-01T04:00:00Z = UTC+8 的 2026-01-01 12:00:00
-		vi.setSystemTime(new Date("2026-01-01T04:00:00Z"));
-	});
-
-	it("过去 2 小时 → 「2小时」", async () => {
-		const r = makeRenderer();
-		// dateString 按 UTC+8 解析:10:00:00(+08) = 02:00:00Z,距今 2h 前
-		expect(await r.getTimeDifference("2026-01-01 10:00:00")).toBe("2小时");
-	});
-
-	it("未来 2 小时 → 带负号「-2小时」", async () => {
-		const r = makeRenderer();
-		expect(await r.getTimeDifference("2026-01-01 14:00:00")).toBe("-2小时");
-	});
-
-	it("时间相等 → 「0秒」", async () => {
-		const r = makeRenderer();
-		expect(await r.getTimeDifference("2026-01-01 12:00:00")).toBe("0秒");
-	});
 });
 
 // ---------------------------------------------------------------------------

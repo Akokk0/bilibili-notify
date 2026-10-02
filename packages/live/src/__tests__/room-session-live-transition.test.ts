@@ -103,7 +103,6 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		closeListener: vi.fn(),
 		stopMonitoring: vi.fn(),
 		sendPrivateMsg: vi.fn(async () => {}),
-		getTimeDifference: vi.fn(async () => "3小时"),
 		getLiveRoomInfo: vi.fn(async () => ({ ...LIVE_ROOM })),
 		startLiveRoomListener: vi.fn(async () => true),
 		intervalDisposes: () => intervalDisposes,
@@ -139,7 +138,6 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		sendLiveNotifyCard: mocks.sendLiveNotifyCard,
 		closeListener: mocks.closeListener,
 		stopMonitoring: mocks.stopMonitoring,
-		getTimeDifference: mocks.getTimeDifference,
 		getLiveRoomInfo: mocks.getLiveRoomInfo,
 		startLiveRoomListener: mocks.startLiveRoomListener,
 		...over,
@@ -168,16 +166,17 @@ describe("bootstrap() 期间到达的下播事件", () => {
 		// 冷启动时 UP 正在播,而 bootstrap 还在刷房间信息 / 渲染推送「正在直播」卡片
 		// 的这几秒里 UP 停播了。END 撞上守卫被丢弃,B 站也不会再发第二条;若这里仍
 		// 无条件翻成在播,这个房间就永久停在「直播中」,统计侧每天平白多记 24 小时。
-		const { ctx, mocks } = makeCtx();
 		let handler: EventFunnel | undefined;
+		const { ctx, mocks } = makeCtx({
+			// 在翻状态之前的最后一段 await(刷主播信息)里插进这条 END。
+			getMasterInfo: async () => {
+				await dispatch(handler?.({ kind: "live-end" }));
+				return { ...MASTER };
+			},
+		});
 		mocks.startLiveRoomListener.mockImplementation(async (...args: unknown[]) => {
 			handler = args[1] as EventFunnel;
 			return true;
-		});
-		// 在翻状态之前的最后一段 await 里插进这条 END。
-		mocks.getTimeDifference.mockImplementation(async () => {
-			await dispatch(handler?.({ kind: "live-end" }));
-			return "3小时";
 		});
 
 		const session = new RoomSession(ctx, makeSub()) as AnySession;
@@ -188,15 +187,16 @@ describe("bootstrap() 期间到达的下播事件", () => {
 	});
 
 	it("中止时排空弹幕缓冲 —— 否则这几秒的弹幕会混进下一场词云", async () => {
-		const { ctx, mocks } = makeCtx();
 		let handler: EventFunnel | undefined;
+		const { ctx, mocks } = makeCtx({
+			getMasterInfo: async () => {
+				await dispatch(handler?.({ kind: "live-end" }));
+				return { ...MASTER };
+			},
+		});
 		mocks.startLiveRoomListener.mockImplementation(async (...args: unknown[]) => {
 			handler = args[1] as EventFunnel;
 			return true;
-		});
-		mocks.getTimeDifference.mockImplementation(async () => {
-			await dispatch(handler?.({ kind: "live-end" }));
-			return "3小时";
 		});
 
 		const session = new RoomSession(ctx, makeSub()) as AnySession;

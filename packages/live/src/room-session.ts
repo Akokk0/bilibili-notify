@@ -1,5 +1,5 @@
 import type { GuardLevel, LiveEvent, LiveUser, UserActionType } from "@bilibili-notify/blive";
-import type { Disposable } from "@bilibili-notify/internal";
+import { type Disposable, formatCount } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { LivePushType } from "./push-like";
 import { GUARD_LEVEL_IMG, GUARD_LEVEL_TIER } from "./room-context";
@@ -741,12 +741,12 @@ export class RoomSession extends RoomSessionBase {
 		this.ctx.logger.info(
 			`[stat] 房间号：${this.masterInfo.roomId}，开播时的粉丝数：${this.masterInfo.liveOpenFollowerNum}`,
 		);
-		this.liveTime = this.liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
-		const diffTime = await this.ctx.getTimeDifference(this.liveTime);
-		const followerNum =
-			this.masterInfo.liveOpenFollowerNum >= 10_000
-				? `${(this.masterInfo.liveOpenFollowerNum / 10000).toFixed(1)}万`
-				: this.masterInfo.liveOpenFollowerNum.toString();
+		// live_time 是北京时间,兜底也得按北京时间拼:读它的 biliLiveTimeToIso 一律当北京时间读。
+		this.liveTime =
+			this.liveRoomInfo.live_time ||
+			DateTime.now().setZone("UTC+8").toFormat("yyyy-MM-dd HH:mm:ss");
+		const diffTime = this.liveElapsed();
+		const followerNum = formatCount(this.masterInfo.liveOpenFollowerNum);
 		this.liveData.fansNum = this.masterInfo.liveOpenFollowerNum;
 		const roomLink = buildRoomLink(this.liveRoomInfo);
 		// 消息版式来自 per-UP 折叠值(宿主恒填)。链接独立成部件,
@@ -780,7 +780,7 @@ export class RoomSession extends RoomSessionBase {
 		);
 
 		if (this.ctx.isDisposed()) return;
-		// 跨 useLiveRoomInfo / useMasterInfo / getTimeDifference / sendLiveNotifyCard
+		// 跨 useLiveRoomInfo / useMasterInfo / sendLiveNotifyCard
 		// 这串长 await(卡片渲染+推送可数秒)后重校 liveStatus:期间可能已交错
 		// onLiveEnd → handleLiveEnd 把状态翻 idle 并 teardown。此刻若已非开播态,
 		// 这条 stale start 绝不能再 armPeriodicTimer,否则 idle 房间被挂上 live

@@ -151,7 +151,6 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 			liveEndFollowerNum: 1,
 			liveFollowerChange: 0,
 		}),
-		getTimeDifference: async () => "1小时",
 	} as unknown as RoomContext;
 
 	return { ctx, mocks };

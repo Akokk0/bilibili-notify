@@ -9,6 +9,7 @@
  * 就得先起半个服务端。
  */
 
+import { formatAgo } from "@bilibili-notify/internal";
 import { type CommandSpec, command } from "./command-dispatcher.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
@@ -36,22 +37,6 @@ export interface StatusCommandOptions {
 	now?: () => number;
 }
 
-/**
- * 「多久以前」。手机上「14:32」还得自己减一次,「2 分钟前」不用。
- *
- * `undefined` 与「很久以前」必须分开说:前者是刚启动,后者是坏了。
- */
-function ago(at: number | undefined, now: number): string {
-	if (at === undefined) return "还没抓过";
-	const ms = Math.max(0, now - at);
-	if (ms < 60_000) return "刚刚";
-	const min = Math.floor(ms / 60_000);
-	if (min < 60) return `${min} 分钟前`;
-	const hour = Math.floor(min / 60);
-	if (hour < 24) return `${hour} 小时前`;
-	return `${Math.floor(hour / 24)} 天前`;
-}
-
 function renderConnections(connections: StatusReport["connections"]): string {
 	// 一行空白看起来像功能坏了,而「还没配」是个明确的下一步。
 	if (connections.length === 0) return "还没配连接";
@@ -62,9 +47,13 @@ function renderConnections(connections: StatusReport["connections"]): string {
 }
 
 export function renderStatus(report: StatusReport, now: number): string {
+	// 「多久以前」:手机上「14:32」还得自己减一次,「2 分钟前」不用。`undefined`(刚启动、一次都
+	// 没成功)与「很久以前」(坏了)必须分开说 —— 前者写「还没抓过」,后者写「N 天前」。
+	const lastFetch =
+		report.lastFetchAt === undefined ? undefined : formatAgo(report.lastFetchAt, now);
 	const lines = [
 		`登录：${report.login}`,
-		`上次抓取：${ago(report.lastFetchAt, now)}`,
+		`上次抓取：${lastFetch ?? "还没抓过"}`,
 		`推送通道：${renderConnections(report.connections)}`,
 		`渲染排队：${report.renderQueue}`,
 	];

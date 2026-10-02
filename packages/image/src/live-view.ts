@@ -6,8 +6,8 @@
  * 块与皮肤契约只认排好的那一份,不读时钟 —— 预览的示例数据也就能直接写它、每次画出同一张。
  */
 
+import { type FormatCountOptions, formatCount, formatDuration } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import { numberToStr } from "./format";
 import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 
 /**
@@ -19,66 +19,23 @@ export const LIVE_TIME_ZONE = "UTC+8";
 export const LIVE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
 
 /**
- * 从 `start` 到此刻过了多久,写成「2小时13分5秒」。`start` 在此刻之后时带负号;两者相等时
- * 是「0秒」。
- */
-export function durationSince(start: DateTime): string {
-	return durationBetween(start, DateTime.now());
-}
-
-/**
- * 从 `startedAt` 到 `at`(都是毫秒)过了多久 —— 与 {@link durationSince} 同一种写法,两个时刻都由调用方给。
- * 拓展订阅的直播文案 `{time}` 用它(ADR-0019 决策 67):下播卡的时长要定格在下播那一刻,断流接续等的那
- * 几分钟不算进去。
- */
-export function liveDuration(startedAt: number, at: number): string {
-	return durationBetween(DateTime.fromMillis(startedAt), DateTime.fromMillis(at));
-}
-
-/**
- * 先把整段取整到秒,再拆单位。反过来(拆完单独给秒取整)的话,119.6 秒拆成 1 分 59.6 秒、取整成
- * 「1分60秒」;300.3 秒拆出 0.3 秒,多一个「5分0秒」。取整按绝对值,正负两头对称。
- */
-function durationBetween(start: DateTime, end: DateTime): string {
-	const ms = end.toMillis() - start.toMillis();
-	const wholeSeconds = Math.sign(ms) * Math.round(Math.abs(ms) / 1000);
-	const diff = start
-		.plus({ seconds: wholeSeconds })
-		.diff(start, ["years", "months", "days", "hours", "minutes", "seconds"]);
-	const { years, months, days, hours, minutes, seconds } = diff.toObject();
-	const parts: string[] = [];
-	if (years) parts.push(`${Math.abs(years)}年`);
-	if (months) parts.push(`${Math.abs(months)}个月`);
-	if (days) parts.push(`${Math.abs(days)}天`);
-	if (hours) parts.push(`${Math.abs(hours)}小时`);
-	if (minutes) parts.push(`${Math.abs(minutes)}分`);
-	if (seconds) parts.push(`${Math.abs(seconds)}秒`);
-	const sign = wholeSeconds < 0 ? "-" : "";
-	return parts.length > 0 ? `${sign}${parts.join("")}` : "0秒";
-}
-
-/**
  * 卡上那句时间。没在播写「未开播」;其余要开播时刻,没有就不写(空串)——
  * 写一个「开播时间：」后面却什么都没有,不如整句不出。
  */
 function liveTimeText(status: LiveCardStatus, startedAt: number | undefined): string {
 	if (status === "offline") return "未开播";
 	if (startedAt === undefined || !Number.isFinite(startedAt)) return "";
+	if (status === "streaming") return `直播时长：${formatDuration(startedAt)}`;
 	const start = DateTime.fromMillis(startedAt, { zone: LIVE_TIME_ZONE });
-	if (status === "streaming") return `直播时长：${durationSince(start)}`;
 	return `开播时间：${start.toFormat(LIVE_TIME_FORMAT)}`;
 }
 
-/** 人数一类:数字排成卡片同款的万 / 亿写法,文字原样,没有就空串。 */
-function countText(v: number | string | undefined): string {
-	return typeof v === "number" ? numberToStr(v) : (v ?? "");
-}
-
-/** 粉丝数变化:数字带正负号(「+128」「+1.2万」「-35」),文字原样,没有就空串。 */
-function changeText(v: number | string | undefined): string {
-	if (typeof v !== "number") return v ?? "";
-	if (v > 0) return v >= 10_000 ? `+${(v / 10_000).toFixed(1)}万` : `+${v}`;
-	return v <= -10_000 ? `${(v / 10_000).toFixed(1)}万` : v.toString();
+/**
+ * 人数一类:数字排成卡片同款的万 / 亿写法,文字原样,没有就空串。粉丝数变化传 `{ signed: true }`
+ * (「+128」「+1.2万」「-35」)。
+ */
+function countText(v: number | string | undefined, options?: FormatCountOptions): string {
+	return typeof v === "number" ? formatCount(v, options) : (v ?? "");
 }
 
 /**
@@ -140,6 +97,6 @@ export function buildLiveCardView(input: LiveCardInput, coverOverride?: string):
 		likes: countText(input.likes),
 		totalViewers: countText(input.totalViewers),
 		fans: countText(input.fans),
-		fansChanged: changeText(input.fansChanged),
+		fansChanged: countText(input.fansChanged, { signed: true }),
 	};
 }

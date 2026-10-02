@@ -19,9 +19,8 @@
  */
 
 import { GuardLevel } from "@bilibili-notify/blive";
-import { type CardSkinKind, resolvePreviewScene } from "@bilibili-notify/internal";
+import { type CardSkinKind, formatCount, resolvePreviewScene } from "@bilibili-notify/internal";
 import type { CardPropsByKind } from "../blocks/frames";
-import { numberToStr } from "../format";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../styles";
 import { buildDynamicNode, type NodeFormatters } from "../templates/dynamic-content";
 import type { LiveCardView } from "../templates/live-card";
@@ -71,14 +70,14 @@ const LIVE_SCENES: Record<string, LiveSceneOverlay> = {
 	streaming: {
 		status: "streaming",
 		time: "直播时长：2小时13分",
-		online: numberToStr(123_456),
-		fans: numberToStr(88_800),
+		online: formatCount(123_456),
+		fans: formatCount(88_800),
 	},
 	ended: {
 		status: "end",
 		time: "开播时间：2026-09-13 20:00:00",
-		likes: numberToStr(20_133),
-		totalViewers: numberToStr(31_200),
+		likes: formatCount(20_133),
+		totalViewers: formatCount(31_200),
 	},
 };
 
@@ -107,7 +106,7 @@ function liveSample(scene: string): LiveCardView {
  * 时间 / 数字的格式化器。真机上时间由渲染器按时钟算,示例里写死 —— 预览要的是稳定。
  * 数字仍走卡片同款的万 / 亿写法,免得示例上的数字和真卡长得不是一回事。
  */
-const FMT: NodeFormatters = { time: () => "刚刚", num: (n: number) => numberToStr(n) };
+const FMT: NodeFormatters = { time: () => "刚刚", num: (n: number) => formatCount(n) };
 
 /** 示例视频本身。「视频投稿」与转发场面框里那条用的是同一个视频,只是外面那条动态不同。 */
 const SAMPLE_ARCHIVE = {

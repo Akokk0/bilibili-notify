@@ -1,4 +1,4 @@
-import { type ImageRenderer, type LiveCardInput, liveDuration } from "@bilibili-notify/image";
+import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import type {
 	Disposable,
 	Logger,
@@ -7,7 +7,7 @@ import type {
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
-import { subscriptionIdentityOf } from "@bilibili-notify/internal";
+import { formatDuration, subscriptionIdentityOf } from "@bilibili-notify/internal";
 import {
 	type CustomCardStyleLike,
 	createSerialGate,
@@ -338,7 +338,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 			textKind: "liveOngoing",
 			facts: row,
 			startedAt,
-			time: startedAt === undefined ? "" : liveDuration(startedAt, now()),
+			time: startedAt === undefined ? "" : formatDuration(startedAt, now()),
 			fans: opts.profile(id)?.fans,
 			run,
 		});
@@ -412,7 +412,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 					textKind: "liveStart",
 					facts: value,
 					startedAt: value.startedAt,
-					time: liveDuration(value.startedAt, at),
+					time: formatDuration(value.startedAt, at),
 					fans: session.fansAtStart,
 				}),
 			);
@@ -503,7 +503,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 				textKind: "liveEnd",
 				facts,
 				startedAt,
-				time: startedAt === undefined ? "" : liveDuration(startedAt, endedAt),
+				time: startedAt === undefined ? "" : formatDuration(startedAt, endedAt),
 				fansChanged,
 			});
 		});

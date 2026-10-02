@@ -1,13 +1,7 @@
 /**
- * 卡片上的计数写法 —— 万 / 亿,一位小数。播放、弹幕、在线、粉丝……渲染器上所有数字
- * 都走这一份;别处要拼「与卡片同款」的数字(链接解析把视频信息拼成动态)也从这里拿,
- * 免得两份手抄的规矩哪天悄悄分道扬镳,而差异只在渲染出来的图上看得见。
+ * 卡片上的时刻写法。卡片上的计数(万 / 亿)与时长不在这里:全仓只有一份,
+ * 住在 `@bilibili-notify/internal` 的 `format`(`formatCount` / `formatDuration`)。
  */
-export function numberToStr(num: number): string {
-	if (num >= 100_000_000) return `${(num / 100_000_000).toFixed(1)}亿`;
-	if (num >= 10_000) return `${(num / 10_000).toFixed(1)}万`;
-	return num.toString();
-}
 
 /**
  * 卡片上的时刻写法(本机时区):`2026年09月24日 12:00:05`。动态卡的发布时间用它 —— B 站的动态与

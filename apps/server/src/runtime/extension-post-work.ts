@@ -6,15 +6,15 @@ import {
 	type DynamicVideo,
 	formatCardTime,
 	type GalleryImage,
-	numberToStr,
 } from "@bilibili-notify/image";
 import {
+	formatClock,
+	formatCount,
 	readImageSize,
 	type SubscriptionReportValue,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
 import { type ExtensionCardAuthor, imageDataUrl } from "./extension-push-common.js";
-import { formatDuration } from "./video-card.js";
 
 /**
  * **拓展报的作品 → 平台中立的作品**(ADR-0019 决策 55 / 66 / 69 / 71 / 72 / 77):装配(`deliverWork`)
@@ -90,16 +90,16 @@ function videoOf(video: NonNullable<Post["video"]>): DynamicVideo {
 	return {
 		cover: (video.cover && imageDataUrl(video.cover)) || BLOCKED_IMG_PLACEHOLDER,
 		title: video.title ?? "",
-		duration: video.duration === undefined ? "" : formatDuration(video.duration),
+		duration: video.duration === undefined ? "" : formatClock(video.duration),
 		desc: video.description ?? "",
-		...(video.plays === undefined ? {} : { views: numberToStr(video.plays) }),
+		...(video.plays === undefined ? {} : { views: formatCount(video.plays) }),
 	};
 }
 
 /** 互动数照 B 站卡排;没报的那一项空串(卡上那一项不画),三样都没报就没有互动数。 */
 function statsOf(stats: Post["stats"]): DynamicNode["stats"] {
 	if (!stats) return undefined;
-	const cell = (n: number | undefined) => (n === undefined ? "" : numberToStr(n));
+	const cell = (n: number | undefined) => (n === undefined ? "" : formatCount(n));
 	const out = {
 		like: cell(stats.likes),
 		comment: cell(stats.comments),

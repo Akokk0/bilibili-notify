@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { LiveRoomInfo } from "@bilibili-notify/api";
 import type { LiveEvent } from "@bilibili-notify/blive";
-import type { CardKind, Disposable } from "@bilibili-notify/internal";
+import { type CardKind, type Disposable, formatDuration } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { liveEndGraceMinutes, rotateLiveCover } from "./live-settings";
 import { type CustomCardStyleLike, LivePushType, type SubItemView } from "./push-like";
 import {
+	biliLiveTimeToIso,
 	LiveRoomAccessDeniedError,
 	LiveRoomPreflightBlockedError,
 	type RoomContext,
@@ -203,7 +204,7 @@ export abstract class RoomSessionBase {
 		this.ctx.emitLiveState(
 			this.sub.uid,
 			next ? "live" : "idle",
-			next ? this.liveStartIso() : endedAt,
+			next ? biliLiveTimeToIso(this.liveRoomInfo?.live_time) : endedAt,
 		);
 	}
 
@@ -250,12 +251,12 @@ export abstract class RoomSessionBase {
 		if (this.transitioningToLive) this.endArrivedWhileTransitioning = true;
 	}
 
-	/** `live_time`(北京时间字符串)→ ISO;缺失或解析不出时返回 undefined。 */
-	private liveStartIso(): string | undefined {
-		const raw = this.liveRoomInfo?.live_time;
-		if (!raw) return undefined;
-		const dt = DateTime.fromFormat(raw, "yyyy-MM-dd HH:mm:ss", { zone: "UTC+8" });
-		return dt.isValid ? (dt.toUTC().toISO() ?? undefined) : undefined;
+	/**
+	 * 开播到此刻播了多久,文案里 `{time}` 的那一句(「2小时13分5秒」);`liveTime` 解析不出来写「0秒」。
+	 * 读的是 {@link liveTime} —— 调用前它要已经落定。
+	 */
+	protected liveElapsed(): string {
+		return formatDuration(biliLiveTimeToIso(this.liveTime) ?? Number.NaN);
 	}
 
 	/**
@@ -386,7 +387,7 @@ export abstract class RoomSessionBase {
 			this.liveTime = this.liveRoomInfo.live_time;
 			const watched = String(this.liveData.watchedNum ?? "暂未获取到");
 			this.liveData.watchedNum = watched;
-			const diffTime = await this.ctx.getTimeDifference(this.liveTime);
+			const diffTime = this.liveElapsed();
 			const roomLink = buildRoomLink(this.liveRoomInfo);
 			// 消息版式来自 per-UP 折叠值(宿主恒填),与 onLiveStart 同款接线。
 			const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
@@ -548,7 +549,7 @@ export abstract class RoomSessionBase {
 		this.liveTime = this.liveRoomInfo.live_time;
 		const watched = String(this.liveData.watchedNum ?? "暂未获取到");
 		this.liveData.watchedNum = watched;
-		const diffTime = await this.ctx.getTimeDifference(this.liveTime);
+		const diffTime = this.liveElapsed();
 		const roomLink = buildRoomLink(this.liveRoomInfo);
 		const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
 			sub: this.sub,
@@ -602,7 +603,7 @@ export abstract class RoomSessionBase {
 	 * 或到期真下播时再决定。
 	 */
 	protected async enterGrace(source: "ws" | "polling"): Promise<void> {
-		this.graceEndDiffTime = await this.ctx.getTimeDifference(this.liveTime);
+		this.graceEndDiffTime = this.liveElapsed();
 		// 现在就是真实下播时刻;等到期再取就混进了整个等待窗口。
 		this.graceEndAt = new Date().toISOString();
 		this.cancelPeriodicTimer();
@@ -707,8 +708,11 @@ export abstract class RoomSessionBase {
 			`[stat] 开播时粉丝数：${this.masterInfo.liveOpenFollowerNum}，下播时粉丝数：${this.masterInfo.liveEndFollowerNum}，粉丝数变化：${this.masterInfo.liveFollowerChange}`,
 		);
 
-		this.liveTime = this.liveRoomInfo.live_time || DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
-		const diffTime = precomputedDiffTime ?? (await this.ctx.getTimeDifference(this.liveTime));
+		// live_time 是北京时间,兜底也得按北京时间拼:读它的 biliLiveTimeToIso 一律当北京时间读。
+		this.liveTime =
+			this.liveRoomInfo.live_time ||
+			DateTime.now().setZone("UTC+8").toFormat("yyyy-MM-dd HH:mm:ss");
+		const diffTime = precomputedDiffTime ?? this.liveElapsed();
 		this.liveData.fansChanged = this.masterInfo.liveFollowerChange;
 		const roomLink = buildRoomLink(this.liveRoomInfo);
 

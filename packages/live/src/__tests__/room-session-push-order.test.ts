@@ -93,7 +93,6 @@ function makeCtx(events: string[]) {
 			message: (segs: unknown[]) => segs,
 		},
 		push: { broadcastToTargets: vi.fn(async () => {}) },
-		getTimeDifference: vi.fn(async () => "2小时36分16秒"),
 		isSubscribed: vi.fn((_s: unknown, feat: string) => feat === "liveEnd"),
 		sendLiveNotifyCard,
 		stopMonitoring: vi.fn(),

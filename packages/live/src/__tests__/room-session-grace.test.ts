@@ -73,7 +73,6 @@ function makeCtx() {
 		logger: fakeServiceCtx.logger,
 		isDisposed: () => false,
 		danmakuCollector: { clear, registerRoom: vi.fn() },
-		getTimeDifference: vi.fn(async () => "3小时"),
 		emitLiveState,
 		sendLiveNotifyCard,
 	} as unknown as RoomContext;
@@ -169,16 +168,25 @@ describe("RoomSession 断流接续 — grace 开", () => {
 	});
 
 	it("等待到期且 B站仍离线 → handleLiveEnd(用定格 diffTime)", async () => {
-		const { ctx } = makeCtx();
-		const s = liveSession(ctx, makeSub({ liveEndGrace: true }));
-		s.useLiveRoomInfo = vi.fn(async () => true);
-		await s.onLiveEnd();
-		s.liveRoomInfo = { live_status: 0 }; // 离线
+		// liveTime「2026-01-01 10:00:00」是北京时间 = 02:00:00Z;挂起时是 05:05:12Z,播了 3 小时 5 分 12 秒。
+		// 等到期时钟又走了 2 分钟,定格的时长不跟着走(下播卡写的是真实下播那一刻)。
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T05:05:12.000Z"));
+		try {
+			const { ctx } = makeCtx();
+			const s = liveSession(ctx, makeSub({ liveEndGrace: true }));
+			s.useLiveRoomInfo = vi.fn(async () => true);
+			await s.onLiveEnd();
+			s.liveRoomInfo = { live_status: 0 }; // 离线
+			vi.setSystemTime(new Date("2026-01-01T05:07:12.000Z"));
 
-		await s.onGraceExpiry();
+			await s.onGraceExpiry();
 
-		expect(s.handleLiveEnd).toHaveBeenCalledTimes(1);
-		expect(s.handleLiveEnd).toHaveBeenCalledWith("grace", "3小时");
+			expect(s.handleLiveEnd).toHaveBeenCalledTimes(1);
+			expect(s.handleLiveEnd).toHaveBeenCalledWith("grace", "3小时5分12秒");
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("等待到期但 B站已重开(漏帧)→ 不下播,恢复复推", async () => {

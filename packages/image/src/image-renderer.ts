@@ -12,15 +12,15 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type Disposable,
 	effectiveCardSkinKnobs,
+	formatCount,
 	type Logger,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
-import { DateTime } from "luxon";
 import { biliLiveCardInput } from "./bili-live-input";
 import type { CardPropsByKind } from "./blocks/frames";
-import { formatCardTime, numberToStr } from "./format";
-import { buildLiveCardView, durationSince, LIVE_TIME_FORMAT, LIVE_TIME_ZONE } from "./live-view";
+import { formatCardTime } from "./format";
+import { buildLiveCardView } from "./live-view";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
 import { type ResolvedKnobAssets, resolveKnobAssets } from "./skin/knob-assets";
@@ -425,16 +425,6 @@ export class ImageRenderer {
 		}
 	}
 
-	/**
-	 * B 站 `live_time`(北京时间「yyyy-MM-dd HH:mm:ss」)到此刻过了多久,写成「2小时13分」。
-	 * 直播引擎拿它拼文案里的直播时长;卡上那句走的是同一个 {@link durationSince}。
-	 */
-	async getTimeDifference(dateString: string): Promise<string> {
-		return durationSince(
-			DateTime.fromFormat(dateString, LIVE_TIME_FORMAT, { zone: LIVE_TIME_ZONE }),
-		);
-	}
-
 	// ── 皮肤(ADR-0014) ─────────────────────────────────────────────────────────
 
 	/** 这张卡用哪套皮肤;缺省 / 空串 = 内置默认。 */
@@ -740,7 +730,7 @@ export class ImageRenderer {
 	): Promise<Buffer> {
 		const node = await buildDynamicNode(data, false, {
 			time: (ts) => this.unixTimestampToString(ts),
-			num: (n) => numberToStr(n),
+			num: (n) => formatCount(n),
 		});
 		return this.generateNeutralDynamicCard(node, colorOptions, options);
 	}

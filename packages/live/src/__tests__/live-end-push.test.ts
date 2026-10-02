@@ -80,7 +80,6 @@ function makeCtx() {
 			message: (segs: unknown[]) => segs,
 		},
 		push: { broadcastToTargets, sendPrivateMsg: vi.fn(async () => {}) },
-		getTimeDifference: vi.fn(async () => "1小时"),
 		isSubscribed: (sub: SubItemView, feat: keyof SubItemView) => sub[feat],
 		sendLiveNotifyCard,
 		wordcloudGenerator: { generate: wordcloud },

@@ -18,7 +18,8 @@
 import { GuardLevel } from "@bilibili-notify/blive";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Settings } from "luxon";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { CustomGuardBuyLike, SubItemView } from "../push-like";
 import { LivePushType, wantsLiveEndExtras } from "../push-like";
 import { RoomContext } from "../room-helpers";
@@ -70,7 +71,6 @@ interface CtxMocks {
 	renderSpecialUserEnter: ReturnType<typeof vi.fn>;
 	sendLiveNotifyCard: ReturnType<typeof vi.fn>;
 	stopMonitoring: ReturnType<typeof vi.fn>;
-	getTimeDifference: ReturnType<typeof vi.fn>;
 	emitLiveState: ReturnType<typeof vi.fn>;
 	isSubscribed: ReturnType<typeof vi.fn>;
 	collectsDanmaku: ReturnType<typeof vi.fn>;
@@ -102,7 +102,6 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		renderSpecialUserEnter: vi.fn(() => "进房文案"),
 		sendLiveNotifyCard: vi.fn(async () => {}),
 		stopMonitoring: vi.fn(),
-		getTimeDifference: vi.fn(async () => "1小时"),
 		emitLiveState: vi.fn(),
 		isSubscribed: vi.fn(() => false),
 		collectsDanmaku: vi.fn((sub: SubItemView) => wantsLiveEndExtras(sub)),
@@ -141,7 +140,6 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		safeBroadcast: m.safeBroadcast,
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
 		stopMonitoring: m.stopMonitoring,
-		getTimeDifference: m.getTimeDifference,
 		emitLiveState: m.emitLiveState,
 		emitEngineError: vi.fn(),
 		emitViewers: vi.fn(),
@@ -723,6 +721,120 @@ describe("RoomSession.handleLiveEnd — 消息版式", () => {
 		const params = m.sendLiveNotifyCard.mock.calls[0]?.[0];
 		expect(params?.messageLayout).toEqual(layout);
 		expect(params?.roomLink).toBe("https://live.bilibili.com/12345");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 文案里 {time} 那一句 —— 开播 / 正在直播 / 下播三路都从 live_time 现算
+//
+// 从前是 ctx 上的一个异步钩子(没配出图器时落进一个不带秒、不看时区的兜底),现在会话自己用
+// `formatDuration(biliLiveTimeToIso(liveTime))` 算,不经 ctx —— 测试替身再也注入不了它,所以
+// 给真的 live_time 与固定的钟,期望值写字面量。
+// ---------------------------------------------------------------------------
+
+describe("文案里的 {time}:按 live_time(北京时间)与当下的钟现算", () => {
+	// live_time「2026-01-01 00:00:00」是北京时间 = 2025-12-31T16:00:00Z;钟停在 18:04:09Z,播了 2 小时 4 分 9 秒。
+	const LIVE_TIME = "2026-01-01 00:00:00";
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2025-12-31T18:04:09.000Z"));
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function prime(s: AnySession, liveTime: string, followers = 100): void {
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: liveTime,
+				live_status: 1,
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = {
+				username: "主播",
+				userface: "",
+				roomId: "r1",
+				liveOpenFollowerNum: followers,
+				liveEndFollowerNum: followers,
+				liveFollowerChange: 0,
+			};
+			return true;
+		});
+		s.armPeriodicTimer = vi.fn();
+		s.dispatchWordCloudAndSummary = vi.fn(async () => {});
+	}
+
+	it("开播:renderLiveStart 收到「2小时4分9秒」,粉丝数过万写成「1.2万」", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		prime(s, LIVE_TIME, 12_345);
+		await s.onLiveStart();
+		expect(m.renderLiveStart.mock.calls[0]?.[0]).toMatchObject({
+			diffTime: "2小时4分9秒",
+			followerNum: "1.2万",
+		});
+	});
+
+	it("正在直播:renderLiveOngoing 收到「2小时4分9秒」", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		prime(s, LIVE_TIME);
+		await s.tickPushAtTime();
+		expect(m.renderLiveOngoing.mock.calls[0]?.[0]).toMatchObject({ diffTime: "2小时4分9秒" });
+	});
+
+	it("下播:renderLiveEnd 收到「2小时4分9秒」", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockReturnValue(true);
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		s.liveStatus = true;
+		prime(s, LIVE_TIME);
+		await s.handleLiveEnd("ws");
+		expect(m.renderLiveEnd.mock.calls[0]?.[0]).toMatchObject({ diffTime: "2小时4分9秒" });
+	});
+
+	it("live_time 解析不出(B 站对没开播的房间给全零)→ 写「0秒」,不抛、不写 NaN", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		prime(s, "0000-00-00 00:00:00");
+		await s.tickPushAtTime();
+		expect(m.renderLiveOngoing.mock.calls[0]?.[0]).toMatchObject({ diffTime: "0秒" });
+	});
+
+	describe("live_time 为空 → 以此刻为开播时刻,按北京时间记,与服务跑在哪个时区无关", () => {
+		// 兜底拼出来的字符串要和 B 站的 live_time 同一个时区(北京时间):按服务所在时区拼,
+		// 读的时候又当北京时间读,跑在 UTC 的 Docker 里就凭空多出 8 小时。
+		beforeEach(() => {
+			Settings.defaultZone = "America/Los_Angeles";
+		});
+		afterEach(() => {
+			Settings.defaultZone = "system";
+		});
+
+		it("开播:「0秒」", async () => {
+			const { ctx, m } = makeCtx();
+			const s = new RoomSession(ctx, makeSub()) as AnySession;
+			prime(s, "");
+			await s.onLiveStart();
+			expect(m.renderLiveStart.mock.calls[0]?.[0]).toMatchObject({ diffTime: "0秒" });
+		});
+
+		it("下播:「0秒」", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockReturnValue(true);
+			const s = new RoomSession(ctx, makeSub()) as AnySession;
+			s.liveStatus = true;
+			prime(s, "");
+			await s.handleLiveEnd("ws");
+			expect(m.renderLiveEnd.mock.calls[0]?.[0]).toMatchObject({ diffTime: "0秒" });
+		});
 	});
 });
 

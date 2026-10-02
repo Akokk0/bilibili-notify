@@ -6,20 +6,8 @@
  */
 
 import type { VideoInfo } from "@bilibili-notify/api";
-import { type Dynamic, numberToStr } from "@bilibili-notify/image";
-
-/**
- * 秒 → `m:ss` / `h:mm:ss`,与 B 站封面角标一致。拓展作品的视频时长(交的是秒数)也排成这样
- * (`extension-post-work.ts`)。
- */
-export function formatDuration(seconds: number): string {
-	const s = Math.max(0, Math.floor(seconds));
-	const h = Math.floor(s / 3600);
-	const m = Math.floor((s % 3600) / 60);
-	const sec = s % 60;
-	const pad = (n: number) => String(n).padStart(2, "0");
-	return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
-}
+import type { Dynamic } from "@bilibili-notify/image";
+import { formatClock, formatCount } from "@bilibili-notify/internal";
 
 export function videoToDynamic(info: VideoInfo): Dynamic {
 	return {
@@ -51,11 +39,11 @@ export function videoToDynamic(info: VideoInfo): Dynamic {
 					archive: {
 						badge: { text: "投稿视频" },
 						cover: info.pic,
-						duration_text: formatDuration(info.duration),
+						duration_text: formatClock(info.duration),
 						title: info.title,
 						desc: info.desc,
 						// 与卡片上别的计数同一份写法(渲染器自己也用它)。
-						stat: { play: numberToStr(info.stat.view), danmaku: numberToStr(info.stat.danmaku) },
+						stat: { play: formatCount(info.stat.view), danmaku: formatCount(info.stat.danmaku) },
 						bvid: info.bvid,
 						jump_url: `//www.bilibili.com/video/${info.bvid}`,
 					},

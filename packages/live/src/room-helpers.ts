@@ -45,6 +45,18 @@ export class LiveRoomPreflightBlockedError extends Error {
 	}
 }
 
+/**
+ * B 站 `live_time`(「yyyy-MM-dd HH:mm:ss」,**恒为北京时间**、不带时区)→ ISO 字符串。
+ *
+ * 显式按 `+08:00` 读,与进程时区无关(容器常常是 UTC,按本地时区读会平白差出 8 小时)。
+ * 缺失、空串或解析不出(B 站对没开播的房间给 `0000-00-00 00:00:00`)回 `undefined`。
+ */
+export function biliLiveTimeToIso(raw: string | undefined): string | undefined {
+	if (!raw) return undefined;
+	const at = DateTime.fromFormat(raw, "yyyy-MM-dd HH:mm:ss", { zone: "UTC+8" });
+	return at.isValid ? (at.toUTC().toISO() ?? undefined) : undefined;
+}
+
 export function describeLiveRoomDanmuPreflightFallback(
 	info: LiveRoomDanmuInfo,
 ): string | undefined {
@@ -71,8 +83,8 @@ export function describeLiveRoomDanmuAccessDenied(info: LiveRoomDanmuInfo): stri
 }
 
 /**
- * Extends {@link RoomContextBase} with the data-fetch / card-render /
- * time-format helpers — every call here either hits the Bilibili HTTP API or
+ * Extends {@link RoomContextBase} with the data-fetch / card-render
+ * helpers — every call here either hits the Bilibili HTTP API or
  * the optional `ImageRenderer`. Keeping them on a separate class keeps the
  * base file focused on state / lifecycle while preserving the inheritance
  * chain so {@link RoomSession} sees a single `ctx.foo()` API surface.
@@ -348,19 +360,6 @@ export class RoomContext extends RoomContextBase {
 			}
 			await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType, opts);
 		};
-	}
-
-	/** Format `dateString` (yyyy-MM-dd HH:mm:ss UTC+8) as elapsed-time text. */
-	async getTimeDifference(dateString: string): Promise<string> {
-		if (this.imageRenderer?.getTimeDifference) {
-			return this.imageRenderer.getTimeDifference(dateString);
-		}
-		const start = DateTime.fromFormat(dateString, "yyyy-MM-dd HH:mm:ss");
-		const now = DateTime.now();
-		const diff = now.diff(start, ["hours", "minutes"]);
-		const hours = Math.floor(diff.hours);
-		const minutes = Math.floor(diff.minutes % 60);
-		return hours > 0 ? `${hours}小时${minutes}分钟` : `${minutes}分钟`;
 	}
 }
 

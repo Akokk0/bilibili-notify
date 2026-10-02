@@ -176,9 +176,6 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 		BLOCKED_IMG_PLACEHOLDER: actual.BLOCKED_IMG_PLACEHOLDER,
 		buildPlainText: actual.buildPlainText,
 		formatCardTime: actual.formatCardTime,
-		numberToStr: actual.numberToStr,
-		// 拓展直播文案的 `{time}`。
-		liveDuration: actual.liveDuration,
 		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
 		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
 		ImageRenderer: class {

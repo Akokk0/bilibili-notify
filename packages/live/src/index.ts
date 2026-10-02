@@ -63,8 +63,6 @@ export { default as defaultStopWords } from "./stop-words";
 export {
 	buildRoomLink,
 	DEFAULT_LIVE_TEMPLATES,
-	formatFollowerChange,
-	formatFollowerCount,
 	LiveTemplateRenderer,
 	type LiveTextKind,
 	type LiveTextValues,

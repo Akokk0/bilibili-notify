@@ -113,7 +113,8 @@ export const RATCHET = {
 	"packages/internal/src/index.ts": 1,
 	"packages/live/src/live-engine.ts": 2,
 	"packages/live/src/room-context.ts": 3,
-	"packages/live/src/room-helpers.ts": 2,
+	"packages/live/src/room-helpers.ts": 3,
+	"packages/live/src/room-session-base.ts": 3,
 	"packages/push/src/bilibili-push.ts": 5,
 	"packages/push/src/index.ts": 2,
 };
