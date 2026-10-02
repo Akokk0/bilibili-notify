@@ -40,7 +40,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 选择器,值是 id,留空 = 服务端默认)、`number` / `enum` / `text`(自带默认值)。
 
 - 服务端那半:`apps/server/src/devtools/scenarios/*.ts`,经 `createDevRegistry` 汇总,
-  `/api/dev` 列举 / 跑 / 收摊(`routes/dev.ts`)。注册表补默认值、拦越界、汇总各场景的
+  `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的
   `active()`;场景做什么归各自的 `run`。
 - 前端那半:`apps/web/src/devtools/web-scenarios.ts`,同形状,`run` 在浏览器里跑(涌 toast、
   不可达壳、灵动岛、新手指引步、拓展卡片的两段动画)。面板把两张表并成一张(`mergeScenarios`),撞 id 直接炸。
