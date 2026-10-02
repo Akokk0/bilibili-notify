@@ -182,6 +182,25 @@ describe("顶栏一级导航:点下就选中,不等路由", () => {
 		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(false);
 	});
 
+	it("点过去再后退回来 —— 选中的是回到的那一页,不是点过的那格(issue #54)", async () => {
+		const rerender = await renderHeader();
+		const subs = tabs().find((el) => (el.textContent ?? "").includes("订阅 UP 主"));
+		fireEvent.click(subs as HTMLElement);
+
+		// 路由追上来:到了订阅页。
+		freezeRouteAt("/subs");
+		rerender();
+		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(true);
+
+		// 浏览器后退:pathname 回到**点下时的那一个**。只拿「点下时的 pathname 等不等于
+		// 现在」判路由动没动的话,这里会判成「还没动」,把订阅那格又高亮回来。
+		freezeRouteAt("/");
+		rerender();
+
+		expect(activeLabels().some((l) => l.includes("概览"))).toBe(true);
+		expect(activeLabels().some((l) => l.includes("订阅 UP 主"))).toBe(false);
+	});
+
 	it("没点过任何一格时,选中态照旧跟着 pathname 走", async () => {
 		await renderHeader();
 

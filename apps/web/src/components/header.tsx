@@ -402,13 +402,18 @@ export function GlassHeader() {
 	 * 皮肤修不了这个:CSS 选择器管不到「刚刚被点过」,那一帧元素身上既没有 `:active`
 	 * 也没有 `tab-active`。
 	 *
-	 * 连**点它时的 pathname** 一起记下 —— 于是「路由追上来了没有」是当场比出来的,
-	 * 不必再用一个 effect 去清它。乐观值是**派生**的,存成一份需要同步的状态就得
-	 * 回答「谁负责清、什么时候清」,而那两个答案都会漂。
+	 * 它只活到**路由第一次动**:pathname 一变就当场清掉。不能拿「点下时的 pathname
+	 * 等不等于现在」判动没动 —— 点过去再按浏览器后退,pathname 正好回到点下时那个,
+	 * 乐观值就复活了,页面回去了、高亮还留在点过的那格(issue #54)。所以比的是
+	 * 「上一次渲染看见的 pathname」,在渲染里就地清(React 的「属性变了就调状态」写法),
+	 * 不走 effect:effect 要等画完一帧才清,那一帧高亮就是错的。
 	 */
-	const [pressed, setPressed] = useState<{ to: string; at: string } | null>(null);
-	// `at !== pathname` = 路由已经动了,这条乐观值当场作废。
-	const optimistic = pressed?.at === pathname ? pressed.to : null;
+	const [pressed, setPressed] = useState<string | null>(null);
+	const [seenPathname, setSeenPathname] = useState(pathname);
+	if (seenPathname !== pathname) {
+		setSeenPathname(pathname);
+		setPressed(null);
+	}
 	// 导航条显哪几项、按什么顺序 —— 纯本地偏好,见 config/nav.ts。
 	const hiddenNav = useNavStore((s) => s.hidden);
 	const navOrder = useNavStore((s) => s.order);
@@ -501,7 +506,7 @@ export function GlassHeader() {
 					// data-bn 是静态属性,NavLink 的 isActive 回调塞不进去 —— 选中态自己算。
 					// 除精确匹配外把子路径也算给父项(/about/guide/push 亮「关于」);
 					// "/" 排除在前缀判定外,不然它永远全亮。
-					const current = optimistic ?? pathname;
+					const current = pressed ?? pathname;
 					const navActive = current === t.to || (t.to !== "/" && current.startsWith(`${t.to}/`));
 					return (
 						<NavLink
@@ -518,7 +523,7 @@ export function GlassHeader() {
 								// 乐观值留在那一格上就会一直指错,而且没有下一次 pathname
 								// 变化来清它。
 								if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-								setPressed({ to: t.to, at: pathname });
+								setPressed(t.to);
 							}}
 							className={`relative flex items-center gap-1.5 px-4 py-2.5 text-bn-base transition ${
 								navActive
