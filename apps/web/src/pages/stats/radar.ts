@@ -5,8 +5,8 @@
  * 每个维度的领跑者恒定满格。口径全部集中在这里,`RadarChart` 只管摆坐标。
  */
 
+import { formatCount } from "@bilibili-notify/internal/format";
 import type { UpStatsRow } from "../../services/stats.js";
-import { formatSignedWan, formatWan } from "./chart-utils.js";
 
 /** 归一化后的一根轴。 */
 export interface RadarAxis {
@@ -66,14 +66,18 @@ const METRICS: Metric[] = [
 		// 一眼能看出哪根变了哪根没变。
 		label: "粉丝规模(当前)",
 		pick: (r) => r.fans,
-		format: formatWan,
+		format: (v) => formatCount(v, { compact: true }),
 		// 粉丝数是重尾分布:200 万的 UP 会把 5 万的压成一根针,那根轴就读不出
 		// 任何东西。取对数之后小 UP 之间的差距才展得开。
 		scale: "log",
 	},
 	// `netWindow` 而不是 `net7d` —— 其余五轴都是窗口内的计数,涨粉势头必须同步,
 	// 否则切到近90日时同一张图里会有两把尺子。
-	{ label: "涨粉势头", pick: (r) => r.netWindow, format: formatSignedWan },
+	{
+		label: "涨粉势头",
+		pick: (r) => r.netWindow,
+		format: (v) => formatCount(v, { signed: true, compact: true }),
+	},
 	{ label: "投稿量", pick: (r) => r.archives, format: (v) => `${v} 个` },
 	{ label: "动态量", pick: (r) => r.dynamics, format: (v) => `${v} 条` },
 	{ label: "开播场次", pick: (r) => r.liveSessions, format: (v) => `${v} 场` },

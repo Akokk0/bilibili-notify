@@ -1,3 +1,4 @@
+import { formatCount } from "@bilibili-notify/internal/format";
 import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notify/ui";
 import { useState } from "react";
 import { PUSH_TONE } from "../../config/push-kinds";
@@ -73,12 +74,7 @@ export function UpCard({
 	// 拓展停了 / 没装:订阅留着、不轮询不推送(决策 10)。拓展列表没回来时是 undefined,不下结论。
 	const paused = ext?.absent === true;
 	const fans = sub.cachedProfile?.fans;
-	const fansLabel =
-		fans == null
-			? "粉丝数未刷新"
-			: fans >= 10_000
-				? `${(fans / 10_000).toFixed(1)}万 粉丝`
-				: `${fans} 粉丝`;
+	const fansLabel = fans == null ? "粉丝数未刷新" : `${formatCount(fans)} 粉丝`;
 	return (
 		// biome-ignore lint/a11y/useSemanticElements: outer card holds inner <button>s (select / enabled toggle); nested HTML <button> is invalid, so a div + role=button is the right escape.
 		<div

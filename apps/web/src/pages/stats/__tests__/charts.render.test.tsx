@@ -8,7 +8,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { NetBars, TrendChart } from "../charts";
+import { DeltaTag, NetBars, TrendChart } from "../charts";
 import { netFromCumulative } from "../gaps";
 
 /** 与 charts.tsx 的 ESTIMATED 同值。写死在这里,改动必须两边同时想清楚。 */
@@ -105,5 +105,38 @@ describe("TrendChart — 断档处的灰色桥", () => {
 			/>,
 		);
 		expect(strokesOf(container).filter((s) => s === GREY)).toHaveLength(0);
+	});
+});
+
+/**
+ * 净增值的排版(`formatCount` 的 `signed + compact` 档)落在图上的样子。统计页以前自己有一份
+ * 带符号的排版(负号用 U+2212、零写「+0」),这两条钉的是换成全仓那一份之后的口径:
+ * 负号是普通连字符,零就是「0」。
+ */
+describe("净增值的排版", () => {
+	it("DeltaTag:正数带 +、负数是普通连字符 -、万以上压缩、零写 0", () => {
+		const text = (v: number) => {
+			const { container } = render(<DeltaTag v={v} />);
+			const out = container.textContent;
+			cleanup();
+			return out;
+		};
+		expect(text(1200)).toBe("▲ +1200");
+		expect(text(-1200)).toBe("▼ -1200");
+		expect(text(-82_000)).toBe("▼ -8.2万");
+		expect(text(0)).toBe("▲ 0");
+	});
+
+	it("NetBars 的刻度:零线写 0 不写 +0,负刻度是普通连字符", () => {
+		const data = [
+			{ value: -300, estimated: false },
+			{ value: 500, estimated: false },
+		];
+		const { container } = render(<NetBars data={data} days={["d1", "d2"]} width={320} />);
+		const labels = [...container.querySelectorAll("text")].map((t) => t.textContent);
+		expect(labels).toContain("0");
+		expect(labels).toContain("-200");
+		expect(labels).not.toContain("+0");
+		expect(labels.join("")).not.toContain("\u2212");
 	});
 });

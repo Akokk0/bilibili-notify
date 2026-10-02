@@ -3,21 +3,9 @@
  */
 
 /**
- * 压缩成中文计数("1.5万")。B 站自己就是这个口径,粉丝数动辄七位数,
- * 不压缩的话表格里全是数不清的零。
- */
-export function formatWan(n: number): string {
-	const abs = Math.abs(n);
-	if (abs < 10_000) return String(Math.round(n));
-	// 百万以上再留小数就有五位有效数字了,直接取整。
-	const fixed = (n / 10_000).toFixed(abs >= 1_000_000 ? 0 : 1);
-	return `${fixed.replace(/\.0$/, "")}万`;
-}
-
-/**
  * 轴刻度标签 —— 小数位数由**步长**决定,而不是由数值大小决定。
  *
- * `formatWan` 是给单个数字看的,百万以上直接取整。拿它标刻度会撞车:227 万粉、
+ * 单个数字的排版是 `formatCount(n, { compact: true })`,百万以上直接取整。拿它标刻度会撞车:227 万粉、
  * 窗口内涨了约 5 千时,niceTicks 给出步长 2000 的四条刻度,标签却全成了
  * 「227万 / 227万 / 227万 / 228万」—— 三条网格线一模一样,读图的人根本判断不出
  * 一格值多少,这条轴等于没传达任何刻度信息。
@@ -25,7 +13,7 @@ export function formatWan(n: number): string {
  * 精度取「刚好让相邻刻度不相同」所需的位数,上限 2 位:再多标签就长得挤不下,
  * 而 niceTicks 的步长恒为 1/2/5×10ⁿ,两位小数已覆盖到步长 100。
  */
-export function formatAxisWan(n: number, step: number): string {
+export function formatAxisTick(n: number, step: number): string {
 	const abs = Math.abs(n);
 	if (abs < 10_000) return String(Math.round(n));
 	const stepWan = Math.abs(step) / 10_000;
@@ -35,14 +23,6 @@ export function formatAxisWan(n: number, step: number): string {
 	// 尾随零一路啃成 "23",230万 凭空缩水十倍。
 	const trimmed = digits > 0 ? fixed.replace(/\.?0+$/, "") : fixed;
 	return `${trimmed}万`;
-}
-
-/**
- * 带符号的净增值。负号用真减号 U+2212 而不是 ASCII 连字符 —— 等宽字体里
- * 连字符又短又靠上,一列数字排下来正负对不齐。
- */
-export function formatSignedWan(n: number): string {
-	return (n >= 0 ? "+" : "−") + formatWan(Math.abs(n));
 }
 
 /**
@@ -71,7 +51,7 @@ export function splitSegments(data: ReadonlyArray<number | null>): number[][] {
  * 把数据范围换算成**人类可读**的坐标刻度。
  *
  * 之前的做法是把 `[min, max]` 直接五等分,于是真实数据会画出
- * `−855 / +3134 / +7124 / +1.1万 / +1.5万` 这种毛刺刻度 —— 读图的人得先做除法
+ * `-855 / +3134 / +7124 / +1.1万 / +1.5万` 这种毛刺刻度 —— 读图的人得先做除法
  * 才知道一格代表多少。这里改成先把步长吸附到 1 / 2 / 5 × 10ⁿ,再把上下界对齐
  * 到步长的整数倍。
  *
@@ -94,7 +74,7 @@ export function niceTicks(
 		 *
 		 * 渲染层用 `Math.round(tick)` 打标签,小数步长会让相邻刻度取整后**撞成同一个数**:
 		 * 全 0 的净增序列区间被撑成 [-1,1]、step 吸附到 0.5,五条网格线标出
-		 * −1 / −0 / +0 / +1 / +1,一根高度 1 的柱子看起来落在两条「+1」之间。
+		 * -1 / -0 / +0 / +1 / +1,一根高度 1 的柱子看起来落在两条「+1」之间。
 		 */
 		integer?: boolean;
 	} = {},
@@ -130,7 +110,7 @@ export function niceTicks(
 		ticks.push(Number((min + i * step).toPrecision(12)));
 	}
 	// step 一并给出:刻度标签的小数位数要按它定,否则相邻刻度会标成同一个数
-	// (见 formatAxisWan)。
+	// (见 formatAxisTick)。
 	return { min, max, ticks, step };
 }
 

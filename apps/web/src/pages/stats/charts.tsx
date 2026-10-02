@@ -1,9 +1,9 @@
+import { formatCount } from "@bilibili-notify/internal/format";
 import { useLayoutEffect, useRef, useState } from "react";
 import {
 	compactSeries,
 	extent,
-	formatAxisWan,
-	formatSignedWan,
+	formatAxisTick,
 	heatAxisLabels,
 	heatCellStyle,
 	niceTicks,
@@ -22,6 +22,9 @@ import type { RadarAxis } from "./radar.js";
  * 写死十六进制 —— 写死的颜色在暗色主题下会瞎掉,而且 UnoCSS 的 token 护栏
  * (color-token-conformance)只管 utility class,管不到 SVG 属性。
  */
+
+/** 净增值的排版口径:带正负号、统计表的紧凑档(万以下取整、百万以上取整到万)。 */
+const NET_COUNT = { signed: true, compact: true } as const;
 
 /** 坐标轴刻度 —— 元信息,走辅助档,别和正文抢分量。 */
 const AXIS_TEXT = "var(--color-bn-text-tertiary)";
@@ -90,7 +93,7 @@ export function DeltaTag({ v, size = 12 }: { v: number | null; size?: number }) 
 	const up = v >= 0;
 	return (
 		<span className="tabular-nums font-bold" style={{ fontSize: size, color: up ? POS : NEG }}>
-			{up ? "▲" : "▼"} {formatSignedWan(v)}
+			{up ? "▲" : "▼"} {formatCount(v, NET_COUNT)}
 		</span>
 	);
 }
@@ -200,8 +203,8 @@ export function TrendChart({
 	const X = (i: number) => pad.l + (n > 1 ? (i / (n - 1)) * iw : iw / 2);
 	const Y = (v: number) => pad.t + ih - ((v - min) / (max - min)) * ih;
 	// 刻度标签的小数位数按**步长**定,不按数值大小定 —— 否则 227 万粉的曲线会画出
-	// 三条标着「227万」的网格线(见 formatAxisWan)。
-	const fmt = (v: number) => (absolute ? formatAxisWan(v, step) : formatSignedWan(v));
+	// 三条标着「227万」的网格线(见 formatAxisTick)。
+	const fmt = (v: number) => (absolute ? formatAxisTick(v, step) : formatCount(v, NET_COUNT));
 	const baseY = absolute ? pad.t + ih : Y(0);
 
 	return (
@@ -361,7 +364,7 @@ export function NetBars({
 						fill={AXIS_TEXT}
 						className="tabular-nums"
 					>
-						{formatSignedWan(Math.round(tv))}
+						{formatCount(Math.round(tv), NET_COUNT)}
 					</text>
 				</g>
 			))}
@@ -381,8 +384,8 @@ export function NetBars({
 					>
 						<title>
 							{estimated
-								? `${days[i]} ${formatSignedWan(Math.round(v))}(停机期间,按天平摊)`
-								: `${days[i]} ${formatSignedWan(v)}`}
+								? `${days[i]} ${formatCount(Math.round(v), NET_COUNT)}(停机期间,按天平摊)`
+								: `${days[i]} ${formatCount(v, NET_COUNT)}`}
 						</title>
 					</rect>
 				),

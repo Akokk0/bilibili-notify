@@ -177,7 +177,7 @@ describe("buildRadarAxes", () => {
 		const a = row({ uid: "1", netWindow: -8200 });
 		const b = row({ uid: "2", netWindow: 12_000 });
 		const axes = buildRadarAxes(a, [a, b]);
-		expect(axes?.find((x) => x.label === "涨粉势头")?.display).toBe("−8200");
+		expect(axes?.find((x) => x.label === "涨粉势头")?.display).toBe("-8200");
 	});
 
 	it("无记录的维度标成「无记录」且 value 为 null", () => {

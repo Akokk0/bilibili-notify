@@ -1,3 +1,4 @@
+import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddButton,
 	Avatar,
@@ -588,12 +589,7 @@ export function UpDialog({
 							{draft.cachedProfile?.fans != null ? (
 								<>
 									{isBili || ext ? <span className="mx-1 opacity-70">·</span> : null}
-									<span>
-										{draft.cachedProfile.fans >= 10_000
-											? `${(draft.cachedProfile.fans / 10_000).toFixed(1)}万`
-											: draft.cachedProfile.fans}{" "}
-										粉丝
-									</span>
+									<span>{formatCount(draft.cachedProfile.fans)} 粉丝</span>
 								</>
 							) : null}
 						</div>

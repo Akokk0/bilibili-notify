@@ -3,6 +3,7 @@ import type {
 	ExtensionSubscriptionCandidate,
 } from "@bilibili-notify/contract";
 import { colorFromUid } from "@bilibili-notify/internal/constants";
+import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddCard,
 	Avatar,
@@ -650,8 +651,7 @@ function candidateProfile(
 }
 
 function fansLabel(n: number): string {
-	if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万 粉丝`;
-	return `${n} 粉丝`;
+	return `${formatCount(n)} 粉丝`;
 }
 
 function truncate(s: string, max: number): string {

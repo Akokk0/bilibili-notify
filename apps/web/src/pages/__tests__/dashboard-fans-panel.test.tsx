@@ -108,7 +108,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		expect(screen.getByText("抖")).toBeTruthy();
 		expect(screen.getByText("● 2 位订阅")).toBeTruthy();
 		expect(screen.getByText("2.2万 粉丝")).toBeTruthy();
-		expect(screen.getByText("+3,333")).toBeTruthy();
+		expect(screen.getByText("+3333")).toBeTruthy();
 		expect(screen.getByText("-44")).toBeTruthy();
 		expect(container.querySelector('img[src="/api/subs/s-dy/avatar?v=abc"]')).not.toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();

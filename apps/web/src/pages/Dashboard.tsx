@@ -5,6 +5,7 @@ import type {
 	UpdateStatusDTO,
 } from "@bilibili-notify/contract";
 import { upColor } from "@bilibili-notify/internal/constants";
+import { formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import {
 	Avatar,
 	Btn,
@@ -108,16 +109,6 @@ function liveRowFace(
 		viewers: r.totalViewers === undefined ? "—" : formatCount(r.totalViewers),
 		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
 	};
-}
-
-function relativeTimeFromNow(iso: string): string {
-	const ts = new Date(iso).getTime();
-	if (Number.isNaN(ts)) return "—";
-	const delta = Date.now() - ts;
-	if (delta < 60_000) return "刚刚";
-	if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}分钟前`;
-	if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}小时前`;
-	return `${Math.floor(delta / 86_400_000)}天前`;
 }
 
 // 跟后端 `LIVE_ROOM_MASTER_KEYS` 同集合 —— 只要任意一项的 routing 数组非空,
@@ -360,7 +351,9 @@ export function TimelinePanel({
 			) : (
 				<div className="relative pl-1">
 					<div
-						className="absolute left-15 top-2 bottom-2 w-0.5 opacity-25"
+						// 竖线的横位置跟着左列(下面 `w-14`)的宽度走:左列从 w-11 加宽到 w-14(+12px)以放下
+						// 带空格的「59 分钟前」,线同步从 left-15 右移到 left-18。
+						className="absolute left-18 top-2 bottom-2 w-0.5 opacity-25"
 						style={{
 							background:
 								"linear-gradient(to bottom, var(--color-bn-pink), var(--color-bn-blue), transparent)",
@@ -390,8 +383,8 @@ export function TimelinePanel({
 						const count = messageCountOf(h);
 						return (
 							<div key={h.id} className="mb-2.5 flex items-center gap-3">
-								<div className="w-11 text-right tabular-nums text-bn-xs text-bn-text-secondary">
-									{relativeTimeFromNow(h.ts)}
+								<div className="w-14 whitespace-nowrap text-right tabular-nums text-bn-xs text-bn-text-secondary">
+									{formatAgo(h.ts) ?? "—"}
 								</div>
 								<div className="relative z-bn-raised">
 									<span
@@ -439,20 +432,6 @@ export function TimelinePanel({
 
 // ── Fans deltas panel ─────────────────────────────────────────────────────
 
-/** 人数 / 粉丝数的排版:过万写「万」、过亿写「亿」。 */
-function formatCount(n: number): string {
-	if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(2)}亿`;
-	if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`;
-	return n.toLocaleString();
-}
-
-function formatDeltaNumber(n: number): string {
-	const abs = Math.abs(n);
-	const sign = n > 0 ? "+" : "-";
-	if (abs >= 10_000) return `${sign}${(abs / 10_000).toFixed(1)}万`;
-	return `${n > 0 ? "+" : ""}${n.toLocaleString()}`;
-}
-
 /**
  * 粉丝面板那一行画成什么样(ADR-0020 决策 8)。条目按订阅 id 对订阅:名字走订阅卡那条链
  * (`displayName`:资料里的名字 → B 站「UID xxx」/ 拓展的别名 → 外部 id),头像是那条订阅的;订阅列表还没回来时
@@ -481,7 +460,7 @@ function fansRowFace(
 
 function FansDeltaCol({ label, value }: { label: string; value: number | null }) {
 	const isNull = value == null;
-	const text = isNull ? "—" : value === 0 ? "±0" : formatDeltaNumber(value);
+	const text = isNull ? "—" : formatCount(value, { signed: true });
 	// 无数据与持平共用静默档 —— 两者都是「这里没有变化可看」。
 	const color =
 		isNull || value === 0

@@ -1,5 +1,6 @@
 import type { ExtensionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
 import { upColor } from "@bilibili-notify/internal/constants";
+import { type FormatCountOptions, formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import {
 	Avatar,
 	Btn,
@@ -35,7 +36,7 @@ import {
 import type { Subscription } from "../types/domain";
 import { isExtensionRow } from "../utils/up-display";
 import type { SignTone } from "./stats/chart-utils";
-import { dash, formatSignedWan, formatWan, signTone } from "./stats/chart-utils";
+import { dash, signTone } from "./stats/chart-utils";
 import {
 	ChartEmpty,
 	DeltaTag,
@@ -88,25 +89,12 @@ const NET_TONE_COLOR: Record<SignTone, string> = {
 };
 
 /** 数值展示统一走这里:`null` 一律显示破折号,绝不用 0 顶替「没有记录」。 */
-function num(v: number | null, fmt: (n: number) => string = formatWan): string {
-	return v === null ? "—" : fmt(v);
+function num(v: number | null, opts?: FormatCountOptions): string {
+	return v === null ? "—" : formatCount(v, { ...opts, compact: true });
 }
 
 function hours(h: number): string {
 	return h >= 10 ? String(Math.round(h)) : h.toFixed(1).replace(/\.0$/, "");
-}
-
-/** 距今多久 —— 鸽子榜要的信号。 */
-function sinceText(iso: string | null): string {
-	if (!iso) return "无记录";
-	const ms = Date.now() - Date.parse(iso);
-	if (!Number.isFinite(ms)) return "无记录";
-	const mins = Math.floor(ms / 60_000);
-	if (mins < 1) return "刚刚";
-	if (mins < 60) return `${mins} 分钟前`;
-	const hrs = Math.floor(mins / 60);
-	if (hrs < 24) return `${hrs} 小时前`;
-	return `${Math.floor(hrs / 24)} 天前`;
 }
 
 /**
@@ -255,7 +243,8 @@ function UpPicker({
 										<PlatformPill meta={m} />
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
-										{num(r.fans)} · {sinceText(r.lastActivityAt)}
+										{num(r.fans)} ·{" "}
+										{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ?? "无记录"}
 									</span>
 								</span>
 								<DeltaTag v={r.net7d} size={10.5} />
@@ -354,7 +343,7 @@ function CompareTable({
 												<PlatformPill meta={m} />
 											</div>
 											<div className="text-bn-2xs text-bn-text-secondary">
-												{sinceText(r.lastActivityAt)}
+												{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ?? "无记录"}
 												{r.live ? " · 直播中" : ""}
 											</div>
 										</div>
@@ -635,13 +624,13 @@ export default function Stats() {
 						/>
 						<GlassStatCard
 							label="今日净增"
-							value={num(focused.net1d, formatSignedWan)}
+							value={num(focused.net1d, { signed: true })}
 							color={TEAL}
 							pulse
 						/>
 						<GlassStatCard
 							label={`近${days}日净增`}
-							value={num(focused.netWindow, formatSignedWan)}
+							value={num(focused.netWindow, { signed: true })}
 							color={PURPLE}
 						/>
 						<GlassStatCard label="投稿" value={dash(focused.archives)} suffix="个" color={AMBER} />
@@ -680,13 +669,13 @@ export default function Stats() {
 						/>
 						<GlassStatCard
 							label="今日净增"
-							value={num(totals?.net1d ?? null, formatSignedWan)}
+							value={num(totals?.net1d ?? null, { signed: true })}
 							color={TEAL}
 							pulse
 						/>
 						<GlassStatCard
 							label={`近${days}日净增`}
-							value={num(totals?.netWindow ?? null, formatSignedWan)}
+							value={num(totals?.netWindow ?? null, { signed: true })}
 							color={PURPLE}
 						/>
 						<GlassStatCard label="投稿" value={dash(totals?.archives)} suffix="个" color={AMBER} />
@@ -795,7 +784,7 @@ export default function Stats() {
 								background: "var(--color-bn-code-bg)",
 							}}
 						>
-							{num(focused ? focused.netWindow : (totals?.netWindow ?? null), formatSignedWan)} /{" "}
+							{num(focused ? focused.netWindow : (totals?.netWindow ?? null), { signed: true })} /{" "}
 							{days}天
 						</span>
 					}
@@ -803,7 +792,7 @@ export default function Stats() {
 					{/*
 					 * 单人与汇总都用柱状 —— 设计稿这里画的是面积折线,但那是拿平滑的假数据凑出来的。
 					 * 每日净增是**带符号**的离散量,面积图会从折线填到零基线,一旦曲线穿过 0,正负两段
-					 * 的填充用同一个颜色叠在一起,+5000 和 −5000 看起来一模一样,自交的多边形还会渲染出
+					 * 的填充用同一个颜色叠在一起,+5000 和 -5000 看起来一模一样,自交的多边形还会渲染出
 					 * 一堆奇形怪状的碎块。柱状天然能表达符号(涨绿跌红),也和单人视图口径统一。
 					 *
 					 * 两个视图都从**累计末值**重算净增,顺带把停机断档的整段涨幅按天摊开(灰柱)。

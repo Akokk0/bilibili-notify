@@ -150,3 +150,34 @@ describe("最近推送活动 · 平台徽章", () => {
 		expect(badgeTexts(container)).toEqual(["动态", "已送达"]);
 	});
 });
+
+describe("最近推送活动 · 左列时间", () => {
+	const agoIso = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+	it("写「N 分钟前」(数字和单位之间带空格);解析不了的时刻写「—」", () => {
+		renderPanel([
+			row({ id: "h1", ts: agoIso(59 * 60_000 + 5_000) }),
+			row({ id: "h2", ts: agoIso(3 * 3_600_000 + 5_000) }),
+			row({ id: "h3", ts: agoIso(10_000) }),
+			row({ id: "h4", ts: "不是时刻" }),
+		]);
+		expect(screen.getByText("59 分钟前")).toBeTruthy();
+		expect(screen.getByText("3 小时前")).toBeTruthy();
+		expect(screen.getByText("刚刚")).toBeTruthy();
+		expect(screen.getByText("—")).toBeTruthy();
+	});
+
+	it("左列不换行,竖线的横位置跟着左列宽度走(宽 N → 线在 N+4)", () => {
+		// 带空格的「59 分钟前」比不带空格时更宽,窄槽里会折行;所以这一列不许换行。
+		// 竖线 `left-M` 要压在圆点那一列的起点上:列宽 N + 行间距 gap-3(3) + 容器 pl-1(1) = N + 4。
+		// 单测里没有布局,只能钉这条换算 —— 改了一边忘了另一边,线就偏出圆点。
+		const { container } = renderPanel([row({ ts: agoIso(59 * 60_000 + 5_000) })]);
+		const col = screen.getByText("59 分钟前");
+		expect(col.className).toContain("whitespace-nowrap");
+		const width = Number(/(?:^|\s)w-(\d+)(?:\s|$)/.exec(col.className)?.[1]);
+		const rail = container.querySelector(".absolute.w-0\\.5");
+		const left = Number(/(?:^|\s)left-(\d+)(?:\s|$)/.exec(rail?.className ?? "")?.[1]);
+		expect(Number.isFinite(width)).toBe(true);
+		expect(left).toBe(width + 4);
+	});
+});

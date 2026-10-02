@@ -10,55 +10,13 @@ import {
 	compactSeries,
 	dash,
 	extent,
-	formatAxisWan,
-	formatSignedWan,
-	formatWan,
+	formatAxisTick,
 	heatAxisLabels,
 	heatCellStyle,
 	niceTicks,
 	signTone,
 	splitSegments,
 } from "../chart-utils.js";
-
-describe("formatWan", () => {
-	it("万以下原样取整", () => {
-		expect(formatWan(0)).toBe("0");
-		expect(formatWan(9999)).toBe("9999");
-		expect(formatWan(123.6)).toBe("124");
-	});
-
-	it("万以上压缩成一位小数", () => {
-		expect(formatWan(15000)).toBe("1.5万");
-		expect(formatWan(12345)).toBe("1.2万");
-	});
-
-	it("整万不留 .0 尾巴", () => {
-		expect(formatWan(20000)).toBe("2万");
-	});
-
-	it("百万以上不留小数(位数已经够多了)", () => {
-		expect(formatWan(15473000)).toBe("1547万");
-	});
-
-	it("负数按绝对值决定档位,保留符号", () => {
-		expect(formatWan(-15000)).toBe("-1.5万");
-	});
-});
-
-describe("formatSignedWan", () => {
-	it("正数带 +,负数带真减号", () => {
-		expect(formatSignedWan(1200)).toBe("+1200");
-		expect(formatSignedWan(-1200)).toBe("−1200");
-	});
-
-	it("0 视为正向,显示 +0", () => {
-		expect(formatSignedWan(0)).toBe("+0");
-	});
-
-	it("大数走万压缩", () => {
-		expect(formatSignedWan(-82000)).toBe("−8.2万");
-	});
-});
 
 describe("splitSegments — null 断点", () => {
 	it("无 null → 单段", () => {
@@ -217,7 +175,7 @@ describe("dash —— 「没记录」与「确实是 0」必须写法不同", ()
 describe("niceTicks —— 整数量程不产出小数刻度", () => {
 	it("全 0 的净增序列:刻度是 [-1,0,1],不是 [-1,-0.5,0,0.5,1]", () => {
 		// 数据全等时区间被撑成 [-1,1],step 吸附到 0.5。渲染层用 `Math.round(tv)` 打标签,
-		// 于是五条网格线标成 −1 / −0 / +0 / +1 / +1 —— 相邻两两重复,一根高度 1 的柱子
+		// 于是五条网格线标成 -1 / -0 / +0 / +1 / +1 —— 相邻两两重复,一根高度 1 的柱子
 		// 会被读成落在两条「+1」线之间。粉丝净增是人数,0.5 个粉丝没有意义。
 		const { ticks } = niceTicks(0, 0, { integer: true });
 		expect(ticks).toEqual([-1, 0, 1]);
@@ -295,24 +253,25 @@ describe("signTone —— null 是独立一档,不能归零", () => {
 	});
 });
 
-describe("formatAxisWan — 刻度标签按步长定精度", () => {
+describe("formatAxisTick — 刻度标签按步长定精度", () => {
 	it("百万级小步长不再把相邻刻度标成同一个数", () => {
-		// 227 万粉、窗口内涨了约 5 千:niceTicks 给出步长 2000 的四条刻度,而 formatWan
-		// 在百万以上直接 toFixed(0),四条网格线标成「227万 / 227万 / 227万 / 228万」——
-		// 读图的人根本判断不出一格值多少,这条轴等于没有传达任何刻度信息。
+		// 227 万粉、窗口内涨了约 5 千:niceTicks 给出步长 2000 的四条刻度,而单个数字的紧凑排版
+		// (`formatCount(n, { compact: true })`)在百万以上直接取整到万,四条网格线会标成
+		// 「227万 / 227万 / 227万 / 228万」—— 读图的人根本判断不出一格值多少,这条轴等于没有
+		// 传达任何刻度信息。
 		const ticks = [2_270_000, 2_272_000, 2_274_000, 2_276_000];
-		const labels = ticks.map((t) => formatAxisWan(t, 2000));
+		const labels = ticks.map((t) => formatAxisTick(t, 2000));
 		expect(new Set(labels).size).toBe(labels.length);
 	});
 
 	it("步长够大时照旧取整,不平白多出小数", () => {
-		expect(formatAxisWan(2_270_000, 100_000)).toBe("227万");
-		expect(formatAxisWan(2_300_000, 100_000)).toBe("230万");
+		expect(formatAxisTick(2_270_000, 100_000)).toBe("227万");
+		expect(formatAxisTick(2_300_000, 100_000)).toBe("230万");
 	});
 
 	it("万以下照旧是原始整数", () => {
-		expect(formatAxisWan(8500, 500)).toBe("8500");
-		expect(formatAxisWan(-120, 20)).toBe("-120");
+		expect(formatAxisTick(8500, 500)).toBe("8500");
+		expect(formatAxisTick(-120, 20)).toBe("-120");
 	});
 
 	it("与 niceTicks 串起来:任意区间的刻度标签都两两不同", () => {
@@ -323,7 +282,7 @@ describe("formatAxisWan — 刻度标签按步长定精度", () => {
 			[0, 12_000_000],
 		] as const) {
 			const { ticks, step } = niceTicks(lo, hi, { includeZero: false, integer: true });
-			const labels = ticks.map((t) => formatAxisWan(Math.round(t), step));
+			const labels = ticks.map((t) => formatAxisTick(Math.round(t), step));
 			expect(new Set(labels).size, `区间 ${lo}..${hi} 的刻度标签撞了:${labels.join(" / ")}`).toBe(
 				labels.length,
 			);
