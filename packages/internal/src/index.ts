@@ -30,6 +30,7 @@ export {
 	type Failure,
 	type FailureCode,
 	fail,
+	featuresForEvents,
 	type Identity,
 	INBOUND_CAPABLE_PLATFORMS,
 	type Issue,

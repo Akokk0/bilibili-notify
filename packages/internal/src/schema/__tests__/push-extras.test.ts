@@ -2,7 +2,7 @@
  * 附加项(ADR-0016):@全体 / 弹幕词云 / AI 总结是同一种东西 —— 挂在某把主特性下面、与
  * 本体分开发的一条消息。四把键一视同仁住在 `features.extras` 与订阅的 `extraTargets` 上。
  *
- * 能配路由的推送类型是 7 个。0.x 的老形状 —— 第一代(wordcloud / liveSummary 各是一把特性键)、
+ * 能配路由的推送类型是 8 个。0.x 的老形状 —— 第一代(wordcloud / liveSummary 各是一把特性键)、
  * 第二代(`liveEndExtras` 小对象 + 订阅上的 `atAll` / `atAllDefaults`)—— **不在这里认**:它们只在开新代时
  * 由迁移器改写一次(`apps/server/src/migration/features.ts`,用例在 `apps/server/src/migration/__tests__/`),
  * 活 schema 只认新形状。文件末尾那一组钉住这一点。
@@ -32,6 +32,7 @@ const SUB_BASE: Subscription = makeEmptySubscription({
 const NEW_KEYS = [
 	"post",
 	"liveStart",
+	"liveStreaming",
 	"liveEnd",
 	"membership",
 	"superchat",
@@ -46,6 +47,7 @@ const NEW_KEYS = [
 const LEGACY_FLAGS = {
 	post: true,
 	liveStart: true,
+	liveStreaming: false,
 	liveEnd: false,
 	membership: false,
 	superchat: false,
@@ -55,16 +57,16 @@ const LEGACY_FLAGS = {
 	specialUserEnter: false,
 };
 
-describe("推送类型缩到 7 个", () => {
+describe("推送类型缩到 8 个", () => {
 	it("FEATURE_KEYS 不再含 wordcloud / liveSummary", () => {
 		expect([...FEATURE_KEYS]).toEqual([...NEW_KEYS]);
 	});
 
-	it("全局特性开关的 schema 是从 FEATURE_KEYS 摊出来的:键 = 七把特性键 + extras,不另手写一份", () => {
+	it("全局特性开关的 schema 是从 FEATURE_KEYS 摊出来的:键 = 八把特性键 + extras,不另手写一份", () => {
 		expect(Object.keys(FeatureFlagsSchema.shape)).toEqual([...FEATURE_KEYS, "extras"]);
 	});
 
-	it("makeEmptySubscription 的 routing 正好这 7 把键", () => {
+	it("makeEmptySubscription 的 routing 正好这 8 把键", () => {
 		expect(Object.keys(SUB_BASE.routing).sort()).toEqual([...NEW_KEYS].sort());
 	});
 
@@ -87,6 +89,7 @@ describe("推送类型缩到 7 个", () => {
 		expect(makeDefaultGlobalConfig().defaults.features).toEqual({
 			post: true,
 			liveStart: true,
+			liveStreaming: false,
 			liveEnd: true,
 			membership: false,
 			superchat: false,
@@ -148,6 +151,7 @@ describe("活 schema 不再认老形状(那是迁移器的事)", () => {
 		const parsed = SubscriptionRoutingSchema.parse({
 			post: [],
 			liveStart: [],
+			liveStreaming: [],
 			liveEnd: [T1],
 			membership: [],
 			superchat: [],

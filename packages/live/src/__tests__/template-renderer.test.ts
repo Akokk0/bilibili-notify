@@ -125,7 +125,7 @@ describe("LiveTemplateRenderer — B 站三句直播文案(刻画)", () => {
 		expect(r.renderLiveStart({ sub: sub(), master, diffTime: "5秒", followerNum: "1.2万" })).toBe(
 			"晨风 开播啦，当前粉丝数：1.2万",
 		);
-		expect(r.renderLiveOngoing({ sub: sub(), master, diffTime: "2小时", watched: "3.4万" })).toBe(
+		expect(r.renderLiveStreaming({ sub: sub(), master, diffTime: "2小时", watched: "3.4万" })).toBe(
 			"晨风 正在直播，已播 2小时，累计观看：3.4万",
 		);
 		expect(r.renderLiveEnd({ sub: sub(), master, diffTime: "3小时", followerChange: 12_345 })).toBe(
@@ -148,8 +148,8 @@ describe("LiveTemplateRenderer — B 站三句直播文案(刻画)", () => {
 			r.renderLiveStart({ sub: sub(), globalCustom, master, diffTime: "5秒", followerNum: "1" }),
 		).toBe("全局 晨风");
 		expect(
-			r.renderLiveOngoing({
-				sub: sub({ customLive: "{name}|{time}|{watched}|{follower}" }),
+			r.renderLiveStreaming({
+				sub: sub({ customLiveStreaming: "{name}|{time}|{watched}|{follower}" }),
 				master,
 				diffTime: "1分",
 				watched: "暂未获取到",
@@ -177,7 +177,7 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 			renderLiveText("liveStart", undefined, { name: "甲", time: "5秒", follower: 12_345 }),
 		).toBe("甲 开播啦，当前粉丝数：1.2万");
 		expect(
-			renderLiveText("liveOngoing", undefined, { name: "甲", time: "2小时", watched: 23_456 }),
+			renderLiveText("liveStreaming", undefined, { name: "甲", time: "2小时", watched: 23_456 }),
 		).toBe("甲 正在直播，已播 2小时，累计观看：2.3万");
 		expect(
 			renderLiveText("liveEnd", undefined, { name: "甲", time: "3小时", followerChange: 128 }),
@@ -191,7 +191,7 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 		expect(renderLiveText("liveStart", undefined, { name: "甲", time: "5秒" })).toBe(
 			"甲 开播啦，当前粉丝数：",
 		);
-		expect(renderLiveText("liveOngoing", "{watched}|{time}", { name: "甲", time: "" })).toBe("|");
+		expect(renderLiveText("liveStreaming", "{watched}|{time}", { name: "甲", time: "" })).toBe("|");
 		expect(renderLiveText("liveEnd", "[{follower_change}]", { name: "甲", time: "1分" })).toBe(
 			"[]",
 		);
@@ -208,7 +208,7 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 			}),
 		).toBe("甲|12万|{watched}|{follower_change}");
 		expect(
-			renderLiveText("liveOngoing", "{watched}|{follower}", {
+			renderLiveText("liveStreaming", "{watched}|{follower}", {
 				name: "甲",
 				time: "1分",
 				watched: "暂未获取到",

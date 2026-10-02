@@ -8,7 +8,8 @@
  * - `linkParsing`:0.9.1 的「范围 + 白名单」({@link migrateLegacyLinkParsing})。
  *
  * 这几项产出的是 **0.x 最新**的形状(特性键、文案键、版式键仍是 0.x 的名字);1.0 的改名是它们之后的另一步
- * ({@link renameGlobalSettingsKeys},在 {@link migrateSettingsFiles} 里串着跑)。
+ * ({@link renameGlobalSettingsKeys},在 {@link migrateSettingsFiles} 里串着跑),直播拆键({@link splitGlobalLiveSettings},
+ * `live-split.ts`)又在改名之后。
  *
  * 卡片样式那两个退役键(`hideDesc` / `hideFollower`)不用管:schema 不是 strict,读的时候自己剥掉。
  *
@@ -23,6 +24,7 @@ import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
 import { migrateLegacyLinkParsing } from "./link-parsing.js";
+import { type GlobalLiveFacts, liveFactsOf, splitGlobalLiveSettings } from "./live-split.js";
 import { migrateOldTemplateDefaults } from "./templates.js";
 
 /**
@@ -44,6 +46,30 @@ export function migrateGlobals(raw: unknown): unknown {
 	}
 	if (raw.linkParsing !== undefined) out.linkParsing = migrateLegacyLinkParsing(raw.linkParsing);
 	return out;
+}
+
+/**
+ * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 直播拆键。设置那一步
+ * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的
+ * 全局值只有一个读法。
+ */
+export function migrateGlobalsToCurrent(raw: unknown): unknown {
+	return splitGlobalLiveSettings(renameGlobalSettingsKeys(migrateGlobals(raw)));
+}
+
+/**
+ * 第 0 代的全局设置(`state/globals.json`)里直播拆键要的两样 —— 开播开关与 `pushTime`。订阅那一步用它算每条订阅的
+ * 周期开关(见 `live-split.ts` 文件头:设置那一步已经把 `pushTime` 折成间隔,反推不出)。文件不在、读不懂、形状不对一律回
+ * `fallback`(0.12 的出厂值):配置仓开机时自己会报设置的问题,订阅别跟着停。
+ */
+export async function readZeroLiveFacts(
+	zeroGlobalsPath: string,
+	fallback: GlobalLiveFacts,
+): Promise<GlobalLiveFacts> {
+	const file = await readJsonFile(zeroGlobalsPath);
+	if (file.kind !== "ok") return fallback;
+	// 只要拆键之前那一刻的值:走到改名为止、不做拆键。
+	return liveFactsOf(renameGlobalSettingsKeys(migrateGlobals(file.value))) ?? fallback;
 }
 
 /** 核心设置的 `app` 里归 B 站的三格。 */
@@ -113,7 +139,7 @@ export async function migrateSettingsFiles(paths: SettingsFilePaths): Promise<st
 	const corePath = paths.core;
 	const file = await readJsonFile(corePath);
 	if (file.kind !== "ok") return [];
-	const bilibiliSplit = splitBilibiliSettings(renameGlobalSettingsKeys(migrateGlobals(file.value)));
+	const bilibiliSplit = splitBilibiliSettings(migrateGlobalsToCurrent(file.value));
 	const { core, extensions } = splitExtensionSettings(bilibiliSplit.core);
 	const rewritten: string[] = [];
 	if (Object.keys(bilibiliSplit.bilibili).length > 0) {

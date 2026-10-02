@@ -7,7 +7,10 @@
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
 import type { SubscriptionEventKind } from "@bilibili-notify/internal";
-import { SUBSCRIPTION_EVENT_FEATURES } from "@bilibili-notify/internal/constants";
+import {
+	featuresForEvents,
+	SUBSCRIPTION_EVENT_FEATURES,
+} from "@bilibili-notify/internal/constants";
 import { isExtensionPresent } from "../../hooks/useExtensions";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -23,14 +26,9 @@ export type SubscriptionSourceExtension = ExtensionDTO & {
 	subscription: NonNullable<ExtensionDTO["subscription"]>;
 };
 
-/**
- * 这几种事件对应 BN 的哪几把特性(决策 4 那张表),顺序跟 `FEATURE_KEYS` 走 —— 清单里怎么排
- * 都不影响弹层上的次序。
- */
-export function featuresForEvents(events: readonly SubscriptionEventKind[]): FeatureKey[] {
-	const wanted = new Set<FeatureKey>(events.map((e) => SUBSCRIPTION_EVENT_FEATURES[e]));
-	return FEATURE_KEYS.filter((k) => wanted.has(k));
-}
+// 这几种事件对应 BN 的哪几把特性(决策 4 那张表,外加同时声明开播与下播才有的周期「正在直播」),顺序跟
+// `FEATURE_KEYS` 走 —— 清单里怎么排都不影响弹层上的次序。规则住 internal,服务端与面板用同一份。
+export { featuresForEvents };
 
 /** 拓展订阅最多能有的那几把特性 —— 认不出是哪个源报什么的时候(没装 / 清单读不出)按它画。 */
 const EXTENSION_FEATURES_AT_MOST = featuresForEvents(

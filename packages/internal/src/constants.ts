@@ -29,6 +29,7 @@ import type {
 export const FEATURE_KEYS = [
 	"post",
 	"liveStart",
+	"liveStreaming",
 	"liveEnd",
 	"membership",
 	"superchat",
@@ -106,6 +107,8 @@ export type FeatureFlagValues = Record<FeatureKey, boolean> & { extras: PushExtr
 export const DEFAULT_FEATURE_FLAGS: FeatureFlagValues = {
 	post: true,
 	liveStart: true,
+	// 周期「正在直播」出厂关:拆键之前它由周期间隔 0(出厂值)关着。
+	liveStreaming: false,
 	liveEnd: true,
 	membership: false,
 	superchat: false,
@@ -940,13 +943,13 @@ export const BUILTIN_AI_PRESETS = [
  * 链接不再是模板变量:动态 / 视频 / 开播的链接是消息版式的独立「链接」部件
  * (显隐 / 位置由版式决定),模板里没有链接变量。
  *
- * liveStart/liveOngoing/liveEnd 与 packages/live 的 `DEFAULT_LIVE_TEMPLATES`
+ * liveStart/liveStreaming/liveEnd 与 packages/live 的 `DEFAULT_LIVE_TEMPLATES`
  * 保持字面量一致 —— 这样「自定义关闭时实际推送的内建默认」== 「自定义打开时
  * UI 载入的默认文本」,不再出现 `{name}` 原样吐出的错配。
  */
 export const DEFAULT_TEMPLATES = {
 	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
-	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}",
+	liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 	liveSummary: `🔍【弹幕情报站】本场直播数据如下：
 🧍‍♂️ 总共 {dmc} 位{mdn}上线
@@ -1250,6 +1253,20 @@ export const SUBSCRIPTION_EVENT_FEATURES = {
 	liveStart: "liveStart",
 	liveEnd: "liveEnd",
 } as const satisfies Record<SubscriptionEventKind, FeatureKey>;
+
+/**
+ * 一个订阅源声明了这几种事件,它那条订阅能有哪几把特性(ADR-0019 决策 4 / 5),顺序跟 {@link FEATURE_KEYS} 走。
+ * 面板据它决定弹层上列哪几行。
+ *
+ * 一对一的三种照 {@link SUBSCRIPTION_EVENT_FEATURES};`liveStreaming`(周期「正在直播」)不是一种事件,它的规则是
+ * **同时声明了开播与下播才有**(⑬d)—— 只报开播的源没有下播事件把这一场收掉。文档规则里另有「来源能查在播状态」
+ * (`has.liveStatus`)那半,随 3a,这里还没有。
+ */
+export function featuresForEvents(events: readonly SubscriptionEventKind[]): FeatureKey[] {
+	const wanted = new Set<FeatureKey>(events.map((e) => SUBSCRIPTION_EVENT_FEATURES[e]));
+	if (events.includes("liveStart") && events.includes("liveEnd")) wanted.add("liveStreaming");
+	return FEATURE_KEYS.filter((k) => wanted.has(k));
+}
 
 // ---- 拓展声明式界面(ADR-0019)的零依赖判据 ----------------------------------------
 //

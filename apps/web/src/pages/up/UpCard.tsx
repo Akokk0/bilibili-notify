@@ -5,6 +5,7 @@ import { PUSH_TONE } from "../../config/push-kinds";
 import { useLongPress } from "../../hooks/useLongPress";
 import {
 	BILIBILI_SOURCE_KEY,
+	type FeatureFlagValues,
 	type Subscription,
 	type SubscriptionTag,
 	subscriptionIdentityOf,
@@ -19,13 +20,14 @@ import {
 import { resolveTagNames } from "./tag-edit";
 
 /**
- * 订阅功能开关的胶囊色。键空间是 FeatureKey(与推送类型 PushKind 不完全对齐 ——
- * 开播与周期复推共用 liveStart),但用的是同一套家族色,所以借 PUSH_TONE 而不是再抄
- * 一份十六进制。两档衍生能力(特别弹幕/特别进房)统一走 derived。
+ * 订阅功能开关的胶囊色。键空间是 FeatureKey(⑬d 之后与推送类型 PushKind 一一对应),
+ * 用的是同一套家族色,所以借 PUSH_TONE 而不是再抄一份十六进制。两档衍生能力
+ * (特别弹幕/特别进房)统一走 derived。
  */
 const FEATURE_TONE: Record<string, string> = {
 	post: PUSH_TONE.dynamic,
 	liveStart: PUSH_TONE.live,
+	liveStreaming: PUSH_TONE.live,
 	liveEnd: PUSH_TONE.live,
 	membership: PUSH_TONE.guard,
 	superchat: PUSH_TONE.sc,
@@ -52,6 +54,8 @@ export interface UpCardProps {
 	 * 或表里没有那个 id,都当没挂标签 —— 什么都不写。
 	 */
 	tags?: ReadonlyArray<SubscriptionTag>;
+	/** 全局特性开关,没覆盖的订阅继承它(见 `UpDialog` 的同名属性);不给 = 出厂值。 */
+	globalFeatures?: FeatureFlagValues;
 }
 
 /**
@@ -73,6 +77,7 @@ export function UpCard({
 	onRequestMenu,
 	platform,
 	tags,
+	globalFeatures,
 }: UpCardProps) {
 	const [hover, setHover] = useState(false);
 	const longPress = useLongPress({ onLongPress: onRequestMenu });
@@ -82,7 +87,7 @@ export function UpCard({
 	const ext = isBili ? undefined : platform;
 	// 拓展订阅只列它那个源报得出的(决策 5):B 站独有的开着也不摆 —— 那是一个永远不会响的开关。
 	const visible = visibleFeaturesOf(sub, ext);
-	const features = subscribedFeatures(sub).filter((k) => visible.includes(k));
+	const features = subscribedFeatures(sub, globalFeatures).filter((k) => visible.includes(k));
 	// 拓展停了 / 没装:订阅留着、不轮询不推送(决策 10)。拓展列表没回来时是 undefined,不下结论。
 	const paused = ext?.absent === true;
 	const fans = sub.cachedProfile?.fans;

@@ -603,7 +603,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const liveConfig = (): LiveEngineConfig => {
 		const g = globals();
 		return {
-			pushTime: g.defaults.schedule.pushTime,
 			liveSummaryDefault: g.defaults.templates.liveSummary,
 			// 全局弹幕词云额外停用词:引擎记词时 merge 到 bundled 列表(随 templatesChanged
 			// 经 live.updateConfig → setStopwords 热更)。per-UP 覆盖另经 SubItemView 在
@@ -619,7 +618,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			customLiveMsg: {
 				enable: true,
 				customLiveStart: g.defaults.templates.liveStart,
-				customLive: g.defaults.templates.liveOngoing,
+				customLiveStreaming: g.defaults.templates.liveStreaming,
 				customLiveEnd: g.defaults.templates.liveEnd,
 			},
 			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 resolvedCardStyle)。
@@ -921,6 +920,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const imageGroupChanged = !eq(prev.defaults.imageGroup, g.defaults.imageGroup);
 				const cardStyleChanged = !eq(prev.defaults.cardStyle, g.defaults.cardStyle);
 				const scheduleChanged = !eq(prev.defaults.schedule, g.defaults.schedule);
+				// 直播拆键(⑬d):启动补报与周期间隔从 schedule 里搬出来各成一段,热更的门一并跟着。
+				const liveSettingsChanged =
+					!eq(prev.defaults.liveStart, g.defaults.liveStart) ||
+					!eq(prev.defaults.liveStreaming, g.defaults.liveStreaming);
 				const filtersChanged = !eq(prev.defaults.filters, g.defaults.filters);
 				const templatesChanged = !eq(prev.defaults.templates, g.defaults.templates);
 				const featuresChanged = !eq(prev.defaults.features, g.defaults.features);
@@ -963,14 +966,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				) {
 					dynamic.updateConfig(dynamicConfig());
 				}
-				// liveConfig() 读 defaults.{schedule,filters,templates,cardStyle.enabled,ai.enabled}。
-				if (
-					scheduleChanged ||
-					filtersChanged ||
-					templatesChanged ||
-					cardStyleChanged ||
-					aiChanged
-				) {
+				// liveConfig() 读 defaults.{templates,cardStyle,ai}(周期间隔与补报在每个订阅的视图里,
+				// 经下面的 applyOps 推,不在引擎级的全局配置里)。
+				if (filtersChanged || templatesChanged || cardStyleChanged || aiChanged) {
 					live.updateConfig(liveConfig());
 				}
 				if (aiChanged) {
@@ -1002,15 +1000,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					}
 				}
 				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / customCardStyle /
-				// pushTime / 模板…)在 start / applyOps 时定格,不像 DynamicEngine 每个
-				// cron tick 重读 getSubs() 自愈。resolve() 把 ai / cardStyle / schedule /
-				// filters / templates / features 折进每个 sub 的 eff —— 任一变化都给所有
+				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格,不像 DynamicEngine 每个
+				// cron tick 重读 getSubs() 自愈。resolve() 把 ai / cardStyle / schedule / liveStart /
+				// liveStreaming / filters / templates / features 折进每个 sub 的 eff —— 任一变化都给所有
 				// 订阅合成 update op 走 applyOps 增量路径,刷新活跃 listener 的 per-sub
 				// 状态(Object.assign,不重连 WS)。否则全局默认改了直到重启才在 live 生效。
 				if (
 					aiChanged ||
 					cardStyleChanged ||
 					scheduleChanged ||
+					liveSettingsChanged ||
 					filtersChanged ||
 					templatesChanged ||
 					featuresChanged ||
@@ -1163,6 +1162,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					const eff = resolve(sub, g.defaults);
 					const keys: FeatureKey[] = [
 						"liveStart",
+						"liveStreaming",
 						"liveEnd",
 						"membership",
 						"superchat",
@@ -1397,12 +1397,15 @@ export function makeLivePushLike(
 
 /**
  * LivePushType → 特性键(管开关与路由)。词云(5)/ 总结(10)是下播的附加项,跟着
- * 下播那把键走;开播(3)与周期「正在直播」(0)共用 liveStart。
+ * 下播那把键走;周期「正在直播」(0)有自己的 liveStreaming(⑬d 拆键,各有开关与目标);
+ * 开播(3)与重启补报(11,补的就是一次开播)走 liveStart。
  */
 export function liveTypeToFeature(type: number): FeatureKey {
 	switch (type) {
 		case 0:
+			return "liveStreaming";
 		case 3:
+		case 11:
 			return "liveStart";
 		case 4:
 			return "membership";
@@ -1441,17 +1444,17 @@ export function liveTypeToExtra(type: number): ExtraKey | undefined {
 }
 
 /**
- * LivePushType → 推送类型(管历史怎么记)。与上面那张表只差一处:周期「正在直播」
- * 单列一类 —— 它跟开播共用开关与目标(所以 feature 是 liveStart),历史上却是两种推送。
- * 其余每一档都由「特性 → 推送类型」定死,别在这儿再抄一张会飘的表。
+ * LivePushType → 推送类型(管历史怎么记)。特性键与推送类型一一对应(⑬d),所以这里没有自己的
+ * 一张表:周期「正在直播」是 liveStreaming → live-ongoing,重启补报走 liveStart → live
+ * (0.x 里它记成 live-ongoing,1.0 起记成开播)。别在这儿再抄一张会飘的表。
  */
 export function liveTypeToPushKind(type: number): PushKind {
-	return type === 0 ? "live-ongoing" : featureToPushKind(liveTypeToFeature(type));
+	return featureToPushKind(liveTypeToFeature(type));
 }
 
 /**
  * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补三样引擎不知道
- * 的 —— 只有开播允许 @全体(周期复推等也翻译成 feature "liveStart",不显式抑制就每条都 @)、
+ * 的 —— 只有开播允许 @全体(重启补报翻译成 feature "liveStart",不显式抑制就每条都 @)、
  * 历史里记成哪一类,以及这是哪个附加项(有键推送层才按目标收窄)。
  */
 export function liveBroadcastOpts(
@@ -1469,9 +1472,9 @@ export function liveBroadcastOpts(
 
 /**
  * 一条 LivePushType 是否允许 @全体成员。仅 `StartBroadcasting`(=3,开播)允许;
- * 周期「正在直播」复推(`Live`=0)及其它都翻译成 `feature === "liveStart"`,光看
- * feature 区分不出开播 vs 复推 —— push 层据本结果决定是否进 atAll 分支,否则
- * 每条直播推送都 @全体(已修 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
+ * 重启补报(`CatchUp`=11)也翻译成 `feature === "liveStart"`,光看 feature 区分不出
+ * 真开播 vs 补报 —— push 层据本结果决定是否进 atAll 分支,否则每条补报都 @全体
+ * (从前周期复推就这么出过 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
  * packages/live 的 LivePushType 保持一致。
  */
 export function liveTypeAllowsAtAll(type: number): boolean {
@@ -1767,6 +1770,7 @@ function buildLiveSubsView(
 export type LiveWorkSettings = Pick<
 	LiveSubView,
 	| "liveStart"
+	| "liveStreaming"
 	| "liveEnd"
 	| "customCardStyle"
 	| "customCardStyleByKind"
@@ -1774,8 +1778,8 @@ export type LiveWorkSettings = Pick<
 	| "cardSkinKnobs"
 	| "messageLayout"
 	| "customLiveMsg"
-	| "pushTime"
-	| "restartPush"
+	| "streamingIntervalHours"
+	| "catchUpOnBoot"
 	| "liveEndGrace"
 	| "liveEndGraceMinutes"
 >;
@@ -1799,6 +1803,7 @@ export function liveWorkSettings(
 		// 时按 routing 空 = 无 sink 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
 		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
 		liveStart: eff.features.liveStart,
+		liveStreaming: eff.features.liveStreaming,
 		liveEnd: eff.features.liveEnd,
 		// customCardStyle 只在真有 per-UP override 时生成(对齐 dynamic 端 buildDynamicSubsView 同名
 		// 字段)。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
@@ -1811,9 +1816,9 @@ export function liveWorkSettings(
 		customCardStyleByKind: buildCardStyleByKind(globals.defaults, sub.overrides, cardKinds),
 		// Per-UP 调度(per-UP ?? 全局,resolve 已折算)。B 站:已活跃 listener 通过 LiveScopedChange 同步
 		// 增量更新(`subscriptionOpsToLive` 在 update 分支把这些字段一并带上,LiveEngine.applyOps
-		// Object.assign 后即刻生效;pushTime 变化时 engine 额外 rearm 一次 setInterval)。
-		pushTime: eff.schedule.pushTime,
-		restartPush: eff.schedule.restartPush,
+		// Object.assign 后即刻生效;`liveStreaming` 开关或间隔变化时 engine 额外 rearm 一次 setInterval)。
+		streamingIntervalHours: eff.liveStreaming.streamingIntervalHours,
+		catchUpOnBoot: eff.liveStart.catchUpOnBoot,
 		// 断流接续:该 UP 下播是否先挂起等待重开。
 		liveEndGrace: eff.schedule.liveEndGrace,
 		liveEndGraceMinutes: eff.schedule.liveEndGraceMinutes,
@@ -1822,7 +1827,7 @@ export function liveWorkSettings(
 		customLiveMsg: {
 			enable: true,
 			customLiveStart: eff.templates.liveStart,
-			customLive: eff.templates.liveOngoing,
+			customLiveStreaming: eff.templates.liveStreaming,
 			customLiveEnd: eff.templates.liveEnd,
 		},
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
@@ -1968,7 +1973,7 @@ function subscriptionOpsToLive(
 			// 用完整 SubItemView 投影出所有 LiveScopedChange 支持的字段——路由布尔、
 			// per-UP 阈值 / 调度 / AI override 之外,模板 / 上舰 / 特别关注 / 卡片样式
 			// 也跟着一起同步,避免活跃 listener 用旧值(本来 add 路径就走这里,update
-			// 没必要弱化语义)。pushTime 变化由 engine 在 applyOps 内单独 rearm。
+			// 没必要弱化语义)。周期间隔与开关变化由 engine 在 applyOps 内单独 rearm。
 			const view = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
 			out.push({
 				type: "update",
@@ -1977,14 +1982,15 @@ function subscriptionOpsToLive(
 					{
 						scope: "live",
 						liveStart: view.liveStart,
+						liveStreaming: view.liveStreaming,
 						liveEnd: view.liveEnd,
 						membership: view.membership,
 						superchat: view.superchat,
 						extras: view.extras,
 						minScPrice: view.minScPrice,
 						minGuardLevel: view.minGuardLevel,
-						pushTime: view.pushTime,
-						restartPush: view.restartPush,
+						streamingIntervalHours: view.streamingIntervalHours,
+						catchUpOnBoot: view.catchUpOnBoot,
 						liveEndGrace: view.liveEndGrace,
 						liveEndGraceMinutes: view.liveEndGraceMinutes,
 						aiOverride: view.aiOverride,

@@ -31,12 +31,6 @@ export interface LiveEngineConfig {
 	 * Chinese-stop-word list before tokenisation.
 	 */
 	wordcloudStopWords?: string;
-	/**
-	 * 引擎级全局 `pushTime`(小时;`0` 关闭)。仅用于 `updateConfig` 检测全局
-	 * pushTime 变更后重排所有定时器;每个 UP 的实际复推间隔在
-	 * `SubItemView.pushTime` 上(adapter 已折算 `per-UP ?? 全局`)。
-	 */
-	pushTime: number;
 	/** Default global "弹幕总结" template (single string; adapter joins lines if needed). */
 	liveSummaryDefault: string;
 	customGuardBuy: ListenerManagerConfig["customGuardBuy"];
@@ -221,13 +215,12 @@ export class LiveEngine {
 
 					const existing = this.listener.getActiveSub(op.uid);
 					if (existing) {
-						// pushTime 是 setInterval 句柄,ms 参数 immutable,需要 dispose+rearm。
-						// 先记下旧值,assign 完成后比对决定是否走 rearm 分支。
-						const prevPushTime = existing.pushTime;
-						let nextPushTime = prevPushTime;
+						// 周期「正在直播」的计时器是 setInterval 句柄,ms 参数 immutable,开关或间隔变了
+						// 都需要 dispose+rearm(开关关了只拆不建)。先记下旧值,assign 完成后比对。
+						const wasStreaming = existing.liveStreaming;
+						const prevInterval = existing.streamingIntervalHours;
 						for (const change of liveChanges) {
 							const { scope: _scope, ...fields } = change;
-							if (fields.pushTime !== undefined) nextPushTime = fields.pushTime;
 							Object.assign(existing, fields);
 						}
 						for (const change of targetChanges) {
@@ -235,7 +228,10 @@ export class LiveEngine {
 						}
 						if (!this.listener.needsLiveMonitor(existing)) {
 							this.listener.stopForUid(op.uid);
-						} else if (nextPushTime !== prevPushTime) {
+						} else if (
+							existing.liveStreaming !== wasStreaming ||
+							existing.streamingIntervalHours !== prevInterval
+						) {
 							this.listener.rearmPeriodicTimerForUid(op.uid);
 						}
 					} else {
@@ -262,15 +258,11 @@ export class LiveEngine {
 
 	/** Replace runtime config (called when the adapter receives a config-changed event). */
 	updateConfig(config: LiveEngineConfig): void {
-		const pushTimeChanged = this.config.pushTime !== config.pushTime;
 		this.config = config;
 		this.danmakuCollector.setStopwords(mergeStopWords(config.wordcloudStopWords));
 		this.listener.updateConfig(toListenerConfig(config));
-		// pushTime 变化需要 dispose+rearm 已 arm 的 setInterval(node API ms 参数 immutable)。
-		if (pushTimeChanged) {
-			this.logger.info(`[live] pushTime 已更新为 ${config.pushTime}h,重排所有定时器`);
-			this.listener.rearmAllPeriodicTimers();
-		}
+		// 周期「正在直播」的开关与间隔都是每个 UP 折好的值(`SubItemView`),全局改了也由宿主逐订阅
+		// 经 `applyOps` 推下来,那边比对前后值才重排 —— 引擎级不再另存一份全局间隔。
 	}
 
 	/**

@@ -7,7 +7,7 @@
  *   后端语义不匹配,灵动岛 diff 行展示整个新旧数组更直观。
  * - plain object 才递归:`Object.getPrototypeOf(x) === Object.prototype`。Date /
  *   Map / 自定义类等当叶子比较(dashboard 配置树没有这些)。
- * - 路径用 "." 连接,与 FIELD_LABELS 的 dot-keys 对齐(`schedule.pushTime`)。
+ * - 路径用 "." 连接,与 FIELD_LABELS 的 dot-keys 对齐(`liveStreaming.streamingIntervalHours`)。
  * - leaf 相等用 Object.is(NaN === NaN; 0 !== -0,但配置树里不会出现 -0)。
  * - undefined 与 missing key 视为相同(无 diff);null 视作实义值,跟 undefined
  *   不等。理由:PATCH body 用 undefined 表示「不改」,null 表示「显式置空」,

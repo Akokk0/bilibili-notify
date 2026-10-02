@@ -83,7 +83,7 @@ describe("groupDiffsBySection", () => {
 			D("roomId"),
 			D("blockKeywords"),
 			D("templates.liveStart"),
-			D("schedule.pushTime"),
+			D("liveStreaming.streamingIntervalHours"),
 			D("minScPrice"),
 			D("specialUsers"),
 			D("enable"),

@@ -118,9 +118,11 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		await sandbox.migrate();
 
 		const routing = (await subscriptionRow(sandbox, SUB_ID)).routing as Obj;
+		// `liveStreaming` 是直播拆键(⑬d)补的:拷一份开播的目标,细节在 `./live-split.test.ts`。
 		expect(routing).toEqual({
 			post: [T1],
 			liveStart: [T1, T2],
+			liveStreaming: [T1, T2],
 			liveEnd: [T2],
 			membership: [T2],
 			superchat: [T1],
@@ -130,6 +132,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(Object.keys(routing)).toEqual([
 			"post",
 			"liveStart",
+			"liveStreaming",
 			"liveEnd",
 			"membership",
 			"superchat",
@@ -159,9 +162,11 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		await sandbox.migrate();
 
 		const onDisk = await sandbox.readConfig<{ defaults: { features: Obj } }>("settings/core.json");
+		// `liveStreaming` 是直播拆键(⑬d)补的(开播开着、pushTime 是出厂的 0 → 关),细节在 `./live-split.test.ts`。
 		expect(onDisk.defaults.features).toEqual({
 			post: false,
 			liveStart: true,
+			liveStreaming: false,
 			liveEnd: false,
 			membership: true,
 			superchat: true,
@@ -172,6 +177,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(Object.keys(onDisk.defaults.features)).toEqual([
 			"post",
 			"liveStart",
+			"liveStreaming",
 			"liveEnd",
 			"membership",
 			"superchat",
@@ -316,7 +322,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(templates).not.toHaveProperty("dynamicVideo");
 		expect(Object.keys(templates)).toEqual([
 			"liveStart",
-			"liveOngoing",
+			"liveStreaming",
 			"liveEnd",
 			"liveSummary",
 			"post",
@@ -341,7 +347,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		});
 	});
 
-	it("文案账本 templateDefaultsSeen:那两个路径的键换名,指纹值原样;别的键不动", async () => {
+	it("文案账本 templateDefaultsSeen:post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;别的键不动", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 
@@ -352,7 +358,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		);
 		expect(core.defaults.templateDefaultsSeen).toEqual({
 			liveStart: "1nkgnb7",
-			liveOngoing: "oopixp",
+			liveStreaming: "oopixp",
 			liveEnd: "1mtqdty",
 			liveSummary: "1hxy5zb",
 			post: "7uw5nq",

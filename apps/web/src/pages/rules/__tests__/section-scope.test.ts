@@ -33,9 +33,28 @@ describe("isSectionCustomized filter / live 分域", () => {
 	});
 
 	it("只有 schedule 覆盖 → live 小点亮、filter 小点不亮", () => {
-		const sub = subWith({ schedule: { pushTime: 3 } });
+		const sub = subWith({ schedule: { liveEndGraceMinutes: 3 } });
 		expect(isSectionCustomized(sub, "live")).toBe(true);
 		expect(isSectionCustomized(sub, "filter")).toBe(false);
+	});
+
+	// 直播拆键(⑬d):周期间隔与启动补报搬出了 schedule,各自成一段;它们也属于「直播阈值」域,
+	// 只覆盖了它们的订阅,侧栏小点照样亮、「推送时段」(拓展订阅那一节)也认。
+	it("只有 liveStreaming(周期间隔)覆盖 → live 小点亮、filter 小点不亮;拓展订阅的 schedule 节也亮", () => {
+		const sub = subWith({ liveStreaming: { streamingIntervalHours: 3 } });
+		expect(isSectionCustomized(sub, "live")).toBe(true);
+		expect(isSectionCustomized(sub, "schedule")).toBe(true);
+		expect(isSectionCustomized(sub, "filter")).toBe(false);
+	});
+
+	it("只有 liveStart(启动补报)覆盖 → live 小点亮、schedule 节也亮", () => {
+		const sub = subWith({ liveStart: { catchUpOnBoot: true } });
+		expect(isSectionCustomized(sub, "live")).toBe(true);
+		expect(isSectionCustomized(sub, "schedule")).toBe(true);
+	});
+
+	it("文案覆盖里只写了 liveStreaming(「直播中」那句)→ msg 小点亮", () => {
+		expect(isSectionCustomized(subWith({ templates: { liveStreaming: "x" } }), "msg")).toBe(true);
 	});
 
 	it("两域都覆盖 → 两个小点都亮", () => {

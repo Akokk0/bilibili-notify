@@ -19,10 +19,11 @@ import {
 } from "@bilibili-notify/internal";
 import type { CustomCardStyleLike, LiveBroadcastOptions, LivePushType } from "./push-like";
 
-/** 直播卡的三种推送:开播 / 直播中(周期「正在直播」、重启补推)/ 下播。 */
+/** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
 export type LiveNotifyPushType =
 	| LivePushType.StartBroadcasting
 	| LivePushType.Live
+	| LivePushType.CatchUp
 	| LivePushType.LiveEnd;
 
 /**

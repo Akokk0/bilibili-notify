@@ -39,8 +39,9 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 0,
-		restartPush: false,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		...over,
 	} as SubItemView;
 }

@@ -206,10 +206,10 @@ const {
 // Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
 // adapter helpers MUST stay byte-consistent across ends (same business core,
 // different shells). liveTypeAllowsAtAll guards the @全体 bug fix: only
-// StartBroadcasting(3) is at-all-eligible; periodic「正在直播」(0) is NOT.
+// StartBroadcasting(3) is at-all-eligible; periodic「正在直播」(0) and the boot catch-up (11) are NOT.
 describe("apps/server adapter live-type map (cross-end mirror)", () => {
 	it("liveTypeToFeature 完整映射表 + 未知兜底 liveStart", () => {
-		expect(liveTypeToFeature(0)).toBe("liveStart");
+		expect(liveTypeToFeature(0)).toBe("liveStreaming"); // 周期「正在直播」有自己的特性键(⑬d 拆键)
 		expect(liveTypeToFeature(3)).toBe("liveStart");
 		expect(liveTypeToFeature(4)).toBe("membership");
 		expect(liveTypeToFeature(5)).toBe("liveEnd");
@@ -218,13 +218,14 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
 		expect(liveTypeToFeature(10)).toBe("liveEnd");
+		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报走开播的路由
 		expect(liveTypeToFeature(999)).toBe("liveStart");
 	});
 
-	it("liveTypeAllowsAtAll:仅开播(3)允许,0/其它/未知一律 false", () => {
+	it("liveTypeAllowsAtAll:仅开播(3)允许,0/补报(11)/其它/未知一律 false", () => {
 		expect(liveTypeAllowsAtAll(3)).toBe(true);
 		expect(liveTypeAllowsAtAll(0)).toBe(false);
-		for (const t of [4, 5, 6, 7, 8, 9, 10, 999]) {
+		for (const t of [4, 5, 6, 7, 8, 9, 10, 11, 999]) {
 			expect(liveTypeAllowsAtAll(t)).toBe(false);
 		}
 	});
@@ -254,13 +255,23 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 		);
 	});
 
-	it("正在直播:特性 liveStart、不 @全体、历史记正在直播", async () => {
+	it("正在直播:特性 liveStreaming(自己的开关与目标)、不 @全体、历史记正在直播", async () => {
 		const send = vi.fn(async () => {});
 		await boundLivePush(send)([[{ type: "text", text: "还在播" }]], 0, {});
 		expect(send).toHaveBeenCalledWith(
-			"liveStart",
+			"liveStreaming",
 			{ kind: "text", text: "还在播" },
 			expect.objectContaining({ allowAtAll: false, kind: "live-ongoing" }),
+		);
+	});
+
+	it("重启补报:特性 liveStart(走开播的路由)、不 @全体、历史记成开播", async () => {
+		const send = vi.fn(async () => {});
+		await boundLivePush(send)([[{ type: "text", text: "补报" }]], 11, {});
+		expect(send).toHaveBeenCalledWith(
+			"liveStart",
+			{ kind: "text", text: "补报" },
+			expect.objectContaining({ allowAtAll: false, kind: "live" }),
 		);
 	});
 
@@ -593,6 +604,7 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 				running: () => true,
 				postNoun: () => "作品",
 				readAvatar: async () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
 			},
 		});
 		active = c;
@@ -626,7 +638,8 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 	it("开播 → 推送层收到按订阅 id 的开播;周期推送到点没有新状态 → 记进 extensionReportProblem", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const g = makeDefaultGlobalConfig();
-		g.defaults.schedule.pushTime = 1;
+		g.defaults.features.liveStreaming = true;
+		g.defaults.liveStreaming.streamingIntervalHours = 1;
 		const problems: unknown[] = [];
 		const c = setup({
 			globals: g,
@@ -635,6 +648,7 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 				running: () => true,
 				postNoun: () => undefined,
 				readAvatar: async () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			// 在播表里有这一行(开播进表):表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
 			extensionLive: {
@@ -680,6 +694,32 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 				outcome: "skipped",
 			}),
 		]);
+	});
+});
+
+// 「直播就绪」:至少一个启用的 B 站订阅给任一直播类特性配了目标。「监听开不开」手抄的三份清单之一
+// (另两份是 packages/live 的 LIVE_ROOM_MASTER_KEYS 与面板首页),⑬d 起都得认 liveStreaming;合成一个判定随 ㉖。
+describe("createEngines — getModuleState.live", () => {
+	const TARGET = "10000000-0000-4000-8000-000000000001";
+	function subRouting(routing: Partial<Subscription["routing"]>): Subscription {
+		const s = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		s.routing = { ...s.routing, ...routing };
+		return s;
+	}
+
+	it("没给任何直播类特性配目标 → 不就绪", () => {
+		const c = setup({ subs: [subRouting({})] });
+		active = c;
+		expect(c.runtime.getModuleState().live).toBe(false);
+	});
+
+	it.each(["liveStart", "liveStreaming", "liveEnd"] as const)("只给 %s 配了目标 → 就绪", (key) => {
+		const c = setup({ subs: [subRouting({ [key]: [TARGET] })] });
+		active = c;
+		expect(c.runtime.getModuleState().live).toBe(true);
 	});
 });
 
@@ -752,6 +792,7 @@ describe("createEngines — boot wiring", () => {
 				running: () => true,
 				postNoun: () => undefined,
 				readAvatar: async () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			extensionLive: {
 				get: (id) =>
@@ -797,7 +838,7 @@ describe("createEngines — boot wiring", () => {
 		active = c;
 		const liveCfg = H.live[0].opts.config;
 		expect(liveCfg.customLiveMsg.customLiveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(liveCfg.customLiveMsg.customLive).toBe(
+		expect(liveCfg.customLiveMsg.customLiveStreaming).toBe(
 			"{name} 正在直播，已播 {time}，累计观看：{watched}",
 		);
 		expect(liveCfg.customLiveMsg.customLiveEnd).toBe(
@@ -1101,6 +1142,43 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps).toHaveLength(1);
 		expect(dynOps[0]).toMatchObject({ type: "update", uid: "1" });
+	});
+
+	// 直播拆键(⑬d):周期「正在直播」的开关、间隔与启动补报各是自己的一格,从 schedule 里搬出来。
+	// 每个订阅的视图里带着折好的值,全局那几格一变就要给所有订阅合成 update op(引擎比对前后值再重排计时器)。
+	// 验红:把热更门里的 `liveSettingsChanged` 删掉,间隔与补报那两条红;`featuresChanged` 管开关那一条。
+	it.each([
+		[
+			"开关(features.liveStreaming)",
+			(g: GlobalConfig) => (g.defaults.features.liveStreaming = true),
+			{ liveStreaming: true },
+		],
+		[
+			"间隔(liveStreaming.streamingIntervalHours)",
+			(g: GlobalConfig) => (g.defaults.liveStreaming.streamingIntervalHours = 3),
+			{ streamingIntervalHours: 3 },
+		],
+		[
+			"启动补报(liveStart.catchUpOnBoot)",
+			(g: GlobalConfig) => (g.defaults.liveStart.catchUpOnBoot = true),
+			{ catchUpOnBoot: true },
+		],
+	])("直播拆键:只改全局%s → live.applyOps 收到刷新,带上折好的新值", (_name, mutate, expected) => {
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		const c = setup({ subs: [sub] });
+		active = c;
+		H.live[0].applyOps.mockClear();
+		patchGlobals(c, (g) => {
+			mutate(g);
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+
+		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(liveOps).toHaveLength(1);
+		expect(liveOps[0].changes[0]).toMatchObject(expected);
 	});
 
 	it("no-op:globals 未变的 config-changed 不热推任何子系统", () => {
@@ -1458,6 +1536,38 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const cleared = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
 		expect(Object.hasOwn(cleared, "cardSkinKnobs")).toBe(true);
 		expect(cleared.cardSkinKnobs).toBeUndefined();
+	});
+
+	it("直播拆键:update op 带上折好的 liveStreaming 开关、间隔与补报(per-UP 覆盖压过全局)", () => {
+		const sub = makeSub("710", true);
+		sub.overrides.features = { liveStreaming: true };
+		sub.overrides.liveStreaming = { streamingIntervalHours: 6 };
+		sub.overrides.liveStart = { catchUpOnBoot: true };
+		const c = setup({ subs: [sub] });
+		active = c;
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+
+		const change = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
+		expect(change).toMatchObject({
+			scope: "live",
+			liveStart: true,
+			liveStreaming: true,
+			streamingIntervalHours: 6,
+			catchUpOnBoot: true,
+		});
+	});
+
+	it("直播拆键:没覆盖时取全局出厂值 —— 周期关、间隔 1 小时、不补报", () => {
+		const sub = makeSub("711", true);
+		const c = setup({ subs: [sub] });
+		active = c;
+		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+
+		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0]).toMatchObject({
+			liveStreaming: false,
+			streamingIntervalHours: 1,
+			catchUpOnBoot: false,
+		});
 	});
 
 	it("禁用订阅 add:不向 live.applyOps 下发 add op", () => {

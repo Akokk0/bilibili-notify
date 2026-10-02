@@ -377,7 +377,7 @@ export class RoomSession extends RoomSessionBase {
 				this.ctx.logger.info(`[conn] 直播间 [${this.sub.roomId}] 重连成功`);
 				this.reconnectAttempts = 0;
 				// 预检被风控挡在 bootstrap 门外的房间,从没跑过 bootstrapRoomState ——
-				// 房间信息 / 已在播检测 / restartPush 都还欠着,这里补跑(同款
+				// 房间信息 / 已在播检测 / 重启补报都还欠着,这里补跑(同款
 				// 「翻成在播」窗口包裹)。与 weTurnedLiveOff 天然互斥:没 bootstrap
 				// 过的房间 liveStatus 恒为 false,不可能是我们翻下去的。
 				if (!this.bootstrapped) {

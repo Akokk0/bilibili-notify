@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolveAIProfile } from "../../constants";
 import { DEFAULT_CARD_SKIN_ID } from "../card-skin";
-import { makeDefaultGlobalConfig } from "../globals";
+import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { DEFAULT_MESSAGE_LAYOUT } from "../message-layout";
 import { resolve } from "../resolve";
 import { type AIOverride, makeEmptySubscription, type Subscription } from "../subscriptions";
@@ -19,6 +19,8 @@ describe("resolve()", () => {
 		expect(eff.features).toEqual(globals.defaults.features);
 		expect(eff.filters).toEqual(globals.defaults.filters);
 		expect(eff.schedule).toEqual(globals.defaults.schedule);
+		expect(eff.liveStart).toEqual(globals.defaults.liveStart);
+		expect(eff.liveStreaming).toEqual(globals.defaults.liveStreaming);
 		expect(eff.cardStyle).toEqual(globals.defaults.cardStyle);
 		expect(eff.ai.model).toBe(resolveAIProfile(globals.defaults.ai).model);
 		expect(eff.ai.persona).toEqual(globals.defaults.ai.persona);
@@ -61,7 +63,41 @@ describe("resolve()", () => {
 		expect(eff.schedule.liveEndGrace).toBe(true);
 		expect(eff.schedule.liveEndGraceMinutes).toBe(3);
 		// 未覆盖的 schedule 字段仍继承全局。
-		expect(eff.schedule.pushTime).toBe(globals.defaults.schedule.pushTime);
+		expect(eff.schedule.quietHours).toEqual(globals.defaults.schedule.quietHours);
+	});
+
+	it("直播拆键:开播补报与周期间隔各是一段设置,per-UP 只覆盖写了的那一格,别的继承全局", () => {
+		const globals = makeDefaultGlobalConfig();
+		globals.defaults.liveStart.catchUpOnBoot = true;
+		globals.defaults.liveStreaming.streamingIntervalHours = 3;
+
+		// 只覆盖间隔:补报继承全局的 true。
+		const onlyInterval = resolve(
+			{ ...SUB_BASE, overrides: { liveStreaming: { streamingIntervalHours: 5 } } },
+			globals.defaults,
+		);
+		expect(onlyInterval.liveStreaming).toEqual({ streamingIntervalHours: 5 });
+		expect(onlyInterval.liveStart).toEqual({ catchUpOnBoot: true });
+
+		// 只覆盖补报:间隔继承全局的 3。
+		const onlyCatchUp = resolve(
+			{ ...SUB_BASE, overrides: { liveStart: { catchUpOnBoot: false } } },
+			globals.defaults,
+		);
+		expect(onlyCatchUp.liveStart).toEqual({ catchUpOnBoot: false });
+		expect(onlyCatchUp.liveStreaming).toEqual({ streamingIntervalHours: 3 });
+	});
+
+	it("直播拆键:liveStreaming 开关与别的特性开关同一套继承,出厂是关的", () => {
+		const globals = makeDefaultGlobalConfig();
+		expect(resolve(SUB_BASE, globals.defaults).features.liveStreaming).toBe(false);
+		const on = resolve(
+			{ ...SUB_BASE, overrides: { features: { liveStreaming: true } } },
+			globals.defaults,
+		);
+		expect(on.features.liveStreaming).toBe(true);
+		// 开了周期不连带动开播那一把。
+		expect(on.features.liveStart).toBe(globals.defaults.features.liveStart);
 	});
 
 	it("merges partial features override on top of defaults", () => {
@@ -369,5 +405,30 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 		globals.defaults.ai.activePreset = "tsundere";
 		const sub: Subscription = { ...SUB_BASE, overrides: { ai: { preset: "inherit" } } };
 		expect(resolve(sub, globals.defaults).ai.persona.name).toBe("傲娇");
+	});
+});
+
+describe("直播拆键(⑬d):全局的出厂值与范围", () => {
+	it("出厂:周期「正在直播」关、间隔 1 小时、启动补报关(与拆键前的出厂行为一致)", () => {
+		const { defaults } = makeDefaultGlobalConfig();
+		expect(defaults.features.liveStreaming).toBe(false);
+		expect(defaults.liveStreaming).toEqual({ streamingIntervalHours: 1 });
+		expect(defaults.liveStart).toEqual({ catchUpOnBoot: false });
+		// schedule 只拿走这两格:静音时段与断流接续原样留着(随 3a)。
+		expect(Object.keys(defaults.schedule)).toEqual([
+			"quietHours",
+			"liveEndGrace",
+			"liveEndGraceMinutes",
+		]);
+	});
+
+	it("间隔是 1–24 的整数:0(旧的「关」)、25、小数都拒收,关的意思交给开关", () => {
+		const withInterval = (hours: number) => {
+			const g = structuredClone(makeDefaultGlobalConfig());
+			g.defaults.liveStreaming.streamingIntervalHours = hours;
+			return GlobalConfigSchema.safeParse(g).success;
+		};
+		expect([0, 25, 1.5, -1].map(withInterval)).toEqual([false, false, false, false]);
+		expect([1, 12, 24].map(withInterval)).toEqual([true, true, true]);
 	});
 });

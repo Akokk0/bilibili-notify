@@ -169,7 +169,7 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 		expect(view.customLiveMsg).toEqual({
 			enable: true,
 			customLiveStart: g.defaults.templates.liveStart,
-			customLive: g.defaults.templates.liveOngoing,
+			customLiveStreaming: g.defaults.templates.liveStreaming,
 			customLiveEnd: g.defaults.templates.liveEnd,
 		});
 	});
@@ -181,7 +181,7 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
 		expect(view.customLiveMsg).toEqual({
 			enable: true,
 			customLiveStart: "自定义开播文案 {name}",
-			customLive: g.defaults.templates.liveOngoing,
+			customLiveStreaming: g.defaults.templates.liveStreaming,
 			customLiveEnd: g.defaults.templates.liveEnd,
 		});
 	});

@@ -2,7 +2,11 @@
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { makeEmptySubscription, type Subscription } from "../../../types/domain";
+import {
+	DEFAULT_FEATURE_FLAGS,
+	makeEmptySubscription,
+	type Subscription,
+} from "../../../types/domain";
 import type { SubscriptionPlatform } from "../subscription-source";
 import { UP_CARD_MIN_H, UpCard, type UpCardProps } from "../UpCard";
 
@@ -256,5 +260,32 @@ describe("UpCard × B 站订阅的身份行", () => {
 		};
 		const { getByText } = render(<UpCard {...props({ sub })} />);
 		expect(getByText("UID 100")).toBeTruthy();
+	});
+});
+
+/**
+ * 订阅功能开关的胶囊。⑬d 起周期「正在直播」是自己的特性(`liveStreaming`),开着时卡片上多一枚「直播中」。
+ * 基线是真正的全局特性(调用方给),缺省才是出厂值 —— 全局「周期开」的订阅卡片上也要看得到。
+ */
+describe("UpCard 特性胶囊 · 直播中", () => {
+	it("出厂关着 → 没有「直播中」胶囊;订阅自己打开 → 有", () => {
+		const base = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
+		expect(render(<UpCard {...props({ sub: base })} />).queryByText("直播中")).toBeNull();
+		cleanup();
+		const on = { ...base, overrides: { features: { liveStreaming: true } } };
+		expect(render(<UpCard {...props({ sub: on })} />).getByText("直播中")).toBeTruthy();
+	});
+
+	it("全局基线是开的 → 继承的订阅也有;订阅自己关了就没有", () => {
+		const globalFeatures = { ...DEFAULT_FEATURE_FLAGS, liveStreaming: true };
+		const base = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
+		expect(
+			render(<UpCard {...props({ sub: base, globalFeatures })} />).getByText("直播中"),
+		).toBeTruthy();
+		cleanup();
+		const off = { ...base, overrides: { features: { liveStreaming: false } } };
+		expect(
+			render(<UpCard {...props({ sub: off, globalFeatures })} />).queryByText("直播中"),
+		).toBeNull();
 	});
 });

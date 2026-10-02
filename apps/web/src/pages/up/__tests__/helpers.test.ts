@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { FEATURE_KEYS, type FeatureKey, makeEmptySubscription } from "../../../types/domain";
+import {
+	DEFAULT_FEATURE_FLAGS,
+	FEATURE_KEYS,
+	type FeatureKey,
+	makeEmptySubscription,
+} from "../../../types/domain";
 import {
 	colorFromUid,
 	displayName,
@@ -30,6 +35,18 @@ describe("subscribedFeatures", () => {
 		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
 		sub.overrides = { features: { superchat: true } };
 		expect(subscribedFeatures(sub)).toContain("superchat");
+	});
+
+	// 直播拆键(⑬d):旧的「周期间隔大于 0」迁成**全局**的 `features.liveStreaming = true`,而面板没有全局
+	// 特性开关的界面 —— 订阅继承的基线得是真正的全局值(调用方给),不是出厂值,否则继承着全局「开」的订阅在卡片上
+	// 显示成关、弹层里也关不掉。
+	it("基线由调用方给:继承全局「周期开」的订阅显示出 liveStreaming;订阅自己关了就不显示", () => {
+		const base = { ...DEFAULT_FEATURE_FLAGS, liveStreaming: true };
+		const sub = makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" });
+		expect(subscribedFeatures(sub)).not.toContain("liveStreaming"); // 缺省基线 = 出厂(关)
+		expect(subscribedFeatures(sub, base)).toContain("liveStreaming");
+		sub.overrides = { features: { liveStreaming: false } };
+		expect(subscribedFeatures(sub, base)).not.toContain("liveStreaming");
 	});
 
 	it("routing 灌满全部目标也不影响结果 —— 只看主开关,不看 routing", () => {

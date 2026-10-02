@@ -8,6 +8,8 @@ import type {
 	FeatureFlags,
 	FeatureFlagsPartial,
 	ImageGroupSettings,
+	LiveStartSettings,
+	LiveStreamingSettings,
 	ScheduleConfig,
 	TemplateBundle,
 } from "./common";
@@ -41,6 +43,10 @@ export interface EffectiveSubscription {
 	features: FeatureFlags;
 	filters: ContentFilters;
 	schedule: ScheduleConfig;
+	/** 启动补报(⑬d 起自成一段,原先在 `schedule` 里)。 */
+	liveStart: LiveStartSettings;
+	/** 周期「正在直播」的间隔(⑬d 起自成一段,原先在 `schedule` 里);开关在 `features.liveStreaming`。 */
+	liveStreaming: LiveStreamingSettings;
 	templates: TemplateBundle;
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
@@ -170,6 +176,8 @@ function resolveCommon(
 		features: mergeFeatures(defaults.features, ov.features),
 		filters: merge(defaults.filters, ov.filters),
 		schedule: merge(defaults.schedule, ov.schedule),
+		liveStart: merge(defaults.liveStart, ov.liveStart),
+		liveStreaming: merge(defaults.liveStreaming, ov.liveStreaming),
 		templates: merge(defaults.templates, ov.templates),
 		ai: resolveAI(defaults.ai, ov.ai),
 		cardStyle: merge(defaults.cardStyle, ov.cardStyle),

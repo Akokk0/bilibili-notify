@@ -30,6 +30,8 @@ import type {
 	GlobalConfigPatch,
 	GuardBundle,
 	ImageGroupSettings,
+	LiveStartSettings,
+	LiveStreamingSettings,
 	ScheduleConfig,
 	TemplateBundle,
 } from "../../types/globals";
@@ -359,10 +361,19 @@ export function ImageGroupSection({
 export function LiveThresholdsSection({
 	filters,
 	schedule,
+	liveStart,
+	liveStreaming,
+	liveStreamingOn,
 	onPatch,
 }: {
 	filters: ContentFilters;
 	schedule: ScheduleConfig;
+	/** 启动补报(⑬d 起自成一段,原先在 `schedule` 里)。 */
+	liveStart: LiveStartSettings;
+	/** 周期「正在直播」的间隔(⑬d 起自成一段,原先在 `schedule` 里),整数小时 1–24。 */
+	liveStreaming: LiveStreamingSettings;
+	/** 周期「正在直播」的全局开关(`features.liveStreaming`):出厂关,各订阅可在订阅弹框里单独覆盖。 */
+	liveStreamingOn: boolean;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
 	const setF = <K extends keyof ContentFilters>(k: K, v: ContentFilters[K]) =>
@@ -395,20 +406,31 @@ export function LiveThresholdsSection({
 						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
 					/>
 				</Field>
-				<Field code="schedule.pushTime">
+				<Field code="features.liveStreaming">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={liveStreamingOn}
+							onChange={(v) => onPatch({ defaults: { features: { liveStreaming: v } } })}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="liveStreaming.streamingIntervalHours">
 					<TNum
-						value={schedule.pushTime}
-						onChange={(v) => setS("pushTime", v)}
-						min={0}
-						max={23}
+						value={liveStreaming.streamingIntervalHours}
+						onChange={(v) =>
+							onPatch({ defaults: { liveStreaming: { streamingIntervalHours: v } } })
+						}
+						min={1}
+						max={24}
 						suffix="小时"
 					/>
 				</Field>
-				<Field code="restartPush">
+				<Field code="liveStart.catchUpOnBoot">
 					<div className="flex h-7.5 items-center">
 						<Toggle
-							value={schedule.restartPush}
-							onChange={(v) => setS("restartPush", v)}
+							value={liveStart.catchUpOnBoot}
+							onChange={(v) => onPatch({ defaults: { liveStart: { catchUpOnBoot: v } } })}
 							size="sm"
 						/>
 					</div>
@@ -521,7 +543,7 @@ const LIVE_START_VARS: VarSpec[] = [
 	{ code: "{name}", desc: "UP 主名字" },
 	{ code: "{follower}", desc: "当前粉丝数" },
 ];
-const LIVE_ONGOING_VARS: VarSpec[] = [
+const LIVE_STREAMING_VARS: VarSpec[] = [
 	{ code: "{name}", desc: "UP 主名字" },
 	{ code: "{time}", desc: "已直播时长" },
 	{ code: "{watched}", desc: "累计观看人数" },
@@ -655,7 +677,12 @@ export function SpecialEnterVariableHints() {
 /** 直播文本 Picker 的三段定义:模板字段 / Field code / 变量表(开播 / 直播中 / 下播共用同一套版式)。 */
 const LIVE_TEMPLATE_TABS = [
 	{ key: "liveStart", label: "开播", code: "templates.liveStart", vars: LIVE_START_VARS },
-	{ key: "liveOngoing", label: "直播中", code: "templates.liveOngoing", vars: LIVE_ONGOING_VARS },
+	{
+		key: "liveStreaming",
+		label: "直播中",
+		code: "templates.liveStreaming",
+		vars: LIVE_STREAMING_VARS,
+	},
 	{ key: "liveEnd", label: "下播", code: "templates.liveEnd", vars: LIVE_END_VARS },
 ] as const;
 

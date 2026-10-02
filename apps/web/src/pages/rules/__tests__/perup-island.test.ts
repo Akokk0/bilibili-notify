@@ -31,11 +31,33 @@ describe("projectPerUpIsland — filters 打平", () => {
 	});
 });
 
-describe("projectPerUpIsland — schedule/templates/ai 保 nested", () => {
-	it("改 schedule.pushTime → 'schedule.pushTime',section=schedule", () => {
-		const codes = diffCodes({ schedule: { pushTime: 1 } }, { schedule: { pushTime: 2 } });
-		expect(codes).toContain("schedule.pushTime");
-		expect(sectionOf("schedule.pushTime")).toBe("schedule");
+describe("projectPerUpIsland — schedule/liveStart/liveStreaming/templates/ai 保 nested", () => {
+	it("改 schedule.liveEndGraceMinutes → 'schedule.liveEndGraceMinutes',section=schedule", () => {
+		const codes = diffCodes(
+			{ schedule: { liveEndGraceMinutes: 1 } },
+			{ schedule: { liveEndGraceMinutes: 2 } },
+		);
+		expect(codes).toContain("schedule.liveEndGraceMinutes");
+		expect(sectionOf("schedule.liveEndGraceMinutes")).toBe("schedule");
+	});
+
+	// 直播拆键(⑬d):周期间隔与启动补报从 schedule 里搬出来,各自成一段。
+	it("改 liveStreaming.streamingIntervalHours → 'liveStreaming.streamingIntervalHours',section=schedule", () => {
+		const codes = diffCodes(
+			{ liveStreaming: { streamingIntervalHours: 1 } },
+			{ liveStreaming: { streamingIntervalHours: 2 } },
+		);
+		expect(codes).toContain("liveStreaming.streamingIntervalHours");
+		expect(sectionOf("liveStreaming.streamingIntervalHours")).toBe("schedule");
+	});
+
+	it("改 liveStart.catchUpOnBoot → 'liveStart.catchUpOnBoot',section=schedule", () => {
+		const codes = diffCodes(
+			{ liveStart: { catchUpOnBoot: false } },
+			{ liveStart: { catchUpOnBoot: true } },
+		);
+		expect(codes).toContain("liveStart.catchUpOnBoot");
+		expect(sectionOf("liveStart.catchUpOnBoot")).toBe("schedule");
 	});
 
 	it("改 templates.liveSummary → 'templates.liveSummary',section=templates", () => {

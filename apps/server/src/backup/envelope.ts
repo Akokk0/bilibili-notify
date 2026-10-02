@@ -27,6 +27,10 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 5 = 直播拆键以后导出的备份(新特性 `liveStreaming`:订阅的 `routing` / `overrides.features` 与设置的 `defaults.features`
+ * 里多一把键,`routing.liveStreaming` 是开播目标的拷贝;周期间隔 `schedule.pushTime` 与启动补报 `schedule.restartPush`
+ * 拆成 `liveStreaming.streamingIntervalHours` 与 `liveStart.catchUpOnBoot`,订阅覆盖里同理;文案 `templates.liveOngoing` 叫
+ * `liveStreaming`)。
  * 4 = 特性键改名以后导出的备份(订阅的 `routing` / `overrides` 与设置的 `defaults` 里,特性键、附加项键、文案键、版式键换成
  * 1.0 的名字:`post` / `liveStart` / `membership`、`atAllPost` / `atAllLiveStart`、`templates.post` / `postVideo`、
  * `messageLayout.post`;订阅的逐目标表叫 `extraTargets`)。
@@ -34,7 +38,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 4 as const;
+export const BACKUP_SCHEMA_VERSION = 5 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

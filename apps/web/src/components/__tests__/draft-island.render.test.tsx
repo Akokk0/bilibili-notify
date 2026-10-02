@@ -23,7 +23,7 @@ import { DraftIsland } from "../draft-island";
 
 const sampleDiff: FieldDiff[] = [
 	{ code: "blockKeywords", oldValue: [], newValue: ["spam"] },
-	{ code: "schedule.pushTime", oldValue: "09:00", newValue: "10:00" },
+	{ code: "liveStreaming.streamingIntervalHours", oldValue: "09:00", newValue: "10:00" },
 ];
 
 function makeReg(overrides: Partial<DraftRegistration> = {}): DraftRegistration {
@@ -258,7 +258,7 @@ describe("DraftIsland expand panel DiffRow 行跳转", () => {
 			panelLocked: true,
 		});
 		render(<DraftIsland />);
-		// blockKeywords / schedule.pushTime 都不在 DOM 里
+		// blockKeywords / liveStreaming.streamingIntervalHours 都不在 DOM 里
 		expect(() => fireEvent.click(screen.getByTitle("跳转到 blockKeywords"))).not.toThrow();
 	});
 
@@ -274,7 +274,7 @@ describe("DraftIsland expand panel DiffRow 行跳转", () => {
 		expect(onDiscard).toHaveBeenCalledTimes(1);
 	});
 
-	it("panel 渲染分 section 标题 — 字典里 blockKeywords→filter, schedule.pushTime→schedule", () => {
+	it("panel 渲染分 section 标题 — 字典里 blockKeywords→filter, liveStreaming.streamingIntervalHours→schedule", () => {
 		useDraftStore.setState({
 			current: makeReg(),
 			uiState: "dirty",

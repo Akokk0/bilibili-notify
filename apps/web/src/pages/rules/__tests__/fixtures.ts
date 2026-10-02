@@ -40,15 +40,15 @@ export function makeDefaults(): GlobalDefaults {
 			minGuardLevel: 3,
 		},
 		schedule: {
-			pushTime: 0,
-			restartPush: false,
 			quietHours: [],
 			liveEndGrace: false,
 			liveEndGraceMinutes: 2,
 		},
+		liveStart: { catchUpOnBoot: false },
+		liveStreaming: { streamingIntervalHours: 1 },
 		templates: {
 			liveStart: "",
-			liveOngoing: "",
+			liveStreaming: "",
 			liveEnd: "",
 			liveSummary: "",
 			post: "",

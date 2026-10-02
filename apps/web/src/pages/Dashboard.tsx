@@ -114,7 +114,13 @@ function liveRowFace(
 // 跟后端 `LIVE_ROOM_MASTER_KEYS` 同集合 —— 只要任意一项的 routing 数组非空,
 // LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled 也不会出现
 // 在「正在直播」面板里(needsLiveMonitor 返回 false)。
-const LIVE_ROUTING_KEYS = ["liveStart", "liveEnd", "membership", "superchat"] as const;
+const LIVE_ROUTING_KEYS = [
+	"liveStart",
+	"liveStreaming",
+	"liveEnd",
+	"membership",
+	"superchat",
+] as const;
 
 function hasAnyLiveTarget(sub: Subscription): boolean {
 	return LIVE_ROUTING_KEYS.some((k) => (sub.routing[k]?.length ?? 0) > 0);

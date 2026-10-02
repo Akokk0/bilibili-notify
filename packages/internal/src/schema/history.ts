@@ -2,8 +2,8 @@ import { z } from "zod";
 import { type FeatureKey, PUSH_STATUSES } from "../constants";
 
 /**
- * 推送类型 —— 配置里能单独开关的每一类算一种,共 8 种。开播与周期「正在直播」共用一把
- * 特性键(liveStart)与一份目标,历史上却是两种推送,所以这里比特性键多一个 `live-ongoing`。
+ * 推送类型 —— 配置里能单独开关的每一类算一种,共 8 种,与特性键一一对应(周期「正在直播」
+ * 是 `liveStreaming` 这把键,历史行里叫 `live-ongoing`)。⑱ 之前历史行的值保持老样子,值不改。
  */
 export const PushKindSchema = z.enum([
 	"dynamic",
@@ -18,8 +18,8 @@ export const PushKindSchema = z.enum([
 export type PushKind = z.infer<typeof PushKindSchema>;
 
 /**
- * 特性键 → 推送类型的缺省翻译。只有 `liveStart` 那把键分不出「开播」与周期「正在直播」,
- * 调用方知道是哪种时显式传,不传就按开播记。
+ * 特性键 → 推送类型的翻译,一一对应。重启补报走 `liveStart` 的路由、历史记成开播
+ * (`live`),所以它与真开播同一个种类;周期「正在直播」是 `liveStreaming` → `live-ongoing`。
  */
 export function featureToPushKind(feature: FeatureKey): PushKind {
 	switch (feature) {
@@ -27,6 +27,8 @@ export function featureToPushKind(feature: FeatureKey): PushKind {
 			return "dynamic";
 		case "liveStart":
 			return "live";
+		case "liveStreaming":
+			return "live-ongoing";
 		case "liveEnd":
 			return "live-end";
 		case "membership":
@@ -46,16 +48,16 @@ export function featureToPushKind(feature: FeatureKey): PushKind {
  * 一条历史行记的是 `PushKind`,而路由、闸、订阅里的开关认的是 `FeatureKey`;人工重推
  * 要复检「这个目标还在不在这条路由里」,就得从行上那个 kind 翻回那把键。
  *
- * `live` 与 `live-ongoing` 并回 `liveStart` 同一把:开播与周期「正在直播」在历史上是两件事,在配置上
- * 共用一把键和同一份目标(所以这个方向**不是**单射,翻不回「是开播还是复推」)。
+ * 两个方向一一对应:`live` 归 `liveStart`,`live-ongoing` 归 `liveStreaming`(各有自己的开关与目标)。
  */
 export function pushKindToFeature(kind: PushKind): FeatureKey {
 	switch (kind) {
 		case "dynamic":
 			return "post";
 		case "live":
-		case "live-ongoing":
 			return "liveStart";
+		case "live-ongoing":
+			return "liveStreaming";
 		case "live-end":
 			return "liveEnd";
 		case "guard":

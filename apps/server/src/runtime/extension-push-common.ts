@@ -3,6 +3,7 @@ import { BLOCKED_IMG_PLACEHOLDER } from "@bilibili-notify/image";
 import {
 	BILIBILI_SOURCE_KEY,
 	type Subscription,
+	type SubscriptionEventKind,
 	sniffImageFormat,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -23,6 +24,11 @@ export interface ExtensionSourceLookups {
 	running(extensionId: string): boolean;
 	/** 清单里平台对作品的叫法(`contributes.subscription.display.postNoun`);没写就是 `undefined`。 */
 	postNoun(extensionId: string): string | undefined;
+	/**
+	 * 清单里这个源声明的事件(`contributes.subscription.events`);现取不到(装载器还没起来、清单没交订阅那一口)
+	 * 就是 `undefined`。直播推送据它认「周期『正在直播』这个源有没有」(`featuresForEvents`,面板与服务端同一条规则)。
+	 */
+	events(extensionId: string): readonly SubscriptionEventKind[] | undefined;
 	/** 这条订阅存下的头像文件(决策 49);没有就是 `undefined`。 */
 	readAvatar(
 		subscriptionId: string,

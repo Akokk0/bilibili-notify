@@ -86,7 +86,7 @@ export const RATCHET = {
 	"apps/web/src/pages/Rules.tsx": 6,
 	"apps/web/src/pages/Subs.tsx": 18,
 	"apps/web/src/pages/System.tsx": 27,
-	"apps/web/src/pages/rules/PerUpEditor.tsx": 8,
+	"apps/web/src/pages/rules/PerUpEditor.tsx": 7,
 	"apps/web/src/pages/rules/sections.tsx": 2,
 	"apps/web/src/pages/up/UpCard.tsx": 6,
 	"apps/web/src/pages/up/UpDialog.tsx": 10,

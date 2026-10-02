@@ -33,7 +33,10 @@ import {
 	type AIOverride,
 	BILIBILI_SOURCE_KEY,
 	type ContentFiltersOverride,
+	type FeatureKey,
 	type ImageGroupOverride,
+	type LiveStartOverride,
+	type LiveStreamingOverride,
 	type MessageLayoutOverride,
 	type OverridesShape,
 	type ScheduleOverride,
@@ -59,6 +62,7 @@ import {
 	hasAiPersonaOverride,
 	hasFilterContentOverride,
 	hasLiveThresholdOverride,
+	hasLiveTimingOverride,
 } from "./section-scope";
 import {
 	DynamicMsgVariableHints,
@@ -81,6 +85,8 @@ import {
 export const perUpOverrideKeys = [
 	"filters",
 	"schedule",
+	"liveStart",
+	"liveStreaming",
 	"templates",
 	"ai",
 	"imageGroup",
@@ -124,9 +130,15 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 	const specialUsers = sub.specialUsers;
 	// 拓展订阅按源报得出的事件给格;认不出是哪个源(没传)时按最多的给,同配置弹层。
 	const features = platform?.features;
-	const reportsPost = isBili || !features || features.includes("post");
-	const reportsLive =
-		isBili || !features || features.includes("liveStart") || features.includes("liveEnd");
+	const reports = (k: FeatureKey): boolean => isBili || !features || features.includes(k);
+	const reportsPost = reports("post");
+	const reportsLive = reports("liveStart") || reports("liveEnd");
+	// 推送频率那几格各看各的事件:补报是开播的子项,周期间隔要有 `liveStreaming` 这一把(声明了开播与下播)。
+	const timing: LiveTimingShown = {
+		grace: reportsLive,
+		catchUp: reports("liveStart"),
+		streaming: reports("liveStreaming"),
+	};
 	const [draft, setDraft] = useState<PerUpDraft>({
 		overrides: sub.overrides,
 		specialUsers,
@@ -192,6 +204,23 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 
 	const color = subscriptionColor(sub);
 
+	/** 推送时间那几段(免扰 / 断流接续、周期间隔、启动补报)的覆盖与全局基线,「直播阈值」与「推送时段」两节共用。 */
+	const timingBoxProps: TimingBoxProps = {
+		overrides: {
+			schedule: draft.overrides.schedule,
+			liveStart: draft.overrides.liveStart,
+			liveStreaming: draft.overrides.liveStreaming,
+		},
+		onSchedule: (v) => setSlice("schedule", v),
+		onLiveStart: (v) => setSlice("liveStart", v),
+		onLiveStreaming: (v) => setSlice("liveStreaming", v),
+		baseline: {
+			schedule: defaults.schedule,
+			liveStart: defaults.liveStart,
+			liveStreaming: defaults.liveStreaming,
+		},
+	};
+
 	return (
 		<div className="space-y-4">
 			<div
@@ -234,21 +263,13 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 			{section === "live" ? (
 				<LiveOverrideBox
 					filters={draft.overrides.filters}
-					schedule={draft.overrides.schedule}
 					onFilters={(v) => setSlice("filters", v)}
-					onSchedule={(v) => setSlice("schedule", v)}
 					baselineFilters={defaults.filters}
-					baselineSchedule={defaults.schedule}
+					timing={timing}
+					{...timingBoxProps}
 				/>
 			) : null}
-			{section === "schedule" ? (
-				<ScheduleOverrideBox
-					value={draft.overrides.schedule}
-					onChange={(v) => setSlice("schedule", v)}
-					baseline={defaults.schedule}
-					liveTiming={reportsLive}
-				/>
-			) : null}
+			{section === "schedule" ? <ScheduleOverrideBox timing={timing} {...timingBoxProps} /> : null}
 			{section === "summary" ? (
 				<SummaryOverrideBox
 					value={draft.overrides.templates}
@@ -430,26 +451,74 @@ function FilterOverrideBox({
 	);
 }
 
-/* -------- Live thresholds (filters.minScPrice/minGuardLevel + schedule) -- */
+/* -------- 推送时间那几段:免扰 / 断流接续、周期间隔、启动补报 ----------------- */
+
+/**
+ * 推送时间这几段里画哪几格。B 站全画;拓展订阅看那个源报得出什么(见 `PerUpEditor` 里算它的地方)。
+ * 免扰时段对所有推送生效,恒画。
+ */
+interface LiveTimingShown {
+	/** 断流接续那两格(源报开播或下播)。 */
+	grace: boolean;
+	/** 启动补报(开播的子项,源报开播)。 */
+	catchUp: boolean;
+	/** 周期「正在直播」的间隔(源声明了开播与下播,有 `liveStreaming` 这一把)。 */
+	streaming: boolean;
+}
+
+/**
+ * 推送时间的几段覆盖:免扰 / 断流接续(`schedule`),外加直播拆键(⑬d)从 `schedule` 里搬出来的周期间隔
+ * (`liveStreaming`)与启动补报(`liveStart`)。「直播阈值」(B 站)与「推送时段」(拓展订阅)两节共用。
+ */
+interface TimingBoxProps {
+	overrides: {
+		schedule: ScheduleOverride | undefined;
+		liveStart: LiveStartOverride | undefined;
+		liveStreaming: LiveStreamingOverride | undefined;
+	};
+	onSchedule: (next: ScheduleOverride | undefined) => void;
+	onLiveStart: (next: LiveStartOverride | undefined) => void;
+	onLiveStreaming: (next: LiveStreamingOverride | undefined) => void;
+	baseline: {
+		schedule: GlobalDefaults["schedule"];
+		liveStart: GlobalDefaults["liveStart"];
+		liveStreaming: GlobalDefaults["liveStreaming"];
+	};
+}
+
+/** 开覆盖:把画出来的那几段钉成当前全局值(一份快照)。`schedule` 里免扰时段恒钉,断流接续只在画出来时钉。 */
+function seedTiming(
+	{ onSchedule, onLiveStart, onLiveStreaming, baseline }: TimingBoxProps,
+	shown: LiveTimingShown,
+): void {
+	onSchedule(shown.grace ? { ...baseline.schedule } : { quietHours: baseline.schedule.quietHours });
+	if (shown.catchUp) onLiveStart({ ...baseline.liveStart });
+	if (shown.streaming) onLiveStreaming({ ...baseline.liveStreaming });
+}
+
+/** 关覆盖:几段全部清掉(回到继承全局)。 */
+function clearTiming({ onSchedule, onLiveStart, onLiveStreaming }: TimingBoxProps): void {
+	onSchedule(undefined);
+	onLiveStart(undefined);
+	onLiveStreaming(undefined);
+}
+
+/* -------- Live thresholds (filters.minScPrice/minGuardLevel + 推送时间) ---- */
 
 function LiveOverrideBox({
 	filters,
-	schedule,
 	onFilters,
-	onSchedule,
 	baselineFilters,
-	baselineSchedule,
+	timing,
+	...timingProps
 }: {
 	filters: ContentFiltersOverride | undefined;
-	schedule: ScheduleOverride | undefined;
 	onFilters: (next: ContentFiltersOverride | undefined) => void;
-	onSchedule: (next: ScheduleOverride | undefined) => void;
 	baselineFilters: GlobalDefaults["filters"];
-	baselineSchedule: GlobalDefaults["schedule"];
-}) {
-	const enabled = hasLiveThresholdOverride({ filters, schedule });
+	timing: LiveTimingShown;
+} & TimingBoxProps) {
+	const enabled = hasLiveThresholdOverride({ filters, ...timingProps.overrides });
 	const fCur = filters ?? {};
-	const sCur = schedule ?? {};
 	function toggle(on: boolean): void {
 		if (on) {
 			onFilters({
@@ -457,12 +526,12 @@ function LiveOverrideBox({
 				minScPrice: baselineFilters.minScPrice,
 				minGuardLevel: baselineFilters.minGuardLevel,
 			});
-			onSchedule({ ...baselineSchedule });
+			seedTiming(timingProps, timing);
 		} else {
 			// 只清阈值域两个字段,保留可能由 FilterOverrideBox 写入的过滤域字段。
 			const { minScPrice: _s, minGuardLevel: _g, ...rest } = fCur;
 			onFilters(Object.keys(rest).length > 0 ? rest : undefined);
-			onSchedule(undefined);
+			clearTiming(timingProps);
 		}
 	}
 	return (
@@ -492,65 +561,69 @@ function LiveOverrideBox({
 						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
 					/>
 				</Field>
-				<ScheduleFields value={sCur} onChange={onSchedule} baseline={baselineSchedule} liveTiming />
+				<TimingFields {...timingProps} timing={timing} />
 			</div>
 		</OverrideBox>
 	);
 }
 
 /**
- * `overrides.schedule` 那几格 —— B 站的「直播阈值」与拓展订阅的「推送时段」共用。返回一串
- * 同级的格(Fragment),由外面那张两列网格排版。
- *
- * `liveTiming` 关着时只画免扰时段:推送频率那几格(周期推送 / 重启补推 / 断流接续)只对直播有意义。
+ * 推送时间那几格 —— B 站的「直播阈值」与拓展订阅的「推送时段」共用。返回一串同级的格(Fragment),
+ * 由外面那张两列网格排版。`timing` 说画哪几格(见 {@link LiveTimingShown});免扰时段恒画。
  */
-function ScheduleFields({
-	value,
-	onChange,
+function TimingFields({
+	overrides,
+	onSchedule,
+	onLiveStart,
+	onLiveStreaming,
 	baseline,
-	liveTiming,
-}: {
-	value: ScheduleOverride;
-	onChange: (next: ScheduleOverride) => void;
-	baseline: GlobalDefaults["schedule"];
-	liveTiming: boolean;
-}) {
+	timing,
+}: TimingBoxProps & { timing: LiveTimingShown }) {
+	const schedule = overrides.schedule ?? {};
+	const liveStart = overrides.liveStart ?? {};
+	const liveStreaming = overrides.liveStreaming ?? {};
 	return (
 		<>
-			{liveTiming ? (
-				<>
-					<Field code="schedule.pushTime">
-						<TNum
-							value={value.pushTime ?? baseline.pushTime}
-							onChange={(v) => onChange({ ...value, pushTime: v })}
-							min={0}
-							max={23}
-							suffix="小时"
+			{timing.streaming ? (
+				<Field code="liveStreaming.streamingIntervalHours">
+					<TNum
+						value={
+							liveStreaming.streamingIntervalHours ?? baseline.liveStreaming.streamingIntervalHours
+						}
+						onChange={(v) => onLiveStreaming({ ...liveStreaming, streamingIntervalHours: v })}
+						min={1}
+						max={24}
+						suffix="小时"
+					/>
+				</Field>
+			) : null}
+			{timing.catchUp ? (
+				<Field code="liveStart.catchUpOnBoot">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={liveStart.catchUpOnBoot ?? baseline.liveStart.catchUpOnBoot}
+							onChange={(v) => onLiveStart({ ...liveStart, catchUpOnBoot: v })}
+							size="sm"
 						/>
-					</Field>
-					<Field code="schedule.restartPush">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={value.restartPush ?? baseline.restartPush}
-								onChange={(v) => onChange({ ...value, restartPush: v })}
-								size="sm"
-							/>
-						</div>
-					</Field>
+					</div>
+				</Field>
+			) : null}
+			{timing.grace ? (
+				<>
 					<Field code="schedule.liveEndGrace" hint="覆盖断流接续:下播先延迟判定">
 						<div className="flex h-7.5 items-center">
 							<Toggle
-								value={value.liveEndGrace ?? baseline.liveEndGrace}
-								onChange={(v) => onChange({ ...value, liveEndGrace: v })}
+								value={schedule.liveEndGrace ?? baseline.schedule.liveEndGrace}
+								onChange={(v) => onSchedule({ ...schedule, liveEndGrace: v })}
 								size="sm"
 							/>
 						</div>
 					</Field>
-					{(value.liveEndGrace ?? baseline.liveEndGrace) ? (
+					{(schedule.liveEndGrace ?? baseline.schedule.liveEndGrace) ? (
 						<Field code="schedule.liveEndGraceMinutes">
 							<TNum
-								value={value.liveEndGraceMinutes ?? baseline.liveEndGraceMinutes}
-								onChange={(v) => onChange({ ...value, liveEndGraceMinutes: v })}
+								value={schedule.liveEndGraceMinutes ?? baseline.schedule.liveEndGraceMinutes}
+								onChange={(v) => onSchedule({ ...schedule, liveEndGraceMinutes: v })}
 								min={1}
 								max={10}
 								suffix="分钟"
@@ -561,15 +634,15 @@ function ScheduleFields({
 			) : null}
 			<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
 				<QuietHoursEditor
-					value={value.quietHours ?? baseline.quietHours}
-					onChange={(v) => onChange({ ...value, quietHours: v })}
+					value={schedule.quietHours ?? baseline.schedule.quietHours}
+					onChange={(v) => onSchedule({ ...schedule, quietHours: v })}
 				/>
 			</Field>
 		</>
 	);
 }
 
-/* -------- Schedule (拓展订阅的「推送时段」,只有 overrides.schedule) ------- */
+/* -------- Schedule (拓展订阅的「推送时段」:免扰 + 源报得出的推送频率) -------- */
 
 /**
  * 拓展订阅那一节「推送时段」:B 站那节「直播阈值」去掉 SC / 上舰两格(B 站独有,ADR-0019 决策 5)。
@@ -578,20 +651,14 @@ function ScheduleFields({
  * 开覆盖只钉画出来的那几格:只报作品的源不画推送频率,也就不替它钉一份用不上的快照。
  */
 function ScheduleOverrideBox({
-	value,
-	onChange,
-	baseline,
-	liveTiming,
-}: {
-	value: ScheduleOverride | undefined;
-	onChange: (next: ScheduleOverride | undefined) => void;
-	baseline: GlobalDefaults["schedule"];
-	liveTiming: boolean;
-}) {
+	timing,
+	...timingProps
+}: { timing: LiveTimingShown } & TimingBoxProps) {
 	function toggle(on: boolean): void {
-		if (!on) onChange(undefined);
-		else onChange(liveTiming ? { ...baseline } : { quietHours: baseline.quietHours });
+		if (on) seedTiming(timingProps, timing);
+		else clearTiming(timingProps);
 	}
+	const liveTiming = timing.grace || timing.catchUp || timing.streaming;
 	return (
 		<OverrideBox
 			title="推送时段覆盖"
@@ -602,17 +669,12 @@ function ScheduleOverrideBox({
 			}
 			accent="var(--color-bn-pink)"
 			icon={<Icon.sliders size={14} />}
-			enabled={value !== undefined}
+			enabled={hasLiveTimingOverride(timingProps.overrides)}
 			onToggle={toggle}
 			inheritNote="该 UP 将继承全局免扰时段与推送频率"
 		>
 			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
-				<ScheduleFields
-					value={value ?? {}}
-					onChange={onChange}
-					baseline={baseline}
-					liveTiming={liveTiming}
-				/>
+				<TimingFields {...timingProps} timing={timing} />
 			</div>
 		</OverrideBox>
 	);
@@ -700,7 +762,7 @@ function SummaryOverrideBox({
 	);
 }
 
-/* -------- Msg templates (liveStart / liveOngoing / liveEnd) ------------- */
+/* -------- Msg templates (liveStart / liveStreaming / liveEnd) ----------- */
 
 function MsgOverrideBox({
 	value,
@@ -711,13 +773,13 @@ function MsgOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	// 无 enable flag(与动态模板一致):有 liveStart/liveOngoing/liveEnd 任一覆盖即「覆盖中」。
+	// 无 enable flag(与动态模板一致):有 liveStart/liveStreaming/liveEnd 任一覆盖即「覆盖中」。
 	const enabled =
 		value?.liveStart !== undefined ||
-		value?.liveOngoing !== undefined ||
+		value?.liveStreaming !== undefined ||
 		value?.liveEnd !== undefined;
 	const cur = value ?? {};
-	function set<K extends "liveStart" | "liveOngoing" | "liveEnd">(k: K, v: string): void {
+	function set<K extends "liveStart" | "liveStreaming" | "liveEnd">(k: K, v: string): void {
 		onChange({ ...cur, [k]: v });
 	}
 	function toggle(on: boolean): void {
@@ -725,11 +787,11 @@ function MsgOverrideBox({
 			onChange({
 				...cur,
 				liveStart: cur.liveStart ?? baseline.liveStart,
-				liveOngoing: cur.liveOngoing ?? baseline.liveOngoing,
+				liveStreaming: cur.liveStreaming ?? baseline.liveStreaming,
 				liveEnd: cur.liveEnd ?? baseline.liveEnd,
 			});
 		} else {
-			const { liveStart: _a, liveOngoing: _b, liveEnd: _c, ...rest } = cur;
+			const { liveStart: _a, liveStreaming: _b, liveEnd: _c, ...rest } = cur;
 			onChange(Object.keys(rest).length > 0 ? rest : undefined);
 		}
 	}
@@ -752,10 +814,10 @@ function MsgOverrideBox({
 					mono
 				/>
 			</Field>
-			<Field code="templates.liveOngoing" full>
+			<Field code="templates.liveStreaming" full>
 				<TArea
-					value={cur.liveOngoing ?? baseline.liveOngoing}
-					onChange={(v) => set("liveOngoing", v)}
+					value={cur.liveStreaming ?? baseline.liveStreaming}
+					onChange={(v) => set("liveStreaming", v)}
 					rows={3}
 					mono
 				/>

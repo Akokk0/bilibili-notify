@@ -50,8 +50,9 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 0,
-		restartPush: false,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		// 宿主恒填版式;用例按需覆盖。
 		messageLayout: defaultMessageKindLayout("live"),
 		...over,
@@ -66,7 +67,7 @@ interface CtxMocks {
 	generateGuardCard: ReturnType<typeof vi.fn>;
 	renderGuardBuy: ReturnType<typeof vi.fn>;
 	renderLiveStart: ReturnType<typeof vi.fn>;
-	renderLiveOngoing: ReturnType<typeof vi.fn>;
+	renderLiveStreaming: ReturnType<typeof vi.fn>;
 	renderLiveEnd: ReturnType<typeof vi.fn>;
 	renderSpecialUserEnter: ReturnType<typeof vi.fn>;
 	sendLiveNotifyCard: ReturnType<typeof vi.fn>;
@@ -97,7 +98,7 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		generateGuardCard: vi.fn(async () => Buffer.from("guard")),
 		renderGuardBuy: vi.fn(() => "上舰文案"),
 		renderLiveStart: vi.fn(() => "开播啦"),
-		renderLiveOngoing: vi.fn(() => "直播中"),
+		renderLiveStreaming: vi.fn(() => "直播中"),
 		renderLiveEnd: vi.fn(() => "下播了"),
 		renderSpecialUserEnter: vi.fn(() => "进房文案"),
 		sendLiveNotifyCard: vi.fn(async () => {}),
@@ -129,7 +130,7 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		templateRenderer: {
 			renderGuardBuy: m.renderGuardBuy,
 			renderLiveStart: m.renderLiveStart,
-			renderLiveOngoing: m.renderLiveOngoing,
+			renderLiveStreaming: m.renderLiveStreaming,
 			renderLiveEnd: m.renderLiveEnd,
 			renderSpecialDanmaku: () => "",
 			renderSpecialUserEnter: m.renderSpecialUserEnter,
@@ -672,7 +673,7 @@ describe("RoomSession.tickPushAtTime — 消息版式", () => {
 		});
 	}
 
-	it("sub 带 messageLayout → renderLiveOngoing 后 sendLiveNotifyCard 收到版式与房间链接", async () => {
+	it("sub 带 messageLayout → renderLiveStreaming 后 sendLiveNotifyCard 收到版式与房间链接", async () => {
 		const { ctx, m } = makeCtx();
 		const layout = { blocks: [{ id: "card", type: "card", visible: true }], separator: "\n" };
 		const s = new RoomSession(ctx, makeSub({ messageLayout: layout })) as AnySession;
@@ -681,6 +682,104 @@ describe("RoomSession.tickPushAtTime — 消息版式", () => {
 		const params = m.sendLiveNotifyCard.mock.calls[0]?.[0];
 		expect(params?.messageLayout).toEqual(layout);
 		expect(params?.roomLink).toBe("https://live.bilibili.com/12345");
+	});
+
+	it("周期「正在直播」发的是直播中的卡,且不是重启补报那一档(CatchUp 只属于启动补报)", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeLiveRoom(s);
+		await s.tickPushAtTime();
+		const params = m.sendLiveNotifyCard.mock.calls[0]?.[0];
+		expect(params?.liveType).toBe(LiveType.LiveBroadcast);
+		expect(params?.pushType).not.toBe(LivePushType.CatchUp);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// bootstrapRoomState —— 重启补报(⑬d:`catchUpOnBoot`)
+//
+// 启动时发现正在播,补报一次**开播**:走 liveStart 的目标、推送类型是 CatchUp(历史记成开播、不 @全体),
+// 文字与卡仍是「正在直播」那一套(renderLiveStreaming、LiveType.LiveBroadcast 的卡)。补报跟着开播推送
+// 的开关与它自己的子项走,与周期「正在直播」(liveStreaming)互不相干。
+// ---------------------------------------------------------------------------
+
+describe("RoomSession.bootstrapRoomState — 重启补报", () => {
+	function primeLiveRoom(s: AnySession): void {
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: "2026-01-01 00:00:00",
+				live_status: 1,
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 100 };
+			return true;
+		});
+		s.onListenerStarted = vi.fn();
+		s.armPeriodicTimer = vi.fn();
+	}
+
+	it("catchUpOnBoot 开、liveStart 开 → 补报一张:推送类型 CatchUp,文字是「正在直播」那句,卡是直播中的卡", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub({ liveStart: true, catchUpOnBoot: true })) as AnySession;
+		primeLiveRoom(s);
+
+		expect(await s.bootstrapRoomState()).toBe(true);
+
+		expect(m.sendLiveNotifyCard).toHaveBeenCalledTimes(1);
+		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]).toMatchObject({
+			liveType: LiveType.LiveBroadcast,
+			pushType: LivePushType.CatchUp,
+			notifyMsg: "直播中",
+		});
+		expect(m.renderLiveStreaming).toHaveBeenCalledTimes(1);
+		expect(m.renderLiveStart).not.toHaveBeenCalled();
+	});
+
+	it("catchUpOnBoot 关 → 不补报(出厂如此),但房间照样翻成在播", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(
+			ctx,
+			makeSub({ liveStart: true, catchUpOnBoot: false }),
+		) as AnySession;
+		primeLiveRoom(s);
+
+		await s.bootstrapRoomState();
+
+		expect(m.sendLiveNotifyCard).not.toHaveBeenCalled();
+		expect(s.isLive).toBe(true);
+	});
+
+	it("catchUpOnBoot 开、liveStart 关 → 不补报:补的是开播,开播推送关着就没有什么可补", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(
+			ctx,
+			makeSub({ liveStart: false, catchUpOnBoot: true }),
+		) as AnySession;
+		primeLiveRoom(s);
+
+		await s.bootstrapRoomState();
+
+		expect(m.sendLiveNotifyCard).not.toHaveBeenCalled();
+	});
+
+	it("补报与周期互不相干:liveStreaming 开着也只补一张,周期计时另走 armPeriodicTimer", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(
+			ctx,
+			makeSub({ liveStart: true, catchUpOnBoot: true, liveStreaming: true }),
+		) as AnySession;
+		primeLiveRoom(s);
+
+		await s.bootstrapRoomState();
+
+		expect(m.sendLiveNotifyCard).toHaveBeenCalledTimes(1);
+		expect(s.armPeriodicTimer).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -782,12 +881,12 @@ describe("文案里的 {time}:按 live_time(北京时间)与当下的钟现算",
 		});
 	});
 
-	it("正在直播:renderLiveOngoing 收到「2小时4分9秒」", async () => {
+	it("正在直播:renderLiveStreaming 收到「2小时4分9秒」", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
 		prime(s, LIVE_TIME);
 		await s.tickPushAtTime();
-		expect(m.renderLiveOngoing.mock.calls[0]?.[0]).toMatchObject({ diffTime: "2小时4分9秒" });
+		expect(m.renderLiveStreaming.mock.calls[0]?.[0]).toMatchObject({ diffTime: "2小时4分9秒" });
 	});
 
 	it("下播:renderLiveEnd 收到「2小时4分9秒」", async () => {
@@ -805,7 +904,7 @@ describe("文案里的 {time}:按 live_time(北京时间)与当下的钟现算",
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
 		prime(s, "0000-00-00 00:00:00");
 		await s.tickPushAtTime();
-		expect(m.renderLiveOngoing.mock.calls[0]?.[0]).toMatchObject({ diffTime: "0秒" });
+		expect(m.renderLiveStreaming.mock.calls[0]?.[0]).toMatchObject({ diffTime: "0秒" });
 	});
 
 	describe("live_time 为空 → 以此刻为开播时刻,按北京时间记,与服务跑在哪个时区无关", () => {
@@ -948,10 +1047,10 @@ describe("RoomSession.onIncomeDanmu — 特别关注用户的弹幕", () => {
 // 关键不变量:
 //   - 仅 LiveType.StartBroadcasting(真开播)→ LivePushType.StartBroadcasting(3)
 //     (= liveTypeAllowsAtAll 唯一返回 true 的入参 → 唯一允许 @全体)
-//   - LiveType.LiveBroadcast(周期「正在直播」复推 / bootstrap「已在直播中」补推)
-//     → LivePushType.Live(0) → liveTypeAllowsAtAll(0)=false → 不 @全体
+//   - LiveType.LiveBroadcast(周期「正在直播」复推)→ LivePushType.Live(0) → liveTypeAllowsAtAll(0)=false
+//     → 不 @全体;bootstrap「已在直播中」补报同一张卡,但由调用方显式给 LivePushType.CatchUp(⑬d)
 //   - LiveType.FirstLiveBroadcast → LivePushType.Live(0)(注:实际从不传给本方法,
-//     bootstrap 补推走的是 LiveBroadcast;此处仅守护 else 分支的稳健性)
+//     bootstrap 补报走的是 LiveBroadcast + CatchUp;此处仅守护 else 分支的稳健性)
 //   - LiveType.StopBroadcast(下播)→ LivePushType.LiveEnd(9) → feature "liveEnd",
 //     压根不进 atAll 分支(且 9 !== LiveType.StopBroadcast 数值 3 的巧合不影响,
 //     因为入参契约是 LivePushType 不是 LiveType)
@@ -1045,9 +1144,27 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 		expect(LivePushType.StartBroadcasting).toBe(3); // liveTypeAllowsAtAll 唯一 true 入参
 	});
 
-	it("LiveBroadcast(周期「正在直播」复推 / bootstrap 补推)→ LivePushType.Live(0) — 不 @全体", async () => {
+	it("LiveBroadcast(周期「正在直播」复推)→ LivePushType.Live(0) — 不 @全体", async () => {
 		expect(await pushTypeFor(LiveType.LiveBroadcast)).toBe(LivePushType.Live);
 		expect(LivePushType.Live).toBe(0);
+	});
+
+	it("重启补报:调用方显式给 CatchUp → 原样带到推送层(卡仍是「正在直播」那张,类型与周期那一档分开)", async () => {
+		const { ctx, broadcastToTargets } = makeRoomCtx();
+		await ctx.sendLiveNotifyCard({
+			liveType: LiveType.LiveBroadcast,
+			pushType: LivePushType.CatchUp,
+			liveData: {},
+			liveRoomInfo,
+			master,
+			cardStyle: { enable: false },
+			uid: "u1",
+			notifyMsg: "msg",
+			messageLayout: defaultMessageKindLayout("live"),
+		});
+		expect(broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.CatchUp);
+		// 与周期那一档不是同一个数 —— 翻译表据此把一个翻成 liveStart、一个翻成 liveStreaming。
+		expect(LivePushType.CatchUp as number).not.toBe(LivePushType.Live as number);
 	});
 
 	it("FirstLiveBroadcast → LivePushType.Live(0)(else 分支稳健性,实际不经此路径)", async () => {
@@ -1280,7 +1397,7 @@ describe("RoomSession.onLiveStart — 第二场直播的开播时刻", () => {
 		// END 会撞上 handleLiveEnd 的 `!liveStatus` 守卫被**静默丢弃**(grace 也拦不住:
 		// 它同样要求 liveStatus 为真)。若 await 结束后仍无条件翻成在播,这一场就再也
 		// 等不到第二条 END —— 面板恒显「直播中」,统计侧按 now−startedAt 计时长,
-		// 每天自增 24 小时且无上限,而默认 pushTime=0 连轮询兜底都没有。
+		// 每天自增 24 小时且无上限,而默认的周期「正在直播」是关着的,连轮询兜底都没有。
 		const { ctx } = makeCtx();
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
 		primeSecondSession(s, "2026-05-17 20:00:00");

@@ -21,6 +21,7 @@ import {
 	EXTRA_KEYS,
 	type ExtraKey,
 	FEATURE_KEYS,
+	type FeatureFlagValues,
 	type FeatureKey,
 	PUSH_EXTRAS,
 	type PushTarget,
@@ -48,6 +49,9 @@ type FeatureGroup = {
 	keys: ReadonlyArray<{ key: FeatureKey; sub?: string }>;
 };
 
+/** 周期「正在直播」那一行的小字:平台中立,B 站与拓展订阅共用。 */
+const LIVE_STREAMING_SUB = "开播后每隔几小时再提醒一次";
+
 const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
 	{
 		label: "动态",
@@ -57,6 +61,7 @@ const FEATURE_GROUPS: ReadonlyArray<FeatureGroup> = [
 		label: "直播",
 		keys: [
 			{ key: "liveStart", sub: "开播提醒" },
+			{ key: "liveStreaming", sub: LIVE_STREAMING_SUB },
 			{ key: "liveEnd", sub: "下播卡片;词云 / AI 总结跟着它走" },
 			{ key: "membership", sub: "舰长 / 提督 / 总督" },
 			{ key: "superchat", sub: "Super Chat 提醒" },
@@ -97,6 +102,7 @@ const BILI_ONLY_EXTRAS: ReadonlySet<ExtraKey> = new Set(["wordcloud", "liveSumma
  */
 const EXTENSION_FEATURE_SUBS: Partial<Record<FeatureKey, string>> = {
 	liveStart: "开播提醒",
+	liveStreaming: LIVE_STREAMING_SUB,
 	liveEnd: "下播卡片",
 };
 
@@ -170,6 +176,12 @@ export interface UpDialogProps {
 	 * (此时弹框不许新建);不给等同没读到。
 	 */
 	tags?: ReadonlyArray<SubscriptionTag>;
+	/**
+	 * 全局特性开关(`globals.defaults.features`):订阅没覆盖的那几把继承它。不给 = 出厂值。面板没有全局特性开关的
+	 * 界面,所以通常就是出厂值;唯独旧的「周期间隔大于 0」迁成了全局的 `features.liveStreaming = true`
+	 * (直播拆键,⑬d)—— 继承着它的订阅得显示成开、也得能关,基线就得是真正的全局值。
+	 */
+	globalFeatures?: FeatureFlagValues;
 }
 
 /**
@@ -190,13 +202,13 @@ function stableStr(value: unknown): string {
 	return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStr(obj[k])}`).join(",")}}`;
 }
 
-function effFeature(sub: Subscription, k: FeatureKey): boolean {
-	return sub.overrides.features?.[k] ?? DEFAULT_FEATURE_FLAGS[k];
+function effFeature(sub: Subscription, k: FeatureKey, base: FeatureFlagValues): boolean {
+	return sub.overrides.features?.[k] ?? base[k];
 }
 
 /** 附加项的生效值:per-UP 覆盖 ?? 全局默认。 */
-function effExtra(sub: Subscription, k: ExtraKey): boolean {
-	return sub.overrides.features?.extras?.[k] ?? DEFAULT_FEATURE_FLAGS.extras[k];
+function effExtra(sub: Subscription, k: ExtraKey, base: FeatureFlagValues): boolean {
+	return sub.overrides.features?.extras?.[k] ?? base.extras[k];
 }
 
 type FeaturesOverride = NonNullable<Subscription["overrides"]["features"]>;
@@ -260,6 +272,7 @@ export function UpDialog({
 	focusSection,
 	platform,
 	tags,
+	globalFeatures = DEFAULT_FEATURE_FLAGS,
 }: UpDialogProps) {
 	const [draft, setDraft] = useState<Subscription | null>(sub);
 	const [customSet, setCustomSet] = useState<Set<string>>(() => inferCustomSet(sub, targets));
@@ -361,7 +374,7 @@ export function UpDialog({
 		setDraft((d) => {
 			if (!d) return d;
 			const { [k]: _drop, ...rest } = d.overrides.features ?? {};
-			const next: FeaturesOverride = on === DEFAULT_FEATURE_FLAGS[k] ? rest : { ...rest, [k]: on };
+			const next: FeaturesOverride = on === globalFeatures[k] ? rest : { ...rest, [k]: on };
 			return { ...d, overrides: { ...d.overrides, features: compactFeatures(next) } };
 		});
 	}
@@ -375,7 +388,7 @@ export function UpDialog({
 			if (!d) return d;
 			const cur = d.overrides.features ?? {};
 			const { [k]: _drop, ...extras } = cur.extras ?? {};
-			const nextExtras = on === DEFAULT_FEATURE_FLAGS.extras[k] ? extras : { ...extras, [k]: on };
+			const nextExtras = on === globalFeatures.extras[k] ? extras : { ...extras, [k]: on };
 			return {
 				...d,
 				overrides: {
@@ -515,7 +528,7 @@ export function UpDialog({
 				}
 			};
 			if (toCustom) {
-				const routing = routingAlignedToFeatures(d, targetId);
+				const routing = routingAlignedToFeatures(d, targetId, globalFeatures);
 				// 对齐时若把 target 移出某把主特性,它名下附加项的显式覆写一并作废。
 				for (const k of FEATURE_KEYS) {
 					if (!routing[k].includes(targetId)) clearExtras(k);
@@ -661,7 +674,7 @@ export function UpDialog({
 								</div>
 								<div className="grid grid-cols-2 gap-x-4 gap-y-2 px-3 py-2">
 									{g.keys.map(({ key, sub: featSub }) => {
-										const parentOn = effFeature(draft, key);
+										const parentOn = effFeature(draft, key, globalFeatures);
 										return (
 											<div key={key}>
 												<FeatureToggleRow
@@ -675,7 +688,7 @@ export function UpDialog({
 													keys={extrasFor(key)}
 													labelOf={labelOf}
 													parentOn={parentOn}
-													value={(k) => effExtra(draft, k)}
+													value={(k) => effExtra(draft, k, globalFeatures)}
 													onChange={setExtraEnabled}
 												/>
 											</div>
@@ -705,6 +718,7 @@ export function UpDialog({
 										target={t}
 										isCustom={customSet.has(t.id)}
 										sub={draft}
+										globalFeatures={globalFeatures}
 										features={visibleFeatures}
 										groups={featureGroups}
 										labelOf={labelOf}
@@ -1093,6 +1107,7 @@ function TargetRoutingCard({
 	target,
 	isCustom,
 	sub,
+	globalFeatures,
 	features,
 	groups,
 	labelOf,
@@ -1105,6 +1120,8 @@ function TargetRoutingCard({
 	target: PushTarget;
 	isCustom: boolean;
 	sub: Subscription;
+	/** 全局特性开关,继承它的主开关与附加项都按它算(见 {@link UpDialogProps.globalFeatures})。 */
+	globalFeatures: FeatureFlagValues;
 	/** 这条订阅摆出来的那几把特性 —— 计数只算它们(拓展订阅没有 B 站独有的那几把)。 */
 	features: readonly FeatureKey[];
 	groups: ReadonlyArray<FeatureGroup>;
@@ -1117,7 +1134,7 @@ function TargetRoutingCard({
 }) {
 	const enabledCount = isCustom
 		? features.filter((k) => sub.routing[k].includes(target.id)).length
-		: features.filter((k) => effFeature(sub, k)).length;
+		: features.filter((k) => effFeature(sub, k, globalFeatures)).length;
 
 	return (
 		<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
@@ -1181,7 +1198,7 @@ function TargetRoutingCard({
 															? sub.extraTargets[ek][target.id]
 															: undefined
 													}
-													inheritedValue={effExtra(sub, ek)}
+													inheritedValue={effExtra(sub, ek, globalFeatures)}
 													// 要不要看平台能力由注册表说了算(别拿 label 判,那是文案)。
 													unsupported={
 														PUSH_EXTRAS[ek].capability === "atAll" &&

@@ -91,7 +91,19 @@ describe("attachReadOnlyTools — 查询接线", () => {
 describe("buildAiSubsView — 投影", () => {
 	it("有 target 才算订了该特性 —— 路由是空的就等于没订", () => {
 		const s = makeStores([makeSub({ uid: "1", routing: routing({ post: ["t1"] }) })]);
-		expect(view(s)["id-1"]).toEqual({ uid: "1", uname: "UID 1", post: true, liveStart: false });
+		expect(view(s)["id-1"]).toEqual({ uid: "1", uname: "UID 1", post: true, live: false });
+	});
+
+	// 「直播 ✓」是直播类推送有没有目标:开播(liveStart)与周期「正在直播」(liveStreaming)任一有就算 ——
+	// ⑬d 拆键之前只有 liveStart 一把,只给周期配了目标的订阅会被女仆说成「没订直播」。
+	it.each([
+		["只给开播配了目标", { liveStart: ["t1"] }, true],
+		["只给周期「正在直播」配了目标", { liveStreaming: ["t1"] }, true],
+		["两把都配了", { liveStart: ["t1"], liveStreaming: ["t2"] }, true],
+		["都没配(下播不算)", { liveEnd: ["t1"] }, false],
+	])("直播 ✓:%s → %s", (_name, targets, expected) => {
+		const s = makeStores([makeSub({ uid: "1", routing: routing(targets) })]);
+		expect(view(s)["id-1"]?.live).toBe(expected);
 	});
 
 	it("名字优先用平台资料缓存,没有就回落 UID —— 不让 AI 报一串数字", () => {
@@ -117,7 +129,7 @@ describe("buildAiSubsView — 拓展订阅(ADR-0019 决策 64)", () => {
 			externalId: "sec-uid-1",
 			uname: "抖音甲",
 			post: false,
-			liveStart: true,
+			live: true,
 		});
 	});
 

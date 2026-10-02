@@ -90,8 +90,9 @@ function extensionLiveNow(
 /**
  * 订阅配置 → AI 工具看得懂的视图。
  *
- * `post` / `liveStart` 的口径是「该特性下**有没有推送目标**」而不是配置里的开关:
- * 一个特性配了却没有任何目标,推不出去任何东西,对女仆来说就等于没订。
+ * `post` / `live` 的口径是「该特性下**有没有推送目标**」而不是配置里的开关:
+ * 一个特性配了却没有任何目标,推不出去任何东西,对女仆来说就等于没订。`live`(「直播 ✓」)是直播类推送:
+ * 开播(`liveStart`)或周期「正在直播」(`liveStreaming`)任一有目标就算。
  *
  * 名字按「主人手填的备注 → 平台资料缓存 → UID 兜底」取(拓展订阅兜底的是外部 id)。
  * cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subs` 的 join 同源。
@@ -113,7 +114,7 @@ export function buildAiSubsView(
 		const cached = subRuntimeStore.get(sub.id)?.cachedProfile?.name?.trim();
 		const common = {
 			post: sub.routing.post.length > 0,
-			liveStart: sub.routing.liveStart.length > 0,
+			live: sub.routing.liveStart.length > 0 || sub.routing.liveStreaming.length > 0,
 		};
 		const identity = subscriptionIdentityOf(sub);
 		const item: SubItemView =

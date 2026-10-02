@@ -14,8 +14,13 @@ import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
 import type { CardKind, ExtraKey, MessageKindLayout } from "@bilibili-notify/internal";
 
-/** Push category enum — numeric values are the historical bilibili-notify push-type codes. */
+/**
+ * Push category enum — numeric values are the historical bilibili-notify push-type codes.
+ * 只在进程内流转(推送层的翻译表按它分流、日志里打出来),**不落盘、不过 wire**:历史行记的是
+ * `PushKind`,订阅与设置存的是特性键,所以加一档不用迁移。
+ */
 export enum LivePushType {
+	/** 周期「正在直播」(`liveStreaming`)。 */
 	Live = 0,
 	StartBroadcasting = 3,
 	LiveGuardBuy = 4,
@@ -27,6 +32,12 @@ export enum LivePushType {
 	LiveEnd = 9,
 	/** AI 总结 —— 下播的另一个附加项,宿主同样映射到下播那一类。 */
 	LiveSummary = 10,
+	/**
+	 * 重启补报(`liveStart.catchUpOnBoot`):启动时发现正在播,补一张开播。卡与文字是「正在直播」那一套,
+	 * 但走开播(`liveStart`)的目标、历史记成开播、**不 @全体**。与周期那一档({@link Live})分成两档,
+	 * 宿主的翻译表才分得出一个归 `liveStart`、一个归 `liveStreaming`。
+	 */
+	CatchUp = 11,
 }
 
 /**
@@ -37,6 +48,7 @@ export enum LivePushType {
 export type LivePushFeature =
 	| "post"
 	| "liveStart"
+	| "liveStreaming"
 	| "liveEnd"
 	| "membership"
 	| "superchat"
@@ -56,6 +68,7 @@ export type LiveMasterFeature = Exclude<LivePushFeature, "specialDanmaku" | "spe
  */
 export const LIVE_ROOM_MASTER_KEYS: readonly LiveMasterFeature[] = [
 	"liveStart",
+	"liveStreaming",
 	"liveEnd",
 	"membership",
 	"superchat",
@@ -108,7 +121,7 @@ export type PickCardBackground = (scopeKey: string, images: string[]) => string 
 export interface CustomLiveMsgLike {
 	enable: boolean;
 	customLiveStart?: string;
-	customLive?: string;
+	customLiveStreaming?: string;
 	customLiveEnd?: string;
 }
 
@@ -160,6 +173,8 @@ export interface SubItemView {
 	roomId: string;
 	post: boolean;
 	liveStart: boolean;
+	/** 周期「正在直播」的开关(`features.liveStreaming`)。关着就不计时、不出卡。 */
+	liveStreaming: boolean;
 	liveEnd: boolean;
 	membership: boolean;
 	superchat: boolean;
@@ -182,13 +197,15 @@ export interface SubItemView {
 	/**
 	 * Per-UP 阈值 / 调度。adapter build SubItemView 时已一次性折算好
 	 * (`sub.overrides.X ?? 全局 config.X`),引擎 / 监听层直接消费,无二次回退。
-	 * 随 LiveScopedChange 增量推送给 LiveEngine.applyOps;pushTime 变更时
-	 * engine 额外 rearm 定时器(setInterval 句柄 ms 不可变)。
+	 * 随 LiveScopedChange 增量推送给 LiveEngine.applyOps;`liveStreaming` 开关或
+	 * `streamingIntervalHours` 变更时 engine 额外 rearm 定时器(setInterval 句柄 ms 不可变)。
 	 */
 	minScPrice: number;
 	minGuardLevel: 1 | 2 | 3;
-	pushTime: number;
-	restartPush: boolean;
+	/** 周期「正在直播」的间隔,小时(1–24)。只在 {@link liveStreaming} 开着时有意义。 */
+	streamingIntervalHours: number;
+	/** 启动时发现正在播,补报一次开播(`liveStart.catchUpOnBoot`);只在 `liveStart` 开着时补。 */
+	catchUpOnBoot: boolean;
 	/**
 	 * 断流接续:true 时该 UP 下播先挂起 `liveEndGraceMinutes` 分钟,等待窗口内重新开播
 	 * 即判定网络抖动 / 超管掐流并接续为同一场(不发下播、不重发开播);超时未重开才真下播。
@@ -234,6 +251,7 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 	Pick<
 		SubItemView,
 		| "liveStart"
+		| "liveStreaming"
 		| "liveEnd"
 		| "membership"
 		| "superchat"
@@ -249,8 +267,8 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "customSpecialUsersEnterTheRoom"
 		| "minScPrice"
 		| "minGuardLevel"
-		| "pushTime"
-		| "restartPush"
+		| "streamingIntervalHours"
+		| "catchUpOnBoot"
 		| "liveEndGrace"
 		| "liveEndGraceMinutes"
 		| "aiOverride"

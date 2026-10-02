@@ -62,16 +62,8 @@ export class ListenerManager {
 	}
 
 	/**
-	 * `pushTime` 热更后调用:把所有 active session 的"正在直播"复推 timer 按当前
-	 * `pushTime` 重新 arm。LiveEngine.updateConfig 在检测到变化时转发。
-	 */
-	rearmAllPeriodicTimers(): void {
-		for (const session of this.sessionRecord.values()) session.rearmPeriodicTimer();
-	}
-
-	/**
-	 * 单个 UID 的 pushTime 热更入口。LiveEngine.applyOps 在 update 分支检测到
-	 * `LiveScopedChange.pushTime` 变化时调用,仅对该 uid 的活跃 session rearm。
+	 * 单个 UID 的周期「正在直播」热更入口。LiveEngine.applyOps 在 update 分支检测到
+	 * `liveStreaming` 开关或 `streamingIntervalHours` 变化时调用,仅对该 uid 的活跃 session rearm。
 	 */
 	rearmPeriodicTimerForUid(uid: string): void {
 		this.sessionRecord.get(uid)?.rearmPeriodicTimer();

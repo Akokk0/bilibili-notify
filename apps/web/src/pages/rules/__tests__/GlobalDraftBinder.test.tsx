@@ -50,6 +50,34 @@ describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 		expect(codes).not.toContain("defaults.filters.blockKeywords");
 	});
 
+	// 直播拆键(⑬d):周期开关、间隔与启动补报从 schedule 里搬出来各成一格,全局那一页的草稿要认得它们。
+	it("周期开关 / 间隔 / 启动补报改了 → diff 检出对应的 code(schedule 那一段不再有它们)", () => {
+		const baseline = makeDefaults();
+		const draft = makeDefaults();
+		draft.features = { ...draft.features, liveStreaming: true };
+		draft.liveStreaming = { streamingIntervalHours: 2 };
+		draft.liveStart = { catchUpOnBoot: true };
+		render(
+			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+		);
+		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
+		expect(codes).toContain("features.liveStreaming");
+		expect(codes).toContain("liveStreaming.streamingIntervalHours");
+		expect(codes).toContain("liveStart.catchUpOnBoot");
+		expect(codes.filter((c) => c.startsWith("schedule."))).toEqual([]);
+	});
+
+	it("没改特性开关里别的键 → 不会冒出 features.* 的 diff(这一页只管周期那一把)", () => {
+		const baseline = makeDefaults();
+		const draft = makeDefaults();
+		draft.features = { ...draft.features, post: false };
+		render(
+			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+		);
+		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
+		expect(codes.filter((c) => c.startsWith("features."))).toEqual([]);
+	});
+
 	it("unmount → unregister(current 归 null),与 per-UP binder 互斥不串台", () => {
 		const d = makeDefaults();
 		const { unmount } = render(

@@ -503,7 +503,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// Load the at-rest secrets key during startup, not on the first settings write.
 		// Without this eager touch, zero-auth local runs only hit the key lazily when
-		// SecretStore.save() is first needed (e.g. changing rules.restartPush), making
+		// SecretStore.save() is first needed (e.g. changing a setting that holds a secret), making
 		// the normal "主密钥加载成功" log look like it was caused by that setting.
 		await runtime.keyProvider.getKey();
 		// 统计采集从这一刻算起:数据那一代已经就位,引擎还没起(ADR-0022 决策 2 —— 建运行时那会儿
@@ -777,6 +777,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				postNoun: (id) => {
 					const entry = loadedExtensions?.list().find((one) => one.id === id);
 					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.display.postNoun;
+				},
+				events: (id) => {
+					const entry = loadedExtensions?.list().find((one) => one.id === id);
+					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.events;
 				},
 				readAvatar: (id) => runtime.subAvatarStore.read(id),
 			},

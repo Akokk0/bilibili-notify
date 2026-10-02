@@ -59,8 +59,9 @@ function makeSub(
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 0,
-		restartPush: false,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		// 宿主恒填版式。
 		messageLayout: defaultMessageKindLayout("live"),
 	};

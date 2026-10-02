@@ -40,8 +40,9 @@ function makeSub(): SubItemView {
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 0,
-		restartPush: false,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		// 宿主恒填版式。
 		messageLayout: defaultMessageKindLayout("live"),
 	};
@@ -451,7 +452,7 @@ describe("RoomSession 重连成功后的直播状态", () => {
 		// 派发事件,而此刻 `liveStatus` 是 false —— 到达的 END 撞上 handleLiveEnd 的
 		// `!liveStatus` 守卫被丢弃。若核对再拿着 await 之前的快照把状态翻回在播,这一场
 		// 就永远等不到第二条 END:面板恒显「直播中」,统计侧按 now−startedAt 计时长,
-		// 每天自增 24 小时且无上限,而默认 pushTime=0 连轮询兜底都没有。
+		// 每天自增 24 小时且无上限,而默认的周期「正在直播」是关着的,连轮询兜底都没有。
 		const { ctx, mocks } = makeMockCtx();
 		const session = new RoomSession(ctx, makeSub());
 		const s = primeLiveThenError(session, 1);

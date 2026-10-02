@@ -115,7 +115,6 @@ const buildEngineWith = (initialImage: ImageRenderer | null, logger: Logger): Li
 		commentary: null,
 		config: {
 			wordcloudStopWords: "",
-			pushTime: 0,
 			liveSummaryDefault: "",
 			customGuardBuy: { enable: false },
 			customLiveMsg: { enable: false },
@@ -219,5 +218,61 @@ describe("LiveEngine — 登录失效/恢复的日志", () => {
 		engine.rebuildFromSubs({});
 
 		expect(String(vi.mocked(logger.info).mock.calls[0]?.[0])).toContain("登录");
+	});
+});
+
+/**
+ * 周期「正在直播」的开关或间隔热更(⑬d):宿主逐订阅经 `applyOps` 推下来,引擎比对前后值 ——
+ * 开关翻了、或间隔变了才重排那一路的定时器(setInterval 句柄的 ms 不可变);别的字段改了不动它。
+ * 从前是看全局间隔变了就把所有 session 全部重排一遍,per-UP 覆盖了间隔的也被无谓重排。
+ */
+describe("LiveEngine.applyOps — 周期「正在直播」的重排", () => {
+	const baseSub = (over: Record<string, unknown> = {}) =>
+		({
+			uid: "u1",
+			uname: "U1",
+			roomId: "r1",
+			liveStart: true,
+			liveStreaming: true,
+			streamingIntervalHours: 1,
+			catchUpOnBoot: false,
+			...over,
+		}) as never;
+
+	function setup(): { engine: LiveEngine; rearm: ReturnType<typeof vi.fn>; sub: never } {
+		const engine = buildEngineWith(null, fakeLogger());
+		// biome-ignore lint/suspicious/noExplicitAny: 测试白盒
+		const listener = (engine as any).listener;
+		const sub = baseSub();
+		listener.subRecord.set("u1", sub);
+		vi.spyOn(listener, "needsLiveMonitor").mockReturnValue(true);
+		const rearm = vi.spyOn(listener, "rearmPeriodicTimerForUid").mockImplementation(() => {});
+		return { engine, rearm, sub };
+	}
+	const update = (engine: LiveEngine, fields: Record<string, unknown>) =>
+		engine.applyOps(
+			[{ type: "update", uid: "u1", changes: [{ scope: "live", ...fields }] }],
+			() => undefined,
+		);
+
+	it("间隔变了 → 重排这个 uid 的计时器", () => {
+		const { engine, rearm } = setup();
+		update(engine, { streamingIntervalHours: 3 });
+		expect(rearm).toHaveBeenCalledTimes(1);
+		expect(rearm).toHaveBeenCalledWith("u1");
+	});
+
+	it("开关翻了(开 → 关、关 → 开)→ 各重排一次", () => {
+		const { engine, rearm } = setup();
+		update(engine, { liveStreaming: false });
+		update(engine, { liveStreaming: true });
+		expect(rearm).toHaveBeenCalledTimes(2);
+	});
+
+	it("值没变、或只改了别的字段(补报、开播开关、名字)→ 不重排", () => {
+		const { engine, rearm } = setup();
+		update(engine, { liveStreaming: true, streamingIntervalHours: 1 });
+		update(engine, { catchUpOnBoot: true, liveStart: false, uname: "改名" });
+		expect(rearm).not.toHaveBeenCalled();
 	});
 });

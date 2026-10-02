@@ -16,9 +16,10 @@ import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import {
 	defaultMessageKindLayout,
 	type Subscription,
+	type SubscriptionEventKind,
 	type SubscriptionReport,
 } from "@bilibili-notify/internal";
-import type { LiveNotifySend } from "@bilibili-notify/live";
+import { type LiveNotifySend, LivePushType } from "@bilibili-notify/live";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import {
@@ -56,12 +57,13 @@ interface Sent {
 function baseSettings(over: Partial<LiveWorkSettings> = {}): LiveWorkSettings {
 	return {
 		liveStart: true,
+		liveStreaming: false,
 		liveEnd: true,
 		customCardStyle: { enable: false },
 		messageLayout: defaultMessageKindLayout("live"),
 		customLiveMsg: { enable: true },
-		pushTime: 0,
-		restartPush: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		liveEndGrace: false,
 		liveEndGraceMinutes: 2,
 		...over,
@@ -84,6 +86,10 @@ let renderedInputs: LiveCardInput[];
 let slowNext: Promise<void> | undefined;
 /** 登记进 `track` 的后台活(切片 ③)。 */
 let ctx: TrackingContext;
+/** 拓展清单声明的事件(`contributes.subscription.events`);`undefined` = 现取不到(装载器还没起来)。 */
+let declaredEvents: readonly SubscriptionEventKind[] | undefined;
+/** 推送这头(`bindExtensionLivePush`)挂过的周期计时器的间隔,按挂的先后(场次 / 在播表自己的计时器不算)。 */
+let periodicIntervals: number[];
 
 function start(): void {
 	const timers = {
@@ -125,7 +131,11 @@ function start(): void {
 		profile: () => profile,
 		settings: () => settings,
 		cardStyle: () => undefined,
-		sources: { running: () => running, readAvatar: async () => undefined },
+		sources: {
+			running: () => running,
+			readAvatar: async () => undefined,
+			events: () => declaredEvents,
+		},
 		sendFor:
 			(id): LiveNotifySend =>
 			async (groups, type) => {
@@ -137,7 +147,13 @@ function start(): void {
 			},
 		renderer: () => renderer,
 		reportProblem: (problem) => problems.push(problem),
-		serviceCtx: { setInterval: timers.setInterval, track: ctx.track },
+		serviceCtx: {
+			setInterval: (fn, ms) => {
+				periodicIntervals.push(ms);
+				return timers.setInterval(fn, ms);
+			},
+			track: ctx.track,
+		},
 	});
 }
 
@@ -177,6 +193,8 @@ beforeEach(() => {
 	renderedInputs = [];
 	slowNext = undefined;
 	ctx = makeTrackingContext();
+	periodicIntervals = [];
+	declaredEvents = ["post", "liveStart", "liveEnd"];
 	settings = baseSettings();
 	subs = new Map([[SUB.id, SUB]]);
 	running = true;
@@ -335,7 +353,7 @@ describe("断流接续", () => {
 
 describe("周期「正在直播」", () => {
 	beforeEach(() => {
-		settings = baseSettings({ pushTime: 1 });
+		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 1 });
 	});
 
 	it("到点时上次推送之后收到过新状态 → 拿在播表里最新那一份推;没有 → 这一轮跳过,记进上报问题框", async () => {
@@ -409,6 +427,108 @@ describe("周期「正在直播」", () => {
 		expect(problems).toEqual([]);
 	});
 
+	// ⑬d 直播拆键:周期「正在直播」走自己的开关、间隔与目标;关着就不挂计时器(推送类型 Live=0 = 周期那一档)。
+	it("liveStreaming 关:不挂计时器 —— 不推,也不记「没收到新状态」(关着的东西不该报问题)", async () => {
+		settings = baseSettings({ liveStreaming: false });
+		start();
+		liveStart();
+		await settle();
+		await vi.advanceTimersByTimeAsync(3 * HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		expect(problems).toEqual([]);
+		// 计时器压根没挂(不是挂着、到点再跳过):关着的东西不留一个空转的定时器。
+		expect(periodicIntervals).toEqual([]);
+	});
+
+	it("按 streamingIntervalHours 计时:间隔 2 小时 → 一小时没动静,两小时到点才推", async () => {
+		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 2 });
+		start();
+		liveStart();
+		await settle();
+		liveStatus({ totalViewers: 1 });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
+		expect(periodicIntervals).toEqual([2 * HOUR]);
+	});
+
+	it("周期只看自己的开关:开播推送(liveStart)关着、周期开着,照样按间隔推「正在直播」", async () => {
+		settings = baseSettings({ liveStart: false, liveStreaming: true });
+		start();
+		liveStart();
+		await settle();
+		liveStatus({ totalViewers: 3 });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.Live]);
+	});
+
+	it("热更:开着时把开关关掉(全局设置变了)→ 计时器拆掉,不再推", async () => {
+		start();
+		liveStart();
+		await settle();
+		settings = baseSettings({ liveStreaming: false });
+		bus.emit("config-changed", { scope: "globals" });
+		await vi.advanceTimersByTimeAsync(3 * HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		expect(problems).toEqual([]);
+	});
+
+	it("热更:关着时把开关打开 → 这一场从此刻起按间隔挂上计时器", async () => {
+		settings = baseSettings({ liveStreaming: false });
+		start();
+		liveStart();
+		await settle();
+		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 1 });
+		bus.emit("config-changed", { scope: "globals" });
+		liveStatus({ totalViewers: 4 });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
+	});
+
+	it("热更:间隔改了 → 旧的拆掉、按新间隔重挂", async () => {
+		start();
+		liveStart();
+		await settle();
+		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 3 });
+		bus.emit("config-changed", { scope: "globals" });
+		liveStatus({ totalViewers: 5 });
+		await vi.advanceTimersByTimeAsync(2 * HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]); // 旧的一小时间隔已作废
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, LivePushType.Live]);
+	});
+
+	// 周期「正在直播」只对同时声明了开播与下播的源成立(`featuresForEvents`,面板那一行「直播中」也是这条规则):
+	// 只报开播的源没有下播事件把这一场收掉。全局默认开着(迁移把旧的周期间隔折成了全局开)时,这样的源名下的订阅也不挂。
+	it("源只声明了开播(没有下播):开关开着也不挂计时器、不推", async () => {
+		declaredEvents = ["post", "liveStart"];
+		start();
+		liveStart();
+		await settle();
+		await vi.advanceTimersByTimeAsync(3 * HOUR);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3]);
+		expect(periodicIntervals).toEqual([]);
+		expect(problems).toEqual([]);
+	});
+
+	it("源声明了开播与下播 → 挂;清单现取不到(undefined)时不拦:只在明确知道声明不全时才不推", async () => {
+		declaredEvents = undefined;
+		start();
+		liveStart();
+		await settle();
+		expect(periodicIntervals).toEqual([HOUR]);
+	});
+
 	it("下播之后不再推,也不记跳过", async () => {
 		start();
 		liveStart();
@@ -460,33 +580,33 @@ describe("周期「正在直播」", () => {
 	});
 });
 
-describe("重启补推", () => {
-	it("BN 起来后第一次收到在播、没见过这一场的开播:补推一张「正在直播」,之后的状态不再补", async () => {
-		settings = baseSettings({ restartPush: true });
+describe("重启补报", () => {
+	it("BN 起来后第一次收到在播、没见过这一场的开播:补报一张「正在直播」(推送类型 CatchUp,走开播的路由),之后的状态不再补", async () => {
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		liveStatus({ startedAt: T0 - 30 * MINUTE, totalViewers: 5 });
 		await settle();
 		liveStatus({ totalViewers: 6 });
 		await settle();
 
-		expect(sent.map((s) => s.type)).toEqual([0]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp]);
 		expect(sent[0]?.text).toBe(`抖音甲 正在直播，已播 30分，累计观看：5\n${URL}`);
 		expect(sent[0]?.input).toMatchObject({ status: "streaming", startedAt: T0 - 30 * MINUTE });
 	});
 
-	it("并挂上周期推送", async () => {
-		settings = baseSettings({ restartPush: true, pushTime: 1 });
+	it("并挂上周期推送:补报一张,到点再来周期那一档(两档的推送类型不同)", async () => {
+		settings = baseSettings({ catchUpOnBoot: true, liveStreaming: true });
 		start();
 		liveStatus();
 		await settle();
 		liveStatus();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([0, 0]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp, LivePushType.Live]);
 	});
 
-	it("重启补推关着:不补推,周期推送照挂", async () => {
-		settings = baseSettings({ pushTime: 1 });
+	it("补报关着:不补报,周期推送照挂", async () => {
+		settings = baseSettings({ liveStreaming: true });
 		start();
 		liveStatus();
 		await settle();
@@ -494,11 +614,28 @@ describe("重启补推", () => {
 		liveStatus();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([0]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.Live]);
+	});
+
+	it("补报开着、开播推送(liveStart)关着:不补报 —— 补的是开播,开播关着就没有什么可补", async () => {
+		settings = baseSettings({ catchUpOnBoot: true, liveStart: false });
+		start();
+		liveStatus();
+		await settle();
+		expect(sent).toEqual([]);
+	});
+
+	it("补报那张卡的文字与卡是「正在直播」那一套,不是开播那句", async () => {
+		settings = baseSettings({ catchUpOnBoot: true });
+		start();
+		liveStatus({ startedAt: T0 - HOUR, totalViewers: 9 });
+		await settle();
+		expect(sent[0]?.text).toBe(`抖音甲 正在直播，已播 1小时，累计观看：9\n${URL}`);
+		expect(sent[0]?.input?.status).toBe("streaming");
 	});
 
 	it("见过开播事件的这一场:状态不触发补推", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		liveStart();
 		liveStatus();
@@ -509,7 +646,7 @@ describe("重启补推", () => {
 	// 契约不规定状态与事件谁先报(决策 57 的 09-24 🔗):报「不在播」也算见过,「正在直播」卡发之前再认一次
 	// 这一场还是不是当前那场 —— 否则一场刚开的直播会先补推一张「正在直播」、紧跟着又推开播卡。
 	it("先报不在播、再报在播、再来开播事件:只推一张开播卡", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		report({ kind: "liveStatus", value: { live: false } });
 		await settle();
@@ -522,7 +659,7 @@ describe("重启补推", () => {
 	});
 
 	it("BN 起来后第一份状态就是在播、同一轮紧跟着开播事件:只推一张开播卡", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		liveStatus();
 		liveStart();
@@ -534,7 +671,7 @@ describe("重启补推", () => {
 	});
 
 	it("补推的「正在直播」还在出卡时开播事件到了:这张不发,只推开播卡", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		let release: () => void = () => {};
 		slowNext = new Promise<void>((resolve) => {
@@ -550,7 +687,7 @@ describe("重启补推", () => {
 	});
 
 	it("拓展停过又跑起来:「见过」一并作废,它重新跑起来的第一份状态就是在播 → 照开机那样补推", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		liveStatus();
 		await settle();
@@ -558,11 +695,11 @@ describe("重启补推", () => {
 		// 停着的时候开的播(或者一直在播):重新跑起来报的第一份就是在播。
 		liveStatus();
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([0, 0]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp, LivePushType.CatchUp]);
 	});
 
 	it("拓展停过又跑起来、先报了不在播:之后的在播照常接上,不补推", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		liveStatus();
 		await settle();
@@ -570,11 +707,11 @@ describe("重启补推", () => {
 		report({ kind: "liveStatus", value: { live: false } });
 		liveStatus();
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([0]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp]);
 	});
 
 	it("别的拓展停了:这条订阅的「见过」不动,不补推", async () => {
-		settings = baseSettings({ restartPush: true });
+		settings = baseSettings({ catchUpOnBoot: true });
 		start();
 		liveStatus();
 		await settle();
@@ -584,7 +721,7 @@ describe("重启补推", () => {
 		bus.emit("extension-stopped", { extensionId: "kuaishou" });
 		liveStatus();
 		await settle();
-		expect(sent.map((s) => s.type)).toEqual([0, 9]);
+		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp, 9]);
 	});
 });
 
@@ -615,11 +752,11 @@ describe("收下不推", () => {
 // ADR-0020 决策 4 / 6:场次与推送开关无关 —— 推送关掉只是不推,这一场还是这一场。
 describe("推送中途关掉又打开", () => {
 	it("还是同一场:关着的时候不推,下播卡的粉丝变化从开播那一刻算、不从重新打开时算", async () => {
-		settings = baseSettings({ pushTime: 1 });
+		settings = baseSettings({ liveStreaming: true });
 		start();
 		liveStart();
 		await settle();
-		settings = baseSettings({ pushTime: 1, liveStart: false, liveEnd: false });
+		settings = baseSettings({ liveStreaming: false, liveStart: false, liveEnd: false });
 		bus.emit("config-changed", { scope: "globals" });
 		profile = { name: "抖音甲", fans: 12_345 + 55 };
 		liveStatus();

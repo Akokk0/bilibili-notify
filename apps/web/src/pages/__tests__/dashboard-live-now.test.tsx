@@ -183,4 +183,13 @@ describe("正在直播 · 没配直播目标的提示", () => {
 		renderEmpty([routed, extSub("s-ext", "抖音丁")]);
 		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
 	});
+
+	// 「监听开不开」手抄的三份清单之一(另两份是 packages/live 的 LIVE_ROOM_MASTER_KEYS 与服务端的 getModuleState):
+	// ⑬d 起周期「正在直播」有自己的特性与目标,只给它配了目标的订阅也会被监听,不该被算进「不会被监听」。
+	it("只给周期「正在直播」(liveStreaming)配了目标的 B 站订阅也不数", () => {
+		const routed = biliSub("s-1", "u1", "甲");
+		routed.routing.liveStreaming = ["t-1"];
+		renderEmpty([routed]);
+		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
+	});
 });

@@ -8,8 +8,8 @@
  *   (blockKeywords / enable …)。
  * - cardStyle / cardSkin 不在此投影 —— 卡片覆盖已迁到 /cards 页,由 Cards 的
  *   灵动岛(pageKey "cards")独立跟踪。
- * - **code 带前缀的 slice 保 nested**(schedule / templates / ai):整段挂在
- *   对应 key 下,walkTreeDiff 递归出 `schedule.X` / `templates.X` / `ai.X`。
+ * - **code 带前缀的 slice 保 nested**(schedule / liveStart / liveStreaming / templates / ai):整段挂在
+ *   对应 key 下,walkTreeDiff 递归出 `schedule.X` / `liveStart.X` / `liveStreaming.X` / `templates.X` / `ai.X`。
  * - `specialUsers` 作为整数组叶子(walkTreeDiff 把数组当叶子整体比较)。
  *
  * `overrides.features` 不在此页编辑(由 UP 对话框管理),刻意排除。
@@ -25,6 +25,8 @@ export function projectPerUpIsland(
 		...overrides.filters,
 		...overrides.imageGroup,
 		schedule: overrides.schedule,
+		liveStart: overrides.liveStart,
+		liveStreaming: overrides.liveStreaming,
 		templates: overrides.templates,
 		ai: overrides.ai,
 		messageLayout: overrides.messageLayout,

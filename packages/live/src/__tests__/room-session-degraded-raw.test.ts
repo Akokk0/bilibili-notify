@@ -41,8 +41,9 @@ function makeSub(): SubItemView {
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 1,
-		restartPush: false,
+		liveStreaming: true,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		// 宿主恒填版式。
 		messageLayout: defaultMessageKindLayout("live"),
 	};

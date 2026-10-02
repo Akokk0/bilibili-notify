@@ -5,7 +5,7 @@
  * 那段窗口内到达的下播事件都必须被记账**。窗口里 `liveStatus` 还是 false,于是这条
  * END 会撞上 `handleLiveEnd` 的 `!liveStatus` 守卫被静默丢弃;我们随后又无条件翻成
  * 在播 —— 这一场从此再也等不到第二条 END,面板恒显「直播中」,统计侧按 now−startedAt
- * 计时长、每天自增 24 小时且无上限,而默认 `pushTime=0` 连轮询兜底都没有。
+ * 计时长、每天自增 24 小时且无上限,而默认的周期「正在直播」是关着的,连轮询兜底都没有。
  *
  * 这个守卫最初只加在 `onLiveStart` 和重连核对两处,而通道其实有四条:
  *   - `bootstrap()` —— 装好 WS 到翻状态之间隔着刷房间/主播信息 + 卡片渲染推送,窗口最长
@@ -46,8 +46,9 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 0,
-		restartPush: false,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		...over,
 	} as SubItemView;
 }
@@ -128,7 +129,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		push: { sendPrivateMsg: mocks.sendPrivateMsg, broadcastToTargets: async () => {} },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",
-			renderLiveOngoing: () => "正在直播",
+			renderLiveStreaming: () => "正在直播",
 			renderLiveEnd: () => "下播啦",
 		},
 		isSubscribed: (_sub: SubItemView, kind: string) => kind === "liveEnd",
@@ -340,7 +341,7 @@ describe("退避耗尽彻底放弃监听", () => {
 		// 重复一次,直到进程重启。
 		const { ctx, mocks } = makeCtx();
 		mocks.startLiveRoomListener.mockRejectedValue(new Error("network down"));
-		const session = new RoomSession(ctx, makeSub({ pushTime: 1 })) as AnySession;
+		const session = new RoomSession(ctx, makeSub({ liveStreaming: true })) as AnySession;
 		session.liveStatus = true;
 		session.liveTime = LIVE_ROOM.live_time;
 		session.armPeriodicTimer();
@@ -358,7 +359,7 @@ describe("退避耗尽彻底放弃监听", () => {
 
 	it("在播时放弃 → 走完整下播流水线,而不是干翻状态", async () => {
 		// WS 死了,但 HTTP 还活着 —— 下播卡 / 词云 / 总结都还发得出来,弹幕缓冲也得排空。
-		// 改这条路径之前,`pushTime` 非 0 的用户还能靠轮询兜底晚几小时收到下播卡;
+		// 改这条路径之前,周期「正在直播」开着的用户还能靠轮询兜底晚几小时收到下播卡;
 		// 只翻状态不走流水线的话,这些人从此一条都收不到。
 		const { ctx, mocks } = makeCtx();
 		mocks.startLiveRoomListener.mockRejectedValue(new Error("network down"));
@@ -414,7 +415,7 @@ describe("退避耗尽彻底放弃监听", () => {
 describe("RoomSession.tickNow", () => {
 	it("在播且复推开着:立刻跑一次复推 tick(拉房间信息 → 渲染 → 发卡),回 true", async () => {
 		const { ctx, mocks } = makeCtx();
-		const session = new RoomSession(ctx, makeSub({ pushTime: 1 })) as AnySession;
+		const session = new RoomSession(ctx, makeSub({ liveStreaming: true })) as AnySession;
 		await session.bootstrap();
 		expect(session.isLive).toBe(true);
 		mocks.sendLiveNotifyCard.mockClear();
@@ -426,11 +427,11 @@ describe("RoomSession.tickNow", () => {
 		expect(mocks.sendLiveNotifyCard).toHaveBeenCalledTimes(1);
 	});
 
-	it("这个 UP 关了复推(pushTime=0):不跑,回 false —— 排程那条根本没建定时器", async () => {
+	it("这个 UP 关了复推(liveStreaming 关):不跑,回 false —— 排程那条根本没建定时器", async () => {
 		// 提前到期提前的是**那个定时器**。定时器不存在时它没有可提前的东西;照跑就等于
 		// 给一个明确关掉复推的 UP 发了一张它永远不该收到的卡。
 		const { ctx, mocks } = makeCtx();
-		const session = new RoomSession(ctx, makeSub({ pushTime: 0 })) as AnySession;
+		const session = new RoomSession(ctx, makeSub({ liveStreaming: false })) as AnySession;
 		await session.bootstrap();
 		expect(session.isLive).toBe(true);
 		mocks.sendLiveNotifyCard.mockClear();

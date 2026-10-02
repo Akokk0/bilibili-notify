@@ -299,6 +299,11 @@ export class RoomContext extends RoomContextBase {
 	 */
 	async sendLiveNotifyCard(params: {
 		liveType: LiveType;
+		/**
+		 * 推送类型。缺省按 `liveType` 推出({@link livePushTypeOf});重启补报画的是「直播中」那张卡
+		 * (`LiveType.LiveBroadcast`)、却不是周期那一档,所以由调用方显式给 `LivePushType.CatchUp`。
+		 */
+		pushType?: LiveNotifyPushType;
 		liveData: LiveData;
 		liveRoomInfo: LiveRoomInfo["data"];
 		master: MasterInfo;
@@ -330,7 +335,7 @@ export class RoomContext extends RoomContextBase {
 				cardStyle: params.cardStyle,
 				cardSkin: params.cardSkin,
 				cardSkinKnobs: params.cardSkinKnobs,
-				pushType: livePushTypeOf(liveType),
+				pushType: params.pushType ?? livePushTypeOf(liveType),
 				pushId: params.pushId,
 				label: `uid=${uid}`,
 			},
@@ -365,7 +370,8 @@ export class RoomContext extends RoomContextBase {
 
 /**
  * B 站引擎的 `LiveType` → 直播卡的推送类型。只有真开播是 `StartBroadcasting`(唯一允许
- * @全体的那一档),下播是 `LiveEnd`,其余(周期「正在直播」、重启补推)一律 `Live`。
+ * @全体的那一档),下播是 `LiveEnd`,其余(周期「正在直播」)一律 `Live`。重启补报同样画
+ * 「直播中」的卡,但它的类型 `CatchUp` 不由 `LiveType` 推出,调用方显式传(见 `sendLiveNotifyCard`)。
  */
 function livePushTypeOf(liveType: LiveType): LiveNotifyPushType {
 	if (liveType === LiveType.StartBroadcasting) return LivePushType.StartBroadcasting;

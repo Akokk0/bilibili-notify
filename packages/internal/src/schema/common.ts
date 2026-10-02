@@ -102,8 +102,6 @@ export const ContentFiltersPartialSchema = ContentFiltersSchema.partial().extend
 export type ContentFiltersPartial = z.infer<typeof ContentFiltersPartialSchema>;
 
 export const ScheduleConfigSchema = z.object({
-	pushTime: z.number().int().min(0).max(24),
-	restartPush: z.boolean(),
 	quietHours: z.array(TimeRangeSchema),
 	/**
 	 * 断流接续:开启后,UP 下播不立刻通知,先等 `liveEndGraceMinutes` 分钟。期间若重新
@@ -117,7 +115,7 @@ export const ScheduleConfigSchema = z.object({
 });
 export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>;
 
-// 同 ContentFiltersPartialSchema:`.partial()` 不剥 `.default()`,per-UP 只覆盖 pushTime 等
+// 同 ContentFiltersPartialSchema:`.partial()` 不剥 `.default()`,per-UP 只覆盖 quietHours 等
 // 字段时会被注入 liveEndGrace:false / liveEndGraceMinutes:2。schedule 整段归「直播阈值」section
 // 独占,注入默认值虽不跨 section 污染,但会让 override 落盘多出用户没设的字段、并在 resolve merge
 // 时强制盖掉全局对应值。override 维度须为无默认纯可选,与全局 ScheduleConfigSchema 分开。
@@ -126,6 +124,34 @@ export const ScheduleConfigPartialSchema = ScheduleConfigSchema.partial().extend
 	liveEndGraceMinutes: z.number().int().min(1).max(10).optional(),
 });
 export type ScheduleConfigPartial = z.infer<typeof ScheduleConfigPartialSchema>;
+
+/**
+ * 开播推送的设置(⑬d 起自成一段,原先在 `schedule` 里)。`catchUpOnBoot`:启动时发现正在播,补报一次开播 ——
+ * 走 `liveStart` 的路由、历史记成开播、**不 @全体**,文字与卡仍用「正在直播」那一套。只有 `liveStart` 开着才补。
+ */
+export const LiveStartSettingsSchema = z.object({
+	catchUpOnBoot: z.boolean(),
+});
+export type LiveStartSettings = z.infer<typeof LiveStartSettingsSchema>;
+
+// per-UP 那份是「无默认的纯可选」(同 ScheduleConfigPartialSchema 的理由):这一段今天没有 `.default()`,
+// `.partial()` 就够;将来谁给全局那份某一格补了 `.default()`,partial 不会剥它 —— 到时照 schedule 的写法
+// 在这里 `.extend` 成纯可选,别让 per-UP 落盘多出没设的字段、再在 resolve 里盖掉全局。
+export const LiveStartSettingsPartialSchema = LiveStartSettingsSchema.partial();
+export type LiveStartSettingsPartial = z.infer<typeof LiveStartSettingsPartialSchema>;
+
+/**
+ * 周期「正在直播」的设置(⑬d 起自成一段,原先在 `schedule` 里)。开关是 `features.liveStreaming`、目标是
+ * `routing.liveStreaming`;这里只有间隔:整数小时,1–24。旧的「0 = 关」交给开关。
+ */
+export const LiveStreamingSettingsSchema = z.object({
+	streamingIntervalHours: z.number().int().min(1).max(24),
+});
+export type LiveStreamingSettings = z.infer<typeof LiveStreamingSettingsSchema>;
+
+// 同 LiveStartSettingsPartialSchema:per-UP 那份无默认的纯可选。
+export const LiveStreamingSettingsPartialSchema = LiveStreamingSettingsSchema.partial();
+export type LiveStreamingSettingsPartial = z.infer<typeof LiveStreamingSettingsPartialSchema>;
 
 export const GuardEntrySchema = z.object({
 	imageUrl: z.string(),
@@ -147,7 +173,7 @@ export type GuardBundle = z.infer<typeof GuardBundleSchema>;
 
 export const TemplateBundleSchema = z.object({
 	liveStart: z.string(),
-	liveOngoing: z.string(),
+	liveStreaming: z.string(),
 	liveEnd: z.string(),
 	liveSummary: z.string(),
 	/**
@@ -520,12 +546,16 @@ export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
 };
 
 export const DEFAULT_SCHEDULE: ScheduleConfig = {
-	pushTime: 0,
-	restartPush: false,
 	quietHours: [],
 	liveEndGrace: false,
 	liveEndGraceMinutes: 2,
 };
+
+/** 出厂:启动时不补报(与拆键前的出厂行为一致)。 */
+export const DEFAULT_LIVE_START: LiveStartSettings = { catchUpOnBoot: false };
+
+/** 出厂:每小时一次(旧的「间隔 0 = 关」换成开关 `features.liveStreaming`,出厂关;间隔填 1)。 */
+export const DEFAULT_LIVE_STREAMING: LiveStreamingSettings = { streamingIntervalHours: 1 };
 
 /**
  * DYNAMIC_TYPE_DRAW 图集图片推送行为。`enable` 决定是否在文本/卡片之后附加一组

@@ -82,7 +82,7 @@ const draftIsland: WebDevScenario = {
 			pageLabel: "devtools 假草稿",
 			diff: [
 				{ code: "app.logLevel", oldValue: "info", newValue: "debug" },
-				{ code: "defaults.schedule.pushTime", oldValue: 30, newValue: 15 },
+				{ code: "defaults.liveStreaming.streamingIntervalHours", oldValue: 3, newValue: 2 },
 			],
 			onSave: () => {
 				useDraftStore.getState().setUiState("saving");

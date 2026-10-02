@@ -19,6 +19,8 @@ export type {
 	GuardBundle,
 	GuardEntry,
 	ImageGroupSettings,
+	LiveStartSettings,
+	LiveStreamingSettings,
 	LogLevel,
 	ModuleLogLevels,
 	ScheduleConfig,

@@ -41,9 +41,10 @@ import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 import { migrateConnectionFiles } from "./connections.js";
 import { migrateConversationFiles } from "./conversations.js";
 import { migrateHistoryFiles } from "./history.js";
+import { ZERO_GLOBAL_LIVE_FACTS } from "./live-split.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSecretBag } from "./secrets.js";
-import { migrateSettingsFiles } from "./settings.js";
+import { migrateSettingsFiles, readZeroLiveFacts } from "./settings.js";
 import { migrateDashboardSkins } from "./skins.js";
 import { migrateStatsFiles } from "./stats.js";
 import {
@@ -57,7 +58,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 16;
+export const MIGRATION_REVISION = 17;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -295,13 +296,18 @@ const REWRITES: readonly {
 	},
 	{
 		label: "订阅",
-		run: (opts) =>
+		run: async (opts) =>
 			migrateSubscriptionFiles({
 				configDir: dataPath(opts.targetDir, ...CONFIG_DIR),
 				extensionSubscriptionsPath: zeroPath(
 					opts.zeroRoot,
 					"state",
 					"extension-subscriptions.json",
+				),
+				// 直播拆键要拆键之前的全局值(设置那一步已经把 `pushTime` 折成间隔、反推不出),取第 0 代的。
+				globalLive: await readZeroLiveFacts(
+					zeroPath(opts.zeroRoot, "state", "globals.json"),
+					ZERO_GLOBAL_LIVE_FACTS,
 				),
 			}),
 	},

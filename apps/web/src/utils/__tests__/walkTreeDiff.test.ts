@@ -13,10 +13,12 @@ describe("walkTreeDiff", () => {
 
 	it("嵌套 object 不同字段单独 diff,path 用 . 连接", () => {
 		const diff = walkTreeDiff(
-			{ schedule: { pushTime: 5, restartPush: false } },
-			{ schedule: { pushTime: 10, restartPush: false } },
+			{ liveStreaming: { streamingIntervalHours: 5 }, liveStart: { catchUpOnBoot: false } },
+			{ liveStreaming: { streamingIntervalHours: 10 }, liveStart: { catchUpOnBoot: false } },
 		);
-		expect(diff).toEqual([{ code: "schedule.pushTime", oldValue: 5, newValue: 10 }]);
+		expect(diff).toEqual([
+			{ code: "liveStreaming.streamingIntervalHours", oldValue: 5, newValue: 10 },
+		]);
 	});
 
 	it("数组当叶子整体比较:长度不同 → 一条 diff", () => {

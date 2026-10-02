@@ -57,6 +57,7 @@ describe("SubscriptionRouting — 重复 UUID 去重 (P1)", () => {
 		const parsed = SubscriptionRoutingSchema.parse({
 			post: [dup, dup, dup],
 			liveStart: [dup],
+			liveStreaming: [],
 			liveEnd: [],
 			membership: [],
 			superchat: [],

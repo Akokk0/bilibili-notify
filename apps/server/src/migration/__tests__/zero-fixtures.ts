@@ -52,6 +52,14 @@ export interface ZeroGlobals {
 	app: Record<string, unknown>;
 	defaults: {
 		features: ZeroFeatureFlags;
+		/** 0.12 的 `schedule`:`pushTime`(0 = 关,1–24 小时)与 `restartPush` 在 1.0 拆进了 `liveStreaming` / `liveStart`。 */
+		schedule: {
+			pushTime: number;
+			restartPush: boolean;
+			quietHours: unknown[];
+			liveEndGrace: boolean;
+			liveEndGraceMinutes: number;
+		};
 		templates: ZeroTemplates;
 		ai: Record<string, unknown>;
 		[key: string]: unknown;

@@ -31,7 +31,7 @@
 
 - B 站动态：`DynamicEngine.detectDynamics`（`packages/dynamic/src/dynamic-engine.ts`）拉 feed → 时间线闸 → 发 `dynamic-detected` → 开播伪动态（`DYNAMIC_TYPE_LIVE_RCMD`）**按类型**跳过、锚点照推进（从前靠出卡时抛错再认错误文案，关了出图或版式藏起卡片时它就被当普通动态推出去、和直播引擎的开播撞车）→ `filterDynamic`（四个类型开关，再交文字那一半 `filterByText`）→ `workFromDynamic` 把原始动态翻成 `NeutralWork` → `deliverWork`。主卡发送抛错 → `markFail`、锚点不前移、下一轮再来。
 - 拓展作品：`bindExtensionPosts`（`apps/server/src/runtime/extension-posts.ts`）听 `subscription-reported` 里 `kind === "post"` 的，逐条订阅排进**这条订阅自己的串行闸**：再核还该推（订阅在、启用、拓展在跑 —— `extensionSubscriptionPushable`）→ 动态总开关关着就不出卡 → **只按文字过滤**（`filterByText`，看正文 + 视频标题；类型开关对拓展作品一律不看，决策 70；被挡时「屏蔽后提醒」用 `blockedNotice(name, reason, postNoun)`）→ `extensionCardAuthor` 取卡上作者 → `extensionPostWork`（`runtime/extension-post-work.ts`）翻成 `NeutralWork` → `deliverWork`。不判新、不去重；意外抛错只记 `[ext-post]` 错误日志、**不重试**（事件只来一次，决策 53 / 77）。
-- B 站直播：`LiveEngine` / `RoomSession*` 管弹幕 WS、房间接口、周期推送 / 重启补推 / 断流接续这几个计时器。开播 / 直播中 / 下播卡由 `RoomContext.sendLiveNotifyCard`（`packages/live/src/room-helpers.ts`）用 `biliLiveCardInput`（`packages/image`，全仓唯一一份）把房间数据翻成 `LiveCardInput`、把「按 uid 推」绑成发送（`sendToUid`），再交 `pushLiveNotify`。SC / 上舰 / 词云 / 总结 / 特别关注各自出卡，不经它。
+- B 站直播：`LiveEngine` / `RoomSession*` 管弹幕 WS、房间接口、周期「正在直播」（`liveStreaming` 开着才计时，间隔 `streamingIntervalHours`）/ 重启补报 / 断流接续这几个计时器。开播 / 直播中 / 下播卡由 `RoomContext.sendLiveNotifyCard`（`packages/live/src/room-helpers.ts`）用 `biliLiveCardInput`（`packages/image`，全仓唯一一份）把房间数据翻成 `LiveCardInput`、把「按 uid 推」绑成发送（`sendToUid`），再交 `pushLiveNotify`。SC / 上舰 / 词云 / 总结 / 特别关注各自出卡，不经它。
 
 **中立装配**（不认 uid、不读任何平台的原始数据 —— 身份由调用方绑进发送、设置与回问）：
 
@@ -57,7 +57,7 @@
 | `liveTypeAllowsAtAll` | `boolean` | 允不允许 @全体 |
 | `liveTypeToExtra` | `ExtraKey \| undefined` | 这是哪个附加项 |
 
-两张表只差一处：周期「正在直播」（type 0）与开播（3）共用 `feature: "liveStart"`，历史上却是两类。⚠️ **下播卡本体（9）的 `liveTypeToExtra` 必须是 `undefined`** —— 带上键的话整张卡会被它自己的附加项三态表收窄掉。
+历史那一类由特性键直接翻（`liveTypeToPushKind` 就是 `featureToPushKind(liveTypeToFeature(t))`，没有自己的特判）：开播（3）→ `liveStart` / `live`、可以 @全体；重启补报（`CatchUp`，11）→ `liveStart` / `live`、不 @全体，卡与文字仍是「正在直播」那一套；周期「正在直播」（0）→ `liveStreaming` / `live-ongoing`、不 @全体。⚠️ **下播卡本体（9）的 `liveTypeToExtra` 必须是 `undefined`** —— 带上键的话整张卡会被它自己的附加项三态表收窄掉。
 
 动态端同理，`broadcastOptionsForPostPart` 把 `post-images`（图集）标成 `role: "extra"` 且 `allowAtAll: false`，否则一条 DRAW 动态会在主卡和图集各 @ 一次。
 
@@ -65,7 +65,7 @@
 
 **把发送钉到一条订阅上**的两件也在 `engines.ts`，挨着这两个适配器：`bindSubscriptionPush(push, subscriptionId)` 回一个 `(feature, payload, opts)` 的发送，只做「把订阅 id 钉上」；`boundWorkPush(send)` 把它包成 `deliverWork` 要的 `BoundWorkPush`（段 → 载荷、特性恒为 `post`、`broadcastOptionsForPostPart`；部件是 `PostPushPart`：正文 `post`、图集 `post-images`）。B 站动态（`makeDynamicPushLike` 先翻 uid）与拓展作品（`pushFor(id)`）走的是同一跳。
 
-拓展订阅不需要翻身份：它的上报在 ctx 那一步已经按 `(拓展, 外部 id)` 对到订阅 id 上（见 [subscriptions.md](./subscriptions.md)）。事件种类到特性键的映射是 `SUBSCRIPTION_EVENT_FEATURES`（`packages/internal/src/constants.ts`：`post → post`、`liveStart → liveStart`、`liveEnd → liveEnd`，⑬d 拆出 `liveStreaming` 以后不再恒等）。
+拓展订阅不需要翻身份：它的上报在 ctx 那一步已经按 `(拓展, 外部 id)` 对到订阅 id 上（见 [subscriptions.md](./subscriptions.md)）。事件种类到特性键的映射是 `SUBSCRIPTION_EVENT_FEATURES`（`packages/internal/src/constants.ts`：`post → post`、`liveStart → liveStart`、`liveEnd → liveEnd`）；拓展订阅能有哪些特性看 `featuresForEvents`（同文件）：照这张表映射，声明了开播与下播两种事件的再加一把 `liveStreaming`，面板与服务端用同一份。
 
 ### ③ 路由与闸
 

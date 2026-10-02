@@ -1,5 +1,6 @@
 /**
- * 0.x 最新形状 → 1.0 的改名(⑬c):特性键、附加项键、文案键、版式键、订阅顶层的逐目标表。
+ * 0.x 最新形状 → 1.0 的改名(⑬c):特性键、附加项键、文案键、版式键、订阅顶层的逐目标表(⑬d 起文案键里
+ * `liveOngoing` → `liveStreaming` 也在这里)。
  *
  * 0.x 那一遍(`features.ts` / `templates.ts` …)吐出来的是 0.x 最新的形状,这一步在它之后串着跑,把名字换成 1.0 的:
  *
@@ -7,14 +8,14 @@
  * | --- | --- |
  * | 特性键 `dynamic` / `live` / `liveGuardBuy` | `post` / `liveStart` / `membership` |
  * | 附加项键 `atAllDynamic` / `atAllLive` | `atAllPost` / `atAllLiveStart` |
- * | 文案 `templates.dynamic` / `dynamicVideo`(账本 `templateDefaultsSeen` 的同名两个键) | `post` / `postVideo` |
+ * | 文案 `templates.dynamic` / `dynamicVideo` / `liveOngoing`(账本 `templateDefaultsSeen` 的同名三个键) | `post` / `postVideo` / `liveStreaming` |
  * | 版式 `messageLayout.dynamic`(`live` 那组管开播、正在直播、下播三种消息,不改名) | `messageLayout.post` |
  * | 订阅顶层的逐目标表 `extras` | `extraTargets` |
  *
  * 值原样搬、键序不变;认不得的形状原样放过(由配置仓开机时报出来);已经是新键的数据再跑一遍不变,新老键并存时以新键为准、
  * 老键丢掉。**不碰**的同名不同义:`app.logLevels` 的 `dynamic` / `live`(日志模块名,3a)、`cardStyleByKind` 的卡种键(㉔)、
- * `ai.search.engines` 与 AI 场景、历史行的推送种类(⑱)。直播拆键(`liveStreaming`、`pushTime` / `restartPush`、
- * `templates.liveOngoing`)归 ⑬d,会接在这一步的产出之后。
+ * `ai.search.engines` 与 AI 场景、历史行的推送种类(⑱)。直播拆键里不是改名的那部分(新特性 `liveStreaming`、`pushTime` /
+ * `restartPush` 拆成间隔与补报、`routing.liveStreaming` 拷贝、逐订阅按合并值算开关)在 `live-split.ts`,接在这一步的产出之后。
  *
  * 两个入口,挂法照订阅这一族已有的「0.x 最新 → 1.0」先例(`subscriptions.ts` 的 `toIdentityRow` / `toTaggedFile`):
  * - 设置:{@link renameGlobalSettingsKeys},在 `migrateGlobals` 之后(`settings.ts` 的 `migrateSettingsFiles`);
@@ -67,7 +68,7 @@ const EXTRA_KEY_RENAMES = {
 /** 文案键:`templates`(全局与逐订阅覆盖)与 `templateDefaultsSeen` 账本点路径的第一段共用。 */
 const TEMPLATE_KEY_RENAMES = {
 	liveStart: "liveStart",
-	liveOngoing: "liveOngoing",
+	liveOngoing: "liveStreaming",
 	liveEnd: "liveEnd",
 	liveSummary: "liveSummary",
 	dynamic: "post",

@@ -34,6 +34,7 @@ import {
 	EXTRA_KEYS,
 	type ExtraKey,
 	FEATURE_KEYS,
+	type FeatureFlagValues,
 	type FeatureKey,
 	type Identity,
 	identityColor,
@@ -48,7 +49,7 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal/constants";
 
-export type { ExtraKey, FeatureKey, Identity, SourceKey, SubscriptionTag };
+export type { ExtraKey, FeatureFlagValues, FeatureKey, Identity, SourceKey, SubscriptionTag };
 export {
 	BILIBILI_SOURCE_KEY,
 	countsAsDelivery,
@@ -83,6 +84,8 @@ export type {
 	DirectConnection,
 	ExtensionConnection,
 	ImageGroupSettingsPartial as ImageGroupOverride,
+	LiveStartSettingsPartial as LiveStartOverride,
+	LiveStreamingSettingsPartial as LiveStreamingOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
 	// per-UP 消息版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
@@ -106,6 +109,7 @@ export type {
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
 	post: "动态",
 	liveStart: "开播",
+	liveStreaming: "直播中",
 	liveEnd: "下播",
 	membership: "上舰",
 	superchat: "SC",

@@ -42,6 +42,7 @@ import {
 	migrateLegacyFeatureFlagsPartial,
 	migrateLegacyRouting,
 } from "../features.js";
+import { type GlobalLiveFacts, splitSubscriptionLiveSettings } from "../live-split.js";
 import { migrateGlobals } from "../settings.js";
 import {
 	migrateBiliSubscriptionRow,
@@ -60,6 +61,9 @@ const T1 = "10000000-0000-4000-8000-000000000001";
 const T2 = "10000000-0000-4000-8000-000000000002";
 const T3 = "10000000-0000-4000-8000-000000000003";
 
+/** 直播拆键要的全局值:这一组钉的是推送特性,全局取 0.12 的出厂值(开播开、pushTime 0),拆键本身的用例在 `./live-split.test.ts`。 */
+const GLOBAL_LIVE: GlobalLiveFacts = { liveStart: true, pushTime: 0 };
+
 const SUB_BASE = zeroEmptySubscription({
 	id: "11111111-1111-4111-8111-111111111111",
 	identity: { sourceKey: "bilibili", externalId: "12345" },
@@ -77,6 +81,7 @@ const SUB_BASE_1_0 = {
 	routing: {
 		post: [],
 		liveStart: [],
+		liveStreaming: [],
 		liveEnd: [],
 		membership: [],
 		superchat: [],
@@ -191,7 +196,7 @@ function parseFeaturesPartial(old: unknown) {
 }
 
 /**
- * routing(单独一份):先迁移(0.x 那一遍)、再改成 1.0 的键、再过 schema。schema 还管去重,所以迁出来的不必等于 parse 的结果。
+ * routing(单独一份):先迁移(0.x 那一遍)、再改成 1.0 的键、再拆直播(`routing.liveStreaming` 拷一份开播的目标)、再过 schema。schema 还管去重,所以迁出来的不必等于 parse 的结果。
  * 0.x 那一遍吐的是 0.x 最新的形状(下面几个 `expect…` 钉的就是它);活 schema 只认 1.0 的键,所以过 schema 之前要先过 1.0 的
  * 改名(`renameSubscriptionKeys`,文件级迁移里就是这个顺序)。
  */
@@ -199,7 +204,10 @@ function parseRouting(old: unknown) {
 	const migrated = migrateLegacyRouting(old);
 	expectNoLegacyRoutingKeys(migrated);
 	expect(migrateLegacyRouting(migrated)).toEqual(migrated);
-	const { routing } = renameSubscriptionKeys({ routing: migrated }) as { routing: unknown };
+	const { routing } = splitSubscriptionLiveSettings(
+		renameSubscriptionKeys({ routing: migrated }),
+		GLOBAL_LIVE,
+	) as { routing: unknown };
 	return SubscriptionRoutingSchema.parse(routing);
 }
 
@@ -211,11 +219,13 @@ function parseBili(old: unknown) {
 	return parseRenamed(migrated);
 }
 
-/** 0.x 最新形状的一行 → 1.0 的改名 → 活 schema。改名那一步幂等:对它的产出再跑一遍不变。 */
+/** 0.x 最新形状的一行 → 1.0 的改名 → 直播拆键 → 活 schema。改名与拆键两步都幂等:对它们的产出再跑一遍不变。 */
 function parseRenamed(migrated: unknown) {
 	const renamed = renameSubscriptionKeys(migrated);
 	expect(renameSubscriptionKeys(renamed)).toEqual(renamed);
-	return SubscriptionSchema.parse(renamed);
+	const split = splitSubscriptionLiveSettings(renamed, GLOBAL_LIVE);
+	expect(splitSubscriptionLiveSettings(split, GLOBAL_LIVE)).toEqual(split);
+	return SubscriptionSchema.parse(split);
 }
 
 /**
@@ -619,7 +629,8 @@ describe("@全体 并进附加项(第二代订阅的迁移)", () => {
 		expect(migrateBiliSubscriptionRow(fresh)).toEqual(fresh);
 		expect(parseBili(fresh)).toEqual({
 			...SUB_BASE_1_0,
-			routing: { ...SUB_BASE_1_0.routing, liveStart: [T1] },
+			// 开播的目标拷一份给 liveStreaming(直播拆键)。
+			routing: { ...SUB_BASE_1_0.routing, liveStart: [T1], liveStreaming: [T1] },
 			extraTargets: { ...SUB_BASE_1_0.extraTargets, atAllLiveStart: { [T1]: true } },
 		});
 	});

@@ -3,14 +3,21 @@
  *
  * `overrides.filters`(ContentFilters)一个切片被两个 section 分域共写:
  * 「动态过滤」域写 block* / whitelist*(见 FILTER_CONTENT_KEYS);「直播阈值」域
- * 写 minScPrice / minGuardLevel(见 LIVE_FILTER_KEYS,外加独立的 overrides.schedule)。
+ * 写 minScPrice / minGuardLevel(见 LIVE_FILTER_KEYS,外加独立的 overrides.schedule 与直播拆键搬出来的
+ * overrides.liveStart / overrides.liveStreaming)。
  * 凡是「这个 section 是否已覆盖 / 是否开启」的判定,都必须按各自域内的字段来判,
  * 不能只看整个 `overrides.filters !== undefined` —— 否则开一个域会让另一个 section
  * 的 toggle / 侧栏小点被动亮起(共享切片非空即误判)。box 内部 toggle 与侧栏
  * isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
-import type { ContentFiltersOverride, ScheduleOverride, Subscription } from "../../types/domain";
+import type {
+	ContentFiltersOverride,
+	LiveStartOverride,
+	LiveStreamingOverride,
+	ScheduleOverride,
+	Subscription,
+} from "../../types/domain";
 import type { SectionId } from "./sections";
 
 /**
@@ -44,13 +51,31 @@ export function hasFilterContentOverride(f: ContentFiltersOverride | undefined):
 	return FILTER_CONTENT_KEYS.some((k) => f?.[k] !== undefined);
 }
 
-/** 「直播阈值」域是否有任何覆盖(filters 的阈值字段 或 schedule 整段)。 */
-export function hasLiveThresholdOverride(slices: {
-	filters: ContentFiltersOverride | undefined;
+/**
+ * 推送时间那几段 —— 免扰 / 断流接续(`schedule`),外加直播拆键(⑬d)从 `schedule` 里搬出来的周期间隔
+ * (`liveStreaming`)与启动补报(`liveStart`)。拓展订阅的「推送时段」就是这几段。
+ */
+export interface LiveTimingSlices {
 	schedule: ScheduleOverride | undefined;
-}): boolean {
+	liveStart: LiveStartOverride | undefined;
+	liveStreaming: LiveStreamingOverride | undefined;
+}
+
+/** 推送时间那几段是否有任何覆盖。 */
+export function hasLiveTimingOverride(slices: LiveTimingSlices): boolean {
 	return (
-		LIVE_FILTER_KEYS.some((k) => slices.filters?.[k] !== undefined) || slices.schedule !== undefined
+		slices.schedule !== undefined ||
+		slices.liveStart !== undefined ||
+		slices.liveStreaming !== undefined
+	);
+}
+
+/** 「直播阈值」域是否有任何覆盖(filters 的阈值字段 或 推送时间那几段)。 */
+export function hasLiveThresholdOverride(
+	slices: { filters: ContentFiltersOverride | undefined } & LiveTimingSlices,
+): boolean {
+	return (
+		LIVE_FILTER_KEYS.some((k) => slices.filters?.[k] !== undefined) || hasLiveTimingOverride(slices)
 	);
 }
 
@@ -88,9 +113,15 @@ export function isSectionCustomized(
 			return hasLiveThresholdOverride({
 				filters: sub.overrides.filters,
 				schedule: sub.overrides.schedule,
+				liveStart: sub.overrides.liveStart,
+				liveStreaming: sub.overrides.liveStreaming,
 			});
 		case "schedule":
-			return sub.overrides.schedule !== undefined;
+			return hasLiveTimingOverride({
+				schedule: sub.overrides.schedule,
+				liveStart: sub.overrides.liveStart,
+				liveStreaming: sub.overrides.liveStreaming,
+			});
 		case "summary":
 			return (
 				sub.overrides.templates?.liveSummary !== undefined ||
@@ -99,7 +130,7 @@ export function isSectionCustomized(
 		case "msg":
 			return (
 				sub.overrides.templates?.liveStart !== undefined ||
-				sub.overrides.templates?.liveOngoing !== undefined ||
+				sub.overrides.templates?.liveStreaming !== undefined ||
 				sub.overrides.templates?.liveEnd !== undefined
 			);
 		case "dynamicMsg":

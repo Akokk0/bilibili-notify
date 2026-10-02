@@ -393,7 +393,7 @@ type PostPushPart = "post" | "post-images";
 | --- | --- |
 | `post` / `atAllPost` | 作品推送与它的 @全体 |
 | `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次开播——走 `liveStart` 的路由、历史记成开播（`feature: liveStart`）、**不 @全体**、画直播中的卡。0.x 里这张补报的历史标签是「直播中」，1.0 起记成「开播」（主人看得见的变化），推到哪里不变。只有真正的开播能 @全体（`atAllLiveStart`） |
-| `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关 |
+| `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关（⑬d 已落后半：拓展声明了开播与下播两种事件，`featuresForEvents`，面板与服务端同一份；`has.liveStatus` 那半随 3a） |
 | `liveEnd` | 下播 |
 | `membership` / `superchat` / `specialDanmaku` / `specialUserEnter` | 核心中立特性 |
 | `wordcloud` / `liveSummary` | 下播的附加项（`EXTRA_KEYS`，来源用 `supportedExtras` 声明），不单独成历史行 |

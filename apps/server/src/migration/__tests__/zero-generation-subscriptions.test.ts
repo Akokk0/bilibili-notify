@@ -102,7 +102,7 @@ describe("两份合成一个文件", () => {
 		}
 		// 别的格:覆盖、锐评……与摆进去的一模一样(摆进去的就是 0.x 最新形状,没有要迁的)。
 		// 0.x 的 `groups` 在原位换成 `tagIds`(这几行没有分组,所以是空的),见下面「分组换成标签」。
-		// 唯一的变化是 1.0 的改名(逐键的用例在 `./feature-renames.test.ts`):`routing` 换成 1.0 的特性键,顶层的 `extras`
+		// 唯一的变化是 1.0 的改名(逐键的用例在 `./feature-renames.test.ts`)与直播拆键(`./live-split.test.ts`):`routing` 换成 1.0 的特性键、多一把 `liveStreaming`,顶层的 `extras`
 		// 叫 `extraTargets`、里面是 1.0 的附加项键 —— 摆进去的两张表都是空的,所以期望值是字面量的空表。
 		const strip = (row: Row) => {
 			const {
@@ -122,6 +122,7 @@ describe("两份合成一个文件", () => {
 				routing: {
 					post: [],
 					liveStart: [],
+					liveStreaming: [],
 					liveEnd: [],
 					membership: [],
 					superchat: [],
@@ -374,6 +375,7 @@ describe("迁两遍和迁一遍一样", () => {
 		const rewritten = await migrateSubscriptionFiles({
 			configDir: join(sandbox.target, ...CONFIG_DIR),
 			extensionSubscriptionsPath: join(sandbox.zero, ZERO_EXT),
+			globalLive: { liveStart: true, pushTime: 0 },
 		});
 
 		expect(rewritten).toEqual([]);

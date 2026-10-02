@@ -9,7 +9,9 @@
  * {@link migrateLegacyFeatureFlagsPartial})。拓展订阅没有外层那一步。
  *
  * 迁成 0.x 最新形状的那一行再过一遍 1.0 的改名({@link renameSubscriptionKeys}:特性键、附加项键、文案键、版式键、
- * 顶层的 `extras` → `extraTargets`),然后才换身份 —— 两步碰的是不相交的几格。
+ * 顶层的 `extras` → `extraTargets`)与直播拆键({@link splitSubscriptionLiveSettings}:`routing.liveStreaming` 拷贝、
+ * 覆盖里的 `pushTime` / `restartPush` 拆成开关、间隔与补报,要全局的值 —— 调用方递进来),然后才换身份 —— 这几步碰的是
+ * 不相交的几格。
  *
  * 合好之后,0.x 每行的分组(一串名字 `groups`)换成一张标签表与各行的 `tagIds`(ADR-0034),
  * 新代里的文件是 `{ tags, subscriptions }`。
@@ -24,6 +26,7 @@ import {
 	migrateLegacySubscription,
 } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
+import { type GlobalLiveFacts, splitSubscriptionLiveSettings } from "./live-split.js";
 
 /** 两种订阅共有的那两格:`routing` 与 `overrides.features`。 */
 function migrateSharedParts(row: unknown): unknown {
@@ -147,6 +150,8 @@ export interface MigrateSubscriptionFilesOptions {
 	configDir: string;
 	/** 第 0 代的 `state/extension-subscriptions.json`:只作迁移输入,不进新代。 */
 	extensionSubscriptionsPath: string;
+	/** 直播拆键要的全局值(拆键之前的开播开关与 `pushTime`),见 `settings.ts` 的 `readZeroLiveFacts`。 */
+	globalLive: GlobalLiveFacts;
 }
 
 /**
@@ -179,12 +184,12 @@ export async function migrateSubscriptionFiles(
 	const extRows = ext.kind === "ok" ? (ext.value as unknown[]) : [];
 	if (bili.kind === "missing" && extRows.length === 0) return [];
 	const biliRows = bili.kind === "ok" ? (bili.value as unknown[]) : [];
+	const toCurrent = (row: unknown): unknown =>
+		splitSubscriptionLiveSettings(renameSubscriptionKeys(row), opts.globalLive);
 	const next = toTaggedFile([
-		...biliRows.map((row) =>
-			toIdentityRow(renameSubscriptionKeys(migrateBiliSubscriptionRow(row)), "bilibili"),
-		),
+		...biliRows.map((row) => toIdentityRow(toCurrent(migrateBiliSubscriptionRow(row)), "bilibili")),
 		...extRows.map((row) =>
-			toIdentityRow(renameSubscriptionKeys(migrateExtensionSubscriptionRow(row)), "extension"),
+			toIdentityRow(toCurrent(migrateExtensionSubscriptionRow(row)), "extension"),
 		),
 	]);
 	await rewriteJsonFile(path, next, bili.kind === "ok" ? path : opts.extensionSubscriptionsPath);

@@ -1,8 +1,9 @@
 /**
  * 直播端 LivePushType → 特性键 / 推送类型 的翻译表。
  *
- * 特性键管开关与路由(词云 / 总结是下播的附加项,跟着下播走);推送类型管历史怎么记
- * (开播与周期「正在直播」共用一把特性键,历史上却是两类)。两张表都在这里钉死。
+ * 特性键管开关与路由(词云 / 总结是下播的附加项,跟着下播走);推送类型管历史怎么记。
+ * ⑬d 起两者一一对应:周期「正在直播」(0)是 `liveStreaming` / `live-ongoing`,重启补报(11)
+ * 走开播的路由、历史记成开播(`liveStart` / `live`)、不 @全体。两张表都在这里钉死。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -15,7 +16,7 @@ import {
 
 describe("liveTypeToFeature", () => {
 	it("完整映射表:词云 / 总结归到 liveEnd", () => {
-		expect(liveTypeToFeature(0)).toBe("liveStart");
+		expect(liveTypeToFeature(0)).toBe("liveStreaming");
 		expect(liveTypeToFeature(3)).toBe("liveStart");
 		expect(liveTypeToFeature(4)).toBe("membership");
 		expect(liveTypeToFeature(5)).toBe("liveEnd");
@@ -24,6 +25,7 @@ describe("liveTypeToFeature", () => {
 		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
 		expect(liveTypeToFeature(10)).toBe("liveEnd");
+		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报:走开播的路由
 	});
 
 	it("未知 type 兜底为 liveStart", () => {
@@ -32,9 +34,10 @@ describe("liveTypeToFeature", () => {
 });
 
 describe("liveTypeToPushKind", () => {
-	it("完整映射表:周期复推单列一类,词云 / 总结记在下播名下", () => {
+	it("完整映射表:周期复推记 live-ongoing,重启补报记成开播,词云 / 总结记在下播名下", () => {
 		expect(liveTypeToPushKind(0)).toBe("live-ongoing");
 		expect(liveTypeToPushKind(3)).toBe("live");
+		expect(liveTypeToPushKind(11)).toBe("live"); // 0.x 里补报记成 live-ongoing,1.0 起记开播
 		expect(liveTypeToPushKind(4)).toBe("guard");
 		expect(liveTypeToPushKind(5)).toBe("live-end");
 		expect(liveTypeToPushKind(6)).toBe("sc");
@@ -55,7 +58,7 @@ describe("liveTypeToExtra", () => {
 	});
 
 	it("其余一律没有 —— 尤其下播卡本体(9):它要是也带上键,整张卡会被附加项的三态表收窄掉", () => {
-		for (const t of [0, 3, 4, 6, 7, 8, 9, 999]) {
+		for (const t of [0, 3, 4, 6, 7, 8, 9, 11, 999]) {
 			expect(liveTypeToExtra(t)).toBeUndefined();
 		}
 	});
@@ -76,6 +79,16 @@ describe("liveBroadcastOpts — 直播端一次广播交给推送层的选项", 
 		expect(liveBroadcastOpts(0, undefined)).toMatchObject({
 			allowAtAll: false,
 			kind: "live-ongoing",
+		});
+	});
+
+	it("重启补报:抑制 @全体、kind live(记成开播),不是附加项", () => {
+		expect(liveBroadcastOpts(11, { pushId: "p1" })).toEqual({
+			pushId: "p1",
+			role: undefined,
+			allowAtAll: false,
+			kind: "live",
+			extra: undefined,
 		});
 	});
 

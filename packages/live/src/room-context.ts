@@ -40,7 +40,7 @@ export const GUARD_LEVEL_TIER: Record<GuardLevel, GuardTierKey | undefined> = {
 /**
  * 模板 / 渲染层全局配置,listener-manager + room-session 共用。
  *
- * 不含 `pushTime` / `restartPush` / `minScPrice` / `minGuardLevel` —— 那些是
+ * 不含 `streamingIntervalHours` / `catchUpOnBoot` / `minScPrice` / `minGuardLevel` —— 那些是
  * per-UP 字段,adapter build SubItemView 时已折算好,引擎直接读 `SubItemView.X`。
  */
 export interface ListenerManagerConfig {
@@ -48,7 +48,7 @@ export interface ListenerManagerConfig {
 	customLiveMsg: {
 		enable: boolean;
 		customLiveStart?: string;
-		customLive?: string;
+		customLiveStreaming?: string;
 		customLiveEnd?: string;
 	};
 	/** Default global `liveSummary` template (joined with `\n`). */

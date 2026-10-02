@@ -137,9 +137,9 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 
 /**
  * 全局 island 绑定器 —— 把 GlobalDefaults 打平成扁平 code 结构喂 useDirtyDraft:
- * filters / imageGroup 顶层字段无前缀(字典 code 无前缀)→ 打平;schedule /
- * templates 字典 code 带前缀 → 保 nested,walkTreeDiff 递归出 `schedule.X` /
- * `templates.X`。
+ * filters / imageGroup 顶层字段无前缀(字典 code 无前缀)→ 打平;schedule / liveStart /
+ * liveStreaming / templates 字典 code 带前缀 → 保 nested,walkTreeDiff 递归出 `schedule.X` /
+ * `liveStart.X` / `liveStreaming.X` / `templates.X`。`features` 只投影周期那一把(这一页只编辑它)。
  *
  * 刻意抽成独立组件、仅在 isGlobal 时挂载,与 per-UP 的 PerUpEditor(自调
  * pageKey "rules-perup" 的 useDirtyDraft)**互斥** —— 同一时刻只有一个 binder
@@ -162,6 +162,9 @@ export function GlobalDraftBinder({
 			...defaults.filters,
 			...defaults.imageGroup,
 			schedule: defaults.schedule,
+			liveStart: defaults.liveStart,
+			liveStreaming: defaults.liveStreaming,
+			features: { liveStreaming: defaults.features.liveStreaming },
 			templates: defaults.templates,
 			messageLayout: defaults.messageLayout,
 			// 账本也算脏:点「保持我的」时**只有**它变,不纳进来保存条就不亮,
@@ -175,6 +178,9 @@ export function GlobalDraftBinder({
 			...baseline.filters,
 			...baseline.imageGroup,
 			schedule: baseline.schedule,
+			liveStart: baseline.liveStart,
+			liveStreaming: baseline.liveStreaming,
+			features: { liveStreaming: baseline.features.liveStreaming },
 			templates: baseline.templates,
 			messageLayout: baseline.messageLayout,
 			templateDefaultsSeen: baseline.templateDefaultsSeen,
@@ -235,6 +241,11 @@ export default function Rules() {
 						defaults: {
 							filters: next.defaults.filters,
 							schedule: next.defaults.schedule,
+							liveStart: next.defaults.liveStart,
+							liveStreaming: next.defaults.liveStreaming,
+							// 特性开关这一页只编辑周期那一把;整个 features 对象带上也只会被 diff 成这一格,
+							// 不过只列它,免得哪天别的格被谁顺手改了、悄悄跟着下发。
+							features: { liveStreaming: next.defaults.features.liveStreaming },
 							templates: next.defaults.templates,
 							imageGroup: next.defaults.imageGroup,
 							messageLayout: next.defaults.messageLayout,
@@ -247,6 +258,9 @@ export default function Rules() {
 						defaults: {
 							filters: base?.defaults.filters,
 							schedule: base?.defaults.schedule,
+							liveStart: base?.defaults.liveStart,
+							liveStreaming: base?.defaults.liveStreaming,
+							features: { liveStreaming: base?.defaults.features.liveStreaming },
 							templates: base?.defaults.templates,
 							imageGroup: base?.defaults.imageGroup,
 							messageLayout: base?.defaults.messageLayout,
@@ -501,6 +515,9 @@ export default function Rules() {
 							<LiveThresholdsSection
 								filters={draft.defaults.filters}
 								schedule={draft.defaults.schedule}
+								liveStart={draft.defaults.liveStart}
+								liveStreaming={draft.defaults.liveStreaming}
+								liveStreamingOn={draft.defaults.features.liveStreaming}
 								onPatch={patchDraft}
 							/>
 						) : section === "summary" ? (

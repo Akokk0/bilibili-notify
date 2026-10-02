@@ -276,15 +276,55 @@ describe("per-UP cardStyle override 不被全局默认污染", () => {
 		expect(eff.cardStyle.liveCoverImages).toEqual(["cover-a", "cover-b"]);
 	});
 
-	it("只覆盖 schedule.pushTime → liveEndGrace/liveEndGraceMinutes 仍 undefined", () => {
+	it("只覆盖 schedule.liveEndGrace → liveEndGraceMinutes 仍 undefined,也不长出别的键", () => {
 		const parsed = SubscriptionSchema.parse({
 			...BASE,
-			overrides: { schedule: { pushTime: 3 } },
+			overrides: { schedule: { liveEndGrace: true } },
 		});
 		const s = parsed.overrides.schedule;
-		expect(s?.pushTime).toBe(3);
-		expect(s?.liveEndGrace).toBeUndefined();
+		expect(s?.liveEndGrace).toBe(true);
 		expect(s?.liveEndGraceMinutes).toBeUndefined();
-		expect(Object.keys(s ?? {})).toEqual(["pushTime"]);
+		expect(Object.keys(s ?? {})).toEqual(["liveEndGrace"]);
+	});
+
+	// 直播拆键(⑬d):周期间隔与启动补报各是自己的一段设置,per-UP 那份是无默认的纯可选 ——
+	// 只写间隔就不该把补报也注入成 false、盖掉全局的 true。
+	it("只覆盖 liveStreaming.streamingIntervalHours → 不长出 liveStart / schedule,键只有那一个", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { liveStreaming: { streamingIntervalHours: 3 } },
+		});
+		expect(parsed.overrides.liveStreaming).toEqual({ streamingIntervalHours: 3 });
+		expect(parsed.overrides.liveStart).toBeUndefined();
+		expect(parsed.overrides.schedule).toBeUndefined();
+		expect(Object.keys(parsed.overrides)).toEqual(["liveStreaming"]);
+	});
+
+	it("只覆盖 liveStart.catchUpOnBoot → 不长出 liveStreaming", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { liveStart: { catchUpOnBoot: true } },
+		});
+		expect(parsed.overrides.liveStart).toEqual({ catchUpOnBoot: true });
+		expect(parsed.overrides.liveStreaming).toBeUndefined();
+	});
+
+	it("逐订阅的间隔也守 1–24 的整数:0、25、小数都拒收", () => {
+		for (const bad of [0, 25, 1.5, -1]) {
+			expect(
+				SubscriptionSchema.safeParse({
+					...BASE,
+					overrides: { liveStreaming: { streamingIntervalHours: bad } },
+				}).success,
+			).toBe(false);
+		}
+		for (const ok of [1, 24]) {
+			expect(
+				SubscriptionSchema.safeParse({
+					...BASE,
+					overrides: { liveStreaming: { streamingIntervalHours: ok } },
+				}).success,
+			).toBe(true);
+		}
 	});
 });

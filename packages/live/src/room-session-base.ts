@@ -42,7 +42,7 @@ export abstract class RoomSessionBase {
 	protected readonly liveData: LiveData = { likedNum: "0" };
 
 	/**
-	 * 初始房态流程(bootstrapRoomState:拉房间/主播信息、已在播检测、restartPush)
+	 * 初始房态流程(bootstrapRoomState:拉房间/主播信息、已在播检测、重启补报)
 	 * 是否已完整跑过。预检被风控挡在 bootstrap 门外、事后经长尾重试连上的房间,
 	 * 这里仍是 false —— 重连成功路径据此补跑,而不是误闯「重连核对」分支。
 	 */
@@ -73,7 +73,7 @@ export abstract class RoomSessionBase {
 	 * 撞上 {@link handleLiveEnd} 的 `!liveStatus` 守卫被静默丢弃(grace 也拦不住 ——
 	 * 它同样要求 liveStatus 为真),而我们随后又无条件把状态翻成在播:这一场从此再
 	 * 也等不到第二条 END。面板恒显「直播中」,统计侧按 now−startedAt 计时长,每天
-	 * 自增 24 小时且无上限,而默认 `pushTime=0` 连轮询兜底都没有。
+	 * 自增 24 小时且无上限,而默认的周期「正在直播」是关着的,连轮询兜底都没有。
 	 *
 	 * 别直接读写这两个字段 —— 一律经 {@link beginLiveTransition} /
 	 * {@link finishLiveTransition} / {@link noteEndDuringTransition}。手写这套记账
@@ -297,7 +297,7 @@ export abstract class RoomSessionBase {
 	/**
 	 * Open the WS connection (via `RoomContext.startLiveRoomListener`), pull
 	 * the initial live-room snapshot, and — if the room is already live —
-	 * kick off the `restartPush` branch + arm the periodic timer.
+	 * kick off the boot catch-up branch + arm the periodic timer.
 	 */
 	async bootstrap(): Promise<void> {
 		// listener 建失败时此前丢弃返回值仍继续:下文 live_status===1 会
@@ -355,7 +355,7 @@ export abstract class RoomSessionBase {
 	/**
 	 * {@link bootstrap} 装好 listener 之后的部分,整段跑在「翻成在播」窗口里。
 	 * protected:预检被风控挡下再经长尾重试连上的房间,从没跑过这段 —— 重连成功
-	 * 路径据 `bootstrapped` 标志识别后补跑(含已在播检测与 restartPush)。
+	 * 路径据 `bootstrapped` 标志识别后补跑(含已在播检测与重启补报)。
 	 *
 	 * 返回 `false` = 初始信息拉取失败,**不带任何放弃副作用** —— 首跑(bootstrap)
 	 * 据此停止监测,重连补跑据此回长尾重试,策略归调用方。
@@ -390,7 +390,7 @@ export abstract class RoomSessionBase {
 			const diffTime = this.liveElapsed();
 			const roomLink = buildRoomLink(this.liveRoomInfo);
 			// 消息版式来自 per-UP 折叠值(宿主恒填),与 onLiveStart 同款接线。
-			const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
+			const liveMsg = this.ctx.templateRenderer.renderLiveStreaming({
 				sub: this.sub,
 				globalCustom: this.ctx.config.customLiveMsg,
 				master: this.masterInfo,
@@ -398,14 +398,17 @@ export abstract class RoomSessionBase {
 				watched,
 			});
 
-			// restartPush 已由 adapter 折算好(per-UP ?? 全局)。
+			// 重启补报:`catchUpOnBoot` 已由 adapter 折算好(per-UP ?? 全局);补的是**开播**,所以还要
+			// `liveStart` 开着。画的是「正在直播」那张卡、用「正在直播」那句文案,推送类型是 `CatchUp`
+			// (走开播的目标、历史记成开播、不 @全体)。
 			// 抓成局部变量再入闸:非空收窄进不了闭包,而且卡片本就该反映**发起时刻**的状态。
 			const liveRoomInfo = this.liveRoomInfo;
 			const master = this.masterInfo;
-			if (this.sub.restartPush) {
+			if (this.sub.catchUpOnBoot && this.sub.liveStart) {
 				await this.enqueuePush(() =>
 					this.ctx.sendLiveNotifyCard({
 						liveType: LiveType.LiveBroadcast,
+						pushType: LivePushType.CatchUp,
 						liveData: this.liveData,
 						liveRoomInfo,
 						master,
@@ -475,8 +478,9 @@ export abstract class RoomSessionBase {
 	}
 
 	/**
-	 * Live 配置 `pushTime` 热更后调用:重新按当前(可能已变更的) `pushTime`
-	 * arm 定时器。仅对正在直播的房间生效,因为只有 live 状态下才会有 timer。
+	 * 周期「正在直播」的开关或间隔热更后调用:按当前(可能已变更的)开关与
+	 * `streamingIntervalHours` 重新 arm 定时器(开关关了就只拆不建)。仅对正在直播的房间生效,
+	 * 因为只有 live 状态下才会有 timer。
 	 *
 	 * 注意:`setInterval` 句柄的 ms 参数是 immutable,只能 dispose 重建。
 	 */
@@ -491,12 +495,13 @@ export abstract class RoomSessionBase {
 		// 否则 in-flight onLiveStart/bootstrap 恢复后会挂上一个孤儿 setInterval,
 		// session 已从 sessionRecord 删除,interval 却永远 tick(见 timer-guard 测试)。
 		if (this.cancelled || this.ctx.isDisposed()) return;
-		// pushTime 已由 adapter 折算好(per-UP ?? 全局)。0 = 关闭该 UP 的「正在直播」复推。
-		const pushTime = this.sub.pushTime;
-		if (pushTime === 0 || this.pushAtTimeTimer) return;
+		// 开关与间隔已由 adapter 折算好(per-UP ?? 全局)。开关关着就不计时 —— 从前这里只看间隔,
+		// 关着也照样计时、出卡,到推送闸才扔。间隔不是正数(坏数据)也不建:`setInterval(0)` 会空转。
+		const hours = this.sub.streamingIntervalHours;
+		if (!this.sub.liveStreaming || !(hours > 0) || this.pushAtTimeTimer) return;
 		this.pushAtTimeTimer = this.ctx.serviceCtx.setInterval(
 			() => this.tickPushAtTime(),
-			pushTime * 1000 * 60 * 60,
+			hours * 1000 * 60 * 60,
 		);
 		this.ctx.livePushTimerManager.set(this.sub.roomId, () => this.pushAtTimeTimer?.dispose());
 		this.ctx.logSideEffectState(`timer:created room=${this.sub.roomId}`);
@@ -516,7 +521,7 @@ export abstract class RoomSessionBase {
 	 * 下一次到点照旧。
 	 */
 	async tickNow(): Promise<boolean> {
-		// 跟排程那条对齐:`isLive` 不够。这个 UP 关了「正在直播」复推(pushTime=0)时定时器
+		// 跟排程那条对齐:`isLive` 不够。这个 UP 关了「正在直播」复推(`liveStreaming` 关)时定时器
 		// 压根没建;进入下播宽限期时定时器已撤而 `liveStatus` **刻意**还留着 true。这两种
 		// 情况排程都不会响,提前到期也就不该响 —— 否则宽限期里那一跑会拉到 live_status=0,
 		// 顺手给主人私聊一条「已下播但未收到 WS 下播事件」的假警报。
@@ -551,7 +556,7 @@ export abstract class RoomSessionBase {
 		this.liveData.watchedNum = watched;
 		const diffTime = this.liveElapsed();
 		const roomLink = buildRoomLink(this.liveRoomInfo);
-		const liveMsg = this.ctx.templateRenderer.renderLiveOngoing({
+		const liveMsg = this.ctx.templateRenderer.renderLiveStreaming({
 			sub: this.sub,
 			globalCustom: this.ctx.config.customLiveMsg,
 			master: this.masterInfo,

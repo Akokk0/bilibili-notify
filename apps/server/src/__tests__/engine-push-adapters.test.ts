@@ -10,7 +10,7 @@
  *
  *   - `extra`       掉了 → 附加项的按目标收窄全失效，词云 / 总结回到「订了下播就全收」
  *   - `allowAtAll`  掉了 → 「每条直播推送都 @全体」那个修过的 bug 直接回归
- *   - `kind`        掉了 → 历史把周期「正在直播」记成开播
+ *   - `kind`        掉了 → 历史把周期「正在直播」记成开播(⑬d 起补报也走它:记成开播)
  *
  * 判据照 `wiring-needs-its-own-guard` 那条:把接线剪断,这里必须红。
  */
@@ -77,14 +77,23 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 		expect(opts[0]?.extra).toBeUndefined();
 	});
 
-	it("周期「正在直播」(0):抑制 @全体、历史单列一类 —— 这是修过的 bug，别让它悄悄回来", async () => {
-		const { push, opts } = makePushSpy();
+	it("周期「正在直播」(0):自己的特性键 liveStreaming、抑制 @全体、历史记 live-ongoing —— @全体 是修过的 bug，别让它悄悄回来", async () => {
+		const { push, opts, features } = makePushSpy();
 		await makeLivePushLike(anyPush(push), subscriptionIdOf).broadcastToTargets(
 			"100",
 			"正在直播",
 			0,
 		);
+		expect(features).toEqual(["liveStreaming"]);
 		expect(opts[0]).toMatchObject({ allowAtAll: false, kind: "live-ongoing" });
+	});
+
+	it("重启补报(11):走开播的特性键 liveStart、历史记成开播(live)、不 @全体 —— 不能再被记成 live-ongoing", async () => {
+		const { push, opts, features } = makePushSpy();
+		await makeLivePushLike(anyPush(push), subscriptionIdOf).broadcastToTargets("100", "补报", 11);
+		expect(features).toEqual(["liveStart"]);
+		expect(opts[0]).toMatchObject({ allowAtAll: false, kind: "live" });
+		expect(opts[0]?.extra).toBeUndefined();
 	});
 
 	it("下播卡本体(9):不带附加项键", async () => {

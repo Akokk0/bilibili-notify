@@ -1,4 +1,10 @@
-import type { FeatureKey, PushTarget, Subscription, SubscriptionRouting } from "../../types/domain";
+import type {
+	FeatureFlagValues,
+	FeatureKey,
+	PushTarget,
+	Subscription,
+	SubscriptionRouting,
+} from "../../types/domain";
 import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
 
 /**
@@ -24,13 +30,21 @@ export {
 export { displayName, subscriptionColor } from "../../utils/up-display";
 
 /**
- * 该订阅「实际开启」的推送特性 = `overrides.features` 覆写值,缺省继承
- * DEFAULT_FEATURE_FLAGS。等同 UpDialog「订阅项 · 默认推送内容」里的主开关。
+ * 该订阅「实际开启」的推送特性 = `overrides.features` 覆写值,缺省继承**全局**特性开关
+ * (`base`,调用方给 `globals.defaults.features`;没给 = 出厂值 DEFAULT_FEATURE_FLAGS)。
+ * 等同 UpDialog「订阅项 · 默认推送内容」里的主开关。
  * routing(per-target 路由)是正交的另一根轴,不参与此判断 —— follow 模式加
  * 推送目标会灌满全部 routing,据 routing 判定会让卡片恒显全部特性。
+ *
+ * 基线为什么要是真正的全局值:面板没有全局特性开关的界面,全局值通常就是出厂值;唯独旧的
+ * 「周期间隔大于 0」迁成了全局的 `features.liveStreaming = true`(直播拆键,⑬d),继承着它的订阅
+ * 实际在推周期「正在直播」,卡片与弹层得显示成开、也得能关。
  */
-export function subscribedFeatures(sub: Subscription): FeatureKey[] {
-	return FEATURE_KEYS.filter((k) => sub.overrides.features?.[k] ?? DEFAULT_FEATURE_FLAGS[k]);
+export function subscribedFeatures(
+	sub: Subscription,
+	base: FeatureFlagValues = DEFAULT_FEATURE_FLAGS,
+): FeatureKey[] {
+	return FEATURE_KEYS.filter((k) => sub.overrides.features?.[k] ?? base[k]);
 }
 
 export function targetsById(targets: PushTarget[]): Map<string, PushTarget> {
@@ -44,8 +58,12 @@ export function targetsById(targets: PushTarget[]): Map<string, PushTarget> {
  * subscribedFeatures 命中的 feature 收该 target,未命中的把它剔除;其余 target
  * 原样保留。让「自定义」从「跟随订阅项现状」起步,而非默认全部特性全开。
  */
-export function routingAlignedToFeatures(sub: Subscription, targetId: string): SubscriptionRouting {
-	const want = new Set<FeatureKey>(subscribedFeatures(sub));
+export function routingAlignedToFeatures(
+	sub: Subscription,
+	targetId: string,
+	base: FeatureFlagValues = DEFAULT_FEATURE_FLAGS,
+): SubscriptionRouting {
+	const want = new Set<FeatureKey>(subscribedFeatures(sub, base));
 	const out = {} as SubscriptionRouting;
 	for (const k of FEATURE_KEYS) {
 		const cur = sub.routing[k];

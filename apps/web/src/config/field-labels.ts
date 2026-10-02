@@ -462,12 +462,18 @@ export const FIELD_LABELS = {
 	},
 
 	// ── 调度 ──────────────────────────────────────────────────────────────
-	"schedule.pushTime": {
-		label: "状态推送间隔",
-		hint: "0 = 不推送",
+	// 直播拆键(⑬d):周期「正在直播」有自己的开关(全局默认 + 每个订阅可覆盖)与间隔;旧的「间隔 0 = 关」里「关」
+	// 的意思归开关,所以间隔的说明里没有「填 0」那句。启动补报是 `liveStart.catchUpOnBoot`。
+	"features.liveStreaming": {
+		label: "状态推送",
+		hint: "开播后按下面的间隔重复推「正在直播」 · 全局默认,各订阅可单独覆盖",
 		section: "schedule",
 	},
-	"schedule.restartPush": {
+	"liveStreaming.streamingIntervalHours": {
+		label: "状态推送间隔",
+		section: "schedule",
+	},
+	"liveStart.catchUpOnBoot": {
 		label: "启动后立即推送",
 		hint: "重启时若 UP 在播则立即推送一次",
 		section: "schedule",
@@ -485,11 +491,6 @@ export const FIELD_LABELS = {
 	"schedule.quietHours": {
 		label: "免扰时段",
 		hint: "落在区间内的推送直接丢弃,不补推;粒度按「时」,半开区间 [start, end)",
-		section: "schedule",
-	},
-	restartPush: {
-		label: "启动后立即推送",
-		hint: "重启时若 UP 在播则立即推送一次",
 		section: "schedule",
 	},
 
@@ -511,7 +512,7 @@ export const FIELD_LABELS = {
 	},
 	"messageLayout.post.blocks": { label: "动态消息部件排列", section: "templates" },
 	"messageLayout.live.blocks": { label: "直播消息部件排列", section: "templates" },
-	"templates.liveOngoing": { label: "直播中", section: "templates" },
+	"templates.liveStreaming": { label: "直播中", section: "templates" },
 	"templates.liveEnd": { label: "下播", section: "templates" },
 	"templates.post": { label: "动态文案", section: "templates" },
 	"templates.postVideo": { label: "视频文案", section: "templates" },

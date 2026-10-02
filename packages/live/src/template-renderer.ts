@@ -6,7 +6,7 @@ import type { MasterInfo } from "./types";
  * Plain string-substitution based template renderer for live-related notification
  * text. Mirrors the per-occurrence templates of the live push:
  *
- * - `customLiveStart` / `customLive` / `customLiveEnd`
+ * - `customLiveStart` / `customLiveStreaming` / `customLiveEnd`
  * - `customGuardBuy.<governor|commander|captain>.template`(按上舰档位取)
  * - `customSpecialDanmakuUsers.msgTemplate`
  * - `customSpecialUsersEnterTheRoom.msgTemplate`
@@ -20,11 +20,11 @@ import type { MasterInfo } from "./types";
 /**
  * Defaults applied when neither sub-level nor global config provides a template.
  * 链接不再进模板(开播链接是消息版式的独立部件);与 `@bilibili-notify/internal`
- * 的 `DEFAULT_TEMPLATES.liveStart/.liveOngoing` 保持字面量一致。
+ * 的 `DEFAULT_TEMPLATES.liveStart/.liveStreaming` 保持字面量一致。
  */
 export const DEFAULT_LIVE_TEMPLATES = {
 	liveStart: "{name} 开播啦，当前粉丝数：{follower}",
-	liveOngoing: "{name} 正在直播，已播 {time}，累计观看：{watched}",
+	liveStreaming: "{name} 正在直播，已播 {time}，累计观看：{watched}",
 	liveEnd: "{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}",
 	liveSummaryFallback: "弹幕总结",
 } as const;
@@ -65,8 +65,8 @@ export function buildRoomLink(info: { short_id: number; room_id: number }): stri
 	return `https://live.bilibili.com/${info.short_id === 0 ? info.room_id : info.short_id}`;
 }
 
-/** 三句直播文案:开播 / 正在直播(周期推送、重启补推)/ 下播。键与 `DEFAULT_LIVE_TEMPLATES` 同名。 */
-export type LiveTextKind = "liveStart" | "liveOngoing" | "liveEnd";
+/** 三句直播文案:开播 / 正在直播(周期推送、重启补报)/ 下播。键与 `DEFAULT_LIVE_TEMPLATES` 同名。 */
+export type LiveTextKind = "liveStart" | "liveStreaming" | "liveEnd";
 
 /**
  * 三句直播文案的变量,**中立的值**(ADR-0019 决策 65 / 67)—— B 站的直播间与拓展订阅的直播各自把自己的
@@ -108,7 +108,7 @@ export function renderLiveText(
 		case "liveStart":
 			vars.follower = textOf(values.follower, (n) => formatCount(n));
 			break;
-		case "liveOngoing":
+		case "liveStreaming":
 			vars.watched = textOf(values.watched, (n) => formatCount(n));
 			break;
 		case "liveEnd":
@@ -128,7 +128,7 @@ export function renderLiveText(
 function resolveCustomLive(
 	subCustom: CustomLiveMsgLike,
 	globalCustom: CustomLiveMsgLike | undefined,
-	field: "customLiveStart" | "customLive" | "customLiveEnd",
+	field: "customLiveStart" | "customLiveStreaming" | "customLiveEnd",
 	fallback: string,
 ): string {
 	return subCustom[field] ?? globalCustom?.[field] ?? fallback;
@@ -156,8 +156,8 @@ export class LiveTemplateRenderer {
 		});
 	}
 
-	/** Compose the periodic "正在直播" notification text. */
-	renderLiveOngoing(params: {
+	/** Compose the "正在直播" notification text(周期推送与重启补报共用). */
+	renderLiveStreaming(params: {
 		sub: SubItemView;
 		globalCustom?: CustomLiveMsgLike;
 		master: MasterInfo;
@@ -167,10 +167,10 @@ export class LiveTemplateRenderer {
 		const tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,
 			params.globalCustom,
-			"customLive",
-			DEFAULT_LIVE_TEMPLATES.liveOngoing,
+			"customLiveStreaming",
+			DEFAULT_LIVE_TEMPLATES.liveStreaming,
 		);
-		return renderLiveText("liveOngoing", tmpl, {
+		return renderLiveText("liveStreaming", tmpl, {
 			name: params.master.username,
 			time: params.diffTime,
 			watched: params.watched,

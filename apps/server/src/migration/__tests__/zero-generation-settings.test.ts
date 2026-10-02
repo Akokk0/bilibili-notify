@@ -219,7 +219,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		await expectZeroGlobalsUntouched(sandbox, original);
 		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
 		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(onDisk.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
+		expect(onDisk.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(onDisk.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
 		// 带链接那代的默认 → 无链接新默认;0.x 那一遍先认出它(认的是 `dynamic` 这个键),再过 1.0 的改名落在 `post` 上。
 		expect(onDisk.post).toBe("{name}发布了一条动态");
@@ -229,7 +229,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		const store = await sandbox.load();
 		const t = store.getGlobals().defaults.templates;
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
+		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
 		expect(t.post).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
 		expect(t.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
@@ -275,7 +275,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		await expectZeroGlobalsUntouched(sandbox, original);
 		const onDisk = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.templates;
 		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(onDisk.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
+		expect(onDisk.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(onDisk.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
 		expect(onDisk.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
 
@@ -289,7 +289,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(t.postVideo).toBe("{name}发布了新视频");
 		// ③ 旧 {title}/{duration} 直播默认 + 旧 {user} 上舰默认迁移成当前默认
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
-		expect(t.liveOngoing).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
+		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
 		expect((t.guardBuy as { captain: { template: string } }).captain.template).toBe(
 			"{uname} 成为了 {mname} 的舰长！",

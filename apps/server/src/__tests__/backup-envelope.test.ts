@@ -98,13 +98,13 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("特性键改名以后导出的备份是版本 4(版本 3 是开发期的:各集成的设置单独一节 integrations,特性键还是 0.x 的名字)", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(4);
+	it("直播拆键以后导出的备份是版本 5(版本 4 是开发期的:特性键已是 1.0 的名字,但周期间隔还在 schedule 里、没有 liveStreaming 一把键)", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(5);
 	});
 
-	it("版本 3 的备份(订阅里还是 dynamic / live / liveGuardBuy)→ unsupported:不会被当成当前版本放进来", () => {
+	it("版本 4 的备份(订阅里没有 routing.liveStreaming、设置里周期间隔还在 schedule 里)→ unsupported:不会被当成当前版本放进来", () => {
 		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
-		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 3 })));
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 4 })));
 		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
 		expect(err.code).toBe("unsupported");
 	});
@@ -113,10 +113,10 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 	// 照那句话做是条死路。原因要说实话:是哪个版本、比当前旧。
 	it("比当前旧、但不是 0.x 导出的 → 不叫主人去装 0.12,说出两边的版本号", () => {
 		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
-		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 3 })));
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 4 })));
 		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
 		expect(err.message).not.toMatch(/0\.12/);
-		expect(err.message).toContain("（3）");
+		expect(err.message).toContain("（4）");
 		expect(err.message).toContain(`（${BACKUP_SCHEMA_VERSION}）`);
 	});
 });

@@ -330,13 +330,13 @@ describe("LiveTemplateRenderer.renderLiveStart — 模板不带链接", () => {
 	});
 });
 
-describe("LiveTemplateRenderer.renderLiveOngoing / renderLiveEnd — 模板不带链接", () => {
+describe("LiveTemplateRenderer.renderLiveStreaming / renderLiveEnd — 模板不带链接", () => {
 	const master = { username: "主播", userface: "", roomId: "123" } as never;
 	const sub = { customLiveMsg: { enable: false } } as SubItemView;
 
-	it("renderLiveOngoing:默认模板不带链接", () => {
+	it("renderLiveStreaming:默认模板不带链接", () => {
 		const r = new LiveTemplateRenderer();
-		const out = r.renderLiveOngoing({
+		const out = r.renderLiveStreaming({
 			sub,
 			master,
 			diffTime: "1小时",

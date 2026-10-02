@@ -80,6 +80,7 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 				running: () => true,
 				postNoun: () => "作品",
 				readAvatar: async () => undefined,
+				events: () => ["post"],
 			},
 			pushFor: () => push,
 			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
@@ -147,6 +148,7 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 				running: () => true,
 				postNoun: () => "作品",
 				readAvatar: async () => undefined,
+				events: () => ["post"],
 			},
 			pushFor: () => push,
 			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
@@ -203,7 +205,12 @@ describe("bindExtensionPosts — 登记进 track", () => {
 				filter: {},
 				post: true,
 			}),
-			sources: { running: () => true, postNoun: () => "作品", readAvatar: async () => undefined },
+			sources: {
+				running: () => true,
+				postNoun: () => "作品",
+				readAvatar: async () => undefined,
+				events: () => ["post"],
+			},
 			pushFor: () => push,
 			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
 			deliveryDeps: () => ({
@@ -289,6 +296,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 					return extensionId === SUB.identity.sourceKey ? "视频" : undefined;
 				},
 				readAvatar: async () => undefined,
+				events: () => ["post"],
 			},
 			pushFor: () => push,
 			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),

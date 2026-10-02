@@ -40,8 +40,9 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
 		minScPrice: 0,
 		minGuardLevel: 3,
-		pushTime: 0,
-		restartPush: false,
+		liveStreaming: false,
+		streamingIntervalHours: 1,
+		catchUpOnBoot: false,
 		...over,
 	} as SubItemView;
 }
@@ -84,7 +85,7 @@ function makeCtx(events: string[]) {
 		danmakuCollector: { clear: vi.fn(), registerRoom: vi.fn(), recordDanmaku: vi.fn() },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",
-			renderLiveOngoing: () => "直播中",
+			renderLiveStreaming: () => "直播中",
 			renderLiveEnd: () => "下播了",
 		},
 		contentBuilder: {

@@ -209,9 +209,11 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		const globalsOnDisk = await sandbox.readConfig<{ defaults: { features: unknown } }>(
 			"settings/core.json",
 		);
+		// `liveStreaming` 是直播拆键(⑬d)补的:开播开着、pushTime 是出厂的 0 → 关。
 		expect(globalsOnDisk.defaults.features).toEqual({
 			post: true,
 			liveStart: true,
+			liveStreaming: false,
 			liveEnd: true,
 			membership: false,
 			superchat: false,
@@ -277,6 +279,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(Object.keys(sub?.routing ?? {}).sort()).toEqual([
 			"liveEnd",
 			"liveStart",
+			"liveStreaming",
 			"membership",
 			"post",
 			"specialDanmaku",
@@ -303,6 +306,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		expect(onDisk.defaults.features).toEqual({
 			post: true,
 			liveStart: true,
+			liveStreaming: false,
 			liveEnd: false,
 			membership: false,
 			superchat: false,
@@ -363,6 +367,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		const routing1 = {
 			post: [],
 			liveStart: [T1],
+			liveStreaming: [T1],
 			liveEnd: [T1],
 			membership: [],
 			superchat: [],
