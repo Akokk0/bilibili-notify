@@ -37,7 +37,7 @@ export const DATA_ROOT_LAYOUT = {
 	history: "推送历史 <日>.jsonl、重推原件 repush/<日>/;历史图 img/ 是过渡,第 2 期并进图库",
 	stats: "作品 dyn/、直播 live/、seen/、粉丝时序 followers/(按订阅一个 jsonl)与水位线 since",
 	ai: "女仆对话 conversations/",
-	skins: "卡片皮肤 card/<id>/、界面皮肤 panel/<id>/ 与 panel/active.json",
+	skins: "卡片皮肤 card/<id>/、界面皮肤 dashboard/<id>/ 与 dashboard/active.json",
 	library: "素材库:卡片背景 images/、字体 fonts/(连同名字清单)",
 	"maid-skills": "主人的女仆技能 <name>/SKILL.md",
 	extensions: "已装的拓展包、失败记账 load-state.json、市场来源 .marketplace.json",

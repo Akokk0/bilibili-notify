@@ -38,7 +38,7 @@
    ├─ images/           <sha256>.<ext>  统一图库（含聊天附件）
    ├─ stats/            posts/  live/  followers/  seen/  since
    ├─ ai/               conversations/
-   ├─ skins/            card/<id>/  panel/<id>/  panel/active.json
+   ├─ skins/            card/<id>/  dashboard/<id>/  dashboard/active.json
    ├─ library/          images/  fonts/  index.json
    ├─ maid-skills/      <name>/SKILL.md
    └─ extensions/       已装拓展包 + load-state.json
