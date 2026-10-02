@@ -10,11 +10,15 @@
  * - **迁移修订号**:开发期每改一次迁移的产出就加 1,只比一样不一样。当前代的修订号对不上,就照它当初的
  *   来源重开一代(第 0 代迁来的从第 0 代重迁)—— 开发期迁出来的代会跟着代码变旧。alpha.1 起冻住。
  *
+ * 主人要求开新代(全新开始 / 从旧代重新迁移,ADR-0022 决策 3 下 10-01 的 🔗)走同一条路:面板写下一次性的标记
+ * `generations/pending.json`({@link writePendingGeneration})再重启,开机取出({@link takePendingGeneration})
+ * 交给选代。标记不是一代,选代本来就不理 `generations/` 里认不得的名字。
+ *
  * 选代只读盘;开代的写全在 {@link createGeneration} 里,经 storage 的原语。
  */
 
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { atomicWriteJson, removeDirectory, replaceDirectory } from "@bilibili-notify/storage";
 import { z } from "zod";
@@ -43,7 +47,16 @@ const GenerationFileSchema = z.object({
 	source: GenerationSourceSchema,
 });
 
+/** 主人要求开的下一代:放在 `generations/` 里、开机取一次就删。 */
+const PendingGenerationSchema = z.object({
+	source: GenerationSourceSchema,
+	requestedAt: z.string(),
+});
+
+const PENDING_FILE = "pending.json";
+
 export type GenerationSource = z.infer<typeof GenerationSourceSchema>;
+export type PendingGeneration = z.infer<typeof PendingGenerationSchema>;
 export type GenerationFile = z.infer<typeof GenerationFileSchema>;
 
 export type GenerationSelection =
@@ -57,6 +70,11 @@ export type GenerationSelection =
 			source: GenerationSource;
 			/** 上次写到一半留下的 `.partial`,开新代之前清掉。 */
 			leftovers: string[];
+			/**
+			 * 主人要求开新代时正在用的那一代:开新代失败就退回去接着用它,不让整个开机失败。
+			 * 不是主人要求的(首次迁移、开发期重迁),或者当时一代都没有,就没有这一格。
+			 */
+			current?: { seq: number; dir: string };
 	  };
 
 export interface SelectGenerationOptions {
@@ -65,6 +83,11 @@ export interface SelectGenerationOptions {
 	migrationRevision: number;
 	/** 宿主根上有没有 0.x 的数据(第 0 代)。怎么认是迁移模块的事。 */
 	zeroGenerationExists: boolean;
+	/**
+	 * 主人要求开的下一代({@link takePendingGeneration} 取出来的)。要求从第 0 代迁而第 0 代已经不在了,
+	 * 就当没要求。
+	 */
+	pending?: GenerationSource;
 }
 
 const COMPLETE_NAME = /^(\d+)$/;
@@ -102,16 +125,20 @@ export async function selectGeneration(
 			`第 ${current.seq} 代的数据格式版本是 ${current.file.formatVersion},比这一版的 ${opts.formatVersion} 旧;代与代之间的迁移还没有写`,
 		);
 	}
-	if (current && current.file.migrationRevision === opts.migrationRevision) {
-		return {
-			kind: "use",
-			seq: current.seq,
-			dir: hostPath(opts.hostRoot, "generations", String(current.seq)),
-		};
+	const pending =
+		opts.pending?.kind === "zero" && !opts.zeroGenerationExists ? undefined : opts.pending;
+	const currentDir = current && hostPath(opts.hostRoot, "generations", String(current.seq));
+	if (
+		current &&
+		currentDir &&
+		!pending &&
+		current.file.migrationRevision === opts.migrationRevision
+	) {
+		return { kind: "use", seq: current.seq, dir: currentDir };
 	}
 
-	// 没有合用的,或者当前代的迁移修订号对不上(开发期):照它当初的来源开下一代。第 0 代要是已经
-	// 不在了(被清掉),就只能开空的。
+	// 主人要求的照要求开。不然就是没有合用的,或者当前代的迁移修订号对不上(开发期):照它当初的来源开下一代;
+	// 第 0 代要是已经不在了(被清掉),就只能开空的。
 	const wantsZero = (current?.file.source.kind ?? "zero") === "zero";
 	const seq = highestSeq + 1;
 	return {
@@ -119,9 +146,44 @@ export async function selectGeneration(
 		seq,
 		dir: hostPath(opts.hostRoot, "generations", String(seq)),
 		partialDir: hostPath(opts.hostRoot, "generations", `${seq}.partial`),
-		source: wantsZero && opts.zeroGenerationExists ? { kind: "zero" } : { kind: "empty" },
+		source:
+			pending ?? (wantsZero && opts.zeroGenerationExists ? { kind: "zero" } : { kind: "empty" }),
 		leftovers,
+		...(pending && current && currentDir ? { current: { seq: current.seq, dir: currentDir } } : {}),
 	};
+}
+
+/** 记下主人要求开的下一代,等重启后开机取走。已经有一个没取走的就换成这一个。 */
+export async function writePendingGeneration(
+	hostRoot: string,
+	source: GenerationSource,
+): Promise<void> {
+	const pending: PendingGeneration = { source, requestedAt: new Date().toISOString() };
+	await atomicWriteJson(hostPath(hostRoot, "generations", PENDING_FILE), pending);
+}
+
+/**
+ * 取走主人要求开的下一代:读出来就删,一次性 —— 开代半路被杀,下次开机不会再试一遍,失败了也不会每次开机
+ * 都撞上它。读不懂的标记同样删掉,当没要求。
+ */
+export async function takePendingGeneration(
+	hostRoot: string,
+): Promise<GenerationSource | undefined> {
+	const path = hostPath(hostRoot, "generations", PENDING_FILE);
+	let text: string;
+	try {
+		text = await readFile(path, "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		throw error;
+	}
+	await rm(path, { force: true });
+	try {
+		const parsed = PendingGenerationSchema.safeParse(JSON.parse(text));
+		return parsed.success ? parsed.data.source : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 export interface CreateGenerationOptions {

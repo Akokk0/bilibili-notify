@@ -5,6 +5,10 @@
  * 下一个号,旧代原地不动;选代在「格式版本 ≤ 我」的代里取序号最大的。开发期还有一条:当前代的迁移
  * 修订号和代码对不上,就照它当初的来源重开一代(第 0 代迁来的从第 0 代重迁,空代就再开空代)。
  *
+ * 主人要求开新代(全新开始 / 从旧代重新迁移,ADR-0022 决策 3 下 10-01 的 🔗):面板写一个一次性的标记
+ * `generations/pending.json` 再重启,开机取出它交给选代。选代照要求开下一个号,带上当前那一代 —— 开新代失败时
+ * 退回去用它。要求从第 0 代迁而第 0 代已经不在了,就当没要求。
+ *
  * 全部对真目录测:摆好几代,看选中谁、开出来的长什么样。
  */
 
@@ -19,6 +23,8 @@ import {
 	type GenerationFile,
 	type GenerationSource,
 	selectGeneration,
+	takePendingGeneration,
+	writePendingGeneration,
 } from "../generations.js";
 
 let hostRoot: string;
@@ -127,6 +133,99 @@ describe("selectGeneration", () => {
 		await placeGeneration(1);
 		await mkdir(join(generations, "notes"), { recursive: true });
 		await writeFile(join(generations, ".DS_Store"), "");
+
+		expect(await select(true)).toEqual({ kind: "use", seq: 1, dir: join(generations, "1") });
+	});
+});
+
+describe("selectGeneration — 主人要求开新代", () => {
+	const selectWith = (pending: GenerationSource, zeroGenerationExists = true) =>
+		selectGeneration({
+			hostRoot,
+			formatVersion: 1,
+			migrationRevision: 7,
+			zeroGenerationExists,
+			pending,
+		});
+
+	it("要求开空代 → 开下一个号、空的,带上当前那一代(失败时退回它)", async () => {
+		await placeGeneration(1);
+		const current = await placeGeneration(2);
+
+		expect(await selectWith({ kind: "empty" })).toEqual({
+			kind: "create",
+			seq: 3,
+			dir: join(generations, "3"),
+			partialDir: join(generations, "3.partial"),
+			source: { kind: "empty" },
+			leftovers: [],
+			current: { seq: 2, dir: current },
+		});
+	});
+
+	it("要求从第 0 代迁 → 照要求开,当前那一代哪怕是空代、修订号也对得上", async () => {
+		const current = await placeGeneration(1, { source: { kind: "empty" } });
+
+		expect(await selectWith({ kind: "zero" })).toMatchObject({
+			kind: "create",
+			seq: 2,
+			source: { kind: "zero" },
+			current: { seq: 1, dir: current },
+		});
+	});
+
+	it("要求从第 0 代迁、第 0 代已经不在了 → 当没要求,照常用当前那一代", async () => {
+		await placeGeneration(1, { source: { kind: "empty" } });
+
+		expect(await selectWith({ kind: "zero" }, false)).toEqual({
+			kind: "use",
+			seq: 1,
+			dir: join(generations, "1"),
+		});
+	});
+
+	it("一代都没有时也照要求开,没有可退回的", async () => {
+		const selection = await selectWith({ kind: "empty" });
+
+		expect(selection).toMatchObject({ kind: "create", seq: 1, source: { kind: "empty" } });
+		expect(selection).not.toHaveProperty("current");
+	});
+});
+
+describe("开代标记 generations/pending.json", () => {
+	it("写下的要求取一次就没了:先取出来源,再取是 undefined", async () => {
+		await placeGeneration(1);
+		await writePendingGeneration(hostRoot, { kind: "zero" });
+
+		expect(await takePendingGeneration(hostRoot)).toEqual({ kind: "zero" });
+		expect(existsSync(join(generations, "pending.json"))).toBe(false);
+		expect(await takePendingGeneration(hostRoot)).toBeUndefined();
+	});
+
+	it("标记里记下要求的时刻", async () => {
+		await placeGeneration(1);
+		await writePendingGeneration(hostRoot, { kind: "empty" });
+
+		const raw = JSON.parse(await readFile(join(generations, "pending.json"), "utf8"));
+		expect(raw.source).toEqual({ kind: "empty" });
+		expect(Number.isNaN(Date.parse(raw.requestedAt))).toBe(false);
+	});
+
+	it("标记读不懂 → 当没要求,标记照样删掉(不然每次开机都撞上它)", async () => {
+		await placeGeneration(1);
+		await writeFile(join(generations, "pending.json"), "{ not json");
+
+		expect(await takePendingGeneration(hostRoot)).toBeUndefined();
+		expect(existsSync(join(generations, "pending.json"))).toBe(false);
+	});
+
+	it("标记不在 → undefined,连 generations/ 都还没有也一样", async () => {
+		expect(await takePendingGeneration(hostRoot)).toBeUndefined();
+	});
+
+	it("标记不算一代,选代不理它", async () => {
+		await placeGeneration(1);
+		await writePendingGeneration(hostRoot, { kind: "empty" });
 
 		expect(await select(true)).toEqual({ kind: "use", seq: 1, dir: join(generations, "1") });
 	});
