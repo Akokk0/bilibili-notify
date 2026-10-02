@@ -12,3 +12,25 @@ jobs:
   # 定义,见那里的注释。
   gate:
     uses: ./.github/workflows/gate.yml
+
+  # 迁移耗时测试(第 1 期的验收线,⑨):一年的重数据迁一遍,增长比 + 宽上限 + 打出实测秒数。
+  # 默认的 `vp test` 跳过它(要设 BN_MIGRATION_TIMING=1),所以在这里另开一个与门禁并行的作业:
+  # 每次推送都跑,不拖慢门禁,也不进三条发布路径共用的 gate.yml。
+  migration-timing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # 与 gate.yml 同一个 setup-vp 钉版(理由见那里)。
+      - name: Setup Vite+ (vp) + Node + deps
+        uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          cache: true
+
+      # 服务端测试吃各包构建出来的 lib。
+      - name: Build
+        run: vpr build
+
+      - name: Migration timing
+        run: vpr test:migration-timing

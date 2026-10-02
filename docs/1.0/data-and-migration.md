@@ -150,7 +150,7 @@
 
 **链接与复制**：迁移时任何链接失败都回落复制（不只是跨分区）。追加写的 jsonl 一律复制、不做硬链接——否则新版往里追加会改到旧代的文件。
 
-**守卫**（守卫 13）：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；重推原件 `RepushSnapshot` 的每种载荷 kind 与每个字段都要有去向；全仓对数据根的 `join(dataDir, …)` 前缀都必须在上面的目录表里。漏一个就红。后半已落：代码里的目录表（`runtime/roots.ts` 的 `DATA_ROOT_LAYOUT`）登记的是代的布局（⑥b 起），0.x 的布局（`ZERO_GENERATION_LAYOUT`）搬进了迁移模块、只作输入；迁移器每一项的去向都引用各个仓自己导出的位置（`CONFIG_DIR`、`FOLLOWERS_DIR`……），`satisfies` 钉住 0.x 的每一项都有去向；前缀由 `dataPath` 的类型守，`apps/server/src/__tests__/data-roots.test.ts` 钉住没人绕开它自己拼、配置键 `dataDir` 只在边界上出现、宿主表的 `logs` 与桌面壳写死的那处对得上。另有一条迁移耗时测试，用 365 天合成数据跑。
+**守卫**（守卫 13）：以 FeatureKey / CardKind / ExtraKey 做键的记录全部钉进迁移清单；重推原件 `RepushSnapshot` 的每种载荷 kind 与每个字段都要有去向；全仓对数据根的 `join(dataDir, …)` 前缀都必须在上面的目录表里。漏一个就红。后半已落：代码里的目录表（`runtime/roots.ts` 的 `DATA_ROOT_LAYOUT`）登记的是代的布局（⑥b 起），0.x 的布局（`ZERO_GENERATION_LAYOUT`）搬进了迁移模块、只作输入；迁移器每一项的去向都引用各个仓自己导出的位置（`CONFIG_DIR`、`FOLLOWERS_DIR`……），`satisfies` 钉住 0.x 的每一项都有去向；前缀由 `dataPath` 的类型守，`apps/server/src/__tests__/data-roots.test.ts` 钉住没人绕开它自己拼、配置键 `dataDir` 只在边界上出现、宿主表的 `logs` 与桌面壳写死的那处对得上。另有一条迁移耗时测试（⑨，`apps/server/src/migration/__tests__/migration-timing.test.ts`，合成数据在同目录的 `synthetic-zero.ts`）：满量是 40 个 B 站订阅 + 4 个拓展订阅留满 365 天（推送历史每天 120 条、每条一张图，粉丝每 10 分钟一个点，约 4.6 万个文件、240 万行、267 MB），四分之一量是 10 + 1 个订阅、历史 91 天（每一块会涨的东西都严格 1/4）；满量照 0.x 的最坏情况摆（0.x 的保留天数最多 365、文字和图一起留）；判据见 ADR-0022 决策 4 下的 🔗。默认跳过，`vpr test:migration-timing` 与 CI 的专门作业才跑。
 
 ### 首访询问页
 

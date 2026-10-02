@@ -261,6 +261,9 @@ importers:
       '@voidzero-dev/vite-plus-core':
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0)
+      cross-env:
+        specifier: 'catalog:'
+        version: 10.1.0
       fflate:
         specifier: 'catalog:'
         version: 0.8.3
