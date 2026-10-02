@@ -10,8 +10,8 @@
  * 还停在老版本、将来才升级上来的用户 —— 删掉他们就从自动迁移退化成「打开页面看见提示再点一下」。
  */
 
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { isPlainObject } from "./files.js";
+import { ZERO_DEFAULT_TEMPLATES } from "./zero-vocabulary.js";
 
 const OLD_TPL_DEFAULTS: Partial<
 	Record<"liveStart" | "liveOngoing" | "liveEnd" | "dynamic" | "dynamicVideo", string[]>
@@ -38,7 +38,7 @@ const OLD_GUARD = {
 /** 整份 `defaults.templates` 的 raw → raw。键缺着(由 schema 补默认)的对不上任何旧默认,不用管。 */
 export function migrateOldTemplateDefaults(raw: unknown): unknown {
 	if (!isPlainObject(raw)) return raw;
-	const fresh = makeDefaultGlobalConfig().defaults.templates;
+	const fresh = ZERO_DEFAULT_TEMPLATES;
 	const out: Record<string, unknown> = { ...raw };
 	for (const [k, olds] of Object.entries(OLD_TPL_DEFAULTS) as Array<
 		[keyof typeof OLD_TPL_DEFAULTS, string[]]
@@ -51,7 +51,7 @@ export function migrateOldTemplateDefaults(raw: unknown): unknown {
 		for (const role of ["captain", "commander", "governor"] as const) {
 			const tier = nextGuard[role];
 			if (isPlainObject(tier) && tier.template === OLD_GUARD[role]) {
-				nextGuard[role] = { ...tier, template: fresh.guardBuy[role].template };
+				nextGuard[role] = { ...tier, template: fresh.guardBuy[role] };
 			}
 		}
 		out.guardBuy = nextGuard;

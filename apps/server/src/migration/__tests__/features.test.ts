@@ -22,22 +22,17 @@
  * `identity`,行级迁移函数原样把它带过去;拓展那一组用 0.x 盘上真有的形状(`kind` + `extensionId` + `externalId`),
  * 过 schema 之前借一步 {@link parseExtension} 换成 `identity`。
  *
- * 下面几个 `parseXxx` 除了先迁移、再过 schema,还钉三件事 —— 这才是「迁移器把老键收拾干净了」:
+ * 下面几个 `parseXxx` 先迁移,还钉三件事 —— 这才是「迁移器把老键收拾干净了」:
  * 迁出来的东西里没有老键(活 schema 对老键是剥掉或拒收,漏迁的老键在 parse 出来的值里只会悄悄不见,
- * 所以要直接看迁出来的东西);迁出来的东西再迁一遍不变(幂等);features 这一层还要求迁出来的就是
- * schema 认的最终形状(`toEqual` parse 的结果)。
+ * 所以要直接看迁出来的东西);迁出来的东西再迁一遍不变(幂等);features 这一层还要求迁出来的就是 0.12
+ * 的最终形状(冻住的键,见 `expectZeroFeatureFlagsShape`)—— 不拿活 schema 现算一份来比,活词表改名后两者不再相等。
+ * routing / 整条订阅这两层迁完仍过活 schema(去重、`extras` 目标 ⊆ 主特性目标那条约束):那是「迁完经活 schema 装载」,
+ * 是 1.0 侧的期望(今天 0.x 的键与活 schema 的键还一样;活词表改名后,这两层要在迁移之后补上 1.0 改名那一步再装载)。
+ *
+ * 输入一律用 `./zero-fixtures.ts` 冻住的 0.x 字面量,不取 internal 的活工厂。
  */
 
-import {
-	FEATURE_KEYS,
-	FeatureFlagsPartialSchema,
-	FeatureFlagsSchema,
-	GlobalConfigSchema,
-	makeDefaultGlobalConfig,
-	makeEmptySubscription,
-	SubscriptionRoutingSchema,
-	SubscriptionSchema,
-} from "@bilibili-notify/internal";
+import { SubscriptionRoutingSchema, SubscriptionSchema } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import {
 	migrateLegacyFeatureFlags,
@@ -50,16 +45,24 @@ import {
 	migrateExtensionSubscriptionRow,
 	toIdentityRow,
 } from "../subscriptions.js";
+import {
+	makeZeroGlobals,
+	withoutZeroBilibiliApp,
+	type ZeroFeatureFlags,
+	zeroEmptyRouting,
+	zeroEmptySubscription,
+} from "./zero-fixtures.js";
 
 const T1 = "10000000-0000-4000-8000-000000000001";
 const T2 = "10000000-0000-4000-8000-000000000002";
 const T3 = "10000000-0000-4000-8000-000000000003";
 
-const SUB_BASE = makeEmptySubscription({
+const SUB_BASE = zeroEmptySubscription({
 	id: "11111111-1111-4111-8111-111111111111",
 	identity: { sourceKey: "bilibili", externalId: "12345" },
 });
 
+/** 0.12 的七把特性键(迁完 routing / features 里的就是这几把)。 */
 const NEW_KEYS = [
 	"dynamic",
 	"live",
@@ -69,6 +72,9 @@ const NEW_KEYS = [
 	"specialDanmaku",
 	"specialUserEnter",
 ] as const;
+
+/** 0.12 的四把附加项键。 */
+const EXTRA_KEYS_0X = ["atAllDynamic", "atAllLive", "wordcloud", "liveSummary"] as const;
 
 /** 老 features(9 个平铺布尔)的一份基线,各用例只改关心的那几位。 */
 const LEGACY_FLAGS = {
@@ -109,24 +115,52 @@ function expectNoLegacyRowKeys(migrated: unknown): void {
 	if (row.overrides?.features !== undefined) expectNoLegacyFeatureKeys(row.overrides.features);
 }
 
-/** 全局 features:先迁移、再过 schema。 */
+/**
+ * 迁出来的全局 features 就是 0.12 的最终形状:七把特性键 + `extras` 里四把附加项,全是布尔,没有别的键。
+ * 从前拿活 schema 现算一份来比(`toEqual(FeatureFlagsSchema.parse(…))`);活词表改名之后「0.x 最新形状」不再等于活 schema 的形状,
+ * 所以这一条钉在冻住的 0.x 键上。
+ */
+function expectZeroFeatureFlagsShape(migrated: unknown): asserts migrated is ZeroFeatureFlags {
+	const m = migrated as Record<string, unknown>;
+	expect(Object.keys(m).sort()).toEqual([...NEW_KEYS, "extras"].sort());
+	for (const k of NEW_KEYS) expect(typeof m[k], k).toBe("boolean");
+	const extras = m.extras as Record<string, unknown>;
+	expect(Object.keys(extras).sort()).toEqual([...EXTRA_KEYS_0X].sort());
+	for (const k of EXTRA_KEYS_0X) expect(typeof extras[k], `extras.${k}`).toBe("boolean");
+}
+
+/** 迁出来的 per-UP features 覆盖(partial)是 0.12 的最终形状:键只能是那七把特性键与 `extras`,值全是布尔,附加项键也只认那四把。 */
+function expectZeroFeatureFlagsPartialShape(migrated: unknown): void {
+	const m = migrated as Record<string, unknown>;
+	for (const [k, v] of Object.entries(m)) {
+		if (k === "extras") {
+			for (const [ek, ev] of Object.entries(v as Record<string, unknown>)) {
+				expect(EXTRA_KEYS_0X as readonly string[], `extras.${ek}`).toContain(ek);
+				expect(typeof ev, `extras.${ek}`).toBe("boolean");
+			}
+		} else {
+			expect(NEW_KEYS as readonly string[], `features.${k}`).toContain(k);
+			expect(typeof v, k).toBe("boolean");
+		}
+	}
+}
+
+/** 全局 features:先迁移、再钉最终形状。 */
 function parseFeatures(old: unknown) {
 	const migrated = migrateLegacyFeatureFlags(old);
 	expectNoLegacyFeatureKeys(migrated);
 	expect(migrateLegacyFeatureFlags(migrated)).toEqual(migrated);
-	const parsed = FeatureFlagsSchema.parse(migrated);
-	expect(migrated).toEqual(parsed);
-	return parsed;
+	expectZeroFeatureFlagsShape(migrated);
+	return migrated;
 }
 
-/** per-UP features 覆盖(单独一份 partial):先迁移、再过 schema。 */
+/** per-UP features 覆盖(单独一份 partial):先迁移、再钉最终形状。 */
 function parseFeaturesPartial(old: unknown) {
 	const migrated = migrateLegacyFeatureFlagsPartial(old);
 	expectNoLegacyFeatureKeys(migrated);
 	expect(migrateLegacyFeatureFlagsPartial(migrated)).toEqual(migrated);
-	const parsed = FeatureFlagsPartialSchema.parse(migrated);
-	expect(migrated).toEqual(parsed);
-	return parsed;
+	expectZeroFeatureFlagsPartialShape(migrated);
+	return migrated as Record<string, unknown>;
 }
 
 /** routing(单独一份):先迁移、再过 schema。schema 还管去重,所以迁出来的不必等于 parse 的结果。 */
@@ -203,9 +237,35 @@ describe("全局 features 迁移", () => {
 		});
 	});
 
+	// 补默认用的是迁移器自己冻着的 0.12 出厂值(`zero-vocabulary.ts`)。别的用例里词云 / 总结要么两把都写了、要么都没写,
+	// 单写一把时没写的那把落在出厂默认上 —— 这条把「词云 / 总结出厂都是开」钉在 0.x 的字面量上。
+	it("第二代:liveEndExtras 里只写了一把 → 没写的那把补 0.12 的出厂默认(词云 / 总结出厂都是开)", () => {
+		const base = {
+			dynamic: true,
+			live: true,
+			liveEnd: true,
+			liveGuardBuy: false,
+			superchat: false,
+			specialDanmaku: false,
+			specialUserEnter: false,
+		};
+		expect(parseFeatures({ ...base, liveEndExtras: { liveSummary: false } }).extras).toEqual({
+			atAllDynamic: false,
+			atAllLive: true,
+			wordcloud: true,
+			liveSummary: false,
+		});
+		expect(parseFeatures({ ...base, liveEndExtras: { wordcloud: false } }).extras).toEqual({
+			atAllDynamic: false,
+			atAllLive: true,
+			wordcloud: false,
+			liveSummary: true,
+		});
+	});
+
 	it("新形状不再动:下播关着、附加项开着就照存(关掉下播不会被翻回来)", () => {
 		const fresh = {
-			...makeDefaultGlobalConfig().defaults.features,
+			...makeZeroGlobals().defaults.features,
 			liveEnd: false,
 			extras: {
 				atAllDynamic: true,
@@ -224,7 +284,7 @@ describe("全局 features 迁移", () => {
 
 describe("整份 globals 迁移", () => {
 	function globalsWith(features: unknown): Record<string, unknown> {
-		const base = makeDefaultGlobalConfig();
+		const base = makeZeroGlobals();
 		return { ...base, defaults: { ...base.defaults, features } };
 	}
 
@@ -237,8 +297,7 @@ describe("整份 globals 迁移", () => {
 	it("第一代 defaults.features 经整份 globals 照样迁(其余键一个不动)", () => {
 		const input = globalsWith({ ...LEGACY_FLAGS, wordcloud: true });
 		const migrated = migrateGlobals(input);
-		const parsed = GlobalConfigSchema.parse(migrated);
-		expect(parsed.defaults.features).toEqual({
+		expect((migrated as { defaults: { features: unknown } }).defaults.features).toEqual({
 			dynamic: true,
 			live: true,
 			liveEnd: true,
@@ -260,9 +319,9 @@ describe("整份 globals 迁移", () => {
 	});
 
 	it("新形状的整份 globals 过迁移函数原样不变", () => {
-		const fresh = makeDefaultGlobalConfig();
+		// 要的是「设置迁移器无事可做」的整份:去掉 B 站那三格(1.0 搬进了 settings/bilibili.json,见 `zero-fixtures.ts`)。
+		const fresh = withoutZeroBilibiliApp(makeZeroGlobals());
 		expect(migrateGlobals(fresh)).toEqual(fresh);
-		expect(GlobalConfigSchema.parse(migrateGlobals(fresh))).toEqual(fresh);
 	});
 
 	it.each([
@@ -326,7 +385,7 @@ describe("per-UP features 覆盖迁移(partial)", () => {
 	it("force:单看 partial 分不出的 liveEnd:false 也按第一代迁 → 词云 / 总结没写,不写 liveEnd(继承全局)", () => {
 		const migrated = migrateLegacyFeatureFlagsPartial({ liveEnd: false, dynamic: false }, true);
 		expect(migrated).toEqual({ dynamic: false, extras: {} });
-		expect(FeatureFlagsPartialSchema.parse(migrated)).toEqual({ dynamic: false, extras: {} });
+		expectZeroFeatureFlagsPartialShape(migrated);
 	});
 });
 
@@ -546,7 +605,7 @@ describe("拓展订阅一行的迁移", () => {
 			externalId: "MS4wLjABAAAA-sec_uid",
 			enabled: true,
 			groups: [],
-			routing: Object.fromEntries(FEATURE_KEYS.map((k) => [k, [] as string[]])),
+			routing: zeroEmptyRouting(),
 			overrides: {},
 			...over,
 		};

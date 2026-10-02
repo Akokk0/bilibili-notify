@@ -5,16 +5,16 @@
  */
 
 import { join } from "node:path";
-import type { PushKind } from "@bilibili-notify/internal";
 import { isPatchLine, listDayFiles } from "../history/store.js";
 import { dataPath } from "../runtime/roots.js";
 import { parseJsonLine, rewriteJsonlFile } from "./files.js";
+import type { ZeroPushKind } from "./zero-vocabulary.js";
 
 /**
  * `live` 只当开播(老格式分不出周期复推),`live-summary`(词云 / 总结)归到下播。pushId 借行 id —— 老行本来
  * 就一行一次推送。
  */
-const LEGACY_SOURCE_TO_KIND: Record<string, PushKind> = {
+const LEGACY_SOURCE_TO_KIND: Record<string, ZeroPushKind> = {
 	dynamic: "dynamic",
 	live: "live",
 	sc: "sc",

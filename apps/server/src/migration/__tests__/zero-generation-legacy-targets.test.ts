@@ -7,10 +7,10 @@
  * 它的老目标算出来(确定的),这里只比关系、不比值。
  */
 
-import { type Connection, makeEmptySubscription, type PushTarget } from "@bilibili-notify/internal";
+import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { legacyBiliRow } from "../../__tests__/support/legacy-subscription.js";
 import { useZeroSandbox } from "./support.js";
+import { zeroBiliRow, zeroEmptyRouting } from "./zero-fixtures.js";
 
 /** 0.x 的目标 id 本来就是 UUID(订阅的路由表只收 UUID)。 */
 const ID = {
@@ -174,13 +174,17 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 
 	it("订阅里引用被并掉的那条 webhook 目标的,改指托管目标,重复的去掉", async () => {
 		await placeZero("state/targets.json", LEGACY_TARGETS);
-		const sub = makeEmptySubscription({
-			id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e",
-			identity: { sourceKey: "bilibili", externalId: "12345" },
-		});
-		sub.routing.dynamic = [ID.hook2, ID.group];
-		sub.routing.live = [ID.hook1, ID.hook2];
-		await placeZero("state/subscriptions.json", [legacyBiliRow(sub)]);
+		const row = zeroBiliRow(
+			{ id: "5c9c3a8e-2f4f-4a51-9d57-1f2a3b4c5d6e", uid: "12345" },
+			{
+				routing: {
+					...zeroEmptyRouting(),
+					dynamic: [ID.hook2, ID.group],
+					live: [ID.hook1, ID.hook2],
+				},
+			},
+		);
+		await placeZero("state/subscriptions.json", [row]);
 
 		const store = await migrateAndLoad();
 

@@ -13,14 +13,12 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { makeEmptySubscription } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { legacyBiliRow, legacyExtensionRow } from "../../__tests__/support/legacy-subscription.js";
 import { CONFIG_DIR, ConfigValidationError } from "../../config/store.js";
 import { migrateSubscriptionFiles } from "../subscriptions.js";
 import { migrateZeroGeneration } from "../zero-generation.js";
 import { useZeroSandbox } from "./support.js";
+import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
 const sandbox = useZeroSandbox("bn-zero-subscriptions-");
 
@@ -36,32 +34,17 @@ const named = (name: string | undefined) => (name === undefined ? {} : { name })
 const bili = (
 	id: string,
 	uid: string,
-	over: Partial<Parameters<typeof makeEmptySubscription>[0]> = {},
+	over: Record<string, unknown> = {},
 	name?: string,
 	groups: string[] = [],
-) =>
-	legacyBiliRow(
-		{
-			...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } }),
-			...over,
-			...named(name),
-		} as never,
-		groups,
-	);
+) => zeroBiliRow({ id, uid, groups }, { ...over, ...named(name) });
 const ext = (
 	id: string,
 	extensionId: string,
 	externalId: string,
 	name?: string,
 	groups: string[] = [],
-) =>
-	legacyExtensionRow(
-		{
-			...makeExtensionSubscription({ id, extensionId, externalId }),
-			...named(name),
-		} as never,
-		groups,
-	);
+) => zeroExtensionRow({ id, extensionId, externalId, groups }, named(name));
 
 /** 新代里的订阅文件:标签表 + 订阅(ADR-0034)。 */
 interface NewFile<R = Row> {

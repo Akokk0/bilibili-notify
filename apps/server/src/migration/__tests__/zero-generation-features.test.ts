@@ -17,13 +17,10 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import {
-	type Connection,
-	makeDefaultGlobalConfig,
-	type PushTarget,
-} from "@bilibili-notify/internal";
+import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { useZeroSandbox } from "./support.js";
+import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 const T1 = "22222222-2222-4222-8222-222222222222";
@@ -68,7 +65,7 @@ const TARGETS: PushTarget[] = [sessionTarget(T1, "主群", "111"), sessionTarget
 
 /** 整份 globals,`defaults.features` 换成给定的(老形状)。 */
 function globalsWithFeatures(features: unknown): unknown {
-	const base = makeDefaultGlobalConfig();
+	const base = makeZeroGlobals();
 	return { ...base, defaults: { ...base.defaults, features } };
 }
 
@@ -328,7 +325,8 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 			overrides: { features: { extras: { wordcloud: false } } },
 			specialUsers: [],
 		};
-		await sandbox.placeZero("state/globals.json", makeDefaultGlobalConfig());
+		// 「设置迁移器无事可做」的整份:去掉 B 站那三格(1.0 搬进了 settings/bilibili.json),否则搬那三格就得改写它。
+		await sandbox.placeZero("state/globals.json", withoutZeroBilibiliApp(makeZeroGlobals()));
 		await sandbox.placeZero("state/subscriptions.json", [fresh]);
 		await sandbox.placeZero("state/extension-subscriptions.json", [
 			{

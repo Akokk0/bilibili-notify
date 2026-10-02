@@ -10,8 +10,8 @@
  * - 拓展订阅只有后两步。
  */
 
-import { EXTRA_KEYS, type ExtraKey, PUSH_EXTRAS } from "@bilibili-notify/internal";
 import { isPlainObject } from "./files.js";
+import { ZERO_EXTRA_DEFAULTS, ZERO_EXTRA_KEYS, type ZeroExtraKey } from "./zero-vocabulary.js";
 
 // ── 附加项的两代老数据(全局 features 与 per-UP 覆盖)──────────────────────────
 //
@@ -54,7 +54,8 @@ function stripLegacyExtras(raw: Record<string, unknown>): Record<string, unknown
  *   下播开关**不动** —— 那一代的下播开关已经是新语义了。
  *
  * 两代都没有的那两把 @全体 补出厂默认:它们当年住在订阅的 `atAllDefaults` 上(per-UP 的值,
- * 见下面的 {@link migrateLegacySubscription}),全局这一层是这次新长出来的,出厂值照 `PUSH_EXTRAS`。
+ * 见下面的 {@link migrateLegacySubscription}),全局这一层是这次新长出来的,出厂值照 `ZERO_EXTRA_DEFAULTS`
+ * (0.12 的出厂值,冻在 `zero-vocabulary.ts`)。
  *
  * 新形状(已有 `extras`)一律不动:关掉下播、附加项留着开,下次加载不会被翻回来。
  */
@@ -64,7 +65,7 @@ export function migrateLegacyFeatureFlags(raw: unknown): unknown {
 	if (!gen1 && !("liveEndExtras" in raw)) return raw;
 	const picked = pickLegacyExtras(raw);
 	const extras: Record<string, unknown> = {};
-	for (const k of EXTRA_KEYS) extras[k] = k in picked ? picked[k] : PUSH_EXTRAS[k].default;
+	for (const k of ZERO_EXTRA_KEYS) extras[k] = k in picked ? picked[k] : ZERO_EXTRA_DEFAULTS[k];
 	const out: Record<string, unknown> = { ...stripLegacyExtras(raw), extras };
 	if (gen1) {
 		out.liveEnd = raw.liveEnd === true || LEGACY_LIVE_END_EXTRA_KEYS.some((k) => raw[k] === true);
@@ -128,7 +129,7 @@ export function migrateLegacyRouting(raw: unknown): unknown {
 const LEGACY_AT_ALL_SCOPES = [
 	["dynamic", "atAllDynamic"],
 	["live", "atAllLive"],
-] as const satisfies ReadonlyArray<readonly [string, ExtraKey]>;
+] as const satisfies ReadonlyArray<readonly [string, ZeroExtraKey]>;
 
 /**
  * 整条老订阅的迁移,两件事:
@@ -164,7 +165,7 @@ export function migrateLegacySubscription(raw: unknown): unknown {
 	const perUpDefaults: Record<string, unknown> = {};
 	for (const [scope, key] of LEGACY_AT_ALL_SCOPES) {
 		const value = atAllDefaults?.[scope];
-		if (typeof value !== "boolean" || value === PUSH_EXTRAS[key].default) continue;
+		if (typeof value !== "boolean" || value === ZERO_EXTRA_DEFAULTS[key]) continue;
 		perUpDefaults[key] = value;
 	}
 	if (Object.keys(perUpDefaults).length > 0) {

@@ -45,9 +45,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { makeEmptySubscription } from "@bilibili-notify/internal";
-import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { legacyBiliRow, legacyExtensionRow } from "../../__tests__/support/legacy-subscription.js";
+import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
 /** 统计与粉丝的天数:一整年(两档一样)。 */
 export const FULL_YEAR_DAYS = 365;
@@ -327,12 +325,7 @@ async function placeState(
 	await tree.putJson(
 		"state/subscriptions.json",
 		bili.map((sub, i) => {
-			const row = legacyBiliRow(
-				makeEmptySubscription({
-					id: sub.id,
-					identity: { sourceKey: "bilibili", externalId: sub.uid },
-				}),
-			);
+			const row = zeroBiliRow({ id: sub.id, uid: sub.uid });
 			const target = pick(targetIds, i);
 			const routing = {
 				...(row.routing as Record<string, unknown>),
@@ -355,13 +348,11 @@ async function placeState(
 	await tree.putJson(
 		"state/extension-subscriptions.json",
 		extensionIds.map((id, i) =>
-			legacyExtensionRow(
-				makeExtensionSubscription({
-					id,
-					extensionId: pick(EXTENSION_IDS, i),
-					externalId: `sec-uid-${i + 1}`,
-				}),
-			),
+			zeroExtensionRow({
+				id,
+				extensionId: pick(EXTENSION_IDS, i),
+				externalId: `sec-uid-${i + 1}`,
+			}),
 		),
 	);
 

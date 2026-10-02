@@ -32,13 +32,13 @@ import {
 	DEFAULT_AI,
 	GlobalConfigSchema,
 	LinkParsingConfigSchema,
-	makeDefaultGlobalConfig,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
 import { migrateLegacyLinkParsing } from "../link-parsing.js";
 import { migrateGlobals } from "../settings.js";
 import { migrateOldTemplateDefaults } from "../templates.js";
+import { makeZeroGlobals } from "./zero-fixtures.js";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -433,9 +433,9 @@ describe("AI 迁移 · 补齐 search 段", () => {
 
 // ── AI · temperature 退役(原 ai-temperature-retired.test.ts)────────────────────────
 
-/** 一份默认 globals 的纯 JSON 副本,拿来就地改成盘上的老形状。 */
+/** 一份 0.12 出厂 globals 的副本(冻住的字面量,见 `./zero-fixtures.ts`),拿来就地改成盘上的老形状。 */
 function rawGlobals(): { defaults: { ai: Record<string, unknown> } } {
-	return JSON.parse(JSON.stringify(makeDefaultGlobalConfig()));
+	return makeZeroGlobals();
 }
 
 describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", () => {
@@ -548,10 +548,11 @@ describe("链接解析迁移 · 0.9.1 的范围 + 白名单按形迁移", () => 
 // ── 历代旧默认模板 ───────────────────────────────────────────────────────────────────
 //
 // 这一组没有 internal 里的对应用例(配置仓开机上的那三条走接缝,见 `./zero-generation-settings.test.ts`,它们只用到表里的
-// 一部分旧默认)。旧默认的原文在这里独立抄一份当真源;「当前默认」从出厂配置取,不在这里写死。
+// 一部分旧默认)。旧默认的原文在这里独立抄一份当真源;「当前默认」取 `makeZeroGlobals()` 里冻着的 0.12 出厂文案 ——
+// 与迁移器自己那份(`zero-vocabulary.ts` 的 `ZERO_DEFAULT_TEMPLATES`)是各抄各的两份,用例拿这份去比迁移器写出来的。
 
 describe("历代旧默认模板迁移(templates)", () => {
-	const fresh = makeDefaultGlobalConfig().defaults.templates;
+	const fresh = makeZeroGlobals().defaults.templates;
 	const freshByKey = fresh as unknown as Record<string, unknown>;
 
 	/** 占位符语法统一前(alpha.x)的旧变量默认,与消息版式引入前「链接内嵌模板」的 `{url}` / `{link}` 默认。 */
@@ -661,9 +662,7 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 			defaults: { parse: false, form: "image" },
 			groups: { [A]: { parse: true } },
 		});
-		expect(migrated.defaults.templates.liveEnd).toBe(
-			makeDefaultGlobalConfig().defaults.templates.liveEnd,
-		);
+		expect(migrated.defaults.templates.liveEnd).toBe(makeZeroGlobals().defaults.templates.liveEnd);
 
 		// 这三格之外的,迁移一个字不碰。
 		const without = (g: typeof input) => ({

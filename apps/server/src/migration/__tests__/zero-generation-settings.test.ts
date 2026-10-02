@@ -23,7 +23,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { BUILTIN_AI_PRESETS, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { BUILTIN_AI_PRESETS } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { describe, expect, it } from "vite-plus/test";
 import { settingsOf } from "../../bilibili/settings.js";
@@ -31,6 +31,7 @@ import { createSecretStore } from "../../config/secret-store.js";
 import { createConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { makeServiceCtx, useZeroSandbox, type ZeroSandbox } from "./support.js";
+import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
 
 const GROUP_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -60,7 +61,8 @@ describe("0.x 设置里 B 站的三格 → settings/bilibili.json", () => {
 
 	/** 一份 0.x 的设置,`app` 里带着给出的几格。 */
 	function oldGlobalsWithApp(app: Record<string, unknown>): string {
-		const old = makeDefaultGlobalConfig() as unknown as { app: Record<string, unknown> };
+		// 从「B 站那三格一格都没写过」起步、只带上给出的几格(0.12 出厂的 `app` 里其实是有 dynamicCron / healthCheckMinutes 的)。
+		const old = withoutZeroBilibiliApp(makeZeroGlobals());
 		old.app = { ...old.app, ...app };
 		return JSON.stringify(old);
 	}
@@ -116,7 +118,7 @@ describe("0.x 设置里各拓展的 settings → settings/extensions/<id>.json",
 	const sandbox = useZeroSandbox("bn-extension-settings-");
 
 	function oldGlobalsWithExtensions(extensions: Record<string, unknown>): string {
-		const old = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const old = makeZeroGlobals() as unknown as Record<string, unknown>;
 		old.extensions = extensions;
 		return JSON.stringify(old);
 	}
@@ -181,7 +183,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 
 	/** 整份默认 globals 的 JSON 副本,就地改成老形状。 */
 	function oldGlobals() {
-		return makeDefaultGlobalConfig() as unknown as {
+		return makeZeroGlobals() as unknown as {
 			defaults: {
 				templates: Record<string, unknown> & {
 					guardBuy: { captain: { template: string }; commander: { template: string } };
@@ -297,7 +299,8 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		// 若 TemplateBundleSchema 把它们设为 required 无默认,旧用户升级后 load() 会
 		// ConfigValidationError 直接拒绝启动。.default(...) 兜底保证旧配置仍可加载。
 		// 迁移器这一头:键缺着的对不上任何旧默认,原样放过 —— 没有要改写的,新代里还是搬过来的那个文件。
-		const old = makeDefaultGlobalConfig() as unknown as {
+		// 「设置迁移器无事可做」的整份(去掉 B 站那三格),再抹掉那两项。
+		const old = withoutZeroBilibiliApp(makeZeroGlobals()) as unknown as {
 			defaults: { templates: Record<string, unknown> };
 		};
 		delete old.defaults.templates.dynamic;
@@ -360,7 +363,7 @@ describe("0.x 扁平 AI 连接 + 明文 apiKey → 迁移器接缝 → 加密袋
 	 * 密钥则该被抬进加密袋的 `custom` 槽。刻意绕过类型:新 schema 已经没有这些字段了。
 	 */
 	function legacyPlaintextGlobals(apiKey: string): string {
-		const g = makeDefaultGlobalConfig() as unknown as Record<string, unknown>;
+		const g = makeZeroGlobals() as unknown as Record<string, unknown>;
 		const defaults = g.defaults as Record<string, unknown>;
 		const ai = { ...(defaults.ai as Record<string, unknown>) };
 		delete ai.providers;
@@ -419,7 +422,7 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 	const sandbox = useZeroSandbox("bn-legacy-settings-all-");
 
 	it("扁平 AI 连接 + 旧默认模板 + 0.9.1 的范围 / 白名单:新代里是最新的形状,第 0 代那份一个字节没变", async () => {
-		const g = makeDefaultGlobalConfig() as unknown as {
+		const g = makeZeroGlobals() as unknown as {
 			defaults: { ai: Record<string, unknown>; templates: Record<string, unknown> };
 			linkParsing: Record<string, unknown>;
 		};
