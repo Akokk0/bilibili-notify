@@ -78,8 +78,8 @@ interface Subscription {
   identity: Identity;
   enabled: boolean;
   tagIds: string[];                                   // SubscriptionTag id，见下
-  features: Partial<Record<FeatureKey, boolean>>;   // 开没开；来源「支持哪些」是 descriptor.supportedFeatures
-  targets: string[];                                  // PushTarget id
+  routing: Record<FeatureKey, string[]>;              // 每把特性推到哪些目标（PushTarget id），⑬ 跟着特性键改键
+  // 开没开在按订阅覆盖那一层的 features（Partial<Record<FeatureKey, boolean>>）；来源「支持哪些」是 descriptor.supportedFeatures
   // 按目标的附加项三态表叫 extraTargets（原顶层 extras）
   specialUsers?: { id: string; note?: string }[];     // 公共形状；露不露看 descriptor.supportedFeatures
   // 按订阅覆盖：形状同全局 defaults，对所有订阅开放
@@ -231,7 +231,7 @@ interface PostEvent {                  // 核心按身份展开后、装配入�
 - 需要通用能力的就加通用能力（比如上面 `card` 的行 `{ text, icon? }`），不许加 B 站专属的枚举。
 - B 站纯装饰去掉。
 - 剩下的差异进「批准的像素差清单」，预批三类：平台叫法中立化、内联 SVG 换成图库图的残差、B 站纯装饰去掉；每条写样例、变化、类别与依据。清单外的差异由守卫 10 判红，更新快照必须同时补清单。
-- 守卫 10 扩到五种卡：直播、醒目留言、会员、词云、榜单。
+- 守卫 10 的字节快照早已覆盖全部卡种（`packages/image` 的 `card-baseline`，10-02 查时 23 份），缺的是清单机制，第 2 期 ⑩ 补上。
 
 ## 链接预览
 
@@ -372,18 +372,19 @@ interface SuperchatEvent {
 
 ## 特性键与推送种类
 
-全部特性与附加项都在核心、用中立名。醒目留言、会员、特别弹幕、特别进场、词云、直播总结在别的平台也有对应，只是现在只有 B 站填数据。来源支持哪些由 `descriptor.supportedFeatures` 声明。历史行存推送种类的那一格叫 `feature`，值就是特性键；`/api/history?feature=`、按天计数的键、测试推送的种类都直接用特性键。
+全部特性与附加项都在核心、用中立名。醒目留言、会员、特别弹幕、特别进场、词云、直播总结在别的平台也有对应，只是现在只有 B 站填数据。来源支持哪些特性由 `descriptor.supportedFeatures` 声明，附加项由 `descriptor.supportedExtras` 声明（ADR-0027 决策 6）。历史行存推送种类的那一格叫 `feature`，值就是特性键；`/api/history?feature=`、按天计数的键、测试推送的种类都直接用特性键。
 
 ```ts
 const FEATURE_KEYS = ["post", "liveStart", "liveStreaming", "liveEnd", "membership",
-  "superchat", "specialDanmaku", "specialUserEnter", "wordcloud", "liveSummary"] as const;
+  "superchat", "specialDanmaku", "specialUserEnter"] as const;
 type FeatureKey = typeof FEATURE_KEYS[number];
 
-// 历史的推送种类直接用特性键的名字，是特性键表的子集
-type PushKind = "post" | "liveStart" | "liveStreaming" | "liveEnd"
-  | "membership" | "superchat" | "specialDanmaku" | "specialUserEnter";
+// 附加项另一张表（ADR-0016）：词云、直播总结挂在下播底下，不是特性键（10-02 按 ADR-0027 决策 6 更正，原先误列进特性键表）
+const EXTRA_KEYS = ["atAllPost", "atAllLiveStart", "wordcloud", "liveSummary"] as const;
 
-// 作品推送的部件（原 packages/dynamic 里同名不同义的 PushKind，值 "dynamic" / "dynamic-images"），与上面的 PushKind 不是一回事
+// 历史行的推送种类就是特性键：`feature: FeatureKey`，不另列 PushKind
+
+// 作品推送的部件（原 packages/dynamic 里同名不同义的 PushKind，值 "dynamic" / "dynamic-images"），与历史行的推送种类（特性键）不是一回事
 type PostPushPart = "post" | "post-images";
 ```
 
@@ -393,7 +394,8 @@ type PostPushPart = "post" | "post-images";
 | `liveStart` | 开播。子项 `catchUpOnBoot`：启动时发现正在播就补报一次开播——走 `liveStart` 的路由、历史记成开播（`feature: liveStart`）、**不 @全体**、画直播中的卡。0.x 里这张补报的历史标签是「直播中」，1.0 起记成「开播」（主人看得见的变化），推到哪里不变。只有真正的开播能 @全体（`atAllLiveStart`） |
 | `liveStreaming` | 周期「正在直播」，间隔 `streamingIntervalHours`（最小 1）。`has.liveStatus` 为真（来源提供了 `fetchLiveStatus`），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd`，面板才显示这个开关 |
 | `liveEnd` | 下播 |
-| `membership` / `superchat` / `specialDanmaku` / `specialUserEnter` / `wordcloud` / `liveSummary` | 核心中立特性 |
+| `membership` / `superchat` / `specialDanmaku` / `specialUserEnter` | 核心中立特性 |
+| `wordcloud` / `liveSummary` | 下播的附加项（`EXTRA_KEYS`，来源用 `supportedExtras` 声明），不单独成历史行 |
 
 ⛔ 命名：`liveNow`（仓里 4 处表示「此刻在播」）、`onAir`（6 处表示状态）、`liveStatus`（95 处，拓展事件名）都撞，所以叫 `liveStreaming`。
 
@@ -481,7 +483,8 @@ interface Settings {
     update: UpdateSettings;           // isAutoDownloadEnabled 等
     marketplace: MarketplaceSettings;
     logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + 集成键
-    history: { retentionDays };
+    history: HistorySettings;         // 只剩图片保留天数（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），文字不设上限（ADR-0022 决策 9 的 🔗）；键名 ⑲ 开片时定
+    // 数据统计总开关（默认开，ADR-0027 决策 9）：放哪、叫什么 ㉙ 开片时定
     profileRefreshCron: string;       // 资料刷新，由 fansCron 原值迁来
     timezone: string;                 // 卡片时间读它，默认 Asia/Shanghai
   };

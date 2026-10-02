@@ -67,7 +67,7 @@
 | `runtime/roast-drafts.json` | 待主人审批的锐评稿 | 否 | 48 小时 | 清 | 变换（老 uid 草稿改订阅 id） |
 | `runtime/card-bg-cursors.json` | 直播封面轮换游标 | 否 | 无 | 清 | 从根目录搬进来 |
 | `runtime/bilibili/state.json` · `extensions/<id>/state.json` | 集成的 `ctx.state`（`packages/http` 生成的浏览器身份在 `http.` 开头的键里，归宿主）；单键 64KB、每个集成 1MB | 否 | 卸载清 | 清 | B 站那份由 sub-runtime 的 `roomId` / `followed` / `followError` 拆出 |
-| `history/` | 推送历史行（`HistoryEntry`）、重推原件（`RepushSnapshot`） | 否 | `core.history.retentionDays`（默认 30） | 清 | 行变换，图换成图库引用；头像快照（0.x 存的是远端地址）丢掉，只留名字 |
+| `history/` | 推送历史行（`HistoryEntry`）、重推原件（`RepushSnapshot`） | 否 | 文字不设上限；图按图片保留天数清（默认 30，见下面 10-02 的 🔗） | 清 | 行变换，图换成图库引用；头像快照（0.x 存的是远端地址）丢掉，只留名字 |
 | `images/` | 作品图、直播封面、头像、历史快照、聊天附件 | 否 | 按引用清扫 | 清 | 原 `avatars/`、`history/img/`、重推原件的自存图、`assets/chat/` 按 sha256 改名并进来 |
 | `stats/` | 作品（`PostEntry`）、直播场次（`LiveSessionEntry`）、粉丝时序、seen（留不留见「迁移步骤」的统计那行）、水位线 | 否 | 无（删订阅才删） | 清 | 变换；追加写的文件一律复制 |
 | `ai/` | 女仆对话（附件在图库） | 否 | 对话上限与空会话回收 | 清 | 对话变换（剥皮肤引用、附件 id 换成图库引用） |

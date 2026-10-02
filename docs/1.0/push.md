@@ -320,7 +320,7 @@ type PushTarget =
 
 | 想干的事 | 动哪儿 |
 | --- | --- |
-| 加一把特性 | `FEATURE_KEYS`；历史的推送种类 `PushKind` 从特性键表取子集，不另写同名列表；迁移清单守卫会逼你补迁移 |
+| 加一把特性 | `FEATURE_KEYS`；历史行的 `feature` 直接用特性键，不另写同名列表；迁移清单守卫会逼你补迁移 |
 | 加一个附加项 | `EXTRA_KEYS` + 附加项注册表；来源在 `descriptor.supportedExtras` 声明 |
 | 改一条作品推送的步骤 | `posts/` 的 `deliverPost` 一处 |
 | 改直播卡怎么发 | `live/` 的直播装配；什么时候推在 `live/` 的场次引擎 |
