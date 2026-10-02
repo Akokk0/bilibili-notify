@@ -834,7 +834,7 @@ export class DynamicEngine {
 										text: blockedNotice(name, filterResult.reason as DynamicFilterReason),
 									},
 								],
-								"dynamic",
+								"post",
 							);
 						} catch (e) {
 							this.logger.warn(
@@ -855,10 +855,10 @@ export class DynamicEngine {
 					work: workFromDynamic(item, name, this.config.dynamicVideoUrlToBV),
 					settings: subAtCapture,
 					push: {
-						broadcast: (segments, kind, opts) =>
-							this.push.broadcastDynamic(uid, segments, kind, opts),
-						broadcastSequence: (messages, kind, opts) =>
-							this.push.broadcastDynamicSequence(uid, messages, kind, opts),
+						broadcast: (segments, part, opts) =>
+							this.push.broadcastDynamic(uid, segments, part, opts),
+						broadcastSequence: (messages, part, opts) =>
+							this.push.broadcastDynamicSequence(uid, messages, part, opts),
 					},
 					// 出卡 / 点评几个 await 期间 applyOps 可能已退订该 UID(或换成另一条订阅):
 					// 不发,这条也不 markOk。

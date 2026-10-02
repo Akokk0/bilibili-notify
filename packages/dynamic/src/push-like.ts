@@ -38,12 +38,16 @@ export type PushSegment = PushImagePart | PushTextPart | PushImageGroup;
 
 /**
  * dynamic-engine 仅需以下三类语义化推送动作。
- * 业务核心调用前已经决定好「此次推送的目标维度」（通过 uid + PushKind），
+ * 业务核心调用前已经决定好「此次推送的目标维度」（通过 uid + PostPushPart），
  * adapter 负责把它翻译为具体平台的 channel 列表 / atAll / 图片折叠等行为。
+ *
+ * `PostPushPart` 是作品推送的部件:正文那条(`post`)与图集那条(`post-images`)。这个值只在
+ * 引擎与推送层之间传,决定图集是不是附加项;不是历史行的推送种类(`@bilibili-notify/internal`
+ * 的 `PushKind`),不落盘、不过 wire。
  */
-export type PushKind =
-	| /** 主体动态卡片：可能携带图片 + 文本 */ "dynamic"
-	| /** 动态附图（DYNAMIC_TYPE_DRAW 的多张原图，转发消息形式） */ "dynamic-images";
+export type PostPushPart =
+	| /** 主体作品卡片：可能携带图片 + 文本 */ "post"
+	| /** 作品附图（DYNAMIC_TYPE_DRAW 的多张原图，转发消息形式） */ "post-images";
 
 /** 一次广播的身份:主卡与图集共用同一个 pushId,宿主的历史落同一行。 */
 export interface DynamicBroadcastOptions {
@@ -54,7 +58,7 @@ export interface DynamicBroadcastOptions {
  * 一次 `broadcastDynamic` 交给推送层(`BilibiliPush.broadcastToFeature`)的选项。
  *
  * 背景:一条 DYNAMIC_TYPE_DRAW 图文动态(开启图集推送时)会发**两次** —— 主卡片
- * (`kind="dynamic"`)与图集附图(`kind="dynamic-images"`),两者都映射到
+ * (`part="post"`)与图集附图(`part="post-images"`),两者都映射到
  * `feature="dynamic"`,而且是**同一次推送**:图集是主卡片的附加项(`role: "extra"`,
  * 历史里追加到同一行),并且显式抑制 @全体 —— 若都进 @全体 分支,接收端会被**重复
  * 艾特全体**(主卡片 @ 一次、图集又 @ 一次)。主卡片只带 pushId,维持「按 feature
@@ -63,24 +67,24 @@ export interface DynamicBroadcastOptions {
  * 抑制 @全体 是「图集」这个身份带来的,与有没有 pushId 无关 —— 两者绑在一起时,一次不带
  * pushId 的图集广播会悄悄把 @全体 放回来,正是这个函数存在的理由。
  */
-export function broadcastOptsForDynamicKind(
-	kind: PushKind,
+export function broadcastOptionsForPostPart(
+	part: PostPushPart,
 	pushId: string | undefined,
 ): { pushId?: string; allowAtAll?: false; role?: "extra" } | undefined {
-	if (kind === "dynamic-images") return { pushId, allowAtAll: false, role: "extra" };
+	if (part === "post-images") return { pushId, allowAtAll: false, role: "extra" };
 	return pushId === undefined ? undefined : { pushId };
 }
 
 export interface PushLike {
 	/**
 	 * 向某个 UP 主对应的全部订阅频道广播一段消息。
-	 * - kind="dynamic"：主卡片消息，包含 image + text 段。
-	 * - kind="dynamic-images"：DYNAMIC_TYPE_DRAW 的图集，adapter 通常以 forward message 投递。
+	 * - part="post"：主卡片消息，包含 image + text 段。
+	 * - part="post-images"：DYNAMIC_TYPE_DRAW 的图集，adapter 通常以 forward message 投递。
 	 */
 	broadcastDynamic(
 		uid: string,
 		segments: PushSegment[],
-		kind: PushKind,
+		part: PostPushPart,
 		opts?: DynamicBroadcastOptions,
 	): Promise<void>;
 
@@ -92,7 +96,7 @@ export interface PushLike {
 	broadcastDynamicSequence(
 		uid: string,
 		messages: PushSegment[][],
-		kind: PushKind,
+		part: PostPushPart,
 		opts?: DynamicBroadcastOptions,
 	): Promise<void>;
 

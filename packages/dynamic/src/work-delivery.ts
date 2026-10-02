@@ -14,7 +14,7 @@ import type { CardColorOptions, ImageRenderer } from "@bilibili-notify/image";
 import type { ForwardImage, Logger } from "@bilibili-notify/internal";
 import { assembleMessageGroups, interpolate } from "@bilibili-notify/internal";
 import { resolveDynamicColorOptions } from "./card-style";
-import type { DynamicBroadcastOptions, PushKind, PushSegment, SubItemView } from "./push-like";
+import type { DynamicBroadcastOptions, PostPushPart, PushSegment, SubItemView } from "./push-like";
 
 /** AI 点评生成器(宿主注入 `CommentaryGenerator`,这里只认用到的那一个方法)。 */
 export interface CommentaryClient {
@@ -133,16 +133,20 @@ export interface WorkDeliveryConfig {
 /**
  * 绑到这条订阅上的发送 —— `PushLike` 的两个广播口去掉 uid:B 站按 uid 绑,拓展按订阅 id 绑。
  *
- * `kind`:主卡 `dynamic`、图集 `dynamic-images`;推送层据它把图集当附加项、抑制 @全体
- * (`broadcastOptsForDynamicKind`)。主卡与图集带同一个 pushId,历史落同一行。
+ * `part`:主卡 `post`、图集 `post-images`;推送层据它把图集当附加项、抑制 @全体
+ * (`broadcastOptionsForPostPart`)。主卡与图集带同一个 pushId,历史落同一行。
  */
 export interface BoundWorkPush {
 	/** 一条消息。 */
-	broadcast(segments: PushSegment[], kind: PushKind, opts?: DynamicBroadcastOptions): Promise<void>;
+	broadcast(
+		segments: PushSegment[],
+		part: PostPushPart,
+		opts?: DynamicBroadcastOptions,
+	): Promise<void>;
 	/** 消息版式分条:一次推送拆成多条消息的序列(语义见 `PushLike.broadcastDynamicSequence`)。 */
 	broadcastSequence(
 		messages: PushSegment[][],
-		kind: PushKind,
+		part: PostPushPart,
 		opts?: DynamicBroadcastOptions,
 	): Promise<void>;
 }
@@ -333,9 +337,9 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 	if (messages.length === 0) {
 		logger.debug(`[push] ${logLabel} 消息版式所有部件隐藏/缺失,本条不推送`);
 	} else if (messages.length === 1) {
-		await push.broadcast(messages[0] as PushSegment[], "dynamic", { pushId });
+		await push.broadcast(messages[0] as PushSegment[], "post", { pushId });
 	} else {
-		await push.broadcastSequence(messages, "dynamic", { pushId });
+		await push.broadcastSequence(messages, "post", { pushId });
 	}
 
 	// 图集 —— per-UP 的开关优先,留空继承全局。
@@ -346,11 +350,11 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 		const forward = forwardWanted && work.gallery.length > 1;
 		// 图集是主卡的**附属物**,主卡此时已成功发出。它走 forward/NapCat 长消息通道(不稳),
 		// reject 很现实。绝不能往外抛:B 站那头会因此不推进时间线,下轮整条重判、主卡以
-		// kind='dynamic' 重发,而 dynamic 不抑制 @全体 → 每 tick 重复 @全体。发不出就算了。
+		// part='post' 重发,而 post 不抑制 @全体 → 每 tick 重复 @全体。发不出就算了。
 		try {
 			await push.broadcast(
 				[{ type: "image-group", forward, images: [...work.gallery] }],
-				"dynamic-images",
+				"post-images",
 				{ pushId },
 			);
 		} catch (e) {

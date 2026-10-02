@@ -106,12 +106,12 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 });
 
 describe("动态引擎那侧的 PushLike 真的用上了翻译表", () => {
-	it("图集(dynamic-images)是附加项:抑制 @全体、跟主卡同一个 pushId", async () => {
+	it("图集(post-images)是附加项:抑制 @全体、跟主卡同一个 pushId", async () => {
 		const { push, opts, features } = makePushSpy();
 		await makeDynamicPushLike(anyPush(push), subscriptionIdOf).broadcastDynamic(
 			"100",
 			[{ type: "text", text: "动态" }],
-			"dynamic-images",
+			"post-images",
 			{
 				pushId: "p1",
 			},
@@ -121,12 +121,12 @@ describe("动态引擎那侧的 PushLike 真的用上了翻译表", () => {
 		expect(opts[0]).toMatchObject({ allowAtAll: false, role: "extra", pushId: "p1" });
 	});
 
-	it("主卡(dynamic)不抑制 @全体", async () => {
+	it("主卡(post)不抑制 @全体", async () => {
 		const { push, opts } = makePushSpy();
 		await makeDynamicPushLike(anyPush(push), subscriptionIdOf).broadcastDynamic(
 			"100",
 			[{ type: "text", text: "动态" }],
-			"dynamic",
+			"post",
 			{
 				pushId: "p1",
 			},
@@ -147,8 +147,8 @@ describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 		const dynamic = makeDynamicPushLike(anyPush(push), subscriptionIdOf);
 		await live.broadcastToTargets("100", "开播", 3);
 		await live.broadcastSequenceToTargets("100", ["一", "二"], 3);
-		await dynamic.broadcastDynamic("100", [{ type: "text", text: "动态" }], "dynamic");
-		await dynamic.broadcastDynamicSequence("100", [[{ type: "text", text: "动态" }]], "dynamic");
+		await dynamic.broadcastDynamic("100", [{ type: "text", text: "动态" }], "post");
+		await dynamic.broadcastDynamicSequence("100", [[{ type: "text", text: "动态" }]], "post");
 		expect(ids).toEqual(["sub-100", "sub-100", "sub-100", "sub-100"]);
 	});
 
@@ -158,8 +158,8 @@ describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 		const dynamic = makeDynamicPushLike(anyPush(push), subscriptionIdOf);
 		await live.broadcastToTargets("404", "开播", 3);
 		await live.broadcastSequenceToTargets("404", ["一", "二"], 3);
-		await dynamic.broadcastDynamic("404", [{ type: "text", text: "动态" }], "dynamic");
-		await dynamic.broadcastDynamicSequence("404", [[{ type: "text", text: "动态" }]], "dynamic");
+		await dynamic.broadcastDynamic("404", [{ type: "text", text: "动态" }], "post");
+		await dynamic.broadcastDynamicSequence("404", [[{ type: "text", text: "动态" }]], "post");
 		expect(push.broadcastToFeature).not.toHaveBeenCalled();
 	});
 });

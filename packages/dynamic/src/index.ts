@@ -14,9 +14,9 @@ export {
 } from "./dynamic-filter";
 export type {
 	DynamicBroadcastOptions,
+	PostPushPart,
 	PushImageGroup,
 	PushImagePart,
-	PushKind,
 	PushLike,
 	PushSegment,
 	PushTextPart,
@@ -25,7 +25,7 @@ export type {
 	SubscriptionOpView,
 	SubscriptionsView,
 } from "./push-like";
-export { broadcastOptsForDynamicKind } from "./push-like";
+export { broadcastOptionsForPostPart } from "./push-like";
 export type {
 	AllDynamicInfo,
 	Dynamic,

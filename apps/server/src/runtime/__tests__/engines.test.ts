@@ -87,7 +87,7 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 	return {
 		// 纯函数走真实实现(@全体抑制、动态卡配色解析):它们是没有副作用的规则,在这儿
 		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
-		broadcastOptsForDynamicKind: actual.broadcastOptsForDynamicKind,
+		broadcastOptionsForPostPart: actual.broadcastOptionsForPostPart,
 		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
 		// 出图失败计数(全进程一份,B 站与拓展作品共用)是个没有副作用的小对象,同理走真的。
 		createCardFailureTracker: actual.createCardFailureTracker,
@@ -1651,7 +1651,7 @@ describe("createEngines — 消息版式", () => {
 				[{ type: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
 				[{ type: "text", text: "正文" }],
 			],
-			"dynamic",
+			"post",
 		);
 		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
 		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
@@ -1661,7 +1661,7 @@ describe("createEngines — 消息版式", () => {
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
 		expect(payloads[1]).toEqual({ kind: "text", text: "正文" });
-		// kind="dynamic" 不抑制 @全体(维持 feature 决定的旧行为)
+		// part="post" 不抑制 @全体(维持 feature 决定的旧行为)
 		expect(opts).toBeUndefined();
 	});
 

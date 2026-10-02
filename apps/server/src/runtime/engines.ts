@@ -24,7 +24,7 @@ import { type BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
 import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
 import {
 	type BoundWorkPush,
-	broadcastOptsForDynamicKind,
+	broadcastOptionsForPostPart,
 	createCardFailureTracker,
 	DynamicEngine,
 	type DynamicEngineConfig,
@@ -1292,21 +1292,21 @@ export function bindSubscriptionPush(
  */
 export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
 	return {
-		// kind="dynamic-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
+		// part="post-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
 		// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
-		broadcast: (segments, kind, o) =>
+		broadcast: (segments, part, o) =>
 			send(
 				"dynamic",
 				pushSegmentsToPayload(segments),
-				broadcastOptsForDynamicKind(kind, o?.pushId),
+				broadcastOptionsForPostPart(part, o?.pushId),
 			),
 		// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
 		// 某条失败中止该 target 后续条、@全体只跟首条之前)。
-		broadcastSequence: (messages, kind, o) =>
+		broadcastSequence: (messages, part, o) =>
 			send(
 				"dynamic",
 				messages.map(pushSegmentsToPayload),
-				broadcastOptsForDynamicKind(kind, o?.pushId),
+				broadcastOptionsForPostPart(part, o?.pushId),
 			),
 	};
 }
@@ -1355,11 +1355,11 @@ export function makeDynamicPushLike(
 			: boundWorkPush(bindSubscriptionPush(push, subscriptionId));
 	};
 	return {
-		async broadcastDynamic(uid, segments, kind, o) {
-			await bound(uid)?.broadcast(segments, kind, o);
+		async broadcastDynamic(uid, segments, part, o) {
+			await bound(uid)?.broadcast(segments, part, o);
 		},
-		async broadcastDynamicSequence(uid, messages, kind, o) {
-			await bound(uid)?.broadcastSequence(messages, kind, o);
+		async broadcastDynamicSequence(uid, messages, part, o) {
+			await bound(uid)?.broadcastSequence(messages, part, o);
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => push.sendErrorMsg(text),

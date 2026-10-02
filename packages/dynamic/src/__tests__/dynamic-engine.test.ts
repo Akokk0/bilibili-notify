@@ -809,20 +809,20 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 });
 
 describe("DynamicEngine.detectDynamics — 推送形态", () => {
-	it("有 image 实例 + 无 AI → 广播 [image] 段,kind=dynamic", async () => {
+	it("有 image 实例 + 无 AI → 广播 [image] 段,part=post", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
-		const [uid, segments, kind] = b.push.broadcastDynamic.mock.calls[0] as [
+		const [uid, segments, part] = b.push.broadcastDynamic.mock.calls[0] as [
 			string,
 			Array<{ type: string }>,
 			string,
 		];
 		expect(uid).toBe("1");
-		expect(kind).toBe("dynamic");
+		expect(part).toBe("post");
 		expect(segments[0]?.type).toBe("image");
 	});
 
@@ -894,7 +894,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(segments[0]?.type).toBe("text");
 	});
 
-	it("imageGroup.enable + DYNAMIC_TYPE_DRAW 带 pics → 追加 dynamic-images 广播", async () => {
+	it("imageGroup.enable + DYNAMIC_TYPE_DRAW 带 pics → 追加 post-images 广播", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
 		b.getAllDynamic.mockResolvedValue(
 			resp([
@@ -909,7 +909,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
-		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
+		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("post-images");
 	});
 
 	it("主卡与图集是同一次推送:两次 broadcast 带同一个 pushId;下一条动态换新的", async () => {
@@ -935,12 +935,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		const calls = b.push.broadcastDynamic.mock.calls as Array<
 			[string, unknown, string, { pushId?: string } | undefined]
 		>;
-		expect(calls.map((c) => c[2])).toEqual([
-			"dynamic",
-			"dynamic-images",
-			"dynamic",
-			"dynamic-images",
-		]);
+		expect(calls.map((c) => c[2])).toEqual(["post", "post-images", "post", "post-images"]);
 		const ids = calls.map((c) => c[3]?.pushId);
 		expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
 		expect(ids[1]).toBe(ids[0]);
@@ -961,16 +956,16 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 			]),
 		);
 		seed(b.engine, "1", 0);
-		// 主卡(第 1 次,kind='dynamic')成功;图组(第 2 次,kind='dynamic-images')失败。
+		// 主卡(第 1 次,part='post')成功;图组(第 2 次,part='post-images')失败。
 		// 图组走 forward/NapCat 长消息通道,现实里会 reject(config 注释点名其不稳定)。
 		b.push.broadcastDynamic.mockImplementation(
-			async (_uid: string, _segs: unknown, kind: string) => {
-				if (kind === "dynamic-images") throw new Error("图组通道抖动");
+			async (_uid: string, _segs: unknown, part: string) => {
+				if (part === "post-images") throw new Error("图组通道抖动");
 			},
 		);
 		await detect(b.engine);
-		// 主卡已成功送达 → 锚点必须推进到 pub_ts,否则下轮整条重判、主卡以 kind='dynamic'
-		// 重发,而 dynamic 不抑制 @全体 → 每 tick 重复 @全体,直到动态滚出 feed。
+		// 主卡已成功送达 → 锚点必须推进到 pub_ts,否则下轮整条重判、主卡以 part='post'
+		// 重发,而 post 不抑制 @全体 → 每 tick 重复 @全体,直到动态滚出 feed。
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
 	});
 
@@ -990,7 +985,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect(call?.[2]).toBe("dynamic-images");
+		expect(call?.[2]).toBe("post-images");
 		expect(call?.[1]?.[0]).toMatchObject({
 			type: "image-group",
 			images: [{ url: "http://a/x1.jpg" }, { url: "http://a/x2.jpg" }],
@@ -1091,7 +1086,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		await detect(b.engine);
 		// 仅主卡片,无图集广播
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
-		expect(b.push.broadcastDynamic.mock.calls[0]?.[2]).toBe("dynamic");
+		expect(b.push.broadcastDynamic.mock.calls[0]?.[2]).toBe("post");
 	});
 
 	it("per-UP imageGroupEnable=true 覆盖全局 false → 推图集", async () => {
@@ -1110,7 +1105,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupEnable: true });
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
-		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
+		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("post-images");
 	});
 
 	it("per-UP imageGroupEnable 缺省(undefined) → 继承全局 imageGroup.enable(回归守卫 `??` 非 `||`)", async () => {
@@ -1131,7 +1126,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP" });
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(2);
-		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("dynamic-images");
+		expect(b.push.broadcastDynamic.mock.calls[1]?.[2]).toBe("post-images");
 	});
 
 	it("per-UP imageGroupForward=true 覆盖全局 false → 多图走 forward", async () => {
@@ -1409,7 +1404,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
-		expect(b.push.broadcastDynamic.mock.calls[0]?.[2]).toBe("dynamic");
+		expect(b.push.broadcastDynamic.mock.calls[0]?.[2]).toBe("post");
 	});
 });
 
@@ -1988,14 +1983,14 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
 		expect(b.push.broadcastDynamicSequence).toHaveBeenCalledTimes(1);
-		const [uid, messages, kind, opts] = b.push.broadcastDynamicSequence.mock.calls[0] as [
+		const [uid, messages, part, opts] = b.push.broadcastDynamicSequence.mock.calls[0] as [
 			string,
 			Seg[][],
 			string,
 			{ pushId?: string } | undefined,
 		];
 		expect(uid).toBe("1");
-		expect(kind).toBe("dynamic");
+		expect(part).toBe("post");
 		expect(opts?.pushId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(messages).toHaveLength(2);
 		expect(messages[0]?.map((s) => s.type)).toEqual(["image"]);

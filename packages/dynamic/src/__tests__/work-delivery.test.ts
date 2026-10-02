@@ -112,12 +112,12 @@ function harness(
 const segsOf = (h: Harness, call = 0): Seg[] => h.broadcast.mock.calls[call]?.[0] as Seg[];
 
 describe("deliverWork — 按版式装配", () => {
-	it("默认版式:卡片 + 模板文字与链接同条,kind=dynamic,带 pushId", async () => {
+	it("默认版式:卡片 + 模板文字与链接同条,part=post,带 pushId", async () => {
 		const h = harness();
 		expect(await deliverWork(h.args)).toBe("delivered");
 		expect(h.broadcast).toHaveBeenCalledTimes(1);
-		const [segs, kind, opts] = h.broadcast.mock.calls[0] as [Seg[], string, { pushId?: string }];
-		expect(kind).toBe("dynamic");
+		const [segs, part, opts] = h.broadcast.mock.calls[0] as [Seg[], string, { pushId?: string }];
+		expect(part).toBe("post");
 		expect(opts.pushId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(segs.map((s) => s.type)).toEqual(["image", "text"]);
 		expect(segs[0]).toMatchObject({ buffer: CARD, mime: "image/jpeg" });
@@ -132,8 +132,8 @@ describe("deliverWork — 按版式装配", () => {
 		});
 		await deliverWork(h.args);
 		expect(h.broadcast).not.toHaveBeenCalled();
-		const [messages, kind] = h.broadcastSequence.mock.calls[0] as [Seg[][], string];
-		expect(kind).toBe("dynamic");
+		const [messages, part] = h.broadcastSequence.mock.calls[0] as [Seg[][], string];
+		expect(part).toBe("post");
 		expect(messages.map((m) => m.map((s) => s.type))).toEqual([["image"], ["text"]]);
 	});
 
@@ -434,14 +434,14 @@ describe("deliverWork — 发送失败与图集", () => {
 		expect(h.broadcast).toHaveBeenCalledTimes(1);
 	});
 
-	it("图集附在主卡之后,同一个 pushId,kind=dynamic-images", async () => {
+	it("图集附在主卡之后,同一个 pushId,part=post-images", async () => {
 		const h = harness({
 			work: { gallery },
 			config: { imageGroup: { enable: true, forward: true } },
 		});
 		await deliverWork(h.args);
 		const calls = h.broadcast.mock.calls as Array<[PushSegment[], string, { pushId?: string }]>;
-		expect(calls.map((c) => c[1])).toEqual(["dynamic", "dynamic-images"]);
+		expect(calls.map((c) => c[1])).toEqual(["post", "post-images"]);
 		expect(calls[1]?.[2].pushId).toBe(calls[0]?.[2].pushId);
 		expect(calls[1]?.[0]).toEqual([{ type: "image-group", forward: true, images: gallery }]);
 	});
@@ -451,8 +451,8 @@ describe("deliverWork — 发送失败与图集", () => {
 			work: { gallery },
 			config: { imageGroup: { enable: true, forward: false } },
 		});
-		h.broadcast.mockImplementation(async (_segs: unknown, kind: string) => {
-			if (kind === "dynamic-images") throw new Error("图组通道抖动");
+		h.broadcast.mockImplementation(async (_segs: unknown, part: string) => {
+			if (part === "post-images") throw new Error("图组通道抖动");
 		});
 		expect(await deliverWork(h.args)).toBe("delivered");
 		expect(h.logs.some((l) => l.level === "warn" && l.msg.includes("订阅=s1 图组发送失败"))).toBe(

@@ -125,7 +125,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 				try {
 					await push.broadcast(
 						[{ type: "text", text: blockedNotice(name, filtered.reason, postNoun) }],
-						"dynamic",
+						"post",
 					);
 				} catch (e) {
 					log.warn(`[ext-post] 屏蔽提示发送失败(忽略): ${(e as Error).message}`);
