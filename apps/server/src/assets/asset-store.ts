@@ -3,7 +3,7 @@
  *
  * 三个各写各的存储(卡片背景图、聊天附件、字体)收成这一份 —— 它们干的是同一件事:认后缀、
  * 限大小、取名、落盘、按 id 读回、列出来、删掉。差别只有四处,全部做成参数:目录、认得的格式、
- * 大小上限、id 怎么取。
+ * 大小上限、id 怎么取。图库(`images/`)也建在它上面,取名按内容摘要。
  *
  * **id 是唯一的防穿越闸门。** id 会从 HTTP 请求原样进来,而数据目录里躺着带凭据的文件。
  * {@link AssetStore.isValidId} 是所有读、删、取路径的入口:不合法的 id 不碰盘。
@@ -12,8 +12,8 @@
  * 清单里多出盘上没有的记录一概不列。
  */
 
-import { randomBytes } from "node:crypto";
-import { readdir, readFile, stat, unlink } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { readdir, readFile, stat, unlink, utimes } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createSerialQueue, type Failure, fail, ok } from "@bilibili-notify/internal";
 import {
@@ -35,8 +35,13 @@ export interface AssetStoreOptions {
 	 * id 怎么取。`random`:存储自己起 `<32 位小写 hex>.<后缀>`,同一份字节存两次也是两个 id。
 	 * `given`:id 就是调用方给的名字,同名直接覆盖;名字合不合规矩由 `isValidName` 判,
 	 * 路径成分(`/`、`\`、`.`、`..`)不论它怎么说都一律拒。
+	 * `sha256`:id 是 `<字节的 sha256>.<后缀>`,同一份字节永远同一个 id;已经在了就不重写,只刷新修改时间
+	 * (图库清扫的新图宽限期按它算,ADR-0022 决策 9 下 10-03 的 🔗),原名清单也不动。
 	 */
-	naming: { kind: "random" } | { kind: "given"; isValidName(name: string): boolean };
+	naming:
+		| { kind: "random" }
+		| { kind: "given"; isValidName(name: string): boolean }
+		| { kind: "sha256" };
 	/** 原名清单的文件名(住在 `dir` 里)。不给就不记原名。 */
 	labelsFile?: string;
 }
@@ -75,7 +80,7 @@ export interface AssetView {
 }
 
 export interface AssetStore {
-	/** id 合不合法:`random` 是 32 位 hex + 认得的后缀,`given` 是 `isValidName` 且后缀认得。 */
+	/** id 合不合法:`random` 是 32 位 hex + 认得的后缀,`sha256` 是 64 位 hex + 认得的后缀,`given` 是 `isValidName` 且后缀认得。 */
 	isValidId(id: string): boolean;
 	put(options: AssetPutOptions): Promise<AssetPutResult>;
 	/** 读字节与 mime;id 不合法或文件不在回 null。 */
@@ -89,8 +94,9 @@ export interface AssetStore {
 	labels(): Promise<Record<string, string>>;
 }
 
-/** 随机取名的主名:32 位小写 hex。 */
+/** 随机取名的主名:32 位小写 hex;按摘要取名的主名:64 位小写 hex。 */
 const HEX32_STEM = /^[a-f0-9]{32}$/;
+const HEX64_STEM = /^[a-f0-9]{64}$/;
 
 /**
  * 原名清单的写道。**模块级、键 = 清单文件的绝对路径**:清单是整份读、整份写,两个并发的
@@ -118,6 +124,18 @@ function extOfName(name: string): string {
 	return dot > 0 ? name.slice(dot + 1) : "";
 }
 
+/** 把文件的修改时间刷成现在;文件不在回 false,别的失败照抛。 */
+async function touch(path: string): Promise<boolean> {
+	const now = new Date();
+	try {
+		await utimes(path, now, now);
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
+	}
+}
+
 /** 文件字节数;读不到(刚被删 / 权限)记 0 —— 少一个数好过整个列表列不出来。 */
 async function sizeOf(path: string): Promise<number> {
 	try {
@@ -132,8 +150,8 @@ function invalid(message: string): AssetPutResult {
 }
 
 /**
- * id 合不合法,不用建 store、不用给目录:`random` 是 32 位小写 hex + 认得的后缀,`given` 是
- * `isValidName` 且后缀认得。暂存 / 旧目录残留的名字(`isLeftoverName`)与路径成分一律不合法。
+ * id 合不合法,不用建 store、不用给目录:`random` 是 32 位小写 hex + 认得的后缀,`sha256` 是 64 位小写
+ * hex + 认得的后缀,`given` 是 `isValidName` 且后缀认得。暂存 / 旧目录残留的名字(`isLeftoverName`)与路径成分一律不合法。
  * {@link AssetStore.isValidId} 委托给它;只需要判 id、手边没有目录的地方(路由的参数校验)直接调它。
  */
 export function isValidAssetId(
@@ -144,6 +162,9 @@ export function isValidAssetId(
 	if (isLeftoverName(id)) return false;
 	if (naming.kind === "random") {
 		return HEX32_STEM.test(id.slice(0, 32)) && id[32] === "." && isKnownExt(formats, id.slice(33));
+	}
+	if (naming.kind === "sha256") {
+		return HEX64_STEM.test(id.slice(0, 64)) && id[64] === "." && isKnownExt(formats, id.slice(65));
 	}
 	if (id === "." || id === ".." || /[/\\]/.test(id) || id.includes("\0")) return false;
 	return isKnownExt(formats, extOfName(id)) && naming.isValidName(id);
@@ -199,6 +220,9 @@ export function createAssetStore(options: AssetStoreOptions): AssetStore {
 				if (!isValidId(name)) return invalid(`资产名字不合法：${name}`);
 				if (extOfName(name) !== ext) return invalid(`资产名字 ${name} 的后缀与 ${ext} 对不上`);
 				id = name;
+			} else if (naming.kind === "sha256") {
+				id = `${createHash("sha256").update(bytes).digest("hex")}.${ext}`;
+				if (await touch(join(dir, id))) return ok({ id });
 			} else {
 				id = `${randomBytes(16).toString("hex")}.${ext}`;
 			}

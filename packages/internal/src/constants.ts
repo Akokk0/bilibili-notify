@@ -1268,6 +1268,15 @@ export function featuresForEvents(events: readonly SubscriptionEventKind[]): Fea
 	return FEATURE_KEYS.filter((k) => wanted.has(k));
 }
 
+// ---- 图库引用(ADR-0022 决策 9)--------------------------------------------------------
+
+/**
+ * 图库引用:图库 `images/` 里的文件名 `<sha256>.<ext>`,扩展名按嗅探(png / jpg / gif / webp,JPEG 一律
+ * 叫 jpg)。作品图、直播封面、头像、历史快照、聊天附件共用;引用自己就说明了格式,不另存 mime(ADR-0022
+ * 决策 9 下 10-03 的 🔗)。
+ */
+export type ImageRef = string;
+
 // ---- 拓展声明式界面(ADR-0019)的零依赖判据 ----------------------------------------
 //
 // 清单的 schema(`schema/extension-manifest.ts`)从这里引、并从根入口转出去;面板对根入口

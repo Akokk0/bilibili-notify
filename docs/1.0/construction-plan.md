@@ -155,7 +155,7 @@
   - 真机待验（不在这一片）：弹幕握手要不要补 `sec-ch-ua` / `Origin`。
 - **⑮ 开片（10-03）**：先勘察，再一题一题问主人（定案在 ADR-0022 决策 9 与 ADR-0036 决策 5 下 10-03 的 🔗，词表加了 `Ref` 一行），依次提交：
   - 先修桌面令牌闸：也认一个 `HttpOnly; SameSite=Strict` 的 cookie，桌面版里直连地址的图不再 401（现存 bug，单独一个提交）。
-  - ⑮a 图库本体：`ImageRef`（文件名 `<sha256>.<ext>`）与校验、嗅探结果换成扩展名、`createAssetStore` 加按 sha256 取名、`createImageStore`（`put` / `read`）、目录表加 `images` 键、8MB 常量。只加键、不往盘上写，修订号不抬（⑯ 或 ⑳ 第一次往里写时抬）。
+  - ⑮a 图库本体：`ImageRef`（文件名 `<sha256>.<ext>`）与校验、嗅探结果换成扩展名、`createAssetStore` 加按 sha256 取名、`createImageStore`（`put` / `read`）、目录表加 `images` 键、8MB 常量。只加键、不往盘上写，修订号不抬（⑯ 或 ⑳ 第一次往里写时抬）。✅ 已落（`ImageRef` 放在 internal 的 `constants.ts`，与 `SourceKey` 一处；格式表与 8MB 常量住在 `apps/server/src/images/image-store.ts`；嗅探沿用 `sniffImageFormat`，`jpeg` → `jpg` 的对照在图库里）
   - ⑮b 同源读口 `GET /api/images/<ref>`，接线守卫加这一组。面板这一片还没有调用方，⑳ 换读口时接上。
   - 真机待验：桌面版里历史配图、聊天附件、订阅头像、界面皮肤的壁纸与字体都能打开。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。

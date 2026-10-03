@@ -32,6 +32,7 @@ export {
 	fail,
 	featuresForEvents,
 	type Identity,
+	type ImageRef,
 	INBOUND_CAPABLE_PLATFORMS,
 	type Issue,
 	identityColor,
