@@ -11,7 +11,6 @@ function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const api = new BilibiliAPI({
 		serviceCtx: { logger } as never,
-		config: { userAgent: "test-UA" } as never,
 		callbacks: {},
 	});
 	const calls: string[] = [];

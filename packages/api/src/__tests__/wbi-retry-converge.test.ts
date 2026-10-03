@@ -14,7 +14,6 @@ function makeApi(getImpl: (url: string) => unknown) {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const api = new BilibiliAPI({
 		serviceCtx: { logger } as never,
-		config: {} as never,
 		callbacks: {},
 	});
 	const calls = { get: 0, post: 0 };

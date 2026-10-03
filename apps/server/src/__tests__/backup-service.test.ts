@@ -533,7 +533,7 @@ describe("BackupService × 同一身份只能有一条订阅", () => {
 describe("BackupService × 各集成的设置", () => {
 	/** 第二个集成是假想的:设置里带一个叫 `token` 的密钥,看脱敏与完整档的往返有没有走到这一节里。 */
 	const SETTINGS = {
-		bilibili: { dynamicCron: "0 */5 * * * *", userAgent: "UA/1", healthCheckMinutes: 45 },
+		bilibili: { dynamicCron: "0 */5 * * * *", healthCheckMinutes: 45 },
 		other: { token: "tok-other", note: "另一个集成" },
 	};
 	const PIN = "123456";

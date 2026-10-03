@@ -115,11 +115,6 @@ export const FIELD_LABELS = {
 		hint: "只影响 ai 模块",
 		section: "logging",
 	},
-	"bilibili.userAgent": {
-		label: "User-Agent",
-		hint: "留空使用默认;遇 -352 风控可换",
-		section: "general",
-	},
 	"bilibili.healthCheckMinutes": {
 		label: "登录心跳间隔",
 		hint: "每 N 分钟向 B 站 getMyselfInfo 探活;失效会触发 auth-lost + master 通知",

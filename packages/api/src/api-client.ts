@@ -18,14 +18,12 @@ import {
  * - **失败一律抛**:`HttpClient` 回的失败结果(超时、连不上)在这里转成 `Error`,进外层 retry。
  * - 重定向最多跟 5 跳,跟满还在跳就抛。
  *
- * 默认头(Origin / Referer / sec-fetch-* 这类 B 站特有的)由调用方在构造 `HttpClient` 时交进去;
- * 这里只持一小份**可热换**的头({@link ApiClient.setHeader},自定义 UA 住这里),叠在它上面。
+ * 默认头(Origin / Referer / sec-fetch-* 这类 B 站特有的、连同身份的 UA)由调用方在构造 `HttpClient` 时交进去;
+ * 这里不再另持一层头 —— 那一层是为热换自定义 UA 留的,自定义 UA 删了它就没有用处(ADR-0025 决策 7)。
  */
 
 export interface ApiClientOptions {
 	http: HttpClient;
-	/** 叠在 `http` 默认头之上的头(自定义 UA 之类);随每个请求外发,{@link ApiClient.setHeader} 可热换。 */
-	headers?: Record<string, string>;
 	/** 每个 2xx 响应解析后回调(响应拦截器挂点,-101 auth-lost 探测用)。 */
 	onBody?: (body: unknown) => void;
 }
@@ -46,23 +44,16 @@ function setHeaderIn(headers: Record<string, string>, name: string, value: strin
 
 export class ApiClient {
 	private readonly http: HttpClient;
-	private readonly headers: Record<string, string>;
 	private readonly onBody?: (body: unknown) => void;
 
 	constructor(opts: ApiClientOptions) {
 		this.http = opts.http;
-		this.headers = { ...opts.headers };
 		this.onBody = opts.onBody;
-	}
-
-	/** 热替换叠在默认头上的头(setUserAgent 用);已 in-flight 的请求仍走旧值。 */
-	setHeader(name: string, value: string): void {
-		setHeaderIn(this.headers, name, value);
 	}
 
 	/**
 	 * 经同一个 `HttpClient`(同一份身份与 cookie 罐)建 WebSocket。握手头由客户端自己装配,
-	 * 和 `get` / `postForm` 的头(默认头、这里叠的热换头)无关 —— 那些是 fetch 的头。
+	 * 和 `get` / `postForm` 的头(默认头、这次请求的头)无关 —— 那些是 fetch 的头。
 	 */
 	websocket(url: string, options?: WebSocketOptions): WebSocketLike {
 		return this.http.websocket(url, options);
@@ -79,7 +70,6 @@ export class ApiClient {
 	 */
 	async redirectLocation(url: string): Promise<string | null> {
 		const result = await this.http.fetch(url, {
-			headers: this.headers,
 			maxRedirects: 0,
 			cookies: "send-only",
 		});
@@ -109,7 +99,7 @@ export class ApiClient {
 		contentType: string | undefined,
 		opts?: RequestOptions,
 	): Promise<unknown> {
-		const headers = { ...this.headers };
+		const headers: Record<string, string> = {};
 		for (const [name, value] of Object.entries(opts?.headers ?? {})) {
 			setHeaderIn(headers, name, value);
 		}

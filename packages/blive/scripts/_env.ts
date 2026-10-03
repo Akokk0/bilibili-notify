@@ -63,7 +63,7 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Bilib
 		);
 		process.exit(1);
 	}
-	const api = new BilibiliAPI({ serviceCtx, config: {} });
+	const api = new BilibiliAPI({ serviceCtx });
 	await api.start();
 	await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
 	return api;

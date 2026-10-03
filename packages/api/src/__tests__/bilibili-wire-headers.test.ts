@@ -69,13 +69,9 @@ const ourNamesOnWire = (head: string[]) =>
 		.map((line) => line.slice(0, line.indexOf(":")))
 		.filter((n) => OUR_NAMES.has(n.toLowerCase()));
 
-function makeClient(userAgent?: string) {
+function makeClient() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
-		serviceCtx: { logger } as never,
-		config: { userAgent },
-		callbacks: {},
-	});
+	const api = new BilibiliAPI({ serviceCtx: { logger } as never, callbacks: {} });
 	return { api, client: (api as unknown as { client: ApiClient }).client };
 }
 
@@ -101,11 +97,15 @@ describe("B 站线上请求头的顺序与大小写", () => {
 		]);
 	});
 
-	it("自定义 UA 初始就写进配置:位置不变,值是自定义的", async () => {
-		const { client } = makeClient("my-ua/1.0");
+	// UA 与 sec-ch-ua 永远来自同一份身份(没有自定义 UA 这个设置了,ADR-0025 决策 7):线上的 UA 行就是
+	// 身份的 UA,sec-ch-ua 行就是身份的 sec-ch-ua。
+	it("线上的 UA 与 sec-ch-ua 是同一份生成身份的", async () => {
+		const { api, client } = makeClient();
 		await client.get(`${baseURL}/x`);
-		expect(ourNamesOnWire(rawHeads[0] as string[])).toEqual(OUR_HEADERS_BEFORE);
-		expect(rawHeads[0]).toContain("User-Agent: my-ua/1.0");
+		const identity = (api as unknown as { browserIdentity: { userAgent: string; secChUa: string } })
+			.browserIdentity;
+		expect(rawHeads[0]).toContain(`User-Agent: ${identity.userAgent}`);
+		expect(rawHeads[0]).toContain(`sec-ch-ua: ${identity.secChUa}`);
 	});
 
 	it("身份的四个头没有重复:线上每个名字只有一行", async () => {

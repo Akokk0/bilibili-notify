@@ -118,7 +118,7 @@
 | ⑪ | 格式化函数收一份：`formatCount`（含带符号的变体）、`formatAgo`、`formatDuration`、`formatClock`（`video-card.ts` 里现在叫 `formatDuration(seconds)` 的那个改名过来）；删 `{time}` 兜底与 `getTimeDifference` 钩子；守卫 4 点名表补上 | ✅ 已落（口径主人 10-02 定：带正负号用普通「-」、零写「0」，「N 分钟前」带空格，时长最大到天；放在零依赖子路径 `@bilibili-notify/internal/format`；守卫 4 开张 `scripts/__tests__/unique-homes.test.mjs`，点名表头一批是这五个；顺手修了 B 站开播时刻按服务所在时区读的两处，见 data-model「数字、时间与「不知道」」） |
 | ⑫ | 订阅标签（ADR-0034）；顺手删旧的 `SubscriptionStateSchema` 与 contract 的死字段 `SubscriptionDTO.state` | ✅ 已落（标签表与订阅同住 `config/subscriptions.json` 的 `{ tags, subscriptions }`，`GET` / `PUT /api/subs/tags`（㉚ 起是 `/api/subscriptions/tags`）整张换；迁移修订号 15，名字里的中文逗号不拆（主人定）；备份同进同出、合并先按 id 再按名字；面板一个 `TagEditDialog` 收掉逗号文本框与编辑分组弹框。施工时定的几点写进 ADR-0034 的 🔗） |
 | ⑬ | 特性键改名、直播拆成 `liveStart` / `liveStreaming`（独立的开关、目标、间隔与补报开播）、`PushKind` 的两层意思拆开；以特性键做键的配置一起改键（迁移表「特性键」到「文案」那几行）；守卫 13 前半开（10-02 开片，切成 ⑬a–⑬f，见表下「⑬ 开片」） | ✅ 已落（10-03） |
-| ⑭ | （10-03 开片，切成 ⑭a–⑭c，见表下「⑭ 开片」）抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | 未开工 |
+| ⑭ | （10-03 开片，切成 ⑭a–⑭c，见表下「⑭ 开片」；✅ 10-03 已落）抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | 未开工 |
 | ⑮ | 图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | 未开工 |
 | ⑯ | 抓图核心服务：逐跳查重定向、超时、结果形状、`storeImage`。旧引擎本期由服务端直接调它拿 `ImageRef`，3a 改走 `ctx.fetchImage` | 未开工 |
 | ⑰ | 引用方登记表 + 按引用清扫 + 新图宽限期；守卫：写图库的模块不在登记表里就判红 | 未开工 |
@@ -151,7 +151,7 @@
 - **⑭ 开片（10-03）**：先勘察，再一题一题问主人（定案在 ADR-0025 决策 6 下 10-03 的 🔗），切成三小片依次提交：
   - ⑭a 新包 `packages/http`、B 站搬过去：通用的 `client.fetch` 与 `HttpResponse`、结果形状；B 站那层的薄包保住今天的行为；罐子加 `load()` / `clear()` 与 IP、`Domain` 规则，客户端改成长期有效的同一个；身份的「生成」「只升不降」两个纯函数；出网点名表换路径、B 站替身棘轮删掉搬走的两行。行为不变。✅ 已落（施工时定的几条见 ADR-0025 决策 6 下「⑭a 施工时定」：罐子的换号计数、头序、`send-only`、中止回 `indeterminate`；刷新链补了两处 gen 比对；B 站薄包 `ApiClient` 的 `get` / `postForm` 改名随 3a）
   - ⑭b `websocket()`、B 站弹幕切过去（握手头不变），出网棘轮里 blive 那一条清零。✅ 已落（施工时定的见 ADR-0025 决策 6 下「⑭b 施工时定」；真机待验加一项：切过去以后弹幕照常收）
-  - ⑭c 删自定义 UA：设置 schema、引擎接线、面板那一格、ticket 请求的特例；迁移把 `bilibili.json` 的 `userAgent` 丢掉，抬修订号。
+  - ⑭c 删自定义 UA：设置 schema、引擎接线、面板那一格、ticket 请求的特例；迁移把 `bilibili.json` 的 `userAgent` 丢掉，抬修订号。✅ 已落（修订号 19；`BilibiliAPI` 的 `config` 只剩 UA 一格，随之整个删掉；备份版本不抬：B 站设置那一节不是 strict，带 `userAgent` 的旧备份恢复时这一格被剥掉，有测试钉着；「换一个身份」按钮仍随第 4 期）
   - 真机待验（不在这一片）：弹幕握手要不要补 `sec-ch-ua` / `Origin`。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名；⑲ 图片保留天数的键名；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 

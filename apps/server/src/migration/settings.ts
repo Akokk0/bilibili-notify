@@ -13,9 +13,10 @@
  *
  * 卡片样式那两个退役键(`hideDesc` / `hideFollower`)不用管:schema 不是 strict,读的时候自己剥掉。
  *
- * 设置按集成分文件(ADR-0021 决策 42 下 10-01 的 🔗):`app` 里 B 站的三格搬进 `config/settings/bilibili.json`,
- * 只挪位置、不改键名({@link splitBilibiliSettings});各拓展的 `settings` 搬进 `config/settings/extensions/<id>.json`,
- * 开关留在核心那份({@link splitExtensionSettings})。
+ * 设置按集成分文件(ADR-0021 决策 42 下 10-01 的 🔗):`app` 里 B 站的两格(`dynamicCron` / `healthCheckMinutes`)搬进
+ * `config/settings/bilibili.json`,只挪位置、不改键名;第三格 `userAgent` **丢掉**(浏览器身份一律由 `packages/http` 生成,
+ * UA 与 `sec-ch-ua` 永远配套,ADR-0025 决策 7)({@link splitBilibiliSettings});各拓展的 `settings` 搬进
+ * `config/settings/extensions/<id>.json`,开关留在核心那份({@link splitExtensionSettings})。
  */
 
 import { ExtensionIdSchema } from "@bilibili-notify/internal";
@@ -72,12 +73,16 @@ export async function readZeroLiveFacts(
 	return liveFactsOf(renameGlobalSettingsKeys(migrateGlobals(file.value))) ?? fallback;
 }
 
-/** 核心设置的 `app` 里归 B 站的三格。 */
-const BILIBILI_APP_KEYS = ["userAgent", "dynamicCron", "healthCheckMinutes"] as const;
+/** 核心设置的 `app` 里归 B 站的两格。 */
+const BILIBILI_APP_KEYS = ["dynamicCron", "healthCheckMinutes"] as const;
+
+/** 核心设置的 `app` 里 1.0 不要的 B 站那一格:自定义 UA。从核心那份拿掉,哪儿也不搬。 */
+const DROPPED_APP_KEYS = ["userAgent"] as const;
 
 /**
- * 核心设置的 `app` 里归 B 站的三格拆出来:回拿掉它们的核心那份、和它们本身(一格都没有就是空对象)。值原样不动 ——
- * 一条解析不了的老 cron 也照搬,B 站那份读盘是宽松的。
+ * 核心设置的 `app` 里归 B 站的两格拆出来:回拿掉它们的核心那份、和它们本身(一格都没有就是空对象)。值原样不动 ——
+ * 一条解析不了的老 cron 也照搬,B 站那份读盘是宽松的。`userAgent` 一并从核心那份拿掉、不进 B 站那份:
+ * 它是 0.x 的自定义 UA,1.0 的身份只有一处来源。
  */
 export function splitBilibiliSettings(core: unknown): {
 	core: unknown;
@@ -91,6 +96,7 @@ export function splitBilibiliSettings(core: unknown): {
 		bilibili[key] = app[key];
 		delete app[key];
 	}
+	for (const key of DROPPED_APP_KEYS) delete app[key];
 	return { core: { ...core, app }, bilibili };
 }
 
@@ -122,7 +128,7 @@ export function splitExtensionSettings(core: unknown): {
 }
 
 /**
- * 新代里核心的设置文件迁成最新的形状,B 站的三格与各拓展的设置拆进各自的文件;回改写过的文件(绝对路径)。核心那份
+ * 新代里核心的设置文件迁成最新的形状,B 站的两格与各拓展的设置拆进各自的文件;回改写过的文件(绝对路径)。核心那份
  * 没变就不写 —— 新代里还是搬过来的那个文件;一格 B 站的都没有就不建 B 站那份(配置仓开机时按默认值建)。读不懂的
  * 原样留着,由配置仓开机时报出来。
  */

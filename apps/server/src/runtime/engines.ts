@@ -304,10 +304,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// NOT wait for the first config-changed. Mirrors the change-path apply below.
 	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
 
-	// 启动期把 B 站设置里的 userAgent 推到 BilibiliAPI(auth/index.ts 构造时未填,这里补)。
-	// 改了之后由下方 `watchSettings` 再推一次,变更立即生效。
-	opts.api.setUserAgent(settingsOf(opts.configStore).userAgent);
-
 	// ---------- Sink + push ----------
 	// onDelivery 只负责 target.testStatus 同步 —— sink 拿不到订阅 + feature,
 	// 没法填 history 的订阅 / uid 字段。history 写入挂到 BilibiliPush.onSend
@@ -853,7 +849,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	probeTimer.unref?.();
 
 	// config-changed:globals handler 的「上次已应用的 globals」快照。用来 diff 出本次
-	// 实际改了哪些 section,只热更受影响的子系统 —— 否则改 AI 人设也会重设 UA、重排
+	// 实际改了哪些 section,只热更受影响的子系统 —— 否则改 AI 人设也会重排
 	// 健康检查定时器(无谓扇出 + 日志噪音)。
 	let prevGlobals = initialGlobals;
 
@@ -934,7 +930,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
 				// `app` 里只按日志等级开门:别的格(粉丝轮询 cron、保留天数……)各有各的读法,不在这里热推。
-				// B 站那三格(cron / UA / 健康检查间隔)在 B 站自己的设置里,见下方 `watchSettings`。
+				// B 站那两格(cron / 健康检查间隔)在 B 站自己的设置里,见下方 `watchSettings`。
 				if (!eq(prev.app.logLevel, g.app.logLevel) || !eq(prev.app.logLevels, g.app.logLevels)) {
 					opts.serviceCtx.setLevel(resolveLevel(g, "core"));
 					dynamicCtx.setLevel(resolveLevel(g, "dynamic"));
@@ -1043,12 +1039,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}),
 	);
 
-	// B 站自己的设置(cron / UA / 登录健康检查间隔)按格各开各的门:改个 cron 不该顺手重设 UA(刷一条 info
-	// 日志),更不该把健康检查的 setInterval 销毁重建(相位白白打乱)。
+	// B 站自己的设置(cron / 登录健康检查间隔)按格各开各的门:改个 cron 不该把健康检查的 setInterval
+	// 销毁重建(相位白白打乱)。
 	handles.push(
 		watchSettings(opts.configStore, (prev, next) => {
 			if (prev.dynamicCron !== next.dynamicCron) dynamic.updateConfig(dynamicConfig());
-			if (prev.userAgent !== next.userAgent) opts.api.setUserAgent(next.userAgent);
 			if (prev.healthCheckMinutes !== next.healthCheckMinutes) {
 				// healthCheck → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
 				opts.loginFlow.setHealthCheckMs(next.healthCheckMinutes * 60_000);

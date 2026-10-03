@@ -15,7 +15,7 @@ import { BilibiliAPI } from "../bilibili-api";
 const logger = { info() {}, warn() {}, error() {}, debug() {} };
 
 function makeApi() {
-	return new BilibiliAPI({ serviceCtx: { logger } as never, config: {} as never, callbacks: {} });
+	return new BilibiliAPI({ serviceCtx: { logger } as never, callbacks: {} });
 }
 
 describe("开机不碰 B 站", () => {

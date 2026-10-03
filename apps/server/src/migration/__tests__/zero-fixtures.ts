@@ -365,8 +365,9 @@ export function makeZeroGlobals(): ZeroGlobals {
 }
 
 /**
- * 去掉 `app` 里 B 站那三格(`userAgent` / `dynamicCron` / `healthCheckMinutes`)的 globals:这三格 1.0 搬进了 settings/bilibili.json,
- * 去掉之后 0.x 的设置里就没有它们要搬 —— 要一份「设置迁移器无事可做」的 globals(用例断言新代里还是搬过来的那个文件)就用这个。
+ * 去掉 `app` 里 B 站那三格(`userAgent` / `dynamicCron` / `healthCheckMinutes`)的 globals:后两格 1.0 搬进了 settings/bilibili.json、
+ * `userAgent` 被迁移丢掉,去掉之后 0.x 的设置里就没有它们要处理 —— 要一份「设置迁移器无事可做」的 globals(用例断言新代里
+ * 还是搬过来的那个文件)就用这个。
  */
 export function withoutZeroBilibiliApp(globals: ZeroGlobals): ZeroGlobals {
 	const { userAgent: _u, dynamicCron: _c, healthCheckMinutes: _h, ...app } = globals.app;

@@ -9,7 +9,7 @@
  * 这页曾靠一份手抄的块清单挑块,链接解析那张卡就漏过一次 —— 表现为「点了保存,草稿岛又弹
  * 出来」(服务端根本没收到,原样返回,diff 还在)。清单要人记得加,尺子不用。
  *
- * 清空的可选字段(master.targetId / bilibili.userAgent / 各模块 logLevels)由 buildPatch 与基线
+ * 清空的可选字段(master.targetId / 各模块 logLevels)由 buildPatch 与基线
  * 一比自动变成显式 `null`,不用逐个手写 `?? null`。
  */
 

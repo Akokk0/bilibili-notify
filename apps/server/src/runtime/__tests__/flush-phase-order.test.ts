@@ -57,7 +57,7 @@ describe("createAppRuntime 的 flush 段", () => {
 		).rejects.toMatchObject(CLOSED);
 		// 各集成的设置(B 站的 `bilibili.json`)与核心设置同一个写道:关门时一并关。
 		await expect(
-			runtime.configStore.patchSettings({ integrations: { bilibili: { userAgent: "UA/x" } } }),
+			runtime.configStore.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 45 } } }),
 		).rejects.toMatchObject(CLOSED);
 		await expect(
 			runtime.historyStore.record({

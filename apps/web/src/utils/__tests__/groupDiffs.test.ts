@@ -16,19 +16,19 @@ describe("sectionOf", () => {
 		expect(sectionOf("app.logLevel")).toBe("logging");
 	});
 
-	// B 站的三格住在它自己的设置里(`bilibili` 块),不在核心的 `app` 下 —— 字典的 code 跟着搬了家。
-	it("B 站设置的三格 → 都认得,归「通用」", () => {
-		for (const code of [
-			"bilibili.dynamicCron",
-			"bilibili.userAgent",
-			"bilibili.healthCheckMinutes",
-		]) {
+	// B 站的两格住在它自己的设置里(`bilibili` 块),不在核心的 `app` 下 —— 字典的 code 跟着搬了家。
+	it("B 站设置的两格 → 都认得,归「通用」", () => {
+		for (const code of ["bilibili.dynamicCron", "bilibili.healthCheckMinutes"]) {
 			expect(sectionOf(code), code).toBe("general");
 		}
 	});
 
 	it("未知 code → other", () => {
 		expect(sectionOf("__nope__")).toBe("other");
+	});
+
+	it("已删的 bilibili.userAgent 不在字典里(自定义 UA 没了,灵动岛上不该再有它的行)", () => {
+		expect(sectionOf("bilibili.userAgent")).toBe("other");
 	});
 });
 

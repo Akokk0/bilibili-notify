@@ -15,6 +15,8 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { buildBackup } from "../../backup/envelope.js";
+import { createBackupService } from "../../backup/service.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import {
 	CONFIG_DIR,
@@ -47,14 +49,26 @@ function parsed(over: Partial<BilibiliSettings>): BilibiliSettings {
 // ---------------------------------------------------------------------------
 
 describe("B 站设置 — 格式", () => {
-	it("全空 → 取默认值;userAgent 不填就没有这个键", () => {
-		const defaults = BilibiliSettingsSchema.parse({});
-
-		expect(defaults).toEqual({
+	it("全空 → 取默认值", () => {
+		expect(BilibiliSettingsSchema.parse({})).toEqual({
 			dynamicCron: DEFAULT_DYNAMIC_CRON,
 			healthCheckMinutes: DEFAULT_HEALTH_CHECK_MINUTES,
 		});
-		expect(defaults).not.toHaveProperty("userAgent");
+	});
+
+	// 自定义 UA 从格式里删了(浏览器身份一律由 packages/http 生成,ADR-0025 决策 7)。格式不是 strict:老值读进来
+	// 不拒收、静默剥掉 —— 盘上留着一份老 bilibili.json、或备份里带着这一格,都不该让开机 / 恢复失败。
+	it("userAgent 不是格:带了不拒收,解析出来没有它,别的格不受影响", () => {
+		const parsedWithStale = BilibiliSettingsSchema.parse({
+			userAgent: "UA/1.0",
+			healthCheckMinutes: 45,
+		});
+
+		expect(parsedWithStale).toEqual({
+			dynamicCron: DEFAULT_DYNAMIC_CRON,
+			healthCheckMinutes: 45,
+		});
+		expect(parsedWithStale).not.toHaveProperty("userAgent");
 	});
 
 	it("读盘对 cron 宽松:一条解析不了的存量值照读,不抛(能不能解析归写入那一道管)", () => {
@@ -173,20 +187,17 @@ describe("B 站设置 — 经配置仓", () => {
 		expect(settingsOf(store).dynamicCron).toBe("not a cron expr");
 	});
 
-	it("盘上留着一条解析不了的老 cron:改别的格照常存 —— 坏值不挡主人改 UA、改健康检查间隔", async () => {
+	it("盘上留着一条解析不了的老 cron:改别的格照常存 —— 坏值不挡主人改健康检查间隔", async () => {
 		await mkdir(join(dataDir, ...CONFIG_DIR, "settings"), { recursive: true });
 		await writeFile(file(), JSON.stringify({ dynamicCron: "not a cron expr" }), "utf8");
 		const store = build();
 		await store.load();
 
-		await store.patchSettings({
-			integrations: { bilibili: { healthCheckMinutes: 45, userAgent: "UA/2" } },
-		});
+		await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 45 } } });
 
 		expect(settingsOf(store)).toEqual({
 			dynamicCron: "not a cron expr",
 			healthCheckMinutes: 45,
-			userAgent: "UA/2",
 		});
 		await expect(
 			store.patchSettings({ integrations: { bilibili: { dynamicCron: "still not" } } }),
@@ -218,6 +229,87 @@ describe("B 站设置 — 经配置仓", () => {
 
 		expect(settingsOf(store).dynamicCron).toBe("*/5 * * * *");
 		expect(JSON.parse(await readFile(file(), "utf8")).dynamicCron).toBe("*/5 * * * *");
+	});
+
+	describe("自定义 UA 已删:`userAgent` 不是这份设置的格", () => {
+		it("PATCH 带 bilibili.userAgent:不拒收(格式不是 strict),别的格照存;这一格既不落盘也读不到", async () => {
+			const store = build();
+			await store.load();
+
+			const snapshot = await store.patchSettings({
+				integrations: { bilibili: { userAgent: "UA/2", healthCheckMinutes: 45 } },
+			});
+
+			expect(snapshot.integrations.bilibili).toEqual({
+				dynamicCron: DEFAULT_DYNAMIC_CRON,
+				healthCheckMinutes: 45,
+			});
+			expect(settingsOf(store)).not.toHaveProperty("userAgent");
+			expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({
+				dynamicCron: DEFAULT_DYNAMIC_CRON,
+				healthCheckMinutes: 45,
+			});
+		});
+
+		it("PATCH 只带 bilibili.userAgent:当没改 —— 盘上这份设置不变,watchSettings 不叫", async () => {
+			const store = build();
+			await store.load();
+			const apply = vi.fn();
+			watchSettings(store, apply);
+			const before = await readFile(file(), "utf8");
+
+			await store.patchSettings({ integrations: { bilibili: { userAgent: "UA/2" } } });
+
+			expect(await readFile(file(), "utf8")).toBe(before);
+			expect(apply).not.toHaveBeenCalled();
+		});
+
+		it("盘上留着一份带 userAgent 的老 bilibili.json:开机照常、读不到这一格;下次写入时落盘的那份也没有它", async () => {
+			await mkdir(join(dataDir, ...CONFIG_DIR, "settings"), { recursive: true });
+			await writeFile(
+				file(),
+				JSON.stringify({ userAgent: "UA/old", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 }),
+				"utf8",
+			);
+			const store = build();
+			await store.load();
+
+			expect(settingsOf(store)).toEqual({ dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 });
+
+			await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 60 } } });
+
+			expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({
+				dynamicCron: "*/5 * * * *",
+				healthCheckMinutes: 60,
+			});
+		});
+	});
+
+	// 备份的格式版本没抬:自定义 UA 删之前导出的备份,B 站那一节里多一格 userAgent,照常恢复。接的是**真仓**
+	// (备份服务的替身仓不过格式,这条在那边是空绿):整份换进去时按登记的格式解析,剥掉这一格再落盘。
+	it("恢复一份带 userAgent 的备份:照常恢复(不拒收),别的格进了盘,盘上与读出来都没有 userAgent", async () => {
+		const store = build();
+		await store.load();
+		const service = createBackupService({
+			configStore: store,
+			cookieStore: { load: async () => null, save: async () => {} },
+		});
+		const envelope = buildBackup({
+			kind: "sanitized",
+			createdAt: "2026-10-03T00:00:00.000Z",
+			sections: {
+				integrations: {
+					bilibili: { userAgent: "UA/old", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 },
+				},
+			},
+		});
+
+		const result = await service.importBackup({ envelope, mode: "overwrite" });
+
+		expect(result.globalsApplied).toBe(true);
+		const restored = { dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 };
+		expect(settingsOf(store)).toEqual(restored);
+		expect(JSON.parse(await readFile(file(), "utf8"))).toEqual(restored);
 	});
 
 	it("仓里登记的键就是 bilibili,文件就是 config/settings/bilibili.json", async () => {
@@ -280,14 +372,11 @@ describe("watchSettings", () => {
 		const apply = vi.fn();
 		watchSettings(f.store, apply);
 
-		f.set(parsed({ dynamicCron: "*/9 * * * *", userAgent: "UA/1" }));
+		f.set(parsed({ dynamicCron: "*/9 * * * *" }));
 		f.fire("integration-settings");
 
 		expect(apply).toHaveBeenCalledTimes(1);
-		expect(apply).toHaveBeenCalledWith(
-			parsed({}),
-			parsed({ dynamicCron: "*/9 * * * *", userAgent: "UA/1" }),
-		);
+		expect(apply).toHaveBeenCalledWith(parsed({}), parsed({ dynamicCron: "*/9 * * * *" }));
 	});
 
 	it("事件来了但设置没变(比如别的集成改了)→ 不叫", () => {

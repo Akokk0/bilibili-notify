@@ -29,9 +29,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("api.patch wire format", () => {
 	it("rewrites a cleared optional field to the null clear-sentinel", async () => {
-		await api.patch("/api/settings", { app: { userAgent: undefined } });
+		await api.patch("/api/settings", { master: { targetId: undefined } });
 
-		expect(sentBody()).toEqual({ app: { userAgent: null } });
+		expect(sentBody()).toEqual({ master: { targetId: null } });
 	});
 
 	it("reaches arbitrarily deep — a cleared glassOpacity survives as null", async () => {

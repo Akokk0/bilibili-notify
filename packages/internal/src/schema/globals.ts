@@ -92,7 +92,7 @@ export const DEFAULT_HEALTH_CHECK_MINUTES = 30;
 export const AppConfigSchema = z.object({
 	logLevel: LogLevelSchema.default("info"),
 	logLevels: ModuleLogLevelsSchema,
-	// B 站那三格(`userAgent` / `dynamicCron` / `healthCheckMinutes`)在 B 站自己的设置文件里
+	// B 站那两格(`dynamicCron` / `healthCheckMinutes`)在 B 站自己的设置文件里
 	// (`apps/server/src/bilibili/settings.ts`,ADR-0021 决策 42 下 10-01 的 🔗)。
 	/** 粉丝数轮询 cron(独立端 FansPoller);从动态轮询的 cron 解耦,默认更慢降风控。 */
 	fansCron: z.string().default(DEFAULT_FANS_CRON),

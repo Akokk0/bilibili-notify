@@ -3,7 +3,8 @@
  *
  * 观察点是**线上真正发出去的头**:`api.client` 就是 BilibiliAPI 自己持的那个客户端,拿它往回环
  * server 打一个请求,头里有什么就是 B 站会看到的东西(B 站的默认头、生成身份的 UA 与 sec-ch-ua
- * 三件、自定义 UA 的覆盖)。
+ * 三件)。UA 只来自身份:没有自定义 UA 这个设置、也没有改 UA 的口子(ADR-0025 决策 7)——
+ * 填了自定义 UA 而 sec-ch-ua 仍是生成的 Chrome 身份,拼出来是一个自相矛盾的指纹。
  *
  * 客户端与 cookie 罐是**长期有效的同一个**:登出再登录(loadCookies / clearCookies)原地换罐子
  * 内容,不重建客户端 —— 在途的请求不会因为换号而拿着旧罐子继续跑。
@@ -11,7 +12,7 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ApiClient } from "../api-client";
 import { BilibiliAPI } from "../bilibili-api";
 
@@ -35,24 +36,29 @@ afterEach(async () => {
 	await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function makeApi(userAgent?: string) {
+function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const api = new BilibiliAPI({
 		serviceCtx: { logger } as never,
-		config: { userAgent },
 		callbacks: {},
 	});
 	const client = (api as unknown as { client: ApiClient }).client;
 	return { api, client };
 }
 
+/** 本实例的生成身份(私有字段;线上所有 UA 的唯一来源)。 */
+const identityOf = (api: BilibiliAPI) =>
+	(api as unknown as { browserIdentity: { userAgent: string; secChUa: string } }).browserIdentity;
+
 const major = (ua: string | undefined) => /Chrome\/(\d+)\./.exec(ua ?? "")?.[1];
 
 describe("BilibiliAPI — 浏览器身份接线", () => {
-	it("未配置 UA → 线上是生成身份:UA 与 sec-ch-ua 版本自洽,B 站默认头都在", async () => {
-		const { client } = makeApi();
+	it("线上是生成身份:UA 与 sec-ch-ua 版本自洽,B 站默认头都在", async () => {
+		const { api, client } = makeApi();
 		await client.get(`${baseURL}/x`);
 		const ua = lastHeaders["user-agent"] as string;
+		expect(ua).toBe(identityOf(api).userAgent);
+		expect(lastHeaders["sec-ch-ua"]).toBe(identityOf(api).secChUa);
 		expect(major(ua)).toBeDefined();
 		expect(lastHeaders["sec-ch-ua"]).toContain(`"Google Chrome";v="${major(ua)}"`);
 		expect(lastHeaders["sec-ch-ua-mobile"]).toBe("?0");
@@ -74,26 +80,72 @@ describe("BilibiliAPI — 浏览器身份接线", () => {
 		await api.clearCookies();
 		await client.get(`${baseURL}/x`);
 		expect(lastHeaders["user-agent"]).toBe(ua);
-		expect(api.getUserAgent()).toBe(ua);
+		expect(ua).toBe(identityOf(api).userAgent);
 	});
 
-	it("配置了自定义 UA → 自定义值优先生效,sec-ch-ua 仍是生成身份(现有开关语义不变)", async () => {
-		const { client } = makeApi("my-custom-ua/9.9");
-		await client.get(`${baseURL}/x`);
-		expect(lastHeaders["user-agent"]).toBe("my-custom-ua/9.9");
-		expect(lastHeaders["sec-ch-ua"]).toContain('"Google Chrome"');
+	// 自定义 UA 删了:这两个口子是它仅有的入口(设置里填的值经它们改 UA)。口子还在,谁都能再把 UA 和身份拆开。
+	it("没有改 UA 的口子:BilibiliAPI 上没有 setUserAgent / getUserAgent", () => {
+		const { api } = makeApi();
+
+		expect("setUserAgent" in api).toBe(false);
+		expect("getUserAgent" in api).toBe(false);
+	});
+});
+
+describe("BilibiliAPI — 每一条出站请求的 UA 都是身份的那一个", () => {
+	const update = (api: BilibiliAPI) =>
+		(api as unknown as { updateBiliTicket(): Promise<void> }).updateBiliTicket();
+
+	it("取 ticket 的 POST 没有自己的 UA 特例:不带逐请求的 UA 覆盖,走客户端默认头(身份的)", async () => {
+		const { api } = makeApi();
+		const seen: Array<Record<string, string> | undefined> = [];
+		(api as unknown as { client: { postForm: unknown } }).client.postForm = async (
+			_url: string,
+			_body: unknown,
+			opts?: { headers?: Record<string, string> },
+		) => {
+			seen.push(opts?.headers);
+			return { code: 0, data: { nav: { img: "https://x/a.png", sub: "https://x/b.png" } } };
+		};
+
+		await update(api);
+
+		expect(seen).toHaveLength(1);
+		expect(Object.keys(seen[0] ?? {}).map((name) => name.toLowerCase())).not.toContain(
+			"user-agent",
+		);
 	});
 
-	it("setUserAgent 热换:后续请求生效;清空 → 回到本实例的生成身份,而非冻结常量", async () => {
+	// ticket 的地址是写死的 B 站域名,回环 server 接不到它 —— 在全局 fetch 这一层看真正交出去的头。
+	it("取 ticket 的 POST 与普通 GET 发出去的 UA 一模一样,都是身份的", async () => {
 		const { api, client } = makeApi();
-		const generated = api.getUserAgent();
-		api.setUserAgent("  hot-swapped/2.0  ");
-		await client.get(`${baseURL}/x`);
-		expect(lastHeaders["user-agent"]).toBe("hot-swapped/2.0");
-		api.setUserAgent(undefined);
-		await client.get(`${baseURL}/x`);
-		expect(lastHeaders["user-agent"]).toBe(generated);
-		expect(generated).toMatch(/Chrome\/\d+\.0\.0\.0/);
+		const sent: Array<{ url: string; ua: string | null }> = [];
+		const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+			sent.push({
+				url: String(input),
+				ua: new Headers(init?.headers).get("user-agent"),
+			});
+			return new Response(
+				JSON.stringify({
+					code: 0,
+					data: { nav: { img: "https://x/a.png", sub: "https://x/b.png" } },
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		});
+		try {
+			await client.get("https://example.test/x");
+			await update(api);
+		} finally {
+			spy.mockRestore();
+		}
+
+		expect(sent).toHaveLength(2);
+		expect(sent[1]?.url).toContain("GenWebTicket");
+		expect(sent.map((request) => request.ua)).toEqual([
+			identityOf(api).userAgent,
+			identityOf(api).userAgent,
+		]);
 	});
 });
 

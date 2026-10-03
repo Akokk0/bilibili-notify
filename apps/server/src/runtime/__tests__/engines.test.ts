@@ -8,9 +8,9 @@
  *
  *   boot:           push.start / dynamic.start 拉起;默认 globals 下 AI / image 不构造
  *   config-changed globals:  dynamic+live.updateConfig、setLevel、push.setMaster 一并热推
- *   config-changed integration-settings: B 站自己的设置(cron / UA / 健康检查间隔)按格各开各的门 ——
+ *   config-changed integration-settings: B 站自己的设置(cron / 健康检查间隔)按格各开各的门 ——
  *                            dynamic.updateConfig(新 dynamicCron 透传进 DynamicEngineConfig)、
- *                            api.setUserAgent、loginFlow.setHealthCheckMs;没变的格不动
+ *                            loginFlow.setHealthCheckMs;没变的格不动
  *   config-changed targets:  仅 push.setMaster 后早退(不触发 dynamic.updateConfig)
  *   config-changed 其它 scope:no-op
  *   AI 启 / 停 / 改:           lazy 构造 + 失效降级 + 已存在时 updateConfig
@@ -369,7 +369,6 @@ interface Ctx {
 	serviceCtx: ReturnType<typeof makeServiceCtx>;
 	configStore: ReturnType<typeof makeConfigStore>;
 	api: {
-		setUserAgent: ReturnType<typeof vi.fn>;
 		getRelations: ReturnType<typeof vi.fn>;
 		follow?: ReturnType<typeof vi.fn>;
 	};
@@ -420,7 +419,6 @@ function setup(opts?: {
 	if (opts?.connections) configStore._setConnections(opts.connections);
 	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
 	const api = {
-		setUserAgent: vi.fn(),
 		getRelations: vi.fn(async (uids: string[]) => ({
 			code: 0,
 			data: Object.fromEntries(uids.map((uid) => [uid, { attribute: 2 }])),
@@ -737,8 +735,6 @@ describe("createEngines — boot wiring", () => {
 		// 默认 globals 无 apiKey/baseUrl / 无 puppeteer。
 		expect(H.ai).toHaveLength(0);
 		expect(H.image).toHaveLength(0);
-		// 启动期把 userAgent 推到 BilibiliAPI 一次。
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 		// boot 时 base logger(core 桶)立即对齐 logLevels.core ?? app.logLevel
 		// (默认 globals 无 core override → "info";不等首次 dashboard 保存)。
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
@@ -908,15 +904,14 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(H.push[0].setMaster).not.toHaveBeenCalled();
 		// B 站设置不在 liveConfig() 的输入内 → live.updateConfig 不应触发(item 4:不扇出)。
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-		// UA / 日志等级这次都没动 → 不该被顺手重设(boot 那 1 次之外不再有)。
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
+		// 日志等级这次没动 → 不该被顺手重设(boot 那 1 次之外不再有)。
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
 	});
 
-	// `app` 曾是一道粗门:只要 section 里任一字段变,门内 setLevel×5 + setUserAgent +
-	// setHealthCheckMs 就无差别全做一遍。于是改个 cron 会顺手重设 UA(刷一条 info)、
-	// 并把登录健康检查的 setInterval **销毁重建**(相位被白白打乱)。下面三条按字段钉死。
-	it("只改 dynamicCron:不重设 UA、不重排健康检查、不动日志等级", () => {
+	// `app` 曾是一道粗门:只要 section 里任一字段变,门内 setLevel×5 + setHealthCheckMs 等
+	// 就无差别全做一遍。于是改个 cron 会顺手把登录健康检查的 setInterval **销毁重建**
+	// (相位被白白打乱)。下面几条按字段钉死。
+	it("只改 dynamicCron:不重排健康检查、不动日志等级", () => {
 		const c = setup();
 		active = c;
 		patchBilibili(c, (b) => {
@@ -926,7 +921,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
 		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 本身要生效
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:185)
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:181)
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled(); // boot 不调,这次也不该调
 	});
@@ -948,20 +942,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(cfg.imageGroup).toEqual(c.configStore.getGlobals().defaults.imageGroup);
 	});
 
-	it("只改 userAgent:重设 UA,不重排健康检查", () => {
-		const c = setup();
-		active = c;
-		patchBilibili(c, (b) => {
-			b.userAgent = "Mozilla/5.0 (custom)";
-		});
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(2);
-		expect(c.api.setUserAgent).toHaveBeenLastCalledWith("Mozilla/5.0 (custom)");
-		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
-	});
-
-	it("只改 logLevel:热推 5 个子系统的 setLevel,不重设 UA", () => {
+	it("只改 logLevel:热推 5 个子系统的 setLevel", () => {
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
@@ -970,7 +951,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2);
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
 
 	it("配了 AI 时,只改 dynamicCron 不该热重载 commentary", () => {
@@ -1088,7 +1068,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveCfg.customGuardBuy).toEqual(guardBuy);
 	});
 
-	it("item 4 — 改 defaults.ai 不扇出重设 UA / level / healthCheck", () => {
+	it("item 4 — 改 defaults.ai 不扇出重设 level / healthCheck", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		patchGlobals(c, (g) => {
@@ -1096,7 +1076,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		// boot 各 1 次;改 AI 人设不应再扇出到 app section。
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 		// AI 本身仍热更。
@@ -1189,8 +1168,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 		expect(H.live[0].applyOps).not.toHaveBeenCalled();
-		// 仅 boot 推过一次。
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
 
 	it("targets scope:仅 push.setMaster,早退不触发 dynamic.updateConfig", () => {
@@ -1213,19 +1190,18 @@ describe("createEngines — config-changed globals 热重载", () => {
 });
 
 // B 站自己的设置(`config/settings/bilibili.json`)走 `integration-settings` 这一档,与核心设置的 `globals`
-// 各管各的:这一档只认 B 站那三格,没变的格不动;核心设置变了(日志等级之类)也不波及 B 站那三样。
+// 各管各的:这一档只认 B 站那两格,没变的格不动;核心设置变了(日志等级之类)也不波及 B 站那两样。
 describe("createEngines — config-changed integration-settings(B 站设置)", () => {
-	it("事件来了但 B 站设置没变(别的集成改了):不 updateConfig、不重设 UA、不重排健康检查", () => {
+	it("事件来了但 B 站设置没变(别的集成改了):不 updateConfig、不重排健康检查", () => {
 		const c = setup();
 		active = c;
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 	});
 
-	it("只改 healthCheckMinutes:按新间隔重排健康检查,不动 cron、不重设 UA", () => {
+	it("只改 healthCheckMinutes:按新间隔重排健康检查,不动 cron", () => {
 		const c = setup();
 		active = c;
 		patchBilibili(c, (b) => {
@@ -1236,10 +1212,9 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(90 * 60_000);
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
 	});
 
-	it("只改核心设置的 logLevel:B 站那三样(cron / UA / 健康检查)一个都不动", () => {
+	it("只改核心设置的 logLevel:B 站那两样(cron / 健康检查)一个都不动", () => {
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
@@ -1249,15 +1224,7 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2); // 这一发确实被处理了(boot + 这次)
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
-	});
-
-	it("启动期:userAgent 取自 B 站设置", () => {
-		const c = setup({ bilibili: { userAgent: "Mozilla/5.0 (boot)" } });
-		active = c;
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
-		expect(c.api.setUserAgent).toHaveBeenCalledWith("Mozilla/5.0 (boot)");
 	});
 
 	it("启动期:DynamicEngine 的初始 config 带 B 站设置的 dynamicCron", () => {
@@ -1321,8 +1288,6 @@ describe("createEngines — image 配色热更", () => {
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.image[0].updateConfig).toHaveBeenCalled();
-		// cardStyle 变更不在 app section → 不扇出重设 UA(仅 boot 1 次)。
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1);
 	});
 
 	/**
@@ -1396,12 +1361,10 @@ describe("createEngines — dispose", () => {
 		patchBilibili(c, (b) => {
 			b.dynamicCron = "*/9 * * * *";
 			b.healthCheckMinutes = 45;
-			b.userAgent = "Mozilla/5.0 (after dispose)";
 		});
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 		expect(dyn.updateConfig).not.toHaveBeenCalled();
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
-		expect(c.api.setUserAgent).toHaveBeenCalledTimes(1); // 仅 boot
 	});
 
 	it("P2-I:dispose 幂等 — 二次调用(index.ts 显式 + onDispose 双路径)不重复 stop", () => {

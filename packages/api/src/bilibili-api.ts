@@ -82,25 +82,21 @@ export class RiskControlError extends Error {
 	}
 }
 
-export interface BilibiliAPIConfig {
-	userAgent?: string;
-}
-
 export interface BilibiliAPIOptions {
 	serviceCtx: ServiceContext;
-	config: BilibiliAPIConfig;
 	callbacks?: BilibiliAPICallbacks;
 }
 
 export class BilibiliAPI {
 	readonly logger: Logger;
 	private readonly serviceCtx: ServiceContext;
-	private config: BilibiliAPIConfig;
 	private readonly callbacks: BilibiliAPICallbacks;
 
 	/**
 	 * 本实例的浏览器身份(UA + sec-ch-ua 全家,版本互相咬合)。启动时生成一次、终身不变 ——
 	 * 同一 cookie 会话在不同 UA 间跳变是机器人特征,身份漂移比版本旧更招风控。
+	 * **出站请求的 UA 只来自它**:HTTP 默认头、取 ticket、弹幕握手都读这一份,没有任何改 UA 的口子
+	 * (填了别的 UA 而 sec-ch-ua 仍是它的,拼出来是自相矛盾的指纹,ADR-0025 决策 7)。
 	 */
 	private readonly browserIdentity = generateBrowserIdentity();
 	/**
@@ -142,7 +138,6 @@ export class BilibiliAPI {
 
 	constructor(opts: BilibiliAPIOptions) {
 		this.serviceCtx = opts.serviceCtx;
-		this.config = opts.config;
 		this.callbacks = opts.callbacks ?? {};
 		this.logger = opts.serviceCtx.logger;
 		this.client = this.createClient();
@@ -179,33 +174,12 @@ export class BilibiliAPI {
 	}
 
 	/**
-	 * 热替换 User-Agent。adapter 在 dashboard 编辑 B 站设置的 `userAgent` 后调用,
-	 * 直接改客户端默认头,后续请求生效;已 in-flight 的请求仍走旧 UA。
-	 * `undefined` / 空串 → 回退到内置默认 Firefox UA。
-	 */
-	setUserAgent(userAgent: string | undefined): void {
-		this.config = { ...this.config, userAgent };
-		const ua = this.getUserAgent();
-		this.client.setHeader("User-Agent", ua);
-		this.logger.info(`[init] User-Agent 已更新: ${ua}`);
-	}
-
-	/**
-	 * 当前生效的 User-Agent(用户配置 trim 后优先,空/纯空白回退内置)。
-	 * HTTP 默认头与弹幕 WSS 建连都从这里取 —— 判定必须单点收口,分叉会让
-	 * 一个进程发两套指纹。
-	 */
-	getUserAgent(): string {
-		return this.config.userAgent?.trim() || this.browserIdentity.userAgent;
-	}
-
-	/**
 	 * 弹幕服的建连口(blive 的 `createSocket` 接的就是它):经长期有效的那个客户端建连,握手头由
-	 * 客户端按身份与 cookie 罐装配 —— `Cookie`(这个地址该带的)在前、`User-Agent` 在后,不带
-	 * `sec-ch-ua` / `Origin`。UA 每次建连现取 {@link getUserAgent},自定义 UA 与热换照旧生效。
+	 * 客户端按身份与 cookie 罐装配 —— `Cookie`(这个地址该带的)在前、`User-Agent`(身份的)在后,不带
+	 * `sec-ch-ua` / `Origin`。这里不再另给头:握手的 UA 与同进程的 HTTP 请求是同一份身份。
 	 */
 	openDanmakuSocket(url: string): WebSocketLike {
-		return this.client.websocket(url, { headers: { "User-Agent": this.getUserAgent() } });
+		return this.client.websocket(url);
 	}
 
 	// ---- Initialization ----
@@ -222,14 +196,13 @@ export class BilibiliAPI {
 				timeoutMs: 20_000,
 				// B 站特有的默认头;通用包不带任何平台的默认值。
 				// UA 与 sec-ch-ua 三件取自同一份生成身份,版本互相咬合(旧默认是 Firefox UA
-				// 配 Chrome sec-ch-ua 的拼接怪);用户配置的 userAgent 仍优先,判定统一走
-				// getUserAgent(与 WSS 同指纹)。**身份的头在这里按老位置写全**:HttpClient 对
+				// 配 Chrome sec-ch-ua 的拼接怪)。**身份的头在这里按老位置写全**:HttpClient 对
 				// 没写的才补、补在最后,写在这里线上头序与改造前逐字节一致(头序也是指纹的一部分,
 				// bilibili-wire-headers.test.ts 钉着)。
 				headers: {
 					// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
 					Accept: "application/json, text/plain, */*",
-					"User-Agent": this.getUserAgent(),
+					"User-Agent": this.browserIdentity.userAgent,
 					Origin: "https://www.bilibili.com",
 					Referer: "https://www.bilibili.com/",
 					priority: "u=1, i",
@@ -243,7 +216,6 @@ export class BilibiliAPI {
 					// 表单 POST 又逐请求覆盖,旧线上流量从未真正发过 application/json。
 				},
 			}),
-			// setUserAgent 热换的 UA 叠在上面(自定义 UA 这一片照旧能用,⑭c 删它)。
 			onBody: (body) => {
 				const data = body as { code?: unknown } | undefined;
 				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
@@ -624,13 +596,7 @@ export class BilibiliAPI {
 
 	private async getBiliTicket(csrf?: string): Promise<BiliTicket> {
 		const params = buildTicketParams(csrf);
-		const resp = await this.client.postForm(
-			`${EP.BILI_TICKET_URL}?${params.toString()}`,
-			{},
-			// 历史行为:ticket 请求固定用默认 UA(不随用户自定义 UA);现固定用
-			// 本实例生成身份的 UA,语义等价。
-			{ headers: { "User-Agent": this.browserIdentity.userAgent } },
-		);
+		const resp = await this.client.postForm(`${EP.BILI_TICKET_URL}?${params.toString()}`, {});
 		return resp as BiliTicket;
 	}
 

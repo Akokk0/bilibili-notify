@@ -117,7 +117,7 @@ describe("planImport", () => {
  */
 describe("planImport / foldPlan × 各集成的设置", () => {
 	const integrations = {
-		bilibili: { dynamicCron: "0 */5 * * * *", userAgent: "UA/1", healthCheckMinutes: 45 },
+		bilibili: { dynamicCron: "0 */5 * * * *", healthCheckMinutes: 45 },
 	};
 
 	it("overwrite:备份带着 integrations → 计划里整份换,折出来的终态也带着", () => {

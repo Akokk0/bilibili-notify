@@ -1,4 +1,3 @@
-export type { BilibiliAPIConfig } from "./bilibili-api";
 export { BilibiliAPI, RiskControlError } from "./bilibili-api";
 export type { FollowOutcome } from "./follow";
 export { ensureFollowed, FOLLOW_SUCCESS_CODES } from "./follow";

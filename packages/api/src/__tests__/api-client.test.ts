@@ -7,7 +7,7 @@
  *  4. **只取第一跳 Location**(b23.tv 短链),且不摄入那一跳的 Set-Cookie;
  *  5. 重定向跟满(5 跳)还在跳 → 抛「重定向超过 5 跳」;
  *  6. 失败结果(超时、连不上)转成抛错,进外层 retry;
- *  7. 热换头(自定义 UA)叠在默认头之上,单次请求头最后赢。
+ *  7. 单次请求头盖过 HttpClient 的默认头(同名只留一份)。
  */
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -84,17 +84,15 @@ function makeClient(
 	opts: {
 		timeoutMs?: number;
 		onBody?: (b: unknown) => void;
-		headers?: Record<string, string>;
 	} = {},
 ) {
 	return new ApiClient({
 		http: new HttpClient({
 			jar,
 			identity: generateBrowserIdentity(),
-			headers: { Origin: "https://www.bilibili.com" },
+			headers: { "User-Agent": "test-ua/1.0", Origin: "https://www.bilibili.com" },
 			timeoutMs: opts.timeoutMs ?? 5_000,
 		}),
-		headers: { "User-Agent": "test-ua/1.0", ...opts.headers },
 		onBody: opts.onBody,
 	});
 }
@@ -202,15 +200,11 @@ describe("ApiClient — onBody(-101 拦截器挂点)", () => {
 });
 
 describe("ApiClient — 请求头", () => {
-	it("叠在 HttpClient 默认头之上,setHeader 热替换 UA,单次请求头最后赢", async () => {
+	it("HttpClient 的默认头照常外发,单次请求头最后赢", async () => {
 		const client = makeClient();
 		await client.get(`${baseURL}/echo`);
 		expect(lastReq.headers?.["user-agent"]).toBe("test-ua/1.0");
 		expect(lastReq.headers?.origin).toBe("https://www.bilibili.com");
-
-		client.setHeader("user-agent", "swapped-ua/2.0");
-		await client.get(`${baseURL}/echo`);
-		expect(lastReq.headers?.["user-agent"]).toBe("swapped-ua/2.0");
 
 		await client.get(`${baseURL}/echo`, { headers: { "User-Agent": "per-request/3.0" } });
 		expect(lastReq.headers?.["user-agent"]).toBe("per-request/3.0");

@@ -191,11 +191,10 @@ function SystemSettingsSection({
 	onPatch: (delta: GlobalsPatch) => void;
 }) {
 	const app = draft.app;
-	// B 站的三格在它自己的设置里,挂在 `/api/settings` 的 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
+	// B 站的两格在它自己的设置里,挂在 `/api/settings` 的 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
 	// 第 4 期起这一节按集成的描述画,这里的形状随之删。
 	const source = draft.bilibili as {
 		dynamicCron: string;
-		userAgent?: string;
 		healthCheckMinutes: number;
 	};
 
@@ -254,15 +253,6 @@ function SystemSettingsSection({
 						);
 					})}
 				</div>
-			</Field>
-
-			<Field code="bilibili.userAgent" full>
-				<TInput
-					value={source.userAgent ?? ""}
-					onChange={(v) => setSource("userAgent", v || undefined)}
-					placeholder="留空 = 默认"
-					mono
-				/>
 			</Field>
 
 			<Field code="bilibili.healthCheckMinutes">

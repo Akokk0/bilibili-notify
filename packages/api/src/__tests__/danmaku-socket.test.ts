@@ -1,13 +1,13 @@
 /**
  * 弹幕连接的建连口 `BilibiliAPI.openDanmakuSocket`:blive 的 `createSocket` 接的就是它,
- * 握手头由长期有效的那个客户端(身份 + cookie 罐)装配,B 站这层只补自定义 UA。
+ * 握手头由长期有效的那个客户端(身份 + cookie 罐)装配,B 站这层不另给头。
  *
  * 用回环的 ws 服务端收握手,看的是 `rawHeaders`(原大小写、原顺序)—— 头序是指纹的一部分。
  * 钉住:
  *  - `Cookie` 在 `User-Agent` 前(与切到 packages/http 之前 blive 自己拼的一致),
  *    cookie 是罐子按这个地址筛出来的,不是整罐倒出;
  *  - 不带 `sec-ch-ua*` / `Origin` / `Referer`,也不带 fetch 那套默认头(B 站那层交给 HttpClient 的);
- *  - 自定义 UA 照旧生效(⑭c 才删这个设置),`setUserAgent` 热换之后的下一条连接用新 UA。
+ *  - 握手的 UA 就是本实例身份的那一个(没有自定义 UA 了,ADR-0025 决策 7),每条连接都一样。
  */
 
 import type { IncomingMessage } from "node:http";
@@ -50,14 +50,14 @@ afterEach(async () => {
 	await new Promise<void>((resolve) => wss.close(() => resolve()));
 });
 
-function makeApi(userAgent?: string) {
+function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	return new BilibiliAPI({
-		serviceCtx: { logger } as never,
-		config: { userAgent },
-		callbacks: {},
-	});
+	return new BilibiliAPI({ serviceCtx: { logger } as never, callbacks: {} });
 }
+
+/** 本实例的生成身份(私有字段;握手与 HTTP 请求的 UA 都从它来)。 */
+const identityOf = (api: BilibiliAPI) =>
+	(api as unknown as { browserIdentity: { userAgent: string } }).browserIdentity;
 
 /** 建一条弹幕连接,等握手走完;握手期被关会报 error,挂个空处理免得炸进程。 */
 async function connect(api: BilibiliAPI): Promise<IncomingMessage> {
@@ -84,7 +84,7 @@ describe("BilibiliAPI.openDanmakuSocket", () => {
 
 		expect(namesOf(req).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
 		expect(req.headers.cookie).toBe("SESSDATA=s");
-		expect(req.headers["user-agent"]).toBe(api.getUserAgent());
+		expect(req.headers["user-agent"]).toBe(identityOf(api).userAgent);
 		const names = namesOf(req).map((name) => name.toLowerCase());
 		for (const forbidden of FETCH_ONLY) expect(names).not.toContain(forbidden);
 	});
@@ -96,8 +96,8 @@ describe("BilibiliAPI.openDanmakuSocket", () => {
 		expect(req.headers.cookie).toBeUndefined();
 	});
 
-	it("自定义 UA 照旧生效,位置不变;setUserAgent 热换之后的下一条连接用新 UA", async () => {
-		const api = makeApi("my-ua/1.0");
+	it("握手的 UA 是身份的那一个:每条连接都一样,头序不变", async () => {
+		const api = makeApi();
 		await api.loadCookies({
 			cookiesJson: JSON.stringify([
 				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
@@ -105,12 +105,11 @@ describe("BilibiliAPI.openDanmakuSocket", () => {
 		});
 
 		const first = await connect(api);
-		expect(first.headers["user-agent"]).toBe("my-ua/1.0");
-		expect(namesOf(first).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
-
-		api.setUserAgent("hot-swapped/2.0");
 		const second = await connect(api);
-		expect(second.headers["user-agent"]).toBe("hot-swapped/2.0");
-		expect(namesOf(second).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
+
+		for (const req of [first, second]) {
+			expect(req.headers["user-agent"]).toBe(identityOf(api).userAgent);
+			expect(namesOf(req).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
+		}
 	});
 });

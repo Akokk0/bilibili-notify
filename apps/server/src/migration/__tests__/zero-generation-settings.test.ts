@@ -54,20 +54,20 @@ async function expectZeroGlobalsUntouched(sandbox: ZeroSandbox, original: string
 	expect(await readFile(join(sandbox.zero, "state", "globals.json"), "utf8")).toBe(original);
 }
 
-// ── B 站那三格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗)──────────────────────────
+// ── B 站的两格搬进它自己的设置文件,自定义 UA 丢掉(ADR-0021 决策 42 下 10-01 的 🔗、ADR-0025 决策 7)──────
 
-describe("0.x 设置里 B 站的三格 → settings/bilibili.json", () => {
+describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)", () => {
 	const sandbox = useZeroSandbox("bn-bilibili-settings-");
 
 	/** 一份 0.x 的设置,`app` 里带着给出的几格。 */
 	function oldGlobalsWithApp(app: Record<string, unknown>): string {
-		// 从「B 站那三格一格都没写过」起步、只带上给出的几格(0.12 出厂的 `app` 里其实是有 dynamicCron / healthCheckMinutes 的)。
+		// 从「B 站那几格一格都没写过」起步、只带上给出的几格(0.12 出厂的 `app` 里其实是有 dynamicCron / healthCheckMinutes 的)。
 		const old = withoutZeroBilibiliApp(makeZeroGlobals());
 		old.app = { ...old.app, ...app };
 		return JSON.stringify(old);
 	}
 
-	it("userAgent / dynamicCron / healthCheckMinutes 原样搬进 settings/bilibili.json,键名不改;核心那份不再有", async () => {
+	it("dynamicCron / healthCheckMinutes 原样搬进 settings/bilibili.json,键名不改;userAgent 丢掉:两处都没有;核心那份不再有这几格", async () => {
 		const original = oldGlobalsWithApp({
 			userAgent: "UA/1.0",
 			dynamicCron: "*/5 * * * *",
@@ -81,15 +81,34 @@ describe("0.x 设置里 B 站的三格 → settings/bilibili.json", () => {
 			expect.arrayContaining(["config/settings/core.json", "config/settings/bilibili.json"]),
 		);
 		await expectZeroGlobalsUntouched(sandbox, original);
-		const moved = { userAgent: "UA/1.0", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 };
+		const moved = { dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 };
 		expect(await sandbox.readConfig("settings/bilibili.json")).toEqual(moved);
 		const coreApp = (
 			await sandbox.readConfig<{ app: Record<string, unknown> }>("settings/core.json")
 		).app;
-		for (const key of Object.keys(moved)) expect(coreApp, key).not.toHaveProperty(key);
+		for (const key of ["userAgent", ...Object.keys(moved)]) {
+			expect(coreApp, key).not.toHaveProperty(key);
+		}
 		expect(coreApp.logLevel).toBe("info"); // 别的格原样留在核心
 
 		expect(settingsOf(await sandbox.load())).toEqual(moved);
+	});
+
+	it("`app` 里只有 userAgent 这一格 → 核心那份照样改写(去掉它),不为它建 settings/bilibili.json", async () => {
+		await sandbox.placeZeroText("state/globals.json", oldGlobalsWithApp({ userAgent: "UA/1.0" }));
+
+		const report = await sandbox.migrate();
+
+		expect(report.rewritten).toContain("config/settings/core.json");
+		expect(report.rewritten).not.toContain("config/settings/bilibili.json");
+		const coreApp = (
+			await sandbox.readConfig<{ app: Record<string, unknown> }>("settings/core.json")
+		).app;
+		expect(coreApp).not.toHaveProperty("userAgent");
+		expect(settingsOf(await sandbox.load())).toEqual({
+			dynamicCron: "30 */2 * * * *",
+			healthCheckMinutes: 30,
+		});
 	});
 
 	it("一条解析不了的老 cron 原样搬过去,开机照读 —— 读盘宽松,只有写入才核", async () => {

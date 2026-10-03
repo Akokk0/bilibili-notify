@@ -50,8 +50,14 @@ afterEach(async () => {
 const ZERO_FILES: Record<string, string> = {
 	// 老形状的设置与订阅(第二代附加项、第一代 routing + @全体):第二遍会改写它们。
 	"state/globals.json": JSON.stringify({
-		// B 站的三格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗)
-		app: { logLevel: "debug", dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 },
+		// B 站的两格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗);自定义 UA 丢掉(ADR-0025 决策 7),
+		// 摘要里它哪儿都不在 —— 谁把它又搬进 settings/bilibili.json,摘要就变。
+		app: {
+			logLevel: "debug",
+			userAgent: "UA/1.0",
+			dynamicCron: "*/5 * * * *",
+			healthCheckMinutes: 45,
+		},
 		// 各拓展的设置搬进它自己的文件,开关留下(同上)
 		extensions: { "dev-bridge": { enabled: true, settings: { token: "t" } } },
 		defaults: {
@@ -476,7 +482,7 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 18,
+			revision: 19,
 			output: "a4a4de52c32820ceccd0518bbd8899298feeaa024e4f2d3aec299c0c09dcfd8f",
 		});
 	});

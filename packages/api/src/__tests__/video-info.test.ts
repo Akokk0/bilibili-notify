@@ -35,7 +35,6 @@ function makeApi(respond: (url: string) => unknown, redirects: Record<string, st
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const api = new BilibiliAPI({
 		serviceCtx: { logger } as never,
-		config: {} as never,
 		callbacks: {},
 	});
 	const calls: string[] = [];

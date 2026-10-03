@@ -778,7 +778,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `SubscriptionStore`（`packages/subscription`，不存盘的内存镜像）；`WsTicketStore`（内存里的一次性票）、桥的 `BridgeBlobStore`（内存里取过即焚的图） | `SubscriptionCache`；`WsTicketIssuer`；`BridgeBlobCache` |
 | `createClaimTable` / `ClaimTable<T>`（登记表） | `Registry<T>`（补一个 `entries()`，见 [architecture.md](./architecture.md)「接口族与登记表」），工厂照 `create*` 规矩跟着改 |
 | 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 |
-| 搬进 `bilibili/` 的 api：`BilibiliAPIConfig`、`RefreshOutcome`、`FollowOutcome` | `…Options`、`…Result`（`API` 写成 `Api`） |
+| 搬进 `bilibili/` 的 api：`BilibiliAPIConfig`（⑭c 已删：只剩自定义 UA 一格，随 UA 一起删了）、`RefreshOutcome`、`FollowOutcome` | `…Options`、`…Result`（`API` 写成 `Api`） |
 | 搬进 `bilibili/` 的 blive：`LiveConnectionInfo` | 按装的东西起名，施工时定 |
 | dynamic 的 `DynamicEngineConfig`、`DynamicFilterConfig`、`WorkDeliveryConfig`、`DeliverWorkArgs`、`WorkDeliveryOutcome`、`DynamicTimelineManager`、`SubManagerView` | 随包消失：`deliverPost` 的 `…Options`、`PostSettings`；过滤进核心的 `ContentFilters` |
 | live 的 `LiveEngineConfig`、`ListenerManagerConfig`、`ListenerManager`、`LiveNotifyParams`、`LivePushTimerManager`、`UserInfoInLiveData`；种类取值 `LiveType`、`LivePushType`、`LiveNotifyPushType` | 场次引擎合一以后消失（推送种类就是特性键；`bilibili/` 里还要的种类照表叫 `…Kind`） |

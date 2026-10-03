@@ -256,7 +256,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 function deepMerge<T>(base: T, patch: unknown): T {
 	// SY1:显式 `null` = 清除该字段。`JSON.stringify` 会丢 `undefined`,前端
 	// 无法用 undefined 经线表达"清空一个可选字段"(键直接消失,旧逻辑当作
-	// 未改 → master.targetId / bilibili.userAgent 等永远清不掉)。约定 null 表清除:
+	// 未改 → master.targetId 等永远清不掉)。约定 null 表清除:
 	// 标量位 → 回落 base 的缺省;对象键 → 删除该键(变回 undefined,Zod
 	// `.optional()` 仍合法)。`undefined` 维持"本字段不改"。
 	if (patch === null) return undefined as T;

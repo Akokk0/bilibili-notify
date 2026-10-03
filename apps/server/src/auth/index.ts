@@ -83,7 +83,6 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	let flow: LoginFlow | undefined;
 	const api = new BilibiliAPI({
 		serviceCtx: opts.serviceCtx,
-		config: {},
 		callbacks: {
 			// async + await:让 api 端能 await 持久化并在 reject 时响亮记日志
 			// (旧实现 fire-and-forget + 自吞,refresh 仍判成功;现由 api 调用点
