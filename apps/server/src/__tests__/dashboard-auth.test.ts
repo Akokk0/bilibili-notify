@@ -137,6 +137,46 @@ describe("dashboard cookie auth", () => {
 		await runtime.dispose();
 	});
 
+	// 桌面版里 `<img>`、CSS `url()`、`@font-face` 带不了自定义头(ADR-0036 决策 5 下 10-03 的 🔗):
+	// 带对令牌头的那一次种下 cookie,之后只带 cookie 也能过;cookie 不对照样 401。
+	it("desktop token configured: a valid header plants a cookie that passes the gate on its own", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		await runtime.configStore.load();
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
+			desktopToken: "desktop-secret",
+		});
+
+		const first = await app.request("/api/settings", {
+			headers: { "x-bn-desktop-token": "desktop-secret" },
+		});
+		expect(first.status).toBe(200);
+		const [pair = "", ...attrs] = (first.headers.get("set-cookie") ?? "")
+			.split(";")
+			.map((part) => part.trim());
+		expect(pair).toMatch(/^[a-z_]+=.+/);
+		expect(attrs).toEqual(expect.arrayContaining(["Path=/api", "HttpOnly", "SameSite=Strict"]));
+
+		const viaCookie = await app.request("/api/settings", { headers: { cookie: pair } });
+		expect(viaCookie.status).toBe(200);
+		// 已经带着对的 cookie:不再重种。
+		expect(viaCookie.headers.get("set-cookie")).toBeNull();
+
+		const cookieName = pair.slice(0, pair.indexOf("="));
+		const wrongCookie = await app.request("/api/settings", {
+			headers: { cookie: `${cookieName}=wrong` },
+		});
+		expect(wrongCookie.status).toBe(401);
+
+		const wrongHeader = await app.request("/api/settings", {
+			headers: { "x-bn-desktop-token": "wrong" },
+		});
+		expect(wrongHeader.status).toBe(401);
+		expect(wrongHeader.headers.get("set-cookie")).toBeNull();
+
+		await runtime.dispose();
+	});
+
 	it("auth configured: /api/health is also gated by the cookie", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();

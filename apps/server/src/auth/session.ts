@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash, createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
+import { readCookie } from "./cookie.js";
 
 /**
  * Stateless signed-cookie dashboard session (plan: dashboard-session-auth).
@@ -148,15 +149,7 @@ export function createSessionCodec(opts: CreateSessionCodecOptions): SessionCode
 			return `${COOKIE_NAME}=; Max-Age=0; ${attrs(secure)}`;
 		},
 		readCookie(cookieHeader) {
-			if (!cookieHeader) return undefined;
-			for (const part of cookieHeader.split(";")) {
-				const eq = part.indexOf("=");
-				if (eq < 0) continue;
-				if (part.slice(0, eq).trim() === COOKIE_NAME) {
-					return part.slice(eq + 1).trim() || undefined;
-				}
-			}
-			return undefined;
+			return readCookie(cookieHeader, COOKIE_NAME);
 		},
 	};
 }
