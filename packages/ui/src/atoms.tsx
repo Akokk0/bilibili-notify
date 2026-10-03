@@ -13,7 +13,7 @@ import type {
 	ReactNode,
 	SVGProps,
 } from "react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import { Icon, type IconName } from "./icons";
 
 // ── Avatar ──────────────────────────────────────────────────────────────────
@@ -24,15 +24,18 @@ export interface AvatarProps {
 	size?: number;
 	ring?: boolean;
 	status?: "live" | "living" | "off";
-	/** Real avatar URL — if provided renders <img> instead of the initial-letter fallback. */
+	/** 头像地址:有就显图,没有或图裂了显首字母渐变底。 */
 	url?: string;
 }
 
 export function Avatar({ name, color, size = 44, ring = false, status, url }: AvatarProps) {
+	// 记的是「裂掉的是哪个地址」而不是一个布尔:地址一变自然重新试,不用另写重置。
+	const [brokenUrl, setBrokenUrl] = useState<string>();
+	const showImage = !!url && url !== brokenUrl;
 	const inner: CSSProperties = {
 		width: size,
 		height: size,
-		background: url
+		background: showImage
 			? "var(--color-bn-surface)"
 			: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color} 87%, transparent))`,
 		fontSize: Math.round(size * 0.4),
@@ -47,12 +50,17 @@ export function Avatar({ name, color, size = 44, ring = false, status, url }: Av
 				className="flex items-center justify-center overflow-hidden rounded-full font-bold text-bn-on-solid shadow-bn-card"
 				style={inner}
 			>
-				{url ? (
+				{showImage ? (
 					<img
 						src={url}
 						alt={name}
 						className="h-full w-full object-cover"
 						referrerPolicy="no-referrer"
+						onError={() => {
+							// 图裂的原因不止一种(地址过时、CDN 拒绝、文件被清掉):退回首字母,但留一行能查的。
+							console.warn(`头像加载失败,退回首字母:${url}`);
+							setBrokenUrl(url);
+						}}
 					/>
 				) : (
 					(name?.[0] ?? "?")
