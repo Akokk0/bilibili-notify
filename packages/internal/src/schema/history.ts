@@ -30,8 +30,8 @@ export const HistoryPayloadSchema = z.object({
 export type HistoryPayload = z.infer<typeof HistoryPayloadSchema>;
 
 /** 一条消息是推送的本体(卡片 / 分条正文)还是附加项(@全体、图集、词云、总结)。 */
-export const HistoryMessageRoleSchema = z.enum(["main", "extra"]);
-export type HistoryMessageRole = z.infer<typeof HistoryMessageRoleSchema>;
+export const PushMessageRoleSchema = z.enum(["main", "extra"]);
+export type PushMessageRole = z.infer<typeof PushMessageRoleSchema>;
 
 /** 一条消息对这个目标的投递结果。无目标行没有它。 */
 export const HistoryMessageResultSchema = z.object({
@@ -43,7 +43,7 @@ export type HistoryMessageResult = z.infer<typeof HistoryMessageResultSchema>;
 
 export const HistoryMessageSchema = z.object({
 	payload: HistoryPayloadSchema,
-	role: HistoryMessageRoleSchema,
+	role: PushMessageRoleSchema,
 	result: HistoryMessageResultSchema.optional(),
 	/**
 	 * 这条是**哪一条的重投**(ADR-0017 决策 15):值是被补的那条消息在本行 `messages`

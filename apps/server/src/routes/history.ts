@@ -90,12 +90,12 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		const views = await Promise.all(
 			entries.map(async (e) => {
 				if (e.status !== "failed" && e.status !== "partial") return toHistoryView(e);
-				const reason = await deps.runtime.repushRunner.canRepush(e);
+				const denial = await deps.runtime.repushRunner.canRepush(e);
 				// 条数在这儿算完交出去 —— 面板自己再算一遍就是第二份实现,而身份号那套
 				// 判定(`retryOf ?? 下标`,每号取最后一次)一改两边就漂。
 				return toHistoryView(e, {
-					repush: reason
-						? { can: false, reason }
+					repush: denial
+						? { can: false, code: denial.code, message: denial.message }
 						: {
 								can: true,
 								total: originalCount(e.messages),
@@ -180,8 +180,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		const { ts, mode } = parsed.data;
 		const res = await deps.runtime.repushRunner.start(c.req.param("id"), ts, mode);
 		if (res.ok) return c.json<HistoryRepushResponse>(ok({ count: res.count }), 202);
-		// runner 还在用 `reason` / `notFound` 这套旧说法(不在本组范围),在这里译成标准码。
-		return respondFailure(c, fail(res.notFound ? "not_found" : "conflict", res.reason));
+		return respondFailure(c, res);
 	});
 
 	return app;

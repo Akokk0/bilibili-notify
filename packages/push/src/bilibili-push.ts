@@ -9,6 +9,7 @@ import type {
 	NotificationPayload,
 	NotificationSink,
 	PayloadSegment,
+	PushMessageRole,
 	PushTarget,
 	ServiceContext,
 	Subscription,
@@ -49,9 +50,6 @@ function subscriptionLabel(sub: Subscription): string {
 
 const INITIAL_RETRY_DELAY_MS = 3000;
 const MAX_RETRY_DELAY_MS = INITIAL_RETRY_DELAY_MS * 2 ** 5;
-
-/** 一条消息是推送的本体(卡片 / 分条正文)还是附加项(@全体、图集、词云、总结)。 */
-export type PushMessageRole = "main" | "extra";
 
 export interface PushMessage {
 	payload: NotificationPayload;

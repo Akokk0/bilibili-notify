@@ -22,7 +22,7 @@ import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import { createHistoryStore, type HistoryRecordInput, type HistoryStore } from "../store.js";
+import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
@@ -47,13 +47,13 @@ afterEach(() => vi.restoreAllMocks());
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
-function input(over: Partial<HistoryRecordInput> = {}): HistoryRecordInput {
+function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
-		target: T1,
+		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: FAIL }],
 		...over,
 	};

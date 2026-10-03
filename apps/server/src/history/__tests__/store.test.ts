@@ -25,9 +25,9 @@ import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
 	createHistoryStore,
 	deleteDayFile,
-	type HistoryRecordInput,
 	type HistoryStore,
 	listDayFiles,
+	type NewHistoryEntry,
 } from "../store.js";
 
 // 落盘函数前的闸默认敞开;只有「close」那组用例才 hold(见 support/storage-write-gate.ts)。
@@ -58,12 +58,12 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-const baseInput = (over: Partial<HistoryRecordInput> = {}): HistoryRecordInput => ({
+const baseInput = (over: Partial<NewHistoryEntry> = {}): NewHistoryEntry => ({
 	pushId: randomUUID(),
 	feature: "post",
 	uid: "u1",
 	subscriptionId: randomUUID(),
-	target: randomUUID(),
+	targetId: randomUUID(),
 	messages: [
 		{ payload: { kind: "text", text: "hello" }, role: "main", result: { ok: true, latencyMs: 10 } },
 	],
@@ -114,7 +114,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 	});
 
 	it("mime → 扩展名映射(webp/未知→jpg)", async () => {
-		const image = (mime: string): HistoryRecordInput["messages"] => [
+		const image = (mime: string): NewHistoryEntry["messages"] => [
 			{ payload: { kind: "image", image: { buffer: Buffer.from("a"), mime } }, role: "main" },
 		];
 		const webp = await store.record(baseInput({ messages: image("image/webp") }));

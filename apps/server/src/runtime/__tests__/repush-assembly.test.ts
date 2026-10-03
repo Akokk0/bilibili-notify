@@ -40,7 +40,7 @@ describe("createAppRuntime", () => {
 			feature: "post",
 			uid: "u1",
 			subscriptionId: randomUUID(),
-			target: randomUUID(),
+			targetId: randomUUID(),
 			messages: [
 				{
 					payload: { kind: "text", text: "卡片" },
@@ -74,7 +74,7 @@ describe("createAppRuntime", () => {
 			feature: "post",
 			uid: "u1",
 			subscriptionId: randomUUID(),
-			target: randomUUID(),
+			targetId: randomUUID(),
 			messages: [
 				{
 					payload: { kind: "text", text: "卡片" },
@@ -84,11 +84,11 @@ describe("createAppRuntime", () => {
 			],
 		});
 		const res = await runtime.repushRunner.start(entry.id, entry.ts, "missing");
-		// 行找到了(不是 notFound),但这个 dataDir 里没有任何订阅 —— 闸据实拒绝。
+		// 行找到了(不是 not_found),但这个 dataDir 里没有任何订阅 —— 闸据实拒绝。
 		expect(res.ok).toBe(false);
 		if (res.ok) throw new Error("本该拒");
-		expect(res.notFound).toBeUndefined();
-		expect(res.reason).toContain("路由");
+		expect(res.code).toBe("conflict");
+		expect(res.message).toContain("路由");
 	});
 
 	/**
@@ -111,7 +111,7 @@ describe("createAppRuntime", () => {
 			feature: "post",
 			uid: "u1",
 			subscriptionId: randomUUID(),
-			target: randomUUID(),
+			targetId: randomUUID(),
 			messages: [
 				{
 					payload: { kind: "text", text: "卡片" },

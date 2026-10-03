@@ -15,6 +15,7 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type Failure, fail } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createHistoryRoute } from "../history.js";
 import type { RouteDeps } from "../types.js";
@@ -23,8 +24,8 @@ let query: ReturnType<typeof vi.fn>;
 let aggregateDaily: ReturnType<typeof vi.fn>;
 let startRepush: ReturnType<typeof vi.fn>;
 let canRepush: ReturnType<typeof vi.fn>;
-/** `canRepush` 回什么:`null` = 能补,字符串 = 不能补的理由。 */
-let canRepushResult: string | null = null;
+/** `canRepush` 回什么:`null` = 能补,失败 = 不能补(码与给人看的那句)。 */
+let canRepushResult: Failure | null = null;
 
 function makeApp(repushResult: unknown = { ok: true, count: 2 }) {
 	query = vi.fn(async () => []);
@@ -257,13 +258,10 @@ describe("history route — POST /:id/repush", () => {
 	});
 
 	it("没这一行 → 404 not_found,话原样带回去", async () => {
-		const res = await repush(
-			makeApp({ ok: false, notFound: true, reason: "找不到这一行推送记录了" }),
-			{
-				ts: TS,
-				mode: "missing",
-			},
-		);
+		const res = await repush(makeApp(fail("not_found", "找不到这一行推送记录了")), {
+			ts: TS,
+			mode: "missing",
+		});
 		expect(res.status).toBe(404);
 		expect(await res.json()).toEqual({ code: "not_found", message: "找不到这一行推送记录了" });
 	});
@@ -271,7 +269,7 @@ describe("history route — POST /:id/repush", () => {
 	/** 拒绝的理由**原样**交给面板 —— 自编一句「重推失败」等于让主人对着黑盒猜。 */
 	it("有这一行但不能补 → 409 conflict,理由原样带回去", async () => {
 		const res = await repush(
-			makeApp({ ok: false, reason: "这个目标（或者它所在的连接）停用了，先启用再补" }),
+			makeApp(fail("conflict", "这个目标（或者它所在的连接）停用了，先启用再补")),
 			{ ts: TS, mode: "missing" },
 		);
 		expect(res.status).toBe(409);
@@ -337,14 +335,15 @@ describe("history route — 列表带上「能不能补」", () => {
 
 	it("不能补时带回那句原因", async () => {
 		const app = makeApp();
-		canRepushResult = "这个目标（或者它所在的连接）停用了，先启用再补";
+		canRepushResult = fail("conflict", "这个目标（或者它所在的连接）停用了，先启用再补");
 		query.mockImplementation(async () => rows("failed"));
 		const body = (await (await app.request("/")).json()) as {
 			entries: Array<{ repush?: unknown }>;
 		};
 		expect(body.entries[0]?.repush).toEqual({
 			can: false,
-			reason: "这个目标（或者它所在的连接）停用了，先启用再补",
+			code: "conflict",
+			message: "这个目标（或者它所在的连接）停用了，先启用再补",
 		});
 	});
 });

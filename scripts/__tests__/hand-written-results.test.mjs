@@ -55,7 +55,7 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/bridge.ts": 3,
 	"apps/server/src/extensions/marketplace.ts": 14,
 	"apps/server/src/extensions/settings-io.ts": 9,
-	"apps/server/src/history/repush-runner.ts": 6,
+	"apps/server/src/history/repush-runner.ts": 1,
 	"apps/server/src/index.ts": 1,
 	"apps/server/src/maid-skills/parse.ts": 8,
 	"apps/server/src/platforms/onebot.ts": 29,

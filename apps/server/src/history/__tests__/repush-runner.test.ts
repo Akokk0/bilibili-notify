@@ -114,13 +114,13 @@ const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
 /** 放行了才有 `count`;顺带把拒绝的理由印进失败信息(比 `undefined` 好查)。 */
 function started(res: Awaited<ReturnType<RepushRunner["start"]>>): number {
-	if (!res.ok) throw new Error(`本该放行,却拒了:${res.reason}`);
+	if (!res.ok) throw new Error(`本该放行,却拒了:${res.message}`);
 	return res.count;
 }
-/** 拒了才有 `reason`。 */
+/** 拒了才有 `code` 与 `message`;回那句给人看的话。 */
 function denied(res: Awaited<ReturnType<RepushRunner["start"]>>): string {
 	if (res.ok) throw new Error("本该拒,却放行了");
-	return res.reason;
+	return res.message;
 }
 
 /** 落一行:第一条成功、第二条失败、第三条因此从没发出去。 */
@@ -130,7 +130,7 @@ async function seedPartial(): Promise<HistoryEntry> {
 		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
-		target: T1,
+		targetId: T1,
 		messages: [
 			{ payload: text("卡片"), role: "main", result: OK },
 			{ payload: text("词云"), role: "extra", result: FAIL },
@@ -236,22 +236,26 @@ describe("canRepush — 给面板的预判", () => {
 	it("原件没了 → 说得出为什么", async () => {
 		const entry = await seedPartial();
 		await repush.drop(entry.id, entry.ts);
-		const reason = await runner.canRepush(entry);
-		expect(reason).toBeTruthy();
-		expect(reason).toContain("原料");
+		const denial = await runner.canRepush(entry);
+		expect(denial).toMatchObject({ ok: false, code: "conflict" });
+		expect(denial?.message).toContain("原料");
 	});
 
 	it("闸不让 → 说的是闸那一档的理由", async () => {
 		const entry = await seedPartial();
 		routed = [];
-		expect(await runner.canRepush(entry)).toContain("路由");
+		expect(await runner.canRepush(entry)).toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: expect.stringContaining("路由"),
+		});
 	});
 
 	it("正在补 → 也算不能再按", async () => {
 		const entry = await seedPartial();
 		gate = () => {};
 		await runner.start(entry.id, entry.ts, "missing");
-		expect(await runner.canRepush(entry)).toBeTruthy();
+		expect(await runner.canRepush(entry)).toMatchObject({ ok: false, code: "conflict" });
 	});
 });
 
@@ -279,10 +283,9 @@ describe("闸", () => {
 		expect((await runner.start(entry.id, entry.ts, "missing")).ok).toBe(false);
 	});
 
-	it("行压根不存在 → notFound(端点据此回 404,不是 409)", async () => {
+	it("行压根不存在 → not_found(端点据此回 404,不是 409)", async () => {
 		const res = await runner.start(randomUUID(), "2026-09-20T00:00:00.000Z", "missing");
-		expect(res.ok).toBe(false);
-		expect(res.ok === false && res.notFound).toBe(true);
+		expect(res).toMatchObject({ ok: false, code: "not_found" });
 	});
 
 	/**
@@ -293,7 +296,8 @@ describe("闸", () => {
 		const entry = await seedPartial();
 		await repush.drop(entry.id, entry.ts);
 		const res = await runner.start(entry.id, entry.ts, "missing");
-		expect(denied(res)).toBeTruthy();
+		expect(res).toMatchObject({ ok: false, code: "conflict" });
+		expect(denied(res)).toContain("原料");
 		expect(sent).toHaveLength(0);
 	});
 
@@ -303,7 +307,7 @@ describe("闸", () => {
 			feature: "post",
 			uid: "u1",
 			subscriptionId: SUB,
-			target: T1,
+			targetId: T1,
 			messages: [{ payload: text("卡片"), role: "main", result: OK }],
 		});
 		expect((await runner.start(entry.id, entry.ts, "missing")).ok).toBe(false);
@@ -374,7 +378,7 @@ describe("重推认的是哪一条订阅", () => {
 		});
 		other.routing.post = [T1];
 		const r = runnerOver([other]);
-		expect(await r.canRepush(entry)).toContain("路由");
+		expect((await r.canRepush(entry))?.message).toContain("路由");
 		expect(sent).toHaveLength(0);
 	});
 
@@ -386,7 +390,7 @@ describe("重推认的是哪一条订阅", () => {
 			extensionId: "douyin",
 			externalId: "u1",
 			subscriptionId: SUB,
-			target: T1,
+			targetId: T1,
 			messages: [
 				{ payload: text("作品"), role: "main", result: OK },
 				{ payload: text("点评"), role: "extra", result: FAIL },
@@ -417,7 +421,7 @@ describe("重推认的是哪一条订阅", () => {
 		});
 		bili.routing.post = [T1];
 		const r = runnerOver([bili]);
-		expect(await r.canRepush(entry)).toContain("路由");
+		expect((await r.canRepush(entry))?.message).toContain("路由");
 		expect(sent).toHaveLength(0);
 	});
 });
@@ -451,7 +455,7 @@ describe("路由按行上的特性键查", () => {
 			feature,
 			uid: "u1",
 			subscriptionId: SUB,
-			target: T1,
+			targetId: T1,
 			messages: [
 				{ payload: text("卡片"), role: "main", result: OK },
 				{ payload: text("词云"), role: "extra", result: FAIL },
@@ -483,7 +487,7 @@ describe("路由按行上的特性键查", () => {
 			});
 			for (const other of FEATURE_KEYS) if (other !== feature) sub.routing[other] = [T1];
 			const r = runnerOver(sub);
-			expect(await r.canRepush(entry)).toContain("路由");
+			expect((await r.canRepush(entry))?.message).toContain("路由");
 			expect(sent).toHaveLength(0);
 		},
 	);

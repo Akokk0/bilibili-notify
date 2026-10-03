@@ -118,7 +118,10 @@ describe("repushDenial — 挡什么", () => {
 	});
 
 	it("已送达的行不给补", () => {
-		expect(repushDenial(allow({ entry: entry({ status: "delivered" }) }))).not.toBeNull();
+		expect(repushDenial(allow({ entry: entry({ status: "delivered" }) }))).toMatchObject({
+			ok: false,
+			code: "conflict",
+		});
 	});
 
 	// 那不是失败是没配目标,而且压根没有目标可发(决策 6)。
@@ -138,7 +141,7 @@ describe("repushDenial — 挡什么", () => {
 
 	// 两个标签页各点一下,前端的禁用态管不着彼此,而后果是真的往群里多发一条。
 	it("这一行正在补 → 拒", () => {
-		expect(repushDenial(allow({ running: true }))).not.toBeNull();
+		expect(repushDenial(allow({ running: true }))).toMatchObject({ ok: false, code: "conflict" });
 	});
 
 	/**
@@ -162,7 +165,7 @@ describe("repushDenial — 挡什么", () => {
 			repushDenial(allow({ routedTargets: [] })),
 			repushDenial(allow({ targetEnabled: false })),
 			repushDenial(allow({ running: true })),
-		];
+		].map((d) => d?.message);
 		for (const d of denials) expect(d && d.length > 4).toBe(true);
 		// 四档各有各的说法,不是同一句敷衍话。
 		expect(new Set(denials)).toHaveLength(4);

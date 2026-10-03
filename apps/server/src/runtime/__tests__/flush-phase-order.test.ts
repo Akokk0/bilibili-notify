@@ -65,7 +65,7 @@ describe("createAppRuntime 的 flush 段", () => {
 				feature: "post",
 				uid: "u1",
 				subscriptionId: SUB.id,
-				target: null,
+				targetId: null,
 				messages: [],
 			}),
 		).rejects.toMatchObject(CLOSED);

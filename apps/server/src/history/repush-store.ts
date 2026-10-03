@@ -1,11 +1,11 @@
 import { readdir, readFile, rm, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type {
-	HistoryMessageRole,
 	HistoryPayload,
 	Logger,
 	NotificationPayload,
 	PayloadSegment,
+	PushMessageRole,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import { z } from "zod";
@@ -88,7 +88,7 @@ const DraftSchema = z.object({
 /** 交给 {@link RepushStore.append} 的一条:原始 payload,加上历史那边已经算好的那一条。 */
 export interface RepushAppendItem {
 	payload: NotificationPayload;
-	role: HistoryMessageRole;
+	role: PushMessageRole;
 	/**
 	 * 历史 `reduce` 出来的**就是这一条**(调用方手里正好有)。这儿只关心其中一样:
 	 * **图写到哪去了** —— 有 `imageRef` 就复用,没有才自己写一份(决策 3)。
@@ -99,7 +99,7 @@ export interface RepushAppendItem {
 /** 读回来的一条:可以直接交给发送层的 {@link NotificationPayload}。 */
 export interface RepushMessage {
 	payload: NotificationPayload;
-	role: HistoryMessageRole;
+	role: PushMessageRole;
 }
 
 /**

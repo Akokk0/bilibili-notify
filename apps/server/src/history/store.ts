@@ -9,11 +9,11 @@ import type {
 	HistoryEntry,
 	HistoryMessage,
 	HistoryMessageResult,
-	HistoryMessageRole,
 	HistoryPayload,
 	Logger,
 	MessageBus,
 	NotificationPayload,
+	PushMessageRole,
 	PushStatus,
 } from "@bilibili-notify/internal";
 import {
@@ -44,12 +44,12 @@ import type { RepushStore } from "./repush-store.js";
 
 export interface HistoryRecordMessage {
 	payload: NotificationPayload;
-	role: HistoryMessageRole;
+	role: PushMessageRole;
 	/** 无目标行没有它。 */
 	result?: HistoryMessageResult;
 }
 
-export interface HistoryRecordInput {
+export interface NewHistoryEntry {
 	pushId: string;
 	/** 这次推送的特性键(补报记 `liveStart`、周期记 `liveStreaming`)。 */
 	feature: FeatureKey;
@@ -61,7 +61,7 @@ export interface HistoryRecordInput {
 	externalId?: string;
 	subscriptionId: string;
 	/** null = 这类推送没有任何可用目标,落「无目标」那一行。 */
-	target: string | null;
+	targetId: string | null;
 	messages: HistoryRecordMessage[];
 	/** Snapshot of sub.cachedProfile.name at write time; survives 订阅删除。 */
 	unameSnapshot?: string;
@@ -110,7 +110,7 @@ export interface HistoryStore {
 	 * 记一次推送对一个目标的一段消息。同 pushId + 同目标第一次来建行,之后追加;
 	 * 返回合并后的整行。
 	 */
-	record(input: HistoryRecordInput): Promise<HistoryEntry>;
+	record(input: NewHistoryEntry): Promise<HistoryEntry>;
 	/**
 	 * 往**一行已知 id 的行**里补几条消息(人工重推,ADR-0017)。找不到那一行、或者一条
 	 * 都不补,回 `null` 且什么都不写。
@@ -415,9 +415,9 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return merged;
 	}
 
-	async function recordSerialized(input: HistoryRecordInput): Promise<HistoryEntry> {
+	async function recordSerialized(input: NewHistoryEntry): Promise<HistoryEntry> {
 		await ensureDirs();
-		const key = `${input.pushId}|${input.target ?? "-"}`;
+		const key = `${input.pushId}|${input.targetId ?? "-"}`;
 		const existing = open.get(key);
 		if (!existing) {
 			const id = randomUUID();
@@ -432,15 +432,15 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				extensionId: input.extensionId,
 				externalId: input.externalId,
 				subscriptionId: input.subscriptionId,
-				targetId: input.target,
-				status: computeStatus(input.target, messages),
+				targetId: input.targetId,
+				status: computeStatus(input.targetId, messages),
 				messages,
 				unameSnapshot: input.unameSnapshot,
 				uavatarSnapshot: input.uavatarSnapshot,
 			});
 			await appendJsonl(dayFile(ts), [entry]);
 			open.set(key, entry);
-			await saveDraft(id, ts, input.messages, messages, input.target);
+			await saveDraft(id, ts, input.messages, messages, input.targetId);
 			opts.bus.emit("history-recorded", entry);
 			return entry;
 		}
@@ -456,7 +456,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		);
 	}
 
-	function record(input: HistoryRecordInput): Promise<HistoryEntry> {
+	function record(input: NewHistoryEntry): Promise<HistoryEntry> {
 		return writes.run(WRITE_KEY, () => recordSerialized(input));
 	}
 

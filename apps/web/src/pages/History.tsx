@@ -263,7 +263,7 @@ function HistoryRow({
 	// 字段在不在** —— WS 推来的新行不带那个字段,可它恰恰是最该能补的那一种。
 	const canOfferRepush = entry.status === "failed" || entry.status === "partial";
 	// 不能补时按钮灰掉**并写上原因**,不是藏起来(决策 9)。字段缺省按「能补」处理。
-	const repushBlocked = entry.repush && !entry.repush.can ? entry.repush.reason : null;
+	const repushBlocked = entry.repush && !entry.repush.can ? entry.repush.message : null;
 	const repushCounts = entry.repush?.can ? entry.repush : null;
 
 	return (

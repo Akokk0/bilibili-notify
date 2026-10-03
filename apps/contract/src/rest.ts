@@ -21,8 +21,8 @@ import type {
 	FailureCode,
 	FansRefreshEntry,
 	FeatureKey,
-	HistoryMessageRole,
 	Issue,
+	PushMessageRole,
 	PushStatus,
 	Result,
 	Subscription,
@@ -45,7 +45,7 @@ export type {
 	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 MiniAppCardSupport 那条。
 	ExtensionProvides,
 	FansRefreshEntry,
-	HistoryMessageRole,
+	PushMessageRole,
 	PushStatus,
 	// `/api/subscriptions/tags` 的一格(ADR-0034):`GET` 回整张、`PUT` 收整张。
 	SubscriptionTag,
@@ -495,7 +495,7 @@ interface SubscriptionRuntimeDTO {
 export interface HistoryMessageView {
 	text?: string;
 	imageRef?: string;
-	role: HistoryMessageRole;
+	role: PushMessageRole;
 	ok?: boolean;
 	err?: string;
 	/**
@@ -556,8 +556,8 @@ export type HistoryRepushInfo =
 			/** 还有几条没到 ——「只补没到的」发这么多。 */
 			missing: number;
 	  }
-	/** 不能补,**这就是原因**(面板把按钮灰掉并写上它,决策 9)。 */
-	| { can: false; reason: string };
+	/** 不能补,`message` **就是原因**(面板把按钮灰掉并写上它,决策 9)。码按 ADR-0026 决策 2。 */
+	| { can: false; code: FailureCode; message: string };
 
 /**
  * `POST /api/history/:id/repush` 请求 —— 人工把一行没送到的推送补一遍。

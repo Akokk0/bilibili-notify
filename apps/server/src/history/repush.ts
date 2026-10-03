@@ -1,4 +1,9 @@
-import type { HistoryEntry, HistoryMessage } from "@bilibili-notify/internal";
+import {
+	type Failure,
+	fail,
+	type HistoryEntry,
+	type HistoryMessage,
+} from "@bilibili-notify/internal";
 
 /**
  * **人工重推的判断**(ADR-0017)—— 全是纯函数,不碰盘也不碰网。
@@ -65,27 +70,31 @@ export interface RepushGateInput {
 	running: boolean;
 }
 
+/** 当时没有目标的行:状态是 no-targets,或者目标那一格是空的。 */
+const NO_TARGET = "这条推送当时没有可用的目标，补不了 —— 先去给它配一个吧";
+
 /**
- * 能不能补。回一句**给人看的**拒绝理由,`null` = 放行。
+ * 能不能补。拒了回 `conflict`(有这一行,但现在补不了)和一句**给人看的**理由,`null` = 放行。
  *
  * 四档各有各的说法:一句含糊的「不能重推」会让主人对着黑盒猜,而这四件事的下一步
  * 完全不同(什么都不用做 / 去路由里加回来 / 去把目标启用 / 等一下)。
  */
-export function repushDenial(input: RepushGateInput): string | null {
+export function repushDenial(input: RepushGateInput): Failure | null {
 	const { entry, routedTargets, targetEnabled, running } = input;
 	// 决策 6:按钮只长在 failed 与 partial 上。no-targets 连目标都没有,补不成。
 	if (entry.status !== "failed" && entry.status !== "partial") {
-		return entry.status === "no-targets"
-			? "这条推送当时没有可用的目标，补不了 —— 先去给它配一个吧"
-			: "这一行全都送到了，不用补啦";
+		return fail(
+			"conflict",
+			entry.status === "no-targets" ? NO_TARGET : "这一行全都送到了，不用补啦",
+		);
 	}
-	if (entry.targetId === null) return "这条推送当时没有可用的目标，补不了 —— 先去给它配一个吧";
+	if (entry.targetId === null) return fail("conflict", NO_TARGET);
 	// 决策 10:与发送层每次重试前复检 routing 同源 —— 用户已经取消了。
 	if (!routedTargets.includes(entry.targetId)) {
-		return "这条推送已经不发给这个目标了 —— 路由里把它去掉了";
+		return fail("conflict", "这条推送已经不发给这个目标了 —— 路由里把它去掉了");
 	}
-	if (!targetEnabled) return "这个目标（或者它所在的连接）停用了，先启用再补";
+	if (!targetEnabled) return fail("conflict", "这个目标（或者它所在的连接）停用了，先启用再补");
 	// 决策 13:挡在服务端。两个标签页各点一下,前端的禁用态管不着彼此。
-	if (running) return "这一行正在补，女仆还没回来呢";
+	if (running) return fail("conflict", "这一行正在补，女仆还没回来呢");
 	return null;
 }

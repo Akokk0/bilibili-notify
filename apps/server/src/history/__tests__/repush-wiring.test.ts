@@ -23,7 +23,7 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createRepushStore, type RepushStore } from "../repush-store.js";
-import { createHistoryStore, type HistoryRecordInput, type HistoryStore } from "../store.js";
+import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 let dataDir: string;
 let store: HistoryStore;
@@ -44,13 +44,13 @@ afterEach(() => vi.restoreAllMocks());
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
-function input(over: Partial<HistoryRecordInput> = {}): HistoryRecordInput {
+function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
-		target: T1,
+		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: OK }],
 		...over,
 	};
@@ -106,7 +106,7 @@ describe("record → 原件", () => {
 
 	it("无目标行不留原件 —— 按钮本来就不给它", async () => {
 		const entry = await store.record(
-			input({ target: null, messages: [{ payload: text("卡片"), role: "main" }] }),
+			input({ targetId: null, messages: [{ payload: text("卡片"), role: "main" }] }),
 		);
 		expect(entry.status).toBe("no-targets");
 		expect(await draftFiles(entry.ts)).toEqual([]);

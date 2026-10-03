@@ -3,7 +3,6 @@ export type {
 	BroadcastOptions,
 	PushMessage,
 	PushMessageOutcome,
-	PushMessageRole,
 	PushSendInfo,
 	SendContext,
 } from "./bilibili-push";

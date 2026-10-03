@@ -211,7 +211,11 @@ describe("补不了的行", () => {
 	it("按钮灰掉,原因写在 title 上(不是把按钮藏掉)", async () => {
 		mockApi([
 			row({
-				repush: { can: false, reason: "这一行的原料已经不在了，女仆补不出原来那条" },
+				repush: {
+					can: false,
+					code: "conflict",
+					message: "这一行的原料已经不在了，女仆补不出原来那条",
+				},
 			}),
 		]);
 		renderHistory();
@@ -222,7 +226,7 @@ describe("补不了的行", () => {
 	});
 
 	it("灰着的钮点不开选项", async () => {
-		mockApi([row({ repush: { can: false, reason: "补不了" } })]);
+		mockApi([row({ repush: { can: false, code: "conflict", message: "补不了" } })]);
 		renderHistory();
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 		await userEvent.click(repushButton());

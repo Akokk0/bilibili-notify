@@ -69,7 +69,7 @@ describe("historyRecordFromSend", () => {
 			feature: "liveEnd",
 			uid: "u1",
 			subscriptionId: SUB_ID,
-			target: target.id,
+			targetId: target.id,
 			messages: [
 				{ payload: { kind: "text", text: "卡" }, role: "main", result: { ok: true, latencyMs: 3 } },
 				{
@@ -92,7 +92,7 @@ describe("historyRecordFromSend", () => {
 			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
 		};
 		expect(historyRecordFromSend(info, lookups)).toMatchObject({
-			target: null,
+			targetId: null,
 			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
 		});
 		expect(historyRecordFromSend(info, lookups)?.messages[0]).not.toHaveProperty("result");
@@ -146,7 +146,7 @@ describe("historyRecordFromSend", () => {
 			subscriptionId: EXT_ID,
 			extensionId: "douyin",
 			externalId: "u1",
-			target: target.id,
+			targetId: target.id,
 			unameSnapshot: "某抖音号",
 		});
 		expect(input).not.toHaveProperty("uid");

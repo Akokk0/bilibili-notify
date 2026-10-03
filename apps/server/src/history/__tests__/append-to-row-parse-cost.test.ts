@@ -24,7 +24,7 @@ import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import { createHistoryStore, type HistoryRecordInput, type HistoryStore } from "../store.js";
+import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
@@ -53,13 +53,13 @@ afterEach(() => vi.restoreAllMocks());
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
-function input(): HistoryRecordInput {
+function input(): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
-		target: T1,
+		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: FAIL }],
 	};
 }

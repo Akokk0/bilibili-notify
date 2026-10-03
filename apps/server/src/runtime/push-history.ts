@@ -4,7 +4,7 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { PushSendInfo } from "@bilibili-notify/push";
-import type { HistoryRecordInput } from "../history/store.js";
+import type { NewHistoryEntry } from "../history/store.js";
 
 export interface PushHistoryLookups {
 	/**
@@ -35,7 +35,7 @@ export interface PushHistoryLookups {
 export function historyRecordFromSend(
 	info: PushSendInfo,
 	lookups: PushHistoryLookups,
-): HistoryRecordInput | null {
+): NewHistoryEntry | null {
 	const found = lookups.subscriptionOf(info.subscriptionId);
 	if (found === undefined) return null;
 	const { subscription, profile } = found;
@@ -51,7 +51,7 @@ export function historyRecordFromSend(
 		feature: info.feature,
 		...who,
 		subscriptionId: info.subscriptionId,
-		target: info.target?.id ?? null,
+		targetId: info.target?.id ?? null,
 		// 推送层那条消息与历史那条消息本就是同一个形状(payload / role / 可选 result),
 		// 逐条重建只是把字段抄一遍,还多一处「加字段记得同步」的维护点。
 		messages: info.messages,

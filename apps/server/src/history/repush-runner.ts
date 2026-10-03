@@ -1,11 +1,15 @@
-import type {
-	DeliveryResult,
-	FeatureKey,
-	HistoryEntry,
-	HistoryRowIdentity,
-	Logger,
-	NotificationPayload,
-	ServiceContext,
+import {
+	type DeliveryResult,
+	type Failure,
+	type FeatureKey,
+	fail,
+	type HistoryEntry,
+	type HistoryRowIdentity,
+	type Logger,
+	type NotificationPayload,
+	ok,
+	type Result,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { originalCount, repushDenial, unsentIndices } from "./repush.js";
 import type { RepushMessage, RepushStore } from "./repush-store.js";
@@ -33,15 +37,11 @@ import type { HistoryStore } from "./store.js";
 export type RepushMode = "all" | "missing";
 
 /**
- * 判别联合而不是「几个可选字段的袋子」:放行必有条数、拒绝必有理由,写成可选的话端点那头
- * 收窄不到,只能在已经判过 `ok` 的分支里再判一次 `undefined`(而那个 `undefined` 是造不
- * 出来的)。契约上的 `HistoryRepushResponse` 是同一个形状。
+ * 补一行的结果(ADR-0026 的结果形状)。放行回 `count` = 这一趟要补几条;拒了回码与**给人看的**那句:
+ * `not_found` = 这一行压根不存在(端点回 404),`conflict` = 有这一行但现在补不了(409)。
+ * 契约上的 `HistoryRepushResponse` 是同一个形状。
  */
-export type RepushStartResult =
-	/** 收下了。`count` = 这一趟要补几条。 */
-	| { ok: true; count: number }
-	/** 拒了。`reason` 是**给人看的**那句;`notFound` = 这一行压根不存在,端点据此回 404。 */
-	| { ok: false; reason: string; notFound?: boolean };
+export type RepushStartResult = Result<{ count: number }>;
 
 export interface RepushRunner {
 	/**
@@ -49,13 +49,13 @@ export interface RepushRunner {
 	 */
 	start(rowId: string, ts: string, mode: RepushMode): Promise<RepushStartResult>;
 	/**
-	 * 这一行**现在**能不能补 —— 回一句拒绝理由,`null` = 能。面板拿它决定按钮灰不灰
-	 * 并写上原因(决策 9:灰掉并说明,而不是藏起来 —— 藏掉的话主人要么以为这行没失败过,
+	 * 这一行**现在**能不能补 —— 不能就回 `conflict` 和一句拒绝理由,`null` = 能。面板拿它决定
+	 * 按钮灰不灰并写上原因(决策 9:灰掉并说明,而不是藏起来 —— 藏掉的话主人要么以为这行没失败过,
 	 * 要么以为功能坏了)。
 	 *
 	 * 与 `start` 同一道闸,只多问一句「原件还在吗」;查的是文件在不在,不读图。
 	 */
-	canRepush(entry: HistoryEntry): Promise<string | null>;
+	canRepush(entry: HistoryEntry): Promise<Failure | null>;
 	/** 这一行正在补吗。闸与面板共用这一个答案。 */
 	isRunning(rowId: string): boolean;
 }
@@ -101,7 +101,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	const running = new Set<string>();
 
 	/** 闸那一半 —— `start` 与 `canRepush` 共用,免得两处各判各的、慢慢漂开。 */
-	function gate(entry: HistoryEntry): string | null {
+	function gate(entry: HistoryEntry): Failure | null {
 		const subscriptionId = opts.currentSubscriptionOf(entry);
 		return repushDenial({
 			entry,
@@ -113,26 +113,26 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		});
 	}
 
-	async function canRepush(entry: HistoryEntry): Promise<string | null> {
+	async function canRepush(entry: HistoryEntry): Promise<Failure | null> {
 		const denial = gate(entry);
 		if (denial) return denial;
-		return (await opts.repush.has(entry.id, entry.ts)) ? null : DRAFT_GONE;
+		return (await opts.repush.has(entry.id, entry.ts)) ? null : fail("conflict", DRAFT_GONE);
 	}
 
 	async function start(rowId: string, ts: string, mode: RepushMode): Promise<RepushStartResult> {
 		const entry = await opts.history.findRow(rowId, ts);
-		if (!entry) return { ok: false, notFound: true, reason: "找不到这一行推送记录了" };
+		if (!entry) return fail("not_found", "找不到这一行推送记录了");
 
 		const denial = gate(entry);
-		if (denial) return { ok: false, reason: denial };
+		if (denial) return denial;
 
 		// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
 		const draft = await opts.repush.load(rowId, ts, originalCount(entry.messages));
-		if (!draft) return { ok: false, reason: DRAFT_GONE };
+		if (!draft) return fail("conflict", DRAFT_GONE);
 
 		const indices =
 			mode === "all" ? draft.messages.map((_, i) => i) : unsentIndices(entry.messages);
-		if (indices.length === 0) return { ok: false, reason: "这一行全都送到了，不用补啦" };
+		if (indices.length === 0) return fail("conflict", "这一行全都送到了，不用补啦");
 
 		running.add(rowId);
 		opts.serviceCtx.track(
@@ -145,7 +145,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				})
 				.finally(() => running.delete(rowId)),
 		);
-		return { ok: true, count: indices.length };
+		return ok({ count: indices.length });
 	}
 
 	/**

@@ -17,7 +17,7 @@ import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import { createHistoryStore, type HistoryRecordInput, type HistoryStore } from "../store.js";
+import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
@@ -52,13 +52,13 @@ function text(t: string): NotificationPayload {
 	return { kind: "text", text: t };
 }
 
-function input(over: Partial<HistoryRecordInput> = {}): HistoryRecordInput {
+function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
-		target: T1,
+		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: OK }],
 		unameSnapshot: "某UP",
 		...over,
@@ -119,9 +119,13 @@ describe("record — 建行与追加", () => {
 
 	it("同 pushId 不同目标 → 各自一行,互不影响", async () => {
 		const pushId = randomUUID();
-		const a = await store.record(input({ pushId, target: T1 }));
+		const a = await store.record(input({ pushId, targetId: T1 }));
 		const b = await store.record(
-			input({ pushId, target: T2, messages: [{ payload: text("x"), role: "main", result: FAIL }] }),
+			input({
+				pushId,
+				targetId: T2,
+				messages: [{ payload: text("x"), role: "main", result: FAIL }],
+			}),
 		);
 		expect(a.id).not.toBe(b.id);
 		expect(a.status).toBe("delivered");
@@ -157,7 +161,7 @@ describe("record — 建行与追加", () => {
 });
 
 describe("record — 四态", () => {
-	it.each<[string, HistoryRecordInput["messages"], HistoryEntry["status"]]>([
+	it.each<[string, NewHistoryEntry["messages"], HistoryEntry["status"]]>([
 		[
 			"全到 → delivered",
 			[
@@ -208,13 +212,13 @@ describe("record — 四态", () => {
 	it("target: null → no-targets;消息照存、没有结果;后续追加照常", async () => {
 		const pushId = randomUUID();
 		const entry = await store.record(
-			input({ pushId, target: null, messages: [{ payload: text("卡片"), role: "main" }] }),
+			input({ pushId, targetId: null, messages: [{ payload: text("卡片"), role: "main" }] }),
 		);
 		expect(entry.status).toBe("no-targets");
 		expect(entry.targetId).toBeNull();
 		expect(entry.messages).toEqual([{ payload: { kind: "text", text: "卡片" }, role: "main" }]);
 		const merged = await store.record(
-			input({ pushId, target: null, messages: [{ payload: text("总结"), role: "extra" }] }),
+			input({ pushId, targetId: null, messages: [{ payload: text("总结"), role: "extra" }] }),
 		);
 		expect(merged.id).toBe(entry.id);
 		expect(merged.status).toBe("no-targets");
@@ -252,7 +256,7 @@ describe("record — 图片落盘", () => {
 
 	it("无目标行的图也落盘", async () => {
 		const entry = await store.record(
-			input({ target: null, messages: [{ payload: png("W"), role: "main" }] }),
+			input({ targetId: null, messages: [{ payload: png("W"), role: "main" }] }),
 		);
 		expect(entry.messages[0]?.payload.imageRef).toBeDefined();
 		expect(await readdir(store.imageDir())).toHaveLength(1);
@@ -302,8 +306,8 @@ describe("aggregateDaily — 新口径", () => {
 	it("total 数行、不计无目标;failures = failed + partial;counts 按类", async () => {
 		const now = new Date();
 		const pushId = randomUUID();
-		await store.record(input({ pushId, target: T1 })); // delivered
-		await store.record(input({ pushId, target: T2 })); // delivered(同一次推送,另一个目标也算一行)
+		await store.record(input({ pushId, targetId: T1 })); // delivered
+		await store.record(input({ pushId, targetId: T2 })); // delivered(同一次推送,另一个目标也算一行)
 		await store.record(
 			input({ feature: "liveEnd", messages: [{ payload: text("x"), role: "main", result: FAIL }] }),
 		); // failed
@@ -318,7 +322,7 @@ describe("aggregateDaily — 新口径", () => {
 		await store.record(
 			input({
 				feature: "membership",
-				target: null,
+				targetId: null,
 				messages: [{ payload: text("z"), role: "main" }],
 			}),
 		); // no-targets
