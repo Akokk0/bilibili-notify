@@ -122,9 +122,9 @@
 | ⑮ | （10-03 开片，切成 ⑮a–⑮b，前面先修桌面令牌闸，见表下「⑮ 开片」）图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | ✅ 已落（10-03） |
 | ⑯ | 抓图核心服务：逐跳查重定向、超时、结果形状、`storeImage`。旧引擎本期由服务端直接调它拿 `ImageRef`，3a 改走 `ctx.fetchImage` | 并进 3a（10-03 主人定：本期没有调用方，见表下「⑯ 并进 3a」） |
 | ⑰ | 引用方登记表 + 按引用清扫 + 新图宽限期；守卫：写图库的模块不在登记表里就判红 | 并进 ⑳（10-03 主人定：本期第一批写入方与引用方都在 ⑳，见表下「⑰ 并进 ⑳」） |
-| ⑱ | 历史行改形：`identity`、`nameSnapshot`、头像换图库引用、`createdAt`、`repushOf`、`RepushSnapshot`（`kind` → `feature` 10-03 提前到 ⑬f）；盘上旧失败转 `unknown`；守卫 13 加固（重推原件每种载荷都有去向）；装图库引用的格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定），原件的 `{ ref, mime }` 并成一格 | 未开工 |
+| ⑱ | 历史行改形：`identity`、`nameSnapshot`、`createdAt`、`repushOf`、`RepushSnapshot`（`kind` → `feature` 10-03 提前到 ⑬f）；盘上旧失败转 `unknown`；守卫 13 加固（重推原件每种载荷都有去向）。跟图有关的格（头像换图库引用、配图格按词表 `Ref` 那行起名、原件的 `{ ref, mime }` 并成一格、删 `own`）10-03 挪到 ⑳ | 未开工 |
 | ⑲ | 推送历史拆两层：文字不设上限，图按天数清（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），超期的行「图已清理」、不能重推；迁移换算老配置、不搬超期图与孤儿图 | 未开工 |
-| ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | 未开工 |
+| ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | 未开工 |
 | ㉑ | 作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | 未开工 |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 未开工 |
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
@@ -136,7 +136,7 @@
 | ㉙ | 统计总开关；系统页「存储占用」的服务端；旧代的列表、大小、删除服务口 | 未开工 |
 | ㉚ | 路由按资源整理（ADR-0036，10-03 主人定，**插在 ⑭ 之前做**）：照 ADR-0036 决策 4 的对照表只改路径、不改行为，server 改挂载、面板改调用方与缓存键、测试与文档跟上；素材库、来源、适配器、问题表那几组随各自那一片搬（决策 5） | ✅ 已落（10-03；路由文件跟着改名，源码目录不动；接线守卫 `apps/server/src/__tests__/routes-by-resource-mount.test.ts` 起整个 app：新路径每组不是 404、老路径都是 404、`/api/ws/ticket` 在 cookie 闸里；面板缓存键 `["globals"]` → `["settings"]` 等一并改；订阅头像地址存在资料缓存里，旧的 `/api/subs/<id>/avatar` 要等拓展下次报头像或 ⑳ 换成图库引用） |
 
-- 依赖：⑭ 与 ⑮ 互不依赖（⑯ ㉕ 10-03 并进 3a）（⑰ 10-03 并进 ⑳）；⑱ 要 ⑬ ⑮；⑳ 要 ⑲（超期的图不搬）；㉑–㉓ 要 ⑪ ⑮；㉔ 要 ⑬ ㉑–㉓；㉖ 要 ⑪ ⑬；㉗ 先于 ㉘；㉙ 要 ⑳ ㉖。每动一处盘上形状都抬 `MIGRATION_REVISION` 并补夹具。
+- 依赖：⑭ 与 ⑮ 互不依赖（⑯ ㉕ 10-03 并进 3a）（⑰ 10-03 并进 ⑳）；⑱ 要 ⑬（跟图有关的格 10-03 挪去 ⑳）；⑳ 要 ⑲（超期的图不搬）；㉑–㉓ 要 ⑪ ⑮；㉔ 要 ⑬ ㉑–㉓；㉖ 要 ⑪ ⑬；㉗ 先于 ㉘；㉙ 要 ⑳ ㉖。每动一处盘上形状都抬 `MIGRATION_REVISION` 并补夹具。
 - 改 contract 形状的片（⑫ ⑬ ⑱ ⑲ ⑳ ㉖ ㉙）面板同片跟上到「照旧能用」，面板的新界面仍在第 4 期。
 - 设置键本期只改这几片碰到的：⑬ 以特性键做键的配置、⑲ 图片保留天数、㉙ 统计开关；`app` → `core.*` 的其余拆分随 3a「设置坏了只停那一处」（`app.logLevels` 的键、文案账本挪进 `core.templatesSeen` 也随这一步，10-02 ⑬ 开片时挪出）。
 - 涨粉起点：压缩把最早那一小时换成小时末值，起点最多挪一小时，不算 data-model 里说的「截尾」，不另存起点；㉘ 落地时在 data-model 写明。
@@ -147,7 +147,7 @@
   - ⑬d 直播拆键：新特性 `liveStreaming`（独立的开关与目标，间隔在 `defaults.liveStreaming.streamingIntervalHours`），`restartPush` → `defaults.liveStart.catchUpOnBoot`，`templates.liveOngoing` → `templates.liveStreaming`；补报走 `liveStart` 的路由、历史记成开播、不 @全体，文字与卡照旧用「正在直播」那一套；B 站的周期计时改成开着才计（今天关着也计、到推送闸才扔）；「监听开不开」手抄的三份清单都加上 `liveStreaming`，合成一个判定随 ㉖（ADR-0027 决策 1）。`schedule` 只搬走这两格，静音时段与断流接续随 3a 的设置分拆。新装默认照今天：`liveStreaming` 关、间隔 1 小时（范围 1–24，面板上限 23 顺手对齐成 24）、`catchUpOnBoot` 关。拓展订阅声明了开播与下播两种事件就露「正在直播」开关（`has.liveStatus` 那半随 3a）。✅ 已落：补报与周期靠新加的一档推送类型 `LivePushType.CatchUp`（11）分开，`engines.ts` 的翻译表各加一行，`liveTypeToPushKind` 收成 `featureToPushKind(liveTypeToFeature(t))`；迁移在 `migration/live-split.ts`，订阅那一步取第 0 代的全局值（设置那一步把 `pushTime` 折成间隔以后 0 与 1 分不开），修订号 17、备份版本 5；面板的继承基线改用真正的全局特性开关（原先拿出厂值，迁出来的全局「正在直播」开着时订阅上显示成关、还关不掉），规则页「直播推送阈值」段加全局开关「状态推送」；拓展那条路的周期在服务端也按「声明了开播与下播」认（`featuresForEvents`，面板与服务端同一份）。
   - ⑬e 守卫 13 前半。✅ 已落（清单 `migration/keyed-records.ts` + 判定函数 + 行为核对，做法见 data-and-migration「守卫 13」；订阅那一族的 1.0 步骤抽成纯函数 `toCurrentRow`，读写盘与守卫共用）
   - ⑬f 历史行的推送种类换成特性键（10-03 主人定从 ⑱ 提前）：盘上那一格 `kind` → `feature`，值 `dynamic` / `live` / `live-ongoing` / `live-end` / `guard` / `sc` / `special-danmaku` / `special-enter` → 对应的特性键；`/api/history?kind=` → `?feature=`、按天计数的键、重推闸、契约里的 `DailyHistoryCount`、面板 `PUSH_KIND_META` 改成按特性键做键；`PushKindSchema` 与 `featureToPushKind` / `pushKindToFeature` 删掉，全仓只剩特性键一套名字。迁移加在 `migration/history.ts` 的行级变换里，仍是一趟读写，⑱ 再往同一个函数里加别的字段，历史不会多迁一次；修订号抬一。✅ 已落（修订号 18；`?kind=` 与不是特性键的 `?feature=` 都回 400，和 `limit` / `since` 一个做法；面板的种类表叫 `FEATURE_DESCRIPTORS`（`config/push-features.ts`），分组 `PushFamily` 取值 `live` / `post` / `superchat` / `membership`；守卫 13 补了历史那一族，先红后绿；迁移耗时测试比值 4.05，仍在 5.5 以内）
-  - 不归 ⑬ 的：`cardStyleByKind` 的键归 ㉔（它是卡种键，与卡片皮肤共用 `live` / `dynamic` / `sc` / `guard`，`live` 的新名 ㉔ 才定，分两趟改两边名字会对不上）；`app.logLevels` 归 3a（`dynamic` / `live` 并成 `bilibili` 要集成键）。历史行的推送种类原定 ⑬ 不改值、留到 ⑱（`featureToPushKind` 当桥）；10-03 主人定提前成 ⑬f：⑬d 之后两边已经一一对应，历史迁移是一趟读写、提前不会多迁一次，而 ⑱ 要等 ⑮ 的只有头像那一格。备份版本在 ⑬c 抬一次（⑫ 改了备份里订阅那一节的形状，当时漏抬）。
+  - 不归 ⑬ 的：`cardStyleByKind` 的键归 ㉔（它是卡种键，与卡片皮肤共用 `live` / `dynamic` / `sc` / `guard`，`live` 的新名 ㉔ 才定，分两趟改两边名字会对不上）；`app.logLevels` 归 3a（`dynamic` / `live` 并成 `bilibili` 要集成键）。历史行的推送种类原定 ⑬ 不改值、留到 ⑱（`featureToPushKind` 当桥）；10-03 主人定提前成 ⑬f：⑬d 之后两边已经一一对应，历史迁移是一趟读写、提前不会多迁一次，而 ⑱ 要等 ⑮ 的只有头像那一格（这一格 10-03 又挪去 ⑳）。备份版本在 ⑬c 抬一次（⑫ 改了备份里订阅那一节的形状，当时漏抬）。
 - **⑭ 开片（10-03）**：先勘察，再一题一题问主人（定案在 ADR-0025 决策 6 下 10-03 的 🔗），切成三小片依次提交：
   - ⑭a 新包 `packages/http`、B 站搬过去：通用的 `client.fetch` 与 `HttpResponse`、结果形状；B 站那层的薄包保住今天的行为；罐子加 `load()` / `clear()` 与 IP、`Domain` 规则，客户端改成长期有效的同一个；身份的「生成」「只升不降」两个纯函数；出网点名表换路径、B 站替身棘轮删掉搬走的两行。行为不变。✅ 已落（施工时定的几条见 ADR-0025 决策 6 下「⑭a 施工时定」：罐子的换号计数、头序、`send-only`、中止回 `indeterminate`；刷新链补了两处 gen 比对；B 站薄包 `ApiClient` 的 `get` / `postForm` 改名随 3a）
   - ⑭b `websocket()`、B 站弹幕切过去（握手头不变），出网棘轮里 blive 那一条清零。✅ 已落（施工时定的见 ADR-0025 决策 6 下「⑭b 施工时定」；真机待验加一项：切过去以后弹幕照常收）
