@@ -70,6 +70,15 @@ export function toIdentityRow(row: unknown, kind: "bilibili" | "extension"): unk
 	return { id: rest.id, identity: { sourceKey: extensionId, externalId }, ...rest };
 }
 
+/**
+ * 一行(已迁成 0.x 最新形状的)订阅 → 1.0 的键:先改名({@link renameSubscriptionKeys}),再拆直播
+ * ({@link splitSubscriptionLiveSettings},要全局的值)。`migrateSubscriptionFiles` 的每一行与守卫 13
+ * (`__tests__/keyed-records.test.ts`)跑的是这同一条,守卫验的就是迁移跑的。
+ */
+export function toCurrentRow(row: unknown, globalLive: GlobalLiveFacts): unknown {
+	return splitSubscriptionLiveSettings(renameSubscriptionKeys(row), globalLive);
+}
+
 /** 0.x 一个分组名在 1.0 里成的标签名:去掉首尾空白,空的丢掉。 */
 function tagNamesOf(raw: string): string[] {
 	const name = raw.trim();
@@ -184,8 +193,7 @@ export async function migrateSubscriptionFiles(
 	const extRows = ext.kind === "ok" ? (ext.value as unknown[]) : [];
 	if (bili.kind === "missing" && extRows.length === 0) return [];
 	const biliRows = bili.kind === "ok" ? (bili.value as unknown[]) : [];
-	const toCurrent = (row: unknown): unknown =>
-		splitSubscriptionLiveSettings(renameSubscriptionKeys(row), opts.globalLive);
+	const toCurrent = (row: unknown): unknown => toCurrentRow(row, opts.globalLive);
 	const next = toTaggedFile([
 		...biliRows.map((row) => toIdentityRow(toCurrent(migrateBiliSubscriptionRow(row)), "bilibili")),
 		...extRows.map((row) =>
