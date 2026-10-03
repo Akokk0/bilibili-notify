@@ -158,7 +158,7 @@ interface Problem {                    // 全在内存，不存盘
 渲染器只认中立的 `Post`。B 站动态与拓展作品各自翻过来，B 站动态类型不进核心。`Post` 是纯数据（能 JSON 序列化、不含 JSX），存原始值，排版归核心。**没有形态字段**：有什么画什么，块没数据就收起。
 
 ```ts
-type ImageRef = string;   // 图库 images/ 里的 sha256；作品图、直播封面、头像、历史快照、聊天附件共用
+type ImageRef = string;   // 图库 images/ 里的文件名 <sha256>.<ext>（扩展名按嗅探：png / jpg / gif / webp）；作品图、直播封面、头像、历史快照、聊天附件共用
 
 // 出卡只认 ref；url 只给「查看原图」，出图器不去抓
 interface PostImage { ref?: ImageRef; url?: string; width?: number; height?: number; isAnimated?: boolean }
