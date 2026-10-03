@@ -6,8 +6,8 @@
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
 import type { BiliSubscriptionKey } from "./subscriptions.js";
 
-/** 老草稿里「按 uid 回指一位 UP」的那一格。 */
-type LegacyRef<T> = T & { uid?: unknown; subscriptionId?: unknown };
+/** 老草稿里的一条,带着「按 uid 回指一位 UP」的那一格。 */
+type WithLegacyUid<T> = T & { uid?: unknown; subscriptionId?: unknown };
 
 /**
  * 一份老草稿(按 uid 记)→ 新形状;对不上订阅回一句为什么丢。已经是新形状的原样放行。
@@ -30,19 +30,21 @@ export function upgradeLegacyDraft(
 		const { uid: _resultUid, ...resultRest } = (result ?? {}) as Record<string, unknown>;
 		return { ...rest, subscriptionId, result: { ...resultRest, subscriptionId } };
 	}
-	const pigeon = result?.pigeon as LegacyRef<{ reason: string }> | undefined;
+	const pigeon = result?.pigeon as WithLegacyUid<{ reason: string }> | undefined;
 	if (!result || pigeon?.uid === undefined) return raw;
-	const swap = <T extends object>(ref: LegacyRef<T>): (T & { subscriptionId: string }) | null => {
-		const { uid, ...rest } = ref;
+	const swap = <T extends object>(
+		item: WithLegacyUid<T>,
+	): (T & { subscriptionId: string }) | null => {
+		const { uid, ...rest } = item;
 		const subscriptionId = lookup(uid);
 		return subscriptionId ? ({ ...rest, subscriptionId } as T & { subscriptionId: string }) : null;
 	};
-	const diligent = result.diligent as LegacyRef<{ reason: string }> | undefined;
+	const diligent = result.diligent as WithLegacyUid<{ reason: string }> | undefined;
 	const newPigeon = swap(pigeon);
 	const newDiligent = diligent ? swap(diligent) : null;
 	if (!newPigeon || !newDiligent) return "榜单草稿的鸽王 / 勤奋 UP 已对不上任何订阅";
 	const list = (key: "roast" | "scores") =>
-		(Array.isArray(result[key]) ? (result[key] as LegacyRef<object>[]) : []).flatMap((r) => {
+		(Array.isArray(result[key]) ? (result[key] as WithLegacyUid<object>[]) : []).flatMap((r) => {
 			const one = swap(r);
 			return one ? [one] : [];
 		});
