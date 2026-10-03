@@ -94,6 +94,63 @@ describe("stop — 作废在途的 cookie 刷新", () => {
 });
 
 /**
+ * ⑭a 起 cookie 罐只有一个、换号时原地换(`load()` / `clear()`),客户端也一直是同一个。刷新链里每跨一次 await 都要
+ * 比对 gen —— 漏一处,换号之后这条旧链还会接着发请求:带的是新号的 cookie,回来的 `Set-Cookie` 会被当成新会话的收进罐子
+ * (请求是换号之后才发的,罐子的换号计数对得上,`HttpClient` 的在途守卫挡不住)。从前每次换号都重建罐子与客户端,旧链手里
+ * 握着旧罐子,这个缺口不咬人。
+ */
+describe("刷新链跨 await 之后都比对 gen —— 换号以后旧链不再发请求", () => {
+	type Client = {
+		get: (url: string) => Promise<unknown>;
+		postForm: (url: string, body: Record<string, string>) => Promise<unknown>;
+	};
+	function startChain() {
+		const { ctx } = makeCtx();
+		const api = new BilibiliAPI({ serviceCtx: ctx, config: {} });
+		vi.spyOn(
+			api as unknown as { getCookieInfo: () => Promise<unknown> },
+			"getCookieInfo",
+		).mockResolvedValue({ code: 0, data: { refresh: true, timestamp: Date.now() } });
+		const client = (api as unknown as { client: Client }).client;
+		return { api, client };
+	}
+
+	it("加密那几步期间会话被清掉 → 不再去取 correspond 页", async () => {
+		const { api, client } = startChain();
+		const realEncrypt = globalThis.crypto.subtle.encrypt.bind(globalThis.crypto.subtle);
+		const encrypt = vi
+			.spyOn(globalThis.crypto.subtle, "encrypt")
+			.mockImplementation(async (...args: Parameters<SubtleCrypto["encrypt"]>) => {
+				await api.clearCookies();
+				return realEncrypt(...args);
+			});
+		const get = vi.spyOn(client, "get").mockResolvedValue('<div id="1-name">rc</div>');
+		const postForm = vi.spyOn(client, "postForm").mockResolvedValue({ code: 0, data: {} });
+
+		await api.checkIfTokenNeedRefresh("refresh-token", "csrf").catch(() => {});
+
+		expect(encrypt).toHaveBeenCalled();
+		expect(get).not.toHaveBeenCalled();
+		expect(postForm).not.toHaveBeenCalled();
+		encrypt.mockRestore();
+	});
+
+	it("取 correspond 页期间会话被清掉 → 不再发刷新请求", async () => {
+		const { api, client } = startChain();
+		const get = vi.spyOn(client, "get").mockImplementation(async () => {
+			await api.clearCookies();
+			return '<div id="1-name">rc</div>';
+		});
+		const postForm = vi.spyOn(client, "postForm").mockResolvedValue({ code: 0, data: {} });
+
+		await api.checkIfTokenNeedRefresh("refresh-token", "csrf").catch(() => {});
+
+		expect(get).toHaveBeenCalledTimes(1);
+		expect(postForm).not.toHaveBeenCalled();
+	});
+});
+
+/**
  * 关停(切片 ③)。加载 cookie 与每小时的定时器都会发起一轮刷新检查 —— 刷新链最后一步把新 cookie 落到
  * secrets/cookies.json(`onCookiesRefreshed`)。发出去不管的话,关停对它一无所知,cookie 写道关门时
  * 它可能还没落完;登记进 `ctx.track()`,关停才等得到它。

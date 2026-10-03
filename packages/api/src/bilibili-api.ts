@@ -1,3 +1,4 @@
+import { type Cookie, CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import {
 	type Disposable,
 	type Logger,
@@ -6,13 +7,10 @@ import {
 } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 import { CronJob } from "cron";
-import { generateBrowserIdentity } from "./browser-identity";
-import { BiliCookieJar } from "./cookie-jar";
+import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
-import { BiliHttpClient } from "./http-client";
 import { createSelfInfoCache, type SelfInfoCache } from "./self-info-cache";
 import type {
-	BACookie,
 	BiliTicket,
 	LiveRoomDanmuInfo,
 	LiveRoomInfo,
@@ -95,13 +93,16 @@ export class BilibiliAPI {
 	private readonly callbacks: BilibiliAPICallbacks;
 
 	/**
-	 * 本实例的浏览器身份(UA + sec-ch-ua 全家,版本互相咬合)。启动时生成一次,
-	 * loadCookies/clearCookies/-101 重建 client 时**复用同一份** —— 同一 cookie
-	 * 会话在不同 UA 间跳变是机器人特征,身份漂移比版本旧更招风控。
+	 * 本实例的浏览器身份(UA + sec-ch-ua 全家,版本互相咬合)。启动时生成一次、终身不变 ——
+	 * 同一 cookie 会话在不同 UA 间跳变是机器人特征,身份漂移比版本旧更招风控。
 	 */
 	private readonly browserIdentity = generateBrowserIdentity();
-	private jar: BiliCookieJar;
-	private client!: BiliHttpClient;
+	/**
+	 * cookie 罐与请求客户端都是**长期有效的同一个**:换号 / 登出 / -101 只调罐子的 `load()` /
+	 * `clear()` 原地换内容,不再重建罐子与客户端。
+	 */
+	private readonly jar = new CookieJar();
+	private readonly client: ApiClient;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
 	private refreshCookieTimer?: Disposable;
@@ -138,15 +139,14 @@ export class BilibiliAPI {
 		this.config = opts.config;
 		this.callbacks = opts.callbacks ?? {};
 		this.logger = opts.serviceCtx.logger;
-		this.jar = new BiliCookieJar();
+		this.client = this.createClient();
 	}
 
 	/**
-	 * 起 HTTP 客户端与每日 ticket 定时,**不联网**:ticket 在第一次 WBI 签名时由 getWbi 现取。
+	 * 起每日 ticket 定时,**不联网**:ticket 在第一次 WBI 签名时由 getWbi 现取。
 	 * 开机预取会让「开机那一刻连不上 B 站」变成整台 BN 起不来(见 start-offline.test.ts)。
 	 */
 	async start(): Promise<void> {
-		this.initClient();
 		this.logger.debug("[init] HTTP 客户端初始化完成");
 
 		// Daily ticket refresh at midnight (Beijing time, where bilibili.com lives).
@@ -180,10 +180,8 @@ export class BilibiliAPI {
 	setUserAgent(userAgent: string | undefined): void {
 		this.config = { ...this.config, userAgent };
 		const ua = this.getUserAgent();
-		if (this.client) {
-			this.client.setHeader("User-Agent", ua);
-			this.logger.info(`[init] User-Agent 已更新: ${ua}`);
-		}
+		this.client.setHeader("User-Agent", ua);
+		this.logger.info(`[init] User-Agent 已更新: ${ua}`);
 	}
 
 	/**
@@ -197,32 +195,40 @@ export class BilibiliAPI {
 
 	// ---- Initialization ----
 
-	private initClient(): void {
-		this.client = new BiliHttpClient({
-			jar: this.jar,
-			// 有限超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让
-			// 该请求永不结束 —— 卡死整条刷新链 / API 调用且不进 retry。20s 覆盖
-			// 连接 + 响应,超时抛错由 this.retry 正常退避重试。
-			timeoutMs: 20_000,
-			headers: {
-				// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
-				Accept: "application/json, text/plain, */*",
-				// UA/sec-ch-ua 来自同一份生成身份,版本互相咬合(旧默认是 Firefox UA
-				// 配 Chrome sec-ch-ua 的拼接怪);用户配置的 userAgent 仍优先,
-				// 判定统一走 getUserAgent(与 WSS 同指纹)。
-				"User-Agent": this.getUserAgent(),
-				Origin: "https://www.bilibili.com",
-				Referer: "https://www.bilibili.com/",
-				priority: "u=1, i",
-				"sec-ch-ua": this.browserIdentity.secChUa,
-				"sec-ch-ua-mobile": this.browserIdentity.secChUaMobile,
-				"sec-ch-ua-platform": this.browserIdentity.secChUaPlatform,
-				"sec-fetch-dest": "empty",
-				"sec-fetch-mode": "cors",
-				"sec-fetch-site": "same-site",
-				// 注:不设默认 Content-Type —— axios 对无 body 的 GET 会剥掉该头、
-				// 表单 POST 又逐请求覆盖,旧线上流量从未真正发过 application/json。
-			},
+	/** 构造时调一次;之后整个生命周期都是这一个客户端。 */
+	private createClient(): ApiClient {
+		return new ApiClient({
+			http: new HttpClient({
+				jar: this.jar,
+				identity: this.browserIdentity,
+				// 有限超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让
+				// 该请求永不结束 —— 卡死整条刷新链 / API 调用且不进 retry。20s 覆盖
+				// 连接 + 响应,超时抛错由 this.retry 正常退避重试。
+				timeoutMs: 20_000,
+				// B 站特有的默认头;通用包不带任何平台的默认值。
+				// UA 与 sec-ch-ua 三件取自同一份生成身份,版本互相咬合(旧默认是 Firefox UA
+				// 配 Chrome sec-ch-ua 的拼接怪);用户配置的 userAgent 仍优先,判定统一走
+				// getUserAgent(与 WSS 同指纹)。**身份的头在这里按老位置写全**:HttpClient 对
+				// 没写的才补、补在最后,写在这里线上头序与改造前逐字节一致(头序也是指纹的一部分,
+				// bilibili-wire-headers.test.ts 钉着)。
+				headers: {
+					// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
+					Accept: "application/json, text/plain, */*",
+					"User-Agent": this.getUserAgent(),
+					Origin: "https://www.bilibili.com",
+					Referer: "https://www.bilibili.com/",
+					priority: "u=1, i",
+					"sec-ch-ua": this.browserIdentity.secChUa,
+					"sec-ch-ua-mobile": this.browserIdentity.secChUaMobile,
+					"sec-ch-ua-platform": this.browserIdentity.secChUaPlatform,
+					"sec-fetch-dest": "empty",
+					"sec-fetch-mode": "cors",
+					"sec-fetch-site": "same-site",
+					// 注:不设默认 Content-Type —— axios 对无 body 的 GET 会剥掉该头、
+					// 表单 POST 又逐请求覆盖,旧线上流量从未真正发过 application/json。
+				},
+			}),
+			// setUserAgent 热换的 UA 叠在上面(自定义 UA 这一片照旧能用,⑭c 删它)。
 			onBody: (body) => {
 				const data = body as { code?: unknown } | undefined;
 				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
@@ -271,8 +277,7 @@ export class BilibiliAPI {
 		this.loginInfoLoaded = false;
 		this.selfInfoCache.invalidate(); // 会话终态:账号身份不再有效,清缓存
 		this.fireAuthLost();
-		this.jar = new BiliCookieJar();
-		this.initClient();
+		this.jar.clear();
 	}
 
 	// ---- Cookie management ----
@@ -310,11 +315,11 @@ export class BilibiliAPI {
 
 	/** Load cookies from CookieData (decrypted by StorageManager) */
 	async loadCookies(data: CookieData): Promise<void> {
-		let cookies: BACookie[];
+		let cookies: Cookie[];
 		try {
 			const parsed = JSON.parse(data.cookiesJson);
 			if (!Array.isArray(parsed)) throw new Error("cookiesJson 不是数组");
-			cookies = parsed as BACookie[];
+			cookies = parsed as Cookie[];
 		} catch (e) {
 			// 损坏的 cookiesJson 不得让整条启动链 reject 裸 SyntaxError —— 记 error
 			// 后按「未登录」继续(等用户重新扫码),不 crash 进程。
@@ -327,29 +332,29 @@ export class BilibiliAPI {
 			`[cookie] 正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "存在" : "缺失"}`,
 		);
 
-		// 重载 / 换号:先重建 jar + 重绑 client,旧 SESSDATA/bili_jct 绝不残留
-		// 参与后续请求(否则换号后旧会话 cookie 仍被发出,与 clearCookies 同源)。
-		this.jar = new BiliCookieJar();
-		this.initClient();
 		this.selfInfoCache.invalidate(); // 换号:上一账号的身份缓存必须清掉
 
 		const biliJctCookie = cookies.find((c) => c.key === "bili_jct");
 
-		this.jar.load(cookies);
-
-		// Add a dummy buvid3 cookie if bili_jct is present (required by some APIs)
-		if (biliJctCookie) {
-			this.jar.load([
-				{
-					key: "buvid3",
-					value: "some_non_empty_value",
-					expires: biliJctCookie.expires,
-					domain: biliJctCookie.domain,
-					path: biliJctCookie.path,
-					secure: biliJctCookie.secure,
-				},
-			]);
-		}
+		// 重载 / 换号:`load` 整罐换成这一批,旧 SESSDATA/bili_jct 绝不残留参与后续请求
+		// (否则换号后旧会话 cookie 仍被发出,与 clearCookies 同源)。
+		// Add a dummy buvid3 cookie if bili_jct is present (required by some APIs) —— 并进
+		// 同一批:`load` 是替换语义,分两次调第二次会把第一批全抹掉。
+		this.jar.load(
+			biliJctCookie
+				? [
+						...cookies,
+						{
+							key: "buvid3",
+							value: "some_non_empty_value",
+							expires: biliJctCookie.expires,
+							domain: biliJctCookie.domain,
+							path: biliJctCookie.path,
+							secure: biliJctCookie.secure,
+						},
+					]
+				: cookies,
+		);
 
 		this.loginInfoLoaded = true;
 		this.logger.debug(`[cookie] Cookie 写入完成，bili_jct=${biliJctCookie ? "存在" : "缺失"}`);
@@ -398,17 +403,16 @@ export class BilibiliAPI {
 	/**
 	 * 清空内存 cookie jar(登出)。调用方此前只删盘 cookie 而不清
 	 * 这里,导致 api 仍以 stale SESSDATA/bili_jct 发已认证请求,直到进程重启
-	 * (安全缺陷,P0-2)。重建 jar + 重绑 client(沿用 -101 路径同款做法,
-	 * 旧 client 仍持旧 jar 引用,必须 initClient 重绑),停掉刷新定时器
-	 * (登出后已无 refreshToken 可刷),标记未登录。
+	 * (安全缺陷,P0-2)。原地 `clear()` 罐子(客户端与罐子都是长期有效的同一个,
+	 * 在途请求迟到的 Set-Cookie 由 HttpClient 按罐子的 epoch 挡掉,写不进来),
+	 * 停掉刷新定时器(登出后已无 refreshToken 可刷),标记未登录。
 	 */
 	async clearCookies(): Promise<void> {
 		// 作废任何 in-flight refresh —— 登出后它不得再 onCookiesRefreshed 回写。
 		this.refreshGeneration++;
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;
-		this.jar = new BiliCookieJar();
-		this.initClient();
+		this.jar.clear();
 		this.loginInfoLoaded = false;
 		this.selfInfoCache.invalidate(); // 登出:清账号身份缓存
 		this.logger.info("[cookie] 内存 cookie jar 已清空");
@@ -487,8 +491,18 @@ export class BilibiliAPI {
 			await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, data),
 		);
 		const correspondPath = encrypted.reduce((str, c) => str + c.toString(16).padStart(2, "0"), "");
+		// 加密那两步也跨了 await。罐子只有一个、换号原地换(⑭a 起),换号之后这条旧链再发请求,带的就是新号的 cookie,
+		// 回来的 Set-Cookie 会被当成新会话的收进去 —— 每跨一次 await 都比对,换了就不再发。
+		if (gen !== this.refreshGeneration) {
+			this.logger.debug("[cookie] 刷新在算 correspond 期间被取代,丢弃");
+			return;
+		}
 
 		const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
+		if (gen !== this.refreshGeneration) {
+			this.logger.debug("[cookie] 刷新在取 correspond 页期间被取代,丢弃");
+			return;
+		}
 		// jsdom 时代取 getElementById("1-name").textContent;页面即
 		// `<div id="1-name">{refresh_csrf}</div>`,正则等价且免掉整棵 jsdom 依赖树。
 		const refreshCsrf =

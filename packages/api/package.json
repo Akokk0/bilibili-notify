@@ -26,6 +26,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@bilibili-notify/http": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"@bilibili-notify/storage": "workspace:^",
 		"cron": "catalog:",

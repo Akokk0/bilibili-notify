@@ -33,19 +33,6 @@ export interface BiliTicket {
 	};
 }
 
-// ---- Cookies ----
-
-export interface BACookie {
-	key: string;
-	value: string;
-	expires?: string;
-	domain?: string;
-	path?: string;
-	secure?: boolean;
-	httpOnly?: boolean;
-	sameSite?: string;
-}
-
 // ---- API Results ----
 
 /**

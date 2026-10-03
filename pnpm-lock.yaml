@@ -550,6 +550,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@bilibili-notify/http':
+        specifier: workspace:^
+        version: link:../http
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
@@ -628,6 +631,12 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+
+  packages/http:
+    dependencies:
+      '@bilibili-notify/internal':
+        specifier: workspace:^
+        version: link:../internal
 
   packages/image:
     dependencies:

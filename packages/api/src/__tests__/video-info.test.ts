@@ -8,11 +8,11 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { ApiClient } from "../api-client";
 import { BilibiliAPI } from "../bilibili-api";
-import { BiliCookieJar } from "../cookie-jar";
 import { GET_VIDEO_INFO } from "../endpoints";
-import { BiliHttpClient } from "../http-client";
 
 /** 真实接口 data 的形状(字段照 x/web-interface/view 抓包裁剪)。 */
 const RAW_VIDEO = {
@@ -124,7 +124,7 @@ describe("resolveShortLink", () => {
 	});
 });
 
-describe("BiliHttpClient.redirectLocation", () => {
+describe("ApiClient.redirectLocation", () => {
 	let server: Server;
 	let baseURL: string;
 	let hits: string[];
@@ -149,14 +149,19 @@ describe("BiliHttpClient.redirectLocation", () => {
 		await new Promise<void>((r) => server.close(() => r()));
 	});
 
+	const makeClient = () =>
+		new ApiClient({
+			http: new HttpClient({ jar: new CookieJar(), identity: generateBrowserIdentity() }),
+		});
+
 	it("只取第一跳的 Location(补成绝对地址),不跟过去", async () => {
-		const client = new BiliHttpClient({ jar: new BiliCookieJar() });
+		const client = makeClient();
 		await expect(client.redirectLocation(`${baseURL}/hop`)).resolves.toBe(`${baseURL}/landing?x=1`);
 		expect(hits).toEqual(["GET /hop"]);
 	});
 
 	it("没有重定向就是 null", async () => {
-		const client = new BiliHttpClient({ jar: new BiliCookieJar() });
+		const client = makeClient();
 		await expect(client.redirectLocation(`${baseURL}/landing`)).resolves.toBeNull();
 	});
 });

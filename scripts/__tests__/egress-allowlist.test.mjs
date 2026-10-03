@@ -44,8 +44,8 @@ const NET_FUNCTIONS = new Set(["request", "get", "connect", "createConnection"])
  * 只有两类 —— 集成的请求客户端;BN 自己的出口(AI 服务商走 OpenAI SDK,不扫第三方)与开发版。
  */
 export const ALLOWLIST = {
-	// 集成的请求客户端;第 2 期起换成 packages/http/src。
-	"packages/api/src/http-client.ts": "集成的请求客户端",
+	// 集成的请求客户端(⑭a 起在 packages/http;packages/api 里 B 站那层薄包经它出网,自己不调 fetch)。
+	"packages/http/src/http-client.ts": "集成的请求客户端",
 	// BN 自己的出口:应用内更新、拓展市场、签名清单。
 	"apps/server/src/update/fetch-through-mirrors.ts": "BN 自己的出口:更新、拓展市场、签名清单",
 	"packages/ai/src/web-search.ts": "BN 自己的出口:联网搜索",
