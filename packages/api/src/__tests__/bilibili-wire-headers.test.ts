@@ -6,7 +6,10 @@
  * 它们按老位置写全 —— 谁手滑把它们删了(让 HttpClient 补)或挪了位置,别的测试都还绿,只有
  * 线上的头序变了。这里用裸 TCP 收原始请求行,看的是真正发出去的字节,不是 Node 解析后的 headers。
  *
- * 期望清单取自改造前 `initClient` 里那张头表的顺序(它是独立的来源,不是现算的)。
+ * 期望清单是**改造前生产上开机之后真正发出去的顺序**(独立的来源,不是现算的):`initClient` 那张头表上
+ * UA 排第二,可开机总会调一次 `setUserAgent`(没填自定义 UA 也调),旧的 `setHeader` 先删同名再从末尾加回,
+ * 于是线上的 UA 一直排在默认头最后。⑭a 起一度照表上的顺序发(UA 第二),10-03 查 ⑭ 之前的代码发现以后,
+ * 主人定恢复生产上跑了几个月的这个顺序:改造期间不引入没在真机上验过的指纹变化。
  */
 
 import net from "node:net";
@@ -17,7 +20,6 @@ import { BilibiliAPI } from "../bilibili-api";
 /** 我们自己掌控的头,按改造前线上的顺序(含大小写)。其余的是 undici 自己加的,不管。 */
 const OUR_HEADERS_BEFORE = [
 	"Accept",
-	"User-Agent",
 	"Origin",
 	"Referer",
 	"priority",
@@ -27,6 +29,7 @@ const OUR_HEADERS_BEFORE = [
 	"sec-fetch-dest",
 	"sec-fetch-mode",
 	"sec-fetch-site",
+	"User-Agent",
 ];
 const OUR_NAMES = new Set(
 	[...OUR_HEADERS_BEFORE, "Content-Type", "Cookie"].map((n) => n.toLowerCase()),
@@ -76,7 +79,7 @@ function makeClient() {
 }
 
 describe("B 站线上请求头的顺序与大小写", () => {
-	it("GET:与改造前一致(Accept 打头,UA 第二,sec-ch-ua 三件在 priority 之后)", async () => {
+	it("GET:与改造前一致(Accept 打头,sec-ch-ua 三件在 priority 之后,UA 在默认头最后)", async () => {
 		const { client } = makeClient();
 		await client.get(`${baseURL}/x`);
 		expect(ourNamesOnWire(rawHeads[0] as string[])).toEqual(OUR_HEADERS_BEFORE);

@@ -42,7 +42,7 @@
 
     🔗 **2026-10-03 ⑭a 施工时定**：
     - **换号计数**：罐子每次 `load()` / `clear()` 计数加一（`CookieJar.epoch`），`fetch` 一进来就记下；回来时对不上，这份响应属于上一个会话，`Set-Cookie` 不收、响应照常交回。这是「客户端长期有效」的配套 —— 从前换号重建罐子，迟到的旧响应只会落进旧罐子。刷新链里每跨一次 await 都比对 gen（加密那两步之后、取 correspond 页之后原先缺着，从前旧链握着旧罐子不咬人，这次补上并有测试钉着），换号以后旧链不再发请求。
-    - **头的顺序也是指纹**：发出去的头按「默认头、这次请求的头、调用方没写的身份头、`Cookie`」排，身份头是「没写才补，补在后面」；B 站那层把 UA 与 `sec-ch-ua` 三件按今天的位置写全，线上头序和改造前逐个一致（`packages/api` 的 `bilibili-wire-headers.test.ts` 钉着）。
+    - **头的顺序也是指纹**：发出去的头按「默认头、这次请求的头、调用方没写的身份头、`Cookie`」排，身份头是「没写才补，补在后面」；B 站那层把 UA 与 `sec-ch-ua` 三件按改造前的位置写全（`packages/api` 的 `bilibili-wire-headers.test.ts` 钉着）。🔗 10-03 ⑭c 之后更正：「改造前的位置」起初取的是 `initClient` 那张表（UA 第二），可改造前每次开机都会调一次 `setUserAgent`，旧 `setHeader` 先删再从末尾加回，生产上实际发的一直是 UA 排在默认头最后；⑭a 起照表发，等于悄悄改了生产的头序。主人定恢复成生产上那个顺序，测试的期望与来源注释一起改了。要不要往真浏览器的顺序靠，以后单独做、真机验过再定。
     - `FetchOptions`：`beforeHop` 每一跳（含第一次请求）发出之前都调，回失败即否决、原样交回；`maxRedirects` 跟满以后遇到的 3xx 原样回，不造失败码；`cookies: "send-only"` 只带不收（B 站「只取第一跳」用它，免得把短链站的 cookie 收进罐子）。被调用方的 `signal` 中止回 `indeterminate`（请求可能已经到了对端、结果不明，也正好「绝不自动重试」），中止原因是超时的算 `timeout`。`HttpResponse` 带 `isSuccess`（2xx），`json()` 回结果形状、不是 JSON 回 `invalid` 不抛。
     - B 站那层的薄包叫 `ApiClient`，保住今天的 `get` / `postForm` / `redirectLocation`：它们和 naming「走网络取数用 `fetch…`」不合，可七八个测试按这几个名字打桩，3a 把 B 站搬成 `bilibili/` 集成时一起改名。
 
