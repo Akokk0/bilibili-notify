@@ -216,6 +216,7 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | 补关注「-101 整批跳过、不降级」（已定未做，见 subscription-sources「B 站怎么实现」），随关注同步搬进 `bilibili/` | 3b |
 | 直播监听的唯一判定（internal）：「开着」只看开关、不看有没有目标（ADR-0027 决策 1）；首页的「不会被监听」与直播就绪判断都改用它。已知 bug 就落在这条上（见「施工中顺手修」），别拖到最后 | 3b；首页在 4 |
 | 密钥打码：schema 标 `secret: true`、服务端按 `MaskedSecret` 下发；面板那一半（统一密钥输入框） | 3a；面板在 4 |
+| 重启能力的预检 `RestartAbility` 不能重启时还是 `{ can: false, reason }`（`source-run` / `unsupervised`）：按 ADR-0026 决策 2 改成 `code` + `message`，系统页与拓展页读它的地方同期跟上（10-03 ⑱a 施工中发现，主人定归期） | 第 4 期 |
 | 原生分享：解析器交中立描述，由 OneBot 适配器去签。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表（ADR-0029 决策 2）；重推原件里小程序卡那一种的迁移随之（10-03 从 ⑱ 挪来） | 3b |
 | 测试助手重复：scripts 6 处各算 repoRoot、internal 三份 BASE AI 夹具、面板 UpDialog 三份 renderDialog 与造目标、`extSub` 与 `makeExtSub` 重复、backup 两份 pickFile | 各区重写那期合并，没重写到的归 5 |
 | 还在用正则扫 TS 源码的守卫迁上 AST 共用工具（09-29 定的规矩，见 architecture「守卫」开头）：devtools 隔离（服务端、面板各一份）、`constants-imports.test.ts`、`index-background-work-tracked.test.ts`（今天只钉形状）、面板 `walk.ts` / `blankComments` 的 13 个消费方与颜色 token 等处的内联剥注释、`font-reader-singleton`、`tour-anchors-exist`、`asset-dir`；碰到哪道先迁哪道 | 5（守卫补齐） |
