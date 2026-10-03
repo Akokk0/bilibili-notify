@@ -16,7 +16,6 @@
 
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import WebSocket from "ws";
 import { decodeFrames, encodePacket, WsOp } from "../src/codec.ts";
 import { makeServiceCtx, openReadonlyApi } from "./_env.ts";
 
@@ -75,25 +74,14 @@ if (!host) {
 	process.exit(1);
 }
 
-const cookieHeader = api.getCookiesHeader();
-const buvidRes = (await (
-	await fetch("https://api.bilibili.com/x/frontend/finger/spi", {
-		headers: { Cookie: cookieHeader },
-	})
-).json()) as { code: number; data?: { b_3?: string } };
-const buvid = buvidRes.data?.b_3 ?? "";
+const buvid = await api.getBuvid3();
 logger.info(`buvid=${buvid ? "已取得" : "缺失"}`);
 
 const url = `wss://${host.host}${host.wss_port === 443 ? "" : `:${host.wss_port}`}/sub`;
 logger.info(`连接 ${url},录 ${minutes} 分钟 → ${outFile}`);
 
-const ws = new WebSocket(url, {
-	headers: {
-		Cookie: cookieHeader,
-		// 与同进程 HTTP 同指纹(api 的生成身份),不再自带一份写死的 UA
-		"User-Agent": api.getUserAgent(),
-	},
-});
+// 握手头(身份、cookie)与服务端建连走同一个口,录到的就是线上那条握手能拿到的帧
+const ws = api.openDanmakuSocket(url);
 ws.binaryType = "nodebuffer";
 
 const t0 = Date.now();
@@ -128,7 +116,8 @@ ws.on("open", () => {
 	setTimeout(() => ws.send(encodePacket(WsOp.Heartbeat, {})), 1_000);
 });
 
-ws.on("message", (data: Buffer) => {
+ws.on("message", (raw) => {
+	const data = raw as Buffer;
 	frames++;
 	bytes += data.length;
 	const op = data.length >= 12 ? data.readUInt32BE(8) : -1;
@@ -151,7 +140,7 @@ ws.on("message", (data: Buffer) => {
 	}
 });
 
-ws.on("error", (e) => logger.error(`ws error: ${e.message}`));
+ws.on("error", (e) => logger.error(`ws error: ${(e as Error).message}`));
 ws.on("close", (code) => logger.warn(`ws closed code=${code}`));
 
 setTimeout(

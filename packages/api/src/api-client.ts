@@ -1,4 +1,10 @@
-import { type HttpClient, isRedirectStatus, urlWithoutQuery } from "@bilibili-notify/http";
+import {
+	type HttpClient,
+	isRedirectStatus,
+	urlWithoutQuery,
+	type WebSocketLike,
+	type WebSocketOptions,
+} from "@bilibili-notify/http";
 
 /**
  * B 站请求客户端 —— `@bilibili-notify/http` 的 `HttpClient` 之上的一层薄包。
@@ -52,6 +58,14 @@ export class ApiClient {
 	/** 热替换叠在默认头上的头(setUserAgent 用);已 in-flight 的请求仍走旧值。 */
 	setHeader(name: string, value: string): void {
 		setHeaderIn(this.headers, name, value);
+	}
+
+	/**
+	 * 经同一个 `HttpClient`(同一份身份与 cookie 罐)建 WebSocket。握手头由客户端自己装配,
+	 * 和 `get` / `postForm` 的头(默认头、这里叠的热换头)无关 —— 那些是 fetch 的头。
+	 */
+	websocket(url: string, options?: WebSocketOptions): WebSocketLike {
+		return this.http.websocket(url, options);
 	}
 
 	async get(url: string, opts?: RequestOptions): Promise<unknown> {

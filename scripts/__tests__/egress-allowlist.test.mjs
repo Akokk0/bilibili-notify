@@ -46,6 +46,8 @@ const NET_FUNCTIONS = new Set(["request", "get", "connect", "createConnection"])
 export const ALLOWLIST = {
 	// 集成的请求客户端(⑭a 起在 packages/http;packages/api 里 B 站那层薄包经它出网,自己不调 fetch)。
 	"packages/http/src/http-client.ts": "集成的请求客户端",
+	// 集成的 WebSocket 建连(⑭b:B 站弹幕经 `HttpClient.websocket` 走到这里,blive 不再自己建连)。
+	"packages/http/src/websocket.ts": "集成的 WebSocket 建连",
 	// BN 自己的出口:应用内更新、拓展市场、签名清单。
 	"apps/server/src/update/fetch-through-mirrors.ts": "BN 自己的出口:更新、拓展市场、签名清单",
 	"packages/ai/src/web-search.ts": "BN 自己的出口:联网搜索",
@@ -54,7 +56,7 @@ export const ALLOWLIST = {
 
 /**
  * 棘轮表:文件 → 出站原语的上限(勘察时的实数)。只许往下调,到 3b 末清零。
- * 平台适配器的出口随连接与适配器搬走;blive 的 WebSocket 与出图器拉图也各有去处;
+ * 平台适配器的出口随连接与适配器搬走;出图器拉图也有去处;
  * `routes/settings.ts` 是设置页的 AI 连通测试写在了路由里。
  */
 export const RATCHET = {
@@ -62,7 +64,6 @@ export const RATCHET = {
 	"apps/server/src/platforms/onebot.ts": 2,
 	"apps/server/src/platforms/qq-bind.ts": 1,
 	"apps/server/src/platforms/webhook.ts": 1,
-	"packages/blive/src/client.ts": 1,
 	"packages/image/src/image-renderer.ts": 1,
 	"apps/server/src/routes/settings.ts": 1,
 };

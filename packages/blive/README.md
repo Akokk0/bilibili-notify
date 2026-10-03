@@ -6,7 +6,7 @@
 
 `connectLiveRoom` 只做四件事:**连接 + 认证 + 心跳 + 编解码/解析进单回调漏斗**。
 
-- **连接参数全注入**:token(getDanmuInfo)、host_list、uid、真 buvid3、Cookie、User-Agent 全部由调用方提供,包内**零 HTTP**。`userAgent` 必传(从 `api.getUserAgent()` 取,保证与同进程 HTTP 同指纹)。
+- **连接参数与建连的口全注入**:token(getDanmuInfo)、host_list、uid、真 buvid3 由调用方提供,包内**零 HTTP**;建连的口 `createSocket(url)` **必传**,包内不自己建 socket、不拼握手头 —— 身份(UA)与 cookie 归它背后的那一层(生产传 `api.openDanmakuSocket`,经 `packages/http` 的客户端建连,保证与同进程 HTTP 同指纹),包里不设兜底,免得谁忘传时静默造出第二套指纹。
 - **无内部重连**:断线重连、退避、放弃全是上游(`packages/live` 的 RoomSession)的策略;host 轮换也在上游做(本包恒取 `hostList[0]`)。
 - **`close()` 之后保证静默**:不再发包、不再上报任何事件(包括主动关闭的 close 回声),上层无需「有意关闭」记账。
 - **坏包绝不抛**:解压失败 / JSON 坏掉 / 形状缺损的消息一律丢弃或降级 `raw`,一条坏消息不影响整条连接。
@@ -16,8 +16,7 @@ import { connectLiveRoom } from "@bilibili-notify/blive";
 
 const client = connectLiveRoom({
 	roomId, uid, token, buvid, hostList,
-	cookieHeader: api.getCookiesHeader(),
-	userAgent: api.getUserAgent(),
+	createSocket: (url) => api.openDanmakuSocket(url),
 	onEvent: (ev) => { /* 单 switch 接完 */ },
 	// connectTimeoutMs?: 15_000  建连→auth-ok 整段限时,超时 emit error + close
 });

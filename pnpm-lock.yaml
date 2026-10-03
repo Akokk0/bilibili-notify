@@ -575,15 +575,18 @@ importers:
       '@types/qrcode':
         specifier: 'catalog:'
         version: 1.5.6
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.1
+      ws:
+        specifier: 'catalog:'
+        version: 8.21.3
 
   packages/blive:
     dependencies:
       protobufjs:
         specifier: ^8.8.0
         version: 8.8.0
-      ws:
-        specifier: 'catalog:'
-        version: 8.21.3
     devDependencies:
       '@bilibili-notify/api':
         specifier: workspace:*
@@ -594,9 +597,6 @@ importers:
       '@bilibili-notify/storage':
         specifier: workspace:*
         version: link:../storage
-      '@types/ws':
-        specifier: 'catalog:'
-        version: 8.18.1
 
   packages/dynamic:
     dependencies:
@@ -637,6 +637,13 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
+      ws:
+        specifier: 'catalog:'
+        version: 8.21.3
+    devDependencies:
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.1
 
   packages/image:
     dependencies:

@@ -1,6 +1,12 @@
 import { type Failure, fail, ok, type Result } from "@bilibili-notify/internal/constants";
 import type { BrowserIdentity } from "./browser-identity";
 import type { CookieJar } from "./cookie-jar";
+import {
+	connectWebSocket,
+	cookieLookupUrl,
+	type WebSocketLike,
+	type WebSocketOptions,
+} from "./websocket";
 
 /**
  * fetch 传输层 —— 通用底座,不带任何平台的默认值(Origin / Referer / sec-fetch-* 这类归调用方)。
@@ -315,6 +321,30 @@ export class HttpClient {
 			from = { url: target, status: leg.status };
 			target = next;
 		}
+	}
+
+	/**
+	 * 用这个客户端的身份与罐子建一条 WebSocket。帧、心跳、重连归调用方,这里只管握手和 `signal`。
+	 *
+	 * 握手头是**自己的一套**,不走 fetch 的头装配:`Cookie`(罐子里有这个地址该带的才带)在前,
+	 * 然后 `User-Agent`(身份的),再然后是 `options.headers`(同名的盖过默认值、留在原位置)。
+	 * 不带 `sec-ch-ua*` / `Origin`,也不带构造客户端时交进来的默认头 —— 那些是 fetch 的头。
+	 * 头序与切过来之前裸 `ws` 建连时一致(头序也是指纹)。
+	 *
+	 * 地址不合法、协议 `ws` 不收(如 `ftp:`)时同步抛错,和 `new WebSocket` 一样(给错地址是 bug)。
+	 */
+	websocket(url: string | URL, options: WebSocketOptions = {}): WebSocketLike {
+		const target = new URL(url);
+		const handshake: [string, string][] = [];
+		const cookie = this.jar.cookieHeaderFor(cookieLookupUrl(target));
+		if (cookie) handshake.push(["Cookie", cookie]);
+		handshake.push(["User-Agent", this.identity.userAgent]);
+		for (const [name, value] of Object.entries(options.headers ?? {})) {
+			const at = handshake.findIndex(([known]) => known.toLowerCase() === name.toLowerCase());
+			if (at >= 0) handshake[at] = [name, value];
+			else handshake.push([name, value]);
+		}
+		return connectWebSocket(target, Object.fromEntries(handshake), options.signal);
 	}
 
 	/**

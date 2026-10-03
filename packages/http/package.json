@@ -26,7 +26,11 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@bilibili-notify/internal": "workspace:^"
+		"@bilibili-notify/internal": "workspace:^",
+		"ws": "catalog:"
+	},
+	"devDependencies": {
+		"@types/ws": "catalog:"
 	},
 	"engines": {
 		"node": ">=20.0.0"

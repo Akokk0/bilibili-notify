@@ -1,4 +1,10 @@
-import { type Cookie, CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
+import {
+	type Cookie,
+	CookieJar,
+	generateBrowserIdentity,
+	HttpClient,
+	type WebSocketLike,
+} from "@bilibili-notify/http";
 import {
 	type Disposable,
 	type Logger,
@@ -193,6 +199,15 @@ export class BilibiliAPI {
 		return this.config.userAgent?.trim() || this.browserIdentity.userAgent;
 	}
 
+	/**
+	 * 弹幕服的建连口(blive 的 `createSocket` 接的就是它):经长期有效的那个客户端建连,握手头由
+	 * 客户端按身份与 cookie 罐装配 —— `Cookie`(这个地址该带的)在前、`User-Agent` 在后,不带
+	 * `sec-ch-ua` / `Origin`。UA 每次建连现取 {@link getUserAgent},自定义 UA 与热换照旧生效。
+	 */
+	openDanmakuSocket(url: string): WebSocketLike {
+		return this.client.websocket(url, { headers: { "User-Agent": this.getUserAgent() } });
+	}
+
 	// ---- Initialization ----
 
 	/** 构造时调一次;之后整个生命周期都是这一个客户端。 */
@@ -295,17 +310,6 @@ export class BilibiliAPI {
 		} catch (e) {
 			this.logger.warn(`[cookie] 获取 cookies 失败: ${e instanceof Error ? e.message : String(e)}`);
 			return undefined;
-		}
-	}
-
-	getCookiesHeader(): string {
-		try {
-			return this.jar
-				.serialize()
-				.map((c) => `${c.key}=${c.value}`)
-				.join("; ");
-		} catch {
-			return "";
 		}
 	}
 

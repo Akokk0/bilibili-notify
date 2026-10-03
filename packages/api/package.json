@@ -35,7 +35,9 @@
 	},
 	"devDependencies": {
 		"@types/md5": "^2.3.6",
-		"@types/qrcode": "catalog:"
+		"@types/qrcode": "catalog:",
+		"@types/ws": "catalog:",
+		"ws": "catalog:"
 	},
 	"engines": {
 		"node": ">=20.0.0"

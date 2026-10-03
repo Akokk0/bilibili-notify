@@ -2,19 +2,19 @@
  * 直播信息流 WSS 客户端 —— 哑管道。
  *
  * 职责边界:连接 + 认证 + 心跳 + 编解码/解析进 `onEvent` 漏斗,仅此而已。
- * 连接参数(token / host_list / uid / buvid)全部由调用方注入,这里不发任何
- * HTTP;不做内部重连 —— 断线重连、退避、放弃全是 RoomSession 的策略。
+ * 连接参数(token / host_list / uid / buvid)与建连的口(`createSocket`)全部由调用方
+ * 注入,这里不发任何 HTTP、不自己建 socket、不拼握手头(身份与 cookie 归建连的那一层);
+ * 不做内部重连 —— 断线重连、退避、放弃全是 RoomSession 的策略。
  *
  * close() 之后保证静默:不再发包、不再上报任何事件(包括主动关闭的 close
  * 回声),上层不需要「有意关闭」记账。
  */
 
-import WebSocket from "ws";
 import { decodeFrames, encodePacket, WsOp } from "./codec.js";
 import type { LiveEvent } from "./events.js";
 import { parseCommand } from "./parser.js";
 
-/** 客户端消费的 socket 最小面(ws 的子集),测试注入假实现。 */
+/** 客户端消费的 socket 最小面(ws 的子集):建连的口交出来的、以及测试注入的假实现都满足它。 */
 export interface SocketLike {
 	binaryType: string;
 	on(event: string, fn: (...args: unknown[]) => void): void;
@@ -38,16 +38,13 @@ export interface LiveConnectOptions {
 	buvid: string;
 	/** getDanmuInfo 返回的服务器列表,取首项。 */
 	hostList: DanmuHost[];
-	cookieHeader?: string;
-	/**
-	 * **必传**,调用方从 `api.getUserAgent()` 取 —— WSS 必须与同进程的 HTTP 同
-	 * 指纹(api 侧是每实例生成的自洽 Chrome 身份)。不设兜底:兜底值只会在
-	 * 谁忘传时静默造出第二套指纹。
-	 */
-	userAgent: string;
 	onEvent: (ev: LiveEvent) => void;
-	/** 注入点:测试/定制 socket 工厂。缺省用 ws。 */
-	createSocket?: (url: string, headers: Record<string, string>) => SocketLike;
+	/**
+	 * **必传**:建连的口。握手头(UA、cookie)由它背后的客户端按身份与罐子装配 —— WSS 必须与
+	 * 同进程的 HTTP 同一套指纹,所以这里不设兜底(兜底只会在谁忘传时静默造出第二套指纹),
+	 * blive 也不碰握手头。生产传 `api.openDanmakuSocket`,测试传假 socket。
+	 */
+	createSocket: (url: string) => SocketLike;
 	/** 心跳节奏,缺省 30s。 */
 	heartbeatIntervalMs?: number;
 	/**
@@ -92,20 +89,13 @@ export function observeLiveConnections(observer: LiveConnectionObserver | null):
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 
-function defaultCreateSocket(url: string, headers: Record<string, string>): SocketLike {
-	return new WebSocket(url, { headers }) as unknown as SocketLike;
-}
-
 /** 建立一条直播间信息流连接。 */
 export function connectLiveRoom(opts: LiveConnectOptions): LiveClient {
 	const first = opts.hostList[0];
 	if (!first) throw new Error("hostList 为空");
 	const url = `wss://${first.host}${first.wssPort === 443 ? "" : `:${first.wssPort}`}/sub`;
-	const headers: Record<string, string> = {};
-	if (opts.cookieHeader) headers.Cookie = opts.cookieHeader;
-	headers["User-Agent"] = opts.userAgent;
 
-	const socket = (opts.createSocket ?? defaultCreateSocket)(url, headers);
+	const socket = opts.createSocket(url);
 	socket.binaryType = "nodebuffer";
 
 	let closed = false;

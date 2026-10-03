@@ -45,6 +45,12 @@
     - **头的顺序也是指纹**：发出去的头按「默认头、这次请求的头、调用方没写的身份头、`Cookie`」排，身份头是「没写才补，补在后面」；B 站那层把 UA 与 `sec-ch-ua` 三件按今天的位置写全，线上头序和改造前逐个一致（`packages/api` 的 `bilibili-wire-headers.test.ts` 钉着）。
     - `FetchOptions`：`beforeHop` 每一跳（含第一次请求）发出之前都调，回失败即否决、原样交回；`maxRedirects` 跟满以后遇到的 3xx 原样回，不造失败码；`cookies: "send-only"` 只带不收（B 站「只取第一跳」用它，免得把短链站的 cookie 收进罐子）。被调用方的 `signal` 中止回 `indeterminate`（请求可能已经到了对端、结果不明，也正好「绝不自动重试」），中止原因是超时的算 `timeout`。`HttpResponse` 带 `isSuccess`（2xx），`json()` 回结果形状、不是 JSON 回 `invalid` 不抛。
     - B 站那层的薄包叫 `ApiClient`，保住今天的 `get` / `postForm` / `redirectLocation`：它们和 naming「走网络取数用 `fetch…`」不合，可七八个测试按这几个名字打桩，3a 把 B 站搬成 `bilibili/` 集成时一起改名。
+
+    🔗 **2026-10-03 ⑭b 施工时定**：
+    - `HttpClient#websocket(url, { headers?, signal? })` 回一个窄接口 `WebSocketLike`（不把 `ws` 的类型漏给下游）；建连只在 `packages/http/src/websocket.ts` 一处。握手头自成一套：`Cookie`（罐子里这个地址该带的；`wss:` 按 `https:`、`ws:` 按 `http:` 查）→ `User-Agent`（身份的）→ 调用方给的头；不带客户端的默认头，也不带 `sec-ch-ua` / `Origin`（真机待验）。和改造前弹幕的握手名序一致，有测试钉着。
+    - 给错地址时 `websocket()` 同步抛错（和 `new WebSocket` 一样当 bug）；3a 把 `ctx.http` 开放给拓展时，拓展传坏地址不再是 BN 的 bug，到时再定要不要回结果形状。
+    - B 站那层的口叫 `openDanmakuSocket`；`getCookiesHeader()`（整罐倒出）删掉；blive 的 `createSocket` 改成必填、只收地址，不再自己拼握手头，`ws` 依赖移出 blive，两个真机脚本也走同一个口。
+    - cookie 按域名、路径、过期、`secure` 筛以后，比今天少带的只有挂在别的子域、或限定了路径的那几种，和真浏览器一致；弹幕连上能不能照常收消息，记进真机待验。
 7. **删掉自定义 UA 设置**：身份一律由 `packages/http` 生成，UA 与 `sec-ch-ua` 永远配套；B 站设置页加「换一个身份」按钮重新生成。ticket 请求固定用默认 UA 的特例随之消失（建仓时从老插件原样搬来，没有留下理由）。老配置里的这一格由迁移丢掉，新 schema 不留（ADR-0022 决策 4）。
     - 理由：填了自定义 UA，`sec-ch-ua` 仍是生成的 Chrome 身份，拼出一个自相矛盾的指纹；风控 -352 的第一嫌疑本来就是 TLS 指纹，不是 UA。
 8. **`fetchImage` 走集成自己的客户端**（同一套 cookie、身份与默认头）：拦内网、8MB、嗅探、超时这一层只在 `fetchImage` 上，每一跳重定向都查；`ctx.http` 整体不拦内网（局域网里的 RSSHub 要连得上）。

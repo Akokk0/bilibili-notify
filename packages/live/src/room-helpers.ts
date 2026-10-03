@@ -161,7 +161,6 @@ export class RoomContext extends RoomContextBase {
 		}
 		if (aborted()) return false;
 
-		const cookiesStr = this.api.getCookiesHeader();
 		let mySelfInfo: MySelfInfoData;
 		try {
 			// ④ 走客户端共享的账号身份缓存(短 TTL + 在途合流):多房间同时重连时
@@ -198,8 +197,8 @@ export class RoomContext extends RoomContextBase {
 			token,
 			buvid,
 			hostList: rotatedHosts,
-			cookieHeader: cookiesStr,
-			userAgent: this.api.getUserAgent(),
+			// 握手头(身份、cookie)归 api 背后的客户端装配,这里只递建连的口
+			createSocket: (socketUrl) => this.api.openDanmakuSocket(socketUrl),
 			onEvent,
 		});
 		if (aborted()) {

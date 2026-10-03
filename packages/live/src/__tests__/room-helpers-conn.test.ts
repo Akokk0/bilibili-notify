@@ -7,6 +7,8 @@
  *   房间被当普通失败在 31s 内放弃)。
  * - host_list 按建连轮次轮转:首个 host 从用户网络不可达时,重连不至于永远
  *   钉死在死 host 上烧光梯子(被换掉的旧库会跨 host 回退)。
+ * - 建连走 api 的弹幕建连口(`openDanmakuSocket`):握手头(身份、cookie)归它背后的
+ *   客户端装配,这里不再自己拼 Cookie / User-Agent。
  */
 
 import { RiskControlError } from "@bilibili-notify/api";
@@ -36,6 +38,8 @@ const goodDanmuInfo = {
 	},
 };
 
+const fakeSocket = { binaryType: "", on() {}, send() {}, close() {} };
+
 function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 	const fakeServiceCtx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -49,8 +53,7 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 		getLiveRoomInfoStreamKey: vi.fn(streamKeyImpl),
 		getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 42 } })),
 		getBuvid3: vi.fn(async () => "buv"),
-		getCookiesHeader: () => "SESSDATA=x",
-		getUserAgent: () => "UA/1.0",
+		openDanmakuSocket: vi.fn((_url: string) => fakeSocket),
 	};
 	const ctx = new RoomContext({
 		serviceCtx: fakeServiceCtx,
@@ -89,6 +92,29 @@ describe("startLiveRoomListener × 持续风控", () => {
 		});
 
 		await expect(ctx.startLiveRoomListener("5050", () => {})).resolves.toBe(false);
+	});
+});
+
+describe("startLiveRoomListener × 建连口", () => {
+	it("createSocket 接的是 api 的弹幕建连口:真调一次,地址原样交给它,拿回的 socket 原样交出去", async () => {
+		const { ctx, api } = makeCtx(async () => goodDanmuInfo);
+		await ctx.startLiveRoomListener("5050", () => {});
+
+		const options = vi.mocked(connectLiveRoom).mock.calls[0]?.[0];
+		if (!options) throw new Error("connectLiveRoom 没被调用");
+		expect(api.openDanmakuSocket).not.toHaveBeenCalled();
+		const socket = options.createSocket("wss://h1.example.com/sub");
+		expect(api.openDanmakuSocket).toHaveBeenCalledExactlyOnceWith("wss://h1.example.com/sub");
+		expect(socket).toBe(fakeSocket);
+	});
+
+	it("不再自己拼握手头:交给 blive 的参数里没有 cookieHeader / userAgent", async () => {
+		const { ctx } = makeCtx(async () => goodDanmuInfo);
+		await ctx.startLiveRoomListener("5050", () => {});
+
+		const options = vi.mocked(connectLiveRoom).mock.calls[0]?.[0];
+		expect(Object.keys(options ?? {})).not.toContain("cookieHeader");
+		expect(Object.keys(options ?? {})).not.toContain("userAgent");
 	});
 });
 

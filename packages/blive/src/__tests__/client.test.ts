@@ -55,14 +55,14 @@ function decodeSent(packet: Uint8Array): { op: number; body: unknown } {
 describe("connectLiveRoom", () => {
 	let socket: FakeSocket;
 	let urls: string[];
-	let headersSeen: Record<string, string>[];
+	let createSocketArgs: unknown[][];
 	let events: LiveEvent[];
 
 	beforeEach(() => {
 		vi.useFakeTimers();
 		socket = new FakeSocket();
 		urls = [];
-		headersSeen = [];
+		createSocketArgs = [];
 		events = [];
 	});
 
@@ -77,23 +77,21 @@ describe("connectLiveRoom", () => {
 			token: "tok",
 			buvid: "buv",
 			hostList: [{ host: "danmu.example.com", wssPort: 2245 }],
-			cookieHeader: "SESSDATA=x",
-			userAgent: "UA/1.0",
 			onEvent: (ev) => events.push(ev),
-			createSocket: (url, headers) => {
-				urls.push(url);
-				headersSeen.push(headers);
+			createSocket: (...args) => {
+				createSocketArgs.push(args);
+				urls.push(args[0]);
 				return socket;
 			},
 			...overrides,
 		});
 	}
 
-	it("按 host_list 首项拼 wss URL,带 Cookie / UA 头", () => {
+	it("按 host_list 首项拼 wss URL,建连口只收到 URL —— 握手头(身份、cookie)不归 blive 拼", () => {
 		connect();
 
 		expect(urls).toEqual(["wss://danmu.example.com:2245/sub"]);
-		expect(headersSeen[0]).toEqual({ Cookie: "SESSDATA=x", "User-Agent": "UA/1.0" });
+		expect(createSocketArgs).toEqual([["wss://danmu.example.com:2245/sub"]]);
 	});
 
 	it("wss_port 为 443 时省略端口", () => {
@@ -347,7 +345,6 @@ describe("observeLiveConnections", () => {
 			token: "tok",
 			buvid: "buv",
 			hostList: [{ host: "danmu.example.com", wssPort: 2245 }],
-			userAgent: "UA/1.0",
 			onEvent: (ev) => events.push(ev),
 			createSocket: () => socket,
 		});
@@ -366,7 +363,6 @@ describe("observeLiveConnections", () => {
 			token: "tok",
 			buvid: "buv",
 			hostList: [{ host: "danmu.example.com", wssPort: 2245 }],
-			userAgent: "UA/1.0",
 			onEvent: () => {},
 			createSocket: () => new FakeSocket(),
 		});

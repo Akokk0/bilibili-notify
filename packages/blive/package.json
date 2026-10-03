@@ -27,14 +27,12 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"protobufjs": "^8.8.0",
-		"ws": "catalog:"
+		"protobufjs": "^8.8.0"
 	},
 	"devDependencies": {
 		"@bilibili-notify/api": "workspace:*",
 		"@bilibili-notify/internal": "workspace:*",
-		"@bilibili-notify/storage": "workspace:*",
-		"@types/ws": "catalog:"
+		"@bilibili-notify/storage": "workspace:*"
 	},
 	"engines": {
 		"node": ">=20.0.0"
