@@ -73,7 +73,7 @@ export function createDevRoute({ registry, captures }: CreateDevRouteInput): Hon
 			captures.clear();
 			return c.json(captures.status());
 		});
-		app.post("/captures/purge-history", async (c) => {
+		app.delete("/captures/history", async (c) => {
 			const body: DevPurgeHistoryResponse = { deleted: await captures.purgeHistory() };
 			return c.json(body);
 		});

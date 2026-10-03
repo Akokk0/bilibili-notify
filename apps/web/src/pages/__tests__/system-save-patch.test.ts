@@ -15,7 +15,7 @@ import type { GlobalsResponse } from "../../types/globals";
 import { buildSystemPatch } from "../system-save-patch";
 
 /**
- * `/api/globals` 下发的那一份:核心设置的顶层块,外加各集成的设置挂在自己的键下 —— `bilibili` 就是这样
+ * `/api/settings` 下发的那一份:核心设置的顶层块,外加各集成的设置挂在自己的键下 —— `bilibili` 就是这样
  * 一个块(动态 cron / UA / 登录心跳间隔三格在它里头,不在核心的 `app` 里)。
  */
 function globals(over: Record<string, unknown> = {}): GlobalsResponse {

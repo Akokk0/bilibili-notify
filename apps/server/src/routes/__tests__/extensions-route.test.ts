@@ -243,7 +243,7 @@ function running(id: string): ExtensionEntry {
 
 describe("GET /api/ext", () => {
 	/**
-	 * 🔴 热装卸是异步的,而 `PATCH /api/globals` 在它落地之前就回 200 了 —— 面板紧接着
+	 * 🔴 热装卸是异步的,而 `PATCH /api/settings` 在它落地之前就回 200 了 —— 面板紧接着
 	 * 刷这一口。不先落实的话,拨完开关刷出来的是**上一秒**的状态,而且不会自己好。
 	 */
 	it("先把还没落地的开关落实掉,再报状态", async () => {

@@ -1,5 +1,5 @@
 /**
- * 单元测试 — /api/subs 的「外置 runtime 字段回 join」+「POST 自 seed cachedProfile」。
+ * 单元测试 — /api/subscriptions 的「外置 runtime 字段回 join」+「POST 自 seed cachedProfile」。
  *
  * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubRuntimeStore join 回(有才带,
  * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
@@ -11,7 +11,7 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { ConfigValidationError } from "../../config/store.js";
-import { createSubsRoute } from "../subs.js";
+import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
 
 const SUB = {
@@ -34,7 +34,7 @@ const PROFILE = {
 };
 
 interface Harness {
-	app: ReturnType<typeof createSubsRoute>;
+	app: ReturnType<typeof createSubscriptionsRoute>;
 	getSubscriptions: ReturnType<typeof vi.fn>;
 	upsertSubscription: ReturnType<typeof vi.fn>;
 	patchSubscription: ReturnType<typeof vi.fn>;
@@ -98,7 +98,7 @@ function makeHarness(opts?: {
 	} as unknown as RouteDeps;
 
 	return {
-		app: createSubsRoute(deps),
+		app: createSubscriptionsRoute(deps),
 		getSubscriptions,
 		upsertSubscription,
 		patchSubscription,
@@ -109,7 +109,7 @@ function makeHarness(opts?: {
 	};
 }
 
-describe("/api/subs GET — runtime 字段 join", () => {
+describe("/api/subscriptions GET — runtime 字段 join", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
 	it("无 cachedProfile 时返回 undefined,也不带早已删掉的 state", async () => {
@@ -158,7 +158,7 @@ function seedCalls(h: Harness) {
 	);
 }
 
-describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
+describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
 	it("新 sub 且 engines 就绪 → 调 getUserCardInfo 并 patch 进 SubRuntimeStore", async () => {
@@ -245,7 +245,7 @@ describe("/api/subs POST — 创建后服务端自 seed cachedProfile", () => {
 	});
 });
 
-describe("/api/subs PATCH — 响应同样 join", () => {
+describe("/api/subscriptions PATCH — 响应同样 join", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
 	it("PATCH 返回单条 joined DTO(cachedProfile)", async () => {
@@ -314,7 +314,7 @@ describe("/api/subs PATCH — 响应同样 join", () => {
 	});
 
 	it("DELETE 没这条订阅 → 404 not_found", async () => {
-		const app = createSubsRoute({
+		const app = createSubscriptionsRoute({
 			store: { getSubscriptions: () => [], deleteSubscription: async () => false },
 			runtime: {
 				serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
@@ -335,7 +335,7 @@ describe("/api/subs PATCH — 响应同样 join", () => {
  * UP 却不去关注他,等于订阅了个寂寞:配置里有这条记录,动态流里永远没有他,一条都推
  * 不出来。koishi 端一直在 subscription-loader 里 follow,独立端**从来没做过**。
  */
-describe("/api/subs POST — 自动关注该 UP", () => {
+describe("/api/subscriptions POST — 自动关注该 UP", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
 	async function post(h: Harness, body: unknown = SUB) {
@@ -403,7 +403,7 @@ describe("/api/subs POST — 自动关注该 UP", () => {
  * GET 两支都回;关注状态只属于 B 站那支。新建拓展订阅要宿主核过「它是装着的订阅源」;已有的
  * 那条整份 POST 回来(面板的启用开关)照收,关注 / 资料种子都不碰它。身份改不动,store 拒了就是 400。
  */
-describe("/api/subs × 拓展订阅", () => {
+describe("/api/subscriptions × 拓展订阅", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
 	const EXT = {
@@ -472,7 +472,7 @@ describe("/api/subs × 拓展订阅", () => {
 				[{ path: ["identity", "externalId"], message: "不能为空" }],
 			),
 		);
-		const app = createSubsRoute(
+		const app = createSubscriptionsRoute(
 			{
 				store: {
 					getSubscriptions: () => [SUB],

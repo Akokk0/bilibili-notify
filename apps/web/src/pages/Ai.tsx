@@ -17,7 +17,7 @@
  * 总开关不属于任何一家或任何一份人格,放在头图上,不进 Tab。(曾经并排摆在底部的
  * 日志等级已整体搬去系统页那格「按模块覆盖」,与另外四个模块同住。)
  *
- * 存盘走 PATCH /api/globals { defaults: { ai: ... } }。
+ * 存盘走 PATCH /api/settings { defaults: { ai: ... } }。
  */
 
 import {
@@ -186,8 +186,8 @@ function FieldNote({ children }: { children: React.ReactNode }) {
 export default function Ai() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 
 	const [draft, setDraft] = useState<AISettings | null>(null);
@@ -216,7 +216,7 @@ export default function Ai() {
 			// 消失的键会被 JSON.stringify 一起丢掉 → 服务端当「不改」→ 删了却没真删。
 			const base = globalsQuery.data;
 			return await api.patch<GlobalConfig>(
-				"/api/globals",
+				"/api/settings",
 				buildPatch({ defaults: { ai: payload.ai } }, { defaults: { ai: base?.defaults.ai } }),
 			);
 		},
@@ -230,7 +230,7 @@ export default function Ai() {
 		// (顺手改了 model / 人格反而正常 —— 那些字段不脱敏,数据变了引用就变了。)
 		onSuccess: (next) => {
 			setDraft(next.defaults.ai);
-			qc.invalidateQueries({ queryKey: ["globals"] });
+			qc.invalidateQueries({ queryKey: ["settings"] });
 		},
 	});
 

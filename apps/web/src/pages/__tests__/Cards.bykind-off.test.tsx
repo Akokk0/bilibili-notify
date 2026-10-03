@@ -94,7 +94,7 @@ describe("关掉某个卡种的覆盖", () => {
 			overrides: { cardStyleByKind: { live: { liveCoverImages: ["img1"] } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([sub]);
+			if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
 			return Promise.resolve({
 				app: {},
@@ -140,7 +140,7 @@ describe("全家福上那颗「单独」药丸", () => {
 	/** 全局/per-UP 两种作用域共用的 api.get 安排。 */
 	function mockGet(subs: Subscription[], gByKind: Record<string, unknown>): void {
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve(subs);
+			if (url.includes("/api/subscriptions")) return Promise.resolve(subs);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
 			return Promise.resolve({
 				app: {},

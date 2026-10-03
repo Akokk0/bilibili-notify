@@ -39,7 +39,7 @@ describe("OnboardingReopenSection", () => {
 		const before = useOnboardingReopen.getState().seq;
 		fireEvent.click(screen.getByRole("button", { name: /重新开启指引/ }));
 		await waitFor(() =>
-			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: false } }),
+			expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: false } }),
 		);
 		// 信号在 PATCH 成功后才发 —— 配置没写上就展开卡,导览会因 skipped=true 渲染不出来
 		await waitFor(() => expect(useOnboardingReopen.getState().seq).toBe(before + 1));

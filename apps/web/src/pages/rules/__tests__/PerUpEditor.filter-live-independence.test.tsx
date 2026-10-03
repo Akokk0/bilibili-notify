@@ -166,7 +166,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		await onSave?.();
 
 		expect(api.patch).toHaveBeenCalledWith(
-			`/api/subs/${sub.id}`,
+			`/api/subscriptions/${sub.id}`,
 			expect.objectContaining({
 				overrides: expect.objectContaining({
 					filters: { blockKeywords: null, minScPrice: 30 },

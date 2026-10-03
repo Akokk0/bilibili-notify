@@ -274,7 +274,7 @@ function TestPushCard({
 	const push = useMutation({
 		mutationFn: async () => {
 			// 同 PreviewImage 的过渡注释:版式已归皮肤,这一轮一个字也不传 layout。
-			const res = await api.post<TestPushResponse>("/api/cards/test-push", {
+			const res = await api.post<TestPushResponse>("/api/cards/test", {
 				targetId,
 				kind,
 				style,
@@ -295,7 +295,7 @@ function TestPushCard({
 			subtitle="编辑该类型预览内容,并把当前预览卡片(草稿样式)推送到所选目标"
 			accent={SECTION_ACCENT.capability}
 			icon={<Icon.bell size={14} />}
-			badge="test-push"
+			badge="test"
 		>
 			<PreviewContentFields
 				kind={kind}
@@ -619,12 +619,12 @@ function hasCardCustomization(sub: Subscription): boolean {
 export default function Cards() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 
 	const [scope, setScope] = useState<Scope>("__global");
@@ -749,7 +749,7 @@ export default function Cards() {
 			// (关掉的 per-kind 样式)由 buildPatch 自动变成显式 null,不必再逐个记着手写。
 			const base = globalsQuery.data;
 			await api.patch<GlobalConfig>(
-				"/api/globals",
+				"/api/settings",
 				buildPatch(
 					{
 						defaults: {
@@ -777,7 +777,7 @@ export default function Cards() {
 			};
 		},
 		onSuccess: (res) => {
-			void qc.invalidateQueries({ queryKey: ["globals"] });
+			void qc.invalidateQueries({ queryKey: ["settings"] });
 			// 旋钮**不进预览 spec** —— 服务端出图时自己从 globals 里读那一层。于是拧完保存,
 			// `["card-preview", spec]` 这个 key 一个字都没变,react-query 端出来的还是保存前
 			// 那张图,看着就是「拧了没反应」。别的卡片设置没这个毛病:它们本来就在 spec 里,
@@ -789,7 +789,7 @@ export default function Cards() {
 	// per-UP 保存:只下发卡片那几片(缺席键 = 不改其它 slice;null = 清除)。
 	const savePerUp = useMutation({
 		mutationFn: async (sub: Subscription) => {
-			await api.patch<Subscription>(`/api/subs/${sub.id}`, {
+			await api.patch<Subscription>(`/api/subscriptions/${sub.id}`, {
 				overrides: {
 					// 基准覆盖剥掉封面键再落盘:基准是「打开时的 gStyle 快照」,若携带封面会把
 					// 全局封面冻结/清空(封面的 per-UP 归宿只有 cardStyleByKind.live)。
@@ -820,7 +820,7 @@ export default function Cards() {
 
 	const removeCardCustomization = useMutation({
 		mutationFn: async (sub: Subscription) =>
-			api.patch<Subscription>(`/api/subs/${sub.id}`, {
+			api.patch<Subscription>(`/api/subscriptions/${sub.id}`, {
 				overrides: { cardStyle: null, cardStyleByKind: null, cardSkin: null, cardSkinKnobs: null },
 			}),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),

@@ -114,7 +114,7 @@ export interface ExtensionsRouteOptions {
 	/**
 	 * 把**还没落地的开关**落实掉(装载器的 `sync()`)。给了就在列清单之前 await 一下。
 	 *
-	 * 🔴 热装卸是异步的,而 `PATCH /api/globals` 在它落地之前就回 200 了 —— 面板紧接着
+	 * 🔴 热装卸是异步的,而 `PATCH /api/settings` 在它落地之前就回 200 了 —— 面板紧接着
 	 * 刷这一口,拿到的会是**上一秒**的状态。启用那一路尤其明显:第一次 `import()` 一个
 	 * 文件是真 I/O。症状是「开关明明拨上去了,状态还写着已停用」,而且不会自己好。
 	 */
@@ -201,7 +201,7 @@ function reportProblemsOf(
  * 🔴 **状态走 `/api/*` 而不是 `/ext/<id>/*`**(ADR-0012 决策 36):后者**刻意**在鉴权外
  * (对家手里只有 URL、没有会话),把面板数据挂那儿等于把会话列表与 bot 名单公开出去。
  *
- * 开关本身不在这儿改 —— 它住 `globals.extensions`,走 `PATCH /api/globals`,与别的全局
+ * 开关本身不在这儿改 —— 它住 `globals.extensions`,走 `PATCH /api/settings`,与别的全局
  * 设置同一条路。拓展自己的设置有自己的读写口(`/:id/settings`,见 `extension-settings.ts`)。
  */
 export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {

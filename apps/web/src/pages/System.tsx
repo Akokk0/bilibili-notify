@@ -191,7 +191,7 @@ function SystemSettingsSection({
 	onPatch: (delta: GlobalsPatch) => void;
 }) {
 	const app = draft.app;
-	// B 站的三格在它自己的设置里,挂在 `/api/globals` 的 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
+	// B 站的三格在它自己的设置里,挂在 `/api/settings` 的 `bilibili` 键下(ADR-0021 决策 42 下 10-01 的 🔗);
 	// 第 4 期起这一节按集成的描述画,这里的形状随之删。
 	const source = draft.bilibili as {
 		dynamicCron: string;
@@ -383,8 +383,8 @@ export default function System() {
 		msg && msg !== STATUS_LABELS[status] && status !== BiliLoginStatus.LOGIN_FAILED ? msg : "";
 
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalsResponse>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalsResponse>("/api/settings"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -417,9 +417,9 @@ export default function System() {
 			// 的,没有基线就不会有草稿;真走到这里是状态坏了,宁可报错也别静默发一份空补丁。
 			const base = globalsQuery.data;
 			if (!base) throw new Error("配置基线尚未加载,无法保存");
-			await api.patch<GlobalConfig>("/api/globals", buildSystemPatch(next, base));
+			await api.patch<GlobalConfig>("/api/settings", buildSystemPatch(next, base));
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
 	});
 
 	useDirtyDraft<GlobalsResponse>({
@@ -484,7 +484,7 @@ export default function System() {
 				{/* 配置读不下来是整页的事,不是某一格的事 —— 摆在格子外头,停在哪一格都看得见。 */}
 				{globalsQuery.error ? (
 					<ErrorNote>
-						拉取 /api/globals 失败：{String((globalsQuery.error as Error).message)}
+						拉取 /api/settings 失败：{String((globalsQuery.error as Error).message)}
 					</ErrorNote>
 				) : !draft && globalsQuery.isLoading ? (
 					<LoadingBlock label="正在读取系统配置" />

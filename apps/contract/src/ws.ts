@@ -36,7 +36,7 @@ export type ChannelName = (typeof CHANNELS)[number];
 // Log channel payload
 // ---------------------------------------------------------------------------
 
-/** 4 值 wire 日志级别(WS `log` 帧与 `/api/logs` 归档共用;比 3 值配置枚举宽,含 warn)。 */
+/** 4 值 wire 日志级别(WS `log` 帧与 `/api/system/logs` 归档共用;比 3 值配置枚举宽,含 warn)。 */
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 

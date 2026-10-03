@@ -75,7 +75,7 @@ const EXT_ENTRY: FansEntry = {
 
 function renderPanel(entries: FansEntry[], subs: Subscription[], extensions?: ExtensionDTO[]) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path === "/api/fans") return Promise.resolve({ entries });
+		if (path === "/api/stats/followers") return Promise.resolve({ entries });
 		return Promise.reject(new Error(`没料到的请求 ${path}`));
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -95,7 +95,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 				extSub("s-dy", "sec-1", {
 					cachedProfile: {
 						name: "抖音乙",
-						avatar: "/api/subs/s-dy/avatar?v=abc",
+						avatar: "/api/subscriptions/s-dy/avatar?v=abc",
 						sign: "",
 						lastRefreshedAt: "2026-09-24T00:00:00Z",
 					},
@@ -110,7 +110,9 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		expect(screen.getByText("2.2万 粉丝")).toBeTruthy();
 		expect(screen.getByText("+3333")).toBeTruthy();
 		expect(screen.getByText("-44")).toBeTruthy();
-		expect(container.querySelector('img[src="/api/subs/s-dy/avatar?v=abc"]')).not.toBeNull();
+		expect(
+			container.querySelector('img[src="/api/subscriptions/s-dy/avatar?v=abc"]'),
+		).not.toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 

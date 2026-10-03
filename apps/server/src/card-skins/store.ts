@@ -47,7 +47,7 @@ import {
 /**
  * 面板列表要的那几样(`builtin` = 内置只读那份,改不了删不了只能复制)。
  *
- * **形状住契约里**(`apps/contract`)—— 列表直接就是 `GET /api/card-skins` 的 wire,
+ * **形状住契约里**(`apps/contract`)—— 列表直接就是 `GET /api/cards/skins` 的 wire,
  * 两边各写一份的话,加个字段总会漏掉一边,而漏掉的那边是静默的(TS 结构类型不会红)。
  * 这里原样转出去,店里的调用方不必绕道 contract。
  */

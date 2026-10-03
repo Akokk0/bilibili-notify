@@ -387,7 +387,7 @@ export const FIELD_LABELS = {
 	},
 	liveCoverImages: { label: "直播封面替换", section: "cardStyle" },
 	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档
-	// 由皮肤库当场启用(PUT /api/card-skins/active),不走草稿;这个 code 只给 per-UP
+	// 由皮肤库当场启用(PUT /api/cards/skins/active),不走草稿;这个 code 只给 per-UP
 	// 的「这个 UP 用哪套」——「跟随全局」= 把 overrides.cardSkin 整个键清掉。
 	cardSkin: {
 		label: "卡片皮肤",

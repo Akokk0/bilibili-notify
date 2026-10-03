@@ -268,7 +268,7 @@ export interface DynamicDetectedEvent {
 }
 
 /**
- * Bus 上 fans-refreshed 事件 / HTTP /api/fans 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行
+ * Bus 上 fans-refreshed 事件 / HTTP /api/stats/followers 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行
  * (ADR-0020 决策 8)。
  */
 export interface FansRefreshEntry {

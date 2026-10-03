@@ -152,7 +152,7 @@ describe("SubRuntimeStore.patch — 逐键替换语义", () => {
 	 * 原先这里是一张**手抄的三键清单**(cachedProfile / fansBaseline / roomId),往
 	 * `SubRuntime` 上加字段而忘了补一行,那个键就**静默不落盘** —— 类型、门禁、运行期
 	 * 全无一句话。`followed` / `followError` 正是这么丢的:`follow-sync` 与
-	 * `POST /api/subs` 两处都在写,`/api/subs` 也在读,但重启之后恒为 `undefined`,
+	 * `POST /api/subscriptions` 两处都在写,`/api/subscriptions` 也在读,但重启之后恒为 `undefined`,
 	 * 于是订阅卡上的「未关注」告警一重启就消失 —— 而那是「这个订阅收不到动态」的唯一提示。
 	 */
 	it("🔴 followed / followError 真的落盘 —— 重启之后「未关注」告警还在", async () => {

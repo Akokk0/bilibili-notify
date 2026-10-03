@@ -59,7 +59,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 	const preview = useQuery({
 		queryKey: ["ai-chat", "card-skin-preview", touch.id, kind, skin?.updatedAt ?? 0],
 		queryFn: async () => {
-			const path = `/api/card-skins/${encodeURIComponent(touch.id)}`;
+			const path = `/api/cards/skins/${encodeURIComponent(touch.id)}`;
 			const { manifest } = await api.get<CardSkinManifestResponse>(path);
 			return api.post<CardSkinPreviewResponse>(`${path}/preview`, { kind, manifest });
 		},

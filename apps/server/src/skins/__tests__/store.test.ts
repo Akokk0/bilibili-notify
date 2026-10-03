@@ -434,7 +434,7 @@ describe("init 跳过落盘底层留下的残骸", () => {
 
 describe("ensureReady:一份两处用,谁先来谁补上", () => {
 	/**
-	 * 这家店 `/api/skins` 与聊天里的 create_skin 共用一个实例,而读盘重建索引原先
+	 * 这家店 `/api/dashboard/skins` 与聊天里的 create_skin 共用一个实例,而读盘重建索引原先
 	 * 只挂在前者的中间件上。主人一进 dashboard 就直奔聊天做皮肤时,店里的 active
 	 * 还是构造函数那份空的 —— activate() 一落盘就把重启前启用着的槽清掉了。
 	 * 索引下次 init 能自愈,active.json 不能。

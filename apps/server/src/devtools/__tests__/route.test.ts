@@ -165,10 +165,10 @@ describe("dev 路由 · 截流", () => {
 		expect(c.status).toHaveBeenCalled();
 	});
 
-	it("POST /captures/purge-history 回删了几行", async () => {
+	it("DELETE /captures/history 回删了几行", async () => {
 		const c = captures();
 		const app = createDevRoute({ registry: fakeRegistry(), captures: c });
-		const res = await app.request("/captures/purge-history", { method: "POST" });
+		const res = await app.request("/captures/history", { method: "DELETE" });
 		expect(await res.json()).toEqual({ deleted: 3 });
 	});
 });

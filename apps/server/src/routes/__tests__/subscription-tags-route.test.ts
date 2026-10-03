@@ -1,5 +1,5 @@
 /**
- * `/api/subs/tags`(ADR-0034):`GET` 读整张标签表,`PUT` 整张换。规矩(名字、删标签清引用)在配置仓里,
+ * `/api/subscriptions/tags`(ADR-0034):`GET` 读整张标签表,`PUT` 整张换。规矩(名字、删标签清引用)在配置仓里,
  * 所以这里接真的配置仓,只看路由把结果与失败原样交出去。
  */
 
@@ -51,7 +51,7 @@ afterEach(async () => {
 const put = (body: string) =>
 	app.request("/", { method: "PUT", headers: { "content-type": "application/json" }, body });
 
-describe("/api/subs/tags", () => {
+describe("/api/subscriptions/tags", () => {
 	it("GET:按表里的顺序回整张表", async () => {
 		await store.replaceSubscriptionTags([CHAT, GAME]);
 		const res = await app.request("/");

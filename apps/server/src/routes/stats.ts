@@ -451,7 +451,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 	/**
 	 * `POST /api/stats/roast` —— 把统计数据喂给智能女仆,评鸽王 / 勤奋榜。
 	 *
-	 * 用**已保存**的 AI 配置(不像 `/api/ai/test-push` 吃页面草稿):这里不是在
+	 * 用**已保存**的 AI 配置(不像 `/api/ai/test` 吃页面草稿):这里不是在
 	 * 调人格,而是在用配好的女仆干活,草稿会让结果不可复现。
 	 */
 	app.post("/roast", async (c) => {
@@ -518,10 +518,10 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		return c.json<StatsRoastPushResponse>(ok({ mode: out.mode }));
 	});
 	/**
-	 * `POST /api/stats/roast/run-now` —— 立刻跑一轮定时周报(面板上的「试一次」)。
+	 * `POST /api/stats/roast/run` —— 立刻跑一轮定时周报(面板上的「试一次」)。
 	 *
 	 * **必须注册在 `/roast/:subscriptionId` 之前**,理由同 `/roast/push`:Hono 按注册序匹配,
-	 * 反过来 `run-now` 会被当成一个订阅 id 吃掉。
+	 * 反过来 `run` 会被当成一个订阅 id 吃掉。
 	 *
 	 * 三件要紧事:
 	 * - 走的是**和 cron 完全同一个函数**。另写一条「测试专用」的轻量路径,验的就
@@ -545,12 +545,12 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		);
 	}
 
-	app.post("/roast/run-now", (c) => runNow(c));
+	app.post("/roast/run", (c) => runNow(c));
 	/**
 	 * 带订阅 id = 跑这条订阅的单人锐评。漏掉它就会发出一份全站榜单,完全不是主人要试的东西。
 	 * 订阅 id 由面板编码进路径,这里拿到的是解码后的。
 	 */
-	app.post("/roast/run-now/:subscriptionId", (c) => runNow(c, c.req.param("subscriptionId")));
+	app.post("/roast/run/:subscriptionId", (c) => runNow(c, c.req.param("subscriptionId")));
 
 	/**
 	 * `POST /api/stats/roast/:subscriptionId` —— 单 UP 锐评,两支订阅都行(ADR-0020 决策 18)。

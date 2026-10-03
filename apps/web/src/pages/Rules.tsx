@@ -203,12 +203,12 @@ export function GlobalDraftBinder({
 export default function Rules() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 
 	const [scope, setScope] = useState<Scope>("__global");
@@ -235,7 +235,7 @@ export default function Rules() {
 			// 统一走 buildPatch,不给这个坑留复发的机会。
 			const base = globalsQuery.data;
 			await api.patch<GlobalConfig>(
-				"/api/globals",
+				"/api/settings",
 				buildPatch(
 					{
 						defaults: {
@@ -270,7 +270,7 @@ export default function Rules() {
 				),
 			);
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
 	});
 
 	const removeSubCustomization = useMutation({
@@ -282,7 +282,7 @@ export default function Rules() {
 			// 特别关注只有 B 站订阅有,拓展订阅那一支没有这一格,不发。
 			const isBili = subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 			return api.patch<Subscription>(
-				`/api/subs/${sub.id}`,
+				`/api/subscriptions/${sub.id}`,
 				isBili ? { overrides, specialUsers: [] } : { overrides },
 			);
 		},

@@ -29,13 +29,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("api.patch wire format", () => {
 	it("rewrites a cleared optional field to the null clear-sentinel", async () => {
-		await api.patch("/api/globals", { app: { userAgent: undefined } });
+		await api.patch("/api/settings", { app: { userAgent: undefined } });
 
 		expect(sentBody()).toEqual({ app: { userAgent: null } });
 	});
 
 	it("reaches arbitrarily deep — a cleared glassOpacity survives as null", async () => {
-		await api.patch("/api/globals", {
+		await api.patch("/api/settings", {
 			defaults: { cardStyle: { font: "sans", glassOpacity: undefined } },
 		});
 
@@ -45,7 +45,7 @@ describe("api.patch wire format", () => {
 	});
 
 	it("leaves an explicit null, real values, and arrays alone", async () => {
-		await api.patch("/api/subs/1", {
+		await api.patch("/api/subscriptions/1", {
 			overrides: { cardStyle: null },
 			tagIds: ["11111111-1111-4111-8111-111111111111"],
 			enabled: false,
@@ -133,7 +133,7 @@ describe("ApiError 解析非 2xx(只认平铺的 { code, message })", () => {
 	it("新形状:code / message 直接取,status 与原始 body 都保留", async () => {
 		const body = { code: "not_found", message: "没有这个订阅" };
 		respond(404, body);
-		const err = await caught(() => api.get("/api/subs/x"));
+		const err = await caught(() => api.get("/api/subscriptions/x"));
 		expect(err).toBeInstanceOf(ApiError);
 		expect(err.status).toBe(404);
 		expect(err.code).toBe("not_found");
@@ -293,7 +293,7 @@ describe("全局 401 钩子", () => {
 		const hook = vi.fn();
 		setUnauthorizedHandler(hook);
 		respond(401, { code: "unauthorized", message: "需要先登录面板" });
-		await expect(api.get("/api/globals")).rejects.toMatchObject({
+		await expect(api.get("/api/settings")).rejects.toMatchObject({
 			status: 401,
 			code: "unauthorized",
 		});
@@ -304,7 +304,7 @@ describe("全局 401 钩子", () => {
 		const hook = vi.fn();
 		setUnauthorizedHandler(hook);
 		respond(401, { nope: "dashboard session required" });
-		await expect(api.get("/api/globals")).rejects.toMatchObject({ status: 401 });
+		await expect(api.get("/api/settings")).rejects.toMatchObject({ status: 401 });
 		expect(hook).toHaveBeenCalledTimes(1);
 	});
 
@@ -312,7 +312,7 @@ describe("全局 401 钩子", () => {
 		const hook = vi.fn();
 		setUnauthorizedHandler(hook);
 		respond(403, { code: "unauthorized", message: "B 站登录失效了" });
-		await expect(api.get("/api/subs/search")).rejects.toMatchObject({ status: 403 });
+		await expect(api.get("/api/subscriptions/search")).rejects.toMatchObject({ status: 403 });
 		expect(hook).not.toHaveBeenCalled();
 	});
 
@@ -484,7 +484,7 @@ describe("api 错误归因", () => {
 					new Response("{只有半", { status: 200, headers: { "content-type": "application/json" } }),
 			),
 		);
-		await expect(api.get("/api/globals")).rejects.toMatchObject({ name: "ApiError" });
+		await expect(api.get("/api/settings")).rejects.toMatchObject({ name: "ApiError" });
 	});
 
 	it("HTTP 错误响应的 body 坏掉时仍报那个状态码 —— 状态码比解析失败有用得多", async () => {
@@ -495,6 +495,6 @@ describe("api 错误归因", () => {
 					new Response("{坏", { status: 503, headers: { "content-type": "application/json" } }),
 			),
 		);
-		await expect(api.get("/api/globals")).rejects.toMatchObject({ status: 503 });
+		await expect(api.get("/api/settings")).rejects.toMatchObject({ status: 503 });
 	});
 });

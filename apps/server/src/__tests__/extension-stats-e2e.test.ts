@@ -9,7 +9,7 @@
  * 关机那一段也走真的:拓展先收摊(`extension-stopped`)→ 引擎拆 → runtime 的钩子。`close()` 一返回,开着的
  * 那一场就得恰好有一帧下播在盘上。
  *
- * 首页粉丝面板(决策 8)也走真的:记录器写下的那条粉丝样本 → 粉丝轮询从同一个粉丝仓读回来 → `GET /api/fans`。
+ * 首页粉丝面板(决策 8)也走真的:记录器写下的那条粉丝样本 → 粉丝轮询从同一个粉丝仓读回来 → `GET /api/stats/followers`。
  * 轮询与记录器拿的不是同一个仓、或轮询不看拓展订阅,单元测试照样全绿,症状是首页面板上一直没有抖音那一行。
  *
  * 装的是**假源的构建产物**(同 `fake-source-buttons-e2e`),按面板那条路建订阅、按动作钮。
@@ -103,7 +103,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
-		const toggled = await api("/api/globals", {
+		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			...json({ extensions: { [FAKE]: { enabled: true } } }),
 		});
@@ -118,7 +118,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
 			const { id: externalId, ...profile } = candidate;
-			const created = await api("/api/subs", {
+			const created = await api("/api/subscriptions", {
 				method: "POST",
 				...json({
 					// 推送目标一个都没配:统计与推送开关无关(决策 4)。
@@ -160,7 +160,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 			live: false,
 		});
 
-		// 首页粉丝面板(决策 8):甲有了粉丝时序,那一行进 `GET /api/fans` —— 键是订阅 id、带身份;当前数是最近报的
+		// 首页粉丝面板(决策 8):甲有了粉丝时序,那一行进 `GET /api/stats/followers` —— 键是订阅 id、带身份;当前数是最近报的
 		// 资料(2222),起点是时序的第一条(1111);24h / 7d 之前还没有样本。停用的乙不上。样本是记录器排队写的,
 		// 所以按 devtools 的「粉丝轮询现在就跑」、等它读到。
 		await vi.waitFor(
@@ -170,7 +170,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 					...json({ params: {} }),
 				});
 				expect(polled.status, await polled.clone().text()).toBe(200);
-				const { entries } = (await (await api("/api/fans")).json()) as FansResponse;
+				const { entries } = (await (await api("/api/stats/followers")).json()) as FansResponse;
 				expect(entries).toEqual([
 					{
 						subscriptionId: ON,

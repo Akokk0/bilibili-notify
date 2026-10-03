@@ -1,7 +1,7 @@
 /**
  * 皮肤包内资产 → **可内联进卡片 HTML 的 data URL**。
  *
- * 出图这条路不能给浏览器一个 `http://…/api/card-skins/…` 的地址:截图页面是
+ * 出图这条路不能给浏览器一个 `http://…/api/cards/skins/…` 的地址:截图页面是
  * `--no-sandbox` 的 puppeteer 用 `setContent` 灌进去的一团 HTML,里头**不许有任何外部
  * 引用**(`image-renderer.ts` 的 `inlineRemoteImages` 就是在守这条)。所以资产在进 HTML
  * 之前就得变成 data URL。

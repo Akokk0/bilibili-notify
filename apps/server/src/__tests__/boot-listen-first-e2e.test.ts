@@ -134,7 +134,7 @@ describe("开机先 listen 再读数据 e2e", () => {
 		expect(body.status).toBe("ok");
 		expect(body.modules).toEqual({ dynamic: false, live: false, image: false, ai: false });
 
-		for (const path of ["/api/subs", "/api/health/details", "/ext/bridge/anything"]) {
+		for (const path of ["/api/subscriptions", "/api/health/details", "/ext/bridge/anything"]) {
 			const res = await fetch(url(path));
 			expect(res.status, path).toBe(503);
 			expect(((await res.json()) as { code: string }).code, path).toBe("unavailable");
@@ -143,7 +143,7 @@ describe("开机先 listen 再读数据 e2e", () => {
 
 		release();
 		handle = await starting;
-		const subs = await fetch(url("/api/subs"));
+		const subs = await fetch(url("/api/subscriptions"));
 		expect(subs.status).toBe(200);
 	});
 
@@ -162,7 +162,7 @@ describe("开机先 listen 再读数据 e2e", () => {
 		// 没登录:健康检查与别的接口都挡在闸外(401),不是 200 或 503。登录入口照常开着。
 		const health = await waitForResponse(url("/api/health"));
 		expect(health.status).toBe(401);
-		expect((await fetch(url("/api/subs"))).status).toBe(401);
+		expect((await fetch(url("/api/subscriptions"))).status).toBe(401);
 		expect((await fetch(url("/api/session"))).status).toBe(200);
 
 		release();

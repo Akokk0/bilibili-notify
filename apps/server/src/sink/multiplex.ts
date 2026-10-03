@@ -17,7 +17,7 @@ import type { AdapterRegistry } from "../platforms/registry.js";
 /**
  * Extended sink — keeps the canonical NotificationSink surface but adds an
  * `out-of-band` connection probe entry point, used by
- * `/api/connections/:id/test` and by the engines' periodic health probe.
+ * `/api/connections/:id/probe` and by the engines' periodic health probe.
  */
 export interface MultiplexSink extends NotificationSink {
 	probeConnection(connectionId: string): Promise<ProbeResult>;

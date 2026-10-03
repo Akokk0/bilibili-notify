@@ -90,7 +90,7 @@ export default function ExtensionDetail() {
 		(listed.data?.extensions.find((one) => one.id === id)?.reportProblems ?? []).length > 0;
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 		enabled: confirming || hasReportProblems,
 	});
 	// 来源键就是拓展 id:订阅的身份记在这个拓展名下的有几条(B 站来源的键是保留 id,不会等于任何拓展 id)。

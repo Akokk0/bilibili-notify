@@ -60,7 +60,7 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 			version: input.version,
 		};
 
-		// 先回话,再关。两层保险,与 `/api/update/apply` 一模一样:
+		// 先回话,再关。两层保险,与 `/api/system/update/apply` 一模一样:
 		// ① `setTimeout` 而不是微任务 —— 微任务会在响应交给运行时**之前**跑掉,等于没让开;
 		// ② 真正保证这条响应写得出去的,是 `restart` 那头的优雅停机会等在途请求收尾。
 		// 不 await(等它就是等自己被杀),但要接住 rejection:没人管的话进程会以非 0 退出,

@@ -109,7 +109,7 @@ export interface CardsRouteOptions {
 	puppeteer: PuppeteerAdapter | null;
 	/**
 	 * 启动时实际生效的浏览器来源(bootstrap 里 endpoint 赢过 path 的那一个),
-	 * 供 GET /render-source 展示与同源幂等判断;未启用时缺省。
+	 * 供 GET /renderer 展示与同源幂等判断;未启用时缺省。
 	 */
 	initialChromeSource?: ChromeSource;
 	/**
@@ -119,12 +119,12 @@ export interface CardsRouteOptions {
 	api: BilibiliAPI | null;
 	/**
 	 * 探测本机 Chrome 路径(默认 resolveChromePath 扫常见安装位置);注入便于测试。
-	 * 供 GET /detect-chrome 的「自动探测」按钮。
+	 * 供 GET /chrome 的「自动探测」按钮。
 	 */
 	detectChrome?: () => string | null;
 	/**
 	 * 构造 puppeteer adapter(默认 createPuppeteerAdapter,懒启动);注入便于测试。
-	 * 供 POST /enable-rendering 运行时热启用,source 为本地路径或远程端点。
+	 * 供 POST /renderer 运行时热启用,source 为本地路径或远程端点。
 	 */
 	createPuppeteer?: (source: ChromeSource) => PuppeteerAdapter;
 	/**
@@ -346,9 +346,11 @@ function fontAssetReferences(globals: GlobalConfig, subs: Subscription[], id: st
 const NO_CHROME_HINT =
 	"puppeteer 未配置 — 设置 BN_CHROME_PATH（本地 Chromium 路径）或 BN_CHROME_ENDPOINT（远程浏览器端点），或 yaml 的 chromePath / chromeEndpoint 字段";
 
-/** 「最终效果」的请求体。`manifest` 不在这儿校形 —— 它要过的是装包门那一整套。 */
+/**
+ * 「最终效果」的请求体。`manifest` 不在这儿校形 —— 它要过的是装包门那一整套。
+ * 皮肤 id 在路径里(`/skins/:id/screenshot`,ADR-0036),不在体里。
+ */
 const SkinShotRequestSchema = z.object({
-	skinId: CardSkinIdSchema,
 	kind: CardSkinKindSchema,
 	scene: z.string().max(40).optional(),
 	manifest: z.unknown(),
@@ -361,11 +363,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 自动探测本机 Chrome —— dashboard「自动探测」按钮。未配 chromePath 时一键找到
 	// 本地浏览器,免手填路径;探测不到返回 { path: null }。
 	const detectChrome = opts.detectChrome ?? (() => resolveChromePath(undefined));
-	app.get("/detect-chrome", (c) => c.json({ path: detectChrome() }));
+	app.get("/chrome", (c) => c.json({ path: detectChrome() }));
 
 	// 当前 puppeteer adapter —— 可变 holder。启动时 = currentPuppeteer(可能 null);经
-	// /enable-rendering 运行时热启用/热切换后指向新 adapter,使后续 /preview 也用上,
-	// 无需重启。currentSource 与之同步,供 /render-source 展示与同源幂等判断。
+	// POST /renderer 运行时热启用/热切换后指向新 adapter,使后续 /preview 也用上,
+	// 无需重启。currentSource 与之同步,供 GET /renderer 展示与同源幂等判断。
 	let currentPuppeteer = opts.puppeteer;
 	let currentSource: ChromeSource | null = opts.initialChromeSource ?? null;
 
@@ -374,7 +376,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 	// 当前渲染浏览器来源 —— System 页「卡片渲染浏览器」区的数据源。persistable=false
 	// 表示无可写 bootstrap 配置(legacy / desktop),切换仍生效但重启不保留。
-	app.get("/render-source", (c) =>
+	app.get("/renderer", (c) =>
 		c.json({
 			enabled: currentPuppeteer !== null,
 			source: currentSource,
@@ -395,7 +397,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 调用:运行时构造 puppeteer、注入已跑的 live/dynamic 引擎、写回浏览器来源持久化,
 	// 全程不重启。已启用时:同源 → alreadyEnabled 幂等;异源 → 先探测新浏览器,通了
 	// 才 swap 并 dispose 旧 adapter(别把能用的配置换成坏的)。
-	app.post("/enable-rendering", async (c) => {
+	app.post("/renderer", async (c) => {
 		const body = await c.req.json().catch(() => null);
 		const parsed = EnableRenderingSchema.safeParse(body);
 		if (!parsed.success) {
@@ -418,7 +420,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 交给全局出错处理 —— 原话进错误日志,客户端拿固定一句。可预期的两种失败(探测连不上、
 		// 配置写不进去)是下面显式回的 `unavailable`,原因原样写进 `message`。
 		const pup = createPuppeteer(source);
-		// 连通性探测:远程端点没有 detect-chrome 那样的存在性预验,连不上只会在
+		// 连通性探测:远程端点没有 `/chrome` 那样的存在性预验,连不上只会在
 		// 之后首次渲染才暴露;热切换则无论来源都要先验 —— 失败就不动现有渲染器。
 		if (source.chromeEndpoint || replacing) {
 			try {
@@ -610,7 +612,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 缓存里留的是**拼好的规则**而不是 data URL:规则本身就把 data URL 包在里头,存前者
 	// 就等于让后者可被回收,同一串东西不必占两份。
 	//
-	// 惰性构造:`/enable-rendering`、`/detect-chrome` 这些路由不碰字体,它们的测试给的
+	// 惰性构造:`POST /renderer`、`GET /chrome` 这些路由不碰字体,它们的测试给的
 	// 是最小 deps —— 路由建起来的这一刻别去读 runtime 上的东西,真要读字体时再取。
 	const loadFontFace = (id: string): Promise<string> => {
 		if (!id) return Promise.resolve("");
@@ -658,7 +660,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	}
 
 	let imageRenderer: ImageRenderer | null = null;
-	// 缓存绑定的 adapter 快照 —— 热切换(/enable-rendering)会把 currentPuppeteer 换成
+	// 缓存绑定的 adapter 快照 —— 热切换(POST /renderer)会把 currentPuppeteer 换成
 	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
 	// 旧 adapter(ImageRenderer.puppeteer 是 readonly,updateConfig 换不了它)。
 	let imageRendererPuppeteer: PuppeteerAdapter | null = null;
@@ -788,7 +790,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		return { name: "示例 UP 主", face: SVG_AVATAR_BLUE };
 	}
 
-	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test-push 共用。失败抛 Error
+	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test 共用。失败抛 Error
 	// (消息直接面向用户)。SC / Guard 走 ImageRenderer;live / dyn 有 content 走真实
 	// 拉取,否则虚构 mock 数据。调用方须先确认 currentPuppeteer 存在。
 	async function renderPreviewCard(
@@ -974,19 +976,24 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	});
 
 	/**
-	 * POST /api/cards/skin-shot —— 编辑器那颗「最终效果」(ADR-0014 决策 22)。
+	 * POST /api/cards/skins/:id/screenshot —— 编辑器那颗「最终效果」(ADR-0014 决策 22)。
 	 *
 	 * 实时预览回 HTML 由**看的人的浏览器**画,推出去那张是 **server 上的 Chrome** 画的,
-	 * 字体渲染像素级对不上;这颗按钮补的正是那一刀。落在这条路由(而不是 `card-skins`)是
-	 * 因为握着 Chrome 的是这儿 —— 而「清单 → HTML」那一步两边**共用同一个件**,预览与
-	 * 截图因此结构性地同源。
+	 * 字体渲染像素级对不上;这颗按钮补的正是那一刀。路径落在 `/api/cards/skins/` 底下(「谁的」放前面),
+	 * 但处理函数在这条路由而不是皮肤库那条(`routes/cards-skins.ts`):握着 Chrome 的是这儿 ——
+	 * 而「清单 → HTML」那一步两边**共用同一个件**,预览与截图因此结构性地同源。
+	 * (两条路由共一个前缀、各管各的口:`app.ts` 里 `/api/cards` 先挂,截图口由这条直接认领。)
 	 */
-	app.post("/skin-shot", async (c) => {
+	app.post("/skins/:id/screenshot", async (c) => {
+		const skinId = c.req.param("id");
+		if (!CardSkinIdSchema.safeParse(skinId).success) {
+			return respondFailure(c, fail("invalid", "皮肤 id 只准小写字母、数字、连字符"));
+		}
 		const parsed = SkinShotRequestSchema.safeParse(await c.req.json().catch(() => null));
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "请求体要 { skinId, kind, scene?, manifest }", {
+				fail("invalid", "请求体要 { kind, scene?, manifest }", {
 					issues: issuesFromZod(parsed.error),
 				}),
 			);
@@ -995,7 +1002,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const renderer = await getScreenshotRenderer();
 		if (!renderer) return respondFailure(c, fail("not_configured", NO_CHROME_HINT));
 
-		const { skinId, kind, scene, manifest } = parsed.data;
+		const { kind, scene, manifest } = parsed.data;
 		const out = await renderSkinPreviewHtml({
 			store: opts.cardSkins,
 			skinId,
@@ -1024,14 +1031,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			log.warn(`[cards] skin-shot render failed (${kind}): ${msg}`);
+			log.warn(`[cards] skin screenshot render failed (${kind}): ${msg}`);
 			return c.json<CardSkinShotResponse>(fail("unavailable", `卡片截图失败：${msg}`));
 		}
 	});
 
-	// POST /api/cards/test-push — 渲染当前预览卡片(同 /preview 的草稿样式)并真实
+	// POST /api/cards/test — 渲染当前预览卡片(同 /preview 的草稿样式)并真实
 	// 推送给一个 PushTarget。图片 Tab「测试推送」用,所见即所推。
-	app.post("/test-push", async (c) => {
+	app.post("/test", async (c) => {
 		const body = (await c.req.json().catch(() => null)) as unknown;
 		const parsed = TestPushRequestSchema.safeParse(body);
 		if (!parsed.success) {
@@ -1048,13 +1055,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const target = opts.deps.store.getTargets().find((t) => t.id === targetId);
 		if (!target) return respondFailure(c, fail("not_found", "没有这个推送目标"));
 
-		// 试一次、回报结果(同 push.ts):渲染没成、投递没成都是 200 + 失败那一支,耗时只在送达那一支。
+		// 试一次、回报结果(同 `POST /api/targets/:id/test`):渲染没成、投递没成都是 200 + 失败那一支,耗时只在送达那一支。
 		let card: { buffer: Buffer; mime: string };
 		try {
 			card = await renderPreviewCard(kind, style, content, { cardSkin, cardSkinKnobs }, fallback);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			log.warn(`[cards] test-push render failed (${kind}): ${msg}`);
+			log.warn(`[cards] test render failed (${kind}): ${msg}`);
 			return c.json<TestPushResponse>(fail("unavailable", `卡片渲染失败：${msg}`));
 		}
 

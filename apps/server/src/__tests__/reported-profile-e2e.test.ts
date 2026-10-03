@@ -2,7 +2,7 @@
  * 🔴 **拓展报的资料更新,在真 BN 上落进了订阅列表**(ADR-0019 决策 7 / 49 / 62)。
  *
  * 拓展经 `handle.reportProfile` 报「这个人的名字 / 头像 / 粉丝数」,宿主核过发到 bus;后面要有人把它
- * 写进资料缓存、把头像存成文件,`GET /api/subs` 才读得到。中间任意一处漏接(bus 上没人听、bootstrap
+ * 写进资料缓存、把头像存成文件,`GET /api/subscriptions` 才读得到。中间任意一处漏接(bus 上没人听、bootstrap
  * 没起那个监听),拓展那头照样 resolve、订阅页永远是新建那一刻的样子,而没人报错。
  *
  * 所以装一个真的 v2 小拓展、起一台真 BN:订阅经面板那条路新建(带着解析门候选的头像),之后按拓展的
@@ -108,7 +108,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 
 	/** 面板那条路新建:带着解析门候选的名字、粉丝与头像(决策 49 的「新建时用选中那个候选预填」)。 */
 	async function create(): Promise<void> {
-		const res = await api("/api/subs", {
+		const res = await api("/api/subscriptions", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
@@ -123,7 +123,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 
 	/** 这一条的资料。 */
 	async function profile() {
-		const res = await api("/api/subs");
+		const res = await api("/api/subscriptions");
 		const list = (await res.json()) as SubscriptionDTO[];
 		return list.find((s) => s.id === SUB.id)?.cachedProfile;
 	}
@@ -176,7 +176,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
 		// 面板那条路拨开关:拨完紧接着列一次拓展,那一口会先把热装落实掉。
-		const toggled = await api("/api/globals", {
+		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ extensions: { [FIXTURE_ID]: { enabled: true } } }),
@@ -199,14 +199,16 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 	it("报一次:换上报来的名字 / 粉丝,头像换了张、地址的 ?v= 跟着变", async () => {
 		const before = await profile();
 		expect(before?.name).toBe("候选的名字");
-		expect(before?.avatar).toMatch(new RegExp(`^/api/subs/${SUB.id}/avatar\\?v=`));
+		expect(before?.avatar).toMatch(new RegExp(`^/api/subscriptions/${SUB.id}/avatar\\?v=`));
 
 		await press("profile.full");
 		const after = await refreshedAfter(before);
 
 		expect(after?.name).toBe("报来的名字");
 		expect(after?.fans).toBe(4321);
-		expect(after?.avatar).toMatch(new RegExp(`^/api/subs/${SUB.id}/avatar\\?v=[0-9a-f]+$`));
+		expect(after?.avatar).toMatch(
+			new RegExp(`^/api/subscriptions/${SUB.id}/avatar\\?v=[0-9a-f]+$`),
+		);
 		expect(after?.avatar).not.toBe(before?.avatar);
 		const img = await api(after?.avatar ?? "");
 		expect(img.status).toBe(200);
@@ -230,7 +232,7 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 	});
 
 	it("停用了、只报名字:照样更新,粉丝与头像不动", async () => {
-		const off = await api(`/api/subs/${SUB.id}`, {
+		const off = await api(`/api/subscriptions/${SUB.id}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ enabled: false }),

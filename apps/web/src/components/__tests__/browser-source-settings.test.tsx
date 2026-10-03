@@ -13,13 +13,13 @@ vi.mock("../../services/api", () => ({
 	ApiError: class extends Error {},
 }));
 
-/** get 按路径分派:render-source 可变(切换后刷新),detect-chrome 固定。 */
+/** get 按路径分派:`/renderer` 可变(切换后刷新),`/chrome` 固定。 */
 function mockGet({ status, detectPath = null }: { status: unknown; detectPath?: string | null }) {
 	getMock.mockImplementation(async (path: string) => {
-		if (path === "/api/cards/render-source") {
+		if (path === "/api/cards/renderer") {
 			return typeof status === "function" ? (status as () => unknown)() : status;
 		}
-		if (path === "/api/cards/detect-chrome") return { path: detectPath };
+		if (path === "/api/cards/chrome") return { path: detectPath };
 		throw new Error(`unexpected GET ${path}`);
 	});
 }
@@ -69,7 +69,7 @@ describe("BrowserSourceSettings", () => {
 		});
 	});
 
-	it("应用远程端点 → POST enable-rendering 并刷新状态", async () => {
+	it("应用远程端点 → POST /renderer 并刷新状态", async () => {
 		let current: unknown = { enabled: false, source: null, persistable: true };
 		mockGet({ status: () => current });
 		postMock.mockImplementation(async () => {
@@ -86,7 +86,7 @@ describe("BrowserSourceSettings", () => {
 		});
 		fireEvent.click(screen.getByRole("button", { name: /应用远程端点/ }));
 		await waitFor(() =>
-			expect(postMock).toHaveBeenCalledWith("/api/cards/enable-rendering", {
+			expect(postMock).toHaveBeenCalledWith("/api/cards/renderer", {
 				chromeEndpoint: "ws://browser:3000",
 			}),
 		);

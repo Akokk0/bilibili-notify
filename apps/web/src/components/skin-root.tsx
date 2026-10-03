@@ -21,7 +21,7 @@ import type { ResolvedTheme } from "../store/theme";
 import { useThemeStore } from "../store/theme";
 
 export function skinAssetUrl(id: string, name: string): string {
-	return `/api/skins/${id}/assets/${name.slice("assets/".length)}`;
+	return `/api/dashboard/skins/${id}/assets/${name.slice("assets/".length)}`;
 }
 
 /**
@@ -124,7 +124,7 @@ export function SkinRoot({ children }: { children: ReactNode }) {
 	const killSwitch = useSkinStore((s) => s.killSwitch);
 	const resolved = useThemeStore((s) => s.resolved);
 
-	// /api/skins/* 在登录门之内 —— 冷启动未登录时拉必 401,得等 authed 翻 true 再拉,
+	// /api/dashboard/skins/* 在登录门之内 —— 冷启动未登录时拉必 401,得等 authed 翻 true 再拉,
 	// 否则「登录后皮肤不生效,刷新才好」。authRequired=false 的部署首个 effect 就拉。
 	const authed = useSessionStore((s) => s.authed);
 	const authRequired = useSessionStore((s) => s.authRequired);

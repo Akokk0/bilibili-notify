@@ -1,18 +1,18 @@
 /**
- * AI 测试推送 —— `POST /api/ai/test-push`。
+ * AI 测试推送 —— `POST /api/ai/test`。
  *
  * 智能女仆的「试一句」:拿 AI 页**当前草稿**的人格(可能还没保存)当 system prompt,
  * 用户递一句话 / 一个问题,让她回一句,把回复真实推到指定的 PushTarget,同时把回复
  * 文本带回页面 —— 调人格时不必跑去 QQ 里翻。
  *
- * 与 `/api/cards/test-push`(草稿样式 + 真实推送)同形,只是把「渲染卡片」换成
+ * 与 `/api/cards/test`(草稿样式 + 真实推送)同形,只是把「渲染卡片」换成
  * 「问一句 AI」。OpenAI 那一跳是外部边界,mock 掉。
  */
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
-import { REDACTED_API_KEY } from "../globals.js";
+import { REDACTED_API_KEY } from "../settings.js";
 import type { RouteDeps } from "../types.js";
 
 const TARGET_ID = "11111111-1111-4111-8111-111111111111";
@@ -137,14 +137,14 @@ function makeDeps(opts: { sendFails?: boolean } = {}) {
 }
 
 function post(app: ReturnType<typeof createAiRoute>, body: unknown) {
-	return app.request("/test-push", {
+	return app.request("/test", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
 	});
 }
 
-describe("POST /api/ai/test-push", () => {
+describe("POST /api/ai/test", () => {
 	it("草稿人格 + 一句话 → 回复推到指定目标,并把回复带回页面", async () => {
 		const { deps, sendToTarget } = makeDeps();
 		const app = createAiRoute(deps);
@@ -212,7 +212,7 @@ describe("POST /api/ai/test-push", () => {
 		expect(cfg.dynamicPrompt).toBe("用恶魔兔的口气讲");
 	});
 
-	// 前端 GET /api/globals 拿到的 apiKey 是 REDACTED 占位。用户只要没动过那一栏,
+	// 前端 GET /api/settings 拿到的 apiKey 是 REDACTED 占位。用户只要没动过那一栏,
 	// 草稿里带回来的就是占位串本身 —— 直接拿它当 key 去调 OpenAI 必然 401。
 	it("草稿的 apiKey 是脱敏占位 → 回落到已存的真 key", async () => {
 		const { deps } = makeDeps(); // store 里存着 sk-stored

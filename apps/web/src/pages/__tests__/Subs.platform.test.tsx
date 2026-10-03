@@ -75,9 +75,9 @@ beforeEach(() => {
 	subs = [BILI];
 	extensions = Promise.resolve({ extensions: [source()] });
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (path === "/api/subs/tags") return Promise.resolve([]);
-		if (path === "/api/subs") return Promise.resolve(subs);
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
+		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path.startsWith("/api/targets")) return Promise.resolve([]);
 		if (path === "/api/ext") return extensions;
 		if (path.startsWith("/api/ext/douyin/lookup")) {
@@ -178,8 +178,8 @@ describe("选了订阅源", () => {
 
 	it("解析门报错 → 原样摆出服务端那句话", async () => {
 		(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-			if (path === "/api/subs/tags") return Promise.resolve([]);
-			if (path === "/api/subs") return Promise.resolve(subs);
+			if (path === "/api/subscriptions/tags") return Promise.resolve([]);
+			if (path === "/api/subscriptions") return Promise.resolve(subs);
 			if (path === "/api/ext") return extensions;
 			if (path.startsWith("/api/ext/douyin/lookup")) {
 				return Promise.reject(new FakeApiError("拓展交回来的候选形状不对:第 1 条缺 name"));
@@ -210,8 +210,8 @@ describe("选了订阅源", () => {
 		});
 		let answer: (value: unknown) => void = () => {};
 		(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-			if (path === "/api/subs/tags") return Promise.resolve([]);
-			if (path === "/api/subs") return Promise.resolve(subs);
+			if (path === "/api/subscriptions/tags") return Promise.resolve([]);
+			if (path === "/api/subscriptions") return Promise.resolve(subs);
 			if (path === "/api/ext") return extensions;
 			if (path.startsWith("/api/ext/douyin/lookup")) {
 				return new Promise((resolve) => {
@@ -253,7 +253,7 @@ describe("选了订阅源", () => {
 			string,
 			Record<string, unknown>,
 		];
-		expect(path).toBe("/api/subs");
+		expect(path).toBe("/api/subscriptions");
 		expect(body).toMatchObject({
 			identity: { sourceKey: "douyin", externalId: "sec-1" },
 			enabled: true,

@@ -63,7 +63,7 @@ import { api } from "../../services/api";
 
 /**
  * `logLevels` 是这份配置里已有的按模块覆盖。`bilibili` 是 B 站自己的设置(动态 cron / UA / 登录心跳间隔),
- * `/api/globals` 把它挂在核心设置的旁边下发 —— 系统页画那三格要读它,缺了整页画不出来。
+ * `/api/settings` 把它挂在核心设置的旁边下发 —— 系统页画那三格要读它,缺了整页画不出来。
  */
 function mockApi(logLevels: Record<string, string>): void {
 	const globals = {
@@ -72,7 +72,7 @@ function mockApi(logLevels: Record<string, string>): void {
 		master: { targetId: undefined },
 	};
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/globals") return JSON.parse(JSON.stringify(globals));
+		if (url === "/api/settings") return JSON.parse(JSON.stringify(globals));
 		if (url === "/api/connections/capabilities") return {};
 		return [];
 	});
@@ -154,7 +154,7 @@ describe("系统页的按模块日志等级", () => {
 			string,
 			{ app: { logLevels: Record<string, unknown> } },
 		];
-		expect(url).toBe("/api/globals");
+		expect(url).toBe("/api/settings");
 		// 键必须在,且为 null。少了这个键,后端 deepMerge 会原样留着旧等级。
 		expect(body.app.logLevels).toHaveProperty(key);
 		expect(body.app.logLevels[key]).toBeNull();

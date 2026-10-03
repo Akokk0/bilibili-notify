@@ -10,7 +10,9 @@ const file = (path, content) => ({ path, content });
 
 describe("findDevtoolsLeaks", () => {
 	it("干净的产物 → 没问题", () => {
-		const files = [file("dist/index.mjs", 'app.route("/api/update", r);\nconst x = "推送";\n')];
+		const files = [
+			file("dist/index.mjs", 'app.route("/api/system/update", r);\nconst x = "推送";\n'),
+		];
 		expect(findDevtoolsLeaks(files, MARKERS.server)).toEqual([]);
 	});
 

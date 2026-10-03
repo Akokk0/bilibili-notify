@@ -9,7 +9,7 @@ import { readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 
 /**
- * `/api/backup` — export/import for the one-click backup feature. Mounted behind
+ * `/api/system/backup` — export/import for the one-click backup feature. Mounted behind
  * the dashboard auth gate (like every `/api/*` route), so only an authenticated
  * dashboard session can download secrets or overwrite the running config.
  *
@@ -37,7 +37,7 @@ function failureOfBackupError(err: unknown): Failure | null {
 	return null;
 }
 
-export function createBackupRoute(opts: { service: BackupService }): Hono {
+export function createSystemBackupRoute(opts: { service: BackupService }): Hono {
 	const app = new Hono();
 
 	app.post("/export", async (c) => {

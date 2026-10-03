@@ -9,7 +9,7 @@ import { api } from "../../services/api";
  * 下场。
  */
 
-export const UPDATE_QUERY_KEY = ["update"] as const;
+export const UPDATE_QUERY_KEY = ["system", "update"] as const;
 
 /** 系统页里更新卡片的锚点。概览的「去更新」与右下角通知卡都跳到这。 */
 export const UPDATE_SECTION_HASH = "#update";
@@ -27,7 +27,7 @@ export function updateRefetchInterval(status: UpdateStatusDTO | undefined): numb
 export function useUpdateStatus() {
 	return useQuery({
 		queryKey: UPDATE_QUERY_KEY,
-		queryFn: () => api.get<UpdateStatusDTO>("/api/update"),
+		queryFn: () => api.get<UpdateStatusDTO>("/api/system/update"),
 		refetchInterval: (query) => updateRefetchInterval(query.state.data),
 	});
 }

@@ -130,7 +130,7 @@ const boardBody = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("POST /roast/push — 图片优先", () => {
-	it("targetId 不是 uuid → 400,与 /api/push、/api/cards、/api/ai 同一把尺子", async () => {
+	it("targetId 不是 uuid → 400,与 /api/cards、/api/ai 的 targetId 同一把尺子", async () => {
 		// PushTarget.id 本来就是 z.uuid();这里曾是 z.string().min(1),于是同一个
 		// 「目标 id」在四个端点上有两套校验,松的那个把错 id 一路带到投递层才失败。
 		const { deps, sendToTarget } = makeDeps();

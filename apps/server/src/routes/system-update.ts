@@ -27,7 +27,7 @@ const ProbeBody = z.object({
 	prefixes: z.array(z.string().refine((p) => p === "" || isMirrorPrefix(p))).max(20),
 });
 
-export interface CreateUpdateRouteInput {
+export interface CreateSystemUpdateRouteInput {
 	service: UpdateService;
 	/** 这个进程的启动时刻(ISO),与 `/api/health` 报的同一个值 —— 面板靠它变了认新进程。 */
 	startedAt: string;
@@ -38,11 +38,11 @@ export interface CreateUpdateRouteInput {
 	applyUpdate: () => Promise<void>;
 }
 
-export function createUpdateRoute({
+export function createSystemUpdateRoute({
 	service,
 	startedAt,
 	applyUpdate,
-}: CreateUpdateRouteInput): Hono {
+}: CreateSystemUpdateRouteInput): Hono {
 	const app = new Hono();
 
 	app.get("/", (c) => c.json(service.getStatus()));

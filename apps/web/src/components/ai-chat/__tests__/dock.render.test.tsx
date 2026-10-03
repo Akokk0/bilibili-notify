@@ -158,7 +158,7 @@ vi.mock("../../../services/api", () => ({
 		get: vi.fn(async (path: string) =>
 			// 技能清单与全局配置走同一个 get,按路径分流 —— 一律回 globals 的话,
 			// 斜杠菜单那份清单永远是空的,空态那句引导语也就永远不出现。
-			path.startsWith("/api/maid-skills")
+			path.startsWith("/api/ai/skills")
 				? {
 						list: [
 							{

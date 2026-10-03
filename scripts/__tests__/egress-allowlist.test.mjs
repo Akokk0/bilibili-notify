@@ -55,7 +55,7 @@ export const ALLOWLIST = {
 /**
  * 棘轮表:文件 → 出站原语的上限(勘察时的实数)。只许往下调,到 3b 末清零。
  * 平台适配器的出口随连接与适配器搬走;blive 的 WebSocket 与出图器拉图也各有去处;
- * `routes/globals.ts` 是设置页的 AI 连通测试写在了路由里。
+ * `routes/settings.ts` 是设置页的 AI 连通测试写在了路由里。
  */
 export const RATCHET = {
 	"apps/server/src/platforms/qq-official.ts": 8,
@@ -64,7 +64,7 @@ export const RATCHET = {
 	"apps/server/src/platforms/webhook.ts": 1,
 	"packages/blive/src/client.ts": 1,
 	"packages/image/src/image-renderer.ts": 1,
-	"apps/server/src/routes/globals.ts": 1,
+	"apps/server/src/routes/settings.ts": 1,
 };
 
 /**

@@ -66,7 +66,7 @@ function formatAt(at: number): string {
 	return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
 }
 
-/** 装包响应(POST /api/card-skins)。 */
+/** 装包响应(POST /api/cards/skins)。 */
 interface UploadResult {
 	id: string;
 	warnings: string[];
@@ -91,7 +91,7 @@ function skinDesc(skin: CardSkinSummary): string {
 /** 导出:直接开导出端点,浏览器按 content-disposition 落文件(会话 cookie 同源自带)。 */
 function downloadSkin(skin: CardSkinSummary): void {
 	const a = document.createElement("a");
-	a.href = `/api/card-skins/${skin.id}/export`;
+	a.href = `/api/cards/skins/${skin.id}/export`;
 	a.download = `${skin.name}.zip`;
 	a.click();
 }
@@ -113,7 +113,7 @@ export function CardSkinSection() {
 		void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
 		// 启用指针住在 `globals.defaults.cardSkin`,不在店里 —— 删掉正在用的那套,服务端
 		// 会顺手改这个指针,页面上读 globals 的那些地方(预览、灵动岛基线)得跟着重取。
-		void qc.invalidateQueries({ queryKey: ["globals"] });
+		void qc.invalidateQueries({ queryKey: ["settings"] });
 	}
 
 	// 启用那颗钮封在 card-skins-query 里(两个 key 的 invalidate 归它管)——「换上这套」
@@ -131,7 +131,7 @@ export function CardSkinSection() {
 	 */
 	const duplicate = useMutation({
 		mutationFn: async (v: { id: string; andThen?: (newId: string) => void }) => {
-			const r = await api.post<CardSkinDuplicateResponse>(`/api/card-skins/${v.id}/duplicate`, {});
+			const r = await api.post<CardSkinDuplicateResponse>(`/api/cards/skins/${v.id}/duplicate`, {});
 			return { r, andThen: v.andThen };
 		},
 		onSuccess: ({ r, andThen }) => {
@@ -143,7 +143,7 @@ export function CardSkinSection() {
 	});
 
 	const remove = useMutation({
-		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/card-skins/${id}`),
+		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/cards/skins/${id}`),
 		onSuccess: () => {
 			setError(null);
 			refresh();
@@ -157,7 +157,7 @@ export function CardSkinSection() {
 		mutationFn: (file: File) => {
 			const form = new FormData();
 			form.set("file", file);
-			return api.upload<UploadResult>("/api/card-skins", form);
+			return api.upload<UploadResult>("/api/cards/skins", form);
 		},
 		onSuccess: (data) => {
 			setError(null);
@@ -182,7 +182,7 @@ export function CardSkinSection() {
 	 */
 	const fallbacks = listQuery.data?.fallbacks ?? [];
 	const dismissFallbacks = useMutation({
-		mutationFn: () => api.delete<{ ok: boolean }>("/api/card-skins/fallbacks"),
+		mutationFn: () => api.delete<{ ok: boolean }>("/api/cards/skins/fallbacks"),
 		onSuccess: refresh,
 		onError: (e) => setError(String((e as Error).message)),
 	});

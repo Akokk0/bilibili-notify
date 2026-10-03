@@ -29,13 +29,13 @@ const H = vi.hoisted(() => ({
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
-			if (path === "/api/card-skins") return { skins: H.skins, active: H.active, fallbacks: [] };
-			const id = path.match(/^\/api\/card-skins\/([^/]+)$/)?.[1];
+			if (path === "/api/cards/skins") return { skins: H.skins, active: H.active, fallbacks: [] };
+			const id = path.match(/^\/api\/cards\/skins\/([^/]+)$/)?.[1];
 			if (id) return { manifest: { name: id, cards: {} }, assets: [] };
 			throw new Error(`没安排的 GET ${path}`);
 		}),
 		post: vi.fn(async (path: string, body: { kind: string }) => {
-			const id = path.match(/^\/api\/card-skins\/([^/]+)\/preview$/)?.[1];
+			const id = path.match(/^\/api\/cards\/skins\/([^/]+)\/preview$/)?.[1];
 			if (!id) throw new Error(`没安排的 POST ${path}`);
 			H.previews.push({ id, kind: body.kind });
 			return {
@@ -107,7 +107,7 @@ describe("预览块", () => {
 		const block = await screen.findByTestId("card-skin-preview");
 		fireEvent.click(await within(block).findByRole("button", { name: "换上这套" }));
 		await waitFor(() =>
-			expect(H.puts).toEqual([{ path: "/api/card-skins/active", body: { id: "s1" } }]),
+			expect(H.puts).toEqual([{ path: "/api/cards/skins/active", body: { id: "s1" } }]),
 		);
 		expect(await within(block).findByText("正在用")).toBeTruthy();
 		expect(within(block).queryByRole("button", { name: "换上这套" })).toBeNull();

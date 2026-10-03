@@ -1,5 +1,5 @@
 /**
- * PATCH /api/globals 的失败一律是平铺的 `{ code, message }`(ADR-0026),状态码从码推:
+ * PATCH /api/settings 的失败一律是平铺的 `{ code, message }`(ADR-0026),状态码从码推:
  * - 体不成形 / store 校验不过 → `invalid` 400(顶上一句中文,逐格原因进 `issues`,不再带 `scope`)。
  * - 指令别名撞名 → `conflict` 409。
  * - 启用前置条件没满足(没配 Chrome / key 是空的 / 审批没有可用的私聊通道)→ `not_configured` 409。
@@ -19,7 +19,7 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
 }
 
-describe("PATCH /api/globals 的失败", () => {
+describe("PATCH /api/settings 的失败", () => {
 	let dataDir: string;
 
 	beforeEach(async () => {
@@ -42,7 +42,7 @@ describe("PATCH /api/globals 的失败", () => {
 			puppeteer: puppeteer as never,
 		});
 		const patch = (body: unknown) =>
-			app.request("/api/globals", {
+			app.request("/api/settings", {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
 				body: typeof body === "string" ? body : JSON.stringify(body),

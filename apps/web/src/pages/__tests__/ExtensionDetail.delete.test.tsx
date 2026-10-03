@@ -31,12 +31,12 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url === "/api/globals") {
+			if (url === "/api/settings") {
 				return { extensions: { bridge: { enabled: false } } };
 			}
 			if (url.endsWith("/docs")) return {};
 			// 确认框开着时会去读订阅表(名下有几条订阅会保留)—— 桥名下一条都没有。
-			if (url === "/api/subs") return [];
+			if (url === "/api/subscriptions") return [];
 			return {
 				extensions: [
 					{

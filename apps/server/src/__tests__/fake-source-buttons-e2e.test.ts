@@ -104,7 +104,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 	}
 
 	async function profileOf(subscriptionId: string) {
-		const list = (await (await api("/api/subs")).json()) as SubscriptionDTO[];
+		const list = (await (await api("/api/subscriptions")).json()) as SubscriptionDTO[];
 		return list.find((s) => s.id === subscriptionId)?.cachedProfile;
 	}
 
@@ -136,7 +136,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
 		// 面板那条路拨开关:拨完紧接着列一次拓展,那一口会先把热装落实掉。
-		const toggled = await api("/api/globals", {
+		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			...json({ extensions: { [FAKE]: { enabled: true } } }),
 		});
@@ -154,7 +154,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 			if (!candidate) throw new Error("解析门少交了候选");
 			external[key] = candidate.id;
 			const { id: _id, ...profile } = candidate;
-			const created = await api("/api/subs", {
+			const created = await api("/api/subscriptions", {
 				method: "POST",
 				...json({
 					...makeExtensionSubscription({
@@ -244,7 +244,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		const first = await refreshedAfter(before);
 		expect(first?.name).toContain("第 1 版");
 		expect(first?.fans).not.toBe(before?.fans);
-		expect(first?.avatar).toMatch(new RegExp(`^/api/subs/${SUB_IDS.a}/avatar\\?v=`));
+		expect(first?.avatar).toMatch(new RegExp(`^/api/subscriptions/${SUB_IDS.a}/avatar\\?v=`));
 		expect(first?.avatar).not.toBe(before?.avatar);
 
 		await press("report.profile");
@@ -288,7 +288,10 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 
 	it("没有开着的订阅了:按了什么都不报,假源页面上说一句「还没有开着的订阅」", async () => {
 		for (const id of [SUB_IDS.a, SUB_IDS.b]) {
-			const off = await api(`/api/subs/${id}`, { method: "PATCH", ...json({ enabled: false }) });
+			const off = await api(`/api/subscriptions/${id}`, {
+				method: "PATCH",
+				...json({ enabled: false }),
+			});
 			expect(off.status, await off.clone().text()).toBe(200);
 		}
 		await press("report.post");

@@ -18,13 +18,13 @@ export function SkinPreviewBar() {
 
 	const apply = useMutation({
 		// 要发的东西必须走 variables —— preview 闭包在 onMutate/onSuccess 时序下靠不住。
-		mutationFn: (id: string) => api.put<{ ok: boolean }>("/api/skins/active", { id }),
+		mutationFn: (id: string) => api.put<{ ok: boolean }>("/api/dashboard/skins/active", { id }),
 		onSuccess: async () => {
 			// 服务端双槽是权威(单模皮肤只占一个槽),回拉而不是本地拼
 			await syncActiveSkinToStore();
 			useSkinStore.getState().setPreview(null);
 			setError(null);
-			void qc.invalidateQueries({ queryKey: ["skins"] });
+			void qc.invalidateQueries({ queryKey: ["dashboard", "skins"] });
 		},
 		onError: (e) => setError(String((e as Error).message)),
 	});

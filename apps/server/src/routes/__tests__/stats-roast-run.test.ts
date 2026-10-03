@@ -1,5 +1,5 @@
 /**
- * `POST /api/stats/roast/run-now` —— 面板上「试一次」按下去走的路。
+ * `POST /api/stats/roast/run` —— 面板上「试一次」按下去走的路。
  *
  * 它**不是模拟**:调的就是 cron 到点调的那个函数,所以审批关着的时候会真的把周报
  * 发进群里。测试守两件事:
@@ -29,9 +29,9 @@ function appWith(outcome: RoastRunOutcome | null) {
 }
 
 const post = (app: ReturnType<typeof createStatsRoute>) =>
-	app.request("/roast/run-now", { method: "POST" });
+	app.request("/roast/run", { method: "POST" });
 
-describe("POST /roast/run-now", () => {
+describe("POST /roast/run", () => {
 	it("发出去了 → 如实带上条数与投递形态(200 + { ok: true, outcome })", async () => {
 		const { app, runBoardNow } = appWith({
 			kind: "sent",
@@ -103,14 +103,14 @@ describe("POST /roast/run-now", () => {
 			throw boom;
 		});
 		const app = createStatsRoute(deps, { runRoastNow });
-		const res = await app.request("/roast/run-now", { method: "POST" });
+		const res = await app.request("/roast/run", { method: "POST" });
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
 		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);
 	});
 });
 
-describe("POST /roast/run-now/:subscriptionId — 单人那条", () => {
+describe("POST /roast/run/:subscriptionId — 单人那条", () => {
 	it("带上订阅 id → 跑的是这条订阅的那条排程,不是榜单(两支订阅都按订阅 id,ADR-0020 决策 18)", async () => {
 		const { app, runRoastNow } = appWith({
 			kind: "sent",
@@ -120,7 +120,7 @@ describe("POST /roast/run-now/:subscriptionId — 单人那条", () => {
 			failed: [],
 		});
 		const id = "e0000000-0000-4000-8000-000000000001";
-		const res = await app.request(`/roast/run-now/${encodeURIComponent(id)}`, { method: "POST" });
+		const res = await app.request(`/roast/run/${encodeURIComponent(id)}`, { method: "POST" });
 		expect(res.status).toBe(200);
 		// 传错(或压根没传)订阅 id 的话,主人点「试一次」会收到一份全站榜单 —— 完全
 		// 不是他要试的东西,而且真发进群。
@@ -135,7 +135,7 @@ describe("POST /roast/run-now/:subscriptionId — 单人那条", () => {
 			skipped: [],
 			failed: [],
 		});
-		await app.request("/roast/run-now", { method: "POST" });
+		await app.request("/roast/run", { method: "POST" });
 		expect(runRoastNow).toHaveBeenCalledWith(undefined);
 	});
 });

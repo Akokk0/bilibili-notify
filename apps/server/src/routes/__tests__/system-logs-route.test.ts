@@ -6,7 +6,7 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createLogsRoute } from "../logs.js";
+import { createSystemLogsRoute } from "../system-logs.js";
 import type { RouteDeps } from "../types.js";
 
 let query: ReturnType<typeof vi.fn>;
@@ -18,7 +18,7 @@ function makeApp() {
 			logStore: { query, dayFilePath: (d: string) => join(tmpdir(), `bn-logs-test-${d}.jsonl`) },
 		},
 	} as unknown as RouteDeps;
-	return createLogsRoute(deps);
+	return createSystemLogsRoute(deps);
 }
 
 describe("logs route — limit/day 校验", () => {

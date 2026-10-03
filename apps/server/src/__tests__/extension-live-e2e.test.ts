@@ -180,7 +180,7 @@ describe("拓展订阅的在播 e2e:报上来的进首页,拓展停了就出去"
 		await press("report.liveStatus");
 		expect((await extensionRows()).map((row) => row.subscriptionId)).toEqual([SUB.id]);
 
-		const res = await fetch(`${base()}/api/globals`, {
+		const res = await fetch(`${base()}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ extensions: { [FIXTURE_ID]: { enabled: false } } }),

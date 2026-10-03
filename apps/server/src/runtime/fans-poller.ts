@@ -68,7 +68,7 @@ export interface FansPollerOptions {
 export interface FansPollerHandle extends Disposable {
 	/**
 	 * 首页粉丝面板的快照(一条订阅一条,键是订阅 id):B 站是最近一轮成功采样的,拓展是按它的粉丝时序算的
-	 * (ADR-0020 决策 8)。GET /api/fans 直接读这个,免去对 jsonl 的同步查询。Bootstrap 前为空数组;
+	 * (ADR-0020 决策 8)。GET /api/stats/followers 直接读这个,免去对 jsonl 的同步查询。Bootstrap 前为空数组;
 	 * 开机从盘上恢复一份,之后每轮 tick 更新。
 	 */
 	getLastEntries(): FansRefreshEntry[];

@@ -13,7 +13,7 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 首页粉丝面板也列拓展订阅(ADR-0020 决策 8)。
  *
  * - 有粉丝时序(`<数据根>/stats/followers/<订阅 id>.jsonl`,统计的拓展适配按资料里的粉丝数写)的、启用着的拓展订阅进
- *   `fans-refreshed` 快照 / `GET /api/fans`:键是订阅 id,带拓展 id + 外部 id、不带 uid。
+ *   `fans-refreshed` 快照 / `GET /api/stats/followers`:键是订阅 id,带拓展 id + 外部 id、不带 uid。
  * - 起点 / 24h / 7d 与 B 站同一个意思、从时序里算:起点 = **第一条样本**(B 站的 fansBaseline 是第一次采到的
  *   值、开机按时序最早一条自愈 —— 同一件事);24h / 7d = 那一刻之前最近的一条样本。
  * - 当前数取它最近报的资料(比稀释过的样本新,与统计页的「当前粉丝」同一个数);资料没带就取时序末值。

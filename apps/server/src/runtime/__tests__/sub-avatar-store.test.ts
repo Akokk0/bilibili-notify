@@ -1,7 +1,7 @@
 /**
  * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataDir>/avatars/<订阅 id>.<png|jpeg|webp>`。
  *
- * 建订阅 / 取头像 / 删订阅走的是 `/api/subs` 那几口(见 `routes/__tests__/subs-extension-create.test.ts`);
+ * 建订阅 / 取头像 / 删订阅走的是 `/api/subscriptions` 那几口(见 `routes/__tests__/subs-extension-create.test.ts`);
  * 这里钉路由够不着的三件:
  *  - 开机清扫:订阅已经不在的头像、崩溃时留下的半截临时文件都扫掉,不认得的文件不碰。
  *  - 同一条订阅换了图的类型(png → webp),旧类型的那个文件跟着删掉,读到的是新的。
@@ -116,8 +116,8 @@ describe("写", () => {
 		const read = await store.read(KEEP);
 		expect(read?.contentType).toBe("image/webp");
 		expect(read?.bytes.equals(WEBP_BYTES)).toBe(true);
-		expect(first).toMatch(new RegExp(`^/api/subs/${KEEP}/avatar\\?v=[0-9a-f]{12}$`));
-		expect(second).toMatch(new RegExp(`^/api/subs/${KEEP}/avatar\\?v=[0-9a-f]{12}$`));
+		expect(first).toMatch(new RegExp(`^/api/subscriptions/${KEEP}/avatar\\?v=[0-9a-f]{12}$`));
+		expect(second).toMatch(new RegExp(`^/api/subscriptions/${KEEP}/avatar\\?v=[0-9a-f]{12}$`));
 		expect(second).not.toBe(first);
 	});
 

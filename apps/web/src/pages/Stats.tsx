@@ -481,7 +481,7 @@ export default function Stats() {
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<SubscriptionDTO[]>("/api/subs"),
+		queryFn: () => api.get<SubscriptionDTO[]>("/api/subscriptions"),
 	});
 	// 拓展行的平台名与徽章照装着的拓展清单;没回来时写拓展 id。
 	const extensions = useExtensions({ retry: false }).data?.extensions;

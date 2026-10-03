@@ -39,7 +39,7 @@ const MANIFEST = {
 
 function mockApi(builtin = false, manifest: unknown = MANIFEST): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url === "/api/card-skins") {
+		if (url === "/api/cards/skins") {
 			return Promise.resolve({
 				skins: [
 					{ id: "default", name: "默认", builtin: true, updatedAt: 0, knobs: [] },
@@ -49,11 +49,11 @@ function mockApi(builtin = false, manifest: unknown = MANIFEST): void {
 				fallbacks: [],
 			});
 		}
-		if (url === "/api/card-skins/neon") {
+		if (url === "/api/cards/skins/neon") {
 			return Promise.resolve({ manifest: structuredClone(manifest) });
 		}
 		// 出厂那份:接管一种卡时抄的就是它。
-		if (url === "/api/card-skins/default") {
+		if (url === "/api/cards/skins/default") {
 			return Promise.resolve({
 				manifest: {
 					schemaVersion: 1,

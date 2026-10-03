@@ -1,5 +1,5 @@
 /**
- * `/api/globals` 不再带、也不再收拓展设置(ADR-0019 决策 35)。
+ * `/api/settings` 不再带、也不再收拓展设置(ADR-0019 决策 35)。
  *
  * 拓展设置有了自己的读写口 `/api/ext/:id/settings`:按项写、带版本号、密钥下发时换成头尾。
  * 设置存在拓展自己的文件(`config/settings/extensions/<id>.json`),核心设置里的 `extensions.<id>` 只剩开关
@@ -54,7 +54,7 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
 }
 
-describe("/api/globals —— 拓展设置不走这里了", () => {
+describe("/api/settings —— 拓展设置不走这里了", () => {
 	let dataDir: string;
 
 	beforeEach(async () => {
@@ -93,9 +93,9 @@ describe("/api/globals —— 拓展设置不走这里了", () => {
 				bots: () => undefined,
 			},
 		});
-		const get = () => app.request("/api/globals");
+		const get = () => app.request("/api/settings");
 		const patch = (body: unknown) =>
-			app.request("/api/globals", {
+			app.request("/api/settings", {
 				method: "PATCH",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),

@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
  * URL 里塞东西。但是把 basic-auth 的 base64 凭证直接塞 URL 会被 nginx 等反代日志
  * 记下来 — 凭证泄漏。
  *
- * 解决:basic-auth 通过的 REST 请求(`POST /api/auth/ws-ticket`)签发一次性 token,
+ * 解决:basic-auth 通过的 REST 请求(`POST /api/ws/ticket`)签发一次性 token,
  * 客户端用 `?ticket=<xxx>` 完成 WS upgrade。ticket 在内存 Set,TTL 短(默认 30 秒),
  * 一旦被 `consume()` 立刻删除 — 即使 ticket 出现在反代日志里,它也已经过期或被用过了。
  */

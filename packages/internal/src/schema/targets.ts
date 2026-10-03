@@ -346,7 +346,7 @@ const PushTargetCommonShape = {
 	/** 生命周期由所属连接管理的系统目标；用户不直接编辑 / 删除。 */
 	managedBy: z.literal("connection").optional(),
 	/**
-	 * 最近一次显式 `/api/push/test` 或真实业务推送的结果。
+	 * 最近一次显式 `POST /api/targets/:id/test` 或真实业务推送的结果。
 	 * 跟 Connection.testStatus 互相独立 — 此处只反映会话级 (group/userId) 是否可达,
 	 * 连接级状态在 Connection.testStatus。
 	 */

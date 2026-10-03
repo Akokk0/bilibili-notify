@@ -122,7 +122,7 @@ export interface Devtools {
 	 */
 	route: Hono;
 	captures: DevCapturesApi;
-	/** 交给 `/api/update` 路由的那份 —— 装饰过的。 */
+	/** 交给 `/api/system/update` 路由的那份 —— 装饰过的。 */
 	updateService: UpdateService;
 	/** 交给 `/api/ext/marketplace*` 的那份 —— 装饰过的。 */
 	marketplace: Marketplace;

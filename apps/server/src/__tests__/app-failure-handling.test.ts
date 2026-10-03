@@ -41,7 +41,7 @@ describe("全局出错处理与 notFound", () => {
 		return { app, runtime };
 	}
 
-	/** 让 `GET /api/globals` 在读配置那一步抛出 `thrown` —— 真路由、真装配,只把底下的一步弄炸。 */
+	/** 让 `GET /api/settings` 在读配置那一步抛出 `thrown` —— 真路由、真装配,只把底下的一步弄炸。 */
 	function makeGlobalsThrow(
 		runtime: Awaited<ReturnType<typeof makeApp>>["runtime"],
 		thrown: unknown,
@@ -55,7 +55,7 @@ describe("全局出错处理与 notFound", () => {
 		const { app, runtime } = await makeApp();
 		// local-path-ok:故意造一条带家目录路径的报错,验它不外泄
 		makeGlobalsThrow(runtime, new Error("boom at /Users/x/secret.txt"));
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		const text = await res.text();
 		expect(res.status).toBe(503);
 		expect(JSON.parse(text)).toEqual({
@@ -72,7 +72,7 @@ describe("全局出错处理与 notFound", () => {
 		const boom = new Error("boom");
 		makeGlobalsThrow(runtime, boom);
 		const logError = vi.spyOn(runtime.serviceCtx.logger, "error");
-		await app.request("/api/globals");
+		await app.request("/api/settings");
 		expect(logError).toHaveBeenCalledWith(expect.any(String), boom);
 		await runtime.dispose();
 	});
@@ -87,7 +87,7 @@ describe("全局出错处理与 notFound", () => {
 	] as const)("HTTPException %i:状态码照原样,码是 %s,message 用它自己的", async (status, code) => {
 		const { app, runtime } = await makeApp();
 		makeGlobalsThrow(runtime, new HTTPException(status, { message: "它自己的话" }));
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		expect(res.status).toBe(status);
 		expect(await res.json()).toEqual({ code, message: "它自己的话" });
 		await runtime.dispose();
@@ -96,7 +96,7 @@ describe("全局出错处理与 notFound", () => {
 	it("HTTPException 没带 message:给一句中文,不是空串", async () => {
 		const { app, runtime } = await makeApp();
 		makeGlobalsThrow(runtime, new HTTPException(413));
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		const body = (await res.json()) as { code: string; message: string };
 		expect(res.status).toBe(413);
 		expect(body.code).toBe("invalid");
@@ -107,7 +107,7 @@ describe("全局出错处理与 notFound", () => {
 	it("HTTPException 5xx:按 unavailable 回,状态码照原样", async () => {
 		const { app, runtime } = await makeApp();
 		makeGlobalsThrow(runtime, new HTTPException(502, { message: "上游挂了" }));
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		expect(res.status).toBe(502);
 		expect(await res.json()).toEqual({ code: "unavailable", message: "上游挂了" });
 		await runtime.dispose();

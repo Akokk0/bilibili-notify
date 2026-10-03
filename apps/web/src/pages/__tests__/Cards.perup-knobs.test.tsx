@@ -66,9 +66,9 @@ function mockApi(sub: Subscription): void {
 	defaults.cardSkinKnobs = GLOBAL_KNOBS;
 	const globals = { app: {}, master: {}, defaults } as unknown as GlobalConfig;
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url.includes("/api/subs")) return Promise.resolve([sub]);
+		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
-		if (url.includes("/api/card-skins")) return Promise.resolve(SKIN_LIST);
+		if (url.includes("/api/cards/skins")) return Promise.resolve(SKIN_LIST);
 		return Promise.resolve(globals);
 	});
 	vi.mocked(api.patch).mockResolvedValue(sub);
@@ -117,7 +117,7 @@ async function saveAndReadOverrides(subId: string): Promise<Record<string, unkno
 		string,
 		{ overrides: Record<string, unknown> },
 	];
-	expect(url).toBe(`/api/subs/${subId}`);
+	expect(url).toBe(`/api/subscriptions/${subId}`);
 	return body.overrides;
 }
 
@@ -290,7 +290,7 @@ describe("测试推送带着与预览同一份皮肤", () => {
 		);
 		vi.mocked(api.post).mockImplementation((url: string) =>
 			Promise.resolve(
-				url === "/api/cards/test-push"
+				url === "/api/cards/test"
 					? { ok: true, latencyMs: 5 }
 					: { ok: true, dataUrl: "data:image/png;base64,xx" },
 			),
@@ -304,7 +304,7 @@ describe("测试推送带着与预览同一份皮肤", () => {
 		await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false));
 		fireEvent.click(btn);
 		return await waitFor(() => {
-			const call = vi.mocked(api.post).mock.calls.find(([url]) => url === "/api/cards/test-push");
+			const call = vi.mocked(api.post).mock.calls.find(([url]) => url === "/api/cards/test");
 			if (!call) throw new Error("测试推送还没发出去");
 			return call[1] as Record<string, unknown>;
 		});

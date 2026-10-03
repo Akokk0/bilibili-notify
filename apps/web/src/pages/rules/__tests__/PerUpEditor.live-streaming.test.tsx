@@ -126,7 +126,7 @@ describe("B 站「直播阈值覆盖」× 周期间隔与启动补报", () => {
 
 		await useDraftStore.getState().current?.onSave();
 		expect(api.patch).toHaveBeenCalledWith(
-			`/api/subs/${sub.id}`,
+			`/api/subscriptions/${sub.id}`,
 			expect.objectContaining({
 				overrides: expect.objectContaining({ liveStreaming: { streamingIntervalHours: 6 } }),
 			}),
@@ -144,7 +144,7 @@ describe("B 站「直播阈值覆盖」× 周期间隔与启动补报", () => {
 
 		await useDraftStore.getState().current?.onSave();
 		expect(api.patch).toHaveBeenCalledWith(
-			`/api/subs/${sub.id}`,
+			`/api/subscriptions/${sub.id}`,
 			expect.objectContaining({
 				overrides: expect.objectContaining({ liveStreaming: null, liveStart: null }),
 			}),

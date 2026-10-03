@@ -1,6 +1,6 @@
 /**
  * 单元测试 — `parseLogEnvelope` / `handleLogStreamEnvelope` 纯函数
- * (WS `log` 频道 → ["logs",{day:"live"}] 缓存 prepend)。
+ * (WS `log` 频道 → ["system", "logs", {day:"live"}] 缓存 prepend)。
  *
  * 守护契约(镜像 useAlertChannel 的 silent-drop 风格):
  *   - 非 log 频道帧 → null / 不动缓存

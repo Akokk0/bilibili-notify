@@ -24,7 +24,7 @@ import { useSkinStore } from "../../store/skin";
 import { SkinEditor } from "./SkinEditor";
 import { MODE_LABEL } from "./skin-edit";
 
-/** 上传响应(POST /api/skins)。 */
+/** 上传响应(POST /api/dashboard/skins)。 */
 interface UploadResult {
 	ok: boolean;
 	id: string;
@@ -32,7 +32,7 @@ interface UploadResult {
 }
 
 async function fetchManifest(id: string): Promise<SkinManifest> {
-	const res = await api.get<SkinManifestResponse>(`/api/skins/${id}/manifest`);
+	const res = await api.get<SkinManifestResponse>(`/api/dashboard/skins/${id}/manifest`);
 	return res.manifest;
 }
 
@@ -60,19 +60,19 @@ export function SkinSection() {
 	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
 	const listQuery = useQuery({
-		queryKey: ["skins"],
-		queryFn: () => api.get<SkinsListResponse>("/api/skins"),
+		queryKey: ["dashboard", "skins"],
+		queryFn: () => api.get<SkinsListResponse>("/api/dashboard/skins"),
 	});
 	const activeIds = listQuery.data?.active ?? { light: null, dark: null };
 
 	function refresh(): void {
-		void qc.invalidateQueries({ queryKey: ["skins"] });
+		void qc.invalidateQueries({ queryKey: ["dashboard", "skins"] });
 	}
 
 	const activate = useMutation({
 		// 深浅槽各自设置;id:null = 该槽回默认装。
 		mutationFn: (req: { id: string | null; theme: "light" | "dark" }) =>
-			api.put<{ ok: boolean }>("/api/skins/active", req),
+			api.put<{ ok: boolean }>("/api/dashboard/skins/active", req),
 		onSuccess: async () => {
 			setError(null);
 			await syncActiveSkinToStore();
@@ -83,7 +83,7 @@ export function SkinSection() {
 	});
 
 	const remove = useMutation({
-		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/skins/${id}`),
+		mutationFn: (id: string) => api.delete<{ ok: boolean }>(`/api/dashboard/skins/${id}`),
 		onSuccess: async () => {
 			setError(null);
 			await syncActiveSkinToStore();
@@ -98,7 +98,7 @@ export function SkinSection() {
 	 */
 	const removeMode = useMutation({
 		mutationFn: (req: { id: string; theme: "light" | "dark" }) =>
-			api.delete<{ ok: boolean }>(`/api/skins/${req.id}/modes/${req.theme}`),
+			api.delete<{ ok: boolean }>(`/api/dashboard/skins/${req.id}/modes/${req.theme}`),
 		onSuccess: async () => {
 			setError(null);
 			await syncActiveSkinToStore();
@@ -111,7 +111,7 @@ export function SkinSection() {
 		mutationFn: (file: File) => {
 			const form = new FormData();
 			form.set("file", file);
-			return api.upload<UploadResult>("/api/skins", form);
+			return api.upload<UploadResult>("/api/dashboard/skins", form);
 		},
 		onSuccess: async (data) => {
 			setError(null);
@@ -138,7 +138,7 @@ export function SkinSection() {
 	/** 打开调整抽屉:拉 manifest + 包内资产清单(两个下拉的可选项)与它们的原名。 */
 	async function openEditor(id: string): Promise<void> {
 		try {
-			const res = await api.get<SkinManifestResponse>(`/api/skins/${id}/manifest`);
+			const res = await api.get<SkinManifestResponse>(`/api/dashboard/skins/${id}/manifest`);
 			setEditing({
 				id,
 				manifest: res.manifest,
@@ -314,7 +314,7 @@ export function SkinSection() {
 /** 皮肤导出:直接开导出端点,浏览器按 content-disposition 落文件(会话 cookie 同源自带)。 */
 function downloadSkin(entry: SkinListEntry): void {
 	const a = document.createElement("a");
-	a.href = `/api/skins/${entry.id}/export`;
+	a.href = `/api/dashboard/skins/${entry.id}/export`;
 	a.download = `${entry.name}.zip`;
 	a.click();
 }

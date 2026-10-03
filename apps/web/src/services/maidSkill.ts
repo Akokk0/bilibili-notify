@@ -15,22 +15,22 @@ import { api } from "./api";
 
 export type { MaidSkillDTO, MaidSkillProblemDTO } from "@bilibili-notify/contract";
 
-export const maidSkillsQueryKey = ["maid-skills"] as const;
+export const maidSkillsQueryKey = ["ai", "skills"] as const;
 
 export function listMaidSkills(): Promise<MaidSkillsListResponse> {
-	return api.get<MaidSkillsListResponse>("/api/maid-skills");
+	return api.get<MaidSkillsListResponse>("/api/ai/skills");
 }
 
 export function createMaidSkill(skill: MaidSkillWriteRequest): Promise<{ ok: true }> {
-	return api.post<{ ok: true }>("/api/maid-skills", skill);
+	return api.post<{ ok: true }>("/api/ai/skills", skill);
 }
 
 export function updateMaidSkill(name: string, skill: MaidSkillWriteRequest): Promise<{ ok: true }> {
-	return api.put<{ ok: true }>(`/api/maid-skills/${encodeURIComponent(name)}`, skill);
+	return api.put<{ ok: true }>(`/api/ai/skills/${encodeURIComponent(name)}`, skill);
 }
 
 export function deleteMaidSkill(name: string): Promise<{ ok: true }> {
-	return api.delete<{ ok: true }>(`/api/maid-skills/${encodeURIComponent(name)}`);
+	return api.delete<{ ok: true }>(`/api/ai/skills/${encodeURIComponent(name)}`);
 }
 
 /** 只给聊天菜单用的那份 —— 拉不到就当没有技能,别让斜杠菜单把整个聊天拖垮。 */

@@ -66,9 +66,9 @@ function chipByText(text: string): Element {
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (path === "/api/subs/tags") return Promise.resolve([CHAT]);
-		if (path === "/api/subs")
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subscriptions/tags") return Promise.resolve([CHAT]);
+		if (path === "/api/subscriptions")
 			// UP甲无标签(出「无标签」)、UP乙挂了标签(出一颗普通标签胶囊当对照)。
 			return Promise.resolve([
 				makeSub("111", "UP甲"),

@@ -3,7 +3,7 @@
  * 见 upload-limit.ts);校验 / 清洗 / 路径穿越防御在 `card-skins/package.ts` 与
  * `card-skins/store.ts`,这里只做 wire。
  *
- * 与 dashboard 皮肤路由(`skins.ts`)刻意的三处不同:
+ * 与 dashboard 皮肤路由(`dashboard-skins.ts`)刻意的三处不同:
  *
  * - **启用指针不在店里**,在配置里(`globals.defaults.cardSkin`)。`PUT /active` 走
  *   `patchGlobals` —— 店不认识配置,配置也不该认识店。
@@ -96,7 +96,7 @@ function badId(c: Context) {
 	return respondFailure(c, fail("invalid", "皮肤 id 只准小写字母、数字、连字符"));
 }
 
-export function createCardSkinsRoute(deps: {
+export function createCardsSkinsRoute(deps: {
 	store: CardSkinStore;
 	config: ConfigStore;
 	/** 开机读盘跳过了哪些目录 —— 只打一次,别让皮肤悄悄消失。 */
@@ -300,7 +300,7 @@ export function createCardSkinsRoute(deps: {
 			scene,
 			manifest: raw,
 			// 这条回的 HTML 是塞进编辑器的 iframe 看的 —— 卡外那片默认白底不该在。
-			// 截图那条(`POST /api/cards/skin-shot`)不开,见 `transparentPage` 的说明。
+			// 截图那条(`POST /api/cards/skins/:id/screenshot`)不开,见 `transparentPage` 的说明。
 			transparentPage: true,
 		});
 		if (!out.ok) return respondFailure(c, failureOfChecks("invalid", "这版草稿", out.errors));
@@ -322,7 +322,7 @@ export function createCardSkinsRoute(deps: {
 	 * 客户端断开就是用户点了「停」:流的 `onAbort` 与请求自己的信号都接到同一个控制器上,
 	 * 到模型的请求跟着掐断(见 `generateRaw` 的 `signal`)。
 	 */
-	app.post("/:id/ai-css", async (c) => {
+	app.post("/:id/ai", async (c) => {
 		const id = c.req.param("id");
 		if (!CardSkinIdSchema.safeParse(id).success) return badId(c);
 		if (id === DEFAULT_CARD_SKIN_ID) {

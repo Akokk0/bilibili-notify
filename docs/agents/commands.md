@@ -27,7 +27,7 @@
 | `mute-command.ts` / `status-command.ts` / `report-command.ts` / `login-command.ts` | 四条指令各自的业务实现 |
 | `roast-command.ts` | 审批 y/n,以 `ConfirmationWindow` 的身份挂进分发器 |
 | `routes/commands.ts` | `GET /api/commands` —— 把注册表列给面板 |
-| `routes/command-alias-guard.ts` | `checkCommandAliases` —— 保存配置时的别名查重,挂在 `routes/globals.ts` 的 PATCH 上 |
+| `routes/command-alias-guard.ts` | `checkCommandAliases` —— 保存配置时的别名查重,挂在 `routes/settings.ts` 的 PATCH 上 |
 | `link-parser.ts` / `video-card.ts` | 链接解析(见文末):群消息里的视频链接 → 取视频 → 拼成动态喂动态卡渲染器 → 发回来源群 |
 
 `help` 那条不单独成文件,直接在 `index.ts` 里注册 —— 它要列出**包括自己在内**的全部指令,得拿到那张表本身。

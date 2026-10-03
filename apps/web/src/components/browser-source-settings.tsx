@@ -9,7 +9,7 @@ type Busy = null | "detect" | "path" | "endpoint";
 /**
  * System 页「卡片渲染 · 浏览器」区 —— 展示当前渲染浏览器来源,并支持**热切换**:
  * 改本地 Chrome 路径(带自动探测)或远程端点,应用即调 POST
- * /api/cards/enable-rendering(后端先探测新浏览器连通,通了才换、才写回 yaml;
+ * /api/cards/renderer(后端先探测新浏览器连通,通了才换、才写回 yaml;
  * 失败保持现状并回显错误)。Cards 页 `not_configured` 提示区只管「从无到有」的首次启用,
  * 启用之后的查看与切换都在这里。
  */
@@ -23,14 +23,14 @@ export function BrowserSourceSettings() {
 	const [detectMiss, setDetectMiss] = useState(false);
 
 	async function load() {
-		const res = await api.get<RenderSourceResponse>("/api/cards/render-source");
+		const res = await api.get<RenderSourceResponse>("/api/cards/renderer");
 		setStatus(res);
 	}
 
 	// 首载:effect 内直接调 api(不引用外层 load,躲开 exhaustive-deps 的重建陷阱)。
 	useEffect(() => {
 		api
-			.get<RenderSourceResponse>("/api/cards/render-source")
+			.get<RenderSourceResponse>("/api/cards/renderer")
 			.then(setStatus)
 			.catch((e) => setErr((e as Error).message));
 	}, []);
@@ -40,7 +40,7 @@ export function BrowserSourceSettings() {
 		setErr(null);
 		setDetectMiss(false);
 		try {
-			const res = await api.get<{ path: string | null }>("/api/cards/detect-chrome");
+			const res = await api.get<{ path: string | null }>("/api/cards/chrome");
 			if (res.path) setPath(res.path);
 			else setDetectMiss(true);
 		} catch (e) {
@@ -58,7 +58,7 @@ export function BrowserSourceSettings() {
 		setOkMsg(null);
 		try {
 			// 切换不成一律是非 2xx(`api` 抛 `ApiError`,`message` 是服务端的原话),走到下一行就是成了。
-			const res = await api.post<EnableRenderingResponse>("/api/cards/enable-rendering", body);
+			const res = await api.post<EnableRenderingResponse>("/api/cards/renderer", body);
 			setOkMsg(res.alreadyEnabled ? "已是当前配置,无需切换" : "已生效");
 			await load();
 		} catch (e) {

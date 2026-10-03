@@ -88,7 +88,7 @@ describe("测试连通(连接自己的探测)", () => {
 		vi.mocked(api.post).mockResolvedValueOnce({ ok: true, latencyMs: 12 });
 		await clickTest();
 		expect(await screen.findByText("连通 · 12ms")).toBeTruthy();
-		expect(api.post).toHaveBeenCalledWith(`/api/connections/${ONEBOT_ID}/test`, {});
+		expect(api.post).toHaveBeenCalledWith(`/api/connections/${ONEBOT_ID}/probe`, {});
 	});
 
 	it("没通 → 「失败:」加服务端的 message(读 message、不再读 err)", async () => {
@@ -123,8 +123,8 @@ describe("测试推送(webhook 连接的「发送测试」)", () => {
 		vi.mocked(api.post).mockResolvedValueOnce({ ok: true, latencyMs: 34 });
 		fireEvent.click(await screen.findByRole("button", { name: "发送测试" }));
 		expect(await screen.findByText("已送达 · 34ms")).toBeTruthy();
-		expect(api.post).toHaveBeenCalledWith("/api/push/test", {
-			targetId: MANAGED_TARGET.id,
+		// 目标 id 在路径里,体里只剩 kind(ADR-0036)。
+		expect(api.post).toHaveBeenCalledWith(`/api/targets/${MANAGED_TARGET.id}/test`, {
 			kind: "text",
 		});
 	});

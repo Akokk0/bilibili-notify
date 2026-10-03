@@ -1,5 +1,5 @@
 /**
- * `/api/card-skins` 的 wire 测试(ADR-0014 决策 2 / 5 / 17)。
+ * `/api/cards/skins` 的 wire 测试(ADR-0014 决策 2 / 5 / 17)。
  *
  * 这一层自己要钉住的只有四件(验 / 洗 / 落盘归 store 与 package,那边各有自己的测试):
  *
@@ -28,7 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CARD_SKIN_MANIFEST_FILE } from "../../card-skins/package.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import type { ConfigStore } from "../../config/store.js";
-import { createCardSkinsRoute } from "../card-skins.js";
+import { createCardsSkinsRoute } from "../cards-skins.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -64,7 +64,7 @@ type SubStub = { cardSkin?: string } & (
 
 let dir: string;
 let store: CardSkinStore;
-let app: ReturnType<typeof createCardSkinsRoute>;
+let app: ReturnType<typeof createCardsSkinsRoute>;
 let patchGlobals: ReturnType<typeof vi.fn>;
 /** 面板上「全局在用哪套」的活值 —— patchGlobals 写它,GET / 读它。 */
 let active: string;
@@ -93,7 +93,7 @@ function mount(): void {
 			})),
 		patchGlobals,
 	} as unknown as ConfigStore;
-	app = createCardSkinsRoute({
+	app = createCardsSkinsRoute({
 		store,
 		config,
 		fallbacks: () => fallbacks,
@@ -389,7 +389,7 @@ describe("DELETE /fallbacks —— 面板上那句「知道了」", () => {
 	});
 
 	it("没接账本时也不炸 —— 宿主可以不给这一口", async () => {
-		const bare = createCardSkinsRoute({
+		const bare = createCardsSkinsRoute({
 			store,
 			config: {
 				getGlobals: () => ({ defaults: { cardSkin: DEFAULT_CARD_SKIN_ID, cardSkinKnobs: {} } }),

@@ -154,8 +154,8 @@ export function TourCompanion() {
 	// 「这台实例已经不用再被自动展开了」的持久标记。落配置不落 localStorage:
 	// 换浏览器/换机器开面板不该再被引导一遍(判据本身也是实例级的)。
 	const globalsQ = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	// 三态:undefined = 还没问过(弹询问框);false = 要指引;true = 整个导览不渲染
 	const choice = globalsQ.data?.onboarding?.skipped;
@@ -191,8 +191,8 @@ export function TourCompanion() {
 
 	const qc = useQueryClient();
 	const { mutate: markChoice } = useMutation({
-		mutationFn: (skipped: boolean) => api.patch("/api/globals", { onboarding: { skipped } }),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		mutationFn: (skipped: boolean) => api.patch("/api/settings", { onboarding: { skipped } }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
 	});
 
 	// 系统页「重新开启」:配置那半走 PATCH+invalidate 既有通道,这里接的是「把这台

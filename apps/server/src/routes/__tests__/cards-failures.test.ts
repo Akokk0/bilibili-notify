@@ -132,8 +132,8 @@ describe("POST /preview", () => {
 	});
 });
 
-describe("POST /skin-shot", () => {
-	const shotBody = { skinId: "default", kind: "live", manifest: {} };
+describe("POST /skins/:id/screenshot", () => {
+	const shotBody = { kind: "live", manifest: {} };
 
 	function shotApp(puppeteer: PuppeteerAdapter | null, withStore = true) {
 		return createCardsRoute({
@@ -147,7 +147,9 @@ describe("POST /skin-shot", () => {
 	}
 
 	it("请求体不对 → invalid(400),issues 逐格", async () => {
-		const res = await post(shotApp(workingPuppeteer()), "/skin-shot", { kind: "live" });
+		const res = await post(shotApp(workingPuppeteer()), "/skins/default/screenshot", {
+			kind: "nope",
+		});
 		expect(res.status).toBe(400);
 		const json = (await res.json()) as any;
 		expect(json.code).toBe("invalid");
@@ -155,14 +157,18 @@ describe("POST /skin-shot", () => {
 	});
 
 	it("皮肤库还没给 → unavailable(503),不是 not_configured:等一会儿就好", async () => {
-		const res = await post(shotApp(workingPuppeteer(), false), "/skin-shot", shotBody);
+		const res = await post(
+			shotApp(workingPuppeteer(), false),
+			"/skins/default/screenshot",
+			shotBody,
+		);
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({ code: "unavailable", message: "皮肤库未就绪" });
 	});
 
 	it("截图时 Chrome 起不来 → 200 + 失败那一支(unavailable),原因写进 message", async () => {
 		const { DEFAULT_CARD_SKIN } = await import("@bilibili-notify/internal");
-		const res = await post(shotApp(crashingPuppeteer()), "/skin-shot", {
+		const res = await post(shotApp(crashingPuppeteer()), "/skins/default/screenshot", {
 			...shotBody,
 			manifest: DEFAULT_CARD_SKIN,
 		});
@@ -176,12 +182,12 @@ describe("POST /skin-shot", () => {
 	});
 });
 
-describe("POST /test-push", () => {
+describe("POST /test", () => {
 	const body = { targetId: TARGET_ID, kind: "live", style: STYLE };
 
 	it("请求体不对 → invalid(400),issues 逐格", async () => {
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer(), api: null });
-		const res = await post(app, "/test-push", {
+		const res = await post(app, "/test", {
 			targetId: "不是 uuid",
 			kind: "live",
 			style: STYLE,
@@ -194,7 +200,7 @@ describe("POST /test-push", () => {
 
 	it("没配浏览器 → not_configured(409)", async () => {
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: null, api: null });
-		const res = await post(app, "/test-push", body);
+		const res = await post(app, "/test", body);
 		expect(res.status).toBe(409);
 		expect(((await res.json()) as any).code).toBe("not_configured");
 	});
@@ -205,14 +211,14 @@ describe("POST /test-push", () => {
 			puppeteer: workingPuppeteer(),
 			api: null,
 		});
-		const res = await post(app, "/test-push", body);
+		const res = await post(app, "/test", body);
 		expect(res.status).toBe(503);
 		expect(((await res.json()) as any).code).toBe("unavailable");
 	});
 
 	it("没有这个推送目标 → not_found(404)", async () => {
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: workingPuppeteer(), api: null });
-		const res = await post(app, "/test-push", {
+		const res = await post(app, "/test", {
 			...body,
 			targetId: "33333333-3333-4333-8333-333333333333",
 		});
@@ -227,7 +233,7 @@ describe("POST /test-push", () => {
 			puppeteer: crashingPuppeteer(),
 			api: null,
 		});
-		const res = await post(app, "/test-push", body);
+		const res = await post(app, "/test", body);
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as any;
 		expect(json).toEqual({
@@ -246,7 +252,7 @@ describe("POST /test-push", () => {
 			puppeteer: workingPuppeteer(),
 			api: null,
 		});
-		const res = await post(app, "/test-push", body);
+		const res = await post(app, "/test", body);
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true, latencyMs: 12 });
 	});
@@ -258,7 +264,7 @@ describe("POST /test-push", () => {
 			puppeteer: workingPuppeteer(),
 			api: null,
 		});
-		const res = await post(app, "/test-push", body);
+		const res = await post(app, "/test", body);
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as any;
 		expect(json).toEqual({ ok: false, code: "unavailable", message: "群不存在" });
@@ -266,7 +272,7 @@ describe("POST /test-push", () => {
 	});
 });
 
-describe("POST /enable-rendering:意外的抛错不回原文", () => {
+describe("POST /renderer:意外的抛错不回原文", () => {
 	it("构造 adapter 就抛 → 交给全局出错处理:只回固定一句,原话(带路径)不外泄", async () => {
 		const secret = `${dataDir}/chrome: EACCES`;
 		const route = createCardsRoute({
@@ -281,7 +287,7 @@ describe("POST /enable-rendering:意外的抛错不回原文", () => {
 		const app = new Hono()
 			.onError((_err, c) => respondFailure(c, fail("unavailable", UNHANDLED_ERROR_MESSAGE)))
 			.route("/", route);
-		const res = await post(app, "/enable-rendering", { chromePath: "/x" });
+		const res = await post(app, "/renderer", { chromePath: "/x" });
 		expect(res.status).toBe(503);
 		const text = await res.text();
 		expect(JSON.parse(text)).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });

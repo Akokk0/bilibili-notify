@@ -1,6 +1,6 @@
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { checkApprovalEnable, shouldRunAiEnableCheck } from "../globals.js";
+import { checkApprovalEnable, shouldRunAiEnableCheck } from "../settings.js";
 
 /** 默认 globals + AI 启用 + 连接字段齐备。 */
 function enabledAiGlobals() {
@@ -229,7 +229,7 @@ describe("checkAiEnable — 探活打的端点要跟实例的接口风味走", (
 	const okJson = () => ({ ok: true, status: 200, text: async () => "" }) as unknown as Response;
 
 	it("chat 风味(默认)→ 打 /chat/completions", async () => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
 		vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
 			calls.push({ url, body: JSON.parse(String(init.body)) });
@@ -253,7 +253,7 @@ describe("checkAiEnable — 探活打的端点要跟实例的接口风味走", (
 	// temperature 已整个退役、真聊天路径一律不发;探活要是还带着,Claude Opus 4.7 起的
 	// 模型与 OpenAI 推理模型会 400 拒掉这一发,主人就被探活挡在门外,而真聊天本来能通。
 	it("chat 风味的 ping 同样不带 temperature —— 探活不能比真聊天多踩一颗雷", async () => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
 		vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
 			calls.push({ url, body: JSON.parse(String(init.body)) });
@@ -277,7 +277,7 @@ describe("checkAiEnable — 探活打的端点要跟实例的接口风味走", (
 	// responses-only 的模型(o1-pro 这类)在 /chat/completions 上是 404 ——
 	// 探活打错端点,用户就被自己的探活永久挡在门外,而真聊天路径本来能通。
 	it("responses 风味 → 打 /responses,body 是 input 形状且不带 temperature", async () => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
 		vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
 			calls.push({ url, body: JSON.parse(String(init.body)) });
@@ -317,7 +317,7 @@ describe("checkAiEnable — 没过的带标准码", () => {
 		({ ok: false, status, text: async () => text }) as unknown as Response;
 
 	it.each(["apiKey", "baseUrl", "model"] as const)("%s 是空的 → not_configured", async (field) => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		const r = await checkAiEnable({ ...fields, [field]: "" });
 		expect(r).toMatchObject({ ok: false, code: "not_configured" });
 		expect(r.ok === false && r.message).toContain(field);
@@ -332,7 +332,7 @@ describe("checkAiEnable — 没过的带标准码", () => {
 		[503, "unavailable"],
 		[400, "unavailable"],
 	] as const)("HTTP %i → %s,状态码放 upstreamCode", async (status, code) => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		stubFetch(async () => httpResponse(status));
 		try {
 			const r = await checkAiEnable(fields);
@@ -344,7 +344,7 @@ describe("checkAiEnable — 没过的带标准码", () => {
 	});
 
 	it("连不上 → unavailable,话里带底层的原因", async () => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		stubFetch(async () => {
 			throw new TypeError("fetch failed");
 		});
@@ -358,7 +358,7 @@ describe("checkAiEnable — 没过的带标准码", () => {
 	});
 
 	it("超时 → timeout", async () => {
-		const { checkAiEnable } = await import("../globals.js");
+		const { checkAiEnable } = await import("../settings.js");
 		stubFetch(async () => {
 			const err = new Error("aborted");
 			err.name = "AbortError";

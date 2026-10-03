@@ -141,14 +141,14 @@ describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () =>
 			],
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
 		});
-		const toggled = await api("/api/globals", {
+		const toggled = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ extensions: { [FIXTURE_ID]: { enabled: true } } }),
 		});
 		expect(toggled.status, await toggled.clone().text()).toBe(200);
 		expect((await probeRow())?.state).toBe("running");
-		const created = await api("/api/subs", {
+		const created = await api("/api/subscriptions", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ ...SUB, cachedProfile: { name: "某人" } }),

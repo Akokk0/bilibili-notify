@@ -1,5 +1,5 @@
 /**
- * `POST /api/card-skins/:id/ai-css` —— CSS 框旁那颗「请女仆帮忙写」的 wire(ADR-0015 决策 3–10)。
+ * `POST /api/cards/skins/:id/ai` —— CSS 框旁那颗「请女仆帮忙写」的 wire(ADR-0015 决策 3–10)。
  *
  * 提示词怎么拼、一轮怎么跑归 `card-skins/ai-css.ts`(那边有自己的测试);这一层钉的是:
  * - 开流**之前**把能拒的都拒掉(没配模型、默认皮肤、草稿不合法、块不存在),回普通 JSON 的错误体
@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CARD_SKIN_MANIFEST_FILE } from "../../card-skins/package.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import type { ConfigStore } from "../../config/store.js";
-import { createCardSkinsRoute } from "../card-skins.js";
+import { createCardsSkinsRoute } from "../cards-skins.js";
 
 function manifest(): Record<string, any> {
 	return {
@@ -52,7 +52,7 @@ let store: CardSkinStore;
 let generateRaw: ReturnType<typeof vi.fn<GenerateRaw>>;
 /** `null` = 没配模型。 */
 let engine: { generateRaw: GenerateRaw } | null;
-let app: ReturnType<typeof createCardSkinsRoute>;
+let app: ReturnType<typeof createCardsSkinsRoute>;
 let skinId: string;
 
 beforeEach(async () => {
@@ -68,7 +68,7 @@ beforeEach(async () => {
 		getSubscriptions: () => [],
 		patchGlobals: vi.fn(),
 	} as unknown as ConfigStore;
-	app = createCardSkinsRoute({ store, config, commentary: () => engine });
+	app = createCardsSkinsRoute({ store, config, commentary: () => engine });
 
 	const form = new FormData();
 	const zip = zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(manifest())) });
@@ -84,7 +84,7 @@ afterEach(async () => {
 
 function post(body: unknown, id = skinId, init: RequestInit = {}): Promise<Response> {
 	return Promise.resolve(
-		app.request(`/${id}/ai-css`, {
+		app.request(`/${id}/ai`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(body),

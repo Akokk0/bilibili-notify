@@ -20,7 +20,7 @@ const H = vi.hoisted(() => ({
 vi.mock("../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
-			if (path === "/api/skins/active") return H.activeResponse;
+			if (path === "/api/dashboard/skins/active") return H.activeResponse;
 			throw new Error(`unexpected GET ${path}`);
 		}),
 		put: vi.fn(async (_path: string, body: unknown) => {

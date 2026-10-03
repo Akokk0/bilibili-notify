@@ -131,13 +131,13 @@ describe("卡片皮肤库 · 回落告警", () => {
 		expect(box.textContent).toContain("3 次");
 	});
 
-	it("点「知道了」打 DELETE /api/card-skins/fallbacks 并重取列表", async () => {
+	it("点「知道了」打 DELETE /api/cards/skins/fallbacks 并重取列表", async () => {
 		vi.mocked(api.get).mockResolvedValue(WITH_FALLBACK);
 		renderSection();
 		const before = vi.mocked(api.get).mock.calls.length;
 		fireEvent.click(await screen.findByText("知道了"));
 		await waitFor(() =>
-			expect(vi.mocked(api.delete)).toHaveBeenCalledWith("/api/card-skins/fallbacks"),
+			expect(vi.mocked(api.delete)).toHaveBeenCalledWith("/api/cards/skins/fallbacks"),
 		);
 		await waitFor(() => expect(vi.mocked(api.get).mock.calls.length).toBeGreaterThan(before));
 	});
@@ -165,13 +165,13 @@ describe("卡片皮肤库", () => {
 		expect(screen.getByText("by 伦伦酱 · 冷色玻璃")).toBeTruthy();
 	});
 
-	it("「启用」打 PUT /api/card-skins/active", async () => {
+	it("「启用」打 PUT /api/cards/skins/active", async () => {
 		renderSection();
 		const row = await rowOf("默认皮肤");
 		fireEvent.click(within(row).getByRole("button", { name: "启用" }));
 
 		await waitFor(() =>
-			expect(api.put).toHaveBeenCalledWith("/api/card-skins/active", { id: "default" }),
+			expect(api.put).toHaveBeenCalledWith("/api/cards/skins/active", { id: "default" }),
 		);
 	});
 
@@ -244,7 +244,7 @@ describe("卡片皮肤库", () => {
 
 		await waitFor(() => expect(api.upload).toHaveBeenCalled());
 		const [uploadUrl, form] = vi.mocked(api.upload).mock.calls[0] as [string, FormData];
-		expect(uploadUrl).toBe("/api/card-skins");
+		expect(uploadUrl).toBe("/api/cards/skins");
 		expect(form.get("file")).toBe(file);
 
 		// invalidate 之后列表必须真的再取一次 —— 不然新装的皮肤要刷页面才看得见。

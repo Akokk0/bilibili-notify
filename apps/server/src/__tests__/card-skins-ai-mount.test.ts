@@ -31,7 +31,7 @@ const MANIFEST = {
 	},
 };
 
-describe("/api/card-skins/:id/ai-css 的引擎接线", () => {
+describe("/api/cards/skins/:id/ai 的引擎接线", () => {
 	let dataDir: string;
 	beforeEach(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-card-ai-mount-"));
@@ -55,12 +55,12 @@ describe("/api/card-skins/:id/ai-css 的引擎接线", () => {
 		const form = new FormData();
 		const zip = zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(MANIFEST)) });
 		form.append("file", new File([zip], "skin.zip", { type: "application/zip" }));
-		const installed = await app.request("/api/card-skins", { method: "POST", body: form });
+		const installed = await app.request("/api/cards/skins", { method: "POST", body: form });
 		expect(installed.status).toBe(201);
 		const { id } = (await installed.json()) as { id: string };
 
 		const ask = () =>
-			app.request(`/api/card-skins/${id}/ai-css`, {
+			app.request(`/api/cards/skins/${id}/ai`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
@@ -123,7 +123,7 @@ describe("createApp 的卡片皮肤店", () => {
 					{ type: "application/zip" },
 				),
 			);
-			const installed = await app.request("/api/card-skins", { method: "POST", body: form });
+			const installed = await app.request("/api/cards/skins", { method: "POST", body: form });
 			expect(installed.status).toBe(201);
 			const { id } = (await installed.json()) as { id: string };
 

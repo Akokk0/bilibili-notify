@@ -5,11 +5,11 @@ import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, type BackupEnvelope } from "../ba
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { BackupService } from "../backup/service.js";
 import { ConfigValidationError } from "../config/validation-error.js";
-import { createBackupRoute } from "../routes/backup.js";
 import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../routes/respond-failure.js";
+import { createSystemBackupRoute } from "../routes/system-backup.js";
 
 /**
- * /api/backup 路由只负责 HTTP 层:解析/校验请求、把已验的信封交给 service、把拒收翻成标准失败形状
+ * /api/system/backup 路由只负责 HTTP 层:解析/校验请求、把已验的信封交给 service、把拒收翻成标准失败形状
  * (ADR-0026:`{ code, message }`,PIN 不对是 `invalid` 不是 `unauthorized`,未知抛错走全局出错处理)。
  * 备份业务逻辑由 service 测试覆盖,这里注入 fake service 只验接线、码与状态码。
  */
@@ -45,7 +45,7 @@ function fakeService(over: Partial<BackupService> = {}): BackupService {
 	};
 }
 
-function post(app: ReturnType<typeof createBackupRoute>, path: string, body: unknown) {
+function post(app: ReturnType<typeof createSystemBackupRoute>, path: string, body: unknown) {
 	return app.request(path, {
 		method: "POST",
 		body: JSON.stringify(body),
@@ -58,7 +58,7 @@ function mounted(service: BackupService) {
 	const logger = { error: vi.fn() };
 	const app = new Hono();
 	app.onError(requestErrorHandler(logger));
-	app.route("/api/backup", createBackupRoute({ service }));
+	app.route("/api/system/backup", createSystemBackupRoute({ service }));
 	return { app, logger };
 }
 
@@ -71,7 +71,7 @@ interface ErrorBody {
 describe("backup route", () => {
 	it("POST /export returns the envelope from the service", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/export", {
 			kind: "sanitized",
@@ -87,7 +87,7 @@ describe("backup route", () => {
 
 	it("POST /export rejects a full backup with no PIN", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/export", { kind: "full" });
 
@@ -98,7 +98,7 @@ describe("backup route", () => {
 
 	it("POST /import validates the document and applies it", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", { backup: envelope("sanitized"), mode: "merge" });
 
@@ -108,7 +108,7 @@ describe("backup route", () => {
 
 	it("POST /import forwards dryRun so the dashboard can preview the plan", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", {
 			backup: envelope("sanitized"),
@@ -122,7 +122,7 @@ describe("backup route", () => {
 
 	it("POST /import rejects a non-backup document with 400 (never reaches the service)", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", { backup: { hello: "x" }, mode: "overwrite" });
 
@@ -139,7 +139,7 @@ describe("backup route", () => {
 				throw new BackupPinError();
 			}),
 		});
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", {
 			backup: envelope("full"),
@@ -158,7 +158,7 @@ describe("backup route — 请求本身不对", () => {
 		["import 体不是合法 JSON", "/import"],
 	])("%s → invalid", async (_label, path) => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await app.request(path, {
 			method: "POST",
@@ -175,7 +175,7 @@ describe("backup route — 请求本身不对", () => {
 		const { app } = mounted(service);
 
 		for (const body of [null, [1, 2]]) {
-			const res = await post(app, "/api/backup/export", body);
+			const res = await post(app, "/api/system/backup/export", body);
 			expect(res.status).toBe(400);
 			expect(((await res.json()) as ErrorBody).code).toBe("invalid");
 		}
@@ -184,7 +184,7 @@ describe("backup route — 请求本身不对", () => {
 
 	it("export 的 kind 不认识 → invalid,话里点名两个合法值", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/export", { kind: "weird" });
 
@@ -198,7 +198,7 @@ describe("backup route — 请求本身不对", () => {
 
 	it("import 的 mode 不认识 → invalid", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", { backup: envelope("sanitized"), mode: "replace" });
 
@@ -211,7 +211,7 @@ describe("backup route — 请求本身不对", () => {
 
 	it("import 一份完整备份却没带 PIN → invalid,不进服务", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", { backup: envelope("full"), mode: "merge" });
 
@@ -222,7 +222,7 @@ describe("backup route — 请求本身不对", () => {
 
 	it("PIN 不是字符串(数字)当没带:不会一路塞进 scrypt 抛 TypeError", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/export", { kind: "full", pin: 123456 });
 
@@ -235,7 +235,7 @@ describe("backup route — 请求本身不对", () => {
 describe("backup route — 备份文件的问题(自带码,话是中文)", () => {
 	it("格式版本比当前认得的新 → unsupported(400),话里说清版本号与「请先升级」,不进服务", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 		const future = { ...envelope("sanitized"), schemaVersion: BACKUP_SCHEMA_VERSION + 1 };
 
 		const res = await post(app, "/import", { backup: future, mode: "overwrite" });
@@ -250,7 +250,7 @@ describe("backup route — 备份文件的问题(自带码,话是中文)", () =>
 
 	it("类型不认识 / 缺版本号 → invalid,原因不带英文机器串也不带 `Error: ` 前缀", async () => {
 		const service = fakeService();
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 		const { schemaVersion: _dropped, ...noVersion } = envelope("sanitized");
 
 		for (const backup of [{ ...envelope("sanitized"), kind: "weird" }, noVersion]) {
@@ -273,7 +273,7 @@ describe("backup route — 备份文件的问题(自带码,话是中文)", () =>
 				);
 			}),
 		});
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", { backup: envelope("sanitized"), mode: "overwrite" });
 
@@ -290,7 +290,7 @@ describe("backup route — 备份文件的问题(自带码,话是中文)", () =>
 				throw new BackupRejectedError("invalid", "完整备份必须设置 PIN");
 			}),
 		});
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/export", { kind: "sanitized" });
 
@@ -308,7 +308,7 @@ describe("backup route — 备份文件的问题(自带码,话是中文)", () =>
 				);
 			}),
 		});
-		const app = createBackupRoute({ service });
+		const app = createSystemBackupRoute({ service });
 
 		const res = await post(app, "/import", { backup: envelope("sanitized"), mode: "overwrite" });
 
@@ -332,7 +332,7 @@ describe("backup route — 未知的抛错是 bug,交给全局出错处理", () 
 		});
 		const { app, logger } = mounted(service);
 
-		const res = await post(app, "/api/backup/import", {
+		const res = await post(app, "/api/system/backup/import", {
 			backup: envelope("sanitized"),
 			mode: "overwrite",
 		});
@@ -350,7 +350,7 @@ describe("backup route — 未知的抛错是 bug,交给全局出错处理", () 
 		});
 		const { app, logger } = mounted(service);
 
-		const res = await post(app, "/api/backup/export", { kind: "sanitized" });
+		const res = await post(app, "/api/system/backup/export", { kind: "sanitized" });
 
 		expect(res.status).toBe(503);
 		const text = JSON.stringify(await res.json());

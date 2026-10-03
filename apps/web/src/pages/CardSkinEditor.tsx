@@ -181,8 +181,8 @@ export default function CardSkinEditor() {
 	// CSS 框旁的「请女仆帮忙写」(ADR-0015 第二片)。发出去的是**这一刻的草稿**:AI 看的
 	// 该是用户眼前这份,不是盘上那份。草稿走 ref —— 流是异步的,闭包里那份早就旧了。
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const draftRef = useRef(draft);
 	draftRef.current = draft;

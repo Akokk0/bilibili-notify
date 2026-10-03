@@ -1716,8 +1716,7 @@ export default function Targets() {
 			setTesting((p) => ({ ...p, [a.id]: "pending" }));
 			setTargetTesting((p) => ({ ...p, [target.id]: "pending" }));
 			try {
-				const res = await api.post<TestResponse>("/api/push/test", {
-					targetId: target.id,
+				const res = await api.post<TestResponse>(`/api/targets/${target.id}/test`, {
 					kind: "text",
 				});
 				setTesting((p) => ({ ...p, [a.id]: res.ok ? "ok" : "fail" }));
@@ -1748,7 +1747,7 @@ export default function Targets() {
 		// Connection-only probe — calls platformAdapter.probe(), no real message sent.
 		setTesting((p) => ({ ...p, [a.id]: "pending" }));
 		try {
-			const res = await api.post<ConnectionTestResponse>(`/api/connections/${a.id}/test`, {});
+			const res = await api.post<ConnectionTestResponse>(`/api/connections/${a.id}/probe`, {});
 			// 这个平台没有探测协议(如 webhook):既不是通、也不是不通 —— 清掉进行中的状态,只提示一句。
 			if (!res.ok && res.code === "unsupported") {
 				setTesting((p) => {
@@ -1779,8 +1778,7 @@ export default function Targets() {
 	async function runTargetTest(t: PushTarget): Promise<void> {
 		setTargetTesting((p) => ({ ...p, [t.id]: "pending" }));
 		try {
-			const res = await api.post<TestResponse>("/api/push/test", {
-				targetId: t.id,
+			const res = await api.post<TestResponse>(`/api/targets/${t.id}/test`, {
 				kind: "text",
 			});
 			setTargetTesting((p) => ({ ...p, [t.id]: res.ok ? "ok" : "fail" }));

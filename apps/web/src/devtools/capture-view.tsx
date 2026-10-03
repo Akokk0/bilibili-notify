@@ -37,7 +37,7 @@ export function CaptureView() {
 	});
 	const [purged, setPurged] = useState<number | null>(null);
 	const purge = useMutation({
-		mutationFn: () => api.post<DevPurgeHistoryResponse>("/api/dev/captures/purge-history", {}),
+		mutationFn: () => api.delete<DevPurgeHistoryResponse>("/api/dev/captures/history"),
 		onSuccess: (res) => setPurged(res.deleted),
 		// 历史页、概览的时间轴与趋势图都从历史读 —— 删完让它们重新拉。
 		onSettled: () => void qc.invalidateQueries(),

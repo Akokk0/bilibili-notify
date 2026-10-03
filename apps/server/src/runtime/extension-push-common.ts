@@ -94,7 +94,7 @@ export interface ExtensionCardAuthorSources {
 /**
  * 卡上的作者(决策 54):事件带的名字 / 头像优先;没带的那一样用订阅资料 —— 名字见
  * {@link extensionSubscriptionName},头像取存下的头像文件的**字节**转成 data URL(资料里存的是面板的
- * 相对地址 `/api/subs/<id>/avatar?v=…`,截图的浏览器加载不到,决策 68)。
+ * 相对地址 `/api/subscriptions/<id>/avatar?v=…`,截图的浏览器加载不到,决策 68)。
  *
  * 哪儿都没有头像(或者读文件抛了)给透明占位:卡上留一块空的头像位,不画一张裂图。
  */

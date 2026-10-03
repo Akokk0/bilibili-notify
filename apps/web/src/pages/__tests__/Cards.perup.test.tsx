@@ -42,7 +42,7 @@ const GLOBALS = {
 	defaults: makeDefaults(),
 } as unknown as GlobalConfig;
 
-/** 皮肤库列表(GET /api/card-skins):内置那份 + 一套自制的。 */
+/** 皮肤库列表(GET /api/cards/skins):内置那份 + 一套自制的。 */
 const SKINS = {
 	skins: [
 		{ id: "default", name: "默认皮肤", builtin: true, updatedAt: 0 },
@@ -76,9 +76,9 @@ beforeEach(() => {
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url.includes("/api/subs")) return Promise.resolve([CUSTOMIZED]);
+		if (url.includes("/api/subscriptions")) return Promise.resolve([CUSTOMIZED]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
-		if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
+		if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 		return Promise.resolve(GLOBALS);
 	});
 	// 预览走 puppeteer 路由,测试里给个假数据 URL 即可。
@@ -249,9 +249,9 @@ describe("Cards per-UP 作用域接线", () => {
 			overrides: { cardSkin: "aurora" },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([skinned]);
+			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
+			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 			return Promise.resolve(GLOBALS);
 		});
 
@@ -301,7 +301,7 @@ describe("Cards per-UP 作用域接线", () => {
 
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
-		expect(url).toBe(`/api/subs/${CUSTOMIZED.id}`);
+		expect(url).toBe(`/api/subscriptions/${CUSTOMIZED.id}`);
 		const overrides = body.overrides as Record<string, unknown>;
 		// 只含卡片四片:cardStyle 为完整快照、cardSkin 未覆盖故 null、cardStyleByKind 无
 		// 按类型覆盖故 null、cardSkinKnobs 一枚都没单独拧故 null(ADR-0014 决策 17 的 🔗);
@@ -329,9 +329,9 @@ describe("Cards per-UP 作用域接线", () => {
 			},
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([byKindSub]);
+			if (url.includes("/api/subscriptions")) return Promise.resolve([byKindSub]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
+			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 			return Promise.resolve(GLOBALS);
 		});
 
@@ -343,7 +343,7 @@ describe("Cards per-UP 作用域接线", () => {
 		useDraftStore.getState().current?.onSave();
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
-		expect(url).toBe(`/api/subs/${byKindSub.id}`);
+		expect(url).toBe(`/api/subscriptions/${byKindSub.id}`);
 		const overrides = body.overrides as Record<string, unknown>;
 		expect(overrides.cardStyle).toBeNull();
 		// 有覆盖的类型原样带上,没覆盖过的**不**凭空发 null —— 删除哨兵只发给「基线
@@ -360,9 +360,9 @@ describe("Cards per-UP 作用域接线", () => {
 			overrides: { cardStyleByKind: { live: { font: "Abc Sans", liveCoverImages: ["c1"] } } },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([mixedSub]);
+			if (url.includes("/api/subscriptions")) return Promise.resolve([mixedSub]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
+			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 			return Promise.resolve(GLOBALS);
 		});
 
@@ -449,9 +449,9 @@ describe("Cards per-UP 作用域接线", () => {
 			overrides: { cardSkin: "aurora" },
 		};
 		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subs")) return Promise.resolve([skinned]);
+			if (url.includes("/api/subscriptions")) return Promise.resolve([skinned]);
 			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/card-skins")) return Promise.resolve(SKINS);
+			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
 			return Promise.resolve(GLOBALS);
 		});
 

@@ -1,7 +1,7 @@
 /**
  * Rules page sections — bound to live GlobalConfig.defaults shapes. Each
  * section accepts the relevant slice + an `onPatch` that builds a deep-partial
- * delta for /api/globals.
+ * delta for /api/settings.
  */
 
 import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";

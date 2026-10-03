@@ -100,8 +100,8 @@ src/
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<数据根>/skins/dashboard/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill
-  routes/               REST:auth / subs / targets / connections / globals / history / logs / fans / live / cards / push / health
-                        / ai / skins / maid-skills / ext(拓展清单与每个拓展的面板数据)
+  routes/               REST(ADR-0036:顶层是资源,只属于它的才下沉;文件名跟路径走):health / settings / subscriptions / targets(含 `:id/test`)/ connections(含 `:id/probe`)/ history / live / stats(+ stats-followers)/ cards(+ cards-skins)/ ai(+ ai-skills)/ dashboard-skins / system(+ system-logs / system-update / system-backup)/ auth / session / ws / qq / commands
+                        / ext(拓展清单与每个拓展的面板数据)
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   sink/                 NotificationSink 分发(PushTarget.id → 平台适配器)
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter + `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛);推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
@@ -214,7 +214,7 @@ B站 cookie、推送目标与 AI key,给它开脚本口子等于给面板开 RCE
 
 - **名字 = 目录名 = 斜杠命令**,kebab-case ASCII。白名单里没有 `.` `/` `\`,`..` 在
   构造上就拼不出来 —— 这条是安全闸,不是口味(皮肤库那次审计的教训)。
-- **盘是权威。** 主人可以手放一份进去,`GET /api/maid-skills` 每次现读;读不进来的
+- **盘是权威。** 主人可以手放一份进去,`GET /api/ai/skills` 每次现读;读不进来的
   经 `problems` 显示给他看,不静默消失。
 - **内置那几条写在 `maid-skills/builtin.ts`**,只读、跟版本走,同名一律拒。
   `builtin.test.ts` 钉住它们声明与提到的工具名真的存在。

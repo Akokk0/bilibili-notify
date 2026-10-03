@@ -2,15 +2,15 @@
  * 单元测试 — `handleStateEnvelope` 纯函数(WS `state` 频道 hydrate + config-changed)。
  *
  * 守护契约:
- *   - hydrate → 同步 invalidate 每一张会被服务端改的表(含订阅标签表 ["subs-tags"])
- *   - config-changed scope=globals       → invalidate ["globals"] 与拓展表 ["extensions"](不碰各拓展的设置)
- *   - config-changed scope=integration-settings → invalidate ["globals"](各集成的设置挂在 /api/globals 下发的那一份里)
+ *   - hydrate → 同步 invalidate 每一张会被服务端改的表(含订阅标签表 ["subscription-tags"])
+ *   - config-changed scope=globals       → invalidate ["settings"] 与拓展表 ["extensions"](不碰各拓展的设置)
+ *   - config-changed scope=integration-settings → invalidate ["settings"](各集成的设置挂在 /api/settings 下发的那一份里)
  *     与各拓展的设置(拓展的设置各在自己的文件,改了发这一档);不碰拓展表
  *   - extension-status-changed          → 那个拓展的 status 与 bots
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
  *   - extension-report-problems-changed → 仅拓展表(上报问题框住在那一行上)
  *   - subscription-profiles-changed     → 仅 invalidate ["subscriptions"](拓展报的资料落盘了)
- *   - config-changed scope=subscriptions → invalidate ["subscriptions"] 与 ["subs-tags"](标签表与订阅同一档)
+ *   - config-changed scope=subscriptions → invalidate ["subscriptions"] 与 ["subscription-tags"](标签表与订阅同一档)
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
  *   - config-changed scope=secrets       → 一律不动(前端无对应缓存)
  *   - 非 state 频道帧 silent-drop
@@ -67,9 +67,9 @@ describe("handleStateEnvelope — state 频道分发", () => {
 		const keys = keysOf(sc.invalidate).map((k) => k[0]);
 		expect(new Set(keys)).toEqual(
 			new Set([
-				"globals",
+				"settings",
 				"subscriptions",
-				"subs-tags",
+				"subscription-tags",
 				"targets",
 				"connections",
 				"extensions",
@@ -147,7 +147,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			env({ type: "state", event: "config-changed", data: { scope: "globals" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["extensions"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["extensions"]]);
 		expect(keysOf(sc.invalidate)).not.toContainEqual(["ext-settings"]);
 	});
 
@@ -183,7 +183,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 
 	/**
 	 * 各集成(今天只有 B 站)的设置一个集成一个文件,服务端改了它们发的是**自己的一档**
-	 * (`integration-settings`),不是 `globals` —— 而面板吃的是 `/api/globals` 下发的那一份(B 站的动态 cron /
+	 * (`integration-settings`),不是 `globals` —— 而面板吃的是 `/api/settings` 下发的那一份(B 站的动态 cron /
 	 * UA / 登录心跳间隔挂在它的 `bilibili` 键下)。这一档没人接的话,别处(另一个标签页、备份恢复)改了 B 站的
 	 * 设置,系统页要等切页或刷新才知道。拓展表没变(开关不在这一档里),所以不失效它。
 	 *
@@ -195,7 +195,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 			env({ type: "state", event: "config-changed", data: { scope: "integration-settings" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["globals"], ["ext-settings"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["settings"], ["ext-settings"]]);
 	});
 
 	it("config-changed scope=integration-settings:拓展设置那一口真的过期了(按前缀,各拓展一起)", () => {
@@ -216,21 +216,21 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	 * 在同一次写里被去掉,发的就是 `subscriptions` 这一档。只失效订阅的话,别的标签页删了标签,这一页
 	 * 的筛选胶囊还停在旧表上;只失效标签表的话,卡片角标 / 计数还认着已经被去掉的 id。
 	 */
-	it("config-changed scope=subscriptions:invalidate [subscriptions] 与 [subs-tags],不碰别的", () => {
+	it("config-changed scope=subscriptions:invalidate [subscriptions] 与 [subscription-tags],不碰别的", () => {
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "subscriptions" } }),
 			sc.qc,
 		);
-		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"], ["subs-tags"]]);
+		expect(keysOf(sc.invalidate)).toEqual([["subscriptions"], ["subscription-tags"]]);
 	});
 
 	it("config-changed scope=subscriptions:标签表那一口真的过期了", () => {
-		sc.qc.setQueryData(["subs-tags"], [{ id: "t1", name: "重点" }]);
+		sc.qc.setQueryData(["subscription-tags"], [{ id: "t1", name: "重点" }]);
 		handleStateEnvelope(
 			env({ type: "state", event: "config-changed", data: { scope: "subscriptions" } }),
 			sc.qc,
 		);
-		expect(sc.qc.getQueryState(["subs-tags"])?.isInvalidated).toBe(true);
+		expect(sc.qc.getQueryState(["subscription-tags"])?.isInvalidated).toBe(true);
 	});
 
 	it("config-changed scope=targets:仅 invalidate [targets]", () => {

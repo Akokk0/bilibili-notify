@@ -132,7 +132,7 @@ describe("TagEditDialog", () => {
 			await waitFor(() => expect(checkbox("重点").checked).toBe(true));
 			expect(put).toHaveBeenCalledTimes(1);
 			const [path, body] = put.mock.calls[0] as [string, SubscriptionTag[]];
-			expect(path).toBe("/api/subs/tags");
+			expect(path).toBe("/api/subscriptions/tags");
 			expect(body.slice(0, 2)).toEqual([GAME, CHAT]);
 			expect(body).toHaveLength(3);
 			expect(body[2].name).toBe("重点");

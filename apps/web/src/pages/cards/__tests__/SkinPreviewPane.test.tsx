@@ -113,7 +113,7 @@ describe("皮肤预览栏", () => {
 		await tick(300);
 		expect(vi.mocked(api.post)).toHaveBeenCalledTimes(1);
 		const [url, body] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-		expect(url).toBe("/api/card-skins/neon/preview");
+		expect(url).toBe("/api/cards/skins/neon/preview");
 		expect(body).toMatchObject({ kind: "live", scene: "streaming" });
 	});
 
@@ -225,10 +225,10 @@ describe("皮肤预览栏 · 最终效果", () => {
 		scene: "streaming",
 	};
 
-	/** 预览走 `/preview`、截图走 `/skin-shot` —— 同一个 `api.post`,按 url 分流。 */
+	/** 预览走 `/preview`、截图走 `/screenshot` —— 同一个 `api.post`,按 url 分流。 */
 	function mockBoth(shot: Record<string, unknown> = SHOT): void {
 		vi.mocked(api.post).mockImplementation(async (url: string) =>
-			url.endsWith("/skin-shot") ? shot : OK,
+			url.endsWith("/screenshot") ? shot : OK,
 		);
 	}
 
@@ -261,8 +261,10 @@ describe("皮肤预览栏 · 最终效果", () => {
 		expect(frame()).toBeNull();
 
 		const [url, body] = vi.mocked(api.post).mock.calls.at(-1) as [string, Record<string, unknown>];
-		expect(url).toBe("/api/cards/skin-shot");
-		expect(body).toMatchObject({ skinId: "neon", kind: "live", scene: "streaming" });
+		// 皮肤 id 在路径里,不在请求体里(ADR-0036)。
+		expect(url).toBe("/api/cards/skins/neon/screenshot");
+		expect(body).toMatchObject({ kind: "live", scene: "streaming" });
+		expect(body).not.toHaveProperty("skinId");
 	});
 
 	it("长卡的截图整张摊开 → 不在一个限高的小窗里滚", async () => {
@@ -325,7 +327,7 @@ describe("皮肤预览栏 · 最终效果", () => {
 
 	it("请求被拒(非 2xx,如草稿没过装包门)→ 说出概括与逐条原因", async () => {
 		vi.mocked(api.post).mockImplementation(async (url: string) => {
-			if (!url.endsWith("/skin-shot")) return OK;
+			if (!url.endsWith("/screenshot")) return OK;
 			throw new FakeApiError(
 				400,
 				{

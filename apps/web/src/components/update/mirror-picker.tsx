@@ -52,7 +52,7 @@ export function MirrorPicker({ active, onSelect, disabled = false }: MirrorPicke
 	const [results, setResults] = useState<Record<string, MirrorProbeResult>>({});
 	const probe = useMutation({
 		mutationFn: (prefixes: string[]) =>
-			api.post<MirrorProbeResponse>("/api/update/mirrors/probe", { prefixes }),
+			api.post<MirrorProbeResponse>("/api/system/update/mirrors/probe", { prefixes }),
 		onSuccess: (res) =>
 			setResults(Object.fromEntries(res.results.map((r) => [r.prefix, r] as const))),
 	});

@@ -174,7 +174,7 @@ function Host() {
 function renderSection(market: MarketplaceResponse = MARKET, { strict = false } = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url.startsWith("/api/ext/marketplace")) return market;
-		if (url === "/api/globals") return GLOBALS;
+		if (url === "/api/settings") return GLOBALS;
 		if (url === "/api/system/restart") return { version: "0.10.1", startedAt: "OLD" };
 		throw new Error(`没有这一口:${url}`);
 	});
@@ -463,7 +463,7 @@ describe("源", () => {
 			string,
 			{ marketplace: { sources: { id: string; name?: string; url: string }[] } },
 		];
-		expect(path).toBe("/api/globals");
+		expect(path).toBe("/api/settings");
 		expect(body.marketplace.sources.map((s) => s.url)).toEqual([
 			"https://alice.example/m.json",
 			"https://bob.example/marketplace.json",
@@ -509,7 +509,7 @@ describe("源", () => {
 
 		await userEvent.click(within(dialog).getByRole("button", { name: /删掉 alice/ }));
 		await waitFor(() =>
-			expect(apiPatchMock).toHaveBeenCalledWith("/api/globals", { marketplace: { sources: [] } }),
+			expect(apiPatchMock).toHaveBeenCalledWith("/api/settings", { marketplace: { sources: [] } }),
 		);
 	});
 });

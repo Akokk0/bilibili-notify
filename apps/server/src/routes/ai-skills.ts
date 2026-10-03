@@ -41,7 +41,7 @@ const NOT_A_SKILL_MESSAGE = "请求体不是一条技能的形状";
  */
 const AVAILABLE_TOOLS = [...TOOL_DEFINITIONS.map((t) => t.function.name), WEB_SEARCH_TOOL_NAME];
 
-export function createMaidSkillsRoute(deps: { skillStore: MaidSkillStore }): Hono {
+export function createAiSkillsRoute(deps: { skillStore: MaidSkillStore }): Hono {
 	const { skillStore } = deps;
 	const app = new Hono();
 

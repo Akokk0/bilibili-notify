@@ -62,11 +62,11 @@ const CreateProfileBodySchema = z.object({
 });
 
 /**
- * `/api/subs` — CRUD on the Subscription[] list.
+ * `/api/subscriptions` — CRUD on the Subscription[] list.
  *
  * Body shapes:
- * - POST /api/subs  → full Subscription (validated by SubscriptionSchema in store)
- * - PATCH /api/subs/:id → DeepPartial<Subscription>; merged onto current then validated
+ * - POST /api/subscriptions  → full Subscription (validated by SubscriptionSchema in store)
+ * - PATCH /api/subscriptions/:id → DeepPartial<Subscription>; merged onto current then validated
  *
  * We deliberately require the full Subscription on POST rather than letting the
  * server fill in defaults — `makeEmptySubscription({id, identity})` exists in
@@ -83,7 +83,7 @@ const CreateProfileBodySchema = z.object({
  * (不合规 400、没这一条 404),路由按码回、不嗅文案;查 UID / 搜名字里 B 站自己的数字码只放
  * `upstreamCode`,不占 `code`(风控 / 未登录的分类留到 3a 的 `searchCreators`,这里不扩大)。
  */
-export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): Hono {
+export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
@@ -147,7 +147,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			};
 			await deps.runtime.subRuntimeStore.patch(sub.id, { cachedProfile });
 		} catch (err) {
-			log.warn(`/api/subs seed cachedProfile uid=${uid} failed: ${String(err)}`);
+			log.warn(`/api/subscriptions seed cachedProfile uid=${uid} failed: ${String(err)}`);
 		}
 	}
 
@@ -204,7 +204,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			await deps.store.upsertSubscription(subBody as never);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/subs (extension) failed", err);
+			log.error("POST /api/subscriptions (extension) failed", err);
 			throw err;
 		}
 		if (seed) await seedExtensionProfile(sub, seed, avatarDataUrl);
@@ -332,7 +332,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 		} catch (err) {
 			// 抛出来的是原始报错:原话只进日志,回给面板一句固定的中文。
 			const message = err instanceof Error ? err.message : String(err);
-			log.warn(`/api/subs/search q=${q} failed: ${message}`);
+			log.warn(`/api/subscriptions/search q=${q} failed: ${message}`);
 			return respondFailure(c, fail("unavailable", "无法访问 B 站，详情在日志里"));
 		}
 	});
@@ -366,7 +366,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			});
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
-			log.warn(`/api/subs/lookup uid=${uid} failed: ${message}`);
+			log.warn(`/api/subscriptions/lookup uid=${uid} failed: ${message}`);
 			return respondFailure(c, fail("unavailable", "无法访问 B 站，详情在日志里"));
 		}
 	});
@@ -401,7 +401,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			return c.json(deps.store.getSubscriptions().map(toDTO), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("POST /api/subs failed", err);
+			log.error("POST /api/subscriptions failed", err);
 			throw err;
 		}
 	});
@@ -432,7 +432,7 @@ export function createSubsRoute(deps: RouteDeps, opts: SubsRouteOptions = {}): H
 			return c.json(toDTO(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("PATCH /api/subs/:id failed", err);
+			log.error("PATCH /api/subscriptions/:id failed", err);
 			throw err;
 		}
 	});

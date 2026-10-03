@@ -6,7 +6,7 @@ import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
 
 /**
- * WS `log` 频道 → `["logs",{day:"live"}]` 缓存 prepend(镜像
+ * WS `log` 频道 → `["system", "logs", {day:"live"}]` 缓存 prepend(镜像
  * usePushEventsChannel 的 setQueryData patch)。两类帧都收:
  *   - 级别帧 { type:"log", event:<level>, data:{ msg,args,name } }
  *   - engine-error { type:"log", event:"engine-error", data:{ source, message } }
@@ -16,7 +16,7 @@ import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
  * 与 silent-drop 契约,无需渲染 hook。`useAlertChannel`(engine-error →
  * 右上角 AlertShell)保持独立、不受影响 —— 二者共用同一 `log` 订阅各自消费。
  *
- * 服务端 /api/logs 只按 day/limit 分页;level/source/文本过滤全在页面客户端
+ * 服务端 /api/system/logs 只按 day/limit 分页;level/source/文本过滤全在页面客户端
  * 做,所以 live key 稳定、WS append 不会因筛选条件漂移而 patch 错缓存。
  */
 export const LOG_CACHE_CAP = 1000;

@@ -90,7 +90,7 @@ beforeEach(() => {
 	});
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url.includes("/api/subs")) return Promise.resolve([]);
+		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		return Promise.resolve(GLOBALS);
 	});
@@ -152,11 +152,11 @@ describe("测试推送的结果", () => {
 	async function clickTestPush(reply: () => Promise<unknown>): Promise<void> {
 		vi.mocked(api.get).mockImplementation((url: string) => {
 			if (url.includes("/api/targets")) return Promise.resolve([TARGET]);
-			if (url.includes("/api/subs")) return Promise.resolve([]);
+			if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 			return Promise.resolve(GLOBALS);
 		});
 		vi.mocked(api.post).mockImplementation(async (url: string) =>
-			url === "/api/cards/test-push" ? reply() : { ok: true, dataUrl: "data:image/png;base64,xx" },
+			url === "/api/cards/test" ? reply() : { ok: true, dataUrl: "data:image/png;base64,xx" },
 		);
 		renderCards();
 		fireEvent.click((await screen.findAllByRole("button", { name: "SC 提醒" }))[0] as HTMLElement);

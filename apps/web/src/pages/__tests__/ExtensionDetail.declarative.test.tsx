@@ -93,7 +93,7 @@ function renderDetail({
 }: Setup = {}) {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return { extensions: [ext], restart } satisfies ExtensionsResponse;
-		// 设置走拓展自己的口(ADR-0019 决策 35)—— `/api/globals` 里已经没有这一格了。
+		// 设置走拓展自己的口(ADR-0019 决策 35)—— `/api/settings` 里已经没有这一格了。
 		if (url === `/api/ext/${ext.id}/settings`) return { revision: "r1", values: settings };
 		if (url === `/api/ext/${ext.id}/status`) {
 			if (status instanceof Error) throw status;

@@ -30,7 +30,7 @@ describe("safeExtensionIcon", () => {
 
 	it("夹带 <script> 的整枚丢掉", () => {
 		expect(
-			safeExtensionIcon(`<svg viewBox="0 0 24 24"><script>fetch("/api/globals")</script></svg>`),
+			safeExtensionIcon(`<svg viewBox="0 0 24 24"><script>fetch("/api/settings")</script></svg>`),
 		).toBeUndefined();
 	});
 

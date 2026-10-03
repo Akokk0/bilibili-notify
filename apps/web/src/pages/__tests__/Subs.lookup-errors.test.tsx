@@ -46,12 +46,15 @@ const BILI = {
 /** 让查人的那个接口回一个失败,别的接口照常。 */
 function failLookupsWith(error: Error): void {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path.startsWith("/api/subs/lookup") || path.startsWith("/api/subs/search")) {
+		if (
+			path.startsWith("/api/subscriptions/lookup") ||
+			path.startsWith("/api/subscriptions/search")
+		) {
 			return Promise.reject(error);
 		}
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (path === "/api/subs/tags") return Promise.resolve([]);
-		if (path === "/api/subs") return Promise.resolve([BILI]);
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
+		if (path === "/api/subscriptions") return Promise.resolve([BILI]);
 		if (path === "/api/ext") return Promise.resolve({ extensions: [] });
 		return Promise.resolve([]);
 	});
@@ -102,7 +105,7 @@ describe("添加 UP 主 —— 查人失败", () => {
 	});
 
 	it("不是 ApiError(断线之类)也照样显示它的话", async () => {
-		failLookupsWith(new Error("连接中断，GET /api/subs/lookup 没有拿到服务器响应"));
+		failLookupsWith(new Error("连接中断，GET /api/subscriptions/lookup 没有拿到服务器响应"));
 		await queryFor("999");
 		expect(await screen.findByText(/连接中断/)).toBeTruthy();
 	});

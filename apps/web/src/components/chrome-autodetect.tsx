@@ -13,7 +13,7 @@ type DetectState = "idle" | "detecting" | "enabling" | "connecting" | "enabled";
  *   remote-debugging)端点 → 后端先真开一页探测连通,通了才启用 —— slim 镜像
  *   (无内置 chromium)靠这条路。
  *
- * 两条路都走 POST /api/cards/enable-rendering:后端运行时构造 puppeteer 并注入
+ * 两条路都走 POST /api/cards/renderer:后端运行时构造 puppeteer 并注入
  * live/dynamic 引擎 + 写回 bn.config.yaml,无需重启。
  */
 /**
@@ -66,7 +66,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 		setNotFound(false);
 		setPath(null);
 		try {
-			const res = await api.get<{ path: string | null }>("/api/cards/detect-chrome");
+			const res = await api.get<{ path: string | null }>("/api/cards/chrome");
 			setPath(res.path);
 			setNotFound(res.path === null);
 		} catch (e) {
@@ -83,7 +83,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 		try {
 			// 启用不成一律是非 2xx(`api` 抛 `ApiError`,`message` 就是服务端的原话,如浏览器连不上的原因),
 			// 走到下一行就是成了。
-			await api.post<EnableRenderingResponse>("/api/cards/enable-rendering", {
+			await api.post<EnableRenderingResponse>("/api/cards/renderer", {
 				chromePath: path,
 			});
 			setState("enabled");
@@ -100,7 +100,7 @@ export function ChromeAutoDetect({ onEnabled }: { onEnabled: () => void }) {
 		setState("connecting");
 		setErr(null);
 		try {
-			await api.post<EnableRenderingResponse>("/api/cards/enable-rendering", {
+			await api.post<EnableRenderingResponse>("/api/cards/renderer", {
 				chromeEndpoint: trimmed,
 			});
 			setState("enabled");

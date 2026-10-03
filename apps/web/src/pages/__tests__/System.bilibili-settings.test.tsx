@@ -3,7 +3,7 @@
 /**
  * 系统页「运行」格里 B 站那三格(动态检查频率 / User-Agent / 登录心跳间隔)。
  *
- * 这三格住在 B 站自己的设置里 —— `/api/globals` 把它挂在 `bilibili` 键下,和核心设置并排;不在核心的
+ * 这三格住在 B 站自己的设置里 —— `/api/settings` 把它挂在 `bilibili` 键下,和核心设置并排;不在核心的
  * `app` 下。钉两条**接线**(零件各自的测试证明不了页面真的接上了):
  *
  * ① 读 —— 三格画的是 `draft.bilibili.*` 的值。读错了地方,格子是空的 / 默认的,保存时还会把空值发回去。
@@ -76,7 +76,7 @@ function resetStore(): void {
 /** 渲染并停到「运行」格(三格就在那里);`Core · 应用` 那张卡是草稿到了才画的,拿它当到齐的信号。 */
 async function renderRuntimeSection() {
 	vi.mocked(api.get).mockImplementation(async (url: string) => {
-		if (url === "/api/globals") return JSON.parse(JSON.stringify(GLOBALS));
+		if (url === "/api/settings") return JSON.parse(JSON.stringify(GLOBALS));
 		if (url === "/api/connections/capabilities") return {};
 		return [];
 	});
@@ -99,14 +99,14 @@ function inputOf(code: string): HTMLInputElement {
 	return input;
 }
 
-/** 点保存,返回最后一发 `PATCH /api/globals` 的 body。 */
+/** 点保存,返回最后一发 `PATCH /api/settings` 的 body。 */
 async function save(): Promise<Record<string, unknown>> {
 	await act(async () => {
 		await useDraftStore.getState().current?.onSave();
 	});
 	await waitFor(() => expect(api.patch).toHaveBeenCalled());
 	const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, Record<string, unknown>];
-	expect(url).toBe("/api/globals");
+	expect(url).toBe("/api/settings");
 	return body;
 }
 

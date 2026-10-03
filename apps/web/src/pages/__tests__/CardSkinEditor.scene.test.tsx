@@ -45,14 +45,14 @@ const MANIFEST = {
 
 function mockApi(): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url === "/api/card-skins") {
+		if (url === "/api/cards/skins") {
 			return Promise.resolve({
 				skins: [{ id: "neon", name: "霓虹", builtin: false, updatedAt: 0, knobs: [] }],
 				active: "neon",
 				fallbacks: [],
 			});
 		}
-		if (url === "/api/card-skins/neon")
+		if (url === "/api/cards/skins/neon")
 			return Promise.resolve({ manifest: structuredClone(MANIFEST) });
 		return Promise.resolve({});
 	});

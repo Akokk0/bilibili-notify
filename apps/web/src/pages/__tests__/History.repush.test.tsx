@@ -61,7 +61,7 @@ function mockApi(entries: HistoryEntryView[]) {
 		if (path.startsWith("/api/history")) return Promise.resolve({ entries });
 		if (path === "/api/targets")
 			return Promise.resolve([{ id: T1, name: "测试群", platform: "onebot", enabled: true }]);
-		if (path === "/api/subs") return Promise.resolve([]);
+		if (path === "/api/subscriptions") return Promise.resolve([]);
 		return Promise.resolve({ app: { historyRetentionDays: 30 } });
 	});
 	(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, count: 2 });

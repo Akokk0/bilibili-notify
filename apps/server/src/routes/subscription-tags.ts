@@ -6,7 +6,7 @@ import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * 订阅标签表 `/api/subs/tags`(ADR-0034,挂在 `routes/subs.ts` 底下):`GET` 读整张,`PUT` 整张换 —— 新建、改名、
+ * 订阅标签表 `/api/subscriptions/tags`(ADR-0034,挂在 `routes/subscriptions.ts` 底下):`GET` 读整张,`PUT` 整张换 —— 新建、改名、
  * 排序、删除都走它(新标签的 id 由面板生成,和新建订阅一样)。名字的规矩与「删标签时订阅上的 id 一起去掉」都在
  * 配置仓的 `replaceSubscriptionTags`。
  */

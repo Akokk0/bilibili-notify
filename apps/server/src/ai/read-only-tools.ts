@@ -95,7 +95,7 @@ function extensionLiveNow(
  * 开播(`liveStart`)或周期「正在直播」(`liveStreaming`)任一有目标就算。
  *
  * 名字按「主人手填的备注 → 平台资料缓存 → UID 兜底」取(拓展订阅兜底的是外部 id)。
- * cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subs` 的 join 同源。
+ * cachedProfile 是外置的运行时数据(不在 Subscription 里),与 `/api/subscriptions` 的 join 同源。
  *
  * 按订阅自己的 `id` 为键,两支都收(ADR-0019 决策 64):B 站条目带 `uid`,那几格的含义不变;
  * 拓展条目没有 uid,带平台名与外部 id —— 外部 id 不是 B 站 UID,工具那头据此不拿它去问 B 站;接上了在播来源

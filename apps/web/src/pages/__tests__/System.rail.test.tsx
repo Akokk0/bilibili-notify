@@ -71,7 +71,7 @@ const { GLOBALS, FakeApiError } = vi.hoisted(() => {
 	class FakeApiError extends Error {}
 	return {
 		FakeApiError,
-		// `bilibili` 是 B 站自己的设置,`/api/globals` 把它挂在核心设置旁边下发;系统页画「运行」格要读它。
+		// `bilibili` 是 B 站自己的设置,`/api/settings` 把它挂在核心设置旁边下发;系统页画「运行」格要读它。
 		GLOBALS: {
 			app: { logLevel: "info", logLevels: {} },
 			bilibili: { dynamicCron: "0 * * * *", healthCheckMinutes: 30 },
@@ -84,7 +84,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url === "/api/globals") return GLOBALS;
+			if (url === "/api/settings") return GLOBALS;
 			if (url === "/api/connections/capabilities") return {};
 			return [];
 		}),
@@ -105,7 +105,7 @@ function renderSystem(initialEntry = "/system") {
 }
 
 /**
- * 等草稿从 /api/globals 落下来。
+ * 等草稿从 /api/settings 落下来。
  *
  * **别拿左栏那几颗钮当信号** —— 分区导航在草稿到齐之前就渲染好了,等它等于没等;
  * 主人账号那张卡是 `draft` 到了才画的,拿它当信号才真。

@@ -127,7 +127,7 @@ export interface DevCapturesDTO {
 	entries: DevCapturedDelivery[];
 }
 
-/** `POST /api/dev/captures/purge-history`:清掉截流期间写进历史的行,回删了几行。 */
+/** `DELETE /api/dev/captures/history`:清掉截流期间写进历史的行,回删了几行。 */
 export interface DevPurgeHistoryResponse {
 	deleted: number;
 }

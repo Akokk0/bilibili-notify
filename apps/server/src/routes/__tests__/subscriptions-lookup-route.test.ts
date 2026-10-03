@@ -1,5 +1,5 @@
 /**
- * `/api/subs/lookup` 与 `/api/subs/search` —— 「添加 UP」弹窗查人的两个口子的失败形状(ADR-0026)。
+ * `/api/subscriptions/lookup` 与 `/api/subscriptions/search` —— 「添加 UP」弹窗查人的两个口子的失败形状(ADR-0026)。
  *
  * - B 站自己的数字码(`res.code`)只放 `upstreamCode`,永远不占 `code`;`code` 是标准码。
  * - 「现在的意思」照旧,分类不扩大:lookup 的 B 站非 0 一律当 `not_found`(风控 / 未登录也在里头,
@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createSubsRoute } from "../subs.js";
+import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
 
 interface Api {
@@ -19,7 +19,7 @@ interface Api {
 
 function makeApp(api: Api | null) {
 	const warn = vi.fn();
-	const app = createSubsRoute({
+	const app = createSubscriptionsRoute({
 		store: { getSubscriptions: () => [] },
 		runtime: {
 			serviceCtx: { logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
@@ -35,7 +35,7 @@ const CARD = {
 	data: { card: { mid: "12345", name: "测试UP", face: "https://x/a.png", sign: "签名", fans: 99 } },
 };
 
-describe("GET /api/subs/lookup", () => {
+describe("GET /api/subscriptions/lookup", () => {
 	it("uid 不是纯数字 → 400 invalid", async () => {
 		const { app } = makeApp({ getUserCardInfo: async () => CARD });
 		const res = await app.request("/lookup?uid=abc");
@@ -98,7 +98,7 @@ describe("GET /api/subs/lookup", () => {
 	});
 });
 
-describe("GET /api/subs/search", () => {
+describe("GET /api/subscriptions/search", () => {
 	it("关键词是空的 → 400 invalid,话就是面板要显示的那句", async () => {
 		const { app } = makeApp({ searchByType: async () => ({ code: 0 }) });
 		const res = await app.request("/search?q=%20");

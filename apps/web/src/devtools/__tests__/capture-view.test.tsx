@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("../../services/api", () => ({
-	api: { get: vi.fn(), post: vi.fn() },
+	api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
 	ApiError: class ApiError extends Error {},
 }));
 
@@ -95,15 +95,13 @@ describe("CaptureView", () => {
 		await waitFor(() => expect(screen.queryByText("开播啦")).toBeNull());
 	});
 
-	it("「清掉截流期间的历史行」打 purge-history,回执显示删了几行,并作废查询让历史页刷新", async () => {
+	it("「清掉截流期间的历史行」发 DELETE /captures/history,回执显示删了几行,并作废查询让历史页刷新", async () => {
 		vi.mocked(api.get).mockResolvedValue(CAPTURES);
-		vi.mocked(api.post).mockResolvedValue({ deleted: 3 });
+		vi.mocked(api.delete).mockResolvedValue({ deleted: 3 });
 		const { invalidate } = renderView();
 		const user = userEvent.setup();
 		await user.click(await screen.findByRole("button", { name: "清掉截流期间的历史行" }));
-		await waitFor(() =>
-			expect(api.post).toHaveBeenCalledWith("/api/dev/captures/purge-history", {}),
-		);
+		await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/dev/captures/history"));
 		expect(await screen.findByText(/清掉了 3 行/)).toBeTruthy();
 		expect(invalidate).toHaveBeenCalled();
 	});

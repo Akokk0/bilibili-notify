@@ -51,7 +51,7 @@ export interface CreateWsServerOptions {
 	/**
 	 * Whether dashboard auth is enabled. When true the WS upgrade handshake
 	 * requires a valid one-shot `?ticket=` (issued by the cookie-authed
-	 * `POST /api/auth/ws-ticket`). Cookie-only model (Q4/Q7d): the legacy
+	 * `POST /api/ws/ticket`). Cookie-only model (Q4/Q7d): the legacy
 	 * `Authorization: Basic` and `?token=<b64(user:pass)>` upgrade paths were
 	 * removed — no Basic anywhere, raw credentials never appear in a URL.
 	 * When false, no auth check is performed (matches the HTTP layer + the
@@ -60,7 +60,7 @@ export interface CreateWsServerOptions {
 	authRequired?: boolean;
 	/**
 	 * WS upgrade ticket store。前端 WebSocket 不能附带 Authorization 头,改用
-	 * `?ticket=<xxx>` 完成 upgrade。`POST /api/auth/ws-ticket` 签发的 ticket
+	 * `?ticket=<xxx>` 完成 upgrade。`POST /api/ws/ticket` 签发的 ticket
 	 * 在这里通过 consume() 验证(一次性、短时)。null = basicAuth 未启用。
 	 */
 	wsTicketStore?: WsTicketStore | null;
@@ -157,7 +157,7 @@ export function createWsServer(opts: CreateWsServerOptions): WsServer {
 	const checkAuth = (req: IncomingMessage): boolean => {
 		if (!authRequired) return true;
 		// Cookie-only (Q7d): the sole accepted upgrade credential is a one-shot
-		// `?ticket=` issued by the cookie-authed `POST /api/auth/ws-ticket`,
+		// `?ticket=` issued by the cookie-authed `POST /api/ws/ticket`,
 		// consumed (and invalidated) here. The browser can't set custom headers
 		// on `new WebSocket()`, and raw credentials must never land in a URL
 		// (reverse-proxy access logs) — so the Basic header and `?token=` paths

@@ -20,7 +20,7 @@ import { dataPath } from "./roots.js";
 
 /**
  * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataRoot>/avatars/<订阅 id>.<png|jpeg|webp>`,面板从
- * `/api/subs/<id>/avatar?v=<摘要>` 取(走面板鉴权;内容一变地址就变,浏览器不会拿旧缓存)。
+ * `/api/subscriptions/<id>/avatar?v=<摘要>` 取(走面板鉴权;内容一变地址就变,浏览器不会拿旧缓存)。
  *
  * - 进来的有两条路:新建订阅时解析门候选带的位图 data URL(`SubscriptionAvatarSchema`:png / jpeg /
  *   webp、128 KiB 封顶),与之后拓展「报资料更新」交的字节(决策 62,约 96 KiB 封顶)。**开头的
@@ -110,7 +110,7 @@ export function checkSubscriptionAvatarBytes(bytes: Uint8Array): AvatarDecodeRes
 
 export interface SubAvatarStore {
 	/**
-	 * 存下这条订阅的头像,回面板取它的地址(`/api/subs/<id>/avatar?v=<摘要>`)。头像不合规矩
+	 * 存下这条订阅的头像,回面板取它的地址(`/api/subscriptions/<id>/avatar?v=<摘要>`)。头像不合规矩
 	 * (见 {@link decodeSubscriptionAvatar})、id 不是 uuid、写盘失败都抛。盘上那张与它一模一样
 	 * 时不重写,回的地址也不变。
 	 */
@@ -189,7 +189,7 @@ export function createSubAvatarStore(opts: CreateSubAvatarStoreOptions): SubAvat
 				if (other !== ext) await unlinkIfPresent(fileOf(subId, other));
 			}
 			const digest = createHash("sha256").update(bytes).digest("hex").slice(0, DIGEST_CHARS);
-			return `/api/subs/${subId}/avatar?v=${digest}`;
+			return `/api/subscriptions/${subId}/avatar?v=${digest}`;
 		});
 	}
 

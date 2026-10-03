@@ -49,7 +49,7 @@ const MANIFEST = {
 
 function mockApi(opts: { builtin?: boolean; model?: boolean }): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url === "/api/card-skins") {
+		if (url === "/api/cards/skins") {
 			return Promise.resolve({
 				skins: [
 					{ id: "default", name: "默认", builtin: true, updatedAt: 0, knobs: [] },
@@ -59,10 +59,10 @@ function mockApi(opts: { builtin?: boolean; model?: boolean }): void {
 				fallbacks: [],
 			});
 		}
-		if (url === "/api/card-skins/neon") {
+		if (url === "/api/cards/skins/neon") {
 			return Promise.resolve({ manifest: structuredClone(MANIFEST) });
 		}
-		if (url === "/api/globals") {
+		if (url === "/api/settings") {
 			const filled = opts.model ?? true;
 			return Promise.resolve({
 				defaults: {

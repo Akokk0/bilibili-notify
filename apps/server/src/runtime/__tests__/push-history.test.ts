@@ -43,7 +43,7 @@ const lookups = {
 							externalId: "u1",
 						}),
 						// 拓展订阅的头像是面板里的相对地址,订阅一删文件就没了(ADR-0019 决策 74)。
-						profile: { name: "某抖音号", avatar: `/api/subs/${EXT_ID}/avatar?v=abc` },
+						profile: { name: "某抖音号", avatar: `/api/subscriptions/${EXT_ID}/avatar?v=abc` },
 					}
 				: undefined,
 };

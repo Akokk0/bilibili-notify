@@ -1,5 +1,5 @@
 /**
- * CSS 框旁那颗「请女仆帮忙写」的那条流(`POST /api/card-skins/:id/ai-css`,ADR-0015 决策 3–10)。
+ * CSS 框旁那颗「请女仆帮忙写」的那条流(`POST /api/cards/skins/:id/ai`,ADR-0015 决策 3–10)。
  *
  * 与聊天那条同一套读法:fetch + 手读 body,帧由 {@link createSseParser} 切。不用
  * `EventSource` 的理由也一样 —— 它只会发 GET。开流之前的拒绝是普通 JSON 的错误体,照常抛
@@ -35,7 +35,7 @@ export async function streamCardSkinAiCss(
 	handlers: CardSkinAiHandlers,
 	signal: AbortSignal | undefined,
 ): Promise<CardSkinAiDone> {
-	const res = await fetch(`/api/card-skins/${encodeURIComponent(skinId)}/ai-css`, {
+	const res = await fetch(`/api/cards/skins/${encodeURIComponent(skinId)}/ai`, {
 		method: "POST",
 		headers: withDesktopTokenHeader({ "content-type": "application/json" }),
 		body: JSON.stringify(body),

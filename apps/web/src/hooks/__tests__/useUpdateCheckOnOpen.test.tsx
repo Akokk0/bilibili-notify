@@ -79,7 +79,7 @@ describe("useUpdateCheckOnOpen", () => {
 		// 这条断言只有在 effect 真的跑了两遍时才有意义。)
 		expect(api.get).toHaveBeenCalledTimes(1);
 		expect(api.post).toHaveBeenCalledTimes(1);
-		expect(api.post).toHaveBeenCalledWith("/api/update/check", {});
+		expect(api.post).toHaveBeenCalledWith("/api/system/update/check", {});
 		expect(qc.getQueryData(UPDATE_QUERY_KEY)).toEqual(after);
 		const [card] = useToastStore.getState().items;
 		expect(card).toMatchObject({
@@ -178,7 +178,7 @@ describe("useUpdateCheckOnOpen —— 刷新回来先报重启的结果", () => 
 			title: "已更新到 0.9.0",
 		});
 		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
-		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/update/check", {}));
+		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/system/update/check", {}));
 	});
 
 	it("回退的记号说的是「已退回」", async () => {

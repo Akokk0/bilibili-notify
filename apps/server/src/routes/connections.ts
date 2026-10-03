@@ -76,7 +76,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		}
 	});
 
-	app.post("/:id/test", async (c) => {
+	app.post("/:id/probe", async (c) => {
 		const id = c.req.param("id");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
 		if (!connection) return respondFailure(c, fail("not_found", "没有这条连接"));
@@ -100,7 +100,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 					},
 				});
 			} catch (err) {
-				log.warn(`POST /api/connections/${id}/test patchConnection failed: ${String(err)}`);
+				log.warn(`POST /api/connections/${id}/probe patchConnection failed: ${String(err)}`);
 			}
 		}
 		return c.json<ConnectionTestResponse>(testResultOfProbe(result));

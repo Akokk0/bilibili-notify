@@ -46,7 +46,7 @@ vi.mock("../../services/api", () => ({
 				if (docs.value instanceof Error) throw docs.value;
 				return docs.value;
 			}
-			if (url === "/api/globals") {
+			if (url === "/api/settings") {
 				return { extensions: { bridge: { enabled: false } } };
 			}
 			return {

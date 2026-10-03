@@ -46,7 +46,7 @@ const VALUE: RoastScheduleValue = {
 function renderFields(onChange = vi.fn()) {
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
 		if (path === "/api/targets") return [target(T_ON, "群 A", true), target(T_OFF, "群 B", false)];
-		if (path === "/api/globals") return { master: {} };
+		if (path === "/api/settings") return { master: {} };
 		throw new Error(`unexpected GET ${path}`);
 	});
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

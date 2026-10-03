@@ -40,7 +40,7 @@ describe("dashboard cookie auth", () => {
 			sessionCodec: codec,
 		});
 
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		expect(res.status).toBe(401);
 		expect(res.headers.get("www-authenticate")).toBeNull();
 		// 错误体平铺 `{ code, message }`;401 是显式给的(`unauthorized` 默认回 403)。
@@ -59,7 +59,7 @@ describe("dashboard cookie auth", () => {
 			sessionCodec: codec,
 		});
 
-		const res = await app.request("/api/globals", {
+		const res = await app.request("/api/settings", {
 			headers: { Cookie: `bn_session=${codec.sign()}` },
 		});
 		expect(res.status).toBe(200);
@@ -77,7 +77,7 @@ describe("dashboard cookie auth", () => {
 			sessionCodec: codec,
 		});
 
-		const res = await app.request("/api/globals", {
+		const res = await app.request("/api/settings", {
 			headers: {
 				Authorization: `Basic ${Buffer.from("admin:s3cret", "utf8").toString("base64")}`,
 			},
@@ -87,14 +87,14 @@ describe("dashboard cookie auth", () => {
 		await runtime.dispose();
 	});
 
-	it("auth NOT configured: /api/globals is open (local dev / bare)", async () => {
+	it("auth NOT configured: /api/settings is open (local dev / bare)", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		expect(res.status).toBe(200);
 
 		await runtime.dispose();
@@ -124,12 +124,12 @@ describe("dashboard cookie auth", () => {
 		expect(session.status).toBe(200);
 		expect(await session.json()).toEqual({ authRequired: false, authed: true });
 
-		const globalsWrong = await app.request("/api/globals", {
+		const globalsWrong = await app.request("/api/settings", {
 			headers: { "x-bn-desktop-token": "wrong" },
 		});
 		expect(globalsWrong.status).toBe(401);
 
-		const globals = await app.request("/api/globals", {
+		const globals = await app.request("/api/settings", {
 			headers: { "x-bn-desktop-token": "desktop-secret" },
 		});
 		expect(globals.status).toBe(200);
@@ -158,7 +158,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.dispose();
 	});
 
-	it("login → returned cookie unlocks /api/globals end-to-end", async () => {
+	it("login → returned cookie unlocks /api/settings end-to-end", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
@@ -177,7 +177,7 @@ describe("dashboard cookie auth", () => {
 		const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
 		expect(cookie).toMatch(/^bn_session=/);
 
-		const res = await app.request("/api/globals", { headers: { Cookie: cookie } });
+		const res = await app.request("/api/settings", { headers: { Cookie: cookie } });
 		expect(res.status).toBe(200);
 
 		await runtime.dispose();
@@ -201,7 +201,7 @@ describe("dashboard cookie auth", () => {
 		await runtime.dispose();
 	});
 
-	it("/api/auth/ws-ticket stays gated (no cookie → 401)", async () => {
+	it("/api/ws/ticket stays gated (no cookie → 401)", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
@@ -211,7 +211,7 @@ describe("dashboard cookie auth", () => {
 			sessionCodec: codec,
 		});
 
-		const res = await app.request("/api/auth/ws-ticket", { method: "POST" });
+		const res = await app.request("/api/ws/ticket", { method: "POST" });
 		expect(res.status).toBe(401);
 
 		await runtime.dispose();
@@ -230,13 +230,13 @@ describe("dashboard cookie auth", () => {
 
 		// Issued ~60% of the TTL ago → still valid, but past half-life.
 		const aged = codec.sign(Date.now() - ttlMs * 0.6);
-		const slid = await app.request("/api/globals", {
+		const slid = await app.request("/api/settings", {
 			headers: { Cookie: `bn_session=${aged}` },
 		});
 		expect(slid.status).toBe(200);
 		expect(slid.headers.get("set-cookie") ?? "").toContain("bn_session=");
 
-		const fresh = await app.request("/api/globals", {
+		const fresh = await app.request("/api/settings", {
 			headers: { Cookie: `bn_session=${codec.sign()}` },
 		});
 		expect(fresh.status).toBe(200);

@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react";
 import {
 	type DailyHistoryCountView,
 	type FansResponse,
+	FOLLOWERS_QUERY_KEY,
 	HISTORY_DAILY_QUERY_KEY,
 	HISTORY_QUERY_LIMITS,
 	type HistoryDailyResponse,
@@ -50,7 +51,7 @@ export interface PushToastSink {
  *   - `extension-live-changed`    → invalidate ["live","listening"](拓展订阅的在播表变了)
  *   - `live-viewers-changed`      → setQueryData patch 该房间的 viewers(不存在则 silent);
  *                                    data 是 `{ uid, viewers }`
- *   - `fans-refreshed`            → setQueryData 整体覆盖 ["fans"];data 是 `{ entries }`
+ *   - `fans-refreshed`            → setQueryData 整体覆盖 ["stats", "followers"];data 是 `{ entries }`
  *   - `history-recorded`          → push 进 toast + prepend 到 ["history"] 并 dedup 截尾
  *                                    + ["history-daily"] 今日桶就地 +1(跨零点则 invalidate;
  *                                    无目标行不计)
@@ -97,12 +98,12 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	}
 
 	// FansPoller 每轮 cron tick / 订阅删除时推「本轮 enabled subs 的完整快照」。
-	// 直接覆盖 ["fans"] 缓存 —— 被删除订阅的 uid 不在 payload 里,自然从面板撤掉。
+	// 直接覆盖 ["stats", "followers"] 缓存 —— 被删除订阅的 uid 不在 payload 里,自然从面板撤掉。
 	// 后端已保证"本轮失败保留旧值"语义在快照里完成,前端不需要 upsert。
 	if (isWsEvent(env, "push-events", "fans-refreshed")) {
 		const incoming = env.data?.entries;
 		if (!Array.isArray(incoming)) return;
-		qc.setQueryData<FansResponse>(["fans"], { entries: incoming });
+		qc.setQueryData<FansResponse>(FOLLOWERS_QUERY_KEY, { entries: incoming });
 		return;
 	}
 

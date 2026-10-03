@@ -207,7 +207,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 	}
 
 	async function extSub(): Promise<SubscriptionDTO | undefined> {
-		const list = (await (await api("/api/subs")).json()) as SubscriptionDTO[];
+		const list = (await (await api("/api/subscriptions")).json()) as SubscriptionDTO[];
 		return list.find((s) => s.id === S_EXT);
 	}
 
@@ -398,7 +398,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 				]);
 				const profile = (await extSub())?.cachedProfile;
 				expect(profile?.fans).toBe(2222);
-				expect(profile?.avatar).toMatch(/^\/api\/subs\//);
+				expect(profile?.avatar).toMatch(/^\/api\/subscriptions\//);
 			},
 			{ timeout: 3_000, interval: 50 },
 		);
@@ -459,7 +459,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 				await ok(
 					await api("/api/dev/run/fans.poll-now", { method: "POST", ...json({ params: {} }) }),
 				);
-				const { entries } = (await (await api("/api/fans")).json()) as FansResponse;
+				const { entries } = (await (await api("/api/stats/followers")).json()) as FansResponse;
 				expect(entries).toEqual([
 					{
 						subscriptionId: S_EXT,
@@ -507,7 +507,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 	it("拓展订阅的单人锐评「试一次」:按订阅 id 跑,出卡的头像是存下的那张内嵌图(不是面板的相对地址),发到它自己配的目标", async () => {
 		const rendersBefore = renderedHtml.length;
-		const res = await api(`/api/stats/roast/run-now/${S_EXT}`, { method: "POST" });
+		const res = await api(`/api/stats/roast/run/${S_EXT}`, { method: "POST" });
 		const body = (await res.json()) as StatsRoastRunNowResponse;
 		expect(res.status, JSON.stringify(body)).toBe(200);
 		expect(body).toEqual({
@@ -536,19 +536,21 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		expect(avatar.length).toBeGreaterThan(0);
 		const html = renderedHtml.slice(rendersBefore).join("\n");
 		expect(html).toContain(`data:image/png;base64,${avatar.toString("base64")}`);
-		expect(html).not.toContain("/api/subs/");
+		expect(html).not.toContain("/api/subscriptions/");
 		// 颜色与面板同一个算法(按人)。
 		expect(html).toContain(upColor({ extensionId: FAKE, externalId: EXT_ID }));
 	}, 15_000);
 
 	it("停用拓展那位:首页粉丝面板撤下它,盘上的文件都留着(决策 10)", async () => {
-		await ok(await api(`/api/subs/${S_EXT}`, { method: "PATCH", ...json({ enabled: false }) }));
+		await ok(
+			await api(`/api/subscriptions/${S_EXT}`, { method: "PATCH", ...json({ enabled: false }) }),
+		);
 		await vi.waitFor(
 			async () => {
 				await ok(
 					await api("/api/dev/run/fans.poll-now", { method: "POST", ...json({ params: {} }) }),
 				);
-				const { entries } = (await (await api("/api/fans")).json()) as FansResponse;
+				const { entries } = (await (await api("/api/stats/followers")).json()) as FansResponse;
 				expect(entries).toEqual([]);
 			},
 			{ timeout: 3_000, interval: 100 },
@@ -564,7 +566,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 	it("删掉两位:各自按订阅 id 命名的文件都删掉", async () => {
 		for (const id of [S_EXT, S_BILI]) {
-			const res = await api(`/api/subs/${id}`, { method: "DELETE" });
+			const res = await api(`/api/subscriptions/${id}`, { method: "DELETE" });
 			expect(res.status).toBe(204);
 		}
 		const files = [

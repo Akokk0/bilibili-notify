@@ -7,8 +7,8 @@ import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /**
- * `GET /api/logs`            — recent archived log lines, most-recent-first
- * `GET /api/logs/raw`        — download one day's raw jsonl (attachment)
+ * `GET /api/system/logs`            — recent archived log lines, most-recent-first
+ * `GET /api/system/logs/raw`        — download one day's raw jsonl (attachment)
  *
  * Server-side params are intentionally minimal — only `limit` (+ optional
  * `day`) — mirroring `/api/history`: the Logs tab does level / source / text
@@ -21,7 +21,7 @@ import type { RouteDeps } from "./types.js";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function createLogsRoute(deps: RouteDeps): Hono {
+export function createSystemLogsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 
 	app.get("/", async (c) => {

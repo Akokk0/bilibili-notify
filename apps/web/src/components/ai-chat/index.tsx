@@ -272,8 +272,8 @@ export function ChatPage() {
 	};
 
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	// 模型名在当前生效的那个服务商桶里(各家一套配置)。
 	const ai = globalsQuery.data?.defaults.ai;
@@ -468,7 +468,7 @@ export function ChatPage() {
 							void syncActiveSkinToStore().catch(() => {
 								// 拉失败就维持现状:皮肤已经在库里了,主人去皮肤页照样看得到。
 							});
-							void qc.invalidateQueries({ queryKey: ["skins"] });
+							void qc.invalidateQueries({ queryKey: ["dashboard", "skins"] });
 						}
 						// 卡片工坊动了皮肤库:皮肤页与回复下面的预览读的都是那份缓存。
 						else if (

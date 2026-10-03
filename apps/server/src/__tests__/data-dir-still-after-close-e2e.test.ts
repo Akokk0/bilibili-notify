@@ -172,9 +172,9 @@ describe("守卫 8:关停返回以后数据目录不再变化", () => {
 		const target = targets.find((t) => t.connectionId === WEBHOOK);
 		if (!target) throw new Error("webhook 连接没带出目标");
 		writes.phase = "in-flight";
-		const pushed = await api("/api/push/test", {
+		const pushed = await api(`/api/targets/${target.id}/test`, {
 			method: "POST",
-			...json({ targetId: target.id, kind: "text" }),
+			...json({ kind: "text" }),
 		});
 		expect(((await pushed.json()) as { ok: boolean }).ok).toBe(true);
 

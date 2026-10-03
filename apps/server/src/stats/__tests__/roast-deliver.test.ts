@@ -119,7 +119,7 @@ describe("deliverRoast — 停用的目标", () => {
 /**
  * 卡上的人(ADR-0020 决策 15 / 3):按订阅 id 认,两支订阅都行。
  *
- * - 拓展的头像在资料里是面板的同源相对地址(`/api/subs/<id>/avatar?v=…`),截图的浏览器加载不到 —— 出卡前
+ * - 拓展的头像在资料里是面板的同源相对地址(`/api/subscriptions/<id>/avatar?v=…`),截图的浏览器加载不到 —— 出卡前
  *   读存下的头像文件、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像照旧是 CDN 图链。
  * - 颜色跟着人走,与面板同一个算法(`upColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
  * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
@@ -148,7 +148,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 		const generateRoastSoloCard = vi.fn(async (..._args: unknown[]) => Buffer.from("S"));
 		const profiles: Record<string, { name: string; avatar: string }> = {
 			"s-bili": { name: "B 站甲", avatar: "https://i0.hdslb.com/a.jpg" },
-			"s-dy": { name: "抖音乙", avatar: "/api/subs/s-dy/avatar?v=abc" },
+			"s-dy": { name: "抖音乙", avatar: "/api/subscriptions/s-dy/avatar?v=abc" },
 		};
 		const deps = {
 			runtime: {

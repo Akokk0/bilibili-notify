@@ -79,9 +79,9 @@ beforeEach(() => {
 	subs = [BILI, extSub()];
 	events = ["post"];
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (url === "/api/subs/tags") return Promise.resolve([]);
-		if (url === "/api/subs") return Promise.resolve(subs);
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (url === "/api/subscriptions/tags") return Promise.resolve([]);
+		if (url === "/api/subscriptions") return Promise.resolve(subs);
 		if (url === "/api/ext") return Promise.resolve({ extensions: [source(events)] });
 		return Promise.resolve(globals());
 	});
@@ -272,7 +272,7 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
 
 		await saveIsland();
-		expect(api.patch).toHaveBeenCalledWith(`/api/subs/${ext.id}`, {
+		expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${ext.id}`, {
 			overrides: { schedule: { quietHours: [{ start: 23, end: 7 }] } },
 		});
 	});
@@ -289,7 +289,7 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 		await waitFor(() => expect(diffCodes().length).toBeGreaterThan(0));
 
 		await saveIsland();
-		expect(api.patch).toHaveBeenCalledWith(`/api/subs/${ext.id}`, {
+		expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${ext.id}`, {
 			overrides: { templates: null },
 		});
 	});
@@ -312,7 +312,7 @@ describe("高级规则 × 拓展订阅:存与清", () => {
 		fireEvent.click(screen.getByRole("button", { name: "移除" }));
 
 		await waitFor(() =>
-			expect(api.patch).toHaveBeenCalledWith(`/api/subs/${ext.id}`, {
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${ext.id}`, {
 				overrides: { templates: null },
 			}),
 		);

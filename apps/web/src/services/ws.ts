@@ -80,7 +80,7 @@ function defaultBaseUrl(): string {
  */
 async function fetchWsTicket(): Promise<string | null> {
 	try {
-		const res = await fetch("/api/auth/ws-ticket", {
+		const res = await fetch("/api/ws/ticket", {
 			method: "POST",
 			headers: withDesktopTokenHeader(),
 			credentials: "include",

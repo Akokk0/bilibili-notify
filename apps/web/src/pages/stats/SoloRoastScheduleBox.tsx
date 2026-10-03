@@ -28,7 +28,7 @@ export function SoloRoastScheduleBox({
 	const qc = useQueryClient();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -51,7 +51,7 @@ export function SoloRoastScheduleBox({
 			if (!sub) return;
 			// 整份回传:服务端 deepMerge 对数组是整体替换,所以 targets 清空也是
 			// 一次真的清除,不必再走 buildPatch。
-			await api.patch<Subscription>(`/api/subs/${sub.id}`, { roastSchedule: next });
+			await api.patch<Subscription>(`/api/subscriptions/${sub.id}`, { roastSchedule: next });
 		},
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
 	});

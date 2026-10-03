@@ -15,7 +15,7 @@ interface ExportedEnvelope {
 	createdAt?: string;
 }
 
-/** What the dashboard sends to `/api/backup/import`. */
+/** What the dashboard sends to `/api/system/backup/import`. */
 interface ImportRequest {
 	backup: unknown;
 	mode: "overwrite" | "merge";
@@ -66,7 +66,7 @@ export function BackupSection() {
 		setError(null);
 		setNotice(null);
 		try {
-			const env = await api.post<ExportedEnvelope>("/api/backup/export", opts);
+			const env = await api.post<ExportedEnvelope>("/api/system/backup/export", opts);
 			downloadJson(backupFilename(opts.kind, env.createdAt ?? ""), env);
 			setDialog(null);
 			setNotice(
@@ -91,7 +91,10 @@ export function BackupSection() {
 		setError(null);
 		setNotice(null);
 		try {
-			const plan = await api.post<ImportResult>("/api/backup/import", { ...req, dryRun: true });
+			const plan = await api.post<ImportResult>("/api/system/backup/import", {
+				...req,
+				dryRun: true,
+			});
 			if (deletions(plan).length > 0) {
 				setPending({ req, plan });
 				return;
@@ -109,7 +112,10 @@ export function BackupSection() {
 		setBusy(true);
 		setError(null);
 		try {
-			const result = await api.post<ImportResult>("/api/backup/import", { ...req, dryRun: false });
+			const result = await api.post<ImportResult>("/api/system/backup/import", {
+				...req,
+				dryRun: false,
+			});
 			setPending(null);
 			setDialog(null);
 			setNotice(summarizeImport(result, kindOf(req.backup)));

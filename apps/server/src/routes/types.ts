@@ -19,7 +19,7 @@ export interface RouteDeps {
 	 */
 	puppeteer: PuppeteerAdapter | null;
 	/**
-	 * WS upgrade 鉴权 ticket 签发器。`POST /api/auth/ws-ticket` 调 issue();
+	 * WS upgrade 鉴权 ticket 签发器。`POST /api/ws/ticket` 调 issue();
 	 * `ws/server.ts` upgrade handler 调 consume() 完成一次性鉴权。null = basicAuth
 	 * 未启用,WS 直接放行(同 REST 路径)。
 	 */

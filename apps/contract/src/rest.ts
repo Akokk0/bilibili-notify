@@ -47,7 +47,7 @@ export type {
 	FansRefreshEntry,
 	HistoryMessageRole,
 	PushStatus,
-	// `/api/subs/tags` 的一格(ADR-0034):`GET` 回整张、`PUT` 收整张。
+	// `/api/subscriptions/tags` 的一格(ADR-0034):`GET` 回整张、`PUT` 收整张。
 	SubscriptionTag,
 };
 
@@ -209,7 +209,7 @@ export interface ExtensionLookupResponse {
 // ---- /api/ext/:id/settings(ADR-0019 决策 35)------------------------------------
 //
 // 拓展设置自己的读写口。存储在拓展自己的文件 `config/settings/extensions/<id>.json`,不经
-// `PATCH /api/globals` 整份写回:列表整份替换时两发交错就丢一发,`id` 不可变与密钥占位回填
+// `PATCH /api/settings` 整份写回:列表整份替换时两发交错就丢一发,`id` 不可变与密钥占位回填
 // 也都表达不了。这里按项写、带版本号。
 
 /**
@@ -448,7 +448,7 @@ export interface MarketplaceInstallRequest {
 	id: string;
 }
 
-// ---- /api/subs ------------------------------------------------------------
+// ---- /api/subscriptions ------------------------------------------------------------
 
 /**
  * `Subscription` 的 wire 形状:internal 域模型 + 服务端 SubRuntimeStore join
@@ -459,10 +459,10 @@ export interface MarketplaceInstallRequest {
  *
  * `identity.sourceKey` 是拓展 id 时:
  *
- * - `cachedProfile.avatar` 是同源的**相对地址** `/api/subs/<id>/avatar?v=<摘要>`(决策 49:头像存成
+ * - `cachedProfile.avatar` 是同源的**相对地址** `/api/subscriptions/<id>/avatar?v=<摘要>`(决策 49:头像存成
  *   文件,走面板鉴权;换了图 `v` 就变,可以放心缓存),没有头像是空串。`cachedProfile.fans` 可能没有
  *   —— 拓展不一定知道粉丝数,别补成 0。
- * - **新建**(`POST /api/subs`,`id` 还不存在):body 是整条订阅,外加可选的 `cachedProfile` —— 放面板
+ * - **新建**(`POST /api/subscriptions`,`id` 还不存在):body 是整条订阅,外加可选的 `cachedProfile` —— 放面板
  *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatar?, fans? }`,`avatar` 就是候选
  *   里那个位图 data URL。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),头像存成文件后资料里
  *   换成上面那个地址。宿主先核,都过了才落盘:`identity.sourceKey` 这个拓展得是装着的 v2 订阅源
@@ -596,7 +596,7 @@ export interface HistoryDailyResponse {
 	days: DailyHistoryCount[];
 }
 
-// ---- /api/logs -------------------------------------------------------------
+// ---- /api/system/logs -------------------------------------------------------------
 
 /** Archived line shape. `args` kept as opaque JSON (already redacted). */
 export interface LogArchiveEntry {
@@ -814,7 +814,7 @@ export type StatsRoastRunOutcome =
 	  };
 
 /**
- * `POST /api/stats/roast/run-now` 响应(200):这一轮跑完的结局。服务还没就绪是非 2xx 的
+ * `POST /api/stats/roast/run` 响应(200):这一轮跑完的结局。服务还没就绪是非 2xx 的
  * {@link ErrorResponse};这一轮里抛了异常是 bug,交给全局出错处理(原话进日志,面板只拿一句固定的话)。
  */
 export interface StatsRoastRunNowResponse {
@@ -828,16 +828,16 @@ export interface StatsOverviewResponse {
 	rows: UpStatsRow[];
 }
 
-// ---- /api/fans -------------------------------------------------------------
+// ---- /api/stats/followers -------------------------------------------------------------
 
 export interface FansResponse {
 	entries: FansRefreshEntry[];
 }
 
-// ---- 测试推送类端点(/api/push /api/cards /api/ai) --------------------------
+// ---- 测试推送类端点(/api/targets/:id/test /api/cards /api/ai) ---------------
 
 /**
- * `POST /api/push/test` 响应(targetId 在 body 里):试了一次、回报结果,**照旧回 200**,
+ * `POST /api/targets/:id/test` 响应(目标 id 在路径里):试了一次、回报结果,**照旧回 200**,
  * 体是 `Result<{ latencyMs }>` —— 送达了是 `{ ok: true, latencyMs }`,没送达是 `{ ok: false, code, message }`,
  * 面板读 `message` 显示。耗时只在成功那一支:没真发出去的失败不带一个假的 `latencyMs: 0`。
  *
@@ -846,13 +846,13 @@ export interface FansResponse {
 export type TestResponse = Result<{ latencyMs: number }>;
 
 /**
- * `POST /api/connections/:id/test` 响应:探一次连接通不通,形状同 {@link TestResponse}。
+ * `POST /api/connections/:id/probe` 响应:探一次连接通不通,形状同 {@link TestResponse}。
  * 这个平台没有探测协议(比如 webhook)是失败那一支的 `unsupported`,不是通、也不是不通。
  */
 export type ConnectionTestResponse = Result<{ latencyMs: number }>;
 
 /**
- * `POST /api/cards/test-push` 响应:渲染一张卡片推给所选目标,试了一次、回报结果,**照旧回 200**,
+ * `POST /api/cards/test` 响应:渲染一张卡片推给所选目标,试了一次、回报结果,**照旧回 200**,
  * 体是 `Result<{ latencyMs }>` —— 形状同 {@link TestResponse}(送达带耗时,没送达带码和原话,不带假的耗时)。
  * 渲染没成也是失败那一支(`unavailable`,原话进 `message`)。
  *
@@ -861,7 +861,7 @@ export type ConnectionTestResponse = Result<{ latencyMs: number }>;
 export type TestPushResponse = Result<{ latencyMs: number }>;
 
 /**
- * `POST /api/ai/test-push` 响应:让女仆回一句、真实推给所选目标,试了一次、回报结果,**照旧回 200**,
+ * `POST /api/ai/test` 响应:让女仆回一句、真实推给所选目标,试了一次、回报结果,**照旧回 200**,
  * 体是 `Result<…>` —— 送达了是 `{ ok: true, latencyMs, reply }`(`reply` 供页面回显,耗时只在成功那一支),
  * 女仆没答上来(模型那头的错、网络)或没送达是 `{ ok: false, code, message }`,`message` 带对端给的原因。
  *
@@ -1056,7 +1056,7 @@ export interface ChromeSourceDTO {
 	chromeEndpoint?: string;
 }
 
-/** `GET /api/cards/render-source` 响应 —— System 页「卡片渲染浏览器」区的数据源。 */
+/** `GET /api/cards/renderer` 响应 —— System 页「卡片渲染浏览器」区的数据源。 */
 export interface RenderSourceResponse {
 	/** 渲染器当前是否可用(有 adapter 在位)。 */
 	enabled: boolean;
@@ -1067,7 +1067,7 @@ export interface RenderSourceResponse {
 }
 
 /**
- * `POST /api/cards/enable-rendering` 响应(成功那一支)。启用不成(体不对、引擎没起、浏览器连不上、
+ * `POST /api/cards/renderer` 响应(成功那一支)。启用不成(体不对、引擎没起、浏览器连不上、
  * 配置写不进去)一律是非 2xx 的 {@link ErrorResponse},这里不再有 `ok: false`。
  */
 export interface EnableRenderingResponse {
@@ -1116,7 +1116,7 @@ export type QQBindPollResult =
 	/** 扫码侧完成但凭据缺失/解不开 —— 业务态错误,与上游故障(抛错)区分。 */
 	| { status: "error"; message: string };
 
-// ---- /api/backup ------------------------------------------------------------
+// ---- /api/system/backup ------------------------------------------------------------
 
 /** What an import did — or, under `dryRun`, what it *would* do. */
 export interface ImportResult {

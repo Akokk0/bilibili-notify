@@ -137,7 +137,7 @@ function extSub(overrides: Parameters<typeof makeExtensionSubscription>[0] = {})
 }
 
 function post(body: unknown) {
-	return app.request("/api/subs", {
+	return app.request("/api/subscriptions", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
@@ -145,7 +145,7 @@ function post(body: unknown) {
 }
 
 async function listed(): Promise<SubscriptionDTO[]> {
-	return (await (await app.request("/api/subs")).json()) as SubscriptionDTO[];
+	return (await (await app.request("/api/subscriptions")).json()) as SubscriptionDTO[];
 }
 
 async function avatarFiles(): Promise<string[]> {
@@ -185,7 +185,9 @@ describe("新建拓展订阅", () => {
 		expect(row).toMatchObject({ identity: { sourceKey: "douyin", externalId: "sec-1" } });
 		const profile = row?.cachedProfile;
 		expect(profile).toMatchObject({ name: "抖音某人", sign: "", fans: 42 });
-		expect(profile?.avatar).toMatch(new RegExp(`^/api/subs/${SUB_ID}/avatar\\?v=[0-9a-f]{12}$`));
+		expect(profile?.avatar).toMatch(
+			new RegExp(`^/api/subscriptions/${SUB_ID}/avatar\\?v=[0-9a-f]{12}$`),
+		);
 		expect(Date.parse(profile?.lastRefreshedAt ?? "")).toBeGreaterThanOrEqual(before - 1000);
 
 		// 落了盘:订阅那个文件里有它(带 identity),头像文件在。
@@ -482,12 +484,12 @@ describe("已有的照旧", () => {
 	});
 });
 
-describe("GET /api/subs/:id/avatar", () => {
+describe("GET /api/subscriptions/:id/avatar", () => {
 	it("没有头像 → 404 not_found;id 不是 uuid → 400 invalid", async () => {
-		const missing = await app.request(`/api/subs/${SUB_ID}/avatar`);
+		const missing = await app.request(`/api/subscriptions/${SUB_ID}/avatar`);
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ code: "not_found", message: "这条订阅没有头像" });
-		const bad = await app.request("/api/subs/not-a-uuid/avatar");
+		const bad = await app.request("/api/subscriptions/not-a-uuid/avatar");
 		expect(bad.status).toBe(400);
 		expect(await bad.json()).toEqual({ code: "invalid", message: "订阅 id 要是 uuid" });
 	});
@@ -508,11 +510,13 @@ describe("删订阅", () => {
 		).toBe(200);
 		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`, `${OTHER_ID}.png`].sort());
 
-		expect((await app.request(`/api/subs/${SUB_ID}`, { method: "DELETE" })).status).toBe(204);
+		expect((await app.request(`/api/subscriptions/${SUB_ID}`, { method: "DELETE" })).status).toBe(
+			204,
+		);
 
 		await vi.waitFor(async () => {
 			expect(await avatarFiles()).toEqual([`${OTHER_ID}.png`]);
 		});
-		expect((await app.request(`/api/subs/${SUB_ID}/avatar`)).status).toBe(404);
+		expect((await app.request(`/api/subscriptions/${SUB_ID}/avatar`)).status).toBe(404);
 	});
 });

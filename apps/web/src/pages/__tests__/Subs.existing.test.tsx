@@ -59,12 +59,12 @@ beforeEach(() => {
 	subs = [BILI];
 	extensions = [];
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path.startsWith("/api/subs/lookup")) {
+		if (path.startsWith("/api/subscriptions/lookup")) {
 			// 不论查谁,都回那个 uid 的资料:名字与列表里那张卡不同,免得认混。
 			const uid = new URL(path, "http://x").searchParams.get("uid") ?? "";
 			return Promise.resolve(profileOf(uid, `查到的 ${uid}`));
 		}
-		if (path.startsWith("/api/subs/search")) {
+		if (path.startsWith("/api/subscriptions/search")) {
 			return Promise.resolve({
 				results: [profileOf("111", "搜到的甲"), profileOf("222", "搜到的乙")],
 				page: 1,
@@ -72,9 +72,9 @@ beforeEach(() => {
 				total: 2,
 			});
 		}
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (path === "/api/subs/tags") return Promise.resolve([]);
-		if (path === "/api/subs") return Promise.resolve(subs);
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
+		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
 		if (path.startsWith("/api/ext/douyin/lookup")) {
 			return Promise.resolve({

@@ -77,7 +77,7 @@ const EXT_SUB: Subscription = {
 	// 拓展的头像是面板里的同源相对地址(资料上报存成文件),页面上照样画得出来。
 	cachedProfile: {
 		name: "抖音乙",
-		avatar: "/api/subs/s-dy/avatar?v=abc",
+		avatar: "/api/subscriptions/s-dy/avatar?v=abc",
 		sign: "",
 		lastRefreshedAt: "2026-09-24T00:00:00Z",
 	},
@@ -100,7 +100,7 @@ const DOUYIN: ExtensionDTO = {
 function mockApi(rows: UpStatsRow[], subs: Subscription[], extensions: ExtensionDTO[] = [DOUYIN]) {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
 		if (path.startsWith("/api/stats/overview")) return Promise.resolve({ days: DAYS, rows });
-		if (path === "/api/subs") return Promise.resolve(subs);
+		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
 		// 锐评那几张卡要的全局配置 / 推送目标 / 连接:这里不关心,一直等着。
 		return new Promise(() => {});
@@ -155,7 +155,7 @@ describe("统计页 · 拓展订阅的行", () => {
 
 		const ext = tableRow("抖音乙");
 		expect(within(ext).getByText("抖")).toBeTruthy();
-		expect(ext.querySelector('img[src="/api/subs/s-dy/avatar?v=abc"]')).not.toBeNull();
+		expect(ext.querySelector('img[src="/api/subscriptions/s-dy/avatar?v=abc"]')).not.toBeNull();
 		expect(within(ext).getByText(/直播中/)).toBeTruthy();
 		const bili = tableRow("B 站甲");
 		expect(within(bili).queryByText("抖")).toBeNull();
@@ -298,7 +298,7 @@ describe("统计页 · 锐评两支都管(ADR-0020 决策 12 / 14 / 18)", () => 
 		await userEvent.click(await screen.findByRole("button", { name: "真的发出去" }));
 		await waitFor(() => expect(api.post).toHaveBeenCalled());
 		expect((api.post as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
-			`/api/stats/roast/run-now/${encodeURIComponent(ODD_ID)}`,
+			`/api/stats/roast/run/${encodeURIComponent(ODD_ID)}`,
 		);
 	});
 

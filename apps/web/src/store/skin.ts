@@ -27,7 +27,7 @@ export interface ActiveSkinSlots {
 export const EMPTY_SLOTS: ActiveSkinSlots = { light: null, dark: null };
 
 export interface SkinState {
-	/** 服务端已启用的双槽皮肤(GET /api/skins/active)。 */
+	/** 服务端已启用的双槽皮肤(GET /api/dashboard/skins/active)。 */
 	active: ActiveSkinSlots;
 	/** 试穿中的皮肤(不落盘,刷新即失);优先于 active,也无视 killSwitch —— 逃生舱下还得能挑新皮肤。 */
 	preview: PreviewSkin | null;

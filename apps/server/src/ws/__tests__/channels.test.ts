@@ -45,7 +45,7 @@ describe("buildStateHydrate", () => {
 	 * 这条钉的是「**不带载荷**」。
 	 *
 	 * 原来它打包 { globals, subscriptions, targets },而 globals 里有各家 AI 的
-	 * 明文 apiKey 与联网搜索 key —— `GET /api/globals` 早就走 redactGlobals 脱敏了
+	 * 明文 apiKey 与联网搜索 key —— `GET /api/settings` 早就走 redactGlobals 脱敏了
 	 * (25e4210),WS 这条路漏了。客户端 handleStateEnvelope 又一个字节都不读,
 	 * 只 invalidate 三个 query,所以明文一路传过去然后进垃圾。
 	 *

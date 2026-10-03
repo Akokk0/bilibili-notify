@@ -39,12 +39,12 @@ const H = vi.hoisted(() => ({
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
-			if (path === "/api/skins") return H.list;
-			if (path === "/api/skins/active") {
+			if (path === "/api/dashboard/skins") return H.list;
+			if (path === "/api/dashboard/skins/active") {
 				const slot = (id: string | null) => (id ? { id, manifest: H.manifest } : null);
 				return { active: { light: slot(H.list.active.light), dark: slot(H.list.active.dark) } };
 			}
-			if (path === "/api/skins/s1/manifest") return { manifest: H.manifest, assets: [] };
+			if (path === "/api/dashboard/skins/s1/manifest") return { manifest: H.manifest, assets: [] };
 			throw new Error(`unexpected GET ${path}`);
 		}),
 		put: vi.fn(async (_path: string, body: unknown) => {
@@ -230,21 +230,21 @@ describe("删除 —— 双色皮肤可以只删一色", () => {
 		await openDeleteDialog();
 		fireEvent.click(await screen.findByRole("button", { name: /只删浅色/ }));
 		await waitFor(() => expect(del()).toHaveBeenCalled());
-		expect(del().mock.calls[0]?.[0]).toBe("/api/skins/s1/modes/light");
+		expect(del().mock.calls[0]?.[0]).toBe("/api/dashboard/skins/s1/modes/light");
 	});
 
 	it("只删深色 → 同上,主人挑哪色就发哪色", async () => {
 		await openDeleteDialog();
 		fireEvent.click(await screen.findByRole("button", { name: /只删深色/ }));
 		await waitFor(() => expect(del()).toHaveBeenCalled());
-		expect(del().mock.calls[0]?.[0]).toBe("/api/skins/s1/modes/dark");
+		expect(del().mock.calls[0]?.[0]).toBe("/api/dashboard/skins/s1/modes/dark");
 	});
 
 	it("删除整套 → 还是老那条路", async () => {
 		await openDeleteDialog();
 		fireEvent.click(await screen.findByRole("button", { name: /删除整套/ }));
 		await waitFor(() => expect(del()).toHaveBeenCalled());
-		expect(del().mock.calls[0]?.[0]).toBe("/api/skins/s1");
+		expect(del().mock.calls[0]?.[0]).toBe("/api/dashboard/skins/s1");
 	});
 
 	it("单色皮肤 → 照旧是一句「确定删除吗」,不摆一排选不动的按钮", async () => {

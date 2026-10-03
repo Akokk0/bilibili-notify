@@ -23,7 +23,8 @@ import {
 	translateSkinCssHooks,
 } from "../skin";
 
-const assetUrl = (name: string) => `/api/skins/abc/assets/${name.slice("assets/".length)}`;
+const assetUrl = (name: string) =>
+	`/api/dashboard/skins/abc/assets/${name.slice("assets/".length)}`;
 
 describe("composeSkinVars", () => {
 	it("colors 语义键映射到内部 --bn-* 变量", () => {
@@ -48,7 +49,7 @@ describe("composeSkinVars", () => {
 			wallpaper: { image: "assets/bg.webp", fit: "cover", overlay: 0.3 },
 		};
 		const light = composeSkinVars(mode, assetUrl, "light");
-		expect(light["--bn-page-bg"]).toContain('url("/api/skins/abc/assets/bg.webp")');
+		expect(light["--bn-page-bg"]).toContain('url("/api/dashboard/skins/abc/assets/bg.webp")');
 		expect(light["--bn-page-bg"]).toContain("rgba(255, 255, 255, 0.3)");
 		expect(light["--bn-page-bg"]).toContain("cover");
 		expect(light["--bn-page-bg"]).not.toContain("#000000");
@@ -155,7 +156,7 @@ describe("composeWallpaperCss(壁纸糊化层)", () => {
 		expect(css).toContain("filter:blur(12px)");
 		// 负 inset 外扩,遮掉 blur 的边缘透底
 		expect(css).toContain("inset:-24px");
-		expect(css).toContain('url("/api/skins/abc/assets/bg.webp")');
+		expect(css).toContain('url("/api/dashboard/skins/abc/assets/bg.webp")');
 		expect(css).toContain("rgba(255, 255, 255, 0.3)");
 		// 纱色照旧跟模式走
 		expect(composeWallpaperCss({ wallpaper: { ...wp } }, assetUrl, "dark")).toContain(
@@ -185,7 +186,7 @@ describe("composeFontFaceCss(自带字体)", () => {
 		// 字库有八九兆,拉完才发现不支持是实打实的浪费。
 		const css = composeFontFaceCss({ fonts: { asset: "assets/font-a1.woff2" } }, assetUrl);
 		expect(css).toContain('font-family:"bn-skin-font"');
-		expect(css).toContain('url("/api/skins/abc/assets/font-a1.woff2")');
+		expect(css).toContain('url("/api/dashboard/skins/abc/assets/font-a1.woff2")');
 		expect(css).toContain('format("woff2")');
 	});
 
@@ -516,7 +517,7 @@ describe("chat 变量(强调色/辉光/玻璃全走 styles.css 的 token 派生�
 			assetUrl,
 			"light",
 		);
-		expect(bare["--bn-chat-bg"]).toContain('url("/api/skins/abc/assets/c.webp")');
+		expect(bare["--bn-chat-bg"]).toContain('url("/api/dashboard/skins/abc/assets/c.webp")');
 		expect(bare["--bn-chat-bg"]).toContain("rgba(255, 255, 255, 0.3)");
 		// 没配 background 也要有实底兜住 contain/tile 的留白(var 只能当渐变的颜色参数用,
 		// --bn-page-bg 是多层列表不能进渐变,所以兜底用单色 token 包渐变)
@@ -544,7 +545,7 @@ describe("chat 变量(强调色/辉光/玻璃全走 styles.css 的 token 派生�
 		const css = composeChatWallpaperCss(mode, assetUrl, "light");
 		expect(css).toContain("[data-bn-chat-root]::before");
 		expect(css).toContain("blur(10px)");
-		expect(css).toContain('url("/api/skins/abc/assets/c.webp")');
+		expect(css).toContain('url("/api/dashboard/skins/abc/assets/c.webp")');
 	});
 
 	it("chat 壁纸没配或 blur=0 → composeChatWallpaperCss 输出空串", () => {

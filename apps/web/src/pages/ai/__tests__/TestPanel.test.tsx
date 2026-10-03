@@ -59,7 +59,7 @@ afterEach(() => {
 });
 
 describe("AI 试一句面板", () => {
-	it("选目标 + 递一句话 → 带着草稿人格打 /api/ai/test-push,并就地显示回复", async () => {
+	it("选目标 + 递一句话 → 带着草稿人格打 /api/ai/test,并就地显示回复", async () => {
 		vi.mocked(api.get).mockResolvedValue(TARGETS);
 		vi.mocked(api.post).mockResolvedValue({
 			ok: true,
@@ -75,7 +75,7 @@ describe("AI 试一句面板", () => {
 		fireEvent.click(screen.getByRole("button", { name: /试一句/ }));
 
 		await waitFor(() => {
-			expect(api.post).toHaveBeenCalledWith("/api/ai/test-push", {
+			expect(api.post).toHaveBeenCalledWith("/api/ai/test", {
 				targetId: TARGETS[1]?.id,
 				message: "今天过得怎么样?",
 				ai: DRAFT, // 草稿原样送上 —— 未保存的人格也要生效

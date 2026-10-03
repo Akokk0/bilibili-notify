@@ -1,5 +1,5 @@
 /**
- * 皮肤库列表(`GET /api/card-skins`)的那一份 react-query 缓存,以及「换上这套」那个动作。
+ * 皮肤库列表(`GET /api/cards/skins`)的那一份 react-query 缓存,以及「换上这套」那个动作。
  *
  * 单独成模,是因为读它的地方已经有三处(皮肤库一节、per-UP 的「用哪套」下拉、旋钮区),
  * 而它们必须共用**同一个 key** —— 各写各的 key 等于各拉一趟,装完包只刷新其中一块。
@@ -13,20 +13,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 
 /** 皮肤库列表的 react-query 键。 */
-export const CARD_SKINS_KEY = ["card-skins"] as const;
+export const CARD_SKINS_KEY = ["cards", "skins"] as const;
 
 export function useCardSkinList() {
 	return useQuery({
 		queryKey: CARD_SKINS_KEY,
-		queryFn: () => api.get<CardSkinListResponse>("/api/card-skins"),
+		queryFn: () => api.get<CardSkinListResponse>("/api/cards/skins"),
 	});
 }
 
 /**
- * 启用某一套卡片皮肤(`PUT /api/card-skins/active`)。
+ * 启用某一套卡片皮肤(`PUT /api/cards/skins/active`)。
  *
  * **它要作废两个 key,少一个就静默出错**:列表自己那份(`CARD_SKINS_KEY`,「使用中」
- * 徽标读的是它),以及 `["globals"]` —— **启用指针住在 `globals.defaults.cardSkin`,
+ * 徽标读的是它),以及 `["settings"]` —— **启用指针住在 `globals.defaults.cardSkin`,
  * 不在店里**,读 globals 的那些地方(卡片预览、灵动岛基线)不重取就还是旧的。
  *
  * 按这颗钮的地方现在有两处(皮肤库那一节、卡片工坊回复末尾的预览块),所以封在这里
@@ -40,10 +40,10 @@ export function useActivateCardSkin(
 ) {
 	const qc = useQueryClient();
 	return useMutation<{ ok: boolean }, Error, string>({
-		mutationFn: (id) => api.put<{ ok: boolean }>("/api/card-skins/active", { id }),
+		mutationFn: (id) => api.put<{ ok: boolean }>("/api/cards/skins/active", { id }),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: CARD_SKINS_KEY });
-			void qc.invalidateQueries({ queryKey: ["globals"] });
+			void qc.invalidateQueries({ queryKey: ["settings"] });
 			opts.onSuccess?.();
 		},
 		onError: (e) => opts.onError?.(String(e.message)),

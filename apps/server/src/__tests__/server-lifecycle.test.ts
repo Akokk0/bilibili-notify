@@ -258,7 +258,7 @@ describe("server lifecycle", () => {
 			shutdownTimeoutMs: 1_000,
 		});
 		const url = handle.url;
-		const patched = await fetch(`${url}/api/globals`, {
+		const patched = await fetch(`${url}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ extensions: { demo: { enabled: true } } }),

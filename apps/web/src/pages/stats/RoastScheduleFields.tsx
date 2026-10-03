@@ -101,8 +101,8 @@ export function RoastScheduleCard({
  */
 export function useApprovalReachability(): { canApprove: boolean; hint?: string } {
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],

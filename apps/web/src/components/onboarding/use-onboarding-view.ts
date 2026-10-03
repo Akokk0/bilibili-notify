@@ -57,7 +57,7 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	const enabled = opts?.active ?? true;
 	const subsQ = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 		enabled,
 	});
 	const connectionsQ = useQuery({

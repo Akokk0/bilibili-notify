@@ -17,7 +17,7 @@ import type { RouteDeps } from "./types.js";
 export const REDACTED_API_KEY = "__BN_REDACTED__";
 
 /**
- * `/api/globals` — read + patch the runtime settings: the core GlobalConfig plus each registered
+ * `/api/settings` — read + patch the runtime settings: the core GlobalConfig plus each registered
  * integration's settings under its key (today `bilibili`, ADR-0021 decision 42's 10-01 🔗).
  *
  * - GET: returns a snapshot (core keys at the top level, each integration's settings under its key)
@@ -37,7 +37,7 @@ export const REDACTED_API_KEY = "__BN_REDACTED__";
  * 对端暂时不通的是 `unavailable`,超时是 `timeout`,被限速是 `rate_limited`。
  * 别名撞名是 `conflict` 409,拓展设置走错了口子是 `invalid`。
  */
-export function createGlobalsRoute(deps: RouteDeps): Hono {
+export function createSettingsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
@@ -92,7 +92,7 @@ export function createGlobalsRoute(deps: RouteDeps): Hono {
 			return c.json(publicSettings(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
-			log.error("PATCH /api/globals failed", err);
+			log.error("PATCH /api/settings failed", err);
 			throw err;
 		}
 	});
@@ -115,14 +115,14 @@ function extensionSettingsWriteOf(patch: Record<string, unknown>): string | unde
 	if (!("extensions" in patch)) return undefined;
 	const table = patch.extensions;
 	const moved = (id: string) =>
-		`拓展设置不再经 /api/globals 写,改走 /api/ext/${id}/settings(按项写、带版本号)—— ` +
+		`拓展设置不再经 /api/settings 写,改走 /api/ext/${id}/settings(按项写、带版本号)—— ` +
 		"这个面板多半是更新之前的旧版,刷新一下再改";
 	if (typeof table !== "object" || table === null || Array.isArray(table)) {
-		return "拓展表不能经 /api/globals 整张替换或清掉 —— 开关逐个拨(extensions.<id>.enabled),设置走 /api/ext/<id>/settings";
+		return "拓展表不能经 /api/settings 整张替换或清掉 —— 开关逐个拨(extensions.<id>.enabled),设置走 /api/ext/<id>/settings";
 	}
 	for (const [id, slot] of Object.entries(table)) {
 		if (slot === null) {
-			return `拓展 ${id} 那一格不能经 /api/globals 整个清掉(连它的设置一起)—— 卸载走 DELETE /api/ext/${id}`;
+			return `拓展 ${id} 那一格不能经 /api/settings 整个清掉(连它的设置一起)—— 卸载走 DELETE /api/ext/${id}`;
 		}
 		if (typeof slot === "object" && "settings" in slot) return moved(id);
 	}

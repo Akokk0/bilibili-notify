@@ -38,13 +38,13 @@ function serve(state: UpdateStatusDTO["state"], over: Partial<UpdateStatusDTO> =
 		...over,
 	};
 	vi.mocked(api.get).mockImplementation(async (path: string) => {
-		if (path === "/api/update") return status;
+		if (path === "/api/system/update") return status;
 		if (path === "/api/health") return health.next();
 		return { update: SETTINGS };
 	});
 	// `POST /apply` 的回话:服务端说要换掉的是哪个进程(startedAt)、换到哪(target / mode)。
 	vi.mocked(api.post).mockImplementation(async (path: string) => {
-		if (path !== "/api/update/apply") return {};
+		if (path !== "/api/system/update/apply") return {};
 		return {
 			restarting: true,
 			startedAt: OLD.startedAt,
@@ -232,7 +232,7 @@ describe("UpdateSection —— 设置", () => {
 		await userEvent.click(screen.getByRole("button", { name: "预发布" }));
 
 		await waitFor(() =>
-			expect(api.patch).toHaveBeenCalledWith("/api/globals", {
+			expect(api.patch).toHaveBeenCalledWith("/api/settings", {
 				update: { channel: "prerelease" },
 			}),
 		);
@@ -351,7 +351,7 @@ describe("UpdateSection —— 从别处「去更新」跳过来", () => {
 			state: { phase: "idle" },
 		};
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
-			if (path === "/api/update") {
+			if (path === "/api/system/update") {
 				await gate;
 				return status;
 			}
@@ -410,7 +410,7 @@ describe("UpdateSection —— 按下重启之后", () => {
 		await userEvent.click(await screen.findByRole("button", { name: /立即重启/ }));
 
 		await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
-		expect(api.post).toHaveBeenCalledWith("/api/update/apply", {});
+		expect(api.post).toHaveBeenCalledWith("/api/system/update/apply", {});
 		expect(vi.mocked(api.get).mock.calls.filter(([p]) => p === "/api/health")).toHaveLength(3);
 		expect(JSON.parse(sessionStorage.getItem("bn.update.restarted") ?? "null")).toEqual({
 			target: "0.9.0",
@@ -464,7 +464,9 @@ describe("UpdateSection —— 按下重启之后", () => {
 		expect(note.textContent).toContain("0.9.0");
 		expect(reload).not.toHaveBeenCalled();
 		await waitFor(() =>
-			expect(vi.mocked(api.get).mock.calls.filter(([p]) => p === "/api/update").length).toBe(2),
+			expect(vi.mocked(api.get).mock.calls.filter(([p]) => p === "/api/system/update").length).toBe(
+				2,
+			),
 		);
 		expect(sessionStorage.getItem("bn.update.restarted")).toBeNull();
 	});
@@ -500,7 +502,7 @@ describe("UpdateSection —— 按下重启之后", () => {
 	it("重启指令本身没发出去 → 把原因摆出来,不进入等待", async () => {
 		serve(READY);
 		vi.mocked(api.post).mockRejectedValue(
-			new Error("连接中断，POST /api/update/apply 没有拿到服务器响应"),
+			new Error("连接中断，POST /api/system/update/apply 没有拿到服务器响应"),
 		);
 		renderSection("/system", QUICK);
 

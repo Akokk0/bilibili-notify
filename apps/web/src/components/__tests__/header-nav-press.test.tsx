@@ -26,7 +26,7 @@ import { ThemeRoot } from "../theme-root";
 const apiGet = vi.hoisted(() =>
 	vi.fn(async (path: string) => {
 		if (path === "/api/health") return { status: "ok", uptime: 1 };
-		if (path === "/api/subs") return [];
+		if (path === "/api/subscriptions") return [];
 		if (path === "/api/targets") return [];
 		return null;
 	}),

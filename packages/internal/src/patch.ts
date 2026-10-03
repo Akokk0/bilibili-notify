@@ -28,7 +28,7 @@
  *
  * ```ts
  * // 只下发本页真正编辑的 scope(下发全量会触发服务端的 enable-check 探针)
- * await api.patch("/api/globals", buildPatch(
+ * await api.patch("/api/settings", buildPatch(
  *   { defaults: { filters: draft.defaults.filters } },
  *   { defaults: { filters: base.defaults.filters } },
  * ));

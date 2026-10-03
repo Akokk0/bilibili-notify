@@ -12,7 +12,7 @@ import { isConflict } from "./list-items";
 /**
  * 一个 v2 拓展的设置怎么读、怎么写(ADR-0019 决策 35)—— 设置表单与列表那一节**共用这一份**。
  *
- * 走拓展自己的口 `/api/ext/:id/settings`,不走 `/api/globals`:那条老路整份写回,两发交错就丢一发,
+ * 走拓展自己的口 `/api/ext/:id/settings`,不走 `/api/settings`:那条老路整份写回,两发交错就丢一发,
  * `id` 与密钥占位也表达不了;现在它既不下发也不收这一格。读回来的是 `{ revision, values }` ——
  * 密钥格只有服务端算好的头尾(`{ masked }`),写的时候带上读到的版本号、只发这一下改了的那几步。
  *

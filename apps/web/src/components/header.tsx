@@ -378,7 +378,7 @@ export function GlassHeader() {
 	const headerTitle = useSkinText("headerTitle") ?? "Bilibili Notify · 女仆值班室";
 	const subs = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 	const targets = useQuery({
 		queryKey: ["targets"],

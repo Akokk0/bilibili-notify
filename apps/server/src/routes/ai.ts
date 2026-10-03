@@ -51,8 +51,8 @@ import {
 	SKIN_MODE_SYSTEM_PROMPT,
 } from "../skins/chat-tool.js";
 import type { SkinStore } from "../skins/store.js";
-import { REDACTED_API_KEY } from "./globals.js";
 import { ENGINES_NOT_READY_MESSAGE, errorBodyOf, respondFailure } from "./respond-failure.js";
+import { REDACTED_API_KEY } from "./settings.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -62,7 +62,7 @@ import { uploadBodyLimit } from "./upload-limit.js";
  *
  * 拿 AI 页**当前草稿**的人格(可能还没保存)当 system prompt,用户递一句话 / 一个问题,
  * 让她回一句 → 真实推到指定的 PushTarget → 顺带把回复文本带回页面,调人格时不必跑去
- * QQ 里翻。与 `/api/cards/test-push`(草稿样式 + 真实推送)同形。
+ * QQ 里翻。与 `/api/cards/test`(草稿样式 + 真实推送)同形。
  */
 const TestPushRequestSchema = z.object({
 	targetId: z.uuid(),
@@ -126,7 +126,7 @@ export function createAiRoute(
 	/** 卡片工坊的 system 只由常量拼成,拼一次就够。 */
 	const cardWorkshopSystem = buildCardWorkshopSystem();
 
-	app.post("/test-push", async (c) => {
+	app.post("/test", async (c) => {
 		const body = (await c.req.json().catch(() => null)) as unknown;
 		const parsed = TestPushRequestSchema.safeParse(body);
 		if (!parsed.success) {
@@ -176,7 +176,7 @@ export function createAiRoute(
 
 	// ---- 女仆 AI 聊天 ------------------------------------------------------
 	//
-	// 与上面的 `/test-push` 分工:那条吃**页面草稿**、用完即弃的 generator,是在
+	// 与上面的 `/test` 分工:那条吃**页面草稿**、用完即弃的 generator,是在
 	// 调人格;这一族用**已保存**的配置和常驻的 commentary 实例,是在用配好的女仆
 	// 干活。会话落磁盘(ConversationStore),重启后接着聊。
 	const store = () => deps.runtime.conversationStore;
@@ -436,7 +436,7 @@ export function createAiRoute(
 			skinMode && !cardMode && opts?.skinStore
 				? createSkinChatTools({
 						skinStore: opts.skinStore,
-						// 热读同 ai-edit:engines 是后挂的,别做快照。
+						// 热读同 `/api/dashboard/skins/:id/ai`:engines 是后挂的,别做快照。
 						generator: () => deps.runtime.engines?.commentary ?? null,
 						/**
 						 * 壁纸的来源:主人这一问贴的图;**这一问空手就用捎来的那张** —— 跟
@@ -699,7 +699,7 @@ export function createAiRoute(
 }
 
 /**
- * 上限比 `/test-push` 的 500 宽得多:那条是「试一句人格」,这条是真聊天,主人
+ * 上限比 `/test` 的 500 宽得多:那条是「试一句人格」,这条是真聊天,主人
  * 可能整段贴一份文案进来让女仆改。
  */
 const ChatRequestSchema = z.object({
@@ -771,11 +771,11 @@ function toDetail(conv: Conversation): AiConversationDTO {
 /**
  * 草稿里的 apiKey → 真正拿去调 OpenAI 的那把 key。
  *
- * 前端 GET /api/globals 拿到的 apiKey 是 REDACTED 占位(真 key 从不出后端)。用户只要
+ * 前端 GET /api/settings 拿到的 apiKey 是 REDACTED 占位(真 key 从不出后端)。用户只要
  * 没动过那一栏,草稿回传的就是占位串本身 —— 原样拿去当 key 必然 401。占位 = 「没改」,
  * 回落到已存的真 key;否则用草稿里的新值(这样还没保存就能先试一把)。
  *
- * 与 `globals.ts` 的 `stripRedactedSecrets` 同一约定,共用同一个哨兵常量 —— 这个
+ * 与 `settings.ts` 的 `stripRedactedSecrets` 同一约定,共用同一个哨兵常量 —— 这个
  * magic string 只能有一个定义处。
  */
 export function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {

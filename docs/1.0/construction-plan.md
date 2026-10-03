@@ -116,7 +116,7 @@
 | --- | --- | --- |
 | ⑩ | 出图字节门的「批准的像素差清单」（守卫 10 的本体）：清单文件、清单外的字节变化判红、更新快照必须同时补清单。快照早已覆盖全部卡种（10-02 查时 23 份：作品 10、直播 4、醒目留言 3、会员 3、榜单 2、词云 1），缺的是清单机制。后面几乎每片都改卡片字节，所以排第一 | ✅ 已落（清单 `packages/image/src/__tests__/approved-card-diffs.ts`：起点 23 个 hash + 只往末尾追加的批准；三类预批之外记 `master-approved` 带日期；`-u` 不补清单照样红） |
 | ⑪ | 格式化函数收一份：`formatCount`（含带符号的变体）、`formatAgo`、`formatDuration`、`formatClock`（`video-card.ts` 里现在叫 `formatDuration(seconds)` 的那个改名过来）；删 `{time}` 兜底与 `getTimeDifference` 钩子；守卫 4 点名表补上 | ✅ 已落（口径主人 10-02 定：带正负号用普通「-」、零写「0」，「N 分钟前」带空格，时长最大到天；放在零依赖子路径 `@bilibili-notify/internal/format`；守卫 4 开张 `scripts/__tests__/unique-homes.test.mjs`，点名表头一批是这五个；顺手修了 B 站开播时刻按服务所在时区读的两处，见 data-model「数字、时间与「不知道」」） |
-| ⑫ | 订阅标签（ADR-0034）；顺手删旧的 `SubscriptionStateSchema` 与 contract 的死字段 `SubscriptionDTO.state` | ✅ 已落（标签表与订阅同住 `config/subscriptions.json` 的 `{ tags, subscriptions }`，`GET` / `PUT /api/subs/tags` 整张换；迁移修订号 15，名字里的中文逗号不拆（主人定）；备份同进同出、合并先按 id 再按名字；面板一个 `TagEditDialog` 收掉逗号文本框与编辑分组弹框。施工时定的几点写进 ADR-0034 的 🔗） |
+| ⑫ | 订阅标签（ADR-0034）；顺手删旧的 `SubscriptionStateSchema` 与 contract 的死字段 `SubscriptionDTO.state` | ✅ 已落（标签表与订阅同住 `config/subscriptions.json` 的 `{ tags, subscriptions }`，`GET` / `PUT /api/subs/tags`（㉚ 起是 `/api/subscriptions/tags`）整张换；迁移修订号 15，名字里的中文逗号不拆（主人定）；备份同进同出、合并先按 id 再按名字；面板一个 `TagEditDialog` 收掉逗号文本框与编辑分组弹框。施工时定的几点写进 ADR-0034 的 🔗） |
 | ⑬ | 特性键改名、直播拆成 `liveStart` / `liveStreaming`（独立的开关、目标、间隔与补报开播）、`PushKind` 的两层意思拆开；以特性键做键的配置一起改键（迁移表「特性键」到「文案」那几行）；守卫 13 前半开（10-02 开片，切成 ⑬a–⑬f，见表下「⑬ 开片」） | ✅ 已落（10-03） |
 | ⑭ | 抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | 未开工 |
 | ⑮ | 图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | 未开工 |
@@ -134,7 +134,7 @@
 | ㉗ | 运行记录 + 迁移时从 0.x 粉丝样本回填运行时长（ADR-0033 决策 3，必须先于 ㉘） | 未开工 |
 | ㉘ | 粉丝样本降精度再合区间：最近 8 天原样、每天一趟压缩、迁移压 0.x 老样本；⑨ 复测 | 未开工 |
 | ㉙ | 统计总开关；系统页「存储占用」的服务端；旧代的列表、大小、删除服务口 | 未开工 |
-| ㉚ | 路由按资源整理（ADR-0036，10-03 主人定，**插在 ⑭ 之前做**）：照 ADR-0036 决策 4 的对照表只改路径、不改行为，server 改挂载、面板改调用方与缓存键、测试与文档跟上；素材库、来源、适配器、问题表那几组随各自那一片搬（决策 5） | 未开工 |
+| ㉚ | 路由按资源整理（ADR-0036，10-03 主人定，**插在 ⑭ 之前做**）：照 ADR-0036 决策 4 的对照表只改路径、不改行为，server 改挂载、面板改调用方与缓存键、测试与文档跟上；素材库、来源、适配器、问题表那几组随各自那一片搬（决策 5） | ✅ 已落（10-03；路由文件跟着改名，源码目录不动；接线守卫 `apps/server/src/__tests__/routes-by-resource-mount.test.ts` 起整个 app：新路径每组不是 404、老路径都是 404、`/api/ws/ticket` 在 cookie 闸里；面板缓存键 `["globals"]` → `["settings"]` 等一并改；订阅头像地址存在资料缓存里，旧的 `/api/subs/<id>/avatar` 要等拓展下次报头像或 ⑳ 换成图库引用） |
 
 - 依赖：⑭ 与 ⑮ 互不依赖，都先于 ⑯；⑰ 先于 ⑲ ⑳；⑱ 要 ⑬ ⑮；⑳ 要 ⑲（超期的图不搬）；㉑–㉓ 要 ⑪ ⑮；㉔ 要 ⑬ ㉑–㉓；㉖ 要 ⑪ ⑬；㉗ 先于 ㉘；㉙ 要 ⑰ ㉖。每动一处盘上形状都抬 `MIGRATION_REVISION` 并补夹具。
 - 改 contract 形状的片（⑫ ⑬ ⑱ ⑲ ⑳ ㉖ ㉙）面板同片跟上到「照旧能用」，面板的新界面仍在第 4 期。
@@ -175,7 +175,7 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | 项 | 归期 |
 | --- | --- |
 | AI 写正文按目标选（ADR-0032）：`core.ai.writing` 两份，默认 `enabled: true`、`byTarget` 为空，升级后行为不变；模板正文总备好，默认开或任一例外开才生成 AI 正文；推送层逐目标挑正文，和 @全体 的分组叠成两维 | 3a（推送层与作品那份）/ 3b（直播总结那份，随 `live/` 装配） |
-| 订阅标签（ADR-0034，issue 53）：标签登记表 `SubscriptionTag` + 订阅上的 `tagIds`、读写口、0.x 迁移一条；面板同期跟上（筛选与卡片角标按登记表读名字，订阅详情的「分组」文本框换成和「编辑分组」弹框同一个勾选组件，文案「分组」→「标签」） | 第 2 期（数据模型、迁移与面板跟上）；标签管理界面（改名、删除、排序，接口 `PUT /api/subs/tags` ⑫ 已有）第 4 期。10-02 主人真机看过 ⑫：建了删不掉（就是缺管理界面）、卡片左下角只写第一个标签、只是一行字不好看 —— 第 4 期卡片上把挂的标签全部显示成胶囊 |
+| 订阅标签（ADR-0034，issue 53）：标签登记表 `SubscriptionTag` + 订阅上的 `tagIds`、读写口、0.x 迁移一条；面板同期跟上（筛选与卡片角标按登记表读名字，订阅详情的「分组」文本框换成和「编辑分组」弹框同一个勾选组件，文案「分组」→「标签」） | 第 2 期（数据模型、迁移与面板跟上）；标签管理界面（改名、删除、排序，接口 `PUT /api/subscriptions/tags`（⑫ 已有，㉚ 改了路径））第 4 期。10-02 主人真机看过 ⑫：建了删不掉（就是缺管理界面）、卡片左下角只写第一个标签、只是一行字不好看 —— 第 4 期卡片上把挂的标签全部显示成胶囊 |
 | 目标标出所在连接 + 下拉换成自己的组件（ADR-0035，issue 55）：目标一律标平台图标 + 连接名，由一个函数从目标与连接表算出来；`TSelect` 改用 `PopoverShell` + `MenuItem` 拼（键盘、读屏器、焦点由测试钉住），`HourSelect` 与 `Logs` / `SkinEditor` / `RoastPushBox` 三处原生 `<select>` 一并换掉，驱动原生 select 的测试改成点开再选，加守卫拦裸 `<select>`，`packages/ui` 清单同步 | 第 4 期（随连接 / 目标表单） |
 | 拓展的定时器收口（与守卫 22 同期）：宿主的 `ctx.setTimeout` 一次性定时器触发后自动从登记里放掉（今天要等拓展卸载才放）；桥的 `pendingTable` 与握手超时改用 `ctx.setTimeout`，结算或断开时 dispose | 3a |
 | 拓展契约 v3：min 抬到 3，删 v1、v2 的退路（`legacy-v1.ts` 连同过时注释）；ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`，上报改 `void`、被拒记进 `reportRejections`；推送侧加宽到 `PlatformAdapterDef`（ADR-0024 决策 3，这一版不开的见决策 11）；`pickPerId` 改成「在当前 BN 装得了的版本里取最高」；索引规则放宽成「每个契约版本各留最新一条」；桥迁 v3，1.0 alpha 期间 v3 的桥只进预发布档 | 3b |
@@ -239,7 +239,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | 毛病 | 期 | 怎么修掉 |
 | --- | --- | --- |
 | 面板的错误提示只认 `err` / `message` / `errors`，`{ error, scope, issues }`、`{ error, id }` 这些形状的原因全被吞掉（读代码得出，未真机验） | 1（切片 ④） | 错误体统一以后，`errorMessage` 只认 `code` + `message` 一种 |
-| 搜人时风控与未登录都报成 404：`/api/subs/lookup` 把任何非 0 码都回成 `not_found`，还把 B 站的码塞在 `code` 里 | 1（切片 ④）挪码；3a 修分类 | ✅ 切片 ④ 已把 B 站的码挪进 `upstreamCode`，面板不再按状态码换成固定文案、直接显示服务端的话；3a `searchCreators` 返回结果形状、路由合成 `GET /api/sources/:sourceKey/creators?q=`，风控回 `rate_limited`、未登录回 `unauthorized`（HTTP 403：401 只留给看板自己的登录失效，面板见 401 就踢回登录框） |
+| 搜人时风控与未登录都报成 404：`/api/subscriptions/lookup`（原 `/api/subs/lookup`）把任何非 0 码都回成 `not_found`，还把 B 站的码塞在 `code` 里 | 1（切片 ④）挪码；3a 修分类 | ✅ 切片 ④ 已把 B 站的码挪进 `upstreamCode`，面板不再按状态码换成固定文案、直接显示服务端的话；3a `searchCreators` 返回结果形状、路由合成 `GET /api/sources/:sourceKey/creators?q=`，风控回 `rate_limited`、未登录回 `unauthorized`（HTTP 403：401 只留给看板自己的登录失效，面板见 401 就踢回登录框） |
 | 拿登录二维码失败却回 `ok: true`：网络异常只打 warn 就返回、状态不变；其余抛错回 500 与一句固定英文，原因被吞 | 3a | 登录搬进 `bilibili/auth/`、走 `SourceAuth` 状态机时，`beginLogin` 按结果形状回失败 |
 | 晚登记的适配器收不到对账：拓展的推送适配器在开机对账之后才登记，对账（今天的 `reconcile`）就调不到它 | 3a | 登记即 `start`（ADR-0024 决策 3） |
 | AI 工具失败在面板上显示成功：工具失败时返回一段字符串，只有抛错才记失败 | 3b | AI 工具随 ADR-0030 改写时按结果形状返回 |

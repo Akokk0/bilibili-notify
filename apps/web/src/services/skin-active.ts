@@ -11,6 +11,6 @@ import { useSkinStore } from "../store/skin";
 import { api } from "./api";
 
 export async function syncActiveSkinToStore(): Promise<void> {
-	const res = await api.get<ActiveSkinResponse>("/api/skins/active");
+	const res = await api.get<ActiveSkinResponse>("/api/dashboard/skins/active");
 	useSkinStore.getState().setActive(res.active);
 }

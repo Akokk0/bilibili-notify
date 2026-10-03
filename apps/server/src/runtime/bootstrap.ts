@@ -78,12 +78,12 @@ export interface AppRuntime {
 	 * out of the persisted `Subscription` config so FansPoller's per-tick
 	 * `cachedProfile` writes no longer fan out as `config-changed:subscriptions`.
 	 * Loaded alongside configStore; consumed by FansPoller / engines / the
-	 * `/api/subs` join.
+	 * `/api/subscriptions` join.
 	 */
 	subRuntimeStore: SubRuntimeStore;
 	/**
 	 * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataRoot>/avatars/<订阅 id>.<后缀>`。新建订阅那条路写、
-	 * `GET /api/subs/:id/avatar` 读、开机清扫(`index.ts`);删订阅时跟着删(这里就听上了)。
+	 * `GET /api/subscriptions/:id/avatar` 读、开机清扫(`index.ts`);删订阅时跟着删(这里就听上了)。
 	 */
 	subAvatarStore: SubAvatarStore;
 	/**
@@ -94,7 +94,7 @@ export interface AppRuntime {
 	conversationStore: ConversationStore;
 	/**
 	 * jsonl-by-day log archive. Fed (post-redaction) by the log sink installed
-	 * in index.ts; queried by the `/api/logs` route. No floor — level gating is
+	 * in index.ts; queried by the `/api/system/logs` route. No floor — level gating is
 	 * upstream in service-context `fanOut`, so the archive equals the live Tab
 	 * equals the console, all driven by the per-module pino level.
 	 */

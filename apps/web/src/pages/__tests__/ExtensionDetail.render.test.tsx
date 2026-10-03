@@ -48,7 +48,7 @@ const BRIDGE_SETTINGS = {
 	],
 };
 
-/** `/api/globals` 里每个拓展只有开关;设置不在这里面(ADR-0021 决策 42)。 */
+/** `/api/settings` 里每个拓展只有开关;设置不在这里面(ADR-0021 决策 42)。 */
 const GLOBALS = { extensions: { bridge: { enabled: true } } };
 
 /**
@@ -119,8 +119,8 @@ const VIEW = shown({
 function renderDetail(id = "bridge") {
 	apiGetMock.mockImplementation(async (url: string) => {
 		if (url === "/api/ext") return LISTED;
-		if (url === "/api/globals") return GLOBALS;
-		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/globals` 里已经没有设置那一格。
+		if (url === "/api/settings") return GLOBALS;
+		// 接入名单从拓展自己的设置口读(ADR-0019 决策 35);`/api/settings` 里已经没有设置那一格。
 		if (url === "/api/ext/bridge/settings") {
 			return { revision: "r1", values: BRIDGE_SETTINGS };
 		}
@@ -196,7 +196,7 @@ describe("拓展详情页", () => {
 		renderDetail();
 		fireEvent.click(await screen.findByLabelText("机器人框架桥接"));
 		await waitFor(() =>
-			expect(apiPatchMock).toHaveBeenCalledWith("/api/globals", {
+			expect(apiPatchMock).toHaveBeenCalledWith("/api/settings", {
 				extensions: { bridge: { enabled: false } },
 			}),
 		);
@@ -281,7 +281,7 @@ describe("拓展详情页 —— 设置读不了", () => {
 			}
 			// 设置从哪口读取决于面板那一侧的版本:拓展自己的口(决策 35),或者更早的 globals。
 			if (url === "/api/ext/bridge/settings") return { revision: "r1", values: settings };
-			if (url === "/api/globals") return GLOBALS;
+			if (url === "/api/settings") return GLOBALS;
 			return {};
 		});
 		apiPatchMock.mockImplementation(async (url: string) =>
@@ -326,7 +326,7 @@ describe("拓展详情页 —— 设置读不了", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "停用 家里那台" }));
 		await waitFor(() =>
 			expect(apiPatchMock).toHaveBeenCalledWith(
-				expect.stringMatching(/^\/api\/(ext\/bridge\/settings|globals)$/),
+				expect.stringMatching(/^\/api\/(ext\/bridge\/settings|settings)$/),
 				expect.anything(),
 			),
 		);

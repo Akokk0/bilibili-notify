@@ -41,7 +41,7 @@ const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024;
 
 export type { UpdateErrorReason, UpdateState };
 
-/** `GET /api/update` 的响应形状,契约在 `@bilibili-notify/contract`。 */
+/** `GET /api/system/update` 的响应形状,契约在 `@bilibili-notify/contract`。 */
 export type UpdateStatus = UpdateStatusDTO;
 
 export interface CreateUpdateServiceInput {

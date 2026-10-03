@@ -12,7 +12,7 @@ import type { ConfigStore } from "../config/store.js";
  * apply incremental ops.
  *
  * The reverse direction (engine state mutations back to disk) goes through
- * the REST routes — `/api/subs PATCH` writes the ConfigStore which then
+ * the REST routes — `/api/subscriptions PATCH` writes the ConfigStore which then
  * fans out via this loop.
  */
 export interface SubscriptionStoreBinding extends Disposable {

@@ -46,7 +46,7 @@ import {
 /**
  * 皮肤调整抽屉:manifest 的每个语义字段都给了控件,改一下整页立即生效 ——
  * 借 store 的 preview 通道(与试穿同一条注入路径),editing 标记压住试穿浮条。
- * 「保存」PUT /api/skins/:id/manifest 就地落盘(资产不动);「取消」丢弃。
+ * 「保存」PUT /api/dashboard/skins/:id/manifest 就地落盘(资产不动);「取消」丢弃。
  *
  * **编辑器 = 能力全集(硬性原则,主人拍板)**:contract 的 SkinManifest/SkinMode
  * 有的字段,这里必须有编辑口;给 schema 加字段时同步加控件,砍能力时同步撤。
@@ -153,7 +153,7 @@ export function SkinEditor(props: {
 	const save = useMutation({
 		// 要发的东西必须走 variables(react-query 回调时序下闭包靠不住)。
 		mutationFn: (m: SkinManifest) =>
-			api.put<SkinManifestUpdateResponse>(`/api/skins/${id}/manifest`, m),
+			api.put<SkinManifestUpdateResponse>(`/api/dashboard/skins/${id}/manifest`, m),
 		onSuccess: (_res, m) => {
 			const st = useSkinStore.getState();
 			// 正被哪个槽启用就同步哪个槽的 manifest,编辑保存立即生效
@@ -163,7 +163,7 @@ export function SkinEditor(props: {
 					dark: st.active.dark?.id === id ? { id, manifest: m } : st.active.dark,
 				});
 			}
-			void qc.invalidateQueries({ queryKey: ["skins"] });
+			void qc.invalidateQueries({ queryKey: ["dashboard", "skins"] });
 			setFeedback(null);
 			onClose();
 		},
@@ -175,7 +175,7 @@ export function SkinEditor(props: {
 	// 要发的东西必须走 variables(react-query 回调时序下闭包靠不住)。
 	const aiEdit = useMutation({
 		mutationFn: (vars: { instruction: string; draft: SkinManifest }) =>
-			api.post<SkinAiEditResponse>(`/api/skins/${id}/ai-edit`, vars),
+			api.post<SkinAiEditResponse>(`/api/dashboard/skins/${id}/ai`, vars),
 		onSuccess: (res) => {
 			// 女仆没改出合格的皮肤是 400(`issues` 逐条),走 onError;这里只剩成功那一支。
 			setDraft(res.manifest);
@@ -190,8 +190,8 @@ export function SkinEditor(props: {
 	// 出厂快照:挂载拉一次,既喂「恢复默认值」(点击零请求),也喂字段旁的
 	// 「(默认)」标注。404(没钉过)走 error → 恢复按钮禁用、全部不标注。
 	const snapshot = useQuery({
-		queryKey: ["skins", id, "default"],
-		queryFn: () => api.get<SkinDefaultResponse>(`/api/skins/${id}/default`),
+		queryKey: ["dashboard", "skins", id, "default"],
+		queryFn: () => api.get<SkinDefaultResponse>(`/api/dashboard/skins/${id}/default`),
 		retry: false,
 	});
 	const defaultManifest = snapshot.data?.manifest ?? null;
@@ -199,10 +199,10 @@ export function SkinEditor(props: {
 	// 「设为默认值」:把**已保存**的当前 manifest 钉成出厂快照 —— 有未保存改动时
 	// 禁用(先保存),免得钉进去的和眼前预览对不上。
 	const setDefault = useMutation({
-		mutationFn: () => api.put(`/api/skins/${id}/default`),
+		mutationFn: () => api.put(`/api/dashboard/skins/${id}/default`),
 		onSuccess: () => {
 			// 快照变了,重拉喂给「(默认)」标注与恢复按钮
-			void qc.invalidateQueries({ queryKey: ["skins", id, "default"] });
+			void qc.invalidateQueries({ queryKey: ["dashboard", "skins", id, "default"] });
 			setFeedback({ tone: "ok", text: "已把当前状态钉为这个皮肤包的默认值" });
 		},
 		onError: (e) => setFeedback({ tone: "err", text: String((e as Error).message) }),
@@ -264,7 +264,7 @@ export function SkinEditor(props: {
 		try {
 			const form = new FormData();
 			form.set("file", file);
-			const res = await api.upload<{ name: string }>(`/api/skins/${id}/assets`, form);
+			const res = await api.upload<{ name: string }>(`/api/dashboard/skins/${id}/assets`, form);
 			setAssetList((prev) => (prev.includes(res.name) ? prev : [...prev, res.name]));
 			// 服务端也记了一份(过了清洗),下次打开抽屉以那份为准;这里是乐观回填。
 			setNameMap((prev) => ({ ...prev, [res.name]: file.name }));

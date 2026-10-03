@@ -58,9 +58,9 @@ function renderSubs() {
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (path === "/api/subs/tags") return Promise.resolve([...TAGS]);
-		if (path === "/api/subs") return Promise.resolve([SUB_A, SUB_B]);
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subscriptions/tags") return Promise.resolve([...TAGS]);
+		if (path === "/api/subscriptions") return Promise.resolve([SUB_A, SUB_B]);
 		if (path.startsWith("/api/targets")) return Promise.resolve([]);
 		return Promise.resolve([]);
 	});
@@ -91,7 +91,7 @@ describe("Subs 快捷菜单", () => {
 		fireEvent.click(await screen.findByText("删除订阅"));
 		fireEvent.click(await screen.findByText("确认删除"));
 
-		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`));
 	});
 
 	it("菜单删除的确认框点取消 → 不删除", async () => {
@@ -113,7 +113,7 @@ describe("Subs 快捷菜单", () => {
 		fireEvent.click(await screen.findByText("禁用订阅"));
 
 		await waitFor(() =>
-			expect(api.patch).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`, { enabled: false }),
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`, { enabled: false }),
 		);
 	});
 
@@ -128,7 +128,9 @@ describe("Subs 快捷菜单", () => {
 		fireEvent.click(within(dialog).getByText("确定"));
 
 		await waitFor(() =>
-			expect(api.patch).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`, { tagIds: [GAME.id] }),
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`, {
+				tagIds: [GAME.id],
+			}),
 		);
 		expect(api.put).not.toHaveBeenCalled();
 	});
@@ -157,11 +159,13 @@ describe("Subs 快捷菜单", () => {
 		const put = api.put as ReturnType<typeof vi.fn>;
 		expect(put).toHaveBeenCalledTimes(1);
 		const [path, table] = put.mock.calls[0] as [string, Array<{ id: string; name: string }>];
-		expect(path).toBe("/api/subs/tags");
+		expect(path).toBe("/api/subscriptions/tags");
 		expect(table).toHaveLength(2);
 		expect(table[0]).toEqual(GAME);
 		expect(table[1].name).toBe("重点");
-		expect(api.patch).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`, { tagIds: [table[1].id] });
+		expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`, {
+			tagIds: [table[1].id],
+		});
 		// 先落标签表、再挂到订阅上:订阅上只许挂表里有的 id,次序反了会被服务端 400。
 		expect(put.mock.invocationCallOrder[0]).toBeLessThan(
 			(api.patch as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
@@ -200,7 +204,7 @@ describe("Subs 快捷菜单", () => {
 		fireEvent.click(await screen.findByText("移除订阅"));
 		fireEvent.click(await screen.findByText("确认删除"));
 
-		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subs/${SUB_A.id}`));
+		await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/subscriptions/${SUB_A.id}`));
 	});
 
 	it("批量禁用后 → 自动清空勾选(批量栏消失)", async () => {

@@ -560,13 +560,13 @@ export interface SkinActiveIds {
 	dark: string | null;
 }
 
-/** GET /api/skins */
+/** GET /api/dashboard/skins */
 export interface SkinsListResponse {
 	list: SkinListEntry[];
 	active: SkinActiveIds;
 }
 
-/** GET /api/skins/active —— 双槽,槽里带完整 manifest,空槽为 null。 */
+/** GET /api/dashboard/skins/active —— 双槽,槽里带完整 manifest,空槽为 null。 */
 export interface ActiveSkinResponse {
 	active: {
 		light: { id: string; manifest: SkinManifest } | null;
@@ -574,7 +574,7 @@ export interface ActiveSkinResponse {
 	};
 }
 
-/** GET /api/skins/:id/manifest —— assets 是包内资产清单(`assets/<名>`),编辑器图片字段的可选项。 */
+/** GET /api/dashboard/skins/:id/manifest —— assets 是包内资产清单(`assets/<名>`),编辑器图片字段的可选项。 */
 export interface SkinManifestResponse {
 	manifest: SkinManifest;
 	assets: string[];
@@ -588,7 +588,7 @@ export interface SkinManifestResponse {
 }
 
 /**
- * PUT /api/skins/:id/manifest(编辑器就地保存,资产不变)。存不下去(不是合法 JSON / 没过校验 /
+ * PUT /api/dashboard/skins/:id/manifest(编辑器就地保存,资产不变)。存不下去(不是合法 JSON / 没过校验 /
  * 引用了包里没有的文件)是 400 的错误体(`ErrorResponse`,`issues` 是逐条原因),不在这里。
  */
 export interface SkinManifestUpdateResponse {
@@ -597,7 +597,7 @@ export interface SkinManifestUpdateResponse {
 }
 
 /**
- * GET /api/skins/:id/default —— 出厂快照(「恢复默认值」的基准)。
+ * GET /api/dashboard/skins/:id/default —— 出厂快照(「恢复默认值」的基准)。
  * 上传时快照自动 = 上传内容;PUT 同路径把当前 manifest 钉成新基准(「设为默认值」)。
  */
 export interface SkinDefaultResponse {
@@ -605,7 +605,7 @@ export interface SkinDefaultResponse {
 }
 
 /**
- * POST /api/skins/:id/ai-edit(「让女仆改」)。产物只回编辑器 draft,不落盘。女仆改出来的没过检查
+ * POST /api/dashboard/skins/:id/ai(「让女仆改」)。产物只回编辑器 draft,不落盘。女仆改出来的没过检查
  * 是 400 的错误体(`ErrorResponse`,`issues` 是逐条意见),没配模型是 `not_configured`,都不在这里。
  */
 export interface SkinAiEditResponse {

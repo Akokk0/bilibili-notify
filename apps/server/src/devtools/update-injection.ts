@@ -12,7 +12,7 @@ import type { UpdateService, UpdateStatus } from "../update/service.js";
  * 于是刷新一下页面注入就没了 —— 而「打开面板弹出有新版那张卡」恰恰是最想看的一条。开发版
  * 上真动作本来也做不了事(功能是关的),转发过去只是让路由那头照常回话。
  *
- * 注意 `POST /api/update/apply` 读的也是 `getStatus()`:注入 `ready` / `rolled-back` 之后
+ * 注意 `POST /api/system/update/apply` 读的也是 `getStatus()`:注入 `ready` / `rolled-back` 之后
  * 按「立即重启并应用」**会真的优雅停机退 0**。这是刻意的 —— 重启那条链路(等新进程 →
  * 整页刷新 → 弹「已更新到」)正是靠 devtools 才验得到;场景说明里写明这一句就够。
  */

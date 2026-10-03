@@ -31,21 +31,21 @@ const LEVELS: readonly { value: ThinkingLevel; label: string }[] = [
 export function ThinkingLevelSetting() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 
 	const save = useMutation({
 		mutationFn: (level: ThinkingLevel) =>
-			api.patch<GlobalConfig>("/api/globals", {
+			api.patch<GlobalConfig>("/api/settings", {
 				defaults: { ai: { chat: { thinkingLevel: level } } },
 			}),
 		// 点了立刻亮(乐观写缓存),失败退回 —— 弹层里其余几项都是即点即变,
 		// 这一格等一个网络往返才亮会显得「点不动」。
 		onMutate: async (level) => {
-			const prev = qc.getQueryData<GlobalConfig>(["globals"]);
+			const prev = qc.getQueryData<GlobalConfig>(["settings"]);
 			if (prev) {
-				qc.setQueryData<GlobalConfig>(["globals"], {
+				qc.setQueryData<GlobalConfig>(["settings"], {
 					...prev,
 					defaults: {
 						...prev.defaults,
@@ -56,10 +56,10 @@ export function ThinkingLevelSetting() {
 			return { prev };
 		},
 		onError: (_err, _level, ctx) => {
-			if (ctx?.prev) qc.setQueryData(["globals"], ctx.prev);
+			if (ctx?.prev) qc.setQueryData(["settings"], ctx.prev);
 		},
 		// 响应就是 redact 后的新 globals,直接落缓存 —— 不必再 invalidate 白拉一次。
-		onSuccess: (next) => qc.setQueryData(["globals"], next),
+		onSuccess: (next) => qc.setQueryData(["settings"], next),
 	});
 
 	const ai = globalsQuery.data?.defaults.ai;

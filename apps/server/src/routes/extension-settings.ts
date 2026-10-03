@@ -78,7 +78,7 @@ type Resolved = Result<{ id: string; fields: readonly ExtensionManifestField[] }
  * 拓展设置自己的读写口(ADR-0019 决策 35)—— 挂在 `/api/ext` 底下,吃面板会话鉴权。
  *
  * 存储在拓展自己的文件 `config/settings/extensions/<id>.json`,逻辑在 `extensions/settings-io.ts`,这里只做 wire。
- * 不走 `PATCH /api/globals` 的理由:列表只能整份写回(两发交错就丢一发),`id` 不可变与密钥占位
+ * 不走 `PATCH /api/settings` 的理由:列表只能整份写回(两发交错就丢一发),`id` 不可变与密钥占位
  * 回填都表达不了;给 globals 补版本号又会让互不相干的全局写入互相 409。
  */
 export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions): Hono {

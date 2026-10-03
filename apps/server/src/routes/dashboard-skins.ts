@@ -42,9 +42,9 @@ function skinNotFound(c: Context) {
 	return respondFailure(c, fail("not_found", "皮肤不存在"));
 }
 
-export function createSkinsRoute(deps: {
+export function createDashboardSkinsRoute(deps: {
 	skinStore: SkinStore;
-	/** 活的 AI 生成器热读口;null = AI 未配置/未就绪(ai-edit 回 503)。 */
+	/** 活的 AI 生成器热读口;null = AI 未配置/未就绪(`/:id/ai` 回 503)。 */
 	commentary?: () => SkinAiGenerator | null;
 }): Hono {
 	const { skinStore } = deps;
@@ -122,7 +122,7 @@ export function createSkinsRoute(deps: {
 	});
 
 	// 「让女仆改」:AI 产物只回编辑器 draft 做实时预览,**不落盘** —— 保存永远主人点。
-	app.post("/:id/ai-edit", async (c) => {
+	app.post("/:id/ai", async (c) => {
 		const id = c.req.param("id");
 		if (!(await skinStore.get(id))) return skinNotFound(c);
 		const generator = deps.commentary?.() ?? null;
@@ -158,7 +158,7 @@ export function createSkinsRoute(deps: {
 			});
 		} catch (e) {
 			// 生成本身失败(模型那头的错、网络):对端给的原因就是主人要看的,原话进 `message` ——
-			// 与卡片皮肤的 ai-css 同一口径。
+			// 与卡片皮肤的 `/:id/ai` 同一口径。
 			const reason = e instanceof Error ? e.message : String(e);
 			return respondFailure(c, fail("unavailable", `女仆那边没改成：${reason}`));
 		}

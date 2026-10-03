@@ -173,7 +173,7 @@ describe("订阅源 e2e:装载器读到的订阅与变更通知,是 BN 真的那
 	});
 
 	it("经面板那条 API 停用一条 → 拓展现读到它停了,而且听到了变更", async () => {
-		const res = await fetch(`http://127.0.0.1:${port}/api/subs/${ENABLED_ROW.id}`, {
+		const res = await fetch(`http://127.0.0.1:${port}/api/subscriptions/${ENABLED_ROW.id}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ enabled: false }),

@@ -1,5 +1,5 @@
 /**
- * 回归守护 — PATCH /api/globals 拦截无法解析的 `bilibili.dynamicCron`。
+ * 回归守护 — PATCH /api/settings 拦截无法解析的 `bilibili.dynamicCron`。
  *
  * `dynamicCron` 是 Dashboard 里的自由文本框,此前没有任何格式校验;一条 `cron`
  * 包解析不了的表达式(如漏填字段)能被直接保存进设置文件,下次启动时
@@ -8,7 +8,7 @@
  * 本测试守的是纵深防御的第一层:写路径直接拒绝非法值,用户在 Dashboard 保存
  * 时就能看到明确报错,而不必等到下次启动才炸。
  *
- * 这一格住在 B 站自己的设置文件(`config/settings/bilibili.json`),在 `/api/globals` 上挂在
+ * 这一格住在 B 站自己的设置文件(`config/settings/bilibili.json`),在 `/api/settings` 上挂在
  * `bilibili` 键下;核对写入的那道门由 B 站登记进配置仓(`bilibili/settings.ts` 的 `checkWrite`)。
  */
 
@@ -26,7 +26,7 @@ function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
 }
 
-describe("PATCH /api/globals — bilibili.dynamicCron 校验", () => {
+describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	let dataDir: string;
 
 	beforeEach(async () => {
@@ -40,7 +40,7 @@ describe("PATCH /api/globals — bilibili.dynamicCron 校验", () => {
 	const bilibiliFile = () => join(dataDir, ...integrationSettingsFile("bilibili"));
 
 	function patch(app: ReturnType<typeof createApp>, body: unknown) {
-		return app.request("/api/globals", {
+		return app.request("/api/settings", {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
@@ -86,7 +86,7 @@ describe("PATCH /api/globals — bilibili.dynamicCron 校验", () => {
 		expect(settingsOf(runtime.configStore).dynamicCron).toBe("*/5 * * * *");
 		expect(JSON.parse(await readFile(bilibiliFile(), "utf8")).dynamicCron).toBe("*/5 * * * *");
 
-		const got = (await (await app.request("/api/globals")).json()) as {
+		const got = (await (await app.request("/api/settings")).json()) as {
 			bilibili: { dynamicCron: string };
 		};
 		expect(got.bilibili.dynamicCron).toBe("*/5 * * * *");

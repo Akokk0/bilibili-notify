@@ -47,7 +47,7 @@ function resetStore(): void {
 
 function mount(g: GlobalConfig) {
 	vi.mocked(api.get).mockImplementation((url: string) =>
-		Promise.resolve(url.includes("/api/subs") ? [] : JSON.parse(JSON.stringify(g))),
+		Promise.resolve(url.includes("/api/subscriptions") ? [] : JSON.parse(JSON.stringify(g))),
 	);
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(

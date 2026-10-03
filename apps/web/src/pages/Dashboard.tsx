@@ -45,6 +45,7 @@ import {
 	type DailyHistoryCountView,
 	type FansEntry,
 	type FansResponse,
+	FOLLOWERS_QUERY_KEY,
 	foldDailyBuckets,
 	HISTORY_DAILY_DAYS,
 	HISTORY_DAILY_QUERY_KEY,
@@ -499,8 +500,8 @@ export function FansPanel({
 }) {
 	// 不轮询 — 由 usePushEventsChannel 的 `fans-refreshed` 覆盖式刷新缓存。
 	const fansQuery = useQuery({
-		queryKey: ["fans"],
-		queryFn: () => api.get<FansResponse>("/api/fans"),
+		queryKey: FOLLOWERS_QUERY_KEY,
+		queryFn: () => api.get<FansResponse>("/api/stats/followers"),
 	});
 	// 条目按订阅 id 记(ADR-0020 决策 8):B 站订阅与有粉丝时序的拓展订阅各一行。按 uid 对的话,拓展行对不上、
 	// 同一个 uid 的两条订阅也分不开。
@@ -859,7 +860,7 @@ export default function Dashboard() {
 	const updateQuery = useUpdateStatus();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -889,8 +890,8 @@ export default function Dashboard() {
 		queryFn: () => api.get<HistoryDailyResponse>(historyDailyPath()),
 	});
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	// 只在这一页订 `resources`:服务端据此决定还量不量浏览器子树(那一步要起子进程)。
 	const resources = useResourcesChannel();

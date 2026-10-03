@@ -190,7 +190,7 @@ describe("数据代接在开机路径上 e2e", () => {
 
 		const starting = start();
 		expect((await waitForResponse(url("/api/health"))).status).toBe(200);
-		const busy = await fetch(url("/api/subs"));
+		const busy = await fetch(url("/api/subscriptions"));
 		expect(busy.status).toBe(503);
 		const body = (await busy.json()) as { code: string; message: string };
 		expect(body.code).toBe("unavailable");
@@ -212,7 +212,7 @@ describe("数据代接在开机路径上 e2e", () => {
 			"# 周报",
 		);
 
-		const patched = await fetch(url("/api/globals"), {
+		const patched = await fetch(url("/api/settings"), {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ onboarding: { skipped: true } }),

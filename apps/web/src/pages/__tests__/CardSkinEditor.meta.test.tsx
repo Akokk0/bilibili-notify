@@ -45,7 +45,7 @@ const MANIFEST = {
 
 function mockApi({ builtin = false, knobs }: { builtin?: boolean; knobs?: unknown[] } = {}): void {
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url === "/api/card-skins") {
+		if (url === "/api/cards/skins") {
 			return Promise.resolve({
 				skins: [
 					{ id: "default", name: "默认", builtin: true, updatedAt: 0, knobs: [] },
@@ -55,7 +55,7 @@ function mockApi({ builtin = false, knobs }: { builtin?: boolean; knobs?: unknow
 				fallbacks: [],
 			});
 		}
-		if (url === "/api/card-skins/neon") {
+		if (url === "/api/cards/skins/neon") {
 			const manifest = structuredClone(MANIFEST) as Record<string, unknown>;
 			if (knobs) manifest.knobs = structuredClone(knobs);
 			return Promise.resolve({ manifest });
@@ -371,7 +371,7 @@ describe("编辑器 · 皮肤资产与自带字体", () => {
 	function mockWithAssets(builtin = false): void {
 		assets = [];
 		vi.mocked(api.get).mockImplementation(async (url: string) => {
-			if (url === "/api/card-skins") {
+			if (url === "/api/cards/skins") {
 				return {
 					skins: [
 						{ id: "default", name: "默认", builtin: true, updatedAt: 0, knobs: [] },
@@ -381,9 +381,9 @@ describe("编辑器 · 皮肤资产与自带字体", () => {
 					fallbacks: [],
 				};
 			}
-			if (url === "/api/card-skins/neon") return { manifest: structuredClone(MANIFEST) };
-			if (url === "/api/card-skins/neon/assets") return { assets: [...assets] };
-			if (url === "/api/cards/render-source") return { enabled: true };
+			if (url === "/api/cards/skins/neon") return { manifest: structuredClone(MANIFEST) };
+			if (url === "/api/cards/skins/neon/assets") return { assets: [...assets] };
+			if (url === "/api/cards/renderer") return { enabled: true };
 			return {};
 		});
 		vi.mocked(api.post).mockResolvedValue({
@@ -412,7 +412,7 @@ describe("编辑器 · 皮肤资产与自带字体", () => {
 			pick(new File([new Uint8Array([1])], "song.ttf"));
 		});
 
-		expect(vi.mocked(api.upload).mock.calls.at(-1)?.[0]).toBe("/api/card-skins/neon/assets");
+		expect(vi.mocked(api.upload).mock.calls.at(-1)?.[0]).toBe("/api/cards/skins/neon/assets");
 		expect(await screen.findByText("assets/song.ttf")).toBeTruthy();
 	});
 

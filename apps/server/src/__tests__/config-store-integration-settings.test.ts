@@ -522,7 +522,7 @@ describe("集成设置 — 登记", () => {
 		expect(() => build([pokeSegment, { ...pokeSegment }])).toThrow(/登记了两次/);
 	});
 
-	it("键与核心设置的任何一个顶层键同名 → 构造就抛(/api/globals 把两者摆在同一层)", () => {
+	it("键与核心设置的任何一个顶层键同名 → 构造就抛(/api/settings 把两者摆在同一层)", () => {
 		const coreKeys = Object.keys(GlobalConfigSchema.shape);
 		// 守住「核心顶层键」这张表本身没变空,免得下面的循环空转。
 		expect(coreKeys).toContain("app");

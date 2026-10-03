@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * 系统页「备份与恢复」一节:导出走 /api/backup/export 并把回来的信封落成下载文件;
- * 导入走 /api/backup/import 并把落地结果(增删了多少、cookie 有没有恢复)回报给主人;
+ * 系统页「备份与恢复」一节:导出走 /api/system/backup/export 并把回来的信封落成下载文件;
+ * 导入走 /api/system/backup/import 并把落地结果(增删了多少、cookie 有没有恢复)回报给主人;
  * PIN 错等后端拒绝要显式报错,不能静默。
  */
 
@@ -74,7 +74,7 @@ describe("BackupSection", () => {
 
 		await waitFor(() =>
 			expect(post).toHaveBeenCalledWith(
-				"/api/backup/export",
+				"/api/system/backup/export",
 				expect.objectContaining({ kind: "full", pin: "123456" }),
 			),
 		);
@@ -103,7 +103,7 @@ describe("BackupSection", () => {
 
 		await waitFor(() =>
 			expect(post).toHaveBeenCalledWith(
-				"/api/backup/import",
+				"/api/system/backup/import",
 				expect.objectContaining({ mode: "merge", dryRun: false }),
 			),
 		);
@@ -137,7 +137,7 @@ describe("BackupSection", () => {
 		expect(await screen.findByText(/推送目标 2 项/)).toBeTruthy();
 		expect(post).toHaveBeenCalledTimes(1);
 		expect(post).toHaveBeenCalledWith(
-			"/api/backup/import",
+			"/api/system/backup/import",
 			expect.objectContaining({ mode: "overwrite", dryRun: true }),
 		);
 
@@ -145,7 +145,7 @@ describe("BackupSection", () => {
 
 		await waitFor(() =>
 			expect(post).toHaveBeenCalledWith(
-				"/api/backup/import",
+				"/api/system/backup/import",
 				expect.objectContaining({ mode: "overwrite", dryRun: false }),
 			),
 		);

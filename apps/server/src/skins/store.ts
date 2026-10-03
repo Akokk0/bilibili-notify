@@ -62,7 +62,7 @@ export { MAX_SKIN_ASSETS };
 /**
  * 包内资产的扩展名白名单 —— **从两张 mime 表现取**,不再手抄一份。
  *
- * 那两张表是回读时定 content-type 的依据(`routes/skins.ts` 就是拿它们判的),
+ * 那两张表是回读时定 content-type 的依据(`routes/dashboard-skins.ts` 就是拿它们判的),
  * 各自都在文件头声明自己是唯一一份。这儿再抄一遍的话,加一种格式(比如 avif)
  * 就得改两处,而漏掉这一处的症状很别扭:**路由收下了上传,`addAsset` 转头抛
  * 「不支持的文件类型」** —— 一个 400,却没有半个字提示是两张表不同意。
@@ -138,7 +138,7 @@ export class SkinStore {
 	/**
 	 * 确保索引已从盘上重建过,幂等。
 	 *
-	 * 这家店**一份两处用**(`/api/skins` 与聊天里的 create_skin),而 init 原先只挂在
+	 * 这家店**一份两处用**(`/api/dashboard/skins` 与聊天里的 create_skin),而 init 原先只挂在
 	 * 前者的中间件上。主人一进 dashboard 就直奔聊天做皮肤的话,店里的 `active`
 	 * 还是构造函数给的 `{light:null,dark:null}` —— 这时 `activate()` 落盘,会把重启
 	 * 前启用着的另一个槽**悄悄清掉**。索引本身下次 init 能自愈,active.json 不能。

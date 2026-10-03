@@ -97,7 +97,7 @@ describe("MirrorPicker", () => {
 		await userEvent.click(screen.getByRole("button", { name: "测一遍" }));
 
 		await waitFor(() => expect(within(row("")).getByText("406 ms")).toBeTruthy());
-		expect(api.post).toHaveBeenCalledWith("/api/update/mirrors/probe", {
+		expect(api.post).toHaveBeenCalledWith("/api/system/update/mirrors/probe", {
 			prefixes: ["", ...BUILTIN_UPDATE_MIRRORS, "https://my.mirror.example/"],
 		});
 		expect(within(row("")).getByText("0.9.0")).toBeTruthy();

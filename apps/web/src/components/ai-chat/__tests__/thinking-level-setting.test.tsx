@@ -4,7 +4,7 @@
  *
  * 它原来住在「智能女仆 → 全局配置」页:调聊天的思考深度得离开聊天、跨半个
  * 控制台再找到那一小块。深度只有聊天在用,编辑口就该跟着聊天走(主人定的)。
- * 落盘语义不变:还是 PATCH `/api/globals` 写 `ai.chat.thinkingLevel`。守四件事:
+ * 落盘语义不变:还是 PATCH `/api/settings` 写 `ai.chat.thinkingLevel`。守四件事:
  *
  * 1. 显示值走 resolveChatThinkingLevel:chat 段没写就跟随当前实例的等级;
  * 2. 点档位 → 立即 PATCH,载荷只带 `ai.chat.thinkingLevel` 这一片;
@@ -80,7 +80,7 @@ describe("ThinkingLevelSetting — 侧栏里的思考深度", () => {
 		mount(globalsWith("deepseek"));
 		fireEvent.click(await screen.findByRole("button", { name: "低" }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
-		expect(api.patch).toHaveBeenCalledWith("/api/globals", {
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
 			defaults: { ai: { chat: { thinkingLevel: "low" } } },
 		});
 	});

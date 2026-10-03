@@ -58,7 +58,7 @@ describe("ChromeAutoDetect", () => {
 		expect(screen.getByRole("button", { name: /启用/ })).toBeTruthy();
 	});
 
-	it("点启用 → POST enable-rendering + 回调 onEnabled", async () => {
+	it("点启用 → POST /renderer + 回调 onEnabled", async () => {
 		getMock.mockResolvedValue({ path: "/usr/bin/google-chrome" });
 		postMock.mockResolvedValue({ ok: true, chromePath: "/usr/bin/google-chrome" });
 		const onEnabled = vi.fn();
@@ -66,7 +66,7 @@ describe("ChromeAutoDetect", () => {
 		fireEvent.click(screen.getByRole("button", { name: /自动探测/ }));
 		fireEvent.click(await screen.findByRole("button", { name: /启用/ }));
 		await waitFor(() => expect(onEnabled).toHaveBeenCalledTimes(1));
-		expect(postMock).toHaveBeenCalledWith("/api/cards/enable-rendering", {
+		expect(postMock).toHaveBeenCalledWith("/api/cards/renderer", {
 			chromePath: "/usr/bin/google-chrome",
 		});
 	});
@@ -86,7 +86,7 @@ describe("ChromeAutoDetect", () => {
 		expect(btn.disabled).toBe(true);
 	});
 
-	it("填远程端点 + 点连接 → POST enable-rendering { chromeEndpoint } + 回调 onEnabled", async () => {
+	it("填远程端点 + 点连接 → POST /renderer { chromeEndpoint } + 回调 onEnabled", async () => {
 		postMock.mockResolvedValue({ ok: true, chromeEndpoint: "ws://browser:3000" });
 		const onEnabled = vi.fn();
 		render(<ChromeAutoDetect onEnabled={onEnabled} />);
@@ -95,7 +95,7 @@ describe("ChromeAutoDetect", () => {
 		});
 		fireEvent.click(screen.getByRole("button", { name: /连接远程浏览器/ }));
 		await waitFor(() => expect(onEnabled).toHaveBeenCalledTimes(1));
-		expect(postMock).toHaveBeenCalledWith("/api/cards/enable-rendering", {
+		expect(postMock).toHaveBeenCalledWith("/api/cards/renderer", {
 			chromeEndpoint: "ws://browser:3000",
 		});
 	});

@@ -16,9 +16,9 @@ export function OnboardingReopenSection() {
 	const qc = useQueryClient();
 	const reopen = useOnboardingReopen((s) => s.reopen);
 	const { mutate, isPending } = useMutation({
-		mutationFn: () => api.patch("/api/globals", { onboarding: { skipped: false } }),
+		mutationFn: () => api.patch("/api/settings", { onboarding: { skipped: false } }),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["globals"] });
+			void qc.invalidateQueries({ queryKey: ["settings"] });
 			reopen();
 		},
 	});

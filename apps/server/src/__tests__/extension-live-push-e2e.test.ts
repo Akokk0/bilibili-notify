@@ -162,7 +162,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", BN_CHROME_PATH: "/fake/chrome" },
 		});
 		await ok(
-			await api("/api/globals", {
+			await api("/api/settings", {
 				method: "PATCH",
 				...json({ extensions: { [FAKE]: { enabled: true } } }),
 			}),
@@ -211,7 +211,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 				externalId: candidate.id,
 			});
 			await ok(
-				await api("/api/subs", {
+				await api("/api/subscriptions", {
 					method: "POST",
 					...json({
 						...base,

@@ -20,7 +20,7 @@ describe("errorTextOf", () => {
 				message: "这个皮肤包没通过检查（共 2 条）",
 				issues: [{ message: "name 缺失" }, { message: "cards 不是对象" }],
 			},
-			"POST /api/card-skins → 400",
+			"POST /api/cards/skins → 400",
 		);
 		expect(errorTextOf(err)).toBe("这个皮肤包没通过检查（共 2 条）：name 缺失；cards 不是对象");
 	});

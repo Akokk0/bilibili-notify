@@ -16,7 +16,7 @@ import { withDesktopTokenHeader } from "../services/desktop-token";
  * `/logs` — 日志输出 Tab。落盘 jsonl 归档(<dataDir>/logs/<日>.jsonl)的
  * 实时 + 历史查看。
  *
- * 取数(镜像 History):服务端 /api/logs 只按 day/limit 分页;level / source /
+ * 取数(镜像 History):服务端 /api/system/logs 只按 day/limit 分页;level / source /
  * 文本过滤全在本页客户端做,所以 live query key 稳定、`useLogChannel` 的 WS
  * tail 能 setQueryData-append 不漂移。选过去某天 → 不同 key 的冻结历史视图,
  * WS 不污染。AlertShell(engine-error 红色面板)独立并存。
@@ -38,7 +38,7 @@ const AUTOSCROLL_TONE = "#0369a1";
 const RENDER_CAP = 800;
 
 async function downloadRawLog(day: string): Promise<void> {
-	const res = await fetch(`/api/logs/raw?day=${encodeURIComponent(day)}`, {
+	const res = await fetch(`/api/system/logs/raw?day=${encodeURIComponent(day)}`, {
 		headers: withDesktopTokenHeader(),
 		credentials: "include",
 	});
@@ -81,7 +81,8 @@ export default function Logs() {
 	const isLive = day === "";
 	const logsQuery = useQuery({
 		queryKey: logsQueryKey(isLive ? undefined : day),
-		queryFn: () => api.get<LogsResponse>(`/api/logs?limit=500${isLive ? "" : `&day=${day}`}`),
+		queryFn: () =>
+			api.get<LogsResponse>(`/api/system/logs?limit=500${isLive ? "" : `&day=${day}`}`),
 		// 过去某天是冻结快照,不必刷;实时键由 useLogChannel 持续 prepend。
 		refetchInterval: false,
 	});

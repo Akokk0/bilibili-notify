@@ -9,7 +9,7 @@
  * ```
  * connections.json 里那条接入 → 宿主按 zod 解出 config → ctx 交给桥 → 桥认 token
  *   → upgrade 分发到桥 → 握手 → bot 名单 → publishView
- * /api/push/test → sink 按**分发键**找 adapter(键 = 拓展 id)→ 桥 adapter
+ * POST /api/targets/:id/test → sink 按**分发键**找 adapter(键 = 拓展 id)→ 桥 adapter
  *   → server.send → `send` 帧 → 桥回 `result` → 回执一路回到 HTTP 响应
  * ```
  *
@@ -330,10 +330,10 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 	}
 
 	function testPush(): Promise<Response> {
-		return fetch(`${handle?.url}/api/push/test`, {
+		return fetch(`${handle?.url}/api/targets/${TARGET_ID}/test`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ targetId: TARGET_ID, kind: "text" }),
+			body: JSON.stringify({ kind: "text" }),
 		});
 	}
 
@@ -384,7 +384,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 	/**
 	 * 🔴 **拨开关即热装卸**(ADR-0012 决策 10),整条线走一遍:
-	 * `PATCH /api/globals` → 落盘 → `config-changed` → 装载器 `sync()` → 拓展被收回。
+	 * `PATCH /api/settings` → 落盘 → `config-changed` → 装载器 `sync()` → 拓展被收回。
 	 *
 	 * 零件各自的单元测试证明不了这一根线接上了没有:`sync()` 自己有测试,总线也有,
 	 * 而**谁去订这个事件、订的是哪个 scope** 只有从这一头推到那一头才看得见。
@@ -406,7 +406,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 
 		// ③ 拨回来:同一个进程里 activate 又跑一遍,一切照旧。
 		expect((await setBridgeEnabled(true)).status).toBe(200);
-		// 🔴 `PATCH /api/globals` **在热装卸落地之前就回 200**(启用那一路要真 import 一个
+		// 🔴 `PATCH /api/settings` **在热装卸落地之前就回 200**(启用那一路要真 import 一个
 		// 文件)。面板靠 `GET /api/ext` 先 settle 再报状态,这里也走同一条 —— 不等的话
 		// 这一发 upgrade 有时会撞在「端点还没挂回来」的那一瞬,报 404。
 		expect(await bridgeState()).toBe("running");
@@ -475,7 +475,7 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 	}
 
 	function setBridgeEnabled(enabled: boolean): Promise<Response> {
-		return fetch(`${handle?.url}/api/globals`, {
+		return fetch(`${handle?.url}/api/settings`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ extensions: { bridge: { enabled } } }),

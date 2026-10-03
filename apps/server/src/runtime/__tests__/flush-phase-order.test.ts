@@ -103,7 +103,7 @@ describe("createAppRuntime 的 flush 段", () => {
 		>;
 		expect(onDisk[SUB.id]?.cachedProfile).toMatchObject({
 			name: "甲",
-			avatar: expect.stringContaining(`/api/subs/${SUB.id}/avatar?v=`),
+			avatar: expect.stringContaining(`/api/subscriptions/${SUB.id}/avatar?v=`),
 		});
 	});
 });

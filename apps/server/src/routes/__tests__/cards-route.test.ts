@@ -44,7 +44,7 @@ function makeDeps(): RouteDeps {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
-		// 这些用例只打 /detect-chrome 与 /preview(无背景图),dataDir 从不真正落 fs。
+		// 这些用例只打 /chrome 与 /preview(无背景图),dataDir 从不真正落 fs。
 		// 用 OS 临时目录下的不存在子目录(跨平台:不硬编码 POSIX /tmp,无真实路径/密钥)。
 		store: {
 			getGlobals: () => EMPTY_GLOBALS,
@@ -426,15 +426,15 @@ describe("cards route — testPushCaption(测试推送图说)", () => {
 	});
 });
 
-describe("cards route — detect-chrome", () => {
-	it("GET /detect-chrome 返回探测到的 Chrome 路径", async () => {
+describe("cards route — GET /chrome(探测本机 Chrome)", () => {
+	it("GET /chrome 返回探测到的 Chrome 路径", async () => {
 		const app = createCardsRoute({
 			deps: makeDeps(),
 			puppeteer: null,
 			api: null,
 			detectChrome: () => "/usr/bin/google-chrome",
 		});
-		const res = await app.request("/detect-chrome");
+		const res = await app.request("/chrome");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ path: "/usr/bin/google-chrome" });
 	});
@@ -446,13 +446,13 @@ describe("cards route — detect-chrome", () => {
 			api: null,
 			detectChrome: () => null,
 		});
-		const res = await app.request("/detect-chrome");
+		const res = await app.request("/chrome");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ path: null });
 	});
 });
 
-describe("cards route — enable-rendering", () => {
+describe("cards route — POST /renderer(热启用渲染)", () => {
 	function depsWithEngines(
 		enableImageRendering: ReturnType<typeof vi.fn>,
 		swapImageRendering: ReturnType<typeof vi.fn> = vi.fn(),
@@ -467,7 +467,7 @@ describe("cards route — enable-rendering", () => {
 		} as unknown as RouteDeps;
 	}
 
-	it("POST /enable-rendering: 构造 puppeteer + 热启用引擎 + 写回配置 + 通知", async () => {
+	it("POST /renderer: 构造 puppeteer + 热启用引擎 + 写回配置 + 通知", async () => {
 		const fakePup = { dispose: vi.fn(async () => {}) } as unknown as PuppeteerAdapter;
 		const createPuppeteer = vi.fn(() => fakePup);
 		const enableImageRendering = vi.fn(() => true);
@@ -481,7 +481,7 @@ describe("cards route — enable-rendering", () => {
 			persistChromeSource,
 			onPuppeteerEnabled,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromePath: "/usr/bin/google-chrome" }),
@@ -494,7 +494,7 @@ describe("cards route — enable-rendering", () => {
 		expect(onPuppeteerEnabled).toHaveBeenCalledWith(fakePup);
 	});
 
-	it("POST /enable-rendering with chromeEndpoint: 先探测连通,再热启用 + 写回", async () => {
+	it("POST /renderer with chromeEndpoint: 先探测连通,再热启用 + 写回", async () => {
 		const probePage = { close: vi.fn(async () => {}) };
 		const fakePup = {
 			page: vi.fn(async () => probePage),
@@ -512,7 +512,7 @@ describe("cards route — enable-rendering", () => {
 			persistChromeSource,
 			onPuppeteerEnabled,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
@@ -520,7 +520,7 @@ describe("cards route — enable-rendering", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toMatchObject({ ok: true, chromeEndpoint: "ws://browser:3000" });
 		expect(createPuppeteer).toHaveBeenCalledWith({ chromeEndpoint: "ws://browser:3000" });
-		// 远程端点没有 detect-chrome 那样的预验,必须真开一页确认连得上才算启用成功。
+		// 远程端点没有 `/chrome` 那样的预验,必须真开一页确认连得上才算启用成功。
 		expect(fakePup.page).toHaveBeenCalledTimes(1);
 		expect(probePage.close).toHaveBeenCalledTimes(1);
 		expect(enableImageRendering).toHaveBeenCalledWith(fakePup);
@@ -545,7 +545,7 @@ describe("cards route — enable-rendering", () => {
 			createPuppeteer,
 			persistChromeSource,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
@@ -583,7 +583,7 @@ describe("cards route — enable-rendering", () => {
 			persistChromeSource,
 			onPuppeteerEnabled,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
@@ -597,8 +597,8 @@ describe("cards route — enable-rendering", () => {
 		expect(oldPup.dispose).toHaveBeenCalledTimes(1);
 		expect(persistChromeSource).toHaveBeenCalledWith({ chromeEndpoint: "ws://browser:3000" });
 		expect(onPuppeteerEnabled).toHaveBeenCalledWith(newPup);
-		// GET /render-source 反映切换后的来源。
-		const status = await app.request("/render-source");
+		// GET /renderer 反映切换后的来源。
+		const status = await app.request("/renderer");
 		expect(await status.json()).toEqual({
 			enabled: true,
 			source: { chromeEndpoint: "ws://browser:3000" },
@@ -625,7 +625,7 @@ describe("cards route — enable-rendering", () => {
 			createPuppeteer: vi.fn(() => newPup),
 			persistChromeSource: vi.fn(async () => {}),
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromePath: "/new/chrome" }),
@@ -651,7 +651,7 @@ describe("cards route — enable-rendering", () => {
 			createPuppeteer,
 			persistChromeSource,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromePath: "/usr/bin/chromium" }),
@@ -687,7 +687,7 @@ describe("cards route — enable-rendering", () => {
 			createPuppeteer: vi.fn(() => newPup),
 			persistChromeSource,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromeEndpoint: "ws://browser:3000" }),
@@ -704,13 +704,13 @@ describe("cards route — enable-rendering", () => {
 		expect(oldPup.dispose).not.toHaveBeenCalled();
 	});
 
-	it("GET /render-source:未启用时 enabled=false source=null;persistable 跟注入走", async () => {
+	it("GET /renderer:未启用时 enabled=false source=null;persistable 跟注入走", async () => {
 		const app = createCardsRoute({
 			deps: depsWithEngines(vi.fn()),
 			puppeteer: null,
 			api: null,
 		});
-		const res = await app.request("/render-source");
+		const res = await app.request("/renderer");
 		expect(await res.json()).toEqual({ enabled: false, source: null, persistable: false });
 	});
 
@@ -725,7 +725,7 @@ describe("cards route — enable-rendering", () => {
 			createPuppeteer,
 			persistChromeSource,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromePath: "/usr/bin/google-chrome" }),
@@ -744,7 +744,7 @@ describe("cards route — enable-rendering", () => {
 			api: null,
 			createPuppeteer,
 		});
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({}),
@@ -766,7 +766,7 @@ describe("cards route — enable-rendering", () => {
 			},
 		} as unknown as RouteDeps;
 		const app = createCardsRoute({ deps, puppeteer: null, api: null });
-		const res = await app.request("/enable-rendering", {
+		const res = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromePath: "/x" }),
@@ -817,10 +817,10 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		return puppeteer as PuppeteerAdapter & { pageCalls: number };
 	}
 
-	it("热切换(/enable-rendering)后,下一次 /preview 用新 adapter 渲染,不再打到已销毁的旧 adapter", async () => {
+	it("热切换(POST /renderer)后,下一次 /preview 用新 adapter 渲染,不再打到已销毁的旧 adapter", async () => {
 		const pupA = makeMarkedPuppeteer("A");
 		const pupB = makeMarkedPuppeteer("B");
-		// pupB 的假页面对象自带 close(),/enable-rendering 里 replacing 分支的连通性
+		// pupB 的假页面对象自带 close(),POST /renderer 里 replacing 分支的连通性
 		// 探测(page().close())与之后预览渲染复用同一份 fake page,探测调用也计入
 		// pupB.page 调用次数,属预期。
 		const swapImageRendering = vi.fn();
@@ -846,7 +846,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		// 热切换到 pupB —— 引擎侧的 swapImageRendering 只管推送渲染,不管路由自己缓存
 		// 的预览 renderer;pupA 在这之后被 dispose,若预览渲染器缓存不失效就会打到
 		// 一个已销毁的 adapter 上。
-		const swap = await app.request("/enable-rendering", {
+		const swap = await app.request("/renderer", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ chromePath: "/new/chrome" }),
@@ -1547,7 +1547,7 @@ describe("cards route — /preview 走皮肤", () => {
 
 	/**
 	 * 测试推送与预览出图走同一份 `renderPreviewCard`,请求里的皮肤与 per-UP 草稿旋钮也得一起交进去
-	 * —— 所见即所推。验红:把 `/test-push` 里交给 `renderPreviewCard` 的 `cardSkin` 或 `cardSkinKnobs`
+	 * —— 所见即所推。验红:把 `/test` 里交给 `renderPreviewCard` 的 `cardSkin` 或 `cardSkinKnobs`
 	 * 删掉,这条红。
 	 */
 	it("测试推送同样带着请求里的皮肤与草稿旋钮,推给所选目标", async () => {
@@ -1569,7 +1569,7 @@ describe("cards route — /preview 走皮肤", () => {
 				api: null,
 				cardSkins: skinStore({ marked: MARKED }),
 			});
-			const res = await app.request("/test-push", {
+			const res = await app.request("/test", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
@@ -1600,7 +1600,7 @@ describe("cards route — /preview 走皮肤", () => {
 });
 
 /**
- * `POST /skin-shot` —— 编辑器那颗「最终效果」(ADR-0014 决策 22)。
+ * `POST /skins/:id/screenshot` —— 编辑器那颗「最终效果」(ADR-0014 决策 22;皮肤 id 在路径里,ADR-0036)。
  *
  * 实时预览回的是 HTML,由**看的人的浏览器**画;推出去那张是 **server 上的 Chrome** 画的,
  * 字体渲染像素级对不上。这个端点补的正是那一刀。
@@ -1610,7 +1610,7 @@ describe("cards route — /preview 走皮肤", () => {
  * (编辑器照它把按钮禁掉并说清楚);③ 回**高度**,超上限要如实说 —— 出图那头超了会静默
  * 回落默认皮肤(决策 19),而编辑器是作者唯一能提前知道的地方。
  */
-describe("cards route — POST /skin-shot 最终效果", () => {
+describe("cards route — POST /skins/:id/screenshot 最终效果", () => {
 	const draft = () => structuredClone(DEFAULT_CARD_SKIN) as Record<string, unknown>;
 
 	type ShotJson = {
@@ -1625,15 +1625,19 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 		issues?: Array<{ message: string }>;
 	};
 
-	async function shot(body: unknown, puppeteer: PuppeteerAdapter | null) {
-		const dir = join(tmpdir(), "bn-test-skin-shot-no-such-dir");
+	async function shot(
+		body: unknown,
+		puppeteer: PuppeteerAdapter | null,
+		skinId: string = DEFAULT_CARD_SKIN_ID,
+	) {
+		const dir = join(tmpdir(), "bn-test-skin-screenshot-no-such-dir");
 		const app = createCardsRoute({
 			deps: depsWithDataDir(dir),
 			puppeteer,
 			api: null,
 			cardSkins: new CardSkinStore({ dir: join(dir, "card-skins") }),
 		});
-		const res = await app.request("/skin-shot", {
+		const res = await app.request(`/skins/${skinId}/screenshot`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(body),
@@ -1642,10 +1646,7 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 	}
 
 	it("截出一张图,回 dataUrl + 卡宽 + 高度", async () => {
-		const { res, json } = await shot(
-			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
-			makeFakePuppeteer(),
-		);
+		const { res, json } = await shot({ kind: "live", manifest: draft() }, makeFakePuppeteer());
 		expect(res.status).toBe(200);
 		expect(json.ok).toBe(true);
 		expect(json.dataUrl?.startsWith("data:image/jpeg;base64,")).toBe(true);
@@ -1660,21 +1661,25 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 	 */
 	it("喂给 Chrome 的 HTML 不带透明底", async () => {
 		capturedHtml.length = 0;
-		const { res } = await shot(
-			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
-			makeFakePuppeteer(),
-		);
+		const { res } = await shot({ kind: "live", manifest: draft() }, makeFakePuppeteer());
 		expect(res.status).toBe(200);
 		expect(capturedHtml.length).toBeGreaterThan(0);
-		// 验红:给 `/skin-shot` 那条也传 `transparentPage: true`,这条红。
+		// 验红:给截图那条也传 `transparentPage: true`,这条红。
 		expect(capturedHtml[0]).not.toContain("background:transparent");
 	});
 
-	it("没配 Chrome → not_configured(409),并且把该怎么办说出来", async () => {
+	it("路径里的皮肤 id 不合规 → invalid(400),不会去截", async () => {
 		const { res, json } = await shot(
-			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
-			null,
+			{ kind: "live", manifest: draft() },
+			makeFakePuppeteer(),
+			"Bad_Id",
 		);
+		expect(res.status).toBe(400);
+		expect(json.code).toBe("invalid");
+	});
+
+	it("没配 Chrome → not_configured(409),并且把该怎么办说出来", async () => {
+		const { res, json } = await shot({ kind: "live", manifest: draft() }, null);
 		expect(res.status).toBe(409);
 		expect(json.code).toBe("not_configured");
 		expect(json.message).toContain("BN_CHROME_PATH");
@@ -1683,7 +1688,7 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 
 	it("草稿过的是与实时预览同一道装包门 —— 拒了就 invalid(400),逐条原因进 issues", async () => {
 		const { res, json } = await shot(
-			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: { schemaVersion: 1 } },
+			{ kind: "live", manifest: { schemaVersion: 1 } },
 			makeFakePuppeteer(),
 		);
 		expect(res.status).toBe(400);
@@ -1714,10 +1719,7 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 			close: vi.fn(async () => {}),
 		} as never);
 
-		const { res, json } = await shot(
-			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: d },
-			p,
-		);
+		const { res, json } = await shot({ kind: "live", manifest: d }, p);
 		expect(res.status).toBe(200);
 		// 验红:把减出血那一步去掉,这条立刻红。
 		expect(json.overHeight).toBe(false);
@@ -1735,10 +1737,7 @@ describe("cards route — POST /skin-shot 最终效果", () => {
 			close: vi.fn(async () => {}),
 		} as never);
 
-		const { res, json } = await shot(
-			{ skinId: DEFAULT_CARD_SKIN_ID, kind: "live", manifest: draft() },
-			tall,
-		);
+		const { res, json } = await shot({ kind: "live", manifest: draft() }, tall);
 		expect(res.status).toBe(200);
 		expect(json.ok).toBe(true);
 		expect(json.height).toBe(9999);

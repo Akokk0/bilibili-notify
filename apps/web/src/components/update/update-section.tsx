@@ -89,13 +89,13 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	const restart = view?.intent.mode === "restart" ? null : view;
 	const statusQuery = useUpdateStatus();
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 
 	const act = useMutation({
 		mutationFn: (path: "check" | "download" | "rollback") =>
-			api.post<UpdateStatusDTO>(`/api/update/${path}`, {}),
+			api.post<UpdateStatusDTO>(`/api/system/update/${path}`, {}),
 		// 上一次重启留下的旁注(回落了 / 没回来)到此为止 —— 用户已经在做别的事了。
 		onMutate: () => dismissRestart(),
 		onSuccess: (next) => qc.setQueryData(UPDATE_QUERY_KEY, next),
@@ -104,14 +104,14 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 		// 回话里带着要换掉的是哪个进程(startedAt)、换到哪(target / mode):服务端握着状态,
 		// 面板不必先探一次再猜。之后只有 startedAt 和它不同的回答才算新进程 —— 旧进程
 		// 优雅停机时还能连上好几秒。
-		mutationFn: () => api.post<UpdateApplyResponse>("/api/update/apply", {}),
+		mutationFn: () => api.post<UpdateApplyResponse>("/api/system/update/apply", {}),
 		onMutate: () => dismissRestart(),
 		onSuccess: ({ startedAt, target, mode }) =>
 			beginRestart({ before: startedAt, target, mode }, restartWait),
 	});
 	const saveSettings = useMutation({
-		mutationFn: (update: Partial<UpdateSettings>) => api.patch("/api/globals", { update }),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		mutationFn: (update: Partial<UpdateSettings>) => api.patch("/api/settings", { update }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
 	});
 
 	const status = statusQuery.data;
@@ -148,7 +148,7 @@ export function UpdateSection({ restartWait = DEFAULT_RESTART_WAIT }: UpdateSect
 	// 忙不忙看的是**任何一种**重启:进程都要没了,这一节的按钮全都不该还能按。
 	const restarting = view?.kind === "waiting";
 	const busy = act.isPending || apply.isPending || restarting;
-	// 和服务端 `POST /api/update/apply` 那道门用的是同一个判定,见契约。
+	// 和服务端 `POST /api/system/update/apply` 那道门用的是同一个判定,见契约。
 	const canApply = canApplyUpdate(state);
 	// 带 releaseUrl 的那几档(有新版 / 正在下 / 已就绪 / 要重拉镜像)都指到那一版的发布页;
 	// 出错时指到 helpUrl(拿不到清单就是发布列表)。往联合里再加一档带 releaseUrl 的

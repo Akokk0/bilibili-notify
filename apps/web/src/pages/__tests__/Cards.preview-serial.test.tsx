@@ -74,7 +74,7 @@ beforeEach(() => {
 	});
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url.includes("/api/subs")) return Promise.resolve([]);
+		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
 		return Promise.resolve(GLOBALS);
 	});

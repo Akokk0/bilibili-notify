@@ -1,5 +1,5 @@
 /**
- * 卡片皮肤库的 wire 契约 —— `/api/card-skins` 上面板与服务端之间的那几样形状
+ * 卡片皮肤库的 wire 契约 —— `/api/cards/skins` 上面板与服务端之间的那几样形状
  * (ADR-0014 决策 2 / 5 / 17)。
  *
  * **皮肤包本体的形状不在这里**:`card-skin.json`(`CardSkinManifest`、字段表、挂点表、
@@ -48,7 +48,7 @@ export interface CardSkinSummary {
 }
 
 /**
- * GET /api/card-skins
+ * GET /api/cards/skins
  *
  * `active` = `globals.defaults.cardSkin`(全局在用哪套)。per-UP 的那一层住订阅里
  * (`overrides.cardSkin`),不在这张表上 —— 皮肤页管的是库与全局默认。
@@ -74,35 +74,35 @@ export interface CardSkinFallback {
 	count: number;
 }
 
-/** GET /api/card-skins/:id —— `assets` 是包内资产清单(`assets/<名>`),编辑器背景图那一栏的可选项。 */
+/** GET /api/cards/skins/:id —— `assets` 是包内资产清单(`assets/<名>`),编辑器背景图那一栏的可选项。 */
 export interface CardSkinManifestResponse {
 	manifest: CardSkinManifest;
 	assets: string[];
 }
 
-/** POST /api/card-skins(multipart zip 装包)。`warnings` = 清洗时丢掉了什么,逐条列给作者。 */
+/** POST /api/cards/skins(multipart zip 装包)。`warnings` = 清洗时丢掉了什么,逐条列给作者。 */
 export interface CardSkinInstallResponse {
 	id: string;
 	warnings: string[];
 }
 
-/** POST /api/card-skins/:id/duplicate —— 名字缺省「<原名> 副本」。 */
+/** POST /api/cards/skins/:id/duplicate —— 名字缺省「<原名> 副本」。 */
 export interface CardSkinDuplicateRequest {
 	name?: string;
 }
 
-/** POST /api/card-skins/:id/duplicate 的回值。 */
+/** POST /api/cards/skins/:id/duplicate 的回值。 */
 export interface CardSkinDuplicateResponse {
 	id: string;
 }
 
-/** PUT /api/card-skins/:id(编辑器就地保存,资产不动)。 */
+/** PUT /api/cards/skins/:id(编辑器就地保存,资产不动)。 */
 export interface CardSkinSaveResponse {
 	warnings: string[];
 }
 
 /**
- * POST /api/card-skins/:id/preview —— 编辑器的实时预览(ADR-0014 决策 22)。
+ * POST /api/cards/skins/:id/preview —— 编辑器的实时预览(ADR-0014 决策 22)。
  *
  * **回的是 HTML 不是截图**:编辑器把它塞进不给 `allow-scripts` 的 sandbox iframe 里画,
  * 于是没装 Chrome 也能编皮肤。像素级与截图有细微差(iframe 是浏览器渲染、截图是 server
@@ -119,7 +119,7 @@ export interface CardSkinPreviewRequest {
 	manifest: unknown;
 }
 
-/** POST /api/card-skins/:id/preview 的回值。装包门拒了就是 400 的 {@link ErrorResponse}(`issues` 是逐条原因)。 */
+/** POST /api/cards/skins/:id/preview 的回值。装包门拒了就是 400 的 {@link ErrorResponse}(`issues` 是逐条原因)。 */
 export interface CardSkinPreviewResponse {
 	html: string;
 	/** 卡宽(px),面板按它摆 iframe。 */
@@ -134,7 +134,7 @@ export interface CardSkinPreviewResponse {
 export const CARD_SKIN_AI_INSTRUCTION_MAX = 2000;
 
 /**
- * POST /api/card-skins/:id/ai-css —— CSS 框旁那颗「请女仆帮忙写」(ADR-0015 决策 3–10)。
+ * POST /api/cards/skins/:id/ai —— CSS 框旁那颗「请女仆帮忙写」(ADR-0015 决策 3–10)。
  *
  * 开流之前的拒绝(id 不对 / 默认皮肤 / 没配模型 / 草稿不合法 / 块不存在)回普通 JSON 的
  * {@link ErrorResponse};都过了才开 SSE,事件见 {@link CardSkinAiCssEvent}。
@@ -166,7 +166,7 @@ export type CardSkinAiCssEvent =
 	| { event: "error"; data: ErrorResponse };
 
 /**
- * POST /api/cards/skin-shot —— 编辑器那颗「最终效果」。
+ * POST /api/cards/skins/:id/screenshot —— 编辑器那颗「最终效果」(皮肤 id 在路径里,ADR-0036)。
  *
  * 与实时预览**同源**(共用「清单 → HTML」那一步),差别只在这张是 server 上的 Chrome 画的。
  * 试了一次、回报结果,**照旧回 200**,体是 `Result<…>`:截成了是 `{ ok: true, … }`,截不出来
@@ -187,7 +187,7 @@ export type CardSkinShotResponse = Result<{
 	scene: string;
 }>;
 
-/** PUT /api/card-skins/active —— 改 `globals.defaults.cardSkin`。 */
+/** PUT /api/cards/skins/active —— 改 `globals.defaults.cardSkin`。 */
 export interface CardSkinActiveRequest {
 	id: string;
 }

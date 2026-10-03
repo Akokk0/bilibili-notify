@@ -874,7 +874,7 @@ export function removeKnobOption(
 // ---- 皮肤自带字体 -----------------------------------------------------------
 //
 // 清单里的 `asset:assets/<文件>` 只能指**包内**文件 —— 所以自带字体的前提是先把文件传进
-// 这套皮肤(`POST /api/card-skins/:id/assets`)。指到主人自己的字体库是不行的:导出的 zip
+// 这套皮肤(`POST /api/cards/skins/:id/assets`)。指到主人自己的字体库是不行的:导出的 zip
 // 里没有那份文件,别人装上就是回落字体。
 
 type Font = NonNullable<CardSkinManifest["fonts"]>[number];

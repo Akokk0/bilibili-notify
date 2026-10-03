@@ -68,7 +68,7 @@ describe("引用 B 站设置的判据:算", () => {
 	it("各个目录爬到 bilibili/settings,带不带后缀都算", () => {
 		expect(
 			linesIn(
-				"apps/server/src/routes/globals.ts",
+				"apps/server/src/routes/settings.ts",
 				`import { settingsOf } from "../bilibili/settings.js";`,
 			),
 		).toEqual([1]);
@@ -113,7 +113,7 @@ describe("引用 B 站设置的判据:不算", () => {
 	it("别的模块:核心自己的 settings、B 站目录里别的文件、同名的包", () => {
 		expect(
 			linesIn(
-				"apps/server/src/routes/globals.ts",
+				"apps/server/src/routes/settings.ts",
 				[
 					`import { x } from "../config/settings.js";`,
 					`import { y } from "../bilibili/settings-ui.js";`,

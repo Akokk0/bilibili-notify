@@ -55,7 +55,7 @@ beforeEach(() => {
 	resetStore();
 	Element.prototype.scrollIntoView = vi.fn();
 	vi.mocked(api.get).mockImplementation((url: string) =>
-		Promise.resolve(url.includes("/api/subs") ? [CUSTOMIZED] : GLOBALS),
+		Promise.resolve(url.includes("/api/subscriptions") ? [CUSTOMIZED] : GLOBALS),
 	);
 	vi.mocked(api.patch).mockResolvedValue(CUSTOMIZED);
 });
@@ -82,7 +82,7 @@ describe("高级规则 tab 关闭确认", () => {
 			specialUsers: [{ uid: "7", kinds: ["enter"] }],
 		};
 		vi.mocked(api.get).mockImplementation((url: string) =>
-			Promise.resolve(url.includes("/api/subs") ? [onlySpecial] : GLOBALS),
+			Promise.resolve(url.includes("/api/subscriptions") ? [onlySpecial] : GLOBALS),
 		);
 		renderRules();
 		expect(await screen.findByTitle(/移除 .* 的个性化配置/)).toBeTruthy();
@@ -115,7 +115,7 @@ describe("高级规则 tab 关闭确认", () => {
 
 		// overrides 须以清除哨兵下发(现存 slice 显式 null),否则空对象 merge 不删任何键。
 		await waitFor(() =>
-			expect(api.patch).toHaveBeenCalledWith(`/api/subs/${CUSTOMIZED.id}`, {
+			expect(api.patch).toHaveBeenCalledWith(`/api/subscriptions/${CUSTOMIZED.id}`, {
 				overrides: { imageGroup: null },
 				specialUsers: [],
 			}),

@@ -1,6 +1,6 @@
 /**
  * Per-UP overrides editor — Subscription.overrides + Subscription.specialUsers
- * bound to /api/subs PATCH.
+ * bound to /api/subscriptions PATCH.
  *
  * Each override family is gated by a "覆盖全局" toggle. Off → undefined
  * (inherit). On → seeded with the corresponding global default so the user
@@ -101,7 +101,7 @@ interface SubPatch {
 }
 
 function patchSub(id: string, body: SubPatch) {
-	return api.patch<Subscription>(`/api/subs/${id}`, body);
+	return api.patch<Subscription>(`/api/subscriptions/${id}`, body);
 }
 
 /* -------------------------------------------------------------------------- */

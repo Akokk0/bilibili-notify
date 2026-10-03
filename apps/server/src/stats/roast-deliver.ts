@@ -62,7 +62,7 @@ export const UNKNOWN_UP_NAME = "未知 UP";
 
 /**
  * 拓展订阅卡上的头像:存下的头像文件转成内嵌图(ADR-0020 决策 15)。资料里存的是面板的同源相对地址
- * (`/api/subs/<id>/avatar?v=…`),截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、认不出
+ * (`/api/subscriptions/<id>/avatar?v=…`),截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、认不出
  * 类型、读盘抛了都给 `undefined` —— 卡上画首字母圆牌,不因为一张头像让整张卡降级成文字。
  */
 async function extensionAvatar(deps: RoastDeliverDeps, subscriptionId: string) {

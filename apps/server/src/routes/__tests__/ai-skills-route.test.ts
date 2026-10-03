@@ -1,5 +1,5 @@
 /**
- * 女仆技能 API —— `/api/maid-skills` 的增删改查。
+ * 女仆技能 API —— `/api/ai/skills` 的增删改查。
  *
  * 这一层要钉住的东西只有三件:
  *
@@ -24,11 +24,11 @@ import { complainAboutSkill } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { BUILTIN_SKILLS } from "../../maid-skills/builtin.js";
 import { MaidSkillStore } from "../../maid-skills/store.js";
-import { createMaidSkillsRoute } from "../maid-skills.js";
+import { createAiSkillsRoute } from "../ai-skills.js";
 
 let dir: string;
 let store: MaidSkillStore;
-let app: ReturnType<typeof createMaidSkillsRoute>;
+let app: ReturnType<typeof createAiSkillsRoute>;
 
 const sample = {
 	name: "my-skill",
@@ -43,7 +43,7 @@ if (!BUILTIN) throw new Error("内置技能表是空的");
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-skill-route-"));
 	store = new MaidSkillStore({ dir });
-	app = createMaidSkillsRoute({ skillStore: store });
+	app = createAiSkillsRoute({ skillStore: store });
 });
 
 afterEach(async () => {

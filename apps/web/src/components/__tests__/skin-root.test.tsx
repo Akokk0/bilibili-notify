@@ -27,7 +27,7 @@ const H = vi.hoisted(() => ({
 vi.mock("../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
-			if (path === "/api/skins/active") return H.activeResponse;
+			if (path === "/api/dashboard/skins/active") return H.activeResponse;
 			throw new Error(`unexpected GET ${path}`);
 		}),
 	},
@@ -242,7 +242,7 @@ describe("SkinRoot / 自带字体", () => {
 			expect(document.getElementById("bn-skin-css")?.textContent ?? "").toContain("@font-face"),
 		);
 		const css = document.getElementById("bn-skin-css")?.textContent ?? "";
-		expect(css).toContain('url("/api/skins/abc/assets/font-a1.woff2")');
+		expect(css).toContain('url("/api/dashboard/skins/abc/assets/font-a1.woff2")');
 		expect(document.documentElement.style.getPropertyValue("--font-cjk")).toBe(
 			'"bn-skin-font", "霞鹜文楷", system-ui, sans-serif',
 		);

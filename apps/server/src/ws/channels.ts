@@ -34,14 +34,14 @@ export interface ChannelWiringDeps {
  * invalidates the three queries. That intent was never realised.
  *
  * Meanwhile 25e4210 (`fix(security)`) closed the plaintext-apiKey leak on
- * `GET /api/globals` and in the DOM, naming the threat model exactly:
+ * `GET /api/settings` and in the DOM, naming the threat model exactly:
  * "devtools 直接可见,屏幕共享/截图也会泄漏". It missed this path — so every
  * subscribe and every reconnect shipped unredacted provider keys and search
  * keys over the wire, straight into the browser's Network panel, for a
  * consumer that discards them.
  *
  * If the round-trip saving is ever wanted, the client must read a **redacted**
- * snapshot (see `redactGlobals` in routes/globals.ts) — never `getGlobals()`.
+ * snapshot (see `redactGlobals` in routes/settings.ts) — never `getGlobals()`.
  */
 export function buildStateHydrate(): WsEventEnvelope<"state"> {
 	return envelope("state", "hydrate", null);

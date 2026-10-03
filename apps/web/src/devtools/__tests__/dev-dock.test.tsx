@@ -54,7 +54,7 @@ const UPDATE_STATE: DevStatusDTO["scenarios"][number] = {
 
 const STATUS: DevStatusDTO = { scenarios: [UPDATE_STATE], active: [] };
 
-/** 开发版上 `/api/update` 报的形状,`state` 是注入进去的那份。 */
+/** 开发版上 `/api/system/update` 报的形状,`state` 是注入进去的那份。 */
 function dto(state: UpdateStatusDTO["state"]): UpdateStatusDTO {
 	return { currentVersion: "0.0.0-dev", rollbackTarget: null, pinnedVersion: null, state };
 }
@@ -101,7 +101,7 @@ describe("DevDock", () => {
 		const ready = dto({ phase: "ready", target: "0.99.0", releaseUrl: "https://example.invalid" });
 		vi.mocked(api.get).mockResolvedValue(STATUS);
 		vi.mocked(api.post).mockImplementation(async (path: string) =>
-			path === "/api/update/check"
+			path === "/api/system/update/check"
 				? ready
 				: { active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }] },
 		);
@@ -120,9 +120,9 @@ describe("DevDock", () => {
 
 		await user.selectOptions(screen.getByRole("combobox", { name: "相位" }), "ready");
 		// 跑完会把所有查询作废,`/api/dev` 也会再拉一次 —— 服务端那时报的生效表就是注入后的;
-		// 跟着补做的那次更新检查拉的是 `/api/update`,给它一份注入后的状态。
+		// 跟着补做的那次更新检查拉的是 `/api/system/update`,给它一份注入后的状态。
 		vi.mocked(api.get).mockImplementation(async (path: string) =>
-			path === "/api/update"
+			path === "/api/system/update"
 				? ready
 				: { ...STATUS, active: [{ scenarioId: "update.state", label: "更新状态 → ready 0.99.0" }] },
 		);
@@ -245,10 +245,10 @@ describe("DevDock", () => {
 		});
 		const active = [{ scenarioId: "update.state", label: "更新状态 → available 0.99.0" }];
 		vi.mocked(api.get).mockImplementation(async (path: string) =>
-			path === "/api/update" ? injected : { ...STATUS, active },
+			path === "/api/system/update" ? injected : { ...STATUS, active },
 		);
 		vi.mocked(api.post).mockImplementation(async (path: string) =>
-			path === "/api/update/check" ? injected : { active },
+			path === "/api/system/update/check" ? injected : { active },
 		);
 		useToastStore.getState().clear();
 		renderDock();
@@ -256,7 +256,7 @@ describe("DevDock", () => {
 
 		await user.click(await screen.findByRole("button", { name: "更新状态" }));
 		// 走的是打开面板那条路本身:先拉状态、再 POST check、再判有没有新版 —— 不另造一条发卡的路。
-		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/update/check", {}));
+		await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/system/update/check", {}));
 		await waitFor(() =>
 			expect(useToastStore.getState().items).toContainEqual(
 				expect.objectContaining({
@@ -290,7 +290,7 @@ describe("DevDock", () => {
 	it("sub / target / connection 三种字段是真选择器:选项来自站内列表,留空 = 服务端默认", async () => {
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
 			switch (path) {
-				case "/api/subs":
+				case "/api/subscriptions":
 					return [
 						{
 							id: "s1",

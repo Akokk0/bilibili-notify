@@ -218,10 +218,10 @@ describe("connections route — 写入的失败(真 store)", () => {
 });
 
 /**
- * `POST /:id/test` —— 试一次、回报结果:探到了什么都回 200,体是 `Result<{ latencyMs }>`;
+ * `POST /:id/probe` —— 探一次连接通不通、回报结果:探到了什么都回 200,体是 `Result<{ latencyMs }>`;
  * 请求本身不成(没这条连接、引擎没起)才是非 2xx。写盘的 `testStatus` 是盘上的老格式,仍读 `err`。
  */
-describe("connections route — POST /:id/test", () => {
+describe("connections route — POST /:id/probe", () => {
 	function testApp(probe: unknown, opts: { engines?: boolean; known?: boolean } = {}) {
 		const patchConnection = vi.fn(async () => ({}));
 		const app = createConnectionsRoute({
@@ -241,14 +241,14 @@ describe("connections route — POST /:id/test", () => {
 
 	it("没这条连接 → 404 not_found(请求级失败,不是 200)", async () => {
 		const { app } = testApp({ ok: true, latencyMs: 5 }, { known: false });
-		const res = await app.request("/c1/test", { method: "POST" });
+		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(404);
 		expect(await res.json()).toEqual({ code: "not_found", message: "没有这条连接" });
 	});
 
 	it("引擎还没起 → 503 unavailable", async () => {
 		const { app } = testApp({ ok: true, latencyMs: 5 }, { engines: false });
-		const res = await app.request("/c1/test", { method: "POST" });
+		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({
 			code: "unavailable",
@@ -258,7 +258,7 @@ describe("connections route — POST /:id/test", () => {
 
 	it("通 → 200 { ok: true, latencyMs },并把结果写进 testStatus", async () => {
 		const { app, patchConnection } = testApp({ ok: true, latencyMs: 12 });
-		const res = await app.request("/c1/test", { method: "POST" });
+		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true, latencyMs: 12 });
 		expect(patchConnection).toHaveBeenCalledWith("c1", {
@@ -268,7 +268,7 @@ describe("connections route — POST /:id/test", () => {
 
 	it("不通 → 200 { ok: false, code, message },没有假的 latencyMs;盘上仍写 err", async () => {
 		const { app, patchConnection } = testApp({ ok: false, latencyMs: 30, err: "拒绝连接" });
-		const res = await app.request("/c1/test", { method: "POST" });
+		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		const body = await res.json();
 		expect(body).toEqual({ ok: false, code: "unavailable", message: "拒绝连接" });
@@ -281,7 +281,7 @@ describe("connections route — POST /:id/test", () => {
 
 	it("平台没有探测协议(ok: null)→ 200 unsupported,不写 testStatus", async () => {
 		const { app, patchConnection } = testApp({ ok: null, latencyMs: 0, err: "no probe" });
-		const res = await app.request("/c1/test", { method: "POST" });
+		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({
 			ok: false,

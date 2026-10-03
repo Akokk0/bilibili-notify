@@ -16,8 +16,8 @@ import { fail } from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { createDashboardSkinsRoute } from "../../routes/dashboard-skins.js";
 import { ROUTE_NOT_FOUND_MESSAGE, respondFailure } from "../../routes/respond-failure.js";
-import { createSkinsRoute } from "../../routes/skins.js";
 import { MAX_SKIN_ASSETS, SkinStore } from "../store.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -61,7 +61,7 @@ beforeEach(async () => {
 	// 标准的 `not_found` 错误体,不是 Hono 默认的纯文本 —— 否则这条测试自己造的 404 会被错误体守卫点名。
 	app = new Hono()
 		.notFound((c) => respondFailure(c, fail("not_found", ROUTE_NOT_FOUND_MESSAGE)))
-		.route("/", createSkinsRoute({ skinStore: store }));
+		.route("/", createDashboardSkinsRoute({ skinStore: store }));
 });
 
 describe("skins route", () => {
@@ -521,11 +521,11 @@ describe("PUT /:id/manifest(编辑器保存)", () => {
 	});
 });
 
-describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
+describe("POST /:id/ai(让女仆改,不落盘)", () => {
 	function appWithAi(reply: string | null): Hono {
 		return new Hono().route(
 			"/",
-			createSkinsRoute({
+			createDashboardSkinsRoute({
 				skinStore: store,
 				commentary: () =>
 					reply === null ? null : { generateRaw: async (_s: string, _u: string) => reply },
@@ -534,7 +534,7 @@ describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
 	}
 
 	async function aiEdit(aiApp: Hono, id: string, body: unknown): Promise<Response> {
-		return aiApp.request(`/${id}/ai-edit`, {
+		return aiApp.request(`/${id}/ai`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(body),
@@ -572,7 +572,7 @@ describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
 		let seen = "";
 		const aiApp = new Hono().route(
 			"/",
-			createSkinsRoute({
+			createDashboardSkinsRoute({
 				skinStore: store,
 				commentary: () => ({
 					generateRaw: async (sys: string) => {
@@ -589,11 +589,11 @@ describe("POST /:id/ai-edit(让女仆改,不落盘)", () => {
 		expect(seen).toContain(`- ${name} —— 原文件名「樱花壁纸.png」`);
 	});
 
-	it("模型那头出错 → unavailable(503),对端给的原因写进 message(与卡片皮肤的 ai-css 同一口径)", async () => {
+	it("模型那头出错 → unavailable(503),对端给的原因写进 message(与卡片皮肤的 `/:id/ai` 同一口径)", async () => {
 		const { id } = (await (await upload(app, makeZipFile())).json()) as any;
 		const failing = new Hono().route(
 			"/",
-			createSkinsRoute({
+			createDashboardSkinsRoute({
 				skinStore: store,
 				commentary: () => ({
 					generateRaw: async () => {

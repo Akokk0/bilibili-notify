@@ -68,9 +68,9 @@ beforeEach(() => {
 		scrolled.push(this);
 	};
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		// `/api/subs/tags` 也以 `/api/subs` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
-		if (path === "/api/subs/tags") return Promise.resolve([]);
-		if (path === "/api/subs") return Promise.resolve([SUB_A, SUB_B]);
+		// `/api/subscriptions/tags` 也以 `/api/subscriptions` 开头:订阅列表那条必须精确匹配,别让标签表串味进来。
+		if (path === "/api/subscriptions/tags") return Promise.resolve([]);
+		if (path === "/api/subscriptions") return Promise.resolve([SUB_A, SUB_B]);
 		return Promise.resolve([]);
 	});
 });

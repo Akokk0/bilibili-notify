@@ -28,7 +28,7 @@ function disabledTag(enabled: boolean): string {
 function useOptions(kind: PickKind): Option[] {
 	const subs = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<SubscriptionDTO[]>("/api/subs"),
+		queryFn: () => api.get<SubscriptionDTO[]>("/api/subscriptions"),
 		enabled: kind === "sub",
 	});
 	const targets = useQuery({

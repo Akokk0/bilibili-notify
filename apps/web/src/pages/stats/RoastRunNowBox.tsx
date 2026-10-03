@@ -40,8 +40,8 @@ export function RoastRunNowBox({
 		mutationFn: () =>
 			api.post<StatsRoastRunNowResponse>(
 				subscriptionId
-					? `/api/stats/roast/run-now/${encodeURIComponent(subscriptionId)}`
-					: "/api/stats/roast/run-now",
+					? `/api/stats/roast/run/${encodeURIComponent(subscriptionId)}`
+					: "/api/stats/roast/run",
 				{},
 			),
 	});

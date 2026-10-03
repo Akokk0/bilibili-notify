@@ -374,7 +374,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			log.info(`serving dashboard static assets from ${effectiveWebDistDir}`);
 		}
 		// WS ticket store:仅当 basicAuth 启用时才需要。前端 WebSocket 无法附带
-		// Authorization 头,改用 `POST /api/auth/ws-ticket` 换短时 token,再用 `?ticket=`
+		// Authorization 头,改用 `POST /api/ws/ticket` 换短时 token,再用 `?ticket=`
 		// 完成 WS upgrade,避免把真实凭证拼进 URL 落进反代日志。
 		wsTicketStore = basicAuthCredentials ? createWsTicketStore() : null;
 		runtime.serviceCtx.onDispose(() => wsTicketStore?.dispose(), "stop");
@@ -544,7 +544,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// dynamic can share the same ImageRenderer instance as /api/cards/preview.
 		const chromeIdleTimeoutMs =
 			bootstrap.chromeIdleSeconds === undefined ? undefined : bootstrap.chromeIdleSeconds * 1000;
-		// 启动实际生效的来源(endpoint 赢过 path),供 /render-source 展示与同源幂等判断。
+		// 启动实际生效的来源(endpoint 赢过 path),供 GET /api/cards/renderer 展示与同源幂等判断。
 		const chromeSource: ChromeSource | undefined = bootstrap.chromeEndpoint
 			? { chromeEndpoint: bootstrap.chromeEndpoint }
 			: bootstrap.chromePath
@@ -736,7 +736,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//
 		// ⚠️ 走 `ensureReady()` 而不是裸 `init()`:`ensureReady` 是 `this.ready ??= this.init()`,
 		// 而 `init()` 自己**不设** `this.ready` —— 裸调它开机是读了盘,但那把锁还空着,于是
-		// 首个 `/api/card-skins*` / 预览 / 工坊请求会在**请求路径上**把整个皮肤目录再读一遍。
+		// 首个 `/api/cards/skins*` / 预览 / 工坊请求会在**请求路径上**把整个皮肤目录再读一遍。
 		// 真正的代价不是那点 I/O:`init()` 开头一句 `index.clear()`,之后一串 await 才填满,
 		// 而出图那头 `get(id)` 是**同步**读同一个实例的索引 —— 这个窗口里撞上一次推送就回落
 		// 默认皮肤并记一笔 fallback(2026-09-19 审查)。

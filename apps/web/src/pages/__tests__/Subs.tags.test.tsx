@@ -85,11 +85,11 @@ function chip(label: string): HTMLElement {
 
 beforeEach(() => {
 	(api.get as ReturnType<typeof vi.fn>).mockImplementation((path: string) => {
-		if (path === "/api/subs/tags") return Promise.resolve(TABLE);
-		if (path.startsWith("/api/subs/lookup")) {
+		if (path === "/api/subscriptions/tags") return Promise.resolve(TABLE);
+		if (path.startsWith("/api/subscriptions/lookup")) {
 			return Promise.resolve({ uid: "999", name: "查到的 999", avatar: "", sign: "", fans: 5 });
 		}
-		if (path === "/api/subs") return Promise.resolve([SUB_A, SUB_B, SUB_C]);
+		if (path === "/api/subscriptions") return Promise.resolve([SUB_A, SUB_B, SUB_C]);
 		if (path === "/api/ext") return Promise.resolve({ extensions: [] });
 		return Promise.resolve([]);
 	});
@@ -196,7 +196,7 @@ describe("Subs 订阅详情 × 标签", () => {
 			string,
 			Subscription,
 		];
-		expect(path).toBe("/api/subs");
+		expect(path).toBe("/api/subscriptions");
 		expect(body.id).toBe(SUB_A.id);
 		expect(body.tagIds).toEqual([CHAT.id, GAME.id]);
 		expect(body).not.toHaveProperty("groups");

@@ -167,7 +167,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1", BN_CHROME_PATH: "/fake/chrome" },
 		});
 		await ok(
-			await api("/api/globals", {
+			await api("/api/settings", {
 				method: "PATCH",
 				...json({ extensions: { [FAKE]: { enabled: true } } }),
 			}),
@@ -219,7 +219,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 				enabled: key !== "c",
 			});
 			await ok(
-				await api("/api/subs", {
+				await api("/api/subscriptions", {
 					method: "POST",
 					...json({
 						...base,
@@ -282,7 +282,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 	}, 15_000);
 
 	it("卡是照作品画的:作者名与存下的头像(转成 data URL)、正文、九宫格里的图都在卡上", async () => {
-		const avatar = await api(`/api/subs/${SUBS.a.id}/avatar`);
+		const avatar = await api(`/api/subscriptions/${SUBS.a.id}/avatar`);
 		expect(avatar.status).toBe(200);
 		const avatarDataUrl = `data:${avatar.headers.get("content-type")};base64,${Buffer.from(
 			await avatar.arrayBuffer(),
@@ -294,7 +294,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		expect(card, "甲那张图文卡没画出来").toBeDefined();
 		expect(card).toContain(avatarDataUrl);
 		// 头像是面板的相对地址那种的话,截图时加载不到(决策 68)。
-		expect(card).not.toContain(`/api/subs/${SUBS.a.id}/avatar`);
+		expect(card).not.toContain(`/api/subscriptions/${SUBS.a.id}/avatar`);
 		// 三张作品图都转成了 data URL 进卡。
 		expect(card?.match(/data:image\/png;base64,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
 	});

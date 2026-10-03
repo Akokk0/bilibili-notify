@@ -10,7 +10,7 @@
 
 import { describe, expect, it, vi } from "vite-plus/test";
 import { checkApprovalReachable } from "../roast-approval-guard.js";
-import { createSubsRoute } from "../subs.js";
+import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
 
 const ONEBOT = [{ id: "m1", platform: "onebot" }] as never;
@@ -84,7 +84,7 @@ function routeWith(masterPlatform: string | null) {
 			engines: null,
 		},
 	} as unknown as RouteDeps;
-	return { app: createSubsRoute(deps), patchSubscription };
+	return { app: createSubscriptionsRoute(deps), patchSubscription };
 }
 
 const patchRoast = (body: unknown) => ({
@@ -93,7 +93,7 @@ const patchRoast = (body: unknown) => ({
 	body: JSON.stringify(body),
 });
 
-describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
+describe("PATCH /api/subscriptions/:id — per-UP 审批闸", () => {
 	it("在收不到回复的通道上开审批 → 409 not_configured,而且**没落盘**", async () => {
 		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(
@@ -135,7 +135,7 @@ describe("PATCH /api/subs/:id — per-UP 审批闸", () => {
 	});
 });
 
-describe("PATCH /api/subs/:id — 拓展订阅同一道闸(ADR-0020 决策 14)", () => {
+describe("PATCH /api/subscriptions/:id — 拓展订阅同一道闸(ADR-0020 决策 14)", () => {
 	it("在收不到回复的通道上给拓展订阅开审批 → 409 not_configured,没落盘", async () => {
 		const { app, patchSubscription } = routeWith("feishu");
 		const res = await app.request(

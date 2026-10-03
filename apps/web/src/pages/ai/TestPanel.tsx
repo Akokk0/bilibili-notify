@@ -38,8 +38,7 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 	}, [targets, targetId]);
 
 	const test = useMutation({
-		mutationFn: () =>
-			api.post<TestPushResponse>("/api/ai/test-push", { targetId, message, ai: draft }),
+		mutationFn: () => api.post<TestPushResponse>("/api/ai/test", { targetId, message, ai: draft }),
 		onMutate: () => {
 			setReply(null);
 			setErr(null);
@@ -62,7 +61,7 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 			subtitle="拿当前人格(含未保存的改动)问女仆一句 · 回复会真实推到选定目标"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.sparkle size={14} />}
-			badge="test-push"
+			badge="test"
 		>
 			<Field code="ai.test.target">
 				<TSelect

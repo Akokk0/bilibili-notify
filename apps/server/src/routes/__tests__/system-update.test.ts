@@ -1,7 +1,7 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { UpdateService } from "../../update/service.js";
-import { createUpdateRoute } from "../update.js";
+import { createSystemUpdateRoute } from "../system-update.js";
 
 /** 这个进程的启动时刻:面板等新进程时只认和它不同的 /api/health 回答。 */
 const STARTED = "2026-09-04T00:00:00.000Z";
@@ -33,7 +33,7 @@ function fakeService(overrides: Partial<UpdateService> = {}): UpdateService {
 
 describe("update 路由", () => {
 	it("GET / 交出当前状态", async () => {
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService(),
 			applyUpdate: async () => {},
@@ -52,7 +52,7 @@ describe("update 路由", () => {
 			pinnedVersion: null,
 			state: { phase: "ready" as const, target: "0.9.0", releaseUrl: "https://x/t" },
 		}));
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({ check }),
 			applyUpdate: async () => {},
@@ -67,7 +67,7 @@ describe("update 路由", () => {
 	it("POST /download 与 POST /rollback 同样只转发", async () => {
 		const download = vi.fn(async () => fakeService().getStatus());
 		const rollback = vi.fn(async () => fakeService().getStatus());
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({ download, rollback }),
 			applyUpdate: async () => {},
@@ -83,7 +83,7 @@ describe("update 路由", () => {
 		// 「重启完发现版本没变」是最让人怀疑功能坏掉的一种结果,而重启本身有代价:
 		// 推送会断、直播监听会掉。没东西可应用就别动。
 		const applyUpdate = vi.fn(async () => {});
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService(),
 			applyUpdate,
@@ -103,7 +103,7 @@ describe("update 路由", () => {
 		const applyUpdate = vi.fn(async () => {
 			throw new Error("dispose exploded");
 		});
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -123,7 +123,7 @@ describe("update 路由", () => {
 
 	it("回退钉好之后 POST /apply 放行 —— 回退也要靠重启才生效", async () => {
 		const applyUpdate = vi.fn(async () => {});
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -152,7 +152,7 @@ describe("update 路由", () => {
 		const applyUpdate = vi.fn(async () => {
 			order.push("shutdown");
 		});
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -188,7 +188,7 @@ describe("update 路由", () => {
 
 	it("功能没启用时 /apply 也拒 —— 不给一条能白白重启服务的路", async () => {
 		const applyUpdate = vi.fn(async () => {});
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({
 				getStatus: () => ({
@@ -211,7 +211,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 		const probeMirrors = vi.fn(async (prefixes: readonly string[]) =>
 			prefixes.map((prefix) => ({ prefix, ok: true as const, ms: 12, version: "0.9.0" })),
 		);
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate: async () => {},
@@ -235,7 +235,7 @@ describe("update 路由 —— 测一遍加速站", () => {
 
 	it("prefixes 不成形 → 400,不去碰 service —— 只收空串或 https:// 前缀,数量有上限", async () => {
 		const probeMirrors = vi.fn(async () => []);
-		const app = createUpdateRoute({
+		const app = createSystemUpdateRoute({
 			startedAt: STARTED,
 			service: fakeService({ probeMirrors }),
 			applyUpdate: async () => {},

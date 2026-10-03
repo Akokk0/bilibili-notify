@@ -119,7 +119,7 @@ describe("bindReportedProfiles", () => {
 		await subRuntime.patch(A, {
 			cachedProfile: {
 				name: "旧名字",
-				avatar: `/api/subs/${A}/avatar?v=old`,
+				avatar: `/api/subscriptions/${A}/avatar?v=old`,
 				sign: "",
 				fans: 1,
 				lastRefreshedAt: "2026-09-01T00:00:00.000Z",
@@ -138,7 +138,7 @@ describe("bindReportedProfiles", () => {
 
 		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({
 			name: "新名字",
-			avatar: `/api/subs/${A}/avatar?v=old`,
+			avatar: `/api/subscriptions/${A}/avatar?v=old`,
 			fans: 1,
 		});
 	});

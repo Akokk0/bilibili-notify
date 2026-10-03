@@ -51,7 +51,7 @@ describe("streamCardSkinAiCss", () => {
 		expect(retries).toEqual([["解析失败"]]);
 		expect(out).toEqual({ css: ".b{y:2}", warnings: ["削掉一条"] });
 		const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
-		expect(url).toBe("/api/card-skins/neon/ai-css");
+		expect(url).toBe("/api/cards/skins/neon/ai");
 		expect(JSON.parse(init.body as string)).toEqual(BODY);
 		expect(init.signal).toBe(ctl.signal);
 	});

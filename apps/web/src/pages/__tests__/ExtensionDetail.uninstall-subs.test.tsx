@@ -24,7 +24,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url === "/api/subs") return disk.subs;
+			if (url === "/api/subscriptions") return disk.subs;
 			if (url.endsWith("/docs")) return {};
 			if (url === "/api/ext") {
 				return {
@@ -100,7 +100,7 @@ describe("卸订阅源拓展:名下的订阅", () => {
 
 		await userEvent.click(await screen.findByRole("button", { name: "删除拓展" }));
 		await screen.findByText(/删掉它的设置也会一起没/);
-		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/subs"));
+		await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/subscriptions"));
 		// 让订阅表那一发落地、框重画一次,再看。
 		await new Promise((resolve) => setTimeout(resolve, 20));
 

@@ -1,6 +1,6 @@
 /**
- * **草稿清单 → 一整份 HTML**。编辑器的实时预览(`POST /api/card-skins/:id/preview`)与
- * 「最终效果」截图(`POST /api/cards/skin-shot`)共用这一步。
+ * **草稿清单 → 一整份 HTML**。编辑器的实时预览(`POST /api/cards/skins/:id/preview`)与
+ * 「最终效果」截图(`POST /api/cards/skins/:id/screenshot`)共用这一步。
  *
  * 共用不是为了省几行:两边**必须同源**。各走各的话,作者会看着一个能用的预览、截出一张
  * 不一样的图,而两边都说不出哪儿错了 —— 与「草稿走的是与保存同一道装包门」同一条道理,

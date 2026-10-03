@@ -53,7 +53,7 @@ function extSub(id: string, name: string): Subscription {
 		id,
 		cachedProfile: {
 			name,
-			avatar: `/api/subs/${id}/avatar?v=abc`,
+			avatar: `/api/subscriptions/${id}/avatar?v=abc`,
 			sign: "",
 			lastRefreshedAt: "2026-09-23T00:00:00Z",
 		},
@@ -116,7 +116,9 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		// 面板只列正在播的,「开播」是多余的 —— 主人 09-23 定的,B 站行与拓展行都不写。
 		expect(screen.queryByText(/开播/)).toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();
-		expect(container.querySelector('img[src="/api/subs/s-dy/avatar?v=abc"]')).not.toBeNull();
+		expect(
+			container.querySelector('img[src="/api/subscriptions/s-dy/avatar?v=abc"]'),
+		).not.toBeNull();
 	});
 
 	it("订阅列表与拓展列表都还没回来:名字与徽章退拓展 id,不写「UID undefined」", () => {

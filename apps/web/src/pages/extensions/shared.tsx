@@ -80,10 +80,10 @@ export function useExtensionToggle() {
 	const qc = useQueryClient();
 	return useMutation({
 		mutationFn: (next: { id: string; enabled: boolean }) =>
-			api.patch("/api/globals", { extensions: { [next.id]: { enabled: next.enabled } } }),
+			api.patch("/api/settings", { extensions: { [next.id]: { enabled: next.enabled } } }),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: EXTENSIONS_QUERY_KEY });
-			void qc.invalidateQueries({ queryKey: ["globals"] });
+			void qc.invalidateQueries({ queryKey: ["settings"] });
 		},
 	});
 }

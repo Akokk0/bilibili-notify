@@ -133,7 +133,7 @@ function collectFrames(ws: WebSocket): {
 // Suite — WS upgrade gate (cookie-only model, Q4/Q7d)
 //
 // The only accepted upgrade credential is a one-shot `?ticket=` issued by the
-// cookie-authed `POST /api/auth/ws-ticket`. The legacy `Authorization: Basic`
+// cookie-authed `POST /api/ws/ticket`. The legacy `Authorization: Basic`
 // and `?token=<b64>` paths were removed — these tests lock that.
 // ---------------------------------------------------------------------------
 

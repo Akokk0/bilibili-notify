@@ -90,7 +90,7 @@ vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
 			H.gets.push(path);
-			if (path === "/api/skins/active") return { active: ACTIVE };
+			if (path === "/api/dashboard/skins/active") return { active: ACTIVE };
 			return {
 				defaults: {
 					ai: {
@@ -125,7 +125,7 @@ async function typeAndSend(text: string) {
 	fireEvent.keyDown(ta, { key: "Enter" });
 }
 
-const skinGets = () => H.gets.filter((p) => p === "/api/skins/active");
+const skinGets = () => H.gets.filter((p) => p === "/api/dashboard/skins/active");
 
 beforeEach(() => {
 	H.toolEvents = [];
@@ -191,7 +191,7 @@ describe("卡片工坊的写工具跑完 → 卡片皮肤库缓存过期", () =>
 		fireEvent.keyDown(ta, { key: "Enter" });
 		await screen.findByText("做好啦");
 		return spy.mock.calls.filter(
-			([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(["card-skins"]),
+			([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(["cards", "skins"]),
 		);
 	}
 

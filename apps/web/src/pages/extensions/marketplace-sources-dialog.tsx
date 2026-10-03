@@ -54,8 +54,8 @@ export function MarketplaceSourcesDialog({
 }) {
 	const qc = useQueryClient();
 	const globals = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const sources = sourcesOf(globals.data);
 	const [url, setUrl] = useState("");
@@ -63,9 +63,9 @@ export function MarketplaceSourcesDialog({
 
 	const save = useMutation({
 		mutationFn: (next: SourceRow[]) =>
-			api.patch("/api/globals", { marketplace: { sources: next } }),
+			api.patch("/api/settings", { marketplace: { sources: next } }),
 		onSuccess: () => {
-			void qc.invalidateQueries({ queryKey: ["globals"] });
+			void qc.invalidateQueries({ queryKey: ["settings"] });
 			void qc.invalidateQueries({ queryKey: MARKETPLACE_QUERY_KEY });
 		},
 	});

@@ -4,7 +4,7 @@
  * 🔴 聊天路由自己的测试是直接喂皮肤库与截图口的,证明不了 `app.ts` 那几行真的接上了。
  * 少了皮肤库,工坊一开口就 400;少了截图口,`look_card` 永远说「截不了」,而装着 Chrome
  * 的主人只会觉得女仆看不见图 —— 两样都不报错。另一条要钉的是**同一家店**:工坊做出来的
- * 皮肤得立刻出现在 `/api/card-skins` 里,各 new 一家的话要等重启才看得见。
+ * 皮肤得立刻出现在 `/api/cards/skins` 里,各 new 一家的话要等重启才看得见。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -92,7 +92,7 @@ describe("卡片皮肤工坊的装配接线", () => {
 		expect(typeof seen.look).toBe("object");
 		expect((seen.look as ExtraToolResult).images?.[0]).toMatch(/^data:image\/jpeg;base64,/);
 
-		const list = (await (await app.request("/api/card-skins")).json()) as {
+		const list = (await (await app.request("/api/cards/skins")).json()) as {
 			skins: Array<{ name: string }>;
 		};
 		expect(list.skins.map((s) => s.name)).toContain("接线测试");

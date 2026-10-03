@@ -31,7 +31,7 @@ const M = vi.hoisted(() => ({
 }));
 
 vi.mock("../../services/maidSkill", () => ({
-	maidSkillsQueryKey: ["maid-skills"],
+	maidSkillsQueryKey: ["ai", "skills"],
 	listMaidSkills: vi.fn(async () => ({ list: H.list, problems: H.problems, tools: H.tools })),
 	createMaidSkill: M.create,
 	updateMaidSkill: M.update,

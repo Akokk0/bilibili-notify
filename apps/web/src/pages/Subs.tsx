@@ -155,8 +155,8 @@ function biliIdentityOf(uid: string): Identity {
 }
 
 /**
- * "添加 UP" 弹窗。输入纯数字时走 `/api/subs/lookup` 单条 preview(原 UID 流程);
- * 输入非数字时走 `/api/subs/search` 列出 5 条结果,翻页 + 整行点击直接提交订阅。
+ * "添加 UP" 弹窗。输入纯数字时走 `/api/subscriptions/lookup` 单条 preview(原 UID 流程);
+ * 输入非数字时走 `/api/subscriptions/search` 列出 5 条结果,翻页 + 整行点击直接提交订阅。
  * 已订阅的行不可点击并附「已订阅」灰显标识。
  *
  * **至少一个订阅源拓展在跑时**(ADR-0019 决策 10)顶上多一排平台选择:选了拓展,输入框里的字
@@ -205,7 +205,7 @@ function NewSubDialog({
 
 	const lookup = useMutation({
 		mutationFn: (q: string) =>
-			api.get<UpProfileLookup>(`/api/subs/lookup?uid=${encodeURIComponent(q)}`),
+			api.get<UpProfileLookup>(`/api/subscriptions/lookup?uid=${encodeURIComponent(q)}`),
 		onSuccess: (data) => {
 			setProfile(data);
 			setSearchData(null);
@@ -220,7 +220,7 @@ function NewSubDialog({
 
 	const search = useMutation({
 		mutationFn: ({ q, p }: { q: string; p: number }) =>
-			api.get<SearchResponse>(`/api/subs/search?q=${encodeURIComponent(q)}&page=${p}`),
+			api.get<SearchResponse>(`/api/subscriptions/search?q=${encodeURIComponent(q)}&page=${p}`),
 		onSuccess: (data) => {
 			setSearchData(data);
 			setProfile(null);
@@ -639,7 +639,7 @@ function CandidateList({
 
 /**
  * 用选中的候选预填资料(ADR-0019 决策 49)—— 与 B 站那边把查到的资料放进草稿同一个做法。头像是
- * 候选的 data URL,建成之后服务端存成文件、换成 `/api/subs/<id>/avatar?v=…`;没有头像就是空串
+ * 候选的 data URL,建成之后服务端存成文件、换成 `/api/subscriptions/<id>/avatar?v=…`;没有头像就是空串
  * (资料缓存里「没有」的写法,头像件见空串退首字)。
  *
  * 候选没带粉丝数就**不带这一格**:编一个 `0` 出来,卡上就会写「0 粉丝」这种假话。
@@ -676,17 +676,17 @@ export default function Subs() {
 	const qc = useQueryClient();
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 全局特性开关:订阅没覆盖的那几把继承它(卡片胶囊与配置弹层都按它算)。与规则页同一个 ["globals"] 缓存;
+	// 全局特性开关:订阅没覆盖的那几把继承它(卡片胶囊与配置弹层都按它算)。与规则页同一个 ["settings"] 缓存;
 	// 没读到时回落出厂值 —— 面板没有全局特性开关的界面,通常就是出厂值,唯独直播拆键把旧的周期推送迁成了全局开。
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const globalFeatures = globalsQuery.data?.defaults?.features;
 	// 标签表(ADR-0034):筛选胶囊、卡片角标、挑标签的弹框都读它。没读到时是 `undefined` —— 此时没有标签胶囊可画,
@@ -836,7 +836,7 @@ export default function Subs() {
 		mutationFn: async (s: Subscription) => {
 			setError(null);
 			try {
-				await api.post<Subscription[]>("/api/subs", s);
+				await api.post<Subscription[]>("/api/subscriptions", s);
 				return s;
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
@@ -854,7 +854,7 @@ export default function Subs() {
 	 */
 	const patchSub = useMutation({
 		mutationFn: ({ id, patch }: { id: string; patch: SubscriptionCommonPatch }) =>
-			api.patch<Subscription>(`/api/subs/${id}`, patch),
+			api.patch<Subscription>(`/api/subscriptions/${id}`, patch),
 		onMutate: async ({ id, patch }) => {
 			await qc.cancelQueries({ queryKey: ["subscriptions"] });
 			const prev = qc.getQueryData<Subscription[]>(["subscriptions"]);
@@ -893,7 +893,7 @@ export default function Subs() {
 			ids.map((id) => {
 				const s = fresh.find((x) => x.id === id);
 				if (!s) return Promise.resolve();
-				return api.post<Subscription[]>("/api/subs", { ...s, enabled: on });
+				return api.post<Subscription[]>("/api/subscriptions", { ...s, enabled: on });
 			}),
 		);
 		// allSettled 结果此前被丢弃 → 部分失败完全不可见。上报失败计数。
@@ -908,7 +908,7 @@ export default function Subs() {
 	function confirmDelete(): void {
 		const target = pendingDelete;
 		if (!target) return;
-		void Promise.allSettled(target.ids.map((id) => api.delete(`/api/subs/${id}`))).then(
+		void Promise.allSettled(target.ids.map((id) => api.delete(`/api/subscriptions/${id}`))).then(
 			(results) => {
 				qc.invalidateQueries({ queryKey: ["subscriptions"] });
 				const failed = results.filter((r) => r.status === "rejected").length;

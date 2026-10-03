@@ -24,7 +24,7 @@ export type {
 	LiveListenerSnapshot,
 	// `/api/live/listening` 的一行:B 站房间或拓展订阅的在播,按 `kind` 分。
 	LiveListeningEntry,
-	// `/api/logs` 归档行与 WS `log` 帧共用的行视图。
+	// `/api/system/logs` 归档行与 WS `log` 帧共用的行视图。
 	LogArchiveEntry as LogLineView,
 	// wire 4 值日志级别(含 warn)比 3 值配置枚举宽,别名维持旧命名。
 	LogLevel as LogLineLevel,
@@ -41,13 +41,21 @@ export const HISTORY_QUERY_LIMITS = [100, 200] as const;
 export const historyQueryKey = (limit: number) => ["history", { limit }] as const;
 
 /**
+ * 粉丝快照(`GET /api/stats/followers`)的缓存键。首页粉丝面板读它,WS `fans-refreshed` 整体覆盖它 ——
+ * 读与写必须是**同一个键**:写错了键,WS 推过来的新快照落进一个没人读的缓存,面板停在旧值上,而两头
+ * 各自的测试照样全绿。所以两处都从这儿取,别各写一份字面量。
+ */
+export const FOLLOWERS_QUERY_KEY = ["stats", "followers"] as const;
+
+/**
  * `day` undefined = the live view (today + recent, newest-first); this is the
  * key the WS `log` tail `setQueryData`-appends to. Picking a past day yields a
  * DIFFERENT key so the frozen historical view isn't polluted by live frames —
  * same per-key isolation trick as `historyQueryKey(limit)`.
  */
 const LOGS_LIVE_KEY = "live";
-export const logsQueryKey = (day?: string) => ["logs", { day: day ?? LOGS_LIVE_KEY }] as const;
+export const logsQueryKey = (day?: string) =>
+	["system", "logs", { day: day ?? LOGS_LIVE_KEY }] as const;
 
 /** Bucket history entries by ISO date (YYYY-MM-DD) and by 4 feature families. */
 /** 柱状图的一天:四个家族各一根柱。键是 ui 的 StatsBar 定的(动态那根叫 `dyn`)。 */

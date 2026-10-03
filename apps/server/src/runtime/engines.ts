@@ -132,7 +132,7 @@ export interface EnginesRuntime extends Disposable {
 	/**
 	 * 推送用的卡片渲染器,`null` = 没有 puppeteer(未装 / 未配 Chrome)。
 	 *
-	 * **是 getter,别解构** —— `/api/cards/enable-rendering` 与热重载会整个换掉它,
+	 * **是 getter,别解构** —— `/api/cards/renderer` 与热重载会整个换掉它,
 	 * 拿到一次就长期攥着会渲染到一个已 dispose 的浏览器上。
 	 *
 	 * 与 `cards.ts` 那个预览渲染器刻意分开:预览每次请求都按页面草稿 updateConfig,
@@ -167,7 +167,7 @@ export interface EnginesRuntime extends Disposable {
 	 */
 	linkCardPresentation(): { colors: CardColorOptions | undefined; cardSkin: string };
 	/**
-	 * Out-of-band reachability probe for `/api/connections/:id/test`. 顺路把还没探出来的平台
+	 * Out-of-band reachability probe for `/api/connections/:id/probe`. 顺路把还没探出来的平台
 	 * 能力再探一次(与定时健康探测同一条路)。
 	 */
 	probeConnection(connectionId: string): Promise<ProbeResult>;

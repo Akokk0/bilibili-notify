@@ -28,7 +28,7 @@ export type {
 } from "@bilibili-notify/internal";
 
 /**
- * Patch payload for /api/globals — deeply partial; server merges + revalidates.
+ * Patch payload for /api/settings — deeply partial; server merges + revalidates.
  *
  * 任意层级都可显式为 `null` = 删除该键(JSON Merge Patch 语义,同
  * `@bilibili-notify/internal/patch`)。缺席的键表示「不改」,所以清除一个可选字段
@@ -38,10 +38,10 @@ type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> | 
 export type GlobalConfigPatch = DeepPartial<GlobalConfig>;
 
 /**
- * `/api/globals` 下发的那一份:核心设置的顶层键,各集成的设置挂在自己的键下(今天只有 B 站,ADR-0021 决策 42 下
+ * `/api/settings` 下发的那一份:核心设置的顶层键,各集成的设置挂在自己的键下(今天只有 B 站,ADR-0021 决策 42 下
  * 10-01 的 🔗)。集成那几份的形状由各集成定,面板只在画到它的那一处认得(系统页;第 4 期起按集成的描述画)。
  */
 export type GlobalsResponse = GlobalConfig & { readonly [integrationKey: string]: unknown };
 
-/** `/api/globals` 的 PATCH:核心那份的补丁,各集成的补丁挂在自己的键下(与 {@link GlobalsResponse} 同一个形状)。 */
+/** `/api/settings` 的 PATCH:核心那份的补丁,各集成的补丁挂在自己的键下(与 {@link GlobalsResponse} 同一个形状)。 */
 export type GlobalsPatch = GlobalConfigPatch & { [integrationKey: string]: unknown };

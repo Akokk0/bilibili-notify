@@ -111,7 +111,7 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 	});
 
 	it("新建一条(拓展没开也行)→ 头像落盘、取得回来;删掉 → 头像跟着删", async () => {
-		const created = await api("/api/subs", {
+		const created = await api("/api/subscriptions", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
@@ -122,14 +122,14 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 		expect(created.status, await created.clone().text()).toBe(200);
 		const row = ((await created.json()) as SubscriptionDTO[]).find((s) => s.id === SUB_ID);
 		const url = row?.cachedProfile?.avatar ?? "";
-		expect(url).toMatch(new RegExp(`^/api/subs/${SUB_ID}/avatar\\?v=`));
+		expect(url).toMatch(new RegExp(`^/api/subscriptions/${SUB_ID}/avatar\\?v=`));
 		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`]);
 
 		const img = await api(url);
 		expect(img.status).toBe(200);
 		expect(Buffer.from(await img.arrayBuffer()).equals(PNG_BYTES)).toBe(true);
 
-		expect((await api(`/api/subs/${SUB_ID}`, { method: "DELETE" })).status).toBe(204);
+		expect((await api(`/api/subscriptions/${SUB_ID}`, { method: "DELETE" })).status).toBe(204);
 		await vi.waitFor(async () => {
 			expect(await avatarFiles()).toEqual([]);
 		});

@@ -31,7 +31,7 @@ interface Scenario {
 	/** globals 里那笔 `onboarding.skipped` —— `null` = 配置缺失(还没问过,该弹
 	 *  询问框);不传 = false(已选「要指引」,绝大多数旧测试的语境)。 */
 	skipped?: boolean | null;
-	/** `/api/globals` 直接失败 —— 代理抖动 / 502 / auth 竞态。 */
+	/** `/api/settings` 直接失败 —— 代理抖动 / 502 / auth 竞态。 */
 	globalsError?: boolean;
 }
 
@@ -43,12 +43,12 @@ async function mount(s: Scenario) {
 		},
 	});
 	apiGet.mockImplementation(async (path: string) => {
-		if (path === "/api/subs") return s.subs ?? [];
+		if (path === "/api/subscriptions") return s.subs ?? [];
 		if (path === "/api/connections") return s.connections ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
 		if (path === "/api/health")
 			return { status: "ok", uptime: 1, modules: { image: false, ai: false } };
-		if (path === "/api/globals") {
+		if (path === "/api/settings") {
 			if (s.globalsError) throw new Error("globals 挂了");
 			return { onboarding: s.skipped === null ? {} : { skipped: s.skipped === true } };
 		}
@@ -135,7 +135,7 @@ describe("TourCompanion 常驻小卡", () => {
 			await mount(s);
 			fireEvent.click(await screen.findByRole("button", { name: /我是新用户/ }));
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: false } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: false } }),
 			);
 			await screen.findByText("扫码登录 B 站");
 			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
@@ -150,7 +150,7 @@ describe("TourCompanion 常驻小卡", () => {
 			await mount(s);
 			fireEvent.click(await screen.findByRole("button", { name: /我是老用户/ }));
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
 			);
 			// 教育提示:以后去系统页重开
 			expect(await screen.findByText(/系统/)).toBeTruthy();
@@ -164,7 +164,7 @@ describe("TourCompanion 常驻小卡", () => {
 		it("已选跳过(true)→ 整个导览不渲染,也不再弹询问框", async () => {
 			await mount({ route: "/system", skipped: true });
 			// 让数据链路完全落定后再断言「什么都没有」
-			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
+			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/settings"));
 			await new Promise((r) => setTimeout(r, 50));
 			expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull();
 			expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
@@ -179,22 +179,27 @@ describe("TourCompanion 常驻小卡", () => {
 		 */
 		it("已选跳过(true)→ 判据 query 一条都不发(整棵树都不渲染,问了纯浪费)", async () => {
 			await mount({ route: "/system", skipped: true });
-			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
+			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/settings"));
 			await new Promise((r) => setTimeout(r, 50));
-			for (const path of ["/api/subs", "/api/connections", "/api/targets", "/api/health"]) {
+			for (const path of [
+				"/api/subscriptions",
+				"/api/connections",
+				"/api/targets",
+				"/api/health",
+			]) {
 				expect(apiGet, `${path} 不该被问`).not.toHaveBeenCalledWith(path);
 			}
 		});
 
 		/**
-		 * 三态是**配置读出来的**,不是「data 有没有值」读出来的。`/api/globals` 失败时
+		 * 三态是**配置读出来的**,不是「data 有没有值」读出来的。`/api/settings` 失败时
 		 * data 同样是 undefined,而 undefined 在三态里就是「还没问过」—— 一次 502
 		 * 就能把已经选过「我是老用户,跳过」的人重新问一遍,而且他按哪个键都会当场
 		 * 覆写自己的配置(2026-08-31 审查)。失败 = 不知道,那就一个字都别说。
 		 */
 		it("globals 请求失败 → 不弹询问框(拿不到答案 ≠ 还没问过)", async () => {
 			await mount({ route: "/system", globalsError: true });
-			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/globals"));
+			await waitFor(() => expect(apiGet).toHaveBeenCalledWith("/api/settings"));
 			await new Promise((r) => setTimeout(r, 50));
 			expect(screen.queryByText(/需要新手指引吗/)).toBeNull();
 			expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull();
@@ -212,7 +217,7 @@ describe("TourCompanion 常驻小卡", () => {
 			await screen.findByText("扫码登录 B 站");
 			fireEvent.click(screen.getByRole("button", { name: "跳过指引" }));
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
 			);
 			await waitFor(() =>
 				expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull(),
@@ -238,7 +243,7 @@ describe("TourCompanion 常驻小卡", () => {
 				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
 			});
 			await waitFor(() =>
-				expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
 			);
 			// 标记已写、数据已回流,🎉 卡还得站着 —— 别把毕业庆祝掐没
 			expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
@@ -282,7 +287,7 @@ describe("TourCompanion 常驻小卡", () => {
 			const { useOnboardingReopen } = await import("../../../store/onboarding");
 			await act(async () => {
 				useOnboardingReopen.getState().reopen();
-				await qc.invalidateQueries({ queryKey: ["globals"] });
+				await qc.invalidateQueries({ queryKey: ["settings"] });
 			});
 			expect(await screen.findByText(/全部配置完成/)).toBeTruthy();
 			// ③ 落下的闸不许把这颗按钮变成摆设
@@ -974,15 +979,15 @@ describe("TourCompanion 常驻小卡", () => {
 		expect(tail.getAttribute("href")).toBe("/about/guide/render");
 		// 毕业自动关导览(三态语义:true = 整个不渲染),🎉 卡靠活口站到收起为止
 		await waitFor(() =>
-			expect(apiPatch).toHaveBeenCalledWith("/api/globals", { onboarding: { skipped: true } }),
+			expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
 		);
 		fireEvent.click(screen.getByRole("button", { name: "收起" }));
 		await waitFor(() => expect(document.querySelector('aside[aria-label="新手导览"]')).toBeNull());
 		expect(screen.queryByRole("button", { name: "展开新手导览" })).toBeNull();
 	});
 	describe("判据轮询的启停", () => {
-		/** `/api/subs` 被问了几次 —— 轮询每轮会 invalidate 它。 */
-		const subsCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/subs").length;
+		/** `/api/subscriptions` 被问了几次 —— 轮询每轮会 invalidate 它。 */
+		const subsCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/subscriptions").length;
 		const healthCalls = () => apiGet.mock.calls.filter(([p]) => p === "/api/health").length;
 
 		/**

@@ -1,5 +1,5 @@
 /**
- * 回归守护 — P0-3 fix(security): redact AI apiKey on GET /api/globals
+ * 回归守护 — P0-3 fix(security): redact AI apiKey on GET /api/settings
  *
  * 三件事:
  *   a) GET 返回时 apiKey 非空 → __BN_REDACTED__ 占位(不向浏览器泄漏)
@@ -43,7 +43,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("a) GET /api/globals 返回 apiKey 时是 __BN_REDACTED__ 占位(且仅当原值非空)", async () => {
+	it("a) GET /api/settings 返回 apiKey 时是 __BN_REDACTED__ 占位(且仅当原值非空)", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		// 先写一个真实 apiKey
@@ -56,7 +56,7 @@ describe("globals apiKey redact — P0-3", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			defaults: { ai: { providers: Record<string, { apiKey: string }> } };
@@ -77,7 +77,7 @@ describe("globals apiKey redact — P0-3", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
-		const res = await app.request("/api/globals");
+		const res = await app.request("/api/settings");
 		const body = (await res.json()) as {
 			defaults: { ai: { providers: Record<string, { apiKey?: string } | undefined> } };
 		};
@@ -99,7 +99,7 @@ describe("globals apiKey redact — P0-3", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
-		const patchRes = await app.request("/api/globals", {
+		const patchRes = await app.request("/api/settings", {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -126,7 +126,7 @@ describe("globals apiKey redact — P0-3", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
-		const patchRes = await app.request("/api/globals", {
+		const patchRes = await app.request("/api/settings", {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -162,7 +162,7 @@ describe("globals apiKey redact — P0-3", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
-		const patchRes = await app.request("/api/globals", {
+		const patchRes = await app.request("/api/settings", {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
@@ -179,7 +179,7 @@ describe("globals apiKey redact — P0-3", () => {
 		// 「密钥也一并抹掉」怎么证?落盘是密文,grep 字节证不了。改证**可观测的后果**:
 		// 重新添加同一家时钥匙必须是空的 —— 袋子里若还留着旧的,hydrate 时
 		// applyAiSecrets 会把它填回新桶,主人以为自己在配一张白纸,实际连着旧 key。
-		await app.request("/api/globals", {
+		await app.request("/api/settings", {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({

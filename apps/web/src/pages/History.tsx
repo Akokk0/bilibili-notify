@@ -47,7 +47,7 @@ import { subscriptionPlatformOf } from "./up/subscription-source";
  * SC / 舰长),与 `services/dashboard.ts` 同吃 `FEATURE_DESCRIPTORS` 的 family,和概览趋势图对得上。
  *
  * The "重发" column from the design source is intentionally not ported:
- * /api/push/test sends a dummy text payload, so a button labelled
+ * POST /api/targets/:id/test sends a dummy text payload, so a button labelled
  * "重发" would mislead users into thinking the original message goes
  * back out. That route lands when the server gains a re-deliver path
  * that replays a recorded NotificationPayload.
@@ -78,15 +78,15 @@ export default function History() {
 	});
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
-		queryFn: () => api.get<Subscription[]>("/api/subs"),
+		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const retentionDays = globalsQuery.data?.app.historyRetentionDays;
 	// 拓展行的平台徽章照已装拓展的清单画(ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。

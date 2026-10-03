@@ -4,7 +4,7 @@
  * 「换上这套」那个动作(`useActivateCardSkin`)。
  *
  * 钉的是**它到底作废了哪几个 key**:皮肤库列表自己那份(「使用中」徽标读的是它),
- * 以及 `["globals"]` —— **启用指针住在 `globals.defaults.cardSkin`,不在店里**。
+ * 以及 `["settings"]` —— **启用指针住在 `globals.defaults.cardSkin`,不在店里**。
  *
  * 这条守卫的理由是这个动作在站里有两处入口(皮肤库那一节、卡片工坊回复末尾的预览块),
  * 从前是逐行同构的两份。漏掉 globals 那一份的症状是「换了皮肤,聊天里的预览还是旧的」,
@@ -48,12 +48,12 @@ afterEach(() => {
 });
 
 describe("useActivateCardSkin", () => {
-	it("打的是 PUT /api/card-skins/active,带上那套皮肤的 id", async () => {
+	it("打的是 PUT /api/cards/skins/active,带上那套皮肤的 id", async () => {
 		const { wrapper } = setup();
 		const { result } = renderHook(() => useActivateCardSkin(), { wrapper });
 		result.current.mutate("aurora");
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(api.put).toHaveBeenCalledWith("/api/card-skins/active", { id: "aurora" });
+		expect(api.put).toHaveBeenCalledWith("/api/cards/skins/active", { id: "aurora" });
 	});
 
 	it("🔴 换完之后,列表与 globals **两个** key 都作废", async () => {
@@ -63,7 +63,7 @@ describe("useActivateCardSkin", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 		expect(invalidated).toContainEqual(CARD_SKINS_KEY);
 		// 启用指针住在 globals 里 —— 少了这一发,预览与灵动岛基线还攥着上一套。
-		expect(invalidated).toContainEqual(["globals"]);
+		expect(invalidated).toContainEqual(["settings"]);
 	});
 
 	it("失败时一个 key 都不作废,理由原样交给调用方", async () => {

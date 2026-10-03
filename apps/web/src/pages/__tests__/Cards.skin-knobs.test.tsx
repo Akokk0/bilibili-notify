@@ -60,9 +60,9 @@ function mockApi(knobs: Record<string, Record<string, unknown>>): void {
 	defaults.cardSkinKnobs = knobs;
 	const globals = { app: {}, master: {}, defaults } as unknown as GlobalConfig;
 	vi.mocked(api.get).mockImplementation((url: string) => {
-		if (url.includes("/api/subs")) return Promise.resolve([]);
+		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);
-		if (url.includes("/api/card-skins")) return Promise.resolve(SKIN_LIST);
+		if (url.includes("/api/cards/skins")) return Promise.resolve(SKIN_LIST);
 		return Promise.resolve(globals);
 	});
 }
@@ -109,7 +109,7 @@ async function saveAndRead(): Promise<{ defaults: { cardSkinKnobs: Record<string
 		string,
 		{ defaults: { cardSkinKnobs: Record<string, unknown> } },
 	];
-	expect(url).toBe("/api/globals");
+	expect(url).toBe("/api/settings");
 	return body;
 }
 

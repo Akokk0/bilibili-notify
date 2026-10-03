@@ -16,7 +16,7 @@
 
 import { AI_PROVIDER_IDS, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { REDACTED_API_KEY, redactGlobals, stripRedactedSecrets } from "../globals.js";
+import { REDACTED_API_KEY, redactGlobals, stripRedactedSecrets } from "../settings.js";
 
 /** 造一份「每家都配齐、两把 key 都填了」的 globals,key 里嵌 provider 名便于溯源。 */
 function withAllBuckets() {

@@ -47,7 +47,7 @@ async function mount(healthy: boolean) {
 			if (!healthy) throw new Error("unreachable");
 			return { status: "ok", uptime: 1 };
 		}
-		if (path === "/api/subs" || path === "/api/targets") return [];
+		if (path === "/api/subscriptions" || path === "/api/targets") return [];
 		return null;
 	});
 	const { GlassHeader } = await import("../header");

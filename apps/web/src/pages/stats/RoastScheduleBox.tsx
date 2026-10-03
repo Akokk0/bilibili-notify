@@ -16,8 +16,8 @@ import { RoastScheduleCard, useApprovalReachability } from "./RoastScheduleField
 export function RoastScheduleBox() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
-		queryKey: ["globals"],
-		queryFn: () => api.get<GlobalConfig>("/api/globals"),
+		queryKey: ["settings"],
+		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -38,11 +38,11 @@ export function RoastScheduleBox() {
 			// 与基线 diff 而不是整份回传:`targets` 清空时,整份发是「[]」、
 			// buildPatch 才知道这是一次真的清除。
 			await api.patch<GlobalConfig>(
-				"/api/globals",
+				"/api/settings",
 				buildPatch({ roastSchedule: next }, { roastSchedule: base }),
 			);
 		},
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["globals"] }),
+		onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
 	});
 
 	// 保存交给底部那枚草稿灵动岛(与 Rules / Cards / Ai / System 同一套),面板里

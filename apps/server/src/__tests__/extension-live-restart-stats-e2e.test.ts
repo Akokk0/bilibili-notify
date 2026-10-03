@@ -153,7 +153,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 	}
 
 	async function setExtensionEnabled(enabled: boolean): Promise<void> {
-		const res = await api("/api/globals", {
+		const res = await api("/api/settings", {
 			method: "PATCH",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ extensions: { [PROBE]: { enabled } } }),

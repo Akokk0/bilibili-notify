@@ -26,7 +26,7 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: {
 		get: vi.fn(async (url: string) => {
-			if (url === "/api/subs") return disk.subs;
+			if (url === "/api/subscriptions") return disk.subs;
 			if (url.endsWith("/docs")) return {};
 			if (url === "/api/ext") {
 				const douyin: ExtensionDTO = {

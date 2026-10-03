@@ -99,7 +99,7 @@ export interface ConfigSections {
  * `compose.ts`)。
  */
 export interface IntegrationSettingsSegment<T = unknown> {
-	/** 集成的键,也是文件名。不能和核心设置的顶层键同名:`/api/globals` 把它们摆在同一层。 */
+	/** 集成的键,也是文件名。不能和核心设置的顶层键同名:`/api/settings` 把它们摆在同一层。 */
 	readonly key: string;
 	/** 盘上那份的格式。读盘也按它,所以对存量要宽松:一格坏值让整个开机失败,比退回默认更糟。 */
 	readonly schema: z.ZodType<T>;
@@ -135,7 +135,7 @@ export interface ConfigStore {
 	getGlobals(): GlobalConfig;
 	/** 一个登记过的集成的设置(深拷贝)。没登记过就抛:那是组装处漏了,不是数据的问题。 */
 	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T;
-	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/globals` 与备份用。 */
+	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/settings` 与备份用。 */
 	getAllIntegrationSettings(): Record<string, unknown>;
 	/**
 	 * 一个拓展存着的设置(`config/settings/extensions/<id>.json`,深拷贝、原样;形状归拓展自己那份 zod);没存过是
@@ -168,7 +168,7 @@ export interface ConfigStore {
 	 */
 	updateGlobals(update: (current: GlobalConfig) => GlobalConfig): Promise<GlobalConfig>;
 	/**
-	 * 核心与各集成的设置一起改(`/api/globals` 的 PATCH):全部校验过才写,写到一半失败推回原样。没登记过的集成键
+	 * 核心与各集成的设置一起改(`/api/settings` 的 PATCH):全部校验过才写,写到一半失败推回原样。没登记过的集成键
 	 * 整次拒收。与 globals 的其余写入排在同一条队里。
 	 */
 	patchSettings(patch: SettingsPatch): Promise<SettingsSnapshot>;
@@ -1845,7 +1845,7 @@ async function readExtensionSettingsDir(dir: string): Promise<Array<[string, unk
 }
 
 /**
- * 登记进来的集成设置按键排好。键重复、或者和核心设置的顶层键同名(`/api/globals` 把两者摆在同一层),是组装处
+ * 登记进来的集成设置按键排好。键重复、或者和核心设置的顶层键同名(`/api/settings` 把两者摆在同一层),是组装处
  * 写错了,当场抛。
  */
 function segmentsByKey(

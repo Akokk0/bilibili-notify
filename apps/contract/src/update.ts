@@ -1,5 +1,5 @@
 /**
- * 自主升级的 wire 契约 —— `GET /api/update` 的响应,以及它的几个动作。
+ * 自主升级的 wire 契约 —— `GET /api/system/update` 的响应,以及它的几个动作。
  *
  * 状态是个**判别联合**而不是一把布尔标志(`hasUpdate` / `downloading` / `failed`
  * …):后者能拼出「既在下载又已失败」这种谁也没想过的组合,而界面必须为每一种组合
@@ -81,7 +81,7 @@ export function canApplyUpdate(state: UpdateState): state is ApplicableUpdateSta
 export type ApplicableUpdateState = Extract<UpdateState, { phase: "ready" | "rolled-back" }>;
 
 /**
- * `POST /api/update/apply` 的回话:话说完就关自己。面板据它等新进程 —— 之后只认
+ * `POST /api/system/update/apply` 的回话:话说完就关自己。面板据它等新进程 —— 之后只认
  * `startedAt` 和这里不同的 `/api/health` 回答;`target` / `mode` 由服务端说,它正握着
  * 状态,面板不必先探一次、再从状态里猜。
  */
@@ -133,7 +133,7 @@ export const BUILTIN_UPDATE_MIRRORS: readonly string[] = [
 /**
  * 一条加速前缀长得合不合法。空串(直连)不走这里,由调用方各自判。
  *
- * 服务端拿它守 `POST /api/update/mirrors/probe`(这是一个让服务端去连任意主机的入口),
+ * 服务端拿它守 `POST /api/system/update/mirrors/probe`(这是一个让服务端去连任意主机的入口),
  * 面板拿它决定自定义那一格能不能选,而落盘那道门(internal 的 `UpdateSettingsSchema`)
  * 才是最终说了算的那个。三处判得不一样的话,用户会遇到「测得通、存不进去」—— 所以
  * 本体只有一份,住在 internal 零依赖的 constants 里(schema 也用同一条正则),这里只是
@@ -141,7 +141,7 @@ export const BUILTIN_UPDATE_MIRRORS: readonly string[] = [
  */
 export { isMirrorPrefix } from "@bilibili-notify/internal/constants";
 
-/** `POST /api/update/mirrors/probe` 的请求体。`prefixes` 里的空串 = 直连。 */
+/** `POST /api/system/update/mirrors/probe` 的请求体。`prefixes` 里的空串 = 直连。 */
 export interface MirrorProbeRequest {
 	prefixes: string[];
 }

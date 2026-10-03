@@ -144,11 +144,11 @@ describe("归属:这个回应是谁造的", () => {
 			"guarded (/repo/scripts/error-body-guard.mjs:99:9)",
 			"createResponseInstance (/repo/node_modules/.pnpm/hono@4/node_modules/hono/dist/context.js:11:47)",
 			"Context.json (/repo/node_modules/.pnpm/hono@4/node_modules/hono/dist/context.js:370:12)",
-			"handler (/repo/apps/server/src/routes/subs.ts:88:14)",
+			"handler (/repo/apps/server/src/routes/subscriptions.ts:88:14)",
 			"dispatch (/repo/node_modules/.pnpm/hono@4/node_modules/hono/dist/compose.js:29:23)",
 		);
 		expect(findOwner(stack, { serverRoot })).toEqual({
-			file: "/repo/apps/server/src/routes/subs.ts",
+			file: "/repo/apps/server/src/routes/subscriptions.ts",
 			line: 88,
 		});
 	});
@@ -167,7 +167,7 @@ describe("归属:这个回应是谁造的", () => {
 	it("第一个项目帧是测试 = 测试造的假回应,哪怕再往下有服务端帧(服务端代码调了测试给的 mock)", () => {
 		const stack = stackOf(
 			"fakeFetch (/repo/apps/server/src/routes/__tests__/x.test.ts:12:20)",
-			"fetchProfile (/repo/apps/server/src/routes/subs.ts:40:10)",
+			"fetchProfile (/repo/apps/server/src/routes/subscriptions.ts:40:10)",
 		);
 		expect(findOwner(stack, { serverRoot })).toBeNull();
 	});
@@ -180,7 +180,7 @@ describe("归属:这个回应是谁造的", () => {
 		["别的包", "/repo/packages/api/src/client.ts:3:4"],
 		["脚本", "/repo/scripts/whatever.mjs:3:4"],
 	])("不归服务端:%s", (_name, frame) => {
-		const stack = stackOf(frame, "handler (/repo/apps/server/src/routes/subs.ts:88:14)");
+		const stack = stackOf(frame, "handler (/repo/apps/server/src/routes/subscriptions.ts:88:14)");
 		expect(findOwner(stack, { serverRoot })).toBeNull();
 	});
 
@@ -207,7 +207,7 @@ describe("归属:这个回应是谁造的", () => {
 	});
 
 	it("Windows 的反斜杠路径同样认", () => {
-		const stack = stackOf("h (C:\\repo\\apps\\server\\src\\routes\\subs.ts:8:9)");
+		const stack = stackOf("h (C:\\repo\\apps\\server\\src\\routes\\subscriptions.ts:8:9)");
 		expect(findOwner(stack, { serverRoot: "C:/repo/apps/server/src/" })?.line).toBe(8);
 	});
 });
@@ -304,20 +304,20 @@ describe("查账", () => {
 	it("账本是空的就放过,有账就抛错,点名文件:行、状态码、体和原因", () => {
 		expect(() => assertNoErrorBodyViolations([])).not.toThrow();
 		const entry = {
-			file: "apps/server/src/routes/subs.ts",
+			file: "apps/server/src/routes/subscriptions.ts",
 			line: 88,
 			status: 400,
 			body: '{"error":"invalid_payload"}',
 			problems: ["缺 code(字符串)", "多余的键:error"],
 		};
 		expect(() => assertNoErrorBodyViolations([entry])).toThrow(
-			/apps\/server\/src\/routes\/subs\.ts:88[\s\S]*400[\s\S]*invalid_payload[\s\S]*缺 code[\s\S]*多余的键:error/,
+			/apps\/server\/src\/routes\/subscriptions\.ts:88[\s\S]*400[\s\S]*invalid_payload[\s\S]*缺 code[\s\S]*多余的键:error/,
 		);
 	});
 
 	it("同一处同样的违规只列一次,注明次数", () => {
 		const entry = {
-			file: "apps/server/src/routes/subs.ts",
+			file: "apps/server/src/routes/subscriptions.ts",
 			line: 88,
 			status: 400,
 			body: "{}",

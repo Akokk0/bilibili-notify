@@ -2,7 +2,7 @@
 
 /**
  * 皮肤编辑抽屉:挂载即借 preview 通道做整页实时预览(editing 标记压住试穿浮条),
- * 每次改动立即写 preview;保存 = PUT /api/skins/:id/manifest(就地更新),
+ * 每次改动立即写 preview;保存 = PUT /api/dashboard/skins/:id/manifest(就地更新),
  * 取消丢弃;有脏改动时取消要过确认框。
  */
 
@@ -35,7 +35,7 @@ vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) => {
 			H.getCalls.push(path);
-			if (path === "/api/skins/s1/default") {
+			if (path === "/api/dashboard/skins/s1/default") {
 				if (H.defaultManifest === null) throw new Error("该皮肤还没有钉过默认值");
 				return { manifest: H.defaultManifest };
 			}
@@ -215,7 +215,7 @@ describe("SkinEditor", () => {
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.8" } });
 		fireEvent.click(screen.getByText("保存"));
 		await waitFor(() => expect(H.putCalls).toHaveLength(1));
-		expect(H.putCalls[0].path).toBe("/api/skins/s1/manifest");
+		expect(H.putCalls[0].path).toBe("/api/dashboard/skins/s1/manifest");
 		const sent = H.putCalls[0].body as SkinManifest;
 		expect(sent.modes.light?.glass?.background).toBe("rgba(255, 255, 255, 0.8)");
 		await waitFor(() =>
@@ -276,7 +276,7 @@ describe("SkinEditor", () => {
 		expect(screen.queryByText(/制作引导/)).toBeNull();
 	});
 
-	it("让女仆改:发 POST ai-edit 带当前 draft;返回的 manifest 直接进 draft 实时预览", async () => {
+	it("让女仆改:发 POST /:id/ai 带当前 draft;返回的 manifest 直接进 draft 实时预览", async () => {
 		renderEditor();
 		// 先手调一个值,验证发出去的 draft 是当前草稿而非初始 manifest
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.25" } });
@@ -285,7 +285,7 @@ describe("SkinEditor", () => {
 		});
 		fireEvent.click(screen.getByText("让女仆改"));
 		await waitFor(() => expect(H.postCalls).toHaveLength(1));
-		expect(H.postCalls[0].path).toBe("/api/skins/s1/ai-edit");
+		expect(H.postCalls[0].path).toBe("/api/dashboard/skins/s1/ai");
 		const sent = H.postCalls[0].body as { instruction: string; draft: SkinManifest };
 		expect(sent.instruction).toBe("换成赛博朋克风");
 		expect(sent.draft.modes.light?.glass?.background).toBe("rgba(255, 255, 255, 0.25)");
@@ -447,7 +447,7 @@ describe("SkinEditor", () => {
 				"assets/font-99887766.woff2",
 			),
 		);
-		expect(H.uploadCalls.at(-1)?.path).toBe("/api/skins/s1/assets");
+		expect(H.uploadCalls.at(-1)?.path).toBe("/api/dashboard/skins/s1/assets");
 	});
 
 	it("传字体不动字体栈 —— 两栏各管各的,拉不下来还有家族名兜着", async () => {
@@ -486,7 +486,7 @@ describe("SkinEditor", () => {
 		fireEvent.click(btn);
 		await waitFor(() => expect(useSkinStore.getState().preview?.manifest.name).toBe("出厂樱花"));
 		// 快照在挂载时拉过一次,点击复用,不再发第二次
-		expect(H.getCalls).toEqual(["/api/skins/s1/default"]);
+		expect(H.getCalls).toEqual(["/api/dashboard/skins/s1/default"]);
 		expect(H.putCalls).toEqual([]);
 	});
 
@@ -530,7 +530,9 @@ describe("SkinEditor", () => {
 		const btn = screen.getByText("设为默认值").closest("button") as HTMLButtonElement;
 		expect(btn.disabled).toBe(false);
 		fireEvent.click(btn);
-		await waitFor(() => expect(H.putCalls.map((c) => c.path)).toEqual(["/api/skins/s1/default"]));
+		await waitFor(() =>
+			expect(H.putCalls.map((c) => c.path)).toEqual(["/api/dashboard/skins/s1/default"]),
+		);
 
 		fireEvent.change(screen.getByLabelText("玻璃片透明度"), { target: { value: "0.3" } });
 		await waitFor(() => expect(btn.disabled).toBe(true));
@@ -545,7 +547,7 @@ describe("SkinEditor", () => {
 		fireEvent.change(input, { target: { files: [file] } });
 
 		await waitFor(() =>
-			expect(H.uploadCalls).toEqual([{ path: "/api/skins/s1/assets", name: "rem.png" }]),
+			expect(H.uploadCalls).toEqual([{ path: "/api/dashboard/skins/s1/assets", name: "rem.png" }]),
 		);
 		// 传完立刻用上 —— 传图的人正是想换壁纸,还要再点一次下拉是多余的一步。
 		await waitFor(() =>

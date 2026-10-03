@@ -28,7 +28,7 @@ import { dataPath } from "./roots.js";
  * through one private write queue (mirrors `ConfigStore.runScoped`).
  *
  * Record shape (sibling keys, NOT baseline-inside-profile): keeping
- * `fansBaseline` a sibling of `cachedProfile` lets `/api/subs` join the
+ * `fansBaseline` a sibling of `cachedProfile` lets `/api/subscriptions` join the
  * profile back as a zero-logic passthrough while `fansBaseline` (FansPoller-
  * private bookkeeping) never leaks into the DTO.
  */
@@ -65,7 +65,7 @@ export interface SubRuntimeStore {
 	 * Treat as read-only — it's a defensive copy, mutating it does nothing.
 	 */
 	get(id: string): SubRuntime | undefined;
-	/** Whole map snapshot (clone). Consumed by the `/api/subs` join. */
+	/** Whole map snapshot (clone). Consumed by the `/api/subscriptions` join. */
 	getAll(): Record<string, SubRuntime>;
 	/**
 	 * Replace the given top-level keys of `records[id]` (creating the entry on
