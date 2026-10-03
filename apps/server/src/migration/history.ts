@@ -10,11 +10,19 @@
  * ⑳ 要换跟图有关的格,也加在这个函数里,历史不会多迁一次。
  */
 
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BILIBILI_SOURCE_KEY, type FeatureKey, type Identity } from "@bilibili-notify/internal";
 import { isPatchLine, listDayFiles } from "../history/store.js";
 import { dataPath } from "../runtime/roots.js";
-import { isPlainObject, parseJsonLine, rewriteJsonlFile } from "./files.js";
+import {
+	isPlainObject,
+	listFiles,
+	parseJsonLine,
+	readJsonFile,
+	rewriteJsonFile,
+	rewriteJsonlFile,
+} from "./files.js";
 import type { ZeroPushKind } from "./zero-vocabulary.js";
 
 /**
@@ -198,7 +206,46 @@ export function migrateHistoryLine(line: string): string {
 	return JSON.stringify(renameRowKeys(translated, identity));
 }
 
-/** 新代里每个日文件迁成最新的形状,回改写过的文件(绝对路径)。 */
+/**
+ * ⑱c:一份重推原件(`history/repush/<日>/<行 id>.json`)的 `v` → `version`,**键留在原来的位置**、消息一个字不动。
+ * 已经是 `version` 的、读不懂的回 `undefined`(不改写)。载荷种类的改名随活的载荷改名那一期(3a / 3b),不在这里。
+ */
+function migrateRepushSnapshot(value: unknown): Record<string, unknown> | undefined {
+	if (!isPlainObject(value) || !("v" in value) || "version" in value) return undefined;
+	return Object.fromEntries(
+		Object.entries(value).map(([key, v]) => (key === "v" ? ["version", v] : [key, v])),
+	);
+}
+
+/** 新代里每份重推原件迁成最新的形状,回改写过的文件。日目录里原件自己存的图不碰(只认 `.json`)。 */
+async function migrateRepushSnapshotFiles(dataRoot: string): Promise<string[]> {
+	const root = dataPath(dataRoot, "history", "repush");
+	let days: string[];
+	try {
+		days = (await readdir(root, { withFileTypes: true }))
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name)
+			.sort();
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw err;
+	}
+	const rewritten: string[] = [];
+	for (const day of days) {
+		for (const name of await listFiles(join(root, day), ".json")) {
+			const path = join(root, day, name);
+			const file = await readJsonFile(path);
+			if (file.kind !== "ok") continue;
+			const next = migrateRepushSnapshot(file.value);
+			if (next === undefined) continue;
+			await rewriteJsonFile(path, next);
+			rewritten.push(path);
+		}
+	}
+	return rewritten;
+}
+
+/** 新代里每个日文件与每份重推原件迁成最新的形状,回改写过的文件(绝对路径)。 */
 export async function migrateHistoryFiles(dataRoot: string): Promise<string[]> {
 	const root = dataPath(dataRoot, "history");
 	const rewritten: string[] = [];
@@ -208,5 +255,5 @@ export async function migrateHistoryFiles(dataRoot: string): Promise<string[]> {
 			rewritten.push(path);
 		}
 	}
-	return rewritten;
+	return [...rewritten, ...(await migrateRepushSnapshotFiles(dataRoot))];
 }

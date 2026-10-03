@@ -480,22 +480,19 @@ async function placeHistory(
 		return tree.put(`history/img/${rowId(h, n % perDay)}-0.png`, pick(images, n));
 	});
 
-	// 重推原件:`history/repush/<日>/<行 id>.json`。
+	// 重推原件:`history/repush/<日>/<行 id>.json`,0.x 盘上就是 `{ v, messages }` 这两格(⑱c 起迁成 `version`)。
 	for (let h = 0; h < plan.historyDays; h += 1) {
 		const day = firstDay + h;
 		for (let k = 0; k < plan.repushPerDay; k += 1) {
 			const id = rowId(h, k);
 			await tree.putJson(`history/repush/${dayName(day)}/${id}.json`, {
-				rowId: id,
-				pushId: id,
-				kind: pick(HISTORY_SOURCES, h + k),
+				v: 1,
 				messages: [
 					{
 						payload: { kind: "image", image: { ref: `${id}-0.png`, mime: "image/png" } },
 						role: "main",
 					},
 				],
-				savedAt: iso(dayMs(day) + k * 3_600_000),
 			});
 		}
 	}

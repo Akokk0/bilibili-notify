@@ -148,7 +148,9 @@ const ZERO_FILES: Record<string, string> = {
 		payload: { kind: "text", text: "下播了" },
 	})}\n`,
 	"history/img/a.png": "png",
-	"history/repush/2026-09-30/row-1.json": "{}",
+	// 0.x 的重推原件(⑱c 起 `v` → `version`)。
+	"history/repush/2026-09-30/row-1.json":
+		'{"v":1,"messages":[{"payload":{"kind":"text","text":"下播了"},"role":"main"}]}',
 	"stats/dyn/sub-1.jsonl": '{"k":"post"}\n',
 	"stats/live/sub-1.jsonl": '{"k":"start"}\n',
 	"stats/seen/sub-1.jsonl": '{"d":"2026-09-30"}\n',
@@ -244,6 +246,7 @@ const REWRITTEN = [
 	"config/subscriptions.json",
 	"config/targets.json",
 	"history/2026-09-30.jsonl",
+	"history/repush/2026-09-30/row-1.json",
 	"runtime/roast-drafts.json",
 	"skins/dashboard/active.json",
 	"skins/dashboard/skin-1/skin.json",
@@ -482,8 +485,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 20,
-			output: "124a0c8a2bf91d7a756d3fafe9b2c194d4502e64a33c69c5c1b984ed66413411",
+			revision: 21,
+			output: "73b4b112828894ad330ee5b467cf9fd4daeaa305e130cdf64d3cebe37fa21d27",
 		});
 	});
 });

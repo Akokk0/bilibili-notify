@@ -23,7 +23,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
@@ -56,6 +56,29 @@ async function putHistoryImage(name: string, bytes: string): Promise<void> {
 }
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
+
+describe("盘上形状 —— 原件是 `{ version, messages }`(⑱c)", () => {
+	it("写下去的原件:`version` 打头,不再有 `v`", async () => {
+		const id = randomUUID();
+		await store.append(id, TS, [
+			{ payload: text("卡片"), role: "main", reduced: { kind: "text" } },
+		]);
+		const raw = await readFile(join(dayDir(), `${id}.json`), "utf8");
+		expect(Object.keys(JSON.parse(raw))[0]).toBe("version");
+		expect(JSON.parse(raw)).toEqual({
+			version: 1,
+			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
+		});
+	});
+
+	it("还是 `v` 的老原件不认(迁移早把它改写了):读回 null", async () => {
+		const id = randomUUID();
+		await mkdir(dayDir(), { recursive: true });
+		const messages = [{ payload: { kind: "text", text: "卡片" }, role: "main" }];
+		await writeFile(join(dayDir(), `${id}.json`), JSON.stringify({ v: 1, messages }));
+		expect(await store.load(id, TS, 1)).toBeNull();
+	});
+});
 
 describe("append + load — 进去什么,出来还是什么", () => {
 	it("纯文字:原样回来", async () => {

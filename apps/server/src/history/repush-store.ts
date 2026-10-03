@@ -1,11 +1,12 @@
 import { readdir, readFile, rm, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-	HistoryPayload,
-	Logger,
-	NotificationPayload,
-	PayloadSegment,
-	PushMessageRole,
+import {
+	type HistoryPayload,
+	type Logger,
+	type NotificationPayload,
+	type PayloadSegment,
+	type PushMessageRole,
+	PushMessageRoleSchema,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import { z } from "zod";
@@ -80,10 +81,15 @@ const StoredPayloadSchema = z.discriminatedUnion("kind", [
 ]);
 type StoredPayload = z.infer<typeof StoredPayloadSchema>;
 
-const DraftSchema = z.object({
-	v: z.literal(1),
-	messages: z.array(z.object({ payload: StoredPayloadSchema, role: z.enum(["main", "extra"]) })),
+/**
+ * 一份重推原件在盘上的样子(`history/repush/<日>/<行 id>.json`)。`version` 是原件格式的版本;⑱c 之前叫 `v`,
+ * 老原件由迁移改写(`migration/history.ts`),这里只认新的。
+ */
+const RepushSnapshotSchema = z.object({
+	version: z.literal(1),
+	messages: z.array(z.object({ payload: StoredPayloadSchema, role: PushMessageRoleSchema })),
 });
+type RepushSnapshot = z.infer<typeof RepushSnapshotSchema>;
 
 /** 交给 {@link RepushStore.append} 的一条:原始 payload,加上历史那边已经算好的那一条。 */
 export interface RepushAppendItem {
@@ -141,25 +147,22 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 
 	const dayOf = (createdAt: string): string => createdAt.slice(0, 10);
 	const dayDir = (createdAt: string): string => join(root, dayOf(createdAt));
-	const draftPath = (rowId: string, createdAt: string): string =>
+	const snapshotPath = (rowId: string, createdAt: string): string =>
 		join(dayDir(createdAt), `${rowId}.json`);
 
 	/** 这张图在盘上的完整路径 —— `own` 决定去哪个目录找。 */
 	const imagePath = (img: z.infer<typeof StoredImageSchema>, createdAt: string): string =>
 		img.own ? join(dayDir(createdAt), img.ref) : join(historyImgRoot, img.ref);
 
-	async function readDraft(
-		rowId: string,
-		createdAt: string,
-	): Promise<z.infer<typeof DraftSchema> | null> {
+	async function readSnapshot(rowId: string, createdAt: string): Promise<RepushSnapshot | null> {
 		let raw: string;
 		try {
-			raw = await readFile(draftPath(rowId, createdAt), "utf8");
+			raw = await readFile(snapshotPath(rowId, createdAt), "utf8");
 		} catch {
 			return null;
 		}
 		try {
-			const parsed = DraftSchema.safeParse(JSON.parse(raw));
+			const parsed = RepushSnapshotSchema.safeParse(JSON.parse(raw));
 			return parsed.success ? parsed.data : null;
 		} catch {
 			// 坏 json。原件不是真相的唯一副本(历史那一行还在),作废掉就是了。
@@ -278,7 +281,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		items: readonly RepushAppendItem[],
 	): Promise<void> {
 		if (items.length === 0) return;
-		const existing = await readDraft(rowId, createdAt);
+		const existing = await readSnapshot(rowId, createdAt);
 		const messages = existing ? [...existing.messages] : [];
 		const offset = messages.length;
 		for (const [i, item] of items.entries()) {
@@ -288,7 +291,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 			});
 		}
 		// 原子写会顺手建日目录(图也是这么建的)。
-		await atomicWriteJson(draftPath(rowId, createdAt), { v: 1, messages });
+		await atomicWriteJson(snapshotPath(rowId, createdAt), { version: 1, messages });
 	}
 
 	async function load(
@@ -296,18 +299,18 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		createdAt: string,
 		expectLen: number,
 	): Promise<{ messages: RepushMessage[] } | null> {
-		const draft = await readDraft(rowId, createdAt);
-		if (!draft) return null;
+		const snapshot = await readSnapshot(rowId, createdAt);
+		if (!snapshot) return null;
 		// 条数对不上 = 原件与历史行错位了(某一次 append 没写成)。补错消息比补不了更糟。
-		if (draft.messages.length !== expectLen) {
+		if (snapshot.messages.length !== expectLen) {
 			opts.logger.warn(
-				`[history] 重推原件与历史行对不上号(原件 ${draft.messages.length} 条、行 ${expectLen} 条),作废:${rowId}`,
+				`[history] 重推原件与历史行对不上号(原件 ${snapshot.messages.length} 条、行 ${expectLen} 条),作废:${rowId}`,
 			);
 			return null;
 		}
 		try {
 			const messages: RepushMessage[] = [];
-			for (const m of draft.messages) {
+			for (const m of snapshot.messages) {
 				messages.push({ payload: await toPayload(m.payload, createdAt), role: m.role });
 			}
 			return { messages };
@@ -320,16 +323,16 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 
 	async function has(rowId: string, createdAt: string): Promise<boolean> {
 		try {
-			return (await stat(draftPath(rowId, createdAt))).isFile();
+			return (await stat(snapshotPath(rowId, createdAt))).isFile();
 		} catch {
 			return false;
 		}
 	}
 
 	async function drop(rowId: string, createdAt: string): Promise<void> {
-		const draft = await readDraft(rowId, createdAt);
-		if (draft) {
-			for (const m of draft.messages) {
+		const snapshot = await readSnapshot(rowId, createdAt);
+		if (snapshot) {
+			for (const m of snapshot.messages) {
 				const imgs =
 					m.payload.kind === "image"
 						? [m.payload.image]
@@ -342,7 +345,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 				}
 			}
 		}
-		await unlink(draftPath(rowId, createdAt)).catch(() => {});
+		await unlink(snapshotPath(rowId, createdAt)).catch(() => {});
 	}
 
 	async function dropDay(day: string): Promise<void> {

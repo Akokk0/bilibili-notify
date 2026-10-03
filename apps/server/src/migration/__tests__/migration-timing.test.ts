@@ -157,16 +157,28 @@ async function expectMigrated(
 	}
 	expect(rows).toBe(counts.historyRows);
 	expect(notMigrated).toBe(0);
-	expect(report.rewritten.filter((path) => path.startsWith("history/"))).toHaveLength(
+	const rewrittenHistory = report.rewritten.filter((path) => path.startsWith("history/"));
+	expect(rewrittenHistory.filter((path) => path.endsWith(".jsonl"))).toHaveLength(
 		counts.historyDays,
+	);
+	// 重推原件 `v` → `version`(⑱c):每份都改写了一遍。
+	expect(rewrittenHistory.filter((path) => path.startsWith("history/repush/"))).toHaveLength(
+		counts.repushSnapshots,
 	);
 	expect(await readdir(join(historyDir, "img"))).toHaveLength(counts.historyImages);
 	const repushDays = await readdir(join(historyDir, "repush"));
 	expect(repushDays).toHaveLength(counts.historyDays);
 	let snapshots = 0;
-	for (const day of repushDays)
-		snapshots += (await readdir(join(historyDir, "repush", day))).length;
+	let snapshotsNotMigrated = 0;
+	for (const day of repushDays) {
+		for (const name of await readdir(join(historyDir, "repush", day))) {
+			const snapshot = JSON.parse(await readFile(join(historyDir, "repush", day, name), "utf8"));
+			if (snapshot.version !== 1 || "v" in snapshot) snapshotsNotMigrated += 1;
+			snapshots += 1;
+		}
+	}
 	expect(snapshots).toBe(counts.repushSnapshots);
+	expect(snapshotsNotMigrated).toBe(0);
 
 	// 粉丝:每个订阅一个文件、按订阅 id 命名(uid 文件并进去了,不剩),一年的点一个不少。
 	const followersDir = join(generation, "stats", "followers");

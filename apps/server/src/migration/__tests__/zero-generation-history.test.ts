@@ -546,3 +546,44 @@ describe("迁移器自己的钉", () => {
 		expect((await readFile(dayPath(), "utf8")).split("\n").slice(0, 2)).toEqual([stranger, both]);
 	});
 });
+
+describe("⑱c:重推原件 `v` → `version`", () => {
+	const DAY_DIR = "history/repush/2026-05-10";
+	const MESSAGES = [{ payload: { kind: "text", text: "卡片" }, role: "main" }];
+	const rel = (name: string) => `${DAY_DIR}/${name}`;
+	const read = (name: string) => readFile(join(sandbox.target, rel(name)), "utf8");
+
+	it("0.x 的原件:`v` 换成 `version`、仍是第一个键,消息一个字不动;第 0 代那份不动", async () => {
+		const name = `${randomUUID()}.json`;
+		const zeroText = JSON.stringify({ v: 1, messages: MESSAGES });
+		await sandbox.placeZeroText(rel(name), zeroText);
+		await sandbox.migrate();
+		const text = await read(name);
+		expect(Object.keys(JSON.parse(text))[0]).toBe("version");
+		expect(JSON.parse(text)).toEqual({ version: 1, messages: MESSAGES });
+		expect(await readFile(join(sandbox.zero, rel(name)), "utf8")).toBe(zeroText);
+	});
+
+	it("已经是 `version` 的原件、读不懂的原件、原件自己存的图:一个字节不动", async () => {
+		const done = `${randomUUID()}.json`;
+		const broken = `${randomUUID()}.json`;
+		const image = `${randomUUID()}-1.png`;
+		const doneText = JSON.stringify({ version: 1, messages: MESSAGES });
+		await sandbox.placeZeroText(rel(done), doneText);
+		await sandbox.placeZeroText(rel(broken), "{不是 JSON");
+		await sandbox.placeZeroText(rel(image), "PNG 字节");
+		await sandbox.migrate();
+		expect(await read(done)).toBe(doneText);
+		expect(await read(broken)).toBe("{不是 JSON");
+		expect(await read(image)).toBe("PNG 字节");
+	});
+
+	it("迁两遍和迁一遍一样:对新代再迁一次回 [],原件字节不变", async () => {
+		const name = `${randomUUID()}.json`;
+		await sandbox.placeZero(rel(name), { v: 1, messages: MESSAGES });
+		await sandbox.migrate();
+		const once = await read(name);
+		expect(await migrateHistoryFiles(sandbox.target)).toEqual([]);
+		expect(await read(name)).toBe(once);
+	});
+});

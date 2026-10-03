@@ -332,7 +332,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	 *
 	 * 无目标行不留 —— 那不是失败是没配目标,按钮本来就不给它(决策 6)。
 	 */
-	async function saveDraft(
+	async function saveRepushSnapshot(
 		rowId: string,
 		createdAt: string,
 		raw: HistoryRecordMessage[],
@@ -435,7 +435,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			});
 			await appendJsonl(dayFile(createdAt), [entry]);
 			open.set(key, entry);
-			await saveDraft(id, createdAt, input.messages, messages, input.targetId);
+			await saveRepushSnapshot(id, createdAt, input.messages, messages, input.targetId);
 			opts.bus.emit("history-recorded", entry);
 			return entry;
 		}
@@ -447,7 +447,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		);
 		// 补丁写进**原行那一天**的文件,原件也跟着那一天走 —— 两边始终同一个日子。
 		return applyPatch(existing, added, dayFile(existing.createdAt), () =>
-			saveDraft(existing.id, existing.createdAt, input.messages, added, existing.targetId),
+			saveRepushSnapshot(existing.id, existing.createdAt, input.messages, added, existing.targetId),
 		);
 	}
 

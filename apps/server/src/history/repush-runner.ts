@@ -91,7 +91,7 @@ export interface CreateRepushRunnerOptions {
 }
 
 /** 原件不在了(保留期到了、或者当初就没写成)。两处都说这一句。 */
-const DRAFT_GONE = "这一行的原料已经不在了，女仆补不出原来那条 —— 只有保留期内的推送补得回来";
+const SNAPSHOT_GONE = "这一行的原料已经不在了，女仆补不出原来那条 —— 只有保留期内的推送补得回来";
 
 export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunner {
 	/**
@@ -116,7 +116,9 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	async function canRepush(entry: HistoryEntry): Promise<Failure | null> {
 		const denial = gate(entry);
 		if (denial) return denial;
-		return (await opts.repush.has(entry.id, entry.createdAt)) ? null : fail("conflict", DRAFT_GONE);
+		return (await opts.repush.has(entry.id, entry.createdAt))
+			? null
+			: fail("conflict", SNAPSHOT_GONE);
 	}
 
 	async function start(
@@ -131,16 +133,16 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 		if (denial) return denial;
 
 		// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
-		const draft = await opts.repush.load(rowId, createdAt, originalCount(entry.messages));
-		if (!draft) return fail("conflict", DRAFT_GONE);
+		const snapshot = await opts.repush.load(rowId, createdAt, originalCount(entry.messages));
+		if (!snapshot) return fail("conflict", SNAPSHOT_GONE);
 
 		const indices =
-			mode === "all" ? draft.messages.map((_, i) => i) : unsentIndices(entry.messages);
+			mode === "all" ? snapshot.messages.map((_, i) => i) : unsentIndices(entry.messages);
 		if (indices.length === 0) return fail("conflict", "这一行全都送到了，不用补啦");
 
 		running.add(rowId);
 		opts.serviceCtx.track(
-			run(entry, createdAt, draft.messages, indices)
+			run(entry, createdAt, snapshot.messages, indices)
 				.catch((err) => {
 					// 追进历史行失败(写道关了、盘满了)—— 以前这条 promise 没人接,是一次 unhandledRejection。
 					opts.logger.warn(
