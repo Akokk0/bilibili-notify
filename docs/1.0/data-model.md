@@ -626,7 +626,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `desc` / `descChars`、`area` / `areaName`、`sign`、`isVip`、`price` / `priceValue` | `description` / `descriptionChars`、`category`、`bio`、`isPremium`、`amount` + `currency` |
 | 此刻在线义的 `online` / `viewers` | `currentViewers` |
 | 累计义的 `watchedNum` / `viewers` / `peakViewers` / `avgPeakViewers` | `totalViewers` / `maxViewers` / `avgViewers`（同名两义，按含义分开改） |
-| fans 整族：`fans`、`fansChanged`、`FansStore` / `FansSample` / `FansRefreshEntry` / `FansResponse`、`/api/fans`、`fans-refreshed` | `followers`、`followersDelta`、`Followers…`、`/api/followers`、`followers-refreshed` |
+| fans 整族：`fans`、`fansChanged`、`FansStore` / `FansSample` / `FansRefreshEntry` / `FansResponse`、`/api/fans`、`fans-refreshed` | `followers`、`followersDelta`、`Followers…`、`/api/stats/followers`（10-03 ADR-0036 推翻原定的 `/api/followers`）、`followers-refreshed` |
 | dynamic 整族：`DynamicCounts` / `countDynamics`、`dynamicEnabled`、面板 `DynamicMsg…`、`broadcastOptsForDynamicKind`、AI 视图 `dynamic?` | `PostCounts` / `countPosts`、`postEnabled`、`PostMsg…`、`broadcastOptionsForPostPart`、`post?` |
 | `NeutralWork` / `WorkDeliveryConfig` / `deliverWork`、`DynamicWorkSettings` / `LiveWorkSettings`、`extension-post-work.ts`、`generateNeutralLiveCard` / `generateNeutralDynamicCard` | `Post` 系 / `deliverPost`、`PostSettings` / `LiveSettings`、`extension-post.ts`、`generateLiveCard` / `generatePostCard` |
 | `Post.forward` / `hasForward` / `blockForward` | `Post.repost` / `hasRepost` / `blockReposts` |

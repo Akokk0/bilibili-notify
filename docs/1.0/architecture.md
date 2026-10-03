@@ -272,7 +272,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - `code` 取 internal 里唯一一张标准码表：`not_found`、`invalid`、`unauthorized`、`rate_limited`、`unavailable`、`timeout`、`unsupported`、`conflict`、`indeterminate`、`unknown`；自定义码算失败、不自动重试；问题表里的 code 另算，只要求 snake。
   - 防撞 B 站那种 `{ code, message, data }`：`code` 只装 BN 自己的错误码（字符串、snake_case，如 `not_found`、`unavailable`），永远不装平台的数字；平台的数字码只放 `upstreamCode`（现 `routes/subs.ts` 两处把 B 站的码塞在 `code` 里，契约骨架时改）；平台的原始响应不直接转给面板，一律在来源那层翻成 BN 的形状。主人 09-27 看过嵌套的 `{ error: { code, message } }`，选回平铺。
 - 路由按新名：
-  - `/api/subscriptions`、`/api/followers`、`/api/library`。
+  - `/api/subscriptions`、`/api/stats/followers`（10-03 ADR-0036 推翻原定的 `/api/followers`）、`/api/library`。整张路由的新旧对照见 ADR-0036。
   - `/api/sources`：每个来源一份 `{ key, descriptor, has, status }`，`has { auth, liveStatus, preview }` 由宿主按实现推算、不让来源自报，`status` 是运行状态的取值；拓展停用、失败、设置不合法时照样有描述符。
   - `/api/sources/:sourceKey/creators?q=`（搜人，返回结果形状）。
   - `/api/adapters`：各平台适配器的描述，新建连接时用；连接候选、`connectionAuth`、`listAddressCandidates` 的路由形状施工时定。`routes/qq.ts` 这类按平台开的路由删掉，QQ 官方机器人的扫码建连接与会话地址改走这组通用路由。
@@ -280,7 +280,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - `/api/health`：短版只留存活探测与应用内更新要的 `status`、`version`、`startedAt`、`uptime`（应用内更新靠 `version` 与 `startedAt` 认新进程）；B 站的格子（`login`、`dynamicCron`、moduleVersions 里的 api / dynamic / live 等）删掉。`/api/health/details`：分核心、集成两组，给健康卡。
   - `/api/history?feature=`；`?uid=` 删掉（没有调用方），以后要按人查再加 `?identity=`（ADR-0027 决策 7）。
   - `/api/targets/:id/test`（原 `/api/push/test`）、`/api/connections/:id/probe`（原 `/test`）。
-- 设置拆进 `config/settings/` 的三类文件以后，系统页的字段路径与 `PATCH /api/globals` 跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。⑥f 先只挪 B 站那三格（`bilibili.*`），核心读法与核心那半的路径随第 2、3 期改名再加 `core.`。
+- 设置拆进 `config/settings/` 的三类文件以后，系统页的字段路径与 `PATCH /api/settings`（原 `/api/globals`，ADR-0036）跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。⑥f 先只挪 B 站那三格（`bilibili.*`），核心读法与核心那半的路径随第 2、3 期改名再加 `core.`。
 - 删掉死字段 `SubscriptionDTO.state`；订阅卡上永远不亮的「播」角标改用真实的在播数据。
 - `/api/health` 补进契约（`HealthResponse`），面板把 contract 移进 `dependencies`：④d 已落。
 - 密钥下发只用 `MaskedSecret`，见 [data-model.md](./data-model.md)「凭据字段标 secret: true」。
