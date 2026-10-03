@@ -11,6 +11,7 @@ import { createFansStore, type FansStore } from "../fans/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
 import { createRepushStore } from "../history/repush-store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
+import { createImageStore, type ImageStore } from "../images/image-store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
@@ -86,6 +87,11 @@ export interface AppRuntime {
 	 * `GET /api/subscriptions/:id/avatar` 读、开机清扫(`index.ts`);删订阅时跟着删(这里就听上了)。
 	 */
 	subAvatarStore: SubAvatarStore;
+	/**
+	 * 图库 `<dataRoot>/images/`(ADR-0022 决策 9):所有图按内容摘要存一份,引用就是文件名。全进程共用这一个;
+	 * `GET /api/images/:ref` 读。
+	 */
+	imageStore: ImageStore;
 	/**
 	 * 女仆 AI 聊天的会话记录(dashboard 聊天侧栏「最近」的数据源)。刻意与
 	 * engines 解耦 —— AI 没配好时会话照样能建能列,页面才有地方摆「去把 key
@@ -251,6 +257,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => subAvatarStore.close(), "flush");
+	const imageStore = createImageStore({ dir: dataPath(dataRoot, "images") });
 	// 删订阅的路不止一条(面板删、恢复备份整份覆盖、级联),都汇到 `subscription-changed` 上 ——
 	// 只听总线,所以在这儿就能起,不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
 	const subAvatarCleanup = bindSubAvatarCleanup({
@@ -337,6 +344,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		statsRecorder,
 		subRuntimeStore,
 		subAvatarStore,
+		imageStore,
 		conversationStore,
 		logStore,
 		extensionLive,

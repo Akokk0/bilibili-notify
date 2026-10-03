@@ -78,6 +78,8 @@ const NEW_PATHS: Probe[] = [
 	post("/api/ws/ticket"),
 	post(`/api/targets/${ID}/test`),
 	post(`/api/connections/${ID}/probe`),
+	// 决策 5 随 ⑮ 开的图库读口(没这张图,处理函数自己回 404 —— 那也是挂上了的证据)。
+	get(`/api/images/${"0".repeat(64)}.png`),
 ];
 
 /** 对应的老路径:一条都不许再答。 */

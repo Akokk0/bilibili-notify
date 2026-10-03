@@ -38,6 +38,7 @@ import { createDashboardSkinsRoute } from "./routes/dashboard-skins.js";
 import { createExtensionsRoute } from "./routes/extensions.js";
 import { createHealthRoute, healthResponseOf } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
+import { createImagesRoute } from "./routes/images.js";
 import { createLiveRoute } from "./routes/live.js";
 import { createQQRoute } from "./routes/qq.js";
 import {
@@ -291,6 +292,7 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
  *   /api/cards/skins      — 卡片皮肤库(与出卡同一个前缀;截图口 /:id/screenshot 在 cards 路由里)
  *   /api/dashboard/skins  — 面板皮肤库
  *   /api/stats/followers  — 粉丝样本(只喂统计)
+ *   /api/images/:ref      — 图库的同源读口(只读;历史、订阅、AI 共用的顶层资源)
  *   /api/system/*         — 日志(一直挂)、更新 / 备份 / 重启与开新代(宿主传了才挂)
  *   /api/auth/*           — status / qr / cookies refresh|reset / logout (when authSystem present)
  *   /api/ws/ticket        — 面板 WS 的一次性票(跟 /api/auth 同一个条件:authSystem 在场)
@@ -318,6 +320,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		app.route("/api/targets", createTargetsRoute(deps));
 		app.route("/api/live", createLiveRoute(deps));
 		app.route("/api/history", createHistoryRoute(deps));
+		// 图库被历史、订阅、AI 共用,是顶层资源(ADR-0036 决策 5 下 10-03 的 🔗)。
+		app.route("/api/images", createImagesRoute(deps));
 		// `/api/system` 是这一个实例自己的事(ADR-0036):日志一直挂着;更新、备份、重启与开新代
 		// 宿主传了才挂(见下面各自的 `if`)—— 各个口原来挂不挂的条件照旧,只是并进了一个前缀。
 		app.route("/api/system/logs", createSystemLogsRoute(deps));

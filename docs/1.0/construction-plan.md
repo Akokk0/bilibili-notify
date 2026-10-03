@@ -119,7 +119,7 @@
 | ⑫ | 订阅标签（ADR-0034）；顺手删旧的 `SubscriptionStateSchema` 与 contract 的死字段 `SubscriptionDTO.state` | ✅ 已落（标签表与订阅同住 `config/subscriptions.json` 的 `{ tags, subscriptions }`，`GET` / `PUT /api/subs/tags`（㉚ 起是 `/api/subscriptions/tags`）整张换；迁移修订号 15，名字里的中文逗号不拆（主人定）；备份同进同出、合并先按 id 再按名字；面板一个 `TagEditDialog` 收掉逗号文本框与编辑分组弹框。施工时定的几点写进 ADR-0034 的 🔗） |
 | ⑬ | 特性键改名、直播拆成 `liveStart` / `liveStreaming`（独立的开关、目标、间隔与补报开播）、`PushKind` 的两层意思拆开；以特性键做键的配置一起改键（迁移表「特性键」到「文案」那几行）；守卫 13 前半开（10-02 开片，切成 ⑬a–⑬f，见表下「⑬ 开片」） | ✅ 已落（10-03） |
 | ⑭ | （10-03 开片，切成 ⑭a–⑭c，见表下「⑭ 开片」）抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | ✅ 已落（10-03） |
-| ⑮ | （10-03 开片，切成 ⑮a–⑮b，前面先修桌面令牌闸，见表下「⑮ 开片」）图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | 未开工 |
+| ⑮ | （10-03 开片，切成 ⑮a–⑮b，前面先修桌面令牌闸，见表下「⑮ 开片」）图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | ✅ 已落（10-03） |
 | ⑯ | 抓图核心服务：逐跳查重定向、超时、结果形状、`storeImage`。旧引擎本期由服务端直接调它拿 `ImageRef`，3a 改走 `ctx.fetchImage` | 未开工 |
 | ⑰ | 引用方登记表 + 按引用清扫 + 新图宽限期；守卫：写图库的模块不在登记表里就判红 | 未开工 |
 | ⑱ | 历史行改形：`identity`、`nameSnapshot`、头像换图库引用、`createdAt`、`repushOf`、`RepushSnapshot`（`kind` → `feature` 10-03 提前到 ⑬f）；盘上旧失败转 `unknown`；守卫 13 加固（重推原件每种载荷都有去向）；装图库引用的格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定），原件的 `{ ref, mime }` 并成一格 | 未开工 |
@@ -156,7 +156,7 @@
 - **⑮ 开片（10-03）**：先勘察，再一题一题问主人（定案在 ADR-0022 决策 9 与 ADR-0036 决策 5 下 10-03 的 🔗，词表加了 `Ref` 一行），依次提交：
   - 先修桌面令牌闸：也认一个 `HttpOnly; SameSite=Strict` 的 cookie，桌面版里直连地址的图不再 401（现存 bug，单独一个提交）。
   - ⑮a 图库本体：`ImageRef`（文件名 `<sha256>.<ext>`）与校验、嗅探结果换成扩展名、`createAssetStore` 加按 sha256 取名、`createImageStore`（`put` / `read`）、目录表加 `images` 键、8MB 常量。只加键、不往盘上写，修订号不抬（⑯ 或 ⑳ 第一次往里写时抬）。✅ 已落（`ImageRef` 放在 internal 的 `constants.ts`，与 `SourceKey` 一处；格式表与 8MB 常量住在 `apps/server/src/images/image-store.ts`；嗅探沿用 `sniffImageFormat`，`jpeg` → `jpg` 的对照在图库里）
-  - ⑮b 同源读口 `GET /api/images/<ref>`，接线守卫加这一组。面板这一片还没有调用方，⑳ 换读口时接上。
+  - ⑮b 同源读口 `GET /api/images/<ref>`，接线守卫加这一组。面板这一片还没有调用方，⑳ 换读口时接上。✅ 已落（图库挂在运行时上 `runtime.imageStore`，全进程一个；路由 `apps/server/src/routes/images.ts`）
   - 真机待验：桌面版里历史配图、聊天附件、订阅头像、界面皮肤的壁纸与字体都能打开。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
