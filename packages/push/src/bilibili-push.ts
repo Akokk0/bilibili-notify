@@ -9,14 +9,12 @@ import type {
 	NotificationPayload,
 	NotificationSink,
 	PayloadSegment,
-	PushKind,
 	PushTarget,
 	ServiceContext,
 	Subscription,
 } from "@bilibili-notify/internal";
 import {
 	BILIBILI_SOURCE_KEY,
-	featureToPushKind,
 	inQuietHours,
 	platformSupportsAtAll,
 	resolve,
@@ -82,9 +80,11 @@ interface PushSendBase {
 	 * B 站 uid 不在这儿:要的话拿这个 id 回查订阅。
 	 */
 	subscriptionId: string;
+	/**
+	 * 这次推送属于哪把特性键:管开关与路由,**历史也记它**(⑬f:历史行没有第二套「推送种类」)。
+	 * 重启补报走 `liveStart`、周期「正在直播」走 `liveStreaming`,由调用方选哪把键广播。
+	 */
 	feature: FeatureKey;
-	/** 历史里记成哪一类推送(8 类之一)。 */
-	kind: PushKind;
 }
 
 /**
@@ -106,7 +106,6 @@ export type PushSendInfo =
 export interface SendContext {
 	subscriptionId: string;
 	feature: FeatureKey;
-	kind: PushKind;
 	pushId: string;
 	role: PushMessageRole;
 }
@@ -128,11 +127,6 @@ export interface BroadcastOptions {
 	 * @全体 不走这里:它有自己那条分支(单独一条消息 + 平台能力判定),见下面的 `atAllKey`。
 	 */
 	extra?: ExtraKey;
-	/**
-	 * 历史里记成哪一类推送。缺省按 feature 翻译;只有 `liveStart` 那把键分不出开播与周期
-	 * 「正在直播」,调用方知道是哪种时显式传。
-	 */
-	kind?: PushKind;
 }
 
 /** Options for constructing a BilibiliPush instance. */
@@ -343,7 +337,6 @@ export class BilibiliPush {
 		const ctx: SendContext = {
 			subscriptionId,
 			feature,
-			kind: opts?.kind ?? featureToPushKind(feature),
 			pushId: opts?.pushId ?? randomUUID(),
 			role: opts?.role ?? (opts?.extra ? "extra" : "main"),
 		};
@@ -530,7 +523,6 @@ export class BilibiliPush {
 			pushId: ctx.pushId,
 			subscriptionId: ctx.subscriptionId,
 			feature: ctx.feature,
-			kind: ctx.kind,
 			target,
 			messages,
 		});

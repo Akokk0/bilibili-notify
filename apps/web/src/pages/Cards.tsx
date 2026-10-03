@@ -41,7 +41,7 @@ import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
 import { GUARD_LEVELS } from "../config/guard-levels";
-import { PUSH_TONE } from "../config/push-kinds";
+import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
@@ -99,9 +99,9 @@ const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 
 const KIND_LABELS: Record<CardKind, { label: string; tone: string; icon: IconName }> = {
 	live: { label: "直播开播", tone: PUSH_TONE.live, icon: "live" },
-	dyn: { label: "动态发布", tone: PUSH_TONE.dynamic, icon: "dyn" },
-	sc: { label: "SC 提醒", tone: PUSH_TONE.sc, icon: "sc" },
-	guard: { label: "上舰提醒", tone: PUSH_TONE.guard, icon: "guard" },
+	dyn: { label: "动态发布", tone: PUSH_TONE.post, icon: "dyn" },
+	sc: { label: "SC 提醒", tone: PUSH_TONE.superchat, icon: "sc" },
+	guard: { label: "上舰提醒", tone: PUSH_TONE.membership, icon: "guard" },
 };
 
 /** 左侧类型导航的副标题(对齐 Rules 左栏的「label + desc」观感)。 */

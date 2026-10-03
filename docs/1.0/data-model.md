@@ -707,7 +707,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `LiveSessionRecord.peakViewers`；统计帧 `{ k, ts, peak }`；`UpStatsRow.archives` / `dynamics`；`FansSample.value` | `LiveSessionEntry.peakTotalViewers`；`{ kind, occurredAt, peakTotalViewers }`；`CreatorStatsView.videoPosts` / `posts`（**口径从「其余」变「全部」**：`posts` 是全部作品，`videoPosts` 是其中带视频的）；`followers` |
 | 在播表：contract 的 `LiveListenerSnapshot` / `ExtensionLiveSnapshot`、服务端 `LiveListeningEntry` 两支；`attachBiliStatsSource` / `attachExtensionStatsSource` | 一个形状 `LiveListeningEntry { subscriptionId, identity, isLive, title?, category?, startedAt?, totalViewers? }`；`bindStatsRecorder` |
 | 面板 `SubscriptionPlatform` / `subscriptionPlatformOf`、`BILI_PLATFORM`、`SubscriptionLookup`、`absent`；`BILI_ONLY_EXTRAS`、`guard-levels.ts` | `SourceDescriptor` / `descriptorOf(sourceKey)`、`sourceKey`、`SubscriptionTable`、`isAbsent`；删掉，改看 `supportedExtras`、`MembershipTier.color` |
-| 历史行推送种类那格 `kind`；`AuthState` 的 `loggedOut` / `awaitingScan` / `loggedIn` | `feature`；`logged-out` / `awaiting-scan` / `logged-in` |
+| 历史行推送种类那格 `kind`（⑬f 已落）；`AuthState` 的 `loggedOut` / `awaitingScan` / `loggedIn` | `feature`；`logged-out` / `awaiting-scan` / `logged-in` |
 
 **推送（09-27 字段名专项审查、09-28 推送侧中立化）。**
 
@@ -782,7 +782,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 搬进 `bilibili/` 的 blive：`LiveConnectionInfo` | 按装的东西起名，施工时定 |
 | dynamic 的 `DynamicEngineConfig`、`DynamicFilterConfig`、`WorkDeliveryConfig`、`DeliverWorkArgs`、`WorkDeliveryOutcome`、`DynamicTimelineManager`、`SubManagerView` | 随包消失：`deliverPost` 的 `…Options`、`PostSettings`；过滤进核心的 `ContentFilters` |
 | live 的 `LiveEngineConfig`、`ListenerManagerConfig`、`ListenerManager`、`LiveNotifyParams`、`LivePushTimerManager`、`UserInfoInLiveData`；种类取值 `LiveType`、`LivePushType`、`LiveNotifyPushType` | 场次引擎合一以后消失（推送种类就是特性键；`bilibili/` 里还要的种类照表叫 `…Kind`） |
-| 面板：`RestartOutcome`；`SectionMeta`；`PushKindMeta`；`WebDevScenario`（带 `run`）；`CardStatus`（`{ tone, text }`） | `RestartResult`；`SectionDescriptor`；`FeatureDescriptor`（推送种类改成特性键以后）；`WebDevScenarioDef`；`CardStatusView` |
+| 面板：`RestartOutcome`；`SectionMeta`；`PushKindMeta`；`WebDevScenario`（带 `run`）；`CardStatus`（`{ tone, text }`） | `RestartResult`；`SectionDescriptor`；`FeatureDescriptor`（⑬f 已落，`apps/web/src/config/push-features.ts` 的 `FEATURE_DESCRIPTORS`）；`WebDevScenarioDef`；`CardStatusView` |
 | 面板：`DetectState` / `ViewState` / `DraftUiState` / `TestState`（装的都是取值） | `DetectStatus` / `ViewStatus` / `DraftUiStatus` / 探测三态 `ProbeStatus` |
 | 面板：手抄四份的 `HealthSnapshot` 与重启那份 `RestartProbe`；`GlobalConfigPatch` | contract 里一份 `HealthResponse`；`SettingsPatch` |
 | 推送层的 `PushSendInfo`（一次广播对每个目标回调一次的载荷）；`SendContext`（跟着一次发送走的一包字段，不是宿主环境） | `PushSendResult`；`SendMeta` |

@@ -1,5 +1,5 @@
 /**
- * 日志等级色表的唯一性守卫 —— 与 `push-kinds` 同一个理由,见该文件头注。
+ * 日志等级色表的唯一性守卫 —— 与 `push-features` 同一个理由,见该文件头注。
  *
  * 这份表此前抄在三处并且**已经飘了**:`debug` 在 Logs 是灰蓝 `#94a3b8`、在
  * LogLevelPicker 与 Dashboard 是品牌紫 `#a29bfe`;`warn` 是 `#f2a053` vs `#f59e0b`。

@@ -767,7 +767,7 @@ export type StatusDotKind = "live" | "living" | "off" | "ok" | "warn" | "err" | 
  *
  * 收编前那七个字面量还和语义 token 对不齐:`ok` 是 green-500 而 success 是
  * emerald-500、`warn` 是 amber-500 而 warning 是更深的 amber-600、`live` 是
- * `#FF6699`(`push-kinds.ts` 点名过的那条粉色漂移,正主是 `#fb7299`)。
+ * `#FF6699`(`push-features.ts` 点名过的那条粉色漂移,正主是 `#fb7299`)。
  *
  * 两档灰**不能并成一个**:`off` 走 textDisabled(浅)、`pending` 走 textTertiary
  * (深),原本是 `#cccccc` / `#94a3b8` 的深浅关系,靠它分「关着的」与「等着的」。
@@ -1578,7 +1578,7 @@ const STATS_BAR_SEGMENTS = ["guard", "sc", "dyn", "live"] as const;
  * 迷你堆叠柱状图。
  *
  * **`colors` 必填,库里不留默认值。** 这四段是推送家族色,而家族色的唯一出处
- * (`push-kinds.ts`)是业务侧的东西,平台中立的库取不到 —— 于是「就地抄一份」曾经是
+ * (`push-features.ts`)是业务侧的东西,平台中立的库取不到 —— 于是「就地抄一份」曾经是
  * 这儿最省事的写法,四个值也就真在这里躺了一整轮:调色板改了它不动,而守卫当时只扫
  * 站点源码,连这个目录都没看过。给个默认值等于把那份副本原样留下,所以不给。
  */

@@ -21,7 +21,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		id: "h1",
 		pushId: "p1",
 		ts: new Date().toISOString(),
-		kind: "dynamic",
+		feature: "post",
 		status: "delivered",
 		uid: "u1",
 		subscriptionId: "s-gone",

@@ -79,13 +79,20 @@ export const ZERO_DEFAULT_TEMPLATES = {
 	},
 } as const;
 
-/** 0.x 的推送种类(0.12 `PushKind`):开播与周期「正在直播」共用一把特性键,历史上却是两种推送,所以多一个 `live-ongoing`。 */
-export type ZeroPushKind =
-	| "dynamic"
-	| "live"
-	| "live-ongoing"
-	| "live-end"
-	| "guard"
-	| "sc"
-	| "special-danmaku"
-	| "special-enter";
+/**
+ * 0.x 的推送种类(0.12 `PushKind`),历史行的 `kind` 就是它:开播与周期「正在直播」共用一把特性键,历史上却是两种推送,
+ * 所以多一个 `live-ongoing`。1.0 把历史行那一格改叫 `feature`、值换成特性键(`history.ts` 的对照表用 `satisfies
+ * Record<ZeroPushKind, …>` 钉着:这里多一种、对照表没给去向,编译不过)。
+ */
+export const ZERO_PUSH_KINDS = [
+	"dynamic",
+	"live",
+	"live-ongoing",
+	"live-end",
+	"guard",
+	"sc",
+	"special-danmaku",
+	"special-enter",
+] as const;
+
+export type ZeroPushKind = (typeof ZERO_PUSH_KINDS)[number];

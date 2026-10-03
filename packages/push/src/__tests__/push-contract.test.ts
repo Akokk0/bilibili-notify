@@ -13,6 +13,7 @@
 
 import {
 	type DeliveryResult,
+	FEATURE_KEYS,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type NotificationSink,
@@ -208,18 +209,40 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 	});
 });
 
-describe("推送契约:推送类型跟着广播走", () => {
-	it("opts.kind 透传到回调;没传就按 feature 推(post → dynamic)", async () => {
-		const { push, seen } = setup(subWith([T1]));
-		await push.broadcastToFeature("s1", "post", M1);
-		await push.broadcastToFeature("s1", "post", M2, { kind: "live-ongoing" });
-		expect(seen.map((s) => s.kind)).toEqual(["dynamic", "live-ongoing"]);
+/**
+ * 历史行记的就是广播的那把特性键(⑬f):回调的 `feature` 原样是 `broadcastToFeature` 收到的那把,
+ * 不另带一份「推送种类」—— 补报与周期各记什么,由引擎选哪把键广播决定(见 `engine-push-adapters.test.ts`)。
+ */
+describe("推送契约:历史记的就是广播的特性键", () => {
+	it.each(FEATURE_KEYS)(
+		"%s:回调带的 feature 就是广播的那把,没有第二个种类字段",
+		async (feature) => {
+			const sub = subWith([]);
+			sub.routing[feature] = [T1];
+			const { push, seen } = setup(sub);
+			// 开播默认会 @全体(再回调一次),这里只看本体那一次。
+			await push.broadcastToFeature("s1", feature, M1, { allowAtAll: false });
+			expect(seen).toHaveLength(1);
+			expect(seen[0]?.feature).toBe(feature);
+			expect(seen[0]).not.toHaveProperty("kind");
+		},
+	);
+
+	it("同一订阅连着广播两把不同的键,各记各的(补报记开播、周期记正在直播的前提)", async () => {
+		const sub = subWith([]);
+		sub.routing.liveStart = [T1];
+		sub.routing.liveStreaming = [T1];
+		const { push, seen } = setup(sub);
+		await push.broadcastToFeature("s1", "liveStart", M1, { allowAtAll: false });
+		await push.broadcastToFeature("s1", "liveStreaming", M2, { allowAtAll: false });
+		expect(seen.map((s) => s.feature)).toEqual(["liveStart", "liveStreaming"]);
 	});
 
-	it("无目标那次回调也带 kind", async () => {
+	it("无目标那次回调也带 feature", async () => {
 		const { push, seen } = setup(subWith([]));
-		await push.broadcastToFeature("s1", "post", M1, { kind: "dynamic" });
-		expect(seen[0]).toMatchObject({ target: null, kind: "dynamic" });
+		await push.broadcastToFeature("s1", "post", M1);
+		expect(seen[0]).toMatchObject({ target: null, feature: "post" });
+		expect(seen[0]).not.toHaveProperty("kind");
 	});
 });
 

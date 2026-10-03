@@ -100,7 +100,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 - 资产存储三份 → 一份 `createAssetStore`；两个皮肤库 → 一份 `createSkinStore`
 - 漏在 contract 外的 wire 类型：`/api/health` 在面板手抄 5 份（④d 已收）、备份格式两份且 PIN 只在面板校验（服务端不验）、登录态 4 种形状（中立的只有 `AuthState`）→ contract
 - 密钥打码：服务端 `maskSecret`、contract 的 `MaskedSecret`、面板 `SecretChip` 已成套，面板组件进 ui
-- 零碎：webhook URL 打码两份、`LogLevel` 两份（只在 internal 留一份，contract 转口）、`PushKind` 同名不同义（见 data-model「特性键与推送种类」）、`escapeRegExp` 两份、HTML 去标签两份（一个解实体一个不解，合并前先定解不解）
+- 零碎：webhook URL 打码两份、`LogLevel` 两份（只在 internal 留一份，contract 转口）、`PushKind` 同名不同义（⑬b、⑬f 已解决：作品推送的部件叫 `PostPushPart`，历史行直接记特性键，`PushKind` 删了）、`escapeRegExp` 两份、HTML 去标签两份（一个解实体一个不解，合并前先定解不解）
 - 大航海等级表与等级名、`GuardLevel` → `bilibili/`
 - internal 里放错的：B 站视频链接识别 → `bilibili/`；B 站形状的登录态类型删掉，中立一侧只有 `AuthState`（`bilibili/` 内部若还要一个原形，叫 `BiliLoginState`）；`BiliEvents` / `DynamicDetectedEvent` 改成中立事件、留在核心；链接预览的闸门配置（`LINK_REPLY_FORMS` / `LINK_LIMITS`、`linkPreview` 的 schema）是核心的，留 internal；没人用的 `withLock` 删；`deterministic-uuid` 搬回唯一的使用方（`config/store.ts`）；更新镜像前缀搬进 contract
 

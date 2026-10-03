@@ -45,7 +45,7 @@ function text(t: string): NotificationPayload {
 function input(over: Partial<HistoryRecordInput> = {}): HistoryRecordInput {
 	return {
 		pushId: randomUUID(),
-		kind: "dynamic",
+		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
 		target: T1,

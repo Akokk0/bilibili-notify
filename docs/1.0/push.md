@@ -336,7 +336,7 @@ type PushTarget =
 | 现在 | 1.0 |
 | --- | --- |
 | ① 引擎在 `packages/dynamic` / `packages/live` / `runtime/extension-*.ts` | 来源在 `bilibili/` 与 `extensions/` 收件口；四个 B 站包删掉 |
-| ② 适配段：`liveTypeToFeature` / `liveTypeToPushKind` / `liveTypeToExtra`、`subscriptionIdOfUid` | 整段消失：推送种类就是特性键（B 站引擎内部的 0 / 3 / 9 在 `bilibili/` 里翻）；uid → 订阅 id 由核心在进门处按身份展开（来源只报 externalId） |
+| ② 适配段：`liveTypeToFeature` / `liveTypeToExtra`（`liveTypeToPushKind` ⑬f 已删）、`subscriptionIdOfUid` | 整段消失：推送种类就是特性键（B 站引擎内部的 0 / 3 / 9 在 `bilibili/` 里翻）；uid → 订阅 id 由核心在进门处按身份展开（来源只报 externalId） |
 | 装配在 `packages/dynamic`（`deliverWork`）与 `packages/live`（`pushLiveNotify`） | 在服务端 `posts/` 与 `live/` |
 | 拓展作品只按文字过滤，类型开关不看 | 过滤看 `Post` 上有没有，对所有来源生效 |
 | 拓展作品套进 B 站动态类型出卡 | 渲染器只认 `Post` |
@@ -346,7 +346,7 @@ type PushTarget =
 | B 站开播与周期「正在直播」共用 `feature: "live"` | 拆成 `liveStart` / `liveStreaming` / `liveEnd` |
 | 两套直播计时（B 站 `room-session*`、拓展直播计时器） | 核心一个场次引擎 + `fetchLiveStatus` |
 | 历史行按支记：B 站 `uid` + `unameSnapshot` / `uavatarSnapshot`；拓展 `extensionId` + `externalId`、只存名字 | 行带 `identity`；`nameSnapshot` / `avatarSnapshot`（图库引用） |
-| 历史种类 `dynamic` / `live` / `live-ongoing` / `live-end` / `guard` / `sc` / `special-danmaku` / `special-enter` | 特性键名 |
+| 历史种类 `dynamic` / `live` / `live-ongoing` / `live-end` / `guard` / `sc` / `special-danmaku` / `special-enter` | 特性键名（⑬f 已落） |
 | 历史图在 `history/img/`，随日文件删 | 统一图库，按引用清扫 |
 | `BilibiliPush` / `NotificationSink` / `MultiplexSink` | `PushRouter` / `TargetDispatcher`；`PlatformAdapter` 名字不变 |
 | 平台闭集 `CONNECTION_PLATFORMS`、平台信息表与各平台连接 schema 在 `internal`；拓展连接走 `kind: "extension"` 那一支 | 内置与拓展同一个 `PlatformAdapter`、同一张登记表；schema 与描述由适配器自带，面板经 `/api/adapters` 拿 |

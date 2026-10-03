@@ -2,7 +2,7 @@
 /**
  * 推送历史的行:一行 = 一次推送 × 一个目标。
  *
- * 守的是:类型按 8 类标;首条本体当文案、多条挂「N 条」胶囊;四态各有 pill;行可展开逐条看
+ * 守的是:类型按 8 把特性键标(行上那一格叫 `feature`);首条本体当文案、多条挂「N 条」胶囊;四态各有 pill;行可展开逐条看
  * (文案 / 图 / 结果);目标列写目标名。
  */
 
@@ -29,7 +29,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		id: "h1",
 		pushId: "p1",
 		ts: new Date().toISOString(),
-		kind: "live-end",
+		feature: "liveEnd",
 		status: "partial",
 		uid: "u1",
 		subscriptionId: "s1",
@@ -122,6 +122,57 @@ describe("推送历史 · 行", () => {
 		await userEvent.clear(screen.getByPlaceholderText(/搜索/));
 		await userEvent.type(screen.getByPlaceholderText(/搜索/), "不存在的词");
 		expect(screen.queryByText("下播了")).toBeNull();
+	});
+});
+
+/**
+ * 筛选胶囊按家族归:直播(开播 / 直播中 / 下播 / 特别进房 / 特别弹幕)、动态(作品)、SC(醒目留言)、舰长(上舰)。
+ * 行上的特性键怎么归族,只有色表里那一份(⑬f:家族的取值改说特性键那套,筛选不许因此失灵)。
+ */
+describe("推送历史 · 按家族筛选", () => {
+	const ALL = [
+		["liveStart", "开播了"],
+		["liveStreaming", "还在播"],
+		["liveEnd", "下播了"],
+		["specialUserEnter", "进房了"],
+		["specialDanmaku", "弹幕来了"],
+		["post", "新作品"],
+		["superchat", "醒目留言"],
+		["membership", "上舰了"],
+	] as const;
+
+	function oneRowEach(): HistoryEntryView[] {
+		return ALL.map(([feature, text], i) =>
+			row({
+				id: `h${i}`,
+				feature,
+				status: "delivered",
+				messages: [{ text, role: "main", ok: true }],
+			}),
+		);
+	}
+
+	const shown = () =>
+		ALL.filter(([, text]) => screen.queryByText(text)).map(([feature]) => feature);
+
+	it("「全部」八把键的行都在", async () => {
+		mockApi(oneRowEach());
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("新作品")).toBeTruthy());
+		expect(shown()).toEqual(ALL.map(([feature]) => feature));
+	});
+
+	it.each<[chip: string, expected: string[]]>([
+		["直播", ["liveStart", "liveStreaming", "liveEnd", "specialUserEnter", "specialDanmaku"]],
+		["动态", ["post"]],
+		["SC", ["superchat"]],
+		["舰长", ["membership"]],
+	])("点「%s」只剩这一族的行", async (chip, expected) => {
+		mockApi(oneRowEach());
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("新作品")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: chip }));
+		expect(shown()).toEqual(expected);
 	});
 });
 

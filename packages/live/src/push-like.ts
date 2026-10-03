@@ -16,8 +16,8 @@ import type { CardKind, ExtraKey, MessageKindLayout } from "@bilibili-notify/int
 
 /**
  * Push category enum — numeric values are the historical bilibili-notify push-type codes.
- * 只在进程内流转(推送层的翻译表按它分流、日志里打出来),**不落盘、不过 wire**:历史行记的是
- * `PushKind`,订阅与设置存的是特性键,所以加一档不用迁移。
+ * 只在进程内流转(推送层的翻译表按它分流、日志里打出来),**不落盘、不过 wire**:历史行与订阅、
+ * 设置存的都是特性键,所以加一档不用迁移。
  */
 export enum LivePushType {
 	/** 周期「正在直播」(`liveStreaming`)。 */

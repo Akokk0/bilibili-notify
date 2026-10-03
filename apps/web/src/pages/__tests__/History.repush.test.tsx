@@ -40,7 +40,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		id: "h1",
 		pushId: "p1",
 		ts: TS,
-		kind: "live-end",
+		feature: "liveEnd",
 		status: "partial",
 		uid: "u1",
 		subscriptionId: "s1",

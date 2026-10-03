@@ -16,31 +16,31 @@ describe("foldDailyBuckets", () => {
 	): DailyHistoryCountView => ({
 		d,
 		counts: {
-			dynamic: 0,
-			live: 0,
-			"live-ongoing": 0,
-			"live-end": 0,
-			sc: 0,
-			guard: 0,
-			"special-danmaku": 0,
-			"special-enter": 0,
+			post: 0,
+			liveStart: 0,
+			liveStreaming: 0,
+			liveEnd: 0,
+			superchat: 0,
+			membership: 0,
+			specialDanmaku: 0,
+			specialUserEnter: 0,
 			...counts,
 		},
 		total: Object.values(counts).reduce((a, b) => a + (b ?? 0), 0),
 		failures: 0,
 	});
 
-	it("按 4 家族折叠(live 族含 直播中 / 下播 / special),标签取 MM/DD", () => {
+	it("按 4 家族折叠(live 族含 直播中 / 下播 / special),标签取 MM/DD;计数的键是特性键", () => {
 		const out = foldDailyBuckets([
 			day("2026-07-01", {
-				live: 1,
-				"live-ongoing": 1,
-				"live-end": 2,
-				"special-enter": 1,
-				"special-danmaku": 1,
-				dynamic: 3,
-				sc: 1,
-				guard: 2,
+				liveStart: 1,
+				liveStreaming: 1,
+				liveEnd: 2,
+				specialUserEnter: 1,
+				specialDanmaku: 1,
+				post: 3,
+				superchat: 1,
+				membership: 2,
 			}),
 			day("2026-07-02", {}),
 		]);

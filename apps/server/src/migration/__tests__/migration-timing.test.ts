@@ -137,7 +137,13 @@ async function expectMigrated(
 	for (const name of dayFiles) {
 		for (const line of await readLines(join(historyDir, name))) {
 			const row = JSON.parse(line) as Record<string, unknown>;
-			if (row.kind === undefined || !Array.isArray(row.messages) || "source" in row) {
+			// 现在的行:推送种类那一格叫 `feature`(⑬f),0.x 的 `kind` 与 `source` 都不该再留着。
+			if (
+				row.feature === undefined ||
+				"kind" in row ||
+				!Array.isArray(row.messages) ||
+				"source" in row
+			) {
 				notMigrated += 1;
 			}
 			rows += 1;

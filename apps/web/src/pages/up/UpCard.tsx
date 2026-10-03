@@ -1,7 +1,7 @@
 import { formatCount } from "@bilibili-notify/internal/format";
 import { Avatar, ErrorNote, Icon, Pill, Toggle, WarnNote } from "@bilibili-notify/ui";
 import { useState } from "react";
-import { PUSH_TONE } from "../../config/push-kinds";
+import { PUSH_TONE } from "../../config/push-features";
 import { useLongPress } from "../../hooks/useLongPress";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -20,17 +20,17 @@ import {
 import { resolveTagNames } from "./tag-edit";
 
 /**
- * 订阅功能开关的胶囊色。键空间是 FeatureKey(⑬d 之后与推送类型 PushKind 一一对应),
+ * 订阅功能开关的胶囊色。键空间是 FeatureKey(历史行与推送色表用的也是它),
  * 用的是同一套家族色,所以借 PUSH_TONE 而不是再抄一份十六进制。两档衍生能力
  * (特别弹幕/特别进房)统一走 derived。
  */
 const FEATURE_TONE: Record<string, string> = {
-	post: PUSH_TONE.dynamic,
+	post: PUSH_TONE.post,
 	liveStart: PUSH_TONE.live,
 	liveStreaming: PUSH_TONE.live,
 	liveEnd: PUSH_TONE.live,
-	membership: PUSH_TONE.guard,
-	superchat: PUSH_TONE.sc,
+	membership: PUSH_TONE.membership,
+	superchat: PUSH_TONE.superchat,
 	specialDanmaku: PUSH_TONE.derived,
 	specialUserEnter: PUSH_TONE.derived,
 };

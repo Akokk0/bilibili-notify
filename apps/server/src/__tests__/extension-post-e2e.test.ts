@@ -322,7 +322,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 				expect(rowsOf("a")).toHaveLength(2);
 				for (const row of rowsOf("a")) {
 					expect(row).toMatchObject({
-						kind: "dynamic",
+						feature: "post",
 						status: "delivered",
 						extensionId: FAKE,
 						externalId: who.a.externalId,

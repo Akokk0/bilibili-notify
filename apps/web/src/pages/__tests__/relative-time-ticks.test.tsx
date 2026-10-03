@@ -59,7 +59,7 @@ describe("挂在页面上的相对时间会走", () => {
 			id: "h1",
 			pushId: "p1",
 			ts: new Date(NOW).toISOString(),
-			kind: "live",
+			feature: "liveStart",
 			status: "delivered",
 			uid: "u1",
 			subscriptionId: "s1",

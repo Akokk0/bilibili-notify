@@ -54,4 +54,4 @@
 
 ## 推送历史的行模型
 
-一行 = 一次推送 × 一个目标(`HistoryEntry`,schema 在 `packages/internal/src/schema/history.ts`):`pushId` 串起同一次推送的几次广播(下播卡 → 词云 → 总结;动态主卡 → 图集),`kind` 是 8 类推送之一(`dynamic` / `live` / `live-ongoing` / `live-end` / `guard` / `sc` / `special-danmaku` / `special-enter`),`targetId` 可空(空 = 无目标行),`messages[]` 每条带 `role`(`main` 本体 / `extra` 附加项)与结果。四态 `status`:全到 = `delivered`;第一条本体没到 = `failed`;本体到了、别的没到 = `partial`;`no-targets`。上游三道闸(静音 / 特性关 / 免扰)与无订阅**不**回调、不落行 —— 那不是「无目标」。老格式行(`source` / `result` / `payload`)读时映射,不重写。
+一行 = 一次推送 × 一个目标(`HistoryEntry`,schema 在 `packages/internal/src/schema/history.ts`):`pushId` 串起同一次推送的几次广播(下播卡 → 词云 → 总结;动态主卡 → 图集),`feature` 是这次推送的特性键(`post` / `liveStart` / `liveStreaming` / `liveEnd` / `membership` / `superchat` / `specialDanmaku` / `specialUserEnter`;0.x 存的推送种类由迁移翻过来),`targetId` 可空(空 = 无目标行),`messages[]` 每条带 `role`(`main` 本体 / `extra` 附加项)与结果。四态 `status`:全到 = `delivered`;第一条本体没到 = `failed`;本体到了、别的没到 = `partial`;`no-targets`。上游三道闸(静音 / 特性关 / 免扰)与无订阅**不**回调、不落行 —— 那不是「无目标」。0.x 的老格式行(`source` / `result` / `payload`)由迁移改写(`migration/history.ts`),历史仓只认新形状。

@@ -48,16 +48,15 @@
 
 ### ② 适配 —— 唯一同时懂两套词的地方
 
-引擎说 `LivePushType` / `PushKind`，推送层说 `FeatureKey`。翻译只在这一处，一进来分出四样：
+引擎说 `LivePushType`，推送层说 `FeatureKey`。翻译只在这一处，一进来分出三样：
 
 | 函数 | 产出 | 管什么 |
 |---|---|---|
 | `liveTypeToFeature` | `FeatureKey` | 开关与路由 |
-| `liveTypeToPushKind` | `PushKind` | 历史记成哪一类 |
 | `liveTypeAllowsAtAll` | `boolean` | 允不允许 @全体 |
 | `liveTypeToExtra` | `ExtraKey \| undefined` | 这是哪个附加项 |
 
-历史那一类由特性键直接翻（`liveTypeToPushKind` 就是 `featureToPushKind(liveTypeToFeature(t))`，没有自己的特判）：开播（3）→ `liveStart` / `live`、可以 @全体；重启补报（`CatchUp`，11）→ `liveStart` / `live`、不 @全体，卡与文字仍是「正在直播」那一套；周期「正在直播」（0）→ `liveStreaming` / `live-ongoing`、不 @全体。⚠️ **下播卡本体（9）的 `liveTypeToExtra` 必须是 `undefined`** —— 带上键的话整张卡会被它自己的附加项三态表收窄掉。
+历史行记的就是特性键（⑬f 起没有单独的推送种类）：开播（3）→ `liveStart`、可以 @全体；重启补报（`CatchUp`，11）→ `liveStart`、不 @全体，卡与文字仍是「正在直播」那一套；周期「正在直播」（0）→ `liveStreaming`、不 @全体。⚠️ **下播卡本体（9）的 `liveTypeToExtra` 必须是 `undefined`** —— 带上键的话整张卡会被它自己的附加项三态表收窄掉。
 
 动态端同理，`broadcastOptionsForPostPart` 把 `post-images`（图集）标成 `role: "extra"` 且 `allowAtAll: false`，否则一条 DRAW 动态会在主卡和图集各 @ 一次。
 

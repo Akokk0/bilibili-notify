@@ -99,18 +99,36 @@ describe("history route — limit/since 校验 (P2-J)", () => {
 	});
 });
 
-describe("history route — kind 过滤与 view 投影", () => {
+describe("history route — feature 过滤与 view 投影", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("kind 合法 → 透传给 query;不认识的 kind 当没传", async () => {
+	it("feature 是特性键 → 透传给 query", async () => {
+		await makeApp().request("/?feature=liveEnd");
+		expect(query.mock.calls[0]?.[0]).toMatchObject({ feature: "liveEnd" });
+	});
+
+	// 和 limit / since 一个做法:写错了筛选,当成没传会悄悄回全部行,对方以为筛过了。
+	it("feature 不是特性键 → 400,不调用 query", async () => {
+		const res = await makeApp().request("/?feature=live-summary");
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("feature=live-summary"),
+		});
+		expect(query).not.toHaveBeenCalled();
+	});
+
+	it("老参数 kind 不再认:回 400,说清楚改叫 feature,不静默当成没筛(书签里的旧链接才看得出来)", async () => {
 		const app = makeApp();
-		await app.request("/?kind=live-end");
-		expect(query.mock.calls[0]?.[0]).toMatchObject({ kind: "live-end" });
-		await app.request("/?kind=live-summary");
-		expect(query.mock.calls[1]?.[0]).not.toHaveProperty("kind", "live-summary");
-		expect(query.mock.calls[1]?.[0].kind).toBeUndefined();
+		const res = await app.request("/?kind=live-end");
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			code: "invalid",
+			message: "kind 已经改叫 feature,值是特性键(post / liveStart / liveEnd …)：kind=live-end",
+		});
+		expect(query).not.toHaveBeenCalled();
 	});
 
 	it("entries 投影成 wire view:消息逐条、无目标行 targetId 为 null", async () => {
@@ -120,7 +138,7 @@ describe("history route — kind 过滤与 view 投影", () => {
 				id: "h1",
 				pushId: "p1",
 				ts: "2026-05-16T00:00:00.000Z",
-				kind: "dynamic",
+				feature: "post",
 				uid: "u1",
 				subscriptionId: "sub1",
 				targetId: null,
@@ -136,7 +154,7 @@ describe("history route — kind 过滤与 view 投影", () => {
 					id: "h1",
 					pushId: "p1",
 					ts: "2026-05-16T00:00:00.000Z",
-					kind: "dynamic",
+					feature: "post",
 					status: "no-targets",
 					uid: "u1",
 					subscriptionId: "sub1",
@@ -297,7 +315,7 @@ describe("history route — 列表带上「能不能补」", () => {
 			id: `id${i}`,
 			pushId: "p",
 			ts: TS,
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: "s",
 			targetId: status === "no-targets" ? null : "t",

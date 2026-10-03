@@ -5,7 +5,7 @@ import type {
 	HistoryRepushResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
-import { fail, ok, type PushKind, PushKindSchema } from "@bilibili-notify/internal";
+import { type FeatureKey, FeatureKeySchema, fail, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
@@ -23,7 +23,7 @@ import type { RouteDeps } from "./types.js";
  * Query parameters for the listing endpoint:
  *   - limit:  int        (default 100, capped 500)
  *   - since:  ISO ts     (only entries strictly after this)
- *   - kind:   push kind ('dynamic' | 'live' | 'live-end' | …);不认识的当没传
+ *   - feature: 特性键('post' | 'liveStart' | 'liveEnd' | …);不是特性键回 400。老参数 `kind` 已经不认,也回 400
  *   - uid:    bilibili UID
  *
  * Query parameters for the daily endpoint:
@@ -32,7 +32,7 @@ import type { RouteDeps } from "./types.js";
  *               clamped [-840,840] — day boundaries follow the CLIENT's zone
  */
 
-const VALID_KINDS: ReadonlySet<string> = new Set(PushKindSchema.options);
+const VALID_FEATURES: ReadonlySet<string> = new Set(FeatureKeySchema.options);
 
 export function createHistoryRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
@@ -53,14 +53,36 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (since !== undefined && Number.isNaN(Date.parse(since))) {
 			return respondFailure(c, fail("invalid", `since 要是 ISO 时间戳：${since}`));
 		}
-		const kindParam = c.req.query("kind");
-		const kind = kindParam && VALID_KINDS.has(kindParam) ? (kindParam as PushKind) : undefined;
+		// 老参数名(⑬f 之前的 `kind`,值是 0.x 的推送种类名)不再认。静默当成「没筛」会让书签里的旧链接
+		// 悄悄返回全部行 —— 这里回错误,把新名字告诉对方。
+		const staleKind = c.req.query("kind");
+		if (staleKind !== undefined) {
+			return respondFailure(
+				c,
+				fail(
+					"invalid",
+					`kind 已经改叫 feature,值是特性键(post / liveStart / liveEnd …)：kind=${staleKind}`,
+				),
+			);
+		}
+		// 不是特性键的值同样回错误(和 limit / since 一个做法):当成没传会悄悄回全部行,对方以为筛过了。
+		const featureParam = c.req.query("feature");
+		if (featureParam !== undefined && !VALID_FEATURES.has(featureParam)) {
+			return respondFailure(
+				c,
+				fail(
+					"invalid",
+					`feature 要是特性键(post / liveStart / liveEnd …)：feature=${featureParam}`,
+				),
+			);
+		}
+		const feature = featureParam as FeatureKey | undefined;
 		const uid = c.req.query("uid");
 
 		const entries = await deps.runtime.historyStore.query({
 			limit,
 			since,
-			kind,
+			feature,
 			uid,
 		});
 		// 只为**失败 / 部分失败**的行问一句「按钮该不该灰」(决策 9)。一页两百行里

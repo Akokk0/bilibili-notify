@@ -56,7 +56,7 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 		id,
 		pushId: id,
 		ts: "2026-05-16T10:00:00.000Z",
-		kind: "dynamic",
+		feature: "post",
 		status: "delivered",
 		uid: "u1",
 		subscriptionId: "sub1",
@@ -67,14 +67,14 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 }
 
 const zeroCounts = (): DailyHistoryCountView["counts"] => ({
-	dynamic: 0,
-	live: 0,
-	"live-ongoing": 0,
-	"live-end": 0,
-	sc: 0,
-	guard: 0,
-	"special-danmaku": 0,
-	"special-enter": 0,
+	post: 0,
+	liveStart: 0,
+	liveStreaming: 0,
+	liveEnd: 0,
+	superchat: 0,
+	membership: 0,
+	specialDanmaku: 0,
+	specialUserEnter: 0,
 });
 
 describe("handlePushEnvelope — push-events 子事件分发", () => {
@@ -373,7 +373,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			const today = localDayKey(new Date(v1.ts));
 			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [v1] });
 			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
-				days: [{ d: today, counts: { ...zeroCounts(), dynamic: 4 }, total: 4, failures: 1 }],
+				days: [{ d: today, counts: { ...zeroCounts(), post: 4 }, total: 4, failures: 1 }],
 			});
 			handlePushEnvelope(
 				env({
@@ -386,7 +386,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			);
 			expect(
 				h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0],
-			).toMatchObject({ total: 4, failures: 2, counts: { dynamic: 4 } });
+			).toMatchObject({ total: 4, failures: 2, counts: { post: 4 } });
 		});
 
 		it("翻回已送达 → 今日失败 -1;成败没翻面则日桶一动不动", () => {
@@ -451,7 +451,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		});
 
 		it("部分失败也算一次失败", () => {
-			const view = pushView("h1", { status: "partial", kind: "live-end" });
+			const view = pushView("h1", { status: "partial", feature: "liveEnd" });
 			const today = dayOf(view);
 			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
 				days: [{ d: today, counts: zeroCounts(), total: 0, failures: 0 }],
@@ -463,16 +463,16 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			);
 			const day = h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0];
 			expect(day).toMatchObject({ total: 1, failures: 1 });
-			expect(day?.counts["live-end"]).toBe(1);
+			expect(day?.counts.liveEnd).toBe(1);
 		});
 
-		it("entry 所属本地日在缓存窗口里:kind/total/failures 就地 +1,零 HTTP", () => {
+		it("entry 所属本地日在缓存窗口里:feature/total/failures 就地 +1,零 HTTP", () => {
 			const view = pushView("h1", { status: "failed" });
 			const today = dayOf(view);
 			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
 				days: [
 					{ d: "1999-12-31", counts: zeroCounts(), total: 0, failures: 0 },
-					{ d: today, counts: { ...zeroCounts(), dynamic: 2 }, total: 3, failures: 1 },
+					{ d: today, counts: { ...zeroCounts(), post: 2 }, total: 3, failures: 1 },
 				],
 			});
 			handlePushEnvelope(
@@ -482,7 +482,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			);
 			const cache = h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY);
 			expect(cache?.days[1]).toMatchObject({ total: 4, failures: 2 });
-			expect(cache?.days[1]?.counts.dynamic).toBe(3);
+			expect(cache?.days[1]?.counts.post).toBe(3);
 			expect(cache?.days[0]).toMatchObject({ total: 0 }); // 其他日不动
 			expect(h.invalidate).not.toHaveBeenCalled();
 		});

@@ -2,7 +2,7 @@
  * `BilibiliPush.onSend` → `HistoryStore.record` 的字段搬运。
  *
  * 推送层只知道订阅 id / feature / target / 消息与结果;历史行还要「替谁发的」(B 站 uid,或拓展 id +
- * 外部 id)、UP 的名字头像快照、推送类型。这一层把它们拼齐:无目标那次照记(target: null),附加项的
+ * 外部 id)、UP 的名字头像快照。这一层把它们拼齐:无目标那次照记(target: null),附加项的
  * role 与逐条结果原样带过去。
  */
 
@@ -49,12 +49,11 @@ const lookups = {
 };
 
 describe("historyRecordFromSend", () => {
-	it("有目标:pushId / kind / 订阅 id / 快照 / 消息逐条带 role 与结果", () => {
+	it("有目标:pushId / feature / 订阅 id / 快照 / 消息逐条带 role 与结果", () => {
 		const info: PushSendInfo = {
 			pushId: "p1",
 			subscriptionId: SUB_ID,
 			feature: "liveEnd",
-			kind: "live-end",
 			target,
 			messages: [
 				{ payload: { kind: "text", text: "卡" }, role: "main", result: { ok: true, latencyMs: 3 } },
@@ -67,7 +66,7 @@ describe("historyRecordFromSend", () => {
 		};
 		expect(historyRecordFromSend(info, lookups)).toEqual({
 			pushId: "p1",
-			kind: "live-end",
+			feature: "liveEnd",
 			uid: "u1",
 			subscriptionId: SUB_ID,
 			target: target.id,
@@ -89,7 +88,6 @@ describe("historyRecordFromSend", () => {
 			pushId: "p2",
 			subscriptionId: SUB_ID,
 			feature: "post",
-			kind: "dynamic",
 			target: null,
 			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
 		};
@@ -105,7 +103,6 @@ describe("historyRecordFromSend", () => {
 			pushId: "p3",
 			subscriptionId: "44444444-4444-4444-8444-444444444444",
 			feature: "post",
-			kind: "dynamic",
 			target,
 			messages: [],
 		};
@@ -117,7 +114,6 @@ describe("historyRecordFromSend", () => {
 			pushId: "p4",
 			subscriptionId: SUB_ID,
 			feature: "post",
-			kind: "dynamic",
 			target,
 			messages: [],
 		};
@@ -134,7 +130,6 @@ describe("historyRecordFromSend", () => {
 			pushId: "p5",
 			subscriptionId: EXT_ID,
 			feature: "post",
-			kind: "dynamic",
 			target,
 			messages: [
 				{
@@ -147,7 +142,7 @@ describe("historyRecordFromSend", () => {
 		const input = historyRecordFromSend(info, lookups);
 		expect(input).toMatchObject({
 			pushId: "p5",
-			kind: "dynamic",
+			feature: "post",
 			subscriptionId: EXT_ID,
 			extensionId: "douyin",
 			externalId: "u1",
@@ -166,7 +161,6 @@ describe("historyRecordFromSend", () => {
 			pushId: "p7",
 			subscriptionId: EXT_NO_PROFILE,
 			feature: "post",
-			kind: "dynamic",
 			target,
 			messages: [],
 		};
@@ -228,7 +222,6 @@ describe("historyRecordFromSend", () => {
 			pushId: "p6",
 			subscriptionId: SUB_ID,
 			feature: "post",
-			kind: "dynamic",
 			target,
 			messages: [],
 		};

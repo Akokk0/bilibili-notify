@@ -50,7 +50,7 @@ const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 function input(over: Partial<HistoryRecordInput> = {}): HistoryRecordInput {
 	return {
 		pushId: randomUUID(),
-		kind: "dynamic",
+		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
 		target: T1,
@@ -127,7 +127,7 @@ describe("appendToRow", () => {
 			id,
 			pushId: randomUUID(),
 			ts: old,
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: SUB,
 			targetId: T1,

@@ -31,7 +31,12 @@ import {
 	useUpdateStatus,
 } from "../components/update/status";
 import { LOG_LEVEL_TONE, logLevelTint } from "../config/log-levels";
-import { familyTone, PUSH_KIND_META, PUSH_STATUS_META, PUSH_TONE } from "../config/push-kinds";
+import {
+	FEATURE_DESCRIPTORS,
+	familyTone,
+	PUSH_STATUS_META,
+	PUSH_TONE,
+} from "../config/push-features";
 import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
@@ -264,17 +269,17 @@ function TrendPanel({ daily }: { daily: DailyHistoryCountView[] }) {
 				height={280}
 				colors={{
 					live: PUSH_TONE.live,
-					dyn: PUSH_TONE.dynamic,
-					sc: PUSH_TONE.sc,
-					guard: PUSH_TONE.guard,
+					dyn: PUSH_TONE.post,
+					sc: PUSH_TONE.superchat,
+					guard: PUSH_TONE.membership,
 				}}
 			/>
 			<div className="mt-3.5 flex flex-wrap items-center gap-3 text-bn-xs text-bn-text-tertiary">
 				{[
 					["直播", PUSH_TONE.live],
-					["动态", PUSH_TONE.dynamic],
-					["SC", PUSH_TONE.sc],
-					["舰长", PUSH_TONE.guard],
+					["动态", PUSH_TONE.post],
+					["SC", PUSH_TONE.superchat],
+					["舰长", PUSH_TONE.membership],
 				].map(([label, c]) => (
 					<span key={label} className="inline-flex items-center gap-1.5">
 						<span className="block h-2 w-2 rounded-sm" style={{ background: c }} />
@@ -378,7 +383,7 @@ export function TimelinePanel({
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
 						// B 站行不画。
 						const platform = isExtensionRow(h) ? subscriptionPlatformOf(h, extensions) : undefined;
-						const tone = familyTone(h.kind);
+						const tone = familyTone(h.feature);
 						const status = PUSH_STATUS_META[h.status];
 						const marked = h.status !== "delivered";
 						const targetName =
@@ -406,7 +411,7 @@ export function TimelinePanel({
 								>
 									<Avatar name={name} color={color} size={24} url={avatar} />
 									<Pill color={tone} subtle size="sm">
-										{PUSH_KIND_META[h.kind].label}
+										{FEATURE_DESCRIPTORS[h.feature].label}
 									</Pill>
 									{platform ? (
 										<Pill size="sm" subtle color={platform.color ?? "var(--color-bn-inactive)"}>

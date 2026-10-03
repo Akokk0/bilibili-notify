@@ -9,6 +9,9 @@
  *   词表做键的位置,和这张表两头对:schema 里有、表里没登记 → 红;表里有、schema 里找不到(字段删了、挪了)→ 也红,免得表烂掉;
  * - (b) 归 `settings` / `subscription` 的每一条:用冻住的 0.x 词表(`zero-vocabulary.ts`)在 0.x 的路径上摆满旧键,跑那一族的
  *   1.0 步骤(改名 + 直播拆键),断言 `path` 上出来的键都在活词表里、0.x 的旧键一个不剩、每个 0.x 键的值都落进了某个新键;
+ *   归 `history` 的那一条是**值**用特性键、不是拿它做键:用冻住的 `ZERO_PUSH_KINDS` 每个取值各造一行 0.x 的历史行(再加 0.x 早期
+ *   `source` 形状的行),过一遍历史那一族的行级函数(`history.ts` 的 `migrateHistoryLine`),断言 `path` 上出来的值都在活词表里、
+ *   `zeroPath` 上的旧格一个不剩、没有两种旧取值落到同一个键;
  * - (c) 归 `pending` 的不做行为核对,测试里逐条列出来、标明归哪一片。
  *
  * 以后:
@@ -18,8 +21,8 @@
  * - 新开了一个存盘的仓 → 判定函数发现不了没登记的新仓,要自己把它的 schema 加进测试的根列表;
  * - 新增一套词表 → 加进 {@link KeyedVocabulary} 与 {@link KEYED_VOCABULARIES}。
  *
- * 历史行今天那一格是 `kind`(推送种类 `PushKind`,自成一套词表),不在这几套里,判定函数找不到、这里也不写;⑬f 把它改成特性键
- * 的值以后,(a) 会自然要求补一条。
+ * 历史行推送种类那一格(⑬f 之前叫 `kind`、值是 0.x 自成一套的八种推送种类名)现在叫 `feature`、值就是特性键:判定函数把它当「枚举当值用」
+ * 找到,登记在 `history` 一族名下(0.x 住在 `kind`)。
  */
 
 import {
@@ -47,12 +50,15 @@ export type KeyedRecordRoot = "GlobalConfig" | "Subscription" | "HistoryEntry" |
  * 谁负责把这条记录从 0.x 迁到 1.0:
  * - `settings`:设置那一族的 1.0 步骤(`settings.ts` 的 `migrateGlobalsToCurrent`:改名 + 直播拆键);
  * - `subscription`:订阅那一族的 1.0 步骤(`subscriptions.ts` 的 `toCurrentRow`:改名 + 直播拆键);
+ * - `history`:历史那一族的 1.0 步骤(`history.ts` 的 `migrateHistoryLine`:老 `source` → 0.x 的推送种类 → 特性键)。
+ *   它登记的是一个**值**(推送种类那一格),`zeroPath` 是 0.x 里装种类名的那一格;
  * - `pending`:归某一片、还没做。`slice` 是片号,`note` 说明为什么归它。
  *
- * `zeroPath`:这条记录在 0.x 里住的路径;1.0 挪过窝才写(订阅顶层的逐目标表 `extras` → `extraTargets`),缺省同 `path`。
+ * `zeroPath`:这条记录在 0.x 里住的路径;1.0 挪过窝才写(订阅顶层的逐目标表 `extras` → `extraTargets`、历史行的 `kind` →
+ * `feature`),缺省同 `path`。
  */
 export type KeyedRecordHandledBy =
-	| { kind: "settings" | "subscription"; zeroPath?: string }
+	| { kind: "settings" | "subscription" | "history"; zeroPath?: string }
 	| { kind: "pending"; slice: string; note: string };
 
 /** 清单的一条。`path` 的写法见 `__tests__/keyed-record-finder.ts`(对象键 `.`,数组元素 `[]`,record 的值 `*`)。 */
@@ -128,6 +134,14 @@ export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 		path: "overrides.cardStyleByKind",
 		vocabulary: "CardKind",
 		handledBy: CARD_KINDS_ARE_SLICE_24,
+	},
+
+	// 历史行:推送种类那一格(值用特性键);0.x 住在 `kind`,值是八种推送种类名
+	{
+		root: "HistoryEntry",
+		path: "feature",
+		vocabulary: "FeatureKey",
+		handledBy: { kind: "history", zeroPath: "kind" },
 	},
 
 	// 卡片皮肤包的清单

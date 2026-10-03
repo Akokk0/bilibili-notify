@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type DeliveryResult,
+	FEATURE_KEYS,
 	type FeatureKey,
 	type HistoryEntry,
 	makeEmptySubscription,
@@ -126,7 +127,7 @@ function denied(res: Awaited<ReturnType<RepushRunner["start"]>>): string {
 async function seedPartial(): Promise<HistoryEntry> {
 	return history.record({
 		pushId: randomUUID(),
-		kind: "dynamic",
+		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
 		target: T1,
@@ -299,7 +300,7 @@ describe("闸", () => {
 	it("一条都不用补(全送到了)→ 拒", async () => {
 		const entry = await history.record({
 			pushId: randomUUID(),
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: SUB,
 			target: T1,
@@ -381,7 +382,7 @@ describe("重推认的是哪一条订阅", () => {
 	async function seedExtensionPartial(): Promise<HistoryEntry> {
 		return history.record({
 			pushId: randomUUID(),
-			kind: "dynamic",
+			feature: "post",
 			extensionId: "douyin",
 			externalId: "u1",
 			subscriptionId: SUB,
@@ -419,6 +420,73 @@ describe("重推认的是哪一条订阅", () => {
 		expect(await r.canRepush(entry)).toContain("路由");
 		expect(sent).toHaveLength(0);
 	});
+});
+
+/**
+ * 闸与发送都拿**行上的 `feature`** 去查路由(⑬f:历史行记的就是特性键,不再经一张「种类 → 特性键」的翻译表)。
+ * 八把键各来一遍 —— 只用 `post` 的话,闸写死成 `post` 也全绿。
+ */
+describe("路由按行上的特性键查", () => {
+	function runnerOver(subscription: Subscription): RepushRunner {
+		const table = resolveTargetScope({
+			subscriptions: [subscription],
+			targets: [],
+			connections: [],
+		});
+		return createRepushRunner({
+			history,
+			repush,
+			send: recordingSend,
+			routedTargets: (id, feature) => table.routedTargets(id, feature),
+			currentSubscriptionOf: (row) => table.currentSubscriptionOf(row),
+			targetEnabled: () => true,
+			logger: logger(),
+			serviceCtx: ctx,
+		});
+	}
+
+	function seedRowOf(feature: FeatureKey): Promise<HistoryEntry> {
+		return history.record({
+			pushId: randomUUID(),
+			feature,
+			uid: "u1",
+			subscriptionId: SUB,
+			target: T1,
+			messages: [
+				{ payload: text("卡片"), role: "main", result: OK },
+				{ payload: text("词云"), role: "extra", result: FAIL },
+			],
+		});
+	}
+
+	it.each(FEATURE_KEYS)("%s:目标只路由在这把键下 → 闸放行,发送带的也是这把键", async (feature) => {
+		const entry = await seedRowOf(feature);
+		const sub = makeEmptySubscription({
+			id: SUB,
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
+		sub.routing[feature] = [T1];
+		const r = runnerOver(sub);
+		expect(await r.canRepush(entry)).toBeNull();
+		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(1);
+		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
+		expect(sent.map((s) => s.feature)).toEqual([feature]);
+	});
+
+	it.each(FEATURE_KEYS)(
+		"%s:目标只路由在**别的**键下 → 按「路由里把它去掉了」拒",
+		async (feature) => {
+			const entry = await seedRowOf(feature);
+			const sub = makeEmptySubscription({
+				id: SUB,
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			});
+			for (const other of FEATURE_KEYS) if (other !== feature) sub.routing[other] = [T1];
+			const r = runnerOver(sub);
+			expect(await r.canRepush(entry)).toContain("路由");
+			expect(sent).toHaveLength(0);
+		},
+	);
 });
 
 /**

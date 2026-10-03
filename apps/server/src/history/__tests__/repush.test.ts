@@ -45,7 +45,7 @@ function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
 		id: randomUUID(),
 		pushId: randomUUID(),
 		ts: "2026-09-20T08:00:00.000Z",
-		kind: "dynamic",
+		feature: "post",
 		uid: "u1",
 		subscriptionId: randomUUID(),
 		targetId: T1,

@@ -300,7 +300,7 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 				const { entries } = (await res.json()) as HistoryResponse;
 				for (const key of KEYS) {
 					const rows = entries.filter((e) => e.subscriptionId === SUBS[key].id);
-					expect(rows.map((row) => row.kind).sort()).toEqual(["live", "live-end"]);
+					expect(rows.map((row) => row.feature).sort()).toEqual(["liveEnd", "liveStart"]);
 					for (const row of rows) {
 						expect(row).toMatchObject({
 							status: "delivered",

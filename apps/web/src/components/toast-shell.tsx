@@ -1,7 +1,7 @@
 import { Btn, Icon, NoticeCard, NoticeStack, Pill } from "@bilibili-notify/ui";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { PUSH_KIND_META, PUSH_STATUS_META } from "../config/push-kinds";
+import { FEATURE_DESCRIPTORS, PUSH_STATUS_META } from "../config/push-features";
 import { useExtensions } from "../hooks/useExtensions";
 import { subscriptionPlatformOf } from "../pages/up/subscription-source";
 import {
@@ -75,7 +75,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 	}
 
 	const view = item.view;
-	const meta = PUSH_KIND_META[view.kind];
+	const meta = FEATURE_DESCRIPTORS[view.feature];
 	const status = PUSH_STATUS_META[view.status];
 	const IconCmp = Icon[meta.icon];
 	const headline = headlineOf(view);
@@ -86,7 +86,7 @@ function ToastCard({ item }: { item: ToastItem }) {
 	return (
 		<NoticeCard
 			icon={<IconCmp size={16} />}
-			// 推送家族色是逐 kind 的内容语义色,动态染色走 style(站规允许的那一种)。
+			// 推送家族色是逐特性的内容语义色,动态染色走 style(站规允许的那一种)。
 			tileStyle={{
 				background: `color-mix(in srgb, ${meta.tone} 12%, transparent)`,
 				color: meta.tone,

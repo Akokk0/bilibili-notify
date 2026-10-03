@@ -14,12 +14,12 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
+	FEATURE_DESCRIPTORS,
 	familyTone,
-	PUSH_KIND_META,
 	PUSH_STATUS_META,
 	PUSH_TONE,
 	type PushFamily,
-} from "../config/push-kinds";
+} from "../config/push-features";
 import { useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import {
@@ -43,8 +43,8 @@ import { subscriptionPlatformOf } from "./up/subscription-source";
  * backed by the live `/api/history` route + jsonl-by-day store.
  *
  * 一行 = 一次推送 × 一个目标:首条本体当文案,多条挂「N 条」胶囊,行可展开逐条看
- * (文案 / 图缩略 / 结果);状态四态。八种推送类型折进四个家族筛选(直播 / 动态 /
- * SC / 舰长),与 `services/dashboard.ts#FAMILY` 同一张表,和概览趋势图对得上。
+ * (文案 / 图缩略 / 结果);状态四态。八把特性键折进四个家族筛选(直播 / 动态 /
+ * SC / 舰长),与 `services/dashboard.ts` 同吃 `FEATURE_DESCRIPTORS` 的 family,和概览趋势图对得上。
  *
  * The "重发" column from the design source is intentionally not ported:
  * /api/push/test sends a dummy text payload, so a button labelled
@@ -53,15 +53,15 @@ import { subscriptionPlatformOf } from "./up/subscription-source";
  * that replays a recorded NotificationPayload.
  */
 
-/** 筛选胶囊 = 四个家族(见 PUSH_KIND_META 的 family)加一个「全部」。 */
+/** 筛选胶囊 = 四个家族(见 FEATURE_DESCRIPTORS 的 family)加一个「全部」。 */
 type FilterId = "all" | PushFamily;
 
 const FILTERS: ReadonlyArray<{ id: FilterId; label: string; tone: string }> = [
 	{ id: "all", label: "全部", tone: "var(--color-bn-inactive)" },
 	{ id: "live", label: "直播", tone: PUSH_TONE.live },
-	{ id: "dynamic", label: "动态", tone: PUSH_TONE.dynamic },
-	{ id: "sc", label: "SC", tone: PUSH_TONE.sc },
-	{ id: "guard", label: "舰长", tone: PUSH_TONE.guard },
+	{ id: "post", label: "动态", tone: PUSH_TONE.post },
+	{ id: "superchat", label: "SC", tone: PUSH_TONE.superchat },
+	{ id: "membership", label: "舰长", tone: PUSH_TONE.membership },
 ];
 
 export default function History() {
@@ -129,7 +129,7 @@ export default function History() {
 	const filtered = useMemo(() => {
 		const ql = q.trim().toLowerCase();
 		return entries.filter((e) => {
-			if (filterId !== "all" && PUSH_KIND_META[e.kind].family !== filterId) return false;
+			if (filterId !== "all" && FEATURE_DESCRIPTORS[e.feature].family !== filterId) return false;
 			return !ql || (haystacks.get(e.id)?.includes(ql) ?? false);
 		});
 	}, [entries, filterId, q, haystacks]);
@@ -243,7 +243,7 @@ function HistoryRow({
 }) {
 	const [open, setOpen] = useState(false);
 	const [repushOpen, setRepushOpen] = useState(false);
-	const tone = familyTone(entry.kind);
+	const tone = familyTone(entry.feature);
 	const status = PUSH_STATUS_META[entry.status];
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。都没有就写身份:B 站行 uid、拓展行
 	// 外部 id(ADR-0019 决策 73)。
@@ -277,7 +277,7 @@ function HistoryRow({
 				</span>
 				<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
 				<Pill color={tone} subtle size="sm">
-					{PUSH_KIND_META[entry.kind].label}
+					{FEATURE_DESCRIPTORS[entry.feature].label}
 				</Pill>
 				<div className="flex min-w-0 items-center gap-2">
 					{platform ? (

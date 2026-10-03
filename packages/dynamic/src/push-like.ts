@@ -42,8 +42,8 @@ export type PushSegment = PushImagePart | PushTextPart | PushImageGroup;
  * adapter 负责把它翻译为具体平台的 channel 列表 / atAll / 图片折叠等行为。
  *
  * `PostPushPart` 是作品推送的部件:正文那条(`post`)与图集那条(`post-images`)。这个值只在
- * 引擎与推送层之间传,决定图集是不是附加项;不是历史行的推送种类(`@bilibili-notify/internal`
- * 的 `PushKind`),不落盘、不过 wire。
+ * 引擎与推送层之间传,决定图集是不是附加项;不是历史行的推送种类(历史行记的是特性键,
+ * 作品一律 `post`),不落盘、不过 wire。
  */
 export type PostPushPart =
 	| /** 主体作品卡片：可能携带图片 + 文本 */ "post"

@@ -62,7 +62,7 @@ describe("createAppRuntime 的 flush 段", () => {
 		await expect(
 			runtime.historyStore.record({
 				pushId: "p1",
-				kind: "dynamic",
+				feature: "post",
 				uid: "u1",
 				subscriptionId: SUB.id,
 				target: null,

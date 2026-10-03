@@ -1,12 +1,11 @@
-import {
-	type DeliveryResult,
-	type FeatureKey,
-	type HistoryEntry,
-	type HistoryRowIdentity,
-	type Logger,
-	type NotificationPayload,
-	pushKindToFeature,
-	type ServiceContext,
+import type {
+	DeliveryResult,
+	FeatureKey,
+	HistoryEntry,
+	HistoryRowIdentity,
+	Logger,
+	NotificationPayload,
+	ServiceContext,
 } from "@bilibili-notify/internal";
 import { originalCount, repushDenial, unsentIndices } from "./repush.js";
 import type { RepushMessage, RepushStore } from "./repush-store.js";
@@ -108,9 +107,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			entry,
 			// 解析不到当前订阅 = 订阅已经没了,按「路由是空」处理:拒绝理由还是「路由里把它去掉了」那句。
 			routedTargets:
-				subscriptionId === undefined
-					? []
-					: opts.routedTargets(subscriptionId, pushKindToFeature(entry.kind)),
+				subscriptionId === undefined ? [] : opts.routedTargets(subscriptionId, entry.feature),
 			targetEnabled: entry.targetId !== null && opts.targetEnabled(entry.targetId),
 			running: running.has(entry.id),
 		});
@@ -170,7 +167,6 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	): Promise<void> {
 		const targetId = entry.targetId;
 		if (targetId === null) return;
-		const feature = pushKindToFeature(entry.kind);
 		let latest: HistoryEntry | null = null;
 		for (const i of indices) {
 			if (opts.serviceCtx.signal.aborted) break;
@@ -182,7 +178,10 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			const subscriptionId = opts.currentSubscriptionOf(entry) ?? entry.subscriptionId;
 			let result: DeliveryResult;
 			try {
-				result = await opts.send(targetId, m.payload, { subscriptionId, feature });
+				result = await opts.send(targetId, m.payload, {
+					subscriptionId,
+					feature: entry.feature,
+				});
 			} catch (err) {
 				// 发送层自己不抛,但注入进来的东西不是我们能打包票的。吞掉会让这一趟
 				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。

@@ -252,7 +252,7 @@ describe("WS server", () => {
 			id: "abc-123",
 			pushId: "abc-123",
 			ts: "2026-05-12T00:00:00.000Z",
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: "sub-1",
 			targetId: "t-1",

@@ -19,7 +19,7 @@ export interface PushHistoryLookups {
 /**
  * `BilibiliPush.onSend` 的一次回调 → 历史仓的一次 `record`。
  *
- * 推送层只知道订阅 id / feature / 目标 / 消息与结果;历史行还要「替谁发的」、推送类型、以及 UP
+ * 推送层只知道订阅 id / feature / 目标 / 消息与结果;历史行还要「替谁发的」、以及 UP
  * 当时的名字头像快照(订阅以后被删,面板上仍显示得出「当时是谁」)。无目标那次照记
  * (target: null),附加项的 role 与逐条结果原样带过去。查不到订阅就不记 —— 那条推送
  * 发起时订阅还在,落地时已经被删了,历史里挂在谁名下都不对。
@@ -48,7 +48,7 @@ export function historyRecordFromSend(
 	const unameSnapshot = fromBilibili ? profile?.name : filled(profile?.name);
 	return {
 		pushId: info.pushId,
-		kind: info.kind,
+		feature: info.feature,
 		...who,
 		subscriptionId: info.subscriptionId,
 		target: info.target?.id ?? null,

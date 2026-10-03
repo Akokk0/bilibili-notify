@@ -13,7 +13,7 @@ const ROW: HistoryEntry = {
 	id: "11111111-1111-4111-8111-111111111111",
 	pushId: "22222222-2222-4222-8222-222222222222",
 	ts: "2026-09-24T00:00:00.000Z",
-	kind: "dynamic",
+	feature: "post",
 	subscriptionId: "33333333-3333-4333-8333-333333333333",
 	targetId: null,
 	status: "no-targets",

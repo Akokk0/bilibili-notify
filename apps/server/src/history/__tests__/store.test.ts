@@ -60,7 +60,7 @@ afterEach(() => {
 
 const baseInput = (over: Partial<HistoryRecordInput> = {}): HistoryRecordInput => ({
 	pushId: randomUUID(),
-	kind: "dynamic",
+	feature: "post",
 	uid: "u1",
 	subscriptionId: randomUUID(),
 	target: randomUUID(),
@@ -155,7 +155,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 	it("composite at-all 段 → text 写出「@全体」而非空;与 text 段按段序拼接", async () => {
 		const alone = await store.record(
 			baseInput({
-				kind: "live",
+				feature: "liveStart",
 				messages: [
 					{ payload: { kind: "composite", segments: [{ type: "at-all" }] }, role: "extra" },
 				],
@@ -164,7 +164,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 		expect(only(alone).payload.text).toBe("@全体");
 		const mixed = await store.record(
 			baseInput({
-				kind: "live",
+				feature: "liveStart",
 				messages: [
 					{
 						payload: {
@@ -199,7 +199,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 	});
 
 	it("schema 拒绝:抛错 + logger.error + 不写文件不 emit", async () => {
-		await expect(store.record(baseInput({ kind: "not-a-kind" as never }))).rejects.toThrow(
+		await expect(store.record(baseInput({ feature: "not-a-feature" as never }))).rejects.toThrow(
 			"history entry schema validation failed",
 		);
 		expect(logger.error).toHaveBeenCalledTimes(1);
@@ -209,7 +209,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 	});
 });
 
-// 用一次真实 record 拿 schema 合法样板,克隆出受控 ts/kind/uid/id 的 fixture 手写进指定
+// 用一次真实 record 拿 schema 合法样板,克隆出受控 ts/feature/uid/id 的 fixture 手写进指定
 // 日文件 —— record 的 ts 不可控,手写日文件才能确定性测排序与 since。id 必须是 uuid,
 // 否则 readJsonl 的 safeParse 会丢弃整行。
 function clone(base: HistoryEntry, over: Partial<HistoryEntry>): HistoryEntry {
@@ -306,15 +306,15 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		expect(ids).not.toContain(oldId);
 	});
 
-	it("kind / uid 精确过滤", async () => {
+	it("feature / uid 精确过滤", async () => {
 		const base = await store.record(baseInput());
 		const dId = randomUUID();
 		const lId = randomUUID();
 		await writeDay("2026-05-11", [
-			clone(base, { id: dId, kind: "dynamic", uid: "uA" }),
-			clone(base, { id: lId, kind: "live", uid: "uB" }),
+			clone(base, { id: dId, feature: "post", uid: "uA" }),
+			clone(base, { id: lId, feature: "liveStart", uid: "uB" }),
 		]);
-		expect((await store.query({ kind: "live" })).map((e) => e.id)).toEqual([lId]);
+		expect((await store.query({ feature: "liveStart" })).map((e) => e.id)).toEqual([lId]);
 		const byUid = (await store.query({ uid: "uA" })).map((e) => e.id);
 		expect(byUid).toContain(dId);
 		expect(byUid).not.toContain(lId);
@@ -337,6 +337,18 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		expect(res.some((e) => e.id === goodId)).toBe(true);
 		expect(res.every((e) => typeof e.id === "string")).toBe(true);
 	});
+
+	it("还带着 0.x 的 `kind`、没有 `feature` 的行读不进来(迁移之前的形状,历史仓只认现在的)", async () => {
+		const base = await store.record(baseInput());
+		const { feature: _gone, ...rest } = base;
+		const stale = randomUUID();
+		await writeDay(
+			"2026-05-09",
+			[],
+			[JSON.stringify({ ...rest, id: stale, ts: "2026-05-09T00:00:00.000Z", kind: "dynamic" })],
+		);
+		expect((await store.query({})).map((e) => e.id)).not.toContain(stale);
+	});
 });
 
 describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
@@ -356,17 +368,17 @@ describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
 		]);
 		await writeDay("2026-05-10", [clone(base, { ts: "2026-05-10T10:00:00.000Z" })]);
 		await writeDay("2026-05-12", [
-			clone(base, { ts: "2026-05-12T03:00:00.000Z", kind: "live", status: "failed" }),
+			clone(base, { ts: "2026-05-12T03:00:00.000Z", feature: "liveStart", status: "failed" }),
 		]);
 
 		const days = await store.aggregateDaily({ days: 3, tzOffsetMin: TZ_CN, now });
 		expect(days.map((d) => d.d)).toEqual(["2026-05-10", "2026-05-11", "2026-05-12"]);
 		expect(days[0]).toMatchObject({ total: 2, failures: 0 });
-		expect(days[0]?.counts.dynamic).toBe(2);
+		expect(days[0]?.counts.post).toBe(2);
 		expect(days[1]).toMatchObject({ total: 0, failures: 0 }); // 空日仍出现(零填充)
 		expect(days[2]).toMatchObject({ total: 1, failures: 1 });
-		expect(days[2]?.counts.live).toBe(1);
-		expect(days[2]?.counts.dynamic).toBe(0); // counts 全类零填充
+		expect(days[2]?.counts.liveStart).toBe(1);
+		expect(days[2]?.counts.post).toBe(0); // counts 全键零填充
 	});
 
 	it("回归:单日超过 query 的 500 条上限也全量计数(趋势图不再被截断)", async () => {

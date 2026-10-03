@@ -32,7 +32,7 @@ interface Received {
 	receivedAt: number;
 }
 
-/** 推送卡不把 view 摊平进来:它自己带一个 `kind`(推送类型),会撞上这里的判别字段。 */
+/** 推送卡不把 view 摊平进来:`kind` 这个判别字段只在这里说了算(view 从前自己也带一个 `kind`,会撞上)。 */
 export type ToastItem =
 	| (Received & { kind: "push"; id: string; view: PushEventView })
 	| (NoticeView & Received & { kind: "notice" });

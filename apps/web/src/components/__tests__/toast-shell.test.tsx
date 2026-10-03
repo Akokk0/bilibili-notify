@@ -16,7 +16,7 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 		id,
 		pushId: id,
 		ts: "2026-09-02T10:00:00.000Z",
-		kind: "dynamic",
+		feature: "post",
 		status: "delivered",
 		uid: "u1",
 		subscriptionId: "s1",
@@ -127,13 +127,34 @@ describe("通知卡与推送 toast 抢队列", () => {
 	});
 });
 
+describe("推送 toast —— 标题按特性键说「刚发生了什么」", () => {
+	it.each<[feature: PushEventView["feature"], label: string]>([
+		["post", "动态"],
+		["liveStart", "开播"],
+		["liveStreaming", "正在直播"],
+		["liveEnd", "下播"],
+		["membership", "上舰"],
+		["superchat", "SC"],
+		["specialDanmaku", "特别弹幕"],
+		["specialUserEnter", "特别进房"],
+	])("%s → %s", (feature, label) => {
+		renderShell();
+		act(() =>
+			useToastStore
+				.getState()
+				.push(pushView("h1", { feature, messages: [{ text: "正文", role: "main", ok: true }] })),
+		);
+		expect(screen.getByText(label)).toBeTruthy();
+	});
+});
+
 describe("推送 toast —— 一次推送多条消息", () => {
 	it("首条本体当文案,多条时挂「N 条」胶囊;@全体 抢先落地也不当文案", () => {
 		renderShell();
 		act(() =>
 			useToastStore.getState().push(
 				pushView("h1", {
-					kind: "live-end",
+					feature: "liveEnd",
 					messages: [
 						{ text: "@全体", role: "extra", ok: true },
 						{ text: "下播了", role: "main", ok: true },
@@ -163,7 +184,7 @@ describe("推送 toast —— 一次推送多条消息", () => {
 		act(() => {
 			useToastStore.getState().push(
 				pushView("h1", {
-					kind: "live-end",
+					feature: "liveEnd",
 					messages: [{ text: "下播了", role: "main", ok: true }],
 				}),
 			);
@@ -172,7 +193,7 @@ describe("推送 toast —— 一次推送多条消息", () => {
 		act(() =>
 			useToastStore.getState().replace(
 				pushView("h1", {
-					kind: "live-end",
+					feature: "liveEnd",
 					status: "partial",
 					messages: [
 						{ text: "下播了", role: "main", ok: true },

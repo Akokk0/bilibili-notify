@@ -342,7 +342,7 @@ describe("migrateZeroGeneration", () => {
 		const [bad, row] = await lines("history/2026-09-30.jsonl");
 		expect(bad).toBe('{"id":1}');
 		expect(JSON.parse(row ?? "")).toMatchObject({
-			kind: "live-end",
+			feature: "liveEnd",
 			targetId: "22222222-2222-4222-8222-222222222222",
 			status: "delivered",
 			messages: [{ role: "main", payload: { text: "下播了" } }],
@@ -476,8 +476,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 17,
-			output: "955a5a9a4e2fa094b0fe0f5b1ff3c5fd785c99b892d235cec4fe3762c3459a94",
+			revision: 18,
+			output: "a4a4de52c32820ceccd0518bbd8899298feeaa024e4f2d3aec299c0c09dcfd8f",
 		});
 	});
 });

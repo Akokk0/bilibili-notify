@@ -151,7 +151,7 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	if (!countsAsDelivery(data.status)) return;
 	patchDailyBucket(qc, data.ts, (day) => ({
 		...day,
-		counts: { ...day.counts, [data.kind]: (day.counts[data.kind] ?? 0) + 1 },
+		counts: { ...day.counts, [data.feature]: (day.counts[data.feature] ?? 0) + 1 },
 		total: day.total + 1,
 		failures: day.failures + (countsAsFailure(data.status) ? 1 : 0),
 	}));

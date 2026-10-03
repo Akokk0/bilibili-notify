@@ -5,22 +5,41 @@
  * `extensionId` / `externalId`、**不带 `uid`** —— 外部 id 恰好是一串等于某个 B 站 uid 的数字时,
  * 塞进 `uid` 那一格就会在订阅删掉之后被认成那位 B 站 UP。
  *
- * 钉的是:拓展行读得进来且两格原样保留;B 站行照旧;老格式行读不进来(那是迁移器的事)。
+ * 钉的是:拓展行读得进来且两格原样保留;B 站行照旧;老格式行读不进来(那是迁移器的事);
+ * 推送种类那一格叫 `feature`、值就是特性键(⑬f),八把键都认,别的值与老的 `kind` 形状一律读不进来。
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { FEATURE_KEYS } from "../../constants.js";
 import { HistoryEntrySchema } from "../history.js";
 
 const BASE = {
 	id: "11111111-1111-4111-8111-111111111111",
 	pushId: "22222222-2222-4222-8222-222222222222",
 	ts: "2026-09-24T00:00:00.000Z",
-	kind: "dynamic",
+	feature: "post",
 	subscriptionId: "33333333-3333-4333-8333-333333333333",
 	targetId: "44444444-4444-4444-8444-444444444444",
 	status: "delivered",
 	messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
 } as const;
+
+describe("HistoryEntrySchema — 推送种类那一格是特性键", () => {
+	it.each(FEATURE_KEYS)("feature %s 读得进来", (feature) => {
+		expect(HistoryEntrySchema.parse({ ...BASE, feature }).feature).toBe(feature);
+	});
+
+	it("不是特性键的值读不进来(含 0.x 的推送种类名)", () => {
+		for (const feature of ["dynamic", "live", "live-ongoing", "live-end", "guard", "sc", "nope"]) {
+			expect(HistoryEntrySchema.safeParse({ ...BASE, feature }).success, feature).toBe(false);
+		}
+	});
+
+	it("0.x 最新形状的行(带 `kind`、没有 `feature`)读不进来 —— 那是迁移器的事", () => {
+		const { feature: _gone, ...rest } = BASE;
+		expect(HistoryEntrySchema.safeParse({ ...rest, kind: "dynamic" }).success).toBe(false);
+	});
+});
 
 describe("HistoryEntrySchema — 行的身份", () => {
 	it("拓展行:带拓展 id 与外部 id、没有 uid → 读得进来,两格原样保留", () => {

@@ -14,7 +14,7 @@ export function toHistoryView(
 		id: entry.id,
 		pushId: entry.pushId,
 		ts: entry.ts,
-		kind: entry.kind,
+		feature: entry.feature,
 		status: entry.status,
 		uid: entry.uid,
 		extensionId: entry.extensionId,

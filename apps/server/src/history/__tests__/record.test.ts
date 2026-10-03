@@ -7,7 +7,7 @@
  *   - jsonl 仍 append-only:追加写的是**补丁行**,读回来按行 id 合并
  *   - 四态:全到 = delivered;本体到了附加没到 = partial;本体没到 = failed;`target: null` = no-targets
  *   - 无目标行消息照存、图照落盘,只是没有结果
- *   - 按日聚合:total 数行、不计无目标;failures = failed + partial;counts 按 8 类
+ *   - 按日聚合:total 数行、不计无目标;failures = failed + partial;counts 按 8 把特性键
  */
 
 import { randomUUID } from "node:crypto";
@@ -55,7 +55,7 @@ function text(t: string): NotificationPayload {
 function input(over: Partial<HistoryRecordInput> = {}): HistoryRecordInput {
 	return {
 		pushId: randomUUID(),
-		kind: "dynamic",
+		feature: "post",
 		uid: "u1",
 		subscriptionId: SUB,
 		target: T1,
@@ -76,7 +76,7 @@ describe("record — 建行与追加", () => {
 		const entry = await store.record(input({ pushId }));
 		expect(entry).toMatchObject({
 			pushId,
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: SUB,
 			targetId: T1,
@@ -260,21 +260,21 @@ describe("record — 图片落盘", () => {
 
 	it("无 caption 的纯图:下播的附加项写「[弹幕词云]」,其余写「[卡片图]」", async () => {
 		const wc = await store.record(
-			input({ kind: "live-end", messages: [{ payload: png("W"), role: "extra", result: OK }] }),
+			input({ feature: "liveEnd", messages: [{ payload: png("W"), role: "extra", result: OK }] }),
 		);
 		expect(wc.messages[0]?.payload.text).toBe("[弹幕词云]");
 		const card = await store.record(
-			input({ kind: "live-end", messages: [{ payload: png("C"), role: "main", result: OK }] }),
+			input({ feature: "liveEnd", messages: [{ payload: png("C"), role: "main", result: OK }] }),
 		);
 		expect(card.messages[0]?.payload.text).toBe("[卡片图]");
 	});
 });
 
-describe("query — kind 过滤与补丁行", () => {
-	it("kind 过滤走新键", async () => {
-		const a = await store.record(input({ kind: "live-end" }));
-		await store.record(input({ kind: "sc" }));
-		expect((await store.query({ kind: "live-end" })).map((e) => e.id)).toEqual([a.id]);
+describe("query — feature 过滤与补丁行", () => {
+	it("feature 过滤认特性键", async () => {
+		const a = await store.record(input({ feature: "liveEnd" }));
+		await store.record(input({ feature: "superchat" }));
+		expect((await store.query({ feature: "liveEnd" })).map((e) => e.id)).toEqual([a.id]);
 	});
 
 	it("补丁行不占 limit:取尾巴按行(row)数", async () => {
@@ -305,33 +305,37 @@ describe("aggregateDaily — 新口径", () => {
 		await store.record(input({ pushId, target: T1 })); // delivered
 		await store.record(input({ pushId, target: T2 })); // delivered(同一次推送,另一个目标也算一行)
 		await store.record(
-			input({ kind: "live-end", messages: [{ payload: text("x"), role: "main", result: FAIL }] }),
+			input({ feature: "liveEnd", messages: [{ payload: text("x"), role: "main", result: FAIL }] }),
 		); // failed
-		const p = await store.record(input({ kind: "sc" }));
+		const p = await store.record(input({ feature: "superchat" }));
 		await store.record(
 			input({
 				pushId: p.pushId,
-				kind: "sc",
+				feature: "superchat",
 				messages: [{ payload: text("y"), role: "extra", result: FAIL }],
 			}),
 		); // → partial
 		await store.record(
-			input({ kind: "guard", target: null, messages: [{ payload: text("z"), role: "main" }] }),
+			input({
+				feature: "membership",
+				target: null,
+				messages: [{ payload: text("z"), role: "main" }],
+			}),
 		); // no-targets
 
 		const [today] = (await store.aggregateDaily({ days: 1, tzOffsetMin: TZ, now })) ?? [];
 		expect(today).toMatchObject({ total: 4, failures: 2 });
-		expect(today?.counts).toMatchObject({ dynamic: 2, "live-end": 1, sc: 1, guard: 0 });
+		expect(today?.counts).toMatchObject({ post: 2, liveEnd: 1, superchat: 1, membership: 0 });
 		expect(Object.keys(today?.counts ?? {}).sort()).toEqual(
 			[
-				"dynamic",
-				"live",
-				"live-ongoing",
-				"live-end",
-				"guard",
-				"sc",
-				"special-danmaku",
-				"special-enter",
+				"post",
+				"liveStart",
+				"liveStreaming",
+				"liveEnd",
+				"membership",
+				"superchat",
+				"specialDanmaku",
+				"specialUserEnter",
 			].sort(),
 		);
 	});

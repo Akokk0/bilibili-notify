@@ -20,9 +20,9 @@ import type {
 	Failure,
 	FailureCode,
 	FansRefreshEntry,
+	FeatureKey,
 	HistoryMessageRole,
 	Issue,
-	PushKind,
 	PushStatus,
 	Result,
 	Subscription,
@@ -46,7 +46,6 @@ export type {
 	ExtensionProvides,
 	FansRefreshEntry,
 	HistoryMessageRole,
-	PushKind,
 	PushStatus,
 	// `/api/subs/tags` 的一格(ADR-0034):`GET` 回整张、`PUT` 收整张。
 	SubscriptionTag,
@@ -516,7 +515,8 @@ export interface HistoryEntryView {
 	/** 同一次推送落到几个目标就有几行,它们共用这一个。 */
 	pushId: string;
 	ts: string;
-	kind: PushKind;
+	/** 这一行是哪一类推送:特性键(补报记 `liveStart`、周期记 `liveStreaming`)。 */
+	feature: FeatureKey;
 	status: PushStatus;
 	/**
 	 * 替谁发的(ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` + `externalId`、
@@ -586,7 +586,8 @@ export interface HistoryResponse {
 export interface DailyHistoryCount {
 	/** 按 tzOffsetMin 口径的本地日 YYYY-MM-DD。 */
 	d: string;
-	counts: Record<PushKind, number>;
+	/** 按特性键分的推送数(八把键都在,没有的是 0)。 */
+	counts: Record<FeatureKey, number>;
 	total: number;
 	failures: number;
 }

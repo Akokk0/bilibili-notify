@@ -1,18 +1,13 @@
 /**
- * 直播端 LivePushType → 特性键 / 推送类型 的翻译表。
+ * 直播端 LivePushType → 特性键 的翻译表。
  *
- * 特性键管开关与路由(词云 / 总结是下播的附加项,跟着下播走);推送类型管历史怎么记。
- * ⑬d 起两者一一对应:周期「正在直播」(0)是 `liveStreaming` / `live-ongoing`,重启补报(11)
- * 走开播的路由、历史记成开播(`liveStart` / `live`)、不 @全体。两张表都在这里钉死。
+ * 特性键管开关与路由(词云 / 总结是下播的附加项,跟着下播走),历史也记它(⑬f:历史行的那一格叫
+ * `feature`,不再另有一套推送种类)。周期「正在直播」(0)是 `liveStreaming`,重启补报(11)
+ * 走开播的路由、历史记成开播(`liveStart`)、不 @全体。这张表和广播选项都在这里钉死。
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import {
-	liveBroadcastOpts,
-	liveTypeToExtra,
-	liveTypeToFeature,
-	liveTypeToPushKind,
-} from "../runtime/engines";
+import { liveBroadcastOpts, liveTypeToExtra, liveTypeToFeature } from "../runtime/engines";
 
 describe("liveTypeToFeature", () => {
 	it("完整映射表:词云 / 总结归到 liveEnd", () => {
@@ -33,22 +28,6 @@ describe("liveTypeToFeature", () => {
 	});
 });
 
-describe("liveTypeToPushKind", () => {
-	it("完整映射表:周期复推记 live-ongoing,重启补报记成开播,词云 / 总结记在下播名下", () => {
-		expect(liveTypeToPushKind(0)).toBe("live-ongoing");
-		expect(liveTypeToPushKind(3)).toBe("live");
-		expect(liveTypeToPushKind(11)).toBe("live"); // 0.x 里补报记成 live-ongoing,1.0 起记开播
-		expect(liveTypeToPushKind(4)).toBe("guard");
-		expect(liveTypeToPushKind(5)).toBe("live-end");
-		expect(liveTypeToPushKind(6)).toBe("sc");
-		expect(liveTypeToPushKind(7)).toBe("special-danmaku");
-		expect(liveTypeToPushKind(8)).toBe("special-enter");
-		expect(liveTypeToPushKind(9)).toBe("live-end");
-		expect(liveTypeToPushKind(10)).toBe("live-end");
-		expect(liveTypeToPushKind(999)).toBe("live");
-	});
-});
-
 // ADR-0016 决策 5:附加项的键就是在这一步、紧挨着「翻成哪把特性」产出的 —— 推送层据它
 // 在主特性的目标列表上再筛一道。
 describe("liveTypeToExtra", () => {
@@ -65,39 +44,33 @@ describe("liveTypeToExtra", () => {
 });
 
 describe("liveBroadcastOpts — 直播端一次广播交给推送层的选项", () => {
-	it("开播:允许 @全体、kind live、透传 pushId,不是附加项", () => {
+	it("开播:允许 @全体、透传 pushId,不是附加项", () => {
 		expect(liveBroadcastOpts(3, { pushId: "p1" })).toEqual({
 			pushId: "p1",
 			role: undefined,
 			allowAtAll: true,
-			kind: "live",
 			extra: undefined,
 		});
 	});
 
-	it("周期复推:抑制 @全体、kind live-ongoing", () => {
-		expect(liveBroadcastOpts(0, undefined)).toMatchObject({
-			allowAtAll: false,
-			kind: "live-ongoing",
-		});
+	it("周期复推:抑制 @全体", () => {
+		expect(liveBroadcastOpts(0, undefined)).toMatchObject({ allowAtAll: false });
 	});
 
-	it("重启补报:抑制 @全体、kind live(记成开播),不是附加项", () => {
+	it("重启补报:抑制 @全体,不是附加项", () => {
 		expect(liveBroadcastOpts(11, { pushId: "p1" })).toEqual({
 			pushId: "p1",
 			role: undefined,
 			allowAtAll: false,
-			kind: "live",
 			extra: undefined,
 		});
 	});
 
-	it("词云:附加项键照传、kind live-end、不 @全体", () => {
+	it("词云:附加项键照传、不 @全体", () => {
 		expect(liveBroadcastOpts(5, { pushId: "p1", role: "extra" })).toEqual({
 			pushId: "p1",
 			role: "extra",
 			allowAtAll: false,
-			kind: "live-end",
 			extra: "wordcloud",
 		});
 	});
@@ -107,17 +80,15 @@ describe("liveBroadcastOpts — 直播端一次广播交给推送层的选项", 
 			pushId: "p1",
 			role: "extra",
 			allowAtAll: false,
-			kind: "live-end",
 			extra: "liveSummary",
 		});
 	});
 
-	it("下播卡本体:同一把特性、同一类历史,但**不带附加项键**", () => {
+	it("下播卡本体:不带附加项键", () => {
 		expect(liveBroadcastOpts(9, { pushId: "p1" })).toEqual({
 			pushId: "p1",
 			role: undefined,
 			allowAtAll: false,
-			kind: "live-end",
 			extra: undefined,
 		});
 	});

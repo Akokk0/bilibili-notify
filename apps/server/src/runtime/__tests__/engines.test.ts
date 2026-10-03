@@ -239,7 +239,7 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给推送层", () => {
 	const card = { type: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
 
-	it("开播:特性 liveStart、允许 @全体、历史记开播;一组 = 一条载荷,卡 + 文字合成一条", async () => {
+	it("开播:特性 liveStart(历史就记它)、允许 @全体;一组 = 一条载荷,卡 + 文字合成一条", async () => {
 		const send = vi.fn(async () => {});
 		await boundLivePush(send)([[card, { type: "text", text: "开播啦" }]], 3, {});
 		expect(send).toHaveBeenCalledWith(
@@ -251,27 +251,27 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 					{ type: "text", text: "开播啦" },
 				],
 			},
-			expect.objectContaining({ allowAtAll: true, kind: "live", extra: undefined }),
+			expect.objectContaining({ allowAtAll: true, extra: undefined }),
 		);
 	});
 
-	it("正在直播:特性 liveStreaming(自己的开关与目标)、不 @全体、历史记正在直播", async () => {
+	it("正在直播:特性 liveStreaming(自己的开关与目标,历史就记它)、不 @全体", async () => {
 		const send = vi.fn(async () => {});
 		await boundLivePush(send)([[{ type: "text", text: "还在播" }]], 0, {});
 		expect(send).toHaveBeenCalledWith(
 			"liveStreaming",
 			{ kind: "text", text: "还在播" },
-			expect.objectContaining({ allowAtAll: false, kind: "live-ongoing" }),
+			expect.objectContaining({ allowAtAll: false }),
 		);
 	});
 
-	it("重启补报:特性 liveStart(走开播的路由)、不 @全体、历史记成开播", async () => {
+	it("重启补报:特性 liveStart(走开播的路由,历史记成开播)、不 @全体", async () => {
 		const send = vi.fn(async () => {});
 		await boundLivePush(send)([[{ type: "text", text: "补报" }]], 11, {});
 		expect(send).toHaveBeenCalledWith(
 			"liveStart",
 			{ kind: "text", text: "补报" },
-			expect.objectContaining({ allowAtAll: false, kind: "live" }),
+			expect.objectContaining({ allowAtAll: false }),
 		);
 	});
 
@@ -284,7 +284,7 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 				{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
 				{ kind: "text", text: "下播啦" },
 			],
-			expect.objectContaining({ allowAtAll: false, kind: "live-end", pushId: "p1" }),
+			expect.objectContaining({ allowAtAll: false, pushId: "p1" }),
 		);
 	});
 });
@@ -674,7 +674,7 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 				sub.id,
 				"liveStart",
 				expect.anything(),
-				expect.objectContaining({ allowAtAll: true, kind: "live" }),
+				expect.objectContaining({ allowAtAll: true }),
 			),
 		);
 
@@ -1796,7 +1796,7 @@ describe("createEngines — 消息版式", () => {
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
 		expect(payloads[1]).toEqual({ kind: "text", text: "开播文案" });
-		expect(opts).toMatchObject({ allowAtAll: true, kind: "live" });
+		expect(opts).toMatchObject({ allowAtAll: true });
 	});
 
 	it("回归镜像:只改全局 messageLayout → live.applyOps 与 dynamic.applyOps 都收到刷新", () => {
@@ -2143,7 +2143,6 @@ describe("createEngines — 后台写登记进 track", () => {
 				pushId: randomUUID(), // 历史行的 schema 要求 pushId 是 uuid
 				subscriptionId: SUB_ID,
 				feature: "post",
-				kind: "dynamic",
 				target: null,
 				messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
 			});
@@ -2178,7 +2177,6 @@ describe("createEngines — 后台写登记进 track", () => {
 			pushId: "p1",
 			subscriptionId: SUB_ID,
 			feature: "post",
-			kind: "dynamic",
 			target: null,
 			messages: [{ payload: { kind: "text", text: "卡" }, role: "main" }],
 		});

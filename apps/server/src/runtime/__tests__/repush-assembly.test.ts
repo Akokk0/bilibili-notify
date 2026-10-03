@@ -37,7 +37,7 @@ describe("createAppRuntime", () => {
 		});
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: randomUUID(),
 			target: randomUUID(),
@@ -71,7 +71,7 @@ describe("createAppRuntime", () => {
 		});
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: randomUUID(),
 			target: randomUUID(),
@@ -108,7 +108,7 @@ describe("createAppRuntime", () => {
 		});
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
-			kind: "dynamic",
+			feature: "post",
 			uid: "u1",
 			subscriptionId: randomUUID(),
 			target: randomUUID(),

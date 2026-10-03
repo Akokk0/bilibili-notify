@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
 import type {
+	FeatureKey,
 	HistoryEntry,
 	HistoryMessage,
 	HistoryMessageResult,
@@ -13,16 +14,15 @@ import type {
 	Logger,
 	MessageBus,
 	NotificationPayload,
-	PushKind,
 	PushStatus,
 } from "@bilibili-notify/internal";
 import {
 	countsAsDelivery,
 	countsAsFailure,
 	createSerialQueue,
+	FEATURE_KEYS,
 	HistoryEntrySchema,
 	HistoryPatchSchema,
-	PushKindSchema,
 } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
@@ -51,7 +51,8 @@ export interface HistoryRecordMessage {
 
 export interface HistoryRecordInput {
 	pushId: string;
-	kind: PushKind;
+	/** 这次推送的特性键(补报记 `liveStart`、周期记 `liveStreaming`)。 */
+	feature: FeatureKey;
 	/**
 	 * 替谁发的(ADR-0019 决策 73):B 站行填 `uid`;拓展行填 `extensionId` + `externalId`、不填 `uid`。
 	 */
@@ -80,7 +81,7 @@ export interface HistoryRetryMessage extends HistoryRecordMessage {
 interface HistoryQuery {
 	limit?: number;
 	since?: string;
-	kind?: PushKind;
+	feature?: FeatureKey;
 	uid?: string;
 }
 
@@ -147,8 +148,8 @@ export interface HistoryStore {
 	close(): Promise<void>;
 }
 
-function zeroCounts(): Record<PushKind, number> {
-	return Object.fromEntries(PushKindSchema.options.map((k) => [k, 0])) as Record<PushKind, number>;
+function zeroCounts(): Record<FeatureKey, number> {
+	return Object.fromEntries(FEATURE_KEYS.map((k) => [k, 0])) as Record<FeatureKey, number>;
 }
 
 /**
@@ -260,7 +261,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	async function reduce(
 		msg: HistoryRecordMessage,
 		stem: string,
-		kind: PushKind,
+		feature: FeatureKey,
 	): Promise<HistoryPayload> {
 		const payload = msg.payload;
 		switch (payload.kind) {
@@ -275,7 +276,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				// 下播的附加项里唯一的图是词云;别的纯图都是拆成独立消息的卡片。
 				const text =
 					payload.caption ||
-					(kind === "live-end" && msg.role === "extra" ? "[弹幕词云]" : "[卡片图]");
+					(feature === "liveEnd" && msg.role === "extra" ? "[弹幕词云]" : "[卡片图]");
 				return { kind: "image", text, imageRef };
 			}
 			case "forward-images":
@@ -317,11 +318,11 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		messages: readonly HistoryRecordMessage[],
 		rowId: string,
 		offset: number,
-		kind: PushKind,
+		feature: FeatureKey,
 	): Promise<HistoryMessage[]> {
 		const out: HistoryMessage[] = [];
 		for (const [i, msg] of messages.entries()) {
-			const payload = await reduce(msg, `${rowId}-${offset + i}`, kind);
+			const payload = await reduce(msg, `${rowId}-${offset + i}`, feature);
 			out.push({ payload, role: msg.role, ...(msg.result ? { result: msg.result } : {}) });
 		}
 		return out;
@@ -421,12 +422,12 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		if (!existing) {
 			const id = randomUUID();
 			const ts = new Date().toISOString();
-			const messages = await reduceAll(input.messages, id, 0, input.kind);
+			const messages = await reduceAll(input.messages, id, 0, input.feature);
 			const entry = validated({
 				id,
 				pushId: input.pushId,
 				ts,
-				kind: input.kind,
+				feature: input.feature,
 				uid: input.uid,
 				extensionId: input.extensionId,
 				externalId: input.externalId,
@@ -447,7 +448,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			input.messages,
 			existing.id,
 			existing.messages.length,
-			existing.kind,
+			existing.feature,
 		);
 		// 补丁写进**原行那一天**的文件,原件也跟着那一天走 —— 两边始终同一个日子。
 		return applyPatch(existing, added, dayFile(existing.ts), () =>
@@ -487,7 +488,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				: undefined;
 		const base = reusable ?? (await readJsonl(path)).find((r) => r.id === rowId);
 		if (!base) return null;
-		const reduced = await reduceAll(messages, base.id, base.messages.length, base.kind);
+		const reduced = await reduceAll(messages, base.id, base.messages.length, base.feature);
 		// 补进来的图跟着**整行**的序号往后排(`reduceAll` 的 offset),盖不掉原来那几张。
 		const added = reduced.map((m, i) => ({ ...m, retryOf: messages[i]?.retryOf ?? 0 }));
 		// 🔴 写进**原行那一天**的文件(`path` 就是 `dayFile(ts)`)—— 跨了日文件补丁会被
@@ -525,10 +526,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			return [];
 		}
 
-		// kind / uid 的合格行可能散在整份文件里,拿尾巴不成立 —— 那条路只好照旧
+		// feature / uid 的合格行可能散在整份文件里,拿尾巴不成立 —— 那条路只好照旧
 		// 全量解析。前端两个调用点(Dashboard limit=100 / History limit=200)都不带
 		// 这两个参数,也就是说热路径永远走便宜的那条。
-		const needsFullScan = q.kind !== undefined || q.uid !== undefined;
+		const needsFullScan = q.feature !== undefined || q.uid !== undefined;
 
 		for (const file of files) {
 			const path = join(root, file);
@@ -540,7 +541,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				const entry = collected[i];
 				if (!entry) continue;
 				if (Date.parse(entry.ts) <= sinceMs) continue;
-				if (q.kind && entry.kind !== q.kind) continue;
+				if (q.feature && entry.feature !== q.feature) continue;
 				if (q.uid && entry.uid !== q.uid) continue;
 				out.push(entry);
 				if (out.length >= limit) return out;
@@ -592,7 +593,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				// 「今日推送」数的是推到了多少个地方,「今日失败」把部分失败也算进去 ——
 				// 两条口径与面板上的乐观补丁同吃 internal 的那一份。
 				if (!countsAsDelivery(entry.status)) continue;
-				bucket.counts[entry.kind] += 1;
+				bucket.counts[entry.feature] += 1;
 				bucket.total += 1;
 				if (countsAsFailure(entry.status)) bucket.failures += 1;
 			}

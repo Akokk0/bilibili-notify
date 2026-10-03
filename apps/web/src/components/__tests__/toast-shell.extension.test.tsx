@@ -43,7 +43,7 @@ function pushView(over: Partial<PushEventView> = {}): PushEventView {
 		id: "h1",
 		pushId: "p1",
 		ts: "2026-09-24T10:00:00.000Z",
-		kind: "dynamic",
+		feature: "post",
 		status: "delivered",
 		uid: "u1",
 		subscriptionId: "s1",

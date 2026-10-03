@@ -5,13 +5,13 @@
  * 1. 判定函数(`./keyed-record-finder.ts`)的样例 —— 判据本身也会写错,一条永远判 OK 的规则跟没有一样,所以先用样例
  *    钉住每种认法、每种包装和反例;
  * 2. 守卫本体:(a) 判定函数在四个存盘的根上找出来的 = 清单,两头都核;(b) 清单里归设置 / 订阅那一族的每一条,用冻住的
- *    0.x 词表摆满旧键、跑那一族的 1.0 步骤,核对出来的键;(c) 归某一片、还没做的条目逐条列出。
+ *    0.x 词表摆满旧键、跑那一族的 1.0 步骤,核对出来的键;归历史那一族的(推送种类那一格,值用特性键)用冻住的 0.x 推送种类
+ *    每个取值各造一行、过历史的行级函数,核对出来的值;(c) 归某一片、还没做的条目逐条列出。
  *
  * 限制:
  * - 判定函数只看下面 `ROOTS` 登记的四个根。将来**多一个存盘的根**(新开一个仓、新存一份用这几套词表做键的数据),
  *   判定函数发现不了没登记的新仓,要自己把它的 schema 加进 `ROOTS`;
- * - 历史行今天那一格是 `kind`(推送种类 `PushKind`,自成一套词表),不在这几套里,判定函数找不到、清单也不写。⑬f 把它改成
- *   特性键的值以后,(a) 会自然要求补一条(那一格是 `z.enum` 当值用);
+ * - 历史行推送种类那一格 ⑬f 改叫 `feature`、值是特性键(`z.enum` 当值用),(a) 找到了它、清单里登记在 `history` 名下;
  * - 行为核对(b)只摆得进纯对象键的路径(没有 `[]` / `*`),遇到会直接抛,到时候扩展 `placeAt`。
  */
 
@@ -24,6 +24,7 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { isPlainObject } from "../files.js";
+import { migrateHistoryLine } from "../history.js";
 import {
 	KEYED_RECORD_ENTRIES,
 	KEYED_VOCABULARIES,
@@ -34,7 +35,7 @@ import {
 import { ZERO_GLOBAL_LIVE_FACTS } from "../live-split.js";
 import { migrateGlobalsToCurrent } from "../settings.js";
 import { toCurrentRow } from "../subscriptions.js";
-import { ZERO_EXTRA_KEYS, ZERO_FEATURE_KEYS } from "../zero-vocabulary.js";
+import { ZERO_EXTRA_KEYS, ZERO_FEATURE_KEYS, ZERO_PUSH_KINDS } from "../zero-vocabulary.js";
 import { findKeyedRecords, type Vocabulary } from "./keyed-record-finder.js";
 import { makeZeroGlobals, zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
@@ -397,12 +398,19 @@ const NO_PROBLEMS = {
 };
 
 describe("守卫 13 前半 (b):归设置 / 订阅那一族的记录,0.x 的旧键迁完一个不剩", () => {
-	const handled = KEYED_RECORD_ENTRIES.filter((entry) => entry.handledBy.kind !== "pending");
+	const handled = KEYED_RECORD_ENTRIES.filter(
+		(entry) => entry.handledBy.kind === "settings" || entry.handledBy.kind === "subscription",
+	);
 
-	it("两族各有条目(免得过滤写错、一条用例都没跑)", () => {
-		expect(new Set(handled.map((entry) => entry.handledBy.kind))).toEqual(
-			new Set(["settings", "subscription"]),
-		);
+	it("三族各有条目(免得过滤写错、一条用例都没跑)", () => {
+		expect(
+			new Set(
+				KEYED_RECORD_ENTRIES.map((entry) => entry.handledBy.kind).filter(
+					(kind) => kind !== "pending",
+				),
+			),
+		).toEqual(new Set(["settings", "subscription", "history"]));
+		expect(handled.length).toBeGreaterThan(0);
 	});
 
 	for (const entry of handled) {
@@ -414,6 +422,79 @@ describe("守卫 13 前半 (b):归设置 / 订阅那一族的记录,0.x 的旧�
 				expect(migratedKeysProblems(entry, family, input)).toEqual(NO_PROBLEMS);
 			});
 		}
+	}
+});
+
+// ── (b) 历史那一族:值用特性键 ───────────────────────────────────────────────────
+
+describe("守卫 13 前半 (b):归历史那一族的记录,0.x 的推送种类迁完都落进活的特性键", () => {
+	const entries = KEYED_RECORD_ENTRIES.filter((entry) => entry.handledBy.kind === "history");
+	const ROW = {
+		id: "11111111-1111-4111-8111-111111111111",
+		pushId: "22222222-2222-4222-8222-222222222222",
+		ts: "2026-05-10T01:00:00.000Z",
+		uid: "u1",
+		subscriptionId: SUB_ID,
+		targetId: "44444444-4444-4444-8444-444444444444",
+		status: "delivered",
+		messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
+	};
+	/** 0.x 早期的老行(一行 = 一个目标 × 一条消息):装种类的是 `source`,不是 `kind`。 */
+	const LEGACY_SOURCES = [
+		"dynamic",
+		"live",
+		"live-summary",
+		"sc",
+		"guard",
+		"special-danmaku",
+		"special-enter",
+	];
+	const legacyRow = (source: string): Obj => ({
+		id: ROW.id,
+		ts: ROW.ts,
+		source,
+		uid: ROW.uid,
+		subscriptionId: ROW.subscriptionId,
+		targetIds: [ROW.targetId],
+		payload: { kind: "text", text: "老的" },
+		result: { ok: true, per: [{ ok: true, latencyMs: 3 }] },
+	});
+
+	/** 一行过历史那一族的行级函数,回迁出来的那一行。 */
+	const migrate = (row: Obj): Obj => JSON.parse(migrateHistoryLine(JSON.stringify(row))) as Obj;
+
+	it("这一族有条目:推送种类那一格(免得过滤写错、一条用例都没跑)", () => {
+		expect(entries.map(lineOf)).toEqual(["HistoryEntry feature [FeatureKey]"]);
+	});
+
+	for (const entry of entries) {
+		const zeroPath =
+			entry.handledBy.kind === "history" ? (entry.handledBy.zeroPath ?? entry.path) : "";
+		const live = KEYED_VOCABULARIES[entry.vocabulary];
+
+		it(`${lineOf(entry)}:冻住的 0.x 推送种类每个取值各一行,迁完 ${entry.path} 都在活词表里、${zeroPath} 不留、没有两种落到同一个键`, () => {
+			expect(entry.root).toBe("HistoryEntry");
+			const features = ZERO_PUSH_KINDS.map((zeroKind) => {
+				const migrated = migrate({ ...ROW, [zeroPath]: zeroKind });
+				const value = getAt(migrated, entry.path);
+				expect(live, `${zeroKind} → ${String(value)}`).toContain(value);
+				expect(migrated, `${zeroKind} 迁完旧格还在`).not.toHaveProperty(zeroPath);
+				// 迁出来的行活 schema 读得进去 —— 接线是通的,不只是值在词表里。
+				expect(HistoryEntrySchema.safeParse(migrated).success, zeroKind).toBe(true);
+				return value;
+			});
+			expect(new Set(features).size, "0.x 的推送种类与特性键一一对应").toBe(ZERO_PUSH_KINDS.length);
+		});
+
+		it(`${lineOf(entry)}:0.x 早期的 source 形状的行,迁完 ${entry.path} 在活词表里、旧格不留`, () => {
+			for (const source of LEGACY_SOURCES) {
+				const migrated = migrate(legacyRow(source));
+				expect(live, source).toContain(getAt(migrated, entry.path));
+				expect(migrated, `${source} 迁完旧格还在`).not.toHaveProperty(zeroPath);
+				expect(migrated, `${source} 迁完旧格还在`).not.toHaveProperty("source");
+				expect(HistoryEntrySchema.safeParse(migrated).success, source).toBe(true);
+			}
+		});
 	}
 });
 

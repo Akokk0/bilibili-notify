@@ -19,7 +19,7 @@ function entry(messages: HistoryEntryView["messages"]): HistoryEntryView {
 		id: "h1",
 		pushId: "p1",
 		ts: "2026-09-20T08:00:00.000Z",
-		kind: "live-end",
+		feature: "liveEnd",
 		status: "delivered",
 		uid: "u1",
 		subscriptionId: "s1",

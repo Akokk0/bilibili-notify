@@ -56,7 +56,6 @@ import type {
 	NotificationPayload,
 	PayloadSegment,
 	ProbeResult,
-	PushKind,
 	PushTarget,
 	Subscription,
 	SubscriptionOp,
@@ -64,7 +63,6 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	BILIBILI_SOURCE_KEY,
-	featureToPushKind,
 	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
@@ -1255,8 +1253,8 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
  * 它们原本编在 `createEngines` 里、测试够不着，于是把
  * `liveBroadcastOpts(...)` 整个换掉也没一条测试会红（2026-09-19 剪线实测：219 个
  * 文件全绿）。而那一句里揣着三样东西，掉了都是静默的：附加项的键（掉了按目标收窄
- * 全失效）、`allowAtAll`（掉了「每条直播推送都 @全体」那个修过的 bug 直接回归）、
- * `kind`（掉了历史把周期复推记成开播）。
+ * 全失效）、`allowAtAll`（掉了「每条直播推送都 @全体」那个修过的 bug 直接回归）。
+ * 历史记成什么不在选项里：它记的就是广播的那把特性键。
  */
 type PushForEngines = Pick<BilibiliPush, "broadcastToFeature" | "sendPrivateMsg" | "sendErrorMsg">;
 
@@ -1444,18 +1442,12 @@ export function liveTypeToExtra(type: number): ExtraKey | undefined {
 }
 
 /**
- * LivePushType → 推送类型(管历史怎么记)。特性键与推送类型一一对应(⑬d),所以这里没有自己的
- * 一张表:周期「正在直播」是 liveStreaming → live-ongoing,重启补报走 liveStart → live
- * (0.x 里它记成 live-ongoing,1.0 起记成开播)。别在这儿再抄一张会飘的表。
- */
-export function liveTypeToPushKind(type: number): PushKind {
-	return featureToPushKind(liveTypeToFeature(type));
-}
-
-/**
- * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补三样引擎不知道
- * 的 —— 只有开播允许 @全体(重启补报翻译成 feature "liveStart",不显式抑制就每条都 @)、
- * 历史里记成哪一类,以及这是哪个附加项(有键推送层才按目标收窄)。
+ * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补两样引擎不知道
+ * 的 —— 只有开播允许 @全体(重启补报翻译成 feature "liveStart",不显式抑制就每条都 @),
+ * 以及这是哪个附加项(有键推送层才按目标收窄)。
+ *
+ * 历史记成哪一类不用在这儿说:历史行记的就是 {@link liveTypeToFeature} 给的那把特性键 ——
+ * 周期「正在直播」记 liveStreaming,重启补报走 liveStart、记成开播(0.x 里它记成正在直播,1.0 起记成开播)。
  */
 export function liveBroadcastOpts(
 	type: number,
@@ -1465,7 +1457,6 @@ export function liveBroadcastOpts(
 		pushId: o?.pushId,
 		role: o?.role,
 		allowAtAll: liveTypeAllowsAtAll(type),
-		kind: liveTypeToPushKind(type),
 		extra: liveTypeToExtra(type),
 	};
 }

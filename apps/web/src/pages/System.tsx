@@ -30,7 +30,7 @@ import { OnboardingReopenSection } from "../components/onboarding/reopen-section
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { UpdateSection } from "../components/update/update-section";
 import { AI_PURPLE } from "../config/colors";
-import { PUSH_TONE } from "../config/push-kinds";
+import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
@@ -132,7 +132,7 @@ const SYSTEM_MODULES: ReadonlyArray<{
 	// 任何一族,给它 System 这一屏自己的角光色 —— 此前它借的是 live 粉,而 live 那格
 	// 用的是漂了一档的 `#FF6699`,两格并排放着肉眼分不出是两个色。
 	{ id: "core", label: "core 核心", tone: SECTION_ACCENT.system },
-	{ id: "dynamic", label: "dynamic 动态", tone: PUSH_TONE.dynamic },
+	{ id: "dynamic", label: "dynamic 动态", tone: PUSH_TONE.post },
 	{ id: "live", label: "live 直播", tone: PUSH_TONE.live },
 	// 后两格同理不新造色:image 借版式那一族的紫,ai 借它全站通用的 `AI_PURPLE`
 	// —— 两抹紫差着一个色相档,并排看得出是两个模块。

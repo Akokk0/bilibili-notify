@@ -9,7 +9,7 @@
  * | 提督 | `#a29bfe` 紫   | `#d8a0e6` 粉紫 |
  * | 舰长 | `#74b9ff` 蓝   | `#4ebcec` 青 |
  *
- * 留下 Cards 那套,不是因为它好看,是因为另一套的总督色**就是** `PUSH_TONE.guard`。
+ * 留下 Cards 那套,不是因为它好看,是因为另一套的总督色**就是** `PUSH_TONE.membership`。
  * 那抹橙在全站的意思是「上舰这件事」,而这两屏讲的正好都是上舰 —— 同一屏里让它再兼任
  * 「总督」这一档,等于把「事件」和「等级」两个维度压进一个色。留下的这套只跟
  * `PUSH_TONE.derived` 撞一格(提督紫),而 derived 讲的是词云 / 直播总结那类派生功能,
@@ -21,7 +21,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { GUARD_LEVELS } from "../guard-levels";
-import { PUSH_TONE } from "../push-kinds";
+import { PUSH_TONE } from "../push-features";
 
 const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -41,7 +41,7 @@ describe("大航海等级色表", () => {
 
 	it("不占用上舰家族色 —— 这两屏讲的就是上舰,橙色已有主人", () => {
 		const colors = GUARD_LEVELS.map((g) => g.color.toLowerCase());
-		expect(colors).not.toContain(PUSH_TONE.guard.toLowerCase());
+		expect(colors).not.toContain(PUSH_TONE.membership.toLowerCase());
 	});
 
 	it("两处消费点都从这张表取", async () => {
