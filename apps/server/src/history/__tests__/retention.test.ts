@@ -212,13 +212,13 @@ describe("startHistoryRetention", () => {
 	 */
 	it("旧日文件里引用的图跟着一起清掉,今天的图不动", async () => {
 		await mkdir(join(dataDir, "history", "img"), { recursive: true });
-		const row = (id: string, ref: string, ts: string) =>
+		const row = (id: string, ref: string, createdAt: string) =>
 			`${JSON.stringify({
 				id,
 				pushId: id,
-				ts,
+				createdAt,
 				feature: "post",
-				uid: "u1",
+				identity: { sourceKey: "bilibili", externalId: "u1" },
 				subscriptionId: "11111111-1111-4111-8111-111111111111",
 				targetId: "22222222-2222-4222-8222-222222222222",
 				status: "delivered",
@@ -258,9 +258,9 @@ describe("startHistoryRetention", () => {
 		const base = JSON.stringify({
 			id: ID,
 			pushId: ID,
-			ts: "2000-01-01T00:00:00.000Z",
+			createdAt: "2000-01-01T00:00:00.000Z",
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: "11111111-1111-4111-8111-111111111111",
 			targetId: "22222222-2222-4222-8222-222222222222",
 			status: "delivered",
@@ -273,7 +273,7 @@ describe("startHistoryRetention", () => {
 			],
 		});
 		const patch = JSON.stringify({
-			patch: ID,
+			rowId: ID,
 			status: "delivered",
 			messages: [
 				{

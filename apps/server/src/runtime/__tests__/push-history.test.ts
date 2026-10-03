@@ -36,7 +36,7 @@ const lookups = {
 				}
 			: subscriptionId === EXT_ID
 				? {
-						// 外部 id 恰好也是 "u1" —— 拓展行照样不许把它写进 uid 那一格。
+						// 外部 id 恰好也是 "u1" —— 拓展行的来源键是拓展 id,不会被认成 B 站的 uid。
 						subscription: makeExtensionSubscription({
 							id: EXT_ID,
 							extensionId: "douyin",
@@ -67,7 +67,7 @@ describe("historyRecordFromSend", () => {
 		expect(historyRecordFromSend(info, lookups)).toEqual({
 			pushId: "p1",
 			feature: "liveEnd",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: SUB_ID,
 			targetId: target.id,
 			messages: [
@@ -78,7 +78,7 @@ describe("historyRecordFromSend", () => {
 					result: { ok: false, latencyMs: 9, err: "boom" },
 				},
 			],
-			unameSnapshot: "某UP",
+			nameSnapshot: "某UP",
 			uavatarSnapshot: "http://a/x.jpg",
 		});
 	});
@@ -109,7 +109,7 @@ describe("historyRecordFromSend", () => {
 		expect(historyRecordFromSend(info, lookups)).toBeNull();
 	});
 
-	it("行的订阅 id 就是推送层带来的那个,uid 从订阅上取(推送层不再带 uid)", () => {
+	it("行的订阅 id 就是推送层带来的那个,身份从订阅上取(推送层不带身份)", () => {
 		const info: PushSendInfo = {
 			pushId: "p4",
 			subscriptionId: SUB_ID,
@@ -119,13 +119,13 @@ describe("historyRecordFromSend", () => {
 		};
 		expect(historyRecordFromSend(info, lookups)).toMatchObject({
 			subscriptionId: SUB_ID,
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
 	});
 
-	// 拓展行的身份是两格选填的 extensionId / externalId,不带 uid(ADR-0019 决策 73);只存名字快照、
+	// 拓展行的身份就是订阅的 `identity`(来源键 = 拓展 id + 外部 id,ADR-0019 决策 73);只存名字快照、
 	// 不存头像快照(决策 74)。
-	it("拓展订阅 → 照记:带拓展 id 与外部 id、没有 uid、有名字快照、没有头像快照", () => {
+	it("拓展订阅 → 照记:带来源键(拓展 id)与外部 id、有名字快照、没有头像快照", () => {
 		const info: PushSendInfo = {
 			pushId: "p5",
 			subscriptionId: EXT_ID,
@@ -144,12 +144,10 @@ describe("historyRecordFromSend", () => {
 			pushId: "p5",
 			feature: "post",
 			subscriptionId: EXT_ID,
-			extensionId: "douyin",
-			externalId: "u1",
+			identity: { sourceKey: "douyin", externalId: "u1" },
 			targetId: target.id,
-			unameSnapshot: "某抖音号",
+			nameSnapshot: "某抖音号",
 		});
-		expect(input).not.toHaveProperty("uid");
 		expect(input).not.toHaveProperty("uavatarSnapshot");
 	});
 
@@ -179,25 +177,25 @@ describe("historyRecordFromSend", () => {
 
 		it("没有资料 → 没有名字快照", () => {
 			const input = historyRecordFromSend(info, lookupsWith({}));
-			expect(input?.unameSnapshot).toBeUndefined();
+			expect(input?.nameSnapshot).toBeUndefined();
 		});
 
 		it("资料里名字是空的(或只有空白)→ 没有名字快照", () => {
 			for (const name of ["", "  "]) {
 				const input = historyRecordFromSend(info, lookupsWith({}, { name }));
-				expect(input?.unameSnapshot).toBeUndefined();
+				expect(input?.nameSnapshot).toBeUndefined();
 			}
 		});
 
 		it("资料里有名字 → 就是资料的名字", () => {
 			expect(historyRecordFromSend(info, lookupsWith({}, { name: "报来的名" }))).toMatchObject({
-				unameSnapshot: "报来的名",
+				nameSnapshot: "报来的名",
 			});
 		});
 
 		it("备注不当名字用:没有资料名时备注也进不了名字快照", () => {
 			const input = historyRecordFromSend(info, lookupsWith({ notes: "推给一群,周末别推" }));
-			expect(input?.unameSnapshot).toBeUndefined();
+			expect(input?.nameSnapshot).toBeUndefined();
 		});
 
 		it("B 站行不受影响:资料里没名字就没有快照", () => {
@@ -213,11 +211,11 @@ describe("historyRecordFromSend", () => {
 					}),
 				},
 			);
-			expect(input?.unameSnapshot).toBeUndefined();
+			expect(input?.nameSnapshot).toBeUndefined();
 		});
 	});
 
-	it("B 站订阅的行不带拓展那两格", () => {
+	it("B 站订阅的行没有散格(uid / extensionId / externalId),身份只有 identity 一格", () => {
 		const info: PushSendInfo = {
 			pushId: "p6",
 			subscriptionId: SUB_ID,
@@ -226,6 +224,7 @@ describe("historyRecordFromSend", () => {
 			messages: [],
 		};
 		const input = historyRecordFromSend(info, lookups);
+		expect(input).not.toHaveProperty("uid");
 		expect(input).not.toHaveProperty("extensionId");
 		expect(input).not.toHaveProperty("externalId");
 	});

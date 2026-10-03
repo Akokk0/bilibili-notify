@@ -8,13 +8,13 @@ import {
 /**
  * **人工重推的判断**(ADR-0017)—— 全是纯函数,不碰盘也不碰网。
  *
- * 一行历史里,每条消息的身份是 `retryOf ?? 它自己的下标`(决策 15),每一号只认它
+ * 一行历史里,每条消息的身份是 `repushOf ?? 它自己的下标`(决策 15),每一号只认它
  * **最后那次**尝试。重推追加进原行而不新开行,所以一行里会有同一条消息的好几次结果;
  * 「本来有几条」「还有哪几条没到」都得按身份号数,不能按 `messages.length` 数。
  */
 
 /**
- * 每一号最后那次尝试。键 = 身份号(`retryOf ?? 下标`)。
+ * 每一号最后那次尝试。键 = 身份号(`repushOf ?? 下标`)。
  *
  * 🔴 **只此一份**:`computeStatus` 判四态、`unsentIndices` 数「还差哪几条」,靠的是同一条
  * 判定(决策 16 明写它不能退化成「按 role 取最后一次」)。分成两份的话,一处改了另一处
@@ -22,7 +22,7 @@ import {
  */
 export function latestByIdentity(messages: readonly HistoryMessage[]): Map<number, HistoryMessage> {
 	const latest = new Map<number, HistoryMessage>();
-	for (const [i, m] of messages.entries()) latest.set(m.retryOf ?? i, m);
+	for (const [i, m] of messages.entries()) latest.set(m.repushOf ?? i, m);
 	return latest;
 }
 
@@ -33,7 +33,7 @@ export function latestByIdentity(messages: readonly HistoryMessage[]): Map<numbe
  * 拿总长度去对,补过一次原件就对不上号、按钮当场灰掉。
  */
 export function originalCount(messages: readonly HistoryMessage[]): number {
-	return messages.reduce((n, m) => n + (m.retryOf === undefined ? 1 : 0), 0);
+	return messages.reduce((n, m) => n + (m.repushOf === undefined ? 1 : 0), 0);
 }
 
 /**
@@ -61,7 +61,7 @@ export interface RepushGateInput {
 	entry: HistoryEntry;
 	/**
 	 * 这一行的订阅这把特性键**当前**路由到哪些目标。订阅先按行上的 `subscriptionId`、再按身份
-	 * (B 站 uid)解析到**现在**那一条(ADR-0019 决策 50);订阅已经没了就是空。
+	 * (`identity`:来源键 + 外部 id)解析到**现在**那一条(ADR-0019 决策 50);订阅已经没了就是空。
 	 */
 	routedTargets: readonly string[];
 	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */

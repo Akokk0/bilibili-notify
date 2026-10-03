@@ -11,7 +11,11 @@
  * 的位置从「代目录里直接写一份老行」换成「第 0 代(`history/<日>.jsonl`)→ 迁移器 → 在新代上开真的历史仓读回来」。
  *
  * 末几条是迁移器自己的钉:新代里不留老形状(直接读新代的文件,不经历史仓);0.x 的八种推送种类各一行都落成对应的特性键;
- * 已经是 `feature` 的行与认不得的行一个字节不动;迁两遍和迁一遍一样。
+ * 已经是现在形状的行与认不得的行一个字节不动;迁两遍和迁一遍一样。
+ *
+ * ⑱b:行里的格原地改名(`ts` → `createdAt`、`uid` / `extensionId` + `externalId` → `identity`、`unameSnapshot` →
+ * `nameSnapshot`、消息的 `retryOf` → `repushOf`),补丁行的 `patch` → `rowId`(头一回改写补丁行)。和 `kind` → `feature`
+ * 在 `migrateHistoryLine` 里同一趟读写,键都留在原来的位置。
  */
 
 import { randomUUID } from "node:crypto";
@@ -74,14 +78,13 @@ describe("HistoryEntrySchema — 行的身份", () => {
 		const [parsed] = await (await migrateAndOpen()).query({});
 		expect(parsed).toMatchObject({
 			pushId: BASE.id,
+			createdAt: BASE.ts,
 			feature: "liveEnd",
-			uid: "u7",
+			identity: { sourceKey: "bilibili", externalId: "u7" },
 			targetId: BASE.targetId,
 			status: "delivered",
-			unameSnapshot: "老UP",
+			nameSnapshot: "老UP",
 		});
-		expect(parsed?.extensionId).toBeUndefined();
-		expect(parsed?.externalId).toBeUndefined();
 	});
 });
 
@@ -108,8 +111,8 @@ describe("老格式行(source / result / payload)→ 现在的行", () => {
 			feature: "post",
 			status: "delivered",
 			targetId: T2,
-			uid: "u9",
-			unameSnapshot: "老UP",
+			identity: { sourceKey: "bilibili", externalId: "u9" },
+			nameSnapshot: "老UP",
 		});
 		expect(e?.pushId).toBe(e?.id);
 		expect(e?.messages).toEqual([
@@ -157,13 +160,62 @@ describe("迁移器自己的钉", () => {
 		unameSnapshot: "某UP",
 	};
 	const ZERO_ROW = JSON.stringify(ZERO_ROW_OBJECT);
-	/** 已经是现在形状的行(推送种类那一格叫 `feature`)、它的补丁行、一行坏行:迁移器一个字节不动。 */
-	const CURRENT_ROW = JSON.stringify({
-		...ZERO_ROW_OBJECT,
+	/** ⑬f 之后、⑱b 之前写的行:已经是 `feature`,格还是旧名(含一条重投消息和头像快照)。 */
+	const PRE_RENAME_ROW_OBJECT = {
 		id: randomUUID(),
-		kind: undefined,
+		pushId: randomUUID(),
+		ts: "2026-05-10T03:00:00.000Z",
+		feature: "liveStart",
+		uid: "u2",
+		subscriptionId: SUB,
+		targetId: T2,
+		status: "partial",
+		messages: [
+			{
+				payload: { kind: "text", text: "开播" },
+				role: "main",
+				result: { ok: false, latencyMs: 9 },
+			},
+			{
+				payload: { kind: "text", text: "开播" },
+				role: "main",
+				result: { ok: true, latencyMs: 4 },
+				retryOf: 0,
+			},
+		],
+		unameSnapshot: "另一位UP",
+		uavatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
+	};
+	/** 拓展行(只在 dev-next 上有):拓展 id + 外部 id,不带 `uid`、没有头像快照。 */
+	const PRE_RENAME_EXTENSION_ROW_OBJECT = {
+		id: randomUUID(),
+		pushId: randomUUID(),
+		ts: "2026-05-10T04:00:00.000Z",
+		feature: "post",
+		extensionId: "douyin",
+		externalId: "sec-123",
+		subscriptionId: SUB,
+		targetId: T2,
+		status: "delivered",
+		messages: [{ payload: { kind: "text", text: "作品" }, role: "main" }],
+		unameSnapshot: "某抖音号",
+	};
+	/** 已经是现在形状的行(推送种类叫 `feature`、身份是 `identity`)、它的补丁行、一行坏行:迁移器一个字节不动。 */
+	const CURRENT_ROW = JSON.stringify({
+		id: randomUUID(),
+		pushId: randomUUID(),
+		createdAt: "2026-05-10T05:00:00.000Z",
 		feature: "liveStreaming",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
+		subscriptionId: SUB,
+		targetId: T2,
+		status: "delivered",
+		messages: [
+			{ payload: { kind: "text", text: "卡片" }, role: "main", result: { ok: true, latencyMs: 5 } },
+		],
+		nameSnapshot: "某UP",
 	});
+	/** 老补丁行:`patch` 打头,带一条重投消息。 */
 	const PATCH_LINE = JSON.stringify({
 		patch: ROW_ID,
 		status: "partial",
@@ -172,10 +224,37 @@ describe("迁移器自己的钉", () => {
 				payload: { kind: "text", text: "词云" },
 				role: "extra",
 				result: { ok: false, latencyMs: 7, err: "boom" },
+				retryOf: 1,
+			},
+		],
+	});
+	/** 现在形状的补丁行:`rowId` 打头。 */
+	const CURRENT_PATCH_LINE = JSON.stringify({
+		rowId: ROW_ID,
+		status: "delivered",
+		messages: [
+			{
+				payload: { kind: "text", text: "词云" },
+				role: "extra",
+				result: { ok: true, latencyMs: 3 },
+				repushOf: 1,
 			},
 		],
 	});
 	const BAD_LINE = '{"id":"断在这里';
+	/**
+	 * 推不出「替谁发的」的行:拓展行少了外部 id(哪怕还带着一格 `uid`,拓展那两格有一格就只按拓展那一支认、
+	 * 不退去按 `uid` 认);以及两种身份都没有。当坏行原样留着,别的格也不翻。
+	 */
+	const NO_IDENTITY_LINES = [
+		JSON.stringify({
+			...PRE_RENAME_EXTENSION_ROW_OBJECT,
+			id: randomUUID(),
+			externalId: undefined,
+			uid: "u3",
+		}),
+		JSON.stringify({ ...PRE_RENAME_ROW_OBJECT, id: randomUUID(), uid: undefined }),
+	];
 
 	const OLD_SOURCES = [
 		"dynamic",
@@ -202,14 +281,24 @@ describe("迁移器自己的钉", () => {
 	}
 
 	async function placeMixedDay(): Promise<string[]> {
-		const lines = [...OLD_SOURCES.map(legacyRow), ZERO_ROW, CURRENT_ROW, PATCH_LINE, BAD_LINE];
+		const lines = [
+			...OLD_SOURCES.map(legacyRow),
+			ZERO_ROW,
+			JSON.stringify(PRE_RENAME_ROW_OBJECT),
+			JSON.stringify(PRE_RENAME_EXTENSION_ROW_OBJECT),
+			CURRENT_ROW,
+			PATCH_LINE,
+			CURRENT_PATCH_LINE,
+			BAD_LINE,
+			...NO_IDENTITY_LINES,
+		];
 		await writeDay(DAY, lines);
 		return lines;
 	}
 
 	const dayPath = () => join(sandbox.target, "history", `${DAY}.jsonl`);
 
-	it("新代里不留老形状:每一行没有 source / payload / result / targetIds / kind、都有 feature;现在形状的行、补丁行、坏行原样", async () => {
+	it("新代里不留老形状:每一行没有 source / payload / result / targetIds / kind / ts / uid、都有 feature 与 identity;现在形状的行、补丁行、坏行原样", async () => {
 		const placed = await placeMixedDay();
 		await sandbox.migrate();
 
@@ -226,7 +315,11 @@ describe("迁移器自己的钉", () => {
 			expect(row).not.toHaveProperty("result");
 			expect(row).not.toHaveProperty("targetIds");
 			expect(row).not.toHaveProperty("kind");
+			expect(row).not.toHaveProperty("ts");
+			expect(row).not.toHaveProperty("uid");
 			expect(row).toHaveProperty("feature");
+			expect(row).toHaveProperty("identity");
+			expect(row).toHaveProperty("createdAt");
 			expect(row).toHaveProperty("messages");
 		}
 		// 七种老 source 各自落成对应的特性键(`live-summary` 归到下播,`live` 只当开播)。
@@ -239,14 +332,136 @@ describe("迁移器自己的钉", () => {
 			"specialUserEnter",
 			"liveEnd",
 		]);
-		// 0.x 后期形状的行:`kind` 换成 `feature`,别的一个字也不动(键的位置也留着)。
-		const migrated = JSON.parse(kept[OLD_SOURCES.length] ?? "") as Record<string, unknown>;
-		expect(migrated).toEqual({ ...ZERO_ROW_OBJECT, kind: undefined, feature: "post" });
-		expect(Object.keys(migrated)).toEqual(
-			Object.keys(ZERO_ROW_OBJECT).map((key) => (key === "kind" ? "feature" : key)),
-		);
-		// 已经是现在形状的行、补丁行、坏行一个字节不动。
-		expect(kept.slice(OLD_SOURCES.length + 1)).toEqual([CURRENT_ROW, PATCH_LINE, BAD_LINE]);
+		// 0.x 后期形状的行:`kind` 换成 `feature`、别的格也换成现在的名字,键都留在原来的位置。
+		const migrated = kept[OLD_SOURCES.length] ?? "";
+		expect(JSON.parse(migrated)).toEqual({
+			id: ROW_ID,
+			pushId: ZERO_ROW_OBJECT.pushId,
+			createdAt: "2026-05-10T02:00:00.000Z",
+			feature: "post",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+			subscriptionId: SUB,
+			targetId: T2,
+			status: "delivered",
+			messages: ZERO_ROW_OBJECT.messages,
+			nameSnapshot: "某UP",
+		});
+		expect(Object.keys(JSON.parse(migrated) as object)).toEqual([
+			"id",
+			"pushId",
+			"createdAt",
+			"feature",
+			"identity",
+			"subscriptionId",
+			"targetId",
+			"status",
+			"messages",
+			"nameSnapshot",
+		]);
+		// 现在形状的行、现在形状的补丁行、坏行、推不出身份的行一个字节不动;老补丁行被改写(下面有专门的钉)。
+		const [, , currentRow, migratedPatch, ...untouched] = kept.slice(OLD_SOURCES.length + 1);
+		expect(currentRow).toBe(CURRENT_ROW);
+		expect(migratedPatch?.startsWith('{"rowId":')).toBe(true);
+		expect(untouched).toEqual([CURRENT_PATCH_LINE, BAD_LINE, ...NO_IDENTITY_LINES]);
+	});
+
+	it("⑱b:⑬f 之后写的行(已经是 feature、格还是旧名)原地改名,键留在原位;头像快照与消息里别的格不动", async () => {
+		await writeDay(DAY, [JSON.stringify(PRE_RENAME_ROW_OBJECT)]);
+		await sandbox.migrate();
+		const [line] = (await readFile(dayPath(), "utf8")).split("\n");
+		const row = JSON.parse(line ?? "") as Record<string, unknown>;
+		expect(Object.keys(row)).toEqual([
+			"id",
+			"pushId",
+			"createdAt",
+			"feature",
+			"identity",
+			"subscriptionId",
+			"targetId",
+			"status",
+			"messages",
+			"nameSnapshot",
+			"uavatarSnapshot",
+		]);
+		expect(row).toMatchObject({
+			createdAt: "2026-05-10T03:00:00.000Z",
+			identity: { sourceKey: "bilibili", externalId: "u2" },
+			nameSnapshot: "另一位UP",
+			uavatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
+		});
+		const messages = row.messages as Record<string, unknown>[];
+		expect(messages[0]).toEqual(PRE_RENAME_ROW_OBJECT.messages[0]);
+		// 重投那一条:`retryOf` → `repushOf`,在消息里原来的位置。
+		expect(messages[1]).toEqual({
+			payload: { kind: "text", text: "开播" },
+			role: "main",
+			result: { ok: true, latencyMs: 4 },
+			repushOf: 0,
+		});
+		expect(Object.keys(messages[1] ?? {})).toEqual(["payload", "role", "result", "repushOf"]);
+	});
+
+	it("⑱b:拓展行的 extensionId + externalId 并成一格 identity(来源键 = 拓展 id),落在 extensionId 的位置上,没有头像快照", async () => {
+		await writeDay(DAY, [JSON.stringify(PRE_RENAME_EXTENSION_ROW_OBJECT)]);
+		await sandbox.migrate();
+		const [line] = (await readFile(dayPath(), "utf8")).split("\n");
+		const row = JSON.parse(line ?? "") as Record<string, unknown>;
+		expect(row).not.toHaveProperty("extensionId");
+		expect(row).not.toHaveProperty("externalId");
+		expect(row.identity).toEqual({ sourceKey: "douyin", externalId: "sec-123" });
+		expect(Object.keys(row)).toEqual([
+			"id",
+			"pushId",
+			"createdAt",
+			"feature",
+			"identity",
+			"subscriptionId",
+			"targetId",
+			"status",
+			"messages",
+			"nameSnapshot",
+		]);
+	});
+
+	it("⑱b:老补丁行的 `patch` → `rowId`、仍是第一个键(行首认得出),消息的 retryOf → repushOf;现在形状的补丁行原样", async () => {
+		await writeDay(DAY, [PATCH_LINE, CURRENT_PATCH_LINE]);
+		await sandbox.migrate();
+		const [first, second] = (await readFile(dayPath(), "utf8")).split("\n");
+		expect(first?.startsWith('{"rowId":')).toBe(true);
+		expect(JSON.parse(first ?? "")).toEqual({
+			rowId: ROW_ID,
+			status: "partial",
+			messages: [
+				{
+					payload: { kind: "text", text: "词云" },
+					role: "extra",
+					result: { ok: false, latencyMs: 7, err: "boom" },
+					repushOf: 1,
+				},
+			],
+		});
+		expect(Object.keys(JSON.parse(first ?? "") as object)).toEqual(["rowId", "status", "messages"]);
+		expect(second).toBe(CURRENT_PATCH_LINE);
+	});
+
+	it("⑱b:推不出「替谁发的」的行(拓展行缺外部 id、两种身份都没有)是坏行,整行原样 —— 连 ts 与 retryOf 也不翻", async () => {
+		await writeDay(DAY, NO_IDENTITY_LINES);
+		const report = await sandbox.migrate();
+		expect((await readFile(dayPath(), "utf8")).split("\n").slice(0, 2)).toEqual(NO_IDENTITY_LINES);
+		expect(report.rewritten).not.toContain(`history/${DAY}.jsonl`);
+	});
+
+	it("⑱b:已经有 identity 的行以它为准、整行原样 —— 哪怕还带着一格没清掉的 uid / ts", async () => {
+		const both = JSON.stringify({
+			...JSON.parse(CURRENT_ROW),
+			id: randomUUID(),
+			uid: "stale",
+			ts: "2000-01-01T00:00:00.000Z",
+		});
+		await writeDay(DAY, [both]);
+		const report = await sandbox.migrate();
+		expect((await readFile(dayPath(), "utf8")).split("\n")[0]).toBe(both);
+		expect(report.rewritten).not.toContain(`history/${DAY}.jsonl`);
 	});
 
 	it("迁两遍和迁一遍一样:对新代再迁一次回 [],文件字节不变", async () => {
@@ -323,7 +538,7 @@ describe("迁移器自己的钉", () => {
 		);
 	});
 
-	it("认不得的 kind(不是八种之一)与已经带 feature 的行:一个字节不动,留给历史仓照旧当坏行跳过", async () => {
+	it("认不得的 kind(不是八种之一)与已经带 feature 的行:一个字节不动,留给历史仓照旧当坏行跳过 —— ⑱b 的改名也不碰它们", async () => {
 		const stranger = JSON.stringify({ ...ZERO_ROW_OBJECT, id: randomUUID(), kind: "mystery" });
 		const both = JSON.stringify({ ...ZERO_ROW_OBJECT, id: randomUUID(), feature: "liveEnd" });
 		await writeDay(DAY, [stranger, both]);

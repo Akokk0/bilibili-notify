@@ -103,25 +103,29 @@ export interface RepushMessage {
 }
 
 /**
- * 每个方法的 `ts` 是**这一行的 `ts`**(或它的日期串 —— 只取前 10 个字符)。原件按 UTC 日
- * 分目录,与历史的日文件同名;追加时用的是**原行**那一天,与补丁行写进 `dayFile(原行.ts)`
+ * 每个方法的 `createdAt` 是**这一行的 `createdAt`**(或它的日期串 —— 只取前 10 个字符)。原件按 UTC 日
+ * 分目录,与历史的日文件同名;追加时用的是**原行**那一天,与补丁行写进 `dayFile(原行.createdAt)`
  * 严丝合缝 —— 两边永远落在同一个日子里。
  */
 export interface RepushStore {
 	/** 把这一段消息的原料追加到这一行的原件后面。下标接着往后排。 */
-	append(rowId: string, ts: string, items: readonly RepushAppendItem[]): Promise<void>;
+	append(rowId: string, createdAt: string, items: readonly RepushAppendItem[]): Promise<void>;
 	/**
 	 * 读一行的原件,图一并读回内存。没存过、读不动、或**条数与历史行对不上**都回 `null`
 	 * —— 调用方据此把按钮灰掉并说明原因(决策 9),绝不交一份错位的原料出去。
 	 */
-	load(rowId: string, ts: string, expectLen: number): Promise<{ messages: RepushMessage[] } | null>;
+	load(
+		rowId: string,
+		createdAt: string,
+		expectLen: number,
+	): Promise<{ messages: RepushMessage[] } | null>;
 	/**
 	 * 这一行还有原件吗。**只看文件在不在** —— 面板要为每一行失败的问一次「按钮该不该
 	 * 灰」(决策 9),所以这一口不解析 json、更不把图读进内存。
 	 */
-	has(rowId: string, ts: string): Promise<boolean>;
+	has(rowId: string, createdAt: string): Promise<boolean>;
 	/** 删掉这一行的原件与它自己写过的图。不存在不算错。 */
-	drop(rowId: string, ts: string): Promise<void>;
+	drop(rowId: string, createdAt: string): Promise<void>;
 	/** 保留期:端掉某一个 UTC 日的全部原件。 */
 	dropDay(day: string): Promise<void>;
 }
@@ -135,18 +139,22 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 	const root = dataPath(opts.dataRoot, "history", "repush");
 	const historyImgRoot = dataPath(opts.dataRoot, "history", "img");
 
-	const dayOf = (ts: string): string => ts.slice(0, 10);
-	const dayDir = (ts: string): string => join(root, dayOf(ts));
-	const draftPath = (rowId: string, ts: string): string => join(dayDir(ts), `${rowId}.json`);
+	const dayOf = (createdAt: string): string => createdAt.slice(0, 10);
+	const dayDir = (createdAt: string): string => join(root, dayOf(createdAt));
+	const draftPath = (rowId: string, createdAt: string): string =>
+		join(dayDir(createdAt), `${rowId}.json`);
 
 	/** 这张图在盘上的完整路径 —— `own` 决定去哪个目录找。 */
-	const imagePath = (img: z.infer<typeof StoredImageSchema>, ts: string): string =>
-		img.own ? join(dayDir(ts), img.ref) : join(historyImgRoot, img.ref);
+	const imagePath = (img: z.infer<typeof StoredImageSchema>, createdAt: string): string =>
+		img.own ? join(dayDir(createdAt), img.ref) : join(historyImgRoot, img.ref);
 
-	async function readDraft(rowId: string, ts: string): Promise<z.infer<typeof DraftSchema> | null> {
+	async function readDraft(
+		rowId: string,
+		createdAt: string,
+	): Promise<z.infer<typeof DraftSchema> | null> {
 		let raw: string;
 		try {
-			raw = await readFile(draftPath(rowId, ts), "utf8");
+			raw = await readFile(draftPath(rowId, createdAt), "utf8");
 		} catch {
 			return null;
 		}
@@ -168,7 +176,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 	async function toStored(
 		item: RepushAppendItem,
 		rowId: string,
-		ts: string,
+		createdAt: string,
 		msgIdx: number,
 	): Promise<StoredPayload> {
 		const { payload, reduced } = item;
@@ -176,7 +184,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		/** 自己写一份,回它的引用。 */
 		const writeOwn = async (buffer: Buffer, mime: string) => {
 			const ref = `${rowId}-${msgIdx}-${ownCount++}.${mimeToExt(mime)}`;
-			await atomicWriteFile(join(dayDir(ts), ref), buffer);
+			await atomicWriteFile(join(dayDir(createdAt), ref), buffer);
 			return { ref, mime, own: true as const };
 		};
 
@@ -225,7 +233,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 	}
 
 	/** 可存的形状 + 盘上的字节 → 能直接发的 payload。读不到图就抛,由 `load` 收成 null。 */
-	async function toPayload(stored: StoredPayload, ts: string): Promise<NotificationPayload> {
+	async function toPayload(stored: StoredPayload, createdAt: string): Promise<NotificationPayload> {
 		switch (stored.kind) {
 			case "text":
 				return { kind: "text", text: stored.text };
@@ -233,7 +241,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 				return {
 					kind: "image",
 					image: {
-						buffer: await readFile(imagePath(stored.image, ts)),
+						buffer: await readFile(imagePath(stored.image, createdAt)),
 						mime: stored.image.mime,
 					},
 					...(stored.caption !== undefined ? { caption: stored.caption } : {}),
@@ -252,7 +260,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					if (seg.type === "image") {
 						segments.push({
 							type: "image",
-							buffer: await readFile(imagePath(seg.image, ts)),
+							buffer: await readFile(imagePath(seg.image, createdAt)),
 							mime: seg.image.mime,
 						});
 					} else {
@@ -266,26 +274,29 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 
 	async function append(
 		rowId: string,
-		ts: string,
+		createdAt: string,
 		items: readonly RepushAppendItem[],
 	): Promise<void> {
 		if (items.length === 0) return;
-		const existing = await readDraft(rowId, ts);
+		const existing = await readDraft(rowId, createdAt);
 		const messages = existing ? [...existing.messages] : [];
 		const offset = messages.length;
 		for (const [i, item] of items.entries()) {
-			messages.push({ payload: await toStored(item, rowId, ts, offset + i), role: item.role });
+			messages.push({
+				payload: await toStored(item, rowId, createdAt, offset + i),
+				role: item.role,
+			});
 		}
 		// 原子写会顺手建日目录(图也是这么建的)。
-		await atomicWriteJson(draftPath(rowId, ts), { v: 1, messages });
+		await atomicWriteJson(draftPath(rowId, createdAt), { v: 1, messages });
 	}
 
 	async function load(
 		rowId: string,
-		ts: string,
+		createdAt: string,
 		expectLen: number,
 	): Promise<{ messages: RepushMessage[] } | null> {
-		const draft = await readDraft(rowId, ts);
+		const draft = await readDraft(rowId, createdAt);
 		if (!draft) return null;
 		// 条数对不上 = 原件与历史行错位了(某一次 append 没写成)。补错消息比补不了更糟。
 		if (draft.messages.length !== expectLen) {
@@ -297,7 +308,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		try {
 			const messages: RepushMessage[] = [];
 			for (const m of draft.messages) {
-				messages.push({ payload: await toPayload(m.payload, ts), role: m.role });
+				messages.push({ payload: await toPayload(m.payload, createdAt), role: m.role });
 			}
 			return { messages };
 		} catch (err) {
@@ -307,16 +318,16 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		}
 	}
 
-	async function has(rowId: string, ts: string): Promise<boolean> {
+	async function has(rowId: string, createdAt: string): Promise<boolean> {
 		try {
-			return (await stat(draftPath(rowId, ts))).isFile();
+			return (await stat(draftPath(rowId, createdAt))).isFile();
 		} catch {
 			return false;
 		}
 	}
 
-	async function drop(rowId: string, ts: string): Promise<void> {
-		const draft = await readDraft(rowId, ts);
+	async function drop(rowId: string, createdAt: string): Promise<void> {
+		const draft = await readDraft(rowId, createdAt);
 		if (draft) {
 			for (const m of draft.messages) {
 				const imgs =
@@ -327,11 +338,11 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 							: [];
 				// 只删自己写的那些 —— 复用的那份归历史管,删了会把历史页上的图也弄没。
 				for (const img of imgs) {
-					if (img.own) await unlink(join(dayDir(ts), img.ref)).catch(() => {});
+					if (img.own) await unlink(join(dayDir(createdAt), img.ref)).catch(() => {});
 				}
 			}
 		}
-		await unlink(draftPath(rowId, ts)).catch(() => {});
+		await unlink(draftPath(rowId, createdAt)).catch(() => {});
 	}
 
 	async function dropDay(day: string): Promise<void> {

@@ -47,7 +47,7 @@ export interface RepushRunner {
 	/**
 	 * 开始补一行。**立刻返回** —— 真正的发送在后台跑,进度经 `history-updated` 回面板。
 	 */
-	start(rowId: string, ts: string, mode: RepushMode): Promise<RepushStartResult>;
+	start(rowId: string, createdAt: string, mode: RepushMode): Promise<RepushStartResult>;
 	/**
 	 * 这一行**现在**能不能补 —— 不能就回 `conflict` 和一句拒绝理由,`null` = 能。面板拿它决定
 	 * 按钮灰不灰并写上原因(决策 9:灰掉并说明,而不是藏起来 —— 藏掉的话主人要么以为这行没失败过,
@@ -76,7 +76,7 @@ export interface CreateRepushRunnerOptions {
 	routedTargets(subscriptionId: string, feature: FeatureKey): readonly string[];
 	/**
 	 * 行上记的订阅**现在**是哪一条,回它的 id(ADR-0019 决策 50 / 73):先按 `subscriptionId` 找,
-	 * 找不到再按身份找(B 站行按 uid、拓展行按拓展 id + 外部 id,绝不跨支)—— 删了又重加的 UP,
+	 * 找不到再按身份找(`identity` 的来源键 + 外部 id 两格一起比,绝不跨来源)—— 删了又重加的 UP,
 	 * 旧历史照样能重推。都找不到回 undefined。
 	 */
 	currentSubscriptionOf(row: HistoryRowIdentity): string | undefined;
@@ -116,18 +116,22 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	async function canRepush(entry: HistoryEntry): Promise<Failure | null> {
 		const denial = gate(entry);
 		if (denial) return denial;
-		return (await opts.repush.has(entry.id, entry.ts)) ? null : fail("conflict", DRAFT_GONE);
+		return (await opts.repush.has(entry.id, entry.createdAt)) ? null : fail("conflict", DRAFT_GONE);
 	}
 
-	async function start(rowId: string, ts: string, mode: RepushMode): Promise<RepushStartResult> {
-		const entry = await opts.history.findRow(rowId, ts);
+	async function start(
+		rowId: string,
+		createdAt: string,
+		mode: RepushMode,
+	): Promise<RepushStartResult> {
+		const entry = await opts.history.findRow(rowId, createdAt);
 		if (!entry) return fail("not_found", "找不到这一行推送记录了");
 
 		const denial = gate(entry);
 		if (denial) return denial;
 
 		// 原件与行**按身份号**对表,不是按 messages.length —— 行会随着每次重推变长。
-		const draft = await opts.repush.load(rowId, ts, originalCount(entry.messages));
+		const draft = await opts.repush.load(rowId, createdAt, originalCount(entry.messages));
 		if (!draft) return fail("conflict", DRAFT_GONE);
 
 		const indices =
@@ -136,7 +140,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 
 		running.add(rowId);
 		opts.serviceCtx.track(
-			run(entry, ts, draft.messages, indices)
+			run(entry, createdAt, draft.messages, indices)
 				.catch((err) => {
 					// 追进历史行失败(写道关了、盘满了)—— 以前这条 promise 没人接,是一次 unhandledRejection。
 					opts.logger.warn(
@@ -161,7 +165,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 	 */
 	async function run(
 		entry: HistoryEntry,
-		ts: string,
+		createdAt: string,
 		messages: readonly RepushMessage[],
 		indices: readonly number[],
 	): Promise<void> {
@@ -190,8 +194,8 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			// 关停把发送层叫醒回来的失败是生命周期的产物(消息从没出过网),不是这个目标真的不通 ——
 			// 记进行里等于凭空添一条假失败。成功的照记:那条已经发出去了。
 			if (!result.ok && opts.serviceCtx.signal.aborted) break;
-			latest = await opts.history.appendToRow(entry.id, ts, [
-				{ payload: m.payload, role: m.role, result, retryOf: i },
+			latest = await opts.history.appendToRow(entry.id, createdAt, [
+				{ payload: m.payload, role: m.role, result, repushOf: i },
 			]);
 			if (!result.ok) {
 				opts.logger.info(`[history] 重推第 ${i} 条没成，这一趟到此为止：${result.err ?? ""}`);
@@ -199,7 +203,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 			}
 		}
 		// 决策 5:补齐了才删原件。只补了一部分、或者又失败了的留着,按钮还得能再按。
-		if (latest?.status === "delivered") await opts.repush.drop(entry.id, ts);
+		if (latest?.status === "delivered") await opts.repush.drop(entry.id, createdAt);
 	}
 
 	return { start, canRepush, isRunning: (rowId) => running.has(rowId) };

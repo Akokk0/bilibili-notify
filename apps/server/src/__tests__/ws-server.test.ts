@@ -251,9 +251,9 @@ describe("WS server", () => {
 		bus.emit("history-recorded", {
 			id: "abc-123",
 			pushId: "abc-123",
-			ts: "2026-05-12T00:00:00.000Z",
+			createdAt: "2026-05-12T00:00:00.000Z",
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: "sub-1",
 			targetId: "t-1",
 			status: "delivered",

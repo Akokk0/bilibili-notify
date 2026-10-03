@@ -30,13 +30,13 @@ const FAIL = { ok: false, latencyMs: 7, err: "boom" };
 function msg(
 	role: HistoryMessage["role"],
 	result?: HistoryMessage["result"],
-	retryOf?: number,
+	repushOf?: number,
 ): HistoryMessage {
 	return {
 		payload: { kind: "text", text: "x" },
 		role,
 		...(result ? { result } : {}),
-		...(retryOf !== undefined ? { retryOf } : {}),
+		...(repushOf !== undefined ? { repushOf } : {}),
 	};
 }
 
@@ -44,9 +44,9 @@ function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
 	return {
 		id: randomUUID(),
 		pushId: randomUUID(),
-		ts: "2026-09-20T08:00:00.000Z",
+		createdAt: "2026-09-20T08:00:00.000Z",
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: randomUUID(),
 		targetId: T1,
 		status: "failed" as PushStatus,

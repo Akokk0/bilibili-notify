@@ -26,11 +26,7 @@ import type {
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
-import {
-	BILIBILI_SOURCE_KEY,
-	isTargetPaused,
-	subscriptionIdentityOf,
-} from "@bilibili-notify/internal";
+import { isTargetPaused, subscriptionIdentityOf } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 
 /** 折好的一张答案表。几问都是 O(1) 查表,不含任何深拷贝。 */
@@ -44,10 +40,10 @@ export interface TargetScopeTable {
 	 * 历史行记下的那条订阅**现在**是哪一条,回它的 id(决策 50:重推先按 `subscriptionId`
 	 * 找、找不到再按身份找 —— 删了又重加的 UP,旧历史照样能重推)。
 	 *
-	 * 先认订阅、再认人(决策 73):id 还在就是它;不在了,B 站行找第一个 uid 相同的 **B 站**订阅,
-	 * 拓展行找第一个「同一个拓展 + 同一个外部 id」的**拓展**订阅(同一个人两条时先出现的说了算);
-	 * 都没有回 undefined。**绝不跨支**:外部 id 恰好等于某个 B 站 uid 也不算 —— 那是另一个平台上
-	 * 的另一个人。面板的 `createSubscriptionLookup().forRow` 是同一条规矩。
+	 * 先认订阅、再认人(决策 73):id 还在就是它;不在了,找第一个「来源键 + 外部 id」两格都和行上
+	 * `identity` 相同的订阅(同一个人两条时先出现的说了算);没有回 undefined。**绝不跨来源**:外部 id
+	 * 恰好等于某个 B 站 uid 也不算 —— 那是另一个平台上的另一个人。面板的
+	 * `createSubscriptionLookup().forRow` 是同一条规矩。
 	 */
 	currentSubscriptionOf(row: HistoryRowIdentity): string | undefined;
 	/**
@@ -74,38 +70,28 @@ export function resolveTargetScope({
 }: ResolveTargetScopeInput): TargetScopeTable {
 	// 路由按订阅自己的 id 收**全部**订阅(ADR-0019 决策 50):同一个 UP 的两条订阅各有各的路由。
 	const routing = new Map<string, Subscription["routing"]>();
-	// 身份那一问两支各查各的表:B 站按 uid,拓展按「拓展 id → 外部 id」两层(不拼成一串:外部 id
-	// 是拓展给的不透明字符串,拼就得选分隔符)。外部 id 恰好是同一串数字也不是同一个人。
-	// 同一个人两条时**先出现的那条说了算** —— 与从前按 uid 找订阅的口径一致。
-	const byUid = new Map<string, string>();
-	const byExternal = new Map<string, Map<string, string>>();
+	// 身份那一问按「来源键 → 外部 id」两层查(不拼成一串:外部 id 是来源给的不透明字符串,拼就得选
+	// 分隔符)。两格一起比,外部 id 恰好是同一串数字也不是同一个人。同一个人两条时**先出现的那条
+	// 说了算** —— 与从前按 uid 找订阅的口径一致。
+	const byIdentity = new Map<string, Map<string, string>>();
 	for (const sub of subscriptions) {
 		routing.set(sub.id, sub.routing);
-		const identity = subscriptionIdentityOf(sub);
-		if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
-			if (!byUid.has(identity.externalId)) byUid.set(identity.externalId, sub.id);
-			continue;
+		const { sourceKey, externalId } = subscriptionIdentityOf(sub);
+		let ofSource = byIdentity.get(sourceKey);
+		if (!ofSource) {
+			ofSource = new Map();
+			byIdentity.set(sourceKey, ofSource);
 		}
-		let ofExtension = byExternal.get(identity.sourceKey);
-		if (!ofExtension) {
-			ofExtension = new Map();
-			byExternal.set(identity.sourceKey, ofExtension);
-		}
-		if (!ofExtension.has(identity.externalId)) ofExtension.set(identity.externalId, sub.id);
+		if (!ofSource.has(externalId)) ofSource.set(externalId, sub.id);
 	}
 	const enabled = new Set<string>();
 	for (const target of targets) if (!isTargetPaused(target, connections)) enabled.add(target.id);
 	return {
 		routedTargets: (subscriptionId, feature) => routing.get(subscriptionId)?.[feature] ?? [],
-		currentSubscriptionOf: ({ subscriptionId, uid, extensionId, externalId }) => {
-			if (routing.has(subscriptionId)) return subscriptionId;
-			// 拓展那两格有一格就是拓展行,只在拓展那张表里找 —— 缺了一格也不退去按 uid 找。
-			if (extensionId !== undefined || externalId !== undefined) {
-				if (extensionId === undefined || externalId === undefined) return undefined;
-				return byExternal.get(extensionId)?.get(externalId);
-			}
-			return uid === undefined ? undefined : byUid.get(uid);
-		},
+		currentSubscriptionOf: ({ subscriptionId, identity }) =>
+			routing.has(subscriptionId)
+				? subscriptionId
+				: byIdentity.get(identity.sourceKey)?.get(identity.externalId),
 		targetEnabled: (targetId) => enabled.has(targetId),
 	};
 }

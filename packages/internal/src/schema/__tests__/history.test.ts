@@ -1,11 +1,12 @@
 /**
- * **历史行的身份**(ADR-0019 决策 73)。
+ * **历史行的身份**(ADR-0019 决策 73,⑱b 并成一格)。
  *
- * 一行历史记的是「BN 发出去了什么、替谁发的」。B 站行带 `uid`;拓展行带两格选填的
- * `extensionId` / `externalId`、**不带 `uid`** —— 外部 id 恰好是一串等于某个 B 站 uid 的数字时,
- * 塞进 `uid` 那一格就会在订阅删掉之后被认成那位 B 站 UP。
+ * 一行历史记的是「BN 发出去了什么、替谁发的」。替谁发的是一格 `identity`(来源键 + 外部 id,和订阅同一种身份):
+ * B 站行的来源键是 `bilibili`、外部 id 是 uid,拓展行的来源键是拓展 id。外部 id 恰好是一串等于某个 B 站 uid 的数字时,
+ * 来源键不同,订阅删掉之后也不会被认成那位 B 站 UP。
  *
- * 钉的是:拓展行读得进来且两格原样保留;B 站行照旧;老格式行读不进来(那是迁移器的事);
+ * 钉的是:两种来源的行读得进来且两格原样保留;老的三个散格(`uid` / `extensionId` / `externalId`)与老名字
+ * (`ts` / `unameSnapshot` / 消息的 `retryOf`)、老格式行读不进来(那是迁移器的事);
  * 推送种类那一格叫 `feature`、值就是特性键(⑬f),八把键都认,别的值与老的 `kind` 形状一律读不进来。
  */
 
@@ -16,8 +17,9 @@ import { HistoryEntrySchema } from "../history.js";
 const BASE = {
 	id: "11111111-1111-4111-8111-111111111111",
 	pushId: "22222222-2222-4222-8222-222222222222",
-	ts: "2026-09-24T00:00:00.000Z",
+	createdAt: "2026-09-24T00:00:00.000Z",
 	feature: "post",
+	identity: { sourceKey: "bilibili", externalId: "u1" },
 	subscriptionId: "33333333-3333-4333-8333-333333333333",
 	targetId: "44444444-4444-4444-8444-444444444444",
 	status: "delivered",
@@ -42,24 +44,49 @@ describe("HistoryEntrySchema — 推送种类那一格是特性键", () => {
 });
 
 describe("HistoryEntrySchema — 行的身份", () => {
-	it("拓展行:带拓展 id 与外部 id、没有 uid → 读得进来,两格原样保留", () => {
+	it("拓展行:来源键是拓展 id → 读得进来,两格原样保留", () => {
 		const parsed = HistoryEntrySchema.parse({
 			...BASE,
-			extensionId: "douyin",
-			externalId: "123",
-			unameSnapshot: "某抖音号",
+			identity: { sourceKey: "douyin", externalId: "123" },
+			nameSnapshot: "某抖音号",
 		});
-		expect(parsed.extensionId).toBe("douyin");
-		expect(parsed.externalId).toBe("123");
-		expect(parsed.uid).toBeUndefined();
-		expect(parsed.unameSnapshot).toBe("某抖音号");
+		expect(parsed.identity).toEqual({ sourceKey: "douyin", externalId: "123" });
+		expect(parsed.nameSnapshot).toBe("某抖音号");
 	});
 
-	it("B 站行照旧:有 uid、没有拓展那两格", () => {
-		const parsed = HistoryEntrySchema.parse({ ...BASE, uid: "u1" });
-		expect(parsed.uid).toBe("u1");
+	it("B 站行:来源键 bilibili、外部 id 就是 uid", () => {
+		const parsed = HistoryEntrySchema.parse(BASE);
+		expect(parsed.identity).toEqual({ sourceKey: "bilibili", externalId: "u1" });
+		expect(parsed).not.toHaveProperty("uid");
 		expect(parsed).not.toHaveProperty("extensionId");
-		expect(parsed).not.toHaveProperty("externalId");
+	});
+
+	it("没有 identity 的行读不进来 —— 老的三个散格(uid / extensionId + externalId)是迁移器的事", () => {
+		const { identity: _gone, ...rest } = BASE;
+		expect(HistoryEntrySchema.safeParse(rest).success).toBe(false);
+		expect(HistoryEntrySchema.safeParse({ ...rest, uid: "u1" }).success).toBe(false);
+		expect(
+			HistoryEntrySchema.safeParse({ ...rest, extensionId: "douyin", externalId: "123" }).success,
+		).toBe(false);
+	});
+
+	it("老名字不认:`ts` 顶不了 `createdAt`(缺了读不进来)、`unameSnapshot` 不会被当成 `nameSnapshot`", () => {
+		const { createdAt, ...rest } = BASE;
+		expect(HistoryEntrySchema.safeParse({ ...rest, ts: createdAt }).success).toBe(false);
+		const parsed = HistoryEntrySchema.parse({ ...BASE, unameSnapshot: "老名字" });
+		expect(parsed).not.toHaveProperty("unameSnapshot");
+		expect(parsed).not.toHaveProperty("nameSnapshot");
+	});
+
+	it("消息的重投标记叫 `repushOf`:老的 `retryOf` 被剥掉、不当成重投", () => {
+		const parsed = HistoryEntrySchema.parse({
+			...BASE,
+			messages: [
+				{ payload: { kind: "text", text: "补的" }, role: "main", repushOf: 0, retryOf: 0 },
+			],
+		});
+		expect(parsed.messages[0]).toHaveProperty("repushOf", 0);
+		expect(parsed.messages[0]).not.toHaveProperty("retryOf");
 	});
 
 	// 0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)由迁移器在搬家时改写
@@ -68,7 +95,7 @@ describe("HistoryEntrySchema — 行的身份", () => {
 	it("老格式行(source / result / payload)读不进来 —— 那是迁移器的事,活 schema 只认现在的形状", () => {
 		const legacy = {
 			id: BASE.id,
-			ts: BASE.ts,
+			ts: BASE.createdAt,
 			source: "live-summary",
 			uid: "u7",
 			subscriptionId: BASE.subscriptionId,

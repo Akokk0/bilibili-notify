@@ -4,7 +4,7 @@
  * 守护契约(行模型本身见 record.test.ts):
  *   - record 的 payload reduce:text / image / composite 各自的文案与图片落盘
  *   - schema 拒绝时抛错、logger.error、不写文件、不 emit
- *   - query:跨日 newest-first + 文件内倒序 + limit 钳制 + since / uid 过滤
+ *   - query:跨日 newest-first + 文件内倒序 + limit 钳制 + since / feature 过滤
  *   - 取尾巴的窗口:绕圈、坏行补读
  *   - readJsonl 跳过坏行 / schema 非法行
  *   - aggregateDaily:客户端时区日界、零填充、超 500 条全量
@@ -61,7 +61,7 @@ afterEach(() => {
 const baseInput = (over: Partial<NewHistoryEntry> = {}): NewHistoryEntry => ({
 	pushId: randomUUID(),
 	feature: "post",
-	uid: "u1",
+	identity: { sourceKey: "bilibili", externalId: "u1" },
 	subscriptionId: randomUUID(),
 	targetId: randomUUID(),
 	messages: [
@@ -81,7 +81,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 		const entry = await store.record(baseInput());
 		expect(only(entry).payload).toEqual({ kind: "text", text: "hello" });
 		expect(entry.status).toBe("delivered");
-		const day = `${entry.ts.slice(0, 10)}.jsonl`;
+		const day = `${entry.createdAt.slice(0, 10)}.jsonl`;
 		const raw = await readFile(join(dataDir, "history", day), "utf8");
 		expect(raw.trim().split("\n")).toHaveLength(1);
 		expect(recorded).toHaveLength(1);
@@ -209,8 +209,8 @@ describe("record — payload reduce + 落盘 + emit", () => {
 	});
 });
 
-// 用一次真实 record 拿 schema 合法样板,克隆出受控 ts/feature/uid/id 的 fixture 手写进指定
-// 日文件 —— record 的 ts 不可控,手写日文件才能确定性测排序与 since。id 必须是 uuid,
+// 用一次真实 record 拿 schema 合法样板,克隆出受控 createdAt/feature/identity/id 的 fixture 手写进指定
+// 日文件 —— record 的 createdAt 不可控,手写日文件才能确定性测排序与 since。id 必须是 uuid,
 // 否则 readJsonl 的 safeParse 会丢弃整行。
 function clone(base: HistoryEntry, over: Partial<HistoryEntry>): HistoryEntry {
 	const id = over.id ?? randomUUID();
@@ -228,9 +228,9 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		const aId = randomUUID();
 		const bId = randomUUID();
 		const cId = randomUUID();
-		const a = clone(base, { id: aId, ts: "2026-05-10T01:00:00.000Z" });
-		const b = clone(base, { id: bId, ts: "2026-05-10T02:00:00.000Z" });
-		const c = clone(base, { id: cId, ts: "2026-05-12T01:00:00.000Z" });
+		const a = clone(base, { id: aId, createdAt: "2026-05-10T01:00:00.000Z" });
+		const b = clone(base, { id: bId, createdAt: "2026-05-10T02:00:00.000Z" });
+		const c = clone(base, { id: cId, createdAt: "2026-05-12T01:00:00.000Z" });
 		await writeDay("2026-05-10", [a, b]); // 文件内 chronological
 		await writeDay("2026-05-12", [c]);
 		const ids = (await store.query({})).map((e) => e.id);
@@ -250,7 +250,7 @@ describe("query — 排序 / 过滤 / 容错", () => {
 			clone(base, {
 				id: randomUUID(),
 				// 时序递增,与 append-only 的日文件一致(走分钟,别写出「46 点」)
-				ts: `2026-05-09T00:${String(i).padStart(2, "0")}:00.000Z`,
+				createdAt: `2026-05-09T00:${String(i).padStart(2, "0")}:00.000Z`,
 			}),
 		);
 		await writeDay("2026-05-09", entries);
@@ -275,11 +275,11 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		const today = Array.from({ length: 10 }, (_, i) =>
 			clone(base, {
 				id: randomUUID(),
-				ts: `2026-05-10T00:${String(i).padStart(2, "0")}:00.000Z`,
+				createdAt: `2026-05-10T00:${String(i).padStart(2, "0")}:00.000Z`,
 			}),
 		);
 		await writeDay("2026-05-10", today, ["{truncated", JSON.stringify({ bogus: true }), "{}"]);
-		const older = clone(base, { id: randomUUID(), ts: "2026-05-09T00:00:00.000Z" });
+		const older = clone(base, { id: randomUUID(), createdAt: "2026-05-09T00:00:00.000Z" });
 		await writeDay("2026-05-09", [older]);
 
 		const got = await store.query({ limit: 6 });
@@ -293,31 +293,28 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		expect(got.map((e) => e.id)).not.toContain(older.id);
 	});
 
-	it("since 过滤:ts <= since 的丢弃", async () => {
+	it("since 过滤:createdAt <= since 的丢弃", async () => {
 		const base = await store.record(baseInput());
 		const oldId = randomUUID();
 		const newId = randomUUID();
 		await writeDay("2026-05-10", [
-			clone(base, { id: oldId, ts: "2026-05-10T00:00:00.000Z" }),
-			clone(base, { id: newId, ts: "2026-05-10T10:00:00.000Z" }),
+			clone(base, { id: oldId, createdAt: "2026-05-10T00:00:00.000Z" }),
+			clone(base, { id: newId, createdAt: "2026-05-10T10:00:00.000Z" }),
 		]);
 		const ids = (await store.query({ since: "2026-05-10T05:00:00.000Z" })).map((e) => e.id);
 		expect(ids).toContain(newId);
 		expect(ids).not.toContain(oldId);
 	});
 
-	it("feature / uid 精确过滤", async () => {
+	it("feature 精确过滤", async () => {
 		const base = await store.record(baseInput());
 		const dId = randomUUID();
 		const lId = randomUUID();
 		await writeDay("2026-05-11", [
-			clone(base, { id: dId, feature: "post", uid: "uA" }),
-			clone(base, { id: lId, feature: "liveStart", uid: "uB" }),
+			clone(base, { id: dId, feature: "post" }),
+			clone(base, { id: lId, feature: "liveStart" }),
 		]);
 		expect((await store.query({ feature: "liveStart" })).map((e) => e.id)).toEqual([lId]);
-		const byUid = (await store.query({ uid: "uA" })).map((e) => e.id);
-		expect(byUid).toContain(dId);
-		expect(byUid).not.toContain(lId);
 	});
 
 	it("坏 jsonl 行 / schema 非法行 / 认不到亲的补丁行被跳过", async () => {
@@ -325,15 +322,21 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		const goodId = randomUUID();
 		await writeDay(
 			"2026-05-09",
-			[clone(base, { id: goodId, ts: "2026-05-09T00:00:00.000Z", uid: "u1" })],
+			[
+				clone(base, {
+					id: goodId,
+					createdAt: "2026-05-09T00:00:00.000Z",
+					identity: { sourceKey: "bilibili", externalId: "u1" },
+				}),
+			],
 			[
 				"{not json",
 				JSON.stringify({ bogus: true }),
 				"   ",
-				JSON.stringify({ patch: randomUUID(), status: "delivered", messages: [] }),
+				JSON.stringify({ rowId: randomUUID(), status: "delivered", messages: [] }),
 			],
 		);
-		const res = await store.query({ uid: "u1" });
+		const res = await store.query({});
 		expect(res.some((e) => e.id === goodId)).toBe(true);
 		expect(res.every((e) => typeof e.id === "string")).toBe(true);
 	});
@@ -345,7 +348,14 @@ describe("query — 排序 / 过滤 / 容错", () => {
 		await writeDay(
 			"2026-05-09",
 			[],
-			[JSON.stringify({ ...rest, id: stale, ts: "2026-05-09T00:00:00.000Z", kind: "dynamic" })],
+			[
+				JSON.stringify({
+					...rest,
+					id: stale,
+					createdAt: "2026-05-09T00:00:00.000Z",
+					kind: "dynamic",
+				}),
+			],
 		);
 		expect((await store.query({})).map((e) => e.id)).not.toContain(stale);
 	});
@@ -363,12 +373,16 @@ describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
 		// A/B 同属北京 05-10:A 在 UTC 05-09 的日文件里(05-09T20:00Z = 北京 05-10 04:00)
 		// —— UTC 日文件与本地日错位,必须跨文件归属才数得对。C 在窗口前一天,丢弃。
 		await writeDay("2026-05-09", [
-			clone(base, { ts: "2026-05-09T20:00:00.000Z" }),
-			clone(base, { ts: "2026-05-09T10:00:00.000Z" }), // 北京 05-09 → 窗口外
+			clone(base, { createdAt: "2026-05-09T20:00:00.000Z" }),
+			clone(base, { createdAt: "2026-05-09T10:00:00.000Z" }), // 北京 05-09 → 窗口外
 		]);
-		await writeDay("2026-05-10", [clone(base, { ts: "2026-05-10T10:00:00.000Z" })]);
+		await writeDay("2026-05-10", [clone(base, { createdAt: "2026-05-10T10:00:00.000Z" })]);
 		await writeDay("2026-05-12", [
-			clone(base, { ts: "2026-05-12T03:00:00.000Z", feature: "liveStart", status: "failed" }),
+			clone(base, {
+				createdAt: "2026-05-12T03:00:00.000Z",
+				feature: "liveStart",
+				status: "failed",
+			}),
 		]);
 
 		const days = await store.aggregateDaily({ days: 3, tzOffsetMin: TZ_CN, now });
@@ -385,7 +399,7 @@ describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
 		const base = await store.record(baseInput());
 		await writeDay(
 			"2026-05-11",
-			Array.from({ length: 505 }, () => clone(base, { ts: "2026-05-11T10:00:00.000Z" })),
+			Array.from({ length: 505 }, () => clone(base, { createdAt: "2026-05-11T10:00:00.000Z" })),
 		);
 		const days = await store.aggregateDaily({ days: 3, tzOffsetMin: TZ_CN, now });
 		expect(days[1]?.d).toBe("2026-05-11");
@@ -430,7 +444,7 @@ describe("close — 关停时等在途的写、关门后拒写", () => {
 	afterEach(() => storageWriteGate.reset());
 
 	const dayRows = async (entry: HistoryEntry): Promise<string[]> =>
-		(await readFile(join(dataDir, "history", `${entry.ts.slice(0, 10)}.jsonl`), "utf8"))
+		(await readFile(join(dataDir, "history", `${entry.createdAt.slice(0, 10)}.jsonl`), "utf8"))
 			.split("\n")
 			.filter((line) => line.trim() !== "");
 
@@ -461,12 +475,12 @@ describe("close — 关停时等在途的写、关门后拒写", () => {
 		const closed = { code: "queue_closed" };
 		await expect(store.record(baseInput())).rejects.toMatchObject(closed);
 		await expect(
-			store.appendToRow(entry.id, entry.ts, [
+			store.appendToRow(entry.id, entry.createdAt, [
 				{
 					payload: { kind: "text", text: "补" },
 					role: "main",
 					result: { ok: true, latencyMs: 1 },
-					retryOf: 0,
+					repushOf: 0,
 				},
 			]),
 		).rejects.toMatchObject(closed);

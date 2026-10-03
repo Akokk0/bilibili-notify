@@ -15,10 +15,10 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 	return {
 		id,
 		pushId: id,
-		ts: "2026-09-02T10:00:00.000Z",
+		createdAt: "2026-09-02T10:00:00.000Z",
 		feature: "post",
 		status: "delivered",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s1",
 		targetId: "t1",
 		messages: [{ text: "一条动态", role: "main", ok: true }],

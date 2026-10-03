@@ -304,12 +304,10 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 					for (const row of rows) {
 						expect(row).toMatchObject({
 							status: "delivered",
-							extensionId: FAKE,
-							externalId: who[key].externalId,
+							identity: { sourceKey: FAKE, externalId: who[key].externalId },
 							targetId: who[key].target,
-							unameSnapshot: who[key].name,
+							nameSnapshot: who[key].name,
 						});
-						expect(row.uid).toBeUndefined();
 					}
 				}
 			},

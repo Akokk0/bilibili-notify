@@ -125,7 +125,7 @@ describe("resolveTargetScope — 答案", () => {
 
 /**
  * 历史行记下的那条订阅**现在**是哪一条(ADR-0019 决策 50):先认 `subscriptionId`,不在了
- * 再按身份(B 站 uid)找 —— 删了又重加的 UP,旧历史照样能重推。
+ * 再按身份(`identity` 的来源键 + 外部 id)找 —— 删了又重加的 UP,旧历史照样能重推。
  */
 describe("resolveTargetScope — currentSubscriptionOf", () => {
 	const ext = makeExtensionSubscription({ id: S_EXT, externalId: "u9" });
@@ -136,19 +136,39 @@ describe("resolveTargetScope — currentSubscriptionOf", () => {
 	});
 
 	it("id 还在 → 就是它,哪怕同 uid 还有一条排在前面", () => {
-		expect(table.currentSubscriptionOf({ subscriptionId: S2, uid: "u1" })).toBe(S2);
+		expect(
+			table.currentSubscriptionOf({
+				subscriptionId: S2,
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			}),
+		).toBe(S2);
 	});
 
 	it("id 不在了 → 回落到 uid 相同的 B 站订阅,两条时先出现的那条", () => {
-		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "u1" })).toBe(S1);
+		expect(
+			table.currentSubscriptionOf({
+				subscriptionId: S_GONE,
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			}),
+		).toBe(S1);
 	});
 
 	it("id 与 uid 都对不上 → undefined", () => {
-		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "u404" })).toBeUndefined();
+		expect(
+			table.currentSubscriptionOf({
+				subscriptionId: S_GONE,
+				identity: { sourceKey: "bilibili", externalId: "u404" },
+			}),
+		).toBeUndefined();
 	});
 
 	it("拓展订阅的外部 id 恰好等于那串 uid → 不算(是两个不同的人)", () => {
-		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "u9" })).toBeUndefined();
+		expect(
+			table.currentSubscriptionOf({
+				subscriptionId: S_GONE,
+				identity: { sourceKey: "bilibili", externalId: "u9" },
+			}),
+		).toBeUndefined();
 	});
 });
 
@@ -173,8 +193,7 @@ describe("resolveTargetScope — currentSubscriptionOf(拓展行)", () => {
 	});
 	const extRow = (subscriptionId: string, externalId = "sec-1") => ({
 		subscriptionId,
-		extensionId: "douyin",
-		externalId,
+		identity: { sourceKey: "douyin", externalId },
 	});
 
 	it("id 还在 → 就是它,哪怕同一个人还有一条排在前面", () => {
@@ -189,8 +208,7 @@ describe("resolveTargetScope — currentSubscriptionOf(拓展行)", () => {
 		expect(
 			table.currentSubscriptionOf({
 				subscriptionId: S_GONE,
-				extensionId: "bilibili-mirror",
-				externalId: "sec-1",
+				identity: { sourceKey: "bilibili-mirror", externalId: "sec-1" },
 			}),
 		).toBeUndefined();
 	});
@@ -200,7 +218,12 @@ describe("resolveTargetScope — currentSubscriptionOf(拓展行)", () => {
 	});
 
 	it("跨支不认:B 站行的 uid 恰好等于某个拓展订阅的外部 id → 不认成那条拓展订阅", () => {
-		expect(table.currentSubscriptionOf({ subscriptionId: S_GONE, uid: "sec-1" })).toBeUndefined();
+		expect(
+			table.currentSubscriptionOf({
+				subscriptionId: S_GONE,
+				identity: { sourceKey: "bilibili", externalId: "sec-1" },
+			}),
+		).toBeUndefined();
 	});
 });
 
@@ -260,7 +283,10 @@ describe("createTargetScope — 什么时候重折", () => {
 
 	it("一页 200 行各问一次闸 → 三个 getter 各只被问一次", () => {
 		for (let i = 0; i < 200; i++) {
-			scope.currentSubscriptionOf({ subscriptionId: S1, uid: "u1" });
+			scope.currentSubscriptionOf({
+				subscriptionId: S1,
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			});
 			scope.routedTargets(S1, "post");
 			scope.targetEnabled(T_OK);
 		}

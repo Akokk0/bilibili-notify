@@ -48,7 +48,7 @@ function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: OK }],
@@ -68,8 +68,8 @@ async function draftFiles(ts: string): Promise<string[]> {
 describe("record → 原件", () => {
 	it("落行就留一份原料,条数与行对得上", async () => {
 		const entry = await store.record(input());
-		expect(await draftFiles(entry.ts)).toEqual([`${entry.id}.json`]);
-		const draft = await repush.load(entry.id, entry.ts, entry.messages.length);
+		expect(await draftFiles(entry.createdAt)).toEqual([`${entry.id}.json`]);
+		const draft = await repush.load(entry.id, entry.createdAt, entry.messages.length);
 		expect(draft?.messages).toEqual([{ payload: { kind: "text", text: "卡片" }, role: "main" }]);
 	});
 
@@ -80,7 +80,7 @@ describe("record → 原件", () => {
 			input({ pushId, messages: [{ payload: text("词云"), role: "extra", result: FAIL }] }),
 		);
 		expect(merged.messages).toHaveLength(2);
-		const draft = await repush.load(merged.id, merged.ts, 2);
+		const draft = await repush.load(merged.id, merged.createdAt, 2);
 		expect(draft?.messages.map((m) => (m.payload.kind === "text" ? m.payload.text : "?"))).toEqual([
 			"卡片",
 			"词云",
@@ -100,7 +100,7 @@ describe("record → 原件", () => {
 		// 历史那一行里它已经只剩四个字了。
 		expect(entry.messages[0]?.payload.text).toBe("@全体");
 		// 原件里还是原来那个段。
-		const draft = await repush.load(entry.id, entry.ts, 1);
+		const draft = await repush.load(entry.id, entry.createdAt, 1);
 		expect(draft?.messages[0]?.payload).toEqual(payload);
 	});
 
@@ -109,7 +109,7 @@ describe("record → 原件", () => {
 			input({ targetId: null, messages: [{ payload: text("卡片"), role: "main" }] }),
 		);
 		expect(entry.status).toBe("no-targets");
-		expect(await draftFiles(entry.ts)).toEqual([]);
+		expect(await draftFiles(entry.createdAt)).toEqual([]);
 	});
 
 	it("没给 repush 的历史仓照常工作,只是不留原件", async () => {
@@ -120,23 +120,23 @@ describe("record → 原件", () => {
 		});
 		const entry = await bare.record(input());
 		expect(entry.status).toBe("delivered");
-		expect(await draftFiles(entry.ts)).toEqual([]);
+		expect(await draftFiles(entry.createdAt)).toEqual([]);
 	});
 });
 
 describe("deleteRange → 原件跟着没", () => {
 	it("行被删掉,它的原件也不见了", async () => {
 		const entry = await store.record(input());
-		expect(await draftFiles(entry.ts)).toHaveLength(1);
-		const ms = Date.parse(entry.ts);
+		expect(await draftFiles(entry.createdAt)).toHaveLength(1);
+		const ms = Date.parse(entry.createdAt);
 		expect(await store.deleteRange({ fromMs: ms - 1000, toMs: ms + 1000 })).toBe(1);
-		expect(await draftFiles(entry.ts)).toEqual([]);
+		expect(await draftFiles(entry.createdAt)).toEqual([]);
 	});
 
 	it("窗外的行不受影响,原件照留", async () => {
 		const entry = await store.record(input());
-		const ms = Date.parse(entry.ts);
+		const ms = Date.parse(entry.createdAt);
 		expect(await store.deleteRange({ fromMs: ms + 60_000, toMs: ms + 120_000 })).toBe(0);
-		expect(await draftFiles(entry.ts)).toHaveLength(1);
+		expect(await draftFiles(entry.createdAt)).toHaveLength(1);
 	});
 });

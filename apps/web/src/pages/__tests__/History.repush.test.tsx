@@ -39,10 +39,10 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	return {
 		id: "h1",
 		pushId: "p1",
-		ts: TS,
+		createdAt: TS,
 		feature: "liveEnd",
 		status: "partial",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s1",
 		targetId: T1,
 		messages: [
@@ -50,7 +50,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 			{ text: "词云", role: "extra", ok: false, err: "boom" },
 			{ text: "总结", role: "extra" },
 		],
-		unameSnapshot: "某UP",
+		nameSnapshot: "某UP",
 		repush: { can: true, total: 3, missing: 2 },
 		...over,
 	};
@@ -154,12 +154,15 @@ describe("两下完成", () => {
 		expect(screen.queryByRole("button", { name: /重新推送（2 条）/ })).toBeNull();
 	});
 
-	it("第二下才发,带的是这一行的 id、ts 与选的那档", async () => {
+	it("第二下才发,带的是这一行的 id、createdAt 与选的那档", async () => {
 		renderHistory();
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 		await userEvent.click(repushButton());
 		await userEvent.click(screen.getByRole("button", { name: /只补没到的/ }));
-		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", { ts: TS, mode: "missing" });
+		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", {
+			createdAt: TS,
+			mode: "missing",
+		});
 	});
 
 	it("整行重发那档送的是 all", async () => {
@@ -167,7 +170,7 @@ describe("两下完成", () => {
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 		await userEvent.click(repushButton());
 		await userEvent.click(screen.getByRole("button", { name: /整行重发/ }));
-		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", { ts: TS, mode: "all" });
+		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", { createdAt: TS, mode: "all" });
 	});
 
 	it("「先不用了」收起来,一条都不发", async () => {
@@ -251,11 +254,11 @@ describe("补不了的行", () => {
  * 重推是**追加进原行**(决策 14),所以 3 条的行「整行重发」之后展开是 6 条。后三条
  * 要是只按数组下标印 1..6,看上去就是三条凭空多出来的新消息 —— 既看不出是谁的重投,
  * 也看不出前三条已经作废,而 ADR 认下「行会变长、药丸上的数字会跳」换来的正是这份
- * 可追溯。号的来源是 `retryOf`(决策 15:消息按序追加、从不重排,下标就是稳定身份),
+ * 可追溯。号的来源是 `repushOf`(决策 15:消息按序追加、从不重排,下标就是稳定身份),
  * 「后果」那节明写它同时就是这个标记的来源,不另开字段。
  *
  * ⚠️ **「每一号只认它最后那次尝试」的判定只在服务端有一份**(决策 16)。面板只按每条
- * 自己的 `retryOf` 画;「这条被顶掉了」用的是「后面还有一条补这一号的」这个本地可见的
+ * 自己的 `repushOf` 画;「这条被顶掉了」用的是「后面还有一条补这一号的」这个本地可见的
  * 事实,不在这儿再实现一套身份判定。
  */
 describe("补完之后,展开逐条看得出谁补了谁", () => {
@@ -267,15 +270,15 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 			{ text: "下播啦", role: "main", ok: true },
 			{ text: "词云图", role: "extra", ok: false, err: "boom" },
 			{ text: "直播总结", role: "extra", ok: false, err: "boom" },
-			{ text: "词云图", role: "extra", ok: true, retryOf: 1 },
-			{ text: "直播总结", role: "extra", ok: true, retryOf: 2 },
+			{ text: "词云图", role: "extra", ok: true, repushOf: 1 },
+			{ text: "直播总结", role: "extra", ok: true, repushOf: 2 },
 		],
 	});
 
 	/**
 	 * 展开逐条,拿到那 5 个 `<li>`(这一页只有这一处列表)。
 	 *
-	 * ⚠️ 钮上写的是「**3 条**」不是 5:那颗药丸数的是「本来要发几条」(没有 `retryOf` 的
+	 * ⚠️ 钮上写的是「**3 条**」不是 5:那颗药丸数的是「本来要发几条」(没有 `repushOf` 的
 	 * 那些,见 `utils/push-row.ts`),补进来的两条不算新的。数组里确实躺着 5 条,所以
 	 * 下面拿到的是 5 个 `<li>` —— 这两个数不一样是对的,它们说的不是同一件事。
 	 */
@@ -313,7 +316,7 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 		expect(within(items[1] as HTMLElement).getByText(/女仆后来/)).toBeTruthy();
 	});
 
-	it("没有 retryOf 的老行照旧按位置印 1..N", async () => {
+	it("没有 repushOf 的老行照旧按位置印 1..N", async () => {
 		mockApi([row()]);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());

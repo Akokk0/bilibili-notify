@@ -38,7 +38,7 @@ describe("createAppRuntime", () => {
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: randomUUID(),
 			targetId: randomUUID(),
 			messages: [
@@ -50,7 +50,7 @@ describe("createAppRuntime", () => {
 			],
 		});
 		expect(entry.status).toBe("failed");
-		const drafts = await readdir(join(dataDir, "history", "repush", entry.ts.slice(0, 10)));
+		const drafts = await readdir(join(dataDir, "history", "repush", entry.createdAt.slice(0, 10)));
 		expect(drafts).toContain(`${entry.id}.json`);
 	});
 
@@ -72,7 +72,7 @@ describe("createAppRuntime", () => {
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: randomUUID(),
 			targetId: randomUUID(),
 			messages: [
@@ -83,7 +83,7 @@ describe("createAppRuntime", () => {
 				},
 			],
 		});
-		const res = await runtime.repushRunner.start(entry.id, entry.ts, "missing");
+		const res = await runtime.repushRunner.start(entry.id, entry.createdAt, "missing");
 		// 行找到了(不是 not_found),但这个 dataDir 里没有任何订阅 —— 闸据实拒绝。
 		expect(res.ok).toBe(false);
 		if (res.ok) throw new Error("本该拒");
@@ -109,7 +109,7 @@ describe("createAppRuntime", () => {
 		const entry = await runtime.historyStore.record({
 			pushId: randomUUID(),
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: randomUUID(),
 			targetId: randomUUID(),
 			messages: [

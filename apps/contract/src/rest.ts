@@ -21,6 +21,7 @@ import type {
 	FailureCode,
 	FansRefreshEntry,
 	FeatureKey,
+	Identity,
 	Issue,
 	PushMessageRole,
 	PushStatus,
@@ -502,7 +503,7 @@ export interface HistoryMessageView {
 	 * 这条是**哪一条的重投**(人工重推补的):值是被补的那条在本行 `messages` 里的下标。
 	 * 缺省 = 这条不是重投。面板拿它标「第 N 次尝试」。
 	 */
-	retryOf?: number;
+	repushOf?: number;
 }
 
 /**
@@ -514,17 +515,13 @@ export interface HistoryEntryView {
 	id: string;
 	/** 同一次推送落到几个目标就有几行,它们共用这一个。 */
 	pushId: string;
-	ts: string;
+	/** 建行时刻(ISO 字符串)。 */
+	createdAt: string;
 	/** 这一行是哪一类推送:特性键(补报记 `liveStart`、周期记 `liveStreaming`)。 */
 	feature: FeatureKey;
 	status: PushStatus;
-	/**
-	 * 替谁发的(ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` + `externalId`、
-	 * 不带 `uid`。两格都有就是拓展行。
-	 */
-	uid?: string;
-	extensionId?: string;
-	externalId?: string;
+	/** 替谁发的:订阅的身份(来源键 + 外部 id),B 站行与拓展行同一种形状。 */
+	identity: Identity;
 	subscriptionId: string;
 	/** null = 无目标行(这类推送没配目标,或配的全停用)。 */
 	targetId: string | null;
@@ -534,7 +531,7 @@ export interface HistoryEntryView {
 	 * 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。拓展行只有名字、没有头像
 	 * (决策 74:拓展头像是面板里的相对地址,订阅一删就没了)。
 	 */
-	unameSnapshot?: string;
+	nameSnapshot?: string;
 	uavatarSnapshot?: string;
 	/**
 	 * 这一行能不能人工补一次(ADR-0017)。**缺省 = 没问过** —— 列表只为失败 / 部分失败
@@ -569,8 +566,8 @@ export type HistoryRepushInfo =
  * {@link ErrorResponse}:`message` 是**给人看的原话**,直接显示 —— 自编一句「重推失败」等于让人对着黑盒猜。
  */
 export interface HistoryRepushRequest {
-	/** 这一行的 `ts` —— 服务端拿它定位日文件。 */
-	ts: string;
+	/** 这一行的 `createdAt` —— 服务端拿它定位日文件。 */
+	createdAt: string;
 	/** `all` = 整行从头再发一遍(含已经送达的);`missing` = 只补没到的。 */
 	mode: "all" | "missing";
 }

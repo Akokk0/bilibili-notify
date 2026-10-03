@@ -63,7 +63,7 @@ describe("createAppRuntime 的 flush 段", () => {
 			runtime.historyStore.record({
 				pushId: "p1",
 				feature: "post",
-				uid: "u1",
+				identity: { sourceKey: "bilibili", externalId: "u1" },
 				subscriptionId: SUB.id,
 				targetId: null,
 				messages: [],

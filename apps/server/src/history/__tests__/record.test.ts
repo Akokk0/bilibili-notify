@@ -56,17 +56,20 @@ function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: OK }],
-		unameSnapshot: "某UP",
+		nameSnapshot: "某UP",
 		...over,
 	};
 }
 
 async function dayLines(entry: HistoryEntry): Promise<string[]> {
-	const raw = await readFile(join(dataDir, "history", `${entry.ts.slice(0, 10)}.jsonl`), "utf8");
+	const raw = await readFile(
+		join(dataDir, "history", `${entry.createdAt.slice(0, 10)}.jsonl`),
+		"utf8",
+	);
 	return raw.trim().split("\n");
 }
 
@@ -77,11 +80,11 @@ describe("record — 建行与追加", () => {
 		expect(entry).toMatchObject({
 			pushId,
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: SUB,
 			targetId: T1,
 			status: "delivered",
-			unameSnapshot: "某UP",
+			nameSnapshot: "某UP",
 		});
 		expect(entry.messages).toEqual([
 			{ payload: { kind: "text", text: "卡片" }, role: "main", result: OK },
@@ -111,7 +114,7 @@ describe("record — 建行与追加", () => {
 
 		const lines = await dayLines(first);
 		expect(lines).toHaveLength(2);
-		expect(JSON.parse(lines[1] as string)).toMatchObject({ patch: first.id, status: "partial" });
+		expect(JSON.parse(lines[1] as string)).toMatchObject({ rowId: first.id, status: "partial" });
 
 		const [read] = await store.query({ limit: 10 });
 		expect(read).toEqual(merged);
@@ -133,30 +136,45 @@ describe("record — 建行与追加", () => {
 		expect((await store.query({})).map((e) => e.id).sort()).toEqual([a.id, b.id].sort());
 	});
 
-	// ADR-0019 决策 73:拓展行的身份是两格选填的 extensionId / externalId、不带 uid。这一层把字段
-	// 一格格抄进行里,漏抄一格的话写进去的就是一行「谁也不是」的 B 站行。
-	it("拓展行:拓展 id 与外部 id 落盘、读得回来,没有 uid", async () => {
+	// ADR-0019 决策 73:拓展行的身份是 `identity`(来源键 = 拓展 id + 外部 id),和 B 站行同一种形状。
+	// 这一层把它原样抄进行里,漏抄的话写进去的就是一行「谁也不是」的行。
+	it("拓展行:来源键(拓展 id)与外部 id 落盘、读得回来", async () => {
 		const entry = await store.record(
 			input({
-				uid: undefined,
-				extensionId: "douyin",
-				externalId: "123",
-				unameSnapshot: "某抖音号",
+				identity: { sourceKey: "douyin", externalId: "123" },
+				nameSnapshot: "某抖音号",
 			}),
 		);
-		expect(entry).toMatchObject({ extensionId: "douyin", externalId: "123" });
-		expect(entry.uid).toBeUndefined();
+		expect(entry.identity).toEqual({ sourceKey: "douyin", externalId: "123" });
 		const [line] = await dayLines(entry);
 		const onDisk = JSON.parse(line as string);
-		expect(onDisk).toMatchObject({ extensionId: "douyin", externalId: "123" });
+		expect(onDisk).toMatchObject({ identity: { sourceKey: "douyin", externalId: "123" } });
 		expect(onDisk).not.toHaveProperty("uid");
+		expect(onDisk).not.toHaveProperty("extensionId");
 		const [read] = await store.query({});
 		expect(read).toMatchObject({
-			extensionId: "douyin",
-			externalId: "123",
-			unameSnapshot: "某抖音号",
+			identity: { sourceKey: "douyin", externalId: "123" },
+			nameSnapshot: "某抖音号",
 		});
-		expect(read?.uid).toBeUndefined();
+	});
+
+	// 盘上的键序就是迁移器(`migration/history.ts`)把老行改出来的键序 —— 两头是同一个形状,不是两份各写各的。
+	it("行的键序:id, pushId, createdAt, feature, identity, subscriptionId, targetId, status, messages, 快照", async () => {
+		const entry = await store.record(input({ uavatarSnapshot: "https://example.com/a.jpg" }));
+		const [line] = await dayLines(entry);
+		expect(Object.keys(JSON.parse(line as string))).toEqual([
+			"id",
+			"pushId",
+			"createdAt",
+			"feature",
+			"identity",
+			"subscriptionId",
+			"targetId",
+			"status",
+			"messages",
+			"nameSnapshot",
+			"uavatarSnapshot",
+		]);
 	});
 });
 

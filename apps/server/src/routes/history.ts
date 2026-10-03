@@ -24,7 +24,6 @@ import type { RouteDeps } from "./types.js";
  *   - limit:  int        (default 100, capped 500)
  *   - since:  ISO ts     (only entries strictly after this)
  *   - feature: 特性键('post' | 'liveStart' | 'liveEnd' | …);不是特性键回 400。老参数 `kind` 已经不认,也回 400
- *   - uid:    bilibili UID
  *
  * Query parameters for the daily endpoint:
  *   - days:     int (default 7, clamped [1,90]) — trailing window incl. today
@@ -77,13 +76,11 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			);
 		}
 		const feature = featureParam as FeatureKey | undefined;
-		const uid = c.req.query("uid");
 
 		const entries = await deps.runtime.historyStore.query({
 			limit,
 			since,
 			feature,
-			uid,
 		});
 		// 只为**失败 / 部分失败**的行问一句「按钮该不该灰」(决策 9)。一页两百行里
 		// 失败的通常是个位数,而每问一次是一次 stat;别的行本来就没有按钮,不问也不带。
@@ -92,7 +89,7 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 				if (e.status !== "failed" && e.status !== "partial") return toHistoryView(e);
 				const denial = await deps.runtime.repushRunner.canRepush(e);
 				// 条数在这儿算完交出去 —— 面板自己再算一遍就是第二份实现,而身份号那套
-				// 判定(`retryOf ?? 下标`,每号取最后一次)一改两边就漂。
+				// 判定(`repushOf ?? 下标`,每号取最后一次)一改两边就漂。
 				return toHistoryView(e, {
 					repush: denial
 						? { can: false, code: denial.code, message: denial.message }
@@ -174,11 +171,11 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		if (!parsed.success) {
 			return respondFailure(
 				c,
-				fail("invalid", "重推请求要带 ts（这一行的 ISO 时间戳）和 mode（all 或 missing）"),
+				fail("invalid", "重推请求要带 createdAt（这一行的 ISO 时间戳）和 mode（all 或 missing）"),
 			);
 		}
-		const { ts, mode } = parsed.data;
-		const res = await deps.runtime.repushRunner.start(c.req.param("id"), ts, mode);
+		const { createdAt, mode } = parsed.data;
+		const res = await deps.runtime.repushRunner.start(c.req.param("id"), createdAt, mode);
 		if (res.ok) return c.json<HistoryRepushResponse>(ok({ count: res.count }), 202);
 		return respondFailure(c, res);
 	});
@@ -187,8 +184,8 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 }
 
 const RepushSchema = z.object({
-	/** 这一行的 `ts`,服务端拿它定位日文件。 */
-	ts: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "ts 必须是 ISO 时间戳"),
+	/** 这一行的 `createdAt`,服务端拿它定位日文件。 */
+	createdAt: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "createdAt 必须是 ISO 时间戳"),
 	mode: z.enum(["all", "missing"]),
 });
 

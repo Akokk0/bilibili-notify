@@ -150,7 +150,7 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	// 「今日推送」数的是推到了多少个地方:无目标行没推到任何地方,不进计数(口径与服务端
 	// 的按日聚合同吃 internal 的那一份)。
 	if (!countsAsDelivery(data.status)) return;
-	patchDailyBucket(qc, data.ts, (day) => ({
+	patchDailyBucket(qc, data.createdAt, (day) => ({
 		...day,
 		counts: { ...day.counts, [data.feature]: (day.counts[data.feature] ?? 0) + 1 },
 		total: day.total + 1,
@@ -190,7 +190,7 @@ function patchDailyFailureFlip(qc: QueryClient, prev: PushEventView, next: PushE
 	const before = countsAsFailure(prev.status);
 	const after = countsAsFailure(next.status);
 	if (before === after) return;
-	patchDailyBucket(qc, next.ts, (day) => ({
+	patchDailyBucket(qc, next.createdAt, (day) => ({
 		...day,
 		failures: Math.max(0, day.failures + (after ? 1 : -1)),
 	}));

@@ -138,9 +138,9 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 const ROW = {
 	id: "h1",
 	pushId: "p1",
-	ts: "2026-05-16T00:00:00.000Z",
+	createdAt: "2026-05-16T00:00:00.000Z",
 	feature: "liveEnd",
-	uid: "u1",
+	identity: { sourceKey: "bilibili", externalId: "u1" },
 	subscriptionId: "sub1",
 	targetId: "t1",
 	status: "partial",
@@ -156,24 +156,24 @@ const ROW = {
 			result: { ok: false, latencyMs: 9, err: "boom" },
 		},
 	],
-	unameSnapshot: "UP",
+	nameSnapshot: "UP",
 	uavatarSnapshot: "http://a/x.jpg",
 };
 
 const ROW_VIEW = {
 	id: "h1",
 	pushId: "p1",
-	ts: "2026-05-16T00:00:00.000Z",
+	createdAt: "2026-05-16T00:00:00.000Z",
 	feature: "liveEnd",
 	status: "partial",
-	uid: "u1",
+	identity: { sourceKey: "bilibili", externalId: "u1" },
 	subscriptionId: "sub1",
 	targetId: "t1",
 	messages: [
 		{ text: "[卡片图]", imageRef: "h1-0.png", role: "main", ok: true },
 		{ text: "总结", imageRef: undefined, role: "extra", ok: false, err: "boom" },
 	],
-	unameSnapshot: "UP",
+	nameSnapshot: "UP",
 	uavatarSnapshot: "http://a/x.jpg",
 };
 

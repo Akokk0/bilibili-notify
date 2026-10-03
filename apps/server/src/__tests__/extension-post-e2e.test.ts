@@ -324,12 +324,10 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 					expect(row).toMatchObject({
 						feature: "post",
 						status: "delivered",
-						extensionId: FAKE,
-						externalId: who.a.externalId,
+						identity: { sourceKey: FAKE, externalId: who.a.externalId },
 						targetId: who.a.target,
-						unameSnapshot: who.a.name,
+						nameSnapshot: who.a.name,
 					});
-					expect(row.uid).toBeUndefined();
 				}
 				expect(rowsOf("b")).toHaveLength(1);
 				expect(rowsOf("c")).toEqual([]);

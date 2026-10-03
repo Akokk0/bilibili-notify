@@ -55,10 +55,10 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 	return {
 		id,
 		pushId: id,
-		ts: "2026-05-16T10:00:00.000Z",
+		createdAt: "2026-05-16T10:00:00.000Z",
 		feature: "post",
 		status: "delivered",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "sub1",
 		targetId: "t1",
 		messages: [{ text: "x", role: "main", ok: true }],
@@ -370,7 +370,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		// Dashboard 的「今日失败」在页面开着的时候永远是错的。
 		it("已送达翻成部分失败 → 今日失败 +1,行数与分类计数不动", () => {
 			const v1 = pushView("h1", { status: "delivered" });
-			const today = localDayKey(new Date(v1.ts));
+			const today = localDayKey(new Date(v1.createdAt));
 			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [v1] });
 			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
 				days: [{ d: today, counts: { ...zeroCounts(), post: 4 }, total: 4, failures: 1 }],
@@ -390,7 +390,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		});
 
 		it("翻回已送达 → 今日失败 -1;成败没翻面则日桶一动不动", () => {
-			const today = localDayKey(new Date(pushView("h1").ts));
+			const today = localDayKey(new Date(pushView("h1").createdAt));
 			const daily: HistoryDailyResponse = {
 				days: [{ d: today, counts: zeroCounts(), total: 4, failures: 2 }],
 			};
@@ -430,7 +430,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	});
 
 	describe("history-recorded → 按日聚合缓存(趋势图/今日 KPI)", () => {
-		const dayOf = (view: PushEventView) => localDayKey(new Date(view.ts));
+		const dayOf = (view: PushEventView) => localDayKey(new Date(view.createdAt));
 
 		it("无目标行:进列表、弹卡,但日桶不 +1(没推到任何地方)", () => {
 			const view = pushView("h1", { status: "no-targets", targetId: null });

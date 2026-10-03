@@ -128,7 +128,7 @@ async function seedPartial(): Promise<HistoryEntry> {
 	return history.record({
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [
@@ -142,7 +142,7 @@ async function seedPartial(): Promise<HistoryEntry> {
 /** 等后台那一趟跑完(行的状态不再动)。 */
 async function settled(entry: HistoryEntry): Promise<HistoryEntry> {
 	await vi.waitFor(() => expect(runner.isRunning(entry.id)).toBe(false));
-	const row = await history.findRow(entry.id, entry.ts);
+	const row = await history.findRow(entry.id, entry.createdAt);
 	if (!row) throw new Error("row gone");
 	return row;
 }
@@ -151,7 +151,7 @@ describe("start — 立刻回", () => {
 	it("🔴 发送还卡着,start 已经回来了(HTTP 不等 190s×N)", async () => {
 		const entry = await seedPartial();
 		gate = () => {};
-		const res = await runner.start(entry.id, entry.ts, "missing");
+		const res = await runner.start(entry.id, entry.createdAt, "missing");
 		expect(started(res)).toBe(2);
 		// 发送还没走完,可这一行已经在补了。
 		expect(sent).toHaveLength(0);
@@ -162,21 +162,21 @@ describe("start — 立刻回", () => {
 describe("补哪几条", () => {
 	it("missing:只补没到的两条,已经送达的那条一次都不重发", async () => {
 		const entry = await seedPartial();
-		expect(started(await runner.start(entry.id, entry.ts, "missing"))).toBe(2);
+		expect(started(await runner.start(entry.id, entry.createdAt, "missing"))).toBe(2);
 		await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["词云", "总结"]);
 	});
 
 	it("all:三条从头再发一遍,包括已经送达的那条", async () => {
 		const entry = await seedPartial();
-		expect(started(await runner.start(entry.id, entry.ts, "all"))).toBe(3);
+		expect(started(await runner.start(entry.id, entry.createdAt, "all"))).toBe(3);
 		await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["卡片", "词云", "总结"]);
 	});
 
 	it("发的是原件里那份原样 payload,走的是这一行的那把特性键", async () => {
 		const entry = await seedPartial();
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		await settled(entry);
 		expect(sent.every((s) => s.targetId === T1)).toBe(true);
 		expect(new Set(sent.map((s) => s.feature))).toEqual(new Set(["post"]));
@@ -184,29 +184,29 @@ describe("补哪几条", () => {
 });
 
 describe("结果写回历史", () => {
-	it("每补一条就往行里追一条带 retryOf 的,补齐了整行翻绿", async () => {
+	it("每补一条就往行里追一条带 repushOf 的,补齐了整行翻绿", async () => {
 		const entry = await seedPartial();
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		const row = await settled(entry);
 		expect(row.messages).toHaveLength(5);
-		expect(row.messages.slice(3).map((m) => m.retryOf)).toEqual([1, 2]);
+		expect(row.messages.slice(3).map((m) => m.repushOf)).toEqual([1, 2]);
 		expect(row.status).toBe("delivered");
 	});
 
 	it("补齐之后原件就删了(决策 5)", async () => {
 		const entry = await seedPartial();
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		await settled(entry);
-		expect(await repush.load(entry.id, entry.ts, 3)).toBeNull();
+		expect(await repush.load(entry.id, entry.createdAt, 3)).toBeNull();
 	});
 
 	it("没补齐就不删原件 —— 按钮还得能再按", async () => {
 		const entry = await seedPartial();
 		failOn = (n) => n === 1;
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		const row = await settled(entry);
 		expect(row.status).toBe("partial");
-		expect(await repush.load(entry.id, entry.ts, 3)).not.toBeNull();
+		expect(await repush.load(entry.id, entry.createdAt, 3)).not.toBeNull();
 	});
 
 	// 失败后大概率继续失败,而且每条还要再等一轮 190s 的退避;剩下那几条本来就还在
@@ -214,7 +214,7 @@ describe("结果写回历史", () => {
 	it("补到一半又失败 → 中止,后面那条一次都没发", async () => {
 		const entry = await seedPartial();
 		failOn = (n) => n === 1;
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["词云"]);
 	});
@@ -235,7 +235,7 @@ describe("canRepush — 给面板的预判", () => {
 
 	it("原件没了 → 说得出为什么", async () => {
 		const entry = await seedPartial();
-		await repush.drop(entry.id, entry.ts);
+		await repush.drop(entry.id, entry.createdAt);
 		const denial = await runner.canRepush(entry);
 		expect(denial).toMatchObject({ ok: false, code: "conflict" });
 		expect(denial?.message).toContain("原料");
@@ -254,7 +254,7 @@ describe("canRepush — 给面板的预判", () => {
 	it("正在补 → 也算不能再按", async () => {
 		const entry = await seedPartial();
 		gate = () => {};
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		expect(await runner.canRepush(entry)).toMatchObject({ ok: false, code: "conflict" });
 	});
 });
@@ -263,8 +263,8 @@ describe("闸", () => {
 	it("这一行正在补 → 第二次直接拒,一条都不多发", async () => {
 		const entry = await seedPartial();
 		gate = () => {};
-		await runner.start(entry.id, entry.ts, "missing");
-		const second = await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
+		const second = await runner.start(entry.id, entry.createdAt, "missing");
 		expect(denied(second)).toBeTruthy();
 		expect(sent).toHaveLength(0);
 	});
@@ -272,7 +272,7 @@ describe("闸", () => {
 	it("routing 里没这个目标了 → 拒,一条都不发", async () => {
 		const entry = await seedPartial();
 		routed = [];
-		const res = await runner.start(entry.id, entry.ts, "missing");
+		const res = await runner.start(entry.id, entry.createdAt, "missing");
 		expect(res.ok).toBe(false);
 		expect(sent).toHaveLength(0);
 	});
@@ -280,7 +280,7 @@ describe("闸", () => {
 	it("目标停用了 → 拒", async () => {
 		const entry = await seedPartial();
 		enabled = false;
-		expect((await runner.start(entry.id, entry.ts, "missing")).ok).toBe(false);
+		expect((await runner.start(entry.id, entry.createdAt, "missing")).ok).toBe(false);
 	});
 
 	it("行压根不存在 → not_found(端点据此回 404,不是 409)", async () => {
@@ -294,8 +294,8 @@ describe("闸", () => {
 	 */
 	it("原件已经不在 → 拒,并说得出为什么", async () => {
 		const entry = await seedPartial();
-		await repush.drop(entry.id, entry.ts);
-		const res = await runner.start(entry.id, entry.ts, "missing");
+		await repush.drop(entry.id, entry.createdAt);
+		const res = await runner.start(entry.id, entry.createdAt, "missing");
 		expect(res).toMatchObject({ ok: false, code: "conflict" });
 		expect(denied(res)).toContain("原料");
 		expect(sent).toHaveLength(0);
@@ -305,18 +305,18 @@ describe("闸", () => {
 		const entry = await history.record({
 			pushId: randomUUID(),
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: SUB,
 			targetId: T1,
 			messages: [{ payload: text("卡片"), role: "main", result: OK }],
 		});
-		expect((await runner.start(entry.id, entry.ts, "missing")).ok).toBe(false);
+		expect((await runner.start(entry.id, entry.createdAt, "missing")).ok).toBe(false);
 	});
 });
 
 /**
  * 行上记的订阅**现在**是哪一条(ADR-0019 决策 50 / 73):先按 `subscriptionId`,找不到再按身份
- * (B 站行按 uid、拓展行按拓展 id + 外部 id,绝不跨支)—— 删了又重加的 UP,旧历史照样能重推;
+ * (`identity` 的来源键 + 外部 id 两格一起比,绝不跨来源)—— 删了又重加的 UP,旧历史照样能重推;
  * 同 uid 两条都在时认行自己那条。
  *
  * 这里接的是真的路由快照表(`resolveTargetScope`),不是桩:要钉的正是 runner 拿行去问表、
@@ -346,7 +346,7 @@ describe("重推认的是哪一条订阅", () => {
 		readded.routing.post = [T1];
 		const r = runnerOver([readded]);
 		expect(await r.canRepush(entry)).toBeNull();
-		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(2);
+		expect(started(await r.start(entry.id, entry.createdAt, "missing"))).toBe(2);
 		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
 		expect(sent.map((s) => s.subscriptionId)).toEqual([readded.id, readded.id]);
 	});
@@ -365,7 +365,7 @@ describe("重推认的是哪一条订阅", () => {
 		own.routing.post = [T1];
 		const r = runnerOver([first, own]);
 		expect(await r.canRepush(entry)).toBeNull();
-		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(2);
+		expect(started(await r.start(entry.id, entry.createdAt, "missing"))).toBe(2);
 		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
 		expect(sent.map((s) => s.subscriptionId)).toEqual([SUB, SUB]);
 	});
@@ -387,8 +387,7 @@ describe("重推认的是哪一条订阅", () => {
 		return history.record({
 			pushId: randomUUID(),
 			feature: "post",
-			extensionId: "douyin",
-			externalId: "u1",
+			identity: { sourceKey: "douyin", externalId: "u1" },
 			subscriptionId: SUB,
 			targetId: T1,
 			messages: [
@@ -408,7 +407,7 @@ describe("重推认的是哪一条订阅", () => {
 		readded.routing.post = [T1];
 		const r = runnerOver([readded]);
 		expect(await r.canRepush(entry)).toBeNull();
-		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(1);
+		expect(started(await r.start(entry.id, entry.createdAt, "missing"))).toBe(1);
 		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
 		expect(sent.map((s) => s.subscriptionId)).toEqual([readded.id]);
 	});
@@ -453,7 +452,7 @@ describe("路由按行上的特性键查", () => {
 		return history.record({
 			pushId: randomUUID(),
 			feature,
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: SUB,
 			targetId: T1,
 			messages: [
@@ -472,7 +471,7 @@ describe("路由按行上的特性键查", () => {
 		sub.routing[feature] = [T1];
 		const r = runnerOver(sub);
 		expect(await r.canRepush(entry)).toBeNull();
-		expect(started(await r.start(entry.id, entry.ts, "missing"))).toBe(1);
+		expect(started(await r.start(entry.id, entry.createdAt, "missing"))).toBe(1);
 		await vi.waitFor(() => expect(r.isRunning(entry.id)).toBe(false));
 		expect(sent.map((s) => s.feature)).toEqual([feature]);
 	});
@@ -513,16 +512,16 @@ describe("关停", () => {
 	it("后台补发登记进 track:写回历史行落定它才落定", async () => {
 		const entry = await seedPartial();
 		const append = holdAppend();
-		expect(started(await runner.start(entry.id, entry.ts, "missing"))).toBe(2);
+		expect(started(await runner.start(entry.id, entry.createdAt, "missing"))).toBe(2);
 
 		expect(ctx.tracked).toHaveLength(1);
 		await vi.waitFor(() => expect(append.spy).toHaveBeenCalledTimes(1)); // 第一条发出去了,写回停在半路
 		expect(await stillPending(ctx.settled())).toBe(true);
-		expect((await history.findRow(entry.id, entry.ts))?.messages).toHaveLength(3);
+		expect((await history.findRow(entry.id, entry.createdAt))?.messages).toHaveLength(3);
 
 		append.release.resolve();
 		await ctx.settled();
-		const row = await history.findRow(entry.id, entry.ts);
+		const row = await history.findRow(entry.id, entry.createdAt);
 		expect(row?.messages).toHaveLength(5); // 两条都补上了,都写回了
 		expect(runner.isRunning(entry.id)).toBe(false);
 	});
@@ -531,7 +530,7 @@ describe("关停", () => {
 		const entry = await seedPartial();
 		const parked = () => {};
 		gate = parked; // 第一条卡在发送口:发送口一进来就把 gate 换成放行函数
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		await vi.waitFor(() => expect(gate).not.toBe(parked));
 		const appendSpy = vi.spyOn(history, "appendToRow");
 
@@ -545,7 +544,7 @@ describe("关停", () => {
 		expect(runner.isRunning(entry.id)).toBe(false);
 		await new Promise((r) => setTimeout(r, 30));
 		expect(appendSpy).toHaveBeenCalledTimes(1); // 落定之后没有再写
-		const row = await history.findRow(entry.id, entry.ts);
+		const row = await history.findRow(entry.id, entry.createdAt);
 		expect(row?.messages).toHaveLength(4);
 	});
 
@@ -554,7 +553,7 @@ describe("关停", () => {
 		const parked = () => {};
 		gate = parked;
 		failOn = () => true; // 卡住的那一条醒来时回的是失败
-		await runner.start(entry.id, entry.ts, "missing");
+		await runner.start(entry.id, entry.createdAt, "missing");
 		await vi.waitFor(() => expect(gate).not.toBe(parked));
 		const appendSpy = vi.spyOn(history, "appendToRow");
 
@@ -563,9 +562,9 @@ describe("关停", () => {
 		await ctx.settled();
 
 		expect(appendSpy).not.toHaveBeenCalled();
-		expect((await history.findRow(entry.id, entry.ts))?.messages).toHaveLength(3);
+		expect((await history.findRow(entry.id, entry.createdAt))?.messages).toHaveLength(3);
 		// 原件还在 —— 按钮下次照样能补。
-		expect(await repush.load(entry.id, entry.ts, 3)).not.toBeNull();
+		expect(await repush.load(entry.id, entry.createdAt, 3)).not.toBeNull();
 	});
 
 	it("补发出了错(写道已关门):登记进去的这件事不拒,记一条 warn", async () => {
@@ -584,7 +583,7 @@ describe("关停", () => {
 		const entry = await seedPartial();
 		vi.spyOn(history, "appendToRow").mockRejectedValue(new Error("queue closed"));
 
-		await local.start(entry.id, entry.ts, "missing");
+		await local.start(entry.id, entry.createdAt, "missing");
 		await localCtx.settled();
 
 		await expect(localCtx.tracked[0]).resolves.toBeUndefined();

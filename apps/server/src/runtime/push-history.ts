@@ -24,8 +24,8 @@ export interface PushHistoryLookups {
  * (target: null),附加项的 role 与逐条结果原样带过去。查不到订阅就不记 —— 那条推送
  * 发起时订阅还在,落地时已经被删了,历史里挂在谁名下都不对。
  *
- * 「替谁发的」分两支(ADR-0019 决策 73):B 站行记 uid;拓展行记拓展 id + 外部 id、不记 uid ——
- * 外部 id 恰好等于某个 B 站 uid 时,记进 uid 就会在订阅删掉之后被认成那位 B 站 UP。拓展行只存
+ * 「替谁发的」就是订阅的身份(`identity`:来源键 + 外部 id,B 站行与拓展行同一种形状):两格一起比,
+ * 外部 id 恰好等于某个 B 站 uid 时,订阅删掉之后也不会被认成那位 B 站 UP(ADR-0019 决策 73)。拓展行只存
  * 名字快照、不存头像快照(决策 74):它的头像是面板里的相对地址,订阅一删文件就没了。
  *
  * 拓展行的名字快照走决策 77 的名字链(少了事件里的作者名那一层,这里拿不到):资料里的名字 → 主人填的
@@ -41,21 +41,18 @@ export function historyRecordFromSend(
 	const { subscription, profile } = found;
 	const identity = subscriptionIdentityOf(subscription);
 	const fromBilibili = identity.sourceKey === BILIBILI_SOURCE_KEY;
-	// 历史行的身份格照旧:B 站写 `uid`,别的来源写 `extensionId` + `externalId`(行的形状不在这一步动)。
-	const who = fromBilibili
-		? { uid: identity.externalId, uavatarSnapshot: profile?.avatar }
-		: { extensionId: identity.sourceKey, externalId: identity.externalId };
-	const unameSnapshot = fromBilibili ? profile?.name : filled(profile?.name);
+	const nameSnapshot = fromBilibili ? profile?.name : filled(profile?.name);
 	return {
 		pushId: info.pushId,
 		feature: info.feature,
-		...who,
+		identity,
 		subscriptionId: info.subscriptionId,
 		targetId: info.target?.id ?? null,
 		// 推送层那条消息与历史那条消息本就是同一个形状(payload / role / 可选 result),
 		// 逐条重建只是把字段抄一遍,还多一处「加字段记得同步」的维护点。
 		messages: info.messages,
-		unameSnapshot,
+		nameSnapshot,
+		...(fromBilibili ? { uavatarSnapshot: profile?.avatar } : {}),
 	};
 }
 

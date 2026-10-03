@@ -11,7 +11,7 @@ import {
 	useToastStore,
 } from "../store/notifications";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowIdentity, isExtensionRow } from "../utils/up-display";
+import { historyRowIdentity, isExtensionIdentity } from "../utils/up-display";
 
 /**
  * 推送 toast 层(右下角)。卡与栈的壳子在 ui 的 NoticeCard / NoticeStack;
@@ -101,12 +101,12 @@ function ToastCard({ item }: { item: ToastItem }) {
 					) : null}
 				</>
 			}
-			time={formatHm(view.ts)}
+			time={formatHm(view.createdAt)}
 			onClose={() => dismiss(item.id)}
 			style={marked ? { borderColor: edge } : undefined}
 		>
 			<div className="mt-0.5 flex items-center gap-1.5 text-bn-xs text-bn-text-secondary">
-				{isExtensionRow(view) ? (
+				{isExtensionIdentity(view.identity) ? (
 					<ExtensionRowWho view={view} />
 				) : (
 					<span className="tabular-nums">{historyRowIdentity(view)}</span>

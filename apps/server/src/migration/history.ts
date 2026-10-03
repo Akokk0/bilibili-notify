@@ -1,15 +1,17 @@
 /**
  * 推送历史 `history/<日>.jsonl`:0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)
  * → 现在的行(`feature` / `messages[]` / `status` / `targetId`)。一项一项收进来(⑥c);从前是 schema 读时映射、
- * 盘上不重写,历史仓开机只认最新的形状。补丁行、已经是现在形状的行、坏行一个字节不动。
+ * 盘上不重写,历史仓开机只认最新的形状。已经是现在形状的行、推不出「替谁发的」的坏行一个字节不动。
  *
  * 行级的变换都在 {@link migrateHistoryLine} 一个函数里、**一趟读写**:老 `source` 先翻成 0.x 的推送种类,
- * 再把推送种类那一格 `kind`(0.x 的八种名字)换成 `feature`(特性键,⑬f)。⑱ 要往行里再加别的字段、⑳ 要换跟图有关的格,也都加在
- * 这个函数里,历史不会多迁一次。
+ * 再把推送种类那一格 `kind`(0.x 的八种名字)换成 `feature`(特性键,⑬f),最后把格改成现在的名字(⑱b:`ts` →
+ * `createdAt`、`uid` / `extensionId` + `externalId` → `identity`、`unameSnapshot` → `nameSnapshot`、消息的 `retryOf` →
+ * `repushOf`),键都留在原来的位置。补丁行也在这一趟里改写(`patch` → `rowId`、消息的 `retryOf` → `repushOf`)。
+ * ⑳ 要换跟图有关的格,也加在这个函数里,历史不会多迁一次。
  */
 
 import { join } from "node:path";
-import type { FeatureKey } from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY, type FeatureKey, type Identity } from "@bilibili-notify/internal";
 import { isPatchLine, listDayFiles } from "../history/store.js";
 import { dataPath } from "../runtime/roots.js";
 import { isPlainObject, parseJsonLine, rewriteJsonlFile } from "./files.js";
@@ -89,15 +91,111 @@ function migrateKindToFeature(raw: unknown): unknown {
 	);
 }
 
+function isFilled(value: unknown): value is string {
+	return typeof value === "string" && value !== "";
+}
+
 /**
- * 一行历史(jsonl 的一行原文)迁成最新形状:老 `source` → 0.x 的推送种类 → `feature`。
- * 补丁行照历史仓的认法跳过(它从来不过老行的映射);没变的行回原文(一个字节不动)。
+ * 老行「替谁发的」换算成身份:B 站行是 `uid`,拓展行是 `extensionId` + `externalId`。拓展那两格有一格就是拓展行,
+ * 只按拓展那一支认 —— 缺了一格也不退去按 `uid` 认(与重推、面板回找订阅一直是一条规矩)。推不出回 `undefined`。
+ */
+function identityOfRow(row: Record<string, unknown>): Identity | undefined {
+	const { uid, extensionId, externalId } = row;
+	if (extensionId !== undefined || externalId !== undefined) {
+		return isFilled(extensionId) && isFilled(externalId)
+			? { sourceKey: extensionId, externalId }
+			: undefined;
+	}
+	return isFilled(uid) ? { sourceKey: BILIBILI_SOURCE_KEY, externalId: uid } : undefined;
+}
+
+/** 消息里的 `retryOf` → `repushOf`,**键留在原来的位置**、别的格不动。行里的消息与补丁行里的消息共用。 */
+function renameRepushOf(messages: unknown): unknown {
+	if (!Array.isArray(messages)) return messages;
+	return messages.map((message: unknown) =>
+		isPlainObject(message) && "retryOf" in message
+			? Object.fromEntries(
+					Object.entries(message).map(([key, value]) =>
+						key === "retryOf" ? ["repushOf", value] : [key, value],
+					),
+				)
+			: message,
+	);
+}
+
+/**
+ * ⑱b:一行里的格改成现在的名字,**键都留在原来的位置**、别的格一个字不动。身份的三个散格并成一格 `identity`,落在
+ * 它们里头最先出现的那个位置上(B 站行是 `uid` 的位置,拓展行是 `extensionId` 的位置)。`identity` 由调用方换算好
+ * 交进来(换算不出的行根本不会走到这里)。`uavatarSnapshot` 不动,⑳ 换图库引用时一起改。
+ */
+function renameRowKeys(row: Record<string, unknown>, identity: Identity): Record<string, unknown> {
+	let identityPlaced = false;
+	const entries: [string, unknown][] = [];
+	for (const [key, value] of Object.entries(row)) {
+		switch (key) {
+			case "ts":
+				entries.push(["createdAt", value]);
+				break;
+			case "uid":
+			case "extensionId":
+			case "externalId":
+				if (!identityPlaced) entries.push(["identity", identity]);
+				identityPlaced = true;
+				break;
+			case "unameSnapshot":
+				entries.push(["nameSnapshot", value]);
+				break;
+			case "messages":
+				entries.push([key, renameRepushOf(value)]);
+				break;
+			default:
+				entries.push([key, value]);
+		}
+	}
+	return Object.fromEntries(entries);
+}
+
+/**
+ * 老补丁行(⑱b 之前 `patch` 打头)的行首。现在的补丁行是 `rowId` 打头,历史仓认的是后者
+ * (`isPatchLine`);这一个只有迁移器认。
+ */
+const LEGACY_PATCH_LINE_PREFIX = '{"patch":';
+
+/** 老补丁行改写:`patch` → `rowId`(仍是第一个键)、消息的 `retryOf` → `repushOf`。读不懂的原样回。 */
+function migrateLegacyPatchLine(line: string): string {
+	const patch = parseJsonLine(line);
+	if (!isPlainObject(patch) || typeof patch.patch !== "string") return line;
+	return JSON.stringify(
+		Object.fromEntries(
+			Object.entries(patch).map(([key, value]) => {
+				if (key === "patch") return ["rowId", value];
+				if (key === "messages") return [key, renameRepushOf(value)];
+				return [key, value];
+			}),
+		),
+	);
+}
+
+/**
+ * 一行历史(jsonl 的一行原文)迁成最新形状:老 `source` → 0.x 的推送种类 → `feature`,再把格改成现在的名字;老补丁行
+ * 的 `patch` → `rowId`。已经是现在形状的行(带 `identity`、`rowId` 打头的补丁行)、推不出「替谁发的」的坏行
+ * (既没有 `uid`、也没有 `extensionId` + `externalId` 一对)、推送种类认不得的坏行、读不懂的行回原文(一个字节不动)。
  */
 export function migrateHistoryLine(line: string): string {
 	if (isPatchLine(line)) return line;
+	if (line.startsWith(LEGACY_PATCH_LINE_PREFIX)) return migrateLegacyPatchLine(line);
 	const row = parseJsonLine(line);
-	const next = migrateKindToFeature(migrateLegacyHistoryEntry(row));
-	return next === row ? line : JSON.stringify(next);
+	if (!isPlainObject(row) || "identity" in row) return line;
+	const identity = identityOfRow(row);
+	if (identity === undefined) return line;
+	// 前两步回的一定还是普通对象(要么原样,要么新造一个),所以这里的断言是实话。
+	const translated = migrateKindToFeature(migrateLegacyHistoryEntry(row)) as Record<
+		string,
+		unknown
+	>;
+	// 推送种类认不得(`kind` 不是那八种之一),或者 `kind` 与 `feature` 并存:这一行是坏行,整行原样,改名也不碰它。
+	if ("kind" in translated) return line;
+	return JSON.stringify(renameRowKeys(translated, identity));
 }
 
 /** 新代里每个日文件迁成最新的形状,回改写过的文件(绝对路径)。 */

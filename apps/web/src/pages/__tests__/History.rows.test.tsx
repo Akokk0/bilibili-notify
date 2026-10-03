@@ -28,10 +28,10 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	return {
 		id: "h1",
 		pushId: "p1",
-		ts: new Date().toISOString(),
+		createdAt: new Date().toISOString(),
 		feature: "liveEnd",
 		status: "partial",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s1",
 		targetId: T1,
 		messages: [
@@ -39,7 +39,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 			{ text: "[弹幕词云]", imageRef: "h1-1.png", role: "extra", ok: true },
 			{ text: "总结正文", role: "extra", ok: false, err: "boom" },
 		],
-		unameSnapshot: "某UP",
+		nameSnapshot: "某UP",
 		...over,
 	};
 }
@@ -192,7 +192,7 @@ function biliSub(id: string, uid: string, name: string): Subscription {
 describe("推送历史 · 行对到哪条订阅", () => {
 	it("行的订阅删了、同 uid 又加了一条 → 按现在那条的名字搜得到", async () => {
 		mockApi(
-			[row({ subscriptionId: "s-gone", unameSnapshot: "当时的名字" })],
+			[row({ subscriptionId: "s-gone", nameSnapshot: "当时的名字" })],
 			[biliSub("s-readded", "u1", "现在的名字")],
 		);
 		renderHistory();
@@ -203,7 +203,7 @@ describe("推送历史 · 行对到哪条订阅", () => {
 
 	it("同 uid 几条订阅都在 → 行对到自己那条(按 id),不是先出现、也不是后出现的那条", async () => {
 		mockApi(
-			[row({ subscriptionId: "s-own", unameSnapshot: undefined })],
+			[row({ subscriptionId: "s-own", nameSnapshot: undefined })],
 			[
 				biliSub("s-first", "u1", "先出现的那条"),
 				biliSub("s-own", "u1", "行自己那条"),
@@ -222,17 +222,15 @@ describe("推送历史 · 行对到哪条订阅", () => {
 });
 
 /**
- * 拓展行(ADR-0019 决策 73):身份是拓展 id + 外部 id、没有 uid。名字对不上时写外部 id(B 站行写 uid);
+ * 拓展行(ADR-0019 决策 73):身份的来源键是拓展 id。名字对不上时写外部 id(B 站行写 uid);
  * 行对订阅照同一条规矩 —— 先认 id,不在了按「同一个拓展 + 同一个外部 id」找。
  */
 describe("推送历史 · 拓展行", () => {
 	function extRow(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		return row({
-			uid: undefined,
-			extensionId: "douyin",
-			externalId: "sec-1",
+			identity: { sourceKey: "douyin", externalId: "sec-1" },
 			subscriptionId: "s-gone",
-			unameSnapshot: undefined,
+			nameSnapshot: undefined,
 			...over,
 		});
 	}
@@ -262,7 +260,10 @@ describe("推送历史 · 拓展行", () => {
 	});
 
 	it("外部 id 恰好等于某个 B 站 uid → 不认成那位 B 站 UP", async () => {
-		mockApi([extRow({ externalId: "u1" })], [biliSub("s-bili", "u1", "某B站UP")]);
+		mockApi(
+			[extRow({ identity: { sourceKey: "douyin", externalId: "u1" } })],
+			[biliSub("s-bili", "u1", "某B站UP")],
+		);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
 		expect(screen.queryByText("某B站UP")).toBeNull();
@@ -270,7 +271,7 @@ describe("推送历史 · 拓展行", () => {
 	});
 
 	it("搜外部 id 搜得到这一行", async () => {
-		mockApi([extRow({ unameSnapshot: "某抖音号" })]);
+		mockApi([extRow({ nameSnapshot: "某抖音号" })]);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
 		await userEvent.type(screen.getByPlaceholderText(/搜索/), "sec-1");
@@ -303,11 +304,9 @@ const DOUYIN = {
 describe("推送历史 · 平台徽章", () => {
 	const extRow = (over: Partial<HistoryEntryView> = {}) =>
 		row({
-			uid: undefined,
-			extensionId: "douyin",
-			externalId: "sec-1",
+			identity: { sourceKey: "douyin", externalId: "sec-1" },
 			subscriptionId: "s-gone",
-			unameSnapshot: "某抖音号",
+			nameSnapshot: "某抖音号",
 			...over,
 		});
 
@@ -319,7 +318,7 @@ describe("推送历史 · 平台徽章", () => {
 	});
 
 	it("名字是外部 id 兜底的拓展行也带徽章", async () => {
-		mockApi([extRow({ unameSnapshot: undefined })], [], [DOUYIN]);
+		mockApi([extRow({ nameSnapshot: undefined })], [], [DOUYIN]);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("抖")).toBeTruthy());
 		expect(screen.getByText("sec-1")).toBeTruthy();

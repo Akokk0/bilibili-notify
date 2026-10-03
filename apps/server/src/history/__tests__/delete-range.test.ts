@@ -46,7 +46,7 @@ function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: OK }],
@@ -90,14 +90,14 @@ describe("deleteRange", () => {
 			pushId,
 			messages: [{ payload: text("@全体"), role: "extra", result: OK }],
 		});
-		expect(await dayLines(row.ts)).toHaveLength(2);
+		expect(await dayLines(row.createdAt)).toHaveLength(2);
 
 		await store.deleteRange({
 			fromMs: Date.parse("2026-09-06T08:00:00.000Z"),
 			toMs: Date.parse("2026-09-06T08:10:00.000Z"),
 		});
 
-		expect(await dayLines(row.ts)).toEqual([]);
+		expect(await dayLines(row.createdAt)).toEqual([]);
 	});
 
 	it("行上引用的图片一并删掉", async () => {
@@ -162,7 +162,7 @@ describe("deleteRange", () => {
 		// 就是残缺的那半份 —— 剩下的行永久消失,而且回的 deleted 还小得像没事发生。
 		// 所以这条路上的读必须全有或全无:读不动就抛,文件一个字节都不许动。
 		const row = await at("2026-09-06T08:01:00.000Z");
-		const path = join(dataDir, "history", `${row.ts.slice(0, 10)}.jsonl`);
+		const path = join(dataDir, "history", `${row.createdAt.slice(0, 10)}.jsonl`);
 		if (process.getuid?.() === 0) return; // root 无视权限位,这条测不了
 		await chmod(path, 0o000);
 		try {
@@ -175,7 +175,7 @@ describe("deleteRange", () => {
 		} finally {
 			await chmod(path, 0o600);
 		}
-		expect(await dayLines(row.ts)).toHaveLength(1);
+		expect(await dayLines(row.createdAt)).toHaveLength(1);
 	});
 
 	it("窗里没有行 → 0,文件原样", async () => {
@@ -185,6 +185,6 @@ describe("deleteRange", () => {
 			toMs: Date.parse("2026-09-06T10:00:00.000Z"),
 		});
 		expect(deleted).toBe(0);
-		expect(await dayLines(row.ts)).toHaveLength(1);
+		expect(await dayLines(row.createdAt)).toHaveLength(1);
 	});
 });

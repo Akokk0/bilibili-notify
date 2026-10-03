@@ -58,14 +58,14 @@ describe("挂在页面上的相对时间会走", () => {
 		const entry: HistoryEntryView = {
 			id: "h1",
 			pushId: "p1",
-			ts: new Date(NOW).toISOString(),
+			createdAt: new Date(NOW).toISOString(),
 			feature: "liveStart",
 			status: "delivered",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: "s1",
 			targetId: T1,
 			messages: [{ text: "开播了", role: "main", ok: true }],
-			unameSnapshot: "某UP",
+			nameSnapshot: "某UP",
 		};
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
 			if (path.startsWith("/api/history")) return { entries: [entry] };

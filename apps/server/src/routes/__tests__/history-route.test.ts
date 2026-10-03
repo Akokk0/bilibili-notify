@@ -110,6 +110,14 @@ describe("history route — feature 过滤与 view 投影", () => {
 		expect(query.mock.calls[0]?.[0]).toMatchObject({ feature: "liveEnd" });
 	});
 
+	// ⑱b:`?uid=` 没有调用方,删了。以后要按人查再加 `?identity=`(data-model 的改名表)。
+	it("uid 查询参数不再读:被忽略,不进 query,也不报错", async () => {
+		const res = await makeApp().request("/?uid=u1&feature=liveEnd");
+		expect(res.status).toBe(200);
+		expect(query.mock.calls[0]?.[0]).toMatchObject({ feature: "liveEnd" });
+		expect(query.mock.calls[0]?.[0]).not.toHaveProperty("uid");
+	});
+
 	// 和 limit / since 一个做法:写错了筛选,当成没传会悄悄回全部行,对方以为筛过了。
 	it("feature 不是特性键 → 400,不调用 query", async () => {
 		const res = await makeApp().request("/?feature=live-summary");
@@ -138,14 +146,14 @@ describe("history route — feature 过滤与 view 投影", () => {
 			{
 				id: "h1",
 				pushId: "p1",
-				ts: "2026-05-16T00:00:00.000Z",
+				createdAt: "2026-05-16T00:00:00.000Z",
 				feature: "post",
-				uid: "u1",
+				identity: { sourceKey: "bilibili", externalId: "u1" },
 				subscriptionId: "sub1",
 				targetId: null,
 				status: "no-targets",
 				messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
-				unameSnapshot: "UP",
+				nameSnapshot: "UP",
 			},
 		]);
 		const res = await app.request("/");
@@ -154,14 +162,14 @@ describe("history route — feature 过滤与 view 投影", () => {
 				{
 					id: "h1",
 					pushId: "p1",
-					ts: "2026-05-16T00:00:00.000Z",
+					createdAt: "2026-05-16T00:00:00.000Z",
 					feature: "post",
 					status: "no-targets",
-					uid: "u1",
+					identity: { sourceKey: "bilibili", externalId: "u1" },
 					subscriptionId: "sub1",
 					targetId: null,
 					messages: [{ text: "卡片", role: "main" }],
-					unameSnapshot: "UP",
+					nameSnapshot: "UP",
 				},
 			],
 		});
@@ -246,20 +254,20 @@ describe("history route — POST /:id/repush", () => {
 	 * 真正的结果随后经 `history-updated` 一条条回来。
 	 */
 	it("收下了 → 202,带这一趟要补几条", async () => {
-		const res = await repush(makeApp(), { ts: TS, mode: "missing" });
+		const res = await repush(makeApp(), { createdAt: TS, mode: "missing" });
 		expect(res.status).toBe(202);
 		expect(await res.json()).toEqual({ ok: true, count: 2 });
 		expect(startRepush).toHaveBeenCalledWith(ROW, TS, "missing");
 	});
 
 	it("mode: all 照样透传", async () => {
-		await repush(makeApp(), { ts: TS, mode: "all" });
+		await repush(makeApp(), { createdAt: TS, mode: "all" });
 		expect(startRepush).toHaveBeenCalledWith(ROW, TS, "all");
 	});
 
 	it("没这一行 → 404 not_found,话原样带回去", async () => {
 		const res = await repush(makeApp(fail("not_found", "找不到这一行推送记录了")), {
-			ts: TS,
+			createdAt: TS,
 			mode: "missing",
 		});
 		expect(res.status).toBe(404);
@@ -270,7 +278,7 @@ describe("history route — POST /:id/repush", () => {
 	it("有这一行但不能补 → 409 conflict,理由原样带回去", async () => {
 		const res = await repush(
 			makeApp(fail("conflict", "这个目标（或者它所在的连接）停用了，先启用再补")),
-			{ ts: TS, mode: "missing" },
+			{ createdAt: TS, mode: "missing" },
 		);
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
@@ -280,9 +288,9 @@ describe("history route — POST /:id/repush", () => {
 	});
 
 	it.each([
-		["mode 不认识", { ts: TS, mode: "everything" }],
-		["ts 不是时间", { ts: "notadate", mode: "missing" }],
-		["少了 ts", { mode: "missing" }],
+		["mode 不认识", { createdAt: TS, mode: "everything" }],
+		["createdAt 不是时间", { createdAt: "notadate", mode: "missing" }],
+		["少了 createdAt", { mode: "missing" }],
 		["空 body", null],
 	])("%s → 400,一条都不发", async (_name, body) => {
 		const app = makeApp();
@@ -312,9 +320,9 @@ describe("history route — 列表带上「能不能补」", () => {
 		return statuses.map((status, i) => ({
 			id: `id${i}`,
 			pushId: "p",
-			ts: TS,
+			createdAt: TS,
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: "s",
 			targetId: status === "no-targets" ? null : "t",
 			status,

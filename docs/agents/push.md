@@ -88,16 +88,16 @@
 
 ### ⑥ 历史
 
-`onSend` 每个目标回调一次，带的是订阅 id；`runtime/push-history.ts` 的 `historyRecordFromSend` 回查订阅（`findById`）与资料缓存，补上「替谁发的」与快照，查不到（推送途中被删）就不记 —— 挂在谁名下都不对。「替谁发的」按支记（ADR-0019 决策 73 / 74，schema 在 `packages/internal/src/schema/history.ts`）：
+`onSend` 每个目标回调一次，带的是订阅 id；`runtime/push-history.ts` 的 `historyRecordFromSend` 回查订阅（`findById`）与资料缓存，补上「替谁发的」与快照，查不到（推送途中被删）就不记 —— 挂在谁名下都不对。「替谁发的」记成一格 `identity`（`{ sourceKey, externalId }`，和订阅是同一个身份，`subscriptionIdentityOf` 给的；schema 在 `packages/internal/src/schema/history.ts`）：
 
 | | B 站行 | 拓展行 |
 |---|---|---|
-| 身份 | `uid` | `extensionId` + `externalId`，**不记 `uid`** |
-| 快照 | 名字 + 头像（`unameSnapshot` / `uavatarSnapshot`） | 只存名字 —— 它的头像是面板里的相对地址，订阅一删文件就没了；订阅还在时面板显示它现在的头像 |
+| 身份 | `{ sourceKey: "bilibili", externalId: uid }` | `{ sourceKey: 拓展 id, externalId: 外部 id }` |
+| 快照 | 名字 + 头像（`nameSnapshot` / `uavatarSnapshot`；头像那格 ⑳ 换图库引用） | 只存名字 —— 它的头像是面板里的相对地址，订阅一删文件就没了；订阅还在时面板显示它现在的头像 |
 
-`uid` 是选填：两格拓展身份都在就是拓展行，否则是 B 站行，旧行读进来就是 B 站行。⚠️ **别把外部 id 塞进 `uid`**：它恰好是一串等于某个 B 站 uid 的数字时，订阅删掉之后重推与面板会按 uid 把它认成那位 B 站 UP。
+⚠️ 身份两格一起比：外部 id 恰好是一串等于某个 B 站 uid 的数字，来源键不同，也不是同一个人。0.x 与 ⑱b 之前的行（`uid` / `extensionId` + `externalId` 散格）由迁移并成 `identity`（`migration/history.ts`），推不出身份的是坏行、原样不动。
 
-行 → 订阅一律「**先认 `subscriptionId`、找不到再认人、绝不跨支**」：B 站行找第一个同 uid 的 B 站订阅，拓展行找第一个同拓展 + 同外部 id 的拓展订阅（两层 map，不拼串）。服务端是 `runtime/target-scope.ts` 的 `currentSubscriptionOf`（重推用），面板是 `pages/up/subscription-lookup.ts` 的 `forRow`，同一条规矩两份实现。行的颜色跟着人走（`utils/up-display.ts` 的 `historyRowColor`），删了再加也不变。
+行 → 订阅一律「**先认 `subscriptionId`、找不到再按身份认、绝不跨来源**」：找第一个来源键与外部 id 都相同的订阅（两层 map，不拼串）。服务端是 `runtime/target-scope.ts` 的 `currentSubscriptionOf`（重推用），面板是 `pages/up/subscription-lookup.ts` 的 `forRow`，同一条规矩两份实现。行的颜色跟着人走（`utils/up-display.ts` 的 `historyRowColor`），删了再加也不变。
 
 **人工重推**（ADR-0017，`history/repush-runner.ts`）从历史行再发一次：发送口固定注入 `BilibiliPush.sendToTarget(…, { routing })` —— 所以静音 / 免扰 / 总开关三道（在它上游的 `broadcastToFeature` 里）天然不参与，退避重试与重试前复检 routing 照有；订阅按上面那条规矩找回，结果追加进原来那一行。
 

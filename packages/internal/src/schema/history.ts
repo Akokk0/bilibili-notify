@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { PUSH_STATUSES } from "../constants";
 import { FeatureKeySchema } from "./common";
+import { IdentitySchema } from "./subscriptions";
 
 /**
  * 一行历史的四态:
@@ -55,7 +56,7 @@ export const HistoryMessageSchema = z.object({
 	 *
 	 * 它同时是展开逐条时那个「第 N 次尝试」标记的来源,不用再开第二个字段。
 	 */
-	retryOf: z.number().int().nonnegative().optional(),
+	repushOf: z.number().int().nonnegative().optional(),
 });
 export type HistoryMessage = z.infer<typeof HistoryMessageSchema>;
 
@@ -65,24 +66,21 @@ const HistoryEntryObjectSchema = z.object({
 	/** 推送 id:同一次推送落到几个目标就有几行,它们共用这一个。 */
 	pushId: z.uuid(),
 	/** 建行时刻(本体落地那一刻);后续追加不改它。 */
-	ts: z.string(),
+	createdAt: z.string(),
 	/**
 	 * 这一行是哪一类推送 —— 值就是特性键(⑬f 之前叫 `kind`,值是 0.x 自成一套的推送种类名;
 	 * 老盘由 `apps/server/src/migration/history.ts` 改写)。补报记 `liveStart`、周期「正在直播」记 `liveStreaming`。
 	 */
 	feature: FeatureKeySchema,
 	/**
-	 * 这一行替谁发的(ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` + `externalId`、
-	 * **不带 `uid`**。旧行只有 uid,读进来就是 B 站行。
+	 * 这一行替谁发的:来源键 + 来源那头的 id,和订阅同一种身份(ADR-0021 决策 14)。B 站行是
+	 * `{ sourceKey: "bilibili", externalId: uid }`,拓展行是 `{ sourceKey: 拓展 id, externalId }`。回找订阅看这两格
+	 * **一起**比,外部 id 恰好等于某个 B 站 uid 也不会被认成那位 B 站 UP(ADR-0019 决策 73 的本意)。
 	 *
-	 * 不把外部 id 塞进 `uid`:它恰好是一串等于某个 B 站 uid 的数字时,订阅删掉之后重推与面板会按
-	 * uid 把它认成那位 B 站 UP —— 静默认错人。
+	 * 0.x 与 ⑱b 之前的行是三个散格(`uid` / `extensionId` / `externalId`),由迁移器并成这一格
+	 * (`apps/server/src/migration/history.ts`)。
 	 */
-	uid: z.string().optional(),
-	/** 拓展行:哪个拓展(一个拓展就是一个平台)。有它 + `externalId` 就是拓展行。 */
-	extensionId: z.string().optional(),
-	/** 拓展行:拓展给的那个人的外部 id,BN 不解读。 */
-	externalId: z.string().optional(),
+	identity: IdentitySchema,
 	subscriptionId: z.uuid(),
 	/** null = 无目标行。 */
 	targetId: z.uuid().nullable(),
@@ -100,19 +98,16 @@ const HistoryEntryObjectSchema = z.object({
 	 * 拓展行只有名字快照、**没有头像快照**(ADR-0019 决策 74):拓展的头像是面板里的相对地址,
 	 * 订阅一删文件就没了,存下来就是删后裂图。
 	 */
-	unameSnapshot: z.string().optional(),
+	nameSnapshot: z.string().optional(),
 	uavatarSnapshot: z.string().optional(),
 });
 export type HistoryEntry = z.infer<typeof HistoryEntryObjectSchema>;
 
 /**
- * 一行历史「是哪条订阅、替谁发的」那几格 —— 回找订阅(先认订阅、再认人)只看它们。
- * 有 `extensionId` + `externalId` 就是拓展行,否则是 B 站行(ADR-0019 决策 73)。
+ * 一行历史「是哪条订阅、替谁发的」那两格 —— 回找订阅(先认订阅、再认人)只看它们:`subscriptionId` 还在就是它,
+ * 不在了按 `identity` 的来源键 + 外部 id 一起比(ADR-0019 决策 73)。
  */
-export type HistoryRowIdentity = Pick<
-	HistoryEntry,
-	"subscriptionId" | "uid" | "extensionId" | "externalId"
->;
+export type HistoryRowIdentity = Pick<HistoryEntry, "subscriptionId" | "identity">;
 
 /**
  * 一行历史。0.x 的老行(一行 = 一个目标 × 一条消息,带 `source` / `result` / `payload`)由迁移器改写
@@ -122,10 +117,10 @@ export const HistoryEntrySchema = HistoryEntryObjectSchema;
 
 /**
  * 补丁行:同一次推送的后续消息(词云 / 总结 / 图集 / @全体)落地后追加在行后面,
- * 读时按 `patch`(行 id)并回去。jsonl 仍是 append-only。
+ * 读时按 `rowId`(行 id)并回去。jsonl 仍是 append-only。
  */
 export const HistoryPatchSchema = z.object({
-	patch: z.uuid(),
+	rowId: z.uuid(),
 	status: PushStatusSchema,
 	messages: z.array(HistoryMessageSchema),
 });

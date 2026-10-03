@@ -1,8 +1,8 @@
 /**
  * 历史行 → wire view(`toHistoryView`)。REST 列表与 WS 两个事件共用这一处投影。
  *
- * 钉的是拓展行的身份(ADR-0019 决策 73)一路送到面板:这里一格格抄字段,漏抄 `extensionId` /
- * `externalId` 的话面板收到的就是一行「谁也不是」的 B 站行 —— 类型、写入测试都照样绿。
+ * 钉的是行的身份(ADR-0019 决策 73)一路送到面板:这里一格格抄字段,漏抄 `identity` 的话面板收到的就是
+ * 一行「谁也不是」的行 —— 类型、写入测试都照样绿。
  */
 
 import type { HistoryEntry } from "@bilibili-notify/internal";
@@ -12,8 +12,9 @@ import { toHistoryView } from "../view.js";
 const ROW: HistoryEntry = {
 	id: "11111111-1111-4111-8111-111111111111",
 	pushId: "22222222-2222-4222-8222-222222222222",
-	ts: "2026-09-24T00:00:00.000Z",
+	createdAt: "2026-09-24T00:00:00.000Z",
 	feature: "post",
+	identity: { sourceKey: "bilibili", externalId: "u1" },
 	subscriptionId: "33333333-3333-4333-8333-333333333333",
 	targetId: null,
 	status: "no-targets",
@@ -21,25 +22,35 @@ const ROW: HistoryEntry = {
 };
 
 describe("toHistoryView — 行的身份", () => {
-	it("拓展行:拓展 id 与外部 id 带到面板,没有 uid", () => {
+	it("拓展行:来源键(拓展 id)与外部 id 带到面板", () => {
 		const view = toHistoryView({
 			...ROW,
-			extensionId: "douyin",
-			externalId: "123",
-			unameSnapshot: "某抖音号",
+			identity: { sourceKey: "douyin", externalId: "123" },
+			nameSnapshot: "某抖音号",
 		});
 		expect(view).toMatchObject({
-			extensionId: "douyin",
-			externalId: "123",
-			unameSnapshot: "某抖音号",
+			identity: { sourceKey: "douyin", externalId: "123" },
+			nameSnapshot: "某抖音号",
 		});
-		expect(view.uid).toBeUndefined();
 	});
 
-	it("B 站行:uid 照旧,拓展那两格没有", () => {
-		const view = toHistoryView({ ...ROW, uid: "u1" });
-		expect(view.uid).toBe("u1");
-		expect(view.extensionId).toBeUndefined();
-		expect(view.externalId).toBeUndefined();
+	it("B 站行:来源键 bilibili、外部 id 就是 uid", () => {
+		const view = toHistoryView(ROW);
+		expect(view.identity).toEqual({ sourceKey: "bilibili", externalId: "u1" });
+	});
+
+	it("建行时刻叫 createdAt,重投标记叫 repushOf —— 老名字不再出现在视图上", () => {
+		const view = toHistoryView({
+			...ROW,
+			messages: [
+				{ payload: { kind: "text", text: "作品" }, role: "main" },
+				{ payload: { kind: "text", text: "作品" }, role: "main", repushOf: 0 },
+			],
+		});
+		expect(view.createdAt).toBe(ROW.createdAt);
+		expect(view).not.toHaveProperty("ts");
+		expect(view.messages[0]).not.toHaveProperty("repushOf");
+		expect(view.messages[1]).toMatchObject({ repushOf: 0 });
+		expect(view.messages[1]).not.toHaveProperty("retryOf");
 	});
 });

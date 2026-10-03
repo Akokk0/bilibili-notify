@@ -67,7 +67,7 @@ import {
 } from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowColor, historyRowIdentity, isExtensionRow } from "../utils/up-display";
+import { historyRowColor, historyRowIdentity, isExtensionIdentity } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName, subscriptionColor } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -376,14 +376,16 @@ export function TimelinePanel({
 						// 优先 entry 自带的写入期 snapshot —— 订阅后续被删除仍能正确显示。都对不上就写身份:
 						// B 站行「UID xxx」,拓展行「平台名 · 外部 id」(决策 73)。
 						const name =
-							h.unameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
+							h.nameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
 						// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
 						const avatar = h.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 						const color = historyRowColor(h);
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
 						// B 站行不画。
-						const platform = isExtensionRow(h) ? subscriptionPlatformOf(h, extensions) : undefined;
+						const platform = isExtensionIdentity(h.identity)
+							? subscriptionPlatformOf({ extensionId: h.identity.sourceKey }, extensions)
+							: undefined;
 						const tone = familyTone(h.feature);
 						const status = PUSH_STATUS_META[h.status];
 						const marked = h.status !== "delivered";
@@ -396,7 +398,7 @@ export function TimelinePanel({
 						return (
 							<div key={h.id} className="mb-2.5 flex items-center gap-3">
 								<div className="w-14 whitespace-nowrap text-right tabular-nums text-bn-xs text-bn-text-secondary">
-									{formatAgo(h.ts) ?? "—"}
+									{formatAgo(h.createdAt) ?? "—"}
 								</div>
 								<div className="relative z-bn-raised">
 									<span

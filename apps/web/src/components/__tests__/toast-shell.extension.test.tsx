@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * 推送小卡上「这是谁」那行小字(ADR-0019 决策 73):B 站行照旧「UID xxx」;拓展行没有 uid,
+ * 推送小卡上「这是谁」那行小字(ADR-0019 决策 73):B 站行照旧「UID xxx」;拓展行的来源键是拓展 id,
  * 写「平台名 · 外部 id」—— 平台名照已装拓展的清单,拓展卸载了取不到就写拓展 id。
  *
  * 单开一个文件:`toast-shell.test.tsx` 里有假定时器,这里要等拓展清单回来(`findBy*`)。
@@ -42,10 +42,10 @@ function pushView(over: Partial<PushEventView> = {}): PushEventView {
 	return {
 		id: "h1",
 		pushId: "p1",
-		ts: "2026-09-24T10:00:00.000Z",
+		createdAt: "2026-09-24T10:00:00.000Z",
 		feature: "post",
 		status: "delivered",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s1",
 		targetId: "t1",
 		messages: [{ text: "一条推送", role: "main", ok: true }],
@@ -54,7 +54,7 @@ function pushView(over: Partial<PushEventView> = {}): PushEventView {
 }
 
 function extView(over: Partial<PushEventView> = {}): PushEventView {
-	return pushView({ uid: undefined, extensionId: "douyin", externalId: "sec-1", ...over });
+	return pushView({ identity: { sourceKey: "douyin", externalId: "sec-1" }, ...over });
 }
 
 function renderShell() {

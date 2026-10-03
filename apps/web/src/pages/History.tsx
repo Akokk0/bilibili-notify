@@ -32,7 +32,7 @@ import {
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowColor, isExtensionRow } from "../utils/up-display";
+import { historyRowColor, isExtensionIdentity } from "../utils/up-display";
 import { displayName } from "./up/helpers";
 import { RelativeTime } from "./up/relative-time";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -113,8 +113,7 @@ export default function History() {
 			m.set(
 				e.id,
 				[
-					e.uid ?? "",
-					e.externalId ?? "",
+					e.identity.externalId,
 					sub ? displayName(sub) : "",
 					e.targetId ? (targetById.get(e.targetId)?.name ?? "") : "",
 					...e.messages.map((x) => x.text ?? ""),
@@ -245,16 +244,17 @@ function HistoryRow({
 	const [repushOpen, setRepushOpen] = useState(false);
 	const tone = familyTone(entry.feature);
 	const status = PUSH_STATUS_META[entry.status];
-	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。都没有就写身份:B 站行 uid、拓展行
-	// 外部 id(ADR-0019 决策 73)。
-	const upName =
-		entry.unameSnapshot ?? (sub ? displayName(sub) : entry.uid || entry.externalId || "未知");
+	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。都没有就写身份的外部 id:B 站行就是
+	// uid(ADR-0019 决策 73)。
+	const upName = entry.nameSnapshot ?? (sub ? displayName(sub) : entry.identity.externalId);
 	// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
 	const upAvatar = entry.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 	const upColor = historyRowColor(entry);
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
-	const platform = isExtensionRow(entry) ? subscriptionPlatformOf(entry, extensions) : undefined;
+	const platform = isExtensionIdentity(entry.identity)
+		? subscriptionPlatformOf({ extensionId: entry.identity.sourceKey }, extensions)
+		: undefined;
 	const headline = headlineOf(entry);
 	const count = messageCountOf(entry);
 	const expandable = hasDetails(entry);
@@ -273,7 +273,7 @@ function HistoryRow({
 				style={{ gridTemplateColumns: HISTORY_GRID }}
 			>
 				<span className="tabular-nums text-bn-xs text-bn-text-tertiary">
-					<RelativeTime at={entry.ts} />
+					<RelativeTime at={entry.createdAt} />
 				</span>
 				<Avatar name={upName} color={upColor} size={24} url={upAvatar} />
 				<Pill color={tone} subtle size="sm">
@@ -355,7 +355,7 @@ function RepushBar({
 	const repush = useMutation<{ count: number }, Error, "all" | "missing">({
 		mutationFn: async (mode) => {
 			const res = await api.post<HistoryRepushResponse>(`/api/history/${entry.id}/repush`, {
-				ts: entry.ts,
+				createdAt: entry.createdAt,
 				mode,
 			});
 			// 拒了(没这一行 / 现在补不了 / 请求不成形)是非 2xx,由 `api` 抛成 `ApiError`、
@@ -422,10 +422,10 @@ function RepushBar({
 /**
  * 展开后的逐条明细:序号 / 本体还是附加项 / 文案 / 图缩略 / 这条的结果。
  *
- * **号不是数组下标,是 `retryOf ?? 下标`**(ADR-0017 决策 15 与「后果」那一节)。重推
+ * **号不是数组下标,是 `repushOf ?? 下标`**(ADR-0017 决策 15 与「后果」那一节)。重推
  * 是追加进原行的(决策 14),3 条的行补过之后展开是 6 条 —— 按位置印 1..6 的话,后三条
  * 看上去就是三条凭空多出来的新消息,既看不出是谁的重投,也看不出前三条已经作废。
- * 印它补的**那一号**、再标一句「女仆补的」,那份可追溯才落到界面上;`retryOf` 就是
+ * 印它补的**那一号**、再标一句「女仆补的」,那份可追溯才落到界面上;`repushOf` 就是
  * 这个标记的来源,不另开第二个字段。
  *
  * ⚠️ 「每一号只认它**最后那次**尝试」的判定**只在服务端有一份**(决策 16),面板不重做
@@ -435,14 +435,14 @@ function MessageList({ entry }: { entry: HistoryEntryView }) {
 	return (
 		<ol className="space-y-1.5 border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2.5 pl-38">
 			{entry.messages.map((m, i) => {
-				const no = m.retryOf ?? i;
+				const no = m.repushOf ?? i;
 				return (
 					<MessageItem
 						// biome-ignore lint/suspicious/noArrayIndexKey: 行内消息按序追加、从不重排删除,位置就是它在这一行里的身份
 						key={`${entry.id}-${i}`}
 						no={no}
 						message={m}
-						superseded={entry.messages.some((o, j) => j > i && o.retryOf === no)}
+						superseded={entry.messages.some((o, j) => j > i && o.repushOf === no)}
 					/>
 				);
 			})}
@@ -489,7 +489,7 @@ function MessageItem({
 					<span className="ml-1.5 text-bn-text-tertiary">女仆后来又补了一次～</span>
 				) : null}
 			</span>
-			{message.retryOf !== undefined ? (
+			{message.repushOf !== undefined ? (
 				// 这一条是女仆补的那次,不是当时发出去的那次。
 				<Pill subtle size="sm">
 					女仆补的

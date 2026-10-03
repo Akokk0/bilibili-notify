@@ -29,19 +29,39 @@ describe("createSubscriptionLookup", () => {
 	});
 
 	it("forRow:id 还在 → 就是它,哪怕同 uid 还有一条排在前面", () => {
-		expect(lookup.forRow({ subscriptionId: "s-second", uid: "u1" })).toBe(SECOND);
+		expect(
+			lookup.forRow({
+				subscriptionId: "s-second",
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			}),
+		).toBe(SECOND);
 	});
 
 	it("forRow:id 不在了 → 回落到 uid 相同的 B 站订阅,两条时先出现的那条", () => {
-		expect(lookup.forRow({ subscriptionId: "s-gone", uid: "u1" })).toBe(FIRST);
+		expect(
+			lookup.forRow({
+				subscriptionId: "s-gone",
+				identity: { sourceKey: "bilibili", externalId: "u1" },
+			}),
+		).toBe(FIRST);
 	});
 
 	it("forRow:拓展订阅的外部 id 恰好等于那串 uid → 不算", () => {
-		expect(lookup.forRow({ subscriptionId: "s-gone", uid: "u9" })).toBeUndefined();
+		expect(
+			lookup.forRow({
+				subscriptionId: "s-gone",
+				identity: { sourceKey: "bilibili", externalId: "u9" },
+			}),
+		).toBeUndefined();
 	});
 
 	it("forRow:id 与 uid 都对不上 → undefined", () => {
-		expect(lookup.forRow({ subscriptionId: "s-gone", uid: "u404" })).toBeUndefined();
+		expect(
+			lookup.forRow({
+				subscriptionId: "s-gone",
+				identity: { sourceKey: "bilibili", externalId: "u404" },
+			}),
+		).toBeUndefined();
 	});
 });
 
@@ -66,8 +86,7 @@ describe("createSubscriptionLookup — 拓展行", () => {
 	const lookup = createSubscriptionLookup([BILI, OTHER_EXT, EXT_A, EXT_B]);
 	const extRow = (subscriptionId: string, externalId = "sec-1") => ({
 		subscriptionId,
-		extensionId: "douyin",
-		externalId,
+		identity: { sourceKey: "douyin", externalId },
 	});
 
 	it("forRow:id 还在 → 就是它,哪怕同一个人还有一条排在前面", () => {
@@ -80,7 +99,10 @@ describe("createSubscriptionLookup — 拓展行", () => {
 
 	it("forRow:外部 id 相同、拓展不同 → 不算", () => {
 		expect(
-			lookup.forRow({ subscriptionId: "s-gone", extensionId: "weibo", externalId: "sec-1" }),
+			lookup.forRow({
+				subscriptionId: "s-gone",
+				identity: { sourceKey: "weibo", externalId: "sec-1" },
+			}),
 		).toBeUndefined();
 	});
 
@@ -89,6 +111,11 @@ describe("createSubscriptionLookup — 拓展行", () => {
 	});
 
 	it("forRow:跨支不认 —— B 站行的 uid 恰好等于某个拓展订阅的外部 id,不认成那条拓展订阅", () => {
-		expect(lookup.forRow({ subscriptionId: "s-gone", uid: "sec-1" })).toBeUndefined();
+		expect(
+			lookup.forRow({
+				subscriptionId: "s-gone",
+				identity: { sourceKey: "bilibili", externalId: "sec-1" },
+			}),
+		).toBeUndefined();
 	});
 });

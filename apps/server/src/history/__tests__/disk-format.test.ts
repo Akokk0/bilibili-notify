@@ -2,8 +2,8 @@
  * 历史落盘的字节(冻结)—— 换写盘方式(追加 / 原子写)时一个字节都不许变。
  *
  * 守的几件事:
- *   - 本体行 = `JSON.stringify(entry)`、补丁行 = `{"patch":…,"status":…,"messages":…}`:紧凑、一行一条、
- *     末尾换行;补丁行**键序 `patch` 打头**(读侧靠行首认它,见 `isPatchLine`)
+ *   - 本体行 = `JSON.stringify(entry)`、补丁行 = `{"rowId":…,"status":…,"messages":…}`:紧凑、一行一条、
+ *     末尾换行;补丁行**键序 `rowId` 打头**(读侧靠行首认它,见 `isPatchLine`)
  *   - 图片按原字节落在 `history/img/`(含非 UTF-8 的字节),目录里没有别的东西
  *   - `deleteRange` 改写日文件:留下的行原样、一行一条、末尾换行;窗里全删光 → 文件还在、0 字节;
  *     `history/` 里不留临时文件
@@ -43,7 +43,7 @@ function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: OK }],
@@ -54,22 +54,22 @@ function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 const dayPath = (iso: string) => join(dataDir, "history", `${iso.slice(0, 10)}.jsonl`);
 
 describe("历史落盘的字节", () => {
-	it("本体行与补丁行:紧凑 JSON、一行一条、末尾换行,补丁行 patch 打头", async () => {
+	it("本体行与补丁行:紧凑 JSON、一行一条、末尾换行,补丁行 rowId 打头", async () => {
 		const pushId = randomUUID();
 		const entry = await store.record(input({ pushId }));
 		await store.record(
 			input({ pushId, messages: [{ payload: text("@全体"), role: "extra", result: OK }] }),
 		);
 
-		const raw = await readFile(dayPath(entry.ts), "utf8");
+		const raw = await readFile(dayPath(entry.createdAt), "utf8");
 		expect(raw.endsWith("\n")).toBe(true);
 		expect(raw.endsWith("\n\n")).toBe(false);
 		const lines = raw.slice(0, -1).split("\n");
 		expect(lines).toHaveLength(2);
 		// 本体行就是返回的那份 entry 序列化出来的。
 		expect(lines[0]).toBe(JSON.stringify(entry));
-		// 补丁行:键序 patch → status → messages,整行是紧凑 JSON(再序列化一遍字节不变)。
-		expect(lines[1]?.startsWith(`{"patch":"${entry.id}","status":"delivered","messages":[`)).toBe(
+		// 补丁行:键序 rowId → status → messages,整行是紧凑 JSON(再序列化一遍字节不变)。
+		expect(lines[1]?.startsWith(`{"rowId":"${entry.id}","status":"delivered","messages":[`)).toBe(
 			true,
 		);
 		for (const line of lines) expect(JSON.stringify(JSON.parse(line))).toBe(line);
@@ -140,7 +140,7 @@ describe("deleteRange 改写日文件的字节", () => {
 
 		await store.deleteRange({ fromMs, toMs });
 
-		expect(await readFile(dayPath(before.ts), "utf8")).toBe(
+		expect(await readFile(dayPath(before.createdAt), "utf8")).toBe(
 			`${JSON.stringify(before)}\n${JSON.stringify(after)}\n`,
 		);
 		expect((await readdir(join(dataDir, "history"))).sort()).toEqual(["2026-09-06.jsonl", "img"]);
@@ -153,7 +153,7 @@ describe("deleteRange 改写日文件的字节", () => {
 
 		expect(await store.deleteRange({ fromMs, toMs })).toBe(2);
 
-		expect((await stat(dayPath(row.ts))).size).toBe(0);
+		expect((await stat(dayPath(row.createdAt))).size).toBe(0);
 		expect((await readdir(join(dataDir, "history"))).sort()).toEqual(["2026-09-06.jsonl", "img"]);
 	});
 });

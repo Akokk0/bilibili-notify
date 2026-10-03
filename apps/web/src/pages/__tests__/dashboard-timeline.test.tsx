@@ -20,10 +20,10 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	return {
 		id: "h1",
 		pushId: "p1",
-		ts: new Date().toISOString(),
+		createdAt: new Date().toISOString(),
 		feature: "post",
 		status: "delivered",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s-gone",
 		targetId: null,
 		messages: [{ text: "一条推送", role: "main", ok: true }],
@@ -32,7 +32,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 }
 
 function extRow(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
-	return row({ uid: undefined, extensionId: "douyin", externalId: "sec-1", ...over });
+	return row({ identity: { sourceKey: "douyin", externalId: "sec-1" }, ...over });
 }
 
 /** 装着的抖音订阅源 —— 平台名照它的清单。 */
@@ -80,7 +80,7 @@ describe("最近推送活动 · 行是谁", () => {
 	});
 
 	it("拓展行有名字快照 → 写快照", () => {
-		renderPanel([extRow({ unameSnapshot: "某抖音号" })], [], [DOUYIN]);
+		renderPanel([extRow({ nameSnapshot: "某抖音号" })], [], [DOUYIN]);
 		expect(screen.getByText("某抖音号")).toBeTruthy();
 		expect(screen.queryByText("抖音 · sec-1")).toBeNull();
 	});
@@ -109,7 +109,11 @@ describe("最近推送活动 · 行是谁", () => {
 				lastRefreshedAt: "2026-09-24T00:00:00Z",
 			},
 		};
-		renderPanel([extRow({ externalId: "u1" })], [bili], [DOUYIN]);
+		renderPanel(
+			[extRow({ identity: { sourceKey: "douyin", externalId: "u1" } })],
+			[bili],
+			[DOUYIN],
+		);
 		expect(screen.queryByText("某B站UP")).toBeNull();
 		expect(screen.getByText("抖音 · u1")).toBeTruthy();
 	});
@@ -129,7 +133,7 @@ describe("最近推送活动 · 平台徽章", () => {
 	}
 
 	it("拓展行带平台徽章(短名照清单),名字取自快照也带", () => {
-		const { container } = renderPanel([extRow({ unameSnapshot: "某抖音号" })], [], [DOUYIN]);
+		const { container } = renderPanel([extRow({ nameSnapshot: "某抖音号" })], [], [DOUYIN]);
 		expect(badgeTexts(container)).toContain("抖");
 		expect(screen.getByText("某抖音号")).toBeTruthy();
 	});
@@ -141,12 +145,12 @@ describe("最近推送活动 · 平台徽章", () => {
 	});
 
 	it("拓展卸载了(清单里没有它)→ 徽章写拓展 id", () => {
-		const { container } = renderPanel([extRow({ unameSnapshot: "某抖音号" })], [], []);
+		const { container } = renderPanel([extRow({ nameSnapshot: "某抖音号" })], [], []);
 		expect(badgeTexts(container)).toContain("douyin");
 	});
 
 	it("B 站行没有平台徽章:只有类型与状态那两枚", () => {
-		const { container } = renderPanel([row({ unameSnapshot: "某UP" })], [], [DOUYIN]);
+		const { container } = renderPanel([row({ nameSnapshot: "某UP" })], [], [DOUYIN]);
 		expect(badgeTexts(container)).toEqual(["动态", "已送达"]);
 	});
 });
@@ -156,10 +160,10 @@ describe("最近推送活动 · 左列时间", () => {
 
 	it("写「N 分钟前」(数字和单位之间带空格);解析不了的时刻写「—」", () => {
 		renderPanel([
-			row({ id: "h1", ts: agoIso(59 * 60_000 + 5_000) }),
-			row({ id: "h2", ts: agoIso(3 * 3_600_000 + 5_000) }),
-			row({ id: "h3", ts: agoIso(10_000) }),
-			row({ id: "h4", ts: "不是时刻" }),
+			row({ id: "h1", createdAt: agoIso(59 * 60_000 + 5_000) }),
+			row({ id: "h2", createdAt: agoIso(3 * 3_600_000 + 5_000) }),
+			row({ id: "h3", createdAt: agoIso(10_000) }),
+			row({ id: "h4", createdAt: "不是时刻" }),
 		]);
 		expect(screen.getByText("59 分钟前")).toBeTruthy();
 		expect(screen.getByText("3 小时前")).toBeTruthy();
@@ -171,7 +175,7 @@ describe("最近推送活动 · 左列时间", () => {
 		// 带空格的「59 分钟前」比不带空格时更宽,窄槽里会折行;所以这一列不许换行。
 		// 竖线 `left-M` 要压在圆点那一列的起点上:列宽 N + 行间距 gap-3(3) + 容器 pl-1(1) = N + 4。
 		// 单测里没有布局,只能钉这条换算 —— 改了一边忘了另一边,线就偏出圆点。
-		const { container } = renderPanel([row({ ts: agoIso(59 * 60_000 + 5_000) })]);
+		const { container } = renderPanel([row({ createdAt: agoIso(59 * 60_000 + 5_000) })]);
 		const col = screen.getByText("59 分钟前");
 		expect(col.className).toContain("whitespace-nowrap");
 		const width = Number(/(?:^|\s)w-(\d+)(?:\s|$)/.exec(col.className)?.[1]);

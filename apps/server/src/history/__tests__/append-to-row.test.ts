@@ -51,7 +51,7 @@ function input(over: Partial<NewHistoryEntry> = {}): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: FAIL }],
@@ -65,22 +65,22 @@ async function dayLines(ts: string): Promise<string[]> {
 }
 
 describe("appendToRow", () => {
-	it("补一条成功的 → 行里多一条带 retryOf 的消息,状态翻成 delivered", async () => {
+	it("补一条成功的 → 行里多一条带 repushOf 的消息,状态翻成 delivered", async () => {
 		const entry = await store.record(input());
 		expect(entry.status).toBe("failed");
-		const merged = await store.appendToRow(entry.id, entry.ts, [
-			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
+		const merged = await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
 		]);
 		expect(merged?.id).toBe(entry.id);
 		expect(merged?.messages).toHaveLength(2);
-		expect(merged?.messages[1]?.retryOf).toBe(0);
+		expect(merged?.messages[1]?.repushOf).toBe(0);
 		expect(merged?.status).toBe("delivered");
 	});
 
 	it("补了还是失败 → 再多一条,状态不变", async () => {
 		const entry = await store.record(input());
-		const merged = await store.appendToRow(entry.id, entry.ts, [
-			{ payload: text("卡片"), role: "main", result: FAIL, retryOf: 0 },
+		const merged = await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: FAIL, repushOf: 0 },
 		]);
 		expect(merged?.status).toBe("failed");
 		expect(merged?.messages).toHaveLength(2);
@@ -89,8 +89,8 @@ describe("appendToRow", () => {
 	it("emit 的是 history-updated(不是 recorded —— 行还是那一行)", async () => {
 		const entry = await store.record(input());
 		updated.length = 0;
-		await store.appendToRow(entry.id, entry.ts, [
-			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
+		await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
 		]);
 		expect(updated).toHaveLength(1);
 		expect(updated[0]?.id).toBe(entry.id);
@@ -104,8 +104,8 @@ describe("appendToRow", () => {
 	it("内存里那张表早没了(重启过)也照样找得到这一行", async () => {
 		const entry = await store.record(input());
 		const afterRestart = createHistoryStore({ dataRoot: dataDir, bus, logger: logger() });
-		const merged = await afterRestart.appendToRow(entry.id, entry.ts, [
-			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
+		const merged = await afterRestart.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
 		]);
 		expect(merged?.id).toBe(entry.id);
 		expect(merged?.status).toBe("delivered");
@@ -126,9 +126,9 @@ describe("appendToRow", () => {
 		const row = {
 			id,
 			pushId: randomUUID(),
-			ts: old,
+			createdAt: old,
 			feature: "post",
-			uid: "u1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: SUB,
 			targetId: T1,
 			status: "failed",
@@ -138,14 +138,14 @@ describe("appendToRow", () => {
 		await writeFile(join(dataDir, "history", "2026-09-17.jsonl"), `${JSON.stringify(row)}\n`);
 
 		const merged = await store.appendToRow(id, old, [
-			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
+			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
 		]);
 		expect(merged?.status).toBe("delivered");
 
 		// 三天前那个文件里多了一条补丁行,今天的文件压根没被建出来。
 		const lines = await dayLines(old);
 		expect(lines).toHaveLength(2);
-		expect(JSON.parse(lines[1] as string)).toMatchObject({ patch: id, status: "delivered" });
+		expect(JSON.parse(lines[1] as string)).toMatchObject({ rowId: id, status: "delivered" });
 		await expect(dayLines(new Date().toISOString())).rejects.toThrow();
 
 		// 而且读回来真的并进了那一行 —— 补丁不是写了就算数,得找得到亲。
@@ -156,10 +156,10 @@ describe("appendToRow", () => {
 
 	it("findRow:按 id 把那一行读回来(补丁已经并好)", async () => {
 		const entry = await store.record(input());
-		await store.appendToRow(entry.id, entry.ts, [
-			{ payload: text("卡片"), role: "main", result: OK, retryOf: 0 },
+		await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
 		]);
-		const found = await store.findRow(entry.id, entry.ts);
+		const found = await store.findRow(entry.id, entry.createdAt);
 		expect(found?.id).toBe(entry.id);
 		expect(found?.messages).toHaveLength(2);
 		expect(found?.status).toBe("delivered");
@@ -167,30 +167,30 @@ describe("appendToRow", () => {
 
 	it("findRow:找不到 → null(端点据此回 404)", async () => {
 		const entry = await store.record(input());
-		expect(await store.findRow(randomUUID(), entry.ts)).toBeNull();
+		expect(await store.findRow(randomUUID(), entry.createdAt)).toBeNull();
 		expect(await store.findRow(entry.id, "2020-01-01T00:00:00.000Z")).toBeNull();
 	});
 
 	it("行 id 找不到 → null,什么都不写", async () => {
 		const entry = await store.record(input());
-		const merged = await store.appendToRow(randomUUID(), entry.ts, [
-			{ payload: text("x"), role: "main", result: OK, retryOf: 0 },
+		const merged = await store.appendToRow(randomUUID(), entry.createdAt, [
+			{ payload: text("x"), role: "main", result: OK, repushOf: 0 },
 		]);
 		expect(merged).toBeNull();
-		expect(await dayLines(entry.ts)).toHaveLength(1);
+		expect(await dayLines(entry.createdAt)).toHaveLength(1);
 	});
 
 	it("那一天压根没有文件 → null", async () => {
 		const merged = await store.appendToRow(randomUUID(), "2020-01-01T00:00:00.000Z", [
-			{ payload: text("x"), role: "main", result: OK, retryOf: 0 },
+			{ payload: text("x"), role: "main", result: OK, repushOf: 0 },
 		]);
 		expect(merged).toBeNull();
 	});
 
 	it("一条都不补 → null,不写空补丁行", async () => {
 		const entry = await store.record(input());
-		expect(await store.appendToRow(entry.id, entry.ts, [])).toBeNull();
-		expect(await dayLines(entry.ts)).toHaveLength(1);
+		expect(await store.appendToRow(entry.id, entry.createdAt, [])).toBeNull();
+		expect(await dayLines(entry.createdAt)).toHaveLength(1);
 	});
 
 	// 重推补的图跟着原行的序号往后排,不会盖掉原来那几张。
@@ -203,8 +203,8 @@ describe("appendToRow", () => {
 			input({ messages: [{ payload: png("原图"), role: "main", result: FAIL }] }),
 		);
 		const first = entry.messages[0]?.payload.imageRef;
-		const merged = await store.appendToRow(entry.id, entry.ts, [
-			{ payload: png("补的图"), role: "main", result: OK, retryOf: 0 },
+		const merged = await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: png("补的图"), role: "main", result: OK, repushOf: 0 },
 		]);
 		const second = merged?.messages[1]?.payload.imageRef;
 		expect(first).toBeDefined();

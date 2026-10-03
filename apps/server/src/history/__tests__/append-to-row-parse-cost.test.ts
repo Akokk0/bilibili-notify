@@ -57,7 +57,7 @@ function input(): NewHistoryEntry {
 	return {
 		pushId: randomUUID(),
 		feature: "post",
-		uid: "u1",
+		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: SUB,
 		targetId: T1,
 		messages: [{ payload: text("卡片"), role: "main", result: FAIL }],
@@ -65,7 +65,7 @@ function input(): NewHistoryEntry {
 }
 
 const retry = (n: number) =>
-	[{ payload: text(`补 ${n}`), role: "main" as const, result: OK, retryOf: n }] as const;
+	[{ payload: text(`补 ${n}`), role: "main" as const, result: OK, repushOf: n }] as const;
 
 function dayPath(ts: string): string {
 	return join(dataDir, "history", `${ts.slice(0, 10)}.jsonl`);
@@ -77,11 +77,11 @@ describe("appendToRow — 解析成本", () => {
 		const many = await store.record(input());
 
 		const before1 = reads();
-		await store.appendToRow(solo.id, solo.ts, retry(0));
+		await store.appendToRow(solo.id, solo.createdAt, retry(0));
 		const cost1 = reads() - before1;
 
 		const before6 = reads();
-		for (let i = 0; i < 6; i++) await store.appendToRow(many.id, many.ts, retry(i));
+		for (let i = 0; i < 6; i++) await store.appendToRow(many.id, many.createdAt, retry(i));
 		const cost6 = reads() - before6;
 
 		expect(cost1).toBe(1);
@@ -90,8 +90,8 @@ describe("appendToRow — 解析成本", () => {
 
 	it("补完 6 条,行里就是 1 + 6 条,状态照样算得对", async () => {
 		const entry = await store.record(input());
-		for (let i = 0; i < 6; i++) await store.appendToRow(entry.id, entry.ts, retry(i));
-		const merged = await store.findRow(entry.id, entry.ts);
+		for (let i = 0; i < 6; i++) await store.appendToRow(entry.id, entry.createdAt, retry(i));
+		const merged = await store.findRow(entry.id, entry.createdAt);
 		expect(merged?.messages).toHaveLength(7);
 		// 身份号 0 最后一次成了 → 整行翻绿(1-5 号是重投,原行里本来没有那几号)。
 		expect(merged?.status).toBe("delivered");
@@ -99,45 +99,45 @@ describe("appendToRow — 解析成本", () => {
 
 	it("🔴 盘上那一行被别人动过 → 手上那份作废,重读一遍再补", async () => {
 		const entry = await store.record(input());
-		await store.appendToRow(entry.id, entry.ts, retry(0));
+		await store.appendToRow(entry.id, entry.createdAt, retry(0));
 
 		// 外面直接往同一天的文件追一条补丁行(另一个写者 / 夹具都会这么干)。
-		// 键序固定 `patch` 打头 —— 读侧靠行首认它。
+		// 键序固定 `rowId` 打头 —— 读侧靠行首认它。
 		const intruder = {
-			patch: entry.id,
+			rowId: entry.id,
 			status: "partial",
 			messages: [{ payload: { kind: "text", text: "别人写的" }, role: "extra", result: FAIL }],
 		};
-		await writeFile(dayPath(entry.ts), `${JSON.stringify(intruder)}\n`, {
+		await writeFile(dayPath(entry.createdAt), `${JSON.stringify(intruder)}\n`, {
 			flag: "a",
 			encoding: "utf8",
 		});
 
 		const before = reads();
-		const merged = await store.appendToRow(entry.id, entry.ts, retry(1));
+		const merged = await store.appendToRow(entry.id, entry.createdAt, retry(1));
 		// 重读了(缓存没敢用),而且并进来的是**盘上那一份**:1 本体 + 1 补 + 1 别人 + 1 补。
 		expect(reads() - before).toBe(1);
 		expect(merged?.messages).toHaveLength(4);
 		expect(merged?.messages.map((m) => m.payload.text)).toContain("别人写的");
 		// 盘上也不能被盖掉 —— 覆盖式的 base 会让「别人写的」那条从读回来的行里消失。
-		const back = await store.findRow(entry.id, entry.ts);
+		const back = await store.findRow(entry.id, entry.createdAt);
 		expect(back?.messages).toHaveLength(4);
 	});
 
 	it("同一天又落了一行 → 也作废(文件变了就不认)", async () => {
 		const entry = await store.record(input());
-		await store.appendToRow(entry.id, entry.ts, retry(0));
+		await store.appendToRow(entry.id, entry.createdAt, retry(0));
 		await store.record(input());
 		const before = reads();
-		await store.appendToRow(entry.id, entry.ts, retry(1));
+		await store.appendToRow(entry.id, entry.createdAt, retry(1));
 		expect(reads() - before).toBe(1);
 	});
 
 	it("日文件整份没了(保留期端了它)→ 照旧回 null,不凭手上那份凭空补一行出来", async () => {
 		const entry = await store.record(input());
-		await store.appendToRow(entry.id, entry.ts, retry(0));
-		await writeFile(dayPath(entry.ts), "", "utf8");
-		expect(await store.appendToRow(entry.id, entry.ts, retry(1))).toBeNull();
-		expect(await readFile(dayPath(entry.ts), "utf8")).toBe("");
+		await store.appendToRow(entry.id, entry.createdAt, retry(0));
+		await writeFile(dayPath(entry.createdAt), "", "utf8");
+		expect(await store.appendToRow(entry.id, entry.createdAt, retry(1))).toBeNull();
+		expect(await readFile(dayPath(entry.createdAt), "utf8")).toBe("");
 	});
 });
