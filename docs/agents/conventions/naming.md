@@ -78,6 +78,9 @@
 | 一次操作失败的那一支 | `Failure`（`{ ok: false, code, message, … }`）；整个结果 `Result<T>`，标准码 `FailureCode`；HTTP 非 2xx 的回应体 `ErrorResponse`（装的是去掉 `ok` 的 `Failure`） | `err`、`reason`、`why`（只管失败原因，ADR-0026 决策 2） |
 | 订阅的标签（主人自己建，一条订阅能挂好几个） | `SubscriptionTag`（中文「标签」）；订阅上那一格叫 `tagIds` | 当它用的 `group` / `Group`（代码里已指群、图集、设置分组）、「分组」（多选是标签的语义，「分组」也是 B 站关注分组的叫法）；光写 `Tag`（`tag` 已是 HTML 标签、日志 tag、`authTag`）。见 ADR-0034 |
 | 校验或检查不过的一条原因 | `Issue`（`{ path?, message }`） | 当原因清单用的 `errors: string[]`；`Problem` 只指问题表里的一条 |
+| HTTP 客户端（`packages/http`，每个集成一个） | `HttpClient`；走网络取数的方法叫 `fetch`，回应叫 `HttpResponse` | 带平台前缀的 `BiliHttpClient`；当它用的 `get` / `request`（`get…` 只留给不走网络的读取）。见 ADR-0025 决策 6 下 10-03 的 🔗 |
+| cookie 罐 | `CookieJar`；一条 cookie 的数据形状 `Cookie` | `CookieStore`（`Store` 只指存盘的仓库）、`BACookie`、`BiliCookieJar` |
+| 浏览器身份（UA 与 `sec-ch-ua` 那一套，一起生成、永远配套） | `BrowserIdentity` | 单独设一个 `userAgent`（ADR-0025 决策 7） |
 
 ## 不管的
 

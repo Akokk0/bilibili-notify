@@ -118,7 +118,7 @@
 | ⑪ | 格式化函数收一份：`formatCount`（含带符号的变体）、`formatAgo`、`formatDuration`、`formatClock`（`video-card.ts` 里现在叫 `formatDuration(seconds)` 的那个改名过来）；删 `{time}` 兜底与 `getTimeDifference` 钩子；守卫 4 点名表补上 | ✅ 已落（口径主人 10-02 定：带正负号用普通「-」、零写「0」，「N 分钟前」带空格，时长最大到天；放在零依赖子路径 `@bilibili-notify/internal/format`；守卫 4 开张 `scripts/__tests__/unique-homes.test.mjs`，点名表头一批是这五个；顺手修了 B 站开播时刻按服务所在时区读的两处，见 data-model「数字、时间与「不知道」」） |
 | ⑫ | 订阅标签（ADR-0034）；顺手删旧的 `SubscriptionStateSchema` 与 contract 的死字段 `SubscriptionDTO.state` | ✅ 已落（标签表与订阅同住 `config/subscriptions.json` 的 `{ tags, subscriptions }`，`GET` / `PUT /api/subs/tags`（㉚ 起是 `/api/subscriptions/tags`）整张换；迁移修订号 15，名字里的中文逗号不拆（主人定）；备份同进同出、合并先按 id 再按名字；面板一个 `TagEditDialog` 收掉逗号文本框与编辑分组弹框。施工时定的几点写进 ADR-0034 的 🔗） |
 | ⑬ | 特性键改名、直播拆成 `liveStart` / `liveStreaming`（独立的开关、目标、间隔与补报开播）、`PushKind` 的两层意思拆开；以特性键做键的配置一起改键（迁移表「特性键」到「文案」那几行）；守卫 13 前半开（10-02 开片，切成 ⑬a–⑬f，见表下「⑬ 开片」） | ✅ 已落（10-03） |
-| ⑭ | 抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | 未开工 |
+| ⑭ | （10-03 开片，切成 ⑭a–⑭c，见表下「⑭ 开片」）抽 `packages/http`：请求客户端、cookie 罐、浏览器身份、`websocket()`；删自定义 UA；出网点名表换路径。身份与 cookie 罐本期经注入的存储留在原处，3a 再挪进 `ctx` | 未开工 |
 | ⑮ | 图库 `images/`：`<sha256>.<ext>`、`ImageRef`、嗅探、8MB 上限、同源读口；目录表加键 | 未开工 |
 | ⑯ | 抓图核心服务：逐跳查重定向、超时、结果形状、`storeImage`。旧引擎本期由服务端直接调它拿 `ImageRef`，3a 改走 `ctx.fetchImage` | 未开工 |
 | ⑰ | 引用方登记表 + 按引用清扫 + 新图宽限期；守卫：写图库的模块不在登记表里就判红 | 未开工 |
@@ -148,6 +148,11 @@
   - ⑬e 守卫 13 前半。✅ 已落（清单 `migration/keyed-records.ts` + 判定函数 + 行为核对，做法见 data-and-migration「守卫 13」；订阅那一族的 1.0 步骤抽成纯函数 `toCurrentRow`，读写盘与守卫共用）
   - ⑬f 历史行的推送种类换成特性键（10-03 主人定从 ⑱ 提前）：盘上那一格 `kind` → `feature`，值 `dynamic` / `live` / `live-ongoing` / `live-end` / `guard` / `sc` / `special-danmaku` / `special-enter` → 对应的特性键；`/api/history?kind=` → `?feature=`、按天计数的键、重推闸、契约里的 `DailyHistoryCount`、面板 `PUSH_KIND_META` 改成按特性键做键；`PushKindSchema` 与 `featureToPushKind` / `pushKindToFeature` 删掉，全仓只剩特性键一套名字。迁移加在 `migration/history.ts` 的行级变换里，仍是一趟读写，⑱ 再往同一个函数里加别的字段，历史不会多迁一次；修订号抬一。✅ 已落（修订号 18；`?kind=` 与不是特性键的 `?feature=` 都回 400，和 `limit` / `since` 一个做法；面板的种类表叫 `FEATURE_DESCRIPTORS`（`config/push-features.ts`），分组 `PushFamily` 取值 `live` / `post` / `superchat` / `membership`；守卫 13 补了历史那一族，先红后绿；迁移耗时测试比值 4.05，仍在 5.5 以内）
   - 不归 ⑬ 的：`cardStyleByKind` 的键归 ㉔（它是卡种键，与卡片皮肤共用 `live` / `dynamic` / `sc` / `guard`，`live` 的新名 ㉔ 才定，分两趟改两边名字会对不上）；`app.logLevels` 归 3a（`dynamic` / `live` 并成 `bilibili` 要集成键）。历史行的推送种类原定 ⑬ 不改值、留到 ⑱（`featureToPushKind` 当桥）；10-03 主人定提前成 ⑬f：⑬d 之后两边已经一一对应，历史迁移是一趟读写、提前不会多迁一次，而 ⑱ 要等 ⑮ 的只有头像那一格。备份版本在 ⑬c 抬一次（⑫ 改了备份里订阅那一节的形状，当时漏抬）。
+- **⑭ 开片（10-03）**：先勘察，再一题一题问主人（定案在 ADR-0025 决策 6 下 10-03 的 🔗），切成三小片依次提交：
+  - ⑭a 新包 `packages/http`、B 站搬过去：通用的 `client.fetch` 与 `HttpResponse`、结果形状；B 站那层的薄包保住今天的行为；罐子加 `load()` / `clear()` 与 IP、`Domain` 规则，客户端改成长期有效的同一个；身份的「生成」「只升不降」两个纯函数；出网点名表换路径、B 站替身棘轮删掉搬走的两行。行为不变。
+  - ⑭b `websocket()`、B 站弹幕切过去（握手头不变），出网棘轮里 blive 那一条清零。
+  - ⑭c 删自定义 UA：设置 schema、引擎接线、面板那一格、ticket 请求的特例；迁移把 `bilibili.json` 的 `userAgent` 丢掉，抬修订号。
+  - 真机待验（不在这一片）：弹幕握手要不要补 `sec-ch-ua` / `Origin`。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名；⑲ 图片保留天数的键名；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha
