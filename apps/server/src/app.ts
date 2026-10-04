@@ -286,7 +286,7 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
  *   /api/health           — liveness (short)
  *   /api/health/details   — rich snapshot incl. config-scope meta
  *   /api/settings         — GET / PATCH
- *   /api/subscriptions    — GET / POST / PATCH /:id / DELETE /:id(+ tags、:id/avatar、search、lookup)
+ *   /api/subscriptions    — GET / POST / PATCH /:id / DELETE /:id(+ tags、search、lookup)
  *   /api/targets          — GET / POST / PATCH /:id / DELETE /:id / POST /:id/test
  *   /api/ai/skills        — 女仆技能(离开 AI 聊天没有意义,下沉在 /api/ai 底下)
  *   /api/cards/skins      — 卡片皮肤库(与出卡同一个前缀;截图口 /:id/screenshot 在 cards 路由里)

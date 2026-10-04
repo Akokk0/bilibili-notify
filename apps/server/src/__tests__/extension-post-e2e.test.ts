@@ -24,6 +24,7 @@ import type {
 	ExtensionLookupResponse,
 	ExtensionsResponse,
 	HistoryResponse,
+	SubscriptionDTO,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
@@ -211,7 +212,12 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 			const candidate = candidates[i];
 			if (!candidate) throw new Error("解析门少交了候选");
 			who[key] = { externalId: candidate.id, name: candidate.name, target: targetOf(key) };
-			const { id: _id, ...profile } = candidate;
+			// 面板把候选预填进草稿的做法:候选的头像是 data URL,它是个网址,放 `avatarUrl`。
+			const profile = {
+				name: candidate.name,
+				...(candidate.avatar ? { avatarUrl: candidate.avatar } : {}),
+				...(candidate.fans === undefined ? {} : { fans: candidate.fans }),
+			};
 			const base = makeExtensionSubscription({
 				id: SUBS[key].id,
 				extensionId: FAKE,
@@ -282,7 +288,11 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 	}, 15_000);
 
 	it("卡是照作品画的:作者名与存下的头像(转成 data URL)、正文、九宫格里的图都在卡上", async () => {
-		const avatar = await api(`/api/subscriptions/${SUBS.a.id}/avatar`);
+		// 甲的头像在资料缓存里是图库引用,面板从图库的同源读口取。
+		const profileA = ((await (await api("/api/subscriptions")).json()) as SubscriptionDTO[]).find(
+			(s) => s.id === SUBS.a.id,
+		)?.cachedProfile;
+		const avatar = await api(`/api/images/${profileA?.avatar}`);
 		expect(avatar.status).toBe(200);
 		const avatarDataUrl = `data:${avatar.headers.get("content-type")};base64,${Buffer.from(
 			await avatar.arrayBuffer(),
@@ -293,8 +303,8 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		);
 		expect(card, "甲那张图文卡没画出来").toBeDefined();
 		expect(card).toContain(avatarDataUrl);
-		// 头像是面板的相对地址那种的话,截图时加载不到(决策 68)。
-		expect(card).not.toContain(`/api/subscriptions/${SUBS.a.id}/avatar`);
+		// 头像是面板的同源地址那种的话,截图时加载不到(决策 68)。
+		expect(card).not.toContain(`/api/images/${profileA?.avatar}`);
 		// 三张作品图都转成了 data URL 进卡。
 		expect(card?.match(/data:image\/png;base64,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
 	});

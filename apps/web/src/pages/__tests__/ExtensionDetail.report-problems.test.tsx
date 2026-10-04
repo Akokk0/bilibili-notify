@@ -60,7 +60,7 @@ function extSub(id: string, externalId: string, name?: string): Subscription {
 		...makeEmptySubscription({ sourceKey: "douyin", externalId: externalId }),
 		id,
 		cachedProfile: name
-			? { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" }
+			? { name, sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" }
 			: undefined,
 	};
 }

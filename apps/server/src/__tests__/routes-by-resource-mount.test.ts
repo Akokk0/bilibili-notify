@@ -55,7 +55,6 @@ const NEW_PATHS: Probe[] = [
 	get("/api/settings"),
 	get("/api/subscriptions"),
 	get("/api/subscriptions/tags"),
-	get(`/api/subscriptions/${ID}/avatar`),
 	get("/api/stats/followers"),
 	get("/api/ai/skills"),
 	post("/api/ai/test"),
@@ -114,6 +113,8 @@ const OLD_PATHS: Probe[] = [
 	post(`/api/connections/${ID}/test`),
 	// 聊天附件的读口(⑳b 起走图库的同源读口 `/api/images/<ref>`,这个口退役)。
 	get(`/api/ai/assets/${"0".repeat(32)}.png`),
+	// 拓展订阅头像的读口(⑳c 起头像在图库里、资料里放引用,走 `/api/images/<ref>`,这个口退役)。
+	get(`/api/subscriptions/${ID}/avatar`),
 ];
 
 let dataDir: string;

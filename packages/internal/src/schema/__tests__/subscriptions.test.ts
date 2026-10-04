@@ -107,7 +107,7 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 	it("CachedProfileSchema 仍可独立 parse", () => {
 		const r = CachedProfileSchema.safeParse({
 			name: "n",
-			avatar: "a",
+			avatarUrl: "https://example.com/x.png",
 			sign: "s",
 			fans: 10,
 			lastRefreshedAt: "2026-05-19T00:00:00.000Z",
@@ -115,8 +115,18 @@ describe("M2: 外置 schema 仍 export(SubRuntimeStore / join 复用)", () => {
 		expect(r.success).toBe(true);
 	});
 
+	it("头像是两格:avatar 装图库引用(拓展订阅),avatarUrl 装远端网址(B 站订阅);没有就是两格都缺", () => {
+		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+		const ref = `${"a".repeat(64)}.png`;
+		expect(CachedProfileSchema.safeParse(base).success).toBe(true);
+		expect(CachedProfileSchema.parse({ ...base, avatar: ref })).toMatchObject({ avatar: ref });
+		expect(
+			CachedProfileSchema.parse({ ...base, avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" }),
+		).toMatchObject({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" });
+	});
+
 	it("CachedProfile 可以不带粉丝数(拓展的候选不一定知道;写成 0 就是撒谎),带了照旧不许负数", () => {
-		const base = { name: "n", avatar: "", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
+		const base = { name: "n", sign: "", lastRefreshedAt: "2026-09-23T00:00:00.000Z" };
 		expect(CachedProfileSchema.safeParse(base).success).toBe(true);
 		expect(CachedProfileSchema.safeParse({ ...base, fans: -1 }).success).toBe(false);
 	});

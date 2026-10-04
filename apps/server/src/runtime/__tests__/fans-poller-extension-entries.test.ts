@@ -144,7 +144,6 @@ function profile(fans?: number, lastRefreshedAt = iso(5 * 60_000)): SubRuntime {
 	return {
 		cachedProfile: {
 			name: "抖音甲",
-			avatar: "",
 			sign: "",
 			...(fans === undefined ? {} : { fans }),
 			lastRefreshedAt,
@@ -307,7 +306,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 	it("B 站风控退避期间,拓展条目照样刷新(拓展不问 B 站),B 站不再敲", async () => {
 		await writeSeries("e1", E1_SERIES);
 		const p = await start([biliSub("b1", "1"), extSub("e1", "sec-1")], {
-			b1: { cachedProfile: { name: "B", avatar: "", sign: "", fans: 1, lastRefreshedAt: "x" } },
+			b1: { cachedProfile: { name: "B", sign: "", fans: 1, lastRefreshedAt: "x" } },
 			e1: profile(450),
 		});
 		p.getRelationStat.mockResolvedValue({ code: -352, data: null } as never);

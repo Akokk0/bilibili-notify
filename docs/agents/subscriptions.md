@@ -21,8 +21,8 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 - `SubscriptionStore`（`packages/subscription`）握一份列表，`subscription-changed` 的 diff 照常发。`findById` 按订阅 id 找；`findByIdentity` 按身份找，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
 - `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅连同标签表写进 `<数据根>/config/subscriptions.json`（`{ tags, subscriptions }`，ADR-0034），一次原子写；删标签时订阅上的引用在同一次写里去掉，订阅只许挂表里有的标签。任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
-- **身份不许改**（`assertSubscriptionIdentityUnchanged`，ADR-0019 决策 50）：换了来源或外部 id 就是另一个人，而资料缓存、历史、头像文件都挂在订阅 `id` 上。要换人就删了重加。
-- **备份**（`apps/server/src/backup/`）：格式版本 4（1.0 起；10-01 设置分文件时从 2 抬到 3，10-02 特性键改名时抬到 4），比当前旧的一律拒收：0.x 导出的（版本 1）提示先装 0.12 恢复再升级（ADR-0022 决策 6），开发期的 2 / 3 只说版本旧、恢复不了。订阅一节，行行带 `identity`，标签表跟它同进同出（恢复时先按 id、再按名字并）。资料缓存与头像文件都不进备份。
+- **身份不许改**（`assertSubscriptionIdentityUnchanged`，ADR-0019 决策 50）：换了来源或外部 id 就是另一个人，而资料缓存（连同它引用的图库头像）、历史都挂在订阅 `id` 上。要换人就删了重加。
+- **备份**（`apps/server/src/backup/`）：格式版本 4（1.0 起；10-01 设置分文件时从 2 抬到 3，10-02 特性键改名时抬到 4），比当前旧的一律拒收：0.x 导出的（版本 1）提示先装 0.12 恢复再升级（ADR-0022 决策 6），开发期的 2 / 3 只说版本旧、恢复不了。订阅一节，行行带 `identity`，标签表跟它同进同出（恢复时先按 id、再按名字并）。资料缓存（连同它引用的图库头像）不进备份。
 - 0.x 的两个文件（`subscriptions.json` 与 `extension-subscriptions.json`）由迁移器合成这一个（`migration/subscriptions.ts`）。
 
 ## 两种键（决策 50）
@@ -30,7 +30,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 | 键 | 回答 | 用在 |
 |---|---|---|
 | **身份**：`identity { sourceKey, externalId }`（B 站是 `bilibili` + uid） | 这是谁 | 判重（同一个人只能有一条订阅，见下）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
-| **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`broadcastToFeature`）、历史行的 `subscriptionId`、资料缓存、头像文件、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
+| **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`broadcastToFeature`）、历史行的 `subscriptionId`、资料缓存（头像是它里面的图库引用）、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
 
 - 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/up/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `upColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。
 - **绝不跨支**：外部 id 恰好等于某个 B 站 uid，也是另一个平台上的另一个人。
@@ -44,31 +44,32 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - **B 站引擎的订阅视图**：`engines.ts` 的 `buildDynamicSubsView` / `buildLiveSubsView`、op 翻译 `subscriptionOpsToDynamic` / `subscriptionOpsToLive`、`getModuleState` 的「直播监听」那一格。拓展订阅的轮询是拓展自己做的。
 - **关注**：`runtime/follow-sync.ts`、新建时的关注与 B 站资料种子（`routes/subscriptions.ts` 的 `followUp` / `seedCachedProfile`）、查 UID / 搜名字（`/api/subscriptions/lookup`、`/api/subscriptions/search`）。
 - **粉丝轮询**：`runtime/fans-poller.ts` 只问 B 站订阅（B 站资料与粉丝曲线的来源）。它发的首页粉丝面板快照两种来源都有：拓展订阅那一行不问任何人，从统计写下的粉丝时序算（ADR-0020 决策 8，只列启用着、有时序的）。
-- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。**锐评也两支都管了**（S6，决策 12 / 14 / 15 / 18）：一张榜混着比（「至少 2 位」数两支加起来的人头），提示词不写死「B 站」、数据表多一列「平台」（B 站写「B 站」，拓展写引擎 `extensionPlatformLabel` 现取的清单平台名，取不到写拓展 id）；名字链在 `stats/roast-subject.ts`（B 站：资料名 → `UID xxx`；拓展：资料名 → 外部 id）。结果、单人锐评、推送请求、路由参数（`/roast/:subscriptionId`、`/roast/run/:subscriptionId`，面板编码进路径）、草稿里的 UP **一律是订阅 id**；0.x 按 uid 记的草稿由迁移器换成订阅 id（`migration/roast-drafts.ts`），对不上的丢掉。单人定时锐评按订阅 id 排、跑、发，`PATCH /api/subscriptions/:id` 的审批闸两支都拦。出卡（`stats/roast-deliver.ts` 的 `makeUpMeta`）：颜色走 `upColor`（同面板），拓展头像读存下的头像文件转 data URL（资料里那个面板相对地址截图加载不到，同 ADR-0019 决策 68 的坑）。
+- **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。**锐评也两支都管了**（S6，决策 12 / 14 / 15 / 18）：一张榜混着比（「至少 2 位」数两支加起来的人头），提示词不写死「B 站」、数据表多一列「平台」（B 站写「B 站」，拓展写引擎 `extensionPlatformLabel` 现取的清单平台名，取不到写拓展 id）；名字链在 `stats/roast-subject.ts`（B 站：资料名 → `UID xxx`；拓展：资料名 → 外部 id）。结果、单人锐评、推送请求、路由参数（`/roast/:subscriptionId`、`/roast/run/:subscriptionId`，面板编码进路径）、草稿里的 UP **一律是订阅 id**；0.x 按 uid 记的草稿由迁移器换成订阅 id（`migration/roast-drafts.ts`），对不上的丢掉。单人定时锐评按订阅 id 排、跑、发，`PATCH /api/subscriptions/:id` 的审批闸两支都拦。出卡（`stats/roast-deliver.ts` 的 `makeUpMeta`）：颜色走 `upColor`（同面板），拓展头像从图库读字节转 data URL（面板用的同源地址 `/api/images/<ref>` 截图加载不到，同 ADR-0019 决策 68 的坑）。
 - devtools 场景挑订阅（`index.ts` 里那段 `subs`）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 
-反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubRuntime`）与扫孤儿头像（`subAvatarStore.sweep`）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
+反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubRuntime`；它丢掉的条目引用的头像由图库清扫收走，没有单独扫头像的一步）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
 
 ## 资料与头像
 
-**资料缓存**是 `SubRuntimeStore`（`apps/server/src/runtime/sub-runtime-store.ts`，`<数据根>/runtime/sub-runtime.json`，按订阅 id）里的 `cachedProfile { name, avatar, sign, fans?, lastRefreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让引擎 reconcile）。`GET /api/subscriptions` 在 `toDTO` 里把它 join 进 DTO。
+**资料缓存**是 `SubRuntimeStore`（`apps/server/src/runtime/sub-runtime-store.ts`，`<数据根>/runtime/sub-runtime.json`，按订阅 id）里的 `cachedProfile { name, avatar?, avatarUrl?, sign, fans?, lastRefreshedAt }`。它**不是配置**：写它不发 `config-changed`（那一档会重建路由表、通知拓展、让引擎 reconcile）。`GET /api/subscriptions` 在 `toDTO` 里把它 join 进 DTO。
 
 | | B 站 | 拓展 |
 |---|---|---|
-| 新建时 | `seedCachedProfile` 问一次 user card | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`）随 `POST /api/subscriptions` 交进来，`seedExtensionProfile` 种资料、头像写成文件 |
+| 新建时 | `seedCachedProfile` 问一次 user card | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`，头像是 data URL）预填成草稿的 `cachedProfile { name, avatarUrl?, fans? }` 随 `POST /api/subscriptions` 交进来（data URL 是个网址，所以放 `avatarUrl`），`seedExtensionProfile` 种资料、头像存进图库 |
 | 之后 | `FansPoller` 每 tick 写 fans、按需冷刷 name / avatar | **只认「报资料更新」**（`reportProfile`，见下）。事件里带的作者只上卡、不改资料（决策 54） |
-| `avatar` 存的是 | B 站 CDN 链接 | 同源相对地址 `/api/subscriptions/<id>/avatar?v=<摘要>`，没有就是空串 |
+| 头像存的是 | `avatarUrl`：B 站 CDN 链接（服务端不抓 B 站头像，抓图服务在 3a） | `avatar`：图库引用 `ImageRef`，面板从 `/api/images/<ref>` 取；没有头像就**两格都缺**，不写空串 |
 | `fans` | 总有 | 可缺 —— 缺了写 0 就是在面板上印一句「0 粉丝」的假话 |
 
 **拓展资料的落盘**：`subscription-reported`（`kind === "profile"`）→ `runtime/reported-profiles.ts` 的 `bindReportedProfiles`：给了哪格改哪格；停用的订阅照样更新；订阅刚删时报上来的不再种；排一条队（两条交错读改写会互相冲掉）；面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
 
-**头像文件**（`runtime/sub-avatar-store.ts`，决策 49）：`<dataDir>/avatars/<订阅 id>.<png|jpeg|webp>`。
+**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarSrc` 是唯一的取址处：有 `avatar` 走读口，否则 `avatarUrl`，都没有退首字）。
 
-- 只收位图、按魔数认格式（`sniffImageFormat`），**不收 SVG** —— 同源地址上的 SVG 被直接打开时会跑脚本；约 96 KiB 封顶（候选的 data URL 是 128 KiB 字，`SUBSCRIPTION_AVATAR_MAX_BYTES` 按它倒推，报上来收下了、存的时候却被拒是最难查的那种）。
-- 内容摘要不同才覆盖，地址的 `?v=` 随之变，所以 `GET /api/subscriptions/:id/avatar` 可以让浏览器长缓存（面板鉴权、`nosniff`）。
-- 删订阅时 `bindSubAvatarCleanup` 听 `subscription-changed` 的 remove 删文件（删的路不止一条，最后都汇到那里）；开机 `sweep` 扫孤儿。
-- 出卡时这个相对地址截图加载不到 —— `runtime/extension-push-common.ts` 的 `extensionCardAuthor` 读文件的**字节**转 data URL（事件带了作者头像就用事件的，哪儿都没有给透明占位，决策 54 / 68）。同一个文件里的 `extensionSubscriptionName` 定卡上作者名与模板 `{name}`：事件里的作者名 → 资料名 → 外部 id（别名 `name` 已退役，ADR-0021 决策 16）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
+- 两条来路都走 `runtime.profileImages`（图库的存图口，资料缓存登记成引用方后才拿得到，装配在 `runtime/bootstrap.ts`）：新建订阅时的 `seedExtensionProfile`（面板交的 data URL 先在路由层过 `decodeSubscriptionAvatar`，128 KiB 的字、只收 png / jpeg / webp、魔数得对得上声明），与「报资料更新」（`reported-profiles.ts`，字节过 `checkSubscriptionAvatarBytes`，约 96 KiB 封顶）。两道关都在 `runtime/subscription-avatar.ts`，**不收 gif、不收 SVG**；图库自己再按嗅探认格式。
+- 图按内容起名：同一张图再报一次引用不变（面板地址不变，浏览器缓存照样命中）。没给头像时沿用旧的引用 —— 沿用也是「抄引用」，先 `keep` 续期；图已经不在了就两格都缺，不留悬空的引用。
+- **没有「删订阅顺手删头像文件」这一步**：订阅被删，资料缓存里没了这一条（FansPoller 听 `subscription-changed`、开机 `pruneOrphanSubRuntime`），头像不再被引用，由图库清扫（每 6 小时加开机，过了 24 小时宽限期）收走；另一条订阅还引用着同一张图时不收。资料缓存仓的 `listImageRefs()` 交名单，没载入就被问会先载入再答。
+- 出卡时 `/api/images/<ref>` 截图加载不到 —— `runtime/extension-push-common.ts` 的 `readProfileAvatar` 从图库读**字节**，`extensionCardAuthor` 转 data URL（事件带了作者头像就用事件的，哪儿都没有给透明占位，决策 54 / 68）；锐评卡（`stats/roast-deliver.ts`）同一个读法。同一个文件里的 `extensionSubscriptionName` 定卡上作者名与模板 `{name}`：事件里的作者名 → 资料名 → 外部 id（别名 `name` 已退役，ADR-0021 决策 16）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
+- 历史行的头像快照 `uavatarSnapshot` 这一片没动：B 站行抄资料里的 `avatarUrl`，拓展行不带（归 ⑳d，改成 `avatarSnapshot` 装图库引用）。
 
 **显示名与颜色**（`apps/web/src/utils/up-display.ts`）：
 

@@ -69,7 +69,7 @@ import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import { historyRowColor, historyRowIdentity, isExtensionIdentity } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
-import { colorFromUid, displayName, subscriptionColor } from "./up/helpers";
+import { colorFromUid, displayName, profileAvatarSrc, subscriptionColor } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
 
@@ -98,7 +98,7 @@ function liveRowFace(
 	platform?: { label: string; color?: string };
 } {
 	const sub = lookup.byId(r.subscriptionId);
-	const avatar = sub?.cachedProfile?.avatar;
+	const avatar = profileAvatarSrc(sub?.cachedProfile);
 	if (r.kind !== "extension") {
 		return {
 			name: sub ? displayName(sub) : `UID ${r.uid}`,
@@ -378,7 +378,7 @@ export function TimelinePanel({
 						const name =
 							h.nameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
 						// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
-						const avatar = h.uavatarSnapshot ?? sub?.cachedProfile?.avatar;
+						const avatar = h.uavatarSnapshot ?? profileAvatarSrc(sub?.cachedProfile);
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 						const color = historyRowColor(h);
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
@@ -462,7 +462,7 @@ function fansRowFace(
 	const face = {
 		name: sub ? displayName(sub) : fallback,
 		color: upColor(e, e.subscriptionId),
-		avatar: sub?.cachedProfile?.avatar || undefined,
+		avatar: profileAvatarSrc(sub?.cachedProfile),
 	};
 	if (e.extensionId === undefined) return face;
 	const platform = subscriptionPlatformOf({ extensionId: e.extensionId }, extensions);

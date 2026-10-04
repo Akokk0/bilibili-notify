@@ -6,6 +6,7 @@ import {
 	type Failure,
 	fail,
 	formatZodIssues,
+	type ImageRef,
 	issuesFromZod,
 	type Subscription,
 	SubscriptionSchema,
@@ -15,7 +16,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
-import { decodeSubscriptionAvatar } from "../runtime/sub-avatar-store.js";
+import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
 import { checkApprovalReachable } from "./roast-approval-guard.js";
@@ -36,21 +37,19 @@ export interface SubsRouteOptions {
 	extensions?: () => readonly ExtensionEntry[];
 }
 
-/** 头像那一口的缓存头:地址里的 `v` 随内容变,所以同一个地址的字节永远不变。 */
-const AVATAR_CACHE_CONTROL = "private, max-age=31536000, immutable";
-
 /**
  * 新建拓展订阅时随订阅一起交的资料 —— 面板挑中的那个解析门候选(决策 11 / 52)。
  *
- * 只收 `name` / `avatar` / `fans`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
- * `avatar` 要么不给 / 空串(没有),要么是位图 data URL,魔数另核(见 `decodeSubscriptionAvatar`)。
+ * 只收 `name` / `avatarUrl` / `fans`:签名没人报过,刷新时间是服务端说了算,别的键一律丢。
+ * `avatarUrl` 要么不给(没有头像),要么是位图 data URL(它是个网址,所以叫 `avatarUrl`),魔数另核(见
+ * `decodeSubscriptionAvatar`)。服务端把它存进图库,资料里换成图库引用 `avatar`。
  */
 const CreateProfileSchema = z.object({
 	name: z
 		.string({ error: "名字要是字符串" })
 		.min(1, "名字不能是空串")
 		.max(128, "名字不能超过 128 字"),
-	avatar: z.string({ error: "头像要是字符串" }).optional(),
+	avatarUrl: z.string({ error: "头像要是字符串" }).optional(),
 	fans: z
 		.number({ error: "粉丝数要是数字" })
 		.int("粉丝数要是整数")
@@ -76,7 +75,7 @@ const CreateProfileBodySchema = z.object({
  * 订阅只有一种形状,订的是谁看 `identity`(ADR-0021 决策 14)。**新建拓展的订阅**(`identity.sourceKey`
  * 是拓展 id)由宿主把关(见 {@link createExtensionSubscription}):得是装着的 v2 订阅源(不要求在跑,
  * ADR-0019 决策 10),同一身份只许一条(决策 50);面板从解析门挑中的候选放进 `cachedProfile` 一起交,
- * 头像存成文件(决策 49)。**新建 B 站的订阅**核外部 id 是不是数字 uid。已经存在的订阅可以整份 POST 回来改
+ * 头像存进图库(决策 49)。**新建 B 站的订阅**核外部 id 是不是数字 uid。已经存在的订阅可以整份 POST 回来改
  * (面板的启用开关就是这么发的),身份改不动(store 拒)。关注、B 站资料种子、查 UID / 搜名字都只对 B 站。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
@@ -140,7 +139,8 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			const card = res.data.card;
 			const cachedProfile: CachedProfile = {
 				name: card.name ?? uid,
-				avatar: card.face ?? "",
+				// B 站的头像是 B 站 CDN 的图链,留成网址(服务端不抓 B 站头像,抓图服务在 3a);没有就缺这一格。
+				...(card.face ? { avatarUrl: card.face } : {}),
 				sign: card.sign ?? "",
 				fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
 				lastRefreshedAt: new Date().toISOString(),
@@ -154,7 +154,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	/**
 	 * 新建一条拓展订阅(ADR-0019 决策 9 / 10 / 49 / 50)。**能核的先全核完再落盘**:订阅的形状 →
 	 * 带来的资料(连头像的魔数)→ 它是不是装着的订阅源;判重在 upsert 里(store 那道闸,B 站来源的也过它)。
-	 * 都过了才存头像文件、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败(同 B 站的资料种子)。
+	 * 都过了才把头像存进图库、种资料缓存 —— 这两步是展示用的缓存,失败只记一句,不让新建失败(同 B 站的资料种子)。
 	 */
 	async function createExtensionSubscription(
 		c: Context,
@@ -182,18 +182,19 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			);
 		}
 		const seed = profile.data.cachedProfile;
-		// 空串就是「没有头像」,与 CachedProfile 自己的口径一样。
-		const avatarDataUrl = seed?.avatar || undefined;
-		if (avatarDataUrl) {
-			const decoded = decodeSubscriptionAvatar(avatarDataUrl);
+		// 不给就是没有头像。解开的字节留着,订阅落盘之后直接存进图库,不再解第二遍。
+		let avatarBytes: Buffer | undefined;
+		if (seed?.avatarUrl !== undefined) {
+			const decoded = decodeSubscriptionAvatar(seed.avatarUrl);
 			if (!decoded.ok) {
 				return respondFailure(
 					c,
-					fail("invalid", `随订阅交来的头像不合规：${decoded.reason}`, {
-						issues: [{ path: ["cachedProfile", "avatar"], message: decoded.reason }],
+					fail("invalid", `随订阅交来的头像不合规：${decoded.message}`, {
+						issues: [{ path: ["cachedProfile", "avatarUrl"], message: decoded.message }],
 					}),
 				);
 			}
+			avatarBytes = decoded.bytes;
 		}
 
 		const refusal = subscriptionSourceRefusal(identity.sourceKey, opts.extensions?.() ?? []);
@@ -207,30 +208,33 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			log.error("POST /api/subscriptions (extension) failed", err);
 			throw err;
 		}
-		if (seed) await seedExtensionProfile(sub, seed, avatarDataUrl);
+		if (seed) await seedExtensionProfile(sub, seed, avatarBytes);
 		return c.json(deps.store.getSubscriptions().map(toDTO), 200);
 	}
 
 	/**
-	 * 拿面板挑中的那个候选种资料缓存。头像先存成文件(决策 49),资料里只放它的同源地址;存不下来
+	 * 拿面板挑中的那个候选种资料缓存。头像先存进图库(决策 49),资料里只放回来的引用;存不下来
 	 * 就先不带头像,等 ④ 的「报资料更新」再来。
 	 */
 	async function seedExtensionProfile(
 		sub: Subscription,
 		seed: z.infer<typeof CreateProfileSchema>,
-		avatarDataUrl: string | undefined,
+		avatarBytes: Buffer | undefined,
 	): Promise<void> {
-		let avatar = "";
-		if (avatarDataUrl) {
+		let avatar: ImageRef | undefined;
+		if (avatarBytes) {
 			try {
-				avatar = await deps.runtime.subAvatarStore.write(sub.id, avatarDataUrl);
+				const stored = await deps.runtime.profileImages.put(avatarBytes);
+				if (stored.ok) avatar = stored.ref;
+				else log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${stored.message}`);
 			} catch (err) {
 				log.warn(`[sub] 拓展订阅 ${sub.id} 的头像没存下来,资料先不带头像: ${String(err)}`);
 			}
 		}
 		const cachedProfile: CachedProfile = {
 			name: seed.name,
-			avatar,
+			// 没有头像就是这一格缺,不写空串。
+			...(avatar === undefined ? {} : { avatar }),
 			sign: "",
 			// 不知道就不写 —— 写 0 是在面板上印一句假话。
 			...(seed.fans === undefined ? {} : { fans: seed.fans }),
@@ -248,25 +252,6 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	// 标签表(ADR-0034):和 `/search`、`/lookup` 一样是这一摊底下的固定子路径。这一摊没有 `GET /:id` / `PUT /:id`,
 	// 撞不上;挂在 `/:id` 那几条前面,以后真加了也先认它。
 	app.route("/tags", createSubscriptionTagsRoute(deps));
-
-	/**
-	 * 拓展订阅的头像(ADR-0019 决策 49)。在 `/api/*` 底下,吃同一道面板鉴权。地址里的 `v` 是内容
-	 * 摘要,换了图地址就变 —— 所以同一个地址可以放心让浏览器永久缓存。
-	 */
-	app.get("/:id/avatar", async (c) => {
-		const id = c.req.param("id");
-		if (!z.uuid().safeParse(id).success) {
-			return respondFailure(c, fail("invalid", "订阅 id 要是 uuid"));
-		}
-		const avatar = await deps.runtime.subAvatarStore.read(id);
-		if (!avatar) return respondFailure(c, fail("not_found", "这条订阅没有头像"));
-		return c.body(new Uint8Array(avatar.bytes), 200, {
-			"Content-Type": avatar.contentType,
-			// app 那头给整片 /api 挂过一道;这里再写一遍:这口发的是拓展交来的字节,不依赖挂在哪。
-			"X-Content-Type-Options": "nosniff",
-			"Cache-Control": AVATAR_CACHE_CONTROL,
-		});
-	});
 
 	/**
 	 * Pre-flight UID resolution for the "add UP" dialog. Hits B-station's user

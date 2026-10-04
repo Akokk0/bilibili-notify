@@ -91,7 +91,7 @@ src/
     engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)
     extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
     extension-live.ts     拓展订阅的在播表(首页「正在直播」)
-    sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像文件在 sub-avatar-store.ts
+    sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像存进图库、这里只放引用(资料缓存是图库的一家引用方,`listImageRefs()` 交名单)
     fans-poller.ts        FansPoller —— 问 B 站、写 <数据根>/stats/followers/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
@@ -130,7 +130,7 @@ src/
 | `flush` | 统计补下播帧;各写道落盘并关门,关门后再交进来的写一律 `queue_closed` 拒绝、不碰盘 |
 | `dispose` | 其余:浏览器;日志归档排最后,关停期打的日志都赶得上它 |
 
-- 新加一个存盘的仓:写道用 internal 的 `createSerialQueue`,给仓一个 `close()`,在创建它的地方登记进 `flush` 段。它若往别的仓写,它的等待要登记在下游的 close **之后**(同段后登记的先跑),资料处理链与头像仓 / 资料缓存仓就是这样排的,有接线测试钉着。
+- 新加一个存盘的仓:写道用 internal 的 `createSerialQueue`,给仓一个 `close()`,在创建它的地方登记进 `flush` 段。它若往别的仓写,它的等待要登记在下游的 close **之后**(同段后登记的先跑),资料处理链与图库 / 资料缓存仓就是这样排的,有接线测试钉着。
 - 发出去不管的写入不许裸 `void`:交给 `serviceCtx.track(...)`,交进去的 promise 要把那笔写包在里面、失败自己接住;长跑的(重试退避、下载)接 `serviceCtx.signal` 叫停,别指望预算硬等。
 - 守卫 8(`__tests__/data-dir-still-after-close-e2e.test.ts`):关停返回以后数据目录不再变化。它把关停开始时还在路上的写入垫慢,没被等到的写一定落在关停之后;加了新的晚到写入,就在它的场景里补一步。
 

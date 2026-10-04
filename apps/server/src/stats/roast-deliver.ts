@@ -17,7 +17,7 @@ import {
 	upColor,
 } from "@bilibili-notify/internal";
 import type { RouteDeps } from "../routes/types.js";
-import { imageDataUrl } from "../runtime/extension-push-common.js";
+import { imageDataUrl, readProfileAvatar } from "../runtime/extension-push-common.js";
 import { roastSubjectName } from "./roast-subject.js";
 
 export type RoastDeliverDeps = Pick<RouteDeps, "runtime" | "store">;
@@ -61,13 +61,13 @@ export interface DeliverOutcome {
 export const UNKNOWN_UP_NAME = "未知 UP";
 
 /**
- * 拓展订阅卡上的头像:存下的头像文件转成内嵌图(ADR-0020 决策 15)。资料里存的是面板的同源相对地址
- * (`/api/subscriptions/<id>/avatar?v=…`),截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、认不出
+ * 拓展订阅卡上的头像:资料里引用的那张图库图转成内嵌图(ADR-0020 决策 15)。面板用的同源地址
+ * (`/api/images/<ref>`)截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、图已经不在、认不出
  * 类型、读盘抛了都给 `undefined` —— 卡上画首字母圆牌,不因为一张头像让整张卡降级成文字。
  */
 async function extensionAvatar(deps: RoastDeliverDeps, subscriptionId: string) {
 	try {
-		const stored = await deps.runtime.subAvatarStore.read(subscriptionId);
+		const stored = await readProfileAvatar(deps.runtime, subscriptionId);
 		return stored ? imageDataUrl(stored.bytes) : undefined;
 	} catch {
 		return undefined;
@@ -86,9 +86,9 @@ async function cardUp(
 	// 颜色跟着人走:种子与面板的 `upColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
 	const color = identityColor(identity);
 	if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
-		// B 站照旧:头像是 CDN 图链,渲染器出图前自己内联。
-		const avatar = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar;
-		return { name, avatar: avatar || undefined, color };
+		// B 站照旧:头像是 CDN 图链(`avatarUrl`),渲染器出图前自己内联。
+		const avatar = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl;
+		return { name, avatar, color };
 	}
 	return { name, avatar: await extensionAvatar(deps, sub.id), color };
 }

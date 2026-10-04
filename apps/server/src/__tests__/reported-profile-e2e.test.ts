@@ -2,20 +2,21 @@
  * 🔴 **拓展报的资料更新,在真 BN 上落进了订阅列表**(ADR-0019 决策 7 / 49 / 62)。
  *
  * 拓展经 `handle.reportProfile` 报「这个人的名字 / 头像 / 粉丝数」,宿主核过发到 bus;后面要有人把它
- * 写进资料缓存、把头像存成文件,`GET /api/subscriptions` 才读得到。中间任意一处漏接(bus 上没人听、bootstrap
+ * 写进资料缓存、把头像存进图库(资料里放引用),`GET /api/subscriptions` 才读得到。中间任意一处漏接(bus 上没人听、bootstrap
  * 没起那个监听),拓展那头照样 resolve、订阅页永远是新建那一刻的样子,而没人报错。
  *
  * 所以装一个真的 v2 小拓展、起一台真 BN:订阅经面板那条路新建(带着解析门候选的头像),之后按拓展的
  * 动作钮报资料,全程只读面板读的那一口。bus 在这里只**旁听**(包一层真的那个,不换掉它)。
  */
 
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import type { ConfigScope } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { avatarDataUrl } from "./support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -113,13 +114,14 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				...SUB,
-				cachedProfile: { name: "候选的名字", fans: 7, avatar: avatarDataUrl("png", SEED_PNG) },
+				cachedProfile: { name: "候选的名字", fans: 7, avatarUrl: avatarDataUrl("png", SEED_PNG) },
 			}),
 		});
 		expect(res.status, await res.clone().text()).toBe(200);
 	}
 
-	const avatarFile = () => join(gen, "avatars", `${SUB.id}.png`);
+	/** 图库里这张图的文件(引用就是文件名)。 */
+	const imageFile = (ref: string | undefined) => join(gen, "images", ref ?? "");
 
 	/** 这一条的资料。 */
 	async function profile() {
@@ -196,37 +198,41 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		heard.config.length = 0;
 	});
 
-	it("报一次:换上报来的名字 / 粉丝,头像换了张、地址的 ?v= 跟着变", async () => {
+	it("报一次:换上报来的名字 / 粉丝,头像换了张、引用跟着变", async () => {
 		const before = await profile();
 		expect(before?.name).toBe("候选的名字");
-		expect(before?.avatar).toMatch(new RegExp(`^/api/subscriptions/${SUB.id}/avatar\\?v=`));
+		expect(before?.avatar && isValidImageRef(before.avatar)).toBe(true);
+		// 新建时的 data URL 只是请求里的网址,不在资料里。
+		expect(before).not.toHaveProperty("avatarUrl");
 
 		await press("profile.full");
 		const after = await refreshedAfter(before);
 
 		expect(after?.name).toBe("报来的名字");
 		expect(after?.fans).toBe(4321);
-		expect(after?.avatar).toMatch(
-			new RegExp(`^/api/subscriptions/${SUB.id}/avatar\\?v=[0-9a-f]+$`),
-		);
+		expect(after?.avatar && isValidImageRef(after.avatar)).toBe(true);
 		expect(after?.avatar).not.toBe(before?.avatar);
-		const img = await api(after?.avatar ?? "");
+		const img = await api(`/api/images/${after?.avatar}`);
 		expect(img.status).toBe(200);
 		expect(Buffer.from(await img.arrayBuffer()).equals(REPORTED_PNG)).toBe(true);
+		// 旧头像还在图库里:没人直接删它,不再有人引用以后由清扫收。
+		expect((await readdir(join(gen, "images"))).sort()).toEqual(
+			[before?.avatar, after?.avatar].sort(),
+		);
 		// 面板被告知去重取订阅列表;没发 config-changed "subscriptions"(那会重建路由、惊动引擎与拓展)。
 		await vi.waitFor(() => expect(heard.profiles).toEqual([[SUB.id]]));
 		expect(heard.config).not.toContain("subscriptions");
 	});
 
-	it("同一张头像再报一次:地址不变,文件不重写;看得见的都没变,不打扰面板", async () => {
+	it("同一张头像再报一次:引用不变,文件不重写;看得见的都没变,不打扰面板", async () => {
 		const before = await profile();
-		const inode = (await stat(avatarFile())).ino;
+		const inode = (await stat(imageFile(before?.avatar))).ino;
 
 		await press("profile.sameAvatar");
 		const after = await refreshedAfter(before);
 
 		expect(after?.avatar).toBe(before?.avatar);
-		expect((await stat(avatarFile())).ino).toBe(inode);
+		expect((await stat(imageFile(after?.avatar))).ino).toBe(inode);
 		await new Promise((resolve) => setTimeout(resolve, 400));
 		expect(heard.profiles).toEqual([]);
 	});
@@ -248,14 +254,14 @@ describe("资料更新 e2e:拓展报的名字 / 粉丝 / 头像落进了订阅�
 		expect(after?.avatar).toBe(before?.avatar);
 	});
 
-	it("换一张头像:覆盖,地址的 ?v= 变了,取回来的是新的那张", async () => {
+	it("换一张头像:引用变了,取回来的是新的那张", async () => {
 		const before = await profile();
 
 		await press("profile.nextAvatar");
 		const after = await refreshedAfter(before);
 
 		expect(after?.avatar).not.toBe(before?.avatar);
-		const img = await api(after?.avatar ?? "");
+		const img = await api(`/api/images/${after?.avatar}`);
 		expect(Buffer.from(await img.arrayBuffer()).equals(NEXT_PNG)).toBe(true);
 	});
 });

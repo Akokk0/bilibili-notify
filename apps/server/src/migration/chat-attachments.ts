@@ -9,12 +9,11 @@
  * 不联网、不走 `ImageWriter`:新代的图库此刻没在跑,这里直接落文件。文件名只此一份规矩 —— 来自 `imageRefOf`。
  */
 
-import { lstat, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { ImageRef } from "@bilibili-notify/internal";
-import { atomicWriteFile } from "@bilibili-notify/storage";
-import { IMAGE_MAX_BYTES, imageRefOf, isValidImageRef } from "../images/image-store.js";
+import { isValidImageRef } from "../images/image-store.js";
 import { leftoverReason, listFiles } from "./files.js";
+import { createImageCopier, isCleanFileName, readPlainImageFile } from "./image-library.js";
 
 export interface ChatAttachmentResult {
 	/** 复制进图库的附件(旧 id → 引用),按第一次被引用的先后。内容一样的几个旧 id 指到同一个引用。 */
@@ -44,38 +43,14 @@ export function createChatAttachmentMigrator(options: {
 	const { zeroDir, imagesDir } = options;
 	/** 旧 id → 引用或 `null`;问过的都在这里,键的集合就是「被引用过的」。 */
 	const resolved = new Map<string, ImageRef | null>();
-	/** 已经写进图库的引用:内容一样的第二个旧 id 不再重写。 */
-	const written = new Set<ImageRef>();
-
-	/** 一个旧 id 对应的文件字节;文件不在、不是普通文件、太大、id 不是干净的文件名都是 `undefined`。 */
-	async function readAttachment(id: string): Promise<Buffer | undefined> {
-		// id 来自会话文件,是不可信输入:只认一个干净的文件名,绝不让它带着路径跑出附件目录。
-		if (id === "" || id.startsWith(".") || basename(id) !== id || id.includes("\0"))
-			return undefined;
-		const path = join(zeroDir, id);
-		let info: Awaited<ReturnType<typeof lstat>>;
-		try {
-			info = await lstat(path);
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			if (code === "ENOENT" || code === "ENOTDIR") return undefined;
-			throw err;
-		}
-		// lstat:软链不跟 —— 0.x 从不会往这里放软链,放了就不是它放的。
-		if (!info.isFile() || info.size > IMAGE_MAX_BYTES) return undefined;
-		return readFile(path);
-	}
+	const copier = createImageCopier(imagesDir);
 
 	async function resolve(id: string): Promise<ImageRef | null> {
 		if (isValidImageRef(id)) return id;
-		const bytes = await readAttachment(id);
-		const ref = bytes === undefined ? undefined : imageRefOf(bytes);
-		if (bytes === undefined || ref === undefined) return null;
-		if (!written.has(ref)) {
-			await atomicWriteFile(join(imagesDir, ref), bytes);
-			written.add(ref);
-		}
-		return ref;
+		// id 来自会话文件,是不可信输入:只认一个干净的文件名,绝不让它带着路径跑出附件目录。文件不在、
+		// 不是普通文件、太大、嗅探不过都是对不上。
+		const bytes = isCleanFileName(id) ? await readPlainImageFile(join(zeroDir, id)) : undefined;
+		return bytes === undefined ? null : ((await copier.copy(bytes)) ?? null);
 	}
 
 	return {

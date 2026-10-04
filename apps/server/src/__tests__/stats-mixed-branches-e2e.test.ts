@@ -36,6 +36,7 @@ import { type SubscriptionTag, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
+import { isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -398,7 +399,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 				]);
 				const profile = (await extSub())?.cachedProfile;
 				expect(profile?.fans).toBe(2222);
-				expect(profile?.avatar).toMatch(/^\/api\/subscriptions\//);
+				expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
 			},
 			{ timeout: 3_000, interval: 50 },
 		);
@@ -530,13 +531,13 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			payload: { kind: "image", caption: "这位本周还算勤快", image: { mime: "image/jpeg" } },
 		});
 
-		// 卡上的头像:资料报来的那张存下的文件,转成内嵌图。
-		const avatarPath = (await extSub())?.cachedProfile?.avatar ?? "";
-		const avatar = Buffer.from(await (await api(avatarPath)).arrayBuffer());
+		// 卡上的头像:资料报来的那张存进图库的图,转成内嵌图。
+		const avatarRef = (await extSub())?.cachedProfile?.avatar ?? "";
+		const avatar = Buffer.from(await (await api(`/api/images/${avatarRef}`)).arrayBuffer());
 		expect(avatar.length).toBeGreaterThan(0);
 		const html = renderedHtml.slice(rendersBefore).join("\n");
 		expect(html).toContain(`data:image/png;base64,${avatar.toString("base64")}`);
-		expect(html).not.toContain("/api/subscriptions/");
+		expect(html).not.toContain("/api/images/");
 		// 颜色与面板同一个算法(按人)。
 		expect(html).toContain(upColor({ extensionId: FAKE, externalId: EXT_ID }));
 	}, 15_000);

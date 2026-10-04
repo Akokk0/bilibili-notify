@@ -49,7 +49,7 @@ function makeLogger(): Logger {
 
 const PROFILE_A = {
 	name: "UP-A",
-	avatar: "https://example.com/a.png",
+	avatarUrl: "https://example.com/a.png",
 	sign: "sign-a",
 	fans: 100,
 	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
@@ -285,6 +285,57 @@ describe("SubRuntimeStore.load — 损坏输入容忍", () => {
 		await store.patch("s1", { cachedProfile: PROFILE_A2 });
 		await store.load(); // 第二次 — loaded 已置位,应是 no-op
 		expect(store.get("s1")).toEqual({ cachedProfile: PROFILE_A2 });
+	});
+});
+
+describe("SubRuntimeStore.listImageRefs — 图库清扫要的「资料缓存引用着谁」", () => {
+	const REF_A = `${"a".repeat(64)}.png`;
+	const REF_B = `${"b".repeat(64)}.webp`;
+	/** 拓展订阅的资料:没有头像(两格都缺)。 */
+	const PROFILE_NO_AVATAR = {
+		name: "拓展甲",
+		sign: "",
+		lastRefreshedAt: "2026-05-19T00:00:00.000Z",
+	};
+
+	it("交出所有订阅资料里存进图库的头像(去重);B 站的远端网址和没有头像的不算", async () => {
+		const store = make();
+		await store.patch("ext-1", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_A } });
+		await store.patch("ext-2", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_A } });
+		await store.patch("ext-3", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_B } });
+		await store.patch("ext-4", { cachedProfile: PROFILE_NO_AVATAR });
+		await store.patch("bili-1", {
+			cachedProfile: { ...PROFILE_NO_AVATAR, avatarUrl: "https://example.com/a.png" },
+		});
+		await store.patch("bili-2", { fansBaseline: BASELINE });
+
+		expect((await store.listImageRefs()).sort()).toEqual([REF_A, REF_B]);
+	});
+
+	it("头像换了,旧的就不再被引用;订阅被丢掉,它的头像也不再被引用", async () => {
+		const store = make();
+		await store.patch("ext-1", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_A } });
+		await store.patch("ext-2", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_B } });
+		await store.patch("ext-1", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_B } });
+		expect(await store.listImageRefs()).toEqual([REF_B]);
+
+		await store.prune([]);
+		expect(await store.listImageRefs()).toEqual([]);
+	});
+
+	it("还没 load 就被问(清扫赶在开机载入之前):先载入盘上的再答,不拿空名单去删图", async () => {
+		const { mkdir } = await import("node:fs/promises");
+		await mkdir(dirname(file), { recursive: true });
+		await writeFile(
+			file,
+			JSON.stringify({ s1: { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_A } } }),
+			"utf8",
+		);
+		const store = make();
+		expect(await store.listImageRefs()).toEqual([REF_A]);
+		// 载入只发生一次:之后的 patch 不会被再来一次的 load 盖掉。
+		await store.patch("s1", { cachedProfile: { ...PROFILE_NO_AVATAR, avatar: REF_B } });
+		expect(await store.listImageRefs()).toEqual([REF_B]);
 	});
 });
 

@@ -29,7 +29,7 @@ import { copyToClipboard } from "../../utils/clipboard";
 
 const named = (sub: Subscription, name: string): Subscription => ({
 	...sub,
-	cachedProfile: { name, avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
+	cachedProfile: { name, sign: "", fans: 0, lastRefreshedAt: "t" },
 });
 
 const BILI = named(makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }), "UP甲");

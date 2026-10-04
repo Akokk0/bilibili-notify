@@ -28,7 +28,8 @@ export const HOST_ROOT_LAYOUT = {
 
 /**
  * 数据根(一代)下的一级项 —— 目录表,也就是代的布局(`docs/1.0/data-and-migration.md`「目录布局」)。
- * 还有两处过渡要在 ⑳ 并进图库 `images/`:历史图 `history/img/`,和 `avatars` 键(聊天附件 ⑳b 已经进了图库)。
+ * 还有一处过渡要在 ⑳ 并进图库 `images/`:历史图 `history/img/`(聊天附件 ⑳b、拓展订阅头像 ⑳c 已经进了图库,
+ * `assets`、`avatars` 两个过渡键随之删了)。
  */
 export const DATA_ROOT_LAYOUT = {
 	config: "主人填的:设置、订阅、连接、目标",
@@ -43,7 +44,6 @@ export const DATA_ROOT_LAYOUT = {
 	library: "素材库:卡片背景 images/、字体 fonts/(连同名字清单)",
 	"maid-skills": "主人的女仆技能 <name>/SKILL.md",
 	extensions: "已装的拓展包、失败记账 load-state.json、市场来源 .marketplace.json",
-	avatars: "过渡,第 2 期并进图库:拓展订阅的头像,按订阅 id",
 } as const;
 
 export type HostRootKey = keyof typeof HOST_ROOT_LAYOUT;

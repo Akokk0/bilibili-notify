@@ -38,7 +38,7 @@ const GLOBALS = {
 	app: { fansCron: "*/10 * * * *" },
 } as unknown as GlobalConfig;
 
-const PROFILE = { name: "UP", avatar: "a", sign: "s", fans: 100, lastRefreshedAt: "x" };
+const PROFILE = { name: "UP", avatarUrl: "a", sign: "s", fans: 100, lastRefreshedAt: "x" };
 
 function baseDeps(over: {
 	subs: Array<{

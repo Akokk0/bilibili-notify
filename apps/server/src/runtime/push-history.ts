@@ -8,12 +8,12 @@ import type { NewHistoryEntry } from "../history/store.js";
 
 export interface PushHistoryLookups {
 	/**
-	 * 订阅 id → 订阅本身与当时的名字 / 头像(SubRuntimeStore 的 cachedProfile)。
+	 * 订阅 id → 订阅本身与当时的名字 / 头像网址(SubRuntimeStore 的 cachedProfile;B 站行的头像快照是远端网址)。
 	 * 查不到 = 推送中途被退订。一次查完:订阅表是线性扫的,两个回调就要扫两遍。
 	 */
 	subscriptionOf(
 		subscriptionId: string,
-	): { subscription: Subscription; profile?: { name?: string; avatar?: string } } | undefined;
+	): { subscription: Subscription; profile?: { name?: string; avatarUrl?: string } } | undefined;
 }
 
 /**
@@ -26,7 +26,7 @@ export interface PushHistoryLookups {
  *
  * 「替谁发的」就是订阅的身份(`identity`:来源键 + 外部 id,B 站行与拓展行同一种形状):两格一起比,
  * 外部 id 恰好等于某个 B 站 uid 时,订阅删掉之后也不会被认成那位 B 站 UP(ADR-0019 决策 73)。拓展行只存
- * 名字快照、不存头像快照(决策 74):它的头像是面板里的相对地址,订阅一删文件就没了。
+ * 名字快照、不存头像快照(决策 74):头像快照这一格归 ⑳d 改成图库引用,那时拓展行才开始有。
  *
  * 拓展行的名字快照走决策 77 的名字链(少了事件里的作者名那一层,这里拿不到):资料里的名字 → 主人填的
  * 别名(订阅的 `name`)。拓展没报过资料时订阅上没有资料名字,不退到别名的话这一行就没有「当时是谁」。
@@ -52,7 +52,7 @@ export function historyRecordFromSend(
 		// 逐条重建只是把字段抄一遍,还多一处「加字段记得同步」的维护点。
 		messages: info.messages,
 		nameSnapshot,
-		...(fromBilibili ? { uavatarSnapshot: profile?.avatar } : {}),
+		...(fromBilibili ? { uavatarSnapshot: profile?.avatarUrl } : {}),
 	};
 }
 

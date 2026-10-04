@@ -128,15 +128,21 @@ async function expectMigrated(
 	expect(existsSync(join(generation, "generation.json"))).toBe(true);
 	expect(existsSync(join(hostRoot, "generations", "1.partial"))).toBe(false);
 
-	// 报告:「拓展订阅」那份只作输入、没进新代;聊天附件目录也是输入(每张附件都被会话引用着,没有孤儿、没有对不上的,
-	// 所以只有这一条);过了保留期的图与重推原件不带过来,各记一句(⑲c)。
+	// 报告:「拓展订阅」那份只作输入、没进新代;聊天附件目录与拓展订阅的头像目录也是输入(每张附件被会话引用着、每个头像
+	// 被资料引用着,没有孤儿、没有对不上的,所以各只有一条);过了保留期的图与重推原件不带过来,各记一句(⑲c)。
 	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
 	const keptDays = Math.min(counts.historyDays, DEFAULT_HISTORY_RETENTION_DAYS + 1);
 	const expiredDays = counts.historyDays - keptDays;
 	expect(report.skipped.map((s) => s.path)).toEqual(
 		expiredDays > 0
-			? ["state/extension-subscriptions.json", "assets/chat", "history/img", "history/repush"]
-			: ["state/extension-subscriptions.json", "assets/chat"],
+			? [
+					"state/extension-subscriptions.json",
+					"assets/chat",
+					"avatars",
+					"history/img",
+					"history/repush",
+				]
+			: ["state/extension-subscriptions.json", "assets/chat", "avatars"],
 	);
 	expect(report.transfers).toHaveLength(
 		counts.files - 1 - expiredDays * (counts.plan.historyRowsPerDay + counts.plan.repushPerDay),
@@ -257,10 +263,14 @@ async function expectMigrated(
 		expect(conversation.messages).toHaveLength(counts.conversationMessages / counts.conversations);
 	}
 	expect(await readdir(join(generation, "maid-skills"))).toHaveLength(counts.maidSkills);
-	// 聊天附件不整目录搬:每张都被会话引用着、内容各不相同,所以图库里正好一张不少,会话里全是图库引用。
+	// 聊天附件与拓展订阅的头像不整目录搬:每张都被引用着(附件被会话、头像被资料缓存)、内容各不相同,所以图库里正好
+	// 一张不少,会话 / 资料里全是图库引用。
 	expect(existsSync(join(generation, "assets", "chat"))).toBe(false);
+	expect(existsSync(join(generation, "avatars"))).toBe(false);
 	const libraryImages = (await readdir(join(generation, "images"))).sort();
-	expect(libraryImages).toHaveLength(counts.chatAttachments);
+	expect(libraryImages).toHaveLength(
+		counts.chatAttachments + counts.extensionSubscriptionIds.length,
+	);
 	expect(libraryImages.every(isValidImageRef)).toBe(true);
 	const referenced = new Set<string>();
 	for (const name of conversations) {
@@ -270,6 +280,19 @@ async function expectMigrated(
 		for (const message of conversation.messages) {
 			for (const ref of message.images ?? []) referenced.add(ref);
 		}
+	}
+	// 资料缓存:拓展订阅的头像是图库引用(旧的相对地址一个不剩),B 站订阅的头像挪到了 avatarUrl。
+	const profiles = JSON.parse(
+		await readFile(join(generation, "runtime", "sub-runtime.json"), "utf8"),
+	) as Record<string, { cachedProfile?: { avatar?: string; avatarUrl?: string } }>;
+	for (const id of counts.extensionSubscriptionIds) {
+		const avatar = profiles[id]?.cachedProfile?.avatar ?? "";
+		expect(isValidImageRef(avatar), `${id} 的头像`).toBe(true);
+		referenced.add(avatar);
+	}
+	for (const { id } of counts.biliSubscriptions) {
+		expect(profiles[id]?.cachedProfile?.avatarUrl, `${id} 的头像网址`).toMatch(/^https:\/\//);
+		expect(profiles[id]?.cachedProfile).not.toHaveProperty("avatar");
 	}
 	expect([...referenced].sort()).toEqual(libraryImages);
 	const active = JSON.parse(

@@ -45,7 +45,7 @@ function biliSub(id: string, uid: string, name: string): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		id,
-		cachedProfile: { name, avatar: "", sign: "", lastRefreshedAt: "2026-09-24T00:00:00Z" },
+		cachedProfile: { name, sign: "", lastRefreshedAt: "2026-09-24T00:00:00Z" },
 	};
 }
 
@@ -95,7 +95,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 				extSub("s-dy", "sec-1", {
 					cachedProfile: {
 						name: "抖音乙",
-						avatar: "/api/subscriptions/s-dy/avatar?v=abc",
+						avatar: `${"d".repeat(64)}.png`,
 						sign: "",
 						lastRefreshedAt: "2026-09-24T00:00:00Z",
 					},
@@ -110,9 +110,7 @@ describe("粉丝数变化 · 拓展订阅", () => {
 		expect(screen.getByText("2.2万 粉丝")).toBeTruthy();
 		expect(screen.getByText("+3333")).toBeTruthy();
 		expect(screen.getByText("-44")).toBeTruthy();
-		expect(
-			container.querySelector('img[src="/api/subscriptions/s-dy/avatar?v=abc"]'),
-		).not.toBeNull();
+		expect(container.querySelector(`img[src="/api/images/${"d".repeat(64)}.png"]`)).not.toBeNull();
 		expect(screen.queryByText(/UID/)).toBeNull();
 	});
 
@@ -123,7 +121,6 @@ describe("粉丝数变化 · 拓展订阅", () => {
 				extSub("s-dy", "sec-1", {
 					cachedProfile: {
 						name: "资料里的名",
-						avatar: "",
 						sign: "",
 						lastRefreshedAt: "2026-09-24T00:00:00Z",
 					},
@@ -151,7 +148,6 @@ describe("粉丝数变化 · 拓展订阅", () => {
 				extSub("s-dy", "12345", {
 					cachedProfile: {
 						name: "抖音同号",
-						avatar: "",
 						sign: "",
 						lastRefreshedAt: "2026-09-24T00:00:00Z",
 					},

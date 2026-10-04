@@ -50,10 +50,10 @@ afterEach(() => {
 });
 
 describe("⑥ 启动批量冷刷 name/avatar", () => {
-	it("批量端点回新昵称/头像 → patch 更新 name/avatar,fans 不动", async () => {
+	it("批量端点回新昵称/头像 → patch 更新 name/avatarUrl(B 站的头像是远端网址),fans 不动", async () => {
 		const prevProfile = {
 			name: "旧名",
-			avatar: "旧头",
+			avatarUrl: "旧头",
 			sign: "s",
 			fans: 100,
 			lastRefreshedAt: "x",
@@ -111,7 +111,11 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 				const calls = rtPatch.mock.calls as unknown as PatchCall[];
 				const cold = calls.find((c) => c[1]?.cachedProfile?.name === "新名");
 				expect(cold).toBeTruthy();
-				expect(cold?.[1].cachedProfile).toMatchObject({ name: "新名", avatar: "新头", fans: 100 });
+				expect(cold?.[1].cachedProfile).toMatchObject({
+					name: "新名",
+					avatarUrl: "新头",
+					fans: 100,
+				});
 			},
 			{ timeout: 2000, interval: 10 },
 		);

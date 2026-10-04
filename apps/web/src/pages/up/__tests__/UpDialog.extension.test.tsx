@@ -28,7 +28,7 @@ const TARGET: PushTarget = {
 function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "douyin", externalId: "MS4wLjAB-sec" }),
-		cachedProfile: { name: "抖音那位", avatar: "", sign: "", fans: 12, lastRefreshedAt: "t" },
+		cachedProfile: { name: "抖音那位", sign: "", fans: 12, lastRefreshedAt: "t" },
 		...over,
 	};
 }

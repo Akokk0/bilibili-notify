@@ -188,7 +188,7 @@ describe("UpCard × 拓展订阅", () => {
 
 	it("有资料缓存用资料缓存里的名字", () => {
 		const cached = makeExtSub({
-			cachedProfile: { name: "资料里的名字", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
+			cachedProfile: { name: "资料里的名字", sign: "", fans: 1, lastRefreshedAt: "t" },
 		});
 		const { getAllByText } = render(<UpCard {...props({ sub: cached })} />);
 		expect(getAllByText("资料里的名字").length).toBeGreaterThan(0);
@@ -256,7 +256,7 @@ describe("UpCard × B 站订阅的身份行", () => {
 	it("写「UID xxx」", () => {
 		const sub = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
-			cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 1, lastRefreshedAt: "t" },
+			cachedProfile: { name: "UP甲", sign: "", fans: 1, lastRefreshedAt: "t" },
 		};
 		const { getByText } = render(<UpCard {...props({ sub })} />);
 		expect(getByText("UID 100")).toBeTruthy();

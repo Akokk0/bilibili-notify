@@ -70,6 +70,7 @@ import {
 import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
+import { readProfileAvatar } from "./runtime/extension-push-common.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import {
 	copyKeyMaterial,
@@ -577,12 +578,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// longer exists (deleted while the server was down). FansPoller's
 		// subscription-changed listener handles deletions made while running.
 		await pruneOrphanSubRuntime(runtime.subRuntimeStore, subBinding.store);
-		// 拓展订阅的头像文件同理(ADR-0019 决策 49),保留名单同样是两支的全部 id。扫不动不致命:
-		// 最多多留几个孤儿文件,下次开机再扫。
-		// 头像不进备份(决策 49,与资料缓存同一口径):恢复之后等拓展下一次报资料再来。
-		await runtime.subAvatarStore
-			.sweep(subBinding.store.list().map((s) => s.id))
-			.catch((err) => log.warn(`[sub-avatar] 开机清扫失败: ${String(err)}`));
+		// 拓展订阅的头像在图库里、资料缓存里放引用(ADR-0019 决策 49):资料条目丢了,头像就不再有人引用,
+		// 由图库清扫收走,这里不用另外扫头像。头像不进备份(与资料缓存同一口径):恢复之后等拓展下一次报资料再来。
 		// 入站的转发口。指令处理器要等 engines / 调度器建好才有,所以这里先留两个
 		// 可后填的引用 —— adapter 建得比它们早。
 		//
@@ -700,7 +697,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 							enabled: sub.enabled,
 							roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
 							specialUsers: sub.specialUsers.map((u) => u.uid),
-							avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatar,
+							avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl,
 						};
 					}),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
@@ -770,7 +767,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				return view?.display.label ?? entryIdentity(entry)?.name;
 			},
 			// 拓展订阅推送要现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、清单里平台对作品的
-			// 叫法、存下的头像文件。同上,装载器晚一步建起来,所以都现取。
+			// 叫法、资料里引用的头像(图库)。同上,装载器晚一步建起来,所以都现取。
 			extensionSources: {
 				running: (id) =>
 					loadedExtensions?.list().some((one) => one.id === id && one.state === "running") ?? false,
@@ -782,7 +779,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					const entry = loadedExtensions?.list().find((one) => one.id === id);
 					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.events;
 				},
-				readAvatar: (id) => runtime.subAvatarStore.read(id),
+				readAvatar: (id) => readProfileAvatar(runtime, id),
 			},
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,

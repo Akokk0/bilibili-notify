@@ -245,7 +245,7 @@ export interface CreateEnginesOptions {
 	extensionPlatformLabel?: (extensionId: string) => string | undefined;
 	/**
 	 * 拓展订阅推送要从外面现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、平台对作品的叫法、
-	 * 存下的头像文件。装载器比引擎晚建起来,装卸也随时发生,都现取。
+	 * 资料里引用的头像(图库)。装载器比引擎晚建起来,装卸也随时发生,都现取。
 	 *
 	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
 	 */

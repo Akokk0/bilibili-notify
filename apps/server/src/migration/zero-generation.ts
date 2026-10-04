@@ -9,9 +9,9 @@
  *
  * 怎么搬:追加写的 jsonl 一律复制(硬链接的话,新代往里追加会改到旧代的文件),其余硬链接、链接不了
  * 回落成复制;软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、
- * 不拷内容。聊天附件不整目录搬:被会话引用的逐张复制进图库 `images/`(新代的图库靠刷新修改时间做宽限期,
- * 硬链接会改到旧代那份,见 `chat-attachments.ts`)。上个进程的残留、0.x 的备份与迁移中间件、卡片皮肤
- * (不迁,决策 12)不带过来,都记进报告。
+ * 不拷内容。聊天附件与拓展订阅的头像不整目录搬:被会话 / 资料缓存引用的逐张复制进图库 `images/`(新代的图库
+ * 靠刷新修改时间做宽限期,硬链接会改到旧代那份,见 `chat-attachments.ts`、`profile-avatars.ts`)。上个进程的
+ * 残留、0.x 的备份与迁移中间件、卡片皮肤(不迁,决策 12)不带过来,都记进报告。
  */
 
 import { access, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
@@ -48,6 +48,7 @@ import {
 	sweepMigratedHistory,
 } from "./history.js";
 import { ZERO_GLOBAL_LIVE_FACTS } from "./live-split.js";
+import { migrateProfileAvatars } from "./profile-avatars.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSecretBag } from "./secrets.js";
 import { migrateSettingsFiles, readMigratedRetentionDays, readZeroLiveFacts } from "./settings.js";
@@ -64,7 +65,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 24;
+export const MIGRATION_REVISION = 25;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -109,7 +110,12 @@ type ZeroMove =
 			label: string;
 	  }
 	/** 不迁。 */
-	| { kind: "drop"; reason: string };
+	| { kind: "drop"; reason: string }
+	/**
+	 * 整个只作迁移的输入、不进新代:某一步改写时读它(拓展订阅的头像,资料缓存引用到哪个才复制哪个),
+	 * 在就记进「没带过来的」,`reason` 写清它去了哪。和 `drop` 的区别只在语义:`drop` 是不要了,这个是读了再决定。
+	 */
+	| { kind: "input"; reason: string };
 
 /**
  * 0.x 的每个一级项去哪。`satisfies` 钉住 0.x 布局里的每一项都有去向:布局多一项,这里不写就编译不过。
@@ -149,7 +155,11 @@ const ZERO_GENERATION_MOVES = {
 			chat: "聊天附件:迁移读一次,被会话引用的逐张复制进图库 images/(记在搬过去的里)、其余不带过来,不整目录进新代",
 		},
 	},
-	avatars: { kind: "move", to: ["avatars"], label: "头像" },
+	avatars: {
+		kind: "input",
+		reason:
+			"拓展订阅的头像:迁移读一次,被资料缓存引用的逐张复制进图库 images/(记在搬过去的里)、其余不带过来,不整目录进新代",
+	},
 	skins: { kind: "move", to: DASHBOARD_SKINS_DIR, label: "界面皮肤" },
 	"card-skins": { kind: "drop", reason: "卡片皮肤不迁(ADR-0022 决策 12)" },
 	"maid-skills": { kind: "move", to: ["maid-skills"], label: "女仆技能" },
@@ -234,7 +244,7 @@ export async function migrateZeroGeneration(
 	await mkdir(opts.targetDir, { recursive: true });
 	for (const [index, [key, move]] of moves.entries()) {
 		const from = zeroPath(opts.zeroRoot, key);
-		if (move.kind === "drop") {
+		if (move.kind === "drop" || move.kind === "input") {
 			if (await exists(from)) report.skipped.push({ path: key, reason: move.reason });
 			continue;
 		}
@@ -281,7 +291,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 设置 → 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 皮肤、对话、密钥(不依赖别的,放最后)。
+ * 开机时做)→ 设置 → 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、对话、密钥(不依赖别的,放最后)。
  * 每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
@@ -356,6 +366,37 @@ const REWRITES: readonly {
 		run: withBiliSubscriptions((opts, subscriptions) =>
 			migrateRoastDraftsFile(dataPath(opts.targetDir, ...ROAST_DRAFTS_FILE), subscriptions),
 		),
+	},
+	{
+		label: "订阅资料",
+		run: async (opts, report) => {
+			const done = await migrateProfileAvatars({
+				zeroDir: zeroPath(opts.zeroRoot, "avatars"),
+				imagesDir: dataPath(opts.targetDir, "images"),
+				runtimeFile: dataPath(opts.targetDir, ...SUB_RUNTIME_FILE),
+			});
+			// 头像的账:搬进图库的各记一条(旧路径 → 图库里的引用),没搬的按数量各记一句,不逐个列。
+			for (const { file, ref } of done.copied) {
+				report.transfers.push({
+					from: `avatars/${file}`,
+					to: portable(relative(opts.targetDir, dataPath(opts.targetDir, "images", ref))),
+					method: "copy",
+				});
+			}
+			if (done.dropped > 0) {
+				report.skipped.push({
+					path: "avatars",
+					reason: `${done.dropped} 个拓展订阅的头像对不上(文件不在、不是图库收的图、超过 8MB 或路径不对),资料里不再带头像,等拓展下一次报资料再来`,
+				});
+			}
+			if (done.orphans > 0) {
+				report.skipped.push({
+					path: "avatars",
+					reason: `${done.orphans} 个头像文件没有任何资料引用,没带过来`,
+				});
+			}
+			return done.rewritten;
+		},
 	},
 	{ label: "界面皮肤", run: (opts) => migrateDashboardSkins(opts.targetDir) },
 	{

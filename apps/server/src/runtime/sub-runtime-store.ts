@@ -3,6 +3,7 @@ import {
 	type CachedProfile,
 	createSerialQueue,
 	type FansBaseline,
+	type ImageRef,
 	type Logger,
 } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
@@ -35,7 +36,8 @@ import { dataPath } from "./roots.js";
 export interface SubRuntime {
 	/**
 	 * Cached B-station public profile mirror for UI display. FansPoller-owned.
-	 * 拓展订阅那一支由拓展「报资料更新」写(`reported-profiles.ts`,ADR-0019 决策 7 / 62)。
+	 * 拓展订阅那一支由拓展「报资料更新」写(`reported-profiles.ts`,ADR-0019 决策 7 / 62),头像存进图库、
+	 * 这里只放引用(`avatar`);所以这座仓是图库的一家引用方,见 {@link SubRuntimeStore.listImageRefs}。
 	 */
 	cachedProfile?: CachedProfile;
 	/** Fans count + ts at first poll of this sub; written once, never changed. */
@@ -79,6 +81,14 @@ export interface SubRuntimeStore {
 	/** Load `<dataRoot>/state/sub-runtime.json` (absent / malformed → empty). Idempotent. */
 	load(): Promise<void>;
 	/**
+	 * 所有订阅资料里存进图库的头像(去重)—— 图库清扫要的「这一家引用着谁」,装配时登记成引用方交出去。
+	 * B 站订阅的远端网址(`avatarUrl`)不是图库的东西,不算。
+	 *
+	 * 读的是内存里最新的那一份(patch 在写盘之前就换了它)。还没载入就被问,先把盘上的载进来再答 ——
+	 * 清扫要是赶在开机载入之前,拿一份空名单去删图,所有拓展订阅的头像过了宽限期就没了。
+	 */
+	listImageRefs(): Promise<ImageRef[]>;
+	/**
 	 * 关停:先等在途与已排队的写全部落盘,再关门 —— 此后的 patch / prune 一律以
 	 * `SerialQueueClosedError` 拒绝、不碰盘。关停的 `flush` 段调它。
 	 */
@@ -119,7 +129,8 @@ export const SUB_RUNTIME_FILE = ["runtime", "sub-runtime.json"] as const;
 export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRuntimeStore {
 	const file = dataPath(opts.dataRoot, ...SUB_RUNTIME_FILE);
 	let records: Record<string, SubRuntime> = {};
-	let loaded = false;
+	/** 载入只做一次;`listImageRefs` 等的就是这一次(没载完时被问的人和第一个调 `load` 的等同一件事)。 */
+	let loading: Promise<void> | undefined;
 	// Single private write queue (one key — there is only one file) so concurrent patch/prune
 	// (a FansPoller tick vs. a POST self-seed) never interleave their read-modify-write of the
 	// whole-file JSON. Errors propagate to the caller without poisoning the queue.
@@ -136,6 +147,25 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 			opts.logger.warn(`[sub-runtime] persist failed: ${String(err)}`);
 			throw err;
 		}
+	}
+
+	function load(): Promise<void> {
+		loading ??= (async () => {
+			try {
+				const raw = await readFile(file, "utf8");
+				const parsed = JSON.parse(raw);
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+					records = parsed as Record<string, SubRuntime>;
+				} else {
+					opts.logger.warn("[sub-runtime] file is not an object; starting empty");
+				}
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+					opts.logger.warn(`[sub-runtime] load failed, starting empty: ${String(err)}`);
+				}
+			}
+		})();
+		return loading;
 	}
 
 	return {
@@ -190,22 +220,17 @@ export function createSubRuntimeStore(opts: CreateSubRuntimeStoreOptions): SubRu
 
 		close: () => writes.close(),
 
-		async load() {
-			if (loaded) return;
-			loaded = true;
-			try {
-				const raw = await readFile(file, "utf8");
-				const parsed = JSON.parse(raw);
-				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-					records = parsed as Record<string, SubRuntime>;
-				} else {
-					opts.logger.warn("[sub-runtime] file is not an object; starting empty");
-				}
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-					opts.logger.warn(`[sub-runtime] load failed, starting empty: ${String(err)}`);
-				}
+		load,
+
+		async listImageRefs() {
+			await load();
+			const refs = new Set<ImageRef>();
+			for (const record of Object.values(records)) {
+				const avatar = record.cachedProfile?.avatar;
+				// 盘上是裸 JSON.parse 读出来的,不是字符串的不当引用。
+				if (typeof avatar === "string") refs.add(avatar);
 			}
+			return [...refs];
 		},
 	};
 }

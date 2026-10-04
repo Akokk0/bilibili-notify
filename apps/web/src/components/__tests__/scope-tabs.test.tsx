@@ -22,7 +22,6 @@ function makeSub(uid: string, name: string): Subscription {
 		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		cachedProfile: {
 			name,
-			avatar: "",
 			sign: "",
 			fans: 0,
 			lastRefreshedAt: "1970-01-01T00:00:00.000Z",
@@ -105,7 +104,7 @@ describe("ScopeTabs 的两种 tab 说同一句选中语汇", () => {
 describe("ScopeTabs 的「是谁」那一行", () => {
 	const EXT: Subscription = {
 		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
-		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
+		cachedProfile: { name: "抖音乙", sign: "", fans: 0, lastRefreshedAt: "t" },
 	};
 
 	function renderWith(

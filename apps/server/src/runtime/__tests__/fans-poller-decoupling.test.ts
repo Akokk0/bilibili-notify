@@ -160,6 +160,9 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		];
 		expect(id).toBe("sub-1");
 		expect(payload.cachedProfile).toMatchObject({ name: "测试UP", fans: 4242 });
+		// B 站的头像是远端网址:放 `avatarUrl`,图库引用那一格 `avatar` 是拓展订阅才有的。
+		expect(payload.cachedProfile).toMatchObject({ avatarUrl: "f.png" });
+		expect(payload.cachedProfile).not.toHaveProperty("avatar");
 		expect(payload.cachedProfile?.lastRefreshedAt).toBeTypeOf("string");
 		expect(payload.fansBaseline).toMatchObject({ value: 4242 });
 
@@ -174,7 +177,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		const rtPatch = vi.fn(async () => {});
 		// 既有 runtime:baseline 已存在,cachedProfile 已 seed
 		const rtGet = vi.fn(() => ({
-			cachedProfile: { name: "旧名", avatar: "a", sign: "s", fans: 100, lastRefreshedAt: "x" },
+			cachedProfile: { name: "旧名", avatarUrl: "a", sign: "s", fans: 100, lastRefreshedAt: "x" },
 			fansBaseline: { value: 80, ts: "2026-04-01T00:00:00.000Z" },
 		}));
 		const api = makeApi(120);

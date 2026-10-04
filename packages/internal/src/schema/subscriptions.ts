@@ -55,12 +55,17 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  * 就是在面板上印一句「0 粉丝」的假话。B 站那支照旧总有。`sub-runtime.json` 读盘是裸
  * `JSON.parse`、不过这份 schema,所以旧载荷读到缺这一格的条目也照常开机。
  *
- * `avatar` 按来源不同:B 站订阅是 B 站 CDN 的图链;拓展订阅是同源的相对地址
- * `/api/subscriptions/<id>/avatar?v=<摘要>`(决策 49,头像存成文件),没有就是空串。
+ * 头像按来源不同,分两格(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗,命名见 `docs/agents/conventions/naming.md`):
+ * - `avatar`:存进图库的头像,是 `ImageRef`,面板从 `/api/images/<ref>` 取。这一期只有**拓展订阅**有;
+ * - `avatarUrl`:远端网址。这一期只有 **B 站订阅**有(B 站 CDN 的图链)—— 服务端从不抓 B 站的头像,抓图服务在
+ *   3a,到那时它也换成 `avatar`。
+ *
+ * 没有头像就是**两格都缺**,不再写空串。
  */
 export const CachedProfileSchema = z.object({
 	name: z.string(),
-	avatar: z.string(),
+	avatar: z.string().optional(),
+	avatarUrl: z.string().optional(),
 	sign: z.string(),
 	fans: z.number().int().min(0).optional(),
 	lastRefreshedAt: z.string(),

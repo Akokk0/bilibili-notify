@@ -115,7 +115,7 @@ export interface BusEvents {
 	 */
 	"subscription-reported": SubscriptionReportDelivery;
 	/**
-	 * 拓展报的资料更新(ADR-0019 决策 7 / 62)落进资料缓存与头像文件之后,面板看得见的那几格(名字 /
+	 * 拓展报的资料更新(ADR-0019 决策 7 / 62)落进资料缓存与图库里的头像之后,面板看得见的那几格(名字 /
 	 * 头像 / 粉丝数)真变了的订阅 id。**按窗口合并过**:拓展起来时可能一口气报一百条资料,一阵只发一次。
 	 *
 	 * 独立端转成 `state` WS channel 的同名帧,面板据此重取订阅列表。🔴 **不发 `config-changed

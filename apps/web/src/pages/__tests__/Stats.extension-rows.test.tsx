@@ -69,15 +69,20 @@ const EXT_ROW = row({
 const BILI_SUB: Subscription = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "12345" }),
 	id: "s-bili",
-	cachedProfile: { name: "B 站甲", avatar: "", sign: "", lastRefreshedAt: "2026-09-24T00:00:00Z" },
+	cachedProfile: {
+		name: "B 站甲",
+		avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg",
+		sign: "",
+		lastRefreshedAt: "2026-09-24T00:00:00Z",
+	},
 };
 const EXT_SUB: Subscription = {
 	...makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" }),
 	id: "s-dy",
-	// 拓展的头像是面板里的同源相对地址(资料上报存成文件),页面上照样画得出来。
+	// 拓展的头像存在图库里、资料里放引用(资料上报存进图库),页面上走图库的同源读口画出来。
 	cachedProfile: {
 		name: "抖音乙",
-		avatar: "/api/subscriptions/s-dy/avatar?v=abc",
+		avatar: `${"d".repeat(64)}.png`,
 		sign: "",
 		lastRefreshedAt: "2026-09-24T00:00:00Z",
 	},
@@ -155,9 +160,11 @@ describe("统计页 · 拓展订阅的行", () => {
 
 		const ext = tableRow("抖音乙");
 		expect(within(ext).getByText("抖")).toBeTruthy();
-		expect(ext.querySelector('img[src="/api/subscriptions/s-dy/avatar?v=abc"]')).not.toBeNull();
+		expect(ext.querySelector(`img[src="/api/images/${"d".repeat(64)}.png"]`)).not.toBeNull();
 		expect(within(ext).getByText(/直播中/)).toBeTruthy();
 		const bili = tableRow("B 站甲");
+		// B 站的头像是远端网址,照旧。
+		expect(bili.querySelector('img[src="https://i0.hdslb.com/bfs/face/x.jpg"]')).not.toBeNull();
 		expect(within(bili).queryByText("抖")).toBeNull();
 		expect(within(bili).queryByText(/直播中/)).toBeNull();
 

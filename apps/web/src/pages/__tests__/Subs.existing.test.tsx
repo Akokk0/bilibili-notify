@@ -31,7 +31,7 @@ const profileOf = (uid: string, name: string) => ({ uid, name, avatar: "", sign:
 /** 列表里那张订阅卡的名字,换掉默认的「UID xxx」,好认。 */
 const named = (sub: Subscription, name: string): Subscription => ({
 	...sub,
-	cachedProfile: { name, avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
+	cachedProfile: { name, sign: "", fans: 0, lastRefreshedAt: "t" },
 });
 
 const BILI = named(makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }), "UP甲");

@@ -7,6 +7,8 @@ import {
 	sniffImageFormat,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import type { ImageStore } from "../images/image-store.js";
+import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
  * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`extension-posts.ts`)与拓展的
@@ -29,10 +31,33 @@ export interface ExtensionSourceLookups {
 	 * 就是 `undefined`。直播推送据它认「周期『正在直播』这个源有没有」(`featuresForEvents`,面板与服务端同一条规则)。
 	 */
 	events(extensionId: string): readonly SubscriptionEventKind[] | undefined;
-	/** 这条订阅存下的头像文件(决策 49);没有就是 `undefined`。 */
-	readAvatar(
-		subscriptionId: string,
-	): Promise<{ bytes: Uint8Array; contentType: string } | undefined>;
+	/** 这条订阅资料里存进图库的头像(决策 49;见 {@link readProfileAvatar});没有就是 `undefined`。 */
+	readAvatar(subscriptionId: string): Promise<StoredAvatar | undefined>;
+}
+
+/** 图库里读出来的一张头像:字节与它的类型(图库按嗅探定的 mime)。 */
+export interface StoredAvatar {
+	bytes: Uint8Array;
+	mime: string;
+}
+
+/**
+ * 这条订阅资料里存进图库的头像。资料里的 `avatar` 是图库引用(拓展订阅才有;B 站订阅的 `avatarUrl` 是远端网址,
+ * 不是图库的东西);没有头像、或引用指着的图已经不在了都回 `undefined`。读盘出错就抛,调用方各自决定怎么兜底。
+ *
+ * 拓展出卡(作品 / 直播)与锐评卡共用:卡里的图只认字符串地址(决策 68),要把字节转成 data URL,
+ * 面板用的 `/api/images/<ref>` 截图的浏览器加载不到。
+ */
+export async function readProfileAvatar(
+	runtime: {
+		subRuntimeStore: Pick<SubRuntimeStore, "get">;
+		imageStore: Pick<ImageStore, "read">;
+	},
+	subscriptionId: string,
+): Promise<StoredAvatar | undefined> {
+	const ref = runtime.subRuntimeStore.get(subscriptionId)?.cachedProfile?.avatar;
+	if (ref === undefined) return undefined;
+	return (await runtime.imageStore.read(ref)) ?? undefined;
 }
 
 /**
@@ -46,8 +71,8 @@ export function imageDataUrl(bytes: Uint8Array): string | undefined {
 	return format ? dataUrl(bytes, `image/${format}`) : undefined;
 }
 
-function dataUrl(bytes: Uint8Array, contentType: string): string {
-	return `data:${contentType};base64,${Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64")}`;
+function dataUrl(bytes: Uint8Array, mime: string): string {
+	return `data:${mime};base64,${Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64")}`;
 }
 
 /** 有字才算有:空串、只有空白的都不算。 */
@@ -87,14 +112,14 @@ export interface ExtensionCardAuthorSources {
 	event?: { name?: string; avatar?: Uint8Array };
 	/** 订阅资料里的名字。 */
 	profileName?: string;
-	/** 存下的头像文件(`SubAvatarStore.read`)。事件带了头像就不读。 */
-	readStoredAvatar(): Promise<{ bytes: Uint8Array; contentType: string } | undefined>;
+	/** 资料里引用的头像(图库,见 {@link readProfileAvatar})。事件带了头像就不读。 */
+	readStoredAvatar(): Promise<StoredAvatar | undefined>;
 }
 
 /**
  * 卡上的作者(决策 54):事件带的名字 / 头像优先;没带的那一样用订阅资料 —— 名字见
- * {@link extensionSubscriptionName},头像取存下的头像文件的**字节**转成 data URL(资料里存的是面板的
- * 相对地址 `/api/subscriptions/<id>/avatar?v=…`,截图的浏览器加载不到,决策 68)。
+ * {@link extensionSubscriptionName},头像取资料里引用的那张图库图的**字节**转成 data URL(面板用的是同源的
+ * `/api/images/<ref>`,截图的浏览器加载不到,决策 68)。
  *
  * 哪儿都没有头像(或者读文件抛了)给透明占位:卡上留一块空的头像位,不画一张裂图。
  */
@@ -108,7 +133,7 @@ export async function extensionCardAuthor(
 	});
 	const fromEvent = from.event?.avatar && imageDataUrl(from.event.avatar);
 	if (fromEvent) return { name, avatarUrl: fromEvent };
-	let stored: { bytes: Uint8Array; contentType: string } | undefined;
+	let stored: StoredAvatar | undefined;
 	try {
 		stored = await from.readStoredAvatar();
 	} catch {
@@ -116,7 +141,7 @@ export async function extensionCardAuthor(
 	}
 	return {
 		name,
-		avatarUrl: stored ? dataUrl(stored.bytes, stored.contentType) : BLOCKED_IMG_PLACEHOLDER,
+		avatarUrl: stored ? dataUrl(stored.bytes, stored.mime) : BLOCKED_IMG_PLACEHOLDER,
 	};
 }
 

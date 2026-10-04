@@ -119,8 +119,8 @@ describe("deliverRoast — 停用的目标", () => {
 /**
  * 卡上的人(ADR-0020 决策 15 / 3):按订阅 id 认,两支订阅都行。
  *
- * - 拓展的头像在资料里是面板的同源相对地址(`/api/subscriptions/<id>/avatar?v=…`),截图的浏览器加载不到 —— 出卡前
- *   读存下的头像文件、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像照旧是 CDN 图链。
+ * - 拓展的头像在资料里是图库引用(`avatar`),面板用的同源地址 `/api/images/<ref>` 截图的浏览器加载不到 —— 出卡前
+ *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像(`avatarUrl`)照旧是 CDN 图链。
  * - 颜色跟着人走,与面板同一个算法(`upColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
  * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
  */
@@ -143,23 +143,27 @@ describe("buildRoastPayload — 卡上的人", () => {
 		overrides: {},
 	};
 
-	function makeCardDeps(avatars: Record<string, Buffer | "throws"> = { "s-dy": PNG }) {
+	/** 拓展订阅 s-dy 资料里的头像引用。 */
+	const DY_REF = `${"d".repeat(64)}.png`;
+
+	/** `images`:图库里每个引用对应的字节(`"throws"` = 读盘抛了);默认 s-dy 的头像在。 */
+	function makeCardDeps(images: Record<string, Buffer | "throws"> = { [DY_REF]: PNG }) {
 		const generateRoastBoardCard = vi.fn(async (..._args: unknown[]) => Buffer.from("B"));
 		const generateRoastSoloCard = vi.fn(async (..._args: unknown[]) => Buffer.from("S"));
-		const profiles: Record<string, { name: string; avatar: string }> = {
-			"s-bili": { name: "B 站甲", avatar: "https://i0.hdslb.com/a.jpg" },
-			"s-dy": { name: "抖音乙", avatar: "/api/subscriptions/s-dy/avatar?v=abc" },
+		const profiles: Record<string, { name: string; avatar?: string; avatarUrl?: string }> = {
+			"s-bili": { name: "B 站甲", avatarUrl: "https://i0.hdslb.com/a.jpg" },
+			"s-dy": { name: "抖音乙", avatar: DY_REF },
 		};
 		const deps = {
 			runtime: {
 				engines: { imageRenderer: { generateRoastBoardCard, generateRoastSoloCard } },
 				serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 				subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles[id] }) },
-				subAvatarStore: {
-					read: async (id: string) => {
-						const a = avatars[id];
-						if (a === "throws") throw new Error("盘挂了");
-						return a ? { bytes: a, contentType: "image/png" } : undefined;
+				imageStore: {
+					read: async (ref: string) => {
+						const image = images[ref];
+						if (image === "throws") throw new Error("盘挂了");
+						return image ? { bytes: image, mime: "image/png" } : undefined;
 					},
 				},
 			},
@@ -218,8 +222,22 @@ describe("buildRoastPayload — 卡上的人", () => {
 		expect(data.roast?.[0]).toMatchObject({ name: "sec-bare", avatar: undefined });
 	});
 
-	it("读头像文件抛了 → 头像留空,照样出卡(不因一张头像整张卡降级成文字)", async () => {
-		const { deps, generateRoastSoloCard } = makeCardDeps({ "s-dy": "throws" });
+	it("资料里的引用指着的图已经不在了 → 头像留空,照样出卡", async () => {
+		const { deps, generateRoastSoloCard } = makeCardDeps({});
+		await buildRoastPayload(deps, {
+			kind: "solo",
+			result: { pushText: "", subscriptionId: "s-dy", verdict: "v", score: 1, highlights: [] },
+			days: 7,
+		});
+		const up = (
+			generateRoastSoloCard.mock.calls[0]?.[0] as { up: Record<string, unknown> } | undefined
+		)?.up;
+		expect(up?.name).toBe("抖音乙");
+		expect(up?.avatar).toBeUndefined();
+	});
+
+	it("读图库抛了 → 头像留空,照样出卡(不因一张头像整张卡降级成文字)", async () => {
+		const { deps, generateRoastSoloCard } = makeCardDeps({ [DY_REF]: "throws" });
 		const out = await buildRoastPayload(deps, {
 			kind: "solo",
 			result: { pushText: "", subscriptionId: "s-dy", verdict: "v", score: 1, highlights: [] },

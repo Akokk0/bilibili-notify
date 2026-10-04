@@ -27,7 +27,7 @@ const SUB = {
 
 const PROFILE = {
 	name: "测试UP",
-	avatar: "https://example.com/a.png",
+	avatarUrl: "https://example.com/a.png",
 	sign: "签名",
 	fans: 1234,
 	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
@@ -70,7 +70,7 @@ function makeHarness(opts?: {
 				card: {
 					mid: SUB.identity.externalId,
 					name: PROFILE.name,
-					face: PROFILE.avatar,
+					face: PROFILE.avatarUrl,
 					sign: PROFILE.sign,
 					fans: PROFILE.fans,
 				},
@@ -177,7 +177,8 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		expect(id).toBe(SUB.id);
 		expect(patch.cachedProfile).toMatchObject({
 			name: PROFILE.name,
-			avatar: PROFILE.avatar,
+			// B 站的头像是远端网址:放 `avatarUrl`,不是图库引用 `avatar`。
+			avatarUrl: PROFILE.avatarUrl,
 			sign: PROFILE.sign,
 			fans: PROFILE.fans,
 		});

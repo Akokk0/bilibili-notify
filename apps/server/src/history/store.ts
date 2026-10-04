@@ -62,7 +62,7 @@ export interface NewHistoryEntry {
 	messages: HistoryRecordMessage[];
 	/** Snapshot of sub.cachedProfile.name at write time; survives 订阅删除。 */
 	nameSnapshot?: string;
-	/** Snapshot of sub.cachedProfile.avatar at write time。 */
+	/** Snapshot of sub.cachedProfile.avatarUrl at write time(B 站行;拓展行不带,头像快照归 ⑳d 改装图库引用)。 */
 	uavatarSnapshot?: string;
 }
 

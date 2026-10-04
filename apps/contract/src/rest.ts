@@ -461,13 +461,15 @@ export interface MarketplaceInstallRequest {
  *
  * `identity.sourceKey` 是拓展 id 时:
  *
- * - `cachedProfile.avatar` 是同源的**相对地址** `/api/subscriptions/<id>/avatar?v=<摘要>`(决策 49:头像存成
- *   文件,走面板鉴权;换了图 `v` 就变,可以放心缓存),没有头像是空串。`cachedProfile.fans` 可能没有
- *   —— 拓展不一定知道粉丝数,别补成 0。
+ * - `cachedProfile.avatar` 是存进图库的头像,即 `ImageRef`(决策 49:头像进图库,面板从 `/api/images/<ref>` 取,
+ *   走面板鉴权;引用随内容变,可以放心缓存),没有头像就**缺这一格**(不再写空串)。B 站订阅的头像是远端网址
+ *   `cachedProfile.avatarUrl`(服务端不抓 B 站头像,抓图服务在 3a),两格各属一支、不会同时有。
+ *   `cachedProfile.fans` 可能没有 —— 拓展不一定知道粉丝数,别补成 0。
  * - **新建**(`POST /api/subscriptions`,`id` 还不存在):body 是整条订阅,外加可选的 `cachedProfile` —— 放面板
- *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatar?, fans? }`,`avatar` 就是候选
- *   里那个位图 data URL。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),头像存成文件后资料里
- *   换成上面那个地址。宿主先核,都过了才落盘:`identity.sourceKey` 这个拓展得是装着的 v2 订阅源
+ *   从解析门(`GET /api/ext/:id/lookup`)挑中的那个候选的 `{ name, avatarUrl?, fans? }`,`avatarUrl` 就是候选
+ *   里那个位图 data URL(它是个网址,所以叫 `avatarUrl`)。服务端只收这三格(`sign` / `lastRefreshedAt` 它自己填),
+ *   头像存进图库后资料里换成图库引用 `avatar`、不再带那个 data URL。宿主先核,都过了才落盘:`identity.sourceKey`
+ *   这个拓展得是装着的 v2 订阅源
  *   (**不要求在跑**,决策 10),没装是 404 `not_found`,装着但不是订阅源(v1 清单 / 没开订阅源那一口 /
  *   清单读不出来)是 400 `unsupported`;同一身份已经有了 → 409 `conflict`;资料不合规矩(头像不是
  *   png / jpeg / webp、魔数对不上、超过 128 KiB……)→ 400 `invalid`,`issues` 点名 `cachedProfile.*`。
@@ -529,8 +531,8 @@ export interface HistoryEntryView {
 	/** 首条本体是面板上显示的文案;其余展开看。 */
 	messages: HistoryMessageView[];
 	/**
-	 * 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。拓展行只有名字、没有头像
-	 * (决策 74:拓展头像是面板里的相对地址,订阅一删就没了)。
+	 * 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。拓展行这一片仍只有名字、没有头像
+	 * (决策 74;头像快照这一格归 ⑳d,届时改成图库引用 `avatarSnapshot`,拓展行才开始有)。
 	 */
 	nameSnapshot?: string;
 	uavatarSnapshot?: string;

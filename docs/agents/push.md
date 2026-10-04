@@ -44,7 +44,7 @@
 | `createSerialGate` | `packages/live/src/serial-gate.ts` | 串行闸：送达次序 = 发起次序，防「下播卡晚于新一场开播卡」的倒序。B 站按房间过闸（`RoomSessionBase.enqueuePush`）；拓展作品按订阅过闸（`bindExtensionPosts`，先报的那条出卡慢也先送到）；拓展直播同样按订阅（`bindExtensionLivePush`，决策 67） |
 | 出卡中立入口 | `ImageRenderer.generateNeutralDynamicCard(node)` / `generateNeutralLiveCard(input)` | 不收平台原始数据。`generateDynamicCard(raw)`（造 node）/ `generateLiveCard(raw…)`（`biliLiveCardInput`）是 B 站的适配层，签名不动。卡里的图只认字符串地址：远端网址走白名单预取，data URL 原样进卡 |
 
-拓展作品翻成作品的规矩（`extension-post-work.ts`，决策 55 / 68 / 69 / 71 / 72 / 77）：类型套进 B 站的动态类型（`extensionPostType`：带视频 AV、有图 DRAW、只有字 WORD）；node 的正文用 `buildPlainText`（带上报的话题名：正文里照名字找到的 `#名字#` / `#名字` 切成 B 站富文本的话题节点，BN 不按 `#` 自己猜），第一个话题进 `node.topic`（正文上方的话题标签），图廊是一份 `GalleryImage` 列表：只有前 9 张图转成 data URL、宽高由 `readImageSize`（`packages/internal`，只读文件头）读、gif 标动图，其余只占张数给 `+N`；没报的视频 / 互动格空着不画；链接部件是事件的 `url`；**不附图集**（图集载荷只带网址，拓展交的是字节）；AI 看作品图 + 视频封面，单张超 3 MiB 跳过、最多 4 张。卡上作者与 `{name}` 走 `extension-push-common.ts`：名字依次取事件里的作者名 → 资料名 → 外部 id（别名已退役，ADR-0021 决策 16；`notes` 是备注，**不当名字用**）；头像事件带了用它，否则读存下的头像文件的字节转 data URL（资料里那个面板相对地址截图加载不到）。
+拓展作品翻成作品的规矩（`extension-post-work.ts`，决策 55 / 68 / 69 / 71 / 72 / 77）：类型套进 B 站的动态类型（`extensionPostType`：带视频 AV、有图 DRAW、只有字 WORD）；node 的正文用 `buildPlainText`（带上报的话题名：正文里照名字找到的 `#名字#` / `#名字` 切成 B 站富文本的话题节点，BN 不按 `#` 自己猜），第一个话题进 `node.topic`（正文上方的话题标签），图廊是一份 `GalleryImage` 列表：只有前 9 张图转成 data URL、宽高由 `readImageSize`（`packages/internal`，只读文件头）读、gif 标动图，其余只占张数给 `+N`；没报的视频 / 互动格空着不画；链接部件是事件的 `url`；**不附图集**（图集载荷只带网址，拓展交的是字节）；AI 看作品图 + 视频封面，单张超 3 MiB 跳过、最多 4 张。卡上作者与 `{name}` 走 `extension-push-common.ts`：名字依次取事件里的作者名 → 资料名 → 外部 id（别名已退役，ADR-0021 决策 16；`notes` 是备注，**不当名字用**）；头像事件带了用它，否则从图库读资料里引用的那张的字节转 data URL（面板用的同源地址 `/api/images/<ref>` 截图加载不到）。
 
 ### ② 适配 —— 唯一同时懂两套词的地方
 
@@ -93,7 +93,7 @@
 | | B 站行 | 拓展行 |
 |---|---|---|
 | 身份 | `{ sourceKey: "bilibili", externalId: uid }` | `{ sourceKey: 拓展 id, externalId: 外部 id }` |
-| 快照 | 名字 + 头像（`nameSnapshot` / `uavatarSnapshot`；头像那格 ⑳ 换图库引用） | 只存名字 —— 它的头像是面板里的相对地址，订阅一删文件就没了；订阅还在时面板显示它现在的头像 |
+| 快照 | 名字 + 头像（`nameSnapshot` / `uavatarSnapshot`；头像那格 ⑳d 换图库引用；这一片（⑳c）B 站行抄资料里的 `avatarUrl`） | 只存名字 —— 头像快照这一格 ⑳d 才开始给拓展行（装图库引用）；订阅还在时面板显示它现在的头像 |
 
 ⚠️ 身份两格一起比：外部 id 恰好是一串等于某个 B 站 uid 的数字，来源键不同，也不是同一个人。0.x 与 ⑱b 之前的行（`uid` / `extensionId` + `externalId` 散格）由迁移并成 `identity`（`migration/history.ts`），推不出身份的是坏行、原样不动。
 

@@ -31,7 +31,7 @@ const STORE_BUILDERS: Record<string, string> = {
 const IMAGES_DIR_USERS: Record<string, string> = {
 	"apps/server/src/runtime/bootstrap.ts": "把目录交给图库",
 	"apps/server/src/migration/zero-generation.ts":
-		"迁移开新代时直接往新代的 images/ 落文件(0.x 的聊天附件,⑳b):新代的图库此刻没在跑,不联网、不走 ImageWriter;文件名只认 imageRefOf 一份规矩",
+		"迁移开新代时直接往新代的 images/ 落文件(0.x 的聊天附件 ⑳b、拓展订阅头像 ⑳c):新代的图库此刻没在跑,不联网、不走 ImageWriter;文件名只认 imageRefOf 一份规矩",
 };
 
 /** 一份源码里调 `createImageStore(...)` 的行。 */

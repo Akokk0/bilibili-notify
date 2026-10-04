@@ -21,6 +21,8 @@
  * - 会话与聊天附件不挂订阅也不挂日期,按 `scale` 取整(50 → 12、100 → 25)。每张附件内容各不相同(图库按摘要
  *   并同样的图,内容一样就量不到)、各被一场会话的一条用户消息引用着(没人引用的附件迁移时不搬,不引用就没活儿):
  *   第 k 张挂在第 `k mod 会话数` 场的第 `2 × ⌊k ÷ 会话数⌋` 条消息上,两档都是每场 2 张上下,仍近似线性。
+ * - 拓展订阅的头像随拓展订阅数缩(4 → 1):每个拓展订阅一份头像文件、内容各不相同(图库按摘要并同样的图),资料缓存里
+ *   带着 0.x 的同源相对地址(`?v=` 是内容摘要)引用它,迁移时逐个复制进图库。B 站订阅的资料带远端网址的头像。
  * - 皮肤、女仆技能、拓展、素材这些零碎是固定的几份,几乎不占活儿。
  *
  * 订阅数和天数是两把不同的尺子,各缩一次,不能叠:订阅数乘 `scale` 同时天数也乘,体量就成了 1/16。为什么这样缩,是
@@ -45,6 +47,7 @@
  * | 聊天附件                     | 100      | 25         |
  */
 
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
@@ -243,6 +246,13 @@ function fakeBinary(size: number, magic: string | Uint8Array, variant?: number):
 /** 0.x 的聊天附件 id:32 位 hex + 后缀。 */
 const attachmentId = (index: number) => `${hex(0xa7_7ac0 + index, 32)}.png`;
 
+/** 第 `index` 个拓展订阅的头像字节:内容各不相同,迁移时各成图库里的一张。 */
+const extensionAvatarBytes = (index: number) => fakeBinary(8192, PNG_SIGNATURE, 0xa0_0000 + index);
+
+/** 0.x 资料缓存里拓展订阅头像的同源相对地址:`?v=` 取内容 sha256 的前 12 位。 */
+const extensionAvatarAddress = (id: string, index: number) =>
+	`/api/subs/${id}/avatar?v=${createHash("sha256").update(extensionAvatarBytes(index)).digest("hex").slice(0, 12)}`;
+
 // ── 摆树 ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -392,14 +402,38 @@ async function placeState(
 		})),
 	);
 
+	// 资料缓存:每个订阅一份资料。拓展订阅的头像是同源相对地址(引用 `avatars/` 里那个文件),B 站的是远端网址。
 	await tree.putJson(
 		"state/sub-runtime.json",
-		Object.fromEntries(
-			[...bili.map((s) => s.id), ...extensionIds].map((id, i) => [
-				id,
-				{ roomId: String(21_000_000 + i), followed: true },
+		Object.fromEntries([
+			...bili.map((sub, i) => [
+				sub.id,
+				{
+					cachedProfile: {
+						name: `B 站 UP ${i + 1}`,
+						avatar: `https://i0.hdslb.com/bfs/face/${hex(0xface_0000 + i, 16)}.jpg`,
+						sign: "",
+						fans: 1000 + i,
+						lastRefreshedAt: iso(START_MS),
+					},
+					roomId: String(21_000_000 + i),
+					followed: true,
+				},
 			]),
-		),
+			...extensionIds.map((id, i) => [
+				id,
+				{
+					cachedProfile: {
+						name: `拓展 UP ${i + 1}`,
+						avatar: extensionAvatarAddress(id, i),
+						sign: "",
+						lastRefreshedAt: iso(START_MS),
+					},
+					roomId: String(21_000_100 + i),
+					followed: true,
+				},
+			]),
+		]),
 	);
 	// 0.x 按 uid 回指的待审草稿:前三位 UP 各一份。
 	await tree.putJson(
@@ -719,7 +753,7 @@ async function placeLooseThings(tree: Tree, extensionIds: readonly string[]): Pr
 	for (let i = 1; i <= FIXED.fonts; i += 1) {
 		await tree.put(`assets/font/f${i}.woff2`, fakeBinary(51_200, "wOF2"));
 	}
-	for (const id of extensionIds)
-		await tree.put(`avatars/${id}.png`, fakeBinary(8192, PNG_SIGNATURE));
+	for (const [i, id] of extensionIds.entries())
+		await tree.put(`avatars/${id}.png`, extensionAvatarBytes(i));
 	await tree.put("card-bg-cursors.json", '{"cursor":3}');
 }

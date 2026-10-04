@@ -40,7 +40,7 @@ import { api } from "../../services/api";
 
 const BILI = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }),
-	cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
+	cachedProfile: { name: "UP甲", sign: "", fans: 0, lastRefreshedAt: "t" },
 };
 
 /** 让查人的那个接口回一个失败,别的接口照常。 */

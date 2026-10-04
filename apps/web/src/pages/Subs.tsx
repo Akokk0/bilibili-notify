@@ -639,8 +639,8 @@ function CandidateList({
 
 /**
  * 用选中的候选预填资料(ADR-0019 决策 49)—— 与 B 站那边把查到的资料放进草稿同一个做法。头像是
- * 候选的 data URL,建成之后服务端存成文件、换成 `/api/subscriptions/<id>/avatar?v=…`;没有头像就是空串
- * (资料缓存里「没有」的写法,头像件见空串退首字)。
+ * 候选的 data URL,它是个网址,放 `avatarUrl`;建成之后服务端把它存进图库、回来的资料里换成图库引用 `avatar`。
+ * 没有头像就缺这一格(头像件见没有退首字)。
  *
  * 候选没带粉丝数就**不带这一格**:编一个 `0` 出来,卡上就会写「0 粉丝」这种假话。
  */
@@ -649,7 +649,7 @@ function candidateProfile(
 ): NonNullable<Subscription["cachedProfile"]> {
 	return {
 		name: candidate.name,
-		avatar: candidate.avatar ?? "",
+		...(candidate.avatar ? { avatarUrl: candidate.avatar } : {}),
 		sign: "",
 		lastRefreshedAt: new Date().toISOString(),
 		...(candidate.fans !== undefined ? { fans: candidate.fans } : {}),
@@ -933,7 +933,8 @@ export default function Subs() {
 		});
 		fresh.cachedProfile = {
 			name: profile.name,
-			avatar: profile.avatar,
+			// B 站的头像是 CDN 图链:放 `avatarUrl`;没有就缺这一格。
+			...(profile.avatar ? { avatarUrl: profile.avatar } : {}),
 			sign: profile.sign,
 			fans: profile.fans,
 			lastRefreshedAt: new Date().toISOString(),

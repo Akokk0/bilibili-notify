@@ -33,6 +33,7 @@ import {
 	displayName,
 	targetsById as makeTargetsById,
 	platformSupportsAtAll,
+	profileAvatarSrc,
 	routingAlignedToFeatures,
 	subscriptionColor,
 } from "./helpers";
@@ -588,7 +589,7 @@ export function UpDialog({
 						name={displayName(draft)}
 						color={color}
 						size={64}
-						url={draft.cachedProfile?.avatar}
+						url={profileAvatarSrc(draft.cachedProfile)}
 						ring
 					/>
 					<div

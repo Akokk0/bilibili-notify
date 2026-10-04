@@ -32,7 +32,7 @@ const lookups = {
 						id: SUB_ID,
 						identity: { sourceKey: "bilibili", externalId: "u1" },
 					}),
-					profile: { name: "某UP", avatar: "http://a/x.jpg" },
+					profile: { name: "某UP", avatarUrl: "http://a/x.jpg" },
 				}
 			: subscriptionId === EXT_ID
 				? {
@@ -42,8 +42,8 @@ const lookups = {
 							extensionId: "douyin",
 							externalId: "u1",
 						}),
-						// 拓展订阅的头像是面板里的相对地址,订阅一删文件就没了(ADR-0019 决策 74)。
-						profile: { name: "某抖音号", avatar: `/api/subscriptions/${EXT_ID}/avatar?v=abc` },
+						// 拓展订阅的头像是图库引用(`avatar`):历史行的头像快照归 ⑳d,这一片拓展行仍不带(决策 74)。
+						profile: { name: "某抖音号", avatar: `${"a".repeat(64)}.png` },
 					}
 				: undefined,
 };
@@ -164,7 +164,7 @@ describe("historyRecordFromSend", () => {
 		};
 		const lookupsWith = (
 			over: { notes?: string },
-			profile?: { name?: string; avatar?: string },
+			profile?: { name?: string; avatar?: string; avatarUrl?: string },
 		) => ({
 			subscriptionOf: (id: string) =>
 				id === EXT_NO_PROFILE

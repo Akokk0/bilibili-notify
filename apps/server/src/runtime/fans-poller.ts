@@ -410,12 +410,13 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 
 				// 写进 SubRuntimeStore(独立文件 + 原子写,**不发** config-changed)——
 				// fansBaseline 首次写、cachedProfile.fans/lastRefreshedAt 每次写。
-				// name/avatar/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card(首见时
+				// name/avatarUrl/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card(首见时
 				// 的 seedCard)兜底。稳态走 relation/stat 时 seedCard 为空,直接用既有 profile。
+				// B 站的头像是远端网址 `avatarUrl`(服务端不抓 B 站头像,抓图服务在 3a);没有就缺这一格。
 				const cachedProfile: CachedProfile = {
 					...(prev?.cachedProfile ?? {
 						name: seedCard?.name ?? uid,
-						avatar: seedCard?.face ?? "",
+						...(seedCard?.face ? { avatarUrl: seedCard.face } : {}),
 						sign: seedCard?.sign ?? "",
 					}),
 					fans: current,
@@ -556,11 +557,15 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					const prevProfile = subRuntimeStore.get(sub.id)?.cachedProfile;
 					if (!brief || !prevProfile) continue;
 					const name = brief.name || prevProfile.name;
-					const avatar = brief.face || prevProfile.avatar;
-					if (name === prevProfile.name && avatar === prevProfile.avatar) continue;
+					const avatarUrl = brief.face || prevProfile.avatarUrl;
+					if (name === prevProfile.name && avatarUrl === prevProfile.avatarUrl) continue;
 					try {
 						await subRuntimeStore.patch(sub.id, {
-							cachedProfile: { ...prevProfile, name, avatar },
+							cachedProfile: {
+								...prevProfile,
+								name,
+								...(avatarUrl === undefined ? {} : { avatarUrl }),
+							},
 						});
 					} catch (err) {
 						logger.warn(`[fans-poller] 冷刷 profile ${uid} 持久化失败: ${String(err)}`);

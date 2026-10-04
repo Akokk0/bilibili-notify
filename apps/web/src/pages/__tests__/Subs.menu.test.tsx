@@ -31,7 +31,6 @@ function makeSub(uid: string, name: string): Subscription {
 		...makeEmptySubscription({ sourceKey: "bilibili", externalId: uid }),
 		cachedProfile: {
 			name,
-			avatar: "",
 			sign: "",
 			fans: 0,
 			lastRefreshedAt: "1970-01-01T00:00:00.000Z",

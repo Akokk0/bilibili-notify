@@ -56,7 +56,7 @@ import { buildRadarAxes } from "./stats/radar";
 import { STATS_RANGES } from "./stats/ranges";
 import { SoloRoastCard } from "./stats/SoloRoastCard";
 import { SoloRoastScheduleBox } from "./stats/SoloRoastScheduleBox";
-import { displayName } from "./up/helpers";
+import { displayName, profileAvatarSrc } from "./up/helpers";
 import { createSubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
 
@@ -124,7 +124,7 @@ function upMetaOf(
 ): UpMeta {
 	const base = {
 		color: upColor(r, r.subscriptionId),
-		avatar: sub?.cachedProfile?.avatar || undefined,
+		avatar: profileAvatarSrc(sub?.cachedProfile),
 	};
 	if (!isExtensionRow(r)) {
 		const uid = r.uid ?? "";

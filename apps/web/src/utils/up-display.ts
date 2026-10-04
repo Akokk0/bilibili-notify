@@ -30,6 +30,19 @@ export function displayName(sub: Subscription): string {
 }
 
 /**
+ * 订阅资料里头像的显示地址(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):存进图库的头像 `avatar`(拓展订阅)走图库的
+ * 同源读口 `/api/images/<ref>`;否则是远端网址 `avatarUrl`(B 站订阅的 CDN 图链,也可能是新建拓展订阅时草稿里装着的
+ * 候选头像 data URL —— 它是个网址,提交后服务端落图库、回来的资料里换成 `avatar`);都没有就是 `undefined`
+ * (头像件画首字)。所有读订阅头像的地方都走这一个,别各自去挑哪一格。
+ */
+export function profileAvatarSrc(
+	profile: { avatar?: string; avatarUrl?: string } | undefined,
+): string | undefined {
+	if (profile?.avatar) return `/api/images/${encodeURIComponent(profile.avatar)}`;
+	return profile?.avatarUrl || undefined;
+}
+
+/**
  * 这条订阅在页面上的颜色 —— 跟着人走。B 站订阅按 uid 取,拓展订阅按「拓展 id:外部 id」取(决策 73):
  * 删了再加订阅 id 变了,颜色不变。算法住 internal 的 `identityColor` / `upColor`(ADR-0020 决策 15),服务端出图(周报 /
  * 锐评卡)用的是同一份,同一个人在页面与图上是同一个颜色。历史行用 {@link historyRowColor}。

@@ -48,7 +48,7 @@ function source(events: SubscriptionEventKind[]): ExtensionDTO {
 function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
-		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 3, lastRefreshedAt: "t" },
+		cachedProfile: { name: "抖音乙", sign: "", fans: 3, lastRefreshedAt: "t" },
 		...over,
 	};
 }

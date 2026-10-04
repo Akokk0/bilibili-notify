@@ -67,9 +67,9 @@ function makeDeps(opts: StubOpts = {}) {
 		return Buffer.from("SOLO-PNG");
 	});
 
-	const profiles: Record<string, { name: string; avatar: string }> = {
-		s100: { name: "老番茄", avatar: "https://i0.hdslb.com/tomato.jpg" },
-		s200: { name: "机智的党妹", avatar: "https://i0.hdslb.com/dangmei.jpg" },
+	const profiles: Record<string, { name: string; avatarUrl: string }> = {
+		s100: { name: "老番茄", avatarUrl: "https://i0.hdslb.com/tomato.jpg" },
+		s200: { name: "机智的党妹", avatarUrl: "https://i0.hdslb.com/dangmei.jpg" },
 	};
 
 	const deps = {

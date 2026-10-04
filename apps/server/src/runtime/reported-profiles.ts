@@ -2,31 +2,34 @@ import {
 	type CachedProfile,
 	createSerialQueue,
 	type Disposable,
+	type ImageRef,
 	type Logger,
 	type MessageBus,
 	type SubscriptionReportDelivery,
 	type SubscriptionReportValue,
 } from "@bilibili-notify/internal";
-import type { SubAvatarStore } from "./sub-avatar-store.js";
+import type { ImageWriter } from "../images/image-store.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
+import { checkSubscriptionAvatarBytes } from "./subscription-avatar.js";
 
 /**
  * 拓展报的资料更新落盘(ADR-0019 决策 7 / 49 / 62):bus 上 `subscription-reported` 里 `kind === "profile"`
- * 的那些,逐条写进它对上的每条订阅的资料缓存(`SubRuntimeStore.cachedProfile`),头像存成文件。
+ * 的那些,逐条写进它对上的每条订阅的资料缓存(`SubRuntimeStore.cachedProfile`),头像存进图库、资料里放引用。
  *
- * - **给了哪格改哪格**:名字 / 粉丝数没给的保持原样;头像没给就留着原来那张。`lastRefreshedAt` 每次都换
- *   —— 它说的是「资料什么时候报过」。
- * - **头像摘要不同才覆盖**:同一张图再报一次,文件不重写、地址的 `?v=` 不变(头像仓自己判)。存不下来
- *   只记一句,名字与粉丝照样更新。
+ * - **给了哪格改哪格**:名字 / 粉丝数没给的保持原样;头像没给就沿用原来那张 —— 沿用也是「抄引用」,先 `keep`
+ *   续期,图已经不在了就不留悬空的引用(头像格直接缺)。`lastRefreshedAt` 每次都换 —— 它说的是「资料什么时候
+ *   报过」。
+ * - **同一张图再报一次引用不变**:图库按内容起名,面板的地址随之不变、浏览器的缓存照样命中。头像不合规矩
+ *   (只收 png / jpeg / webp,约 96 KiB 封顶)或存不下来,只记一句,名字与粉丝照样更新、头像沿用原来那张。
  * - 停用的订阅照样更新(ctx 那头已经把它们算进来了,决策 62:停用的也该有名字与头像)。
- * - 订阅刚删、拓展还没收到通知时报上来的:不再替它种资料、写头像 —— 删订阅那一刻的清理已经跑过了,
- *   这时写下去的就是孤儿,要等下次开机才扫得掉。
+ * - 订阅刚删、拓展还没收到通知时报上来的:不再替它种资料、存头像 —— 删订阅那一刻资料缓存已经丢了它,
+ *   这时写下去的就是孤儿(头像由图库清扫收走,资料缓存里的条目要等下次开机才扫得掉)。
  * - 面板看得见的那几格真变了,才发 `subscription-profiles-changed`(按窗口合并),面板据此重取订阅列表。
  *
  * 处理**排成一条队**:两条资料交错着读改写同一条订阅,后落地的那条会把先落地那条改的格冲回去。
  *
  * 关停分两步:`dispose()`(stop 段)摘监听、置标记,在途那条的剩余订阅不再处理;`close()`(flush 段)
- * 等在途的那条把头像与资料缓存写完再关门。它往头像仓与资料缓存仓写,所以它的 `close()` 得排在那两个仓
+ * 等在途的那条把头像与资料缓存写完再关门。它往图库与资料缓存仓写,所以它的 `close()` 得排在那两家
  * 的 `close()` **之前**跑 —— 见 `bootstrap.ts` 的登记。
  */
 
@@ -39,7 +42,8 @@ export const PROFILES_CHANGED_COALESCE_MS = 250;
 export interface BindReportedProfilesOptions {
 	bus: MessageBus;
 	subRuntime: SubRuntimeStore;
-	avatars: SubAvatarStore;
+	/** 图库的存图口(登记成引用方才拿得到,见 `bootstrap.ts`)。 */
+	images: ImageWriter;
 	/** 此刻还在的订阅 id(两支都算),**现取**。 */
 	subscriptionIds: () => Iterable<string>;
 	logger: Logger;
@@ -51,7 +55,7 @@ export interface ReportedProfilesHandle extends Disposable {
 	/** 队里已经排上的都处理完时落定。测试用。 */
 	idle(): Promise<void>;
 	/**
-	 * 关停的 flush 段调:等队里在途与已排队的都处理完(它们写头像仓与资料缓存仓),再关门 ——
+	 * 关停的 flush 段调:等队里在途与已排队的都处理完(它们写图库与资料缓存仓),再关门 ——
 	 * 此后再来的资料不处理、不碰盘。先 `dispose()` 摘掉监听,才不会有新的进来。
 	 */
 	close(): Promise<void>;
@@ -87,20 +91,50 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 		}, windowMs);
 	}
 
-	async function applyOne(id: string, value: ProfileValue): Promise<boolean> {
-		let avatar: string | undefined;
-		if (value.avatar !== undefined) {
-			try {
-				avatar = await opts.avatars.writeBytes(id, value.avatar);
-			} catch (err) {
-				log.warn(`[sub-profile] 订阅 ${id} 报来的头像没存下来,先留着原来那张: ${String(err)}`);
-			}
+	/** 这一轮报来的头像存进图库,回引用;不合规矩、存不下来都是 `undefined`(记一句,不让名字与粉丝跟着丢)。 */
+	async function storeReportedAvatar(id: string, bytes: Uint8Array): Promise<ImageRef | undefined> {
+		const checked = checkSubscriptionAvatarBytes(bytes);
+		if (!checked.ok) {
+			log.warn(`[sub-profile] 订阅 ${id} 报来的头像不收,先留着原来那张: ${checked.message}`);
+			return undefined;
 		}
+		try {
+			const stored = await opts.images.put(checked.bytes);
+			if (stored.ok) return stored.ref;
+			log.warn(`[sub-profile] 订阅 ${id} 报来的头像没存下来,先留着原来那张: ${stored.message}`);
+		} catch (err) {
+			log.warn(`[sub-profile] 订阅 ${id} 报来的头像没存下来,先留着原来那张: ${String(err)}`);
+		}
+		return undefined;
+	}
+
+	/**
+	 * 沿用旧头像:抄引用,先续期。图已经不在了回 `undefined`(别把悬空的引用留在资料里);续期这一步本身出了错
+	 * (不是「图不在」)就记一句、照旧沿用 —— 引用还在资料缓存里,清扫看得见它。
+	 */
+	async function carryOverAvatar(
+		id: string,
+		prev: ImageRef | undefined,
+	): Promise<ImageRef | undefined> {
+		if (prev === undefined) return undefined;
+		try {
+			return (await opts.images.keep(prev)) ? prev : undefined;
+		} catch (err) {
+			log.warn(`[sub-profile] 订阅 ${id} 原来的头像没能续期,照旧沿用: ${String(err)}`);
+			return prev;
+		}
+	}
+
+	async function applyOne(id: string, value: ProfileValue): Promise<boolean> {
 		const prev = opts.subRuntime.get(id)?.cachedProfile;
+		const avatar =
+			(value.avatar === undefined ? undefined : await storeReportedAvatar(id, value.avatar)) ??
+			(await carryOverAvatar(id, prev?.avatar));
 		const fans = value.fans ?? prev?.fans;
 		const next: CachedProfile = {
 			name: value.name ?? prev?.name ?? "",
-			avatar: avatar ?? prev?.avatar ?? "",
+			// 没有头像就是这一格缺,不写空串。
+			...(avatar === undefined ? {} : { avatar }),
 			sign: prev?.sign ?? "",
 			// 不知道就不写 —— 写 0 是在面板上印一句假话(同新建时种资料那条)。
 			...(fans === undefined ? {} : { fans }),

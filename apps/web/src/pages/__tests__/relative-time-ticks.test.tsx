@@ -91,7 +91,6 @@ describe("挂在页面上的相对时间会走", () => {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "100" }),
 			cachedProfile: {
 				name: "某UP",
-				avatar: "",
 				sign: "",
 				fans: 1,
 				lastRefreshedAt: new Date(NOW).toISOString(),

@@ -1,14 +1,16 @@
 /**
- * 新建订阅(拓展来源的 + B 站来源的)+ 拓展来源订阅的头像文件(ADR-0019 决策 9 / 10 / 49 / 50;ADR-0021 决策 14)。
+ * 新建订阅(拓展来源的 + B 站来源的)+ 拓展来源订阅的头像进图库(ADR-0019 决策 9 / 10 / 49 / 50;ADR-0021 决策 14;
+ * 头像进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗)。
  *
- * 真的 ConfigStore / SubRuntimeStore / 头像仓(`createAppRuntime`,临时 dataDir)、真的 `createApp` ——
+ * 真的 ConfigStore / SubRuntimeStore / 图库(`createAppRuntime`,临时 dataDir)、真的 `createApp` ——
  * 装了哪些拓展从 `extensions.loaded` 那一格递进来,与 `index.ts` 同一条线,所以 app 那头漏接的话
- * 这里的每一条新建都会被判成「没装」。删订阅走真的那条路:DELETE → config-changed →
- * `bindSubscriptionStore` → `subscription-changed` 的 remove → 头像跟着删。
+ * 这里的每一条新建都会被判成「没装」。删订阅走真的那条路:DELETE → config-changed → 开机那一步的孤儿清理
+ * (`pruneOrphanSubRuntime`)丢掉资料缓存里的这一条 → 头像不再有人引用 → 图库清扫收走。
  *
  *  - 宿主核 `extensionId`:装着、v2、清单开了订阅源那一口;**没在跑也行**(订阅是数据,决策 10)。
  *  - 同一个身份(来源 + 外部 id 两格都相等)只许一条(决策 50:身份判重)→ 409。
- *  - 候选带来的资料(名字 / 头像 / 粉丝)种进资料缓存;头像存成文件,资料里是同源的相对地址。
+ *  - 候选带来的资料(名字 / 头像 / 粉丝)种进资料缓存:请求里头像是 `cachedProfile.avatarUrl`(位图 data URL,
+ *    它是个网址),存进图库后资料里是图库引用 `avatar`。
  *  - 头像只收位图,魔数要对得上;不合规矩的整次 400、一样都不落。
  *  - 新建 B 站来源的订阅:外部 id 就是 UID,得是数字(中立的订阅 schema 不认得这条规矩,核在新建这一处);
  *    已有那条整份 POST 回来(启用开关),照旧。
@@ -33,7 +35,10 @@ import type { BootstrapConfig } from "../../config/schema.js";
 import { CONFIG_DIR } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
+import { IMAGE_GRACE_MS, isValidImageRef } from "../../images/image-store.js";
 import { type AppRuntime, createAppRuntime } from "../../runtime/bootstrap.js";
+import { dataPath } from "../../runtime/roots.js";
+import { pruneOrphanSubRuntime } from "../../runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "../../runtime/subscription-store.js";
 
 const SUB_ID = "e1000000-0000-4000-8000-000000000001";
@@ -148,9 +153,10 @@ async function listed(): Promise<SubscriptionDTO[]> {
 	return (await (await app.request("/api/subscriptions")).json()) as SubscriptionDTO[];
 }
 
-async function avatarFiles(): Promise<string[]> {
+/** 图库里此刻有哪些图(目录还没建就是空)。 */
+async function imageFiles(): Promise<string[]> {
 	try {
-		return (await readdir(join(dataDir, "avatars"))).sort();
+		return (await readdir(dataPath(dataDir, "images"))).sort();
 	} catch {
 		return [];
 	}
@@ -166,13 +172,13 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe("新建拓展订阅", () => {
-	it("候选的资料种进缓存、头像存成文件;GET 那个地址拿回原样的字节与该有的头", async () => {
+	it("候选的资料种进缓存、头像存进图库;资料里是图库引用,读口拿回原样的字节", async () => {
 		const before = Date.now();
 		const res = await post({
 			...extSub(),
 			cachedProfile: {
 				name: "抖音某人",
-				avatar: avatarDataUrl("png", PNG_BYTES),
+				avatarUrl: avatarDataUrl("png", PNG_BYTES),
 				fans: 42,
 				// 客户端给的这两格不收:签名没人报过,刷新时间是服务端的事。
 				sign: "客户端编的",
@@ -185,34 +191,35 @@ describe("新建拓展订阅", () => {
 		expect(row).toMatchObject({ identity: { sourceKey: "douyin", externalId: "sec-1" } });
 		const profile = row?.cachedProfile;
 		expect(profile).toMatchObject({ name: "抖音某人", sign: "", fans: 42 });
-		expect(profile?.avatar).toMatch(
-			new RegExp(`^/api/subscriptions/${SUB_ID}/avatar\\?v=[0-9a-f]{12}$`),
-		);
+		// 请求里的 data URL 是网址、落进图库;回来的资料里只有引用,没有那个 data URL。
+		expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
+		expect(profile?.avatar).toMatch(/\.png$/);
+		expect(profile).not.toHaveProperty("avatarUrl");
 		expect(Date.parse(profile?.lastRefreshedAt ?? "")).toBeGreaterThanOrEqual(before - 1000);
 
-		// 落了盘:订阅那个文件里有它(带 identity),头像文件在。
+		// 落了盘:订阅那个文件里有它(带 identity),图在图库里。
 		const disk = JSON.parse(
 			await readFile(join(dataDir, ...CONFIG_DIR, "subscriptions.json"), "utf8"),
 		) as { subscriptions: Array<{ id: string; identity: unknown }> };
 		expect(disk.subscriptions.map((s) => s.id)).toEqual([SUB_ID]);
 		expect(disk.subscriptions[0]?.identity).toEqual({ sourceKey: "douyin", externalId: "sec-1" });
-		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`]);
+		expect(await imageFiles()).toEqual([profile?.avatar]);
 
-		const img = await app.request(profile?.avatar ?? "");
+		const img = await app.request(`/api/images/${profile?.avatar}`);
 		expect(img.status).toBe(200);
 		expect(Buffer.from(await img.arrayBuffer()).equals(PNG_BYTES)).toBe(true);
 		expect(img.headers.get("content-type")).toBe("image/png");
-		expect(img.headers.get("x-content-type-options")).toBe("nosniff");
-		expect(img.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
 	});
 
-	it("不知道粉丝数就不写这一格(写 0 是撒谎);没给头像 → 空串、不建文件", async () => {
+	it("不知道粉丝数就不写这一格(写 0 是撒谎);没给头像 → 头像两格都缺、不建图", async () => {
 		const res = await post({ ...extSub(), cachedProfile: { name: "没头像的人" } });
 		expect(res.status, await res.clone().text()).toBe(200);
 		const profile = (await listed()).find((s) => s.id === SUB_ID)?.cachedProfile;
-		expect(profile).toMatchObject({ name: "没头像的人", avatar: "", sign: "" });
+		expect(profile).toMatchObject({ name: "没头像的人", sign: "" });
 		expect(profile && "fans" in profile).toBe(false);
-		expect(await avatarFiles()).toEqual([]);
+		expect(profile && "avatar" in profile).toBe(false);
+		expect(profile && "avatarUrl" in profile).toBe(false);
+		expect(await imageFiles()).toEqual([]);
 	});
 
 	it("没带资料 → 只建订阅,不种资料缓存", async () => {
@@ -240,14 +247,14 @@ describe("新建拓展订阅", () => {
 		entries = [...entries, { id: "broken", dir: "/data/extensions/broken", state: "failed" }];
 		const res = await post({
 			...extSub({ extensionId }),
-			cachedProfile: { name: "某人", avatar: avatarDataUrl("png", PNG_BYTES) },
+			cachedProfile: { name: "某人", avatarUrl: avatarDataUrl("png", PNG_BYTES) },
 		});
 		expect(res.status).toBe(status);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe(code);
 		expect(body.message).toContain(extensionId);
 		expect(await listed()).toEqual([]);
-		expect(await avatarFiles()).toEqual([]);
+		expect(await imageFiles()).toEqual([]);
 		expect(runtime.subRuntimeStore.get(SUB_ID)).toBeUndefined();
 	});
 
@@ -272,10 +279,10 @@ describe("新建拓展订阅", () => {
 		expect((await post({ ...extSub(), cachedProfile: { name: "原来的" } })).status).toBe(200);
 		const dup = await post({
 			...extSub({ id: OTHER_ID }),
-			cachedProfile: { name: "后来的", avatar: avatarDataUrl("png", PNG_BYTES) },
+			cachedProfile: { name: "后来的", avatarUrl: avatarDataUrl("png", PNG_BYTES) },
 		});
 		expect(dup.status).toBe(409);
-		expect(await avatarFiles()).toEqual([]);
+		expect(await imageFiles()).toEqual([]);
 		expect(runtime.subRuntimeStore.get(OTHER_ID)).toBeUndefined();
 		expect(runtime.subRuntimeStore.get(SUB_ID)?.cachedProfile?.name).toBe("原来的");
 	});
@@ -324,8 +331,8 @@ describe("新建拓展订阅", () => {
 		["太大", avatarDataUrl("png", Buffer.concat([PNG_BYTES, Buffer.alloc(200 * 1024)]))],
 		["声明 png、字节是 jpeg", avatarDataUrl("png", JPEG_BYTES)],
 		["声明 jpeg、字节是 webp", avatarDataUrl("jpeg", WEBP_BYTES)],
-	])("头像是%s → 400,点名 cachedProfile.avatar,一样都不落", async (_label, avatar) => {
-		const res = await post({ ...extSub(), cachedProfile: { name: "某人", avatar } });
+	])("头像是%s → 400,点名 cachedProfile.avatarUrl,一样都不落", async (_label, avatarUrl) => {
+		const res = await post({ ...extSub(), cachedProfile: { name: "某人", avatarUrl } });
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as {
 			code: string;
@@ -335,10 +342,10 @@ describe("新建拓展订阅", () => {
 		expect(body.code).toBe("invalid");
 		expect(body.message).toContain("头像");
 		expect(body.issues).toEqual([
-			{ path: ["cachedProfile", "avatar"], message: expect.any(String) },
+			{ path: ["cachedProfile", "avatarUrl"], message: expect.any(String) },
 		]);
 		expect(await listed()).toEqual([]);
-		expect(await avatarFiles()).toEqual([]);
+		expect(await imageFiles()).toEqual([]);
 	});
 
 	it.each([
@@ -369,19 +376,18 @@ describe("新建拓展订阅", () => {
 		expect(await listed()).toEqual([]);
 	});
 
-	it("订阅建好之后头像写不进去 → 订阅照建,资料照种、只是没有头像", async () => {
-		// 让 `<dataDir>/avatars` 是个文件:建目录那一步必挂。
-		await writeFile(join(dataDir, "avatars"), "挡路");
+	it("订阅建好之后头像存不进图库 → 订阅照建,资料照种、只是没有头像", async () => {
+		// 让 `<dataRoot>/images` 是个文件:建目录那一步必挂。
+		await writeFile(dataPath(dataDir, "images"), "挡路");
 		const warn = vi.spyOn(runtime.serviceCtx.logger, "warn");
 		const res = await post({
 			...extSub(),
-			cachedProfile: { name: "某人", avatar: avatarDataUrl("png", PNG_BYTES) },
+			cachedProfile: { name: "某人", avatarUrl: avatarDataUrl("png", PNG_BYTES) },
 		});
 		expect(res.status, await res.clone().text()).toBe(200);
-		expect((await listed()).find((s) => s.id === SUB_ID)?.cachedProfile).toMatchObject({
-			name: "某人",
-			avatar: "",
-		});
+		const profile = (await listed()).find((s) => s.id === SUB_ID)?.cachedProfile;
+		expect(profile).toMatchObject({ name: "某人" });
+		expect(profile && "avatar" in profile).toBe(false);
 		expect(warn).toHaveBeenCalled();
 	});
 });
@@ -416,7 +422,7 @@ describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () 
 				{ path: ["identity", "externalId"], message: expect.any(String) },
 			]);
 			expect(await listed()).toEqual([]);
-			expect(await exists(join(dataDir, "avatars"))).toBe(false);
+			expect(await exists(dataPath(dataDir, "images"))).toBe(false);
 		},
 	);
 
@@ -460,63 +466,76 @@ describe("新建 B 站来源的订阅:外部 id 就是 UID,只能是数字", () 
 });
 
 describe("已有的照旧", () => {
-	it("已有的拓展订阅整份 POST 回来(启用开关)→ 改得动;带着资料也不重种、不写头像", async () => {
+	it("已有的拓展订阅整份 POST 回来(启用开关)→ 改得动;带着资料也不重种、不存头像", async () => {
 		expect((await post({ ...extSub(), cachedProfile: { name: "原来的名字" } })).status).toBe(200);
 		const res = await post({
 			...extSub({ enabled: false }),
-			cachedProfile: { name: "别的名字", avatar: avatarDataUrl("png", PNG_BYTES) },
+			cachedProfile: { name: "别的名字", avatarUrl: avatarDataUrl("png", PNG_BYTES) },
 		});
 		expect(res.status).toBe(200);
 		const row = (await listed()).find((s) => s.id === SUB_ID);
 		expect(row?.enabled).toBe(false);
 		expect(row?.cachedProfile?.name).toBe("原来的名字");
-		expect(await avatarFiles()).toEqual([]);
+		expect(await imageFiles()).toEqual([]);
 	});
 
-	it("B 站订阅新建照旧,不碰头像目录", async () => {
+	it("B 站订阅新建照旧,不碰图库", async () => {
 		const bili = makeEmptySubscription({
 			id: OTHER_ID,
 			identity: { sourceKey: "bilibili", externalId: "12345" },
 		});
 		expect((await post(bili)).status).toBe(200);
 		expect((await listed()).map((s) => s.id)).toEqual([OTHER_ID]);
-		expect(await exists(join(dataDir, "avatars"))).toBe(false);
+		expect(await exists(dataPath(dataDir, "images"))).toBe(false);
 	});
 });
 
-describe("GET /api/subscriptions/:id/avatar", () => {
-	it("没有头像 → 404 not_found;id 不是 uuid → 400 invalid", async () => {
-		const missing = await app.request(`/api/subscriptions/${SUB_ID}/avatar`);
-		expect(missing.status).toBe(404);
-		expect(await missing.json()).toEqual({ code: "not_found", message: "这条订阅没有头像" });
-		const bad = await app.request("/api/subscriptions/not-a-uuid/avatar");
-		expect(bad.status).toBe(400);
-		expect(await bad.json()).toEqual({ code: "invalid", message: "订阅 id 要是 uuid" });
+describe("订阅头像的读口", () => {
+	it("订阅自己的头像读口没有了:头像走图库的 /api/images/<引用>(接线守卫钉着老路径 404)", async () => {
+		expect((await app.request(`/api/subscriptions/${SUB_ID}/avatar`)).status).toBe(404);
 	});
 });
 
 describe("删订阅", () => {
-	it("经面板删掉 → 头像文件跟着删;别的订阅的不动", async () => {
+	/** 宽限期过了:清扫按「一天多以后」的时钟算。 */
+	const afterGrace = () => new Date(Date.now() + IMAGE_GRACE_MS + 60 * 60 * 1000);
+	/** 开机那一步的孤儿清理(运行中是 FansPoller 听 subscription-changed 做同一件事)。 */
+	const dropOrphanProfiles = () =>
+		pruneOrphanSubRuntime(runtime.subRuntimeStore, {
+			list: () => runtime.configStore.getSubscriptions(),
+		});
+
+	it("经面板删掉 → 资料没了,头像不再有人引用,清扫收走;另一条订阅用着同一张图时不收", async () => {
 		entries = [sourceEntry("douyin")];
-		const avatar = avatarDataUrl("png", PNG_BYTES);
-		expect((await post({ ...extSub(), cachedProfile: { name: "甲", avatar } })).status).toBe(200);
+		const avatarUrl = avatarDataUrl("png", PNG_BYTES);
+		expect((await post({ ...extSub(), cachedProfile: { name: "甲", avatarUrl } })).status).toBe(
+			200,
+		);
 		expect(
 			(
 				await post({
 					...extSub({ id: OTHER_ID, externalId: "sec-2" }),
-					cachedProfile: { name: "乙", avatar },
+					cachedProfile: { name: "乙", avatarUrl },
 				})
 			).status,
 		).toBe(200);
-		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`, `${OTHER_ID}.png`].sort());
+		// 同一份字节,图库里只有一张。
+		const shared = (await imageFiles())[0];
+		expect(await imageFiles()).toEqual([shared]);
 
 		expect((await app.request(`/api/subscriptions/${SUB_ID}`, { method: "DELETE" })).status).toBe(
 			204,
 		);
+		await dropOrphanProfiles();
+		expect(runtime.subRuntimeStore.get(SUB_ID)).toBeUndefined();
+		expect((await runtime.imageStore.sweep({ now: afterGrace() })).removed).toEqual([]);
+		expect(await imageFiles()).toEqual([shared]);
 
-		await vi.waitFor(async () => {
-			expect(await avatarFiles()).toEqual([`${OTHER_ID}.png`]);
-		});
-		expect((await app.request(`/api/subscriptions/${SUB_ID}/avatar`)).status).toBe(404);
+		expect((await app.request(`/api/subscriptions/${OTHER_ID}`, { method: "DELETE" })).status).toBe(
+			204,
+		);
+		await dropOrphanProfiles();
+		expect((await runtime.imageStore.sweep({ now: afterGrace() })).removed).toEqual([shared]);
+		expect(await imageFiles()).toEqual([]);
 	});
 });

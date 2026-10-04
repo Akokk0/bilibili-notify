@@ -10,6 +10,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import {
 	lstat,
 	mkdir,
@@ -25,7 +26,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import {
 	MIGRATION_REVISION,
 	type MigrationProgress,
@@ -57,11 +58,21 @@ const CHAT_ORPHAN = `${"c3".repeat(16)}.png`;
 /** 聊天附件进图库以后的引用:字节的 sha256 + 嗅探出来的扩展名。 */
 const CHAT_REF = `${createHash("sha256").update(PNG_BYTES).digest("hex")}.png`;
 
+/**
+ * 0.x 的拓展订阅头像:资料缓存里 `sub-2` 引用着 `avatars/sub-2.jpeg`(一张真图,与聊天附件那张不同内容 ——
+ * 同字节同引用,两条 transfers 会指到一处,看着像 bug);`avatars/sub-9.webp` 没有任何资料引用(孤儿)。
+ */
+const AVATAR_REF = `${createHash("sha256").update(JPEG_BYTES).digest("hex")}.jpg`;
+/** 0.x 的 B 站订阅资料里头像是远端网址。 */
+const BILI_AVATAR_URL = "https://i0.hdslb.com/bfs/face/abc.jpg";
+
 /** 0.x 夹具里的二进制件:相对第 0 代根的路径 → 字节。 */
 const ZERO_BINARY_FILES: Record<string, Uint8Array> = {
 	[`assets/chat/${CHAT_ATTACHMENT}`]: PNG_BYTES,
 	[`assets/chat/${CHAT_NOT_AN_IMAGE}`]: Buffer.from("<svg/>"),
 	[`assets/chat/${CHAT_ORPHAN}`]: Buffer.concat([PNG_BYTES, Buffer.from([1])]),
+	"avatars/sub-2.jpeg": JPEG_BYTES,
+	"avatars/sub-9.webp": WEBP_BYTES,
 };
 
 /** 0.x 夹具:相对第 0 代根的路径 → 内容。 */
@@ -133,7 +144,27 @@ const ZERO_FILES: Record<string, string> = {
 		},
 	]),
 	"state/adapters.json": "[]",
-	"state/sub-runtime.json": "{}",
+	// 资料缓存:拓展订阅的头像是同源相对地址、B 站的是远端网址 —— 第二遍换成图库引用 / 挪到 avatarUrl。
+	"state/sub-runtime.json": JSON.stringify({
+		"sub-1": {
+			cachedProfile: {
+				name: "B 站甲",
+				avatar: BILI_AVATAR_URL,
+				sign: "",
+				fans: 10,
+				lastRefreshedAt: "2026-09-30T00:00:00.000Z",
+			},
+			roomId: "21000000",
+		},
+		"sub-2": {
+			cachedProfile: {
+				name: "抖音乙",
+				avatar: `/api/subs/sub-2/avatar?v=${createHash("sha256").update(JPEG_BYTES).digest("hex").slice(0, 12)}`,
+				sign: "",
+				lastRefreshedAt: "2026-09-30T00:00:00.000Z",
+			},
+		},
+	}),
 	// 0.x 按 uid 回指的待审草稿:第二遍换成订阅 id。
 	"state/roast-drafts.json": JSON.stringify([
 		{
@@ -183,7 +214,6 @@ const ZERO_FILES: Record<string, string> = {
 	"assets/card-bg/0123abcd.png": "bg",
 	"assets/font/index.json": "{}",
 	"assets/font/f1.woff2": "font",
-	"avatars/sub-2.png": "avatar",
 	// 只有浅色模式的界面皮肤,css 上带着 v0.7.0 及之前清洗层烙进去的两句;0.x 的单指针指着它。
 	"skins/skin-1/skin.json": JSON.stringify({
 		modes: { light: { css: '.x::before{content:"";pointer-events:none;z-index:-1}' } },
@@ -245,7 +275,6 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"assets/card-bg/0123abcd.png": "library/images/0123abcd.png",
 	"assets/font/index.json": "library/fonts/index.json",
 	"assets/font/f1.woff2": "library/fonts/f1.woff2",
-	"avatars/sub-2.png": "avatars/sub-2.png",
 	"skins/skin-1/skin.json": "skins/dashboard/skin-1/skin.json",
 	"skins/active.json": "skins/dashboard/active.json",
 	"maid-skills/weekly/SKILL.md": "maid-skills/weekly/SKILL.md",
@@ -269,6 +298,7 @@ const REWRITTEN = [
 	"history/2026-09-30.jsonl",
 	"history/repush/2026-09-30/row-1.json",
 	"runtime/roast-drafts.json",
+	"runtime/sub-runtime.json",
 	"skins/dashboard/active.json",
 	"skins/dashboard/skin-1/skin.json",
 	"stats/dyn/33333333-3333-4333-8333-333333333333.jsonl",
@@ -338,7 +368,8 @@ describe("migrateZeroGeneration", () => {
 		];
 		// 迁移里那次历史清扫新写的水位线(⑲c):不是搬来的,也不是改写的。聊天附件不整目录搬:被会话引用的那张
 		// 复制进图库(⑳b),孤儿与不是图的不带过来。
-		const written = ["history/retention.json", `images/${CHAT_REF}`];
+		// 拓展订阅的头像同理(⑳c):资料缓存引用着的复制进图库,孤儿不带过来。
+		const written = ["history/retention.json", `images/${CHAT_REF}`, `images/${AVATAR_REF}`];
 		expect(await listTree(target)).toEqual(
 			[...Object.values(EXPECTED_MOVES), ...splitOut, ...written, "extensions/dev-bridge"].sort(),
 		);
@@ -435,9 +466,12 @@ describe("migrateZeroGeneration", () => {
 			const shared = !from.endsWith(".jsonl") && !REWRITTEN.includes(to);
 			expect(same, `${to} 应当${shared ? "硬链接" : "是另一个文件"}`).toBe(shared);
 		}
-		// 聊天附件进图库是复制,不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
+		// 聊天附件、拓展订阅头像进图库是复制,不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
 		expect((await stat(join(target, "images", CHAT_REF))).ino).not.toBe(
 			(await stat(join(zero, "assets", "chat", CHAT_ATTACHMENT))).ino,
+		);
+		expect((await stat(join(target, "images", AVATAR_REF))).ino).not.toBe(
+			(await stat(join(zero, "avatars", "sub-2.jpeg"))).ino,
 		);
 	});
 
@@ -446,7 +480,7 @@ describe("migrateZeroGeneration", () => {
 
 		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
-		expect(report.transfers.filter((t) => t.to.startsWith("images/"))).toEqual([
+		expect(report.transfers.filter((t) => t.from.startsWith("assets/chat/"))).toEqual([
 			{ from: `assets/chat/${CHAT_ATTACHMENT}`, to: `images/${CHAT_REF}`, method: "copy" },
 		]);
 		expect(new Uint8Array(await readFile(join(target, "images", CHAT_REF)))).toEqual(
@@ -460,6 +494,35 @@ describe("migrateZeroGeneration", () => {
 			expect.stringContaining("不整目录进新代"),
 			expect.stringContaining("1 张聊天附件对不上"),
 			expect.stringContaining("1 张聊天附件没有任何会话引用"),
+		]);
+	});
+
+	it("拓展订阅头像:资料缓存引用着的复制进图库(记在搬过去的里),资料里换成引用、B 站的网址挪到 avatarUrl;孤儿不搬,按数量记一句", async () => {
+		await placeZeroGeneration();
+
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
+
+		expect(report.transfers.filter((t) => t.from.startsWith("avatars/"))).toEqual([
+			{ from: "avatars/sub-2.jpeg", to: `images/${AVATAR_REF}`, method: "copy" },
+		]);
+		expect(new Uint8Array(await readFile(join(target, "images", AVATAR_REF)))).toEqual(
+			new Uint8Array(JPEG_BYTES),
+		);
+		const runtime = JSON.parse(
+			await readFile(join(target, "runtime", "sub-runtime.json"), "utf8"),
+		) as Record<string, { cachedProfile?: Record<string, unknown>; roomId?: string }>;
+		expect(runtime["sub-2"]?.cachedProfile).toMatchObject({ name: "抖音乙", avatar: AVATAR_REF });
+		expect(runtime["sub-1"]?.cachedProfile).toMatchObject({
+			name: "B 站甲",
+			avatarUrl: BILI_AVATAR_URL,
+		});
+		expect(runtime["sub-1"]?.cachedProfile).not.toHaveProperty("avatar");
+		expect(runtime["sub-1"]?.roomId).toBe("21000000");
+		// 头像目录不整个搬进新代。
+		expect(existsSync(join(target, "avatars"))).toBe(false);
+		expect(report.skipped.filter((s) => s.path === "avatars").map((s) => s.reason)).toEqual([
+			expect.stringContaining("不整目录进新代"),
+			"1 个头像文件没有任何资料引用,没带过来",
 		]);
 	});
 
@@ -483,6 +546,8 @@ describe("migrateZeroGeneration", () => {
 				"assets/chat",
 				"assets/chat",
 				"assets/chat",
+				"avatars",
+				"avatars",
 				"bilibili-notify",
 				"card-skins",
 				"history/2026-09-29.jsonl.tmp.99",
@@ -546,8 +611,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 24,
-			output: "925e4b6199725156388874adf6909ef6d6d5d631874d7782009b13145bfccbcc",
+			revision: 25,
+			output: "abb13054b96c534fa9cd4b125c142b3c1c0c183fc8d86506f62d4d6a5e57c024",
 		});
 	});
 });

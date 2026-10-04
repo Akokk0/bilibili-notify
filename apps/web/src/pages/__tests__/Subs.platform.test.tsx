@@ -58,14 +58,14 @@ function source(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 function extSub(over: Partial<Subscription> = {}): Subscription {
 	return {
 		...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-2" }),
-		cachedProfile: { name: "抖音乙", avatar: "", sign: "", fans: 3, lastRefreshedAt: "t" },
+		cachedProfile: { name: "抖音乙", sign: "", fans: 3, lastRefreshedAt: "t" },
 		...over,
 	};
 }
 
 const BILI: Subscription = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "111" }),
-	cachedProfile: { name: "UP甲", avatar: "", sign: "", fans: 0, lastRefreshedAt: "t" },
+	cachedProfile: { name: "UP甲", sign: "", fans: 0, lastRefreshedAt: "t" },
 };
 
 let subs: Subscription[];
@@ -258,7 +258,8 @@ describe("选了订阅源", () => {
 			identity: { sourceKey: "douyin", externalId: "sec-1" },
 			enabled: true,
 			tagIds: [],
-			cachedProfile: { name: "抖音甲", avatar: AVATAR, fans: 12_345, sign: "" },
+			// 候选的头像 data URL 是网址:草稿里放 `avatarUrl`,服务端存进图库后才有 `avatar`。
+			cachedProfile: { name: "抖音甲", avatarUrl: AVATAR, fans: 12_345, sign: "" },
 		});
 		expect(body.id).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -269,7 +270,7 @@ describe("选了订阅源", () => {
 		);
 	});
 
-	it("候选没带头像 / 粉丝 → 头像是空串(「没有」),粉丝数不带 —— 不编一个 0", async () => {
+	it("候选没带头像 / 粉丝 → 头像两格都缺(「没有」),粉丝数不带 —— 不编一个 0", async () => {
 		await openNewDialog();
 		fireEvent.click(await screen.findByRole("button", { name: "抖音" }));
 		fireEvent.change(screen.getByPlaceholderText("粘主页链接"), { target: { value: "abc" } });
@@ -282,7 +283,8 @@ describe("选了订阅源", () => {
 			cachedProfile: Record<string, unknown>;
 		};
 		expect(body.cachedProfile.name).toBe("抖音乙");
-		expect(body.cachedProfile.avatar).toBe("");
+		expect(body.cachedProfile).not.toHaveProperty("avatar");
+		expect(body.cachedProfile).not.toHaveProperty("avatarUrl");
 		expect(body.cachedProfile).not.toHaveProperty("fans");
 	});
 });

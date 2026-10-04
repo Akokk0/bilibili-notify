@@ -1,7 +1,7 @@
 /**
  * 宿主收候选那道闸的**照抄**:`SubscriptionCandidatesSchema`
  * (`packages/internal/src/schema/extension-subscription.ts`)加上建订阅时 `decodeSubscriptionAvatar`
- * 的魔数核对(`apps/server/src/runtime/sub-avatar-store.ts`)。
+ * 的魔数核对(`apps/server/src/runtime/subscription-avatar.ts`)。
  *
  * 为什么是抄的:拓展连测试也只准从 `@bilibili-notify/extension` 拿 BN 的东西 —— import 边界守卫扫的是
  * `extensions/` 底下**每一个** `.ts`,测试也在内 —— 那两份够不到。那头改了上限,这里要跟着改。

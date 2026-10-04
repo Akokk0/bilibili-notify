@@ -24,11 +24,6 @@ import { createNodeMessageBus } from "./message-bus.js";
 import { bindReportedProfiles } from "./reported-profiles.js";
 import { dataPath } from "./roots.js";
 import { createNodeServiceContext, type NodeServiceContext } from "./service-context.js";
-import {
-	bindSubAvatarCleanup,
-	createSubAvatarStore,
-	type SubAvatarStore,
-} from "./sub-avatar-store.js";
 import { createSubRuntimeStore, type SubRuntimeStore } from "./sub-runtime-store.js";
 import { createTargetScope } from "./target-scope.js";
 
@@ -83,11 +78,6 @@ export interface AppRuntime {
 	 */
 	subRuntimeStore: SubRuntimeStore;
 	/**
-	 * 拓展订阅的头像文件(ADR-0019 决策 49):`<dataRoot>/avatars/<订阅 id>.<后缀>`。新建订阅那条路写、
-	 * `GET /api/subscriptions/:id/avatar` 读、开机清扫(`index.ts`);删订阅时跟着删(这里就听上了)。
-	 */
-	subAvatarStore: SubAvatarStore;
-	/**
 	 * 图库 `<dataRoot>/images/`(ADR-0022 决策 9):所有图按内容摘要存一份,引用就是文件名。全进程共用这一个;
 	 * `GET /api/images/:ref` 读。
 	 */
@@ -97,6 +87,12 @@ export interface AppRuntime {
 	 * 引用方才拿得到 —— 这一家引用的是会话里的 `images`(`conversationStore.listImageRefs`),装配时登记。
 	 */
 	chatImages: ImageWriter;
+	/**
+	 * 拓展订阅的头像往图库存图的口(ADR-0019 决策 49;头像进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):新建订阅
+	 * 那条路与拓展「报资料更新」存头像,资料缓存里放回来的引用。这一家引用的是资料缓存里的 `avatar`
+	 * (`subRuntimeStore.listImageRefs`),装配时登记。
+	 */
+	profileImages: ImageWriter;
 	/**
 	 * 女仆 AI 聊天的会话记录(dashboard 聊天侧栏「最近」的数据源)。刻意与
 	 * engines 解耦 —— AI 没配好时会话照样能建能列,页面才有地方摆「去把 key
@@ -257,32 +253,25 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => subRuntimeStore.close(), "flush");
-	const subAvatarStore = createSubAvatarStore({
-		dataRoot,
-		logger: serviceCtx.logger,
-	});
-	serviceCtx.onDispose(() => subAvatarStore.close(), "flush");
 	const imageStore = createImageStore({ dir: dataPath(dataRoot, "images") });
 	serviceCtx.onDispose(() => imageStore.close(), "flush");
-	// 删订阅的路不止一条(面板删、恢复备份整份覆盖、级联),都汇到 `subscription-changed` 上 ——
-	// 只听总线,所以在这儿就能起,不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
-	const subAvatarCleanup = bindSubAvatarCleanup({
-		bus,
-		avatars: subAvatarStore,
-		logger: serviceCtx.logger,
-		serviceCtx,
+	// 订阅资料是图库的一家引用方:拓展订阅的头像由资料缓存交名单,清扫据此留下还在资料里的图。订阅被删之后
+	// 资料缓存里没了这一条,头像就不再被引用、由清扫收走 —— 没有「删订阅顺手删头像文件」这一步。
+	const profileImages = imageStore.register({
+		name: "订阅资料",
+		listRefs: () => subRuntimeStore.listImageRefs(),
 	});
-	serviceCtx.onDispose(() => subAvatarCleanup.dispose(), "stop");
-	// 拓展报的资料更新 → 资料缓存 + 头像文件(ADR-0019 决策 7 / 49 / 62)。同上只听总线。
+	// 拓展报的资料更新 → 资料缓存 + 图库里的头像(ADR-0019 决策 7 / 49 / 62)。只听总线,所以在这儿就能起,
+	// 不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
 	const reportedProfiles = bindReportedProfiles({
 		bus,
 		subRuntime: subRuntimeStore,
-		avatars: subAvatarStore,
+		images: profileImages,
 		subscriptionIds: () => configStore.getSubscriptions().map((sub) => sub.id),
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => reportedProfiles.dispose(), "stop");
-	// 🔴 顺序承重:它往头像仓与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
+	// 🔴 顺序承重:它往图库与资料缓存仓写,所以这条必须登记在那两家的 close 之后 —— 同段后登记的先跑,
 	// 它先把在途的那条写完,那两家才关门;反过来的话在途那条的写会被拒、这次资料更新就丢了。
 	serviceCtx.onDispose(() => reportedProfiles.close(), "flush");
 	const conversationStore = createConversationStore({
@@ -355,9 +344,9 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		statsStore,
 		statsRecorder,
 		subRuntimeStore,
-		subAvatarStore,
 		imageStore,
 		chatImages,
+		profileImages,
 		conversationStore,
 		logStore,
 		extensionLive,

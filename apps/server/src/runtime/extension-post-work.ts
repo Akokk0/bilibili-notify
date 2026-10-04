@@ -22,7 +22,7 @@ import { type ExtensionCardAuthor, imageDataUrl } from "./extension-push-common.
  * B 站动态同一份。
  *
  * 纯函数:作者(名字与头像)由调用方先按决策 54 取好(`extension-push-common.ts`),这里不碰订阅、
- * 资料缓存与头像文件。
+ * 资料缓存与图库。
  */
 
 type Post = SubscriptionReportValue<"post">;

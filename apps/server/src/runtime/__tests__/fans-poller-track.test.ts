@@ -80,7 +80,7 @@ function start(options: Options = {}) {
 		subscriptionStore: { list: options.list ?? (() => [SUB]) } as never,
 		subRuntimeStore: {
 			get: vi.fn(() => ({
-				cachedProfile: { name: "甲", avatar: "a", fans: 1, lastRefreshedAt: "x" },
+				cachedProfile: { name: "甲", fans: 1, lastRefreshedAt: "x" },
 			})),
 			getAll: () => ({}),
 			patch: runtimePatch,

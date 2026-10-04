@@ -668,7 +668,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `BilibiliPush` / `bilibili-push.ts` / `BilibiliPushOptions` | `PushRouter` / `push-router.ts` / `PushRouterOptions` |
 | `BiliEvents`；事件 `source-auth-changed` / `live-session` / `live-viewers` | `BusEvents`；`subscription-auth-changed` / `live-session-changed` / `live-viewers-changed` |
 | `ExtensionLiveSession`、`fansAtStart`、场次上的 `totalViewers` | `LiveSession`、`followersAtStart`、`peakTotalViewers` |
-| `SubRuntimeStore` / `SubRuntime`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore` / `SubscriptionState`（与 `subscription-state.json` 同一个词）、头像库删掉并进图库、`subscriptionId` 系、`/api/subscriptions` |
+| `SubRuntimeStore` / `SubRuntime`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore` / `SubscriptionState`（与 `subscription-state.json` 同一个词）、头像库删掉并进图库（`SubAvatarStore` 与它的读口 ⑳c 已退役，资料缓存的 `avatar` 装图库引用、B 站的远端网址叫 `avatarUrl`）、`subscriptionId` 系、`/api/subscriptions` |
 | `identityOf`（草案名） | `subscriptionIdentityOf` |
 | 会员 `tiers: "dynamic"`（草案名）；`packages/dynamic` 的 `PushKind`（命名批中途叫过 `DynamicPushPart`） | `tiers: "custom"`；`PostPushPart`（`post` / `post-images`） |
 | 错误体 `{ error, message }`、`{ ok: false, err }` | `{ code, message }`、`{ ok: false, code, message, upstreamCode? }` |

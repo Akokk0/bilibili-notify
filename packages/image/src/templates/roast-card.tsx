@@ -20,8 +20,8 @@
 export type RoastCardUp = {
 	name: string;
 	/**
-	 * 头像地址(ADR-0020 决策 15):B 站订阅是 CDN 图链(渲染前内联成 data URL);拓展订阅是服务端读好存下的
-	 * 头像文件、已经转成的 data URL(资料里那个面板相对地址截图加载不到)。缺省时退回首字母圆牌。
+	 * 头像地址(ADR-0020 决策 15):B 站订阅是 CDN 图链(渲染前内联成 data URL);拓展订阅是服务端从图库读好、
+	 * 已经转成的 data URL(面板用的同源地址 `/api/images/<ref>` 截图加载不到)。缺省时退回首字母圆牌。
 	 */
 	avatar?: string;
 	/** 该 UP 的强调色,来自 internal 的 `upColor`(按人取色)—— 与 dashboard 上同一位 UP 的颜色一致。 */

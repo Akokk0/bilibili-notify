@@ -5,6 +5,7 @@
  *   也不变。
  * - 身份小字:B 站行「UID xxx」;拓展行「平台名 · 外部 id」,平台名由调用方按已装拓展的清单取。
  * - 是不是拓展来的只看 `identity.sourceKey`(订阅与历史行共用 `isExtensionIdentity`)。
+ * - 订阅资料里头像的显示地址(`profileAvatarSrc`):存进图库的走 `/api/images/<ref>`,否则是远端网址,都没有就是没有。
  */
 
 import { colorFromUid } from "@bilibili-notify/internal/constants";
@@ -15,6 +16,7 @@ import {
 	historyRowIdentity,
 	isExtensionIdentity,
 	isExtensionRow,
+	profileAvatarSrc,
 	subscriptionColor,
 } from "../up-display";
 
@@ -26,6 +28,35 @@ const EXT_ROW = {
 	subscriptionId: "s-gone",
 	identity: { sourceKey: "douyin", externalId: "12345" },
 };
+
+describe("profileAvatarSrc(订阅资料里头像的显示地址)", () => {
+	const REF = `${"a".repeat(64)}.png`;
+
+	it("存进图库的(拓展订阅的 avatar)→ 图库的同源读口 /api/images/<ref>", () => {
+		expect(profileAvatarSrc({ avatar: REF })).toBe(`/api/images/${REF}`);
+	});
+
+	it("远端网址(B 站的 avatarUrl,或新建草稿里装着的候选头像 data URL)→ 原样", () => {
+		expect(profileAvatarSrc({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" })).toBe(
+			"https://i0.hdslb.com/bfs/face/x.jpg",
+		);
+		expect(profileAvatarSrc({ avatarUrl: "data:image/png;base64,AAAA" })).toBe(
+			"data:image/png;base64,AAAA",
+		);
+	});
+
+	it("两格都有时图库的赢(服务端不会同时给,但拿图库里的才是服务端落了盘的)", () => {
+		expect(profileAvatarSrc({ avatar: REF, avatarUrl: "https://example.com/a.jpg" })).toBe(
+			`/api/images/${REF}`,
+		);
+	});
+
+	it("都没有(两格都缺、没有资料、旧数据里的空串)→ undefined,头像件画首字", () => {
+		expect(profileAvatarSrc(undefined)).toBeUndefined();
+		expect(profileAvatarSrc({})).toBeUndefined();
+		expect(profileAvatarSrc({ avatar: "", avatarUrl: "" })).toBeUndefined();
+	});
+});
 
 describe("isExtensionIdentity", () => {
 	it("来源键是 bilibili → 不是拓展;别的来源键(拓展 id)→ 是", () => {

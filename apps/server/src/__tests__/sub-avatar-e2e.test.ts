@@ -1,26 +1,30 @@
 /**
- * 🔴 **拓展订阅的头像在真 BN 上是接着的**(ADR-0019 决策 10 / 49)。
+ * 🔴 **拓展订阅的头像在真 BN 上是接着的**(ADR-0019 决策 10 / 49;头像进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗)。
  *
- * 路由那层的测试(`routes/__tests__/subs-extension-create.test.ts`)自己递拓展名单、自己搭订阅仓
- * 那座桥;这里起一台真 BN,钉住 `index.ts` 那几根线:
- *  - 开机清扫:停机期间删掉的订阅,头像文件在开机时扫掉(`sweep` 那一行漏接的话,孤儿永远留着)。
- *  - 新建订阅认的是**装载器真的那份名单**:一个装着、没开的 v2 订阅源(不要求在跑)。
- *  - 删订阅时头像跟着删。
+ * 路由那层的测试(`routes/__tests__/subscriptions-extension-create.test.ts`)自己递拓展名单、自己搭订阅仓
+ * 那座桥,图库清扫也是自己调;这里起一台真 BN,钉住 `index.ts` 那几根线:
+ *  - 新建订阅认的是**装载器真的那份名单**:一个装着、没开的 v2 订阅源(不要求在跑);头像进图库,读口取得回来。
+ *  - 删订阅时 FansPoller 听 `subscription-changed` 丢掉资料缓存里的这一条;头像这时**不会**被直接删,
+ *    它不再有人引用,等下一轮图库清扫 —— 停机期间删掉的订阅也一样,下次开机那一轮收走
+ *    (`startHistoryRetention` 把图库交给清扫、资料缓存登记成引用方,这两处接线漏了的话,头像要么永远留着、
+ *    要么过了宽限期被当垃圾删掉,门禁全绿)。
  */
 
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { IMAGE_GRACE_MS, isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { avatarDataUrl, PNG_BYTES } from "./support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { openTestGeneration } from "./support/generation.js";
 
 const FIXTURE_ID = "avatar-probe";
-const ORPHAN_ID = "b0000000-0000-4000-8000-00000000000f";
+/** 没有任何资料引用的一张图(过了宽限期的孤儿)。 */
+const ORPHAN_REF = `${"f".repeat(64)}.png`;
 const SUB_ID = "b0000000-0000-4000-8000-000000000001";
 
 async function findFreePort(): Promise<number> {
@@ -39,25 +43,43 @@ async function findFreePort(): Promise<number> {
 	});
 }
 
-describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带走头像", () => {
+describe("头像 e2e:新建认真的拓展名单、头像进图库、删订阅后由清扫收走", () => {
 	let dataDir: string;
-	let avatarsDir: string;
+	let gen: string;
+	let imagesDir: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
 
-	async function avatarFiles(): Promise<string[]> {
-		return (await readdir(avatarsDir)).sort();
+	async function imageFiles(): Promise<string[]> {
+		try {
+			return (await readdir(imagesDir)).sort();
+		} catch {
+			return [];
+		}
 	}
 
-	/**
-	 * 装一个 v2 订阅源(开关没拨,没在跑);头像目录里预先摆一个没有订阅认领的孤儿、一个崩溃留下的
-	 * 半截临时文件。
-	 */
+	function boot(): Promise<ServerHandle> {
+		return startServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"silent",
+			],
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+	}
+
+	/** 装一个 v2 订阅源(开关没拨,没在跑)。 */
 	beforeAll(async () => {
 		dataDir = await mkdtemp(join(tmpdir(), "bn-sub-avatar-e2e-"));
 		// 开机前先开好一代,摆的东西都进这一代(ADR-0022)。
-		const gen = await openTestGeneration(dataDir);
-		avatarsDir = join(gen, "avatars");
+		gen = await openTestGeneration(dataDir);
+		imagesDir = join(gen, "images");
 
 		const extDir = join(gen, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
@@ -79,24 +101,8 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 		);
 		await writeFile(join(extDir, "index.mjs"), "export function activate() {}\n");
 
-		await mkdir(avatarsDir, { recursive: true });
-		await writeFile(join(avatarsDir, `${ORPHAN_ID}.png`), PNG_BYTES);
-		await writeFile(join(avatarsDir, `${ORPHAN_ID}.png.tmp.1.abc`), PNG_BYTES);
-
 		port = await findFreePort();
-		handle = await startServer({
-			argv: [
-				"--host",
-				"127.0.0.1",
-				"--port",
-				String(port),
-				"--data-dir",
-				dataDir,
-				"--log-level",
-				"silent",
-			],
-			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
-		});
+		handle = await boot();
 	});
 
 	afterAll(async () => {
@@ -106,32 +112,47 @@ describe("头像 e2e:开机清扫、新建认真的拓展名单、删订阅带�
 
 	const api = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${port}${path}`, init);
 
-	it("开机时扫掉了没有订阅认领的头像与半截临时文件", async () => {
-		expect(await avatarFiles()).toEqual([]);
-	});
-
-	it("新建一条(拓展没开也行)→ 头像落盘、取得回来;删掉 → 头像跟着删", async () => {
+	it("新建一条(拓展没开也行)→ 头像进图库、读口取得回来", async () => {
 		const created = await api("/api/subscriptions", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				...makeExtensionSubscription({ id: SUB_ID, extensionId: FIXTURE_ID, externalId: "x" }),
-				cachedProfile: { name: "某人", avatar: avatarDataUrl("png", PNG_BYTES) },
+				cachedProfile: { name: "某人", avatarUrl: avatarDataUrl("png", PNG_BYTES) },
 			}),
 		});
 		expect(created.status, await created.clone().text()).toBe(200);
 		const row = ((await created.json()) as SubscriptionDTO[]).find((s) => s.id === SUB_ID);
-		const url = row?.cachedProfile?.avatar ?? "";
-		expect(url).toMatch(new RegExp(`^/api/subscriptions/${SUB_ID}/avatar\\?v=`));
-		expect(await avatarFiles()).toEqual([`${SUB_ID}.png`]);
+		const ref = row?.cachedProfile?.avatar ?? "";
+		expect(isValidImageRef(ref)).toBe(true);
+		expect(await imageFiles()).toEqual([ref]);
 
-		const img = await api(url);
+		const img = await api(`/api/images/${ref}`);
 		expect(img.status).toBe(200);
 		expect(Buffer.from(await img.arrayBuffer()).equals(PNG_BYTES)).toBe(true);
+	});
 
+	it("删掉 → 资料缓存里丢了这条、头像没被直接删;停机后过了宽限期,下次开机的清扫收走它与孤儿图", async () => {
+		const ref = (await imageFiles())[0] ?? "";
 		expect((await api(`/api/subscriptions/${SUB_ID}`, { method: "DELETE" })).status).toBe(204);
+
+		// FansPoller 听 subscription-changed 丢掉资料缓存里这一条。
+		const runtimeFile = join(gen, "runtime", "sub-runtime.json");
 		await vi.waitFor(async () => {
-			expect(await avatarFiles()).toEqual([]);
+			const onDisk = JSON.parse(await readFile(runtimeFile, "utf8")) as Record<string, unknown>;
+			expect(onDisk).not.toHaveProperty(SUB_ID);
 		});
+		// 头像文件还在:删订阅不再顺手删它,不再有人引用以后由清扫收。
+		expect(await imageFiles()).toEqual([ref]);
+
+		await handle?.close("restart");
+		handle = undefined;
+		// 停机期间过了宽限期:头像与一张从来没人引用的孤儿图都是一天多以前的。
+		await writeFile(join(imagesDir, ORPHAN_REF), PNG_BYTES);
+		const aged = new Date(Date.now() - IMAGE_GRACE_MS - 60 * 60 * 1000);
+		for (const name of [ref, ORPHAN_REF]) await utimes(join(imagesDir, name), aged, aged);
+
+		handle = await boot();
+		await vi.waitFor(async () => expect(await imageFiles()).toEqual([]));
 	});
 });

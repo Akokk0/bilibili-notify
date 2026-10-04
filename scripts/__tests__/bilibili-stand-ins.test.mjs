@@ -65,7 +65,6 @@ export const RATCHET = {
 	"apps/server/src/runtime/follow-sync.ts": 5,
 	"apps/server/src/runtime/master-notifier.ts": 2,
 	"apps/server/src/runtime/push-history.ts": 5,
-	"apps/server/src/runtime/sub-avatar-store.ts": 2,
 	"apps/server/src/stats/bili-format.ts": 2,
 	"apps/server/src/stats/bili-source.ts": 10,
 	"apps/server/src/stats/extension-source.ts": 3,

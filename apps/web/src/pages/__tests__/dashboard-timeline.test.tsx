@@ -90,7 +90,6 @@ describe("最近推送活动 · 行是谁", () => {
 			...makeEmptySubscription({ sourceKey: "douyin", externalId: "sec-1" }),
 			cachedProfile: {
 				name: "现在的抖音号",
-				avatar: "",
 				sign: "",
 				lastRefreshedAt: "2026-09-24T00:00:00Z",
 			},
@@ -104,7 +103,6 @@ describe("最近推送活动 · 行是谁", () => {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "u1" }),
 			cachedProfile: {
 				name: "某B站UP",
-				avatar: "",
 				sign: "",
 				lastRefreshedAt: "2026-09-24T00:00:00Z",
 			},

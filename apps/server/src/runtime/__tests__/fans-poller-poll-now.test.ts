@@ -28,7 +28,7 @@ function start(getRelationStat: ReturnType<typeof vi.fn>) {
 		subscriptionStore: { list: () => [SUB] } as never,
 		subRuntimeStore: {
 			get: vi.fn(() => ({
-				cachedProfile: { name: "甲", avatar: "a", fans: 1, lastRefreshedAt: "x" },
+				cachedProfile: { name: "甲", fans: 1, lastRefreshedAt: "x" },
 			})),
 			getAll: () => ({}),
 			patch: vi.fn(async () => {}),

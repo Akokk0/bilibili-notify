@@ -23,6 +23,7 @@ import type {
 } from "@bilibili-notify/contract";
 import type { SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { installRepoExtensionInto } from "./support/install-repo-extension.js";
@@ -244,14 +245,14 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		const first = await refreshedAfter(before);
 		expect(first?.name).toContain("第 1 版");
 		expect(first?.fans).not.toBe(before?.fans);
-		expect(first?.avatar).toMatch(new RegExp(`^/api/subscriptions/${SUB_IDS.a}/avatar\\?v=`));
+		expect(first?.avatar && isValidImageRef(first.avatar)).toBe(true);
 		expect(first?.avatar).not.toBe(before?.avatar);
 
 		await press("report.profile");
 		const second = await refreshedAfter(first);
 		expect(second?.name).toContain("第 2 版");
 		expect(second?.avatar).not.toBe(first?.avatar);
-		const img = await api(second?.avatar ?? "");
+		const img = await api(`/api/images/${second?.avatar}`);
 		expect(img.status).toBe(200);
 
 		expect(await profileOf(SUB_IDS.c)).toEqual(seededC);

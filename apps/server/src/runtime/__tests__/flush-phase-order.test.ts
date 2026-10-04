@@ -5,11 +5,11 @@
  * 真的写上了 —— 漏一行的症状是:一切照常,只有关停返回之后那个 store 还在写盘,门禁全绿。所以这里走真的
  * `createAppRuntime`:关停之后每个 store 的写都得被拒。
  *
- * 先后也钉在这里:资料更新落盘(reported-profiles)往资料缓存仓与头像仓写,同段后登记的先跑,所以它得排在那
+ * 先后也钉在这里:资料更新落盘(reported-profiles)往资料缓存仓与图库写,同段后登记的先跑,所以它得排在那
  * 两家 `close()` 的登记之后 —— 反过来的话,关停时在途的那条资料写会撞上已经关门的仓、白白丢掉。
  */
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -17,7 +17,9 @@ import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
+import { isValidImageRef } from "../../images/image-store.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
+import { dataPath } from "../roots.js";
 import { SUB_RUNTIME_FILE } from "../sub-runtime-store.js";
 
 // 落盘函数前的闸默认敞开;只有「先后」那条用例才 hold(见 support/storage-write-gate.ts)。
@@ -49,7 +51,7 @@ afterEach(async () => {
 });
 
 describe("createAppRuntime 的 flush 段", () => {
-	it("关停之后,配置 / 历史 / 资料缓存 / 头像 / 会话 / 图库这几个写道都已关门", async () => {
+	it("关停之后,配置 / 历史 / 资料缓存 / 会话 / 图库这几个写道都已关门(头像存的是图库)", async () => {
 		await runtime.dispose();
 
 		await expect(
@@ -70,18 +72,17 @@ describe("createAppRuntime 的 flush 段", () => {
 			}),
 		).rejects.toMatchObject(CLOSED);
 		await expect(runtime.subRuntimeStore.prune([])).rejects.toMatchObject(CLOSED);
-		await expect(runtime.subAvatarStore.writeBytes(SUB.id, PNG_BYTES)).rejects.toMatchObject(
-			CLOSED,
-		);
+		await expect(runtime.profileImages.put(PNG_BYTES)).rejects.toMatchObject(CLOSED);
 		await expect(runtime.conversationStore.create()).rejects.toMatchObject(CLOSED);
 		await expect(
 			runtime.imageStore.register({ name: "测试", listRefs: async () => [] }).put(PNG_BYTES),
 		).rejects.toMatchObject(CLOSED);
 	});
 
-	it("在途的资料更新先走空,头像仓与资料缓存仓才关门:关停返回时那条资料已在盘上", async () => {
-		// 带头像:先写头像文件(停在闸门口),之后才轮到写资料缓存 —— 这第二笔是关停开始**以后**才发出的,
-		// 资料缓存仓要是已经先关了门,它就被拒、这条资料丢掉。光是「在途的写等得到」测不出先后。
+	it("在途的资料更新先走空,图库与资料缓存仓才关门:关停返回时那条资料与它的头像已在盘上", async () => {
+		// 带头像:先把头像存进图库(停在闸门口),之后才轮到写资料缓存 —— 这第二笔是关停开始**以后**才发出的,
+		// 资料缓存仓要是已经先关了门,它就被拒、这条资料丢掉;图库要是先关了门,头像存不进去、引用也就没有。
+		// 光是「在途的写等得到」测不出先后。
 		storageWriteGate.hold();
 		runtime.bus.emit("subscription-reported", {
 			extensionId: SUB.identity.sourceKey,
@@ -102,11 +103,11 @@ describe("createAppRuntime 的 flush 段", () => {
 		await closing;
 		const onDisk = JSON.parse(await readFile(join(dataDir, ...SUB_RUNTIME_FILE), "utf8")) as Record<
 			string,
-			{ cachedProfile?: { name: string } }
+			{ cachedProfile?: { name: string; avatar?: string } }
 		>;
-		expect(onDisk[SUB.id]?.cachedProfile).toMatchObject({
-			name: "甲",
-			avatar: expect.stringContaining(`/api/subscriptions/${SUB.id}/avatar?v=`),
-		});
+		const profile = onDisk[SUB.id]?.cachedProfile;
+		expect(profile?.name).toBe("甲");
+		expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
+		expect(await readdir(dataPath(dataDir, "images"))).toEqual([profile?.avatar]);
 	});
 });
