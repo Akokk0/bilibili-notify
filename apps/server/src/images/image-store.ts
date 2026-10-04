@@ -7,6 +7,8 @@
  * - 同一份字节再存一次不重写、只刷新修改时间:清扫的新图宽限期按修改时间算。
  *
  * 以上几条的来由见 ADR-0022 决策 9 下 10-03 的 🔗。存储本身是 {@link createAssetStore} 按摘要取名的那一种。
+ * 引用的形状({@link isValidImageRef})、一份字节会得到的引用({@link imageRefOf})、引用的扩展名({@link imageExtOf})
+ * 是纯函数,不碰盘,谁都能用 —— 迁移开新代时直接往 `images/` 落文件,要事先知道文件名。
  *
  * **谁引用、谁才能存**(同一决策下 10-04「⑳ 开片」的 🔗):图按内容起名,同一张会被几家共用,所以没有
  * 「删这张图」的口,只有清扫 —— 过了宽限期、又没有哪家引用的才删。漏登记的引用方的图会被当垃圾清掉而
@@ -15,6 +17,7 @@
  * 修改时间,清扫正扫到一半时这张图也在宽限期里。
  */
 
+import { createHash } from "node:crypto";
 import { readdir, stat, unlink, utimes } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -26,7 +29,7 @@ import {
 	type Result,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
-import { createAssetStore } from "../assets/asset-store.js";
+import { createAssetStore, isValidAssetId } from "../assets/asset-store.js";
 
 /** 单张图的字节上限。 */
 export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
@@ -46,6 +49,35 @@ const EXT_OF_FORMAT = {
 	gif: "gif",
 	webp: "webp",
 } as const satisfies Record<ReportImageFormat, keyof typeof IMAGE_FORMATS>;
+
+/** 引用的规矩:64 位小写 hex 的摘要 + 图库收的扩展名(按摘要取名,见 `createAssetStore`)。 */
+const REF_RULES = { formats: IMAGE_FORMATS, naming: { kind: "sha256" } } as const;
+
+/**
+ * 这个字符串是不是一个图库引用的形状。纯函数、不碰盘、不管文件在不在:从请求里进来的引用先过这一道,
+ * 形状不对的连 `read` / `keep` 都不必问。
+ */
+export function isValidImageRef(ref: string): boolean {
+	return isValidAssetId(REF_RULES, ref);
+}
+
+/**
+ * 一份字节存进图库会得到的引用;不是图库收的图(格式不认、超 8MB)回 `undefined`。不碰盘。
+ *
+ * 给**不走 {@link ImageWriter}、直接落文件**的调用方用(迁移:新代的图库此刻没在跑)—— 它们得事先知道
+ * 文件名。取名规矩只此一份:嗅探 → 扩展名(JPEG 一律 jpg) → 摘要,和 `put` 起的名字一致(测试钉着)。
+ */
+export function imageRefOf(bytes: Uint8Array): ImageRef | undefined {
+	if (bytes.byteLength > IMAGE_MAX_BYTES) return undefined;
+	const format = sniffImageFormat(bytes);
+	if (!format) return undefined;
+	return `${createHash("sha256").update(bytes).digest("hex")}.${EXT_OF_FORMAT[format]}`;
+}
+
+/** 引用的扩展名(png / jpg / gif / webp);形状不对回 `undefined`。扩展名自己就是引用的一部分,不用另存。 */
+export function imageExtOf(ref: string): string | undefined {
+	return isValidImageRef(ref) ? ref.slice(ref.lastIndexOf(".") + 1) : undefined;
+}
 
 /** 新图宽限期:刚存进来、还没被哪一行引用的图留这么久(写死,不做设置)。 */
 export const IMAGE_GRACE_MS = 24 * 60 * 60 * 1000;

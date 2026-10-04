@@ -37,8 +37,8 @@ function renderComposer(over: Partial<Parameters<typeof Composer>[0]> = {}) {
 	return { onSubmit, onRemoveAttachment, onPickFiles };
 }
 
-const one: Attachment = { id: `${"a".repeat(32)}.png`, url: "/api/ai/assets/a.png" };
-const two: Attachment = { id: `${"b".repeat(32)}.png`, url: "/api/ai/assets/b.png" };
+const one: Attachment = { id: `${"a".repeat(64)}.png`, url: `/api/images/${"a".repeat(64)}.png` };
+const two: Attachment = { id: `${"b".repeat(64)}.png`, url: `/api/images/${"b".repeat(64)}.png` };
 
 describe("Composer — 粘贴图片", () => {
 	const composer = () => screen.getByLabelText("聊天输入");

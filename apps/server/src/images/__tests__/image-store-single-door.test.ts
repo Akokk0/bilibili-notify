@@ -30,6 +30,8 @@ const STORE_BUILDERS: Record<string, string> = {
 /** 可以拿到 `images/` 这个目录的地方。每个都得真的用到,不然这张名单就在烂。 */
 const IMAGES_DIR_USERS: Record<string, string> = {
 	"apps/server/src/runtime/bootstrap.ts": "把目录交给图库",
+	"apps/server/src/migration/zero-generation.ts":
+		"迁移开新代时直接往新代的 images/ 落文件(0.x 的聊天附件,⑳b):新代的图库此刻没在跑,不联网、不走 ImageWriter;文件名只认 imageRefOf 一份规矩",
 };
 
 /** 一份源码里调 `createImageStore(...)` 的行。 */

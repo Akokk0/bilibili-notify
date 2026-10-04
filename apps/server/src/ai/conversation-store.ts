@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiCardSkinTouchDTO, AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
-import { createSerialQueue, type Logger } from "@bilibili-notify/internal";
+import { createSerialQueue, type ImageRef, type Logger } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
 
@@ -50,12 +50,13 @@ export interface StoredMessage {
 	 */
 	reasoning?: string;
 	/**
-	 * 用户消息专有:这一问带的图片资产 id(见 `runtime/chat-assets`)。
+	 * 用户消息专有:这一问带的图,装图库引用(`images/` 里的图,见 `images/image-store.ts`)。
 	 *
-	 * 存 id 而**不是** base64:会话文件是整份读进内存的,把图塞进去之后,往后
+	 * 存引用而**不是** base64:会话文件是整份读进内存的,把图塞进去之后,往后
 	 * 每次打开这个会话都要连着几 MB 的 base64 一起扛。没带图就整个字段缺席。
+	 * 图归图库管:删会话不删图,没有任何会话再引用的图由图库清扫收走(`listImageRefs` 就是这家的引用名单)。
 	 */
-	images?: string[];
+	images?: ImageRef[];
 	/**
 	 * 助手消息专有:卡片工坊里这条回复碰过的皮肤(预览块照它画)。没碰过就整个字段缺席。
 	 */
@@ -82,7 +83,7 @@ export interface NewMessage {
 	content: string;
 	tools?: readonly StoredToolTrace[];
 	reasoning?: string;
-	images?: readonly string[];
+	images?: readonly ImageRef[];
 	cardSkins?: readonly AiCardSkinTouchDTO[];
 }
 
@@ -163,8 +164,17 @@ export interface ConversationStore {
 	 * **不动 `updatedAt`** —— 同 {@link setTitle},这不算「聊过」。
 	 */
 	recordCardSkin(id: string, entry: CardSkinLedgerEntry): Promise<boolean>;
-	/** 删除一个会话。返回它此前是否存在。 */
+	/** 删除一个会话。返回它此前是否存在。图不跟着删:图是图库的,清扫会收走没人引用的。 */
 	remove(id: string): Promise<boolean>;
+	/**
+	 * 盘上所有会话所有消息引用的图(去重)—— 图库清扫要的「这一家引用着谁」,在图库里登记成引用方时交出去。
+	 *
+	 * 和 {@link list} 不是一回事,宁宽勿漏:被清扫当垃圾的图删了就回不来。所以文件只要认得出消息(有 `messages`
+	 * 数组)就收它的图,哪怕缺了面孔那几格、会话库会把它当坏文件跳过。整个文件读不成 JSON 才算没有(与列表一致,
+	 * 主人眼里它本来就没了)。目录或文件读不了(不是「没有」)就抛 —— 清扫宁可这一轮一张不删,也不拿残缺的名单
+	 * 去删图。不排进写道:会话文件是原子换名的,读到的要么是旧的要么是新的;新带进来的图是 `keep` 过的,在宽限期里。
+	 */
+	listImageRefs(): Promise<ImageRef[]>;
 	/**
 	 * 标记这一场**正有一轮在跑**,返回收工时该调的那个函数。
 	 *
@@ -477,8 +487,53 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			});
 		},
 
+		async listImageRefs() {
+			let names: string[];
+			try {
+				names = await readdir(dir);
+			} catch (err) {
+				if (isMissing(err)) return []; // 一次都没聊过,目录还没建。
+				throw err;
+			}
+			const refs = new Set<ImageRef>();
+			for (const name of names) {
+				if (!name.endsWith(".json")) continue;
+				let raw: string;
+				try {
+					raw = await readFile(join(dir, name), "utf8");
+				} catch (err) {
+					if (isMissing(err)) continue; // 刚被删(修剪 / 主人删会话),它的图本来就不再被引用。
+					throw err;
+				}
+				for (const ref of imagesOfConversationJson(raw)) refs.add(ref);
+			}
+			return [...refs];
+		},
+
 		close: () => writes.close(),
 	};
+}
+
+const isMissing = (err: unknown): boolean => (err as NodeJS.ErrnoException).code === "ENOENT";
+
+/**
+ * 一份会话文件里所有消息带的图。读不成 JSON、或认不出消息数组的文件交不出东西;
+ * 不是字符串的条目不算(别的版本的垃圾数据不该让清扫抛错)。
+ */
+function imagesOfConversationJson(raw: string): string[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return [];
+	}
+	const messages = (parsed as { messages?: unknown } | null)?.messages;
+	if (!Array.isArray(messages)) return [];
+	return messages.flatMap((message: { images?: unknown } | null) =>
+		Array.isArray(message?.images)
+			? message.images.filter((ref): ref is string => typeof ref === "string")
+			: [],
+	);
 }
 
 /** 首问 → 侧栏标题。压掉换行,超长截断加省略号。 */

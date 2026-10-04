@@ -687,7 +687,10 @@ export function ChatPage() {
 		for (const file of files.slice(0, room)) {
 			try {
 				const id = await uploadChatImage(file);
-				setAttachments((prev) => [...prev, { id, url: chatImageUrl(id) }]);
+				// 图库按内容起名:同一张图再传一遍拿回同一个引用,列表里不重复放(列表以引用为 key)。
+				setAttachments((prev) =>
+					prev.some((a) => a.id === id) ? prev : [...prev, { id, url: chatImageUrl(id) }],
+				);
 			} catch (e) {
 				setError(errorTextOf(e));
 			}

@@ -14,10 +14,12 @@
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 wire 载荷,不为测试再造一遍类型
 
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { distinctPng, makeChatImages, putImage } from "../../__tests__/support/chat-images.js";
 import { createConversationStore } from "../../ai/conversation-store.js";
 import { SkinStore } from "../../skins/store.js";
 import { createAiRoute } from "../ai.js";
@@ -57,6 +59,8 @@ vi.mock("@bilibili-notify/ai", () => ({
 async function makeDeps(opts: { skins?: boolean } = {}) {
 	const dataDir = await mkdtemp(join(tmpdir(), "bn-skinchat-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	const conversationStore = createConversationStore({ dataRoot: dataDir, logger });
+	const { imageStore, chatImages } = makeChatImages(dataDir, conversationStore);
 	const deps = {
 		store: {
 			// 桶里的 vision.model 填着,附件才过得了「女仆看不见图」那道闸。
@@ -74,14 +78,16 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 		runtime: {
 			dataRoot: dataDir,
 			serviceCtx: { logger },
-			conversationStore: createConversationStore({ dataRoot: dataDir, logger }),
+			conversationStore,
+			imageStore,
+			chatImages,
 			engines: { api: {}, commentary: { chatStatelessStream, generateRaw } },
 		},
 	} as unknown as RouteDeps;
 	const skinStore = new SkinStore({ skinsDir: join(dataDir, "skins") });
 	await skinStore.init();
 	const app = createAiRoute(deps, opts.skins === false ? undefined : { skinStore });
-	return { app, skinStore, dataDir };
+	return { app, skinStore, dataDir, chatImages };
 }
 
 async function say(
@@ -188,10 +194,8 @@ describe("皮肤工坊模式", () => {
 	});
 
 	it("主人贴的图接到了工具上 —— 壁纸的唯一来源就是它", async () => {
-		const { app, skinStore, dataDir } = await makeDeps();
-		const id = `${"a".repeat(32)}.png`;
-		await mkdir(join(dataDir, "assets", "chat"), { recursive: true });
-		await writeFile(join(dataDir, "assets", "chat", id), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+		const { app, skinStore, chatImages } = await makeDeps();
+		const id = await putImage(chatImages, distinctPng(1));
 		generateRaw.mockResolvedValueOnce(
 			JSON.stringify({
 				schemaVersion: 1,
@@ -207,14 +211,30 @@ describe("皮肤工坊模式", () => {
 		expect(await skinStore.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.png"]);
 	});
 
+	it("壁纸在皮肤包里的文件名随引用的扩展名走,不是写死 png", async () => {
+		const { app, skinStore, chatImages } = await makeDeps();
+		const id = await putImage(chatImages, WEBP_BYTES);
+		generateRaw.mockResolvedValueOnce(
+			JSON.stringify({
+				schemaVersion: 1,
+				name: "夜航灯",
+				modes: { dark: { wallpaper: { image: "assets/wallpaper.webp" } } },
+			}),
+		);
+
+		await inSkinMode(app, { images: [id] });
+		await lastTools()?.[0].execute({ brief: "配这张图", wallpaper: "true" });
+
+		const [skin] = await skinStore.list();
+		expect(await skinStore.listAssets(skin?.id ?? "")).toEqual(["assets/wallpaper.webp"]);
+	});
+
 	it("这一问空手 → 拿得到上一问那张图,而不是回一句「你没贴图」", async () => {
 		// 装配处这一问空手时会捎上最近一次的图喂给视觉模型 —— 她**看得见**那张。
 		// 做壁纸那把工具若只认这一问的附件,主人贴完图聊两句再说「用刚才那张当背景」,
 		// 撞上的就是「她描述得出那张图、一动手却说你没贴图」。
-		const { app, skinStore, dataDir } = await makeDeps();
-		const id = `${"b".repeat(32)}.png`;
-		await mkdir(join(dataDir, "assets", "chat"), { recursive: true });
-		await writeFile(join(dataDir, "assets", "chat", id), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+		const { app, skinStore, chatImages } = await makeDeps();
+		const id = await putImage(chatImages, distinctPng(2));
 
 		const conv = await openSkinConv(app);
 		await sayIn(app, conv, { message: "看看这张图", images: [id] });

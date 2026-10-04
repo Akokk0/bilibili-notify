@@ -9,7 +9,9 @@
  *
  * 怎么搬:追加写的 jsonl 一律复制(硬链接的话,新代往里追加会改到旧代的文件),其余硬链接、链接不了
  * 回落成复制;软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、
- * 不拷内容。上个进程的残留、0.x 的备份与迁移中间件、卡片皮肤(不迁,决策 12)不带过来,都记进报告。
+ * 不拷内容。聊天附件不整目录搬:被会话引用的逐张复制进图库 `images/`(新代的图库靠刷新修改时间做宽限期,
+ * 硬链接会改到旧代那份,见 `chat-attachments.ts`)。上个进程的残留、0.x 的备份与迁移中间件、卡片皮肤
+ * (不迁,决策 12)不带过来,都记进报告。
  */
 
 import { access, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
@@ -17,7 +19,6 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
 import {
 	copyFileAtomic,
-	isLeftoverName,
 	type KeyMaterialRead,
 	linkOrCopyFile,
 	readKeyMaterial,
@@ -32,14 +33,15 @@ import {
 } from "../config/store.js";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../runtime/card-assets.js";
-import { CHAT_ASSETS_DIR } from "../runtime/chat-assets.js";
 import { FONT_DIR } from "../runtime/font-assets.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.js";
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
+import { createChatAttachmentMigrator } from "./chat-attachments.js";
 import { migrateConnectionFiles } from "./connections.js";
 import { migrateConversationFiles } from "./conversations.js";
+import { leftoverReason } from "./files.js";
 import {
 	migrateHistoryDayFiles,
 	migrateRepushSnapshotFiles,
@@ -62,7 +64,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 23;
+export const MIGRATION_REVISION = 24;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -142,7 +144,9 @@ const ZERO_GENERATION_MOVES = {
 		children: {
 			"card-bg": CARD_BG_DIR,
 			font: FONT_DIR,
-			chat: CHAT_ASSETS_DIR,
+		},
+		inputs: {
+			chat: "聊天附件:迁移读一次,被会话引用的逐张复制进图库 images/(记在搬过去的里)、其余不带过来,不整目录进新代",
 		},
 	},
 	avatars: { kind: "move", to: ["avatars"], label: "头像" },
@@ -354,7 +358,39 @@ const REWRITES: readonly {
 		),
 	},
 	{ label: "界面皮肤", run: (opts) => migrateDashboardSkins(opts.targetDir) },
-	{ label: "女仆对话", run: (opts) => migrateConversationFiles(opts.targetDir) },
+	{
+		label: "女仆对话",
+		run: async (opts, report) => {
+			const zeroChat = zeroPath(opts.zeroRoot, "assets", "chat");
+			const attachments = createChatAttachmentMigrator({
+				zeroDir: zeroChat,
+				imagesDir: dataPath(opts.targetDir, "images"),
+			});
+			const rewritten = await migrateConversationFiles(opts.targetDir, attachments);
+			// 附件的账:搬进图库的各记一条(旧路径 → 图库里的引用),没搬的按数量各记一句,不逐个列。
+			const done = await attachments.result();
+			for (const { id, ref } of done.copied) {
+				report.transfers.push({
+					from: portable(relative(opts.zeroRoot, join(zeroChat, id))),
+					to: portable(relative(opts.targetDir, dataPath(opts.targetDir, "images", ref))),
+					method: "copy",
+				});
+			}
+			if (done.dropped > 0) {
+				report.skipped.push({
+					path: "assets/chat",
+					reason: `${done.dropped} 张聊天附件对不上(文件不在、不是图库收的图、超过 8MB 或路径不对),已从引用它的消息里拿掉`,
+				});
+			}
+			if (done.orphans > 0) {
+				report.skipped.push({
+					path: "assets/chat",
+					reason: `${done.orphans} 张聊天附件没有任何会话引用,没带过来`,
+				});
+			}
+			return rewritten;
+		},
+	},
 	{
 		label: "密钥",
 		run: async (opts) =>
@@ -435,20 +471,6 @@ async function transfer(context: MigrationContext, from: string, to: string): Pr
 
 function skip(context: MigrationContext, path: string, reason: string): void {
 	context.report.skipped.push({ path: portable(relative(context.zeroRoot, path)), reason });
-}
-
-/**
- * 这个名字是不是残留,是的话为什么不带:上个进程的临时文件与暂存目录(storage 的标记)、0.x 的备份
- * (`*.bak`、恢复备份留下的 `*.restore.bak`)、0.x 自己的临时件与迁移中间件、被隔离的坏文件。
- */
-function leftoverReason(name: string): string | undefined {
-	if (isLeftoverName(name)) return "上个进程留下的临时文件";
-	if (name.endsWith(".bak")) return "0.x 的备份";
-	if (/\.tmp(\.|$)/.test(name) || name.startsWith(".staging-") || name.endsWith(".migrating")) {
-		return "0.x 的临时件";
-	}
-	if (name.includes(".corrupt-")) return "被隔离的坏文件";
-	return undefined;
 }
 
 function portable(path: string): string {

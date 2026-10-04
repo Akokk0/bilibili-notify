@@ -50,7 +50,7 @@ const NO_IMAGE_NOTE = "(这套没有壁纸 —— 这场对话里没有图。想
 /** 女仆这一轮看得见的图(主人这一问贴的,或空手时捎上的最近一张),原始字节。 */
 export interface ChatSkinImage {
 	bytes: Uint8Array;
-	/** 扩展名(png / jpg / jpeg / webp),决定包内文件名。 */
+	/** 扩展名(png / jpg / gif / webp,取自图库引用),决定包内文件名。 */
 	ext: string;
 }
 

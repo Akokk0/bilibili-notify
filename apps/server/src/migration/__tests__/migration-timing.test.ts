@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_HISTORY_RETENTION_DAYS } from "@bilibili-notify/internal";
 import { afterAll, describe, expect, it } from "vite-plus/test";
+import { isValidImageRef } from "../../images/image-store.js";
 import { createGeneration, FORMAT_VERSION, selectGeneration } from "../../runtime/generations.js";
 import {
 	MIGRATION_REVISION,
@@ -127,14 +128,15 @@ async function expectMigrated(
 	expect(existsSync(join(generation, "generation.json"))).toBe(true);
 	expect(existsSync(join(hostRoot, "generations", "1.partial"))).toBe(false);
 
-	// 报告:「拓展订阅」那份只作输入、没进新代;过了保留期的图与重推原件不带过来,各记一句(⑲c)。
+	// 报告:「拓展订阅」那份只作输入、没进新代;聊天附件目录也是输入(每张附件都被会话引用着,没有孤儿、没有对不上的,
+	// 所以只有这一条);过了保留期的图与重推原件不带过来,各记一句(⑲c)。
 	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
 	const keptDays = Math.min(counts.historyDays, DEFAULT_HISTORY_RETENTION_DAYS + 1);
 	const expiredDays = counts.historyDays - keptDays;
 	expect(report.skipped.map((s) => s.path)).toEqual(
 		expiredDays > 0
-			? ["state/extension-subscriptions.json", "history/img", "history/repush"]
-			: ["state/extension-subscriptions.json"],
+			? ["state/extension-subscriptions.json", "assets/chat", "history/img", "history/repush"]
+			: ["state/extension-subscriptions.json", "assets/chat"],
 	);
 	expect(report.transfers).toHaveLength(
 		counts.files - 1 - expiredDays * (counts.plan.historyRowsPerDay + counts.plan.repushPerDay),
@@ -255,7 +257,21 @@ async function expectMigrated(
 		expect(conversation.messages).toHaveLength(counts.conversationMessages / counts.conversations);
 	}
 	expect(await readdir(join(generation, "maid-skills"))).toHaveLength(counts.maidSkills);
-	expect(await readdir(join(generation, "assets", "chat"))).toHaveLength(counts.chatAttachments);
+	// 聊天附件不整目录搬:每张都被会话引用着、内容各不相同,所以图库里正好一张不少,会话里全是图库引用。
+	expect(existsSync(join(generation, "assets", "chat"))).toBe(false);
+	const libraryImages = (await readdir(join(generation, "images"))).sort();
+	expect(libraryImages).toHaveLength(counts.chatAttachments);
+	expect(libraryImages.every(isValidImageRef)).toBe(true);
+	const referenced = new Set<string>();
+	for (const name of conversations) {
+		const conversation = JSON.parse(
+			await readFile(join(generation, "ai", "conversations", name), "utf8"),
+		) as { messages: { images?: string[] }[] };
+		for (const message of conversation.messages) {
+			for (const ref of message.images ?? []) referenced.add(ref);
+		}
+	}
+	expect([...referenced].sort()).toEqual(libraryImages);
 	const active = JSON.parse(
 		await readFile(join(generation, "skins", "dashboard", "active.json"), "utf8"),
 	) as Record<string, unknown>;

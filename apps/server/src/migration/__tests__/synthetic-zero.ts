@@ -18,7 +18,9 @@
  *   在历史里出现的行数。统计与粉丝的天数不缩,两档都是一整年(365 天,每订阅 52,560 个粉丝点)。
  * - **每天一份的东西靠缩天数**:推送历史的日文件、行、图、重推原件。满量 365 天,四分之一量 `round(365 × 0.25) = 91` 天;
  *   每天的量不缩(每天 120 行、每行一张图,每天 5 份重推原件)。
- * - 会话与聊天附件不挂订阅也不挂日期,按 `scale` 取整(50 → 12、100 → 25)。
+ * - 会话与聊天附件不挂订阅也不挂日期,按 `scale` 取整(50 → 12、100 → 25)。每张附件内容各不相同(图库按摘要
+ *   并同样的图,内容一样就量不到)、各被一场会话的一条用户消息引用着(没人引用的附件迁移时不搬,不引用就没活儿):
+ *   第 k 张挂在第 `k mod 会话数` 场的第 `2 × ⌊k ÷ 会话数⌋` 条消息上,两档都是每场 2 张上下,仍近似线性。
  * - 皮肤、女仆技能、拓展、素材这些零碎是固定的几份,几乎不占活儿。
  *
  * 订阅数和天数是两把不同的尺子,各缩一次,不能叠:订阅数乘 `scale` 同时天数也乘,体量就成了 1/16。为什么这样缩,是
@@ -223,12 +225,23 @@ class Tree {
 	}
 }
 
-/** 定长的假二进制(带个像样的文件头,内容无所谓)。 */
-function fakeBinary(size: number, magic: string): Buffer {
+/** PNG 的 8 字节签名:图库按嗅探认格式,只看这个(解码不解码无所谓)。 */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * 定长的假二进制(带个像样的文件头,内容无所谓)。`variant` 给了就写在文件头后面:同一个文件头、同样的长度,
+ * 不同的 `variant` 是不同的内容 —— 图库按摘要起名,内容一样的图会并成一张。
+ */
+function fakeBinary(size: number, magic: string | Uint8Array, variant?: number): Buffer {
 	const buffer = Buffer.alloc(size, 0x5a);
-	buffer.write(magic, 0, "latin1");
+	const head = typeof magic === "string" ? Buffer.from(magic, "latin1") : magic;
+	buffer.set(head, 0);
+	if (variant !== undefined) buffer.writeUInt32BE(variant, head.length);
 	return buffer;
 }
+
+/** 0.x 的聊天附件 id:32 位 hex + 后缀。 */
+const attachmentId = (index: number) => `${hex(0xa7_7ac0 + index, 32)}.png`;
 
 // ── 摆树 ────────────────────────────────────────────────────────────────────────
 
@@ -434,7 +447,7 @@ async function placeHistory(
 	const perDay = plan.historyRowsPerDay;
 	// 历史只摆最近 `historyDays` 天;`h` 是这一段里的第几天,`day` 是它在整段数据里的序号。
 	const firstDay = plan.days - plan.historyDays;
-	const images = [2048, 2560, 3072, 3584, 4096].map((size) => fakeBinary(size, "\u0089PNG"));
+	const images = [2048, 2560, 3072, 3584, 4096].map((size) => fakeBinary(size, PNG_SIGNATURE));
 	const rowId = (h: number, r: number) => uuid(NS.historyRow, h * perDay + r + 1);
 
 	for (let h = 0; h < plan.historyDays; h += 1) {
@@ -628,6 +641,8 @@ async function placeConversations(
 		const started = dayMs((i * 7) % Math.max(1, plan.days - 1));
 		const messages = Array.from({ length: MESSAGES_PER_CONVERSATION }, (_, m) => {
 			const assistant = m % 2 === 1;
+			// 附件挂在用户消息(偶数条)上,一条一张,轮着把 `plan.attachments` 张分给各场会话。
+			const attached = assistant ? plan.attachments : (m / 2) * plan.conversations + i;
 			return {
 				id: `${id}-m${m}`,
 				role: assistant ? "assistant" : "user",
@@ -637,6 +652,7 @@ async function placeConversations(
 					),
 				ts: iso(started + m * 60_000),
 				// 每五场里有一场用过做皮肤的工具,每七场里有一场的回复碰过卡片皮肤。
+				...(attached < plan.attachments ? { images: [attachmentId(attached)] } : {}),
 				...(assistant && m === 1 && i % 5 === 0
 					? { tools: [{ name: "create_skin", args: {}, ok: true }] }
 					: {}),
@@ -653,9 +669,8 @@ async function placeConversations(
 		});
 	}
 
-	const attachment = fakeBinary(24_576, "\u0089PNG");
 	await pool(range(plan.attachments), 32, (i) =>
-		tree.put(`assets/chat/att-${String(i + 1).padStart(3, "0")}.png`, attachment),
+		tree.put(`assets/chat/${attachmentId(i)}`, fakeBinary(24_576, PNG_SIGNATURE, i + 1)),
 	);
 	return {
 		conversations: plan.conversations,
@@ -697,13 +712,14 @@ async function placeLooseThings(tree: Tree, extensionIds: readonly string[]): Pr
 	for (let i = 1; i <= FIXED.cardBackgrounds; i += 1) {
 		await tree.put(
 			`assets/card-bg/${hex(0x1000_0000 + i, 8)}.png`,
-			fakeBinary(61_440, "\u0089PNG"),
+			fakeBinary(61_440, PNG_SIGNATURE),
 		);
 	}
 	await tree.put("assets/font/index.json", "{}");
 	for (let i = 1; i <= FIXED.fonts; i += 1) {
 		await tree.put(`assets/font/f${i}.woff2`, fakeBinary(51_200, "wOF2"));
 	}
-	for (const id of extensionIds) await tree.put(`avatars/${id}.png`, fakeBinary(8192, "\u0089PNG"));
+	for (const id of extensionIds)
+		await tree.put(`avatars/${id}.png`, fakeBinary(8192, PNG_SIGNATURE));
 	await tree.put("card-bg-cursors.json", '{"cursor":3}');
 }

@@ -1,10 +1,10 @@
 /**
  * 迁移器改写文件的共用几件:读一份 JSON(分得清没有 / 读不懂 / 读到了)、写一份新文件替掉旧的(原子换名、
- * 沿用原件的权限)、逐行改写一份 jsonl、判一坨东西是不是普通对象。
+ * 沿用原件的权限)、逐行改写一份 jsonl、判一坨东西是不是普通对象、认第 0 代里的残留。
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
-import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
+import { atomicWriteFile, atomicWriteJson, isLeftoverName } from "@bilibili-notify/storage";
 
 export type JsonFile =
 	| { kind: "missing" }
@@ -84,6 +84,20 @@ export async function listFiles(dir: string, suffix: string): Promise<string[]> 
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
 		throw err;
 	}
+}
+
+/**
+ * 这个名字是不是残留,是的话为什么不带:上个进程的临时文件与暂存目录(storage 的标记)、0.x 的备份
+ * (`*.bak`、恢复备份留下的 `*.restore.bak`)、0.x 自己的临时件与迁移中间件、被隔离的坏文件。
+ */
+export function leftoverReason(name: string): string | undefined {
+	if (isLeftoverName(name)) return "上个进程留下的临时文件";
+	if (name.endsWith(".bak")) return "0.x 的备份";
+	if (/\.tmp(\.|$)/.test(name) || name.startsWith(".staging-") || name.endsWith(".migrating")) {
+		return "0.x 的临时件";
+	}
+	if (name.includes(".corrupt-")) return "被隔离的坏文件";
+	return undefined;
 }
 
 async function modeOptions(path: string): Promise<{ mode?: number }> {

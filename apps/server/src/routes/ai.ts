@@ -15,18 +15,19 @@ import {
 	AISettingsSchema,
 	type CardSkinKind,
 	fail,
+	type ImageRef,
 	issuesFromZod,
 	type NotificationPayload,
 	ok,
 	providerMeta,
 	resolveAIProfile,
 	resolveChatThinkingLevel,
+	sniffImageFormat,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { Conversation, ConversationMeta } from "../ai/conversation-store.js";
-import { AssetRejectedError } from "../assets/asset-store.js";
 import {
 	buildCardWorkshopSystem,
 	CARD_WORKSHOP_MAX_TOOL_ROUNDS,
@@ -34,17 +35,11 @@ import {
 	slimCardToolArgs,
 } from "../card-skins/chat-tools.js";
 import type { CardSkinStore } from "../card-skins/store.js";
+import { type ImageStore, imageExtOf, isValidImageRef } from "../images/image-store.js";
 import { createSkillChatTool, skillInstruction } from "../maid-skills/chat-tool.js";
 import type { MaidSkillEntry, MaidSkillStore } from "../maid-skills/store.js";
 import { toGeneratorConfig } from "../runtime/ai-config.js";
-import {
-	deleteChatImage,
-	MAX_CHAT_IMAGE_BYTES,
-	MAX_CHAT_IMAGES_PER_MESSAGE,
-	readChatImage,
-	readChatImageDataUrl,
-	saveChatImage,
-} from "../runtime/chat-assets.js";
+import type { AppRuntime } from "../runtime/bootstrap.js";
 import {
 	type ChatSkinImage,
 	createSkinChatTools,
@@ -96,6 +91,12 @@ const VISION_NOT_SET_MESSAGE =
 	"女仆还看不见图片。请到「智能女仆」页的「图片理解」:主模型自己看得见图就打开「主模型支持看图」;看不见(比如 DeepSeek)就填上「视觉模型 ID」";
 /** 聊天一条消息的字数上限。 */
 const CHAT_MESSAGE_MAX_CHARS = 4000;
+/** 单张聊天附件上限 5MB —— 与卡片背景图同口径。图库自己的线是 8MB,这是上传这一层更紧的规矩。 */
+const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
+/** 一条消息最多带几张图。与动态点评那条路的上限一致(`extractDynamicImages`)。 */
+const MAX_CHAT_IMAGES_PER_MESSAGE = 4;
+/** 认不出是图、或不是聊天附件收的格式时对主人说的话(图库还收 gif,聊天附件不收)。 */
+const CHAT_IMAGE_UNSUPPORTED_MESSAGE = "不支持的图片类型（仅 PNG / JPEG / WebP）";
 
 export function createAiRoute(
 	deps: RouteDeps,
@@ -205,57 +206,31 @@ export function createAiRoute(
 	});
 
 	app.delete("/conversations/:id", async (c) => {
-		const id = c.req.param("id");
-		// 先把图片 id 抄下来再删会话 —— 删完就再也问不出这个会话带过哪些图了,
-		// 那些文件会在磁盘上永远留着,而这种泄漏要很久之后才会被发现。
-		const doomed = await store().get(id);
-		const removed = await store().remove(id);
+		// 只删会话,不碰它带过的图:图是图库的,按内容起名,同一张可能还被别的会话、历史行引用着。
+		// 没有任何一家再引用的图,由图库清扫在宽限期过后收走(会话库就是清扫要问的引用方之一)。
+		const removed = await store().remove(c.req.param("id"));
 		if (!removed) return respondFailure(c, fail("not_found", CONVERSATION_GONE_MESSAGE));
-		const doomedImages = (doomed?.messages ?? []).flatMap((m) => m.images ?? []);
-		if (doomedImages.length > 0) {
-			const dataRoot = deps.runtime.dataRoot;
-			for (const img of doomedImages) await deleteChatImage(dataRoot, img);
-		}
 		return c.json(ok());
 	});
 
 	// ---- 聊天附件 ---------------------------------------------------------
 	//
-	// 与卡片背景图的图廊分开:那边是主人精心挑的长期素材,这边是随手一发、跟着
-	// 会话生灭的。照抄那套「落盘 + id 引用 + 定向读取」的形状,但各用各的目录。
+	// 附件存进图库(`images/<sha256>.<ext>`),回的 id 就是图库引用;页面显示缩略图走图库的同源读口
+	// `GET /api/images/<ref>`,这里不再有读口。聊天这一家登记成了图库的引用方(`runtime.chatImages`)。
 
-	/** 上传一张附件 → 落盘 `<dataRoot>/assets/chat/<id>`,返回 id 供随消息带上。 */
+	/** 上传一张附件 → 存进图库,返回图库引用(字段叫 `id`)供随消息带上。 */
 	// 闸在 parseBody 之前:超大的当场回绝,别先整份读进那 512MB 的堆里。见 upload-limit.ts。
 	app.post("/assets", uploadBodyLimit(MAX_CHAT_IMAGE_BYTES, "图片"), async (c) => {
 		const body = await c.req.parseBody().catch(() => null);
 		const file = body?.file;
 		if (!(file instanceof File)) return respondFailure(c, fail("invalid", "缺少图片文件"));
-		try {
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			const id = await saveChatImage(deps.runtime.dataRoot, bytes, file.type);
-			return c.json(ok({ id }));
-		} catch (err) {
-			// 格式不认、超上限是主人递进来的东西不合规矩,话是给他看的中文;磁盘写失败之类是环境的事,
-			// 往外抛交给全局出错处理(原话进日志,`String(err)` 里可能带路径)。
-			if (err instanceof AssetRejectedError) return respondFailure(c, fail("invalid", err.message));
-			throw err;
-		}
-	});
-
-	/**
-	 * 附件服务 —— 供页面显示缩略图。
-	 *
-	 * 经 id 正则校验的**定向读取**,绝不 serveStatic 整个 dataRoot —— 那里面躺着
-	 * `bn.config.yaml`,带 apiKey 与 cookie。
-	 */
-	app.get("/assets/:id", async (c) => {
-		const res = await readChatImage(deps.runtime.dataRoot, c.req.param("id"));
-		if (!res) return respondFailure(c, fail("not_found", "图片不存在"));
-		return c.body(res.bytes as unknown as ArrayBuffer, 200, {
-			"content-type": res.mime,
-			// 内容按 id 寻址,id 是随机的、永不复用 —— 可以放心长缓存。
-			"cache-control": "public, max-age=31536000, immutable",
-		});
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		const refusal = chatUploadRefusal(bytes);
+		if (refusal) return respondFailure(c, fail("invalid", refusal));
+		// 磁盘写失败之类是环境的事,往外抛交给全局出错处理(原话进日志,`String(err)` 里可能带路径)。
+		const stored = await deps.runtime.chatImages.put(bytes);
+		if (!stored.ok) return respondFailure(c, stored);
+		return c.json(ok({ id: stored.ref }));
 	});
 
 	/**
@@ -367,8 +342,7 @@ export function createAiRoute(
 			}
 		}
 		// 主人这一问贴的图(见 readImageUrls:为什么带字节而不是地址)。
-		const resolved =
-			attached.length > 0 ? await readImageUrls(deps.runtime.dataRoot, attached) : [];
+		const resolved = attached.length > 0 ? await resolveAttachedImages(deps.runtime, attached) : [];
 
 		/**
 		 * 这一问自己没带图时,**捎上最近那一次的**。
@@ -379,15 +353,15 @@ export function createAiRoute(
 		 *
 		 * 只捎最近一次、且只在这一问空手时捎:主人重新挑了图就说明他要问的是新的那张,
 		 * 旧的一并端上去只会分散注意力,还要多付一份钱。捎来的图**不进落盘的 images**
-		 * —— 那一问并没有真的带图,记错了会连累删会话时的图片回收与重开会话的缩略图。
+		 * —— 那一问并没有真的带图,记错了会让重开会话时这条消息凭空多出缩略图。
 		 */
-		let carried: Array<{ id: string; url: string }> = [];
+		let carried: Array<{ ref: ImageRef; url: string }> = [];
 		if (resolved.length === 0) {
-			// 先找有没有这么一条,再去碰磁盘 —— 一句话都不带图的普通聊天(绝大多数)
-			// 不该为这个功能多走一步,更不该去读它本来用不着的 dataRoot。
+			// 先找有没有这么一条,再去碰图库 —— 一句话都不带图的普通聊天(绝大多数)
+			// 不该为这个功能多走一步,更不该去读它本来用不着的磁盘。
 			const recent = [...conv.messages].reverse().find((m) => m.images?.length);
 			if (recent?.images?.length) {
-				carried = await readImageUrls(deps.runtime.dataRoot, recent.images);
+				carried = await readImageUrls(deps.runtime.imageStore, recent.images);
 			}
 		}
 
@@ -444,15 +418,15 @@ export function createAiRoute(
 						 * 贴完图聊两句再说「用刚才那张当背景」,会撞上「她描述得出那张图、
 						 * 一动手却说你没贴图」这种自相矛盾。
 						 *
-						 * 字节直接从聊天附件目录读 —— 上面那两份存的是喂给视觉模型的 data
-						 * URL,拿它再解一次 base64 只是绕远路。
+						 * 字节直接从图库读 —— 上面那两份存的是喂给视觉模型的 data
+						 * URL,拿它再解一次 base64 只是绕远路。扩展名从引用本身得出。
 						 */
 						attachedImage: async (): Promise<ChatSkinImage | null> => {
-							const dataRoot = deps.runtime.dataRoot;
 							// 读到一张就收手:壁纸只要一张,后面那几张(每张上限 5MB)读进来也是扔。
-							for (const { id } of visible) {
-								const img = await readChatImage(dataRoot, id);
-								if (img) return { bytes: img.bytes, ext: id.split(".").pop() ?? "png" };
+							for (const { ref } of visible) {
+								const img = await deps.runtime.imageStore.read(ref);
+								const ext = imageExtOf(ref);
+								if (img && ext) return { bytes: img.bytes, ext };
 							}
 							return null;
 						},
@@ -655,9 +629,9 @@ export function createAiRoute(
 
 				const traces = slots.filter((s): s is AiToolTraceDTO => s.ok !== undefined);
 				const updated = await store().appendMessages(conv.id, [
-					// 存**能用的那些** id,不是主人递进来的原样 —— 存进去的每一个都得
-					// 在盘上真实存在,否则重开会话时那几个格子就是一片碎图。
-					{ role: "user", content: message, images: resolved.map((r) => r.id) },
+					// 存**能用的那些**引用,不是主人递进来的原样 —— 存进去的每一个都得
+					// 在图库里真实存在,否则重开会话时那几个格子就是一片碎图。
+					{ role: "user", content: message, images: resolved.map((r) => r.ref) },
 					// reasoning 只作展示,store 会在空串时略去字段;历史回传给模型的
 					// 路径(上面的 history 拼装)读的是 content,思考永不回炉。
 					{
@@ -705,8 +679,9 @@ export function createAiRoute(
 const ChatRequestSchema = z.object({
 	message: z.string().min(1).max(CHAT_MESSAGE_MAX_CHARS),
 	/**
-	 * 这一问带的图片资产 id。上限与动态点评那条路一致(4 张)—— 超了在这里就拒,
+	 * 这一问带的图,装图库引用(上传时拿到的 `id`)。上限与动态点评那条路一致(4 张)—— 超了在这里就拒,
 	 * 而不是悄悄截断:主人明明挑了 6 张,只有 4 张被看了却什么都不说,比报错更难查。
+	 * 形状不对的、图库里已经没了的,到 `resolveAttachedImages` 才静默跳过。
 	 */
 	images: z.array(z.string()).max(MAX_CHAT_IMAGES_PER_MESSAGE).optional(),
 	/**
@@ -784,25 +759,54 @@ export function resolveDraftApiKey(draft: string | undefined, stored: string | u
 }
 
 /**
- * 一批附件 id → 能读出来的那些(id + data URL)。
+ * 聊天附件的规矩(图库本身不管):不收 gif、不超 5MB;格式按字节嗅探,**不信**客户端声明的
+ * `file.type`。收的回 `undefined`,不收的回给主人看的中文原因。
+ */
+function chatUploadRefusal(bytes: Uint8Array): string | undefined {
+	if (bytes.byteLength > MAX_CHAT_IMAGE_BYTES) return "图片过大（上限 5MB）";
+	const format = sniffImageFormat(bytes);
+	if (format === undefined) return CHAT_IMAGE_UNSUPPORTED_MESSAGE;
+	if (format === "gif") return "不支持的图片类型：GIF（仅 PNG / JPEG / WebP）";
+	return undefined;
+}
+
+/**
+ * 一批图库引用 → 读得出来的那些(引用 + data URL)。
  *
- * 非法 id(穿越尝试)与盘上已经没了的一律**跳过**,不让它们混进去 —— 混进去的话
- * 视觉模型收到一个读不动的地址,而主人只看到女仆说「这张图我看不清」。
+ * 图库里已经没了的一律**跳过**,不让它们混进去 —— 混进去的话视觉模型收到一个读不动的地址,
+ * 而主人只看到女仆说「这张图我看不清」。形状不对的引用 `read` 不碰盘、直接当没有。
  *
- * 视觉服务商在公网,拉不到主人本地的 `http://localhost:9000/api/ai/assets/xxx`,
+ * 视觉服务商在公网,拉不到主人本地的 `http://localhost:9000/api/images/xxx`,
  * 只能把字节本身带过去。这与 B 站动态里的图不同 —— 那些本来就是公网可达的,
- * 所以那条路直接传 URL。
+ * 所以那条路直接传 URL。mime 随引用走(扩展名按嗅探定),不信任何人的声明。
  */
 async function readImageUrls(
-	dataRoot: string,
-	ids: readonly string[],
-): Promise<Array<{ id: string; url: string }>> {
-	const out: Array<{ id: string; url: string }> = [];
-	for (const id of ids) {
-		const url = await readChatImageDataUrl(dataRoot, id);
-		if (url) out.push({ id, url });
+	imageStore: ImageStore,
+	refs: readonly ImageRef[],
+): Promise<Array<{ ref: ImageRef; url: string }>> {
+	const out: Array<{ ref: ImageRef; url: string }> = [];
+	for (const ref of refs) {
+		const image = await imageStore.read(ref);
+		if (image)
+			out.push({ ref, url: `data:${image.mime};base64,${image.bytes.toString("base64")}` });
 	}
 	return out;
+}
+
+/**
+ * 请求里带的图引用 → 这一问真能用的那些:先过形状(不碰盘)、同一张只算一张,再逐个 `keep` 续期 ——
+ * 上传时的宽限期是一天,而这一问要用它(也要把它写进消息、被会话引用),所以让它回到宽限期里 ——
+ * `keep` 回 `false` 就是图已经不在了,静默跳过;读得出来的才留下。
+ */
+async function resolveAttachedImages(
+	runtime: Pick<AppRuntime, "imageStore" | "chatImages">,
+	refs: readonly string[],
+): Promise<Array<{ ref: ImageRef; url: string }>> {
+	const live: ImageRef[] = [];
+	for (const ref of new Set(refs)) {
+		if (isValidImageRef(ref) && (await runtime.chatImages.keep(ref))) live.push(ref);
+	}
+	return readImageUrls(runtime.imageStore, live);
 }
 
 /**

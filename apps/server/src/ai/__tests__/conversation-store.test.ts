@@ -648,6 +648,61 @@ describe("卡片皮肤工坊", () => {
 	});
 });
 
+describe("ConversationStore.listImageRefs — 图库引用方交出的名单", () => {
+	const A = `${"a".repeat(64)}.png`;
+	const B = `${"b".repeat(64)}.jpg`;
+	const C = `${"c".repeat(64)}.webp`;
+
+	it("盘上所有会话所有消息带的图,同一张只出现一次", async () => {
+		const one = await store.create();
+		const two = await store.create();
+		await store.appendMessages(one.id, [
+			{ role: "user", content: "看", images: [A, B] },
+			{ role: "assistant", content: "好" },
+			{ role: "user", content: "再看", images: [A] },
+		]);
+		await store.appendMessages(two.id, [{ role: "user", content: "这个", images: [C, A] }]);
+
+		expect([...(await store.listImageRefs())].sort()).toEqual([A, B, C]);
+	});
+
+	it("一个会话都没有(目录还没建)→ 空", async () => {
+		expect([...(await store.listImageRefs())]).toEqual([]);
+	});
+
+	it("零消息的会话、没带图的消息不贡献引用", async () => {
+		const empty = await store.create();
+		const plain = await store.create();
+		await store.appendMessages(plain.id, [{ role: "user", content: "只有字" }]);
+
+		expect(empty.messages).toEqual([]);
+		expect([...(await store.listImageRefs())]).toEqual([]);
+	});
+
+	it("读不懂的会话文件跳过(与列表一致,主人眼里它本来就没了);认得出消息的文件哪怕少了别的格也照样交出它的图", async () => {
+		const good = await store.create();
+		await store.appendMessages(good.id, [{ role: "user", content: "看", images: [A] }]);
+		const dir = join(dataDir, ...CONVERSATIONS_DIR);
+		await writeFile(join(dir, "broken.json"), "{ not json");
+		// 缺面孔那三格:会话库会把它当坏文件跳过,可文件里的图不能因此被清扫当垃圾。
+		await writeFile(
+			join(dir, "faceless.json"),
+			JSON.stringify({ id: "faceless", messages: [{ role: "user", images: [B, 42, null] }] }),
+		);
+
+		expect([...(await store.listImageRefs())].sort()).toEqual([A, B]);
+	});
+
+	it("目录读不了(不是「没有」)就抛,宁可这一轮一张不删", async () => {
+		const aiDir = join(dataDir, "ai");
+		await mkdir(aiDir, { recursive: true });
+		// `ai/conversations` 是个文件:readdir 报 ENOTDIR,不是 ENOENT。
+		await writeFile(join(aiDir, "conversations"), "x");
+
+		await expect(store.listImageRefs()).rejects.toThrow();
+	});
+});
+
 describe("ConversationStore.close", () => {
 	beforeEach(() => storageWriteGate.reset());
 	afterEach(() => storageWriteGate.reset());

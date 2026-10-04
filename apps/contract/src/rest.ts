@@ -22,6 +22,7 @@ import type {
 	FansRefreshEntry,
 	FeatureKey,
 	Identity,
+	ImageRef,
 	Issue,
 	PushMessageRole,
 	PushStatus,
@@ -908,10 +909,10 @@ export interface AiChatMessageDTO {
 	 */
 	reasoning?: string;
 	/**
-	 * 用户消息专有:这一问带的图片资产 id。前端拿它拼
-	 * `/api/ai/assets/<id>` 显示缩略图。没带图就整个字段缺席。
+	 * 用户消息专有:这一问带的图,装图库引用。前端拿它拼
+	 * `/api/images/<ref>` 显示缩略图。没带图就整个字段缺席。
 	 */
-	images?: string[];
+	images?: ImageRef[];
 	/**
 	 * 助手消息专有:卡片工坊里这条回复碰过的皮肤,按先后。消息末尾的预览块照它画
 	 * (ADR-0015 决策 20 的 🔗)。没碰过就整个字段缺席。

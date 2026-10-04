@@ -16,7 +16,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -49,7 +49,7 @@ vi.mock("../../../services/aiChat", async (orig) => {
 			updatedAt: "2026-07-24T00:00:00.000Z",
 			messageCount: 2,
 		})),
-		uploadChatImage: vi.fn(async () => "aabbccddeeff00112233445566778899.png"),
+		uploadChatImage: vi.fn(async () => `${"ab".repeat(32)}.png`),
 		sendChatMessage: vi.fn(async (_id: string, message: string) => {
 			const user = { id: "u1", role: "user", content: message, ts: "2026-07-25T00:00:00.000Z" };
 			const reply = { id: "a1", role: "assistant", content: "好", ts: "2026-07-25T00:00:01.000Z" };
@@ -87,7 +87,8 @@ import { sendChatMessage, uploadChatImage } from "../../../services/aiChat";
 import { useAiChatStore } from "../../../store/aiChat";
 import { ChatPage } from "../index";
 
-const ASSET_ID = "aabbccddeeff00112233445566778899.png";
+/** 图库引用:64 位摘要 + 扩展名(上传接口回的 `id`)。 */
+const ASSET_ID = `${"ab".repeat(32)}.png`;
 
 /** ChatPage 用 useNavigate / useLocation,得裹在 Router 里;这份测试不关心来路。 */
 function wrap(node: ReactNode) {
@@ -125,6 +126,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("AiChatDock — 发图", () => {
+	it("同一张图选了两次(图库按内容起名,拿回同一个引用)→ 待发送列表里只有一张,发出去也只带一张", async () => {
+		const { container } = render(wrap(<ChatPage />));
+		await attachOne(container);
+		const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+		if (!input) throw new Error("找不到文件选择框");
+
+		fireEvent.change(input, {
+			target: { files: [new File(["x"], "again.png", { type: "image/png" })] },
+		});
+		await waitFor(() => expect(vi.mocked(uploadChatImage)).toHaveBeenCalledTimes(2));
+		await vi.mocked(uploadChatImage).mock.results[1]?.value;
+		await act(async () => {});
+
+		expect(screen.getAllByLabelText("移除图片")).toHaveLength(1);
+		fireEvent.click(screen.getByLabelText("发送"));
+		await waitFor(() => expect(vi.mocked(sendChatMessage)).toHaveBeenCalledTimes(1));
+		expect(sentImageIds()).toEqual([ASSET_ID]);
+	});
+
 	it("附件 id 跟着请求一起走 —— 不跟着走的话服务端一张也收不到", async () => {
 		const { container } = render(wrap(<ChatPage />));
 		await attachOne(container);

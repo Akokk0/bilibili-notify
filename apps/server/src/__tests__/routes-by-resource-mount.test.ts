@@ -80,6 +80,8 @@ const NEW_PATHS: Probe[] = [
 	post(`/api/connections/${ID}/probe`),
 	// 决策 5 随 ⑮ 开的图库读口(没这张图,处理函数自己回 404 —— 那也是挂上了的证据)。
 	get(`/api/images/${"0".repeat(64)}.png`),
+	// 聊天附件的上传(⑳b 起存进图库):没带文件,处理函数动手之前就回 400。
+	post("/api/ai/assets"),
 ];
 
 /** 对应的老路径:一条都不许再答。 */
@@ -110,6 +112,8 @@ const OLD_PATHS: Probe[] = [
 	post("/api/auth/ws-ticket"),
 	post("/api/push/test"),
 	post(`/api/connections/${ID}/test`),
+	// 聊天附件的读口(⑳b 起走图库的同源读口 `/api/images/<ref>`,这个口退役)。
+	get(`/api/ai/assets/${"0".repeat(32)}.png`),
 ];
 
 let dataDir: string;

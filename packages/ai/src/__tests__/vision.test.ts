@@ -73,6 +73,31 @@ describe("describeImages — 并发与容错", () => {
 		expect(onWarn.mock.calls[0]?.[0]).toContain("402 余额不足");
 	});
 
+	it("data URL 形式的图失败时,告警里不带整张图的 base64,只说一张内联图和大小量级;普通地址照旧", async () => {
+		// 聊天附件交给视觉模型的是 data URL(整张图的 base64):原样拼进告警,一次失败就把几 MB 灌进日志。
+		const base64 = Buffer.alloc(30 * 1024, 7).toString("base64");
+		const inline = `data:image/png;base64,${base64}`;
+		const onWarn = vi.fn();
+		const call = vi.fn(async () => {
+			throw new Error("402 余额不足");
+		});
+
+		await describeImages([inline, "https://i0.hdslb.com/bfs/a.png"], {
+			call,
+			model: "vl",
+			onWarn,
+		});
+
+		const [inlineWarn, remoteWarn] = onWarn.mock.calls.map((c) => c[0] as string);
+		expect(inlineWarn).not.toContain(base64.slice(0, 40));
+		expect(inlineWarn).not.toContain("base64");
+		expect(inlineWarn).toContain("一张内联图");
+		expect(inlineWarn).toContain("约 30 KB");
+		expect(inlineWarn).toContain("402 余额不足");
+		expect(inlineWarn?.length).toBeLessThan(200);
+		expect(remoteWarn).toContain("https://i0.hdslb.com/bfs/a.png");
+	});
+
 	it("正文上下文交给副模型 —— 它才分得清梗图/截图/作品图", async () => {
 		const call = okCaller();
 		await describeImages(["a"], { call, model: "vl", contextText: "今天更新了新曲" });

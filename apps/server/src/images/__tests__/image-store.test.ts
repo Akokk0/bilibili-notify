@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
 	createImageStore,
 	IMAGE_GRACE_MS,
+	IMAGE_MAX_BYTES,
 	type ImageStore,
 	type ImageWriter,
+	imageExtOf,
+	imageRefOf,
+	isValidImageRef,
 } from "../image-store.js";
 
 /**
@@ -99,6 +103,43 @@ describe("put / read", () => {
 
 	it("引用合规矩、文件不在,读回 undefined", async () => {
 		expect(await store.read(`${PNG_SHA256}.png`)).toBeUndefined();
+	});
+});
+
+describe("引用的规矩是纯函数,不碰盘", () => {
+	it("imageRefOf 与 put 起的名字一致(迁移直接落文件,名字得事先算出来)", async () => {
+		for (const bytes of [PNG, JPEG, GIF, WEBP]) {
+			expect(imageRefOf(bytes)).toBe(await putOk(bytes));
+		}
+	});
+
+	it("imageRefOf:不是收的那几种图回 undefined,超 8MB 也是", () => {
+		expect(imageRefOf(Uint8Array.from(ascii("<svg/>")))).toBeUndefined();
+		expect(imageRefOf(new Uint8Array())).toBeUndefined();
+		const over = new Uint8Array(IMAGE_MAX_BYTES + 1);
+		over.set(PNG);
+		expect(imageRefOf(over)).toBeUndefined();
+	});
+
+	it("isValidImageRef 与 read 认同一套形状:64 位小写 hex + 收的扩展名", () => {
+		expect(isValidImageRef(`${PNG_SHA256}.png`)).toBe(true);
+		expect(isValidImageRef(`${PNG_SHA256}.jpg`)).toBe(true);
+		for (const bad of [
+			`../${PNG_SHA256}.png`,
+			"abc.png",
+			`${PNG_SHA256.toUpperCase()}.png`,
+			`${PNG_SHA256}.jpeg`,
+			PNG_SHA256,
+			"",
+		]) {
+			expect(isValidImageRef(bad), bad).toBe(false);
+		}
+	});
+
+	it("imageExtOf 从引用本身得出扩展名;形状不对回 undefined", () => {
+		expect(imageExtOf(`${PNG_SHA256}.png`)).toBe("png");
+		expect(imageExtOf(`${PNG_SHA256}.webp`)).toBe("webp");
+		expect(imageExtOf("../x.png")).toBeUndefined();
 	});
 });
 

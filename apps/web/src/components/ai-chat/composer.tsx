@@ -34,9 +34,9 @@ import { matchSkills } from "./skills";
 export const COMPOSER_MAX_HEIGHT = 150;
 
 export interface ComposerAttachment {
-	/** 服务端资产 id,随消息一起发出去。 */
+	/** 图库引用(上传接口回的 `id`),随消息一起发出去。 */
 	id: string;
-	/** 显示用地址(`/api/ai/assets/<id>`)。 */
+	/** 显示用地址(`/api/images/<ref>`)。 */
 	url: string;
 }
 

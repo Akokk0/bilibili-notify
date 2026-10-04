@@ -155,7 +155,7 @@ export async function sendChatMessage(
 	id: string,
 	message: string,
 	handlers: ChatStreamHandlers,
-	/** 这一问带的图片资产 id(已经传好的),见 {@link uploadChatImage}。 */
+	/** 这一问带的图(已经传好的图库引用),见 {@link uploadChatImage}。 */
 	images?: readonly string[],
 	/**
 	 * 只在这一问里活着的那几样:会话级的两颗胶囊(深度思考 / 联网搜索),以及
@@ -251,13 +251,13 @@ export function groupConversations(
 	return out;
 }
 
-/** 一张聊天附件的公开地址(dashboard 显示用)。 */
-export function chatImageUrl(id: string): string {
-	return `/api/ai/assets/${encodeURIComponent(id)}`;
+/** 一张聊天附件的显示地址(dashboard 用):附件存在图库里,走图库的同源读口。 */
+export function chatImageUrl(ref: string): string {
+	return `/api/images/${encodeURIComponent(ref)}`;
 }
 
 /**
- * 上传一张聊天附件,拿回资产 id。
+ * 上传一张聊天附件,拿回图库引用(接口里叫 `id`)。
  *
  * 传完就落盘,而不是攒到发送时再传:这样格式不对 / 太大能**当场**报出来,而不是
  * 主人打完一整段话点发送才发现图没进去。

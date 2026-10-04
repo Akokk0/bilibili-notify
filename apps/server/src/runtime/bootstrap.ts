@@ -11,7 +11,7 @@ import { createFansStore, type FansStore } from "../fans/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
 import { createRepushStore } from "../history/repush-store.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
-import { createImageStore, type ImageStore } from "../images/image-store.js";
+import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
@@ -92,6 +92,11 @@ export interface AppRuntime {
 	 * `GET /api/images/:ref` 读。
 	 */
 	imageStore: ImageStore;
+	/**
+	 * 女仆 AI 聊天往图库存图的口:上传的附件 `put`,发消息时把请求里带的图 `keep`(续期)。图库的存图口只有登记成
+	 * 引用方才拿得到 —— 这一家引用的是会话里的 `images`(`conversationStore.listImageRefs`),装配时登记。
+	 */
+	chatImages: ImageWriter;
 	/**
 	 * 女仆 AI 聊天的会话记录(dashboard 聊天侧栏「最近」的数据源)。刻意与
 	 * engines 解耦 —— AI 没配好时会话照样能建能列,页面才有地方摆「去把 key
@@ -285,6 +290,12 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => conversationStore.close(), "flush");
+	// 女仆对话是图库的一家引用方:会话里的图由会话库交名单,清扫据此留下还在对话里的图。关停顺序没有承重点 ——
+	// 登记只是把名单口交给图库,会话库不往图库写;清扫登记在 track 里,关停先等它跑完才进 flush 段。
+	const chatImages = imageStore.register({
+		name: "女仆对话",
+		listRefs: () => conversationStore.listImageRefs(),
+	});
 	const logStore = createLogStore({
 		hostRoot,
 		serviceCtx,
@@ -346,6 +357,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		subRuntimeStore,
 		subAvatarStore,
 		imageStore,
+		chatImages,
 		conversationStore,
 		logStore,
 		extensionLive,

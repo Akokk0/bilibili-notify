@@ -49,6 +49,19 @@ function buildPrompt(contextText?: string): string {
 	return `${base}\n\n这张图来自下面这条内容,可作为理解画面的背景(但仍然只描述图片本身):\n${contextText.trim()}`;
 }
 
+/**
+ * 告警里怎么称呼一张图。普通地址原样写;data URL 是整张图的 base64,原样拼进告警就是一次失败灌几 MB 进日志
+ * (聊天附件交给视觉模型的就是 data URL)—— 只说是一张内联图,加个大小的量级。
+ */
+function imageLabel(url: string): string {
+	if (!url.startsWith("data:")) return url;
+	const payload = url.length - (url.indexOf(",") + 1);
+	const bytes = url.slice(0, url.indexOf(",")).endsWith(";base64")
+		? Math.floor((payload * 3) / 4)
+		: payload;
+	return `一张内联图,约 ${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 /** 给一个 promise 套硬超时;超时即 reject。 */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
@@ -91,7 +104,7 @@ export async function describeImages(
 				return text.trim() || null;
 			} catch (e) {
 				const reason = e instanceof Error ? e.message : String(e);
-				onWarn?.(`[vision] 第 ${i + 1} 张图没看成(${url}):${reason}`, reason);
+				onWarn?.(`[vision] 第 ${i + 1} 张图没看成(${imageLabel(url)}):${reason}`, reason);
 				return null;
 			}
 		}),

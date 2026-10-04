@@ -430,7 +430,7 @@ AI 跟着来源走（ADR-0030）。工具与技能的全表见 [subscription-sou
 - **六把中立工具**：原有五把（`list_subscriptions`、`get_creator_profile`、`get_creator_posts`、`get_live_status`、`search_creators(source, query)`）加第六把 `get_creator_stats(creator, days?)`，读统计仓。B 站独有的数据（总播放、获赞、视频列表）由 B 站的 `AiToolProvider` 登记只读工具。
 - `AiTool` 加 `label` 与参数标签，面板读下发的，不再写死一张表。
 - **看图读图库**：点评与聊天传 `ImageRef`，宿主注入读图函数读字节、过大先缩、拼 data URL 放进请求；`packages/ai` 不碰磁盘；视觉副模型同路，工具返回的图也是 `ImageRef`。
-- **聊天附件存进图库**（不是素材库）：会话里存 `ImageRef`，图库清扫把会话算作引用方；上传仍是单张 5MB、每条 4 张、拒 SVG。
+- **聊天附件存进图库**（不是素材库）：会话里存 `ImageRef`，图库清扫把会话算作引用方；上传仍是单张 5MB、每条 4 张、拒 SVG，另外不收 gif，格式按字节嗅探、不信客户端声明；读走 `/api/images/<ref>`，删会话不直接删图（⑳b 已落）。
 - **提示词变量**：内置人格、卡片工坊、锐评、内置技能与工具说明里的平台叫法改用 `{creatorNoun}`、`{postNoun}`、`{sources}`，调用时由核心按这次涉及的订阅填；主人自己写的不改写。
 
 ## 皮肤字段
@@ -683,7 +683,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `CommandSpec`；B 站自带的 `login` 指令 | `CommandDef`（字段不变）；核心的通用指令 `login [来源]`；1.0 不造 `CommandProvider` |
 | contract 的 `DevScenario`（过线给面板的纯声明）；`DevParamError` / `DevScenarioNotFound` | `DevScenarioDescriptor`；删掉（`run` 返回结果形状，回 `invalid` / `not_found`） |
 | AI 工具参数 `uid`；内置技能 `find-up` / `up-pk` | `creator`（「来源键:外部 id」）；`find-creator` / `creator-pk`，旧名留别名 |
-| 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef` |
+| 聊天附件目录 `assets/chat` | 进图库，会话里存 `ImageRef`；被会话引用的逐张复制进去，孤儿不搬 |
 
 **订阅与来源（09-27 字段名专项审查）。**
 

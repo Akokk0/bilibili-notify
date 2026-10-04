@@ -8,6 +8,7 @@
 import type { AiConversationMetaDTO } from "@bilibili-notify/contract";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+	chatImageUrl,
 	createSseParser,
 	groupConversations,
 	groupLabel,
@@ -292,6 +293,13 @@ describe("sendChatMessage — 会话级胶囊 flags", () => {
 	});
 });
 
+describe("chatImageUrl — 附件存在图库里,显示走图库的同源读口", () => {
+	it("拼成 /api/images/<ref>,不再是 /api/ai/assets", () => {
+		const ref = `${"c".repeat(64)}.webp`;
+		expect(chatImageUrl(ref)).toBe(`/api/images/${ref}`);
+	});
+});
+
 /**
  * 聊天附件的失败:上传闸(`uploadBodyLimit`)太大在读进内存之前就被回绝,路由自己的拒绝(格式不认)
  * 也一样 —— 体都是 `{ code, message }`。两种都得把服务端那句原话带出来,码也在 `ApiError` 上,
@@ -322,12 +330,12 @@ describe("uploadChatImage — 失败的原话", () => {
 	it("路由自己的拒绝(格式不认,{ code, message })→ 原话与码都带出来", async () => {
 		respond(400, {
 			code: "invalid",
-			message: "不支持的图片类型：image/gif（仅 PNG / JPEG / WebP）",
+			message: "不支持的图片类型：GIF（仅 PNG / JPEG / WebP）",
 		});
 		await expect(uploadChatImage(file())).rejects.toMatchObject({
 			status: 400,
 			code: "invalid",
-			message: "不支持的图片类型：image/gif（仅 PNG / JPEG / WebP）",
+			message: "不支持的图片类型：GIF（仅 PNG / JPEG / WebP）",
 		});
 	});
 

@@ -6,11 +6,14 @@
  * - 卡片皮肤不迁(ADR-0022 决策 12),会话里对它们的引用剥掉、文字保留(决策 4):整场对话的账本
  *   `cardSkinLedger`、每条回复碰过的皮肤 `cardSkins`。新代里没有这些皮肤,留着只会指向空处。工具痕迹里提到的
  *   皮肤是文字,留着。
+ * - 聊天附件进图库(⑳b):消息里 `images` 的旧附件 id 换成图库引用,对不上的从消息里拿掉(整条 `images` 都没了就
+ *   整个字段缺席);附件本身怎么读、怎么复制进图库见 `chat-attachments.ts`。
  */
 
 import { join } from "node:path";
 import { CONVERSATIONS_DIR } from "../ai/conversation-store.js";
 import { dataPath } from "../runtime/roots.js";
+import type { ChatAttachmentMigrator } from "./chat-attachments.js";
 import { isPlainObject, listFiles, readJsonFile, rewriteJsonFile } from "./files.js";
 
 /**
@@ -81,10 +84,46 @@ function stripCardSkinRefs(conv: ZeroConversation): ZeroConversation {
 }
 
 /**
+ * 每条消息的 `images`:旧附件 id 逐个问 `attachments` 换成图库引用,对不上的拿掉。位置不动(`images` 在消息里
+ * 原来排第几还排第几),一个引用都没留下就整个字段拿掉 —— 会话库的约定是「没带图就缺席」。同一条消息里指到
+ * 同一张图的几个旧 id 只留一个引用。
+ */
+async function rewriteChatImages(
+	conv: ZeroConversation,
+	attachments: ChatAttachmentMigrator,
+): Promise<ZeroConversation> {
+	// 消息是盘上读出来的任意东西(`ZeroConversation` 只描述了认得的那一点),按 unknown 走。
+	const messages: unknown[] = [];
+	for (const message of conv.messages as unknown[]) {
+		if (!isPlainObject(message) || !Array.isArray(message.images)) {
+			messages.push(message);
+			continue;
+		}
+		const refs: string[] = [];
+		for (const id of message.images) {
+			const ref = typeof id === "string" ? await attachments.ref(id) : null;
+			if (ref !== null && !refs.includes(ref)) refs.push(ref);
+		}
+		messages.push(
+			Object.fromEntries(
+				Object.entries(message).flatMap(([key, value]): [string, unknown][] =>
+					key !== "images" ? [[key, value]] : refs.length > 0 ? [[key, refs]] : [],
+				),
+			),
+		);
+	}
+	return { ...conv, messages: messages as ZeroConversation["messages"] };
+}
+
+/**
  * 新代里的会话文件迁成最新的形状,回改写过的文件(绝对路径)。认不出是一场会话的(没有 id、消息不是数组)、
  * 补的时候抛错的(消息坏了)原样留着 —— 从前读盘时这种文件就被跳过,现在会话库照样跳过它。
+ * 它们带的附件没人引用,算孤儿(不搬)。
  */
-export async function migrateConversationFiles(dataRoot: string): Promise<string[]> {
+export async function migrateConversationFiles(
+	dataRoot: string,
+	attachments: ChatAttachmentMigrator,
+): Promise<string[]> {
 	const dir = dataPath(dataRoot, ...CONVERSATIONS_DIR);
 	const rewritten: string[] = [];
 	for (const name of await listFiles(dir, ".json")) {
@@ -93,12 +132,14 @@ export async function migrateConversationFiles(dataRoot: string): Promise<string
 		if (file.kind !== "ok") continue;
 		const conv = file.value as ZeroConversation | null;
 		if (!conv || typeof conv.id !== "string" || !Array.isArray(conv.messages)) continue;
-		let next: ZeroConversation;
+		let faced: ZeroConversation;
 		try {
-			next = migrateConversation(conv);
+			faced = migrateConversation(conv);
 		} catch {
 			continue;
 		}
+		// 附件要读盘,读不动的是真错误(不是坏会话),放在 try 外面让它抛、迁移重来。
+		const next = await rewriteChatImages(faced, attachments);
 		if (JSON.stringify(next) === JSON.stringify(conv)) continue;
 		await rewriteJsonFile(path, next);
 		rewritten.push(path);

@@ -21,6 +21,7 @@ import {
 	type ConversationStore,
 	createConversationStore,
 } from "../../ai/conversation-store.js";
+import { createChatAttachmentMigrator } from "../chat-attachments.js";
 import { migrateConversationFiles } from "../conversations.js";
 import { useZeroSandbox } from "./support.js";
 
@@ -291,7 +292,11 @@ describe("迁移器自己的钉", () => {
 		const before = await snapshot();
 		expect(before).toHaveLength(5);
 
-		expect(await migrateConversationFiles(sandbox.target)).toEqual([]);
+		const attachments = createChatAttachmentMigrator({
+			zeroDir: join(sandbox.zero, "assets", "chat"),
+			imagesDir: join(sandbox.target, "images"),
+		});
+		expect(await migrateConversationFiles(sandbox.target, attachments)).toEqual([]);
 		expect(await snapshot()).toEqual(before);
 	});
 
