@@ -101,6 +101,17 @@ describe("推送历史 · 行", () => {
 		expect(screen.queryByText("总结正文")).toBeNull();
 	});
 
+	// 过了保留期的行(ADR-0022 决策 9):图与重推原件已清,文字还在。不画那张已经不存在的图。
+	it("过了保留期的行:点开看得到文字,图的位置写「图已清理」、不发图的请求", async () => {
+		mockApi([row({ isPastRetention: true })]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: /3 条/ }));
+		expect(screen.getByText("总结正文")).toBeTruthy();
+		expect(screen.getByText("图已清理")).toBeTruthy();
+		expect(screen.queryByRole("img", { name: /弹幕词云/ })).toBeNull();
+	});
+
 	it("失败行红 pill「失败」;已送达绿 pill;单条不挂胶囊", async () => {
 		mockApi([
 			row({ id: "a", status: "failed", messages: [{ text: "卡", role: "main", ok: false }] }),

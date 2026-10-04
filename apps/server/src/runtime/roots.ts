@@ -34,7 +34,8 @@ export const DATA_ROOT_LAYOUT = {
 	config: "主人填的:设置、订阅、连接、目标",
 	secrets: "主密钥、口令派生盐、AI 的 apiKey、B 站 cookie",
 	runtime: "程序自己记的,丢了只退化:订阅运行态、锐评草稿、直播封面的轮换游标",
-	history: "推送历史 <日>.jsonl、重推原件 repush/<日>/;历史图 img/ 是过渡,第 2 期并进图库",
+	history:
+		"推送历史 <日>.jsonl(文字不删)、重推原件 repush/<日>/、图与原件清到哪天的水位线 retention.json;历史图 img/ 是过渡,第 2 期并进图库",
 	images: "图库:按内容存的图 <sha256>.<ext>,作品图、封面、头像、历史快照、聊天附件共用",
 	stats: "作品 dyn/、直播 live/、seen/、粉丝时序 followers/(按订阅一个 jsonl)与水位线 since",
 	ai: "女仆对话 conversations/",

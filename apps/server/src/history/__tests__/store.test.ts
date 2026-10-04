@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `createHistoryStore` + listDayFiles / deleteDayFile(真实 tmpdir FS)。
+ * 单元测试 — `createHistoryStore` + listDayFiles / deleteDayImages(真实 tmpdir FS)。
  *
  * 守护契约(行模型本身见 record.test.ts):
  *   - record 的 payload reduce:text / image / composite 各自的文案与图片落盘
@@ -8,7 +8,7 @@
  *   - 取尾巴的窗口:绕圈、坏行补读
  *   - readJsonl 跳过坏行 / schema 非法行
  *   - aggregateDaily:客户端时区日界、零填充、超 500 条全量
- *   - listDayFiles 仅匹配 YYYY-MM-DD.jsonl;deleteDayFile 删除指定文件
+ *   - listDayFiles 仅匹配 YYYY-MM-DD.jsonl;deleteDayImages 清一天的图、日文件留着
  *
  * 注:HistoryEntrySchema 要求 subscriptionId / targetId 均为 uuid —— fixture 必须用
  * randomUUID(),否则 record 与 readJsonl 的 safeParse 全拒。
@@ -24,7 +24,7 @@ import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js"
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
 	createHistoryStore,
-	deleteDayFile,
+	deleteDayImages,
 	type HistoryStore,
 	listDayFiles,
 	type NewHistoryEntry,
@@ -415,7 +415,7 @@ describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
 	});
 });
 
-describe("listDayFiles / deleteDayFile", () => {
+describe("listDayFiles / deleteDayImages", () => {
 	async function ensureHistoryDir() {
 		await mkdir(join(dataDir, "history"), { recursive: true });
 	}
@@ -431,11 +431,24 @@ describe("listDayFiles / deleteDayFile", () => {
 		expect(files).not.toContain("2026-5-1.jsonl");
 	});
 
-	it("deleteDayFile 删除指定日文件", async () => {
-		await ensureHistoryDir();
-		await writeFile(join(dataDir, "history", "2026-04-30.jsonl"), "x\n");
-		await deleteDayFile(dataDir, "2026-04-30.jsonl");
-		expect(await listDayFiles(dataDir)).not.toContain("2026-04-30.jsonl");
+	it("deleteDayImages 清掉那一天引用的图,日文件(文字)留着", async () => {
+		const entry = await store.record(
+			baseInput({
+				messages: [
+					{
+						payload: { kind: "image", image: { buffer: Buffer.from("PNG"), mime: "image/png" } },
+						role: "main",
+					},
+				],
+			}),
+		);
+		const file = `${entry.createdAt.slice(0, 10)}.jsonl`;
+		const ref = entry.messages[0]?.payload.imageRef ?? "";
+		expect(await readdir(join(dataDir, "history", "img"))).toContain(ref);
+
+		expect(await deleteDayImages(dataDir, file)).toBe(1);
+		expect(await readdir(join(dataDir, "history", "img"))).not.toContain(ref);
+		expect(await listDayFiles(dataDir)).toContain(file);
 	});
 });
 

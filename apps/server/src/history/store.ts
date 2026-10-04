@@ -133,7 +133,8 @@ export interface HistoryStore {
 	/**
 	 * 删掉 `createdAt` 落在窗内的行(本体行 + 补丁行 + 引用的图片),回删了几行。
 	 *
-	 * 今天只有 devtools 截流在用(清掉截流期间记下的 delivered 行)。与 `record` 串行 ——
+	 * 今天只有 devtools 截流在用(清掉截流期间记下的 delivered 行)。**这是唯一还会删文字的路**,刻意的
+	 * 例外:保留期的清扫只清图与重推原件,文字不设上限(ADR-0022 决策 9)。与 `record` 串行 ——
 	 * 删的同时有行在追加,补丁会补到一行刚被删掉的本体上。
 	 */
 	deleteRange(opts: DeleteRangeOptions): Promise<number>;
@@ -840,21 +841,17 @@ export async function listDayFiles(dataRoot: string): Promise<string[]> {
 }
 
 /**
- * 端掉一整天的历史:那份 jsonl,以及**它引用的每一张图**。
+ * 清掉一整天历史引用的每一张图,回清了几张。**日文件(文字)留着**:文字不设上限,图按天数清
+ * (ADR-0022 决策 9)。保留期的清扫调它(`retention.ts`)。
  *
- * 图必须跟着走。文件名是 `<行 id>-<序号>`,行 id 不带日期 —— 日文件一删,就再没有任何
- * 人知道那些图归谁、该不该留。从前这里只 unlink jsonl,于是 `history/img/` 只涨不消:
- * 保留期 30 天,卡片图一张几百 KB,一年下来是实打实的几个 G,而面板上一张都看不到。
- *
- * 顺序是**先收集、再删 jsonl、最后删图**:中途崩了顶多剩几张孤儿图(与从前同样的下场),
- * 反过来则会留下一份图全裂的历史。图删不掉不算失败 —— 它是附属物。
+ * 图名是 `<行 id>-<序号>`,行 id 不带日期,哪些图归这一天只能经日文件反查。图删不掉不算失败 ——
+ * 它是附属物。
  */
-export async function deleteDayFile(dataRoot: string, fileName: string): Promise<void> {
+export async function deleteDayImages(dataRoot: string, fileName: string): Promise<number> {
 	const root = dataPath(dataRoot, "history");
-	const path = join(root, fileName);
-	const images = await collectImageRefs(path);
-	await unlink(path);
+	const images = await collectImageRefs(join(root, fileName));
 	for (const name of images) await unlink(join(root, "img", name)).catch(() => {});
+	return images.length;
 }
 
 /** 一份日文件里所有消息引用过的图 —— 本体行与补丁行都要数进来。 */

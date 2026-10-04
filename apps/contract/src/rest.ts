@@ -539,6 +539,11 @@ export interface HistoryEntryView {
 	 * 处理,那总是对的:一条刚刚失败的推送,它的原件必然还在。
 	 */
 	repush?: HistoryRepushInfo;
+	/**
+	 * 这一行过了保留期(ADR-0022 决策 9):它的图和重推原件已经清掉,文字还在。**过了才带**(值恒为 true),
+	 * WS 推来的新行不带 —— 刚落的行不可能过期。面板在原来画图的位置写「图已清理」。
+	 */
+	isPastRetention?: boolean;
 }
 
 /**

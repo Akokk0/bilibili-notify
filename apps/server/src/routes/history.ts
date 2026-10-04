@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
 import { originalCount, unsentIndices } from "../history/repush.js";
+import { readClearedThrough } from "../history/retention.js";
 import { toHistoryView } from "../history/view.js";
 import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
@@ -84,13 +85,18 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		});
 		// 只为**失败 / 部分失败**的行问一句「按钮该不该灰」(决策 9)。一页两百行里
 		// 失败的通常是个位数,而每问一次是一次 stat;别的行本来就没有按钮,不问也不带。
+		// 图与重推原件清到哪一天:行的日子在它及以前,面板在原来画图的位置写「图已清理」。
+		const clearedThrough = await readClearedThrough(deps.runtime.dataRoot);
 		const views = await Promise.all(
 			entries.map(async (e) => {
-				if (e.status !== "failed" && e.status !== "partial") return toHistoryView(e);
+				if (e.status !== "failed" && e.status !== "partial") {
+					return toHistoryView(e, { clearedThrough });
+				}
 				const denial = await deps.runtime.repushRunner.canRepush(e);
 				// 条数在这儿算完交出去 —— 面板自己再算一遍就是第二份实现,而身份号那套
 				// 判定(`repushOf ?? 下标`,每号取最后一次)一改两边就漂。
 				return toHistoryView(e, {
+					clearedThrough,
 					repush: denial
 						? { can: false, code: denial.code, message: denial.message }
 						: {

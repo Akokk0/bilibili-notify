@@ -97,7 +97,7 @@ src/
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
   fans/store.ts         append-only jsonl 时序(<数据根>/stats/followers/<订阅 id>.jsonl)
   stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评(ADR-0020);0.x 按 uid 命名的文件与老行由迁移器一次改好(migration/stats.ts)
-  history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention + view(REST / WS 共用投影)
+  history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回)+ retention(文字不删,图与重推原件按水位线清)+ view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<数据根>/skins/dashboard/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
   maid-skills/          女仆技能(<dataDir>/maid-skills/<name>/SKILL.md)+ 内置表 + 聊天里的 load_skill

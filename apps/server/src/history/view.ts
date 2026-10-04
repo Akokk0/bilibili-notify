@@ -7,10 +7,17 @@ import type { HistoryEntry } from "@bilibili-notify/internal";
  */
 export function toHistoryView(
 	entry: HistoryEntry,
-	opts?: { repush?: HistoryRepushInfo },
+	opts?: {
+		repush?: HistoryRepushInfo;
+		/** 图与重推原件清到哪一天(历史仓的水位线);行的日子在它及以前就是过了保留期。 */
+		clearedThrough?: string;
+	},
 ): HistoryEntryView {
+	const pastRetention =
+		opts?.clearedThrough !== undefined && entry.createdAt.slice(0, 10) <= opts.clearedThrough;
 	return {
 		...(opts && "repush" in opts ? { repush: opts.repush } : {}),
+		...(pastRetention ? { isPastRetention: true } : {}),
 		id: entry.id,
 		pushId: entry.pushId,
 		createdAt: entry.createdAt,

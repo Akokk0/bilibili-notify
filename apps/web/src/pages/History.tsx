@@ -443,6 +443,7 @@ function MessageList({ entry }: { entry: HistoryEntryView }) {
 						no={no}
 						message={m}
 						superseded={entry.messages.some((o, j) => j > i && o.repushOf === no)}
+						pastRetention={entry.isPastRetention === true}
 					/>
 				);
 			})}
@@ -453,15 +454,18 @@ function MessageList({ entry }: { entry: HistoryEntryView }) {
 /**
  * `no` = 这条顶的是哪一号(从 0 数,印出来 +1);`superseded` = 后面还有一条补这一号的,
  * 也就是这条已经作废了 —— 压暗它,让「这条没成、下面那条是它的重投」一眼看得出来。
+ * `pastRetention` = 这一行过了保留期,图已经清掉:原来画图的位置写「图已清理」,不去请求那张不在了的图。
  */
 function MessageItem({
 	no,
 	message,
 	superseded,
+	pastRetention,
 }: {
 	no: number;
 	message: HistoryMessageView;
 	superseded: boolean;
+	pastRetention: boolean;
 }) {
 	// 没有结果 = 没发出去(无目标那行的每一条都是这样);有结果就跟整行状态同一份词表。
 	const result =
@@ -474,7 +478,11 @@ function MessageItem({
 			<span className="w-10 shrink-0 text-bn-text-tertiary">
 				{message.role === "main" ? "本体" : "附加"}
 			</span>
-			{message.imageRef ? (
+			{message.imageRef && pastRetention ? (
+				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-bn-surface-muted text-center leading-tight text-bn-text-tertiary">
+					图已清理
+				</span>
+			) : message.imageRef ? (
 				<img
 					src={`/api/history/img/${message.imageRef}`}
 					alt={message.text ?? "图片"}

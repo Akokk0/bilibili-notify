@@ -13,6 +13,7 @@
  * 失败一律是平铺的 `{ code, message }`,不再有 `{ ok: false, err }`。
  */
 
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Failure, fail } from "@bilibili-notify/internal";
@@ -27,13 +28,18 @@ let canRepush: ReturnType<typeof vi.fn>;
 /** `canRepush` 回什么:`null` = 能补,失败 = 不能补(码与给人看的那句)。 */
 let canRepushResult: Failure | null = null;
 
+/** 这条用例的数据根:路由从它底下读水位线 `history/retention.json`。 */
+let dataRoot: string;
+
 function makeApp(repushResult: unknown = { ok: true, count: 2 }) {
+	dataRoot = mkdtempSync(join(tmpdir(), "bn-history-route-"));
 	query = vi.fn(async () => []);
 	aggregateDaily = vi.fn(async () => []);
 	startRepush = vi.fn(async () => repushResult);
 	canRepush = vi.fn(async () => canRepushResult);
 	const deps = {
 		runtime: {
+			dataRoot,
 			historyStore: { query, aggregateDaily, imageDir: () => join(tmpdir(), "bn-history-test") },
 			repushRunner: { start: startRepush, canRepush, isRunning: () => false },
 		},
@@ -353,5 +359,55 @@ describe("history route — 列表带上「能不能补」", () => {
 			code: "conflict",
 			message: "这个目标（或者它所在的连接）停用了，先启用再补",
 		});
+	});
+});
+
+/**
+ * **哪些行过了保留期,列表里就告诉面板**(ADR-0022 决策 9 下 10-04 的 🔗)。图与重推原件清到哪一天,历史仓记着
+ * 一条水位线;行的日子在它及以前就带 `isPastRetention`,面板在原来画图的位置写「图已清理」。别的行不带这一格。
+ */
+describe("history route — 列表带上「过没过保留期」", () => {
+	function rowAt(id: string, createdAt: string) {
+		return {
+			id,
+			pushId: "p",
+			createdAt,
+			feature: "post",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+			subscriptionId: "s",
+			targetId: "t",
+			status: "delivered",
+			messages: [],
+		};
+	}
+
+	async function list(app: ReturnType<typeof makeApp>) {
+		query.mockImplementation(async () => [
+			rowAt("past", "2026-09-20T23:59:59.000Z"),
+			rowAt("kept", "2026-09-21T00:00:00.000Z"),
+		]);
+		const body = (await (await app.request("/")).json()) as {
+			entries: Array<Record<string, unknown>>;
+		};
+		return body.entries;
+	}
+
+	it("行的日子在水位线及以前 → 带 isPastRetention;之后的行不带这一格", async () => {
+		const app = makeApp();
+		mkdirSync(join(dataRoot, "history"), { recursive: true });
+		writeFileSync(
+			join(dataRoot, "history", "retention.json"),
+			JSON.stringify({ clearedThrough: "2026-09-20" }),
+		);
+		const [past, kept] = await list(app);
+		expect(past).toMatchObject({ id: "past", isPastRetention: true });
+		expect(kept).toMatchObject({ id: "kept" });
+		expect(kept).not.toHaveProperty("isPastRetention");
+	});
+
+	it("还没清过(没有水位线文件)→ 哪一行都不带", async () => {
+		const [past, kept] = await list(makeApp());
+		expect(past).not.toHaveProperty("isPastRetention");
+		expect(kept).not.toHaveProperty("isPastRetention");
 	});
 });
