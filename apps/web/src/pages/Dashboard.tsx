@@ -67,7 +67,12 @@ import {
 } from "../types/domain";
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowColor, historyRowIdentity, isExtensionIdentity } from "../utils/up-display";
+import {
+	historyRowAvatarSrc,
+	historyRowColor,
+	historyRowIdentity,
+	isExtensionIdentity,
+} from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import { colorFromUid, displayName, profileAvatarSrc, subscriptionColor } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -377,8 +382,8 @@ export function TimelinePanel({
 						// B 站行「UID xxx」,拓展行「平台名 · 外部 id」(决策 73)。
 						const name =
 							h.nameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
-						// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
-						const avatar = h.uavatarSnapshot ?? profileAvatarSrc(sub?.cachedProfile);
+						// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
+						const avatar = historyRowAvatarSrc(h, sub?.cachedProfile);
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 						const color = historyRowColor(h);
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;

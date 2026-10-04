@@ -29,8 +29,13 @@ function entry(messages: HistoryEntryView["messages"]): HistoryEntryView {
 	};
 }
 
-const main = { text: "下播了", role: "main" as const, ok: true };
-const extra = (ok: boolean) => ({ text: "词云", role: "extra" as const, ok });
+const main = { text: "下播了", kind: "text" as const, role: "main" as const, ok: true };
+const extra = (ok: boolean) => ({
+	text: "词云",
+	kind: "text" as const,
+	role: "extra" as const,
+	ok,
+});
 
 describe("messageCountOf — 数的是「本来要发几条」", () => {
 	it("没补过的行:就是消息条数", () => {

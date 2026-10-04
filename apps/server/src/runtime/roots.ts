@@ -28,15 +28,15 @@ export const HOST_ROOT_LAYOUT = {
 
 /**
  * 数据根(一代)下的一级项 —— 目录表,也就是代的布局(`docs/1.0/data-and-migration.md`「目录布局」)。
- * 还有一处过渡要在 ⑳ 并进图库 `images/`:历史图 `history/img/`(聊天附件 ⑳b、拓展订阅头像 ⑳c 已经进了图库,
- * `assets`、`avatars` 两个过渡键随之删了)。
+ * 聊天附件(⑳b)、拓展订阅头像(⑳c)、历史配图与重推原件里的图(⑳d)都已经进了图库 `images/`:`assets`、`avatars`
+ * 两个过渡键删了,`history/img/` 没有了。
  */
 export const DATA_ROOT_LAYOUT = {
 	config: "主人填的:设置、订阅、连接、目标",
 	secrets: "主密钥、口令派生盐、AI 的 apiKey、B 站 cookie",
 	runtime: "程序自己记的,丢了只退化:订阅运行态、锐评草稿、直播封面的轮换游标",
 	history:
-		"推送历史 <日>.jsonl(文字不删)、重推原件 repush/<日>/、图与原件清到哪天的水位线 retention.json;历史图 img/ 是过渡,第 2 期并进图库",
+		"推送历史 <日>.jsonl(文字不删)、重推原件 repush/<日>/、图与原件清到哪天的水位线 retention.json;图在图库 images/,这里只存引用",
 	images: "图库:按内容存的图 <sha256>.<ext>,作品图、封面、头像、历史快照、聊天附件共用",
 	stats: "作品 dyn/、直播 live/、seen/、粉丝时序 followers/(按订阅一个 jsonl)与水位线 since",
 	ai: "女仆对话 conversations/",

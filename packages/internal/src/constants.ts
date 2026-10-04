@@ -1278,6 +1278,20 @@ export function featuresForEvents(events: readonly SubscriptionEventKind[]): Fea
 export type ImageRef = string;
 
 /**
+ * 图库引用里认的扩展名(嗅探得出的格式,JPEG 一律叫 jpg)。图库(`apps/server/src/images/image-store.ts`)的格式表
+ * 用 `satisfies` 钉着与它一致:多一种、少一种都编译不过。
+ */
+export const IMAGE_REF_EXTENSIONS = ["png", "jpg", "gif", "webp"] as const;
+
+/**
+ * 图库引用的形状:64 位小写 hex 的内容摘要 + 认得的扩展名。形状只此一份 —— 图库的 `isValidImageRef`、
+ * 历史行与重推原件的 schema 都用它;零依赖,面板也能用。
+ */
+export const IMAGE_REF_PATTERN = new RegExp(
+	`^[0-9a-f]{64}\\.(?:${IMAGE_REF_EXTENSIONS.join("|")})$`,
+);
+
+/**
  * 图片与重推原件保留天数只许这七档(ADR-0022 决策 9 下 10-04 的 🔗),从长到短。设置的 schema 与面板的段选读同一份。
  * 推送记录的文字不在其内:文字不设上限。
  */

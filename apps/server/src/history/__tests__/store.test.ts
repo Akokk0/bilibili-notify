@@ -1,30 +1,35 @@
 /**
- * 单元测试 — `createHistoryStore` + listDayFiles / deleteDayImages(真实 tmpdir FS)。
+ * 单元测试 — `createHistoryStore` + listDayFiles / collectImageRefs(真实 tmpdir FS)。
  *
  * 守护契约(行模型本身见 record.test.ts):
- *   - record 的 payload reduce:text / image / composite 各自的文案与图片落盘
+ *   - record 的 payload reduce:text / image / composite 各自的文案与图片存进图库(按嗅探认格式,存不进的这一格缺着)
+ *   - 头像快照:拓展行抄来的图库引用先续期,续不上不写这一格
  *   - schema 拒绝时抛错、logger.error、不写文件、不 emit
  *   - query:跨日 newest-first + 文件内倒序 + limit 钳制 + since / feature 过滤
  *   - 取尾巴的窗口:绕圈、坏行补读
  *   - readJsonl 跳过坏行 / schema 非法行
  *   - aggregateDaily:客户端时区日界、零填充、超 500 条全量
- *   - listDayFiles 仅匹配 YYYY-MM-DD.jsonl;deleteDayImages 清一天的图、日文件留着
+ *   - listDayFiles 仅匹配 YYYY-MM-DD.jsonl;collectImageRefs 数一份日文件里本体行与补丁行引用的图、不过 schema
  *
  * 注:HistoryEntrySchema 要求 subscriptionId / targetId 均为 uuid —— fixture 必须用
  * randomUUID(),否则 record 与 readJsonl 的 safeParse 全拒。
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { distinctPng } from "../../__tests__/support/chat-images.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
+import { IMAGE_MAX_BYTES, type ImageStore, type ImageWriter } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
+	collectImageRefs,
 	createHistoryStore,
-	deleteDayImages,
 	type HistoryStore,
 	listDayFiles,
 	type NewHistoryEntry,
@@ -44,6 +49,8 @@ let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
 let logger: ReturnType<typeof makeLogger>;
 let store: HistoryStore;
+let imageStore: ImageStore;
+let historyImages: ImageWriter;
 let recorded: HistoryEntry[];
 
 beforeEach(async () => {
@@ -52,7 +59,8 @@ beforeEach(async () => {
 	logger = makeLogger();
 	recorded = [];
 	bus.on("history-recorded", (e) => recorded.push(e));
-	store = createHistoryStore({ dataRoot: dataDir, bus, logger });
+	({ imageStore, historyImages } = makeHistoryImages(dataDir));
+	store = createHistoryStore({ dataRoot: dataDir, bus, logger, images: historyImages });
 });
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -88,14 +96,14 @@ describe("record — payload reduce + 落盘 + emit", () => {
 		expect(recorded[0]?.id).toBe(entry.id);
 	});
 
-	it("image payload:图片落盘到 history/img/<id>-<idx>.<ext>,imageRef + caption→text", async () => {
+	it("image payload:图片存进图库(引用 = 摘要 + 嗅探出的扩展名),image + caption→text", async () => {
 		const entry = await store.record(
 			baseInput({
 				messages: [
 					{
 						payload: {
 							kind: "image",
-							image: { buffer: Buffer.from("PNGDATA"), mime: "image/png" },
+							image: { buffer: PNG_BYTES, mime: "image/png" },
 							caption: "cap",
 						},
 						role: "main",
@@ -104,23 +112,64 @@ describe("record — payload reduce + 落盘 + emit", () => {
 				],
 			}),
 		);
-		expect(only(entry).payload).toEqual({
-			kind: "image",
-			text: "cap",
-			imageRef: `${entry.id}-0.png`,
-		});
-		const img = await readFile(join(store.imageDir(), `${entry.id}-0.png`));
-		expect(img.toString()).toBe("PNGDATA");
+		const image = only(entry).payload.image;
+		expect(image).toMatch(/^[0-9a-f]{64}\.png$/);
+		expect(only(entry).payload).toEqual({ kind: "image", text: "cap", image });
+		const stored = await imageStore.read(image ?? "");
+		expect(stored?.mime).toBe("image/png");
+		expect(new Uint8Array(stored?.bytes ?? [])).toEqual(new Uint8Array(PNG_BYTES));
+		// 图在图库里,历史自己不再有 img 目录。
+		expect(await readdir(join(dataDir, "history"))).not.toContain("img");
+		expect(await readdir(join(dataDir, "images"))).toEqual([image]);
 	});
 
-	it("mime → 扩展名映射(webp/未知→jpg)", async () => {
-		const image = (mime: string): NewHistoryEntry["messages"] => [
-			{ payload: { kind: "image", image: { buffer: Buffer.from("a"), mime } }, role: "main" },
+	it("扩展名按嗅探认,不信 payload 声明的 mime", async () => {
+		const image = (mime: string, buffer: Buffer): NewHistoryEntry["messages"] => [
+			{ payload: { kind: "image", image: { buffer, mime } }, role: "main" },
 		];
-		const webp = await store.record(baseInput({ messages: image("image/webp") }));
-		expect(only(webp).payload.imageRef?.endsWith(".webp")).toBe(true);
-		const unknown = await store.record(baseInput({ messages: image("application/octet-stream") }));
-		expect(only(unknown).payload.imageRef?.endsWith(".jpg")).toBe(true);
+		const webp = await store.record(baseInput({ messages: image("image/png", WEBP_BYTES) }));
+		expect(only(webp).payload.image?.endsWith(".webp")).toBe(true);
+		const jpeg = await store.record(
+			baseInput({ messages: image("application/octet-stream", JPEG_BYTES) }),
+		);
+		expect(only(jpeg).payload.image?.endsWith(".jpg")).toBe(true);
+	});
+
+	it("过不了图库的图(不是图、超 8MB):这一格缺着、行照写、记一句 warn", async () => {
+		const notAnImage = Buffer.from("<svg/>");
+		const huge = Buffer.concat([PNG_BYTES, Buffer.alloc(IMAGE_MAX_BYTES)]);
+		for (const buffer of [notAnImage, huge]) {
+			logger.warn.mockClear();
+			const entry = await store.record(
+				baseInput({
+					messages: [
+						{
+							payload: { kind: "image", image: { buffer, mime: "image/png" }, caption: "没图" },
+							role: "main",
+							result: { ok: true, latencyMs: 1 },
+						},
+					],
+				}),
+			);
+			expect(only(entry).payload).toEqual({ kind: "image", text: "没图", image: undefined });
+			expect(entry.status).toBe("delivered");
+			expect(logger.warn).toHaveBeenCalledTimes(1);
+			expect(logger.warn.mock.calls[0]?.[0]).toContain("配图存不进图库");
+			// 落盘的那一行也没有 image 格,读得回来。
+			const [row] = await store.query({ limit: 1 });
+			expect(row?.messages[0]?.payload).toEqual({ kind: "image", text: "没图" });
+		}
+		expect(await readdir(join(dataDir, "images")).catch(() => [])).toEqual([]);
+	});
+
+	it("同一张图再记一次回同一个引用,图库里还是一个文件(重推每试一次不再多写一份)", async () => {
+		const messages: NewHistoryEntry["messages"] = [
+			{ payload: { kind: "image", image: { buffer: PNG_BYTES, mime: "image/png" } }, role: "main" },
+		];
+		const a = await store.record(baseInput({ messages }));
+		const b = await store.record(baseInput({ messages }));
+		expect(only(b).payload.image).toBe(only(a).payload.image);
+		expect(await readdir(join(dataDir, "images"))).toHaveLength(1);
 	});
 
 	it("composite:text/link 拼成 \\n 文本,仅保留首张图片", async () => {
@@ -132,8 +181,8 @@ describe("record — payload reduce + 落盘 + emit", () => {
 							kind: "composite",
 							segments: [
 								{ type: "text", text: "line1" },
-								{ type: "image", buffer: Buffer.from("IMG1"), mime: "image/jpeg" },
-								{ type: "image", buffer: Buffer.from("IMG2"), mime: "image/jpeg" },
+								{ type: "image", buffer: JPEG_BYTES, mime: "image/jpeg" },
+								{ type: "image", buffer: PNG_BYTES, mime: "image/png" },
 								{ type: "link", href: "https://x", title: "T" },
 								{ type: "link", href: "https://y" },
 							],
@@ -144,12 +193,36 @@ describe("record — payload reduce + 落盘 + emit", () => {
 				],
 			}),
 		);
+		const image = only(entry).payload.image;
 		expect(only(entry).payload).toEqual({
 			kind: "composite",
 			text: "line1\nT https://x\nhttps://y",
-			imageRef: `${entry.id}-0-0.jpg`,
+			image,
 		});
-		expect(await readdir(store.imageDir())).toEqual([`${entry.id}-0-0.jpg`]);
+		expect(image?.endsWith(".jpg")).toBe(true);
+		// 第二张图历史不记(重推原件里每一张都在)。
+		expect(await readdir(join(dataDir, "images"))).toEqual([image]);
+	});
+
+	it("composite 的第一张图过不了图库:这一格缺着,后面的图不顶上", async () => {
+		const entry = await store.record(
+			baseInput({
+				messages: [
+					{
+						payload: {
+							kind: "composite",
+							segments: [
+								{ type: "image", buffer: Buffer.from("<svg/>"), mime: "image/png" },
+								{ type: "image", buffer: PNG_BYTES, mime: "image/png" },
+							],
+						},
+						role: "main",
+					},
+				],
+			}),
+		);
+		expect(only(entry).payload.image).toBeUndefined();
+		expect(await readdir(join(dataDir, "images")).catch(() => [])).toEqual([]);
 	});
 
 	it("composite at-all 段 → text 写出「@全体」而非空;与 text 段按段序拼接", async () => {
@@ -415,7 +488,7 @@ describe("aggregateDaily — 按客户端时区口径的按日聚合", () => {
 	});
 });
 
-describe("listDayFiles / deleteDayImages", () => {
+describe("listDayFiles / collectImageRefs", () => {
 	async function ensureHistoryDir() {
 		await mkdir(join(dataDir, "history"), { recursive: true });
 	}
@@ -431,26 +504,106 @@ describe("listDayFiles / deleteDayImages", () => {
 		expect(files).not.toContain("2026-5-1.jsonl");
 	});
 
-	it("deleteDayImages 清掉那一天引用的图,日文件(文字)留着", async () => {
+	it("collectImageRefs:本体行的配图、补丁行的配图、头像快照都数,日文件(文字)原样", async () => {
+		const bodyImage = await putImage(distinctPng(1));
+		const patchImage = await putImage(distinctPng(2));
+		const avatar = await putImage(distinctPng(3));
 		const entry = await store.record(
 			baseInput({
+				avatarSnapshot: avatar,
 				messages: [
 					{
-						payload: { kind: "image", image: { buffer: Buffer.from("PNG"), mime: "image/png" } },
+						payload: { kind: "image", image: { buffer: distinctPng(1), mime: "image/png" } },
 						role: "main",
 					},
 				],
 			}),
 		);
-		const file = `${entry.createdAt.slice(0, 10)}.jsonl`;
-		const ref = entry.messages[0]?.payload.imageRef ?? "";
-		expect(await readdir(join(dataDir, "history", "img"))).toContain(ref);
+		await store.appendToRow(entry.id, entry.createdAt, [
+			{
+				payload: { kind: "image", image: { buffer: distinctPng(2), mime: "image/png" } },
+				role: "extra",
+				repushOf: 0,
+			},
+		]);
+		const file = join(dataDir, "history", `${entry.createdAt.slice(0, 10)}.jsonl`);
+		const before = await readFile(file, "utf8");
 
-		expect(await deleteDayImages(dataDir, file)).toEqual([ref]);
-		expect(await readdir(join(dataDir, "history", "img"))).not.toContain(ref);
-		expect(await listDayFiles(dataDir)).toContain(file);
+		expect((await collectImageRefs(file)).sort()).toEqual([bodyImage, patchImage, avatar].sort());
+		expect(await readFile(file, "utf8")).toBe(before);
+	});
+
+	it("collectImageRefs 宁多勿少:一行因为别的格不合 schema 被读侧跳过,它引用的图照样数;形状不对的字符串不数", async () => {
+		const ref = await putImage(distinctPng(4));
+		await mkdir(join(dataDir, "history"), { recursive: true });
+		const file = join(dataDir, "history", "2026-05-01.jsonl");
+		await writeFile(
+			file,
+			`${JSON.stringify({
+				id: "不是 uuid",
+				messages: [{ payload: { kind: "image", image: ref } }, { payload: { image: "../x.png" } }],
+				avatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
+			})}\n{坏行\n`,
+		);
+		expect(await collectImageRefs(file)).toEqual([ref]);
+	});
+
+	it("collectImageRefs:文件不在 → 空;读不动(不是「不在」)→ 抛,图库清扫这一轮一张不删", async () => {
+		expect(await collectImageRefs(join(dataDir, "history", "2026-05-02.jsonl"))).toEqual([]);
+		await ensureHistoryDir();
+		// 把日文件的位置换成一个目录:读它是 EISDIR,不是「不在」。
+		await mkdir(join(dataDir, "history", "2026-05-03.jsonl"));
+		await expect(collectImageRefs(join(dataDir, "history", "2026-05-03.jsonl"))).rejects.toThrow();
 	});
 });
+
+describe("头像快照 — 抄来的图库引用,写行前先续期", () => {
+	it("引用的图还在:写进行里,图的修改时间刷新(宽限期重新算)", async () => {
+		const avatar = await putImage(distinctPng(5));
+		const path = join(dataDir, "images", avatar);
+		const old = new Date("2020-01-01T00:00:00Z");
+		await utimes(path, old, old);
+
+		const entry = await store.record(baseInput({ avatarSnapshot: avatar }));
+
+		expect(entry.avatarSnapshot).toBe(avatar);
+		expect((await store.query({ limit: 1 }))[0]?.avatarSnapshot).toBe(avatar);
+		expect((await stat(path)).mtimeMs).toBeGreaterThan(old.getTime());
+	});
+
+	it("图已经不在了(续期回 false):这一格不写,行照写", async () => {
+		const gone = `${"c".repeat(64)}.png`;
+		const entry = await store.record(baseInput({ avatarSnapshot: gone }));
+		expect(entry.avatarSnapshot).toBeUndefined();
+		expect((await store.query({ limit: 1 }))[0]?.avatarSnapshot).toBeUndefined();
+		expect(entry.status).toBe("delivered");
+	});
+
+	it("续期出错(盘上读不动)也不丢这一行:不带头像、记一句 warn", async () => {
+		const broken: ImageWriter = {
+			put: historyImages.put,
+			keep: async () => {
+				throw new Error("EIO");
+			},
+		};
+		const withBroken = createHistoryStore({ dataRoot: dataDir, bus, logger, images: broken });
+		const entry = await withBroken.record(baseInput({ avatarSnapshot: `${"d".repeat(64)}.png` }));
+		expect(entry.avatarSnapshot).toBeUndefined();
+		expect(logger.warn).toHaveBeenCalled();
+	});
+
+	it("没给头像快照(B 站行):这一格缺着,不碰图库", async () => {
+		const entry = await store.record(baseInput());
+		expect(entry.avatarSnapshot).toBeUndefined();
+		expect((await store.query({ limit: 1 }))[0]).not.toHaveProperty("avatarSnapshot");
+	});
+});
+
+async function putImage(bytes: Uint8Array): Promise<string> {
+	const stored = await historyImages.put(bytes);
+	if (!stored.ok) throw new Error(stored.message);
+	return stored.ref;
+}
 
 describe("close — 关停时等在途的写、关门后拒写", () => {
 	beforeEach(() => storageWriteGate.reset());

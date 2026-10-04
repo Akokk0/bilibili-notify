@@ -3,7 +3,7 @@
  *
  * 推送层只知道订阅 id / feature / target / 消息与结果;历史行还要「替谁发的」(B 站 uid,或拓展 id +
  * 外部 id)、UP 的名字头像快照。这一层把它们拼齐:无目标那次照记(target: null),附加项的
- * role 与逐条结果原样带过去。
+ * role 与逐条结果原样带过去。头像快照只装图库引用(⑳d):拓展行抄资料里的 `avatar`,B 站行不带(服务端不抓 B 站头像)。
  */
 
 import { makeEmptySubscription } from "@bilibili-notify/internal";
@@ -24,6 +24,7 @@ const target = {
 } as unknown as PushSendInfo["target"] & object;
 
 const EXT_ID = "33333333-3333-4333-8333-333333333333";
+const EXT_AVATAR = `${"a".repeat(64)}.png`;
 const lookups = {
 	subscriptionOf: (subscriptionId: string) =>
 		subscriptionId === SUB_ID
@@ -42,8 +43,8 @@ const lookups = {
 							extensionId: "douyin",
 							externalId: "u1",
 						}),
-						// 拓展订阅的头像是图库引用(`avatar`):历史行的头像快照归 ⑳d,这一片拓展行仍不带(决策 74)。
-						profile: { name: "某抖音号", avatar: `${"a".repeat(64)}.png` },
+						// 拓展订阅的头像是图库引用(`avatar`),历史行抄它当头像快照。
+						profile: { name: "某抖音号", avatar: EXT_AVATAR },
 					}
 				: undefined,
 };
@@ -79,8 +80,22 @@ describe("historyRecordFromSend", () => {
 				},
 			],
 			nameSnapshot: "某UP",
-			uavatarSnapshot: "http://a/x.jpg",
 		});
+	});
+
+	// B 站行的头像快照这一片空着(抓图服务在 3a):订阅资料里有远端网址 `avatarUrl` 也不抄,面板退到订阅现在的头像。
+	it("B 站行:不带头像快照,哪怕资料里有头像网址", () => {
+		const info: PushSendInfo = {
+			pushId: "p1",
+			subscriptionId: SUB_ID,
+			feature: "post",
+			target,
+			messages: [],
+		};
+		const input = historyRecordFromSend(info, lookups);
+		expect(input).toMatchObject({ nameSnapshot: "某UP" });
+		expect(input).not.toHaveProperty("avatarSnapshot");
+		expect(input).not.toHaveProperty("uavatarSnapshot");
 	});
 
 	it("无目标:target null、消息没有结果", () => {
@@ -123,9 +138,9 @@ describe("historyRecordFromSend", () => {
 		});
 	});
 
-	// 拓展行的身份就是订阅的 `identity`(来源键 = 拓展 id + 外部 id,ADR-0019 决策 73);只存名字快照、
-	// 不存头像快照(决策 74)。
-	it("拓展订阅 → 照记:带来源键(拓展 id)与外部 id、有名字快照、没有头像快照", () => {
+	// 拓展行的身份就是订阅的 `identity`(来源键 = 拓展 id + 外部 id,ADR-0019 决策 73);头像快照抄资料里存进
+	// 图库的 `avatar`(⑳d 起,取代决策 74 的「拓展行不存头像快照」),写行前由历史仓续期。
+	it("拓展订阅 → 照记:带来源键(拓展 id)与外部 id、有名字快照、头像快照是资料里的图库引用", () => {
 		const info: PushSendInfo = {
 			pushId: "p5",
 			subscriptionId: EXT_ID,
@@ -147,6 +162,7 @@ describe("historyRecordFromSend", () => {
 			identity: { sourceKey: "douyin", externalId: "u1" },
 			targetId: target.id,
 			nameSnapshot: "某抖音号",
+			avatarSnapshot: EXT_AVATAR,
 		});
 		expect(input).not.toHaveProperty("uavatarSnapshot");
 	});
@@ -178,6 +194,17 @@ describe("historyRecordFromSend", () => {
 		it("没有资料 → 没有名字快照", () => {
 			const input = historyRecordFromSend(info, lookupsWith({}));
 			expect(input?.nameSnapshot).toBeUndefined();
+		});
+
+		it("资料里没有存进图库的头像(没报过头像,或只有 avatarUrl)→ 没有头像快照,这一格不出现", () => {
+			for (const profile of [
+				undefined,
+				{ name: "甲" },
+				{ name: "甲", avatarUrl: "http://a/x.jpg" },
+			]) {
+				const input = historyRecordFromSend(info, lookupsWith({}, profile));
+				expect(input).not.toHaveProperty("avatarSnapshot");
+			}
 		});
 
 		it("资料里名字是空的(或只有空白)→ 没有名字快照", () => {

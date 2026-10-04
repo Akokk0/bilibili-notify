@@ -41,6 +41,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
 import {
 	deferred,
@@ -2095,6 +2096,7 @@ describe("createEngines — 后台写登记进 track", () => {
 				dataRoot: dataDir,
 				bus: createNodeMessageBus(),
 				logger: makeLogger() as never,
+				images: makeHistoryImages(dataDir).historyImages,
 			});
 			const c = setup({ subs: [sub], overrides: { historyStore } });
 			active = c;

@@ -251,11 +251,6 @@ export function groupConversations(
 	return out;
 }
 
-/** 一张聊天附件的显示地址(dashboard 用):附件存在图库里,走图库的同源读口。 */
-export function chatImageUrl(ref: string): string {
-	return `/api/images/${encodeURIComponent(ref)}`;
-}
-
 /**
  * 上传一张聊天附件,拿回图库引用(接口里叫 `id`)。
  *

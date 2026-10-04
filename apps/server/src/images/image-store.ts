@@ -23,24 +23,26 @@ import { join } from "node:path";
 import {
 	createSerialQueue,
 	fail,
+	type IMAGE_REF_EXTENSIONS,
+	IMAGE_REF_PATTERN,
 	type ImageRef,
 	ok,
 	type ReportImageFormat,
 	type Result,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
-import { createAssetStore, isValidAssetId } from "../assets/asset-store.js";
+import { createAssetStore } from "../assets/asset-store.js";
 
 /** 单张图的字节上限。 */
 export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
-/** 图库收的格式:扩展名 → mime。 */
+/** 图库收的格式:扩展名 → mime。键与 internal 的 `IMAGE_REF_EXTENSIONS` 钉成同一组(多一种少一种都编译不过)。 */
 const IMAGE_FORMATS = {
 	png: "image/png",
 	jpg: "image/jpeg",
 	gif: "image/gif",
 	webp: "image/webp",
-} as const;
+} as const satisfies Record<(typeof IMAGE_REF_EXTENSIONS)[number], string>;
 
 /** 嗅探出来的格式 → 图库里的扩展名。 */
 const EXT_OF_FORMAT = {
@@ -50,15 +52,13 @@ const EXT_OF_FORMAT = {
 	webp: "webp",
 } as const satisfies Record<ReportImageFormat, keyof typeof IMAGE_FORMATS>;
 
-/** 引用的规矩:64 位小写 hex 的摘要 + 图库收的扩展名(按摘要取名,见 `createAssetStore`)。 */
-const REF_RULES = { formats: IMAGE_FORMATS, naming: { kind: "sha256" } } as const;
-
 /**
  * 这个字符串是不是一个图库引用的形状。纯函数、不碰盘、不管文件在不在:从请求里进来的引用先过这一道,
- * 形状不对的连 `read` / `keep` 都不必问。
+ * 形状不对的连 `read` / `keep` 都不必问。形状本体是 internal 的 `IMAGE_REF_PATTERN`(历史行与重推原件的 schema 也
+ * 用它);存储那头 `createAssetStore` 按 `IMAGE_FORMATS` 与 sha256 取名自己也认一遍,测试钉着两边答案一致。
  */
 export function isValidImageRef(ref: string): boolean {
-	return isValidAssetId(REF_RULES, ref);
+	return IMAGE_REF_PATTERN.test(ref);
 }
 
 /**

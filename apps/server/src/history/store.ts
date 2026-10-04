@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
@@ -11,6 +11,7 @@ import type {
 	HistoryMessageResult,
 	HistoryPayload,
 	Identity,
+	ImageRef,
 	Logger,
 	MessageBus,
 	NotificationPayload,
@@ -24,8 +25,10 @@ import {
 	FEATURE_KEYS,
 	HistoryEntrySchema,
 	HistoryPatchSchema,
+	IMAGE_REF_PATTERN,
 } from "@bilibili-notify/internal";
 import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
+import type { ImageWriter } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { latestByIdentity } from "./repush.js";
@@ -39,8 +42,9 @@ import type { RepushStore } from "./repush-store.js";
  * 图集 / @全体)算好发出后**追加到同一行**:盘上写一条补丁行,读时按行 id 并回去,
  * emit `history-updated`。jsonl 仍是 append-only,保留期(见 `retention.ts`)按日文件淘汰。
  *
- * 图片写到 `<dataDir>/history/img/<rowId>-<idx>.<ext>`,相对文件名存在
- * `payload.imageRef`;面板经 `/api/history/img/*` 读。
+ * 图片存进图库 `images/`(ADR-0022 决策 9),引用存在 `payload.image`,面板经 `/api/images/<引用>` 读。历史是图库的
+ * 一家引用方(保留期内的行引用的图,见 `retention.ts` 的 `listHistoryImageRefs`),图不由历史删 —— 保留期、
+ * `deleteRange` 都只动行与重推原件,图由图库的按引用清扫收走。
  */
 
 export interface HistoryRecordMessage {
@@ -62,8 +66,11 @@ export interface NewHistoryEntry {
 	messages: HistoryRecordMessage[];
 	/** Snapshot of sub.cachedProfile.name at write time; survives 订阅删除。 */
 	nameSnapshot?: string;
-	/** Snapshot of sub.cachedProfile.avatarUrl at write time(B 站行;拓展行不带,头像快照归 ⑳d 改装图库引用)。 */
-	uavatarSnapshot?: string;
+	/**
+	 * 推送那一刻的头像:抄订阅资料里存进图库的 `avatar`(拓展行;B 站行没有,抓图服务在 3a)。是别家的引用,
+	 * 写行前先续期 —— 续不上(图已经不在了)这一格就不写,行照写。
+	 */
+	avatarSnapshot?: ImageRef;
 }
 
 /**
@@ -129,12 +136,12 @@ export interface HistoryStore {
 	findRow(rowId: string, createdAt: string): Promise<HistoryEntry | null>;
 	query(opts: HistoryQuery): Promise<HistoryEntry[]>;
 	aggregateDaily(opts: DailyAggregateOptions): Promise<DailyHistoryCount[]>;
-	imageDir(): string;
 	/**
-	 * 删掉 `createdAt` 落在窗内的行(本体行 + 补丁行 + 引用的图片),回删了几行。
+	 * 删掉 `createdAt` 落在窗内的行(本体行 + 补丁行)与它们的重推原件,回删了几行。**不删图**:行引用的图在图库里,
+	 * 行没了它们就不再被这一家引用,过了宽限期由图库的清扫收走(同一张图可能还被别的行、资料缓存引用着)。
 	 *
 	 * 今天只有 devtools 截流在用(清掉截流期间记下的 delivered 行)。**这是唯一还会删文字的路**,刻意的
-	 * 例外:保留期的清扫只清图与重推原件,文字不设上限(ADR-0022 决策 9)。与 `record` 串行 ——
+	 * 例外:保留期的清扫只清重推原件(图归图库的清扫),文字不设上限(ADR-0022 决策 9)。与 `record` 串行 ——
 	 * 删的同时有行在追加,补丁会补到一行刚被删掉的本体上。
 	 */
 	deleteRange(opts: DeleteRangeOptions): Promise<number>;
@@ -190,6 +197,10 @@ export interface CreateHistoryStoreOptions {
 	bus: MessageBus;
 	logger: Logger;
 	/**
+	 * 往图库存图 / 续期的口:历史登记成图库的引用方(`runtime/bootstrap.ts`)才拿得到。配图、头像快照走它。
+	 */
+	images: ImageWriter;
+	/**
 	 * 重推原件(ADR-0017)。给了就在每次落行 / 追加时留一份**没有损耗的**原料 ——
 	 * 那一刻是最后的机会,再往后历史里就只剩给人看的摘要了。不给 = 不留原件。
 	 */
@@ -198,7 +209,6 @@ export interface CreateHistoryStoreOptions {
 
 export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStore {
 	const root = dataPath(opts.dataRoot, "history");
-	const imgRoot = join(root, "img");
 	/** 还可能被追加的行,键 = `${pushId}|${targetId}`;满了丢最久没碰的。 */
 	const open = new RecencyTable<HistoryEntry>(OPEN_ROWS_CAP);
 	/**
@@ -242,7 +252,6 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 
 	async function ensureDirs(): Promise<void> {
 		await mkdir(root, { recursive: true });
-		await mkdir(imgRoot, { recursive: true });
 	}
 
 	function dayFile(dateIso: string): string {
@@ -250,14 +259,32 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return join(root, `${dateIso.slice(0, 10)}.jsonl`);
 	}
 
-	async function writeImage(name: string, buffer: Buffer): Promise<string> {
-		await atomicWriteFile(join(imgRoot, name), buffer);
-		return name;
+	/**
+	 * 配图存进图库,回引用。过不了图库(不是 png / jpg / gif / webp、超 8MB)这一格缺着、记一句 warn,行照写 ——
+	 * 从前是信 payload 声明的 mime 直接落盘,现在一律按嗅探。磁盘写失败是抛错,同从前。同一份字节再存一次回同一个
+	 * 引用(只刷新修改时间),所以重推每试一次不会再多写一份。
+	 */
+	async function putImage(bytes: Uint8Array, label: string): Promise<ImageRef | undefined> {
+		const stored = await opts.images.put(bytes);
+		if (stored.ok) return stored.ref;
+		opts.logger.warn(`[history] 配图存不进图库,这条消息不带图:${label} — ${stored.message}`);
+		return undefined;
+	}
+
+	/** 头像快照抄的是别家的引用:先续期;续不上(图已经不在了)或续期出错都不写这一格,行照写。 */
+	async function keptAvatar(ref: ImageRef | undefined): Promise<ImageRef | undefined> {
+		if (ref === undefined) return undefined;
+		try {
+			return (await opts.images.keep(ref)) ? ref : undefined;
+		} catch (err) {
+			opts.logger.warn(`[history] 头像快照续期失败,这一行不带头像:${String(err)}`);
+			return undefined;
+		}
 	}
 
 	async function reduce(
 		msg: HistoryRecordMessage,
-		stem: string,
+		label: string,
 		feature: FeatureKey,
 	): Promise<HistoryPayload> {
 		const payload = msg.payload;
@@ -265,16 +292,13 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			case "text":
 				return { kind: "text", text: payload.text };
 			case "image": {
-				const imageRef = await writeImage(
-					`${stem}.${mimeToExt(payload.image.mime)}`,
-					payload.image.buffer,
-				);
+				const image = await putImage(payload.image.buffer, label);
 				// 纯图推送(无 caption)在 History 列表会落成「（无内容）」—— 给个可读摘要。
 				// 下播的附加项里唯一的图是词云;别的纯图都是拆成独立消息的卡片。
 				const text =
 					payload.caption ||
 					(feature === "liveEnd" && msg.role === "extra" ? "[弹幕词云]" : "[卡片图]");
-				return { kind: "image", text, imageRef };
+				return { kind: "image", text, image };
 			}
 			case "forward-images":
 				return {
@@ -285,15 +309,15 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				return { kind: "text", text: `[小程序卡] ${payload.title}` };
 			case "composite": {
 				const textParts: string[] = [];
-				let imageRef: string | undefined;
-				let imageIdx = 0;
+				let image: ImageRef | undefined;
+				let firstImageSeen = false;
 				for (const seg of payload.segments) {
 					if (seg.type === "text") {
 						textParts.push(seg.text);
-					} else if (seg.type === "image" && !imageRef) {
-						const name = `${stem}-${imageIdx++}.${mimeToExt(seg.mime)}`;
-						await atomicWriteFile(join(imgRoot, name), seg.buffer);
-						imageRef = name;
+					} else if (seg.type === "image" && !firstImageSeen) {
+						// 历史行只记第一张(重推原件里每一张都在);第一张存不进图库,后面的也不顶上。
+						firstImageSeen = true;
+						image = await putImage(seg.buffer, label);
 					} else if (seg.type === "link") {
 						textParts.push(seg.title ? `${seg.title} ${seg.href}` : seg.href);
 					} else if (seg.type === "at-all") {
@@ -305,7 +329,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				return {
 					kind: "composite",
 					text: textParts.join("\n"),
-					imageRef,
+					image,
 				};
 			}
 		}
@@ -328,8 +352,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	/**
 	 * 把这一段消息的**原样 payload** 留一份给重推(ADR-0017 决策 1)。
 	 *
-	 * 必须在这儿做:`reduceAll` 之后原样的那份就只剩这一处还握着了(历史行里是有损
-	 * 摘要)。两份按下标一一对应交出去,原件才对得上历史行的 `messages`。
+	 * 必须在这儿做:`reduceAll` 之后原样的那份就只剩这一处还握着了(历史行里是有损摘要)。原件按下标与历史行的
+	 * `messages` 一一对应(`reduceAll` 逐条来、不丢条),图由原件自己存进图库。
 	 *
 	 * 无目标行不留 —— 那不是失败是没配目标,按钮本来就不给它(决策 6)。
 	 */
@@ -337,7 +361,6 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		rowId: string,
 		createdAt: string,
 		raw: HistoryRecordMessage[],
-		reduced: HistoryMessage[],
 		target: string | null,
 	): Promise<void> {
 		if (!opts.repush || target === null) return;
@@ -345,12 +368,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			await opts.repush.append(
 				rowId,
 				createdAt,
-				raw.map((m, i) => ({
-					payload: m.payload,
-					role: m.role,
-					// `reduceAll` 是按序逐条来的,下标对齐;真缺了一条宁可不留,也别错位。
-					reduced: reduced[i]?.payload ?? { kind: "text" },
-				})),
+				raw.map((m) => ({ payload: m.payload, role: m.role })),
 			);
 		} catch (err) {
 			// 原件留不下只是「这一行将来重推不了」,不该连累这次推送的历史。
@@ -420,6 +438,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			const id = randomUUID();
 			const createdAt = new Date().toISOString();
 			const messages = await reduceAll(input.messages, id, 0, input.feature);
+			const avatarSnapshot = await keptAvatar(input.avatarSnapshot);
 			// 键的顺序就是盘上的顺序,与迁移器(`migration/history.ts`)改出来的老行同一个排法。
 			const entry = validated({
 				id,
@@ -432,11 +451,11 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				status: computeStatus(input.targetId, messages),
 				messages,
 				nameSnapshot: input.nameSnapshot,
-				uavatarSnapshot: input.uavatarSnapshot,
+				avatarSnapshot,
 			});
 			await appendJsonl(dayFile(createdAt), [entry]);
 			open.set(key, entry);
-			await saveRepushSnapshot(id, createdAt, input.messages, messages, input.targetId);
+			await saveRepushSnapshot(id, createdAt, input.messages, input.targetId);
 			opts.bus.emit("history-recorded", entry);
 			return entry;
 		}
@@ -448,7 +467,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		);
 		// 补丁写进**原行那一天**的文件,原件也跟着那一天走 —— 两边始终同一个日子。
 		return applyPatch(existing, added, dayFile(existing.createdAt), () =>
-			saveRepushSnapshot(existing.id, existing.createdAt, input.messages, added, existing.targetId),
+			saveRepushSnapshot(existing.id, existing.createdAt, input.messages, existing.targetId),
 		);
 	}
 
@@ -687,18 +706,17 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return parseLines(await readRawLines(path));
 	}
 
-	/** 一个日文件里 `createdAt` 落在窗内的行:本体行与它的补丁行一起丢,顺手收集它们引用的图。 */
+	/** 一个日文件里 `createdAt` 落在窗内的行:本体行与它的补丁行一起丢。回被丢的行 id。 */
 	async function deleteRangeInFile(
 		path: string,
 		fromMs: number,
 		toMs: number,
-	): Promise<{ doomed: Set<string>; images: string[] }> {
+	): Promise<Set<string>> {
 		// 破坏性改写只认全有或全无的读:`readRawLines` 那份把任何错都咽掉、回读到一半的结果
 		// (它服务的是只读路径,「文件不在」才是常态)。拿残缺的一半当全份写回去,窗外的行会
 		// 被无声抹掉,回的 deleted 还小得像没事发生。
 		const lines = await readAllLinesStrict(path);
 		const doomed = new Set<string>();
-		const images: string[] = [];
 		const kept: string[] = [];
 		// 先认出窗内的本体行 —— 补丁行只带 id 不带 createdAt,得先知道谁是要删的。
 		for (const line of lines) {
@@ -708,28 +726,22 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			const createdMs = Date.parse(r.data.createdAt);
 			if (createdMs >= fromMs && createdMs <= toMs) doomed.add(r.data.id);
 		}
-		if (doomed.size === 0) return { doomed, images };
+		if (doomed.size === 0) return doomed;
 		for (const line of lines) {
 			const json = tryParse(line);
 			if (isPatchLine(line)) {
 				const r = HistoryPatchSchema.safeParse(json);
-				if (r.success && doomed.has(r.data.rowId)) {
-					for (const m of r.data.messages) if (m.payload.imageRef) images.push(m.payload.imageRef);
-					continue;
-				}
+				if (r.success && doomed.has(r.data.rowId)) continue;
 			} else {
 				const r = HistoryEntrySchema.safeParse(json);
-				if (r.success && doomed.has(r.data.id)) {
-					for (const m of r.data.messages) if (m.payload.imageRef) images.push(m.payload.imageRef);
-					continue;
-				}
+				if (r.success && doomed.has(r.data.id)) continue;
 			}
 			kept.push(line);
 		}
 		// 原子写:**读的人**永远看不到半个日文件,fsync 之后掉电也不丢刚写下的这一份;
 		// 写失败不留临时文件,被杀留下的由开机清扫收走。
 		await atomicWriteFile(path, kept.length === 0 ? "" : `${kept.join("\n")}\n`);
-		return { doomed, images };
+		return doomed;
 	}
 
 	async function deleteRangeSerialized({ fromMs, toMs }: DeleteRangeOptions): Promise<number> {
@@ -745,17 +757,13 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			// 日文件按 UTC 日切;整天都不沾窗的直接跳过,别把一年的文件全读一遍。
 			const dayStart = Date.parse(`${file.slice(0, 10)}T00:00:00.000Z`);
 			if (dayStart + DAY_MS <= fromMs || dayStart > toMs) continue;
-			const { doomed, images } = await deleteRangeInFile(join(root, file), fromMs, toMs);
+			const doomed = await deleteRangeInFile(join(root, file), fromMs, toMs);
 			if (doomed.size === 0) continue;
 			deleted += doomed.size;
 			open.deleteWhere((entry) => doomed.has(entry.id));
 			// 行没了,它的原件就是没人认领的孤儿 —— 而且是盘上一份谁都读不到的推送内容。
 			// 日文件名就是那一天,原件按同一个日子分目录。
 			for (const id of doomed) await opts.repush?.drop(id, file.slice(0, 10));
-			for (const name of images) {
-				// 图片是附属物:删不掉(早被清理器收走了)不算失败。
-				await unlink(join(imgRoot, name)).catch(() => {});
-			}
 		}
 		return deleted;
 	}
@@ -770,7 +778,6 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		findRow,
 		query,
 		aggregateDaily,
-		imageDir: () => imgRoot,
 		deleteRange,
 		close: () => writes.close(),
 	};
@@ -821,14 +828,6 @@ export function isPatchLine(line: string): boolean {
 	return line.startsWith('{"rowId":');
 }
 
-export function mimeToExt(mime: string): string {
-	const m = mime.toLowerCase();
-	if (m.includes("png")) return "png";
-	if (m.includes("webp")) return "webp";
-	if (m.includes("gif")) return "gif";
-	return "jpg";
-}
-
 /** Internal helper used by retention.ts. */
 export async function listDayFiles(dataRoot: string): Promise<string[]> {
 	const root = dataPath(dataRoot, "history");
@@ -841,34 +840,28 @@ export async function listDayFiles(dataRoot: string): Promise<string[]> {
 }
 
 /**
- * 清掉一整天历史引用的每一张图,回真删掉的那几张的名字。**日文件(文字)留着**:文字不设上限,图按天数清
- * (ADR-0022 决策 9)。保留期的清扫调它(`retention.ts`)。
+ * 一份日文件里所有行引用着的图库引用:每条消息的 `image`(本体行与补丁行都要数)和行的 `avatarSnapshot`。
+ * 历史这一家引用方的名单(`retention.ts` 的 `listHistoryImageRefs`)用它。
  *
- * 图名是 `<行 id>-<序号>`,行 id 不带日期,哪些图归这一天只能经日文件反查。图删不掉不算失败 ——
- * 它是附属物(本来就不在的也不算删掉)。
+ * 🔴 **宁多勿少**:名单漏一张,清扫就把还在用的图当垃圾删了,而一切照常、门禁全绿。所以这里**不过 schema** ——
+ * 一行因为别的格不合 schema 被读侧跳过,它引用的图照样算数,只认「形状对的引用字符串」。读不动文件(不是
+ * 「文件不在」)就抛,清扫这一轮一张不删。
  */
-export async function deleteDayImages(dataRoot: string, fileName: string): Promise<string[]> {
-	const root = dataPath(dataRoot, "history");
-	const removed: string[] = [];
-	for (const name of await collectImageRefs(join(root, fileName))) {
-		const gone = await unlink(join(root, "img", name)).then(
-			() => true,
-			() => false,
-		);
-		if (gone) removed.push(name);
-	}
-	return removed;
-}
-
-/** 一份日文件里所有消息引用过的图 —— 本体行与补丁行都要数进来。迁移清孤儿图时也用它数「还有谁引用」。 */
-export async function collectImageRefs(path: string): Promise<string[]> {
-	const out: string[] = [];
-	for (const line of await readRawLines(path)) {
-		const json = tryParse(line);
-		const messages = isPatchLine(line)
-			? HistoryPatchSchema.safeParse(json).data?.messages
-			: HistoryEntrySchema.safeParse(json).data?.messages;
-		for (const m of messages ?? []) if (m.payload.imageRef) out.push(m.payload.imageRef);
+export async function collectImageRefs(path: string): Promise<ImageRef[]> {
+	const out: ImageRef[] = [];
+	const take = (value: unknown) => {
+		if (typeof value === "string" && IMAGE_REF_PATTERN.test(value)) out.push(value);
+	};
+	for (const line of await readAllLinesStrict(path)) {
+		const record = tryParse(line);
+		if (typeof record !== "object" || record === null) continue;
+		const { messages, avatarSnapshot } = record as { messages?: unknown; avatarSnapshot?: unknown };
+		take(avatarSnapshot);
+		if (!Array.isArray(messages)) continue;
+		for (const message of messages) {
+			const payload = (message as { payload?: { image?: unknown } } | null)?.payload;
+			take(payload?.image);
+		}
 	}
 	return out;
 }

@@ -107,3 +107,27 @@ describe("HistoryEntrySchema — 行的身份", () => {
 		expect(HistoryEntrySchema.safeParse(legacy).success).toBe(false);
 	});
 });
+
+describe("HistoryEntrySchema — 头像快照只装图库引用(⑳d)", () => {
+	const REF = `${"b".repeat(64)}.png`;
+
+	it("avatarSnapshot 收图库引用;缺着也行(B 站行就是缺着)", () => {
+		expect(HistoryEntrySchema.parse({ ...BASE, avatarSnapshot: REF }).avatarSnapshot).toBe(REF);
+		expect(HistoryEntrySchema.parse(BASE).avatarSnapshot).toBeUndefined();
+	});
+
+	it("远端网址、路径、旧的 uavatarSnapshot 都不是头像快照:前两种整行读不进来,旧格被丢掉", () => {
+		for (const avatarSnapshot of ["https://i0.hdslb.com/bfs/face/x.jpg", "../x.png", "x.png"]) {
+			expect(
+				HistoryEntrySchema.safeParse({ ...BASE, avatarSnapshot }).success,
+				avatarSnapshot,
+			).toBe(false);
+		}
+		const parsed = HistoryEntrySchema.parse({
+			...BASE,
+			uavatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
+		});
+		expect(parsed).not.toHaveProperty("uavatarSnapshot");
+		expect(parsed.avatarSnapshot).toBeUndefined();
+	});
+});

@@ -86,8 +86,8 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 	// push-events channel ---------------------------------------------------
 	// 历史那一行的 wire view(与 GET /api/history 同一投影),面板的小卡不用二次 fetch。
 	// `history-recorded` 是建行(本体落地),`history-updated` 是同一行追加了消息 ——
-	// 前端按 id 换缓存、小卡同 id 换字。图片留 `imageRef: <filename>`,客户端对着
-	// /api/history/img 解析。
+	// 前端按 id 换缓存、小卡同 id 换字。图片留 `image: <图库引用>`,客户端对着
+	// /api/images/<引用> 解析。
 	for (const event of ["history-recorded", "history-updated"] as const) {
 		subs.push(
 			bus.on(event, (entry) => publish(envelope("push-events", event, toHistoryView(entry)))),

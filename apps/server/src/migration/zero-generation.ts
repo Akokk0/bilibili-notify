@@ -9,9 +9,10 @@
  *
  * 怎么搬:追加写的 jsonl 一律复制(硬链接的话,新代往里追加会改到旧代的文件),其余硬链接、链接不了
  * 回落成复制;软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、
- * 不拷内容。聊天附件与拓展订阅的头像不整目录搬:被会话 / 资料缓存引用的逐张复制进图库 `images/`(新代的图库
- * 靠刷新修改时间做宽限期,硬链接会改到旧代那份,见 `chat-attachments.ts`、`profile-avatars.ts`)。上个进程的
- * 残留、0.x 的备份与迁移中间件、卡片皮肤(不迁,决策 12)不带过来,都记进报告。
+ * 不拷内容。聊天附件、拓展订阅的头像、历史图(与重推原件自存的图)不整目录搬:被会话 / 资料缓存 / 保留期内的
+ * 历史行与重推原件引用的逐张复制进图库 `images/`(新代的图库靠刷新修改时间做宽限期,硬链接会改到旧代那份,见
+ * `chat-attachments.ts`、`profile-avatars.ts`、`history-images.ts`)。上个进程的残留、0.x 的备份与迁移中间件、
+ * 卡片皮肤(不迁,决策 12)不带过来,都记进报告。
  */
 
 import { access, lstat, mkdir, readdir, readlink, stat, symlink } from "node:fs/promises";
@@ -47,6 +48,7 @@ import {
 	migrateRepushSnapshotFiles,
 	sweepMigratedHistory,
 } from "./history.js";
+import { createHistoryImages, historyInputReason } from "./history-images.js";
 import { ZERO_GLOBAL_LIVE_FACTS } from "./live-split.js";
 import { migrateProfileAvatars } from "./profile-avatars.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
@@ -65,7 +67,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 25;
+export const MIGRATION_REVISION = 26;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -97,8 +99,11 @@ export function zeroPath(zeroRoot: string, key: ZeroGenerationKey, ...rest: stri
 type Destination = readonly [DataRootKey, ...string[]];
 
 type ZeroMove =
-	/** 整个搬到一处。 */
-	| { kind: "move"; to: Destination; label: string }
+	/**
+	 * 整个搬到一处。`inputs` 给了,就是这棵目录里有些东西只作迁移的输入、不随目录搬:逐个路径(相对这棵目录,`/` 分隔)
+	 * 问它,回一句话就是不搬、为什么(同一句话的合并成一条记进没带过来的,按数量说,不逐个文件列)。
+	 */
+	| { kind: "move"; to: Destination; label: string; inputs?: (path: string) => string | undefined }
 	/**
 	 * 一级项底下的东西各去各处(`state/` 里的文件分进 config / runtime)。`inputs` 是只作迁移输入、
 	 * 不进新代的那几个(名字 → 为什么)。
@@ -141,7 +146,7 @@ const ZERO_GENERATION_MOVES = {
 		},
 	},
 	secrets: { kind: "move", to: ["secrets"], label: "密钥" },
-	history: { kind: "move", to: ["history"], label: "推送历史" },
+	history: { kind: "move", to: ["history"], label: "推送历史", inputs: historyInputReason },
 	stats: { kind: "move", to: ["stats"], label: "统计" },
 	fans: { kind: "move", to: FOLLOWERS_DIR, label: "粉丝时序" },
 	assets: {
@@ -251,7 +256,8 @@ export async function migrateZeroGeneration(
 		opts.onProgress?.({ done: index, total, label: move.label });
 		if (!(await exists(from))) continue;
 		if (move.kind === "move") {
-			await transfer(context, from, dataPath(opts.targetDir, ...move.to));
+			const scope = move.inputs && { root: from, inputs: move.inputs };
+			await transfer(context, from, dataPath(opts.targetDir, ...move.to), scope);
 			continue;
 		}
 		for (const name of (await readdir(from)).sort()) {
@@ -284,6 +290,9 @@ export async function migrateZeroGeneration(
 			report.rewritten.push(portable(relative(opts.targetDir, path)));
 		}
 	}
+	// 图库里的图是迁移器逐张直接写的(文件各自 fsync,目录没逐个同步,见 `image-library.ts`):整个目录同步一次。
+	const imagesDir = dataPath(opts.targetDir, "images");
+	if (await exists(imagesDir)) await syncDirectory(imagesDir);
 	await syncDirectory(opts.targetDir);
 	opts.onProgress?.({ done: total, total, label: "搬完了" });
 	return report;
@@ -335,9 +344,9 @@ const REWRITES: readonly {
 	{
 		label: "推送历史",
 		run: async (opts, report) => {
-			const dayFiles = await migrateHistoryDayFiles(opts.targetDir);
-			// 日文件迁成最新形状以后,先替主人跑一次清扫:过了保留期的图与原件、孤儿图不带过来(ADR-0022 决策 9)。
-			// 保留天数读新代里迁好的设置(「设置」那一步在前面)。原件放在清扫之后迁:要删的那些不白改写一遍。
+			// 先替主人跑一次清扫:定好水位线,过了保留期的重推原件整天目录不带过来(ADR-0022 决策 9)。保留天数读新代里
+			// 迁好的设置(「设置」那一步在前面)。清扫不碰图,也不依赖行的形状,所以排在日文件的改写之前 —— 图格怎么迁
+			// 要看日子在水位线的哪一边。
 			const swept = await sweepMigratedHistory({
 				dataRoot: opts.targetDir,
 				retentionDays: await readMigratedRetentionDays(
@@ -346,13 +355,62 @@ const REWRITES: readonly {
 				now: opts.now ?? new Date(),
 			});
 			// 搬过来又删掉的,从「搬过去的」里拿掉,记进「没带过来的」。
-			const images = new Set(swept.images.map((name) => `history/img/${name}`));
 			const snapshotDirs = swept.snapshotDays.map((day) => `history/repush/${day}/`);
 			report.transfers = report.transfers.filter(
-				({ to }) => !images.has(to) && !snapshotDirs.some((dir) => to.startsWith(dir)),
+				({ to }) => !snapshotDirs.some((dir) => to.startsWith(dir)),
 			);
 			report.skipped.push(...swept.skipped);
-			return [...dayFiles, ...(await migrateRepushSnapshotFiles(opts.targetDir))];
+
+			// 日文件(行的形状与图格同一趟)与原件。历史图不整目录搬:保留期内的行与原件引用着的逐张复制进图库,
+			// 过了保留期的行拿掉图格、不读图文件,孤儿不搬。
+			const images = createHistoryImages({
+				zeroDir: zeroPath(opts.zeroRoot, "history"),
+				imagesDir: dataPath(opts.targetDir, "images"),
+				clearedThrough: swept.clearedThrough,
+			});
+			const dayFiles = await migrateHistoryDayFiles(opts.targetDir, images);
+			const snapshots = await migrateRepushSnapshotFiles(opts.targetDir, images);
+
+			// 有图读不到、整份作废的原件:搬位置时记过一条,删了就拿掉。
+			const voided = new Set(
+				snapshots.voided.map((path) => portable(relative(opts.targetDir, path))),
+			);
+			report.transfers = report.transfers.filter(({ to }) => !voided.has(to));
+
+			// 图的账:搬进图库的各记一条(旧路径 → 图库里的引用),没搬的按数量各记一句,不逐个列。
+			const done = await images.result();
+			for (const { from, ref } of done.copied) {
+				report.transfers.push({
+					from,
+					to: portable(relative(opts.targetDir, dataPath(opts.targetDir, "images", ref))),
+					method: "copy",
+				});
+			}
+			if (done.expired > 0) {
+				report.skipped.push({
+					path: "history/img",
+					reason: `${done.expired} 张历史图只被过了保留期的行引用,没带过来(那些行的文字照搬,图格拿掉)`,
+				});
+			}
+			if (done.orphans > 0) {
+				report.skipped.push({
+					path: "history/img",
+					reason: `${done.orphans} 张历史图没有任何一行历史或重推原件引用,没带过来`,
+				});
+			}
+			if (done.dropped > 0) {
+				report.skipped.push({
+					path: "history/img",
+					reason: `${done.dropped} 张历史图对不上(文件不在、不是图库收的图、超过 8MB 或路径不对),已从引用它的行里拿掉`,
+				});
+			}
+			if (voided.size > 0) {
+				report.skipped.push({
+					path: "history/repush",
+					reason: `${voided.size} 份重推原件有图对不上(同上),整份没带过来,那几行补不了了`,
+				});
+			}
+			return [...dayFiles, ...snapshots.rewritten];
 		},
 	},
 	{
@@ -464,8 +522,19 @@ interface MigrationContext {
 	report: ZeroMigrationResult;
 }
 
+/** 搬一棵目录时哪些东西只作输入:`root` 是这棵目录在第 0 代里的路径,`inputs` 的路径相对它。 */
+interface TransferScope {
+	root: string;
+	inputs: (path: string) => string | undefined;
+}
+
 /** 搬一个文件或一整棵目录。目录搬完 fsync 一次,新代改名之前它的每一层都落了盘。 */
-async function transfer(context: MigrationContext, from: string, to: string): Promise<void> {
+async function transfer(
+	context: MigrationContext,
+	from: string,
+	to: string,
+	scope?: TransferScope,
+): Promise<void> {
 	const info = await lstat(from);
 	if (info.isSymbolicLink()) {
 		// 开发版 devtools 链进来的拓展:重建同样的一条,指向同一个地方。相对的目标按原来的位置解开,
@@ -488,10 +557,25 @@ async function transfer(context: MigrationContext, from: string, to: string): Pr
 	}
 	if (info.isDirectory()) {
 		await mkdir(to, { recursive: true });
+		/** 只作输入没搬的:一句话 → 它们的路径。 */
+		const held = new Map<string, string[]>();
 		for (const name of (await readdir(from)).sort()) {
+			const path = join(from, name);
 			const reason = leftoverReason(name);
-			if (reason) skip(context, join(from, name), reason);
-			else await transfer(context, join(from, name), join(to, name));
+			const input = scope?.inputs(portable(relative(scope.root, path)));
+			if (reason) {
+				skip(context, path, reason);
+			} else if (input) {
+				held.set(input, [...(held.get(input) ?? []), path]);
+			} else {
+				await transfer(context, path, join(to, name), scope);
+			}
+		}
+		// 一条一条记会淹没报告:只有一个就记它自己,多了合成一条记在这一层目录上。
+		for (const [reason, paths] of held) {
+			const [only] = paths;
+			if (paths.length === 1 && only !== undefined) skip(context, only, reason);
+			else skip(context, from, `${reason}(共 ${paths.length} 个)`);
 		}
 		await syncDirectory(to);
 		return;

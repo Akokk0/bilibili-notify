@@ -13,7 +13,6 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { CARD_SKINS_KEY } from "../../pages/cards/card-skins-query";
 import {
-	chatImageUrl,
 	conversationQueryKey,
 	conversationsQueryKey,
 	createConversation,
@@ -35,6 +34,7 @@ import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useAiChatStore } from "../../store/aiChat";
 import { useAuthStore } from "../../store/auth";
 import { BiliLoginStatus } from "../../types/auth";
+import { imageUrl } from "../../utils/image-url";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
 import { resolveChatPersona } from "./persona";
@@ -689,7 +689,7 @@ export function ChatPage() {
 				const id = await uploadChatImage(file);
 				// 图库按内容起名:同一张图再传一遍拿回同一个引用,列表里不重复放(列表以引用为 key)。
 				setAttachments((prev) =>
-					prev.some((a) => a.id === id) ? prev : [...prev, { id, url: chatImageUrl(id) }],
+					prev.some((a) => a.id === id) ? prev : [...prev, { id, url: imageUrl(id) }],
 				);
 			} catch (e) {
 				setError(errorTextOf(e));

@@ -1,7 +1,7 @@
 /**
  * 回归守护 — P1:internal schema 层四条安全/数据完整性不变量。
  *
- * 1. imageRef 路径穿越:`../` / 分隔符必须被 schema 拒(读路由侧另有第二防线)
+ * 1. 历史配图只收图库引用:`../` / 分隔符必须被 schema 拒(读口侧另有第二防线)
  * 2. routing 去重:同 feature 重复 UUID 解析后必须归一(否则重复推送+重复 delivery)
  * 3. blockRegex ReDoS/非法:保存期即拦(与 dynamic-filter 同一权威闸门)
  * 4. TimeRange 全天:`{start:0,end:24}` 必须可表达(此前 end.max(23) 与文案自相矛盾)
@@ -27,26 +27,31 @@ const baseFilters = {
 	minGuardLevel: 3 as const,
 };
 
-describe("HistoryPayload.imageRef — 路径穿越约束 (P1)", () => {
-	it("拒绝含 ../ 与分隔符", () => {
-		expect(
-			HistoryPayloadSchema.safeParse({ kind: "image", imageRef: "../../etc/passwd" }).success,
-		).toBe(false);
-		expect(HistoryPayloadSchema.safeParse({ kind: "image", imageRef: "a/b.jpg" }).success).toBe(
-			false,
-		);
-		expect(HistoryPayloadSchema.safeParse({ kind: "image", imageRef: "..%2f..%2fx" }).success).toBe(
-			false,
-		);
+const SHA = "a".repeat(64);
+
+describe("HistoryPayload.image — 只收图库引用,路径穿越进不来 (P1)", () => {
+	it("拒绝含 ../ 与分隔符、旧的 <行 id>-<序号>.<ext> 文件名、不认的扩展名", () => {
+		for (const image of [
+			"../../etc/passwd",
+			"a/b.jpg",
+			"..%2f..%2fx",
+			"550e8400-e29b-41d4-a716-446655440000.jpg",
+			`${SHA}.svg`,
+			`${SHA}.jpeg`,
+			`../${SHA}.png`,
+			`${SHA.toUpperCase()}.png`,
+		]) {
+			expect(HistoryPayloadSchema.safeParse({ kind: "image", image }).success, image).toBe(false);
+		}
 	});
 
-	it("接受正常 uuid 文件名 / 省略", () => {
-		expect(
-			HistoryPayloadSchema.safeParse({
-				kind: "image",
-				imageRef: "550e8400-e29b-41d4-a716-446655440000.jpg",
-			}).success,
-		).toBe(true);
+	it("接受图库引用(四种扩展名)/ 省略", () => {
+		for (const ext of ["png", "jpg", "gif", "webp"]) {
+			expect(
+				HistoryPayloadSchema.safeParse({ kind: "image", image: `${SHA}.${ext}` }).success,
+				ext,
+			).toBe(true);
+		}
 		expect(HistoryPayloadSchema.safeParse({ kind: "text", text: "x" }).success).toBe(true);
 	});
 });

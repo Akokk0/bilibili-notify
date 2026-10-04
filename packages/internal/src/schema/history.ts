@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PUSH_STATUSES } from "../constants";
+import { IMAGE_REF_PATTERN, PUSH_STATUSES } from "../constants";
 import { FeatureKeySchema } from "./common";
 import { IdentitySchema } from "./subscriptions";
 
@@ -13,20 +13,22 @@ import { IdentitySchema } from "./subscriptions";
 export const PushStatusSchema = z.enum(PUSH_STATUSES);
 export type PushStatus = z.infer<typeof PushStatusSchema>;
 
+/**
+ * 图库引用(ADR-0022 决策 9):`<sha256>.<png|jpg|gif|webp>`。形状只此一份(`IMAGE_REF_PATTERN`),历史行、重推原件
+ * 的图格都用它 —— 篡改或重放的 jsonl 带不进路径分隔符与 `..`,读口(`/api/images/<ref>`)另有一道。
+ */
+export const ImageRefSchema = z
+	.string()
+	.regex(IMAGE_REF_PATTERN, "必须是图库引用(<sha256>.<png|jpg|gif|webp>)");
+
 export const HistoryPayloadSchema = z.object({
 	kind: z.enum(["text", "image", "composite"]),
 	text: z.string().optional(),
 	/**
-	 * 图片相对引用，存放于 `<dataDir>/history/img/<imageRef>`；独立端展示时直接读。
-	 * 写入侧恒为 `<rowId>-<idx>.<ext>` / `<rowId>-<idx>-<seg>.<ext>`,这里收紧为「纯 basename」
-	 * (无路径分隔符 / 无 `..`)—— 篡改或重放的 jsonl 不能让 `join(imgRoot, ref)`
-	 * 穿越出 history/img 读任意文件(读路由侧另有独立第二道防线)。
+	 * 这条消息的配图,图库里的一张图(composite 只记第一张)。图库存不下(不是 png / jpg / gif / webp、超 8MB)或
+	 * 已过保留期被迁移拿掉的,这一格缺着;面板据此(加上 `kind`)在原来画图的位置写「图已清理」或什么都不画。
 	 */
-	imageRef: z
-		.string()
-		.regex(/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/, "imageRef 必须是纯文件名")
-		.refine((s) => !s.includes(".."), "imageRef 不得含 ..")
-		.optional(),
+	image: ImageRefSchema.optional(),
 });
 export type HistoryPayload = z.infer<typeof HistoryPayloadSchema>;
 
@@ -95,11 +97,13 @@ const HistoryEntryObjectSchema = z.object({
 	 * 默认头像,失去了"当时是谁"的信息。把名称 / 头像跟 entry 一起 snapshot
 	 * 进 jsonl 后,删除订阅不再影响历史展示。
 	 *
-	 * 拓展行只有名字快照、**没有头像快照**(ADR-0019 决策 74):拓展的头像是面板里的相对地址,
-	 * 订阅一删文件就没了,存下来就是删后裂图。
+	 * 头像快照只装图库引用(`ImageRef`),与 `nameSnapshot` 成对(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):
+	 * 拓展行写行时抄订阅资料里的 `avatar`(先续期,续不上就不写这一格);**B 站行这一格缺着** —— 服务端不抓
+	 * B 站头像,抓图服务在 3a;面板退到订阅现在的头像、再退到首字。0.x 留下的远端网址迁移时丢掉。
+	 * 它是图库的引用:保留期内的行才算引用方(过了水位线的行不再留住图),面板对过了保留期的行不用它。
 	 */
 	nameSnapshot: z.string().optional(),
-	uavatarSnapshot: z.string().optional(),
+	avatarSnapshot: ImageRefSchema.optional(),
 });
 export type HistoryEntry = z.infer<typeof HistoryEntryObjectSchema>;
 

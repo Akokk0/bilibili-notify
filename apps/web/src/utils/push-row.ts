@@ -31,5 +31,5 @@ export function messageCountOf(entry: HistoryEntryView): number {
  * 两次尝试,「本来」只有一条,可那两次尝试正是最该点开看的东西。
  */
 export function hasDetails(entry: HistoryEntryView): boolean {
-	return entry.messages.length > 1 || entry.messages.some((m) => m.imageRef || m.err);
+	return entry.messages.length > 1 || entry.messages.some((m) => m.image || m.err);
 }

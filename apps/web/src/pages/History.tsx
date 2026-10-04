@@ -31,9 +31,10 @@ import {
 } from "../services/dashboard";
 import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
+import { imageUrl } from "../utils/image-url";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowColor, isExtensionIdentity } from "../utils/up-display";
-import { displayName, profileAvatarSrc } from "./up/helpers";
+import { historyRowAvatarSrc, historyRowColor, isExtensionIdentity } from "../utils/up-display";
+import { displayName } from "./up/helpers";
 import { RelativeTime } from "./up/relative-time";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
@@ -247,8 +248,8 @@ function HistoryRow({
 	// 优先 entry 写入期的 snapshot,订阅事后被删也能稳定显示。都没有就写身份的外部 id:B 站行就是
 	// uid(ADR-0019 决策 73)。
 	const upName = entry.nameSnapshot ?? (sub ? displayName(sub) : entry.identity.externalId);
-	// 拓展行没有头像快照(决策 74):订阅还在就用它现在的头像,删了就是默认占位。
-	const upAvatar = entry.uavatarSnapshot ?? profileAvatarSrc(sub?.cachedProfile);
+	// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
+	const upAvatar = historyRowAvatarSrc(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 	const upColor = historyRowColor(entry);
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。
@@ -467,6 +468,9 @@ function MessageItem({
 	superseded: boolean;
 	pastRetention: boolean;
 }) {
+	// 本来有图:是图消息,或者带着图库引用。过了保留期的老行迁移时图格被拿掉了,只剩 `kind: "image"`(composite 拿掉后看不出,
+	// 只画文字)。
+	const hadImage = message.kind === "image" || message.image !== undefined;
 	// 没有结果 = 没发出去(无目标那行的每一条都是这样);有结果就跟整行状态同一份词表。
 	const result =
 		message.ok === undefined
@@ -478,13 +482,13 @@ function MessageItem({
 			<span className="w-10 shrink-0 text-bn-text-tertiary">
 				{message.role === "main" ? "本体" : "附加"}
 			</span>
-			{message.imageRef && pastRetention ? (
+			{hadImage && pastRetention ? (
 				<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-bn-surface-muted text-center leading-tight text-bn-text-tertiary">
 					图已清理
 				</span>
-			) : message.imageRef ? (
+			) : message.image ? (
 				<img
-					src={`/api/history/img/${message.imageRef}`}
+					src={imageUrl(message.image)}
 					alt={message.text ?? "图片"}
 					className="h-12 w-12 shrink-0 rounded-md object-cover"
 					loading="lazy"

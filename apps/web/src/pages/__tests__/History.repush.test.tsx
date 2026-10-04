@@ -46,9 +46,9 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		subscriptionId: "s1",
 		targetId: T1,
 		messages: [
-			{ text: "下播了", role: "main", ok: true },
-			{ text: "词云", role: "extra", ok: false, err: "boom" },
-			{ text: "总结", role: "extra" },
+			{ text: "下播了", kind: "text", role: "main", ok: true },
+			{ text: "词云", kind: "text", role: "extra", ok: false, err: "boom" },
+			{ text: "总结", kind: "text", role: "extra" },
 		],
 		nameSnapshot: "某UP",
 		repush: { can: true, total: 3, missing: 2 },
@@ -267,11 +267,11 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 		status: "delivered",
 		repush: undefined,
 		messages: [
-			{ text: "下播啦", role: "main", ok: true },
-			{ text: "词云图", role: "extra", ok: false, err: "boom" },
-			{ text: "直播总结", role: "extra", ok: false, err: "boom" },
-			{ text: "词云图", role: "extra", ok: true, repushOf: 1 },
-			{ text: "直播总结", role: "extra", ok: true, repushOf: 2 },
+			{ text: "下播啦", kind: "text", role: "main", ok: true },
+			{ text: "词云图", kind: "text", role: "extra", ok: false, err: "boom" },
+			{ text: "直播总结", kind: "text", role: "extra", ok: false, err: "boom" },
+			{ text: "词云图", kind: "text", role: "extra", ok: true, repushOf: 1 },
+			{ text: "直播总结", kind: "text", role: "extra", ok: true, repushOf: 2 },
 		],
 	});
 

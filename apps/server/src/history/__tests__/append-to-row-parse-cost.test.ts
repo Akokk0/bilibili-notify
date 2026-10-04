@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
@@ -46,7 +47,12 @@ const reads = (): number => vi.mocked(createReadStream).mock.calls.length;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-append-cost-"));
-	store = createHistoryStore({ dataRoot: dataDir, bus: createNodeMessageBus(), logger: logger() });
+	store = createHistoryStore({
+		dataRoot: dataDir,
+		bus: createNodeMessageBus(),
+		logger: logger(),
+		images: makeHistoryImages(dataDir).historyImages,
+	});
 	vi.mocked(createReadStream).mockClear();
 });
 afterEach(() => vi.restoreAllMocks());

@@ -115,6 +115,8 @@ const OLD_PATHS: Probe[] = [
 	get(`/api/ai/assets/${"0".repeat(32)}.png`),
 	// 拓展订阅头像的读口(⑳c 起头像在图库里、资料里放引用,走 `/api/images/<ref>`,这个口退役)。
 	get(`/api/subscriptions/${ID}/avatar`),
+	// 历史配图的读口(⑳d 起配图在图库里、行里放引用,走 `/api/images/<ref>`,这个口退役)。
+	get(`/api/history/img/${"0".repeat(64)}.png`),
 ];
 
 let dataDir: string;

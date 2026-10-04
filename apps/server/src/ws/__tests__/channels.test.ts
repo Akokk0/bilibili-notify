@@ -135,6 +135,9 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 	});
 });
 
+const IMAGE_REF = `${"a".repeat(64)}.png`;
+const AVATAR_REF = `${"b".repeat(64)}.png`;
+
 const ROW = {
 	id: "h1",
 	pushId: "p1",
@@ -146,7 +149,7 @@ const ROW = {
 	status: "partial",
 	messages: [
 		{
-			payload: { kind: "image", text: "[卡片图]", imageRef: "h1-0.png" },
+			payload: { kind: "image", text: "[卡片图]", image: IMAGE_REF },
 			role: "main",
 			result: { ok: true, latencyMs: 5 },
 		},
@@ -157,7 +160,7 @@ const ROW = {
 		},
 	],
 	nameSnapshot: "UP",
-	uavatarSnapshot: "http://a/x.jpg",
+	avatarSnapshot: AVATAR_REF,
 };
 
 const ROW_VIEW = {
@@ -170,15 +173,15 @@ const ROW_VIEW = {
 	subscriptionId: "sub1",
 	targetId: "t1",
 	messages: [
-		{ text: "[卡片图]", imageRef: "h1-0.png", role: "main", ok: true },
-		{ text: "总结", imageRef: undefined, role: "extra", ok: false, err: "boom" },
+		{ text: "[卡片图]", kind: "image", image: IMAGE_REF, role: "main", ok: true },
+		{ text: "总结", kind: "text", image: undefined, role: "extra", ok: false, err: "boom" },
 	],
 	nameSnapshot: "UP",
-	uavatarSnapshot: "http://a/x.jpg",
+	avatarSnapshot: AVATAR_REF,
 };
 
 describe("attachChannelWiring — history-recorded / history-updated 投影", () => {
-	it("history-recorded 投影为精简 view:消息逐条带文案 / 图 / 结果,不外泄 payload.kind 与 latency", () => {
+	it("history-recorded 投影为精简 view:消息逐条带文案 / 种类 / 图库引用 / 结果,头像快照也是图库引用,不外泄 latency", () => {
 		const h = wire();
 		h.bus.emit("history-recorded", ROW as never);
 		const env = h.last();

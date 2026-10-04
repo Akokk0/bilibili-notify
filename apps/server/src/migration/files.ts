@@ -46,12 +46,12 @@ export async function rewriteTextFile(path: string, text: string, modeFrom = pat
 }
 
 /**
- * 逐行改写一份 jsonl:整份按 `\n` 切开交给 `rewrite`(回同样多的行),有一行变了才写,回写没写。没变的行
- * 一个字节不动 —— 空行、坏行、带 `\r` 的行都原样留着。文件不在回 false。
+ * 逐行改写一份 jsonl:整份按 `\n` 切开交给 `rewrite`(回同样多的行,可以是异步的 —— 改写要去读别的文件时),
+ * 有一行变了才写,回写没写。没变的行一个字节不动 —— 空行、坏行、带 `\r` 的行都原样留着。文件不在回 false。
  */
 export async function rewriteJsonlFile(
 	path: string,
-	rewrite: (lines: readonly string[]) => string[],
+	rewrite: (lines: readonly string[]) => string[] | Promise<string[]>,
 ): Promise<boolean> {
 	let text: string;
 	try {
@@ -61,7 +61,7 @@ export async function rewriteJsonlFile(
 		throw err;
 	}
 	const lines = text.split("\n");
-	const next = rewrite(lines);
+	const next = await rewrite(lines);
 	if (next.every((line, i) => line === lines[i])) return false;
 	await rewriteTextFile(path, next.join("\n"));
 	return true;

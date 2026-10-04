@@ -26,7 +26,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s-gone",
 		targetId: null,
-		messages: [{ text: "一条推送", role: "main", ok: true }],
+		messages: [{ text: "一条推送", kind: "text", role: "main", ok: true }],
 		...over,
 	};
 }

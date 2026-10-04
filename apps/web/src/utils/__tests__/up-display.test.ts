@@ -6,12 +6,15 @@
  * - 身份小字:B 站行「UID xxx」;拓展行「平台名 · 外部 id」,平台名由调用方按已装拓展的清单取。
  * - 是不是拓展来的只看 `identity.sourceKey`(订阅与历史行共用 `isExtensionIdentity`)。
  * - 订阅资料里头像的显示地址(`profileAvatarSrc`):存进图库的走 `/api/images/<ref>`,否则是远端网址,都没有就是没有。
+ * - 历史行上的头像地址(`historyRowAvatarSrc`):行的头像快照(图库引用,拓展行才有)优先,没有就退到订阅现在的头像;
+ *   过了保留期的行不用快照(那几天已不是图库的引用方,图会被清扫收走)。
  */
 
 import { colorFromUid } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import { makeEmptySubscription } from "../../types/domain";
 import {
+	historyRowAvatarSrc,
 	historyRowColor,
 	historyRowIdentity,
 	isExtensionIdentity,
@@ -152,5 +155,34 @@ describe("historyRowIdentity", () => {
 
 	it("拓展行、没给平台名 → 写拓展 id", () => {
 		expect(historyRowIdentity(EXT_ROW)).toBe("douyin · 12345");
+	});
+});
+
+describe("historyRowAvatarSrc(历史行上 UP 的头像地址)", () => {
+	const SNAPSHOT = `${"b".repeat(64)}.png`;
+	const CURRENT = `${"c".repeat(64)}.png`;
+
+	it("有头像快照(拓展行)→ 快照的图库地址,不管订阅现在的头像是什么", () => {
+		expect(historyRowAvatarSrc({ avatarSnapshot: SNAPSHOT }, { avatar: CURRENT })).toBe(
+			`/api/images/${SNAPSHOT}`,
+		);
+	});
+
+	it("没有快照(B 站行)→ 订阅现在的头像:图库的、远端网址的都行", () => {
+		expect(historyRowAvatarSrc({}, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
+		expect(historyRowAvatarSrc({}, { avatarUrl: "https://i0.hdslb.com/new.jpg" })).toBe(
+			"https://i0.hdslb.com/new.jpg",
+		);
+	});
+
+	it("没有快照、订阅也没了(或没有头像)→ undefined,头像件画首字", () => {
+		expect(historyRowAvatarSrc({}, undefined)).toBeUndefined();
+		expect(historyRowAvatarSrc({}, {})).toBeUndefined();
+	});
+
+	it("过了保留期的行不用快照(图随时会被清扫收走):退到订阅现在的头像", () => {
+		const past = { avatarSnapshot: SNAPSHOT, isPastRetention: true as const };
+		expect(historyRowAvatarSrc(past, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
+		expect(historyRowAvatarSrc(past, undefined)).toBeUndefined();
 	});
 });

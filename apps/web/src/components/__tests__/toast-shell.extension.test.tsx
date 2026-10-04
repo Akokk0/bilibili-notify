@@ -48,7 +48,7 @@ function pushView(over: Partial<PushEventView> = {}): PushEventView {
 		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s1",
 		targetId: "t1",
-		messages: [{ text: "一条推送", role: "main", ok: true }],
+		messages: [{ text: "一条推送", kind: "text", role: "main", ok: true }],
 		...over,
 	};
 }

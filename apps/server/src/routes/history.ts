@@ -1,5 +1,3 @@
-import { createReadStream, statSync } from "node:fs";
-import { join } from "node:path";
 import type {
 	HistoryDailyResponse,
 	HistoryRepushResponse,
@@ -7,7 +5,6 @@ import type {
 } from "@bilibili-notify/contract";
 import { type FeatureKey, FeatureKeySchema, fail, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { stream } from "hono/streaming";
 import { z } from "zod";
 import { originalCount, unsentIndices } from "../history/repush.js";
 import { readClearedThrough } from "../history/retention.js";
@@ -18,8 +15,9 @@ import type { RouteDeps } from "./types.js";
 /**
  * `GET  /api/history`             — recent push events (most-recent-first)
  * `GET  /api/history/daily`       — per-day counts over a trailing window
- * `GET  /api/history/img/:name`   — static fileserver for entry-attached images
  * `POST /api/history/:id/repush`  — 人工把一行没送到的推送补一遍(ADR-0017)
+ *
+ * 历史行里的图在图库,面板读 `GET /api/images/<引用>`(`routes/images.ts`);从前的 `/api/history/img/:name` 已退役。
  *
  * Query parameters for the listing endpoint:
  *   - limit:  int        (default 100, capped 500)
@@ -136,32 +134,6 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 		return c.json<HistoryDailyResponse>({ days: dailyCounts });
 	});
 
-	// Image attachments. We resolve under the history image dir; reject any
-	// path that escapes it (defence-in-depth — `..` segments would otherwise
-	// reach the dataDir). Image bytes are written by the HistoryStore as
-	// `<entryId>.<ext>` so the lookup is direct.
-	app.get("/img/:name", async (c) => {
-		const name = c.req.param("name");
-		if (!/^[A-Za-z0-9_.-]+$/.test(name))
-			return respondFailure(c, fail("invalid", "图片文件名不合规"));
-		const dir = deps.runtime.historyStore.imageDir();
-		const path = join(dir, name);
-		try {
-			const stat = statSync(path);
-			if (!stat.isFile()) return respondFailure(c, fail("not_found", "没有这张图片"));
-			const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
-			const mime = extToMime(ext);
-			c.header("Content-Type", mime);
-			c.header("Content-Length", String(stat.size));
-			return stream(c, async (s) => {
-				const file = createReadStream(path);
-				for await (const chunk of file) s.write(chunk as Buffer);
-			});
-		} catch {
-			return respondFailure(c, fail("not_found", "没有这张图片"));
-		}
-	});
-
 	/**
 	 * 人工重推(ADR-0017)。判断全在 `RepushRunner` 里,这一层只把结果翻成状态码:
 	 *
@@ -194,16 +166,3 @@ const RepushSchema = z.object({
 	createdAt: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "createdAt 必须是 ISO 时间戳"),
 	mode: z.enum(["all", "missing"]),
 });
-
-function extToMime(ext: string): string {
-	switch (ext) {
-		case "png":
-			return "image/png";
-		case "webp":
-			return "image/webp";
-		case "gif":
-			return "image/gif";
-		default:
-			return "image/jpeg";
-	}
-}

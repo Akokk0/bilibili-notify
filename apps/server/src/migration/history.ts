@@ -7,7 +7,10 @@
  * 再把推送种类那一格 `kind`(0.x 的八种名字)换成 `feature`(特性键,⑬f),最后把格改成现在的名字(⑱b:`ts` →
  * `createdAt`、`uid` / `extensionId` + `externalId` → `identity`、`unameSnapshot` → `nameSnapshot`、消息的 `retryOf` →
  * `repushOf`),键都留在原来的位置。补丁行也在这一趟里改写(`patch` → `rowId`、消息的 `retryOf` → `repushOf`)。
- * ⑳ 要换跟图有关的格,也加在这个函数里,历史不会多迁一次。
+ *
+ * 跟图有关的格(消息的 `imageRef` → `image`、行的 `uavatarSnapshot`、重推原件里的 `{ ref, mime, own? }`,⑳d)要读盘、
+ * 复制进图库,不是纯函数,住在 `history-images.ts`;日文件与原件的逐文件改写在这里,和行级的形状改写**同一趟读写**
+ * (先 `migrateHistoryLine` 逐行改形状,再交给 `images` 迁图格,一个文件只写一次)。
  */
 
 import { readdir, unlink } from "node:fs/promises";
@@ -19,7 +22,7 @@ import {
 	type Logger,
 } from "@bilibili-notify/internal";
 import { sweepHistoryRetention } from "../history/retention.js";
-import { collectImageRefs, isPatchLine, listDayFiles } from "../history/store.js";
+import { isPatchLine, listDayFiles } from "../history/store.js";
 import { dataPath } from "../runtime/roots.js";
 import {
 	isPlainObject,
@@ -29,6 +32,7 @@ import {
 	rewriteJsonFile,
 	rewriteJsonlFile,
 } from "./files.js";
+import type { HistoryImages } from "./history-images.js";
 import type { ZeroPushKind } from "./zero-vocabulary.js";
 
 /**
@@ -85,7 +89,6 @@ export function migrateLegacyHistoryEntry(raw: unknown): unknown {
 			},
 		],
 		unameSnapshot: r.unameSnapshot,
-		uavatarSnapshot: r.uavatarSnapshot,
 	};
 }
 
@@ -140,7 +143,7 @@ function renameRepushOf(messages: unknown): unknown {
 /**
  * ⑱b:一行里的格改成现在的名字,**键都留在原来的位置**、别的格一个字不动。身份的三个散格并成一格 `identity`,落在
  * 它们里头最先出现的那个位置上(B 站行是 `uid` 的位置,拓展行是 `extensionId` 的位置)。`identity` 由调用方换算好
- * 交进来(换算不出的行根本不会走到这里)。`uavatarSnapshot` 不动,⑳ 换图库引用时一起改。
+ * 交进来(换算不出的行根本不会走到这里)。跟图有关的两格(`imageRef`、`uavatarSnapshot`)不在这里管,见 `history-images.ts`。
  */
 function renameRowKeys(row: Record<string, unknown>, identity: Identity): Record<string, unknown> {
 	let identityPlaced = false;
@@ -223,8 +226,22 @@ function migrateRepushSnapshot(value: unknown): Record<string, unknown> | undefi
 	);
 }
 
-/** 新代里每份重推原件迁成最新的形状,回改写过的文件。日目录里原件自己存的图不碰(只认 `.json`)。 */
-export async function migrateRepushSnapshotFiles(dataRoot: string): Promise<string[]> {
+export interface RepushSnapshotMigration {
+	/** 改写过的原件(绝对路径)。 */
+	rewritten: string[];
+	/** 有图读不到、整份作废的原件(绝对路径;文件已经从新代里删了)。 */
+	voided: string[];
+}
+
+/**
+ * 新代里每份重推原件迁成最新的形状:`v` → `version`(⑱c),图格 `{ ref, mime, own? }` → 图库引用(⑳d,见
+ * `history-images.ts`),**一份只写一次**。有一张图读不到的原件整份作废:从新代里删掉(搬位置时是硬链接,删的是新代
+ * 这一个名字,第 0 代那份不动)。日目录里原件自己存的图不进新代(搬位置时就没搬),这里只认 `.json`。
+ */
+export async function migrateRepushSnapshotFiles(
+	dataRoot: string,
+	images: HistoryImages,
+): Promise<RepushSnapshotMigration> {
 	const root = dataPath(dataRoot, "history", "repush");
 	let days: string[];
 	try {
@@ -233,43 +250,46 @@ export async function migrateRepushSnapshotFiles(dataRoot: string): Promise<stri
 			.map((entry) => entry.name)
 			.sort();
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return { rewritten: [], voided: [] };
 		throw err;
 	}
-	const rewritten: string[] = [];
+	const done: RepushSnapshotMigration = { rewritten: [], voided: [] };
 	for (const day of days) {
 		for (const name of await listFiles(join(root, day), ".json")) {
 			const path = join(root, day, name);
 			const file = await readJsonFile(path);
-			if (file.kind !== "ok") continue;
-			const next = migrateRepushSnapshot(file.value);
-			if (next === undefined) continue;
-			await rewriteJsonFile(path, next);
-			rewritten.push(path);
+			if (file.kind !== "ok" || !isPlainObject(file.value)) continue;
+			const renamed = migrateRepushSnapshot(file.value);
+			const converted = await images.rewriteSnapshot(day, renamed ?? file.value);
+			if (converted === null) {
+				await unlink(path);
+				done.voided.push(path);
+			} else if (renamed !== undefined || converted !== file.value) {
+				await rewriteJsonFile(path, converted);
+				done.rewritten.push(path);
+			}
 		}
 	}
-	return rewritten;
+	return done;
 }
 
 /**
- * 新代里每个日文件与每份重推原件迁成最新的形状,回改写过的文件(绝对路径)。迁移器那一步不直接调它,
- * 而是拆开走:先迁日文件,跑一次清扫({@link sweepMigratedHistory}),再迁剩下的原件 —— 过了保留期的原件
- * 反正要删,不白改写一遍。
+ * 新代里每个日文件迁成最新的形状,回改写过的文件(绝对路径):行级的形状改写(`migrateHistoryLine`)和图格的改写
+ * (`images`,见 `history-images.ts`)同一趟读写,一个文件只写一次。迁移器那一步先跑一次清扫({@link sweepMigratedHistory})
+ * 定好水位线,再调它 —— 图格怎么迁看日子在水位线的哪一边。
  */
-export async function migrateHistoryFiles(dataRoot: string): Promise<string[]> {
-	return [
-		...(await migrateHistoryDayFiles(dataRoot)),
-		...(await migrateRepushSnapshotFiles(dataRoot)),
-	];
-}
-
-/** 新代里每个日文件迁成最新的形状,回改写过的文件(绝对路径)。 */
-export async function migrateHistoryDayFiles(dataRoot: string): Promise<string[]> {
+export async function migrateHistoryDayFiles(
+	dataRoot: string,
+	images: HistoryImages,
+): Promise<string[]> {
 	const root = dataPath(dataRoot, "history");
 	const rewritten: string[] = [];
 	for (const name of (await listDayFiles(dataRoot)).sort()) {
 		const path = join(root, name);
-		if (await rewriteJsonlFile(path, (lines) => lines.map(migrateHistoryLine))) {
+		const day = name.slice(0, 10);
+		if (
+			await rewriteJsonlFile(path, (lines) => images.rewriteDay(day, lines.map(migrateHistoryLine)))
+		) {
 			rewritten.push(path);
 		}
 	}
@@ -289,21 +309,22 @@ const STRICT_LOGGER: Logger = {
 };
 
 export interface MigratedHistorySweep {
-	/** 没带过来的图(`history/img/` 里的文件名):过了保留期的,加上孤儿。 */
-	images: string[];
+	/** 清完以后的水位线(UTC 日,含当天)。 */
+	clearedThrough: string | undefined;
 	/** 没带过来的重推原件是哪几天。 */
 	snapshotDays: string[];
-	/** 给迁移报告的话:各记一句,按数量说,不逐个文件列。 */
+	/** 给迁移报告的话:按数量说,不逐个文件列。 */
 	skipped: { path: string; reason: string }[];
 }
 
 /**
  * ⑲c:**先替主人跑一次清扫**(ADR-0022 决策 9 下 10-04 的 🔗)。和开机后的清扫是同一个函数、时钟注入 ——
- * 超期怎么算只写一份。照换算后的天数,过了保留期的图与重推原件从新代里删掉(删的是硬链接,第 0 代那份不动)、
+ * 超期怎么算只写一份。照换算后的天数,过了保留期的重推原件整天目录从新代里删掉(删的是硬链接,第 0 代那份不动)、
  * 水位线定好;文字一行不动。
  *
- * 另外删掉**孤儿图**:`history/img/` 里没有任何一行引用的文件(0.12 之前日文件删了、图没跟着删攒下的)。
- * 只在迁移里做 —— 开机以后图只会跟着行来,不会再长出孤儿。要在日文件迁成最新形状之后调:数引用按现在的形状读。
+ * ⑳d 起清扫不碰图:`history/img/` 不进新代,保留期内的行引用的图由 `history-images.ts` 逐张复制进图库,过了保留期的
+ * 与孤儿图根本不读。先于日文件的改写调它 —— 图格怎么迁要看日子在水位线的哪一边,而水位线只由「此刻」与保留天数
+ * 定,不依赖行的形状。
  */
 export async function sweepMigratedHistory(opts: {
 	dataRoot: string;
@@ -311,41 +332,12 @@ export async function sweepMigratedHistory(opts: {
 	now: Date;
 }): Promise<MigratedHistorySweep> {
 	const swept = await sweepHistoryRetention({ ...opts, logger: STRICT_LOGGER });
-
-	const root = dataPath(opts.dataRoot, "history");
-	const referenced = new Set<string>();
-	for (const file of await listDayFiles(opts.dataRoot)) {
-		for (const ref of await collectImageRefs(join(root, file))) referenced.add(ref);
-	}
-	const orphans: string[] = [];
-	for (const name of await listFiles(join(root, "img"), "")) {
-		if (referenced.has(name)) continue;
-		await unlink(join(root, "img", name));
-		orphans.push(name);
-	}
-
 	const skipped: MigratedHistorySweep["skipped"] = [];
-	if (swept.images.length > 0) {
-		skipped.push({
-			path: "history/img",
-			reason: `${swept.images.length} 张图过了保留期(${opts.retentionDays} 天),没带过来`,
-		});
-	}
-	if (orphans.length > 0) {
-		skipped.push({
-			path: "history/img",
-			reason: `${orphans.length} 张图没有任何一行历史引用,没带过来`,
-		});
-	}
 	if (swept.snapshotDays.length > 0) {
 		skipped.push({
 			path: "history/repush",
 			reason: `${swept.snapshotDays.length} 天的重推原件过了保留期(${opts.retentionDays} 天),没带过来`,
 		});
 	}
-	return {
-		images: [...swept.images, ...orphans],
-		snapshotDays: swept.snapshotDays,
-		skipped,
-	};
+	return { clearedThrough: swept.clearedThrough, snapshotDays: swept.snapshotDays, skipped };
 }

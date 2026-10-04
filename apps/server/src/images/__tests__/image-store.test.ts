@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { IMAGE_REF_EXTENSIONS } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
 	createImageStore,
@@ -134,6 +135,26 @@ describe("引用的规矩是纯函数,不碰盘", () => {
 		]) {
 			expect(isValidImageRef(bad), bad).toBe(false);
 		}
+	});
+
+	it("isValidImageRef(internal 的 IMAGE_REF_PATTERN)与存储那头(格式表 + sha256 取名)对同一组名字答案一致", async () => {
+		// 每个名字都真的在盘上放一个文件:存储那头认的才读得出字节,不认的 read 回 undefined。
+		const names = [
+			...IMAGE_REF_EXTENSIONS.map((ext) => `${PNG_SHA256}.${ext}`),
+			`${PNG_SHA256}.jpeg`,
+			`${PNG_SHA256}.svg`,
+			`${PNG_SHA256}.PNG`,
+			`${PNG_SHA256.slice(1)}.png`,
+			`${PNG_SHA256.toUpperCase()}.png`,
+			`${PNG_SHA256}.png.bak`,
+		];
+		for (const name of names) await writeFile(join(dir, name), PNG);
+		for (const name of names) {
+			expect(isValidImageRef(name), name).toBe((await store.read(name)) !== undefined);
+		}
+		expect(names.filter(isValidImageRef)).toEqual(
+			IMAGE_REF_EXTENSIONS.map((ext) => `${PNG_SHA256}.${ext}`),
+		);
 	});
 
 	it("imageExtOf 从引用本身得出扩展名;形状不对回 undefined", () => {

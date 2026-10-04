@@ -8,7 +8,6 @@
 import type { AiConversationMetaDTO } from "@bilibili-notify/contract";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
-	chatImageUrl,
 	createSseParser,
 	groupConversations,
 	groupLabel,
@@ -290,13 +289,6 @@ describe("sendChatMessage — 会话级胶囊 flags", () => {
 		expect("thinking" in body).toBe(false);
 		expect("search" in body).toBe(false);
 		vi.unstubAllGlobals();
-	});
-});
-
-describe("chatImageUrl — 附件存在图库里,显示走图库的同源读口", () => {
-	it("拼成 /api/images/<ref>,不再是 /api/ai/assets", () => {
-		const ref = `${"c".repeat(64)}.webp`;
-		expect(chatImageUrl(ref)).toBe(`/api/images/${ref}`);
 	});
 });
 

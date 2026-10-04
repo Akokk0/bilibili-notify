@@ -13,19 +13,26 @@
  * 末几条是迁移器自己的钉:新代里不留老形状(直接读新代的文件,不经历史仓);0.x 的八种推送种类各一行都落成对应的特性键;
  * 已经是现在形状的行与认不得的行一个字节不动;迁两遍和迁一遍一样。
  *
+ * ⑳d:跟图有关的格(`imageRef` → `image`、`uavatarSnapshot` 丢掉、原件里的 `{ ref, mime, own? }` → 引用)读盘、进图库,
+ * 细节在 `zero-generation-history-images.test.ts`;这里只钉它们没有破坏行级的形状改写。
+ *
  * ⑱b:行里的格原地改名(`ts` → `createdAt`、`uid` / `extensionId` + `externalId` → `identity`、`unameSnapshot` →
  * `nameSnapshot`、消息的 `retryOf` → `repushOf`),补丁行的 `patch` → `rowId`(头一回改写补丁行)。和 `kind` → `feature`
  * 在 `migrateHistoryLine` 里同一趟读写,键都留在原来的位置。
  */
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createHistoryStore, type HistoryStore } from "../../history/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
-import { migrateHistoryFiles } from "../history.js";
+import { migrateHistoryDayFiles, migrateRepushSnapshotFiles } from "../history.js";
+import { createHistoryImages } from "../history-images.js";
 import { useZeroSandbox } from "./support.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
 
@@ -37,7 +44,24 @@ function openStore(): HistoryStore {
 		dataRoot: sandbox.target,
 		bus: createNodeMessageBus(),
 		logger: silentLogger,
+		images: makeHistoryImages(sandbox.target).historyImages,
 	});
+}
+
+/**
+ * 对已经迁好的新代再跑一遍日文件与原件的改写(第 0 代的历史目录不存在,水位线给最早的一天:什么图都读不到、什么都不该变)。
+ * 回改写过的文件;幂等就是回 `[]`。
+ */
+async function rerunMigrators(): Promise<string[]> {
+	const images = createHistoryImages({
+		zeroDir: join(sandbox.zero, "history"),
+		imagesDir: join(sandbox.target, "images"),
+		clearedThrough: undefined,
+	});
+	return [
+		...(await migrateHistoryDayFiles(sandbox.target, images)),
+		...(await migrateRepushSnapshotFiles(sandbox.target, images)).rewritten,
+	];
 }
 
 /** 迁一代,再在新代上开历史仓。 */
@@ -366,7 +390,7 @@ describe("迁移器自己的钉", () => {
 		expect(untouched).toEqual([CURRENT_PATCH_LINE, BAD_LINE, ...NO_IDENTITY_LINES]);
 	});
 
-	it("⑱b:⑬f 之后写的行(已经是 feature、格还是旧名)原地改名,键留在原位;头像快照与消息里别的格不动", async () => {
+	it("⑱b:⑬f 之后写的行(已经是 feature、格还是旧名)原地改名,键留在原位;消息里别的格不动,B 站远端头像网址丢掉(⑳d)", async () => {
 		await writeDay(DAY, [JSON.stringify(PRE_RENAME_ROW_OBJECT)]);
 		await sandbox.migrate();
 		const [line] = (await readFile(dayPath(), "utf8")).split("\n");
@@ -382,14 +406,13 @@ describe("迁移器自己的钉", () => {
 			"status",
 			"messages",
 			"nameSnapshot",
-			"uavatarSnapshot",
 		]);
 		expect(row).toMatchObject({
 			createdAt: "2026-05-10T03:00:00.000Z",
 			identity: { sourceKey: "bilibili", externalId: "u2" },
 			nameSnapshot: "另一位UP",
-			uavatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
 		});
+		expect(row).not.toHaveProperty("uavatarSnapshot");
 		const messages = row.messages as Record<string, unknown>[];
 		expect(messages[0]).toEqual(PRE_RENAME_ROW_OBJECT.messages[0]);
 		// 重投那一条:`retryOf` → `repushOf`,在消息里原来的位置。
@@ -484,7 +507,7 @@ describe("迁移器自己的钉", () => {
 		const before = await snapshot();
 		expect(before).toHaveLength(1);
 
-		expect(await migrateHistoryFiles(sandbox.target)).toEqual([]);
+		expect(await rerunMigrators()).toEqual([]);
 		expect(await snapshot()).toEqual(before);
 	});
 
@@ -567,18 +590,20 @@ describe("⑱c:重推原件 `v` → `version`", () => {
 		expect(await readFile(join(sandbox.zero, rel(name)), "utf8")).toBe(zeroText);
 	});
 
-	it("已经是 `version` 的原件、读不懂的原件、原件自己存的图:一个字节不动", async () => {
+	it("已经是 `version` 的原件、读不懂的原件:一个字节不动;原件自己存的图不进新代(⑳d:当成迁移输入)", async () => {
 		const done = `${randomUUID()}.json`;
 		const broken = `${randomUUID()}.json`;
 		const image = `${randomUUID()}-1.png`;
 		const doneText = JSON.stringify({ version: 1, messages: MESSAGES });
 		await sandbox.placeZeroText(rel(done), doneText);
 		await sandbox.placeZeroText(rel(broken), "{不是 JSON");
-		await sandbox.placeZeroText(rel(image), "PNG 字节");
+		await sandbox.placeZeroBytes(rel(image), PNG_BYTES);
 		await sandbox.migrate();
 		expect(await read(done)).toBe(doneText);
 		expect(await read(broken)).toBe("{不是 JSON");
-		expect(await read(image)).toBe("PNG 字节");
+		expect(existsSync(join(sandbox.target, rel(image)))).toBe(false);
+		// 第 0 代那份还在。
+		expect(existsSync(join(sandbox.zero, rel(image)))).toBe(true);
 	});
 
 	it("迁两遍和迁一遍一样:对新代再迁一次回 [],原件字节不变", async () => {
@@ -586,22 +611,23 @@ describe("⑱c:重推原件 `v` → `version`", () => {
 		await sandbox.placeZero(rel(name), { v: 1, messages: MESSAGES });
 		await sandbox.migrate();
 		const once = await read(name);
-		expect(await migrateHistoryFiles(sandbox.target)).toEqual([]);
+		expect(await rerunMigrators()).toEqual([]);
 		expect(await read(name)).toBe(once);
 	});
 });
 
 /**
  * **迁移里先替主人跑一次清扫**(ADR-0022 决策 9 下 10-04 的 🔗):和开机后的清扫是同一个函数,时钟注入。照换算后的
- * 天数,过了保留期的图与重推原件不带过来、水位线定好;另外没有任何一行引用的孤儿图也不带(只在迁移里做)。
- * 文字照搬。新代里删的是硬链接,第 0 代那份不动。
+ * 天数,过了保留期的重推原件整天目录不带过来、水位线定好;文字照搬。⑳d 起清扫不碰图 —— `history/img/` 不整目录搬,
+ * 保留期内的行引用的图逐张复制进图库,过了保留期的行拿掉图格、不读图文件,孤儿不搬(细节见
+ * `zero-generation-history-images.test.ts`)。新代里删的是硬链接,第 0 代那份不动。
  */
 describe("⑲c:迁移里的历史清扫", () => {
 	// 保留 30 天、此刻 06-15:截止日是 05-16,05-15 及以前到期。
 	const NOW = new Date("2026-06-15T12:00:00.000Z");
 	const MESSAGES = [{ payload: { kind: "text", text: "卡片" }, role: "main" }];
 
-	/** 一行带一张图的历史(已是现在的形状),图名 `ref`。 */
+	/** 一行带一张图的历史(已是现在的形状),图名 `ref`(0.x 的 `history/img/` 里的名字)。 */
 	const rowWithImage = (day: string, ref: string) =>
 		JSON.stringify({
 			id: randomUUID(),
@@ -621,36 +647,54 @@ describe("⑲c:迁移里的历史清扫", () => {
 			],
 		});
 
-	/** 摆一天:一行、它的图、一份重推原件。 */
-	async function placeDay(day: string, ref: string): Promise<void> {
+	/** 摆一天:一行、它的图(一张真 PNG,每天内容不同)、一份重推原件。 */
+	async function placeDay(day: string, ref: string, variant: number): Promise<void> {
 		await writeDay(day, [rowWithImage(day, ref)]);
-		await sandbox.placeZeroText(`history/img/${ref}`, "图");
+		await sandbox.placeZeroBytes(
+			`history/img/${ref}`,
+			Buffer.concat([PNG_BYTES, Buffer.from([variant])]),
+		);
 		await sandbox.placeZero(`history/repush/${day}/${randomUUID()}.json`, {
 			v: 1,
 			messages: MESSAGES,
 		});
 	}
 
-	const images = async () => (await readdir(join(sandbox.target, "history", "img"))).sort();
+	const imagesInLibrary = async () =>
+		(await readdir(join(sandbox.target, "images")).catch(() => [])).sort();
 	const snapshotDays = async () =>
 		(await readdir(join(sandbox.target, "history", "repush"))).sort();
 	const mark = async () =>
 		JSON.parse(await readFile(join(sandbox.target, "history", "retention.json"), "utf8"));
+	const imageOfDay = async (day: string) => {
+		const [line] = (await readFile(join(sandbox.target, "history", `${day}.jsonl`), "utf8")).split(
+			"\n",
+		);
+		return (JSON.parse(line ?? "") as { messages: { payload: { image?: string } }[] }).messages[0]
+			?.payload.image;
+	};
 
-	it("过了保留期的那几天:图与原件不带过来,文字照搬;水位线定在到期日;第 0 代那份不动", async () => {
-		await placeDay("2026-05-10", "expired.png");
-		await placeDay("2026-06-10", "kept.png");
+	it("过了保留期的那几天:原件不带过来、行的图格拿掉、不读图,文字照搬;水位线定在到期日;第 0 代那份不动", async () => {
+		await placeDay("2026-05-10", "expired.png", 1);
+		await placeDay("2026-06-10", "kept.png", 2);
 		const report = await sandbox.migrate({ now: NOW });
 
-		expect(await images()).toEqual(["kept.png"]);
 		expect(await snapshotDays()).toEqual(["2026-06-10"]);
 		const days = (await readdir(join(sandbox.target, "history"))).filter((f) =>
 			f.endsWith(".jsonl"),
 		);
 		expect(days.sort()).toEqual(["2026-05-10.jsonl", "2026-06-10.jsonl"]);
 		expect(await mark()).toEqual({ clearedThrough: "2026-05-15" });
-		// 第 0 代是备份,一个字节不动。
-		expect(await readFile(join(sandbox.zero, "history", "img", "expired.png"), "utf8")).toBe("图");
+		// 过期那一行:文字在、图格没了;保留期内那一行:图复制进了图库、行里是引用。
+		expect(await imageOfDay("2026-05-10")).toBeUndefined();
+		const kept = await imageOfDay("2026-06-10");
+		expect(kept).toMatch(/^[0-9a-f]{64}\.png$/);
+		expect(await imagesInLibrary()).toEqual([kept]);
+		// 历史图不进新代;第 0 代是备份,一个字节不动。
+		expect(existsSync(join(sandbox.target, "history", "img"))).toBe(false);
+		expect(
+			new Uint8Array(await readFile(join(sandbox.zero, "history", "img", "expired.png"))),
+		).toEqual(new Uint8Array(Buffer.concat([PNG_BYTES, Buffer.from([1])])));
 		expect(await readdir(join(sandbox.zero, "history", "repush"))).toContain("2026-05-10");
 
 		// 报告:没带过来的各记一句(按数量,不逐个文件列);搬过去的清单里没有它们。
@@ -661,47 +705,54 @@ describe("⑲c:迁移里的历史清扫", () => {
 			]),
 		);
 		const carried = report.transfers.map((t) => t.to);
-		expect(carried).toContain("history/img/kept.png");
-		expect(carried).not.toContain("history/img/expired.png");
+		expect(carried).toContain(`images/${kept}`);
 		expect(carried.some((to) => to.startsWith("history/repush/2026-05-10/"))).toBe(false);
 		expect(carried.some((to) => to.startsWith("history/repush/2026-06-10/"))).toBe(true);
+		expect(carried.some((to) => to.startsWith("history/img/"))).toBe(false);
 	});
 
-	it("没有任何一行引用的孤儿图不带过来,和时钟无关;报告里另记一句", async () => {
-		await placeDay("2026-06-10", "kept.png");
-		await sandbox.placeZeroText("history/img/orphan.png", "孤儿");
+	it("没有任何一行引用的孤儿图不搬,和时钟无关;报告里另记一句", async () => {
+		await placeDay("2026-06-10", "kept.png", 2);
+		await sandbox.placeZeroBytes(
+			"history/img/orphan.png",
+			Buffer.concat([PNG_BYTES, Buffer.from([9])]),
+		);
 		const report = await sandbox.migrate();
 
-		expect(await images()).toEqual(["kept.png"]);
+		expect(await imagesInLibrary()).toHaveLength(1);
 		expect(report.skipped).toContainEqual({
 			path: "history/img",
 			reason: expect.stringMatching(/1 张.*没有.*引用/),
 		});
-		expect(report.transfers.map((t) => t.to)).not.toContain("history/img/orphan.png");
-		expect(await readFile(join(sandbox.zero, "history", "img", "orphan.png"), "utf8")).toBe("孤儿");
+		expect(report.transfers.map((t) => t.from)).not.toContain("history/img/orphan.png");
+		expect(existsSync(join(sandbox.zero, "history", "img", "orphan.png"))).toBe(true);
 	});
 
-	it("按换算后的天数算:0.x 设了 5 天 → 七档里是 7 天,只留 7 天以内的图", async () => {
+	it("按换算后的天数算:0.x 设了 5 天 → 七档里是 7 天,只留 7 天以内的", async () => {
 		const zero = makeZeroGlobals();
 		await sandbox.placeZero("state/globals.json", {
 			...zero,
 			app: { ...zero.app, historyRetentionDays: 5 },
 		});
 		// 保留 7 天、此刻 06-15:截止日是 06-08,06-07 及以前到期。
-		await placeDay("2026-06-05", "expired.png");
-		await placeDay("2026-06-10", "kept.png");
+		await placeDay("2026-06-05", "expired.png", 1);
+		await placeDay("2026-06-10", "kept.png", 2);
 		await sandbox.migrate({ now: NOW });
 
-		expect(await images()).toEqual(["kept.png"]);
+		expect(await imageOfDay("2026-06-05")).toBeUndefined();
+		expect(await imageOfDay("2026-06-10")).toBeDefined();
+		expect(await imagesInLibrary()).toHaveLength(1);
 		expect(await mark()).toEqual({ clearedThrough: "2026-06-07" });
 	});
 
-	it("没有到期的、也没有孤儿:图与原件全带过来,报告里不多记", async () => {
-		await placeDay("2026-06-10", "kept.png");
+	it("没有到期的、也没有孤儿:被引用的图与原件全带过来,报告里只多历史图那一句「不整目录搬」", async () => {
+		await placeDay("2026-06-10", "kept.png", 2);
 		const report = await sandbox.migrate({ now: NOW });
 
-		expect(await images()).toEqual(["kept.png"]);
+		expect(await imagesInLibrary()).toHaveLength(1);
 		expect(await snapshotDays()).toEqual(["2026-06-10"]);
-		expect(report.skipped.filter((s) => s.path.startsWith("history"))).toEqual([]);
+		expect(report.skipped.filter((s) => s.path.startsWith("history"))).toEqual([
+			{ path: "history/img", reason: expect.stringContaining("不整目录进新代") },
+		]);
 	});
 });

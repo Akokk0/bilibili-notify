@@ -35,6 +35,8 @@ export {
 	HISTORY_RETENTION_DAY_OPTIONS,
 	type HistoryRetentionDays,
 	type Identity,
+	IMAGE_REF_EXTENSIONS,
+	IMAGE_REF_PATTERN,
 	type ImageRef,
 	INBOUND_CAPABLE_PLATFORMS,
 	type Issue,

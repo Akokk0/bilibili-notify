@@ -40,7 +40,7 @@ function makeApp(repushResult: unknown = { ok: true, count: 2 }) {
 	const deps = {
 		runtime: {
 			dataRoot,
-			historyStore: { query, aggregateDaily, imageDir: () => join(tmpdir(), "bn-history-test") },
+			historyStore: { query, aggregateDaily },
 			repushRunner: { start: startRepush, canRepush, isRunning: () => false },
 		},
 	} as unknown as RouteDeps;
@@ -174,7 +174,7 @@ describe("history route — feature 过滤与 view 投影", () => {
 					identity: { sourceKey: "bilibili", externalId: "u1" },
 					subscriptionId: "sub1",
 					targetId: null,
-					messages: [{ text: "卡片", role: "main" }],
+					messages: [{ text: "卡片", kind: "text", role: "main" }],
 					nameSnapshot: "UP",
 				},
 			],
@@ -228,24 +228,17 @@ describe("history /daily — 按日聚合(本周推送趋势数据源)", () => {
 });
 
 /**
- * 给 `<img>` 用的 GET:浏览器照样显示不出图,但错误体和别的路由一个样 ——
- * 平铺的 `{ code, message }` JSON,不是一行纯文本 `not found`。
+ * 历史行里的图在图库(ADR-0022 决策 9),面板读 `GET /api/images/<引用>`。从前的 `/img/:name`(读 `history/img/`)
+ * 退役了:这里不再有这个路径。整套接线里老路径回 404 由 `routes-by-resource-mount.test.ts` 钉着。
  */
-describe("history route — /img/:name 的失败", () => {
+describe("history route — 没有配图读口了", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it("文件名不合规 → 400 invalid(路径穿越之类进不了磁盘)", async () => {
-		const res = await makeApp().request("/img/bad%20name.png");
-		expect(res.status).toBe(400);
-		expect(await res.json()).toEqual({ code: "invalid", message: "图片文件名不合规" });
-	});
-
-	it("图片不在 → 404 not_found", async () => {
-		const res = await makeApp().request("/img/definitely-not-here.png");
+	it("GET /img/:name 不再存在 → 404", async () => {
+		const res = await makeApp().request(`/img/${"a".repeat(64)}.png`);
 		expect(res.status).toBe(404);
-		expect(await res.json()).toEqual({ code: "not_found", message: "没有这张图片" });
 	});
 });
 

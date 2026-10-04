@@ -16,17 +16,22 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { distinctPng } from "../../__tests__/support/chat-images.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
+import type { ImageStore, ImageWriter } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
 let store: HistoryStore;
+let imageStore: ImageStore;
+let historyImages: ImageWriter;
 let updated: HistoryEntry[];
 
 const SUB = randomUUID();
@@ -41,7 +46,8 @@ beforeEach(async () => {
 	bus = createNodeMessageBus();
 	updated = [];
 	bus.on("history-updated", (e) => updated.push(e));
-	store = createHistoryStore({ dataRoot: dataDir, bus, logger: logger() });
+	({ imageStore, historyImages } = makeHistoryImages(dataDir));
+	store = createHistoryStore({ dataRoot: dataDir, bus, logger: logger(), images: historyImages });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -103,7 +109,12 @@ describe("appendToRow", () => {
 	 */
 	it("内存里那张表早没了(重启过)也照样找得到这一行", async () => {
 		const entry = await store.record(input());
-		const afterRestart = createHistoryStore({ dataRoot: dataDir, bus, logger: logger() });
+		const afterRestart = createHistoryStore({
+			dataRoot: dataDir,
+			bus,
+			logger: logger(),
+			images: historyImages,
+		});
 		const merged = await afterRestart.appendToRow(entry.id, entry.createdAt, [
 			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
 		]);
@@ -193,26 +204,35 @@ describe("appendToRow", () => {
 		expect(await dayLines(entry.createdAt)).toHaveLength(1);
 	});
 
-	// 重推补的图跟着原行的序号往后排,不会盖掉原来那几张。
-	it("补进来的图另起文件名,不覆盖原消息的图", async () => {
-		const png = (s: string): NotificationPayload => ({
+	// 图按内容起名:补进来的图内容不同就是另一个引用,不覆盖原消息的图;内容一样(重推每试一次)就是同一张。
+	it("补进来的图不覆盖原消息的图;同一张图重推再补回同一个引用", async () => {
+		const png = (n: number): NotificationPayload => ({
 			kind: "image",
-			image: { buffer: Buffer.from(s), mime: "image/png" },
+			image: { buffer: distinctPng(n), mime: "image/png" },
 		});
 		const entry = await store.record(
-			input({ messages: [{ payload: png("原图"), role: "main", result: FAIL }] }),
+			input({ messages: [{ payload: png(1), role: "main", result: FAIL }] }),
 		);
-		const first = entry.messages[0]?.payload.imageRef;
+		const first = entry.messages[0]?.payload.image;
 		const merged = await store.appendToRow(entry.id, entry.createdAt, [
-			{ payload: png("补的图"), role: "main", result: OK, repushOf: 0 },
+			{ payload: png(2), role: "main", result: OK, repushOf: 0 },
 		]);
-		const second = merged?.messages[1]?.payload.imageRef;
+		const second = merged?.messages[1]?.payload.image;
 		expect(first).toBeDefined();
 		expect(second).toBeDefined();
 		expect(second).not.toBe(first);
-		expect(await readFile(join(dataDir, "history", "img", first as string), "utf8")).toBe("原图");
-		expect(await readFile(join(dataDir, "history", "img", second as string), "utf8")).toBe(
-			"补的图",
+		expect(new Uint8Array((await imageStore.read(first as string))?.bytes ?? [])).toEqual(
+			new Uint8Array(distinctPng(1)),
 		);
+		expect(new Uint8Array((await imageStore.read(second as string))?.bytes ?? [])).toEqual(
+			new Uint8Array(distinctPng(2)),
+		);
+
+		// 重推又试了一回,图还是原来那张:同字节同引用,图库里没有第三个文件。
+		const again = await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: png(1), role: "main", result: OK, repushOf: 0 },
+		]);
+		expect(again?.messages[2]?.payload.image).toBe(first);
+		expect(await readdir(join(dataDir, "images"))).toHaveLength(2);
 	});
 });

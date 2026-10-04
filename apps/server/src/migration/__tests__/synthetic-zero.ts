@@ -9,8 +9,10 @@
  * 全部内容由下标决定,不用随机数:同一个 `scale` 摆出来的树逐字节相同,耗时的差别只来自机器。
  *
  * 造的是 **0.x 的盘**。0.x 用户的推送历史保留天数最多能调到 365,文字和图一起留,所以 0.x 的最坏情况是「365 天的历史 +
- * 每行一张图」,满量就按这个摆。1.0 的新规则(文字不设上限、图片最多留 90 天)只改以后的迁移,要等第 2 期统一图库才落地,
- * 跟这份 0.x 输入无关。
+ * 每行一张图」,满量就按这个摆。每张历史图的内容各不相同(图库按摘要起名,内容一样的并成几张就量不到复制的开销)。迁移(⑳d)
+ * 只把**保留期内**的行引用的图复制进图库(此刻取历史的最后一天、保留 30 天 → 最后 31 天,两档都留一样多),更早的行只是
+ * 拿掉图格、不读图文件 —— 所以复制那一步的活儿**不随量涨**(满量与四分之一量都 31 天 × 120 张),比值里量不到它,看
+ * 它的绝对秒数;随天数涨的是日文件的读写与拿掉图格。
  *
  * **每一块会涨的东西,四分之一量都严格是满量的 1/4**(缩法见下表),总活儿因此近似线性于 `scale`:
  *
@@ -481,7 +483,7 @@ async function placeHistory(
 	const perDay = plan.historyRowsPerDay;
 	// 历史只摆最近 `historyDays` 天;`h` 是这一段里的第几天,`day` 是它在整段数据里的序号。
 	const firstDay = plan.days - plan.historyDays;
-	const images = [2048, 2560, 3072, 3584, 4096].map((size) => fakeBinary(size, PNG_SIGNATURE));
+	const imageSizes = [2048, 2560, 3072, 3584, 4096];
 	const rowId = (h: number, r: number) => uuid(NS.historyRow, h * perDay + r + 1);
 
 	for (let h = 0; h < plan.historyDays; h += 1) {
@@ -521,10 +523,14 @@ async function placeHistory(
 		await tree.putJsonl(`history/${dayName(day)}.jsonl`, lines);
 	}
 
-	// 图:每行一张,几 KB。
+	// 图:每行一张,几 KB,**每张内容各不相同**(图库按摘要起名,内容一样的图会并成几张,量不到复制的开销)。
+	// 迁移只复制保留期内的那一小段(两档一样多),其余的行拿掉图格、不读文件。
 	await pool(range(plan.historyDays * perDay), 96, (n) => {
 		const h = Math.floor(n / perDay);
-		return tree.put(`history/img/${rowId(h, n % perDay)}-0.png`, pick(images, n));
+		return tree.put(
+			`history/img/${rowId(h, n % perDay)}-0.png`,
+			fakeBinary(pick(imageSizes, n), PNG_SIGNATURE, 0xb0_0000 + n),
+		);
 	});
 
 	// 重推原件:`history/repush/<日>/<行 id>.json`,0.x 盘上就是 `{ v, messages }` 这两格(⑱c 起迁成 `version`)。

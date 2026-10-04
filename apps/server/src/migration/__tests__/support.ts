@@ -35,6 +35,8 @@ export interface ZeroSandbox {
 	placeZero(rel: string, body: unknown): Promise<void>;
 	/** 往第 0 代摆一份原样的字节 —— 要逐字节比对的时候用。 */
 	placeZeroText(rel: string, text: string): Promise<void>;
+	/** 往第 0 代摆一份二进制文件(图)。 */
+	placeZeroBytes(rel: string, bytes: Uint8Array): Promise<void>;
 	/**
 	 * 迁一代。`now` 是迁移里那次历史清扫按哪一刻算到期;缺省给一个很早的时刻({@link SANDBOX_NOW}),
 	 * 用例里摆的哪一天都不算到期 —— 要测到期的用例自己传。
@@ -91,10 +93,11 @@ export function useZeroSandbox(prefix: string): ZeroSandbox {
 		await store.load();
 		return store;
 	};
-	const placeZeroText = async (rel: string, text: string) => {
+	const placeZeroBytes = async (rel: string, bytes: Uint8Array) => {
 		await mkdir(dirname(join(zero, rel)), { recursive: true });
-		await writeFile(join(zero, rel), text);
+		await writeFile(join(zero, rel), bytes);
 	};
+	const placeZeroText = (rel: string, text: string) => placeZeroBytes(rel, Buffer.from(text));
 
 	return {
 		get zero() {
@@ -105,6 +108,7 @@ export function useZeroSandbox(prefix: string): ZeroSandbox {
 		},
 		placeZero: (rel, body) => placeZeroText(rel, JSON.stringify(body)),
 		placeZeroText,
+		placeZeroBytes,
 		migrate,
 		load,
 		async migrateAndLoad() {

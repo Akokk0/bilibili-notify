@@ -29,6 +29,12 @@ export const TEMP_MARKER = ".bn-tmp.";
 export interface AtomicWriteOptions {
 	/** 新文件的权限位(如密钥用 `0o600`)。Windows 上忽略。 */
 	mode?: number;
+	/**
+	 * 写完要不要 fsync 一次目录(缺省要)。给 `false` 的是**往一个新目录里成批写**的调用方(迁移往新代的 `images/` 落
+	 * 几千上万张图):文件各自照样 fsync 再改名,只是不逐个同步目录 —— 每张多出来的那一次 fsync 要多花近一倍时间。
+	 * 调用方得在这一批写完以后自己对目录 {@link syncDirectory} 一次;不然掉电时新建的目录项可能没落盘。
+	 */
+	syncDirectory?: boolean;
 }
 
 /** 给一个目标路径起一个同目录的临时名。 */
@@ -58,7 +64,7 @@ export async function atomicWriteFile(
 		await unlink(tmp).catch(() => {});
 		throw err;
 	}
-	await syncDirectory(dir);
+	if (opts.syncDirectory !== false) await syncDirectory(dir);
 }
 
 /** 原子写 JSON:2 空格缩进、末尾换行(全仓落盘 JSON 的统一格式)。 */

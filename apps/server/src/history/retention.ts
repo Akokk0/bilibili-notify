@@ -1,21 +1,24 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { Disposable, ImageRef, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { ConfigStore } from "../config/store.js";
 import type { ImageStore } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
-import { createRepushStore, listRepushDays, type RepushStore } from "./repush-store.js";
-import { deleteDayImages, listDayFiles } from "./store.js";
+import { dropRepushDay, listRepushDays } from "./repush-store.js";
+import { collectImageRefs, listDayFiles } from "./store.js";
 
 /**
  * 推送历史的保留(ADR-0022 决策 9):**文字不设上限,图与重推原件按天数清**。日文件一份都不删;
- * 到期的那几天,清掉它们引用的图和那几天的重推原件目录。
+ * 到期的那几天,清掉那几天的重推原件目录 —— 图在图库里,**不由这里删**:历史行只在保留期内算图库的引用方
+ * ({@link listHistoryImageRefs}),水位线一推过去,那几天的行就不再留住它们的图,同一轮末尾的图库清扫按引用把
+ * 没人引用的收走。
  *
  * 「清到哪一天」记成一条**水位线** `history/retention.json` 的 `clearedThrough`(UTC 日、含当天,只往前走):
  *
  * - 日文件永远在,不记的话每一轮都得把所有到期的日文件重新解析一遍,一年比一年慢;
- * - 面板上「图已清理」按它判。按行龄和当前天数现算的话,天数一调大,已经清掉的行就会说自己还有图。
+ * - 面板上「图已清理」按它判。按行龄和当前天数现算的话,天数一调大,已经清掉的行就会说自己还有图;
+ * - 历史这一家引用方只读水位线之后的日文件。
  *
  * 重推原件(ADR-0017)跟着同一条水位线走,纯文字的原件也一样,不另开旋钮:「能不能补」只看原件在不在,
  * 和「图已清理」永远对得上。
@@ -47,6 +50,23 @@ export async function readClearedThrough(dataRoot: string): Promise<string | und
 	}
 }
 
+/**
+ * 推送历史这一家图库引用方此刻活着的引用(图库登记用,`runtime/bootstrap.ts`):**保留期内**的日文件 ——
+ * 水位线之后的 —— 里所有消息的 `image` 与行的 `avatarSnapshot`,本体行与补丁行都数。过了水位线的行不算:
+ * 否则水位线白推,图永远清不掉。水位线不在或读不懂当成没清过(全算,宁多勿少)。读不动日文件就抛,
+ * 图库清扫这一轮一张不删。
+ */
+export async function listHistoryImageRefs(dataRoot: string): Promise<ImageRef[]> {
+	const mark = await readClearedThrough(dataRoot);
+	const root = dataPath(dataRoot, "history");
+	const out: ImageRef[] = [];
+	for (const file of (await listDayFiles(dataRoot)).sort()) {
+		if (mark !== undefined && file.slice(0, 10) <= mark) continue;
+		out.push(...(await collectImageRefs(join(root, file))));
+	}
+	return out;
+}
+
 /** 这一刻、保留 `retentionDays` 天时,最后一个到期的 UTC 日:截止日(往回数 `retentionDays` 天)的前一天。 */
 function lastExpiredDay(now: Date, retentionDays: number): string {
 	const day = new Date(
@@ -63,25 +83,21 @@ export interface HistorySweepOptions {
 	/** 按哪一刻算到期。 */
 	now: Date;
 	logger: Logger;
-	/** 重推原件。缺省自己建一个(它没有内部状态);注入口只留给测试。 */
-	repush?: RepushStore;
 }
 
 export interface HistorySweepReport {
 	/** 清完以后的水位线;一天都没清过就没有。 */
 	clearedThrough?: string;
-	/** 这一轮真删掉的图(`history/img/` 里的文件名)。 */
-	images: string[];
 	/** 这一轮清掉重推原件的那几天。 */
 	snapshotDays: string[];
 }
 
 /**
- * 清一轮:水位线之后、到期日及以前的那几天,删掉日文件引用的图与重推原件的日目录,再把水位线推到到期日。
+ * 清一轮:水位线之后、到期日及以前的那几天,删掉重推原件的日目录,再把水位线推到到期日。**不碰图** ——
+ * 水位线推过去以后,那几天的行不再是图库的引用方,图由紧接着的图库清扫收走。
  * 到期日不超过水位线(天数调大了、或者这一天已经清过)就什么都不做。
  *
- * 某一天清不动只记一条 warn、不拦别的日子,水位线照推:那一天剩下的图成了没人引用的孤儿,由图库的
- * 按引用清扫收走(⑳)。停在那一天不动的话,一份坏文件就能让整个保留期失效。
+ * 某一天清不动只记一条 warn、不拦别的日子,水位线照推:停在那一天不动的话,一份坏目录就能让整个保留期失效。
  */
 export async function sweepHistoryRetention(
 	opts: HistorySweepOptions,
@@ -89,26 +105,14 @@ export async function sweepHistoryRetention(
 	const target = lastExpiredDay(opts.now, opts.retentionDays);
 	const mark = await readClearedThrough(opts.dataRoot);
 	if (mark !== undefined && target <= mark) {
-		return { clearedThrough: mark, images: [], snapshotDays: [] };
+		return { clearedThrough: mark, snapshotDays: [] };
 	}
 
-	const images: string[] = [];
-	for (const file of (await listDayFiles(opts.dataRoot)).sort()) {
-		const day = file.slice(0, 10);
-		if (day > target || (mark !== undefined && day <= mark)) continue;
-		try {
-			images.push(...(await deleteDayImages(opts.dataRoot, file)));
-		} catch (err) {
-			opts.logger.warn(`[history] failed to clear images of ${day}: ${String(err)}`);
-		}
-	}
-
-	const repush = opts.repush ?? createRepushStore({ dataRoot: opts.dataRoot, logger: opts.logger });
 	const snapshotDays: string[] = [];
 	for (const day of (await listRepushDays(opts.dataRoot)).sort()) {
 		if (day > target) continue;
 		try {
-			await repush.dropDay(day);
+			await dropRepushDay(opts.dataRoot, day);
 			snapshotDays.push(day);
 		} catch (err) {
 			opts.logger.warn(`[history] failed to drop repush snapshots of ${day}: ${String(err)}`);
@@ -116,7 +120,7 @@ export async function sweepHistoryRetention(
 	}
 
 	await atomicWriteJson(retentionMarkPath(opts.dataRoot), { clearedThrough: target });
-	return { clearedThrough: target, images, snapshotDays };
+	return { clearedThrough: target, snapshotDays };
 }
 
 /**
@@ -136,12 +140,6 @@ export interface RetentionRunnerOptions {
 	logger: Logger;
 	/** Tick interval (ms). Defaults to 6 hours. */
 	intervalMs?: number;
-	/**
-	 * 重推原件。**缺省自己建一个** —— 它没有内部状态,`dataRoot` 这儿本来就有,
-	 * 于是「起 retention 时记得把 repush 传进来」这根会漏的线根本不存在。
-	 * 注入口只留给测试。
-	 */
-	repush?: RepushStore;
 	/** 此刻。缺省读系统时钟;注入口只留给测试。 */
 	now?: () => Date;
 }
@@ -175,11 +173,10 @@ async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
 			retentionDays: opts.store.getGlobals().history.retentionDays,
 			now,
 			logger: opts.logger,
-			repush: opts.repush,
 		});
-		if (report.images.length > 0 || report.snapshotDays.length > 0) {
+		if (report.snapshotDays.length > 0) {
 			opts.logger.info(
-				`[history] retention cleared ${report.images.length} image(s) and repush snapshots of ${report.snapshotDays.length} day(s) through ${report.clearedThrough}`,
+				`[history] retention cleared repush snapshots of ${report.snapshotDays.length} day(s) through ${report.clearedThrough}`,
 			);
 		}
 	} finally {

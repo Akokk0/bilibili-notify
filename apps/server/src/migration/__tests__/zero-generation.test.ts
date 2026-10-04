@@ -66,8 +66,16 @@ const AVATAR_REF = `${createHash("sha256").update(JPEG_BYTES).digest("hex")}.jpg
 /** 0.x 的 B 站订阅资料里头像是远端网址。 */
 const BILI_AVATAR_URL = "https://i0.hdslb.com/bfs/face/abc.jpg";
 
+/**
+ * 0.x 的历史图:`history/img/a.png` 被夹具里那一行引用着(保留期内),所以复制进图库、行里换成引用。内容与聊天附件
+ * 那张不同(同字节同引用,两条 transfers 会指到一处,看着像 bug)。
+ */
+const HISTORY_IMAGE_BYTES = Buffer.concat([PNG_BYTES, Buffer.from([7])]);
+const HISTORY_REF = `${createHash("sha256").update(HISTORY_IMAGE_BYTES).digest("hex")}.png`;
+
 /** 0.x 夹具里的二进制件:相对第 0 代根的路径 → 字节。 */
 const ZERO_BINARY_FILES: Record<string, Uint8Array> = {
+	"history/img/a.png": HISTORY_IMAGE_BYTES,
 	[`assets/chat/${CHAT_ATTACHMENT}`]: PNG_BYTES,
 	[`assets/chat/${CHAT_NOT_AN_IMAGE}`]: Buffer.from("<svg/>"),
 	[`assets/chat/${CHAT_ORPHAN}`]: Buffer.concat([PNG_BYTES, Buffer.from([1])]),
@@ -194,10 +202,11 @@ const ZERO_FILES: Record<string, string> = {
 			ok: true,
 			per: [{ targetId: "22222222-2222-4222-8222-222222222222", ok: true, latencyMs: 3 }],
 		},
-		// 这一行带一张图:`history/img/a.png` 有行引用,迁移里清孤儿图时不动它(⑲c)。
+		// 这一行带一张图:`history/img/a.png` 有行引用、行在保留期内,所以复制进图库、`imageRef` 换成 `image`(⑳d);
+		// 头像快照是 B 站远端网址,迁移时丢掉。
 		payload: { kind: "image", text: "下播了", imageRef: "a.png" },
+		uavatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
 	})}\n`,
-	"history/img/a.png": "png",
 	// 0.x 的重推原件(⑱c 起 `v` → `version`)。
 	"history/repush/2026-09-30/row-1.json":
 		'{"v":1,"messages":[{"payload":{"kind":"text","text":"下播了"},"role":"main"}]}',
@@ -262,7 +271,6 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"secrets/config-secrets.enc": "secrets/config-secrets.enc",
 	"secrets/cookies.json": "secrets/cookies.json",
 	"history/2026-09-30.jsonl": "history/2026-09-30.jsonl",
-	"history/img/a.png": "history/img/a.png",
 	"history/repush/2026-09-30/row-1.json": "history/repush/2026-09-30/row-1.json",
 	"stats/dyn/sub-1.jsonl": "stats/dyn/sub-1.jsonl",
 	"stats/live/sub-1.jsonl": "stats/live/sub-1.jsonl",
@@ -369,7 +377,13 @@ describe("migrateZeroGeneration", () => {
 		// 迁移里那次历史清扫新写的水位线(⑲c):不是搬来的,也不是改写的。聊天附件不整目录搬:被会话引用的那张
 		// 复制进图库(⑳b),孤儿与不是图的不带过来。
 		// 拓展订阅的头像同理(⑳c):资料缓存引用着的复制进图库,孤儿不带过来。
-		const written = ["history/retention.json", `images/${CHAT_REF}`, `images/${AVATAR_REF}`];
+		// 历史图同理(⑳d):保留期内的行引用着的复制进图库,`history/img/` 不进新代。
+		const written = [
+			"history/retention.json",
+			`images/${CHAT_REF}`,
+			`images/${AVATAR_REF}`,
+			`images/${HISTORY_REF}`,
+		];
 		expect(await listTree(target)).toEqual(
 			[...Object.values(EXPECTED_MOVES), ...splitOut, ...written, "extensions/dev-bridge"].sort(),
 		);
@@ -473,6 +487,9 @@ describe("migrateZeroGeneration", () => {
 		expect((await stat(join(target, "images", AVATAR_REF))).ino).not.toBe(
 			(await stat(join(zero, "avatars", "sub-2.jpeg"))).ino,
 		);
+		expect((await stat(join(target, "images", HISTORY_REF))).ino).not.toBe(
+			(await stat(join(zero, "history", "img", "a.png"))).ino,
+		);
 	});
 
 	it("聊天附件:被会话引用的逐张复制进图库(记在搬过去的里),会话里的旧 id 换成引用、不是图的拿掉;孤儿不搬,按数量记一句", async () => {
@@ -526,6 +543,31 @@ describe("migrateZeroGeneration", () => {
 		]);
 	});
 
+	it("历史图:保留期内的行引用着的复制进图库(记在搬过去的里),行里 imageRef 换成 image、远端头像网址丢掉;历史图目录不整个搬,记一句", async () => {
+		await placeZeroGeneration();
+
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
+
+		expect(report.transfers.filter((t) => t.from.startsWith("history/img/"))).toEqual([
+			{ from: "history/img/a.png", to: `images/${HISTORY_REF}`, method: "copy" },
+		]);
+		expect(new Uint8Array(await readFile(join(target, "images", HISTORY_REF)))).toEqual(
+			new Uint8Array(HISTORY_IMAGE_BYTES),
+		);
+		const [, line] = (await readFile(join(target, "history", "2026-09-30.jsonl"), "utf8")).split(
+			"\n",
+		);
+		const row = JSON.parse(line ?? "") as {
+			messages: { payload: Record<string, unknown> }[];
+		} & Record<string, unknown>;
+		expect(row.messages[0]?.payload).toEqual({ kind: "image", text: "下播了", image: HISTORY_REF });
+		expect(row).not.toHaveProperty("uavatarSnapshot");
+		expect(existsSync(join(target, "history", "img"))).toBe(false);
+		expect(report.skipped.filter((s) => s.path === "history/img").map((s) => s.reason)).toEqual([
+			expect.stringContaining("不整目录进新代"),
+		]);
+	});
+
 	it("开发版链进来的拓展:新代里重建同样的一条软链,不拷内容", async () => {
 		await placeZeroGeneration();
 
@@ -551,6 +593,7 @@ describe("migrateZeroGeneration", () => {
 				"bilibili-notify",
 				"card-skins",
 				"history/2026-09-29.jsonl.tmp.99",
+				"history/img",
 				"notes.txt",
 				"state/adapters.json",
 				"state/extension-subscriptions.json",
@@ -611,8 +654,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 25,
-			output: "abb13054b96c534fa9cd4b125c142b3c1c0c183fc8d86506f62d4d6a5e57c024",
+			revision: 26,
+			output: "18db761b8638f0b384114a86f3f508023259fd30992f069750d79855a861ba19",
 		});
 	});
 });

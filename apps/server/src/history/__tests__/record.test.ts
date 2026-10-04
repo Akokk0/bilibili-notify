@@ -6,7 +6,7 @@
  *     重算状态、emit `history-updated`(不再 recorded)
  *   - jsonl 仍 append-only:追加写的是**补丁行**,读回来按行 id 合并
  *   - 四态:全到 = delivered;本体到了附加没到 = partial;本体没到 = failed;`target: null` = no-targets
- *   - 无目标行消息照存、图照落盘,只是没有结果
+ *   - 无目标行消息照存、图照存进图库,只是没有结果
  *   - 按日聚合:total 数行、不计无目标;failures = failed + partial;counts 按 8 把特性键
  */
 
@@ -16,12 +16,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { distinctPng } from "../../__tests__/support/chat-images.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
+import type { ImageStore, ImageWriter } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 let dataDir: string;
 let bus: ReturnType<typeof createNodeMessageBus>;
 let store: HistoryStore;
+let imageStore: ImageStore;
+let historyImages: ImageWriter;
 let recorded: HistoryEntry[];
 let updated: HistoryEntry[];
 
@@ -32,10 +37,14 @@ beforeEach(async () => {
 	updated = [];
 	bus.on("history-recorded", (e) => recorded.push(e));
 	bus.on("history-updated", (e) => updated.push(e));
+	const images = makeHistoryImages(dataDir);
+	imageStore = images.imageStore;
+	historyImages = images.historyImages;
 	store = createHistoryStore({
 		dataRoot: dataDir,
 		bus,
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+		images: images.historyImages,
 	});
 });
 afterEach(() => {
@@ -160,7 +169,9 @@ describe("record — 建行与追加", () => {
 
 	// 盘上的键序就是迁移器(`migration/history.ts`)把老行改出来的键序 —— 两头是同一个形状,不是两份各写各的。
 	it("行的键序:id, pushId, createdAt, feature, identity, subscriptionId, targetId, status, messages, 快照", async () => {
-		const entry = await store.record(input({ uavatarSnapshot: "https://example.com/a.jpg" }));
+		const stored = await historyImages.put(distinctPng(9));
+		if (!stored.ok) throw new Error(stored.message);
+		const entry = await store.record(input({ avatarSnapshot: stored.ref }));
 		const [line] = await dayLines(entry);
 		expect(Object.keys(JSON.parse(line as string))).toEqual([
 			"id",
@@ -173,7 +184,7 @@ describe("record — 建行与追加", () => {
 			"status",
 			"messages",
 			"nameSnapshot",
-			"uavatarSnapshot",
+			"avatarSnapshot",
 		]);
 	});
 });
@@ -244,49 +255,50 @@ describe("record — 四态", () => {
 	});
 });
 
-describe("record — 图片落盘", () => {
-	const png = (s: string): NotificationPayload => ({
+describe("record — 图存进图库", () => {
+	/** 第 `n` 张互不相同的真 PNG(图库按内容起名,字节一样就是同一张图)。 */
+	const png = (n: number): NotificationPayload => ({
 		kind: "image",
-		image: { buffer: Buffer.from(s), mime: "image/png" },
+		image: { buffer: distinctPng(n), mime: "image/png" },
 	});
 
-	it("多条消息各自落盘,补丁那条也落,文件名不撞", async () => {
+	it("多条消息各自存进图库,补丁那条也存;内容不同引用不同,文件在 images/ 里", async () => {
 		const pushId = randomUUID();
-		const first = await store.record(
+		await store.record(
 			input({
 				pushId,
 				messages: [
-					{ payload: png("A"), role: "main", result: OK },
-					{ payload: png("B"), role: "main", result: OK },
+					{ payload: png(1), role: "main", result: OK },
+					{ payload: png(2), role: "main", result: OK },
 				],
 			}),
 		);
 		const merged = await store.record(
-			input({ pushId, messages: [{ payload: png("C"), role: "extra", result: OK }] }),
+			input({ pushId, messages: [{ payload: png(3), role: "extra", result: OK }] }),
 		);
-		const refs = merged.messages.map((m) => m.payload.imageRef);
+		const refs = merged.messages.map((m) => m.payload.image);
 		expect(new Set(refs).size).toBe(3);
-		expect(refs.every((r) => r?.startsWith(first.id))).toBe(true);
-		const files = (await readdir(store.imageDir())).sort();
+		const files = (await readdir(join(dataDir, "images"))).sort();
 		expect(files).toEqual([...refs].sort());
-		expect((await readFile(join(store.imageDir(), refs[2] as string))).toString()).toBe("C");
+		const third = await imageStore.read(refs[2] ?? "");
+		expect(new Uint8Array(third?.bytes ?? [])).toEqual(new Uint8Array(distinctPng(3)));
 	});
 
-	it("无目标行的图也落盘", async () => {
+	it("无目标行的图也存进图库", async () => {
 		const entry = await store.record(
-			input({ targetId: null, messages: [{ payload: png("W"), role: "main" }] }),
+			input({ targetId: null, messages: [{ payload: png(4), role: "main" }] }),
 		);
-		expect(entry.messages[0]?.payload.imageRef).toBeDefined();
-		expect(await readdir(store.imageDir())).toHaveLength(1);
+		expect(entry.messages[0]?.payload.image).toBeDefined();
+		expect(await readdir(join(dataDir, "images"))).toHaveLength(1);
 	});
 
 	it("无 caption 的纯图:下播的附加项写「[弹幕词云]」,其余写「[卡片图]」", async () => {
 		const wc = await store.record(
-			input({ feature: "liveEnd", messages: [{ payload: png("W"), role: "extra", result: OK }] }),
+			input({ feature: "liveEnd", messages: [{ payload: png(5), role: "extra", result: OK }] }),
 		);
 		expect(wc.messages[0]?.payload.text).toBe("[弹幕词云]");
 		const card = await store.record(
-			input({ feature: "liveEnd", messages: [{ payload: png("C"), role: "main", result: OK }] }),
+			input({ feature: "liveEnd", messages: [{ payload: png(6), role: "main", result: OK }] }),
 		);
 		expect(card.messages[0]?.payload.text).toBe("[卡片图]");
 	});

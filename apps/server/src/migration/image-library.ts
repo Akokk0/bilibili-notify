@@ -45,24 +45,44 @@ export async function readPlainImageFile(path: string): Promise<Buffer | undefin
 export interface ImageCopier {
 	/** 把一份字节**复制**进新代的图库,回它的引用;不是图库收的图(嗅探不过、超 8MB)回 `undefined`、什么也不写。 */
 	copy(bytes: Uint8Array): Promise<ImageRef | undefined>;
+	/**
+	 * 读第 0 代的一个图文件({@link readPlainImageFile}:不是普通文件、软链、超 8MB、不在都是读不到)再 {@link copy} 进去,
+	 * 回引用;读不到、嗅探不过回 `undefined`。**同一个路径只读一次**(读不到也记着):历史里同一张图被行和重推原件
+	 * 各引用一回,几万张图再读一遍太贵。路径由调用方拼,拼之前自己核过文件名是干净的。
+	 */
+	copyFile(path: string): Promise<ImageRef | undefined>;
 }
 
 /**
  * 往新代的 `images/` 落图。复制而不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
  * 内容一样的第二份不再重写(同一个引用)。
+ *
+ * 写法:`atomicWriteFile` 但**不逐张同步目录**(`syncDirectory: false`)—— 历史图在保留期内是几千到上万张,每张多出来的
+ * 那一次目录 fsync 要多花近一倍时间(实测每张 7.8 毫秒对 4.4 毫秒)。文件各自照样 fsync;`images/` 目录由
+ * `migrateZeroGeneration` 在新代改名之前同步一次。
  */
 export function createImageCopier(imagesDir: string): ImageCopier {
 	/** 已经写进图库的引用。 */
 	const written = new Set<ImageRef>();
-	return {
+	/** 读过的图文件(路径 → 引用,读不到是 `undefined`)。 */
+	const files = new Map<string, ImageRef | undefined>();
+	const copier: ImageCopier = {
 		async copy(bytes) {
 			const ref = imageRefOf(bytes);
 			if (ref === undefined) return undefined;
 			if (!written.has(ref)) {
-				await atomicWriteFile(join(imagesDir, ref), bytes);
+				await atomicWriteFile(join(imagesDir, ref), bytes, { syncDirectory: false });
 				written.add(ref);
 			}
 			return ref;
 		},
+		async copyFile(path) {
+			if (files.has(path)) return files.get(path);
+			const bytes = await readPlainImageFile(path);
+			const ref = bytes === undefined ? undefined : await copier.copy(bytes);
+			files.set(path, ref);
+			return ref;
+		},
 	};
+	return copier;
 }

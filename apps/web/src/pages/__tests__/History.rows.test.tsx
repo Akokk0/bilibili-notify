@@ -23,6 +23,9 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 const T1 = "22222222-2222-4222-8222-222222222222";
+/** 图库引用(词云配图 / 头像快照)。 */
+const WORDCLOUD = `${"a".repeat(64)}.png`;
+const SNAPSHOT = `${"e".repeat(64)}.png`;
 
 function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 	return {
@@ -35,9 +38,9 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		subscriptionId: "s1",
 		targetId: T1,
 		messages: [
-			{ text: "下播了", role: "main", ok: true },
-			{ text: "[弹幕词云]", imageRef: "h1-1.png", role: "extra", ok: true },
-			{ text: "总结正文", role: "extra", ok: false, err: "boom" },
+			{ text: "下播了", kind: "text", role: "main", ok: true },
+			{ text: "[弹幕词云]", kind: "image", image: WORDCLOUD, role: "extra", ok: true },
+			{ text: "总结正文", kind: "text", role: "extra", ok: false, err: "boom" },
 		],
 		nameSnapshot: "某UP",
 		...over,
@@ -96,7 +99,7 @@ describe("推送历史 · 行", () => {
 		expect(screen.getByText("总结正文")).toBeTruthy();
 		expect(screen.getByText("boom")).toBeTruthy();
 		const img = screen.getByRole("img", { name: /弹幕词云/ }) as HTMLImageElement;
-		expect(img.getAttribute("src")).toBe("/api/history/img/h1-1.png");
+		expect(img.getAttribute("src")).toBe(`/api/images/${WORDCLOUD}`);
 		await userEvent.click(toggle);
 		expect(screen.queryByText("总结正文")).toBeNull();
 	});
@@ -120,10 +123,54 @@ describe("推送历史 · 行", () => {
 		expect(screen.queryByRole("img", { name: /弹幕词云/ })).toBeNull();
 	});
 
+	// 过了保留期的老行,迁移时图格(`image`)已经拿掉,只剩 `kind: "image"`:照样在原来画图的位置写「图已清理」。
+	// 纯文字的消息、以及迁移拿掉图格后看不出本来有图的 composite,不写。
+	it("过了保留期的老行:图格被迁移拿掉了(只剩 kind: image)→ 仍写「图已清理」;文字消息不写", async () => {
+		mockApi([
+			row({
+				isPastRetention: true,
+				messages: [
+					{ text: "下播了", kind: "text", role: "main", ok: true },
+					{ text: "[卡片图]", kind: "image", role: "extra", ok: true },
+					{ text: "图文", kind: "composite", role: "extra", ok: true },
+				],
+			}),
+		]);
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: /3 条/ }));
+		expect(screen.getAllByText("图已清理")).toHaveLength(1);
+		expect(screen.getByText("[卡片图]")).toBeTruthy();
+	});
+
+	it("没过保留期、图格缺着(图库没收下):不写「图已清理」也不画图", async () => {
+		mockApi([
+			row({
+				messages: [
+					{ text: "下播了", kind: "text", role: "main", ok: true },
+					{ text: "[卡片图]", kind: "image", role: "extra", ok: true },
+				],
+			}),
+		]);
+		const { container } = renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		await userEvent.click(screen.getByRole("button", { name: /2 条/ }));
+		expect(screen.queryByText("图已清理")).toBeNull();
+		expect(container.querySelector("img[src^='/api/images/']")).toBeNull();
+	});
+
 	it("失败行红 pill「失败」;已送达绿 pill;单条不挂胶囊", async () => {
 		mockApi([
-			row({ id: "a", status: "failed", messages: [{ text: "卡", role: "main", ok: false }] }),
-			row({ id: "b", status: "delivered", messages: [{ text: "卡2", role: "main", ok: true }] }),
+			row({
+				id: "a",
+				status: "failed",
+				messages: [{ text: "卡", kind: "text", role: "main", ok: false }],
+			}),
+			row({
+				id: "b",
+				status: "delivered",
+				messages: [{ text: "卡2", kind: "text", role: "main", ok: true }],
+			}),
 		]);
 		renderHistory();
 		await waitFor(() => expect(screen.getByText("卡")).toBeTruthy());
@@ -166,7 +213,7 @@ describe("推送历史 · 按家族筛选", () => {
 				id: `h${i}`,
 				feature,
 				status: "delivered",
-				messages: [{ text, role: "main", ok: true }],
+				messages: [{ text, kind: "text", role: "main", ok: true }],
 			}),
 		);
 	}
@@ -296,22 +343,35 @@ describe("推送历史 · 拓展行", () => {
 				avatar,
 			);
 
-		it("拓展行没有快照 → 订阅现在的图库头像,走 /api/images/<引用>", async () => {
+		it("拓展行没有快照(老行)→ 订阅现在的图库头像,走 /api/images/<引用>", async () => {
 			mockApi([extRow()], [readded({ avatar: REF })]);
 			const { container } = renderHistory();
 			await waitFor(() => expect(screen.getByText("现在的抖音号")).toBeTruthy());
 			expect(container.querySelector(`img[src="/api/images/${REF}"]`)).not.toBeNull();
 		});
 
-		it("B 站行有快照 → 用快照,不用订阅现在的网址", async () => {
+		it("拓展行有头像快照(图库引用)→ 用快照,不用订阅现在的头像", async () => {
+			mockApi([extRow({ avatarSnapshot: SNAPSHOT })], [readded({ avatar: REF })]);
+			const { container } = renderHistory();
+			await waitFor(() => expect(screen.getByText("现在的抖音号")).toBeTruthy());
+			expect(container.querySelector(`img[src="/api/images/${SNAPSHOT}"]`)).not.toBeNull();
+			expect(container.querySelector(`img[src="/api/images/${REF}"]`)).toBeNull();
+		});
+
+		it("过了保留期的行不用头像快照(图可能已被清扫收走)→ 订阅现在的头像", async () => {
 			mockApi(
-				[
-					row({
-						subscriptionId: "s-bili",
-						nameSnapshot: undefined,
-						uavatarSnapshot: "https://i0.hdslb.com/old.jpg",
-					}),
-				],
+				[extRow({ avatarSnapshot: SNAPSHOT, isPastRetention: true })],
+				[readded({ avatar: REF })],
+			);
+			const { container } = renderHistory();
+			await waitFor(() => expect(screen.getByText("现在的抖音号")).toBeTruthy());
+			expect(container.querySelector(`img[src="/api/images/${REF}"]`)).not.toBeNull();
+			expect(container.querySelector(`img[src="/api/images/${SNAPSHOT}"]`)).toBeNull();
+		});
+
+		it("B 站行没有头像快照(服务端不抓 B 站头像)→ 订阅现在的远端网址,不会有旧网址", async () => {
+			mockApi(
+				[row({ subscriptionId: "s-bili", nameSnapshot: undefined, avatarSnapshot: undefined })],
 				[
 					withAvatar(biliSub("s-bili", "u1", "某B站UP"), {
 						avatarUrl: "https://i0.hdslb.com/new.jpg",
@@ -320,8 +380,7 @@ describe("推送历史 · 拓展行", () => {
 			);
 			const { container } = renderHistory();
 			await waitFor(() => expect(screen.getByText("某B站UP")).toBeTruthy());
-			expect(container.querySelector('img[src="https://i0.hdslb.com/old.jpg"]')).not.toBeNull();
-			expect(container.querySelector('img[src="https://i0.hdslb.com/new.jpg"]')).toBeNull();
+			expect(container.querySelector('img[src="https://i0.hdslb.com/new.jpg"]')).not.toBeNull();
 		});
 
 		it("B 站行没有快照 → 订阅现在的远端网址", async () => {
@@ -414,7 +473,12 @@ describe("推送历史 · 平台徽章", () => {
 	it("B 站行没有平台徽章:只有类型与状态那两枚", async () => {
 		// 单条、已送达:没有「N 条」那颗展开胶囊,徽章只剩类型与状态。
 		mockApi(
-			[row({ status: "delivered", messages: [{ text: "下播了", role: "main", ok: true }] })],
+			[
+				row({
+					status: "delivered",
+					messages: [{ text: "下播了", kind: "text", role: "main", ok: true }],
+				}),
+			],
 			[],
 			[DOUYIN],
 		);

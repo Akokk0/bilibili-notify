@@ -61,7 +61,7 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "sub1",
 		targetId: "t1",
-		messages: [{ text: "x", role: "main", ok: true }],
+		messages: [{ text: "x", kind: "text", role: "main", ok: true }],
 		...over,
 	};
 }
@@ -281,7 +281,9 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 
 		it("重复 id:dedup(保留最新一份在顶部)", () => {
 			const v1 = pushView("h1");
-			const v1Repeat = pushView("h1", { messages: [{ text: "updated", role: "main", ok: true }] });
+			const v1Repeat = pushView("h1", {
+				messages: [{ text: "updated", kind: "text", role: "main", ok: true }],
+			});
 			const v2 = pushView("h2");
 			handlePushEnvelope(
 				env({ type: "push-events", event: "history-recorded", data: v1 }),
@@ -332,8 +334,8 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			const updated = pushView("h1", {
 				status: "partial",
 				messages: [
-					{ text: "x", role: "main", ok: true },
-					{ text: "词云", role: "extra", ok: false },
+					{ text: "x", kind: "text", role: "main", ok: true },
+					{ text: "词云", kind: "text", role: "extra", ok: false },
 				],
 			});
 			handlePushEnvelope(

@@ -29,6 +29,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import {
 	deferred,
 	makeTrackingContext,
@@ -65,11 +66,18 @@ const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-runner-"));
 	const log = logger();
-	repush = createRepushStore({ dataRoot: dataDir, logger: log });
+	const images = makeHistoryImages(dataDir);
+	repush = createRepushStore({
+		dataRoot: dataDir,
+		logger: log,
+		images: images.repushImages,
+		imageStore: images.imageStore,
+	});
 	history = createHistoryStore({
 		dataRoot: dataDir,
 		bus: createNodeMessageBus(),
 		logger: log,
+		images: images.historyImages,
 		repush,
 	});
 	sent = [];

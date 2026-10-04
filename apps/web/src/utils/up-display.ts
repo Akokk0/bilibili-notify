@@ -4,6 +4,7 @@
  * helpers 原地转口,页面侧引用点不用改。
  */
 
+import type { HistoryEntryView } from "@bilibili-notify/contract";
 import type { HistoryRowIdentity } from "@bilibili-notify/internal";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -12,6 +13,7 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "../types/domain";
+import { imageUrl } from "./image-url";
 
 /** 这个身份是拓展来的吗:来源键不是 B 站。订阅与历史行共用这一个判断。 */
 export function isExtensionIdentity(identity: Identity): boolean {
@@ -38,8 +40,23 @@ export function displayName(sub: Subscription): string {
 export function profileAvatarSrc(
 	profile: { avatar?: string; avatarUrl?: string } | undefined,
 ): string | undefined {
-	if (profile?.avatar) return `/api/images/${encodeURIComponent(profile.avatar)}`;
+	if (profile?.avatar) return imageUrl(profile.avatar);
 	return profile?.avatarUrl || undefined;
+}
+
+/**
+ * 历史行上 UP 的头像地址(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):行写入那一刻的头像快照(图库引用,只有拓展行有)优先;
+ * 没有快照(B 站行,抓图服务在 3a)就退到订阅**现在**的头像({@link profileAvatarSrc}),再没有就是 `undefined`(头像件画首字)。
+ *
+ * **过了保留期的行不用快照**:那几天的行已经不是图库的引用方,图随时可能被清扫收走,用它就是一张裂图;
+ * 退到订阅现在的头像更稳。Dashboard 与历史页的行都走这一个。
+ */
+export function historyRowAvatarSrc(
+	row: Pick<HistoryEntryView, "avatarSnapshot" | "isPastRetention">,
+	profile: { avatar?: string; avatarUrl?: string } | undefined,
+): string | undefined {
+	if (row.avatarSnapshot && !row.isPastRetention) return imageUrl(row.avatarSnapshot);
+	return profileAvatarSrc(profile);
 }
 
 /**

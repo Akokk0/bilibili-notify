@@ -64,7 +64,7 @@ describe("挂在页面上的相对时间会走", () => {
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 			subscriptionId: "s1",
 			targetId: T1,
-			messages: [{ text: "开播了", role: "main", ok: true }],
+			messages: [{ text: "开播了", kind: "text", role: "main", ok: true }],
 			nameSnapshot: "某UP",
 		};
 		vi.mocked(api.get).mockImplementation(async (path: string) => {

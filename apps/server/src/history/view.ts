@@ -3,7 +3,8 @@ import type { HistoryEntry } from "@bilibili-notify/internal";
 
 /**
  * HistoryEntry → wire view。REST 列表与 WS 两个事件共用这一处投影 —— 面板上的行、
- * 小卡、时间线读的是同一个形状,不外泄 payload.kind / latency 这些内部字段。
+ * 小卡、时间线读的是同一个形状,不外泄 latency 这些内部字段。消息的 `kind` 是例外:过了保留期的老行图格被迁移
+ * 拿掉后,面板要靠它知道「这条本来是图」才写得出「图已清理」。
  */
 export function toHistoryView(
 	entry: HistoryEntry,
@@ -28,12 +29,13 @@ export function toHistoryView(
 		targetId: entry.targetId,
 		messages: entry.messages.map((m) => ({
 			text: m.payload.text,
-			imageRef: m.payload.imageRef,
+			kind: m.payload.kind,
+			image: m.payload.image,
 			role: m.role,
 			...(m.repushOf !== undefined ? { repushOf: m.repushOf } : {}),
 			...(m.result ? { ok: m.result.ok, err: m.result.err } : {}),
 		})),
 		nameSnapshot: entry.nameSnapshot,
-		uavatarSnapshot: entry.uavatarSnapshot,
+		avatarSnapshot: entry.avatarSnapshot,
 	};
 }

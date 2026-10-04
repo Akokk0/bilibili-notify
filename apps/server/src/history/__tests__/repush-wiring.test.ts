@@ -21,6 +21,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
+import { distinctPng } from "../../__tests__/support/chat-images.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
+import type { ImageWriter } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createRepushStore, type RepushStore } from "../repush-store.js";
 import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
@@ -28,6 +32,7 @@ import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../
 let dataDir: string;
 let store: HistoryStore;
 let repush: RepushStore;
+let historyImages: ImageWriter;
 
 const SUB = randomUUID();
 const T1 = randomUUID();
@@ -37,8 +42,21 @@ const FAIL = { ok: false, latencyMs: 7, err: "boom" };
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-repush-wire-"));
 	const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-	repush = createRepushStore({ dataRoot: dataDir, logger });
-	store = createHistoryStore({ dataRoot: dataDir, bus: createNodeMessageBus(), logger, repush });
+	const images = makeHistoryImages(dataDir);
+	historyImages = images.historyImages;
+	repush = createRepushStore({
+		dataRoot: dataDir,
+		logger,
+		images: images.repushImages,
+		imageStore: images.imageStore,
+	});
+	store = createHistoryStore({
+		dataRoot: dataDir,
+		bus: createNodeMessageBus(),
+		logger,
+		images: historyImages,
+		repush,
+	});
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -104,6 +122,42 @@ describe("record → 原件", () => {
 		expect(draft?.messages[0]?.payload).toEqual(payload);
 	});
 
+	/**
+	 * 带图的行:历史行记第一张、原件里每一张都在图库里 —— 两边指着同一个引用(同字节同文件),
+	 * 原件读回来的字节与当时发出去的一模一样。重推再 append 同一张图也不会多一个文件。
+	 */
+	it("带图的行:历史与原件引用同一张图,原件读得回原字节", async () => {
+		const entry = await store.record(
+			input({
+				messages: [
+					{
+						payload: { kind: "image", image: { buffer: PNG_BYTES, mime: "image/png" } },
+						role: "main",
+						result: FAIL,
+					},
+				],
+			}),
+		);
+		const ref = entry.messages[0]?.payload.image;
+		expect(ref).toBeDefined();
+		const draft = await repush.load(entry.id, entry.createdAt, 1);
+		const p = draft?.messages[0]?.payload;
+		if (p?.kind !== "image") throw new Error("kind");
+		expect(new Uint8Array(p.image.buffer)).toEqual(new Uint8Array(PNG_BYTES));
+		expect(await readdir(join(dataDir, "images"))).toEqual([ref]);
+
+		// 人工重推补第二条(另一张图):原件长出第二个引用,第一张还是同一个文件。
+		const merged = await store.appendToRow(entry.id, entry.createdAt, [
+			{
+				payload: { kind: "image", image: { buffer: distinctPng(7), mime: "image/png" } },
+				role: "extra",
+				repushOf: 0,
+			},
+		]);
+		expect(merged?.messages).toHaveLength(2);
+		expect(await readdir(join(dataDir, "images"))).toHaveLength(2);
+	});
+
 	it("无目标行不留原件 —— 按钮本来就不给它", async () => {
 		const entry = await store.record(
 			input({ targetId: null, messages: [{ payload: text("卡片"), role: "main" }] }),
@@ -117,6 +171,7 @@ describe("record → 原件", () => {
 			dataRoot: dataDir,
 			bus: createNodeMessageBus(),
 			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+			images: historyImages,
 		});
 		const entry = await bare.record(input());
 		expect(entry.status).toBe("delivered");

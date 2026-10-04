@@ -21,6 +21,7 @@ import type {
 	FailureCode,
 	FansRefreshEntry,
 	FeatureKey,
+	HistoryPayload,
 	Identity,
 	ImageRef,
 	Issue,
@@ -498,7 +499,13 @@ interface SubscriptionRuntimeDTO {
 /** 一行历史里的一条消息:文案 / 图 / 这条对这个目标的结果。无目标行没有 `ok`。 */
 export interface HistoryMessageView {
 	text?: string;
-	imageRef?: string;
+	/**
+	 * 这条消息本来是哪一类(纯文字 / 一张图 / 图文混合)。过了保留期的老行,迁移时图格被拿掉了(`image` 缺着),
+	 * 面板靠 `kind === "image"` 在原来画图的位置写「图已清理」;`image` 在则同样算有图。
+	 */
+	kind: HistoryPayload["kind"];
+	/** 这条消息的配图(图库引用),面板从 `/api/images/<ref>` 取。composite 只有第一张。缺着 = 没有、或图库没收下、或迁移时已拿掉。 */
+	image?: ImageRef;
 	role: PushMessageRole;
 	ok?: boolean;
 	err?: string;
@@ -531,11 +538,12 @@ export interface HistoryEntryView {
 	/** 首条本体是面板上显示的文案;其余展开看。 */
 	messages: HistoryMessageView[];
 	/**
-	 * 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。拓展行这一片仍只有名字、没有头像
-	 * (决策 74;头像快照这一格归 ⑳d,届时改成图库引用 `avatarSnapshot`,拓展行才开始有)。
+	 * 写入时 snapshot 的 UP 主名称 / 头像;老 entry 无此字段。头像快照是图库引用,只有拓展行有(B 站行缺着,
+	 * 抓图服务在 3a):面板对缺着的退到订阅现在的头像、再退到首字;对**过了保留期**的行也不用它(那几天的行已经不是
+	 * 图库的引用方,图随时可能被清扫收走)。
 	 */
 	nameSnapshot?: string;
-	uavatarSnapshot?: string;
+	avatarSnapshot?: ImageRef;
 	/**
 	 * 这一行能不能人工补一次(ADR-0017)。**缺省 = 没问过** —— 列表只为失败 / 部分失败
 	 * 的行问(每问一次是一次 stat),而 WS 推来的新行一律不带;面板对缺省按「能补」

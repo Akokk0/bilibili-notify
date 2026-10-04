@@ -2,32 +2,51 @@
  * 单元测试 — `startHistoryRetention`(推送历史的保留:文字不删,图与重推原件按天数清)。
  *
  * 守护契约:
- *   - 到期的日子(date < UTC 截止日)只清图与重推原件,日文件(文字)一份都不删;今天的不动
- *   - 清到哪一天记成水位线 `history/retention.json`,只往前走;水位线及以前的日子不重扫
- *   - 某一天的日文件读不出来不拦别的到期日
+ *   - 到期的日子(date < UTC 截止日)只清重推原件,日文件(文字)一份都不删;今天的不动。**清扫不碰图**(⑳d):图在图库里,
+ *     水位线推过去以后那几天的行不再是引用方,同一轮末尾的图库清扫按引用收走
+ *   - 清到哪一天记成水位线 `history/retention.json`,只往前走
+ *   - 某一天的原件目录清不动不拦别的到期日,水位线照推
  *   - 启动即跑一次 runOnce(无需等定时器)
  *   - 返回值即 serviceCtx.setInterval 的 handle
  *   - **重推原件跟着同一个 cutoff 走**(ADR-0017 决策 4:一个数管两处)
+ *   - `listHistoryImageRefs`:历史这一家引用方只数水位线之后的日文件(本体行、补丁行、头像快照),读不了就抛
  *
- * runOnce 经 ./store.js 的 listDayFiles/deleteDayImages 真实读写 tmpdir。
+ * runOnce 经 ./store.js 的 listDayFiles 与 ./repush-store.js 的 dropRepushDay 真实读写 tmpdir。
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
+import { distinctPng } from "../../__tests__/support/chat-images.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import {
 	deferred,
 	makeTrackingContext,
 	stillPending,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
-import type { ImageStore } from "../../images/image-store.js";
-import { createRepushStore, listRepushDays, type RepushStore } from "../repush-store.js";
-import { readClearedThrough, startHistoryRetention } from "../retention.js";
+import { IMAGE_GRACE_MS, type ImageStore } from "../../images/image-store.js";
+import { createRepushStore, listRepushDays } from "../repush-store.js";
+import { listHistoryImageRefs, readClearedThrough, startHistoryRetention } from "../retention.js";
 import { listDayFiles } from "../store.js";
+
+// 清一天原件目录的那一步套一层钩子:登记进 track 的测试要卡住它、失败的测试要让它抛。真的删照做。
+const dropHook = vi.hoisted(() => ({
+	before: undefined as undefined | ((day: string) => Promise<void>),
+}));
+vi.mock("../repush-store.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../repush-store.js")>();
+	return {
+		...actual,
+		dropRepushDay: async (dataRoot: string, day: string) => {
+			await dropHook.before?.(day);
+			return actual.dropRepushDay(dataRoot, day);
+		},
+	};
+});
 
 function makeLogger() {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
@@ -44,6 +63,7 @@ let imageStore: { sweep: Mock<ImageStore["sweep"]> };
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-ret-"));
+	dropHook.before = undefined;
 	logger = makeLogger();
 	intervalHandle = { dispose: vi.fn() };
 	setInterval_ = vi.fn(() => intervalHandle);
@@ -56,7 +76,10 @@ beforeEach(async () => {
 		}),
 	};
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(async () => {
+	vi.restoreAllMocks();
+	await rm(dataDir, { recursive: true, force: true });
+});
 
 function makeStore(retentionDays: number) {
 	return {
@@ -64,20 +87,24 @@ function makeStore(retentionDays: number) {
 	};
 }
 
-function start(days: number, intervalMs?: number, repush?: RepushStore, now?: Date) {
+function start(
+	days: number,
+	intervalMs?: number,
+	now?: Date,
+	images: Pick<ImageStore, "sweep"> = imageStore,
+) {
 	return startHistoryRetention({
 		serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 		store: makeStore(days) as never,
 		dataRoot: dataDir,
-		images: imageStore,
+		images,
 		logger,
 		intervalMs,
-		repush,
 		now: now ? () => now : undefined,
 	});
 }
 
-/** 一行带一张图的历史(图名 `ref`)。 */
+/** 一行带一张图的历史(图库引用 `ref`)。 */
 function imageRow(id: string, ref: string, createdAt: string): string {
 	return `${JSON.stringify({
 		id,
@@ -90,7 +117,7 @@ function imageRow(id: string, ref: string, createdAt: string): string {
 		status: "delivered",
 		messages: [
 			{
-				payload: { kind: "image", text: "x", imageRef: ref },
+				payload: { kind: "image", text: "x", image: ref },
 				role: "main",
 				result: { ok: true, latencyMs: 1 },
 			},
@@ -98,17 +125,17 @@ function imageRow(id: string, ref: string, createdAt: string): string {
 	})}\n`;
 }
 
-/** 造一天的历史:一行、一张图。 */
+/** 造一天的历史:一行,引用图库里的 `ref`(这里不真放图,只看谁引用谁)。 */
 async function seedDay(day: string, ref: string): Promise<void> {
-	await mkdir(join(dataDir, "history", "img"), { recursive: true });
+	await mkdir(join(dataDir, "history"), { recursive: true });
 	await writeFile(
 		join(dataDir, "history", `${day}.jsonl`),
 		imageRow(randomUUID(), ref, `${day}T08:00:00.000Z`),
 	);
-	await writeFile(join(dataDir, "history", "img", ref), "图");
 }
 
-const images = async () => (await readdir(join(dataDir, "history", "img"))).sort();
+/** 第 `n` 张互不相同的图库引用(摘要不同,形状对)。 */
+const refOf = (n: number) => `${n.toString(16).padStart(64, "0")}.png`;
 
 async function writeMark(text: string): Promise<void> {
 	await mkdir(join(dataDir, "history"), { recursive: true });
@@ -117,10 +144,14 @@ async function writeMark(text: string): Promise<void> {
 
 /** 造一份某一天的重推原件。 */
 async function seedDraft(day: string): Promise<void> {
-	const repush = createRepushStore({ dataRoot: dataDir, logger });
-	await repush.append(`row-${day}`, day, [
-		{ payload: { kind: "text", text: "x" }, role: "main", reduced: { kind: "text" } },
-	]);
+	const images = makeHistoryImages(dataDir);
+	const repush = createRepushStore({
+		dataRoot: dataDir,
+		logger,
+		images: images.repushImages,
+		imageStore: images.imageStore,
+	});
+	await repush.append(`row-${day}`, day, [{ payload: { kind: "text", text: "x" }, role: "main" }]);
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -131,14 +162,11 @@ describe("startHistoryRetention — 登记进 track", () => {
 		await seedDraft("2000-01-01");
 		const release = deferred();
 		const dropped: string[] = [];
-		const repush = {
-			dropDay: async (day: string) => {
-				await release.promise;
-				dropped.push(day);
-			},
-		} as unknown as RepushStore;
-
-		start(30, undefined, repush);
+		dropHook.before = async (day) => {
+			await release.promise;
+			dropped.push(day);
+		};
+		start(30);
 
 		expect(ctx.tracked).toHaveLength(1);
 		expect(await stillPending(ctx.settled())).toBe(true);
@@ -151,12 +179,10 @@ describe("startHistoryRetention — 登记进 track", () => {
 	it("定时那一轮:同样登记,原件删完它才落定", async () => {
 		const release = deferred();
 		const dropped: string[] = [];
-		const repush = {
-			dropDay: async (day: string) => {
-				await release.promise;
-				dropped.push(day);
-			},
-		} as unknown as RepushStore;
+		dropHook.before = async (day) => {
+			await release.promise;
+			dropped.push(day);
+		};
 		// 开机那一轮盘上什么都没有,只把水位线记到 05-15;过了一天又有一天到期(05-16),定时那一轮去清它。
 		let clock = new Date("2026-06-15T12:00:00.000Z");
 		startHistoryRetention({
@@ -165,7 +191,6 @@ describe("startHistoryRetention — 登记进 track", () => {
 			dataRoot: dataDir,
 			images: imageStore,
 			logger,
-			repush,
 			now: () => clock,
 		});
 		await ctx.settled();
@@ -208,7 +233,7 @@ describe("图库清扫挂在同一个活上", () => {
 	// ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗:先推水位线、紧接着清图库 —— 过期的行不再算引用方,图才清得掉。
 	it("水位线推完才清图库,用的是同一个此刻", async () => {
 		const now = new Date("2026-06-15T12:00:00.000Z");
-		start(30, undefined, undefined, now);
+		start(30, undefined, now);
 		await ctx.settled();
 
 		expect(imageSweeps).toEqual([{ now, clearedThrough: "2026-05-15" }]);
@@ -267,7 +292,7 @@ describe("图库清扫挂在同一个活上", () => {
 });
 
 describe("startHistoryRetention", () => {
-	// 文字不设上限(ADR-0022 决策 9):到期只清图与重推原件,日文件一份都不删。
+	// 文字不设上限(ADR-0022 决策 9):到期只清重推原件(图归图库的清扫),日文件一份都不删。
 	it("到期的日子:日文件留着(文字不删),今天的也在", async () => {
 		await mkdir(join(dataDir, "history"), { recursive: true });
 		await writeFile(join(dataDir, "history", "2000-01-01.jsonl"), "old\n");
@@ -279,13 +304,28 @@ describe("startHistoryRetention", () => {
 		expect(files).toContain(`${today}.jsonl`);
 	});
 
-	it("某一天的日文件读不出来(同名是目录):不拦别的到期日,它们的图照清", async () => {
-		await mkdir(join(dataDir, "history"), { recursive: true });
-		await mkdir(join(dataDir, "history", "1999-01-01.jsonl"));
-		await seedDay("1999-01-02", "old.png");
+	// 清扫不再读日文件(从前要读它们数引用的图):日文件坏了、同名是目录,照样清原件、推水位线。
+	it("日文件读不出来(同名是目录)也不碍事:到期日的原件照清", async () => {
+		await mkdir(join(dataDir, "history", "1999-01-01.jsonl"), { recursive: true });
+		await seedDraft("1999-01-02");
 		start(30);
 		await ctx.settled();
-		expect(await images()).toEqual([]);
+		expect(await listRepushDays(dataDir)).toEqual([]);
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("某一天的原件目录清不动:记一条 warn、不拦别的到期日,水位线照推", async () => {
+		await seedDraft("1999-01-01");
+		await seedDraft("1999-01-02");
+		dropHook.before = async (day) => {
+			if (day === "1999-01-01") throw new Error("清不动");
+		};
+		start(30, undefined, new Date("2026-06-15T12:00:00.000Z"));
+		await ctx.settled();
+
+		expect(await listRepushDays(dataDir)).toEqual(["1999-01-01"]);
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("1999-01-01"));
+		expect(await readClearedThrough(dataDir)).toBe("2026-05-15");
 	});
 
 	/**
@@ -296,106 +336,11 @@ describe("startHistoryRetention", () => {
 	it("旧日子的重推原件到期就清,今天的留着", async () => {
 		await seedDraft("2000-01-01");
 		await seedDraft(today);
-		start(30, undefined, createRepushStore({ dataRoot: dataDir, logger }));
+		start(30);
 		await vi.waitFor(async () => {
 			const days = await listRepushDays(dataDir);
 			expect(days).not.toContain("2000-01-01");
 			expect(days).toContain(today);
-		});
-	});
-
-	/**
-	 * **日文件一删,它引用的图也得走。**
-	 *
-	 * 从前 `deleteDayFile` 只 `unlink` 那份 jsonl —— 图留在 `history/img/` 里,而**再没有
-	 * 任何人知道它们归谁**(文件名是 `<行 id>-<序号>`,行 id 不带日期,日文件没了就无从对表)。
-	 * 症状是盘上那个目录只涨不消:保留期 30 天,卡片图一张几百 KB,一年下来是实打实的几个 G,
-	 * 而面板上一张都看不到。
-	 *
-	 * 顺序是**先收集、再删 jsonl、最后删图**:中途崩了顶多剩几张孤儿图(和从前一样),
-	 * 而反过来会留下一份图全裂的历史。
-	 */
-	it("旧日文件里引用的图跟着一起清掉,今天的图不动", async () => {
-		await mkdir(join(dataDir, "history", "img"), { recursive: true });
-		const row = (id: string, ref: string, createdAt: string) =>
-			`${JSON.stringify({
-				id,
-				pushId: id,
-				createdAt,
-				feature: "post",
-				identity: { sourceKey: "bilibili", externalId: "u1" },
-				subscriptionId: "11111111-1111-4111-8111-111111111111",
-				targetId: "22222222-2222-4222-8222-222222222222",
-				status: "delivered",
-				messages: [
-					{
-						payload: { kind: "image", text: "x", imageRef: ref },
-						role: "main",
-						result: { ok: true, latencyMs: 1 },
-					},
-				],
-			})}\n`;
-		const OLD_ID = "33333333-3333-4333-8333-333333333333";
-		const NEW_ID = "44444444-4444-4444-8444-444444444444";
-		await writeFile(
-			join(dataDir, "history", "2000-01-01.jsonl"),
-			row(OLD_ID, "old.png", "2000-01-01T00:00:00.000Z"),
-		);
-		await writeFile(
-			join(dataDir, "history", `${today}.jsonl`),
-			row(NEW_ID, "new.png", `${today}T00:00:00.000Z`),
-		);
-		await writeFile(join(dataDir, "history", "img", "old.png"), "旧图");
-		await writeFile(join(dataDir, "history", "img", "new.png"), "新图");
-
-		start(30);
-		await vi.waitFor(async () => {
-			const imgs = await readdir(join(dataDir, "history", "img"));
-			expect(imgs).not.toContain("old.png");
-			expect(imgs).toContain("new.png");
-		});
-		// 图清了,那一天的文字还在。
-		expect(await listDayFiles(dataDir)).toContain("2000-01-01.jsonl");
-	});
-
-	// 补丁行里的图也是这一天的 —— 它们跟本体行分在两条 jsonl 行上,漏掉就是半份孤儿。
-	it("补丁行引用的图也一起清掉", async () => {
-		await mkdir(join(dataDir, "history", "img"), { recursive: true });
-		const ID = "55555555-5555-4555-8555-555555555555";
-		const base = JSON.stringify({
-			id: ID,
-			pushId: ID,
-			createdAt: "2000-01-01T00:00:00.000Z",
-			feature: "post",
-			identity: { sourceKey: "bilibili", externalId: "u1" },
-			subscriptionId: "11111111-1111-4111-8111-111111111111",
-			targetId: "22222222-2222-4222-8222-222222222222",
-			status: "delivered",
-			messages: [
-				{
-					payload: { kind: "text", text: "卡片" },
-					role: "main",
-					result: { ok: true, latencyMs: 1 },
-				},
-			],
-		});
-		const patch = JSON.stringify({
-			rowId: ID,
-			status: "delivered",
-			messages: [
-				{
-					payload: { kind: "image", text: "词云", imageRef: "cloud.png" },
-					role: "extra",
-					result: { ok: true, latencyMs: 1 },
-				},
-			],
-		});
-		await writeFile(join(dataDir, "history", "2000-01-01.jsonl"), `${base}\n${patch}\n`);
-		await writeFile(join(dataDir, "history", "img", "cloud.png"), "词云图");
-
-		start(30);
-		await vi.waitFor(async () => {
-			expect(await readdir(join(dataDir, "history", "img"))).not.toContain("cloud.png");
 		});
 	});
 
@@ -408,72 +353,207 @@ describe("startHistoryRetention", () => {
 });
 
 /**
- * **图清到哪一天,记一条水位线**(ADR-0022 决策 9 下 10-04 的 🔗):`history/retention.json` 的 `clearedThrough`
- * 是 UTC 日、含当天,只往前走。文字不删以后日文件永远在,不记的话每一轮都得把所有到期的日文件重新解析一遍;
- * 面板上「图已清理」也按它判 —— 按行龄现算的话,天数一调大,已经清掉的行就会说自己还有图。
+ * **图清没清按一条水位线判,图本身由图库的按引用清扫收走**(ADR-0022 决策 9 下 10-04 的 🔗):
+ * `history/retention.json` 的 `clearedThrough` 是 UTC 日、含当天,只往前走。文字不删以后日文件永远在,不记的话每一轮都得
+ * 把所有到期的日文件重新解析一遍;面板上「图已清理」也按它判 —— 按行龄现算的话,天数一调大,已经清掉的行就会说自己还有图。
  */
 describe("水位线", () => {
 	// 保留 30 天、此刻 06-15:截止日是 05-16,05-15 及以前到期。
 	const NOW = new Date("2026-06-15T12:00:00.000Z");
 	const mark = (day: string) => JSON.stringify({ clearedThrough: day });
 
-	it("清完把水位线记到截止日的前一天", async () => {
-		await seedDay("2026-05-15", "expired.png");
-		await seedDay("2026-05-16", "kept.png");
-		start(30, undefined, undefined, NOW);
+	it("清完把水位线记到截止日的前一天,到期那几天的原件目录没了", async () => {
+		await seedDraft("2026-05-15");
+		await seedDraft("2026-05-16");
+		start(30, undefined, NOW);
 		await ctx.settled();
-		expect(await images()).toEqual(["kept.png"]);
+		expect(await listRepushDays(dataDir)).toEqual(["2026-05-16"]);
 		expect(await readClearedThrough(dataDir)).toBe("2026-05-15");
 	});
 
-	it("只扫水位线之后的日子:以前清过的那几天不重读", async () => {
-		await seedDay("2026-05-08", "before-mark.png");
-		await seedDay("2026-05-12", "after-mark.png");
-		await writeMark(mark("2026-05-10"));
-		start(30, undefined, undefined, NOW);
-		await ctx.settled();
-		expect(await images()).toEqual(["before-mark.png"]);
-		expect(await readClearedThrough(dataDir)).toBe("2026-05-15");
-	});
-
-	it("天数调大:水位线不后退,什么都不删", async () => {
-		await seedDay("2026-05-20", "recent.png");
+	it("天数调大:水位线不后退,什么都不清", async () => {
+		await seedDraft("2026-05-20");
 		await writeMark(mark("2026-05-15"));
-		start(60, undefined, undefined, NOW);
+		start(60, undefined, NOW);
 		await ctx.settled();
-		expect(await images()).toEqual(["recent.png"]);
+		expect(await listRepushDays(dataDir)).toEqual(["2026-05-20"]);
 		expect(await readClearedThrough(dataDir)).toBe("2026-05-15");
 	});
 
 	it("天数调小:水位线往前推,新到期的那几天清掉", async () => {
-		await seedDay("2026-06-01", "newly-expired.png");
-		await seedDay("2026-06-10", "still-kept.png");
+		await seedDraft("2026-06-01");
+		await seedDraft("2026-06-10");
 		await writeMark(mark("2026-05-15"));
 		// 保留 7 天:截止日 06-08,06-07 及以前到期。
-		start(7, undefined, undefined, NOW);
+		start(7, undefined, NOW);
 		await ctx.settled();
-		expect(await images()).toEqual(["still-kept.png"]);
+		expect(await listRepushDays(dataDir)).toEqual(["2026-06-10"]);
 		expect(await readClearedThrough(dataDir)).toBe("2026-06-07");
 	});
 
-	it("重推原件跟着同一条水位线:到期那几天的原件目录一起清", async () => {
-		await seedDraft("2026-05-15");
-		await seedDraft("2026-05-16");
-		start(30, undefined, createRepushStore({ dataRoot: dataDir, logger }), NOW);
-		await ctx.settled();
-		expect(await listRepushDays(dataDir)).toEqual(["2026-05-16"]);
-	});
-
 	it("水位线文件读不懂:当成还没清过,清完写回好的", async () => {
-		await seedDay("2026-05-01", "expired.png");
+		await seedDraft("2026-05-01");
 		await writeMark("{坏的");
-		start(30, undefined, undefined, NOW);
+		start(30, undefined, NOW);
 		await ctx.settled();
-		expect(await images()).toEqual([]);
+		expect(await listRepushDays(dataDir)).toEqual([]);
 		expect(await readClearedThrough(dataDir)).toBe("2026-05-15");
 	});
 
 	it("没有水位线文件:读回 undefined", async () => {
 		expect(await readClearedThrough(dataDir)).toBeUndefined();
+	});
+});
+
+/**
+ * **历史这一家图库引用方**:保留期内——水位线之后——的日文件里所有消息的 `image` 与行的 `avatarSnapshot`,本体行与
+ * 补丁行都数。过了水位线的行不算,否则水位线白推、图永远清不掉。
+ */
+describe("listHistoryImageRefs — 历史这一家的名单", () => {
+	const mark = (day: string) => JSON.stringify({ clearedThrough: day });
+	const ID = "55555555-5555-4555-8555-555555555555";
+
+	it("只数水位线之后的日文件:水位线及以前的行不算引用方", async () => {
+		await seedDay("2026-05-14", refOf(1));
+		await seedDay("2026-05-15", refOf(2));
+		await seedDay("2026-05-16", refOf(3));
+		await seedDay("2026-05-17", refOf(4));
+		await writeMark(mark("2026-05-15"));
+
+		expect((await listHistoryImageRefs(dataDir)).sort()).toEqual([refOf(3), refOf(4)].sort());
+	});
+
+	it("没有水位线(或读不懂)当成没清过:全数,宁多勿少", async () => {
+		await seedDay("2026-05-14", refOf(1));
+		await seedDay("2026-05-16", refOf(2));
+		expect((await listHistoryImageRefs(dataDir)).sort()).toEqual([refOf(1), refOf(2)].sort());
+		await writeMark("{坏的");
+		expect(await listHistoryImageRefs(dataDir)).toHaveLength(2);
+	});
+
+	it("补丁行里的图、行的头像快照也数", async () => {
+		const base = JSON.stringify({
+			id: ID,
+			pushId: ID,
+			createdAt: "2026-05-16T00:00:00.000Z",
+			feature: "post",
+			identity: { sourceKey: "douyin", externalId: "u1" },
+			subscriptionId: "11111111-1111-4111-8111-111111111111",
+			targetId: "22222222-2222-4222-8222-222222222222",
+			status: "delivered",
+			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main" }],
+			avatarSnapshot: refOf(7),
+		});
+		const patch = JSON.stringify({
+			rowId: ID,
+			status: "delivered",
+			messages: [{ payload: { kind: "image", text: "词云", image: refOf(8) }, role: "extra" }],
+		});
+		await mkdir(join(dataDir, "history"), { recursive: true });
+		await writeFile(join(dataDir, "history", "2026-05-16.jsonl"), `${base}\n${patch}\n`);
+		await writeMark(mark("2026-05-15"));
+
+		expect((await listHistoryImageRefs(dataDir)).sort()).toEqual([refOf(7), refOf(8)].sort());
+	});
+
+	it("保留期内的日文件读不动(同名是目录):抛,图库清扫这一轮一张不删", async () => {
+		await mkdir(join(dataDir, "history", "2026-05-16.jsonl"), { recursive: true });
+		await writeMark(mark("2026-05-15"));
+		await expect(listHistoryImageRefs(dataDir)).rejects.toThrow();
+		// 过了水位线的那份读不动没关系:不数它。
+		await rm(join(dataDir, "history", "2026-05-16.jsonl"), { recursive: true });
+		await mkdir(join(dataDir, "history", "2026-05-14.jsonl"), { recursive: true });
+		await expect(listHistoryImageRefs(dataDir)).resolves.toEqual([]);
+	});
+
+	it("没有历史目录 → 空", async () => {
+		expect(await listHistoryImageRefs(dataDir)).toEqual([]);
+	});
+});
+
+/**
+ * **接线:水位线一推,图库的清扫才收得走只被那几天的行引用的图**(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗)。
+ * 真图库 + 真登记的两家引用方(历史、重推原件),一轮 `runOnce` 先推水位线、紧接着清图库。
+ */
+describe("保留期 → 图库清扫", () => {
+	// 保留 30 天、此刻 06-15:05-15 及以前到期。清扫的时钟拨到宽限期之后(图都是刚存的)。
+	const NOW = new Date("2026-06-15T12:00:00.000Z");
+	const SWEEP_NOW = new Date(Date.now() + IMAGE_GRACE_MS + 60 * 60 * 1000);
+	let library: ReturnType<typeof makeHistoryImages>;
+
+	beforeEach(() => {
+		library = makeHistoryImages(dataDir);
+	});
+
+	/** 往图库放第 `n` 张图并让某一天的一行引用它,回引用。 */
+	async function seedRowWithImage(day: string, n: number): Promise<string> {
+		const stored = await library.historyImages.put(distinctPng(n));
+		if (!stored.ok) throw new Error(stored.message);
+		await seedDay(day, stored.ref);
+		return stored.ref;
+	}
+
+	/** 跑一轮保留期清扫(历史水位线 + 图库清扫,后者的此刻拨到宽限期之后)。 */
+	async function runRound(): Promise<string[]> {
+		let removed: string[] = [];
+		start(30, undefined, NOW, {
+			sweep: async () => {
+				const report = await library.imageStore.sweep({ now: SWEEP_NOW });
+				removed = report.removed;
+				return report;
+			},
+		});
+		await ctx.settled();
+		return removed;
+	}
+
+	it("只被过了保留期的行引用的图:水位线推过去、这一轮图库清扫就收走,行(文字)还在", async () => {
+		const expired = await seedRowWithImage("2026-05-10", 1);
+		const kept = await seedRowWithImage("2026-06-10", 2);
+
+		const removed = await runRound();
+
+		expect(removed).toEqual([expired]);
+		expect(await readdir(join(dataDir, "images"))).toEqual([kept]);
+		expect(await listDayFiles(dataDir)).toContain("2026-05-10.jsonl");
+	});
+
+	it("同一张图还被保留期内的另一行引用:不删", async () => {
+		const stored = await library.historyImages.put(distinctPng(3));
+		if (!stored.ok) throw new Error(stored.message);
+		await seedDay("2026-05-10", stored.ref);
+		await seedDay("2026-06-10", stored.ref);
+
+		const removed = await runRound();
+
+		expect(removed).toEqual([]);
+		expect(await readdir(join(dataDir, "images"))).toEqual([stored.ref]);
+	});
+
+	it("同一张图还被重推原件引用(原件的日子在保留期内):不删;原件的日目录一没,下一轮才收走", async () => {
+		const stored = await library.historyImages.put(distinctPng(4));
+		if (!stored.ok) throw new Error(stored.message);
+		await seedDay("2026-05-10", stored.ref);
+		const repush = createRepushStore({
+			dataRoot: dataDir,
+			logger,
+			images: library.repushImages,
+			imageStore: library.imageStore,
+		});
+		await repush.append("row-in-retention", "2026-06-10T08:00:00.000Z", [
+			{
+				payload: { kind: "image", image: { buffer: distinctPng(4), mime: "image/png" } },
+				role: "main",
+			},
+		]);
+
+		// 历史那一家这一轮不再引用它(行在 05-10),留住它的只可能是「重推原件」这一家。
+		expect(await runRound()).toEqual([]);
+		expect(await readdir(join(dataDir, "images"))).toEqual([stored.ref]);
+
+		await rm(join(dataDir, "history", "repush"), { recursive: true });
+		expect(await library.imageStore.sweep({ now: SWEEP_NOW })).toMatchObject({
+			removed: [stored.ref],
+		});
 	});
 });

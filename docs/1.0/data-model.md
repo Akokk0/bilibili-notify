@@ -616,7 +616,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `AUTHOR_FIELDS`、挂点 `masterAvatar` / `masterName` | `CREATOR_FIELDS`、`creatorAvatar` / `creatorName` |
 | 直播内部 `MasterInfo` / `masterInfo` / `getMasterInfo` | 删掉：拆进 `Creator`（名字、头像）、`LiveSession.followersAtStart` 与资料的 `fanClubName`，房号留在 `bilibili/` |
 | 直播内部 `masterName` / `masterAvatarUrl` / `LiveMasterFeature` | `creatorName` / `creatorAvatar` / `LiveCreatorFeature` |
-| AI 视图的 `uname`；历史行 `unameSnapshot` / `uavatarSnapshot` | `name`；`nameSnapshot` / `avatarSnapshot`（改装图库引用；旧行存的远端头像地址迁移时丢掉，图缺就画兜底） |
+| AI 视图的 `uname`；历史行 `unameSnapshot` / `uavatarSnapshot` | `name`；`nameSnapshot` / `avatarSnapshot`（⑳d 已落，装图库引用：拓展行写行时抄资料缓存里的 `avatar`、先续期，B 站行缺着到 3a；旧行存的远端头像地址迁移时丢掉，面板退到订阅现在的头像、再退到首字）；消息的配图 `imageRef` → `image`（装图库引用） |
 | 订阅来源的平台名 `platform`（AI 视图、锐评对象） | `sourceLabel` |
 
 **数据字段与平台词。**
@@ -722,7 +722,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `PlatformDescriptor.tint`、`inbound`、`atAll`、`connectors` | `color`；挪成适配器的运行期能力；删掉 |
 | `POST /api/connections/:id/test`；`/api/push/test`；`TestResponse` 与 `TestPushResponse` | `/probe`；`/api/targets/:id/test`；合成一个 |
 | `TargetPlatformSchema`；`isConnectionOn`；拓展契约 `listBots` / `ExtensionBotView` / `boundTo` | `OpenPlatformSchema`；去留施工时定（连接不再分直连 / 拓展，分发按 `adapterKey`）；`listConnectionCandidates(signal)` / `ConnectionCandidate` / `boundConnectionId` |
-| 重推原件 `DraftSchema` / `DRAFT_GONE`、`v`、`own`；`HistoryRecordInput.target`；`countsAsDelivery`（现在 failed 也回 true）；`PushMessageRole` 与 `HistoryMessageRole` | `RepushSnapshot`、`version`、`own` 删掉（图按摘要进图库、按引用清扫，「复用历史那份 / 自己存的」不再有区别）；`NewHistoryEntry.targetId`；改成名副其实的名字，按真实语义起（施工时定）；合成一个。`HistoryEntry` 不改名（它就是日志里的一条） |
+| 重推原件 `DraftSchema` / `DRAFT_GONE`、`v`、`own`；`HistoryRecordInput.target`；`countsAsDelivery`（现在 failed 也回 true）；`PushMessageRole` 与 `HistoryMessageRole` | `RepushSnapshot`、`version`、`own` 与 `mime` 删掉（⑳d 已落：原件图格装图库引用，图按摘要进图库、按引用清扫，「复用历史那份 / 自己存的」不再有区别，格式随引用走）；`NewHistoryEntry.targetId`；改成名副其实的名字，按真实语义起（施工时定）；合成一个。`HistoryEntry` 不改名（它就是日志里的一条） |
 | `sendPrivateMsg` / `sendToMaster` / `sendErrorMsg`；出口 `sendPrivate` 与 `{ private: true }` | `notifyMaster(payload: string \| NotificationPayload)`，返回结果形状；删掉 |
 | 链接回复现造的临时目标 | 删掉：回复经 `TargetDispatcher.sendToAddress(connectionId, address, payload)` 发回原会话 |
 | `/api/history?uid=` | 删掉（没有调用方）；以后要按人查再加 `?identity=` |

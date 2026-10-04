@@ -3,7 +3,7 @@
  *
  * 守的契约:
  *   - 窗内的行整条消失(本体行 + 它的补丁行一起),窗外的一行不少
- *   - 行上引用的图片文件一并删掉,别在 dev 数据目录里留孤儿
+ *   - 行上引用的图**不由这里删**(图在图库里,可能还被别的行引用):行没了,图库的清扫过了宽限期按引用收走
  *   - 删掉的行如果还「开着」(同 pushId 再来会追加),也得从内存表摘掉 —— 否则下一段追加
  *     会写一条补丁行,补的是一行已经不存在的本体
  *   - 回删了几行
@@ -15,18 +15,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { distinctPng } from "../../__tests__/support/chat-images.js";
+import { makeHistoryImages } from "../../__tests__/support/history-images.js";
+import { IMAGE_GRACE_MS, type ImageStore } from "../../images/image-store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createHistoryStore, type HistoryStore, type NewHistoryEntry } from "../store.js";
 
 let dataDir: string;
 let store: HistoryStore;
+let imageStore: ImageStore;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-hist-del-"));
+	const images = makeHistoryImages(dataDir);
+	imageStore = images.imageStore;
 	store = createHistoryStore({
 		dataRoot: dataDir,
 		bus: createNodeMessageBus(),
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+		images: images.historyImages,
 	});
 	vi.useFakeTimers();
 });
@@ -100,26 +107,46 @@ describe("deleteRange", () => {
 		expect(await dayLines(row.createdAt)).toEqual([]);
 	});
 
-	it("行上引用的图片一并删掉", async () => {
-		const row = await at("2026-09-06T08:01:00.000Z", {
-			messages: [
-				{
-					payload: { kind: "image", image: { buffer: Buffer.from("png"), mime: "image/png" } },
-					role: "main",
-					result: OK,
-				},
-			],
-		});
-		const imgDir = store.imageDir();
-		expect(await readdir(imgDir)).toHaveLength(1);
+	const imageRow = (n: number): NewHistoryEntry["messages"] => [
+		{
+			payload: { kind: "image", image: { buffer: distinctPng(n), mime: "image/png" } },
+			role: "main",
+			result: OK,
+		},
+	];
+	const WINDOW = {
+		fromMs: Date.parse("2026-09-06T08:00:00.000Z"),
+		toMs: Date.parse("2026-09-06T08:10:00.000Z"),
+	};
+	/** 宽限期过了:清扫按「一天多以后」的时钟算。图的修改时间是文件系统的真时钟,不是这里假的那个。 */
+	const afterGrace = () => new Date(vi.getRealSystemTime() + IMAGE_GRACE_MS + 60 * 60 * 1000);
 
-		await store.deleteRange({
-			fromMs: Date.parse("2026-09-06T08:00:00.000Z"),
-			toMs: Date.parse("2026-09-06T08:10:00.000Z"),
-		});
+	it("行上引用的图不由 deleteRange 删,图库的清扫在行没了、宽限期过了以后才收走", async () => {
+		const row = await at("2026-09-06T08:01:00.000Z", { messages: imageRow(1) });
+		const ref = row.messages[0]?.payload.image ?? "";
+		expect(await readdir(join(dataDir, "images"))).toEqual([ref]);
 
-		expect(await readdir(imgDir)).toEqual([]);
+		await store.deleteRange(WINDOW);
+
 		expect((await store.query({ limit: 10 })).map((e) => e.id)).not.toContain(row.id);
+		// 行没了,图还在 —— 删行的这一步不碰图。
+		expect(await readdir(join(dataDir, "images"))).toEqual([ref]);
+		const swept = await imageStore.sweep({ now: afterGrace() });
+		expect(swept.removed).toEqual([ref]);
+		expect(await readdir(join(dataDir, "images"))).toEqual([]);
+	});
+
+	it("同一张图还被窗外的另一行引用着:行删了、清扫也不收", async () => {
+		const gone = await at("2026-09-06T08:01:00.000Z", { messages: imageRow(2) });
+		const kept = await at("2026-09-06T09:00:00.000Z", { messages: imageRow(2) });
+		const ref = gone.messages[0]?.payload.image ?? "";
+		expect(kept.messages[0]?.payload.image).toBe(ref);
+
+		await store.deleteRange(WINDOW);
+
+		const swept = await imageStore.sweep({ now: afterGrace() });
+		expect(swept).toMatchObject({ removed: [], referenced: 1 });
+		expect(await readdir(join(dataDir, "images"))).toEqual([ref]);
 	});
 
 	it("删掉的开着的行从内存表摘掉:同 pushId 再来是新建一行,不是补丁", async () => {

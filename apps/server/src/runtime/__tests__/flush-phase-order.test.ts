@@ -5,8 +5,12 @@
  * 真的写上了 —— 漏一行的症状是:一切照常,只有关停返回之后那个 store 还在写盘,门禁全绿。所以这里走真的
  * `createAppRuntime`:关停之后每个 store 的写都得被拒。
  *
- * 先后也钉在这里:资料更新落盘(reported-profiles)往资料缓存仓与图库写,同段后登记的先跑,所以它得排在那
- * 两家 `close()` 的登记之后 —— 反过来的话,关停时在途的那条资料写会撞上已经关门的仓、白白丢掉。
+ * 先后也钉在这里,两处:
+ *
+ * - 资料更新落盘(reported-profiles)往资料缓存仓与图库写,同段后登记的先跑,所以它得排在那两家 `close()` 的登记之后 ——
+ *   反过来的话,关停时在途的那条资料写会撞上已经关门的仓、白白丢掉。
+ * - 历史仓(落行时往图库存配图、留重推原件时又存一遍)往图库写,所以图库的 `close()` 得先登记、排在历史仓 `close()` 之前
+ *   登记 —— 同段后登记的先跑,历史仓先把在途的行连同它的重推原件落完,图库才关门。
  */
 
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
@@ -73,6 +77,7 @@ describe("createAppRuntime 的 flush 段", () => {
 		).rejects.toMatchObject(CLOSED);
 		await expect(runtime.subRuntimeStore.prune([])).rejects.toMatchObject(CLOSED);
 		await expect(runtime.profileImages.put(PNG_BYTES)).rejects.toMatchObject(CLOSED);
+		await expect(runtime.historyImages.put(PNG_BYTES)).rejects.toMatchObject(CLOSED);
 		await expect(runtime.conversationStore.create()).rejects.toMatchObject(CLOSED);
 		await expect(
 			runtime.imageStore.register({ name: "测试", listRefs: async () => [] }).put(PNG_BYTES),
@@ -109,5 +114,50 @@ describe("createAppRuntime 的 flush 段", () => {
 		expect(profile?.name).toBe("甲");
 		expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);
 		expect(await readdir(dataPath(dataDir, "images"))).toEqual([profile?.avatar]);
+	});
+
+	it("在途的历史行先走空,图库才关门:关停返回时那一行、它的配图和重推原件都已在盘上", async () => {
+		// 带图的行:历史仓先把配图存进图库(停在闸门口),之后才写日文件、再为重推原件把同一张图存一遍 —— 这后面两笔都是
+		// 关停开始**以后**才发出的。图库要是先关了门,原件那次存图被拒、原件丢了(只记一句 warn,行照写,所以光看行测不出来)。
+		const pushId = crypto.randomUUID();
+		const targetId = crypto.randomUUID();
+		storageWriteGate.hold();
+		const recording = runtime.historyStore.record({
+			pushId,
+			feature: "post",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+			subscriptionId: SUB.id,
+			targetId,
+			messages: [
+				{
+					payload: { kind: "image", image: { buffer: PNG_BYTES, mime: "image/png" } },
+					role: "main",
+					result: { ok: false, latencyMs: 1, err: "boom" },
+				},
+			],
+		});
+		await storageWriteGate.arrived();
+
+		let closed = false;
+		const closing = runtime.dispose().then(() => {
+			closed = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(closed).toBe(false);
+
+		storageWriteGate.release();
+		const entry = await recording;
+		await closing;
+
+		const ref = entry.messages[0]?.payload.image;
+		expect(ref && isValidImageRef(ref)).toBe(true);
+		expect(await readdir(dataPath(dataDir, "images"))).toEqual([ref]);
+		const day = entry.createdAt.slice(0, 10);
+		expect(await readFile(dataPath(dataDir, "history", `${day}.jsonl`), "utf8")).toContain(
+			entry.id,
+		);
+		expect(await readdir(dataPath(dataDir, "history", "repush", day))).toEqual([
+			`${entry.id}.json`,
+		]);
 	});
 });

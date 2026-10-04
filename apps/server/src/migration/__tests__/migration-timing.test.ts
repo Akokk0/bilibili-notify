@@ -48,8 +48,9 @@ import { placeSyntheticZero, type SyntheticZeroCounts } from "./synthetic-zero.j
  * 四分之一量只有 7 秒上下,一次测量的抖动就有零点几个比值,门槛附近的结果以多跑几次为准。
  * 线性的拖慢(整体慢了几倍)比值看不出来,那是满量天花板(5 分钟)的事。
  *
- * ⑲c 起迁移里先跑一次历史清扫:图与重推原件只留保留期以内的那几天(两档留下的一样多),过了期的搬过来再删掉。
- * 搬与删仍随天数线性涨,留下来要改写的原件不涨,所以比值比 4 略低:实测约 3.7(满量约 35 秒、四分之一量约 9.5 秒)。
+ * ⑲c 起迁移里先跑一次历史清扫:图与重推原件只留保留期以内的那几天(两档留下的一样多)。
+ * ⑳d 起历史图不整目录搬:保留期内的行引用的图逐张读、复制进图库(两档都是最后 31 天 × 120 张,每张内容各不相同,所以
+ * 真的各落一份),更早的行只拿掉图格、不读图文件。复制那一步不随量涨,随天数涨的是日文件的读写;比值因此比 4 低。
  */
 const MAX_RATIO = 5.5;
 /** 满量迁移的天花板(秒)。 */
@@ -128,37 +129,57 @@ async function expectMigrated(
 	expect(existsSync(join(generation, "generation.json"))).toBe(true);
 	expect(existsSync(join(hostRoot, "generations", "1.partial"))).toBe(false);
 
-	// 报告:「拓展订阅」那份只作输入、没进新代;聊天附件目录与拓展订阅的头像目录也是输入(每张附件被会话引用着、每个头像
-	// 被资料引用着,没有孤儿、没有对不上的,所以各只有一条);过了保留期的图与重推原件不带过来,各记一句(⑲c)。
+	// 报告:「拓展订阅」那份只作输入、没进新代;历史图、聊天附件目录与拓展订阅的头像目录也是输入(每张附件被会话引用着、
+	// 每个头像被资料引用着、每张历史图被一行引用着,没有孤儿、没有对不上的,所以各只有一条);过了保留期的原件与图不带过来,
+	// 各记一句(⑲c、⑳d)。
 	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
 	const keptDays = Math.min(counts.historyDays, DEFAULT_HISTORY_RETENTION_DAYS + 1);
 	const expiredDays = counts.historyDays - keptDays;
+	const keptImages = keptDays * counts.plan.historyRowsPerDay;
 	expect(report.skipped.map((s) => s.path)).toEqual(
 		expiredDays > 0
 			? [
 					"state/extension-subscriptions.json",
+					"history/img",
 					"assets/chat",
 					"avatars",
-					"history/img",
 					"history/repush",
+					"history/img",
 				]
-			: ["state/extension-subscriptions.json", "assets/chat", "avatars"],
+			: ["state/extension-subscriptions.json", "history/img", "assets/chat", "avatars"],
 	);
+	// 搬过去的:除了不进新代的(拓展订阅那份、全部历史图文件),加上过了保留期的原件;反过来,保留期内的历史图各记一条复制。
 	expect(report.transfers).toHaveLength(
-		counts.files - 1 - expiredDays * (counts.plan.historyRowsPerDay + counts.plan.repushPerDay),
+		counts.files - 1 - counts.historyImages - expiredDays * counts.plan.repushPerDay + keptImages,
 	);
 
 	// 推送历史:每天一个日文件,老行一行不少地改写成现在的行;图与重推原件只留保留期以内的那几天。
 	const historyDir = join(generation, "history");
 	const dayFiles = (await readdir(historyDir)).filter((name) => name.endsWith(".jsonl")).sort();
+	const keptFirstDay = (dayFiles[expiredDays] ?? "").slice(0, 10);
 	expect(dayFiles).toHaveLength(counts.historyDays);
 	expect(dayFiles[0]).toBe(`${counts.historyFirstDay}.jsonl`);
 	expect(dayFiles.at(-1)).toBe(`${counts.historyLastDay}.jsonl`);
 	let rows = 0;
 	let notMigrated = 0;
+	/** 行里的配图引用(保留期内的行才有)。 */
+	const historyRefs = new Set<string>();
+	let rowsWithImage = 0;
 	for (const name of dayFiles) {
+		const kept = name.slice(0, 10) >= keptFirstDay;
 		for (const line of await readLines(join(historyDir, name))) {
 			const row = JSON.parse(line) as Record<string, unknown>;
+			// 配图格:保留期内的行是图库引用(`image`),过了保留期的拿掉了;0.x 的 `imageRef` 与头像网址都不留。
+			const payload = (row.messages as { payload: Record<string, unknown> }[] | undefined)?.[0]
+				?.payload;
+			if (payload?.imageRef !== undefined || "uavatarSnapshot" in row) notMigrated += 1;
+			if (typeof payload?.image === "string") {
+				historyRefs.add(payload.image);
+				rowsWithImage += 1;
+				if (!kept || !isValidImageRef(payload.image)) notMigrated += 1;
+			} else if (kept) {
+				notMigrated += 1;
+			}
 			// 现在的行:推送种类那一格叫 `feature`(⑬f)、身份是一格 `identity`、时刻叫 `createdAt`(⑱b),
 			// 0.x 的 `kind` / `source` / `ts` / `uid` / `unameSnapshot` 都不该再留着。
 			if (
@@ -179,6 +200,9 @@ async function expectMigrated(
 	}
 	expect(rows).toBe(counts.historyRows);
 	expect(notMigrated).toBe(0);
+	// 保留期内的每行一张互不相同的图,各落一份进图库;过了保留期的行一张都没有。
+	expect(rowsWithImage).toBe(keptImages);
+	expect(historyRefs.size).toBe(keptImages);
 	const rewrittenHistory = report.rewritten.filter((path) => path.startsWith("history/"));
 	expect(rewrittenHistory.filter((path) => path.endsWith(".jsonl"))).toHaveLength(
 		counts.historyDays,
@@ -188,9 +212,8 @@ async function expectMigrated(
 	expect(rewrittenHistory.filter((path) => path.startsWith("history/repush/"))).toHaveLength(
 		keptDays * counts.plan.repushPerDay,
 	);
-	expect(await readdir(join(historyDir, "img"))).toHaveLength(
-		keptDays * counts.plan.historyRowsPerDay,
-	);
+	// 历史图不进新代(留在图库里)。
+	expect(existsSync(join(historyDir, "img"))).toBe(false);
 	const repushDays = await readdir(join(historyDir, "repush"));
 	expect(repushDays).toHaveLength(keptDays);
 	let snapshots = 0;
@@ -199,6 +222,9 @@ async function expectMigrated(
 		for (const name of await readdir(join(historyDir, "repush", day))) {
 			const snapshot = JSON.parse(await readFile(join(historyDir, "repush", day, name), "utf8"));
 			if (snapshot.version !== 1 || "v" in snapshot) snapshotsNotMigrated += 1;
+			// 原件里的图格是图库引用(字符串),不再是 `{ ref, mime }`。
+			const image = snapshot.messages?.[0]?.payload?.image;
+			if (typeof image !== "string" || !isValidImageRef(image)) snapshotsNotMigrated += 1;
 			snapshots += 1;
 		}
 	}
@@ -269,10 +295,11 @@ async function expectMigrated(
 	expect(existsSync(join(generation, "avatars"))).toBe(false);
 	const libraryImages = (await readdir(join(generation, "images"))).sort();
 	expect(libraryImages).toHaveLength(
-		counts.chatAttachments + counts.extensionSubscriptionIds.length,
+		counts.chatAttachments + counts.extensionSubscriptionIds.length + keptImages,
 	);
 	expect(libraryImages.every(isValidImageRef)).toBe(true);
-	const referenced = new Set<string>();
+	// 引用图库的有三家:会话、资料缓存,和保留期内的历史行(原件指的是这些行的同一批图)。
+	const referenced = new Set<string>(historyRefs);
 	for (const name of conversations) {
 		const conversation = JSON.parse(
 			await readFile(join(generation, "ai", "conversations", name), "utf8"),

@@ -54,3 +54,35 @@ describe("toHistoryView — 行的身份", () => {
 		expect(view.messages[1]).not.toHaveProperty("retryOf");
 	});
 });
+
+describe("toHistoryView — 图都是图库引用(⑳d)", () => {
+	const IMAGE = `${"a".repeat(64)}.png`;
+	const AVATAR = `${"b".repeat(64)}.webp`;
+
+	it("消息带 kind 与配图引用(image),行带头像快照(avatarSnapshot);老名字 imageRef / uavatarSnapshot 不再出现", () => {
+		const view = toHistoryView({
+			...ROW,
+			messages: [
+				{ payload: { kind: "image", text: "[卡片图]", image: IMAGE }, role: "main" },
+				{ payload: { kind: "text", text: "总结" }, role: "extra" },
+			],
+			avatarSnapshot: AVATAR,
+		});
+		expect(view.messages[0]).toMatchObject({ kind: "image", image: IMAGE, text: "[卡片图]" });
+		expect(view.messages[1]).toMatchObject({ kind: "text", text: "总结" });
+		expect(view.messages[1]?.image).toBeUndefined();
+		expect(view.avatarSnapshot).toBe(AVATAR);
+		expect(view.messages[0]).not.toHaveProperty("imageRef");
+		expect(view).not.toHaveProperty("uavatarSnapshot");
+	});
+
+	// 过期的老行迁移时图格被拿掉,只剩 `kind: "image"`:面板靠它在原来画图的位置写「图已清理」。
+	it("图格被迁移拿掉的老行:没有 image,kind 仍说它本来是图", () => {
+		const view = toHistoryView({
+			...ROW,
+			messages: [{ payload: { kind: "image", text: "[卡片图]" }, role: "main" }],
+		});
+		expect(view.messages[0]?.kind).toBe("image");
+		expect(view.messages[0]?.image).toBeUndefined();
+	});
+});

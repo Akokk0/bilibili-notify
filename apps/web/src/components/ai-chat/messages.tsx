@@ -8,7 +8,8 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
-import { type AiChatMessageDTO, chatImageUrl } from "../../services/aiChat";
+import type { AiChatMessageDTO } from "../../services/aiChat";
+import { imageUrl } from "../../utils/image-url";
 import { CardSkinPreviews } from "./card-skin-preview";
 import { describeTool } from "./tools";
 
@@ -202,7 +203,7 @@ export function MessageList({
 						key={m.id}
 						animClass={anim(m.id)}
 						text={m.content}
-						images={m.images?.map(chatImageUrl)}
+						images={m.images?.map(imageUrl)}
 					/>
 				) : (
 					<AssistantTurn

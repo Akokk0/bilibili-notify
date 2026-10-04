@@ -21,7 +21,7 @@ function pushView(id: string, over: Partial<PushEventView> = {}): PushEventView 
 		identity: { sourceKey: "bilibili", externalId: "u1" },
 		subscriptionId: "s1",
 		targetId: "t1",
-		messages: [{ text: "一条动态", role: "main", ok: true }],
+		messages: [{ text: "一条动态", kind: "text", role: "main", ok: true }],
 		...over,
 	};
 }
@@ -116,7 +116,9 @@ describe("通知卡与推送 toast 抢队列", () => {
 		store.notify(NOTICE);
 		for (let i = 0; i < 6; i++) {
 			store.push(
-				pushView(`push-${i}`, { messages: [{ text: `推送 ${i}`, role: "main", ok: true }] }),
+				pushView(`push-${i}`, {
+					messages: [{ text: `推送 ${i}`, kind: "text", role: "main", ok: true }],
+				}),
 			);
 		}
 
@@ -140,9 +142,12 @@ describe("推送 toast —— 标题按特性键说「刚发生了什么」", ()
 	])("%s → %s", (feature, label) => {
 		renderShell();
 		act(() =>
-			useToastStore
-				.getState()
-				.push(pushView("h1", { feature, messages: [{ text: "正文", role: "main", ok: true }] })),
+			useToastStore.getState().push(
+				pushView("h1", {
+					feature,
+					messages: [{ text: "正文", kind: "text", role: "main", ok: true }],
+				}),
+			),
 		);
 		expect(screen.getByText(label)).toBeTruthy();
 	});
@@ -156,9 +161,9 @@ describe("推送 toast —— 一次推送多条消息", () => {
 				pushView("h1", {
 					feature: "liveEnd",
 					messages: [
-						{ text: "@全体", role: "extra", ok: true },
-						{ text: "下播了", role: "main", ok: true },
-						{ text: "[弹幕词云]", role: "extra", ok: true },
+						{ text: "@全体", kind: "text", role: "extra", ok: true },
+						{ text: "下播了", kind: "text", role: "main", ok: true },
+						{ text: "[弹幕词云]", kind: "text", role: "extra", ok: true },
 					],
 				}),
 			),
@@ -185,7 +190,7 @@ describe("推送 toast —— 一次推送多条消息", () => {
 			useToastStore.getState().push(
 				pushView("h1", {
 					feature: "liveEnd",
-					messages: [{ text: "下播了", role: "main", ok: true }],
+					messages: [{ text: "下播了", kind: "text", role: "main", ok: true }],
 				}),
 			);
 			useToastStore.getState().push(pushView("h2"));
@@ -196,8 +201,8 @@ describe("推送 toast —— 一次推送多条消息", () => {
 					feature: "liveEnd",
 					status: "partial",
 					messages: [
-						{ text: "下播了", role: "main", ok: true },
-						{ text: "总结", role: "extra", ok: false },
+						{ text: "下播了", kind: "text", role: "main", ok: true },
+						{ text: "总结", kind: "text", role: "extra", ok: false },
 					],
 				}),
 			),

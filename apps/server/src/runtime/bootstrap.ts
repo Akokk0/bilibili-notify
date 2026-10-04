@@ -9,7 +9,8 @@ import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
 import { createFansStore, type FansStore } from "../fans/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
-import { createRepushStore } from "../history/repush-store.js";
+import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
+import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
@@ -93,6 +94,12 @@ export interface AppRuntime {
 	 * (`subRuntimeStore.listImageRefs`),装配时登记。
 	 */
 	profileImages: ImageWriter;
+	/**
+	 * 推送历史往图库存图的口:配图 `put`、拓展行的头像快照 `keep`(续期)。历史仓用它存图;这一家引用方登记的名单是
+	 * 保留期内(水位线之后)的日文件里所有 `image` 与 `avatarSnapshot`(`listHistoryImageRefs`)。重推原件是另一家引用方
+	 * (`listRepushImageRefs`),各登记各的 —— 拿到的是同一个口,这里只暴露历史这一份。
+	 */
+	historyImages: ImageWriter;
 	/**
 	 * 女仆 AI 聊天的会话记录(dashboard 聊天侧栏「最近」的数据源)。刻意与
 	 * engines 解耦 —— AI 没配好时会话照样能建能列,页面才有地方摆「去把 key
@@ -204,16 +211,34 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 关了它们,同一进程里下一个起的服务就写不进了。
 	serviceCtx.onDispose(() => flushSkinWrites(), "flush");
 	serviceCtx.onDispose(() => flushAssetLabelWrites(), "flush");
+	// 图库先建、先登记关门:历史仓与重推原件往里存图,同段后登记的先跑,所以图库的 `close` 得排在历史仓
+	// `close` 的登记之前 —— 历史仓先把在途的写(含它的图)落完,图库才关门;反过来的话关停时在途那一行的图存不进去。
+	const imageStore = createImageStore({ dir: dataPath(dataRoot, "images") });
+	serviceCtx.onDispose(() => imageStore.close(), "flush");
+	// 推送历史是图库的一家引用方:保留期内的日文件里的配图与头像快照。名单直接读盘(不经历史仓实例),
+	// 所以先登记、再把存图的口交给历史仓,没有先有鸡还是先有蛋的问题。
+	const historyImages = imageStore.register({
+		name: "推送历史",
+		listRefs: () => listHistoryImageRefs(dataRoot),
+	});
+	// 重推原件是另一家:盘上每份原件里的图(原件按保留期整天清,留着的都是活的)。
+	const repushImages = imageStore.register({
+		name: "重推原件",
+		listRefs: () => listRepushImageRefs(dataRoot),
+	});
 	// 重推原件(ADR-0017):历史仓每次落行 / 追加时顺手留一份没有损耗的原料。
-	// 它没有内部状态,retention 那边按同一个 `history.retentionDays` 自己建一个来淘汰。
+	// 它没有内部状态;保留期的清扫直接按日子端目录(`dropRepushDay`),不经这个实例。
 	const repushStore = createRepushStore({
 		dataRoot,
 		logger: serviceCtx.logger,
+		images: repushImages,
+		imageStore,
 	});
 	const historyStore = createHistoryStore({
 		dataRoot,
 		bus,
 		logger: serviceCtx.logger,
+		images: historyImages,
 		repush: repushStore,
 	});
 	serviceCtx.onDispose(() => historyStore.close(), "flush");
@@ -253,8 +278,6 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		logger: serviceCtx.logger,
 	});
 	serviceCtx.onDispose(() => subRuntimeStore.close(), "flush");
-	const imageStore = createImageStore({ dir: dataPath(dataRoot, "images") });
-	serviceCtx.onDispose(() => imageStore.close(), "flush");
 	// 订阅资料是图库的一家引用方:拓展订阅的头像由资料缓存交名单,清扫据此留下还在资料里的图。订阅被删之后
 	// 资料缓存里没了这一条,头像就不再被引用、由清扫收走 —— 没有「删订阅顺手删头像文件」这一步。
 	const profileImages = imageStore.register({
@@ -347,6 +370,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		imageStore,
 		chatImages,
 		profileImages,
+		historyImages,
 		conversationStore,
 		logStore,
 		extensionLive,
