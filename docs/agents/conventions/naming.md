@@ -66,7 +66,7 @@
 | 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
 | 直播间 id | `roomId` | `roomid` |
 | 名字 | `name` | `uname`、`username`、`mastername` |
-| 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef` | `face`、`userface`、当网址用的 `avatar` |
+| 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef`；历史行上「推送那一刻的头像」叫 `avatarSnapshot`（也是 `ImageRef`，与 `nameSnapshot` 成对） | `face`、`userface`、当网址用的 `avatar` |
 | 粉丝数 | `followers` | `fans`、`fansNum`、`followerNum` |
 | 会员档 | 核心里 `tier`；B 站里 `guard`（大航海） | — |
 | 粉丝团 | 核心里 `fanClub`；B 站里 `medal`（粉丝牌） | `badge` |
