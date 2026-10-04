@@ -204,7 +204,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	serviceCtx.onDispose(() => flushSkinWrites(), "flush");
 	serviceCtx.onDispose(() => flushAssetLabelWrites(), "flush");
 	// 重推原件(ADR-0017):历史仓每次落行 / 追加时顺手留一份没有损耗的原料。
-	// 它没有内部状态,retention 那边按同一个 `historyRetentionDays` 自己建一个来淘汰。
+	// 它没有内部状态,retention 那边按同一个 `history.retentionDays` 自己建一个来淘汰。
 	const repushStore = createRepushStore({
 		dataRoot,
 		logger: serviceCtx.logger,

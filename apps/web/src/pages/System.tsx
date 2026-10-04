@@ -1,4 +1,5 @@
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
+import { HISTORY_RETENTION_DAY_OPTIONS } from "@bilibili-notify/internal/constants";
 import {
 	Avatar,
 	Btn,
@@ -21,6 +22,7 @@ import {
 	Field,
 	LogLevelPicker,
 	type LogLevelValue,
+	Picker,
 	TInput,
 	TNum,
 	TSelect,
@@ -265,13 +267,15 @@ function SystemSettingsSection({
 				/>
 			</Field>
 
-			<Field code="app.historyRetentionDays">
-				<TNum
-					value={app.historyRetentionDays}
-					onChange={(v) => setApp("historyRetentionDays", v)}
-					min={1}
-					max={365}
-					suffix="天"
+			{/* 只许七档:选项个数固定,用段选钮组,不用下拉。 */}
+			<Field code="history.retentionDays">
+				<Picker
+					value={draft.history.retentionDays}
+					onChange={(v) => onPatch({ history: { retentionDays: v } })}
+					options={HISTORY_RETENTION_DAY_OPTIONS.map((days) => ({
+						value: days,
+						label: `${days} 天`,
+					}))}
 				/>
 			</Field>
 

@@ -163,11 +163,9 @@ export function startHistoryRetention(opts: RetentionRunnerOptions): Disposable 
 }
 
 async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
-	const days = opts.store.getGlobals().app.historyRetentionDays;
-	if (!days || days <= 0) return;
 	const report = await sweepHistoryRetention({
 		dataRoot: opts.dataRoot,
-		retentionDays: days,
+		retentionDays: opts.store.getGlobals().history.retentionDays,
 		now: opts.now?.() ?? new Date(),
 		logger: opts.logger,
 		repush: opts.repush,

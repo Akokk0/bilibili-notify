@@ -88,7 +88,7 @@ export default function History() {
 		queryKey: ["settings"],
 		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
-	const retentionDays = globalsQuery.data?.app.historyRetentionDays;
+	const retentionDays = globalsQuery.data?.history.retentionDays;
 	// 拓展行的平台徽章照已装拓展的清单画(ADR-0019 决策 9)。读不到就当没回来,徽章退拓展 id。
 	const extensionsQuery = useExtensions({ retry: false });
 
@@ -154,7 +154,7 @@ export default function History() {
 				/>
 				<div className="flex-1" />
 				<span className="text-bn-xs text-bn-text-tertiary">
-					共 {filtered.length} 条{retentionDays != null ? ` · 保留近 ${retentionDays} 天` : ""}
+					共 {filtered.length} 条{retentionDays != null ? ` · 图片留 ${retentionDays} 天` : ""}
 				</span>
 			</div>
 

@@ -1,10 +1,10 @@
 /**
- * 单元测试 — `startHistoryRetention`(按日 history 文件保留清理)。
+ * 单元测试 — `startHistoryRetention`(推送历史的保留:文字不删,图与重推原件按天数清)。
  *
  * 守护契约:
- *   - historyRetentionDays<=0 → 整轮跳过(不删任何文件)
- *   - 仅删除 date < UTC cutoff 的日文件,cutoff 内/今日文件保留
- *   - 单个文件删除失败(如同名是目录)只 warn,不终止整轮,其它旧文件照删
+ *   - 到期的日子(date < UTC 截止日)只清图与重推原件,日文件(文字)一份都不删;今天的不动
+ *   - 清到哪一天记成水位线 `history/retention.json`,只往前走;水位线及以前的日子不重扫
+ *   - 某一天的日文件读不出来不拦别的到期日
  *   - 启动即跑一次 runOnce(无需等定时器)
  *   - 返回值即 serviceCtx.setInterval 的 handle
  *   - **重推原件跟着同一个 cutoff 走**(ADR-0017 决策 4:一个数管两处)
@@ -47,9 +47,9 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-function makeStore(historyRetentionDays: number) {
+function makeStore(retentionDays: number) {
 	return {
-		getGlobals: () => ({ app: { historyRetentionDays } }),
+		getGlobals: () => ({ history: { retentionDays } }),
 	};
 }
 
@@ -191,14 +191,6 @@ describe("startHistoryRetention — 登记进 track", () => {
 });
 
 describe("startHistoryRetention", () => {
-	it("days<=0:整轮跳过,旧文件保留", async () => {
-		await mkdir(join(dataDir, "history"), { recursive: true });
-		await writeFile(join(dataDir, "history", "2000-01-01.jsonl"), "x\n");
-		start(0);
-		await new Promise((r) => setTimeout(r, 20));
-		expect(await listDayFiles(dataDir)).toContain("2000-01-01.jsonl");
-	});
-
 	// 文字不设上限(ADR-0022 决策 9):到期只清图与重推原件,日文件一份都不删。
 	it("到期的日子:日文件留着(文字不删),今天的也在", async () => {
 		await mkdir(join(dataDir, "history"), { recursive: true });
@@ -234,13 +226,6 @@ describe("startHistoryRetention", () => {
 			expect(days).not.toContain("2000-01-01");
 			expect(days).toContain(today);
 		});
-	});
-
-	it("days<=0:原件也整轮跳过", async () => {
-		await seedDraft("2000-01-01");
-		start(0, undefined, createRepushStore({ dataRoot: dataDir, logger }));
-		await new Promise((r) => setTimeout(r, 20));
-		expect(await listRepushDays(dataDir)).toContain("2000-01-01");
 	});
 
 	/**

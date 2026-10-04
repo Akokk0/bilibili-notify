@@ -68,6 +68,7 @@ import { api } from "../../services/api";
 function mockApi(logLevels: Record<string, string>): void {
 	const globals = {
 		app: { logLevel: "info", logLevels },
+		history: { retentionDays: 30 },
 		bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 		master: { targetId: undefined },
 	};

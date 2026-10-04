@@ -19,7 +19,12 @@
  * `config/settings/extensions/<id>.json`,开关留在核心那份({@link splitExtensionSettings})。
  */
 
-import { ExtensionIdSchema } from "@bilibili-notify/internal";
+import {
+	DEFAULT_HISTORY_RETENTION_DAYS,
+	ExtensionIdSchema,
+	HISTORY_RETENTION_DAY_OPTIONS,
+	type HistoryRetentionDays,
+} from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
@@ -50,12 +55,50 @@ export function migrateGlobals(raw: unknown): unknown {
 }
 
 /**
- * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 直播拆键。设置那一步
+ * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 直播拆键 → 历史保留天数换键。设置那一步
  * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的
  * 全局值只有一个读法。
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
-	return splitGlobalLiveSettings(renameGlobalSettingsKeys(migrateGlobals(raw)));
+	return moveHistoryRetention(
+		splitGlobalLiveSettings(renameGlobalSettingsKeys(migrateGlobals(raw))),
+	);
+}
+
+/** 七档从短到长,换算时往上找最近的一档。 */
+const RETENTION_STEPS_ASC = [...HISTORY_RETENTION_DAY_OPTIONS].sort((a, b) => a - b);
+const LONGEST_RETENTION_DAYS = Math.max(...HISTORY_RETENTION_DAY_OPTIONS) as HistoryRetentionDays;
+
+/**
+ * 0.x 的历史保留天数(1–365 的任意整数)换成七档:不在选项里的往上取最近一档,超过最长一档的压成最长一档;
+ * 缺了、读不懂的按 0.x 的默认。
+ */
+function toHistoryRetentionDays(old: unknown): HistoryRetentionDays {
+	if (typeof old !== "number" || !Number.isFinite(old) || old < 1) {
+		return DEFAULT_HISTORY_RETENTION_DAYS;
+	}
+	return RETENTION_STEPS_ASC.find((step) => step >= old) ?? LONGEST_RETENTION_DAYS;
+}
+
+/**
+ * 历史保留天数换键(ADR-0022 决策 9 下 10-04 的 🔗):`app.historyRetentionDays` → 顶层 `history.retentionDays`,
+ * 值换算成七档。老键从 `app` 里拿掉,`app` 里别的格不动。已经是新形状的(有 `history.retentionDays`、`app` 里
+ * 没有老键)原样回同一个对象;认不得的形状原样放过。
+ */
+export function moveHistoryRetention(raw: unknown): unknown {
+	if (!isPlainObject(raw)) return raw;
+	const app = isPlainObject(raw.app) ? raw.app : undefined;
+	const history = isPlainObject(raw.history) ? raw.history : undefined;
+	const hasOldKey = app !== undefined && "historyRetentionDays" in app;
+	const hasNewKey = history !== undefined && "retentionDays" in history;
+	if (!hasOldKey && hasNewKey) return raw;
+	const { historyRetentionDays: old, ...restOfApp } = app ?? {};
+	return {
+		...raw,
+		...(app ? { app: restOfApp } : {}),
+		// 两把键都在(手改过的设置):新键说了算,老键照样拿掉。
+		history: hasNewKey ? history : { ...history, retentionDays: toHistoryRetentionDays(old) },
+	};
 }
 
 /**

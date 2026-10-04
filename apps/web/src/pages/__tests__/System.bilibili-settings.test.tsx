@@ -63,6 +63,7 @@ import { api } from "../../services/api";
 const GLOBALS = {
 	app: { logLevel: "info", logLevels: {} },
 	bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
+	history: { retentionDays: 30 },
 	master: { targetId: undefined },
 };
 
@@ -165,5 +166,52 @@ describe("系统页里 B 站的两格", () => {
 
 		expect(body).toMatchObject({ app: { logLevel: "debug" } });
 		expect(body).not.toHaveProperty("bilibili");
+	});
+});
+
+/**
+ * **图片与重推原件保留**(ADR-0022 决策 9):只许七档,所以是段选钮组,不是能填任意数的数字框,也不是下拉 ——
+ * 选项个数固定的用 `Picker`,选项来自数据、个数不定才用下拉(10-04 主人定)。
+ */
+describe("系统页里的保留天数", () => {
+	const row = (): HTMLElement => {
+		const el = document.querySelector<HTMLElement>(`[data-code="history.retentionDays"]`);
+		if (!el) throw new Error("找不到字段「history.retentionDays」");
+		return el;
+	};
+
+	it("读:七档段选,当前那一档按着;标签说清它管的是图片与重推原件", async () => {
+		await renderRuntimeSection();
+		const options = within(row()).getAllByRole("button");
+		expect(options.map((b) => b.textContent)).toEqual([
+			"90 天",
+			"60 天",
+			"30 天",
+			"15 天",
+			"7 天",
+			"3 天",
+			"1 天",
+		]);
+		expect(options.map((b) => b.getAttribute("aria-pressed"))).toEqual([
+			"false",
+			"false",
+			"true",
+			"false",
+			"false",
+			"false",
+			"false",
+		]);
+		expect(within(row()).getByText("图片与重推原件保留")).toBeTruthy();
+		expect(row().querySelector("input")).toBeNull();
+	});
+
+	it("写:点「7 天」→ PATCH 发 { history: { retentionDays: 7 } },不往 app 底下发", async () => {
+		await renderRuntimeSection();
+		fireEvent.click(within(row()).getByText("7 天"));
+
+		const body = await save();
+
+		expect(body).toMatchObject({ history: { retentionDays: 7 } });
+		expect(body).not.toHaveProperty("app");
 	});
 });

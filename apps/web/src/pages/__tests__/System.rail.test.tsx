@@ -74,6 +74,7 @@ const { GLOBALS, FakeApiError } = vi.hoisted(() => {
 		// `bilibili` 是 B 站自己的设置,`/api/settings` 把它挂在核心设置旁边下发;系统页画「运行」格要读它。
 		GLOBALS: {
 			app: { logLevel: "info", logLevels: {} },
+			history: { retentionDays: 30 },
 			bilibili: { dynamicCron: "0 * * * *", healthCheckMinutes: 30 },
 			master: { targetId: undefined },
 		},

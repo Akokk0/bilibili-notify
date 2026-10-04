@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { BUILTIN_AI_PRESETS, DEFAULT_TEMPLATES, MIRROR_PREFIX_RE } from "../constants";
+import {
+	BUILTIN_AI_PRESETS,
+	DEFAULT_HISTORY_RETENTION_DAYS,
+	DEFAULT_TEMPLATES,
+	HISTORY_RETENTION_DAY_OPTIONS,
+	MIRROR_PREFIX_RE,
+} from "../constants";
 import { allTemplateFingerprints } from "../template-defaults";
 
 // 模板默认值住在零依赖的 `constants.ts` —— 前端要拿它跟盘上的值比对(「默认文案有
@@ -89,6 +95,20 @@ export const DEFAULT_FANS_CRON = "*/10 * * * *";
 /** 登录健康检查间隔(分钟)默认值。B 站设置的 `healthCheckMinutes` 用它(同 {@link DEFAULT_DYNAMIC_CRON})。 */
 export const DEFAULT_HEALTH_CHECK_MINUTES = 30;
 
+/**
+ * 推送历史的设置。只有一格:**图片与重推原件**留几天,只许七档({@link HISTORY_RETENTION_DAY_OPTIONS})。
+ * 推送记录的文字不在其内 —— 文字不设上限、也没有设置项(ADR-0022 决策 9)。
+ */
+export const HistorySettingsSchema = z.object({
+	retentionDays: z
+		.literal([...HISTORY_RETENTION_DAY_OPTIONS])
+		.default(DEFAULT_HISTORY_RETENTION_DAYS),
+});
+export type HistorySettings = z.infer<typeof HistorySettingsSchema>;
+export const DEFAULT_HISTORY_SETTINGS: HistorySettings = {
+	retentionDays: DEFAULT_HISTORY_RETENTION_DAYS,
+};
+
 export const AppConfigSchema = z.object({
 	logLevel: LogLevelSchema.default("info"),
 	logLevels: ModuleLogLevelsSchema,
@@ -96,11 +116,9 @@ export const AppConfigSchema = z.object({
 	// (`apps/server/src/bilibili/settings.ts`,ADR-0021 决策 42 下 10-01 的 🔗)。
 	/** 粉丝数轮询 cron(独立端 FansPoller);从动态轮询的 cron 解耦,默认更慢降风控。 */
 	fansCron: z.string().default(DEFAULT_FANS_CRON),
-	historyRetentionDays: z.number().int().min(1).max(365).default(30),
 	/**
 	 * 日志归档保留天数。`startLogRetention` 每轮按此删除更旧的 day 文件。
-	 * 与 `historyRetentionDays` 同模式但默认更短(日志量远高于推送历史、
-	 * 长期价值低)。
+	 * 默认比图片保留天数短(日志量远高于推送历史、长期价值低)。
 	 */
 	logRetentionDays: z.number().int().min(1).max(365).default(7),
 	/**
@@ -264,6 +282,8 @@ export type ExtensionState = z.infer<typeof ExtensionStateSchema>;
 
 export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
+	/** 推送历史:图片与重推原件的保留天数。缺这一节的老设置补默认。 */
+	history: HistorySettingsSchema.default(() => structuredClone(DEFAULT_HISTORY_SETTINGS)),
 	master: MasterConfigSchema,
 	defaults: GlobalDefaultsSchema,
 	/**

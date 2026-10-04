@@ -60,7 +60,7 @@
 | 组件 | 干什么 / 长什么样 |
 | --- | --- |
 | `TInput` / `TArea` / `TNum` / `TSelect` / `TColor` | 设置表单的 T 系列受控件:全部自带 `data-bn="input"` 挂点与 `bg-bn-field` 底;`secret` 走 password 型防明文;`ariaLabel` **不是装饰**(label 包裹场景读屏器会念整段提示);定宽走 `width` 数字(没装 tailwind-merge,`w-*` 类压不掉基线;`TSelect` 给了 `width` 就不再垫 160px 的最小宽,单位选择器那种窄的用它)。与 `Input` 的分工:`Input` 是带图标槽的搜索框原语,T 系列是设置表单家族 |
-| `Picker` | 通用段选钮组(选项 ≤ ~5 用它别用 TSelect):挂 chip/chip-active、带 `aria-pressed`;`color` 是逐项语义色 |
+| `Picker` | 通用段选钮组。**选项个数固定(写死的一组)就用它,哪怕超过 5 个;选项来自数据、个数不定才用 `TSelect`**(2026-10-04 主人定,取代「≤ ~5」的旧说法;容器会折行,项多了窄屏自己换行):挂 chip/chip-active、带 `aria-pressed`;`color` 是逐项语义色 |
 | `ArrayEditor` / `QuietHoursEditor` | 「一列可增删的行」的两个特化:字符串行 / 免扰时段(0-23 整点对,跨午夜 start>end)。行号徽标 / 移除钮 / 虚线添加钮是**不导出**的实现细节 |
 
 缠业务字典的两件**刻意不在库里**:`Field`(FIELD_LABELS code 体系 + data-code 灵动岛锚点)与 `LogLevelPicker`(LOG_LEVEL_TONE 色表)住 `apps/web/src/components/forms.tsx`,那边同时转口本节全部导出。

@@ -268,7 +268,8 @@ export function TColor({ value, onChange, disabled, ariaLabel }: TColorProps) {
 	);
 }
 
-// ── Picker — generic button-group, prefer over TSelect when options ≤ ~5 ─────
+// ── Picker — generic button-group: use it for a fixed set of options (it wraps),
+//    keep TSelect for options that come from data ─────────────────────────────
 
 interface PickerOption<T> {
 	value: T;

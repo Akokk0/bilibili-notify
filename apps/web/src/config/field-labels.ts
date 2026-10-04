@@ -120,9 +120,9 @@ export const FIELD_LABELS = {
 		hint: "每 N 分钟向 B 站 getMyselfInfo 探活;失效会触发 auth-lost + master 通知",
 		section: "general",
 	},
-	"app.historyRetentionDays": {
-		label: "历史保留天数",
-		hint: "到期的 jsonl 日志会被清理",
+	"history.retentionDays": {
+		label: "图片与重推原件保留",
+		hint: "推送记录的文字一直留着;超过天数的那几天,图片和重推用的原件会清掉,那几行就不能再重推了",
 		section: "logging",
 	},
 	"app.memoryLog": {

@@ -1277,6 +1277,15 @@ export function featuresForEvents(events: readonly SubscriptionEventKind[]): Fea
  */
 export type ImageRef = string;
 
+/**
+ * 图片与重推原件保留天数只许这七档(ADR-0022 决策 9 下 10-04 的 🔗),从长到短。设置的 schema 与面板的段选读同一份。
+ * 推送记录的文字不在其内:文字不设上限。
+ */
+export const HISTORY_RETENTION_DAY_OPTIONS = [90, 60, 30, 15, 7, 3, 1] as const;
+export type HistoryRetentionDays = (typeof HISTORY_RETENTION_DAY_OPTIONS)[number];
+/** 与 0.x 的默认一致。 */
+export const DEFAULT_HISTORY_RETENTION_DAYS: HistoryRetentionDays = 30;
+
 // ---- 拓展声明式界面(ADR-0019)的零依赖判据 ----------------------------------------
 //
 // 清单的 schema(`schema/extension-manifest.ts`)从这里引、并从根入口转出去;面板对根入口

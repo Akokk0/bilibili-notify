@@ -41,7 +41,7 @@ import { migrateAiSettings } from "../ai.js";
 import { renameGlobalSettingsKeys } from "../feature-renames.js";
 import { migrateLegacyLinkParsing } from "../link-parsing.js";
 import { splitGlobalLiveSettings } from "../live-split.js";
-import { migrateGlobals } from "../settings.js";
+import { migrateGlobals, migrateGlobalsToCurrent, moveHistoryRetention } from "../settings.js";
 import { migrateOldTemplateDefaults } from "../templates.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
 
@@ -693,5 +693,81 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 		["linkParsing 是 null", migrateLegacyLinkParsing, null],
 	] as const)("认不得的形状原样放过(%s)", (_name, migrate, raw) => {
 		expect(migrate(raw)).toEqual(raw);
+	});
+});
+
+/**
+ * **历史保留天数换键、换档**(ADR-0022 决策 9 下 10-04 的 🔗):0.x 的 `app.historyRetentionDays`(1–365 任意整数)
+ * 搬成顶层 `history.retentionDays`,值换算成七档 90 / 60 / 30 / 15 / 7 / 3 / 1 —— 不在选项里的往上取最近一档,
+ * 超过 90 压成 90,缺了或读不懂按 0.x 的默认 30。
+ */
+describe("历史保留天数 → history.retentionDays(七档)", () => {
+	const moved = (app: Record<string, unknown>) =>
+		moveHistoryRetention({ app, master: {} }) as {
+			app: Record<string, unknown>;
+			history: { retentionDays: number };
+		};
+
+	it.each([
+		[1, 1],
+		[2, 3],
+		[3, 3],
+		[4, 7],
+		[7, 7],
+		[8, 15],
+		[15, 15],
+		[16, 30],
+		[30, 30],
+		[31, 60],
+		[60, 60],
+		[61, 90],
+		[90, 90],
+		[91, 90],
+		[365, 90],
+	])("老值 %i → %i", (old, next) => {
+		expect(moved({ historyRetentionDays: old }).history.retentionDays).toBe(next);
+	});
+
+	it.each([
+		["没写过", {}],
+		["不是数", { historyRetentionDays: "30" }],
+		["小于 1", { historyRetentionDays: 0 }],
+		["不是整数的怪值", { historyRetentionDays: Number.NaN }],
+	])("%s → 按默认 30", (_name, app) => {
+		expect(moved(app).history.retentionDays).toBe(30);
+	});
+
+	it("老键从 `app` 里拿掉,`app` 里别的格一个字不动", () => {
+		const out = moved({ logLevel: "debug", historyRetentionDays: 45, fansCron: "0 0 * * * *" });
+		expect(out.app).toEqual({ logLevel: "debug", fansCron: "0 0 * * * *" });
+		expect(out.history).toEqual({ retentionDays: 60 });
+	});
+
+	it("已经是新形状的原样回(同一个对象):迁两遍和迁一遍一样", () => {
+		const current = { app: { logLevel: "info" }, history: { retentionDays: 7 } };
+		expect(moveHistoryRetention(current)).toBe(current);
+		const once = moveHistoryRetention({ app: { historyRetentionDays: 20 } });
+		expect(moveHistoryRetention(once)).toEqual(once);
+	});
+
+	it.each([
+		["不是对象", 3],
+		["null", null],
+		["数组", [{ app: {} }]],
+	])("认不得的形状原样放过(%s)", (_name, raw) => {
+		expect(moveHistoryRetention(raw)).toEqual(raw);
+	});
+
+	it("整条流水走完:0.x 的设置里是 45 天 → 1.0 的设置里 history.retentionDays 是 60,`app` 里没有老键,过得了 schema", () => {
+		const zero = makeZeroGlobals();
+		const out = migrateGlobalsToCurrent({
+			...zero,
+			app: { ...zero.app, historyRetentionDays: 45 },
+		}) as { app: Record<string, unknown>; history: unknown };
+		expect(out.history).toEqual({ retentionDays: 60 });
+		expect(out.app).not.toHaveProperty("historyRetentionDays");
+		const parsed = GlobalConfigSchema.safeParse(out);
+		expect(parsed.success).toBe(true);
+		expect(parsed.data?.history.retentionDays).toBe(60);
 	});
 });

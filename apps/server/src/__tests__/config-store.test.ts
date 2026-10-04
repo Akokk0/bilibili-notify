@@ -333,12 +333,12 @@ describe("ConfigStore", () => {
 	it("concurrent patchGlobals calls serialize and converge to a consistent state", async () => {
 		await Promise.all([
 			store.patchGlobals({ app: { fansCron: "*/3 * * * *" } }),
-			store.patchGlobals({ app: { historyRetentionDays: 60 } }),
+			store.patchGlobals({ history: { retentionDays: 60 } }),
 			store.patchGlobals({ master: { targetId: undefined } }),
 		]);
 		const final = store.getGlobals();
 		expect(final.app.fansCron).toBe("*/3 * * * *");
-		expect(final.app.historyRetentionDays).toBe(60);
+		expect(final.history.retentionDays).toBe(60);
 		// On-disk matches in-memory
 		const onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
 		expect(onDisk).toEqual(final);

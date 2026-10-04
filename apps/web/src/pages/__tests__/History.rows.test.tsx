@@ -55,7 +55,7 @@ function mockApi(
 			return Promise.resolve([{ id: T1, name: "测试群", platform: "onebot", enabled: true }]);
 		if (path === "/api/subscriptions") return Promise.resolve(subs);
 		if (path === "/api/ext") return Promise.resolve({ extensions });
-		return Promise.resolve({ app: { historyRetentionDays: 30 } });
+		return Promise.resolve({ history: { retentionDays: 30 } });
 	});
 }
 
@@ -99,6 +99,14 @@ describe("推送历史 · 行", () => {
 		expect(img.getAttribute("src")).toBe("/api/history/img/h1-1.png");
 		await userEvent.click(toggle);
 		expect(screen.queryByText("总结正文")).toBeNull();
+	});
+
+	// 文字一直留着,过期的只有图(ADR-0022 决策 9):标题行说的是图留几天,不是整段历史留几天。
+	it("标题行:共几条 · 图片留 N 天", async () => {
+		renderHistory();
+		await waitFor(() => expect(screen.getByText("下播了")).toBeTruthy());
+		expect(screen.getByText(/共 1 条 · 图片留 30 天/)).toBeTruthy();
+		expect(screen.queryByText(/保留近/)).toBeNull();
 	});
 
 	// 过了保留期的行(ADR-0022 决策 9):图与重推原件已清,文字还在。不画那张已经不存在的图。

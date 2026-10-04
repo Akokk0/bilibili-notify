@@ -71,7 +71,7 @@ describe("挂在页面上的相对时间会走", () => {
 			if (path.startsWith("/api/history")) return { entries: [entry] };
 			if (path === "/api/targets") return [{ id: T1, name: "测试群", platform: "onebot" }];
 			if (path === "/api/subscriptions") return [];
-			return { app: { historyRetentionDays: 30 } };
+			return { history: { retentionDays: 30 } };
 		});
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		render(

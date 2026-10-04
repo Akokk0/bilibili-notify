@@ -98,8 +98,8 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("直播拆键以后导出的备份是版本 5(版本 4 是开发期的:特性键已是 1.0 的名字,但周期间隔还在 schedule 里、没有 liveStreaming 一把键)", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(5);
+	it("历史保留换键以后导出的备份是版本 6(版本 5 是开发期的:设置里还是 app.historyRetentionDays,没有顶层 history 一节)", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(6);
 	});
 
 	it("版本 4 的备份(订阅里没有 routing.liveStreaming、设置里周期间隔还在 schedule 里)→ unsupported:不会被当成当前版本放进来", () => {
