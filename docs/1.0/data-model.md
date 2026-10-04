@@ -484,7 +484,7 @@ interface Settings {
     update: UpdateSettings;           // isAutoDownloadEnabled 等
     marketplace: MarketplaceSettings;
     logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + 集成键
-    history: HistorySettings;         // 只剩图片保留天数（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），文字不设上限（ADR-0022 决策 9 的 🔗）；键名 ⑲ 开片时定
+    history: HistorySettings;         // { retentionDays }：图片与重推原件保留天数（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），文字不设上限、不在其内（ADR-0022 决策 9 的 🔗；键名 10-04 定）
     // 数据统计总开关（默认开，ADR-0027 决策 9）：放哪、叫什么 ㉙ 开片时定
     profileRefreshCron: string;       // 资料刷新，由 fansCron 原值迁来
     timezone: string;                 // 卡片时间读它，默认 Asia/Shanghai
