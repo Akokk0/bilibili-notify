@@ -24,7 +24,6 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_HISTORY_RETENTION_DAYS } from "@bilibili-notify/internal";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { isValidImageRef } from "../../images/image-store.js";
 import { createGeneration, FORMAT_VERSION, selectGeneration } from "../../runtime/generations.js";
@@ -49,8 +48,10 @@ import { placeSyntheticZero, type SyntheticZeroCounts } from "./synthetic-zero.j
  * 线性的拖慢(整体慢了几倍)比值看不出来,那是满量天花板(5 分钟)的事。
  *
  * ⑲c 起迁移里先跑一次历史清扫:图与重推原件只留保留期以内的那几天(两档留下的一样多)。
- * ⑳d 起历史图不整目录搬:保留期内的行引用的图逐张读、复制进图库(两档都是最后 31 天 × 120 张,每张内容各不相同,所以
- * 真的各落一份),更早的行只拿掉图格、不读图文件。复制那一步不随量涨,随天数涨的是日文件的读写;比值因此比 4 低。
+ * ⑳d 起历史图不整目录搬:保留期内的行引用的图逐张读、复制进图库(每张内容各不相同,所以真的各落一份),更早的行
+ * 只拿掉图格、不读图文件。复制是迁移里最重的一步,所以两档的保留天数也按 1/4 缩(满量 60 天、四分之一量 15 天,
+ * 留下 61 与 16 个日子 × 120 张);两档都用默认 30 天的话复制的张数一样多,比值掉到 1 点几、量不出越积越慢。
+ * 这样摆之后实测满量约 50 秒、四分之一量约 13 秒、比值约 3.75(10-05),其中复制历史图那一步占满量的 40 秒上下。
  */
 const MAX_RATIO = 5.5;
 /** 满量迁移的天花板(秒)。 */
@@ -133,7 +134,8 @@ async function expectMigrated(
 	// 每个头像被资料引用着、每张历史图被一行引用着,没有孤儿、没有对不上的,所以各只有一条);过了保留期的原件与图不带过来,
 	// 各记一句(⑲c、⑳d)。
 	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
-	const keptDays = Math.min(counts.historyDays, DEFAULT_HISTORY_RETENTION_DAYS + 1);
+	// 「N 天」那一档按 UTC 日界算,留下的是 N + 1 个日子。
+	const keptDays = Math.min(counts.historyDays, counts.plan.historyRetentionDays + 1);
 	const expiredDays = counts.historyDays - keptDays;
 	const keptImages = keptDays * counts.plan.historyRowsPerDay;
 	expect(report.skipped.map((s) => s.path)).toEqual(
@@ -345,7 +347,7 @@ describe.skipIf(process.env.BN_MIGRATION_TIMING !== "1")("迁移耗时:一年的
 		await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
 	}, 5 * 60_000);
 
-	it("满量与四分之一量各迁一遍:比值 ≤ 6、满量 ≤ 5 分钟,耗时照实打印", {
+	it("满量与四分之一量各迁一遍:比值 ≤ 5.5、满量 ≤ 5 分钟,耗时照实打印", {
 		timeout: 15 * 60_000,
 	}, async () => {
 		const quarterRoot = await mkdtemp(join(tmpdir(), "bn-migration-timing-quarter-"));

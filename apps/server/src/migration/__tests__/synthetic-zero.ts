@@ -82,6 +82,12 @@ export interface SyntheticZeroPlan {
 	days: number;
 	/** 推送历史摆多少天(日文件数):最近的 `round(365 × scale)` 天,最少 1、最多 365。 */
 	historyDays: number;
+	/**
+	 * 0.x 的历史保留天数(`app.historyRetentionDays`),迁移照它定图留几天:满量 60、四分之一量 15,都是 1.0 的档位,
+	 * 换算时原样留下。⑳d 起保留期内的历史图逐张复制进图库,这是迁移里最重的一步,所以它也得随量涨 ——
+	 * 两档都用默认的 30 天时复制的张数一样多,比值掉到 1 点几,量不出越积越慢。
+	 */
+	historyRetentionDays: number;
 	/** B 站订阅数:`floor(40 × scale)`,最少 1。 */
 	subscriptions: number;
 	/** 拓展订阅数:`floor(4 × scale)`,最少 1。 */
@@ -108,6 +114,7 @@ export function planSyntheticZero(scale: number): SyntheticZeroPlan {
 			ZERO_MAX_HISTORY_DAYS,
 			Math.max(1, Math.round(ZERO_MAX_HISTORY_DAYS * scale)),
 		),
+		historyRetentionDays: scaled(60, scale),
 		subscriptions: scaled(40, scale),
 		extensionSubscriptions: scaled(4, scale),
 		historyRowsPerDay: 120,
@@ -280,7 +287,7 @@ export async function placeSyntheticZero(
 
 	await placeState(
 		tree,
-		plan.days,
+		plan,
 		biliSubscriptions,
 		extensionSubscriptionIds,
 		connectionIds,
@@ -324,14 +331,19 @@ export async function placeSyntheticZero(
 /** `state/`:设置、两份订阅、连接、目标,和程序自己记的小状态。 */
 async function placeState(
 	tree: Tree,
-	days: number,
+	plan: SyntheticZeroPlan,
 	bili: readonly SyntheticSubscription[],
 	extensionIds: readonly string[],
 	connectionIds: readonly string[],
 	targetIds: readonly string[],
 ): Promise<void> {
 	await tree.putJson("state/globals.json", {
-		app: { logLevel: "info", dynamicCron: "*/2 * * * *", healthCheckMinutes: 30 },
+		app: {
+			logLevel: "info",
+			dynamicCron: "*/2 * * * *",
+			healthCheckMinutes: 30,
+			historyRetentionDays: plan.historyRetentionDays,
+		},
 		extensions: { "dev-bridge": { enabled: true, settings: { token: "synthetic-token" } } },
 		defaults: {
 			features: { liveEnd: true, liveEndExtras: { wordcloud: true, liveSummary: true } },
@@ -447,8 +459,8 @@ async function placeState(
 			days: 7,
 			targets: [pick(targetIds, i)],
 			result: { uid: sub.uid, text: "锐评" },
-			createdAt: iso(dayMs(days - 2)),
-			expiresAt: iso(dayMs(days)),
+			createdAt: iso(dayMs(plan.days - 2)),
+			expiresAt: iso(dayMs(plan.days)),
 		})),
 	);
 }
