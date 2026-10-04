@@ -20,6 +20,7 @@ const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 9, 9]);
 let dir: string;
 let app: Hono;
 let imageStore: ImageStore;
+let registered = 0;
 
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-images-route-"));
@@ -33,7 +34,9 @@ afterEach(async () => {
 });
 
 async function putOk(bytes: Uint8Array): Promise<string> {
-	const result = await imageStore.put(bytes);
+	const result = await imageStore
+		.register({ name: `测试-${++registered}`, listRefs: async () => [] })
+		.put(bytes);
 	if (!result.ok) throw new Error(result.message);
 	return result.ref;
 }

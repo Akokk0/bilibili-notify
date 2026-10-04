@@ -1,12 +1,19 @@
-import { mkdtemp, readdir, rm, stat, utimes } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { createImageStore, type ImageStore } from "../image-store.js";
+import {
+	createImageStore,
+	IMAGE_GRACE_MS,
+	type ImageStore,
+	type ImageWriter,
+} from "../image-store.js";
 
 /**
  * 图库本体(ADR-0022 决策 9 下 10-03 的 🔗):引用就是文件名 `<sha256>.<ext>`,扩展名按嗅探;只收
  * png / jpg / gif / webp、单张 8MB;同一份字节再存不重写、只刷新修改时间。
+ *
+ * 存图的口只有登记成引用方才拿得到;清扫只删「过了宽限期、又没有哪家引用」的图(决策 9 下 10-04「⑳ 开片」的 🔗)。
  */
 
 const ascii = (text: string) => [...text].map((ch) => ch.charCodeAt(0));
@@ -20,17 +27,22 @@ const MB8 = 8 * 1024 * 1024;
 
 let dir: string;
 let store: ImageStore;
+let writer: ImageWriter;
+/** 那家测试引用方此刻引用着的图。 */
+let held: string[];
 
 beforeEach(async () => {
 	dir = await mkdtemp(join(tmpdir(), "bn-images-"));
 	store = createImageStore({ dir });
+	held = [];
+	writer = store.register({ name: "测试", listRefs: async () => held });
 });
 afterEach(async () => {
 	await rm(dir, { recursive: true, force: true });
 });
 
 async function putOk(bytes: Uint8Array): Promise<string> {
-	const result = await store.put(bytes);
+	const result = await writer.put(bytes);
 	if (!result.ok) throw new Error(`put 失败:${result.message}`);
 	return result.ref;
 }
@@ -59,7 +71,7 @@ describe("put / read", () => {
 		["认不出的字节", Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
 		["空的", new Uint8Array()],
 	])("不是收的那几种图(%s)回 invalid,盘上什么都不留", async (_label, bytes) => {
-		const result = await store.put(bytes);
+		const result = await writer.put(bytes);
 		expect(result).toMatchObject({ ok: false, code: "invalid" });
 		expect(await readdir(dir).catch(() => [])).toEqual([]);
 	});
@@ -67,11 +79,11 @@ describe("put / read", () => {
 	it("单张 8MB 封顶:正好 8MB 收,多一个字节回 invalid", async () => {
 		const exact = new Uint8Array(MB8);
 		exact.set(PNG);
-		expect((await store.put(exact)).ok).toBe(true);
+		expect((await writer.put(exact)).ok).toBe(true);
 
 		const over = new Uint8Array(MB8 + 1);
 		over.set(JPEG);
-		expect(await store.put(over)).toMatchObject({ ok: false, code: "invalid" });
+		expect(await writer.put(over)).toMatchObject({ ok: false, code: "invalid" });
 	});
 
 	it.each([
@@ -106,5 +118,133 @@ describe("同一份字节再存一次", () => {
 		expect(after.ino).toBe(before.ino);
 		expect(after.mtimeMs).toBeGreaterThan(old.getTime());
 		expect(await readdir(dir)).toEqual([ref]);
+	});
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+const NOW = new Date("2026-10-04T12:00:00Z");
+
+/** 把一张图的修改时间拨到「此刻之前 ms 毫秒」。 */
+async function age(ref: string, ms: number): Promise<void> {
+	const at = new Date(NOW.getTime() - ms);
+	await utimes(join(dir, ref), at, at);
+}
+
+describe("清扫", () => {
+	it("宽限期写死 24 小时", () => {
+		expect(IMAGE_GRACE_MS).toBe(DAY);
+	});
+
+	it("过了宽限期又没人引用的图删掉,回报删了哪些", async () => {
+		const ref = await putOk(PNG);
+		await age(ref, DAY + 1000);
+
+		const report = await store.sweep({ now: NOW });
+
+		expect(report).toEqual({ removed: [ref], referenced: 0, inGrace: 0 });
+		expect(await readdir(dir)).toEqual([]);
+	});
+
+	it("还在宽限期里的图没人引用也留着", async () => {
+		const ref = await putOk(PNG);
+		await age(ref, DAY - 1000);
+
+		expect(await store.sweep({ now: NOW })).toEqual({ removed: [], referenced: 0, inGrace: 1 });
+		expect(await readdir(dir)).toEqual([ref]);
+	});
+
+	it("有一家引用着的老图留着,哪怕引用它的不是存它的那一家", async () => {
+		const ref = await putOk(PNG);
+		const other = await putOk(JPEG);
+		await age(ref, 10 * DAY);
+		await age(other, 10 * DAY);
+		store.register({ name: "另一家", listRefs: async () => [ref] });
+
+		const report = await store.sweep({ now: NOW });
+
+		expect(report).toEqual({ removed: [other], referenced: 1, inGrace: 0 });
+		expect(await readdir(dir)).toEqual([ref]);
+	});
+
+	it("任何一家列不出自己的引用,这一轮一张都不删", async () => {
+		const ref = await putOk(PNG);
+		await age(ref, 10 * DAY);
+		store.register({
+			name: "坏掉的那家",
+			listRefs: async () => {
+				throw new Error("读不了盘");
+			},
+		});
+
+		await expect(store.sweep({ now: NOW })).rejects.toThrow("读不了盘");
+		expect(await readdir(dir)).toEqual([ref]);
+	});
+
+	it("清扫列完引用之后、动手删之前又被存了一次的图不删", async () => {
+		// 引用方的 listRefs 是清扫给的唯一一个「中途」的口:在这里再存一次,正好卡在「看过修改时间」与「删」之间。
+		const ref = await putOk(PNG);
+		await age(ref, 10 * DAY);
+		store.register({
+			name: "中途存图的那家",
+			listRefs: async () => {
+				await putOk(PNG);
+				return [];
+			},
+		});
+
+		expect((await store.sweep({ now: NOW })).removed).toEqual([]);
+		expect(await readdir(dir)).toEqual([ref]);
+	});
+
+	it("图库目录里不是图库的文件不碰", async () => {
+		await putOk(PNG);
+		await writeFile(join(dir, "README.txt"), "别人放的");
+		const old = new Date(NOW.getTime() - 10 * DAY);
+		await utimes(join(dir, "README.txt"), old, old);
+		await age(`${PNG_SHA256}.png`, 10 * DAY);
+
+		await store.sweep({ now: NOW });
+
+		expect(await readdir(dir)).toEqual(["README.txt"]);
+	});
+
+	it("目录还没建(从没存过图)时清扫什么都不做", async () => {
+		await rm(dir, { recursive: true, force: true });
+		expect(await store.sweep({ now: NOW })).toEqual({ removed: [], referenced: 0, inGrace: 0 });
+	});
+});
+
+describe("续期", () => {
+	it("抄别人引用的一方续期后,老图回到宽限期里", async () => {
+		const ref = await putOk(PNG);
+		await age(ref, 10 * DAY);
+
+		expect(await writer.keep(ref)).toBe(true);
+
+		const { mtimeMs } = await stat(join(dir, ref));
+		expect(mtimeMs).toBeGreaterThan(NOW.getTime() - DAY);
+	});
+
+	it("图已经不在了回 false,不凭空造文件", async () => {
+		expect(await writer.keep(`${PNG_SHA256}.png`)).toBe(false);
+		expect(await writer.keep("../etc/passwd")).toBe(false);
+		expect(await readdir(dir)).toEqual([]);
+	});
+});
+
+describe("登记与关门", () => {
+	it("同一个名字登记两次是写错了,当场抛", () => {
+		expect(() => store.register({ name: "测试", listRefs: async () => [] })).toThrow("测试");
+	});
+
+	it("关门之后存图、续期、清扫都被拒,读照常", async () => {
+		const ref = await putOk(PNG);
+		await store.close();
+
+		const closed = { code: "queue_closed" };
+		await expect(writer.put(JPEG)).rejects.toMatchObject(closed);
+		await expect(writer.keep(ref)).rejects.toMatchObject(closed);
+		await expect(store.sweep({ now: NOW })).rejects.toMatchObject(closed);
+		expect((await store.read(ref))?.mime).toBe("image/png");
 	});
 });

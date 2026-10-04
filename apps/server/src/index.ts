@@ -849,6 +849,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			serviceCtx: runtime.serviceCtx,
 			store: runtime.configStore,
 			dataRoot: runtime.dataRoot,
+			images: runtime.imageStore,
 			logger: log,
 		});
 

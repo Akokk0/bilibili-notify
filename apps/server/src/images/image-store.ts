@@ -4,12 +4,21 @@
  * - 只收 png / jpg / gif / webp,扩展名按嗅探内容得出、JPEG 一律叫 jpg —— 调用方说它是什么格式不算数;
  *   SVG 一律拒。
  * - 单张 8MB 是图库自己的线;上传那层更紧的规矩(5MB、聊天附件不收 gif)留在上传那层。
- * - 同一份字节再存一次不重写、只刷新修改时间:图库清扫(⑳)的新图宽限期按修改时间算。
+ * - 同一份字节再存一次不重写、只刷新修改时间:清扫的新图宽限期按修改时间算。
  *
  * 以上几条的来由见 ADR-0022 决策 9 下 10-03 的 🔗。存储本身是 {@link createAssetStore} 按摘要取名的那一种。
+ *
+ * **谁引用、谁才能存**(同一决策下 10-04「⑳ 开片」的 🔗):图按内容起名,同一张会被几家共用,所以没有
+ * 「删这张图」的口,只有清扫 —— 过了宽限期、又没有哪家引用的才删。漏登记的引用方的图会被当垃圾清掉而
+ * 门禁全绿,所以存图的口不挂在图库上:先 {@link ImageStore.register} 交出「列出我引用的图」,才拿得到
+ * {@link ImageWriter}。引用只许从两处来:自己刚 `put` 的,或者抄别家的并 `keep` 过的 —— 两样都会刷新
+ * 修改时间,清扫正扫到一半时这张图也在宽限期里。
  */
 
+import { readdir, stat, unlink, utimes } from "node:fs/promises";
+import { join } from "node:path";
 import {
+	createSerialQueue,
 	fail,
 	type ImageRef,
 	ok,
@@ -38,29 +47,163 @@ const EXT_OF_FORMAT = {
 	webp: "webp",
 } as const satisfies Record<ReportImageFormat, keyof typeof IMAGE_FORMATS>;
 
-export interface ImageStore {
-	/** 存一张图,回引用;不是收的那几种图、超上限回 `invalid`。磁盘写失败是抛错。 */
-	put(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>>;
-	/** 按引用读字节与 mime;引用不合规矩(不碰盘)或文件不在回 `undefined`。 */
-	read(ref: string): Promise<{ bytes: Buffer; mime: string } | undefined>;
+/** 新图宽限期:刚存进来、还没被哪一行引用的图留这么久(写死,不做设置)。 */
+export const IMAGE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/** 一家引用方:落盘的东西里装着图库引用的那一处(会话、资料缓存、历史行、重推原件)。 */
+export interface ImageReferrer {
+	/** 给人看的名字,也是登记表里的键;重名当场抛。 */
+	name: string;
+	/**
+	 * 此刻还活着的引用。每家只交自己的,清扫不并成一张表来问。列不出来就抛 —— 清扫宁可这一轮一张不删,
+	 * 也不拿残缺的名单去删图。
+	 */
+	listRefs(): Promise<Iterable<ImageRef>>;
 }
 
+/** 登记成引用方才拿得到的两个口。 */
+export interface ImageWriter {
+	/** 存一张图,回引用;不是收的那几种图、超上限回 `invalid`。磁盘写失败是抛错。 */
+	put(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>>;
+	/**
+	 * 续期:要把别家的引用抄进自己这儿之前调(新历史行抄资料缓存里的头像)。图已经不在回 `false`,
+	 * 那个引用就别抄了。
+	 */
+	keep(ref: ImageRef): Promise<boolean>;
+}
+
+/** 一轮清扫的结果。 */
+export interface ImageSweepReport {
+	/** 删掉的图。 */
+	removed: ImageRef[];
+	/** 过了宽限期、因为还有人引用而留下的张数。 */
+	referenced: number;
+	/** 还在宽限期里的张数。 */
+	inGrace: number;
+}
+
+export interface ImageStore {
+	/** 按引用读字节与 mime;引用不合规矩(不碰盘)或文件不在回 `undefined`。 */
+	read(ref: string): Promise<{ bytes: Buffer; mime: string } | undefined>;
+	/** 登记一家引用方,回它存图用的口。 */
+	register(referrer: ImageReferrer): ImageWriter;
+	/** 清扫一轮:删过了宽限期又没有哪家引用的图。任何一家列不出引用就抛,一张不删。 */
+	sweep(options: { now: Date }): Promise<ImageSweepReport>;
+	/** 关门:此后存图、续期、清扫都被拒,读照常;等在途的写完才返回。 */
+	close(): Promise<void>;
+}
+
+/** 写道的唯一一个键:存、续期、删排成一队,删之前在队里再看一眼修改时间(见 `removeIfStale`)。 */
+const WRITE_KEY = "images";
+
+const isMissing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
+
 export function createImageStore(options: { dir: string }): ImageStore {
+	const { dir } = options;
 	const assets = createAssetStore({
-		dir: options.dir,
+		dir,
 		formats: IMAGE_FORMATS,
 		maxBytes: IMAGE_MAX_BYTES,
 		naming: { kind: "sha256" },
 	});
-	return {
-		async put(bytes) {
-			const format = sniffImageFormat(bytes);
-			if (!format) return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp)");
-			const result = await assets.put({ bytes, ext: EXT_OF_FORMAT[format] });
-			return result.ok ? ok({ ref: result.id }) : result;
+	const writes = createSerialQueue();
+	const referrers = new Map<string, ImageReferrer>();
+
+	/** 盘上每张图的修改时间;目录还没建就是空的。 */
+	async function modifiedTimes(): Promise<Map<ImageRef, number>> {
+		let names: string[];
+		try {
+			names = await readdir(dir);
+		} catch (error) {
+			if (isMissing(error)) return new Map();
+			throw error;
+		}
+		const times = new Map<ImageRef, number>();
+		for (const name of names.filter(assets.isValidId)) {
+			try {
+				times.set(name, (await stat(join(dir, name))).mtimeMs);
+			} catch (error) {
+				if (!isMissing(error)) throw error;
+			}
+		}
+		return times;
+	}
+
+	/**
+	 * 删一张图,但先在队里重新看修改时间:清扫看完修改时间到动手删之间,别人可能又存了同一份字节(存是
+	 * 刷新修改时间并回 ok),不重看的话那边就拿着一个悬空的引用。宽限期挡不住这个窗口,要靠排队。
+	 */
+	function removeIfStale(ref: ImageRef, cutoff: number): Promise<boolean> {
+		return writes.run(WRITE_KEY, async () => {
+			const path = join(dir, ref);
+			try {
+				if ((await stat(path)).mtimeMs > cutoff) return false;
+				await unlink(path);
+				return true;
+			} catch (error) {
+				if (isMissing(error)) return false;
+				throw error;
+			}
+		});
+	}
+
+	const writer: ImageWriter = {
+		put(bytes) {
+			return writes.run(WRITE_KEY, async () => {
+				const format = sniffImageFormat(bytes);
+				if (!format) return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp)");
+				const result = await assets.put({ bytes, ext: EXT_OF_FORMAT[format] });
+				return result.ok ? ok({ ref: result.id }) : result;
+			});
 		},
+		keep(ref) {
+			return writes.run(WRITE_KEY, async () => {
+				const path = assets.pathOf(ref);
+				if (path === null) return false;
+				const now = new Date();
+				try {
+					await utimes(path, now, now);
+					return true;
+				} catch (error) {
+					if (isMissing(error)) return false;
+					throw error;
+				}
+			});
+		},
+	};
+
+	return {
 		async read(ref) {
 			return (await assets.read(ref)) ?? undefined;
 		},
+
+		register(referrer) {
+			if (referrers.has(referrer.name)) {
+				throw new Error(`图库引用方「${referrer.name}」登记了两次`);
+			}
+			referrers.set(referrer.name, referrer);
+			return writer;
+		},
+
+		async sweep({ now }) {
+			// 关了门的图库不许再动盘:借写道的关门判定,排一个空任务。
+			await writes.run(WRITE_KEY, () => {});
+			const cutoff = now.getTime() - IMAGE_GRACE_MS;
+			// 先看修改时间、再问引用:这之间新写下的引用必然来自 put / keep,它们的图已经回到宽限期里。
+			const times = await modifiedTimes();
+			const held = new Set<ImageRef>();
+			for (const referrer of referrers.values()) {
+				for (const ref of await referrer.listRefs()) held.add(ref);
+			}
+			const report: ImageSweepReport = { removed: [], referenced: 0, inGrace: 0 };
+			for (const [ref, modifiedAt] of times) {
+				if (modifiedAt > cutoff) report.inGrace += 1;
+				else if (held.has(ref)) report.referenced += 1;
+				else if (await removeIfStale(ref, cutoff)) report.removed.push(ref);
+			}
+			return report;
+		},
+
+		close: () => writes.close(),
 	};
 }

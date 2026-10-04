@@ -258,6 +258,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	});
 	serviceCtx.onDispose(() => subAvatarStore.close(), "flush");
 	const imageStore = createImageStore({ dir: dataPath(dataRoot, "images") });
+	serviceCtx.onDispose(() => imageStore.close(), "flush");
 	// 删订阅的路不止一条(面板删、恢复备份整份覆盖、级联),都汇到 `subscription-changed` 上 ——
 	// 只听总线,所以在这儿就能起,不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
 	const subAvatarCleanup = bindSubAvatarCleanup({

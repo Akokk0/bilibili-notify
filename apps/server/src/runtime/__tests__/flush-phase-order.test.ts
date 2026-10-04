@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 
 describe("createAppRuntime 的 flush 段", () => {
-	it("关停之后,配置 / 历史 / 资料缓存 / 头像 / 会话这几个写道都已关门", async () => {
+	it("关停之后,配置 / 历史 / 资料缓存 / 头像 / 会话 / 图库这几个写道都已关门", async () => {
 		await runtime.dispose();
 
 		await expect(
@@ -74,6 +74,9 @@ describe("createAppRuntime 的 flush 段", () => {
 			CLOSED,
 		);
 		await expect(runtime.conversationStore.create()).rejects.toMatchObject(CLOSED);
+		await expect(
+			runtime.imageStore.register({ name: "测试", listRefs: async () => [] }).put(PNG_BYTES),
+		).rejects.toMatchObject(CLOSED);
 	});
 
 	it("在途的资料更新先走空,头像仓与资料缓存仓才关门:关停返回时那条资料已在盘上", async () => {

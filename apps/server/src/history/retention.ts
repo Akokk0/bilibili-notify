@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import type { ConfigStore } from "../config/store.js";
+import type { ImageStore } from "../images/image-store.js";
 import { dataPath } from "../runtime/roots.js";
 import { createRepushStore, listRepushDays, type RepushStore } from "./repush-store.js";
 import { deleteDayImages, listDayFiles } from "./store.js";
@@ -127,6 +128,11 @@ export interface RetentionRunnerOptions {
 	store: ConfigStore;
 	/** 数据根:历史日文件与重推原件都在它底下。 */
 	dataRoot: string;
+	/**
+	 * 图库:每一轮推完水位线紧接着清它(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗)。先后是有讲究的 ——
+	 * 过期的行不再算引用方,它们的图才清得掉;两个定时器各跑各的话,这个先后就靠碰运气。
+	 */
+	images: Pick<ImageStore, "sweep">;
 	logger: Logger;
 	/** Tick interval (ms). Defaults to 6 hours. */
 	intervalMs?: number;
@@ -162,16 +168,34 @@ export function startHistoryRetention(opts: RetentionRunnerOptions): Disposable 
 }
 
 async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
-	const report = await sweepHistoryRetention({
-		dataRoot: opts.dataRoot,
-		retentionDays: opts.store.getGlobals().history.retentionDays,
-		now: opts.now?.() ?? new Date(),
-		logger: opts.logger,
-		repush: opts.repush,
-	});
-	if (report.images.length > 0 || report.snapshotDays.length > 0) {
-		opts.logger.info(
-			`[history] retention cleared ${report.images.length} image(s) and repush snapshots of ${report.snapshotDays.length} day(s) through ${report.clearedThrough}`,
-		);
+	const now = opts.now?.() ?? new Date();
+	try {
+		const report = await sweepHistoryRetention({
+			dataRoot: opts.dataRoot,
+			retentionDays: opts.store.getGlobals().history.retentionDays,
+			now,
+			logger: opts.logger,
+			repush: opts.repush,
+		});
+		if (report.images.length > 0 || report.snapshotDays.length > 0) {
+			opts.logger.info(
+				`[history] retention cleared ${report.images.length} image(s) and repush snapshots of ${report.snapshotDays.length} day(s) through ${report.clearedThrough}`,
+			);
+		}
+	} finally {
+		// 历史那半出了错图库也照清:图库里不止历史的图,聊天附件、头像不该等历史修好。
+		await sweepImages(opts, now);
+	}
+}
+
+/** 清图库一轮。清不动只记 warn —— 下一轮再来,别把历史那半的结果盖掉。 */
+async function sweepImages(opts: RetentionRunnerOptions, now: Date): Promise<void> {
+	try {
+		const { removed } = await opts.images.sweep({ now });
+		if (removed.length > 0) {
+			opts.logger.info(`[images] sweep removed ${removed.length} unreferenced image(s)`);
+		}
+	} catch (err) {
+		opts.logger.warn(`[images] sweep failed: ${String(err)}`);
 	}
 }

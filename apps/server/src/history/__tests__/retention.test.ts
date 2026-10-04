@@ -17,13 +17,14 @@ import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Disposable } from "@bilibili-notify/internal";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import {
 	deferred,
 	makeTrackingContext,
 	stillPending,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
+import type { ImageStore } from "../../images/image-store.js";
 import { createRepushStore, listRepushDays, type RepushStore } from "../repush-store.js";
 import { readClearedThrough, startHistoryRetention } from "../retention.js";
 import { listDayFiles } from "../store.js";
@@ -37,6 +38,9 @@ let logger: ReturnType<typeof makeLogger>;
 let intervalHandle: Disposable;
 let setInterval_: ReturnType<typeof vi.fn>;
 let ctx: TrackingContext;
+/** 图库清扫的替身:记下每一轮被叫到时的此刻与当时的水位线。 */
+let imageSweeps: { now: Date; clearedThrough: string | undefined }[];
+let imageStore: { sweep: Mock<ImageStore["sweep"]> };
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-ret-"));
@@ -44,6 +48,13 @@ beforeEach(async () => {
 	intervalHandle = { dispose: vi.fn() };
 	setInterval_ = vi.fn(() => intervalHandle);
 	ctx = makeTrackingContext();
+	imageSweeps = [];
+	imageStore = {
+		sweep: vi.fn<ImageStore["sweep"]>(async ({ now }) => {
+			imageSweeps.push({ now, clearedThrough: await readClearedThrough(dataDir) });
+			return { removed: [], referenced: 0, inGrace: 0 };
+		}),
+	};
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -58,6 +69,7 @@ function start(days: number, intervalMs?: number, repush?: RepushStore, now?: Da
 		serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 		store: makeStore(days) as never,
 		dataRoot: dataDir,
+		images: imageStore,
 		logger,
 		intervalMs,
 		repush,
@@ -151,6 +163,7 @@ describe("startHistoryRetention — 登记进 track", () => {
 			serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 			store: makeStore(30) as never,
 			dataRoot: dataDir,
+			images: imageStore,
 			logger,
 			repush,
 			now: () => clock,
@@ -179,6 +192,7 @@ describe("startHistoryRetention — 登记进 track", () => {
 				},
 			} as never,
 			dataRoot: dataDir,
+			images: imageStore,
 			logger,
 		});
 
@@ -187,6 +201,68 @@ describe("startHistoryRetention — 登记进 track", () => {
 		expect(logger.warn).toHaveBeenCalledWith(
 			expect.stringContaining("initial retention pass failed"),
 		);
+	});
+});
+
+describe("图库清扫挂在同一个活上", () => {
+	// ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗:先推水位线、紧接着清图库 —— 过期的行不再算引用方,图才清得掉。
+	it("水位线推完才清图库,用的是同一个此刻", async () => {
+		const now = new Date("2026-06-15T12:00:00.000Z");
+		start(30, undefined, undefined, now);
+		await ctx.settled();
+
+		expect(imageSweeps).toEqual([{ now, clearedThrough: "2026-05-15" }]);
+	});
+
+	it("定时那一轮也清", async () => {
+		start(30);
+		await ctx.settled();
+		const tick = setInterval_.mock.calls[0]?.[0] as () => void;
+		tick();
+		await ctx.settled();
+
+		expect(imageStore.sweep).toHaveBeenCalledTimes(2);
+	});
+
+	it("图库清扫抛错只记 warn,这一轮照样算完", async () => {
+		imageStore.sweep.mockRejectedValueOnce(new Error("读不了盘"));
+		start(30);
+
+		const [task] = ctx.tracked;
+		await expect(task).resolves.toBeUndefined();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("读不了盘"));
+	});
+
+	it("历史那半抛错,图库照清:聊天附件、头像的图不该等历史修好", async () => {
+		startHistoryRetention({
+			serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
+			store: {
+				getGlobals: () => {
+					throw new Error("boom");
+				},
+			} as never,
+			dataRoot: dataDir,
+			images: imageStore,
+			logger,
+		});
+		await ctx.settled();
+
+		expect(imageStore.sweep).toHaveBeenCalledTimes(1);
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.stringContaining("initial retention pass failed"),
+		);
+	});
+
+	it("删了图就记一条 info", async () => {
+		imageStore.sweep.mockResolvedValueOnce({
+			removed: ["a.png", "b.png"],
+			referenced: 3,
+			inGrace: 1,
+		});
+		start(30);
+		await ctx.settled();
+
+		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("2 unreferenced image(s)"));
 	});
 });
 
