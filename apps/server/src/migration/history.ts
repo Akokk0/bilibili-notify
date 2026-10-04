@@ -10,10 +10,16 @@
  * ⑳ 要换跟图有关的格,也加在这个函数里,历史不会多迁一次。
  */
 
-import { readdir } from "node:fs/promises";
+import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { BILIBILI_SOURCE_KEY, type FeatureKey, type Identity } from "@bilibili-notify/internal";
-import { isPatchLine, listDayFiles } from "../history/store.js";
+import {
+	BILIBILI_SOURCE_KEY,
+	type FeatureKey,
+	type Identity,
+	type Logger,
+} from "@bilibili-notify/internal";
+import { sweepHistoryRetention } from "../history/retention.js";
+import { collectImageRefs, isPatchLine, listDayFiles } from "../history/store.js";
 import { dataPath } from "../runtime/roots.js";
 import {
 	isPlainObject,
@@ -218,7 +224,7 @@ function migrateRepushSnapshot(value: unknown): Record<string, unknown> | undefi
 }
 
 /** 新代里每份重推原件迁成最新的形状,回改写过的文件。日目录里原件自己存的图不碰(只认 `.json`)。 */
-async function migrateRepushSnapshotFiles(dataRoot: string): Promise<string[]> {
+export async function migrateRepushSnapshotFiles(dataRoot: string): Promise<string[]> {
 	const root = dataPath(dataRoot, "history", "repush");
 	let days: string[];
 	try {
@@ -245,8 +251,20 @@ async function migrateRepushSnapshotFiles(dataRoot: string): Promise<string[]> {
 	return rewritten;
 }
 
-/** 新代里每个日文件与每份重推原件迁成最新的形状,回改写过的文件(绝对路径)。 */
+/**
+ * 新代里每个日文件与每份重推原件迁成最新的形状,回改写过的文件(绝对路径)。迁移器那一步不直接调它,
+ * 而是拆开走:先迁日文件,跑一次清扫({@link sweepMigratedHistory}),再迁剩下的原件 —— 过了保留期的原件
+ * 反正要删,不白改写一遍。
+ */
 export async function migrateHistoryFiles(dataRoot: string): Promise<string[]> {
+	return [
+		...(await migrateHistoryDayFiles(dataRoot)),
+		...(await migrateRepushSnapshotFiles(dataRoot)),
+	];
+}
+
+/** 新代里每个日文件迁成最新的形状,回改写过的文件(绝对路径)。 */
+export async function migrateHistoryDayFiles(dataRoot: string): Promise<string[]> {
 	const root = dataPath(dataRoot, "history");
 	const rewritten: string[] = [];
 	for (const name of (await listDayFiles(dataRoot)).sort()) {
@@ -255,5 +273,79 @@ export async function migrateHistoryFiles(dataRoot: string): Promise<string[]> {
 			rewritten.push(path);
 		}
 	}
-	return [...rewritten, ...(await migrateRepushSnapshotFiles(dataRoot))];
+	return rewritten;
+}
+
+/** 迁移里那次清扫用的日志口:清不动就让迁移失败(下次开机重来),不留一个水位线说清过、东西却还在的新代。 */
+const STRICT_LOGGER: Logger = {
+	debug: () => {},
+	info: () => {},
+	warn: (message) => {
+		throw new Error(message);
+	},
+	error: (message) => {
+		throw new Error(message);
+	},
+};
+
+export interface MigratedHistorySweep {
+	/** 没带过来的图(`history/img/` 里的文件名):过了保留期的,加上孤儿。 */
+	images: string[];
+	/** 没带过来的重推原件是哪几天。 */
+	snapshotDays: string[];
+	/** 给迁移报告的话:各记一句,按数量说,不逐个文件列。 */
+	skipped: { path: string; reason: string }[];
+}
+
+/**
+ * ⑲c:**先替主人跑一次清扫**(ADR-0022 决策 9 下 10-04 的 🔗)。和开机后的清扫是同一个函数、时钟注入 ——
+ * 超期怎么算只写一份。照换算后的天数,过了保留期的图与重推原件从新代里删掉(删的是硬链接,第 0 代那份不动)、
+ * 水位线定好;文字一行不动。
+ *
+ * 另外删掉**孤儿图**:`history/img/` 里没有任何一行引用的文件(0.12 之前日文件删了、图没跟着删攒下的)。
+ * 只在迁移里做 —— 开机以后图只会跟着行来,不会再长出孤儿。要在日文件迁成最新形状之后调:数引用按现在的形状读。
+ */
+export async function sweepMigratedHistory(opts: {
+	dataRoot: string;
+	retentionDays: number;
+	now: Date;
+}): Promise<MigratedHistorySweep> {
+	const swept = await sweepHistoryRetention({ ...opts, logger: STRICT_LOGGER });
+
+	const root = dataPath(opts.dataRoot, "history");
+	const referenced = new Set<string>();
+	for (const file of await listDayFiles(opts.dataRoot)) {
+		for (const ref of await collectImageRefs(join(root, file))) referenced.add(ref);
+	}
+	const orphans: string[] = [];
+	for (const name of await listFiles(join(root, "img"), "")) {
+		if (referenced.has(name)) continue;
+		await unlink(join(root, "img", name));
+		orphans.push(name);
+	}
+
+	const skipped: MigratedHistorySweep["skipped"] = [];
+	if (swept.images.length > 0) {
+		skipped.push({
+			path: "history/img",
+			reason: `${swept.images.length} 张图过了保留期(${opts.retentionDays} 天),没带过来`,
+		});
+	}
+	if (orphans.length > 0) {
+		skipped.push({
+			path: "history/img",
+			reason: `${orphans.length} 张图没有任何一行历史引用,没带过来`,
+		});
+	}
+	if (swept.snapshotDays.length > 0) {
+		skipped.push({
+			path: "history/repush",
+			reason: `${swept.snapshotDays.length} 天的重推原件过了保留期(${opts.retentionDays} 天),没带过来`,
+		});
+	}
+	return {
+		images: [...swept.images, ...orphans],
+		snapshotDays: swept.snapshotDays,
+		skipped,
+	};
 }

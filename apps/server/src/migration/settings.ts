@@ -24,6 +24,7 @@ import {
 	ExtensionIdSchema,
 	HISTORY_RETENTION_DAY_OPTIONS,
 	type HistoryRetentionDays,
+	HistorySettingsSchema,
 } from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
@@ -78,6 +79,19 @@ function toHistoryRetentionDays(old: unknown): HistoryRetentionDays {
 		return DEFAULT_HISTORY_RETENTION_DAYS;
 	}
 	return RETENTION_STEPS_ASC.find((step) => step >= old) ?? LONGEST_RETENTION_DAYS;
+}
+
+/**
+ * 新代里迁好的核心设置上的保留天数,给迁移里那次历史清扫用。文件不在(0.x 没写过设置)、读不懂、
+ * 那一格不合法,都按默认 —— 和配置仓开机时补默认是同一个结果。
+ */
+export async function readMigratedRetentionDays(corePath: string): Promise<HistoryRetentionDays> {
+	const file = await readJsonFile(corePath);
+	const history = file.kind === "ok" && isPlainObject(file.value) ? file.value.history : undefined;
+	return (
+		HistorySettingsSchema.safeParse(history ?? {}).data?.retentionDays ??
+		DEFAULT_HISTORY_RETENTION_DAYS
+	);
 }
 
 /**

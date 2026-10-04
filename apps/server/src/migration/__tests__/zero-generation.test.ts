@@ -36,6 +36,9 @@ let root: string;
 let zero: string;
 let target: string;
 
+/** 迁移里那次历史清扫按这一刻算:夹具的历史都在 2026-09-30,保留 30 天,没有哪一天到期。 */
+const NOW = new Date("2026-10-01T00:00:00.000Z");
+
 beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "bn-zero-generation-"));
 	zero = join(root, "data");
@@ -145,7 +148,8 @@ const ZERO_FILES: Record<string, string> = {
 			ok: true,
 			per: [{ targetId: "22222222-2222-4222-8222-222222222222", ok: true, latencyMs: 3 }],
 		},
-		payload: { kind: "text", text: "下播了" },
+		// 这一行带一张图:`history/img/a.png` 有行引用,迁移里清孤儿图时不动它(⑲c)。
+		payload: { kind: "image", text: "下播了", imageRef: "a.png" },
 	})}\n`,
 	"history/img/a.png": "png",
 	// 0.x 的重推原件(⑱c 起 `v` → `version`)。
@@ -305,15 +309,17 @@ describe("migrateZeroGeneration", () => {
 	it("每条 0.x 路径都到了代布局里该去的地方;没被改写的内容不变", async () => {
 		await placeZeroGeneration();
 
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		// 搬过来的,加上改写时从别的文件拆出来的(B 站的设置从核心那份拆出,ADR-0021 决策 42 下 10-01 的 🔗)。
 		const splitOut = [
 			"config/settings/bilibili.json",
 			"config/settings/extensions/dev-bridge.json",
 		];
+		// 迁移里那次历史清扫新写的水位线(⑲c):不是搬来的,也不是改写的。
+		const written = ["history/retention.json"];
 		expect(await listTree(target)).toEqual(
-			[...Object.values(EXPECTED_MOVES), ...splitOut, "extensions/dev-bridge"].sort(),
+			[...Object.values(EXPECTED_MOVES), ...splitOut, ...written, "extensions/dev-bridge"].sort(),
 		);
 		expect([...report.rewritten].sort()).toEqual(REWRITTEN);
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
@@ -325,7 +331,7 @@ describe("migrateZeroGeneration", () => {
 	it("连接与目标改写成最新的形状", async () => {
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		const read = async (name: string) =>
 			JSON.parse(await readFile(join(target, "config", name), "utf8")) as unknown[];
@@ -344,7 +350,7 @@ describe("migrateZeroGeneration", () => {
 	it("历史、统计、锐评草稿改写成最新的形状", async () => {
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		const lines = async (path: string) =>
 			(await readFile(join(target, path), "utf8")).split("\n").filter(Boolean);
@@ -381,7 +387,7 @@ describe("migrateZeroGeneration", () => {
 	it("界面皮肤与女仆对话改写成最新的形状", async () => {
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		const read = async (...path: string[]) =>
 			JSON.parse(await readFile(join(target, ...path), "utf8")) as Record<string, unknown>;
@@ -400,7 +406,7 @@ describe("migrateZeroGeneration", () => {
 	it("追加写的 jsonl 是复制,其余是硬链接", async () => {
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
 			const same = (await stat(join(target, to))).ino === (await stat(join(zero, from))).ino;
@@ -413,7 +419,7 @@ describe("migrateZeroGeneration", () => {
 	it("开发版链进来的拓展:新代里重建同样的一条软链,不拷内容", async () => {
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		const link = join(target, "extensions", "dev-bridge");
 		expect((await lstat(link)).isSymbolicLink()).toBe(true);
@@ -423,7 +429,7 @@ describe("migrateZeroGeneration", () => {
 	it("残留、卡片皮肤、宿主的东西不带过来,都记进报告;认不得的一级项也记;拓展订阅只作输入、也记进报告", async () => {
 		await placeZeroGeneration();
 
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		expect(report.skipped.map((s) => s.path).sort()).toEqual(
 			[
@@ -445,7 +451,7 @@ describe("migrateZeroGeneration", () => {
 		await placeZeroGeneration();
 		const before = await treeDigest(zero);
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		expect(await treeDigest(zero)).toBe(before);
 	});
@@ -457,6 +463,7 @@ describe("migrateZeroGeneration", () => {
 		await migrateZeroGeneration({
 			zeroRoot: zero,
 			targetDir: target,
+			now: NOW,
 			onProgress: (progress) => seen.push(progress),
 		});
 
@@ -470,7 +477,7 @@ describe("migrateZeroGeneration", () => {
 	it("产出变了就得抬 MIGRATION_REVISION", async () => {
 		await placeZeroGeneration();
 
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 		const hash = createHash("sha256");
 		for (const t of [...report.transfers].sort((a, b) => a.from.localeCompare(b.from))) {
 			hash.update(`${t.from} -> ${t.to} (${t.method})\n`);
@@ -481,12 +488,16 @@ describe("migrateZeroGeneration", () => {
 		for (const path of [...report.rewritten].sort()) {
 			hash.update(`rewrite ${path}\n`).update(await readFile(join(target, path)));
 		}
+		// 迁移新写的历史水位线不算改写、不在 `rewritten` 里,单独算进来:清扫怎么定水位线变了,也得抬修订号。
+		hash
+			.update("history/retention.json\n")
+			.update(await readFile(join(target, "history", "retention.json")));
 
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 22,
-			output: "499b613aee209d1b9952d9d213ccc0d68172b011c91aec34d77596b1a36144fa",
+			revision: 23,
+			output: "4599283b7214666180a9c5a5cabcd34b253ade94a27644e5c3b08f48be5936c1",
 		});
 	});
 });

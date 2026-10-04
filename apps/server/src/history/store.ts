@@ -841,21 +841,27 @@ export async function listDayFiles(dataRoot: string): Promise<string[]> {
 }
 
 /**
- * 清掉一整天历史引用的每一张图,回清了几张。**日文件(文字)留着**:文字不设上限,图按天数清
+ * 清掉一整天历史引用的每一张图,回真删掉的那几张的名字。**日文件(文字)留着**:文字不设上限,图按天数清
  * (ADR-0022 决策 9)。保留期的清扫调它(`retention.ts`)。
  *
  * 图名是 `<行 id>-<序号>`,行 id 不带日期,哪些图归这一天只能经日文件反查。图删不掉不算失败 ——
- * 它是附属物。
+ * 它是附属物(本来就不在的也不算删掉)。
  */
-export async function deleteDayImages(dataRoot: string, fileName: string): Promise<number> {
+export async function deleteDayImages(dataRoot: string, fileName: string): Promise<string[]> {
 	const root = dataPath(dataRoot, "history");
-	const images = await collectImageRefs(join(root, fileName));
-	for (const name of images) await unlink(join(root, "img", name)).catch(() => {});
-	return images.length;
+	const removed: string[] = [];
+	for (const name of await collectImageRefs(join(root, fileName))) {
+		const gone = await unlink(join(root, "img", name)).then(
+			() => true,
+			() => false,
+		);
+		if (gone) removed.push(name);
+	}
+	return removed;
 }
 
-/** 一份日文件里所有消息引用过的图 —— 本体行与补丁行都要数进来。 */
-async function collectImageRefs(path: string): Promise<string[]> {
+/** 一份日文件里所有消息引用过的图 —— 本体行与补丁行都要数进来。迁移清孤儿图时也用它数「还有谁引用」。 */
+export async function collectImageRefs(path: string): Promise<string[]> {
 	const out: string[] = [];
 	for (const line of await readRawLines(path)) {
 		const json = tryParse(line);

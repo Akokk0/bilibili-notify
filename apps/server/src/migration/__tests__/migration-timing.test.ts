@@ -24,6 +24,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_HISTORY_RETENTION_DAYS } from "@bilibili-notify/internal";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { createGeneration, FORMAT_VERSION, selectGeneration } from "../../runtime/generations.js";
 import {
@@ -45,6 +46,9 @@ import { placeSyntheticZero, type SyntheticZeroCounts } from "./synthetic-zero.j
  * 上限 5 时实测满量多出约 9 秒能抓到(8 秒 → 4.86 没抓到,10 秒 → 5.18 红);上限 5.5 按同样的量估约 16 秒。
  * 四分之一量只有 7 秒上下,一次测量的抖动就有零点几个比值,门槛附近的结果以多跑几次为准。
  * 线性的拖慢(整体慢了几倍)比值看不出来,那是满量天花板(5 分钟)的事。
+ *
+ * ⑲c 起迁移里先跑一次历史清扫:图与重推原件只留保留期以内的那几天(两档留下的一样多),过了期的搬过来再删掉。
+ * 搬与删仍随天数线性涨,留下来要改写的原件不涨,所以比值比 4 略低:实测约 3.7(满量约 35 秒、四分之一量约 9.5 秒)。
  */
 const MAX_RATIO = 5.5;
 /** 满量迁移的天花板(秒)。 */
@@ -58,7 +62,7 @@ interface Timed {
 }
 
 /** 照开机的样子迁一遍:选代 → 开新代,`fill` 里跑迁移器。计时包住这一整段。 */
-async function migrateLikeBoot(hostRoot: string): Promise<Timed> {
+async function migrateLikeBoot(hostRoot: string, now: Date): Promise<Timed> {
 	const started = performance.now();
 	const selection = await selectGeneration({
 		hostRoot,
@@ -79,6 +83,7 @@ async function migrateLikeBoot(hostRoot: string): Promise<Timed> {
 			result.report = await migrateZeroGeneration({
 				zeroRoot: hostRoot,
 				targetDir: partialDir,
+				now,
 				onProgress: ({ label }) => marks.push({ label, at: performance.now() }),
 			});
 		},
@@ -122,11 +127,20 @@ async function expectMigrated(
 	expect(existsSync(join(generation, "generation.json"))).toBe(true);
 	expect(existsSync(join(hostRoot, "generations", "1.partial"))).toBe(false);
 
-	// 报告:摆进去的每个文件都搬了,只有「拓展订阅」那份只作输入、没进新代。
-	expect(report.skipped.map((s) => s.path)).toEqual(["state/extension-subscriptions.json"]);
-	expect(report.transfers).toHaveLength(counts.files - 1);
+	// 报告:「拓展订阅」那份只作输入、没进新代;过了保留期的图与重推原件不带过来,各记一句(⑲c)。
+	// 合成的 0.x 设置没写保留天数,按默认 30 天;此刻取历史的最后一天,所以留下的是最后 31 个 UTC 日。
+	const keptDays = Math.min(counts.historyDays, DEFAULT_HISTORY_RETENTION_DAYS + 1);
+	const expiredDays = counts.historyDays - keptDays;
+	expect(report.skipped.map((s) => s.path)).toEqual(
+		expiredDays > 0
+			? ["state/extension-subscriptions.json", "history/img", "history/repush"]
+			: ["state/extension-subscriptions.json"],
+	);
+	expect(report.transfers).toHaveLength(
+		counts.files - 1 - expiredDays * (counts.plan.historyRowsPerDay + counts.plan.repushPerDay),
+	);
 
-	// 推送历史:每天一个日文件,老行一行不少地改写成现在的行;图与重推原件一个没少。
+	// 推送历史:每天一个日文件,老行一行不少地改写成现在的行;图与重推原件只留保留期以内的那几天。
 	const historyDir = join(generation, "history");
 	const dayFiles = (await readdir(historyDir)).filter((name) => name.endsWith(".jsonl")).sort();
 	expect(dayFiles).toHaveLength(counts.historyDays);
@@ -161,13 +175,16 @@ async function expectMigrated(
 	expect(rewrittenHistory.filter((path) => path.endsWith(".jsonl"))).toHaveLength(
 		counts.historyDays,
 	);
-	// 重推原件 `v` → `version`(⑱c):每份都改写了一遍。
+	// 迁移里先跑一次清扫(⑲c):图与重推原件只留保留期以内的那几天(`keptDays`),文字(日文件)一份不少。
+	// 重推原件 `v` → `version`(⑱c):留下的每份都改写了一遍,要删的不白改写。
 	expect(rewrittenHistory.filter((path) => path.startsWith("history/repush/"))).toHaveLength(
-		counts.repushSnapshots,
+		keptDays * counts.plan.repushPerDay,
 	);
-	expect(await readdir(join(historyDir, "img"))).toHaveLength(counts.historyImages);
+	expect(await readdir(join(historyDir, "img"))).toHaveLength(
+		keptDays * counts.plan.historyRowsPerDay,
+	);
 	const repushDays = await readdir(join(historyDir, "repush"));
-	expect(repushDays).toHaveLength(counts.historyDays);
+	expect(repushDays).toHaveLength(keptDays);
 	let snapshots = 0;
 	let snapshotsNotMigrated = 0;
 	for (const day of repushDays) {
@@ -177,7 +194,7 @@ async function expectMigrated(
 			snapshots += 1;
 		}
 	}
-	expect(snapshots).toBe(counts.repushSnapshots);
+	expect(snapshots).toBe(keptDays * counts.plan.repushPerDay);
 	expect(snapshotsNotMigrated).toBe(0);
 
 	// 粉丝:每个订阅一个文件、按订阅 id 命名(uid 文件并进去了,不剩),一年的点一个不少。
@@ -288,8 +305,10 @@ describe.skipIf(process.env.BN_MIGRATION_TIMING !== "1")("迁移耗时:一年的
 			quarterCounts.followerRowsPerSubscription,
 		]).toEqual([52_560, 52_560]);
 
-		const quarter = await migrateLikeBoot(quarterRoot);
-		const full = await migrateLikeBoot(fullRoot);
+		// 迁移里那次历史清扫按「历史的最后一天」算,结果不随跑测试的日历变。
+		const now = new Date(`${fullCounts.historyLastDay}T12:00:00.000Z`);
+		const quarter = await migrateLikeBoot(quarterRoot, now);
+		const full = await migrateLikeBoot(fullRoot, now);
 		const ratio = full.seconds / quarter.seconds;
 
 		console.info(

@@ -24,7 +24,7 @@ import { deleteDayImages, listDayFiles } from "./store.js";
 const RETENTION_MARK_FILE = "retention.json";
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-const markPath = (dataRoot: string): string =>
+const retentionMarkPath = (dataRoot: string): string =>
 	join(dataPath(dataRoot, "history"), RETENTION_MARK_FILE);
 
 /**
@@ -34,7 +34,7 @@ const markPath = (dataRoot: string): string =>
 export async function readClearedThrough(dataRoot: string): Promise<string | undefined> {
 	let text: string;
 	try {
-		text = await readFile(markPath(dataRoot), "utf8");
+		text = await readFile(retentionMarkPath(dataRoot), "utf8");
 	} catch {
 		return undefined;
 	}
@@ -69,10 +69,10 @@ export interface HistorySweepOptions {
 export interface HistorySweepReport {
 	/** 清完以后的水位线;一天都没清过就没有。 */
 	clearedThrough?: string;
-	/** 这一轮清了几天的图。 */
-	imageDays: number;
-	/** 这一轮清了几天的重推原件。 */
-	snapshotDays: number;
+	/** 这一轮真删掉的图(`history/img/` 里的文件名)。 */
+	images: string[];
+	/** 这一轮清掉重推原件的那几天。 */
+	snapshotDays: string[];
 }
 
 /**
@@ -88,35 +88,34 @@ export async function sweepHistoryRetention(
 	const target = lastExpiredDay(opts.now, opts.retentionDays);
 	const mark = await readClearedThrough(opts.dataRoot);
 	if (mark !== undefined && target <= mark) {
-		return { clearedThrough: mark, imageDays: 0, snapshotDays: 0 };
+		return { clearedThrough: mark, images: [], snapshotDays: [] };
 	}
 
-	let imageDays = 0;
+	const images: string[] = [];
 	for (const file of (await listDayFiles(opts.dataRoot)).sort()) {
 		const day = file.slice(0, 10);
 		if (day > target || (mark !== undefined && day <= mark)) continue;
 		try {
-			await deleteDayImages(opts.dataRoot, file);
-			imageDays += 1;
+			images.push(...(await deleteDayImages(opts.dataRoot, file)));
 		} catch (err) {
 			opts.logger.warn(`[history] failed to clear images of ${day}: ${String(err)}`);
 		}
 	}
 
 	const repush = opts.repush ?? createRepushStore({ dataRoot: opts.dataRoot, logger: opts.logger });
-	let snapshotDays = 0;
-	for (const day of await listRepushDays(opts.dataRoot)) {
+	const snapshotDays: string[] = [];
+	for (const day of (await listRepushDays(opts.dataRoot)).sort()) {
 		if (day > target) continue;
 		try {
 			await repush.dropDay(day);
-			snapshotDays += 1;
+			snapshotDays.push(day);
 		} catch (err) {
 			opts.logger.warn(`[history] failed to drop repush snapshots of ${day}: ${String(err)}`);
 		}
 	}
 
-	await atomicWriteJson(markPath(opts.dataRoot), { clearedThrough: target });
-	return { clearedThrough: target, imageDays, snapshotDays };
+	await atomicWriteJson(retentionMarkPath(opts.dataRoot), { clearedThrough: target });
+	return { clearedThrough: target, images, snapshotDays };
 }
 
 /**
@@ -170,9 +169,9 @@ async function runOnce(opts: RetentionRunnerOptions): Promise<void> {
 		logger: opts.logger,
 		repush: opts.repush,
 	});
-	if (report.imageDays > 0 || report.snapshotDays > 0) {
+	if (report.images.length > 0 || report.snapshotDays.length > 0) {
 		opts.logger.info(
-			`[history] retention cleared images of ${report.imageDays} day(s) and repush snapshots of ${report.snapshotDays} day(s) through ${report.clearedThrough}`,
+			`[history] retention cleared ${report.images.length} image(s) and repush snapshots of ${report.snapshotDays.length} day(s) through ${report.clearedThrough}`,
 		);
 	}
 }

@@ -446,7 +446,7 @@ describe("listDayFiles / deleteDayImages", () => {
 		const ref = entry.messages[0]?.payload.imageRef ?? "";
 		expect(await readdir(join(dataDir, "history", "img"))).toContain(ref);
 
-		expect(await deleteDayImages(dataDir, file)).toBe(1);
+		expect(await deleteDayImages(dataDir, file)).toEqual([ref]);
 		expect(await readdir(join(dataDir, "history", "img"))).not.toContain(ref);
 		expect(await listDayFiles(dataDir)).toContain(file);
 	});

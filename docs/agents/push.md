@@ -101,7 +101,7 @@
 
 **人工重推**（ADR-0017，`history/repush-runner.ts`）从历史行再发一次：发送口固定注入 `BilibiliPush.sendToTarget(…, { routing })` —— 所以静音 / 免扰 / 总开关三道（在它上游的 `broadcastToFeature` 里）天然不参与，退避重试与重试前复检 routing 照有；订阅按上面那条规矩找回，结果追加进原来那一行。
 
-**保留分两层**（ADR-0022 决策 9，`history/retention.ts`）：文字不设上限，日文件一份都不删；图与重推原件按保留天数清。清到哪一天记成一条水位线 `history/retention.json` 的 `clearedThrough`（UTC 日、含当天，只往前走），清扫每 6 小时加开机一次，只处理水位线之后、到期日及以前的那几天：删日文件引用的图、删那几天的重推原件目录，再把水位线推过去。列表接口给水位线及以前的行带上 `isPastRetention`，面板在原来画图的位置写「图已清理」；这些行的原件也没了，重推按钮照旧因为「原件不在」而灰掉。唯一还会删文字的是 devtools 清截流记录用的 `deleteRange`。
+**保留分两层**（ADR-0022 决策 9，`history/retention.ts`）：文字不设上限，日文件一份都不删；图与重推原件按保留天数清。清到哪一天记成一条水位线 `history/retention.json` 的 `clearedThrough`（UTC 日、含当天，只往前走），清扫每 6 小时加开机一次，只处理水位线之后、到期日及以前的那几天：删日文件引用的图、删那几天的重推原件目录，再把水位线推过去。列表接口给水位线及以前的行带上 `isPastRetention`，面板在原来画图的位置写「图已清理」；这些行的原件也没了，重推按钮照旧因为「原件不在」而灰掉。唯一还会删文字的是 devtools 清截流记录用的 `deleteRange`。从 0.x 迁上来时，迁移在「推送历史」那一步里先跑一次同样的清扫（`migration/history.ts` 的 `sweepMigratedHistory`），顺带删掉没有任何一行引用的孤儿图，水位线随新代一起就位。保留天数是 `history.retentionDays`，只许 90 / 60 / 30 / 15 / 7 / 3 / 1 七档。
 
 同 `pushId` 的后续消息（@全体 / 图集 / 词云 / 总结）追加到同一行。四态：
 

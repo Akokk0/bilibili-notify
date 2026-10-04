@@ -12,7 +12,7 @@ import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { type ConfigSecrets, createSecretStore } from "../../config/secret-store.js";
 import { migrateSecretBag } from "../secrets.js";
 import { migrateZeroGeneration, readZeroGenerationKey } from "../zero-generation.js";
-import { useZeroSandbox } from "./support.js";
+import { SANDBOX_NOW, useZeroSandbox } from "./support.js";
 
 const BAG = ["secrets", "config-secrets.enc"] as const;
 
@@ -92,6 +92,7 @@ describe("0.x 加密袋里单把的 aiApiKey → 分桶的 custom", () => {
 			zeroRoot: sandbox.zero,
 			targetDir: sandbox.target,
 			passphrase: "the-passphrase",
+			now: SANDBOX_NOW,
 		});
 
 		expect((await bagAt(sandbox.target, "the-passphrase").load()).aiApiKeys).toEqual({

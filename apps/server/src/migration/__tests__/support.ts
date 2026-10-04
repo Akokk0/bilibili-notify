@@ -35,8 +35,11 @@ export interface ZeroSandbox {
 	placeZero(rel: string, body: unknown): Promise<void>;
 	/** 往第 0 代摆一份原样的字节 —— 要逐字节比对的时候用。 */
 	placeZeroText(rel: string, text: string): Promise<void>;
-	/** 迁一代。 */
-	migrate(): Promise<ZeroMigrationResult>;
+	/**
+	 * 迁一代。`now` 是迁移里那次历史清扫按哪一刻算到期;缺省给一个很早的时刻({@link SANDBOX_NOW}),
+	 * 用例里摆的哪一天都不算到期 —— 要测到期的用例自己传。
+	 */
+	migrate(options?: { now?: Date }): Promise<ZeroMigrationResult>;
 	/** 在新的一代上开一次配置仓。 */
 	load(): Promise<ConfigStore>;
 	/** 迁一代,再在新的一代上开一次配置仓。 */
@@ -51,6 +54,9 @@ export interface ZeroSandbox {
  * 在调用它的 describe 里登记 beforeEach / afterEach:每条用例一份新的临时根,里面 `zero/` 是第 0 代、
  * `generation/` 是新的一代;用完删掉。返回的对象在用例里用。
  */
+/** 沙箱里迁移缺省用的「此刻」:比任何用例摆的日子都早,所以缺省没有哪一天到期。 */
+export const SANDBOX_NOW = new Date("2000-01-01T00:00:00.000Z");
+
 export function useZeroSandbox(prefix: string): ZeroSandbox {
 	let root = "";
 	let zero = "";
@@ -67,7 +73,12 @@ export function useZeroSandbox(prefix: string): ZeroSandbox {
 	});
 
 	const configPath = (name: string) => join(target, ...CONFIG_DIR, name);
-	const migrate = () => migrateZeroGeneration({ zeroRoot: zero, targetDir: target });
+	const migrate = (options?: { now?: Date }) =>
+		migrateZeroGeneration({
+			zeroRoot: zero,
+			targetDir: target,
+			now: options?.now ?? SANDBOX_NOW,
+		});
 	const load = async () => {
 		const store = createConfigStore({
 			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir: zero, logLevel: "info" },

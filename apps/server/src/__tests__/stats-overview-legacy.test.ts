@@ -170,7 +170,12 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			JSON.stringify(uids.map((uid) => ({ id: `s${uid}`, uid }))),
 		);
 		// 老数据按 uid 命名;迁移器把它们改成订阅 id(`s101` …)、行翻成现在的形状,路由按订阅 id 读。
-		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: generation });
+		const report = await migrateZeroGeneration({
+			zeroRoot: zero,
+			targetDir: generation,
+			// 迁移里那次历史清扫按这一刻算;这条用例不摆历史,给一个固定的时刻只为结果不随日历变。
+			now: new Date("2000-01-01T00:00:00.000Z"),
+		});
 		// 原件断言的是旧函数的计数 `{ renamed: 8, merged: 0, copied: 0 }`;迁移器回的是改写过的文件:
 		// 就是这八份(改名与翻行并成一条,粉丝文件只改名)。
 		expect(

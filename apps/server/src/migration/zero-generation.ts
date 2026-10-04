@@ -40,11 +40,15 @@ import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
 import { migrateConnectionFiles } from "./connections.js";
 import { migrateConversationFiles } from "./conversations.js";
-import { migrateHistoryFiles } from "./history.js";
+import {
+	migrateHistoryDayFiles,
+	migrateRepushSnapshotFiles,
+	sweepMigratedHistory,
+} from "./history.js";
 import { ZERO_GLOBAL_LIVE_FACTS } from "./live-split.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSecretBag } from "./secrets.js";
-import { migrateSettingsFiles, readZeroLiveFacts } from "./settings.js";
+import { migrateSettingsFiles, readMigratedRetentionDays, readZeroLiveFacts } from "./settings.js";
 import { migrateDashboardSkins } from "./skins.js";
 import { migrateStatsFiles } from "./stats.js";
 import {
@@ -58,7 +62,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 22;
+export const MIGRATION_REVISION = 23;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -174,7 +178,8 @@ export interface ZeroMigrationResult {
 	/**
 	 * 搬过来之后改写成最新形状的文件(相对新代根,`/` 分隔)。统计文件改了名的记新名字 —— 旧名字在
 	 * `transfers` 里,搬过来之后被并进新名字、删掉了。0.x 自己已经并好、只差删 uid 那份的,只删不写,
-	 * 不记在这里(修订号的摘要因此也看不到这一步)。
+	 * 不记在这里(修订号的摘要因此也看不到这一步)。迁移新写的历史水位线 `history/retention.json` 不是改写,也不记在这里
+	 * (摘要那条测试单独把它算进去)。
 	 */
 	rewritten: string[];
 }
@@ -187,6 +192,8 @@ export interface MigrateZeroGenerationOptions {
 	/** 主密钥的口令(`BN_COOKIE_KEY`,没配就不传):解加密袋要用第 0 代那把密钥。 */
 	passphrase?: string;
 	onProgress?: (progress: MigrationProgress) => void;
+	/** 此刻:迁移里那次历史清扫按它算哪几天过了保留期。缺省读系统时钟;注入口只留给测试。 */
+	now?: Date;
 }
 
 /**
@@ -259,7 +266,7 @@ export async function migrateZeroGeneration(
 
 	for (const [index, rewrite] of REWRITES.entries()) {
 		opts.onProgress?.({ done: moves.length + index, total, label: rewrite.label });
-		for (const path of await rewrite.run(opts)) {
+		for (const path of await rewrite.run(opts, report)) {
 			report.rewritten.push(portable(relative(opts.targetDir, path)));
 		}
 	}
@@ -275,7 +282,7 @@ export async function migrateZeroGeneration(
  */
 const REWRITES: readonly {
 	label: string;
-	run: (opts: MigrateZeroGenerationOptions) => Promise<string[]>;
+	run: (opts: MigrateZeroGenerationOptions, report: ZeroMigrationResult) => Promise<string[]>;
 }[] = [
 	{
 		label: "连接与推送目标",
@@ -311,7 +318,29 @@ const REWRITES: readonly {
 				),
 			}),
 	},
-	{ label: "推送历史", run: (opts) => migrateHistoryFiles(opts.targetDir) },
+	{
+		label: "推送历史",
+		run: async (opts, report) => {
+			const dayFiles = await migrateHistoryDayFiles(opts.targetDir);
+			// 日文件迁成最新形状以后,先替主人跑一次清扫:过了保留期的图与原件、孤儿图不带过来(ADR-0022 决策 9)。
+			// 保留天数读新代里迁好的设置(「设置」那一步在前面)。原件放在清扫之后迁:要删的那些不白改写一遍。
+			const swept = await sweepMigratedHistory({
+				dataRoot: opts.targetDir,
+				retentionDays: await readMigratedRetentionDays(
+					dataPath(opts.targetDir, ...CORE_SETTINGS_FILE),
+				),
+				now: opts.now ?? new Date(),
+			});
+			// 搬过来又删掉的,从「搬过去的」里拿掉,记进「没带过来的」。
+			const images = new Set(swept.images.map((name) => `history/img/${name}`));
+			const snapshotDirs = swept.snapshotDays.map((day) => `history/repush/${day}/`);
+			report.transfers = report.transfers.filter(
+				({ to }) => !images.has(to) && !snapshotDirs.some((dir) => to.startsWith(dir)),
+			);
+			report.skipped.push(...swept.skipped);
+			return [...dayFiles, ...(await migrateRepushSnapshotFiles(opts.targetDir))];
+		},
+	},
 	{
 		label: "统计",
 		run: withBiliSubscriptions((opts, subscriptions) =>

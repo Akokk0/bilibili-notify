@@ -17,7 +17,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { CONFIG_DIR, ConfigValidationError } from "../../config/store.js";
 import { migrateSubscriptionFiles } from "../subscriptions.js";
 import { migrateZeroGeneration } from "../zero-generation.js";
-import { useZeroSandbox } from "./support.js";
+import { SANDBOX_NOW, useZeroSandbox } from "./support.js";
 import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
 const sandbox = useZeroSandbox("bn-zero-subscriptions-");
@@ -225,7 +225,7 @@ describe("0.x 的分组换成标签(ADR-0034)", () => {
 		await sandbox.migrate();
 		const first = (await sandbox.readConfig<NewFile>("subscriptions.json")).tags;
 		const again = join(sandbox.target, "..", "generation-again");
-		await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: again });
+		await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: again, now: SANDBOX_NOW });
 		const second = JSON.parse(
 			await readFile(join(again, ...CONFIG_DIR, "subscriptions.json"), "utf8"),
 		) as NewFile;
@@ -362,7 +362,7 @@ describe("迁两遍和迁一遍一样", () => {
 		const first = await readFile(sandbox.configPath("subscriptions.json"), "utf8");
 		// 第 0 代没动,所以再往一个新目标迁一遍(下次开机按修订号重迁就是这么来的)产出完全一样。
 		const again = join(sandbox.target, "..", "generation-again");
-		await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: again });
+		await migrateZeroGeneration({ zeroRoot: sandbox.zero, targetDir: again, now: SANDBOX_NOW });
 		expect(await readFile(join(again, ...CONFIG_DIR, "subscriptions.json"), "utf8")).toBe(first);
 	});
 
