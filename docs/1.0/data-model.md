@@ -177,7 +177,7 @@ interface Post {
   notice?: string;                     // BN 自己说的一句，画在正文后面
   locked?: { icon?: PostImage; title: string; hint: string };   // 专属内容锁，替掉正文
   images?: PostImage[];                // 只表示图集
-  video?: { cover: PostImage; title: string; description: string; durationSec: number; views?: number; danmaku?: number };
+  video?: { cover: PostImage; title: string; description: string; durationSec?: number; views?: number; danmaku?: number };   // 时长没有就不画角标（直播回放、首映；10-05 主人定）
   attachment?: Attachment;
   repost?: Post;                       // 被转发的原作品
   stats?: { shares?: number; comments?: number; likes?: number };
