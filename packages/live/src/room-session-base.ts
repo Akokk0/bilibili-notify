@@ -3,10 +3,10 @@ import type { LiveRoomInfo } from "@bilibili-notify/api";
 import type { LiveEvent } from "@bilibili-notify/blive";
 import { type CardKind, type Disposable, formatDuration } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { biliLiveTimeToIso } from "./live-card-input";
 import { liveEndGraceMinutes, rotateLiveCover } from "./live-settings";
 import { type CustomCardStyleLike, LivePushType, type SubItemView } from "./push-like";
 import {
-	biliLiveTimeToIso,
 	LiveRoomAccessDeniedError,
 	LiveRoomPreflightBlockedError,
 	type RoomContext,
@@ -39,7 +39,7 @@ export abstract class RoomSessionBase {
 	protected liveStatus = false;
 	protected liveRoomInfo: LiveRoomInfo["data"] | undefined;
 	protected masterInfo: MasterInfo | undefined;
-	protected readonly liveData: LiveData = { likedNum: "0" };
+	protected readonly liveData: LiveData = {};
 
 	/**
 	 * 初始房态流程(bootstrapRoomState:拉房间/主播信息、已在播检测、重启补报)

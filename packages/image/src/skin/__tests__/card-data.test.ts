@@ -345,8 +345,9 @@ describe("直播卡的几种状态", () => {
 });
 
 describe("直播卡的封面", () => {
-	// 用哪一张(关键帧 / 房间封面 / 自定义封面)在出卡入口之前就定好了 —— B 站那头与
-	// `generateNeutralLiveCard` 各管一段(`__tests__/live-card-bili.test.ts` 钉着)。契约说的就是
+	// 用哪一张(关键帧 / 房间封面 / 自定义封面)在出卡入口之前就定好了 —— B 站那头的翻译
+	// (`liveCardInputFromRoomInfo`,`packages/live` 的 `live-card-input.test.ts` 钉着)与出卡入口
+	// `generateLiveCard`(`__tests__/neutral-live-card.test.ts` 钉着)各管一段。契约说的就是
 	// 视图里那张,与封面块画的是同一张。
 	it("就是视图里生效的那张", () => {
 		const d = buildCardData("live", liveProps());

@@ -246,7 +246,7 @@ export interface CreateEnginesOptions {
 	extensionPlatformLabel?: (extensionId: string) => string | undefined;
 	/**
 	 * 拓展订阅推送要从外面现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、平台对作品的叫法、
-	 * 资料里引用的头像(图库)。装载器比引擎晚建起来,装卸也随时发生,都现取。
+	 * 清单里声明的事件。装载器比引擎晚建起来,装卸也随时发生,都现取。
 	 *
 	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
 	 */
@@ -266,6 +266,12 @@ export interface CreateEnginesOptions {
 	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
 	 */
 	extensionLive?: Pick<ExtensionLiveTable, "get">;
+	/**
+	 * 拓展直播的封面与事件带来的作者头像往图库存的口(`AppRuntime.liveImages`,ADR-0021 决策 22 / 24 下 2026-10-05
+	 * 的 🔗,㉒c):直播卡是中立输入,图只收图库引用。**给了 `extensionSources` 与 `extensionLive` 就必须给** ——
+	 * 漏给是开机直接抛,不是悄悄不出图。
+	 */
+	liveImages?: PostImageSink;
 	/**
 	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
 	 * 记进去。不给就只记日志。
@@ -725,6 +731,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `extensionLiveSession` 读它。 */
 	let extensionLiveSessions: ExtensionLiveSessions | undefined;
 	if (extensionSources && extensionLive) {
+		const liveImages = opts.liveImages;
+		// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
+		if (!liveImages) throw new Error("createEngines: 给了 extensionLive 就必须给 liveImages");
 		const liveSessions = createExtensionLiveSessions({
 			bus: opts.bus,
 			logger: liveCtx.logger,
@@ -758,6 +767,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					);
 				},
 				sources: extensionSources,
+				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+				liveImages,
 				sendFor: (id) => boundLivePush(bindSubscriptionPush(push, id)),
 				renderer: () => (globals().defaults.cardStyle.enabled ? imageRenderer : null),
 				reportProblem: (problem) => opts.extensionReportProblem?.(problem),

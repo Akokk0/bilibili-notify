@@ -71,7 +71,6 @@ import {
 import { renderHelp } from "./runtime/command-help.js";
 import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
-import { readProfileAvatar } from "./runtime/extension-push-common.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import {
 	copyKeyMaterial,
@@ -768,7 +767,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				return view?.display.label ?? entryIdentity(entry)?.name;
 			},
 			// 拓展订阅推送要现取的几样(ADR-0019 决策 54 / 61 / 70):拓展在不在跑、清单里平台对作品的
-			// 叫法、资料里引用的头像(图库)。同上,装载器晚一步建起来,所以都现取。
+			// 叫法、声明的事件。同上,装载器晚一步建起来,所以都现取。
 			extensionSources: {
 				running: (id) =>
 					loadedExtensions?.list().some((one) => one.id === id && one.state === "running") ?? false,
@@ -780,11 +779,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					const entry = loadedExtensions?.list().find((one) => one.id === id);
 					return entry?.manifest && manifestSubscriptionView(entry.manifest)?.events;
 				},
-				readAvatar: (id) => readProfileAvatar(runtime, id),
 			},
 			// 拓展作品卡是 `Post`(㉑d):配图 / 封面 / 事件带来的头像经 `postImages` 存进图库,出图器出卡前
 			// 经 `resolveImageRef` 把引用换成 data URL。两头缺一头,症状都是作品卡上一张图都没有。
 			postImages: runtime.postImages,
+			// 拓展直播卡同理(㉒c):封面与事件头像经 `liveImages` 存进图库,出图器经同一个 `resolveImageRef` 取回。
+			liveImages: runtime.liveImages,
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,

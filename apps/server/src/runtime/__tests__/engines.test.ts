@@ -174,8 +174,7 @@ vi.mock("@bilibili-notify/ai", () => ({
 vi.mock("@bilibili-notify/image", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@bilibili-notify/image")>();
 	return {
-		// 拓展订阅造卡用的常量与纯函数(直播卡的头像占位、作品翻 `Post` 的图廊张数),走真的。
-		BLOCKED_IMG_PLACEHOLDER: actual.BLOCKED_IMG_PLACEHOLDER,
+		// 拓展订阅造卡用的常量与纯函数(作品翻 `Post` 的图廊张数),走真的。
 		GALLERY_MAX_IMAGES: actual.GALLERY_MAX_IMAGES,
 		formatCardTime: actual.formatCardTime,
 		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
@@ -186,6 +185,7 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 			stop = vi.fn();
 			updateConfig = vi.fn();
 			generatePostCard = vi.fn(async (..._args: unknown[]) => Buffer.from("card"));
+			generateLiveCard = vi.fn(async (..._args: unknown[]) => Buffer.from("live-card"));
 			constructor(opts: any) {
 				this.opts = opts;
 				H.image.push(this);
@@ -395,6 +395,8 @@ function setup(opts?: {
 	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
 	/** 拓展作品往图库存图的口(接线层给的 `runtime.postImages`);给了 `extensionSources` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
 	postImages?: Parameters<typeof createEngines>[0]["postImages"] | null;
+	/** 拓展直播往图库存封面与事件头像的口(接线层给的 `runtime.liveImages`);给了 `extensionSources` 与 `extensionLive` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
+	liveImages?: Parameters<typeof createEngines>[0]["liveImages"] | null;
 	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
 	/** 拓展订阅的在播表与上报问题框(接线层给的);不给 = 不接拓展订阅的直播。 */
@@ -479,6 +481,13 @@ function setup(opts?: {
 			: {}),
 		...(opts?.resolveImageRef ? { resolveImageRef: opts.resolveImageRef } : {}),
 		...(opts?.extensionLive ? { extensionLive: opts.extensionLive } : {}),
+		...(opts?.extensionSources && opts.extensionLive && opts.liveImages !== null
+			? {
+					liveImages: opts.liveImages ?? {
+						put: async () => ({ ok: true as const, ref: `${"0".repeat(63)}2.png` }),
+					},
+				}
+			: {}),
 		...(opts?.extensionReportProblem
 			? { extensionReportProblem: opts.extensionReportProblem }
 			: {}),
@@ -615,7 +624,6 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 			extensionSources: {
 				running: () => true,
 				postNoun: () => "作品",
-				readAvatar: async () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
 		});
@@ -659,7 +667,6 @@ describe("createEngines — 拓展作品的图走图库", () => {
 	const sources = {
 		running: () => true,
 		postNoun: () => undefined,
-		readAvatar: async () => undefined,
 		events: () => ["post", "liveStart", "liveEnd"] as const,
 	};
 	const PNG_1X1 = new Uint8Array([
@@ -769,7 +776,6 @@ describe("createEngines — 作品过滤接线", () => {
 	const sources = {
 		running: () => true,
 		postNoun: () => "作品",
-		readAvatar: async () => undefined,
 		events: () => ["post"] as const,
 	};
 	const PNG = new Uint8Array([
@@ -903,7 +909,6 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				readAvatar: async () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			// 在播表里有这一行(开播进表):表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
@@ -950,6 +955,93 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 				outcome: "skipped",
 			}),
 		]);
+	});
+});
+
+/**
+ * 拓展直播卡的图走图库(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):封面与事件带来的作者头像经 `liveImages`
+ * 存进图库、卡输入里只放引用;订阅资料里的头像引用(`cachedProfile.avatar`)传给消费者。两处接线
+ * (`liveImages`、`avatarRef`)各自的单元测试都证明不了 engines 真的接上了,漏接的症状是拓展直播卡没有封面与头像
+ * 而门禁全绿。出图器收到的第一个参数就是中立的 `LiveCardInput`。
+ */
+describe("createEngines — 拓展直播的图走图库", () => {
+	const PROFILE_AVATAR = `${"a".repeat(64)}.png`;
+	const PNG_A = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+	const sources = {
+		running: () => true,
+		postNoun: () => undefined,
+		events: () => ["post", "liveStart", "liveEnd"] as const,
+	};
+	const liveRow = (id: string) => ({
+		subscriptionId: id,
+		extensionId: "douyin",
+		updatedAt: Date.now(),
+	});
+	const storing = () =>
+		vi.fn(async (bytes: Uint8Array) => {
+			const ref = imageRefOf(bytes);
+			if (!ref) throw new Error("夹具图不合规");
+			return { ok: true as const, ref };
+		});
+
+	it("给了 extensionLive 却没给 liveImages:开机就抛,不悄悄不出图", () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		// 验红:删掉 engines.ts 里 `if (!liveImages) throw …` 那一行,这条红。
+		expect(() =>
+			setup({
+				puppeteer: true,
+				subs: [sub],
+				extensionSources: sources,
+				extensionLive: { get: () => undefined },
+				liveImages: null,
+			}),
+		).toThrow(/liveImages/);
+	});
+
+	it("封面经 liveImages 存(出卡那一刻写盘),订阅资料里的头像引用顶上;出图器收到的输入里是引用", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const put = storing();
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			extensionSources: sources,
+			extensionLive: { get: (id) => (id === sub.id ? liveRow(id) : undefined) },
+			liveImages: { put },
+			overrides: {
+				subRuntimeStore: {
+					get: (id: string) =>
+						id === sub.id
+							? {
+									cachedProfile: {
+										name: "资料名",
+										avatar: PROFILE_AVATAR,
+										sign: "",
+										lastRefreshedAt: "2026-10-05T00:00:00.000Z",
+									},
+								}
+							: undefined,
+				},
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "liveStart",
+				value: { url: "https://live.douyin.com/1", startedAt: Date.now(), cover: PNG_A },
+			},
+		});
+		await vi.waitFor(() => expect(H.image[0].generateLiveCard).toHaveBeenCalledTimes(1));
+		// 验红:删掉 engines.ts 里传给 bindExtensionLivePush 的 `liveImages,`(整条开机就抛),或 `avatarRef` 那一行(头像没了)。
+		const input = H.image[0].generateLiveCard.mock.calls[0]?.[0] as {
+			creator: { name: string; avatar?: string };
+			cover?: { ref?: string };
+		};
+		expect(put).toHaveBeenCalledTimes(1);
+		expect(input.cover).toEqual({ ref: imageRefOf(PNG_A) });
+		expect(input.creator).toEqual({ name: "资料名", avatar: PROFILE_AVATAR });
 	});
 });
 
@@ -1045,7 +1137,6 @@ describe("createEngines — boot wiring", () => {
 			extensionSources: {
 				running: () => true,
 				postNoun: () => undefined,
-				readAvatar: async () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			extensionLive: {

@@ -28,6 +28,7 @@ import {
 } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import { CSS_CUSTOM_PROPERTY_MAX_CHARS } from "../skin/knob-assets";
+import type { LiveCardInput } from "../templates/live-card";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
 
@@ -56,18 +57,21 @@ const BASE_CONFIG: ImageRendererConfig = {
 	font: "PingFang SC, sans-serif",
 };
 
-/** B 站直播接口那一小撮渲染真会读的字段。 */
-const LIVE_ROOM = {
+/**
+ * 一张开播卡的中立输入(B 站那条路翻出来的样子:主播没有头像、封面只有 `url`),默认皮肤的每个数据块都有东西可画。
+ * 出卡入口收成一个 `generateLiveCard` 以后(㉒c),这份测试不再经 B 站的房间数据绕一圈。
+ */
+const LIVE_INPUT: LiveCardInput = {
+	status: "start",
+	creator: { name: "示例UP" },
 	title: "标题",
-	area_name: "分区",
-	user_cover: "http://i0.hdslb.com/bfs/album/cover.png",
-	keyframe: "http://i0.hdslb.com/bfs/album/keyframe.png",
+	category: "分区",
 	description: "简介",
-	online: 1234,
-	live_time: "2026-09-13 20:00:00",
+	cover: { url: "http://i0.hdslb.com/bfs/album/cover.png" },
+	startedAt: "2026-09-13T12:00:00.000Z",
+	currentViewers: 1234,
+	followers: 1,
 };
-
-const LIVE_DATA = { likedNum: 0, watchedNum: "1", fansNum: 1, fansChanged: "" } as never;
 
 /**
  * 截图那一步的替身:把灌进去的 HTML 留下来,并让每张卡的**高度**可控
@@ -112,16 +116,9 @@ function makeHarness(extra: Partial<ImageRendererOptions> = {}, height = 400): H
 }
 
 function liveCard(renderer: ImageRenderer, cardSkin?: string): Promise<Buffer> {
-	return renderer.generateLiveCard(
-		LIVE_ROOM,
-		"示例UP",
-		"http://i0.hdslb.com/bfs/face/f.jpg",
-		LIVE_DATA,
-		1,
-		{
-			...(cardSkin !== undefined ? { cardSkin } : {}),
-		},
-	);
+	return renderer.generateLiveCard(LIVE_INPUT, {
+		...(cardSkin !== undefined ? { cardSkin } : {}),
+	});
 }
 
 /**
@@ -343,17 +340,10 @@ describe("ImageRenderer per-UP 旋钮覆盖", () => {
 		renderer: ImageRenderer,
 		cardSkinKnobs?: ImageRendererConfig["cardSkinKnobs"],
 	): Promise<Buffer> =>
-		renderer.generateLiveCard(
-			LIVE_ROOM,
-			"示例UP",
-			"http://i0.hdslb.com/bfs/face/f.jpg",
-			LIVE_DATA,
-			1,
-			{
-				cardSkin: "upskin",
-				...(cardSkinKnobs ? { cardSkinKnobs } : {}),
-			},
-		);
+		renderer.generateLiveCard(LIVE_INPUT, {
+			cardSkin: "upskin",
+			...(cardSkinKnobs ? { cardSkinKnobs } : {}),
+		});
 
 	it("逐枚合并:per-UP 拧过的赢,没拧过的跟全局,两层都没有的不注", async () => {
 		const h = withGlobal({ upskin: { accent: "#111111", ink: "#222222" } });
@@ -460,14 +450,7 @@ describe("ImageRenderer per-UP 旋钮覆盖", () => {
 	});
 
 	function upLiveWith(r: ImageRenderer, o: object): Promise<Buffer> {
-		return r.generateLiveCard(
-			LIVE_ROOM,
-			"示例UP",
-			"http://i0.hdslb.com/bfs/face/f.jpg",
-			LIVE_DATA,
-			1,
-			o,
-		);
+		return r.generateLiveCard(LIVE_INPUT, o);
 	}
 });
 

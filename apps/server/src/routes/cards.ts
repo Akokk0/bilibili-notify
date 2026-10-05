@@ -69,6 +69,7 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { liveCardInputFromRoomInfo } from "@bilibili-notify/live";
 import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
@@ -1160,12 +1161,15 @@ async function renderRealLive(
 	// real status, so a closed room still renders something visible. The
 	// renderer normalises liveStatus internally; using 2 = LiveBroadcast keeps
 	// us aligned with what the periodic ongoing-tick passes in production.
+	// 先翻成中立的输入(与直播引擎的推送同一份翻译),再交给出卡入口。主播头像 B 站到 3a 才有(`master` 里的
+	// `face` 是远端地址,不进输入)。
 	return renderer.generateLiveCard(
-		room.data,
-		master.data.info.uname,
-		master.data.info.face,
-		{}, // liveData — no danmaku context in preview, watched/liked left blank
-		2,
+		liveCardInputFromRoomInfo(
+			room.data,
+			master.data.info.uname,
+			{}, // liveData — no danmaku context in preview, watched/liked left blank
+			2,
+		),
 		{
 			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
 			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退

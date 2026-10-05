@@ -1,5 +1,5 @@
 import { buildFontFace } from "@bilibili-notify/image";
-import type { MessageBus } from "@bilibili-notify/internal";
+import type { ImageRef, MessageBus } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
@@ -12,7 +12,12 @@ import { createRepushRunner, type RepushRunner } from "../history/repush-runner.
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
-import { createImageStore, type ImageStore, type ImageWriter } from "../images/image-store.js";
+import {
+	createImageStore,
+	type ImageStore,
+	type ImageWriter,
+	imageRefOf,
+} from "../images/image-store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
@@ -100,6 +105,12 @@ export interface AppRuntime {
 	 * (`listRefs` 恒空),存进去的图靠清扫的 24 小时宽限期活到卡片画完 —— 登记它的意义是拿到存图的口,不是留图。
 	 */
 	postImages: ImageWriter;
+	/**
+	 * 拓展直播往图库存图的口(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):出每张直播卡的那一刻把封面与事件带来的
+	 * 作者头像 `put` 进图库,卡输入里只放引用,出图器按引用读图。这一家引用的是**在播表里的封面与事件头像**
+	 * (`extensionLive.list()`):直播可以超过 24 小时、周期卡几小时后还要用它们,不能像作品那样只靠宽限期。
+	 */
+	liveImages: ImageWriter;
 	/**
 	 * 推送历史往图库存图的口:配图 `put`、拓展行的头像快照 `keep`(续期)。历史仓用它存图;这一家引用方登记的名单是
 	 * 保留期内(水位线之后)的日文件里所有 `image` 与 `avatarSnapshot`(`listHistoryImageRefs`)。重推原件是另一家引用方
@@ -330,6 +341,18 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 晚于这里)。合并那一发走 serviceCtx 的定时器,关机时一起清。
 	const extensionLive = createExtensionLiveTable({ bus, timers: serviceCtx });
 	serviceCtx.onDispose(() => extensionLive.dispose(), "stop");
+	// 拓展直播是图库的一家引用方:在播表里的封面与事件带来的头像(都是字节,`imageRefOf` 算得出它们存进图库后的引用)。
+	// 在播表只在内存,所以名单是「此刻在播的那些行」;一场播过 24 小时,周期卡出卡时也会再存一遍,这份名单让清扫
+	// 在两次出卡之间也不把它们当垃圾。算不出引用(图库不收的图)的跳过。
+	const liveImages = imageStore.register({
+		name: "拓展直播图",
+		listRefs: async () =>
+			extensionLive
+				.list()
+				.flatMap((row) => [row.cover, row.author?.avatar])
+				.flatMap((bytes) => (bytes === undefined ? [] : [imageRefOf(bytes)]))
+				.filter((ref): ref is ImageRef => ref !== undefined),
+	});
 
 	let engines: EnginesRuntime | null = null;
 	let fansPoller: FansPollerHandle | null = null;
@@ -384,6 +407,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		chatImages,
 		profileImages,
 		postImages,
+		liveImages,
 		historyImages,
 		conversationStore,
 		logStore,

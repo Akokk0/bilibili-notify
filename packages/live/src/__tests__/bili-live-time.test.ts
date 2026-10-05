@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { biliLiveTimeToIso } from "../room-helpers";
+import { biliLiveTimeToIso } from "../live-card-input";
 
 /**
  * B 站 `live_time`(`yyyy-MM-dd HH:mm:ss`,**北京时间**、不带时区)→ ISO。

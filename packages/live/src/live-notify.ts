@@ -3,7 +3,7 @@
  * 把卡片 / 文案 / 链接分组 → 交给绑到这条订阅上的发送。
  *
  * 中立:吃中立的直播卡输入({@link LiveCardInput}),不认 uid、不认 B 站的房间数据。
- * - B 站:`RoomContext.sendLiveNotifyCard` 先把接口数据翻成输入(`biliLiveCardInput`)、把
+ * - B 站:`RoomContext.sendLiveNotifyCard` 先把接口数据翻成输入(`liveCardInputFromRoomInfo`)、把
  *   「按 uid 推」绑成发送,再调它。
  * - 拓展订阅的直播:宿主拿事件与订阅资料拼输入、把「按订阅 id 推」绑成发送,再调它。
  *
@@ -61,7 +61,7 @@ export interface LiveNotifyParams {
 
 export interface LiveNotifyDeps {
 	/** 出卡的渲染器。null / 不给 = 不出卡(关了出图、渲染服务没起来),只发文字。 */
-	renderer?: Pick<ImageRenderer, "generateNeutralLiveCard"> | null;
+	renderer?: Pick<ImageRenderer, "generateLiveCard"> | null;
 	send: LiveNotifySend;
 	logger: Logger;
 }
@@ -81,7 +81,7 @@ export async function pushLiveNotify(
 	let card: Buffer | undefined;
 	if (deps.renderer && wantCard) {
 		try {
-			card = await deps.renderer.generateNeutralLiveCard(params.input, {
+			card = await deps.renderer.generateLiveCard(params.input, {
 				// 样式没启用 = 吃渲染器的全局配置;皮肤 id 与旋钮覆盖与它无关,恒要带上。
 				...(params.cardStyle?.enable ? params.cardStyle : undefined),
 				cardSkin: params.cardSkin,

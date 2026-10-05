@@ -1,41 +1,64 @@
 /**
  * 直播卡的**中立输入 → 块吃的那一份**(ADR-0019 决策 68)。
  *
- * 出卡入口(`ImageRenderer.generateNeutralLiveCard`)在这里把 {@link LiveCardInput} 排成
- * {@link LiveCardView}:数字排成「1.2万」、开播时刻算成卡上那句时间、自定义封面盖上去。
- * 块与皮肤契约只认排好的那一份,不读时钟 —— 预览的示例数据也就能直接写它、每次画出同一张。
+ * 出卡入口(`ImageRenderer.generateLiveCard`)在这里把 {@link LiveCardInput} 排成
+ * {@link LiveCardView}:数字排成「1.2万」、开播时刻算成卡上那句时间、图库引用换成可画的地址、
+ * 自定义封面盖上去。块与皮肤契约只认排好的那一份,不读时钟 —— 预览的示例数据也就能直接写它、每次画出同一张。
  */
 
-import { type FormatCountOptions, formatCount, formatDuration } from "@bilibili-notify/internal";
+import {
+	type FormatCountOptions,
+	formatCount,
+	formatDuration,
+	type PostImage,
+} from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import type { ImageUrlOf } from "./rich-text";
 import type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 
 /**
  * 卡上的时间按**北京时间**写 —— B 站接口的 `live_time` 就是这个时区的字符串,卡上一直原样
- * 印它;开播时刻改交时间戳之后,照这个时区排回去,B 站的卡一个字不变。
+ * 印它;开播时刻交 ISO 之后,照这个时区排回去,B 站的卡一个字不变。
  */
-export const LIVE_TIME_ZONE = "UTC+8";
+const LIVE_TIME_ZONE = "UTC+8";
 /** 卡上「开播时间：…」那句的写法,与 B 站 `live_time` 同形。 */
-export const LIVE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
+const LIVE_TIME_FORMAT = "yyyy-MM-dd HH:mm:ss";
+
+/** ISO 开播时刻 → 时刻;不给、读不懂都是 `undefined`(没有开播时刻)。不带时区的 ISO 当北京时间读。 */
+function startedAtOf(startedAt: string | undefined): DateTime | undefined {
+	if (startedAt === undefined) return undefined;
+	const at = DateTime.fromISO(startedAt, { zone: LIVE_TIME_ZONE });
+	return at.isValid ? at : undefined;
+}
 
 /**
- * 卡上那句时间。没在播写「未开播」;其余要开播时刻,没有就不写(空串)——
+ * 卡上那句时间。没在播写「未开播」;其余要开播时刻,没有(或读不懂)就不写(空串)——
  * 写一个「开播时间：」后面却什么都没有,不如整句不出。
  */
-function liveTimeText(status: LiveCardStatus, startedAt: number | undefined): string {
+function liveTimeText(status: LiveCardStatus, startedAt: string | undefined): string {
 	if (status === "offline") return "未开播";
-	if (startedAt === undefined || !Number.isFinite(startedAt)) return "";
-	if (status === "streaming") return `直播时长：${formatDuration(startedAt)}`;
-	const start = DateTime.fromMillis(startedAt, { zone: LIVE_TIME_ZONE });
+	const start = startedAtOf(startedAt);
+	if (start === undefined) return "";
+	if (status === "streaming") return `直播时长：${formatDuration(start.toMillis())}`;
 	return `开播时间：${start.toFormat(LIVE_TIME_FORMAT)}`;
 }
 
 /**
- * 人数一类:数字排成卡片同款的万 / 亿写法,文字原样,没有就空串。粉丝数变化传 `{ signed: true }`
+ * 人数一类:精确数排成卡片同款的万 / 亿写法,没有(或不是有限的数)就空串。粉丝数变化传 `{ signed: true }`
  * (「+128」「+1.2万」「-35」)。
  */
-function countText(v: number | string | undefined, options?: FormatCountOptions): string {
-	return typeof v === "number" ? formatCount(v, options) : (v ?? "");
+function countText(v: number | undefined, options?: FormatCountOptions): string {
+	return typeof v === "number" && Number.isFinite(v) ? formatCount(v, options) : "";
+}
+
+/**
+ * 封面的地址。有 `ref` 认它的解析结果,**解析不到就是没有封面**(不退回 `url`:引用说的是图库里那张,它没了
+ * 就是没了);只有 `url` 原样用;两样都没有同样没有。作品图的兜底(画透明占位,见 `pictureUrl`)在这里不适用 ——
+ * 直播封面没有就整格换成「暂无封面」占位图。
+ */
+function coverUrlOf(cover: PostImage | undefined, imageUrl?: ImageUrlOf): string | undefined {
+	if (cover?.ref !== undefined) return imageUrl?.(cover.ref) || undefined;
+	return cover?.url || undefined;
 }
 
 /**
@@ -72,31 +95,40 @@ export const LIVE_COVER_PLACEHOLDER = `data:image/svg+xml;base64,${Buffer.from(
 	LIVE_COVER_PLACEHOLDER_SVG,
 ).toString("base64")}`;
 
+export interface LiveCardViewOptions {
+	/** 主人给这条订阅设的自定义直播封面(已解析成可渲染的地址);有就盖在输入的封面上。 */
+	coverOverride?: string;
+	/** 图库引用 → 可画的地址。出图器事先把输入里用到的引用都解析好,这里同步查;不给 = 所有引用都解析不到。 */
+	imageUrl?: ImageUrlOf;
+}
+
 /**
  * 中立输入 → 块吃的那一份。
  *
- * 封面:自定义封面 > 输入的封面 > {@link LIVE_COVER_PLACEHOLDER}。`hasCover` 只认前两样 ——
- * 占位图不算真封面,皮肤拿 `live.hasCover` 做 `showIf` 时照旧能把这一格收起。
- *
- * @param coverOverride 主人给这条订阅设的自定义直播封面(已解析成可渲染的地址);有就盖在
- *   输入的封面上。
+ * 封面:自定义封面 > 输入的封面({@link coverUrlOf}) > {@link LIVE_COVER_PLACEHOLDER}。`hasCover` 只认前两样 ——
+ * 占位图不算真封面,皮肤拿 `live.hasCover` 做 `showIf` 时照旧能把这一格收起。头像:`creator.avatar` 解析到了
+ * 就是地址,没有或解析不到是空串(头像块整块收起)。
  */
-export function buildLiveCardView(input: LiveCardInput, coverOverride?: string): LiveCardView {
-	const cover = coverOverride || input.cover || "";
+export function buildLiveCardView(
+	input: LiveCardInput,
+	{ coverOverride, imageUrl }: LiveCardViewOptions = {},
+): LiveCardView {
+	const cover = coverOverride || coverUrlOf(input.cover, imageUrl) || "";
+	const avatar = input.creator.avatar;
 	return {
 		status: input.status,
-		username: input.author.name,
-		userface: input.author.face ?? "",
+		username: input.creator.name,
+		userface: (avatar !== undefined ? imageUrl?.(avatar) : undefined) || "",
 		title: input.title ?? "",
-		area: input.area ?? "",
+		area: input.category ?? "",
 		description: input.description ?? "",
 		cover: cover || LIVE_COVER_PLACEHOLDER,
 		hasCover: cover !== "",
 		time: liveTimeText(input.status, input.startedAt),
-		online: countText(input.online),
+		online: countText(input.currentViewers),
 		likes: countText(input.likes),
 		totalViewers: countText(input.totalViewers),
-		fans: countText(input.fans),
-		fansChanged: countText(input.fansChanged, { signed: true }),
+		fans: countText(input.followers),
+		fansChanged: countText(input.followersDelta, { signed: true }),
 	};
 }

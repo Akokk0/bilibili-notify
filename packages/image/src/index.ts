@@ -5,9 +5,6 @@ export type { Component, VNode } from "vue";
 // consumer's tree creates mismatched VNode / Component types — TS rejects the
 // argument because the two `Component` types are unrelated nominally.
 export { h } from "vue";
-// B 站直播接口数据 → 中立的直播卡输入(ADR-0019 决策 65 / 68)。出卡入口的 B 站适配层与
-// 直播引擎的推送共用这一份,别再各翻一遍。
-export { biliLiveCardInput } from "./bili-live-input";
 // 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
 export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
 // 卡片外框(根块):皮肤渲染器给每张卡套的那两层壳。
@@ -24,6 +21,8 @@ export { SC_BLOCKS } from "./blocks/sc";
 export type { BlockRenderer } from "./blocks/types";
 export { WORDCLOUD_BLOCKS } from "./blocks/wordcloud";
 export { formatCardTime } from "./format";
+// 富文本简介 → 纯文本。B 站直播间简介带 HTML 标签(`liveCardInputFromRoomInfo` 在翻成输入时先剥掉)。
+export { htmlToPlain } from "./html-to-plain";
 export {
 	ImageRenderer,
 	type ImageRendererConfig,
@@ -33,7 +32,7 @@ export {
 } from "./image-renderer";
 // 直播卡的中立输入 → 块与皮肤契约吃的视图(ADR-0019 决策 68)。绕开 ImageRenderer 自己拼
 // `renderCardWithSkin` 入参的调用方(预览路由)用它,与推送出图排出同一份。
-export { buildLiveCardView } from "./live-view";
+export { buildLiveCardView, type LiveCardViewOptions } from "./live-view";
 // 出厂示例卡片数据 —— 皮肤编辑器的实时预览拿它当「假数据」出图(ADR-0014 决策 22)。
 // 刻意回 `unknown`:示例数据不是对外契约,别让调用方照它的形状写类型。
 export { sampleCard } from "./preview/sample-cards";
@@ -91,7 +90,7 @@ export type { DynamicCardProps } from "./templates/dynamic-card";
 // 图廊最多铺几格:来源据此决定往图库存前几张(排在后面的不画,不必存)。
 export { GALLERY_MAX_IMAGES } from "./templates/dynamic-content";
 export type { GuardCardProps } from "./templates/guard-card";
-// 直播卡(ADR-0019 决策 68):中立的输入交给 `ImageRenderer.generateNeutralLiveCard`;
+// 直播卡(ADR-0019 决策 68):中立的输入交给 `ImageRenderer.generateLiveCard`;
 // 视图是块与皮肤契约吃的那一份(`buildLiveCardView` 从输入排出来)。
 export type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
 export type {
@@ -100,4 +99,4 @@ export type {
 	RoastSoloCardProps,
 } from "./templates/roast-card";
 export type { SCCardProps } from "./templates/sc-card";
-export type { CardColorOptions, CardSkinChoice, LiveData } from "./types";
+export type { CardColorOptions, CardSkinChoice } from "./types";

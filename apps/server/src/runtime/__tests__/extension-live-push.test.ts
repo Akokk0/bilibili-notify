@@ -7,7 +7,9 @@
  * - 周期「正在直播」只在上次推送之后收到过新状态时推,否则跳过、记进上报问题框(决策 61);
  * - 重启补推只在 BN 起来后第一次见到这一场在播、且没见过它的开播事件时推一次(决策 57);
  * - 拓展停了 / 订阅停用或删了:计时器与等着的下播全部作废,不补推(决策 61);
- * - 粉丝那一格:开播记下资料里的粉丝数,下播拿最新那份相减(决策 56)。
+ * - 粉丝那一格:开播记下资料里的粉丝数,下播拿最新那份相减(决策 56);
+ * - 卡上的输入是中立的 `LiveCardInput`(㉒c):图是图库引用、开播时刻是 ISO,封面与事件头像的字节出卡那一刻才存进图库
+ *   (`liveImages`),版式藏起卡片 / 关了出图不写盘,写盘失败降级成纯文字。
  *
  * ⚠️ 这个文件用假定时器:别用 `waitFor` / `findBy*`(会死锁),推进时间一律 `advanceTimersByTimeAsync`。
  */
@@ -15,6 +17,7 @@
 import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import {
 	defaultMessageKindLayout,
+	type ImageRef,
 	type Subscription,
 	type SubscriptionEventKind,
 	type SubscriptionReport,
@@ -28,6 +31,7 @@ import {
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
 import type { SubscriptionReportProblem } from "../../extensions/context.js";
+import { imageRefOf } from "../../images/image-store.js";
 import type { LiveWorkSettings } from "../engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";
@@ -43,6 +47,12 @@ const T0 = Date.UTC(2026, 8, 24, 4, 0, 0);
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+/** 另一张图(与 `PNG` 内容不同,引用也不同)。 */
+const PNG_B = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5, 6]);
+/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`)。 */
+const PROFILE_AVATAR: ImageRef = `${"a".repeat(64)}.png`;
+/** 北京时间 T0 的 ISO:卡输入里的开播时刻(在播表、场次里仍是毫秒,交给卡前转 ISO)。 */
+const isoOf = (ms: number): string => new Date(ms).toISOString();
 const URL = "https://live.douyin.com/123";
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
 
@@ -83,6 +93,13 @@ let running: boolean;
 let profile: { name?: string; fans?: number } | undefined;
 /** 出卡:每张卡的输入按出卡顺序记下;`slowNext` 让下一张卡卡住,由测试放行。 */
 let renderedInputs: LiveCardInput[];
+/** 订阅资料里的头像引用,现取;`undefined` = 资料里没有头像。 */
+let avatarRef: ImageRef | undefined;
+/** 真正写进图库的那几次(`liveImages.put`,出卡那一刻 `commit` 才会走到);`putFails` 让图库说存不进。 */
+let storedImages: Uint8Array[];
+let putFails: boolean;
+/** 出图器:`null` = 关了出图。 */
+let rendererOn: boolean;
 let slowNext: Promise<void> | undefined;
 /** 登记进 `track` 的后台活(切片 ③)。 */
 let ctx: TrackingContext;
@@ -114,7 +131,7 @@ function start(): void {
 		timers,
 	});
 	const renderer = {
-		generateNeutralLiveCard: vi.fn(async (input: LiveCardInput) => {
+		generateLiveCard: vi.fn(async (input: LiveCardInput) => {
 			renderedInputs.push(input);
 			const wait = slowNext;
 			slowNext = undefined;
@@ -133,8 +150,18 @@ function start(): void {
 		cardStyle: () => undefined,
 		sources: {
 			running: () => running,
-			readAvatar: async () => undefined,
 			events: () => declaredEvents,
+		},
+		avatarRef: () => avatarRef,
+		liveImages: {
+			put: async (bytes) => {
+				if (putFails)
+					return { ok: false as const, code: "invalid", message: "磁盘写失败" } as never;
+				storedImages.push(bytes);
+				const ref = imageRefOf(bytes);
+				if (!ref) throw new Error("夹具图不合规");
+				return { ok: true as const, ref };
+			},
 		},
 		sendFor:
 			(id): LiveNotifySend =>
@@ -145,7 +172,7 @@ function start(): void {
 					.join("\n");
 				sent.push({ id, type, text, input: renderedInputs.at(-1) });
 			},
-		renderer: () => renderer,
+		renderer: () => (rendererOn ? renderer : null),
 		reportProblem: (problem) => problems.push(problem),
 		serviceCtx: {
 			setInterval: (fn, ms) => {
@@ -191,6 +218,10 @@ beforeEach(() => {
 	sent = [];
 	problems = [];
 	renderedInputs = [];
+	avatarRef = undefined;
+	storedImages = [];
+	putFails = false;
+	rendererOn = true;
 	slowNext = undefined;
 	ctx = makeTrackingContext();
 	periodicIntervals = [];
@@ -220,17 +251,18 @@ describe("开播", () => {
 		expect(card?.text).toBe(`抖音甲 开播啦，当前粉丝数：1.2万\n${URL}`);
 		expect(card?.input).toMatchObject({
 			status: "start",
-			author: { name: "抖音甲" },
+			creator: { name: "抖音甲" },
 			title: "第一场",
-			area: "聊天",
+			category: "聊天",
 			description: "简介",
-			startedAt: T0,
-			online: 10,
+			startedAt: isoOf(T0),
+			currentViewers: 10,
 			likes: 3,
 			totalViewers: 40,
-			fans: 12_345,
+			followers: 12_345,
 		});
-		expect(card?.input?.cover).toMatch(/^data:image\/png;base64,/);
+		// 封面是图库引用(出卡那一刻才存),不是 data URL。
+		expect(card?.input?.cover).toEqual({ ref: imageRefOf(PNG) });
 	});
 });
 
@@ -250,12 +282,12 @@ describe("下播", () => {
 		expect(end?.text).toBe(`抖音甲 下播啦，本次直播了 2小时13分，粉丝变化 +128\n${URL}`);
 		expect(end?.input).toMatchObject({
 			status: "end",
-			startedAt: T0,
+			startedAt: isoOf(T0),
 			// 事件带了的用事件的,没带的用这一场最后一份状态补。
 			likes: 900,
 			totalViewers: 100,
 			title: "第一场",
-			fansChanged: 128,
+			followersDelta: 128,
 		});
 	});
 
@@ -269,7 +301,7 @@ describe("下播", () => {
 		await settle();
 
 		expect(sent[1]?.text).toBe(`抖音甲 下播啦，本次直播了 0秒，粉丝变化 \n${URL}`);
-		expect(sent[1]?.input?.fansChanged).toBeUndefined();
+		expect(Object.hasOwn(sent[1]?.input ?? {}, "followersDelta")).toBe(false);
 	});
 
 	it("BN 手里没有这一场(中途重启过、拓展没报过状态):照推下播卡,时长用事件带的开播时刻", async () => {
@@ -280,7 +312,7 @@ describe("下播", () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.type).toBe(9);
 		expect(sent[0]?.text).toContain("本次直播了 1小时");
-		expect(sent[0]?.input?.startedAt).toBe(T0 - HOUR);
+		expect(sent[0]?.input?.startedAt).toBe(isoOf(T0 - HOUR));
 	});
 
 	it("下播推送关着:下播卡不推", async () => {
@@ -334,7 +366,7 @@ describe("断流接续", () => {
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 9]);
 		expect(sent[1]?.text).toContain("本次直播了 2小时11分，");
-		expect(sent[1]?.input?.startedAt).toBe(T0);
+		expect(sent[1]?.input?.startedAt).toBe(isoOf(T0));
 	});
 
 	it("拓展停了:等着的下播卡作废,不补推", async () => {
@@ -377,13 +409,13 @@ describe("周期「正在直播」", () => {
 		expect(sent[1]?.text).toBe(`事件里的名字 正在直播，已播 1小时，累计观看：2.3万\n${URL}`);
 		expect(sent[1]?.input).toMatchObject({
 			status: "streaming",
-			author: { name: "事件里的名字" },
+			creator: { name: "事件里的名字" },
 			description: "新简介",
 			title: "改了标题",
-			online: 77,
+			currentViewers: 77,
 			totalViewers: 23_456,
-			startedAt: T0,
-			fans: 12_345,
+			startedAt: isoOf(T0),
+			followers: 12_345,
 		});
 		expect(problems).toEqual([]);
 
@@ -591,7 +623,10 @@ describe("重启补报", () => {
 
 		expect(sent.map((s) => s.type)).toEqual([LivePushType.CatchUp]);
 		expect(sent[0]?.text).toBe(`抖音甲 正在直播，已播 30分，累计观看：5\n${URL}`);
-		expect(sent[0]?.input).toMatchObject({ status: "streaming", startedAt: T0 - 30 * MINUTE });
+		expect(sent[0]?.input).toMatchObject({
+			status: "streaming",
+			startedAt: isoOf(T0 - 30 * MINUTE),
+		});
 	});
 
 	it("并挂上周期推送:补报一张,到点再来周期那一档(两档的推送类型不同)", async () => {
@@ -790,6 +825,102 @@ describe("同一条订阅的推送按顺序", () => {
 		release();
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 9]);
+	});
+});
+
+/**
+ * 卡上的图走图库(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):封面与事件带来的作者头像是拓展交的字节,
+ * `liveCardInputFromReport` 翻成图库引用、**出卡那一刻才写盘**;订阅资料里的头像本来就在图库里,直接用它的引用。
+ */
+describe("卡上的图走图库", () => {
+	it("事件带了头像与封面:输入里是它们的引用,出卡那一刻两张都写进图库", async () => {
+		start();
+		liveStart({ cover: PNG, author: { name: "事件里的名字", avatar: PNG_B } });
+		await settle();
+
+		expect(sent[0]?.input?.cover).toEqual({ ref: imageRefOf(PNG) });
+		expect(sent[0]?.input?.creator.avatar).toBe(imageRefOf(PNG_B));
+		// 验红:删掉 `committing(...)` 里的 `await commit()`,这条红 —— 引用有了、图却没存。
+		expect(storedImages).toEqual([PNG_B, PNG]);
+	});
+
+	it("事件没带头像:订阅资料里的头像引用顶上,不再存一遍", async () => {
+		avatarRef = PROFILE_AVATAR;
+		start();
+		liveStart({ cover: PNG });
+		await settle();
+
+		expect(sent[0]?.input?.creator.avatar).toBe(PROFILE_AVATAR);
+		expect(storedImages).toEqual([PNG]);
+	});
+
+	it("事件和资料里都没有头像:输入里没有 avatar 这个键(头像块整块收起)", async () => {
+		start();
+		liveStart();
+		await settle();
+
+		expect(sent[0]?.input?.creator).toStrictEqual({ name: "抖音甲" });
+		expect(storedImages).toEqual([]);
+	});
+
+	/**
+	 * 直播可以超过 24 小时,周期卡几小时后还要用封面:字节一直在在播表里,每一张卡出卡时都重新存一遍
+	 * (同一份字节只刷新修改时间),图库那头也把在播表里的封面登记为这一家的名单。
+	 */
+	it("周期「正在直播」卡出卡时同样再存一遍封面", async () => {
+		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 1 });
+		start();
+		liveStart({ cover: PNG });
+		await settle();
+		expect(storedImages).toEqual([PNG]);
+
+		await vi.advanceTimersByTimeAsync(30 * MINUTE);
+		liveStatus();
+		await vi.advanceTimersByTimeAsync(30 * MINUTE);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, 0]);
+		expect(storedImages).toEqual([PNG, PNG]);
+		expect(sent[1]?.input?.cover).toEqual({ ref: imageRefOf(PNG) });
+	});
+
+	it("版式把卡片藏起来:不出卡、不写盘,文字照发", async () => {
+		const textOnly = {
+			blocks: [
+				{ id: "card", type: "card", visible: false },
+				{ id: "text", type: "text", visible: true },
+			],
+			separator: "\n",
+		};
+		settings = baseSettings({ messageLayout: textOnly as never });
+		start();
+		liveStart({ cover: PNG, author: { avatar: PNG_B } });
+		await settle();
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.input).toBeUndefined();
+		expect(storedImages).toEqual([]);
+	});
+
+	it("关了出图(没有渲染器):不写盘,文字照发", async () => {
+		rendererOn = false;
+		start();
+		liveStart({ cover: PNG });
+		await settle();
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.input).toBeUndefined();
+		expect(storedImages).toEqual([]);
+	});
+
+	it("图库说存不进(写盘失败):这一次出卡失败,降级成纯文字,不抛、不吞推送", async () => {
+		putFails = true;
+		start();
+		liveStart({ cover: PNG });
+		await settle();
+
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.text).toContain("开播啦");
+		expect(sent[0]?.input).toBeUndefined();
 	});
 });
 

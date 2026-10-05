@@ -5,9 +5,8 @@ import {
 	RiskControlError,
 } from "@bilibili-notify/api";
 import { connectLiveRoom, type DanmuHost, type LiveEvent } from "@bilibili-notify/blive";
-import { biliLiveCardInput } from "@bilibili-notify/image";
 import type { MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
-import { DateTime } from "luxon";
+import { liveCardInputFromRoomInfo } from "./live-card-input";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify";
 import { type LiveBroadcastOptions, LivePushType, type SubItemView } from "./push-like";
 import { RoomContextBase } from "./room-context";
@@ -43,18 +42,6 @@ export class LiveRoomPreflightBlockedError extends Error {
 		super(`弹幕连接预检被风控拦截：${reason}`);
 		this.name = "LiveRoomPreflightBlockedError";
 	}
-}
-
-/**
- * B 站 `live_time`(「yyyy-MM-dd HH:mm:ss」,**恒为北京时间**、不带时区)→ ISO 字符串。
- *
- * 显式按 `+08:00` 读,与进程时区无关(容器常常是 UTC,按本地时区读会平白差出 8 小时)。
- * 缺失、空串或解析不出(B 站对没开播的房间给 `0000-00-00 00:00:00`)回 `undefined`。
- */
-export function biliLiveTimeToIso(raw: string | undefined): string | undefined {
-	if (!raw) return undefined;
-	const at = DateTime.fromFormat(raw, "yyyy-MM-dd HH:mm:ss", { zone: "UTC+8" });
-	return at.isValid ? (at.toUTC().toISO() ?? undefined) : undefined;
 }
 
 export function describeLiveRoomDanmuPreflightFallback(
@@ -288,7 +275,7 @@ export class RoomContext extends RoomContextBase {
 
 	/**
 	 * 推一张「开播 / 直播中 / 下播」卡 —— **B 站那头的适配**:房间接口数据经
-	 * `biliLiveCardInput` 翻成中立的直播卡输入,「按 uid 推」绑成发送({@link sendToUid}),
+	 * `liveCardInputFromRoomInfo` 翻成中立的直播卡输入,「按 uid 推」绑成发送({@link sendToUid}),
 	 * 再交给中立的直播装配 {@link pushLiveNotify}(出卡 → 按版式分组 → 发送;出卡失败降级
 	 * 为文字)。拓展订阅的直播走同一个装配,只是输入与发送换成它自己的(ADR-0019 决策 67)。
 	 *
@@ -321,13 +308,7 @@ export class RoomContext extends RoomContextBase {
 		const { liveType, liveData, liveRoomInfo, master, uid } = params;
 		await pushLiveNotify(
 			{
-				input: biliLiveCardInput(
-					liveRoomInfo,
-					master.username,
-					master.userface,
-					liveData,
-					liveType,
-				),
+				input: liveCardInputFromRoomInfo(liveRoomInfo, master.username, liveData, liveType),
 				text: params.notifyMsg,
 				link: params.roomLink ?? "",
 				layout: params.messageLayout,

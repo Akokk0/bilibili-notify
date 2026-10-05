@@ -193,8 +193,11 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				cardStyle: () => undefined,
 				sources: {
 					running: () => true,
-					readAvatar: async () => undefined,
 					events: () => ["post", "liveStart", "liveEnd"],
+				},
+				avatarRef: () => undefined,
+				liveImages: {
+					put: async () => ({ ok: false as const, code: "invalid", message: "不存图" }) as never,
 				},
 				sendFor: (): LiveNotifySend => async () => delivered(),
 				renderer: () => renderer,

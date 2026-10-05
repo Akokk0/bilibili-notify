@@ -1,20 +1,21 @@
 /**
- * **直播卡的中立入口**(ADR-0019 决策 68 / 76):`generateNeutralLiveCard(input)` 吃一份中立的
- * 直播卡输入,不收任何平台的原始结构,状态明写。B 站那条(`generateLiveCard`)是它前面的
- * 适配层,另由 `live-card-bili.test.ts` 钉着。这里钉的是:
+ * **直播卡的入口**(ADR-0019 决策 68 / 76):`generateLiveCard(input)` 吃一份中立的直播卡输入,不收任何
+ * 平台的原始结构,状态明写。B 站那头的翻译(`liveCardInputFromRoomInfo`)在 `packages/live`、拓展那头的在服务端,
+ * 各自的测试钉着;㉒c 之前这里还有一个吃 B 站原始数据的 `generateLiveCard`(适配层),随翻译搬走、入口收成一个。
+ * 这里钉的是:
  *
  * 1. 默认块在每种状态下画出的文字 —— 下播卡是「点赞 + 累计观看人数」,粉丝数变化不上默认卡
- *    (决策 76);没有的格子那一行不画;
- * 2. 卡上那句时间由开播时刻算(北京时间);数字排成「1.2万」,粉丝数变化带正负号;
+ *    (决策 76);没有的格子那一行不画(只收精确数,缺了就缺键);
+ * 2. 卡上那句时间由 ISO 开播时刻算(北京时间),读不懂当没有;数字排成「1.2万」,粉丝数变化带正负号;
  * 3. 皮肤契约的直播取值(下播时 `stats.popularity` = 点赞、`stats.fans` = 累计观看,
  *    `stats.fansChanged` 有就给);
- * 4. 自定义直播封面盖在输入的封面上;
- * 5. 没有真封面时封面格画 BN 自带的占位图,契约的 `live.cover` 同样给它、`live.hasCover` 为假;
- * 6. 头像:输入带了头像地址就画(拓展直播),没有(或空串)就整块收起(B 站那条到 3a 之前不给,㉒b),
+ * 4. 封面:引用解析到画解析结果、解析不到当成没有、只有 `url` 原样用、两样都没有画占位;自定义直播封面盖在
+ *    输入的封面上;契约的 `live.cover` 永远画得出来、`live.hasCover` 如实说;
+ * 5. 头像:`creator.avatar` 是引用,解析到了画,没有或解析不到整块收起(B 站那条到 3a 之前不给,㉒b),
  *    契约的 `up.face` 随之是地址 / 空串。
  */
 
-import type { CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
+import type { CardSkinManifest, ImageRef, ServiceContext } from "@bilibili-notify/internal";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -32,10 +33,19 @@ const SERVICE_CTX: ServiceContext = {
 	track: () => {},
 };
 
+/** 两个图库引用与它们解析出的地址(宿主注入的解析口换的是 data URL)。 */
+const FACE_REF: ImageRef = `${"a".repeat(64)}.png`;
+const COVER_REF: ImageRef = `${"b".repeat(64)}.png`;
+const FACE = "data:image/png;base64,FACE";
+const COVER_FROM_REF = "data:image/png;base64,COVER-FROM-REF";
+const RESOLVED: Record<string, string> = { [FACE_REF]: FACE, [COVER_REF]: COVER_FROM_REF };
+
 function makeRenderer(
 	opts: {
 		resolveAsset?: (id: string) => Promise<string>;
 		resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
+		/** 不给 = 默认那张表;`null` = 宿主没注入解析口。 */
+		resolveImageRef?: ((ref: ImageRef) => Promise<string | undefined>) | null;
 	} = {},
 ) {
 	const captured: string[] = [];
@@ -58,6 +68,10 @@ function makeRenderer(
 		resolveAsset: opts.resolveAsset ?? (async () => ""),
 		resolveFontFace: async () => "",
 		resolveCardSkin: opts.resolveCardSkin,
+		resolveImageRef:
+			opts.resolveImageRef === null
+				? undefined
+				: (opts.resolveImageRef ?? (async (ref) => RESOLVED[ref])),
 	});
 	return { renderer, captured };
 }
@@ -65,22 +79,23 @@ function makeRenderer(
 const COVER = "data:image/png;base64,COVER";
 
 /** 北京时间 2026-09-13 20:00:00。 */
-const STARTED_AT = Date.parse("2026-09-13T12:00:00Z");
+const STARTED_AT = "2026-09-13T12:00:00.000Z";
+const STARTED_AT_MS = Date.parse(STARTED_AT);
 
 function input(over: Partial<LiveCardInput> = {}): LiveCardInput {
 	return {
 		status: "streaming",
-		author: { name: "示例主播", face: "data:image/png;base64,FACE" },
+		creator: { name: "示例主播", avatar: FACE_REF },
 		title: "一场直播",
-		area: "虚拟主播",
+		category: "虚拟主播",
 		description: "纯文本简介",
-		cover: COVER,
+		cover: { url: COVER },
 		startedAt: STARTED_AT,
-		online: 12_345,
+		currentViewers: 12_345,
 		likes: 20_133,
 		totalViewers: 31_200,
-		fans: 88_800,
-		fansChanged: 1_234,
+		followers: 88_800,
+		followersDelta: 1_234,
 		...over,
 	};
 }
@@ -90,7 +105,7 @@ async function drawn(i: LiveCardInput, colorOptions = {}): Promise<Record<string
 	const { renderer, captured } = makeRenderer({
 		resolveAsset: async (id) => `data:image/png;base64,ASSET-${id}`,
 	});
-	await renderer.generateNeutralLiveCard(i, colorOptions);
+	await renderer.generateLiveCard(i, colorOptions);
 	const doc = new JSDOM(captured[0] ?? "").window.document;
 	const out: Record<string, string> = {};
 	for (const el of doc.querySelectorAll("[data-block]")) {
@@ -106,7 +121,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () => {
+describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 	it("开播:「直播中」角标、开播时间(北京时间)、人气 + 当前粉丝数", async () => {
 		const d = await drawn(input({ status: "start" }));
 		expect(d.status).toBe("直播中");
@@ -118,7 +133,7 @@ describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () 
 
 	it("直播中:直播时长由开播时刻算", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
-		vi.setSystemTime(STARTED_AT + (2 * 3600 + 13 * 60 + 5) * 1000);
+		vi.setSystemTime(STARTED_AT_MS + (2 * 3600 + 13 * 60 + 5) * 1000);
 		const d = await drawn(input({ status: "streaming" }));
 		expect(d.status).toBe("直播中");
 		expect(d.time).toBe("直播时长：2小时13分5秒");
@@ -154,15 +169,17 @@ describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () 
 		expect(ended.popularity).toBeUndefined();
 		expect(ended.fans).toBeUndefined();
 
-		const started = await drawn(input({ status: "start", online: undefined, fans: undefined }));
+		const started = await drawn(
+			input({ status: "start", currentViewers: undefined, followers: undefined }),
+		);
 		expect(started.popularity).toBeUndefined();
 		expect(started.fans).toBeUndefined();
 	});
 
 	/** 拓展可以不报分区:不留一个「分区：」后面什么都没有。B 站恒有分区。 */
 	it("没有分区(没给或空串)→ 分区那一行不画", async () => {
-		expect((await drawn(input({ area: undefined }))).area).toBeUndefined();
-		expect((await drawn(input({ area: "" }))).area).toBeUndefined();
+		expect((await drawn(input({ category: undefined }))).area).toBeUndefined();
+		expect((await drawn(input({ category: "" }))).area).toBeUndefined();
 		expect((await drawn(input())).area).toBe("分区：虚拟主播");
 	});
 
@@ -171,9 +188,21 @@ describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () 
 		expect((await drawn(input({ status: "streaming", startedAt: undefined }))).time).toBe("");
 	});
 
-	it("平台排好的文字原样上卡(B 站的累计观看就是接口给的成品字符串)", async () => {
-		const d = await drawn(input({ status: "end", totalViewers: "3.1万+" }));
-		expect(d.fans).toBe("累计观看人数：3.1万+");
+	/** 读不懂的 ISO 当没有开播时刻,不印「Invalid DateTime」,也不把整张卡弄抛。 */
+	it("开播时刻读不懂 → 同样不写那句时间", async () => {
+		for (const status of ["start", "streaming", "end"] as const) {
+			const d = await drawn(input({ status, startedAt: "昨晚八点" }));
+			expect(d.time, status).toBe("");
+		}
+	});
+
+	/**
+	 * 人数只收精确数、缺了就缺键;**精确的 0 是真数**:画出来,不当作没有。(B 站从前缺了也补 0、卡上印「人气：0」,
+	 * 这一片起不补了 —— 缺的是上面「没有的格子那一行不画」那条;真报了 0 才是这条。)
+	 */
+	it("精确的 0 照画:人气 0、累计观看 0", async () => {
+		expect((await drawn(input({ status: "start", currentViewers: 0 }))).popularity).toBe("人气：0");
+		expect((await drawn(input({ status: "end", totalViewers: 0 }))).fans).toBe("累计观看人数：0");
 	});
 
 	it("简介空着走兜底文案", async () => {
@@ -189,11 +218,12 @@ describe("generateNeutralLiveCard — 默认块在各状态画出的文字", () 
 
 	/**
 	 * 拓展直播没报封面、B 站两张都没有时走到这里:从前 `<img src="">` 画成一张只剩 alt 文字的
-	 * 裂图。验红:把 `buildLiveCardView` 的封面改回 `input.cover ?? ""`,这条红。
+	 * 裂图。验红:把 `buildLiveCardView` 的封面兜底去掉(没有就直接画空串),这条红。
 	 */
-	it("没有封面(没给或空串)→ 画 BN 自带的占位图", async () => {
+	it("没有封面(没给、url 是空串)→ 画 BN 自带的占位图", async () => {
 		expect((await drawn(input({ cover: undefined }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
-		expect((await drawn(input({ cover: "" }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
+		expect((await drawn(input({ cover: { url: "" } }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
+		expect((await drawn(input({ cover: {} }))).cover).toBe(LIVE_COVER_PLACEHOLDER);
 	});
 
 	it("没有封面但设了自定义封面 → 画自定义封面,不画占位", async () => {
@@ -238,7 +268,7 @@ async function contract(i: LiveCardInput): Promise<string> {
 	const { renderer, captured } = makeRenderer({
 		resolveCardSkin: (id) => (id === "probe" ? PROBE : undefined),
 	});
-	await renderer.generateNeutralLiveCard(i, { cardSkin: "probe" });
+	await renderer.generateLiveCard(i, { cardSkin: "probe" });
 	return /探针\[([^\]]*)\]/.exec(captured[0] ?? "")?.[1] ?? "(没找到探针)";
 }
 
@@ -273,7 +303,7 @@ async function coverContract(
 		resolveAsset: async (id) => `data:image/png;base64,ASSET-${id}`,
 		resolveCardSkin: (id) => (id === "cover-probe" ? COVER_PROBE : undefined),
 	});
-	await renderer.generateNeutralLiveCard(i, { ...colorOptions, cardSkin: "cover-probe" });
+	await renderer.generateLiveCard(i, { ...colorOptions, cardSkin: "cover-probe" });
 	const doc = new JSDOM(captured[0] ?? "").window.document;
 	// 自定义块的 wrapper 一律挂 `data-block="custom"`(块 id 不上 DOM)。
 	const probe = doc.querySelector('[data-block="custom"]');
@@ -283,13 +313,100 @@ async function coverContract(
 	};
 }
 
-describe("generateNeutralLiveCard — 皮肤契约的封面", () => {
+describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", () => {
+	/** 默认皮肤画出的封面格的 src(拿 `drawn` 的封面口径)。 */
+	async function coverSrc(
+		cover: LiveCardInput["cover"],
+		opts: Parameters<typeof makeRenderer>[0] = {},
+		colorOptions: object = {},
+	): Promise<string> {
+		const { renderer, captured } = makeRenderer(opts);
+		await renderer.generateLiveCard(input({ cover }), colorOptions);
+		const doc = new JSDOM(captured[0] ?? "").window.document;
+		return doc.querySelector('[data-block="cover"] img')?.getAttribute("src") ?? "(没有封面格)";
+	}
+
+	/**
+	 * 规则:有 `ref` 认解析结果;解析不到当成没有封面(画「暂无封面」占位,不画透明块,也**不退回 `url`**);
+	 * 只有 `url` 原样用;两样都没有同样是没有封面。
+	 * 验红:`coverUrlOf` 里让解析不到时退回 `url`,第二条红;让 `ref` 不再解析,第一条红。
+	 */
+	it("引用解析到了:画解析出的地址", async () => {
+		expect(await coverSrc({ ref: COVER_REF })).toBe(COVER_FROM_REF);
+	});
+
+	it("引用解析不到(回 undefined / 抛错 / 没注入解析口):画占位,哪怕同时带着 url", async () => {
+		const gone = `${"c".repeat(64)}.png`;
+		expect(await coverSrc({ ref: gone })).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc({ ref: gone, url: "https://example.com/c.png" })).toBe(
+			LIVE_COVER_PLACEHOLDER,
+		);
+		expect(
+			await coverSrc(
+				{ ref: COVER_REF },
+				{
+					resolveImageRef: async () => {
+						throw new Error("读盘失败");
+					},
+				},
+			),
+		).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc({ ref: COVER_REF }, { resolveImageRef: null })).toBe(
+			LIVE_COVER_PLACEHOLDER,
+		);
+	});
+
+	it("只有 url:原样用(B 站在 3a 存进图库之前靠它)", async () => {
+		expect(await coverSrc({ url: COVER })).toBe(COVER);
+	});
+
+	it("引用与 url 都有且引用解析到了:认引用", async () => {
+		expect(await coverSrc({ ref: COVER_REF, url: "https://example.com/c.png" })).toBe(
+			COVER_FROM_REF,
+		);
+	});
+
+	it("两样都没有(没给 cover / cover 是空对象):占位", async () => {
+		expect(await coverSrc(undefined)).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc({})).toBe(LIVE_COVER_PLACEHOLDER);
+	});
+
+	/** 自定义直播封面(`colorOptions.liveCoverImage`)优先级最高,盖在引用与 url 之上,也盖在占位之上。 */
+	it("自定义直播封面盖住引用,输入里那张引用连问都不问", async () => {
+		const asked: string[] = [];
+		const src = await coverSrc(
+			{ ref: COVER_REF },
+			{
+				resolveAsset: async (id) => `data:image/png;base64,ASSET-${id}`,
+				resolveImageRef: async (ref) => {
+					asked.push(ref);
+					return RESOLVED[ref];
+				},
+			},
+			{ liveCoverImage: "my-cover" },
+		);
+		expect(src).toBe("data:image/png;base64,ASSET-my-cover");
+		// 头像引用照问,封面引用没问。
+		expect(asked).toEqual([FACE_REF]);
+	});
+});
+
+describe("generateLiveCard — 皮肤契约的封面", () => {
 	it("有封面:live.cover 就是它,live.hasCover 为真", async () => {
 		expect(await coverContract(input())).toEqual({ src: COVER, hasCover: "true" });
+		expect(await coverContract(input({ cover: { ref: COVER_REF } }))).toEqual({
+			src: COVER_FROM_REF,
+			hasCover: "true",
+		});
 	});
 
 	it("没有真封面:live.cover 给占位图(没写 showIf 的皮肤也不裂图),live.hasCover 为假", async () => {
 		expect(await coverContract(input({ cover: undefined }))).toEqual({
+			src: LIVE_COVER_PLACEHOLDER,
+			hasCover: "false",
+		});
+		// 引用解析不到同样是没有真封面。
+		expect(await coverContract(input({ cover: { ref: `${"c".repeat(64)}.png` } }))).toEqual({
 			src: LIVE_COVER_PLACEHOLDER,
 			hasCover: "false",
 		});
@@ -302,7 +419,7 @@ describe("generateNeutralLiveCard — 皮肤契约的封面", () => {
 	});
 });
 
-describe("generateNeutralLiveCard — 皮肤契约的直播取值", () => {
+describe("generateLiveCard — 皮肤契约的直播取值", () => {
 	it("下播:popularity = 点赞、fans = 累计观看,粉丝数变化照给", async () => {
 		expect(await contract(input({ status: "end" }))).toBe("2.0万|3.1万|+1234|false|true");
 	});
@@ -313,9 +430,9 @@ describe("generateNeutralLiveCard — 皮肤契约的直播取值", () => {
 	});
 
 	it("粉丝数变化带正负号,过万写成「万」", async () => {
-		expect(await contract(input({ status: "end", fansChanged: 12_345 }))).toContain("|+1.2万|");
-		expect(await contract(input({ status: "end", fansChanged: -35 }))).toContain("|-35|");
-		expect(await contract(input({ status: "end", fansChanged: -12_345 }))).toContain("|-1.2万|");
+		expect(await contract(input({ status: "end", followersDelta: 12_345 }))).toContain("|+1.2万|");
+		expect(await contract(input({ status: "end", followersDelta: -35 }))).toContain("|-35|");
+		expect(await contract(input({ status: "end", followersDelta: -12_345 }))).toContain("|-1.2万|");
 	});
 });
 
@@ -338,40 +455,53 @@ const FACE_PROBE: CardSkinManifest = {
 	},
 } as never;
 
-describe("generateNeutralLiveCard — 头像", () => {
+describe("generateLiveCard — 头像", () => {
 	/** 一张默认皮肤的卡出完,整份 HTML。 */
-	async function html(i: LiveCardInput): Promise<string> {
-		const { renderer, captured } = makeRenderer();
-		await renderer.generateNeutralLiveCard(i);
+	async function html(
+		i: LiveCardInput,
+		resolveImageRef?: ((ref: ImageRef) => Promise<string | undefined>) | null,
+	): Promise<string> {
+		const { renderer, captured } = makeRenderer({ resolveImageRef });
+		await renderer.generateLiveCard(i);
 		return captured[0] ?? "";
 	}
 
 	/**
-	 * 拓展直播自己带着头像(`extension-live-push.ts`),卡上照画。B 站那条到 3a 之前不给(㉒b),头像块整块收起。
-	 * 验红:把头像块改回无条件画,「没有头像」两条红;让 `buildLiveCardView` 不再读 `author.face`,这条红。
+	 * 拓展直播自己带着头像引用(`liveCardInputFromReport`),卡上照画。B 站那条到 3a 之前不给(㉒b),头像块整块收起。
+	 * 验红:把头像块改回无条件画,「没有头像」几条红;让 `buildLiveCardView` 不再解析 `creator.avatar`,这条红。
 	 */
-	it("输入带了头像地址:头像块与那张 <img> 都画,地址原样", async () => {
+	it("主播头像是引用且解析到了:头像块与那张 <img> 都画,地址是解析结果", async () => {
 		const out = await html(input());
 		expect(out).toContain('data-block="avatar"');
-		expect(out).toContain('src="data:image/png;base64,FACE" alt="主播头像"');
+		expect(out).toContain(`src="${FACE}" alt="主播头像"`);
 	});
 
 	it("输入没给头像:头像块整块不画(没有裂图),别的块照画", async () => {
-		const out = await html(input({ author: { name: "示例主播" } }));
+		const noAvatar = input({ creator: { name: "示例主播" } });
+		const out = await html(noAvatar);
 		expect(out).not.toContain('data-block="avatar"');
 		expect(out).not.toContain('data-cell="avatar"');
 		expect(out).not.toContain('alt="主播头像"');
-		const d = await drawn(input({ status: "end", author: { name: "示例主播" } }));
+		const d = await drawn({ ...noAvatar, status: "end" });
 		expect(d.name).toBe("示例主播");
 		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
 		expect(d.title).toBe("一场直播");
 		expect(d.avatar).toBeUndefined();
 	});
 
-	it("头像地址是空串同样当作没有:不画一张 src 为空的裂图", async () => {
-		const out = await html(input({ author: { name: "示例主播", face: "" } }));
-		expect(out).not.toContain('data-block="avatar"');
-		expect(out).not.toContain('alt="主播头像"');
+	/** 头像的引用指着的图已经被清扫了:一张图坏了不拖累整张卡,头像块收起,不画裂图。 */
+	it("头像引用解析不到(回 undefined / 抛错 / 没注入解析口):头像块收起,卡照出", async () => {
+		for (const resolve of [
+			async () => undefined,
+			async () => {
+				throw new Error("读盘失败");
+			},
+			null,
+		]) {
+			const out = await html(input(), resolve);
+			expect(out).not.toContain('data-block="avatar"');
+			expect(out).toContain("示例主播");
+		}
 	});
 
 	/** 皮肤契约的 `up.face` 字段留着(字段表只增不删):有头像是地址,没有是空串。 */
@@ -380,10 +510,10 @@ describe("generateNeutralLiveCard — 头像", () => {
 			const { renderer, captured } = makeRenderer({
 				resolveCardSkin: (id) => (id === "face-probe" ? FACE_PROBE : undefined),
 			});
-			await renderer.generateNeutralLiveCard(i, { cardSkin: "face-probe" });
+			await renderer.generateLiveCard(i, { cardSkin: "face-probe" });
 			return /头像\[([^\]]*)\]/.exec(captured[0] ?? "")?.[1] ?? "(没找到探针)";
 		};
-		expect(await upFace(input())).toBe("data:image/png;base64,FACE");
-		expect(await upFace(input({ author: { name: "示例主播" } }))).toBe("");
+		expect(await upFace(input())).toBe(FACE);
+		expect(await upFace(input({ creator: { name: "示例主播" } }))).toBe("");
 	});
 });

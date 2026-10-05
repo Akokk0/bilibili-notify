@@ -261,12 +261,13 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 			new RegExp(`^${escapeRe(who.b.name)} 开播啦，当前粉丝数：\\n${link}$`),
 		);
 
-		// 卡是照事件画的:标题、分区、封面(字节转成 data URL)。
+		// 卡是照事件画的:标题、分区、封面。封面与事件头像的字节出卡前存进图库(`liveImages`),卡输入里只放引用,
+		// 出图器经 `resolveImageRef` 读回来转成 data URL —— 三处接线断一处,这里封面就是占位。
 		const card = renderedHtml.find(
 			(html) => html.includes(who.a.name) && html.includes("假直播 · 第 1 场"),
 		);
 		expect(card, "甲那张开播卡没画出来").toBeDefined();
-		expect(card).toMatch(/data:image\/png;base64,/);
+		expect(card).toMatch(/src="data:image\/png;base64,[^"]+" alt="封面"/);
 	}, 15_000);
 
 	it("按「下播」(断流接续默认关着):立刻各收到一条下播(不 @全体),文案带这一场的时长", async () => {

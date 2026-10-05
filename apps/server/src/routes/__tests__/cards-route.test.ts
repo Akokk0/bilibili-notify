@@ -1049,6 +1049,8 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			// 封面被自定义图(data:image/png)替换,示例 SVG 封面不再出现。
 			expect(captured.html).toContain("data:image/png;base64,");
 			expect(captured.html).not.toContain("%3ECover%3C");
+			// mock 示例是写好的视图,头像是内置 SVG,照画(真实拉取那条路 B 站到 3a 前不画头像,见下)。
+			expect(captured.html).toContain('alt="主播头像"');
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -1087,7 +1089,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				content: { roomId: "778899" },
 			});
 			expect(res.status).toBe(200);
-			const colorOptions = spy.mock.calls[0]?.[5] as { liveCoverImage?: string };
+			const colorOptions = spy.mock.calls[0]?.[1] as { liveCoverImage?: string };
 			expect(colorOptions.liveCoverImage).toBe(real);
 			spy.mockRestore();
 		} finally {
@@ -1098,7 +1100,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 	/**
 	 * 主人真机撞见的:按 UP 预览一位**没在播**的 UP,这条路恒按「直播中」出卡,取的是关键帧 ——
 	 * 没开播时 B 站给的关键帧是空串,封面那一格画成一张只剩 alt 文字的裂图。
-	 * 验红:把 `biliLiveCardInput` 的封面改回只取关键帧 / 把 `buildLiveCardView` 的占位去掉,
+	 * 验红:把 `liveCardInputFromRoomInfo` 的封面改回只取关键帧 / 把 `buildLiveCardView` 的占位去掉,
 	 * 对应那条红。图一律 data URL:测试不许联网。
 	 */
 	describe("真实数据预览:没在播的房间", () => {
@@ -1457,8 +1459,62 @@ describe("cards route — /preview 走皮肤", () => {
 		});
 		expect(res.status).toBe(200);
 		// 验红:把 renderRealLive 里那句 `cardSkin` 删掉,这条红。
-		const colorOptions = spy.mock.calls[0]?.[5] as { cardSkin?: string } | undefined;
+		const colorOptions = spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined;
 		expect(colorOptions?.cardSkin).toBe("marked");
+		spy.mockRestore();
+	});
+
+	/**
+	 * 真实直播预览(`renderRealLive`)是「B 站房间数据 → `liveCardInputFromRoomInfo` → `generateLiveCard`」这一条
+	 * (㉒c,出卡入口收成一个以后不再有吃原始数据的那个):路由没有测试钉着的话,零件各自绿也证明不了它接上了。
+	 * 验红:把 renderRealLive 里的 `liveCardInputFromRoomInfo(…)` 换成直接递房间数据,或把状态写死成别的,这条红。
+	 * 主播的头像地址(`face`)是远端地址,B 站到 3a 才有引用可给,不进输入。
+	 */
+	it("真实直播那条路:先翻成中立输入再交给 generateLiveCard,头像不进输入", async () => {
+		const api = {
+			getLiveRoomInfo: vi.fn(async () => ({
+				code: 0,
+				data: {
+					uid: 12345,
+					live_status: 0,
+					title: "真实标题",
+					area_name: "真实分区",
+					user_cover: "https://i0.hdslb.com/cover.png",
+					keyframe: "",
+					live_time: "2026-09-13 20:00:00",
+					online: 321,
+				},
+			})),
+			getMasterInfo: vi.fn(async () => ({
+				code: 0,
+				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
+			})),
+		} as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateLiveCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api,
+		});
+		const res = await postPreview(app, {
+			kind: "live",
+			style: STYLE,
+			content: { roomId: "778899" },
+		});
+		expect(res.status).toBe(200);
+		expect(spy.mock.calls[0]?.[0]).toStrictEqual({
+			// 预览恒按「直播中」出卡(状态码 2),没在播的房间也一样。
+			status: "streaming",
+			creator: { name: "真实UP" },
+			title: "真实标题",
+			category: "真实分区",
+			description: "",
+			cover: { url: "https://i0.hdslb.com/cover.png" },
+			startedAt: "2026-09-13T12:00:00.000Z",
+			currentViewers: 321,
+		});
 		spy.mockRestore();
 	});
 
@@ -1589,7 +1645,7 @@ describe("cards route — /preview 走皮肤", () => {
 		});
 		expect(res.status).toBe(200);
 		// 同上:填了房间号就回出厂皮肤,正是主人报的「填了数据又回到原皮」。
-		const colorOptions = spy.mock.calls[0]?.[5] as { cardSkin?: string } | undefined;
+		const colorOptions = spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined;
 		expect(colorOptions?.cardSkin).toBe("marked");
 		spy.mockRestore();
 	});

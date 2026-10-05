@@ -17,6 +17,7 @@ import type { LiveEvent } from "@bilibili-notify/blive";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { liveCardInputFromRoomInfo } from "../live-card-input";
 import type { SubItemView } from "../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
@@ -420,5 +421,32 @@ describe("下播卡的累计观看取自同一份直播数据", () => {
 		await s.handleLiveEnd("ws");
 
 		expect(m.watchedWhenPushed).toEqual([NOT_FETCHED]);
+	});
+});
+
+/**
+ * 点赞的初值(㉒c):直播数据从前以 `likedNum: "0"` 起步,没收到点赞帧下播卡也画「点赞：0」;现在起步是空的,
+ * 没收到点赞帧就没有这一格(翻译出来的卡输入里没有 `likes` 这个键),收到了才有。
+ * 放在这里是因为它是会话与翻译的**接线**:直播数据的初值在会话里、「缺了就缺键」在翻译里,各自的单测证明不了接上了。
+ */
+describe("点赞:没收到点赞帧就没有这一格", () => {
+	const room = { title: "标题", live_time: "2026-01-01 00:00:00" };
+
+	it("一帧都没收到:直播数据里没有点赞,下播卡的输入里没有 likes 这个键", () => {
+		const { ctx } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		expect(Object.hasOwn(s.liveData, "likedNum")).toBe(false);
+		const input = liveCardInputFromRoomInfo(room, "主播", s.liveData, 3);
+		expect(Object.hasOwn(input, "likes")).toBe(false);
+	});
+
+	/** 验红:把 `RoomSessionBase.liveData` 的初值改回 `{ likedNum: "0" }`(或 0),上一条红。 */
+	it("收到点赞帧:数字进直播数据,输入里是这个数(含 0)", () => {
+		const { ctx } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		funnelOf(s)({ kind: "liked", count: 5_200 });
+		expect(liveCardInputFromRoomInfo(room, "主播", s.liveData, 3).likes).toBe(5_200);
+		funnelOf(s)({ kind: "liked", count: 0 });
+		expect(liveCardInputFromRoomInfo(room, "主播", s.liveData, 3).likes).toBe(0);
 	});
 });

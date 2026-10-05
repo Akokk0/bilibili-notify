@@ -54,6 +54,21 @@ describe("出厂示例数据 — 直播卡的场景", () => {
 	});
 });
 
+/**
+ * **直播示例的头像**(㉒c)。示例是写好的 `LiveCardView`(不经 `LiveCardInput`,所以不受「B 站直播卡 3a 前不画头像」
+ * 约束):头像是内置的 SVG 数据地址,编辑器预览里头像块照画 —— 皮肤作者改得着自己看得见的东西。等输入换成引用的
+ * 示例(像作品示例的 `SAMPLE_AVATAR_REF`)落地,这里跟着换。
+ */
+describe("出厂示例数据 — 直播卡的头像", () => {
+	it("每个直播场景都画头像块,地址是内置的 SVG,不是空的", async () => {
+		for (const { id } of CARD_PREVIEW_SCENES.live) {
+			const html = await render("live", id);
+			const src = html.match(/<img[^>]*alt="主播头像"[^>]*>/)?.[0].match(/src="([^"]*)"/)?.[1];
+			expect(src, id).toMatch(/^data:image\/svg\+xml/);
+		}
+	});
+});
+
 describe("出厂示例数据 — 场景回落", () => {
 	for (const kind of CARD_SKIN_KINDS) {
 		it(`${kind}:不认识的场景名回落到第一个场景,与不传 scene 逐字节相同`, async () => {

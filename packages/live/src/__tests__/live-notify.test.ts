@@ -17,10 +17,10 @@ const LINK = "https://example.com/live/1";
 
 const INPUT: LiveCardInput = {
 	status: "start",
-	author: { name: "示例主播", face: "data:image/png;base64,FACE" },
+	creator: { name: "示例主播" },
 	title: "示例标题",
-	startedAt: Date.UTC(2026, 8, 24, 12, 0, 0),
-	online: 12,
+	startedAt: new Date(Date.UTC(2026, 8, 24, 12, 0, 0)).toISOString(),
+	currentViewers: 12,
 };
 
 function layoutOf(
@@ -47,7 +47,7 @@ function params(over: Partial<LiveNotifyParams> = {}): LiveNotifyParams {
 
 function deps(opts: { renderFail?: boolean; noRenderer?: boolean } = {}) {
 	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-	const generateNeutralLiveCard = vi.fn(
+	const generateLiveCard = vi.fn(
 		async (_input: LiveCardInput, _colorOptions?: unknown): Promise<Buffer> => {
 			if (opts.renderFail) throw new Error("boom");
 			return CARD;
@@ -56,10 +56,10 @@ function deps(opts: { renderFail?: boolean; noRenderer?: boolean } = {}) {
 	const send = vi.fn<LiveNotifySend>(async () => {});
 	return {
 		logger,
-		generateNeutralLiveCard,
+		generateLiveCard,
 		send,
 		deps: {
-			renderer: opts.noRenderer ? null : { generateNeutralLiveCard },
+			renderer: opts.noRenderer ? null : { generateLiveCard },
 			send,
 			logger: logger as Logger,
 		},
@@ -76,16 +76,16 @@ describe("pushLiveNotify — 出卡", () => {
 			params({ cardStyle: { enable: false, font: "不该带上" }, cardSkin: "k1" }),
 			d.deps,
 		);
-		expect(d.generateNeutralLiveCard).toHaveBeenCalledTimes(1);
-		expect(d.generateNeutralLiveCard.mock.calls[0]?.[0]).toBe(INPUT);
-		expect(d.generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1" });
+		expect(d.generateLiveCard).toHaveBeenCalledTimes(1);
+		expect(d.generateLiveCard.mock.calls[0]?.[0]).toBe(INPUT);
+		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1" });
 	});
 
 	it("样式启用了 → 整份样式与皮肤 id 一起交给渲染器", async () => {
 		const d = deps();
 		const cardStyle = { enable: true, font: "思源黑体", liveCoverImage: "cover-1" };
 		await pushLiveNotify(params({ cardStyle, cardSkin: "k1" }), d.deps);
-		expect(d.generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ ...cardStyle, cardSkin: "k1" });
+		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({ ...cardStyle, cardSkin: "k1" });
 	});
 
 	/**
@@ -100,7 +100,7 @@ describe("pushLiveNotify — 出卡", () => {
 			params({ cardStyle: { enable: false }, cardSkin: "k1", cardSkinKnobs }),
 			d.deps,
 		);
-		expect(d.generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1", cardSkinKnobs });
+		expect(d.generateLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k1", cardSkinKnobs });
 	});
 
 	it("版式里卡片块藏起来 → 不出卡,只发文字与链接", async () => {
@@ -111,7 +111,7 @@ describe("pushLiveNotify — 出卡", () => {
 			}),
 			d.deps,
 		);
-		expect(d.generateNeutralLiveCard).not.toHaveBeenCalled();
+		expect(d.generateLiveCard).not.toHaveBeenCalled();
 		expect(d.send.mock.calls[0]?.[0]).toEqual([[text(`开播啦\n${LINK}`)]]);
 	});
 
@@ -175,7 +175,7 @@ describe("pushLiveNotify — 分组与发送", () => {
 			}),
 			d.deps,
 		);
-		expect(d.generateNeutralLiveCard).not.toHaveBeenCalled();
+		expect(d.generateLiveCard).not.toHaveBeenCalled();
 		expect(d.send).not.toHaveBeenCalled();
 	});
 });

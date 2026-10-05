@@ -1,12 +1,5 @@
 import type { CardSkinKnobOverrides } from "@bilibili-notify/internal";
 
-export type LiveData = {
-	watchedNum?: string | number;
-	likedNum?: string | number;
-	fansNum?: string | number;
-	fansChanged?: string | number;
-};
-
 export type CardColorOptions = {
 	// 🪦 `backgroundImage` 2026-09-20 删掉:背景图 2026-09-14 退役成皮肤自己的 `image`
 	// 旋钮(`--bn-knob-wallpaper`),这一项从 2026-09-19 起已经喂不到任何 CSS。

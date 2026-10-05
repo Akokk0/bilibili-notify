@@ -4,12 +4,15 @@
  * 与外框吃的仍是这份 props,所以类型留在原地。
  *
  * 直播卡有两份形状(ADR-0019 决策 68):
- * - {@link LiveCardInput}:**中立的输入**,出卡入口 `generateNeutralLiveCard` 吃它。纯数据、
- *   不带任何平台的原始结构,状态明写。B 站那头(`biliLiveCardInput`)把接口数据翻成它。
+ * - {@link LiveCardInput}:**中立的输入**,出卡入口 `generateLiveCard` 吃它。纯数据、
+ *   不带任何平台的原始结构,状态明写。B 站那头(`liveCardInputFromRoomInfo`,在 `@bilibili-notify/live`)
+ *   与拓展订阅那头(`liveCardInputFromReport`,在服务端)各把自己的数据翻成它。
  * - {@link LiveCardView}:块与皮肤契约吃的那一份 —— 全是排好的文字(数字排成「1.2万」、
  *   开播时刻算成「直播时长：…」那句)。从输入到它只有一步(`buildLiveCardView`),预览的
  *   示例数据直接写它(不读时钟)。
  */
+
+import type { Creator, PostImage } from "@bilibili-notify/internal";
 
 /**
  * 直播卡此刻是哪一种,**明写**(从前是一个数字:一处压成角标用的 0 / 1 / 2、别处却判 3 ——
@@ -23,51 +26,52 @@
 export type LiveCardStatus = "start" | "streaming" | "end" | "offline";
 
 /**
- * **中立的直播卡输入**(ADR-0019 决策 68)。纯数据,不带任何平台的原始结构。
+ * **中立的直播卡输入**(ADR-0019 决策 68;最终形状见 ADR-0021 决策 24 / 25 与 `docs/1.0/data-model.md`)。
+ * 纯数据,不带任何平台的原始结构。
  *
- * 人数一类的格子交数字(BN 排成「1.2万」),也可以交平台已经排好的文字(B 站的累计观看
- * 就是接口给的成品字符串)—— 文字原样上卡。没有的格子不给,卡上对应那一行就不画。
+ * 人数一类的格子**只收精确数**(BN 排成「1.2万」),缺了就缺键、卡上对应那一格不画 —— 不补 0、不收平台
+ * 排好的文字。时刻是 ISO 字符串。图是引用:出卡前由出图器经宿主注入的解析口换成可画的地址。
  */
 export type LiveCardInput = {
 	status: LiveCardStatus;
 	/**
-	 * 卡上的主播。`face` 是头像地址(远端网址或 data URL),**选填,没有(或空串)就不画头像** ——
-	 * 头像块整块收起,皮肤契约的 `up.face` 是空串。
+	 * 卡上的主播。`avatar` 是图库引用,**选填,没有(或引用解析不到)就不画头像** —— 头像块整块收起,
+	 * 皮肤契约的 `up.face` 是空串。
 	 *
-	 * B 站这条路不给:最终形状里主播的头像只收图库引用(`Creator.avatar`),B 站的头像是远端地址,要到
-	 * 3a 才存进图库(ADR-0021 决策 24 下 2026-10-05 的 🔗,照决策 22 下作品卡的先例)。拓展直播
-	 * (`extension-live-push.ts`)自己带着头像,照旧画。
+	 * B 站这条路不给:`Creator.avatar` 只收图库引用,B 站的头像是远端地址,要到 3a 才存进图库
+	 * (ADR-0021 决策 24 下 2026-10-05 的 🔗,照决策 22 下作品卡的先例)。拓展直播自己带着头像,照旧画。
 	 */
-	author: { name: string; face?: string };
+	creator: Creator;
 	title?: string;
 	/** 分区。 */
-	area?: string;
+	category?: string;
 	/** 房间简介,**纯文本**(B 站那头先剥掉了富文本标签)。 */
 	description?: string;
 	/**
-	 * **生效的**封面(远端网址或 data URL)—— 用哪一张由来源自己定(B 站:直播中先关键帧、
-	 * 其余先房间封面,缺了拿另一张兜)。主人给这条订阅设的自定义直播封面在出卡时另行覆盖在
-	 * 它上面。不给(或空串)且没有自定义封面时,卡上画 BN 自带的占位图。
+	 * **生效的**封面 —— 用哪一张由来源自己定(B 站:直播中先关键帧、其余先房间封面,缺了拿另一张兜)。
+	 * 有 `ref` 认它的解析结果,**解析不到当成没有封面**(不退回 `url`);只有 `url` 原样用(B 站在 3a 存进图库之前
+	 * 靠它);两样都没有同样是没有封面。主人给这条订阅设的自定义直播封面在出卡时另行覆盖在它上面。没有封面
+	 * 且没有自定义封面时,卡上画 BN 自带的「暂无封面」占位图。
 	 */
-	cover?: string;
+	cover?: PostImage;
 	/**
-	 * 开播时刻,**毫秒**时间戳。卡上那句「开播时间：…」(开播 / 下播)或「直播时长：…」
-	 * (直播中)由它算,按北京时间写。不给就不写那句。
+	 * 开播时刻,**ISO 字符串**。卡上那句「开播时间：…」(开播 / 下播)或「直播时长：…」(直播中)由它算,按北京时间
+	 * 写。不给、或读不懂,就不写那句。
 	 */
-	startedAt?: number;
+	startedAt?: string;
 	/** 此刻在线(人气那一格,开播 / 直播中 / 没在播的卡上画)。 */
-	online?: number | string;
-	/** 点赞(下播卡的那一格)。 */
-	likes?: number | string;
+	currentViewers?: number;
 	/** 本场累计观看(下播卡的那一格)。 */
-	totalViewers?: number | string;
+	totalViewers?: number;
+	/** 点赞(下播卡的那一格)。 */
+	likes?: number;
 	/** 当前粉丝数(开播 / 直播中的卡上画)。 */
-	fans?: number | string;
+	followers?: number;
 	/**
 	 * 本场粉丝数变化。**默认卡不画**(决策 76,它进下播文案),皮肤契约照给
 	 * (`stats.fansChanged`),自己做皮肤的人想画就能画。数字排成带正负号的写法。
 	 */
-	fansChanged?: number | string;
+	followersDelta?: number;
 };
 
 /**
@@ -77,7 +81,7 @@ export type LiveCardInput = {
 export type LiveCardView = {
 	status: LiveCardStatus;
 	username: string;
-	/** 头像地址;空串 = 没有头像,头像块整块收起(见 {@link LiveCardInput.author})。 */
+	/** 头像地址;空串 = 没有头像,头像块整块收起(见 {@link LiveCardInput.creator})。 */
 	userface: string;
 	title: string;
 	area: string;

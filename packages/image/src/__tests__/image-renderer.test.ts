@@ -20,6 +20,7 @@ import {
 	type ImageRendererOptions,
 } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
+import type { LiveCardInput } from "../templates/live-card";
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private 方法/字段
 type AnyRenderer = any;
@@ -601,14 +602,15 @@ describe("generateLiveCard 自定义封面", () => {
 		return { captured, puppeteer: { page: async () => page } as unknown as PuppeteerLike };
 	}
 
-	const liveApiData = {
+	/** 来源给的封面(B 站那条路只有 `url`)。 */
+	const liveInput: LiveCardInput = {
+		status: "start",
+		creator: { name: "示例UP" },
 		title: "标题",
-		area_name: "分区",
-		user_cover: "data:image/png;base64,API-COVER",
-		keyframe: "data:image/png;base64,API-KEYFRAME",
-		description: "",
-		online: 1,
-		live_time: "2026-01-01 00:00:00",
+		category: "分区",
+		cover: { url: "data:image/png;base64,API-COVER" },
+		startedAt: "2025-12-31T16:00:00.000Z",
+		currentViewers: 1,
 	};
 
 	it("colorOptions.liveCoverImage(资产 id)→ resolveAsset 解析成 data URL 进封面", async () => {
@@ -620,14 +622,7 @@ describe("generateLiveCard 自定义封面", () => {
 				resolveAsset: async (id: string) => `data:image/png;base64,ASSET-${id}`,
 			},
 		);
-		await renderer.generateLiveCard(
-			liveApiData,
-			"示例UP",
-			"data:image/png;base64,FACE",
-			{ likedNum: 0, watchedNum: "1", fansNum: 1, fansChanged: "" } as never,
-			1,
-			{ liveCoverImage: "cover-asset-1" },
-		);
+		await renderer.generateLiveCard(liveInput, { liveCoverImage: "cover-asset-1" });
 		expect(captured.html).toContain("data:image/png;base64,ASSET-cover-asset-1");
 		expect(captured.html).not.toContain("API-COVER");
 	});
@@ -635,14 +630,7 @@ describe("generateLiveCard 自定义封面", () => {
 	it("未配置 liveCoverImage → 封面维持 API 来源", async () => {
 		const { captured, puppeteer } = makeCapturingPuppeteer();
 		const renderer = makeRenderer({}, { puppeteer });
-		await renderer.generateLiveCard(
-			liveApiData,
-			"示例UP",
-			"data:image/png;base64,FACE",
-			{ likedNum: 0, watchedNum: "1", fansNum: 1, fansChanged: "" } as never,
-			1,
-			{},
-		);
+		await renderer.generateLiveCard(liveInput, {});
 		expect(captured.html).toContain("API-COVER");
 	});
 });

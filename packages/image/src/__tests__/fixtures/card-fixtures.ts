@@ -85,19 +85,19 @@ const USER_COVER = "http://i0.hdslb.com/bfs/live/new_room_cover/0a1b2c3d4e5f6071
 const KEYFRAME = "http://i0.hdslb.com/bfs/live-key-frame/keyframe0102030405060708.jpg";
 
 /**
- * B 站给的房间简介是富文本 —— B 站那头(`biliLiveCardInput`)先剥成纯文本再交给卡片,
+ * B 站给的房间简介是富文本 —— B 站那头(`liveCardInputFromRoomInfo`)先剥成纯文本再交给卡片,
  * 夹具照它的产物写。
  */
 const RICH_DESCRIPTION =
 	"<p>每晚八点开播&nbsp;&amp;&nbsp;周末加场</p><br>&lt;b&gt;联系方式见动态&lt;/b&gt;";
 
 /**
- * 照 `generateNeutralLiveCard` 排好的那一份组 props(块吃的 `LiveCardView`;数字都经
+ * 照 `generateLiveCard` 排好的那一份组 props(块吃的 `LiveCardView`;数字都经
  * formatCount)。
  *
  * 这四份夹具是 **B 站形状**的直播卡(简介走 `htmlToPlain`、封面是 B 站的房间封面 / 关键帧),所以
  * `userface` 是空串:B 站这条路到 3a 之前不给头像(`LiveCardInput.author`),头像块整块收起。夹具直接写
- * 排好的视图、不经 `biliLiveCardInput`,这一格得跟着真实产物手写。拓展直播那条路仍带头像,
+ * 排好的视图、不经 `liveCardInputFromRoomInfo`,这一格得跟着真实产物手写。拓展直播那条路仍带头像,
  * 头像块的挂点由 `card-hooks.test.ts` 的旁路探针看着,画不画由 `neutral-live-card.test.ts` 钉着。
  */
 function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {

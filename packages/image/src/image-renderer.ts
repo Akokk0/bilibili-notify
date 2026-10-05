@@ -18,7 +18,6 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
-import { biliLiveCardInput } from "./bili-live-input";
 import type { CardPropsByKind } from "./blocks/frames";
 import { formatCardTime } from "./format";
 import { buildLiveCardView } from "./live-view";
@@ -38,7 +37,7 @@ import { nodeFromPost } from "./templates/post-node";
 import { collectImageRefs } from "./templates/post-refs";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
-import type { CardColorOptions, CardSkinChoice, LiveData } from "./types";
+import type { CardColorOptions, CardSkinChoice } from "./types";
 
 /**
  * 本模块能读到自带静态资源的目录 —— 词云要的那两个脚本就在 `static/` 下。
@@ -568,45 +567,33 @@ export class ImageRenderer {
 	// ── 图片生成公共方法 ──────────────────────────────────────────────────────────
 
 	/**
-	 * **B 站直播卡的适配层**:接口数据 → {@link biliLiveCardInput} → {@link generateNeutralLiveCard}。
-	 * 签名不动,直播引擎与预览路由照旧调它。
-	 *
-	 * `liveStatus` 两种来源:直播引擎传 `LiveType`(1 开播 / 2 直播中 / 3 下播 / 4 首次),
-	 * 私聊指令传接口原值(0 没在播 / 1 在播)。
-	 */
-	async generateLiveCard(
-		// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
-		data: any,
-		username: string,
-		userface: string,
-		liveData: LiveData,
-		liveStatus: number,
-		colorOptions: CardColorOptions = {},
-	): Promise<Buffer> {
-		return this.generateNeutralLiveCard(
-			biliLiveCardInput(data, username, userface, liveData, liveStatus),
-			colorOptions,
-		);
-	}
-
-	/**
-	 * **直播卡的中立入口**(ADR-0019 决策 68):吃一份 {@link LiveCardInput},不收任何平台的
-	 * 原始数据。状态明写(开播 / 直播中 / 下播 / 没在播),卡上那句时间由开播时刻算。
+	 * **直播卡的入口**(ADR-0019 决策 68):吃一份 {@link LiveCardInput},不收任何平台的原始数据 ——
+	 * B 站那头由 `@bilibili-notify/live` 的 `liveCardInputFromRoomInfo` 翻、拓展订阅那头由服务端的
+	 * `liveCardInputFromReport` 翻,都来这一个口。状态明写(开播 / 直播中 / 下播 / 没在播),卡上那句时间由开播时刻算。
 	 *
 	 * 主人给这条订阅设的自定义直播封面(`colorOptions.liveCoverImage`,独立端专属)在这里
 	 * 解析、盖在输入的封面上 —— 它是 BN 的卡片样式,不分平台。
 	 *
-	 * 卡里的图只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
+	 * **图库引用在这里事先解析**(同 {@link generatePostCard}):输入里的封面与主播头像若是引用,交给宿主注入的
+	 * {@link ImageRendererOptions.resolveImageRef},拿到可画的地址再同步排视图。解析不到的引用,头像块收起、
+	 * 封面画「暂无封面」占位,不抛。出图器自己不读盘、不联网。
+	 *
+	 * 卡里的图最终只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
 	 */
-	async generateNeutralLiveCard(
+	async generateLiveCard(
 		input: LiveCardInput,
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		const username = input.author.name;
+		const username = input.creator.name;
 		this.logger.debug(`[live] 开始渲染直播卡片：${username}`);
 		// 自定义封面解析成 data URL;解析为 "" 时用输入里那张,特性自动无感。
 		const coverOverride = await this.resolveBg(colorOptions.liveCoverImage);
+		// 自定义封面盖住输入的封面时,输入里那张引用不必白读一遍。
+		const refs = new Set<ImageRef>();
+		if (input.creator.avatar !== undefined) refs.add(input.creator.avatar);
+		if (!coverOverride && input.cover?.ref !== undefined) refs.add(input.cover.ref);
+		const resolved = await this.resolveImageRefs(refs);
 
 		return this.renderWithSkin({
 			kind: "live",
@@ -614,7 +601,10 @@ export class ImageRenderer {
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
-			props: buildLiveCardView(input, coverOverride || undefined),
+			props: buildLiveCardView(input, {
+				coverOverride: coverOverride || undefined,
+				imageUrl: (ref) => resolved.get(ref),
+			}),
 		})
 			.then((buf) => {
 				this.logger.debug(`[live] 直播卡片渲染完成：${username}（${Date.now() - t0}ms）`);
@@ -780,7 +770,7 @@ export class ImageRenderer {
 					const url = await resolve(ref);
 					if (url) resolved.set(ref, url);
 				} catch (e) {
-					this.logger.debug(`[dynamic] 图库引用 ${ref} 解析失败,画占位:${String(e)}`);
+					this.logger.debug(`[image] 图库引用 ${ref} 解析失败,画占位:${String(e)}`);
 				}
 			}),
 		);

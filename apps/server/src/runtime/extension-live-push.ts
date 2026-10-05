@@ -1,6 +1,7 @@
 import type { ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import type {
 	Disposable,
+	ImageRef,
 	Logger,
 	MessageBus,
 	ServiceContext,
@@ -33,10 +34,11 @@ import type {
 } from "./extension-live-sessions.js";
 import {
 	type ExtensionSourceLookups,
-	extensionCardAuthor,
+	extensionSubscriptionName,
 	extensionSubscriptionPushable,
-	imageDataUrl,
 } from "./extension-push-common.js";
+import { type LiveCardFacts, liveCardInputFromReport } from "./live-card-input-from-report.js";
+import { deferImageWrites, type PostImageSink } from "./post-from-report.js";
 
 /**
  * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`extension-live-sessions.ts`)
@@ -85,21 +87,8 @@ type LiveEnd = SubscriptionReportValue<"liveEnd">;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
-/** 卡上与文案要的直播那几格 —— 事件与在播表那一行长得一样。 */
-type LiveFacts = Partial<
-	Pick<
-		ExtensionLiveRow,
-		| "title"
-		| "cover"
-		| "category"
-		| "description"
-		| "viewers"
-		| "totalViewers"
-		| "likes"
-		| "author"
-		| "url"
-	>
->;
+/** 卡上与文案要的直播那几格(外加直播间链接)—— 事件与在播表那一行长得一样。 */
+type LiveFacts = LiveCardFacts & Partial<Pick<ExtensionLiveRow, "url">>;
 
 /**
  * 推送这头挂在一场上的那几样。开播时刻、粉丝基线、最后一份状态、断流等待都是这一场的(`session`),不在这里。
@@ -127,12 +116,19 @@ export interface BindExtensionLivePushOptions {
 	settings(sub: Subscription): LiveWorkSettings;
 	/** 这一张直播卡的生效样式(按种类 ?? 基准,再轮一张自定义封面)。每推一张调一次。 */
 	cardStyle(sub: Subscription, settings: LiveWorkSettings): CustomCardStyleLike | undefined;
-	/** 拓展在不在跑、存下的头像。 */
-	sources: Pick<ExtensionSourceLookups, "running" | "readAvatar" | "events">;
+	/** 拓展在不在跑、清单里声明的事件(头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
+	sources: Pick<ExtensionSourceLookups, "running" | "events">;
+	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
+	avatarRef(subscriptionId: string): ImageRef | undefined;
+	/**
+	 * 往图库存直播封面与事件带来的作者头像的口(`AppRuntime.liveImages`)。每张卡出卡那一刻才写盘(`deferImageWrites`),
+	 * 关了出图、版式把卡片藏起来的直播不写。
+	 */
+	liveImages: PostImageSink;
 	/** 绑到这条订阅上的直播发送(`boundLivePush(bindSubscriptionPush(push, id))`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */
-	renderer(): Pick<ImageRenderer, "generateNeutralLiveCard"> | null | undefined;
+	renderer(): Pick<ImageRenderer, "generateLiveCard"> | null | undefined;
 	/** 上报问题框(决策 60):周期「正在直播」因为没有新状态跳过的那一轮记进去。 */
 	reportProblem(problem: SubscriptionReportProblem): void;
 	/**
@@ -185,6 +181,23 @@ interface CardJob {
 	fansChanged?: number;
 	/** 「正在直播」卡属于哪一场:发送前推送这头已经不挂在它上面了(开播 / 下播事件到了)就不发。 */
 	run?: LiveRun;
+}
+
+/**
+ * 出卡的渲染器套一层:**出卡那一刻**先把图写进图库(`commit`),再画。`pushLiveNotify` 不出卡(版式把卡片藏起来、
+ * 关了出图,即没有渲染器)就不会调到它,也就不为这一张卡写盘;写盘抛错 = 这一次出卡失败,装配降级成纯文字。
+ */
+function committing(
+	renderer: Pick<ImageRenderer, "generateLiveCard"> | null | undefined,
+	commit: () => Promise<void>,
+): Pick<ImageRenderer, "generateLiveCard"> | null {
+	if (!renderer) return null;
+	return {
+		generateLiveCard: async (input, colorOptions) => {
+			await commit();
+			return renderer.generateLiveCard(input, colorOptions);
+		},
+	};
 }
 
 export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Disposable {
@@ -284,29 +297,26 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		if (!sub) return;
 		const settings = opts.settings(sub);
 		const profile = opts.profile(id);
-		const author = await extensionCardAuthor(sub, {
-			event: job.facts.author,
-			profileName: profile?.name,
-			readStoredAvatar: () => opts.sources.readAvatar(id),
-		});
 		const { facts } = job;
-		const input: LiveCardInput = {
+		// 作者名按决策 54 取好(事件里的 → 资料里的 → 外部 id),卡上与文案里的 `{name}` 同一条链(决策 77)。
+		const authorName = extensionSubscriptionName(sub, {
+			eventName: facts.author?.name,
+			profileName: profile?.name,
+		});
+		// 翻成中立的输入:封面与事件头像的字节只算引用,写盘推迟到出卡那一刻;订阅资料里的头像本来就在图库里。
+		const images = deferImageWrites(opts.liveImages);
+		const input: LiveCardInput = await liveCardInputFromReport(facts, {
 			status: job.status,
-			author: { name: author.name, face: author.avatarUrl },
-			title: facts.title,
-			area: facts.category,
-			description: facts.description,
-			cover: facts.cover ? imageDataUrl(facts.cover) : undefined,
 			startedAt: job.startedAt,
-			online: facts.viewers,
-			likes: facts.likes,
-			totalViewers: facts.totalViewers,
-			fans: job.fans,
-			fansChanged: job.fansChanged,
-		};
+			followers: job.fans,
+			followersDelta: job.fansChanged,
+			authorName,
+			profileAvatar: opts.avatarRef(id),
+			images: images.sink,
+		});
 		const text = renderLiveText(job.textKind, templateOf(settings, job.textKind), {
-			// `{name}` 与卡上的作者名同一条链(决策 77):事件里的 → 资料里的 → 别名 → 外部 id。
-			name: author.name,
+			// `{name}` 与卡上的作者名同一条链(决策 77)。
+			name: authorName,
 			time: job.time,
 			follower: job.fans,
 			watched: facts.totalViewers,
@@ -326,7 +336,9 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 				label: `sub=${id}`,
 			},
 			{
-				renderer: opts.renderer(),
+				// 出卡那一刻才把图写进图库:`pushLiveNotify` 不出卡(版式藏起卡片、关了出图)就不会调到这里。
+				// 写盘抛错 = 这一次出卡失败,装配降级成纯文字。
+				renderer: committing(opts.renderer(), images.commit),
 				send: async (groups, type, o) => {
 					if (!pushable(id)) {
 						log.debug(`[ext-live] 订阅 ${id} 在出卡途中停用 / 删了 / 拓展停了,这张卡不发`);

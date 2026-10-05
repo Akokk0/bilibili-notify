@@ -27,9 +27,9 @@ type Msg = { kind: "message"; segs: Seg[] };
 function makeCtx(opts?: { renderFail?: boolean }) {
 	const broadcastToTargets = vi.fn(async (..._args: unknown[]) => {});
 	const broadcastSequenceToTargets = vi.fn(async (..._args: unknown[]) => {});
-	// 参数签名照抄 `ImageRenderer#generateNeutralLiveCard`,不写成零参 —— 零参的 mock 让
+	// 参数签名照抄 `ImageRenderer#generateLiveCard`,不写成零参 —— 零参的 mock 让
 	// `mock.calls[0][1]` 在类型上成了「长度 0 的元组」,断言第 2 个参数根本编译不过。
-	const generateNeutralLiveCard = opts?.renderFail
+	const generateLiveCard = opts?.renderFail
 		? vi.fn(async (..._args: unknown[]): Promise<Buffer> => {
 				throw new Error("boom");
 			})
@@ -37,7 +37,7 @@ function makeCtx(opts?: { renderFail?: boolean }) {
 	const ctx = {
 		logger: silentLogger,
 		isDisposed: () => false,
-		imageRenderer: { generateNeutralLiveCard },
+		imageRenderer: { generateLiveCard },
 		contentBuilder: {
 			text: (t: string): Seg => ({ kind: "text", text: t }),
 			image: (): Seg => ({ kind: "image" }),
@@ -47,7 +47,7 @@ function makeCtx(opts?: { renderFail?: boolean }) {
 	} as unknown as RoomContext;
 	// 白盒:挂上真实原型,让 sendLiveNotifyCard 内部调用的私有 helper 可达。
 	Object.setPrototypeOf(ctx, RoomContext.prototype);
-	return { ctx, broadcastToTargets, broadcastSequenceToTargets, generateNeutralLiveCard };
+	return { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard };
 }
 
 const LINK = "https://live.bilibili.com/123";
@@ -105,19 +105,19 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	// 皮肤 id 要一路走到出卡的 colorOptions:断在这一跳的话,主人给这位
 	// UP 选的皮肤只有预览认,推出去还是默认那副样子,而且全绿。
 	it("皮肤 id 透传给出卡(样式没启用也照带)", async () => {
-		const { ctx, generateNeutralLiveCard } = makeCtx();
+		const { ctx, generateLiveCard } = makeCtx();
 		await send(ctx, baseParams({ cardSkin: "k4ddd-0ddba11" }));
 		// 验红:把 room-helpers.ts 里那句 `cardSkin` 删掉,这条红。
-		expect(generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k4ddd-0ddba11" });
+		expect(generateLiveCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k4ddd-0ddba11" });
 	});
 
 	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)同一跳:断在这儿的话,主人给这位 UP 拧的
 	// 只有预览认。验红:把 room-helpers.ts 里递 `cardSkinKnobs` 那一句删掉,这条红。
 	it("per-UP 旋钮覆盖随皮肤 id 一起透传给出卡", async () => {
-		const { ctx, generateNeutralLiveCard } = makeCtx();
+		const { ctx, generateLiveCard } = makeCtx();
 		const cardSkinKnobs = { "k4ddd-0ddba11": { accent: "#aaaaaa" } };
 		await send(ctx, baseParams({ cardSkin: "k4ddd-0ddba11", cardSkinKnobs }));
-		expect(generateNeutralLiveCard.mock.calls[0]?.[1]).toEqual({
+		expect(generateLiveCard.mock.calls[0]?.[1]).toEqual({
 			cardSkin: "k4ddd-0ddba11",
 			cardSkinKnobs,
 		});
@@ -125,29 +125,28 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 
 	// B 站那头的翻译要真接上:出卡收到的是房间数据翻成的中立输入,状态照 liveType 明写。
 	it("房间数据翻成中立的直播卡输入再出卡", async () => {
-		const { ctx, generateNeutralLiveCard } = makeCtx();
+		const { ctx, generateLiveCard } = makeCtx();
 		await send(ctx, baseParams({ liveType: LiveType.StopBroadcast }));
-		// 验红:把 room-helpers.ts 里交给 `biliLiveCardInput` 的 liveType 换成写死的 1,这条红。
-		expect(generateNeutralLiveCard.mock.calls[0]?.[0]).toMatchObject({
+		// 验红:把 room-helpers.ts 里交给 `liveCardInputFromRoomInfo` 的 liveType 换成写死的 1,这条红。
+		expect(generateLiveCard.mock.calls[0]?.[0]).toMatchObject({
 			status: "end",
-			author: { name: "主播" },
+			creator: { name: "主播" },
 			title: "标题",
 		});
 	});
 
 	// 刻画(拆成中立装配 + 按 uid 发送之前就是这样):出卡要好几秒,这期间引擎被拆了就不再推。
 	it("出卡期间引擎被拆了 → 不推", async () => {
-		const { ctx, broadcastToTargets, broadcastSequenceToTargets, generateNeutralLiveCard } =
-			makeCtx();
+		const { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard } = makeCtx();
 		let disposed = false;
 		(ctx as unknown as { isDisposed: () => boolean }).isDisposed = () => disposed;
-		generateNeutralLiveCard.mockImplementation(async () => {
+		generateLiveCard.mockImplementation(async () => {
 			disposed = true;
 			return Buffer.from("img");
 		});
 		await send(ctx, baseParams());
 		// 验红:把 room-helpers.ts 里 `sendToUid` 开头那句 `isDisposed()` 删掉,这条红。
-		expect(generateNeutralLiveCard).toHaveBeenCalledTimes(1);
+		expect(generateLiveCard).toHaveBeenCalledTimes(1);
 		expect(broadcastToTargets).not.toHaveBeenCalled();
 		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
 	});
@@ -180,7 +179,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	});
 
 	it("隐藏 card 块 → 跳过图片渲染", async () => {
-		const { ctx, broadcastToTargets, generateNeutralLiveCard } = makeCtx();
+		const { ctx, broadcastToTargets, generateLiveCard } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -191,7 +190,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 				]),
 			}),
 		);
-		expect(generateNeutralLiveCard).not.toHaveBeenCalled();
+		expect(generateLiveCard).not.toHaveBeenCalled();
 		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["text"]);
 	});
@@ -210,8 +209,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	});
 
 	it("全部块隐藏 → 本次不推送", async () => {
-		const { ctx, broadcastToTargets, broadcastSequenceToTargets, generateNeutralLiveCard } =
-			makeCtx();
+		const { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -222,7 +220,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 				]),
 			}),
 		);
-		expect(generateNeutralLiveCard).not.toHaveBeenCalled();
+		expect(generateLiveCard).not.toHaveBeenCalled();
 		expect(broadcastToTargets).not.toHaveBeenCalled();
 		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
 	});
@@ -281,7 +279,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	});
 
 	it("下播推送(StopBroadcast)传版式 → 隐藏 card 后只剩文本,链接独立部件", async () => {
-		const { ctx, broadcastToTargets, generateNeutralLiveCard } = makeCtx();
+		const { ctx, broadcastToTargets, generateLiveCard } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -293,7 +291,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 				]),
 			}),
 		);
-		expect(generateNeutralLiveCard).not.toHaveBeenCalled();
+		expect(generateLiveCard).not.toHaveBeenCalled();
 		const [, content, type] = broadcastToTargets.mock.calls[0] as [string, Msg, number];
 		expect(type).toBe(LivePushType.LiveEnd);
 		expect(content.segs.map((s) => s.kind)).toEqual(["text"]);
