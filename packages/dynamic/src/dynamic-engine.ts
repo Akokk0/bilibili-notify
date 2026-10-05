@@ -1,15 +1,23 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type {
-	Disposable,
-	ForwardImage,
-	Logger,
-	MessageBus,
-	ServiceContext,
+import {
+	DEFAULT_CONTENT_FILTERS,
+	type Disposable,
+	type ForwardImage,
+	type Logger,
+	type MessageBus,
+	type Post,
+	postText,
+	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
-import { blockedNotice, type DynamicFilterReason, filterDynamic } from "./dynamic-filter";
+import {
+	blockedNotice,
+	filterPost,
+	type PostFilterReason,
+	type PostFilterSettings,
+} from "./post-filter";
 import { postFromDynamic } from "./post-from-dynamic";
 import type {
 	PushLike,
@@ -18,7 +26,7 @@ import type {
 	SubscriptionOpView,
 	SubscriptionsView,
 } from "./push-like";
-import type { AllDynamicInfo, Dynamic, DynamicFilterConfig, DynamicTimelineManager } from "./types";
+import type { AllDynamicInfo, Dynamic, DynamicTimelineManager } from "./types";
 import {
 	type CardFailureTracker,
 	type CommentaryClient,
@@ -118,8 +126,8 @@ export interface DynamicEngineConfig extends WorkDeliveryConfig {
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
-	/** 内容过滤配置（含 notify：被屏蔽时是否通知）。 */
-	filter: DynamicFilterConfig & { notify?: boolean };
+	/** 内容过滤(折好的 `ContentFilters`;`notify`：被屏蔽时是否通知,缺席 = 不通知)。 */
+	filter: PostFilterSettings;
 }
 
 export interface DynamicEngineOptions {
@@ -168,42 +176,6 @@ function extractDynamicImages(item: Dynamic): string[] {
 	return urls;
 }
 
-/** 从动态数据中提取纯文本内容，用于 AI 点评 */
-function extractDynamicText(item: Dynamic): string {
-	// 可选链:翻作品时每条都会提一次(不再只在要点评时),缺了 module_dynamic 的残条不能在这儿抛。
-	const mod = item.modules?.module_dynamic;
-	const parts: string[] = [];
-
-	// 正文描述
-	if (mod?.desc?.text) parts.push(mod.desc.text);
-
-	// 专栏/opus 摘要
-	if (mod?.major?.opus?.summary?.text) {
-		if (mod.major.opus.title) parts.push(`标题：${mod.major.opus.title}`);
-		parts.push(mod.major.opus.summary.text);
-	}
-
-	// 视频标题
-	if (mod?.major?.archive?.title) parts.push(`视频标题：${mod.major.archive.title}`);
-
-	// 转发内容
-	if (item.orig) {
-		// 转发源可能是 tombstone(原动态被删/不可见):modules / module_author
-		// 整段缺失。此前裸取 .modules.module_author.name 抛 TypeError → 该 UID
-		// 锚永不前移,每轮重试永久卡死。全程可选链 + 兜底,与本函数其余处一致。
-		const origMod = item.orig.modules?.module_dynamic;
-		const origAuthor = item.orig.modules?.module_author?.name;
-		const origParts: string[] = [];
-		if (origMod?.desc?.text) origParts.push(origMod.desc.text);
-		if (origMod?.major?.opus?.summary?.text) origParts.push(origMod.major.opus.summary.text);
-		if (origMod?.major?.archive?.title) origParts.push(`视频标题：${origMod.major.archive.title}`);
-		if (origParts.length > 0)
-			parts.push(`（转发自 ${origAuthor ?? "未知"}：${origParts.join(" ")}）`);
-	}
-
-	return parts.join("\n").trim();
-}
-
 /**
  * 链接部件的内容(不含任何前缀文案)。视频给视频页(或按设置换成 BV 号,取不到 BV 就没有链接),
  * 别的给动态页。
@@ -240,20 +212,25 @@ function extractGallery(item: Dynamic): ForwardImage[] {
 }
 
 /**
- * B 站原始动态 → 平台中立的作品(ADR-0019 决策 66)。出卡之后那一段(`deliverWork`)与拓展
- * 共用,不再读原始数据 —— 它要的这几样在这里一次翻好。
+ * B 站原始动态 + 它翻好的中立作品 → 装配吃的作品(ADR-0019 决策 66)。出卡之后那一段(`deliverWork`)与拓展
+ * 共用,不再读原始数据 —— 它要的这几样在这里一次翻好。翻译(`postFromDynamic`)由调用方做一次,过滤、
+ * AI 点评的文字(`postText(post, "labeled")`,取段只此一份)、出卡(`generatePostCard`)共用同一份 `Post`;
+ * 只有链接、图集这些 B 站自己的东西还读原始动态。
  */
-function workFromDynamic(item: Dynamic, name: string, videoUrlToBV: boolean): NeutralWork {
+function workFromDynamic(
+	item: Dynamic,
+	post: Post,
+	name: string,
+	videoUrlToBV: boolean,
+): NeutralWork {
 	const isVideo = item.type === "DYNAMIC_TYPE_AV";
 	return {
-		// B 站原始动态先翻成中立的 `Post`(出图器不认识任何 B 站字段),再走出卡器的唯一入口。
-		// 翻译放在这里(`renderCard` 被调到才做),它抛的错 = 这一次出图失败,装配照旧降级成纯文字。
-		renderCard: (image, colorOptions) =>
-			image.generatePostCard(postFromDynamic(item), colorOptions),
+		// 出图器不认识任何 B 站字段,走出卡器的唯一入口。
+		renderCard: (image, colorOptions) => image.generatePostCard(post, colorOptions),
 		link: dynamicLink(item, isVideo, videoUrlToBV),
 		name,
 		isVideo,
-		commentText: extractDynamicText(item),
+		commentText: postText(post, "labeled"),
 		commentImages: extractDynamicImages(item),
 		postNoun: "动态",
 		gallery: extractGallery(item),
@@ -810,12 +787,26 @@ export class DynamicEngine {
 			// 错只标记本条 fail 并 continue,绝不让异常冒泡 abort 整轮(否则同轮
 			// 已成功发出的早项下轮重推)。
 			try {
+				// 翻译只做一次(ADR-0021 决策 43):原始动态先翻成中立的 `Post`,过滤、AI 点评、出卡共用这一份。
+				// 翻译是宽容的、不该抛;真抛了(接口出了没见过的残条)是这条动态本身没法判,重试也是同一个结果
+				// —— 记一笔 warn 跳过、推进锚点,别让它卡住这位 UP、也别每一轮把同批更新的动态再推一遍。
+				let post: Post;
+				try {
+					post = postFromDynamic(item);
+				} catch (e) {
+					this.logger.warn(
+						`[detector] 动态翻译失败,已跳过 UID=${uid} ID=${item.id_str ?? "?"}：${(e as Error).message}`,
+					);
+					markOk(uid, postTime);
+					continue;
+				}
+
 				// Filter — per-UP filter override (从 SubItemView 上拿) 优先于 engine 的全局 filter。
 				// adapter 已通过 resolve(sub, defaults).filters 完成 inherit / partial 折叠，这里
-				// 拿到的是完整 DynamicFilterConfig。空过滤器（{}）也算 override 生效，结果是「该 UP
+				// 拿到的是完整的 ContentFilters。per-UP 覆盖里的空规则也算 override 生效，结果是「该 UP
 				// 单独关掉所有屏蔽规则」—— 与全局 filter 完全脱钩，符合用户意图。
-				const effFilter = subAtCapture.filter ?? this.config.filter ?? {};
-				const filterResult = filterDynamic(item, effFilter, this.logger);
+				const effFilter = subAtCapture.filter ?? this.config.filter ?? DEFAULT_CONTENT_FILTERS;
+				const filterResult = filterPost(post, effFilter, this.logger);
 				if (filterResult.blocked) {
 					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
 					if (effFilter.notify && this.stillSubscribed(uid, subAtCapture)) {
@@ -828,7 +819,7 @@ export class DynamicEngine {
 								[
 									{
 										type: "text",
-										text: blockedNotice(name, filterResult.reason as DynamicFilterReason),
+										text: blockedNotice(name, filterResult.reason as PostFilterReason, "动态"),
 									},
 								],
 								"post",
@@ -849,7 +840,7 @@ export class DynamicEngine {
 				// 订阅的设置用本轮捕获的那份 —— 过滤之后到这里没有 await,就是此刻表里那份。
 				// 主卡发送抛错往外冒到下面的 catch → markFail,下一轮再来。
 				const outcome = await deliverWork({
-					work: workFromDynamic(item, name, this.config.dynamicVideoUrlToBV),
+					work: workFromDynamic(item, post, name, this.config.dynamicVideoUrlToBV),
 					settings: subAtCapture,
 					push: {
 						broadcast: (segments, part, opts) =>

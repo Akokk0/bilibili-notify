@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 /**
- * 高级规则页 × 拓展订阅(ADR-0019 决策 64 / 70 / 72)。
+ * 高级规则页 × 拓展订阅(ADR-0019 决策 64 / 72,ADR-0021 决策 43)。
  *
  * - 拓展订阅也能加 tab、能单独定制。
- * - 只露通用的几节:动态过滤(只有关键词 / 正则 / 白名单,四个类型开关不露,决策 70)、动态消息 /
+ * - 只露通用的几节:动态过滤(关键词 / 正则 / 白名单,**四个类型开关也露**:过滤吃 `Post`、类型开关对所有来源生效)、动态消息 /
  *   直播消息的文案、消息版式、推送时段(免扰;报直播时再加推送频率那几格,SC / 上舰阈值不露)、
  *   AI 人格。动态图集(决策 72)、直播总结、上舰提示、特别关注不露。
  * - 源的清单里没声明的事件对应的节也不露(只报作品就不露直播消息)。
@@ -207,7 +207,7 @@ describe("高级规则 × 拓展订阅:露哪几节", () => {
 });
 
 describe("高级规则 × 拓展订阅:编辑器里的格", () => {
-	it("动态过滤:四个类型开关不在;开覆盖只带关键词 / 正则 / 白名单", async () => {
+	it("动态过滤:四个类型开关也在;开覆盖带齐关键词 / 正则 / 白名单与四个开关", async () => {
 		const { container } = renderRules();
 		await addExtensionTab();
 		pickSection(container, "动态过滤");
@@ -216,10 +216,18 @@ describe("高级规则 × 拓展订阅:编辑器里的格", () => {
 		await waitFor(() => expect(diffCodes()).toContain("blockKeywords"));
 		expect(screen.getByText("屏蔽关键词")).toBeTruthy();
 		for (const label of ["屏蔽转发动态", "屏蔽专栏动态", "屏蔽图文动态", "屏蔽视频动态"]) {
-			expect(screen.queryByText(label)).toBeNull();
+			expect(screen.getByText(label)).toBeTruthy();
 		}
-		for (const code of ["blockReposts", "blockArticles", "blockImages", "blockVideos"]) {
-			expect(diffCodes()).not.toContain(code);
+		for (const code of [
+			"blockKeywords",
+			"blockRegex",
+			"allowKeywords",
+			"blockReposts",
+			"blockArticles",
+			"blockImages",
+			"blockVideos",
+		]) {
+			expect(diffCodes()).toContain(code);
 		}
 	});
 

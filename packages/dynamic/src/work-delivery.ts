@@ -53,8 +53,8 @@ function renderDynamicText(template: string, name: string): string {
  */
 export interface NeutralWork {
 	/**
-	 * 怎么出这张卡:拿给的渲染器、按这条订阅的样式与皮肤出。B 站包 `image.generatePostCard(postFromDynamic(raw), …)`,
-	 * 拓展先把上报翻成 `Post`(图存进图库)再包 `image.generatePostCard(post, …)`。**要不要出**(渲染器在不在、出图开没开、版式
+	 * 怎么出这张卡:拿给的渲染器、按这条订阅的样式与皮肤出。两个来源都先翻成中立的 `Post`(过滤、AI 点评、出卡共用这一份),
+	 * 这里包 `image.generatePostCard(post, …)`(拓展那头出卡前还要把推迟的图写进图库)。**要不要出**(渲染器在不在、出图开没开、版式
 	 * 露不露卡片)是装配的事,这里只管怎么出;抛错 = 这一次出图失败,装配降级成纯文字。
 	 */
 	renderCard(image: ImageRenderer, colorOptions: CardColorOptions): Promise<Buffer>;

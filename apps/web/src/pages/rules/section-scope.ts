@@ -21,19 +21,14 @@ import type {
 import type { SectionId } from "./sections";
 
 /**
- * ContentFilters 里「动态过滤」域看内容的那几格 —— 对所有平台都生效(ADR-0019 决策 70),拓展订阅
- * 开这一节只带它们。
+ * ContentFilters 里属于「动态过滤」域的字段:看内容的那几格 + 看作品「有没有转发 / 专栏 / 图集 / 视频」的四个开关。
+ * 过滤吃中立的 `Post`,这两样对所有来源(B 站、拓展)一视同仁(ADR-0021 决策 43)。
  */
-export const FILTER_TEXT_KEYS = [
+export const FILTER_CONTENT_KEYS = [
 	"blockKeywords",
 	"blockRegex",
 	"allowKeywords",
 	"allowRegex",
-] as const satisfies readonly (keyof ContentFiltersOverride)[];
-
-/** ContentFilters 里属于「动态过滤」域的字段:看内容的那几格 + 看 B 站动态类型的四个开关。 */
-export const FILTER_CONTENT_KEYS = [
-	...FILTER_TEXT_KEYS,
 	"blockReposts",
 	"blockArticles",
 	"blockImages",

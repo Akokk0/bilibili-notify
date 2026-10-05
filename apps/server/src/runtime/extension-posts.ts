@@ -1,9 +1,9 @@
 import {
 	type BoundWorkPush,
 	blockedNotice,
-	type DynamicFilterConfig,
 	deliverWork,
-	filterByText,
+	filterPost,
+	type PostFilterSettings,
 	type WorkDeliveryConfig,
 	type WorkDeliveryDeps,
 	type WorkSubscriptionSettings,
@@ -19,13 +19,13 @@ import type {
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
 import { createSerialGate, type SerialGate } from "@bilibili-notify/live";
-import { extensionPostFilterText, extensionPostWork } from "./extension-post-work.js";
+import { extensionPostWork } from "./extension-post-work.js";
 import {
 	type ExtensionSourceLookups,
 	extensionSubscriptionName,
 	extensionSubscriptionPushable,
 } from "./extension-push-common.js";
-import type { PostImageSink } from "./post-from-report.js";
+import { deferImageWrites, type PostImageSink, postFromReport } from "./post-from-report.js";
 
 /**
  * **拓展报的作品接进推送链**(ADR-0019 决策 53 / 62 / 66 / 69–72 / 77):bus 上 `subscription-reported` 里
@@ -34,9 +34,11 @@ import type { PostImageSink } from "./post-from-report.js";
  * 一条订阅一条作品:
  * 1. 再核一次这条订阅还该推(还在、启用着、拓展在跑)—— 停用的收下不推(决策 62);动态总开关关着的
  *    也不出卡(推送层反正会挡,白出一张卡、白调一次 AI);
- * 2. 过滤只看内容(决策 70):关键词 / 正则 / 白名单,全局 + 按 UP 覆盖照常折叠,四个类型开关一律不看;
- *    被挡下时「屏蔽后提醒」照 B 站的规矩(`notify` 开着才发),措辞按平台的叫法;
- * 3. 作者名按决策 54 取好,翻成中立作品(出卡时再翻成 `Post`、图存进图库),交给与 B 站同一份的装配(`deliverWork`)。
+ * 2. 翻成中立的 `Post`(作者名按决策 54 取好;图的写盘推迟到出卡,见 `deferImageWrites`),再过滤 —— 过滤吃 `Post`、
+ *    一份实现所有来源同一个(`filterPost`,ADR-0021 决策 43):关键词 / 正则 / 白名单加四个类型开关,全局 + 按 UP
+ *    覆盖照常折叠,**类型开关对拓展作品同样生效**(不再豁免)。被挡下时「屏蔽后提醒」照 B 站的规矩(`notify`
+ *    开着才发),措辞按平台的叫法;
+ * 3. 同一份 `Post` 交给与 B 站同一份的装配(`deliverWork`):AI 点评的文字、出卡共用它。
  *
  * - **同一条订阅的作品按到达顺序串行**(每条订阅一道 `createSerialGate`):拓展一口气报两条时,先报的那条
  *   出卡慢也先送到;不同订阅互不排队。
@@ -46,12 +48,12 @@ import type { PostImageSink } from "./post-from-report.js";
  * - 上报的调用不等这里(决策 62):bus 的回调同步返回,活排进闸里。
  */
 
-type Post = SubscriptionReportValue<"post">;
+type ReportedPost = SubscriptionReportValue<"post">;
 
 /** 一条拓展订阅折好的作品设置:装配那几格 + 过滤(已折好全局)+ 动态总开关。 */
 export interface ExtensionPostSettings extends WorkSubscriptionSettings {
-	/** 这条订阅生效的过滤(per-UP 覆盖 ?? 全局)。 */
-	filter: DynamicFilterConfig & { notify?: boolean };
+	/** 这条订阅生效的过滤(折好的 `ContentFilters`:per-UP 覆盖 ?? 全局)。 */
+	filter: PostFilterSettings;
 	/** 作品总开关(全局 + per-UP 折好的 `features.post`)。 */
 	post: boolean;
 }
@@ -106,30 +108,41 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 		return extensionSubscriptionPushable(sub, opts.sources.running) ? sub : undefined;
 	};
 
-	async function deliverOne(id: string, post: Post): Promise<void> {
+	async function deliverOne(id: string, report: ReportedPost): Promise<void> {
 		const sub = pushable(id);
 		if (!sub) {
-			log.debug(`[ext-post] 订阅 ${id} 已停用 / 已删 / 它的拓展没在跑,作品 ${post.id} 不推`);
+			log.debug(`[ext-post] 订阅 ${id} 已停用 / 已删 / 它的拓展没在跑,作品 ${report.id} 不推`);
 			return;
 		}
 		const settings = opts.settings(sub);
 		if (!settings.post) {
-			log.debug(`[ext-post] 订阅 ${id} 的动态推送关着,作品 ${post.id} 不推`);
+			log.debug(`[ext-post] 订阅 ${id} 的动态推送关着,作品 ${report.id} 不推`);
 			return;
 		}
 		const postNoun = opts.sources.postNoun(subscriptionIdentityOf(sub).sourceKey);
-		const profileName = opts.profileName(id);
 		const push = opts.pushFor(id);
 
-		const filtered = filterByText(extensionPostFilterText(post), settings.filter, log);
+		// 翻成中立的 `Post`(过滤、AI 点评、出卡共用这一份)。名字按决策 54 取好,屏蔽提醒也用它;图只算引用、
+		// 写盘推迟到出卡 —— 被屏蔽的、不出卡的作品不往图库写。
+		const authorName = extensionSubscriptionName(sub, {
+			eventName: report.author?.name,
+			profileName: opts.profileName(id),
+		});
+		const images = deferImageWrites(opts.postImages);
+		const post = await postFromReport(report, {
+			authorName,
+			profileAvatar: opts.avatarRef(id),
+			images: images.sink,
+		});
+
+		const filtered = filterPost(post, settings.filter, log);
 		if (filtered.blocked && filtered.reason) {
-			log.debug(`[ext-post] 订阅 ${id} 的作品 ${post.id} 被过滤,原因:${filtered.reason}`);
+			log.debug(`[ext-post] 订阅 ${id} 的作品 ${report.id} 被过滤,原因:${filtered.reason}`);
 			if (settings.filter.notify) {
-				const name = extensionSubscriptionName(sub, { eventName: post.author?.name, profileName });
 				// 与 B 站同一条规矩:提醒是 best-effort,发不出就算了。
 				try {
 					await push.broadcast(
-						[{ type: "text", text: blockedNotice(name, filtered.reason, postNoun) }],
+						[{ type: "text", text: blockedNotice(authorName, filtered.reason, postNoun) }],
 						"post",
 					);
 				} catch (e) {
@@ -139,17 +152,8 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			return;
 		}
 
-		const authorName = extensionSubscriptionName(sub, {
-			eventName: post.author?.name,
-			profileName,
-		});
 		const outcome = await deliverWork({
-			work: extensionPostWork(post, {
-				authorName,
-				profileAvatar: opts.avatarRef(id),
-				images: opts.postImages,
-				postNoun,
-			}),
+			work: extensionPostWork(report, post, { postNoun, commitImages: images.commit }),
 			settings,
 			push,
 			// 出卡、点评几个 await 之后再核一次:期间停用了订阅 / 停了拓展 / 删了它,就不发。
@@ -159,7 +163,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			logLabel: `sub=${id}`,
 		});
 		if (outcome === "unsubscribed") {
-			log.debug(`[ext-post] 订阅 ${id} 在出卡途中停用 / 删掉了,作品 ${post.id} 没发`);
+			log.debug(`[ext-post] 订阅 ${id} 在出卡途中停用 / 删掉了,作品 ${report.id} 没发`);
 		}
 	}
 

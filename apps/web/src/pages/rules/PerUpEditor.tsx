@@ -58,7 +58,6 @@ import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
 import { projectPerUpIsland } from "./perup-island";
 import {
 	FILTER_CONTENT_KEYS,
-	FILTER_TEXT_KEYS,
 	hasAiPersonaOverride,
 	hasFilterContentOverride,
 	hasLiveThresholdOverride,
@@ -109,7 +108,7 @@ function patchSub(id: string, body: SubPatch) {
 export interface PerUpEditorProps {
 	/**
 	 * B 站订阅或拓展订阅。拓展订阅露哪几节由调用方按 `perUpSectionsFor` 挑(ADR-0019 决策 64),
-	 * 这里只管节内的差别:过滤不画类型开关、推送时段按源报不报直播给格、版式只给源报得出的那套。
+	 * 这里只管节内的差别:推送时段按源报不报直播给格、版式只给源报得出的那套(过滤的四个类型开关对所有来源都画)。
 	 */
 	sub: Subscription;
 	/** 拓展订阅是哪个平台、那个源报得出什么;B 站订阅不传。 */
@@ -256,8 +255,6 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 					value={draft.overrides.filters}
 					onChange={(v) => setSlice("filters", v)}
 					baseline={defaults.filters}
-					// 四个类型开关看的是 B 站的动态类型,对拓展作品一律不看(ADR-0019 决策 70)。
-					typeToggles={isBili}
 				/>
 			) : null}
 			{section === "live" ? (
@@ -361,13 +358,10 @@ function FilterOverrideBox({
 	value,
 	onChange,
 	baseline,
-	typeToggles,
 }: {
 	value: ContentFiltersOverride | undefined;
 	onChange: (next: ContentFiltersOverride | undefined) => void;
 	baseline: GlobalDefaults["filters"];
-	/** 画不画四个类型开关。关着时开覆盖也只带看内容的那几格 —— 不画的格不钉快照。 */
-	typeToggles: boolean;
 }) {
 	const enabled = hasFilterContentOverride(value);
 	const cur = value ?? {};
@@ -379,7 +373,7 @@ function FilterOverrideBox({
 	function toggle(on: boolean): void {
 		if (on) {
 			const seeded: ContentFiltersOverride = { ...cur };
-			for (const k of typeToggles ? FILTER_CONTENT_KEYS : FILTER_TEXT_KEYS) {
+			for (const k of FILTER_CONTENT_KEYS) {
 				Object.assign(seeded, { [k]: baseline[k] });
 			}
 			onChange(seeded);
@@ -392,11 +386,7 @@ function FilterOverrideBox({
 	return (
 		<OverrideBox
 			title="动态过滤覆盖"
-			subtitle={
-				typeToggles
-					? "开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
-					: "开 = 该 UP 使用自定义关键词 / 正则 / 白名单;关 = 继承全局过滤"
-			}
+			subtitle="开 = 该 UP 使用自定义关键词 / 正则 / 屏蔽开关;关 = 继承全局过滤"
 			accent="var(--color-bn-pink)"
 			icon={<Icon.filter size={14} />}
 			enabled={enabled}
@@ -412,46 +402,36 @@ function FilterOverrideBox({
 			<Field code="allowKeywords" full>
 				<ArrayEditor value={get("allowKeywords")} onChange={(n) => set("allowKeywords", n)} />
 			</Field>
-			{typeToggles ? (
-				<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<Field code="blockReposts">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={get("blockReposts")}
-								onChange={(v) => set("blockReposts", v)}
-								size="sm"
-							/>
-						</div>
-					</Field>
-					<Field code="blockArticles">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={get("blockArticles")}
-								onChange={(v) => set("blockArticles", v)}
-								size="sm"
-							/>
-						</div>
-					</Field>
-					<Field code="blockImages">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={get("blockImages")}
-								onChange={(v) => set("blockImages", v)}
-								size="sm"
-							/>
-						</div>
-					</Field>
-					<Field code="blockVideos">
-						<div className="flex h-7.5 items-center">
-							<Toggle
-								value={get("blockVideos")}
-								onChange={(v) => set("blockVideos", v)}
-								size="sm"
-							/>
-						</div>
-					</Field>
-				</div>
-			) : null}
+			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+				<Field code="blockReposts">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={get("blockReposts")}
+							onChange={(v) => set("blockReposts", v)}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="blockArticles">
+					<div className="flex h-7.5 items-center">
+						<Toggle
+							value={get("blockArticles")}
+							onChange={(v) => set("blockArticles", v)}
+							size="sm"
+						/>
+					</div>
+				</Field>
+				<Field code="blockImages">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={get("blockImages")} onChange={(v) => set("blockImages", v)} size="sm" />
+					</div>
+				</Field>
+				<Field code="blockVideos">
+					<div className="flex h-7.5 items-center">
+						<Toggle value={get("blockVideos")} onChange={(v) => set("blockVideos", v)} size="sm" />
+					</div>
+				</Field>
+			</div>
 		</OverrideBox>
 	);
 }

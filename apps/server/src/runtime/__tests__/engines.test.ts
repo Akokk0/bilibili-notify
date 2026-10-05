@@ -51,6 +51,7 @@ import {
 import { type BilibiliSettings, BilibiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
+import { imageRefOf } from "../../images/image-store.js";
 import { createAdapterRegistry } from "../../platforms/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
@@ -95,7 +96,7 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 		// 拓展作品那条路(ADR-0019 决策 66 / 70)用的装配与过滤也走真的 —— 被测的正是它们与
 		// B 站那条路接在同一份计数上。
 		deliverWork: actual.deliverWork,
-		filterByText: actual.filterByText,
+		filterPost: actual.filterPost,
 		blockedNotice: actual.blockedNotice,
 		DynamicEngine: class {
 			opts: any;
@@ -648,7 +649,13 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
  */
 describe("createEngines — 拓展作品的图走图库", () => {
 	const AVATAR_REF = `${"a".repeat(63)}1.png`;
-	const PUT_REF = `${"b".repeat(63)}1.png`;
+	/** 存图的口:回图库起的那个名字(内容哈希)。写盘推迟到出卡,翻译时算的引用必须与它一致。 */
+	const storing = () =>
+		vi.fn(async (bytes: Uint8Array) => {
+			const ref = imageRefOf(bytes);
+			if (!ref) throw new Error("夹具图不合规");
+			return { ok: true as const, ref };
+		});
 	const sources = {
 		running: () => true,
 		postNoun: () => undefined,
@@ -689,9 +696,9 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		).toThrow(/postImages/);
 	});
 
-	it("事件带来的头像与配图经 postImages 存,出图器收到的 Post 里是它回的引用", async () => {
+	it("事件带来的头像与配图经 postImages 存(出卡前写盘),出图器收到的 Post 里是图库的引用", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const put = vi.fn(async () => ({ ok: true as const, ref: PUT_REF }));
+		const put = storing();
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
@@ -705,15 +712,16 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		);
 		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
 		// 验红:删掉 engines.ts 里传给 bindExtensionPosts 的 `postImages,` 这一行,这条红。
-		expect(put).toHaveBeenCalledTimes(2);
+		// 头像和配图是同一份字节(同一个引用),只写一次。
+		expect(put).toHaveBeenCalledTimes(1);
 		const post = postOf(H.image[0].generatePostCard.mock.calls[0] ?? []);
-		expect(post.creator.avatar).toBe(PUT_REF);
-		expect(post.images).toEqual([expect.objectContaining({ ref: PUT_REF })]);
+		expect(post.creator.avatar).toBe(imageRefOf(PNG_1X1));
+		expect(post.images).toEqual([expect.objectContaining({ ref: imageRefOf(PNG_1X1) })]);
 	});
 
 	it("事件没带头像:订阅资料里存的头像引用顶上(不再存一遍)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
-		const put = vi.fn(async () => ({ ok: true as const, ref: PUT_REF }));
+		const put = storing();
 		const c = setup({
 			puppeteer: true,
 			subs: [sub],
@@ -749,6 +757,131 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		active = c;
 		// 验红:删掉 engines.ts 里 `resolveImageRef: opts.resolveImageRef,` 那一行,这条红。
 		expect(H.image[0].opts.resolveImageRef).toBe(resolveImageRef);
+	});
+});
+
+/**
+ * 作品过滤的接线(㉑e,ADR-0021 决策 43):过滤直接吃折好的 `ContentFilters`(配置怎么叫它就怎么叫,从前
+ * `dynamicFilterOf` 那层翻译删了),B 站动态引擎与拓展作品**同一份过滤、类型开关对所有来源生效**。
+ * 各自的单元测试证明不了 engines 真的把全局 / 按 UP 的过滤递到了两条路上:漏递的症状是该挡的作品照推。
+ */
+describe("createEngines — 作品过滤接线", () => {
+	const sources = {
+		running: () => true,
+		postNoun: () => "作品",
+		readAvatar: async () => undefined,
+		events: () => ["post"] as const,
+	};
+	const PNG = new Uint8Array([
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
+		0, 0, 0, 1, 8, 6, 0, 0, 0,
+	]);
+	const extReport = (sub: { id: string }, value: Record<string, unknown>) => ({
+		extensionId: "douyin",
+		externalId: "sec-uid-1",
+		subscriptionIds: [sub.id],
+		report: {
+			kind: "post" as const,
+			value: {
+				id: "p1",
+				url: "https://www.douyin.com/video/p1",
+				publishedAt: Date.now(),
+				...value,
+			},
+		},
+	});
+	const videoReport = (sub: { id: string }) =>
+		extReport(sub, { text: "新视频", video: { title: "一期" }, images: undefined });
+	const imagesReport = (sub: { id: string }) => extReport(sub, { text: "返图", images: [PNG] });
+	const textReport = (sub: { id: string }) => extReport(sub, { text: "只有字" });
+
+	function extSetup(over: { globals?: GlobalConfig; sub?: Subscription } = {}) {
+		const sub =
+			over.sub ?? makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			extensionSources: sources,
+			...(over.globals ? { globals: over.globals } : {}),
+		});
+		active = c;
+		return { c, sub };
+	}
+	const globalsWith = (filters: Partial<GlobalConfig["defaults"]["filters"]>): GlobalConfig => {
+		const g = makeDefaultGlobalConfig();
+		Object.assign(g.defaults.filters, filters);
+		return g;
+	};
+
+	it("B 站动态引擎拿到的全局过滤就是配置里的 defaults.filters(没有再翻译一层)", () => {
+		const g = globalsWith({ blockVideos: true, blockKeywords: ["禁词"], allowRegex: ["^上新"] });
+		const c = setup({ globals: g });
+		active = c;
+		expect(H.dynamic[0].opts.config.filter).toEqual(g.defaults.filters);
+	});
+
+	it("改全局过滤:热推进动态引擎,带的是新的 defaults.filters", () => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.filters.blockImages = true;
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
+		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
+		expect(cfg.filter).toEqual(c.configStore.getGlobals().defaults.filters);
+		expect(cfg.filter.blockImages).toBe(true);
+	});
+
+	it("拓展作品:全局开着「屏蔽视频」,视频作品被挡(不出卡不推);没挡的类型照推", async () => {
+		const { c, sub } = extSetup({ globals: globalsWith({ blockVideos: true }) });
+		// 验红:把 engines.ts 里递给 bindExtensionPosts 的 `filter: eff.filters` 换成空规则,这条红。
+		c.bus.emit("subscription-reported", videoReport(sub));
+		c.bus.emit("subscription-reported", textReport(sub));
+		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		// 只有那条纯文字的出了卡、推了;视频那条被挡在过滤上。
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
+		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "只有字" });
+	});
+
+	it("拓展作品:全局开着「屏蔽图集」,带配图的作品被挡", async () => {
+		const { c, sub } = extSetup({ globals: globalsWith({ blockImages: true }) });
+		c.bus.emit("subscription-reported", imagesReport(sub));
+		c.bus.emit("subscription-reported", textReport(sub));
+		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
+		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "只有字" });
+	});
+
+	it("拓展作品:类型开关都关着,视频与配图照推(出厂行为)", async () => {
+		const { c, sub } = extSetup();
+		c.bus.emit("subscription-reported", videoReport(sub));
+		c.bus.emit("subscription-reported", imagesReport(sub));
+		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(2));
+	});
+
+	it("拓展作品:这位 UP 的按 UP 覆盖盖过全局(全局拦视频,这位单独放开 → 照推)", async () => {
+		const open = makeExtensionSubscription({
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			overrides: { filters: { blockVideos: false } },
+		});
+		const a = extSetup({ globals: globalsWith({ blockVideos: true }), sub: open });
+		a.c.bus.emit("subscription-reported", videoReport(a.sub));
+		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+	});
+
+	it("拓展作品:按 UP 覆盖只拦这一位 —— 全局没开,这位单独开「屏蔽视频」就挡", async () => {
+		const strict = makeExtensionSubscription({
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			overrides: { filters: { blockVideos: true } },
+		});
+		const { c, sub } = extSetup({ sub: strict });
+		c.bus.emit("subscription-reported", videoReport(sub));
+		c.bus.emit("subscription-reported", textReport(sub));
+		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 	});
 });
 

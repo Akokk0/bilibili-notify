@@ -19,7 +19,12 @@ import {
 	type ImageStore,
 	type ImageWriter,
 } from "../../images/image-store.js";
-import { type PostImageSink, plainTextSegments, postFromReport } from "../post-from-report.js";
+import {
+	deferImageWrites,
+	type PostImageSink,
+	plainTextSegments,
+	postFromReport,
+} from "../post-from-report.js";
 
 type Reported = SubscriptionReportValue<"post">;
 
@@ -369,5 +374,99 @@ describe("互动数:交数字,排版归出图器", () => {
 	it("整格没报或一项都没有:没有 stats(那一排收起)", async () => {
 		expect((await translate()).stats).toBeUndefined();
 		expect((await translate({ stats: {} })).stats).toBeUndefined();
+	});
+});
+
+/**
+ * 图的写盘推迟到出卡那一刻(㉑e)。过滤吃翻好的 `Post`,所以翻译要排在过滤之前 —— 而被屏蔽的、关了出图的、版式藏起卡片的
+ * 作品根本不出卡,不该为它们往图库写盘。引用是内容哈希(`imageRefOf`,和真存图起的名字一致),翻译时不用写就知道。
+ */
+describe("deferImageWrites — 翻译时只算引用,出卡前才真正写进图库", () => {
+	it("put 回的引用与真存进图库得到的逐字相同(取名规矩只此一份),但 commit 之前图库里什么都没有", async () => {
+		const bytes = png(10, 10, 4);
+		const deferred = deferImageWrites(writer);
+		const result = await deferred.sink.put(bytes);
+		if (!result.ok) throw new Error(result.message);
+		expect(await store.read(result.ref)).toBeUndefined();
+
+		await deferred.commit();
+		const read = await store.read(result.ref);
+		expect(read && Buffer.from(read.bytes).equals(Buffer.from(bytes))).toBe(true);
+		// 真存一遍(内容寻址,同一份字节同一个名字)—— 推迟的那个引用就是它。
+		expect(await refOf(bytes)).toBe(result.ref);
+	});
+
+	it("图库不收的图(格式不认 / 超 8 MiB)和真存一样回 invalid,commit 也不去写它", async () => {
+		const put = vi.spyOn(writer, "put");
+		const deferred = deferImageWrites(writer);
+		for (const bad of [new Uint8Array([1, 2, 3]), png(10, 10, 9, IMAGE_MAX_BYTES + 1)]) {
+			const result = await deferred.sink.put(bad);
+			expect(result).toMatchObject({ ok: false, code: "invalid" });
+		}
+		await deferred.commit();
+		expect(put).not.toHaveBeenCalled();
+	});
+
+	it("没 commit 就不写:put 之后真图库的口一次都没被调", async () => {
+		const put = vi.spyOn(writer, "put");
+		const deferred = deferImageWrites(writer);
+		await deferred.sink.put(png(10, 10, 1));
+		await deferred.sink.put(png(10, 10, 2));
+		expect(put).not.toHaveBeenCalled();
+	});
+
+	it("commit 把推迟的图各写一次(同一份字节只写一次),重复 commit 不再写", async () => {
+		const put = vi.spyOn(writer, "put");
+		const deferred = deferImageWrites(writer);
+		const a = png(10, 10, 1);
+		await deferred.sink.put(a);
+		await deferred.sink.put(a);
+		await deferred.sink.put(png(10, 10, 2));
+		await deferred.commit();
+		await deferred.commit();
+		expect(put).toHaveBeenCalledTimes(2);
+	});
+
+	it("磁盘写失败:commit 抛错(这一次出卡失败,装配降级成纯文字),不是悄悄少一张", async () => {
+		const failing: PostImageSink = {
+			put: async () => {
+				throw new Error("磁盘满了");
+			},
+		};
+		const deferred = deferImageWrites(failing);
+		await deferred.sink.put(png(10, 10, 1));
+		await expect(deferred.commit()).rejects.toThrow("磁盘满了");
+	});
+
+	it("图库说存不进(与本地判断对不上):commit 抛错,不吞", async () => {
+		const refusing: PostImageSink = {
+			put: async () => ({ ok: false, code: "invalid", message: "不收" }),
+		};
+		const deferred = deferImageWrites(refusing);
+		await deferred.sink.put(png(10, 10, 1));
+		await expect(deferred.commit()).rejects.toThrow("不收");
+	});
+
+	it("图库给的引用与算出来的不一样(取名规矩漂了):commit 抛错,免得 Post 里挂着一个指向别处的引用", async () => {
+		const drifted: PostImageSink = {
+			put: async () => ({ ok: true, ref: `${"f".repeat(64)}.png` }),
+		};
+		const deferred = deferImageWrites(drifted);
+		await deferred.sink.put(png(10, 10, 1));
+		await expect(deferred.commit()).rejects.toThrow("对不上");
+	});
+
+	it("配合 postFromReport:翻出来的 Post 引用齐全,commit 之前图库空、之后全在", async () => {
+		const [shot, avatar] = [png(10, 10, 1), png(8, 8, 2)];
+		const deferred = deferImageWrites(writer);
+		const post = await postFromReport(report({ images: [shot], author: { avatar } }), {
+			authorName: "作者甲",
+			images: deferred.sink,
+		});
+		const refs = [post.images?.[0]?.ref, post.creator.avatar] as string[];
+		expect(refs.every((ref) => typeof ref === "string")).toBe(true);
+		for (const ref of refs) expect(await store.read(ref)).toBeUndefined();
+		await deferred.commit();
+		for (const ref of refs) expect(await store.read(ref)).toBeDefined();
 	});
 });

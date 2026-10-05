@@ -104,7 +104,9 @@ export function postFromDynamic(item: Dynamic): Post {
 }
 
 function translate(item: Dynamic, isRepost: boolean): Post {
-	const modules = item.modules as Loose;
+	// 残条(转发的原动态被删,接口只剩 tombstone,整段 modules 缺席)也得翻得过去:引擎现在先翻译再过滤,
+	// 翻译抛了就是整条动态没法判。
+	const modules = (item.modules ?? {}) as Loose;
 	const author = modules.module_author ?? {};
 	const mod = modules.module_dynamic ?? {};
 	const stat = modules.module_stat;
@@ -232,7 +234,7 @@ function countOf(stat: Loose): number {
 function isChargeOnlyLocked(item: Dynamic): boolean {
 	const basic = item.basic as Loose;
 	if (!basic?.is_only_fans) return false;
-	const mod = (item.modules as Loose).module_dynamic;
+	const mod = (item.modules as Loose | undefined)?.module_dynamic;
 	return !mod?.desc && !mod?.major && !mod?.topic && !mod?.additional;
 }
 

@@ -1,7 +1,7 @@
 /**
  * 单元测试 — `DynamicEngine` 编排 + 图片失败软降级状态机 + 生命周期。
  *
- * 已有 `dynamic-filter.test.ts` 覆盖纯过滤函数;本文件覆盖把过滤/渲染/AI/推送
+ * 已有 `post-filter.test.ts` 覆盖纯过滤函数;本文件覆盖把翻译/过滤/渲染/AI/推送
  * 串起来的 `detectDynamics()` 编排,以及 `updateConfig` cron 重启 / `applyOps`
  * 增量 / `start`/`stop` 生命周期。
  *
@@ -21,6 +21,7 @@ import type { CommentaryGenerator } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
+	DEFAULT_CONTENT_FILTERS,
 	defaultMessageKindLayout,
 	type MessageBus,
 	type Post,
@@ -28,6 +29,7 @@ import {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
+import { postFromDynamic } from "../post-from-dynamic";
 import type { PushLike, SubItemView, SubscriptionsView } from "../push-like";
 import type { AllDynamicInfo, Dynamic } from "../types";
 import { type CardFailureTracker, createCardFailureTracker } from "../work-delivery";
@@ -72,6 +74,12 @@ const cronMock = vi.hoisted(() => {
 });
 
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
+
+// 照常翻译,只是包一层好数它被调了几次(㉑e:翻译只做一次,过滤 / 点评 / 出卡共用)、好让它抛一次。
+vi.mock("../post-from-dynamic", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../post-from-dynamic")>();
+	return { ...actual, postFromDynamic: vi.fn(actual.postFromDynamic) };
+});
 
 // ---------------------------------------------------------------------------
 // fakes
@@ -276,7 +284,7 @@ function makeEngine(
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
 			imageGroup: { enable: false, forward: false },
-			filter: { enable: false },
+			filter: DEFAULT_CONTENT_FILTERS,
 			...over.config,
 		},
 		getSubs: () => (over.subs ? viewsOf(over.subs) : null),
@@ -1285,30 +1293,42 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 // 刻画(ADR-0019 决策 66 切出作品装配之前钉的现状):B 站原始数据里哪几格进了 AI 点评、
 // 视频链接换 BV、per-UP 的视频模板 / AI 覆盖 / 卡片样式、图集只认图文动态。切开之后这几样
-// 由 B 站那头先翻成作品,装配只认翻好的。
+// 由 B 站那头先翻成作品,装配只认翻好的。㉑e 起 AI 点评的文字也走 `postText(post, "labeled")`,
+// 不再是引擎自己拼的那一份。
 describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () => {
 	type Seg = { type: string; text?: string };
+	const textNode = (text: string) => ({ text, type: "RICH_TEXT_NODE_TYPE_TEXT" });
+	/** 一条带标题的图文,转发了一条视频投稿(接口里的字都写在富文本节点上)。 */
 	const richItem = (): Dynamic => {
 		const item = makeItem({
 			uid: 1,
 			pubTs: 1000,
 			name: "阿绫",
+			type: "DYNAMIC_TYPE_FORWARD",
 			text: "正文",
 			drawItems: ["http://i/d1.jpg", "http://i/d2.jpg", "http://i/d3.jpg"],
 		});
 		const major = item.modules.module_dynamic.major as Record<string, unknown>;
-		major.opus = { title: "标题", summary: { text: "摘要" }, pics: [{ url: "http://i/p1.jpg" }] };
+		major.opus = {
+			title: "标题",
+			summary: { text: "摘要", rich_text_nodes: [textNode("摘要")] },
+			pics: [{ url: "http://i/p1.jpg" }],
+		};
 		major.archive = { title: "视频", jump_url: "", cover: "http://i/cover.jpg" };
 		item.orig = {
+			type: "DYNAMIC_TYPE_AV",
 			modules: {
 				module_author: { name: "原作者" },
-				module_dynamic: { desc: { text: "原文" } },
+				module_dynamic: {
+					desc: { text: "原文", rich_text_nodes: [textNode("原文")] },
+					major: { archive: { title: "视频", jump_url: "", cover: "http://i/orig-cover.jpg" } },
+				},
 			},
 		} as unknown as Dynamic;
 		return item;
 	};
 
-	it("AI 点评:提示词带名字与正文(标题 / 摘要 / 视频标题 / 转发原文),图取前 4 张", async () => {
+	it("AI 点评:提示词带名字与正文(标题 / 摘要 / 转发原文及它的视频标题),图取前 4 张", async () => {
 		const b = makeEngine({ withAi: true });
 		b.comment.mockResolvedValue("点评");
 		b.getAllDynamic.mockResolvedValue(resp([richItem()]));
@@ -1317,7 +1337,9 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 		expect(b.comment).toHaveBeenCalledTimes(1);
 		const [prompt, scene, images] = b.comment.mock.calls[0] as [string, string, string[]];
 		expect(prompt).toBe(
-			"阿绫发布了一条动态，内容如下：\n正文\n标题：标题\n摘要\n视频标题：视频\n（转发自 原作者：原文）",
+			// 取段只此一份(`postText(post, "labeled")`):标题排最前,正文与摘要一段,转发的原作品收进括号。
+			// 从前引擎自己拼的是「正文 / 标题：… / 摘要 / 视频标题：… / （转发自 …）」。
+			"阿绫发布了一条动态，内容如下：\n标题：标题\n正文\n摘要\n（转发自 原作者：原文 视频标题：视频）",
 		);
 		expect(scene).toBe("dynamic");
 		// draw.items → opus.pics → 视频封面,截前 4 张(封面被截掉)。
@@ -1437,7 +1459,7 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			filter: { enable: true, keywords: ["禁词"], notify: false },
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
 		});
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -1452,7 +1474,7 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			filter: { enable: true, keywords: ["禁词"], notify: true },
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: true },
 		});
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -1461,6 +1483,173 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 			text?: string;
 		}>;
 		expect(segments[0]?.text).toContain("阿伟");
+	});
+});
+
+/**
+ * 过滤吃翻译好的 `Post`(㉑e,ADR-0021 决策 43):引擎先 `postFromDynamic` 再过滤 —— 类型开关看的是作品「有没有」
+ * 图集 / 视频 / 转发 / 专栏,不再是 B 站的外层类型码;翻译只做一次,过滤、点评、出卡共用同一份。
+ * `dynamic-detected` 仍在过滤之前发、载荷里是原始类型码(这个事件 3a 才换,不动)。
+ */
+describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
+	const rules = (over: Partial<typeof DEFAULT_CONTENT_FILTERS>) => ({
+		...DEFAULT_CONTENT_FILTERS,
+		...over,
+	});
+	const detected = (b: EngineBag) => b.emits.filter((e) => e.event === "dynamic-detected");
+
+	const videoItem = () =>
+		makeItem({
+			uid: 1,
+			pubTs: 1500,
+			name: "阿伟",
+			type: "DYNAMIC_TYPE_AV",
+			videoJumpUrl: "//www.bilibili.com/video/BV1xx411c7mD",
+		});
+	const drawItem = () =>
+		makeItem({
+			uid: 1,
+			pubTs: 1500,
+			name: "阿伟",
+			type: "DYNAMIC_TYPE_DRAW",
+			drawPics: ["http://i/p1.jpg"],
+		});
+	const forwardItem = () => {
+		const item = makeItem({ uid: 1, pubTs: 1500, name: "阿伟", type: "DYNAMIC_TYPE_FORWARD" });
+		item.orig = {
+			type: "DYNAMIC_TYPE_WORD",
+			modules: { module_author: { name: "原作者" }, module_dynamic: {} },
+		} as unknown as Dynamic;
+		return item;
+	};
+	const articleItem = () =>
+		makeItem({ uid: 1, pubTs: 1500, name: "阿伟", type: "DYNAMIC_TYPE_ARTICLE" });
+
+	/** 四个开关各接到哪一类作品 —— 单元测试证明不了引擎真的把翻好的 Post 交给了过滤。 */
+	const cases: [string, keyof typeof DEFAULT_CONTENT_FILTERS, () => Dynamic][] = [
+		["blockVideos ← 视频投稿", "blockVideos", videoItem],
+		["blockImages ← 带图的图文", "blockImages", drawItem],
+		["blockReposts ← 转发", "blockReposts", forwardItem],
+		["blockArticles ← 专栏", "blockArticles", articleItem],
+	];
+
+	for (const [name, key, build] of cases) {
+		it(`${name}:开着 → 不广播、timeline 照推进;没开 → 照常推`, async () => {
+			const blocked = makeEngine();
+			blocked.getAllDynamic.mockResolvedValue(resp([build()]));
+			seed(blocked.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ [key]: true }) });
+			await detect(blocked.engine);
+			expect(blocked.push.broadcastDynamic).not.toHaveBeenCalled();
+			expect(priv(blocked.engine).dynamicTimelineManager.get("1")).toBe(1500);
+
+			const open = makeEngine();
+			open.getAllDynamic.mockResolvedValue(resp([build()]));
+			seed(open.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({}) });
+			await detect(open.engine);
+			expect(open.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+		});
+	}
+
+	it("看的是「有没有图集」不是外层类型码:没带图的图文动态,blockImages 不拦", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_DRAW", text: "只有字" })]),
+		);
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockImages: true }) });
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+	});
+
+	it("全局那份过滤(config.filter)同样吃 Post:per-UP 没覆盖就用它", async () => {
+		const b = makeEngine({ config: { filter: rules({ blockVideos: true }) } });
+		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
+	});
+
+	it("per-UP 覆盖盖过全局:全局拦视频,这位 UP 单独放开 → 照推", async () => {
+		const b = makeEngine({ config: { filter: rules({ blockVideos: true }) } });
+		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({}) });
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+	});
+
+	it("转发里的视频不归 blockVideos 管(只看最外层):只开 blockVideos 的转发照推", async () => {
+		const item = forwardItem();
+		item.orig = {
+			type: "DYNAMIC_TYPE_AV",
+			modules: {
+				module_author: { name: "原作者" },
+				module_dynamic: { major: { archive: { title: "原视频", jump_url: "" } } },
+			},
+		} as unknown as Dynamic;
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([item]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockVideos: true }) });
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+	});
+
+	it("dynamic-detected 仍在过滤之前发,载荷里是原始类型码(3a 才换,这一片不动)", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockVideos: true }) });
+		await detect(b.engine);
+		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
+		expect(detected(b)).toHaveLength(1);
+		expect(detected(b)[0]?.payload).toMatchObject({ uid: "1", type: "DYNAMIC_TYPE_AV" });
+	});
+
+	it("屏蔽提醒(notify 开着)用中立措辞,作品叫「动态」", async () => {
+		const b = makeEngine();
+		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		seed(b.engine, "1", 0, {
+			uid: "1",
+			uname: "UP",
+			filter: { ...rules({ blockVideos: true }), notify: true },
+		});
+		await detect(b.engine);
+		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ text?: string }>;
+		expect(segments[0]?.text).toBe("阿伟发布了一条带视频的动态，已屏蔽");
+	});
+
+	it("翻译只做一次:过滤、AI 点评、出卡共用同一份 Post", async () => {
+		const b = makeEngine({ withImage: true, withAi: true });
+		b.comment.mockResolvedValue("点评");
+		b.generatePostCard.mockResolvedValue(Buffer.from("card"));
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1500, name: "阿伟", text: "正文" })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(postFromDynamic).toHaveBeenCalledTimes(1);
+		const translated = vi.mocked(postFromDynamic).mock.results[0]?.value;
+		expect(b.generatePostCard.mock.calls[0]?.[0]).toBe(translated);
+		// 点评的文字取自同一份 Post(`postText(post, "labeled")`)。
+		expect(b.comment.mock.calls[0]?.[0]).toContain("正文");
+	});
+
+	it("翻译抛错(不该发生,但别卡住这位 UP):这一条记 warn 跳过、timeline 照推进,同一轮别的动态照常推", async () => {
+		const b = makeEngine();
+		vi.mocked(postFromDynamic).mockImplementationOnce(() => {
+			throw new Error("翻不动");
+		});
+		b.getAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({ uid: 1, pubTs: 1500, name: "阿伟", text: "新的" }),
+				makeItem({ uid: 1, pubTs: 1200, name: "阿伟", text: "旧的" }),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		// 第一条(翻译抛错)跳过,第二条照推;锚点推进到两条里最大的(翻译失败的算处理过,不重试、不重复推送)。
+		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
+		expect(
+			b.logs.some((l) => l.level === "warn" && l.msg.includes("翻不动") && l.msg.includes("id-1")),
+		).toBe(true);
 	});
 });
 
@@ -1692,7 +1881,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 				dynamicCron: "*/2 * * * *",
 				dynamicVideoUrlToBV: false,
 				imageGroup: { enable: false, forward: false },
-				filter: { enable: false },
+				filter: DEFAULT_CONTENT_FILTERS,
 			},
 			getSubs: () => snap,
 		});
@@ -1715,7 +1904,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			dynamicCron: "*/5 * * * *",
 			dynamicVideoUrlToBV: false,
 			imageGroup: { enable: false, forward: false },
-			filter: { enable: false },
+			filter: DEFAULT_CONTENT_FILTERS,
 		});
 		expect(cronMock.instances[0]?.stopCount).toBe(1);
 		expect(cronMock.instances).toHaveLength(2);
@@ -1731,7 +1920,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: true, // 改了别的字段,但 cron 不变
 			imageGroup: { enable: false, forward: false },
-			filter: { enable: false },
+			filter: DEFAULT_CONTENT_FILTERS,
 		});
 		expect(cronMock.instances).toHaveLength(1);
 	});
@@ -1800,7 +1989,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 			modules: {
 				module_author: { mid: 1, name: "UP", pub_ts: 1000 },
 				module_dynamic: {
-					desc: { text: "新动态内容" },
+					desc: {
+						text: "新动态内容",
+						rich_text_nodes: [{ text: "新动态内容", type: "RICH_TEXT_NODE_TYPE_TEXT" }],
+					},
 					major: undefined,
 				},
 			},
@@ -2203,7 +2395,9 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 
 	it("被过滤器屏蔽 → 仍然 emit —— 统计的是 UP 的产出,不是推送次数", async () => {
 		const b = makeEngine({
-			config: { filter: { enable: true, keywords: ["禁词"], notify: false } },
+			config: {
+				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+			},
 		});
 		b.getAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),

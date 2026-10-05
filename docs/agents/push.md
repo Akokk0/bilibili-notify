@@ -29,8 +29,8 @@
 
 **来源层**（各管各的，决策 65）：
 
-- B 站动态：`DynamicEngine.detectDynamics`（`packages/dynamic/src/dynamic-engine.ts`）拉 feed → 时间线闸 → 发 `dynamic-detected` → 开播伪动态（`DYNAMIC_TYPE_LIVE_RCMD`）**按类型**跳过、锚点照推进（从前靠出卡时抛错再认错误文案，关了出图或版式藏起卡片时它就被当普通动态推出去、和直播引擎的开播撞车）→ `filterDynamic`（四个类型开关，再交文字那一半 `filterByText`）→ `workFromDynamic` 把原始动态翻成 `NeutralWork` → `deliverWork`。主卡发送抛错 → `markFail`、锚点不前移、下一轮再来。
-- 拓展作品：`bindExtensionPosts`（`apps/server/src/runtime/extension-posts.ts`）听 `subscription-reported` 里 `kind === "post"` 的，逐条订阅排进**这条订阅自己的串行闸**：再核还该推（订阅在、启用、拓展在跑 —— `extensionSubscriptionPushable`）→ 动态总开关关着就不出卡 → **只按文字过滤**（`filterByText`，看正文 + 视频标题；类型开关对拓展作品一律不看，决策 70；被挡时「屏蔽后提醒」用 `blockedNotice(name, reason, postNoun)`）→ `extensionCardAuthor` 取卡上作者 → `extensionPostWork`（`runtime/extension-post-work.ts`）翻成 `NeutralWork` → `deliverWork`。不判新、不去重；意外抛错只记 `[ext-post]` 错误日志、**不重试**（事件只来一次，决策 53 / 77）。
+- B 站动态：`DynamicEngine.detectDynamics`（`packages/dynamic/src/dynamic-engine.ts`）拉 feed → 时间线闸 → 发 `dynamic-detected` → 开播伪动态（`DYNAMIC_TYPE_LIVE_RCMD`）**按类型**跳过、锚点照推进（从前靠出卡时抛错再认错误文案，关了出图或版式藏起卡片时它就被当普通动态推出去、和直播引擎的开播撞车）→ `postFromDynamic` 把原始动态翻成中立的 `Post`（**翻译只做一次**，过滤、AI 点评、出卡共用这一份；翻译抛错 = 这一条记 warn 跳过、锚点照推进）→ `filterPost`（过滤吃 `Post`，见下）→ `workFromDynamic` 包成 `NeutralWork` → `deliverWork`。主卡发送抛错 → `markFail`、锚点不前移、下一轮再来。
+- 拓展作品：`bindExtensionPosts`（`apps/server/src/runtime/extension-posts.ts`）听 `subscription-reported` 里 `kind === "post"` 的，逐条订阅排进**这条订阅自己的串行闸**：再核还该推（订阅在、启用、拓展在跑 —— `extensionSubscriptionPushable`）→ 动态总开关关着就不出卡 → 取卡上作者名（`extensionSubscriptionName`）→ `postFromReport` 翻成中立的 `Post`（图的写盘用 `deferImageWrites` 推迟到出卡，所以被屏蔽的 / 不出卡的作品不往图库写）→ **`filterPost`**（和 B 站同一个函数，类型开关对拓展作品同样生效；被挡时「屏蔽后提醒」用 `blockedNotice(name, reason, postNoun)`）→ `extensionPostWork`（`runtime/extension-post-work.ts`）把同一份 `Post` 包成 `NeutralWork` → `deliverWork`。不判新、不去重；意外抛错只记 `[ext-post]` 错误日志、**不重试**（事件只来一次，决策 53 / 77）。
 - B 站直播：`LiveEngine` / `RoomSession*` 管弹幕 WS、房间接口、周期「正在直播」（`liveStreaming` 开着才计时，间隔 `streamingIntervalHours`）/ 重启补报 / 断流接续这几个计时器。开播 / 直播中 / 下播卡由 `RoomContext.sendLiveNotifyCard`（`packages/live/src/room-helpers.ts`）用 `biliLiveCardInput`（`packages/image`，全仓唯一一份）把房间数据翻成 `LiveCardInput`、把「按 uid 推」绑成发送（`sendToUid`），再交 `pushLiveNotify`。SC / 上舰 / 词云 / 总结 / 特别关注各自出卡，不经它。
 
 **中立装配**（不认 uid、不读任何平台的原始数据 —— 身份由调用方绑进发送、设置与回问）：
@@ -166,8 +166,9 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 | 加一个附加项 | `EXTRA_KEYS` + `PUSH_EXTRAS` 各一行；面板与收窄都按注册表自动铺开 |
 | 改「发给谁」 | 只有 `broadcastToFeature` 入口那一行（`store.findById`），和重试前的 `isStillRouted`；B 站 uid → 订阅 id 在 `engines.ts` 的 `subscriptionIdOfUid` |
 | 改一条作品推送的步骤（出卡 / 点评 / 模板 / 图集 / 回问的位置） | `deliverWork` 一处，B 站与拓展共用；别在来源那头另加一步 |
-| 改一条作品的设置怎么折（版式 / 皮肤 / 模板 / AI / 过滤覆盖） | `engines.ts` 的 `dynamicWorkSettings`，B 站视图与拓展作品共用；过滤配置的翻法是 `dynamicFilterOf` |
-| 改拓展作品怎么翻、怎么过滤 | 翻：`extension-post-work.ts`；作者与名字：`extension-push-common.ts`（拓展直播也要用）；过滤只许走 `filterByText`，类型开关不许对拓展作品生效 |
+| 改一条作品的设置怎么折（版式 / 皮肤 / 模板 / AI / 过滤覆盖） | `engines.ts` 的 `dynamicWorkSettings`，B 站视图与拓展作品共用；过滤直接吃折好的 `ContentFilters`（`filterPost` 的 `PostFilterRules`），中间没有再翻译的一层 |
+| 改拓展作品怎么翻、怎么过滤 | 翻：`post-from-report.ts`（上报 → `Post`，含话题切段与图库写盘推迟）、`extension-post-work.ts`（包成 `NeutralWork`）；作者与名字：`extension-push-common.ts`（拓展直播也要用）；过滤只许走 `filterPost`，**过滤与 AI 点评取的字都只经 `postText`**（`packages/internal/src/post.ts`，守卫 4 点名），别处不许自己拼作品文字 |
+| 改过滤规则（类型开关、关键词 / 正则 / 白名单） | `packages/dynamic/src/post-filter.ts` 的 `filterPost`：文字 `postText(post, "plain")`，类型开关只看**最外层**（`blockReposts` ← 有 `repost`、`blockArticles` ← 有 `article`、`blockImages` ← 有图集 `images`、`blockVideos` ← 有 `video`；被转发的原作品里的图集与视频归 `blockReposts` 管），对所有来源生效；正则数组每条各自判 |
 | 改直播卡怎么发 | `pushLiveNotify`；**什么时候**推（计时器、断流接续、串行闸）在来源那头：B 站是 `packages/live` 的 `room-session*` |
 | 改版式怎么分组、怎么拼文字 | `assembleMessageGroups` 一处 |
 | 改卡片吃什么 | 出卡入口的输入（作品卡是 `Post`，直播卡是 `LiveCardInput`）；B 站的翻译在 `postFromDynamic`（`packages/dynamic`）/ `biliLiveCardInput`，不许让出卡入口回头去读原始数据 |

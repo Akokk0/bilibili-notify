@@ -11,7 +11,7 @@
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
 import type { ForwardImage, MessageKindLayout } from "@bilibili-notify/internal";
-import type { DynamicFilterConfig } from "./types";
+import type { PostFilterSettings } from "./post-filter";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
 export interface PushImagePart {
@@ -129,8 +129,8 @@ export interface SubItemView {
 		/** 主人自带字体的资产 id(独立端专属);设了优先于 `font`,缺省回退全局。 */
 		fontAsset?: string;
 	};
-	/** Per-UP 动态过滤覆盖；undefined 时使用 engine 的全局 filter。 */
-	filter?: DynamicFilterConfig & { notify?: boolean };
+	/** Per-UP 作品过滤覆盖(折好的 `ContentFilters`);undefined 时使用 engine 的全局 filter。 */
+	filter?: PostFilterSettings;
 	/** Per-UP AI 覆盖；undefined 时使用 CommentaryGenerator 的全局 config。 */
 	aiOverride?: CommentaryCallOverride;
 	/**

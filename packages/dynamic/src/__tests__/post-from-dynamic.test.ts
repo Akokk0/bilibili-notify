@@ -698,6 +698,25 @@ describe("「暂时无法渲染」与「原动态不可见」→ notice", () => 
 	});
 });
 
+describe("残条(接口缺整段)不抛", () => {
+	/** 引擎现在先翻译再过滤(㉑e):翻译抛了就是整条动态没法判,所以残条必须翻得过去。验红:去掉 `?? {}`,这几条红。 */
+	it("被转发的原动态是 tombstone(modules 整段缺席):转发照常翻,原作品退成一句提示", () => {
+		const orig = { id_str: "9", type: "DYNAMIC_TYPE_NONE", basic: {} } as unknown as Dynamic;
+		const post = postFromDynamic(raw("DYNAMIC_TYPE_FORWARD", desc(text("转发语")), { orig }));
+		expect(post.text).toBe("转发语");
+		expect(post.repost?.notice).toBe("发布了一条无效动态");
+		expect(post.repost?.creator.name).toBe("");
+	});
+
+	it("顶层只有作者段、缺 module_dynamic:翻成一条空正文的作品", () => {
+		const item = raw("DYNAMIC_TYPE_WORD");
+		delete (item.modules as unknown as Record<string, unknown>).module_dynamic;
+		const post = postFromDynamic(item);
+		expect(post.text).toBe("");
+		expect(post.creator.name).toBe("示例UP");
+	});
+});
+
 describe("转发与互动数", () => {
 	/** 验红:让翻译丢掉 repost,这条红。 */
 	it("转发 → repost(整条翻译,内层不带互动数、带自己的 label)", () => {

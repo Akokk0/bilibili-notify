@@ -28,10 +28,10 @@ import {
 	createCardFailureTracker,
 	DynamicEngine,
 	type DynamicEngineConfig,
-	type DynamicFilterConfig,
 	type PushLike as DynamicPushLike,
 	type SubscriptionOpView as DynamicSubOp,
 	type SubscriptionsView as DynamicSubsView,
+	type PostFilterSettings,
 	type PushSegment,
 	resolveDynamicColorOptions,
 	type WorkSubscriptionSettings,
@@ -42,7 +42,6 @@ import type {
 	CardSkinKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
-	ContentFilters,
 	Disposable,
 	EffectiveSubscription,
 	ExtraKey,
@@ -551,7 +550,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			aiWebSearch: globals().defaults.ai.search.engines.dynamic,
 			dynamicTemplate: globals().defaults.templates.post,
 			videoTemplate: globals().defaults.templates.postVideo,
-			filter: dynamicFilterOf(globals().defaults.filters),
+			filter: globals().defaults.filters,
 		};
 	};
 
@@ -696,7 +695,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					const work = dynamicWorkSettings(sub, g, eff);
 					return {
 						...work,
-						filter: work.filter ?? dynamicFilterOf(g.defaults.filters),
+						filter: eff.filters,
 						post: eff.features.post,
 					};
 				},
@@ -1529,36 +1528,6 @@ function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverrid
 }
 
 /**
- * 一份折好的内容过滤 → 动态过滤吃的 DynamicFilterConfig。全局那份(`dynamicConfig().filter`)、per-UP
- * 那份(`dynamicWorkSettings`)都经它,拓展作品也吃同一份(ADR-0019 决策 70,它只看文字那一半)。
- * 数组形态的 blockRegex/allowRegex 合并成单一 `|` 正则(用户自己写的备选,加 `|` 不破坏分组)。
- * `notify` 固定 false —— 独立端没有「屏蔽后提醒」的开关。
- */
-export function dynamicFilterOf(f: ContentFilters): DynamicFilterConfig & { notify?: boolean } {
-	const blockHasRules =
-		f.blockKeywords.length > 0 ||
-		f.blockRegex.length > 0 ||
-		f.blockReposts ||
-		f.blockArticles ||
-		f.blockImages ||
-		f.blockVideos;
-	const whitelistHasRules = f.allowKeywords.length > 0 || f.allowRegex.length > 0;
-	return {
-		enable: blockHasRules,
-		notify: false,
-		regex: f.blockRegex.join("|"),
-		keywords: f.blockKeywords,
-		forward: f.blockReposts,
-		article: f.blockArticles,
-		draw: f.blockImages,
-		av: f.blockVideos,
-		whitelistEnable: whitelistHasRules,
-		whitelistRegex: f.allowRegex.join("|"),
-		whitelistKeywords: f.allowKeywords,
-	};
-}
-
-/**
  * 把一份解析后的 CardStyle(或 per-UP 覆盖切片)映射成引擎消费的 colorOptions 形状
  * (`enable:true` + `liveCoverImage` 取列表首张作为静态兜底,`liveCoverImages` 透传完整
  * 列表给推送点做「每次推送轮换」——见 `RoomSessionBase.resolvedCardStyle`)。
@@ -1697,8 +1666,8 @@ export function buildDynamicSubViewSingle(
 
 /** 一条订阅折好的作品设置:装配吃的那几格 + per-UP 的过滤覆盖。 */
 export type DynamicWorkSettings = WorkSubscriptionSettings & {
-	/** Per-UP 过滤覆盖;没配是 undefined(用全局那份,见 {@link dynamicFilterOf})。 */
-	filter?: DynamicFilterConfig & { notify?: boolean };
+	/** Per-UP 过滤覆盖(折好的 `ContentFilters`,过滤直接吃它);没配是 undefined(用全局那份)。 */
+	filter?: PostFilterSettings;
 };
 
 /**
@@ -1719,7 +1688,7 @@ export function dynamicWorkSettings(
 ): DynamicWorkSettings {
 	return {
 		customCardStyle: resolveDynamicCardStyle(globals.defaults, sub.overrides),
-		filter: sub.overrides.filters ? dynamicFilterOf(eff.filters) : undefined,
+		filter: sub.overrides.filters ? eff.filters : undefined,
 		aiOverride: resolveAiOverride(sub, globals.defaults),
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
 		imageGroupForward: sub.overrides.imageGroup?.forward,

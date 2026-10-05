@@ -17,14 +17,16 @@
  *
  * 过一遍 `normalizePost`:片段的字拼起来必须等于 `text`,这里的切法保证对得上。
  *
- * 过滤用的字与 AI 用的字**不在这里**(仍是 `extension-post-work.ts` 的 `extensionPostFilterText` / `commentTextOf`),
- * ㉑e 统一换成 `postText`。
+ * 过滤用的字与 AI 用的字也不在这里拼:过滤吃翻好的 `Post`(`filterPost`),AI 的文字是 `postText(post, "labeled")`
+ * (ADR-0021 决策 43、ADR-0028 决策 1,取段只此一份)。翻译排在过滤之前,图的写盘用 {@link deferImageWrites} 推迟到出卡。
  */
 
 import { GALLERY_MAX_IMAGES } from "@bilibili-notify/image";
 import {
+	fail,
 	type ImageRef,
 	normalizePost,
+	ok,
 	type Post,
 	type PostImage,
 	type Result,
@@ -33,12 +35,53 @@ import {
 	type SubscriptionReportValue,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
+import { imageRefOf } from "../images/image-store.js";
 
 type ReportedPost = SubscriptionReportValue<"post">;
 
 /** 往图库存一张图的口(`AppRuntime.postImages` 的存图那一半)。 */
 export interface PostImageSink {
 	put(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>>;
+}
+
+/**
+ * **图的写盘推迟到出卡那一刻**(㉑e)。过滤吃翻好的 `Post`,所以翻译得排在过滤之前;可被屏蔽的、关了出图的、版式
+ * 藏起卡片的作品根本不出卡,不该为它们往图库写盘。引用是内容哈希({@link imageRefOf},与真存图起的名字是同一份规矩),
+ * 翻译时不用写就知道 —— `sink.put` 只算引用、把字节记下来,`commit()` 才真的存(出卡前调,多次调只写一次)。
+ *
+ * 图库不收的图(格式不认、超限)`put` 当场回 `invalid`,与真存一样;`commit` 时图库说存不进(磁盘写失败、
+ * 或与本地判断对不上)是抛错,这一次出卡失败,装配降级成纯文字。
+ */
+export function deferImageWrites(writer: PostImageSink): {
+	sink: PostImageSink;
+	commit(): Promise<void>;
+} {
+	const pending = new Map<ImageRef, Uint8Array>();
+	let committed: Promise<void> | undefined;
+	return {
+		sink: {
+			async put(bytes) {
+				const ref = imageRefOf(bytes);
+				if (ref === undefined) {
+					return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp,单张不超过 8 MiB)");
+				}
+				pending.set(ref, bytes);
+				return ok({ ref });
+			},
+		},
+		commit() {
+			committed ??= (async () => {
+				for (const [ref, bytes] of pending) {
+					const stored = await writer.put(bytes);
+					if (!stored.ok) throw new Error(`作品配图存不进图库:${stored.message}`);
+					if (stored.ref !== ref) {
+						throw new Error(`作品配图的引用对不上:算出 ${ref},图库给 ${stored.ref}`);
+					}
+				}
+			})();
+			return committed;
+		},
+	};
 }
 
 export interface PostFromReportOptions {

@@ -6,12 +6,12 @@ export {
 } from "./dynamic-engine";
 export {
 	blockedNotice,
-	type DynamicFilterConfig,
-	DynamicFilterReason,
-	type DynamicFilterResult,
-	filterByText,
-	filterDynamic,
-} from "./dynamic-filter";
+	filterPost,
+	PostFilterReason,
+	type PostFilterResult,
+	type PostFilterRules,
+	type PostFilterSettings,
+} from "./post-filter";
 export { postFromDynamic } from "./post-from-dynamic";
 export type {
 	DynamicBroadcastOptions,

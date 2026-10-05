@@ -14,6 +14,7 @@ import {
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	checkSubscriptionReport,
+	DEFAULT_CONTENT_FILTERS,
 	defaultMessageKindLayout,
 	SUBSCRIPTION_REPORT_TEXT_MAX,
 	type SubscriptionReportValue,
@@ -25,14 +26,19 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
+import { imageRefOf } from "../../images/image-store.js";
 import { bindExtensionPosts } from "../extension-posts.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
 const SUB = makeExtensionSubscription({ externalId: "sec-uid-1" });
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
-/** 这批用例的作品都不带图,图库的口不会被调到。 */
+/** 图库的口:回图库起的那个名字(内容哈希)。写盘推迟到出卡,翻译时算的引用必须与它一致。 */
 const postImages = {
-	put: async () => ({ ok: false as const, code: "invalid" as const, message: "测试不存图" }),
+	put: async (bytes: Uint8Array) => {
+		const ref = imageRefOf(bytes);
+		if (!ref) return { ok: false as const, code: "invalid" as const, message: "不是图" };
+		return { ok: true as const, ref };
+	},
 };
 
 function post(n: number): SubscriptionReportValue<"post"> {
@@ -79,7 +85,7 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
-				filter: {},
+				filter: DEFAULT_CONTENT_FILTERS,
 				post: true,
 			}),
 			sources: {
@@ -148,7 +154,7 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
-				filter: { enable: true, keywords: ["海边"] },
+				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["海边"] },
 				post: true,
 			}),
 			sources: {
@@ -210,7 +216,7 @@ describe("bindExtensionPosts — 登记进 track", () => {
 			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
-				filter: {},
+				filter: DEFAULT_CONTENT_FILTERS,
 				post: true,
 			}),
 			sources: {
@@ -295,7 +301,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
-				filter: { enable: true, keywords: ["海边"], notify: true },
+				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["海边"], notify: true },
 				post: true,
 			}),
 			sources: {
@@ -328,5 +334,158 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 		expect(asked).toEqual([SUB.identity.sourceKey]);
 		expect(sent[0]).toEqual([{ type: "text", text: "资料名发布了一条含有屏蔽关键字的视频" }]);
 		handle.dispose();
+	});
+});
+
+/**
+ * 过滤吃翻好的 `Post`,**类型开关对拓展作品同样生效**(㉑e,ADR-0021 决策 43):从前拓展只过文字那一半
+ * (ADR-0019 决策 70「抖音几乎全是视频」的豁免),现在豁免删了,是主人拍板的行为变化。
+ *
+ * 翻译排在过滤之前(过滤要看有没有图集 / 视频),所以图的写盘推迟到出卡那一刻(`deferImageWrites`):被屏蔽的、
+ * 关了出图的作品**一张图都不往图库写**。这里走真的 `bindExtensionPosts`,经 bus 报一条作品,看卡有没有出、
+ * 消息有没有发、图库的口有没有被调。验红:把 `extension-posts.ts` 里的 `filterPost(...)` 去掉,各条拦截红。
+ */
+describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展作品生效", () => {
+	const PNG = new Uint8Array([
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
+		0, 0, 0, 1, 8, 6, 0, 0, 0,
+	]);
+
+	function bind(
+		filter: Partial<typeof DEFAULT_CONTENT_FILTERS> & { notify?: boolean },
+		deliveryConfig: { imageEnabled?: boolean } = {},
+	) {
+		const bus = createNodeMessageBus();
+		const events: string[] = [];
+		const render = vi.fn(async () => {
+			events.push("card");
+			return Buffer.from("card");
+		});
+		const image = { generatePostCard: render } as unknown as ImageRenderer;
+		const sent: PushSegment[][] = [];
+		const push: BoundWorkPush = {
+			broadcast: async (segments: PushSegment[]) => {
+				sent.push(segments);
+			},
+			broadcastSequence: async () => {},
+		};
+		const put = vi.fn(async (bytes: Uint8Array) => {
+			events.push("put");
+			return postImages.put(bytes);
+		});
+		const handle = bindExtensionPosts({
+			bus,
+			logger,
+			serviceCtx: makeTrackingContext(),
+			subscription: (id) => (id === SUB.id ? SUB : undefined),
+			profileName: () => "资料名",
+			avatarRef: () => undefined,
+			postImages: { put },
+			settings: () => ({
+				messageLayout: defaultMessageKindLayout("post"),
+				filter: { ...DEFAULT_CONTENT_FILTERS, ...filter },
+				post: true,
+			}),
+			sources: { running: () => true, postNoun: () => "作品", events: () => ["post"] },
+			pushFor: () => push,
+			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false }, ...deliveryConfig }),
+			deliveryDeps: () => ({
+				logger,
+				image,
+				cardFailures: createCardFailureTracker(),
+				sendErrorMsg: async () => {},
+				emitEngineError: () => {},
+			}),
+		});
+		const emit = (value: SubscriptionReportValue<"post">) =>
+			bus.emit("subscription-reported", {
+				extensionId: SUB.identity.sourceKey,
+				externalId: SUB.identity.externalId,
+				subscriptionIds: [SUB.id],
+				report: { kind: "post", value },
+			});
+		/** 等这一条走完(推出去了,或被挡下后闸里没有后续)。 */
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+		return { handle, emit, settle, render, sent, put, events };
+	}
+
+	const withImages = (): SubscriptionReportValue<"post"> => ({ ...post(1), images: [PNG] });
+	const withVideo = (): SubscriptionReportValue<"post"> => ({
+		...post(2),
+		video: { title: "一期视频" },
+	});
+
+	it("blockImages:带配图的作品被挡 —— 不出卡、不推、一张图都没写进图库", async () => {
+		const t = bind({ blockImages: true });
+		t.emit(withImages());
+		await t.settle();
+		expect(t.render).not.toHaveBeenCalled();
+		expect(t.sent).toEqual([]);
+		expect(t.put).not.toHaveBeenCalled();
+		t.handle.dispose();
+	});
+
+	it("blockVideos:带视频的作品被挡(抖音号开着「屏蔽视频」就是这个效果,主人拍板)", async () => {
+		const t = bind({ blockVideos: true });
+		t.emit(withVideo());
+		await t.settle();
+		expect(t.render).not.toHaveBeenCalled();
+		expect(t.sent).toEqual([]);
+		t.handle.dispose();
+	});
+
+	it("没带图 / 没带视频的作品不受对应开关牵连", async () => {
+		const t = bind({ blockImages: true, blockVideos: true });
+		t.emit(post(3));
+		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
+		t.handle.dispose();
+	});
+
+	it("blockReposts / blockArticles 对拓展作品没有可挡的(上报里没有转发与文章),开着照推", async () => {
+		const t = bind({ blockReposts: true, blockArticles: true });
+		t.emit(withImages());
+		t.emit(withVideo());
+		await vi.waitFor(() => expect(t.sent).toHaveLength(2));
+		t.handle.dispose();
+	});
+
+	it("开关都关着:带图的作品照推,图在出卡前写进图库(先 put、后出卡)", async () => {
+		const t = bind({});
+		t.emit(withImages());
+		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
+		expect(t.events).toEqual(["put", "card"]);
+		expect(t.put).toHaveBeenCalledTimes(1);
+		t.handle.dispose();
+	});
+
+	it("关了出图:作品照推,但图一张都不往图库写(写盘跟着出卡走)", async () => {
+		const t = bind({}, { imageEnabled: false });
+		t.emit(withImages());
+		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
+		expect(t.render).not.toHaveBeenCalled();
+		expect(t.put).not.toHaveBeenCalled();
+		t.handle.dispose();
+	});
+
+	it("关键词 / 白名单看的是 postText:视频标题里的字也算(取段只此一份,从前拓展自己拼的那份同样取得到)", async () => {
+		const blocked = bind({ blockKeywords: ["一期"] });
+		blocked.emit(withVideo());
+		await blocked.settle();
+		expect(blocked.sent).toEqual([]);
+		blocked.handle.dispose();
+
+		const allowed = bind({ allowKeywords: ["一期"] });
+		allowed.emit(withVideo());
+		await vi.waitFor(() => expect(allowed.sent).toHaveLength(1));
+		allowed.handle.dispose();
+	});
+
+	it("屏蔽提醒(notify 开着):类型开关挡下的作品也提醒,措辞中立、叫法用平台的", async () => {
+		const t = bind({ blockVideos: true, notify: true });
+		t.emit(withVideo());
+		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
+		expect(t.sent[0]).toEqual([{ type: "text", text: "资料名发布了一条带视频的作品，已屏蔽" }]);
+		expect(t.render).not.toHaveBeenCalled();
+		t.handle.dispose();
 	});
 });

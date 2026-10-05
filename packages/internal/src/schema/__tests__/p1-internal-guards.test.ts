@@ -3,7 +3,7 @@
  *
  * 1. 历史配图只收图库引用:`../` / 分隔符必须被 schema 拒(读口侧另有第二防线)
  * 2. routing 去重:同 feature 重复 UUID 解析后必须归一(否则重复推送+重复 delivery)
- * 3. blockRegex ReDoS/非法:保存期即拦(与 dynamic-filter 同一权威闸门)
+ * 3. blockRegex ReDoS/非法:保存期即拦(与 post-filter 同一权威闸门)
  * 4. TimeRange 全天:`{start:0,end:24}` 必须可表达(此前 end.max(23) 与文案自相矛盾)
  *
  * 复发点:任一约束被放宽 / transform 被改回普通数组,本套立刻挂。
