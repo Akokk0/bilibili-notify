@@ -82,11 +82,26 @@ describe("正文:标题两种画法、notice、充电专属", () => {
 		expect(html).toContain('<h1 class="text-[18px] font-bold mb-2">图文标题</h1>');
 	});
 
-	it("article:走专栏那条路(innerHTML,标题是 article.title,换行成 <br><br>)", async () => {
+	it("article:走专栏那条路(innerHTML,标题是 article.title 且在正文上方,换行成 <br><br>)", async () => {
 		const node = nodeFromPost(post({ article: { title: "专栏标题" }, text: "甲\n乙" }), FMT);
 		const html = await htmlOf(node.text as VNode);
 		expect(html).toContain("mb-[8px]");
 		expect(html).toContain("甲<br><br>乙");
+		expect(html.indexOf("专栏标题")).toBeLessThan(html.indexOf("甲"));
+	});
+
+	it("只有标题没有字:标题照画(正文根里只有 <h1>);article.title 是空串则不画标题", async () => {
+		const titled = nodeFromPost(post({ title: "只有标题" }), FMT);
+		expect(await htmlOf(titled.text as VNode)).toContain("<h1");
+		expect(nodeFromPost(post({ article: { title: "" } }), FMT).text).toBeUndefined();
+	});
+
+	it("body 挂点:正文的根只挂 body 这一个(专栏与普通路径各有一个根,都挂)", async () => {
+		for (const over of [{ text: "普通正文" }, { article: { title: "" }, text: "专栏正文" }]) {
+			const html = await htmlOf(nodeFromPost(post(over), FMT).text as VNode);
+			const hooks = [...html.matchAll(/data-bn="([^"]*)"/g)].map((m) => m[1]);
+			expect(hooks).toEqual(["body"]);
+		}
 	});
 
 	it("richText 的片段按种类上色:mention / link 蓝、topic 粉、emoji 与 text 是普通文字", async () => {
@@ -146,6 +161,40 @@ describe("正文:标题两种画法、notice、充电专属", () => {
 	});
 });
 
+describe("被转发的内层卡", () => {
+	it("原作品是充电专属:内层卡也画占位,不留空白", async () => {
+		const node = nodeFromPost(
+			post({
+				text: "转发语",
+				repost: post({
+					creator: { name: "原作者" },
+					locked: { title: "充电专属", hint: "为 原作者 充电即可查看完整内容" },
+				}),
+			}),
+			FMT,
+		);
+		const inner = node.forward;
+		expect(inner?.upName).toBe("原作者");
+		const html = await htmlOf(inner?.text as VNode);
+		expect(html).toContain("充电专属");
+		expect(html).toContain("为 原作者 充电即可查看完整内容");
+	});
+
+	it("内层自己的文字与图各在内层那份里,外层只是转发语", async () => {
+		const node = nodeFromPost(
+			post({
+				text: "转发语",
+				repost: post({ text: "原动态的正文", images: [{ url: "a" }, { url: "b" }] }),
+			}),
+			FMT,
+		);
+		expect(await htmlOf(node.text as VNode)).not.toContain("原动态的正文");
+		expect(node.images).toBeUndefined();
+		expect(await htmlOf(node.forward?.text as VNode)).toContain("原动态的正文");
+		expect(node.forward?.images).toHaveLength(2);
+	});
+});
+
 describe("图集与视频", () => {
 	it("图只认 url:只有 ref 的那张不画;专栏的图取 article.images", () => {
 		const node = nodeFromPost(
@@ -195,6 +244,32 @@ describe("图集与视频", () => {
 		expect(bare.video).toEqual({ cover: "c", duration: "", title: "t", desc: "" });
 	});
 
+	it.each([
+		[0, "0:00"],
+		[29, "0:29"],
+		[967, "16:07"],
+		[3723, "1:02:03"],
+	])("时长角标:durationSec %d → 「%s」(统一经 formatClock)", async (durationSec, shown) => {
+		const node = nodeFromPost(
+			post({ video: { cover: { url: "c" }, title: "t", description: "", durationSec } }),
+			FMT,
+		);
+		expect(node.video?.duration).toBe(shown);
+	});
+
+	it("播放 / 弹幕统一经 formatCount:整万补一位小数,万以下原样", () => {
+		const views = (n: number) =>
+			nodeFromPost(
+				post({ video: { cover: { url: "c" }, title: "t", description: "", views: n, danmaku: n } }),
+				FMT,
+			).video;
+		expect(views(10_000)).toMatchObject({ views: "1.0万", danmaku: "1.0万" });
+		expect(views(18_000)).toMatchObject({ views: "1.8万" });
+		expect(views(129)).toMatchObject({ views: "129" });
+		expect(views(0)).toMatchObject({ views: "0", danmaku: "0" });
+		expect(views(120_000_000)).toMatchObject({ views: "1.2亿" });
+	});
+
 	it("durationSec 缺了:时长角标整块收起;为 0 照画「0:00」(缺了才是没有)", async () => {
 		const video = (durationSec?: number) =>
 			nodeFromPost(
@@ -241,6 +316,33 @@ describe("互动数与转发", () => {
 			FMT,
 		);
 		expect(node.forward?.stats).toBeUndefined();
+	});
+});
+
+describe("出卡器自己的图标不动", () => {
+	it("话题行、播放、弹幕、三个互动数的图标都还在", async () => {
+		const node = nodeFromPost(
+			post({
+				topic: "示例话题",
+				video: { cover: { url: "c" }, title: "t", description: "", views: 1, danmaku: 2 },
+				stats: { shares: 1, comments: 2, likes: 3 },
+			}),
+			FMT,
+		);
+		const props = { node, renderForward: (): [] => [] };
+		expect(await htmlOf(DYNAMIC_BLOCKS.topic(props) as VNode)).toContain("<svg");
+		for (const [block, label] of [
+			["forwardCount", "转发"],
+			["commentCount", "评论"],
+			["likeCount", "点赞"],
+		] as const) {
+			expect(await htmlOf(DYNAMIC_BLOCKS[block](props) as VNode)).toContain(
+				`aria-label="${label}"`,
+			);
+		}
+		const stats = await htmlOf(DYNAMIC_BLOCKS.videoStats(props) as VNode);
+		expect(stats).toContain('aria-label="播放量"');
+		expect(stats).toContain('aria-label="弹幕"');
 	});
 });
 

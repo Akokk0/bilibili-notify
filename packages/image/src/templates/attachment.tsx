@@ -22,7 +22,7 @@ import type { VNode } from "vue";
  * `card` 的文字行:每行同一个样式、各占一行,行与行之间留 2px、最后一行不留。
  * 形状里 `lines` 每行只有 `{ text, icon? }`,没有同行并排、没有单行变色的位置。
  */
-export function cardLines(lines: readonly string[]) {
+function cardLines(lines: readonly string[]) {
 	return lines.map((line, i) => (
 		<div
 			key={i}
@@ -37,7 +37,7 @@ export function cardLines(lines: readonly string[]) {
  * `eyebrow`:卡上方的一行说明(商品卡与通用卡共用)。没有字就不画 —— 形状里 `eyebrow?` 缺席与空串
  * 是同一回事,来源给了空串也不留一条空行。
  */
-export function cardEyebrow(text: string | undefined) {
+function cardEyebrow(text: string | undefined) {
 	return text ? (
 		<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{text}</div>
 	) : null;

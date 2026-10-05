@@ -1,5 +1,5 @@
 /**
- * 多图动态的图廊 —— 九宫格截断与图片角标。
+ * 多图作品的图廊 —— 九宫格截断与图片角标。
  *
  * 两件事照 B 站官方网页端的做法:
  *   1. 最多铺 9 格,余下的折进第 9 格上的 `+N`。以前是有几张铺几张,17 张图的动态
@@ -7,59 +7,37 @@
  *   2. 角标除「长图」外还要有「动图」。出图走截图,GIF 只截得到一帧 —— 不标的话
  *      那一帧看着就是张静图,没人知道原动态是会动的。
  *
- * 动图判据取两条的并集:`live_url` 非空(B 站给动图带的播放地址)**或** URL 后缀是
- * `.gif`。单靠一条,万一那条在某类动态里不成立就是整片漏标,而两条都不满足时不标,
- * 宁可漏也不误标。
+ * 动图只认来源给的 `PostImage.isAnimated`,图廊自己不猜地址结尾:B 站那头的判据(`live_url` 非空**或** URL 后缀是
+ * `.gif`,先削掉 `@` 后缀与 query)在 `packages/dynamic` 的翻译里,`post-from-dynamic.test.ts` 钉着;拓展的图是
+ * data URL,「看结尾」对它不成立。宁可漏标也不误标。
  */
 
+import type { Post, PostImage } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
-import { buildDynamicNode, buildGallery } from "../templates/dynamic-content";
-import type { Dynamic } from "../types";
+import { buildGallery } from "../templates/dynamic-content";
+import { nodeFromPost } from "../templates/post-node";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
-const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
-
-type Pic = { width: number; height: number; url: string; live_url?: string };
+const FMT = { time: () => "刚刚" };
 
 /** 一张普通的方图。 */
-function pic(over: Partial<Pic> = {}): Pic {
+function pic(over: Partial<PostImage> = {}): PostImage {
 	return { width: 1000, height: 1000, url: "https://i0.hdslb.com/bfs/new_dyn/a.jpg", ...over };
 }
 
-function drawDynamic(pics: Pic[]): Dynamic {
+function imagePost(images: PostImage[]): Post {
 	return {
-		basic: {},
-		id_str: "1",
-		type: "DYNAMIC_TYPE_DRAW",
-		visible: true,
-		modules: {
-			module_author: {
-				avatar: {},
-				face: "face.jpg",
-				face_nft: false,
-				following: false,
-				jump_url: "",
-				label: "",
-				mid: 1,
-				name: "示例UP",
-				pub_action: "",
-				pub_action_text: "",
-				pub_location_text: "",
-				pub_time: "刚刚",
-				pub_ts: 0,
-				type: "AUTHOR_TYPE_NORMAL",
-				vip: { type: 0 },
-			},
-			module_dynamic: { major: { type: "MAJOR_TYPE_OPUS", opus: { pics } } },
-			module_stat: { forward: { count: 0 }, comment: { count: 0 }, like: { count: 0 } },
-		},
-	} as unknown as Dynamic;
+		creator: { name: "示例UP" },
+		publishedAt: "2023-11-14T22:13:20.000Z",
+		text: "",
+		images,
+	};
 }
 
-async function picsHtml(pics: Pic[]): Promise<string> {
-	const node = await buildDynamicNode(drawDynamic(pics), false, fmt);
+async function picsHtml(images: PostImage[]): Promise<string> {
+	const node = nodeFromPost(imagePost(images), FMT);
 	const app = createSSRApp({
 		render: () => h("div", [node.text, buildGallery(node.images ?? [])]),
 	});
@@ -92,10 +70,10 @@ describe("图廊 — 九宫格截断", () => {
 
 	it("+N 落在**最后一格**上 —— 官方就是盖在第 9 张图上,不是另起一格", async () => {
 		// 另起一格的话会变成 10 格,第 10 格空着,布局也就散了。
-		const pics = Array.from({ length: 12 }, (_, i) =>
+		const images = Array.from({ length: 12 }, (_, i) =>
 			pic({ url: `https://i0.hdslb.com/bfs/new_dyn/p${i}.jpg` }),
 		);
-		const html = await picsHtml(pics);
+		const html = await picsHtml(images);
 		expect(imgCount(html)).toBe(9);
 		// 第 9 张(p8)之后才出现 +3,且 p9/p10/p11 一张都没渲染
 		expect(html.indexOf("+3")).toBeGreaterThan(html.indexOf("p8.jpg"));
@@ -104,30 +82,24 @@ describe("图廊 — 九宫格截断", () => {
 });
 
 describe("图廊 — 动图角标", () => {
-	it("live_url 非空 → 标「动图」", async () => {
+	it("isAnimated 为真 → 标「动图」", async () => {
 		const html = await picsHtml([
 			pic(),
-			pic({ url: "https://i0.hdslb.com/bfs/new_dyn/b.jpg", live_url: "https://x/live.mp4" }),
+			pic({ url: "https://i0.hdslb.com/bfs/new_dyn/b.jpg", isAnimated: true }),
 		]);
 		expect(html).toContain("动图");
 	});
 
-	it("URL 是 .gif → 标「动图」(live_url 缺席也认)", async () => {
+	it("没给 isAnimated 的 .gif 地址不标 —— 判不判动图是来源的事,图廊不看地址结尾", async () => {
 		const html = await picsHtml([pic(), pic({ url: "https://i0.hdslb.com/bfs/new_dyn/b.gif" })]);
-		expect(html).toContain("动图");
-	});
-
-	it("带处理后缀 / query 的 .gif 也认得出来", async () => {
-		// 真实 URL 常写成 `….gif@1280w_80q_1s.webp` —— 光看结尾会当成 webp 漏标。
-		const html = await picsHtml([
-			pic(),
-			pic({ url: "https://i0.hdslb.com/bfs/new_dyn/b.gif@1280w_80q_1s.webp?from=dyn" }),
-		]);
-		expect(html).toContain("动图");
+		expect(html).not.toContain("动图");
 	});
 
 	it("普通静图不标 —— 宁可漏也不误标", async () => {
-		const html = await picsHtml([pic(), pic({ url: "https://i0.hdslb.com/bfs/new_dyn/b.png" })]);
+		const html = await picsHtml([
+			pic({ isAnimated: false }),
+			pic({ url: "https://i0.hdslb.com/bfs/new_dyn/b.png", isAnimated: false }),
+		]);
 		expect(html).not.toContain("动图");
 	});
 
@@ -135,14 +107,21 @@ describe("图廊 — 动图角标", () => {
 		// 「这张会动」是截图里看不出来的信息;「被裁过」缩略图上多少看得出来。
 		const html = await picsHtml([
 			pic(),
-			pic({ width: 500, height: 3000, url: "https://i0.hdslb.com/bfs/new_dyn/b.gif" }),
+			pic({
+				width: 500,
+				height: 3000,
+				url: "https://i0.hdslb.com/bfs/new_dyn/b.gif",
+				isAnimated: true,
+			}),
 		]);
 		expect(html).toContain("动图");
 		expect(html).not.toContain("长图");
 	});
 
 	it("单图动态是 GIF 也要标", async () => {
-		const html = await picsHtml([pic({ url: "https://i0.hdslb.com/bfs/new_dyn/only.gif" })]);
+		const html = await picsHtml([
+			pic({ url: "https://i0.hdslb.com/bfs/new_dyn/only.gif", isAnimated: true }),
+		]);
 		expect(html).toContain("动图");
 	});
 });
@@ -157,6 +136,52 @@ describe("图廊 — 长图角标不受影响", () => {
 	it("单图超长静图仍标「长图」", async () => {
 		const html = await picsHtml([pic({ width: 500, height: 3000 })]);
 		expect(html).toContain("长图");
+	});
+});
+
+describe("图廊 — 挂点与根", () => {
+	/** 一段 HTML 里出现过的全部挂点(`data-bn` 可以一次挂好几个,空格分开)。 */
+	function hooksIn(html: string): string[] {
+		return [...html.matchAll(/data-bn="([^"]*)"/g)].flatMap((m) => (m[1] ?? "").split(/\s+/));
+	}
+
+	it("单图:整个图廊就是那一格,`pics` 与 `pic` 两个挂点落在同一个元素上;根上没有跟在文字后面的间距", async () => {
+		const node = nodeFromPost(imagePost([pic()]), FMT);
+		const html = await renderToString(
+			createSSRApp({ render: () => buildGallery(node.images ?? []) as never }),
+		);
+		expect(html).toMatch(/^<div data-bn="pics pic"/);
+		expect(html).not.toContain("mt-[8px]");
+	});
+
+	it("多图:根挂 `pics`,每一格挂 `pic`", async () => {
+		const node = nodeFromPost(imagePost([pic(), pic(), pic()]), FMT);
+		const html = await renderToString(
+			createSSRApp({ render: () => buildGallery(node.images ?? []) as never }),
+		);
+		expect(html).toMatch(/^<div data-bn="pics"/);
+		expect(hooksIn(html).filter((hook) => hook === "pic")).toHaveLength(3);
+	});
+
+	it("没有图 → 图廊是 null(块收起),专栏的头图取 article.images", () => {
+		expect(buildGallery(nodeFromPost(imagePost([]), FMT).images ?? [])).toBeNull();
+		const article = nodeFromPost(
+			{
+				creator: { name: "某人" },
+				publishedAt: "2023-11-14T22:13:20.000Z",
+				text: "摘要",
+				article: { title: "标题", images: [pic()] },
+			},
+			FMT,
+		);
+		expect(buildGallery(article.images ?? [])).not.toBeNull();
+	});
+});
+
+describe("图廊 — 图只认地址", () => {
+	it("只有 ref 没有 url 的那一张不画(出卡器要到 ㉑d 才会按引用取图)", async () => {
+		const html = await picsHtml([pic(), { ref: "abc.png" }, pic()]);
+		expect(imgCount(html)).toBe(2);
 	});
 });
 
@@ -179,10 +204,10 @@ describe("图廊 — 遮罩与角标的样式真的生成了", () => {
 	}
 
 	it("`+N` 遮罩与角标用到的每个类都有对应 CSS 规则", async () => {
-		const pics = Array.from({ length: 14 }, (_, i) =>
-			pic({ url: `https://i0.hdslb.com/bfs/new_dyn/p${i}.gif` }),
+		const images = Array.from({ length: 14 }, (_, i) =>
+			pic({ url: `https://i0.hdslb.com/bfs/new_dyn/p${i}.gif`, isAnimated: true }),
 		);
-		const node = await buildDynamicNode(drawDynamic(pics), false, fmt);
+		const node = nodeFromPost(imagePost(images), FMT);
 		const html = await renderViaDefaultSkin("dynamic", { node }, { htmlWidth: 600 });
 		const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
 		for (const cls of ["inset-0", "bg-black/40", "text-[28px]", "bg-black/50", "text-[10px]"]) {

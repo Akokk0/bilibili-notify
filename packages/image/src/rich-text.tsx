@@ -12,57 +12,8 @@
  * 图库。所以到那之前,链接只画文字(颜色照旧),表情当文字画它的 `text`(「[doge]」)。
  */
 
-import type { RichText, RichTextSegment } from "@bilibili-notify/internal";
+import type { RichText } from "@bilibili-notify/internal";
 import { escapeHtml } from "./html-escape";
-import type { RichTextNode } from "./types";
-
-const TYPE_AT = "RICH_TEXT_NODE_TYPE_AT";
-const TYPE_TOPIC = "RICH_TEXT_NODE_TYPE_TOPIC";
-const TYPE_BV = "RICH_TEXT_NODE_TYPE_BV";
-const TYPE_AV = "RICH_TEXT_NODE_TYPE_AV";
-const TYPE_CV = "RICH_TEXT_NODE_TYPE_CV";
-const TYPE_WEB = "RICH_TEXT_NODE_TYPE_WEB";
-const TYPE_TAOBAO = "RICH_TEXT_NODE_TYPE_TAOBAO";
-const TYPE_GOODS = "RICH_TEXT_NODE_TYPE_GOODS";
-const TYPE_LOTTERY = "RICH_TEXT_NODE_TYPE_LOTTERY";
-const TYPE_VOTE = "RICH_TEXT_NODE_TYPE_VOTE";
-const TYPE_OGV_SEASON = "RICH_TEXT_NODE_TYPE_OGV_SEASON";
-const TYPE_OGV_EP = "RICH_TEXT_NODE_TYPE_OGV_EP";
-
-/** 画成「B 站蓝的链接文字」的节点类型。BV / AV 号与抽奖前面本来有个小图标,现在不画(见文件头)。 */
-const LINK_TYPES: ReadonlySet<string> = new Set([
-	TYPE_BV,
-	TYPE_AV,
-	TYPE_LOTTERY,
-	TYPE_WEB,
-	TYPE_CV,
-	TYPE_TAOBAO,
-	TYPE_GOODS,
-	TYPE_VOTE,
-	TYPE_OGV_SEASON,
-	TYPE_OGV_EP,
-]);
-
-/**
- * **旧入口的垫片**(吃 B 站原始富文本节点):节点先翻成中立片段、再走 {@link renderRichText}。B 站节点类型的
- * 认法只剩这里 —— 生产里已经没人调(B 站动态由 `packages/dynamic` 的 `postFromDynamic` 翻成 `Post`,出卡器
- * 直接吃片段),只有旧的 `buildDynamicNode` 与几份测试还在用,旧入口删除时连这个垫片一起删。
- */
-export function parseRichText(rt: RichTextNode, title?: string, isArticle = false) {
-	return renderRichText(
-		rt.map((node): RichTextSegment => {
-			if (node.emoji) return { kind: "emoji", text: node.text };
-			if (node.type === TYPE_AT) return { kind: "mention", text: node.text };
-			if (node.type === TYPE_TOPIC) {
-				return { kind: "topic", text: node.text, name: node.text.replace(/^#|#$/g, "") };
-			}
-			if (LINK_TYPES.has(node.type)) return { kind: "link", text: node.text, url: "" };
-			return { kind: "text", text: node.text };
-		}),
-		title,
-		isArticle,
-	);
-}
 
 /**
  * 正文片段 → 富文本 VNode(`Post.richText` 就是它的输入)。普通正文九行截断、专栏五行截断;片段只认

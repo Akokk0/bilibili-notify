@@ -8,8 +8,7 @@
  * 认不得的一律回 `undefined`,调用方据此**不画那一格**(别画 NaN,也别把认不得的字原样画上去)。
  *
  * **这是 B 站专属的解析,不进 internal。** 它属于「B 站原始数据到 `Post` 的翻译」(`post-from-dynamic.ts`),
- * 住在 `packages/dynamic`。`packages/image` 里还留着一份同样的拷贝,只给旧入口 `buildDynamicNode` 用,
- * 旧入口删除时一并删。
+ * 住在 `packages/dynamic`(出卡器 `packages/image` 只认 `Post`,不认识接口给的这种成品字)。
  */
 
 const COUNT_TEXT = /^(\d+(?:\.\d+)?)(万|亿)?$/;

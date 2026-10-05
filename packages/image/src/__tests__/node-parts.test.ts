@@ -1,18 +1,18 @@
 /**
- * **造 node 的零件**(ADR-0019 决策 68):拓展作品装配时照着 B 站那条同样造一棵 node,
- * 不碰本包内部。B 站那条走的是同一份实现 —— 图廊的 B 站路径另有 `dynamic-content-pics.test.ts`
- * 与基准快照钉着,这里只钉中立那一侧多出来的规矩:
+ * **造 node 的零件**(ADR-0019 决策 68):拓展作品装配时自己造一棵 node,不碰本包内部。`Post` 那条
+ * (`nodeFromPost`)走的是同一份实现 —— 图廊的 `Post` 路径另有 `post-gallery.test.ts` 与基准快照钉着,
+ * 这里只钉中立那一侧多出来的规矩:
  *
  * - `buildGallery`:吃中立的图列表。动图只认来源给的 `animated`(不再自己看 `.gif` 结尾 ——
- *   那是 B 站映射那一步的事,拓展的图是 data URL);宽高缺了就按普通比例铺。
- * - `buildPlainText`:纯文本正文,保留换行,落在与 B 站富文本同一个根上(`body` 挂点);给了话题名,
- *   正文里的 `#名字#` / `#名字` 画成 B 站富文本话题那一种 span(决策 55 的 09-24 🔗)。
+ *   那是 B 站翻译那一步的事,拓展的图是 data URL);宽高缺了就按普通比例铺。
+ * - `buildPlainText`:纯文本正文,保留换行,落在与 `Post` 富文本同一个根上(`body` 挂点);给了话题名,
+ *   正文里的 `#名字#` / `#名字` 画成 `Post` 富文本话题那一种 span(决策 55 的 09-24 🔗)。
  */
 
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
-import { parseRichText } from "../rich-text";
+import { renderRichText } from "../rich-text";
 import { buildGallery, buildPlainText, type GalleryImage } from "../templates/dynamic-content";
 
 async function htmlOf(v: VNode | null): Promise<string> {
@@ -33,7 +33,7 @@ describe("buildGallery — 中立的图列表", () => {
 	});
 
 	/**
-	 * 「看 `.gif` 结尾」是 B 站那头的判据(`opusImages` 映射时算好 `animated`),图廊自己不再猜。
+	 * 「看 `.gif` 结尾」是 B 站那头的判据(`postFromDynamic` 翻译时算好 `isAnimated`),图廊自己不再猜。
 	 * 验红:在 `picBadgeText` 里把 URL 结尾的判断加回来,这条红。
 	 */
 	it("没给 animated 的 .gif 地址不标 —— 判不判动图是来源的事", async () => {
@@ -54,7 +54,7 @@ describe("buildGallery — 中立的图列表", () => {
 		expect(grid).not.toContain("object-top");
 	});
 
-	it("宽高给全时长图 / 超长图照判(与 B 站那条同一份规矩)", async () => {
+	it("宽高给全时长图 / 超长图照判(与 `Post` 那条同一份规矩)", async () => {
 		const superLong = await htmlOf(buildGallery([{ url: gif("L"), width: 100, height: 300 }]));
 		expect(superLong).toContain("长图");
 		expect(superLong).toContain("height: 400px");
@@ -70,7 +70,7 @@ describe("buildGallery — 中立的图列表", () => {
 });
 
 describe("buildPlainText — 纯文本正文", () => {
-	it("保留换行;落在与 B 站富文本同一个根上(`body` 挂点)", async () => {
+	it("保留换行;落在与 `Post` 富文本同一个根上(`body` 挂点)", async () => {
 		const html = await htmlOf(buildPlainText("第一行\n第二行"));
 		expect(html).toMatch(/^<div data-bn="body"/);
 		expect(html).toContain("第一行<br>第二行");
@@ -88,6 +88,12 @@ describe("buildPlainText — 纯文本正文", () => {
 		expect(html).not.toContain("<b>");
 	});
 
+	it("纯文本正文里没有任何图标 / 图(拓展那条路本来就不带)", async () => {
+		const html = await htmlOf(buildPlainText("看看 #旅行# 今天", ["旅行"]));
+		expect(html).not.toContain("<svg");
+		expect(html).not.toContain("<img");
+	});
+
 	it("一个字都没有(空串 / 只有空白)→ null,正文块收起", () => {
 		expect(buildPlainText("")).toBeNull();
 		expect(buildPlainText(" \n\t ")).toBeNull();
@@ -95,14 +101,12 @@ describe("buildPlainText — 纯文本正文", () => {
 });
 
 describe("buildPlainText — 照拓展报的话题名给正文里的话题上色", () => {
-	/** B 站富文本里话题节点画出来的那一种 span。 */
+	/** `Post` 富文本里话题片段画出来的那一种 span。 */
 	const topic = (text: string) => `<span class="text-[#FF6699]">${text}</span>`;
 
-	it("画法与 B 站富文本的话题节点同一种 span(皮肤对两边一视同仁)", async () => {
+	it("画法与 `Post` 富文本的话题片段同一种 span(皮肤对两边一视同仁)", async () => {
 		const bili = await htmlOf(
-			parseRichText([
-				{ type: "RICH_TEXT_NODE_TYPE_TOPIC", text: "#假话题#", orig_text: "#假话题#" },
-			]),
+			renderRichText([{ kind: "topic", text: "#假话题#", name: "假话题" }]),
 		);
 		expect(bili).toContain(topic("#假话题#"));
 		const ours = await htmlOf(buildPlainText("#假话题#", ["假话题"]));

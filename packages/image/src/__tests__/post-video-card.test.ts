@@ -1,64 +1,38 @@
 /**
- * DYNAMIC_TYPE_AV 的主视频卡 —— 封面是主体。
+ * 作品的主视频卡(`Post.video`)—— 封面是主体。
  *
  * 与直播卡对齐:直播卡把封面整块铺在最上面、文字压在下面,视频卡此前却是「左边一条
  * 固定宽的缩略图 + 右边一列字」的横条 —— 同一次推送里两张卡长得像两个产品。
  *
  * 这里钉的是**版面骨架**(封面占满整宽、时长角标自带深色底、封面不再整张压暗),
- * 字号与间距属观感,留手动验证。
+ * 字号与间距属观感,留手动验证。输入是 `Post`(从前是 B 站原始动态);「接口的数字 / 时长怎么翻成 `Post.video`」
+ * 在 `packages/dynamic` 的 `post-from-dynamic.test.ts`。
  */
 
+import type { Post } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { buildDynamicNode } from "../templates/dynamic-content";
-import type { Dynamic } from "../types";
+import { nodeFromPost } from "../templates/post-node";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
-const fmt = { time: () => "刚刚", num: (n: number) => String(n) };
+const FMT = { time: () => "刚刚" };
 
 const COVER = "http://i1.hdslb.com/bfs/archive/15644012e6961428b08a947ec83365747c741d41.jpg";
 
-/** 真实抓包字段(取自 .interface/dynamic_video.json 的 DYNAMIC_TYPE_AV 条目)。 */
-function makeVideoDynamic(over: Record<string, unknown> = {}): Dynamic {
+/** 真实抓包字段(取自 .interface/dynamic_video.json 的 DYNAMIC_TYPE_AV 条目)翻成的 `Post`。 */
+function makeVideoPost(over: Partial<NonNullable<Post["video"]>> = {}): Post {
 	return {
-		basic: {},
-		id_str: "1233319070468669440",
-		type: "DYNAMIC_TYPE_AV",
-		visible: true,
-		modules: {
-			module_author: {
-				avatar: {},
-				face: "face.jpg",
-				face_nft: false,
-				following: false,
-				jump_url: "",
-				label: "",
-				mid: 1,
-				name: "示例UP",
-				pub_action: "",
-				pub_action_text: "",
-				pub_location_text: "",
-				pub_time: "刚刚",
-				pub_ts: 0,
-				type: "AUTHOR_TYPE_NORMAL",
-				vip: { type: 0 },
-			} as Dynamic["modules"]["module_author"],
-			module_dynamic: {
-				major: {
-					type: "MAJOR_TYPE_ARCHIVE",
-					archive: {
-						badge: { text: "投稿视频" },
-						cover: COVER,
-						duration_text: "16:07",
-						title: "因为揭穿了他们的秘密！我们遭到了陷害！MC恐怖地图 毒药",
-						desc: "剪辑：@雲開七幺七",
-						stat: { play: "1.8万", danmaku: "129" },
-						bvid: "BV1FTGM69EFQ",
-						jump_url: "//www.bilibili.com/video/BV1FTGM69EFQ",
-						...over,
-					},
-				},
-			},
-			module_stat: { forward: { count: 0 }, comment: { count: 0 }, like: { count: 0 } },
+		creator: { name: "示例UP" },
+		publishedAt: "2023-11-14T22:13:20.000Z",
+		label: "投稿了视频",
+		text: "",
+		video: {
+			cover: { url: COVER },
+			title: "因为揭穿了他们的秘密！我们遭到了陷害！MC恐怖地图 毒药",
+			description: "剪辑：@雲開七幺七",
+			durationSec: 967,
+			views: 18_000,
+			danmaku: 129,
+			...over,
 		},
 	};
 }
@@ -67,8 +41,8 @@ function makeVideoDynamic(over: Record<string, unknown> = {}): Dynamic {
  * 整张动态卡(出厂默认皮肤)。视频卡从前是一整块画好的 VNode,现在是五个原子块 + 皮肤用
  * 网格与 CSS 拼出来的容器(决策 8 的 2026-09-18 🔗)—— 「排成什么样」只有走皮肤才看得见。
  */
-async function videoCardHtml(dynamic: Dynamic = makeVideoDynamic()): Promise<string> {
-	const node = await buildDynamicNode(dynamic, false, fmt);
+async function videoCardHtml(post: Post = makeVideoPost()): Promise<string> {
+	const node = nodeFromPost(post, FMT);
 	return await renderViaDefaultSkin("dynamic", { node }, { htmlWidth: 600 });
 }
 
@@ -141,7 +115,7 @@ describe("主视频卡 —— 封面作为主体", () => {
 	it("缺简介 / 缺时长时对应的块整个不出现,不留空块", async () => {
 		// 抓包里 desc 常是空串;首映等形态没有 duration_text。空着照画的话,标题与播放数
 		// 之间会多出一条空白行,封面上还会多出一块空的深色角标 —— 而且那块还带着灰底。
-		const html = await videoCardHtml(makeVideoDynamic({ desc: "", duration_text: "" }));
+		const html = await videoCardHtml(makeVideoPost({ description: "", durationSec: undefined }));
 		expect(html).not.toContain("undefined");
 		expect(html, "简介那一块不该出现").not.toContain("bn-blk-video-desc");
 		expect(html, "时长角标那一块不该出现").not.toContain("bn-blk-video-duration");

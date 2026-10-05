@@ -216,6 +216,27 @@ describe("富文本节点 → 五种片段", () => {
 		expect(segments).toEqual([{ kind: "emoji", text: "[doge]" }]);
 	});
 
+	/**
+	 * 安全:表情图地址来自接口(攻击者可控),翻译根本不带 —— `emoji` 片段只有 `text`。原来的专栏转义回归
+	 * 守的就是这个地址别拼进 innerHTML;现在它连 `Post` 都进不去。
+	 */
+	it("表情图地址里的引号 / 标签 breakout:整份 Post 里找不到那个地址", () => {
+		const evil = '"><script>alert(1)</script><img src="';
+		const post = postFromDynamic(
+			raw(
+				"DYNAMIC_TYPE_ARTICLE",
+				desc({
+					...node("RICH_TEXT_NODE_TYPE_EMOJI", ":x:"),
+					emoji: { icon_url: evil, size: 1, text: ":x:", type: 1 },
+				}),
+			),
+		);
+		const serialized = JSON.stringify(post);
+		expect(serialized).not.toContain("alert(1)");
+		expect(serialized).not.toContain("icon_url");
+		expect(post.richText).toEqual([{ kind: "emoji", text: ":x:" }]);
+	});
+
 	it("别的(普通文字、不认识的类型)→ text,换行留在 text 里", () => {
 		expect(segmentsOf(text("甲\n乙"), node("RICH_TEXT_NODE_TYPE_SOMETHING_NEW", "新种类"))).toEqual(
 			[
@@ -291,6 +312,18 @@ describe("正文、标题与专栏", () => {
 		expect(post.images).toBeUndefined();
 	});
 
+	it("专栏里 desc 与摘要也合成一段(换行连接),标题仍只有一个", () => {
+		const post = postFromDynamic(
+			raw("DYNAMIC_TYPE_ARTICLE", {
+				...desc(text("导语")),
+				...opus({ title: "专栏标题", summary: [text("专栏摘要")] }),
+			}),
+		);
+		expect(post.text).toBe("导语\n专栏摘要");
+		expect(post.article?.title).toBe("专栏标题");
+		expect(post.richText?.map((segment) => segment.text).join("")).toBe(post.text);
+	});
+
 	it("没有 opus 标题的专栏:article.title 是空串(出图器据此不画标题)", () => {
 		const post = postFromDynamic(raw("DYNAMIC_TYPE_ARTICLE", opus({ summary: [text("摘要")] })));
 		expect(post.article).toEqual({ title: "" });
@@ -328,6 +361,17 @@ describe("图集", () => {
 		});
 	});
 
+	it.each([
+		["http://x.example/a.gif", true],
+		["http://x.example/A.GIF", true],
+		["http://x.example/a.png", false],
+		["http://x.example/a.jpg@1280w.webp", false],
+		["http://x.example/a.webp?from=dyn", false],
+	])("动图判据只看削掉 @ 后缀与 query 之后的结尾:%s → %s", (url, animated) => {
+		const post = postFromDynamic(raw("DYNAMIC_TYPE_DRAW", opus({ pics: [pic(url)] })));
+		expect(post.images?.[0]?.isAnimated).toBe(animated);
+	});
+
 	it("没有图就没有 images 这一格(不是空数组)", () => {
 		expect(postFromDynamic(raw("DYNAMIC_TYPE_DRAW", opus({ pics: [] }))).images).toBeUndefined();
 		expect(postFromDynamic(raw("DYNAMIC_TYPE_WORD")).images).toBeUndefined();
@@ -361,6 +405,53 @@ describe("投稿视频", () => {
 			danmaku: 129,
 		});
 	});
+
+	it.each([
+		["1.8万", 18_000],
+		["12.3万", 123_000],
+		["129", 129],
+		["0", 0],
+		[129, 129],
+		[12_345, 12_345],
+		["1万", 10_000],
+		["100万", 1_000_000],
+		["1.2亿", 120_000_000],
+	])("播放 / 弹幕:接口给 %j → %d", (given, expected) => {
+		const post = postFromDynamic(
+			raw("DYNAMIC_TYPE_AV", archive({ stat: { play: given, danmaku: given } })),
+		);
+		expect(post.video?.views).toBe(expected);
+		expect(post.video?.danmaku).toBe(expected);
+	});
+
+	it.each([
+		["16:07", 967],
+		["1:02:03", 3723],
+		["01:02:03", 3723],
+		["03:21", 201],
+		["00:29", 29],
+		["00:00", 0],
+	])("时长:接口给 %j → %d 秒", (given, expected) => {
+		expect(
+			postFromDynamic(raw("DYNAMIC_TYPE_AV", archive({ duration_text: given }))).video?.durationSec,
+		).toBe(expected);
+	});
+
+	it.each(["", "abc", "16", "16:60", undefined])("时长认不得 %j → 不带 durationSec", (given) => {
+		const post = postFromDynamic(raw("DYNAMIC_TYPE_AV", archive({ duration_text: given })));
+		expect(post.video).not.toHaveProperty("durationSec");
+	});
+
+	it.each(["", "--", "10万+", "1,234", "abc", null, undefined])(
+		"播放 / 弹幕认不得 %j → 不带(不是 NaN)",
+		(given) => {
+			const post = postFromDynamic(
+				raw("DYNAMIC_TYPE_AV", archive({ stat: { play: given, danmaku: given } })),
+			);
+			expect(post.video).not.toHaveProperty("views");
+			expect(post.video).not.toHaveProperty("danmaku");
+		},
+	);
 
 	it("认不得的那一格不带(不是 NaN、不是 0):时长 / 播放 / 弹幕各自缺各自的", () => {
 		const post = postFromDynamic(
@@ -504,6 +595,16 @@ describe("附加块 → Attachment", () => {
 			durationSec: 29,
 			subtitle: "2654观看 102弹幕",
 		});
+	});
+
+	it("引用视频缺 duration / desc_second 或时长认不得:不带 durationSec / subtitle,不出 undefined", () => {
+		for (const duration of [undefined, "", "16:60", "abc"]) {
+			const attachment = additional({
+				type: "ADDITIONAL_TYPE_UGC",
+				ugc: { title: "t", cover: "c", duration, desc_second: undefined },
+			}).attachment;
+			expect(attachment).toEqual({ kind: "video", cover: { url: "c" }, title: "t" });
+		}
 	});
 
 	it("不认识的类型、type 说是 UGC 却没有 ugc、没有 additional:都没有 attachment", () => {

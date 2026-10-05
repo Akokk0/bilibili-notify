@@ -12,7 +12,6 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type Disposable,
 	effectiveCardSkinKnobs,
-	formatCount,
 	type Logger,
 	type Post,
 	type ServiceContext,
@@ -33,12 +32,12 @@ import {
 } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
-import { buildDynamicNode, type DynamicNode } from "./templates/dynamic-content";
+import type { DynamicNode } from "./templates/dynamic-content";
 import type { LiveCardInput } from "./templates/live-card";
 import { nodeFromPost } from "./templates/post-node";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
-import type { CardColorOptions, CardSkinChoice, Dynamic, LiveData } from "./types";
+import type { CardColorOptions, CardSkinChoice, LiveData } from "./types";
 
 /**
  * 本模块能读到自带静态资源的目录 —— 词云要的那两个脚本就在 `static/` 下。
@@ -729,26 +728,6 @@ export class ImageRenderer {
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
 		const node = nodeFromPost(post, { time: (seconds) => this.unixTimestampToString(seconds) });
-		return this.generateNeutralDynamicCard(node, colorOptions, options);
-	}
-
-	/**
-	 * **旧入口**(吃 B 站原始动态):原始动态 → {@link buildDynamicNode} 造 node →
-	 * {@link generateNeutralDynamicCard}。生产里已经没人调了(都改走 `postFromDynamic` → {@link generatePostCard}),
-	 * 下一步随 `buildDynamicNode` 一起删。
-	 *
-	 * 开播伪动态(`DYNAMIC_TYPE_LIVE_RCMD`)在**顶层**造不出 node,在那一步抛「直播开播动态，不做处理」。
-	 */
-	async generateDynamicCard(
-		data: Dynamic,
-		colorOptions: CardColorOptions = {},
-		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
-		options?: { priority?: RenderPriority },
-	): Promise<Buffer> {
-		const node = await buildDynamicNode(data, false, {
-			time: (ts) => this.unixTimestampToString(ts),
-			num: (n) => formatCount(n),
-		});
 		return this.generateNeutralDynamicCard(node, colorOptions, options);
 	}
 

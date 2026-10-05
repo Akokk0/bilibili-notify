@@ -1,7 +1,10 @@
 /** @jsxImportSource vue */
 
 /**
- * 一条动态的「呈现态」构建器。
+ * 一条动态的「呈现态」:节点类型({@link DynamicNode})与几个部件构建器(图廊、纯文本正文)。
+ *
+ * 节点由 `post-node.tsx` 的 `nodeFromPost` 从中立的 `Post` 造出来;拓展作品那条路(到 ㉑d 才切过来)
+ * 自己造节点,吃同一套块。出卡器不认识任何平台的原始数据。
  *
  * 这里画出来的东西最终落在卡片皮肤的块里(ADR-0014 决策 9),所以部件上挂着那些块的
  * 挂点(`data-bn="<挂点>"`,名字取自 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`):
@@ -30,42 +33,12 @@
  * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
-import { formatClock, formatCount, type RichText } from "@bilibili-notify/internal";
+import type { RichText } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
-import { parseBiliClock, parseBiliCount } from "../bili-display-values";
-import { parseRichText, renderRichText } from "../rich-text";
-import type { Dynamic, RichTextNode } from "../types";
-import { cardEyebrow, cardLines } from "./attachment";
-
-// ── 动态类型常量 ──────────────────────────────────────────────────────────────
-
-const DYNAMIC_TYPE_NONE = "DYNAMIC_TYPE_NONE";
-const DYNAMIC_TYPE_FORWARD = "DYNAMIC_TYPE_FORWARD";
-const DYNAMIC_TYPE_AV = "DYNAMIC_TYPE_AV";
-const DYNAMIC_TYPE_PGC = "DYNAMIC_TYPE_PGC";
-const DYNAMIC_TYPE_WORD = "DYNAMIC_TYPE_WORD";
-const DYNAMIC_TYPE_DRAW = "DYNAMIC_TYPE_DRAW";
-const DYNAMIC_TYPE_ARTICLE = "DYNAMIC_TYPE_ARTICLE";
-const DYNAMIC_TYPE_MUSIC = "DYNAMIC_TYPE_MUSIC";
-const DYNAMIC_TYPE_COMMON_SQUARE = "DYNAMIC_TYPE_COMMON_SQUARE";
-const DYNAMIC_TYPE_LIVE = "DYNAMIC_TYPE_LIVE";
-const DYNAMIC_TYPE_MEDIALIST = "DYNAMIC_TYPE_MEDIALIST";
-const DYNAMIC_TYPE_COURSES_SEASON = "DYNAMIC_TYPE_COURSES_SEASON";
-const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
-const DYNAMIC_TYPE_UGC_SEASON = "DYNAMIC_TYPE_UGC_SEASON";
-const ADDITIONAL_TYPE_RESERVE = "ADDITIONAL_TYPE_RESERVE";
-const ADDITIONAL_TYPE_GOODS = "ADDITIONAL_TYPE_GOODS";
-const ADDITIONAL_TYPE_COMMON = "ADDITIONAL_TYPE_COMMON";
-const ADDITIONAL_TYPE_UGC = "ADDITIONAL_TYPE_UGC";
-
-/** 时间戳 / 数字的格式化器(由 image-renderer 注入,保持模版层纯净)。 */
-export type NodeFormatters = {
-	time: (ts: number) => string;
-	num: (n: number) => string;
-};
+import { renderRichText } from "../rich-text";
 
 /**
- * 一条动态的「呈现态」结构树 —— 与原始 B站 API 解耦,供 DynamicCard 按版式块装配。
+ * 一条动态的「呈现态」结构树 —— 与任何平台的原始数据解耦,供 DynamicCard 按版式块装配。
  * 转发动态的内部原动态是 `forward`(同样是 DynamicNode),由卡片模版用**同一套版式**
  * 递归渲染。`body` 只含正文 + 主媒体(无附加内容、无转发框);`additional` 是拆出来的
  * 附加内容块(预约 / 商品 / 通用卡);`stats` 仅外层有(内部转发不展示互动数)。
@@ -76,8 +49,8 @@ export type NodeFormatters = {
  * 挂载会往 vnode 上写 `el` / `component`,后一处盖掉前一处),而皮肤可以把同一块摆两回。
  */
 /**
- * 投稿视频那张卡的数据。播放 / 弹幕 / 时长已是排好版的字:B 站这条路先把接口给的成品字解析成数字、
- * 再由 `formatCount` / `formatClock` 排(见 `videoOf`);拓展那条路本来就是数字,同样经这两个函数。
+ * 投稿视频那张卡的数据。播放 / 弹幕 / 时长已是排好版的字:`Post` 里它们是数字,由 `formatCount` /
+ * `formatClock` 统一排版(见 `post-node.tsx` 的 `videoOf`);拓展那条路本来就是数字,同样经这两个函数。
  *
  * 播放数与弹幕数都**选填**(ADR-0019 决策 55):拓展的作品不收弹幕数、播放数是选填的,缺了哪一格
  * 就不画哪一格的图标与数字(从前只要有视频就无条件画,拓展作品会画出空图标)。B 站两格恒有。
@@ -92,11 +65,11 @@ export type DynamicVideo = {
 };
 
 /**
- * 图廊里的一张图 —— **中立的形状**(ADR-0019 决策 68)。B 站与拓展都先映射成它,再交给
+ * 图廊里的一张图 —— **中立的形状**(ADR-0019 决策 68)。`Post` 的图与拓展的图都先映射成它,再交给
  * {@link buildGallery};图廊只有那一份实现。
  *
  * - 宽高缺了就不判长图,按普通比例铺(拓展的图宽高由 BN 读文件头拿,读不出来也照样出卡)。
- * - `animated` 由来源自己判:B 站看 `live_url` 或 `.gif` 结尾,拓展看交来的 MIME ——
+ * - `animated` 由来源自己判:B 站看 `live_url` 或 `.gif` 结尾(`postFromDynamic` 里判,落成 `PostImage.isAnimated`),拓展看交来的 MIME ——
  *   拓展的图是 data URL,「看结尾」那一招对它不成立。
  */
 export type GalleryImage = {
@@ -110,7 +83,7 @@ export type DynamicNode = {
 	/**
 	 * 头像地址。**选填,没有就不画头像**(头像块整块收起,皮肤契约的 `up.face` 是空串)。
 	 *
-	 * B 站这条路不给:`Creator.avatar` 只收图库引用,B 站的头像是远端地址,要到 3a 才存进图库
+	 * `Post` 这条路不给:`Creator.avatar` 只收图库引用,出卡器要到 ㉑d(拓展)/ 3a(B 站)才会按引用取图
 	 * (ADR-0021 决策 22 的 2026-10-05 🔗)。拓展作品那条路(`extension-post-work.ts`)自己造 node,照旧给。
 	 */
 	avatarUrl?: string;
@@ -119,16 +92,15 @@ export type DynamicNode = {
 	pubTime: string;
 	/**
 	 * 动态类型(`DYNAMIC_TYPE_*`),皮肤契约的 `dynamic.type`。造 node 时顺手记下(决策 68)——
-	 * 从前契约回头去 B 站原始数据里取,出卡入口因此得另收一份原始数据。拓展作品套进 B 站的
-	 * 类型(决策 69)。不给就是空串。
+	 * `Post` 这条路由 `nodeFromPost` 从作品的形状推;拓展作品套进 B 站的类型(决策 69)。不给就是空串。
 	 */
 	type?: string;
 	/** 作为内部转发渲染时,附在作者名后的类型标签(如「投稿了视频」)。 */
 	headerLabel?: string;
 	topic?: string;
 	/**
-	 * 正文文字,进 `text` 原子块:desc / opus 摘要的富文本(专栏连标题),转发是转发语,充电专属
-	 * 是那块占位,渲染不了的是那句提示。一个字都没有(只发了图)时为空。
+	 * 正文文字,进 `text` 原子块:正文的富文本(专栏连标题),充电专属是那块占位,`notice` 是那句提示。
+	 * 一个字都没有(只发了图)时为空。
 	 */
 	text?: VNode | null;
 	/**
@@ -153,201 +125,14 @@ export type DynamicNode = {
 };
 
 /**
- * 把一条动态构建成 DynamicNode 结构树。
- * @param dynamic 动态数据
- * @param isForward 是否作为被转发的内部动态(影响标签位置、是否带互动数)
- * @param fmt 时间 / 数字格式化器
- */
-export async function buildDynamicNode(
-	dynamic: Dynamic,
-	isForward: boolean,
-	fmt: NodeFormatters,
-): Promise<DynamicNode> {
-	const author = dynamic.modules.module_author;
-	const stat = dynamic.modules.module_stat;
-	// 不写 `avatarUrl`:B 站的头像到 3a 才有图库引用可给(见 `DynamicNode.avatarUrl`)。
-	const node: DynamicNode = {
-		upName: author.name,
-		upIsVip: author.vip.type !== 0,
-		pubTime: fmt.time(author.pub_ts),
-		type: dynamic.type,
-		topic: dynamic.modules.module_dynamic.topic?.name || undefined,
-		additional: buildAdditionalContent(dynamic),
-		// 内部转发不展示互动数(与原行为一致,版式上 stats 块自动收起)。
-		stats: isForward
-			? undefined
-			: {
-					forward: fmt.num(stat.forward.count),
-					comment: fmt.num(stat.comment.count),
-					like: fmt.num(stat.like.count),
-				},
-	};
-	const upName = author.name;
-
-	// 充电专属且未充电:接口把 module_dynamic 整体清空,不管外层 type 是什么,
-	// 落进下面任何一个分支都只会渲染出空白正文。在类型分发之前短路,渲染占位
-	// 提示而非空白——递归到内部转发(orig)时同样生效,无需额外处理。
-	if (isChargeOnlyLocked(dynamic)) {
-		node.text = buildChargeOnlyText(author);
-		return node;
-	}
-
-	// 给节点贴类型标签:外层接到发布时间后,内部转发接到作者名后。
-	const label = (text: string) => {
-		if (isForward) node.headerLabel = text;
-		else node.pubTime += ` · ${text}`;
-	};
-
-	// 「我暂时无法渲染」那一类:正文只有一句提示。
-	const notice = (v: VNode) => {
-		node.text = v;
-	};
-
-	switch (dynamic.type) {
-		case DYNAMIC_TYPE_WORD:
-		case DYNAMIC_TYPE_DRAW: {
-			node.text = buildBasicText(dynamic, false);
-			node.images = opusImages(dynamic);
-			return node;
-		}
-
-		case DYNAMIC_TYPE_FORWARD: {
-			// 转发本身不带图(接口给的 major 是空的),照样取一遍,真有也不丢。
-			node.images = opusImages(dynamic);
-			if (!dynamic.orig) {
-				// 没有转发框可装这句说明,它跟着转发语走。
-				node.text = (
-					<>
-						{buildBasicText(dynamic, false)}
-						<p>{upName}转发了一条动态，但原动态已不可见</p>
-					</>
-				);
-				return node;
-			}
-			node.text = buildBasicText(dynamic, false);
-			node.forward = await buildDynamicNode(dynamic.orig, true, fmt);
-			return node;
-		}
-
-		case DYNAMIC_TYPE_AV: {
-			const archive = dynamic.modules.module_dynamic?.major?.archive;
-			node.text = buildBasicText(dynamic, false);
-			node.video = archive ? videoOf(archive) : null;
-			if (archive?.badge.text === "投稿视频") label("投稿了视频");
-			return node;
-		}
-
-		case DYNAMIC_TYPE_ARTICLE: {
-			node.text = buildBasicText(dynamic, true);
-			node.images = opusImages(dynamic);
-			label("投稿了专栏");
-			return node;
-		}
-
-		case DYNAMIC_TYPE_LIVE:
-			notice(<p>{upName}发起了直播预约，我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_MEDIALIST:
-			notice(<p>{upName}分享了收藏夹，我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_PGC:
-			notice(<p>{upName}发布了剧集（番剧、电影、纪录片），我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_MUSIC:
-			notice(<p>{upName}发行了新歌，我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_COMMON_SQUARE:
-			notice(<p>{upName}发布了装扮｜剧集｜点评｜普通分享，我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_COURSES_SEASON:
-			notice(<p>{upName}发布了新课程，我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_UGC_SEASON:
-			notice(<p>{upName}更新了合集，我暂时无法渲染，请自行查看</p>);
-			break;
-		case DYNAMIC_TYPE_NONE:
-			notice(<p>{upName}发布了一条无效动态</p>);
-			break;
-		case DYNAMIC_TYPE_LIVE_RCMD:
-			// 顶层的开播动态动态引擎按类型先跳过了(ADR-0019 决策 66),撞到这里的只剩卡片页的
-			// 真实预览,照旧抛。转发里的那条跳不掉:抛了整张转发卡都出不来,当一句提示画。
-			if (!isForward) throw new Error("直播开播动态，不做处理");
-			notice(<p>{upName}发布了一条开播动态，我暂时无法渲染，请自行查看</p>);
-			break;
-		default:
-			notice(<p>{upName}发布了一条我无法识别的动态，请自行查看</p>);
-	}
-	// 「无法渲染」类动态没有可拆的附加内容,清掉以免空块占位。
-	node.additional = null;
-	return node;
-}
-
-// ── 充电专属占位 ──────────────────────────────────────────────────────────────
-
-/**
- * 是否「充电专属且当前不可见」:`basic.is_only_fans` 为真,且 module_dynamic
- * 被接口整体清空(desc/major/topic/additional 全缺席)。已充电用户拉到的同一条
- * 动态 `is_only_fans` 也是 true,但内容齐全,不会命中——按内容有无判定,不按
- * type,避免漏判某个具体的 DYNAMIC_TYPE_* 变体。
- */
-function isChargeOnlyLocked(dynamic: Dynamic): boolean {
-	if (!dynamic.basic?.is_only_fans) return false;
-	const mod = dynamic.modules.module_dynamic;
-	return !mod?.desc && !mod?.major && !mod?.topic && !mod?.additional;
-}
-
-/** 充电专属占位正文:优先用接口带的徽标图 / 文案,缺席时用固定文案兜底。 */
-function buildChargeOnlyText(author: Dynamic["modules"]["module_author"]) {
-	const badge = author.icon_badge;
-	return (
-		<div class="flex flex-col items-center justify-center gap-[8px] py-[20px] text-center">
-			{badge?.icon ? <img class="w-[28px] h-[28px]" src={badge.icon} alt="" /> : null}
-			<div class="text-[14px] font-bold [color:var(--bn-accent)]" style="--bn-accent: #FB7299;">
-				{badge?.text || "充电专属内容"}
-			</div>
-			<div class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
-				为 {author.name} 充电即可查看完整内容
-			</div>
-		</div>
-	);
-}
-
-// ── 私有辅助函数 ──────────────────────────────────────────────────────────────
-
-/** desc 与摘要两件合成一段时,夹在中间的那个换行。 */
-const JOIN_NEWLINE = { type: "RICH_TEXT_NODE_TYPE_TEXT", orig_text: "\n", text: "\n" };
-
-/**
- * 正文文字:desc 富文本 + opus 摘要富文本(专栏带标题)。
- *
- * **两件合成一段**(换行连接)、一个 `body` 根,标题(`opus.title`,只跟摘要走)画在这段上方 —— `Post.text`
- * 只有一段、标题在 `Post.title` / `Post.article.title`,从前两件各画一个根是形状装不下的(ADR-0021 决策 22 的
- * 2026-10-05 🔗)。没有字、也没有标题就不画(`Post.text` 空串没有「一个空的 body 根」可对应)。
- */
-function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
-	const mod = dynamic.modules.module_dynamic;
-	const descNodes = mod?.desc?.rich_text_nodes;
-	const summaryNodes = mod?.major?.opus?.summary?.rich_text_nodes;
-	if (!descNodes && !summaryNodes) return null;
-	const title = summaryNodes ? mod?.major?.opus?.title : undefined;
-	const nodes: RichTextNode = [
-		...(descNodes ?? []),
-		...(descNodes?.length && summaryNodes?.length ? [JOIN_NEWLINE] : []),
-		...(summaryNodes ?? []),
-	];
-	if (nodes.length === 0 && !title) return null;
-	return parseRichText(nodes, title, isArticle);
-}
-
-/**
  * **纯文本正文** → `text` 块的那一份(ADR-0019 决策 68,给拓展作品用)。保留换行;标签原样
  * 当文字(转义)。
  *
- * 走的是 B 站富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):切成富文本节点交给
+ * 走的是 `Post` 富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):切成富文本片段交给
  * {@link renderRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
  *
- * `topics` 是来源报的话题名(决策 55 的 09-24 🔗):正文里的 `#名字#` / `#名字` 切成 B 站富文本
- * **同一种话题节点**,画出来是同一种 span。只照这份名单找 —— 不在名单里的 `#`(「C#」「#1」)
+ * `topics` 是来源报的话题名(决策 55 的 09-24 🔗):正文里的 `#名字#` / `#名字` 切成富文本
+ * **同一种话题片段**,画出来是同一种 span。只照这份名单找 —— 不在名单里的 `#`(「C#」「#1」)
  * 一律当文字,BN 不按 `#` 自己猜。
  *
  * 一个字都没有(空串 / 只有空白)回 null,正文块收起。
@@ -417,36 +202,6 @@ function plainTextSegments(text: string, topics: readonly string[]): RichText {
 /** 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。 */
 const MAX_GRID_PICS = 9;
 
-type OpusPic = { height: number; url: string; width: number; live_url?: string };
-
-/**
- * B 站图文 / 专栏的图 → 图廊吃的中立列表(决策 68)。没有图给空数组,`pics` 块自己收起。
- */
-function opusImages(dynamic: Dynamic): GalleryImage[] {
-	const pics = dynamic.modules.module_dynamic?.major?.opus?.pics ?? [];
-	return pics.map((p) => ({
-		url: p.url,
-		width: p.width,
-		height: p.height,
-		animated: isAnimatedOpusPic(p),
-	}));
-}
-
-/**
- * B 站的这张图会不会动。
- *
- * 两条判据取并集:`live_url` 非空(B 站给动图带的播放地址)**或** URL 后缀是 `.gif`。
- * 只认一条的话,万一它在某类动态里不成立就是整片漏标;两条都不满足才不标 —— 宁可漏
- * 也不误标,把静图标成动图更让人费解。
- */
-function isAnimatedOpusPic(p: OpusPic): boolean {
-	if (p.live_url) return true;
-	// 真实 URL 常带处理后缀和 query(`….gif@1280w_80q_1s.webp?from=dyn`),直接看结尾
-	// 会把 GIF 认成 webp 而漏标 —— 先把这两截削掉。
-	const path = p.url.split("?")[0].split("@")[0];
-	return path.toLowerCase().endsWith(".gif");
-}
-
 /** 高是不是超过宽的 `ratio` 倍。宽高缺一样就不算(不知道就当普通比例)。 */
 function tallerThan(p: GalleryImage, ratio: number): boolean {
 	return p.width !== undefined && p.height !== undefined && p.height > p.width * ratio;
@@ -468,7 +223,7 @@ function picBadgeText(p: GalleryImage, isLong: boolean): string | null {
  * 最多铺 9 格,其余折进最后一格的 `+N`。空列表回 null(块收起 —— 画一个空的图廊壳不如
  * 整块收起)。
  *
- * B 站与拓展共用这一份(决策 68):B 站先经 `opusImages` 映射成同一种列表再调它。
+ * `Post` 与拓展共用这一份(决策 68):`nodeFromPost` 把 `PostImage` 映射成同一种列表再调它。
  */
 export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 	if (images.length === 0) return null;
@@ -562,215 +317,4 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 			})}
 		</div>
 	);
-}
-
-/**
- * 附加内容(预约 / 商品 / 通用卡 / 关联视频)。返回内层 VNode(无外边距 —— 间距由
- * additional 版式块的 marginTop 控制),无附加内容时返回 null(块自动收起)。
- *
- * **不画小图标**(ADR-0021 决策 22 的 2026-10-05 🔗):预约卡抽奖行前的图标,`Attachment.card` 的
- * `lines[].icon` 只收图库引用、B 站的要到 3a 才存进图库;预约按钮上的铃铛与商品卡标题前的购物袋,
- * `Attachment` 的形状里压根没有位置(`button` 只有 `text` / `enabled`,`goods.eyebrow` 是纯文字)。
- * 外面那层 `flex items-center gap-1` 的壳先留着 —— 去图标之外的字节不动,版式上的收拾留给 ㉔。
- *
- * **只画 `Attachment` 的形状装得下的**(同一条 🔗,第 4 步):预约卡与通用卡的文字行是 `card.lines`,每行只有
- * `{ text, icon? }`,各占一行、同一个样式({@link cardLines});按钮只有文字与可用 / 不可用两态;通用卡 desc1 前的
- * 「游戏」小标签、商品卡的按钮与价格后的「起」、引用视频卡上方的 `head_text` 一行,形状里都没有位置,不画。
- * 去掉东西后只剩一个孩子的空壳(只装一个 span 的 flex、只装一张卡的外层 div)一并收掉;各卡之间不同的版式
- * (预约卡没有封面、通用卡有封面与头部说明)不是形状逼的,先不统一,留给 ㉔。
- */
-function buildAdditionalContent(dynamic: Dynamic): VNode | null {
-	const additional = dynamic.modules.module_dynamic.additional;
-	if (!additional) return null;
-	switch (additional.type) {
-		case ADDITIONAL_TYPE_RESERVE:
-			return buildReserveAdditional(additional.reserve);
-		case ADDITIONAL_TYPE_GOODS:
-			return buildGoodsAdditional(additional.goods);
-		case ADDITIONAL_TYPE_COMMON:
-			return buildCommonAdditional(additional.common);
-		case ADDITIONAL_TYPE_UGC:
-			// type 说是 UGC 但 ugc 缺席的情况真实存在(接口降级),没内容就当没附加块。
-			return additional.ugc ? buildUgcAdditional(additional.ugc) : null;
-		default:
-			return null;
-	}
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的预约数据类型不固定
-function buildReserveAdditional(reserve: any) {
-	const isEnded = reserve.button.uncheck.text === "已结束";
-	const lines: string[] = [
-		reserve.desc1.text,
-		reserve.desc2.text,
-		...(reserve.desc3 ? [reserve.desc3.text] : []),
-	];
-	return (
-		<div
-			data-bn="card"
-			class="flex justify-between items-center gap-[10px] bg-black/4 rounded-lg p-[10px]"
-		>
-			<div class="flex-1 min-w-0">
-				<div class="text-[14px] font-bold text-[#18191C] mb-1">{reserve.title}</div>
-				{cardLines(lines)}
-			</div>
-			<div
-				data-bn="button"
-				class={`shrink-0 px-3 py-[6px] rounded-[6px] text-[12px] font-bold leading-none ${
-					isEnded ? "bg-[#f5f5f5] text-[#999]" : "bg-[#FB7299] text-white"
-				}`}
-			>
-				{reserve.button.uncheck.text}
-			</div>
-		</div>
-	);
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的商品数据类型不固定
-function buildGoodsAdditional(goods: any) {
-	const isSingle = goods.items.length === 1;
-	return (
-		<div>
-			{cardEyebrow(goods.head_text)}
-			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
-				{isSingle ? (
-					<div class="flex gap-[10px] items-center">
-						<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
-							<img
-								data-bn="cover"
-								class="w-full h-full object-cover"
-								src={goods.items[0].cover}
-								alt=""
-							/>
-						</div>
-						<div class="flex-1 min-w-0">
-							<div class="text-[13px] text-[#18191C] line-clamp-2 mb-[6px]">
-								{goods.items[0].name}
-							</div>
-							{goods.items[0].price && (
-								<div class="text-[14px] text-[#FF6699] font-bold">{goods.items[0].price}</div>
-							)}
-						</div>
-					</div>
-				) : (
-					<div class="flex gap-[8px] flex-wrap">
-						{/* biome-ignore lint/suspicious/noExplicitAny: Bilibili goods API returns untyped items */}
-						{goods.items.map((item: any, i: number) => (
-							<div key={i} class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden bg-black/8">
-								<img data-bn="cover" class="w-full h-full object-cover" src={item.cover} alt="" />
-							</div>
-						))}
-					</div>
-				)}
-			</div>
-		</div>
-	);
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的通用卡片数据类型不固定
-function buildCommonAdditional(common: any) {
-	const lines: string[] = [common.desc1, common.desc2].filter(Boolean);
-	return (
-		<div>
-			{cardEyebrow(common.head_text)}
-			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
-				<div class="flex gap-[10px] items-center">
-					<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
-						<img data-bn="cover" class="w-full h-full object-cover" src={common.cover} alt="" />
-					</div>
-					<div class="flex-1 min-w-0">
-						<div class="text-[13px] font-bold text-[#18191C] mb-[4px]">{common.title}</div>
-						{cardLines(lines)}
-					</div>
-					{common.button?.jump_style?.text && (
-						<div
-							data-bn="button"
-							class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none"
-						>
-							{common.button.jump_style.text}
-						</div>
-					)}
-				</div>
-			</div>
-		</div>
-	);
-}
-
-/**
- * 关联视频卡 —— 图文/文字动态正文下方挂的那条投稿。
- *
- * 与 DYNAMIC_TYPE_AV 的主视频卡(拆成了五个原子块)是两套数据:那边 `stat.play` /
- * `stat.danmaku` 是两个各自配图标的计数(接口给的是「6.5万」这种成品字符串;链接解析
- * 拼出来的动态也照这个样子给),这边 `desc_second` 已经是接口拼好的一整句(「2654观看
- * 102弹幕」),官方页面也是当纯文本灰字渲染的,别再套图标重排。
- *
- * 对应 `Attachment.video`:封面、标题、时长、`subtitle`(= `desc_second`)。形状里没有标题上方那行
- * `head_text` 的位置,不画(ADR-0021 决策 22 的 2026-10-05 🔗)。
- */
-// biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的关联视频数据类型不固定
-function buildUgcAdditional(ugc: any) {
-	// 时长是接口排好的字(「00:29」):先解析成秒、再由 `formatClock` 排一次(「0:29」)。认不得就不画角标。
-	const duration = clockText(ugc.duration);
-	return (
-		<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
-			<div class="flex gap-[10px] items-center">
-				<div class="relative w-[140px] h-[80px] shrink-0 rounded-md overflow-hidden bg-black/8">
-					<img data-bn="cover" class="w-full h-full object-cover block" src={ugc.cover} alt="" />
-					{/*
-					 * 角标衬一层深色底,不是只给文字加 text-shadow —— 封面右下角是什么颜色
-					 * 完全由 UP 决定,遇上亮底(放射光、白背景)白字加弱阴影就糊没了。
-					 * 主视频卡靠整张压暗 bg-black/20 兜住,这里封面小、压暗会让整卡发灰,
-					 * 改成只在角标下垫一块。
-					 */}
-					{duration && (
-						<span class="absolute bottom-[4px] right-[4px] px-[4px] py-[1px] rounded-[3px] bg-black/60 text-white text-[11px] font-bold leading-[1.4]">
-							{duration}
-						</span>
-					)}
-				</div>
-				<div class="flex-1 min-w-0">
-					<div class="text-[13px] font-bold text-[#18191C] line-clamp-2 mb-[6px]">{ugc.title}</div>
-					{ugc.desc_second && <div class="text-[12px] text-[#999] truncate">{ugc.desc_second}</div>}
-				</div>
-			</div>
-		</div>
-	);
-}
-
-/**
- * 投稿视频那张卡的数据(决策 8 的 2026-09-18 🔗)。从前这里画的是一整张卡,现在只取数 ——
- * 卡由 `blocks/dynamic.tsx` 的五个原子块各画一段、皮肤用网格与 CSS 拼回去。
- */
-function videoOf(archive: {
-	cover: string;
-	duration_text: string;
-	title: string;
-	desc: string;
-	stat: { play: number | string; danmaku: number | string };
-}): DynamicVideo {
-	// 播放 / 弹幕数是数字或「1.8万」这种成品字,时长是「16:07」这种成品字:先解析成数字,再由 internal
-	// 统一排版(ADR-0021 决策 24)。认不得的那一格不画 —— 播放 / 弹幕缺了就不带这个键(块会连图标一起收起),
-	// 时长缺了是空串(角标收起)。
-	const views = countText(archive.stat.play);
-	const danmaku = countText(archive.stat.danmaku);
-	return {
-		cover: archive.cover,
-		duration: clockText(archive.duration_text) ?? "",
-		title: archive.title,
-		desc: archive.desc,
-		...(views === undefined ? {} : { views }),
-		...(danmaku === undefined ? {} : { danmaku }),
-	};
-}
-
-/** B 站排好的计数(数字或「1.8万」)→ 数字 → 统一排版;认不得回 undefined。 */
-function countText(raw: unknown): string | undefined {
-	const n = parseBiliCount(raw);
-	return n === undefined ? undefined : formatCount(n);
-}
-
-/** B 站排好的时长(「16:07」)→ 秒 → 统一排版;认不得回 undefined。 */
-function clockText(raw: unknown): string | undefined {
-	const seconds = parseBiliClock(raw);
-	return seconds === undefined ? undefined : formatClock(seconds);
 }

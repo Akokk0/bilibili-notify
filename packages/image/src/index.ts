@@ -106,10 +106,4 @@ export type {
 	RoastSoloCardProps,
 } from "./templates/roast-card";
 export type { SCCardProps } from "./templates/sc-card";
-export type {
-	CardColorOptions,
-	CardSkinChoice,
-	Dynamic,
-	LiveData,
-	RichTextNode,
-} from "./types";
+export type { CardColorOptions, CardSkinChoice, LiveData } from "./types";
