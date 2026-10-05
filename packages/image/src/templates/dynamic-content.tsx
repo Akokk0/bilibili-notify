@@ -31,7 +31,6 @@
  */
 
 import type { VNode } from "vue";
-import { SVG_BELL, SVG_GOODS, SVG_LOTTERY } from "../icons";
 import { parseRichText } from "../rich-text";
 import type { Dynamic, RichTextNode } from "../types";
 
@@ -558,6 +557,11 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 /**
  * 附加内容(预约 / 商品 / 通用卡 / 关联视频)。返回内层 VNode(无外边距 —— 间距由
  * additional 版式块的 marginTop 控制),无附加内容时返回 null(块自动收起)。
+ *
+ * **不画小图标**(ADR-0021 决策 22 的 2026-10-05 🔗):预约卡抽奖行前的图标,`Attachment.card` 的
+ * `lines[].icon` 只收图库引用、B 站的要到 3a 才存进图库;预约按钮上的铃铛与商品卡标题前的购物袋,
+ * `Attachment` 的形状里压根没有位置(`button` 只有 `text` / `enabled`,`goods.eyebrow` 是纯文字)。
+ * 外面那层 `flex items-center gap-1` 的壳先留着 —— 去图标之外的字节不动,版式上的收拾留给 ㉔。
  */
 function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 	const additional = dynamic.modules.module_dynamic.additional;
@@ -593,7 +597,6 @@ function buildReserveAdditional(reserve: any) {
 				</div>
 				{reserve.desc3 && (
 					<div class="flex items-center gap-1 text-[12px] text-[#FF6699] mt-1">
-						{SVG_LOTTERY}
 						<span>{reserve.desc3.text}</span>
 					</div>
 				)}
@@ -604,7 +607,6 @@ function buildReserveAdditional(reserve: any) {
 					isEnded ? "bg-[#f5f5f5] text-[#999]" : "bg-[#FB7299] text-white"
 				}`}
 			>
-				{!isEnded && SVG_BELL}
 				<span>{reserve.button.uncheck.text}</span>
 			</div>
 		</div>
@@ -616,10 +618,7 @@ function buildGoodsAdditional(goods: any) {
 	const isSingle = goods.items.length === 1;
 	return (
 		<div>
-			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">
-				{SVG_GOODS}
-				{goods.head_text}
-			</div>
+			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{goods.head_text}</div>
 			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				{isSingle ? (
 					<div class="flex gap-[10px] items-center">

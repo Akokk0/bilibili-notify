@@ -6,10 +6,13 @@
  * 这两个根 div 是卡片皮肤 `dynamic.content` 的 `body` 挂点(ADR-0014 决策 9)所在:
  * content 块里的 `{node.body}` 是 VNode 插槽,**不给它包一层壳**(包了就往输出里塞一个
  * 今天没有的元素),挂点因此下沉到正文自己的根元素上。普通正文与专栏各有一个根,两个都挂。
+ *
+ * **不画小图标与表情图**(ADR-0021 决策 22 的 2026-10-05 🔗):BV / AV 号与抽奖链接前的小图标、
+ * 表情的图,`Post` 里都只收图库引用(`RichText` 的 `link.icon` / `emoji.image`),B 站的要到 3a 才存进
+ * 图库。所以到那之前,链接只画文字(颜色照旧),表情当文字画它的 `text`(「[doge]」)。
  */
 
 import { escapeHtml } from "./html-escape";
-import { SVG_LOTTERY_INLINE, SVG_VIDEO_INLINE } from "./icons";
 import type { RichTextNode } from "./types";
 
 const TYPE_AT = "RICH_TEXT_NODE_TYPE_AT";
@@ -25,6 +28,20 @@ const TYPE_VOTE = "RICH_TEXT_NODE_TYPE_VOTE";
 const TYPE_OGV_SEASON = "RICH_TEXT_NODE_TYPE_OGV_SEASON";
 const TYPE_OGV_EP = "RICH_TEXT_NODE_TYPE_OGV_EP";
 
+/** 画成「B 站蓝的链接文字」的节点类型。BV / AV 号与抽奖前面本来有个小图标,现在不画(见文件头)。 */
+const LINK_TYPES: ReadonlySet<string> = new Set([
+	TYPE_BV,
+	TYPE_AV,
+	TYPE_LOTTERY,
+	TYPE_WEB,
+	TYPE_CV,
+	TYPE_TAOBAO,
+	TYPE_GOODS,
+	TYPE_VOTE,
+	TYPE_OGV_SEASON,
+	TYPE_OGV_EP,
+]);
+
 export function parseRichText(rt: RichTextNode, title?: string, isArticle = false) {
 	if (isArticle) {
 		return parseRichTextArticle(rt, title);
@@ -35,11 +52,8 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 	type Seg =
 		| { kind: "text"; text: string }
 		| { kind: "break" }
-		| { kind: "emoji"; src: string }
 		| { kind: "at"; text: string }
 		| { kind: "topic"; text: string }
-		| { kind: "video"; text: string }
-		| { kind: "lottery"; text: string }
 		| { kind: "link"; text: string };
 
 	const segs: Seg[] = [];
@@ -47,29 +61,16 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 	let truncated = false;
 
 	outer: for (const node of rt) {
-		if (node.emoji) {
-			segs.push({ kind: "emoji", src: node.emoji.icon_url });
-			continue;
-		}
-
-		const kind: Seg["kind"] =
-			node.type === TYPE_AT
+		// 表情当文字画它的 `text`(「[doge]」)。图要到 3a 才有图库引用可给(见文件头)。
+		const kind: Seg["kind"] = node.emoji
+			? "text"
+			: node.type === TYPE_AT
 				? "at"
 				: node.type === TYPE_TOPIC
 					? "topic"
-					: node.type === TYPE_BV || node.type === TYPE_AV
-						? "video"
-						: node.type === TYPE_LOTTERY
-							? "lottery"
-							: node.type === TYPE_WEB ||
-									node.type === TYPE_CV ||
-									node.type === TYPE_TAOBAO ||
-									node.type === TYPE_GOODS ||
-									node.type === TYPE_VOTE ||
-									node.type === TYPE_OGV_SEASON ||
-									node.type === TYPE_OGV_EP
-								? "link"
-								: "text";
+					: LINK_TYPES.has(node.type)
+						? "link"
+						: "text";
 
 		const parts = node.text.split("\n");
 		for (let i = 0; i < parts.length; i++) {
@@ -90,8 +91,6 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 		<div data-bn="body" class="text-[16px] text-[#18191C] leading-[1.6] break-words">
 			{title && <h1 class="text-[18px] font-bold mb-2">{title}</h1>}
 			{segs.map((seg, i) => {
-				if (seg.kind === "emoji")
-					return <img key={i} class="inline w-[17px] h-[17px] align-middle" src={seg.src} alt="" />;
 				if (seg.kind === "break") return <br key={i} />;
 				if (seg.kind === "at")
 					return (
@@ -102,20 +101,6 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 				if (seg.kind === "topic")
 					return (
 						<span key={i} class="text-[#FF6699]">
-							{seg.text}
-						</span>
-					);
-				if (seg.kind === "video")
-					return (
-						<span key={i} class="text-[#00AEEC]">
-							{SVG_VIDEO_INLINE}
-							{seg.text}
-						</span>
-					);
-				if (seg.kind === "lottery")
-					return (
-						<span key={i} class="text-[#00AEEC]">
-							{SVG_LOTTERY_INLINE}
 							{seg.text}
 						</span>
 					);
@@ -142,9 +127,7 @@ function parseRichTextArticle(rt: RichTextNode, title?: string) {
 	const MAX_LINES = 5;
 
 	const rawHtml = rt.reduce((acc, node) => {
-		if (node.emoji) {
-			return `${acc}<img style="width:17px;height:17px;display:inline;vertical-align:middle" src="${escapeHtml(node.emoji.icon_url)}"/>`;
-		}
+		// 表情同样当文字:`node.text` 转义后拼进去,表情图的地址一概不进 HTML。
 		return acc + escapeHtml(node.text);
 	}, "");
 

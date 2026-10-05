@@ -31,6 +31,38 @@ const B_SITE_AVATAR_DROPPED = {
 		"ADR-0021 决策 22 的 2026-10-05 🔗(㉑ 开片拷问):Creator.avatar 只收图库引用,B 站 3a 才交引用,到那时不画头像",
 } as const;
 
+/**
+ * ㉑c 第 2 步(2026-10-05):B 站作品卡不画 `Post` 装不下的小图标与表情图。分两组,每组各带自己的依据,
+ * 每个样例的 `change` 自己写(五个样例变的东西各不相同)。
+ *
+ * **第一组 · `master-approved`**:到 3a 才会以图库图回来的 —— 正文里 BV / AV 号与抽奖链接前的小图标
+ * (`RichText` 的 `link.icon`)、预约卡抽奖行前的图标(`Attachment.card` 的 `lines[].icon`)、表情图(`emoji.image`)。
+ * 它们在中立形状里只收图库引用,B 站的要到 3a 才存进图库。三类预批都不贴切:`library-image-residue` 说的是
+ * 「内联 SVG 换成图库图之后的残差」,而这里还没换、只是先不画 —— 换回来那一步才会有残差。表情不是装饰,是正文的
+ * 一部分,先按定案「没图时当文字显示」画它的 `text`。
+ *
+ * **第二组 · `bili-decoration-removed`**:形状里压根没有位置、也不会回来的 —— 预约按钮上的铃铛
+ * (`button` 只有 `text` / `enabled`)、商品卡标题前的购物袋(`goods.eyebrow` 是纯文字)。两个都是 B 站纯装饰。
+ * 预约按钮那个铃铛是条件渲染(`!isEnded && …`),不画之后已结束的预约卡少一个 Vue 的 `<!---->` 占位注释。
+ *
+ * 两组的字节变化都只有「图标 / 表情那几样」本身,外加只有它们在用的 UnoCSS 工具类(表情 `<img>` 带的
+ * `.inline` / `.w-[17px]` / `.h-[17px]` / `.align-middle`)。外面那层 `flex items-center gap-1` 的壳先留着,
+ * 不动 —— 去图标之外的字节不碰,版式上的收拾留给 ㉔。依据同第 1 步:ADR-0021 决策 22 的 2026-10-05 🔗
+ * 「B 站卡的字节,形状逼着变的就变」。
+ */
+const B_SITE_ICONS_PENDING_LIBRARY = {
+	category: "master-approved",
+	approvedOn: "2026-10-05",
+	basis:
+		"ADR-0021 决策 22 的 2026-10-05 🔗(㉑ 开片拷问):link.icon / lines[].icon / emoji.image 只收图库引用,B 站 3a 才交引用,到那时不画图标、表情当文字",
+} as const;
+
+const B_SITE_DECORATION_NO_SLOT = {
+	category: "bili-decoration-removed",
+	basis:
+		"data-model「出图字节门」第三条(B 站纯装饰去掉)+ ADR-0021 决策 22 的 2026-10-05 🔗:Attachment 的 button / goods.eyebrow 里没有这个图标的位置",
+} as const;
+
 export const APPROVED_CARD_DIFFS: CardDiffList = {
 	baseline: {
 		"dynamic-article": "5dc8efb7725183cd",
@@ -67,5 +99,39 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "dynamic-unrenderable", ...B_SITE_AVATAR_DROPPED, hash: "c08e2e08fe2fe9c9" },
 		{ sample: "dynamic-with-additional", ...B_SITE_AVATAR_DROPPED, hash: "cd1545569872a985" },
 		{ sample: "dynamic-word", ...B_SITE_AVATAR_DROPPED, hash: "e07bf2a294fde0ea" },
+		// ㉑c 第 2 步:小图标与表情图。
+		{
+			sample: "dynamic-word",
+			...B_SITE_ICONS_PENDING_LIBRARY,
+			change:
+				"BV 号链接前的视频图标、抽奖链接前的图标不画(链接文字与颜色照旧);表情「[doge]」由图变成文字;表情 <img> 独占的四条工具类随之消失",
+			hash: "172b1d322fd9c83a",
+		},
+		{
+			sample: "dynamic-with-additional",
+			...B_SITE_ICONS_PENDING_LIBRARY,
+			change:
+				"预约卡抽奖行前的图标不画(文字与粉色照旧);预约按钮上的铃铛不画(铃铛属第二组 bili-decoration-removed:按钮形状里没有它的位置)",
+			hash: "e650729e78006930",
+		},
+		{
+			sample: "dynamic-draw",
+			...B_SITE_DECORATION_NO_SLOT,
+			change: "商品卡标题(head_text)前的购物袋图标不画,文字照旧",
+			hash: "c7b600f4c294bc75",
+		},
+		{
+			sample: "dynamic-draw-single",
+			...B_SITE_DECORATION_NO_SLOT,
+			change: "商品卡标题(head_text)前的购物袋图标不画,文字照旧",
+			hash: "0c35fcce0c92178e",
+		},
+		{
+			sample: "dynamic-forward",
+			...B_SITE_DECORATION_NO_SLOT,
+			change:
+				"已结束的预约卡:预约按钮上「未结束才画」的铃铛不画了,少一个 Vue 的 <!----> 占位注释(7 字节)",
+			hash: "d61e5eb90eddcfa6",
+		},
 	],
 };

@@ -1,7 +1,7 @@
 /**
  * 回归守护 — P0-B:parseRichText 的专栏(isArticle)路径必须全文 HTML 转义。
  *
- * 关键不变量:专栏 node.text / title / emoji.icon_url 均来自 B 站 API(攻击者
+ * 关键不变量:专栏 node.text / title(以及表情的 text)均来自 B 站 API(攻击者
  * 可控)。它们最终进入 `<div innerHTML={fullHtml}/>`,**必须**经 escapeHtml
  * 转义 —— 注入的 <script>/<iframe>/onerror/属性 breakout/@import 一律变纯文本,
  * 不得在 puppeteer 截图页内被解析执行(否则旁路 image SSRF 白名单)。
@@ -40,15 +40,17 @@ describe("parseRichText article — HTML 转义 (P0-B)", () => {
 		expect(html).toContain("&lt;img");
 	});
 
-	it("emoji.icon_url 含引号 breakout → 不闭合 src 属性", () => {
+	it("emoji.icon_url 含引号 breakout → 表情图地址根本不进 HTML", () => {
+		// 表情现在当文字画(`text`),`icon_url` 不再拼进 innerHTML:攻击面整个没了。
+		// 这条守的是「以后有人把表情图改回拼 <img>」—— 那时地址必须转义,而不是裸拼。
 		const evil = '"><script>alert(1)</script><img src="';
 		const html = articleInnerHTML([
-			node({ emoji: { icon_url: evil, size: 1, text: ":x:", type: 1 } }),
+			node({ text: ":x:", emoji: { icon_url: evil, size: 1, text: ":x:", type: 1 } }),
 		]);
-		// 我方受控的 <img ... src="..."/> 骨架仍在,但注入的 "> 被转义
-		expect(html).not.toContain('"><script>');
-		expect(html).toContain("&quot;");
-		expect(html).toContain("&lt;script&gt;");
+		expect(html).toBe(":x:");
+		expect(html).not.toContain("<img");
+		expect(html).not.toContain("<script>");
+		expect(html).not.toContain("alert(1)");
 	});
 
 	it("title 含 <script> → 转义", () => {
