@@ -63,6 +63,51 @@ const B_SITE_DECORATION_NO_SLOT = {
 		"data-model「出图字节门」第三条(B 站纯装饰去掉)+ ADR-0021 决策 22 的 2026-10-05 🔗:Attachment 的 button / goods.eyebrow 里没有这个图标的位置",
 } as const;
 
+/**
+ * ㉑c 第 4 步(2026-10-05):附加块先画成 `Attachment` 的形状装得下的样子,好让「换入口」那步十份快照一字不差。
+ * 主人定的原则:**不加字段,形状装不下的就不画**(ADR-0021 决策 22 的 2026-10-05 🔗「形状逼着变的就变」)。分三组。
+ *
+ * **第一组 · `master-approved`**:预约卡 / 商品卡 / 引用视频卡里形状装不下的版式 ——
+ * - 预约卡(→ `card`):`lines` 每行只有 `{ text, icon? }`。desc1 / desc2 / desc3 各占一行、同一个样式
+ *   (不再同行并排、抽奖行不再标粉),行与行之间留 2px、最后一行不留(与通用卡共用一个画法,所以行带 `truncate`);
+ *   按钮只剩文字与可用 / 不可用两态,去图标后留下的 `inline-flex` 空壳与 `<span>` 一并收掉。
+ * - 商品卡(→ `goods`):按钮「去看看」与价格后的「起」不画,价格那行不再套只装一个 span 的 flex。
+ * - 引用视频卡(→ `video`):标题上方 `head_text` 那一行不画,只装一张卡的外层 `<div>` 收掉。
+ * 三类预批都不贴切 —— 这些是形状装不下的**内容与版式**,不是纯装饰、不是叫法、也不是图库图的残差。
+ * 文字行成为一个 Vue 数组片段,所以行的两头多一对 `<!--[-->` `<!--]-->` 锚点(原来的 `<!---->` 占位随之没了)。
+ *
+ * **第二组 · `bili-decoration-removed`**:通用卡 desc1 前的「游戏」边框小标签 —— B 站的纯装饰,`lines` 里没有位置。
+ *
+ * **第三组 · `bili-decoration-removed`(连带效应,卡本身没变)**:UnoCSS 的生成器在进程里只建一个
+ * (`render.ts`),它的「属性层」会把**前面渲染过的卡**用到的 `--un-*` 变量一路带进后面的卡。「游戏」标签是整个
+ * 动态卡里唯一用边框颜色的地方,它不画之后 `--un-border-opacity` 不再生成,于是排在它**后面**渲染的 12 份
+ * 快照(动态卡自己 3 份、上舰 / 锐评 / 醒目留言 / 词云)的属性层各少了这一个变量(正好 25 字节),别的一个
+ * 字没动。出图不受影响 —— 这个变量没有任何元素在用。
+ *
+ * 四条共同的纪律:去掉东西之外的字节不碰;各卡之间不同的版式(预约卡没有封面与头部说明、通用卡有)
+ * 不是形状逼的,先不统一,留给 ㉔。
+ */
+const B_SITE_ATTACHMENT_SHAPE = {
+	category: "master-approved",
+	approvedOn: "2026-10-05",
+	basis:
+		"ADR-0021 决策 22 的 2026-10-05 🔗(形状逼着变的就变)+ data-model「作品」:card.lines 每行只有 { text, icon? }、button 只有 text / enabled、goods 与 video 没有按钮 / 后缀 / eyebrow",
+} as const;
+
+const B_SITE_GAME_TAG_DROPPED = {
+	category: "bili-decoration-removed",
+	basis:
+		"data-model「出图字节门」第三条(B 站纯装饰去掉)+ ADR-0021 决策 22 的 2026-10-05 🔗:card.lines 里没有标签的位置",
+} as const;
+
+const UNO_PROPERTIES_LEAK = {
+	category: "bili-decoration-removed",
+	change:
+		"卡本身没变:UnoCSS 属性层少了 --un-border-opacity(25 字节)—— 它原本是前面渲染的通用卡「游戏」标签的边框色漏进来的",
+	basis:
+		"通用卡「游戏」标签不画(见 dynamic-word 的记录)的连带效应:render.ts 的 UnoCSS 生成器进程内共用,属性层跨卡累积",
+} as const;
+
 export const APPROVED_CARD_DIFFS: CardDiffList = {
 	baseline: {
 		"dynamic-article": "5dc8efb7725183cd",
@@ -147,5 +192,51 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 				"ADR-0021 决策 22 的 2026-10-05 🔗:播放数与时长先解析成数字、再由核心统一排版;决策 24:计数全程是数字,只在出口由 formatCount / formatClock 排一次版",
 			hash: "cdced4d16d3f40de",
 		},
+		// ㉑c 第 4 步:附加块先画成 Attachment 的形状装得下的样子。
+		{
+			sample: "dynamic-with-additional",
+			...B_SITE_ATTACHMENT_SHAPE,
+			change:
+				"预约卡:desc1 / desc2 / desc3 各占一行、同一个样式(不再并排、抽奖行不标粉);按钮去掉空壳与 span,只剩文字",
+			hash: "d44fd5cdaa43ff18",
+		},
+		{
+			sample: "dynamic-forward",
+			...B_SITE_ATTACHMENT_SHAPE,
+			change:
+				"已结束的预约卡:desc1 / desc2 各占一行、同一个样式(不再并排);按钮去掉空壳与 span,只剩文字",
+			hash: "5a1baebc35713456",
+		},
+		{
+			sample: "dynamic-draw-single",
+			...B_SITE_ATTACHMENT_SHAPE,
+			change: "单件商品卡:按钮「去看看」与价格后的「起」不画,价格单独一行(不再套 flex 空壳)",
+			hash: "00df393c0a15ad8a",
+		},
+		{
+			sample: "dynamic-custom-layout",
+			...B_SITE_ATTACHMENT_SHAPE,
+			change: "引用视频卡:标题上方 head_text(「相关视频」)那一行不画,只装一张卡的外层 div 收掉",
+			hash: "28fe2802100726cc",
+		},
+		{
+			sample: "dynamic-word",
+			...B_SITE_GAME_TAG_DROPPED,
+			change:
+				"通用卡:desc1 前的「游戏」边框小标签不画;desc1 / desc2 是共用的两行(desc1 的 flex 空壳与 span 收掉);属性层少了 --un-border-opacity",
+			hash: "3fae5e5d38406942",
+		},
+		{ sample: "dynamic-article", ...UNO_PROPERTIES_LEAK, hash: "1c918368e7ee98bd" },
+		{ sample: "dynamic-charge-only", ...UNO_PROPERTIES_LEAK, hash: "e3b50821fc1adb03" },
+		{ sample: "dynamic-unrenderable", ...UNO_PROPERTIES_LEAK, hash: "21473146780b5013" },
+		{ sample: "guard-badge-left", ...UNO_PROPERTIES_LEAK, hash: "9816805f375d3371" },
+		{ sample: "guard-captain", ...UNO_PROPERTIES_LEAK, hash: "8f0028fecb0f32ef" },
+		{ sample: "guard-governor", ...UNO_PROPERTIES_LEAK, hash: "8cda21ebc2a4e087" },
+		{ sample: "roast-board", ...UNO_PROPERTIES_LEAK, hash: "1e72ef89b9add0d4" },
+		{ sample: "roast-solo", ...UNO_PROPERTIES_LEAK, hash: "542501d21699af79" },
+		{ sample: "sc-custom-layout", ...UNO_PROPERTIES_LEAK, hash: "433969f4434c183b" },
+		{ sample: "sc-high", ...UNO_PROPERTIES_LEAK, hash: "89b9f61f61ea1fe4" },
+		{ sample: "sc-low", ...UNO_PROPERTIES_LEAK, hash: "4be34901324ca493" },
+		{ sample: "wordcloud", ...UNO_PROPERTIES_LEAK, hash: "79a6a5d97f96ee0a" },
 	],
 };

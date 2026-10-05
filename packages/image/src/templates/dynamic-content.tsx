@@ -313,26 +313,29 @@ function buildChargeOnlyText(author: Dynamic["modules"]["module_author"]) {
 
 // ── 私有辅助函数 ──────────────────────────────────────────────────────────────
 
+/** desc 与摘要两件合成一段时,夹在中间的那个换行。 */
+const JOIN_NEWLINE = { type: "RICH_TEXT_NODE_TYPE_TEXT", orig_text: "\n", text: "\n" };
+
 /**
- * 正文文字:desc 富文本 + opus 摘要富文本(专栏带标题)。两件都有时才包 Fragment,只有
- * 一件就直接给它 —— 少一对 `<!--[-->` 锚点。
+ * 正文文字:desc 富文本 + opus 摘要富文本(专栏带标题)。
+ *
+ * **两件合成一段**(换行连接)、一个 `body` 根,标题(`opus.title`,只跟摘要走)画在这段上方 —— `Post.text`
+ * 只有一段、标题在 `Post.title` / `Post.article.title`,从前两件各画一个根是形状装不下的(ADR-0021 决策 22 的
+ * 2026-10-05 🔗)。没有字、也没有标题就不画(`Post.text` 空串没有「一个空的 body 根」可对应)。
  */
 function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
 	const mod = dynamic.modules.module_dynamic;
-	const desc =
-		mod?.desc?.rich_text_nodes && parseRichText(mod.desc.rich_text_nodes, undefined, isArticle);
-	const summary =
-		mod?.major?.opus?.summary?.rich_text_nodes &&
-		parseRichText(mod.major.opus.summary.rich_text_nodes, mod.major.opus.title, isArticle);
-	if (desc && summary) {
-		return (
-			<>
-				{desc}
-				{summary}
-			</>
-		);
-	}
-	return desc || summary || null;
+	const descNodes = mod?.desc?.rich_text_nodes;
+	const summaryNodes = mod?.major?.opus?.summary?.rich_text_nodes;
+	if (!descNodes && !summaryNodes) return null;
+	const title = summaryNodes ? mod?.major?.opus?.title : undefined;
+	const nodes: RichTextNode = [
+		...(descNodes ?? []),
+		...(descNodes?.length && summaryNodes?.length ? [JOIN_NEWLINE] : []),
+		...(summaryNodes ?? []),
+	];
+	if (nodes.length === 0 && !title) return null;
+	return parseRichText(nodes, title, isArticle);
 }
 
 /**
@@ -565,6 +568,12 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
  * `lines[].icon` 只收图库引用、B 站的要到 3a 才存进图库;预约按钮上的铃铛与商品卡标题前的购物袋,
  * `Attachment` 的形状里压根没有位置(`button` 只有 `text` / `enabled`,`goods.eyebrow` 是纯文字)。
  * 外面那层 `flex items-center gap-1` 的壳先留着 —— 去图标之外的字节不动,版式上的收拾留给 ㉔。
+ *
+ * **只画 `Attachment` 的形状装得下的**(同一条 🔗,第 4 步):预约卡与通用卡的文字行是 `card.lines`,每行只有
+ * `{ text, icon? }`,各占一行、同一个样式({@link cardLines});按钮只有文字与可用 / 不可用两态;通用卡 desc1 前的
+ * 「游戏」小标签、商品卡的按钮与价格后的「起」、引用视频卡上方的 `head_text` 一行,形状里都没有位置,不画。
+ * 去掉东西后只剩一个孩子的空壳(只装一个 span 的 flex、只装一张卡的外层 div)一并收掉;各卡之间不同的版式
+ * (预约卡没有封面、通用卡有封面与头部说明)不是形状逼的,先不统一,留给 ㉔。
  */
 function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 	const additional = dynamic.modules.module_dynamic.additional;
@@ -584,9 +593,39 @@ function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 	}
 }
 
+/**
+ * `Attachment.card` 的文字行(预约卡与通用卡共用):每行同一个样式、各占一行,行与行之间留 2px、最后一行不留。
+ * 形状里 `lines` 每行只有 `{ text, icon? }`,没有同行并排、没有单行变色的位置。
+ */
+function cardLines(lines: readonly string[]) {
+	return lines.map((line, i) => (
+		<div
+			key={i}
+			class={`text-[12px] text-[#999] truncate${i < lines.length - 1 ? " mb-[2px]" : ""}`}
+		>
+			{line}
+		</div>
+	));
+}
+
+/**
+ * `Attachment.card` / `goods` 的 `eyebrow`:卡上方的一行说明(商品卡与通用卡共用)。没有字就不画 ——
+ * 形状里 `eyebrow?` 缺席与空串是同一回事,接口给了空串的 `head_text` 也不留一条空行。
+ */
+function cardEyebrow(text: string | undefined) {
+	return text ? (
+		<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{text}</div>
+	) : null;
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的预约数据类型不固定
 function buildReserveAdditional(reserve: any) {
 	const isEnded = reserve.button.uncheck.text === "已结束";
+	const lines: string[] = [
+		reserve.desc1.text,
+		reserve.desc2.text,
+		...(reserve.desc3 ? [reserve.desc3.text] : []),
+	];
 	return (
 		<div
 			data-bn="card"
@@ -594,23 +633,15 @@ function buildReserveAdditional(reserve: any) {
 		>
 			<div class="flex-1 min-w-0">
 				<div class="text-[14px] font-bold text-[#18191C] mb-1">{reserve.title}</div>
-				<div class="flex gap-2 text-[12px] text-[#999]">
-					<span>{reserve.desc1.text}</span>
-					<span>{reserve.desc2.text}</span>
-				</div>
-				{reserve.desc3 && (
-					<div class="flex items-center gap-1 text-[12px] text-[#FF6699] mt-1">
-						<span>{reserve.desc3.text}</span>
-					</div>
-				)}
+				{cardLines(lines)}
 			</div>
 			<div
 				data-bn="button"
-				class={`shrink-0 inline-flex items-center gap-1 px-3 py-[6px] rounded-[6px] text-[12px] font-bold leading-none ${
+				class={`shrink-0 px-3 py-[6px] rounded-[6px] text-[12px] font-bold leading-none ${
 					isEnded ? "bg-[#f5f5f5] text-[#999]" : "bg-[#FB7299] text-white"
 				}`}
 			>
-				<span>{reserve.button.uncheck.text}</span>
+				{reserve.button.uncheck.text}
 			</div>
 		</div>
 	);
@@ -621,7 +652,7 @@ function buildGoodsAdditional(goods: any) {
 	const isSingle = goods.items.length === 1;
 	return (
 		<div>
-			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{goods.head_text}</div>
+			{cardEyebrow(goods.head_text)}
 			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				{isSingle ? (
 					<div class="flex gap-[10px] items-center">
@@ -637,16 +668,9 @@ function buildGoodsAdditional(goods: any) {
 							<div class="text-[13px] text-[#18191C] line-clamp-2 mb-[6px]">
 								{goods.items[0].name}
 							</div>
-							<div class="flex items-baseline gap-[2px]">
-								<span class="text-[14px] text-[#FF6699] font-bold">{goods.items[0].price}</span>
-								<span class="text-[12px] text-[#999]">起</span>
-							</div>
-						</div>
-						<div
-							data-bn="button"
-							class="shrink-0 px-[14px] py-[6px] rounded-[6px] bg-[#FB7299] text-white text-[12px] font-bold leading-none"
-						>
-							{goods.items[0].jump_desc || "去看看"}
+							{goods.items[0].price && (
+								<div class="text-[14px] text-[#FF6699] font-bold">{goods.items[0].price}</div>
+							)}
 						</div>
 					</div>
 				) : (
@@ -666,11 +690,10 @@ function buildGoodsAdditional(goods: any) {
 
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的通用卡片数据类型不固定
 function buildCommonAdditional(common: any) {
-	const subTypeLabel: Record<string, string> = { game: "游戏" };
-	const label = subTypeLabel[common.sub_type] ?? common.sub_type;
+	const lines: string[] = [common.desc1, common.desc2].filter(Boolean);
 	return (
 		<div>
-			<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{common.head_text}</div>
+			{cardEyebrow(common.head_text)}
 			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				<div class="flex gap-[10px] items-center">
 					<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
@@ -678,17 +701,7 @@ function buildCommonAdditional(common: any) {
 					</div>
 					<div class="flex-1 min-w-0">
 						<div class="text-[13px] font-bold text-[#18191C] mb-[4px]">{common.title}</div>
-						{common.desc1 && (
-							<div class="flex items-center gap-[4px] mb-[2px]">
-								{label && (
-									<span class="text-[10px] text-[#FB7299] border border-[#FB7299] px-[3px] py-[1px] rounded-sm leading-none shrink-0">
-										{label}
-									</span>
-								)}
-								<span class="text-[12px] text-[#999] truncate">{common.desc1}</span>
-							</div>
-						)}
-						{common.desc2 && <div class="text-[12px] text-[#999] truncate">{common.desc2}</div>}
+						{cardLines(lines)}
 					</div>
 					{common.button?.jump_style?.text && (
 						<div
@@ -711,41 +724,34 @@ function buildCommonAdditional(common: any) {
  * `stat.danmaku` 是两个各自配图标的计数(接口给的是「6.5万」这种成品字符串;链接解析
  * 拼出来的动态也照这个样子给),这边 `desc_second` 已经是接口拼好的一整句(「2654观看
  * 102弹幕」),官方页面也是当纯文本灰字渲染的,别再套图标重排。
+ *
+ * 对应 `Attachment.video`:封面、标题、时长、`subtitle`(= `desc_second`)。形状里没有标题上方那行
+ * `head_text` 的位置,不画(ADR-0021 决策 22 的 2026-10-05 🔗)。
  */
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的关联视频数据类型不固定
 function buildUgcAdditional(ugc: any) {
 	// 时长是接口排好的字(「00:29」):先解析成秒、再由 `formatClock` 排一次(「0:29」)。认不得就不画角标。
 	const duration = clockText(ugc.duration);
 	return (
-		<div>
-			{/* head_text 在抓包里常为空串,空就整行不渲染,免得多出一条空白灰字。 */}
-			{ugc.head_text && (
-				<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{ugc.head_text}</div>
-			)}
-			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
-				<div class="flex gap-[10px] items-center">
-					<div class="relative w-[140px] h-[80px] shrink-0 rounded-md overflow-hidden bg-black/8">
-						<img data-bn="cover" class="w-full h-full object-cover block" src={ugc.cover} alt="" />
-						{/*
-						 * 角标衬一层深色底,不是只给文字加 text-shadow —— 封面右下角是什么颜色
-						 * 完全由 UP 决定,遇上亮底(放射光、白背景)白字加弱阴影就糊没了。
-						 * 主视频卡靠整张压暗 bg-black/20 兜住,这里封面小、压暗会让整卡发灰,
-						 * 改成只在角标下垫一块。
-						 */}
-						{duration && (
-							<span class="absolute bottom-[4px] right-[4px] px-[4px] py-[1px] rounded-[3px] bg-black/60 text-white text-[11px] font-bold leading-[1.4]">
-								{duration}
-							</span>
-						)}
-					</div>
-					<div class="flex-1 min-w-0">
-						<div class="text-[13px] font-bold text-[#18191C] line-clamp-2 mb-[6px]">
-							{ugc.title}
-						</div>
-						{ugc.desc_second && (
-							<div class="text-[12px] text-[#999] truncate">{ugc.desc_second}</div>
-						)}
-					</div>
+		<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
+			<div class="flex gap-[10px] items-center">
+				<div class="relative w-[140px] h-[80px] shrink-0 rounded-md overflow-hidden bg-black/8">
+					<img data-bn="cover" class="w-full h-full object-cover block" src={ugc.cover} alt="" />
+					{/*
+					 * 角标衬一层深色底,不是只给文字加 text-shadow —— 封面右下角是什么颜色
+					 * 完全由 UP 决定,遇上亮底(放射光、白背景)白字加弱阴影就糊没了。
+					 * 主视频卡靠整张压暗 bg-black/20 兜住,这里封面小、压暗会让整卡发灰,
+					 * 改成只在角标下垫一块。
+					 */}
+					{duration && (
+						<span class="absolute bottom-[4px] right-[4px] px-[4px] py-[1px] rounded-[3px] bg-black/60 text-white text-[11px] font-bold leading-[1.4]">
+							{duration}
+						</span>
+					)}
+				</div>
+				<div class="flex-1 min-w-0">
+					<div class="text-[13px] font-bold text-[#18191C] line-clamp-2 mb-[6px]">{ugc.title}</div>
+					{ugc.desc_second && <div class="text-[12px] text-[#999] truncate">{ugc.desc_second}</div>}
 				</div>
 			</div>
 		</div>

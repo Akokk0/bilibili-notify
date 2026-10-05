@@ -163,25 +163,26 @@ describe("附加块里的小图标 —— 不画,文字照旧", () => {
 	});
 
 	/** 验红:把 `buildReserveAdditional` 的抽奖行改回带 `SVG_LOTTERY`,这条红。 */
-	it("预约卡的抽奖行:只剩粉色的文字,没有前缀图标", async () => {
+	it("预约卡的抽奖行:只剩文字,没有前缀图标", async () => {
 		const html = await additionalHtml(RESERVE());
 		expect(html).not.toContain('aria-label="抽奖"');
+		// 抽奖行与别的行同一个样式(第 4 步:`card.lines` 每行只有 text / icon,不单独变色)。
 		expect(html).toContain("参与抽奖：限定手办");
-		expect(html).toContain("text-[#FF6699]");
+		expect(html).not.toContain("text-[#FF6699]");
 	});
 
 	/** 验红:把预约按钮改回 `{!isEnded && SVG_BELL}`,这条红。 */
 	it("预约按钮:可预约时不画铃铛,按钮文字与粉底照旧", async () => {
 		const html = await additionalHtml(RESERVE());
 		expect(html).not.toContain("<svg");
-		expect(html).toContain("<span>预约</span>");
+		expect(html).toContain(">预约</div>");
 		expect(html).toContain("bg-[#FB7299] text-white");
 	});
 
 	it("已结束的预约卡、不带抽奖行的预约卡:本来就没有图标,画法不变", async () => {
 		const html = await additionalHtml(RESERVE({ desc3: undefined }, true));
 		expect(html).not.toContain("<svg");
-		expect(html).toContain("<span>已结束</span>");
+		expect(html).toContain(">已结束</div>");
 		expect(html).toContain("bg-[#f5f5f5] text-[#999]");
 	});
 

@@ -96,13 +96,13 @@ describe("buildAdditionalContent — 关联视频(ADDITIONAL_TYPE_UGC)", () => {
 		expect(html).toContain("http://i1.hdslb.com/bfs/archive/d75b1c59.jpg");
 	});
 
-	it("head_text 非空时渲染出来,为空时不留空行", async () => {
+	it("head_text 不画(Attachment.video 没有标题上方那一行的位置),空与非空都一样", async () => {
 		const withHead = await additionalHtml(
 			makeDynamic({ type: "ADDITIONAL_TYPE_UGC", ugc: ugcPayload({ head_text: "up主的视频" }) }),
 		);
-		expect(withHead).toContain("up主的视频");
+		expect(withHead).not.toContain("up主的视频");
 
-		// 抓包里 head_text 常为空串,不能因此渲染出一条空的灰字行。
+		// 抓包里 head_text 常为空串,更不能渲染出一条空的灰字行。
 		const noHead = await additionalHtml(
 			makeDynamic({ type: "ADDITIONAL_TYPE_UGC", ugc: ugcPayload() }),
 		);
