@@ -20,7 +20,7 @@
 | 设置 | 设置的值只叫 `settings`（连接的 `settings`、`settingsSchema`、`settingsFields`）；`config` 只指存储：`config/` 目录、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG` |
 | 计数 | 全程是数字，只在出口（卡片、文案、面板）排一次版，见「数字、时间、不知道」 |
 | 开关 | `enabled`，不用 `enable` |
-| 布尔 | 带 `is` / `has` / `can` 前缀：`isLive`、`isAnimated`、`isPremium`、`isModerator`。例外：表示操作结果的 `ok` 保留；失败原因只用 `code` + `message`，见下「失败」 |
+| 布尔 | 带 `is` / `has` / `can` 前缀：`isLive`、`isAnimated`、`isPremium`。例外：表示操作结果的 `ok` 保留；失败原因只用 `code` + `message`，见下「失败」 |
 | 回退层 | `defaults` 只表示「按订阅覆盖时缺字段就回退到这里」；订阅覆盖不了的不放进去 |
 | 过滤 | `allow*` 与 `block*` 成对 |
 | 缩写 | `Ai…` / `Api…`，不用 `AI…` / `API…` |
@@ -361,14 +361,14 @@ interface SuperchatEvent {
 | --- | --- |
 | B 站体系 | `guard`，档 key 是 `captain` / `commander` / `governor`，rank 1 / 2 / 3。B 站接口的 `guard_level` 1 = 总督，这个反向换算只在 `bilibili/` |
 | 徽章 | 图库引用，来源声明档位时给（`tier.icon`） |
-| 档色 | `tier.color`，面板与出图共读。面板自己的档位色表（`guard-levels.ts`）删掉，B 站的色写进 `bilibili/` 的描述符 |
+| 档色 | `tier.color`，面板与出图共读，每档一个值（留卡片那一套：舰长 `#4ebcec`、提督 `#d8a0e6`、总督 `#f2a053`）。面板自己的档位色表（`guard-levels.ts`）删掉，B 站的色写进 `bilibili/` 的描述符；3a 之前档位表住 `packages/internal/src/bilibili-guard.ts`（㉓） |
 | 宣告语 | `tier.announcement`，由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`，没声明就不画；皮肤字段 `membership.announcement`，面板上叫「宣告语」 |
-| 文案配置 | `templates.membership[体系 id] = { enabled, default, tiers[key] }`。每档与 default 都是文案加图片，没单独配的档用 default；`custom` 体系按档名存；`enabled` = 用不用自定义文案，推不推由特性开关管 |
-| 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`；没有 rank 的体系只能开或关 |
-| SC 门槛 | `defaults.superchat.minAmount`，按人民币；别的币种先放行 |
-| SC 的档 | `SuperchatEvent.tier`：卡按 `rank` 取色，默认配色照今天六档，皮肤可以按档换色；有 `durationSec` 就显示留言时长（走中立的时长格式化） |
-| 金额 | 按币种用 `Intl.NumberFormat` 排版；人民币整数仍写「¥30」 |
-| 出图输入 | 只有一种会员卡。`viewer.name` / `viewer.avatar`、`isModerator: boolean`；不再有 `captainImgUrl`，改用 `tier.icon`；「大航海舰队」文案在 `bilibili/`。皮肤可以按 `rank` 换色；没有 rank 的体系走默认样式。 |
+| 文案配置 | `templates.membership[体系 id] = { enabled, default, tiers[key] }`。每档与 default 都是文案加图片（`{ template, imageUrl }`），没单独配的档用 default，图片没填用该档的徽章；`guard` 的 default 出厂值是「{viewer} 成为了 {name} 的{tier}！」；`custom` 体系按档名存；`enabled` = 用不用自定义文案，推不推由特性开关管 |
+| 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`，没配就是全推；逐订阅覆盖按体系合并；没有 rank 的体系只能开或关 |
+| SC 门槛 | `defaults.superchat.minAmount`，按人民币，没配就不设门槛；别的币种先放行 |
+| SC 的档 | `SuperchatEvent.tier`：卡按 `rank` 取色，默认配色照今天六档，皮肤可以按档换色；有 `durationSec` 就显示留言时长（走 `formatDuration`，写「1分」「30分」）。`rank` 从 1 起；超出默认六色用最后一色，没有档用第一色。皮肤自己定每档的色要加挂点，归 ㉔ |
+| 金额 | `formatAmount(amount, currency)`：按币种用 `Intl.NumberFormat` 排版，固定中文环境、不加千分位；人民币整数仍写「¥30」「¥2000」 |
+| 出图输入 | 只有一种会员卡。`viewer.name` / `viewer.avatar`；没有房管那一格（㉓ 删，见 ADR-0023 决策 3 的 🔗）；不再有 `captainImgUrl`，改用 `tier.icon`；「大航海舰队」文案在 `bilibili/`。皮肤可以按 `rank` 换色；没有 rank 的体系走默认样式。 |
 
 体系上不标「全平台 / 按主播」：不影响路由，先不加。
 

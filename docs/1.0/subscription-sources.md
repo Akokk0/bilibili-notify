@@ -418,7 +418,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 
 | 子目录 / 件 | 内容 |
 | --- | --- |
-| 原 `api` / `blive` / `dynamic` / `live` 四包 | 各成子目录；B 站接口响应类型（Dynamic、RichTextNode、LiveData）只住这里。请求客户端、cookie 罐与浏览器身份抽进 `packages/http`，不留在这里 |
+| 原 `api` / `blive` / `dynamic` / `live` 四包 | 各成子目录（`blive` 并进 `live` 那个子目录，ADR-0021 决策 1 的 🔗）；B 站接口响应类型（Dynamic、RichTextNode、LiveData）只住这里。请求客户端、cookie 罐与浏览器身份抽进 `packages/http`，不留在这里 |
 | `SubscriptionSource` 实现 | 拉动态翻成 `PostReport`（见下「作品映射」）、弹幕通道翻成 `LiveSignalReport`、关注同步、资料拉取、`searchCreators`、`fetchLiveStatus`、`liveInteractions` |
 | `auth/` | 扫码登录（原 AuthSystem），对外只交中立的 `AuthState`；内部若还要一个原形，叫 `BiliLoginState`。cookie 由 `ctx.http` 的 cookie 罐存进 `ctx.secrets` |
 | `LinkResolver` | B 站视频链接识别与解析；给原生分享的中立描述 |

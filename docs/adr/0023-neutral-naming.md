@@ -35,6 +35,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - `Work` 系改成 `Post`，去掉 `Neutral*` 前缀；
    - 直播内部的 master 系改成 `creator`；
    - 上舰、SC 出图输入里的 `uname`、`face` 改成 `viewer.name`、`viewer.avatar`，`isAdmin: number` 改成 `isModerator: boolean`；
+     🔗 **2026-10-05**（㉓ 开片，主人拍板）：`isModerator` 这一格不要了。它在会员卡上唯一的用处是把主播名换成「房管」两个字，各平台的房管标记也都在聊天消息上、不在会员事件上。词本身没有问题，哪天聊天消息要带这个标记仍用它。
    - 拓展契约里的 `author` 字段改成 `creator`，`viewers` 改成 `currentViewers`。
 4. **同一类东西用同一种写法**：
    - 时刻：ISO 字符串，以 `…At` 结尾；

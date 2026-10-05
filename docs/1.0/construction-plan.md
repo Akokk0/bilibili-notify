@@ -28,7 +28,7 @@
 | 0 ✅ | 测试拦外网（守卫 2，`scripts/network-guard.mjs`）；09-29 补上 DNS 查询（抓图拦内网要先解析，不补就漏；抓图 10-03 挪进 3a） | 改造 | 已落 | 0.2 |
 | 1 | 地基：身份、持久化底层与关停、资产与皮肤存储合一；**迁移地基**（数据代、先 listen 再迁、只迁一次各代互不干涉、首访页、全新开始、订阅合一、设置分段）；迁移耗时测试。切片 ①–⑨ 见下 | 持久化局部重写，其余改造 | 迁移耗时测试绿 | 施工时重估 |
 | 2 | 数据模型：作品卡与直播卡、**抽 `packages/http`**（请求客户端、cookie 罐、浏览器身份，从 B 站的实现里抽出，抽出去的直接按 naming.md 起名）、图库与图库引用（抓图服务原在本期、建在 `packages/http` 上，10-03 随调用方并进 3a）、皮肤字段、特性键；新类型直接用新名。并入：`LiveCardInput` 人数只收精确数；`formatCount` 带符号变体、`formatAgo`、`formatDuration`（连删 `{time}` 兜底与 `getTimeDifference` 钩子）；卡种中文名收一份；出图字节门按「批准的像素差清单」裁决（ADR-0028 决策 2）；⑥b 留在代里的三处过渡（`avatars/`、`history/img/`、`assets/chat/`）随图库并进 `images/`，目录表里那两个过渡键（`avatars`、`assets`；`history/img/` 是 `history` 键底下的子目录）随之删掉（`assets` 键 ⑳b、`avatars` 键 ⑳c 已删）；10-02 新定的推送历史拆两层、粉丝样本压缩、运行记录、统计总开关与存储占用、订阅标签也在本期。切片 ⑩–㉙ 见下 | 出卡前半段局部重写 | 守卫 10 清单外的差异为零；⑨ 迁移耗时测试在 ⑳ 与 ㉘ 之后仍绿 | 施工时重估（原估约 4，估于 `packages/http` 并入与 10-02 新增各项之前） |
-| 3a | 接口先行：`SubscriptionSource` 与横切接口、登记表、`SourceContext`（建在 `IntegrationContext` 上：state / secrets / settings / http / report / fetchImage 挂上 ctx；`reportProblem` 进全在内存的问题表，ADR-0025 决策 11）；抓图服务（`fetchImage` / `storeImage` 的本体）、出图器零联网、舰长图标改本地资产（原第 2 期 ⑯ ㉕ 与 ㉓ 那半，10-03 并进，施工备注见第 2 期表下「⑯ 并进 3a」）；B 站四个包搬进 `bilibili/`（先纯搬、只改 import 路径；紧接着单独一个提交按 naming.md 改名，含词表、外部接口回应的起名、原字段名只留在回应上；再做中立化） 并实现，中立部分同时拆进 `posts/` 与 `live/`；`accounts/` 与 `bilibili/auth/`；B 站的报错按因果分层重写（未登录 → 风控 → 各项请求失败，只报最上面那条开着的、按状态报、开机就没登录也报，今天直播引擎、直播会话、动态引擎各自私聊的旁路删掉；带 `notify` 的问题清掉时由核心补一句「已恢复」，只对真私聊过的，ADR-0025 决策 11 下 10-03 的 🔗）；设置坏了只停那一处（集成段只停那个集成，`core` 段逐格退默认）。推送侧：`PlatformAdapter` 接口与登记表（登记即 `start`）、OneBot / QQ 官方机器人 / webhook 作为内置适配器登记并带模板候选、`/api/adapters`、连接与目标的新形状（连接 `adapterKey` / `settings` / `platformSnapshot`，目标删 `platform`）与迁移条目、`DeliveryResult` 改成结果形状，历史行的投递结果同片跟上（新行存带码的结果、盘上旧失败转 `unknown`，原 ⑱，10-03 挪来：格跟着来源动，盘上始终只有一种形状）；活的 `NotificationPayload` 改名（`forward-images` → `image-group`、段的判别键统一成 `kind`），连同重推原件里对应的迁移与守卫 13 那条加固（原件每种载荷都有去向），原 ⑱，10-03 挪来：原件存的就是活载荷的原样，两边一起改才不用新旧对照表；只有 `TargetDispatcher` 能发送（链接回复与指令回复改走 `sendToAddress`，`notifyMaster` 返回结果形状；主人目标只许指向私聊目标（ADR-0021 决策 57：schema 校验、面板下拉只列私聊目标、迁移时清空指向群目标的并记进 ⑧ 的首访数据）；咽喉 e2e 在本期就要驱动这几条路）。schema 标 `secret: true`、服务端按 `MaskedSecret` 下发。本期开的守卫见「中立性守卫的归期」 | 改造 | 检查点：B 站全经中立接口运行、行为不变；守卫 21b 绿；出图器零联网绿 | 施工时重估 |
+| 3a | 接口先行：`SubscriptionSource` 与横切接口、登记表、`SourceContext`（建在 `IntegrationContext` 上：state / secrets / settings / http / report / fetchImage 挂上 ctx；`reportProblem` 进全在内存的问题表，ADR-0025 决策 11）；抓图服务（`fetchImage` / `storeImage` 的本体）、出图器零联网、舰长图标改本地资产（原第 2 期 ⑯ ㉕ 与 ㉓ 那半，10-03 并进，施工备注见第 2 期表下「⑯ 并进 3a」）；B 站四个包搬进 `bilibili/`（`blive` 不单开子目录，直接并进 `bilibili/live/`，10-05 主人定，ADR-0021 决策 1 的 🔗；先纯搬、只改 import 路径；紧接着单独一个提交按 naming.md 改名，含词表、外部接口回应的起名、原字段名只留在回应上；再做中立化） 并实现，中立部分同时拆进 `posts/` 与 `live/`；`accounts/` 与 `bilibili/auth/`；B 站的报错按因果分层重写（未登录 → 风控 → 各项请求失败，只报最上面那条开着的、按状态报、开机就没登录也报，今天直播引擎、直播会话、动态引擎各自私聊的旁路删掉；带 `notify` 的问题清掉时由核心补一句「已恢复」，只对真私聊过的，ADR-0025 决策 11 下 10-03 的 🔗）；设置坏了只停那一处（集成段只停那个集成，`core` 段逐格退默认）。推送侧：`PlatformAdapter` 接口与登记表（登记即 `start`）、OneBot / QQ 官方机器人 / webhook 作为内置适配器登记并带模板候选、`/api/adapters`、连接与目标的新形状（连接 `adapterKey` / `settings` / `platformSnapshot`，目标删 `platform`）与迁移条目、`DeliveryResult` 改成结果形状，历史行的投递结果同片跟上（新行存带码的结果、盘上旧失败转 `unknown`，原 ⑱，10-03 挪来：格跟着来源动，盘上始终只有一种形状）；活的 `NotificationPayload` 改名（`forward-images` → `image-group`、段的判别键统一成 `kind`），连同重推原件里对应的迁移与守卫 13 那条加固（原件每种载荷都有去向），原 ⑱，10-03 挪来：原件存的就是活载荷的原样，两边一起改才不用新旧对照表；只有 `TargetDispatcher` 能发送（链接回复与指令回复改走 `sendToAddress`，`notifyMaster` 返回结果形状；主人目标只许指向私聊目标（ADR-0021 决策 57：schema 校验、面板下拉只列私聊目标、迁移时清空指向群目标的并记进 ⑧ 的首访数据）；咽喉 e2e 在本期就要驱动这几条路）。schema 标 `secret: true`、服务端按 `MaskedSecret` 下发。本期开的守卫见「中立性守卫的归期」 | 改造 | 检查点：B 站全经中立接口运行、行为不变；守卫 21b 绿；出图器零联网绿 | 施工时重估 |
 | 3b | 各块中立化：先 e2e 钉直播四种行为，把醒目留言 / 会员 / 特别弹幕 / 特别进场的装配从 `room-session.ts` 抽进 `live/`，再合场次引擎；直播监听的唯一判定（B 站改存 `WATCHED_CHANGE` 的 `num` 10-02 挪进第 2 期 ㉒）；资料刷新；链接预览（ADR-0029）、指令（`CommandDef` 与通用的 `login [来源]`，ADR-0031）、AI 工具与女仆技能（ADR-0030）；DevtoolsProvider（场景 `DevScenarioDef`）与假桥搬家；拓展契约 v3（含推送侧加宽）、`pickPerId` 与索引规则；桥迁 v3 | 链接预览与指令重写，其余改造 | 守卫 11、uid 棘轮、`.platform` 决定棘轮、推送守卫② 清零；守卫 21a、推送守卫③、模板变量可满足性、AI 工具与技能约束绿 | 施工时重估 |
 | 4 | 面板按描述画：来源按 descriptor 渲染（面板只从描述符拿来源信息，ADR-0027 决策 5–7）、连接 / 目标表单、候选 / 扫码 / 地址控件、B 站设置 tab（含「换一个身份」按钮）、功能页指向拓展设置的入口、两种「设置不合法」态（连接的、集成的）、健康卡（**先出设计稿，主人认了再照稿写**；含盘上遗留的同身份订阅，见 data-model）；AI 设置页「女仆写正文」一节（picker 切动态 / 直播，默认一行 + 按群例外表，例外表与链接预览共用一个件，ADR-0032）；账号排序、预览、问题框（顶栏问候语后面那一行改读问题表、不再显示 B 站登录文字与「当前账号 XX 已登录」，账号挪到健康卡各集成那一格，10-03 主人定，ADR-0025 决策 11 下 🔗；右上「组件告警」到时只剩流程错误，它和问题框要不要合成一处，出稿时一起看）、日志筛选、密钥打码（统一密钥输入框）、素材库界面、旧版本数据清理界面、首访页与「正在搬家」界面与自愈退回提示（⑧ 的数据接口；「正在搬家」的进度今天只在开机那一段 503 的原话里（「BN 正在搬家(3/12)：…」），健康检查不说正在搬家，做界面时服务端补一个结构化的阶段与进度；搬家期间面板只显示进度、不去取各页的数据，搬完再进 —— 今天开着面板等它搬完，统计、历史这些不在重连刷新范围里的页会停在出错状态，要切页或刷新）、面板账号修改入口；首页改用直播监听的唯一判定；拓展页改成一个拓展一张卡（卡上标开了哪几口、页头按口筛选，ADR-0025 决策 13） | — | B 站替身清零 | 施工时重估 |
 | 5 | 收尾：清扫剩余旧名、目录与文件名、测试归位、死代码、守卫补齐、托管文档与 docs/agents 同步；全仓包版本统一 `0.0.0-dev` | 机械活，一次做完 | 中文叫法棘轮清零 | 约 2 |
@@ -127,8 +127,8 @@
 | ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | ✅ 已落（10-05，切成 ⑳a–⑳e，见表下「⑳ 开片」；修订号 26） |
 | ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | ✅ 已落（10-05，修订号 27，备份版本 7） |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | ✅ 已落（10-05，切成 ㉒a–㉒d，㉒e 并进 ㉒c，见表下「㉒ 开片」；不动盘、修订号不抬） |
-| ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
-| ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
+| ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a。10-05 开片，切成 ㉓a–㉓e，见表下「㉓ 开片」 | 施工中 |
+| ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份。醒目留言卡与会员卡两组字段 10-05 已随 ㉓ 改到最终名字，这一片只剩卡种键与其余卡；皮肤按档换色的挂点 10-05 从 ㉓ 挪来（见「㉓ 开片」） | 未开工 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
 | ㉖ | 统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、粉丝行 `followers` / `sampledAt`；ADR-0027 服务端那半（按特性在记、开播公告不记、多收字段、最近作品缓存并入、删 `?uid=`、CSV 合列） | 未开工 |
 | ㉗ | 运行记录 + 迁移时从 0.x 粉丝样本回填运行时长（ADR-0033 决策 3，必须先于 ㉘） | 未开工 |
@@ -233,6 +233,45 @@
     - 往卡片基线里加新夹具要放末尾：出图器的 UnoCSS 生成器全进程一个，前面渲染过什么会影响后面的字节。
   - 留着的：`formatCount` 整万写「1.0万」，B 站原来多半写「1万」（没有录制帧可证，只有 87334 → 「8.7万」对得上）；重连核对那条分支把断线前后当同一场、计数不重置（它本来的口径）；mock 预览与示例里的 `LiveCardView` 仍是排好的字符串（㉔）。
   - 真机待看（㉒ 全片）：B 站直播卡没头像时默认皮肤头部的样子（与 ㉑ 同一类）；面板「正在直播」那一列 B 站行的人数换成我们自己排的字之后和原来差多少。
+- **㉓ 开片（10-05）**：先勘察，再一题一题问主人（定案在 ADR-0021 决策 26 下 10-05 的 🔗）。会员与醒目留言今天没有任何中立类型，B 站消息进来后直接在直播会话里拼文字、出卡、推送；这一片从零建模型，并把「醒目留言按价格算档」从出图器搬到 B 站那一侧。㉓d 动盘（修订号 27 → 28，备份版本 7 → 8），其余小片不动盘。切成五小片依次提交：
+  - ㉓a 只加测试钉住现状：醒目留言六档的边界（按元 50 / 100 / 500 / 1000 / 2000 五条线）与各档的色、时长；`minScPrice` 等于门槛时放行、`minGuardLevel` 三个值 × 三档的放行表；醒目留言与上舰的兜底文字原文、上舰卡三句宣告语原文（舰长那句带「号」）；上舰文案的渲染（含 `-uname` 老写法）。顺带修「自定义文案开着、图片是空串时不兜底官方图」（`room-session.ts` 里 `tier?.imageUrl ?? guardImg`，空串不算缺；先写红的复现测试再修）。
+  - ㉓b 纯新增、还没有调用方：`MembershipProgram` / `MembershipTier` / `MembershipEvent` / `SuperchatEvent`（住 `packages/internal`，3a 随中立部分搬）；B 站档位表 `packages/internal/src/bilibili-guard.ts` 的 `BILIBILI_GUARD_PROGRAM`（key、名字、rank、徽章地址、档色、宣告语），`guard_level` 与 rank 的换算只在这个文件里；翻译 `membershipEventFromLiveEvent` / `superchatEventFromLiveEvent`（住 `packages/live`，醒目留言的档在这里按价格算）；`formatAmount(amount, currency)`（住 `packages/internal/src/format.ts`）。
+  - ㉓c 两种卡换新输入与新入口：`generateSCCard` / `generateGuardCard` → `generateSuperchatCard` / `generateMembershipCard`，输入 `SuperchatCardInput` / `MembershipCardInput`。分步做、每步单独登记批准清单：去观众与主播头像；删会员卡的房管那一格与为它调的接口；时长走 `formatDuration`、金额走 `formatAmount`；宣告语取档位表；档色取档位表；皮肤字段改名；最后换入口（这一步快照应零变化）。出图器对 `blive` 的依赖随 `GuardLevel` 的 7 处引用一起去掉。
+  - ㉓d 设置搬家与迁移：`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank.guard`（逐订阅覆盖同样各加一段）；`templates.guardBuy` → `templates.membership.guard = { enabled, default, tiers }`；占位符改名与 `-key` 改写；默认文案账本的路径跟着改写。规则页同片跟到照旧能用。
+  - ㉓e 面板收口（删 `guard-levels.ts`、色块读档位表、上舰文案一节按「体系默认 + 每档」铺）、守卫登记、文档。
+  - 主人定的：
+    - **档位表 3a 之前住 `packages/internal` 的新文件**，名字老实带 `bilibili`，面板、引擎、出图器都读这一处，面板的 `guard-levels.ts` 删掉；3a 搬进 `bilibili/` 的来源描述符。B 站替身棘轮为它新登记一行。被否的备选：这一片先做下发接口（给没定形的接口提前定形）；面板继续留自己的一份（两份真源）。
+    - **醒目留言卡与会员卡两组皮肤字段这一片就改到最终名字**（开发期没有 1.0 的皮肤，版本只在 alpha 前抬一次，不必等 ㉔）：`sender.name` / `sender.face` → `viewer.name` / `viewer.avatar`；`sc.price` / `sc.priceValue` / `sc.duration` / `sc.text` → `superchat.amount` / `superchat.amountValue` / `superchat.duration` / `superchat.text`；`sc.level`（0–5）→ `superchat.rank`（1–6，1 最低）；`user.name` / `user.face` → `viewer.name` / `viewer.avatar`；`guard.level`（1 = 总督）→ `membership.rank`（1 = 舰长）；`guard.levelName` → `membership.tierName`；`guard.badge` → `membership.icon`；`guard.text` → `membership.announcement`。卡种键 `sc` / `guard`、主播那两格 `master.name` / `master.face`、抬皮肤格式版本仍归 ㉔。
+    - **会员卡上不再有房管这一格**：`user.isAdmin` 连同「买舰的人是房管就把主播名换成『房管』」那段替换一起删，为它多调的那次接口也去掉。各平台的房管标记都挂在聊天消息上，会员事件上没有；那段替换没有任何说明，看着是写错了位置。ADR-0023 里「`isAdmin` 改成 `isModerator`」那句作废。
+    - **上舰文案的占位符这一片改**：`{uname}` → `{viewer}`、`{mname}` → `{name}`、`{guard}` → `{tier}`，盘上的 `-key` 老写法迁移时改写成花括号写法，上舰文案改由 `interpolate` 填。其余 6 条直播文案（特别弹幕、特别进场、弹幕总结等）仍等 3b；改写规则写成共用函数，3b 直接调。
+    - **`custom` 体系只建地基**：类型里有 `"custom"`，文案按档的 key 取、取不到用体系默认，配单元测试；面板（按档名增删、没有 rank 的体系的开关）留 3b，1.0 里它没有真实来源。
+    - **档色留卡片那一套**（舰长 `#4ebcec`、提督 `#d8a0e6`、总督 `#f2a053`），面板的三个色块跟着变；会员卡的止色取同一个值，档位表不为它多加一格。面板上总督色块会与「上舰」的代表色同为 `#f2a053`，主人知情。
+    - **醒目留言的时长走 `formatDuration`**：「60秒 / 2分钟 / 5分钟 / 30分钟」变成「1分 / 2分 / 5分 / 30分」，后两档不变。被否的备选：把 `formatDuration` 的「分」改成「分钟」（所有直播卡跟着变）；醒目留言卡单写一个排版（多一个时长函数）。
+    - **名字**：见 ㉓b ㉓c 两行；「会员体系」用 `Program`，起名表加一行；`formatAmount` 进「一个名字一个家」点名表。会员文案的一条沿用 `{ template, imageUrl }`。
+    - **`blive` 并进 `live`，3a 搬家时做**（ADR-0021 决策 1 的 🔗）。这一片做完出图器就不再依赖 `blive`，合包的循环依赖障碍随之消失。
+    - **上舰文案的默认值与迁移**：体系默认的出厂值是「{viewer} 成为了 {name} 的{tier}！」（推出去的字与今天三档默认一字不差）；迁移时逐档看，文案还是旧默认且图片没填的不搬、跟随体系默认，改过的才进每档覆盖。原迁移表写的「三档原样搬、默认留空」作废。面板上某一档没填就显示跟随默认，图片没填用该档的官方徽章图。
+    - **皮肤按档换色的挂点归 ㉔**：今天皮肤读得到档色变量（`--bn-card-tier-color`），但清洗器只放行 `[data-bn="…"]` 一种选择器，写不出「档位是几时」的条件；加挂点是在设计皮肤契约，和 ㉔ 的其它皮肤改动一起做。
+  - 照先例或施工时直接定的：
+    - B 站这两种卡 3a 前不画头像（照 ㉑ ㉒）。连带：醒目留言出卡前不再调接口查发送者（名字用消息里带的），原来查不到会退成一行文字，现在总是出卡。
+    - 醒目留言配色用自己的六色，不接 B 站消息里带的颜色；档超出六色用最后一色，没有档用第一色。
+    - 醒目留言的档由 B 站那一侧按价格算，边界照今天；留言时长取消息里自带的秒数（解析器已读出，原来没往下传）。
+    - 金额固定中文环境、关掉千分位：「¥30」「¥2000」与今天一字不差，「¥30.5」「US$30」「JP¥30」。
+    - 没配门槛就是全推：迁移时旧值是默认的不写（`minGuardLevel` 3、`minScPrice` 0），调过的才写（提督以上 → `guard: 2`，仅总督 → `guard: 3`）。逐订阅覆盖里的 `minRank` 按体系合并，不整表替换。
+    - 认不出的档位丢掉并记一条警告（原来会带着一张空图推出去）。
+    - B 站上舰事件只填月数（`num`）与金额（金瓜子除以 1000，`CNY`）；开通还是续费、谁送的，上舰消息里没有，不填。续费照旧推一张卡。
+    - 舰长徽章继续用 B 站的图链（`tier.icon` 带 `url`），两份相同的图链表合成一份；改本地资产归 3a。
+  - 勘察到的事实（施工时不用重查）：
+    - 上舰与醒目留言没有总线事件、契约类型、统计；历史行只有通用的 `feature`。`LivePushType` 只在进程内流转，改它不用迁移。
+    - `guard_level` 的倒序换算今天不存在，只有一处直接拿数字比（`body.guard_level > this.sub.minGuardLevel`）；面板靠 `.reverse()` 排序。
+    - 续费时 B 站同秒发三帧（`GUARD_BUY` 与两种 `USER_TOAST_MSG`），业务只消费 `GUARD_BUY`，另两帧不许并流。
+    - 上舰消息的 `price` 是金瓜子（198000 = 198 元），没有头像、没有房管标记；醒目留言消息的 `price` 是元，带 `time`（秒）、`user_info.face`、`user_info.manager` 与 B 站自己的一组配色。
+    - 醒目留言正文在判门槛之前就记进弹幕收集，被门槛挡掉的也算进词云。
+    - 自定义图与官方图是以链接段推出去的，不是内联图。
+    - 默认文案账本按点路径记，`guardBuy.<档>.template` / `.imageUrl` 六条（空串也是一片叶子）；`renameTemplateLedger` 只换路径首段，新路径多一层，要专门改写。
+    - `feature-renames.ts` 的 `FILTER_KEY_RENAMES` 用 `satisfies Record<ZeroFilterKey, keyof ContentFilters>` 钉着，两个门槛键离开 `ContentFilters` 时编译即红，要从「改名」改成「搬家」。
+    - 卡片基线：醒目留言 3 份、上舰 3 份；它们排在锐评与词云前面，字节一变后面三份可能被 UnoCSS 属性层牵连。
+    - 新文件里出现 `bili` / `bilibili` 的标识符段或字面量，B 站替身棘轮就红；只有 `bilibili-guard.ts` 登记。
+  - 留给 3a：舰长图标改本地资产；两种卡的头像（醒目留言用消息里自带的头像地址，会员卡要重新接一次查询）；档位表搬进来源描述符并由 `/api/sources` 下发；`blive` 并进 `bilibili/live/`。留给 3b：其余 6 条直播文案的占位符改名与 `-key` 改写、`applyTemplate` 删除；会员与醒目留言的总线事件；拓展上报会员与醒目留言、`custom` 体系的面板。留给 ㉔：卡种键 `sc` / `guard`、`master.*` 两格、皮肤按档换色的挂点、抬皮肤格式版本。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名（10-04 定：`history.retentionDays`，不带 `image` 前缀）；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha
@@ -311,7 +350,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 | ADR-0027 的服务端那半（唯一判定除外，它在 3b）：「在记」按特性分；开播公告不再记；统计多收现成字段、「最近作品小缓存」并进统计仓；历史接口删 `?uid=`；统计 CSV 的「UID」与「外部 ID」合成一列 | **第 2 期 ㉖**；面板那半在第 4 期 |
 | 作品文字只有一种拼法：`posts/` 里唯一的取段函数（ADR-0028 决策 1） | **第 2 期 ㉑**（`posts/` 3a 才建，本期的落点施工时定）；进守卫 4 的点名表 |
 | 模板变量 `{guard}` → `{tier}`、`{mdn}` → `{fanclub}`，资料加 `fanClubName?`，迁移改写主人的文案（ADR-0028 决策 3） | 最迟 3b：模板变量可满足性守卫那期要绿 |
-| 醒目留言加可选 `tier`、金额按币种排版；会员档加可选 `announcement`，皮肤字段 `membership.text` → `membership.announcement`（ADR-0028 决策 4） | **第 2 期 ㉓** |
+| 醒目留言加可选 `tier`、金额按币种排版；会员档加可选 `announcement`，皮肤字段 `guard.text` → `membership.announcement`（ADR-0028 决策 4） | **第 2 期 ㉓** |
 | 类型名后缀守卫的开启期（ADR-0023 决策 15） | 见「中立性守卫的归期」 |
 | 启动器要不要更新（10-02 主人定）：拿预装版本判断，不给启动器另编号 —— 启动器与预装载荷同一个镜像或安装包发，预装版本（boot.mjs 传的 `BN_IMAGE_VERSION`，按命名表改叫 preinstalled、旧名兜底）就是启动器出自哪一版；载荷里记「启动器最后一次改动在 X 版」，预装版本比它旧就进 `SystemNotice`，提示拉新镜像 / 重新下载应用 | 随第一次改启动器的那一期 |
 | 推送历史拆两层（10-02 主人定，ADR-0022 决策 9 下的 🔗）：文字不设上限、无设置项；图片保留天数改成选项 90 / 60 / 30 / 15 / 7 / 3 / 1、默认 30，超期的行显示「图已清理」、不能重推；清扫只数保留期内的引用，新图宽限期，引用方登记表 + 守卫；迁移换算老配置（超 90 压成 90，不在选项里往上取）、不搬超期的图与孤儿图。设置的键 10-04 定成 `history.retentionDays`，⑲ 就建顶层 `history` 一节（核心设置加前缀后是 `core.history.retentionDays`） | **第 2 期 ⑲ ⑳**（⑰ 10-03 并进 ⑳）；随第 2 期统一图库；面板的选项随第 4 期 |

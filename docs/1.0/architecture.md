@@ -64,7 +64,7 @@ B 站（信号 · 接口 · 扫码）──SubscriptionSource 等接口──┐
 | `subscription` | 一等 | 订阅仓、身份唯一的规则 | 去掉 `findByUid` |
 | `ui` | 一等 | 纯展示组件 | 新增统一的密钥输入框、素材选择器 |
 | `extension` | 2.5 的门 | 拓展契约 v3 | 见 [extension-contract.md](./extension-contract.md) |
-| `api`、`blive`、`dynamic`、`live` | 二等 | — | 搬进 `apps/server/src/bilibili/` 各成子目录，包删掉；中立部分进服务端 `posts/` 与 `live/`；api 删掉 7 个没人调的方法；api 里的请求客户端、cookie 罐、浏览器身份抽进 `http` |
+| `api`、`blive`、`dynamic`、`live` | 二等 | — | 搬进 `apps/server/src/bilibili/` 各成子目录（`blive` 并进 `live` 那个子目录），包删掉；中立部分进服务端 `posts/` 与 `live/`；api 删掉 7 个没人调的方法；api 里的请求客户端、cookie 罐、浏览器身份抽进 `http` |
 
 `apps/contract` 是一等：服务端与面板之间所有请求、响应、WS 帧的唯一来源；叫法函数（单个来源用它自己的叫法、混着的用「创作者」「作品」，ADR-0027 决策 6）也住这里，面板与服务端共用。
 
