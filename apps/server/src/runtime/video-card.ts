@@ -7,7 +7,7 @@
 
 import type { VideoInfo } from "@bilibili-notify/api";
 import type { Dynamic } from "@bilibili-notify/image";
-import { formatClock, formatCount } from "@bilibili-notify/internal";
+import { formatClock } from "@bilibili-notify/internal";
 
 export function videoToDynamic(info: VideoInfo): Dynamic {
 	return {
@@ -39,11 +39,14 @@ export function videoToDynamic(info: VideoInfo): Dynamic {
 					archive: {
 						badge: { text: "投稿视频" },
 						cover: info.pic,
+						// 时长是原始动态里的一个字符串字段,只能先排成字(卡片那头解析成秒再排,「m:ss」往返不失真);
+						// 换入口那一步直接造 `Post` 时这里就是 `durationSec: info.duration`,不再绕一圈。
 						duration_text: formatClock(info.duration),
 						title: info.title,
 						desc: info.desc,
-						// 与卡片上别的计数同一份写法(渲染器自己也用它)。
-						stat: { play: formatCount(info.stat.view), danmaku: formatCount(info.stat.danmaku) },
+						// 计数直接给数字(原始动态的 `stat.play` 本来就收 `number | string`),卡片那头统一
+						// 用 `formatCount` 排一次版 —— 不在这里先排成「6.5万」再被解析回去。
+						stat: { play: info.stat.view, danmaku: info.stat.danmaku },
 						bvid: info.bvid,
 						jump_url: `//www.bilibili.com/video/${info.bvid}`,
 					},

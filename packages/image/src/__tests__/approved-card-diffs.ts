@@ -133,5 +133,19 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 				"已结束的预约卡:预约按钮上「未结束才画」的铃铛不画了,少一个 Vue 的 <!----> 占位注释(7 字节)",
 			hash: "d61e5eb90eddcfa6",
 		},
+		// ㉑c 第 3 步:数字先成数字、再由 internal 统一排版。九份 dynamic-* 里数字原样回得去的(「16:07」「1.8万」
+		// 「129」)字节不变;会变的只有排版逼的两类 —— 时长的前导零消失、接口给整数「万」时补小数位。夹具里
+		// 只有一处命中:引用视频(UGC 附加卡)的时长「00:29」排成「0:29」。「1万」→「1.0万」的那一类夹具里没有,
+		// 由 `dynamic-content-numbers.test.ts` 单测钉着。
+		{
+			sample: "dynamic-custom-layout",
+			category: "master-approved",
+			approvedOn: "2026-10-05",
+			change:
+				"引用视频(UGC 附加卡)的时长「00:29」先解析成 29 秒、再由 formatClock 排成「0:29」(前导零消失,别的一个字没动)",
+			basis:
+				"ADR-0021 决策 22 的 2026-10-05 🔗:播放数与时长先解析成数字、再由核心统一排版;决策 24:计数全程是数字,只在出口由 formatCount / formatClock 排一次版",
+			hash: "cdced4d16d3f40de",
+		},
 	],
 };

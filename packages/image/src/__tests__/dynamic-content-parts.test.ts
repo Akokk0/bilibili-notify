@@ -154,7 +154,8 @@ describe("buildDynamicNode —— 视频投稿", () => {
 		const node = await buildDynamicNode(videoDynamic(), false, fmt);
 		expect(node.video).toEqual({
 			cover: COVER,
-			duration: "03:21",
+			// 接口给的是「03:21」:先解析成秒、再由 formatClock 排一次,前导零消失。
+			duration: "3:21",
 			title: "视频标题在这里",
 			desc: "视频简介",
 			views: "1.2万",

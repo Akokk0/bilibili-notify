@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ImageRenderer } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import type { DynamicNode } from "../templates/dynamic-content";
+import type { Dynamic } from "../types";
 
 const SERVICE_CTX: ServiceContext = {
 	logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -224,6 +225,54 @@ describe("generateNeutralDynamicCard — 头像", () => {
 		// 外层有、内层没有:整张卡上只剩一个头像格。
 		expect(html.match(/data-cell="avatar"/g)).toHaveLength(1);
 		expect(html).toContain("原作者");
+	});
+});
+
+describe("generateDynamicCard(B 站适配层)— 互动数走 formatCount", () => {
+	/**
+	 * 转发 / 评论 / 点赞本来就是数字,适配层把 `formatCount` 注给 `buildDynamicNode` 去排版(ADR-0021 决策 24:
+	 * 计数全程是数字、只在出口由 `formatCount` 排一次版)。夹具里注入的是 `String`,所以这条用真渲染器钉
+	 * 「注入的就是 formatCount」。验红:把 `image-renderer.ts` 里的 `num: (n) => formatCount(n)` 改成
+	 * `String(n)`,这条红。
+	 */
+	it("12345 排成「1.2万」,不是「12345」;万以下原样", async () => {
+		const dyn = {
+			basic: {},
+			id_str: "1",
+			type: "DYNAMIC_TYPE_WORD",
+			visible: true,
+			modules: {
+				module_author: {
+					avatar: {},
+					face: "",
+					face_nft: false,
+					following: false,
+					jump_url: "",
+					label: "",
+					mid: 1,
+					name: "示例UP",
+					pub_action: "",
+					pub_action_text: "",
+					pub_location_text: "",
+					pub_time: "",
+					pub_ts: 0,
+					type: "AUTHOR_TYPE_NORMAL",
+					vip: { type: 0 },
+				},
+				module_dynamic: {},
+				module_stat: {
+					forward: { count: 128 },
+					comment: { count: 9999 },
+					like: { count: 12345 },
+				},
+			},
+		} as unknown as Dynamic;
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateDynamicCard(dyn);
+		const html = captured[0] ?? "";
+		expect(html).toMatch(/aria-label="点赞"[\s\S]*?<span>1\.2万<\/span>/);
+		expect(html).toMatch(/aria-label="评论"[\s\S]*?<span>9999<\/span>/);
+		expect(html).toMatch(/aria-label="转发"[\s\S]*?<span>128<\/span>/);
 	});
 });
 

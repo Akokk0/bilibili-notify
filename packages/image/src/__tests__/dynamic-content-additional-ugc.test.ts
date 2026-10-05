@@ -90,7 +90,8 @@ describe("buildAdditionalContent — 关联视频(ADDITIONAL_TYPE_UGC)", () => {
 			makeDynamic({ type: "ADDITIONAL_TYPE_UGC", ugc: ugcPayload() }),
 		);
 		expect(html).toContain("中国人能飞~✈️✈️✈️");
-		expect(html).toContain("00:29");
+		// 接口给的是「00:29」:先解析成 29 秒、再由 formatClock 排一次,前导零消失。
+		expect(html).toContain(">0:29<");
 		expect(html).toContain("2654观看 102弹幕");
 		expect(html).toContain("http://i1.hdslb.com/bfs/archive/d75b1c59.jpg");
 	});

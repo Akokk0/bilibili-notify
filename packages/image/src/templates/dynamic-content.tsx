@@ -30,7 +30,9 @@
  * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
+import { formatClock, formatCount } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
+import { parseBiliClock, parseBiliCount } from "../bili-display-values";
 import { parseRichText } from "../rich-text";
 import type { Dynamic, RichTextNode } from "../types";
 
@@ -73,7 +75,8 @@ export type NodeFormatters = {
  * 挂载会往 vnode 上写 `el` / `component`,后一处盖掉前一处),而皮肤可以把同一块摆两回。
  */
 /**
- * 投稿视频那张卡的数据。播放 / 弹幕数接口可能已给成 "6.5万",原样转文本,不做算术。
+ * 投稿视频那张卡的数据。播放 / 弹幕 / 时长已是排好版的字:B 站这条路先把接口给的成品字解析成数字、
+ * 再由 `formatCount` / `formatClock` 排(见 `videoOf`);拓展那条路本来就是数字,同样经这两个函数。
  *
  * 播放数与弹幕数都**选填**(ADR-0019 决策 55):拓展的作品不收弹幕数、播放数是选填的,缺了哪一格
  * 就不画哪一格的图标与数字(从前只要有视频就无条件画,拓展作品会画出空图标)。B 站两格恒有。
@@ -711,6 +714,8 @@ function buildCommonAdditional(common: any) {
  */
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的关联视频数据类型不固定
 function buildUgcAdditional(ugc: any) {
+	// 时长是接口排好的字(「00:29」):先解析成秒、再由 `formatClock` 排一次(「0:29」)。认不得就不画角标。
+	const duration = clockText(ugc.duration);
 	return (
 		<div>
 			{/* head_text 在抓包里常为空串,空就整行不渲染,免得多出一条空白灰字。 */}
@@ -727,9 +732,9 @@ function buildUgcAdditional(ugc: any) {
 						 * 主视频卡靠整张压暗 bg-black/20 兜住,这里封面小、压暗会让整卡发灰,
 						 * 改成只在角标下垫一块。
 						 */}
-						{ugc.duration && (
+						{duration && (
 							<span class="absolute bottom-[4px] right-[4px] px-[4px] py-[1px] rounded-[3px] bg-black/60 text-white text-[11px] font-bold leading-[1.4]">
-								{ugc.duration}
+								{duration}
 							</span>
 						)}
 					</div>
@@ -758,12 +763,29 @@ function videoOf(archive: {
 	desc: string;
 	stat: { play: number | string; danmaku: number | string };
 }): DynamicVideo {
+	// 播放 / 弹幕数是数字或「1.8万」这种成品字,时长是「16:07」这种成品字:先解析成数字,再由 internal
+	// 统一排版(ADR-0021 决策 24)。认不得的那一格不画 —— 播放 / 弹幕缺了就不带这个键(块会连图标一起收起),
+	// 时长缺了是空串(角标收起)。
+	const views = countText(archive.stat.play);
+	const danmaku = countText(archive.stat.danmaku);
 	return {
 		cover: archive.cover,
-		duration: archive.duration_text,
+		duration: clockText(archive.duration_text) ?? "",
 		title: archive.title,
 		desc: archive.desc,
-		views: String(archive.stat.play),
-		danmaku: String(archive.stat.danmaku),
+		...(views === undefined ? {} : { views }),
+		...(danmaku === undefined ? {} : { danmaku }),
 	};
+}
+
+/** B 站排好的计数(数字或「1.8万」)→ 数字 → 统一排版;认不得回 undefined。 */
+function countText(raw: unknown): string | undefined {
+	const n = parseBiliCount(raw);
+	return n === undefined ? undefined : formatCount(n);
+}
+
+/** B 站排好的时长(「16:07」)→ 秒 → 统一排版;认不得回 undefined。 */
+function clockText(raw: unknown): string | undefined {
+	const seconds = parseBiliClock(raw);
+	return seconds === undefined ? undefined : formatClock(seconds);
 }

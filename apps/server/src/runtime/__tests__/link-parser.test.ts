@@ -163,7 +163,8 @@ describe("createLinkParser", () => {
 			duration_text: "12:34",
 			title: "示例标题",
 			desc: "示例简介",
-			stat: { play: "6.5万", danmaku: "120" },
+			// 计数是数字原样进:卡片那头统一用 formatCount 排(「6.5万」),不在这里先排成字。
+			stat: { play: 65000, danmaku: 120 },
 			bvid: "BV1zMtU6uEEb",
 			jump_url: "//www.bilibili.com/video/BV1zMtU6uEEb",
 		});
