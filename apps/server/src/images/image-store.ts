@@ -15,6 +15,10 @@
  * 门禁全绿,所以存图的口不挂在图库上:先 {@link ImageStore.register} 交出「列出我引用的图」,才拿得到
  * {@link ImageWriter}。引用只许从两处来:自己刚 `put` 的,或者抄别家的并 `keep` 过的 —— 两样都会刷新
  * 修改时间,清扫正扫到一半时这张图也在宽限期里。
+ *
+ * 一处例外(主人 10-05 认的):拓展作品翻成 `Post` 时先用 {@link imageRefOf} 算出引用、出卡前才真 `put`
+ * (`runtime/post-from-report.ts` 的 `deferImageWrites`)—— 被屏蔽的作品因此一张图都不写盘。算出引用到写盘之间
+ * 只有过滤读这份 `Post`,它只看文字和形状、不读图;写盘时核对图库回的引用与算的一致。别处不许照这个样子做。
  */
 
 import { createHash } from "node:crypto";
