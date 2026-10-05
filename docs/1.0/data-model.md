@@ -208,7 +208,7 @@ interface PostEvent {                  // 核心按身份展开后、装配入�
 - **作品的文字只有一种拼法**（ADR-0028 决策 1）：`text` 只放正文，文章标题在 `article.title`、视频标题在 `video.title`、转发的原作品在 `repost`。过滤、AI 点评、统计摘要等要整条作品文字的地方，一律经核心 `posts/` 里唯一的取段函数，所有来源同一个：过滤时各段无前缀、换行拼接；AI 用「标题：」「视频标题：」「（转发自 X：…）」。函数名施工时定；它进守卫 4 的点名表，对拍逐字比。
 - B 站的映射：动态正文与图文的摘要进 `text`，图文标题进 `article.title`；UP 自己的视频进 `post.video`，番剧、合集、课程进附件的视频卡。
 - `images` 只是图集；文章配图在 `article.images`。`blockImages` 就是屏蔽图集。`blockImages` / `blockVideos` 只看最外层，被转发的原作品里的图集与视频归 `blockReposts` 管。
-- `video` 表示「作品本身就是这个视频」，不设视频级的互动数；作品里引用别人的视频走 `repost` 或 `attachment` 的 `video`。互动数只在 `Post.stats`，收藏 `stats.saves` 这类等有卡片要画时再加。
+- `video` 表示「作品本身就是这个视频」，上面只有播放数与弹幕数这两个展示数字，点赞、评论、转发这类互动数不设在视频上（10-05 主人定，ADR-0021 决策 25 的 🔗）；作品里引用别人的视频走 `repost` 或 `attachment` 的 `video`。互动数只在 `Post.stats`，收藏 `stats.saves` 这类等有卡片要画时再加。
 - `repost` 是被转发的原作品；OneBot 的「合并转发」叫 `mergeForward`，两者无关。
 - 所有图格（封面、附加块、锁图标）都是 `PostImage`。图由来源先用 `ctx.fetchImage`（有链接）或 `ctx.storeImage`（手里已是字节）存进图库、填 `ref`，上报里只交 `ImageRef`；抓失败（两者都返回结果形状）由来源决定跳过这张，或只给 `url`（卡上画占位）。
 - **正文片段 `RichText`**（09-27 拍板）只有五种，全中立、核心不认识任何平台：

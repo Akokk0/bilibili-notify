@@ -125,9 +125,9 @@
 | ⑱ | 历史行改形：`identity`、`nameSnapshot`、`createdAt`、`repushOf`、`RepushSnapshot`（`kind` → `feature` 10-03 提前到 ⑬f；原件这一片只改 `DraftSchema` → `RepushSnapshot` 与 `v` → `version`）。原件的载荷改名与守卫 13 那条加固（重推原件每种载荷都有去向）10-03 挪去跟活的 `NotificationPayload` 改名走：`image-group` 与段的判别键 `kind` 归 3a，原生分享归 3b。跟图有关的格（头像换图库引用、配图格按词表 `Ref` 那行起名、原件的 `{ ref, mime }` 并成一格、删 `own`）10-03 挪到 ⑳；投递结果（盘上旧失败转 `unknown`、新行带码）10-03 挪到 3a，随 `DeliveryResult` 改形状 | ✅ 已落（10-03，切成 ⑱a–⑱c，见表下「⑱ 开片」；修订号 21） |
 | ⑲ | 推送历史拆两层：文字不设上限，图按天数清（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），超期的行「图已清理」、不能重推；迁移换算老配置、不搬超期图与孤儿图 | ✅ 已落（10-04，切成 ⑲a–⑲c，见表下「⑲ 开片」；修订号 23，备份版本 6） |
 | ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | ✅ 已落（10-05，切成 ⑳a–⑳e，见表下「⑳ 开片」；修订号 26） |
-| ㉑ | 作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | 未开工 |
+| ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | 未开工 |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 未开工 |
-| ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
+| ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
 | ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
 | ㉖ | 统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、粉丝行 `followers` / `sampledAt`；ADR-0027 服务端那半（按特性在记、开播公告不记、多收字段、最近作品缓存并入、删 `?uid=`、CSV 合列） | 未开工 |
@@ -198,6 +198,21 @@
     - 守卫 13 没有 `RepushSnapshot` 这个根（data-and-migration 写的「每种载荷都有去向」那条加固 10-03 已挪去 3a / 3b）。
     - 给每张图算摘要估计只让迁移多个位数百分比（估的，⑳d 后实测）；真实卡片图比夹具的 3KB 大得多。
     - 桌面版里这三种图经 cookie 过闸只验过壁纸与字体，换读口后真机逐个看一眼。
+- **㉑ 开片（10-05）**：先勘察，再一题一题问主人，定案在 ADR-0021 决策 22 与 25 下 10-05「㉑ 开片」的 🔗。切成五小片依次提交：
+  - ㉑a 过滤键改名（纯改名，行为不变）：`blockForward` / `blockArticle` / `blockDraw` / `blockAv` → `blockReposts` / `blockArticles` / `blockImages` / `blockVideos`，`whitelistKeywords` / `whitelistRegex` → `allowKeywords` / `allowRegex`；schema、引擎接线、面板与字段文案跟上；迁移加一步改写全局与订阅覆盖两处，冻住 0.x 的过滤键词表，抬修订号（26 → 27），备份版本要不要抬施工时对着 ⑬c 的先例定。
+  - ㉑b 作品模型与取段函数：`Post` / `PostImage` / `Creator` / `RichText` / `Attachment` 进 `internal`；`RichText` 的校验（片段的字拼起来必须等于 `text`，对不上就丢）；唯一取段函数的两种拼法（过滤：无前缀换行；AI：「标题：」「视频标题：」「（转发自 X：…）」），进守卫 4 的点名表。只有新增代码，还没有调用方。
+  - ㉑c 出卡器吃 `Post`（B 站这条）：B 站原始数据到 `Post` 的翻译放 `packages/dynamic`；出卡器的入口改吃 `Post`；链接预览、卡片预览路由、示例卡、开发工具场景跟上。先各用单独一步去头像、去小图标、换数字排版并记进批准清单，之后换入口那一步十份快照一字不差。
+  - ㉑d 拓展这条：拓展上报到 `Post` 的翻译放服务端；图存进图库（写入方 `postImages`），出卡器按引用取图；`extension-post-work` 里自己造节点的那段退役。
+  - ㉑e 取段收口与过滤吃 `Post`：过滤、AI 点评、AI 聊天工具、拓展作品四处拼法都换成那一个函数；类型开关只看最外层 `Post`、对所有来源生效，面板里拓展订阅露出四个开关，屏蔽提醒措辞改中立；文档收尾。
+  - 勘察到的事实（施工时不用重查）：
+    - 代码里没有任何作品模型的领域类型，只有 `ImageRef` 与 `PostPushPart`；撞名的有三处局部别名 `type Post = SubscriptionReportValue<"post">` 与面板的 `RichText` 组件。
+    - 包依赖：`image` 只依赖 `blive` 与 `internal`、不依赖 `dynamic`，`dynamic` 依赖 `image`；所以类型与取段函数只有放 `internal` 才够得着所有消费者，十份字节快照（输入是 B 站原始数据）要跟着翻译挪到够得着它的地方。
+    - 作品文字现在各拼各的：过滤（`dynamic-filter.ts` 的 `getDynamicText`，图文标题不要求有摘要）、AI 点评（`dynamic-engine.ts` 的 `extractDynamicText`，标题只在有摘要时带、转发括号里用空格连、丢原作品的图文标题）、AI 聊天工具（`packages/ai/src/tools.ts`，空格连、没有转发）、拓展过滤与拓展 AI（`extension-post-work.ts`）。
+    - 涉及作品的卡只有 `dynamic` 一种；皮肤字段表声明只增不删不改名，`card-data.test.ts` 钉着产出路径与表恰好相等；`dynamic.time` 对外层卡含「· 投稿了视频」后缀；`data-bn` 挂点被 `card-hooks.test.ts` 双向钉着。批准清单 `approved-card-diffs.ts` 现在是空的。
+    - 过滤 schema 是 strip：全局那份老键会让整份拒收，覆盖里的老键被静默剥掉，所以迁移步骤要有自己的测试；覆盖版 schema 必须保持无默认纯可选。守卫 13 不覆盖这类普通字段改名。
+    - 类型开关现在对拓展作品一律不看（`dynamic-filter.ts` 注释写了当时的理由），面板 `PerUpEditor` 用 `typeToggles={isBili}` 门控；「屏蔽后提醒」在生产里是死的（`engines.ts` 把 `notify` 固定成 `false`）。
+    - 拓展 v2 上报是 `topics[]`、时间是毫秒、图是字节；契约 v3 在 3b，所以服务端收件口要有 v2 形状到 `Post` 的翻译。
+    - 链接预览经 `videoToDynamic` 伪造一条视频动态，伪造里的 `badge.text` 还决定「投稿了视频」标签，是隐含耦合。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名（10-04 定：`history.retentionDays`，不带 `image` 前缀）；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha
@@ -266,6 +281,8 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 
 | 项 | 备注 |
 | --- | --- |
+| `PostEvent` 信封与 `post-detected` 事件（取代 `dynamic-detected`）；`deliverWork` → `deliverPost`、`NeutralWork` 退场；「正文链接」版式块；番剧、合集、课程翻成附件视频卡 | 10-05 主人定：都在 **3a**（前三件要等投递入口吃 `Post`，最后一件随 B 站翻译搬进 `bilibili/`） |
+| 全局时区设置（卡上的时间现在按机器本地时区排，ADR-0021 决策 43 要默认 `Asia/Shanghai`） | 10-05 主人定：第 4 期之前单开一小片，㉑ 不做；具体放哪排到时再问 |
 | 连接设置的校验：保存时适配器在场就按 `settingsSchema` 校验、不过回 400；读盘逐条校验，不过的只隔离那一条，只有外壳坏了才挡开机（ADR-0024 决策 10） | 最迟在第 4 期之前：面板的「设置不合法」态在第 4 期 |
 | 投递失败归核心：按目标逐个投递、只重试失败的那个（`rate_limited` / `unavailable` / `timeout` 退避，`indeterminate` 与其他码不重试）；出卡或 AI 失败降级、不整条重来；每个目标一行历史，失败带 code（ADR-0024 决策 15） | |
 | 删掉自定义 UA 设置，身份一律由 `packages/http` 生成；老配置里这一格由迁移丢掉、新 schema 不留（ADR-0025 决策 7） | **第 2 期 ⑭**；「换一个身份」按钮随第 4 期的 B 站设置 tab |
