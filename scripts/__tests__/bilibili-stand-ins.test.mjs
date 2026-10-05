@@ -104,6 +104,8 @@ export const RATCHET = {
 	"packages/dynamic/src/dynamic-engine.ts": 3,
 	"packages/dynamic/src/post-from-dynamic.ts": 7,
 	"packages/image/src/image-renderer.ts": 8,
+	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
+	"packages/internal/src/bilibili-guard.ts": 1,
 	"packages/internal/src/constants.ts": 4,
 	"packages/internal/src/index.ts": 1,
 	"packages/live/src/live-card-input.ts": 4,

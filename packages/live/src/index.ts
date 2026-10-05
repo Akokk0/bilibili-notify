@@ -27,6 +27,8 @@ export {
 	LIVE_SUMMARY_MIN_SENDERS,
 	LiveSummaryRequester,
 } from "./live-summary-requester";
+// B 站上舰 / 醒目留言事件 → 中立的会员事件与醒目留言事件(㉓b,还没有调用方,㉓c 接线)。
+export { membershipEventFromLiveEvent } from "./membership-event";
 export {
 	type CustomCardStyleLike,
 	type CustomGuardBuyLike,
@@ -63,6 +65,7 @@ export { RoomSession } from "./room-session";
 export { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 export { createSerialGate, type SerialGate } from "./serial-gate";
 export { default as defaultStopWords } from "./stop-words";
+export { superchatEventFromLiveEvent } from "./superchat-event";
 export {
 	buildRoomLink,
 	DEFAULT_LIVE_TEMPLATES,

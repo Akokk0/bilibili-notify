@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { formatAgo, formatClock, formatCount, formatDuration } from "../format";
+import { formatAgo, formatAmount, formatClock, formatCount, formatDuration } from "../format";
 
 describe("formatCount", () => {
 	it("卡片口径:万和亿都一位小数、保留「.0」、万以下原样不加千分位", () => {
@@ -149,5 +149,38 @@ describe("观看人数:formatCount 与 B 站 text_small 的对照(㉒d)", () => 
 		for (const row of ROWS.filter((r) => r.certain)) {
 			expect(formatCount(row.num), String(row.num)).toBe(row.bili);
 		}
+	});
+});
+
+/**
+ * 金额(㉓b,data-model「会员、醒目留言与特别关注」的「金额」):按币种排,固定中文环境、不加千分位。
+ * 期望值都是手写的字面量(含币种符号的写法),不照着 `Intl` 再算一遍。
+ */
+describe("formatAmount", () => {
+	it("人民币整数:「¥30」「¥2000」,没有千分位", () => {
+		expect(formatAmount(30, "CNY")).toBe("¥30");
+		expect(formatAmount(2000, "CNY")).toBe("¥2000");
+	});
+
+	it("小数照写、不补零:「¥30.5」;币种符号按币种:美元「US$30」、日元「JP¥30」", () => {
+		expect(formatAmount(30.5, "CNY")).toBe("¥30.5");
+		expect(formatAmount(30, "USD")).toBe("US$30");
+		expect(formatAmount(30, "JPY")).toBe("JP¥30");
+	});
+
+	it("币种代码不合法(`Intl` 会抛 RangeError)→ 不抛,退成「金额 + 空格 + 币种原文」,多余的空格去掉", () => {
+		expect(formatAmount(30, "NOT-A-CODE")).toBe("30 NOT-A-CODE");
+		expect(formatAmount(30.5, "12")).toBe("30.5 12");
+		// 空串也是不合法的币种:只剩金额,不留尾随空格。
+		expect(formatAmount(30, "")).toBe("30");
+	});
+
+	// 「不知道」在出口缺了就是空串(data-model「数字、时间与「不知道」」);`Intl` 会写出「¥NaN」「¥∞」,
+	// 那是比空着更糟的东西。合法与不合法的币种都一样。
+	it("金额不是有限的数(NaN / ±Infinity)→ 空串,不抛、不写「NaN」「∞」", () => {
+		expect(formatAmount(Number.NaN, "CNY")).toBe("");
+		expect(formatAmount(Number.POSITIVE_INFINITY, "CNY")).toBe("");
+		expect(formatAmount(Number.NEGATIVE_INFINITY, "USD")).toBe("");
+		expect(formatAmount(Number.NaN, "NOT-A-CODE")).toBe("");
 	});
 });

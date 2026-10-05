@@ -28,6 +28,7 @@ export const HOMES = {
 	formatAgo: "packages/internal/src/format.ts",
 	formatDuration: "packages/internal/src/format.ts",
 	formatClock: "packages/internal/src/format.ts",
+	formatAmount: "packages/internal/src/format.ts",
 	formatAxisTick: "apps/web/src/pages/stats/chart-utils.ts",
 	postText: "packages/internal/src/post.ts",
 	normalizePost: "packages/internal/src/post.ts",

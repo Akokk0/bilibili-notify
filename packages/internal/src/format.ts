@@ -87,3 +87,28 @@ export function formatClock(seconds: number): string {
 	const pad = (n: number) => String(n).padStart(2, "0");
 	return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
+
+/**
+ * 金额:按币种用 `Intl.NumberFormat` 排,**固定中文环境**(不随机器语言变 —— 同一笔钱在哪台机器上画出来
+ * 都是一个样)、**不加千分位**(与卡片上的数字口径一致:`formatCount` 万以下也不加)。人民币整数写「¥30」「¥2000」,
+ * 小数照写不补零(「¥30.5」),别的币种按它自己的符号(「US$30」「JP¥30」)。
+ *
+ * 两种不该出现、但来源说了算的情形都**不抛**:
+ * - 币种代码不合法(`Intl` 抛 RangeError)→ 退成「金额 + 空格 + 币种原文」,多余的空格去掉(空串币种只剩金额);
+ * - 金额不是有限的数(NaN / ±Infinity)→ 空串,与「不知道在出口缺了就是空串」同口径。
+ */
+export function formatAmount(amount: number, currency: string): string {
+	// 金额不是有限的数(NaN / ±Infinity)= 不知道,出口写空串 —— `Intl` 会写出「¥NaN」「¥∞」,比空着更糟。
+	if (!Number.isFinite(amount)) return "";
+	try {
+		return new Intl.NumberFormat("zh-CN", {
+			style: "currency",
+			currency,
+			minimumFractionDigits: 0,
+			useGrouping: false,
+		}).format(amount);
+	} catch {
+		// 币种代码不合法时 `Intl` 抛 RangeError;金额来自来源、币种也是来源报的,不能让一个怪币种把推送整条带倒。
+		return `${amount} ${currency}`.trim();
+	}
+}

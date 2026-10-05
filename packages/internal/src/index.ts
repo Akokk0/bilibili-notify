@@ -2,6 +2,8 @@
 // 这里给后端消费者补一条根入口的路 —— 与 FEATURE_KEYS 同样的两路一值。
 // 失败规矩的零件(ADR-0026)。本体在零依赖的 constants(面板经 /constants 子路径消费),
 // 这里给后端补一条根入口的路。
+
+export * from "./bilibili-guard";
 export {
 	type ActivePersonaShape,
 	AI_PROVIDER_IDS,
@@ -85,6 +87,7 @@ export {
 	webSearchBackendMeta,
 } from "./constants";
 export * from "./format";
+export * from "./membership";
 export * from "./platform";
 export * from "./post";
 /**
