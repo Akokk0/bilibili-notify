@@ -30,6 +30,10 @@ import { createNodeMessageBus } from "../message-bus.js";
 
 const SUB = makeExtensionSubscription({ externalId: "sec-uid-1" });
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
+/** 这批用例的作品都不带图,图库的口不会被调到。 */
+const postImages = {
+	put: async () => ({ ok: false as const, code: "invalid" as const, message: "测试不存图" }),
+};
 
 function post(n: number): SubscriptionReportValue<"post"> {
 	return {
@@ -50,7 +54,7 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 		});
 		let renders = 0;
 		const image = {
-			generateNeutralDynamicCard: vi.fn(async () => {
+			generatePostCard: vi.fn(async () => {
 				if (renders++ === 0) await firstGate;
 				return Buffer.from("card");
 			}),
@@ -71,6 +75,8 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 			serviceCtx: makeTrackingContext(),
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
+			avatarRef: () => undefined,
+			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
 				filter: {},
@@ -79,7 +85,6 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 			sources: {
 				running: () => true,
 				postNoun: () => "作品",
-				readAvatar: async () => undefined,
 				events: () => ["post"],
 			},
 			pushFor: () => push,
@@ -125,7 +130,7 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 	it("前一万字里有屏蔽词、整段超长:挡下,不出卡不推", async () => {
 		const bus = createNodeMessageBus();
 		const render = vi.fn(async () => Buffer.from("card"));
-		const image = { generateNeutralDynamicCard: render } as unknown as ImageRenderer;
+		const image = { generatePostCard: render } as unknown as ImageRenderer;
 		const sent: PushSegment[][] = [];
 		const push: BoundWorkPush = {
 			broadcast: async (segments: PushSegment[]) => {
@@ -139,6 +144,8 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 			serviceCtx: makeTrackingContext(),
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
+			avatarRef: () => undefined,
+			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
 				filter: { enable: true, keywords: ["海边"] },
@@ -147,7 +154,6 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 			sources: {
 				running: () => true,
 				postNoun: () => "作品",
-				readAvatar: async () => undefined,
 				events: () => ["post"],
 			},
 			pushFor: () => push,
@@ -187,7 +193,7 @@ describe("bindExtensionPosts — 登记进 track", () => {
 		const ctx = makeTrackingContext();
 		const bus = createNodeMessageBus();
 		const image = {
-			generateNeutralDynamicCard: vi.fn(async () => Buffer.from("card")),
+			generatePostCard: vi.fn(async () => Buffer.from("card")),
 		} as unknown as ImageRenderer;
 		const push: BoundWorkPush = {
 			broadcast: overrides.broadcast,
@@ -200,6 +206,8 @@ describe("bindExtensionPosts — 登记进 track", () => {
 			serviceCtx: ctx,
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
+			avatarRef: () => undefined,
+			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
 				filter: {},
@@ -208,7 +216,6 @@ describe("bindExtensionPosts — 登记进 track", () => {
 			sources: {
 				running: () => true,
 				postNoun: () => "作品",
-				readAvatar: async () => undefined,
 				events: () => ["post"],
 			},
 			pushFor: () => push,
@@ -268,7 +275,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 	it("屏蔽提醒里写的是这个拓展的叫法(别的拓展没有叫法、会落回「作品」)", async () => {
 		const bus = createNodeMessageBus();
 		const image = {
-			generateNeutralDynamicCard: vi.fn(async () => Buffer.from("card")),
+			generatePostCard: vi.fn(async () => Buffer.from("card")),
 		} as unknown as ImageRenderer;
 		const sent: PushSegment[][] = [];
 		const push: BoundWorkPush = {
@@ -284,6 +291,8 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 			serviceCtx: makeTrackingContext(),
 			subscription: (id) => (id === SUB.id ? SUB : undefined),
 			profileName: () => "资料名",
+			avatarRef: () => undefined,
+			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
 				filter: { enable: true, keywords: ["海边"], notify: true },
@@ -295,7 +304,6 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 					asked.push(extensionId);
 					return extensionId === SUB.identity.sourceKey ? "视频" : undefined;
 				},
-				readAvatar: async () => undefined,
 				events: () => ["post"],
 			},
 			pushFor: () => push,

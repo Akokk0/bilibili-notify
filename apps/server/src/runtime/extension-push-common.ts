@@ -45,8 +45,9 @@ export interface StoredAvatar {
  * 这条订阅资料里存进图库的头像。资料里的 `avatar` 是图库引用(拓展订阅才有;B 站订阅的 `avatarUrl` 是远端网址,
  * 不是图库的东西);没有头像、或引用指着的图已经不在了都回 `undefined`。读盘出错就抛,调用方各自决定怎么兜底。
  *
- * 拓展出卡(作品 / 直播)与锐评卡共用:卡里的图只认字符串地址(决策 68),要把字节转成 data URL,
- * 面板用的 `/api/images/<ref>` 截图的浏览器加载不到。
+ * 拓展直播卡与锐评卡共用:这两种卡里的图只认字符串地址(决策 68),要把字节转成 data URL,
+ * 面板用的 `/api/images/<ref>` 截图的浏览器加载不到。拓展作品卡不走这里:`Post` 的头像是图库引用,出图器按引用取
+ * (`postFromReport` + `images/image-data-url.ts`)。
  */
 export async function readProfileAvatar(
 	runtime: {

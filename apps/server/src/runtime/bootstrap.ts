@@ -95,6 +95,12 @@ export interface AppRuntime {
 	 */
 	profileImages: ImageWriter;
 	/**
+	 * 拓展作品往图库存图的口(ADR-0021 决策 22 下 2026-10-05 的 🔗,㉑d):收到上报、出卡前把配图与视频封面(以及随事件
+	 * 带来的作者头像)`put` 进图库,`Post` 里只放引用,出卡器按引用读图。作品是**在途数据、不落盘**,这一家没有引用可列
+	 * (`listRefs` 恒空),存进去的图靠清扫的 24 小时宽限期活到卡片画完 —— 登记它的意义是拿到存图的口,不是留图。
+	 */
+	postImages: ImageWriter;
+	/**
 	 * 推送历史往图库存图的口:配图 `put`、拓展行的头像快照 `keep`(续期)。历史仓用它存图;这一家引用方登记的名单是
 	 * 保留期内(水位线之后)的日文件里所有 `image` 与 `avatarSnapshot`(`listHistoryImageRefs`)。重推原件是另一家引用方
 	 * (`listRepushImageRefs`),各登记各的 —— 拿到的是同一个口,这里只暴露历史这一份。
@@ -308,6 +314,13 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		name: "女仆对话",
 		listRefs: () => conversationStore.listImageRefs(),
 	});
+	// 拓展作品是图库的一家引用方,但它**没有东西可列**:作品是在途数据(收到上报 → 出卡 → 推送),不落盘,图只在
+	// 出卡那一刻要用。所以名单恒空,图全靠新图 24 小时的宽限期活到卡片画完;卡画完、没有哪家引用(历史行的配图是
+	// 推送时另存的一份,头像抄的是资料缓存里的引用),下一轮清扫就收走。名单不会因为「列不出」而抛 —— 空就是空。
+	const postImages = imageStore.register({
+		name: "作品配图",
+		listRefs: async () => [],
+	});
 	const logStore = createLogStore({
 		hostRoot,
 		serviceCtx,
@@ -370,6 +383,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		imageStore,
 		chatImages,
 		profileImages,
+		postImages,
 		historyImages,
 		conversationStore,
 		logStore,

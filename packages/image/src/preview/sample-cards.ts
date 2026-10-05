@@ -114,10 +114,16 @@ function liveSample(scene: string): LiveCardView {
  * 各拼各的,迟早长成两副样子。
  *
  * 时间真机上由渲染器按时钟算,示例里写死「刚刚」—— 预览要的是稳定;数字走卡片同款的万 / 亿写法
- * (`formatCount`,在 `nodeFromPost` 里),免得示例上的数字和真卡长得不是一回事。头像不画(`Creator.avatar` 只收
- * 图库引用,B 站 3a 才存),所以示例也不带。
+ * (`formatCount`,在 `nodeFromPost` 里),免得示例上的数字和真卡长得不是一回事。
+ *
+ * 头像与真出卡走同一条路:`Creator.avatar` 是图库引用,示例放一个**内置的示例引用**({@link SAMPLE_AVATAR_REF}),
+ * 解析口(这里就是一张写死的表)把它认成内置头像图 —— 示例要保持确定性、不联网、不依赖盘上有什么,所以认得它的
+ * 是示例自己的解析口,不是服务端的图库(那里没有这张图)。
  */
-const FMT = { time: () => "刚刚" };
+const FMT = {
+	time: () => "刚刚",
+	imageUrl: (ref: string): string | undefined => SAMPLE_IMAGES[ref],
+};
 
 /** 示例视频本身。「视频投稿」与转发场面框里那条用的是同一个视频,只是外面那条动态不同。 */
 const SAMPLE_VIDEO: NonNullable<Post["video"]> = {
@@ -129,8 +135,14 @@ const SAMPLE_VIDEO: NonNullable<Post["video"]> = {
 	danmaku: 129,
 };
 
+/** 内置的示例头像引用:形状合规(`<sha256>.<扩展名>`)、不会与任何真图撞名;只有示例的解析口认得它。 */
+export const SAMPLE_AVATAR_REF = `${"0".repeat(63)}1.png`;
+
+/** 示例里用到的内置图:引用 → 图(与 `routes/cards.ts` 的预览占位同款 SVG)。 */
+const SAMPLE_IMAGES: Readonly<Record<string, string>> = { [SAMPLE_AVATAR_REF]: SVG_AVATAR_BLUE };
+
 /** 示例作者:大会员,名字走粉色那一支,皮肤里这条最容易被写死的前景色吃掉。 */
-const SAMPLE_CREATOR = { name: MASTER.name, isPremium: true } as const;
+const SAMPLE_CREATOR = { name: MASTER.name, isPremium: true, avatar: SAMPLE_AVATAR_REF } as const;
 const SAMPLE_PUBLISHED_AT = "2027-01-15T08:00:00.000Z";
 
 const SAMPLE_TOPIC = "示例话题";
@@ -236,7 +248,7 @@ const SAMPLE_DRAW_POST: Post = {
  */
 const SAMPLE_FORWARD_TEXT = "这是一段示例转发语，下面那张是被转发的原动态。";
 const SAMPLE_FORWARD_POST: Post = {
-	creator: { name: "示例转发者", isPremium: false },
+	creator: { name: "示例转发者", isPremium: false, avatar: SAMPLE_AVATAR_REF },
 	publishedAt: SAMPLE_PUBLISHED_AT,
 	text: SAMPLE_FORWARD_TEXT,
 	richText: [{ kind: "text", text: SAMPLE_FORWARD_TEXT }],

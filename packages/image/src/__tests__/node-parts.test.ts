@@ -1,19 +1,20 @@
 /**
- * **造 node 的零件**(ADR-0019 决策 68):拓展作品装配时自己造一棵 node,不碰本包内部。`Post` 那条
- * (`nodeFromPost`)走的是同一份实现 —— 图廊的 `Post` 路径另有 `post-gallery.test.ts` 与基准快照钉着,
- * 这里只钉中立那一侧多出来的规矩:
+ * **图廊零件**(`buildGallery`,ADR-0019 决策 68):吃中立的图列表(`GalleryImage`)。`Post` 那条
+ * (`nodeFromPost`)把 `PostImage` 映射成它再交给它 —— 图廊的 `Post` 路径另有 `post-gallery.test.ts` 与基准快照钉着,
+ * 这里钉图廊自己的规矩:
  *
- * - `buildGallery`:吃中立的图列表。动图只认来源给的 `animated`(不再自己看 `.gif` 结尾 ——
- *   那是 B 站翻译那一步的事,拓展的图是 data URL);宽高缺了就按普通比例铺。
- * - `buildPlainText`:纯文本正文,保留换行,落在与 `Post` 富文本同一个根上(`body` 挂点);给了话题名,
- *   正文里的 `#名字#` / `#名字` 画成 `Post` 富文本话题那一种 span(决策 55 的 09-24 🔗)。
+ * - 动图只认来源给的 `animated`(不再自己看 `.gif` 结尾 —— 那是来源翻译那一步的事:B 站看 `live_url` /
+ *   `.gif`,拓展看文件头);
+ * - 宽高缺了就按普通比例铺,不判长图。
+ *
+ * 纯文本正文怎么切成带话题的 `RichText` 片段(从前的 `buildPlainText`)搬去了服务端的 `postFromReport`,
+ * 测试在 `apps/server/src/runtime/__tests__/post-from-report.test.ts`。
  */
 
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
-import { renderRichText } from "../rich-text";
-import { buildGallery, buildPlainText, type GalleryImage } from "../templates/dynamic-content";
+import { buildGallery, type GalleryImage } from "../templates/dynamic-content";
 
 async function htmlOf(v: VNode | null): Promise<string> {
 	if (!v) throw new Error("零件回了 null");
@@ -66,128 +67,5 @@ describe("buildGallery — 中立的图列表", () => {
 		expect(html.match(/<img/g)).toHaveLength(9);
 		expect(html).toContain("+3");
 		expect(html).not.toContain(gif("P9"));
-	});
-});
-
-describe("buildPlainText — 纯文本正文", () => {
-	it("保留换行;落在与 `Post` 富文本同一个根上(`body` 挂点)", async () => {
-		const html = await htmlOf(buildPlainText("第一行\n第二行"));
-		expect(html).toMatch(/^<div data-bn="body"/);
-		expect(html).toContain("第一行<br>第二行");
-	});
-
-	it("\\r\\n 与 \\r 也当换行", async () => {
-		const html = await htmlOf(buildPlainText("甲\r\n乙\r丙"));
-		expect(html).toContain("甲<br>乙<br>丙");
-		expect(html).not.toContain("\r");
-	});
-
-	it("原样当文字:标签被转义,#话题 照字面", async () => {
-		const html = await htmlOf(buildPlainText("<b>加粗</b> #话题#"));
-		expect(html).toContain("&lt;b&gt;加粗&lt;/b&gt; #话题#");
-		expect(html).not.toContain("<b>");
-	});
-
-	it("纯文本正文里没有任何图标 / 图(拓展那条路本来就不带)", async () => {
-		const html = await htmlOf(buildPlainText("看看 #旅行# 今天", ["旅行"]));
-		expect(html).not.toContain("<svg");
-		expect(html).not.toContain("<img");
-	});
-
-	it("一个字都没有(空串 / 只有空白)→ null,正文块收起", () => {
-		expect(buildPlainText("")).toBeNull();
-		expect(buildPlainText(" \n\t ")).toBeNull();
-	});
-});
-
-describe("buildPlainText — 照拓展报的话题名给正文里的话题上色", () => {
-	/** `Post` 富文本里话题片段画出来的那一种 span。 */
-	const topic = (text: string) => `<span class="text-[#FF6699]">${text}</span>`;
-
-	it("画法与 `Post` 富文本的话题片段同一种 span(皮肤对两边一视同仁)", async () => {
-		const bili = await htmlOf(
-			renderRichText([{ kind: "topic", text: "#假话题#", name: "假话题" }]),
-		);
-		expect(bili).toContain(topic("#假话题#"));
-		const ours = await htmlOf(buildPlainText("#假话题#", ["假话题"]));
-		expect(ours).toContain(topic("#假话题#"));
-	});
-
-	it("#名字# 与 #名字 都上色,两边的字照旧", async () => {
-		const html = await htmlOf(buildPlainText("去 #海边# 玩,顺便 #旅行", ["海边", "旅行"]));
-		expect(html).toContain(topic("#海边#"));
-		expect(html).toContain(topic("#旅行"));
-		expect(html).toContain("去 ");
-		expect(html).toContain(" 玩,顺便 ");
-	});
-
-	it("名字有包含关系时长的先匹配,与报的次序无关", async () => {
-		const html = await htmlOf(buildPlainText("#旅行日记 和 #旅行", ["旅行", "旅行日记"]));
-		expect(html).toContain(topic("#旅行日记"));
-		expect(html).toContain(topic("#旅行"));
-		expect(html).not.toContain(`${topic("#旅行")}日记`);
-	});
-
-	it("#名字# 优先于 #名字:收尾的 # 算进话题,不留给后面", async () => {
-		const html = await htmlOf(buildPlainText("#旅行#日记", ["旅行"]));
-		expect(html).toContain(`${topic("#旅行#")}日记`);
-	});
-
-	it("#名字# 收尾的 # 正是下一个话题的开头:让给下一个,两个都上色", async () => {
-		const html = await htmlOf(buildPlainText("#旅行#美食", ["旅行", "美食"]));
-		expect(html).toContain(`${topic("#旅行")}${topic("#美食")}`);
-	});
-
-	it("收尾的 # 后面那个名字其实对不上(被字接着):收尾的 # 照旧算进前一个话题", async () => {
-		const html = await htmlOf(buildPlainText("#旅行#美食家", ["旅行", "美食"]));
-		expect(html).toContain(`${topic("#旅行#")}美食家`);
-		expect(html.match(/text-\[#FF6699\]/g)).toHaveLength(1);
-	});
-
-	it("#名字 后面紧跟字母 / 数字就不是这个话题 —— 「#cat」不从「#category」里抠出来", async () => {
-		const none = [
-			["#category", "cat"],
-			["#cat123", "cat"],
-			["#旅行今天", "旅行"],
-			// 扩展区的汉字占两个 UTF-16 单元,也得认成字。
-			["#cat\u{20000}", "cat"],
-		] as const;
-		for (const [text, name] of none) {
-			const html = await htmlOf(buildPlainText(text, [name]));
-			expect(html, text).not.toContain("text-[#FF6699]");
-		}
-		expect(await htmlOf(buildPlainText("#cat is cute", ["cat"]))).toContain(topic("#cat"));
-		expect(await htmlOf(buildPlainText("#旅行，今天", ["旅行"]))).toContain(
-			`${topic("#旅行")}，今天`,
-		);
-		expect(await htmlOf(buildPlainText("#旅行\u{1F600}", ["旅行"]))).toContain(topic("#旅行"));
-		// #名字# 自己带着边界,后面跟什么字都不影响。
-		expect(await htmlOf(buildPlainText("#cat#egory", ["cat"]))).toContain(`${topic("#cat#")}egory`);
-	});
-
-	it("名字在正文里找不到:不上色、不出错,与没给话题时一模一样", async () => {
-		const text = "今天走了两万步 #城市散步";
-		expect(await htmlOf(buildPlainText(text, ["vlog"]))).toBe(await htmlOf(buildPlainText(text)));
-		expect(await htmlOf(buildPlainText(text, []))).toBe(await htmlOf(buildPlainText(text)));
-	});
-
-	it("不在名单里的 # 一律不动 —— 「C#」「#1」不是话题,BN 不按 # 猜", async () => {
-		const html = await htmlOf(buildPlainText("学 C# 的第 #1 课 #编程", ["编程"]));
-		expect(html.match(/text-\[#FF6699\]/g)).toHaveLength(1);
-		expect(html).toContain(topic("#编程"));
-		expect(html).toContain("学 C# 的第 #1 课 ");
-	});
-
-	it("HTML 转义照旧:正文与话题里的标签都当文字", async () => {
-		const html = await htmlOf(buildPlainText("<b>粗</b> #<i>#", ["<i>"]));
-		expect(html).toContain("&lt;b&gt;粗&lt;/b&gt; ");
-		expect(html).toContain(topic("#&lt;i&gt;#"));
-		expect(html).not.toContain("<b>");
-		expect(html).not.toContain("<i>");
-	});
-
-	it("换行照旧:话题前后换行,<br> 落在原处", async () => {
-		const html = await htmlOf(buildPlainText("第一行 #话题\r\n第二行 #话题#", ["话题"]));
-		expect(html).toContain(`第一行 ${topic("#话题")}<br>第二行 ${topic("#话题#")}`);
 	});
 });

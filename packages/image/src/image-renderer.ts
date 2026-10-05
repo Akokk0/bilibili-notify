@@ -12,6 +12,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type Disposable,
 	effectiveCardSkinKnobs,
+	type ImageRef,
 	type Logger,
 	type Post,
 	type ServiceContext,
@@ -32,9 +33,9 @@ import {
 } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
-import type { DynamicNode } from "./templates/dynamic-content";
 import type { LiveCardInput } from "./templates/live-card";
 import { nodeFromPost } from "./templates/post-node";
+import { collectImageRefs } from "./templates/post-refs";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, CardSkinChoice, LiveData } from "./types";
@@ -181,6 +182,15 @@ export interface ImageRendererOptions {
 	 */
 	resolveCardSkinAsset?: (skinId: string, name: string) => Promise<string | undefined>;
 	/**
+	 * 图库引用 → 可画的地址(宿主注入,读图库,**读字节转成 data URL**)。作品卡里的配图、封面、头像、正文小图标
+	 * 与表情图都是 `ImageRef`(`Post` 只收引用),出图前由 {@link ImageRenderer.generatePostCard} 逐个问它。
+	 *
+	 * 契约是 data URL 而不是本机地址:渲染页只许 `data:` 与白名单里的远端图,不该为了一张作品图去访问本机 HTTP
+	 * (还得带上面板的鉴权),而内容相同的字节转出来的 data URL 逐字相同。解析不到(图已被清扫)回 `undefined`,
+	 * 渲染器画占位;抛错同样当解析不到。不注入 = 所有引用都画占位。
+	 */
+	resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
+	/**
 	 * 出图回落了(ADR-0014 决策 19「回落必须可见」)。宿主拿它亮面板告警 —— 用户换了皮肤
 	 * 却看不出没生效,只会以为是自己没保存。
 	 *
@@ -208,6 +218,7 @@ export class ImageRenderer {
 	private readonly resolveFontFace: (id: string) => Promise<string>;
 	private readonly quietConfigUpdates: boolean;
 	private readonly resolveCardSkin?: (id: string) => CardSkinManifest | undefined;
+	private readonly resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
 	private readonly resolveCardSkinAsset?: (
 		skinId: string,
 		name: string,
@@ -274,6 +285,7 @@ export class ImageRenderer {
 		this.quietConfigUpdates = opts.quietConfigUpdates ?? false;
 		this.resolveCardSkin = opts.resolveCardSkin;
 		this.resolveCardSkinAsset = opts.resolveCardSkinAsset;
+		this.resolveImageRef = opts.resolveImageRef;
 		this.onCardSkinFallback = opts.onCardSkinFallback;
 		this.logger = opts.serviceCtx.logger;
 	}
@@ -714,12 +726,17 @@ export class ImageRenderer {
 	}
 
 	/**
-	 * **作品卡的入口**(㉑c 第 5 步):吃一份平台中立的 {@link Post},不收任何平台的原始数据。
-	 * `Post` → 卡片节点({@link nodeFromPost})→ {@link generateNeutralDynamicCard}。发布时间由本渲染器按机器
-	 * 本地时区排({@link unixTimestampToString})。
+	 * **作品卡的入口**:吃一份平台中立的 {@link Post},不收任何平台的原始数据。`Post` → 卡片节点
+	 * ({@link nodeFromPost})→ 皮肤出卡。发布时间由本渲染器按机器本地时区排({@link unixTimestampToString})。
 	 *
-	 * B 站动态由 `packages/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;链接预览手里有现成的数据,
-	 * 直接造 `Post`。拓展作品那条路到 ㉑d 才切过来,目前仍走 {@link generateNeutralDynamicCard}。
+	 * B 站动态由 `packages/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;拓展作品由服务端的 `postFromReport`
+	 * 翻成 `Post`(图已存进图库,`PostImage` 只放 `ref`);链接预览手里有现成的数据,直接造 `Post`。
+	 *
+	 * **图库引用在这里事先解析**:作品里用到的每个引用(配图、封面、头像、正文里的小图标与表情图、附加块文字行的
+	 * 图标)交给宿主注入的 {@link ImageRendererOptions.resolveImageRef},拿到可画的地址再同步造节点。出图器自己不读盘、
+	 * 不联网。解析不到(图已被清扫、宿主没注入)的引用画占位,不抛。
+	 *
+	 * 卡里的图最终只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
 	 */
 	async generatePostCard(
 		post: Post,
@@ -727,24 +744,12 @@ export class ImageRenderer {
 		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
 		options?: { priority?: RenderPriority },
 	): Promise<Buffer> {
-		const node = nodeFromPost(post, { time: (seconds) => this.unixTimestampToString(seconds) });
-		return this.generateNeutralDynamicCard(node, colorOptions, options);
-	}
-
-	/**
-	 * **动态卡的中立入口**(ADR-0019 决策 68):吃一棵造好的 {@link DynamicNode},不收任何平台的
-	 * 原始数据 —— 皮肤契约要的那几格(动态类型、图廊张数 / 首图、转发内层那一份)都在 node 上,
-	 * 转发内层是 `node.forward`,自己带着自己的那几格。
-	 *
-	 * 卡里的图只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
-	 */
-	async generateNeutralDynamicCard(
-		node: DynamicNode,
-		colorOptions: CardColorOptions = {},
-		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
-		options?: { priority?: RenderPriority },
-	): Promise<Buffer> {
 		const t0 = Date.now();
+		const resolved = await this.resolveImageRefs(collectImageRefs(post));
+		const node = nodeFromPost(post, {
+			time: (seconds) => this.unixTimestampToString(seconds),
+			imageUrl: (ref) => resolved.get(ref),
+		});
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.upName}`);
 		return this.renderWithSkin({
 			kind: "dynamic",
@@ -762,6 +767,24 @@ export class ImageRenderer {
 			.catch((e) => {
 				throw new Error(`生成动态卡片失败！错误: ${e}`);
 			});
+	}
+
+	/** 引用 → 可画的地址。解析口抛错或解析不到的引用不进表(画占位),一个坏引用不拖累整张卡。 */
+	private async resolveImageRefs(refs: ReadonlySet<ImageRef>): Promise<Map<ImageRef, string>> {
+		const resolved = new Map<ImageRef, string>();
+		const resolve = this.resolveImageRef;
+		if (!resolve || refs.size === 0) return resolved;
+		await Promise.all(
+			[...refs].map(async (ref) => {
+				try {
+					const url = await resolve(ref);
+					if (url) resolved.set(ref, url);
+				} catch (e) {
+					this.logger.debug(`[dynamic] 图库引用 ${ref} 解析失败,画占位:${String(e)}`);
+				}
+			}),
+		);
+		return resolved;
 	}
 
 	async generateWordCloudImg(

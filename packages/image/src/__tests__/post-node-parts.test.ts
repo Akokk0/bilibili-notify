@@ -1,9 +1,9 @@
 /**
  * 作品节点的两处结构性规矩(`nodeFromPost` 造出来的 node 与头像块)。
  *
- * 1. **头像到 ㉑d / 3a 才有**:`Creator.avatar` 只收图库引用,出卡器目前不会按引用取图,所以 `Post` 这条路的
- *    node 不带头像地址,头像块整块收起(皮肤契约的 `up.face` 是空串,字段表只增不删)。拓展作品那条路
- *    (`apps/server/src/runtime/extension-post-work.ts`)自己造 node、带着头像地址,头像块照画。
+ * 1. **头像只认 `Creator.avatar`(图库引用)**:拓展的头像存在图库里,引用经出卡器注入的解析口变成地址;B 站要到 3a
+ *    才存头像,没有引用就不带头像地址,头像块整块收起(皮肤契约的 `up.face` 是空串,字段表只增不删)。头像块自己
+ *    吃的是 node 上的 `avatarUrl`:有地址就画、没地址整块收起。
  * 2. **`text` 与 `pics` 不共用 VNode 实例**:Vue 文档要求一棵组件树里的 vnode 各不相同,客户端挂载时会往 vnode
  *    上写 `el` / `component`,同一个实例出现在两处,后一处就把前一处的记录盖掉。皮肤把正文文字与图廊摆进同一张卡
  *    是常态(出厂默认皮肤就是这么摆的)。出图走 SSR,实测共用一个实例今天也画得出来(所以没有哪条出图测试会因
@@ -24,30 +24,32 @@ const FMT = { time: () => "刚刚" };
 const htmlOf = (vnode: VNode): Promise<string> =>
 	renderToString(createSSRApp({ render: () => vnode }));
 
-describe("头像 —— `Post` 这条路不画,拓展作品那条路照画", () => {
-	/** 验红:让 `nodeFromPost` 把 `creator.avatar` 当地址写进 `avatarUrl`,前两条红。 */
-	it("`Post` 造出的 node 没有头像地址 —— 外层、被转发的内层、充电专属都是", () => {
+describe("头像 —— 只认 `Creator.avatar`(图库引用)", () => {
+	const imageUrl = (ref: string) => `data:image/png;base64,${ref}`;
+
+	/** 验红:让 `nodeFromPost` 不再读 `creator.avatar`,第一条红;读成地址直接塞进去,第二条红。 */
+	it("外层、被转发的内层各有各的引用 —— 各解析各的", () => {
 		const outer = nodeFromPost(
 			{
-				creator: { name: "外层", avatar: "abc.png" },
+				creator: { name: "外层", avatar: "outer.png" },
 				publishedAt: "2023-11-14T22:13:20.000Z",
 				text: "转发语",
 				repost: {
-					creator: { name: "内层", avatar: "def.png" },
+					creator: { name: "内层", avatar: "inner.png" },
 					publishedAt: "2023-11-14T22:13:20.000Z",
 					text: "",
 					locked: { title: "充电专属", hint: "h" },
 				},
 			},
-			FMT,
+			{ ...FMT, imageUrl },
 		);
-		expect(outer.avatarUrl).toBeUndefined();
-		expect(outer.forward?.avatarUrl).toBeUndefined();
+		expect(outer.avatarUrl).toBe("data:image/png;base64,outer.png");
+		expect(outer.forward?.avatarUrl).toBe("data:image/png;base64,inner.png");
 	});
 
-	it("十份基准里没有一份画出头像", () => {
+	it("没有引用就没有头像地址:十份 B 站基准里没有一份画出头像(到 3a 才有)", () => {
 		for (const post of Object.values(DYNAMIC_SAMPLE_POSTS)) {
-			expect(nodeFromPost(post, FMT).avatarUrl).toBeUndefined();
+			expect(nodeFromPost(post, { ...FMT, imageUrl }).avatarUrl).toBeUndefined();
 		}
 	});
 

@@ -10,10 +10,15 @@
  */
 
 import { readFileSync } from "node:fs";
-import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import {
+	CARD_PREVIEW_SCENES,
+	CARD_SKIN_KINDS,
+	DEFAULT_CARD_SKIN,
+	IMAGE_REF_PATTERN,
+} from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { renderCardWithSkin } from "../../skin/render-skin";
-import { sampleCard } from "../sample-cards";
+import { SAMPLE_AVATAR_REF, sampleCard } from "../sample-cards";
 
 /** 转发框:`forward` 原子块自己的根,挂着 `bubble`。 */
 const FORWARD_BUBBLE = 'data-bn="bubble"';
@@ -101,6 +106,32 @@ describe("出厂示例数据 — 动态卡的转发场面", () => {
 		const inset = html.slice(at);
 		// 内层的块与外层挂同一批 class(皮肤的块 id),所以一条 CSS 管两层。
 		expect(inset).toContain("bn-blk-");
+	});
+});
+
+/**
+ * **示例的头像**(㉑d)。`Creator.avatar` 只收图库引用,示例放一个内置的示例引用,示例自己的解析口把它认成内置头像图 ——
+ * 示例要确定、不联网、不依赖盘上有什么。认不出就会画成占位(透明小图),编辑器预览里的头像块就是一个空圈,
+ * 皮肤作者改不着自己看不见的东西。
+ */
+describe("出厂示例数据 — 动态卡的头像", () => {
+	const avatarSrcs = (html: string) =>
+		[...html.matchAll(/<img[^>]*alt="头像"[^>]*>/g)].map((m) => m[0].match(/src="([^"]*)"/)?.[1]);
+
+	it("每个动态场面外层作者都带示例头像,不是透明占位", async () => {
+		for (const { id } of CARD_PREVIEW_SCENES.dynamic) {
+			const srcs = avatarSrcs(await render("dynamic", id));
+			expect(srcs.length, id).toBeGreaterThanOrEqual(1);
+			for (const src of srcs) expect(src, id).toMatch(/^data:image\/svg\+xml/);
+		}
+	});
+
+	it("转发场面内外两层各有一个头像", async () => {
+		expect(avatarSrcs(await render("dynamic", "forward"))).toHaveLength(2);
+	});
+
+	it("示例引用形状合规(`<sha256>.<扩展名>`),不会与任何真图撞名", () => {
+		expect(SAMPLE_AVATAR_REF).toMatch(IMAGE_REF_PATTERN);
 	});
 });
 

@@ -51,6 +51,7 @@ import type {
 	GlobalDefaults,
 	GuardBundle,
 	Identity,
+	ImageRef,
 	LinkParsingConfig,
 	LinkParsingPolicy,
 	NotificationPayload,
@@ -111,6 +112,7 @@ import { syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
+import type { PostImageSink } from "./post-from-report.js";
 import { historyRecordFromSend } from "./push-history.js";
 import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
@@ -250,6 +252,16 @@ export interface CreateEnginesOptions {
 	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
 	 */
 	extensionSources?: ExtensionSourceLookups;
+	/**
+	 * 拓展作品的配图、封面、事件带来的头像往图库存的口(`AppRuntime.postImages`,ADR-0021 决策 22 下的 ㉑d):
+	 * 作品卡是 `Post`,图只收图库引用。**给了 `extensionSources` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
+	 */
+	postImages?: PostImageSink;
+	/**
+	 * 出图器的「图库引用 → 可画的地址」解析口(`imageRefDataUrl(runtime.imageStore)`):作品卡里的配图、封面、
+	 * 头像、正文小图标都是图库引用,出图前经它转成 data URL。不给 = 引用一律画占位(只测不画图的引擎时)。
+	 */
+	resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
 	/**
 	 * 拓展订阅的在播表(`runtime.extensionLive`,ADR-0019 决策 57 / 64):拓展直播的计时器拿它当「最新状态」,
 	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
@@ -482,6 +494,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			},
 			resolveAsset: (id) => readCardBgDataUrl(opts.dataRoot, id),
 			resolveFontFace: loadFontFace,
+			// 作品卡里的图库引用(配图 / 封面 / 头像 / 小图标)出图前经它转成可画的地址。
+			resolveImageRef: opts.resolveImageRef,
 			// 皮肤库那三口(接线层给);没给就是「只有内置默认皮肤」。
 			resolveCardSkin: opts.cardSkins?.get,
 			resolveCardSkinAsset: opts.cardSkins?.asset,
@@ -664,6 +678,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 同一份出图失败计数。设置每条现折(与 B 站视图同一个折法),渲染器与 AI 每条现取(会被热换)。
 	const extensionSources = opts.extensionSources;
 	if (extensionSources) {
+		const postImages = opts.postImages;
+		// 漏接线的症状是「拓展作品卡一张图都没有」而门禁全绿,所以开机就抛,不悄悄跳过。
+		if (!postImages) throw new Error("createEngines: 给了 extensionSources 就必须给 postImages");
 		handles.push(
 			bindExtensionPosts({
 				bus: opts.bus,
@@ -671,6 +688,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				serviceCtx: opts.serviceCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
+				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+				postImages,
 				settings: (sub) => {
 					const g = globals();
 					const eff = resolve(sub, g.defaults);

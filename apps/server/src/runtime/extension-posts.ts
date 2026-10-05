@@ -10,6 +10,7 @@ import {
 } from "@bilibili-notify/dynamic";
 import type {
 	Disposable,
+	ImageRef,
 	Logger,
 	MessageBus,
 	ServiceContext,
@@ -21,10 +22,10 @@ import { createSerialGate, type SerialGate } from "@bilibili-notify/live";
 import { extensionPostFilterText, extensionPostWork } from "./extension-post-work.js";
 import {
 	type ExtensionSourceLookups,
-	extensionCardAuthor,
 	extensionSubscriptionName,
 	extensionSubscriptionPushable,
 } from "./extension-push-common.js";
+import type { PostImageSink } from "./post-from-report.js";
 
 /**
  * **拓展报的作品接进推送链**(ADR-0019 决策 53 / 62 / 66 / 69–72 / 77):bus 上 `subscription-reported` 里
@@ -35,7 +36,7 @@ import {
  *    也不出卡(推送层反正会挡,白出一张卡、白调一次 AI);
  * 2. 过滤只看内容(决策 70):关键词 / 正则 / 白名单,全局 + 按 UP 覆盖照常折叠,四个类型开关一律不看;
  *    被挡下时「屏蔽后提醒」照 B 站的规矩(`notify` 开着才发),措辞按平台的叫法;
- * 3. 作者按决策 54 取好,翻成中立作品,交给与 B 站同一份的装配(`deliverWork`)。
+ * 3. 作者名按决策 54 取好,翻成中立作品(出卡时再翻成 `Post`、图存进图库),交给与 B 站同一份的装配(`deliverWork`)。
  *
  * - **同一条订阅的作品按到达顺序串行**(每条订阅一道 `createSerialGate`):拓展一口气报两条时,先报的那条
  *   出卡慢也先送到;不同订阅互不排队。
@@ -64,8 +65,12 @@ export interface BindExtensionPostsOptions {
 	profileName(id: string): string | undefined;
 	/** 这条订阅折好的作品设置(现折,与 B 站那头同一份,见 `dynamicWorkSettings`)。 */
 	settings(sub: Subscription): ExtensionPostSettings;
-	/** 拓展在不在跑、平台叫法、存下的头像。 */
-	sources: ExtensionSourceLookups;
+	/** 拓展在不在跑、平台对作品的叫法、清单里声明的事件(头像不在这里:作品卡用图库引用,见 `avatarRef`)。 */
+	sources: Pick<ExtensionSourceLookups, "running" | "postNoun" | "events">;
+	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
+	avatarRef(subscriptionId: string): ImageRef | undefined;
+	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */
+	postImages: PostImageSink;
 	/** 绑到这条订阅上的作品发送(`boundWorkPush(bindSubscriptionPush(push, id))`)。 */
 	pushFor(subscriptionId: string): BoundWorkPush;
 	/** 装配的全局那几样 —— 与 B 站动态同一份(`dynamicConfig()`),现取。 */
@@ -134,13 +139,17 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			return;
 		}
 
-		const author = await extensionCardAuthor(sub, {
-			event: post.author,
+		const authorName = extensionSubscriptionName(sub, {
+			eventName: post.author?.name,
 			profileName,
-			readStoredAvatar: () => opts.sources.readAvatar(id),
 		});
 		const outcome = await deliverWork({
-			work: extensionPostWork(post, { author, postNoun }),
+			work: extensionPostWork(post, {
+				authorName,
+				profileAvatar: opts.avatarRef(id),
+				images: opts.postImages,
+				postNoun,
+			}),
 			settings,
 			push,
 			// 出卡、点评几个 await 之后再核一次:期间停用了订阅 / 停了拓展 / 删了它,就不发。

@@ -2,8 +2,8 @@
  * `Post` → 动态卡的节点(`nodeFromPost`,㉑c 第 5 步)。
  *
  * 十份基准快照钉着「`Post` 字面量 → 字节」,这里钉**规则**:皮肤契约的 `dynamic.type` 从形状推,发布时间与
- * `label` 出卡时拼回老位置,标题两种画法,`notice` 的结构,`card` 按有无 `cover` 分两种版式,图只认 `url`,
- * 数字统一经 internal 排版,头像不画。
+ * `label` 出卡时拼回老位置,标题两种画法,`notice` 的结构,`card` 按有无 `cover` 分两种版式,图认 `ref`
+ * (经注入的解析口)与 `url`、都没有画占位,数字统一经 internal 排版,头像只认引用。
  */
 
 import type { Post } from "@bilibili-notify/internal";
@@ -11,6 +11,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
 import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
+import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { nodeFromPost } from "../templates/post-node";
 
 const FMT = { time: (seconds: number) => `T${seconds}` };
@@ -38,9 +39,26 @@ describe("作者、时间与 label", () => {
 		expect(nodeFromPost(post(), FMT).upIsVip).toBe(false);
 	});
 
-	it("头像不画:node 没有 avatarUrl,Creator.avatar(图库引用)也不会变成地址", () => {
-		const node = nodeFromPost(post({ creator: { name: "某人", avatar: "abc.png" } }), FMT);
-		expect(node.avatarUrl).toBeUndefined();
+	it("头像:Creator.avatar 是图库引用,经注入的解析口变成地址;没有引用就没有头像地址", () => {
+		const imageUrl = (ref: string) =>
+			ref === "abc.png" ? "data:image/png;base64,FACE" : undefined;
+		const withRef = nodeFromPost(post({ creator: { name: "某人", avatar: "abc.png" } }), {
+			...FMT,
+			imageUrl,
+		});
+		expect(withRef.avatarUrl).toBe("data:image/png;base64,FACE");
+		expect(nodeFromPost(post(), { ...FMT, imageUrl }).avatarUrl).toBeUndefined();
+	});
+
+	it("头像引用解析不到(或没注入解析口):给占位,留一块空的头像位,不抛", () => {
+		const gone = nodeFromPost(post({ creator: { name: "某人", avatar: "gone.png" } }), {
+			...FMT,
+			imageUrl: () => undefined,
+		});
+		expect(gone.avatarUrl).toBe(BLOCKED_IMG_PLACEHOLDER);
+		expect(
+			nodeFromPost(post({ creator: { name: "某人", avatar: "gone.png" } }), FMT).avatarUrl,
+		).toBe(BLOCKED_IMG_PLACEHOLDER);
 	});
 
 	it("外层卡:label 接在发布时间后(「时间 · 投稿了视频」),没有 headerLabel", () => {
@@ -196,19 +214,24 @@ describe("被转发的内层卡", () => {
 });
 
 describe("图集与视频", () => {
-	it("图只认 url:只有 ref 的那张不画;专栏的图取 article.images", () => {
+	it("图认 ref(经解析口)与 url;`ref` 与 `url` 都有时认 `ref`;都没有、或引用解析不到画占位", () => {
 		const node = nodeFromPost(
 			post({
 				images: [
 					{ url: "a" },
-					{ ref: "x.png" },
+					{ ref: "x.png", url: "ignored" },
+					{ ref: "gone.png", url: "also-ignored" },
+					{},
 					{ url: "b", width: 1, height: 2, isAnimated: true },
 				],
 			}),
-			FMT,
+			{ ...FMT, imageUrl: (ref) => (ref === "x.png" ? "data:image/png;base64,X" : undefined) },
 		);
 		expect(node.images).toEqual([
 			{ url: "a", width: undefined, height: undefined, animated: undefined },
+			{ url: "data:image/png;base64,X", width: undefined, height: undefined, animated: undefined },
+			{ url: BLOCKED_IMG_PLACEHOLDER, width: undefined, height: undefined, animated: undefined },
+			{ url: BLOCKED_IMG_PLACEHOLDER, width: undefined, height: undefined, animated: undefined },
 			{ url: "b", width: 1, height: 2, animated: true },
 		]);
 		const article = nodeFromPost(post({ article: { title: "", images: [{ url: "c" }] } }), FMT);

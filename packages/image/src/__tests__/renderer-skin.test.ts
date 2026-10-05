@@ -399,13 +399,12 @@ describe("ImageRenderer per-UP 旋钮覆盖", () => {
 		[
 			"dynamic",
 			(r: ImageRenderer, o: object) =>
-				r.generateNeutralDynamicCard(
+				r.generatePostCard(
 					{
-						avatarUrl: "data:image/png;base64,FACE",
-						upName: "示例作者",
-						upIsVip: false,
-						pubTime: "2026-09-24 12:00:00",
-						stats: { forward: "1", comment: "2", like: "3" },
+						creator: { name: "示例作者" },
+						publishedAt: "2026-09-24T12:00:00.000Z",
+						text: "",
+						stats: { shares: 1, comments: 2, likes: 3 },
 					},
 					o,
 				),

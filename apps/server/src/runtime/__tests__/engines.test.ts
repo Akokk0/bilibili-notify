@@ -173,9 +173,9 @@ vi.mock("@bilibili-notify/ai", () => ({
 vi.mock("@bilibili-notify/image", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@bilibili-notify/image")>();
 	return {
-		// 拓展作品造 node 用的几个纯函数与占位图,走真的。
+		// 拓展订阅造卡用的常量与纯函数(直播卡的头像占位、作品翻 `Post` 的图廊张数),走真的。
 		BLOCKED_IMG_PLACEHOLDER: actual.BLOCKED_IMG_PLACEHOLDER,
-		buildPlainText: actual.buildPlainText,
+		GALLERY_MAX_IMAGES: actual.GALLERY_MAX_IMAGES,
 		formatCardTime: actual.formatCardTime,
 		// 引擎把它当 transform 交给字体读取器 —— 真身在 packages/image,这里只要个能认出来的替身。
 		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
@@ -184,7 +184,7 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 			start = vi.fn();
 			stop = vi.fn();
 			updateConfig = vi.fn();
-			generateNeutralDynamicCard = vi.fn(async () => Buffer.from("card"));
+			generatePostCard = vi.fn(async (..._args: unknown[]) => Buffer.from("card"));
 			constructor(opts: any) {
 				this.opts = opts;
 				H.image.push(this);
@@ -392,6 +392,10 @@ function setup(opts?: {
 	extensionPlatformLabel?: Parameters<typeof createEngines>[0]["extensionPlatformLabel"];
 	/** 拓展订阅推送现取的那几样(接线层给的);不给 = 不接拓展订阅的推送。 */
 	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
+	/** 拓展作品往图库存图的口(接线层给的 `runtime.postImages`);给了 `extensionSources` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
+	postImages?: Parameters<typeof createEngines>[0]["postImages"] | null;
+	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
+	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
 	/** 拓展订阅的在播表与上报问题框(接线层给的);不给 = 不接拓展订阅的直播。 */
 	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
 	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
@@ -465,6 +469,14 @@ function setup(opts?: {
 			? { extensionPlatformLabel: opts.extensionPlatformLabel }
 			: {}),
 		...(opts?.extensionSources ? { extensionSources: opts.extensionSources } : {}),
+		...(opts?.extensionSources && opts.postImages !== null
+			? {
+					postImages: opts.postImages ?? {
+						put: async () => ({ ok: true as const, ref: `${"0".repeat(63)}1.png` }),
+					},
+				}
+			: {}),
+		...(opts?.resolveImageRef ? { resolveImageRef: opts.resolveImageRef } : {}),
 		...(opts?.extensionLive ? { extensionLive: opts.extensionLive } : {}),
 		...(opts?.extensionReportProblem
 			? { extensionReportProblem: opts.extensionReportProblem }
@@ -607,7 +619,7 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 			},
 		});
 		active = c;
-		H.image[0].generateNeutralDynamicCard.mockRejectedValue(new Error("浏览器挂了"));
+		H.image[0].generatePostCard.mockRejectedValue(new Error("浏览器挂了"));
 		const bili = H.dynamic[0].opts.cardFailures;
 		expect(bili?.streak).toBe(0);
 
@@ -625,6 +637,118 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 		// 这一串已经提醒过了:B 站那头紧接着也失败的话,不会再私聊一遍。
 		await vi.waitFor(() => expect(bili.notified).toBe(true));
 		expect(H.push[0].sendErrorMsg).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * 拓展作品的图走图库(ADR-0021 决策 22 下 2026-10-05 的 🔗,㉑d):作品卡是 `Post`,配图 / 封面 / 事件带来的头像
+ * 经 `postImages` 存进图库、`Post` 里只放引用;出图器出卡前经注入的 `resolveImageRef` 把引用换成地址。三处接线
+ * (`postImages` 传给消费者、资料里的头像引用传给消费者、`resolveImageRef` 传给出图器)各自的单元测试都证明不了
+ * engines 真的接上了,漏接的症状是作品卡上一张图都没有而门禁全绿。
+ */
+describe("createEngines — 拓展作品的图走图库", () => {
+	const AVATAR_REF = `${"a".repeat(63)}1.png`;
+	const PUT_REF = `${"b".repeat(63)}1.png`;
+	const sources = {
+		running: () => true,
+		postNoun: () => undefined,
+		readAvatar: async () => undefined,
+		events: () => ["post", "liveStart", "liveEnd"] as const,
+	};
+	const PNG_1X1 = new Uint8Array([
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
+		0, 0, 0, 1, 8, 6, 0, 0, 0,
+	]);
+
+	function report(sub: { id: string }, value: Record<string, unknown> = {}) {
+		return {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "post" as const,
+				value: {
+					id: "p1",
+					url: "https://www.douyin.com/video/p1",
+					publishedAt: Date.now(),
+					...value,
+				},
+			},
+		};
+	}
+
+	/** 出图器收到的 `Post`(第一个参数)。 */
+	const postOf = (call: unknown[]) =>
+		call[0] as { creator: { avatar?: string }; images?: unknown[] };
+
+	it("给了 extensionSources 却没给 postImages:开机就抛,不悄悄不出图", () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		// 验红:删掉 engines.ts 里 `if (!postImages) throw …` 那一行,这条红。
+		expect(() =>
+			setup({ puppeteer: true, subs: [sub], extensionSources: sources, postImages: null }),
+		).toThrow(/postImages/);
+	});
+
+	it("事件带来的头像与配图经 postImages 存,出图器收到的 Post 里是它回的引用", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const put = vi.fn(async () => ({ ok: true as const, ref: PUT_REF }));
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			extensionSources: sources,
+			postImages: { put },
+		});
+		active = c;
+		c.bus.emit(
+			"subscription-reported",
+			report(sub, { author: { name: "作者", avatar: PNG_1X1 }, images: [PNG_1X1] }),
+		);
+		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
+		// 验红:删掉 engines.ts 里传给 bindExtensionPosts 的 `postImages,` 这一行,这条红。
+		expect(put).toHaveBeenCalledTimes(2);
+		const post = postOf(H.image[0].generatePostCard.mock.calls[0] ?? []);
+		expect(post.creator.avatar).toBe(PUT_REF);
+		expect(post.images).toEqual([expect.objectContaining({ ref: PUT_REF })]);
+	});
+
+	it("事件没带头像:订阅资料里存的头像引用顶上(不再存一遍)", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const put = vi.fn(async () => ({ ok: true as const, ref: PUT_REF }));
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			extensionSources: sources,
+			postImages: { put },
+			overrides: {
+				subRuntimeStore: {
+					get: (id: string) =>
+						id === sub.id
+							? {
+									cachedProfile: {
+										name: "资料名",
+										avatar: AVATAR_REF,
+										sign: "",
+										lastRefreshedAt: "2026-10-05T00:00:00.000Z",
+									},
+								}
+							: undefined,
+				},
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", report(sub));
+		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
+		// 验红:删掉 engines.ts 里 `avatarRef: …cachedProfile?.avatar,` 那一行,这条红(头像退成没有)。
+		expect(postOf(H.image[0].generatePostCard.mock.calls[0] ?? []).creator.avatar).toBe(AVATAR_REF);
+		expect(put).not.toHaveBeenCalled();
+	});
+
+	it("出图器拿到接线层给的 resolveImageRef", () => {
+		const resolveImageRef = vi.fn(async () => undefined);
+		const c = setup({ puppeteer: true, resolveImageRef });
+		active = c;
+		// 验红:删掉 engines.ts 里 `resolveImageRef: opts.resolveImageRef,` 那一行,这条红。
+		expect(H.image[0].opts.resolveImageRef).toBe(resolveImageRef);
 	});
 });
 

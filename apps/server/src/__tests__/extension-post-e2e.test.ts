@@ -15,6 +15,7 @@
  * - 丙:停用 —— 什么都收不到(决策 62)。
  */
 
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer } from "node:net";
@@ -307,6 +308,25 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		expect(card).not.toContain(`/api/images/${profileA?.avatar}`);
 		// 三张作品图都转成了 data URL 进卡。
 		expect(card?.match(/data:image\/png;base64,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+	});
+
+	it("卡上的每一张 png 都是图库里的图:作品配图经 postImages 存进图库,出图器按引用取回来画(㉑d)", async () => {
+		const card = renderedHtml.find(
+			(html) => html.includes(who.a.name) && html.includes("旅行第 1 天，去海边拍了三张"),
+		);
+		expect(card, "甲那张图文卡没画出来").toBeDefined();
+		const pngs = [...new Set(card?.match(/data:image\/png;base64,[A-Za-z0-9+/=]+/g) ?? [])];
+		// 配图(假源只有几张图轮着报,所以去重之后不到三张)+ 作者头像(资料里存的那张)。
+		expect(pngs.length).toBeGreaterThanOrEqual(3);
+		for (const url of pngs) {
+			const bytes = Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
+			const ref = `${createHash("sha256").update(bytes).digest("hex")}.png`;
+			// 验红:删掉 index.ts 里传给 createEngines 的 `resolveImageRef`,卡上的图退成占位、上面的数量不够;
+			// 把 postImages 换成别处的口,配图就不在图库里,这里 404。
+			const stored = await api(`/api/images/${ref}`);
+			expect(stored.status, ref).toBe(200);
+			expect(Buffer.from(await stored.arrayBuffer()).equals(bytes), ref).toBe(true);
+		}
 	});
 
 	it("话题照 B 站卡的两种画法:正文上方有话题标签,正文里的 #假话题 画成富文本话题那一种 span", () => {

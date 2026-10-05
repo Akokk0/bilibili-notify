@@ -1,10 +1,10 @@
 /** @jsxImportSource vue */
 
 /**
- * 一条动态的「呈现态」:节点类型({@link DynamicNode})与几个部件构建器(图廊、纯文本正文)。
+ * 一条动态的「呈现态」:节点类型({@link DynamicNode})与图廊构建器。
  *
- * 节点由 `post-node.tsx` 的 `nodeFromPost` 从中立的 `Post` 造出来;拓展作品那条路(到 ㉑d 才切过来)
- * 自己造节点,吃同一套块。出卡器不认识任何平台的原始数据。
+ * 节点只由 `post-node.tsx` 的 `nodeFromPost` 从中立的 `Post` 造出来(B 站动态、拓展作品、链接预览都是先成
+ * `Post`),块吃的就是它。出图器不认识任何平台的原始数据。
  *
  * 这里画出来的东西最终落在卡片皮肤的块里(ADR-0014 决策 9),所以部件上挂着那些块的
  * 挂点(`data-bn="<挂点>"`,名字取自 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`):
@@ -33,9 +33,7 @@
  * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
-import type { RichText } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
-import { renderRichText } from "../rich-text";
 
 /**
  * 一条动态的「呈现态」结构树 —— 与任何平台的原始数据解耦,供 DynamicCard 按版式块装配。
@@ -65,12 +63,12 @@ export type DynamicVideo = {
 };
 
 /**
- * 图廊里的一张图 —— **中立的形状**(ADR-0019 决策 68)。`Post` 的图与拓展的图都先映射成它,再交给
+ * 图廊里的一张图 —— **中立的形状**(ADR-0019 决策 68)。`Post` 的图(`PostImage`)先映射成它,再交给
  * {@link buildGallery};图廊只有那一份实现。
  *
  * - 宽高缺了就不判长图,按普通比例铺(拓展的图宽高由 BN 读文件头拿,读不出来也照样出卡)。
- * - `animated` 由来源自己判:B 站看 `live_url` 或 `.gif` 结尾(`postFromDynamic` 里判,落成 `PostImage.isAnimated`),拓展看交来的 MIME ——
- *   拓展的图是 data URL,「看结尾」那一招对它不成立。
+ * - `animated` 由来源自己判(`PostImage.isAnimated`):B 站看 `live_url` 或 `.gif` 结尾(`postFromDynamic`),
+ *   拓展看图的文件头(`postFromReport`)—— 图廊自己不看地址结尾。
  */
 export type GalleryImage = {
 	url: string;
@@ -83,8 +81,8 @@ export type DynamicNode = {
 	/**
 	 * 头像地址。**选填,没有就不画头像**(头像块整块收起,皮肤契约的 `up.face` 是空串)。
 	 *
-	 * `Post` 这条路不给:`Creator.avatar` 只收图库引用,出卡器要到 ㉑d(拓展)/ 3a(B 站)才会按引用取图
-	 * (ADR-0021 决策 22 的 2026-10-05 🔗)。拓展作品那条路(`extension-post-work.ts`)自己造 node,照旧给。
+	 * `nodeFromPost` 据 `Creator.avatar`(图库引用)解析出来:有引用就给(解析不到给占位,留一块空的头像位),
+	 * 没有引用就不给(B 站要到 3a 才存头像)。
 	 */
 	avatarUrl?: string;
 	upName: string;
@@ -125,82 +123,10 @@ export type DynamicNode = {
 };
 
 /**
- * **纯文本正文** → `text` 块的那一份(ADR-0019 决策 68,给拓展作品用)。保留换行;标签原样
- * 当文字(转义)。
- *
- * 走的是 `Post` 富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):切成富文本片段交给
- * {@link renderRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
- *
- * `topics` 是来源报的话题名(决策 55 的 09-24 🔗):正文里的 `#名字#` / `#名字` 切成富文本
- * **同一种话题片段**,画出来是同一种 span。只照这份名单找 —— 不在名单里的 `#`(「C#」「#1」)
- * 一律当文字,BN 不按 `#` 自己猜。
- *
- * 一个字都没有(空串 / 只有空白)回 null,正文块收起。
+ * 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。来源据此决定往图库存前几张(排在后面的
+ * 不画,不必存):`Post` 的翻译(拓展的 `postFromReport`)从这儿取,全仓只有这一个数。
  */
-export function buildPlainText(text: string, topics: readonly string[] = []): VNode | null {
-	const normalized = text.replace(/\r\n?/g, "\n");
-	if (normalized.trim() === "") return null;
-	return renderRichText(plainTextSegments(normalized, topics));
-}
-
-/** 字母或数字(任何文字的)—— `#名字` 后面紧跟着它,就不是这个话题。 */
-const WORD_CHAR = /[\p{L}\p{N}]/u;
-
-/**
- * 纯文本按话题名切成富文本节点:话题一段是话题节点,其余是文字节点。只在 `#` 所在的位置上试。
- *
- * - `#名字` 后面紧跟的不能是字母或数字:报了「cat」,`#category` 里不抠出一个 `#cat`;报了「旅行」,
- *   `#旅行今天` 也不算(与话题平台自己切话题的办法一致)。`#名字#` 自己带着边界,后面跟什么都行。
- * - 同一处能对上几种写法时:名字长的先(「旅行日记」与「旅行」都报了,`#旅行日记` 整个是话题),同一个
- *   名字 `#名字#` 先于 `#名字`(收尾的 `#` 算进话题)—— **除非**收尾的那个 `#` 正是下一个话题 `#别的`
- *   的开头(`#旅行#美食`,两个都报了):那就取 `#名字`,把 `#` 让给下一个,两个都上色。
- */
-function plainTextSegments(text: string, topics: readonly string[]): RichText {
-	const names = [...new Set(topics)]
-		.filter((name) => name !== "")
-		.sort((a, b) => b.length - a.length);
-	/** 从 `at` 起是不是 `#名字`、而且后面没被字接着。 */
-	const openAt = (at: number, name: string): boolean => {
-		if (!text.startsWith(`#${name}`, at)) return false;
-		const next = text.codePointAt(at + name.length + 1);
-		return next === undefined || !WORD_CHAR.test(String.fromCodePoint(next));
-	};
-	const hitAt = (at: number): string | undefined => {
-		for (const name of names) {
-			if (text.startsWith(`#${name}#`, at)) {
-				const closing = at + name.length + 1;
-				return names.some((other) => openAt(closing, other)) ? `#${name}` : `#${name}#`;
-			}
-			if (openAt(at, name)) return `#${name}`;
-		}
-		return undefined;
-	};
-	const nodes: RichText = [];
-	const pushText = (part: string) => {
-		if (part) nodes.push({ kind: "text", text: part });
-	};
-	const pushTopic = (part: string) => {
-		nodes.push({ kind: "topic", text: part, name: part.replace(/^#|#$/g, "") });
-	};
-	let plainFrom = 0;
-	let at = names.length > 0 ? text.indexOf("#") : -1;
-	while (at !== -1) {
-		const hit = hitAt(at);
-		if (hit) {
-			pushText(text.slice(plainFrom, at));
-			pushTopic(hit);
-			plainFrom = at + hit.length;
-			at = text.indexOf("#", plainFrom);
-		} else {
-			at = text.indexOf("#", at + 1);
-		}
-	}
-	pushText(text.slice(plainFrom));
-	return nodes;
-}
-
-/** 图廊最多铺几格 —— 与 B 站网页端一致,余下的折进最后一格的 `+N`。 */
-const MAX_GRID_PICS = 9;
+export const GALLERY_MAX_IMAGES = 9;
 
 /** 高是不是超过宽的 `ratio` 倍。宽高缺一样就不算(不知道就当普通比例)。 */
 function tallerThan(p: GalleryImage, ratio: number): boolean {
@@ -270,7 +196,7 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 
 	// 超出 9 张的部分不铺格子,折进最后一格的 `+N`。以前是有几张铺几张,十几张图的
 	// 动态能把卡片拉出一米多长,推到群里就是一堵缩略图墙。
-	const shown = images.slice(0, MAX_GRID_PICS);
+	const shown = images.slice(0, GALLERY_MAX_IMAGES);
 	const overflow = images.length - shown.length;
 	const is2col = shown.length === 2 || shown.length === 4;
 	// 多图总宽与单图对齐（max 480px），图片在其中平分，gap 8px

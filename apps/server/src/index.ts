@@ -45,6 +45,7 @@ import { createExtensionMounts } from "./extensions/mount.js";
 import { createReportProblemLog } from "./extensions/report-problems.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
+import { imageRefDataUrl } from "./images/image-data-url.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import {
@@ -781,6 +782,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				},
 				readAvatar: (id) => readProfileAvatar(runtime, id),
 			},
+			// 拓展作品卡是 `Post`(㉑d):配图 / 封面 / 事件带来的头像经 `postImages` 存进图库,出图器出卡前
+			// 经 `resolveImageRef` 把引用换成 data URL。两头缺一头,症状都是作品卡上一张图都没有。
+			postImages: runtime.postImages,
+			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,
 			extensionReportProblem: (problem) => reportProblems.record(problem),

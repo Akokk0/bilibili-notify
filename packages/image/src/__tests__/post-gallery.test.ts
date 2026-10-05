@@ -16,6 +16,7 @@ import type { Post, PostImage } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
+import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { buildGallery } from "../templates/dynamic-content";
 import { nodeFromPost } from "../templates/post-node";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
@@ -178,10 +179,11 @@ describe("图廊 — 挂点与根", () => {
 	});
 });
 
-describe("图廊 — 图只认地址", () => {
-	it("只有 ref 没有 url 的那一张不画(出卡器要到 ㉑d 才会按引用取图)", async () => {
-		const html = await picsHtml([pic(), { ref: "abc.png" }, pic()]);
-		expect(imgCount(html)).toBe(2);
+describe("图廊 — 没有地址的图画占位", () => {
+	it("只有 ref(没注入解析口 / 解析不到)与什么都没有的那几张:各占一格,画占位,不裂图、不省掉", async () => {
+		const html = await picsHtml([pic(), { ref: "abc.png" }, {}]);
+		expect(imgCount(html)).toBe(3);
+		expect(html.split(BLOCKED_IMG_PLACEHOLDER).length - 1).toBe(2);
 	});
 });
 

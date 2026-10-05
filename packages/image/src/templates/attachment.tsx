@@ -8,7 +8,8 @@
  *
  * **只画形状装得下的**(ADR-0021 决策 22 的 2026-10-05 🔗,主人定「不加字段,形状装不下的就不画」):
  * 文字行是 `card.lines`,每行只有 `{ text, icon? }`,各占一行、同一个样式({@link cardLines});按钮只有文字与可用 /
- * 不可用两态;商品没有按钮与价格后缀;视频卡没有标题上方的说明。图标要到 3a 才有图库引用可给,目前不画。
+ * 不可用两态;商品没有按钮与价格后缀;视频卡没有标题上方的说明。文字行前的小图标(`lines[].icon`)是图库引用,
+ * 由调用方给的 {@link ImageUrlOf} 解析,解析不到就不画图标、只剩文字(B 站的要到 3a 才存进图库,目前没有来源给)。
  *
  * **`card` 的两种版式由有没有 `cover` 选**:有封面是通用卡的排法(头部说明 + 封面 + 标题与文字行 + 按钮),
  * 没有封面是预约卡的排法(标题与文字行在左、按钮在右)。两种版式的字号、间距并不统一 —— 那不是形状逼的,
@@ -17,20 +18,39 @@
 
 import { type Attachment, formatClock } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
+import type { ImageUrlOf } from "../rich-text";
+import { pictureUrl } from "./picture-url";
 
 /**
  * `card` 的文字行:每行同一个样式、各占一行,行与行之间留 2px、最后一行不留。
  * 形状里 `lines` 每行只有 `{ text, icon? }`,没有同行并排、没有单行变色的位置。
  */
-function cardLines(lines: readonly string[]) {
+function cardLines(lines: readonly CardLine[]) {
 	return lines.map((line, i) => (
 		<div
 			key={i}
 			class={`text-[12px] text-[#999] truncate${i < lines.length - 1 ? " mb-[2px]" : ""}`}
 		>
-			{line}
+			{line.icon === undefined ? (
+				line.text
+			) : (
+				<>
+					<img
+						style="width:12px;height:12px;display:inline;vertical-align:-0.15em;margin-right:4px;flex-shrink:0"
+						src={line.icon}
+						alt=""
+					/>
+					{line.text}
+				</>
+			)}
 		</div>
 	));
+}
+
+/** 一行文字与它前面的小图标(已解析成可画的地址;没有或解析不到就是 `undefined`,只剩文字)。 */
+interface CardLine {
+	text: string;
+	icon?: string;
 }
 
 /**
@@ -47,21 +67,33 @@ type Card = Extract<Attachment, { kind: "card" }>;
 type Goods = Extract<Attachment, { kind: "goods" }>;
 type VideoAttachment = Extract<Attachment, { kind: "video" }>;
 
-const textsOf = (card: Card): string[] => (card.lines ?? []).map((line) => line.text);
+const linesOf = (card: Card, imageUrl?: ImageUrlOf): CardLine[] =>
+	(card.lines ?? []).map((line) => ({
+		text: line.text,
+		icon: line.icon === undefined ? undefined : imageUrl?.(line.icon),
+	}));
 
 /** 有封面的卡:头部说明、封面、标题与文字行、按钮(通用卡的排法)。 */
-function coverCard(card: Card & { cover: NonNullable<Card["cover"]> }): VNode {
+function coverCard(
+	card: Card & { cover: NonNullable<Card["cover"]> },
+	imageUrl?: ImageUrlOf,
+): VNode {
 	return (
 		<div>
 			{cardEyebrow(card.eyebrow)}
 			<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
 				<div class="flex gap-[10px] items-center">
 					<div class="w-[72px] h-[72px] shrink-0 rounded-md overflow-hidden">
-						<img data-bn="cover" class="w-full h-full object-cover" src={card.cover.url} alt="" />
+						<img
+							data-bn="cover"
+							class="w-full h-full object-cover"
+							src={pictureUrl(card.cover, imageUrl)}
+							alt=""
+						/>
 					</div>
 					<div class="flex-1 min-w-0">
 						<div class="text-[13px] font-bold text-[#18191C] mb-[4px]">{card.title}</div>
-						{cardLines(textsOf(card))}
+						{cardLines(linesOf(card, imageUrl))}
 					</div>
 					{card.button ? (
 						<div
@@ -80,7 +112,7 @@ function coverCard(card: Card & { cover: NonNullable<Card["cover"]> }): VNode {
 }
 
 /** 没有封面的卡:标题与文字行在左、按钮在右(预约卡的排法)。 */
-function plainCard(card: Card): VNode {
+function plainCard(card: Card, imageUrl?: ImageUrlOf): VNode {
 	const box = (
 		<div
 			data-bn="card"
@@ -88,7 +120,7 @@ function plainCard(card: Card): VNode {
 		>
 			<div class="flex-1 min-w-0">
 				<div class="text-[14px] font-bold text-[#18191C] mb-1">{card.title}</div>
-				{cardLines(textsOf(card))}
+				{cardLines(linesOf(card, imageUrl))}
 			</div>
 			{card.button ? (
 				<div
@@ -114,7 +146,7 @@ function plainCard(card: Card): VNode {
 }
 
 /** 商品:单件画封面、名字与价格,多件只画封面。 */
-function goodsCard(goods: Goods): VNode {
+function goodsCard(goods: Goods, imageUrl?: ImageUrlOf): VNode {
 	const isSingle = goods.items.length === 1;
 	const first = goods.items[0];
 	return (
@@ -127,7 +159,7 @@ function goodsCard(goods: Goods): VNode {
 							<img
 								data-bn="cover"
 								class="w-full h-full object-cover"
-								src={first.cover.url}
+								src={pictureUrl(first.cover, imageUrl)}
 								alt=""
 							/>
 						</div>
@@ -143,7 +175,7 @@ function goodsCard(goods: Goods): VNode {
 								<img
 									data-bn="cover"
 									class="w-full h-full object-cover"
-									src={item.cover.url}
+									src={pictureUrl(item.cover, imageUrl)}
 									alt=""
 								/>
 							</div>
@@ -159,7 +191,7 @@ function goodsCard(goods: Goods): VNode {
  * 引用的视频:封面 + 时长角标 + 标题 + `subtitle`。`subtitle` 是来源拼好的整句(「2654观看 102弹幕」),
  * 官方页面也是当纯文本灰字渲染的,别再套图标重排。
  */
-function videoCard(video: VideoAttachment): VNode {
+function videoCard(video: VideoAttachment, imageUrl?: ImageUrlOf): VNode {
 	const duration = video.durationSec === undefined ? undefined : formatClock(video.durationSec);
 	return (
 		<div data-bn="card" class="bg-black/4 rounded-lg p-[10px]">
@@ -168,7 +200,7 @@ function videoCard(video: VideoAttachment): VNode {
 					<img
 						data-bn="cover"
 						class="w-full h-full object-cover block"
-						src={video.cover.url}
+						src={pictureUrl(video.cover, imageUrl)}
 						alt=""
 					/>
 					{/*
@@ -194,16 +226,16 @@ function videoCard(video: VideoAttachment): VNode {
 	);
 }
 
-/** 一个附加块画成什么样。 */
-export function attachmentNode(attachment: Attachment): VNode {
+/** 一个附加块画成什么样。`imageUrl` 把图库引用解析成可画的地址(见 {@link pictureUrl})。 */
+export function attachmentNode(attachment: Attachment, imageUrl?: ImageUrlOf): VNode {
 	switch (attachment.kind) {
 		case "card":
 			return attachment.cover
-				? coverCard({ ...attachment, cover: attachment.cover })
-				: plainCard(attachment);
+				? coverCard({ ...attachment, cover: attachment.cover }, imageUrl)
+				: plainCard(attachment, imageUrl);
 		case "goods":
-			return goodsCard(attachment);
+			return goodsCard(attachment, imageUrl);
 		case "video":
-			return videoCard(attachment);
+			return videoCard(attachment, imageUrl);
 	}
 }
