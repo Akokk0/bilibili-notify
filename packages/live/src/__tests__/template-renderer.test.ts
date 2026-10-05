@@ -253,3 +253,46 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 		).toBe("+5|{follower}");
 	});
 });
+
+/**
+ * 刻画(㉓a)—— 上舰文案今天怎么渲染:三个占位符 `{uname}` `{mname}` `{guard}`,盘上的老写法 `-uname` 等
+ * 同样认。㉓d 把它们改名成 `{viewer}` `{name}` `{tier}`、`-key` 改写成花括号时,这一组连同改名一起改;
+ * 在那之前它就是线上今天的行为。
+ */
+describe("LiveTemplateRenderer.renderGuardBuy — 上舰文案(现状)", () => {
+	const r = new LiveTemplateRenderer();
+	const master = {
+		username: "晨风",
+		userface: "",
+		roomId: 1,
+		liveOpenFollowerNum: 0,
+		liveEndFollowerNum: 0,
+		liveFollowerChange: 0,
+		medalName: "",
+	};
+	const render = (template: string, over: { master?: typeof master | undefined } = {}) =>
+		r.renderGuardBuy({
+			template,
+			uname: "船员",
+			master: "master" in over ? over.master : master,
+			giftName: "舰长",
+		});
+
+	// 验红:把 template-renderer.ts 里 `renderGuardBuy` 传给 `applyTemplate` 的三个键 `uname` / `mname` /
+	// `guard` 任一个改名,这一条红(对应那个占位符不再被替换)。
+	it("`{uname}` 是上舰的人、`{mname}` 是主播、`{guard}` 是事件带来的档名", () => {
+		expect(render("{uname} 成为了 {mname} 的{guard}！")).toBe("船员 成为了 晨风 的舰长！");
+	});
+
+	// 验红:把 `applyTemplate` 里生成 legacy 写法的那一半(`-${escapeRegExp(k)}`)删掉,这一条红。
+	it("盘上的老写法 `-uname` / `-mname` / `-guard` 同样认", () => {
+		expect(render("-uname 成为了 -mname 的-guard！")).toBe("船员 成为了 晨风 的舰长！");
+		expect(render("-uname 成为了 {mname} 的-guard！")).toBe("船员 成为了 晨风 的舰长！");
+	});
+
+	it("没有主播资料 → `{mname}` 印成空串;`\\n` 展开成真换行;不认识的占位符原样留着", () => {
+		expect(render("{uname}|{mname}|{guard}", { master: undefined })).toBe("船员||舰长");
+		expect(render("{uname}\\n{guard}")).toBe("船员\n舰长");
+		expect(render("{viewer}|{tier}|{name}")).toBe("{viewer}|{tier}|{name}");
+	});
+});
