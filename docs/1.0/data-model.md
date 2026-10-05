@@ -171,6 +171,7 @@ interface Post {
   label?: string;                      // 「投稿了视频」，来源给
   topic?: string;
   article?: { title: string; images?: PostImage[] };   // 有这格就按文章排版；images 是文章配图
+  title?: string;                      // 有标题、但不是文章的作品（带标题的图文、笔记）：画在正文上方，排版照普通作品（10-05 主人定）
   text: string;                        // 纯文本，必有：只放正文（用户在平台上看到的字，平台私有标记由来源剥掉）；标题、视频标题、被转发的原作品各在自己的格里
   richText?: RichText;                 // 可选，只用来出卡高亮；片段见下。核心统一校验：片段的 text 拼起来必须等于 text，对不上就丢掉 richText、只用 text（B 站与拓展同一套）
   notice?: string;                     // BN 自己说的一句，画在正文后面
@@ -205,7 +206,7 @@ interface PostEvent {                  // 核心按身份展开后、装配入�
 
 - **来源只认人**：来源上报只带 externalId；核心按身份查订阅，正常只有一条，老数据里遗留的重复各分一份；查不到或已停用就丢弃、记 debug 日志。
 
-- **作品的文字只有一种拼法**（ADR-0028 决策 1）：`text` 只放正文，文章标题在 `article.title`、视频标题在 `video.title`、转发的原作品在 `repost`。过滤、AI 点评、统计摘要等要整条作品文字的地方，一律经核心 `posts/` 里唯一的取段函数，所有来源同一个：过滤时各段无前缀、换行拼接；AI 用「标题：」「视频标题：」「（转发自 X：…）」。函数名施工时定；它进守卫 4 的点名表，对拍逐字比。
+- **作品的文字只有一种拼法**（ADR-0028 决策 1）：`text` 只放正文，文章标题在 `article.title`（不是文章的作品的标题在 `title`，取段时同一个待遇）、视频标题在 `video.title`、转发的原作品在 `repost`。过滤、AI 点评、统计摘要等要整条作品文字的地方，一律经核心 `posts/` 里唯一的取段函数，所有来源同一个：过滤时各段无前缀、换行拼接；AI 用「标题：」「视频标题：」「（转发自 X：…）」。函数名施工时定；它进守卫 4 的点名表，对拍逐字比。
 - B 站的映射：动态正文与图文的摘要进 `text`，图文标题进 `article.title`；UP 自己的视频进 `post.video`，番剧、合集、课程进附件的视频卡。
 - `images` 只是图集；文章配图在 `article.images`。`blockImages` 就是屏蔽图集。`blockImages` / `blockVideos` 只看最外层，被转发的原作品里的图集与视频归 `blockReposts` 管。
 - `video` 表示「作品本身就是这个视频」，上面只有播放数与弹幕数这两个展示数字，点赞、评论、转发这类互动数不设在视频上（10-05 主人定，ADR-0021 决策 25 的 🔗）；作品里引用别人的视频走 `repost` 或 `attachment` 的 `video`。互动数只在 `Post.stats`，收藏 `stats.saves` 这类等有卡片要画时再加。

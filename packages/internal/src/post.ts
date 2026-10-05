@@ -60,6 +60,8 @@ export interface Post {
 	topic?: string;
 	/** 有这格就按文章排版;`images` 是文章配图。 */
 	article?: { title: string; images?: PostImage[] };
+	/** 有标题、但不是文章的作品(带标题的图文、笔记)的标题:画在正文上方,排版照普通作品。 */
+	title?: string;
 	/** 纯文本,只放正文;标题、视频标题、被转发的原作品各在自己的格里。 */
 	text: string;
 	/** 片段的 `text` 拼起来必须等于 `text`,见 {@link normalizePost}。 */
@@ -92,7 +94,7 @@ const filled = (text: string | undefined): text is string => !!text && text.trim
 
 /** 一条作品自己的三段字,按拼出来的顺序;不含被转发的原作品。 */
 function ownSections(post: Post, style: PostTextStyle): string[] {
-	const title = post.article?.title;
+	const title = filled(post.title) ? post.title : post.article?.title;
 	const videoTitle = post.video?.title;
 	if (style === "plain") return [post.text, title, videoTitle].filter(filled);
 	return [

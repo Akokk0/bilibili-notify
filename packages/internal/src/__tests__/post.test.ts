@@ -75,6 +75,17 @@ describe("postText —— 作品文字只有一种拼法(ADR-0028 决策 1)", ()
 		expect(postText(post(), "labeled")).toBe("");
 	});
 
+	it("有标题但不是文章的作品:标题和文章标题同一个待遇", () => {
+		const p = post({ title: "周末出游", text: "今天去了海边" });
+		expect(postText(p, "plain")).toBe("今天去了海边\n周末出游");
+		expect(postText(p, "labeled")).toBe("标题：周末出游\n今天去了海边");
+		const reposted = post({
+			text: "转",
+			repost: post({ creator: { name: "小明" }, title: "原题", text: "原" }),
+		});
+		expect(postText(reposted, "labeled")).toBe("转\n（转发自 小明：标题：原题 原）");
+	});
+
 	it("两种拼法都不看图、附加块、提示语这些不是作品文字的格", () => {
 		const p = post({
 			text: "正文",
