@@ -433,16 +433,16 @@ export const FIELD_LABELS = {
 		hint: "正则表达式 · 命中的动态被屏蔽",
 		section: "filter",
 	},
-	whitelistKeywords: {
+	allowKeywords: {
 		label: "白名单关键词",
 		hint: "非空时仅命中条目会被推送",
 		section: "filter",
 	},
-	whitelistRegex: { label: "白名单正则", section: "filter" },
-	blockForward: { label: "屏蔽转发动态", section: "filter" },
-	blockArticle: { label: "屏蔽专栏动态", section: "filter" },
-	blockDraw: { label: "屏蔽图文动态", section: "filter" },
-	blockAv: { label: "屏蔽视频动态", section: "filter" },
+	allowRegex: { label: "白名单正则", section: "filter" },
+	blockReposts: { label: "屏蔽转发动态", section: "filter" },
+	blockArticles: { label: "屏蔽专栏动态", section: "filter" },
+	blockImages: { label: "屏蔽图文动态", section: "filter" },
+	blockVideos: { label: "屏蔽视频动态", section: "filter" },
 
 	// ── 互动门槛 ──────────────────────────────────────────────────────────
 	minScPrice: {

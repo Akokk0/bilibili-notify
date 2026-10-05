@@ -568,8 +568,8 @@ describe("按 UP 覆盖(ADR-0019 决策 64):拓展来源的订阅存得进、清
 			filters: {
 				blockKeywords: ["广告"],
 				blockRegex: ["抽奖"],
-				whitelistKeywords: [],
-				whitelistRegex: [],
+				allowKeywords: [],
+				allowRegex: [],
 			},
 			ai: { preset: "maid" },
 			messageLayout: makeDefaultGlobalConfig().defaults.messageLayout,

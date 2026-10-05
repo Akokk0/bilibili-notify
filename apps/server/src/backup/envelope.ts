@@ -27,6 +27,9 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 7 = 过滤键改名以后导出的备份(设置 `defaults.filters` 与订阅 `overrides.filters` 里,`blockForward` / `blockArticle` / `blockDraw` /
+ * `blockAv` 叫 `blockReposts` / `blockArticles` / `blockImages` / `blockVideos`,`whitelistKeywords` / `whitelistRegex` 叫
+ * `allowKeywords` / `allowRegex`;其余过滤键不变)。
  * 6 = 历史保留换键以后导出的备份(设置里顶层多一节 `history`,`history.retentionDays` 只许七档;`app.historyRetentionDays`
  * 没有了)。
  * 5 = 直播拆键以后导出的备份(新特性 `liveStreaming`:订阅的 `routing` / `overrides.features` 与设置的 `defaults.features`
@@ -36,11 +39,11 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 4 = 特性键改名以后导出的备份(订阅的 `routing` / `overrides` 与设置的 `defaults` 里,特性键、附加项键、文案键、版式键换成
  * 1.0 的名字:`post` / `liveStart` / `membership`、`atAllPost` / `atAllLiveStart`、`templates.post` / `postVideo`、
  * `messageLayout.post`;订阅的逐目标表叫 `extraTargets`)。
- * 5、4 与 3(设置按集成分文件以后,各集成的设置单独一节 `integrations`)、2 都只在开发期用过、没发布。
+ * 6、5、4 与 3(设置按集成分文件以后,各集成的设置单独一节 `integrations`)、2 都只在开发期用过、没发布。
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 6 as const;
+export const BACKUP_SCHEMA_VERSION = 7 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

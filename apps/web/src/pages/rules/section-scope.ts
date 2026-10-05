@@ -2,7 +2,7 @@
  * per-UP section 的「字段分域」判定 —— 单一真源。
  *
  * `overrides.filters`(ContentFilters)一个切片被两个 section 分域共写:
- * 「动态过滤」域写 block* / whitelist*(见 FILTER_CONTENT_KEYS);「直播阈值」域
+ * 「动态过滤」域写 block* / allow*(见 FILTER_CONTENT_KEYS);「直播阈值」域
  * 写 minScPrice / minGuardLevel(见 LIVE_FILTER_KEYS,外加独立的 overrides.schedule 与直播拆键搬出来的
  * overrides.liveStart / overrides.liveStreaming)。
  * 凡是「这个 section 是否已覆盖 / 是否开启」的判定,都必须按各自域内的字段来判,
@@ -27,17 +27,17 @@ import type { SectionId } from "./sections";
 export const FILTER_TEXT_KEYS = [
 	"blockKeywords",
 	"blockRegex",
-	"whitelistKeywords",
-	"whitelistRegex",
+	"allowKeywords",
+	"allowRegex",
 ] as const satisfies readonly (keyof ContentFiltersOverride)[];
 
 /** ContentFilters 里属于「动态过滤」域的字段:看内容的那几格 + 看 B 站动态类型的四个开关。 */
 export const FILTER_CONTENT_KEYS = [
 	...FILTER_TEXT_KEYS,
-	"blockForward",
-	"blockArticle",
-	"blockDraw",
-	"blockAv",
+	"blockReposts",
+	"blockArticles",
+	"blockImages",
+	"blockVideos",
 ] as const satisfies readonly (keyof ContentFiltersOverride)[];
 
 /** ContentFilters 里属于「直播阈值」域的字段(schedule 另算,不在 filters 切片里)。 */

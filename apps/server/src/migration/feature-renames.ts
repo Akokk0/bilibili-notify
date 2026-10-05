@@ -1,6 +1,6 @@
 /**
  * 0.x 最新形状 → 1.0 的改名(⑬c):特性键、附加项键、文案键、版式键、订阅顶层的逐目标表(⑬d 起文案键里
- * `liveOngoing` → `liveStreaming` 也在这里)。
+ * `liveOngoing` → `liveStreaming` 也在这里;㉑a 起内容过滤的六个键也在这里)。
  *
  * 0.x 那一遍(`features.ts` / `templates.ts` …)吐出来的是 0.x 最新的形状,这一步在它之后串着跑,把名字换成 1.0 的:
  *
@@ -11,6 +11,8 @@
  * | 文案 `templates.dynamic` / `dynamicVideo` / `liveOngoing`(账本 `templateDefaultsSeen` 的同名三个键) | `post` / `postVideo` / `liveStreaming` |
  * | 版式 `messageLayout.dynamic`(`live` 那组管开播、正在直播、下播三种消息,不改名) | `messageLayout.post` |
  * | 订阅顶层的逐目标表 `extras` | `extraTargets` |
+ * | 内容过滤 `filters`(全局 `defaults.filters` 与订阅 `overrides.filters`):`blockForward` / `blockArticle` / `blockDraw` / `blockAv` | `blockReposts` / `blockArticles` / `blockImages` / `blockVideos` |
+ * | 内容过滤的白名单 `whitelistKeywords` / `whitelistRegex` | `allowKeywords` / `allowRegex` |
  *
  * 值原样搬、键序不变;认不得的形状原样放过(由配置仓开机时报出来);已经是新键的数据再跑一遍不变,新老键并存时以新键为准、
  * 老键丢掉。**不碰**的同名不同义:`app.logLevels` 的 `dynamic` / `live`(日志模块名,3a)、`cardStyleByKind` 的卡种键(㉔)、
@@ -27,6 +29,7 @@
  */
 
 import type {
+	ContentFilters,
 	ExtraKey,
 	FeatureKey,
 	MessageLayout,
@@ -36,13 +39,14 @@ import { isPlainObject } from "./files.js";
 import type {
 	ZeroExtraKey,
 	ZeroFeatureKey,
+	ZeroFilterKey,
 	ZeroMessageLayoutKey,
 	ZeroTemplateKey,
 } from "./zero-vocabulary.js";
 
 // ── 改名对照表 ──────────────────────────────────────────────────────────────────
 //
-// 四张表都写成 `satisfies Record<0.x 的键类型, 1.0 的键类型>`:0.x 的哪个键漏了去向、或去向不是 1.0 的活键,
+// 五张表都写成 `satisfies Record<0.x 的键类型, 1.0 的键类型>`:0.x 的哪个键漏了去向、或去向不是 1.0 的活键,
 // 编译不过。没改名的键也写出来(恒等),这样「漏了」和「没改」分得开。参照 `zero-generation.ts` 的
 // `ZERO_GENERATION_MOVES` 与 internal `constants.ts` 的 `SUBSCRIPTION_EVENT_FEATURES`。
 
@@ -85,6 +89,20 @@ const MESSAGE_LAYOUT_KEY_RENAMES = {
 	live: "live",
 } as const satisfies Record<ZeroMessageLayoutKey, Exclude<keyof MessageLayout, "version">>;
 
+/** 内容过滤键:`defaults.filters` 与订阅的 `overrides.filters` 共用。四个类型开关改叫复数名词,白名单改叫 `allow*`;其余原样。 */
+const FILTER_KEY_RENAMES = {
+	blockForward: "blockReposts",
+	blockArticle: "blockArticles",
+	blockDraw: "blockImages",
+	blockAv: "blockVideos",
+	blockKeywords: "blockKeywords",
+	blockRegex: "blockRegex",
+	whitelistKeywords: "allowKeywords",
+	whitelistRegex: "allowRegex",
+	minScPrice: "minScPrice",
+	minGuardLevel: "minGuardLevel",
+} as const satisfies Record<ZeroFilterKey, keyof ContentFilters>;
+
 /** 订阅顶层的逐目标表。 */
 const SUBSCRIPTION_KEY_RENAMES = { extras: "extraTargets" } as const;
 
@@ -126,6 +144,9 @@ const renameExtraMap: ValueRewrite = (value) => renameKeys(value, byTable(EXTRA_
 const renameFeatureFlags: ValueRewrite = (value) =>
 	renameKeys(value, byTable(FEATURE_KEY_RENAMES), { extras: renameExtraMap });
 
+/** 全局 `defaults.filters` 与逐订阅 `overrides.filters`:稀疏的覆盖只换写过的键,没写的不会长出来。 */
+const renameFilters: ValueRewrite = (value) => renameKeys(value, byTable(FILTER_KEY_RENAMES));
+
 const renameTemplates: ValueRewrite = (value) => renameKeys(value, byTable(TEMPLATE_KEY_RENAMES));
 
 const renameMessageLayout: ValueRewrite = (value) =>
@@ -142,13 +163,14 @@ const renameTemplateLedger: ValueRewrite = (value) =>
 
 /**
  * 整份全局设置(0.x 最新形状,`state/globals.json` → `settings/core.json`)的 raw → raw:`defaults` 里的特性开关、
- * 文案、版式与账本换成 1.0 的键。认不得的形状原样放过。
+ * 内容过滤、文案、版式与账本换成 1.0 的键。认不得的形状原样放过。
  */
 export function renameGlobalSettingsKeys(raw: unknown): unknown {
 	return renameKeys(raw, (key) => key, {
 		defaults: (defaults) =>
 			renameKeys(defaults, (key) => key, {
 				features: renameFeatureFlags,
+				filters: renameFilters,
 				templates: renameTemplates,
 				messageLayout: renameMessageLayout,
 				templateDefaultsSeen: renameTemplateLedger,
@@ -158,7 +180,7 @@ export function renameGlobalSettingsKeys(raw: unknown): unknown {
 
 /**
  * 一条订阅(0.x 最新形状,B 站或拓展)的 raw → raw:`routing`、顶层的逐目标表 `extras` → `extraTargets`(含里面的附加项键)、
- * 与 `overrides` 里的 `features` / `templates` / `messageLayout` 一次改完。认不得的形状原样放过。
+ * 与 `overrides` 里的 `features` / `filters` / `templates` / `messageLayout` 一次改完。认不得的形状原样放过。
  */
 export function renameSubscriptionKeys(row: unknown): unknown {
 	return renameKeys(row, byTable(SUBSCRIPTION_KEY_RENAMES), {
@@ -168,6 +190,7 @@ export function renameSubscriptionKeys(row: unknown): unknown {
 		overrides: (overrides) =>
 			renameKeys(overrides, (key) => key, {
 				features: renameFeatureFlags,
+				filters: renameFilters,
 				templates: renameTemplates,
 				messageLayout: renameMessageLayout,
 			}),

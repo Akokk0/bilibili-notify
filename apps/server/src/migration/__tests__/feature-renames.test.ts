@@ -1,10 +1,13 @@
 /**
- * 0.x 最新形状 → 1.0 的改名(⑬c):特性键、附加项键、文案键、版式键、逐目标表,在设置与订阅两头各改一遍。
+ * 0.x 最新形状 → 1.0 的改名(⑬c):特性键、附加项键、文案键、版式键、逐目标表、过滤键(㉑a),在设置与订阅两头各改一遍。
  *
  * 0.x 那一遍(`features.ts` / `templates.ts` …)吐出来的是 0.x 最新的形状 —— 特性键 `dynamic` / `live` / `liveGuardBuy`、
  * 附加项 `atAllDynamic` / `atAllLive`、文案 `templates.dynamic` / `dynamicVideo`、版式 `messageLayout.dynamic`、订阅顶层
  * 的逐目标表 `extras`。这一步把它们换成 1.0 的名字(`post` / `liveStart` / `membership` / `atAllPost` / `atAllLiveStart` /
- * `templates.post` / `postVideo` / `messageLayout.post` / `extraTargets`),值原样搬、键序不变。
+ * `templates.post` / `postVideo` / `messageLayout.post` / `extraTargets`),值原样搬、键序不变。过滤键(㉑a)同理:全局
+ * `defaults.filters` 与订阅 `overrides.filters` 里的 `blockForward` / `blockArticle` / `blockDraw` / `blockAv` /
+ * `whitelistKeywords` / `whitelistRegex` 换成 `blockReposts` / `blockArticles` / `blockImages` / `blockVideos` /
+ * `allowKeywords` / `allowRegex`,其余四格(屏蔽关键词、屏蔽正则、两个阈值)不动。
  *
  * 两头:
  * - 走接缝(第 0 代 → `migrateZeroGeneration` → 新代上配置仓开机):输入是 `./zero-fixtures.ts` 冻住的 0.x 字面量,
@@ -69,6 +72,16 @@ function sessionTarget(id: string, name: string, address: string) {
 const TARGETS = [sessionTarget(T1, "主群", "111"), sessionTarget(T2, "副群", "222")];
 
 type Obj = Record<string, unknown>;
+
+/** 0.x 的六个过滤键(㉑a 改名):迁完以后盘上与装载出来的值里一个都不该剩。 */
+const OLD_FILTER_KEYS = [
+	"blockForward",
+	"blockArticle",
+	"blockDraw",
+	"blockAv",
+	"whitelistKeywords",
+	"whitelistRegex",
+] as const;
 
 /** 新代 `config/subscriptions.json` 里的行(按 id)。 */
 async function subscriptionRow(
@@ -446,6 +459,125 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(store.getGlobals().defaults.messageLayout).toEqual(core.defaults.messageLayout);
 	});
 
+	it("过滤键:全局 defaults.filters 里六个键换名,值原样、键序不变;关键词 / 正则 / 阈值四格不动,老键不带过去", async () => {
+		await placeConnectionsAndTargets();
+		const globals = makeZeroGlobals();
+		// 挑和出厂不同的值:出厂值全是 false / 空,看不出改名有没有把值带过去。
+		globals.defaults.filters = {
+			blockForward: true,
+			blockArticle: false,
+			blockDraw: true,
+			blockAv: false,
+			blockKeywords: ["广告"],
+			blockRegex: ["^抽奖"],
+			whitelistKeywords: ["新歌"],
+			whitelistRegex: ["^上新"],
+			minScPrice: 30,
+			minGuardLevel: 2,
+		};
+		await sandbox.placeZero("state/globals.json", globals);
+
+		await sandbox.migrate();
+
+		const core = await sandbox.readConfig<{ defaults: { filters: Obj } }>("settings/core.json");
+		expect(core.defaults.filters).toEqual({
+			blockReposts: true,
+			blockArticles: false,
+			blockImages: true,
+			blockVideos: false,
+			blockKeywords: ["广告"],
+			blockRegex: ["^抽奖"],
+			allowKeywords: ["新歌"],
+			allowRegex: ["^上新"],
+			minScPrice: 30,
+			minGuardLevel: 2,
+		});
+		expect(Object.keys(core.defaults.filters)).toEqual([
+			"blockReposts",
+			"blockArticles",
+			"blockImages",
+			"blockVideos",
+			"blockKeywords",
+			"blockRegex",
+			"allowKeywords",
+			"allowRegex",
+			"minScPrice",
+			"minGuardLevel",
+		]);
+		for (const old of OLD_FILTER_KEYS) expect(core.defaults.filters).not.toHaveProperty(old);
+
+		// 开机不拒收:全局那份过滤的键在活 schema 里是必填的,老键留着的话整份设置读不进来。
+		const store = await sandbox.load();
+		expect(store.getGlobals().defaults.filters).toEqual(core.defaults.filters);
+	});
+
+	it("过滤键:逐订阅 overrides.filters(B 站与拓展)只换写过的键,没写的不凭空长出来;老键不带过去", async () => {
+		await placeConnectionsAndTargets();
+		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
+		const THRESHOLD_ONLY = "66666666-6666-4666-8666-666666666666";
+		await sandbox.placeZero("state/subscriptions.json", [
+			zeroBiliRow(
+				{ id: SUB_ID, uid: "12345" },
+				{
+					overrides: {
+						filters: {
+							blockForward: true,
+							blockDraw: false,
+							blockKeywords: ["广告"],
+							whitelistKeywords: ["新歌"],
+							whitelistRegex: ["^上新"],
+						},
+					},
+				},
+			),
+			// 只覆盖直播阈值的订阅:一把要改名的键都没写,换名以后也不能多出键(多出 blockImages: false 就会点亮「动态过滤」)。
+			zeroBiliRow(
+				{ id: THRESHOLD_ONLY, uid: "777" },
+				{ overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } } },
+			),
+		]);
+		await sandbox.placeZero("state/extension-subscriptions.json", [
+			zeroExtensionRow(
+				{ id: EXT_SUB_ID, extensionId: "douyin", externalId: "sec-uid" },
+				{ overrides: { filters: { blockRegex: ["抽奖"], whitelistKeywords: ["开箱"] } } },
+			),
+		]);
+
+		await sandbox.migrate();
+
+		const filtersOf = async (id: string) =>
+			((await subscriptionRow(sandbox, id)).overrides as Obj).filters as Obj;
+		const biliFilters = await filtersOf(SUB_ID);
+		expect(biliFilters).toEqual({
+			blockReposts: true,
+			blockImages: false,
+			blockKeywords: ["广告"],
+			allowKeywords: ["新歌"],
+			allowRegex: ["^上新"],
+		});
+		expect(Object.keys(biliFilters)).toEqual([
+			"blockReposts",
+			"blockImages",
+			"blockKeywords",
+			"allowKeywords",
+			"allowRegex",
+		]);
+		const thresholdFilters = await filtersOf(THRESHOLD_ONLY);
+		expect(thresholdFilters).toEqual({ minScPrice: 50, minGuardLevel: 2 });
+		const extFilters = await filtersOf(EXT_SUB_ID);
+		expect(extFilters).toEqual({ blockRegex: ["抽奖"], allowKeywords: ["开箱"] });
+		for (const filters of [biliFilters, thresholdFilters, extFilters]) {
+			for (const old of OLD_FILTER_KEYS) expect(filters).not.toHaveProperty(old);
+		}
+
+		const store = await sandbox.load();
+		const overridesOf = (id: string) =>
+			store.getSubscriptions().find((s) => s.id === id)?.overrides.filters;
+		expect(overridesOf(SUB_ID)).toEqual(biliFilters);
+		expect(overridesOf(THRESHOLD_ONLY)).toEqual(thresholdFilters);
+		expect(overridesOf(EXT_SUB_ID)).toEqual(extFilters);
+	});
+
 	it("先 0.x 那一遍、再改名:旧默认原文先回到当前默认,落在新键 post 上;改过的原文照搬", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
@@ -508,6 +640,12 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 				extras: { ...zeroEmptyExtras(), atAllDynamic: { [T1]: true }, atAllLive: { [T1]: false } },
 				overrides: {
 					features: { live: false, extras: { atAllDynamic: true } },
+					filters: {
+						blockForward: true,
+						blockKeywords: ["k"],
+						whitelistRegex: ["r"],
+						minScPrice: 20,
+					},
 					templates: { dynamic: "d", dynamicVideo: "v" },
 					messageLayout: {
 						version: 1,
@@ -543,6 +681,7 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 			},
 			overrides: {
 				features: { liveStart: false, extras: { atAllPost: true } },
+				filters: { blockReposts: true, blockKeywords: ["k"], allowRegex: ["r"], minScPrice: 20 },
 				templates: { post: "d", postVideo: "v" },
 				messageLayout: {
 					version: 1,
@@ -589,13 +728,102 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 		).toEqual(expected);
 	});
 
+	it("订阅行:overrides.filters 六个键换名,键序不变,老键不带过去;关键词 / 正则 / 阈值四格原样", () => {
+		const out = renameSubscriptionKeys({
+			overrides: {
+				filters: {
+					whitelistRegex: ["r"],
+					blockAv: true,
+					blockKeywords: ["k"],
+					blockForward: false,
+					minGuardLevel: 2,
+					blockArticle: true,
+					blockRegex: ["x"],
+					blockDraw: false,
+					whitelistKeywords: ["w"],
+					minScPrice: 50,
+				},
+			},
+		}) as { overrides: { filters: Obj } };
+		expect(out.overrides.filters).toEqual({
+			allowRegex: ["r"],
+			blockVideos: true,
+			blockKeywords: ["k"],
+			blockReposts: false,
+			minGuardLevel: 2,
+			blockArticles: true,
+			blockRegex: ["x"],
+			blockImages: false,
+			allowKeywords: ["w"],
+			minScPrice: 50,
+		});
+		expect(Object.keys(out.overrides.filters)).toEqual([
+			"allowRegex",
+			"blockVideos",
+			"blockKeywords",
+			"blockReposts",
+			"minGuardLevel",
+			"blockArticles",
+			"blockRegex",
+			"blockImages",
+			"allowKeywords",
+			"minScPrice",
+		]);
+		for (const old of OLD_FILTER_KEYS) expect(out.overrides.filters).not.toHaveProperty(old);
+	});
+
+	it("订阅行:overrides.filters 是稀疏的覆盖 —— 没写的键不凭空长出来(只覆盖阈值的覆盖一格不多)", () => {
+		const thresholdOnly = { overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } } };
+		expect(renameSubscriptionKeys(thresholdOnly)).toEqual(thresholdOnly);
+		expect(renameSubscriptionKeys({ overrides: { filters: { blockForward: true } } })).toEqual({
+			overrides: { filters: { blockReposts: true } },
+		});
+		expect(renameSubscriptionKeys({ overrides: { filters: {} } })).toEqual({
+			overrides: { filters: {} },
+		});
+	});
+
+	it("订阅行:overrides.filters 新老键并存时以新键为准,老键丢掉(不看谁排在前)", () => {
+		const expected = { overrides: { filters: { blockReposts: false, allowKeywords: ["new"] } } };
+		expect(
+			renameSubscriptionKeys({
+				overrides: {
+					filters: {
+						blockForward: true,
+						blockReposts: false,
+						whitelistKeywords: ["old"],
+						allowKeywords: ["new"],
+					},
+				},
+			}),
+		).toEqual(expected);
+		expect(
+			renameSubscriptionKeys({
+				overrides: {
+					filters: {
+						blockReposts: false,
+						blockForward: true,
+						allowKeywords: ["new"],
+						whitelistKeywords: ["old"],
+					},
+				},
+			}),
+		).toEqual(expected);
+	});
+
 	it("订阅行:认不得的形状原样放过,不相干的键不动", () => {
 		expect(renameSubscriptionKeys("junk")).toBe("junk");
 		expect(renameSubscriptionKeys(null)).toBe(null);
 		const odd = {
 			id: SUB_ID,
 			routing: "坏的",
-			overrides: { features: 5, templates: ["x"], messageLayout: null, cardSkin: "default" },
+			overrides: {
+				features: 5,
+				filters: "坏的",
+				templates: ["x"],
+				messageLayout: null,
+				cardSkin: "default",
+			},
 			specialUsers: [{ uid: "1", kinds: ["enter"] }],
 			whatever: { dynamic: 1 },
 		};
@@ -608,10 +836,11 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 		return globals as unknown as Obj;
 	}
 
-	it("全局设置:features / templates / messageLayout / templateDefaultsSeen 四处一次改完", () => {
+	it("全局设置:features / filters / templates / messageLayout / templateDefaultsSeen 五处一次改完", () => {
 		const out = renameGlobalSettingsKeys(zeroSettings()) as {
 			defaults: {
 				features: Obj;
+				filters: Obj;
 				templates: Obj;
 				messageLayout: Obj;
 				templateDefaultsSeen: Obj;
@@ -634,6 +863,30 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 			wordcloud: true,
 			liveSummary: true,
 		});
+		expect(out.defaults.filters).toEqual({
+			blockReposts: false,
+			blockArticles: false,
+			blockImages: false,
+			blockVideos: false,
+			blockKeywords: [],
+			blockRegex: [],
+			allowKeywords: [],
+			allowRegex: [],
+			minScPrice: 0,
+			minGuardLevel: 3,
+		});
+		expect(Object.keys(out.defaults.filters)).toEqual([
+			"blockReposts",
+			"blockArticles",
+			"blockImages",
+			"blockVideos",
+			"blockKeywords",
+			"blockRegex",
+			"allowKeywords",
+			"allowRegex",
+			"minScPrice",
+			"minGuardLevel",
+		]);
 		expect(out.defaults.templates.post).toBe("{name}发布了一条动态");
 		expect(out.defaults.templates.postVideo).toBe("{name}发布了新视频");
 		expect(Object.keys(out.defaults.messageLayout)).toEqual(["version", "post", "live"]);
@@ -643,13 +896,47 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 		expect(out.defaults.cardStyleByKind).toEqual({});
 	});
 
+	it("全局设置:defaults.filters 新老键并存时以新键为准,老键丢掉(不看谁排在前)", () => {
+		const expected = { defaults: { filters: { blockReposts: false, allowKeywords: ["new"] } } };
+		expect(
+			renameGlobalSettingsKeys({
+				defaults: {
+					filters: {
+						blockForward: true,
+						blockReposts: false,
+						whitelistKeywords: ["old"],
+						allowKeywords: ["new"],
+					},
+				},
+			}),
+		).toEqual(expected);
+		expect(
+			renameGlobalSettingsKeys({
+				defaults: {
+					filters: {
+						blockReposts: false,
+						blockForward: true,
+						allowKeywords: ["new"],
+						whitelistKeywords: ["old"],
+					},
+				},
+			}),
+		).toEqual(expected);
+	});
+
 	it("全局设置:幂等;已经是新键的设置原样;认不得的形状放过", () => {
 		const once = renameGlobalSettingsKeys(zeroSettings());
 		expect(renameGlobalSettingsKeys(once)).toEqual(once);
 		expect(renameGlobalSettingsKeys("junk")).toBe("junk");
 		expect(renameGlobalSettingsKeys({ defaults: "坏的" })).toEqual({ defaults: "坏的" });
 		const odd = {
-			defaults: { features: 5, templates: null, messageLayout: [], templateDefaultsSeen: "x" },
+			defaults: {
+				features: 5,
+				filters: null,
+				templates: null,
+				messageLayout: [],
+				templateDefaultsSeen: "x",
+			},
 		};
 		expect(renameGlobalSettingsKeys(odd)).toEqual(odd);
 	});

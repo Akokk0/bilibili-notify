@@ -218,7 +218,7 @@ describe("高级规则 × 拓展订阅:编辑器里的格", () => {
 		for (const label of ["屏蔽转发动态", "屏蔽专栏动态", "屏蔽图文动态", "屏蔽视频动态"]) {
 			expect(screen.queryByText(label)).toBeNull();
 		}
-		for (const code of ["blockForward", "blockArticle", "blockDraw", "blockAv"]) {
+		for (const code of ["blockReposts", "blockArticles", "blockImages", "blockVideos"]) {
 			expect(diffCodes()).not.toContain(code);
 		}
 	});

@@ -1,8 +1,8 @@
 /**
  * 单元测试 — `filterDynamic` 纯函数。
  *
- * 业务正确性核心:用户在 advanced-subscription 配的 blockForward / blockArticle /
- * blockKeywords / blockRegex / whitelistKeywords / whitelistRegex 决定动态是否
+ * 业务正确性核心:用户在 advanced-subscription 配的 blockReposts / blockArticles /
+ * blockKeywords / blockRegex / allowKeywords / allowRegex 决定动态是否
  * 推送。任何一条逻辑被改坏 = 用户看到漏推 / 推了不该推的。
  *
  * 这是 packages/dynamic 的第一份测试,后续 dynamic-engine 测试可复用这里的 Dynamic
@@ -53,21 +53,21 @@ describe("filterDynamic — 纯函数过滤", () => {
 		expect(filterDynamic(dyn, { enable: false, keywords: ["ABC"] })).toEqual({ blocked: false });
 	});
 
-	it("blockForward:DYNAMIC_TYPE_FORWARD 命中阻断", () => {
+	it("blockReposts:DYNAMIC_TYPE_FORWARD 命中阻断", () => {
 		const dyn = makeDynamic({ type: "DYNAMIC_TYPE_FORWARD" });
 		const result = filterDynamic(dyn, { enable: true, forward: true });
 		expect(result.blocked).toBe(true);
 		expect(result.reason).toBe(DynamicFilterReason.BlacklistForward);
 	});
 
-	it("blockArticle:DYNAMIC_TYPE_ARTICLE 命中阻断", () => {
+	it("blockArticles:DYNAMIC_TYPE_ARTICLE 命中阻断", () => {
 		const dyn = makeDynamic({ type: "DYNAMIC_TYPE_ARTICLE" });
 		const result = filterDynamic(dyn, { enable: true, article: true });
 		expect(result.blocked).toBe(true);
 		expect(result.reason).toBe(DynamicFilterReason.BlacklistArticle);
 	});
 
-	it("blockDraw:DYNAMIC_TYPE_DRAW 命中阻断,article=true 不串到 DRAW", () => {
+	it("blockImages:DYNAMIC_TYPE_DRAW 命中阻断,article=true 不串到 DRAW", () => {
 		const dyn = makeDynamic({ type: "DYNAMIC_TYPE_DRAW" });
 		// article 开关不应该命中 DRAW(新版 opus 框架下两者外层 type 是分开的)
 		expect(filterDynamic(dyn, { enable: true, article: true }).blocked).toBe(false);
@@ -76,7 +76,7 @@ describe("filterDynamic — 纯函数过滤", () => {
 		expect(result.reason).toBe(DynamicFilterReason.BlacklistDraw);
 	});
 
-	it("blockAv:DYNAMIC_TYPE_AV 命中阻断", () => {
+	it("blockVideos:DYNAMIC_TYPE_AV 命中阻断", () => {
 		const dyn = makeDynamic({ type: "DYNAMIC_TYPE_AV" });
 		const result = filterDynamic(dyn, { enable: true, av: true });
 		expect(result.blocked).toBe(true);

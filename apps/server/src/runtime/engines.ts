@@ -1512,30 +1512,30 @@ function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverrid
 /**
  * 一份折好的内容过滤 → 动态过滤吃的 DynamicFilterConfig。全局那份(`dynamicConfig().filter`)、per-UP
  * 那份(`dynamicWorkSettings`)都经它,拓展作品也吃同一份(ADR-0019 决策 70,它只看文字那一半)。
- * 数组形态的 blockRegex/whitelistRegex 合并成单一 `|` 正则(用户自己写的备选,加 `|` 不破坏分组)。
+ * 数组形态的 blockRegex/allowRegex 合并成单一 `|` 正则(用户自己写的备选,加 `|` 不破坏分组)。
  * `notify` 固定 false —— 独立端没有「屏蔽后提醒」的开关。
  */
 export function dynamicFilterOf(f: ContentFilters): DynamicFilterConfig & { notify?: boolean } {
 	const blockHasRules =
 		f.blockKeywords.length > 0 ||
 		f.blockRegex.length > 0 ||
-		f.blockForward ||
-		f.blockArticle ||
-		f.blockDraw ||
-		f.blockAv;
-	const whitelistHasRules = f.whitelistKeywords.length > 0 || f.whitelistRegex.length > 0;
+		f.blockReposts ||
+		f.blockArticles ||
+		f.blockImages ||
+		f.blockVideos;
+	const whitelistHasRules = f.allowKeywords.length > 0 || f.allowRegex.length > 0;
 	return {
 		enable: blockHasRules,
 		notify: false,
 		regex: f.blockRegex.join("|"),
 		keywords: f.blockKeywords,
-		forward: f.blockForward,
-		article: f.blockArticle,
-		draw: f.blockDraw,
-		av: f.blockAv,
+		forward: f.blockReposts,
+		article: f.blockArticles,
+		draw: f.blockImages,
+		av: f.blockVideos,
 		whitelistEnable: whitelistHasRules,
-		whitelistRegex: f.whitelistRegex.join("|"),
-		whitelistKeywords: f.whitelistKeywords,
+		whitelistRegex: f.allowRegex.join("|"),
+		whitelistKeywords: f.allowKeywords,
 	};
 }
 

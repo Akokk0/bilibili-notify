@@ -409,40 +409,45 @@ function FilterOverrideBox({
 			<Field code="blockRegex" full>
 				<ArrayEditor value={get("blockRegex")} onChange={(n) => set("blockRegex", n)} />
 			</Field>
-			<Field code="whitelistKeywords" full>
-				<ArrayEditor
-					value={get("whitelistKeywords")}
-					onChange={(n) => set("whitelistKeywords", n)}
-				/>
+			<Field code="allowKeywords" full>
+				<ArrayEditor value={get("allowKeywords")} onChange={(n) => set("allowKeywords", n)} />
 			</Field>
 			{typeToggles ? (
 				<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-					<Field code="blockForward">
+					<Field code="blockReposts">
 						<div className="flex h-7.5 items-center">
 							<Toggle
-								value={get("blockForward")}
-								onChange={(v) => set("blockForward", v)}
+								value={get("blockReposts")}
+								onChange={(v) => set("blockReposts", v)}
 								size="sm"
 							/>
 						</div>
 					</Field>
-					<Field code="blockArticle">
+					<Field code="blockArticles">
 						<div className="flex h-7.5 items-center">
 							<Toggle
-								value={get("blockArticle")}
-								onChange={(v) => set("blockArticle", v)}
+								value={get("blockArticles")}
+								onChange={(v) => set("blockArticles", v)}
 								size="sm"
 							/>
 						</div>
 					</Field>
-					<Field code="blockDraw">
+					<Field code="blockImages">
 						<div className="flex h-7.5 items-center">
-							<Toggle value={get("blockDraw")} onChange={(v) => set("blockDraw", v)} size="sm" />
+							<Toggle
+								value={get("blockImages")}
+								onChange={(v) => set("blockImages", v)}
+								size="sm"
+							/>
 						</div>
 					</Field>
-					<Field code="blockAv">
+					<Field code="blockVideos">
 						<div className="flex h-7.5 items-center">
-							<Toggle value={get("blockAv")} onChange={(v) => set("blockAv", v)} size="sm" />
+							<Toggle
+								value={get("blockVideos")}
+								onChange={(v) => set("blockVideos", v)}
+								size="sm"
+							/>
 						</div>
 					</Field>
 				</div>

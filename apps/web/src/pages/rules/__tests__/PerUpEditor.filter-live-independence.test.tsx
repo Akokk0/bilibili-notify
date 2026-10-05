@@ -90,7 +90,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		});
 		expect(diffCodes()).not.toContain("blockKeywords");
 		expect(diffCodes()).not.toContain("blockRegex");
-		expect(diffCodes()).not.toContain("whitelistKeywords");
+		expect(diffCodes()).not.toContain("allowKeywords");
 	});
 
 	it("开「动态过滤覆盖」后切到「直播阈值」section,badge 不应被动显示为覆盖中", async () => {

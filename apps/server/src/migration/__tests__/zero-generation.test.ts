@@ -99,6 +99,8 @@ const ZERO_FILES: Record<string, string> = {
 		extensions: { "dev-bridge": { enabled: true, settings: { token: "t" } } },
 		defaults: {
 			features: { live: true, liveEnd: true, liveEndExtras: { wordcloud: true } },
+			// 过滤键改名(㉑a):四个类型开关与两个白名单换成 1.0 的名字(`feature-renames.test.ts` 钉细节,这里让摘要认得到这一步)
+			filters: { blockForward: true, blockKeywords: ["广告"], whitelistKeywords: ["新歌"] },
 			// 直播拆键:pushTime / restartPush 拆进 liveStreaming / liveStart 两段(`live-split.test.ts` 钉细节,这里让摘要认得到这一步)
 			schedule: { pushTime: 3, restartPush: true },
 			// 最老一代的扁平 AI 连接字段、历代旧默认模板
@@ -125,7 +127,10 @@ const ZERO_FILES: Record<string, string> = {
 			},
 			atAll: { live: { "22222222-2222-4222-8222-222222222222": true } },
 			// 直播拆键:这条订阅自己写了 pushTime 与 restartPush
-			overrides: { schedule: { pushTime: 5, restartPush: false } },
+			overrides: {
+				schedule: { pushTime: 5, restartPush: false },
+				filters: { blockDraw: true, whitelistRegex: ["^上新"] },
+			},
 		},
 	]),
 	// 拓展订阅:只作迁移输入,迁移时和上面那份合成新代里的一个 `config/subscriptions.json`,自己不进新代。
@@ -654,8 +659,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 26,
-			output: "18db761b8638f0b384114a86f3f508023259fd30992f069750d79855a861ba19",
+			revision: 27,
+			output: "266cc43184526415d440714dc29d2a5a103f805c0b717eeedede4d512276293e",
 		});
 	});
 });

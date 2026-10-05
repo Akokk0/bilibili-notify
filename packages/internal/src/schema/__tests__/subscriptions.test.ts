@@ -184,12 +184,12 @@ describe("per-UP template override 不被全局默认污染 (Codex 回归)", () 
 });
 
 // 回归:overrides.filters 被「动态过滤」与「直播阈值」两个 section 分域共写。
-// ContentFiltersSchema 的 blockDraw/blockAv 带 .default(false),`.partial()` 不剥内层
-// default → per-UP 只覆盖直播阈值(minScPrice/minGuardLevel)时会被注入 blockDraw:false/
-// blockAv:false。这俩属「动态过滤」域,前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
+// ContentFiltersSchema 的 blockImages/blockVideos 带 .default(false),`.partial()` 不剥内层
+// default → per-UP 只覆盖直播阈值(minScPrice/minGuardLevel)时会被注入 blockImages:false/
+// blockVideos:false。这俩属「动态过滤」域,前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
 // → 一开直播阈值就连带点亮动态过滤(toggle + 侧栏小点)。override schema 已剥默认,此处锁住。
 describe("per-UP filters/schedule override 不被全局默认污染", () => {
-	it("只覆盖直播阈值域(minScPrice/minGuardLevel)→ blockDraw/blockAv 仍 undefined", () => {
+	it("只覆盖直播阈值域(minScPrice/minGuardLevel)→ blockImages/blockVideos 仍 undefined", () => {
 		const parsed = SubscriptionSchema.parse({
 			...BASE,
 			overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } },
@@ -197,8 +197,8 @@ describe("per-UP filters/schedule override 不被全局默认污染", () => {
 		const f = parsed.overrides.filters;
 		expect(f?.minScPrice).toBe(50);
 		expect(f?.minGuardLevel).toBe(2);
-		expect(f?.blockDraw).toBeUndefined();
-		expect(f?.blockAv).toBeUndefined();
+		expect(f?.blockImages).toBeUndefined();
+		expect(f?.blockVideos).toBeUndefined();
 		expect(f?.blockKeywords).toBeUndefined();
 		expect(Object.keys(f ?? {}).sort()).toEqual(["minGuardLevel", "minScPrice"]);
 	});

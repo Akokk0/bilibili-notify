@@ -28,6 +28,27 @@ export const ZERO_FEATURE_KEYS = [
 
 export type ZeroFeatureKey = (typeof ZERO_FEATURE_KEYS)[number];
 
+/**
+ * 0.x 的内容过滤键(0.12 `ContentFiltersSchema`),按它的顺序:全局 `defaults.filters` 与订阅 `overrides.filters` 用的都是这一份。
+ * 1.0 的改名对照(`feature-renames.ts`)用 `satisfies Record<ZeroFilterKey, …>` 钉着:0.x 多一个键、对照表没给去向,编译不过。
+ * 改了名的是四个类型开关与两个白名单(`blockForward` / `blockArticle` / `blockDraw` / `blockAv`、`whitelistKeywords` /
+ * `whitelistRegex`),其余四个(`blockKeywords` / `blockRegex` 与两个直播阈值)恒等。
+ */
+export const ZERO_FILTER_KEYS = [
+	"blockForward",
+	"blockArticle",
+	"blockDraw",
+	"blockAv",
+	"blockKeywords",
+	"blockRegex",
+	"whitelistKeywords",
+	"whitelistRegex",
+	"minScPrice",
+	"minGuardLevel",
+] as const;
+
+export type ZeroFilterKey = (typeof ZERO_FILTER_KEYS)[number];
+
 /** 0.x 的文案键(0.12 `TemplateBundleSchema`),按它的顺序;`templateDefaultsSeen` 账本点路径的第一段也是它们。 */
 export const ZERO_TEMPLATE_KEYS = [
 	"liveStart",

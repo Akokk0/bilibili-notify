@@ -249,13 +249,13 @@ export function FilterSection({
 	// toggle on → forceOpen=true 立即展开;关闭 → 清空两数组 + 复位 forceOpen。
 	const [forceOpenWhitelist, setForceOpenWhitelist] = useState(false);
 	const whitelistEnabled =
-		forceOpenWhitelist || value.whitelistKeywords.length > 0 || value.whitelistRegex.length > 0;
+		forceOpenWhitelist || value.allowKeywords.length > 0 || value.allowRegex.length > 0;
 	function toggleWhitelist(on: boolean): void {
 		if (on) {
 			setForceOpenWhitelist(true);
 		} else {
 			setForceOpenWhitelist(false);
-			onPatch({ defaults: { filters: { whitelistKeywords: [], whitelistRegex: [] } } });
+			onPatch({ defaults: { filters: { allowKeywords: [], allowRegex: [] } } });
 		}
 	}
 	return (
@@ -281,24 +281,28 @@ export function FilterSection({
 				/>
 			</Field>
 			<div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-				<Field code="blockForward">
+				<Field code="blockReposts">
 					<div className="flex h-7.5 items-center">
-						<Toggle value={value.blockForward} onChange={(v) => set("blockForward", v)} size="sm" />
+						<Toggle value={value.blockReposts} onChange={(v) => set("blockReposts", v)} size="sm" />
 					</div>
 				</Field>
-				<Field code="blockArticle">
+				<Field code="blockArticles">
 					<div className="flex h-7.5 items-center">
-						<Toggle value={value.blockArticle} onChange={(v) => set("blockArticle", v)} size="sm" />
+						<Toggle
+							value={value.blockArticles}
+							onChange={(v) => set("blockArticles", v)}
+							size="sm"
+						/>
 					</div>
 				</Field>
-				<Field code="blockDraw">
+				<Field code="blockImages">
 					<div className="flex h-7.5 items-center">
-						<Toggle value={value.blockDraw} onChange={(v) => set("blockDraw", v)} size="sm" />
+						<Toggle value={value.blockImages} onChange={(v) => set("blockImages", v)} size="sm" />
 					</div>
 				</Field>
-				<Field code="blockAv">
+				<Field code="blockVideos">
 					<div className="flex h-7.5 items-center">
-						<Toggle value={value.blockAv} onChange={(v) => set("blockAv", v)} size="sm" />
+						<Toggle value={value.blockVideos} onChange={(v) => set("blockVideos", v)} size="sm" />
 					</div>
 				</Field>
 			</div>
@@ -308,14 +312,11 @@ export function FilterSection({
 				onToggle={toggleWhitelist}
 				accent="var(--color-bn-pink)"
 			>
-				<Field code="whitelistKeywords" full>
-					<ArrayEditor
-						value={value.whitelistKeywords}
-						onChange={(n) => set("whitelistKeywords", n)}
-					/>
+				<Field code="allowKeywords" full>
+					<ArrayEditor value={value.allowKeywords} onChange={(n) => set("allowKeywords", n)} />
 				</Field>
-				<Field code="whitelistRegex" full>
-					<ArrayEditor value={value.whitelistRegex} onChange={(n) => set("whitelistRegex", n)} />
+				<Field code="allowRegex" full>
+					<ArrayEditor value={value.allowRegex} onChange={(n) => set("allowRegex", n)} />
 				</Field>
 			</CollapseBlock>
 		</GlassBox>

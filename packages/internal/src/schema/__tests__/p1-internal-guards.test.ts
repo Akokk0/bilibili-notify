@@ -15,14 +15,14 @@ import { HistoryPayloadSchema } from "../history";
 import { SubscriptionRoutingSchema } from "../subscriptions";
 
 const baseFilters = {
-	blockForward: false,
-	blockArticle: false,
-	blockDraw: false,
-	blockAv: false,
+	blockReposts: false,
+	blockArticles: false,
+	blockImages: false,
+	blockVideos: false,
 	blockKeywords: [],
 	blockRegex: [] as string[],
-	whitelistKeywords: [],
-	whitelistRegex: [] as string[],
+	allowKeywords: [],
+	allowRegex: [] as string[],
 	minScPrice: 0,
 	minGuardLevel: 3 as const,
 };

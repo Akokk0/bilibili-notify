@@ -15,7 +15,7 @@ import {
 
 export { DEFAULT_FEATURE_FLAGS, EXTRA_KEYS, FEATURE_KEYS, PUSH_EXTRAS } from "../constants";
 
-/** blockRegex/whitelistRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
+/** blockRegex/allowRegex 的单元素校验:保存期即拦非法 / 超长 / 疑似 ReDoS 正则。 */
 const UserRegexString = z.string().superRefine((src, ctx) => {
 	const r = checkUserRegex(src);
 	if (!r.ok) ctx.addIssue({ code: "custom", message: r.reason });
@@ -74,30 +74,30 @@ export const GuardLevelSchema = z.union([z.literal(1), z.literal(2), z.literal(3
 export type GuardLevel = z.infer<typeof GuardLevelSchema>;
 
 export const ContentFiltersSchema = z.object({
-	blockForward: z.boolean(),
-	blockArticle: z.boolean(),
-	// blockDraw / blockAv 是后期新增字段。.default(false) 让旧 globals.json
+	blockReposts: z.boolean(),
+	blockArticles: z.boolean(),
+	// blockImages / blockVideos 是后期新增字段。.default(false) 让旧 globals.json
 	// 缺该字段时 zod parse 自动补 false,避免独立端启动 safeParse 失败 throw。
-	blockDraw: z.boolean().default(false),
-	blockAv: z.boolean().default(false),
+	blockImages: z.boolean().default(false),
+	blockVideos: z.boolean().default(false),
 	blockKeywords: z.array(z.string()),
 	blockRegex: z.array(UserRegexString),
-	whitelistKeywords: z.array(z.string()),
-	whitelistRegex: z.array(UserRegexString),
+	allowKeywords: z.array(z.string()),
+	allowRegex: z.array(UserRegexString),
 	minScPrice: z.number().int().min(0),
 	minGuardLevel: GuardLevelSchema,
 });
 export type ContentFilters = z.infer<typeof ContentFiltersSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离 `.default()`**(与 TemplateBundlePartialSchema 同源问题):
-// per-UP 只覆盖直播阈值域(minScPrice/minGuardLevel)时,parse 会把带 default 的 blockDraw/blockAv
+// per-UP 只覆盖直播阈值域(minScPrice/minGuardLevel)时,parse 会把带 default 的 blockImages/blockVideos
 // 注入成 false,而这俩是「动态过滤」域字段 → 前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
 // (isSectionCustomized / FilterOverrideBox 的 toggle),表现为「一开直播阈值就连带点亮动态过滤」。
-// override 维度的 blockDraw/blockAv 必须是「无默认的纯可选」,与全局 ContentFiltersSchema(带
+// override 维度的 blockImages/blockVideos 必须是「无默认的纯可选」,与全局 ContentFiltersSchema(带
 // .default 供 globals.json 缺字段回填)分开。
 export const ContentFiltersPartialSchema = ContentFiltersSchema.partial().extend({
-	blockDraw: z.boolean().optional(),
-	blockAv: z.boolean().optional(),
+	blockImages: z.boolean().optional(),
+	blockVideos: z.boolean().optional(),
 });
 export type ContentFiltersPartial = z.infer<typeof ContentFiltersPartialSchema>;
 
@@ -533,14 +533,14 @@ export const CardStyleByKindSchema = z.object({
 export type CardStyleByKind = z.infer<typeof CardStyleByKindSchema>;
 
 export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
-	blockForward: false,
-	blockArticle: false,
-	blockDraw: false,
-	blockAv: false,
+	blockReposts: false,
+	blockArticles: false,
+	blockImages: false,
+	blockVideos: false,
 	blockKeywords: [],
 	blockRegex: [],
-	whitelistKeywords: [],
-	whitelistRegex: [],
+	allowKeywords: [],
+	allowRegex: [],
 	minScPrice: 0,
 	minGuardLevel: 3,
 };

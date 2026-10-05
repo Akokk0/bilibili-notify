@@ -399,11 +399,11 @@ describe("ConfigStore", () => {
 		expect(after?.overrides.filters?.minScPrice).toBe(30);
 	});
 
-	it("patch 仅直播阈值域(minScPrice/minGuardLevel)不得污染过滤域字段(blockDraw/blockAv)", async () => {
+	it("patch 仅直播阈值域(minScPrice/minGuardLevel)不得污染过滤域字段(blockImages/blockVideos)", async () => {
 		// 回归:overrides.filters 被「动态过滤」与「直播阈值」两个 section 分域共写。
-		// ContentFiltersPartialSchema = ContentFiltersSchema.partial(),但 blockDraw /
-		// blockAv 带 .default(false),partial 不剥默认值 → 只存阈值域也会被 zod 塞进
-		// blockDraw:false / blockAv:false。前端据 `字段 !== undefined` 判「动态过滤已覆盖」
+		// ContentFiltersPartialSchema = ContentFiltersSchema.partial(),但 blockImages /
+		// blockVideos 带 .default(false),partial 不剥默认值 → 只存阈值域也会被 zod 塞进
+		// blockImages:false / blockVideos:false。前端据 `字段 !== undefined` 判「动态过滤已覆盖」
 		// → toggle / 侧栏小点被动亮起(dashboard「打开直播阈值连带打开动态过滤」)。
 		const sub = makeSampleSubscription("31415");
 		await store.upsertSubscription(sub);
@@ -413,9 +413,9 @@ describe("ConfigStore", () => {
 		const f = store.getSubscriptions()[0]?.overrides.filters;
 		expect(f?.minScPrice).toBe(50);
 		expect(f?.minGuardLevel).toBe(2);
-		// 过滤域字段一个都不该出现(包括带 default 的 blockDraw / blockAv)。
-		expect(f && "blockDraw" in f).toBe(false);
-		expect(f && "blockAv" in f).toBe(false);
+		// 过滤域字段一个都不该出现(包括带 default 的 blockImages / blockVideos)。
+		expect(f && "blockImages" in f).toBe(false);
+		expect(f && "blockVideos" in f).toBe(false);
 		expect(f && "blockKeywords" in f).toBe(false);
 		expect(Object.keys(f ?? {}).sort()).toEqual(["minGuardLevel", "minScPrice"]);
 	});

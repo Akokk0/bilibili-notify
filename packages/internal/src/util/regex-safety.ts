@@ -2,7 +2,7 @@
  * 用户可配正则的安全闸门 —— **单一权威**。
  *
  * 此前 dynamic-filter 各自手写 `looksCatastrophic`(仅匹配嵌套量词 `(X+)+`
- * 一类),schema 层(blockRegex/whitelistRegex)则完全不校验 —— 启发式分叉 +
+ * 一类),schema 层(blockRegex/allowRegex)则完全不校验 —— 启发式分叉 +
  * 漏网。本模块把「长度上限 + 灾难性回溯启发式 + 编译校验」收敛成一处,schema
  * 保存校验与 filter 运行期判定都从这里取,杜绝两处规则漂移。
  *
