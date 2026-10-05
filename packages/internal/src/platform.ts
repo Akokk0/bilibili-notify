@@ -152,10 +152,11 @@ export interface BusEvents {
 	"live-state-changed": { uid: string; status: "live" | "idle"; at?: string };
 	/**
 	 * 直播间累计观看人数变化(B 站 WS `WATCHED_CHANGE` 帧 → live engine 节流后转发)。
-	 * Engine 端按 per-UID 2s throttle,所以高频帧不会打爆 bus。viewers 是 B 站预格式化
-	 * 后的中文压缩字符串(如 "1.2万");消费方直接展示,不二次转换。
+	 * Engine 端按 per-UID 2s throttle,所以高频帧不会打爆 bus。viewers 是帧里的精确数 `num`;
+	 * 排成「1.2万」是消费方的事(面板与文字渲染器各走 `formatCount`),统计直接拿它取本场最大值。
+	 * (事件的最终形状 —— 按订阅认、拆「此刻在线 / 累计观看」两格 —— 归 3b,这里只改了类型、没改名。)
 	 */
-	"live-viewers-changed": { uid: string; viewers: string };
+	"live-viewers-changed": { uid: string; viewers: number };
 	/**
 	 * 某个拓展不在跑了 —— 停用、卸载、换代码、加载失败、设置读不了、宿主关机,一律在它那面 ctx
 	 * **开始收摊的那一刻**发(每面 ctx 只发一次),之后它再报什么都不收。

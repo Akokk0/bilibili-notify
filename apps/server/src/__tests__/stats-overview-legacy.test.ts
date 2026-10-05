@@ -427,24 +427,24 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		] as const) {
 			await dyn("202", id, type, ts);
 		}
-		// 203:一场完整直播,观看数有万、有裸数字、有解析不出的;下播带真实时刻。
+		// 203:一场完整直播,观看数有大有小、有不是数的(NaN);下播带真实时刻。
 		clock = NOW - 2 * D;
 		await fire("live-state-changed", { uid: "203", status: "live", at: at(2, 1) });
 		await dyn("203", "r1", "DYNAMIC_TYPE_LIVE_RCMD", at(2, 1, 1));
-		await fire("live-viewers-changed", { uid: "203", viewers: "8000" });
-		await fire("live-viewers-changed", { uid: "203", viewers: "1.2万" });
-		await fire("live-viewers-changed", { uid: "203", viewers: "9500" });
-		await fire("live-viewers-changed", { uid: "203", viewers: "看不懂" });
+		await fire("live-viewers-changed", { uid: "203", viewers: 8000 });
+		await fire("live-viewers-changed", { uid: "203", viewers: 12_000 });
+		await fire("live-viewers-changed", { uid: "203", viewers: 9500 });
+		await fire("live-viewers-changed", { uid: "203", viewers: Number.NaN });
 		clock = NOW - 2 * D + 2 * H;
 		await fire("live-state-changed", { uid: "203", status: "idle", at: at(2, -1, 58) });
 		// 204:开播时刻解析不出 → 回退此刻;auth-lost 之后再开一场;关服收尾。
 		clock = NOW - D;
 		await fire("live-state-changed", { uid: "204", status: "live", at: "不是时间" });
-		await fire("live-viewers-changed", { uid: "204", viewers: "3万" });
+		await fire("live-viewers-changed", { uid: "204", viewers: 30_000 });
 		await fire("auth-lost");
 		clock = NOW - 5 * H;
 		await fire("live-state-changed", { uid: "204", status: "live", at: "还是不是时间" });
-		await fire("live-viewers-changed", { uid: "204", viewers: "1.5亿" });
+		await fire("live-viewers-changed", { uid: "204", viewers: 150_000_000 });
 		clock = NOW - H;
 		await recorder.closeOpenSessions();
 

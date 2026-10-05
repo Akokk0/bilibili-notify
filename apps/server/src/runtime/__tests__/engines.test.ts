@@ -587,6 +587,40 @@ describe("createEngines — live-state-changed 接线", () => {
 });
 
 /**
+ * 观看人数一路是精确数(㉒d,只改类型不改名):引擎节流后发的 `emitViewers(uid, 数)` 原样转成总线事件
+ * `live-viewers-changed { uid, viewers }`(统计、WS、面板都挂在它后面);在播快照里的 `viewers` 也原样进
+ * 「正在直播」那份快照。两处都是 adapter 里的一句 lambda,各自的单测证明不了接上了。
+ */
+describe("createEngines — 观看人数接线(精确数)", () => {
+	it("emitViewers 的精确数原样转发到 bus 的 live-viewers-changed,不被转成字符串", () => {
+		const c = setup();
+		active = c;
+		const seen: unknown[] = [];
+		c.bus.on("live-viewers-changed", (payload) => seen.push(payload));
+		// 验红:把 engines.ts 里那句 `emitViewers` 改成 `String(viewers)`(或整句删掉),这条红。
+		H.live[0].opts.emitViewers("u1", 87_334);
+		expect(seen).toEqual([{ uid: "u1", viewers: 87_334 }]);
+	});
+
+	it("在播快照的 viewers 原样进 listLiveRooms(精确数;没收到过帧就没有这个键的值)", () => {
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+				makeEmptySubscription({ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" } }),
+			],
+		});
+		active = c;
+		H.live[0].listLiveSnapshots.mockReturnValue([
+			{ uid: "1", roomId: "r1", isLive: true, viewers: 87_334 },
+			{ uid: "2", roomId: "r2", isLive: true },
+		]);
+		// 验红:把 `listLiveRooms` 里的 `viewers: s.viewers` 去掉,这条红。
+		const rooms = c.runtime.listLiveRooms();
+		expect(rooms.map((r) => r.viewers)).toEqual([87_334, undefined]);
+	});
+});
+
+/**
  * 「正在直播」的快照带着订阅自己的 id(ADR-0019 决策 50):面板拿它对订阅,同一个 UP 配了两条
  * 订阅时也认得出是哪一条。直播引擎只认 uid,翻译在宿主这边做。
  */

@@ -45,7 +45,7 @@ client.close();
 | `guard-buy` | GUARD_BUY | `guardLevel` `giftName` `giftId?` `price?` `num?` `startTime?` `endTime?` |
 | `guard-toast` | USER_TOAST_MSG / **USER_TOAST_MSG_V2**(均 JSON,V2 结构重排) | `opType`(1开通/2续费/3自动续费) `guardLevel` `roleName?` `num?` `unit?` `price?`(实付折扣价,GUARD_BUY 是原价) `toastMsg?` |
 | `gift` | SEND_GIFT / **SEND_GIFT_V2**(protobuf) | `giftId` `giftName` `coinType`(gold/silver) `price` `num` `combo?`;2026-08 实测大房间已全走 V2 |
-| `watched` | WATCHED_CHANGE | `num` `textSmall` |
+| `watched` | WATCHED_CHANGE | `num` |
 | `liked` | LIKE_INFO_V3_UPDATE | `count`(真实字段是 `click_count`) |
 | `live-start` / `live-end` | LIVE / PREPARING | — |
 | `user-action` | **仅 INTERACT_WORD_V2**(protobuf) | `action`(enter/follow/share) `user` |

@@ -82,7 +82,8 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	if (isWsEvent(env, "push-events", "live-viewers-changed")) {
 		const uid = env.data?.uid;
 		const viewers = env.data?.viewers;
-		if (typeof uid !== "string" || typeof viewers !== "string") return;
+		// 精确数(㉒d);不是有限的数(帧坏了)当没收到 —— 别把面板那一列写成「NaN」。
+		if (typeof uid !== "string" || typeof viewers !== "number" || !Number.isFinite(viewers)) return;
 		qc.setQueryData<LiveListeningEntry[]>(["live", "listening"], (old) => {
 			if (!old) return old;
 			let touched = false;

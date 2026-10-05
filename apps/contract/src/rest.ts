@@ -1164,8 +1164,8 @@ export interface LiveListenerSnapshot {
 	cover?: string;
 	areaName?: string;
 	startedAt?: string;
-	/** B 站 WATCHED_CHANGE 帧给出的累计观看(预格式化字符串,如 "1.2万")。 */
-	viewers?: string;
+	/** B 站 WATCHED_CHANGE 帧给出的累计观看,精确数(面板排成「1.2万」);还没收到过帧就没有这个键。 */
+	viewers?: number;
 }
 
 /**
@@ -1191,8 +1191,8 @@ export interface ExtensionLiveSnapshot {
 	/** 开播时刻(ISO)。拓展没报过就没有 —— BN 不拿「收到的时刻」冒充。 */
 	startedAt?: string;
 	/**
-	 * 本场累计观看(拓展报的 `totalViewers`),数字、没排版 —— 与 B 站那几行的 `viewers`(B 站排好的
-	 * 字串)同一个口径,面板那一列一个含义(ADR-0019 决策 75)。拓展报的此刻在线(`viewers`)不上面板,
+	 * 本场累计观看(拓展报的 `totalViewers`),数字、没排版 —— 与 B 站那几行的 `viewers`(帧里的精确数,
+	 * 同样没排版)同一个口径,面板那一列一个含义,同走 `formatCount`(ADR-0019 决策 75)。拓展报的此刻在线(`viewers`)不上面板,
 	 * 也就不在这里:它每轮都在变,放进来会让面板为一个看不见的数反复重取。
 	 */
 	totalViewers?: number;

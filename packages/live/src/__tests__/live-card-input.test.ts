@@ -27,10 +27,10 @@ const ROOM = {
 	live_time: "2026-09-13 20:00:00",
 };
 
-/** 直播引擎攒下的那几个数。累计观看今天存的是 B 站的成品字符串(㉒d 才改精确数)。 */
+/** 直播引擎攒下的那几个数,都是精确数(累计观看是 `WATCHED_CHANGE` 帧的 `num`,㉒d)。 */
 const LIVE_DATA: LiveData = {
 	likedNum: 20_133,
-	watchedNum: "3.1万",
+	watchedNum: 31_200,
 	fansNum: 88_800,
 	fansChanged: 1_234,
 };
@@ -55,7 +55,7 @@ describe("liveCardInputFromRoomInfo — 每一格", () => {
 			startedAt: "2026-09-13T12:00:00.000Z",
 			currentViewers: 12_345,
 			likes: 20_133,
-			// 累计观看今天是字符串,不收(见下面「累计观看」)。
+			totalViewers: 31_200,
 			followers: 88_800,
 			followersDelta: 1_234,
 		});
@@ -188,15 +188,16 @@ describe("liveCardInputFromRoomInfo — 人数只收精确数,缺了就缺键", 
 	});
 
 	/**
-	 * 累计观看:今天 B 站那条路存的是 `text_small` 字符串("3.1万"),输入只收精确数 —— 这一片不收,
-	 * 卡上这一格(下播卡的「累计观看人数」)暂时不画;㉒d 把引擎改存精确数,读法已经就位(是数字才给),
-	 * 那一天这两条的期望跟着翻。
+	 * 累计观看是 `WATCHED_CHANGE` 帧的精确数(㉒d):有就给(含 0),一帧没收到就没有这个键 —— 下播卡那一格不画,
+	 * 不再印「累计观看人数：暂未获取到」。
+	 * 验红:去掉翻译里的 `totalViewers`,第一条红;缺了补 0,第二条红。
 	 */
-	it("累计观看是字符串 → 暂时不给;是数字 → 给", () => {
-		expect(Object.hasOwn(translate(3, ROOM, { watchedNum: "3.1万" }), "totalViewers")).toBe(false);
-		expect(Object.hasOwn(translate(3, ROOM, { watchedNum: "暂未获取到" }), "totalViewers")).toBe(
-			false,
-		);
+	it("累计观看:有数就给(含 0)", () => {
 		expect(translate(3, ROOM, { watchedNum: 31_200 }).totalViewers).toBe(31_200);
+		expect(translate(3, ROOM, { watchedNum: 0 }).totalViewers).toBe(0);
+	});
+
+	it("累计观看:一帧没收到 → 没有 totalViewers 这个键", () => {
+		expect(Object.hasOwn(translate(3, ROOM, {}), "totalViewers")).toBe(false);
 	});
 });

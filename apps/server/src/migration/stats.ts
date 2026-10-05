@@ -4,7 +4,8 @@
  *
  * 1. **文件键**(ADR-0020 决策 2 的 🔗):B 站的作品、直播、粉丝文件从 `<uid>.jsonl` 并进 `<订阅 id>.jsonl`;
  * 2. **行**(决策 5 / 7 的 🔗):老作品行 `{id, type, ts}` → `{id, kind, ts}`,老下播帧的字符串峰值("1.2万")
- *    → 数字。翻译的规矩与 B 站适配共用 `stats/bili-format.ts` 那一份。
+ *    → 数字({@link parseBiliViewers},1.0 起「1.2万」的解析只留在这里);作品的类型串翻译与 B 站适配共用
+ *    `stats/bili-format.ts` 那一份。
  *
  * 从前每次开机都改名,是为了接住「回退到老版本、它又写出 uid 文件、再升回来」;有了代以后回退再升级照用
  * 迁好的那一代,手动从第 0 代重迁也走这里(ADR-0022 决策 3 下 10-01 的 🔗),新代里不会冒出 uid 文件,迁一次就够。
@@ -15,7 +16,7 @@ import { join } from "node:path";
 import { syncDirectory } from "@bilibili-notify/storage";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
-import { classifyBiliDynamic, parseBiliViewers } from "../stats/bili-format.js";
+import { classifyBiliDynamic } from "../stats/bili-format.js";
 import { STATS_DYN_DIR, STATS_LIVE_DIR } from "../stats/store.js";
 import {
 	isPlainObject,
@@ -27,6 +28,24 @@ import {
 import type { BiliSubscriptionKey } from "./subscriptions.js";
 
 type Dir = readonly [DataRootKey, ...string[]];
+
+/**
+ * 把 B 站「X 人看过」的压缩写法("1.2万" / "3.5亿" / "9500")解析成数字;解析不出返回 `NaN`。
+ *
+ * 不能拿字符串直接比大小("9500" 会大于 "1.2万"),也不能把解析失败当 0 —— 未知不是零,
+ * 一个静默的 0 会把场均拖下水。调用方拿 `Number.isFinite` 判。
+ *
+ * 只给迁移读 0.x 的字符串峰值用:1.0 起总线上的观看人数是精确数,统计的 B 站适配不再解析它。
+ */
+export function parseBiliViewers(raw: string): number {
+	const m = raw.trim().match(/^([\d.]+)\s*(万|亿)?$/);
+	if (!m) return Number.NaN;
+	const n = Number(m[1]);
+	if (!Number.isFinite(n)) return Number.NaN;
+	if (m[2] === "万") return n * 10_000;
+	if (m[2] === "亿") return n * 100_000_000;
+	return n;
+}
 
 /** 这三处按文件键分文件。`stats/seen` 从一开始就按订阅 id 命名,不认它。 */
 const KEYED_DIRS: readonly Dir[] = [STATS_DYN_DIR, STATS_LIVE_DIR, FOLLOWERS_DIR];

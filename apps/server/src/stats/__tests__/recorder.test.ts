@@ -212,9 +212,9 @@ describe("StatsRecorder — 直播场次", () => {
 	it("idle → closeLiveSession,带本场峰值观看", async () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "8000" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "1.2万" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "9500" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 8000 });
+		trigger("live-viewers-changed", { uid: "1", viewers: 12_000 });
+		trigger("live-viewers-changed", { uid: "1", viewers: 9500 });
 		clock = "2026-05-16T13:00:00.000Z";
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
@@ -237,10 +237,10 @@ describe("StatsRecorder — 直播场次", () => {
 	it("新一场直播重置峰值,不串上一场的数字", async () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "50万" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 500_000 });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		trigger("live-state-changed", { uid: "1", status: "live" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "100" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 100 });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
 		expect(store.closeLiveSession.mock.calls[1]?.[2]).toBe(100);
@@ -250,8 +250,8 @@ describe("StatsRecorder — 直播场次", () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live" });
 		trigger("live-state-changed", { uid: "2", status: "live" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "3万" });
-		trigger("live-viewers-changed", { uid: "2", viewers: "500" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 30_000 });
+		trigger("live-viewers-changed", { uid: "2", viewers: 500 });
 		trigger("live-state-changed", { uid: "2", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith("id-2", expect.any(String), 500);
@@ -441,7 +441,7 @@ describe("StatsRecorder — 订阅删除清理", () => {
 	it("被删 UP 的开播峰值一并丢弃,不会漏进下一位 UP", async () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "50万" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 500_000 });
 		trigger("subscription-changed", {
 			ops: [
 				{
@@ -490,7 +490,7 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 	it("带上本场峰值 —— 与正常下播同款口径", async () => {
 		const { trigger, store, handle } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "1.2万" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 12_000 });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 
 		clock = "2026-05-16T12:00:00.000Z";
@@ -532,12 +532,19 @@ describe("StatsRecorder — 采集水位线", () => {
 	});
 });
 
-describe("StatsRecorder — 观看数解析不出", () => {
-	it("解析不出的 viewers 不参与峰值,也不把已有的峰值冲掉", async () => {
+/**
+ * 总线上的观看数是精确数(㉒d),B 站适配直接喂给记录器、不再解析「1.2万」。不是有限的数(帧坏了才会有)由记录器自己
+ * 不收(`reportViewers` 的 `Number.isFinite`),这条走的是总线 → 适配 → 记录器的整条路。
+ * 验红:去掉 `recorder.ts` `reportViewers` 里的 `Number.isFinite` 判断,NaN 会把峰值冲成 NaN,这条红。
+ */
+describe("StatsRecorder — 观看数不是有限的数", () => {
+	it("NaN 的 viewers 不参与峰值,也不把已有的峰值冲掉", async () => {
 		const { trigger, store } = setup();
 		trigger("live-state-changed", { uid: "1", status: "live" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "3万" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "看不懂" });
+		// NaN 排在头一个:没有前一个数时,不拦的话它会成为峰值、之后的 30_000 因为 `> NaN` 为假而再也顶不上去。
+		trigger("live-viewers-changed", { uid: "1", viewers: Number.NaN });
+		trigger("live-viewers-changed", { uid: "1", viewers: 30_000 });
+		trigger("live-viewers-changed", { uid: "1", viewers: Number.NaN });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
 		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", expect.any(String), 30_000);
@@ -611,7 +618,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			ts: "2026-05-16T09:00:00.000Z",
 		});
 		trigger("live-state-changed", { uid: "404", status: "live", at: "2026-05-16T09:00:00.000Z" });
-		trigger("live-viewers-changed", { uid: "404", viewers: "3万" });
+		trigger("live-viewers-changed", { uid: "404", viewers: 30_000 });
 		trigger("live-state-changed", { uid: "404", status: "idle" });
 		// 对照:同一串事件换成订阅着的 uid 就记 —— 证明监听确实在跑、不是空转。
 		trigger("dynamic-detected", {
@@ -639,7 +646,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			ts: "2026-05-16T09:00:00.000Z",
 		});
 		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
-		trigger("live-viewers-changed", { uid: "1", viewers: "500" });
+		trigger("live-viewers-changed", { uid: "1", viewers: 500 });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
 		expect(store.appendDynamic.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-1b"]);

@@ -338,7 +338,7 @@ describe("LiveTemplateRenderer.renderLiveStreaming / renderLiveEnd — 模板不
 			sub,
 			master,
 			diffTime: "1小时",
-			watched: "100",
+			watched: 100,
 		});
 		expect(out).toBe("主播 正在直播，已播 1小时，累计观看：100");
 	});

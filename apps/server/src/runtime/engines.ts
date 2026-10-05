@@ -111,7 +111,7 @@ import { syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
-import type { PostImageSink } from "./post-from-report.js";
+import type { ImageSink } from "./post-from-report.js";
 import { historyRecordFromSend } from "./push-history.js";
 import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
@@ -255,7 +255,7 @@ export interface CreateEnginesOptions {
 	 * 拓展作品的配图、封面、事件带来的头像往图库存的口(`AppRuntime.postImages`,ADR-0021 决策 22 下的 ㉑d):
 	 * 作品卡是 `Post`,图只收图库引用。**给了 `extensionSources` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
 	 */
-	postImages?: PostImageSink;
+	postImages?: ImageSink;
 	/**
 	 * 出图器的「图库引用 → 可画的地址」解析口(`imageRefDataUrl(runtime.imageStore)`):作品卡里的配图、封面、
 	 * 头像、正文小图标都是图库引用,出图前经它转成 data URL。不给 = 引用一律画占位(只测不画图的引擎时)。
@@ -271,7 +271,7 @@ export interface CreateEnginesOptions {
 	 * 的 🔗,㉒c):直播卡是中立输入,图只收图库引用。**给了 `extensionSources` 与 `extensionLive` 就必须给** ——
 	 * 漏给是开机直接抛,不是悄悄不出图。
 	 */
-	liveImages?: PostImageSink;
+	liveImages?: ImageSink;
 	/**
 	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
 	 * 记进去。不给就只记日志。

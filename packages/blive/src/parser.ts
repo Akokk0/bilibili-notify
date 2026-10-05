@@ -584,9 +584,10 @@ function parseGiftV2(record: Record<string, unknown> | null): LiveEvent | undefi
 // ── 高频计数 ────────────────────────────────────────────────────
 
 function parseWatched(record: Record<string, unknown> | null): LiveEvent | undefined {
-	const data = record?.data as { num?: unknown; text_small?: unknown } | undefined;
-	if (typeof data?.num !== "number" || typeof data?.text_small !== "string") return undefined;
-	return { kind: "watched", num: data.num, textSmall: data.text_small };
+	const data = record?.data as { num?: unknown } | undefined;
+	// 只取精确数。`text_small` / `text_large` 是 B 站排好的字(「8.7万」「8.7万人看过」),没人用:排版归 BN 自己的 `formatCount`。
+	if (typeof data?.num !== "number") return undefined;
+	return { kind: "watched", num: data.num };
 }
 
 function parseLiked(record: Record<string, unknown> | null): LiveEvent | undefined {

@@ -434,6 +434,23 @@ describe("周期「正在直播」", () => {
 		expect(problems[0]?.reasons[0]).toMatch(/没收到新的直播状态/);
 	});
 
+	/**
+	 * ㉒d:「正在直播」文案的 `{watched}` 缺数时由文字渲染器在出口印「暂未获取到」(从前缺了是空串)。拓展这一头传进来的
+	 * 本来就是数字(`facts.totalViewers`,没报就是 `undefined`),所以拓展没报过累计观看的直播,周期文案也印这一句。
+	 * 验红:去掉 `renderLiveText` 里缺数时的兜底,这条红。
+	 */
+	it("拓展一直没报累计观看:周期文案的 {watched} 印「暂未获取到」", async () => {
+		start();
+		liveStart();
+		await settle();
+		await vi.advanceTimersByTimeAsync(30 * MINUTE);
+		liveStatus({ viewers: 5 });
+		await vi.advanceTimersByTimeAsync(30 * MINUTE);
+		await settle();
+		expect(sent.map((s) => s.type)).toEqual([3, 0]);
+		expect(sent[1]?.text).toBe(`抖音甲 正在直播，已播 1小时，累计观看：暂未获取到\n${URL}`);
+	});
+
 	// 拓展没报下播(清单可以只声明开播)、或下播事件被拒收了:在播表那一行已经被「不在播」的状态请出去,
 	// 这一场的计时器却还挂着。拓展明明一直在报,不该每一轮都记一句「没收到新的直播状态」;BN 也不拿状态
 	// 替它判下播(决策 53)—— 悄悄跳过,又报在播了就接着推。

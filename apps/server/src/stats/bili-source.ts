@@ -4,7 +4,7 @@ import {
 	type MessageBus,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { classifyBiliDynamic, parseBiliViewers } from "./bili-format.js";
+import { classifyBiliDynamic } from "./bili-format.js";
 import { type KeyedSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
 
@@ -13,7 +13,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  *
  * B 站的规矩只写在这里(与 `bili-format`):
  *   - `dynamic-detected` → 类型分成 `video` / `post`,开播那两种记成 `live`(不是作品,只当活动证据);
- *   - `live-viewers-changed` → 「1.2万」解析成数字,报给记录器取本场最大值;
+ *   - `live-viewers-changed` → 总线上就是精确数(㉒d),直接报给记录器取本场最大值(不再解析「1.2万」);
  *   - `live-state-changed` → 开一场 / 关一场,开播时刻取 B 站的真实 `live_time`;
  *   - `auth-lost` / 删订阅 → 忘掉 / 删掉 B 站这头的在飞状态与文件。
  *
@@ -111,11 +111,10 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 
 	handles.push(
 		bus.on("live-viewers-changed", ({ uid, viewers }) => {
-			const value = parseBiliViewers(viewers);
-			if (!Number.isFinite(value)) return;
+			// 总线上就是精确数(㉒d),直接喂给记录器(不是有限的数由记录器自己不收,见 `reportViewers`)。
 			for (const key of keysOf(uid)) {
 				keys.add(key);
-				recorder.reportViewers(key, value);
+				recorder.reportViewers(key, viewers);
 			}
 		}),
 	);

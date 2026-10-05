@@ -2,7 +2,7 @@
  * 单元测试 — stats 聚合层(纯函数,无 IO)。
  *
  * 这层只认中立的种类(`video` / `post`)与数字峰值(ADR-0020 决策 5 / 7 的 🔗)。
- * B 站类型怎么归类、「1.2万」怎么解析,钉在 bili-format.test.ts;0.x 的老 B 站行改写成中立形状之后
+ * B 站类型怎么归类,钉在 bili-format.test.ts、「1.2万」怎么解析(只给迁移用,㉒d 起)钉在 migration/__tests__/bili-viewers.test.ts;0.x 的老 B 站行改写成中立形状之后
  * 算出与改之前同样的数,钉在 migration/__tests__/zero-generation-stats.test.ts。
  */
 
@@ -406,7 +406,7 @@ describe("summarizeLiveSessions — isLive 是悬空记录的止损闸门", () =
 });
 
 describe("summarizeLiveSessions — 没采到峰值的场次", () => {
-	// 「1.2万 / 亿 / 解析不出」的换算搬去了 bili-format(B 站那头交进来之前就解析好);
+	// 「1.2万 / 亿 / 解析不出」的换算搬去了 bili-format、㉒d 起又只留在迁移(`migration/stats.ts` 的 `parseBiliViewers`);
 	// 这里只剩数字,守的是同一条口径:没采到的场不是 0,不进平均。
 	it("没有峰值的场整场跳过,不是当成 0 混进平均值", () => {
 		// 「未知不是零」——一个静默的 0 会把场均峰值拖下水,而且看不出来。

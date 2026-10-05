@@ -125,7 +125,7 @@ describe("LiveTemplateRenderer — B 站三句直播文案(刻画)", () => {
 		expect(r.renderLiveStart({ sub: sub(), master, diffTime: "5秒", followerNum: "1.2万" })).toBe(
 			"晨风 开播啦，当前粉丝数：1.2万",
 		);
-		expect(r.renderLiveStreaming({ sub: sub(), master, diffTime: "2小时", watched: "3.4万" })).toBe(
+		expect(r.renderLiveStreaming({ sub: sub(), master, diffTime: "2小时", watched: 34_000 })).toBe(
 			"晨风 正在直播，已播 2小时，累计观看：3.4万",
 		);
 		expect(r.renderLiveEnd({ sub: sub(), master, diffTime: "3小时", followerChange: 12_345 })).toBe(
@@ -152,7 +152,7 @@ describe("LiveTemplateRenderer — B 站三句直播文案(刻画)", () => {
 				sub: sub({ customLiveStreaming: "{name}|{time}|{watched}|{follower}" }),
 				master,
 				diffTime: "1分",
-				watched: "暂未获取到",
+				watched: undefined,
 			}),
 		).toBe("晨风|1分|暂未获取到|{follower}");
 		expect(
@@ -191,10 +191,38 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 		expect(renderLiveText("liveStart", undefined, { name: "甲", time: "5秒" })).toBe(
 			"甲 开播啦，当前粉丝数：",
 		);
-		expect(renderLiveText("liveStreaming", "{watched}|{time}", { name: "甲", time: "" })).toBe("|");
 		expect(renderLiveText("liveEnd", "[{follower_change}]", { name: "甲", time: "1分" })).toBe(
 			"[]",
 		);
+	});
+
+	/**
+	 * ㉒d:「正在直播」文案的 `{watched}` 缺数(一帧观看人数都没收到过、拓展没报累计观看)时,**由文字渲染器在出口印
+	 * 「暂未获取到」**。从前是直播数据里被写进这句占位、B 站这头原样带来,缺了到这里只印空串。别的两句没有这个变量;
+	 * 有数就走 `formatCount`,0 是真数(印「0」,不是占位)。
+	 * 验红:把 `renderLiveText` 里缺数时的兜底去掉(印空串),前两条红;让 0 也当缺数,第三条红。
+	 */
+	it("{watched} 缺数:出口印「暂未获取到」(默认那句与自定义模板都一样)", () => {
+		expect(renderLiveText("liveStreaming", undefined, { name: "甲", time: "2小时" })).toBe(
+			"甲 正在直播，已播 2小时，累计观看：暂未获取到",
+		);
+		expect(renderLiveText("liveStreaming", "{watched}|{time}", { name: "甲", time: "" })).toBe(
+			"暂未获取到|",
+		);
+	});
+
+	it("{watched} 有数走 formatCount;0 是真数,印「0」", () => {
+		expect(renderLiveText("liveStreaming", "{watched}", { name: "甲", time: "", watched: 0 })).toBe(
+			"0",
+		);
+		expect(
+			renderLiveText("liveStreaming", "{watched}", { name: "甲", time: "", watched: 87_334 }),
+		).toBe("8.7万");
+	});
+
+	it("别的两句没有 {watched} 这个变量:缺数不印占位,有 {watched} 的模板原样留着", () => {
+		expect(renderLiveText("liveStart", "{watched}", { name: "甲", time: "" })).toBe("{watched}");
+		expect(renderLiveText("liveEnd", "{watched}", { name: "甲", time: "" })).toBe("{watched}");
 	});
 
 	it("文字原样;每一种只认自己那几个变量", () => {
@@ -211,10 +239,10 @@ describe("renderLiveText — 中立的三句直播文案", () => {
 			renderLiveText("liveStreaming", "{watched}|{follower}", {
 				name: "甲",
 				time: "1分",
-				watched: "暂未获取到",
+				watched: 12_345,
 				follower: 1,
 			}),
-		).toBe("暂未获取到|{follower}");
+		).toBe("1.2万|{follower}");
 		expect(
 			renderLiveText("liveEnd", "{follower_change}|{follower}", {
 				name: "甲",

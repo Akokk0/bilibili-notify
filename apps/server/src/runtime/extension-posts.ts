@@ -25,7 +25,7 @@ import {
 	extensionSubscriptionName,
 	extensionSubscriptionPushable,
 } from "./extension-push-common.js";
-import { deferImageWrites, type PostImageSink, postFromReport } from "./post-from-report.js";
+import { deferImageWrites, type ImageSink, postFromReport } from "./post-from-report.js";
 
 /**
  * **拓展报的作品接进推送链**(ADR-0019 决策 53 / 62 / 66 / 69–72 / 77):bus 上 `subscription-reported` 里
@@ -72,7 +72,7 @@ export interface BindExtensionPostsOptions {
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */
-	postImages: PostImageSink;
+	postImages: ImageSink;
 	/** 绑到这条订阅上的作品发送(`boundWorkPush(bindSubscriptionPush(push, id))`)。 */
 	pushFor(subscriptionId: string): BoundWorkPush;
 	/** 装配的全局那几样 —— 与 B 站动态同一份(`dynamicConfig()`),现取。 */

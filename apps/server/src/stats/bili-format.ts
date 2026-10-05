@@ -1,12 +1,15 @@
 import type { StatsFeedKind } from "./store.js";
 
 /**
- * 统计里 B 站那头的写法 —— stats 目录里**唯一**认得 B 站动态类型串与「1.2万」压缩写法的地方。
+ * 统计里 B 站那头的写法 —— stats 目录里**唯一**认得 B 站动态类型串的地方。
  *
  * ADR-0020 决策 5 / 7 的 🔗:统计仓存中立的种类与数字,平台的写法由各来源自己在交进来之前
- * 翻好。用到这两样的只有两处,共用这一份免得两边的口径漂开:
- *   - B 站适配(`bili-source.ts`):引擎发来的新动态 / 新观看数,交给记录器之前翻;
- *   - 迁移器(`migration/stats.ts`):0.x 落盘的 `{type}` 行与字符串峰值,迁一代时照同样的规矩翻。
+ * 翻好。用到它的有两处,共用这一份免得两边的口径漂开:
+ *   - B 站适配(`bili-source.ts`):引擎发来的新动态,交给记录器之前翻;
+ *   - 迁移器(`migration/stats.ts`):0.x 落盘的 `{type}` 行,迁一代时照同样的规矩翻。
+ *
+ * 观看人数不在这里:总线上的 `live-viewers-changed` 是精确数(㉒d),B 站适配直接喂给记录器;「1.2万」这种
+ * 压缩写法的解析只留在迁移模块(`migration/stats.ts` 的 `parseBiliViewers`,读 0.x 的字符串峰值用)。
  */
 
 /** 视频投稿 —— 「投稿」一栏的唯一来源(投稿 = 发了视频,跨平台同义)。 */
@@ -28,20 +31,4 @@ export function classifyBiliDynamic(type: string): StatsFeedKind {
 	if (VIDEO_TYPES.has(type)) return "video";
 	if (LIVE_START_TYPES.has(type)) return "live";
 	return "post";
-}
-
-/**
- * 把 B 站「X 人看过」的压缩写法("1.2万" / "3.5亿" / "9500")解析成数字;解析不出返回 `NaN`。
- *
- * 不能拿字符串直接比大小("9500" 会大于 "1.2万"),也不能把解析失败当 0 —— 未知不是零,
- * 一个静默的 0 会把场均拖下水。调用方拿 `Number.isFinite` 判。
- */
-export function parseBiliViewers(raw: string): number {
-	const m = raw.trim().match(/^([\d.]+)\s*(万|亿)?$/);
-	if (!m) return Number.NaN;
-	const n = Number(m[1]);
-	if (!Number.isFinite(n)) return Number.NaN;
-	if (m[2] === "万") return n * 10_000;
-	if (m[2] === "亿") return n * 100_000_000;
-	return n;
 }

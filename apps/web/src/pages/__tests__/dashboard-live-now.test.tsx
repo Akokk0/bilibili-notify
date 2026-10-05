@@ -141,7 +141,7 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 	it("与 B 站房间并排:各画各的,B 站那行照旧", () => {
 		renderPanel(
 			[
-				{ subscriptionId: "s-bili", uid: "u1", roomId: "r1", isLive: true, viewers: "3456" },
+				{ subscriptionId: "s-bili", uid: "u1", roomId: "r1", isLive: true, viewers: 3456 },
 				{ kind: "extension", subscriptionId: "s-dy", extensionId: "douyin", isLive: true },
 			],
 			[biliSub("s-bili", "u1", "B 站甲"), extSub("s-dy", "抖音乙")],
@@ -151,6 +151,43 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 		expect(screen.getByText("3456")).toBeTruthy();
 		expect(screen.getByText("抖音乙")).toBeTruthy();
 		expect(screen.getByText("● 2 人在播")).toBeTruthy();
+	});
+
+	/**
+	 * ㉒d:B 站行的人数从「B 站排好的字串」改成精确数,与拓展行同走 `formatViewers`(`formatCount`)。
+	 * 一套写法:万以上排成「1.2万」、万以下原样不加千分位、0 是真数写「0」、没有数写「—」。
+	 * 验红:把 B 站那一行改回直接画 `r.viewers`,头两条红(画出 87334 / 渲染不出数字);去掉 `formatViewers`
+	 * 里的 `undefined` 判断,「—」那条红。
+	 */
+	it("B 站行与拓展行同一套排法:精确数排成「1.2万」,万以下原样,0 写「0」,没有数写「—」", () => {
+		renderPanel(
+			[
+				{ subscriptionId: "s-a", uid: "u1", roomId: "r1", isLive: true, viewers: 87_334 },
+				{ subscriptionId: "s-b", uid: "u2", roomId: "r2", isLive: true, viewers: 9_999 },
+				{ subscriptionId: "s-c", uid: "u3", roomId: "r3", isLive: true, viewers: 0 },
+				{ subscriptionId: "s-d", uid: "u4", roomId: "r4", isLive: true },
+				{
+					kind: "extension",
+					subscriptionId: "s-dy",
+					extensionId: "douyin",
+					isLive: true,
+					totalViewers: 87_334,
+				},
+			],
+			[
+				biliSub("s-a", "u1", "甲"),
+				biliSub("s-b", "u2", "乙"),
+				biliSub("s-c", "u3", "丙"),
+				biliSub("s-d", "u4", "丁"),
+				extSub("s-dy", "抖音戊"),
+			],
+			[DOUYIN],
+		);
+		// 同样的 87334:B 站行与拓展行画出同样的字。
+		expect(screen.getAllByText("8.7万")).toHaveLength(2);
+		expect(screen.getByText("9999")).toBeTruthy();
+		expect(screen.getByText("0")).toBeTruthy();
+		expect(screen.getAllByText("—")).toHaveLength(1);
 	});
 });
 

@@ -109,11 +109,11 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 			event: "live-state-changed",
 			data: { uid: "u1", status: "live" },
 		});
-		h.bus.emit("live-viewers-changed", { uid: "u1", viewers: "1.2万" });
+		h.bus.emit("live-viewers-changed", { uid: "u1", viewers: 12_000 });
 		expect(h.last()).toMatchObject({
 			type: "push-events",
 			event: "live-viewers-changed",
-			data: { uid: "u1", viewers: "1.2万" },
+			data: { uid: "u1", viewers: 12_000 },
 		});
 		h.bus.emit("engine-error", { source: "dynamic-engine", message: "boom" });
 		expect(h.last()).toMatchObject({

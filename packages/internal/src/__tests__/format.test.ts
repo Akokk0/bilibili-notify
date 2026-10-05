@@ -114,3 +114,40 @@ describe("formatClock", () => {
 		expect(formatClock(Number.NaN)).toBe("0:00");
 	});
 });
+
+/**
+ * **观看人数:`formatCount` 与 B 站原来排的字(`WATCHED_CHANGE` 的 `text_small`)差多少**(1.0 第 2 期 ㉒d)。
+ *
+ * ㉒d 起 B 站观看人数传精确数 `num`,排版归 `formatCount`(面板「正在直播」那一列、文字模板的 `{watched}`、下播卡的
+ * 「累计观看人数」),不再沿用 B 站排好的字。这张表是给主人看的对照 —— **如实列,不为了对上去改 `formatCount`**:
+ * - `formatCount` 那一列是现状,断言钉着;
+ * - `bili` 那一列:`certain: true` 的是仓库里有**真实录制帧**为证的(`packages/blive/src/__tests__/fixtures/payloads.json`
+ *   的 `WATCHED_CHANGE`:`num: 87334` ↔ `text_small: "8.7万"`),断言两边相同;`certain: false` 的是我按 B 站惯例
+ *   的**推测**,仓库里没有录制帧能证实,只写在这里供人核对,**不进断言**(`bili` 写的是我的推测值)。
+ *
+ * 已知的差别方向(都出在「万」那一档的写法上):`formatCount` 恒保留一位小数(「1.0万」),并且用 `toFixed` 四舍五入;
+ * B 站的 `text_small` 据我所知整万时不带「.0」(「1万」),取舍(进位还是截断)未知。
+ */
+describe("观看人数:formatCount 与 B 站 text_small 的对照(㉒d)", () => {
+	const ROWS: ReadonlyArray<{ num: number; formatCount: string; bili: string; certain: boolean }> =
+		[
+			// 真实录制帧。
+			{ num: 87_334, formatCount: "8.7万", bili: "8.7万", certain: true },
+			// 以下 B 站一列是推测,不进断言。
+			{ num: 12_000, formatCount: "1.2万", bili: "1.2万", certain: false },
+			{ num: 9_999, formatCount: "9999", bili: "9999", certain: false },
+			{ num: 10_000, formatCount: "1.0万", bili: "1万", certain: false },
+			{ num: 123_456_789, formatCount: "1.2亿", bili: "1.2亿", certain: false },
+			{ num: 0, formatCount: "0", bili: "0", certain: false },
+		];
+
+	it("formatCount 这一列(现状)", () => {
+		for (const row of ROWS) expect(formatCount(row.num), String(row.num)).toBe(row.formatCount);
+	});
+
+	it("有真实录制帧为证的那一行:与 B 站排的字相同", () => {
+		for (const row of ROWS.filter((r) => r.certain)) {
+			expect(formatCount(row.num), String(row.num)).toBe(row.bili);
+		}
+	});
+});

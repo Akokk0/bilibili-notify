@@ -26,7 +26,7 @@ const BILI_ROWS: LiveListenerSnapshot[] = [
 		cover: "https://i0.hdslb.com/cover.jpg",
 		areaName: "单机游戏",
 		startedAt: "2026-09-23T11:00:00.000Z",
-		viewers: "1.2万",
+		viewers: 12_000,
 	},
 ];
 

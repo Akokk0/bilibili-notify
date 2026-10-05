@@ -70,8 +70,8 @@ function present<T extends object>(value: T): T {
  * - **不给主播头像**:`Creator.avatar` 只收图库引用,B 站的头像是远端地址,3a 才存进图库(ADR-0021 决策 24 下
  *   2026-10-05 的 🔗)。
  * - 人数**只收精确数,缺了就缺键**:此刻在线读房间接口的 `online`(缺了不补 0);点赞、粉丝数、粉丝数变化是直播
- *   引擎攒的(没收到点赞帧就没有点赞这一格)。累计观看今天引擎存的还是 B 站排好的字符串(`text_small`),
- *   这里不收 —— 等 ㉒d 改存精确数,读法已经就位(是数字才给)。
+ *   引擎攒的(没收到点赞帧就没有点赞这一格)。累计观看是引擎存的 `WATCHED_CHANGE` 帧的精确数(㉒d),
+ *   一帧没收到就没有这一格(下播卡不画,不再印「暂未获取到」)。
  *
  * @param data B 站直播间接口的 `data`(`getLiveRoomInfo`)。
  * @param liveData 直播引擎攒下的那几个数。
@@ -99,7 +99,7 @@ export function liveCardInputFromRoomInfo(
 		startedAt: known ? biliLiveTimeToIso(text(data?.live_time)) : undefined,
 		currentViewers: countOf(data?.online),
 		likes: liveData.likedNum,
-		totalViewers: typeof liveData.watchedNum === "number" ? liveData.watchedNum : undefined,
+		totalViewers: liveData.watchedNum,
 		followers: liveData.fansNum,
 		followersDelta: liveData.fansChanged,
 	});

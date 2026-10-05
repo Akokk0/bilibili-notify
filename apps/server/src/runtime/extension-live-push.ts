@@ -38,7 +38,7 @@ import {
 	extensionSubscriptionPushable,
 } from "./extension-push-common.js";
 import { type LiveCardFacts, liveCardInputFromReport } from "./live-card-input-from-report.js";
-import { deferImageWrites, type PostImageSink } from "./post-from-report.js";
+import { deferImageWrites, type ImageSink } from "./post-from-report.js";
 
 /**
  * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`extension-live-sessions.ts`)
@@ -124,7 +124,7 @@ export interface BindExtensionLivePushOptions {
 	 * 往图库存直播封面与事件带来的作者头像的口(`AppRuntime.liveImages`)。每张卡出卡那一刻才写盘(`deferImageWrites`),
 	 * 关了出图、版式把卡片藏起来的直播不写。
 	 */
-	liveImages: PostImageSink;
+	liveImages: ImageSink;
 	/** 绑到这条订阅上的直播发送(`boundLivePush(bindSubscriptionPush(push, id))`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */

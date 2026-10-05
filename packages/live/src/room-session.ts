@@ -205,11 +205,11 @@ export class RoomSession extends RoomSessionBase {
 					return this.onIncomeSuperChat(ev);
 				case "watched": {
 					this.markLiveWsActivity("watched");
-					this.liveData.watchedNum = ev.textSmall;
+					this.liveData.watchedNum = ev.num;
 					const now = Date.now();
 					if (now - this.lastViewersEmitMs >= VIEWERS_EMIT_THROTTLE_MS) {
 						this.lastViewersEmitMs = now;
-						this.ctx.emitViewers(this.sub.uid, ev.textSmall);
+						this.ctx.emitViewers(this.sub.uid, ev.num);
 					}
 					return;
 				}
@@ -699,6 +699,11 @@ export class RoomSession extends RoomSessionBase {
 		// 戳。此前在去重前就 lastLiveStart=now,一条 >10s 的重复 START 也会刷新
 		// 窗口,导致紧随其后 10s 内的“真重启”被冷却静默吞掉。
 		this.lastLiveStart = now;
+		// 新的一场:上一场收到的观看人数与点赞清掉。`liveData` 是会话级的、房间一直开着监听,不清的话这两格会一直留到
+		// 下一场 —— 开播卡、`{watched}`、在播快照在新的一帧到来之前拿的都是上一场的数。时机就是此刻(开播事件刚被接受):
+		// 刷房间信息那几秒里到的帧已经是这一场的,晚清会把它抹掉;下播时不清(下播卡要用);断流接续里重新开播被上面
+		// 「已经是开播状态」的去重挡住了,不算新的一场。
+		this.resetLiveCounters();
 		// 先把房间信息刷成**本场**的,再翻状态 —— 这个顺序不能反。
 		//
 		// `setLiveStatus(true)` 会把 `liveRoomInfo.live_time` 换算成 `startedAt` 带出去,

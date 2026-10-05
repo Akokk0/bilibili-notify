@@ -120,7 +120,7 @@ export type LiveEvent =
 			/** 连击(batch_combo_id 存在时)。 */
 			combo?: { batchId: string; comboNum: number; totalCoin: number };
 	  }
-	| { kind: "watched"; num: number; textSmall: string }
+	| { kind: "watched"; num: number }
 	| { kind: "liked"; count: number }
 	| { kind: "live-start" }
 	| { kind: "live-end" }

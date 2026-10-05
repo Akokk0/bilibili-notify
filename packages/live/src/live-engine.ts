@@ -75,7 +75,7 @@ export interface LiveEngineOptions {
 	 * Per-UID watched-count updates; the host forwards to `bus.emit("live-viewers-changed", …)`.
 	 * Throttled per-UID to 2s at the room-session boundary.
 	 */
-	emitViewers: (uid: string, viewers: string) => void;
+	emitViewers: (uid: string, viewers: number) => void;
 	/**
 	 * Background-rotation picker: a card kind with >1 configured backgrounds cycles
 	 * one-per-push; returning undefined keeps the first background. Threaded straight

@@ -94,11 +94,11 @@ export interface RoomContextOptions {
 	 */
 	emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/**
-	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧节流后转发)。宿主实现:
+	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧的精确数 `num`,节流后转发)。宿主实现:
 	 * `(uid, viewers) => bus.emit("live-viewers-changed", { uid, viewers })`。room-session 在调用前
 	 * 做 per-UID 2s throttle,所以这里收到的频率已经稀疏(每个直播间最多每 2s 一次)。
 	 */
-	emitViewers: (uid: string, viewers: string) => void;
+	emitViewers: (uid: string, viewers: number) => void;
 	/**
 	 * 背景图轮换选择器。多图卡片「每次推送轮换」;返回 undefined → 推送点回退单图。
 	 * 独立端由 `createCardBgRotator` 支撑(fs 持久化游标)。
@@ -148,7 +148,7 @@ export class RoomContextBase {
 	/** 分发 per-UID 直播状态变化给宿主。 */
 	readonly emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
 	/** 分发 per-UID 观看人数变化给宿主。room-session 已做 per-UID 节流,这里只是分发。 */
-	readonly emitViewers: (uid: string, viewers: string) => void;
+	readonly emitViewers: (uid: string, viewers: number) => void;
 	/**
 	 * 背景图轮换:多图时返回本次该用的背景并推进游标;选择器返回 undefined 或列表 ≤1 张
 	 * → 调用方回退单图。

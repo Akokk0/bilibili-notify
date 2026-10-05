@@ -126,7 +126,7 @@
 | ⑲ | 推送历史拆两层：文字不设上限，图按天数清（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），超期的行「图已清理」、不能重推；迁移换算老配置、不搬超期图与孤儿图 | ✅ 已落（10-04，切成 ⑲a–⑲c，见表下「⑲ 开片」；修订号 23，备份版本 6） |
 | ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | ✅ 已落（10-05，切成 ⑳a–⑳e，见表下「⑳ 开片」；修订号 26） |
 | ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | ✅ 已落（10-05，修订号 27，备份版本 7） |
-| ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 施工中（10-05 开片，切成 ㉒a–㉒e，见表下「㉒ 开片」） |
+| ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | ✅ 已落（10-05，切成 ㉒a–㉒d，㉒e 并进 ㉒c，见表下「㉒ 开片」；不动盘、修订号不抬） |
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
 | ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
@@ -137,7 +137,7 @@
 | ㉚ | 路由按资源整理（ADR-0036，10-03 主人定，**插在 ⑭ 之前做**）：照 ADR-0036 决策 4 的对照表只改路径、不改行为，server 改挂载、面板改调用方与缓存键、测试与文档跟上；素材库、来源、适配器、问题表那几组随各自那一片搬（决策 5） | ✅ 已落（10-03；路由文件跟着改名，源码目录不动；接线守卫 `apps/server/src/__tests__/routes-by-resource-mount.test.ts` 起整个 app：新路径每组不是 404、老路径都是 404、`/api/ws/ticket` 在 cookie 闸里；面板缓存键 `["globals"]` → `["settings"]` 等一并改；订阅头像地址存在资料缓存里，旧的 `/api/subs/<id>/avatar` 要等拓展下次报头像或 ⑳ 换成图库引用——⑳c 已换：读口退役，头像走 `/api/images/<ref>`） |
 
 - 依赖：⑭ 与 ⑮ 互不依赖（⑯ ㉕ 10-03 并进 3a）（⑰ 10-03 并进 ⑳）；⑱ 要 ⑬（跟图有关的格 10-03 挪去 ⑳）；⑳ 要 ⑲（超期的图不搬）；㉑–㉓ 要 ⑪ ⑮；㉔ 要 ⑬ ㉑–㉓；㉖ 要 ⑪ ⑬；㉗ 先于 ㉘；㉙ 要 ⑳ ㉖。每动一处盘上形状都抬 `MIGRATION_REVISION` 并补夹具。
-- 改 contract 形状的片（⑫ ⑬ ⑱ ⑲ ⑳ ㉖ ㉙）面板同片跟上到「照旧能用」，面板的新界面仍在第 4 期。
+- 改 contract 形状的片（⑫ ⑬ ⑱ ⑲ ⑳ ㉒ ㉖ ㉙）面板同片跟上到「照旧能用」，面板的新界面仍在第 4 期。
 - 设置键本期只改这几片碰到的：⑬ 以特性键做键的配置、⑲ 图片保留天数、㉙ 统计开关；`app` → `core.*` 的其余拆分随 3a「设置坏了只停那一处」（`app.logLevels` 的键、文案账本挪进 `core.templatesSeen` 也随这一步，10-02 ⑬ 开片时挪出）。
 - 涨粉起点：压缩把最早那一小时换成小时末值，起点最多挪一小时，不算 data-model 里说的「截尾」，不另存起点；㉘ 落地时在 data-model 写明。
 - **⑬ 开片（10-02）**：先勘察，再切成五小片，依次提交：
@@ -221,7 +221,7 @@
   - ㉒a 先补测试钉住现状：B 站收到观看人数那段（存值、两秒节流、发出去的实参、在播快照）今天零覆盖；「输入 → 排版」那一步四份直播快照绕过了（夹具直接写排好版的 `LiveCardView`），守卫 10 拦不住它的回归。
   - ㉒b B 站直播卡去头像（`Creator` 只收图库引用，B 站头像 3a 才有；照 ㉑c 第 1 步的先例单独一步，登记批准清单）。
   - ㉒c 输入换成最终形状：`author` → `creator: Creator`、`area` → `category`、`online` → `currentViewers`、`fans` → `followers`、`fansChanged` → `followersDelta`；人数只收数字、缺了就缺键、卡上那一格不画（B 站人气的 `?? 0` 与点赞初值「0」都去掉）；`startedAt` 改 ISO（只改卡的输入，拓展内部的在播表、场次仍是毫秒，交给卡之前转一次）；`cover` 改 `PostImage`（B 站照旧带 `url`；引用解析不到当成没有封面，画「暂无封面」）。出卡器入口收成一个 `generateLiveCard`（原来吃 B 站原始数据的那个删掉，`generateNeutralLiveCard` 改这个名）；B 站翻译 `biliLiveCardInput` 搬到 `packages/live`、改叫 `liveCardInputFromRoomInfo`，两份 `live_time` 解析合成一份；拓展那边的拼装收成 `liveCardInputFromReport`。`LiveCardView` 与皮肤字段名不动（㉔）。✅ 已落（10-05，施工时定的要点）：**㉒e 并进了这一步**——拓展直播的头像与封面在输入里只能是图库引用（`Creator.avatar` 是 `ImageRef`），不并的话拓展直播卡会暂时没头像，所以拓展那半直接做到底：单列一家引用方 `liveImages`（`runtime/bootstrap.ts` 登记，名单是在播表里此刻那些行的封面与事件头像，字节算得出引用），`extensionCardAuthor` 字节转 data URL 那条路退役，`ExtensionSourceLookups.readAvatar` 随之删掉。与 ㉒e 原文唯一的差别：在播表（拓展 v2 上报的形状）里存的仍是字节，所以**图在出卡那一刻才存进图库**（`deferImageWrites` 推迟、包在渲染器外的 `committing`；版式藏起卡片 / 关了出图不写盘，写盘失败降级纯文字），周期卡每次出卡再存一遍；契约 v3（3b）上报直接交引用后这一步自然消失。**累计观看的过渡**：B 站的 `totalViewers` 今天是 `text_small` 字符串、输入只收数字，所以翻译「是数字才给」，B 站下播卡的「累计观看人数」一格暂时不画，㉒d 把引擎改存精确数后自动接上、翻译不用再动。缺了就缺键的其余几格都已落（人气不补 0、点赞初值去掉）；`parseBiliLiveTime` 与 `biliLiveTimeToIso` 合成一份留在 `packages/live`（`live-card-input.ts`）；出图器的 `LiveData` 随翻译搬走后删掉，`htmlToPlain` 从 `packages/image` 导出给翻译用；拓展没头像时从前给一张透明占位，现在头像块整块收起。
-  - ㉒d 观看人数改数字：B 站存 `WATCHED_CHANGE` 的 `num`；「暂未获取到」不再写回直播数据，文字模板的 `{watched}` 缺数时由文字渲染器在出口印；总线 `live-viewers-changed.viewers`、契约在播行的 `viewers`、面板「正在直播」那一列都改数字、统一用 `formatCount` 排；统计不再解析「1.2万」（`parseBiliViewers` 只留给迁移）。只改类型不改名，事件的最终形状（按订阅认、拆两格）仍归 3b。
+  - ㉒d 观看人数改数字：B 站存 `WATCHED_CHANGE` 的 `num`；「暂未获取到」不再写回直播数据，文字模板的 `{watched}` 缺数时由文字渲染器在出口印；总线 `live-viewers-changed.viewers`、契约在播行的 `viewers`、面板「正在直播」那一列都改数字、统一用 `formatCount` 排；统计不再解析「1.2万」（`parseBiliViewers` 只留给迁移）。只改类型不改名，事件的最终形状（按订阅认、拆两格）仍归 3b。✅ 已落（10-05，施工时定的要点）：解析器 `parseWatched` 只认 `num`，`WATCHED_CHANGE` 事件里的 `textSmall` 删了（没人用，`text_small` 也不再是解析成败的条件）；`LiveData.watchedNum` 收成 `number`，`emitViewers` / 总线 `live-viewers-changed.viewers` / WS 同名帧 / `LiveListenerSnapshot.viewers` 都是 `number`；两处写回删了（`tickPushAtTime`、`bootstrapRoomStateInner`），在播快照的哨兵过滤随之没了（0 是真数，回 0）；「暂未获取到」只在 `renderLiveText` 的 `{watched}` 出口印（`renderLiveStreaming` 与 `LiveTextValues.watched` 收成 `number | undefined`，拓展那条路传进来的本来就是数字，缺了同样印这一句）；下播卡的「累计观看人数」回来（㉒c 留的「是数字才给」自动接上，一帧没收到这一格不画）；面板 B 站行与拓展行合成一套 `formatViewers`（`formatCount`，没有数「—」，0 写「0」）；统计的 B 站适配直接把数字喂给记录器，`parseBiliViewers` 搬进 `migration/stats.ts`（只给读 0.x 字符串峰值用）；`PostImageSink` 改名 `ImageSink`（作品与拓展直播共用）。**顺手收的一个现存问题**：`liveData` 是会话级的，上一场的观看人数与点赞会留到下一场；现在开播事件被接受那一刻（`onLiveStart`，刷房间信息与发开播卡之前）清掉这两格，下播时不清、断流接续被「已经是开播状态」的去重挡住不算新的一场、重启补报本来就是新会话。`formatCount` 与 B 站原来排的字的对照在 `packages/internal` 的 `format.test.ts`（只有真实录制帧为证的 87334 ↔ 「8.7万」进断言，其余是推测、标明不确定）。
   - ㉒e（**已并进 ㉒c**，见上）拓展直播的封面与头像进图库：单列一家引用方 `liveImages`，名单是在播表里的封面与事件头像（直播可以超过 24 小时，周期卡几小时后还要用封面，不能像作品那样只靠宽限期）；`extensionCardAuthor` 字节转 data URL 那条路退役。
   - 勘察到的事实（施工时不用重查）：
     - 四种 status：`start` / `streaming` / `end` / `offline`；补报不是单独一种卡（画 `streaming`，推送类型是 `CatchUp`）。`offline` 没有生产调用方，只有测试在走。
@@ -231,6 +231,7 @@
     - 卡上「开播时间」固定 UTC+8，作品卡的时间按机器本地时区；全局时区设置单开一小片，这一片不做。
     - 棘轮：`bus-event-payloads` 的 `RAW_STRINGS["live-viewers-changed.viewers"]` 在那一格改成非字符串时必须同步删；B 站替身棘轮里 `bili-live-input.ts`、`image-renderer.ts`、`routes/cards.ts`、`stats/bili-format.ts`、`stats/bili-source.ts` 的上限会随搬动变（只降不升，要升先问主人）。
     - 往卡片基线里加新夹具要放末尾：出图器的 UnoCSS 生成器全进程一个，前面渲染过什么会影响后面的字节。
+  - 留着的：`formatCount` 整万写「1.0万」，B 站原来多半写「1万」（没有录制帧可证，只有 87334 → 「8.7万」对得上）；重连核对那条分支把断线前后当同一场、计数不重置（它本来的口径）；mock 预览与示例里的 `LiveCardView` 仍是排好的字符串（㉔）。
   - 真机待看（㉒ 全片）：B 站直播卡没头像时默认皮肤头部的样子（与 ㉑ 同一类）；面板「正在直播」那一列 B 站行的人数换成我们自己排的字之后和原来差多少。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名（10-04 定：`history.retentionDays`，不带 `image` 前缀）；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 

@@ -49,7 +49,6 @@ export const RATCHET = {
  */
 export const RAW_STRINGS = {
 	"dynamic-detected.type": "B 站的动态类型码(`DYNAMIC_TYPE_*`)原样",
-	"live-viewers-changed.viewers": "B 站预格式化好的观看人数(如「1.2万」)",
 };
 
 /** 起一个只含 `file` 的 TypeScript 程序,编译选项取 `tsconfig` 那一份。 */

@@ -123,34 +123,34 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	describe("live-viewers-changed", () => {
 		it("房间在快照里:patch 该 uid 的 viewers,其他不动", () => {
 			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1.0万" },
-				{ subscriptionId: "s-u2", uid: "u2", roomId: "r2", isLive: true, viewers: "200" },
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
+				{ subscriptionId: "s-u2", uid: "u2", roomId: "r2", isLive: true, viewers: 200 },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
 				env({
 					type: "push-events",
 					event: "live-viewers-changed",
-					data: { uid: "u1", viewers: "1.2万" },
+					data: { uid: "u1", viewers: 12_345 },
 				}),
 				h.qc,
 				h.toast,
 			);
 			const next = h.qc.getQueryData<LiveListenerSnapshot[]>(["live", "listening"]);
-			expect(next?.find((r) => r.uid === "u1")?.viewers).toBe("1.2万");
-			expect(next?.find((r) => r.uid === "u2")?.viewers).toBe("200");
+			expect(next?.find((r) => r.uid === "u1")?.viewers).toBe(12_345);
+			expect(next?.find((r) => r.uid === "u2")?.viewers).toBe(200);
 		});
 
 		it("房间不在快照里:返回 old 原样不动(后续 invalidate 会补)", () => {
 			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1.0万" },
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(
 				env({
 					type: "push-events",
 					event: "live-viewers-changed",
-					data: { uid: "uX", viewers: "999" },
+					data: { uid: "uX", viewers: 999 },
 				}),
 				h.qc,
 				h.toast,
@@ -164,7 +164,7 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				env({
 					type: "push-events",
 					event: "live-viewers-changed",
-					data: { uid: "u1", viewers: "999" },
+					data: { uid: "u1", viewers: 999 },
 				}),
 				h.qc,
 				h.toast,
@@ -172,9 +172,34 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 			expect(h.qc.getQueryData(["live", "listening"])).toBeUndefined();
 		});
 
+		/**
+		 * ㉒d:总线与 WS 上的 viewers 是精确数。旧形状(排好的字符串)与不是有限的数(NaN)当没收到,不动 qc ——
+		 * 别把面板那一列写成「1.2万」字符串混进数字、或「NaN」。
+		 * 验红:去掉守卫里的 `Number.isFinite`,NaN 那条红(字符串那几条也会红,除非 `typeof viewers !== "number"` 还在 ——
+		 * 两道判断各挡一半,`typeof` 同时给 TS 收窄成 number)。
+		 */
+		it("viewers 不是数(旧形状的字符串 / NaN):silent-drop,不动 qc", () => {
+			const initial: LiveListenerSnapshot[] = [
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
+			];
+			h.qc.setQueryData(["live", "listening"], initial);
+			for (const viewers of ["1.2万", "999", Number.NaN]) {
+				handlePushEnvelope(
+					malformed({
+						type: "push-events",
+						event: "live-viewers-changed",
+						data: { uid: "u1", viewers },
+					}),
+					h.qc,
+					h.toast,
+				);
+			}
+			expect(h.qc.getQueryData(["live", "listening"])).toBe(initial);
+		});
+
 		it("缺 uid / viewers:silent-drop,不动 qc", () => {
 			const initial: LiveListenerSnapshot[] = [
-				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: "1万" },
+				{ subscriptionId: "s-u1", uid: "u1", roomId: "r1", isLive: true, viewers: 10_000 },
 			];
 			h.qc.setQueryData(["live", "listening"], initial);
 			handlePushEnvelope(

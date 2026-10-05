@@ -80,11 +80,14 @@ export interface LiveTextValues {
 	time: string;
 	/** `{follower}`(开播):当前粉丝数。 */
 	follower?: number | string;
-	/** `{watched}`(正在直播):本场累计观看。 */
-	watched?: number | string;
+	/** `{watched}`(正在直播):本场累计观看,精确数。缺了(一帧都没收到 / 拓展没报)由 {@link renderLiveText} 在出口印「暂未获取到」。 */
+	watched?: number;
 	/** `{follower_change}`(下播):本场粉丝数变化。 */
 	followerChange?: number | string;
 }
+
+/** `{watched}` 缺数时印的那句。 */
+const WATCHED_UNKNOWN_TEXT = "暂未获取到";
 
 /** 数字按 `format` 排,文字原样,没有就空串。 */
 function textOf(v: number | string | undefined, format: (n: number) => string): string {
@@ -109,7 +112,9 @@ export function renderLiveText(
 			vars.follower = textOf(values.follower, (n) => formatCount(n));
 			break;
 		case "liveStreaming":
-			vars.watched = textOf(values.watched, (n) => formatCount(n));
+			// 缺数时的「暂未获取到」只在这里(文字出口)印,不写回直播数据。
+			vars.watched =
+				values.watched === undefined ? WATCHED_UNKNOWN_TEXT : formatCount(values.watched);
 			break;
 		case "liveEnd":
 			vars.follower_change = textOf(values.followerChange, (n) => formatCount(n, { signed: true }));
@@ -162,7 +167,8 @@ export class LiveTemplateRenderer {
 		globalCustom?: CustomLiveMsgLike;
 		master: MasterInfo;
 		diffTime: string;
-		watched: string;
+		/** 本场累计观看(精确数);缺了(一帧都没收到)文案里印「暂未获取到」。 */
+		watched: number | undefined;
 	}): string {
 		const tmpl = resolveCustomLive(
 			params.sub.customLiveMsg,

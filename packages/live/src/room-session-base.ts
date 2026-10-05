@@ -260,6 +260,15 @@ export abstract class RoomSessionBase {
 	}
 
 	/**
+	 * 新的一场开始:清掉上一场攒的观看人数与点赞(缺了就缺键)。粉丝数不在此列 —— 开播卡发出前会重写 `fansNum`,
+	 * 下播时重写 `fansChanged`。
+	 */
+	protected resetLiveCounters(): void {
+		delete this.liveData.watchedNum;
+		delete this.liveData.likedNum;
+	}
+
+	/**
 	 * Read-only diagnostic snapshot for routes / dashboards. Includes `uid`,
 	 * `roomId`, and — when `liveRoomInfo` was successfully fetched — `title`,
 	 * `cover`, `areaName`, `startedAt`. Returns undefined fields rather than
@@ -274,14 +283,11 @@ export abstract class RoomSessionBase {
 		areaName?: string;
 		startedAt?: string;
 		/**
-		 * B 站 WS `WATCHED_CHANGE` 帧给出的"累计观看人数",预格式化字符串(如 "1.2万")。
-		 * 还没收到该帧时为 undefined,前端显示 "—"。我们不存原始 num,因为 bilibili 自己
-		 * 给的 text_small 已是用户预期的中文压缩形式。
+		 * B 站 WS `WATCHED_CHANGE` 帧给出的"累计观看人数",精确数(排成「1.2万」归面板的 `formatCount`)。
+		 * 还没收到该帧时为 undefined,前端显示 "—"。0 是真数。
 		 */
-		viewers?: string;
+		viewers?: number;
 	} {
-		const w = this.liveData.watchedNum;
-		const viewers = typeof w === "number" ? String(w) : w;
 		return {
 			uid: this.sub.uid,
 			roomId: this.sub.roomId,
@@ -290,7 +296,7 @@ export abstract class RoomSessionBase {
 			cover: this.liveRoomInfo?.user_cover || this.liveRoomInfo?.keyframe || undefined,
 			areaName: this.liveRoomInfo?.area_name,
 			startedAt: this.liveRoomInfo?.live_time || undefined,
-			viewers: viewers && viewers !== "暂未获取到" ? viewers : undefined,
+			viewers: this.liveData.watchedNum,
 		};
 	}
 
@@ -385,8 +391,9 @@ export abstract class RoomSessionBase {
 
 		if (this.liveRoomInfo.live_status === 1) {
 			this.liveTime = this.liveRoomInfo.live_time;
-			const watched = String(this.liveData.watchedNum ?? "暂未获取到");
-			this.liveData.watchedNum = watched;
+			// 缺数就缺键:一帧观看人数都没收到过时 `watched` 是 undefined,文案里的 `{watched}` 由文字渲染器在出口印
+			// 「暂未获取到」—— 不再写回直播数据(从前写回,下播卡会印出「累计观看人数：暂未获取到」)。
+			const watched = this.liveData.watchedNum;
 			const diffTime = this.liveElapsed();
 			const roomLink = buildRoomLink(this.liveRoomInfo);
 			// 消息版式来自 per-UP 折叠值(宿主恒填),与 onLiveStart 同款接线。
@@ -552,8 +559,8 @@ export abstract class RoomSessionBase {
 		if (!(await this.useMasterInfo(LiveType.LiveBroadcast)) || !this.masterInfo) return;
 
 		this.liveTime = this.liveRoomInfo.live_time;
-		const watched = String(this.liveData.watchedNum ?? "暂未获取到");
-		this.liveData.watchedNum = watched;
+		// 同重启补报那一处:缺数就缺键,不写回(见 bootstrapRoomStateInner)。
+		const watched = this.liveData.watchedNum;
 		const diffTime = this.liveElapsed();
 		const roomLink = buildRoomLink(this.liveRoomInfo);
 		const liveMsg = this.ctx.templateRenderer.renderLiveStreaming({

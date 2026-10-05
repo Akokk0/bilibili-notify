@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { png } from "../../__tests__/support/report-images.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { extensionPostWork, POST_COMMENT_IMAGE_MAX_BYTES } from "../extension-post-work.js";
-import { deferImageWrites, type PostImageSink, postFromReport } from "../post-from-report.js";
+import { deferImageWrites, type ImageSink, postFromReport } from "../post-from-report.js";
 
 type Reported = SubscriptionReportValue<"post">;
 
@@ -47,13 +47,13 @@ function storingPut(order?: string[]) {
 }
 function sink() {
 	const put = storingPut();
-	return { images: { put } satisfies PostImageSink, put };
+	return { images: { put } satisfies ImageSink, put };
 }
 
 /** 像 `bindExtensionPosts` 那样:先推迟写盘地翻成 Post,再包成中立作品。 */
 async function workOf(
 	report: Reported,
-	over: { postNoun?: string; profileAvatar?: string; images?: PostImageSink } = {},
+	over: { postNoun?: string; profileAvatar?: string; images?: ImageSink } = {},
 ) {
 	const deferred = deferImageWrites(over.images ?? sink().images);
 	const translated = await postFromReport(report, {
@@ -135,7 +135,7 @@ describe("卡:出卡时才把图写进图库,再把同一份 Post 交给出图�
 	});
 
 	it("写图库失败(磁盘写失败):renderCard 跟着抛,由装配降级成纯文字,出图器没被调", async () => {
-		const images: PostImageSink = {
+		const images: ImageSink = {
 			put: async () => {
 				throw new Error("磁盘满了");
 			},

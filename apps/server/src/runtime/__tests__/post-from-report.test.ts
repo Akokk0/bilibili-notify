@@ -21,7 +21,7 @@ import {
 } from "../../images/image-store.js";
 import {
 	deferImageWrites,
-	type PostImageSink,
+	type ImageSink,
 	plainTextSegments,
 	postFromReport,
 } from "../post-from-report.js";
@@ -281,7 +281,7 @@ describe("配图:前 9 张存进图库,宽高 BN 读文件头,图库不收的没
 	});
 
 	it("磁盘写失败是抛错(这一次出卡失败,装配降级成纯文字),不是悄悄少一张图", async () => {
-		const failing: PostImageSink = {
+		const failing: ImageSink = {
 			put: async () => {
 				throw new Error("磁盘满了");
 			},
@@ -428,7 +428,7 @@ describe("deferImageWrites — 翻译时只算引用,出卡前才真正写进图
 	});
 
 	it("磁盘写失败:commit 抛错(这一次出卡失败,装配降级成纯文字),不是悄悄少一张", async () => {
-		const failing: PostImageSink = {
+		const failing: ImageSink = {
 			put: async () => {
 				throw new Error("磁盘满了");
 			},
@@ -439,7 +439,7 @@ describe("deferImageWrites — 翻译时只算引用,出卡前才真正写进图
 	});
 
 	it("图库说存不进(与本地判断对不上):commit 抛错,不吞", async () => {
-		const refusing: PostImageSink = {
+		const refusing: ImageSink = {
 			put: async () => ({ ok: false, code: "invalid", message: "不收" }),
 		};
 		const deferred = deferImageWrites(refusing);
@@ -448,7 +448,7 @@ describe("deferImageWrites — 翻译时只算引用,出卡前才真正写进图
 	});
 
 	it("图库给的引用与算出来的不一样(取名规矩漂了):commit 抛错,免得 Post 里挂着一个指向别处的引用", async () => {
-		const drifted: PostImageSink = {
+		const drifted: ImageSink = {
 			put: async () => ({ ok: true, ref: `${"f".repeat(64)}.png` }),
 		};
 		const deferred = deferImageWrites(drifted);

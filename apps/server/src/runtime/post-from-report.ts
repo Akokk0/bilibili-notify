@@ -39,8 +39,8 @@ import { imageRefOf } from "../images/image-store.js";
 
 type ReportedPost = SubscriptionReportValue<"post">;
 
-/** 往图库存一张图的口(`AppRuntime.postImages` 的存图那一半)。 */
-export interface PostImageSink {
+/** 往图库存一张图的口(`AppRuntime.postImages` / `liveImages` 的存图那一半 —— 拓展作品与拓展直播共用,所以不带 Post)。 */
+export interface ImageSink {
 	put(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>>;
 }
 
@@ -52,8 +52,8 @@ export interface PostImageSink {
  * 图库不收的图(格式不认、超限)`put` 当场回 `invalid`,与真存一样;`commit` 时图库说存不进(磁盘写失败、
  * 或与本地判断对不上)是抛错,这一次出卡失败,装配降级成纯文字。
  */
-export function deferImageWrites(writer: PostImageSink): {
-	sink: PostImageSink;
+export function deferImageWrites(writer: ImageSink): {
+	sink: ImageSink;
 	commit(): Promise<void>;
 } {
 	const pending = new Map<ImageRef, Uint8Array>();
@@ -90,7 +90,7 @@ export interface PostFromReportOptions {
 	/** 订阅资料里存进图库的头像引用;事件没带头像(或带的不是图库收的图)时用它。 */
 	profileAvatar?: ImageRef;
 	/** 存图的口。 */
-	images: PostImageSink;
+	images: ImageSink;
 }
 
 /** 字母或数字(任何文字的)—— `#名字` 后面紧跟着它,就不是这个话题。 */
@@ -160,7 +160,7 @@ function isoOfMillis(ms: number): string {
  * 一张图的字节 → 存进图库,回装了引用的 `PostImage`(带宽高与动图标记)。图库不收就没有 `ref`(出图器画占位),
  * 宽高与动图标记照样带 —— 那是字节自己的事。磁盘写失败是抛错(这一次出卡失败,装配降级成纯文字)。
  */
-async function storeImage(bytes: Uint8Array, images: PostImageSink): Promise<PostImage> {
+async function storeImage(bytes: Uint8Array, images: ImageSink): Promise<PostImage> {
 	const stored = await images.put(bytes);
 	return {
 		...(stored.ok ? { ref: stored.ref } : {}),

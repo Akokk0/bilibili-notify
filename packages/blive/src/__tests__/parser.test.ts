@@ -30,12 +30,24 @@ describe("parseCommand(真实录制 payload)", () => {
 		expect(parseCommand(variant)).toMatchObject({ kind: "danmu", content: "太有互动感了" });
 	});
 
-	it("WATCHED_CHANGE → watched", () => {
-		expect(parseCommand(payloads.watched)).toEqual({
+	it("WATCHED_CHANGE → watched:只取精确数 num(text_small 是 B 站排好的字,没人用,不进事件)", () => {
+		expect(parseCommand(payloads.watched)).toEqual({ kind: "watched", num: 87334 });
+	});
+
+	/** ㉒d:解析只要 `num`。从前还要求 `text_small` 同时在 —— B 站哪天不给那句字,观看人数就整个丢了。 */
+	it("WATCHED_CHANGE 只带 num(没有 text_small)照样解出来", () => {
+		expect(parseCommand({ cmd: "WATCHED_CHANGE", data: { num: 12 } })).toEqual({
 			kind: "watched",
-			num: 87334,
-			textSmall: "8.7万",
+			num: 12,
 		});
+	});
+
+	it("WATCHED_CHANGE 的 num 不是数字 → 不当 watched 解(退回 degraded raw)", () => {
+		for (const num of [undefined, "87334", null]) {
+			expect(
+				parseCommand({ cmd: "WATCHED_CHANGE", data: { num, text_small: "8.7万" } }),
+			).toMatchObject({ kind: "raw", cmd: "WATCHED_CHANGE", degraded: true });
+		}
 	});
 
 	it("LIKE_INFO_V3_UPDATE → liked(字段名是 click_count)", () => {

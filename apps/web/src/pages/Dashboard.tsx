@@ -78,9 +78,9 @@ import { colorFromUid, displayName, profileAvatarUrl, subscriptionColor } from "
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
 
-function formatViewers(n: string | undefined): string {
-	if (!n) return "—";
-	return n;
+/** 「正在直播」那一列的人数:精确数排成「1.2万」(`formatCount`),没有数是「—」。0 是真数,写「0」。 */
+function formatViewers(n: number | undefined): string {
+	return n === undefined ? "—" : formatCount(n);
 }
 
 /**
@@ -88,8 +88,8 @@ function formatViewers(n: string | undefined): string {
  * uid(ADR-0019 决策 9):名字对不上订阅时写平台名,颜色照 `subscriptionColor` 跟着人走(决策 73),
  * 另带一枚平台徽章。在播快照里没有外部 id,订阅列表还没回来时颜色只能先按订阅 id 取。
  *
- * 人数那一列两边都是**本场累计观看**(决策 75):B 站行是 B 站排好的字串,拓展行是拓展报的
- * `totalViewers`(数字,这里排版)。拓展只报了此刻在线的话这一列是「—」,不拿在线冒充。
+ * 人数那一列两边都是**本场累计观看**(决策 75),都是精确数、同走 `formatViewers`:B 站行是 WATCHED_CHANGE 帧的
+ * 数(`viewers`),拓展行是拓展报的 `totalViewers`。拓展只报了此刻在线的话这一列是「—」,不拿在线冒充。
  */
 function liveRowFace(
 	r: LiveListeningEntry,
@@ -117,7 +117,7 @@ function liveRowFace(
 		name: sub ? displayName(sub) : platform.label,
 		color: sub ? subscriptionColor(sub) : colorFromUid(r.subscriptionId),
 		avatar,
-		viewers: r.totalViewers === undefined ? "—" : formatCount(r.totalViewers),
+		viewers: formatViewers(r.totalViewers),
 		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },
 	};
 }
