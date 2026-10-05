@@ -22,6 +22,7 @@ import {
 	LINK_LIMITS,
 	providerMeta,
 } from "@bilibili-notify/internal/constants";
+import { GUARD_PROGRAM_ID, membershipTiersOf } from "./membership-programs";
 
 /** 字段分组,灵动岛 expand panel 按 section 分组渲染。 */
 export type FieldSection =
@@ -71,6 +72,21 @@ export interface FieldLabel {
  *   `config.accessToken` 在不同 transport 类型下 label/hint 是动态的,字典只存
  *   一个「默认 label/hint」,实际渲染由调用处 prop 覆盖。
  */
+/**
+ * 上舰文案里「每一档」的字典条目:`templates.membership.guard.tiers.<档 key>`(整档)与它下面的 `.template` / `.imageUrl`。
+ * 档的名字取会员体系里档的名字,体系加一档这里自动跟着有,不再逐档抄。
+ */
+const GUARD_TIER_LABELS: Record<string, FieldLabel> = Object.fromEntries(
+	membershipTiersOf(GUARD_PROGRAM_ID).flatMap((tier) => {
+		const path = `templates.membership.${GUARD_PROGRAM_ID}.tiers.${tier.key}`;
+		return [
+			[path, { label: `${tier.name}文案与图片`, section: "templates" }],
+			[`${path}.template`, { label: `${tier.name}文案`, section: "templates" }],
+			[`${path}.imageUrl`, { label: `${tier.name}图片`, section: "templates" }],
+		];
+	}),
+);
+
 export const FIELD_LABELS = {
 	// ── 通用 / 全局(app.*) ────────────────────────────────────────────────
 	"bilibili.dynamicCron": {
@@ -411,12 +427,12 @@ export const FIELD_LABELS = {
 		hint: "留言内容",
 		section: "cardPreview",
 	},
-	price: {
+	amount: {
 		label: "SC 价格",
 		hint: "决定背景色与时长 (30/50/100/500/1000)",
 		section: "cardPreview",
 	},
-	level: {
+	tierKey: {
 		label: "舰长等级",
 		hint: "决定徽章图与背景色",
 		section: "cardPreview",
@@ -537,22 +553,8 @@ export const FIELD_LABELS = {
 	},
 	"templates.membership.guard.default.template": { label: "体系默认文案", section: "templates" },
 	"templates.membership.guard.default.imageUrl": { label: "体系默认图片", section: "templates" },
-	// 一档整个从无到有 / 整个拿掉时,灵动岛的 diff 按整档报(code 是档本身,不是里面的格):也要有名字,不掉进「其他」。
-	"templates.membership.guard.tiers.captain": { label: "舰长文案与图片", section: "templates" },
-	"templates.membership.guard.tiers.commander": { label: "提督文案与图片", section: "templates" },
-	"templates.membership.guard.tiers.governor": { label: "总督文案与图片", section: "templates" },
-	"templates.membership.guard.tiers.captain.template": { label: "舰长文案", section: "templates" },
-	"templates.membership.guard.tiers.captain.imageUrl": { label: "舰长图片", section: "templates" },
-	"templates.membership.guard.tiers.commander.template": {
-		label: "提督文案",
-		section: "templates",
-	},
-	"templates.membership.guard.tiers.commander.imageUrl": {
-		label: "提督图片",
-		section: "templates",
-	},
-	"templates.membership.guard.tiers.governor.template": { label: "总督文案", section: "templates" },
-	"templates.membership.guard.tiers.governor.imageUrl": { label: "总督图片", section: "templates" },
+	// 每一档的文案与图片(一档整个从无到有 / 整个拿掉时,灵动岛的 diff 按整档报,所以整档也有一条):按体系里的档生成。
+	...GUARD_TIER_LABELS,
 
 	// ── 特别关注 / Special UID ────────────────────────────────────────────
 	specialUsers: { label: "UID 列表", section: "specialUsers" },

@@ -17,7 +17,7 @@ import {
 	TNum,
 } from "../../components/forms";
 import { InheritNote } from "../../components/inherit-note";
-import { GUARD_LEVELS, GUARD_PROGRAM_ID } from "../../config/guard-levels";
+import { GUARD_PROGRAM_ID, membershipTiersOf } from "../../config/membership-programs";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -412,8 +412,11 @@ export function LiveThresholdsSection({
 						onChange={(rank) =>
 							onPatch({ defaults: { membership: { minRank: { [GUARD_PROGRAM_ID]: rank } } } })
 						}
-						// 由低到高,与这一屏别处同序(见 GuardSection 的 ROLES)。
-						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.rank, label: g.label }))}
+						// 由低到高(档位表本身就是 rank 升序),与这一屏别处同序。
+						options={membershipTiersOf(GUARD_PROGRAM_ID).map((t) => ({
+							value: t.rank,
+							label: t.name,
+						}))}
 					/>
 				</Field>
 				<Field code="features.liveStreaming">
@@ -808,8 +811,8 @@ export function DynamicMsgSection({
 
 // ── 5. Guard (上舰提示) ──────────────────────────────────────────────────────
 
-/** 这一屏的三档,由低到高(档位表本身是升序:总督在前),每档一块。 */
-const GUARD_TIER_ROWS = [...GUARD_LEVELS].reverse();
+/** 这一屏的每一档,由低到高,每档一块。 */
+const GUARD_TIER_ROWS = membershipTiersOf(GUARD_PROGRAM_ID);
 
 /** 一个体系文案里一格的补丁:`null` = 清掉这一格(JSON Merge Patch 语义,下发时由 buildPatch 编成显式 null)。 */
 type TierFieldPatch = Partial<Record<"template" | "imageUrl", string | null>>;
@@ -869,10 +872,12 @@ export function GuardTemplateFields({
 						没单独配的档都用它;图片留空 = 该档的官方徽章图
 					</span>
 				</div>
-				<Field code="template" full>
+				{/* 体系默认这两格用完整路径当 code:「默认文案有更新」的提示与「恢复默认」按路径认领(同别的文案),
+				    逐订阅覆盖里没有 Provider,不受影响。 */}
+				<Field code="templates.membership.guard.default.template" full>
 					<TInput value={bundle.default.template} onChange={(v) => onDefault("template", v)} mono />
 				</Field>
-				<Field code="imageUrl" full>
+				<Field code="templates.membership.guard.default.imageUrl" full>
 					<TInput
 						value={bundle.default.imageUrl}
 						onChange={(v) => onDefault("imageUrl", v)}
@@ -882,7 +887,7 @@ export function GuardTemplateFields({
 				</Field>
 			</div>
 			<div className={tiersClassName}>
-				{GUARD_TIER_ROWS.map(({ key, label, color }) => {
+				{GUARD_TIER_ROWS.map(({ key, name, color = accent }) => {
 					const tier = bundle.tiers[key] ?? {};
 					return (
 						<div
@@ -895,7 +900,7 @@ export function GuardTemplateFields({
 						>
 							<div className="mb-2 flex items-center gap-2">
 								<span className="block h-2 w-2 rounded-sm" style={{ background: color }} />
-								<span className="text-bn-sm font-bold text-bn-text-primary">{label}</span>
+								<span className="text-bn-sm font-bold text-bn-text-primary">{name}</span>
 								<code className="ml-1 rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-2xs text-bn-text-tertiary">
 									{key}
 								</code>

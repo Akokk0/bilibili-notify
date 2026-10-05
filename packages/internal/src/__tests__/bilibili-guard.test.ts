@@ -4,7 +4,12 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { BILIBILI_GUARD_PROGRAM, GUARD_PROGRAM_ID, guardTierOf } from "../bilibili-guard";
+import {
+	BILIBILI_GUARD_PROGRAM,
+	GUARD_PROGRAM_ID,
+	guardTierByKey,
+	guardTierOf,
+} from "../bilibili-guard";
 import { interpolate } from "../util/interpolate";
 
 describe("guardTierOf —— B 站 guard_level → 档(倒序换算只在这一个文件)", () => {
@@ -25,6 +30,20 @@ describe("guardTierOf —— B 站 guard_level → 档(倒序换算只在这一�
 		if (tiers === "custom") throw new Error("B 站的大航海是固定三档");
 		expect(guardTierOf(3)).toBe(tiers.find((t) => t.key === "captain"));
 		expect(guardTierOf(1)).toBe(tiers.find((t) => t.key === "governor"));
+	});
+});
+
+describe("guardTierByKey —— 按档的 key 找档(㉓e,预览请求体带的是 key)", () => {
+	it("三个 key 各找到自己那一档,与 guardTierOf 找到的是同一个对象", () => {
+		expect(guardTierByKey("captain")).toBe(guardTierOf(3));
+		expect(guardTierByKey("commander")).toBe(guardTierOf(2));
+		expect(guardTierByKey("governor")).toBe(guardTierOf(1));
+	});
+
+	it("认不出的 key 回 undefined,原型上的名字也不算", () => {
+		for (const key of ["", "captain ", "Captain", "constructor", "toString", "1"]) {
+			expect(guardTierByKey(key), key).toBeUndefined();
+		}
 	});
 });
 

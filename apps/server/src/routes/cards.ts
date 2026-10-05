@@ -11,9 +11,9 @@
  *   dyn  + content.uid     → fetch the user's space dynamic feed,
  *                            pick the offset-th item, render via
  *                            postFromDynamic → ImageRenderer.generatePostCard.
- *   sc   + content.text    → text override on top of the SCCard mock.
- *   guard+ content.text    → text override (= new captain uname) on the
- *                            GuardCard mock.
+ *   sc   + content.text    → text override on top of the superchat card mock.
+ *   guard+ content.text    → text override (= new member name) on the
+ *                            membership card mock.
  *   any kind + empty content → falls through to the fabricated mock data
  *                              path (the original behaviour) so the
  *                              gradient picker stays usable without a
@@ -63,7 +63,7 @@ import {
 	effectiveCardSkinKnobs,
 	fail,
 	type GlobalConfig,
-	guardTierOf,
+	guardTierByKey,
 	issuesFromZod,
 	type NotificationPayload,
 	ok,
@@ -173,12 +173,14 @@ const ContentSchema = z
 		offset: z.number().int().positive().optional(),
 		// sc / guard: text override (sc body / guard new captain uname).
 		text: z.string().optional(),
-		// guard: 1 = 总督, 2 = 提督, 3 = 舰长. Drives both the captain badge
-		// image and the bgColor — gradient style fields are ignored for guard.
-		level: z.number().int().min(1).max(3).optional(),
-		// sc: amount in CNY. Drives the SC tier (= bgColor + duration). Gradient
-		// style fields are ignored for SC.
-		price: z.number().int().min(1).optional(),
+		// guard: 档的 key(`captain` / `commander` / `governor`),在档位表里找档;认不出的 key 是请求本身的毛病,
+		// 过不了这里的校验(400)。档的徽章图、背景色、宣告语都由这一档决定,渐变样式字段对上舰不生效。
+		tierKey: z
+			.string()
+			.refine((key) => guardTierByKey(key) !== undefined, "不是档位表里的档")
+			.optional(),
+		// sc: 金额(元)。决定醒目留言的档(= 背景色与时长);渐变样式字段对 SC 不生效。
+		amount: z.number().int().min(1).optional(),
 	})
 	.optional();
 
@@ -734,34 +736,23 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	}
 	opts.onSkinShot?.(shootSavedSkin);
 
-	// Cached snapshot of the logged-in B站 account. Used as the SENDER on
-	// SC / Guard preview cards (the SC payer / new captain), not the
-	// receiver — the receiver is the subscribed UP, which on preview stays
-	// as "示例 UP 主". Refreshes every 5 minutes; returns null when the
-	// account isn't logged in or the call fails.
+	// 登录的 B 站账号的名字(缓存快照)。SC / 上舰预览拿它当**发送者**(付 SC 的人、新上舰的人),接收方是订阅的 UP,
+	// 预览里仍是「示例 UP 主」。这两种预览不画头像,所以只取名字,不再为头像多调 `getUserCardInfo`。每 5 分钟刷新;
+	// 没登录或调用失败时回 null(曾成功过则沿用旧快照)。
 	const LOGGED_IN_TTL_MS = 5 * 60 * 1000;
-	let loggedInCache: { name: string; avatar: string; ts: number } | null = null;
-	async function getLoggedInAccount(): Promise<{ name: string; avatar: string } | null> {
+	let loggedInCache: { name: string; ts: number } | null = null;
+	async function getLoggedInAccount(): Promise<{ name: string } | null> {
 		const now = Date.now();
 		if (loggedInCache && now - loggedInCache.ts < LOGGED_IN_TTL_MS) {
-			return { name: loggedInCache.name, avatar: loggedInCache.avatar };
+			return { name: loggedInCache.name };
 		}
 		if (opts.api) {
 			try {
-				// /x/member/web/account returns only mid + uname; face requires the
-				// /x/web-interface/card endpoint (same two-step the LoginFlow does
-				// in reportAccountInfo). Skipping the second call left avatars
-				// undefined and the preview fell through to the SVG placeholder.
 				// 走客户端共享的账号身份缓存(与直播建连同一份;换号/登出自动失效)。
 				const my = await opts.api.getMyselfInfoCached();
-				if (my?.code === 0 && my.data?.mid) {
-					const card = await opts.api.getUserCardInfo(String(my.data.mid));
-					if (card?.code === 0 && card.data?.card?.face) {
-						const name = card.data.card.name || my.data.uname;
-						const avatar = card.data.card.face;
-						loggedInCache = { name, avatar, ts: now };
-						return { name, avatar };
-					}
+				if (my?.code === 0 && my.data?.mid && my.data.uname) {
+					loggedInCache = { name: my.data.uname, ts: now };
+					return { name: my.data.uname };
 				}
 			} catch (err) {
 				log.warn(`[cards] resolve logged-in account failed: ${(err as Error).message}`);
@@ -770,17 +761,17 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 解析失败 / 未就绪:若曾成功解析过,沿用历史快照(stale-while-error),不让一次
 		// 瞬时失败把 SC / 上舰发送者闪回「示例粉丝」。仅从未成功过才回退示例。
 		if (loggedInCache) {
-			return { name: loggedInCache.name, avatar: loggedInCache.avatar };
+			return { name: loggedInCache.name };
 		}
 		return null;
 	}
 
 	// SC / 上舰卡接收方(被 SC / 被上舰的 UP)。per-UP 预览传 content.uid → 实时拉真实
-	// 名字 / 头像;全局无 uid、或解析失败且 fallback → 退回示例 UP。
+	// 名字;全局无 uid、或解析失败且 fallback → 退回示例 UP。(这两种预览不画头像,只要名字。)
 	async function resolvePreviewMaster(
 		content: PreviewContent,
 		fallback: boolean,
-	): Promise<{ name: string; face: string }> {
+	): Promise<{ name: string }> {
 		const uid = content?.uid?.trim();
 		if (uid && opts.api) {
 			try {
@@ -790,7 +781,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				log.info(`[cards] SC / 上舰接收方解析失败,回退示例:${(err as Error).message}`);
 			}
 		}
-		return { name: "示例 UP 主", face: SVG_AVATAR_BLUE };
+		return { name: "示例 UP 主" };
 	}
 
 	// 渲染一张样例卡片 → JPEG / PNG Buffer。/preview 与 /test 共用。失败抛 Error
@@ -823,7 +814,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				{
 					kind: "superchat",
 					content: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
-					price: content?.price ?? 30,
+					price: content?.amount ?? 30,
 					user: { uid: 0, uname: me?.name ?? "示例粉丝" },
 				},
 				"preview",
@@ -852,10 +843,10 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			const me = await getLoggedInAccount();
 			const uname = content?.text?.trim() || me?.name || "示例新舰长";
 			const master = await resolvePreviewMaster(content, fallback);
-			// 请求里的 `level` 仍是 B 站的 guard_level(1 总督 / 2 提督 / 3 舰长),服务端换成档位表里的那一档
-			// (面板那边 ㉓e 再改);档的徽章、档色、宣告语都取自档位表,与真推送同一份。
-			const tier = guardTierOf(content?.level ?? 3);
-			if (!tier) throw new Error(`没有这一档:level=${content?.level}`);
+			// 请求里的 `tierKey` 是档的 key,服务端按 key 在档位表里找那一档(没带 = 最低一档舰长);档的徽章、档色、
+			// 宣告语都取自档位表,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
+			const tier = guardTierByKey(content?.tierKey ?? "captain");
+			if (!tier) throw new Error(`没有这一档:tierKey=${content?.tierKey}`);
 			// 预览不传头像(同上,B 站 3a 才交图库引用)。
 			const buffer = await renderer.generateMembershipCard(
 				{
@@ -1121,22 +1112,19 @@ interface BilibiliEnvelope<T> {
 }
 
 /**
- * uid → 真实 UP 名字 + 头像。SC / 上舰预览的**接收方**(被 SC / 被上舰的 UP):
+ * uid → 真实 UP 名字。SC / 上舰预览的**接收方**(被 SC / 被上舰的 UP):
  * per-UP 预览传该 UP 的 uid,后端实时拉真实资料,免依赖 dashboard 端可能缺失的
  * cachedProfile。走 getMasterInfo(与 live 真实渲染同一接口),失败抛 Error。
  */
-async function resolveMasterInfo(
-	api: BilibiliAPI,
-	uid: string,
-): Promise<{ name: string; face: string }> {
+async function resolveMasterInfo(api: BilibiliAPI, uid: string): Promise<{ name: string }> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
 	const master = (await api.getMasterInfo(uid)) as BilibiliEnvelope<{
-		info: { uname: string; face: string };
+		info: { uname: string };
 	}>;
 	if (master.code !== 0 || !master.data?.info) {
 		throw new Error(`getMasterInfo 失败：${master.message ?? master.msg ?? `code=${master.code}`}`);
 	}
-	return { name: master.data.info.uname, face: master.data.info.face };
+	return { name: master.data.info.uname };
 }
 
 /**

@@ -69,3 +69,8 @@ export function guardTierOf(guardLevel: number): MembershipTier | undefined {
 	const key = TIER_KEY_OF_GUARD_LEVEL.get(guardLevel);
 	return key === undefined ? undefined : GUARD_TIERS.find((tier) => tier.key === key);
 }
+
+/** 档的 key → 档;认不出的回 `undefined`。key 与 `guard_level` 不同,不涉及倒序换算;预览请求体、面板按 key 找档走这条。 */
+export function guardTierByKey(key: string): MembershipTier | undefined {
+	return GUARD_TIERS.find((tier) => tier.key === key);
+}

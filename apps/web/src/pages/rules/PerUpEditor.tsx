@@ -17,7 +17,7 @@ import { ArrayEditor, Field, Picker, QuietHoursEditor, TArea, TNum } from "../..
 import { InheritNote } from "../../components/inherit-note";
 import { OverrideBox } from "../../components/override-box";
 import { AI_PURPLE } from "../../config/colors";
-import { GUARD_LEVELS, GUARD_PROGRAM_ID } from "../../config/guard-levels";
+import { GUARD_PROGRAM_ID, membershipTiersOf } from "../../config/membership-programs";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
@@ -569,8 +569,11 @@ function LiveOverrideBox({
 								minRank: { ...membership?.minRank, [GUARD_PROGRAM_ID]: rank },
 							})
 						}
-						// 由低到高,与规则页那一屏同序。
-						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.rank, label: g.label }))}
+						// 由低到高(档位表本身就是 rank 升序),与规则页那一屏同序。
+						options={membershipTiersOf(GUARD_PROGRAM_ID).map((t) => ({
+							value: t.rank,
+							label: t.name,
+						}))}
 					/>
 				</Field>
 				<TimingFields {...timingProps} timing={timing} />

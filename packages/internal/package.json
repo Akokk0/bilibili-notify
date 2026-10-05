@@ -18,6 +18,7 @@
 	"types": "./lib/index.d.mts",
 	"exports": {
 		".": "./lib/index.mjs",
+		"./bilibili-guard": "./lib/bilibili-guard.mjs",
 		"./constants": "./lib/constants.mjs",
 		"./format": "./lib/format.mjs",
 		"./patch": "./lib/patch.mjs",

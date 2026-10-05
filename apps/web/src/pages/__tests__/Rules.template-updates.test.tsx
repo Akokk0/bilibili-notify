@@ -166,3 +166,52 @@ describe("恢复默认按钮", () => {
 		expect(resetBtnOfLiveStart()).toBeNull();
 	});
 });
+
+describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)", () => {
+	const GUARD_DEFAULT = "templates.membership.guard.default.template";
+
+	/** 打开自定义上舰提示,体系默认文案摆成 `template`。 */
+	function withGuardDefault(template: string, seen?: Record<string, string>) {
+		return globalsWith((d) => {
+			d.templates.membership = {
+				guard: { enabled: true, default: { template, imageUrl: "" }, tiers: {} },
+			};
+			if (seen) d.templateDefaultsSeen = seen;
+		});
+	}
+
+	async function gotoGuard(): Promise<void> {
+		await waitFor(() => expect(screen.getAllByText("上舰提示").length).toBeGreaterThan(0));
+		fireEvent.click(screen.getAllByText("上舰提示")[0]);
+		await waitFor(() =>
+			expect(document.querySelector(`[data-code="${GUARD_DEFAULT}"]`)).not.toBeNull(),
+		);
+	}
+
+	const noticeOfGuard = () =>
+		document.querySelector(`[data-code="${GUARD_DEFAULT}"] [data-template-update]`);
+
+	it("盘上还是旧默认、账本没记过这一版 → 亮标记", async () => {
+		mount(withGuardDefault("上一版的上舰文案"));
+		await gotoGuard();
+		await waitFor(() => expect(noticeOfGuard()).not.toBeNull());
+	});
+
+	it("值就是当前默认 → 不亮", async () => {
+		mount(withGuardDefault(DEFAULT_TEMPLATES.membership.guard.default.template));
+		await gotoGuard();
+		expect(noticeOfGuard()).toBeNull();
+	});
+
+	it("点「用新默认」→ 体系默认文案换成当前默认,提示消失", async () => {
+		mount(withGuardDefault("上一版的上舰文案"));
+		await gotoGuard();
+		await waitFor(() => expect(noticeOfGuard()).not.toBeNull());
+		fireEvent.click(screen.getByText("用新默认"));
+		await waitFor(() => expect(noticeOfGuard()).toBeNull());
+		const input = document.querySelector(
+			`[data-code="${GUARD_DEFAULT}"] input, [data-code="${GUARD_DEFAULT}"] textarea`,
+		) as HTMLInputElement;
+		expect(input.value).toBe(DEFAULT_TEMPLATES.membership.guard.default.template);
+	});
+});

@@ -4,6 +4,7 @@ export default defineConfig({
 	pack: {
 		entry: [
 			"src/index.ts",
+			"src/bilibili-guard.ts",
 			"src/constants.ts",
 			"src/format.ts",
 			"src/patch.ts",

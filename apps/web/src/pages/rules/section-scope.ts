@@ -9,7 +9,7 @@
  * box 内部 toggle 与侧栏 isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
-import { GUARD_PROGRAM_ID } from "../../config/guard-levels";
+import { GUARD_PROGRAM_ID } from "../../config/membership-programs";
 import type {
 	ContentFiltersOverride,
 	LiveStartOverride,

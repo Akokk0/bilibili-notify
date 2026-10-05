@@ -838,7 +838,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		const first = await app.request("/preview", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ kind: "sc", style: STYLE, content: { price: 30 } }),
+			body: JSON.stringify({ kind: "sc", style: STYLE, content: { amount: 30 } }),
 		});
 		expect(first.status).toBe(200);
 		expect(pupA.page).toHaveBeenCalledTimes(1);
@@ -861,7 +861,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		const second = await app.request("/preview", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ kind: "sc", style: STYLE, content: { price: 30 } }),
+			body: JSON.stringify({ kind: "sc", style: STYLE, content: { amount: 30 } }),
 		});
 		expect(second.status).toBe(200);
 		expect((pupB.page as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
@@ -1185,7 +1185,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		const res = await postPreview(app, {
 			kind: "sc",
 			style: STYLE,
-			content: { price: 30 },
+			content: { amount: 30 },
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
@@ -1216,7 +1216,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			puppeteer: makeFakePuppeteer(),
 			api: loggedInApi(),
 		});
-		const body = { kind: "sc" as const, style: STYLE, content: { price: 30 }, fallback: true };
+		const body = { kind: "sc" as const, style: STYLE, content: { amount: 30 }, fallback: true };
 		// 第一趟构造渲染器,第二趟才走 updateConfig —— 两趟都发,拿得到那份 config。
 		expect((await postPreview(app, body)).status).toBe(200);
 		expect((await postPreview(app, body)).status).toBe(200);
@@ -1245,7 +1245,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		const res = await postPreview(app, {
 			kind: "sc",
 			style: STYLE,
-			content: { price },
+			content: { amount: price },
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
@@ -1256,15 +1256,15 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		spy.mockRestore();
 	});
 
-	// ㉓c:上舰预览的 `level` 仍是 B 站 guard_level(面板 ㉓e 才改),服务端用档位表换成那一档;档的各项取自同一张表。
-	// 验红:把 cards.ts 里 `guardTierOf(content?.level ?? 3)` 换成固定取舰长,第二行(总督)红。
+	// ㉓e:上舰预览的请求体带的是档的 key(`tierKey`),服务端按 key 在档位表里找那一档;档的各项取自同一张表。
+	// 验红:把 cards.ts 里 `guardTierByKey(...)` 换成固定取舰长,第二行(总督)红。
 	it.each([
-		[3, "舰长", 1, "#4ebcec"],
-		[2, "提督", 2, "#d8a0e6"],
-		[1, "总督", 3, "#f2a053"],
+		["captain", "舰长", 1, "#4ebcec"],
+		["commander", "提督", 2, "#d8a0e6"],
+		["governor", "总督", 3, "#f2a053"],
 	] as const)(
-		"guard:level %s → 档位表里的「%s」(rank %s、档色 %s、带徽章与宣告语),不带头像",
-		async (level, name, rank, color) => {
+		"guard:tierKey %s → 档位表里的「%s」(rank %s、档色 %s、带徽章与宣告语),不带头像",
+		async (tierKey, name, rank, color) => {
 			const spy = vi
 				.spyOn(ImageRenderer.prototype, "generateMembershipCard")
 				.mockResolvedValue(Buffer.from("x"));
@@ -1276,7 +1276,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			const res = await postPreview(app, {
 				kind: "guard",
 				style: STYLE,
-				content: { level },
+				content: { tierKey },
 				fallback: true,
 			});
 			expect(res.status).toBe(200);
@@ -1290,6 +1290,87 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		},
 	);
 
+	it("guard:没带 tierKey → 最低一档(舰长)", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const res = await postPreview(app, {
+			kind: "guard",
+			style: STYLE,
+			content: {},
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		expect(spy.mock.calls[0]?.[0]?.tier).toMatchObject({ name: "舰长", rank: 1 });
+		spy.mockRestore();
+	});
+
+	// 档位表里没有的 key 是请求本身的毛病:400,与「预览请求体格式不对」同一条报错路子,不去渲染。
+	it.each(["nope", "", "Captain", "constructor"])(
+		"guard:认不出的 tierKey %j → 400 invalid,不渲染",
+		async (tierKey) => {
+			const spy = vi
+				.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+				.mockResolvedValue(Buffer.from("x"));
+			const app = createCardsRoute({
+				deps: makeDeps(),
+				puppeteer: makeFakePuppeteer(),
+				api: loggedInApi(),
+			});
+			const res = await postPreview(app, {
+				kind: "guard",
+				style: STYLE,
+				content: { tierKey },
+				fallback: true,
+			});
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({ code: "invalid" });
+			expect(spy).not.toHaveBeenCalled();
+			spy.mockRestore();
+		},
+	);
+
+	it("sc:金额 0、负数或带小数 → 400 invalid(金额要正整数元)", async () => {
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		for (const amount of [0, -1, 1.5]) {
+			const res = await postPreview(app, {
+				kind: "sc",
+				style: STYLE,
+				content: { amount },
+				fallback: true,
+			});
+			expect(res.status, String(amount)).toBe(400);
+		}
+	});
+
+	// 预览不画头像,也就不为头像多调一次接口:登录账号只取名字(`getMyselfInfoCached`),不再调 `getUserCardInfo`。
+	// 验红:把 cards.ts 的 getLoggedInAccount 加回 `getUserCardInfo` 那一步,这条红。
+	it("sc / guard:登录账号只取名字,不为头像再调 getUserCardInfo", async () => {
+		const api = loggedInApi();
+		const sc = vi
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const guard = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
+		await postPreview(app, { kind: "sc", style: STYLE, content: { amount: 30 }, fallback: true });
+		await postPreview(app, { kind: "guard", style: STYLE, content: {}, fallback: true });
+		expect(api.getUserCardInfo).not.toHaveBeenCalled();
+		expect(sc.mock.calls[0]?.[0]?.viewer.name).toBe("登录名");
+		sc.mockRestore();
+		guard.mockRestore();
+	});
+
 	it("guard:viewer.name=登录账号(fallback:true 的 per-UP 风格请求)", async () => {
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
@@ -1302,7 +1383,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		const res = await postPreview(app, {
 			kind: "guard",
 			style: STYLE,
-			content: { level: 3 },
+			content: { tierKey: "captain" },
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
@@ -1330,7 +1411,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		const res = await postPreview(app, {
 			kind: "sc",
 			style: STYLE,
-			content: { uid: "12345", price: 30 },
+			content: { uid: "12345", amount: 30 },
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
@@ -1358,7 +1439,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		const res = await postPreview(app, {
 			kind: "sc",
 			style: STYLE,
-			content: { uid: "12345", price: 30 },
+			content: { uid: "12345", amount: 30 },
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
@@ -1389,10 +1470,10 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			api,
 		});
 
-		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
+		await postPreview(app, { kind: "sc", style: STYLE, content: { amount: 30 } });
 		// 跨过 5 分钟 TTL,迫使第二次重新解析 → getMyselfInfoCached 抛错 → 走 stale-while-error。
 		vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
-		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
+		await postPreview(app, { kind: "sc", style: STYLE, content: { amount: 30 } });
 
 		const lastArg = spy.mock.calls.at(-1)?.[0] as { viewer: { name: string } };
 		expect(lastArg.viewer.name).toBe("登录名"); // 没有闪回「示例粉丝」
@@ -1644,7 +1725,7 @@ describe("cards route — /preview 走皮肤", () => {
 		const res = await postPreview(app, {
 			kind: "sc",
 			style: STYLE,
-			content: { price: 30 },
+			content: { amount: 30 },
 			cardSkin: "marked",
 			fallback: true,
 		});
@@ -1674,7 +1755,7 @@ describe("cards route — /preview 走皮肤", () => {
 		const res = await postPreview(app, {
 			kind: "sc",
 			style: STYLE,
-			content: { price: 30 },
+			content: { amount: 30 },
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
@@ -1745,7 +1826,7 @@ describe("cards route — /preview 走皮肤", () => {
 					targetId: TARGET_ID,
 					kind: "sc",
 					style: STYLE,
-					content: { price: 30 },
+					content: { amount: 30 },
 					cardSkin: "marked",
 					cardSkinKnobs: { marked: { accent: "#00f0ff" } },
 					fallback: true,
@@ -2148,7 +2229,7 @@ describe("cards route — per-UP 预览带草稿旋钮", () => {
 		try {
 			const html = await preview(dir, {
 				kind: "sc",
-				content: { price: 30 },
+				content: { amount: 30 },
 				cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#aaaaaa" } },
 			});
 			expect(html).toContain("--bn-knob-gradient-start:#aaaaaa");

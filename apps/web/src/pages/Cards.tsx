@@ -40,7 +40,7 @@ import { Field, Picker, TArea, TInput, TSelect } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { InheritNote } from "../components/inherit-note";
 import { type Scope, ScopeTabs } from "../components/scope-tabs";
-import { GUARD_LEVELS } from "../config/guard-levels";
+import { GUARD_PROGRAM_ID, membershipTiersOf } from "../config/membership-programs";
 import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
@@ -83,18 +83,23 @@ type CardKind = "live" | "dyn" | "sc" | "guard";
 interface PreviewContent {
 	live: { roomId: string };
 	dyn: { uid: string; offset: number };
-	sc: { text: string; price: number };
-	guard: { text: string; level: 1 | 2 | 3 };
+	/** `amount`:金额(元),随预览请求体发给服务端。 */
+	sc: { text: string; amount: number };
+	/** `tierKey`:上舰那一档的 key(会员体系里档的 key),随预览请求体发给服务端。 */
+	guard: { text: string; tierKey: string };
 }
+
+/** 上舰预览能选的档,由低到高(会员体系的档位表本身的顺序);默认选最低一档。 */
+const GUARD_TIERS = membershipTiersOf(GUARD_PROGRAM_ID);
 
 const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 	live: { roomId: "" },
 	dyn: { uid: "", offset: 1 },
-	sc: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！", price: 30 },
+	sc: { text: "主播加油！这首要听到！示例 UP 主唱得太好了！", amount: 30 },
 	// guard.text empty by default so the backend falls back to the logged-in
 	// account name (the operator), with "示例新舰长" only kicking in when
 	// nobody is logged in.
-	guard: { text: "", level: 3 },
+	guard: { text: "", tierKey: GUARD_TIERS[0]?.key ?? "" },
 };
 
 const KIND_LABELS: Record<CardKind, { label: string; tone: string; icon: IconName }> = {
@@ -517,12 +522,12 @@ function PreviewContentFields({
 					<Field code="text">
 						<TArea value={content.sc.text} onChange={(v) => setSc({ text: v })} rows={3} />
 					</Field>
-					<Field code="price">
+					<Field code="amount">
 						<TInput
-							value={String(content.sc.price)}
+							value={String(content.sc.amount)}
 							onChange={(v) => {
 								const n = Number.parseInt(v, 10);
-								setSc({ price: Number.isFinite(n) && n > 0 ? n : 30 });
+								setSc({ amount: Number.isFinite(n) && n > 0 ? n : 30 });
 							}}
 							placeholder="30"
 						/>
@@ -531,31 +536,13 @@ function PreviewContentFields({
 				</>
 			) : (
 				<>
-					<Field code="level">
-						<div className="flex flex-wrap gap-1.5">
-							{GUARD_LEVELS.map((g) => {
-								const active = content.guard.level === g.level;
-								return (
-									<button
-										type="button"
-										key={g.level}
-										onClick={() => setGuard({ level: g.level })}
-										data-bn={active ? "chip chip-active" : "chip"}
-										className="rounded-sm px-3 py-1 text-bn-xs font-semibold transition"
-										style={
-											active
-												? { background: g.color, color: "var(--color-bn-on-solid)" }
-												: {
-														background: "var(--color-bn-hover-muted)",
-														color: "var(--color-bn-text-tertiary)",
-													}
-										}
-									>
-										{g.label}
-									</button>
-								);
-							})}
-						</div>
+					<Field code="tierKey">
+						{/* 由低到高摆,与规则页同序;选项是档位表里的档,色块用档色。 */}
+						<Picker<string>
+							value={content.guard.tierKey}
+							onChange={(tierKey) => setGuard({ tierKey })}
+							options={GUARD_TIERS.map((t) => ({ value: t.key, label: t.name, color: t.color }))}
+						/>
 					</Field>
 					<Field
 						label="新舰长称呼"
