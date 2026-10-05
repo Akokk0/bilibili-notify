@@ -179,7 +179,9 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 			b.kind === "builtin" ? b.builtin : "custom",
 		);
 		expect(expected).toContain("avatar");
-		expect(blockLabels(html)).toEqual(expected);
+		// B 站这条路到 3a 之前不画主播头像(㉒b,见 `LiveCardInput.author`):头像块整块收起,所以画出来的是
+		// 默认皮肤的块序**去掉 avatar**。带头像时画不画归 `neutral-live-card.test.ts` 的头像用例。
+		expect(blockLabels(html)).toEqual(expected.filter((b) => b !== "avatar"));
 	});
 
 	it("上舰卡:皮肤的根块 CSS 被翻成挂点选择器拼进样式表", async () => {

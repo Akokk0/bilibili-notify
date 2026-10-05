@@ -108,6 +108,29 @@ const UNO_PROPERTIES_LEAK = {
 		"通用卡「游戏」标签不画(见 dynamic-word 的记录)的连带效应:render.ts 的 UnoCSS 生成器进程内共用,属性层跨卡累积",
 } as const;
 
+/**
+ * ㉒b(2026-10-05):B 站直播卡不再画主播头像。四份直播样例里三份同一次批准(`live-streaming` / `live-ended` /
+ * `live-with-fontface`),清单按样例认账,所以下面三行共用这一段说明、各带各的 hash。
+ *
+ * 类别写 `master-approved`,理由同 `B_SITE_AVATAR_DROPPED`:头像不是装饰,是中立形状里实打实的一格,只是它只收图库
+ * 引用、B 站的头像是远端地址,3a 才交引用(ADR-0021 决策 24 下 2026-10-05 的 🔗,照决策 22 下作品卡的先例,
+ * 主人当天拍板「B 站直播卡 3a 前不画头像」)。
+ *
+ * 四份直播夹具是 B 站形状、直接写排好的 `LiveCardView`(不经 `biliLiveCardInput`),所以夹具的 `userface` 改成空串,
+ * 代表 B 站这条路今天的产物。字节上只少了三样,别的一个字没动:头像格(`data-cell="avatar"` 整格,里面的 `<img>` 一并)、
+ * `.bn-blk-avatar` 那段块 CSS、以及只有头像那张 `<img>` 在用的 UnoCSS 工具类 `.shrink-0`(`.object-cover` 封面也用,留着)。
+ * 名字 / 时间格的行列没变 —— 头像本来占的第 1 列就此空着(皮肤版式的事,留给 ㉔)。`live-minimal` 的自定义版式里
+ * 没摆头像块,字节不变,不在此列。拓展直播那条路自己带着头像,不受影响。直播卡在基准里排最前,别的卡的字节没有被牵连。
+ */
+const B_SITE_LIVE_AVATAR_DROPPED = {
+	category: "master-approved",
+	approvedOn: "2026-10-05",
+	change:
+		"B 站直播卡不再画主播头像:头像格整块收起,块 CSS 与只有头像在用的 .shrink-0 工具类随之消失",
+	basis:
+		"ADR-0021 决策 24 的 2026-10-05 🔗(㉒ 开片拷问):B 站直播卡 3a 前不画头像,Creator 只收图库引用、不加过渡格",
+} as const;
+
 export const APPROVED_CARD_DIFFS: CardDiffList = {
 	baseline: {
 		"dynamic-article": "5dc8efb7725183cd",
@@ -238,5 +261,9 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "sc-high", ...UNO_PROPERTIES_LEAK, hash: "89b9f61f61ea1fe4" },
 		{ sample: "sc-low", ...UNO_PROPERTIES_LEAK, hash: "4be34901324ca493" },
 		{ sample: "wordcloud", ...UNO_PROPERTIES_LEAK, hash: "79a6a5d97f96ee0a" },
+		// ㉒b:B 站直播卡去头像。
+		{ sample: "live-streaming", ...B_SITE_LIVE_AVATAR_DROPPED, hash: "24396666be453c7e" },
+		{ sample: "live-ended", ...B_SITE_LIVE_AVATAR_DROPPED, hash: "3c2be15b2f36692c" },
+		{ sample: "live-with-fontface", ...B_SITE_LIVE_AVATAR_DROPPED, hash: "ad9f908681176b8a" },
 	],
 };

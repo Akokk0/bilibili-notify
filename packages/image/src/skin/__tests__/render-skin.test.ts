@@ -24,13 +24,20 @@ import {
 	type SkinRenderOptions,
 } from "../render-skin";
 
-/** live-streaming 那份 props(直播中、封面 / 分区 / 人气 / 粉丝全开、无粉丝变化)。 */
+/**
+ * live-streaming 那份 props(直播中、封面 / 分区 / 人气 / 粉丝全开、无粉丝变化),**外加一个头像地址**。
+ * 夹具是 B 站形状、不带头像(`userface` 空串,㉒b);而这份测试要的是「每一块都有数据」的一张卡 —— 头像块要有东西
+ * 可画、`{up.face}` 占位符要有值可替换,不然头像块整块收起、本文件里借它验 CSS 翻译的用例就落空了。
+ */
 let liveProps: LiveCardView;
 
 beforeAll(async () => {
 	const fixture = CARD_FIXTURES.find((f) => f.name === "live-streaming");
 	if (!fixture) throw new Error("夹具表里没有 live-streaming");
-	liveProps = (await fixture.build()).props as unknown as LiveCardView;
+	liveProps = {
+		...((await fixture.build()).props as unknown as LiveCardView),
+		userface: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
+	};
 });
 
 /** 一份只有指定块的 live 皮肤。 */

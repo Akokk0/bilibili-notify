@@ -130,7 +130,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 		// 验红:把 room-helpers.ts 里交给 `biliLiveCardInput` 的 liveType 换成写死的 1,这条红。
 		expect(generateNeutralLiveCard.mock.calls[0]?.[0]).toMatchObject({
 			status: "end",
-			author: { name: "主播", face: "" },
+			author: { name: "主播" },
 			title: "标题",
 		});
 	});

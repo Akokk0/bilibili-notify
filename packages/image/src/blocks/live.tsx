@@ -59,10 +59,14 @@ function followerText(p: LiveCardView): string {
 	return "";
 }
 
-/** 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。 */
-const avatar: BlockRenderer<LiveCardView> = (p) => (
-	<img data-bn="image" class="object-cover shrink-0" src={p.userface} alt="主播头像" />
-);
+/**
+ * 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。
+ * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `LiveCardInput.author`);拓展直播照旧画。
+ */
+const avatar: BlockRenderer<LiveCardView> = (p) =>
+	p.userface ? (
+		<img data-bn="image" class="object-cover shrink-0" src={p.userface} alt="主播头像" />
+	) : null;
 
 /** 主播名(原子块)。 */
 const name: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.username}</span>;

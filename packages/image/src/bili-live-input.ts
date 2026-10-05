@@ -40,6 +40,8 @@ function parseBiliLiveTime(raw: unknown): number | undefined {
  * - 其余状态码(比如 4 首次开播,今天没有调用方传进出卡)照旧画成「直播中」角标、不写那句
  *   时间、先用房间封面 —— 与从前的默认分支一个样。
  * - 简介是富文本(可能带 `<p>` / `<br>` 或 entity-encoded 形式),先剥成纯文本。
+ * - **不给主播头像**:最终形状里头像只收图库引用,B 站的头像是远端地址,3a 才存进图库(ADR-0021 决策 24 下
+ *   2026-10-05 的 🔗),所以 `userface` 形参今天不用了 —— 形参留着是因为换入口(㉒c)才改调用方的签名。
  *
  * @param data B 站直播间接口的 `data`(`getLiveRoomInfo`)。
  * @param liveStatus 见 {@link BILI_LIVE_STATUS}。
@@ -48,7 +50,7 @@ export function biliLiveCardInput(
 	// biome-ignore lint/suspicious/noExplicitAny: Bilibili 直播 API 返回类型
 	data: any,
 	username: string,
-	userface: string,
+	_userface: string,
 	liveData: LiveData,
 	liveStatus: number,
 ): LiveCardInput {
@@ -59,7 +61,7 @@ export function biliLiveCardInput(
 	const roomCover = text(data?.user_cover);
 	return {
 		status,
-		author: { name: username, face: userface },
+		author: { name: username },
 		title: text(data?.title),
 		area: text(data?.area_name),
 		description: htmlToPlain(text(data?.description)),

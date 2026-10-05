@@ -9,7 +9,9 @@
  * 3. 皮肤契约的直播取值(下播时 `stats.popularity` = 点赞、`stats.fans` = 累计观看,
  *    `stats.fansChanged` 有就给);
  * 4. 自定义直播封面盖在输入的封面上;
- * 5. 没有真封面时封面格画 BN 自带的占位图,契约的 `live.cover` 同样给它、`live.hasCover` 为假。
+ * 5. 没有真封面时封面格画 BN 自带的占位图,契约的 `live.cover` 同样给它、`live.hasCover` 为假;
+ * 6. 头像:输入带了头像地址就画(拓展直播),没有(或空串)就整块收起(B 站那条到 3a 之前不给,㉒b),
+ *    契约的 `up.face` 随之是地址 / 空串。
  */
 
 import type { CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
@@ -314,5 +316,74 @@ describe("generateNeutralLiveCard — 皮肤契约的直播取值", () => {
 		expect(await contract(input({ status: "end", fansChanged: 12_345 }))).toContain("|+1.2万|");
 		expect(await contract(input({ status: "end", fansChanged: -35 }))).toContain("|-35|");
 		expect(await contract(input({ status: "end", fansChanged: -12_345 }))).toContain("|-1.2万|");
+	});
+});
+
+/** 头像探针:一个自定义块把 `up.face` 原样印出来。 */
+const FACE_PROBE: CardSkinManifest = {
+	...DEFAULT_CARD_SKIN,
+	cards: {
+		...DEFAULT_CARD_SKIN.cards,
+		live: {
+			width: 600,
+			blocks: [
+				{
+					id: "probe",
+					kind: "custom",
+					html: "<div>头像[{up.face}]</div>",
+					grid: { row: 1, column: 1, span: 12 },
+				},
+			],
+		},
+	},
+} as never;
+
+describe("generateNeutralLiveCard — 头像", () => {
+	/** 一张默认皮肤的卡出完,整份 HTML。 */
+	async function html(i: LiveCardInput): Promise<string> {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralLiveCard(i);
+		return captured[0] ?? "";
+	}
+
+	/**
+	 * 拓展直播自己带着头像(`extension-live-push.ts`),卡上照画。B 站那条到 3a 之前不给(㉒b),头像块整块收起。
+	 * 验红:把头像块改回无条件画,「没有头像」两条红;让 `buildLiveCardView` 不再读 `author.face`,这条红。
+	 */
+	it("输入带了头像地址:头像块与那张 <img> 都画,地址原样", async () => {
+		const out = await html(input());
+		expect(out).toContain('data-block="avatar"');
+		expect(out).toContain('src="data:image/png;base64,FACE" alt="主播头像"');
+	});
+
+	it("输入没给头像:头像块整块不画(没有裂图),别的块照画", async () => {
+		const out = await html(input({ author: { name: "示例主播" } }));
+		expect(out).not.toContain('data-block="avatar"');
+		expect(out).not.toContain('data-cell="avatar"');
+		expect(out).not.toContain('alt="主播头像"');
+		const d = await drawn(input({ status: "end", author: { name: "示例主播" } }));
+		expect(d.name).toBe("示例主播");
+		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
+		expect(d.title).toBe("一场直播");
+		expect(d.avatar).toBeUndefined();
+	});
+
+	it("头像地址是空串同样当作没有:不画一张 src 为空的裂图", async () => {
+		const out = await html(input({ author: { name: "示例主播", face: "" } }));
+		expect(out).not.toContain('data-block="avatar"');
+		expect(out).not.toContain('alt="主播头像"');
+	});
+
+	/** 皮肤契约的 `up.face` 字段留着(字段表只增不删):有头像是地址,没有是空串。 */
+	it("皮肤契约:up.face 有头像是地址、没有是空串", async () => {
+		const upFace = async (i: LiveCardInput): Promise<string> => {
+			const { renderer, captured } = makeRenderer({
+				resolveCardSkin: (id) => (id === "face-probe" ? FACE_PROBE : undefined),
+			});
+			await renderer.generateNeutralLiveCard(i, { cardSkin: "face-probe" });
+			return /头像\[([^\]]*)\]/.exec(captured[0] ?? "")?.[1] ?? "(没找到探针)";
+		};
+		expect(await upFace(input())).toBe("data:image/png;base64,FACE");
+		expect(await upFace(input({ author: { name: "示例主播" } }))).toBe("");
 	});
 });

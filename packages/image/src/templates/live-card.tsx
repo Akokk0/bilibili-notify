@@ -30,8 +30,15 @@ export type LiveCardStatus = "start" | "streaming" | "end" | "offline";
  */
 export type LiveCardInput = {
 	status: LiveCardStatus;
-	/** 卡上的主播。 */
-	author: { name: string; face: string };
+	/**
+	 * 卡上的主播。`face` 是头像地址(远端网址或 data URL),**选填,没有(或空串)就不画头像** ——
+	 * 头像块整块收起,皮肤契约的 `up.face` 是空串。
+	 *
+	 * B 站这条路不给:最终形状里主播的头像只收图库引用(`Creator.avatar`),B 站的头像是远端地址,要到
+	 * 3a 才存进图库(ADR-0021 决策 24 下 2026-10-05 的 🔗,照决策 22 下作品卡的先例)。拓展直播
+	 * (`extension-live-push.ts`)自己带着头像,照旧画。
+	 */
+	author: { name: string; face?: string };
 	title?: string;
 	/** 分区。 */
 	area?: string;
@@ -70,6 +77,7 @@ export type LiveCardInput = {
 export type LiveCardView = {
 	status: LiveCardStatus;
 	username: string;
+	/** 头像地址;空串 = 没有头像,头像块整块收起(见 {@link LiveCardInput.author})。 */
 	userface: string;
 	title: string;
 	area: string;

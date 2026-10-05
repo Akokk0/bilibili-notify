@@ -94,12 +94,17 @@ const RICH_DESCRIPTION =
 /**
  * 照 `generateNeutralLiveCard` 排好的那一份组 props(块吃的 `LiveCardView`;数字都经
  * formatCount)。
+ *
+ * 这四份夹具是 **B 站形状**的直播卡(简介走 `htmlToPlain`、封面是 B 站的房间封面 / 关键帧),所以
+ * `userface` 是空串:B 站这条路到 3a 之前不给头像(`LiveCardInput.author`),头像块整块收起。夹具直接写
+ * 排好的视图、不经 `biliLiveCardInput`,这一格得跟着真实产物手写。拓展直播那条路仍带头像,
+ * 头像块的挂点由 `card-hooks.test.ts` 的旁路探针看着,画不画由 `neutral-live-card.test.ts` 钉着。
  */
 function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 	return {
 		status: "streaming",
 		username: "示例主播",
-		userface: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
+		userface: "",
 		title: "【4K】周年庆典特别直播，今晚不见不散！",
 		area: "虚拟主播",
 		description: htmlToPlain(RICH_DESCRIPTION),

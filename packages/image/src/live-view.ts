@@ -86,7 +86,7 @@ export function buildLiveCardView(input: LiveCardInput, coverOverride?: string):
 	return {
 		status: input.status,
 		username: input.author.name,
-		userface: input.author.face,
+		userface: input.author.face ?? "",
 		title: input.title ?? "",
 		area: input.area ?? "",
 		description: input.description ?? "",

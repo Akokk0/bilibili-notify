@@ -10,6 +10,7 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { biliLiveCardInput } from "../bili-live-input";
 import { ImageRenderer } from "../image-renderer";
 import { LIVE_COVER_PLACEHOLDER } from "../live-view";
 import type { PuppeteerLike } from "../puppeteer";
@@ -197,5 +198,27 @@ describe("generateLiveCard — B 站的状态码翻成卡上的样子", () => {
 	it("没有粉丝数:开播卡不画粉丝行", async () => {
 		const d = await bili(1, ROOM, { ...LIVE_DATA, fansNum: undefined });
 		expect(d.fans).toBeUndefined();
+	});
+});
+
+/**
+ * B 站这条路到 3a 之前不画主播头像(㉒b):最终形状里头像只收图库引用,B 站的头像是远端地址。
+ * 入口的 `userface` 形参还在(换入口是 ㉒c),但传什么都不再上卡。
+ * 验红:把 `biliLiveCardInput` 的 `author` 改回带 `face`,这两条红。
+ */
+describe("generateLiveCard — 不画主播头像", () => {
+	it("翻出来的中立输入里主播只有名字,没有头像地址", () => {
+		const out = biliLiveCardInput(ROOM, "示例主播", FACE, LIVE_DATA, 1);
+		expect(out.author).toEqual({ name: "示例主播" });
+	});
+
+	it("传了头像地址也不画:卡上没有头像块,名字照画", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateLiveCard(ROOM, "示例主播", FACE, LIVE_DATA, 1);
+		const html = captured[0] ?? "";
+		expect(html).not.toContain('data-block="avatar"');
+		expect(html).not.toContain('alt="主播头像"');
+		expect(html).not.toContain(FACE);
+		expect(html).toContain("示例主播");
 	});
 });

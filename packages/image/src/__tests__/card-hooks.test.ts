@@ -90,8 +90,32 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
  * 动态卡的头像块:B 站这条路造的 node 到 3a 之前不带头像地址、头像块整块收起(`DynamicNode.avatarUrl`),
  * 而夹具表里的动态卡全是 `Post` 字面量、经 `nodeFromPost` 造 node(`Post` 里没有头像地址可给),于是 `dynamic.avatar` 的挂点不再出现在任何夹具里。拓展作品那条
  * 路(`apps/server/src/runtime/extension-post-work.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
+ *
+ * 直播卡的头像块同理(㉒b):四份直播夹具是 B 站形状、`userface` 为空串,头像块整块收起,`live.avatar` 的挂点不再
+ * 出现在任何夹具里。拓展直播(`extension-live-push.ts`)照旧给头像,所以补一份带头像地址的视图。
  */
 const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }[]>> = {
+	live: [
+		{
+			name: "(旁路探针)拓展直播形状的视图,带头像",
+			props: {
+				status: "streaming",
+				username: "某人",
+				userface: "data:image/png;base64,FACE",
+				title: "标题",
+				area: "",
+				description: "",
+				cover: "data:image/png;base64,COVER",
+				hasCover: true,
+				time: "",
+				online: "",
+				likes: "",
+				totalViewers: "",
+				fans: "",
+				fansChanged: "",
+			},
+		},
+	],
 	dynamic: [
 		{
 			name: "(旁路探针)拓展作品形状的 node,带头像",
