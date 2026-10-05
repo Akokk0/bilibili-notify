@@ -8,9 +8,10 @@
  * 3. 头像:node 带了地址就画(拓展作品那条路),没有就整格不画(B 站那条到 3a 之前不给)。
  */
 
-import type { CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
+import type { CardSkinManifest, Post, ServiceContext } from "@bilibili-notify/internal";
 import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { formatCardTime } from "../format";
 import { ImageRenderer } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import type { DynamicNode } from "../templates/dynamic-content";
@@ -273,6 +274,63 @@ describe("generateDynamicCard(B 站适配层)— 互动数走 formatCount", () =
 		expect(html).toMatch(/aria-label="点赞"[\s\S]*?<span>1\.2万<\/span>/);
 		expect(html).toMatch(/aria-label="评论"[\s\S]*?<span>9999<\/span>/);
 		expect(html).toMatch(/aria-label="转发"[\s\S]*?<span>128<\/span>/);
+	});
+});
+
+describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {
+	const POST: Post = {
+		creator: { name: "示例作者", isPremium: true },
+		publishedAt: "2023-11-14T22:13:20.000Z",
+		label: "投稿了视频",
+		text: "你好世界",
+		richText: [{ kind: "text", text: "你好世界" }],
+		video: {
+			cover: { url: img("COVER") },
+			title: "一期视频",
+			description: "",
+			durationSec: 967,
+			views: 12_345,
+			danmaku: 129,
+		},
+		stats: { shares: 12_345, comments: 9999, likes: 128 },
+	};
+
+	/**
+	 * 接线:`generatePostCard` → `nodeFromPost` → 皮肤出卡。零件各自绿(nodeFromPost 有自己的测试、皮肤路径有基准快照)
+	 * 证明不了入口真的把它们接上了。验红:把 `generatePostCard` 里的 `nodeFromPost(...)` 换成别的、或不再把时间格式化器
+	 * 递给它,这条红。
+	 */
+	it("作者、正文、发布时间(渲染器按本地时区排)+ label、视频数字、互动数都画出来", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generatePostCard(POST);
+		const html = captured[0] ?? "";
+		expect(html).toContain("示例作者");
+		expect(html).toContain("你好世界");
+		expect(html).toContain(`${formatCardTime(1_700_000_000)} · 投稿了视频`);
+		// 数字统一经 formatCount / formatClock。
+		expect(html).toContain("16:07");
+		expect(html).toMatch(/aria-label="播放量"[\s\S]*?1\.2万/);
+		expect(html).toMatch(/aria-label="点赞"[\s\S]*?<span>128<\/span>/);
+		expect(html).toMatch(/aria-label="转发"[\s\S]*?<span>1\.2万<\/span>/);
+		// 头像不画。
+		expect(html).not.toContain('alt="头像"');
+	});
+
+	it("配色 / 皮肤选项一路递到出卡(换皮肤 id 用的是同一条路)", async () => {
+		const { renderer, captured } = makeRenderer((id) => (id === "probe" ? PROBE : undefined));
+		await renderer.generatePostCard(POST, { cardSkin: "probe" });
+		expect(captured[0] ?? "").toContain("探针[DYNAMIC_TYPE_AV|0||129]");
+	});
+
+	it("被转发的原作品是内层卡:label 接在作者名后", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generatePostCard({
+			creator: { name: "转发者" },
+			publishedAt: "2023-11-14T22:13:20.000Z",
+			text: "转发语",
+			repost: { ...POST, creator: { name: "原作者" }, stats: undefined },
+		});
+		expect(captured[0] ?? "").toContain("原作者 投稿了视频");
 	});
 });
 

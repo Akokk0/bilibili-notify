@@ -23,6 +23,7 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	defaultMessageKindLayout,
 	type MessageBus,
+	type Post,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -230,7 +231,7 @@ interface EngineBag {
 	emits: Array<{ event: string; payload: unknown }>;
 	trigger: (event: string, payload?: unknown) => void;
 	disposers: Array<() => void | Promise<void>>;
-	generateDynamicCard: ReturnType<typeof vi.fn>;
+	generatePostCard: ReturnType<typeof vi.fn>;
 	comment: ReturnType<typeof vi.fn>;
 	logs: LogRec[];
 	/** 注入给引擎的出图失败计数(`cardFailures` 选项),测试直接读它。 */
@@ -259,8 +260,8 @@ function makeEngine(
 		sendPrivateMsg: vi.fn(async () => {}),
 		sendErrorMsg: vi.fn(async () => {}),
 	};
-	const generateDynamicCard = vi.fn();
-	const image = { generateDynamicCard } as unknown as ImageRenderer;
+	const generatePostCard = vi.fn();
+	const image = { generatePostCard } as unknown as ImageRenderer;
 	const comment = vi.fn();
 	const ai = { comment } as unknown as CommentaryGenerator;
 	const cardFailures = createCardFailureTracker();
@@ -288,7 +289,7 @@ function makeEngine(
 		emits,
 		trigger,
 		disposers,
-		generateDynamicCard,
+		generatePostCard,
 		comment,
 		logs,
 		cardFailures,
@@ -811,7 +812,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("有 image 实例 + 无 AI → 广播 [image] 段,part=post", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
@@ -826,16 +827,37 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(segments[0]?.type).toBe("image");
 	});
 
-	// per-UP 的皮肤 id 要一路走到 generateDynamicCard —— 断在哪一跳都是
+	// 引擎出卡的唯一入口是 `generatePostCard(postFromDynamic(原始动态))`:零件各自绿(翻译有翻译的测试、出卡有出卡
+	// 的测试)证明不了两头真的接上了。验红:把 dynamic-engine.ts 里那句换回只传原始动态、或不翻就交,这条红。
+	it("出卡时先把原始动态翻成 Post 再交给 generatePostCard", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+		b.getAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, name: "示例UP", pubTs: 1_700_000_000, text: "你好世界" })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.generatePostCard).toHaveBeenCalledTimes(1);
+		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
+		// 是翻译出来的中立作品,不是原始动态:有 creator / publishedAt / text,没有 modules。
+		expect(post).toMatchObject({
+			creator: { name: "示例UP" },
+			publishedAt: "2023-11-14T22:13:20.000Z",
+			text: "你好世界",
+		});
+		expect(post).not.toHaveProperty("modules");
+	});
+
+	// per-UP 的皮肤 id 要一路走到 generatePostCard —— 断在哪一跳都是
 	// 「选得动、存得住、就是不生效」那一族,而且全绿。
 	it("per-UP 皮肤 id 进 colorOptions;样式没启用时也只多这一个键", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710" });
 		await detect(b.engine);
 		// 验红:把 work-delivery.ts 里那句 `cardSkin: settings.cardSkin` 删掉,这条红。
-		expect(b.generateDynamicCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k5aaa-b0a710" });
+		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k5aaa-b0a710" });
 	});
 
 	// 旋钮覆盖(ADR-0014 决策 17 的 🔗)是订阅视图上的一格,引擎把整份视图当设置交给装配 ——
@@ -843,12 +865,12 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	// 里 `cardSkinKnobs` 那一项与 work-delivery.ts 递它那一句一起删掉,这条红。
 	it("per-UP 旋钮覆盖随皮肤 id 进 colorOptions", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		const cardSkinKnobs = { "k5aaa-b0a710": { accent: "#aaaaaa" } };
 		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710", cardSkinKnobs });
 		await detect(b.engine);
-		expect(b.generateDynamicCard.mock.calls[0]?.[1]).toEqual({
+		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({
 			cardSkin: "k5aaa-b0a710",
 			cardSkinKnobs,
 		});
@@ -856,7 +878,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("有 image + 有 AI → 段含 image + AI 点评文本", async () => {
 		const b = makeEngine({ withImage: true, withAi: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.comment.mockResolvedValue("这条很有意思");
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]));
 		seed(b.engine, "1", 0);
@@ -889,7 +911,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.generateDynamicCard).not.toHaveBeenCalled();
+		expect(b.generatePostCard).not.toHaveBeenCalled();
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ type: string }>;
 		expect(segments[0]?.type).toBe("text");
 	});
@@ -1194,7 +1216,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 	it("Part A:有图分支的文字段 == 无图分支的文字段(模板单源,无双前缀)", async () => {
 		const withImg = makeEngine({ withImage: true });
-		withImg.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		withImg.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		withImg.getAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]),
 		);
@@ -1380,7 +1402,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 
 	it("per-UP 卡片样式启用 → 样式与皮肤一起进 colorOptions", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
@@ -1389,7 +1411,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 			cardSkin: "skin-1",
 		});
 		await detect(b.engine);
-		expect(b.generateDynamicCard.mock.calls[0]?.[1]).toEqual({
+		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({
 			enable: true,
 			font: "霞鹜文楷",
 			cardSkin: "skin-1",
@@ -1449,7 +1471,7 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 describe("DynamicEngine — 图片失败软降级状态机", () => {
 	it("渲染失败一次 → streak=1,sendErrorMsg+emit 各一次,仍降级纯文字推送", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockRejectedValue(new Error("chrome crash"));
+		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
@@ -1465,7 +1487,7 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 
 	it("连续失败两轮 → sendErrorMsg / engine-error 全程仅一次(notified 守卫)", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockRejectedValue(new Error("chrome crash"));
+		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
@@ -1480,7 +1502,7 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 
 	it("A3:首次失败的 sendErrorMsg reject → notified 不置位,下轮失败重试通知", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockRejectedValue(new Error("chrome crash"));
+		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 
@@ -1505,19 +1527,19 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 		seed(b.engine, "1", 0);
 
 		// 轮1:失败 → 告警#1
-		b.generateDynamicCard.mockRejectedValueOnce(new Error("crash"));
+		b.generatePostCard.mockRejectedValueOnce(new Error("crash"));
 		await detect(b.engine);
 		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(1);
 
 		// 轮2:成功 → streak/notified 复位
-		b.generateDynamicCard.mockResolvedValueOnce(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValueOnce(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
 		await detect(b.engine);
 		expect(b.cardFailures.streak).toBe(0);
 		expect(b.cardFailures.notified).toBe(false);
 
 		// 轮3:再失败 → 告警#2(复位后恢复了告警能力)
-		b.generateDynamicCard.mockRejectedValueOnce(new Error("crash again"));
+		b.generatePostCard.mockRejectedValueOnce(new Error("crash again"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 3000 })]));
 		await detect(b.engine);
 		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
@@ -1571,7 +1593,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expectSkipped(b);
-		expect(b.generateDynamicCard).not.toHaveBeenCalled();
+		expect(b.generatePostCard).not.toHaveBeenCalled();
 		expect(b.comment).not.toHaveBeenCalled();
 		expect(b.push.sendErrorMsg).not.toHaveBeenCalled();
 	});
@@ -1592,9 +1614,9 @@ describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)"
 		const b = makeEngine({ withImage: true });
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
-		// 模拟交错:generateDynamicCard 解析前,adapter 收到 subscription-changed
+		// 模拟交错:generatePostCard 解析前,adapter 收到 subscription-changed
 		// 调 applyOps 退订 uid 1(stopDynamicForUid 删两张表)。
-		b.generateDynamicCard.mockImplementation(async () => {
+		b.generatePostCard.mockImplementation(async () => {
 			b.engine.applyOps([{ type: "delete", uid: "1" }]);
 			return undefined;
 		});
@@ -1846,7 +1868,7 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		expect(comment).toHaveBeenCalledTimes(1); // 没新增调用
 	});
 
-	it("启动时 image 字段为 undefined → setImage 注入后 detectDynamics 调用 generateDynamicCard", async () => {
+	it("启动时 image 字段为 undefined → setImage 注入后 detectDynamics 调用 generatePostCard", async () => {
 		const b = makeEngine({
 			withImage: false,
 			withAi: false,
@@ -1858,10 +1880,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		} as unknown as AllDynamicInfo);
 
 		await detect(b.engine);
-		expect(b.generateDynamicCard).not.toHaveBeenCalled();
+		expect(b.generatePostCard).not.toHaveBeenCalled();
 
-		const generateDynamicCard = vi.fn().mockResolvedValue(Buffer.from("png"));
-		const image = { generateDynamicCard } as unknown as ImageRenderer;
+		const generatePostCard = vi.fn().mockResolvedValue(Buffer.from("png"));
+		const image = { generatePostCard } as unknown as ImageRenderer;
 		b.engine.setImage(image);
 
 		const next = dyn();
@@ -1872,7 +1894,7 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 			data: { items: [next] },
 		} as unknown as AllDynamicInfo);
 		await detect(b.engine);
-		expect(generateDynamicCard).toHaveBeenCalledTimes(1);
+		expect(generatePostCard).toHaveBeenCalledTimes(1);
 	});
 
 	it("setAi 多次替换 → 下次 detect 用最新引用(reload ai plugin 场景)", async () => {
@@ -1898,9 +1920,9 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		expect(newComment).toHaveBeenCalledTimes(1);
 	});
 
-	it("setImage(undefined) → 撤销后 detectDynamics 不再调 generateDynamicCard", async () => {
-		const generateDynamicCard = vi.fn().mockResolvedValue(Buffer.from("png"));
-		const image = { generateDynamicCard } as unknown as ImageRenderer;
+	it("setImage(undefined) → 撤销后 detectDynamics 不再调 generatePostCard", async () => {
+		const generatePostCard = vi.fn().mockResolvedValue(Buffer.from("png"));
+		const image = { generatePostCard } as unknown as ImageRenderer;
 		const b = makeEngine({
 			withImage: false,
 			withAi: false,
@@ -1912,7 +1934,7 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 			data: { items: [dyn()] },
 		} as unknown as AllDynamicInfo);
 		await detect(b.engine);
-		expect(generateDynamicCard).toHaveBeenCalledTimes(1);
+		expect(generatePostCard).toHaveBeenCalledTimes(1);
 
 		b.engine.setImage(undefined);
 		const next = dyn();
@@ -1923,7 +1945,7 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 			data: { items: [next] },
 		} as unknown as AllDynamicInfo);
 		await detect(b.engine);
-		expect(generateDynamicCard).toHaveBeenCalledTimes(1);
+		expect(generatePostCard).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -1955,7 +1977,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 
 	it("默认版式(card,text,link 合并一条):模板按 url='' 渲染,链接独立成段,同条内换行连接", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);
@@ -1969,7 +1991,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 
 	it("分条符切两条 → 走 broadcastDynamicSequence,不再走单条 broadcastDynamic", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(
 			b,
@@ -2003,14 +2025,14 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "card", visible: false }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);
-		expect(b.generateDynamicCard).not.toHaveBeenCalled();
+		expect(b.generatePostCard).not.toHaveBeenCalled();
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
 		expect(segments.map((s) => s.type)).toEqual(["text"]);
 	});
 
 	it("隐藏 text 块 → 跳过 AI 调用(省 token),消息里无文本部件", async () => {
 		const b = makeEngine({ withImage: true, withAi: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, text: "有可提取文本" })]),
 		);
@@ -2037,14 +2059,14 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
 		expect(b.push.broadcastDynamicSequence).not.toHaveBeenCalled();
-		expect(b.generateDynamicCard).not.toHaveBeenCalled();
+		expect(b.generatePostCard).not.toHaveBeenCalled();
 	});
 
 	// 刻画(ADR-0019 决策 67 把装配合成一份之前钉的现状):自定义连接符、隐藏的分条符
 	// 不切组、卡片夹在文字中间时前后两段文字各自成段、卡片段带 image/jpeg。
 	it("自定义连接符连相邻文字;隐藏的分条符不切组", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockResolvedValue(Buffer.from("png"));
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(
 			b,
@@ -2068,7 +2090,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 	it("卡片夹在文字中间 → 前后两段文字各自成段,卡片段是 image/jpeg", async () => {
 		const b = makeEngine({ withImage: true });
 		const png = Buffer.from("png");
-		b.generateDynamicCard.mockResolvedValue(png);
+		b.generatePostCard.mockResolvedValue(png);
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "text" }, { type: "card" }, { type: "link" }]));
 		await detect(b.engine);
@@ -2083,7 +2105,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 
 	it("渲染失败 → card 部件缺席,其余部件照发(软降级不变)", async () => {
 		const b = makeEngine({ withImage: true });
-		b.generateDynamicCard.mockRejectedValue(new Error("boom"));
+		b.generatePostCard.mockRejectedValue(new Error("boom"));
 		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);

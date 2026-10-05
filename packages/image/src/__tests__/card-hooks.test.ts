@@ -88,7 +88,7 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
  * 夹具表覆盖不到、却仍然活着的路径,补的**旁路探针**(只看挂点,不进快照)。
  *
  * 动态卡的头像块:B 站这条路造的 node 到 3a 之前不带头像地址、头像块整块收起(`DynamicNode.avatarUrl`),
- * 而夹具表里的动态卡全经 `buildDynamicNode`,于是 `dynamic.avatar` 的挂点不再出现在任何夹具里。拓展作品那条
+ * 而夹具表里的动态卡全是 `Post` 字面量、经 `nodeFromPost` 造 node(`Post` 里没有头像地址可给),于是 `dynamic.avatar` 的挂点不再出现在任何夹具里。拓展作品那条
  * 路(`apps/server/src/runtime/extension-post-work.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
  */
 const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }[]>> = {

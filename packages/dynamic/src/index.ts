@@ -12,6 +12,7 @@ export {
 	filterByText,
 	filterDynamic,
 } from "./dynamic-filter";
+export { postFromDynamic } from "./post-from-dynamic";
 export type {
 	DynamicBroadcastOptions,
 	PostPushPart,

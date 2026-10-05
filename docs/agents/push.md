@@ -42,7 +42,7 @@
 | `pushLiveNotify` | `packages/live/src/live-notify.ts` | 吃 `LiveCardInput` + 文案 + 链接 + 版式 + 绑到订阅上的发送（`LiveNotifySend`）；出卡 → 分组 → 发送。**什么时候推不在这里**（计时器、断流接续、串行闸归来源，决策 67） |
 | `assembleMessageGroups` | `packages/internal/src/schema/message-layout.ts` | 按版式把卡 / 文字 / 链接装成消息组；上面两段共用这一份 |
 | `createSerialGate` | `packages/live/src/serial-gate.ts` | 串行闸：送达次序 = 发起次序，防「下播卡晚于新一场开播卡」的倒序。B 站按房间过闸（`RoomSessionBase.enqueuePush`）；拓展作品按订阅过闸（`bindExtensionPosts`，先报的那条出卡慢也先送到）；拓展直播同样按订阅（`bindExtensionLivePush`，决策 67） |
-| 出卡中立入口 | `ImageRenderer.generateNeutralDynamicCard(node)` / `generateNeutralLiveCard(input)` | 不收平台原始数据。`generateDynamicCard(raw)`（造 node）/ `generateLiveCard(raw…)`（`biliLiveCardInput`）是 B 站的适配层，签名不动。卡里的图只认字符串地址：远端网址走白名单预取，data URL 原样进卡 |
+| 出卡入口 | 作品卡：`ImageRenderer.generatePostCard(post)`（吃中立的 `Post`；B 站动态先经 `packages/dynamic` 的 `postFromDynamic` 翻成 `Post`，链接预览直接造 `Post`）；拓展作品暂走 `generateNeutralDynamicCard(node)`（㉑d 切到 `generatePostCard`）。直播卡：`generateNeutralLiveCard(input)`，`generateLiveCard(raw…)`（`biliLiveCardInput`）是 B 站的适配层 | 不收平台原始数据。卡里的图只认字符串地址：远端网址走白名单预取，data URL 原样进卡 |
 
 拓展作品翻成作品的规矩（`extension-post-work.ts`，决策 55 / 68 / 69 / 71 / 72 / 77）：类型套进 B 站的动态类型（`extensionPostType`：带视频 AV、有图 DRAW、只有字 WORD）；node 的正文用 `buildPlainText`（带上报的话题名：正文里照名字找到的 `#名字#` / `#名字` 切成 B 站富文本的话题节点，BN 不按 `#` 自己猜），第一个话题进 `node.topic`（正文上方的话题标签），图廊是一份 `GalleryImage` 列表：只有前 9 张图转成 data URL、宽高由 `readImageSize`（`packages/internal`，只读文件头）读、gif 标动图，其余只占张数给 `+N`；没报的视频 / 互动格空着不画；链接部件是事件的 `url`；**不附图集**（图集载荷只带网址，拓展交的是字节）；AI 看作品图 + 视频封面，单张超 3 MiB 跳过、最多 4 张。卡上作者与 `{name}` 走 `extension-push-common.ts`：名字依次取事件里的作者名 → 资料名 → 外部 id（别名已退役，ADR-0021 决策 16；`notes` 是备注，**不当名字用**）；头像事件带了用它，否则从图库读资料里引用的那张的字节转 data URL（面板用的同源地址 `/api/images/<ref>` 截图加载不到）。
 
@@ -170,7 +170,7 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 | 改拓展作品怎么翻、怎么过滤 | 翻：`extension-post-work.ts`；作者与名字：`extension-push-common.ts`（拓展直播也要用）；过滤只许走 `filterByText`，类型开关不许对拓展作品生效 |
 | 改直播卡怎么发 | `pushLiveNotify`；**什么时候**推（计时器、断流接续、串行闸）在来源那头：B 站是 `packages/live` 的 `room-session*` |
 | 改版式怎么分组、怎么拼文字 | `assembleMessageGroups` 一处 |
-| 改卡片吃什么 | 中立入口的输入（`DynamicNode` / `LiveCardInput`）；B 站的翻译在 `generateDynamicCard` / `biliLiveCardInput`，不许让中立入口回头去读原始数据 |
+| 改卡片吃什么 | 出卡入口的输入（作品卡是 `Post`，直播卡是 `LiveCardInput`）；B 站的翻译在 `postFromDynamic`（`packages/dynamic`）/ `biliLiveCardInput`，不许让出卡入口回头去读原始数据 |
 | 改一位 UP 的卡用哪套皮肤、他怎么拧它 | 皮肤 id 与这位 UP 那层旋钮覆盖（`cardSkin` / `cardSkinKnobs`，ADR-0014 决策 17）在 `dynamicWorkSettings` / `liveWorkSettings` 里一起折，per-UP 旋钮**原样**递到每个 `generate*`、不折全局（全局随渲染器 config 热更）；两层逐枚合并只在渲染器 `renderWithSkin` 一处（`effectiveCardSkinKnobs`，预览路由用同一个函数） |
 | 改历史行记谁 | `historyRecordFromSend` 按支分；行 → 订阅的回找两份实现（`currentSubscriptionOf` / `forRow`）一起改 |
 | 加一个推送平台 | adapter registry，推送层一个字不动 |

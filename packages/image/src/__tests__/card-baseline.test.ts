@@ -17,13 +17,17 @@
  *
  * 夹具住在 `fixtures/card-fixtures.ts`;其中四份专测「非默认版式也画得对」,各自配的皮肤卡
  * 在 `fixtures/skin-render.ts`。
+ *
+ * 十份 `dynamic-*` 的输入是 `Post` 字面量(`fixtures/post-fixtures.ts`),B 站原始夹具与「原始数据 → `Post`」
+ * 的那一腿在 `packages/dynamic` 的 `post-from-dynamic.test.ts`。**这十份必须仍在这里按原顺序渲染**:UnoCSS 的
+ * 生成器进程内只有一个,属性层会把前面渲染过的卡用到的 `--un-*` 变量带进后面的卡(醒目留言 / 上舰 / 锐评 / 词云
+ * 排在动态卡后面),挪走几份、顺序一变,后面那些快照的字节就跟着动。
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { buildDynamicNode } from "../templates/dynamic-content";
 import { APPROVED_CARD_DIFFS } from "./approved-card-diffs";
 import { cardDiffIssues, cardHtmlHash, orphanedCardDiffIssues } from "./card-diff-check";
-import { CARD_FIXTURES, LIVE_RCMD_DYNAMIC } from "./fixtures/card-fixtures";
+import { CARD_FIXTURES } from "./fixtures/card-fixtures";
 import { renderViaSkin } from "./fixtures/skin-render";
 
 /**
@@ -57,15 +61,5 @@ describe("批准的像素差清单", () => {
 				APPROVED_CARD_DIFFS,
 			),
 		).toEqual([]);
-	});
-});
-
-describe("卡片渲染基准 — 动态卡(无快照)", () => {
-	it("dynamic-live-rcmd 没有快照 —— 开播动态在 buildDynamicNode 里直接抛，压根到不了 renderCard", async () => {
-		// 现状即如此(`throw new Error("直播开播动态，不做处理")`):开播走直播卡那条路,
-		// 动态卡不处理。重构后若这条不再抛,是行为变化,这里会红。
-		await expect(
-			buildDynamicNode(LIVE_RCMD_DYNAMIC, false, { time: () => "刚刚", num: String }),
-		).rejects.toThrow("直播开播动态");
 	});
 });

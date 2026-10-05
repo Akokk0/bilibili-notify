@@ -12,6 +12,7 @@
  * 图库。所以到那之前,链接只画文字(颜色照旧),表情当文字画它的 `text`(「[doge]」)。
  */
 
+import type { RichText, RichTextSegment } from "@bilibili-notify/internal";
 import { escapeHtml } from "./html-escape";
 import type { RichTextNode } from "./types";
 
@@ -42,7 +43,32 @@ const LINK_TYPES: ReadonlySet<string> = new Set([
 	TYPE_OGV_EP,
 ]);
 
+/**
+ * **旧入口的垫片**(吃 B 站原始富文本节点):节点先翻成中立片段、再走 {@link renderRichText}。B 站节点类型的
+ * 认法只剩这里 —— 生产里已经没人调(B 站动态由 `packages/dynamic` 的 `postFromDynamic` 翻成 `Post`,出卡器
+ * 直接吃片段),只有旧的 `buildDynamicNode` 与几份测试还在用,旧入口删除时连这个垫片一起删。
+ */
 export function parseRichText(rt: RichTextNode, title?: string, isArticle = false) {
+	return renderRichText(
+		rt.map((node): RichTextSegment => {
+			if (node.emoji) return { kind: "emoji", text: node.text };
+			if (node.type === TYPE_AT) return { kind: "mention", text: node.text };
+			if (node.type === TYPE_TOPIC) {
+				return { kind: "topic", text: node.text, name: node.text.replace(/^#|#$/g, "") };
+			}
+			if (LINK_TYPES.has(node.type)) return { kind: "link", text: node.text, url: "" };
+			return { kind: "text", text: node.text };
+		}),
+		title,
+		isArticle,
+	);
+}
+
+/**
+ * 正文片段 → 富文本 VNode(`Post.richText` 就是它的输入)。普通正文九行截断、专栏五行截断;片段只认
+ * 五种:`mention` 与 `link` 画成 B 站蓝的字,`topic` 画成粉色的字,`emoji` 与 `text` 画成普通文字。
+ */
+export function renderRichText(rt: RichText, title?: string, isArticle = false) {
 	if (isArticle) {
 		return parseRichTextArticle(rt, title);
 	}
@@ -62,13 +88,12 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
 
 	outer: for (const node of rt) {
 		// 表情当文字画它的 `text`(「[doge]」)。图要到 3a 才有图库引用可给(见文件头)。
-		const kind: Seg["kind"] = node.emoji
-			? "text"
-			: node.type === TYPE_AT
+		const kind: Seg["kind"] =
+			node.kind === "mention"
 				? "at"
-				: node.type === TYPE_TOPIC
+				: node.kind === "topic"
 					? "topic"
-					: LINK_TYPES.has(node.type)
+					: node.kind === "link"
 						? "link"
 						: "text";
 
@@ -123,7 +148,7 @@ export function parseRichText(rt: RichTextNode, title?: string, isArticle = fals
  * 任何注入的 <script>/<iframe>/onerror/@import 均被转义为纯文本。代价:专栏内的
  * HTML 排版退化为纯文本(安全优先;对齐 SCCard 转义策略)。
  */
-function parseRichTextArticle(rt: RichTextNode, title?: string) {
+function parseRichTextArticle(rt: RichText, title?: string) {
 	const MAX_LINES = 5;
 
 	const rawHtml = rt.reduce((acc, node) => {

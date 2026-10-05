@@ -53,7 +53,7 @@ function renderDynamicText(template: string, name: string): string {
  */
 export interface NeutralWork {
 	/**
-	 * 怎么出这张卡:拿给的渲染器、按这条订阅的样式与皮肤出。B 站包 `image.generateDynamicCard(raw, …)`,
+	 * 怎么出这张卡:拿给的渲染器、按这条订阅的样式与皮肤出。B 站包 `image.generatePostCard(postFromDynamic(raw), …)`,
 	 * 拓展包 `image.generateNeutralDynamicCard(node, …)`。**要不要出**(渲染器在不在、出图开没开、版式
 	 * 露不露卡片)是装配的事,这里只管怎么出;抛错 = 这一次出图失败,装配降级成纯文字。
 	 */

@@ -10,6 +10,7 @@ import type {
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import { blockedNotice, type DynamicFilterReason, filterDynamic } from "./dynamic-filter";
+import { postFromDynamic } from "./post-from-dynamic";
 import type {
 	PushLike,
 	SubItemView,
@@ -245,14 +246,10 @@ function extractGallery(item: Dynamic): ForwardImage[] {
 function workFromDynamic(item: Dynamic, name: string, videoUrlToBV: boolean): NeutralWork {
 	const isVideo = item.type === "DYNAMIC_TYPE_AV";
 	return {
-		// dynamic-engine 与 image-engine 的 Dynamic 类型同源同构（皆为 Bilibili 动态接口的子集，
-		// 仅声明字段不同），运行时是同一对象。这里用 unknown 中转的类型断言避开两份独立 .d.ts 的
-		// 结构性差异。
+		// B 站原始动态先翻成中立的 `Post`(出图器不认识任何 B 站字段),再走出卡器的唯一入口。
+		// 翻译放在这里(`renderCard` 被调到才做),它抛的错 = 这一次出图失败,装配照旧降级成纯文字。
 		renderCard: (image, colorOptions) =>
-			image.generateDynamicCard(
-				item as unknown as Parameters<ImageRenderer["generateDynamicCard"]>[0],
-				colorOptions,
-			),
+			image.generatePostCard(postFromDynamic(item), colorOptions),
 		link: dynamicLink(item, isVideo, videoUrlToBV),
 		name,
 		isVideo,

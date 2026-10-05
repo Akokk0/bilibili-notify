@@ -12,7 +12,7 @@
  */
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
-import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
+import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
 import type { InboundGroupMessage } from "@bilibili-notify/internal";
 import {
 	type ConnectionCapabilities,
@@ -24,12 +24,13 @@ import {
 	type LinkParsingPolicy,
 	type Logger,
 	type NotificationPayload,
+	type Post,
 	type VideoLinkRef,
 	videoLinkKey,
 } from "@bilibili-notify/internal";
 import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
-import { videoToDynamic } from "./video-card.js";
+import { videoToPost } from "./video-card.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
 const MAX_LINKS_PER_MESSAGE = 3;
@@ -79,8 +80,8 @@ export interface LinkParserOptions {
 	};
 	/** 推送用的卡片渲染器;`null` = 没有 Chrome,整个功能静默不动。**每次现取**,别攥着。 */
 	renderer: () => {
-		generateDynamicCard(
-			data: Dynamic,
+		generatePostCard(
+			post: Post,
 			colors?: CardColorOptions,
 			options?: { priority?: RenderPriority },
 		): Promise<Buffer>;
@@ -215,8 +216,8 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
 		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
 		const { colors, cardSkin } = opts.presentation();
-		const buffer = await renderer.generateDynamicCard(
-			videoToDynamic(info),
+		const buffer = await renderer.generatePostCard(
+			videoToPost(info),
 			{ ...colors, cardSkin },
 			{ priority: "low" },
 		);

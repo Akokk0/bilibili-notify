@@ -122,7 +122,7 @@ export interface SubItemView {
 		// 🪦 `backgroundImage` / `backgroundImages` 2026-09-20 随整条链删掉 —— 背景图归皮肤
 		// 自己的 `image` 旋钮(`--bn-knob-wallpaper`),不再从样式覆盖里透传。
 		/**
-		 * 字体家族名;透传给 generateDynamicCard 的 colorOptions(缺省回退全局)。
+		 * 字体家族名;透传给 generatePostCard 的 colorOptions(缺省回退全局)。
 		 * 此前整条链都漏着,per-UP 换字体选了等于没选。
 		 */
 		font?: string;
@@ -155,7 +155,7 @@ export interface SubItemView {
 	customVideoTemplate?: string;
 	/**
 	 * Per-UP 生效的**卡片皮肤 id**(ADR-0014)。宿主折叠 `eff.cardSkin` 后填入;
-	 * undefined = 内置默认皮肤。dynamic-engine 渲染时透传给 generateDynamicCard 的
+	 * undefined = 内置默认皮肤。dynamic-engine 渲染时透传给 generatePostCard 的
 	 * colorOptions —— 版式住皮肤包里,不再逐块下发。
 	 */
 	cardSkin?: string;

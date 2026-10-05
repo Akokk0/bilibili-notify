@@ -8,13 +8,14 @@
  */
 
 import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
-import type { CardColorOptions, Dynamic, RenderPriority } from "@bilibili-notify/image";
+import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
 import type {
 	ConnectionCapabilities,
 	DeliveryResult,
 	LinkParsingConfig,
 	LinkParsingPolicy,
 	NotificationPayload,
+	Post,
 } from "@bilibili-notify/internal";
 import { LINK_LIMITS, type LinkLimits } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -91,8 +92,8 @@ function makeParser(
 	};
 	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
-	const generateDynamicCard = vi.fn(
-		async (_data: Dynamic, _colors?: CardColorOptions, _options?: { priority?: RenderPriority }) =>
+	const generatePostCard = vi.fn(
+		async (_post: Post, _colors?: CardColorOptions, _options?: { priority?: RenderPriority }) =>
 			Buffer.from("png-bytes"),
 	);
 	const sent: { dest: LinkReplyDestination; payload: NotificationPayload }[] = [];
@@ -108,8 +109,8 @@ function makeParser(
 	let now = 1_000_000;
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
 	const readConfig = vi.fn(() => config);
-	const renderer = vi.fn((): { generateDynamicCard: typeof generateDynamicCard } | null => ({
-		generateDynamicCard,
+	const renderer = vi.fn((): { generatePostCard: typeof generatePostCard } | null => ({
+		generatePostCard,
 	}));
 	const parser = createLinkParser({
 		logger,
@@ -131,7 +132,7 @@ function makeParser(
 		renderer,
 		getVideoInfo,
 		resolveShortLink,
-		generateDynamicCard,
+		generatePostCard,
 		send,
 		sent,
 		probeCapabilities,
@@ -148,37 +149,30 @@ describe("createLinkParser", () => {
 
 		expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
 
-		expect(h.generateDynamicCard).toHaveBeenCalledTimes(1);
-		const dyn = firstArg(h.generateDynamicCard.mock.calls);
-		expect(dyn.type).toBe("DYNAMIC_TYPE_AV");
-		expect(dyn.modules.module_author).toMatchObject({
-			name: "示例UP",
-			face: "http://i0.hdslb.com/bfs/face/face.jpg",
-			mid: 12345,
-			pub_ts: 1756800000,
-		});
-		expect(dyn.modules.module_dynamic.major?.archive).toEqual({
-			badge: { text: "投稿视频" },
-			cover: "http://i0.hdslb.com/bfs/archive/cover.jpg",
-			duration_text: "12:34",
-			title: "示例标题",
-			desc: "示例简介",
-			// 计数是数字原样进:卡片那头统一用 formatCount 排(「6.5万」),不在这里先排成字。
-			stat: { play: 65000, danmaku: 120 },
-			bvid: "BV1zMtU6uEEb",
-			jump_url: "//www.bilibili.com/video/BV1zMtU6uEEb",
-		});
-		expect(dyn.modules.module_stat).toEqual({
-			comment: { count: 30 },
-			forward: { count: 15 },
-			like: { count: 3000 },
+		expect(h.generatePostCard).toHaveBeenCalledTimes(1);
+		const post = firstArg(h.generatePostCard.mock.calls);
+		// 直接造的作品,不是伪造的 B 站原始动态:「投稿了视频」是明说的 label,不靠 archive.badge 的隐含耦合。
+		expect(post).toEqual({
+			creator: { name: "示例UP" },
+			publishedAt: "2025-09-02T08:00:00.000Z",
+			label: "投稿了视频",
+			text: "",
+			video: {
+				cover: { url: "http://i0.hdslb.com/bfs/archive/cover.jpg" },
+				title: "示例标题",
+				description: "示例简介",
+				durationSec: 754,
+				views: 65000,
+				danmaku: 120,
+			},
+			stats: { shares: 15, comments: 30, likes: 3000 },
 		});
 		// 呈现与推送的动态卡同一份:配色不传的话主人在卡片页给「动态」调的样式只有推送卡认,
 		// 皮肤不传的话渲染器退回内置默认皮肤、主人选的那套排版就丢了。
-		expect(h.generateDynamicCard.mock.calls[0]?.[1]).toEqual({ ...COLORS, cardSkin: SKIN });
+		expect(h.generatePostCard.mock.calls[0]?.[1]).toEqual({ ...COLORS, cardSkin: SKIN });
 		// 低优先级:群里谁都能触发的卡,不能排在开播 / 动态卡前面 —— 让路这件事由渲染
 		// 队列按车道做,不靠这里数自己发了几张。
-		expect(h.generateDynamicCard.mock.calls[0]?.[2]).toEqual({ priority: "low" });
+		expect(h.generatePostCard.mock.calls[0]?.[2]).toEqual({ priority: "low" });
 
 		expect(h.sent).toEqual([
 			{
@@ -318,7 +312,7 @@ describe("createLinkParser", () => {
 		it("全局同时在处理的链接卡有上限:渲染卡着时,再来的链接不排队 —— 渲染队列是串行的,推送卡排在后面", async () => {
 			const h = makeParser({ cooldownSeconds: 0 });
 			const release: (() => void)[] = [];
-			h.generateDynamicCard.mockImplementation(
+			h.generatePostCard.mockImplementation(
 				() =>
 					new Promise<Buffer<ArrayBuffer>>((resolve) =>
 						release.push(() => resolve(Buffer.from("x"))),
@@ -337,7 +331,7 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight);
 
 			// 卡着的放行之后,新来的照常。
-			h.generateDynamicCard.mockResolvedValue(Buffer.from("png-bytes"));
+			h.generatePostCard.mockResolvedValue(Buffer.from("png-bytes"));
 			await feed(h.parser, groupFrame(link("BV1yyyyyyyyy")));
 			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight + 1);
 		});
@@ -364,13 +358,13 @@ describe("createLinkParser", () => {
 			const h = makeParser();
 			h.getVideoInfo.mockRejectedValue(new Error("boom"));
 			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
-			expect(h.generateDynamicCard).not.toHaveBeenCalled();
+			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
 		it("渲染失败:不发任何东西", async () => {
 			const h = makeParser();
-			h.generateDynamicCard.mockRejectedValue(new Error("截图超时(20s)"));
+			h.generatePostCard.mockRejectedValue(new Error("截图超时(20s)"));
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(0);
 		});
@@ -609,7 +603,7 @@ describe("createLinkParser", () => {
 			});
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload)).toEqual([MINIAPP_CARD]);
-			expect(h.generateDynamicCard).not.toHaveBeenCalled();
+			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.probeCapabilities).not.toHaveBeenCalled();
 		});
 
@@ -620,7 +614,7 @@ describe("createLinkParser", () => {
 			});
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
-			expect(h.generateDynamicCard).toHaveBeenCalledTimes(1);
+			expect(h.generatePostCard).toHaveBeenCalledTimes(1);
 		});
 
 		it("还没探出来 → 先探一次再决定:探出支持就发小程序卡", async () => {

@@ -94,7 +94,7 @@ function dynamicNode(over: Partial<DynamicNode> = {}): DynamicNode {
 
 const FULL_PICS = [{ url: "https://img/pic1.jpg" }, { url: "https://img/pic2.jpg" }];
 
-/** 投稿视频那张卡挂在 node 上的数据(`buildDynamicNode` 的 `videoOf` 抽出来的形状)。 */
+/** 投稿视频那张卡挂在 node 上的数据(`nodeFromPost` 的 `videoOf` 造出来的形状)。 */
 const NODE_VIDEO = {
 	cover: "https://img/video-cover.jpg",
 	duration: "12:34",

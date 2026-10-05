@@ -30,11 +30,12 @@
  * (本机 Chrome 实测,14 个颜色里 12 个栅格字节变了),像素门当场红。
  */
 
-import { formatClock, formatCount } from "@bilibili-notify/internal";
+import { formatClock, formatCount, type RichText } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import { parseBiliClock, parseBiliCount } from "../bili-display-values";
-import { parseRichText } from "../rich-text";
+import { parseRichText, renderRichText } from "../rich-text";
 import type { Dynamic, RichTextNode } from "../types";
+import { cardEyebrow, cardLines } from "./attachment";
 
 // ── 动态类型常量 ──────────────────────────────────────────────────────────────
 
@@ -343,7 +344,7 @@ function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
  * 当文字(转义)。
  *
  * 走的是 B 站富文本**同一个根**(`body` 挂点、同一套 class、同样超 9 行截断):切成富文本节点交给
- * {@link parseRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
+ * {@link renderRichText},皮肤给正文写的规则两边一套,不必为拓展另写一份。
  *
  * `topics` 是来源报的话题名(决策 55 的 09-24 🔗):正文里的 `#名字#` / `#名字` 切成 B 站富文本
  * **同一种话题节点**,画出来是同一种 span。只照这份名单找 —— 不在名单里的 `#`(「C#」「#1」)
@@ -354,7 +355,7 @@ function buildBasicText(dynamic: Dynamic, isArticle: boolean): VNode | null {
 export function buildPlainText(text: string, topics: readonly string[] = []): VNode | null {
 	const normalized = text.replace(/\r\n?/g, "\n");
 	if (normalized.trim() === "") return null;
-	return parseRichText(plainTextNodes(normalized, topics));
+	return renderRichText(plainTextSegments(normalized, topics));
 }
 
 /** 字母或数字(任何文字的)—— `#名字` 后面紧跟着它,就不是这个话题。 */
@@ -369,7 +370,7 @@ const WORD_CHAR = /[\p{L}\p{N}]/u;
  *   名字 `#名字#` 先于 `#名字`(收尾的 `#` 算进话题)—— **除非**收尾的那个 `#` 正是下一个话题 `#别的`
  *   的开头(`#旅行#美食`,两个都报了):那就取 `#名字`,把 `#` 让给下一个,两个都上色。
  */
-function plainTextNodes(text: string, topics: readonly string[]): RichTextNode {
+function plainTextSegments(text: string, topics: readonly string[]): RichText {
 	const names = [...new Set(topics)]
 		.filter((name) => name !== "")
 		.sort((a, b) => b.length - a.length);
@@ -389,24 +390,27 @@ function plainTextNodes(text: string, topics: readonly string[]): RichTextNode {
 		}
 		return undefined;
 	};
-	const nodes: RichTextNode = [];
-	const push = (type: string, part: string) => {
-		if (part) nodes.push({ type, text: part, orig_text: part });
+	const nodes: RichText = [];
+	const pushText = (part: string) => {
+		if (part) nodes.push({ kind: "text", text: part });
+	};
+	const pushTopic = (part: string) => {
+		nodes.push({ kind: "topic", text: part, name: part.replace(/^#|#$/g, "") });
 	};
 	let plainFrom = 0;
 	let at = names.length > 0 ? text.indexOf("#") : -1;
 	while (at !== -1) {
 		const hit = hitAt(at);
 		if (hit) {
-			push("RICH_TEXT_NODE_TYPE_TEXT", text.slice(plainFrom, at));
-			push("RICH_TEXT_NODE_TYPE_TOPIC", hit);
+			pushText(text.slice(plainFrom, at));
+			pushTopic(hit);
 			plainFrom = at + hit.length;
 			at = text.indexOf("#", plainFrom);
 		} else {
 			at = text.indexOf("#", at + 1);
 		}
 	}
-	push("RICH_TEXT_NODE_TYPE_TEXT", text.slice(plainFrom));
+	pushText(text.slice(plainFrom));
 	return nodes;
 }
 
@@ -591,31 +595,6 @@ function buildAdditionalContent(dynamic: Dynamic): VNode | null {
 		default:
 			return null;
 	}
-}
-
-/**
- * `Attachment.card` 的文字行(预约卡与通用卡共用):每行同一个样式、各占一行,行与行之间留 2px、最后一行不留。
- * 形状里 `lines` 每行只有 `{ text, icon? }`,没有同行并排、没有单行变色的位置。
- */
-function cardLines(lines: readonly string[]) {
-	return lines.map((line, i) => (
-		<div
-			key={i}
-			class={`text-[12px] text-[#999] truncate${i < lines.length - 1 ? " mb-[2px]" : ""}`}
-		>
-			{line}
-		</div>
-	));
-}
-
-/**
- * `Attachment.card` / `goods` 的 `eyebrow`:卡上方的一行说明(商品卡与通用卡共用)。没有字就不画 ——
- * 形状里 `eyebrow?` 缺席与空串是同一回事,接口给了空串的 `head_text` 也不留一条空行。
- */
-function cardEyebrow(text: string | undefined) {
-	return text ? (
-		<div class="flex items-center gap-1 text-[12px] text-[#999] mb-[6px]">{text}</div>
-	) : null;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: Bilibili API 返回的预约数据类型不固定

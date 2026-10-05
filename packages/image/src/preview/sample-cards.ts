@@ -19,12 +19,18 @@
  */
 
 import { GuardLevel } from "@bilibili-notify/blive";
-import { type CardSkinKind, formatCount, resolvePreviewScene } from "@bilibili-notify/internal";
+import {
+	type Attachment,
+	type CardSkinKind,
+	formatCount,
+	type Post,
+	type PostImage,
+	resolvePreviewScene,
+} from "@bilibili-notify/internal";
 import type { CardPropsByKind } from "../blocks/frames";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../styles";
-import { buildDynamicNode, type NodeFormatters } from "../templates/dynamic-content";
 import type { LiveCardView } from "../templates/live-card";
-import type { Dynamic, RichTextNode } from "../types";
+import { nodeFromPost } from "../templates/post-node";
 
 /** 一份示例 props 就是该卡种的真 props。 */
 type SampleProps<K extends CardSkinKind> = CardPropsByKind[K];
@@ -103,21 +109,41 @@ function liveSample(scene: string): LiveCardView {
 // ── 动态卡 ────────────────────────────────────────────────────────────────────
 
 /**
- * 时间 / 数字的格式化器。真机上时间由渲染器按时钟算,示例里写死 —— 预览要的是稳定。
- * 数字仍走卡片同款的万 / 亿写法,免得示例上的数字和真卡长得不是一回事。
+ * 动态卡的示例**直接写成 `Post`**(㉑c 第 5 步):出图器只认中立的作品,示例就是它吃的那份输入,经
+ * `nodeFromPost` 造成块吃的节点 —— 与真出卡(`ImageRenderer.generatePostCard`)同一条路,预览与真出图只要
+ * 各拼各的,迟早长成两副样子。
+ *
+ * 时间真机上由渲染器按时钟算,示例里写死「刚刚」—— 预览要的是稳定;数字走卡片同款的万 / 亿写法
+ * (`formatCount`,在 `nodeFromPost` 里),免得示例上的数字和真卡长得不是一回事。头像不画(`Creator.avatar` 只收
+ * 图库引用,B 站 3a 才存),所以示例也不带。
  */
-const FMT: NodeFormatters = { time: () => "刚刚", num: (n: number) => formatCount(n) };
+const FMT = { time: () => "刚刚" };
 
 /** 示例视频本身。「视频投稿」与转发场面框里那条用的是同一个视频,只是外面那条动态不同。 */
-const SAMPLE_ARCHIVE = {
-	badge: { text: "投稿视频" },
-	cover: SVG_COVER,
-	duration_text: "16:07",
+const SAMPLE_VIDEO: NonNullable<Post["video"]> = {
+	cover: { url: SVG_COVER },
 	title: "【示例视频】这是一条用来预览卡片的示例投稿标题",
-	desc: "示例简介：这一行用来看视频小卡里的副标题。",
-	stat: { play: "1.8万", danmaku: "129" },
-	bvid: "",
-	jump_url: "",
+	description: "示例简介：这一行用来看视频小卡里的副标题。",
+	durationSec: 967,
+	views: 18_000,
+	danmaku: 129,
+};
+
+/** 示例作者:大会员,名字走粉色那一支,皮肤里这条最容易被写死的前景色吃掉。 */
+const SAMPLE_CREATOR = { name: MASTER.name, isPremium: true } as const;
+const SAMPLE_PUBLISHED_AT = "2027-01-15T08:00:00.000Z";
+
+const SAMPLE_TOPIC = "示例话题";
+const SAMPLE_TEXT = "这是一段示例动态正文，用来看正文块的字号、行距与留白。";
+
+/**
+ * 附加内容块在默认皮肤里是独立一块,不给的话预览里整块是空的 —— 皮肤作者就看不到自己给它写的样式。
+ */
+const SAMPLE_ATTACHMENT: Attachment = {
+	kind: "card",
+	title: "示例预约：周年庆典直播",
+	lines: [{ text: "预计 09-20 20:00 直播" }, { text: "2.3万人预约" }],
+	button: { text: "预约", enabled: true },
 };
 
 /**
@@ -125,119 +151,57 @@ const SAMPLE_ARCHIVE = {
  *
  * **它自己不再是一个场面**(2026-09-19 拍板):四场按主媒体分,而它在出图端与「视频投稿」
  * 是同一种卡。留着是因为另外两处照它长:**转发场面框里那条原动态**就是它(内层那张卡
- * 一次把各块都占上,转发那一层才看得出内外同源),以及下面的 `SAMPLE_TEXT_DYNAMIC` ——
- * 纯文字那条 = 它去掉 `major`。
+ * 一次把各块都占上,转发那一层才看得出内外同源),以及下面的 `SAMPLE_TEXT_POST` ——
+ * 纯文字那条 = 它去掉视频。
  */
-const SAMPLE_AV_DYNAMIC = {
-	basic: { is_only_fans: false },
-	id_str: "1000000000000000001",
-	type: "DYNAMIC_TYPE_AV",
-	visible: true,
-	modules: {
-		module_author: {
-			avatar: {},
-			face: MASTER.face,
-			face_nft: false,
-			following: true,
-			jump_url: "",
-			label: "",
-			mid: 2233,
-			name: MASTER.name,
-			pub_action: "",
-			pub_action_text: "",
-			pub_location_text: "IP属地：上海",
-			pub_time: "刚刚",
-			pub_ts: 1_800_000_000,
-			type: "AUTHOR_TYPE_NORMAL",
-			// 大会员:名字走粉色那一支,皮肤里这条最容易被写死的前景色吃掉。
-			vip: { type: 1 },
-		},
-		module_dynamic: {
-			topic: { id: 1, name: "示例话题", jump_url: "" },
-			desc: {
-				text: "这是一段示例动态正文。",
-				rich_text_nodes: [
-					{
-						type: "RICH_TEXT_NODE_TYPE_TEXT",
-						orig_text: "这是一段示例动态正文，用来看正文块的字号、行距与留白。",
-						text: "这是一段示例动态正文，用来看正文块的字号、行距与留白。",
-					},
-				] as RichTextNode,
-			},
-			major: { type: "MAJOR_TYPE_ARCHIVE", archive: SAMPLE_ARCHIVE },
-			// 附加内容块在默认皮肤里是独立一块,不给的话预览里整块是空的 —— 皮肤作者就看不到
-			// 自己给它写的样式。
-			additional: {
-				type: "ADDITIONAL_TYPE_RESERVE",
-				reserve: {
-					title: "示例预约：周年庆典直播",
-					desc1: { text: "预计 09-20 20:00 直播" },
-					desc2: { text: "2.3万人预约" },
-					button: { uncheck: { text: "预约" }, check: { text: "已预约" }, type: 1 },
-				},
-			},
-		},
-		module_stat: {
-			forward: { count: 128 },
-			comment: { count: 456 },
-			like: { count: 7890 },
-		},
-	},
-} as unknown as Dynamic;
+const SAMPLE_AV_POST: Post = {
+	creator: SAMPLE_CREATOR,
+	publishedAt: SAMPLE_PUBLISHED_AT,
+	label: "投稿了视频",
+	topic: SAMPLE_TOPIC,
+	text: SAMPLE_TEXT,
+	richText: [{ kind: "text", text: SAMPLE_TEXT }],
+	video: SAMPLE_VIDEO,
+	attachment: SAMPLE_ATTACHMENT,
+	stats: { shares: 128, comments: 456, likes: 7890 },
+};
 
 /**
  * 「纯文字」场面(**默认**)—— 没有主媒体的那一条:正文 + 话题 + 附加内容 + 互动数。
  * 它是底档 —— 正文、话题、附加内容这三块只有在这一场才一次看得全(视频那场三样都没有)。
  *
- * 除了 `major` 与动态类型,每一样都照 `SAMPLE_AV_DYNAMIC` 取:各写一份的话两条示例迟早
- * 会漂,而「同一段正文在两种卡上长什么样」正是写皮肤的人要对着看的。
+ * 除了视频,每一样都照 `SAMPLE_AV_POST` 取:各写一份的话两条示例迟早会漂,而「同一段正文在两种卡上
+ * 长什么样」正是写皮肤的人要对着看的。
  */
-const SAMPLE_TEXT_DYNAMIC = {
-	basic: { is_only_fans: false },
-	id_str: "1000000000000000005",
-	type: "DYNAMIC_TYPE_WORD",
-	visible: true,
-	modules: {
-		module_author: SAMPLE_AV_DYNAMIC.modules.module_author,
-		// `major` 整个不给 —— 纯文字动态没有主媒体,渲染器一路 `?.` 过去,视频五块与图廊
-		// 都取不到东西、整块不画。
-		module_dynamic: {
-			topic: SAMPLE_AV_DYNAMIC.modules.module_dynamic?.topic,
-			desc: SAMPLE_AV_DYNAMIC.modules.module_dynamic?.desc,
-			additional: SAMPLE_AV_DYNAMIC.modules.module_dynamic?.additional,
-		},
-		module_stat: SAMPLE_AV_DYNAMIC.modules.module_stat,
-	},
-} as unknown as Dynamic;
+const SAMPLE_TEXT_POST: Post = {
+	creator: SAMPLE_CREATOR,
+	publishedAt: SAMPLE_PUBLISHED_AT,
+	topic: SAMPLE_TOPIC,
+	text: SAMPLE_TEXT,
+	richText: [{ kind: "text", text: SAMPLE_TEXT }],
+	attachment: SAMPLE_ATTACHMENT,
+	stats: { shares: 128, comments: 456, likes: 7890 },
+};
 
 /**
  * 「视频投稿」场面 —— 真机上 UP 发视频推过来的那张:B 站给的这类动态通常**没有**动态正文、
  * 话题与附加内容(视频的简介在视频卡里),只有作者、视频卡、互动数。与 `runtime/video-card.ts`
- * 为链接解析拼出来的那条同一个形状。
+ * 为链接解析造出来的那条同一个形状。
  */
-const SAMPLE_VIDEO_DYNAMIC = {
-	basic: { is_only_fans: false },
-	id_str: "1000000000000000003",
-	type: "DYNAMIC_TYPE_AV",
-	visible: true,
-	modules: {
-		module_author: SAMPLE_AV_DYNAMIC.modules.module_author,
-		module_dynamic: {
-			major: { type: "MAJOR_TYPE_ARCHIVE", archive: SAMPLE_ARCHIVE },
-		},
-		module_stat: {
-			forward: { count: 32 },
-			comment: { count: 214 },
-			like: { count: 3456 },
-		},
-	},
-} as unknown as Dynamic;
+const SAMPLE_VIDEO_POST: Post = {
+	creator: SAMPLE_CREATOR,
+	publishedAt: SAMPLE_PUBLISHED_AT,
+	label: "投稿了视频",
+	text: "",
+	video: SAMPLE_VIDEO,
+	stats: { shares: 32, comments: 214, likes: 3456 },
+};
 
 /**
  * 图文场面的九张占位图:编了号、两色相间,一眼看得出排列顺序。第 5 张是**长图**(高超过
  * 宽的两倍),好让九宫格里那个「长图」角标也有地方露面 —— 皮肤作者要给它写样式。
  */
-function samplePic(n: number, long: boolean): { url: string; width: number; height: number } {
+function samplePic(n: number, long: boolean): PostImage {
 	const width = 400;
 	const height = long ? 1000 : 400;
 	const fill = n % 2 === 1 ? "%23FB7299" : "%2300AEEC";
@@ -249,107 +213,46 @@ function samplePic(n: number, long: boolean): { url: string; width: number; heig
 }
 
 /**
- * 「图文」场面(场景 id `pics`)—— 一段正文 + 九张图(图廊最满的样子)。B 站现在给图文动态
- * 的形状是
- * `major.opus`:正文在 `summary` 里、图在 `pics` 里,`desc` 为空;渲染器与契约的
- * `pics.*` 都从这里取。
+ * 「图文」场面(场景 id 为 `pics`)—— 一段正文 + 九张图(图廊最满的样子)。图在 `images`,
+ * 渲染器与契约的 `pics.*` 都从这里取。
  */
-const SAMPLE_DRAW_DYNAMIC = {
-	basic: { is_only_fans: false },
-	id_str: "1000000000000000004",
-	type: "DYNAMIC_TYPE_DRAW",
-	visible: true,
-	modules: {
-		module_author: SAMPLE_AV_DYNAMIC.modules.module_author,
-		module_dynamic: {
-			major: {
-				type: "MAJOR_TYPE_OPUS",
-				opus: {
-					summary: {
-						text: "这是一段示例图文正文。",
-						rich_text_nodes: [
-							{
-								type: "RICH_TEXT_NODE_TYPE_TEXT",
-								orig_text: "这是一段示例图文正文，下面是九张示例图，第 5 张是长图。",
-								text: "这是一段示例图文正文，下面是九张示例图，第 5 张是长图。",
-							},
-						] as RichTextNode,
-					},
-					pics: Array.from({ length: 9 }, (_, i) => samplePic(i + 1, i === 4)),
-				},
-			},
-		},
-		module_stat: {
-			forward: { count: 64 },
-			comment: { count: 128 },
-			like: { count: 2048 },
-		},
-	},
-} as unknown as Dynamic;
+const SAMPLE_PICS_TEXT = "这是一段示例图文正文，下面是九张示例图，第 5 张是长图。";
+const SAMPLE_DRAW_POST: Post = {
+	creator: SAMPLE_CREATOR,
+	publishedAt: SAMPLE_PUBLISHED_AT,
+	text: SAMPLE_PICS_TEXT,
+	richText: [{ kind: "text", text: SAMPLE_PICS_TEXT }],
+	images: Array.from({ length: 9 }, (_, i) => samplePic(i + 1, i === 4)),
+	stats: { shares: 64, comments: 128, likes: 2048 },
+};
 
 /**
  * 转发场面的那条动态 —— 示例转发者转了上面那条投稿。
  *
  * 转发框里是**另一整张卡**(同一批块、同一份皮肤),而它在编辑器里原本一眼都看不到:
- * 动态卡从前只有一个场面,示例数据里没有转发。`orig` 直接指字段最全那条
- * (`SAMPLE_AV_DYNAMIC`),不另写一份 —— 两份示例迟早会漂,而「内层画的和外层是同一套
+ * 动态卡从前只有一个场面,示例数据里没有转发。`repost` 直接指字段最全那条
+ * (`SAMPLE_AV_POST`),不另写一份 —— 两份示例迟早会漂,而「内层画的和外层是同一套
  * 东西」正是这个场面要给人看的,内层块占得越满越看得出来。
  */
-const SAMPLE_FORWARD_DYNAMIC = {
-	basic: { is_only_fans: false },
-	id_str: "1000000000000000002",
-	type: "DYNAMIC_TYPE_FORWARD",
-	visible: true,
-	modules: {
-		module_author: {
-			avatar: {},
-			face: SVG_AVATAR_BLUE,
-			face_nft: false,
-			following: true,
-			jump_url: "",
-			label: "",
-			mid: 4455,
-			name: "示例转发者",
-			pub_action: "",
-			pub_action_text: "",
-			pub_location_text: "IP属地：北京",
-			pub_time: "刚刚",
-			pub_ts: 1_800_000_000,
-			type: "AUTHOR_TYPE_NORMAL",
-			vip: { type: 0 },
-		},
-		module_dynamic: {
-			desc: {
-				text: "这是一段示例转发语。",
-				rich_text_nodes: [
-					{
-						type: "RICH_TEXT_NODE_TYPE_TEXT",
-						orig_text: "这是一段示例转发语，下面那张是被转发的原动态。",
-						text: "这是一段示例转发语，下面那张是被转发的原动态。",
-					},
-				] as RichTextNode,
-			},
-		},
-		module_stat: {
-			forward: { count: 12 },
-			comment: { count: 34 },
-			like: { count: 567 },
-		},
-	},
-	orig: SAMPLE_AV_DYNAMIC,
-} as unknown as Dynamic;
-
-const DYNAMIC_SCENES: Record<string, Dynamic> = {
-	text: SAMPLE_TEXT_DYNAMIC,
-	video: SAMPLE_VIDEO_DYNAMIC,
-	pics: SAMPLE_DRAW_DYNAMIC,
-	forward: SAMPLE_FORWARD_DYNAMIC,
+const SAMPLE_FORWARD_TEXT = "这是一段示例转发语，下面那张是被转发的原动态。";
+const SAMPLE_FORWARD_POST: Post = {
+	creator: { name: "示例转发者", isPremium: false },
+	publishedAt: SAMPLE_PUBLISHED_AT,
+	text: SAMPLE_FORWARD_TEXT,
+	richText: [{ kind: "text", text: SAMPLE_FORWARD_TEXT }],
+	repost: SAMPLE_AV_POST,
+	stats: { shares: 12, comments: 34, likes: 567 },
 };
 
-async function dynamicSample(scene: string): Promise<SampleProps<"dynamic">> {
-	// 正文结构树由**真正的构建器**造(不是这儿手写一份):预览与真出图只要各拼各的,迟早
-	// 长成两副样子,而两边都说不出哪儿错了。
-	return { node: await buildDynamicNode(DYNAMIC_SCENES[scene] ?? SAMPLE_TEXT_DYNAMIC, false, FMT) };
+const DYNAMIC_SCENES: Record<string, Post> = {
+	text: SAMPLE_TEXT_POST,
+	video: SAMPLE_VIDEO_POST,
+	pics: SAMPLE_DRAW_POST,
+	forward: SAMPLE_FORWARD_POST,
+};
+
+function dynamicSample(scene: string): SampleProps<"dynamic"> {
+	return { node: nodeFromPost(DYNAMIC_SCENES[scene] ?? SAMPLE_TEXT_POST, FMT) };
 }
 
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
@@ -458,9 +361,7 @@ const SAMPLES: {
  * (不报错:场景名是从 URL / 请求体来的,面板换了一版、链接被人存过书签都会送来旧名字,
  * 为这个给用户一张错误页不值)。
  *
- * **异步**是因为动态卡的正文只能由 `buildDynamicNode` 造,而它是 async。唯一的消费方
- * (预览路由)本来就在 async 里,所以这里跟着 async,而不是反过来去改那个出图共用的
- * 模板模块 —— 它在 23 张基准快照那条线上,少一个碰它的理由就少一分风险。
+ * 签名保持 **async**:唯一的消费方(预览路由)本来就在 async 里,别的卡种的示例也可能需要异步取东西。
  *
  * 喂 `renderCardWithSkin(kind, props, manifest)`。契约里视频 / 图廊那两组字段、动态类型都
  * 跟着 `node` 走(ADR-0019 决策 68),不再另交原始动态。

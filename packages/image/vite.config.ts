@@ -2,7 +2,8 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
 	pack: {
-		entry: ["src/index.ts"],
+		// `testing` 是只给测试用的子路径(见 src/testing.ts),不是正式出口。
+		entry: ["src/index.ts", "src/testing.ts"],
 		format: ["esm"],
 		dts: true,
 		clean: true,

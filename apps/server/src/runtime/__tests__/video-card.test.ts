@@ -1,14 +1,15 @@
 /**
- * 链接预览伪造的「投稿了视频」动态里的数字(㉑c 第 3 步)。
+ * 链接预览直接造的「投稿了视频」作品(㉑c 第 5 步)。
  *
- * 播放 / 弹幕数手里就是数字,直接放进原始动态(`stat.play` 本来就收 `number | string`),由卡片那头统一
- * `formatCount` 排一次 —— 不在这里先排成「6.5万」再让卡片解析回去。时长原始字段只能是字符串,所以仍先排成
- * 「m:ss」(卡片那头解析成秒再排,往返不失真);换入口那一步直接造 `Post` 时这里不再绕。
+ * 手里有现成的数字与秒数,直接填进 `Post`:播放 / 弹幕数原样是数字,时长是秒(`durationSec: info.duration`),
+ * 不再伪造一条 B 站原始动态再让翻译层把排好的字解析回来。「投稿了视频」是明说的 `label` —— 从前靠
+ * `archive.badge.text === "投稿视频"` 这个隐含耦合。
  */
 
 import type { VideoInfo } from "@bilibili-notify/api";
+import { normalizePost } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { videoToDynamic } from "../video-card.js";
+import { videoToPost } from "../video-card.js";
 
 const INFO: VideoInfo = {
 	bvid: "BV1zMtU6uEEb",
@@ -23,31 +24,38 @@ const INFO: VideoInfo = {
 	stat: { view: 65_000, danmaku: 120, reply: 30, favorite: 400, coin: 200, share: 15, like: 3000 },
 };
 
-describe("videoToDynamic —— 数字", () => {
-	const archive = () => {
-		const a = videoToDynamic(INFO).modules.module_dynamic.major?.archive;
-		if (!a) throw new Error("没有 archive");
-		return a;
-	};
-
-	it("播放数与弹幕数是原样的数字,不是排好的字", () => {
-		expect(archive().stat).toEqual({ play: 65_000, danmaku: 120 });
-		expect(typeof archive().stat.play).toBe("number");
-	});
-
-	it("时长排成「m:ss」/「h:mm:ss」(原始字段是字符串)", () => {
-		expect(archive().duration_text).toBe("1:02:03");
-		expect(
-			videoToDynamic({ ...INFO, duration: 754 }).modules.module_dynamic.major?.archive
-				?.duration_text,
-		).toBe("12:34");
-	});
-
-	it("互动数同样是数字", () => {
-		expect(videoToDynamic(INFO).modules.module_stat).toEqual({
-			comment: { count: 30 },
-			forward: { count: 15 },
-			like: { count: 3000 },
+describe("videoToPost", () => {
+	it("视频:播放 / 弹幕是原样的数字,时长是秒,封面只给地址", () => {
+		expect(videoToPost(INFO).video).toEqual({
+			cover: { url: "http://i0.hdslb.com/bfs/archive/cover.jpg" },
+			title: "示例标题",
+			description: "示例简介",
+			durationSec: 3723,
+			views: 65_000,
+			danmaku: 120,
 		});
+	});
+
+	it("「投稿了视频」是明说的 label;没有动态正文;作者只有名字(头像不给)", () => {
+		const post = videoToPost(INFO);
+		expect(post.label).toBe("投稿了视频");
+		expect(post.text).toBe("");
+		expect(post.creator).toEqual({ name: "示例UP" });
+	});
+
+	it("发布时间:unix 秒 → ISO;坏时间落在纪元,不抛", () => {
+		expect(videoToPost(INFO).publishedAt).toBe("2025-09-02T08:00:00.000Z");
+		expect(videoToPost({ ...INFO, pubdate: Number.NaN }).publishedAt).toBe(
+			"1970-01-01T00:00:00.000Z",
+		);
+	});
+
+	it("互动数:分享 / 评论 / 点赞 → shares / comments / likes", () => {
+		expect(videoToPost(INFO).stats).toEqual({ shares: 15, comments: 30, likes: 3000 });
+	});
+
+	it("过 normalizePost 原样不动(没有 richText 可丢)", () => {
+		const post = videoToPost(INFO);
+		expect(normalizePost(post)).toBe(post);
 	});
 });

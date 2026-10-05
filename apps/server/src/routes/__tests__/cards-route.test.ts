@@ -1462,6 +1462,55 @@ describe("cards route — /preview 走皮肤", () => {
 		spy.mockRestore();
 	});
 
+	/**
+	 * 真实动态预览(`renderRealDynamic`)也是「B 站原始动态 → `postFromDynamic` → `generatePostCard`」这一条:
+	 * 路由没有测试钉着的话,零件各自绿也证明不了它接上了。验红:把 renderRealDynamic 里的
+	 * `postFromDynamic(item)` 换成直接递原始动态,或把皮肤 id 那一格删掉,这条红。
+	 */
+	it("真实动态那条路:先翻成 Post 再交给 generatePostCard,皮肤 id 在 colorOptions 里", async () => {
+		const rawItem = {
+			basic: {},
+			id_str: "1",
+			type: "DYNAMIC_TYPE_WORD",
+			modules: {
+				module_author: { name: "真实UP", pub_ts: 1_700_000_000, vip: { type: 0 } },
+				module_dynamic: {
+					desc: {
+						text: "你好",
+						rich_text_nodes: [
+							{ type: "RICH_TEXT_NODE_TYPE_TEXT", orig_text: "你好", text: "你好" },
+						],
+					},
+				},
+				module_stat: { forward: { count: 1 }, comment: { count: 2 }, like: { count: 3 } },
+			},
+		};
+		const api = {
+			getUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+		} as unknown as BilibiliAPI;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generatePostCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
+			puppeteer: makeFakePuppeteer(),
+			api,
+			cardSkins: skinStore({ marked: MARKED }),
+		});
+		const res = await postPreview(app, {
+			kind: "dyn",
+			style: STYLE,
+			content: { uid: "12345" },
+			cardSkin: "marked",
+		});
+		expect(res.status).toBe(200);
+		const post = spy.mock.calls[0]?.[0];
+		expect(post).toMatchObject({ creator: { name: "真实UP" }, text: "你好" });
+		expect(post).not.toHaveProperty("modules");
+		expect((spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined)?.cardSkin).toBe("marked");
+		spy.mockRestore();
+	});
+
 	it("SC / 上舰同样带着皮肤 id", async () => {
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSCCard")

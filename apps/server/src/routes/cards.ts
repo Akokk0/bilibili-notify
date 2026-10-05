@@ -10,7 +10,7 @@
  *                            (same code path as production push).
  *   dyn  + content.uid     → fetch the user's space dynamic feed,
  *                            pick the offset-th item, render via
- *                            ImageRenderer.generateDynamicCard.
+ *                            postFromDynamic → ImageRenderer.generatePostCard.
  *   sc   + content.text    → text override on top of the SCCard mock.
  *   guard+ content.text    → text override (= new captain uname) on the
  *                            GuardCard mock.
@@ -37,6 +37,7 @@ import type {
 	PreviewResponse,
 	TestPushResponse,
 } from "@bilibili-notify/contract";
+import { postFromDynamic } from "@bilibili-notify/dynamic";
 import {
 	type CardSkinChoice,
 	type DynamicCardProps,
@@ -1200,7 +1201,8 @@ async function renderRealDynamic(
 	const item = items[idx];
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
-	return renderer.generateDynamicCard(item, skin);
+	// 真实动态:B 站原始数据先翻成中立的 `Post`,再走出卡器的唯一入口(推送与链接预览同一条)。
+	return renderer.generatePostCard(postFromDynamic(item), skin);
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────

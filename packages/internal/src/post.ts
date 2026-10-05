@@ -72,12 +72,15 @@ export interface Post {
 	locked?: { icon?: PostImage; title: string; hint: string };
 	/** 只表示图集。 */
 	images?: PostImage[];
-	/** 作品本身就是这个视频。播放与弹幕是视频自己的展示数字,点赞评论转发在 `stats`。 */
+	/**
+	 * 作品本身就是这个视频。播放与弹幕是视频自己的展示数字,点赞评论转发在 `stats`。
+	 * 时长选填(与 `Attachment.video` 一致):直播回放、首映这类没有时长,缺了就不画时长角标。
+	 */
 	video?: {
 		cover: PostImage;
 		title: string;
 		description: string;
-		durationSec: number;
+		durationSec?: number;
 		views?: number;
 		danmaku?: number;
 	};

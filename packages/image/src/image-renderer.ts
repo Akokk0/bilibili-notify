@@ -14,6 +14,7 @@ import {
 	effectiveCardSkinKnobs,
 	formatCount,
 	type Logger,
+	type Post,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
@@ -34,6 +35,7 @@ import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
 import { buildDynamicNode, type DynamicNode } from "./templates/dynamic-content";
 import type { LiveCardInput } from "./templates/live-card";
+import { nodeFromPost } from "./templates/post-node";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, CardSkinChoice, Dynamic, LiveData } from "./types";
@@ -713,14 +715,29 @@ export class ImageRenderer {
 	}
 
 	/**
-	 * **B 站动态的适配层**:原始动态 → {@link buildDynamicNode} 造 node(皮肤要的类型与图也
-	 * 一并记在 node 上)→ {@link generateNeutralDynamicCard}。签名不动,推送与链接解析照旧调它。
+	 * **作品卡的入口**(㉑c 第 5 步):吃一份平台中立的 {@link Post},不收任何平台的原始数据。
+	 * `Post` → 卡片节点({@link nodeFromPost})→ {@link generateNeutralDynamicCard}。发布时间由本渲染器按机器
+	 * 本地时区排({@link unixTimestampToString})。
 	 *
-	 * 开播伪动态(`DYNAMIC_TYPE_LIVE_RCMD`)在**顶层**造不出 node,在那一步抛「直播开播动态，不做
-	 * 处理」。动态引擎在过滤与出卡之前就按类型把顶层的它跳过了(ADR-0019 决策 66),不再靠认这句
-	 * 原文;顶层还撞得上它的只剩卡片页的真实预览(按序号取某位 UP 的一条动态,可能正好是它)。
-	 * **转发**的原动态是它时不抛 —— 引擎跳不掉转发,那一格画成「无法渲染」那一类提示,转发照常
-	 * 出卡。造 node 放在包错之外,那里报出来的就是这句原文,比套一层「生成动态卡片失败」说得清。
+	 * B 站动态由 `packages/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;链接预览手里有现成的数据,
+	 * 直接造 `Post`。拓展作品那条路到 ㉑d 才切过来,目前仍走 {@link generateNeutralDynamicCard}。
+	 */
+	async generatePostCard(
+		post: Post,
+		colorOptions: CardColorOptions = {},
+		/** 渲染优先级;链接解析出的卡传 `low`,推送卡不传。 */
+		options?: { priority?: RenderPriority },
+	): Promise<Buffer> {
+		const node = nodeFromPost(post, { time: (seconds) => this.unixTimestampToString(seconds) });
+		return this.generateNeutralDynamicCard(node, colorOptions, options);
+	}
+
+	/**
+	 * **旧入口**(吃 B 站原始动态):原始动态 → {@link buildDynamicNode} 造 node →
+	 * {@link generateNeutralDynamicCard}。生产里已经没人调了(都改走 `postFromDynamic` → {@link generatePostCard}),
+	 * 下一步随 `buildDynamicNode` 一起删。
+	 *
+	 * 开播伪动态(`DYNAMIC_TYPE_LIVE_RCMD`)在**顶层**造不出 node,在那一步抛「直播开播动态，不做处理」。
 	 */
 	async generateDynamicCard(
 		data: Dynamic,

@@ -266,9 +266,9 @@ interface ConfirmationWindow {
 - **一条消息最多三个链接**;机器人自己发的消息不解析;`b23.tv` 只跟一跳 `Location`、只认落在 `bilibili.com` 的目标(短链是别人贴的,跟到哪儿就是让谁指挥我们)。
 - **分享卡也认**(OneBot):用 B 站 App「分享到 QQ」发进群的是一张 json / xml 卡,正文一个字都没有、链接藏在卡的字段里(`meta.detail_1.qqdocurl` / `meta.news.jumpUrl`)。`extractGroupMessage` 把卡里的链接单放一格 `cardLinks`,其中 QQ 小程序卡(`app` = `com.tencent.miniapp_01`)的再单放 `miniAppCardLinks`、链接解析不读(群里已经有一张能点开播放的卡了,2026-09-07 起一律不回)(正文还是用户敲的那句话;json 先 parse 再逐字符串找,不然 `https:\/\/` 这种转义写法对着原文找不到;原文里连 `bilibili.com` / `b23.tv` 都没有的卡不解析),链接解析把正文与 `cardLinks` 拼起来找;私聊那条不做这个,指令入口只认文字。测试在 `platforms/__tests__/onebot-inbound.test.ts`。
 
-**卡片不新做**:`video-card.ts` 把 `getVideoInfo` 的结果拼成一条 `DYNAMIC_TYPE_AV` 形态的动态,喂给现有的
-`generateDynamicCard` —— 动态卡的版式编辑器、每类型样式、皮肤全部现成。播放 / 弹幕数按接口的样子给
-**格式化好的字符串**(`"6.5万"`),`packages/image` 的 `archive.stat` 类型已放宽成 `number | string`。
+**卡片不新做**:`video-card.ts` 把 `getVideoInfo` 的结果直接造成一份「投稿了视频」形态的 `Post`(`label` 明说),喂给现有的
+`generatePostCard` —— 动态卡的版式编辑器、每类型样式、皮肤全部现成。播放 / 弹幕数是原样的数字、时长是秒,由出卡器统一
+排版(`formatCount` / `formatClock`),不再伪造一条 B 站原始动态。
 
 三处纯函数各自有测试钉着:`extractVideoLinks`(`packages/internal`,域名用负向后顾钉边界,`notbilibili.com` 不算)、
 `BilibiliAPI.getVideoInfo` / `resolveShortLink`(`packages/api`)、`createLinkParser`(`apps/server/src/runtime/__tests__/link-parser.test.ts`,
