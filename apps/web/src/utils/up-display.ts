@@ -37,7 +37,7 @@ export function displayName(sub: Subscription): string {
  * 候选头像 data URL —— 它是个网址,提交后服务端落图库、回来的资料里换成 `avatar`);都没有就是 `undefined`
  * (头像件画首字)。所有读订阅头像的地方都走这一个,别各自去挑哪一格。
  */
-export function profileAvatarSrc(
+export function profileAvatarUrl(
 	profile: { avatar?: string; avatarUrl?: string } | undefined,
 ): string | undefined {
 	if (profile?.avatar) return imageUrl(profile.avatar);
@@ -46,17 +46,17 @@ export function profileAvatarSrc(
 
 /**
  * 历史行上 UP 的头像地址(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):行写入那一刻的头像快照(图库引用,只有拓展行有)优先;
- * 没有快照(B 站行,抓图服务在 3a)就退到订阅**现在**的头像({@link profileAvatarSrc}),再没有就是 `undefined`(头像件画首字)。
+ * 没有快照(B 站行,抓图服务在 3a)就退到订阅**现在**的头像({@link profileAvatarUrl}),再没有就是 `undefined`(头像件画首字)。
  *
  * **过了保留期的行不用快照**:那几天的行已经不是图库的引用方,图随时可能被清扫收走,用它就是一张裂图;
  * 退到订阅现在的头像更稳。Dashboard 与历史页的行都走这一个。
  */
-export function historyRowAvatarSrc(
+export function historyRowAvatarUrl(
 	row: Pick<HistoryEntryView, "avatarSnapshot" | "isPastRetention">,
 	profile: { avatar?: string; avatarUrl?: string } | undefined,
 ): string | undefined {
 	if (row.avatarSnapshot && !row.isPastRetention) return imageUrl(row.avatarSnapshot);
-	return profileAvatarSrc(profile);
+	return profileAvatarUrl(profile);
 }
 
 /**

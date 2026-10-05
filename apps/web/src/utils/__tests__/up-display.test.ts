@@ -5,8 +5,8 @@
  *   也不变。
  * - 身份小字:B 站行「UID xxx」;拓展行「平台名 · 外部 id」,平台名由调用方按已装拓展的清单取。
  * - 是不是拓展来的只看 `identity.sourceKey`(订阅与历史行共用 `isExtensionIdentity`)。
- * - 订阅资料里头像的显示地址(`profileAvatarSrc`):存进图库的走 `/api/images/<ref>`,否则是远端网址,都没有就是没有。
- * - 历史行上的头像地址(`historyRowAvatarSrc`):行的头像快照(图库引用,拓展行才有)优先,没有就退到订阅现在的头像;
+ * - 订阅资料里头像的显示地址(`profileAvatarUrl`):存进图库的走 `/api/images/<ref>`,否则是远端网址,都没有就是没有。
+ * - 历史行上的头像地址(`historyRowAvatarUrl`):行的头像快照(图库引用,拓展行才有)优先,没有就退到订阅现在的头像;
  *   过了保留期的行不用快照(那几天已不是图库的引用方,图会被清扫收走)。
  */
 
@@ -14,12 +14,12 @@ import { colorFromUid } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import { makeEmptySubscription } from "../../types/domain";
 import {
-	historyRowAvatarSrc,
+	historyRowAvatarUrl,
 	historyRowColor,
 	historyRowIdentity,
 	isExtensionIdentity,
 	isExtensionRow,
-	profileAvatarSrc,
+	profileAvatarUrl,
 	subscriptionColor,
 } from "../up-display";
 
@@ -32,32 +32,32 @@ const EXT_ROW = {
 	identity: { sourceKey: "douyin", externalId: "12345" },
 };
 
-describe("profileAvatarSrc(订阅资料里头像的显示地址)", () => {
+describe("profileAvatarUrl(订阅资料里头像的显示地址)", () => {
 	const REF = `${"a".repeat(64)}.png`;
 
 	it("存进图库的(拓展订阅的 avatar)→ 图库的同源读口 /api/images/<ref>", () => {
-		expect(profileAvatarSrc({ avatar: REF })).toBe(`/api/images/${REF}`);
+		expect(profileAvatarUrl({ avatar: REF })).toBe(`/api/images/${REF}`);
 	});
 
 	it("远端网址(B 站的 avatarUrl,或新建草稿里装着的候选头像 data URL)→ 原样", () => {
-		expect(profileAvatarSrc({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" })).toBe(
+		expect(profileAvatarUrl({ avatarUrl: "https://i0.hdslb.com/bfs/face/x.jpg" })).toBe(
 			"https://i0.hdslb.com/bfs/face/x.jpg",
 		);
-		expect(profileAvatarSrc({ avatarUrl: "data:image/png;base64,AAAA" })).toBe(
+		expect(profileAvatarUrl({ avatarUrl: "data:image/png;base64,AAAA" })).toBe(
 			"data:image/png;base64,AAAA",
 		);
 	});
 
 	it("两格都有时图库的赢(服务端不会同时给,但拿图库里的才是服务端落了盘的)", () => {
-		expect(profileAvatarSrc({ avatar: REF, avatarUrl: "https://example.com/a.jpg" })).toBe(
+		expect(profileAvatarUrl({ avatar: REF, avatarUrl: "https://example.com/a.jpg" })).toBe(
 			`/api/images/${REF}`,
 		);
 	});
 
 	it("都没有(两格都缺、没有资料、旧数据里的空串)→ undefined,头像件画首字", () => {
-		expect(profileAvatarSrc(undefined)).toBeUndefined();
-		expect(profileAvatarSrc({})).toBeUndefined();
-		expect(profileAvatarSrc({ avatar: "", avatarUrl: "" })).toBeUndefined();
+		expect(profileAvatarUrl(undefined)).toBeUndefined();
+		expect(profileAvatarUrl({})).toBeUndefined();
+		expect(profileAvatarUrl({ avatar: "", avatarUrl: "" })).toBeUndefined();
 	});
 });
 
@@ -158,31 +158,31 @@ describe("historyRowIdentity", () => {
 	});
 });
 
-describe("historyRowAvatarSrc(历史行上 UP 的头像地址)", () => {
+describe("historyRowAvatarUrl(历史行上 UP 的头像地址)", () => {
 	const SNAPSHOT = `${"b".repeat(64)}.png`;
 	const CURRENT = `${"c".repeat(64)}.png`;
 
 	it("有头像快照(拓展行)→ 快照的图库地址,不管订阅现在的头像是什么", () => {
-		expect(historyRowAvatarSrc({ avatarSnapshot: SNAPSHOT }, { avatar: CURRENT })).toBe(
+		expect(historyRowAvatarUrl({ avatarSnapshot: SNAPSHOT }, { avatar: CURRENT })).toBe(
 			`/api/images/${SNAPSHOT}`,
 		);
 	});
 
 	it("没有快照(B 站行)→ 订阅现在的头像:图库的、远端网址的都行", () => {
-		expect(historyRowAvatarSrc({}, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
-		expect(historyRowAvatarSrc({}, { avatarUrl: "https://i0.hdslb.com/new.jpg" })).toBe(
+		expect(historyRowAvatarUrl({}, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
+		expect(historyRowAvatarUrl({}, { avatarUrl: "https://i0.hdslb.com/new.jpg" })).toBe(
 			"https://i0.hdslb.com/new.jpg",
 		);
 	});
 
 	it("没有快照、订阅也没了(或没有头像)→ undefined,头像件画首字", () => {
-		expect(historyRowAvatarSrc({}, undefined)).toBeUndefined();
-		expect(historyRowAvatarSrc({}, {})).toBeUndefined();
+		expect(historyRowAvatarUrl({}, undefined)).toBeUndefined();
+		expect(historyRowAvatarUrl({}, {})).toBeUndefined();
 	});
 
 	it("过了保留期的行不用快照(图随时会被清扫收走):退到订阅现在的头像", () => {
 		const past = { avatarSnapshot: SNAPSHOT, isPastRetention: true as const };
-		expect(historyRowAvatarSrc(past, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
-		expect(historyRowAvatarSrc(past, undefined)).toBeUndefined();
+		expect(historyRowAvatarUrl(past, { avatar: CURRENT })).toBe(`/api/images/${CURRENT}`);
+		expect(historyRowAvatarUrl(past, undefined)).toBeUndefined();
 	});
 });

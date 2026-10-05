@@ -31,7 +31,7 @@ import {
 	subscriptionIdentityOf,
 } from "../types/domain";
 // 不走 pages/up/helpers —— 组件层反向 import 页面层是圈套。
-import { displayName, profileAvatarSrc, subscriptionColor } from "../utils/up-display";
+import { displayName, profileAvatarUrl, subscriptionColor } from "../utils/up-display";
 
 /** "__global" = 全局默认;其余 = subscription.id。 */
 export type Scope = "__global" | string;
@@ -130,7 +130,7 @@ export function ScopeTabs<S extends Subscription>({
 								name={displayName(sub)}
 								color={color}
 								size={18}
-								url={profileAvatarSrc(sub.cachedProfile)}
+								url={profileAvatarUrl(sub.cachedProfile)}
 							/>
 							<span className="max-w-35 truncate" title={displayName(sub)}>
 								{displayName(sub)}
@@ -209,7 +209,7 @@ export function ScopeTabs<S extends Subscription>({
 												name={displayName(sub)}
 												color={color}
 												size={28}
-												url={profileAvatarSrc(sub.cachedProfile)}
+												url={profileAvatarUrl(sub.cachedProfile)}
 											/>
 											<div className="min-w-0 flex-1">
 												<div className="truncate text-bn-sm font-bold text-bn-text-primary">

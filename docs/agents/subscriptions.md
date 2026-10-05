@@ -63,13 +63,13 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 **拓展资料的落盘**：`subscription-reported`（`kind === "profile"`）→ `runtime/reported-profiles.ts` 的 `bindReportedProfiles`：给了哪格改哪格；停用的订阅照样更新；订阅刚删时报上来的不再种；排一条队（两条交错读改写会互相冲掉）；面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。
 
-**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarSrc` 是唯一的取址处：有 `avatar` 走读口，否则 `avatarUrl`，都没有退首字）。
+**拓展订阅的头像在图库里**（决策 49；进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗）：资料缓存里 `avatar` 是 `ImageRef`（`<sha256>.<ext>`），面板走图库的同源读口 `GET /api/images/<ref>`（`apps/web/src/utils/up-display.ts` 的 `profileAvatarUrl` 是唯一的取址处：有 `avatar` 走读口，否则 `avatarUrl`，都没有退首字）。
 
 - 两条来路都走 `runtime.profileImages`（图库的存图口，资料缓存登记成引用方后才拿得到，装配在 `runtime/bootstrap.ts`）：新建订阅时的 `seedExtensionProfile`（面板交的 data URL 先在路由层过 `decodeSubscriptionAvatar`，128 KiB 的字、只收 png / jpeg / webp、魔数得对得上声明），与「报资料更新」（`reported-profiles.ts`，字节过 `checkSubscriptionAvatarBytes`，约 96 KiB 封顶）。两道关都在 `runtime/subscription-avatar.ts`，**不收 gif、不收 SVG**；图库自己再按嗅探认格式。
 - 图按内容起名：同一张图再报一次引用不变（面板地址不变，浏览器缓存照样命中）。没给头像时沿用旧的引用 —— 沿用也是「抄引用」，先 `keep` 续期；图已经不在了就两格都缺，不留悬空的引用。
 - **没有「删订阅顺手删头像文件」这一步**：订阅被删，资料缓存里没了这一条（FansPoller 听 `subscription-changed`、开机 `pruneOrphanSubRuntime`），头像不再被引用，由图库清扫（每 6 小时加开机，过了 24 小时宽限期）收走；另一条订阅还引用着同一张图时不收。资料缓存仓的 `listImageRefs()` 交名单，没载入就被问会先载入再答。
 - 出卡时 `/api/images/<ref>` 截图加载不到 —— `runtime/extension-push-common.ts` 的 `readProfileAvatar` 从图库读**字节**，`extensionCardAuthor` 转 data URL（事件带了作者头像就用事件的，哪儿都没有给透明占位，决策 54 / 68）；锐评卡（`stats/roast-deliver.ts`）同一个读法。同一个文件里的 `extensionSubscriptionName` 定卡上作者名与模板 `{name}`：事件里的作者名 → 资料名 → 外部 id（别名 `name` 已退役，ADR-0021 决策 16）；面板上标「备注」的 `notes` 是自由文字，**不当名字用**（决策 77）。
-- 历史行的头像快照 ⑳d 起叫 `avatarSnapshot`、只装图库引用：拓展行写行时抄资料缓存里的 `avatar`（历史仓先续期，续不上不写这一格）；B 站行缺着（服务端不抓 B 站头像，抓图服务在 3a），面板退到订阅现在的头像（`profileAvatarSrc`）；过了保留期的行面板也不用快照。
+- 历史行的头像快照 ⑳d 起叫 `avatarSnapshot`、只装图库引用：拓展行写行时抄资料缓存里的 `avatar`（历史仓先续期，续不上不写这一格）；B 站行缺着（服务端不抓 B 站头像，抓图服务在 3a），面板退到订阅现在的头像（`profileAvatarUrl`）；过了保留期的行面板也不用快照。
 
 **显示名与颜色**（`apps/web/src/utils/up-display.ts`）：
 

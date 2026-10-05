@@ -51,7 +51,7 @@ import type {
 	ImageGroupSettings,
 	TemplateBundle,
 } from "../../types/globals";
-import { displayName, profileAvatarSrc, subscriptionColor } from "../up/helpers";
+import { displayName, profileAvatarUrl, subscriptionColor } from "../up/helpers";
 import type { SubscriptionPlatform } from "../up/subscription-source";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
 import { buildOverridesPatch, type OverridesPatch } from "./overrides-patch";
@@ -234,7 +234,7 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 					name={displayName(sub)}
 					color={color}
 					size={48}
-					url={profileAvatarSrc(sub.cachedProfile)}
+					url={profileAvatarUrl(sub.cachedProfile)}
 					ring
 				/>
 				<div className="min-w-0 flex-1">

@@ -68,13 +68,13 @@ import {
 import type { GlobalConfig, ModuleLogLevels } from "../types/globals";
 import { headlineOf, messageCountOf } from "../utils/push-row";
 import {
-	historyRowAvatarSrc,
+	historyRowAvatarUrl,
 	historyRowColor,
 	historyRowIdentity,
 	isExtensionIdentity,
 } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
-import { colorFromUid, displayName, profileAvatarSrc, subscriptionColor } from "./up/helpers";
+import { colorFromUid, displayName, profileAvatarUrl, subscriptionColor } from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
 
@@ -103,7 +103,7 @@ function liveRowFace(
 	platform?: { label: string; color?: string };
 } {
 	const sub = lookup.byId(r.subscriptionId);
-	const avatar = profileAvatarSrc(sub?.cachedProfile);
+	const avatar = profileAvatarUrl(sub?.cachedProfile);
 	if (r.kind !== "extension") {
 		return {
 			name: sub ? displayName(sub) : `UID ${r.uid}`,
@@ -383,7 +383,7 @@ export function TimelinePanel({
 						const name =
 							h.nameSnapshot ?? (sub ? displayName(sub) : historyRowIdentity(h, platformLabelOf));
 						// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
-						const avatar = historyRowAvatarSrc(h, sub?.cachedProfile);
+						const avatar = historyRowAvatarUrl(h, sub?.cachedProfile);
 						// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 						const color = historyRowColor(h);
 						// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同「正在直播」;
@@ -467,7 +467,7 @@ function fansRowFace(
 	const face = {
 		name: sub ? displayName(sub) : fallback,
 		color: upColor(e, e.subscriptionId),
-		avatar: profileAvatarSrc(sub?.cachedProfile),
+		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
 	if (e.extensionId === undefined) return face;
 	const platform = subscriptionPlatformOf({ extensionId: e.extensionId }, extensions);

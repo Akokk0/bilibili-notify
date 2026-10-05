@@ -33,7 +33,7 @@ import type { PushTarget, Subscription } from "../types/domain";
 import type { GlobalConfig } from "../types/globals";
 import { imageUrl } from "../utils/image-url";
 import { hasDetails, headlineOf, messageCountOf } from "../utils/push-row";
-import { historyRowAvatarSrc, historyRowColor, isExtensionIdentity } from "../utils/up-display";
+import { historyRowAvatarUrl, historyRowColor, isExtensionIdentity } from "../utils/up-display";
 import { displayName } from "./up/helpers";
 import { RelativeTime } from "./up/relative-time";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
@@ -249,7 +249,7 @@ function HistoryRow({
 	// uid(ADR-0019 决策 73)。
 	const upName = entry.nameSnapshot ?? (sub ? displayName(sub) : entry.identity.externalId);
 	// 头像快照是图库引用(只有拓展行有);没有快照 / 过了保留期就退到订阅现在的头像,再没有就是默认占位。
-	const upAvatar = historyRowAvatarSrc(entry, sub?.cachedProfile);
+	const upAvatar = historyRowAvatarUrl(entry, sub?.cachedProfile);
 	// 颜色跟着人走,与订阅卡同一个颜色(决策 73)。
 	const upColor = historyRowColor(entry);
 	// 拓展行带一枚平台徽章(决策 9:订阅删了也看得出是哪个平台的),画法同首页「正在直播」;B 站行不画。

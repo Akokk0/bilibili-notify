@@ -10,7 +10,7 @@ import {
 	type SubscriptionTag,
 	subscriptionIdentityOf,
 } from "../../types/domain";
-import { displayName, profileAvatarSrc, subscribedFeatures, subscriptionColor } from "./helpers";
+import { displayName, profileAvatarUrl, subscribedFeatures, subscriptionColor } from "./helpers";
 import { RelativeTime } from "./relative-time";
 import {
 	featureLabelOf,
@@ -159,7 +159,7 @@ export function UpCard({
 						name={displayName(sub)}
 						color={color}
 						size={48}
-						url={profileAvatarSrc(sub.cachedProfile)}
+						url={profileAvatarUrl(sub.cachedProfile)}
 						ring
 					/>
 				</div>
