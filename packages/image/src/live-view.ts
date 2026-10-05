@@ -52,11 +52,14 @@ function countText(v: number | undefined, options?: FormatCountOptions): string 
 }
 
 /**
- * 封面的地址。有 `ref` 认它的解析结果,**解析不到就是没有封面**(不退回 `url`:引用说的是图库里那张,它没了
+ * 封面的地址(会员卡的徽章同一条规矩,{@link buildMembershipCardView} 也用它)。有 `ref` 认它的解析结果,**解析不到就是没有封面**(不退回 `url`:引用说的是图库里那张,它没了
  * 就是没了);只有 `url` 原样用;两样都没有同样没有。作品图的兜底(画透明占位,见 `pictureUrl`)在这里不适用 ——
  * 直播封面没有就整格换成「暂无封面」占位图。
  */
-function coverUrlOf(cover: PostImage | undefined, imageUrl?: ImageUrlOf): string | undefined {
+export function coverUrlOf(
+	cover: PostImage | undefined,
+	imageUrl?: ImageUrlOf,
+): string | undefined {
 	if (cover?.ref !== undefined) return imageUrl?.(cover.ref) || undefined;
 	return cover?.url || undefined;
 }

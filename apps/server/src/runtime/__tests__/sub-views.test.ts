@@ -270,6 +270,20 @@ describe("per-kind 样式解析进视图", () => {
 	});
 });
 
+/**
+ * 直播引擎认人靠 B 站 uid,但中立事件(会员 / 醒目留言,㉓c)的 `subscriptionId` 是核心的订阅 id。宿主在这里把 `sub.id` 带进
+ * `SubItemView.subscriptionId`,会话再把它交给翻译函数。这一格断了,类型照样绿(测试里的视图都是 `as SubItemView`),
+ * 事件上的订阅 id 却静默变成 `undefined`,所以单独钉。
+ */
+describe("buildLiveSubViewSingle — 订阅 id 带进视图", () => {
+	it("subscriptionId 是订阅自己的 id(不是 B 站 uid)", () => {
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), makeDefaultGlobalConfig());
+		// 验红:把 engines.ts 里 `subscriptionId: sub.id` 改成 `subscriptionId: uid`,这条红。
+		expect(view.subscriptionId).toBe("11111111-1111-1111-1111-111111111111");
+		expect(view.uid).toBe("12345");
+	});
+});
+
 describe("③ buildLiveSubViewSingle — roomId 读盘复用", () => {
 	const runtimeWithRoomId = (roomId?: string): SubRuntimeStore =>
 		({

@@ -647,9 +647,6 @@ importers:
 
   packages/image:
     dependencies:
-      '@bilibili-notify/blive':
-        specifier: workspace:^
-        version: link:../blive
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal

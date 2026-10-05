@@ -16,7 +16,6 @@
 
 import { type CardSkinKind, formatCount } from "@bilibili-notify/internal";
 import { htmlToPlain } from "../../html-to-plain";
-import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../../styles";
 import type { LiveCardView } from "../../templates/live-card";
 import { nodeFromPost } from "../../templates/post-node";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
@@ -71,7 +70,7 @@ export function stripCardHooks(html: string): string {
 /** 出厂默认字体(DEFAULT_CARD_STYLE.font)。全部快照固定用它,不传 fontFace。 */
 const FONT = "PingFang SC, sans-serif";
 
-/** GUARD_LEVEL_IMG(image-renderer 私有,不为测试改导出,按现状抄一份)。 */
+/** 三档官方徽章图(B 站的档位表里的那三条,夹具冻住不动,不 import 档位表)。 */
 const GUARD_IMG = {
 	1: "https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
 	2: "https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
@@ -153,55 +152,104 @@ const dynamicInput = (name: string): (() => Promise<CardRenderInput>) => {
 
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
 
-/** 照 `generateSCCard` 的拼法:价格 → 电池 → 档位 → 配色 / 时长。 */
-function scProps(price: number, over: Record<string, unknown> = {}): Record<string, unknown> {
-	const levelIndex = getSCLevel(price * 10);
+/**
+ * 三个价位档在块吃的视图里的样子(只用到三档:夹具的 ¥30 / ¥100 / ¥2000 各落一档)。夹具直接写排好的
+ * `SuperchatCardView`、**不经 `buildSuperchatCardView`**:基准要冻住不动,一个字面值写在这里,出图器那头的颜色表或
+ * 时长排版哪天悄悄变了,这里就红。时长是 `formatDuration` 排的写法(60 秒 →「1分」、300 秒 →「5分」、7200 秒 →「2小时」)。
+ */
+const SC_TIER_VIEW = {
+	1: { rank: 1, duration: "1分", bgColor: ["#a8e6cf", "#88d8b0"] },
+	3: { rank: 3, duration: "5分", bgColor: ["#a29bfe", "#6c5ce7"] },
+	6: { rank: 6, duration: "2小时", bgColor: ["#ff7675", "#d63031"] },
+} as const;
+
+function scProps(
+	amount: number,
+	rank: keyof typeof SC_TIER_VIEW,
+	over: Record<string, unknown> = {},
+): Record<string, unknown> {
 	return {
-		senderFace: "http://i0.hdslb.com/bfs/face/1122334455667788990011223344556677889900.jpg",
-		senderName: "示例观众",
+		// B 站这条路到 3a 之前不给头像(观众与主播都是远端地址,`Creator.avatar` 只收图库引用):头像块整块收起。
+		// 夹具直接写块吃的视图,所以这两格得跟着真实产物手写成「没有」(照 ㉒b 直播卡的先例)。
+		viewerAvatarUrl: "",
+		viewerName: "示例观众",
 		masterName: "示例主播",
-		masterAvatarUrl: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
+		masterAvatarUrl: undefined,
 		text: "主播加油！",
-		price,
-		duration: Object.values(SC_LEVELS)[levelIndex].duration,
-		bgColor: SC_COLORS[levelIndex],
+		amount: `¥${amount}`,
+		amountValue: amount,
+		...SC_TIER_VIEW[rank],
 		...over,
 	};
 }
 
 const scInput = (
-	price: number,
+	amount: number,
+	rank: keyof typeof SC_TIER_VIEW,
 	over: Record<string, unknown> = {},
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
-		props: scProps(price, over),
+		props: scProps(amount, rank, over),
 		options: { title: "醒目留言通知", font: FONT, htmlWidth: 290 },
 	});
 };
 
 // ── 上舰卡 ────────────────────────────────────────────────────────────────────
 
-/** 照 `generateGuardCard` 的拼法组 props。 */
+/**
+ * 三档在块吃的视图里的样子(档名、rank、官方徽章、档色是**一个值**、宣告语写成函数 —— 观众名与主播名在夹具里可以改)。
+ * 同 `SC_TIER_VIEW`:夹具冻住,不经 `buildMembershipCardView`、不 import 档位表。键是 B 站 `guard_level`(夹具名里的 level)。
+ */
+const GUARD_TIER_VIEW = {
+	1: {
+		tierName: "总督",
+		rank: 3,
+		color: "#f2a053",
+		colorEnd: "#ef5f5f",
+		announcement: (viewer: string, master: string) =>
+			`"${viewer}"上任\n"${master}"大航海舰队总督！`,
+	},
+	2: {
+		tierName: "提督",
+		rank: 2,
+		color: "#d8a0e6",
+		colorEnd: "#b494e5",
+		announcement: (viewer: string, master: string) =>
+			`"${viewer}"就任\n"${master}"大航海舰队提督！`,
+	},
+	3: {
+		tierName: "舰长",
+		rank: 1,
+		color: "#4ebcec",
+		colorEnd: "#b494e5",
+		announcement: (viewer: string, master: string) => `"${viewer}号"加入\n"${master}"大航海舰队！`,
+	},
+} as const;
+
 function guardProps(
 	guardLevel: 1 | 2 | 3,
-	over: Record<string, unknown> = {},
+	over: { viewerName?: string } = {},
 ): Record<string, unknown> {
+	const tier = GUARD_TIER_VIEW[guardLevel];
+	const viewerName = over.viewerName ?? "示例观众";
+	const masterName = "示例主播";
 	return {
-		captainImgUrl: GUARD_IMG[guardLevel],
-		guardLevel,
-		uname: "示例观众",
-		face: "http://i0.hdslb.com/bfs/face/1122334455667788990011223344556677889900.jpg",
-		isAdmin: 0,
-		masterAvatarUrl: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
-		masterName: "示例主播",
-		bgColor: BG_COLORS[guardLevel],
-		...over,
+		viewerName,
+		// 同 `scProps`:B 站这条路到 3a 之前不给头像,观众与主播的头像格都不画。
+		viewerAvatarUrl: "",
+		masterAvatarUrl: "",
+		masterName,
+		tierName: tier.tierName,
+		rank: tier.rank,
+		iconUrl: GUARD_IMG[guardLevel],
+		announcement: tier.announcement(viewerName, masterName),
+		bgColor: [tier.color, tier.colorEnd],
 	};
 }
 
 const guardInput = (
 	guardLevel: 1 | 2 | 3,
-	over: Record<string, unknown> = {},
+	over: { viewerName?: string } = {},
 ): (() => Promise<CardRenderInput>) => {
 	return async () => ({
 		props: guardProps(guardLevel, over),
@@ -385,16 +433,15 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "醒目留言卡",
 		kind: "sc",
 		label: "sc-low：最低档(¥30 → Level1 配色)，留言里的 & < > 与换行都要转义",
-		build: scInput(30, { text: "  主播加油！\n<b>今天也很好听</b> & 明天见  " }),
+		build: scInput(30, 1, { text: "  主播加油！\n<b>今天也很好听</b> & 明天见  " }),
 	},
 	{
 		name: "sc-high",
 		group: "醒目留言卡",
 		kind: "sc",
-		label: "sc-high：最高档(¥2000 → Level6 配色)，无主播头像",
-		build: scInput(2000, {
-			senderName: "示例大哥",
-			masterAvatarUrl: undefined,
+		label: "sc-high：最高档(¥2000 → Level6 配色)",
+		build: scInput(2000, 6, {
+			viewerName: "示例大哥",
 			text: "今晚这首点给所有还没下班的人",
 		}),
 	},
@@ -403,25 +450,22 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		group: "醒目留言卡",
 		kind: "sc",
 		label: "sc-custom-layout：改顺序 + 空留言(块收起) + 首尾分割线的抑制与弹出",
-		build: scInput(100, { text: "" }),
+		build: scInput(100, 3, { text: "" }),
 	},
 
 	{
 		name: "guard-captain",
 		group: "上舰卡",
 		kind: "guard",
-		label: "guard-captain：舰长(level 3)，徽章在右，主播名(isAdmin=0)",
+		label: "guard-captain：舰长(level 3)，徽章在右",
 		build: guardInput(3),
 	},
 	{
 		name: "guard-governor",
 		group: "上舰卡",
 		kind: "guard",
-		label: "guard-governor：总督(level 1)，房管(isAdmin=1)",
-		build: guardInput(1, {
-			uname: "示例大哥",
-			isAdmin: 1,
-		}),
+		label: "guard-governor：总督(level 1)，另一个观众名",
+		build: guardInput(1, { viewerName: "示例大哥" }),
 	},
 	{
 		name: "guard-badge-left",

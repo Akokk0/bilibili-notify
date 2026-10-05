@@ -45,6 +45,10 @@ describe("BILIBILI_GUARD_PROGRAM —— 档色(留卡片那一套)", () => {
 		expect(guardTierOf(3)?.color).toBe("#4ebcec");
 		expect(guardTierOf(2)?.color).toBe("#d8a0e6");
 		expect(guardTierOf(1)?.color).toBe("#f2a053");
+		// 止色:卡的背景从档色渐变到它(0.x 的会员卡就是这三对)。
+		expect(guardTierOf(3)?.colorEnd).toBe("#b494e5");
+		expect(guardTierOf(2)?.colorEnd).toBe("#b494e5");
+		expect(guardTierOf(1)?.colorEnd).toBe("#ef5f5f");
 	});
 });
 

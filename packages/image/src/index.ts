@@ -33,6 +33,7 @@ export {
 // 直播卡的中立输入 → 块与皮肤契约吃的视图(ADR-0019 决策 68)。绕开 ImageRenderer 自己拼
 // `renderCardWithSkin` 入参的调用方(预览路由)用它,与推送出图排出同一份。
 export { buildLiveCardView, type LiveCardViewOptions } from "./live-view";
+export { buildMembershipCardView, type MembershipCardViewOptions } from "./membership-view";
 // 出厂示例卡片数据 —— 皮肤编辑器的实时预览拿它当「假数据」出图(ADR-0014 决策 22)。
 // 刻意回 `unknown`:示例数据不是对外契约,别让调用方照它的形状写类型。
 export { sampleCard } from "./preview/sample-cards";
@@ -84,12 +85,15 @@ export {
 // 超上限的图压进预算 —— 用 Chrome 自己当编码器,不引新依赖。凡是自己拼
 // `resolveKnobAssets` 入参的调用方都该把它接上,否则大图照旧静默不出。
 export { shrinkImageForCssVar } from "./skin/shrink-image";
+export { buildSuperchatCardView, type SuperchatCardViewOptions } from "./superchat-view";
 // 七种卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
 // 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
 export type { DynamicCardProps } from "./templates/dynamic-card";
 // 图廊最多铺几格:来源据此决定往图库存前几张(排在后面的不画,不必存)。
 export { GALLERY_MAX_IMAGES } from "./templates/dynamic-content";
-export type { GuardCardProps } from "./templates/guard-card";
+// 会员卡(ADR-0021 决策 26):中立的输入交给 `ImageRenderer.generateMembershipCard`,视图是块与皮肤契约吃的那一份
+// (`buildMembershipCardView` 从输入排出来)。醒目留言卡同理(`generateSuperchatCard` / `buildSuperchatCardView`)。
+export type { MembershipCardInput, MembershipCardView } from "./templates/guard-card";
 // 直播卡(ADR-0019 决策 68):中立的输入交给 `ImageRenderer.generateLiveCard`;
 // 视图是块与皮肤契约吃的那一份(`buildLiveCardView` 从输入排出来)。
 export type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
@@ -98,5 +102,5 @@ export type {
 	RoastCardUp,
 	RoastSoloCardProps,
 } from "./templates/roast-card";
-export type { SCCardProps } from "./templates/sc-card";
+export type { SuperchatCardInput, SuperchatCardView } from "./templates/sc-card";
 export type { CardColorOptions, CardSkinChoice } from "./types";

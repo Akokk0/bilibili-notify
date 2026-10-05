@@ -18,17 +18,18 @@
  * 画那排场景按钮,理由见那边的注释。
  */
 
-import { GuardLevel } from "@bilibili-notify/blive";
 import {
 	type Attachment,
 	type CardSkinKind,
 	formatCount,
+	guardTierOf,
 	type Post,
 	type PostImage,
 	resolvePreviewScene,
 } from "@bilibili-notify/internal";
 import type { CardPropsByKind } from "../blocks/frames";
-import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "../styles";
+import { buildMembershipCardView } from "../membership-view";
+import { buildSuperchatCardView } from "../superchat-view";
 import type { LiveCardView } from "../templates/live-card";
 import { nodeFromPost } from "../templates/post-node";
 
@@ -138,8 +139,19 @@ const SAMPLE_VIDEO: NonNullable<Post["video"]> = {
 /** 内置的示例头像引用:形状合规(`<sha256>.<扩展名>`)、不会与任何真图撞名;只有示例的解析口认得它。 */
 export const SAMPLE_AVATAR_REF = `${"0".repeat(63)}1.png`;
 
+/**
+ * 醒目留言卡 / 会员卡示例里观众的头像引用。与真出卡同一条路(输入里的头像是图库引用,经示例的解析口认成内置图):
+ * 真机上 B 站这条路到 3a 之前不给头像,示例照样画出来 —— 皮肤作者要对着看头像格,别的来源有头像时就是这个样子。
+ */
+const SAMPLE_FAN_AVATAR_REF = `${"0".repeat(63)}2.png`;
+const SAMPLE_NEW_MEMBER_AVATAR_REF = `${"0".repeat(63)}3.png`;
+
 /** 示例里用到的内置图:引用 → 图(与 `routes/cards.ts` 的预览占位同款 SVG)。 */
-const SAMPLE_IMAGES: Readonly<Record<string, string>> = { [SAMPLE_AVATAR_REF]: SVG_AVATAR_BLUE };
+const SAMPLE_IMAGES: Readonly<Record<string, string>> = {
+	[SAMPLE_AVATAR_REF]: SVG_AVATAR_BLUE,
+	[SAMPLE_FAN_AVATAR_REF]: SVG_AVATAR_FAN,
+	[SAMPLE_NEW_MEMBER_AVATAR_REF]: SVG_AVATAR_PINK,
+};
 
 /** 示例作者:大会员,名字走粉色那一支,皮肤里这条最容易被写死的前景色吃掉。 */
 const SAMPLE_CREATOR = { name: MASTER.name, isPremium: true, avatar: SAMPLE_AVATAR_REF } as const;
@@ -270,35 +282,43 @@ function dynamicSample(scene: string): SampleProps<"dynamic"> {
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
 
 function scSample(): SampleProps<"sc"> {
-	const price = 100;
-	// 档位(配色 + 保留时长)由价格算,与 `generateSCCard` 同一条路:手抄一份配色的话,
-	// 哪天档位表调了,预览还停在老色上。
-	const level = getSCLevel(price * 10);
-	return {
-		senderFace: SVG_AVATAR_FAN,
-		senderName: "示例粉丝",
-		masterName: MASTER.name,
-		masterAvatarUrl: MASTER.face,
-		text: "主播加油！这是一条示例醒目留言，用来看留言块的换行与留白。",
-		price,
-		duration: Object.values(SC_LEVELS)[level].duration,
-		bgColor: SC_COLORS[level],
-	};
+	// 档由来源按平台规矩算好、随输入带来(B 站那头在 `superchatEventFromLiveEvent`:100 元落第 3 档、挂 300 秒);
+	// 示例直接写算好的档,颜色与时长的排版走真出卡同一条路(`buildSuperchatCardView`),不手抄一份。
+	return buildSuperchatCardView(
+		{
+			viewer: { name: "示例粉丝", avatar: SAMPLE_FAN_AVATAR_REF },
+			creator: SAMPLE_CREATOR,
+			text: "主播加油！这是一条示例醒目留言，用来看留言块的换行与留白。",
+			amount: 100,
+			currency: "CNY",
+			tier: { rank: 3, durationSec: 300 },
+		},
+		{ imageUrl: FMT.imageUrl },
+	);
 }
 
 // ── 上舰卡 ────────────────────────────────────────────────────────────────────
 
 function guardSample(): SampleProps<"guard"> {
-	return {
-		captainImgUrl: SVG_GUARD_BADGE,
-		guardLevel: GuardLevel.Captain,
-		uname: "示例粉丝",
-		face: SVG_AVATAR_PINK,
-		isAdmin: 0,
-		masterAvatarUrl: MASTER.face,
-		masterName: MASTER.name,
-		bgColor: BG_COLORS[GuardLevel.Captain],
-	};
+	// 档的各项取自档位表(档色与宣告语哪天调了,预览不会还停在老样子);徽章换成内联的色块 —— 真卡上那是远端图,
+	// 预览不许联网。
+	const captain = guardTierOf(3);
+	if (!captain) throw new Error("档位表里没有 guard_level 3 这一档");
+	return buildMembershipCardView(
+		{
+			viewer: { name: "示例粉丝", avatar: SAMPLE_NEW_MEMBER_AVATAR_REF },
+			creator: SAMPLE_CREATOR,
+			tier: {
+				name: captain.name,
+				rank: captain.rank,
+				color: captain.color,
+				colorEnd: captain.colorEnd,
+				announcement: captain.announcement,
+				icon: { url: SVG_GUARD_BADGE },
+			},
+		},
+		{ imageUrl: FMT.imageUrl },
+	);
 }
 
 // ── 锐评卡 ────────────────────────────────────────────────────────────────────

@@ -93,6 +93,10 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
  *
  * 直播卡的头像块同理(㉒b):四份直播夹具是 B 站形状、`userface` 为空串,头像块整块收起,`live.avatar` 的挂点不再
  * 出现在任何夹具里。拓展直播(`extension-live-push.ts`)照旧给头像,所以补一份带头像地址的视图。
+ *
+ * 醒目留言卡与会员卡的头像同理(㉓c):六份夹具是 B 站形状,观众与主播的头像格都不画,`avatar` 块与
+ * 「SC to」「主播胶囊」里的小头像挂点不再出现在任何夹具里。这两种卡的输入对别的平台开放头像(图库引用,3a 起
+ * 有来源会给),所以补一份带头像地址的视图。
  */
 const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }[]>> = {
 	live: [
@@ -113,6 +117,39 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 				totalViewers: "",
 				fans: "",
 				fansChanged: "",
+			},
+		},
+	],
+	sc: [
+		{
+			name: "(旁路探针)带观众与主播头像的视图",
+			props: {
+				viewerAvatarUrl: "data:image/png;base64,FACE",
+				viewerName: "某人",
+				masterName: "某主播",
+				masterAvatarUrl: "data:image/png;base64,MASTER",
+				text: "加油",
+				amount: "¥30",
+				amountValue: 30,
+				duration: "1分",
+				rank: 1,
+				bgColor: ["#a8e6cf", "#88d8b0"],
+			},
+		},
+	],
+	guard: [
+		{
+			name: "(旁路探针)带观众与主播头像的视图",
+			props: {
+				viewerAvatarUrl: "data:image/png;base64,FACE",
+				viewerName: "某人",
+				masterAvatarUrl: "data:image/png;base64,MASTER",
+				masterName: "某主播",
+				tierName: "某档",
+				rank: 1,
+				iconUrl: "data:image/png;base64,BADGE",
+				announcement: "某人加入了某主播",
+				bgColor: ["#4ebcec", "#4ebcec"],
 			},
 		},
 	],

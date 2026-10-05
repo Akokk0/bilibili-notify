@@ -28,7 +28,6 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@bilibili-notify/blive": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"@unocss/core": "^66.8.1",
 		"@unocss/preset-wind4": "^66.8.1",

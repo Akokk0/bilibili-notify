@@ -168,6 +168,11 @@ export type SubItemTargetLike = Partial<Record<LivePushFeature, unknown[]>>;
  * host builds the instances (folding per-UP overrides onto the globals).
  */
 export interface SubItemView {
+	/**
+	 * 这条订阅在核心里的 id(`Subscription.id`),由宿主 `buildLiveSubViewSingle` 填。直播引擎认人靠 `uid`(B 站的 uid),
+	 * 但中立事件(`MembershipEvent` / `SuperchatEvent`)的 `subscriptionId` 是核心的订阅 id —— 来源不知道,由宿主带进来。
+	 */
+	subscriptionId: string;
 	uid: string;
 	uname: string;
 	roomId: string;

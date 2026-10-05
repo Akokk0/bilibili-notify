@@ -63,13 +63,14 @@ import {
 	effectiveCardSkinKnobs,
 	fail,
 	type GlobalConfig,
+	guardTierOf,
 	issuesFromZod,
 	type NotificationPayload,
 	ok,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { liveCardInputFromRoomInfo } from "@bilibili-notify/live";
+import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "@bilibili-notify/live";
 import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
@@ -816,14 +817,28 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」);接收方 = 该 UP。
 			const me = await getLoggedInAccount();
 			const master = await resolvePreviewMaster(content, fallback);
-			const buffer = await renderer.generateSCCard(
+			// 与真推送同一条路:先把一条 B 站的 SC 消息翻成中立事件(档位在那一步按价格算),再出卡。预览造的消息没有
+			// 「挂多久」这一格,按档补一个与 B 站醒目留言一致的时长,好让皮肤作者看得到时长那一块。
+			const event = superchatEventFromLiveEvent(
 				{
-					senderFace: me?.avatar ?? SVG_AVATAR_FAN,
-					senderName: me?.name ?? "示例粉丝",
-					masterName: master.name,
-					masterAvatarUrl: master.face,
-					text: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
+					kind: "superchat",
+					content: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.price ?? 30,
+					user: { uid: 0, uname: me?.name ?? "示例粉丝" },
+				},
+				"preview",
+			);
+			const rank = event.tier?.rank ?? 1;
+			// 预览不传头像:`viewer.avatar` / `creator.avatar` 只收图库引用,B 站的头像是远端地址,3a 才存进图库
+			// (原来拿登录账号的头像当发送者头像,现在不传 —— B 站推送出来的卡也没有头像)。
+			const buffer = await renderer.generateSuperchatCard(
+				{
+					viewer: { name: event.viewer.name },
+					creator: { name: master.name },
+					text: event.text,
+					amount: event.amount,
+					currency: event.currency,
+					tier: { rank, durationSec: PREVIEW_SC_DURATION_SEC[rank - 1] },
 				},
 				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
 				skin,
@@ -836,11 +851,25 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 登录账号 = 新舰长(触发上舰事件的人);显式 text 覆写仍优先。接收方 = 该 UP。
 			const me = await getLoggedInAccount();
 			const uname = content?.text?.trim() || me?.name || "示例新舰长";
-			const face = me?.avatar ?? SVG_AVATAR_PINK;
 			const master = await resolvePreviewMaster(content, fallback);
-			const buffer = await renderer.generateGuardCard(
-				{ guardLevel: (content?.level ?? 3) as 1 | 2 | 3, uname, face, isAdmin: 0 },
-				{ masterAvatarUrl: master.face, masterName: master.name },
+			// 请求里的 `level` 仍是 B 站的 guard_level(1 总督 / 2 提督 / 3 舰长),服务端换成档位表里的那一档
+			// (面板那边 ㉓e 再改);档的徽章、档色、宣告语都取自档位表,与真推送同一份。
+			const tier = guardTierOf(content?.level ?? 3);
+			if (!tier) throw new Error(`没有这一档:level=${content?.level}`);
+			// 预览不传头像(同上,B 站 3a 才交图库引用)。
+			const buffer = await renderer.generateMembershipCard(
+				{
+					viewer: { name: uname },
+					creator: { name: master.name },
+					tier: {
+						name: tier.name,
+						rank: tier.rank,
+						icon: tier.icon,
+						color: tier.color,
+						colorEnd: tier.colorEnd,
+						announcement: tier.announcement,
+					},
+				},
 				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
 				skin,
 			);
@@ -1243,8 +1272,11 @@ const SVG_AVATAR_PINK =
 const SVG_AVATAR_BLUE =
 	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%2300AEEC'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='30' text-anchor='middle' dominant-baseline='middle'%3EUP%3C/text%3E%3C/svg%3E";
 
-const SVG_AVATAR_FAN =
-	"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23fdcb6e'/%3E%3Ctext x='50%25' y='52%25' fill='white' font-size='28' text-anchor='middle' dominant-baseline='middle'%3E粉%3C/text%3E%3C/svg%3E";
+/**
+ * 预览醒目留言卡用的留言时长(秒),下标 = 档位 rank - 1。真消息自带「挂多久」,预览造的消息没有,按 B 站醒目留言的档
+ * (60 秒 / 2 分钟 / 5 分钟 / 30 分钟 / 1 小时 / 2 小时)补一个。
+ */
+const PREVIEW_SC_DURATION_SEC = [60, 120, 300, 1800, 3600, 7200] as const;
 
 /**
  * 直播卡的示例:直接写块吃的那一份(`LiveCardView`),卡上那句时间写死、不读时钟 ——

@@ -21,6 +21,7 @@ type AnySession = any;
 
 function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 	return {
+		subscriptionId: "sub-1",
 		uid: "u1",
 		uname: "U1",
 		roomId: "r1",

@@ -20,18 +20,31 @@ import type { ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { membershipEventFromLiveEvent } from "../membership-event";
 import type { CustomGuardBuyLike, SubItemView } from "../push-like";
 import { LivePushType, wantsLiveEndExtras } from "../push-like";
 import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import { superchatEventFromLiveEvent } from "../superchat-event";
 import { LiveTemplateRenderer } from "../template-renderer";
 import { LiveType } from "../types";
+
+// 两个翻译函数照常工作,只是包一层 —— 接线测试要看见会话把什么交给了它们(订阅 id 有没有带进去)。
+vi.mock("../membership-event", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../membership-event")>();
+	return { ...actual, membershipEventFromLiveEvent: vi.fn(actual.membershipEventFromLiveEvent) };
+});
+vi.mock("../superchat-event", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../superchat-event")>();
+	return { ...actual, superchatEventFromLiveEvent: vi.fn(actual.superchatEventFromLiveEvent) };
+});
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private/protected
 type AnySession = any;
 
 function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 	return {
+		subscriptionId: "sub-1",
 		uid: "u1",
 		uname: "U1",
 		roomId: "r1",
@@ -63,8 +76,10 @@ interface CtxMocks {
 	recordDanmaku: ReturnType<typeof vi.fn>;
 	broadcastToTargets: ReturnType<typeof vi.fn>;
 	getUserInfoInLive: ReturnType<typeof vi.fn>;
-	generateSCCard: ReturnType<typeof vi.fn>;
-	generateGuardCard: ReturnType<typeof vi.fn>;
+	/** `logger.warn` 收到的每一次调用(认不出的档位丢弃时记一条)。 */
+	warn: ReturnType<typeof vi.fn>;
+	generateSuperchatCard: ReturnType<typeof vi.fn>;
+	generateMembershipCard: ReturnType<typeof vi.fn>;
 	renderGuardBuy: ReturnType<typeof vi.fn>;
 	renderLiveStart: ReturnType<typeof vi.fn>;
 	renderLiveStreaming: ReturnType<typeof vi.fn>;
@@ -82,8 +97,9 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 	ctx: RoomContext;
 	m: CtxMocks;
 } {
+	const warn = vi.fn();
 	const fakeServiceCtx: ServiceContext = {
-		logger: { debug() {}, info() {}, warn() {}, error() {} },
+		logger: { debug() {}, info() {}, warn, error() {} },
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
@@ -94,8 +110,9 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		recordDanmaku: vi.fn(),
 		broadcastToTargets: vi.fn(async () => {}),
 		getUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人", face: "f" } })),
-		generateSCCard: vi.fn(async () => Buffer.from("sc")),
-		generateGuardCard: vi.fn(async () => Buffer.from("guard")),
+		warn,
+		generateSuperchatCard: vi.fn(async () => Buffer.from("sc")),
+		generateMembershipCard: vi.fn(async () => Buffer.from("guard")),
 		renderGuardBuy: vi.fn(() => "上舰文案"),
 		renderLiveStart: vi.fn(() => "开播啦"),
 		renderLiveStreaming: vi.fn(() => "直播中"),
@@ -119,8 +136,8 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		api: { getUserInfoInLive: m.getUserInfoInLive },
 		push: { broadcastToTargets: m.broadcastToTargets },
 		imageRenderer: {
-			generateSCCard: m.generateSCCard,
-			generateGuardCard: m.generateGuardCard,
+			generateSuperchatCard: m.generateSuperchatCard,
+			generateMembershipCard: m.generateMembershipCard,
 		},
 		contentBuilder: {
 			text: (t: string) => ({ kind: "text", text: t }),
@@ -159,7 +176,12 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("RoomSession.onIncomeSuperChat", () => {
-	const scBody = { content: "加油", user: { uname: "粉丝", uid: 42 }, price: 50 };
+	const scBody = {
+		kind: "superchat" as const,
+		content: "加油",
+		user: { uname: "粉丝", uid: 42 },
+		price: 50,
+	};
 
 	it("既不收集弹幕也不推 SC → 早 return,不调 api/push", async () => {
 		const { ctx, m } = makeCtx();
@@ -197,24 +219,81 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard).toHaveBeenCalledTimes(1);
+		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
+		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+		// ㉓c:出卡前不再查发送者(名字用消息里带的)。
+		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+	});
+
+	// ㉓c:原来这里有一条「查发送者失败 → 退成一行文字、不出卡」。出卡前不再查发送者以后,那条路没有了:
+	// 就算这个接口坏了,也总是出卡。
+	// 验红:把 room-session.ts 里的 SC 出卡前加回一次 `await this.ctx.api.getUserInfoInLive(...)`,这条红。
+	it("订阅 SC → 不调 getUserInfoInLive,总是出卡(原「查发送者失败退文字」那条路没有了)", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		m.getUserInfoInLive.mockResolvedValue({ code: -1, data: {} });
+		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		await s.onIncomeSuperChat(scBody);
+		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 	});
 
-	it("订阅 SC + getUserInfoInLive code!=0 → 文字 fallback 广播(Superchat)", async () => {
-		const { ctx, m } = makeCtx();
-		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		m.getUserInfoInLive.mockResolvedValueOnce({ code: -1, data: {} });
-		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
-		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard).not.toHaveBeenCalled();
-		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+	/**
+	 * 接线(㉓c):会话先把 B 站的消息翻成中立的 `SuperchatEvent`,再把**翻译出的事件**交给新入口 `generateSuperchatCard`。
+	 * 零件各自的单元测试(翻译函数、出图器)全绿证明不了它们真接上了,所以这里单独钉:入口收到的每一格都得是翻译的产物
+	 * (档位按价格算、留言时长取消息自带的秒数),订阅 id 从 `SubItemView.subscriptionId` 带进翻译。
+	 */
+	describe("接线:翻成中立事件、再交给新入口", () => {
+		async function entryInputOf(body: object): Promise<{ input: unknown; m: CtxMocks }> {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
+			await s.onIncomeSuperChat(body);
+			return { input: m.generateSuperchatCard.mock.calls[0]?.[0], m };
+		}
+
+		// 验红:把 room-session.ts 里交给 `generateSuperchatCard` 的 `tier: event.tier` 删掉(或硬编成固定一档),这两条红;
+		// 把 `amount: event.amount` 换成别的,第一条红。
+		it("出卡输入是翻译出的事件:观众名、留言、金额、币种、按价格算出的档与消息自带的留言时长", async () => {
+			const { input } = await entryInputOf({ ...scBody, price: 120, durationSec: 300 });
+			expect(input).toStrictEqual({
+				viewer: { name: "粉丝" },
+				creator: { name: "主播" },
+				text: "加油",
+				amount: 120,
+				currency: "CNY",
+				tier: { rank: 3, durationSec: 300 },
+			});
+		});
+
+		it("消息没带留言时长 → 档里没有 durationSec;主播名取自房间资料", async () => {
+			const { input } = await entryInputOf({ ...scBody, price: 50 });
+			expect(input).toStrictEqual({
+				viewer: { name: "粉丝" },
+				creator: { name: "主播" },
+				text: "加油",
+				amount: 50,
+				currency: "CNY",
+				tier: { rank: 2 },
+			});
+		});
+
+		// 验红:把 room-session.ts 里 `superchatEventFromLiveEvent(ev, this.sub.subscriptionId)` 的第二参换成 `this.sub.uid`,这条红。
+		it("订阅 id 从 SubItemView.subscriptionId 带进翻译", async () => {
+			await entryInputOf(scBody);
+			expect(superchatEventFromLiveEvent).toHaveBeenCalledWith(
+				expect.objectContaining({ content: "加油", price: 50 }),
+				"sub-1",
+			);
+		});
 	});
 
 	// per-UP 的皮肤 id 要一路走到 generate* —— 断在哪一跳都是「选得动、存得住、就是不生效」。
-	it("per-UP 皮肤 id 透传给 generateSCCard(样式没启用也照带)", async () => {
+	it("per-UP 皮肤 id 透传给 generateSuperchatCard(样式没启用也照带)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
@@ -223,12 +302,12 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		// 验红:把 room-session.ts 里 SC 那一处的 `...this.skinChoice()` 删掉,这条红。
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ cardSkin: "k7xxx-c0ffee" });
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ cardSkin: "k7xxx-c0ffee" });
 	});
 
 	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)不分卡种:SC 卡也吃这位 UP 那一份。
 	// 验红:把 room-session.ts 里 SC 那一处的皮肤选项换回只带 `cardSkin`,这条红。
-	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateSCCard(样式没启用也照带)", async () => {
+	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateSuperchatCard(样式没启用也照带)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const cardSkinKnobs = { "k7xxx-c0ffee": { accent: "#aaaaaa" } };
@@ -237,13 +316,13 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			makeSub({ superchat: true, minScPrice: 30, cardSkin: "k7xxx-c0ffee", cardSkinKnobs }),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toEqual({
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toEqual({
 			cardSkin: "k7xxx-c0ffee",
 			cardSkinKnobs,
 		});
 	});
 
-	it("有 per-kind sc 样式 → generateSCCard 收到 sc 专属 colorOptions(而非基准)", async () => {
+	it("有 per-kind sc 样式 → generateSuperchatCard 收到 sc 专属 colorOptions(而非基准)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
@@ -258,12 +337,12 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard).toHaveBeenCalledTimes(1);
+		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
 		// 第二参 = colorOptions(sc 专属覆盖基准)。
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ font: "SC Sans" });
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ font: "SC Sans" });
 	});
 
-	it("无 per-kind sc 覆盖 → generateSCCard 回退到基准 customCardStyle", async () => {
+	it("无 per-kind sc 覆盖 → generateSuperchatCard 回退到基准 customCardStyle", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
@@ -275,22 +354,22 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
 	});
 
 	// 样式没启用 = 一个样式字段都不许递出去(渲染器按「缺省 → 吃全局 config」判,递一份
 	// 禁用的样式过去就等于把它启用了)。皮肤 id 不是样式,它恒在 —— 出图总得知道画哪一套。
-	it("基准与 per-kind 都未启用 → generateSCCard 只收到皮肤 id,一个样式字段都没有", async () => {
+	it("基准与 per-kind 都未启用 → generateSuperchatCard 只收到皮肤 id,一个样式字段都没有", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.generateSCCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
 
-	// ── ㉓a:钉住门槛与兜底文字的现状 ──────────────────────────────────────────
-	// ㉓ 要把门槛搬去 `defaults.superchat.minAmount`、把出卡改成不查发送者;这几条是搬家前的行为,
-	// 搬家的那几步不许悄悄改它(要改的地方测试名写了「现状」,到时连测试一起改)。
+	// ── ㉓a:钉住门槛与兜底文字 ────────────────────────────────────────────────
+	// ㉓ 要把门槛搬去 `defaults.superchat.minAmount`;这几条是搬家前的行为,搬家的那几步不许悄悄改它
+	// (要改的地方测试名写了「现状」,到时连测试一起改)。
 
 	describe("minScPrice 门槛:等于放行、低于拦", () => {
 		// 验红:把 room-session.ts 里 `body.price < this.sub.minScPrice` 改成 `<=`,「等于门槛」那条红;
@@ -309,12 +388,9 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: min })) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price });
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
-			if (pass) {
-				expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
-			} else {
-				// 门槛在查发送者之前:被拦掉的不该白打一次接口。
-				expect(m.getUserInfoInLive).not.toHaveBeenCalled();
-			}
+			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+			// 放行与否,出卡前都不查发送者(㉓c;从前只有被拦的才不白打接口)。
+			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 		});
 
 		// 现状:醒目留言的正文在判门槛**之前**就记进弹幕收集,被门槛挡掉的也算进词云。
@@ -331,11 +407,11 @@ describe("RoomSession.onIncomeSuperChat", () => {
 	});
 
 	/**
-	 * 兜底文字原文(现状)。出不了卡的两条路各推一句文字,**用的名字不同**:查发送者失败时只有消息里
-	 * 带的名字(「粉丝」),出卡失败时用的是查回来的名字(「捧场人」)。㉓c 起醒目留言出卡前不再查
-	 * 发送者、总是出卡,这两句到时再改;改之前它们就是线上今天推出去的字。
+	 * 兜底文字原文。出不了卡(出卡抛错 / 没开出图器)就推一句文字,名字一律用消息里带的(「粉丝」)。㉓c 之前这里有
+	 * 两句、**名字不同**:查发送者失败用消息里的,出卡失败用查回来的「捧场人」;出卡前不再查发送者以后只剩这一句,
+	 * 「查发送者失败退成文字」那条路没有了。
 	 */
-	describe("出不了卡 → 文字兜底(现状)", () => {
+	describe("出不了卡 → 文字兜底", () => {
 		/** 让一条 50 元的 SC 经 `arrange` 布好局,返回推出去的那条消息与这一轮的替身。 */
 		async function scPushOf(
 			arrange: (m: CtxMocks, ctx: RoomContext) => void,
@@ -351,29 +427,22 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			return { pushed: m.broadcastToTargets.mock.calls[0]?.[1], m };
 		}
 
-		// 验红:改 room-session.ts 里 `if (data.code !== 0)` 那一支文字里任一个字(含全角括号),这条红。
-		it("查发送者失败 → 用消息里带的名字,原文「【主播的直播间】粉丝的SC:加油（50元）」", async () => {
+		// 验红:改 room-session.ts 里 `const fallback = …` 里任一个字(含全角括号),这条与下一条红;把名字换回查回来的,
+		// 这两条的「粉丝」红。
+		it("出卡抛错 → 用消息里带的名字,原文「【主播的直播间】粉丝的SC:加油（50元）」", async () => {
 			const { pushed, m } = await scPushOf((mm) => {
-				mm.getUserInfoInLive.mockResolvedValueOnce({ code: -1, data: {} });
+				mm.generateSuperchatCard.mockRejectedValueOnce(new Error("boom"));
 			});
 			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】粉丝的SC:加油（50元）" }]);
-			// 这一支根本没去出卡。
-			expect(m.generateSCCard).not.toHaveBeenCalled();
-		});
-
-		// 验红:改 room-session.ts 末尾 `const fallback = …` 里任一个字,这条与下一条红。
-		it("出卡抛错 → 用查回来的名字,原文「【主播的直播间】捧场人的SC:加油（50元）」", async () => {
-			const { pushed } = await scPushOf((m) => {
-				m.generateSCCard.mockRejectedValueOnce(new Error("boom"));
-			});
-			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】捧场人的SC:加油（50元）" }]);
+			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 		});
 
 		it("图片渲染没开(没有出图器)→ 同一句兜底", async () => {
-			const { pushed } = await scPushOf((_m, ctx) => {
+			const { pushed, m } = await scPushOf((_m, ctx) => {
 				(ctx as AnySession).imageRenderer = null;
 			});
-			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】捧场人的SC:加油（50元）" }]);
+			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】粉丝的SC:加油（50元）" }]);
+			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 		});
 	});
 
@@ -388,8 +457,9 @@ describe("RoomSession.onIncomeSuperChat", () => {
 
 describe("RoomSession.onGuardBuy", () => {
 	const guardBody = {
-		guard_level: GuardLevel.Captain,
-		gift_name: "舰长",
+		kind: "guard-buy" as const,
+		guardLevel: GuardLevel.Captain,
+		giftName: "舰长",
 		user: { uname: "船员", uid: 7 },
 	};
 
@@ -410,8 +480,8 @@ describe("RoomSession.onGuardBuy", () => {
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
-	// ── ㉓a:钉住门槛、兜底文字与官方图的现状 ──────────────────────────────────
-	// ㉓b 起档位由翻译按档位表认、认不出的丢掉;这里先把今天怎么放行、怎么兜底钉死。
+	// ── ㉓a:钉住门槛、兜底文字与官方图 ────────────────────────────────────────
+	// ㉓c 起档位由翻译按档位表认、认不出的丢掉并记警告;门槛仍是原始等级与 `minGuardLevel` 比(㉓d 才换成 rank)。
 
 	/** 官方上舰图(按档位):总督 / 提督 / 舰长。逐字钉 —— 图链表合并时不许换。 */
 	const OFFICIAL_GUARD_IMG = {
@@ -432,12 +502,12 @@ describe("RoomSession.onGuardBuy", () => {
 				ctx,
 				makeSub({ membership: true, minGuardLevel: min }),
 			) as AnySession;
-			await s.onGuardBuy({ ...guardBody, guard_level: level });
+			await s.onGuardBuy({ ...guardBody, guardLevel: level });
 			return m;
 		}
 
 		// 规则:`guard_level > minGuardLevel` 就拦。门槛 1 = 只推总督,2 = 提督以上,3 = 全推。
-		// 验红:把 room-session.ts 里 `body.guard_level > this.sub.minGuardLevel` 的 `>` 改成 `>=`,
+		// 验红:把 room-session.ts 里 `ev.guardLevel > this.sub.minGuardLevel` 的 `>` 改成 `>=`,
 		// 门槛等于档位的那三格(1×1、2×2、3×3)红;改成 `<`,整张表几乎全红。
 		it.each([
 			// [门槛, 事件档位(1 总督 / 2 提督 / 3 舰长), 放行?]
@@ -454,36 +524,32 @@ describe("RoomSession.onGuardBuy", () => {
 			const m = await runWith(min, level);
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
 			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+			// 认得出的档位不记警告。
+			expect(m.warn).not.toHaveBeenCalled();
 		});
 
-		// 现状:`guard_level` 是 0(没有这一档)时,`0 > 门槛` 恒假,三个门槛都放行,照常出一张 0 档的卡。
-		// ㉓b 起认不出的档位会被丢掉并记一条警告,到时这条改成「丢」。
-		// 验红:把 `body.guard_level > this.sub.minGuardLevel` 换成 `!(guard_level >= 1 && guard_level <= min)`
-		// (按「档位在 1..门槛 之内」判有效),这三条红。
-		it.each([1, 2, 3] as const)(
-			"现状:guard_level 为 0 → 门槛 %s 都放行(没有按档位判有效)",
-			async (min) => {
-				const m = await runWith(min, 0);
-				expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-				expect(m.generateGuardCard.mock.calls[0]?.[0]).toMatchObject({ guardLevel: 0 });
-			},
-		);
-
-		// 现状:比 3 大的数反而被拦 —— 不是认出了「没有这一档」,只是 `>` 顺带拦的。
-		it.each([1, 2, 3] as const)(
-			"现状:guard_level 为 4 → 门槛 %s 都拦(`>` 顺带拦的)",
-			async (min) => {
-				const m = await runWith(min, 4);
+		// 认不出的档位(guard_level 不是 1 / 2 / 3)→ 丢弃并记一条警告(㉓c;主人定的)。原来 0 放行、带着一张空图推出去,
+		// 大于 3 的是被 `>` 顺带拦掉 —— 现在不管门槛是几、也不管它比门槛大还是小,都先认档位:认不出就丢,而且都记警告。
+		// 验红:把 room-session.ts 里认不出档位的那个 `return` 删掉,0 的那三条红(会带着空档继续出卡);
+		// 把「先认档位」挪到门槛判断之后,4 的那三条红(被门槛顺带拦掉、不记警告)。
+		it.each([0, 4].flatMap((level) => [1, 2, 3].map((min) => [level, min] as const)))(
+			"guard_level 为 %s、门槛 %s → 丢弃并记一条警告,不推",
+			async (level, min) => {
+				const m = await runWith(min as 1 | 2 | 3, level);
 				expect(m.broadcastToTargets).not.toHaveBeenCalled();
+				expect(m.generateMembershipCard).not.toHaveBeenCalled();
+				expect(m.warn).toHaveBeenCalledTimes(1);
+				expect(String(m.warn.mock.calls[0]?.[0])).toContain(`guard_level=${level}`);
 			},
 		);
 	});
 
 	/**
-	 * 兜底文字原文(现状):custom 关着时,出不了卡的三种情况(出图器没开 / 查用户失败 / 出卡抛错)推出去
-	 * 的是同一条消息 —— 官方图 + 一句「加入了大航海」,括号里的档名取自事件自带的 `gift_name`。
+	 * 兜底文字原文:custom 关着时,出不了卡的两种情况(出图器没开 / 出卡抛错)推出去的是同一条消息 —— 官方图 +
+	 * 一句「加入了大航海」,括号里的档名取自事件自带的 `gift_name`。㉓c 之前还有第三种「查用户失败」,出卡前不再查
+	 * 用户以后那条路没有了(原来的三档断言改由「出卡抛错」触发,值一字没动)。
 	 */
-	describe("出不了卡 → 官方图 + 文字兜底(现状)", () => {
+	describe("出不了卡 → 官方图 + 文字兜底", () => {
 		async function guardPushOf(
 			level: GuardLevel,
 			giftName: string,
@@ -497,26 +563,28 @@ describe("RoomSession.onGuardBuy", () => {
 			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
 			await s.onGuardBuy({
-				guard_level: level,
-				gift_name: giftName,
+				kind: "guard-buy",
+				guardLevel: level,
+				giftName,
 				user: { uname: "船员", uid: 7 },
 			});
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 			return m.broadcastToTargets.mock.calls[0]?.[1];
 		}
 
 		// 验红:改 room-session.ts 末尾兜底里「加入了大航海（」那句的任一个字(含全角括号),这一组红;
-		// 改 `room-context.ts` 里 `GUARD_LEVEL_IMG` 任一档的图链,对应那一档红。
+		// 改 `bilibili-guard.ts` 档位表里任一档的图链,对应那一档红。
 		it.each([
 			[GuardLevel.Governor, "总督"],
 			[GuardLevel.Admiral, "提督"],
 			[GuardLevel.Captain, "舰长"],
 		] as const)(
-			"查用户失败 · 上第 %s 档 → 该档官方图 + 「加入了大航海（%s）」",
+			"出卡抛错 · 上第 %s 档 → 该档官方图 + 「加入了大航海（%s）」",
 			async (level, giftName) => {
 				const pushed = await guardPushOf(level, giftName, (m) => {
-					m.getUserInfoInLive.mockResolvedValueOnce({ code: -1, data: {} });
+					m.generateMembershipCard.mockRejectedValueOnce(new Error("boom"));
 				});
 				expect(pushed).toEqual([
 					{ kind: "image", src: OFFICIAL_GUARD_IMG[level] },
@@ -524,16 +592,6 @@ describe("RoomSession.onGuardBuy", () => {
 				]);
 			},
 		);
-
-		it("出卡抛错 → 同一条兜底", async () => {
-			const pushed = await guardPushOf(GuardLevel.Captain, "舰长", (m) => {
-				m.generateGuardCard.mockRejectedValueOnce(new Error("boom"));
-			});
-			expect(pushed).toEqual([
-				{ kind: "image", src: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
-				{ kind: "text", text: "【主播的直播间】船员加入了大航海（舰长）" },
-			]);
-		});
 
 		it("图片渲染没开(没有出图器)→ 同一条兜底,而且不去查用户", async () => {
 			let lookups: ReturnType<typeof vi.fn> | undefined;
@@ -610,8 +668,9 @@ describe("RoomSession.onGuardBuy", () => {
 			) as AnySession;
 			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
 			await s.onGuardBuy({
-				guard_level: level,
-				gift_name: "礼物",
+				kind: "guard-buy",
+				guardLevel: level,
+				giftName: "礼物",
 				user: { uname: "船员", uid: 7 },
 			});
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
@@ -635,10 +694,22 @@ describe("RoomSession.onGuardBuy", () => {
 			},
 		);
 
+		// 验红:把 room-session.ts 里交给 `renderGuardBuy` 的 `giftName: ev.giftName` 换成空串,这条红。
+		it("文案里的 {guard} 是事件带来的档名(giftName),不是档位表里的名字", async () => {
+			const withGuard: CustomGuardBuyLike = {
+				enable: true,
+				captain: { template: "{uname} 成为了{guard}", imageUrl: "cap.png" },
+			};
+			expect(await pushOf(GuardLevel.Captain, { sub: withGuard })).toEqual([
+				{ kind: "image", src: "cap.png" },
+				{ kind: "text", text: "船员 成为了礼物" },
+			]);
+		});
+
 		// 回归:开了自定义文案、那一档的图片没填 → 推官方图。默认值里每档 `imageUrl` 就是空串,所以
 		// 「开了自定义文案但没填图」的人都会中;空串不是「缺」,`?? ` 兜不住,推出去的是一张地址为空的图。
 		// 文案那一侧不动:`template` 空串仍然推空文案(「跟随体系默认」归 ㉓d)。
-		// 验红:把 room-session.ts 里的 `tier?.imageUrl || guardImg` 改回 `tier?.imageUrl ?? guardImg`,
+		// 验红:把 room-session.ts 里的 `custom?.imageUrl || guardImg` 改回 `custom?.imageUrl ?? guardImg`,
 		// 「空串」那一组红,「缺键」那一组仍绿(它本来就对)。
 		describe.each([
 			["空串", ""],
@@ -660,7 +731,7 @@ describe("RoomSession.onGuardBuy", () => {
 				]);
 			});
 
-			it("文案也是空串 → 仍推空文案(现状,不跟着回落)", async () => {
+			it("文案也是空串 → 仍推空文案(㉓d 才换成「跟随体系默认」,不跟着回落)", async () => {
 				const bare: CustomGuardBuyLike = {
 					enable: true,
 					captain: tierOf(""),
@@ -672,32 +743,95 @@ describe("RoomSession.onGuardBuy", () => {
 			});
 		});
 
-		// 现状:认不出的档位(guard_level 为 0)+ 自定义开着 → 取不到那一档,带着一张地址为空的图和
-		// 一句空文案照推。㉓b 起这种事件在翻译那一步被丢掉并记一条警告,到时这条改成「丢」。
-		// 验红:让 `GUARD_LEVEL_TIER[0]` 指向某一档(比如 `governor`),这条红。
-		it("现状:guard_level 为 0 → 空图 + 空文案照推", async () => {
-			expect(await pushOf(GuardLevel.None, { sub: tiers })).toEqual([
-				{ kind: "image", src: "" },
-				{ kind: "text", text: "" },
-			]);
+		// 认不出的档位 + 自定义开着 → 丢弃并记警告(㉓c;原来取不到那一档,带着一张地址为空的图和一句空文案照推)。
+		// 验红:把 room-session.ts 里认不出档位的那个 `return` 删掉,这条红(会推出空图 + 空文案)。
+		it("guard_level 为 0 → 丢弃并记警告,不推空图 + 空文案", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			const s = new RoomSession(
+				ctx,
+				makeSub({ membership: true, minGuardLevel: 3, customGuardBuy: tiers }),
+			) as AnySession;
+			await s.onGuardBuy({ ...guardBody, guardLevel: GuardLevel.None });
+			expect(m.broadcastToTargets).not.toHaveBeenCalled();
+			expect(m.renderGuardBuy).not.toHaveBeenCalled();
+			expect(m.warn).toHaveBeenCalledTimes(1);
 		});
 	});
 
-	it("默认(custom 关)+ generateGuardCard + api code0 → 图片卡片(LiveGuardBuy)", async () => {
+	it("默认(custom 关)+ 出图器 → 图片卡片(LiveGuardBuy),不再调 getUserInfoInLive 查用户", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
-		m.getUserInfoInLive.mockResolvedValueOnce({
-			code: 0,
-			data: { uname: "船员", face: "f", is_admin: false },
-		});
 		const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 		await s.onGuardBuy(guardBody);
-		expect(m.generateGuardCard).toHaveBeenCalledTimes(1);
+		expect(m.generateMembershipCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+		// ㉓c:出卡前不再查用户(名字用事件里的,房管那一格随之没了)。
+		// 验红:把 room-session.ts 里上舰出卡前加回一次 `await this.ctx.api.getUserInfoInLive(...)`,这条红。
+		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 	});
 
-	it("per-UP 皮肤 id 透传给 generateGuardCard", async () => {
+	/**
+	 * 接线(㉓c):会话先把 B 站的消息翻成中立的 `MembershipEvent`,再用**翻译出的事件加档位表里那一档**组出卡输入、
+	 * 交给新入口 `generateMembershipCard`。零件各自的单元测试全绿证明不了它们真接上了:把档的各项硬编码在会话里、
+	 * 或漏带订阅 id,单元测试一个都不会红,所以这里单独钉。
+	 */
+	describe("接线:翻成中立事件、再交给新入口", () => {
+		async function entryInputOf(body: object): Promise<unknown> {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
+			await s.onGuardBuy(body);
+			return m.generateMembershipCard.mock.calls[0]?.[0];
+		}
+
+		// 验红:把 room-session.ts 里交给出卡入口的 `tier` 硬编码成固定一档(或漏掉 `announcement` / `color` / `icon` 任一项),
+		// 这两条红;把 `viewer: { name: event.viewer.name }` 换成别的名字,两条都红。
+		it("舰长:出卡输入的档来自档位表(档名、rank、档色、徽章、宣告语),观众与主播的名字来自事件与房间资料", async () => {
+			expect(await entryInputOf(guardBody)).toStrictEqual({
+				viewer: { name: "船员" },
+				creator: { name: "主播" },
+				tier: {
+					name: "舰长",
+					rank: 1,
+					color: "#4ebcec",
+					colorEnd: "#b494e5",
+					icon: { url: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
+					announcement: '"{viewer}号"加入\n"{name}"大航海舰队！',
+				},
+			});
+		});
+
+		it("总督:同一条路,换成总督那一档(rank 3、档色 #f2a053、徽章与宣告语都是总督的)", async () => {
+			expect(
+				await entryInputOf({ ...guardBody, guardLevel: GuardLevel.Governor, giftName: "总督" }),
+			).toStrictEqual({
+				viewer: { name: "船员" },
+				creator: { name: "主播" },
+				tier: {
+					name: "总督",
+					rank: 3,
+					color: "#f2a053",
+					colorEnd: "#ef5f5f",
+					icon: { url: OFFICIAL_GUARD_IMG[GuardLevel.Governor] },
+					announcement: '"{viewer}"上任\n"{name}"大航海舰队总督！',
+				},
+			});
+		});
+
+		// 验红:把 room-session.ts 里 `membershipEventFromLiveEvent(ev, this.sub.subscriptionId)` 的第二参换成 `this.sub.uid`,这条红。
+		it("订阅 id 从 SubItemView.subscriptionId 带进翻译", async () => {
+			await entryInputOf(guardBody);
+			expect(membershipEventFromLiveEvent).toHaveBeenCalledWith(
+				expect.objectContaining({ kind: "guard-buy", guardLevel: GuardLevel.Captain }),
+				"sub-1",
+			);
+		});
+	});
+
+	it("per-UP 皮肤 id 透传给 generateMembershipCard", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
@@ -705,11 +839,11 @@ describe("RoomSession.onGuardBuy", () => {
 			makeSub({ membership: true, minGuardLevel: 3, cardSkin: "k8yyy-facade" }),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
-		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({ cardSkin: "k8yyy-facade" });
+		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toMatchObject({ cardSkin: "k8yyy-facade" });
 	});
 
 	// 验红:把 room-session.ts 里上舰那一处的皮肤选项换回只带 `cardSkin`,这条红。
-	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateGuardCard", async () => {
+	it("per-UP 旋钮覆盖随皮肤 id 透传给 generateMembershipCard", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const cardSkinKnobs = { "k8yyy-facade": { accent: "#aaaaaa" } };
@@ -718,19 +852,15 @@ describe("RoomSession.onGuardBuy", () => {
 			makeSub({ membership: true, minGuardLevel: 3, cardSkin: "k8yyy-facade", cardSkinKnobs }),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
-		expect(m.generateGuardCard.mock.calls[0]?.[2]).toEqual({
+		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toEqual({
 			cardSkin: "k8yyy-facade",
 			cardSkinKnobs,
 		});
 	});
 
-	it("有 per-kind guard 样式 → generateGuardCard 收到 guard 专属 colorOptions", async () => {
+	it("有 per-kind guard 样式 → generateMembershipCard 收到 guard 专属 colorOptions", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
-		m.getUserInfoInLive.mockResolvedValueOnce({
-			code: 0,
-			data: { uname: "船员", face: "f", is_admin: false },
-		});
 		const s = new RoomSession(
 			ctx,
 			makeSub({
@@ -742,8 +872,8 @@ describe("RoomSession.onGuardBuy", () => {
 			}),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
-		// 第三参 = colorOptions(guard 专属);第四参为版式。
-		expect(m.generateGuardCard.mock.calls[0]?.[2]).toMatchObject({ font: "Guard Sans" });
+		// 第二参 = colorOptions(guard 专属)。
+		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toMatchObject({ font: "Guard Sans" });
 	});
 });
 

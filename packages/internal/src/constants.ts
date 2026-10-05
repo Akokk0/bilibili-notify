@@ -1612,7 +1612,8 @@ const AUTHOR_FIELDS = (who: string) => [
 ];
 
 /**
- * 每种卡对外承诺的字段(ADR-0014 决策 14)。**只增不删不改名。**
+ * 每种卡对外承诺的字段(ADR-0014 决策 14)。**只增不删不改名。**(㉓ 把醒目留言与会员两张卡的字段改到最终名字
+ * 是例外:皮肤格式版本只在 alpha 前抬一次,那时没有 1.0 的皮肤可言,老包拒收 —— ADR-0021 决策 26 下 2026-10-05 的 🔗。)
  * 已格式化的文本(「1.2 万」「已开播 1 小时」)直接给,占位符不带过滤器。
  * `is*` / `has*` 一律 bool,是 `showIf` 的目标。
  */
@@ -1659,27 +1660,28 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 		f("stats.comment", "text", "评论数"),
 		f("stats.like", "text", "点赞数"),
 	],
+	// 醒目留言卡与会员卡两组字段随 ㉓ 改到最终名字(ADR-0021 决策 26 下 2026-10-05 的 🔗):观众是 `viewer.*`,
+	// 醒目留言的东西在 `superchat.*`,会员的在 `membership.*`;主播那两格 `master.*` 留给 ㉔。
 	sc: [
-		f("sender.name", "text", "发送者名"),
-		f("sender.face", "image", "发送者头像"),
+		f("viewer.name", "text", "观众名"),
+		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
 		f("master.name", "text", "主播名"),
 		f("master.face", "image", "主播头像"),
-		f("sc.price", "text", "金额(带货币符号)"),
-		f("sc.priceValue", "number", "金额数字"),
-		f("sc.duration", "text", "留言时长"),
-		f("sc.level", "number", "价位档(0~5)"),
-		f("sc.text", "text", "留言"),
+		f("superchat.amount", "text", "金额(带货币符号,排好的字)"),
+		f("superchat.amountValue", "number", "金额数字"),
+		f("superchat.duration", "text", "留言时长(来源没给就是空串)"),
+		f("superchat.rank", "number", "价位档(1~6,1 最低)"),
+		f("superchat.text", "text", "留言"),
 	],
 	guard: [
-		f("user.name", "text", "上舰用户名"),
-		f("user.face", "image", "上舰用户头像"),
-		f("user.isAdmin", "bool", "是房管"),
+		f("viewer.name", "text", "观众名"),
+		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
 		f("master.name", "text", "主播名"),
 		f("master.face", "image", "主播头像"),
-		f("guard.level", "number", "舰长等级(1 总督 / 2 提督 / 3 舰长)"),
-		f("guard.levelName", "text", "舰长 / 提督 / 总督"),
-		f("guard.badge", "image", "徽章图"),
-		f("guard.text", "text", "文字信息那句"),
+		f("membership.rank", "number", "档位(从 1 起、1 最低;没有 rank 的档是 0)"),
+		f("membership.tierName", "text", "档名"),
+		f("membership.icon", "image", "徽章图"),
+		f("membership.announcement", "text", "宣告语(档位没声明就是空串)"),
 	],
 	roastBoard: [f("master.name", "text", "主播名"), f("report.days", "number", "统计天数")],
 	roastSolo: [

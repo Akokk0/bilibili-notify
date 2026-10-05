@@ -1,6 +1,5 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { GuardLevel } from "@bilibili-notify/blive";
 import {
 	CARD_SKIN_LIMITS,
 	type CardSkinCard,
@@ -12,6 +11,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	type Disposable,
 	effectiveCardSkinKnobs,
+	formatAmount,
 	type ImageRef,
 	type Logger,
 	type Post,
@@ -21,6 +21,7 @@ import { JSDOM } from "jsdom";
 import type { CardPropsByKind } from "./blocks/frames";
 import { formatCardTime } from "./format";
 import { buildLiveCardView } from "./live-view";
+import { buildMembershipCardView } from "./membership-view";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
 import { type ResolvedKnobAssets, resolveKnobAssets } from "./skin/knob-assets";
@@ -31,11 +32,13 @@ import {
 	skinAssetRefs,
 } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
-import { BG_COLORS, getSCLevel, SC_COLORS, SC_LEVELS } from "./styles";
+import { buildSuperchatCardView } from "./superchat-view";
+import type { MembershipCardInput } from "./templates/guard-card";
 import type { LiveCardInput } from "./templates/live-card";
 import { nodeFromPost } from "./templates/post-node";
 import { collectImageRefs } from "./templates/post-refs";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
+import type { SuperchatCardInput } from "./templates/sc-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, CardSkinChoice } from "./types";
 
@@ -85,16 +88,6 @@ function knobCursorKey(
  */
 export type RoastBoardData = RoastBoardCardProps;
 export type RoastSoloData = RoastSoloCardProps;
-
-const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
-	[GuardLevel.None]: "",
-	[GuardLevel.Captain]:
-		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
-	[GuardLevel.Admiral]:
-		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
-	[GuardLevel.Governor]:
-		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
-};
 
 async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs = 1000): Promise<T> {
 	let lastError: unknown;
@@ -615,24 +608,29 @@ export class ImageRenderer {
 			});
 	}
 
-	async generateGuardCard(
-		{
-			guardLevel,
-			uname,
-			face,
-			isAdmin,
-		}: { guardLevel: GuardLevel; uname: string; face: string; isAdmin: number },
-		{ masterAvatarUrl, masterName }: { masterAvatarUrl: string; masterName: string },
-		/**
-		 * per-call 样式覆盖;上舰卡只取字体与皮肤(bgColor 由舰长等级决定,渐变色不适用)。
-		 * 缺省 = 走渲染器全局 config(复刻现状)。
-		 */
+	/**
+	 * **会员卡的入口**(ADR-0021 决策 26):吃一份 {@link MembershipCardInput},不收任何平台的原始数据 —— 各平台的会员体系
+	 * (B 站的大航海是其中一套)都由来源先翻成中立的会员事件、再由宿主连同档位表里那一档组成这份输入。出图器不认识任何平台的
+	 * 档位怎么叫、怎么排:档色、徽章、宣告语都是输入里带的。
+	 *
+	 * **图库引用在这里事先解析**(同 {@link generateLiveCard}):观众与主播的头像、档位的徽章若是引用,交给宿主注入的
+	 * {@link ImageRendererOptions.resolveImageRef},拿到可画的地址再同步排视图。解析不到的引用,头像块 / 徽章块收起,不抛。
+	 * 出图器自己不读盘、不联网。per-call 样式覆盖只取字体与皮肤(档色由档位定,渐变色不适用)。
+	 */
+	async generateMembershipCard(
+		input: MembershipCardInput,
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		const guardName = ["", "总督", "提督", "舰长"][guardLevel] ?? "上舰";
-		this.logger.debug(`[guard] 开始渲染上舰卡片：${uname} → ${masterName}（${guardName}）`);
-		const captainImgUrl = GUARD_LEVEL_IMG[guardLevel] ?? "";
+		const { viewer, creator, tier } = input;
+		this.logger.debug(
+			`[membership] 开始渲染会员卡片：${viewer.name} → ${creator.name}（${tier.name}）`,
+		);
+		const refs = new Set<ImageRef>();
+		if (viewer.avatar !== undefined) refs.add(viewer.avatar);
+		if (creator.avatar !== undefined) refs.add(creator.avatar);
+		if (tier.icon?.ref !== undefined) refs.add(tier.icon.ref);
+		const resolved = await this.resolveImageRefs(refs);
 
 		return this.renderWithSkin({
 			kind: "guard",
@@ -640,54 +638,38 @@ export class ImageRenderer {
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
-			props: {
-				captainImgUrl,
-				guardLevel,
-				uname,
-				face,
-				isAdmin,
-				masterAvatarUrl,
-				masterName,
-				bgColor: BG_COLORS[guardLevel],
-			},
+			props: buildMembershipCardView(input, { imageUrl: (ref) => resolved.get(ref) }),
 		})
 			.then((buf) => {
-				this.logger.debug(`[guard] 上舰卡片渲染完成：${uname}（${Date.now() - t0}ms）`);
+				this.logger.debug(`[membership] 会员卡片渲染完成：${viewer.name}（${Date.now() - t0}ms）`);
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成上舰卡片失败！错误: ${e}`);
+				throw new Error(`生成会员卡片失败！错误: ${e}`);
 			});
 	}
 
-	async generateSCCard(
-		{
-			senderFace,
-			senderName,
-			masterName,
-			text,
-			price,
-			masterAvatarUrl,
-		}: {
-			senderFace: string;
-			senderName: string;
-			masterName: string;
-			text: string;
-			price: number;
-			masterAvatarUrl?: string;
-		},
-		/**
-		 * per-call 样式覆盖;SC 卡只取字体与皮肤(bgColor 由价格档位决定,渐变色不适用)。
-		 * 缺省 = 走渲染器全局 config(复刻现状)。
-		 */
+	/**
+	 * **醒目留言卡的入口**(ADR-0021 决策 26):吃一份 {@link SuperchatCardInput}。「按价格算档」不在这里了 —— 来源按平台规矩
+	 * 算好档({@link SuperchatCardInput.tier},B 站那头在 `superchatEventFromLiveEvent`),出图器只按 `rank` 取默认配色表里的颜色。
+	 * 金额经 `formatAmount`、留言时长经 `formatDuration` 排成字(没给时长就不画时长块)。
+	 *
+	 * **图库引用在这里事先解析**,规矩同 {@link generateMembershipCard}。per-call 样式覆盖只取字体与皮肤(档色由档位定,
+	 * 渐变色不适用)。
+	 */
+	async generateSuperchatCard(
+		input: SuperchatCardInput,
 		colorOptions: CardColorOptions = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		this.logger.debug(`[sc] 开始渲染 SC 卡片：${senderName} → ${masterName}（¥${price}）`);
-		const battery = price * 10;
-		const levelIndex = getSCLevel(battery);
-		const bgColor = SC_COLORS[levelIndex];
-		const levelInfo = Object.values(SC_LEVELS)[levelIndex];
+		const { viewer, creator } = input;
+		this.logger.debug(
+			`[superchat] 开始渲染醒目留言卡片：${viewer.name} → ${creator.name}（${formatAmount(input.amount, input.currency)}）`,
+		);
+		const refs = new Set<ImageRef>();
+		if (viewer.avatar !== undefined) refs.add(viewer.avatar);
+		if (creator.avatar !== undefined) refs.add(creator.avatar);
+		const resolved = await this.resolveImageRefs(refs);
 
 		return this.renderWithSkin({
 			kind: "sc",
@@ -695,23 +677,16 @@ export class ImageRenderer {
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
 			font: await this.resolveFont(colorOptions),
-			props: {
-				senderFace,
-				senderName,
-				masterName,
-				masterAvatarUrl,
-				text,
-				price,
-				duration: levelInfo.duration,
-				bgColor,
-			},
+			props: buildSuperchatCardView(input, { imageUrl: (ref) => resolved.get(ref) }),
 		})
 			.then((buf) => {
-				this.logger.debug(`[sc] SC 卡片渲染完成：${senderName}（${Date.now() - t0}ms）`);
+				this.logger.debug(
+					`[superchat] 醒目留言卡片渲染完成：${viewer.name}（${Date.now() - t0}ms）`,
+				);
 				return buf;
 			})
 			.catch((e) => {
-				throw new Error(`生成 SC 卡片失败！错误: ${e}`);
+				throw new Error(`生成醒目留言卡片失败！错误: ${e}`);
 			});
 	}
 

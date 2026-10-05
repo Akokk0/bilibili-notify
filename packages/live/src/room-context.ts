@@ -1,5 +1,5 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
-import { GuardLevel, type LiveClient } from "@bilibili-notify/blive";
+import type { LiveClient } from "@bilibili-notify/blive";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "./content-builder";
@@ -7,7 +7,6 @@ import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import {
 	type CustomGuardBuyLike,
-	type GuardTierKey,
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveMasterFeature,
 	type PickCardBackground,
@@ -17,25 +16,6 @@ import {
 } from "./push-like";
 import type { LiveTemplateRenderer } from "./template-renderer";
 import type { WordcloudGenerator } from "./wordcloud-generator";
-
-/** Guard-level → official Bilibili captain/supervisor/governor image URLs. */
-export const GUARD_LEVEL_IMG: Record<GuardLevel, string> = {
-	[GuardLevel.None]: "",
-	[GuardLevel.Captain]:
-		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
-	[GuardLevel.Admiral]:
-		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
-	[GuardLevel.Governor]:
-		"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
-};
-
-/** Guard-level → 自定义上舰配置里对应的那一档(B 站 guard_level:1 总督 / 2 提督 / 3 舰长)。 */
-export const GUARD_LEVEL_TIER: Record<GuardLevel, GuardTierKey | undefined> = {
-	[GuardLevel.None]: undefined,
-	[GuardLevel.Governor]: "governor",
-	[GuardLevel.Admiral]: "commander",
-	[GuardLevel.Captain]: "captain",
-};
 
 /**
  * 模板 / 渲染层全局配置,listener-manager + room-session 共用。

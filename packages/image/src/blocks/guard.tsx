@@ -1,7 +1,7 @@
 /** @jsxImportSource vue */
 
 /**
- * 上舰卡的块库。
+ * 会员卡(原上舰卡)的块库。
  *
  * 每块只画**结构**:元素、它们的嵌套、撑住布局的那几个 class(`flex` / `overflow-hidden` /
  * `truncate` / `bg-cover` …)。它**长什么样**(字号、字色、圆角、胶囊底色与高度、头像与徽章
@@ -25,7 +25,7 @@
  *
  * | 变量 | 含义 | 挂在哪 |
  * | --- | --- | --- |
- * | `--bn-card-tier-color` | 舰长等级档位色(`bgColor[0]`) | `user` / `master` 两颗胶囊、`text` |
+ * | `--bn-card-tier-color` | 档位色(`bgColor[0]`,档位表里的 `tier.color`) | `user` / `master` 两颗胶囊、`text` |
  * | `--bn-divider-color` | 分割线色 = 档位色 + `33` 透明度 | `divider`(= 线自己) |
  *
  * 分割线单开一个变量而不是复用档位色:它的值是**运行期拼出来的**(`${档位色}33`),
@@ -35,59 +35,57 @@
  * 对表钉着)。
  */
 
-import type { GuardLevel } from "@bilibili-notify/blive";
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
-import type { GuardCardProps } from "../templates/guard-card";
+import type { MembershipCardView } from "../templates/guard-card";
 import type { BlockRenderer } from "./types";
-
-/** 「文字信息」那句,按舰长等级。块库与数据契约(`skin/card-data.ts`)共用这一份。 */
-export const GUARD_DESC: Record<GuardLevel, (uname: string, masterName: string) => string> = {
-	0: () => "",
-	1: (uname, masterName) => `"${uname}"上任\n"${masterName}"大航海舰队总督！`,
-	2: (uname, masterName) => `"${uname}"就任\n"${masterName}"大航海舰队提督！`,
-	3: (uname, masterName) => `"${uname}号"加入\n"${masterName}"大航海舰队！`,
-};
 
 /**
  * 头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
  * img 只负责填满并按比例裁(`overflow-hidden` 是裁法不是样子)。
+ *
+ * **没有头像就整块收起**(返回 null):`MembershipCardInput.viewer.avatar` 只收图库引用,B 站的头像是远端地址,
+ * 3a 才存进图库,所以 B 站这条路到那时不给(ADR-0021 决策 26 下 2026-10-05 的 🔗,照 ㉑ ㉒ 的先例)。
  */
-const avatar: BlockRenderer<GuardCardProps> = (p) => (
-	<div data-bn="image" class="overflow-hidden shrink-0">
-		<img class="w-full h-full object-cover" src={p.face} alt="用户头像" />
-	</div>
-);
+const avatar: BlockRenderer<MembershipCardView> = (p) =>
+	p.viewerAvatarUrl ? (
+		<div data-bn="image" class="overflow-hidden shrink-0">
+			<img class="w-full h-full object-cover" src={p.viewerAvatarUrl} alt="观众头像" />
+		</div>
+	) : null;
 
-/** 用户名胶囊(原子块)。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
-const user: BlockRenderer<GuardCardProps> = (p) => (
+/** 观众名胶囊(原子块)。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
+const user: BlockRenderer<MembershipCardView> = (p) => (
 	<div
 		data-bn="pill"
 		class="flex items-center overflow-hidden"
 		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
 		<span data-bn="text" class="truncate">
-			{p.uname}
+			{p.viewerName}
 		</span>
 	</div>
 );
 
 /**
  * 主播胶囊(原子块)。小头像的图是**数据**,走 inline 的 `background-image`;`bg-cover` /
- * `bg-center` 是它的裁法与定位,不是样子。
+ * `bg-center` 是它的裁法与定位,不是样子。**没有主播头像就不画那一格**(`Creator.avatar` 只收图库引用,B 站 3a 才交,
+ * 同 {@link avatar});醒目留言卡的「SC to」那一行本来就是这个写法。
  */
-const master: BlockRenderer<GuardCardProps> = (p) => (
+const master: BlockRenderer<MembershipCardView> = (p) => (
 	<div
 		data-bn="pill"
 		class="flex items-center overflow-hidden"
 		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
-		<div
-			data-bn="masterAvatar"
-			class="bg-cover bg-center shrink-0"
-			style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
-		/>
+		{p.masterAvatarUrl && (
+			<div
+				data-bn="masterAvatar"
+				class="bg-cover bg-center shrink-0"
+				style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
+			/>
+		)}
 		<span data-bn="masterName" class="truncate">
-			{p.isAdmin ? "房管" : p.masterName}
+			{p.masterName}
 		</span>
 	</div>
 );
@@ -96,35 +94,35 @@ const master: BlockRenderer<GuardCardProps> = (p) => (
  * guard 卡的块表。name / text / divider 走内容列的 `renderBlocks`;badge 是受限 2D 里的
  * 常驻块,由模板按 `badgeSide` 直接定位(所以它自带 `data-block`)。
  */
-export const GUARD_BLOCKS: Record<string, BlockRenderer<GuardCardProps>> = {
+export const GUARD_BLOCKS: Record<string, BlockRenderer<MembershipCardView>> = {
 	// 线的颜色是数据(档位色加两成透明),注在 `--bn-divider-color` 里;粗细 / 上下留白归皮肤。
 	[DIVIDER_TYPE]: (p) => (
 		<div data-bn="line" style={{ "--bn-divider-color": `${p.bgColor[0]}33` }} />
 	),
 
-	// 徽章块:舰长大图,受限 2D 里的常驻块,由 badgeSide 定位。图是数据(走 inline 的
-	// `background-image`),多大一张归皮肤的 `image` 规则。
-	badge: (p) => (
-		<div
-			data-block="badge"
-			data-bn="image"
-			class="bg-cover bg-center shrink-0"
-			style={{ backgroundImage: `url("${p.captainImgUrl}")` }}
-		/>
-	),
+	// 徽章块:档位的徽章大图,受限 2D 里的常驻块,由 badgeSide 定位。图是数据(走 inline 的
+	// `background-image`),多大一张归皮肤的 `image` 规则。**这一档没有徽章就整块收起。**
+	badge: (p) =>
+		p.iconUrl ? (
+			<div
+				data-block="badge"
+				data-bn="image"
+				class="bg-cover bg-center shrink-0"
+				style={{ backgroundImage: `url("${p.iconUrl}")` }}
+			/>
+		) : null,
 
-	text: (p) => {
-		const desc = GUARD_DESC[p.guardLevel]?.(p.uname, p.masterName) ?? "";
-		return desc ? (
+	// 宣告语(原子块):档位表里声明的那一句,模板已经填好观众名 / 主播名 / 档名;没声明就整块收起。
+	text: (p) =>
+		p.announcement ? (
 			<div
 				data-bn="text"
 				class="whitespace-pre-line"
 				style={{ "--bn-card-tier-color": p.bgColor[0] }}
 			>
-				{desc}
+				{p.announcement}
 			</div>
-		) : null;
-	},
+		) : null,
 
 	avatar,
 	user,

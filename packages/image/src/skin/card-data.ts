@@ -12,14 +12,11 @@
  * - **已格式化的文本直接给**(「1.2 万」「已开播 1 小时」),占位符不带过滤器。
  */
 
-import type { GuardLevel } from "@bilibili-notify/blive";
-import { GUARD_DESC } from "../blocks/guard";
-import { getSCLevel } from "../styles";
 import type { DynamicCardProps } from "../templates/dynamic-card";
-import type { GuardCardProps } from "../templates/guard-card";
+import type { MembershipCardView } from "../templates/guard-card";
 import type { LiveCardView } from "../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
-import type { SCCardProps } from "../templates/sc-card";
+import type { SuperchatCardView } from "../templates/sc-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
 
 /** 契约里一个字段的值。对应 `CardSkinFieldType`:`text` / `image` → string。 */
@@ -132,24 +129,18 @@ function dynamicData(p: DynamicCardProps): CardData {
 // ── sc ───────────────────────────────────────────────────────────────────────
 
 /**
- * 价位档。渲染器是按 `getSCLevel(price * 10)` 算出档位、再拿它去取色的(`image-renderer.ts`),
- * 档位本身没进 props —— 这里按同一条公式从金额再算一次,永远落在 0~5,与契约说明一致。
+ * 醒目留言卡的数据全从 {@link SuperchatCardView} 取 —— 与块库(`blocks/sc.tsx`)吃的是同一份。金额与时长都是视图里
+ * 排好的文字(`formatAmount` / `formatDuration`,时长缺了是空串);`rank` 是夹进 1–6 的有效档位,与取色用的是同一个值。
  */
-function scLevel(price: number): number {
-	return getSCLevel(price * 10);
-}
-
-function scData(p: SCCardProps): CardData {
-	const price = num(p.price);
+function scData(p: SuperchatCardView): CardData {
 	return {
-		sender: { name: str(p.senderName), face: str(p.senderFace) },
+		viewer: { name: str(p.viewerName), avatar: str(p.viewerAvatarUrl) },
 		master: { name: str(p.masterName), face: str(p.masterAvatarUrl) },
-		sc: {
-			// 与 `blocks/sc.tsx` 的金额块同形状(那里是 `¥{p.price}`)。
-			price: `¥${price}`,
-			priceValue: price,
+		superchat: {
+			amount: str(p.amount),
+			amountValue: num(p.amountValue),
 			duration: str(p.duration),
-			level: scLevel(price),
+			rank: num(p.rank),
 			text: str(p.text),
 		},
 	};
@@ -157,25 +148,19 @@ function scData(p: SCCardProps): CardData {
 
 // ── guard ────────────────────────────────────────────────────────────────────
 
-const GUARD_LEVEL_NAMES: Record<number, string> = { 1: "总督", 2: "提督", 3: "舰长" };
-
-/** 文字信息那句 —— 与文字块同一份 `GUARD_DESC`,不认识的等级给空串。 */
-function guardText(level: number, uname: string, masterName: string): string {
-	return GUARD_DESC[level as GuardLevel]?.(uname, masterName) ?? "";
-}
-
-function guardData(p: GuardCardProps): CardData {
-	const level = num(p.guardLevel);
-	const uname = str(p.uname);
-	const masterName = str(p.masterName);
+/**
+ * 会员卡的数据全从 {@link MembershipCardView} 取。`rank` 是档位(1 最低),没有 rank 的档是 0(`rank` 本身从 1 起,
+ * 0 不会与真档混淆 —— 契约里数字类型的字段「缺了」就是 0);宣告语是视图里已经填好的那一句,没声明就是空串。
+ */
+function guardData(p: MembershipCardView): CardData {
 	return {
-		user: { name: uname, face: str(p.face), isAdmin: !!p.isAdmin },
-		master: { name: masterName, face: str(p.masterAvatarUrl) },
-		guard: {
-			level,
-			levelName: GUARD_LEVEL_NAMES[level] ?? "",
-			badge: str(p.captainImgUrl),
-			text: guardText(level, uname, masterName),
+		viewer: { name: str(p.viewerName), avatar: str(p.viewerAvatarUrl) },
+		master: { name: str(p.masterName), face: str(p.masterAvatarUrl) },
+		membership: {
+			rank: num(p.rank),
+			tierName: str(p.tierName),
+			icon: str(p.iconUrl),
+			announcement: str(p.announcement),
 		},
 	};
 }
@@ -202,8 +187,8 @@ function wordCloudData(p: WordCloudCardProps): CardData {
 
 export function buildCardData(kind: "live", props: LiveCardView): CardData;
 export function buildCardData(kind: "dynamic", props: DynamicCardProps): CardData;
-export function buildCardData(kind: "sc", props: SCCardProps): CardData;
-export function buildCardData(kind: "guard", props: GuardCardProps): CardData;
+export function buildCardData(kind: "sc", props: SuperchatCardView): CardData;
+export function buildCardData(kind: "guard", props: MembershipCardView): CardData;
 export function buildCardData(kind: "roastBoard", props: RoastBoardCardProps): CardData;
 export function buildCardData(kind: "roastSolo", props: RoastSoloCardProps): CardData;
 export function buildCardData(kind: "wordcloud", props: WordCloudCardProps): CardData;
@@ -220,9 +205,9 @@ export function buildCardData(
 		case "dynamic":
 			return dynamicData(props as DynamicCardProps);
 		case "sc":
-			return scData(props as SCCardProps);
+			return scData(props as SuperchatCardView);
 		case "guard":
-			return guardData(props as GuardCardProps);
+			return guardData(props as MembershipCardView);
 		case "roastBoard":
 			return roastBoardData(props as RoastBoardCardProps);
 		case "roastSolo":

@@ -31,19 +31,24 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import type { GuardCardProps } from "../../templates/guard-card";
+import type { MembershipCardView } from "../../templates/guard-card";
 import type { LiveCardView } from "../../templates/live-card";
 import { renderSkinnedCard } from "../render-skin";
 
 let liveProps: LiveCardView;
-let guardProps: GuardCardProps;
+let guardProps: MembershipCardView;
 
 beforeAll(async () => {
 	const live = CARD_FIXTURES.find((f) => f.name === "live-streaming");
 	const guard = CARD_FIXTURES.find((f) => f.name === "guard-captain");
 	if (!live || !guard) throw new Error("夹具表里少了 live-streaming / guard-captain");
 	liveProps = (await live.build()).props as unknown as LiveCardView;
-	guardProps = (await guard.build()).props as unknown as GuardCardProps;
+	// 夹具是 B 站形状、不给观众头像(头像块整块收起);这一组数的是「五个块各一个格子层」,所以补一个头像地址让
+	// `avatar` 块也画出来。
+	guardProps = {
+		...((await guard.build()).props as unknown as MembershipCardView),
+		viewerAvatarUrl: "data:image/png;base64,FACE",
+	};
 });
 
 const builtin = (

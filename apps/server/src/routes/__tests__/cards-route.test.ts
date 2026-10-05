@@ -1173,9 +1173,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		});
 	}
 
-	it("sc:senderName=登录账号(fallback:true 的 per-UP 风格请求,与作用域无关)", async () => {
+	it("sc:viewer.name=登录账号(fallback:true 的 per-UP 风格请求,与作用域无关)", async () => {
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
 			deps: makeDeps(),
@@ -1189,8 +1189,8 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
-		const arg = spy.mock.calls[0]?.[0] as { senderName: string };
-		expect(arg.senderName).toBe("登录名");
+		const arg = spy.mock.calls[0]?.[0] as { viewer: { name: string } };
+		expect(arg.viewer.name).toBe("登录名");
 		spy.mockRestore();
 	});
 
@@ -1201,7 +1201,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	 */
 	it("SC 预览:旋钮覆盖从配置进了渲染器的 config", async () => {
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const update = vi.spyOn(ImageRenderer.prototype, "updateConfig");
 		const deps = makeDeps() as unknown as { store: { getGlobals: () => unknown } };
@@ -1226,9 +1226,73 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		update.mockRestore();
 	});
 
-	it("guard:uname=登录账号(fallback:true 的 per-UP 风格请求)", async () => {
+	// ㉓c:SC 预览与真推送同一条路 —— 价格先经翻译算档(`superchatEventFromLiveEvent`),再按档补一个与 B 站醒目留言
+	// 一致的时长;不传头像(`viewer.avatar` / `creator.avatar` 只收图库引用,B 站 3a 才交)。
+	// 验红:把 cards.ts 里 SC 预览交给入口的 `tier` 换成固定一档,第一条红;给 `viewer` 加回 `avatar`,第二条红。
+	it.each([
+		[30, { rank: 1, durationSec: 60 }],
+		[100, { rank: 3, durationSec: 300 }],
+		[2000, { rank: 6, durationSec: 7200 }],
+	] as const)("sc:价格 %s 元 → 档 %j,viewer 与 creator 都不带头像", async (price, tier) => {
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateGuardCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const res = await postPreview(app, {
+			kind: "sc",
+			style: STYLE,
+			content: { price },
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		const arg = spy.mock.calls[0]?.[0];
+		expect(arg).toMatchObject({ amount: price, currency: "CNY", tier });
+		expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
+		expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
+		spy.mockRestore();
+	});
+
+	// ㉓c:上舰预览的 `level` 仍是 B 站 guard_level(面板 ㉓e 才改),服务端用档位表换成那一档;档的各项取自同一张表。
+	// 验红:把 cards.ts 里 `guardTierOf(content?.level ?? 3)` 换成固定取舰长,第二行(总督)红。
+	it.each([
+		[3, "舰长", 1, "#4ebcec"],
+		[2, "提督", 2, "#d8a0e6"],
+		[1, "总督", 3, "#f2a053"],
+	] as const)(
+		"guard:level %s → 档位表里的「%s」(rank %s、档色 %s、带徽章与宣告语),不带头像",
+		async (level, name, rank, color) => {
+			const spy = vi
+				.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+				.mockResolvedValue(Buffer.from("x"));
+			const app = createCardsRoute({
+				deps: makeDeps(),
+				puppeteer: makeFakePuppeteer(),
+				api: loggedInApi(),
+			});
+			const res = await postPreview(app, {
+				kind: "guard",
+				style: STYLE,
+				content: { level },
+				fallback: true,
+			});
+			expect(res.status).toBe(200);
+			const arg = spy.mock.calls[0]?.[0];
+			expect(arg?.tier).toMatchObject({ name, rank, color });
+			expect(arg?.tier.icon?.url).toMatch(/^https:\/\/s1\.hdslb\.com\//);
+			expect(arg?.tier.announcement).toContain("{viewer}");
+			expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
+			expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
+			spy.mockRestore();
+		},
+	);
+
+	it("guard:viewer.name=登录账号(fallback:true 的 per-UP 风格请求)", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
 			deps: makeDeps(),
@@ -1242,8 +1306,8 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
-		const arg = spy.mock.calls[0]?.[0] as { uname: string };
-		expect(arg.uname).toBe("登录名");
+		const arg = spy.mock.calls[0]?.[0] as { viewer: { name: string } };
+		expect(arg.viewer.name).toBe("登录名");
 		spy.mockRestore();
 	});
 
@@ -1260,7 +1324,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			})),
 		} as unknown as BilibiliAPI;
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
 		const res = await postPreview(app, {
@@ -1270,9 +1334,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
-		const arg = spy.mock.calls[0]?.[0] as { senderName: string; masterName: string };
-		expect(arg.masterName).toBe("真实UP");
-		expect(arg.senderName).toBe("登录名");
+		const arg = spy.mock.calls[0]?.[0] as { viewer: { name: string }; creator: { name: string } };
+		expect(arg.creator.name).toBe("真实UP");
+		expect(arg.viewer.name).toBe("登录名");
 		spy.mockRestore();
 	});
 
@@ -1288,7 +1352,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			}),
 		} as unknown as BilibiliAPI;
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
 		const res = await postPreview(app, {
@@ -1298,8 +1362,8 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			fallback: true,
 		});
 		expect(res.status).toBe(200);
-		const arg = spy.mock.calls[0]?.[0] as { masterName: string };
-		expect(arg.masterName).toBe("示例 UP 主");
+		const arg = spy.mock.calls[0]?.[0] as { creator: { name: string } };
+		expect(arg.creator.name).toBe("示例 UP 主");
 		spy.mockRestore();
 	});
 
@@ -1317,7 +1381,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		}));
 		const api = { getMyselfInfoCached, getUserCardInfo } as unknown as BilibiliAPI;
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
 			deps: makeDeps(),
@@ -1330,8 +1394,8 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
 		await postPreview(app, { kind: "sc", style: STYLE, content: { price: 30 } });
 
-		const lastArg = spy.mock.calls.at(-1)?.[0] as { senderName: string };
-		expect(lastArg.senderName).toBe("登录名"); // 没有闪回「示例粉丝」
+		const lastArg = spy.mock.calls.at(-1)?.[0] as { viewer: { name: string } };
+		expect(lastArg.viewer.name).toBe("登录名"); // 没有闪回「示例粉丝」
 		expect(getMyselfInfoCached).toHaveBeenCalledTimes(2); // 确实重试了第二次(并失败)
 		spy.mockRestore();
 		vi.useRealTimers();
@@ -1569,7 +1633,7 @@ describe("cards route — /preview 走皮肤", () => {
 
 	it("SC / 上舰同样带着皮肤 id", async () => {
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
 			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
@@ -1599,7 +1663,7 @@ describe("cards route — /preview 走皮肤", () => {
 	 */
 	it("请求没指皮肤 → SC 也用全局在用的那套", async () => {
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({
 			deps: globalsDeps("marked"),
@@ -1658,7 +1722,7 @@ describe("cards route — /preview 走皮肤", () => {
 	it("测试推送同样带着请求里的皮肤与草稿旋钮,推给所选目标", async () => {
 		const TARGET_ID = "22222222-2222-4222-8222-222222222222";
 		const spy = vi
-			.spyOn(ImageRenderer.prototype, "generateSCCard")
+			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
 		try {
 			const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 3 }));
@@ -2078,7 +2142,7 @@ describe("cards route — per-UP 预览带草稿旋钮", () => {
 		}
 	});
 
-	/** 验红:把 SC 那条交给 `generateSCCard` 的 `cardSkinKnobs` 删掉,这条红。 */
+	/** 验红:把 SC 那条交给 `generateSuperchatCard` 的 `cardSkinKnobs` 删掉,这条红。 */
 	it("SC 卡(走渲染器那条):草稿同样逐枚叠在全局上", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-perup-preview-sc-"));
 		try {

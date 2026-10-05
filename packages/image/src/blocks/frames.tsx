@@ -37,10 +37,10 @@
 import type { CardSkinKind } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import type { DynamicCardProps } from "../templates/dynamic-card";
-import type { GuardCardProps } from "../templates/guard-card";
+import type { MembershipCardView } from "../templates/guard-card";
 import type { LiveCardView } from "../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
-import type { SCCardProps } from "../templates/sc-card";
+import type { SuperchatCardView } from "../templates/sc-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
 
 /** 皮肤渲染器往外框上追加的东西。 */
@@ -72,8 +72,8 @@ export type FrameRenderer = (children: VNode | VNode[], extra: FrameExtra) => VN
 export interface CardPropsByKind {
 	live: LiveCardView;
 	dynamic: DynamicCardProps;
-	sc: SCCardProps;
-	guard: GuardCardProps;
+	sc: SuperchatCardView;
+	guard: MembershipCardView;
 	roastBoard: RoastBoardCardProps;
 	roastSolo: RoastSoloCardProps;
 	wordcloud: WordCloudCardProps;

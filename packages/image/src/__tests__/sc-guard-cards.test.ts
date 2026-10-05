@@ -1,19 +1,24 @@
 /**
- * **醒目留言卡与上舰卡的现状**(㉓a 钉住,㉓b / ㉓c 之前不许悄悄变)。
+ * **醒目留言卡与会员卡(原上舰卡)的出卡行为**,从公开入口(`generateSuperchatCard` / `generateMembershipCard`)进、读出图 HTML。
  *
- * 这两种卡今天没有任何中立类型:价位档在出图器里按价格算、舰长宣告语在块库里写死、金额与时长直接
- * 拼进 props。㉓ 要把档位搬到 B 站那一侧、把两种卡的入口与输入换掉,先在这里把今天的行为钉成**从公开
- * 入口进、读出图 HTML** 的断言 —— 入口换名时测试跟着改调用,断言的值不许动(除非那一步在批准清单
- * 里登记过)。卡片字节快照(`card-baseline.test.ts`)钉的是整张卡,看不出「哪个价位落哪一档」。
+ * ㉓a 先在旧入口上把今天的行为钉住(价位 → 六档的色对与时长、上舰卡三句宣告语),㉓c 换入口后这里跟着改调用:
+ * - 「按价格算档」搬去了来源那一侧(`superchatEventFromLiveEvent`,price → rank 的线由 `superchat-event.test.ts` 钉),所以
+ *   这里钉的是 **rank → 色对与时长**:六档的色对一字没动、时长的写法改成核心统一的 `formatDuration`
+ *   (「60秒 / 2分钟 / 5分钟 / 30分钟」→「1分 / 2分 / 5分 / 30分」,主人定的);
+ * - 宣告语三句原文(舰长那句带「号」)不变,只是不再写死在块库里,取自档位表(`guardTierOf`)、由出图器用 `interpolate` 填;
+ * - 房管那一格、「上舰」档名日志都随旧入口一起没了(主人定的:会员卡没有房管这一格)。
+ * 卡片字节快照(`card-baseline.test.ts`)钉的是整张卡,看不出「哪个档落哪个色」,所以这里单独钉。
  *
  * 做法:截图那一步换成替身、把灌进去的 HTML 留下来,再用 jsdom 读;不开浏览器、不联网。
  */
 
-import type { ServiceContext } from "@bilibili-notify/internal";
+import { guardTierOf, type ImageRef, type ServiceContext } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { ImageRenderer } from "../image-renderer";
+import { ImageRenderer, type ImageRendererOptions } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
+import type { MembershipCardInput } from "../templates/guard-card";
+import type { SuperchatCardInput } from "../templates/sc-card";
 
 // 卡里的头像 / 徽章都是远端地址,渲染器会在 Node 这边预取。测试不许真去拉,一律 404。
 beforeEach(() => {
@@ -30,13 +35,10 @@ interface Harness {
 	renderer: ImageRenderer;
 	/** 灌进截图替身的每一份 HTML。 */
 	captured: string[];
-	/** `logger.debug` 收到的每一行。 */
-	debugLines: string[];
 }
 
-function makeHarness(): Harness {
+function makeHarness(extra: Partial<ImageRendererOptions> = {}): Harness {
 	const captured: string[] = [];
-	const debugLines: string[] = [];
 	const page = {
 		setContent: async (html: string) => {
 			captured.push(html);
@@ -50,14 +52,7 @@ function makeHarness(): Harness {
 		close: async () => {},
 	};
 	const serviceCtx: ServiceContext = {
-		logger: {
-			debug: (line: string) => {
-				debugLines.push(line);
-			},
-			info() {},
-			warn() {},
-			error() {},
-		},
+		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		setInterval: () => ({ dispose() {} }),
 		setTimeout: () => ({ dispose() {} }),
 		onDispose: () => {},
@@ -70,141 +65,356 @@ function makeHarness(): Harness {
 		config: { font: "sans-serif" },
 		resolveAsset: async () => "",
 		resolveFontFace: async () => "",
+		...extra,
 	});
-	return { renderer, captured, debugLines };
+	return { renderer, captured };
 }
 
 const docOf = (html: string): Document => new JSDOM(html).window.document;
 
-// ── 醒目留言:价位 → 六档 ──────────────────────────────────────────────────────
-
-/** 一张醒目留言卡画出来的**档位相关**的三样:起止两枚档位色、时长胶囊上的字。 */
-interface ScTier {
-	color: string;
-	colorEnd: string;
-	duration: string;
-}
-
-async function scTierOf(price: number): Promise<ScTier> {
-	const h = makeHarness();
-	await h.renderer.generateSCCard({
-		senderFace: "",
-		senderName: "示例观众",
-		masterName: "示例主播",
-		text: "加油",
-		price,
-	});
-	const doc = docOf(h.captured[0] ?? "");
-	// 档位色注在外框(`frame`)的 inline 变量上,起色 / 止色各一枚。
+/** 外框上注的档位色变量。 */
+function tierVariables(doc: Document): { color: string; colorEnd: string } {
 	const frame = doc.querySelector<HTMLElement>('[data-bn~="frame"]');
 	return {
 		color: frame?.style.getPropertyValue("--bn-card-tier-color") ?? "",
 		colorEnd: frame?.style.getPropertyValue("--bn-card-tier-color-end") ?? "",
-		duration: doc.querySelector('[data-block="duration"] span')?.textContent ?? "",
 	};
 }
 
-/** 六档的色对与时长(按元:<50 / 50–99 / 100–499 / 500–999 / 1000–1999 / ≥2000)。 */
-const SC_TIERS: Record<1 | 2 | 3 | 4 | 5 | 6, ScTier> = {
-	1: { color: "#a8e6cf", colorEnd: "#88d8b0", duration: "60秒" },
-	2: { color: "#74b9ff", colorEnd: "#0984e3", duration: "2分钟" },
-	3: { color: "#a29bfe", colorEnd: "#6c5ce7", duration: "5分钟" },
-	4: { color: "#fd79a8", colorEnd: "#e84393", duration: "30分钟" },
-	5: { color: "#fdcb6e", colorEnd: "#e17055", duration: "1小时" },
-	6: { color: "#ff7675", colorEnd: "#d63031", duration: "2小时" },
-};
+// ── 醒目留言:rank → 六档 ──────────────────────────────────────────────────────
 
-describe("醒目留言卡:价位落在哪一档(现状)", () => {
-	// 五条线两侧各一个价:49 | 50、99 | 100、499 | 500、999 | 1000、1999 | 2000。
-	// 验红(实测):把 `styles.ts` 里 `getSCLevel` 的 `>= 500` 改成 `>= 600`,只有线上的那一行(50 元)红;
-	// 改成 `>= 400`,只有线下的那一行(49 元)红;`>= 1000` 改成 `> 1000`,100 元那一行红 —— 两侧都要钉。
+function superchat(over: Partial<SuperchatCardInput> = {}): SuperchatCardInput {
+	return {
+		viewer: { name: "示例观众" },
+		creator: { name: "示例主播" },
+		text: "加油",
+		amount: 30,
+		currency: "CNY",
+		...over,
+	};
+}
+
+/** 画一张醒目留言卡,读出档位相关的三样:起止两枚档位色、时长胶囊上的字(没有时长块就是 `undefined`)。 */
+async function scOf(input: SuperchatCardInput): Promise<{
+	color: string;
+	colorEnd: string;
+	duration: string | undefined;
+	doc: Document;
+}> {
+	const h = makeHarness();
+	await h.renderer.generateSuperchatCard(input);
+	const doc = docOf(h.captured[0] ?? "");
+	return {
+		...tierVariables(doc),
+		duration: doc.querySelector('[data-block="duration"] span')?.textContent ?? undefined,
+		doc,
+	};
+}
+
+/** 六档的色对(默认配色表)。 */
+const SC_COLORS_BY_RANK = {
+	1: ["#a8e6cf", "#88d8b0"],
+	2: ["#74b9ff", "#0984e3"],
+	3: ["#a29bfe", "#6c5ce7"],
+	4: ["#fd79a8", "#e84393"],
+	5: ["#fdcb6e", "#e17055"],
+	6: ["#ff7675", "#d63031"],
+} as const;
+
+describe("醒目留言卡:rank 取默认配色表里的色、留言时长走 formatDuration", () => {
+	// 这六行是 ㉓a 钉的六档色对,时长是 ㉓c 第 3 步改的写法。
+	// 验红:把 `styles.ts` 的 `DEFAULT_TIER_COLORS` 里任一对色改一位,对应那一档红;把 `superchat-view.ts` 的
+	// `formatDuration(0, durationSec * 1000)` 换成别的排法,时长那列红。
 	it.each([
-		[1, 1],
-		[30, 1],
-		[49, 1],
-		[50, 2],
-		[99, 2],
-		[100, 3],
-		[499, 3],
-		[500, 4],
-		[999, 4],
-		[1000, 5],
-		[1999, 5],
-		[2000, 6],
-		[5000, 6],
-	] as const)("%s 元 → 第 %s 档的色对与时长", async (price, tier) => {
-		expect(await scTierOf(price)).toEqual(SC_TIERS[tier]);
+		[1, 60, "1分"],
+		[2, 120, "2分"],
+		[3, 300, "5分"],
+		[4, 1800, "30分"],
+		[5, 3600, "1小时"],
+		[6, 7200, "2小时"],
+	] as const)(
+		"rank %s、留言挂 %s 秒 → 第 %s 档的色对与时长「%s」",
+		async (rank, durationSec, text) => {
+			const out = await scOf(superchat({ tier: { rank, durationSec } }));
+			expect([out.color, out.colorEnd]).toEqual(SC_COLORS_BY_RANK[rank]);
+			expect(out.duration).toBe(text);
+		},
+	);
+
+	// 验红:去掉 `effectiveTierRank` 里的上界夹取,超出 6 的会取不到色(渲染出空的档位色),这条红。
+	it("rank 超出 6 → 用最后一色(第 6 档)", async () => {
+		for (const rank of [7, 12, 999]) {
+			const out = await scOf(superchat({ tier: { rank } }));
+			expect([out.color, out.colorEnd], `rank ${rank}`).toEqual(SC_COLORS_BY_RANK[6]);
+		}
+	});
+
+	// 验红:把 `effectiveTierRank` 里没有 `tier` 时回 1 的那一句改成回 6,这条红。
+	it("没有 tier → 用第一色", async () => {
+		const out = await scOf(superchat());
+		expect([out.color, out.colorEnd]).toEqual(SC_COLORS_BY_RANK[1]);
+	});
+
+	// rank 不合规(0、负数、小数、NaN)也落在 1–6 之内:不让一个怪值把色渲染成空。
+	it("rank 不合规 → 夹进 1–6(0 与负数用第一色,小数向下取整,NaN 当没有)", async () => {
+		const cases: [number, 1 | 3][] = [
+			[0, 1],
+			[-5, 1],
+			[3.9, 3],
+			[Number.NaN, 1],
+		];
+		for (const [rank, expected] of cases) {
+			const out = await scOf(superchat({ tier: { rank } }));
+			expect([out.color, out.colorEnd], `rank ${rank}`).toEqual(SC_COLORS_BY_RANK[expected]);
+		}
+	});
+
+	// 验红:把 `superchat-view.ts` 里 `durationText` 的守卫去掉(让没给时长也排一个「0秒」),这条红;
+	// 把块里 `p.duration ? … : null` 改成恒画,同样红。
+	it("没有留言时长 → 不画时长块(不再按价位反推)", async () => {
+		const out = await scOf(superchat({ tier: { rank: 4 } }));
+		expect(out.doc.querySelector('[data-block="duration"]')).toBeNull();
+		expect(out.duration).toBeUndefined();
+		// 时长不是正的有限数也不画。
+		for (const durationSec of [0, -3, Number.NaN]) {
+			const bad = await scOf(superchat({ tier: { rank: 4, durationSec } }));
+			expect(
+				bad.doc.querySelector('[data-block="duration"]'),
+				`durationSec ${durationSec}`,
+			).toBeNull();
+		}
+	});
+
+	// 金额走 `formatAmount`:币种符号按币种,人民币整数不带小数、不加千分位。
+	// 验红:把 `superchat-view.ts` 里 `formatAmount(input.amount, input.currency)` 的币种写死成 "CNY",美元那条红。
+	it.each([
+		[30, "CNY", "¥30"],
+		[2000, "CNY", "¥2000"],
+		[30.5, "CNY", "¥30.5"],
+		[30, "USD", "US$30"],
+	] as const)("金额 %s %s → 卡上写「%s」", async (amount, currency, text) => {
+		const out = await scOf(superchat({ amount, currency }));
+		expect(out.doc.querySelector('[data-block="price"] [data-bn="text"]')?.textContent).toBe(text);
+	});
+
+	// 页面标题是出图 HTML 的一部分(字节基准里写死),入口自己决定它 —— 与卡种键 `sc` 无关,叫「醒目留言通知」。
+	// 验红:把 `image-renderer.ts` 里醒目留言入口的 `title: "醒目留言通知"` 改掉,这条红。
+	it("页面标题是「醒目留言通知」", async () => {
+		const out = await scOf(superchat());
+		expect(out.doc.title).toBe("醒目留言通知");
+	});
+
+	it("观众名与留言原样上卡", async () => {
+		const out = await scOf(superchat({ viewer: { name: "某某" }, text: "今晚加更" }));
+		expect(out.doc.querySelector('[data-block="name"]')?.textContent).toBe("某某");
+		expect(out.doc.querySelector('[data-block="message"]')?.textContent).toContain("今晚加更");
 	});
 });
 
-// ── 上舰卡 ────────────────────────────────────────────────────────────────────
+describe("醒目留言卡:头像是图库引用,解析不到就不画", () => {
+	const VIEWER = `${"a".repeat(63)}1.png` as ImageRef;
+	const MASTER = `${"b".repeat(63)}2.png` as ImageRef;
 
-/** 照 `room-session` 交给出图器的样子:房管标记缺省 0。 */
-function guardArgs(over: { guardLevel?: number; isAdmin?: number } = {}) {
-	return [
-		{
-			guardLevel: (over.guardLevel ?? 3) as 1 | 2 | 3,
-			uname: "示例观众",
-			face: "",
-			isAdmin: over.isAdmin ?? 0,
-		},
-		{ masterAvatarUrl: "", masterName: "示例主播" },
-	] as const;
+	// 验红:把 `image-renderer.ts` 的 `generateSuperchatCard` 里收集引用那几句去掉,这条红。
+	it("引用解析到了 → 观众头像与主播头像都画出来(地址取解析口给的)", async () => {
+		const h = makeHarness({
+			resolveImageRef: async (ref) =>
+				`data:image/png;base64,${ref === VIEWER ? "VIEWER" : "MASTER"}`,
+		});
+		await h.renderer.generateSuperchatCard(
+			superchat({
+				viewer: { name: "某某", avatar: VIEWER },
+				creator: { name: "主播", avatar: MASTER },
+			}),
+		);
+		const doc = docOf(h.captured[0] ?? "");
+		expect(doc.querySelector('[data-block="avatar"] img')?.getAttribute("src")).toBe(
+			"data:image/png;base64,VIEWER",
+		);
+		expect(doc.querySelector('[data-bn="masterAvatar"]')?.getAttribute("style") ?? "").toContain(
+			"data:image/png;base64,MASTER",
+		);
+	});
+
+	it("没有头像,或引用解析不到 → 头像块与主播小头像都不画,不抛", async () => {
+		const none = makeHarness();
+		await none.renderer.generateSuperchatCard(superchat());
+		const lost = makeHarness({ resolveImageRef: async () => undefined });
+		await lost.renderer.generateSuperchatCard(
+			superchat({
+				viewer: { name: "某某", avatar: VIEWER },
+				creator: { name: "主播", avatar: MASTER },
+			}),
+		);
+		for (const h of [none, lost]) {
+			const doc = docOf(h.captured[0] ?? "");
+			expect(doc.querySelector('[data-block="avatar"]')).toBeNull();
+			expect(doc.querySelector('[data-bn="masterAvatar"]')).toBeNull();
+		}
+	});
+});
+
+// ── 会员卡 ────────────────────────────────────────────────────────────────────
+
+function membership(over: Partial<MembershipCardInput> = {}): MembershipCardInput {
+	return {
+		viewer: { name: "示例观众" },
+		creator: { name: "示例主播" },
+		tier: { name: "某档", rank: 1 },
+		...over,
+	};
 }
 
-describe("上舰卡:宣告语原文(现状)", () => {
-	// 逐字钉:引号是半角双引号、换行是真换行,舰长那句带「号」(总督与提督没有)。
-	// 验红:改 `blocks/guard.tsx` 里 `GUARD_DESC` 任一句的任一个字,对应那一档红。
+async function memberOf(
+	input: MembershipCardInput,
+	extra: Partial<ImageRendererOptions> = {},
+): Promise<Document> {
+	const h = makeHarness(extra);
+	await h.renderer.generateMembershipCard(input);
+	return docOf(h.captured[0] ?? "");
+}
+
+const announcementOf = (doc: Document): string | undefined =>
+	doc.querySelector('[data-block="text"] [data-bn="text"]')?.textContent ?? undefined;
+
+describe("会员卡:宣告语取档位表、由 interpolate 填(三句原文,舰长那句带「号」)", () => {
+	// 逐字钉:引号是半角双引号、换行是真换行,舰长那句带「号」(总督与提督没有)。这三句是 ㉓a 钉在块库里的原文,
+	// 现在住在档位表里(`bilibili-guard.ts`),经出图器填上观众名与主播名。
+	// 验红:改档位表里任一句宣告语的任一个字,对应那一档红;把 `membership-view.ts` 里的 `interpolate` 键 `viewer` 改名,
+	// 三档都红。
 	it.each([
 		[1, '"示例观众"上任\n"示例主播"大航海舰队总督！'],
 		[2, '"示例观众"就任\n"示例主播"大航海舰队提督！'],
 		[3, '"示例观众号"加入\n"示例主播"大航海舰队！'],
-	] as const)("guardLevel=%s → 宣告语", async (level, desc) => {
-		const h = makeHarness();
-		await h.renderer.generateGuardCard(...guardArgs({ guardLevel: level }));
-		const doc = docOf(h.captured[0] ?? "");
-		expect(doc.querySelector('[data-block="text"] [data-bn="text"]')?.textContent).toBe(desc);
+	] as const)("guard_level=%s 的那一档 → 宣告语", async (level, desc) => {
+		const tier = guardTierOf(level);
+		if (!tier) throw new Error(`档位表里没有 guard_level ${level}`);
+		const doc = await memberOf(
+			membership({
+				tier: {
+					name: tier.name,
+					rank: tier.rank,
+					color: tier.color,
+					announcement: tier.announcement,
+					icon: tier.icon,
+				},
+			}),
+		);
+		expect(announcementOf(doc)).toBe(desc);
+	});
+
+	// 验红:把 `membership-view.ts` 里传给 `interpolate` 的 `tier` 键去掉,这条红。
+	it("三个占位符:{viewer} 观众名、{name} 主播名、{tier} 档名;不认识的占位符原样留着", async () => {
+		const doc = await memberOf(
+			membership({
+				viewer: { name: "阿甲" },
+				creator: { name: "阿乙" },
+				tier: { name: "银牌", announcement: "{viewer}→{name}:{tier}{other}" },
+			}),
+		);
+		expect(announcementOf(doc)).toBe("阿甲→阿乙:银牌{other}");
+	});
+
+	// 验红:把块里 `p.announcement ? … : null` 改成恒画,这条红。
+	it("档位没声明宣告语 → 不画那一句", async () => {
+		const doc = await memberOf(membership({ tier: { name: "某档" } }));
+		expect(doc.querySelector('[data-block="text"]')).toBeNull();
 	});
 });
 
-describe("上舰卡:房管与未知档(现状,㉓c 会删房管那一格)", () => {
-	// 现状:买舰的人是房管,主播那颗胶囊里的名字被换成「房管」。㉓c 把这一格连同接口一起删掉。
-	// 验红:把 `blocks/guard.tsx` 的 master 块里 `p.isAdmin ? "房管" : p.masterName` 改成只取 masterName,
-	// 第一条红;反过来把条件改成恒真,第二条红。
-	it("isAdmin 为真 → 主播位置显示「房管」", async () => {
-		const h = makeHarness();
-		await h.renderer.generateGuardCard(...guardArgs({ isAdmin: 1 }));
-		const doc = docOf(h.captured[0] ?? "");
-		expect(doc.querySelector('[data-bn="masterName"]')?.textContent).toBe("房管");
+describe("会员卡:档色取 tier.color / colorEnd、徽章取 tier.icon", () => {
+	// 验红:把 `membership-view.ts` 里 `[value, value]` 改成 `[value, 别的]`,起止色那条红。
+	it("档色取 tier.color;没声明止色 → 起色止色同一个值", async () => {
+		const doc = await memberOf(membership({ tier: { name: "某档", color: "#123456" } }));
+		expect(tierVariables(doc)).toEqual({ color: "#123456", colorEnd: "#123456" });
 	});
 
-	it("isAdmin 为 0 → 主播位置显示主播名", async () => {
-		const h = makeHarness();
-		await h.renderer.generateGuardCard(...guardArgs({ isAdmin: 0 }));
-		const doc = docOf(h.captured[0] ?? "");
-		expect(doc.querySelector('[data-bn="masterName"]')?.textContent).toBe("示例主播");
+	// 验红:把 `membership-view.ts` 里止色改成恒取起色,这条红。
+	it("声明了止色 colorEnd → 外框从起色渐变到止色", async () => {
+		const doc = await memberOf(
+			membership({ tier: { name: "某档", color: "#123456", colorEnd: "#abcdef" } }),
+		);
+		expect(tierVariables(doc)).toEqual({ color: "#123456", colorEnd: "#abcdef" });
 	});
 
-	// 现状:认不出的档位,出图器日志里的档名回落「上舰」(只是日志里那个词;出卡本身随后因为没有这一档
-	// 的档色而失败)。三档的档名也钉着,免得「回落」把已知档名吞了。
-	// 验红:把 `image-renderer.ts` 里 `?? "上舰"` 改成别的字,第一条红;把数组里 `"舰长"` 改掉,第二条红。
-	it("认不出的档位 → 日志里的档名是「上舰」;已知三档是总督 / 提督 / 舰长", async () => {
-		const unknown = makeHarness();
-		await expect(
-			unknown.renderer.generateGuardCard(...guardArgs({ guardLevel: 9 })),
-		).rejects.toThrow("生成上舰卡片失败");
-		expect(unknown.debugLines).toContain("[guard] 开始渲染上舰卡片：示例观众 → 示例主播（上舰）");
+	it("只声明了止色、没有起色 → 整个回落默认色,止色不单独生效", async () => {
+		const doc = await memberOf(membership({ tier: { name: "某档", colorEnd: "#abcdef" } }));
+		expect(tierVariables(doc)).toEqual({ color: "#a8e6cf", colorEnd: "#a8e6cf" });
+	});
 
-		for (const [level, name] of [
-			[1, "总督"],
-			[2, "提督"],
-			[3, "舰长"],
-		] as const) {
-			const known = makeHarness();
-			await known.renderer.generateGuardCard(...guardArgs({ guardLevel: level }));
-			expect(known.debugLines).toContain(
-				`[guard] 开始渲染上舰卡片：示例观众 → 示例主播（${name}）`,
-			);
-		}
+	// 验红:把回落改成别的色(比如默认配色表第 2 色),这条红。
+	it("没有 color → 默认配色表第一色(#a8e6cf)的起色,起止同值", async () => {
+		const doc = await memberOf(membership({ tier: { name: "某档" } }));
+		expect(tierVariables(doc)).toEqual({ color: "#a8e6cf", colorEnd: "#a8e6cf" });
+	});
+
+	it("徽章带 url → 照画(背景图是那条地址;data URL 原样进卡,不经远端白名单)", async () => {
+		const doc = await memberOf(
+			membership({ tier: { name: "某档", icon: { url: "data:image/png;base64,BADGE" } } }),
+		);
+		const badge = doc.querySelector<HTMLElement>('[data-block="badge"]');
+		expect(badge?.getAttribute("style") ?? "").toContain("data:image/png;base64,BADGE");
+	});
+
+	// 验红:去掉 `image-renderer.ts` 里把 `tier.icon.ref` 加进待解析集合的那一句,这条红。
+	it("徽章带 ref → 走图库解析;解析不到就不画徽章", async () => {
+		const REF = `${"c".repeat(63)}3.png` as ImageRef;
+		const ok = await memberOf(membership({ tier: { name: "某档", icon: { ref: REF } } }), {
+			resolveImageRef: async () => "data:image/png;base64,ICON",
+		});
+		expect(ok.querySelector('[data-block="badge"]')?.getAttribute("style") ?? "").toContain(
+			"data:image/png;base64,ICON",
+		);
+		const lost = await memberOf(membership({ tier: { name: "某档", icon: { ref: REF } } }), {
+			resolveImageRef: async () => undefined,
+		});
+		expect(lost.querySelector('[data-block="badge"]')).toBeNull();
+	});
+
+	// 验红:把块里 `p.iconUrl ? … : null` 改成恒画,这条红。
+	it("档位没有徽章 → 不画徽章块", async () => {
+		const doc = await memberOf(membership({ tier: { name: "某档" } }));
+		expect(doc.querySelector('[data-block="badge"]')).toBeNull();
+	});
+});
+
+describe("会员卡:头像是图库引用,解析不到就不画;观众名与主播名原样上卡", () => {
+	const VIEWER = `${"a".repeat(63)}1.png` as ImageRef;
+	const MASTER = `${"b".repeat(63)}2.png` as ImageRef;
+
+	it("引用解析到了 → 观众头像与主播小头像都画出来;没有或解析不到 → 都不画", async () => {
+		const withAvatars = await memberOf(
+			membership({
+				viewer: { name: "某某", avatar: VIEWER },
+				creator: { name: "主播", avatar: MASTER },
+			}),
+			{
+				resolveImageRef: async (ref) =>
+					`data:image/png;base64,${ref === VIEWER ? "VIEWER" : "MASTER"}`,
+			},
+		);
+		expect(withAvatars.querySelector('[data-block="avatar"] img')?.getAttribute("src")).toBe(
+			"data:image/png;base64,VIEWER",
+		);
+		expect(
+			withAvatars.querySelector('[data-bn="masterAvatar"]')?.getAttribute("style") ?? "",
+		).toContain("data:image/png;base64,MASTER");
+		const without = await memberOf(membership());
+		expect(without.querySelector('[data-block="avatar"]')).toBeNull();
+		expect(without.querySelector('[data-bn="masterAvatar"]')).toBeNull();
+	});
+
+	// 验红:把 `image-renderer.ts` 里会员卡入口的 `title: "上舰通知"` 改掉,这条红。
+	it("页面标题是「上舰通知」", async () => {
+		const doc = await memberOf(membership());
+		expect(doc.title).toBe("上舰通知");
+	});
+
+	it("观众名在用户名胶囊里、主播名在主播胶囊里(没有任何「房管」替换)", async () => {
+		const doc = await memberOf(
+			membership({ viewer: { name: "某某" }, creator: { name: "某主播" } }),
+		);
+		expect(doc.querySelector('[data-block="user"]')?.textContent).toBe("某某");
+		expect(doc.querySelector('[data-bn="masterName"]')?.textContent).toBe("某主播");
 	});
 });

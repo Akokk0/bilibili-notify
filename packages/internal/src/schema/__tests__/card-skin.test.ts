@@ -251,14 +251,14 @@ describe("parseCardSkin", () => {
 							id: "a",
 							kind: "builtin",
 							builtin: "cover",
-							showIf: "sc.price",
+							showIf: "superchat.amount",
 							grid: { row: 1, column: 1, span: 12 },
 						},
 					],
 				},
 			},
 		});
-		expect(errorsOf(unknown)).toMatch(/sc\.price/);
+		expect(errorsOf(unknown)).toMatch(/superchat\.amount/);
 		const good = minimal({
 			cards: {
 				live: {

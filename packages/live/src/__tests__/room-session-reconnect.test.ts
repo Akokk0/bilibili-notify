@@ -22,6 +22,7 @@ import { RoomSession } from "../room-session";
 
 function makeSub(): SubItemView {
 	return {
+		subscriptionId: "sub-1",
 		uid: "u1",
 		uname: "U1",
 		roomId: "r1",

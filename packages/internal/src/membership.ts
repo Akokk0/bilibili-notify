@@ -29,8 +29,10 @@ export interface MembershipTier {
 	rank: number;
 	/** 徽章。 */
 	icon?: PostImage;
-	/** 档色:面板与出图共读,每档一个值。 */
+	/** 档色:面板与出图共读。 */
 	color?: string;
+	/** 档色的止色:卡的背景从 `color` 渐变到它;没声明就是单色(与 `color` 同值)。面板的色块只读 `color`。 */
+	colorEnd?: string;
 	/** 宣告语,可用 `{viewer}`、`{name}`、`{tier}`;没声明就不画。 */
 	announcement?: string;
 }

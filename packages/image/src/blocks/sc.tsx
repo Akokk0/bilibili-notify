@@ -37,23 +37,27 @@
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { escapeHtmlWithBreaks } from "../html-escape";
 import { SVG_DURATION } from "../icons";
-import type { SCCardProps } from "../templates/sc-card";
+import type { SuperchatCardView } from "../templates/sc-card";
 import type { BlockRenderer } from "./types";
 
 /**
  * 发送者头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
  * img 只负责填满并按比例裁(`overflow-hidden` 是裁法不是样子)。
+ *
+ * **没有头像就整块收起**(返回 null):`SuperchatCardInput.viewer.avatar` 只收图库引用,B 站的头像是远端地址,
+ * 3a 才存进图库,所以 B 站这条路到那时不给(ADR-0021 决策 26 下 2026-10-05 的 🔗,照 ㉑ ㉒ 的先例)。
  */
-const avatar: BlockRenderer<SCCardProps> = (p) => (
-	<div data-bn="image" class="overflow-hidden">
-		<img class="w-full h-full object-cover" src={p.senderFace} alt="发送者头像" />
-	</div>
-);
+const avatar: BlockRenderer<SuperchatCardView> = (p) =>
+	p.viewerAvatarUrl ? (
+		<div data-bn="image" class="overflow-hidden">
+			<img class="w-full h-full object-cover" src={p.viewerAvatarUrl} alt="观众头像" />
+		</div>
+	) : null;
 
-/** 发送者名(原子块):那颗名牌胶囊。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
-const name: BlockRenderer<SCCardProps> = (p) => (
+/** 观众名(原子块):那颗名牌胶囊。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
+const name: BlockRenderer<SuperchatCardView> = (p) => (
 	<div data-bn="pill" style={{ "--bn-card-tier-color": p.bgColor[0] }}>
-		{p.senderName}
+		{p.viewerName}
 	</div>
 );
 
@@ -61,7 +65,7 @@ const name: BlockRenderer<SCCardProps> = (p) => (
  * 金额(原子块):那串数字。它是**渐变裁字**(皮肤那条规则里 `background-clip:text` +
  * 透明字色),起止两枚档位色是数据,缺一枚字就整个透明了,所以两枚都留 inline。
  */
-const price: BlockRenderer<SCCardProps> = (p) => (
+const price: BlockRenderer<SuperchatCardView> = (p) => (
 	<div
 		data-bn="text"
 		style={{
@@ -69,27 +73,31 @@ const price: BlockRenderer<SCCardProps> = (p) => (
 			"--bn-card-tier-color-end": p.bgColor[1],
 		}}
 	>
-		¥{p.price}
+		{p.amount}
 	</div>
 );
 
-/** 时长胶囊(原子块):图标 + 时长。底色同样是档位色(数据)。 */
-const duration: BlockRenderer<SCCardProps> = (p) => (
-	<div
-		data-bn="pill"
-		class="inline-flex items-center"
-		style={{ "--bn-card-tier-color": p.bgColor[0] }}
-	>
-		{SVG_DURATION}
-		<span>{p.duration}</span>
-	</div>
-);
+/**
+ * 时长胶囊(原子块):图标 + 时长。底色同样是档位色(数据)。**来源没给留言时长就整块收起**(`duration` 是空串):
+ * 时长写在消息里(`tier.durationSec`),不再按价位反推。
+ */
+const duration: BlockRenderer<SuperchatCardView> = (p) =>
+	p.duration ? (
+		<div
+			data-bn="pill"
+			class="inline-flex items-center"
+			style={{ "--bn-card-tier-color": p.bgColor[0] }}
+		>
+			{SVG_DURATION}
+			<span>{p.duration}</span>
+		</div>
+	) : null;
 
 /**
  * 「SC to」那一行(原子块):三个字 + 主播那一组(小头像 + 名字)。小头像的图是**数据**,
  * 走 inline 的 `background-image`;`bg-cover` / `bg-center` 是它的裁法与定位,不是样子。
  */
-const to: BlockRenderer<SCCardProps> = (p) => (
+const to: BlockRenderer<SuperchatCardView> = (p) => (
 	<div data-bn="text" class="flex items-center">
 		<span data-bn="label">SC to</span>
 		<div data-bn="master" class="flex items-center">
@@ -109,7 +117,7 @@ const to: BlockRenderer<SCCardProps> = (p) => (
  * sc 卡的块表。每块返回内层 VNode(无 `data-block`),无数据时返回 null。
  * divider 是 sc 专属的渐变分割线(可重复)。
  */
-export const SC_BLOCKS: Record<string, BlockRenderer<SCCardProps>> = {
+export const SC_BLOCKS: Record<string, BlockRenderer<SuperchatCardView>> = {
 	// 渐变的中段是档位色(数据),注在 `--bn-card-tier-color` 里;渐变本身归皮肤的 `line` 规则。
 	[DIVIDER_TYPE]: (p) => (
 		<div data-bn="line" class="w-full" style={{ "--bn-card-tier-color": p.bgColor[0] }} />

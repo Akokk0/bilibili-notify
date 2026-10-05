@@ -12,18 +12,18 @@ import { sanitizeCardBlockHtml } from "../html-sanitizer.js";
 
 const ASSETS = new Set(["bg.png", "sticker.webp"]);
 
-function run(input: string, kind: "live" | "sc" = "live") {
+function run(input: string, kind: "live" | "sc" | "guard" = "live") {
 	return sanitizeCardBlockHtml(input, { kind, assets: ASSETS });
 }
 
-function ok(input: string, kind: "live" | "sc" = "live") {
+function ok(input: string, kind: "live" | "sc" | "guard" = "live") {
 	const res = run(input, kind);
 	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return { html: res.html, warnings: res.warnings };
 }
 
-function bad(input: string, kind: "live" | "sc" = "live") {
+function bad(input: string, kind: "live" | "sc" | "guard" = "live") {
 	const res = run(input, kind);
 	expect(res.ok).toBe(false);
 	if (res.ok) throw new Error("unreachable");
@@ -239,6 +239,19 @@ describe("img 的 src 只准两种值", () => {
 		expect(ok('<img src="{up.face}">').html).toBe('<img src="{up.face}">');
 	});
 
+	// ㉓c:醒目留言卡与会员卡的头像、徽章是 image 类型(皮肤作者要能把它们放进 `<img src>`),金额 / 档名是 text。
+	// 验红:把字段表里 `viewer.avatar` 或 `membership.icon` 声明成 text,对应那一行红。
+	it("醒目留言卡与会员卡的头像、徽章字段是 image 类型 → 放行;金额与档名是 text → 当不了图", () => {
+		expect(ok('<img src="{viewer.avatar}">', "sc").html).toBe('<img src="{viewer.avatar}">');
+		expect(ok('<img src="{viewer.avatar}">', "guard").html).toBe('<img src="{viewer.avatar}">');
+		expect(ok('<img src="{membership.icon}">', "guard").html).toBe('<img src="{membership.icon}">');
+		const amount = ok('<div>x</div><img src="{superchat.amount}">', "sc");
+		expect(amount.html).toBe("<div>x</div>");
+		expect(amount.warnings.join()).toContain("text");
+		const tierName = ok('<div>x</div><img src="{membership.tierName}">', "guard");
+		expect(tierName.html).toBe("<div>x</div>");
+	});
+
 	it("外部 URL 丢掉整个 img", () => {
 		const { html, warnings } = ok('<div>x</div><img src="https://evil.example/x.png">');
 		expect(html).toBe("<div>x</div>");
@@ -287,18 +300,20 @@ describe("占位符对表", () => {
 	});
 
 	/**
-	 * 缺字段是 **error(整块拒收)**,不是空串也不是原样保留:`{sc.price}` 是 SC 卡的
+	 * 缺字段是 **error(整块拒收)**,不是空串也不是原样保留:`{superchat.amount}` 是 SC 卡的
 	 * 字段,写进直播卡出图时只会留一个空洞,而皮肤照样存得下、构建照样绿 —— 错要在
 	 * 装包这一步就报出来。
 	 */
 	it("别的卡种的字段 → error 并报出路径", () => {
-		const errors = bad("<p>{sc.price}</p>");
-		expect(errors.join()).toContain("sc.price");
+		const errors = bad("<p>{superchat.amount}</p>");
+		expect(errors.join()).toContain("superchat.amount");
 	});
 
 	it("alt 里的占位符同样对表", () => {
 		expect(ok('<img src="asset:bg.png" alt="{up.name} 的头像">').html).toContain("{up.name}");
-		expect(bad('<img src="asset:bg.png" alt="{sc.price}">').join()).toContain("sc.price");
+		expect(bad('<img src="asset:bg.png" alt="{superchat.amount}">').join()).toContain(
+			"superchat.amount",
+		);
 	});
 
 	it("{ 后面不是路径形状的照字面保留 —— 那是作者真想写的花括号", () => {
@@ -307,7 +322,7 @@ describe("占位符对表", () => {
 	});
 
 	it("换个卡种,同一个路径就该认识", () => {
-		expect(ok("<p>{sc.price}</p>", "sc").html).toBe("<p>{sc.price}</p>");
+		expect(ok("<p>{superchat.amount}</p>", "sc").html).toBe("<p>{superchat.amount}</p>");
 	});
 });
 
@@ -475,7 +490,9 @@ describe("内联 svg", () => {
 
 	it("text 里的占位符同样对表 —— 缺字段整块拒收", () => {
 		expect(ok("<svg><text>{live.title}</text></svg>").html).toContain("{live.title}");
-		expect(bad("<svg><text><tspan>{sc.price}</tspan></text></svg>").join()).toContain("sc.price");
+		expect(bad("<svg><text><tspan>{superchat.amount}</tspan></text></svg>").join()).toContain(
+			"superchat.amount",
+		);
 	});
 
 	it("滤镜整套放行(除 feImage)—— 霓虹辉光就靠它", () => {

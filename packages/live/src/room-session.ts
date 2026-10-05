@@ -1,12 +1,25 @@
-import type { GuardLevel, LiveEvent, LiveUser, UserActionType } from "@bilibili-notify/blive";
-import { type Disposable, formatCount } from "@bilibili-notify/internal";
+import type { LiveEvent, LiveUser, UserActionType } from "@bilibili-notify/blive";
+import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import { LivePushType } from "./push-like";
-import { GUARD_LEVEL_IMG, GUARD_LEVEL_TIER } from "./room-context";
+import { membershipEventFromLiveEvent } from "./membership-event";
+import { type CustomGuardBuyLike, type GuardTierLike, LivePushType } from "./push-like";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
+import { superchatEventFromLiveEvent } from "./superchat-event";
 import { buildRoomLink } from "./template-renderer";
 import { LiveType } from "./types";
+
+type SuperChatEvent = Extract<LiveEvent, { kind: "superchat" }>;
+type GuardBuyEvent = Extract<LiveEvent, { kind: "guard-buy" }>;
+
+/**
+ * 自定义上舰配置里与事件同一档的那一项。档位表里档的 key(`captain` / `commander` / `governor`)与配置里三档的键
+ * 同名;`enable` 也是这个对象上的键,所以按「是个对象」认,不把布尔当一档。
+ */
+function customTierOf(custom: CustomGuardBuyLike, tierKey: string): GuardTierLike | undefined {
+	const tier: unknown = (custom as unknown as Record<string, unknown>)[tierKey];
+	return typeof tier === "object" && tier !== null ? (tier as GuardTierLike) : undefined;
+}
 
 /**
  * One {@link RoomSession} per UID/room actively being monitored.
@@ -219,11 +232,7 @@ export class RoomSession extends RoomSessionBase {
 					return;
 				case "guard-buy":
 					this.markLiveWsActivity("guard");
-					return this.onGuardBuy({
-						guard_level: ev.guardLevel,
-						gift_name: ev.giftName,
-						user: ev.user,
-					});
+					return this.onGuardBuy(ev);
 				case "live-start":
 					this.markLiveWsActivity("live-start");
 					return this.onLiveStart();
@@ -522,46 +531,37 @@ export class RoomSession extends RoomSessionBase {
 		}
 	}
 
-	private async onIncomeSuperChat(body: {
-		content: string;
-		user: { uname: string; uid: number };
-		price: number;
-	}): Promise<void> {
+	/**
+	 * 醒目留言:先翻成中立的 {@link SuperchatEvent}(档位在那一步按价格算,B 站的原始数据到此为止),再按事件出卡。
+	 *
+	 * 出卡**不再调接口查发送者**:名字用消息里带的(头像 B 站 3a 才交图库引用,卡上先不画),所以「查发送者失败退成文字」
+	 * 那条路没有了 —— 出不了卡(没开出图器 / 出卡抛错)才退到一句文字。门槛仍是旧样子:金额低于 `minScPrice` 拦,
+	 * 被拦的正文照样先记进弹幕收集。
+	 */
+	private async onIncomeSuperChat(ev: SuperChatEvent): Promise<void> {
 		const collectsDanmaku = this.ctx.collectsDanmaku(this.sub);
 		const pushesSC = this.ctx.isSubscribed(this.sub, "superchat");
 		if (!collectsDanmaku && !pushesSC) return;
 		if (collectsDanmaku) {
-			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.uname);
+			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, ev.content, ev.user.uname);
 		}
 		if (!pushesSC) return;
 		// minScPrice 已由 adapter 折算好(per-UP ?? 全局)。
-		if (body.price < this.sub.minScPrice) return;
+		if (ev.price < this.sub.minScPrice) return;
 
-		const data = await this.ctx.api.getUserInfoInLive(body.user.uid.toString(), this.sub.uid);
-		if (data.code !== 0) {
-			const text = `【${this.masterInfo?.username ?? ""}的直播间】${body.user.uname}的SC:${body.content}（${body.price}元）`;
-			if (this.ctx.isDisposed()) return;
-			await this.enqueuePush(() =>
-				this.ctx.push.broadcastToTargets(
-					this.sub.uid,
-					this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(text)]),
-					LivePushType.Superchat,
-				),
-			);
-			return;
-		}
-		if (this.ctx.imageRenderer?.generateSCCard) {
+		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);
+		const masterName = this.masterInfo?.username ?? "";
+		if (this.ctx.imageRenderer?.generateSuperchatCard) {
 			try {
-				const userInfo = data.data;
 				const scStyle = this.resolvedCardStyle("sc");
-				const buf = await this.ctx.imageRenderer.generateSCCard(
+				const buf = await this.ctx.imageRenderer.generateSuperchatCard(
 					{
-						senderFace: userInfo.face,
-						senderName: userInfo.uname,
-						masterName: this.masterInfo?.username ?? "",
-						masterAvatarUrl: this.masterInfo?.userface ?? "",
-						text: body.content,
-						price: body.price,
+						viewer: { name: event.viewer.name },
+						creator: { name: masterName },
+						text: event.text,
+						amount: event.amount,
+						currency: event.currency,
+						tier: event.tier,
 					},
 					{ ...(scStyle.enable ? scStyle : undefined), ...this.skinChoice() },
 				);
@@ -578,7 +578,7 @@ export class RoomSession extends RoomSessionBase {
 				this.ctx.logger.error(`[sc] 生成SC图片失败：${(e as Error).message}`);
 			}
 		}
-		const fallback = `【${this.masterInfo?.username ?? ""}的直播间】${data.data.uname}的SC:${body.content}（${body.price}元）`;
+		const fallback = `【${masterName}的直播间】${event.viewer.name}的SC:${event.text}（${event.amount}元）`;
 		if (this.ctx.isDisposed()) return;
 		await this.enqueuePush(() =>
 			this.ctx.push.broadcastToTargets(
@@ -589,68 +589,79 @@ export class RoomSession extends RoomSessionBase {
 		);
 	}
 
-	private async onGuardBuy(body: {
-		guard_level: GuardLevel;
-		gift_name: string;
-		user: { uname: string; uid: number };
-	}): Promise<void> {
+	/**
+	 * 上舰:先翻成中立的 {@link MembershipEvent},认不出档位(`guard_level` 不是 1 / 2 / 3)就**丢弃并记一条警告**
+	 * (原来会带着一张空图推出去)。档的徽章、档色、宣告语取自档位表(`guardTierOf`)。
+	 *
+	 * 门槛这一片先不动:仍拿原始等级与 `minGuardLevel` 比(换成按 rank 判是 ㉓d)。自定义文案那一支按事件的档位(`tier.key`)
+	 * 取那一档的文案与图片,图片没填就用档位表里该档的徽章。出卡那一支**不再调接口查用户**:名字用事件里的,头像 3a 才有。
+	 * 出不了卡照旧退到「官方图 + 一句文字」。
+	 */
+	private async onGuardBuy(ev: GuardBuyEvent): Promise<void> {
 		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
+		const event = membershipEventFromLiveEvent(ev, this.sub.subscriptionId);
+		const tier = guardTierOf(ev.guardLevel);
+		if (event === undefined || tier === undefined) {
+			this.ctx.logger.warn(
+				`[guard] 直播间 [${this.sub.roomId}] 认不出的档位 guard_level=${ev.guardLevel},已丢弃这条事件`,
+			);
+			return;
+		}
 		// minGuardLevel 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
-		if (body.guard_level > this.sub.minGuardLevel) return;
-		const guardImg = GUARD_LEVEL_IMG[body.guard_level];
+		if (ev.guardLevel > this.sub.minGuardLevel) return;
+		const masterName = this.masterInfo?.username ?? "";
+		const guardImg = tier.icon?.url ?? "";
 		const effectiveGuardBuy = this.sub.customGuardBuy.enable
 			? this.sub.customGuardBuy
 			: this.ctx.config.customGuardBuy;
 		if (effectiveGuardBuy.enable) {
 			// 文案和图片取同一档:哪一档上舰,就用哪一档的文案与图。
-			const tierKey = GUARD_LEVEL_TIER[body.guard_level];
-			const tier = tierKey ? effectiveGuardBuy[tierKey] : undefined;
+			const custom = customTierOf(effectiveGuardBuy, event.tier.key);
 			const text = this.ctx.templateRenderer.renderGuardBuy({
-				template: tier?.template ?? "",
-				uname: body.user.uname,
+				template: custom?.template ?? "",
+				uname: event.viewer.name,
 				master: this.masterInfo,
-				giftName: body.gift_name,
+				giftName: ev.giftName,
 			});
 			if (this.ctx.isDisposed()) return;
-			// 图片没填就回落官方图。默认配置里每档 imageUrl 就是空串,空串不是「缺」,`??` 兜不住。
+			// 图片没填就回落该档的官方徽章。默认配置里每档 imageUrl 就是空串,空串不是「缺」,`??` 兜不住。
 			await this.ctx.push.broadcastToTargets(
 				this.sub.uid,
 				this.ctx.contentBuilder.message([
-					this.ctx.contentBuilder.image(tier?.imageUrl || guardImg),
+					this.ctx.contentBuilder.image(custom?.imageUrl || guardImg),
 					this.ctx.contentBuilder.text(text),
 				]),
 				LivePushType.LiveGuardBuy,
 			);
 			return;
 		}
-		if (this.ctx.imageRenderer?.generateGuardCard) {
-			const data = await this.ctx.api.getUserInfoInLive(body.user.uid.toString(), this.sub.uid);
-			if (data.code === 0) {
-				try {
-					const guardStyle = this.resolvedCardStyle("guard");
-					const buf = await this.ctx.imageRenderer.generateGuardCard(
-						{
-							guardLevel: body.guard_level,
-							uname: data.data.uname,
-							face: data.data.face,
-							isAdmin: data.data.is_admin,
+		if (this.ctx.imageRenderer?.generateMembershipCard) {
+			try {
+				const guardStyle = this.resolvedCardStyle("guard");
+				const buf = await this.ctx.imageRenderer.generateMembershipCard(
+					{
+						viewer: { name: event.viewer.name },
+						creator: { name: masterName },
+						tier: {
+							name: tier.name,
+							rank: tier.rank,
+							icon: tier.icon,
+							color: tier.color,
+							colorEnd: tier.colorEnd,
+							announcement: tier.announcement,
 						},
-						{
-							masterName: this.masterInfo?.username ?? "",
-							masterAvatarUrl: this.masterInfo?.userface ?? "",
-						},
-						{ ...(guardStyle.enable ? guardStyle : undefined), ...this.skinChoice() },
-					);
-					if (this.ctx.isDisposed()) return;
-					await this.ctx.push.broadcastToTargets(
-						this.sub.uid,
-						this.ctx.contentBuilder.image(buf, "image/jpeg"),
-						LivePushType.LiveGuardBuy,
-					);
-					return;
-				} catch (e) {
-					this.ctx.logger.error(`[guard] 生成上舰图片失败：${(e as Error).message}`);
-				}
+					},
+					{ ...(guardStyle.enable ? guardStyle : undefined), ...this.skinChoice() },
+				);
+				if (this.ctx.isDisposed()) return;
+				await this.ctx.push.broadcastToTargets(
+					this.sub.uid,
+					this.ctx.contentBuilder.image(buf, "image/jpeg"),
+					LivePushType.LiveGuardBuy,
+				);
+				return;
+			} catch (e) {
+				this.ctx.logger.error(`[guard] 生成上舰图片失败：${(e as Error).message}`);
 			}
 		}
 		if (this.ctx.isDisposed()) return;
@@ -659,7 +670,7 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.contentBuilder.message([
 				this.ctx.contentBuilder.image(guardImg),
 				this.ctx.contentBuilder.text(
-					`【${this.masterInfo?.username ?? ""}的直播间】${body.user.uname}加入了大航海（${body.gift_name}）`,
+					`【${masterName}的直播间】${event.viewer.name}加入了大航海（${ev.giftName}）`,
 				),
 			]),
 			LivePushType.LiveGuardBuy,

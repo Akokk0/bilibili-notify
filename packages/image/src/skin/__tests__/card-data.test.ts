@@ -7,11 +7,10 @@
  * 二、**缺数据不炸**:再造一份「什么都没有」的夹具(可选字段全缺、动态卡的 node 上连类型
  *    与图都没有),每个字段仍有值 —— 没有 undefined,不会有 "undefined" 被替换进模板。
  * 三、**语义**:几条最容易在重构里被改掉的分支(直播卡的几种状态、封面、动态卡的几组字段
- *    都从 node 取、舰长四档、金额是数字)。
+ *    都从 node 取、会员卡的档位各项、醒目留言的金额与档)。
  * 四、**取值**:`readCardField` 只认两段路径、只认自有属性,原型链上的名字一律取不到。
  */
 
-import { GuardLevel } from "@bilibili-notify/blive";
 import {
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_KINDS,
@@ -21,12 +20,11 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import { h } from "vue";
 import { LIVE_COVER_PLACEHOLDER } from "../../live-view";
-import { getSCLevel, SC_COLORS } from "../../styles";
 import type { DynamicCardProps, DynamicNode } from "../../templates/dynamic-card";
-import type { GuardCardProps } from "../../templates/guard-card";
+import type { MembershipCardView } from "../../templates/guard-card";
 import type { LiveCardView } from "../../templates/live-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
-import type { SCCardProps } from "../../templates/sc-card";
+import type { SuperchatCardView } from "../../templates/sc-card";
 import type { WordCloudCardProps } from "../../templates/wordcloud-card";
 import { buildCardData, type CardData, type CardDataValue, readCardField } from "../card-data";
 
@@ -108,55 +106,61 @@ function dynamicProps(node: DynamicNode = dynamicNode()): DynamicCardProps {
 	return { node };
 }
 
-function scProps(over: Partial<SCCardProps> = {}): SCCardProps {
+function scProps(over: Partial<SuperchatCardView> = {}): SuperchatCardView {
 	return {
-		senderFace: "https://img/sender.jpg",
-		senderName: "热心观众",
+		viewerAvatarUrl: "https://img/sender.jpg",
+		viewerName: "热心观众",
 		masterName: "阿可",
 		masterAvatarUrl: "https://img/master.jpg",
 		text: "加油！",
-		price: 30,
-		duration: "60秒",
-		bgColor: SC_COLORS[0],
+		amount: "¥30",
+		amountValue: 30,
+		duration: "1分",
+		rank: 1,
+		bgColor: ["#a8e6cf", "#88d8b0"],
 		...over,
 	};
 }
 
-function emptySCProps(): SCCardProps {
+function emptySCProps(): SuperchatCardView {
 	return {
-		senderFace: "",
-		senderName: "",
+		viewerAvatarUrl: "",
+		viewerName: "",
 		masterName: "",
 		text: "",
-		price: 0,
+		amount: "",
+		amountValue: 0,
 		duration: "",
+		rank: 0,
 		bgColor: ["", ""],
 	};
 }
 
-function guardProps(over: Partial<GuardCardProps> = {}): GuardCardProps {
+function guardProps(over: Partial<MembershipCardView> = {}): MembershipCardView {
 	return {
-		captainImgUrl: "https://img/captain.png",
-		guardLevel: GuardLevel.Captain,
-		uname: "热心观众",
-		face: "https://img/user.jpg",
-		isAdmin: 1,
+		viewerAvatarUrl: "https://img/user.jpg",
+		viewerName: "热心观众",
 		masterAvatarUrl: "https://img/master.jpg",
 		masterName: "阿可",
-		bgColor: ["#4ebcec", "#b494e5"],
+		tierName: "舰长",
+		rank: 1,
+		iconUrl: "https://img/captain.png",
+		announcement: '"热心观众号"加入\n"阿可"大航海舰队！',
+		bgColor: ["#4ebcec", "#4ebcec"],
 		...over,
 	};
 }
 
-function emptyGuardProps(): GuardCardProps {
+function emptyGuardProps(): MembershipCardView {
 	return {
-		captainImgUrl: "",
-		guardLevel: GuardLevel.None,
-		uname: "",
-		face: "",
-		isAdmin: 0,
+		viewerAvatarUrl: "",
+		viewerName: "",
 		masterAvatarUrl: "",
 		masterName: "",
+		tierName: "",
+		rank: 0,
+		iconUrl: "",
+		announcement: "",
 		bgColor: ["", ""],
 	};
 }
@@ -270,12 +274,10 @@ describe("buildCardData 与 CARD_SKIN_FIELDS 对表", () => {
 // ── 二、缺数据不炸 ─────────────────────────────────────────────────────────────
 
 /**
- * 空夹具下**不是**空值的字段:它的「没有」本来就有形状 —— 金额块恒画「¥ + 数字」。
- * 列在这里是为了让它也被钉住,而不是从通用断言里漏出去。
+ * 空夹具下**不是**空值的字段:它的「没有」本来就有形状。列在这里是为了让它也被钉住,而不是从通用断言里漏出去。
+ * 今天没有 —— 金额排好的字在视图里就是空串(㉓c 起金额由出卡入口经 `formatAmount` 排,不再是块里恒画的「¥ + 数字」)。
  */
-const EMPTY_EXCEPTIONS: Record<string, CardDataValue> = {
-	"sc:sc.price": "¥0",
-};
+const EMPTY_EXCEPTIONS: Record<string, CardDataValue> = {};
 
 describe("缺数据时每个字段仍有值", () => {
 	for (const kind of CARD_SKIN_KINDS) {
@@ -435,45 +437,59 @@ describe("动态卡的视频与图廊", () => {
 	});
 });
 
-describe("上舰卡的四档", () => {
-	it.each([
-		[GuardLevel.Governor, "总督"],
-		[GuardLevel.Admiral, "提督"],
-		[GuardLevel.Captain, "舰长"],
-		[GuardLevel.None, ""],
-	])("guardLevel=%s → levelName=%s", (level, name) => {
-		const d = buildCardData("guard", guardProps({ guardLevel: level }));
-		expect(d.guard.level).toBe(level);
-		expect(d.guard.levelName).toBe(name);
+describe("会员卡的数据", () => {
+	it("档位的各项原样取自视图:rank、档名、徽章、宣告语;观众与主播的头像也是视图里的地址", () => {
+		const d = buildCardData("guard", guardProps());
+		expect(d.membership).toEqual({
+			rank: 1,
+			tierName: "舰长",
+			icon: "https://img/captain.png",
+			announcement: '"热心观众号"加入\n"阿可"大航海舰队！',
+		});
+		expect(d.viewer).toEqual({ name: "热心观众", avatar: "https://img/user.jpg" });
+		expect(d.master).toEqual({ name: "阿可", face: "https://img/master.jpg" });
 	});
 
-	it("文字信息那句带上用户名与主播名;0 档没有这句", () => {
-		const d = buildCardData("guard", guardProps({ guardLevel: GuardLevel.Governor }));
-		expect(d.guard.text).toContain("热心观众");
-		expect(d.guard.text).toContain("阿可");
-		expect(d.guard.text).toContain("总督");
-		expect(buildCardData("guard", guardProps({ guardLevel: GuardLevel.None })).guard.text).toBe("");
+	// 没有 rank 的体系(档位由主播自定的那种)交上来的档没有 `rank`:视图里是 0,字段就是 0 —— `rank` 本身从 1 起,
+	// 所以 0 不会与真档混淆。数字类型的字段「缺了」都是 0(`num()`),不单为它开一个例外。
+	it("没有 rank 的档 → membership.rank 是 0;没声明宣告语 → 空串;没有徽章 → 空串", () => {
+		const d = buildCardData(
+			"guard",
+			guardProps({ rank: 0, announcement: "", iconUrl: "", tierName: "自定义档" }),
+		);
+		expect(d.membership).toEqual({ rank: 0, tierName: "自定义档", icon: "", announcement: "" });
 	});
 
-	it("房管标记是布尔", () => {
-		expect(buildCardData("guard", guardProps({ isAdmin: 1 })).user.isAdmin).toBe(true);
-		expect(buildCardData("guard", guardProps({ isAdmin: 0 })).user.isAdmin).toBe(false);
+	it("rank 不是有限的数 → 0(契约里的数字永不是 NaN)", () => {
+		expect(buildCardData("guard", guardProps({ rank: Number.NaN })).membership.rank).toBe(0);
 	});
 });
 
-describe("SC 卡的金额", () => {
-	it("price 带货币符号、priceValue 是数字、level 按渲染器同一条公式从金额算", () => {
-		const d = buildCardData("sc", scProps({ price: 30, bgColor: SC_COLORS[0] }));
-		expect(d.sc.price).toBe("¥30");
-		expect(d.sc.priceValue).toBe(30);
-		expect(typeof d.sc.priceValue).toBe("number");
-		expect(d.sc.level).toBe(getSCLevel(300));
+describe("醒目留言卡的数据", () => {
+	it("金额是视图里排好的字、数字另给;rank 是夹进 1–6 的有效档位;时长是排好的字", () => {
+		const d = buildCardData(
+			"sc",
+			scProps({ amount: "US$30", amountValue: 30, rank: 4, duration: "30分" }),
+		);
+		expect(d.superchat).toEqual({
+			amount: "US$30",
+			amountValue: 30,
+			duration: "30分",
+			rank: 4,
+			text: "加油！",
+		});
+		expect(typeof d.superchat.amountValue).toBe("number");
 	});
 
-	it("高价位落在最高档,与 bgColor 传什么无关", () => {
-		const d = buildCardData("sc", scProps({ price: 2000, bgColor: SC_COLORS[0] }));
-		expect(d.sc.price).toBe("¥2000");
-		expect(d.sc.level).toBe(5);
+	it("来源没给留言时长 → superchat.duration 是空串;观众头像没有 → viewer.avatar 是空串", () => {
+		const d = buildCardData("sc", scProps({ duration: "", viewerAvatarUrl: "" }));
+		expect(d.superchat.duration).toBe("");
+		expect(d.viewer.avatar).toBe("");
+		expect(d.viewer.name).toBe("热心观众");
+	});
+
+	it("主播头像没给 → master.face 是空串", () => {
+		expect(buildCardData("sc", scProps({ masterAvatarUrl: undefined })).master.face).toBe("");
 	});
 });
 

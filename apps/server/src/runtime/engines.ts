@@ -1838,6 +1838,8 @@ export function buildLiveSubViewSingle(
 	// SubItemView 上每个 feature 的布尔字段 = features.X(source-side gate),同 liveWorkSettings。
 	const feat = (k: keyof typeof eff.routing) => eff.features[k];
 	return {
+		// 中立事件(会员 / 醒目留言)要核心的订阅 id,引擎自己只认 uid —— 宿主带进来。
+		subscriptionId: sub.id,
 		uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 		// ③ 读盘复用已解析的房号;缺失(首见该 UP)时留空 → LiveEngine 现解析并写回。

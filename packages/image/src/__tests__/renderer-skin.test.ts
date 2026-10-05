@@ -183,10 +183,11 @@ describe("ImageRenderer 一律按皮肤出图", () => {
 
 	it("上舰卡:皮肤的根块 CSS 被翻成挂点选择器拼进样式表", async () => {
 		const h = makeHarness();
-		await h.renderer.generateGuardCard(
-			{ guardLevel: 3, uname: "新舰长", face: "http://i0.hdslb.com/bfs/face/g.jpg", isAdmin: 0 },
-			{ masterAvatarUrl: "http://i0.hdslb.com/bfs/face/m.jpg", masterName: "示例UP" },
-		);
+		await h.renderer.generateMembershipCard({
+			viewer: { name: "新舰长" },
+			creator: { name: "示例UP" },
+			tier: { name: "舰长", rank: 1, color: "#4ebcec" },
+		});
 		// 出厂默认皮肤的 guard 卡带一句 `[data-bn="glass"]{height:190px;…}`;渲染器把它
 		// 翻成 `~=` 形式(单图图廊那种双挂点容器要靠它才选得中)。
 		// 验红:把 renderCardWithSkin 的 extraCss 那一路掐掉,这条红。
@@ -374,17 +375,26 @@ describe("ImageRenderer per-UP 旋钮覆盖", () => {
 		[
 			"sc",
 			(r: ImageRenderer, o: object) =>
-				r.generateSCCard(
-					{ senderFace: "", senderName: "粉丝", masterName: "UP", text: "加油", price: 30 },
+				r.generateSuperchatCard(
+					{
+						viewer: { name: "粉丝" },
+						creator: { name: "UP" },
+						text: "加油",
+						amount: 30,
+						currency: "CNY",
+					},
 					o,
 				),
 		],
 		[
 			"guard",
 			(r: ImageRenderer, o: object) =>
-				r.generateGuardCard(
-					{ guardLevel: 3, uname: "新舰长", face: "", isAdmin: 0 },
-					{ masterAvatarUrl: "", masterName: "UP" },
+				r.generateMembershipCard(
+					{
+						viewer: { name: "新舰长" },
+						creator: { name: "UP" },
+						tier: { name: "舰长", rank: 1, color: "#4ebcec" },
+					},
 					o,
 				),
 		],

@@ -131,6 +131,66 @@ const B_SITE_LIVE_AVATAR_DROPPED = {
 		"ADR-0021 决策 24 的 2026-10-05 🔗(㉒ 开片拷问):B 站直播卡 3a 前不画头像,Creator 只收图库引用、不加过渡格",
 } as const;
 
+/**
+ * ㉓c 第 1 步(2026-10-05):B 站醒目留言卡与会员卡不再画观众与主播头像。五份样例同一次批准(`sc-low` / `sc-high` /
+ * `guard-captain` / `guard-governor` / `guard-badge-left`),清单按样例认账,所以下面五行共用这一段说明、各带各的 hash。
+ *
+ * 类别写 `master-approved`,理由同 `B_SITE_AVATAR_DROPPED`:头像不是装饰,是中立形状里实打实的一格,只是它只收图库
+ * 引用、B 站的头像是远端地址,3a 才交引用(ADR-0021 决策 26 下 2026-10-05 的 🔗,照决策 22、24 下作品卡与直播卡的先例,
+ * 主人当天拍板「B 站这两种卡 3a 前不画头像」)。
+ *
+ * 夹具是 B 站形状、直接写块吃的视图,所以观众与主播的头像地址改成「没有」,代表 B 站这条路今天的产物。字节上只少了
+ * 几样,别的一个字没动:观众头像格(`data-cell="avatar"` 整格,里面的 `<img>` 一并)、`.bn-blk-avatar` 那两段块 CSS、
+ * 只有头像在用的 UnoCSS 工具类(醒目留言 `.h-full` `.overflow-hidden` `.object-cover`;会员 `.h-full` `.w-full` `.object-cover`),
+ * 以及主播那一格小头像(会员卡主播胶囊里的 `masterAvatar`;醒目留言卡「SC to」里的那个,只有 `sc-low` 带过 —— 它另少
+ * `.bg-cover` `.bg-center`)。名字 / 金额 / 档位色 / 徽章的行列没变,头像本来占的那一行 / 列就此空着(皮肤版式的事,留给 ㉔)。
+ * `sc-custom-layout` 的自定义版式里没摆头像块与「SC to」,字节不变,不在此列;锐评与词云的字节没有被牵连。
+ */
+const B_SITE_VIEWER_AVATAR_DROPPED = {
+	category: "master-approved",
+	approvedOn: "2026-10-05",
+	change:
+		"B 站醒目留言卡 / 会员卡不再画观众与主播头像:头像格整块收起(会员卡主播胶囊里的小头像一并),块 CSS 与只有头像在用的工具类随之消失",
+	basis:
+		"ADR-0021 决策 26 的 2026-10-05 🔗(㉓ 开片拷问):B 站这两种卡 3a 前不画头像,viewer.avatar / creator.avatar 只收图库引用",
+} as const;
+
+/**
+ * ㉓c 第 2 步(2026-10-05):会员卡不再有「房管」那一格。夹具里只有 `guard-governor` 带过房管标记(`isAdmin: 1`),
+ * 它的主播胶囊里原来把主播名换成「房管」两个字,现在写主播名;另外两份没带标记,字节不变。
+ *
+ * 类别写 `master-approved`:三类预批都不贴切 —— 它不是叫法、不是图库图的残差、也不是 B 站纯装饰,而是**一格内容**
+ * 被删了。主人当天拍板(ADR-0021 决策 26 下 2026-10-05 的 🔗;ADR-0023 决策 3 的 🔗):各平台的房管标记都挂在聊天消息上、
+ * 不在会员事件上,那段替换没有任何说明、看着是写错了位置,连同为它多调的那次接口一起删,`isAdmin` 不改成 `isModerator`。
+ * 字节上只有那一个文本节点(「房管」→ 主播名),别的一个字没动。
+ */
+const MEMBERSHIP_ADMIN_SWAP_DROPPED = {
+	category: "master-approved",
+	approvedOn: "2026-10-05",
+	change: "会员卡主播胶囊里不再把主播名换成「房管」(买舰的人是房管时):写主播名",
+	basis:
+		"ADR-0021 决策 26 的 2026-10-05 🔗(㉓ 开片拷问):会员卡没有房管这一格,各平台房管标记都在聊天消息上、不在会员事件上",
+} as const;
+
+/**
+ * ㉓c 第 3 步(2026-10-05):醒目留言卡的时长走核心统一的排版 `formatDuration`、金额走 `formatAmount`。
+ * 预期只有时长文字变,金额字节不变 —— 实测正是如此:`sc-low` 的时长胶囊「60秒」→「1分」(少 1 字节),
+ * `¥30` 一个字没动;`sc-high` 的「2小时」两种写法本来就一样,字节不变;`sc-custom-layout` 的版式里没摆时长块,不变。
+ * 醒目留言卡原来自带一套「60秒 / 2分钟 / 5分钟 / 30分钟 / 1小时 / 2小时」的写法,现在前四档变成「1分 / 2分 / 5分 / 30分」,
+ * 后两档不变(夹具里只有 `sc-low` 落在前四档)。
+ *
+ * 类别写 `master-approved`:这不是叫法中立化(那是平台专有词换中立词),是两种卡的时长写法合成核心里的一份。
+ * 主人定的(ADR-0021 决策 26 下 2026-10-05 的 🔗):醒目留言的时长走 `formatDuration`;被否的备选是把 `formatDuration`
+ * 的「分」改成「分钟」(所有直播卡跟着变)与醒目留言卡单写一个排版(多一个时长函数)。
+ */
+const SUPERCHAT_DURATION_FORMATTED = {
+	category: "master-approved",
+	approvedOn: "2026-10-05",
+	change: "醒目留言卡的时长胶囊走 formatDuration:「60秒」写成「1分」(金额与别的字一个没动)",
+	basis:
+		"ADR-0021 决策 26 的 2026-10-05 🔗(㉓ 开片拷问):醒目留言的时长走 formatDuration,「60秒 / 2分钟 / 5分钟 / 30分钟」变成「1分 / 2分 / 5分 / 30分」",
+} as const;
+
 export const APPROVED_CARD_DIFFS: CardDiffList = {
 	baseline: {
 		"dynamic-article": "5dc8efb7725183cd",
@@ -265,5 +325,15 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "live-streaming", ...B_SITE_LIVE_AVATAR_DROPPED, hash: "24396666be453c7e" },
 		{ sample: "live-ended", ...B_SITE_LIVE_AVATAR_DROPPED, hash: "3c2be15b2f36692c" },
 		{ sample: "live-with-fontface", ...B_SITE_LIVE_AVATAR_DROPPED, hash: "ad9f908681176b8a" },
+		// ㉓c 第 1 步:醒目留言卡与会员卡去头像。
+		{ sample: "sc-low", ...B_SITE_VIEWER_AVATAR_DROPPED, hash: "1760084be142bfa0" },
+		{ sample: "sc-high", ...B_SITE_VIEWER_AVATAR_DROPPED, hash: "ed529a54d4a8fb5a" },
+		{ sample: "guard-captain", ...B_SITE_VIEWER_AVATAR_DROPPED, hash: "78bdc179edba8a71" },
+		{ sample: "guard-governor", ...B_SITE_VIEWER_AVATAR_DROPPED, hash: "4a27508e5c8b57fc" },
+		{ sample: "guard-badge-left", ...B_SITE_VIEWER_AVATAR_DROPPED, hash: "f7b0213183433dbd" },
+		// ㉓c 第 2 步:会员卡删房管那一格。
+		{ sample: "guard-governor", ...MEMBERSHIP_ADMIN_SWAP_DROPPED, hash: "c6046af40cdb3746" },
+		// ㉓c 第 3 步:醒目留言卡的时长 / 金额走核心的统一排版。
+		{ sample: "sc-low", ...SUPERCHAT_DURATION_FORMATTED, hash: "c9155605556417e8" },
 	],
 };
