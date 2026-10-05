@@ -333,6 +333,7 @@ interface MembershipTier {
   rank: number;                         // 从 1 起、1 最低
   icon?: PostImage;                     // 徽章
   color?: string;                       // 档色：面板与出图共读
+  colorEnd?: string;                    // 档色的止色：卡的背景从 color 渐变到它；没声明就是单色
   announcement?: string;                // 宣告语，可用 {viewer}、{name}、{tier}；没声明就不画
 }
 
@@ -361,7 +362,7 @@ interface SuperchatEvent {
 | --- | --- |
 | B 站体系 | `guard`，档 key 是 `captain` / `commander` / `governor`，rank 1 / 2 / 3。B 站接口的 `guard_level` 1 = 总督，这个反向换算只在 `bilibili/` |
 | 徽章 | 图库引用，来源声明档位时给（`tier.icon`） |
-| 档色 | `tier.color`，面板与出图共读，每档一个值（留卡片那一套：舰长 `#4ebcec`、提督 `#d8a0e6`、总督 `#f2a053`）。面板自己的档位色表（`guard-levels.ts`）删掉，B 站的色写进 `bilibili/` 的描述符；3a 之前档位表住 `packages/internal/src/bilibili-guard.ts`（㉓） |
+| 档色 | `tier.color`，面板与出图共读（留卡片那一套：舰长 `#4ebcec`、提督 `#d8a0e6`、总督 `#f2a053`）；可选的 `tier.colorEnd` 是卡背景渐变的止色，面板不读（B 站三档 `#b494e5` / `#b494e5` / `#ef5f5f`）。面板自己的档位色表（`guard-levels.ts`）删掉，B 站的色写进 `bilibili/` 的描述符；3a 之前档位表住 `packages/internal/src/bilibili-guard.ts`（㉓） |
 | 宣告语 | `tier.announcement`，由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`，没声明就不画；皮肤字段 `membership.announcement`，面板上叫「宣告语」 |
 | 文案配置 | `templates.membership[体系 id] = { enabled, default, tiers[key] }`。每档与 default 都是文案加图片（`{ template, imageUrl }`），没单独配的档用 default，图片没填用该档的徽章；`guard` 的 default 出厂值是「{viewer} 成为了 {name} 的{tier}！」；`custom` 体系按档名存；`enabled` = 用不用自定义文案，推不推由特性开关管 |
 | 门槛 | 每套体系一个 `minRank`，在 `defaults.membership.minRank[体系 id]`，没配就是全推；逐订阅覆盖按体系合并；没有 rank 的体系只能开或关 |
