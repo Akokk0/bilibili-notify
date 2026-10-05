@@ -29,6 +29,8 @@ export const HOMES = {
 	formatDuration: "packages/internal/src/format.ts",
 	formatClock: "packages/internal/src/format.ts",
 	formatAxisTick: "apps/web/src/pages/stats/chart-utils.ts",
+	postText: "packages/internal/src/post.ts",
+	normalizePost: "packages/internal/src/post.ts",
 };
 
 /** 一个节点若是一处定义,回它定义的名字。 */
