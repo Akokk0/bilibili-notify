@@ -126,7 +126,7 @@
 | ⑲ | 推送历史拆两层：文字不设上限，图按天数清（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），超期的行「图已清理」、不能重推；迁移换算老配置、不搬超期图与孤儿图 | ✅ 已落（10-04，切成 ⑲a–⑲c，见表下「⑲ 开片」；修订号 23，备份版本 6） |
 | ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | ✅ 已落（10-05，切成 ⑳a–⑳e，见表下「⑳ 开片」；修订号 26） |
 | ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | ✅ 已落（10-05，修订号 27，备份版本 7） |
-| ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 未开工 |
+| ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 施工中（10-05 开片，切成 ㉒a–㉒e，见表下「㉒ 开片」） |
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
 | ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
@@ -217,6 +217,21 @@
     - 拓展 v2 上报是 `topics[]`、时间是毫秒、图是字节；契约 v3 在 3b，所以服务端收件口要有 v2 形状到 `Post` 的翻译。
     - 链接预览经 `videoToDynamic` 伪造一条视频动态，伪造里的 `badge.text` 还决定「投稿了视频」标签，是隐含耦合。
   - 施工中发现的问题（㉑ 不修）：出卡器的 UnoCSS 生成器整个进程只建一个，属性层会跨卡累积，所以一张卡的字节取决于它前面渲染过什么（㉑c 去掉「游戏」标签后，排在后面的 12 份无关快照各少了一个没人用的 `--un-border-opacity`）。要让属性层每卡独立会让所有快照再变一次，另开一件事看。
+- **㉒ 开片（10-05）**：先勘察，再一题一题问主人（定案在 ADR-0021 决策 24 下 10-05 的 🔗）。不动盘上形状、不抬修订号（人数、封面、开播时间都只在内存里）。这一片改 contract 形状（在播行的观看人数由字符串改数字），面板同片跟到照旧能用。切成五小片依次提交：
+  - ㉒a 先补测试钉住现状：B 站收到观看人数那段（存值、两秒节流、发出去的实参、在播快照）今天零覆盖；「输入 → 排版」那一步四份直播快照绕过了（夹具直接写排好版的 `LiveCardView`），守卫 10 拦不住它的回归。
+  - ㉒b B 站直播卡去头像（`Creator` 只收图库引用，B 站头像 3a 才有；照 ㉑c 第 1 步的先例单独一步，登记批准清单）。
+  - ㉒c 输入换成最终形状：`author` → `creator: Creator`、`area` → `category`、`online` → `currentViewers`、`fans` → `followers`、`fansChanged` → `followersDelta`；人数只收数字、缺了就缺键、卡上那一格不画（B 站人气的 `?? 0` 与点赞初值「0」都去掉）；`startedAt` 改 ISO（只改卡的输入，拓展内部的在播表、场次仍是毫秒，交给卡之前转一次）；`cover` 改 `PostImage`（B 站照旧带 `url`；引用解析不到当成没有封面，画「暂无封面」）。出卡器入口收成一个 `generateLiveCard`（原来吃 B 站原始数据的那个删掉，`generateNeutralLiveCard` 改这个名）；B 站翻译 `biliLiveCardInput` 搬到 `packages/live`、改叫 `liveCardInputFromRoomInfo`，两份 `live_time` 解析合成一份；拓展那边的拼装收成 `liveCardInputFromReport`。`LiveCardView` 与皮肤字段名不动（㉔）。
+  - ㉒d 观看人数改数字：B 站存 `WATCHED_CHANGE` 的 `num`；「暂未获取到」不再写回直播数据，文字模板的 `{watched}` 缺数时由文字渲染器在出口印；总线 `live-viewers-changed.viewers`、契约在播行的 `viewers`、面板「正在直播」那一列都改数字、统一用 `formatCount` 排；统计不再解析「1.2万」（`parseBiliViewers` 只留给迁移）。只改类型不改名，事件的最终形状（按订阅认、拆两格）仍归 3b。
+  - ㉒e 拓展直播的封面与头像进图库：单列一家引用方 `liveImages`，名单是在播表里的封面与事件头像（直播可以超过 24 小时，周期卡几小时后还要用封面，不能像作品那样只靠宽限期）；`extensionCardAuthor` 字节转 data URL 那条路退役。
+  - 勘察到的事实（施工时不用重查）：
+    - 四种 status：`start` / `streaming` / `end` / `offline`；补报不是单独一种卡（画 `streaming`，推送类型是 `CatchUp`）。`offline` 没有生产调用方，只有测试在走。
+    - `WATCHED_CHANGE` 的载荷是 `{ num, text_small, text_large }`，解析器要求 `num` 与 `text_small` 同时在，今天存的是 `text_small`；`text_large` 与 `rank-count` 没人用，别顺手接。B 站的「人气」来自房间接口的 `online`（类型没声明，靠 any 读），不是 WS。
+    - 观看人数字符串今天的三个去处：下播卡的累计观看、文案 `{watched}`（缺了写回「暂未获取到」，下播卡因此可能印出这句）、总线事件（统计解析回数字 / WS → 面板）。统计的峰值盘上早就是数字。
+    - 主人设的自定义直播封面是另一条路（`colorOptions.liveCoverImage` → `resolveAsset`），优先级 自定义 > 输入 > 「暂无封面」占位，这一片不动。
+    - 卡上「开播时间」固定 UTC+8，作品卡的时间按机器本地时区；全局时区设置单开一小片，这一片不做。
+    - 棘轮：`bus-event-payloads` 的 `RAW_STRINGS["live-viewers-changed.viewers"]` 在那一格改成非字符串时必须同步删；B 站替身棘轮里 `bili-live-input.ts`、`image-renderer.ts`、`routes/cards.ts`、`stats/bili-format.ts`、`stats/bili-source.ts` 的上限会随搬动变（只降不升，要升先问主人）。
+    - 往卡片基线里加新夹具要放末尾：出图器的 UnoCSS 生成器全进程一个，前面渲染过什么会影响后面的字节。
+  - 真机待看（㉒ 全片）：B 站直播卡没头像时默认皮肤头部的样子（与 ㉑ 同一类）；面板「正在直播」那一列 B 站行的人数换成我们自己排的字之后和原来差多少。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名（10-04 定：`history.retentionDays`，不带 `image` 前缀）；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha

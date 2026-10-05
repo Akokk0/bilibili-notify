@@ -148,6 +148,11 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
     - 时刻是 ISO 字符串、以 `…At` 结尾，时长的名字带单位；
     - 计数全程是数字，只在出口由 `formatCount` 排一次版；
     - 时长的格式化只有一份 `formatDuration(start, end)`。
+    🔗 **2026-10-05**（㉒ 开片拷问，主人拍板）：
+    - **直播卡输入的名字这一片一起改到最终形状**（`creator`、`category`、`currentViewers`、`followers`、`followersDelta`），不留到 ㉔：这一片本来就要把这个类型的每个调用方都改一遍。`LiveCardView` 与皮肤字段名仍归 ㉔。被否的备选：只改形状、名字 ㉔ 再改（同一个类型动两次）；连视图与皮肤字段一起改（提前做半个 ㉔、动皮肤契约）。
+    - **B 站直播卡 3a 前不画头像**，照决策 22 下 10-05 那条作品卡的先例：`Creator` 只收图库引用、不加过渡格。前提同前：3a 排在第一版 alpha 之前。
+    - **观看人数改数字一路改到面板**：总线事件、契约在播行、面板同片改，只改类型不改名（事件的最终形状归 3b）。出口排回文字那条路走不通：总线还是字符串的话统计就得继续解析「1.2万」，而解析只许留在迁移模块。
+    - **名字**：出卡器入口 `generateLiveCard`（只吃中立输入，与 `generatePostCard` 成对）；B 站翻译 `liveCardInputFromRoomInfo`、拓展翻译 `liveCardInputFromReport`；拓展直播的图库引用方 `liveImages`。
 25. **字段改成中立名（Q40）**：`description`、`category`、`currentViewers` / `totalViewers`、`bio`、`isPremium`、`amount` + `currency`、`followers`、`followersDelta`；`danmaku` 不改。`Post.video` 表示作品本身就是视频，不设视频级的互动数。
     🔗 **2026-10-05**（㉑ 开片拷问，主人拍板）：`video.views` / `video.danmaku` 留着，是视频自己的展示数字、卡上照画；这句的本意是点赞、评论、转发这类互动数只在 `Post.stats`。
 26. **会员按「体系 + 档」建模（Q37）**：
