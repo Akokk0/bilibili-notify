@@ -84,12 +84,40 @@ function collectHooks(html: string, rootOnly = false): string[] {
 
 type BlockHooks = { fixture: string; block: string; hooks: string[] };
 
-/** 把一种卡的所有夹具逐块渲染一遍,记下每块出现的挂点。 */
+/**
+ * 夹具表覆盖不到、却仍然活着的路径,补的**旁路探针**(只看挂点,不进快照)。
+ *
+ * 动态卡的头像块:B 站这条路造的 node 到 3a 之前不带头像地址、头像块整块收起(`DynamicNode.avatarUrl`),
+ * 而夹具表里的动态卡全经 `buildDynamicNode`,于是 `dynamic.avatar` 的挂点不再出现在任何夹具里。拓展作品那条
+ * 路(`apps/server/src/runtime/extension-post-work.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
+ */
+const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }[]>> = {
+	dynamic: [
+		{
+			name: "(旁路探针)拓展作品形状的 node,带头像",
+			props: {
+				node: {
+					avatarUrl: "data:image/png;base64,FACE",
+					upName: "某人",
+					upIsVip: false,
+					pubTime: "刚刚",
+				},
+				renderForward: (): [] => [],
+			},
+		},
+	],
+};
+
+/** 把一种卡的所有夹具(外加旁路探针)逐块渲染一遍,记下每块出现的挂点。 */
 async function collect(kind: CardSkinKind): Promise<BlockHooks[]> {
 	const out: BlockHooks[] = [];
 	const table = TABLES[kind] as Record<string, BlockRenderer<unknown>>;
+	const inputs: { name: string; props: unknown }[] = [];
 	for (const fixture of CARD_FIXTURES.filter((f) => f.kind === kind)) {
-		const props = blockPropsOf(kind, await fixture.build());
+		inputs.push({ name: fixture.name, props: blockPropsOf(kind, await fixture.build()) });
+	}
+	inputs.push(...(SIDE_PROBES[kind] ?? []));
+	for (const { name, props } of inputs) {
 		for (const block of Object.keys(CARD_SKIN_BUILTIN_BLOCKS[kind])) {
 			const render = table[block];
 			expect(render, `${kind}.${block} 没有对应的块渲染器`).toBeTypeOf("function");
@@ -98,7 +126,7 @@ async function collect(kind: CardSkinKind): Promise<BlockHooks[]> {
 			if (vnode == null) continue;
 			const html = await renderToString(createSSRApp({ render: () => vnode as VNode }));
 			const rootOnly = OPAQUE_BLOCKS.has(`${kind}.${block}`);
-			out.push({ fixture: fixture.name, block, hooks: collectHooks(html, rootOnly) });
+			out.push({ fixture: name, block, hooks: collectHooks(html, rootOnly) });
 		}
 	}
 	return out;

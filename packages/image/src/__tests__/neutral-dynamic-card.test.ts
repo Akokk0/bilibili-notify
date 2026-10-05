@@ -4,7 +4,8 @@
  * 画出来一个字节不变由 23 份基准快照(`card-baseline.test.ts`)钉着;这里钉的是中立那一侧:
  *
  * 1. 皮肤契约要的那几格(动态类型、图廊张数 / 首图)从 node 取得到 —— 转发内层取它自己的;
- * 2. 视频那一行没有弹幕数就不画弹幕图标与数字(决策 55:拓展作品不收弹幕数)。
+ * 2. 视频那一行没有弹幕数就不画弹幕图标与数字(决策 55:拓展作品不收弹幕数);
+ * 3. 头像:node 带了地址就画(拓展作品那条路),没有就整格不画(B 站那条到 3a 之前不给)。
  */
 
 import type { CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
@@ -185,6 +186,44 @@ describe("generateNeutralDynamicCard — 视频那一行", () => {
 		expect(html).not.toContain('aria-label="播放量"');
 		expect(html).not.toContain('aria-label="弹幕"');
 		expect(html).toContain("一期视频");
+	});
+});
+
+describe("generateNeutralDynamicCard — 头像", () => {
+	/**
+	 * 拓展作品那条路(`apps/server/src/runtime/extension-post-work.ts`)自己造 node、带着头像地址:
+	 * 卡上照画。B 站那条路到 3a 之前不给头像(`DynamicNode.avatarUrl`),头像格整个不画。
+	 * 验红:把头像块改回无条件画,第二条红;让它不再读 `node.avatarUrl`,第一条红。
+	 */
+	it("node 带了头像地址:头像格与那张 <img> 都画,契约里 up.face 是这个地址", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(node());
+		const html = captured[0] ?? "";
+		expect(html).toContain('data-cell="avatar"');
+		expect(html).toContain(`src="${img("FACE")}" alt="头像"`);
+	});
+
+	it("node 没有头像地址:头像格整个不画,契约里 up.face 是空串;名字照画", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(node({ avatarUrl: undefined }));
+		const html = captured[0] ?? "";
+		expect(html).not.toContain('data-cell="avatar"');
+		expect(html).not.toContain('alt="头像"');
+		expect(html).toContain("示例作者");
+	});
+
+	it("转发框里的内层卡同理:内层没有头像地址,框里就没有头像格", async () => {
+		const { renderer, captured } = makeRenderer();
+		await renderer.generateNeutralDynamicCard(
+			node({
+				type: "DYNAMIC_TYPE_FORWARD",
+				forward: node({ upName: "原作者", avatarUrl: undefined }),
+			}),
+		);
+		const html = captured[0] ?? "";
+		// 外层有、内层没有:整张卡上只剩一个头像格。
+		expect(html.match(/data-cell="avatar"/g)).toHaveLength(1);
+		expect(html).toContain("原作者");
 	});
 });
 

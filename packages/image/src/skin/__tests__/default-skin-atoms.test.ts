@@ -26,7 +26,7 @@ async function render(kind: CardSkinKind, scene: string, skin: CardSkinManifest)
 }
 
 describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {
-	it("框里摆的是头像 / 名字 / 时间 / 正文这些原子块,没有头部与正文复合块", async () => {
+	it("框里摆的是名字 / 时间 / 正文这些原子块(头像到 3a 才有),没有头部与正文复合块", async () => {
 		const html = await render("dynamic", "forward", DEFAULT_CARD_SKIN);
 		const { document } = new JSDOM(html).window;
 		const inset = document.querySelector('[data-block="forward"]');
@@ -35,9 +35,9 @@ describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {
 			e.getAttribute("data-block"),
 		);
 		// 转发框里那条是视频投稿,所以视频卡那几块也在 —— 内层与外层同一份皮肤、同一套块。
-		expect(inner).toEqual(
-			expect.arrayContaining(["avatar", "name", "time", "videoCover", "videoTitle"]),
-		);
+		expect(inner).toEqual(expect.arrayContaining(["name", "time", "videoCover", "videoTitle"]));
+		// 头像块没有数据就收起:B 站这条路到 3a 之前不给头像地址(`DynamicNode.avatarUrl`)。
+		expect(inner).not.toContain("avatar");
 		expect(inner).not.toContain("header");
 		expect(inner).not.toContain("content");
 	});

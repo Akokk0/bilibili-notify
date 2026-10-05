@@ -13,6 +13,7 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, isVNode, type VNode } from "vue";
+import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
 import * as ICONS from "../icons";
 import { buildDynamicNode, buildGallery, type DynamicNode } from "../templates/dynamic-content";
 import type { Dynamic } from "../types";
@@ -336,6 +337,53 @@ describe("buildDynamicNode —— 转发", () => {
 		await expect(
 			buildDynamicNode(dynamic("DYNAMIC_TYPE_LIVE_RCMD", {}), false, fmt),
 		).rejects.toThrow("直播开播动态");
+	});
+});
+
+describe("头像 —— B 站作品卡到 3a 之前不画(ADR-0021 决策 22 的 2026-10-05 🔗)", () => {
+	/**
+	 * `Creator.avatar` 只收图库引用,B 站的头像是远端地址、要到 3a 才存进图库。所以 B 站这条路造的
+	 * node 不带头像地址;拓展作品那条路(`apps/server/src/runtime/extension-post-work.ts` 自己造 node)
+	 * 照旧带。头像块有地址就画、没地址整块收起。
+	 *
+	 * 验红:让 `buildDynamicNode` 重新写 `avatarUrl: author.face`,前两条红;让头像块不判空,
+	 * 第四条红(画出 `src` 为空的裂图)。
+	 */
+	const forwardDynamic = () =>
+		dynamic("DYNAMIC_TYPE_FORWARD", { desc: richText("转发语") }, { orig: videoDynamic() });
+
+	it("B 站动态造出的 node 没有头像地址 —— 外层与被转发的内层都是", async () => {
+		const node = await buildDynamicNode(forwardDynamic(), false, fmt);
+		expect(node.avatarUrl).toBeUndefined();
+		expect(node.forward?.avatarUrl).toBeUndefined();
+	});
+
+	it("充电专属的占位路径也不带(它在类型分发之前短路返回)", async () => {
+		const locked = dynamic("DYNAMIC_TYPE_DRAW", {}, { basic: { is_only_fans: true } });
+		const node = await buildDynamicNode(locked, false, fmt);
+		expect(node.avatarUrl).toBeUndefined();
+	});
+
+	it("头像块:node 带了地址就画 <img>(拓展作品那条路)", async () => {
+		const node: DynamicNode = {
+			avatarUrl: "data:image/png;base64,FACE",
+			upName: "某人",
+			upIsVip: false,
+			pubTime: "刚刚",
+		};
+		const vnode = DYNAMIC_BLOCKS.avatar({ node, renderForward: () => [] });
+		const html = await htmlOf(present(vnode, "头像块"));
+		expect(html).toContain('src="data:image/png;base64,FACE"');
+		expect(html).toContain('alt="头像"');
+		expect(hooksIn(html)).toEqual(new Set(["image"]));
+	});
+
+	it("头像块:node 没有地址(或是空串)就整块收起,不画 src 为空的裂图", () => {
+		const base = { upName: "某人", upIsVip: false, pubTime: "刚刚" };
+		expect(DYNAMIC_BLOCKS.avatar({ node: base, renderForward: () => [] })).toBeNull();
+		expect(
+			DYNAMIC_BLOCKS.avatar({ node: { ...base, avatarUrl: "" }, renderForward: () => [] }),
+		).toBeNull();
 	});
 });
 

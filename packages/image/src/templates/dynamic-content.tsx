@@ -104,7 +104,13 @@ export type GalleryImage = {
 };
 
 export type DynamicNode = {
-	avatarUrl: string;
+	/**
+	 * 头像地址。**选填,没有就不画头像**(头像块整块收起,皮肤契约的 `up.face` 是空串)。
+	 *
+	 * B 站这条路不给:`Creator.avatar` 只收图库引用,B 站的头像是远端地址,要到 3a 才存进图库
+	 * (ADR-0021 决策 22 的 2026-10-05 🔗)。拓展作品那条路(`extension-post-work.ts`)自己造 node,照旧给。
+	 */
+	avatarUrl?: string;
 	upName: string;
 	upIsVip: boolean;
 	pubTime: string;
@@ -156,8 +162,8 @@ export async function buildDynamicNode(
 ): Promise<DynamicNode> {
 	const author = dynamic.modules.module_author;
 	const stat = dynamic.modules.module_stat;
+	// 不写 `avatarUrl`:B 站的头像到 3a 才有图库引用可给(见 `DynamicNode.avatarUrl`)。
 	const node: DynamicNode = {
-		avatarUrl: author.face,
 		upName: author.name,
 		upIsVip: author.vip.type !== 0,
 		pubTime: fmt.time(author.pub_ts),

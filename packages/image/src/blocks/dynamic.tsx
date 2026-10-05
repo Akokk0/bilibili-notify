@@ -67,10 +67,14 @@ export type DynamicBlockProps = {
 	renderForward: (node: DynamicNode) => VNode | VNode[];
 };
 
-/** 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。 */
-const avatar: BlockRenderer<DynamicBlockProps> = ({ node }) => (
-	<img data-bn="image" class="shrink-0 object-cover" src={node.avatarUrl} alt="头像" />
-);
+/**
+ * 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。
+ * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `DynamicNode.avatarUrl`)。
+ */
+const avatar: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+	node.avatarUrl ? (
+		<img data-bn="image" class="shrink-0 object-cover" src={node.avatarUrl} alt="头像" />
+	) : null;
 
 /**
  * UP 主名(原子块,含类型标签后缀)。名字的**颜色**是数据(大会员粉 / 常规墨色),留在

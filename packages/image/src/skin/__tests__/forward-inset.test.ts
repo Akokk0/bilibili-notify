@@ -31,6 +31,10 @@ beforeAll(async () => {
 	props = (await fixture.build()).props as unknown as DynamicCardProps;
 });
 
+/**
+ * 下面几条拿 `name`(UP 主名)当「头部那一块」的替身:它恒有数据。从前用的是 `avatar`,而 B 站这条路
+ * 造的 node 到 3a 之前不带头像地址、头像块会整块收起(见 `DynamicNode.avatarUrl`),替身就画不出来了。
+ */
 const block = (
 	id: string,
 	builtin: string,
@@ -73,10 +77,10 @@ describe("转发框里的内层卡 — 跟着皮肤走", () => {
 		// 皮肤把正文摆在头部**上面**:内层也得是这个顺序。
 		const doc = await render([
 			block("c", "text", 1),
-			block("h", "avatar", 2),
+			block("h", "name", 2),
 			block("f", "forward", 3),
 		]);
-		expect(innerLabels(doc)).toEqual(["text", "avatar"]);
+		expect(innerLabels(doc)).toEqual(["text", "name"]);
 	});
 
 	it("皮肤没摆的块,内层也不画", async () => {
@@ -86,7 +90,7 @@ describe("转发框里的内层卡 — 跟着皮肤走", () => {
 
 	it("内层块挂的是同一批 bn-blk- class —— 一条皮肤 CSS 同时管内外两层", async () => {
 		const doc = await render([
-			block("h", "avatar", 1),
+			block("h", "name", 1),
 			block("c", "text", 2),
 			block("f", "forward", 3),
 		]);
@@ -96,7 +100,7 @@ describe("转发框里的内层卡 — 跟着皮肤走", () => {
 
 	it("内层是网格容器 —— 皮肤的分栏在内层照样成立", async () => {
 		const doc = await render([
-			block("h", "avatar", 1),
+			block("h", "name", 1),
 			block("c", "text", 2),
 			block("f", "forward", 3),
 		]);
