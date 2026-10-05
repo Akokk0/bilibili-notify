@@ -125,7 +125,7 @@
 | ⑱ | 历史行改形：`identity`、`nameSnapshot`、`createdAt`、`repushOf`、`RepushSnapshot`（`kind` → `feature` 10-03 提前到 ⑬f；原件这一片只改 `DraftSchema` → `RepushSnapshot` 与 `v` → `version`）。原件的载荷改名与守卫 13 那条加固（重推原件每种载荷都有去向）10-03 挪去跟活的 `NotificationPayload` 改名走：`image-group` 与段的判别键 `kind` 归 3a，原生分享归 3b。跟图有关的格（头像换图库引用、配图格按词表 `Ref` 那行起名、原件的 `{ ref, mime }` 并成一格、删 `own`）10-03 挪到 ⑳；投递结果（盘上旧失败转 `unknown`、新行带码）10-03 挪到 3a，随 `DeliveryResult` 改形状 | ✅ 已落（10-03，切成 ⑱a–⑱c，见表下「⑱ 开片」；修订号 21） |
 | ⑲ | 推送历史拆两层：文字不设上限，图按天数清（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），超期的行「图已清理」、不能重推；迁移换算老配置、不搬超期图与孤儿图 | ✅ 已落（10-04，切成 ⑲a–⑲c，见表下「⑲ 开片」；修订号 23，备份版本 6） |
 | ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | ✅ 已落（10-05，切成 ⑳a–⑳e，见表下「⑳ 开片」；修订号 26） |
-| ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | 未开工 |
+| ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | ✅ 已落（10-05，修订号 27，备份版本 7） |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | 未开工 |
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a | 未开工 |
 | ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份 | 未开工 |
@@ -204,6 +204,9 @@
   - ㉑c 出卡器吃 `Post`（B 站这条）：B 站原始数据到 `Post` 的翻译放 `packages/dynamic`；出卡器的入口改吃 `Post`；链接预览、卡片预览路由、示例卡、开发工具场景跟上。先各用单独一步去头像、去小图标、换数字排版并记进批准清单，之后换入口那一步十份快照一字不差。
   - ㉑d 拓展这条：拓展上报到 `Post` 的翻译放服务端；图存进图库（写入方 `postImages`），出卡器按引用取图；`extension-post-work` 里自己造节点的那段退役。
   - ㉑e 取段收口与过滤吃 `Post`：过滤、AI 点评、AI 聊天工具、拓展作品四处拼法都换成那一个函数；类型开关只看最外层 `Post`、对所有来源生效，面板里拓展订阅露出四个开关，屏蔽提醒措辞改中立；文档收尾。
+  - ✅ 五小片都已落（10-05）。施工中补定的：`Post` 加 `title?`、`video.durationSec` 改选填；㉑c 实际走了六步（去头像、去小图标与表情图、数字由核心排版、附加块按形状画、换入口、删旧入口），前四步的字节变化都在批准清单里，换入口那步 23 份快照零变化；出卡器新入口 `generatePostCard`，B 站翻译 `postFromDynamic`（`packages/dynamic`），拓展翻译 `postFromReport`（服务端），过滤 `filterPost` 直接吃折好的 `ContentFilters`；拓展作品的图在出卡前才写进图库（被屏蔽的作品不写盘）；B 站替身棘轮加了两个文件共 9 处（B 站显示值的解析，3a 掉出）。
+  - 留给 3a 的：`packages/ai/src/tools.ts` 的 `get_user_dynamics` 还有一份自己的作品文字拼法（ai 包够不着 `postFromDynamic`，dynamic 依赖 ai），随来源自带 AI 工具处理；卡片预览路由的出卡器还没接图库解析口（B 站交引用后接上）；B 站作品卡的头像、正文小图标、表情图等 B 站交引用后回来；直播卡的拓展头像仍是字节转 data URL（㉒）。
+  - 真机待看（㉑ 全片，主人机器上）：没头像时默认皮肤头部左边空出的那一列；面板规则页里这几个过滤开关（拓展订阅现在也露出四个类型开关）；拓展作品卡经图库出图（只跑过假源的端到端）；拿真实 0.x 数据迁一遍过滤键。
   - 勘察到的事实（施工时不用重查）：
     - 代码里没有任何作品模型的领域类型，只有 `ImageRef` 与 `PostPushPart`；撞名的有三处局部别名 `type Post = SubscriptionReportValue<"post">` 与面板的 `RichText` 组件。
     - 包依赖：`image` 只依赖 `blive` 与 `internal`、不依赖 `dynamic`，`dynamic` 依赖 `image`；所以类型与取段函数只有放 `internal` 才够得着所有消费者，十份字节快照（输入是 B 站原始数据）要跟着翻译挪到够得着它的地方。
