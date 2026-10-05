@@ -37,6 +37,9 @@
 | 登记表或映射的键 | `Key` | — |
 | 指向别处一份东西的引用（只装认出它要的那几格，不装内容本身） | `Ref`（`ImageRef`、`VideoRef`）；装引用的**字段**按装的是什么起名（`avatar`、`cover`），不另挂 `Ref` | 不是引用的东西用 `Ref` |
 | 供人挑选、还没成为实体的候选 | `Candidate` | — |
+| 富文本里的一段（文字、链接、表情、提及……） | `Segment`（`RichTextSegment`） | `Node`、`Part`、`Chunk` |
+| 把别处的形状翻成领域实体的函数 | `<实体>From<来处>`（`postFromDynamic`、`postFromReport`） | `to…`、`convert…`、`build…` |
+| 从作品取文字的唯一一处 | `postText(post, 形式)`（形式 `plain` / `labeled`）；别处不许自己拼 | 各处手拼的 `extract…Text` |
 | 种类的取值；说「是哪一种」的判别键叫 `kind`，说「处在什么状态」的判别键叫 `status`（状态对象里装取值的那一格） | `Kind` | `Type`（只留给外部协议里的原名） |
 | 发出去的改动 / schema 的全可选版 / 按订阅覆盖的那一层 / 一步操作 | `Patch` / `Partial` / `Overrides` / `Op` | — |
 | 一个过程里先后排开的一段（一段里可以有多个动作，如关停的 `DisposePhase`） | `Phase` | `Stage`（面板里是动画舞台 `CardMotionStage`）、当它用的 `Step`（`Step` 只指一个动作：引导的一步、装载卡在哪一步） |
