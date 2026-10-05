@@ -127,7 +127,7 @@
 | ⑳ | 三处过渡目录并进图库：`history/img/`、`avatars/`、`assets/chat/`（女仆 AI 看图跟着读图库）；读口一起改；迁移把硬链接按摘要改名；目录表删两个过渡键；⑨ 复测。历史行与重推原件里跟图有关的格从 ⑱ 挪来：头像换图库引用、配图格按词表 `Ref` 那行起名（`imageRef` 这类改成按装的是什么起名，10-03 ⑮ 定）、原件的 `{ ref, mime }` 并成一格、删 `own`（10-03 主人定：格和字节同一片动，中间不留「名字说是引用、装的不是」的状态；⑱ 本期搬字节不行，图一进库就会被共用，⑲ 按行直接删会误删）。⑰ 的引用方登记表、按引用清扫、新图宽限期与守卫 10-03 并进来，今天按文件名直接删图的几条路同一片改走清扫 | ✅ 已落（10-05，切成 ⑳a–⑳e，见表下「⑳ 开片」；修订号 26） |
 | ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | ✅ 已落（10-05，修订号 27，备份版本 7） |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | ✅ 已落（10-05，切成 ㉒a–㉒d，㉒e 并进 ㉒c，见表下「㉒ 开片」；不动盘、修订号不抬） |
-| ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a。10-05 开片，切成 ㉓a–㉓e，见表下「㉓ 开片」 | 施工中 |
+| ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a。10-05 开片，切成 ㉓a–㉓e，见表下「㉓ 开片」 | ✅ 已落（10-06，修订号 28，备份版本 8） |
 | ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份。醒目留言卡与会员卡两组字段 10-05 已随 ㉓ 改到最终名字，这一片只剩卡种键与其余卡；皮肤按档换色的挂点 10-05 从 ㉓ 挪来（见「㉓ 开片」） | 未开工 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
 | ㉖ | 统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、粉丝行 `followers` / `sampledAt`；ADR-0027 服务端那半（按特性在记、开播公告不记、多收字段、最近作品缓存并入、删 `?uid=`、CSV 合列） | 未开工 |
@@ -272,6 +272,17 @@
     - 卡片基线：醒目留言 3 份、上舰 3 份；它们排在锐评与词云前面，字节一变后面三份可能被 UnoCSS 属性层牵连。
     - 新文件里出现 `bili` / `bilibili` 的标识符段或字面量，B 站替身棘轮就红；只有 `bilibili-guard.ts` 登记。
   - 留给 3a：舰长图标改本地资产；两种卡的头像（醒目留言用消息里自带的头像地址，会员卡要重新接一次查询）；档位表搬进来源描述符并由 `/api/sources` 下发；`blive` 并进 `bilibili/live/`。留给 3b：其余 6 条直播文案的占位符改名与 `-key` 改写、`applyTemplate` 删除；会员与醒目留言的总线事件；拓展上报会员与醒目留言、`custom` 体系的面板。留给 ㉔：卡种键 `sc` / `guard`、`master.*` 两格、皮肤按档换色的挂点、抬皮肤格式版本。
+  - ✅ 已落（10-06，施工时定的要点）：
+    - 订阅视图加了 `subscriptionId`（翻译函数要订阅 id，引擎原来只认 uid）；上舰与醒目留言出卡前不再调接口查用户，`getUserInfoInLive` 没有调用方了、方法留着（3a 会员卡头像要用）。
+    - 皮肤字段：没有 rank 的档 `membership.rank` 是 0；`superchat.rank` 永远落在 1–6（与取色同一个值），没有档是 1。会员档没有声明徽章或宣告语、醒目留言没有时长时，对应的块整块收起。
+    - 取文案 `membershipTemplateOf(bundle, tierKey)`：文案与图片逐字段回落（档 → 体系默认）；某一档的文案是空串也跟随默认（原来推空文字）。`{tier}` 填档名，不再是 B 站消息里的礼物名（真数据里两者同字）。
+    - 迁移在 `migration/membership-moves.ts` 与 `placeholders.ts`（`rewritePlaceholders` 是给 3b 复用的那个共用函数）。「没动过的档」认两代旧默认（0.12 的与更早的 `{user}` / `{mastername}` 那一代）；账本去掉旧六条、新路径两条记成已见，0.x 没有账本时新建一份只含这两条的。
+    - 全局设置热更新原来靠「过滤变了」顺带覆盖门槛，门槛搬走后补了一道 `interactionChanged`（漏了的话改门槛要重启才生效）。
+    - 规则页草稿合并把补丁里的 `null` 当「拿掉这个键」，与服务端一致，整页生效。
+    - 面板只有 `apps/web/src/config/membership-programs.ts` 一个文件认得 B 站档位表（棘轮登记 2），组件都按「体系的档列表」铺；档位表经 `@bilibili-notify/internal/bilibili-guard` 子路径给面板。预览请求体 `guard.level` → `guard.tierKey`、`sc.price` → `sc.amount`（外层卡种键 ㉔）。预览页的档位钮改成由低到高，与规则页同序（主人 10-06 定）。
+    - 棘轮：`bilibili-guard.ts` 1、`membership-programs.ts` 2，别的文件数字没变。
+  - 留着的：迁移后，0.x 里手写过字面 `{name}` 的上舰文案会被当成主播名（0.x 不认它、原样印出）；`subscription-sources.md` 等处讲 3a 设计时仍写「面板的 `guard-levels.ts` 删掉」，那个文件 ㉓e 已删。
+  - 真机待看（㉓ 全片）：会员卡与醒目留言卡没有头像时默认皮肤的样子；醒目留言时长写成「1分」「30分」的样子；会员卡背景仍是渐变；规则页直播门槛一节与上舰文案一节（体系默认 + 每档、占位显示跟随默认、清空一格能清掉）；面板三档色块换成卡片那套色；卡片预览页选档出图；改门槛不重启就生效；真实 0.x 数据迁一遍后门槛、改过的上舰文案、`-uname` 老写法对不对，且不亮「默认文案有更新」。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名（10-04 定：`history.retentionDays`，不带 `image` 前缀）；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha
