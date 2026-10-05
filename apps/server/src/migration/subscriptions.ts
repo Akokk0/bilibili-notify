@@ -9,7 +9,7 @@
  * {@link migrateLegacyFeatureFlagsPartial})。拓展订阅没有外层那一步。
  *
  * 迁成 0.x 最新形状的那一行再过一遍 1.0 的改名({@link renameSubscriptionKeys}:特性键、附加项键、文案键、版式键、
- * 顶层的 `extras` → `extraTargets`)与直播拆键({@link splitSubscriptionLiveSettings}:`routing.liveStreaming` 拷贝、
+ * 顶层的 `extras` → `extraTargets`)、会员与醒目留言的搬家({@link moveSubscriptionMembership})与直播拆键({@link splitSubscriptionLiveSettings}:`routing.liveStreaming` 拷贝、
  * 覆盖里的 `pushTime` / `restartPush` 拆成开关、间隔与补报,要全局的值 —— 调用方递进来),然后才换身份 —— 这几步碰的是
  * 不相交的几格。
  *
@@ -27,6 +27,7 @@ import {
 } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
 import { type GlobalLiveFacts, splitSubscriptionLiveSettings } from "./live-split.js";
+import { moveSubscriptionMembership } from "./membership-moves.js";
 
 /** 两种订阅共有的那两格:`routing` 与 `overrides.features`。 */
 function migrateSharedParts(row: unknown): unknown {
@@ -71,12 +72,15 @@ export function toIdentityRow(row: unknown, kind: "bilibili" | "extension"): unk
 }
 
 /**
- * 一行(已迁成 0.x 最新形状的)订阅 → 1.0 的键:先改名({@link renameSubscriptionKeys}),再拆直播
- * ({@link splitSubscriptionLiveSettings},要全局的值)。`migrateSubscriptionFiles` 的每一行与守卫 13
- * (`__tests__/keyed-records.test.ts`)跑的是这同一条,守卫验的就是迁移跑的。
+ * 一行(已迁成 0.x 最新形状的)订阅 → 1.0 的键:先改名({@link renameSubscriptionKeys}),再搬会员与醒目留言的覆盖
+ * ({@link moveSubscriptionMembership}:两个阈值、上舰文案,㉓d),再拆直播({@link splitSubscriptionLiveSettings},要全局的值)。
+ * `migrateSubscriptionFiles` 的每一行与守卫 13(`__tests__/keyed-records.test.ts`)跑的是这同一条,守卫验的就是迁移跑的。
  */
 export function toCurrentRow(row: unknown, globalLive: GlobalLiveFacts): unknown {
-	return splitSubscriptionLiveSettings(renameSubscriptionKeys(row), globalLive);
+	return splitSubscriptionLiveSettings(
+		moveSubscriptionMembership(renameSubscriptionKeys(row)),
+		globalLive,
+	);
 }
 
 /** 0.x 一个分组名在 1.0 里成的标签名:去掉首尾空白,空的丢掉。 */

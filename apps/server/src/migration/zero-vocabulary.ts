@@ -30,9 +30,10 @@ export type ZeroFeatureKey = (typeof ZERO_FEATURE_KEYS)[number];
 
 /**
  * 0.x 的内容过滤键(0.12 `ContentFiltersSchema`),按它的顺序:全局 `defaults.filters` 与订阅 `overrides.filters` 用的都是这一份。
- * 1.0 的改名对照(`feature-renames.ts`)用 `satisfies Record<ZeroFilterKey, …>` 钉着:0.x 多一个键、对照表没给去向,编译不过。
+ * 每个键在 1.0 有一个去向:改名({@link ZERO_FILTER_KEYS} 去掉 {@link ZERO_MOVED_FILTER_KEYS},`feature-renames.ts` 用
+ * `satisfies Record<…, …>` 钉着:多一个键、对照表没给去向,编译不过)或搬家(两个直播阈值,`membership-moves.ts`)。
  * 改了名的是四个类型开关与两个白名单(`blockForward` / `blockArticle` / `blockDraw` / `blockAv`、`whitelistKeywords` /
- * `whitelistRegex`),其余四个(`blockKeywords` / `blockRegex` 与两个直播阈值)恒等。
+ * `whitelistRegex`),`blockKeywords` / `blockRegex` 恒等;`minScPrice` / `minGuardLevel` 搬出了 `filters`(㉓d)。
  */
 export const ZERO_FILTER_KEYS = [
 	"blockForward",
@@ -49,6 +50,28 @@ export const ZERO_FILTER_KEYS = [
 
 export type ZeroFilterKey = (typeof ZERO_FILTER_KEYS)[number];
 
+/**
+ * 0.x 过滤键里 1.0 **搬出** `filters` 的两个(㉓d):不是改名,去向是 `superchat.minAmount` 与 `membership.minRank.guard`,
+ * 搬法在 `membership-moves.ts`。它们不在 `feature-renames.ts` 的改名表里 —— 表的类型是「0.x 的键去掉搬走的」。
+ */
+export const ZERO_MOVED_FILTER_KEYS = [
+	"minScPrice",
+	"minGuardLevel",
+] as const satisfies readonly ZeroFilterKey[];
+
+export type ZeroMovedFilterKey = (typeof ZERO_MOVED_FILTER_KEYS)[number];
+
+/**
+ * 0.x 的 `minGuardLevel`(B 站接口的 `guard_level`:1 = 总督、2 = 提督、3 = 舰长,数字越小档越高)→ 1.0 的 rank
+ * (从 1 起、1 最低:舰长 1、提督 2、总督 3)。这是迁移自己冻住的一份换算,**不取运行时的档位表**(`bilibili-guard.ts`):
+ * 迁移不依赖会变的运行时表。认不出的等级(不是 1 / 2 / 3)不在表里。
+ */
+export const ZERO_GUARD_LEVEL_RANKS: ReadonlyMap<number, number> = new Map([
+	[1, 3],
+	[2, 2],
+	[3, 1],
+]);
+
 /** 0.x 的文案键(0.12 `TemplateBundleSchema`),按它的顺序;`templateDefaultsSeen` 账本点路径的第一段也是它们。 */
 export const ZERO_TEMPLATE_KEYS = [
 	"liveStart",
@@ -64,6 +87,16 @@ export const ZERO_TEMPLATE_KEYS = [
 ] as const;
 
 export type ZeroTemplateKey = (typeof ZERO_TEMPLATE_KEYS)[number];
+
+/** 0.x 文案键里 1.0 **搬出** `templates` 原位的一个(㉓d):`guardBuy` 成了 `membership.guard`,搬法在 `membership-moves.ts`。 */
+export const ZERO_MOVED_TEMPLATE_KEYS = ["guardBuy"] as const satisfies readonly ZeroTemplateKey[];
+
+export type ZeroMovedTemplateKey = (typeof ZERO_MOVED_TEMPLATE_KEYS)[number];
+
+/** 0.x 上舰三档的 role 键(0.12 `GuardBundleSchema`),按它的顺序;1.0 的档 key 与它们同名。 */
+export const ZERO_GUARD_ROLES = ["captain", "commander", "governor"] as const;
+
+export type ZeroGuardRole = (typeof ZERO_GUARD_ROLES)[number];
 
 /** 0.x 消息版式里带版式的两组(0.12 `MessageLayoutSchema` 去掉 `version`):作品叫 `dynamic`,直播叫 `live`。 */
 export const ZERO_MESSAGE_LAYOUT_KEYS = ["dynamic", "live"] as const;

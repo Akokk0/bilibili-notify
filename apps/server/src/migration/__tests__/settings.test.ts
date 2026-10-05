@@ -41,6 +41,7 @@ import { migrateAiSettings } from "../ai.js";
 import { renameGlobalSettingsKeys } from "../feature-renames.js";
 import { migrateLegacyLinkParsing } from "../link-parsing.js";
 import { splitGlobalLiveSettings } from "../live-split.js";
+import { moveGlobalMembership } from "../membership-moves.js";
 import { migrateGlobals, migrateGlobalsToCurrent, moveHistoryRetention } from "../settings.js";
 import { migrateOldTemplateDefaults } from "../templates.js";
 import { makeZeroGlobals } from "./zero-fixtures.js";
@@ -461,7 +462,7 @@ describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", (
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 
 		const r = GlobalConfigSchema.safeParse(
-			splitGlobalLiveSettings(renameGlobalSettingsKeys(migrated)),
+			splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
 		);
 		expect(r.success).toBe(true);
 		const ai = r.data?.defaults.ai;
@@ -681,8 +682,9 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 		expect(
-			GlobalConfigSchema.safeParse(splitGlobalLiveSettings(renameGlobalSettingsKeys(migrated)))
-				.success,
+			GlobalConfigSchema.safeParse(
+				splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+			).success,
 		).toBe(true);
 	});
 

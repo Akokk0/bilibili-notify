@@ -2,8 +2,8 @@
  * 单元测试 — `RoomSession` 四个帧处理器 + 开/下播冷却去重。
  *
  * 已有 `room-session-reconnect.test.ts` 覆盖 onError 退避/取消;本文件补:
- *   - onIncomeSuperChat:订阅门控 / minScPrice 阈值 / 图片成功 / api 失败文字降级
- *   - onGuardBuy:订阅门控 / minGuardLevel 阈值 / 自定义模板分支 / 图片卡片分支
+ *   - onIncomeSuperChat:订阅门控 / minSuperchatAmount 门槛 / 图片成功 / 出不了卡文字降级
+ *   - onGuardBuy:订阅门控 / minGuardRank 门槛 / 自定义模板分支 / 图片卡片分支
  *   - onLiveStart:LIVE_EVENT_COOLDOWN 冷却 / liveStatus 去重 / 成功推卡 / 拉房间
  *     信息失败 → stopMonitoring
  *   - onLiveEnd:冷却忽略 / 正常 handleLiveEnd("ws")
@@ -16,17 +16,16 @@
  */
 
 import { GuardLevel } from "@bilibili-notify/blive";
-import type { ServiceContext } from "@bilibili-notify/internal";
+import type { MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { membershipEventFromLiveEvent } from "../membership-event";
-import type { CustomGuardBuyLike, SubItemView } from "../push-like";
+import type { SubItemView } from "../push-like";
 import { LivePushType, wantsLiveEndExtras } from "../push-like";
 import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
 import { superchatEventFromLiveEvent } from "../superchat-event";
-import { LiveTemplateRenderer } from "../template-renderer";
 import { LiveType } from "../types";
 
 // 两个翻译函数照常工作,只是包一层 —— 接线测试要看见会话把什么交给了它们(订阅 id 有没有带进去)。
@@ -41,6 +40,21 @@ vi.mock("../superchat-event", async (importOriginal) => {
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private/protected
 type AnySession = any;
+
+/** 体系默认的出厂文案(与 `DEFAULT_TEMPLATES.membership.guard.default` 一字不差)。 */
+const FACTORY_DEFAULT = { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" };
+
+/** 自定义文案关着的一份(出厂)。 */
+const GUARD_TEMPLATE_OFF: MembershipTemplateBundle = {
+	enabled: false,
+	default: { ...FACTORY_DEFAULT },
+	tiers: {},
+};
+
+/** 自定义文案开着的一份;`over` 盖在上面。 */
+function guardTemplateOn(over: Partial<MembershipTemplateBundle> = {}): MembershipTemplateBundle {
+	return { ...GUARD_TEMPLATE_OFF, enabled: true, ...over };
+}
 
 function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 	return {
@@ -57,12 +71,10 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 		target: {},
 		customCardStyle: { enable: false },
 		customLiveMsg: { enable: false },
-		customGuardBuy: { enable: false },
+		guardTemplate: GUARD_TEMPLATE_OFF,
 		customLiveSummary: { enable: false },
 		customSpecialDanmakuUsers: { enable: false, msgTemplate: "" },
 		customSpecialUsersEnterTheRoom: { enable: false, msgTemplate: "" },
-		minScPrice: 0,
-		minGuardLevel: 3,
 		liveStreaming: false,
 		streamingIntervalHours: 1,
 		catchUpOnBoot: false,
@@ -80,7 +92,6 @@ interface CtxMocks {
 	warn: ReturnType<typeof vi.fn>;
 	generateSuperchatCard: ReturnType<typeof vi.fn>;
 	generateMembershipCard: ReturnType<typeof vi.fn>;
-	renderGuardBuy: ReturnType<typeof vi.fn>;
 	renderLiveStart: ReturnType<typeof vi.fn>;
 	renderLiveStreaming: ReturnType<typeof vi.fn>;
 	renderLiveEnd: ReturnType<typeof vi.fn>;
@@ -93,7 +104,7 @@ interface CtxMocks {
 	safeBroadcast: ReturnType<typeof vi.fn>;
 }
 
-function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
+function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 	ctx: RoomContext;
 	m: CtxMocks;
 } {
@@ -113,7 +124,6 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		warn,
 		generateSuperchatCard: vi.fn(async () => Buffer.from("sc")),
 		generateMembershipCard: vi.fn(async () => Buffer.from("guard")),
-		renderGuardBuy: vi.fn(() => "上舰文案"),
 		renderLiveStart: vi.fn(() => "开播啦"),
 		renderLiveStreaming: vi.fn(() => "直播中"),
 		renderLiveEnd: vi.fn(() => "下播了"),
@@ -130,7 +140,7 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 		logger: fakeServiceCtx.logger,
 		isDisposed: () => false,
 		config: {
-			customGuardBuy: opts?.customGuardBuy ?? { enable: false },
+			guardTemplate: opts?.guardTemplate ?? GUARD_TEMPLATE_OFF,
 			customLiveMsg: { enable: false },
 		},
 		api: { getUserInfoInLive: m.getUserInfoInLive },
@@ -145,7 +155,6 @@ function makeCtx(opts?: { customGuardBuy?: CustomGuardBuyLike }): {
 			message: (segs: unknown[]) => segs,
 		},
 		templateRenderer: {
-			renderGuardBuy: m.renderGuardBuy,
 			renderLiveStart: m.renderLiveStart,
 			renderLiveStreaming: m.renderLiveStreaming,
 			renderLiveEnd: m.renderLiveEnd,
@@ -206,10 +215,13 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
-	it("订阅 SC 但 price < minScPrice → 不广播", async () => {
+	it("订阅 SC 但 price < minSuperchatAmount → 不广播", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minSuperchatAmount: 30 }),
+		) as AnySession;
 		await s.onIncomeSuperChat({ ...scBody, price: 10 });
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
@@ -217,7 +229,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 	it("订阅 SC + 图片生成成功 → broadcastToTargets(Superchat)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minSuperchatAmount: 30 }),
+		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
@@ -233,7 +248,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		m.getUserInfoInLive.mockResolvedValue({ code: -1, data: {} });
-		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minSuperchatAmount: 30 }),
+		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
@@ -250,7 +268,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		async function entryInputOf(body: object): Promise<{ input: unknown; m: CtxMocks }> {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+			const s = new RoomSession(
+				ctx,
+				makeSub({ superchat: true, minSuperchatAmount: 30 }),
+			) as AnySession;
 			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
 			await s.onIncomeSuperChat(body);
 			return { input: m.generateSuperchatCard.mock.calls[0]?.[0], m };
@@ -298,7 +319,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
 			ctx,
-			makeSub({ superchat: true, minScPrice: 30, cardSkin: "k7xxx-c0ffee" }),
+			makeSub({ superchat: true, minSuperchatAmount: 30, cardSkin: "k7xxx-c0ffee" }),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		// 验红:把 room-session.ts 里 SC 那一处的 `...this.skinChoice()` 删掉,这条红。
@@ -313,7 +334,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		const cardSkinKnobs = { "k7xxx-c0ffee": { accent: "#aaaaaa" } };
 		const s = new RoomSession(
 			ctx,
-			makeSub({ superchat: true, minScPrice: 30, cardSkin: "k7xxx-c0ffee", cardSkinKnobs }),
+			makeSub({ superchat: true, minSuperchatAmount: 30, cardSkin: "k7xxx-c0ffee", cardSkinKnobs }),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toEqual({
@@ -329,7 +350,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			ctx,
 			makeSub({
 				superchat: true,
-				minScPrice: 30,
+				minSuperchatAmount: 30,
 				customCardStyle: { enable: true, font: "Base Sans" },
 				customCardStyleByKind: {
 					sc: { enable: true, font: "SC Sans" },
@@ -349,7 +370,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			ctx,
 			makeSub({
 				superchat: true,
-				minScPrice: 30,
+				minSuperchatAmount: 30,
 				customCardStyle: { enable: true, font: "Base Sans" },
 			}),
 		) as AnySession;
@@ -362,7 +383,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 	it("基准与 per-kind 都未启用 → generateSuperchatCard 只收到皮肤 id,一个样式字段都没有", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+		const s = new RoomSession(
+			ctx,
+			makeSub({ superchat: true, minSuperchatAmount: 30 }),
+		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
@@ -371,9 +395,9 @@ describe("RoomSession.onIncomeSuperChat", () => {
 	// ㉓ 要把门槛搬去 `defaults.superchat.minAmount`;这几条是搬家前的行为,搬家的那几步不许悄悄改它
 	// (要改的地方测试名写了「现状」,到时连测试一起改)。
 
-	describe("minScPrice 门槛:等于放行、低于拦", () => {
-		// 验红:把 room-session.ts 里 `body.price < this.sub.minScPrice` 改成 `<=`,「等于门槛」那条红;
-		// 把这一行整句删掉,「低于门槛」几条红。
+	describe("minSuperchatAmount 门槛:等于放行、低于拦", () => {
+		// 验红:把 interaction-gates.ts 里 `event.amount >= minAmount` 改成 `>`,「等于门槛」那条红;
+		// 把 room-session.ts 里调门槛的那一句整句删掉,「低于门槛」几条红。
 		it.each([
 			// [门槛, 这条 SC 的价格(元), 放行?]
 			[50, 49, false],
@@ -382,10 +406,14 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			[30, 29, false],
 			[30, 30, true],
 			[0, 1, true],
+			[undefined, 1, true],
 		] as const)("门槛 %s 元 × 这条 %s 元 → 放行=%s", async (min, price, pass) => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: min })) as AnySession;
+			const s = new RoomSession(
+				ctx,
+				makeSub({ superchat: true, minSuperchatAmount: min }),
+			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price });
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
 			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
@@ -393,13 +421,37 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
 		});
 
+		// 会话接的是门槛函数(币种也看):B 站的翻译今天只产出 CNY,所以这里让翻译回一条美元的,钉住「门槛只在人民币时比」。
+		// 验红:把 room-session.ts 里的 `passesSuperchatMinAmount(event, …)` 换成直接拿 `ev.price` 与门槛比,这条红。
+		it("门槛按人民币算:事件的币种不是 CNY 时不比,放行(5 美元 < 门槛 30 也推)", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+			vi.mocked(superchatEventFromLiveEvent).mockReturnValueOnce({
+				subscriptionId: "sub-1",
+				viewer: { id: "42", name: "粉丝" },
+				text: "加油",
+				amount: 5,
+				currency: "USD",
+				tier: { rank: 1 },
+			});
+			const s = new RoomSession(
+				ctx,
+				makeSub({ superchat: true, minSuperchatAmount: 30 }),
+			) as AnySession;
+			await s.onIncomeSuperChat({ ...scBody, price: 5 });
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+		});
+
 		// 现状:醒目留言的正文在判门槛**之前**就记进弹幕收集,被门槛挡掉的也算进词云。
-		// 验红:把门槛那一句 `if (body.price < this.sub.minScPrice) return;` 挪到 `recordDanmaku` 之前,这条红。
+		// 验红:把门槛那一句 `if (!passesSuperchatMinAmount(…)) return;` 挪到 `recordDanmaku` 之前,这条红。
 		it("现状:被门槛挡掉的 SC,正文照样先记进弹幕收集", async () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 			m.collectsDanmaku.mockReturnValue(true);
-			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 100 })) as AnySession;
+			const s = new RoomSession(
+				ctx,
+				makeSub({ superchat: true, minSuperchatAmount: 100 }),
+			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price: 50 });
 			expect(m.recordDanmaku).toHaveBeenCalledWith("r1", "加油", "粉丝");
 			expect(m.broadcastToTargets).not.toHaveBeenCalled();
@@ -419,7 +471,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 			arrange(m, ctx);
-			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+			const s = new RoomSession(
+				ctx,
+				makeSub({ superchat: true, minSuperchatAmount: 30 }),
+			) as AnySession;
 			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
 			await s.onIncomeSuperChat(scBody);
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
@@ -471,17 +526,17 @@ describe("RoomSession.onGuardBuy", () => {
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
-	it("guard_level 高于阈值(等级不够)→ 不推", async () => {
-		// sub.minGuardLevel=1(总督);Captain(3) > 1 → return
+	it("档位 rank 低于门槛(等级不够)→ 不推", async () => {
+		// sub.minGuardRank=3(只推总督);舰长 rank 1 < 3 → return
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
-		const s = new RoomSession(ctx, makeSub({ membership: true, minGuardLevel: 1 })) as AnySession;
+		const s = new RoomSession(ctx, makeSub({ membership: true, minGuardRank: 3 })) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
 	// ── ㉓a:钉住门槛、兜底文字与官方图 ────────────────────────────────────────
-	// ㉓c 起档位由翻译按档位表认、认不出的丢掉并记警告;门槛仍是原始等级与 `minGuardLevel` 比(㉓d 才换成 rank)。
+	// ㉓c 起档位由翻译按档位表认、认不出的丢掉并记警告;㉓d 起门槛按事件档位的 rank 比(`minGuardRank`),不再拿原始 guard_level 比大小。
 
 	/** 官方上舰图(按档位):总督 / 提督 / 舰长。逐字钉 —— 图链表合并时不许换。 */
 	const OFFICIAL_GUARD_IMG = {
@@ -493,49 +548,72 @@ describe("RoomSession.onGuardBuy", () => {
 			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
 	} as const;
 
-	describe("minGuardLevel × 事件档位的放行表", () => {
+	describe("minGuardRank × 事件档位的放行表", () => {
 		/** 一条 `guard_level` 经 `onGuardBuy`,返回推送替身(默认路径:custom 关、出图器在)。 */
-		async function runWith(min: 1 | 2 | 3, level: number): Promise<CtxMocks> {
+		async function runWith(minRank: number | undefined, level: number): Promise<CtxMocks> {
 			const { ctx, m } = makeCtx();
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(
 				ctx,
-				makeSub({ membership: true, minGuardLevel: min }),
+				makeSub({ membership: true, ...(minRank !== undefined ? { minGuardRank: minRank } : {}) }),
 			) as AnySession;
 			await s.onGuardBuy({ ...guardBody, guardLevel: level });
 			return m;
 		}
 
-		// 规则:`guard_level > minGuardLevel` 就拦。门槛 1 = 只推总督,2 = 提督以上,3 = 全推。
-		// 验红:把 room-session.ts 里 `ev.guardLevel > this.sub.minGuardLevel` 的 `>` 改成 `>=`,
-		// 门槛等于档位的那三格(1×1、2×2、3×3)红;改成 `<`,整张表几乎全红。
+		// 规则:事件档位的 rank 低于门槛就拦(rank:舰长 1、提督 2、总督 3)。门槛 1 = 全推,2 = 提督以上,3 = 只推总督。
+		// 值与 ㉓a 钉的九格一格不差(那时的门槛是 `guard_level` 3 / 2 / 1,换算成 rank 就是 1 / 2 / 3)。
+		// 验红:把 interaction-gates.ts 里 `event.tier.rank >= minRank` 的 `>=` 改成 `>`,
+		// 门槛等于档位的那三格(1×舰长、2×提督、3×总督)红;改成 `<=`,整张表几乎全红。
 		it.each([
-			// [门槛, 事件档位(1 总督 / 2 提督 / 3 舰长), 放行?]
-			[1, 1, true],
-			[1, 2, false],
-			[1, 3, false],
+			// [门槛 rank, 事件 guard_level(1 总督 / 2 提督 / 3 舰长), 放行?]
+			[3, 1, true],
+			[3, 2, false],
+			[3, 3, false],
 			[2, 1, true],
 			[2, 2, true],
 			[2, 3, false],
-			[3, 1, true],
-			[3, 2, true],
-			[3, 3, true],
-		] as const)("门槛 %s × 事件第 %s 档 → 放行=%s", async (min, level, pass) => {
-			const m = await runWith(min, level);
+			[1, 1, true],
+			[1, 2, true],
+			[1, 3, true],
+		] as const)("门槛 rank %s × 事件 guard_level %s → 放行=%s", async (minRank, level, pass) => {
+			const m = await runWith(minRank, level);
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
 			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
 			// 认得出的档位不记警告。
 			expect(m.warn).not.toHaveBeenCalled();
 		});
 
+		it.each([1, 2, 3] as const)("没配门槛:第 %s 档(guard_level)全放行", async (level) => {
+			const m = await runWith(undefined, level);
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+		});
+
+		// 会话接的是 rank 门槛函数:事件没带 rank(档位由主播自定的体系)就没有可比的,放行。B 站的翻译一定带 rank,
+		// 这里让翻译回一条没带的,钉住会话比的是事件档位的 rank、而不是自己拿 `guard_level` 另算。
+		// 验红:把 room-session.ts 里的 `passesMembershipMinRank(event, …)` 换成拿 `ev.guardLevel` 与门槛比,这条红。
+		it("事件档位没带 rank:门槛不比,放行", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			vi.mocked(membershipEventFromLiveEvent).mockReturnValueOnce({
+				subscriptionId: "sub-1",
+				viewer: { id: "7", name: "船员" },
+				program: "guard",
+				tier: { key: "captain", name: "舰长" },
+			});
+			const s = new RoomSession(ctx, makeSub({ membership: true, minGuardRank: 3 })) as AnySession;
+			await s.onGuardBuy({ ...guardBody, guardLevel: GuardLevel.Captain });
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+		});
+
 		// 认不出的档位(guard_level 不是 1 / 2 / 3)→ 丢弃并记一条警告(㉓c;主人定的)。原来 0 放行、带着一张空图推出去,
-		// 大于 3 的是被 `>` 顺带拦掉 —— 现在不管门槛是几、也不管它比门槛大还是小,都先认档位:认不出就丢,而且都记警告。
+		// 大于 3 的是被 `>` 顺带拦掉 —— 现在不管门槛是几,都先认档位:认不出就丢,而且都记警告。
 		// 验红:把 room-session.ts 里认不出档位的那个 `return` 删掉,0 的那三条红(会带着空档继续出卡);
-		// 把「先认档位」挪到门槛判断之后,4 的那三条红(被门槛顺带拦掉、不记警告)。
-		it.each([0, 4].flatMap((level) => [1, 2, 3].map((min) => [level, min] as const)))(
-			"guard_level 为 %s、门槛 %s → 丢弃并记一条警告,不推",
-			async (level, min) => {
-				const m = await runWith(min as 1 | 2 | 3, level);
+		// 把「先认档位」挪到门槛判断之后,rank 门槛下认不出的档位也被顺带拦掉,不记警告(这几条里的 warn 断言红)。
+		it.each([0, 4].flatMap((level) => [1, 2, 3].map((minRank) => [level, minRank] as const)))(
+			"guard_level 为 %s、门槛 rank %s → 丢弃并记一条警告,不推",
+			async (level, minRank) => {
+				const m = await runWith(minRank, level);
 				expect(m.broadcastToTargets).not.toHaveBeenCalled();
 				expect(m.generateMembershipCard).not.toHaveBeenCalled();
 				expect(m.warn).toHaveBeenCalledTimes(1);
@@ -607,23 +685,18 @@ describe("RoomSession.onGuardBuy", () => {
 		});
 	});
 
-	it("customGuardBuy.enable → 走模板渲染分支,broadcastToTargets(LiveGuardBuy)", async () => {
+	it("自定义文案开着 → 走模板分支:推一张图 + 一句文案,broadcastToTargets(LiveGuardBuy),不出卡", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
 			ctx,
 			makeSub({
 				membership: true,
-				customGuardBuy: {
-					enable: true,
-					captain: { template: "", imageUrl: "cap" },
-					commander: { template: "", imageUrl: "sup" },
-					governor: { template: "", imageUrl: "gov" },
-				},
+				guardTemplate: guardTemplateOn({ tiers: { captain: { imageUrl: "cap" } } }),
 			}),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
-		expect(m.renderGuardBuy).toHaveBeenCalledTimes(1);
+		expect(m.generateMembershipCard).not.toHaveBeenCalled();
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
 	});
@@ -633,44 +706,41 @@ describe("RoomSession.onGuardBuy", () => {
 	 *
 	 * 此前宿主只把 `captain.template` 当成唯一一条文案往下传,图片却是按 guard_level
 	 * 分三档取的:面板上给提督 / 总督写的专属文案运行时从来不读,有人上总督,推出去
-	 * 的是舰长那句。这里用真的模板渲染器,钉「哪一档来,就用哪一档的文案和图」。
+	 * 的是舰长那句。这里用真的 `interpolate`,钉「哪一档来,就用哪一档的文案和图」。
+	 * ㉓d 起每一档是体系文案(`templates.membership.guard`)里 `tiers[档 key]` 的一项,占位符是 `{viewer}` / `{name}` / `{tier}`。
 	 */
 	describe("自定义开启 → 文案与图片按事件的档位取", () => {
-		const tiers: CustomGuardBuyLike = {
-			enable: true,
-			governor: { template: "{uname} 成了 {mname} 的总督", imageUrl: "gov.png" },
-			commander: { template: "{uname} 成了 {mname} 的提督", imageUrl: "com.png" },
-			captain: { template: "{uname} 成了 {mname} 的舰长", imageUrl: "cap.png" },
-		};
+		const tiers: MembershipTemplateBundle = guardTemplateOn({
+			tiers: {
+				governor: { template: "{viewer} 成了 {name} 的总督", imageUrl: "gov.png" },
+				commander: { template: "{viewer} 成了 {name} 的提督", imageUrl: "com.png" },
+				captain: { template: "{viewer} 成了 {name} 的舰长", imageUrl: "cap.png" },
+			},
+		});
 		const cases = [
 			["总督", GuardLevel.Governor, "船员 成了 主播 的总督", "gov.png"],
 			["提督", GuardLevel.Admiral, "船员 成了 主播 的提督", "com.png"],
 			["舰长", GuardLevel.Captain, "船员 成了 主播 的舰长", "cap.png"],
 		] as const;
 
-		/** 用真渲染器 + 能看见图片地址的 contentBuilder 跑一次上舰,返回推出去的那条消息。 */
+		/** 用真的 `interpolate` + 能看见图片地址的 contentBuilder 跑一次上舰,返回推出去的那条消息。 */
 		async function pushOf(
 			level: GuardLevel,
-			where: { sub?: CustomGuardBuyLike; global?: CustomGuardBuyLike },
+			where: { sub?: MembershipTemplateBundle; global?: MembershipTemplateBundle },
+			giftName = "礼物",
 		): Promise<unknown> {
-			const { ctx, m } = makeCtx(where.global ? { customGuardBuy: where.global } : undefined);
-			const real = new LiveTemplateRenderer();
-			m.renderGuardBuy.mockImplementation((p) => real.renderGuardBuy(p));
+			const { ctx, m } = makeCtx(where.global ? { guardTemplate: where.global } : undefined);
 			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(
 				ctx,
-				makeSub({
-					membership: true,
-					minGuardLevel: 3,
-					customGuardBuy: where.sub ?? { enable: false },
-				}),
+				makeSub({ membership: true, guardTemplate: where.sub ?? GUARD_TEMPLATE_OFF }),
 			) as AnySession;
 			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
 			await s.onGuardBuy({
 				kind: "guard-buy",
 				guardLevel: level,
-				giftName: "礼物",
+				giftName,
 				user: { uname: "船员", uid: 7 },
 			});
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
@@ -694,22 +764,103 @@ describe("RoomSession.onGuardBuy", () => {
 			},
 		);
 
-		// 验红:把 room-session.ts 里交给 `renderGuardBuy` 的 `giftName: ev.giftName` 换成空串,这条红。
-		it("文案里的 {guard} 是事件带来的档名(giftName),不是档位表里的名字", async () => {
-			const withGuard: CustomGuardBuyLike = {
-				enable: true,
-				captain: { template: "{uname} 成为了{guard}", imageUrl: "cap.png" },
+		// 订阅自己开了自定义文案:用订阅的整份,不看全局的(全局开着也一样)。
+		it("per-UP 开启、全局也开启:用订阅那一份的文案与图片", async () => {
+			const subOwn = guardTemplateOn({
+				tiers: { captain: { template: "本订阅的 {viewer}", imageUrl: "own.png" } },
+			});
+			expect(await pushOf(GuardLevel.Captain, { sub: subOwn, global: tiers })).toEqual([
+				{ kind: "image", src: "own.png" },
+				{ kind: "text", text: "本订阅的 船员" },
+			]);
+		});
+
+		// 订阅那份关着(enabled: false):不管它里面写了什么,按全局的来。
+		it("per-UP 那份没开(enabled: false)、全局开启:用全局的,不看订阅那份里写的文案", async () => {
+			const subOff: MembershipTemplateBundle = {
+				...GUARD_TEMPLATE_OFF,
+				tiers: { captain: { template: "订阅里写了但没开", imageUrl: "off.png" } },
 			};
-			expect(await pushOf(GuardLevel.Captain, { sub: withGuard })).toEqual([
+			expect(await pushOf(GuardLevel.Captain, { sub: subOff, global: tiers })).toEqual([
 				{ kind: "image", src: "cap.png" },
-				{ kind: "text", text: "船员 成为了礼物" },
+				{ kind: "text", text: "船员 成了 主播 的舰长" },
+			]);
+		});
+
+		// 验红:把 room-session.ts 里交给 `interpolate` 的 `tier: event.tier.name` 换成空串,这条红。
+		// ㉓d 起 `{tier}` 是事件的档名(档位表里的名字),不再是 B 站消息自带的礼物名(`giftName`)—— 真数据里两者都是
+		// 「舰长 / 提督 / 总督」,这里故意让礼物名不一样来分开它们。
+		it("文案里的 {tier} 是事件的档名(舰长),不是消息带来的礼物名", async () => {
+			const withTier = guardTemplateOn({
+				tiers: { captain: { template: "{viewer} 成为了{tier}", imageUrl: "cap.png" } },
+			});
+			expect(await pushOf(GuardLevel.Captain, { sub: withTier }, "礼物")).toEqual([
+				{ kind: "image", src: "cap.png" },
+				{ kind: "text", text: "船员 成为了舰长" },
+			]);
+		});
+
+		it("字面的 \\n(盘上存的反斜杠加 n)展开成真换行", async () => {
+			const withNewline = guardTemplateOn({
+				tiers: { captain: { template: "{viewer}\\n{name}\\n{tier}", imageUrl: "cap.png" } },
+			});
+			expect(await pushOf(GuardLevel.Captain, { sub: withNewline })).toEqual([
+				{ kind: "image", src: "cap.png" },
+				{ kind: "text", text: "船员\n主播\n舰长" },
+			]);
+		});
+
+		it("没有主播资料 → {name} 印成空串;不认识的占位符原样留着", async () => {
+			const odd = guardTemplateOn({
+				tiers: { captain: { template: "{viewer}|{name}|{uname}|{guard}", imageUrl: "cap.png" } },
+			});
+			const { ctx, m } = makeCtx();
+			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			const s = new RoomSession(
+				ctx,
+				makeSub({ membership: true, guardTemplate: odd }),
+			) as AnySession;
+			await s.onGuardBuy(guardBody);
+			expect(m.broadcastToTargets.mock.calls[0]?.[1]).toEqual([
+				{ kind: "image", src: "cap.png" },
+				{ kind: "text", text: "船员||{uname}|{guard}" },
+			]);
+		});
+
+		// ㉓d:那一档没填的格跟随体系默认。出厂默认「{viewer} 成为了 {name} 的{tier}！」推出去的字与 0.x 三档的出厂文案一字不差。
+		it.each([
+			["总督", GuardLevel.Governor, "船员 成为了 主播 的总督！"],
+			["提督", GuardLevel.Admiral, "船员 成为了 主播 的提督！"],
+			["舰长", GuardLevel.Captain, "船员 成为了 主播 的舰长！"],
+		] as const)(
+			"一档都没配、开着自定义:上%s → 体系默认文案(档名填 {tier})",
+			async (_label, level, text) => {
+				expect(await pushOf(level, { sub: guardTemplateOn() })).toEqual([
+					{ kind: "image", src: OFFICIAL_GUARD_IMG[level as 1 | 2 | 3] },
+					{ kind: "text", text },
+				]);
+			},
+		);
+
+		it("体系默认带图:没配图的档用体系默认的图;配了图的档用自己的", async () => {
+			const withDefaultImage = guardTemplateOn({
+				default: { template: "{viewer} 来了", imageUrl: "default.png" },
+				tiers: { governor: { imageUrl: "gov.png" } },
+			});
+			expect(await pushOf(GuardLevel.Captain, { sub: withDefaultImage })).toEqual([
+				{ kind: "image", src: "default.png" },
+				{ kind: "text", text: "船员 来了" },
+			]);
+			expect(await pushOf(GuardLevel.Governor, { sub: withDefaultImage })).toEqual([
+				{ kind: "image", src: "gov.png" },
+				{ kind: "text", text: "船员 来了" },
 			]);
 		});
 
 		// 回归:开了自定义文案、那一档的图片没填 → 推官方图。默认值里每档 `imageUrl` 就是空串,所以
 		// 「开了自定义文案但没填图」的人都会中;空串不是「缺」,`?? ` 兜不住,推出去的是一张地址为空的图。
-		// 文案那一侧不动:`template` 空串仍然推空文案(「跟随体系默认」归 ㉓d)。
-		// 验红:把 room-session.ts 里的 `custom?.imageUrl || guardImg` 改回 `custom?.imageUrl ?? guardImg`,
+		// 验红:把 room-session.ts 里的 `custom.imageUrl || guardImg` 改回 `custom.imageUrl ?? guardImg`,
 		// 「空串」那一组红,「缺键」那一组仍绿(它本来就对)。
 		describe.each([
 			["空串", ""],
@@ -717,12 +868,13 @@ describe("RoomSession.onGuardBuy", () => {
 		] as const)("该档图片是%s", (_kind, imageUrl) => {
 			const tierOf = (template: string): { template: string; imageUrl?: string } =>
 				imageUrl === undefined ? { template } : { template, imageUrl };
-			const noImage: CustomGuardBuyLike = {
-				enable: true,
-				governor: tierOf("{uname} 成了 {mname} 的总督"),
-				commander: tierOf("{uname} 成了 {mname} 的提督"),
-				captain: tierOf("{uname} 成了 {mname} 的舰长"),
-			};
+			const noImage = guardTemplateOn({
+				tiers: {
+					governor: tierOf("{viewer} 成了 {name} 的总督"),
+					commander: tierOf("{viewer} 成了 {name} 的提督"),
+					captain: tierOf("{viewer} 成了 {name} 的舰长"),
+				},
+			});
 
 			it.each(cases)("上%s → 回落该档官方图,文案照出", async (_label, level, text) => {
 				expect(await pushOf(level, { sub: noImage })).toEqual([
@@ -731,14 +883,11 @@ describe("RoomSession.onGuardBuy", () => {
 				]);
 			});
 
-			it("文案也是空串 → 仍推空文案(㉓d 才换成「跟随体系默认」,不跟着回落)", async () => {
-				const bare: CustomGuardBuyLike = {
-					enable: true,
-					captain: tierOf(""),
-				};
+			it("文案也没填(空串)→ 跟随体系默认的文案(㉓d,原来推空文案),图片仍回落该档官方图", async () => {
+				const bare = guardTemplateOn({ tiers: { captain: tierOf("") } });
 				expect(await pushOf(GuardLevel.Captain, { sub: bare })).toEqual([
 					{ kind: "image", src: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
-					{ kind: "text", text: "" },
+					{ kind: "text", text: "船员 成为了 主播 的舰长！" },
 				]);
 			});
 		});
@@ -750,11 +899,10 @@ describe("RoomSession.onGuardBuy", () => {
 			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 			const s = new RoomSession(
 				ctx,
-				makeSub({ membership: true, minGuardLevel: 3, customGuardBuy: tiers }),
+				makeSub({ membership: true, guardTemplate: tiers }),
 			) as AnySession;
 			await s.onGuardBuy({ ...guardBody, guardLevel: GuardLevel.None });
 			expect(m.broadcastToTargets).not.toHaveBeenCalled();
-			expect(m.renderGuardBuy).not.toHaveBeenCalled();
 			expect(m.warn).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -836,7 +984,7 @@ describe("RoomSession.onGuardBuy", () => {
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
 			ctx,
-			makeSub({ membership: true, minGuardLevel: 3, cardSkin: "k8yyy-facade" }),
+			makeSub({ membership: true, cardSkin: "k8yyy-facade" }),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toMatchObject({ cardSkin: "k8yyy-facade" });
@@ -849,7 +997,7 @@ describe("RoomSession.onGuardBuy", () => {
 		const cardSkinKnobs = { "k8yyy-facade": { accent: "#aaaaaa" } };
 		const s = new RoomSession(
 			ctx,
-			makeSub({ membership: true, minGuardLevel: 3, cardSkin: "k8yyy-facade", cardSkinKnobs }),
+			makeSub({ membership: true, cardSkin: "k8yyy-facade", cardSkinKnobs }),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toEqual({
@@ -1498,7 +1646,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			// push.broadcastToTargets(uid, msg, pushType),pushType 即被测的映射结果。
 			getImageRenderer: () => null,
 			config: {
-				customGuardBuy: { enable: false },
+				guardTemplate: GUARD_TEMPLATE_OFF,
 				customLiveMsg: { enable: false },
 				liveSummaryDefault: "",
 			},

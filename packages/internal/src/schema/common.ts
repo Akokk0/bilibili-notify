@@ -69,10 +69,6 @@ export const TimeRangeSchema = z
 	.refine((r) => r.start !== r.end, "start must differ from end (use {start:0,end:24} 表示全天)");
 export type TimeRange = z.infer<typeof TimeRangeSchema>;
 
-/** B 站舰长等级语义沿用，1=总督 / 2=提督 / 3=舰长。 */
-export const GuardLevelSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
-export type GuardLevel = z.infer<typeof GuardLevelSchema>;
-
 export const ContentFiltersSchema = z.object({
 	blockReposts: z.boolean(),
 	blockArticles: z.boolean(),
@@ -84,15 +80,13 @@ export const ContentFiltersSchema = z.object({
 	blockRegex: z.array(UserRegexString),
 	allowKeywords: z.array(z.string()),
 	allowRegex: z.array(UserRegexString),
-	minScPrice: z.number().int().min(0),
-	minGuardLevel: GuardLevelSchema,
 });
 export type ContentFilters = z.infer<typeof ContentFiltersSchema>;
 
 // `.partial()` 只把字段变可选,**不剥离 `.default()`**(与 TemplateBundlePartialSchema 同源问题):
-// per-UP 只覆盖直播阈值域(minScPrice/minGuardLevel)时,parse 会把带 default 的 blockImages/blockVideos
-// 注入成 false,而这俩是「动态过滤」域字段 → 前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
-// (isSectionCustomized / FilterOverrideBox 的 toggle),表现为「一开直播阈值就连带点亮动态过滤」。
+// per-UP 只覆盖一两个别的字段(早先是直播阈值域的 minScPrice/minGuardLevel,㉓d 起它们搬去了 superchat / membership
+// 两段)时,parse 会把带 default 的 blockImages/blockVideos 注入成 false → 前端据「字段 !== undefined」误判该 UP
+// 已覆盖动态过滤(isSectionCustomized / FilterOverrideBox 的 toggle)。
 // override 维度的 blockImages/blockVideos 必须是「无默认的纯可选」,与全局 ContentFiltersSchema(带
 // .default 供 globals.json 缺字段回填)分开。
 export const ContentFiltersPartialSchema = ContentFiltersSchema.partial().extend({
@@ -153,23 +147,55 @@ export type LiveStreamingSettings = z.infer<typeof LiveStreamingSettingsSchema>;
 export const LiveStreamingSettingsPartialSchema = LiveStreamingSettingsSchema.partial();
 export type LiveStreamingSettingsPartial = z.infer<typeof LiveStreamingSettingsPartialSchema>;
 
-export const GuardEntrySchema = z.object({
-	imageUrl: z.string(),
-	template: z.string(),
+/**
+ * 醒目留言的设置(㉓d 起自成一段,原先是 `filters.minScPrice`)。`minAmount`:低于它不推,按人民币元算,别的币种放行
+ * (见 `packages/live` 的 `superchatPassesMinAmount`);没配 = 不设门槛,0 与没配是一回事。
+ */
+export const SuperchatSettingsSchema = z.object({
+	minAmount: z.number().min(0).optional(),
 });
-export type GuardEntry = z.infer<typeof GuardEntrySchema>;
+export type SuperchatSettings = z.infer<typeof SuperchatSettingsSchema>;
 
-export const GuardBundleSchema = z.object({
-	/**
-	 * 是否启用自定义上舰文案/图片。`false` 时引擎走 builtin 路径(默认上舰图 + 简单提示)。
-	 * `true` 时使用 captain/commander/governor 三档的自定义 template + imageUrl。默认 false。
-	 */
-	enable: z.boolean().default(false),
-	captain: GuardEntrySchema,
-	commander: GuardEntrySchema,
-	governor: GuardEntrySchema,
+// per-UP 那份:这一段没有 `.default()`,`.partial()` 就是它本身(同 LiveStartSettingsPartialSchema 的写法)。覆盖里写 0 的意思
+// 是「这个订阅不设门槛」,全局可能不是 0,所以 0 要原样存。
+export const SuperchatSettingsPartialSchema = SuperchatSettingsSchema.partial();
+export type SuperchatSettingsPartial = z.infer<typeof SuperchatSettingsPartialSchema>;
+
+/**
+ * 会员的设置(㉓d 起自成一段,原先是 `filters.minGuardLevel`)。`minRank`:按体系 id 记一个最低档,事件的档(`tier.rank`,
+ * 从 1 起、1 最低)低于它就不推。**某个体系没写 = 那个体系全推**。B 站的体系 id 是 `guard`:`{ guard: 2 }` = 提督以上。
+ * 没有 rank 的体系(档位由主播自定)没有门槛可配,只能开或关(特性开关)。
+ */
+export const MembershipSettingsSchema = z.object({
+	minRank: z.record(z.string(), z.number().int().min(1)).optional(),
 });
-export type GuardBundle = z.infer<typeof GuardBundleSchema>;
+export type MembershipSettings = z.infer<typeof MembershipSettingsSchema>;
+
+// per-UP 那份:同上无默认;`minRank` 在 resolve 里**按体系逐键合并**,订阅只改了 `guard` 不会把别的体系的门槛冲掉。
+export const MembershipSettingsPartialSchema = MembershipSettingsSchema.partial();
+export type MembershipSettingsPartial = z.infer<typeof MembershipSettingsPartialSchema>;
+
+/** 一条会员文案:文字加图片(两格都是整串,图片是地址)。体系默认用满两格;某一档只写改过的那一格。 */
+export const MembershipTemplateEntrySchema = z.object({
+	template: z.string(),
+	imageUrl: z.string(),
+});
+export type MembershipTemplateEntry = z.infer<typeof MembershipTemplateEntrySchema>;
+
+/**
+ * 一个会员体系的文案(㉓d,原先 B 站专属的 `guardBuy`)。`templates.membership` 是体系 id → 这一份。
+ *
+ * - `enabled`:用不用自定义文案与图片。`false` 时引擎走内置那条路(官方图 / 出卡),推不推由特性开关管。默认 false。
+ * - `default`:体系默认。每一档没单独配的格都用它;图片也空时回落该档自己的徽章。
+ * - `tiers`:按档的 key 存只改过的那几档与那几格(取法见 `membershipTemplateOf`)。`custom` 体系(档位由主播自定)也存在这里,
+ *   key 就是档名。
+ */
+export const MembershipTemplateBundleSchema = z.object({
+	enabled: z.boolean().default(false),
+	default: MembershipTemplateEntrySchema,
+	tiers: z.record(z.string(), MembershipTemplateEntrySchema.partial()).default({}),
+});
+export type MembershipTemplateBundle = z.infer<typeof MembershipTemplateBundleSchema>;
 
 export const TemplateBundleSchema = z.object({
 	liveStart: z.string(),
@@ -194,7 +220,8 @@ export const TemplateBundleSchema = z.object({
 	wordcloudStopWords: z.string().default(""),
 	specialDanmaku: z.string(),
 	specialUserEnter: z.string(),
-	guardBuy: GuardBundleSchema,
+	/** 会员文案,按体系 id 存(B 站的体系叫 `guard`)。形状见 {@link MembershipTemplateBundleSchema}。 */
+	membership: z.record(z.string(), MembershipTemplateBundleSchema),
 });
 export type TemplateBundle = z.infer<typeof TemplateBundleSchema>;
 
@@ -541,8 +568,6 @@ export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
 	blockRegex: [],
 	allowKeywords: [],
 	allowRegex: [],
-	minScPrice: 0,
-	minGuardLevel: 3,
 };
 
 export const DEFAULT_SCHEDULE: ScheduleConfig = {
@@ -556,6 +581,12 @@ export const DEFAULT_LIVE_START: LiveStartSettings = { catchUpOnBoot: false };
 
 /** 出厂:每小时一次(旧的「间隔 0 = 关」换成开关 `features.liveStreaming`,出厂关;间隔填 1)。 */
 export const DEFAULT_LIVE_STREAMING: LiveStreamingSettings = { streamingIntervalHours: 1 };
+
+/** 出厂:醒目留言不设门槛(没配 = 全推)。 */
+export const DEFAULT_SUPERCHAT_SETTINGS: SuperchatSettings = {};
+
+/** 出厂:每个会员体系都不设门槛(某体系没写 = 那个体系全推)。 */
+export const DEFAULT_MEMBERSHIP_SETTINGS: MembershipSettings = {};
 
 /**
  * DYNAMIC_TYPE_DRAW 图集图片推送行为。`enable` 决定是否在文本/卡片之后附加一组

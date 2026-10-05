@@ -5,7 +5,7 @@ import { pickRoom, type RoomPickerDeps } from "./live.js";
 /**
  * A2:弹幕批量 / SC / 上舰 / 礼物 / 进场 —— 往房间的事件漏斗塞 LiveEvent,形状与 blive 解析
  * 出来的完全一样,room-session 分不出真假。房间得在(假)直播中才有下文:弹幕只在开播态收集,
- * SC / 上舰经各自的门槛(minScPrice / minGuardLevel)后推卡。
+ * SC / 上舰经各自的门槛(醒目留言金额门槛 superchat.minAmount / 上舰档位门槛 membership.minRank)后推卡。
  *
  * 弹幕批量的默认值是冲门槛去的:词云要 ≥ 50 个热词、总结要 ≥ 5 位发言人 —— 60 条 / 8 人,
  * 内容从一池各不相同的句子里轮着取,分词后热词够数。
@@ -130,7 +130,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		id: "live.superchat",
 		group: "event",
 		title: "醒目留言",
-		desc: "塞一条 SC。低于该 UP 的 minScPrice 会被过滤 —— 那正是要验的。",
+		desc: "塞一条 SC。低于该 UP 的醒目留言金额门槛会被过滤 —— 那正是要验的。",
 		icon: "sc",
 		params: [
 			{ key: "sub", label: "订阅", kind: "sub" },
@@ -163,7 +163,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 		id: "live.guard",
 		group: "event",
 		title: "上舰",
-		desc: "塞一条大航海开通(GUARD_BUY)。低于该 UP 的 minGuardLevel 会被过滤。",
+		desc: "塞一条大航海开通(GUARD_BUY)。档位低于该 UP 的上舰门槛会被过滤。",
 		icon: "guard",
 		params: [
 			{ key: "sub", label: "订阅", kind: "sub" },

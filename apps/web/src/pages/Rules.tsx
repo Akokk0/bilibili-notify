@@ -46,7 +46,7 @@ import {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** 把点路径摊成嵌套对象:`guardBuy.captain.template` → `{guardBuy:{captain:{template:v}}}`。 */
+/** 把点路径摊成嵌套对象:`membership.guard.default.template` → `{membership:{guard:{default:{template:v}}}}`。 */
 function nestByPath(path: string, value: string): Record<string, unknown> {
 	const segs = path.split(".");
 	let node: Record<string, unknown> = { [segs[segs.length - 1] as string]: value };
@@ -111,11 +111,20 @@ function SectionList({
 
 // ── Deep merge (for global PATCH draft) ────────────────────────────────────
 
+/**
+ * 草稿的合并走 JSON Merge Patch 的语义(同服务端):补丁里的 `null` = **把这个键从草稿里拿掉**,不是把 `null` 存进去。
+ * 清空一个可选字段(上舰提示里某一档的文案)靠它 —— 拿掉之后草稿里就没有这个键,保存时 `buildPatch` 拿草稿与基线一比,
+ * 才会编出显式 null 去服务端真的删;存成 `null` 的话界面读到的是 `null`、草稿与基线对不上又说不清是改了还是没改。
+ */
 function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 	if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return patch as T;
 	const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
 	for (const k of Object.keys(patch)) {
 		const pv = (patch as Record<string, unknown>)[k];
+		if (pv === null) {
+			delete out[k];
+			continue;
+		}
 		const bv = out[k];
 		if (
 			pv != null &&
@@ -164,6 +173,9 @@ export function GlobalDraftBinder({
 			schedule: defaults.schedule,
 			liveStart: defaults.liveStart,
 			liveStreaming: defaults.liveStreaming,
+			// 醒目留言与会员的门槛(㉓d):漏了的话改了门槛保存条不亮,离开页面改动就丢。
+			superchat: defaults.superchat,
+			membership: defaults.membership,
 			features: { liveStreaming: defaults.features.liveStreaming },
 			templates: defaults.templates,
 			messageLayout: defaults.messageLayout,
@@ -180,6 +192,8 @@ export function GlobalDraftBinder({
 			schedule: baseline.schedule,
 			liveStart: baseline.liveStart,
 			liveStreaming: baseline.liveStreaming,
+			superchat: baseline.superchat,
+			membership: baseline.membership,
 			features: { liveStreaming: baseline.features.liveStreaming },
 			templates: baseline.templates,
 			messageLayout: baseline.messageLayout,
@@ -243,6 +257,8 @@ export default function Rules() {
 							schedule: next.defaults.schedule,
 							liveStart: next.defaults.liveStart,
 							liveStreaming: next.defaults.liveStreaming,
+							superchat: next.defaults.superchat,
+							membership: next.defaults.membership,
 							// 特性开关这一页只编辑周期那一把;整个 features 对象带上也只会被 diff 成这一格,
 							// 不过只列它,免得哪天别的格被谁顺手改了、悄悄跟着下发。
 							features: { liveStreaming: next.defaults.features.liveStreaming },
@@ -260,6 +276,8 @@ export default function Rules() {
 							schedule: base?.defaults.schedule,
 							liveStart: base?.defaults.liveStart,
 							liveStreaming: base?.defaults.liveStreaming,
+							superchat: base?.defaults.superchat,
+							membership: base?.defaults.membership,
 							features: { liveStreaming: base?.defaults.features.liveStreaming },
 							templates: base?.defaults.templates,
 							imageGroup: base?.defaults.imageGroup,
@@ -513,7 +531,8 @@ export default function Rules() {
 							<ImageGroupSection value={draft.defaults.imageGroup} onPatch={patchDraft} />
 						) : section === "live" ? (
 							<LiveThresholdsSection
-								filters={draft.defaults.filters}
+								superchat={draft.defaults.superchat}
+								membership={draft.defaults.membership}
 								schedule={draft.defaults.schedule}
 								liveStart={draft.defaults.liveStart}
 								liveStreaming={draft.defaults.liveStreaming}

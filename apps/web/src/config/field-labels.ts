@@ -445,14 +445,28 @@ export const FIELD_LABELS = {
 	blockVideos: { label: "屏蔽视频动态", section: "filter" },
 
 	// ── 互动门槛 ──────────────────────────────────────────────────────────
-	minScPrice: {
+	// 两个直播门槛(㉓d)从 filters 搬成 superchat / membership 两段,code 带段名(灵动岛 diff 保 nested)。
+	"superchat.minAmount": {
 		label: "SC 最低金额",
 		hint: "低于此金额不推送 · 0 = 全推",
 		section: "interaction",
 	},
-	minGuardLevel: {
+	"membership.minRank.guard": {
 		label: "上舰最低等级",
-		hint: "3 = 全部 · 1 = 仅总督",
+		hint: "舰长 = 全部 · 总督 = 仅总督",
+		section: "interaction",
+	},
+	// 一段(或 minRank 这一层)整个从无到有 / 整个拿掉时,灵动岛的 diff 按整段报(code 是段本身,不是里面的格):也要有名字,
+	// 不掉进「其他」—— 第一次选档位时 `membership.minRank` 就是从无到有,开启逐订阅覆盖时 `superchat` / `membership` 也是。
+	superchat: { label: "SC 最低金额", hint: "低于此金额不推送 · 0 = 全推", section: "interaction" },
+	membership: {
+		label: "上舰最低等级",
+		hint: "舰长 = 全部 · 总督 = 仅总督",
+		section: "interaction",
+	},
+	"membership.minRank": {
+		label: "上舰最低等级",
+		hint: "舰长 = 全部 · 总督 = 仅总督",
 		section: "interaction",
 	},
 
@@ -515,17 +529,30 @@ export const FIELD_LABELS = {
 	"templates.specialUserEnter": { label: "进房模板", section: "templates" },
 	// 以下几条仅 diff-path entry 用(GuardSection 的 Toggle 直接挂在 GlassBox.right
 	// 槽,Guard 模板嵌在小卡 JSX 里没单独 <Field> 包裹,diff 会输出整段嵌套 path)。
-	"templates.guardBuy.enable": {
+	// ㉓d:上舰文案是 B 站的会员体系 `guard` 的那一份 —— 体系默认 + 按档存的覆盖。
+	"templates.membership.guard.enabled": {
 		label: "启用自定义上舰提示",
 		hint: "总开关 · 关 = 默认走 B 站官方上舰图",
 		section: "templates",
 	},
-	"templates.guardBuy.captain.template": { label: "舰长文案", section: "templates" },
-	"templates.guardBuy.captain.imageUrl": { label: "舰长图片", section: "templates" },
-	"templates.guardBuy.commander.template": { label: "提督文案", section: "templates" },
-	"templates.guardBuy.commander.imageUrl": { label: "提督图片", section: "templates" },
-	"templates.guardBuy.governor.template": { label: "总督文案", section: "templates" },
-	"templates.guardBuy.governor.imageUrl": { label: "总督图片", section: "templates" },
+	"templates.membership.guard.default.template": { label: "体系默认文案", section: "templates" },
+	"templates.membership.guard.default.imageUrl": { label: "体系默认图片", section: "templates" },
+	// 一档整个从无到有 / 整个拿掉时,灵动岛的 diff 按整档报(code 是档本身,不是里面的格):也要有名字,不掉进「其他」。
+	"templates.membership.guard.tiers.captain": { label: "舰长文案与图片", section: "templates" },
+	"templates.membership.guard.tiers.commander": { label: "提督文案与图片", section: "templates" },
+	"templates.membership.guard.tiers.governor": { label: "总督文案与图片", section: "templates" },
+	"templates.membership.guard.tiers.captain.template": { label: "舰长文案", section: "templates" },
+	"templates.membership.guard.tiers.captain.imageUrl": { label: "舰长图片", section: "templates" },
+	"templates.membership.guard.tiers.commander.template": {
+		label: "提督文案",
+		section: "templates",
+	},
+	"templates.membership.guard.tiers.commander.imageUrl": {
+		label: "提督图片",
+		section: "templates",
+	},
+	"templates.membership.guard.tiers.governor.template": { label: "总督文案", section: "templates" },
+	"templates.membership.guard.tiers.governor.imageUrl": { label: "总督图片", section: "templates" },
 
 	// ── 特别关注 / Special UID ────────────────────────────────────────────
 	specialUsers: { label: "UID 列表", section: "specialUsers" },

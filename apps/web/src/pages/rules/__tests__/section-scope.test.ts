@@ -3,10 +3,10 @@ import { makeEmptySubscription, type Subscription } from "../../../types/domain"
 import { isSectionCustomized } from "../section-scope";
 
 /**
- * 回归:「动态过滤」与「直播阈值」两个 section 共享同一个 overrides.filters 切片
- * (block* 属过滤域,minScPrice/minGuardLevel 属阈值域)。侧栏「已覆盖」小红点
- * 若只判 `overrides.filters !== undefined`,开其中一个域就会让另一个 section 的
- * 小点也亮起来 —— 必须按各自域内的字段判定。
+ * 「动态过滤」(overrides.filters:block* / allow*)与「直播阈值」(overrides.superchat / membership 两个门槛切片,外加
+ * schedule / liveStart / liveStreaming)互相独立:侧栏「已覆盖」小红点按各自域内的字段判定,开其中一个域不会让另一个
+ * section 的小点也亮起来。㉓d 之前两个门槛(minScPrice / minGuardLevel)和过滤共用 overrides.filters 一个切片,
+ * 那时若只判 `overrides.filters !== undefined` 就会串味;现在各是各的切片,这一组钉住「谁也不牵连谁」。
  */
 
 function subWith(overrides: Subscription["overrides"]): Subscription {
@@ -20,16 +20,30 @@ describe("isSectionCustomized filter / live 分域", () => {
 		expect(isSectionCustomized(sub, "live")).toBe(false);
 	});
 
-	it("只有阈值域覆盖(minScPrice)→ live 小点亮、filter 小点不亮", () => {
-		const sub = subWith({ filters: { minScPrice: 30 } });
+	it("只有醒目留言门槛覆盖(superchat.minAmount)→ live 小点亮、filter 小点不亮", () => {
+		const sub = subWith({ superchat: { minAmount: 30 } });
 		expect(isSectionCustomized(sub, "live")).toBe(true);
 		expect(isSectionCustomized(sub, "filter")).toBe(false);
 	});
 
-	it("只有阈值域覆盖(minGuardLevel)→ live 小点亮、filter 小点不亮", () => {
-		const sub = subWith({ filters: { minGuardLevel: 2 } });
+	it("金额门槛覆盖写 0 也算覆盖(0 = 这个订阅不设门槛,盖掉全局的 30)", () => {
+		expect(isSectionCustomized(subWith({ superchat: { minAmount: 0 } }), "live")).toBe(true);
+	});
+
+	it("只有上舰门槛覆盖(membership.minRank.guard)→ live 小点亮、filter 小点不亮;rank 1(全推)也算覆盖", () => {
+		const sub = subWith({ membership: { minRank: { guard: 2 } } });
 		expect(isSectionCustomized(sub, "live")).toBe(true);
 		expect(isSectionCustomized(sub, "filter")).toBe(false);
+		expect(isSectionCustomized(subWith({ membership: { minRank: { guard: 1 } } }), "live")).toBe(
+			true,
+		);
+	});
+
+	it("会员门槛里只有别的体系的(今天没有界面)→ 这一节不亮:面板只认 B 站那一项", () => {
+		expect(isSectionCustomized(subWith({ membership: { minRank: { other: 2 } } }), "live")).toBe(
+			false,
+		);
+		expect(isSectionCustomized(subWith({ membership: {} }), "live")).toBe(false);
 	});
 
 	it("只有 schedule 覆盖 → live 小点亮、filter 小点不亮", () => {
@@ -58,7 +72,7 @@ describe("isSectionCustomized filter / live 分域", () => {
 	});
 
 	it("两域都覆盖 → 两个小点都亮", () => {
-		const sub = subWith({ filters: { blockKeywords: ["广告"], minScPrice: 30 } });
+		const sub = subWith({ filters: { blockKeywords: ["广告"] }, superchat: { minAmount: 30 } });
 		expect(isSectionCustomized(sub, "filter")).toBe(true);
 		expect(isSectionCustomized(sub, "live")).toBe(true);
 	});
@@ -129,5 +143,31 @@ describe("isSectionCustomized — AI 人格", () => {
 
 	it("压根没有 ai 覆盖 → 小点不亮", () => {
 		expect(isSectionCustomized(subWith({}), "ai", PRESETS)).toBe(false);
+	});
+});
+
+describe("isSectionCustomized guard(上舰提示)", () => {
+	const guard = (enabled: boolean) => ({
+		enabled,
+		default: { template: "{viewer} 来了", imageUrl: "" },
+		tiers: {},
+	});
+
+	it("订阅自己开了 B 站体系的自定义文案(enabled: true)→ 亮", () => {
+		const sub = subWith({ templates: { membership: { guard: guard(true) } } });
+		expect(isSectionCustomized(sub, "guard")).toBe(true);
+	});
+
+	it("订阅里有那一份但没开(enabled: false)→ 不亮:没开就是继承全局", () => {
+		const sub = subWith({ templates: { membership: { guard: guard(false) } } });
+		expect(isSectionCustomized(sub, "guard")).toBe(false);
+	});
+
+	it("只覆盖了别的文案、或别的体系 → 不亮", () => {
+		expect(isSectionCustomized(subWith({ templates: { liveStart: "x" } }), "guard")).toBe(false);
+		expect(
+			isSectionCustomized(subWith({ templates: { membership: { other: guard(true) } } }), "guard"),
+		).toBe(false);
+		expect(isSectionCustomized(subWith({}), "guard")).toBe(false);
 	});
 });

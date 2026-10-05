@@ -935,7 +935,8 @@ export const BUILTIN_AI_PRESETS = [
  * 替换(`applyTemplate` 同时兼容旧存档的 legacy `-key`)。变量集严格对齐
  * 渲染器实际提供的字段:
  * - 直播:`{name}` `{time}` `{follower}` `{follower_change}` `{watched}`
- * - 上舰:`{uname}` `{mname}` `{guard}`
+ * - 会员(上舰):`{viewer}`(观众名)`{name}`(主播名)`{tier}`(档名);0.x 的 `{uname}` `{mname}` `{guard}` 与 `-key` 老写法
+ *   由迁移改写成这三个(㉓d)
  * - 特别关注:`{mastername}` `{uname}` `{msg}`
  * - 弹幕总结:`{dmc}` `{mdn}` `{dca}` `{un1..5}` `{dc1..5}`
  * - 动态:`{name}`
@@ -966,17 +967,15 @@ export const DEFAULT_TEMPLATES = {
 	wordcloudStopWords: "",
 	specialDanmaku: "{mastername} 的关注用户 {uname} 发送弹幕：{msg}",
 	specialUserEnter: "{uname} 进入了 {mastername} 的直播间",
-	guardBuy: {
-		// false = 默认上舰图 + 内置文案；true = 启用三档自定义文案/图片
-		enable: false,
-		captain: { imageUrl: "", template: "{uname} 成为了 {mname} 的舰长！" },
-		commander: {
-			imageUrl: "",
-			template: "{uname} 成为了 {mname} 的提督！",
-		},
-		governor: {
-			imageUrl: "",
-			template: "{uname} 成为了 {mname} 的总督！",
+	// 会员文案,按体系 id 存(㉓d,原先 B 站专属的 `guardBuy`)。B 站的体系是 `guard`;别的体系由来源声明、事件到了才有。
+	membership: {
+		guard: {
+			// false = 官方上舰图 / 上舰卡；true = 用下面的自定义文案与图片
+			enabled: false,
+			// 体系默认:推出去的字与 0.x 三档的出厂文案一字不差({tier} 填档名:舰长 / 提督 / 总督)。
+			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			// 只存改过的档;三档出厂都跟随上面的默认。
+			tiers: {},
 		},
 	},
 } as const;

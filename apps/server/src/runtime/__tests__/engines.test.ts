@@ -1432,23 +1432,43 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveCfg.defaultLiveCoverImages).toEqual(["a", "b"]);
 	});
 
-	it("回归:改全局上舰三档文案 → live config 的 customGuardBuy 三档各带各的文案与图片", () => {
+	it("回归:改全局会员文案 → live config 的 guardTemplate 带上 enabled、体系默认与按档各自的文案与图片", () => {
 		// 此前 liveConfig() 只把 `captain.template` 当成所有档位的文案传给引擎,提督 /
-		// 总督的专属文案运行时从来不读(图片倒是三档各传各的)。
-		const guardBuy = {
-			enable: true,
-			captain: { template: "舰长那句", imageUrl: "cap.png" },
-			commander: { template: "提督那句", imageUrl: "com.png" },
-			governor: { template: "总督那句", imageUrl: "gov.png" },
+		// 总督的专属文案运行时从来不读(图片倒是三档各传各的)。㉓d 起文案按体系存:这里是 B 站的 `guard` 那一份,
+		// 三档写成三句不同的话,少传一档、传串一档都会红。
+		const guard = {
+			enabled: true,
+			default: { template: "默认那句 {viewer}", imageUrl: "default.png" },
+			tiers: {
+				captain: { template: "舰长那句", imageUrl: "cap.png" },
+				commander: { template: "提督那句", imageUrl: "com.png" },
+				governor: { template: "总督那句" },
+			},
 		};
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.templates.guardBuy = guardBuy;
+			g.defaults.templates.membership.guard = guard;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(liveCfg.customGuardBuy).toEqual(guardBuy);
+		expect(liveCfg.guardTemplate).toEqual(guard);
+	});
+
+	it("全局配置里没有 guard 这一项(手改删掉了):live config 的 guardTemplate 回出厂那份,自定义关着", () => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.templates.membership = {};
+			// 改点别的让 updateConfig 触发(templates 变了就会)。
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
+		expect(liveCfg.guardTemplate).toEqual({
+			enabled: false,
+			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			tiers: {},
+		});
 	});
 
 	it("item 4 — 改 defaults.ai 不扇出重设 level / healthCheck", () => {
@@ -1525,6 +1545,19 @@ describe("createEngines — config-changed globals 热重载", () => {
 			(g: GlobalConfig) => (g.defaults.liveStart.catchUpOnBoot = true),
 			{ catchUpOnBoot: true },
 		],
+		// ㉓d:两个直播门槛搬出了 filters,自己成了 superchat / membership 两段,热更的门要跟着 ——
+		// 漏掉的话在面板上改了门槛要重启才生效(门槛在每个订阅的视图里定格,只有 applyOps 能刷)。
+		// 验红:把热更门里的 `interactionChanged` 删掉,这两条红。
+		[
+			"醒目留言门槛(superchat.minAmount)",
+			(g: GlobalConfig) => (g.defaults.superchat = { minAmount: 30 }),
+			{ minSuperchatAmount: 30 },
+		],
+		[
+			"上舰门槛(membership.minRank.guard)",
+			(g: GlobalConfig) => (g.defaults.membership = { minRank: { guard: 2 } }),
+			{ minGuardRank: 2 },
+		],
 	])("直播拆键:只改全局%s → live.applyOps 收到刷新,带上折好的新值", (_name, mutate, expected) => {
 		const sub = makeEmptySubscription({
 			id: "sub-1",
@@ -1541,6 +1574,32 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
 		expect(liveOps[0].changes[0]).toMatchObject(expected);
+	});
+
+	it("门槛被清掉:update op 里 minSuperchatAmount / minGuardRank 两个键恒在、值是 undefined(引擎按 Object.assign 合并,靠它盖掉旧值)", () => {
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		const c = setup({ subs: [sub] });
+		active = c;
+		patchGlobals(c, (g) => {
+			g.defaults.superchat = { minAmount: 30 };
+			g.defaults.membership = { minRank: { guard: 2 } };
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		H.live[0].applyOps.mockClear();
+		patchGlobals(c, (g) => {
+			g.defaults.superchat = {};
+			g.defaults.membership = {};
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+
+		const change = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
+		expect(Object.hasOwn(change, "minSuperchatAmount")).toBe(true);
+		expect(Object.hasOwn(change, "minGuardRank")).toBe(true);
+		expect(change.minSuperchatAmount).toBeUndefined();
+		expect(change.minGuardRank).toBeUndefined();
 	});
 
 	it("no-op:globals 未变的 config-changed 不热推任何子系统", () => {

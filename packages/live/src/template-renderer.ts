@@ -7,7 +7,6 @@ import type { MasterInfo } from "./types";
  * text. Mirrors the per-occurrence templates of the live push:
  *
  * - `customLiveStart` / `customLiveStreaming` / `customLiveEnd`
- * - `customGuardBuy.<governor|commander|captain>.template`(按上舰档位取)
  * - `customSpecialDanmakuUsers.msgTemplate`
  * - `customSpecialUsersEnterTheRoom.msgTemplate`
  *
@@ -201,23 +200,6 @@ export class LiveTemplateRenderer {
 			name: params.master.username,
 			time: params.diffTime,
 			followerChange: params.followerChange,
-		});
-	}
-
-	/**
-	 * Compose the "上舰" notification text. `template` 是事件那一档(总督 / 提督 / 舰长)
-	 * 的自定义文案,由 room-session 按 guard_level 取好 —— 与图片取的是同一档。
-	 */
-	renderGuardBuy(params: {
-		template: string;
-		uname: string;
-		master: MasterInfo | undefined;
-		giftName: string;
-	}): string {
-		return applyTemplate(params.template, {
-			uname: params.uname,
-			mname: params.master?.username ?? "",
-			guard: params.giftName,
 		});
 	}
 

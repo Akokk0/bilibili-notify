@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 /**
- * 复现 bug:per-UP「动态过滤覆盖」与「直播阈值覆盖」共享同一个 overrides.filters
+ * 复现 bug:per-UP「动态过滤覆盖」与「直播阈值覆盖」曾共享同一个 overrides.filters
  * 切片,开其中一个会把 minScPrice/minGuardLevel(阈值域)或 blockKeywords 等
- * (过滤域)一并带出来,导致另一个 section 的 toggle 被动跟着开。
+ * (过滤域)一并带出来,导致另一个 section 的 toggle 被动跟着开。㉓d 起两个门槛是
+ * overrides.superchat / overrides.membership 自己的切片,这一组钉住两边仍然互不牵连。
  *
  * 两组断言:
- * - diff code:开「动态过滤」不该让阈值域字段(minScPrice/minGuardLevel)出现在
+ * - diff code:开「动态过滤」不该让阈值域切片(superchat / membership)出现在
  *   灵动岛 diff 里,反之亦然 —— 抓的是"seed 时字段范围有没有越界"。
  * - badge 文案:同一个 draft 状态下切换 section,另一个 section 的 badge 不该
  *   被动变成"覆盖中" —— 抓的是用户实际看到的症状。
@@ -53,7 +54,7 @@ afterEach(() => {
 });
 
 describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => {
-	it("开「动态过滤覆盖」不应带出 minScPrice / minGuardLevel(阈值域)", async () => {
+	it("开「动态过滤覆盖」不应带出 superchat / membership(阈值域)", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		const sub = makeSub();
 		const { container } = render(
@@ -69,8 +70,8 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		await waitFor(() => {
 			expect(diffCodes()).toContain("blockKeywords");
 		});
-		expect(diffCodes()).not.toContain("minScPrice");
-		expect(diffCodes()).not.toContain("minGuardLevel");
+		expect(diffCodes()).not.toContain("superchat");
+		expect(diffCodes()).not.toContain("membership");
 	});
 
 	it("开「直播阈值覆盖」不应带出 blockKeywords 等过滤域字段", async () => {
@@ -86,8 +87,9 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		fireEvent.click(headerToggle as Element);
 
 		await waitFor(() => {
-			expect(diffCodes()).toContain("minScPrice");
+			expect(diffCodes()).toContain("superchat");
 		});
+		expect(diffCodes()).toContain("membership");
 		expect(diffCodes()).not.toContain("blockKeywords");
 		expect(diffCodes()).not.toContain("blockRegex");
 		expect(diffCodes()).not.toContain("allowKeywords");
@@ -127,7 +129,7 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		);
 		fireEvent.click(container.querySelector("button") as Element);
 		await waitFor(() => {
-			expect(diffCodes()).toContain("minScPrice");
+			expect(diffCodes()).toContain("superchat");
 		});
 
 		rerender(
@@ -141,11 +143,11 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		expect(filterBox.getByText("继承")).toBeTruthy();
 	});
 
-	it("关闭「动态过滤覆盖」并保存 → PATCH body 里过滤域字段显式 null,阈值域字段不受影响(不会保存后又复活)", async () => {
+	it("关闭「动态过滤覆盖」并保存 → PATCH body 里过滤域整段显式 null,阈值域切片不受影响(不会保存后又复活)", async () => {
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 		const sub: Subscription = {
 			...makeSub(),
-			overrides: { filters: { blockKeywords: ["广告"], minScPrice: 30 } },
+			overrides: { filters: { blockKeywords: ["广告"] }, superchat: { minAmount: 30 } },
 		};
 		const { container } = render(
 			<QueryClientProvider client={qc}>
@@ -169,7 +171,8 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 			`/api/subscriptions/${sub.id}`,
 			expect.objectContaining({
 				overrides: expect.objectContaining({
-					filters: { blockKeywords: null, minScPrice: 30 },
+					filters: null,
+					superchat: { minAmount: 30 },
 				}),
 			}),
 		);

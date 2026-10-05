@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { BILIBILI_GUARD_PROGRAM, guardTierOf } from "../bilibili-guard";
+import { BILIBILI_GUARD_PROGRAM, GUARD_PROGRAM_ID, guardTierOf } from "../bilibili-guard";
 import { interpolate } from "../util/interpolate";
 
 describe("guardTierOf —— B 站 guard_level → 档(倒序换算只在这一个文件)", () => {
@@ -29,6 +29,11 @@ describe("guardTierOf —— B 站 guard_level → 档(倒序换算只在这一�
 });
 
 describe("BILIBILI_GUARD_PROGRAM —— 体系与档", () => {
+	it("体系 id 是 guard(设置里 templates.membership / membership.minRank 的键就是它),体系本身用的也是这一个常量", () => {
+		expect(GUARD_PROGRAM_ID).toBe("guard");
+		expect(BILIBILI_GUARD_PROGRAM.id).toBe(GUARD_PROGRAM_ID);
+	});
+
 	it("体系 id 是 guard、叫「大航海」,三档按 rank 升序:舰长 1、提督 2、总督 3", () => {
 		expect(BILIBILI_GUARD_PROGRAM.id).toBe("guard");
 		expect(BILIBILI_GUARD_PROGRAM.name).toBe("大航海");

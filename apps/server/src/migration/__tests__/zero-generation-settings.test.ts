@@ -35,10 +35,13 @@ import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
 
 const GROUP_ID = "22222222-2222-4222-8222-222222222222";
 
-/** 新代 `config/settings/core.json` 里模板这一格读出来的形状。 */
+/** 新代 `config/settings/core.json` 里模板这一格读出来的形状(上舰文案是 `membership.guard`,㉓d)。 */
 type DiskTemplates = Record<string, unknown> & {
-	guardBuy: { captain: { template: string } };
+	membership: {
+		guard: { enabled: boolean; default: { template: string; imageUrl: string }; tiers: Obj };
+	};
 };
+type Obj = Record<string, unknown>;
 interface DiskGlobals {
 	defaults: { templates: DiskTemplates; ai: Record<string, unknown> };
 	linkParsing: Record<string, unknown>;
@@ -243,7 +246,14 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		// 带链接那代的默认 → 无链接新默认;0.x 那一遍先认出它(认的是 `dynamic` 这个键),再过 1.0 的改名落在 `post` 上。
 		expect(onDisk.post).toBe("{name}发布了一条动态");
 		expect(onDisk).not.toHaveProperty("dynamic");
-		expect(onDisk.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
+		// 更早一代的上舰默认(`{user}` / `{mastername}`)先被 0.x 那一遍认成当前默认,再随上舰文案搬成 `membership.guard`:
+		// 舰长这档没动过,不进 tiers,跟随体系默认「{viewer} 成为了 {name} 的{tier}！」(推出去的字与今天一样)。
+		expect(onDisk).not.toHaveProperty("guardBuy");
+		expect(onDisk.membership.guard).toEqual({
+			enabled: false,
+			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			tiers: {},
+		});
 
 		const store = await sandbox.load();
 		const t = store.getGlobals().defaults.templates;
@@ -251,7 +261,8 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("我自定义的下播文案 {name}"); // 自定义保留,不被迁移覆盖
 		expect(t.post).toBe("{name}发布了一条动态"); // 带链接那代的默认 → 无链接新默认
-		expect(t.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
+		expect(t.membership.guard?.tiers).toEqual({});
+		expect(t.membership.guard?.default.template).toBe("{viewer} 成为了 {name} 的{tier}！");
 	});
 
 	it("累积迁移:真 alpha.x globals.json(有 liveMsgEnabled、无 dynamic/dynamicVideo、旧 {title} liveStart)经 load() 自洽", async () => {
@@ -296,7 +307,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(onDisk.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(onDisk.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(onDisk.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
-		expect(onDisk.guardBuy.captain.template).toBe("{uname} 成为了 {mname} 的舰长！");
+		expect(onDisk.membership.guard.tiers).toEqual({});
 
 		// ① 不报错(strip 未知键,不抛 ConfigValidationError)
 		const store = await sandbox.load();
@@ -310,9 +321,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		expect(t.liveStart).toBe("{name} 开播啦，当前粉丝数：{follower}");
 		expect(t.liveStreaming).toBe("{name} 正在直播，已播 {time}，累计观看：{watched}");
 		expect(t.liveEnd).toBe("{name} 下播啦，本次直播了 {time}，粉丝变化 {follower_change}");
-		expect((t.guardBuy as { captain: { template: string } }).captain.template).toBe(
-			"{uname} 成为了 {mname} 的舰长！",
-		);
+		expect((t.membership as { guard: { tiers: Obj } }).guard.tiers).toEqual({});
 	});
 
 	it("加载缺 templates.dynamic/dynamicVideo 的老 globals.json → schema 回填默认(新键 post / postVideo),不抛", async () => {

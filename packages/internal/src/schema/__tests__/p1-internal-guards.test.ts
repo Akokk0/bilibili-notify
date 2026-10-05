@@ -23,8 +23,6 @@ const baseFilters = {
 	blockRegex: [] as string[],
 	allowKeywords: [],
 	allowRegex: [] as string[],
-	minScPrice: 0,
-	minGuardLevel: 3 as const,
 };
 
 const SHA = "a".repeat(64);

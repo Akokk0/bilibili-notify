@@ -183,35 +183,34 @@ describe("per-UP template override 不被全局默认污染 (Codex 回归)", () 
 	});
 });
 
-// 回归:overrides.filters 被「动态过滤」与「直播阈值」两个 section 分域共写。
-// ContentFiltersSchema 的 blockImages/blockVideos 带 .default(false),`.partial()` 不剥内层
-// default → per-UP 只覆盖直播阈值(minScPrice/minGuardLevel)时会被注入 blockImages:false/
-// blockVideos:false。这俩属「动态过滤」域,前端据「字段 !== undefined」误判该 UP 已覆盖动态过滤
-// → 一开直播阈值就连带点亮动态过滤(toggle + 侧栏小点)。override schema 已剥默认,此处锁住。
+// 回归:ContentFiltersSchema 的 blockImages/blockVideos 带 .default(false),`.partial()` 不剥内层 default →
+// per-UP 只覆盖过滤域的一两个字段(blockKeywords)时会被注入 blockImages:false / blockVideos:false,前端据「字段 !==
+// undefined」误判该 UP 把这两个开关也覆盖了。override schema 已剥默认,此处锁住。
+// (早先这一段还要防「只覆盖直播阈值也连带点亮动态过滤」:直播阈值 minScPrice / minGuardLevel 原先和过滤共用一个切片;
+// ㉓d 起它们是 overrides.superchat / overrides.membership 两个自己的切片,下面第二条锁住「两边互不牵连」。)
 describe("per-UP filters/schedule override 不被全局默认污染", () => {
-	it("只覆盖直播阈值域(minScPrice/minGuardLevel)→ blockImages/blockVideos 仍 undefined", () => {
-		const parsed = SubscriptionSchema.parse({
-			...BASE,
-			overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } },
-		});
-		const f = parsed.overrides.filters;
-		expect(f?.minScPrice).toBe(50);
-		expect(f?.minGuardLevel).toBe(2);
-		expect(f?.blockImages).toBeUndefined();
-		expect(f?.blockVideos).toBeUndefined();
-		expect(f?.blockKeywords).toBeUndefined();
-		expect(Object.keys(f ?? {}).sort()).toEqual(["minGuardLevel", "minScPrice"]);
-	});
-
-	it("只覆盖过滤域(blockKeywords)→ minScPrice/minGuardLevel 仍 undefined", () => {
+	it("只覆盖过滤域(blockKeywords)→ blockImages/blockVideos 仍 undefined,别的过滤字段也没被注入", () => {
 		const parsed = SubscriptionSchema.parse({
 			...BASE,
 			overrides: { filters: { blockKeywords: ["广告"] } },
 		});
 		const f = parsed.overrides.filters;
 		expect(f?.blockKeywords).toEqual(["广告"]);
-		expect(f?.minScPrice).toBeUndefined();
-		expect(f?.minGuardLevel).toBeUndefined();
+		expect(f?.blockImages).toBeUndefined();
+		expect(f?.blockVideos).toBeUndefined();
+		expect(Object.keys(f ?? {})).toEqual(["blockKeywords"]);
+		expect(parsed.overrides.superchat).toBeUndefined();
+		expect(parsed.overrides.membership).toBeUndefined();
+	});
+
+	it("只覆盖直播门槛(superchat / membership 两段)→ overrides.filters 仍 undefined:开直播门槛不会连带点亮动态过滤", () => {
+		const parsed = SubscriptionSchema.parse({
+			...BASE,
+			overrides: { superchat: { minAmount: 50 }, membership: { minRank: { guard: 2 } } },
+		});
+		expect(parsed.overrides.superchat).toEqual({ minAmount: 50 });
+		expect(parsed.overrides.membership).toEqual({ minRank: { guard: 2 } });
+		expect(parsed.overrides.filters).toBeUndefined();
 	});
 });
 

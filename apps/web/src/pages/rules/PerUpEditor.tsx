@@ -13,19 +13,11 @@
 import { Avatar, CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import {
-	ArrayEditor,
-	Field,
-	Picker,
-	QuietHoursEditor,
-	TArea,
-	TInput,
-	TNum,
-} from "../../components/forms";
+import { ArrayEditor, Field, Picker, QuietHoursEditor, TArea, TNum } from "../../components/forms";
 import { InheritNote } from "../../components/inherit-note";
 import { OverrideBox } from "../../components/override-box";
 import { AI_PURPLE } from "../../config/colors";
-import { GUARD_LEVELS } from "../../config/guard-levels";
+import { GUARD_LEVELS, GUARD_PROGRAM_ID } from "../../config/guard-levels";
 import { SECTION_ACCENT } from "../../config/section-accents";
 import { useDirtyDraft } from "../../hooks/useDirtyDraft";
 import { api } from "../../services/api";
@@ -37,18 +29,20 @@ import {
 	type ImageGroupOverride,
 	type LiveStartOverride,
 	type LiveStreamingOverride,
+	type MembershipOverride,
 	type MessageLayoutOverride,
 	type OverridesShape,
 	type ScheduleOverride,
 	type SpecialUser,
 	type Subscription,
+	type SuperchatOverride,
 	subscriptionIdentityOf,
 	type TemplateOverride,
 } from "../../types/domain";
 import type {
 	GlobalDefaults,
-	GuardEntry,
 	ImageGroupSettings,
+	MembershipTemplateBundle,
 	TemplateBundle,
 } from "../../types/globals";
 import { displayName, profileAvatarUrl, subscriptionColor } from "../up/helpers";
@@ -65,7 +59,9 @@ import {
 } from "./section-scope";
 import {
 	DynamicMsgVariableHints,
+	GuardTemplateFields,
 	GuardVariableHints,
+	guardBundleOf,
 	LiveMsgVariableHints,
 	type SectionId,
 	SpecialDanmakuVariableHints,
@@ -86,6 +82,9 @@ export const perUpOverrideKeys = [
 	"schedule",
 	"liveStart",
 	"liveStreaming",
+	// 醒目留言与会员的门槛(㉓d,原先是 `filters` 里的两个字段):自己两个切片,漏了的话只覆盖了门槛的订阅会从 tab 栏里消失。
+	"superchat",
+	"membership",
 	"templates",
 	"ai",
 	"imageGroup",
@@ -259,9 +258,12 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 			) : null}
 			{section === "live" ? (
 				<LiveOverrideBox
-					filters={draft.overrides.filters}
-					onFilters={(v) => setSlice("filters", v)}
-					baselineFilters={defaults.filters}
+					superchat={draft.overrides.superchat}
+					onSuperchat={(v) => setSlice("superchat", v)}
+					baselineSuperchat={defaults.superchat}
+					membership={draft.overrides.membership}
+					onMembership={(v) => setSlice("membership", v)}
+					baselineMembership={defaults.membership}
 					timing={timing}
 					{...timingBoxProps}
 				/>
@@ -488,34 +490,54 @@ function clearTiming({ onSchedule, onLiveStart, onLiveStreaming }: TimingBoxProp
 	onLiveStreaming(undefined);
 }
 
-/* -------- Live thresholds (filters.minScPrice/minGuardLevel + 推送时间) ---- */
+/* -------- Live thresholds (superchat.minAmount / membership.minRank + 推送时间) ---- */
+
+/** 覆盖里的会员门槛去掉 B 站那一项:别的体系的门槛没有界面(3b),原样留着;空了整段拿掉(回到继承)。 */
+function withoutGuardRank(
+	membership: MembershipOverride | undefined,
+): MembershipOverride | undefined {
+	if (!membership) return undefined;
+	const { [GUARD_PROGRAM_ID]: _guard, ...rest } = membership.minRank ?? {};
+	if (Object.keys(rest).length > 0) return { ...membership, minRank: rest };
+	const { minRank: _minRank, ...others } = membership;
+	return Object.keys(others).length > 0 ? others : undefined;
+}
 
 function LiveOverrideBox({
-	filters,
-	onFilters,
-	baselineFilters,
+	superchat,
+	onSuperchat,
+	baselineSuperchat,
+	membership,
+	onMembership,
+	baselineMembership,
 	timing,
 	...timingProps
 }: {
-	filters: ContentFiltersOverride | undefined;
-	onFilters: (next: ContentFiltersOverride | undefined) => void;
-	baselineFilters: GlobalDefaults["filters"];
+	superchat: SuperchatOverride | undefined;
+	onSuperchat: (next: SuperchatOverride | undefined) => void;
+	baselineSuperchat: GlobalDefaults["superchat"];
+	membership: MembershipOverride | undefined;
+	onMembership: (next: MembershipOverride | undefined) => void;
+	baselineMembership: GlobalDefaults["membership"];
 	timing: LiveTimingShown;
 } & TimingBoxProps) {
-	const enabled = hasLiveThresholdOverride({ filters, ...timingProps.overrides });
-	const fCur = filters ?? {};
+	const enabled = hasLiveThresholdOverride({ superchat, membership, ...timingProps.overrides });
+	/** 这个订阅生效的上舰门槛(rank):覆盖有就用覆盖,否则全局,都没配 = 全推 = 最低一档。 */
+	const guardRank = membership?.minRank?.[GUARD_PROGRAM_ID];
+	const baselineGuardRank = baselineMembership.minRank?.[GUARD_PROGRAM_ID] ?? 1;
 	function toggle(on: boolean): void {
 		if (on) {
-			onFilters({
-				...fCur,
-				minScPrice: baselineFilters.minScPrice,
-				minGuardLevel: baselineFilters.minGuardLevel,
+			// 写成显式的值(跟全局一样也写):覆盖开着就是「这个订阅自己说了算」,以后全局再改也不跟着变。
+			onSuperchat({ ...superchat, minAmount: baselineSuperchat.minAmount ?? 0 });
+			onMembership({
+				...membership,
+				minRank: { ...membership?.minRank, [GUARD_PROGRAM_ID]: baselineGuardRank },
 			});
 			seedTiming(timingProps, timing);
 		} else {
-			// 只清阈值域两个字段,保留可能由 FilterOverrideBox 写入的过滤域字段。
-			const { minScPrice: _s, minGuardLevel: _g, ...rest } = fCur;
-			onFilters(Object.keys(rest).length > 0 ? rest : undefined);
+			// 整段拿掉(下发时编成显式 null,服务端才真的删):金额门槛一段只有一个字段;会员门槛只拿掉 B 站这一项。
+			onSuperchat(undefined);
+			onMembership(withoutGuardRank(membership));
 			clearTiming(timingProps);
 		}
 	}
@@ -530,20 +552,25 @@ function LiveOverrideBox({
 			inheritNote="该 UP 将继承全局直播阈值与调度"
 		>
 			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
-				<Field code="minScPrice">
+				<Field code="superchat.minAmount">
 					<TNum
-						value={fCur.minScPrice ?? baselineFilters.minScPrice}
-						onChange={(v) => onFilters({ ...fCur, minScPrice: v })}
+						value={superchat?.minAmount ?? baselineSuperchat.minAmount ?? 0}
+						onChange={(v) => onSuperchat({ ...superchat, minAmount: v })}
 						min={0}
 						suffix="元"
 					/>
 				</Field>
-				<Field code="minGuardLevel">
-					<Picker<1 | 2 | 3>
-						value={fCur.minGuardLevel ?? baselineFilters.minGuardLevel}
-						onChange={(v) => onFilters({ ...fCur, minGuardLevel: v })}
+				<Field code="membership.minRank.guard">
+					<Picker<number>
+						value={guardRank ?? baselineGuardRank}
+						onChange={(rank) =>
+							onMembership({
+								...membership,
+								minRank: { ...membership?.minRank, [GUARD_PROGRAM_ID]: rank },
+							})
+						}
 						// 由低到高,与规则页那一屏同序。
-						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
+						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.rank, label: g.label }))}
 					/>
 				</Field>
 				<TimingFields {...timingProps} timing={timing} />
@@ -935,7 +962,16 @@ function MessageLayoutOverrideBox({
 	);
 }
 
-/* -------- Guard (overrides.templates.guardBuy) ---------------------------- */
+/* -------- Guard (overrides.templates.membership.guard) ------------------- */
+
+/** 订阅覆盖里的会员文案去掉 B 站的体系;空了整段拿掉,`templates` 空了也拿掉(回到继承)。 */
+function withoutGuardTemplate(templates: TemplateOverride): TemplateOverride | undefined {
+	const { [GUARD_PROGRAM_ID]: _guard, ...otherPrograms } = templates.membership ?? {};
+	const { membership: _membership, ...rest } = templates;
+	const next: TemplateOverride =
+		Object.keys(otherPrograms).length > 0 ? { ...rest, membership: otherPrograms } : rest;
+	return Object.keys(next).length > 0 ? next : undefined;
+}
 
 function GuardOverrideBox({
 	value,
@@ -946,23 +982,32 @@ function GuardOverrideBox({
 	onChange: (next: TemplateOverride | undefined) => void;
 	baseline: GlobalDefaults["templates"];
 }) {
-	// 覆盖语义:开 = 该 UP 强制启用自定义上舰文案/图片(guardBuy.enable=true);关 = 继承全局决定。
-	const enabled = value?.guardBuy?.enable === true;
+	// 覆盖语义:开 = 该 UP 强制启用自定义上舰文案/图片(membership.guard.enabled=true,整份换成订阅这一份);关 = 继承全局决定。
+	const own = value?.membership?.[GUARD_PROGRAM_ID];
+	const enabled = own?.enabled === true;
 	const cur = value ?? {};
-	type GuardRole = "captain" | "commander" | "governor";
-	const guardOf = (role: GuardRole): GuardEntry => cur.guardBuy?.[role] ?? baseline.guardBuy[role];
-	function setGuard(role: GuardRole, entry: GuardEntry): void {
-		onChange({
-			...cur,
-			guardBuy: { ...(cur.guardBuy ?? baseline.guardBuy), [role]: entry },
+	const baselineGuard = guardBundleOf(baseline);
+	/** 画出来的那一份:订阅自己的整份(没有就拿全局的当起点)。 */
+	const bundle: MembershipTemplateBundle = own ?? baselineGuard;
+	function writeBundle(next: MembershipTemplateBundle): void {
+		onChange({ ...cur, membership: { ...cur.membership, [GUARD_PROGRAM_ID]: next } });
+	}
+	/** 改一档的一格;清空 = 这一格不再覆盖,一档两格都空了就把这一档拿掉(整份是普通对象,下发时 buildOverridesPatch 编出 null)。 */
+	function setTier(key: string, field: "template" | "imageUrl", v: string): void {
+		const tier = { ...bundle.tiers[key], [field]: v };
+		if (v === "") delete tier[field];
+		const { [key]: _old, ...others } = bundle.tiers;
+		writeBundle({
+			...bundle,
+			tiers: tier.template || tier.imageUrl ? { ...others, [key]: tier } : others,
 		});
 	}
 	function toggle(on: boolean): void {
 		if (on) {
-			onChange({ ...cur, guardBuy: { ...baseline.guardBuy, enable: true } });
+			// 以全局那一份为起点(带上全局已有的体系默认与每档文案),再把开关打开。
+			writeBundle({ ...structuredClone(baselineGuard), enabled: true });
 		} else {
-			const { guardBuy: _g, ...rest } = cur;
-			onChange(Object.keys(rest).length > 0 ? rest : undefined);
+			onChange(withoutGuardTemplate(cur));
 		}
 	}
 	return (
@@ -976,34 +1021,14 @@ function GuardOverrideBox({
 			inheritNote="该 UP 将继承全局上舰提示设置"
 		>
 			<GuardVariableHints />
-			<div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-				{/* 由低到高 —— 表本身是升序(总督在前),这一屏历来舰长打头。 */}
-				{[...GUARD_LEVELS].reverse().map(({ key: role, label }) => {
-					const e = guardOf(role);
-					return (
-						<div key={role} className="rounded-lg border border-bn-border bg-bn-surface/70 p-2.5">
-							<div className="mb-1.5 text-bn-sm font-bold text-bn-text-primary">
-								{label}{" "}
-								<code className="ml-1 rounded-sm bg-bn-code-bg px-1 py-px font-mono text-bn-2xs text-bn-text-tertiary">
-									{role}
-								</code>
-							</div>
-							<TInput
-								value={e.template}
-								onChange={(v) => setGuard(role, { ...e, template: v })}
-								mono
-							/>
-							<div className="h-1" />
-							<TInput
-								value={e.imageUrl}
-								onChange={(v) => setGuard(role, { ...e, imageUrl: v })}
-								mono
-								placeholder="image url"
-							/>
-						</div>
-					);
-				})}
-			</div>
+			<GuardTemplateFields
+				bundle={bundle}
+				onDefault={(field, v) =>
+					writeBundle({ ...bundle, default: { ...bundle.default, [field]: v } })
+				}
+				onTier={setTier}
+				tiersClassName="grid grid-cols-1 gap-2.5 lg:grid-cols-3"
+			/>
 		</OverrideBox>
 	);
 }

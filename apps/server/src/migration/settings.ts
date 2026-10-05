@@ -32,6 +32,7 @@ import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
 import { migrateLegacyLinkParsing } from "./link-parsing.js";
 import { type GlobalLiveFacts, liveFactsOf, splitGlobalLiveSettings } from "./live-split.js";
+import { moveGlobalMembership } from "./membership-moves.js";
 import { migrateOldTemplateDefaults } from "./templates.js";
 
 /**
@@ -56,13 +57,13 @@ export function migrateGlobals(raw: unknown): unknown {
 }
 
 /**
- * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 直播拆键 → 历史保留天数换键。设置那一步
- * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的
- * 全局值只有一个读法。
+ * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 会员与醒目留言的搬家(两个直播阈值、
+ * 上舰文案,㉓d,`membership-moves.ts`) → 直播拆键 → 历史保留天数换键。设置那一步({@link migrateSettingsFiles})和订阅那一步
+ * 要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的全局值只有一个读法。
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
 	return moveHistoryRetention(
-		splitGlobalLiveSettings(renameGlobalSettingsKeys(migrateGlobals(raw))),
+		splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
 	);
 }
 

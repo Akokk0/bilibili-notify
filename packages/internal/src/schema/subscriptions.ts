@@ -14,8 +14,10 @@ import {
 	ImageGroupSettingsPartialSchema,
 	LiveStartSettingsPartialSchema,
 	LiveStreamingSettingsPartialSchema,
+	MembershipSettingsPartialSchema,
 	PUSH_EXTRAS,
 	ScheduleConfigPartialSchema,
+	SuperchatSettingsPartialSchema,
 	TemplateBundlePartialSchema,
 } from "./common";
 import { ID_SEGMENT, isPrototypeName, prototypeNameMessage } from "./extension-manifest";
@@ -141,6 +143,9 @@ export const SubscriptionOverridesSchema = z.object({
 	schedule: ScheduleConfigPartialSchema.optional(),
 	liveStart: LiveStartSettingsPartialSchema.optional(),
 	liveStreaming: LiveStreamingSettingsPartialSchema.optional(),
+	// 醒目留言与会员的门槛覆盖(㉓d):`superchat.minAmount` 覆盖有就用覆盖(0 也算);`membership.minRank` 按体系逐键合并。
+	superchat: SuperchatSettingsPartialSchema.optional(),
+	membership: MembershipSettingsPartialSchema.optional(),
 	templates: TemplateBundlePartialSchema.optional(),
 	ai: AIOverrideSchema.optional(),
 	cardStyle: CardStylePartialSchema.optional(),

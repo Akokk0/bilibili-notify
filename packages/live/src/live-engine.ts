@@ -33,7 +33,7 @@ export interface LiveEngineConfig {
 	wordcloudStopWords?: string;
 	/** Default global "弹幕总结" template (single string; adapter joins lines if needed). */
 	liveSummaryDefault: string;
-	customGuardBuy: ListenerManagerConfig["customGuardBuy"];
+	guardTemplate: ListenerManagerConfig["guardTemplate"];
 	customLiveMsg: ListenerManagerConfig["customLiveMsg"];
 	/**
 	 * 是否启用图片卡片渲染。`false` 时直播开播 / SC / 上舰 / 弹幕词云全部走文字回退。
@@ -304,7 +304,7 @@ export class LiveEngine {
 
 function toListenerConfig(c: LiveEngineConfig): ListenerManagerConfig {
 	return {
-		customGuardBuy: c.customGuardBuy,
+		guardTemplate: c.guardTemplate,
 		customLiveMsg: c.customLiveMsg,
 		liveSummaryDefault: c.liveSummaryDefault,
 		imageEnabled: c.imageEnabled,

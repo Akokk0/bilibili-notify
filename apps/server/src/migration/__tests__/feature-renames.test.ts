@@ -7,7 +7,8 @@
  * `templates.post` / `postVideo` / `messageLayout.post` / `extraTargets`),值原样搬、键序不变。过滤键(㉑a)同理:全局
  * `defaults.filters` 与订阅 `overrides.filters` 里的 `blockForward` / `blockArticle` / `blockDraw` / `blockAv` /
  * `whitelistKeywords` / `whitelistRegex` 换成 `blockReposts` / `blockArticles` / `blockImages` / `blockVideos` /
- * `allowKeywords` / `allowRegex`,其余四格(屏蔽关键词、屏蔽正则、两个阈值)不动。
+ * `allowKeywords` / `allowRegex`,屏蔽关键词、屏蔽正则不动;两个直播阈值 `minScPrice` / `minGuardLevel` 不是改名、是搬家
+ * (㉓d,`membership-moves.test.ts` 钉函数级,接缝在下面「过滤键」那几条),这一步的函数级用例里它们原样带过。
  *
  * 两头:
  * - 走接缝(第 0 代 → `migrateZeroGeneration` → 新代上配置仓开机):输入是 `./zero-fixtures.ts` 冻住的 0.x 字面量,
@@ -18,10 +19,12 @@
  * 只改了一边的话配置仓开机就拒收整个订阅文件(接缝那几条会红在开机上)。
  */
 
+import { ContentFiltersSchema } from "@bilibili-notify/internal";
 import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
 import { pendingTemplateUpdates } from "@bilibili-notify/internal/template-defaults";
 import { describe, expect, it } from "vite-plus/test";
 import { renameGlobalSettingsKeys, renameSubscriptionKeys } from "../feature-renames.js";
+import { ZERO_FILTER_KEYS, ZERO_MOVED_FILTER_KEYS } from "../zero-vocabulary.js";
 import { useZeroSandbox } from "./support.js";
 import {
 	makeZeroGlobals,
@@ -29,6 +32,8 @@ import {
 	zeroEmptyExtras,
 	zeroEmptyRouting,
 	zeroExtensionRow,
+	zeroGuardBuy,
+	zeroMembershipOverrides,
 } from "./zero-fixtures.js";
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
@@ -82,6 +87,9 @@ const OLD_FILTER_KEYS = [
 	"whitelistKeywords",
 	"whitelistRegex",
 ] as const;
+
+/** 0.x 过滤键里搬出 `filters` 的两个阈值(㉓d):迁完以后 filters 里也一个都不该剩。 */
+const MOVED_FILTER_KEYS = ["minScPrice", "minGuardLevel"] as const;
 
 /** 新代 `config/subscriptions.json` 里的行(按 id)。 */
 async function subscriptionRow(
@@ -343,7 +351,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"wordcloudStopWords",
 			"specialDanmaku",
 			"specialUserEnter",
-			"guardBuy",
+			// 上舰文案搬成 `membership.guard`(㉓d),占的还是原来的位置。
+			"membership",
 		]);
 		expect((await subscriptionRow(sandbox, SUB_ID)).overrides).toEqual({
 			templates: { post: "我的动态 {name}", postVideo: "我的视频 {name}" },
@@ -360,7 +369,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		});
 	});
 
-	it("文案账本 templateDefaultsSeen:post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;别的键不动", async () => {
+	it("文案账本 templateDefaultsSeen:post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;上舰那六条换成新路径两条(㉓d)", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 
@@ -379,12 +388,9 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			wordcloudStopWords: "ztntfp",
 			specialDanmaku: "t4zkxd",
 			specialUserEnter: "1qh1423",
-			"guardBuy.captain.imageUrl": "ztntfp",
-			"guardBuy.captain.template": "1n2b5zl",
-			"guardBuy.commander.imageUrl": "ztntfp",
-			"guardBuy.commander.template": "c2qled",
-			"guardBuy.governor.imageUrl": "ztntfp",
-			"guardBuy.governor.template": "1qek1pk",
+			// 上舰文案搬成体系默认一条(㉓d):账本记的是新默认「{viewer} 成为了 {name} 的{tier}！」与空图的指纹。
+			"membership.guard.default.template": "8q6guf",
+			"membership.guard.default.imageUrl": "ztntfp",
 		});
 		expect(Object.keys(core.defaults.templateDefaultsSeen).slice(3, 7)).toEqual([
 			"liveSummary",
@@ -459,7 +465,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		expect(store.getGlobals().defaults.messageLayout).toEqual(core.defaults.messageLayout);
 	});
 
-	it("过滤键:全局 defaults.filters 里六个键换名,值原样、键序不变;关键词 / 正则 / 阈值四格不动,老键不带过去", async () => {
+	it("过滤键:全局 defaults.filters 里六个键换名,值原样、键序不变;关键词 / 正则两格不动,老键不带过去;两个阈值搬出去(㉓d)", async () => {
 		await placeConnectionsAndTargets();
 		const globals = makeZeroGlobals();
 		// 挑和出厂不同的值:出厂值全是 false / 空,看不出改名有没有把值带过去。
@@ -479,7 +485,9 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 
 		await sandbox.migrate();
 
-		const core = await sandbox.readConfig<{ defaults: { filters: Obj } }>("settings/core.json");
+		const core = await sandbox.readConfig<{ defaults: Obj & { filters: Obj } }>(
+			"settings/core.json",
+		);
 		expect(core.defaults.filters).toEqual({
 			blockReposts: true,
 			blockArticles: false,
@@ -489,8 +497,6 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			blockRegex: ["^抽奖"],
 			allowKeywords: ["新歌"],
 			allowRegex: ["^上新"],
-			minScPrice: 30,
-			minGuardLevel: 2,
 		});
 		expect(Object.keys(core.defaults.filters)).toEqual([
 			"blockReposts",
@@ -501,20 +507,228 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"blockRegex",
 			"allowKeywords",
 			"allowRegex",
-			"minScPrice",
-			"minGuardLevel",
 		]);
-		for (const old of OLD_FILTER_KEYS) expect(core.defaults.filters).not.toHaveProperty(old);
+		for (const old of [...OLD_FILTER_KEYS, ...MOVED_FILTER_KEYS]) {
+			expect(core.defaults.filters).not.toHaveProperty(old);
+		}
+		// 两个阈值搬成自己的两段:旧金额 30 元 → superchat.minAmount;旧等级 2(提督以上)→ guard 的 rank 2。
+		expect(core.defaults.superchat).toEqual({ minAmount: 30 });
+		expect(core.defaults.membership).toEqual({ minRank: { guard: 2 } });
 
 		// 开机不拒收:全局那份过滤的键在活 schema 里是必填的,老键留着的话整份设置读不进来。
 		const store = await sandbox.load();
-		expect(store.getGlobals().defaults.filters).toEqual(core.defaults.filters);
+		const loaded = store.getGlobals().defaults;
+		expect(loaded.filters).toEqual(core.defaults.filters);
+		expect(loaded.superchat).toEqual({ minAmount: 30 });
+		expect(loaded.membership).toEqual({ minRank: { guard: 2 } });
 	});
 
-	it("过滤键:逐订阅 overrides.filters(B 站与拓展)只换写过的键,没写的不凭空长出来;老键不带过去", async () => {
+	it("两个阈值是 0.x 的出厂值(金额 0、等级 3 = 全推):不写,盘上没有这两段,装载出来是空段", async () => {
+		await placeConnectionsAndTargets();
+		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
+
+		const store = await sandbox.migrateAndLoad();
+
+		const core = await sandbox.readConfig<{ defaults: Obj & { filters: Obj } }>(
+			"settings/core.json",
+		);
+		expect(core.defaults).not.toHaveProperty("superchat");
+		expect(core.defaults).not.toHaveProperty("membership");
+		for (const old of MOVED_FILTER_KEYS) expect(core.defaults.filters).not.toHaveProperty(old);
+		expect(store.getGlobals().defaults.superchat).toEqual({});
+		expect(store.getGlobals().defaults.membership).toEqual({});
+	});
+
+	it("上舰文案:全局 templates.guardBuy → templates.membership.guard,改过的档进 tiers、占位符改写、没动过的档跟随体系默认;开机装得进来(㉓d)", async () => {
+		await placeConnectionsAndTargets();
+		const globals = makeZeroGlobals();
+		globals.defaults.templates.guardBuy = zeroGuardBuy({
+			enable: true,
+			captain: {
+				imageUrl: "https://img.test/captain.png",
+				template: "-uname 登上了 -mname 的船,档位 -guard",
+			},
+			// 提督没动:出厂文案,图片空(`zeroGuardBuy` 的缺省)。
+			governor: { imageUrl: "", template: "总督 {uname} 驾到\\n欢迎来到 {mname}" },
+		});
+		await sandbox.placeZero("state/globals.json", globals);
+
+		const store = await sandbox.migrateAndLoad();
+
+		const core = await sandbox.readConfig<{ defaults: { templates: Obj } }>("settings/core.json");
+		expect(core.defaults.templates).not.toHaveProperty("guardBuy");
+		const guard = {
+			enabled: true,
+			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			tiers: {
+				captain: {
+					template: "{viewer} 登上了 {name} 的船,档位 {tier}",
+					imageUrl: "https://img.test/captain.png",
+				},
+				governor: { template: "总督 {viewer} 驾到\\n欢迎来到 {name}" },
+			},
+		};
+		expect((core.defaults.templates.membership as Obj).guard).toEqual(guard);
+		expect(
+			Object.keys(((core.defaults.templates.membership as Obj).guard as Obj).tiers as Obj),
+		).toEqual(["captain", "governor"]);
+		expect(store.getGlobals().defaults.templates.membership.guard).toEqual(guard);
+	});
+
+	it("上舰文案的账本:新路径记着新默认的指纹,升上来的人以后自己改了体系默认也不会被提示「默认文案有更新」(㉓d)", async () => {
+		await placeConnectionsAndTargets();
+		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
+
+		const store = await sandbox.migrateAndLoad();
+
+		const { templates, templateDefaultsSeen } = store.getGlobals().defaults;
+		// 升级当下:体系默认就是出厂默认,没有要更新的。
+		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templateDefaultsSeen)).toEqual([]);
+		// 主人以后把体系默认改成自己的话:这一版默认他「见过了」(账本里是新默认的指纹),不提示。没有这两条账,下面这一步就会亮灯。
+		const edited = {
+			...templates,
+			membership: {
+				guard: {
+					...templates.membership.guard,
+					default: { template: "我自己写的体系默认 {viewer}", imageUrl: "https://img.test/x.png" },
+				},
+			},
+		};
+		expect(pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, templateDefaultsSeen)).toEqual([]);
+		expect(
+			pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, {
+				...templateDefaultsSeen,
+				"membership.guard.default.template": "过期的指纹",
+			}),
+		).toEqual(["membership.guard.default.template"]);
+		expect(Object.keys(templateDefaultsSeen).filter((key) => key.startsWith("guardBuy"))).toEqual(
+			[],
+		);
+	});
+
+	it("逐订阅(夹具 `zeroMembershipOverrides`):写着出厂阈值与一份改过的上舰文案 → 阈值照搬(0 也写、rank 1 也写),文案只搬改过的档", async () => {
+		await placeConnectionsAndTargets();
+		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
+		await sandbox.placeZero("state/subscriptions.json", [
+			zeroBiliRow({ id: SUB_ID, uid: "12345" }, { overrides: zeroMembershipOverrides() }),
+		]);
+
+		const store = await sandbox.migrateAndLoad();
+
+		const expected = {
+			superchat: { minAmount: 0 },
+			membership: { minRank: { guard: 1 } },
+			templates: {
+				membership: {
+					guard: {
+						enabled: true,
+						default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+						tiers: {
+							captain: {
+								template: "{viewer} 登上了 {name} 的船",
+								imageUrl: "https://img.test/captain.png",
+							},
+							governor: { template: "总督 {viewer} 驾到,档位 {tier}" },
+						},
+					},
+				},
+			},
+		};
+		expect((await subscriptionRow(sandbox, SUB_ID)).overrides).toEqual(expected);
+		expect(store.getSubscriptions().find((sub) => sub.id === SUB_ID)?.overrides).toEqual(expected);
+	});
+
+	it("逐订阅:overrides.templates.guardBuy 与 overrides.filters 里的阈值一起搬(B 站与拓展订阅),开机装得进来(㉓d)", async () => {
+		await placeConnectionsAndTargets();
+		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
+		await sandbox.placeZero("state/subscriptions.json", [
+			zeroBiliRow(
+				{ id: SUB_ID, uid: "12345" },
+				{
+					overrides: {
+						filters: { minScPrice: 0, minGuardLevel: 3 },
+						templates: {
+							guardBuy: {
+								enable: true,
+								captain: { imageUrl: "", template: "{uname} 成为了 {mname} 的舰长！" },
+								commander: {
+									imageUrl: "https://img.test/c.png",
+									template: "-uname 加入 {mname} 的-guard",
+								},
+								// 更早一代的上舰默认原文(逐订阅覆盖不经 0.x 那一遍的旧默认迁移):也算没动过。
+								governor: { imageUrl: "", template: "{user} 成为了 {mastername} 的总督！" },
+							},
+						},
+					},
+				},
+			),
+		]);
+		await sandbox.placeZero("state/extension-subscriptions.json", [
+			zeroExtensionRow(
+				{ id: EXT_SUB_ID, extensionId: "douyin", externalId: "sec-uid" },
+				{ overrides: { filters: { minScPrice: 12 } } },
+			),
+		]);
+
+		const store = await sandbox.migrateAndLoad();
+
+		const bili = (await subscriptionRow(sandbox, SUB_ID)).overrides as Obj;
+		expect(bili).toEqual({
+			superchat: { minAmount: 0 },
+			membership: { minRank: { guard: 1 } },
+			templates: {
+				membership: {
+					guard: {
+						enabled: true,
+						default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+						tiers: {
+							commander: {
+								template: "{viewer} 加入 {name} 的{tier}",
+								imageUrl: "https://img.test/c.png",
+							},
+						},
+					},
+				},
+			},
+		});
+		expect((await subscriptionRow(sandbox, EXT_SUB_ID)).overrides).toEqual({
+			superchat: { minAmount: 12 },
+		});
+		const loaded = (id: string) => store.getSubscriptions().find((sub) => sub.id === id)?.overrides;
+		expect(loaded(SUB_ID)).toEqual(bili);
+		expect(loaded(EXT_SUB_ID)).toEqual({ superchat: { minAmount: 12 } });
+	});
+
+	it("0.x 的十个过滤键一个不漏:改名的去了新名字、搬走的去了新的段,没有哪个 0.x 键留在 filters 里(去向对照的运行期复核)", async () => {
+		await placeConnectionsAndTargets();
+		const globals = makeZeroGlobals();
+		const zeroFilters = globals.defaults.filters as Obj;
+		// 夹具里的 0.12 出厂过滤就带全了十个键;下面把两个阈值调成非出厂的值,看它们各去了哪。
+		expect(Object.keys(zeroFilters).sort()).toEqual([...ZERO_FILTER_KEYS].sort());
+		globals.defaults.filters = { ...zeroFilters, minScPrice: 7, minGuardLevel: 1 };
+		await sandbox.placeZero("state/globals.json", globals);
+
+		await sandbox.migrate();
+
+		const core = await sandbox.readConfig<{ defaults: Obj & { filters: Obj } }>(
+			"settings/core.json",
+		);
+		expect(Object.keys(core.defaults.filters).sort()).toEqual(
+			Object.keys(ContentFiltersSchema.shape).sort(),
+		);
+		for (const key of ZERO_FILTER_KEYS) {
+			if (!(ZERO_MOVED_FILTER_KEYS as readonly string[]).includes(key)) continue;
+			expect(core.defaults.filters, key).not.toHaveProperty(key);
+		}
+		expect(core.defaults.superchat).toEqual({ minAmount: 7 });
+		expect(core.defaults.membership).toEqual({ minRank: { guard: 3 } });
+	});
+
+	it("过滤键:逐订阅 overrides.filters(B 站与拓展)只换写过的键,没写的不凭空长出来;老键不带过去;阈值搬成 superchat / membership 两段(㉓d)", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 		const THRESHOLD_ONLY = "66666666-6666-4666-8666-666666666666";
+		const FACTORY_THRESHOLDS = "77777777-7777-4777-8777-777777777777";
 		await sandbox.placeZero("state/subscriptions.json", [
 			zeroBiliRow(
 				{ id: SUB_ID, uid: "12345" },
@@ -530,10 +744,16 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 					},
 				},
 			),
-			// 只覆盖直播阈值的订阅:一把要改名的键都没写,换名以后也不能多出键(多出 blockImages: false 就会点亮「动态过滤」)。
+			// 只覆盖直播阈值的订阅:一把要改名的键都没写,换名以后也不能多出键(多出 blockImages: false 就会点亮「动态过滤」);
+			// 阈值搬走以后 filters 空了,整个删掉(留一个空壳会被面板当成「覆盖着动态过滤」)。
 			zeroBiliRow(
 				{ id: THRESHOLD_ONLY, uid: "777" },
 				{ overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } } },
+			),
+			// 覆盖里写了出厂值(金额 0、等级 3):照样搬(它的意思是「这个订阅不设门槛」,全局可能不是 0)。
+			zeroBiliRow(
+				{ id: FACTORY_THRESHOLDS, uid: "888" },
+				{ overrides: { filters: { minScPrice: 0, minGuardLevel: 3, blockKeywords: ["x"] } } },
 			),
 		]);
 		await sandbox.placeZero("state/extension-subscriptions.json", [
@@ -545,8 +765,8 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 
 		await sandbox.migrate();
 
-		const filtersOf = async (id: string) =>
-			((await subscriptionRow(sandbox, id)).overrides as Obj).filters as Obj;
+		const overridesOf = async (id: string) => (await subscriptionRow(sandbox, id)).overrides as Obj;
+		const filtersOf = async (id: string) => (await overridesOf(id)).filters as Obj;
 		const biliFilters = await filtersOf(SUB_ID);
 		expect(biliFilters).toEqual({
 			blockReposts: true,
@@ -562,20 +782,33 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"allowKeywords",
 			"allowRegex",
 		]);
-		const thresholdFilters = await filtersOf(THRESHOLD_ONLY);
-		expect(thresholdFilters).toEqual({ minScPrice: 50, minGuardLevel: 2 });
+		const thresholdOverrides = await overridesOf(THRESHOLD_ONLY);
+		expect(thresholdOverrides).toEqual({
+			superchat: { minAmount: 50 },
+			membership: { minRank: { guard: 2 } },
+		});
+		expect(thresholdOverrides).not.toHaveProperty("filters");
+		const factoryOverrides = await overridesOf(FACTORY_THRESHOLDS);
+		expect(factoryOverrides).toEqual({
+			filters: { blockKeywords: ["x"] },
+			superchat: { minAmount: 0 },
+			membership: { minRank: { guard: 1 } },
+		});
 		const extFilters = await filtersOf(EXT_SUB_ID);
 		expect(extFilters).toEqual({ blockRegex: ["抽奖"], allowKeywords: ["开箱"] });
-		for (const filters of [biliFilters, thresholdFilters, extFilters]) {
-			for (const old of OLD_FILTER_KEYS) expect(filters).not.toHaveProperty(old);
+		for (const filters of [biliFilters, factoryOverrides.filters as Obj, extFilters]) {
+			for (const old of [...OLD_FILTER_KEYS, ...MOVED_FILTER_KEYS]) {
+				expect(filters).not.toHaveProperty(old);
+			}
 		}
 
 		const store = await sandbox.load();
-		const overridesOf = (id: string) =>
-			store.getSubscriptions().find((s) => s.id === id)?.overrides.filters;
-		expect(overridesOf(SUB_ID)).toEqual(biliFilters);
-		expect(overridesOf(THRESHOLD_ONLY)).toEqual(thresholdFilters);
-		expect(overridesOf(EXT_SUB_ID)).toEqual(extFilters);
+		const loaded = (id: string) => store.getSubscriptions().find((s) => s.id === id)?.overrides;
+		expect(loaded(SUB_ID)?.filters).toEqual(biliFilters);
+		expect(loaded(THRESHOLD_ONLY)).toEqual(thresholdOverrides);
+		expect(loaded(THRESHOLD_ONLY)?.filters).toBeUndefined();
+		expect(loaded(FACTORY_THRESHOLDS)).toEqual(factoryOverrides);
+		expect(loaded(EXT_SUB_ID)?.filters).toEqual(extFilters);
 	});
 
 	it("先 0.x 那一遍、再改名:旧默认原文先回到当前默认,落在新键 post 上;改过的原文照搬", async () => {

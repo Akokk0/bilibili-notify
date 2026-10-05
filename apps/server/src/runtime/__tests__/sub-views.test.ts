@@ -193,29 +193,87 @@ describe("buildLiveSubViewSingle — 不伪装全局值", () => {
  * 此前这一步只把 `guardBuy.captain.template` 当成唯一一条文案往下传(图片倒是三档
  * 各传各的),面板上给提督 / 总督写的专属文案运行时从来不读,有人上总督推出去的
  * 是舰长那句。三档写成三句不同的话,少传一档、传串一档都会红。
+ * ㉓d 起文案按体系存,宿主把生效值里 B 站的体系(`guard`)那一份整份下发:`enabled`、体系默认、按档 key 存的覆盖。
  */
-describe("buildLiveSubViewSingle — 上舰自定义三档各自下发", () => {
-	const guardBuy = {
-		enable: true,
-		captain: { template: "舰长那句 {uname}", imageUrl: "cap.png" },
-		commander: { template: "提督那句 {uname}", imageUrl: "com.png" },
-		governor: { template: "总督那句 {uname}", imageUrl: "gov.png" },
+describe("buildLiveSubViewSingle — 上舰自定义的文案按体系整份下发", () => {
+	const guard = {
+		enabled: true,
+		default: { template: "默认那句 {viewer}", imageUrl: "" },
+		tiers: {
+			captain: { template: "舰长那句 {viewer}", imageUrl: "cap.png" },
+			commander: { template: "提督那句 {viewer}", imageUrl: "com.png" },
+			governor: { template: "总督那句 {viewer}", imageUrl: "gov.png" },
+		},
 	};
 
-	it("per-UP 覆盖了上舰提示 → 视图带上该 UP 的三档文案与图片", () => {
+	it("per-UP 覆盖了会员文案 → 视图带上该 UP 的体系文案(默认 + 三档)", () => {
 		const view = buildLiveSubViewSingle(
-			makeSub({ templates: { guardBuy } }),
+			makeSub({ templates: { membership: { guard } } }),
 			fakeRuntimeStore(),
 			makeDefaultGlobalConfig(),
 		);
-		expect(view.customGuardBuy).toEqual(guardBuy);
+		expect(view.guardTemplate).toEqual(guard);
 	});
 
-	it("无 per-UP 覆盖 → 视图带上全局的三档文案与图片", () => {
+	it("无 per-UP 覆盖 → 视图带上全局的体系文案", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.templates.guardBuy = guardBuy;
+		g.defaults.templates.membership.guard = guard;
 		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), g);
-		expect(view.customGuardBuy).toEqual(guardBuy);
+		expect(view.guardTemplate).toEqual(guard);
+	});
+
+	it("两边都没动 → 出厂那份:自定义关着,体系默认是「{viewer} 成为了 {name} 的{tier}！」", () => {
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), makeDefaultGlobalConfig());
+		expect(view.guardTemplate).toEqual({
+			enabled: false,
+			default: { template: "{viewer} 成为了 {name} 的{tier}！", imageUrl: "" },
+			tiers: {},
+		});
+	});
+});
+
+/**
+ * ㉓d:醒目留言与会员的门槛从 `filters` 搬成 `superchat.minAmount` 与 `membership.minRank`。宿主把**折好的生效值**下发:
+ * 覆盖有就用覆盖(0 也算),会员门槛取生效值里 B 站那一项(`guard`);都没配就是没配(不设门槛)。
+ */
+describe("buildLiveSubViewSingle — 两个直播门槛", () => {
+	it("全局与覆盖都没配 → 两个门槛都是 undefined(不设门槛)", () => {
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), makeDefaultGlobalConfig());
+		expect(view.minSuperchatAmount).toBeUndefined();
+		expect(view.minGuardRank).toBeUndefined();
+	});
+
+	it("无 per-UP 覆盖 → 下发全局的门槛", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.superchat = { minAmount: 30 };
+		g.defaults.membership = { minRank: { guard: 2 } };
+		const view = buildLiveSubViewSingle(makeSub({}), fakeRuntimeStore(), g);
+		expect(view.minSuperchatAmount).toBe(30);
+		expect(view.minGuardRank).toBe(2);
+	});
+
+	it("per-UP 覆盖盖掉全局:金额写 0 = 这个订阅不设门槛(盖掉全局的 30),会员 rank 1 = 全推(盖掉全局的 2)", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.superchat = { minAmount: 30 };
+		g.defaults.membership = { minRank: { guard: 2 } };
+		const view = buildLiveSubViewSingle(
+			makeSub({ superchat: { minAmount: 0 }, membership: { minRank: { guard: 1 } } }),
+			fakeRuntimeStore(),
+			g,
+		);
+		expect(view.minSuperchatAmount).toBe(0);
+		expect(view.minGuardRank).toBe(1);
+	});
+
+	it("会员门槛按体系合并:订阅只覆盖了别的体系,B 站这一项仍取全局的", () => {
+		const g = makeDefaultGlobalConfig();
+		g.defaults.membership = { minRank: { guard: 3 } };
+		const view = buildLiveSubViewSingle(
+			makeSub({ membership: { minRank: { other: 2 } } }),
+			fakeRuntimeStore(),
+			g,
+		);
+		expect(view.minGuardRank).toBe(3);
 	});
 });
 

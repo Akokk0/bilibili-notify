@@ -382,42 +382,73 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("99999");
 		await store.upsertSubscription(sub);
 		await store.patchSubscription(sub.id, {
-			overrides: { imageGroup: { enable: true, forward: true }, filters: { minScPrice: 30 } },
+			overrides: { imageGroup: { enable: true, forward: true }, superchat: { minAmount: 30 } },
 		});
 		expect(store.getSubscriptions()[0]?.overrides.imageGroup).toEqual({
 			enable: true,
 			forward: true,
 		});
 
-		// null = 显式清除 imageGroup;同一 patch 里不带 filters 键 → filters 保留(“不改”)。
+		// null = 显式清除 imageGroup;同一 patch 里不带 superchat 键 → superchat 保留(“不改”)。
 		await store.patchSubscription(sub.id, {
 			overrides: { imageGroup: null },
 		} as never);
 		const after = store.getSubscriptions()[0];
 		expect(after?.overrides.imageGroup).toBeUndefined();
-		// filters slice 不被 null patch 波及,先前写入的 minScPrice 仍在。
-		expect(after?.overrides.filters?.minScPrice).toBe(30);
+		// superchat slice 不被 null patch 波及,先前写入的门槛仍在。
+		expect(after?.overrides.superchat?.minAmount).toBe(30);
 	});
 
-	it("patch 仅直播阈值域(minScPrice/minGuardLevel)不得污染过滤域字段(blockImages/blockVideos)", async () => {
-		// 回归:overrides.filters 被「动态过滤」与「直播阈值」两个 section 分域共写。
+	it("SY1:醒目留言 / 会员门槛的覆盖能清掉 —— 整段置 null 删掉整段;minRank 里只清 guard 一个键,别的体系的门槛留着", async () => {
+		// 门槛是 `superchat` / `membership` 两个自己的 slice(㉓d,原先在 filters 里)。前端关掉门槛覆盖时下发显式 null;
+		// 「不下发键」等于什么都没说,旧值会残留(这个仓里反复栽的「关不掉」)。
+		const sub = makeSampleSubscription("27182");
+		await store.upsertSubscription(sub);
+		await store.patchSubscription(sub.id, {
+			overrides: { superchat: { minAmount: 30 }, membership: { minRank: { guard: 2, other: 3 } } },
+		});
+		expect(store.getSubscriptions()[0]?.overrides.superchat).toEqual({ minAmount: 30 });
+
+		await store.patchSubscription(sub.id, {
+			overrides: { membership: { minRank: { guard: null } } },
+		} as never);
+		expect(store.getSubscriptions()[0]?.overrides.membership).toEqual({ minRank: { other: 3 } });
+		expect(store.getSubscriptions()[0]?.overrides.superchat).toEqual({ minAmount: 30 });
+
+		await store.patchSubscription(sub.id, {
+			overrides: { superchat: null, membership: null },
+		} as never);
+		const after = store.getSubscriptions()[0]?.overrides;
+		expect(after?.superchat).toBeUndefined();
+		expect(after?.membership).toBeUndefined();
+	});
+
+	it("patch 仅直播门槛(superchat / membership 两段)不得牵连过滤域:overrides.filters 仍是 undefined,门槛原样存着", async () => {
+		// 回归:早先 overrides.filters 被「动态过滤」与「直播阈值」两个 section 分域共写。
 		// ContentFiltersPartialSchema = ContentFiltersSchema.partial(),但 blockImages /
 		// blockVideos 带 .default(false),partial 不剥默认值 → 只存阈值域也会被 zod 塞进
 		// blockImages:false / blockVideos:false。前端据 `字段 !== undefined` 判「动态过滤已覆盖」
 		// → toggle / 侧栏小点被动亮起(dashboard「打开直播阈值连带打开动态过滤」)。
+		// ㉓d 起门槛是自己的两个 slice,不再和过滤共用 filters;这条钉住两边互不牵连。
 		const sub = makeSampleSubscription("31415");
 		await store.upsertSubscription(sub);
 		await store.patchSubscription(sub.id, {
-			overrides: { filters: { minScPrice: 50, minGuardLevel: 2 } },
+			overrides: { superchat: { minAmount: 50 }, membership: { minRank: { guard: 2 } } },
 		});
-		const f = store.getSubscriptions()[0]?.overrides.filters;
-		expect(f?.minScPrice).toBe(50);
-		expect(f?.minGuardLevel).toBe(2);
-		// 过滤域字段一个都不该出现(包括带 default 的 blockImages / blockVideos)。
-		expect(f && "blockImages" in f).toBe(false);
-		expect(f && "blockVideos" in f).toBe(false);
-		expect(f && "blockKeywords" in f).toBe(false);
-		expect(Object.keys(f ?? {}).sort()).toEqual(["minGuardLevel", "minScPrice"]);
+		const o = store.getSubscriptions()[0]?.overrides;
+		expect(o?.superchat).toEqual({ minAmount: 50 });
+		expect(o?.membership).toEqual({ minRank: { guard: 2 } });
+		expect(o?.filters).toBeUndefined();
+	});
+
+	it("patch 仅过滤域(blockKeywords)不得污染过滤域里带默认值的字段(blockImages/blockVideos),也不牵连两段门槛", async () => {
+		const sub = makeSampleSubscription("27183");
+		await store.upsertSubscription(sub);
+		await store.patchSubscription(sub.id, { overrides: { filters: { blockKeywords: ["广告"] } } });
+		const o = store.getSubscriptions()[0]?.overrides;
+		expect(Object.keys(o?.filters ?? {})).toEqual(["blockKeywords"]);
+		expect(o?.superchat).toBeUndefined();
+		expect(o?.membership).toBeUndefined();
 	});
 
 	it("upsertSubscription validates: malformed sub throws, file unchanged", async () => {

@@ -1,12 +1,11 @@
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { LiveClient } from "@bilibili-notify/blive";
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { Logger, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import {
-	type CustomGuardBuyLike,
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveMasterFeature,
 	type PickCardBackground,
@@ -20,11 +19,12 @@ import type { WordcloudGenerator } from "./wordcloud-generator";
 /**
  * 模板 / 渲染层全局配置,listener-manager + room-session 共用。
  *
- * 不含 `streamingIntervalHours` / `catchUpOnBoot` / `minScPrice` / `minGuardLevel` —— 那些是
+ * 不含 `streamingIntervalHours` / `catchUpOnBoot` / `minSuperchatAmount` / `minGuardRank` —— 那些是
  * per-UP 字段,adapter build SubItemView 时已折算好,引擎直接读 `SubItemView.X`。
  */
 export interface ListenerManagerConfig {
-	customGuardBuy: CustomGuardBuyLike;
+	/** 全局的上舰文案(`defaults.templates.membership.guard`,㉓d):订阅自己没开自定义文案时用它。 */
+	guardTemplate: MembershipTemplateBundle;
 	customLiveMsg: {
 		enable: boolean;
 		customLiveStart?: string;

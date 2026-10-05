@@ -4,6 +4,7 @@
  * delta for /api/settings.
  */
 
+import { DEFAULT_TEMPLATES } from "@bilibili-notify/internal/constants";
 import { CollapseBlock, GlassBox, Icon, Toggle } from "@bilibili-notify/ui";
 import { type ReactNode, useState } from "react";
 import {
@@ -16,7 +17,7 @@ import {
 	TNum,
 } from "../../components/forms";
 import { InheritNote } from "../../components/inherit-note";
-import { GUARD_LEVELS } from "../../config/guard-levels";
+import { GUARD_LEVELS, GUARD_PROGRAM_ID } from "../../config/guard-levels";
 import { SECTION_ACCENT, sectionTitleColor } from "../../config/section-accents";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -28,11 +29,14 @@ import {
 import type {
 	ContentFilters,
 	GlobalConfigPatch,
-	GuardBundle,
 	ImageGroupSettings,
 	LiveStartSettings,
 	LiveStreamingSettings,
+	MembershipSettings,
+	MembershipTemplateBundle,
+	MembershipTemplateEntry,
 	ScheduleConfig,
+	SuperchatSettings,
 	TemplateBundle,
 } from "../../types/globals";
 import { MessageLayoutEditor } from "./MessageLayoutEditor";
@@ -360,14 +364,18 @@ export function ImageGroupSection({
 // ── 2. Live thresholds (SC / guard / schedule) ───────────────────────────────
 
 export function LiveThresholdsSection({
-	filters,
+	superchat,
+	membership,
 	schedule,
 	liveStart,
 	liveStreaming,
 	liveStreamingOn,
 	onPatch,
 }: {
-	filters: ContentFilters;
+	/** 醒目留言门槛(㉓d,原先是 `filters.minScPrice`)。 */
+	superchat: SuperchatSettings;
+	/** 会员门槛(㉓d,原先是 `filters.minGuardLevel`):按体系存,B 站的体系是 `guard`。 */
+	membership: MembershipSettings;
 	schedule: ScheduleConfig;
 	/** 启动补报(⑬d 起自成一段,原先在 `schedule` 里)。 */
 	liveStart: LiveStartSettings;
@@ -377,34 +385,35 @@ export function LiveThresholdsSection({
 	liveStreamingOn: boolean;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const setF = <K extends keyof ContentFilters>(k: K, v: ContentFilters[K]) =>
-		onPatch({ defaults: { filters: { [k]: v } as Partial<ContentFilters> } });
 	const setS = <K extends keyof ScheduleConfig>(k: K, v: ScheduleConfig[K]) =>
 		onPatch({ defaults: { schedule: { [k]: v } as Partial<ScheduleConfig> } });
 	return (
 		<GlassBox
 			title="直播推送阈值"
-			subtitle="filters / schedule · 控制 SC 金额 / 上舰等级 / 推送频率"
+			subtitle="superchat / membership / schedule · 控制 SC 金额 / 上舰等级 / 推送频率"
 			accent="var(--color-bn-blue)"
 			icon={<Icon.mic size={14} />}
 			badge="live"
 		>
 			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2">
-				<Field code="minScPrice">
+				<Field code="superchat.minAmount">
 					<TNum
-						value={filters.minScPrice}
-						onChange={(v) => setF("minScPrice", v)}
+						value={superchat.minAmount ?? 0}
+						onChange={(v) => onPatch({ defaults: { superchat: { minAmount: v } } })}
 						min={0}
 						max={9999}
 						suffix="元"
 					/>
 				</Field>
-				<Field code="minGuardLevel">
-					<Picker<1 | 2 | 3>
-						value={filters.minGuardLevel}
-						onChange={(v) => setF("minGuardLevel", v)}
+				<Field code="membership.minRank.guard">
+					<Picker<number>
+						// 没配 = 全推 = 最低一档(舰长,rank 1)。
+						value={membership.minRank?.[GUARD_PROGRAM_ID] ?? 1}
+						onChange={(rank) =>
+							onPatch({ defaults: { membership: { minRank: { [GUARD_PROGRAM_ID]: rank } } } })
+						}
 						// 由低到高,与这一屏别处同序(见 GuardSection 的 ROLES)。
-						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.level, label: g.label }))}
+						options={[...GUARD_LEVELS].reverse().map((g) => ({ value: g.rank, label: g.label }))}
 					/>
 				</Field>
 				<Field code="features.liveStreaming">
@@ -566,9 +575,9 @@ const LIVE_MSG_VARS: VarSpec[] = [
 const DYNAMIC_MSG_VARS: VarSpec[] = [{ code: "{name}", desc: "UP 主名字" }];
 
 const GUARD_VARS: VarSpec[] = [
-	{ code: "{uname}", desc: "上舰用户名" },
-	{ code: "{mname}", desc: "UP 主名字" },
-	{ code: "{guard}", desc: "舰长类别(舰长 / 提督 / 总督)" },
+	{ code: "{viewer}", desc: "上舰用户名" },
+	{ code: "{name}", desc: "UP 主名字" },
+	{ code: "{tier}", desc: "档名(舰长 / 提督 / 总督)" },
 ];
 
 const SPECIAL_DANMAKU_VARS: VarSpec[] = [
@@ -799,6 +808,122 @@ export function DynamicMsgSection({
 
 // ── 5. Guard (上舰提示) ──────────────────────────────────────────────────────
 
+/** 这一屏的三档,由低到高(档位表本身是升序:总督在前),每档一块。 */
+const GUARD_TIER_ROWS = [...GUARD_LEVELS].reverse();
+
+/** 一个体系文案里一格的补丁:`null` = 清掉这一格(JSON Merge Patch 语义,下发时由 buildPatch 编成显式 null)。 */
+type TierFieldPatch = Partial<Record<"template" | "imageUrl", string | null>>;
+
+/** 对 B 站体系文案(`templates.membership.guard`)的补丁。 */
+interface GuardBundlePatch {
+	enabled?: boolean;
+	default?: Partial<MembershipTemplateEntry>;
+	/** 按档 key:`null` = 整档拿掉。 */
+	tiers?: Record<string, TierFieldPatch | null>;
+}
+
+/** 配置里没有 B 站这一个体系(手改删掉了)时画出厂那一份:自定义关着,体系默认是出厂文案。 */
+export function guardBundleOf(
+	templates: Pick<TemplateBundle, "membership">,
+): MembershipTemplateBundle {
+	return (
+		templates.membership[GUARD_PROGRAM_ID] ?? {
+			enabled: false,
+			default: { ...DEFAULT_TEMPLATES.membership.guard.default },
+			tiers: {},
+		}
+	);
+}
+
+/**
+ * 体系默认 + 每档,三块文案与图片输入框(上舰提示的全局一节与逐订阅覆盖共用,两边只差「怎么落字」)。
+ * 最上面一块是体系默认(文案 + 图片),下面每档一块;某档某一格没填(空串)时,输入框的占位显示跟随的默认 ——
+ * 文案跟随体系默认的文案,图片跟随体系默认的图片,默认也没填就是该档的官方徽章图。
+ * 清空一格 = 这一档不再覆盖它(`onTier` 收到空串,由调用方决定怎么删)。
+ */
+export function GuardTemplateFields({
+	bundle,
+	onDefault,
+	onTier,
+	tiersClassName = "space-y-2.5",
+}: {
+	bundle: MembershipTemplateBundle;
+	onDefault: (field: "template" | "imageUrl", value: string) => void;
+	onTier: (key: string, field: "template" | "imageUrl", value: string) => void;
+	/** 三档那一块外面的排版(逐订阅覆盖里排成三列)。 */
+	tiersClassName?: string;
+}) {
+	const accent = SECTION_ACCENT.guard;
+	return (
+		<>
+			<div
+				className="mb-2.5 rounded-lg border p-3"
+				style={{
+					background: `color-mix(in srgb, ${accent} 4%, transparent)`,
+					borderColor: `color-mix(in srgb, ${accent} 20%, transparent)`,
+				}}
+			>
+				<div className="mb-2 flex items-center gap-2">
+					<span className="text-bn-sm font-bold text-bn-text-primary">体系默认</span>
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						没单独配的档都用它;图片留空 = 该档的官方徽章图
+					</span>
+				</div>
+				<Field code="template" full>
+					<TInput value={bundle.default.template} onChange={(v) => onDefault("template", v)} mono />
+				</Field>
+				<Field code="imageUrl" full>
+					<TInput
+						value={bundle.default.imageUrl}
+						onChange={(v) => onDefault("imageUrl", v)}
+						mono
+						placeholder="https://..."
+					/>
+				</Field>
+			</div>
+			<div className={tiersClassName}>
+				{GUARD_TIER_ROWS.map(({ key, label, color }) => {
+					const tier = bundle.tiers[key] ?? {};
+					return (
+						<div
+							key={key}
+							className="rounded-lg border p-3"
+							style={{
+								background: `color-mix(in srgb, ${color} 4%, transparent)`,
+								borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
+							}}
+						>
+							<div className="mb-2 flex items-center gap-2">
+								<span className="block h-2 w-2 rounded-sm" style={{ background: color }} />
+								<span className="text-bn-sm font-bold text-bn-text-primary">{label}</span>
+								<code className="ml-1 rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-2xs text-bn-text-tertiary">
+									{key}
+								</code>
+							</div>
+							<Field code="template" full>
+								<TInput
+									value={tier.template ?? ""}
+									onChange={(v) => onTier(key, "template", v)}
+									mono
+									placeholder={bundle.default.template || "跟随体系默认"}
+								/>
+							</Field>
+							<Field code="imageUrl" full>
+								<TInput
+									value={tier.imageUrl ?? ""}
+									onChange={(v) => onTier(key, "imageUrl", v)}
+									mono
+									placeholder={bundle.default.imageUrl || "留空 = 官方徽章图"}
+								/>
+							</Field>
+						</div>
+					);
+				})}
+			</div>
+		</>
+	);
+}
+
 export function GuardSection({
 	templates,
 	onPatch,
@@ -806,13 +931,18 @@ export function GuardSection({
 	templates: TemplateBundle;
 	onPatch: (delta: GlobalConfigPatch) => void;
 }) {
-	const setG = <K extends keyof GuardBundle>(role: K, v: GuardBundle[K]) =>
-		onPatch({
-			defaults: { templates: { guardBuy: { [role]: v } as Partial<GuardBundle> } },
+	const guard = guardBundleOf(templates);
+	const patchGuard = (delta: GuardBundlePatch) =>
+		onPatch({ defaults: { templates: { membership: { [GUARD_PROGRAM_ID]: delta } } } });
+	/** 改一档的一格;清空 = 这一格不再覆盖,一档两格都空了就把这一档拿掉(盘上不留空壳)。 */
+	const setTier = (key: string, field: "template" | "imageUrl", value: string): void => {
+		const left = { ...guard.tiers[key], [field]: value === "" ? undefined : value };
+		const emptied = !left.template && !left.imageUrl;
+		patchGuard({
+			tiers: { [key]: emptied ? null : { [field]: value === "" ? null : value } },
 		});
-	const enabled = templates.guardBuy.enable;
-	// 表按 guard_level 升序(总督在前),这一屏历来是舰长打头、由低到高排。
-	const ROLES = [...GUARD_LEVELS].reverse();
+	};
+	const enabled = guard.enabled;
 	return (
 		<GlassBox
 			title="上舰提示"
@@ -820,47 +950,16 @@ export function GuardSection({
 			accent={SECTION_ACCENT.guard}
 			icon={<Icon.anchor size={14} />}
 			badge={enabled ? "已启用" : "未启用"}
-			right={<Toggle value={enabled} onChange={(v) => setG("enable", v)} />}
+			right={<Toggle value={enabled} onChange={(v) => patchGuard({ enabled: v })} />}
 		>
 			{enabled ? (
 				<>
 					<GuardVariableHints />
-					{ROLES.map(({ key, label, color }) => {
-						const entry = templates.guardBuy[key];
-						return (
-							<div
-								key={key}
-								className="mt-2.5 rounded-lg border p-3 first:mt-0"
-								style={{
-									background: `color-mix(in srgb, ${color} 4%, transparent)`,
-									borderColor: `color-mix(in srgb, ${color} 20%, transparent)`,
-								}}
-							>
-								<div className="mb-2 flex items-center gap-2">
-									<span className="block h-2 w-2 rounded-sm" style={{ background: color }} />
-									<span className="text-bn-sm font-bold text-bn-text-primary">{label}</span>
-									<code className="ml-1 rounded-sm bg-bn-code-bg px-1.5 py-px font-mono text-bn-2xs text-bn-text-tertiary">
-										{key}
-									</code>
-								</div>
-								<Field code="template" full>
-									<TInput
-										value={entry.template}
-										onChange={(v) => setG(key, { ...entry, template: v })}
-										mono
-									/>
-								</Field>
-								<Field code="imageUrl" full>
-									<TInput
-										value={entry.imageUrl}
-										onChange={(v) => setG(key, { ...entry, imageUrl: v })}
-										mono
-										placeholder="https://..."
-									/>
-								</Field>
-							</div>
-						);
-					})}
+					<GuardTemplateFields
+						bundle={guard}
+						onDefault={(field, v) => patchGuard({ default: { [field]: v } })}
+						onTier={setTier}
+					/>
 				</>
 			) : (
 				<InheritNote>引擎将默认推送 B 站官方上舰图(舰长 / 提督 / 总督)</InheritNote>

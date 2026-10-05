@@ -27,18 +27,15 @@ export {
 	LIVE_SUMMARY_MIN_SENDERS,
 	LiveSummaryRequester,
 } from "./live-summary-requester";
-// B 站上舰 / 醒目留言事件 → 中立的会员事件与醒目留言事件(㉓b,还没有调用方,㉓c 接线)。
+// B 站上舰 / 醒目留言事件 → 中立的会员事件与醒目留言事件(㉓b)。
 export { membershipEventFromLiveEvent } from "./membership-event";
 export {
 	type CustomCardStyleLike,
-	type CustomGuardBuyLike,
 	type CustomLiveMsgLike,
 	type CustomLiveSummaryLike,
 	type CustomSpecialDanmakuUsersLike,
 	type CustomSpecialUsersEnterTheRoomLike,
 	type DynamicScopedChange,
-	type GuardTierKey,
-	type GuardTierLike,
 	LIVE_ROOM_MASTER_KEYS,
 	type LiveBroadcastOptions,
 	type LiveMasterFeature,

@@ -1,6 +1,8 @@
 /**
  * 0.x 最新形状 → 1.0 的改名(⑬c):特性键、附加项键、文案键、版式键、订阅顶层的逐目标表(⑬d 起文案键里
- * `liveOngoing` → `liveStreaming` 也在这里;㉑a 起内容过滤的六个键也在这里)。
+ * `liveOngoing` → `liveStreaming` 也在这里;㉑a 起内容过滤的六个键也在这里)。**不是改名的搬家**(㉓d:两个直播阈值 `minScPrice` /
+ * `minGuardLevel`、上舰文案 `templates.guardBuy`)在 `membership-moves.ts`,接在这一步之后;它们不在下面的改名表里,
+ * 表的类型是「0.x 的键去掉搬走的」,所以 0.x 的每个键仍然必须有去向 —— 改名或搬家,漏了编译不过。
  *
  * 0.x 那一遍(`features.ts` / `templates.ts` …)吐出来的是 0.x 最新的形状,这一步在它之后串着跑,把名字换成 1.0 的:
  *
@@ -41,6 +43,8 @@ import type {
 	ZeroFeatureKey,
 	ZeroFilterKey,
 	ZeroMessageLayoutKey,
+	ZeroMovedFilterKey,
+	ZeroMovedTemplateKey,
 	ZeroTemplateKey,
 } from "./zero-vocabulary.js";
 
@@ -49,6 +53,8 @@ import type {
 // 五张表都写成 `satisfies Record<0.x 的键类型, 1.0 的键类型>`:0.x 的哪个键漏了去向、或去向不是 1.0 的活键,
 // 编译不过。没改名的键也写出来(恒等),这样「漏了」和「没改」分得开。参照 `zero-generation.ts` 的
 // `ZERO_GENERATION_MOVES` 与 internal `constants.ts` 的 `SUBSCRIPTION_EVENT_FEATURES`。
+// 过滤键与文案键两张表的键类型是「0.x 的键去掉搬家的」(`Exclude<…, ZeroMoved…>`):搬走的键去向在 `membership-moves.ts`,
+// 不是 1.0 `ContentFilters` / `TemplateBundle` 里的键,硬塞进表里只能靠类型断言糊过去 —— 这里不糊。
 
 /** 特性键:全局 `defaults.features`、订阅的 `routing` 与 `overrides.features` 共用。 */
 const FEATURE_KEY_RENAMES = {
@@ -80,8 +86,7 @@ const TEMPLATE_KEY_RENAMES = {
 	wordcloudStopWords: "wordcloudStopWords",
 	specialDanmaku: "specialDanmaku",
 	specialUserEnter: "specialUserEnter",
-	guardBuy: "guardBuy",
-} as const satisfies Record<ZeroTemplateKey, keyof TemplateBundle>;
+} as const satisfies Record<Exclude<ZeroTemplateKey, ZeroMovedTemplateKey>, keyof TemplateBundle>;
 
 /** 版式的两组(`version` 不在表里,原样过):作品改名,直播不改。 */
 const MESSAGE_LAYOUT_KEY_RENAMES = {
@@ -89,7 +94,11 @@ const MESSAGE_LAYOUT_KEY_RENAMES = {
 	live: "live",
 } as const satisfies Record<ZeroMessageLayoutKey, Exclude<keyof MessageLayout, "version">>;
 
-/** 内容过滤键:`defaults.filters` 与订阅的 `overrides.filters` 共用。四个类型开关改叫复数名词,白名单改叫 `allow*`;其余原样。 */
+/**
+ * 内容过滤键:`defaults.filters` 与订阅的 `overrides.filters` 共用。四个类型开关改叫复数名词,白名单改叫 `allow*`;
+ * `blockKeywords` / `blockRegex` 原样。两个直播阈值搬出了 `filters`(㉓d),不在这张表里,这一步原样带过、由
+ * `membership-moves.ts` 接着搬。
+ */
 const FILTER_KEY_RENAMES = {
 	blockForward: "blockReposts",
 	blockArticle: "blockArticles",
@@ -99,9 +108,7 @@ const FILTER_KEY_RENAMES = {
 	blockRegex: "blockRegex",
 	whitelistKeywords: "allowKeywords",
 	whitelistRegex: "allowRegex",
-	minScPrice: "minScPrice",
-	minGuardLevel: "minGuardLevel",
-} as const satisfies Record<ZeroFilterKey, keyof ContentFilters>;
+} as const satisfies Record<Exclude<ZeroFilterKey, ZeroMovedFilterKey>, keyof ContentFilters>;
 
 /** 订阅顶层的逐目标表。 */
 const SUBSCRIPTION_KEY_RENAMES = { extras: "extraTargets" } as const;

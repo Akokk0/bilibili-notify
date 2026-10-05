@@ -12,7 +12,12 @@
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
-import type { CardKind, ExtraKey, MessageKindLayout } from "@bilibili-notify/internal";
+import type {
+	CardKind,
+	ExtraKey,
+	MembershipTemplateBundle,
+	MessageKindLayout,
+} from "@bilibili-notify/internal";
 
 /**
  * Push category enum — numeric values are the historical bilibili-notify push-type codes.
@@ -125,23 +130,6 @@ export interface CustomLiveMsgLike {
 	customLiveEnd?: string;
 }
 
-/** 大航海三档的键,与配置 `templates.guardBuy` 同名(总督 / 提督 / 舰长)。 */
-export type GuardTierKey = "governor" | "commander" | "captain";
-
-/** 一档上舰的自定义文案 + 图片。 */
-export interface GuardTierLike {
-	template?: string;
-	imageUrl?: string;
-}
-
-/**
- * 自定义上舰提示:三档**各自**一份文案 + 图片,room-session 按事件的 guard_level
- * 取同一档的文案和图。`enable` 为 false 时三档都不读(走官方上舰图 / 上舰卡)。
- */
-export interface CustomGuardBuyLike extends Partial<Record<GuardTierKey, GuardTierLike>> {
-	enable: boolean;
-}
-
 export interface CustomLiveSummaryLike {
 	enable: boolean;
 	liveSummary?: string;
@@ -195,7 +183,12 @@ export interface SubItemView {
 	 */
 	customCardStyleByKind?: Partial<Record<CardKind, CustomCardStyleLike>>;
 	customLiveMsg: CustomLiveMsgLike;
-	customGuardBuy: CustomGuardBuyLike;
+	/**
+	 * 这条订阅上 B 站的会员体系(`guard`)的文案(`overrides.templates.membership.guard`,没覆盖就是全局那份,㉓d)。
+	 * `enabled` 为 true 才用它(取法见 `membershipTemplateOf`:按事件的档位 key 取那一档,没填的格用体系默认);为 false 时
+	 * 回落 {@link ListenerManagerConfig.guardTemplate}(全局那份),全局也没开就走官方上舰图 / 上舰卡。
+	 */
+	guardTemplate: MembershipTemplateBundle;
 	customLiveSummary: CustomLiveSummaryLike;
 	customSpecialDanmakuUsers: CustomSpecialDanmakuUsersLike;
 	customSpecialUsersEnterTheRoom: CustomSpecialUsersEnterTheRoomLike;
@@ -205,8 +198,10 @@ export interface SubItemView {
 	 * 随 LiveScopedChange 增量推送给 LiveEngine.applyOps;`liveStreaming` 开关或
 	 * `streamingIntervalHours` 变更时 engine 额外 rearm 定时器(setInterval 句柄 ms 不可变)。
 	 */
-	minScPrice: number;
-	minGuardLevel: 1 | 2 | 3;
+	/** 醒目留言门槛(㉓d,原先是 `minScPrice`):金额低于它不推,按人民币元算;没配 = 不设门槛。 */
+	minSuperchatAmount?: number;
+	/** 上舰门槛(㉓d,原先是 `minGuardLevel`):档位 rank 低于它不推(1 = 舰长最低、3 = 总督);没配 = 全推。 */
+	minGuardRank?: number;
 	/** 周期「正在直播」的间隔,小时(1–24)。只在 {@link liveStreaming} 开着时有意义。 */
 	streamingIntervalHours: number;
 	/** 启动时发现正在播,补报一次开播(`liveStart.catchUpOnBoot`);只在 `liveStart` 开着时补。 */
@@ -266,12 +261,12 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "customCardStyle"
 		| "customCardStyleByKind"
 		| "customLiveMsg"
-		| "customGuardBuy"
+		| "guardTemplate"
 		| "customLiveSummary"
 		| "customSpecialDanmakuUsers"
 		| "customSpecialUsersEnterTheRoom"
-		| "minScPrice"
-		| "minGuardLevel"
+		| "minSuperchatAmount"
+		| "minGuardRank"
 		| "streamingIntervalHours"
 		| "catchUpOnBoot"
 		| "liveEndGrace"

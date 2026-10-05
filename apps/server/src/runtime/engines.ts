@@ -48,11 +48,11 @@ import type {
 	FeatureKey,
 	GlobalConfig,
 	GlobalDefaults,
-	GuardBundle,
 	Identity,
 	ImageRef,
 	LinkParsingConfig,
 	LinkParsingPolicy,
+	MembershipTemplateBundle,
 	NotificationPayload,
 	PayloadSegment,
 	ProbeResult,
@@ -60,9 +60,12 @@ import type {
 	Subscription,
 	SubscriptionOp,
 	SubscriptionOverrides,
+	TemplateBundle,
 } from "@bilibili-notify/internal";
 import {
 	BILIBILI_SOURCE_KEY,
+	DEFAULT_TEMPLATES,
+	GUARD_PROGRAM_ID,
 	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
@@ -70,7 +73,6 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import {
-	type CustomGuardBuyLike,
 	LiveEngine,
 	type LiveEngineConfig,
 	type LiveNotifySend,
@@ -624,7 +626,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			imageEnabled: g.defaults.cardStyle.enabled,
 			aiEnabled: g.defaults.ai.enabled,
 			aiWebSearch: g.defaults.ai.search.engines.live,
-			customGuardBuy: toCustomGuardBuy(g.defaults.templates.guardBuy),
+			guardTemplate: guardTemplateOf(g.defaults.templates),
 			// 直播消息模板与动态模板一致:无开关,全局模板始终下发(默认值 ==
 			// DEFAULT_LIVE_TEMPLATES,未编辑时输出不变;编辑后即生效)。renderer 走
 			// subCustom ?? globalCustom ?? DEFAULT_LIVE_TEMPLATES,enable 仅占位、不被读。
@@ -948,6 +950,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					!eq(prev.defaults.liveStart, g.defaults.liveStart) ||
 					!eq(prev.defaults.liveStreaming, g.defaults.liveStreaming);
 				const filtersChanged = !eq(prev.defaults.filters, g.defaults.filters);
+				// 醒目留言与会员的门槛(㉓d 起自成 superchat / membership 两段,原先在 filters 里):它们在每个订阅的视图里定格,
+				// 只有 applyOps 能刷,所以和上面几段一样要开热更的门 —— 漏掉的话改了门槛要重启才生效。
+				const interactionChanged =
+					!eq(prev.defaults.superchat, g.defaults.superchat) ||
+					!eq(prev.defaults.membership, g.defaults.membership);
 				const templatesChanged = !eq(prev.defaults.templates, g.defaults.templates);
 				const featuresChanged = !eq(prev.defaults.features, g.defaults.features);
 				// 皮肤换了 = 出图整个换一副样子,与旧的「版式变了」同一档热更需求:两个引擎的
@@ -1025,7 +1032,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / customCardStyle /
 				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格,不像 DynamicEngine 每个
 				// cron tick 重读 getSubs() 自愈。resolve() 把 ai / cardStyle / schedule / liveStart /
-				// liveStreaming / filters / templates / features 折进每个 sub 的 eff —— 任一变化都给所有
+				// liveStreaming / superchat / membership / filters / templates / features 折进每个 sub 的 eff —— 任一变化都给所有
 				// 订阅合成 update op 走 applyOps 增量路径,刷新活跃 listener 的 per-sub
 				// 状态(Object.assign,不重连 WS)。否则全局默认改了直到重启才在 live 生效。
 				if (
@@ -1033,6 +1040,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					cardStyleChanged ||
 					scheduleChanged ||
 					liveSettingsChanged ||
+					interactionChanged ||
 					filtersChanged ||
 					templatesChanged ||
 					featuresChanged ||
@@ -1716,17 +1724,18 @@ export function dynamicWorkSettings(
 }
 
 /**
- * 配置的上舰提示 → 引擎视图。三档(总督 / 提督 / 舰长)的文案与图片**各自**下发,
- * room-session 按事件的 guard_level 取同一档。全局(`liveConfig`)与 per-UP
- * (`buildLiveSubViewSingle`)共用这一处,别在两边各抄一份映射。
+ * 配置里 B 站的会员体系(`guard`)那一份文案 → 引擎视图(㉓d,原先的 `toCustomGuardBuy`):`enabled` + 体系默认 + 按档 key 存的覆盖整份
+ * 下发,room-session 按事件的档位 key 取同一档(`membershipTemplateOf`)。全局(`liveConfig`)与 per-UP(`buildLiveSubViewSingle`,
+ * 取的是折好的生效值)共用这一处,别在两边各抄一份映射。配置里没有 `guard` 这一项(手改删掉了)就回出厂那份:自定义关着,走官方上舰图。
  */
-function toCustomGuardBuy(b: GuardBundle): CustomGuardBuyLike {
-	return {
-		enable: b.enable,
-		governor: { ...b.governor },
-		commander: { ...b.commander },
-		captain: { ...b.captain },
-	};
+function guardTemplateOf(templates: TemplateBundle): MembershipTemplateBundle {
+	return (
+		templates.membership[GUARD_PROGRAM_ID] ?? {
+			enabled: false,
+			default: { ...DEFAULT_TEMPLATES.membership.guard.default },
+			tiers: {},
+		}
+	);
 }
 
 function buildLiveSubsView(
@@ -1853,13 +1862,13 @@ export function buildLiveSubViewSingle(
 		// 开播 / 正在直播 / 下播三张卡共用的那几格(与拓展订阅的直播同一份)。dynamic 卡不经 LiveEngine
 		// (走 DynamicEngine),所以按种类的样式只折 live / sc / guard。
 		...liveWorkSettings(sub, globals, eff, ["live", "sc", "guard"]),
-		// Per-UP 阈值 / AI;adapter 在 add 路径上灌入,room-session 在 SC / guard / liveSummary 调用点
-		// 先取 sub 值,缺失时回退全局。aiOverride 只在真有 per-UP override 时生成 —— 无 override →
+		// Per-UP 门槛 / AI;adapter 在 add 路径上灌入(门槛是折好的生效值,没配 = 不设门槛),room-session 在 SC / guard /
+		// liveSummary 调用点先取 sub 值,缺失时回退全局。aiOverride 只在真有 per-UP override 时生成 —— 无 override →
 		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
-		minScPrice: eff.filters.minScPrice,
-		minGuardLevel: eff.filters.minGuardLevel,
+		minSuperchatAmount: eff.superchat.minAmount,
+		minGuardRank: eff.membership.minRank[GUARD_PROGRAM_ID],
 		aiOverride: resolveAiOverride(sub, globals.defaults),
-		customGuardBuy: toCustomGuardBuy(eff.templates.guardBuy),
+		guardTemplate: guardTemplateOf(eff.templates),
 		customLiveSummary: {
 			enable: true,
 			liveSummary: eff.templates.liveSummary,
@@ -1974,8 +1983,9 @@ function subscriptionOpsToLive(
 						membership: view.membership,
 						superchat: view.superchat,
 						extras: view.extras,
-						minScPrice: view.minScPrice,
-						minGuardLevel: view.minGuardLevel,
+						// 键恒在(值可能是 undefined):没配 = 不设门槛,门槛被清掉的订阅得靠这个 undefined 把引擎里旧的那份盖掉。
+						minSuperchatAmount: view.minSuperchatAmount,
+						minGuardRank: view.minGuardRank,
 						streamingIntervalHours: view.streamingIntervalHours,
 						catchUpOnBoot: view.catchUpOnBoot,
 						liveEndGrace: view.liveEndGrace,
@@ -1985,7 +1995,7 @@ function subscriptionOpsToLive(
 						customCardStyle: view.customCardStyle,
 						customCardStyleByKind: view.customCardStyleByKind,
 						customLiveMsg: view.customLiveMsg,
-						customGuardBuy: view.customGuardBuy,
+						guardTemplate: view.guardTemplate,
 						customLiveSummary: view.customLiveSummary,
 						customSpecialDanmakuUsers: view.customSpecialDanmakuUsers,
 						customSpecialUsersEnterTheRoom: view.customSpecialUsersEnterTheRoom,

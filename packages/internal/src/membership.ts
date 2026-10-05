@@ -1,14 +1,14 @@
 /**
  * 会员与醒目留言的模型(ADR-0021 决策 26;形状全文在 `docs/1.0/data-model.md`「会员、醒目留言与特别关注」)。
  *
- * 来源交上来的会员事件与醒目留言都是这两个形状,核心不认识任何平台的档位怎么叫、怎么排。只有类型:它们不落盘、
- * 不过 wire,所以没有 zod schema。3a 建 `posts/` 一类的中立目录时整个搬过去(与 `post.ts` 同批)。
- *
- * ㉓b 起步:类型与 B 站的档位表(`bilibili-guard.ts`)、两个翻译函数都还没有调用方,接线在 ㉓c。
+ * 来源交上来的会员事件与醒目留言都是这两个形状,核心不认识任何平台的档位怎么叫、怎么排。事件与体系的类型不落盘、
+ * 不过 wire,所以没有 zod schema;会员文案那一份(`templates.membership`)落盘,它的 schema 在 `schema/common.ts`,
+ * 这里只放取文案的纯函数 {@link membershipTemplateOf}。3a 建 `posts/` 一类的中立目录时整个搬过去(与 `post.ts` 同批)。
  */
 
 import type { ImageRef } from "./constants";
 import type { PostImage } from "./post";
+import type { MembershipTemplateBundle, MembershipTemplateEntry } from "./schema/common";
 
 /**
  * 一套会员体系:各平台档数不一、有的由主播自定,一个升序数字装不下。体系由来源在
@@ -60,4 +60,22 @@ export interface SuperchatEvent {
 	currency: string;
 	/** 醒目留言的档,来源按平台规矩算;`durationSec` 是留言挂多久。 */
 	tier?: { rank: number; durationSec?: number };
+}
+
+/**
+ * 取一档的会员文案:**按档的 key** 取那一档自己的文案与图片,档里没填(缺、或空串)的格用体系默认。图片默认也是空串时
+ * 回空串,由调用方回落该档自己的徽章。
+ *
+ * 不认识任何体系:B 站的 `guard`、以后由主播自定档名的 `custom` 体系都走这一条 —— key 是什么字符串都行,取不到就是默认。
+ * 只认档自己的键(`Object.hasOwn`):档 key 叫 `constructor` 之类的名字也不会取到原型上的东西。回的是新对象。
+ */
+export function membershipTemplateOf(
+	bundle: Pick<MembershipTemplateBundle, "default" | "tiers">,
+	tierKey: string,
+): MembershipTemplateEntry {
+	const own = Object.hasOwn(bundle.tiers, tierKey) ? bundle.tiers[tierKey] : undefined;
+	return {
+		template: own?.template || bundle.default.template,
+		imageUrl: own?.imageUrl || bundle.default.imageUrl,
+	};
 }

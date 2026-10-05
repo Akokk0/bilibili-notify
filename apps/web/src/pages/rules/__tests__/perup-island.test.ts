@@ -105,8 +105,91 @@ describe("projectPerUpIsland — 继承 vs 开启覆盖", () => {
 	});
 
 	it("开启某覆盖(undefined → seeded 对象)→ 检出 dirty(diff 非空)", () => {
-		const codes = diffCodes({}, { filters: { blockKeywords: ["x"], minScPrice: 30 } });
+		const codes = diffCodes({}, { filters: { blockKeywords: ["x"] } });
 		expect(codes.length).toBeGreaterThan(0);
 		expect(codes).toContain("blockKeywords");
+	});
+});
+
+// 醒目留言与会员的门槛(㉓d)是 overrides 里自己的两个切片,投影时要带上 —— 漏了的话改了门槛灵动岛不会亮,保存条出不来。
+describe("projectPerUpIsland — superchat / membership 保 nested(门槛)", () => {
+	it("改 superchat.minAmount → 'superchat.minAmount',section=interaction", () => {
+		const codes = diffCodes({ superchat: { minAmount: 30 } }, { superchat: { minAmount: 50 } });
+		expect(codes).toEqual(["superchat.minAmount"]);
+		expect(sectionOf("superchat.minAmount")).toBe("interaction");
+	});
+
+	it("改 membership.minRank.guard → 'membership.minRank.guard',section=interaction", () => {
+		const codes = diffCodes(
+			{ membership: { minRank: { guard: 1 } } },
+			{ membership: { minRank: { guard: 3 } } },
+		);
+		expect(codes).toEqual(["membership.minRank.guard"]);
+		expect(sectionOf("membership.minRank.guard")).toBe("interaction");
+	});
+
+	it("开启门槛覆盖(两段从无到有)→ 检出 dirty,按段报,两段都有名字、归「互动门槛」组", () => {
+		const codes = diffCodes(
+			{},
+			{ superchat: { minAmount: 0 }, membership: { minRank: { guard: 1 } } },
+		);
+		expect(codes).toEqual(["superchat", "membership"]);
+		expect(sectionOf("superchat")).toBe("interaction");
+		expect(sectionOf("membership")).toBe("interaction");
+		expect(sectionOf("membership.minRank")).toBe("interaction");
+	});
+});
+
+describe("projectPerUpIsland — templates.membership(上舰文案)落在消息模板组", () => {
+	const guard = (over: object) => ({
+		enabled: true,
+		default: { template: "默认", imageUrl: "" },
+		tiers: {},
+		...over,
+	});
+
+	it("改体系默认文案 / 某一档的文案与图片 / 开关 → 各自的 code,都归 templates 组(字典里有名字,不掉进「其他」)", () => {
+		const base = { templates: { membership: { guard: guard({}) } } };
+		const edited = {
+			templates: {
+				membership: {
+					guard: guard({
+						enabled: false,
+						default: { template: "改了的默认", imageUrl: "d.png" },
+						tiers: {
+							captain: { template: "舰长", imageUrl: "c.png" },
+							governor: { template: "总督" },
+						},
+					}),
+				},
+			},
+		};
+		const codes = diffCodes(base, edited);
+		expect(codes.sort()).toEqual(
+			[
+				"templates.membership.guard.default.imageUrl",
+				"templates.membership.guard.default.template",
+				"templates.membership.guard.enabled",
+				"templates.membership.guard.tiers.captain",
+				"templates.membership.guard.tiers.governor",
+			].sort(),
+		);
+		for (const code of [
+			"templates.membership.guard.default.template",
+			"templates.membership.guard.default.imageUrl",
+			"templates.membership.guard.enabled",
+			// 一档整个从无到有:按整档报,也有名字
+			"templates.membership.guard.tiers.captain",
+			"templates.membership.guard.tiers.commander",
+			"templates.membership.guard.tiers.governor",
+			"templates.membership.guard.tiers.captain.template",
+			"templates.membership.guard.tiers.captain.imageUrl",
+			"templates.membership.guard.tiers.commander.template",
+			"templates.membership.guard.tiers.commander.imageUrl",
+			"templates.membership.guard.tiers.governor.template",
+			"templates.membership.guard.tiers.governor.imageUrl",
+		]) {
+			expect(sectionOf(code), code).toBe("templates");
+		}
 	});
 });

@@ -116,7 +116,7 @@ const buildEngineWith = (initialImage: ImageRenderer | null, logger: Logger): Li
 		config: {
 			wordcloudStopWords: "",
 			liveSummaryDefault: "",
-			customGuardBuy: { enable: false },
+			guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
 			customLiveMsg: { enable: false },
 			imageEnabled: true,
 			aiEnabled: true,

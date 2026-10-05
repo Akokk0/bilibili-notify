@@ -45,8 +45,14 @@ const GUARD_TIERS: MembershipTier[] = [
 	},
 ];
 
+/**
+ * B 站的会员体系 id。设置里按体系 id 存的东西(`templates.membership`、`membership.minRank`)的键就是它;宿主给直播引擎组视图时
+ * 靠它取出 B 站那一项。写成一个不带 `bili` 字样的名字:谁只想要这个 id,不必为它去 import 整张档位表。
+ */
+export const GUARD_PROGRAM_ID = "guard";
+
 export const BILIBILI_GUARD_PROGRAM: MembershipProgram = {
-	id: "guard",
+	id: GUARD_PROGRAM_ID,
 	name: "大航海",
 	tiers: GUARD_TIERS,
 };

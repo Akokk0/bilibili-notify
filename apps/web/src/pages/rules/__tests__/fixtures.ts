@@ -13,7 +13,6 @@ import { DEFAULT_FEATURE_FLAGS } from "../../../types/domain";
 import type { GlobalDefaults } from "../../../types/globals";
 
 export function makeDefaults(): GlobalDefaults {
-	const guard = { imageUrl: "", template: "" };
 	const persona = {
 		name: "",
 		addressUser: "",
@@ -36,8 +35,6 @@ export function makeDefaults(): GlobalDefaults {
 			blockRegex: [],
 			allowKeywords: [],
 			allowRegex: [],
-			minScPrice: 0,
-			minGuardLevel: 3,
 		},
 		schedule: {
 			quietHours: [],
@@ -46,6 +43,9 @@ export function makeDefaults(): GlobalDefaults {
 		},
 		liveStart: { catchUpOnBoot: false },
 		liveStreaming: { streamingIntervalHours: 1 },
+		// 醒目留言与会员的门槛(㉓d):没配 = 不设门槛。
+		superchat: {},
+		membership: {},
 		templates: {
 			liveStart: "",
 			liveStreaming: "",
@@ -56,7 +56,10 @@ export function makeDefaults(): GlobalDefaults {
 			wordcloudStopWords: "",
 			specialDanmaku: "",
 			specialUserEnter: "",
-			guardBuy: { enable: false, captain: guard, commander: guard, governor: guard },
+			// 上舰文案(㉓d):B 站的体系 `guard` 关着自定义,体系默认空,没有任何档的覆盖。
+			membership: {
+				guard: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
+			},
 		},
 		ai: {
 			enabled: false,

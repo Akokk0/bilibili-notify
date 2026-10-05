@@ -1,22 +1,23 @@
 /**
  * per-UP section 的「字段分域」判定 —— 单一真源。
  *
- * `overrides.filters`(ContentFilters)一个切片被两个 section 分域共写:
- * 「动态过滤」域写 block* / allow*(见 FILTER_CONTENT_KEYS);「直播阈值」域
- * 写 minScPrice / minGuardLevel(见 LIVE_FILTER_KEYS,外加独立的 overrides.schedule 与直播拆键搬出来的
- * overrides.liveStart / overrides.liveStreaming)。
- * 凡是「这个 section 是否已覆盖 / 是否开启」的判定,都必须按各自域内的字段来判,
- * 不能只看整个 `overrides.filters !== undefined` —— 否则开一个域会让另一个 section
- * 的 toggle / 侧栏小点被动亮起(共享切片非空即误判)。box 内部 toggle 与侧栏
- * isSectionCustomized 共用此处常量,保证两处口径一致。
+ * 「动态过滤」域是 `overrides.filters`(block* / allow*,见 FILTER_CONTENT_KEYS);「直播阈值」域是
+ * `overrides.superchat`(醒目留言金额门槛)、`overrides.membership`(上舰档位门槛,B 站的是 `minRank.guard`)、独立的
+ * `overrides.schedule`,与直播拆键搬出来的 `overrides.liveStart` / `overrides.liveStreaming`。
+ * ㉓d 之前两个门槛和过滤共用 `overrides.filters` 一个切片,开一个域会让另一个 section 的 toggle / 侧栏小点被动亮起;
+ * 搬成各自的切片以后这类误判从结构上没有了,但「这个 section 是否已覆盖 / 是否开启」的判定仍要按各自域内的字段来判,
+ * box 内部 toggle 与侧栏 isSectionCustomized 共用此处常量,保证两处口径一致。
  */
 
+import { GUARD_PROGRAM_ID } from "../../config/guard-levels";
 import type {
 	ContentFiltersOverride,
 	LiveStartOverride,
 	LiveStreamingOverride,
+	MembershipOverride,
 	ScheduleOverride,
 	Subscription,
+	SuperchatOverride,
 } from "../../types/domain";
 import type { SectionId } from "./sections";
 
@@ -33,12 +34,6 @@ export const FILTER_CONTENT_KEYS = [
 	"blockArticles",
 	"blockImages",
 	"blockVideos",
-] as const satisfies readonly (keyof ContentFiltersOverride)[];
-
-/** ContentFilters 里属于「直播阈值」域的字段(schedule 另算,不在 filters 切片里)。 */
-const LIVE_FILTER_KEYS = [
-	"minScPrice",
-	"minGuardLevel",
 ] as const satisfies readonly (keyof ContentFiltersOverride)[];
 
 /** 「动态过滤」域是否有任何覆盖字段。 */
@@ -65,13 +60,23 @@ export function hasLiveTimingOverride(slices: LiveTimingSlices): boolean {
 	);
 }
 
-/** 「直播阈值」域是否有任何覆盖(filters 的阈值字段 或 推送时间那几段)。 */
-export function hasLiveThresholdOverride(
-	slices: { filters: ContentFiltersOverride | undefined } & LiveTimingSlices,
-): boolean {
+/** 「直播阈值」域里两个门槛的覆盖(㉓d,原先是 `overrides.filters` 里的 minScPrice / minGuardLevel)。 */
+export interface LiveThresholdSlices {
+	superchat: SuperchatOverride | undefined;
+	membership: MembershipOverride | undefined;
+}
+
+/** 门槛那两段是否有任何覆盖:金额门槛,或 B 站的上舰档位门槛(别的体系的门槛没有界面,不看)。 */
+export function hasLiveGateOverride(slices: LiveThresholdSlices): boolean {
 	return (
-		LIVE_FILTER_KEYS.some((k) => slices.filters?.[k] !== undefined) || hasLiveTimingOverride(slices)
+		slices.superchat?.minAmount !== undefined ||
+		slices.membership?.minRank?.[GUARD_PROGRAM_ID] !== undefined
 	);
+}
+
+/** 「直播阈值」域是否有任何覆盖(两个门槛 或 推送时间那几段)。 */
+export function hasLiveThresholdOverride(slices: LiveThresholdSlices & LiveTimingSlices): boolean {
+	return hasLiveGateOverride(slices) || hasLiveTimingOverride(slices);
 }
 
 /**
@@ -106,7 +111,8 @@ export function isSectionCustomized(
 			return hasFilterContentOverride(sub.overrides.filters);
 		case "live":
 			return hasLiveThresholdOverride({
-				filters: sub.overrides.filters,
+				superchat: sub.overrides.superchat,
+				membership: sub.overrides.membership,
 				schedule: sub.overrides.schedule,
 				liveStart: sub.overrides.liveStart,
 				liveStreaming: sub.overrides.liveStreaming,
@@ -136,7 +142,7 @@ export function isSectionCustomized(
 		case "messageLayout":
 			return sub.overrides.messageLayout !== undefined;
 		case "guard":
-			return sub.overrides.templates?.guardBuy?.enable === true;
+			return sub.overrides.templates?.membership?.[GUARD_PROGRAM_ID]?.enabled === true;
 		// 特别关注是订阅的公共格;来源不支持的这一格恒空,自然判成没自定义。
 		case "specialDanmaku":
 			return (

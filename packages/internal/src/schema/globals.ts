@@ -24,12 +24,16 @@ import {
 	DEFAULT_IMAGE_GROUP,
 	DEFAULT_LIVE_START,
 	DEFAULT_LIVE_STREAMING,
+	DEFAULT_MEMBERSHIP_SETTINGS,
 	DEFAULT_SCHEDULE,
+	DEFAULT_SUPERCHAT_SETTINGS,
 	FeatureFlagsSchema,
 	ImageGroupSettingsSchema,
 	LiveStartSettingsSchema,
 	LiveStreamingSettingsSchema,
+	MembershipSettingsSchema,
 	ScheduleConfigSchema,
+	SuperchatSettingsSchema,
 	TemplateBundleSchema,
 } from "./common";
 import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema } from "./link-parsing";
@@ -144,6 +148,9 @@ export const GlobalDefaultsSchema = z.object({
 	// 直播拆键(⑬d):启动补报与周期间隔各一段,开关在 `features`(`liveStart` / `liveStreaming`)。
 	liveStart: LiveStartSettingsSchema,
 	liveStreaming: LiveStreamingSettingsSchema,
+	// 醒目留言与会员的门槛(㉓d,原先是 `filters.minScPrice` / `minGuardLevel`):没配 = 不设门槛,缺这两段的老配置补成空段。
+	superchat: SuperchatSettingsSchema.default(() => structuredClone(DEFAULT_SUPERCHAT_SETTINGS)),
+	membership: MembershipSettingsSchema.default(() => structuredClone(DEFAULT_MEMBERSHIP_SETTINGS)),
 	templates: TemplateBundleSchema,
 	ai: AISettingsSchema,
 	cardStyle: CardStyleSchema,
@@ -402,6 +409,8 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			schedule: DEFAULT_SCHEDULE,
 			liveStart: DEFAULT_LIVE_START,
 			liveStreaming: DEFAULT_LIVE_STREAMING,
+			superchat: DEFAULT_SUPERCHAT_SETTINGS,
+			membership: DEFAULT_MEMBERSHIP_SETTINGS,
 			templates: DEFAULT_TEMPLATES,
 			ai: DEFAULT_AI,
 			cardStyle: DEFAULT_CARD_STYLE,

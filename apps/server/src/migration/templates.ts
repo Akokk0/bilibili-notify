@@ -29,7 +29,8 @@ const OLD_TPL_DEFAULTS: Partial<
 	dynamicVideo: ["{name}发布了新视频：{url}"],
 };
 
-const OLD_GUARD = {
+/** 更早一代(占位符语法统一前)的上舰默认文案。逐订阅覆盖里的上舰文案不经过这一步,`membership-moves.ts` 还要认它。 */
+export const OLD_GUARD = {
 	captain: "{user} 成为了 {mastername} 的舰长！",
 	commander: "{user} 成为了 {mastername} 的提督！",
 	governor: "{user} 成为了 {mastername} 的总督！",

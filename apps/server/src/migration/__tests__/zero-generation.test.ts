@@ -100,12 +100,37 @@ const ZERO_FILES: Record<string, string> = {
 		defaults: {
 			features: { live: true, liveEnd: true, liveEndExtras: { wordcloud: true } },
 			// 过滤键改名(㉑a):四个类型开关与两个白名单换成 1.0 的名字(`feature-renames.test.ts` 钉细节,这里让摘要认得到这一步)
-			filters: { blockForward: true, blockKeywords: ["广告"], whitelistKeywords: ["新歌"] },
+			// 两个直播阈值搬成 superchat / membership 两段(㉓d,`membership-moves.test.ts` 钉细节):旧金额 30 元、旧等级 2(提督以上)
+			filters: {
+				blockForward: true,
+				blockKeywords: ["广告"],
+				whitelistKeywords: ["新歌"],
+				minScPrice: 30,
+				minGuardLevel: 2,
+			},
 			// 直播拆键:pushTime / restartPush 拆进 liveStreaming / liveStart 两段(`live-split.test.ts` 钉细节,这里让摘要认得到这一步)
 			schedule: { pushTime: 3, restartPush: true },
 			// 最老一代的扁平 AI 连接字段、历代旧默认模板
 			ai: { apiKey: "sk-old", baseUrl: "https://api.example.com", model: "m" },
-			templates: { liveEnd: "{name} 下播了，直播时长 {duration}" },
+			templates: {
+				liveEnd: "{name} 下播了，直播时长 {duration}",
+				// 上舰文案搬成 `membership.guard`(㉓d):舰长改过文案(-key 老写法)又填了图片,提督没动,总督只改了文案
+				guardBuy: {
+					enable: true,
+					captain: {
+						imageUrl: "https://img.example.com/captain.png",
+						template: "-uname 登上了 -mname 的船",
+					},
+					commander: { imageUrl: "", template: "{uname} 成为了 {mname} 的提督！" },
+					governor: { imageUrl: "", template: "总督 {uname} 驾到,档位 {guard}" },
+				},
+			},
+			// 默认文案账本:上舰那几条换成新路径两条(同上)
+			templateDefaultsSeen: {
+				liveEnd: "x1",
+				"guardBuy.captain.template": "1n2b5zl",
+				"guardBuy.captain.imageUrl": "ztntfp",
+			},
 		},
 		// 0.9.1 的「范围 + 白名单」
 		linkParsing: {
@@ -129,7 +154,19 @@ const ZERO_FILES: Record<string, string> = {
 			// 直播拆键:这条订阅自己写了 pushTime 与 restartPush
 			overrides: {
 				schedule: { pushTime: 5, restartPush: false },
-				filters: { blockDraw: true, whitelistRegex: ["^上新"] },
+				// 逐订阅的阈值与上舰文案(㉓d):覆盖里写的出厂值照样搬;逐订阅文案里更早一代的默认原文不经 0.x 的旧默认迁移
+				filters: { blockDraw: true, whitelistRegex: ["^上新"], minScPrice: 0, minGuardLevel: 3 },
+				templates: {
+					guardBuy: {
+						enable: true,
+						captain: { imageUrl: "", template: "{user} 成为了 {mastername} 的舰长！" },
+						commander: {
+							imageUrl: "https://img.example.com/commander.png",
+							template: "{uname} 成为了 {mname} 的提督！",
+						},
+						governor: { imageUrl: "", template: "-uname 就任 -mname 总督" },
+					},
+				},
 			},
 		},
 	]),
@@ -659,8 +696,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 27,
-			output: "266cc43184526415d440714dc29d2a5a103f805c0b717eeedede4d512276293e",
+			revision: 28,
+			output: "0601b3e1cbaeeee032e304dc4e3298d966287019c4bc0d049ddc07b3df242274",
 		});
 	});
 });

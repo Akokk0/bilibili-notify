@@ -98,8 +98,15 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("过滤键改名以后导出的备份是版本 7(版本 6 是开发期的:设置与订阅覆盖里的过滤键还是 blockForward / whitelistKeywords 这些旧名)", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(7);
+	it("会员与醒目留言的设置搬家以后导出的备份是版本 8(版本 7 是开发期的:两个直播门槛还在 filters 里,上舰文案还叫 templates.guardBuy)", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(8);
+	});
+
+	it("版本 7 的备份(门槛还在 filters 里、上舰文案是 guardBuy)→ unsupported:装不进新 schema,所以不放进来", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 7 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
 	});
 
 	it("版本 6 的备份(过滤键还是旧名)→ unsupported:旧名读进来会让整份设置被拒收,所以不放进来", () => {

@@ -20,12 +20,19 @@ afterEach(cleanup);
 const isOn = (toggle: Element | null | undefined): boolean =>
 	(toggle?.getAttribute("data-bn") ?? "").split(" ").includes("switch-on");
 
-function renderSection(over: { liveStreamingOn?: boolean } = {}) {
+function renderSection(
+	over: {
+		liveStreamingOn?: boolean;
+		superchat?: Parameters<typeof LiveThresholdsSection>[0]["superchat"];
+		membership?: Parameters<typeof LiveThresholdsSection>[0]["membership"];
+	} = {},
+) {
 	const defaults = makeDefaults();
 	const onPatch = vi.fn();
 	const view = render(
 		<LiveThresholdsSection
-			filters={defaults.filters}
+			superchat={over.superchat ?? defaults.superchat}
+			membership={over.membership ?? defaults.membership}
 			schedule={defaults.schedule}
 			liveStart={defaults.liveStart}
 			liveStreaming={defaults.liveStreaming}
@@ -92,5 +99,60 @@ describe("LiveThresholdsSection · 直播拆键", () => {
 		const { field } = renderSection();
 		expect(field("schedule.liveEndGrace")).not.toBeNull();
 		expect(field("schedule.quietHours")).not.toBeNull();
+	});
+});
+
+/**
+ * 两个直播门槛(㉓d):醒目留言金额落在 `defaults.superchat.minAmount`,上舰档位落在 `defaults.membership.minRank.guard`
+ * (存的是 rank:舰长 1、提督 2、总督 3)。选项仍是三档、由低到高 —— 舰长 / 提督 / 总督,和今天用户看到的一样。
+ */
+describe("LiveThresholdsSection · 两个门槛", () => {
+	const levelButtons = (field: Element | null): HTMLButtonElement[] =>
+		Array.from(field?.querySelectorAll("button") ?? []) as HTMLButtonElement[];
+	const pressed = (buttons: HTMLButtonElement[]): string[] =>
+		buttons
+			.filter((b) => b.getAttribute("aria-pressed") === "true")
+			.map((b) => b.textContent ?? "");
+
+	it("金额门槛没配:输入框显示 0(= 全推),上限 9999、单位元", () => {
+		const { field } = renderSection();
+		const input = field("superchat.minAmount")?.querySelector("input") as HTMLInputElement;
+		expect(input.value).toBe("0");
+		expect(input.getAttribute("min")).toBe("0");
+		expect(input.getAttribute("max")).toBe("9999");
+		expect(field("superchat.minAmount")?.textContent).toContain("元");
+	});
+
+	it("金额门槛有值:显示它;改它 → 补丁落在 defaults.superchat.minAmount,只带这一格", () => {
+		const { onPatch, field } = renderSection({ superchat: { minAmount: 30 } });
+		const input = field("superchat.minAmount")?.querySelector("input") as HTMLInputElement;
+		expect(input.value).toBe("30");
+		fireEvent.change(input, { target: { value: "50" } });
+		expect(onPatch).toHaveBeenCalledWith({ defaults: { superchat: { minAmount: 50 } } });
+	});
+
+	it("上舰档位:三档由低到高 —— 舰长、提督、总督;没配时「舰长」(全推)是选中的", () => {
+		const { field } = renderSection();
+		const buttons = levelButtons(field("membership.minRank.guard"));
+		expect(buttons.map((b) => b.textContent)).toEqual(["舰长", "提督", "总督"]);
+		expect(pressed(buttons)).toEqual(["舰长"]);
+	});
+
+	it("上舰档位有值(rank 2):「提督」选中;点「总督」→ 补丁是 rank 3,落在 defaults.membership.minRank.guard", () => {
+		const { onPatch, field } = renderSection({ membership: { minRank: { guard: 2 } } });
+		const buttons = levelButtons(field("membership.minRank.guard"));
+		expect(pressed(buttons)).toEqual(["提督"]);
+		fireEvent.click(buttons[2] as HTMLButtonElement);
+		expect(onPatch).toHaveBeenCalledWith({
+			defaults: { membership: { minRank: { guard: 3 } } },
+		});
+	});
+
+	it("点回「舰长」(全推)→ rank 1 照样写下去(不是清掉)", () => {
+		const { onPatch, field } = renderSection({ membership: { minRank: { guard: 3 } } });
+		fireEvent.click(levelButtons(field("membership.minRank.guard"))[0] as HTMLButtonElement);
+		expect(onPatch).toHaveBeenCalledWith({
+			defaults: { membership: { minRank: { guard: 1 } } },
+		});
 	});
 });

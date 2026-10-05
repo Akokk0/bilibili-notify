@@ -13,12 +13,12 @@ describe("formatDiffValue", () => {
 	});
 
 	it("number → 字符串", () => {
-		expect(formatDiffValue("minScPrice", 30)).toEqual({ display: "30" });
+		expect(formatDiffValue("superchat.minAmount", 30)).toEqual({ display: "30" });
 		expect(formatDiffValue("schedule.liveEndGraceMinutes", 2.5)).toEqual({ display: "2.5" });
 	});
 
 	it("number NaN → NaN 文本", () => {
-		expect(formatDiffValue("minScPrice", Number.NaN)).toEqual({ display: "NaN" });
+		expect(formatDiffValue("superchat.minAmount", Number.NaN)).toEqual({ display: "NaN" });
 	});
 
 	it("string → 原文", () => {

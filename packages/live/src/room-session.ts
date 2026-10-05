@@ -1,8 +1,15 @@
 import type { LiveEvent, LiveUser, UserActionType } from "@bilibili-notify/blive";
-import { type Disposable, formatCount, guardTierOf } from "@bilibili-notify/internal";
+import {
+	type Disposable,
+	formatCount,
+	guardTierOf,
+	interpolate,
+	membershipTemplateOf,
+} from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { passesMembershipMinRank, passesSuperchatMinAmount } from "./interaction-gates";
 import { membershipEventFromLiveEvent } from "./membership-event";
-import { type CustomGuardBuyLike, type GuardTierLike, LivePushType } from "./push-like";
+import { LivePushType } from "./push-like";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 import { superchatEventFromLiveEvent } from "./superchat-event";
@@ -11,15 +18,6 @@ import { LiveType } from "./types";
 
 type SuperChatEvent = Extract<LiveEvent, { kind: "superchat" }>;
 type GuardBuyEvent = Extract<LiveEvent, { kind: "guard-buy" }>;
-
-/**
- * 自定义上舰配置里与事件同一档的那一项。档位表里档的 key(`captain` / `commander` / `governor`)与配置里三档的键
- * 同名;`enable` 也是这个对象上的键,所以按「是个对象」认,不把布尔当一档。
- */
-function customTierOf(custom: CustomGuardBuyLike, tierKey: string): GuardTierLike | undefined {
-	const tier: unknown = (custom as unknown as Record<string, unknown>)[tierKey];
-	return typeof tier === "object" && tier !== null ? (tier as GuardTierLike) : undefined;
-}
 
 /**
  * One {@link RoomSession} per UID/room actively being monitored.
@@ -535,8 +533,8 @@ export class RoomSession extends RoomSessionBase {
 	 * 醒目留言:先翻成中立的 {@link SuperchatEvent}(档位在那一步按价格算,B 站的原始数据到此为止),再按事件出卡。
 	 *
 	 * 出卡**不再调接口查发送者**:名字用消息里带的(头像 B 站 3a 才交图库引用,卡上先不画),所以「查发送者失败退成文字」
-	 * 那条路没有了 —— 出不了卡(没开出图器 / 出卡抛错)才退到一句文字。门槛仍是旧样子:金额低于 `minScPrice` 拦,
-	 * 被拦的正文照样先记进弹幕收集。
+	 * 那条路没有了 —— 出不了卡(没开出图器 / 出卡抛错)才退到一句文字。门槛(㉓d):金额低于 `minSuperchatAmount` 才拦,
+	 * 只在币种是人民币时比(别的币种放行),没配不拦;被拦的正文照样先记进弹幕收集。
 	 */
 	private async onIncomeSuperChat(ev: SuperChatEvent): Promise<void> {
 		const collectsDanmaku = this.ctx.collectsDanmaku(this.sub);
@@ -546,10 +544,9 @@ export class RoomSession extends RoomSessionBase {
 			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, ev.content, ev.user.uname);
 		}
 		if (!pushesSC) return;
-		// minScPrice 已由 adapter 折算好(per-UP ?? 全局)。
-		if (ev.price < this.sub.minScPrice) return;
-
 		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);
+		// minSuperchatAmount 已由 adapter 折算好(per-UP ?? 全局)。
+		if (!passesSuperchatMinAmount(event, this.sub.minSuperchatAmount)) return;
 		const masterName = this.masterInfo?.username ?? "";
 		if (this.ctx.imageRenderer?.generateSuperchatCard) {
 			try {
@@ -593,9 +590,10 @@ export class RoomSession extends RoomSessionBase {
 	 * 上舰:先翻成中立的 {@link MembershipEvent},认不出档位(`guard_level` 不是 1 / 2 / 3)就**丢弃并记一条警告**
 	 * (原来会带着一张空图推出去)。档的徽章、档色、宣告语取自档位表(`guardTierOf`)。
 	 *
-	 * 门槛这一片先不动:仍拿原始等级与 `minGuardLevel` 比(换成按 rank 判是 ㉓d)。自定义文案那一支按事件的档位(`tier.key`)
-	 * 取那一档的文案与图片,图片没填就用档位表里该档的徽章。出卡那一支**不再调接口查用户**:名字用事件里的,头像 3a 才有。
-	 * 出不了卡照旧退到「官方图 + 一句文字」。
+	 * 门槛(㉓d)按事件的档位 `tier.rank` 比:低于 `minGuardRank` 才拦,没配不拦 —— 这里不再有任何地方拿原始 `guard_level` 比大小。
+	 * 自定义文案那一支按事件的档位(`tier.key`)取那一档的文案与图片({@link membershipTemplateOf}:没填的格用体系默认),
+	 * 文字由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`,图片没填就用档位表里该档的徽章。出卡那一支**不再调接口查用户**:
+	 * 名字用事件里的,头像 3a 才有。出不了卡照旧退到「官方图 + 一句文字」。
 	 */
 	private async onGuardBuy(ev: GuardBuyEvent): Promise<void> {
 		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
@@ -607,28 +605,29 @@ export class RoomSession extends RoomSessionBase {
 			);
 			return;
 		}
-		// minGuardLevel 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
-		if (ev.guardLevel > this.sub.minGuardLevel) return;
+		// minGuardRank 已由 adapter 折算好(per-UP ?? 全局,同 SC 阈值语义)。
+		if (!passesMembershipMinRank(event, this.sub.minGuardRank)) return;
 		const masterName = this.masterInfo?.username ?? "";
 		const guardImg = tier.icon?.url ?? "";
-		const effectiveGuardBuy = this.sub.customGuardBuy.enable
-			? this.sub.customGuardBuy
-			: this.ctx.config.customGuardBuy;
-		if (effectiveGuardBuy.enable) {
-			// 文案和图片取同一档:哪一档上舰,就用哪一档的文案与图。
-			const custom = customTierOf(effectiveGuardBuy, event.tier.key);
-			const text = this.ctx.templateRenderer.renderGuardBuy({
-				template: custom?.template ?? "",
-				uname: event.viewer.name,
-				master: this.masterInfo,
-				giftName: ev.giftName,
-			});
+		// 订阅自己开了自定义文案就用订阅的整份,否则用全局的。
+		const effectiveGuardTemplate = this.sub.guardTemplate.enabled
+			? this.sub.guardTemplate
+			: this.ctx.config.guardTemplate;
+		if (effectiveGuardTemplate.enabled) {
+			// 文案和图片取同一档:哪一档上舰,就用哪一档的;那一档没填的格用体系默认。
+			const custom = membershipTemplateOf(effectiveGuardTemplate, event.tier.key);
+			// 占位符走 `interpolate`;盘上文案里字面的 `\n`(反斜杠加 n)展开成真换行,照今天的行为。
+			const text = interpolate(custom.template, {
+				viewer: event.viewer.name,
+				name: masterName,
+				tier: event.tier.name,
+			}).replaceAll("\\n", "\n");
 			if (this.ctx.isDisposed()) return;
 			// 图片没填就回落该档的官方徽章。默认配置里每档 imageUrl 就是空串,空串不是「缺」,`??` 兜不住。
 			await this.ctx.push.broadcastToTargets(
 				this.sub.uid,
 				this.ctx.contentBuilder.message([
-					this.ctx.contentBuilder.image(custom?.imageUrl || guardImg),
+					this.ctx.contentBuilder.image(custom.imageUrl || guardImg),
 					this.ctx.contentBuilder.text(text),
 				]),
 				LivePushType.LiveGuardBuy,

@@ -86,6 +86,7 @@ export type {
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	LiveStartSettingsPartial as LiveStartOverride,
 	LiveStreamingSettingsPartial as LiveStreamingOverride,
+	MembershipSettingsPartial as MembershipOverride,
 	MessageBlock as MessageBlockFull,
 	MessageKindLayout as MessageKindLayoutFull,
 	// per-UP 消息版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
@@ -100,6 +101,7 @@ export type {
 	SpecialUser,
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,
+	SuperchatSettingsPartial as SuperchatOverride,
 	TemplateBundlePartial as TemplateOverride,
 	WebhookPlatform,
 } from "@bilibili-notify/internal";

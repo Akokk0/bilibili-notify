@@ -84,7 +84,7 @@ describe("groupDiffsBySection", () => {
 			D("blockKeywords"),
 			D("templates.liveStart"),
 			D("liveStreaming.streamingIntervalHours"),
-			D("minScPrice"),
+			D("superchat.minAmount"),
 			D("specialUsers"),
 			D("enable"),
 			D("targetId"),
@@ -117,8 +117,10 @@ describe("groupDiffsBySection", () => {
 			);
 		});
 
-		it("嵌套路径的账本条目也认得出来", () => {
-			expect(getFieldLabel("templateDefaultsSeen.guardBuy.captain.template")).not.toBeNull();
+		it("嵌套路径的账本条目也认得出来:上舰体系默认文案那条借的是它自己的名字(㉓d)", () => {
+			expect(getFieldLabel("templateDefaultsSeen.membership.guard.default.template")?.label).toBe(
+				"体系默认文案 · 默认更新提示",
+			);
 		});
 	});
 

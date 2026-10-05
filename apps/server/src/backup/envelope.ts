@@ -27,6 +27,10 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 8 = 会员与醒目留言的设置搬家以后导出的备份(两个直播门槛搬出了 `filters`:`filters.minScPrice` 成了 `defaults.superchat.minAmount`,
+ * `filters.minGuardLevel` 成了 `defaults.membership.minRank.guard`(rank 与旧等级倒过来),订阅的 `overrides` 里同样各多一段;
+ * 上舰文案 `templates.guardBuy` 成了 `templates.membership.guard = { enabled, default, tiers }`,占位符叫 `{viewer}` / `{name}` /
+ * `{tier}`;默认文案账本里上舰那几条换成 `membership.guard.default.template` / `.imageUrl`)。
  * 7 = 过滤键改名以后导出的备份(设置 `defaults.filters` 与订阅 `overrides.filters` 里,`blockForward` / `blockArticle` / `blockDraw` /
  * `blockAv` 叫 `blockReposts` / `blockArticles` / `blockImages` / `blockVideos`,`whitelistKeywords` / `whitelistRegex` 叫
  * `allowKeywords` / `allowRegex`;其余过滤键不变)。
@@ -39,11 +43,11 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 4 = 特性键改名以后导出的备份(订阅的 `routing` / `overrides` 与设置的 `defaults` 里,特性键、附加项键、文案键、版式键换成
  * 1.0 的名字:`post` / `liveStart` / `membership`、`atAllPost` / `atAllLiveStart`、`templates.post` / `postVideo`、
  * `messageLayout.post`;订阅的逐目标表叫 `extraTargets`)。
- * 6、5、4 与 3(设置按集成分文件以后,各集成的设置单独一节 `integrations`)、2 都只在开发期用过、没发布。
+ * 7、6、5、4 与 3(设置按集成分文件以后,各集成的设置单独一节 `integrations`)、2 都只在开发期用过、没发布。
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 7 as const;
+export const BACKUP_SCHEMA_VERSION = 8 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

@@ -80,7 +80,7 @@ describe("B 站「直播阈值覆盖」× 周期间隔与启动补报", () => {
 		const { container } = renderEditor(biliSub(), "live");
 		fireEvent.click(container.querySelector("button") as Element);
 		await waitFor(() => expect(diffCodes()).toContain("liveStreaming"));
-		for (const slice of ["liveStart", "schedule", "minScPrice"]) {
+		for (const slice of ["liveStart", "schedule", "superchat", "membership"]) {
 			expect(diffCodes(), slice).toContain(slice);
 		}
 		// 钉下的值就是全局那份(fixtures 里的出厂值)。
@@ -89,6 +89,11 @@ describe("B 站「直播阈值覆盖」× 周期间隔与启动补报", () => {
 			streamingIntervalHours: 1,
 		});
 		expect(diff.find((d) => d.code === "liveStart")?.newValue).toEqual({ catchUpOnBoot: false });
+		// 两个门槛(㉓d)钉成全局值:没配 → 金额 0、上舰 rank 1(全推)。
+		expect(diff.find((d) => d.code === "superchat")?.newValue).toEqual({ minAmount: 0 });
+		expect(diff.find((d) => d.code === "membership")?.newValue).toEqual({
+			minRank: { guard: 1 },
+		});
 	});
 
 	it("覆盖里只写了周期间隔(没碰阈值与 schedule)→ 这一节算「覆盖中」,输入显示这条的值,上下限 1–24", () => {

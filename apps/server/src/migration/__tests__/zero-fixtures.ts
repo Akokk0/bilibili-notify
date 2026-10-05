@@ -47,6 +47,41 @@ export interface ZeroTemplates {
 	};
 }
 
+/**
+ * 0.12 的上舰文案(`templates.guardBuy`):`enable` 关着,三档都是出厂文案、图片空。`over` 盖在整份上(整格替换)。
+ * 值以 tag `v0.12.0` 的出厂 `DEFAULT_TEMPLATES.guardBuy` 为准核过(与下面 `ZERO_DEFAULT_GLOBALS` 里那份一致)。
+ */
+export function zeroGuardBuy(over: Record<string, unknown> = {}): ZeroTemplates["guardBuy"] {
+	return {
+		enable: false,
+		captain: { imageUrl: "", template: "{uname} 成为了 {mname} 的舰长！" },
+		commander: { imageUrl: "", template: "{uname} 成为了 {mname} 的提督！" },
+		governor: { imageUrl: "", template: "{uname} 成为了 {mname} 的总督！" },
+		...over,
+	} as ZeroTemplates["guardBuy"];
+}
+
+/**
+ * 0.x 一条订阅的 `overrides`,带着逐订阅的两个直播阈值与一份逐订阅的上舰文案(都是 0.x 的形状:阈值在 `filters` 里、
+ * 文案是 `templates.guardBuy`):阈值写的是出厂值(金额 0、等级 3)—— 逐订阅覆盖里写了就要搬;舰长改过文案(`-uname` 老写法)
+ * 又填了图片,提督没动,总督只改了文案。迁移的接缝用例拿它摆订阅。
+ */
+export function zeroMembershipOverrides(): Record<string, unknown> {
+	return {
+		filters: { minScPrice: 0, minGuardLevel: 3 },
+		templates: {
+			guardBuy: zeroGuardBuy({
+				enable: true,
+				captain: {
+					imageUrl: "https://img.test/captain.png",
+					template: "-uname 登上了 {mname} 的船",
+				},
+				governor: { imageUrl: "", template: "总督 {uname} 驾到,档位 {guard}" },
+			}),
+		},
+	};
+}
+
 /** 0.12 的整份 globals(`state/globals.json`)。只把迁移测试要伸手进去改的那几格写成类型,其余按字面量放着。 */
 export interface ZeroGlobals {
 	app: Record<string, unknown>;

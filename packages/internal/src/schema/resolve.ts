@@ -10,8 +10,11 @@ import type {
 	ImageGroupSettings,
 	LiveStartSettings,
 	LiveStreamingSettings,
+	MembershipSettings,
 	ScheduleConfig,
+	SuperchatSettings,
 	TemplateBundle,
+	TemplateBundlePartial,
 } from "./common";
 import type { GlobalDefaults } from "./globals";
 import { type MessageLayout, normalizeMessageLayout } from "./message-layout";
@@ -47,6 +50,10 @@ export interface EffectiveSubscription {
 	liveStart: LiveStartSettings;
 	/** 周期「正在直播」的间隔(⑬d 起自成一段,原先在 `schedule` 里);开关在 `features.liveStreaming`。 */
 	liveStreaming: LiveStreamingSettings;
+	/** 醒目留言门槛:覆盖有就用覆盖(0 也算),否则全局;都没配 = 不设门槛。 */
+	superchat: SuperchatSettings;
+	/** 会员门槛:`minRank` 按体系逐键合并(订阅只改了 `guard`,别的体系的全局门槛照旧);某体系没有键 = 那个体系全推。 */
+	membership: Required<MembershipSettings>;
 	templates: TemplateBundle;
 	ai: ResolvedAI;
 	cardStyle: CardStyle;
@@ -90,6 +97,23 @@ function mergeFeatures(
 	return {
 		...merge(base, flags),
 		extras: merge(base.extras, extras),
+	};
+}
+
+/**
+ * 文案的合并比别的多一层:会员文案按体系存(`membership[体系 id]`),订阅覆盖哪个体系,那个体系整份换成订阅的;没覆盖的
+ * 体系还是全局的。其余文案一条一条浅合并。「订阅那份 `enabled` 为真才用订阅的整份、否则用全局的」这条规矩在引擎取文案
+ * 的那一处(`room-session`),这里只负责把两层摆齐。
+ */
+function mergeTemplates(
+	base: TemplateBundle,
+	override: TemplateBundlePartial | undefined,
+): TemplateBundle {
+	if (!override) return base;
+	const { membership, ...rest } = override;
+	return {
+		...merge(base, rest),
+		membership: { ...base.membership, ...membership },
 	};
 }
 
@@ -178,7 +202,9 @@ function resolveCommon(
 		schedule: merge(defaults.schedule, ov.schedule),
 		liveStart: merge(defaults.liveStart, ov.liveStart),
 		liveStreaming: merge(defaults.liveStreaming, ov.liveStreaming),
-		templates: merge(defaults.templates, ov.templates),
+		superchat: merge(defaults.superchat, ov.superchat),
+		membership: { minRank: { ...defaults.membership.minRank, ...ov.membership?.minRank } },
+		templates: mergeTemplates(defaults.templates, ov.templates),
 		ai: resolveAI(defaults.ai, ov.ai),
 		cardStyle: merge(defaults.cardStyle, ov.cardStyle),
 		// 皮肤是整份引用,没有合并可言:指了就是它。旧的 `cardLayout` 不再折进来 ——

@@ -16,14 +16,16 @@ export type {
 	ContentFilters,
 	GlobalConfig,
 	GlobalDefaults,
-	GuardBundle,
-	GuardEntry,
 	ImageGroupSettings,
 	LiveStartSettings,
 	LiveStreamingSettings,
 	LogLevel,
+	MembershipSettings,
+	MembershipTemplateBundle,
+	MembershipTemplateEntry,
 	ModuleLogLevels,
 	ScheduleConfig,
+	SuperchatSettings,
 	TemplateBundle,
 } from "@bilibili-notify/internal";
 
