@@ -288,6 +288,95 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.generateSCCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
 
+	// ── ㉓a:钉住门槛与兜底文字的现状 ──────────────────────────────────────────
+	// ㉓ 要把门槛搬去 `defaults.superchat.minAmount`、把出卡改成不查发送者;这几条是搬家前的行为,
+	// 搬家的那几步不许悄悄改它(要改的地方测试名写了「现状」,到时连测试一起改)。
+
+	describe("minScPrice 门槛:等于放行、低于拦", () => {
+		// 验红:把 room-session.ts 里 `body.price < this.sub.minScPrice` 改成 `<=`,「等于门槛」那条红;
+		// 把这一行整句删掉,「低于门槛」几条红。
+		it.each([
+			// [门槛, 这条 SC 的价格(元), 放行?]
+			[50, 49, false],
+			[50, 50, true],
+			[50, 51, true],
+			[30, 29, false],
+			[30, 30, true],
+			[0, 1, true],
+		] as const)("门槛 %s 元 × 这条 %s 元 → 放行=%s", async (min, price, pass) => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: min })) as AnySession;
+			await s.onIncomeSuperChat({ ...scBody, price });
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
+			if (pass) {
+				expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+			} else {
+				// 门槛在查发送者之前:被拦掉的不该白打一次接口。
+				expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+			}
+		});
+
+		// 现状:醒目留言的正文在判门槛**之前**就记进弹幕收集,被门槛挡掉的也算进词云。
+		// 验红:把门槛那一句 `if (body.price < this.sub.minScPrice) return;` 挪到 `recordDanmaku` 之前,这条红。
+		it("现状:被门槛挡掉的 SC,正文照样先记进弹幕收集", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+			m.collectsDanmaku.mockReturnValue(true);
+			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 100 })) as AnySession;
+			await s.onIncomeSuperChat({ ...scBody, price: 50 });
+			expect(m.recordDanmaku).toHaveBeenCalledWith("r1", "加油", "粉丝");
+			expect(m.broadcastToTargets).not.toHaveBeenCalled();
+		});
+	});
+
+	/**
+	 * 兜底文字原文(现状)。出不了卡的两条路各推一句文字,**用的名字不同**:查发送者失败时只有消息里
+	 * 带的名字(「粉丝」),出卡失败时用的是查回来的名字(「捧场人」)。㉓c 起醒目留言出卡前不再查
+	 * 发送者、总是出卡,这两句到时再改;改之前它们就是线上今天推出去的字。
+	 */
+	describe("出不了卡 → 文字兜底(现状)", () => {
+		/** 让一条 50 元的 SC 经 `arrange` 布好局,返回推出去的那条消息与这一轮的替身。 */
+		async function scPushOf(
+			arrange: (m: CtxMocks, ctx: RoomContext) => void,
+		): Promise<{ pushed: unknown; m: CtxMocks }> {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+			arrange(m, ctx);
+			const s = new RoomSession(ctx, makeSub({ superchat: true, minScPrice: 30 })) as AnySession;
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
+			await s.onIncomeSuperChat(scBody);
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+			return { pushed: m.broadcastToTargets.mock.calls[0]?.[1], m };
+		}
+
+		// 验红:改 room-session.ts 里 `if (data.code !== 0)` 那一支文字里任一个字(含全角括号),这条红。
+		it("查发送者失败 → 用消息里带的名字,原文「【主播的直播间】粉丝的SC:加油（50元）」", async () => {
+			const { pushed, m } = await scPushOf((mm) => {
+				mm.getUserInfoInLive.mockResolvedValueOnce({ code: -1, data: {} });
+			});
+			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】粉丝的SC:加油（50元）" }]);
+			// 这一支根本没去出卡。
+			expect(m.generateSCCard).not.toHaveBeenCalled();
+		});
+
+		// 验红:改 room-session.ts 末尾 `const fallback = …` 里任一个字,这条与下一条红。
+		it("出卡抛错 → 用查回来的名字,原文「【主播的直播间】捧场人的SC:加油（50元）」", async () => {
+			const { pushed } = await scPushOf((m) => {
+				m.generateSCCard.mockRejectedValueOnce(new Error("boom"));
+			});
+			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】捧场人的SC:加油（50元）" }]);
+		});
+
+		it("图片渲染没开(没有出图器)→ 同一句兜底", async () => {
+			const { pushed } = await scPushOf((_m, ctx) => {
+				(ctx as AnySession).imageRenderer = null;
+			});
+			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】捧场人的SC:加油（50元）" }]);
+		});
+	});
+
 	// 从前这里有三条「SC 卡背景图每次推送轮换」(per-kind 多图 / 单图不轮 / 落回全局默认
 	// 图廊)。整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉(背景图归皮肤的 `image`
 	// 旋钮),同构的**直播封面**轮换仍由下面的「resolvedCardStyle live 封面轮换」钉着。
@@ -319,6 +408,145 @@ describe("RoomSession.onGuardBuy", () => {
 		const s = new RoomSession(ctx, makeSub({ membership: true, minGuardLevel: 1 })) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
+	});
+
+	// ── ㉓a:钉住门槛、兜底文字与官方图的现状 ──────────────────────────────────
+	// ㉓b 起档位由翻译按档位表认、认不出的丢掉;这里先把今天怎么放行、怎么兜底钉死。
+
+	/** 官方上舰图(按档位):总督 / 提督 / 舰长。逐字钉 —— 图链表合并时不许换。 */
+	const OFFICIAL_GUARD_IMG = {
+		[GuardLevel.Governor]:
+			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/governor-DpDXKEdA.png",
+		[GuardLevel.Admiral]:
+			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/supervisor-u43ElIjU.png",
+		[GuardLevel.Captain]:
+			"https://s1.hdslb.com/bfs/static/blive/live-pay-mono/relation/relation/assets/captain-Bjw5Byb5.png",
+	} as const;
+
+	describe("minGuardLevel × 事件档位的放行表", () => {
+		/** 一条 `guard_level` 经 `onGuardBuy`,返回推送替身(默认路径:custom 关、出图器在)。 */
+		async function runWith(min: 1 | 2 | 3, level: number): Promise<CtxMocks> {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			const s = new RoomSession(
+				ctx,
+				makeSub({ membership: true, minGuardLevel: min }),
+			) as AnySession;
+			await s.onGuardBuy({ ...guardBody, guard_level: level });
+			return m;
+		}
+
+		// 规则:`guard_level > minGuardLevel` 就拦。门槛 1 = 只推总督,2 = 提督以上,3 = 全推。
+		// 验红:把 room-session.ts 里 `body.guard_level > this.sub.minGuardLevel` 的 `>` 改成 `>=`,
+		// 门槛等于档位的那三格(1×1、2×2、3×3)红;改成 `<`,整张表几乎全红。
+		it.each([
+			// [门槛, 事件档位(1 总督 / 2 提督 / 3 舰长), 放行?]
+			[1, 1, true],
+			[1, 2, false],
+			[1, 3, false],
+			[2, 1, true],
+			[2, 2, true],
+			[2, 3, false],
+			[3, 1, true],
+			[3, 2, true],
+			[3, 3, true],
+		] as const)("门槛 %s × 事件第 %s 档 → 放行=%s", async (min, level, pass) => {
+			const m = await runWith(min, level);
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
+			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+		});
+
+		// 现状:`guard_level` 是 0(没有这一档)时,`0 > 门槛` 恒假,三个门槛都放行,照常出一张 0 档的卡。
+		// ㉓b 起认不出的档位会被丢掉并记一条警告,到时这条改成「丢」。
+		// 验红:把 `body.guard_level > this.sub.minGuardLevel` 换成 `!(guard_level >= 1 && guard_level <= min)`
+		// (按「档位在 1..门槛 之内」判有效),这三条红。
+		it.each([1, 2, 3] as const)(
+			"现状:guard_level 为 0 → 门槛 %s 都放行(没有按档位判有效)",
+			async (min) => {
+				const m = await runWith(min, 0);
+				expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+				expect(m.generateGuardCard.mock.calls[0]?.[0]).toMatchObject({ guardLevel: 0 });
+			},
+		);
+
+		// 现状:比 3 大的数反而被拦 —— 不是认出了「没有这一档」,只是 `>` 顺带拦的。
+		it.each([1, 2, 3] as const)(
+			"现状:guard_level 为 4 → 门槛 %s 都拦(`>` 顺带拦的)",
+			async (min) => {
+				const m = await runWith(min, 4);
+				expect(m.broadcastToTargets).not.toHaveBeenCalled();
+			},
+		);
+	});
+
+	/**
+	 * 兜底文字原文(现状):custom 关着时,出不了卡的三种情况(出图器没开 / 查用户失败 / 出卡抛错)推出去
+	 * 的是同一条消息 —— 官方图 + 一句「加入了大航海」,括号里的档名取自事件自带的 `gift_name`。
+	 */
+	describe("出不了卡 → 官方图 + 文字兜底(现状)", () => {
+		async function guardPushOf(
+			level: GuardLevel,
+			giftName: string,
+			arrange: (m: CtxMocks, ctx: RoomContext) => void,
+		): Promise<unknown> {
+			const { ctx, m } = makeCtx();
+			// 看得见图片地址。
+			(ctx as AnySession).contentBuilder.image = (src: string) => ({ kind: "image", src });
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			arrange(m, ctx);
+			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
+			await s.onGuardBuy({
+				guard_level: level,
+				gift_name: giftName,
+				user: { uname: "船员", uid: 7 },
+			});
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+			return m.broadcastToTargets.mock.calls[0]?.[1];
+		}
+
+		// 验红:改 room-session.ts 末尾兜底里「加入了大航海（」那句的任一个字(含全角括号),这一组红;
+		// 改 `room-context.ts` 里 `GUARD_LEVEL_IMG` 任一档的图链,对应那一档红。
+		it.each([
+			[GuardLevel.Governor, "总督"],
+			[GuardLevel.Admiral, "提督"],
+			[GuardLevel.Captain, "舰长"],
+		] as const)(
+			"查用户失败 · 上第 %s 档 → 该档官方图 + 「加入了大航海（%s）」",
+			async (level, giftName) => {
+				const pushed = await guardPushOf(level, giftName, (m) => {
+					m.getUserInfoInLive.mockResolvedValueOnce({ code: -1, data: {} });
+				});
+				expect(pushed).toEqual([
+					{ kind: "image", src: OFFICIAL_GUARD_IMG[level] },
+					{ kind: "text", text: `【主播的直播间】船员加入了大航海（${giftName}）` },
+				]);
+			},
+		);
+
+		it("出卡抛错 → 同一条兜底", async () => {
+			const pushed = await guardPushOf(GuardLevel.Captain, "舰长", (m) => {
+				m.generateGuardCard.mockRejectedValueOnce(new Error("boom"));
+			});
+			expect(pushed).toEqual([
+				{ kind: "image", src: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
+				{ kind: "text", text: "【主播的直播间】船员加入了大航海（舰长）" },
+			]);
+		});
+
+		it("图片渲染没开(没有出图器)→ 同一条兜底,而且不去查用户", async () => {
+			let lookups: ReturnType<typeof vi.fn> | undefined;
+			const pushed = await guardPushOf(GuardLevel.Captain, "舰长", (m, ctx) => {
+				(ctx as AnySession).imageRenderer = null;
+				lookups = m.getUserInfoInLive;
+			});
+			expect(pushed).toEqual([
+				{ kind: "image", src: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
+				{ kind: "text", text: "【主播的直播间】船员加入了大航海（舰长）" },
+			]);
+			expect(lookups).not.toHaveBeenCalled();
+		});
 	});
 
 	it("customGuardBuy.enable → 走模板渲染分支,broadcastToTargets(LiveGuardBuy)", async () => {
@@ -406,6 +634,53 @@ describe("RoomSession.onGuardBuy", () => {
 				]);
 			},
 		);
+
+		// 回归:开了自定义文案、那一档的图片没填 → 推官方图。默认值里每档 `imageUrl` 就是空串,所以
+		// 「开了自定义文案但没填图」的人都会中;空串不是「缺」,`?? ` 兜不住,推出去的是一张地址为空的图。
+		// 文案那一侧不动:`template` 空串仍然推空文案(「跟随体系默认」归 ㉓d)。
+		// 验红:把 room-session.ts 里的 `tier?.imageUrl || guardImg` 改回 `tier?.imageUrl ?? guardImg`,
+		// 「空串」那一组红,「缺键」那一组仍绿(它本来就对)。
+		describe.each([
+			["空串", ""],
+			["缺键", undefined],
+		] as const)("该档图片是%s", (_kind, imageUrl) => {
+			const tierOf = (template: string): { template: string; imageUrl?: string } =>
+				imageUrl === undefined ? { template } : { template, imageUrl };
+			const noImage: CustomGuardBuyLike = {
+				enable: true,
+				governor: tierOf("{uname} 成了 {mname} 的总督"),
+				commander: tierOf("{uname} 成了 {mname} 的提督"),
+				captain: tierOf("{uname} 成了 {mname} 的舰长"),
+			};
+
+			it.each(cases)("上%s → 回落该档官方图,文案照出", async (_label, level, text) => {
+				expect(await pushOf(level, { sub: noImage })).toEqual([
+					{ kind: "image", src: OFFICIAL_GUARD_IMG[level as 1 | 2 | 3] },
+					{ kind: "text", text },
+				]);
+			});
+
+			it("文案也是空串 → 仍推空文案(现状,不跟着回落)", async () => {
+				const bare: CustomGuardBuyLike = {
+					enable: true,
+					captain: tierOf(""),
+				};
+				expect(await pushOf(GuardLevel.Captain, { sub: bare })).toEqual([
+					{ kind: "image", src: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
+					{ kind: "text", text: "" },
+				]);
+			});
+		});
+
+		// 现状:认不出的档位(guard_level 为 0)+ 自定义开着 → 取不到那一档,带着一张地址为空的图和
+		// 一句空文案照推。㉓b 起这种事件在翻译那一步被丢掉并记一条警告,到时这条改成「丢」。
+		// 验红:让 `GUARD_LEVEL_TIER[0]` 指向某一档(比如 `governor`),这条红。
+		it("现状:guard_level 为 0 → 空图 + 空文案照推", async () => {
+			expect(await pushOf(GuardLevel.None, { sub: tiers })).toEqual([
+				{ kind: "image", src: "" },
+				{ kind: "text", text: "" },
+			]);
+		});
 	});
 
 	it("默认(custom 关)+ generateGuardCard + api code0 → 图片卡片(LiveGuardBuy)", async () => {

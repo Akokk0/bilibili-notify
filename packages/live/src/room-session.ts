@@ -612,10 +612,11 @@ export class RoomSession extends RoomSessionBase {
 				giftName: body.gift_name,
 			});
 			if (this.ctx.isDisposed()) return;
+			// 图片没填就回落官方图。默认配置里每档 imageUrl 就是空串,空串不是「缺」,`??` 兜不住。
 			await this.ctx.push.broadcastToTargets(
 				this.sub.uid,
 				this.ctx.contentBuilder.message([
-					this.ctx.contentBuilder.image(tier?.imageUrl ?? guardImg),
+					this.ctx.contentBuilder.image(tier?.imageUrl || guardImg),
 					this.ctx.contentBuilder.text(text),
 				]),
 				LivePushType.LiveGuardBuy,
