@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
+import type { RoastBoardCardInput, RoastSoloCardInput } from "../templates/roast-card";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
 /** 只取卡片本身那一截 —— `<style>` 里的 CSS 不是「卡上画了什么」。 */
@@ -26,7 +26,7 @@ const up = (name: string, over: Record<string, unknown> = {}) => ({
 	...over,
 });
 
-function boardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProps {
+function boardProps(over: Partial<RoastBoardCardInput> = {}): RoastBoardCardInput {
 	return {
 		days: 30,
 		pigeon: { ...up("机智的党妹"), reason: "一个月就发一条" },
@@ -40,7 +40,7 @@ function boardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProp
 	};
 }
 
-function soloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
+function soloProps(over: Partial<RoastSoloCardInput> = {}): RoastSoloCardInput {
 	return {
 		days: 30,
 		creator: up("机智的党妹"),
@@ -51,14 +51,14 @@ function soloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
 	};
 }
 
-const boardHtml = (over: Partial<RoastBoardCardProps> = {}) =>
+const boardHtml = (over: Partial<RoastBoardCardInput> = {}) =>
 	renderViaDefaultSkin("roastBoard", boardProps(over));
-const soloHtml = (over: Partial<RoastSoloCardProps> = {}) =>
+const soloHtml = (over: Partial<RoastSoloCardInput> = {}) =>
 	renderViaDefaultSkin("roastSolo", soloProps(over));
 
-const renderBoard = async (over: Partial<RoastBoardCardProps> = {}) =>
+const renderBoard = async (over: Partial<RoastBoardCardInput> = {}) =>
 	bodyOf(await boardHtml(over));
-const renderSolo = async (over: Partial<RoastSoloCardProps> = {}) => bodyOf(await soloHtml(over));
+const renderSolo = async (over: Partial<RoastSoloCardInput> = {}) => bodyOf(await soloHtml(over));
 
 describe("锐评榜单周报卡", () => {
 	it("鸽王 / 勤奋 UP / 锐评 / 评分都出现在卡上", async () => {

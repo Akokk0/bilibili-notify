@@ -50,6 +50,7 @@ import {
 } from "@bilibili-notify/image";
 import {
 	BILIBILI_SOURCE_KEY,
+	CARD_KIND_NAMES,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_UPLOAD_PREFIX,
 	type CardKind,
@@ -233,21 +234,13 @@ const TestPushRequestSchema = z.object({
 
 const RENDER_TIMEOUT_MS = 20_000;
 
-/** 测试推送图说用的卡片类型中文标签。 */
-const KIND_LABEL: Record<PreviewKind, string> = {
-	live: "开播",
-	post: "动态",
-	superchat: "醒目留言",
-	membership: "上舰",
-};
-
 /**
  * 测试推送图片的图说(caption)。纯图片推送在 QQ 富媒体消息里会被塞一个占位空格(QQ 要求
  * content 非空),显示成图片下方一段空白;给测试推送配一句带类型标签的文案顶替它,接收方
  * 一眼能认出是测试,History 列表也不再落「(无内容)」。
  */
 export function testPushCaption(kind: PreviewKind): string {
-	return `【bilibili-notify 测试推送】${KIND_LABEL[kind]}卡片`;
+	return `【bilibili-notify 测试推送】${CARD_KIND_NAMES[kind]}`;
 }
 
 /** 引用列表里怎么称呼一条订阅。B 站的写 `UP <uid>`,别的来源用外部 id 指认。 */

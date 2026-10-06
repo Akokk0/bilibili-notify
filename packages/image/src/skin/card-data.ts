@@ -16,9 +16,9 @@ import type { CardKind } from "@bilibili-notify/internal";
 import type { LiveCardView } from "../templates/live-card";
 import type { MembershipCardView } from "../templates/membership-card";
 import type { PostCardView } from "../templates/post-card";
-import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
+import type { RoastBoardCardInput, RoastSoloCardInput } from "../templates/roast-card";
 import type { SuperchatCardView } from "../templates/superchat-card";
-import type { WordCloudCardProps } from "../templates/wordcloud-card";
+import type { WordCloudCardInput } from "../templates/wordcloud-card";
 
 /** 契约里一个字段的值。对应 `CardSkinFieldType`:`text` / `image` → string。 */
 export type CardDataValue = string | number | boolean;
@@ -174,18 +174,18 @@ function guardData(p: MembershipCardView): CardData {
 // ── roast / wordcloud ────────────────────────────────────────────────────────
 
 /** 榜单周报不属于任何单个创作者,契约里没有创作者那两格。 */
-function roastBoardData(p: RoastBoardCardProps): CardData {
+function roastBoardData(p: RoastBoardCardInput): CardData {
 	return { report: { days: num(p.days) } };
 }
 
-function roastSoloData(p: RoastSoloCardProps): CardData {
+function roastSoloData(p: RoastSoloCardInput): CardData {
 	return {
 		creator: { name: str(p.creator?.name), avatar: str(p.creator?.avatar) },
 		report: { days: num(p.days) },
 	};
 }
 
-function wordCloudData(p: WordCloudCardProps): CardData {
+function wordCloudData(p: WordCloudCardInput): CardData {
 	return { creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) } };
 }
 
@@ -195,9 +195,9 @@ export function buildCardData(kind: "live", props: LiveCardView): CardData;
 export function buildCardData(kind: "post", props: PostCardView): CardData;
 export function buildCardData(kind: "superchat", props: SuperchatCardView): CardData;
 export function buildCardData(kind: "membership", props: MembershipCardView): CardData;
-export function buildCardData(kind: "roastBoard", props: RoastBoardCardProps): CardData;
-export function buildCardData(kind: "roastSolo", props: RoastSoloCardProps): CardData;
-export function buildCardData(kind: "wordcloud", props: WordCloudCardProps): CardData;
+export function buildCardData(kind: "roastBoard", props: RoastBoardCardInput): CardData;
+export function buildCardData(kind: "roastSolo", props: RoastSoloCardInput): CardData;
+export function buildCardData(kind: "wordcloud", props: WordCloudCardInput): CardData;
 /**
  * 把一张卡的 props 翻成它那份契约数据。产出的路径集合与 `CARD_SKIN_FIELDS[kind]` 一字不差。
  */
@@ -215,11 +215,11 @@ export function buildCardData(
 		case "membership":
 			return guardData(props as MembershipCardView);
 		case "roastBoard":
-			return roastBoardData(props as RoastBoardCardProps);
+			return roastBoardData(props as RoastBoardCardInput);
 		case "roastSolo":
-			return roastSoloData(props as RoastSoloCardProps);
+			return roastSoloData(props as RoastSoloCardInput);
 		case "wordcloud":
-			return wordCloudData(props as WordCloudCardProps);
+			return wordCloudData(props as WordCloudCardInput);
 	}
 }
 

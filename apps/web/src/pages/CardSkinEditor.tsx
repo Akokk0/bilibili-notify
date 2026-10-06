@@ -17,7 +17,11 @@ import type { CardSkinManifest } from "@bilibili-notify/contract";
 // 值走**零依赖子路径**:从根入口取值会把 zod 整张 schema 图拽进前端 bundle,而症状只是
 // 产物悄悄胖一圈,任何门禁都是绿的(`internal-entry-conformance.test.ts` 钉着这条)。
 import type { CardKind, GlobalConfig } from "@bilibili-notify/internal";
-import { CARD_KINDS, CARD_PREVIEW_SCENES } from "@bilibili-notify/internal/constants";
+import {
+	CARD_KIND_SHORT_NAMES,
+	CARD_KINDS,
+	CARD_PREVIEW_SCENES,
+} from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ErrorNote,
@@ -98,13 +102,13 @@ const INSPECTOR_COL = 380;
 
 /** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_KINDS`。 */
 const KIND_META: Record<CardKind, { label: string; icon: keyof typeof Icon }> = {
-	live: { label: "直播", icon: "live" },
-	post: { label: "动态", icon: "dyn" },
-	superchat: { label: "SC", icon: "sc" },
-	membership: { label: "上舰", icon: "guard" },
-	roastBoard: { label: "锐评榜单", icon: "trophy" },
-	roastSolo: { label: "单人锐评", icon: "feather" },
-	wordcloud: { label: "词云", icon: "sparkle" },
+	live: { label: CARD_KIND_SHORT_NAMES.live, icon: "live" },
+	post: { label: CARD_KIND_SHORT_NAMES.post, icon: "dyn" },
+	superchat: { label: CARD_KIND_SHORT_NAMES.superchat, icon: "sc" },
+	membership: { label: CARD_KIND_SHORT_NAMES.membership, icon: "guard" },
+	roastBoard: { label: CARD_KIND_SHORT_NAMES.roastBoard, icon: "trophy" },
+	roastSolo: { label: CARD_KIND_SHORT_NAMES.roastSolo, icon: "feather" },
+	wordcloud: { label: CARD_KIND_SHORT_NAMES.wordcloud, icon: "sparkle" },
 };
 
 export default function CardSkinEditor() {

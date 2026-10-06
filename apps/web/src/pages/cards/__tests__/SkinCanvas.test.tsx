@@ -236,15 +236,15 @@ describe("网格画布", () => {
 	it("块落在正确的 grid 位置 —— 行号占掉第一列,所以起始列要 +1", () => {
 		render(<Harness />);
 		// name 块:column 3 / span 6 → CSS 上是 4 起跨 6。
-		expect(blockBtn("主播名").style.gridColumn).toBe("4 / span 6");
-		expect(blockBtn("主播名").style.gridRow).toBe("2 / span 1");
+		expect(blockBtn("创作者名").style.gridColumn).toBe("4 / span 6");
+		expect(blockBtn("创作者名").style.gridRow).toBe("2 / span 1");
 		expect(blockBtn("封面图").style.gridColumn).toBe("2 / span 12");
 	});
 
 	it("三档来历各挂各的徽章,showIf 也标出来", () => {
 		render(<Harness />);
-		expect(blockBtn("主播名").textContent).toContain("原子");
-		expect(blockBtn("主播名").textContent).toContain("showIf");
+		expect(blockBtn("创作者名").textContent).toContain("原子");
+		expect(blockBtn("创作者名").textContent).toContain("showIf");
 		expect(blockBtn("自定义块").textContent).toContain("自定义");
 		cleanup();
 
@@ -255,9 +255,9 @@ describe("网格画布", () => {
 
 	it("点一下就选中(aria-pressed 是可查询的事实,不是一层 class)", () => {
 		render(<Harness />);
-		expect(blockBtn("主播名").getAttribute("aria-pressed")).toBe("false");
-		fireEvent.click(blockBtn("主播名"));
-		expect(blockBtn("主播名").getAttribute("aria-pressed")).toBe("true");
+		expect(blockBtn("创作者名").getAttribute("aria-pressed")).toBe("false");
+		fireEvent.click(blockBtn("创作者名"));
+		expect(blockBtn("创作者名").getAttribute("aria-pressed")).toBe("true");
 		expect(blockBtn("封面图").getAttribute("aria-pressed")).toBe("false");
 	});
 
@@ -308,7 +308,7 @@ describe("检查器 · 位置", () => {
 	it("改「起始列」→ 改动真的回到草稿(接线断了的话数字变了、草稿没动)", () => {
 		const onDraft = vi.fn();
 		render(<Harness onDraft={onDraft} />);
-		fireEvent.click(blockBtn("主播名"));
+		fireEvent.click(blockBtn("创作者名"));
 
 		const input = screen.getByLabelText(/起始列/);
 		fireEvent.change(input, { target: { value: "5" } });
@@ -317,7 +317,7 @@ describe("检查器 · 位置", () => {
 		const next = onDraft.mock.calls.at(-1)?.[0] as CardSkinManifest;
 		expect(cardOf(next, "live")?.blocks.find((b) => b.id === "name")?.grid.column).toBe(5);
 		// 画布跟着动 —— 检查器改完只更新自己的话,左边那格还停在老位置。
-		expect(blockBtn("主播名").style.gridColumn).toBe("6 / span 6");
+		expect(blockBtn("创作者名").style.gridColumn).toBe("6 / span 6");
 	});
 
 	it("没选中任何东西 → 检查器请人去点一个,而不是空着", () => {
@@ -351,10 +351,10 @@ describe("添加块 / 删块", () => {
 
 	it("删块:画布上那格没了,检查器也不再对着它", () => {
 		render(<Harness />);
-		fireEvent.click(blockBtn("主播名"));
+		fireEvent.click(blockBtn("创作者名"));
 		fireEvent.click(screen.getByText(/删除这个块/));
 
-		expect(screen.queryByText("主播名")).toBeNull();
+		expect(screen.queryByText("创作者名")).toBeNull();
 		expect(screen.queryByLabelText(/起始列/)).toBeNull();
 		// 剩下的块一个没少。
 		expect(blockBtn("封面图")).toBeTruthy();
@@ -374,7 +374,7 @@ describe("添加块 / 删块", () => {
 	it("只读的皮肤不给增删的口", () => {
 		render(<Harness readOnly />);
 		expect(screen.queryByText(/添加块/)).toBeNull();
-		fireEvent.click(blockBtn("主播名"));
+		fireEvent.click(blockBtn("创作者名"));
 		expect(screen.queryByText(/删除这个块/)).toBeNull();
 	});
 });
@@ -534,7 +534,7 @@ describe("检查器 · 显示条件", () => {
 	it("回到「总是显示」→ 键从清单里消失(空串在装包门那头过不了字段路径)", () => {
 		const onDraft = vi.fn();
 		render(<Harness onDraft={onDraft} />);
-		fireEvent.click(blockBtn("主播名"));
+		fireEvent.click(blockBtn("创作者名"));
 
 		fireEvent.change(screen.getByLabelText("显示条件"), { target: { value: "" } });
 

@@ -39,9 +39,9 @@ import type { VNode } from "vue";
 import type { LiveCardView } from "../templates/live-card";
 import type { MembershipCardView } from "../templates/membership-card";
 import type { PostCardView } from "../templates/post-card";
-import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
+import type { RoastBoardCardInput, RoastSoloCardInput } from "../templates/roast-card";
 import type { SuperchatCardView } from "../templates/superchat-card";
-import type { WordCloudCardProps } from "../templates/wordcloud-card";
+import type { WordCloudCardInput } from "../templates/wordcloud-card";
 
 /** 皮肤渲染器往外框上追加的东西。 */
 export interface FrameExtra {
@@ -79,9 +79,9 @@ export interface CardPropsByKind {
 	post: PostCardView;
 	superchat: SuperchatCardView;
 	membership: MembershipCardView;
-	roastBoard: RoastBoardCardProps;
-	roastSolo: RoastSoloCardProps;
-	wordcloud: WordCloudCardProps;
+	roastBoard: RoastBoardCardInput;
+	roastSolo: RoastSoloCardInput;
+	wordcloud: WordCloudCardInput;
 }
 
 /**

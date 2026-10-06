@@ -730,7 +730,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `/api/history?uid=` | 删掉（没有调用方）；以后要按人查再加 `?identity=` |
 | 载荷 kind `"forward-images"`；小程序卡 `picUrl` / `path`；判别键 kind 与 type 混用；`synthetic`；`InboundSinks`；入站 `groupId` / `userId`；`QQDiscoveredEntry.openid` | `"image-group"`；`imageUrl` / `pagePath`（桥帧照旧，在适配器里映射）；统一 `kind`；`isSynthetic`；`InboundHandlers`；address；`address` |
 | OneBot 入站的 `miniAppCardLinks`；B 站域名预筛 `CARD_HOST_HINT` | 入站链接的来源标记（正文 / 普通卡 / 原生分享卡，格名施工时定）；删掉 |
-| WS 频道 `push-events`；测试推送种类 `dyn` / `sc` / `guard`；失败原因 `reason` / `err` / `why`（重推预检的 `reason` 也在内，判别键 `can` 保留）；两级 `ConnectionCapabilitiesMap`；`muted` / `allowAtAll`；`mutedUntil` | 名副其实的名字（施工时定）；特性键；`code` + `message`；收成一级；带 is 前缀（施工时定名）；`muteEndsAt` |
+| WS 频道 `push-events`；测试推送种类 `dyn` / `sc` / `guard`；失败原因 `reason` / `err` / `why`（重推预检的 `reason` 也在内，判别键 `can` 保留）；两级 `ConnectionCapabilitiesMap`；`muted` / `allowAtAll`；`mutedUntil` | `post` / `superchat` / `membership`（㉔e，与卡种键同一套词表）；特性键；`code` + `message`；收成一级；带 is 前缀（施工时定名）；`muteEndsAt` |
 
 **配置（09-27 字段名专项审查）。**
 
@@ -740,7 +740,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.timezone`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`；`core.history.retentionDays`；`core.timezone`；`bilibili.loginCheckIntervalMinutes` |
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
-| `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔）；从 schema 删掉 |
+| `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔e 已落）；逐订阅同形 `overrides.cards { liveCoverImageIds? }`（空数组算「有」：这位 UP 不用自定义封面）；从 schema 删掉 |
 | `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkPreview`（摊平，没有默认行那一层）/ `enabled` / `replyForm` / `byTarget` |
 | 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；类型 `NativeShare…`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧能力名 `miniapp-card` alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen` |
@@ -800,7 +800,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 当结果用的 `Check` / `Read` / `Parse`：`MarketplaceIndexCheck`、`SubscriptionReportCheck`、`SafeRegexCheck`、`ViewCheck`、`ExtensionDirRead`、storage 的 `JsonFileRead`、`ExtensionManifestRead`、桥的 `BridgeFrameParse` | `MarketplaceIndexCheckResult`、`SubscriptionReportCheckResult`（上报 schema 随契约 v3 重写，新名照这个起）、`SafeRegexCheckResult`、`ViewCheckResult`、`ExtensionDirReadResult`、`JsonFileReadResult`、`ExtensionManifestReadResult`、`BridgeFrameParseResult` |
 | 更新镜像的 `Acceptance<T, R>`（`{ ok, value } \| { ok, reason }`） | `…Result`，主干施工时定 |
 | 面板的 `PushToastSink`（一包两把回调） | `PushToastHandlers` |
-| 太虚的 `Data`：storage 的 `CookieData`；出图的 `CardData`（皮肤字段取值表）、`RoastBoardData` / `RoastSoloData`（`…CardProps` 的别名） | `CookieData` 随 `CookieStore` 退役消失（cookie 罐进 `packages/http`）；其余按装的东西起名，施工时定 |
+| 太虚的 `Data`：storage 的 `CookieData`；出图的 `CardData`（皮肤字段取值表）、`RoastBoardData` / `RoastSoloData`（`…CardInput` 的别名；㉔f 起三个 `…CardProps` 改叫 `…CardInput`） | `CookieData` 随 `CookieStore` 退役消失（cookie 罐进 `packages/http`）；其余按装的东西起名，施工时定 |
 | `Row`：拓展在播表的 `ExtensionLiveRow`、拓展宿主递给 ctx 的 `ExtensionSubscriptionRow` | 随 1.0 消失：在播表合成一个 `LiveListeningEntry`；来源拿到的名单是 `SourceSubscriptionView` |
 | 种类取值叫 `…Type`：指令参数 `ParamType`、版式块 `MessagePartType`、皮肤字段 `CardSkinFieldType`、QQ 官方机器人的 `QQOfficialBotType`（公域 / 私域）、blive 的 `UserActionType` | `ParamKind`、`MessagePartKind`、`CardSkinFieldKind`、`QQOfficialBotKind`（随适配器搬出 `internal`）、`UserActionKind`（随 blive 搬进 `bilibili/`） |
 | 当读口子用的 `Source`：AI 只读工具的 `PlatformLabelSource` / `ExtensionLiveSource`、资源采样的 `BrowserSource`、WS 的 `ResourceMonitorSource`、拓展推送的 `ExtensionNameSources` / `ExtensionCardAuthorSources`、桥的 `BridgeInboundSource`、面板的 `PersonaSource`；统计适配器的 `BiliStatsSourceOptions` / `ExtensionStatsSourceOptions` | 读口子改 `…Reader` / `…Lookups`，各自新名施工时定；`ExtensionNameSources` / `ExtensionCardAuthorSources` 随显示名链 `displayNameOf` 与头像进图库消失，`PlatformLabelSource` / `ExtensionLiveSource` 随描述符与在播表合一多半消失；统计那两个并成 `BindStatsRecorderOptions`。市场源 `MarketplaceSource` / `MarketplaceOfficialSource` 是主人看得见的叫法，不改 |

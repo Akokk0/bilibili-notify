@@ -23,9 +23,9 @@ import { LIVE_COVER_PLACEHOLDER } from "../../live-view";
 import type { LiveCardView } from "../../templates/live-card";
 import type { MembershipCardView } from "../../templates/membership-card";
 import type { PostCardView, PostNode } from "../../templates/post-card";
-import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
+import type { RoastBoardCardInput, RoastSoloCardInput } from "../../templates/roast-card";
 import type { SuperchatCardView } from "../../templates/superchat-card";
-import type { WordCloudCardProps } from "../../templates/wordcloud-card";
+import type { WordCloudCardInput } from "../../templates/wordcloud-card";
 import { buildCardData, type CardData, type CardDataValue, readCardField } from "../card-data";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ function emptyGuardProps(): MembershipCardView {
 
 const ROAST_UP = { name: "某创作者", avatar: "https://img/up.jpg", color: "#ff6699" };
 
-function roastBoardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProps {
+function roastBoardProps(over: Partial<RoastBoardCardInput> = {}): RoastBoardCardInput {
 	return {
 		days: 7,
 		pigeon: { ...ROAST_UP, reason: "又鸽了" },
@@ -180,7 +180,7 @@ function roastBoardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCar
 	};
 }
 
-function roastSoloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
+function roastSoloProps(over: Partial<RoastSoloCardInput> = {}): RoastSoloCardInput {
 	return {
 		days: 30,
 		creator: ROAST_UP,
@@ -191,7 +191,7 @@ function roastSoloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardPr
 	};
 }
 
-function wordCloudProps(over: Partial<WordCloudCardProps> = {}): WordCloudCardProps {
+function wordCloudProps(over: Partial<WordCloudCardInput> = {}): WordCloudCardInput {
 	return {
 		creatorName: "阿可",
 		creatorAvatarUrl: "https://img/master.jpg",

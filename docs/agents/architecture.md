@@ -53,7 +53,7 @@ BilibiliPush       (@bilibili-notify/push;sink = MultiplexSink → 各平台 ada
 
 apps/server/src/runtime/engines.ts 按顺序构造(image → ai → dynamic → live),后两者直接拿前两者的引用:
 
-image  (cardStyle.enabled 才造)  → ImageRenderer({ puppeteer, resolveAsset, resolveFontFace, ... })
+image  (cards.enabled 才造)  → ImageRenderer({ puppeteer, resolveAsset, resolveFontFace, ... })
 ai     (ai.enabled 才造)         → CommentaryGenerator({ api, ... })
 dynamic(恒造)                     → DynamicEngine({ api, push, image?, ai?, cardFailures, getSubs, pickCardBackground, ... })
 live   (恒造)                     → LiveEngine({ api, push, contentBuilder, imageRenderer?, commentary?, emitLiveState, emitViewers, pickCardBackground, onRoomIdResolved, ... })

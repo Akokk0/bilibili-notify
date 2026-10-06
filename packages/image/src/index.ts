@@ -98,9 +98,9 @@ export type { PostCardView } from "./templates/post-card";
 // 图廊最多铺几格:来源据此决定往图库存前几张(排在后面的不画,不必存)。
 export { GALLERY_MAX_IMAGES } from "./templates/post-content";
 export type {
-	RoastBoardCardProps,
+	RoastBoardCardInput,
 	RoastCardCreator,
-	RoastSoloCardProps,
+	RoastSoloCardInput,
 } from "./templates/roast-card";
 export type { SuperchatCardInput, SuperchatCardView } from "./templates/superchat-card";
 export type { CardColorOptions, CardSkinChoice } from "./types";

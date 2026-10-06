@@ -15,7 +15,7 @@
  */
 
 import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
-import type { CardKind } from "@bilibili-notify/internal";
+import { CARD_KIND_SHORT_NAMES } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ConfirmDialog,
@@ -36,16 +36,8 @@ import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
 
-/** 七种卡在回落告警里怎么称呼。 */
-const KIND_LABEL: Record<CardKind, string> = {
-	live: "直播",
-	post: "动态",
-	superchat: "SC",
-	membership: "上舰",
-	roastBoard: "锐评榜单",
-	roastSolo: "单人锐评",
-	wordcloud: "词云",
-};
+/** 七种卡在回落告警里怎么称呼:短名(名字只住在 internal 的 constants,见 `CARD_KIND_SHORT_NAMES`)。 */
+const KIND_LABEL = CARD_KIND_SHORT_NAMES;
 
 /**
  * 回落告警里那套皮肤的名字。**账本记的是 id**(渲染器那头拿不到名字,也不该为了一句

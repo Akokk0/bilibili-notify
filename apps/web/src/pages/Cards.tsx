@@ -18,6 +18,7 @@
  */
 
 import type { PreviewResponse, TestPushResponse } from "@bilibili-notify/contract";
+import { CARD_KIND_EVENT_NAMES } from "@bilibili-notify/internal/constants";
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	Btn,
@@ -92,10 +93,14 @@ const DEFAULT_PREVIEW_CONTENT: PreviewContent = {
 };
 
 const KIND_LABELS: Record<PreviewKind, { label: string; tone: string; icon: IconName }> = {
-	live: { label: "直播开播", tone: PUSH_TONE.live, icon: "live" },
-	post: { label: "动态发布", tone: PUSH_TONE.post, icon: "dyn" },
-	superchat: { label: "SC 提醒", tone: PUSH_TONE.superchat, icon: "sc" },
-	membership: { label: "上舰提醒", tone: PUSH_TONE.membership, icon: "guard" },
+	live: { label: CARD_KIND_EVENT_NAMES.live, tone: PUSH_TONE.live, icon: "live" },
+	post: { label: CARD_KIND_EVENT_NAMES.post, tone: PUSH_TONE.post, icon: "dyn" },
+	superchat: { label: CARD_KIND_EVENT_NAMES.superchat, tone: PUSH_TONE.superchat, icon: "sc" },
+	membership: {
+		label: CARD_KIND_EVENT_NAMES.membership,
+		tone: PUSH_TONE.membership,
+		icon: "guard",
+	},
 };
 
 /** 左侧类型导航的副标题(对齐 Rules 左栏的「label + desc」观感)。 */

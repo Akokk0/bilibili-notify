@@ -1356,6 +1356,33 @@ export const CARD_KIND_NAMES: Readonly<Record<CardKind, string>> = {
 	wordcloud: "弹幕词云卡",
 };
 
+/**
+ * 七种卡的中文**短名**:皮肤编辑器顶栏的 tab、回落告警里「哪种卡」这一处。与 {@link CARD_KIND_NAMES}(带「卡」字的全名)
+ * 是同一张表的两种写法,**卡种中文名只许住在这里**(`__tests__/card-kind-names.test.ts` 扫源码钉着:别处再写一份就红)。
+ */
+export const CARD_KIND_SHORT_NAMES: Readonly<Record<CardKind, string>> = {
+	live: "直播",
+	post: "动态",
+	superchat: "SC",
+	membership: "上舰",
+	roastBoard: "锐评榜单",
+	roastSolo: "单人锐评",
+	wordcloud: "词云",
+};
+
+/**
+ * 卡片页类型导航上的名字 —— 只有按事件推的四种卡在那里出现(锐评与词云不走那一页)。名字说的是「什么事件触发它」,
+ * 所以与短名不同(「直播开播」「SC 提醒」);同样只许住在这里。
+ */
+export const CARD_KIND_EVENT_NAMES: Readonly<
+	Record<"live" | "post" | "superchat" | "membership", string>
+> = {
+	live: "直播开播",
+	post: "动态发布",
+	superchat: "SC 提醒",
+	membership: "上舰提醒",
+};
+
 // ---- 预览场景 ---------------------------------------------------------------
 
 /**
@@ -1861,7 +1888,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<CardKind, Record<string, CardSkinB
 		description: { label: "简介", atom: true, hooks: { text: "文字" } },
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		creatorAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		creatorName: { label: "主播名", atom: true, hooks: { text: "文字" } },
+		creatorName: { label: "创作者名", atom: true, hooks: { text: "文字" } },
 		time: { label: "开播时间", atom: true, hooks: { text: "文字" } },
 		// 数据区(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
 		// **内部的一行**、块级的 `showIf` 够不着 —— 所以拆成原子块,想少显示哪件就删哪块。

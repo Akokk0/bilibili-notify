@@ -26,7 +26,7 @@
  */
 
 import { Fragment, h, type VNode } from "vue";
-import type { WordCloudCardProps } from "../templates/wordcloud-card";
+import type { WordCloudCardInput } from "../templates/wordcloud-card";
 import type { BlockRenderer } from "./types";
 
 /**
@@ -34,7 +34,7 @@ import type { BlockRenderer } from "./types";
  * Fragment 插锚点注释(`<!--[-->`),多套一层就凭空多两条注释 —— 那既是白白的字节,
  * 也会被 UnoCSS 的 extractor 当成「任意值方括号」吞掉紧随其后的类名(见 `render.ts`)。
  */
-export function wordCloudBodyChildren(p: WordCloudCardProps): VNode[] {
+export function wordCloudBodyChildren(p: WordCloudCardInput): VNode[] {
 	return [
 		/* ── 头部：头像 + 标题 ── */
 		<div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]">
@@ -72,6 +72,6 @@ export function wordCloudBodyChildren(p: WordCloudCardProps): VNode[] {
 }
 
 /** wordcloud 卡的块表(整张正文一个块)。 */
-export const WORDCLOUD_BLOCKS: Record<string, BlockRenderer<WordCloudCardProps>> = {
+export const WORDCLOUD_BLOCKS: Record<string, BlockRenderer<WordCloudCardInput>> = {
 	body: (p) => h(Fragment, null, wordCloudBodyChildren(p)),
 };

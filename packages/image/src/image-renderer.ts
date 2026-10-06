@@ -37,7 +37,7 @@ import type { LiveCardInput } from "./templates/live-card";
 import type { MembershipCardInput } from "./templates/membership-card";
 import { nodeFromPost } from "./templates/post-node";
 import { collectImageRefs } from "./templates/post-refs";
-import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
+import type { RoastBoardCardInput, RoastSoloCardInput } from "./templates/roast-card";
 import type { SuperchatCardInput } from "./templates/superchat-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, CardSkinChoice } from "./types";
@@ -86,8 +86,8 @@ function knobCursorKey(
  * 外框 CSS 与旋钮),所以这两个别名今天与 props 一字不差 —— 留着名字是因为它们是对外
  * 导出的入参契约,调用方(`apps/server` 的周报投递)写的是这个名。
  */
-export type RoastBoardData = RoastBoardCardProps;
-export type RoastSoloData = RoastSoloCardProps;
+export type RoastBoardData = RoastBoardCardInput;
+export type RoastSoloData = RoastSoloCardInput;
 
 async function withRetry<T>(fn: () => T | Promise<T>, maxAttempts = 3, delayMs = 1000): Promise<T> {
 	let lastError: unknown;

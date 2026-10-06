@@ -34,9 +34,9 @@
 
 import { SVG_CHART_BARS, SVG_FEATHER, SVG_TROPHY } from "../icons";
 import type {
-	RoastBoardCardProps,
+	RoastBoardCardInput,
 	RoastCardCreator,
-	RoastSoloCardProps,
+	RoastSoloCardInput,
 } from "../templates/roast-card";
 import type { BlockRenderer } from "./types";
 
@@ -121,7 +121,7 @@ function ScoreRow(p: { creator: RoastCardCreator; score: number; autoName?: bool
 }
 
 /** 榜单周报卡的块表(整张正文一个块)。 */
-export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProps>> = {
+export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardInput>> = {
 	body: (p) => {
 		const podium = (
 			[
@@ -241,7 +241,7 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 };
 
 /** 单人锐评卡的块表(整张正文一个块)。 */
-export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>> = {
+export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardInput>> = {
 	body: (p) => (
 		<>
 			<div class="flex items-center gap-[14px] px-[16px] pt-[14px] pb-[11px]">

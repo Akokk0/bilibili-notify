@@ -18,7 +18,7 @@ import { type CardKind, formatCount } from "@bilibili-notify/internal";
 import { htmlToPlain } from "../../html-to-plain";
 import type { LiveCardView } from "../../templates/live-card";
 import { nodeFromPost } from "../../templates/post-node";
-import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
+import type { RoastBoardCardInput, RoastSoloCardInput } from "../../templates/roast-card";
 import { DYNAMIC_SAMPLE_POSTS } from "./post-fixtures";
 
 // ── 夹具表的形状 ──────────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ const guardInput = (
 
 const roastUp = (name: string, color: string, avatar?: string) => ({ name, color, avatar });
 
-const BOARD_PROPS: RoastBoardCardProps = {
+const BOARD_PROPS: RoastBoardCardInput = {
 	days: 30,
 	pigeon: {
 		...roastUp("示例UP·甲", "#fb7299", "http://i0.hdslb.com/bfs/face/roast-a.jpg"),
@@ -290,7 +290,7 @@ const BOARD_PROPS: RoastBoardCardProps = {
 	],
 };
 
-const SOLO_PROPS: RoastSoloCardProps = {
+const SOLO_PROPS: RoastSoloCardInput = {
 	days: 7,
 	creator: roastUp("示例UP·甲", "#fb7299", "http://i0.hdslb.com/bfs/face/roast-a.jpg"),
 	verdict: "这周唯一的产出是一条「在剪了」，剪了七天，还在剪。",

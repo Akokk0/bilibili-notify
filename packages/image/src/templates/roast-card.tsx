@@ -28,7 +28,7 @@ export type RoastCardCreator = {
 	color: string;
 };
 
-export type RoastBoardCardProps = {
+export type RoastBoardCardInput = {
 	/** 统计窗口天数。必须标在卡上:同一份榜单在 7 日和 30 日下讲的不是一回事。 */
 	days: number;
 	pigeon: RoastCardCreator & { reason: string };
@@ -37,7 +37,7 @@ export type RoastBoardCardProps = {
 	scores: Array<RoastCardCreator & { score: number }>;
 };
 
-export type RoastSoloCardProps = {
+export type RoastSoloCardInput = {
 	days: number;
 	creator: RoastCardCreator;
 	verdict: string;
