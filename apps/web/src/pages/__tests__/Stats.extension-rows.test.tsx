@@ -33,15 +33,16 @@ const fill = <T,>(v: T) => Array.from({ length: DAYS }, () => v);
 function row(over: Partial<UpStatsRow>): UpStatsRow {
 	return {
 		subscriptionId: "s-x",
-		fans: 1000,
+		identity: { sourceKey: "bilibili", externalId: "0" },
+		followers: 1000,
 		net1d: 1,
 		net7d: 7,
 		netWindow: 30,
 		series: fill(1),
 		cumulative: fill(1000),
 		activity: fill(1),
-		archives: 1,
-		dynamics: 2,
+		videoPosts: 1,
+		posts: 3,
 		liveSessions: 1,
 		liveHours: 2,
 		liveTimedSessions: 1,
@@ -54,13 +55,16 @@ function row(over: Partial<UpStatsRow>): UpStatsRow {
 }
 
 /** B 站甲:uid 12345。 */
-const BILI_ROW = row({ subscriptionId: "s-bili", uid: "12345", fans: 1000 });
+const BILI_ROW = row({
+	subscriptionId: "s-bili",
+	identity: { sourceKey: "bilibili", externalId: "12345" },
+	followers: 1000,
+});
 /** 抖音乙:外部 id 恰好也是 12345 —— 另一个平台上的另一个人。正在播。 */
 const EXT_ROW = row({
 	subscriptionId: "s-dy",
-	extensionId: "douyin",
-	externalId: "12345",
-	fans: 5000,
+	identity: { sourceKey: "douyin", externalId: "12345" },
+	followers: 5000,
 	live: true,
 	maxViewers: 2000,
 	avgViewers: 1500,

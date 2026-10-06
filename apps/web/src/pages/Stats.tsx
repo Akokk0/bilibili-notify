@@ -1,5 +1,4 @@
 import type { ExtensionDTO, SubscriptionDTO } from "@bilibili-notify/contract";
-import { upColor } from "@bilibili-notify/internal/constants";
 import { type FormatCountOptions, formatAgo, formatCount } from "@bilibili-notify/internal/format";
 import {
 	Avatar,
@@ -28,13 +27,14 @@ import {
 	dayAxis,
 	fansKnownCount,
 	localTzOffset,
+	plainPostCount,
 	type StatsOverviewResponse,
 	sparseLabels,
 	statsQueryKey,
 	type UpStatsRow,
 } from "../services/stats";
-import type { Subscription } from "../types/domain";
-import { isExtensionRow } from "../utils/up-display";
+import { identityColor, type Subscription } from "../types/domain";
+import { isExtensionIdentity } from "../utils/up-display";
 import type { SignTone } from "./stats/chart-utils";
 import { dash, signTone } from "./stats/chart-utils";
 import {
@@ -123,22 +123,22 @@ function upMetaOf(
 	extensions: readonly ExtensionDTO[] | undefined,
 ): UpMeta {
 	const base = {
-		color: upColor(r, r.subscriptionId),
+		color: identityColor(r.identity),
 		avatar: profileAvatarUrl(sub?.cachedProfile),
 	};
-	if (!isExtensionRow(r)) {
-		const uid = r.uid ?? "";
+	const { sourceKey, externalId } = r.identity;
+	if (!isExtensionIdentity(r.identity)) {
 		return {
 			...base,
-			name: sub ? displayName(sub) : `UID ${uid}`,
-			identity: { label: "UID", id: uid },
+			name: sub ? displayName(sub) : `UID ${externalId}`,
+			identity: { label: "UID", id: externalId },
 		};
 	}
-	const platform = subscriptionPlatformOf(r, extensions);
+	const platform = subscriptionPlatformOf({ extensionId: sourceKey }, extensions);
 	return {
 		...base,
-		name: sub ? displayName(sub) : r.externalId,
-		identity: { label: platform.label, id: r.externalId },
+		name: sub ? displayName(sub) : externalId,
+		identity: { label: platform.label, id: externalId },
 		platform: { label: platform.label, shortLabel: platform.shortLabel, color: platform.color },
 	};
 }
@@ -243,7 +243,7 @@ function UpPicker({
 										<PlatformPill meta={m} />
 									</span>
 									<span className="block text-bn-2xs text-bn-text-secondary">
-										{num(r.fans)} ·{" "}
+										{num(r.followers)} ·{" "}
 										{(r.lastActivityAt ? formatAgo(r.lastActivityAt) : undefined) ?? "无记录"}
 									</span>
 								</span>
@@ -350,7 +350,7 @@ function CompareTable({
 									</div>
 								</td>
 								<td className="px-2.5 py-2 text-right tabular-nums font-bold text-bn-text-primary">
-									{num(r.fans)}
+									{num(r.followers)}
 								</td>
 								<td className="px-2.5 py-2 text-center">
 									<div className="inline-block">
@@ -385,15 +385,16 @@ function CompareTable({
 
 /** 内容构成 —— 动态 / 投稿 / 直播 的占比。 */
 function ContentMix({
-	dynamics,
-	archives,
+	plainPosts,
+	videoPosts,
 	lives,
 	days,
 	coveredDays,
 	coveredTotal,
 }: {
-	dynamics: number | null;
-	archives: number | null;
+	/** 动态数 = 全部作品减去带视频的(`plainPostCount` 算的,这里只管画)。 */
+	plainPosts: number | null;
+	videoPosts: number | null;
 	lives: number | null;
 	days: number;
 	/**
@@ -409,13 +410,13 @@ function ContentMix({
 }) {
 	// 「没在记」与「在记但没动静」是两回事,空态文案也得分开 —— 否则老库升级后
 	// 点开近 90 日,会看到一句「还没有发过任何内容」扣在一位高产 UP 头上。
-	if (dynamics === null && archives === null && lives === null) {
+	if (plainPosts === null && videoPosts === null && lives === null) {
 		return <ChartEmpty hint="这段时间我们还没有采集到数据" />;
 	}
 	// 走到这里至少有一项有记录。剩下的 null 是「这一类没记到」,并进 0 参与占比 ——
 	// 分类占比图上没有「未知的那一块」可画,但整体「没在记」的情形已在上面拦掉了。
-	const dyn = dynamics ?? 0;
-	const arc = archives ?? 0;
+	const dyn = plainPosts ?? 0;
+	const arc = videoPosts ?? 0;
 	const liv = lives ?? 0;
 	const total = dyn + arc + liv;
 	if (total === 0) return <ChartEmpty hint="这段时间还没有采集到任何活动" />;
@@ -605,7 +606,7 @@ export default function Stats() {
 					<>
 						<GlassStatCard
 							label="当前粉丝"
-							value={num(focused.fans)}
+							value={num(focused.followers)}
 							color={focusColor}
 							footer={
 								<>
@@ -633,7 +634,12 @@ export default function Stats() {
 							value={num(focused.netWindow, { signed: true })}
 							color={PURPLE}
 						/>
-						<GlassStatCard label="投稿" value={dash(focused.archives)} suffix="个" color={AMBER} />
+						<GlassStatCard
+							label="投稿"
+							value={dash(focused.videoPosts)}
+							suffix="个"
+							color={AMBER}
+						/>
 						{/* KPI 行收尾在蓝:呼应「左粉右蓝」的品牌轴。 */}
 						<GlassStatCard
 							label="开播"
@@ -650,7 +656,7 @@ export default function Stats() {
 							label={
 								fansKnown < rows.length ? `总粉丝量 · ${fansKnown}/${rows.length} 位` : "总粉丝量"
 							}
-							value={num(totals?.fans ?? null)}
+							value={num(totals?.followers ?? null)}
 							color={PINK}
 							footer={
 								<>
@@ -678,7 +684,12 @@ export default function Stats() {
 							value={num(totals?.netWindow ?? null, { signed: true })}
 							color={PURPLE}
 						/>
-						<GlassStatCard label="投稿" value={dash(totals?.archives)} suffix="个" color={AMBER} />
+						<GlassStatCard
+							label="投稿"
+							value={dash(totals?.videoPosts)}
+							suffix="个"
+							color={AMBER}
+						/>
 						<GlassStatCard
 							label="开播"
 							value={dash(totals?.liveSessions)}
@@ -827,8 +838,8 @@ export default function Stats() {
 					icon={<Icon.dyn width={15} height={15} />}
 				>
 					<ContentMix
-						dynamics={focused ? focused.dynamics : (totals?.dynamics ?? null)}
-						archives={focused ? focused.archives : (totals?.archives ?? null)}
+						plainPosts={plainPostCount(focused ?? totals)}
+						videoPosts={focused ? focused.videoPosts : (totals?.videoPosts ?? null)}
 						lives={focused ? focused.liveSessions : (totals?.liveSessions ?? null)}
 						days={days}
 						coveredDays={coveredDayCount(focused ? focused.activity : totals?.activity)}
@@ -861,7 +872,7 @@ export default function Stats() {
 									// 场均峰值」,名不副实(决策 11)。面板底下那句说明是按什么算的。
 									["单场最高观看", num(focused.maxViewers), ""],
 									["场均观看", num(focused.avgViewers), ""],
-									["投稿", dash(focused.archives), "个"],
+									["投稿", dash(focused.videoPosts), "个"],
 								] as Array<[string, string, string]>
 							).map(([label, v, unit]) => (
 								<div

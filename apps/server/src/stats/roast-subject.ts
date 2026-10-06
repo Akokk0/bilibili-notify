@@ -12,6 +12,7 @@
 import type { UpStatsRow } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
+	type Identity,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -37,12 +38,9 @@ export function roastSubjectName(deps: RoastSubjectDeps, sub: Subscription): str
  * 「平台」那一列(决策 12):B 站写「B 站」;拓展写它清单里订阅源的平台名(引擎现取,同女仆查订阅那份
  * 视图),取不到(拓展卸了、引擎还没起来)写拓展 id —— 同面板(ADR-0019 决策 10)。
  */
-export function roastPlatformLabel(
-	deps: RoastSubjectDeps,
-	identity: { uid?: string; extensionId?: string },
-): string {
-	if (identity.extensionId === undefined) return BILIBILI_PLATFORM_LABEL;
-	return deps.runtime.engines?.extensionPlatformLabel(identity.extensionId) ?? identity.extensionId;
+export function roastPlatformLabel(deps: RoastSubjectDeps, identity: Identity): string {
+	if (identity.sourceKey === BILIBILI_SOURCE_KEY) return BILIBILI_PLATFORM_LABEL;
+	return deps.runtime.engines?.extensionPlatformLabel(identity.sourceKey) ?? identity.sourceKey;
 }
 
 /**
@@ -55,5 +53,8 @@ export function roastRowName(
 	sub: Subscription | undefined,
 ): string {
 	if (sub) return roastSubjectName(deps, sub);
-	return row.externalId ?? `UID ${row.uid ?? row.subscriptionId}`;
+	const { identity } = row;
+	return identity.sourceKey === BILIBILI_SOURCE_KEY
+		? `UID ${identity.externalId}`
+		: identity.externalId;
 }

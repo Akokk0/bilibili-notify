@@ -37,11 +37,21 @@ export interface RoastInput {
 	 * prompt 里那句「标注为无记录的字段不要据此判定该 UP 偷懒」正是为它准备的。
 	 * 曾经这几项恒为 number,于是没采集到的 UP 会顶着一排 0 被模型判成鸽王。
 	 */
-	archives: number | null;
-	dynamics: number | null;
+	/** 带视频的作品数,提示词里的「投稿」。 */
+	videoPosts: number | null;
+	/** 全部作品数;提示词里的「动态」是它减去 `videoPosts`(见 {@link plainPostCount})。 */
+	posts: number | null;
 	liveSessions: number | null;
 	liveHours: number | null;
 	lastActivityAt: string | null;
+}
+
+/**
+ * 提示词里的「动态」= 全部作品减去带视频的。两格同时为 null 或同时为数(没采集覆盖就都是 null),
+ * 任一为 null 就是「无记录」。
+ */
+function plainPostCount(u: Pick<RoastInput, "videoPosts" | "posts">): number | null {
+	return u.posts === null || u.videoPosts === null ? null : u.posts - u.videoPosts;
 }
 
 /**
@@ -69,8 +79,8 @@ export function buildRoastPrompt(ups: readonly RoastInput[], days: number): stri
 		平台: u.platform,
 		近7日粉丝: u.net7d ?? "无记录",
 		[`近${days}日粉丝`]: u.netWindow ?? "无记录",
-		投稿: u.archives ?? "无记录",
-		动态: u.dynamics ?? "无记录",
+		投稿: u.videoPosts ?? "无记录",
+		动态: plainPostCount(u) ?? "无记录",
 		直播场次: u.liveSessions ?? "无记录",
 		直播时长h: u.liveHours === null ? "无记录" : Math.round(u.liveHours * 10) / 10,
 		最后活动: u.lastActivityAt ?? "无记录",
@@ -197,8 +207,8 @@ export function buildSoloRoastPrompt(up: RoastInput, days: number): string {
 		平台: up.platform,
 		近7日粉丝: up.net7d ?? "无记录",
 		[`近${days}日粉丝`]: up.netWindow ?? "无记录",
-		投稿: up.archives ?? "无记录",
-		动态: up.dynamics ?? "无记录",
+		投稿: up.videoPosts ?? "无记录",
+		动态: plainPostCount(up) ?? "无记录",
 		直播场次: up.liveSessions ?? "无记录",
 		直播时长h: up.liveHours === null ? "无记录" : Math.round(up.liveHours * 10) / 10,
 		最后活动: up.lastActivityAt ?? "无记录",

@@ -17,7 +17,7 @@ const NOW = Date.UTC(2026, 4, 16, 12, 0, 0);
 interface Fixture {
 	subs?: Array<{ uid: string }>;
 	samples?: Record<string, Array<{ ts: string; value: number }>>;
-	dynamics?: Record<string, Array<{ id: string; hasVideo: boolean; publishedAt: string }>>;
+	posts?: Record<string, Array<{ id: string; hasVideo: boolean; publishedAt: string }>>;
 	sessions?: Record<
 		string,
 		Array<{ startedAt: string; endedAt?: string; peakTotalViewers?: number }>
@@ -43,7 +43,7 @@ function makeDeps(f: Fixture): RouteDeps {
 				listSamplesSince: async (key: string) => f.samples?.[uidOf(key)] ?? [],
 			},
 			statsStore: {
-				listPosts: async (key: string) => f.dynamics?.[uidOf(key)] ?? [],
+				listPosts: async (key: string) => f.posts?.[uidOf(key)] ?? [],
 				listLiveSessions: async (key: string) => f.sessions?.[uidOf(key)] ?? [],
 				recordingSince: async () => f.recordingSince ?? "1970-01-01T00:00:00.000Z",
 			},
@@ -102,7 +102,7 @@ describe("GET /api/stats/overview — null 语义", () => {
 	it("从未采样的 UP:fans 与各窗口净增全为 null,不是 0", async () => {
 		const body = await get(makeDeps({ subs: [{ uid: "1" }] }));
 		const row = body.rows[0];
-		expect(row?.fans).toBeNull();
+		expect(row?.followers).toBeNull();
 		expect(row?.net1d).toBeNull();
 		expect(row?.net7d).toBeNull();
 		expect(row?.netWindow).toBeNull();
@@ -115,7 +115,7 @@ describe("GET /api/stats/overview — null 语义", () => {
 		const body = await get(
 			makeDeps({
 				subs: [{ uid: "1" }],
-				dynamics: {
+				posts: {
 					"1": [{ id: "d", hasVideo: true, publishedAt: new Date(NOW - 3600_000).toISOString() }],
 				},
 				sessions: { "1": [{ startedAt: new Date(NOW - 3 * DAY).toISOString() }] },
@@ -134,8 +134,8 @@ describe("GET /api/stats/overview — null 语义", () => {
 		// 的近 90 日视图把一位高产 UP 显示成「投稿 0 个」,而同一行热力图正画着
 		// 一片「无记录」——两个数在同一屏里互相打脸。
 		const body = await get(makeDeps({ subs: [{ uid: "1" }] }));
-		expect(body.rows[0]?.archives).toBeNull();
-		expect(body.rows[0]?.dynamics).toBeNull();
+		expect(body.rows[0]?.videoPosts).toBeNull();
+		expect(body.rows[0]?.posts).toBeNull();
 		expect(body.rows[0]?.liveSessions).toBeNull();
 		expect(body.rows[0]?.liveHours).toBeNull();
 		expect(body.rows[0]?.liveTimedSessions).toBeNull();
@@ -149,8 +149,8 @@ describe("GET /api/stats/overview — null 语义", () => {
 				samples: { "1": [{ ts: new Date(NOW).toISOString(), value: 100 }] },
 			}),
 		);
-		expect(body.rows[0]?.archives).toBe(0);
-		expect(body.rows[0]?.dynamics).toBe(0);
+		expect(body.rows[0]?.videoPosts).toBe(0);
+		expect(body.rows[0]?.posts).toBe(0);
 		expect(body.rows[0]?.liveSessions).toBe(0);
 	});
 });
@@ -189,7 +189,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			samples: { "1": [{ ts: new Date(NOW - DAY).toISOString(), value: 100 }] },
 			fansEntries: [{ uid: "1", current: 175 }],
 		});
-		expect((await get(deps)).rows[0]?.fans).toBe(175);
+		expect((await get(deps)).rows[0]?.followers).toBe(175);
 	});
 
 	it("poller 未就绪时回退到采样末值", async () => {
@@ -197,14 +197,14 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			subs: [{ uid: "1" }],
 			samples: { "1": [{ ts: new Date(NOW - DAY).toISOString(), value: 100 }] },
 		});
-		expect((await get(deps)).rows[0]?.fans).toBe(100);
+		expect((await get(deps)).rows[0]?.followers).toBe(100);
 	});
 
 	it("投稿与动态按有没有视频分栏", async () => {
 		const ts = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			dynamics: {
+			posts: {
 				"1": [
 					{ id: "a", hasVideo: true, publishedAt: ts },
 					{ id: "b", hasVideo: false, publishedAt: ts },
@@ -212,8 +212,26 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			},
 		});
 		const row = (await get(deps)).rows[0];
-		expect(row?.archives).toBe(1);
-		expect(row?.dynamics).toBe(1);
+		expect(row?.videoPosts).toBe(1);
+		expect(row?.posts).toBe(2);
+	});
+
+	it("posts 是全部作品、videoPosts 是其中带视频的:3 条带视频 + 5 条不带 → videoPosts 3、posts 8", async () => {
+		// 口径从「投稿 / 动态各算各的」改成「全部 / 其中带视频」:动态不再单独回,面板用 posts − videoPosts 算。
+		const ts = new Date(NOW - DAY).toISOString();
+		const post = (id: string, hasVideo: boolean) => ({ id, hasVideo, publishedAt: ts });
+		const deps = makeDeps({
+			subs: [{ uid: "1" }],
+			posts: {
+				"1": [
+					...["v1", "v2", "v3"].map((id) => post(id, true)),
+					...["p1", "p2", "p3", "p4", "p5"].map((id) => post(id, false)),
+				],
+			},
+		});
+		const row = (await get(deps)).rows[0];
+		expect(row?.videoPosts).toBe(3);
+		expect(row?.posts).toBe(8);
 	});
 
 	it("直播中的 UP 标记 live=true", async () => {
@@ -225,8 +243,8 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			],
 		});
 		const body = await get(deps);
-		expect(body.rows.find((r) => r.uid === "1")?.live).toBe(true);
-		expect(body.rows.find((r) => r.uid === "2")?.live).toBe(false);
+		expect(body.rows.find((r) => r.identity.externalId === "1")?.live).toBe(true);
+		expect(body.rows.find((r) => r.identity.externalId === "2")?.live).toBe(false);
 	});
 
 	it("lastActivityAt 取动态与开播里更晚的那个", async () => {
@@ -234,7 +252,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 		const late = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			dynamics: { "1": [{ id: "a", hasVideo: false, publishedAt: early }] },
+			posts: { "1": [{ id: "a", hasVideo: false, publishedAt: early }] },
 			sessions: { "1": [{ startedAt: late, endedAt: late }] },
 		});
 		expect((await get(deps)).rows[0]?.lastActivityAt).toBe(late);
@@ -248,7 +266,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 		const newer = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			dynamics: {
+			posts: {
 				"1": [
 					{ id: "new", hasVideo: false, publishedAt: newer },
 					{ id: "old", hasVideo: false, publishedAt: older },
@@ -314,20 +332,20 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 		const deps = makeDeps({
 			subs: [{ uid: "1" }, { uid: "2" }],
 			samples: { "1": dailySamples() }, // uid 2 的档案被删了
-			dynamics: {
+			posts: {
 				"2": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
 		const rows = (await get(deps, "?days=5")).rows;
-		const row2 = rows.find((r) => r.uid === "2");
+		const row2 = rows.find((r) => r.identity.externalId === "2");
 		expect(row2?.activity).toEqual([0, 0, 0, 0, 1]);
 	});
 
 	it("所有 UP 都没有采样 → 仍然全是 null,不凭空断言服务在跑", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			dynamics: {
+			posts: {
 				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
@@ -350,9 +368,15 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
 		const rows = (await get(deps, "?days=5")).rows;
-		expect(rows.find((r) => r.uid === "2")?.activity).toEqual([null, null, null, null, 0]);
+		expect(rows.find((r) => r.identity.externalId === "2")?.activity).toEqual([
+			null,
+			null,
+			null,
+			null,
+			0,
+		]);
 		// 老 UP 不受牵连 —— 这 5 天它一直在被采。
-		expect(rows.find((r) => r.uid === "1")?.activity).toEqual([0, 0, 0, 0, 0]);
+		expect(rows.find((r) => r.identity.externalId === "1")?.activity).toEqual([0, 0, 0, 0, 0]);
 	});
 
 	it("刚订阅、第一轮采样都还没跑的 UP → 整行留白", async () => {
@@ -363,10 +387,10 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 			samples: { "1": dailySamples() },
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
-		const row2 = (await get(deps, "?days=5")).rows.find((r) => r.uid === "2");
+		const row2 = (await get(deps, "?days=5")).rows.find((r) => r.identity.externalId === "2");
 		expect(row2?.activity).toEqual([null, null, null, null, null]);
 		// 一无所知时计数也是「不知道」,不是 0 —— 与热力图同一把尺子。
-		expect(row2?.dynamics).toBeNull();
+		expect(row2?.posts).toBeNull();
 	});
 
 	it("早于首次采样、但盘上真有活动的那天照常上色 —— 新遮罩只遮 0", async () => {
@@ -379,12 +403,14 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 				"1": dailySamples(),
 				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
 			},
-			dynamics: {
+			posts: {
 				"2": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW - 3 * DAY).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
-		const activity = (await get(deps, "?days=5")).rows.find((r) => r.uid === "2")?.activity;
+		const activity = (await get(deps, "?days=5")).rows.find(
+			(r) => r.identity.externalId === "2",
+		)?.activity;
 		expect(activity).toEqual([null, 1, null, null, 0]);
 	});
 
@@ -392,7 +418,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			samples: { "1": dailySamples() },
-			dynamics: {
+			posts: {
 				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW).toISOString(),
@@ -512,7 +538,7 @@ describe("GET /api/stats/overview — 缓存键", () => {
 		f.subs?.pop();
 		expect((await call(route)).rows).toHaveLength(1);
 		f.subs?.push({ uid: "3" });
-		expect((await call(route)).rows.map((r) => r.uid)).toEqual(["1", "3"]);
+		expect((await call(route)).rows.map((r) => r.identity.externalId)).toEqual(["1", "3"]);
 	});
 
 	it("订阅没变时照常命中缓存 —— 别把缓存直接废掉", async () => {

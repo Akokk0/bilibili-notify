@@ -18,7 +18,6 @@ import {
 	historyRowColor,
 	historyRowIdentity,
 	isExtensionIdentity,
-	isExtensionRow,
 	profileAvatarUrl,
 	subscriptionColor,
 } from "../up-display";
@@ -65,16 +64,6 @@ describe("isExtensionIdentity", () => {
 	it("来源键是 bilibili → 不是拓展;别的来源键(拓展 id)→ 是", () => {
 		expect(isExtensionIdentity(BILI_ROW.identity)).toBe(false);
 		expect(isExtensionIdentity(EXT_ROW.identity)).toBe(true);
-	});
-});
-
-// 统计行还是三个散格(归统计那一片改),它自己的判断照旧:两格都有才算拓展行。
-describe("isExtensionRow(统计行)", () => {
-	it("拓展那两格都有 → 是;缺一格或都没有 → 不是", () => {
-		expect(isExtensionRow({ extensionId: "douyin", externalId: "1" })).toBe(true);
-		expect(isExtensionRow({ extensionId: "douyin" })).toBe(false);
-		expect(isExtensionRow({ externalId: "1" })).toBe(false);
-		expect(isExtensionRow({})).toBe(false);
 	});
 });
 

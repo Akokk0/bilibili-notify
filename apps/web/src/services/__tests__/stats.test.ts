@@ -16,22 +16,25 @@ import {
 	cumulativeFans,
 	dayAxis,
 	fansKnownCount,
+	plainPostCount,
 	sparseLabels,
 } from "../stats.js";
 
-function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
+/** 夹具里 B 站行的身份写成 `uid` 好读,落到行上是 `identity`。 */
+function row(over: Partial<UpStatsRow> & { uid?: string } = {}): UpStatsRow {
+	const { uid = "1", ...rest } = over;
 	return {
-		subscriptionId: `s${over.uid ?? "1"}`,
-		uid: "1",
-		fans: 100,
+		subscriptionId: `s${uid}`,
+		identity: { sourceKey: "bilibili", externalId: uid },
+		followers: 100,
 		net1d: 1,
 		net7d: 7,
 		netWindow: 30,
 		series: [1, 2, 3],
 		cumulative: [100, 102, 105],
 		activity: [0, 1, 2],
-		archives: 1,
-		dynamics: 2,
+		videoPosts: 1,
+		posts: 3,
 		liveSessions: 1,
 		liveHours: 2,
 		liveTimedSessions: 0,
@@ -39,7 +42,7 @@ function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		avgViewers: 1000,
 		lastActivityAt: null,
 		live: false,
-		...over,
+		...rest,
 	};
 }
 
@@ -48,15 +51,16 @@ const res = (rows: UpStatsRow[], days = 3): StatsOverviewResponse => ({ days, ro
 describe("computeTotals", () => {
 	it("逐项求和", () => {
 		const t = computeTotals(res([row(), row({ uid: "2" })]));
-		expect(t.fans).toBe(200);
+		expect(t.followers).toBe(200);
 		expect(t.net7d).toBe(14);
-		expect(t.archives).toBe(2);
+		expect(t.videoPosts).toBe(2);
+		expect(t.posts).toBe(6);
 		expect(t.liveSessions).toBe(2);
 	});
 
 	it("某位 UP 无记录时跳过它,而不是把整站算成 null", () => {
-		const t = computeTotals(res([row({ fans: 100 }), row({ uid: "2", fans: null })]));
-		expect(t.fans).toBe(100);
+		const t = computeTotals(res([row({ followers: 100 }), row({ uid: "2", followers: null })]));
+		expect(t.followers).toBe(100);
 	});
 
 	it("计数类也按无记录汇总:全员 null → null,部分有数 → 只加有数的", () => {
@@ -64,25 +68,30 @@ describe("computeTotals", () => {
 		// 于是整站合计永远给得出一个数 —— null 这个事实在汇总层就没了。
 		const allNull = computeTotals(
 			res([
-				row({ archives: null, liveHours: null }),
-				row({ uid: "2", archives: null, liveHours: null }),
+				row({ videoPosts: null, posts: null, liveHours: null }),
+				row({ uid: "2", videoPosts: null, posts: null, liveHours: null }),
 			]),
 		);
-		expect(allNull.archives).toBeNull();
+		expect(allNull.videoPosts).toBeNull();
+		expect(allNull.posts).toBeNull();
 		expect(allNull.liveHours).toBeNull();
 
 		const partial = computeTotals(
-			res([row({ archives: 3, liveSessions: 2 }), row({ uid: "2", archives: null })]),
+			res([
+				row({ videoPosts: 3, posts: 4, liveSessions: 2 }),
+				row({ uid: "2", videoPosts: null, posts: null }),
+			]),
 		);
-		expect(partial.archives).toBe(3);
+		expect(partial.videoPosts).toBe(3);
+		expect(partial.posts).toBe(4);
 		expect(partial.liveSessions).toBe(3);
 	});
 
 	it("全员都无记录 → null,不是 0", () => {
 		const t = computeTotals(
-			res([row({ fans: null, net7d: null }), row({ uid: "2", fans: null, net7d: null })]),
+			res([row({ followers: null, net7d: null }), row({ uid: "2", followers: null, net7d: null })]),
 		);
-		expect(t.fans).toBeNull();
+		expect(t.followers).toBeNull();
 		expect(t.net7d).toBeNull();
 	});
 
@@ -114,10 +123,36 @@ describe("computeTotals", () => {
 	});
 });
 
+describe("plainPostCount —— 面板上「动态」的唯一算法", () => {
+	it("带视频 3 条、不带视频 5 条的一行(videoPosts 3 / posts 8)→ 投稿 3、动态 5", () => {
+		const r = row({ videoPosts: 3, posts: 8 });
+		expect(r.videoPosts).toBe(3);
+		expect(plainPostCount(r)).toBe(5);
+	});
+
+	it("没有视频的行:动态就是全部作品;全是视频的行:动态是 0 而不是无记录", () => {
+		expect(plainPostCount(row({ videoPosts: 0, posts: 4 }))).toBe(4);
+		expect(plainPostCount(row({ videoPosts: 2, posts: 2 }))).toBe(0);
+	});
+
+	it("无记录(两格都是 null)→ null,不写成 0;没有这一行同样是 null", () => {
+		expect(plainPostCount(row({ videoPosts: null, posts: null }))).toBeNull();
+		expect(plainPostCount(null)).toBeNull();
+		expect(plainPostCount(undefined)).toBeNull();
+	});
+
+	it("整站合计同一个算法:逐行相减再求和 = 合计相减", () => {
+		const rows = [row({ videoPosts: 3, posts: 8 }), row({ uid: "2", videoPosts: 1, posts: 2 })];
+		const perRow = rows.reduce((n, r) => n + (plainPostCount(r) ?? 0), 0);
+		expect(plainPostCount(computeTotals(res(rows)))).toBe(perRow);
+		expect(perRow).toBe(6);
+	});
+});
+
 describe("cumulativeFans — 粉丝总量曲线", () => {
 	/** 只喂这个函数要的两项。字段名写全,免得又跟 `series` 弄混。 */
-	const fansRow = (fans: number | null, cumulative: Array<number | null>) => ({
-		fans,
+	const fansRow = (followers: number | null, cumulative: Array<number | null>) => ({
+		followers,
 		cumulative,
 	});
 
@@ -133,7 +168,7 @@ describe("cumulativeFans — 粉丝总量曲线", () => {
 		// 小数,末位被换成几十万的当前粉丝数 —— 一条贴着 0 走、末端垂直拉起的线。
 		// 现在签名收整行,传错编译不过;这条守的是函数内部别哪天改回去读 series。
 		const row = {
-			fans: 1_000_120,
+			followers: 1_000_120,
 			series: [50, 70, null], // 每日净增
 			cumulative: [1_000_000, 1_000_070, null], // 每日末值
 		};
@@ -231,15 +266,15 @@ describe("sparseLabels", () => {
 
 describe("fansKnownCount — 「总粉丝量」是不是全站合计", () => {
 	it("只数有粉丝记录的 UP", () => {
-		expect(fansKnownCount([row({ fans: 100 }), row({ uid: "2", fans: null })])).toBe(1);
+		expect(fansKnownCount([row({ followers: 100 }), row({ uid: "2", followers: null })])).toBe(1);
 	});
 
 	it("全员有数 → 等于订阅数,标签就不必标注", () => {
-		expect(fansKnownCount([row({ fans: 1 }), row({ uid: "2", fans: 0 })])).toBe(2);
+		expect(fansKnownCount([row({ followers: 1 }), row({ uid: "2", followers: 0 })])).toBe(2);
 	});
 
 	it("0 粉丝算有记录 —— 与「没采到」是两回事", () => {
-		expect(fansKnownCount([row({ fans: 0 })])).toBe(1);
+		expect(fansKnownCount([row({ followers: 0 })])).toBe(1);
 	});
 });
 

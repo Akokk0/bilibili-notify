@@ -152,11 +152,11 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		expect(res.status).toBe(200);
 		const { rows } = (await res.json()) as StatsOverviewResponse;
 		expect(rows.find((row) => row.subscriptionId === ON)).toMatchObject({
-			extensionId: FAKE,
+			identity: { sourceKey: FAKE },
 			live: true,
 		});
 		expect(rows.find((row) => row.subscriptionId === OFF)).toMatchObject({
-			extensionId: FAKE,
+			identity: { sourceKey: FAKE },
 			live: false,
 		});
 

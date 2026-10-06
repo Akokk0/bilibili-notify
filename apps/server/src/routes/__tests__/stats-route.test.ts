@@ -75,11 +75,11 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 		const app = createStatsRoute(deps);
 
 		const before = (await (await app.request("/overview?days=7&tz=0")).json()) as any;
-		expect(before.rows[0].fans).toBe(100);
+		expect(before.rows[0].followers).toBe(100);
 
 		state.fans = 12_345;
 		const after = (await (await app.request("/overview?days=7&tz=0")).json()) as any;
-		expect(after.rows[0].fans).toBe(12_345);
+		expect(after.rows[0].followers).toBe(12_345);
 	});
 
 	it("输入全没变时照常命中缓存 —— 别把缓存改成摆设", async () => {

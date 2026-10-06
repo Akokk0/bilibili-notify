@@ -47,11 +47,11 @@ const biliId = (uid: string) => `sub-${uid}`;
 function row(uid: string) {
 	return {
 		subscriptionId: biliId(uid),
-		uid,
+		identity: { sourceKey: "bilibili", externalId: uid },
 		net7d: 1,
 		netWindow: 2,
-		archives: 3,
-		dynamics: 4,
+		videoPosts: 3,
+		posts: 7,
 		liveSessions: 5,
 		liveHours: 6,
 		lastActivityAt: "2026-08-01T00:00:00.000Z",
@@ -66,14 +66,12 @@ interface ExtFixture {
 	profileName?: string;
 }
 
-/** 拓展订阅在 overview 里的那一行:不带 uid,带拓展 id + 外部 id。 */
+/** 拓展订阅在 overview 里的那一行:身份的来源键是拓展 id。 */
 function extRow(e: ExtFixture) {
-	const { uid: _uid, ...rest } = row("x");
 	return {
-		...rest,
+		...row("x"),
 		subscriptionId: e.id,
-		extensionId: e.extensionId,
-		externalId: e.externalId,
+		identity: { sourceKey: e.extensionId, externalId: e.externalId },
 	};
 }
 
@@ -508,29 +506,32 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 	});
 });
 
-describe("overview 行 → 提示词:「投稿 / 动态」取的是行上的 archives / dynamics", () => {
+describe("overview 行 → 提示词:「投稿」取 videoPosts、「动态」取 posts − videoPosts", () => {
 	beforeEach(() => {
 		comment.mockClear();
 	});
-	const rowWith = (uid: string, archives: number | null, dynamics: number | null) => ({
+	// 参数是面板上的两个数(投稿 / 动态);行上存的是 videoPosts 与全部作品数 posts。
+	const rowWith = (uid: string, videoPosts: number | null, plainPosts: number | null) => ({
 		...row(uid),
-		archives,
-		dynamics,
+		videoPosts,
+		posts: videoPosts === null || plainPosts === null ? null : videoPosts + plainPosts,
 	});
 	const dataLine = () => String(comment.mock.calls.at(-1)?.[0]).split("\n")[1] ?? "";
 
-	// 验红:把 roast-generate.ts 的 toRoastInput 里 archives / dynamics 两行对调取值,本组全红。
+	// 验红:把 roast-generate.ts 的 toRoastInput 里 videoPosts / posts 两行对调取值,本组全红。
 	it("榜单:每一行的 投稿 / 动态 各取各的格,null 写「无记录」", async () => {
 		await generateBoardRoast(makeDeps(["1", "2"]), {
 			days: 7,
 			tz: 0,
 			fetchOverview: async () =>
-				({ rows: [rowWith("1", 3, 5), rowWith("2", null, 7)] }) as unknown as StatsOverviewResponse,
+				({
+					rows: [rowWith("1", 3, 5), rowWith("2", null, null)],
+				}) as unknown as StatsOverviewResponse,
 		});
 		const table = JSON.parse(dataLine()) as Array<Record<string, unknown>>;
 		expect(table.map((t) => [t.投稿, t.动态])).toEqual([
 			[3, 5],
-			["无记录", 7],
+			["无记录", "无记录"],
 		]);
 	});
 

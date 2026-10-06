@@ -420,10 +420,10 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 		const bili = rows.find((r) => r.subscriptionId === S_BILI);
 		expect(bili).toMatchObject({
-			uid: UID,
-			fans: 1040,
-			archives: 1,
-			dynamics: 1,
+			identity: { sourceKey: "bilibili", externalId: UID },
+			followers: 1040,
+			videoPosts: 1,
+			posts: 2,
 			liveSessions: 1,
 			liveHours: 2,
 			liveTimedSessions: 1,
@@ -435,16 +435,14 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			// 六天前:采集之前没采样;五天前到昨天有 B 站采样;今天 B 站没采(停用)—— 拓展今天报的资料不算数。
 			activity: [null, 0, 1, 1, 1, 0, null],
 		});
-		expect(bili?.extensionId).toBeUndefined();
 
 		const ext = rows.find((r) => r.subscriptionId === S_EXT);
 		expect(ext).toMatchObject({
-			extensionId: FAKE,
-			externalId: EXT_ID,
+			identity: { sourceKey: FAKE, externalId: EXT_ID },
 			// 当前粉丝取最近报的资料(2222),不取稀释过的样本末值(1111)。
-			fans: 2222,
-			archives: 1,
-			dynamics: 0,
+			followers: 2222,
+			videoPosts: 1,
+			posts: 1,
 			liveSessions: 0,
 			maxViewers: null,
 			lastActivityAt: at(3),
@@ -452,7 +450,6 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			// 三天前之前没开始记(B 站那几天在采也不借);四天前那天没「在记」、也没作品 —— 无记录;昨天、今天在记。
 			activity: [null, null, null, 1, null, 0, 0],
 		});
-		expect(ext?.uid).toBeUndefined();
 	});
 
 	it("首页粉丝面板:拓展那一行上得来(当前是最近报的资料,起点是盘上第一条样本,24h 比昨天那条);停用的 B 站那位不在", async () => {

@@ -45,19 +45,16 @@ export function windowSinceIso(days: number, tzOffsetMin: number, now = new Date
 }
 
 export interface PostCounts {
-	archives: number;
-	dynamics: number;
+	/** 带视频的作品数(面板上的「投稿」)。 */
+	videoPosts: number;
+	/** 全部作品数,带视频的也算在内(面板上的「动态」是它减去 `videoPosts`,ADR-0019 决策 65)。 */
+	posts: number;
 }
 
-/** 投稿 = 带视频的作品,动态 = 其余(页面上照旧叫「投稿 / 动态」,ADR-0019 决策 65)。 */
 export function countPosts(events: readonly PostEntry[]): PostCounts {
-	let archives = 0;
-	let dynamics = 0;
-	for (const e of events) {
-		if (e.hasVideo) archives++;
-		else dynamics++;
-	}
-	return { archives, dynamics };
+	let videoPosts = 0;
+	for (const e of events) if (e.hasVideo) videoPosts++;
+	return { videoPosts, posts: events.length };
 }
 
 /** 某个本地日的粉丝数据点。`null` = 该日无样本,与「零净增」严格区分。 */

@@ -57,7 +57,7 @@ export const RATCHET = {
 	"apps/server/src/routes/auth.ts": 3,
 	"apps/server/src/routes/cards.ts": 14,
 	"apps/server/src/routes/live.ts": 2,
-	"apps/server/src/routes/stats.ts": 11,
+	"apps/server/src/routes/stats.ts": 10,
 	"apps/server/src/routes/subscriptions.ts": 9,
 	"apps/server/src/runtime/engines.ts": 25,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
@@ -70,7 +70,7 @@ export const RATCHET = {
 	"apps/server/src/stats/extension-source.ts": 3,
 	"apps/server/src/stats/recorder.ts": 2,
 	"apps/server/src/stats/roast-deliver.ts": 2,
-	"apps/server/src/stats/roast-subject.ts": 4,
+	"apps/server/src/stats/roast-subject.ts": 6,
 	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。
 	"apps/web/src/config/membership-programs.ts": 2,
 	"apps/web/src/components/ai-chat/index.tsx": 2,

@@ -10,19 +10,20 @@ import { describe, expect, it } from "vite-plus/test";
 import type { UpStatsRow } from "../../../services/stats.js";
 import { buildRadarAxes, normalizeAxis } from "../radar.js";
 
-function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
+function row(over: Partial<UpStatsRow> & { uid?: string } = {}): UpStatsRow {
+	const { uid = "1", ...rest } = over;
 	return {
-		subscriptionId: `s${over.uid ?? "1"}`,
-		uid: "1",
-		fans: 10_000,
+		subscriptionId: `s${uid}`,
+		identity: { sourceKey: "bilibili", externalId: uid },
+		followers: 10_000,
 		net1d: 10,
 		net7d: 100,
 		netWindow: 100,
 		series: [],
 		cumulative: [],
 		activity: [],
-		archives: 2,
-		dynamics: 5,
+		videoPosts: 2,
+		posts: 7,
 		liveSessions: 1,
 		liveHours: 3,
 		liveTimedSessions: 0,
@@ -30,7 +31,7 @@ function row(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		avgViewers: 500,
 		lastActivityAt: null,
 		live: false,
-		...over,
+		...rest,
 	};
 }
 
@@ -129,18 +130,19 @@ describe("buildRadarAxes", () => {
 
 	it("六根轴各取各的字段 —— 哨兵值逐轴对位", () => {
 		// 曾经只断言了「涨粉势头」与「粉丝规模」两根,其余四根仅被 toHaveLength(6)
-		// 数了个数:把「投稿量」的 pick 换成 r.dynamics 照样全绿。这里给每个字段一个
+		// 数了个数:把「投稿量」的 pick 换成 r.posts 照样全绿。这里给每个字段一个
 		// 互不相同的哨兵值,任何一轴接错线都会在 display 上露馅。
 		const a = row({
 			uid: "1",
-			fans: 1000,
+			followers: 1000,
 			netWindow: 11,
-			archives: 22,
-			dynamics: 33,
+			// 投稿 22、动态 33:行上存的是带视频的 22 条与全部作品 55 条。
+			videoPosts: 22,
+			posts: 55,
 			liveSessions: 44,
 			liveHours: 55,
 		});
-		const b = row({ uid: "2", fans: 2000 });
+		const b = row({ uid: "2", followers: 2000 });
 		const byLabel = Object.fromEntries(
 			(buildRadarAxes(a, [a, b]) ?? []).map((x) => [x.label, x.display]),
 		);
@@ -153,8 +155,8 @@ describe("buildRadarAxes", () => {
 	it("某维度无记录 → 该轴 value 为 null,不拿 0 顶格", () => {
 		// 无采集覆盖时这几项是 null。归一化成 0 会把「不知道」画成「垫底」,
 		// 那根轴看着就是这位 UP 在这个维度上最差 —— 而事实是我们没在记。
-		const a = row({ uid: "1", archives: null, liveHours: null });
-		const b = row({ uid: "2", archives: 10, liveHours: 10 });
+		const a = row({ uid: "1", videoPosts: null, posts: null, liveHours: null });
+		const b = row({ uid: "2", videoPosts: 10, posts: 10, liveHours: 10 });
 		const byLabel = Object.fromEntries(
 			(buildRadarAxes(a, [a, b]) ?? []).map((x) => [x.label, x.value]),
 		);
@@ -169,7 +171,7 @@ describe("buildRadarAxes", () => {
 
 	it("两位起就能画", () => {
 		const a = row({ uid: "1" });
-		const b = row({ uid: "2", fans: 50_000 });
+		const b = row({ uid: "2", followers: 50_000 });
 		expect(buildRadarAxes(a, [a, b])).toHaveLength(6);
 	});
 
@@ -181,7 +183,7 @@ describe("buildRadarAxes", () => {
 	});
 
 	it("无记录的维度标成「无记录」且 value 为 null", () => {
-		const a = row({ uid: "1", fans: null });
+		const a = row({ uid: "1", followers: null });
 		const b = row({ uid: "2" });
 		const axis = buildRadarAxes(a, [a, b])?.find((x) => x.label === "粉丝规模(当前)");
 		expect(axis?.value).toBeNull();

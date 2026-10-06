@@ -16,19 +16,21 @@ import type { UpStatsRow } from "../../../services/stats.js";
 import { buildCsv, type CsvWho, csvColumns } from "../csv.js";
 
 /** 每个字段一个独一无二的哨兵值,任何一列取错都会露馅。 */
-function sentinel(over: Partial<UpStatsRow> = {}): UpStatsRow {
+function sentinel(over: Partial<UpStatsRow> & { uid?: string } = {}): UpStatsRow {
+	const { uid = "777", ...rest } = over;
 	return {
 		subscriptionId: "s777",
-		uid: "777",
-		fans: 1,
+		identity: { sourceKey: "bilibili", externalId: uid },
+		followers: 1,
 		net1d: 2,
 		net7d: 3,
 		netWindow: 4,
 		series: [],
 		cumulative: [],
 		activity: [],
-		archives: 5,
-		dynamics: 6,
+		// 投稿 5、动态 6:行上存的是带视频的 5 条与全部作品 11 条,「动态」是相减出来的。
+		videoPosts: 5,
+		posts: 11,
 		liveSessions: 7,
 		liveHours: 8,
 		liveTimedSessions: 9,
@@ -36,19 +38,22 @@ function sentinel(over: Partial<UpStatsRow> = {}): UpStatsRow {
 		avgViewers: 11,
 		lastActivityAt: "2026-05-16T00:00:00.000Z",
 		live: false,
-		...over,
+		...rest,
 	};
 }
 
-/** 拓展行:带拓展 id + 外部 id、不带 uid。 */
+/** 拓展行:身份的来源键是拓展 id。 */
 function extSentinel(over: Partial<UpStatsRow> = {}): UpStatsRow {
-	const { uid: _uid, ...rest } = sentinel(over);
-	return { ...rest, subscriptionId: "s-dy", extensionId: "douyin", externalId: "sec-1" };
+	return {
+		...sentinel(over),
+		subscriptionId: "s-dy",
+		identity: { sourceKey: "douyin", externalId: "sec-1" },
+	};
 }
 
 const who: CsvWho = {
-	nameOf: (r) => `名字-${r.uid ?? r.externalId}`,
-	platformOf: (r) => (r.extensionId === "douyin" ? "抖音" : "B 站"),
+	nameOf: (r) => `名字-${r.identity.externalId}`,
+	platformOf: (r) => (r.identity.sourceKey === "douyin" ? "抖音" : "B 站"),
 };
 
 describe("csvColumns", () => {
@@ -122,7 +127,11 @@ describe("buildCsv", () => {
 	});
 
 	it("无记录写空单元格,不写 0 —— 导出的表要能直接拿去算", () => {
-		const csv = buildCsv([sentinel({ fans: null, archives: null, liveHours: null })], 30, who);
+		const csv = buildCsv(
+			[sentinel({ followers: null, videoPosts: null, posts: null, liveHours: null })],
+			30,
+			who,
+		);
 		const cells = csv.split("\n")[1]?.split(",") ?? [];
 		expect(cells[4]).toBe(""); // 粉丝数
 		expect(cells[7]).toBe(""); // 投稿
@@ -130,7 +139,7 @@ describe("buildCsv", () => {
 	});
 
 	it("0 照常写 0,不与无记录混为一谈", () => {
-		const csv = buildCsv([sentinel({ archives: 0, liveHours: 0 })], 30, who);
+		const csv = buildCsv([sentinel({ videoPosts: 0, posts: 0, liveHours: 0 })], 30, who);
 		const cells = csv.split("\n")[1]?.split(",") ?? [];
 		expect(cells[7]).toBe("0");
 		expect(cells[10]).toBe("0.0");

@@ -22,17 +22,17 @@ const TZ_CN = -480;
 const CN = (day: number, h: number) => new Date(Date.UTC(2026, 4, day, h - 8, 0, 0)).toISOString();
 
 describe("countPosts", () => {
-	it("按有没有视频分别计数:带视频的进投稿,其余进动态", () => {
+	it("带视频的单独计一格,全部作品另计一格(带视频的也算在内)", () => {
 		const got = countPosts([
 			{ id: "1", hasVideo: true, publishedAt: CN(16, 10) },
 			{ id: "2", hasVideo: true, publishedAt: CN(16, 11) },
 			{ id: "3", hasVideo: false, publishedAt: CN(16, 12) },
 		]);
-		expect(got).toEqual({ archives: 2, dynamics: 1 });
+		expect(got).toEqual({ videoPosts: 2, posts: 3 });
 	});
 
 	it("空输入 → 全 0", () => {
-		expect(countPosts([])).toEqual({ archives: 0, dynamics: 0 });
+		expect(countPosts([])).toEqual({ videoPosts: 0, posts: 0 });
 	});
 });
 

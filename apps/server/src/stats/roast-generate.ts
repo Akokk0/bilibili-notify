@@ -82,12 +82,12 @@ function toRoastInput(
 ): RoastInput {
 	return {
 		subscriptionId: row.subscriptionId,
-		platform: roastPlatformLabel(deps, row),
+		platform: roastPlatformLabel(deps, row.identity),
 		name: roastRowName(deps, row, sub),
 		net7d: row.net7d,
 		netWindow: row.netWindow,
-		archives: row.archives,
-		dynamics: row.dynamics,
+		videoPosts: row.videoPosts,
+		posts: row.posts,
 		liveSessions: row.liveSessions,
 		liveHours: row.liveHours,
 		lastActivityAt: row.lastActivityAt,

@@ -116,7 +116,7 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 			const store = await migrateAndOpen();
 			const events = await store.listPosts("1", SINCE);
 			const sessions = await store.listLiveSessions("1", SINCE);
-			expect(countPosts(events)).toEqual({ archives: 2, dynamics: 4 });
+			expect(countPosts(events)).toEqual({ videoPosts: 2, posts: 6 });
 			expect(dailyActivityCounts(events, sessions, { days: 3, tzOffsetMin: 0, now: NOW })).toEqual([
 				0, 3, 6,
 			]);
@@ -230,7 +230,7 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 				{ id: "n1", hasVideo: true, publishedAt: "2026-05-16T01:00:00.000Z" },
 				{ id: "n2", hasVideo: false, publishedAt: "2026-05-16T02:00:00.000Z" },
 			]);
-			expect(countPosts(events)).toEqual({ archives: 1, dynamics: 1 });
+			expect(countPosts(events)).toEqual({ videoPosts: 1, posts: 2 });
 		});
 	});
 

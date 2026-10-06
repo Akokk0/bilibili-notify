@@ -10,7 +10,7 @@
  * 是它自己 `id` 对应的字段 —— 这条不变式由 `columns.test.ts` 钉死。
  */
 
-import type { UpStatsRow } from "../../services/stats";
+import { plainPostCount, type UpStatsRow } from "../../services/stats";
 import { dash } from "./chart-utils";
 
 /**
@@ -24,8 +24,8 @@ export const VIEWERS_HINT = "按每场累计看过的人数算";
 export type StatColumnId =
 	| "net7d"
 	| "netWindow"
-	| "archives"
-	| "dynamics"
+	| "videoPosts"
+	| "plainPosts"
 	| "liveSessions"
 	| "liveHours"
 	| "maxViewers";
@@ -71,17 +71,17 @@ export function buildStatColumns(
 		{ id: "net7d", label: "近7日粉丝", value: (r) => r.net7d, kind: "delta" },
 		{ id: "netWindow", label: `近${days}日粉丝`, value: (r) => r.netWindow, kind: "delta" },
 		{
-			id: "archives",
+			id: "videoPosts",
 			label: "投稿",
-			value: (r) => r.archives,
+			value: (r) => r.videoPosts,
 			kind: "text",
 			format: (v) => dash(v),
 			color: palette.blue,
 		},
 		{
-			id: "dynamics",
+			id: "plainPosts",
 			label: "动态",
-			value: (r) => r.dynamics,
+			value: plainPostCount,
 			kind: "text",
 			format: (v) => dash(v),
 			color: palette.purple,

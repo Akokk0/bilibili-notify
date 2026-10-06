@@ -10,7 +10,8 @@
  * 纯函数,不碰 DOM —— 下载那几行留在调用方,这里可以直接被测试拿去跑。
  */
 
-import type { UpStatsRow } from "../../services/stats";
+import { plainPostCount, type UpStatsRow } from "../../services/stats";
+import { isExtensionIdentity } from "../../utils/up-display";
 
 /**
  * 一行「是谁」的那两样,由调用方注入 —— 昵称在缓存的 profile 里、平台名在装着的拓展清单里,都不在统计行上。
@@ -41,15 +42,19 @@ export function csvColumns(days: number): CsvColumn[] {
 		// 另起一列、不塞进 UID:外部 id 恰好是一串数字时,塞进去就是把另一个平台上的另一个人认成某位 B 站 UP
 		// (ADR-0019 决策 73)。「平台」让两支混在一张表里也分得清。
 		{ header: "平台", value: (r, who) => who.platformOf(r) },
-		{ header: "UID", value: (r) => r.uid ?? "" },
-		{ header: "外部 ID", value: (r) => r.externalId ?? "" },
-		{ header: "粉丝数", value: (r) => cell(r.fans) },
+		// 两列都从 `identity` 取:B 站行填 UID、拓展行填外部 ID(合成一列留给第 4 期)。
+		{ header: "UID", value: (r) => (isExtensionIdentity(r.identity) ? "" : r.identity.externalId) },
+		{
+			header: "外部 ID",
+			value: (r) => (isExtensionIdentity(r.identity) ? r.identity.externalId : ""),
+		},
+		{ header: "粉丝数", value: (r) => cell(r.followers) },
 		{ header: "近7日粉丝", value: (r) => cell(r.net7d) },
 		{ header: `近${days}日粉丝`, value: (r) => cell(r.netWindow) },
 		// 列序跟着屏幕上那张表走(见 columns.ts):导出的就是它,两边不一致的话
 		// 拿 CSV 对屏幕的人会以为自己看串行了。
-		{ header: "投稿", value: (r) => cell(r.archives) },
-		{ header: "动态", value: (r) => cell(r.dynamics) },
+		{ header: "投稿", value: (r) => cell(r.videoPosts) },
+		{ header: "动态", value: (r) => cell(plainPostCount(r)) },
 		{ header: "直播场次", value: (r) => cell(r.liveSessions) },
 		{ header: "直播时长(h)", value: (r) => cell(r.liveHours, (n) => n.toFixed(1)) },
 		{ header: "单场最高观看", value: (r) => cell(r.maxViewers) },

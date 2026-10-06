@@ -641,17 +641,15 @@ export interface UpStatsRow {
 	 */
 	subscriptionId: string;
 	/**
-	 * 这是谁(决策 1,同推送历史 / ADR-0019 决策 73):B 站行带 `uid`;拓展行带 `extensionId` +
-	 * `externalId`、不带 `uid`。只管颜色、名字兜底、页头写 UID 还是平台 + 外部 id —— 键是上面那个。
+	 * 这是谁(决策 1,同推送历史 / ADR-0019 决策 73):订阅的身份(来源键 + 外部 id),B 站行与拓展行
+	 * 同一种形状,与推送历史那一行是同一个类型。只管颜色、名字兜底、页头写 UID 还是平台 + 外部 id —— 键是上面那个。
 	 */
-	uid?: string;
-	extensionId?: string;
-	externalId?: string;
+	identity: Identity;
 	/**
 	 * 此刻的粉丝数:B 站取粉丝轮询的最新快照、拓展取它最近报的资料(停用的两支都退回粉丝时序的末值);
 	 * 从未采到为 null —— 平台不报粉丝数的拓展订阅恒为 null(ADR-0020 决策 8)。
 	 */
-	fans: number | null;
+	followers: number | null;
 	/**
 	 * 近 1 / 7 个本地日的净增 —— **口径固定,不随请求的 days 变**。
 	 * 窗口比该口径还短时为 null(窗口里根本没有那么多天可加)。
@@ -692,15 +690,16 @@ export interface UpStatsRow {
 	 * prompt 里「标注为无记录的字段不要据此判定该 UP 偷懒」对这几项从来没生效过。
 	 */
 	/**
-	 * 窗口内的「投稿」数 = 发了视频的作品(ADR-0020 决策 5:统计仓里记成 `video`)。B 站是视频投稿,
-	 * 拓展是带视频的作品 —— 跨平台同一件事。
+	 * 窗口内**带视频**的作品数 —— 面板与 CSV 上的「投稿」。B 站是视频投稿,拓展是带视频的作品,
+	 * 跨平台同一件事。与 `posts` 同时为 null 或同时为数。
 	 */
-	archives: number | null;
+	videoPosts: number | null;
 	/**
-	 * 窗口内的「动态」数 = 其余的作品(统计仓里的 `post`:图文、纯文字、转发……)。B 站动态流里的
-	 * 开播公告(`live`)不算作品,只当活动的证据。
+	 * 窗口内**全部**作品数(带视频的也算在内:图文、纯文字、转发……)。面板与 CSV 上的「动态」是它减去
+	 * `videoPosts`(面板上只在 `services/stats.ts` 的 `plainPostCount` 那一处相减)。B 站动态流里的开播
+	 * 公告不是作品、不计入。
 	 */
-	dynamics: number | null;
+	posts: number | null;
 	/** 窗口内的开播场次(含仍在进行的那场)。 */
 	liveSessions: number | null;
 	/** 已闭合场次的总时长(小时)。 */

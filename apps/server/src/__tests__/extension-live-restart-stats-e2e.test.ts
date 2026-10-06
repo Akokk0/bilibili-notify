@@ -272,7 +272,7 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		);
 		await press("report.liveStart");
 		await framesSettle([start()]);
-		expect(await row(7)).toMatchObject({ live: true, liveSessions: 1, dynamics: 1 });
+		expect(await row(7)).toMatchObject({ live: true, liveSessions: 1, posts: 1, videoPosts: 0 });
 
 		await shutdown();
 		expect(await frames()).toEqual([start(), end(5000)]);

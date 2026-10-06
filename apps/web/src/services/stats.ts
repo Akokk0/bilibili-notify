@@ -42,7 +42,7 @@ export function sparseLabels(days: string[], every = 6): string[] {
 
 /** 汇总所有 UP 的一行「全站」数据,供全局视图的 KPI 使用。 */
 export interface StatsTotals {
-	fans: number | null;
+	followers: number | null;
 	net1d: number | null;
 	net7d: number | null;
 	/** 整个窗口的净增合计;口径见 contract 的 UpStatsRow.netWindow。 */
@@ -58,8 +58,8 @@ export interface StatsTotals {
 	 * 用 `sumNullable` 而不是 `reduce(+)` —— 后者会把「没记录」加成 0,整站合计
 	 * 于是永远给得出一个数,「无记录」这个事实在汇总这一层就被抹掉了。
 	 */
-	archives: number | null;
-	dynamics: number | null;
+	videoPosts: number | null;
+	posts: number | null;
 	liveSessions: number | null;
 	liveHours: number | null;
 	liveTimedSessions: number | null;
@@ -97,17 +97,31 @@ function sumNullable(rows: readonly UpStatsRow[], pick: (r: UpStatsRow) => numbe
 	return seen ? sum : null;
 }
 
+/**
+ * 面板与 CSV 上的「动态」= 全部作品减去带视频的(「投稿」就是 `videoPosts` 本身)。**整个前端只在这一处相减**:
+ * 表格列、雷达、KPI、内容构成、CSV 都调它,别处各算各的。
+ *
+ * 行与整站合计(`StatsTotals`)都有这两格;两格同时为 null 或同时为数(没采集覆盖就都是 null),任一为 null
+ * 就是「无记录」—— 返回 null,不写成 0。没有这一行(整站合计还没算出来)同样是 null。
+ */
+export function plainPostCount(
+	counts: { videoPosts: number | null; posts: number | null } | null | undefined,
+): number | null {
+	if (!counts || counts.videoPosts === null || counts.posts === null) return null;
+	return counts.posts - counts.videoPosts;
+}
+
 export function computeTotals(res: StatsOverviewResponse): StatsTotals {
 	const rows = res.rows;
 	return {
-		fans: sumNullable(rows, (r) => r.fans),
+		followers: sumNullable(rows, (r) => r.followers),
 		net1d: sumNullable(rows, (r) => r.net1d),
 		net7d: sumNullable(rows, (r) => r.net7d),
 		netWindow: sumNullable(rows, (r) => r.netWindow),
 		series: sumSeries(rows, res.days),
 		activity: sumSeries(rows, res.days, (r) => r.activity),
-		archives: sumNullable(rows, (r) => r.archives),
-		dynamics: sumNullable(rows, (r) => r.dynamics),
+		videoPosts: sumNullable(rows, (r) => r.videoPosts),
+		posts: sumNullable(rows, (r) => r.posts),
 		liveSessions: sumNullable(rows, (r) => r.liveSessions),
 		liveHours: sumNullable(rows, (r) => r.liveHours),
 		liveTimedSessions: sumNullable(rows, (r) => r.liveTimedSessions),
@@ -136,11 +150,13 @@ export function computeTotals(res: StatsOverviewResponse): StatsTotals {
  * 被换成几十万的当前粉丝数,成了一条贴着 0 走、末端垂直拉起的折线。typecheck 全绿。
  * 现在传错字段直接编译不过。
  */
-export function cumulativeFans(row: Pick<UpStatsRow, "fans" | "cumulative">): Array<number | null> {
+export function cumulativeFans(
+	row: Pick<UpStatsRow, "followers" | "cumulative">,
+): Array<number | null> {
 	const out = [...row.cumulative];
 	// 末位优先用 poller 的最新快照:它比当日最后一条采样更新,而这条线的右端点
 	// 正是 KPI 上那个「当前粉丝数」,两者对不上会很显眼。
-	if (row.fans !== null && out.length > 0) out[out.length - 1] = row.fans;
+	if (row.followers !== null && out.length > 0) out[out.length - 1] = row.followers;
 	return out;
 }
 
@@ -153,7 +169,7 @@ export function cumulativeFans(row: Pick<UpStatsRow, "fans" | "cumulative">): Ar
  */
 export function fansKnownCount(rows: readonly UpStatsRow[]): number {
 	let n = 0;
-	for (const r of rows) if (r.fans !== null) n++;
+	for (const r of rows) if (r.followers !== null) n++;
 	return n;
 }
 

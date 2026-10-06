@@ -17,17 +17,17 @@ const FMT = { hours: (v: number) => v.toFixed(1), num: (v: number | null) => Str
 const SENTINEL: Record<StatColumnId, number> = {
 	net7d: 11,
 	netWindow: 22,
-	archives: 33,
+	videoPosts: 33,
 	liveSessions: 44,
 	liveHours: 55,
-	dynamics: 66,
+	plainPosts: 66,
 	maxViewers: 77,
 };
 
 const row: UpStatsRow = {
 	subscriptionId: "s1",
-	uid: "1",
-	fans: 1000,
+	identity: { sourceKey: "bilibili", externalId: "1" },
+	followers: 1000,
 	net1d: 99,
 	// 场均时长的分母,不参与表格列。
 	liveTimedSessions: 44,
@@ -38,6 +38,8 @@ const row: UpStatsRow = {
 	lastActivityAt: null,
 	live: false,
 	...SENTINEL,
+	// 行上存的是带视频的 33 条与全部作品 99 条;「动态」那列的 66 是相减出来的。
+	posts: SENTINEL.videoPosts + SENTINEL.plainPosts,
 };
 
 describe("buildStatColumns", () => {
@@ -63,7 +65,7 @@ describe("buildStatColumns", () => {
 		};
 		expect(cell("liveHours")).toBe("55.0h");
 		expect(cell("liveSessions")).toBe("44");
-		expect(cell("dynamics")).toBe("66");
+		expect(cell("plainPosts")).toBe("66");
 	});
 
 	it("窗口天数进表头", () => {

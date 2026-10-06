@@ -188,6 +188,10 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as StatsOverviewResponse;
 		expect(body.rows).toHaveLength(1);
-		expect(body.rows[0]).toMatchObject({ uid: UID, archives: 1, liveSessions: 1 });
+		expect(body.rows[0]).toMatchObject({
+			identity: { sourceKey: "bilibili", externalId: UID },
+			videoPosts: 1,
+			liveSessions: 1,
+		});
 	});
 });

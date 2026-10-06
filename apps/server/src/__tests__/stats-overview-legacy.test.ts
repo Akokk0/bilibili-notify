@@ -8,6 +8,10 @@
  *   B. 同一串 B 站总线事件经新的 B 站适配(uid → 订阅 id)落盘,再读出来 —— 新数据与老版本
  *      记的同口径。
  *
+ * ㉖d 起行上是 `videoPosts`(带视频的)与 `posts`(全部作品),原先的「动态」= `posts − videoPosts`;下面
+ * 期望值里的 `posts` 就是改之前的 `archives + dynamics`,另有一条用例把「投稿 / 动态」两个显示数按相减读出来,
+ * 与改之前逐个相同。
+ *
  * S4 起两格峰值改名 `maxViewers` / `avgViewers`(ADR-0020 决策 18),只改名、数一个不变;行多了
  * `subscriptionId` 与身份两格,这里按 uid 取 B 站行、只比数字那几格。
  *
@@ -41,8 +45,8 @@ const jsonl = (rows: unknown[]) =>
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
 const FIELDS = [
-	"archives",
-	"dynamics",
+	"videoPosts",
+	"posts",
 	"liveSessions",
 	"liveHours",
 	"liveTimedSessions",
@@ -86,7 +90,7 @@ async function overview(
 	const body = (await res.json()) as StatsOverviewResponse;
 	return Object.fromEntries(
 		body.rows.map((r) => [
-			r.uid,
+			r.identity.externalId,
 			Object.fromEntries(fields.map((f) => [f, (r as unknown as Record<string, unknown>)[f]])),
 		]),
 	);
@@ -199,8 +203,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		const deps = await writeLegacyFixture();
 		expect(await overview(deps, "?days=7&tz=-480")).toEqual({
 			"101": {
-				archives: 1,
-				dynamics: 1,
+				videoPosts: 1,
+				posts: 2,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -210,8 +214,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"102": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -221,8 +225,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [null, null, null, null, null, null, null],
 			},
 			"103": {
-				archives: 0,
-				dynamics: 1,
+				videoPosts: 0,
+				posts: 1,
 				liveSessions: 3,
 				liveHours: 10,
 				liveTimedSessions: 3,
@@ -232,8 +236,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [null, null, null, 1, 0, 1, 1],
 			},
 			"104": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -243,8 +247,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [null, null, null, null, null, null, null],
 			},
 			"105": {
-				archives: 0,
-				dynamics: 1,
+				videoPosts: 0,
+				posts: 1,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -260,8 +264,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		const deps = await writeLegacyFixture();
 		expect(await overview(deps, "?days=1&tz=0")).toEqual({
 			"101": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -271,8 +275,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [0],
 			},
 			"102": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -282,8 +286,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [null],
 			},
 			"103": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 1,
 				liveHours: 2,
 				liveTimedSessions: 1,
@@ -293,8 +297,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [1],
 			},
 			"104": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -304,8 +308,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [null],
 			},
 			"105": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -327,8 +331,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 			),
 		).toEqual({
 			"101": {
-				archives: 1,
-				dynamics: 2,
+				videoPosts: 1,
+				posts: 3,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -337,8 +341,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				lastActivityAt: "2026-05-14T12:00:00.000Z",
 			},
 			"102": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -347,8 +351,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				lastActivityAt: null,
 			},
 			"103": {
-				archives: 0,
-				dynamics: 1,
+				videoPosts: 0,
+				posts: 1,
 				liveSessions: 3,
 				liveHours: 10,
 				liveTimedSessions: 3,
@@ -357,8 +361,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				lastActivityAt: "2026-05-16T10:00:00.000Z",
 			},
 			"104": {
-				archives: null,
-				dynamics: null,
+				videoPosts: null,
+				posts: null,
 				liveSessions: null,
 				liveHours: null,
 				liveTimedSessions: null,
@@ -367,8 +371,8 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				lastActivityAt: null,
 			},
 			"105": {
-				archives: 1,
-				dynamics: 1,
+				videoPosts: 1,
+				posts: 2,
 				liveSessions: 2,
 				liveHours: 6,
 				liveTimedSessions: 2,
@@ -376,6 +380,35 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				avgViewers: 150000000,
 				lastActivityAt: "2026-05-10T12:00:00.000Z",
 			},
+		});
+	});
+
+	it("面板上的「投稿 / 动态」两个显示数(videoPosts 与 posts − videoPosts)与改之前逐个相同", async () => {
+		// 下面两张表里的数是改之前 `archives` / `dynamics` 两格的值(S1 起就钉着的那批),不是按新代码抄的。
+		const deps = await writeLegacyFixture();
+		const shown = async (qs: string) =>
+			Object.fromEntries(
+				Object.entries(await overview(deps, qs, ["videoPosts", "posts"])).map(([uid, r]) => {
+					const { videoPosts, posts } = r as { videoPosts: number | null; posts: number | null };
+					return [
+						uid,
+						[videoPosts, posts === null || videoPosts === null ? null : posts - videoPosts],
+					];
+				}),
+			);
+		expect(await shown("?days=7&tz=-480")).toEqual({
+			"101": [1, 1],
+			"102": [null, null],
+			"103": [0, 1],
+			"104": [null, null],
+			"105": [0, 1],
+		});
+		expect(await shown("?days=90&tz=300")).toEqual({
+			"101": [1, 2],
+			"102": [null, null],
+			"103": [0, 1],
+			"104": [null, null],
+			"105": [1, 1],
 		});
 	});
 });
@@ -464,8 +497,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		const deps = await recordEvents();
 		expect(await overview(deps, "?days=7&tz=-480")).toEqual({
 			"201": {
-				archives: 1,
-				dynamics: 0,
+				videoPosts: 1,
+				posts: 1,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -475,8 +508,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"202": {
-				archives: 1,
-				dynamics: 4,
+				videoPosts: 1,
+				posts: 5,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -486,8 +519,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [null, null, null, 0, 2, 2, 1],
 			},
 			"203": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 1,
 				liveHours: 2.966666666666667,
 				liveTimedSessions: 1,
@@ -497,8 +530,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"204": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 2,
 				liveHours: 4,
 				liveTimedSessions: 1,
@@ -514,8 +547,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		const deps = await recordEvents();
 		expect(await overview(deps, "?days=1&tz=0")).toEqual({
 			"201": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -525,8 +558,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [0],
 			},
 			"202": {
-				archives: 0,
-				dynamics: 1,
+				videoPosts: 0,
+				posts: 1,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -536,8 +569,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [1],
 			},
 			"203": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
@@ -547,8 +580,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [0],
 			},
 			"204": {
-				archives: 0,
-				dynamics: 0,
+				videoPosts: 0,
+				posts: 0,
 				liveSessions: 1,
 				liveHours: 4,
 				liveTimedSessions: 1,

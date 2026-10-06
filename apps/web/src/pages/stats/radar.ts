@@ -6,7 +6,7 @@
  */
 
 import { formatCount } from "@bilibili-notify/internal/format";
-import type { UpStatsRow } from "../../services/stats.js";
+import { plainPostCount, type UpStatsRow } from "../../services/stats.js";
 
 /** 归一化后的一根轴。 */
 export interface RadarAxis {
@@ -65,7 +65,7 @@ const METRICS: Metric[] = [
 		// 切换时间范围时它纹丝不动是对的,不是 bug;每根轴都并排标着原始值,读者
 		// 一眼能看出哪根变了哪根没变。
 		label: "粉丝规模(当前)",
-		pick: (r) => r.fans,
+		pick: (r) => r.followers,
 		format: (v) => formatCount(v, { compact: true }),
 		// 粉丝数是重尾分布:200 万的 UP 会把 5 万的压成一根针,那根轴就读不出
 		// 任何东西。取对数之后小 UP 之间的差距才展得开。
@@ -78,8 +78,8 @@ const METRICS: Metric[] = [
 		pick: (r) => r.netWindow,
 		format: (v) => formatCount(v, { signed: true, compact: true }),
 	},
-	{ label: "投稿量", pick: (r) => r.archives, format: (v) => `${v} 个` },
-	{ label: "动态量", pick: (r) => r.dynamics, format: (v) => `${v} 条` },
+	{ label: "投稿量", pick: (r) => r.videoPosts, format: (v) => `${v} 个` },
+	{ label: "动态量", pick: plainPostCount, format: (v) => `${v} 条` },
 	{ label: "开播场次", pick: (r) => r.liveSessions, format: (v) => `${v} 场` },
 	{
 		label: "直播时长",

@@ -69,16 +69,6 @@ export function subscriptionColor(sub: Subscription): string {
 }
 
 /**
- * 统计行是拓展行吗(两格都有就是拓展行)。统计行还是 `uid` / `extensionId` + `externalId` 三个散格,
- * 归统计那一片改;历史行早就是 `identity` 了,用 {@link isExtensionIdentity}。
- */
-export function isExtensionRow<T extends { extensionId?: string; externalId?: string }>(
-	row: T,
-): row is T & { extensionId: string; externalId: string } {
-	return row.extensionId !== undefined && row.externalId !== undefined;
-}
-
-/**
  * 历史行的颜色,与 {@link subscriptionColor} 同一条规矩:跟着 `identity` 走(B 站行是 uid、拓展行是
  * 「拓展 id:外部 id」)—— 订阅卡与历史行是同一个颜色,订阅删了也不变。
  */

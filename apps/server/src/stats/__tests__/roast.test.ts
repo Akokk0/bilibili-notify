@@ -21,8 +21,8 @@ const UPS: RoastInput[] = [
 		name: "老番茄",
 		net7d: 8000,
 		netWindow: 29000,
-		archives: 6,
-		dynamics: 14,
+		videoPosts: 6,
+		posts: 20,
 		liveSessions: 12,
 		liveHours: 40,
 		lastActivityAt: "2026-05-16T10:00:00.000Z",
@@ -33,8 +33,8 @@ const UPS: RoastInput[] = [
 		name: "机智的党妹",
 		net7d: -8000,
 		netWindow: -22000,
-		archives: 1,
-		dynamics: 4,
+		videoPosts: 1,
+		posts: 5,
 		liveSessions: 0,
 		liveHours: 0,
 		lastActivityAt: null,
@@ -315,10 +315,10 @@ describe("parseSoloRoastReply", () => {
 });
 
 // 验红:把 roast.ts 里 buildRoastPrompt / buildSoloRoastPrompt 的「投稿」与「动态」两格对调取值,本组全红。
-describe("提示词里的「投稿 / 动态」两个数 —— 取的是 archives / dynamics 这两格,各自不串", () => {
-	const UP: RoastInput = { ...(UPS[0] as RoastInput), archives: 3, dynamics: 5 };
+describe("提示词里的「投稿 / 动态」两个数 —— 投稿取 videoPosts、动态取 posts − videoPosts,各自不串", () => {
+	const UP: RoastInput = { ...(UPS[0] as RoastInput), videoPosts: 3, posts: 8 };
 
-	it("榜单:数据表里 投稿=archives、动态=dynamics,写成 JSON 片段", () => {
+	it("榜单:数据表里 投稿=videoPosts、动态=posts−videoPosts,写成 JSON 片段", () => {
 		const p = buildRoastPrompt([UP], 30);
 		const table = JSON.parse(p.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
 		expect(table[0]?.投稿).toBe(3);
@@ -334,10 +334,14 @@ describe("提示词里的「投稿 / 动态」两个数 —— 取的是 archive
 		expect(p).toContain('"投稿":3,"动态":5,');
 	});
 
-	it("两格各自为 null → 各自写「无记录」,不互相顶替、不写成 0", () => {
-		const p = buildRoastPrompt([{ ...UP, archives: null }], 30);
-		expect(p).toContain('"投稿":"无记录","动态":5,');
-		const q = buildSoloRoastPrompt({ ...UP, dynamics: null }, 30);
-		expect(q).toContain('"投稿":3,"动态":"无记录",');
+	it("两格(行上两格同时为 null 或同时为数)为 null → 两项都写「无记录」,不写成 0", () => {
+		const none = { ...UP, videoPosts: null, posts: null };
+		expect(buildRoastPrompt([none], 30)).toContain('"投稿":"无记录","动态":"无记录",');
+		expect(buildSoloRoastPrompt(none, 30)).toContain('"投稿":"无记录","动态":"无记录",');
+	});
+
+	it("没有视频投稿的行:投稿是 0 而不是「无记录」,动态是全部作品数", () => {
+		const p = buildSoloRoastPrompt({ ...UP, videoPosts: 0, posts: 4 }, 30);
+		expect(p).toContain('"投稿":0,"动态":4,');
 	});
 });

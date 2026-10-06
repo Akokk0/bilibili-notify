@@ -254,7 +254,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 					sessions,
 					seen,
 					live: liveNow[index] === true,
-					fans: fansNow[index],
+					followers: fansNow[index],
 				};
 			}),
 		);
@@ -401,14 +401,12 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 					: (lastDynamic ?? lastLive);
 
 			return {
-				// 键是订阅 id,身份两支随行带着(ADR-0020 决策 1 的 🔗 / 18,同推送历史)。
+				// 键是订阅 id,身份随行带着(ADR-0020 决策 1 的 🔗 / 18,同推送历史)。
 				subscriptionId: sub.id,
-				...(identity.sourceKey === BILIBILI_SOURCE_KEY
-					? { uid: identity.externalId }
-					: { extensionId: identity.sourceKey, externalId: identity.externalId }),
+				identity,
 				// 当前粉丝优先用内存里的最新值(B 站的轮询快照 / 拓展的资料),它比 jsonl 末行更新;
 				// 没有(轮询还没起来、停用了、拓展还没报过)时回退到采样末值。
-				fans: one.fans ?? samples.at(-1)?.value ?? null,
+				followers: one.followers ?? samples.at(-1)?.value ?? null,
 				net1d: sumTail(series, 1),
 				// 窗口装不下 7 天就没法给出 7 天口径 —— 拿 3 天的和冒充 7 天更糟。
 				net7d: days >= 7 ? sumTail(series, 7) : null,
@@ -419,8 +417,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				// 与 `activity` 同一把尺子:窗口内一天都没覆盖到时,这些计数不是 0
 				// 而是「不知道」。0 会被读成「这位 UP 什么都没发」,而热力图同一行
 				// 正画着一片「无记录」—— 两个数在一屏里互相打脸。
-				archives: hasCoverage ? counts.archives : null,
-				dynamics: hasCoverage ? counts.dynamics : null,
+				videoPosts: hasCoverage ? counts.videoPosts : null,
+				posts: hasCoverage ? counts.posts : null,
 				liveSessions: hasCoverage ? live.sessions : null,
 				liveHours: hasCoverage ? live.hours : null,
 				liveTimedSessions: hasCoverage ? live.timedSessions : null,

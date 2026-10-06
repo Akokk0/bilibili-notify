@@ -2,7 +2,7 @@
  * 路由测试 — `GET /api/stats/overview` 里的**拓展订阅行**(ADR-0020 决策 1 / 9 / 18)。
  *
  * 守的是四件事:
- *   - 行以订阅 id 为键,身份两支随行带着(B 站 `uid`,拓展 `extensionId` + `externalId`;订阅本身只有一种形状、读 `identity`);
+ *   - 行以订阅 id 为键,身份随行带着(两支同一种形状 `identity`,与订阅本身、推送历史的那一格是同一个类型);
  *   - 计数、场次、峰值、粉丝与 B 站走同一套聚合,只是按订阅 id 从仓里取;
  *   - 「那天有没有记录」各算各的(决策 9):拓展行只认它自己的「在记」,第一条之前没有 0;
  *     两支互不借覆盖,B 站没登录 / 一条 B 站订阅都没有也照常出数;
@@ -130,17 +130,19 @@ beforeEach(() => {
 });
 
 describe("拓展行:键与身份(决策 1 / 18)", () => {
-	it("两支都以订阅 id 为键;B 站行带 uid,拓展行带拓展 id + 外部 id、不带 uid", async () => {
+	it("两支都以订阅 id 为键,身份是同一种形状:B 站来源键是 bilibili、外部 id 是 uid,拓展来源键是拓展 id", async () => {
 		const body = await get(
 			makeDeps({ bili: [{ id: B1, uid: "42" }], ext: [{ id: E1, externalId: "MS4wLjAB/甲" }] }),
 		);
 		expect(body.rows.map((r) => r.subscriptionId)).toEqual([B1, E1]);
 		const bili = rowOf(body, B1);
-		expect(bili.uid).toBe("42");
-		expect("extensionId" in bili || "externalId" in bili).toBe(false);
+		expect(bili.identity).toEqual({ sourceKey: "bilibili", externalId: "42" });
 		const ext = rowOf(body, E1);
-		expect(ext).toMatchObject({ extensionId: EXT, externalId: "MS4wLjAB/甲" });
-		expect("uid" in ext).toBe(false);
+		expect(ext.identity).toEqual({ sourceKey: EXT, externalId: "MS4wLjAB/甲" });
+		// 三格旧键都没了,身份只剩这一格。
+		for (const r of [bili, ext]) {
+			expect("uid" in r || "extensionId" in r || "externalId" in r).toBe(false);
+		}
 	});
 
 	it("停用的、拓展没在跑的拓展订阅照样列着 —— 它们仍是订阅(同 B 站停用的照样列)", async () => {
@@ -182,8 +184,8 @@ describe("拓展行:计数、场次、峰值与 B 站同一套聚合", () => {
 		);
 		const row = rowOf(body, E1);
 		expect(row).toMatchObject({
-			archives: 1,
-			dynamics: 2,
+			videoPosts: 1,
+			posts: 3,
 			liveSessions: 3,
 			liveHours: 6,
 			liveTimedSessions: 3,
@@ -218,8 +220,8 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		);
 		const row = rowOf(body, E1);
 		expect(row.activity).toEqual([1, null, 0, null, 1, 0]);
-		expect(row.archives).toBe(1);
-		expect(row.dynamics).toBe(1);
+		expect(row.videoPosts).toBe(1);
+		expect(row.posts).toBe(2);
 	});
 
 	it("一条「在记」都没有 → 热力图全是无记录、计数是 null,哪怕 B 站那几位天天在采", async () => {
@@ -233,12 +235,12 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		);
 		const row = rowOf(body, E1);
 		expect(row.activity).toEqual([null, null, null, null, null]);
-		expect(row.archives).toBeNull();
-		expect(row.dynamics).toBeNull();
+		expect(row.videoPosts).toBeNull();
+		expect(row.posts).toBeNull();
 		expect(row.liveSessions).toBeNull();
 		expect(row.liveHours).toBeNull();
 		expect(row.liveTimedSessions).toBeNull();
-		expect(row.fans).toBeNull();
+		expect(row.followers).toBeNull();
 		// B 站那一行照旧是 0,不受牵连。
 		expect(rowOf(body, B1).activity).toEqual([0, 0, 0, 0, 0]);
 	});
@@ -255,8 +257,8 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		const row = rowOf(body, E1);
 		expect(row.activity).toEqual([null, null, 1, null, null]);
 		// 能记下来本身就说明在记(与 B 站同一条):计数有数,不是 null。
-		expect(row.dynamics).toBe(1);
-		expect(row.archives).toBe(0);
+		expect(row.posts).toBe(1);
+		expect(row.videoPosts).toBe(0);
 	});
 
 	it("B 站也不借拓展的:拓展的「在记」与粉丝样本不让 B 站行那天算有记录", async () => {
@@ -284,8 +286,8 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		);
 		const row = rowOf(body, E1);
 		expect(row.activity).toEqual([null, null, 0, 1, 0]);
-		expect(row.archives).toBe(1);
-		expect(row.fans).toBe(520);
+		expect(row.videoPosts).toBe(1);
+		expect(row.followers).toBe(520);
 		expect(row.netWindow).toBe(20);
 	});
 });
@@ -299,7 +301,7 @@ describe("拓展行:粉丝(决策 8)", () => {
 			}),
 		);
 		const row = rowOf(body, E1);
-		expect(row.fans).toBeNull();
+		expect(row.followers).toBeNull();
 		expect(row.net1d).toBeNull();
 		expect(row.net7d).toBeNull();
 		expect(row.netWindow).toBeNull();
@@ -319,11 +321,11 @@ describe("拓展行:粉丝(决策 8)", () => {
 			}),
 		);
 		const on = rowOf(body, E1);
-		expect(on.fans).toBe(2000);
+		expect(on.followers).toBe(2000);
 		// 曲线与净增只来自样本。
 		expect(on.cumulative).toEqual([1000, 1100, 1200, 1300, 1400]);
 		expect(on.netWindow).toBe(400);
-		expect(rowOf(body, E2).fans).toBe(1400);
+		expect(rowOf(body, E2).followers).toBe(1400);
 	});
 });
 
@@ -373,11 +375,11 @@ describe("拓展行:缓存键", () => {
 			liveExt: new Set(),
 		};
 		const route = createStatsRoute(makeDeps(f));
-		expect(rowOf(await call(route), E1)).toMatchObject({ live: false, fans: 100 });
+		expect(rowOf(await call(route), E1)).toMatchObject({ live: false, followers: 100 });
 		f.liveExt?.add(E1);
 		expect(rowOf(await call(route), E1).live).toBe(true);
 		f.profileFans = { [E1]: 150 };
-		expect(rowOf(await call(route), E1).fans).toBe(150);
+		expect(rowOf(await call(route), E1).followers).toBe(150);
 	});
 
 	it("什么都没变时照常命中缓存", async () => {
@@ -398,7 +400,7 @@ describe("拓展行:缓存键", () => {
 });
 
 describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,每一格都有非平凡的值)", () => {
-	// 验红:把 routes/stats.ts 成行处的 `dynamics: hasCoverage ? counts.dynamics : null` 改成取 counts.archives,本条红。
+	// 验红:把 routes/stats.ts 成行处的 `posts: hasCoverage ? counts.posts : null` 改成取 counts.videoPosts,本条红。
 	it("GET /overview 的完整返回", async () => {
 		const body = await get(
 			makeDeps({
@@ -452,16 +454,16 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 			rows: [
 				{
 					subscriptionId: B1,
-					uid: "42",
-					fans: 1060,
+					identity: { sourceKey: "bilibili", externalId: "42" },
+					followers: 1060,
 					net1d: 20,
 					net7d: null,
 					netWindow: 50,
 					series: [null, 10, null, 20, 20],
 					cumulative: [1000, 1010, null, 1030, 1050],
 					activity: [0, 2, null, 2, 0],
-					archives: 1,
-					dynamics: 2,
+					videoPosts: 1,
+					posts: 3,
 					liveSessions: 2,
 					liveHours: 5,
 					liveTimedSessions: 2,
@@ -473,17 +475,16 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 				},
 				{
 					subscriptionId: E1,
-					extensionId: EXT,
-					externalId: "MS4wLjAB/甲",
-					fans: 540,
+					identity: { sourceKey: EXT, externalId: "MS4wLjAB/甲" },
+					followers: 540,
 					net1d: 10,
 					net7d: null,
 					netWindow: 30,
 					series: [null, null, 20, null, 10],
 					cumulative: [null, 500, 520, null, 530],
 					activity: [1, null, 1, null, 2],
-					archives: 1,
-					dynamics: 1,
+					videoPosts: 1,
+					posts: 2,
 					liveSessions: 2,
 					liveHours: 3,
 					liveTimedSessions: 2,
