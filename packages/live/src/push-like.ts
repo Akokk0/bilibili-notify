@@ -78,6 +78,31 @@ export const LIVE_ROOM_MASTER_KEYS: readonly LiveMasterFeature[] = [
 	"superchat",
 ];
 
+/** {@link needsLiveMonitor} 要看的那几格:有效的直播类开关,加上那两个特殊用户条件。 */
+export type LiveMonitorInput = Pick<
+	SubItemView,
+	| "liveStart"
+	| "liveStreaming"
+	| "liveEnd"
+	| "membership"
+	| "superchat"
+	| "customSpecialDanmakuUsers"
+	| "customSpecialUsersEnterTheRoom"
+>;
+
+/**
+ * 这位订阅要不要监听直播间:直播类主开关(`LIVE_ROOM_MASTER_KEYS`)任一开着,或配了特别弹幕 / 特别关注进场。
+ * 只看折好的生效值,不依赖房间上下文 —— 引擎判断开不开监听与统计判断「直播在不在记」都问它(只此一份)。
+ * 没有特殊用户的订阅(拓展订阅)把那两格的 `enable` 传 `false`。
+ */
+export function needsLiveMonitor(sub: LiveMonitorInput): boolean {
+	return (
+		(LIVE_ROOM_MASTER_KEYS as readonly (keyof LiveMonitorInput)[]).some((k) => sub[k] === true) ||
+		sub.customSpecialDanmakuUsers.enable ||
+		sub.customSpecialUsersEnterTheRoom.enable
+	);
+}
+
 /**
  * 附加项的开关(ADR-0016):挂在某把主特性下面、与本体分开发的一条消息。引擎只关心下播
  * 那两把(词云 / AI 总结)—— 卡片先发,它们算好后作为同一次推送的后续消息追加;@全体

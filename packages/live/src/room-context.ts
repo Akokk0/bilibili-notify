@@ -6,8 +6,8 @@ import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import {
-	LIVE_ROOM_MASTER_KEYS,
 	type LiveMasterFeature,
+	needsLiveMonitor,
 	type PickCardBackground,
 	type PushLike,
 	type SubItemView,
@@ -204,11 +204,7 @@ export class RoomContextBase {
 	}
 
 	needsLiveMonitor(sub: SubItemView): boolean {
-		return (
-			LIVE_ROOM_MASTER_KEYS.some((k) => this.isSubscribed(sub, k)) ||
-			sub.customSpecialDanmakuUsers.enable ||
-			sub.customSpecialUsersEnterTheRoom.enable
-		);
+		return needsLiveMonitor(sub);
 	}
 
 	closeListener(roomId: string): void {
