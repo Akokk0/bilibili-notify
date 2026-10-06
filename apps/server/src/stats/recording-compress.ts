@@ -12,6 +12,18 @@ import type { RecordingEntry } from "./store.js";
  * - 输出顺序:按 `startedAt`,再按 `kind`(字典序),再按 `endedAt`;合出来的与原样留下的混排在一起。
  * - 幂等;`now` 往后挪时,先前合好的不被拆散。
  */
+/**
+ * 账里行的规范次序:按 `startedAt`,再按 `kind`(字典序),再按 `endedAt`。压缩的输出照它排,迁移写账也照它排
+ * (同一个比较函数,迁移的产出就是规范形态)。
+ */
+export function compareRecordingEntries(a: RecordingEntry, b: RecordingEntry): number {
+	return (
+		Date.parse(a.startedAt) - Date.parse(b.startedAt) ||
+		(a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0) ||
+		Date.parse(a.endedAt) - Date.parse(b.endedAt)
+	);
+}
+
 export function compressRecordingEntries(
 	entries: readonly RecordingEntry[],
 	now: Date,
@@ -54,10 +66,5 @@ export function compressRecordingEntries(
 		if (cur !== undefined) merged.push({ kind, startedAt: cur.startedAt, endedAt: cur.endedAt });
 	}
 
-	return [...merged, ...kept].sort(
-		(a, b) =>
-			Date.parse(a.startedAt) - Date.parse(b.startedAt) ||
-			(a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0) ||
-			Date.parse(a.endedAt) - Date.parse(b.endedAt),
-	);
+	return [...merged, ...kept].sort(compareRecordingEntries);
 }

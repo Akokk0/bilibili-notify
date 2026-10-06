@@ -9,6 +9,8 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { compressRecordingEntries } from "../../stats/recording-compress.js";
+import type { RecordingEntry } from "../../stats/store.js";
 import { migrateRecordingLedger } from "../recording.js";
 
 const BILI = "b0000000-0000-4000-8000-000000000001";
@@ -90,18 +92,18 @@ describe("B 站订阅:那个小时任何一条 B 站订阅有粉丝样本 = BN �
 			[BILI, BILI2].map((id) => join(dir, "stats", "recording", `${id}.jsonl`)).sort(),
 		);
 		expect(await ledger(BILI)).toEqual([
-			{ kind: "posts", startedAt: hour(1), endedAt: hour(5) },
-			{ kind: "posts", startedAt: hour(7), endedAt: hour(8) },
-			{ kind: "live", startedAt: hour(1), endedAt: hour(5) },
-			{ kind: "live", startedAt: hour(7), endedAt: hour(8) },
 			{ kind: "followers", startedAt: hour(1), endedAt: hour(4) },
+			{ kind: "live", startedAt: hour(1), endedAt: hour(5) },
+			{ kind: "posts", startedAt: hour(1), endedAt: hour(5) },
 			{ kind: "followers", startedAt: hour(7), endedAt: hour(8) },
+			{ kind: "live", startedAt: hour(7), endedAt: hour(8) },
+			{ kind: "posts", startedAt: hour(7), endedAt: hour(8) },
 		]);
 		// BILI2 的直播类开关全关着:不记 live(直播用现在的开关近似);它自己的首个样本在 3 点,覆盖只从 3 点起收。
 		expect(await ledger(BILI2)).toEqual([
+			{ kind: "followers", startedAt: hour(3), endedAt: hour(5) },
 			{ kind: "posts", startedAt: hour(3), endedAt: hour(5) },
 			{ kind: "posts", startedAt: hour(7), endedAt: hour(8) },
-			{ kind: "followers", startedAt: hour(3), endedAt: hour(5) },
 		]);
 	});
 
@@ -114,9 +116,9 @@ describe("B 站订阅:那个小时任何一条 B 站订阅有粉丝样本 = BN �
 		await put(join("stats", "since"), at(2));
 		await run();
 		expect(await ledger(BILI)).toEqual([
-			{ kind: "posts", startedAt: hour(2), endedAt: hour(4) },
-			{ kind: "live", startedAt: hour(2), endedAt: hour(4) },
 			{ kind: "followers", startedAt: hour(1), endedAt: hour(4) },
+			{ kind: "live", startedAt: hour(2), endedAt: hour(4) },
+			{ kind: "posts", startedAt: hour(2), endedAt: hour(4) },
 		]);
 		expect(await ledger(BILI2)).toBeUndefined();
 	});
@@ -153,12 +155,12 @@ describe("拓展订阅:seen 行所在的小时 = 在记", () => {
 		await put(join("stats", "followers", `${EXT}.jsonl`), jsonl([{ ts: at(2), value: 1 }]));
 		await run();
 		expect(await ledger(EXT)).toEqual([
+			{ kind: "followers", startedAt: hour(2), endedAt: hour(3) },
+			{ kind: "live", startedAt: hour(2), endedAt: hour(4) },
 			{ kind: "posts", startedAt: hour(2), endedAt: hour(4) },
 			{ kind: "posts", startedAt: hour(5), endedAt: hour(6) },
-			{ kind: "posts", startedAt: hour(9), endedAt: hour(10) },
-			{ kind: "live", startedAt: hour(2), endedAt: hour(4) },
 			{ kind: "live", startedAt: hour(9), endedAt: hour(10) },
-			{ kind: "followers", startedAt: hour(2), endedAt: hour(3) },
+			{ kind: "posts", startedAt: hour(9), endedAt: hour(10) },
 		]);
 	});
 
@@ -175,7 +177,7 @@ describe("拓展订阅:seen 行所在的小时 = 在记", () => {
 		});
 		await put(join("stats", "seen", `${EXT}.jsonl`), jsonl([{ ts: at(2) }]));
 		await run();
-		expect((await ledger(EXT))?.map((r) => r.kind)).toEqual(["posts", "live"]);
+		expect((await ledger(EXT))?.map((r) => r.kind)).toEqual(["live", "posts"]);
 	});
 });
 
@@ -210,6 +212,48 @@ describe("收尾与读不懂", () => {
 		await put(join("stats", "seen", `${EXT}.jsonl`), jsonl([{ ts: at(2) }]));
 		await run();
 		// 出厂开关:作品开、开播开 → posts 与 live 都记。
-		expect((await ledger(EXT))?.map((r) => r.kind)).toEqual(["posts", "live"]);
+		expect((await ledger(EXT))?.map((r) => r.kind)).toEqual(["live", "posts"]);
+	});
+});
+
+describe("迁移写出的账和压缩规则对得上(㉘d)", () => {
+	/**
+	 * 迁移写的区间本来就是合好的,行序也照压缩的次序(`startedAt`、`kind`、`endedAt`,同一个比较函数)写:
+	 * 迁移的产出就是规范形态,再过一遍压缩(不管切线落在哪)**逐行不变**,开机第一趟压缩不必把每份账重排一遍。
+	 */
+	it("再过一遍 compressRecordingEntries,逐行不变(切线在全部区间之前 / 之后各一遍)", async () => {
+		await putSubs([
+			sub(BILI, "bilibili"),
+			sub(BILI2, "bilibili", { liveStart: false, liveEnd: false }),
+			sub(EXT, "douyin"),
+		]);
+		await put(
+			join("stats", "followers", `${BILI}.jsonl`),
+			jsonl([1, 2, 3, 7].map((h) => ({ ts: at(h), value: h }))),
+		);
+		await put(
+			join("stats", "followers", `${BILI2}.jsonl`),
+			jsonl([3, 4].map((h) => ({ ts: at(h), value: h }))),
+		);
+		await put(
+			join("stats", "posts", `${BILI}.jsonl`),
+			jsonl([{ id: "a", hasVideo: true, publishedAt: at(2) }]),
+		);
+		await put(
+			join("stats", "seen", `${EXT}.jsonl`),
+			jsonl([2, 3, 4, 9].map((h) => ({ ts: at(h) }))),
+		);
+		const written = await run();
+		expect(written).toHaveLength(3);
+		for (const id of [BILI, BILI2, EXT]) {
+			const rows = ((await ledger(id)) ?? []) as RecordingEntry[];
+			expect(rows.length, id).toBeGreaterThan(1);
+			for (const now of [
+				new Date("2026-06-30T12:00:00.000Z"),
+				new Date("2026-05-10T12:00:00.000Z"),
+			]) {
+				expect(compressRecordingEntries(rows, now), `${id} @ ${now.toISOString()}`).toEqual(rows);
+			}
+		}
 	});
 });

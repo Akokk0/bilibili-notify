@@ -2,6 +2,7 @@ import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
 import { HOUR_MS } from "../followers/cutoff.js";
 import type { FollowersStore } from "../followers/store.js";
 import { attachBiliStatsSource } from "./bili-source.js";
+import type { RecordingCompactSummary } from "./compaction.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import type { StatsSubscription } from "./file-key.js";
 import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
@@ -66,6 +67,11 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	closeOpenSessions(): Promise<void>;
 	/** 等已经交出去的写入全部落地。见 {@link StatsRecorderHandle.flush}。 */
 	flush(): Promise<void>;
+	/**
+	 * 压「在记」的账(ADR-0027 决策 13、15):对盘上每份账各排一次压缩进这个键的队 —— 与账的追加是同一条队,
+	 * 压缩读整份、写回的这段时间里记的小时排在后面,不会被换名盖掉。回汇总;某个键压不动只记 warn、不算进汇总。
+	 */
+	compactRecording(now: Date): Promise<RecordingCompactSummary>;
 	/** 清掉全部在飞状态(dispose 时)。 */
 	clear(): void;
 } {
@@ -77,14 +83,19 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	/** 每个键上一条落盘的粉丝样本的时刻(毫秒)。第一次用到时从盘上接上,见 {@link thinned}。 */
 	const lastFans = new Map<string, number>();
 	/**
-	 * 「在记」账的内存挡板,条目都以小时的毫秒数打头(`小时\0键\0项`):已经交出去(或盘上已有)的。只留最新的
-	 * 两个小时 —— 粉丝轮询一轮可能跨过整点(上一个小时采的样本、下一个小时才发出事件),所以上一个小时还收;
-	 * 再早的不会再有人写。`seededKeys`(`小时\0键`)是已经从盘上种过的,重启后第一次写某个键前读一次。
+	 * 「在记」账的内存挡板:每个(小时,键)一格,记着这一小时哪几项**已经交出去**(`handed`)、哪几项**已经在盘上**
+	 * (`written`,含盘上本来就有的)。同一个小时同一项只落一行靠它。只留最新的两个小时 —— 粉丝轮询一轮可能跨过整点
+	 * (上一个小时采的样本、下一个小时才发出事件),所以上一个小时还收;再早的不会再有人写。
+	 * `seeded`:重启后第一次写某个键前读一次盘,把这个小时已有的种进 `written`。
 	 */
-	const activeMarks = new Set<string>();
-	/** 盘上已有 / 已写的 `小时\0键\0项`。写之前看它,seed 与写入都往里加。 */
-	const onDisk = new Set<string>();
-	const seededKeys = new Set<string>();
+	interface HourSlot {
+		hour: number;
+		key: string;
+		seeded: boolean;
+		handed: Set<RecordingKind>;
+		written: Set<RecordingKind>;
+	}
+	const slots = new Map<string, HourSlot>();
 	let activeHour = Number.NEGATIVE_INFINITY;
 
 	/**
@@ -102,7 +113,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	 * 文件被重新写出来。队首那一条**当场**交给 store(不等一个微任务),与不排队时一样。
 	 */
 	const tails = new Map<string, Promise<void>>();
-	function enqueue(key: string, what: string, task: () => Promise<unknown>): void {
+	function enqueue(key: string, what: string, task: () => Promise<unknown>): Promise<void> {
 		const onError = swallow(`${what} ${key}`.trim());
 		const run = (): Promise<void> => {
 			try {
@@ -118,6 +129,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		void tail.then(() => {
 			if (tails.get(key) === tail) tails.delete(key);
 		});
+		return tail;
 	}
 
 	async function flush(): Promise<void> {
@@ -203,9 +215,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			// 从此是一份没人会读、也没人会再清的孤儿。
 			forget(key);
 			lastFans.delete(key);
-			for (const set of [activeMarks, onDisk, seededKeys]) {
-				for (const mark of [...set]) if (mark.split("\0")[1] === key) set.delete(mark);
-			}
+			for (const [id, slot] of slots) if (slot.key === key) slots.delete(id);
 			// 排在这个键还没落地的写入后面:先删的话,它们落地时会把文件重新写出来。
 			enqueue(key, "drop", async () => {
 				await opts.store.drop(key);
@@ -234,35 +244,37 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			// 只认最新的两个小时(见上面的挡板说明):更早的丢掉。
 			if (hourStart > activeHour) {
 				activeHour = hourStart;
-				for (const set of [activeMarks, onDisk, seededKeys]) {
-					for (const mark of [...set]) {
-						if (Number(mark.split("\0")[0]) < hourStart - HOUR_MS) set.delete(mark);
-					}
-				}
+				for (const [id, slot] of slots) if (slot.hour < hourStart - HOUR_MS) slots.delete(id);
 			} else if (hourStart < activeHour - HOUR_MS) {
 				return;
 			}
-			const mark = `${hourStart}\0${key}\0${kind}`;
-			if (activeMarks.has(mark)) return;
-			activeMarks.add(mark);
+			const slotId = `${hourStart}\0${key}`;
+			let slot = slots.get(slotId);
+			if (slot === undefined) {
+				slot = { hour: hourStart, key, seeded: false, handed: new Set(), written: new Set() };
+				slots.set(slotId, slot);
+			}
+			if (slot.handed.has(kind)) return;
+			slot.handed.add(kind);
+			const mine = slot;
 			const startedAt = new Date(hourStart).toISOString();
 			const endedAt = new Date(hourStart + HOUR_MS).toISOString();
 			enqueue(key, "appendRecording", async () => {
 				// 重启之后第一次写这个键:先把盘上这个小时已有的种进来,免得重启后同一小时再落一行。
-				const seedMark = `${hourStart}\0${key}`;
-				if (!seededKeys.has(seedMark)) {
-					seededKeys.add(seedMark);
+				// 盘上盖着整个小时的行才算(迁移写的是长区间,压缩合出来的也是)。
+				if (!mine.seeded) {
+					mine.seeded = true;
 					for (const row of await opts.store.listRecording(key, startedAt)) {
 						if (
 							Date.parse(row.startedAt) <= hourStart &&
 							Date.parse(row.endedAt) >= hourStart + HOUR_MS
 						) {
-							onDisk.add(`${hourStart}\0${key}\0${row.kind}`);
+							mine.written.add(row.kind);
 						}
 					}
 				}
-				if (onDisk.has(mark)) return;
-				onDisk.add(mark);
+				if (mine.written.has(kind)) return;
+				mine.written.add(kind);
 				await opts.store.appendRecording(key, { kind, startedAt, endedAt });
 			});
 		},
@@ -284,6 +296,24 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		},
 
 		flush,
+
+		async compactRecording(at) {
+			const summary: RecordingCompactSummary = { files: 0, squeezed: 0, badLines: 0 };
+			const keys = await opts.store.recordingKeys();
+			await Promise.all(
+				keys.map((key) =>
+					enqueue(key, "compactRecording", async () => {
+						const report = await opts.store.compactRecording(key, at);
+						summary.badLines += report.badLines;
+						if (report.rewritten) {
+							summary.files += 1;
+							summary.squeezed += report.rowsBefore - report.rowsAfter;
+						}
+					}),
+				),
+			);
+			return summary;
+		},
 
 		clear() {
 			peaks.clear();
@@ -331,6 +361,8 @@ export interface StatsRecorderHandle extends Disposable {
 	closeOpenSessions(): Promise<void>;
 	/** 等已经交出去的写入全部落地(写失败的只记日志,也算落地)。 */
 	flush(): Promise<void>;
+	/** 压「在记」的账,见 {@link StatsRecorderCore} 那头的同名口子。 */
+	compactRecording(now: Date): Promise<RecordingCompactSummary>;
 	/**
 	 * 回填「B 站登录有效」的读口(`index.ts` 建好登录系统之后调,同 `attachFansPoller` 的回填口)。
 	 * 没绑之前当作 B 站没在跑(不记);绑上后 B 站适配立刻看一眼。读口每次现读,不靠事件记状态。
@@ -373,6 +405,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	return {
 		closeOpenSessions: () => recorder.closeOpenSessions(),
 		flush: () => recorder.flush(),
+		compactRecording: (at) => recorder.compactRecording(at),
 		bindLoginState(next) {
 			isLoggedIn = next;
 			biliSource.tick();

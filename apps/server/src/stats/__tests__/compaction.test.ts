@@ -1,5 +1,6 @@
 /**
- * 粉丝样本的定时压缩(`startFollowersCompaction`,ADR-0027 决策 15;㉘c):开机一次、之后每 6 小时一次。
+ * 统计的定时压缩(`startStatsCompaction`,ADR-0027 决策 15;㉘c、㉘d):开机一次、之后每 6 小时一次,
+ * 先压粉丝样本、接着压「在记」的账。
  * 时钟注入;定时器用假时钟推进。
  */
 
@@ -9,8 +10,8 @@ import {
 	makeTrackingContext,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
-import { startFollowersCompaction } from "../compaction.js";
-import type { FollowersStore } from "../store.js";
+import type { FollowersStore } from "../../followers/store.js";
+import { type RecordingCompactSummary, startStatsCompaction } from "../compaction.js";
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
@@ -43,10 +44,29 @@ function makeStore(keys: string[], compact?: FollowersStore["compact"]) {
 	return { store: store as unknown as FollowersStore, calls, raw: store };
 }
 
-function start(store: FollowersStore, intervalMs?: number) {
-	const handle = startFollowersCompaction({
+const noRecording = (): RecordingCompactSummary => ({ files: 0, squeezed: 0, badLines: 0 });
+
+/** 账那一半的替身:记下被叫到时的此刻与先后。 */
+function makeRecorder(compact?: (now: Date) => Promise<RecordingCompactSummary>) {
+	const calls: Date[] = [];
+	const recorder = {
+		compactRecording: vi.fn(async (now: Date) => {
+			calls.push(now);
+			return compact ? compact(now) : noRecording();
+		}),
+	};
+	return { recorder, calls };
+}
+
+function start(
+	store: FollowersStore,
+	intervalMs?: number,
+	recorder: ReturnType<typeof makeRecorder>["recorder"] = makeRecorder().recorder,
+) {
+	const handle = startStatsCompaction({
 		serviceCtx: { setInterval: setInterval_, track: ctx.track } as never,
 		store,
+		recorder,
 		logger: log as never,
 		intervalMs,
 		now: () => new Date(),
@@ -66,7 +86,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe("startFollowersCompaction", () => {
+describe("startStatsCompaction", () => {
 	it("开机跑一次:盘上每个文件各压一遍,用注入的此刻;这一轮登记进 track", async () => {
 		const { store, calls } = makeStore(["a", "b"]);
 		start(store);
@@ -147,5 +167,70 @@ describe("startFollowersCompaction", () => {
 		expect(text).toContain("2 file(s)");
 		expect(text).toContain("squeezed 61 row(s)"); // 压掉 (100-40) + (10-9) = 61 行
 		expect(text).toContain("2 bad line(s)");
+	});
+});
+
+describe("startStatsCompaction — 在记的账", () => {
+	it("开机一轮:先压完粉丝样本,再压账,账用同一个注入的此刻", async () => {
+		const order: string[] = [];
+		const { store } = makeStore(["a"], async () => {
+			order.push("followers");
+			return report();
+		});
+		const { recorder, calls } = makeRecorder(async () => {
+			order.push("recording");
+			return noRecording();
+		});
+		start(store, undefined, recorder);
+		await ctx.settled();
+		expect(order).toEqual(["followers", "recording"]);
+		expect(calls.map((d) => d.toISOString())).toEqual(["2026-06-30T12:00:00.000Z"]);
+	});
+
+	it("之后每 6 小时,账也跟着压一次", async () => {
+		const { store } = makeStore(["a"]);
+		const { recorder, calls } = makeRecorder();
+		start(store, undefined, recorder);
+		await ctx.settled();
+		await vi.advanceTimersByTimeAsync(SIX_HOURS);
+		await ctx.settled();
+		expect(calls.map((d) => d.toISOString())).toEqual([
+			"2026-06-30T12:00:00.000Z",
+			"2026-06-30T18:00:00.000Z",
+		]);
+	});
+
+	it("粉丝那一边出错(列不出文件)不挡账;账那一边出错也不挡下一轮,各记一条 warn", async () => {
+		const { store, raw } = makeStore(["a"]);
+		raw.keys.mockRejectedValueOnce(new Error("no dir"));
+		const { recorder, calls } = makeRecorder();
+		start(store, undefined, recorder);
+		expect(await ctx.settled()).toEqual([{ status: "fulfilled", value: undefined }]);
+		expect(calls).toHaveLength(1);
+		expect(log.warn).toHaveBeenCalledTimes(1);
+
+		const failing = makeRecorder(async () => {
+			throw new Error("ledger boom");
+		});
+		start(makeStore(["a"]).store, undefined, failing.recorder);
+		await ctx.settled();
+		expect(failing.calls).toHaveLength(1);
+		expect(log.warn).toHaveBeenCalledTimes(2);
+		expect(String(log.warn.mock.calls[1]?.[0])).toContain("ledger boom");
+	});
+
+	it("账有改写时记一条 info(几个文件、压掉几行、丢几条坏行);没改写不吵", async () => {
+		start(makeStore([]).store, undefined, makeRecorder().recorder);
+		await ctx.settled();
+		expect(log.info).not.toHaveBeenCalled();
+
+		const loud = makeRecorder(async () => ({ files: 3, squeezed: 40, badLines: 1 }));
+		start(makeStore([]).store, undefined, loud.recorder);
+		await ctx.settled();
+		const text = log.info.mock.calls.map((c) => String(c[0])).join("\n");
+		expect(text).toContain("recording");
+		expect(text).toContain("3 file(s)");
+		expect(text).toContain("squeezed 40 row(s)");
+		expect(text).toContain("1 bad line(s)");
 	});
 });

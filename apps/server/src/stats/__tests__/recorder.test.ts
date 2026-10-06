@@ -61,6 +61,13 @@ function makeStore() {
 		listLiveSessions: vi.fn(async () => []),
 		appendRecording: vi.fn(async () => {}),
 		listRecording: vi.fn(async () => []),
+		recordingKeys: vi.fn(async () => []),
+		compactRecording: vi.fn(async () => ({
+			rowsBefore: 0,
+			rowsAfter: 0,
+			badLines: 0,
+			rewritten: false,
+		})),
 		drop: vi.fn(async () => {}),
 	} satisfies Record<keyof StatsStore, unknown> as unknown as StatsStore & {
 		appendRecording: ReturnType<typeof vi.fn>;

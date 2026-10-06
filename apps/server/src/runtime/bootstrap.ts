@@ -77,7 +77,7 @@ export interface AppRuntime {
 	 */
 	statsStore: StatsStore;
 	/** 统计采集。构造时只挂上总线、不碰盘;登录系统建好后 `bindLoginState` 回填 B 站登录读口,绑上才开始记 B 站的「在记」。 */
-	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState">;
+	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState" | "compactRecording">;
 	/**
 	 * Per-subscription runtime data (display cache + fans anchor), externalized
 	 * out of the persisted `Subscription` config so FansPoller's per-tick

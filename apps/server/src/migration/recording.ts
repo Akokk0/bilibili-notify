@@ -26,6 +26,7 @@ import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
 import { FOLLOWERS_DIR } from "../followers/store.js";
 import { dataPath } from "../runtime/roots.js";
+import { compareRecordingEntries } from "../stats/recording-compress.js";
 import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
 import {
 	type RecordingEntry,
@@ -285,11 +286,14 @@ export async function migrateRecordingLedger(
 			for (const h of one.posts) posts.add(h);
 			if (one.live) for (const h of one.liveStarts) live.add(h);
 		}
+		// 照账的规范次序写(与压缩同一个比较函数):迁移的产出就是规范形态,开机第一趟压缩不必重排。
 		const lines = [
 			...rangesOf("posts", posts),
 			...rangesOf("live", live),
 			...rangesOf("followers", one.samples),
-		].map((entry) => JSON.stringify(entry));
+		]
+			.sort(compareRecordingEntries)
+			.map((entry) => JSON.stringify(entry));
 		if (lines.length === 0) continue;
 		await mkdir(recordingDir, { recursive: true });
 		const target = join(recordingDir, `${one.id}.jsonl`);

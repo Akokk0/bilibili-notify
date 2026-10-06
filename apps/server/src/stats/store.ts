@@ -1,10 +1,11 @@
 import { createReadStream } from "node:fs";
-import { mkdir, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
-import { appendJsonl } from "@bilibili-notify/storage";
+import { appendJsonl, atomicWriteFile, isLeftoverName } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
+import { compressRecordingEntries } from "./recording-compress.js";
 
 /**
  * 按订阅分文件的「UP 产出」时序持久化 —— 数据统计页 Tab 的原始数据源。
@@ -120,8 +121,39 @@ export interface StatsStore {
 	appendRecording(key: string, entry: RecordingEntry): Promise<void>;
 	/** 读回结束时刻晚于 `sinceIso` 的「在记」行(与 `since` 之后有交集的),按落盘顺序;坏行跳过。`""` 读全部。 */
 	listRecording(key: string, sinceIso: string): Promise<RecordingEntry[]>;
+	/** 盘上有「在记」账文件的键(订阅 id)。目录还没建回空。 */
+	recordingKeys(): Promise<string[]>;
+	/**
+	 * 压缩这个键的账:读整份 → 逐行解析(坏行丢掉并计数)→ {@link compressRecordingEntries} → 与原来逐行相同就什么都不写,
+	 * 不同就原子换名写回。文件不在回全 0;读不动抛。
+	 *
+	 * ⚠️ **与账的追加互斥归调用方**:仓自己不排队(账的追加走记录器按键的那条队),压缩读完整份、写回之前追加的行
+	 * 会被换名盖掉。所以只许经记录器的 `compactRecording` 调它 —— 它把压缩排进同一个键的队里。
+	 */
+	compactRecording(key: string, now: Date): Promise<RecordingCompactReport>;
 	/** 删除这个键的三类文件(订阅被移除时调用)。 */
 	drop(key: string): Promise<void>;
+}
+
+/** 一次账压缩的结果。 */
+export interface RecordingCompactReport {
+	/** 压缩前认得的行数(坏行与空行不算)。 */
+	rowsBefore: number;
+	/** 压缩后的行数。 */
+	rowsAfter: number;
+	/** 丢掉的坏行数;空行不算。 */
+	badLines: number;
+	/** 有没有写盘。 */
+	rewritten: boolean;
+}
+
+/** 读一行「在记」。返回 `undefined` = 这行不认(缺格、项不认得、起止倒置、时刻解析不了),跳过。 */
+function readRecordingRow(parsed: unknown): RecordingEntry | undefined {
+	const row = parsed as { kind?: unknown; startedAt?: unknown; endedAt?: unknown } | null;
+	if (row?.kind !== "posts" && row?.kind !== "live" && row?.kind !== "followers") return undefined;
+	if (typeof row.startedAt !== "string" || typeof row.endedAt !== "string") return undefined;
+	if (!(Date.parse(row.startedAt) < Date.parse(row.endedAt))) return undefined;
+	return { kind: row.kind, startedAt: row.startedAt, endedAt: row.endedAt };
 }
 
 /** 读一行作品。返回 `undefined` = 这行不认(坏行、缺格、格不对),跳过。 */
@@ -386,15 +418,64 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			await ensureRoots();
 			const rows: RecordingEntry[] = [];
 			await readLines(recordingFile(key), (parsed) => {
-				const row = parsed as { kind?: unknown; startedAt?: unknown; endedAt?: unknown } | null;
-				if (row?.kind !== "posts" && row?.kind !== "live" && row?.kind !== "followers") return;
-				if (typeof row.startedAt !== "string" || typeof row.endedAt !== "string") return;
-				if (!(Date.parse(row.startedAt) < Date.parse(row.endedAt))) return;
-				if (row.endedAt > sinceIso) {
-					rows.push({ kind: row.kind, startedAt: row.startedAt, endedAt: row.endedAt });
-				}
+				const row = readRecordingRow(parsed);
+				if (row && row.endedAt > sinceIso) rows.push(row);
 			});
 			return rows;
+		},
+
+		async recordingKeys() {
+			let names: string[];
+			try {
+				names = await readdir(recordingRoot);
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+				throw err;
+			}
+			return names
+				.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
+				.map((name) => name.slice(0, -".jsonl".length));
+		},
+
+		async compactRecording(key, now) {
+			let text: string;
+			try {
+				text = await readFile(recordingFile(key), "utf8");
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+					return { rowsBefore: 0, rowsAfter: 0, badLines: 0, rewritten: false };
+				}
+				throw err;
+			}
+			const originalLines = text.split("\n").filter((line) => line.trim() !== "");
+			const rows: RecordingEntry[] = [];
+			let badLines = 0;
+			for (const line of originalLines) {
+				let row: RecordingEntry | undefined;
+				try {
+					row = readRecordingRow(JSON.parse(line));
+				} catch {
+					row = undefined;
+				}
+				if (row) rows.push(row);
+				else badLines += 1;
+			}
+			const compressed = compressRecordingEntries(rows, now);
+			const nextLines = compressed.map((row) => JSON.stringify(row));
+			const same =
+				badLines === 0 &&
+				nextLines.length === originalLines.length &&
+				nextLines.every((line, i) => line === originalLines[i]?.trim());
+			if (badLines > 0) {
+				opts.logger.warn(`[stats-store] compact recording ${key} dropped ${badLines} bad line(s)`);
+			}
+			if (!same) {
+				await atomicWriteFile(
+					recordingFile(key),
+					nextLines.length === 0 ? "" : `${nextLines.join("\n")}\n`,
+				);
+			}
+			return { rowsBefore: rows.length, rowsAfter: compressed.length, badLines, rewritten: !same };
 		},
 
 		async drop(key) {
