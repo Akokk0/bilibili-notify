@@ -190,14 +190,20 @@ async function removeOnDisk(hostRoot: string, seq: number): Promise<void> {
 }
 
 /**
- * 开机清扫补的两处:`generations/` 这一层、宿主根这一层,收**删代删到一半的残骸**。
- * 只认「先改名再删」的改名规则产生的名字:`generations/` 里基名是 `<序号>` 或 `<序号>.partial` 的
- * `.bn-tmp.` / `.bn-old.` 残留;宿主根上基名是第 0 代某个键的。都只看这一层、不往里钻 ——
- * 旧代内部是备份,宿主根上的 `versions/`(另有人扫)、`logs/` 与别的东西一概不碰。
+ * 开机清扫补的两处:`generations/` 这一层、宿主根这一层,收**删代删到一半的残骸**与**开代开到一半的
+ * `<序号>.partial`**。
+ *
+ * - 残骸只认「先改名再删」的改名规则产生的名字:`generations/` 里基名是 `<序号>` 或 `<序号>.partial` 的
+ *   `.bn-tmp.` / `.bn-old.` 残留;宿主根上基名是第 0 代某个键的。
+ * - `<序号>.partial` 是 `createGeneration` 的暂存目录,只在开机里、这趟清扫**之后**才会有人建;清扫时还在的
+ *   一定是上个进程被杀留下的。在这里收而不是留给下一次开新代:用已有的一代开机时没人开新代,它会一直占着盘。
+ *
+ * 都只看这一层、不往里钻 —— 旧代内部是备份,宿主根上的 `versions/`(另有人扫)、`logs/` 与别的东西一概不碰。
  */
 export async function sweepGenerationLeftovers(hostRoot: string): Promise<SweepReport> {
 	const merged: SweepReport = { removed: [], restored: [], skipped: [] };
 	const parts = [
+		await sweepPartialGenerations(hostRoot),
 		await sweepTempFiles(hostPath(hostRoot, "generations"), {
 			recurse: false,
 			only: (base) => /^\d+(\.partial)?$/.test(base),
@@ -213,6 +219,35 @@ export async function sweepGenerationLeftovers(hostRoot: string): Promise<SweepR
 		merged.skipped.push(...part.skipped);
 	}
 	return merged;
+}
+
+const PARTIAL_GENERATION_NAME = /^\d+\.partial$/;
+
+async function sweepPartialGenerations(hostRoot: string): Promise<SweepReport> {
+	const report: SweepReport = { removed: [], restored: [], skipped: [] };
+	const root = hostPath(hostRoot, "generations");
+	let names: string[];
+	try {
+		names = await readdir(root);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+			report.skipped.push({ path: root, message: String(error) });
+		}
+		return report;
+	}
+	for (const name of names.filter((n) => PARTIAL_GENERATION_NAME.test(n)).sort()) {
+		const path = join(root, name);
+		try {
+			await removeDirectory(path);
+			report.removed.push(path);
+		} catch (error) {
+			report.skipped.push({
+				path,
+				message: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+	return report;
 }
 
 async function existingZeroKeys(hostRoot: string): Promise<ZeroGenerationKey[]> {

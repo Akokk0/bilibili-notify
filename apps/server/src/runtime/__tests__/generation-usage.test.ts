@@ -425,6 +425,20 @@ describe("删到一半的残骸由开机清扫收走", () => {
 		expect(existsSync(join(host, "versions", "a.bn-tmp.1.abc"))).toBe(true);
 	});
 
+	it("开代开到一半被杀留下的 <序号>.partial 整个收走,不管这次开机用旧代还是开新代", async () => {
+		// 重新迁移迁到一半被杀:标记已经取走,下次开机接着用原来那一代,没有人再开新代去顺手清它。
+		const one = await makeGen("1");
+		await mkdir(join(host, "generations", "2.partial", "history"), { recursive: true });
+		await writeFile(join(host, "generations", "2.partial", "history", "f.jsonl"), "半截");
+		await writeFile(join(host, "generations", "notes.partial"), "名字不是代");
+
+		const report = await sweepGenerationLeftovers(host);
+
+		expect(report.removed.map((p) => p.slice(host.length + 1))).toEqual(["generations/2.partial"]);
+		expect((await readdir(join(host, "generations"))).sort()).toEqual(["1", "notes.partial"]);
+		expect(existsSync(join(one, GENERATION_FILE))).toBe(true);
+	});
+
 	it("宿主根或 generations/ 不存在也不抛", async () => {
 		const report = await sweepGenerationLeftovers(join(host, "nowhere"));
 		expect(report).toEqual({ removed: [], restored: [], skipped: [] });

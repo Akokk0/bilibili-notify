@@ -69,7 +69,6 @@ describe("selectGeneration", () => {
 			dir: join(generations, "1"),
 			partialDir: join(generations, "1.partial"),
 			source: { kind: "empty" },
-			leftovers: [],
 		});
 	});
 
@@ -110,15 +109,11 @@ describe("selectGeneration", () => {
 		expect(await select(true)).toMatchObject({ kind: "create", seq: 2, source: { kind: "empty" } });
 	});
 
-	it("写到一半的 .partial 不算一代,号也不重用,交出来等着清", async () => {
+	it("写到一半的 .partial 不算一代,它还在的时候号也不重用", async () => {
 		await placeGeneration(1, { migrationRevision: 6 });
 		await mkdir(join(generations, "2.partial"), { recursive: true });
 
-		expect(await select(true)).toMatchObject({
-			kind: "create",
-			seq: 3,
-			leftovers: [join(generations, "2.partial")],
-		});
+		expect(await select(true)).toMatchObject({ kind: "create", seq: 3 });
 	});
 
 	it("没有 generation.json 或读不懂的目录不算一代,号也不重用", async () => {
@@ -158,7 +153,6 @@ describe("selectGeneration — 主人要求开新代", () => {
 			dir: join(generations, "3"),
 			partialDir: join(generations, "3.partial"),
 			source: { kind: "empty" },
-			leftovers: [],
 			current: { seq: 2, dir: current },
 		});
 	});
@@ -281,21 +275,5 @@ describe("createGeneration", () => {
 		).rejects.toThrow("disk full");
 
 		expect(await readdir(generations).catch(() => [])).toEqual([]);
-	});
-
-	it("先清掉上次留下的半截", async () => {
-		await placeGeneration(1, { migrationRevision: 6 });
-		await mkdir(join(generations, "2.partial", "state"), { recursive: true });
-		const selection = await select(true);
-		if (selection.kind !== "create") throw new Error("expected create");
-
-		await createGeneration(selection, {
-			formatVersion: 1,
-			migrationRevision: 7,
-			createdBy: "1.0.0-dev",
-			fill: async () => {},
-		});
-
-		expect((await readdir(generations)).sort()).toEqual(["1", "3"]);
 	});
 });

@@ -20,12 +20,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import {
-	atomicWriteJson,
-	copyFileAtomic,
-	removeDirectory,
-	replaceDirectory,
-} from "@bilibili-notify/storage";
+import { atomicWriteJson, copyFileAtomic, replaceDirectory } from "@bilibili-notify/storage";
 import { z } from "zod";
 import { dataPath, hostPath } from "./roots.js";
 
@@ -73,8 +68,6 @@ export type GenerationSelection =
 			/** 在这里搭,搭好再原子改名成 `dir`。 */
 			partialDir: string;
 			source: GenerationSource;
-			/** 上次写到一半留下的 `.partial`,开新代之前清掉。 */
-			leftovers: string[];
 			/**
 			 * 主人要求开新代时正在用的那一代:开新代失败就退回去接着用它,不让整个开机失败。
 			 * 不是主人要求的(首次迁移、开发期重迁),或者当时一代都没有,就没有这一格。
@@ -101,14 +94,14 @@ const PARTIAL_NAME = /^(\d+)\.partial$/;
 /**
  * 选这次开机用哪一代。只读盘:没有合用的就交回「开新的一代」,由调用方在 listen 之后去开。
  *
- * 序号只往后排:半截的、读不懂的、格式比我新的,占着的号都不重用。
+ * 序号只往后排:读不懂的、格式比我新的,占着的号都不重用;半截的(`.partial`)还在盘上时也占着号,
+ * 被开机清扫收走以后那个号可以再用(它从没成为过一代,没有东西指着它)。
  */
 export async function selectGeneration(
 	opts: SelectGenerationOptions,
 ): Promise<GenerationSelection> {
 	const names = await listGenerationNames(opts.hostRoot);
 	let highestSeq = 0;
-	const leftovers: string[] = [];
 	let current: { seq: number; file: GenerationFile } | undefined;
 	for (const name of names) {
 		const partial = PARTIAL_NAME.exec(name);
@@ -116,10 +109,8 @@ export async function selectGeneration(
 		const seq = Number((partial ?? complete)?.[1] ?? Number.NaN);
 		if (Number.isNaN(seq)) continue;
 		highestSeq = Math.max(highestSeq, seq);
-		if (partial) {
-			leftovers.push(hostPath(opts.hostRoot, "generations", name));
-			continue;
-		}
+		// 写到一半的不算一代(开机清扫会收走,见 `sweepGenerationLeftovers`),只占号。
+		if (partial) continue;
 		const file = await readGenerationFile(hostPath(opts.hostRoot, "generations", name));
 		if (!file || file.formatVersion > opts.formatVersion) continue;
 		if (!current || seq > current.seq) current = { seq, file };
@@ -153,7 +144,6 @@ export async function selectGeneration(
 		partialDir: hostPath(opts.hostRoot, "generations", `${seq}.partial`),
 		source:
 			pending ?? (wantsZero && opts.zeroGenerationExists ? { kind: "zero" } : { kind: "empty" }),
-		leftovers,
 		...(pending && current && currentDir ? { current: { seq: current.seq, dir: currentDir } } : {}),
 	};
 }
@@ -201,7 +191,7 @@ export interface CreateGenerationOptions {
 }
 
 /**
- * 开新的一代:清掉上次的半截,在 `.partial` 里填好内容、写上 generation.json,再原子改名成正式的一代。
+ * 开新的一代:在 `.partial` 里填好内容、写上 generation.json,再原子改名成正式的一代。
  * 填的时候抛了,`.partial` 删掉、错误照抛,不会留下半截的一代。
  */
 export async function createGeneration(
@@ -212,7 +202,6 @@ export async function createGeneration(
 	if (existsSync(selection.dir)) {
 		throw new Error(`第 ${selection.seq} 代已经存在,不能再开一次:${selection.dir}`);
 	}
-	for (const leftover of selection.leftovers) await removeDirectory(leftover);
 	await replaceDirectory(
 		selection.dir,
 		async (partialDir) => {
