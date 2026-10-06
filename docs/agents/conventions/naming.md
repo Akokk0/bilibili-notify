@@ -71,6 +71,8 @@
 | 统计「在记」 | `recording`（目录 `stats/recording/`、行 `RecordingEntry`，三项 `posts` / `live` / `followers`） | `seen`、`coverage` |
 | BN 跑了多久 | `uptime`（目录 `uptime/`、行 `UptimeEntry { hourStartedAt, minutes }`） | `run…`（和 `runtime` 混） |
 | 作品的摘要 | `summary`（取段函数拼出、截过的整条文字） | `excerpt`、`digest`、`desc` |
+| 把老数据压小 | `compact`（动作与定时活：`compact(key, now)`、`startStatsCompaction`）；纯函数叫 `compress…` | `prune`、`trim`（那是删）、`sweep`（那是按引用清图） |
+| 粉丝样本的一段同值 | 不单起类型：`FollowersSample` 多一格 `lastSampledAt` | `Span`、`Run`、`Interval` |
 | 名字 | `name` | `uname`、`username`、`mastername` |
 | 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef`；历史行上「推送那一刻的头像」叫 `avatarSnapshot`（也是 `ImageRef`，与 `nameSnapshot` 成对） | `face`、`userface`、当网址用的 `avatar` |
 | 粉丝数 | `followers` | `fans`、`fansNum`、`followerNum` |

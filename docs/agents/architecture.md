@@ -96,7 +96,7 @@ src/
     fans-poller.ts        FansPoller —— 问 B 站、写 <数据根>/stats/followers/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
-  fans/store.ts         append-only jsonl 时序(<数据根>/stats/followers/<订阅 id>.jsonl)
+  followers/store.ts    粉丝时序(<数据根>/stats/followers/<订阅 id>.jsonl):按订阅排队追加,满 8 天的由 stats/compaction.ts 那趟压缩成每小时末值与同值段,读口把段展开回点
   stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评(ADR-0020);0.x 按 uid 命名的文件与老行由迁移器一次改好(migration/stats.ts)
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回;配图与头像快照存的是图库引用)+ retention(文字不删,重推原件按水位线清,图由图库按引用清扫;`listHistoryImageRefs` 是历史这一家的引用方名单)+ repush-store(重推原件,图也在图库)+ view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
