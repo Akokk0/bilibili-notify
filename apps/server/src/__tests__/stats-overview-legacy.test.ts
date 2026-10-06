@@ -11,9 +11,12 @@
  * S4 起两格峰值改名 `maxViewers` / `avgViewers`(ADR-0020 决策 18),只改名、数一个不变;行多了
  * `subscriptionId` 与身份两格,这里按 uid 取 B 站行、只比数字那几格。
  *
- * 要紧的几个角都在夹具里:只有开播公告、没有场次的 UP(直播推送全关)—— 它的「最后活动」
- * 只能来自开播公告,计数是 0 不是 null(ADR-0020 决策 5 的第二个 🔗);开播公告比场次晚
- * 几分钟的「最后活动」;接回的场次、解析不出的老峰值、孤立的 end、窗口外的老行、坏行。
+ * **㉖c 起有一处有意的不同**:开播公告不再记(ADR-0027)。原先的期望值里,只有公告、没有场次的 UP(直播推送全关)
+ * 靠公告撑着「最后活动」与计数 0,公告比场次晚几分钟的那位「最后活动」落在公告上;现在这些格子要么落到场次 / 作品
+ * 上、要么整行是「无记录」null —— 其余每一格仍是改之前的数。
+ *
+ * 要紧的几个角都在夹具里:只有开播公告、没有场次的 UP;开播公告比场次晚几分钟;接回的场次、解析不出的老峰值、
+ * 孤立的 end、窗口外的老行、坏行。
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -179,16 +182,15 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		// 原件断言的是旧函数的计数 `{ renamed: 8, merged: 0, copied: 0 }`;迁移器回的是改写过的文件:
 		// 就是这八份(改名与翻行并成一条,粉丝文件只改名)。
 		expect(
-			report.rewritten.filter((path) => /^stats\/(dyn|live|followers)\//.test(path)).sort(),
+			report.rewritten.filter((path) => /^stats\/(posts|live|followers)\//.test(path)).sort(),
 		).toEqual([
-			"stats/dyn/s101.jsonl",
-			"stats/dyn/s102.jsonl",
-			"stats/dyn/s103.jsonl",
-			"stats/dyn/s105.jsonl",
 			"stats/followers/s101.jsonl",
 			"stats/followers/s103.jsonl",
 			"stats/live/s103.jsonl",
 			"stats/live/s105.jsonl",
+			"stats/posts/s101.jsonl",
+			"stats/posts/s103.jsonl",
+			"stats/posts/s105.jsonl",
 		]);
 		return makeDeps(generation, uids, ["103"]);
 	}
@@ -204,19 +206,19 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-15T12:00:00.000Z",
+				lastActivityAt: "2026-05-14T12:00:00.000Z",
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"102": {
-				archives: 0,
-				dynamics: 0,
-				liveSessions: 0,
-				liveHours: 0,
-				liveTimedSessions: 0,
+				archives: null,
+				dynamics: null,
+				liveSessions: null,
+				liveHours: null,
+				liveTimedSessions: null,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T09:00:00.000Z",
-				activity: [null, null, null, 0, 0, 0, 0],
+				lastActivityAt: null,
+				activity: [null, null, null, null, null, null, null],
 			},
 			"103": {
 				archives: 0,
@@ -226,7 +228,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				liveTimedSessions: 3,
 				maxViewers: 12000,
 				avgViewers: 10500,
-				lastActivityAt: "2026-05-16T10:05:00.000Z",
+				lastActivityAt: "2026-05-16T10:00:00.000Z",
 				activity: [null, null, null, 1, 0, 1, 1],
 			},
 			"104": {
@@ -254,7 +256,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		});
 	});
 
-	it("近 1 日(UTC)—— 只有开播公告的那位计数是 0 不是 null", async () => {
+	it("近 1 日(UTC)—— 只有开播公告的那位(公告不再记)整行是无记录 null", async () => {
 		const deps = await writeLegacyFixture();
 		expect(await overview(deps, "?days=1&tz=0")).toEqual({
 			"101": {
@@ -269,15 +271,15 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				activity: [0],
 			},
 			"102": {
-				archives: 0,
-				dynamics: 0,
-				liveSessions: 0,
-				liveHours: 0,
-				liveTimedSessions: 0,
+				archives: null,
+				dynamics: null,
+				liveSessions: null,
+				liveHours: null,
+				liveTimedSessions: null,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T09:00:00.000Z",
-				activity: [0],
+				lastActivityAt: null,
+				activity: [null],
 			},
 			"103": {
 				archives: 0,
@@ -287,7 +289,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				liveTimedSessions: 1,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T10:05:00.000Z",
+				lastActivityAt: "2026-05-16T10:00:00.000Z",
 				activity: [1],
 			},
 			"104": {
@@ -332,17 +334,17 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-15T12:00:00.000Z",
+				lastActivityAt: "2026-05-14T12:00:00.000Z",
 			},
 			"102": {
-				archives: 0,
-				dynamics: 0,
-				liveSessions: 0,
-				liveHours: 0,
-				liveTimedSessions: 0,
+				archives: null,
+				dynamics: null,
+				liveSessions: null,
+				liveHours: null,
+				liveTimedSessions: null,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T09:00:00.000Z",
+				lastActivityAt: null,
 			},
 			"103": {
 				archives: 0,
@@ -352,7 +354,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				liveTimedSessions: 3,
 				maxViewers: 12000,
 				avgViewers: 10500,
-				lastActivityAt: "2026-05-16T10:05:00.000Z",
+				lastActivityAt: "2026-05-16T10:00:00.000Z",
 			},
 			"104": {
 				archives: null,
@@ -469,7 +471,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-15T09:00:00.000Z",
+				lastActivityAt: "2026-05-14T07:00:00.000Z",
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"202": {
@@ -480,7 +482,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T08:00:00.000Z",
+				lastActivityAt: "2026-05-16T07:00:00.000Z",
 				activity: [null, null, null, 0, 2, 2, 1],
 			},
 			"203": {
@@ -491,7 +493,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				liveTimedSessions: 1,
 				maxViewers: 12000,
 				avgViewers: 12000,
-				lastActivityAt: "2026-05-14T11:01:00.000Z",
+				lastActivityAt: "2026-05-14T11:00:00.000Z",
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"204": {
@@ -530,7 +532,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T08:00:00.000Z",
+				lastActivityAt: "2026-05-16T07:00:00.000Z",
 				activity: [1],
 			},
 			"203": {

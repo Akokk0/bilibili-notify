@@ -580,7 +580,7 @@ const NEUTRAL_POST_KINDS = ["video", "post", "post", "live"] as const;
 const BILI_PEAKS = ["856", "1.2万", "3.4万", "9500", "12.5万"] as const;
 const POSTS_PER_DAY = 2;
 
-/** 数据统计:作品、直播、「在记」。B 站按 uid 命名、老行;拓展按订阅 id 命名、已经是最新的行。 */
+/** 数据统计:作品、直播、「在记」。B 站按 uid 命名、老行;拓展按订阅 id 命名、`kind` 行。回的 `postRows` 是迁完留下的作品行(开播公告丢掉)。 */
 async function placeStats(
 	tree: Tree,
 	days: number,
@@ -613,36 +613,43 @@ async function placeStats(
 
 	for (const [index, sub] of bili.entries()) {
 		const dyn: string[] = [];
+		let kept = 0;
 		for (let day = 0; day < days; day += 1) {
 			for (let k = 0; k < POSTS_PER_DAY; k += 1) {
+				const type = pick(BILI_POST_TYPES, index + day + k);
 				dyn.push(
 					JSON.stringify({
 						id: postIds(index, day, k),
-						type: pick(BILI_POST_TYPES, index + day + k),
+						type,
 						ts: iso(postTime(index, day, k)),
 					}),
 				);
+				// 开播公告迁移时丢掉(ADR-0027),不算迁过去的作品行。
+				if (type !== "DYNAMIC_TYPE_LIVE_RCMD") kept += 1;
 			}
 		}
 		const live = liveFramesOf(index, (session) => pick(BILI_PEAKS, session));
 		await tree.putJsonl(`stats/dyn/${sub.uid}.jsonl`, dyn);
 		await tree.putJsonl(`stats/live/${sub.uid}.jsonl`, live);
-		postRows += dyn.length;
+		postRows += kept;
 		liveFrames += live.length;
 	}
 
 	for (const [index, id] of extensionIds.entries()) {
 		const dyn: string[] = [];
 		const seen: string[] = [];
+		let kept = 0;
 		for (let day = 0; day < days; day += 1) {
 			for (let k = 0; k < POSTS_PER_DAY; k += 1) {
+				const kind = pick(NEUTRAL_POST_KINDS, index + day + k);
 				dyn.push(
 					JSON.stringify({
 						id: `ext-${index}-${day}-${k}`,
-						kind: pick(NEUTRAL_POST_KINDS, index + day + k),
+						kind,
 						ts: iso(postTime(index, day, k)),
 					}),
 				);
+				if (kind !== "live") kept += 1;
 			}
 			seen.push(JSON.stringify({ ts: iso(dayMs(day) + 12 * 3_600_000) }));
 		}
@@ -650,7 +657,7 @@ async function placeStats(
 		await tree.putJsonl(`stats/dyn/${id}.jsonl`, dyn);
 		await tree.putJsonl(`stats/live/${id}.jsonl`, live);
 		await tree.putJsonl(`stats/seen/${id}.jsonl`, seen);
-		postRows += dyn.length;
+		postRows += kept;
 		liveFrames += live.length;
 		seenRows += seen.length;
 	}

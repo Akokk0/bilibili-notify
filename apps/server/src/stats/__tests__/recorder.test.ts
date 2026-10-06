@@ -7,7 +7,7 @@
  * (ADR-0020 决策 2 的 🔗)—— 下面的订阅 id 故意与 uid 不同,键用错了一眼就红。
  *
  * 守护契约:
- *   - dynamic-detected → B 站适配归类:AV 记成 video,开播那两种记成 live,其余记成 post
+ *   - dynamic-detected → B 站适配归类:AV 记成有视频,开播那两种不记,其余记成没有视频
  *   - live-state-changed live/idle → open/closeLiveSession,时间取注入时钟
  *   - 峰值观看取本场 viewers 的最大值,且跨场不串味(新场重置)
  *   - "1.2万" 这类 B 站压缩字符串在交进记录器之前解析成数字,落盘的是数字
@@ -112,7 +112,7 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 }
 
 describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
-	it("dynamic-detected 的视频投稿 → appendPost 记成 video,按订阅 id 落(不是 uid)", async () => {
+	it("dynamic-detected 的视频投稿 → appendPost 记成有视频,按订阅 id 落(不是 uid)", async () => {
 		const { trigger, store } = setup();
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -123,12 +123,12 @@ describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
 		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
 		expect(store.appendPost).toHaveBeenCalledWith("id-1", {
 			id: "abc",
-			kind: "video",
-			ts: "2026-05-16T09:00:00.000Z",
+			hasVideo: true,
+			publishedAt: "2026-05-16T09:00:00.000Z",
 		});
 	});
 
-	it("图文 / 纯文字 / 转发 / 没见过的新类型 → post", async () => {
+	it("图文 / 纯文字 / 转发 / 没见过的新类型 → 没有视频", async () => {
 		const { trigger, store } = setup();
 		const types = [
 			"DYNAMIC_TYPE_DRAW",
@@ -140,17 +140,16 @@ describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
 			trigger("dynamic-detected", { uid: "1", id: `d${i}`, type, ts: "2026-05-16T09:00:00.000Z" });
 		}
 		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(types.length));
-		expect(store.appendPost.mock.calls.map((c) => c[1].kind)).toEqual([
-			"post",
-			"post",
-			"post",
-			"post",
+		expect(store.appendPost.mock.calls.map((c) => c[1].hasVideo)).toEqual([
+			false,
+			false,
+			false,
+			false,
 		]);
 	});
 
-	it("开播那两种记成 live —— 不是作品,但「最后活动」与「那天有记录」要用到它", async () => {
-		// 没开直播类推送的 UP 不记场次,开播公告是他开过播的唯一痕迹;不记的话天天开播
-		// 也会被判成很久没动静、进鸽子榜(ADR-0020 决策 5 的第二个 🔗)。
+	it("开播那两种不记任何行 —— 场次从直播事件另记,公告再记一行就是把一场直播算两次(㉖c)", async () => {
+		// 没开直播类推送的 UP 也一样不记:公告不再是「最后活动」与「那天有记录」的证据(ADR-0027)。
 		const { trigger, store } = setup();
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -164,17 +163,17 @@ describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
 			type: "DYNAMIC_TYPE_LIVE",
 			ts: "2026-05-16T09:05:00.000Z",
 		});
-		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(2));
-		expect(store.appendPost).toHaveBeenNthCalledWith(1, "id-1", {
-			id: "l1",
-			kind: "live",
-			ts: "2026-05-16T09:00:00.000Z",
+		// 对照:同一批事件里夹一条普通动态 —— 它记、公告不记,证明监听在跑、不是空转。
+		trigger("dynamic-detected", {
+			uid: "1",
+			id: "w1",
+			type: "DYNAMIC_TYPE_WORD",
+			ts: "2026-05-16T09:10:00.000Z",
 		});
-		expect(store.appendPost).toHaveBeenNthCalledWith(2, "id-1", {
-			id: "l2",
-			kind: "live",
-			ts: "2026-05-16T09:05:00.000Z",
-		});
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
+		expect(store.appendPost.mock.calls).toEqual([
+			["id-1", { id: "w1", hasVideo: false, publishedAt: "2026-05-16T09:10:00.000Z" }],
+		]);
 	});
 });
 

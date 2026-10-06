@@ -7,7 +7,6 @@ import {
 import { CronTime } from "cron";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
-import type { StatsPostKind } from "./store.js";
 
 /**
  * 统计的**拓展适配**(ADR-0020 决策 17):把订阅源拓展的上报与拓展直播的场次翻成记录器的中立调用,按
@@ -15,7 +14,7 @@ import type { StatsPostKind } from "./store.js";
  *
  *   - **记谁**(决策 4):订阅在、启用着就记,**与推送开关无关** —— 统计记的是「UP 做了什么」。停用的不记,
  *     哪怕它的资料照样报上来(ADR-0019 决策 62:资料更新的投递含停用的订阅)。
- *   - `subscription-reported` 的作品 → 带视频的记 `video`、其余记 `post`(决策 5),时刻是发布时刻;
+ *   - `subscription-reported` 的作品 → 记「有没有视频」(决策 5),时刻是发布时刻;
  *     同一条作品报几次只留一行(去重在 store)。
  *   - `extension-live-session` → 开一场 / 关一场(决策 6):场次边界(断流接续、没报下播又开播、拓展停了、
  *     停用、关机)由 `runtime/extension-live-sessions.ts` 算、与推送共用,这里不另算。每种结束原因都是「观测
@@ -35,9 +34,9 @@ export interface ExtensionStatsSourceOptions {
 	fansCron: () => string;
 }
 
-/** 作品的中立种类(决策 5):发了视频是「投稿」,其余(图文、纯文字)是「动态」。 */
-export function extensionPostKind(post: { video?: unknown }): StatsPostKind {
-	return post.video === undefined ? "post" : "video";
+/** 作品里有没有视频(决策 5):带视频的是「投稿」,其余(图文、纯文字)是「动态」。 */
+export function extensionHasVideo(post: { video?: unknown }): boolean {
+	return post.video !== undefined;
 }
 
 /** cron 读不出来时拓展粉丝的间隔 —— 与默认的 `fansCron`(`*\/10 * * * *`)同一个数。 */
@@ -114,8 +113,8 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 					case "post":
 						recorder.recordPost(key, {
 							id: report.value.id,
-							kind: extensionPostKind(report.value),
-							ts: iso(report.value.publishedAt),
+							hasVideo: extensionHasVideo(report.value),
+							publishedAt: iso(report.value.publishedAt),
 						});
 						break;
 					case "profile":

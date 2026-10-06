@@ -191,8 +191,12 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 	/** 盘上这一位的直播帧。 */
 	const frames = (id = SUB.id) => lines("live", id);
 
-	const start = (ts = T_ISO) => ({ k: "start", ts });
-	const end = (peak: number) => ({ k: "end", ts: expect.any(String), peak });
+	const start = (occurredAt = T_ISO) => ({ kind: "start", occurredAt });
+	const end = (peakTotalViewers: number) => ({
+		kind: "end",
+		occurredAt: expect.any(String),
+		peakTotalViewers,
+	});
 
 	/**
 	 * 等盘上的帧长成这样。帧是记录器排队写的(按钮 resolve 时只是交出去了),先等它们落地再问统计页 ——
@@ -261,8 +265,8 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		await press("report.post");
 		await vi.waitFor(
 			async () =>
-				expect(await lines("dyn", SUB.id)).toEqual([
-					{ id: "restart-post-1", kind: "post", ts: expect.any(String) },
+				expect(await lines("posts", SUB.id)).toEqual([
+					{ id: "restart-post-1", hasVideo: false, publishedAt: expect.any(String) },
 				]),
 			{ timeout: 3_000, interval: 50 },
 		);

@@ -3,21 +3,23 @@
  * 改、行在每次读的时候翻,统计仓开机只认最新的形状。两步,先改名再翻行(翻的是改好名的那一份):
  *
  * 1. **文件键**(ADR-0020 决策 2 的 🔗):B 站的作品、直播、粉丝文件从 `<uid>.jsonl` 并进 `<订阅 id>.jsonl`;
- * 2. **行**(决策 5 / 7 的 🔗):老作品行 `{id, type, ts}` → `{id, kind, ts}`,老下播帧的字符串峰值("1.2万")
- *    → 数字({@link parseBiliViewers},1.0 起「1.2万」的解析只留在这里);作品的类型串翻译与 B 站适配共用
+ * 2. **行与目录**(决策 5 / 7 的 🔗、ADR-0027):老作品行 `{id, type, ts}`(0.x 中间版本带 `kind`)→ `{id, hasVideo, publishedAt}`,
+ *    **开播公告那两种行丢掉**(统计不再记它),文件连同目录从 `stats/dyn/` 搬到 `stats/posts/`;老直播帧
+ *    `{k, ts, peak}` → `{kind, occurredAt, peakTotalViewers}`,字符串峰值("1.2万")→ 数字({@link parseBiliViewers},
+ *    1.0 起「1.2万」的解析只留在这里)。行一步翻到最新形状,不先写旧形状再改;作品的类型串翻译与 B 站适配共用
  *    `stats/bili-format.ts` 那一份。
  *
  * 从前每次开机都改名,是为了接住「回退到老版本、它又写出 uid 文件、再升回来」;有了代以后回退再升级照用
  * 迁好的那一代,手动从第 0 代重迁也走这里(ADR-0022 决策 3 下 10-01 的 🔗),新代里不会冒出 uid 文件,迁一次就够。
  */
 
-import { readFile, unlink } from "node:fs/promises";
+import { readFile, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { syncDirectory } from "@bilibili-notify/storage";
 import { FOLLOWERS_DIR } from "../fans/store.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
 import { classifyBiliDynamic } from "../stats/bili-format.js";
-import { STATS_DYN_DIR, STATS_LIVE_DIR } from "../stats/store.js";
+import { STATS_LIVE_DIR, STATS_POSTS_DIR } from "../stats/store.js";
 import {
 	isPlainObject,
 	listFiles,
@@ -47,8 +49,13 @@ export function parseBiliViewers(raw: string): number {
 	return n;
 }
 
+/**
+ * 0.x 里作品住的目录。**只有迁移认它**:搬过来之后先按文件键改名,再逐份翻行写进 {@link STATS_POSTS_DIR}、删掉这一份。
+ */
+const ZERO_POSTS_DIR: Dir = ["stats", "dyn"];
+
 /** 这三处按文件键分文件。`stats/seen` 从一开始就按订阅 id 命名,不认它。 */
-const KEYED_DIRS: readonly Dir[] = [STATS_DYN_DIR, STATS_LIVE_DIR, FOLLOWERS_DIR];
+const KEYED_DIRS: readonly Dir[] = [ZERO_POSTS_DIR, STATS_LIVE_DIR, FOLLOWERS_DIR];
 
 /**
  * 新代里的统计与粉丝文件迁成最新的形状,回改写过的文件(绝对路径;改了名的回新名字)。`subscriptions` 是
@@ -59,17 +66,40 @@ export async function migrateStatsFiles(
 	subscriptions: readonly BiliSubscriptionKey[],
 ): Promise<string[]> {
 	const rewritten = new Set(await migrateStatsFileKeys(dataRoot, subscriptions));
-	const rows: [Dir, (lines: readonly string[]) => string[]][] = [
-		[STATS_DYN_DIR, (lines) => lines.map(migratePostLine)],
-		[STATS_LIVE_DIR, migrateLiveFrameLines],
-	];
-	for (const [dir, rewrite] of rows) {
-		const root = dataPath(dataRoot, ...dir);
-		for (const name of await listFiles(root, ".jsonl")) {
-			if (await rewriteJsonlFile(join(root, name), rewrite)) rewritten.add(join(root, name));
+	// 作品:翻行 + 搬进新目录。文件键那一步写的是旧目录里的文件,这一步把它们搬走,所以汇报里只留新位置。
+	const zeroPostsRoot = dataPath(dataRoot, ...ZERO_POSTS_DIR);
+	const postsRoot = dataPath(dataRoot, ...STATS_POSTS_DIR);
+	for (const name of await listFiles(zeroPostsRoot, ".jsonl")) {
+		const from = join(zeroPostsRoot, name);
+		rewritten.delete(from);
+		const text = migratePostLines((await readFile(from, "utf8")).split("\n")).join("\n");
+		// 一条作品都没剩(全是开播公告)就不留一份空文件。
+		if (text !== "") {
+			await rewriteTextFile(join(postsRoot, name), text, from);
+			rewritten.add(join(postsRoot, name));
+		}
+		await unlink(from);
+	}
+	await removeDirIfEmpty(zeroPostsRoot);
+	// 直播帧:原地改形。
+	const liveRoot = dataPath(dataRoot, ...STATS_LIVE_DIR);
+	for (const name of await listFiles(liveRoot, ".jsonl")) {
+		if (await rewriteJsonlFile(join(liveRoot, name), migrateLiveFrameLines)) {
+			rewritten.add(join(liveRoot, name));
 		}
 	}
 	return [...rewritten];
+}
+
+/** 旧目录搬空了就删;里面还有别的东西(残留件)就留着 —— 统计仓只认新目录,不认它。 */
+async function removeDirIfEmpty(dir: string): Promise<void> {
+	try {
+		await rmdir(dir);
+		await syncDirectory(join(dir, ".."));
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException).code;
+		if (code !== "ENOENT" && code !== "ENOTEMPTY") throw err;
+	}
 }
 
 // ── 文件键 ──────────────────────────────────────────────────────────────────────
@@ -148,19 +178,41 @@ function withTrailingNewline(text: string): string {
 
 // ── 行 ──────────────────────────────────────────────────────────────────────────
 
-/** 老作品行:没有 `kind`、带着 B 站类型串。其余的(新行、坏行、认不得的种类)原样留着。 */
-function migratePostLine(line: string): string {
-	const row = parseJsonLine(line) as
-		| { id?: unknown; kind?: unknown; type?: unknown; ts?: unknown }
-		| null
-		| undefined;
-	if (typeof row?.id !== "string" || typeof row.ts !== "string") return line;
-	if (row.kind !== undefined || typeof row.type !== "string") return line;
-	return JSON.stringify({ id: row.id, kind: classifyBiliDynamic(row.type), ts: row.ts });
+/**
+ * 一份作品行 → 最新的形状。
+ *   - 0.x 的 `{id, type, ts}`:按 B 站类型串分有没有视频,**开播那两种丢掉**;
+ *   - 0.x 中间版本的 `{id, kind, ts}`:`video` 是有视频,`live` 丢掉;
+ *   - 已经是 `{id, hasVideo, publishedAt}` 的、坏行、认不得的种类:原样留着。
+ */
+function migratePostLines(lines: readonly string[]): string[] {
+	const out: string[] = [];
+	for (const line of lines) {
+		const row = parseJsonLine(line) as
+			| { id?: unknown; kind?: unknown; type?: unknown; ts?: unknown }
+			| null
+			| undefined;
+		if (typeof row?.id !== "string" || typeof row.ts !== "string") {
+			out.push(line);
+			continue;
+		}
+		let hasVideo: boolean | undefined;
+		if (row.kind === "video" || row.kind === "post") hasVideo = row.kind === "video";
+		else if (row.kind === "live") continue;
+		else if (row.kind === undefined && typeof row.type === "string") {
+			const post = classifyBiliDynamic(row.type);
+			if (!post) continue;
+			hasVideo = post.hasVideo;
+		}
+		out.push(
+			hasVideo === undefined ? line : JSON.stringify({ id: row.id, hasVideo, publishedAt: row.ts }),
+		);
+	}
+	return out;
 }
 
 /**
- * 一份直播帧。老下播帧的字符串峰值翻成数字;解析不出的,这一场当没采到。
+ * 一份直播帧 → 最新的形状 `{kind, occurredAt, peakTotalViewers?}`。老下播帧的字符串峰值翻成数字;解析不出的,
+ * 这一场当没采到。已经是新形状的帧与坏行原样留着。
  *
  * 「当没采到」不是逐帧翻得出来的:读的人从前在这一帧上把这一场已经记下的峰值**抹掉**(之后的帧再从头取
  * 最大),新形状里一帧表达不了「抹掉」。所以照统计仓的配对认出这一帧下的是哪一场(按开播时刻认:start 开、
@@ -169,46 +221,55 @@ function migratePostLine(line: string): string {
  */
 function migrateLiveFrameLines(lines: readonly string[]): string[] {
 	const out = [...lines];
-	/** 每一场(开播时刻)前面带着峰值的下播帧:第几行、解开来的那一帧。 */
-	const peaked = new Map<string, { index: number; frame: Record<string, unknown> }[]>();
+	/** 每一场(开播时刻)前面带着峰值的下播帧:第几行、翻好的那一帧。 */
+	const peaked = new Map<string, { index: number; frame: NewLiveFrame }[]>();
 	let open: string | undefined;
 	for (const [index, line] of lines.entries()) {
 		const frame = parseJsonLine(line);
 		if (!isPlainObject(frame) || typeof frame.ts !== "string") continue;
 		if (frame.k === "start") {
+			out[index] = JSON.stringify({ kind: "start", occurredAt: frame.ts });
 			open = frame.ts;
 			continue;
 		}
 		if (frame.k !== "end") continue;
 		const session = open;
 		open = undefined;
-		const remember = (next: Record<string, unknown>) => {
+		const next: NewLiveFrame = { kind: "end", occurredAt: frame.ts };
+		const remember = () => {
 			if (session === undefined) return;
 			peaked.set(session, [...(peaked.get(session) ?? []), { index, frame: next }]);
 		};
 		if (typeof frame.peak === "number") {
-			remember(frame);
+			next.peakTotalViewers = frame.peak;
+			out[index] = JSON.stringify(next);
+			remember();
 			continue;
 		}
-		if (typeof frame.peak !== "string") continue;
+		if (typeof frame.peak !== "string") {
+			out[index] = JSON.stringify(next);
+			continue;
+		}
 		const peak = parseBiliViewers(frame.peak);
 		if (Number.isFinite(peak)) {
-			const next = { ...frame, peak };
+			next.peakTotalViewers = peak;
 			out[index] = JSON.stringify(next);
-			remember(next);
+			remember();
 			continue;
 		}
-		out[index] = JSON.stringify(withoutPeak(frame));
+		out[index] = JSON.stringify(next);
 		if (session === undefined) continue;
 		for (const earlier of peaked.get(session) ?? []) {
-			out[earlier.index] = JSON.stringify(withoutPeak(earlier.frame));
+			const { peakTotalViewers: _peak, ...rest } = earlier.frame;
+			out[earlier.index] = JSON.stringify(rest);
 		}
 		peaked.delete(session);
 	}
 	return out;
 }
 
-function withoutPeak(frame: Record<string, unknown>): Record<string, unknown> {
-	const { peak: _peak, ...rest } = frame;
-	return rest;
+interface NewLiveFrame {
+	kind: "end";
+	occurredAt: string;
+	peakTotalViewers?: number;
 }

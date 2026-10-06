@@ -247,21 +247,26 @@ async function expectMigrated(
 		expect(lines, `${id} 的粉丝点`).toBe(counts.followerRowsPerSubscription);
 	}
 
-	// 作品与直播:文件都按订阅 id 命名,老行翻成了现在的行(没有 `type`、峰值是数字)。
+	// 作品与直播:文件都按订阅 id 命名,老行翻成了现在的行(作品住 stats/posts、没有 `type` / `kind`,帧是
+	// { kind, occurredAt, peakTotalViewers? }、峰值是数字);开播公告没带过来,所以作品行数是留下的那些。
 	let posts = 0;
 	let frames = 0;
 	let oldShape = 0;
 	for (const id of subscriptionIds) {
-		for (const line of await readLines(join(generation, "stats", "dyn", `${id}.jsonl`))) {
+		for (const line of await readLines(join(generation, "stats", "posts", `${id}.jsonl`))) {
 			const row = JSON.parse(line) as Record<string, unknown>;
-			if (row.type !== undefined || !["video", "post", "live"].includes(String(row.kind))) {
+			if (
+				Object.keys(row).sort().join() !== "hasVideo,id,publishedAt" ||
+				typeof row.hasVideo !== "boolean"
+			) {
 				oldShape += 1;
 			}
 			posts += 1;
 		}
 		for (const line of await readLines(join(generation, "stats", "live", `${id}.jsonl`))) {
 			const frame = JSON.parse(line) as Record<string, unknown>;
-			if (frame.k === "end" && typeof frame.peak !== "number") oldShape += 1;
+			if ("k" in frame || "ts" in frame || "peak" in frame) oldShape += 1;
+			if (frame.kind === "end" && typeof frame.peakTotalViewers !== "number") oldShape += 1;
 			frames += 1;
 		}
 	}
@@ -269,7 +274,8 @@ async function expectMigrated(
 	expect(frames).toBe(counts.liveFrames);
 	expect(oldShape).toBe(0);
 	for (const { uid } of counts.biliSubscriptions) {
-		expect(existsSync(join(generation, "stats", "dyn", `${uid}.jsonl`))).toBe(false);
+		expect(existsSync(join(generation, "stats", "dyn"))).toBe(false);
+		expect(existsSync(join(generation, "stats", "posts", `${uid}.jsonl`))).toBe(false);
 	}
 
 	// 订阅:两份合成一个文件({ tags, subscriptions },ADR-0034),每行带身份。

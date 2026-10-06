@@ -324,11 +324,11 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"secrets/cookies.json": "secrets/cookies.json",
 	"history/2026-09-30.jsonl": "history/2026-09-30.jsonl",
 	"history/repush/2026-09-30/row-1.json": "history/repush/2026-09-30/row-1.json",
-	"stats/dyn/sub-1.jsonl": "stats/dyn/sub-1.jsonl",
+	"stats/dyn/sub-1.jsonl": "stats/posts/sub-1.jsonl",
 	"stats/live/sub-1.jsonl": "stats/live/sub-1.jsonl",
 	"stats/seen/sub-1.jsonl": "stats/seen/sub-1.jsonl",
 	"stats/since": "stats/since",
-	"stats/dyn/12345.jsonl": "stats/dyn/33333333-3333-4333-8333-333333333333.jsonl",
+	"stats/dyn/12345.jsonl": "stats/posts/33333333-3333-4333-8333-333333333333.jsonl",
 	"stats/live/12345.jsonl": "stats/live/33333333-3333-4333-8333-333333333333.jsonl",
 	"fans/12345.jsonl": "stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
 	"fans/sub-1.jsonl": "stats/followers/sub-1.jsonl",
@@ -361,9 +361,11 @@ const REWRITTEN = [
 	"runtime/sub-runtime.json",
 	"skins/dashboard/active.json",
 	"skins/dashboard/skin-1/skin.json",
-	"stats/dyn/33333333-3333-4333-8333-333333333333.jsonl",
 	"stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
 	"stats/live/33333333-3333-4333-8333-333333333333.jsonl",
+	// 作品连文件带目录搬进 `stats/posts/`(㉖c):搬了位置的都算改写,哪怕这一份里没有要翻的行。
+	"stats/posts/33333333-3333-4333-8333-333333333333.jsonl",
+	"stats/posts/sub-1.jsonl",
 ];
 
 async function placeZeroGeneration(): Promise<void> {
@@ -481,16 +483,16 @@ describe("migrateZeroGeneration", () => {
 			messages: [{ role: "main", payload: { text: "下播了" } }],
 		});
 		expect(
-			(await lines("stats/dyn/33333333-3333-4333-8333-333333333333.jsonl")).map((l) =>
+			(await lines("stats/posts/33333333-3333-4333-8333-333333333333.jsonl")).map((l) =>
 				JSON.parse(l),
 			),
-		).toEqual([{ id: "d1", kind: "video", ts: "2026-09-30T00:00:00.000Z" }]);
+		).toEqual([{ id: "d1", hasVideo: true, publishedAt: "2026-09-30T00:00:00.000Z" }]);
 		expect(
 			JSON.parse((await lines("stats/live/33333333-3333-4333-8333-333333333333.jsonl"))[1] ?? ""),
 		).toEqual({
-			k: "end",
-			ts: "2026-09-30T12:00:00.000Z",
-			peak: 12_000,
+			kind: "end",
+			occurredAt: "2026-09-30T12:00:00.000Z",
+			peakTotalViewers: 12_000,
 		});
 		expect(
 			JSON.parse(await readFile(join(target, "runtime", "roast-drafts.json"), "utf8")),
@@ -706,8 +708,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 29,
-			output: "6c203f3564b2ae6fbe899d689ece01eaea4b2a5dfae2bf13dac9e684b2946cc3",
+			revision: 30,
+			output: "c4412c6f772ea239d6bb0f30ae9d81f8f41bd2b3e959cf88e4be01f9428ca4fc",
 		});
 	});
 });

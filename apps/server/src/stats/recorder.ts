@@ -12,10 +12,10 @@ import type { PostEntry, StatsStore } from "./store.js";
  *   报本场累计观看、关一场;按**文件键**({@link statsFileKey})落进 {@link StatsStore}。
  *   它不认识任何平台,也不听总线。
  * - 适配把各来源的事件翻成这些调用,平台的规矩只写在适配里:
- *     · B 站(`bili-source.ts`):听 B 站引擎已经在总线上的三条事件,就地把类型分成
- *       `video` / `post` / `live`、把「1.2万」解析成数字,把 uid 换成订阅 id 记。引擎与总线
+ *     · B 站(`bili-source.ts`):听 B 站引擎已经在总线上的三条事件,就地把动态记成
+ *       「有没有视频」的作品(开播公告不记)、把 uid 换成订阅 id 记。引擎与总线
  *       为统计一行不改。
- *     · 拓展(`extension-source.ts`):听订阅上报与拓展直播的场次,带视频的作品记 `video`、资料里的粉丝数
+ *     · 拓展(`extension-source.ts`):听订阅上报与拓展直播的场次,作品记下有没有视频、资料里的粉丝数
  *       按 B 站粉丝轮询的间隔稀释、累计观看取本场最大,外加一条「在记」的证据。
  *
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
@@ -27,7 +27,7 @@ export const STATS_SEEN_MIN_GAP_MS = 10 * 60_000;
 
 /** 各来源适配看得到的那一面。所有写入都是 fire-and-forget,失败只丢这一条统计。 */
 export interface StatsRecorderCore {
-	/** 记一条作品行(含 `live` 开播公告)。同一个键下同 id 只留首条(去重在 store)。 */
+	/** 记一条作品行(开播公告不记,见 `bili-format`)。同一个键下同 id 只留首条(去重在 store)。 */
 	recordPost(key: string, post: PostEntry): void;
 	/** 开一场。这个键在飞的累计观看清零,从这一场重新取最大值。 */
 	openSession(key: string, startedAtIso: string): void;

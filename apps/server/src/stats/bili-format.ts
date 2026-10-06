@@ -1,5 +1,3 @@
-import type { StatsFeedKind } from "./store.js";
-
 /**
  * 统计里 B 站那头的写法 —— stats 目录里**唯一**认得 B 站动态类型串的地方。
  *
@@ -16,19 +14,17 @@ import type { StatsFeedKind } from "./store.js";
 const VIDEO_TYPES = new Set(["DYNAMIC_TYPE_AV"]);
 /**
  * 开播公告。B 站会把「某某开播了」塞进动态流,但直播场次已经从 `live-state-changed`
- * 单独记了,两边都算作品就会把一场直播算两次 —— 所以它们**不是作品**,记成 `live`:
- * 只当「最后活动」与「那天有记录」的证据(没开直播类推送的 UP 不记场次,这是他开过播的
- * 唯一痕迹;ADR-0020 决策 5 的第二个 🔗)。
+ * 单独记了,两边都记就会把一场直播算两次 —— 所以它们**不是作品,统计里不记**(ADR-0027)。
  */
 const LIVE_START_TYPES = new Set(["DYNAMIC_TYPE_LIVE_RCMD", "DYNAMIC_TYPE_LIVE"]);
 
 /**
- * B 站动态类型 → 中立种类:AV → `video`,开播那两种 → `live`,其余 → `post`。
+ * B 站动态类型 → 要记的作品有没有视频:AV → `{ hasVideo: true }`,开播那两种 → `undefined`(不记),
+ * 其余 → `{ hasVideo: false }`。
  *
- * 没见过的类型一律归 `post` 而不是丢弃 —— B 站随时会加新类型,漏计比错计更难被发现。
+ * 没见过的类型一律当没有视频的作品记下、而不是丢弃 —— B 站随时会加新类型,漏计比错计更难被发现。
  */
-export function classifyBiliDynamic(type: string): StatsFeedKind {
-	if (VIDEO_TYPES.has(type)) return "video";
-	if (LIVE_START_TYPES.has(type)) return "live";
-	return "post";
+export function classifyBiliDynamic(type: string): { hasVideo: boolean } | undefined {
+	if (LIVE_START_TYPES.has(type)) return undefined;
+	return { hasVideo: VIDEO_TYPES.has(type) };
 }

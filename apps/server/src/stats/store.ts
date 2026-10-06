@@ -10,14 +10,14 @@ import { dataPath } from "../runtime/roots.js";
  * 按订阅分文件的「UP 产出」时序持久化 —— 数据统计页 Tab 的原始数据源。
  *
  * 文件布局(`<key>` 是 {@link statsFileKey}:两支都是订阅 id):
- *   `<dataDir>/stats/dyn/<key>.jsonl`   每行一条 {@link PostEntry}
+ *   `<dataDir>/stats/posts/<key>.jsonl` 每行一条 {@link PostEntry}
  *   `<dataDir>/stats/live/<key>.jsonl`  每行一帧 {@link LiveFrame}
  *   `<dataDir>/stats/seen/<key>.jsonl`  每行一条 {@link StatsSeenEntry}(「在记」的证据,只有拓展订阅有)
  * 0.x 按 uid 命名的 B 站文件由迁移器改成订阅 id(`migration/stats.ts`)。
  *
- * **盘上的行是中立的**(ADR-0020 决策 16):作品行记 `video` / `post` / `live`,峰值存数字。平台的
- * 写法由各来源的适配在交进来之前翻好;0.x 落盘的老 B 站行由迁移器一次翻好(`migration/stats.ts`),
- * 这一层不认任何平台的写法。
+ * **盘上的行是中立的**(ADR-0020 决策 16、ADR-0027):作品行记「有没有视频」与发布时刻,下播帧的峰值存
+ * 数字。平台的写法由各来源的适配在交进来之前翻好;0.x 落盘的老 B 站行由迁移器一次翻好(`migration/stats.ts`),
+ * 这一层不认任何平台的写法。**开播公告不记**:直播按场次另算,公告再记一行就是把一场直播算两次。
  *
  * 与 FansStore 同构:append-only、逐行 JSON、坏行跳过、缺文件视为空。区别在于
  * 直播场次天然是「区间」而非「采样点」,而 append-only 又写不了区间,所以落盘的
@@ -31,27 +31,19 @@ import { dataPath } from "../runtime/roots.js";
  * 采样点小几个数量级(一个活跃 UP 一天也就个位数),几年内不构成磁盘问题。
  */
 
-/** 算「作品」的两种:`video` = 发了视频(「投稿」),`post` = 其余(「动态」)。 */
-export type StatsPostKind = "video" | "post";
-
 /**
- * 作品行的种类 = 作品两种 + `live`。
+ * 一条作品行。
  *
- * `live` = 动态流里出现了一条**开播公告**(ADR-0020 决策 5 的第二个 🔗)。它从来不算作品
- * (投稿 / 动态 / 热力图都不计,直播按场次另算),但它是「最后活动」与「那天有记录」的
- * 证据 —— 没开直播类推送的 B 站 UP 不记场次,开播公告是他开过播的唯一痕迹。只有 B 站
- * 产这一种;拓展的场次与推送开关无关、总会记,用不着它。
+ * 「投稿」= `hasVideo` 为真,「动态」= 其余(图文、纯文字、转发……);这一层只记有没有视频,
+ * 种类的叫法归读它的人。分类由各来源自己做(ADR-0020 决策 5 的 🔗),这一层不认平台类型。
  */
-export type StatsFeedKind = StatsPostKind | "live";
-
-/** 一条作品行。 */
 export interface PostEntry {
 	/** 平台给的作品 id(B 站是动态 id_str);同一个键下的幂等键。 */
 	id: string;
-	/** 中立种类。分类由各来源自己做(ADR-0020 决策 5 的 🔗),这一层不认平台类型。 */
-	kind: StatsFeedKind;
+	/** 作品里带不带视频。 */
+	hasVideo: boolean;
 	/** 发布时间(ISO)。 */
-	ts: string;
+	publishedAt: string;
 }
 
 /** 配对后的一场直播。`endedAt` 缺失 = 仍在直播或 end 帧丢失,不计入时长。 */
@@ -59,7 +51,7 @@ export interface LiveSessionEntry {
 	startedAt: string;
 	endedAt?: string;
 	/** 本场累计观看(看过的人数,ADR-0020 决策 7);未采到时缺失。 */
-	peakViewers?: number;
+	peakTotalViewers?: number;
 	/**
 	 * 帧流读完时**仍敞开**的那一场 —— 至多一个。
 	 *
@@ -80,24 +72,23 @@ export interface StatsSeenEntry {
 
 /** 落盘的单帧(新写的形状)。读时按顺序配对成 {@link LiveSessionEntry}。 */
 interface LiveFrame {
-	k: "start" | "end";
-	ts: string;
+	kind: "start" | "end";
+	occurredAt: string;
 	/** 本场累计观看。 */
-	peak?: number;
+	peakTotalViewers?: number;
 }
 
 export interface StatsStore {
 	/** 追加一条作品。同一个键下同 id 重复调用只保留首条(引擎重放不虚增计数)。 */
 	appendPost(key: string, event: PostEntry): Promise<void>;
 	/**
-	 * 读回 ts >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。开播公告是 `live`,调用方
-	 * 自己决定它算不算作品。
+	 * 读回 publishedAt >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。
 	 */
 	listPosts(key: string, sinceIso: string): Promise<PostEntry[]>;
 	/** 记一帧开播。 */
 	openLiveSession(key: string, startedAtIso: string): Promise<void>;
 	/** 记一帧下播,可带本场累计观看(不是有限数就不带)。 */
-	closeLiveSession(key: string, endedAtIso: string, peakViewers?: number): Promise<void>;
+	closeLiveSession(key: string, endedAtIso: string, peakTotalViewers?: number): Promise<void>;
 	/** 配对后返回开播时间 >= sinceIso 的场次,按开播时间顺序。 */
 	listLiveSessions(key: string, sinceIso: string): Promise<LiveSessionEntry[]>;
 	/**
@@ -117,21 +108,19 @@ export interface StatsStore {
 	drop(key: string): Promise<void>;
 }
 
-const FEED_KINDS: ReadonlySet<unknown> = new Set<StatsFeedKind>(["video", "post", "live"]);
-
-/** 读一行作品。返回 `undefined` = 这行不认(坏行、种类不认识),跳过。 */
+/** 读一行作品。返回 `undefined` = 这行不认(坏行、缺格、格不对),跳过。 */
 function readPostRow(parsed: unknown): PostEntry | undefined {
-	const row = parsed as { id?: unknown; kind?: unknown; ts?: unknown } | null;
-	if (typeof row?.id !== "string" || typeof row.ts !== "string") return undefined;
-	if (!FEED_KINDS.has(row.kind)) return undefined;
-	return { id: row.id, kind: row.kind as StatsFeedKind, ts: row.ts };
+	const row = parsed as { id?: unknown; hasVideo?: unknown; publishedAt?: unknown } | null;
+	if (typeof row?.id !== "string" || typeof row.publishedAt !== "string") return undefined;
+	if (typeof row.hasVideo !== "boolean") return undefined;
+	return { id: row.id, hasVideo: row.hasVideo, publishedAt: row.publishedAt };
 }
 
 /**
  * 两类文件各住的目录(数据根下的路径段,展开进 `dataPath`)。开机迁移认的也是这两处,别各写一份。
  * 写成元组而不是拼好的串,是为了让第一段能被 `dataPath` 的类型认出是目录表里的键。
  */
-export const STATS_DYN_DIR = ["stats", "dyn"] as const;
+export const STATS_POSTS_DIR = ["stats", "posts"] as const;
 export const STATS_LIVE_DIR = ["stats", "live"] as const;
 /** 「在记」住的目录。从一开始就按订阅 id 命名,开机迁移不认它。 */
 export const STATS_SEEN_DIR = ["stats", "seen"] as const;
@@ -145,7 +134,7 @@ export interface CreateStatsStoreOptions {
 
 export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	const statsRoot = dataPath(opts.dataRoot, "stats");
-	const dynRoot = dataPath(opts.dataRoot, ...STATS_DYN_DIR);
+	const postsRoot = dataPath(opts.dataRoot, ...STATS_POSTS_DIR);
 	const liveRoot = dataPath(opts.dataRoot, ...STATS_LIVE_DIR);
 	const seenRoot = dataPath(opts.dataRoot, ...STATS_SEEN_DIR);
 	const sinceFile = join(statsRoot, "since");
@@ -156,7 +145,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 	async function ensureRoots(): Promise<void> {
 		if (ensured) return;
-		await mkdir(dynRoot, { recursive: true });
+		await mkdir(postsRoot, { recursive: true });
 		await mkdir(liveRoot, { recursive: true });
 		await mkdir(seenRoot, { recursive: true });
 		ensured = true;
@@ -195,7 +184,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		return stamp;
 	}
 
-	const dynFile = (key: string) => join(dynRoot, `${key}.jsonl`);
+	const postsFile = (key: string) => join(postsRoot, `${key}.jsonl`);
 	const liveFile = (key: string) => join(liveRoot, `${key}.jsonl`);
 	const seenFile = (key: string) => join(seenRoot, `${key}.jsonl`);
 
@@ -242,7 +231,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	async function readPosts(key: string): Promise<PostEntry[]> {
 		const posts: PostEntry[] = [];
 		const ids = new Set<string>();
-		await readLines(dynFile(key), (parsed) => {
+		await readLines(postsFile(key), (parsed) => {
 			const post = readPostRow(parsed);
 			if (!post || ids.has(post.id)) return;
 			ids.add(post.id);
@@ -270,26 +259,36 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			const existing = await readPosts(key);
 			if (existing.some((e) => e.id === event.id)) return;
 			// 只写这三格:行格式是契约(决策 16),调用方对象上多带的东西不许漏进盘。
-			const row: PostEntry = { id: event.id, kind: event.kind, ts: event.ts };
-			await appendLine(dynFile(key), row, `dyn ${key}`);
+			const row: PostEntry = {
+				id: event.id,
+				hasVideo: event.hasVideo,
+				publishedAt: event.publishedAt,
+			};
+			await appendLine(postsFile(key), row, `posts ${key}`);
 		},
 
 		async listPosts(key, sinceIso) {
 			await ensureRoots();
 			const all = await readPosts(key);
-			return all.filter((e) => e.ts >= sinceIso);
+			return all.filter((e) => e.publishedAt >= sinceIso);
 		},
 
 		async openLiveSession(key, startedAtIso) {
 			await ensureRoots();
-			await appendLine(liveFile(key), { k: "start", ts: startedAtIso }, `live ${key}`);
+			await appendLine(
+				liveFile(key),
+				{ kind: "start", occurredAt: startedAtIso } satisfies LiveFrame,
+				`live ${key}`,
+			);
 		},
 
-		async closeLiveSession(key, endedAtIso, peakViewers) {
+		async closeLiveSession(key, endedAtIso, peakTotalViewers) {
 			await ensureRoots();
-			const frame: LiveFrame = { k: "end", ts: endedAtIso };
+			const frame: LiveFrame = { kind: "end", occurredAt: endedAtIso };
 			// NaN / Infinity 进 JSON 会变成 null,不落这种东西。
-			if (peakViewers !== undefined && Number.isFinite(peakViewers)) frame.peak = peakViewers;
+			if (peakTotalViewers !== undefined && Number.isFinite(peakTotalViewers)) {
+				frame.peakTotalViewers = peakTotalViewers;
+			}
 			await appendLine(liveFile(key), frame, `live ${key}`);
 		},
 
@@ -309,10 +308,14 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			const byStart = new Map<string, LiveSessionEntry>();
 			let open: LiveSessionEntry | undefined;
 			await readLines(liveFile(key), (parsed) => {
-				const f = parsed as { k?: unknown; ts?: unknown; peak?: unknown } | null;
-				if (typeof f?.ts !== "string") return;
-				if (f.k === "start") {
-					const seen = byStart.get(f.ts);
+				const f = parsed as {
+					kind?: unknown;
+					occurredAt?: unknown;
+					peakTotalViewers?: unknown;
+				} | null;
+				if (typeof f?.occurredAt !== "string") return;
+				if (f.kind === "start") {
+					const seen = byStart.get(f.occurredAt);
 					if (seen) {
 						// 这一场又被观测到了。重新挂成 open,后续的 end 会把下播时间
 						// 覆盖成更晚的那个 —— 关服截断的 end 因此能被真下播时间修正。
@@ -324,19 +327,21 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 						open = seen;
 						return;
 					}
-					open = { startedAt: f.ts };
-					byStart.set(f.ts, open);
+					open = { startedAt: f.occurredAt };
+					byStart.set(f.occurredAt, open);
 					sessions.push(open);
 					return;
 				}
-				if (f.k !== "end" || !open) return;
-				open.endedAt = f.ts;
+				if (f.kind !== "end" || !open) return;
+				open.endedAt = f.occurredAt;
 				// 同一场有几帧 end(关服截断一帧、接回之后真下播一帧)时,峰值取**最大的**:它是本场累计观看,
 				// 只增不减(ADR-0020 决策 7)。接回之后那一段是从重新认出这一场才开始取的 —— 平台这回少报了、
 				// 或压根没报,都不该把前一段已经记下的数拽下去(没带的帧本来就不动它)。
-				if (typeof f.peak === "number") {
-					open.peakViewers =
-						open.peakViewers === undefined ? f.peak : Math.max(open.peakViewers, f.peak);
+				if (typeof f.peakTotalViewers === "number") {
+					open.peakTotalViewers =
+						open.peakTotalViewers === undefined
+							? f.peakTotalViewers
+							: Math.max(open.peakTotalViewers, f.peakTotalViewers);
 				}
 				open = undefined;
 			});
@@ -375,7 +380,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		},
 
 		async drop(key) {
-			await unlinkQuiet(dynFile(key));
+			await unlinkQuiet(postsFile(key));
 			await unlinkQuiet(liveFile(key));
 			await unlinkQuiet(seenFile(key));
 		},

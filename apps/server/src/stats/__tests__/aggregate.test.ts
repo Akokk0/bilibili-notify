@@ -1,7 +1,7 @@
 /**
  * 单元测试 — stats 聚合层(纯函数,无 IO)。
  *
- * 这层只认中立的种类(`video` / `post`)与数字峰值(ADR-0020 决策 5 / 7 的 🔗)。
+ * 这层只认中立的种类(带不带视频)与数字峰值(ADR-0020 决策 5 / 7 的 🔗)。
  * B 站类型怎么归类,钉在 bili-format.test.ts、「1.2万」怎么解析(只给迁移用,㉒d 起)钉在 migration/__tests__/bili-viewers.test.ts;0.x 的老 B 站行改写成中立形状之后
  * 算出与改之前同样的数,钉在 migration/__tests__/zero-generation-stats.test.ts。
  */
@@ -22,12 +22,11 @@ const TZ_CN = -480;
 const CN = (day: number, h: number) => new Date(Date.UTC(2026, 4, day, h - 8, 0, 0)).toISOString();
 
 describe("countPosts", () => {
-	it("按种类分别计数:video 进投稿,post 进动态,开播公告(live)哪一栏都不进", () => {
+	it("按有没有视频分别计数:带视频的进投稿,其余进动态", () => {
 		const got = countPosts([
-			{ id: "1", kind: "video", ts: CN(16, 10) },
-			{ id: "2", kind: "video", ts: CN(16, 11) },
-			{ id: "3", kind: "post", ts: CN(16, 12) },
-			{ id: "4", kind: "live", ts: CN(16, 13) },
+			{ id: "1", hasVideo: true, publishedAt: CN(16, 10) },
+			{ id: "2", hasVideo: true, publishedAt: CN(16, 11) },
+			{ id: "3", hasVideo: false, publishedAt: CN(16, 12) },
 		]);
 		expect(got).toEqual({ archives: 2, dynamics: 1 });
 	});
@@ -196,17 +195,17 @@ describe("summarizeLiveSessions", () => {
 
 	it("峰值取全窗口最大,场均取各场峰值的平均", () => {
 		const got = summarizeLiveSessions([
-			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakViewers: 10_000 },
-			{ startedAt: CN(16, 10), endedAt: CN(16, 12), peakViewers: 30_000 },
+			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakTotalViewers: 10_000 },
+			{ startedAt: CN(16, 10), endedAt: CN(16, 12), peakTotalViewers: 30_000 },
 		]);
-		expect(got.peakViewers).toBe(30000);
-		expect(got.avgPeakViewers).toBe(20000);
+		expect(got.maxViewers).toBe(30000);
+		expect(got.avgViewers).toBe(20000);
 	});
 
 	it("没有任何峰值样本 → 峰值/场均为 null,不返回 0", () => {
 		const got = summarizeLiveSessions([{ startedAt: CN(15, 10), endedAt: CN(15, 12) }]);
-		expect(got.peakViewers).toBeNull();
-		expect(got.avgPeakViewers).toBeNull();
+		expect(got.maxViewers).toBeNull();
+		expect(got.avgViewers).toBeNull();
 	});
 
 	it("空输入 → 全零场次、零时长、null 峰值", () => {
@@ -214,8 +213,8 @@ describe("summarizeLiveSessions", () => {
 			sessions: 0,
 			hours: 0,
 			timedSessions: 0,
-			peakViewers: null,
-			avgPeakViewers: null,
+			maxViewers: null,
+			avgViewers: null,
 		});
 	});
 });
@@ -245,8 +244,8 @@ describe("坏时间戳守卫 —— 一行脏数据不能掀翻整个接口", ()
 	it("dailyActivityCounts 跳过坏事件,不整段崩掉", () => {
 		const counts = dailyActivityCounts(
 			[
-				{ id: "a", kind: "video", ts: "坏行" },
-				{ id: "b", kind: "video", ts: CN(16, 10) },
+				{ id: "a", hasVideo: true, publishedAt: "坏行" },
+				{ id: "b", hasVideo: true, publishedAt: CN(16, 10) },
 			],
 			[],
 			{ days: 2, tzOffsetMin: -480, now: new Date(Date.parse(CN(16, 12))) },
@@ -274,9 +273,9 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 	it("动态 / 投稿 / 开播都算一次活动,按本地日归并", () => {
 		const got = dailyActivityCounts(
 			[
-				{ id: "a", kind: "video", ts: CN(15, 10) },
-				{ id: "b", kind: "post", ts: CN(15, 20) },
-				{ id: "c", kind: "post", ts: CN(16, 9) },
+				{ id: "a", hasVideo: true, publishedAt: CN(15, 10) },
+				{ id: "b", hasVideo: false, publishedAt: CN(15, 20) },
+				{ id: "c", hasVideo: false, publishedAt: CN(16, 9) },
 			],
 			[{ startedAt: CN(16, 21), endedAt: CN(16, 22) }],
 			opts,
@@ -285,21 +284,16 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 		expect(got).toEqual([0, 2, 2]);
 	});
 
-	it("开播公告(live)不计 —— 否则一场直播会同时算进公告和开播", () => {
-		const got = dailyActivityCounts(
-			[{ id: "a", kind: "live", ts: CN(16, 10) }],
-			[{ startedAt: CN(16, 10), endedAt: CN(16, 12) }],
-			opts,
-		);
-		expect(got.at(-1)).toBe(1);
-	});
-
 	it("长度恒等于 days,无活动的日子是 0", () => {
 		expect(dailyActivityCounts([], [], opts)).toEqual([0, 0, 0]);
 	});
 
 	it("窗口外的事件不计入", () => {
-		const got = dailyActivityCounts([{ id: "old", kind: "post", ts: CN(1, 10) }], [], opts);
+		const got = dailyActivityCounts(
+			[{ id: "old", hasVideo: false, publishedAt: CN(1, 10) }],
+			[],
+			opts,
+		);
 		expect(got).toEqual([0, 0, 0]);
 	});
 });
@@ -411,11 +405,11 @@ describe("summarizeLiveSessions — 没采到峰值的场次", () => {
 	it("没有峰值的场整场跳过,不是当成 0 混进平均值", () => {
 		// 「未知不是零」——一个静默的 0 会把场均峰值拖下水,而且看不出来。
 		const got = summarizeLiveSessions([
-			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakViewers: 10_000 },
+			{ startedAt: CN(15, 10), endedAt: CN(15, 12), peakTotalViewers: 10_000 },
 			{ startedAt: CN(16, 20), endedAt: CN(16, 22) },
 		]);
-		expect(got.peakViewers).toBe(10_000);
-		expect(got.avgPeakViewers).toBe(10_000);
+		expect(got.maxViewers).toBe(10_000);
+		expect(got.avgViewers).toBe(10_000);
 	});
 });
 

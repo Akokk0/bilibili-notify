@@ -56,7 +56,7 @@ function look(): Record<string, boolean> {
 		fansUid: at(fans, UID),
 		fansId: at(fans, SUB_ID),
 		dynUid: at(join("stats", "dyn"), UID),
-		dynId: at(join("stats", "dyn"), SUB_ID),
+		dynId: at(join("stats", "posts"), SUB_ID),
 		liveUid: at(join("stats", "live"), UID),
 		liveId: at(join("stats", "live"), SUB_ID),
 	};

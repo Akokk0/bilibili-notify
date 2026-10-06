@@ -190,10 +190,14 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		await handle?.close("test shutdown");
 		handle = undefined;
 
-		const posts = await lines("stats", "dyn", `${ON}.jsonl`);
-		expect(posts?.map((row) => row.kind)).toEqual(["post", "video"]);
+		const posts = await lines("stats", "posts", `${ON}.jsonl`);
+		expect(posts?.map((row) => row.hasVideo)).toEqual([false, true]);
 		for (const row of posts ?? []) {
-			expect(row).toEqual({ id: expect.any(String), kind: row.kind, ts: expect.any(String) });
+			expect(row).toEqual({
+				id: expect.any(String),
+				hasVideo: row.hasVideo,
+				publishedAt: expect.any(String),
+			});
 		}
 
 		// 两份资料是紧挨着报的,不密过 B 站粉丝轮询(默认每 10 分钟):只留先到的那份。
@@ -207,12 +211,12 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		// 关机补的下播恰好一帧,峰值是报过的最大累计观看。
 		const frames = await lines("stats", "live", `${ON}.jsonl`);
 		expect(frames).toEqual([
-			{ k: "start", ts: expect.any(String) },
-			{ k: "end", ts: expect.any(String), peak: 2000 },
+			{ kind: "start", occurredAt: expect.any(String) },
+			{ kind: "end", occurredAt: expect.any(String), peakTotalViewers: 2000 },
 		]);
 
 		// 停用的乙一份都没有;盘上只有甲那几份。
-		for (const dir of [["stats", "dyn"], ["stats", "live"], ["stats", "seen"], FOLLOWERS_DIR]) {
+		for (const dir of [["stats", "posts"], ["stats", "live"], ["stats", "seen"], FOLLOWERS_DIR]) {
 			expect(await readdir(join(gen, ...dir))).toEqual([`${ON}.jsonl`]);
 		}
 		expect(await lines(...FOLLOWERS_DIR, `${OFF}.jsonl`)).toBeUndefined();

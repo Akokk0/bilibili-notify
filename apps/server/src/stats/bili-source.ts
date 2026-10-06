@@ -12,7 +12,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  * 统计的 **B 站适配**(ADR-0020 决策 17):把 B 站引擎已经在总线上的事件翻成记录器的中立调用。
  *
  * B 站的规矩只写在这里(与 `bili-format`):
- *   - `dynamic-detected` → 类型分成 `video` / `post`,开播那两种记成 `live`(不是作品,只当活动证据);
+ *   - `dynamic-detected` → 记成「有没有视频」的作品,开播那两种不记(不是作品,场次另从直播事件记);
  *   - `live-viewers-changed` → 总线上就是精确数(㉒d),直接报给记录器取本场最大值(不再解析「1.2万」);
  *   - `live-state-changed` → 开一场 / 关一场,开播时刻取 B 站的真实 `live_time`;
  *   - `auth-lost` / 删订阅 → 忘掉 / 删掉 B 站这头的在飞状态与文件。
@@ -102,9 +102,11 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 
 	handles.push(
 		bus.on("dynamic-detected", (event) => {
-			const kind = classifyBiliDynamic(event.type);
+			const post = classifyBiliDynamic(event.type);
+			// 开播公告不是作品,直播按场次另记(见 `bili-format`)。
+			if (!post) return;
 			for (const key of keysOf(event.uid)) {
-				recorder.recordPost(key, { id: event.id, kind, ts: event.ts });
+				recorder.recordPost(key, { id: event.id, hasVideo: post.hasVideo, publishedAt: event.ts });
 			}
 		}),
 	);

@@ -17,8 +17,11 @@ const NOW = Date.UTC(2026, 4, 16, 12, 0, 0);
 interface Fixture {
 	subs?: Array<{ uid: string }>;
 	samples?: Record<string, Array<{ ts: string; value: number }>>;
-	dynamics?: Record<string, Array<{ id: string; kind: "video" | "post" | "live"; ts: string }>>;
-	sessions?: Record<string, Array<{ startedAt: string; endedAt?: string; peakViewers?: number }>>;
+	dynamics?: Record<string, Array<{ id: string; hasVideo: boolean; publishedAt: string }>>;
+	sessions?: Record<
+		string,
+		Array<{ startedAt: string; endedAt?: string; peakTotalViewers?: number }>
+	>;
 	liveRooms?: Array<{ uid: string; isLive: boolean }>;
 	/** 粉丝轮询的快照,按 uid 写(好读);轮询按订阅 id 记,makeDeps 替它补上 `subscriptionId`。 */
 	fansEntries?: Array<{ uid: string; current: number }>;
@@ -113,7 +116,7 @@ describe("GET /api/stats/overview — null 语义", () => {
 			makeDeps({
 				subs: [{ uid: "1" }],
 				dynamics: {
-					"1": [{ id: "d", kind: "video", ts: new Date(NOW - 3600_000).toISOString() }],
+					"1": [{ id: "d", hasVideo: true, publishedAt: new Date(NOW - 3600_000).toISOString() }],
 				},
 				sessions: { "1": [{ startedAt: new Date(NOW - 3 * DAY).toISOString() }] },
 			}),
@@ -197,15 +200,14 @@ describe("GET /api/stats/overview — 数据投影", () => {
 		expect((await get(deps)).rows[0]?.fans).toBe(100);
 	});
 
-	it("投稿与动态按种类分栏,开播公告两边都不计", async () => {
+	it("投稿与动态按有没有视频分栏", async () => {
 		const ts = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			dynamics: {
 				"1": [
-					{ id: "a", kind: "video", ts },
-					{ id: "b", kind: "post", ts },
-					{ id: "c", kind: "live", ts },
+					{ id: "a", hasVideo: true, publishedAt: ts },
+					{ id: "b", hasVideo: false, publishedAt: ts },
 				],
 			},
 		});
@@ -232,7 +234,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 		const late = new Date(NOW - DAY).toISOString();
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			dynamics: { "1": [{ id: "a", kind: "post", ts: early }] },
+			dynamics: { "1": [{ id: "a", hasVideo: false, publishedAt: early }] },
 			sessions: { "1": [{ startedAt: late, endedAt: late }] },
 		});
 		expect((await get(deps)).rows[0]?.lastActivityAt).toBe(late);
@@ -248,8 +250,8 @@ describe("GET /api/stats/overview — 数据投影", () => {
 			subs: [{ uid: "1" }],
 			dynamics: {
 				"1": [
-					{ id: "new", kind: "post", ts: newer },
-					{ id: "old", kind: "post", ts: older },
+					{ id: "new", hasVideo: false, publishedAt: newer },
+					{ id: "old", hasVideo: false, publishedAt: older },
 				],
 			},
 		});
@@ -313,7 +315,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 			subs: [{ uid: "1" }, { uid: "2" }],
 			samples: { "1": dailySamples() }, // uid 2 的档案被删了
 			dynamics: {
-				"2": [{ id: "a", kind: "post", ts: new Date(NOW).toISOString() }],
+				"2": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
@@ -326,7 +328,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			dynamics: {
-				"1": [{ id: "a", kind: "post", ts: new Date(NOW).toISOString() }],
+				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
@@ -378,7 +380,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
 			},
 			dynamics: {
-				"2": [{ id: "a", kind: "post", ts: new Date(NOW - 3 * DAY).toISOString() }],
+				"2": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW - 3 * DAY).toISOString() }],
 			},
 			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
 		});
@@ -391,7 +393,7 @@ describe("GET /api/stats/overview — 活动热力图的采集水位线", () => 
 			subs: [{ uid: "1" }],
 			samples: { "1": dailySamples() },
 			dynamics: {
-				"1": [{ id: "a", kind: "post", ts: new Date(NOW).toISOString() }],
+				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
 			},
 			recordingSince: new Date(NOW).toISOString(),
 		});

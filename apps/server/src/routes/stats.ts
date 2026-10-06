@@ -382,18 +382,16 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			// 在播状态来自引擎(唯一权威;拓展是场次模块),用来区分「这场正在播」与「end 帧丢了」。
 			const live = summarizeLiveSessions(sessions, { isLive: one.live, sinceMs });
 
-			// 最后活动 = 最近一条动态 与 最近一次开播 里更晚的那个。两者都没有
+			// 最后活动 = 最近一条作品 与 最近一次开播 里更晚的那个。两者都没有
 			// 就是 null —— 这正是设计稿「鸽子榜」要的信号,不能拿窗口起点顶替。
 			//
-			// `events` 里的开播公告(`live`)照算:它不是作品,但确实是这位 UP 的动静 —— 没开
-			// 直播类推送的 UP 不记场次,开播公告是他开过播的唯一痕迹(ADR-0020 决策 5 的
-			// 第二个 🔗)。上面的 hasEvidence / hasCoverage 同理。
+			// 开播公告不再记(ADR-0027):没开直播类推送的 UP 不记场次,他开过播也留不下痕迹。
 			//
-			// 动态取**最大 ts** 而不是末元素:`listPosts` 的契约是「按落盘顺序」
+			// 作品取**最大发布时刻** 而不是末元素:`listPosts` 的契约是「按落盘顺序」
 			// = 检测顺序,而 B 站动态流按惯例最新在前,一轮里检测到多条时末元素
-			// 反而是最旧的那条。直播那侧同样按 ts 取:`listLiveSessions` 返回的是
+			// 反而是最旧的那条。直播那侧同样按 startedAt 取:`listLiveSessions` 返回的是
 			// 「首次出现顺序」,而场次按 startedAt 认,被重新打开的早场次未必排在末尾。
-			const lastDynamic = maxIso(events.map((e) => e.ts));
+			const lastDynamic = maxIso(events.map((e) => e.publishedAt));
 			const lastLive = maxIso(sessions.map((s) => s.startedAt));
 			const lastActivityAt =
 				lastDynamic && lastLive
@@ -427,8 +425,8 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				liveHours: hasCoverage ? live.hours : null,
 				liveTimedSessions: hasCoverage ? live.timedSessions : null,
 				// 每场的数是本场累计观看,所以这两格叫单场最高 / 场均观看(决策 7 / 18)。
-				maxViewers: live.peakViewers,
-				avgViewers: live.avgPeakViewers,
+				maxViewers: live.maxViewers,
+				avgViewers: live.avgViewers,
 				lastActivityAt,
 				live: one.live,
 			};

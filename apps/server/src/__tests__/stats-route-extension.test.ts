@@ -58,7 +58,7 @@ function makeDeps(f: Fixture): RouteDeps {
 			},
 			statsStore: {
 				listPosts: async (key: string, since: string) =>
-					(f.posts?.[key] ?? []).filter((e) => e.ts >= since),
+					(f.posts?.[key] ?? []).filter((e) => e.publishedAt >= since),
 				listLiveSessions: async (key: string, since: string) =>
 					(f.sessions?.[key] ?? []).filter((s) => s.current === true || s.startedAt >= since),
 				listSeenSince: async (key: string, since: string) =>
@@ -163,17 +163,17 @@ describe("拓展行:计数、场次、峰值与 B 站同一套聚合", () => {
 				seen: { [E1]: everyDay(5).map((ts) => ({ ts })) },
 				posts: {
 					[E1]: [
-						{ id: "v1", kind: "video", ts: at(3) },
-						{ id: "p1", kind: "post", ts: at(2) },
-						{ id: "p2", kind: "post", ts: at(1, 2) },
+						{ id: "v1", hasVideo: true, publishedAt: at(3) },
+						{ id: "p1", hasVideo: false, publishedAt: at(2) },
+						{ id: "p2", hasVideo: false, publishedAt: at(1, 2) },
 						// 窗口外的不算。
-						{ id: "old", kind: "video", ts: at(40) },
+						{ id: "old", hasVideo: true, publishedAt: at(40) },
 					],
 				},
 				sessions: {
 					[E1]: [
-						{ startedAt: at(3, 4), endedAt: at(3, 2), peakViewers: 100 },
-						{ startedAt: at(2, 5), endedAt: at(2, 2), peakViewers: 300 },
+						{ startedAt: at(3, 4), endedAt: at(3, 2), peakTotalViewers: 100 },
+						{ startedAt: at(2, 5), endedAt: at(2, 2), peakTotalViewers: 300 },
 						// 没采到累计观看的一场不进最高与平均。
 						{ startedAt: at(1, 6), endedAt: at(1, 5) },
 					],
@@ -209,8 +209,8 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 				seen: { [E1]: [{ ts: at(3) }, { ts: at(1) }, { ts: at(1, -1) }, { ts: at(0) }] },
 				posts: {
 					[E1]: [
-						{ id: "early", kind: "post", ts: at(5) },
-						{ id: "v", kind: "video", ts: at(1, 3) },
+						{ id: "early", hasVideo: false, publishedAt: at(5) },
+						{ id: "v", hasVideo: true, publishedAt: at(1, 3) },
 					],
 				},
 			}),
@@ -249,7 +249,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 				bili: [{ id: B1, uid: "42" }],
 				samples: { [B1]: everyDay(5).map((ts, i) => ({ ts, value: 1000 + i })) },
 				ext: [{ id: E1 }],
-				posts: { [E1]: [{ id: "p", kind: "post", ts: at(2) }] },
+				posts: { [E1]: [{ id: "p", hasVideo: false, publishedAt: at(2) }] },
 			}),
 		);
 		const row = rowOf(body, E1);
@@ -264,7 +264,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		const body = await get(
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
-				posts: { [B1]: [{ id: "d", kind: "post", ts: at(0) }] },
+				posts: { [B1]: [{ id: "d", hasVideo: false, publishedAt: at(0) }] },
 				ext: [{ id: E1 }],
 				seen: { [E1]: everyDay(5).map((ts) => ({ ts })) },
 				samples: { [E1]: everyDay(5).map((ts, i) => ({ ts, value: 10 + i })) },
@@ -279,7 +279,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 				ext: [{ id: E1 }],
 				seen: { [E1]: everyDay(3).map((ts) => ({ ts })) },
 				samples: { [E1]: everyDay(3).map((ts, i) => ({ ts, value: 500 + 10 * i })) },
-				posts: { [E1]: [{ id: "v", kind: "video", ts: at(1) }] },
+				posts: { [E1]: [{ id: "v", hasVideo: true, publishedAt: at(1) }] },
 			}),
 		);
 		const row = rowOf(body, E1);
@@ -424,24 +424,22 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 				},
 				posts: {
 					[B1]: [
-						{ id: "v1", kind: "video", ts: at(3) },
-						{ id: "p1", kind: "post", ts: at(2) },
-						{ id: "p2", kind: "post", ts: at(1, 2) },
-						// 开播公告:不算作品、不进热力图,只当「最后活动」的证据(它是最晚的一条)。
-						{ id: "l1", kind: "live", ts: at(0, 1) },
+						{ id: "v1", hasVideo: true, publishedAt: at(3) },
+						{ id: "p1", hasVideo: false, publishedAt: at(2) },
+						{ id: "p2", hasVideo: false, publishedAt: at(1, 2) },
 					],
 					[E1]: [
-						{ id: "ev", kind: "video", ts: at(4) },
-						{ id: "ep", kind: "post", ts: at(0, 5) },
+						{ id: "ev", hasVideo: true, publishedAt: at(4) },
+						{ id: "ep", hasVideo: false, publishedAt: at(0, 5) },
 					],
 				},
 				sessions: {
 					[B1]: [
-						{ startedAt: at(3, 4), endedAt: at(3, 2), peakViewers: 1200 },
-						{ startedAt: at(1, 8), endedAt: at(1, 5), peakViewers: 800 },
+						{ startedAt: at(3, 4), endedAt: at(3, 2), peakTotalViewers: 1200 },
+						{ startedAt: at(1, 8), endedAt: at(1, 5), peakTotalViewers: 800 },
 					],
 					[E1]: [
-						{ startedAt: at(2, 6), endedAt: at(2, 4), peakViewers: 500 },
+						{ startedAt: at(2, 6), endedAt: at(2, 4), peakTotalViewers: 500 },
 						// 仍在进行的一场:时长按开播到现在(1 小时)算,没有累计观看。
 						{ startedAt: at(0, 1), current: true },
 					],
@@ -469,7 +467,8 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 					liveTimedSessions: 2,
 					maxViewers: 1200,
 					avgViewers: 1000,
-					lastActivityAt: at(0, 1),
+					// 最晚的一条作品(p2);开播公告不再记,它不再顶着「最后活动」。
+					lastActivityAt: at(1, 2),
 					live: false,
 				},
 				{

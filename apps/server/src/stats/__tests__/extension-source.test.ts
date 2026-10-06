@@ -183,7 +183,7 @@ async function lines(dir: string, id: string): Promise<unknown[] | undefined> {
 		throw err;
 	}
 }
-const dynRows = (id = SUB.id) => lines(join("stats", "dyn"), id);
+const dynRows = (id = SUB.id) => lines(join("stats", "posts"), id);
 const liveFrames = (id = SUB.id) => lines(join("stats", "live"), id);
 const fansRows = (id = SUB.id) => lines(join(...FOLLOWERS_DIR), id);
 const seenRows = (id = SUB.id) => lines(join("stats", "seen"), id);
@@ -218,8 +218,8 @@ describe("作品(决策 5)", () => {
 		report(bus, post({ id: "t1", publishedAt: T0 - 3 * MINUTE, text: "一条图文" }));
 		await recorder.flush();
 		expect(await dynRows()).toEqual([
-			{ id: "v1", kind: "video", ts: iso(T0 - 5 * MINUTE) },
-			{ id: "t1", kind: "post", ts: iso(T0 - 3 * MINUTE) },
+			{ id: "v1", hasVideo: true, publishedAt: iso(T0 - 5 * MINUTE) },
+			{ id: "t1", hasVideo: false, publishedAt: iso(T0 - 3 * MINUTE) },
 		]);
 	});
 
@@ -288,8 +288,8 @@ describe("直播场次(决策 6)", () => {
 		report(world.bus, liveEnd());
 		await world.recorder.flush();
 		expect(await liveFrames()).toEqual([
-			{ k: "start", ts: iso(startedAt) },
-			{ k: "end", ts: iso(T0 + 60 * MINUTE) },
+			{ kind: "start", occurredAt: iso(startedAt) },
+			{ kind: "end", occurredAt: iso(T0 + 60 * MINUTE) },
 		]);
 	});
 
@@ -304,7 +304,10 @@ describe("直播场次(决策 6)", () => {
 		report(world.bus, liveStart());
 		report(world.bus, liveEnd());
 		await world.recorder.flush();
-		expect((await liveFrames())?.map((f) => (f as { k: string }).k)).toEqual(["start", "end"]);
+		expect((await liveFrames())?.map((f) => (f as { kind: string }).kind)).toEqual([
+			"start",
+			"end",
+		]);
 	});
 
 	it("只见过在播状态(BN 起来之前就开播了)也认出一场,开播时刻取状态带的", async () => {
@@ -376,7 +379,7 @@ describe("直播场次(决策 6)", () => {
 		report(second.bus, liveEnd());
 		await second.recorder.flush();
 		expect(await sessionsOnDisk()).toEqual([
-			{ startedAt: iso(T0), endedAt: iso(T0 + 60 * MINUTE), peakViewers: 300 },
+			{ startedAt: iso(T0), endedAt: iso(T0 + 60 * MINUTE), peakTotalViewers: 300 },
 		]);
 	});
 });
@@ -392,8 +395,8 @@ describe("峰值 = 结束帧带的本场累计观看(决策 7)", () => {
 		report(world.bus, liveEnd({ totalViewers: 900 }));
 		await world.recorder.flush();
 		expect(await liveFrames()).toEqual([
-			{ k: "start", ts: iso(T0) },
-			{ k: "end", ts: iso(T0), peak: 900 },
+			{ kind: "start", occurredAt: iso(T0) },
+			{ kind: "end", occurredAt: iso(T0), peakTotalViewers: 900 },
 		]);
 	});
 
@@ -404,7 +407,7 @@ describe("峰值 = 结束帧带的本场累计观看(决策 7)", () => {
 		await world.recorder.flush();
 		const [session] = await sessionsOnDisk();
 		expect(session).toBeDefined();
-		expect(session).not.toHaveProperty("peakViewers");
+		expect(session).not.toHaveProperty("peakTotalViewers");
 	});
 
 	it("结束帧直接发在总线上也照抄(不经上报)", async () => {
@@ -420,8 +423,8 @@ describe("峰值 = 结束帧带的本场累计观看(决策 7)", () => {
 		});
 		await world.recorder.flush();
 		expect(await liveFrames()).toEqual([
-			{ k: "start", ts: iso(T0) },
-			{ k: "end", ts: iso(T0 + MINUTE), peak: 4_321 },
+			{ kind: "start", occurredAt: iso(T0) },
+			{ kind: "end", occurredAt: iso(T0 + MINUTE), peakTotalViewers: 4_321 },
 		]);
 	});
 
@@ -444,7 +447,7 @@ describe("峰值 = 结束帧带的本场累计观看(决策 7)", () => {
 		report(third.bus, liveEnd());
 		await third.recorder.flush();
 		expect(await sessionsOnDisk()).toEqual([
-			{ startedAt: iso(T0), endedAt: iso(T0 + 60 * MINUTE), peakViewers: 500 },
+			{ startedAt: iso(T0), endedAt: iso(T0 + 60 * MINUTE), peakTotalViewers: 500 },
 		]);
 	});
 });
@@ -461,8 +464,8 @@ describe("关机(决策 6):开着的一场恰好一帧下播,关机返回时已�
 		await world.shutdown();
 		// 不再等:关机返回之后进程就退了,帧必须已经在盘上。
 		const frames = await liveFrames();
-		expect(frames?.filter((f) => (f as { k: string }).k === "end")).toEqual([
-			{ k: "end", ts: iso(T0 + 5 * MINUTE), peak: 321 },
+		expect(frames?.filter((f) => (f as { kind: string }).kind === "end")).toEqual([
+			{ kind: "end", occurredAt: iso(T0 + 5 * MINUTE), peakTotalViewers: 321 },
 		]);
 	});
 
@@ -472,8 +475,8 @@ describe("关机(决策 6):开着的一场恰好一帧下播,关机返回时已�
 		clock = T0 + 5 * MINUTE;
 		await world.shutdown();
 		const frames = await liveFrames();
-		expect(frames?.filter((f) => (f as { k: string }).k === "end")).toEqual([
-			{ k: "end", ts: iso(T0 + 5 * MINUTE) },
+		expect(frames?.filter((f) => (f as { kind: string }).kind === "end")).toEqual([
+			{ kind: "end", occurredAt: iso(T0 + 5 * MINUTE) },
 		]);
 	});
 });
@@ -607,7 +610,7 @@ describe("「在记」(决策 9 / 16)", () => {
 			ts: iso(T0),
 		});
 		await world.recorder.flush();
-		expect(await dynRows("b-7")).toEqual([{ id: "d1", kind: "video", ts: iso(T0) }]);
+		expect(await dynRows("b-7")).toEqual([{ id: "d1", hasVideo: true, publishedAt: iso(T0) }]);
 		expect(await exists(join("stats", "seen", "b-7.jsonl"))).toBe(false);
 	});
 });
@@ -654,8 +657,8 @@ describe("删订阅 / 停用(决策 10)", () => {
 		expect(await fansRows()).toHaveLength(1);
 		expect(await seenRows()).toHaveLength(1);
 		expect(await liveFrames()).toEqual([
-			{ k: "start", ts: iso(T0) },
-			{ k: "end", ts: iso(T0 + 7 * MINUTE) },
+			{ kind: "start", occurredAt: iso(T0) },
+			{ kind: "end", occurredAt: iso(T0 + 7 * MINUTE) },
 		]);
 	});
 });

@@ -358,7 +358,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 		// 采集水位线:六天前(第一趟开机盖的是「现在」,B 站那几天的老数据会被它整片遮掉)。
 		await writeFile(join(gen, "stats", "since"), at(6));
-		for (const dir of [FOLLOWERS_DIR, ["stats", "dyn"], ["stats", "live"], ["stats", "seen"]]) {
+		for (const dir of [FOLLOWERS_DIR, ["stats", "posts"], ["stats", "live"], ["stats", "seen"]]) {
 			await mkdir(join(gen, ...dir), { recursive: true });
 		}
 		// 拓展前几天的(按订阅 id 命名):三天前、昨天在记;三天前一支视频;两条粉丝样本。
@@ -367,8 +367,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			jsonl([{ ts: at(3) }, { ts: at(1) }]),
 		);
 		await writeFile(
-			join(gen, "stats", "dyn", `${S_EXT}.jsonl`),
-			jsonl([{ id: "e-video", kind: "video", ts: at(3) }]),
+			join(gen, "stats", "posts", `${S_EXT}.jsonl`),
+			jsonl([{ id: "e-video", hasVideo: true, publishedAt: at(3) }]),
 		);
 		await writeFile(
 			join(gen, ...FOLLOWERS_DIR, `${S_EXT}.jsonl`),
@@ -429,7 +429,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			liveTimedSessions: 1,
 			maxViewers: 12000,
 			avgViewers: 12000,
-			lastActivityAt: at(1),
+			// 昨天那条开播公告不再记(ADR-0027),最后活动是两天前的视频。
+			lastActivityAt: at(2),
 			live: false,
 			// 六天前:采集之前没采样;五天前到昨天有 B 站采样;今天 B 站没采(停用)—— 拓展今天报的资料不算数。
 			activity: [null, 0, 1, 1, 1, 0, null],
@@ -559,7 +560,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		for (const path of [
 			[...FOLLOWERS_DIR, `${S_EXT}.jsonl`],
 			["stats", "seen", `${S_EXT}.jsonl`],
-			["stats", "dyn", `${S_EXT}.jsonl`],
+			["stats", "posts", `${S_EXT}.jsonl`],
 		]) {
 			expect(await exists(...path), path.join("/")).toBe(true);
 		}
@@ -573,9 +574,9 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		const files = [
 			[...FOLLOWERS_DIR, `${S_EXT}.jsonl`],
 			["stats", "seen", `${S_EXT}.jsonl`],
-			["stats", "dyn", `${S_EXT}.jsonl`],
+			["stats", "posts", `${S_EXT}.jsonl`],
 			[...FOLLOWERS_DIR, `${S_BILI}.jsonl`],
-			["stats", "dyn", `${S_BILI}.jsonl`],
+			["stats", "posts", `${S_BILI}.jsonl`],
 			["stats", "live", `${S_BILI}.jsonl`],
 		];
 		await vi.waitFor(

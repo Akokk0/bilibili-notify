@@ -5,15 +5,15 @@
  *   - appendPost:按需建目录 + 追加一行;按 id 幂等(同一动态重放不重复计数)
  *   - listPosts:只回 ts >= since 的事件;坏行/空行跳过;文件缺失 → []
  *   - 直播场次以 start/end 两种帧 append-only 落盘,读时配对:
- *       · 正常 start→end 配成一场,带 peakViewers
+ *       · 正常 start→end 配成一场,带 peakTotalViewers
  *       · 未闭合的 start(仍在直播 / 崩溃丢了 end)→ endedAt 为 undefined,不算时长
  *       · 孤立的 end(没有对应 start)→ 丢弃,不产出半场
  *   - drop:三类文件(作品 / 直播 / 「在记」)一并删;缺文件时静默
  *   - 「在记」:`{ts}` 逐行追加,按 since 读回(ADR-0020 决策 16)
- *   - 盘上的行是中立的(ADR-0020 决策 16):作品 `{id, kind, ts}`、下播帧的 `peak` 是数字
+ *   - 盘上的行是中立的(ADR-0020 决策 16):作品 `{id, hasVideo, publishedAt}`、下播帧 `{kind, occurredAt, peakTotalViewers}`、峰值是数字
  *   - 文件按订阅 id 命名,两支一样(`statsFileKey`)
  *   - 盘上已有的行:同 id 不追加、同 id 两行只认先落盘的那条
- *   - 不认老形状:0.x 的老 B 站行(`{id, type, ts}`、字符串峰值)和 `<uid>.jsonl` 文件名由迁移器改写
+ *   - 不认老形状:0.x 的老 B 站行(`{id, type, ts}`、`{k, ts, peak}` 帧、字符串峰值)、`stats/dyn` 目录和 `<uid>.jsonl` 文件名由迁移器改写
  *     (`migration/__tests__/zero-generation-stats.test.ts`),这一层读到就当没带、不翻
  */
 
@@ -46,33 +46,33 @@ const T = (h: number) => `2026-05-16T${String(h).padStart(2, "0")}:00:00.000Z`;
 
 describe("StatsStore — 动态事件", () => {
 	it("append 后可按 since 读回", async () => {
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendPost("1", { id: "b", kind: "post", ts: T(3) });
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
+		await store.appendPost("1", { id: "b", hasVideo: false, publishedAt: T(3) });
 		expect(await store.listPosts("1", T(0))).toEqual([
-			{ id: "a", kind: "video", ts: T(1) },
-			{ id: "b", kind: "post", ts: T(3) },
+			{ id: "a", hasVideo: true, publishedAt: T(1) },
+			{ id: "b", hasVideo: false, publishedAt: T(3) },
 		]);
 	});
 
 	it("since 之前的事件被过滤掉", async () => {
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendPost("1", { id: "b", kind: "post", ts: T(5) });
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
+		await store.appendPost("1", { id: "b", hasVideo: false, publishedAt: T(5) });
 		const got = await store.listPosts("1", T(3));
 		expect(got.map((e) => e.id)).toEqual(["b"]);
 	});
 
 	it("同 id 重复 append → 只保留一条(引擎重放不该虚增投稿数)", async () => {
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
 		expect(await store.listPosts("1", T(0))).toHaveLength(1);
 	});
 
 	it("坏行 / 空行跳过,不影响其余", async () => {
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
-		await writeFile(join(dataDir, "stats", "dyn", "1.jsonl"), '{"bad\n\n{"id":"c"}\n', {
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
+		await writeFile(join(dataDir, "stats", "posts", "1.jsonl"), '{"bad\n\n{"id":"c"}\n', {
 			flag: "a",
 		});
-		await store.appendPost("1", { id: "d", kind: "post", ts: T(4) });
+		await store.appendPost("1", { id: "d", hasVideo: false, publishedAt: T(4) });
 		const got = await store.listPosts("1", T(0));
 		expect(got.map((e) => e.id)).toEqual(["a", "d"]);
 	});
@@ -83,12 +83,45 @@ describe("StatsStore — 动态事件", () => {
 	});
 });
 
+describe("StatsStore — 盘上的新键(㉖c)", () => {
+	const rawLines = async (rel: string) =>
+		(await readFile(join(dataDir, ...rel.split("/")), "utf-8")).trim().split("\n");
+
+	it("作品行写在 stats/posts,键是 id / hasVideo / publishedAt,调用方多带的东西不进盘", async () => {
+		await store.appendPost("1", {
+			id: "a",
+			hasVideo: true,
+			publishedAt: T(1),
+			extra: "不许漏进盘",
+		} as never);
+		await store.appendPost("1", { id: "b", hasVideo: false, publishedAt: T(2) });
+		expect((await rawLines("stats/posts/1.jsonl")).map((l) => JSON.parse(l))).toEqual([
+			{ id: "a", hasVideo: true, publishedAt: T(1) },
+			{ id: "b", hasVideo: false, publishedAt: T(2) },
+		]);
+		await expect(readdir(join(dataDir, "stats", "dyn"))).rejects.toThrow();
+	});
+
+	it("直播帧的键是 kind / occurredAt / peakTotalViewers;没有峰值就不带这一格", async () => {
+		await store.openLiveSession("1", T(1));
+		await store.closeLiveSession("1", T(2), 800);
+		await store.openLiveSession("1", T(5));
+		await store.closeLiveSession("1", T(6));
+		expect((await rawLines("stats/live/1.jsonl")).map((l) => JSON.parse(l))).toEqual([
+			{ kind: "start", occurredAt: T(1) },
+			{ kind: "end", occurredAt: T(2), peakTotalViewers: 800 },
+			{ kind: "start", occurredAt: T(5) },
+			{ kind: "end", occurredAt: T(6) },
+		]);
+	});
+});
+
 describe("StatsStore — 直播场次", () => {
 	it("start → end 配成一场,带峰值观看", async () => {
 		await store.openLiveSession("1", T(1));
 		await store.closeLiveSession("1", T(4), 12_000);
 		expect(await store.listLiveSessions("1", T(0))).toEqual([
-			{ startedAt: T(1), endedAt: T(4), peakViewers: 12_000 },
+			{ startedAt: T(1), endedAt: T(4), peakTotalViewers: 12_000 },
 		]);
 	});
 
@@ -187,7 +220,7 @@ describe("StatsStore — 直播场次", () => {
 
 describe("StatsStore — drop", () => {
 	it("删掉该 uid 的动态与直播两类文件", async () => {
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
 		await store.openLiveSession("1", T(1));
 		await store.drop("1");
 		expect(await store.listPosts("1", T(0))).toEqual([]);
@@ -267,8 +300,8 @@ describe("StatsStore — 采集水位线", () => {
 		expect(await readFile(join(dataDir, "stats", "since"), "utf-8")).toBe(T(5));
 		// 目录里只有三个子目录与它,没有落下临时文件。
 		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual([
-			"dyn",
 			"live",
+			"posts",
 			"seen",
 			"since",
 		]);
@@ -283,8 +316,8 @@ describe("StatsStore — 采集水位线", () => {
 			"[stats-store] write since failed",
 		);
 		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual([
-			"dyn",
 			"live",
+			"posts",
 			"seen",
 			"since",
 		]);
@@ -303,7 +336,9 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 		await store.closeLiveSession("1", T(11), 751);
 		await store.openLiveSession("1", T(9));
 		const got = await store.listLiveSessions("1", T(0));
-		expect(got).toEqual([{ startedAt: T(9), endedAt: T(11), peakViewers: 751, current: true }]);
+		expect(got).toEqual([
+			{ startedAt: T(9), endedAt: T(11), peakTotalViewers: 751, current: true },
+		]);
 	});
 
 	it("关服写了 end,重启后同一场接续 → 下播时间取最后一次观测到的", async () => {
@@ -312,7 +347,7 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 		await store.openLiveSession("1", T(9)); // 重启,还是这一场
 		await store.closeLiveSession("1", T(13), 12_000); // 真正下播
 		const got = await store.listLiveSessions("1", T(0));
-		expect(got).toEqual([{ startedAt: T(9), endedAt: T(13), peakViewers: 12_000 }]);
+		expect(got).toEqual([{ startedAt: T(9), endedAt: T(13), peakTotalViewers: 12_000 }]);
 	});
 
 	it("接回同一场之后那帧 end 的峰值更小 / 没带 → 留着前一帧更大的(累计观看只增不减)", async () => {
@@ -323,7 +358,7 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 		await store.openLiveSession("1", T(9));
 		await store.closeLiveSession("1", T(12)); // 又一段,一次都没报
 		expect(await store.listLiveSessions("1", T(0))).toEqual([
-			{ startedAt: T(9), endedAt: T(12), peakViewers: 5_000 },
+			{ startedAt: T(9), endedAt: T(12), peakTotalViewers: 5_000 },
 		]);
 	});
 
@@ -338,25 +373,25 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 });
 
 describe("StatsStore — 盘上的行是中立的", () => {
-	it("作品行只写 {id, kind, ts},不带任何平台类型", async () => {
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendPost("1", { id: "b", kind: "post", ts: T(2) });
-		const raw = await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8");
+	it("作品行只写 {id, hasVideo, publishedAt},不带任何平台类型", async () => {
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
+		await store.appendPost("1", { id: "b", hasVideo: false, publishedAt: T(2) });
+		const raw = await readFile(join(dataDir, "stats", "posts", "1.jsonl"), "utf-8");
 		expect(raw).toBe(
-			`${JSON.stringify({ id: "a", kind: "video", ts: T(1) })}\n${JSON.stringify({ id: "b", kind: "post", ts: T(2) })}\n`,
+			`${JSON.stringify({ id: "a", hasVideo: true, publishedAt: T(1) })}\n${JSON.stringify({ id: "b", hasVideo: false, publishedAt: T(2) })}\n`,
 		);
 	});
 
-	it("下播帧的 peak 存数字,不存压缩好的字符串", async () => {
+	it("下播帧的 peakTotalViewers 存数字,不存压缩好的字符串", async () => {
 		await store.openLiveSession("1", T(1));
 		await store.closeLiveSession("1", T(3), 12_000);
 		const raw = await readFile(join(dataDir, "stats", "live", "1.jsonl"), "utf-8");
 		expect(raw).toBe(
-			`${JSON.stringify({ k: "start", ts: T(1) })}\n${JSON.stringify({ k: "end", ts: T(3), peak: 12_000 })}\n`,
+			`${JSON.stringify({ kind: "start", occurredAt: T(1) })}\n${JSON.stringify({ kind: "end", occurredAt: T(3), peakTotalViewers: 12_000 })}\n`,
 		);
 	});
 
-	it("没有峰值 / 峰值不是有限数 → end 帧不带 peak(不落一个 null 进盘)", async () => {
+	it("没有峰值 / 峰值不是有限数 → end 帧不带 peakTotalViewers(不落一个 null 进盘)", async () => {
 		await store.openLiveSession("1", T(1));
 		await store.closeLiveSession("1", T(2));
 		await store.closeLiveSession("1", T(3), Number.NaN);
@@ -365,21 +400,16 @@ describe("StatsStore — 盘上的行是中立的", () => {
 			.split("\n")
 			.map((l) => JSON.parse(l));
 		expect(lines.slice(1)).toEqual([
-			{ k: "end", ts: T(2) },
-			{ k: "end", ts: T(3) },
+			{ kind: "end", occurredAt: T(2) },
+			{ kind: "end", occurredAt: T(3) },
 		]);
 	});
 
-	it("开播公告记成 live,原样读回", async () => {
-		await store.appendPost("1", { id: "l", kind: "live", ts: T(1) });
-		expect(await store.listPosts("1", T(0))).toEqual([{ id: "l", kind: "live", ts: T(1) }]);
-	});
-
-	it("种类不认识的新行跳过,不猜", async () => {
-		await mkdir(join(dataDir, "stats", "dyn"), { recursive: true });
+	it("hasVideo 不是布尔的行跳过,不猜", async () => {
+		await mkdir(join(dataDir, "stats", "posts"), { recursive: true });
 		await writeFile(
-			join(dataDir, "stats", "dyn", "1.jsonl"),
-			`${JSON.stringify({ id: "a", kind: "reel", ts: T(1) })}\n`,
+			join(dataDir, "stats", "posts", "1.jsonl"),
+			`${JSON.stringify({ id: "a", hasVideo: "yes", publishedAt: T(1) })}\n`,
 		);
 		expect(await store.listPosts("1", T(0))).toEqual([]);
 	});
@@ -387,7 +417,7 @@ describe("StatsStore — 盘上的行是中立的", () => {
 
 /** 往 `stats/<dir>/<key>.jsonl` 摆一份盘上已有的行(一行一条,末尾带换行)。 */
 async function putRows(
-	dir: "dyn" | "live",
+	dir: "posts" | "live",
 	key: string,
 	rows: readonly unknown[],
 ): Promise<string> {
@@ -399,50 +429,47 @@ async function putRows(
 
 describe("StatsStore — 盘上已有的行", () => {
 	it("同 id 已在盘上 → 不追加(盘上字节不变),读回只有一条", async () => {
-		const text = await putRows("dyn", "1", [
-			{ id: "a", kind: "video", ts: T(1) },
-			{ id: "b", kind: "post", ts: T(2) },
+		const text = await putRows("posts", "1", [
+			{ id: "a", hasVideo: true, publishedAt: T(1) },
+			{ id: "b", hasVideo: false, publishedAt: T(2) },
 		]);
-		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
-		expect(await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8")).toBe(text);
+		await store.appendPost("1", { id: "a", hasVideo: true, publishedAt: T(1) });
+		expect(await readFile(join(dataDir, "stats", "posts", "1.jsonl"), "utf-8")).toBe(text);
 		expect((await store.listPosts("1", T(0))).filter((e) => e.id === "a")).toHaveLength(1);
-	});
-
-	it("kind: live 的开播公告行也挡得住同 id 重写", async () => {
-		const text = await putRows("dyn", "1", [{ id: "c", kind: "live", ts: T(1) }]);
-		await store.appendPost("1", { id: "c", kind: "post", ts: T(1) });
-		expect(await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8")).toBe(text);
 	});
 
 	it("同 id 两行(降级期间别的版本又追加了一行)→ 读的时候只认先落盘的那条,不重复计数", async () => {
 		// `dynamic-detected` 不保证只发一次(投递失败走 markFail,下轮重发);两个版本各写各的、
 		// append 那头的「先读再追加」挡不住,同一条作品在盘上就有两行 —— 不按 id 去重的话计数翻倍。
-		await putRows("dyn", "5", [
-			{ id: "n1", kind: "video", ts: T(1) },
-			{ id: "n1", kind: "post", ts: T(1) },
-			{ id: "n2", kind: "post", ts: T(2) },
-			{ id: "n2", kind: "post", ts: T(2) },
+		await putRows("posts", "5", [
+			{ id: "n1", hasVideo: true, publishedAt: T(1) },
+			{ id: "n1", hasVideo: false, publishedAt: T(1) },
+			{ id: "n2", hasVideo: false, publishedAt: T(2) },
+			{ id: "n2", hasVideo: false, publishedAt: T(2) },
 		]);
 		expect(await store.listPosts("5", T(0))).toEqual([
-			{ id: "n1", kind: "video", ts: T(1) },
-			{ id: "n2", kind: "post", ts: T(2) },
+			{ id: "n1", hasVideo: true, publishedAt: T(1) },
+			{ id: "n2", hasVideo: false, publishedAt: T(2) },
 		]);
 	});
 });
 
 describe("StatsStore — 不认老形状(0.x 的老行归迁移器改写,这一层不翻)", () => {
-	it("盘上一行 {id, type, ts}(没有 kind)→ 读不出它,别的行照读", async () => {
-		await putRows("dyn", "1", [
+	it("盘上一行 {id, type, ts} 或 {id, kind, ts}(没有 hasVideo)→ 读不出它,别的行照读", async () => {
+		await putRows("posts", "1", [
 			{ id: "old", type: "DYNAMIC_TYPE_AV", ts: T(1) },
-			{ id: "new", kind: "video", ts: T(2) },
+			{ id: "mid", kind: "video", ts: T(1) },
+			{ id: "new", hasVideo: true, publishedAt: T(2) },
 		]);
-		expect(await store.listPosts("1", T(0))).toEqual([{ id: "new", kind: "video", ts: T(2) }]);
+		expect(await store.listPosts("1", T(0))).toEqual([
+			{ id: "new", hasVideo: true, publishedAt: T(2) },
+		]);
 	});
 
 	it("老下播帧的字符串峰值当没带:这一场没有峰值", async () => {
 		await putRows("live", "1", [
-			{ k: "start", ts: T(1) },
-			{ k: "end", ts: T(3), peak: "1.2万" },
+			{ kind: "start", occurredAt: T(1) },
+			{ kind: "end", occurredAt: T(3), peakTotalViewers: "1.2万" },
 		]);
 		expect(await store.listLiveSessions("1", T(0))).toEqual([{ startedAt: T(1), endedAt: T(3) }]);
 	});
@@ -451,13 +478,13 @@ describe("StatsStore — 不认老形状(0.x 的老行归迁移器改写,这一�
 		"同一场接回之后那帧 end 的峰值是字符串 %s → 当没带,前一帧的数字峰值不被抹掉",
 		async (peak) => {
 			await putRows("live", "1", [
-				{ k: "start", ts: T(1) },
-				{ k: "end", ts: T(2), peak: 5_000 },
-				{ k: "start", ts: T(1) },
-				{ k: "end", ts: T(3), peak },
+				{ kind: "start", occurredAt: T(1) },
+				{ kind: "end", occurredAt: T(2), peakTotalViewers: 5_000 },
+				{ kind: "start", occurredAt: T(1) },
+				{ kind: "end", occurredAt: T(3), peakTotalViewers: peak },
 			]);
 			expect(await store.listLiveSessions("1", T(0))).toEqual([
-				{ startedAt: T(1), endedAt: T(3), peakViewers: 5_000 },
+				{ startedAt: T(1), endedAt: T(3), peakTotalViewers: 5_000 },
 			]);
 		},
 	);
@@ -480,25 +507,27 @@ describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 
 
 	it("订阅 id 那一格就是文件名,两类文件落在同一套目录里", async () => {
 		const key = statsFileKey(BILI_SUB);
-		await store.appendPost(key, { id: "w1", kind: "video", ts: T(1) });
+		await store.appendPost(key, { id: "w1", hasVideo: true, publishedAt: T(1) });
 		await store.openLiveSession(key, T(2));
 		await store.closeLiveSession(key, T(3), 500);
-		expect(await readdir(join(dataDir, "stats", "dyn"))).toEqual([`${BILI_SUB.id}.jsonl`]);
+		expect(await readdir(join(dataDir, "stats", "posts"))).toEqual([`${BILI_SUB.id}.jsonl`]);
 		expect(await readdir(join(dataDir, "stats", "live"))).toEqual([`${BILI_SUB.id}.jsonl`]);
-		expect(await store.listPosts(key, T(0))).toEqual([{ id: "w1", kind: "video", ts: T(1) }]);
+		expect(await store.listPosts(key, T(0))).toEqual([
+			{ id: "w1", hasVideo: true, publishedAt: T(1) },
+		]);
 		expect(await store.listLiveSessions(key, T(0))).toEqual([
-			{ startedAt: T(2), endedAt: T(3), peakViewers: 500 },
+			{ startedAt: T(2), endedAt: T(3), peakTotalViewers: 500 },
 		]);
 	});
 
 	it("drop 只删这条订阅的两类文件,别的订阅的不动", async () => {
 		const mine = statsFileKey(EXT_SUB);
 		const other = statsFileKey(BILI_SUB);
-		await store.appendPost(mine, { id: "w1", kind: "video", ts: T(1) });
+		await store.appendPost(mine, { id: "w1", hasVideo: true, publishedAt: T(1) });
 		await store.openLiveSession(mine, T(2));
-		await store.appendPost(other, { id: "a", kind: "post", ts: T(1) });
+		await store.appendPost(other, { id: "a", hasVideo: false, publishedAt: T(1) });
 		await store.drop(mine);
-		expect(await readdir(join(dataDir, "stats", "dyn"))).toEqual([`${other}.jsonl`]);
+		expect(await readdir(join(dataDir, "stats", "posts"))).toEqual([`${other}.jsonl`]);
 		expect(await readdir(join(dataDir, "stats", "live"))).toEqual([]);
 	});
 });

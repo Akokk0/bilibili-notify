@@ -2,8 +2,9 @@
  * 0.x 的统计与粉丝时序经迁移器进新代(`migration/stats.ts`,⑥c)。0.x 各个版本留下的形状:
  *
  *   - **文件键**(ADR-0020 决策 2 的 🔗):B 站的作品、直播、粉丝文件从 `<uid>.jsonl` 并进 `<订阅 id>.jsonl`
- *     (0.x 的 `stats/dyn`、`stats/live`、`fans/` → 新代的 `stats/dyn`、`stats/live`、`stats/followers/`);
- *   - **行**(决策 5 / 7 的 🔗):老作品行 `{id, type, ts}` → `{id, kind, ts}`,老下播帧的字符串峰值("1.2万")→ 数字。
+ *     (0.x 的 `stats/dyn`、`stats/live`、`fans/` → 新代的 `stats/posts`、`stats/live`、`stats/followers/`);
+ *   - **行**(决策 5 / 7 的 🔗、ADR-0027):老作品行 `{id, type, ts}` → `{id, hasVideo, publishedAt}`、开播公告行丢掉,
+ *     老下播帧 `{k, ts, peak}` → `{kind, occurredAt, peakTotalViewers}`、字符串峰值("1.2万")→ 数字。
  *
  * 两样都在搬家那一次由迁移器做,统计仓开机只认最新的形状、读时不翻。
  *
@@ -28,7 +29,7 @@ import {
 	dailyFansSeries,
 	summarizeLiveSessions,
 } from "../../stats/aggregate.js";
-import { createStatsStore, STATS_DYN_DIR, STATS_LIVE_DIR } from "../../stats/store.js";
+import { createStatsStore, STATS_LIVE_DIR, STATS_POSTS_DIR } from "../../stats/store.js";
 import { migrateStatsFiles } from "../stats.js";
 import { readBiliSubscriptionKeys } from "../subscriptions.js";
 import type { ZeroMigrationResult } from "../zero-generation.js";
@@ -79,6 +80,37 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 		return createStatsStore({ dataRoot: sandbox.target, logger: silentLogger });
 	}
 
+	describe("盘上的新形状(㉖c):stats/dyn → stats/posts,开播公告丢掉", () => {
+		const rawRows = async (rel: string) =>
+			(await readTarget(rel))
+				.trim()
+				.split("\n")
+				.map((l) => JSON.parse(l) as unknown);
+
+		it("0.x 的作品行直接写成 { id, hasVideo, publishedAt },两条开播公告不带过来,旧目录不留", async () => {
+			await sandbox.migrate();
+			expect(await rawRows("stats/posts/1.jsonl")).toEqual([
+				{ id: "a", hasVideo: true, publishedAt: "2026-05-15T02:00:00.000Z" },
+				{ id: "b", hasVideo: false, publishedAt: "2026-05-15T03:00:00.000Z" },
+				{ id: "d", hasVideo: false, publishedAt: "2026-05-16T01:00:00.000Z" },
+				{ id: "e", hasVideo: false, publishedAt: "2026-05-16T02:00:00.000Z" },
+				{ id: "f", hasVideo: true, publishedAt: "2026-05-16T03:00:00.000Z" },
+				{ id: "h", hasVideo: false, publishedAt: "2026-05-16T05:00:00.000Z" },
+			]);
+			await expect(readdir(join(sandbox.target, "stats", "dyn"))).rejects.toThrow();
+		});
+
+		it("直播帧写成 { kind, occurredAt, peakTotalViewers? },字符串峰值已是数字", async () => {
+			await sandbox.migrate();
+			const frames = await rawRows("stats/live/1.jsonl");
+			expect(frames.slice(0, 2)).toEqual([
+				{ kind: "start", occurredAt: "2026-05-15T12:00:00.000Z" },
+				{ kind: "end", occurredAt: "2026-05-15T14:00:00.000Z", peakTotalViewers: 12_000 },
+			]);
+			expect(JSON.stringify(frames)).not.toMatch(/"k"|"ts"|"peak"/);
+		});
+	});
+
 	describe("老 B 站行 → 与改之前同样的统计数", () => {
 		it("投稿 / 动态 / 热力图照原来的规矩归类:AV 算投稿,开播那两种不算作品也不加热力", async () => {
 			const store = await migrateAndOpen();
@@ -90,31 +122,29 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 			]);
 		});
 
-		it("读出来的是中立种类,B 站类型串不再往上漏;开播那两种留作 live(活动证据)", async () => {
+		it("读出来的是中立形状,B 站类型串不再往上漏;开播那两种不在了", async () => {
 			const store = await migrateAndOpen();
 			const events = await store.listPosts("1", SINCE);
 			expect(events).toEqual([
-				{ id: "a", kind: "video", ts: "2026-05-15T02:00:00.000Z" },
-				{ id: "b", kind: "post", ts: "2026-05-15T03:00:00.000Z" },
-				{ id: "c", kind: "live", ts: "2026-05-15T12:00:00.000Z" },
-				{ id: "d", kind: "post", ts: "2026-05-16T01:00:00.000Z" },
-				{ id: "e", kind: "post", ts: "2026-05-16T02:00:00.000Z" },
-				{ id: "f", kind: "video", ts: "2026-05-16T03:00:00.000Z" },
-				{ id: "g", kind: "live", ts: "2026-05-16T04:00:00.000Z" },
-				{ id: "h", kind: "post", ts: "2026-05-16T05:00:00.000Z" },
+				{ id: "a", hasVideo: true, publishedAt: "2026-05-15T02:00:00.000Z" },
+				{ id: "b", hasVideo: false, publishedAt: "2026-05-15T03:00:00.000Z" },
+				{ id: "d", hasVideo: false, publishedAt: "2026-05-16T01:00:00.000Z" },
+				{ id: "e", hasVideo: false, publishedAt: "2026-05-16T02:00:00.000Z" },
+				{ id: "f", hasVideo: true, publishedAt: "2026-05-16T03:00:00.000Z" },
+				{ id: "h", hasVideo: false, publishedAt: "2026-05-16T05:00:00.000Z" },
 			]);
 		});
 
 		it("字符串峰值读成数字,场次 / 时长 / 最高 / 场均与改之前一致", async () => {
 			const store = await migrateAndOpen();
 			const sessions = await store.listLiveSessions("1", SINCE);
-			expect(sessions.map((s) => s.peakViewers)).toEqual([12_000, 9000, 30_000]);
+			expect(sessions.map((s) => s.peakTotalViewers)).toEqual([12_000, 9000, 30_000]);
 			expect(summarizeLiveSessions(sessions, { now: NOW, isLive: false })).toEqual({
 				sessions: 3,
 				hours: 5,
 				timedSessions: 3,
-				peakViewers: 30_000,
-				avgPeakViewers: 17_000,
+				maxViewers: 30_000,
+				avgViewers: 17_000,
 			});
 		});
 
@@ -123,10 +153,14 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 		// **读与记都不动盘上已有的行**。写成形状无关的:迁完先记下字节,读过、再往里记之后,那串字节还在最前面。
 		it("读过、再往里记,盘上已有的行原样还在", async () => {
 			const store = await migrateAndOpen();
-			const before = await readTarget("stats/dyn/1.jsonl");
+			const before = await readTarget("stats/posts/1.jsonl");
 			await store.listPosts("1", SINCE);
-			await store.appendPost("1", { id: "z", kind: "post", ts: "2026-05-16T19:00:00.000Z" });
-			const raw = await readTarget("stats/dyn/1.jsonl");
+			await store.appendPost("1", {
+				id: "z",
+				hasVideo: false,
+				publishedAt: "2026-05-16T19:00:00.000Z",
+			});
+			const raw = await readTarget("stats/posts/1.jsonl");
 			expect(raw.startsWith(before)).toBe(true);
 			expect(raw.slice(before.length)).toContain('"id":"z"');
 		});
@@ -138,26 +172,42 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 	describe("按 id 去重跨过新老两种行", () => {
 		it("老行里已有的 id,新写一条同 id 的 → 不追加,读回只有一条", async () => {
 			const store = await migrateAndOpen();
-			const before = await readTarget("stats/dyn/1.jsonl");
-			await store.appendPost("1", { id: "a", kind: "video", ts: "2026-05-15T02:00:00.000Z" });
-			expect(await readTarget("stats/dyn/1.jsonl")).toBe(before);
+			const before = await readTarget("stats/posts/1.jsonl");
+			await store.appendPost("1", {
+				id: "a",
+				hasVideo: true,
+				publishedAt: "2026-05-15T02:00:00.000Z",
+			});
+			expect(await readTarget("stats/posts/1.jsonl")).toBe(before);
 			const got = await store.listPosts("1", SINCE);
 			expect(got.filter((e) => e.id === "a")).toHaveLength(1);
 		});
 
-		it("老的开播伪动态也挡得住同 id 的重写", async () => {
+		it("老的开播伪动态不带过来,所以同 id 的新写不被它挡着(ADR-0027:公告不再记)", async () => {
 			const store = await migrateAndOpen();
-			const before = await readTarget("stats/dyn/1.jsonl");
-			await store.appendPost("1", { id: "c", kind: "post", ts: "2026-05-15T12:00:00.000Z" });
-			expect(await readTarget("stats/dyn/1.jsonl")).toBe(before);
+			expect((await store.listPosts("1", SINCE)).some((e) => e.id === "c")).toBe(false);
+			await store.appendPost("1", {
+				id: "c",
+				hasVideo: false,
+				publishedAt: "2026-05-15T12:00:00.000Z",
+			});
+			expect((await store.listPosts("1", SINCE)).filter((e) => e.id === "c")).toHaveLength(1);
 		});
 
 		it("新行之间照旧去重 —— 引擎重放同一条不虚增", async () => {
 			const store = await migrateAndOpen();
-			await store.appendPost("2", { id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" });
-			await store.appendPost("2", { id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" });
+			await store.appendPost("2", {
+				id: "x",
+				hasVideo: true,
+				publishedAt: "2026-05-16T01:00:00.000Z",
+			});
+			await store.appendPost("2", {
+				id: "x",
+				hasVideo: true,
+				publishedAt: "2026-05-16T01:00:00.000Z",
+			});
 			expect(await store.listPosts("2", SINCE)).toEqual([
-				{ id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" },
+				{ id: "x", hasVideo: true, publishedAt: "2026-05-16T01:00:00.000Z" },
 			]);
 		});
 
@@ -168,17 +218,17 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 			await sandbox.placeZeroText(
 				"stats/dyn/5.jsonl",
 				jsonl([
-					{ id: "n1", kind: "video", ts: "2026-05-16T01:00:00.000Z" },
+					{ id: "n1", hasVideo: true, publishedAt: "2026-05-16T01:00:00.000Z" },
 					{ id: "n1", type: "DYNAMIC_TYPE_WORD", ts: "2026-05-16T01:00:00.000Z" },
-					{ id: "n2", kind: "post", ts: "2026-05-16T02:00:00.000Z" },
-					{ id: "n2", kind: "post", ts: "2026-05-16T02:00:00.000Z" },
+					{ id: "n2", hasVideo: false, publishedAt: "2026-05-16T02:00:00.000Z" },
+					{ id: "n2", hasVideo: false, publishedAt: "2026-05-16T02:00:00.000Z" },
 				]),
 			);
 			const store = await migrateAndOpen();
 			const events = await store.listPosts("5", SINCE);
 			expect(events).toEqual([
-				{ id: "n1", kind: "video", ts: "2026-05-16T01:00:00.000Z" },
-				{ id: "n2", kind: "post", ts: "2026-05-16T02:00:00.000Z" },
+				{ id: "n1", hasVideo: true, publishedAt: "2026-05-16T01:00:00.000Z" },
+				{ id: "n2", hasVideo: false, publishedAt: "2026-05-16T02:00:00.000Z" },
 			]);
 			expect(countPosts(events)).toEqual({ archives: 1, dynamics: 1 });
 		});
@@ -202,7 +252,7 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 			expect(sessions).toEqual([
 				{ startedAt: "2026-05-16T10:00:00.000Z", endedAt: "2026-05-16T12:00:00.000Z" },
 			]);
-			expect(summarizeLiveSessions(sessions).peakViewers).toBeNull();
+			expect(summarizeLiveSessions(sessions).maxViewers).toBeNull();
 		});
 
 		it("新老帧混在一个文件里:数字峰值与字符串峰值各自读对", async () => {
@@ -217,7 +267,7 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 			);
 			const store = await migrateAndOpen();
 			const sessions = await store.listLiveSessions("4", SINCE);
-			expect(sessions.map((s) => s.peakViewers)).toEqual([20_000, 8000]);
+			expect(sessions.map((s) => s.peakTotalViewers)).toEqual([20_000, 8000]);
 		});
 	});
 });
@@ -230,7 +280,7 @@ const ID_EXT = "e0000000-0000-4000-8000-00000000000e";
 
 /** 三个目录各在 0.x 的哪里(`zero`,摆数据用)、在新代的哪里(`target`,读回用)、汇报里的前缀(`report`)。 */
 const DIRS = [
-	{ zero: "stats/dyn", target: join(...STATS_DYN_DIR), report: STATS_DYN_DIR.join("/") },
+	{ zero: "stats/dyn", target: join(...STATS_POSTS_DIR), report: STATS_POSTS_DIR.join("/") },
 	{ zero: "stats/live", target: join(...STATS_LIVE_DIR), report: STATS_LIVE_DIR.join("/") },
 	{ zero: "fans", target: join(...FOLLOWERS_DIR), report: FOLLOWERS_DIR.join("/") },
 ] as const;
@@ -258,10 +308,10 @@ const T = (d: number, h = 0) =>
  * 被翻掉,「内容一字不动」就不成立了。这一组守的是**改名这件事**、不是行的形状(行的形状归上一大组),所以
  * 夹具摆已经翻好的行 —— 断言的形式(`toBe(DYN)` 等)原样。老形状的行跟着改名一起翻,在第一组末尾单列一条。
  */
-const DYN = jsonl([{ id: "p1", kind: "video", ts: T(10) }]);
+const DYN = jsonl([{ id: "p1", hasVideo: true, publishedAt: T(10) }]);
 const LIVE = jsonl([
-	{ k: "start", ts: T(10, 1) },
-	{ k: "end", ts: T(10, 3), peak: 12_000 },
+	{ kind: "start", occurredAt: T(10, 1) },
+	{ kind: "end", occurredAt: T(10, 3), peakTotalViewers: 12_000 },
 ]);
 const FANS = jsonl([
 	{ ts: T(10), value: 100 },
@@ -276,7 +326,8 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 	const put = (dir: Dir, key: string, content: string) =>
 		sandbox.placeZeroText(`${dir.zero}/${key}.jsonl`, content);
 	const read = (dir: Dir, key: string) => readTarget(`${dir.target}/${key}.jsonl`);
-	const ls = async (dir: Dir) => (await readdir(join(sandbox.target, dir.target))).sort();
+	const ls = async (dir: Dir) =>
+		(await readdir(join(sandbox.target, dir.target)).catch(() => [] as string[])).sort();
 	/** 汇报里统计与粉丝文件的那几条(新代里的路径,排好序):改了名的记新名字。 */
 	const statsRewritten = (report: ZeroMigrationResult) =>
 		report.rewritten.filter((path) => DIRS.some((d) => path.startsWith(`${d.report}/`))).sort();
@@ -387,11 +438,11 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 		});
 
 		it("id 那份末尾没换行 → 补一个再接,不把两行粘成一行", async () => {
-			await put(DIRS[0], ID_A, JSON.stringify({ id: "n1", kind: "post", ts: T(10) }));
+			await put(DIRS[0], ID_A, JSON.stringify({ id: "n1", hasVideo: false, publishedAt: T(10) }));
 			await put(DIRS[0], "101", DYN);
 			await run([bili(ID_A, "101")]);
 			expect(await read(DIRS[0], ID_A)).toBe(
-				`${JSON.stringify({ id: "n1", kind: "post", ts: T(10) })}\n${DYN}`,
+				`${JSON.stringify({ id: "n1", hasVideo: false, publishedAt: T(10) })}\n${DYN}`,
 			);
 		});
 	});
@@ -456,16 +507,16 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 
 		it("就算多出了重复的行,读的人也不多算:作品按 id 去重、场次照常配对、粉丝增量不变", async () => {
 			const dynRows = [
-				{ id: "p1", kind: "video", ts: T(10) },
-				{ id: "p2", kind: "post", ts: T(11) },
+				{ id: "p1", hasVideo: true, publishedAt: T(10) },
+				{ id: "p2", hasVideo: false, publishedAt: T(11) },
 			];
 			const liveRows = [
-				{ k: "start", ts: T(10, 1) },
-				{ k: "end", ts: T(10, 3), peak: 12_000 },
+				{ kind: "start", occurredAt: T(10, 1) },
+				{ kind: "end", occurredAt: T(10, 3), peakTotalViewers: 12_000 },
 				// ↓ 这三帧是「回退期间写的那段」,下面整段再接一遍
-				{ k: "start", ts: T(11, 1) },
-				{ k: "end", ts: T(11, 2), peak: 9000 },
-				{ k: "start", ts: T(11, 20) },
+				{ kind: "start", occurredAt: T(11, 1) },
+				{ kind: "end", occurredAt: T(11, 2), peakTotalViewers: 9000 },
+				{ kind: "start", occurredAt: T(11, 20) },
 			];
 			const tail = [
 				{ ts: T(12), value: 120 },
@@ -521,9 +572,9 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			expect(await read(DIRS[2], "999")).toBe(FANS);
 		});
 
-		it("拓展订阅本来就按订阅 id 命名,没有什么可迁", async () => {
+		it("拓展订阅本来就按订阅 id 命名,没有什么可改名的:作品只是跟着目录搬进 stats/posts,内容不变", async () => {
 			await put(DIRS[0], ID_EXT, DYN);
-			expect((await run([ext(ID_EXT)])).rewritten).toEqual([]);
+			expect((await run([ext(ID_EXT)])).rewritten).toEqual(rewrittenIn(DIRS[0], ID_EXT));
 			expect(await read(DIRS[0], ID_EXT)).toBe(DYN);
 		});
 	});
@@ -576,7 +627,7 @@ describe("迁移器自己的钉", () => {
 		{ id: "a", type: "DYNAMIC_TYPE_AV", ts: T(10) },
 		{ id: "b", type: "DYNAMIC_TYPE_WORD", ts: T(11) },
 		{ id: "c", type: "DYNAMIC_TYPE_LIVE_RCMD", ts: T(12) },
-		{ id: "d", kind: "video", ts: T(13) },
+		{ id: "d", hasVideo: true, publishedAt: T(13) },
 	];
 	const BAD_LINE = '{"bad';
 	const LIVE_101 = [
@@ -623,7 +674,7 @@ describe("迁移器自己的钉", () => {
 	/** 新代里统计与粉丝三个目录的每个文件:`目录/文件名 → 原文`。 */
 	async function snapshot(): Promise<Record<string, string>> {
 		const out: Record<string, string> = {};
-		for (const dir of [STATS_DYN_DIR, STATS_LIVE_DIR, FOLLOWERS_DIR]) {
+		for (const dir of [STATS_POSTS_DIR, STATS_LIVE_DIR, FOLLOWERS_DIR]) {
 			const abs = join(sandbox.target, ...dir);
 			for (const name of (await readdir(abs).catch(() => [] as string[])).sort()) {
 				out[`${dir.join("/")}/${name}`] = await readFile(join(abs, name), "utf-8");
@@ -644,7 +695,7 @@ describe("迁移器自己的钉", () => {
 				}
 			});
 
-	it("新代里不留老形状:没有 <uid>.jsonl(有订阅的)、dyn 行没有 type、live 帧没有字符串 peak", async () => {
+	it("新代里不留老形状:没有 <uid>.jsonl(有订阅的)、没有 stats/dyn、作品行没有 type / kind、live 帧没有 k / ts / peak", async () => {
 		await placeZeroGeneration();
 		await sandbox.migrate();
 		const files = await snapshot();
@@ -652,33 +703,37 @@ describe("迁移器自己的钉", () => {
 		// 改名:有订阅的 uid 文件一个都不在;新名字在;没有订阅的原名留着。
 		expect(Object.keys(files).sort()).toEqual(
 			[
-				`stats/dyn/${ID_A}.jsonl`,
-				`stats/dyn/${ID_B}.jsonl`,
-				`stats/dyn/${ORPHAN}.jsonl`,
+				`stats/posts/${ID_A}.jsonl`,
+				`stats/posts/${ID_B}.jsonl`,
+				`stats/posts/${ORPHAN}.jsonl`,
 				`stats/live/${ID_A}.jsonl`,
 				`stats/followers/${ID_A}.jsonl`,
 			].sort(),
 		);
 		for (const uid of [UID_A, UID_B]) {
-			for (const dir of ["stats/dyn", "stats/live", "stats/followers"]) {
+			for (const dir of ["stats/posts", "stats/live", "stats/followers"]) {
 				expect(Object.keys(files)).not.toContain(`${dir}/${uid}.jsonl`);
 			}
 		}
 
-		// 行:每个作品文件(含没有订阅、原名留着的那份)里没有 `type`、每行有 kind;坏行与新形状行原样。
-		for (const [path, text] of Object.entries(files).filter(([p]) => p.startsWith("stats/dyn/"))) {
+		// 旧目录一个都不留。
+		await expect(readdir(join(sandbox.target, "stats", "dyn"))).rejects.toThrow();
+
+		// 行:每个作品文件(含没有订阅、原名留着的那份)里没有 `type` / `kind`、每行是 { id, hasVideo, publishedAt };
+		// 坏行与新形状行原样。开播公告("c")丢掉。
+		for (const [path, text] of Object.entries(files).filter(([p]) =>
+			p.startsWith("stats/posts/"),
+		)) {
 			for (const row of rowsOf(text)) {
 				if (typeof row === "string") continue;
-				expect(row, path).not.toHaveProperty("type");
-				expect(["video", "post", "live"], path).toContain(row.kind);
+				expect(Object.keys(row).sort(), path).toEqual(["hasVideo", "id", "publishedAt"]);
 			}
 		}
-		const dynA = rowsOf(files[`stats/dyn/${ID_A}.jsonl`] ?? "");
-		expect(dynA).toEqual([
-			{ id: "a", kind: "video", ts: T(10) },
-			{ id: "b", kind: "post", ts: T(11) },
-			{ id: "c", kind: "live", ts: T(12) },
-			{ id: "d", kind: "video", ts: T(13) },
+		const postsA = rowsOf(files[`stats/posts/${ID_A}.jsonl`] ?? "");
+		expect(postsA).toEqual([
+			{ id: "a", hasVideo: true, publishedAt: T(10) },
+			{ id: "b", hasVideo: false, publishedAt: T(11) },
+			{ id: "d", hasVideo: true, publishedAt: T(13) },
 			BAD_LINE,
 		]);
 
@@ -686,19 +741,22 @@ describe("迁移器自己的钉", () => {
 		for (const [path, text] of Object.entries(files).filter(([p]) => p.startsWith("stats/live/"))) {
 			for (const frame of rowsOf(text)) {
 				if (typeof frame === "string") continue;
-				expect(typeof frame.peak, path).not.toBe("string");
+				expect(
+					Object.keys(frame).every((k) => ["kind", "occurredAt", "peakTotalViewers"].includes(k)),
+				).toBe(true);
+				expect(typeof frame.peakTotalViewers, path).not.toBe("string");
 			}
 		}
 		expect(rowsOf(files[`stats/live/${ID_A}.jsonl`] ?? "")).toEqual([
-			{ k: "start", ts: T(10, 1) },
-			{ k: "end", ts: T(10, 3), peak: 12_000 },
-			{ k: "start", ts: T(11, 1) },
-			{ k: "end", ts: T(11, 2) },
-			{ k: "start", ts: T(11, 1) },
-			{ k: "end", ts: T(11, 5) },
-			{ k: "start", ts: T(12, 1) },
-			{ k: "end", ts: T(12, 2), peak: 8000 },
-			{ k: "start", ts: T(13, 1) },
+			{ kind: "start", occurredAt: T(10, 1) },
+			{ kind: "end", occurredAt: T(10, 3), peakTotalViewers: 12_000 },
+			{ kind: "start", occurredAt: T(11, 1) },
+			{ kind: "end", occurredAt: T(11, 2) },
+			{ kind: "start", occurredAt: T(11, 1) },
+			{ kind: "end", occurredAt: T(11, 5) },
+			{ kind: "start", occurredAt: T(12, 1) },
+			{ kind: "end", occurredAt: T(12, 2), peakTotalViewers: 8000 },
+			{ kind: "start", occurredAt: T(13, 1) },
 		]);
 
 		// 两份都在的粉丝文件:id 那份在前、uid 那份接在后面。
@@ -708,7 +766,7 @@ describe("迁移器自己的钉", () => {
 	it("迁两遍和迁一遍一样:对新代再迁一次回 [],文件字节不变", async () => {
 		await placeZeroGeneration();
 		const report = await sandbox.migrate();
-		expect(report.rewritten).toContain(`stats/dyn/${ID_A}.jsonl`);
+		expect(report.rewritten).toContain(`stats/posts/${ID_A}.jsonl`);
 		const before = await snapshot();
 		expect(Object.keys(before)).toHaveLength(5);
 
