@@ -5,6 +5,11 @@
 // 历史:hoisted 布局年代顶层 vite 槽被 koishi 控制台的 vite 5 占着,root 直接声明 vitest
 // 是让 pnpm 给它嵌套一份 vite 6 的锚点。koishi 与 hoisted 都已不在,锚点随之撤掉。
 import { configDefaults, defineConfig } from "vite-plus";
+import { redirectTestTmpDir } from "./scripts/test-tmpdir.mjs";
+
+// 跑测试时把这次运行的临时目录指到专属目录(跑完整个删、被打断的下次清),见 scripts/test-tmpdir.mjs。
+// 这份配置只在 vitest 的主进程里加载一次;构建与检查不加载它,加了判断是防别的命令哪天也来读。
+if (process.env.VITEST) redirectTestTmpDir();
 
 export default defineConfig({
 	test: {
