@@ -50,7 +50,7 @@ describe("createAppRuntime 里的作品配图", () => {
 		const early = await runtime.imageStore.sweep({
 			now: justAfter(IMAGE_GRACE_MS - 60 * 60 * 1000),
 		});
-		expect(early).toEqual({ removed: [], referenced: 0, inGrace: 1 });
+		expect(early).toEqual({ removed: [], removedBytes: 0, referenced: 0, inGrace: 1 });
 		expect(await imagesOnDisk()).toEqual([ref]);
 
 		const late = await runtime.imageStore.sweep({

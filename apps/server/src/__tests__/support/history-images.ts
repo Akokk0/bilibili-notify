@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { listRepushImageRefs } from "../../history/repush-store.js";
 import { listHistoryImageRefs } from "../../history/retention.js";
+import { IMAGE_REFERRERS } from "../../images/image-referrers.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../../images/image-store.js";
 
 /**
@@ -15,11 +16,11 @@ export function makeHistoryImages(dataRoot: string): {
 } {
 	const imageStore = createImageStore({ dir: join(dataRoot, "images") });
 	const historyImages = imageStore.register({
-		name: "推送历史",
+		name: IMAGE_REFERRERS.history,
 		listRefs: () => listHistoryImageRefs(dataRoot),
 	});
 	const repushImages = imageStore.register({
-		name: "重推原件",
+		name: IMAGE_REFERRERS.repush,
 		listRefs: () => listRepushImageRefs(dataRoot),
 	});
 	return { imageStore, historyImages, repushImages };

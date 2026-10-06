@@ -12,6 +12,7 @@ import { createRepushRunner, type RepushRunner } from "../history/repush-runner.
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
+import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import {
 	createImageStore,
 	type ImageStore,
@@ -242,12 +243,12 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 推送历史是图库的一家引用方:保留期内的日文件里的配图与头像快照。名单直接读盘(不经历史仓实例),
 	// 所以先登记、再把存图的口交给历史仓,没有先有鸡还是先有蛋的问题。
 	const historyImages = imageStore.register({
-		name: "推送历史",
+		name: IMAGE_REFERRERS.history,
 		listRefs: () => listHistoryImageRefs(dataRoot),
 	});
 	// 重推原件是另一家:盘上每份原件里的图(原件按保留期整天清,留着的都是活的)。
 	const repushImages = imageStore.register({
-		name: "重推原件",
+		name: IMAGE_REFERRERS.repush,
 		listRefs: () => listRepushImageRefs(dataRoot),
 	});
 	// 重推原件(ADR-0017):历史仓每次落行 / 追加时顺手留一份没有损耗的原料。
@@ -332,7 +333,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 订阅资料是图库的一家引用方:拓展订阅的头像由资料缓存交名单,清扫据此留下还在资料里的图。订阅被删之后
 	// 资料缓存里没了这一条,头像就不再被引用、由清扫收走 —— 没有「删订阅顺手删头像文件」这一步。
 	const profileImages = imageStore.register({
-		name: "订阅资料",
+		name: IMAGE_REFERRERS.profiles,
 		listRefs: () => subRuntimeStore.listImageRefs(),
 	});
 	// 拓展报的资料更新 → 资料缓存 + 图库里的头像(ADR-0019 决策 7 / 49 / 62)。只听总线,所以在这儿就能起,
@@ -356,14 +357,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 女仆对话是图库的一家引用方:会话里的图由会话库交名单,清扫据此留下还在对话里的图。关停顺序没有承重点 ——
 	// 登记只是把名单口交给图库,会话库不往图库写;清扫登记在 track 里,关停先等它跑完才进 flush 段。
 	const chatImages = imageStore.register({
-		name: "女仆对话",
+		name: IMAGE_REFERRERS.chat,
 		listRefs: () => conversationStore.listImageRefs(),
 	});
 	// 拓展作品是图库的一家引用方,但它**没有东西可列**:作品是在途数据(收到上报 → 出卡 → 推送),不落盘,图只在
 	// 出卡那一刻要用。所以名单恒空,图全靠新图 24 小时的宽限期活到卡片画完;卡画完、没有哪家引用(历史行的配图是
 	// 推送时另存的一份,头像抄的是资料缓存里的引用),下一轮清扫就收走。名单不会因为「列不出」而抛 —— 空就是空。
 	const postImages = imageStore.register({
-		name: "作品配图",
+		name: IMAGE_REFERRERS.posts,
 		listRefs: async () => [],
 	});
 	const logStore = createLogStore({
@@ -379,7 +380,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 在播表只在内存,所以名单是「此刻在播的那些行」;一场播过 24 小时,周期卡出卡时也会再存一遍,这份名单让清扫
 	// 在两次出卡之间也不把它们当垃圾。算不出引用(图库不收的图)的跳过。
 	const liveImages = imageStore.register({
-		name: "拓展直播图",
+		name: IMAGE_REFERRERS.extensionLive,
 		listRefs: async () =>
 			extensionLive
 				.list()

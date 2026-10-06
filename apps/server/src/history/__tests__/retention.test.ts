@@ -72,7 +72,7 @@ beforeEach(async () => {
 	imageStore = {
 		sweep: vi.fn<ImageStore["sweep"]>(async ({ now }) => {
 			imageSweeps.push({ now, clearedThrough: await readClearedThrough(dataDir) });
-			return { removed: [], referenced: 0, inGrace: 0 };
+			return { removed: [], removedBytes: 0, referenced: 0, inGrace: 0 };
 		}),
 	};
 });
@@ -281,6 +281,7 @@ describe("图库清扫挂在同一个活上", () => {
 	it("删了图就记一条 info", async () => {
 		imageStore.sweep.mockResolvedValueOnce({
 			removed: ["a.png", "b.png"],
+			removedBytes: 20,
 			referenced: 3,
 			inGrace: 1,
 		});

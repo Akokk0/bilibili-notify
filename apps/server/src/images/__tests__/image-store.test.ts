@@ -203,7 +203,12 @@ describe("清扫", () => {
 
 		const report = await store.sweep({ now: NOW });
 
-		expect(report).toEqual({ removed: [ref], referenced: 0, inGrace: 0 });
+		expect(report).toEqual({
+			removed: [ref],
+			removedBytes: PNG.byteLength,
+			referenced: 0,
+			inGrace: 0,
+		});
 		expect(await readdir(dir)).toEqual([]);
 	});
 
@@ -211,7 +216,12 @@ describe("清扫", () => {
 		const ref = await putOk(PNG);
 		await age(ref, DAY - 1000);
 
-		expect(await store.sweep({ now: NOW })).toEqual({ removed: [], referenced: 0, inGrace: 1 });
+		expect(await store.sweep({ now: NOW })).toEqual({
+			removed: [],
+			removedBytes: 0,
+			referenced: 0,
+			inGrace: 1,
+		});
 		expect(await readdir(dir)).toEqual([ref]);
 	});
 
@@ -224,7 +234,12 @@ describe("清扫", () => {
 
 		const report = await store.sweep({ now: NOW });
 
-		expect(report).toEqual({ removed: [other], referenced: 1, inGrace: 0 });
+		expect(report).toEqual({
+			removed: [other],
+			removedBytes: JPEG.byteLength,
+			referenced: 1,
+			inGrace: 0,
+		});
 		expect(await readdir(dir)).toEqual([ref]);
 	});
 
@@ -272,7 +287,12 @@ describe("清扫", () => {
 
 	it("目录还没建(从没存过图)时清扫什么都不做", async () => {
 		await rm(dir, { recursive: true, force: true });
-		expect(await store.sweep({ now: NOW })).toEqual({ removed: [], referenced: 0, inGrace: 0 });
+		expect(await store.sweep({ now: NOW })).toEqual({
+			removed: [],
+			removedBytes: 0,
+			referenced: 0,
+			inGrace: 0,
+		});
 	});
 });
 

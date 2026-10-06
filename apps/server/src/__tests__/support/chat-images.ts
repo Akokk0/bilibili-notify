@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { ConversationStore } from "../../ai/conversation-store.js";
+import { IMAGE_REFERRERS } from "../../images/image-referrers.js";
 import { createImageStore, type ImageStore, type ImageWriter } from "../../images/image-store.js";
 import { PNG_BYTES } from "./avatar-fixtures.js";
 
@@ -13,7 +14,7 @@ export function makeChatImages(
 ): { imageStore: ImageStore; chatImages: ImageWriter } {
 	const imageStore = createImageStore({ dir: join(dataDir, "images") });
 	const chatImages = imageStore.register({
-		name: "女仆对话",
+		name: IMAGE_REFERRERS.chat,
 		listRefs: () => conversationStore.listImageRefs(),
 	});
 	return { imageStore, chatImages };

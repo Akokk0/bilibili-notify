@@ -114,10 +114,22 @@ export interface ImageWriter {
 export interface ImageSweepReport {
 	/** 删掉的图。 */
 	removed: ImageRef[];
+	/** 删掉的图一共多少字节(删的那一刻重看的文件大小之和)。 */
+	removedBytes: number;
 	/** 过了宽限期、因为还有人引用而留下的张数。 */
 	referenced: number;
 	/** 还在宽限期里的张数。 */
 	inGrace: number;
+}
+
+/** 图库里一张图的用量:谁在引用它由 `holders` 说,分类是读的人的事。 */
+export interface ImageUsage {
+	ref: ImageRef;
+	sizeBytes: number;
+	/** 文件修改时间(毫秒时间戳);清扫的宽限期就按它算。 */
+	modifiedAt: number;
+	/** 引用它的引用方名字({@link ImageReferrer.name}),登记顺序;没人引用是空数组。 */
+	holders: string[];
 }
 
 export interface ImageStore {
@@ -125,6 +137,12 @@ export interface ImageStore {
 	read(ref: string): Promise<{ bytes: Buffer; mime: string } | undefined>;
 	/** 登记一家引用方,回它存图用的口。 */
 	register(referrer: ImageReferrer): ImageWriter;
+	/**
+	 * 盘上每张图的用量与引用方。成本:一张图一次 `stat`、每家 `listRefs` 一次,**不缓存** —— 数量级是图的张数
+	 * (重度用户 90 天的历史配图 + 头像约万级),调用方嫌贵自己加 TTL。与 `sweep` 同一口径:任何一家列不出
+	 * 引用就整个抛,不回残缺的名单(残缺的 `holders` 会把还有人用的图当成没人用)。读口,关门之后照常。
+	 */
+	usage(): Promise<ImageUsage[]>;
 	/** 清扫一轮:删过了宽限期又没有哪家引用的图。任何一家列不出引用就抛,一张不删。 */
 	sweep(options: { now: Date }): Promise<ImageSweepReport>;
 	/** 关门:此后存图、续期、清扫都被拒,读照常;等在途的写完才返回。 */
@@ -147,8 +165,8 @@ export function createImageStore(options: { dir: string }): ImageStore {
 	const writes = createSerialQueue();
 	const referrers = new Map<string, ImageReferrer>();
 
-	/** 盘上每张图的修改时间;目录还没建就是空的。 */
-	async function modifiedTimes(): Promise<Map<ImageRef, number>> {
+	/** 盘上每张图的修改时间与大小;目录还没建就是空的。每张图一次 `stat`。 */
+	async function scanDisk(): Promise<Map<ImageRef, { mtimeMs: number; size: number }>> {
 		let names: string[];
 		try {
 			names = await readdir(dir);
@@ -156,30 +174,48 @@ export function createImageStore(options: { dir: string }): ImageStore {
 			if (isMissing(error)) return new Map();
 			throw error;
 		}
-		const times = new Map<ImageRef, number>();
+		const found = new Map<ImageRef, { mtimeMs: number; size: number }>();
 		for (const name of names.filter(assets.isValidId)) {
 			try {
-				times.set(name, (await stat(join(dir, name))).mtimeMs);
+				const { mtimeMs, size } = await stat(join(dir, name));
+				found.set(name, { mtimeMs, size });
 			} catch (error) {
 				if (!isMissing(error)) throw error;
 			}
 		}
-		return times;
+		return found;
+	}
+
+	/**
+	 * 各家此刻的引用,按图归拢:图 → 引用它的引用方名字。`sweep` 与 `usage` 共用这一处,口径不会两样:
+	 * 每家只问一次、任何一家抛错整个抛(不拿残缺的名单做任何判断)。
+	 */
+	async function collectHolders(): Promise<Map<ImageRef, string[]>> {
+		const holders = new Map<ImageRef, string[]>();
+		for (const referrer of referrers.values()) {
+			for (const ref of new Set(await referrer.listRefs())) {
+				const names = holders.get(ref);
+				if (names) names.push(referrer.name);
+				else holders.set(ref, [referrer.name]);
+			}
+		}
+		return holders;
 	}
 
 	/**
 	 * 删一张图,但先在队里重新看修改时间:清扫看完修改时间到动手删之间,别人可能又存了同一份字节(存是
 	 * 刷新修改时间并回 ok),不重看的话那边就拿着一个悬空的引用。宽限期挡不住这个窗口,要靠排队。
 	 */
-	function removeIfStale(ref: ImageRef, cutoff: number): Promise<boolean> {
+	function removeIfStale(ref: ImageRef, cutoff: number): Promise<number | undefined> {
 		return writes.run(WRITE_KEY, async () => {
 			const path = join(dir, ref);
 			try {
-				if ((await stat(path)).mtimeMs > cutoff) return false;
+				const { mtimeMs, size } = await stat(path);
+				if (mtimeMs > cutoff) return undefined;
 				await unlink(path);
-				return true;
+				return size;
 			} catch (error) {
-				if (isMissing(error)) return false;
+				if (isMissing(error)) return undefined;
 				throw error;
 			}
 		});
@@ -223,21 +259,36 @@ export function createImageStore(options: { dir: string }): ImageStore {
 			return writer;
 		},
 
+		async usage() {
+			// 次序与 sweep 一样:先看盘、再问引用。
+			const disk = await scanDisk();
+			const holders = await collectHolders();
+			return [...disk].map(([ref, { mtimeMs, size }]) => ({
+				ref,
+				sizeBytes: size,
+				modifiedAt: mtimeMs,
+				holders: holders.get(ref) ?? [],
+			}));
+		},
+
 		async sweep({ now }) {
 			// 关了门的图库不许再动盘:借写道的关门判定,排一个空任务。
 			await writes.run(WRITE_KEY, () => {});
 			const cutoff = now.getTime() - IMAGE_GRACE_MS;
 			// 先看修改时间、再问引用:这之间新写下的引用必然来自 put / keep,它们的图已经回到宽限期里。
-			const times = await modifiedTimes();
-			const held = new Set<ImageRef>();
-			for (const referrer of referrers.values()) {
-				for (const ref of await referrer.listRefs()) held.add(ref);
-			}
-			const report: ImageSweepReport = { removed: [], referenced: 0, inGrace: 0 };
-			for (const [ref, modifiedAt] of times) {
-				if (modifiedAt > cutoff) report.inGrace += 1;
+			const disk = await scanDisk();
+			const held = await collectHolders();
+			const report: ImageSweepReport = { removed: [], removedBytes: 0, referenced: 0, inGrace: 0 };
+			for (const [ref, { mtimeMs }] of disk) {
+				if (mtimeMs > cutoff) report.inGrace += 1;
 				else if (held.has(ref)) report.referenced += 1;
-				else if (await removeIfStale(ref, cutoff)) report.removed.push(ref);
+				else {
+					const freed = await removeIfStale(ref, cutoff);
+					if (freed !== undefined) {
+						report.removed.push(ref);
+						report.removedBytes += freed;
+					}
+				}
 			}
 			return report;
 		},
