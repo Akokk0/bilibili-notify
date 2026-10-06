@@ -120,7 +120,7 @@ live/              中立场次引擎（场次、断流接续、定时、在播�
 link-preview/      链接预览：闸门、候选挑选、回复（经 sendToAddress）、LinkResolver 登记表
 commands/          指令框架 + 通用指令（help / mute / report / status / login [来源] 等）；没有来源指令的登记表
 roast/             锐评：生成、审批、定时、投递（从 stats/ 拆出）
-stats/             统计仓与聚合（含粉丝时序；「在记」按特性算，热力图也读它；最近作品缓存并进来）
+stats/             统计仓与聚合（含粉丝时序；「在记」按特性算，热力图也读它；能回最近几条作品）
 history/ ai/ skins/ library/ maid-skills/
 process/           进程基础件：puppeteer、资源采样、宿主看护（孤儿自检与 stdin 关停、重启能力）
 extensions/        拓展宿主：生命周期、ctx、市场、安装、设置、视图 + 收件口
