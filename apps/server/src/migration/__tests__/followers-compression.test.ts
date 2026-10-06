@@ -98,7 +98,7 @@ describe("migrateFollowerCompression", () => {
 		await expect(stat(join(dir, "stats"))).rejects.toThrow();
 	});
 
-	it("第 0 代不动:新代的文件是指向第 0 代的硬链接时,压缩换新文件、旧文件字节不变", async () => {
+	it("压缩写的是新文件再换名,不原地写:哪怕这份文件和别处共用(硬链接),另一头的字节也不变", async () => {
 		const zeroFile = join(dir, "zero", "fans.jsonl");
 		await put(zeroFile, `${ZERO_ROWS.join("\n")}\n`);
 		await mkdir(dirname(fileOf(BILI)), { recursive: true });

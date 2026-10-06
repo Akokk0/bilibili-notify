@@ -1,8 +1,8 @@
 /**
  * 第 0 代 → 新的一代(ADR-0022 决策 4、7)。
  *
- * 摆一棵 0.x 的夹具树,迁完看新代:每条 0.x 路径都到了代布局里该去的地方;追加写的 jsonl 是复制,
- * 其余是硬链接,软链重建同样的一条;老形状的几族改写成最新的形状(各族的细节在各自的
+ * 摆一棵 0.x 的夹具树,迁完看新代:每条 0.x 路径都到了代布局里该去的地方;文件一律复制
+ * (没有一个和第 0 代共用),软链重建同样的一条;老形状的几族改写成最新的形状(各族的细节在各自的
  * `zero-generation-*.test.ts`);残留、卡片皮肤、宿主的东西不带过来;第 0 代一个字节都没动。
  *
  * 最后一条是修订号的闸:迁移的产出(搬了什么、搬到哪、怎么搬、丢下了什么)变了,就必须抬
@@ -534,17 +534,18 @@ describe("migrateZeroGeneration", () => {
 		});
 	});
 
-	it("追加写的 jsonl 是复制,其余是硬链接", async () => {
+	it("搬过去的每个文件都是复制出来的另一个文件,没有一个和第 0 代共用", async () => {
+		// 共用一个文件(硬链接)的话,哪边原地写都会改到另一边。1.0 自己全是换名写,可回退到 0.x 以后
+		// 0.x 原地写的那几类(会话、字体清单、封面游标、cookie、皮肤素材、重推原件)会改到新代里。
 		await placeZeroGeneration();
 
-		await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
+		const report = await migrateZeroGeneration({ zeroRoot: zero, targetDir: target, now: NOW });
 
 		for (const [from, to] of Object.entries(EXPECTED_MOVES)) {
 			const same = (await stat(join(target, to))).ino === (await stat(join(zero, from))).ino;
-			// 改写过的是新文件:原地写的话,改的就是第 0 代那一份。
-			const shared = !from.endsWith(".jsonl") && !REWRITTEN.includes(to);
-			expect(same, `${to} 应当${shared ? "硬链接" : "是另一个文件"}`).toBe(shared);
+			expect(same, `${to} 不该和第 0 代的 ${from} 是同一个文件`).toBe(false);
 		}
+		expect(new Set(report.transfers.map((t) => t.method))).toEqual(new Set(["copy", "symlink"]));
 		// 聊天附件、拓展订阅头像进图库是复制,不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
 		expect((await stat(join(target, "images", CHAT_REF))).ino).not.toBe(
 			(await stat(join(zero, "assets", "chat", CHAT_ATTACHMENT))).ino,
@@ -721,8 +722,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 34,
-			output: "499f687507fe5eb0964ae41ea8afa04e17c0bb65c933a9ca5513aca1f563a416",
+			revision: 35,
+			output: "f352f3a0104bc0c2ad837a0d172562abd184c9ed66ab397d90868c9b6da7fcaa",
 		});
 	});
 });

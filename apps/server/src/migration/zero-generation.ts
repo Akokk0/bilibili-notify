@@ -4,14 +4,14 @@
  *
  * 两遍:先照 `ZERO_GENERATION_MOVES` 把 0.x 的布局(`ZERO_GENERATION_LAYOUT`)搬进代的布局(`runtime/roots.ts`
  * 的 `DATA_ROOT_LAYOUT`),再逐文件把 0.x 各个版本留下的形状改写成 0.x 最新的形状(⑥c 起,一族一族收进来)。
- * 旧格式的知识只住在这个模块里,各个 store 开机只认最新的形状。改写写的是新文件(原子换名):搬过来的文件
- * 多半是指向第 0 代的硬链接,原地写会改到第 0 代。
+ * 旧格式的知识只住在这个模块里,各个 store 开机只认最新的形状。改写写的是新文件(原子换名),不原地写。
  *
- * 怎么搬:追加写的 jsonl 一律复制(硬链接的话,新代往里追加会改到旧代的文件),其余硬链接、链接不了
- * 回落成复制;软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、
- * 不拷内容。聊天附件、拓展订阅的头像、历史图(与重推原件自存的图)不整目录搬:被会话 / 资料缓存 / 保留期内的
- * 历史行与重推原件引用的逐张复制进图库 `images/`(新代的图库靠刷新修改时间做宽限期,硬链接会改到旧代那份,见
- * `chat-attachments.ts`、`profile-avatars.ts`、`history-images.ts`)。上个进程的残留、0.x 的备份与迁移中间件、
+ * 怎么搬:**一律复制,不硬链接**(决策 7 下 2026-10-06 的 🔗)。硬链接是两代共用一个文件,哪边原地写都会
+ * 改到另一边;1.0 自己全是换名写,但回退到 0.x 以后 0.x 原地写的那几类(会话、字体清单、封面游标、cookie、
+ * 皮肤素材、重推原件)会改到新代里 —— 能不能链取决于新旧两边的写法,旧版本的写法我们管不了。
+ * 软链(开发版 devtools 链进来的拓展,指向仓里构建好的 dist)在新代里重建同样的一条、不拷内容。聊天附件、拓展订阅的头像、历史图(与重推原件自存的图)不整目录搬:被会话 / 资料缓存 / 保留期内的
+ * 历史行与重推原件引用的逐张复制进图库 `images/`(见 `chat-attachments.ts`、`profile-avatars.ts`、
+ * `history-images.ts`)。上个进程的残留、0.x 的备份与迁移中间件、
  * 卡片皮肤(不迁,决策 12)不带过来,都记进报告。
  */
 
@@ -21,7 +21,6 @@ import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
 import {
 	copyFileAtomic,
 	type KeyMaterialRead,
-	linkOrCopyFile,
 	readKeyMaterial,
 	syncDirectory,
 } from "@bilibili-notify/storage";
@@ -70,7 +69,7 @@ import { migrateUptime } from "./uptime.js";
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 34;
+export const MIGRATION_REVISION = 35;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -191,10 +190,10 @@ export interface MigrationProgress {
 
 export interface ZeroMigrationResult {
 	/**
-	 * 搬过去的每个文件(相对第 0 代根 / 新代根,`/` 分隔)与搬法:`copy` 复制、`link` 硬链接(链接不了会
-	 * 回落成复制)、`symlink` 重建同样的一条软链。
+	 * 搬过去的每个文件(相对第 0 代根 / 新代根,`/` 分隔)与搬法:`copy` 复制、
+	 * `symlink` 重建同样的一条软链。
 	 */
-	transfers: { from: string; to: string; method: "copy" | "link" | "symlink" }[];
+	transfers: { from: string; to: string; method: "copy" | "symlink" }[];
 	/** 没带过来的,和为什么。 */
 	skipped: { path: string; reason: string }[];
 	/**
@@ -614,13 +613,11 @@ async function transfer(
 		skip(context, from, "不是普通文件");
 		return;
 	}
-	const method = from.endsWith(".jsonl") ? "copy" : "link";
-	if (method === "copy") await copyFileAtomic(from, to);
-	else await linkOrCopyFile(from, to);
+	await copyFileAtomic(from, to);
 	context.report.transfers.push({
 		from: portable(relative(context.zeroRoot, from)),
 		to: portable(relative(context.targetDir, to)),
-		method,
+		method: "copy",
 	});
 }
 

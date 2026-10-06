@@ -150,7 +150,7 @@ describe("两份合成一个文件", () => {
 		expect(report.skipped.map((s) => s.path)).toContain(ZERO_EXT);
 	});
 
-	it("第 0 代那两份一个字节没变(写的是新文件,不是原地改那条硬链接)", async () => {
+	it("第 0 代那两份一个字节没变(写的是新代里的文件)", async () => {
 		const { biliText, extText } = await placeBoth();
 
 		await sandbox.migrate();

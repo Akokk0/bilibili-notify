@@ -79,9 +79,9 @@ function managedWebhookTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
-/** 两个路径是不是同一个文件(硬链接)—— 没被改写过的文件,新代里还是从第 0 代搬过来的那一份。 */
-async function sameFile(a: string, b: string): Promise<boolean> {
-	return (await stat(a)).ino === (await stat(b)).ino;
+/** 两个路径的内容是不是逐字节一样 —— 没被改写过的文件,新代里是从第 0 代原样复制过来的那一份。 */
+async function sameBytes(a: string, b: string): Promise<boolean> {
+	return (await readFile(a)).equals(await readFile(b));
 }
 
 /** 新代里(任何一层)名字带 adapters 的东西。 */
@@ -151,7 +151,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 		});
 	});
 
-	// 迁移改写的是新代里的**新文件**(原子换名):搬过来的那两份是指向第 0 代的硬链接,原地写会改到第 0 代。
+	// 迁移改写的是新代里的**新文件**(原子换名),第 0 代那两份不动。
 	describe("v1 形状改写成最新的形状", () => {
 		it("老形状的 connections.json 改写进新代 —— 主人盘上那份没有 kind/connector", async () => {
 			// 这是这次形状变更**唯一真会炸主人机器**的路径:schema 一旦要求 kind/connector,
@@ -177,7 +177,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			// 没迁移的那份原样写回去。
 			const onDisk = await sandbox.readConfig<unknown[]>("connections.json");
 			expect(onDisk[0]).toMatchObject({ kind: "direct", connector: "http" });
-			// 第 0 代那份一个字节没变(迁移写的是新文件,不是原地改那条硬链接)。
+			// 第 0 代那份一个字节没变(迁移写的是新代里的文件)。
 			expect(await readFile(join(sandbox.zero, "state", "connections.json"), "utf8")).toBe(
 				original,
 			);
@@ -213,7 +213,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			// 连接那份已经是新形状 —— 别顺手也改写它:没进改写清单,新代里还是搬过来的那一份。
 			expect(report.rewritten).not.toContain("config/connections.json");
 			expect(
-				await sameFile(
+				await sameBytes(
 					join(sandbox.zero, "state", "connections.json"),
 					sandbox.configPath("connections.json"),
 				),
@@ -262,10 +262,10 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 
 			expect(report.rewritten).not.toContain("config/connections.json");
 			expect(report.rewritten).not.toContain("config/targets.json");
-			// 没改写 = 同一个文件(硬链接)。改写过的是另一个文件(换名写出来的),两份的 inode 不会一样。
+			// 没改写 = 和第 0 代那份逐字节一样。
 			for (const name of ["connections.json", "targets.json"]) {
 				expect(
-					await sameFile(join(sandbox.zero, "state", name), sandbox.configPath(name)),
+					await sameBytes(join(sandbox.zero, "state", name), sandbox.configPath(name)),
 					name,
 				).toBe(true);
 			}

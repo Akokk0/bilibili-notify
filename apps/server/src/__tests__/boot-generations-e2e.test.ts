@@ -99,8 +99,7 @@ async function waitForResponse(url: string, timeoutMs = 3_000): Promise<Response
 
 /**
  * 第 0 代的样子:几样 0.x 的文件(设置不摆,开机时由配置仓在新的一代里补默认值)。`state/targets.json` 是最老的
- * 单文件形状,新的一代里会被改写成连接 + 目标 —— 摆它是为了让「第 0 代一个字节没变」也盯住改写:
- * 它在新代里是硬链接,不另写成新文件而是原地写的话,第 0 代跟着变。
+ * 单文件形状,新的一代里会被改写成连接 + 目标 —— 摆它是为了让「第 0 代一个字节没变」也盯住改写。
  */
 const ZERO_FILES: Record<string, string> = {
 	"secrets/master.key": "ab".repeat(32),

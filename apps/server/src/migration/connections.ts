@@ -504,7 +504,7 @@ function keepTarget(raw: unknown): boolean {
 // ── 新代里的两份文件 ──────────────────────────────────────────────────────────
 
 export interface ConnectionFilesInput {
-	/** 新代的 `config/`:`connections.json`、`targets.json` 已经从第 0 代搬了过来(硬链接)。 */
+	/** 新代的 `config/`:`connections.json`、`targets.json` 已经从第 0 代搬了过来(复制)。 */
 	configDir: string;
 	/** 第 0 代的 `state/adapters.json`:`connections.json` 的旧名,只作输入。 */
 	adaptersPath: string;
@@ -513,7 +513,7 @@ export interface ConnectionFilesInput {
 /**
  * 新代里连接与目标两份文件迁成最新的形状,回改写过的文件(绝对路径)。
  *
- * 只重写变了的,而且写的是**新文件**(原子换名):搬过来的那两份是指向第 0 代的硬链接,原地写会改到第 0 代。
+ * 只重写变了的,而且写的是**新文件**(原子换名),不原地写。
  * 认不得的内容(不是 JSON、不是数组)原样留着,由配置仓开机时报出来 —— 那里的报错指得到是哪个文件、哪一行。
  */
 export async function migrateConnectionFiles(input: ConnectionFilesInput): Promise<string[]> {

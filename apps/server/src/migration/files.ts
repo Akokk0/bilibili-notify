@@ -29,7 +29,7 @@ export async function readJsonFile(path: string): Promise<JsonFile> {
 /**
  * 写一份新文件替掉 `path`(原子换名),权限沿用 `modeFrom` 那份(缺省就是被替掉的那份)。
  *
- * 🔴 不许原地写:搬过来的文件多半是指向第 0 代的硬链接,原地写会改到第 0 代。权限要沿用:连接里有 token,
+ * 🔴 不许原地写:写到一半被杀会留下半份文件。权限要沿用:连接里有 token,
  * 主人收紧过的文件不能因为迁移这一跳放宽。
  */
 export async function rewriteJsonFile(

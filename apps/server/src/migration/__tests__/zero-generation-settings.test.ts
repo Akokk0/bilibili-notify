@@ -16,12 +16,12 @@
  *   盘上这份是配置仓开机唯一认的形状,文件没迁好,开机读出来的就是老值(或直接拒收),失败的地方不好认,
  *   所以先直接看盘上这份;
  * - 配置仓开机读出来的值(原用例断言的东西);
- * - 第 0 代那份逐字节没变(迁移写的是新文件,不是原地改那条硬链接),`rewritten` 里有 `config/settings/core.json`;已经是新形状的不改写。
+ * - 第 0 代那份逐字节没变(迁移写的是新代里的文件),`rewritten` 里有 `config/settings/core.json`;已经是新形状的不改写。
  *
  * 另有一组「全新安装」的用例不经迁移器:空的数据根上开机,人格指针指着第一份内置预设。
  */
 
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BUILTIN_AI_PRESETS } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
@@ -47,9 +47,9 @@ interface DiskGlobals {
 	linkParsing: Record<string, unknown>;
 }
 
-/** 两个路径是不是同一个文件(硬链接)—— 没被改写过的文件,新代里还是从第 0 代搬过来的那一份。 */
-async function sameFile(a: string, b: string): Promise<boolean> {
-	return (await stat(a)).ino === (await stat(b)).ino;
+/** 两个路径的内容是不是逐字节一样 —— 没被改写过的文件,新代里是从第 0 代原样复制过来的那一份。 */
+async function sameBytes(a: string, b: string): Promise<boolean> {
+	return (await readFile(a)).equals(await readFile(b));
 }
 
 /** 第 0 代的 `state/globals.json` 逐字节没变。 */
@@ -233,7 +233,7 @@ describe("0.x 历代旧默认模板 → 迁移器接缝", () => {
 		// 新代里的**文件本身**已经是当前默认(开机读之前)。
 		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(
-			await sameFile(
+			await sameBytes(
 				join(sandbox.zero, "state", "globals.json"),
 				sandbox.configPath("settings/core.json"),
 			),

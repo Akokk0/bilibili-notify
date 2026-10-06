@@ -2,7 +2,7 @@
  * 0.x 的拓展订阅头像 `avatars/<订阅 id>.<png|jpeg|webp>` 进图库,资料缓存跟着改写(ADR-0022 决策 9 下
  * 10-04「⑳ 开片」的 🔗,⑳c)。
  *
- * 不再整目录搬:资料缓存(0.x 的 `state/sub-runtime.json`,迁移里硬链接进新代)里拓展订阅的 `avatar` 是同源相对地址
+ * 不再整目录搬:资料缓存(0.x 的 `state/sub-runtime.json`,迁移里复制进新代)里拓展订阅的 `avatar` 是同源相对地址
  * `/api/subs/<id>/avatar?v=…`,迁移顺着订阅 id 找到 `avatars/` 里那一个文件,读字节、按嗅探认格式,是图库收的图就
  * **复制**(不硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份)进新代 `images/<sha256>.<ext>`,`avatar`
  * 换成引用。B 站订阅的 `avatar` 是 B 站 CDN 的远端网址,挪到 `avatarUrl`。空串、对不上的(文件不在、嗅探不过、超 8MB、
@@ -230,7 +230,7 @@ describe("没有头像", () => {
 		expect(runtime.bare).toEqual({ roomId: "1" });
 	});
 
-	it("什么都不用改的资料缓存不重写(不进 rewritten,仍是指向第 0 代的硬链接)", async () => {
+	it("什么都不用改的资料缓存不重写(不进 rewritten,还是从第 0 代原样复制过来的那一份)", async () => {
 		await placeRuntime({
 			[BILI]: { cachedProfile: { name: "无头像", sign: "", lastRefreshedAt: "t" } },
 		});
@@ -238,8 +238,8 @@ describe("没有头像", () => {
 		const report = await sandbox.migrate();
 
 		expect(report.rewritten).not.toContain("runtime/sub-runtime.json");
-		expect((await stat(runtimePath())).ino).toBe(
-			(await stat(join(sandbox.zero, "state", "sub-runtime.json"))).ino,
+		expect(await readFile(runtimePath())).toEqual(
+			await readFile(join(sandbox.zero, "state", "sub-runtime.json")),
 		);
 	});
 

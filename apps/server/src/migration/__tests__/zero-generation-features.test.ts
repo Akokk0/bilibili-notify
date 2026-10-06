@@ -12,7 +12,7 @@
  *   globals 与订阅都进了 `rewritten`;两份订阅(B 站与拓展)合成了新代里的**一个** `subscriptions.json`
  *   (ADR-0021 决策 15),拓展那份自己不进新代;
  * - 配置仓开机读出来的值是最新的形状;
- * - 第 0 代那三份一个字节没变(迁移写的是新文件,不是原地改那条硬链接);已经是 1.0 形状的设置不改写。
+ * - 第 0 代那三份一个字节没变(迁移写的是新代里的文件);已经是 1.0 形状的设置不改写。
  *
  * **输入是 0.x 的老形状(特性键 `dynamic` / `live` / `liveGuardBuy`、附加项 `atAllDynamic` / `atAllLive`、顶层 `extras`),
  * 期望值是 1.0 的名字**:0.x 那一遍把老形状收成 0.x 最新形状之后,还要过 1.0 的改名(`../feature-renames.ts`,
@@ -155,9 +155,9 @@ function rowById(rows: Row[], id: string): Row {
 	return row;
 }
 
-/** 两个路径是不是同一个文件(硬链接)—— 没被改写过的文件,新代里还是从第 0 代搬过来的那一份。 */
-async function sameFile(a: string, b: string): Promise<boolean> {
-	return (await stat(a)).ino === (await stat(b)).ino;
+/** 两个路径的内容是不是逐字节一样 —— 没被改写过的文件,新代里是从第 0 代原样复制过来的那一份。 */
+async function sameBytes(a: string, b: string): Promise<boolean> {
+	return (await readFile(a)).equals(await readFile(b));
 }
 
 describe("0.x 推送特性老形状 → 迁移器接缝", () => {
@@ -193,7 +193,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		];
 		for (const [name, target] of rewrittenFiles) {
 			expect(
-				await sameFile(join(sandbox.zero, "state", name), sandbox.configPath(target)),
+				await sameBytes(join(sandbox.zero, "state", name), sandbox.configPath(target)),
 				name,
 			).toBe(false);
 		}
@@ -356,7 +356,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 		// 0.x 的老形状这一遍无事可做,但 0.x 最新形状里的键要换成 1.0 的:设置照样是改写过的文件。
 		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(
-			await sameFile(
+			await sameBytes(
 				join(sandbox.zero, "state", "globals.json"),
 				sandbox.configPath("settings/core.json"),
 			),
@@ -417,7 +417,7 @@ describe("0.x 推送特性老形状 → 迁移器接缝", () => {
 
 		expect(report.rewritten).not.toContain("config/settings/core.json");
 		expect(
-			await sameFile(
+			await sameBytes(
 				join(sandbox.zero, "state", "globals.json"),
 				sandbox.configPath("settings/core.json"),
 			),
