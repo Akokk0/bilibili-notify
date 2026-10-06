@@ -51,7 +51,7 @@ const manifest = (): CardSkinManifest =>
 					{
 						id: "name",
 						kind: "builtin",
-						builtin: "name",
+						builtin: "creatorName",
 						grid: { row: 2, column: 3, span: 6 },
 						showIf: "live.isStreaming",
 					},
@@ -72,13 +72,13 @@ const manifest = (): CardSkinManifest =>
 					{
 						id: "additional",
 						kind: "builtin",
-						builtin: "additional",
+						builtin: "attachment",
 						grid: { row: 1, column: 1, span: 12 },
 					},
 					{
 						id: "avatar",
 						kind: "builtin",
-						builtin: "avatar",
+						builtin: "creatorAvatar",
 						grid: { row: 2, column: 1, span: 3 },
 					},
 				],
@@ -661,7 +661,12 @@ describe("画布 — 块的层次", () => {
 	it("层次落成 wrapper 的 z-index —— 画布与出图按同一个数叠", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
+			{
+				id: "name",
+				kind: "builtin",
+				builtin: "creatorName",
+				grid: { row: 1, column: 9, span: 4, z: 2 },
+			},
 		]);
 		expect(chip(/UP 主名|name/).style.zIndex).toBe("2");
 	});
@@ -676,7 +681,12 @@ describe("画布 — 块的层次", () => {
 	it("叠了不写字 —— 深浅自己说(主人 2026-09-15 拍板,别再退回计数)", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
+			{
+				id: "name",
+				kind: "builtin",
+				builtin: "creatorName",
+				grid: { row: 1, column: 9, span: 4, z: 2 },
+			},
 		]);
 		expect(chip(/封面|cover/).textContent).not.toContain("叠");
 		expect(chip(/UP 主名|name/).textContent).not.toContain("叠");
@@ -685,7 +695,12 @@ describe("画布 — 块的层次", () => {
 	it("压着别人的块抬起来 —— 走 shadow-bn-elev,不写死影子", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 9, span: 4, z: 2 } },
+			{
+				id: "name",
+				kind: "builtin",
+				builtin: "creatorName",
+				grid: { row: 1, column: 9, span: 4, z: 2 },
+			},
 		]);
 		expect(chip(/UP 主名|name/).className).toContain("shadow-bn-elev");
 		expect(chip(/封面|cover/).className).not.toContain("shadow-bn-elev");
@@ -694,7 +709,12 @@ describe("画布 — 块的层次", () => {
 	it("往右下浮的是**上面那块**,被压住的停在自己真正的格子上", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 12 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 1, span: 12, z: 2 } },
+			{
+				id: "name",
+				kind: "builtin",
+				builtin: "creatorName",
+				grid: { row: 1, column: 1, span: 12, z: 2 },
+			},
 		]);
 		// 被压住的不动 —— 它往左退的话会撞上左边的邻居(主人 2026-09-18 指着截图报的:
 		// 「重叠导致底下的和旁边的完全挨着了」)。
@@ -714,9 +734,9 @@ describe("画布 — 块的层次", () => {
 			builtin,
 			grid: { row: 1, column: 1, span: 12 },
 		});
-		withBlocks(["cover", "name", "title", "desc", "popularity"].map(stacked));
+		withBlocks(["cover", "creatorName", "title", "description", "currentViewers"].map(stacked));
 		expect(chip(/cover/).style.left).toBe("");
-		for (const id of [/name/, /desc/, /popularity/]) {
+		for (const id of [/creatorName/, /description/, /currentViewers/]) {
 			expect(chip(id).style.left, String(id)).toBe("8px");
 		}
 	});
@@ -728,7 +748,7 @@ describe("画布 — 块的层次", () => {
 				{
 					id: "name",
 					kind: "builtin",
-					builtin: "name",
+					builtin: "creatorName",
 					grid: { row: 1, column: 1, span: 12, z: 2 },
 				},
 			],
@@ -745,7 +765,7 @@ describe("画布 — 块的层次", () => {
 	it("同行不同列不算叠 —— 那是分栏,决策 6 要的就是它;不抬也不错位", () => {
 		withBlocks([
 			{ id: "cover", kind: "builtin", builtin: "cover", grid: { row: 1, column: 1, span: 4 } },
-			{ id: "name", kind: "builtin", builtin: "name", grid: { row: 1, column: 5, span: 8 } },
+			{ id: "name", kind: "builtin", builtin: "creatorName", grid: { row: 1, column: 5, span: 8 } },
 		]);
 		expect(chip(/封面|cover/).style.top).toBe("");
 		expect(chip(/UP 主名|name/).className).not.toContain("shadow-bn-elev");
@@ -761,7 +781,12 @@ describe("画布 — 块的层次", () => {
  */
 describe("网格画布 — 只摆这一场的块,和出图一样紧", () => {
 	const blocks = [
-		{ id: "avatar", kind: "builtin", builtin: "avatar", grid: { row: 1, column: 1, span: 3 } },
+		{
+			id: "avatar",
+			kind: "builtin",
+			builtin: "creatorAvatar",
+			grid: { row: 1, column: 1, span: 3 },
+		},
 		{
 			id: "video-cover",
 			kind: "builtin",
@@ -771,7 +796,7 @@ describe("网格画布 — 只摆这一场的块,和出图一样紧", () => {
 		{
 			id: "pics",
 			kind: "builtin",
-			builtin: "pics",
+			builtin: "images",
 			grid: { row: 2, column: 1, span: 12, rowSpan: 2 },
 		},
 		{ id: "like", kind: "builtin", builtin: "likeCount", grid: { row: 6, column: 1, span: 4 } },

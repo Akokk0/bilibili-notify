@@ -1835,27 +1835,36 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		cover: { label: "封面图", atom: true, heightFromRows: true, hooks: { image: "封面图片" } },
 		status: { label: "直播状态", atom: true, hooks: { pill: "胶囊" } },
 		title: { label: "直播标题", atom: true, hooks: { text: "文字" } },
-		desc: { label: "简介", atom: true, hooks: { text: "文字" } },
+		description: { label: "简介", atom: true, hooks: { text: "文字" } },
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
-		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		name: { label: "主播名", atom: true, hooks: { text: "文字" } },
+		creatorAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
+		creatorName: { label: "主播名", atom: true, hooks: { text: "文字" } },
 		time: { label: "开播时间", atom: true, hooks: { text: "文字" } },
-		// 数据区的三件(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
+		// 数据区(ADR-0014 决策 16 的 🔗):从前由三个显隐开关管,而开关管的是复合块
 		// **内部的一行**、块级的 `showIf` 够不着 —— 所以拆成原子块,想少显示哪件就删哪块。
-		popularity: { label: "人气 / 点赞", atom: true, hooks: { text: "文字" } },
-		area: { label: "分区", atom: true, hooks: { text: "文字" } },
-		fans: { label: "粉丝行", atom: true, hooks: { text: "文字" } },
+		// ㉔c 起随状态换含义的两块各拆成两块(`popularity` → `currentViewers` + `likes`,`fans` → `followers` +
+		// `totalViewers`):每块只画一样东西,各自只在该出现的状态下有内容(`scenes` 只给画布用,出图端不读)。
+		currentViewers: {
+			label: "在看人数",
+			atom: true,
+			hooks: { text: "文字" },
+			scenes: ["streaming"],
+		},
+		likes: { label: "点赞数", atom: true, hooks: { text: "文字" }, scenes: ["ended"] },
+		category: { label: "分类", atom: true, hooks: { text: "文字" } },
+		followers: { label: "粉丝数", atom: true, hooks: { text: "文字" }, scenes: ["streaming"] },
+		totalViewers: { label: "累计观看", atom: true, hooks: { text: "文字" }, scenes: ["ended"] },
 	},
 	dynamic: {
-		additional: {
+		attachment: {
 			label: "附加内容",
 			hooks: { card: "附加卡", cover: "附加卡封面", button: "按钮" },
 		},
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
-		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		name: { label: "UP 主名", atom: true, hooks: { text: "文字" } },
+		creatorAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
+		creatorName: { label: "创作者名", atom: true, hooks: { text: "文字" } },
 		time: { label: "发布时间", atom: true, hooks: { text: "文字" } },
-		// 文字与媒体是呈现态里分开的几份(`PostNode.text` / `.video` / `.pics`)。
+		// 文字与媒体是呈现态里分开的几份(`PostNode.text` / `.video` / `.images`)。
 		topic: { label: "话题", atom: true, hooks: { text: "文字" } },
 		// 正文富文本整段留在渲染器(决策 7 的 2026-09-19 🔗),所以这块没有根挂点 ——
 		// `body` 是富文本自己的根,样子也归它。
@@ -1872,7 +1881,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		},
 		videoDuration: { label: "视频时长", atom: true, hooks: { pill: "角标" }, scenes: ["video"] },
 		videoTitle: { label: "视频标题", atom: true, hooks: { text: "文字" }, scenes: ["video"] },
-		videoDesc: { label: "视频简介", atom: true, hooks: { text: "文字" }, scenes: ["video"] },
+		videoDescription: { label: "视频简介", atom: true, hooks: { text: "文字" }, scenes: ["video"] },
 		videoStats: {
 			label: "播放 · 弹幕数",
 			atom: true,
@@ -1880,16 +1889,16 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 			scenes: ["video"],
 		},
 		// 图廊张数是动态的,拆不开,整块画。
-		pics: {
+		images: {
 			label: "图廊",
 			atom: true,
-			hooks: { pics: "图廊", pic: "图廊里的一张图" },
+			hooks: { images: "图廊", image: "图廊里的一张图" },
 			scenes: ["pics"],
 		},
 		// 根就是转发框,它的样子挂在 `bubble` 上;框里是一整张内层卡,那些部件归内层卡
 		// 自己的块管,这里不声明。
-		forward: { label: "转发框", atom: true, hooks: { bubble: "转发框" }, scenes: ["forward"] },
-		forwardCount: { label: "转发数", atom: true, hooks: { text: "文字", icon: "图标" } },
+		repost: { label: "转发框", atom: true, hooks: { bubble: "转发框" }, scenes: ["forward"] },
+		shareCount: { label: "转发数", atom: true, hooks: { text: "文字", icon: "图标" } },
 		commentCount: { label: "评论数", atom: true, hooks: { text: "文字", icon: "图标" } },
 		likeCount: { label: "点赞数", atom: true, hooks: { text: "文字", icon: "图标" } },
 	},
@@ -1898,9 +1907,9 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		message: { label: "留言", atom: true, hooks: { bubble: "留言气泡", text: "留言文本" } },
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它,里头的 img 填满即可。
-		avatar: { label: "发送者头像", atom: true, hooks: { image: "头像图片" } },
-		name: { label: "发送者名", atom: true, hooks: { pill: "胶囊" } },
-		price: { label: "金额", atom: true, hooks: { text: "文字" } },
+		viewerAvatar: { label: "发送者头像", atom: true, hooks: { image: "头像图片" } },
+		viewerName: { label: "发送者名", atom: true, hooks: { pill: "胶囊" } },
+		amount: { label: "金额", atom: true, hooks: { text: "文字" } },
 		duration: { label: "时长胶囊", atom: true, hooks: { pill: "胶囊" } },
 		to: {
 			label: "「SC to」那一行",
@@ -1908,23 +1917,23 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 			hooks: {
 				text: "文字",
 				label: "「SC to」三个字",
-				master: "主播那一组",
-				masterAvatar: "主播小头像",
-				masterName: "主播名",
+				creator: "主播那一组",
+				creatorAvatar: "主播小头像",
+				creatorName: "主播名",
 			},
 		},
 	},
 	guard: {
-		badge: { label: "舰长徽章", atom: true, hooks: { image: "舰长徽章图" } },
-		text: { label: "文字信息", atom: true, hooks: { text: "文字" } },
+		icon: { label: "会员徽章", atom: true, hooks: { image: "徽章图" } },
+		announcement: { label: "宣告语", atom: true, hooks: { text: "文字" } },
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
 		// 头像的根是那个把图裁圆的框,`image` 挂在框上 —— 尺寸与圆都归它。
-		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
-		user: { label: "用户名胶囊", atom: true, hooks: { pill: "胶囊", text: "文字" } },
-		master: {
+		viewerAvatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
+		viewerName: { label: "用户名胶囊", atom: true, hooks: { pill: "胶囊", text: "文字" } },
+		creator: {
 			label: "主播胶囊",
 			atom: true,
-			hooks: { pill: "胶囊", masterAvatar: "主播小头像", masterName: "主播名" },
+			hooks: { pill: "胶囊", creatorAvatar: "主播小头像", creatorName: "主播名" },
 		},
 	},
 	roastBoard: { body: { label: "周报榜单", hooks: {} } },

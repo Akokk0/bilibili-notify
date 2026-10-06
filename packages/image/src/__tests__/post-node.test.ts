@@ -115,7 +115,7 @@ describe("动作标签:视图、皮肤字段与默认皮肤的两块", () => {
 	});
 
 	/** 默认皮肤的 `name` / `time` 块画出的文字(去掉标签)。 */
-	async function lineOf(block: "name" | "time", node: ReturnType<typeof nodeFromPost>) {
+	async function lineOf(block: "creatorName" | "time", node: ReturnType<typeof nodeFromPost>) {
 		const vnode = POST_BLOCKS[block]?.({ node, renderForward: () => [] });
 		if (!vnode) throw new Error(`${block} 块收起了`);
 		return (await htmlOf(vnode)).replace(/<[^>]*>/g, "");
@@ -124,13 +124,13 @@ describe("动作标签:视图、皮肤字段与默认皮肤的两块", () => {
 	it("默认皮肤:外层的标签在时间那一行(「时间 · 标签」),名字行只有名字", async () => {
 		const outer = nodeFromPost(REPOST_VIDEO, FMT);
 		expect(await lineOf("time", outer)).toBe("T1700000000 · 转发了动态");
-		expect(await lineOf("name", outer)).toBe("示例UP");
+		expect(await lineOf("creatorName", outer)).toBe("示例UP");
 	});
 
 	it("默认皮肤:内层的标签接在名字后(用空格连),时间行只有时间", async () => {
 		const inner = nodeFromPost(REPOST_VIDEO, FMT).repost;
 		if (!inner) throw new Error("应有转发内层");
-		expect(await lineOf("name", inner)).toBe("原UP 投稿了视频");
+		expect(await lineOf("creatorName", inner)).toBe("原UP 投稿了视频");
 		expect(await lineOf("time", inner)).toBe("T1700000000");
 	});
 });
@@ -398,7 +398,7 @@ describe("出卡器自己的图标不动", () => {
 		const props = { node, renderForward: (): [] => [] };
 		expect(await htmlOf(POST_BLOCKS.topic(props) as VNode)).toContain("<svg");
 		for (const [block, label] of [
-			["forwardCount", "转发"],
+			["shareCount", "转发"],
 			["commentCount", "评论"],
 			["likeCount", "点赞"],
 		] as const) {

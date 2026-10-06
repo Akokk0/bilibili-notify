@@ -1299,7 +1299,7 @@ function buildDynamicPreviewProps(): PostCardView {
 		},
 		"这是一段示例动态正文。你可以在「卡片预览·样式」里看到改色后的渲染效果。\n第二行用来演示换行和留白。",
 	);
-	// 附加内容块的示例(预约样式),让用户在预览里看到 additional 块独立排版的位置。
+	// 附加内容块的示例(预约样式),让用户在预览里看到 attachment 块独立排版的位置。
 	const attachment = h(
 		"div",
 		{ style: "background:rgba(0,0,0,0.04);border-radius:8px;padding:10px;" },

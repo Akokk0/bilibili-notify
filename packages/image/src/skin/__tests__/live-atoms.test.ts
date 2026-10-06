@@ -4,7 +4,7 @@
  * 人气 / 分区 / 粉丝原先由三个开关控制显隐,开关早已退役 —— 块级的 `showIf` 管不到复合块
  * 内部的一行,所以它们拆成了三个**原子块**,「想少显示哪件」= 皮肤里不摆那一块。
  *
- * 这条真正钉的是**那条接线**:皮肤路径要真的找得到 `popularity` / `area` / `fans` 三个块
+ * 这条真正钉的是**那条接线**:皮肤路径要真的找得到 `currentViewers` / `category` / `followers` 三个块
  * 渲染器 —— 找不到的话 `renderSkinnedCard` 会把整块当「没数据」悄悄收起,类型与别的测试
  * 全绿,只有这条会红。所以它一块一块地摆、一件一件地数。
  *
@@ -41,9 +41,9 @@ const label = (t: Toggles): string =>
 
 /** 块 id ↔ 那一件。 */
 const ATOM_OF: Record<keyof Toggles, string> = {
-	showPopularity: "popularity",
-	showArea: "area",
-	showFans: "fans",
+	showPopularity: "current-viewers",
+	showArea: "category",
+	showFans: "followers",
 };
 
 /** 出厂默认皮肤的直播卡,只留这组开关要的那几块(其余块一并去掉,数起来干净)。 */
@@ -87,7 +87,7 @@ describe("直播卡数据区 — 摆哪几块就画哪几件", () => {
 			const viaSkin = await html(
 				renderSkinnedCard({ kind: "live", card: cardWith(toggles), props }).vnode,
 			);
-			// 验红:把 `blocks/live.tsx` 里 popularity / area / fans 任一个渲染器改成回 null
+			// 验红:把 `blocks/live.tsx` 里 currentViewers / category / followers 任一个渲染器改成回 null
 			// (皮肤路径会把它当「没数据」静默收起),这条当场红。
 			expect(probe(viaSkin)).toEqual(toggles);
 		});
@@ -103,11 +103,11 @@ describe("直播卡数据区 — 摆哪几块就画哪几件", () => {
 });
 
 /**
- * ㉔a 钉住现状:默认皮肤里 `popularity` / `fans` 两个块**随状态换字**(㉔b 起它们按状态去读拆出来的四个字段,
- * 画出来的字不变;块本身的拆分是 ㉔c)。两个块各画一个状态的文案前缀 + 视图里对应那一格的值,前缀原文如下。
- * 验红:把 `blocks/live.tsx` 里 `statsLeft` / `followerText` 的前缀改一个字,或把下播那支的取值对调。
+ * 默认皮肤里直播卡数据区的四个块各画一样东西、各自只在该出现的状态下有内容(㉔c 把从前随状态换字的 `popularity` /
+ * `fans` 各拆成两块;㉔a 先钉的是拆分之前的文字,前缀原文一个字没变)。
+ * 验红:把 `blocks/live.tsx` 里四块任一块的前缀改一个字,或把它的状态条件对调。
  */
-describe("㉔a 直播卡 popularity / fans 块各状态画出的字", () => {
+describe("直播卡 currentViewers / likes / followers / totalViewers 块各状态画出的字", () => {
 	const view = (over: Partial<LiveCardView>): LiveCardView => ({
 		status: "streaming",
 		creatorName: "阿可",
@@ -126,30 +126,38 @@ describe("㉔a 直播卡 popularity / fans 块各状态画出的字", () => {
 		...over,
 	});
 
+	type StatBlock = "currentViewers" | "likes" | "followers" | "totalViewers";
+
 	/** 块渲染成的文字;块返回 null(收起)时是 null。 */
-	async function textOf(block: "popularity" | "fans", p: LiveCardView): Promise<string | null> {
+	async function textOf(block: StatBlock, p: LiveCardView): Promise<string | null> {
 		const node = LIVE_BLOCKS[block]?.(p);
 		if (!node) return null;
 		return (await html(node)).replace(/<[^>]*>/g, "");
 	}
 
 	it.each([
-		["start", "人气：ON", "当前粉丝数：FN"],
-		["streaming", "人气：ON", "当前粉丝数：FN"],
-		["end", "点赞：LK", "累计观看人数：TV"],
-		["offline", "人气：ON", null],
-	] as const)("%s:popularity 块「%s」、fans 块「%s」", async (status, popularity, fans) => {
-		const p = view({ status });
-		expect(await textOf("popularity", p)).toBe(popularity);
-		expect(await textOf("fans", p)).toBe(fans);
-	});
+		// 状态,currentViewers,likes,followers,totalViewers
+		["start", "人气：ON", null, "当前粉丝数：FN", null],
+		["streaming", "人气：ON", null, "当前粉丝数：FN", null],
+		["end", null, "点赞：LK", null, "累计观看人数：TV"],
+		["offline", "人气：ON", null, null, null],
+	] as const)(
+		"%s:在看人数「%s」、点赞「%s」、粉丝数「%s」、累计观看「%s」",
+		async (status, cur, likes, followers, total) => {
+			const p = view({ status });
+			expect(await textOf("currentViewers", p)).toBe(cur);
+			expect(await textOf("likes", p)).toBe(likes);
+			expect(await textOf("followers", p)).toBe(followers);
+			expect(await textOf("totalViewers", p)).toBe(total);
+		},
+	);
 
 	it("那一格没有数 → 块收起,不留只有前缀的空行", async () => {
 		expect(
-			await textOf("popularity", view({ status: "streaming", currentViewers: "" })),
+			await textOf("currentViewers", view({ status: "streaming", currentViewers: "" })),
 		).toBeNull();
-		expect(await textOf("popularity", view({ status: "end", likes: "" }))).toBeNull();
-		expect(await textOf("fans", view({ status: "streaming", followers: "" }))).toBeNull();
-		expect(await textOf("fans", view({ status: "end", totalViewers: "" }))).toBeNull();
+		expect(await textOf("likes", view({ status: "end", likes: "" }))).toBeNull();
+		expect(await textOf("followers", view({ status: "streaming", followers: "" }))).toBeNull();
+		expect(await textOf("totalViewers", view({ status: "end", totalViewers: "" }))).toBeNull();
 	});
 });

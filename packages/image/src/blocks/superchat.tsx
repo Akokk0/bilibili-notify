@@ -11,8 +11,8 @@
  *
  * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
  * 什么」取名的挂点(`image` / `text` / `pill` / `line`),默认皮肤的外观规则就写在它上面;根
- * 之外的部件照挂(留言的 `bubble` 与 `text`、「SC to」那行里的 `label` / `master` /
- * `masterAvatar` / `masterName`)。名字取自 `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`,是对外
+ * 之外的部件照挂(留言的 `bubble` 与 `text`、「SC to」那行里的 `label` / `creator` /
+ * `creatorAvatar` / `creatorName`)。名字取自 `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`,是对外
  * API(`__tests__/card-hooks.test.ts` 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点
  * 也必须真被挂上)。
  *
@@ -47,7 +47,7 @@ import type { BlockRenderer } from "./types";
  * **没有头像就整块收起**(返回 null):`SuperchatCardInput.viewer.avatar` 只收图库引用,B 站的头像是远端地址,
  * 3a 才存进图库,所以 B 站这条路到那时不给(ADR-0021 决策 26 下 2026-10-05 的 🔗,照 ㉑ ㉒ 的先例)。
  */
-const avatar: BlockRenderer<SuperchatCardView> = (p) =>
+const viewerAvatar: BlockRenderer<SuperchatCardView> = (p) =>
 	p.viewerAvatarUrl ? (
 		<div data-bn="image" class="overflow-hidden">
 			<img class="w-full h-full object-cover" src={p.viewerAvatarUrl} alt="观众头像" />
@@ -55,7 +55,7 @@ const avatar: BlockRenderer<SuperchatCardView> = (p) =>
 	) : null;
 
 /** 观众名(原子块):那颗名牌胶囊。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
-const name: BlockRenderer<SuperchatCardView> = (p) => (
+const viewerName: BlockRenderer<SuperchatCardView> = (p) => (
 	<div data-bn="pill" style={{ "--bn-card-tier-color": p.bgColor[0] }}>
 		{p.viewerName}
 	</div>
@@ -65,7 +65,7 @@ const name: BlockRenderer<SuperchatCardView> = (p) => (
  * 金额(原子块):那串数字。它是**渐变裁字**(皮肤那条规则里 `background-clip:text` +
  * 透明字色),起止两枚档位色是数据,缺一枚字就整个透明了,所以两枚都留 inline。
  */
-const price: BlockRenderer<SuperchatCardView> = (p) => (
+const amount: BlockRenderer<SuperchatCardView> = (p) => (
 	<div
 		data-bn="text"
 		style={{
@@ -100,15 +100,15 @@ const duration: BlockRenderer<SuperchatCardView> = (p) =>
 const to: BlockRenderer<SuperchatCardView> = (p) => (
 	<div data-bn="text" class="flex items-center">
 		<span data-bn="label">SC to</span>
-		<div data-bn="master" class="flex items-center">
+		<div data-bn="creator" class="flex items-center">
 			{p.creatorAvatarUrl && (
 				<div
-					data-bn="masterAvatar"
+					data-bn="creatorAvatar"
 					class="bg-cover bg-center"
 					style={{ backgroundImage: `url("${p.creatorAvatarUrl}")` }}
 				/>
 			)}
-			<span data-bn="masterName">{p.creatorName}</span>
+			<span data-bn="creatorName">{p.creatorName}</span>
 		</div>
 	</div>
 );
@@ -136,9 +136,9 @@ export const SUPERCHAT_BLOCKS: Record<string, BlockRenderer<SuperchatCardView>> 
 		) : null;
 	},
 
-	avatar,
-	name,
-	price,
+	viewerAvatar,
+	viewerName,
+	amount,
 	duration,
 	to,
 };

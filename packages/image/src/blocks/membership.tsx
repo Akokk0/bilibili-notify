@@ -11,7 +11,7 @@
  *
  * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
  * 什么」取名的挂点(`image` / `text` / `pill` / `line`),默认皮肤的外观规则就写在它上面;根
- * 之外的部件照挂(用户名胶囊里的 `text`、主播胶囊里的 `masterAvatar` / `masterName`)。名字
+ * 之外的部件照挂(用户名胶囊里的 `text`、主播胶囊里的 `creatorAvatar` / `creatorName`)。名字
  * 取自 `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`,是对外 API(`__tests__/card-hooks.test.ts`
  * 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也必须真被挂上)。
  *
@@ -19,7 +19,7 @@
  * - **头像**的根是那个把图裁圆的框,`image` 挂在**框**上,里头的 `<img>` 不挂 —— 圆与尺寸
  *   写一处就够,img 只负责填满并按比例裁。
  * - **徽章**不经 `renderBlocks` 的 wrapper 挂 `data-block`(它自带),所以它的根上同时有
- *   `data-block="badge"` 与 `data-bn="image"`;wrapper 仍在,皮肤那条后代选择器照样选得中。
+ *   `data-block="icon"` 与 `data-bn="image"`;wrapper 仍在,皮肤那条后代选择器照样选得中。
  *
  * 留在 inline 的 CSS 变量都是**数据**不是外观,皮肤用 `var()` 引:
  *
@@ -46,7 +46,7 @@ import type { BlockRenderer } from "./types";
  * **没有头像就整块收起**(返回 null):`MembershipCardInput.viewer.avatar` 只收图库引用,B 站的头像是远端地址,
  * 3a 才存进图库,所以 B 站这条路到那时不给(ADR-0021 决策 26 下 2026-10-05 的 🔗,照 ㉑ ㉒ 的先例)。
  */
-const avatar: BlockRenderer<MembershipCardView> = (p) =>
+const viewerAvatar: BlockRenderer<MembershipCardView> = (p) =>
 	p.viewerAvatarUrl ? (
 		<div data-bn="image" class="overflow-hidden shrink-0">
 			<img class="w-full h-full object-cover" src={p.viewerAvatarUrl} alt="观众头像" />
@@ -54,7 +54,7 @@ const avatar: BlockRenderer<MembershipCardView> = (p) =>
 	) : null;
 
 /** 观众名胶囊(原子块)。底色是档位色(数据),留 inline 给皮肤 `var()` 引。 */
-const user: BlockRenderer<MembershipCardView> = (p) => (
+const viewerName: BlockRenderer<MembershipCardView> = (p) => (
 	<div
 		data-bn="pill"
 		class="flex items-center overflow-hidden"
@@ -71,7 +71,7 @@ const user: BlockRenderer<MembershipCardView> = (p) => (
  * `bg-center` 是它的裁法与定位,不是样子。**没有主播头像就不画那一格**(`Creator.avatar` 只收图库引用,B 站 3a 才交,
  * 同 {@link avatar});醒目留言卡的「SC to」那一行本来就是这个写法。
  */
-const master: BlockRenderer<MembershipCardView> = (p) => (
+const creator: BlockRenderer<MembershipCardView> = (p) => (
 	<div
 		data-bn="pill"
 		class="flex items-center overflow-hidden"
@@ -79,12 +79,12 @@ const master: BlockRenderer<MembershipCardView> = (p) => (
 	>
 		{p.creatorAvatarUrl && (
 			<div
-				data-bn="masterAvatar"
+				data-bn="creatorAvatar"
 				class="bg-cover bg-center shrink-0"
 				style={{ backgroundImage: `url("${p.creatorAvatarUrl}")` }}
 			/>
 		)}
-		<span data-bn="masterName" class="truncate">
+		<span data-bn="creatorName" class="truncate">
 			{p.creatorName}
 		</span>
 	</div>
@@ -102,10 +102,10 @@ export const MEMBERSHIP_BLOCKS: Record<string, BlockRenderer<MembershipCardView>
 
 	// 徽章块:档位的徽章大图,受限 2D 里的常驻块,由 badgeSide 定位。图是数据(走 inline 的
 	// `background-image`),多大一张归皮肤的 `image` 规则。**这一档没有徽章就整块收起。**
-	badge: (p) =>
+	icon: (p) =>
 		p.iconUrl ? (
 			<div
-				data-block="badge"
+				data-block="icon"
 				data-bn="image"
 				class="bg-cover bg-center shrink-0"
 				style={{ backgroundImage: `url("${p.iconUrl}")` }}
@@ -113,7 +113,7 @@ export const MEMBERSHIP_BLOCKS: Record<string, BlockRenderer<MembershipCardView>
 		) : null,
 
 	// 宣告语(原子块):档位表里声明的那一句,模板已经填好观众名 / 主播名 / 档名;没声明就整块收起。
-	text: (p) =>
+	announcement: (p) =>
 		p.announcement ? (
 			<div
 				data-bn="text"
@@ -124,7 +124,7 @@ export const MEMBERSHIP_BLOCKS: Record<string, BlockRenderer<MembershipCardView>
 			</div>
 		) : null,
 
-	avatar,
-	user,
-	master,
+	viewerAvatar,
+	viewerName,
+	creator,
 };

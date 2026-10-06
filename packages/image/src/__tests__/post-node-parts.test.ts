@@ -60,7 +60,7 @@ describe("头像 —— 只认 `Creator.avatar`(图库引用)", () => {
 			creatorIsPremium: false,
 			time: "刚刚",
 		};
-		const vnode = POST_BLOCKS.avatar({ node, renderForward: () => [] });
+		const vnode = POST_BLOCKS.creatorAvatar({ node, renderForward: () => [] });
 		expect(vnode).not.toBeNull();
 		const html = await htmlOf(vnode as VNode);
 		expect(html).toContain('src="data:image/png;base64,FACE"');
@@ -70,9 +70,12 @@ describe("头像 —— 只认 `Creator.avatar`(图库引用)", () => {
 
 	it("头像块:node 没有地址(或是空串)就整块收起,不画 src 为空的裂图", () => {
 		const base = { creatorName: "某人", creatorIsPremium: false, time: "刚刚" };
-		expect(POST_BLOCKS.avatar({ node: base, renderForward: () => [] })).toBeNull();
+		expect(POST_BLOCKS.creatorAvatar({ node: base, renderForward: () => [] })).toBeNull();
 		expect(
-			POST_BLOCKS.avatar({ node: { ...base, creatorAvatarUrl: "" }, renderForward: () => [] }),
+			POST_BLOCKS.creatorAvatar({
+				node: { ...base, creatorAvatarUrl: "" },
+				renderForward: () => [],
+			}),
 		).toBeNull();
 	});
 });

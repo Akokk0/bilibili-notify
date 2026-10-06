@@ -194,7 +194,7 @@ describe("醒目留言卡:rank 取默认配色表里的色、留言时长走 for
 		[30, "USD", "US$30"],
 	] as const)("金额 %s %s → 卡上写「%s」", async (amount, currency, text) => {
 		const out = await scOf(superchat({ amount, currency }));
-		expect(out.doc.querySelector('[data-block="price"] [data-bn="text"]')?.textContent).toBe(text);
+		expect(out.doc.querySelector('[data-block="amount"] [data-bn="text"]')?.textContent).toBe(text);
 	});
 
 	// 页面标题是出图 HTML 的一部分(字节基准里写死),入口自己决定它 —— 与卡种键 `sc` 无关,叫「醒目留言通知」。
@@ -206,7 +206,7 @@ describe("醒目留言卡:rank 取默认配色表里的色、留言时长走 for
 
 	it("观众名与留言原样上卡", async () => {
 		const out = await scOf(superchat({ viewer: { name: "某某" }, text: "今晚加更" }));
-		expect(out.doc.querySelector('[data-block="name"]')?.textContent).toBe("某某");
+		expect(out.doc.querySelector('[data-block="viewerName"]')?.textContent).toBe("某某");
 		expect(out.doc.querySelector('[data-block="message"]')?.textContent).toContain("今晚加更");
 	});
 });
@@ -228,10 +228,10 @@ describe("醒目留言卡:头像是图库引用,解析不到就不画", () => {
 			}),
 		);
 		const doc = docOf(h.captured[0] ?? "");
-		expect(doc.querySelector('[data-block="avatar"] img')?.getAttribute("src")).toBe(
+		expect(doc.querySelector('[data-block="viewerAvatar"] img')?.getAttribute("src")).toBe(
 			"data:image/png;base64,VIEWER",
 		);
-		expect(doc.querySelector('[data-bn="masterAvatar"]')?.getAttribute("style") ?? "").toContain(
+		expect(doc.querySelector('[data-bn="creatorAvatar"]')?.getAttribute("style") ?? "").toContain(
 			"data:image/png;base64,MASTER",
 		);
 	});
@@ -248,8 +248,8 @@ describe("醒目留言卡:头像是图库引用,解析不到就不画", () => {
 		);
 		for (const h of [none, lost]) {
 			const doc = docOf(h.captured[0] ?? "");
-			expect(doc.querySelector('[data-block="avatar"]')).toBeNull();
-			expect(doc.querySelector('[data-bn="masterAvatar"]')).toBeNull();
+			expect(doc.querySelector('[data-block="viewerAvatar"]')).toBeNull();
+			expect(doc.querySelector('[data-bn="creatorAvatar"]')).toBeNull();
 		}
 	});
 });
@@ -275,7 +275,7 @@ async function memberOf(
 }
 
 const announcementOf = (doc: Document): string | undefined =>
-	doc.querySelector('[data-block="text"] [data-bn="text"]')?.textContent ?? undefined;
+	doc.querySelector('[data-block="announcement"] [data-bn="text"]')?.textContent ?? undefined;
 
 describe("会员卡:宣告语取档位表、由 interpolate 填(三句原文,舰长那句带「号」)", () => {
 	// 逐字钉:引号是半角双引号、换行是真换行,舰长那句带「号」(总督与提督没有)。这三句是 ㉓a 钉在块库里的原文,
@@ -318,7 +318,7 @@ describe("会员卡:宣告语取档位表、由 interpolate 填(三句原文,舰
 	// 验红:把块里 `p.announcement ? … : null` 改成恒画,这条红。
 	it("档位没声明宣告语 → 不画那一句", async () => {
 		const doc = await memberOf(membership({ tier: { name: "某档" } }));
-		expect(doc.querySelector('[data-block="text"]')).toBeNull();
+		expect(doc.querySelector('[data-block="announcement"]')).toBeNull();
 	});
 });
 
@@ -352,7 +352,7 @@ describe("会员卡:档色取 tier.color / colorEnd、徽章取 tier.icon", () =
 		const doc = await memberOf(
 			membership({ tier: { name: "某档", icon: { url: "data:image/png;base64,BADGE" } } }),
 		);
-		const badge = doc.querySelector<HTMLElement>('[data-block="badge"]');
+		const badge = doc.querySelector<HTMLElement>('[data-block="icon"]');
 		expect(badge?.getAttribute("style") ?? "").toContain("data:image/png;base64,BADGE");
 	});
 
@@ -362,19 +362,19 @@ describe("会员卡:档色取 tier.color / colorEnd、徽章取 tier.icon", () =
 		const ok = await memberOf(membership({ tier: { name: "某档", icon: { ref: REF } } }), {
 			resolveImageRef: async () => "data:image/png;base64,ICON",
 		});
-		expect(ok.querySelector('[data-block="badge"]')?.getAttribute("style") ?? "").toContain(
+		expect(ok.querySelector('[data-block="icon"]')?.getAttribute("style") ?? "").toContain(
 			"data:image/png;base64,ICON",
 		);
 		const lost = await memberOf(membership({ tier: { name: "某档", icon: { ref: REF } } }), {
 			resolveImageRef: async () => undefined,
 		});
-		expect(lost.querySelector('[data-block="badge"]')).toBeNull();
+		expect(lost.querySelector('[data-block="icon"]')).toBeNull();
 	});
 
 	// 验红:把块里 `p.iconUrl ? … : null` 改成恒画,这条红。
 	it("档位没有徽章 → 不画徽章块", async () => {
 		const doc = await memberOf(membership({ tier: { name: "某档" } }));
-		expect(doc.querySelector('[data-block="badge"]')).toBeNull();
+		expect(doc.querySelector('[data-block="icon"]')).toBeNull();
 	});
 });
 
@@ -393,15 +393,15 @@ describe("会员卡:头像是图库引用,解析不到就不画;观众名与主�
 					`data:image/png;base64,${ref === VIEWER ? "VIEWER" : "MASTER"}`,
 			},
 		);
-		expect(withAvatars.querySelector('[data-block="avatar"] img')?.getAttribute("src")).toBe(
+		expect(withAvatars.querySelector('[data-block="viewerAvatar"] img')?.getAttribute("src")).toBe(
 			"data:image/png;base64,VIEWER",
 		);
 		expect(
-			withAvatars.querySelector('[data-bn="masterAvatar"]')?.getAttribute("style") ?? "",
+			withAvatars.querySelector('[data-bn="creatorAvatar"]')?.getAttribute("style") ?? "",
 		).toContain("data:image/png;base64,MASTER");
 		const without = await memberOf(membership());
-		expect(without.querySelector('[data-block="avatar"]')).toBeNull();
-		expect(without.querySelector('[data-bn="masterAvatar"]')).toBeNull();
+		expect(without.querySelector('[data-block="viewerAvatar"]')).toBeNull();
+		expect(without.querySelector('[data-bn="creatorAvatar"]')).toBeNull();
 	});
 
 	// 验红:把 `image-renderer.ts` 里会员卡入口的 `title: "上舰通知"` 改掉,这条红。
@@ -414,7 +414,7 @@ describe("会员卡:头像是图库引用,解析不到就不画;观众名与主�
 		const doc = await memberOf(
 			membership({ viewer: { name: "某某" }, creator: { name: "某主播" } }),
 		);
-		expect(doc.querySelector('[data-block="user"]')?.textContent).toBe("某某");
-		expect(doc.querySelector('[data-bn="masterName"]')?.textContent).toBe("某主播");
+		expect(doc.querySelector('[data-block="viewerName"]')?.textContent).toBe("某某");
+		expect(doc.querySelector('[data-bn="creatorName"]')?.textContent).toBe("某主播");
 	});
 });

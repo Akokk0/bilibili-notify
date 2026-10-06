@@ -126,8 +126,8 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		const d = await drawn(input({ status: "start" }));
 		expect(d.status).toBe("直播中");
 		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
-		expect(d.popularity).toBe("人气：1.2万");
-		expect(d.fans).toBe("当前粉丝数：8.9万");
+		expect(d.currentViewers).toBe("人气：1.2万");
+		expect(d.followers).toBe("当前粉丝数：8.9万");
 		expect(d.cover).toBe(COVER);
 	});
 
@@ -137,8 +137,8 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		const d = await drawn(input({ status: "streaming" }));
 		expect(d.status).toBe("直播中");
 		expect(d.time).toBe("直播时长：2小时13分5秒");
-		expect(d.popularity).toBe("人气：1.2万");
-		expect(d.fans).toBe("当前粉丝数：8.9万");
+		expect(d.currentViewers).toBe("人气：1.2万");
+		expect(d.followers).toBe("当前粉丝数：8.9万");
 	});
 
 	/**
@@ -149,8 +149,10 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		const d = await drawn(input({ status: "end" }));
 		expect(d.status).toBe("已下播");
 		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
-		expect(d.popularity).toBe("点赞：2.0万");
-		expect(d.fans).toBe("累计观看人数：3.1万");
+		expect(d.likes).toBe("点赞：2.0万");
+		expect(d.totalViewers).toBe("累计观看人数：3.1万");
+		expect(d.currentViewers).toBeUndefined();
+		expect(d.followers).toBeUndefined();
 		expect(Object.values(d).join("|")).not.toContain("粉丝数变化");
 		expect(Object.values(d).join("|")).not.toContain("人气");
 	});
@@ -159,28 +161,28 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		const d = await drawn(input({ status: "offline" }));
 		expect(d.status).toBe("未开播");
 		expect(d.time).toBe("未开播");
-		expect(d.popularity).toBe("人气：1.2万");
-		expect(d.fans).toBeUndefined();
+		expect(d.currentViewers).toBe("人气：1.2万");
+		expect(d.followers).toBeUndefined();
 	});
 
 	/** 拓展没报的格子:那一行整行不画,不留一个「点赞：」后面什么都没有。 */
 	it("没有的格子那一行不画:下播没报点赞 / 累计观看,开播没报人气", async () => {
 		const ended = await drawn(input({ status: "end", likes: undefined, totalViewers: undefined }));
-		expect(ended.popularity).toBeUndefined();
-		expect(ended.fans).toBeUndefined();
+		expect(ended.likes).toBeUndefined();
+		expect(ended.totalViewers).toBeUndefined();
 
 		const started = await drawn(
 			input({ status: "start", currentViewers: undefined, followers: undefined }),
 		);
-		expect(started.popularity).toBeUndefined();
-		expect(started.fans).toBeUndefined();
+		expect(started.currentViewers).toBeUndefined();
+		expect(started.followers).toBeUndefined();
 	});
 
 	/** 拓展可以不报分区:不留一个「分区：」后面什么都没有。B 站恒有分区。 */
 	it("没有分区(没给或空串)→ 分区那一行不画", async () => {
-		expect((await drawn(input({ category: undefined }))).area).toBeUndefined();
-		expect((await drawn(input({ category: "" }))).area).toBeUndefined();
-		expect((await drawn(input())).area).toBe("分区：虚拟主播");
+		expect((await drawn(input({ category: undefined }))).category).toBeUndefined();
+		expect((await drawn(input({ category: "" }))).category).toBeUndefined();
+		expect((await drawn(input())).category).toBe("分区：虚拟主播");
 	});
 
 	it("没有开播时刻 → 不写那句时间", async () => {
@@ -201,12 +203,16 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 	 * 这一片起不补了 —— 缺的是上面「没有的格子那一行不画」那条;真报了 0 才是这条。)
 	 */
 	it("精确的 0 照画:人气 0、累计观看 0", async () => {
-		expect((await drawn(input({ status: "start", currentViewers: 0 }))).popularity).toBe("人气：0");
-		expect((await drawn(input({ status: "end", totalViewers: 0 }))).fans).toBe("累计观看人数：0");
+		expect((await drawn(input({ status: "start", currentViewers: 0 }))).currentViewers).toBe(
+			"人气：0",
+		);
+		expect((await drawn(input({ status: "end", totalViewers: 0 }))).totalViewers).toBe(
+			"累计观看人数：0",
+		);
 	});
 
 	it("简介空着走兜底文案", async () => {
-		expect((await drawn(input({ description: undefined }))).desc).toBe(
+		expect((await drawn(input({ description: undefined }))).description).toBe(
 			"这个主播很懒，什么简介都没写",
 		);
 	});
@@ -472,21 +478,21 @@ describe("generateLiveCard — 头像", () => {
 	 */
 	it("主播头像是引用且解析到了:头像块与那张 <img> 都画,地址是解析结果", async () => {
 		const out = await html(input());
-		expect(out).toContain('data-block="avatar"');
+		expect(out).toContain('data-block="creatorAvatar"');
 		expect(out).toContain(`src="${FACE}" alt="主播头像"`);
 	});
 
 	it("输入没给头像:头像块整块不画(没有裂图),别的块照画", async () => {
 		const noAvatar = input({ creator: { name: "示例主播" } });
 		const out = await html(noAvatar);
-		expect(out).not.toContain('data-block="avatar"');
-		expect(out).not.toContain('data-cell="avatar"');
+		expect(out).not.toContain('data-block="creatorAvatar"');
+		expect(out).not.toContain('data-cell="creatorAvatar"');
 		expect(out).not.toContain('alt="主播头像"');
 		const d = await drawn({ ...noAvatar, status: "end" });
-		expect(d.name).toBe("示例主播");
+		expect(d.creatorName).toBe("示例主播");
 		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
 		expect(d.title).toBe("一场直播");
-		expect(d.avatar).toBeUndefined();
+		expect(d.creatorAvatar).toBeUndefined();
 	});
 
 	/** 头像的引用指着的图已经被清扫了:一张图坏了不拖累整张卡,头像块收起,不画裂图。 */
@@ -499,7 +505,7 @@ describe("generateLiveCard — 头像", () => {
 			null,
 		]) {
 			const out = await html(input(), resolve);
-			expect(out).not.toContain('data-block="avatar"');
+			expect(out).not.toContain('data-block="creatorAvatar"');
 			expect(out).toContain("示例主播");
 		}
 	});

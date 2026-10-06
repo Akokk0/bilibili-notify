@@ -45,18 +45,18 @@ const CUSTOM_CARDS: Record<string, () => CardSkinCard> = {
 	// 拆成独立的块之后就能单独关掉了(从前它长在封面块里,关不掉),这张卡顺便钉住这件事。
 	"live-minimal": () => ({
 		...base("live"),
-		blocks: pick("live", ["divider-1", "title", "cover", "name", "desc"]),
+		blocks: pick("live", ["divider-1", "title", "cover", "creator-name", "description"]),
 	}),
 	// 末尾摆一条分割线(该被弹掉),互动数整个不摆。
 	"dynamic-custom-layout": () => ({
 		...base("dynamic"),
-		// 这条夹具是图文(DRAW),媒体那半是图廊 —— 摆 `pics`,视频那五块摆了也画不出东西。
-		blocks: pick("dynamic", ["name", "text", "pics", "additional", "divider-2"]),
+		// 这条夹具是图文(DRAW),媒体那半是图廊 —— 摆 `images`,视频那五块摆了也画不出东西。
+		blocks: pick("dynamic", ["creator-name", "text", "images", "attachment", "divider-2"]),
 	}),
 	// 留言是空的 → 那一块收起,排在它后面的分割线就悬空在开头了,该被抑制。
 	"sc-custom-layout": () => ({
 		...base("sc"),
-		blocks: pick("sc", ["message", "divider-1", "price", "name"]),
+		blocks: pick("sc", ["message", "divider-1", "amount", "viewer-name"]),
 	}),
 	// 徽章挪到左边四列,内容列跟着靠右 —— 与默认皮肤正好镜像。
 	"guard-badge-left": () => {
@@ -64,7 +64,7 @@ const CUSTOM_CARDS: Record<string, () => CardSkinCard> = {
 		return {
 			...card,
 			blocks: card.blocks.map((b) =>
-				b.id === "badge"
+				b.id === "icon"
 					? { ...b, grid: { ...b.grid, column: 1, span: 4 } }
 					: { ...b, grid: { ...b.grid, column: b.grid.column + 4 } },
 			),

@@ -90,9 +90,9 @@ const PROBE: CardSkinManifest = {
 					grid: { row: 1, column: 1, span: 12 },
 				},
 				{
-					id: "forward",
+					id: "repost",
 					kind: "builtin",
-					builtin: "forward",
+					builtin: "repost",
 					grid: { row: 2, column: 1, span: 12 },
 				},
 			],
@@ -269,13 +269,13 @@ describe("generatePostCard — 头像", () => {
 		const html = await htmlOf(post({ creator: { name: "某人", avatar: ref(1) } }), {
 			resolveImageRef: resolve,
 		});
-		expect(html).toContain('data-cell="avatar"');
+		expect(html).toContain('data-cell="creator-avatar"');
 		expect(html).toContain(`src="${img("FACE")}" alt="头像"`);
 	});
 
 	it("没有引用:头像格整个不画;名字照画", async () => {
 		const html = await htmlOf(post(), { resolveImageRef: resolve });
-		expect(html).not.toContain('data-cell="avatar"');
+		expect(html).not.toContain('data-cell="creator-avatar"');
 		expect(html).not.toContain('alt="头像"');
 		expect(html).toContain("示例作者");
 	});
@@ -296,7 +296,7 @@ describe("generatePostCard — 头像", () => {
 			{ resolveImageRef: resolve },
 		);
 		// 外层有、内层没有:整张卡上只剩一个头像格。
-		expect(html.match(/data-cell="avatar"/g)).toHaveLength(1);
+		expect(html.match(/data-cell="creator-avatar"/g)).toHaveLength(1);
 		expect(html).toContain("原作者");
 	});
 });

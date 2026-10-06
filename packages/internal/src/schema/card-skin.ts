@@ -796,7 +796,13 @@ export const CardSkinIdSchema = z
 type B = CardSkinBlock;
 
 /**
- * 一个内置块。id 默认就是块名;会出现两次的(分割线)与驼峰块名(id 只准小写 + 连字符)
+ * 块名 → 默认块 id。块名是驼峰(`creatorAvatar`),而块 id 只准小写字母、数字与连字符(`CardSkinBlockSchema`),
+ * 所以默认 id 是它的连字符写法(`creator-avatar`);单词的块名原样(`title` → `title`)。
+ */
+const kebabId = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
+/**
+ * 一个内置块。id 默认是块名的连字符写法({@link kebabId});会出现两次的(分割线)
  * 另给。`css` 只写这一块自己的。
  */
 const at = (
@@ -813,7 +819,7 @@ const at = (
 	 * 反过来的顺序逼着 26 处各摆一个 `undefined` 占位,读的时候得数逗号才知道末尾那串
 	 * 是什么。今天只剩投稿视频封面那一处要占位。
 	 */
-	id: string = builtin,
+	id: string = kebabId(builtin),
 ): B => ({
 	id,
 	kind: "builtin",
@@ -987,13 +993,13 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 预览说「UP 主信息已经和封面嵌到一起了」)。「没有不小心叠上的块」那条守卫
 				// 现在钉着它。
 				at(
-					"avatar",
+					"creatorAvatar",
 					{ row: 7, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding:14px 0 0 16px;align-self:center`,
 					part("image", "width:44px;height:44px;border-radius:9999px"),
 				),
 				at(
-					"name",
+					"creatorName",
 					{ row: 7, column: 2, span: 11 },
 					`${HEAD};padding-top:14px;align-self:end`,
 					part("text", "font-size:16px;font-weight:700;line-height:1;color:#18191C"),
@@ -1014,11 +1020,20 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					),
 				),
 				at(DIVIDER_TYPE, full(10), "padding-top:10px", DIVIDER_LINE, "divider-1"),
-				at("popularity", { row: 11, column: 1, span: 6 }, "padding-top:10px", DATA_TEXT),
-				at("area", { row: 11, column: 7, span: 6 }, "padding-top:10px;text-align:right", DATA_TEXT),
-				at("fans", full(12), "padding-top:4px", DATA_TEXT),
+				// 在看人数与点赞(以及粉丝数与累计观看)摆在原来 `popularity`(`fans`)的位置:每块只在该出现的状态下
+				// 有内容(开播 / 直播中画在看人数与粉丝数,下播画点赞与累计观看),同一个状态下只会有一块占着那一格。
+				at("currentViewers", { row: 11, column: 1, span: 6 }, "padding-top:10px", DATA_TEXT),
+				at("likes", { row: 11, column: 1, span: 6 }, "padding-top:10px", DATA_TEXT),
 				at(
-					"desc",
+					"category",
+					{ row: 11, column: 7, span: 6 },
+					"padding-top:10px;text-align:right",
+					DATA_TEXT,
+				),
+				at("followers", full(12), "padding-top:4px", DATA_TEXT),
+				at("totalViewers", full(12), "padding-top:4px", DATA_TEXT),
+				at(
+					"description",
 					full(13),
 					"padding-top:16px",
 					part("text", "padding:0 16px;font-size:13px;line-height:1.5;color:#999"),
@@ -1032,14 +1047,14 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			css: `${FRAME_BG_USER}${FRAME_PAD}${GLASS_DYNAMIC}`,
 			blocks: [
 				at(
-					"avatar",
+					"creatorAvatar",
 					{ row: 1, column: 1, span: 1, rowSpan: 2 },
 					`${HEAD};padding-left:16px;align-self:center`,
 					part("image", "width:52px;height:52px;border-radius:9999px"),
 				),
 				// UP 主名的颜色是数据(大会员粉 / 常规墨色),渲染器注在 `--bn-up-name-color` 里。
 				at(
-					"name",
+					"creatorName",
 					{ row: 1, column: 2, span: 11 },
 					`${HEAD};align-self:end`,
 					part(
@@ -1099,11 +1114,11 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"video-title",
 				),
 				at(
-					"videoDesc",
+					"videoDescription",
 					full(13),
 					`${VIDEO_INSET};padding:6px 12px 0`,
 					part("text", "font-size:12px;color:#999"),
-					"video-desc",
+					"video-description",
 				),
 				at(
 					"videoStats",
@@ -1121,11 +1136,11 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 默认皮上零作用,已整层退役(决策 10 的 🔗)。画布那头靠块目录的 `scenes`
 				// 知道两组各属哪一场,出图端不读它。
 				// 图廊前那 8px 是旧正文里跟在文字后面的间距。九图图廊约 400px 高 → 7 行。
-				at("pics", tall(6, 7), "padding:8px 16px 0"),
+				at("images", tall(6, 7), "padding:8px 16px 0"),
 				// 转发框整个缩到 85%(`zoom`)—— 框里是一整张内层卡,不缩的话两层同字号,
 				// 读不出谁是谁。左边那道蓝与灰底是它作为「引用」的标记。
 				at(
-					"forward",
+					"repost",
 					full(15),
 					"padding:0 16px",
 					part(
@@ -1135,9 +1150,9 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				),
 				// 附加卡自己带全套观感(builder 画的),这块只管把它摆进来:上面 12px、
 				// 两边 16px —— 那 16px 从前写在块里的一层壳上。
-				at("additional", full(16), "padding:12px 16px 0"),
+				at("attachment", full(16), "padding:12px 16px 0"),
 				at(DIVIDER_TYPE, full(17), "padding:12px 0", DIVIDER_LINE, "divider-2"),
-				at("forwardCount", { row: 18, column: 1, span: 4 }, CENTER, STAT_TEXT, "forward-count"),
+				at("shareCount", { row: 18, column: 1, span: 4 }, CENTER, STAT_TEXT, "share-count"),
 				at("commentCount", { row: 18, column: 5, span: 4 }, CENTER, STAT_TEXT, "comment-count"),
 				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, STAT_TEXT, "like-count"),
 			],
@@ -1150,7 +1165,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 看见的是背景那道渐变被 `background-clip:text` 裁成字形 —— 两枚档位色是数据,
 				// 渲染器注在 `--bn-card-tier-color` / `--bn-card-tier-color-end` 里。
 				at(
-					"price",
+					"amount",
 					full(1),
 					"text-align:center",
 					part(
@@ -1170,13 +1185,13 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at(DIVIDER_TYPE, full(3), "padding-top:15px", SC_LINE, "divider-1"),
 				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
-					"avatar",
+					"viewerAvatar",
 					full(4),
 					`padding-top:12px;${CENTER}`,
 					part("image", "width:70px;height:70px;border-radius:9999px"),
 				),
 				at(
-					"name",
+					"viewerName",
 					full(5),
 					`padding-top:8px;${CENTER}`,
 					part(
@@ -1188,7 +1203,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					"to",
 					full(6),
 					`padding-top:8px;${CENTER}`,
-					`${part("text", "gap:5px;font-size:12px;color:#666")}${part("label", "margin-right:3px")}${part("master", "gap:2px")}${part("masterAvatar", "width:18px;height:18px;border-radius:9999px;border:1px solid rgba(0,0,0,.1)")}`,
+					`${part("text", "gap:5px;font-size:12px;color:#666")}${part("label", "margin-right:3px")}${part("creator", "gap:2px")}${part("creatorAvatar", "width:18px;height:18px;border-radius:9999px;border:1px solid rgba(0,0,0,.1)")}`,
 				),
 				// 留言整块居中:块的根是一层撑满格子的壳,`text-align` 写在格子上继承下去。
 				at(
@@ -1209,7 +1224,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 			blocks: [
 				// 圆与尺寸写在**框**上(它 `overflow:hidden`),里头的图填满即可。
 				at(
-					"avatar",
+					"viewerAvatar",
 					{ row: 1, column: 1, span: 4, rowSpan: 2 },
 					"padding:12px 0 0 16px;align-self:start",
 					part("image", "width:90px;height:90px;border-radius:9999px"),
@@ -1217,19 +1232,19 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				// 两颗胶囊贴着头像的中线上下排,各自收窄到内容宽。底色是档位色(数据),
 				// 渲染器注在 `--bn-card-tier-color` 里;名字过长时靠 `max-width` + 截断收住。
 				at(
-					"user",
+					"viewerName",
 					{ row: 1, column: 5, span: 4 },
 					"align-self:end;justify-self:start",
 					`${part("pill", "height:30px;padding:0 10px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("text", "max-width:100px;font-weight:700;font-size:12px;color:#fff")}`,
 				),
 				at(
-					"master",
+					"creator",
 					{ row: 2, column: 5, span: 4 },
 					"padding-top:7px;align-self:start;justify-self:start",
-					`${part("pill", "gap:5px;height:25px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("masterAvatar", "width:25px;height:25px;border-radius:9999px")}${part("masterName", "max-width:85px;margin-right:5px;color:#fff;font-size:10px;font-weight:700")}`,
+					`${part("pill", "gap:5px;height:25px;border-radius:25px;background-color:var(--bn-card-tier-color)")}${part("creatorAvatar", "width:25px;height:25px;border-radius:9999px")}${part("creatorName", "max-width:85px;margin-right:5px;color:#fff;font-size:10px;font-weight:700")}`,
 				),
 				at(
-					"text",
+					"announcement",
 					{ row: 3, column: 1, span: 8 },
 					"padding:0px 16px 12px;align-self:end",
 					part(
@@ -1238,7 +1253,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 					),
 				),
 				at(
-					"badge",
+					"icon",
 					{ row: 1, column: 9, span: 4, rowSpan: 3 },
 					"height:190px;display:flex;align-items:center;align-self:start",
 					part("image", "width:175px;height:175px"),

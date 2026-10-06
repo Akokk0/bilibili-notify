@@ -30,8 +30,13 @@ const MANIFEST = {
 			width: 600,
 			css: "",
 			blocks: [
-				{ id: "avatar", kind: "builtin", builtin: "avatar", grid: { row: 1, column: 1, span: 3 } },
-				{ id: "pics", kind: "builtin", builtin: "pics", grid: { row: 2, column: 1, span: 12 } },
+				{
+					id: "avatar",
+					kind: "builtin",
+					builtin: "creatorAvatar",
+					grid: { row: 1, column: 1, span: 3 },
+				},
+				{ id: "pics", kind: "builtin", builtin: "images", grid: { row: 2, column: 1, span: 12 } },
 				{
 					id: "video-cover",
 					kind: "builtin",

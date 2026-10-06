@@ -76,7 +76,7 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 			div span em{color:red}
 			[data-bn="cover"] img{border-radius:999px}
 			[data-bn="self"]:hover{color:red}`,
-			"additional",
+			"attachment",
 		);
 		expect(selectorLeads(css)).toEqual([
 			'[data-bn="self"]',
@@ -93,7 +93,7 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 	it("已经以 self 起头的一个字都不动 —— 伪元素 / 伪类照旧", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]::before{content:"";border-width:1px}[data-bn="self"]:hover{color:#fff}',
-			"additional",
+			"attachment",
 		);
 		expect(css).toContain('[data-bn="self"]::before{content:"";border-width:1px}');
 		expect(css).toContain('[data-bn="self"]:hover{color:#fff}');
@@ -101,12 +101,12 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 	});
 
 	it('挂点起头的补成后代 —— [data-bn="cover"] img → self 在前', () => {
-		const { css } = ok('[data-bn="cover"] img{border-radius:999px}', "additional");
+		const { css } = ok('[data-bn="cover"] img{border-radius:999px}', "attachment");
 		expect(css).toBe('[data-bn="self"] [data-bn="cover"] img{border-radius:999px}');
 	});
 
 	it("逗号列表每一支各自归一,不是整条一起判", () => {
-		const { css } = ok('[data-bn="self"]:hover, .x{color:red}', "additional");
+		const { css } = ok('[data-bn="self"]:hover, .x{color:red}', "attachment");
 		expect(selectorLeads(css)).toEqual(['[data-bn="self"]', '[data-bn="self"]']);
 		expect(css).toContain('[data-bn="self"]:hover');
 		expect(css).toContain('[data-bn="self"] .x');
@@ -117,7 +117,7 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 			`.hud[data-kind="a"]:not(.off) > span::after{content:"";color:red}
 			:is(b, em) span{color:red}
 			.row:has(> img){border-width:1px}`,
-			"additional",
+			"attachment",
 		);
 		expect(selectorLeads(css)).toEqual([
 			'[data-bn="self"]',
@@ -131,7 +131,7 @@ describe("选择器自由,但每条都归一到挂点起头", () => {
 	});
 
 	it('产物里的挂点只有 [data-bn="…"] 一种写法 —— 渲染器的翻译靠它', () => {
-		const { css } = ok('[data-bn="cover"]{border-radius:999px}', "additional");
+		const { css } = ok('[data-bn="cover"]{border-radius:999px}', "attachment");
 		expect(css).toContain('[data-bn="cover"]');
 		expect(css).not.toContain("data-bn~=");
 		expect(css).not.toContain("data-bn ");
@@ -143,7 +143,7 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{padding-top:12px;border-radius:8px}
 			[data-bn="self"] [data-bn="button"]{color:#fb7299}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).toContain('[data-bn="self"]{padding-top:12px;border-radius:8px}');
 		expect(css).toContain('[data-bn="self"] [data-bn="button"]');
@@ -164,7 +164,7 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 		const { css, warnings } = ok(
 			`[data-bn="icon"]{color:red}
 			[data-bn="cover"]{border-width:2px}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("icon");
 		expect(css).toContain("border-width:2px");
@@ -175,7 +175,7 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 		const { css, warnings } = ok(
 			`[data-bn="price"]{color:red}
 			[data-bn="cover"]{border-width:2px}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("price");
 		expect(css).toContain("border-width:2px");
@@ -186,16 +186,16 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 		const { css, warnings } = ok(
 			`.row:has([data-bn="price"]){color:red}
 			.row:is([data-bn="cover"]){border-width:2px}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("price");
 		expect(css).toContain("border-width:2px");
 		expect(warnings.join()).toContain("price");
 	});
 
-	it("同一个挂点名换个块就该放行 —— sc/to 认识 masterName", () => {
-		const { css, warnings } = ok(`[data-bn="masterName"]{color:red}`, "to", "sc");
-		expect(css).toBe('[data-bn="self"] [data-bn="masterName"]{color:red}');
+	it("同一个挂点名换个块就该放行 —— sc/to 认识 creatorName", () => {
+		const { css, warnings } = ok(`[data-bn="creatorName"]{color:red}`, "to", "sc");
+		expect(css).toBe('[data-bn="self"] [data-bn="creatorName"]{color:red}');
 		expect(warnings).toEqual([]);
 	});
 
@@ -227,7 +227,7 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 			"[data-bn]{color:red}",
 			'.x:has([data-bn~="avatar"]){color:red}',
 		]) {
-			const { css, warnings } = ok(evil, "additional");
+			const { css, warnings } = ok(evil, "attachment");
 			expect(css, evil).toBe("");
 			expect(warnings.join(), evil).toContain("data-bn");
 		}
@@ -244,7 +244,7 @@ describe("卡片这档与 dashboard 刻意不同的地方", () => {
 		const { css, warnings } = ok(
 			`@keyframes skin-float{from{transform:translateY(0)}to{transform:translateY(-8px)}}
 			[data-bn="self"]{border-width:1px}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("@keyframes");
 		expect(css).not.toContain("skin-float");
@@ -256,7 +256,7 @@ describe("卡片这档与 dashboard 刻意不同的地方", () => {
 		const { css, warnings } = ok(
 			`@import "https://evil.example/x.css";
 			[data-bn="self"]{border-width:1px}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("@import");
 		expect(css).not.toContain("evil.example");
@@ -278,7 +278,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 				grid-template-columns:1fr 2fr;
 				clip-path:polygon(0 0,100% 0,100% 80%,0 100%);
 			}`,
-			"additional",
+			"attachment",
 		);
 		for (const p of [
 			"mask-image:",
@@ -304,7 +304,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("var(--bn-asset-*) 放行,和渐变叠在一起也放行", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]{background:var(--bn-asset-hud),linear-gradient(#000,#fff)}',
-			"additional",
+			"attachment",
 		);
 		expect(css).toContain("var(--bn-asset-hud)");
 		expect(css).toContain("linear-gradient(");
@@ -314,7 +314,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("执行面黑名单:behavior / -moz-binding 逐条丢弃", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{behavior:url(x.htc);-moz-binding:url(x.xml);binding:url(x.xml);-ms-behavior:url(x.htc);color:#fff}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).toBe('[data-bn="self"]{color:#fff}');
 		expect(warnings.join()).toContain("behavior");
@@ -328,7 +328,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 				background-image:image-set("x.png" 1x);
 				border-color:#123456;
 			}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("url(");
 		expect(css).not.toContain("image-set");
@@ -339,7 +339,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("转义写的 url( 一样拦住 —— tokenizer 先解转义再判 ident", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{background:\\75 rl(https://evil.example/x.png)}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("75 rl");
 		expect(warnings.join()).toContain("转义");
@@ -348,7 +348,7 @@ describe("属性:黑名单只列执行面,别的随便写", () => {
 	it("expression( 丢弃 —— 老 IE 的执行面,值级过滤一条不松", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]{width:expression(alert(1));border-width:1px}',
-			"additional",
+			"attachment",
 		);
 		expect(css).toBe('[data-bn="self"]{border-width:1px}');
 		expect(warnings.join()).toContain("expression");
@@ -360,7 +360,7 @@ describe("position 的值域", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]::before{content:"";position:absolute;inset:0}
 			[data-bn="self"]::after{content:"";position:fixed}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).toContain("position:absolute");
 		expect(css).not.toContain("position:fixed");
@@ -370,7 +370,7 @@ describe("position 的值域", () => {
 	it("宿主(非伪元素)写 position 也放行 —— 与 dashboard 相反,卡片没有布局可被顶掉", () => {
 		const { css, warnings } = ok(
 			`[data-bn="self"]{position:relative;border-width:1px}`,
-			"additional",
+			"attachment",
 		);
 		expect(css).toBe('[data-bn="self"]{position:relative;border-width:1px}');
 		expect(warnings).toEqual([]);
@@ -379,7 +379,7 @@ describe("position 的值域", () => {
 	it("fixed / sticky 仍然拒 —— 黑名单放开的是属性,不是这条值域", () => {
 		const { css, warnings } = ok(
 			'[data-bn="self"]{position:fixed}[data-bn="cover"]{position:sticky}[data-bn="button"]{position:absolute;top:0}',
-			"additional",
+			"attachment",
 		);
 		expect(css).not.toContain("fixed");
 		expect(css).not.toContain("sticky");
@@ -429,8 +429,8 @@ describe("体积闸", () => {
 	});
 
 	it("空串 / 全被丢弃 → ok 且产物为空串", () => {
-		expect(ok("", "additional").css).toBe("");
-		expect(ok('[data-bn="price"]{color:red}', "additional").css).toBe("");
+		expect(ok("", "attachment").css).toBe("");
+		expect(ok('[data-bn="price"]{color:red}', "attachment").css).toBe("");
 	});
 });
 

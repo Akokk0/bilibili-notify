@@ -121,9 +121,13 @@ describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
 	});
 
 	it("标题 / 简介 / 播放弹幕各画各的一段,谁都不带正文", async () => {
-		const html = await renderWith("dynamic", ["videoTitle", "videoDesc", "videoStats"], "video");
+		const html = await renderWith(
+			"dynamic",
+			["videoTitle", "videoDescription", "videoStats"],
+			"video",
+		);
 		expect(soleRoot(html, "videoTitle").textContent).toBe(VIDEO_TITLE);
-		expect(soleRoot(html, "videoDesc").textContent).not.toContain(VIDEO_TITLE);
+		expect(soleRoot(html, "videoDescription").textContent).not.toContain(VIDEO_TITLE);
 		// 播放 · 弹幕数那块是两个计数,不含标题也不含正文。
 		expect(soleRoot(html, "videoStats").textContent).not.toContain(AV_TEXT);
 	});
@@ -135,40 +139,40 @@ describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
 	});
 
 	it("不是投稿视频 → 五块一起收起", async () => {
-		const ids = ["videoCover", "videoDuration", "videoTitle", "videoDesc", "videoStats"];
+		const ids = ["videoCover", "videoDuration", "videoTitle", "videoDescription", "videoStats"];
 		const html = await renderWith("dynamic", ids, "pics");
 		for (const id of ids) expect(blocksOf(html, id), id).toEqual([]);
 	});
 });
 
-describe("动态卡 — pics(图廊)", () => {
+describe("动态卡 — images(图廊)", () => {
 	it("图文:画的是图廊本身(九格),不带正文后面那层间距", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["pics"], "pics"), "pics");
-		expect(hooksOn(root)).toEqual(["pics"]);
-		expect(root.querySelectorAll('[data-bn="pic"]')).toHaveLength(9);
+		const root = soleRoot(await renderWith("dynamic", ["images"], "pics"), "images");
+		expect(hooksOn(root)).toEqual(["images"]);
+		expect(root.querySelectorAll('[data-bn="image"]')).toHaveLength(9);
 		expect(root.textContent).not.toContain("这是一段示例图文正文");
 	});
 
 	it("视频投稿没有图廊 → 整块收起", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["pics"], "video"), "pics")).toEqual([]);
+		expect(blocksOf(await renderWith("dynamic", ["images"], "video"), "images")).toEqual([]);
 	});
 
 	it("转发那条自己没有图 → 整块收起(原动态的图归转发框里那张卡)", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["pics"], "forward"), "pics")).toEqual([]);
+		expect(blocksOf(await renderWith("dynamic", ["images"], "forward"), "images")).toEqual([]);
 	});
 });
 
-describe("动态卡 — forward(转发框)", () => {
+describe("动态卡 — repost(转发框)", () => {
 	it("画的是转发框本身,根挂着 bubble(不是复合块时代的 forward)", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["forward"], "forward"), "forward");
+		const root = soleRoot(await renderWith("dynamic", ["repost"], "forward"), "repost");
 		expect(root.tagName).toBe("DIV");
 		// 框的样子(灰底 / 圆角 / 左边那道蓝 / zoom)住在默认皮肤这个挂点的规则里,认框认它。
 		expect(hooksOn(root)).toEqual(["bubble"]);
 	});
 
 	it("框里是原动态那张卡,跟着同一份皮肤摆:外层的正文是转发语,框里的是原动态正文", async () => {
-		const doc = await renderWith("dynamic", ["forward", "text"], "forward");
-		const inset = soleRoot(doc, "forward");
+		const doc = await renderWith("dynamic", ["repost", "text"], "forward");
+		const inset = soleRoot(doc, "repost");
 		const texts = blocksOf(doc, "text");
 		expect(texts).toHaveLength(2);
 		const [inner] = texts.filter((t) => inset.contains(t));
@@ -179,13 +183,13 @@ describe("动态卡 — forward(转发框)", () => {
 	});
 
 	it("不是转发 → 整块收起", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["forward"]), "forward")).toEqual([]);
+		expect(blocksOf(await renderWith("dynamic", ["repost"]), "repost")).toEqual([]);
 	});
 });
 
 describe("动态卡 — 三个互动数", () => {
 	const CASES: Array<[builtin: string, label: string, count: string]> = [
-		["forwardCount", "转发", "128"],
+		["shareCount", "转发", "128"],
 		["commentCount", "评论", "456"],
 		["likeCount", "点赞", "7890"],
 	];
@@ -201,8 +205,8 @@ describe("动态卡 — 三个互动数", () => {
 		});
 
 		it(`${builtin}:转发框里的原动态没有互动数 → 框里那份收起,外层照画`, async () => {
-			const doc = await renderWith("dynamic", ["forward", builtin], "forward");
-			const inset = soleRoot(doc, "forward");
+			const doc = await renderWith("dynamic", ["repost", builtin], "forward");
+			const inset = soleRoot(doc, "repost");
 			const all = blocksOf(doc, builtin);
 			expect(all).toHaveLength(1);
 			expect(inset.contains(all[0])).toBe(false);
@@ -210,9 +214,9 @@ describe("动态卡 — 三个互动数", () => {
 	}
 });
 
-describe("醒目留言卡 — price / duration / to", () => {
-	it("price:画的是金额数字,档位色的两个变量跟着它自己走", async () => {
-		const root = soleRoot(await renderWith("sc", ["price"]), "price");
+describe("醒目留言卡 — amount / duration / to", () => {
+	it("amount:画的是金额数字,档位色的两个变量跟着它自己走", async () => {
+		const root = soleRoot(await renderWith("sc", ["amount"]), "amount");
 		expect(root.textContent).toBe("¥100");
 		const style = root.getAttribute("style") ?? "";
 		// 金额是渐变裁字:两个变量缺一个,字就是透明的 —— 复合块里它们挂在根上,单独摆没有那个根。
@@ -237,24 +241,24 @@ describe("醒目留言卡 — price / duration / to", () => {
 		expect(root.textContent).not.toContain("示例粉丝");
 		expect(hooksOn(root)).toEqual(["text"]);
 		expect(hooksUnder(root)).toEqual(
-			new Set(["text", "label", "master", "masterAvatar", "masterName"]),
+			new Set(["text", "label", "creator", "creatorAvatar", "creatorName"]),
 		);
 	});
 });
 
-describe("上舰卡 — user / master", () => {
-	it("user:画的是用户名胶囊,档位色变量跟着它自己走", async () => {
-		const root = soleRoot(await renderWith("guard", ["user"]), "user");
+describe("上舰卡 — viewerName / creator", () => {
+	it("viewerName:画的是用户名胶囊,档位色变量跟着它自己走", async () => {
+		const root = soleRoot(await renderWith("guard", ["viewerName"]), "viewerName");
 		expect(root.textContent).toBe("示例粉丝");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
 		expect(hooksUnder(root)).toEqual(new Set(["pill", "text"]));
 	});
 
-	it("master:画的是主播胶囊,主播小头像与主播名的挂点都在", async () => {
-		const root = soleRoot(await renderWith("guard", ["master"]), "master");
+	it("creator:画的是主播胶囊,主播小头像与主播名的挂点都在", async () => {
+		const root = soleRoot(await renderWith("guard", ["creator"]), "creator");
 		expect(root.textContent).toBe("示例 UP 主");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
 		expect(hooksOn(root)).toEqual(["pill"]);
-		expect(hooksUnder(root)).toEqual(new Set(["pill", "masterAvatar", "masterName"]));
+		expect(hooksUnder(root)).toEqual(new Set(["pill", "creatorAvatar", "creatorName"]));
 	});
 });

@@ -17,7 +17,7 @@
  * 必须真被挂上)。
  *
  * 两块**没有根挂点**,因为它们的根不归这里管:`text` 的正文是 VNode 插槽(`node.text`),
- * **不给它包一层壳** —— `body` 挂点挂在 `rich-text.tsx` 的富文本根 div 上;`pics` / `additional`
+ * **不给它包一层壳** —— `body` 挂点挂在 `rich-text.tsx` 的富文本根 div 上;`images` / `attachment`
  * 同理由 `templates/post-content.tsx` 里那几个 builder 画好,挂点住在它们身上。那几段富文本
  * 是决策 7 正文「内置块渲染逻辑不动」的地盘,外观没跟着搬。
  *
@@ -71,7 +71,7 @@ export type PostBlockProps = {
  * 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。
  * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `PostNode.creatorAvatarUrl`)。
  */
-const avatar: BlockRenderer<PostBlockProps> = ({ node }) =>
+const creatorAvatar: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.creatorAvatarUrl ? (
 		<img data-bn="image" class="shrink-0 object-cover" src={node.creatorAvatarUrl} alt="头像" />
 	) : null;
@@ -80,7 +80,7 @@ const avatar: BlockRenderer<PostBlockProps> = ({ node }) =>
  * 创作者名(原子块,被转发的内层卡含动作标签后缀)。名字的**颜色**是数据(付费会员粉 / 常规墨色),留在
  * inline 的 `--bn-up-name-color` 里,皮肤用 `var()` 引。
  */
-const name: BlockRenderer<PostBlockProps> = ({ node }) => (
+const creatorName: BlockRenderer<PostBlockProps> = ({ node }) => (
 	<span
 		data-bn="text"
 		style={{ "--bn-up-name-color": node.creatorIsPremium ? "#FB7299" : "#18191C" }}
@@ -151,7 +151,7 @@ const videoTitle: BlockRenderer<PostBlockProps> = ({ node }) =>
 	) : null;
 
 /** 简介常为空串 —— 空就整块收起,免得标题与播放数之间多出一条空白。 */
-const videoDesc: BlockRenderer<PostBlockProps> = ({ node }) =>
+const videoDescription: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.video?.description ? (
 		<div data-bn="text" class="line-clamp-2">
 			{node.video.description}
@@ -187,13 +187,13 @@ const videoStats: BlockRenderer<PostBlockProps> = ({ node }) =>
  * (`pics` / `pic`)在它画的部件上。没有图就收起。每次调用各画一份 VNode —— 皮肤把这块摆
  * 两回也不会共用同一个实例。
  */
-const pics: BlockRenderer<PostBlockProps> = ({ node }) => buildGallery(node.images ?? []);
+const images: BlockRenderer<PostBlockProps> = ({ node }) => buildGallery(node.images ?? []);
 
 /**
  * 转发框(原子块)。根**就是**那个框,样子(灰底、圆角、左边那道蓝、`zoom`)写在皮肤的
  * `bubble` 规则里;框里那张卡照旧交给 `renderForward` 装。不是转发就收起。
  */
-const forward: BlockRenderer<PostBlockProps> = ({ node, renderForward }) =>
+const repost: BlockRenderer<PostBlockProps> = ({ node, renderForward }) =>
 	node.repost ? <div data-bn="bubble">{renderForward(node.repost)}</div> : null;
 
 /** 互动数三件共用的结构:图标与数并排、竖向居中。间距与字色归皮肤的 `text` 规则。 */
@@ -225,21 +225,21 @@ export const POST_BLOCKS: Record<string, BlockRenderer<PostBlockProps>> = {
 	// 附加卡是 `templates/post-content.tsx` 画好的一整块(挂点住在它身上),这里只把它
 	// 放进格子。从前那层 `px-[16px]` 搬进了皮肤这块 `self` 的 `padding` —— 根是块级 div、
 	// 填满格子,写在外面那层 wrapper 上像素一样。
-	additional: ({ node }) => (node.attachment ? <div>{node.attachment}</div> : null),
+	attachment: ({ node }) => (node.attachment ? <div>{node.attachment}</div> : null),
 
-	avatar,
-	name,
+	creatorAvatar,
+	creatorName,
 	time,
 	topic,
 	text,
 	videoCover,
 	videoDuration,
 	videoTitle,
-	videoDesc,
+	videoDescription,
 	videoStats,
-	pics,
-	forward,
-	forwardCount: statAtom(ICON_FORWARD, (s) => s.shares),
+	images,
+	repost,
+	shareCount: statAtom(ICON_FORWARD, (s) => s.shares),
 	commentCount: statAtom(ICON_COMMENT, (s) => s.comments),
 	likeCount: statAtom(ICON_LIKE, (s) => s.likes),
 };

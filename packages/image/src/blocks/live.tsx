@@ -13,9 +13,9 @@
  * 名字取自 `CARD_SKIN_BUILTIN_BLOCKS.live[<块>].hooks`,是对外 API(`__tests__/card-hooks.test.ts`
  * 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也必须真被挂上)。
  *
- * 数据区那三件(popularity / area / fans)**取代了**原来的 `showPopularity` / `showArea` /
- * `showFans` 三个开关(ADR-0014 决策 16 的 🔗,开关已退役):块级的 `showIf` 管不到复合块内部
- * 的一行,所以改成「想少显示哪件就删哪块」。
+ * 数据区那几件(currentViewers / likes / category / followers / totalViewers)**取代了**原来的
+ * `showPopularity` / `showArea` / `showFans` 三个开关(ADR-0014 决策 16 的 🔗,开关已退役):块级的 `showIf`
+ * 管不到复合块内部的一行,所以改成「想少显示哪件就删哪块」。
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.live`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
@@ -41,80 +41,81 @@ function statusLabel(p: LiveCardView): { text: string; bg: string } {
 }
 
 /**
- * 人气那一格:下播卡换成点赞(ADR-0019 决策 76 —— 下播那一刻的人气是散场时的在线人数,
- * 概括不了这一场),其余状态是此刻在线。那一格没有数就整行不画。
- */
-function statsLeft(p: LiveCardView): string {
-	if (p.status === "end") return p.likes ? `点赞：${p.likes}` : "";
-	return p.currentViewers ? `人气：${p.currentViewers}` : "";
-}
-
-/**
- * 粉丝那一行:开播 / 直播中是当前粉丝数,下播是本场累计观看人数,没在播不画。粉丝数变化
- * **不上默认卡**(决策 76,它进下播文案;皮肤契约照给,想画的皮肤自己画)。
- */
-function followerText(p: LiveCardView): string {
-	if (isOnAir(p)) return p.followers ? `当前粉丝数：${p.followers}` : "";
-	if (p.status === "end") return p.totalViewers ? `累计观看人数：${p.totalViewers}` : "";
-	return "";
-}
-
-/**
  * 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。
  * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `LiveCardInput.author`);拓展直播照旧画。
  */
-const avatar: BlockRenderer<LiveCardView> = (p) =>
+const creatorAvatar: BlockRenderer<LiveCardView> = (p) =>
 	p.creatorAvatarUrl ? (
 		<img data-bn="image" class="object-cover shrink-0" src={p.creatorAvatarUrl} alt="主播头像" />
 	) : null;
 
 /** 主播名(原子块)。 */
-const name: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.creatorName}</span>;
+const creatorName: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.creatorName}</span>;
 
 /** 开播时间(原子块)。 */
 const time: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.time}</span>;
 
 /**
- * 数据区三件(人气 / 分区 / 粉丝)。
+ * 数据区五件(在看人数 / 点赞 / 分类 / 粉丝数 / 累计观看)。每块只画**一样东西**、各自只在该出现的状态下有内容
+ * (㉔c:从前的 `popularity` / `fans` 两块随状态换含义,现在各拆成两块)。那一格没有数就收起,不留一个只有
+ * 前缀的空行 —— B 站那头恒给,拓展没报的话同理。
  *
- * 顶行那两个 span 带 `block`,这不是样子而是复刻复合块里的既有行为:顶行曾是 `flex`,那两个
- * span 作为 flex item 本就被块化了(行盒按自己的字号算);原子块的 wrapper 是普通块容器,
- * span 若还留在行内,行盒会被 wrapper 继承来的基准字号撑高。
+ * 在看人数与点赞(以及分类)那几个 span 带 `block`,这不是样子而是复刻复合块里的既有行为:顶行曾是 `flex`,
+ * 那几个 span 作为 flex item 本就被块化了(行盒按自己的字号算);原子块的 wrapper 是普通块容器,
+ * span 若还留在行内,行盒会被 wrapper 继承来的基准字号撑高。粉丝数与累计观看是 div,本来就是块。
+ *
+ * 状态口径(ADR-0019 决策 76):在看人数开播 / 直播中 / 没在播都有(下播那一刻的在线人数概括不了这一场,所以
+ * 下播不画);点赞与累计观看只有下播;粉丝数只有开播 / 直播中。粉丝数变化**不上默认卡**(它进下播文案;
+ * 皮肤契约的 `stats.followersDelta` 照给,想画的皮肤自己画)。
  */
+const stat =
+	(
+		visible: (p: LiveCardView) => boolean,
+		textOf: (p: LiveCardView) => string,
+		Tag: "span" | "div",
+	): BlockRenderer<LiveCardView> =>
+	(p) => {
+		const text = visible(p) ? textOf(p) : "";
+		if (!text) return null;
+		return Tag === "span" ? (
+			<span data-bn="text" class="block">
+				{text}
+			</span>
+		) : (
+			<div data-bn="text">{text}</div>
+		);
+	};
 
-/**
- * 人气 / 点赞(原子块)。那一格没有数就收起 —— B 站那头恒给(人气与点赞都有初值),拓展没报
- * 的话不留一个「点赞：」后面什么都没有。
- */
-const popularity: BlockRenderer<LiveCardView> = (p) => {
-	const text = statsLeft(p);
-	if (!text) return null;
-	return (
-		<span data-bn="text" class="block">
-			{text}
-		</span>
-	);
-};
+/** 在看人数(原子块):下播以外的状态。 */
+const currentViewers = stat(
+	(p) => p.status !== "end",
+	(p) => (p.currentViewers ? `人气：${p.currentViewers}` : ""),
+	"span",
+);
 
-/**
- * 分区(原子块)。没有分区就收起 —— B 站那头恒给,拓展可以不报,不留一个「分区：」后面什么都
- * 没有(同人气 / 点赞那一格)。
- */
-const area: BlockRenderer<LiveCardView> = (p) => {
-	if (!p.category) return null;
-	return (
-		<span data-bn="text" class="block">
-			{`分区：${p.category}`}
-		</span>
-	);
-};
+/** 点赞(原子块):只有下播。 */
+const likes = stat(
+	(p) => p.status === "end",
+	(p) => (p.likes ? `点赞：${p.likes}` : ""),
+	"span",
+);
 
-/** 粉丝行(原子块):各状态各有各的文案,某态没有就收起。 */
-const fans: BlockRenderer<LiveCardView> = (p) => {
-	const text = followerText(p);
-	if (!text) return null;
-	return <div data-bn="text">{text}</div>;
-};
+/** 分类(原子块)。没有分类就收起 —— 拓展可以不报,不留一个「分区：」后面什么都没有。 */
+const category = stat(
+	() => true,
+	(p) => (p.category ? `分区：${p.category}` : ""),
+	"span",
+);
+
+/** 粉丝数(原子块):开播 / 直播中。 */
+const followers = stat(isOnAir, (p) => (p.followers ? `当前粉丝数：${p.followers}` : ""), "div");
+
+/** 累计观看(原子块):只有下播。 */
+const totalViewers = stat(
+	(p) => p.status === "end",
+	(p) => (p.totalViewers ? `累计观看人数：${p.totalViewers}` : ""),
+	"div",
+);
 
 /**
  * live 卡的块表。每块返回内层 VNode(无 `data-block` —— 由 `renderBlocks` 的 wrapper
@@ -155,12 +156,14 @@ export const LIVE_BLOCKS: Record<string, BlockRenderer<LiveCardView>> = {
 
 	title: (p) => <div data-bn="text">{p.title}</div>,
 
-	desc: (p) => <div data-bn="text">{p.description || "这个主播很懒，什么简介都没写"}</div>,
+	description: (p) => <div data-bn="text">{p.description || "这个主播很懒，什么简介都没写"}</div>,
 
-	avatar,
-	name,
+	creatorAvatar,
+	creatorName,
 	time,
-	popularity,
-	area,
-	fans,
+	currentViewers,
+	likes,
+	category,
+	followers,
+	totalViewers,
 };

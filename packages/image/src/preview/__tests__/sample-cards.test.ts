@@ -20,7 +20,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { renderCardWithSkin } from "../../skin/render-skin";
 import { SAMPLE_AVATAR_REF, sampleCard } from "../sample-cards";
 
-/** 转发框:`forward` 原子块自己的根,挂着 `bubble`。 */
+/** 转发框:`repost` 原子块自己的根,挂着 `bubble`。 */
 const FORWARD_BUBBLE = 'data-bn="bubble"';
 
 /** 卡外框的挂点(`data-bn="frame"`)—— 画出来的东西至少得有个外框。 */
@@ -107,16 +107,16 @@ describe("出厂示例数据 — 确定性", () => {
  * 看不见的东西。
  */
 describe("出厂示例数据 — 动态卡的转发场面", () => {
-	// 出厂默认皮肤里转发框是原子块(`data-block="forward"`),不再是正文复合块里那个挂点。
+	// 出厂默认皮肤里转发框是原子块(`data-block="repost"`),不再是正文复合块里那个挂点。
 	it("转发场面画得出转发框,纯文字场面没有", async () => {
 		const [forward, text] = await Promise.all([render("dynamic", "forward"), render("dynamic")]);
-		expect(forward).toContain('data-block="forward"');
-		expect(text).not.toContain('data-block="forward"');
+		expect(forward).toContain('data-block="repost"');
+		expect(text).not.toContain('data-block="repost"');
 	});
 
 	it("框里是另一整张卡 —— 块跟着同一份皮肤摆,不是写死的旧版式", async () => {
 		const html = await render("dynamic", "forward");
-		const at = html.indexOf('data-block="forward"');
+		const at = html.indexOf('data-block="repost"');
 		expect(at).toBeGreaterThan(-1);
 		const inset = html.slice(at);
 		// 内层的块与外层挂同一批 class(皮肤的块 id),所以一条 CSS 管两层。
@@ -219,7 +219,7 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 describe("出厂示例数据 — 动态卡的图文场面", () => {
 	it("图廊铺满九格,没有视频卡", async () => {
 		const html = await render("dynamic", "pics");
-		expect(html.match(/data-bn="pic"/g)?.length).toBe(9);
+		expect(html.match(/data-bn="image" class="relative/g)?.length).toBe(9);
 		expect(html).not.toContain("【示例视频】");
 	});
 
@@ -292,9 +292,9 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 							grid: { row: 3, column: 1, span: 12 },
 						},
 						{
-							id: "forward",
+							id: "repost",
 							kind: "builtin",
-							builtin: "forward",
+							builtin: "repost",
 							grid: { row: 4, column: 1, span: 12 },
 						},
 					],
@@ -345,7 +345,7 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 
 	it("转发场面里,内层那张卡取的是**原动态**的视频标题", async () => {
 		const html = await probe("forward", "探针:{video.title}");
-		// 转发框是 `forward` 原子块自己的根,挂着根挂点 `bubble` —— 按它找。
+		// 转发框是 `repost` 原子块自己的根,挂着根挂点 `bubble` —— 按它找。
 		// `indexOf` 找不到时是 -1,`slice(-1)` 只剩最后一个字符,失败会伪装成「内容不对」,
 		// 所以先断言真找着了。
 		const at = html.indexOf(FORWARD_BUBBLE);

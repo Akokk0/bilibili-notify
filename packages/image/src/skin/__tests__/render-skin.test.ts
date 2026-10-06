@@ -160,16 +160,16 @@ describe("皮肤渲染器 — 分割线的三条规矩", () => {
 				// data 块三个开关全开、但这份夹具没有粉丝变化 —— 它照画;换成 showIf 假的块来造悬空。
 				builtin(
 					"h",
-					"avatar",
+					"creatorAvatar",
 					{ row: 4, column: 1, span: 12 },
 					{ showIf: "stats.hasFollowersDelta" },
 				),
 				builtin("d2", "divider", { row: 5, column: 1, span: 12 }),
-				builtin("t2", "desc", { row: 6, column: 1, span: 12 }),
+				builtin("t2", "description", { row: 6, column: 1, span: 12 }),
 			]),
 		);
 		// d0 开头被抑制;d1 前面是内容块 → 留;h 没画 → d2 悬空 → 抑制。
-		expect(labels(doc)).toEqual(["title", "divider", "desc"]);
+		expect(labels(doc)).toEqual(["title", "divider", "description"]);
 		expect(doc.querySelectorAll(".bn-blk-d1")).toHaveLength(1);
 	});
 
@@ -178,11 +178,11 @@ describe("皮肤渲染器 — 分割线的三条规矩", () => {
 			liveCard([
 				builtin("d", "divider", { row: 2, column: 1, span: 12 }),
 				builtin("t", "title", { row: 1, column: 1, span: 12 }),
-				builtin("t2", "desc", { row: 3, column: 1, span: 12 }),
+				builtin("t2", "description", { row: 3, column: 1, span: 12 }),
 			]),
 		);
 		// 分割线排在数组第一个,但它的行号在 title 之后 —— 不是「开头的分割线」,该留。
-		expect(labels(doc)).toEqual(["divider", "title", "desc"]);
+		expect(labels(doc)).toEqual(["divider", "title", "description"]);
 		expect(rows(doc)).toEqual(["2", "1", "3"]);
 	});
 
@@ -204,14 +204,14 @@ describe("皮肤渲染器 — 行压缩", () => {
 				builtin("a", "title", { row: 1, column: 1, span: 12 }),
 				builtin(
 					"b",
-					"avatar",
+					"creatorAvatar",
 					{ row: 2, column: 1, span: 12 },
 					{ showIf: "stats.hasFollowersDelta" },
 				),
-				builtin("c", "desc", { row: 3, column: 1, span: 12 }),
+				builtin("c", "description", { row: 3, column: 1, span: 12 }),
 			]),
 		);
-		expect(labels(doc)).toEqual(["title", "desc"]);
+		expect(labels(doc)).toEqual(["title", "description"]);
 		expect(rows(doc)).toEqual(["1", "2"]);
 	});
 
@@ -219,7 +219,7 @@ describe("皮肤渲染器 — 行压缩", () => {
 		const { doc } = await render(
 			liveCard([
 				builtin("a", "title", { row: 3, column: 1, span: 6 }),
-				builtin("b", "desc", { row: 3, column: 7, span: 6 }),
+				builtin("b", "description", { row: 3, column: 7, span: 6 }),
 			]),
 		);
 		expect(rows(doc)).toEqual(["1", "1"]);
@@ -229,12 +229,12 @@ describe("皮肤渲染器 — 行压缩", () => {
 		const { doc } = await render(
 			liveCard([
 				builtin("a", "title", { row: 3, column: 1, span: 12 }),
-				builtin("b", "desc", { row: 1, column: 1, span: 12 }),
+				builtin("b", "description", { row: 1, column: 1, span: 12 }),
 			]),
 		);
 		// desc 的行号更小 → 画出来它在上面。DOM 先后照旧跟数组走(叠放的缺省档靠它),
 		// 位置整个由 grid-row 定:title 落第 2 行、desc 落第 1 行。
-		expect(labels(doc)).toEqual(["title", "desc"]);
+		expect(labels(doc)).toEqual(["title", "description"]);
 		expect(rows(doc)).toEqual(["2", "1"]);
 	});
 
@@ -242,7 +242,7 @@ describe("皮肤渲染器 — 行压缩", () => {
 		const { doc } = await render(
 			liveCard([
 				builtin("a", "title", { row: 1, column: 1, span: 6, rowSpan: 3 }),
-				builtin("b", "desc", { row: 4, column: 1, span: 12 }),
+				builtin("b", "description", { row: 4, column: 1, span: 12 }),
 			]),
 		);
 		// 第 2、3 行没有块「起」在那儿,但 title 跨过去了 —— 压掉的话 desc 会落进 title 身上。
@@ -254,7 +254,7 @@ describe("皮肤渲染器 — 行压缩", () => {
 			liveCard([
 				builtin("a", "title", { row: 1, column: 1, span: 12 }),
 				custom("blank", "", { row: 2, column: 1, span: 12 }),
-				builtin("b", "desc", { row: 3, column: 1, span: 12 }),
+				builtin("b", "description", { row: 3, column: 1, span: 12 }),
 			]),
 		);
 		// 空的自定义块照样是块:压行不收它,下面那块也就不会被提上来。
@@ -265,10 +265,10 @@ describe("皮肤渲染器 — 行压缩", () => {
 		const { doc } = await render(
 			liveCard([
 				builtin("a", "title", { row: 2, column: 1, span: 12 }),
-				builtin("b", "desc", { row: 2, column: 1, span: 12 }),
+				builtin("b", "description", { row: 2, column: 1, span: 12 }),
 			]),
 		);
-		expect(labels(doc)).toEqual(["title", "desc"]);
+		expect(labels(doc)).toEqual(["title", "description"]);
 	});
 });
 
@@ -413,7 +413,7 @@ describe("皮肤渲染器 — CSS 翻译", () => {
 			liveCard([
 				builtin(
 					"hd",
-					"avatar",
+					"creatorAvatar",
 					{ row: 1, column: 1, span: 12 },
 					{
 						// 清洗器的产物:每条选择器都以 self 起头(挂点在它后面),其余段随便写。
@@ -532,7 +532,7 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 			card: {
 				width: 290,
 				blocks: [
-					{ id: "a", kind: "builtin", builtin: "price", grid: { row: 1, column: 1, span: 12 } },
+					{ id: "a", kind: "builtin", builtin: "amount", grid: { row: 1, column: 1, span: 12 } },
 				],
 			},
 			props,

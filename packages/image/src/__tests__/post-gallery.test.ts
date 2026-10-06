@@ -146,22 +146,22 @@ describe("图廊 — 挂点与根", () => {
 		return [...html.matchAll(/data-bn="([^"]*)"/g)].flatMap((m) => (m[1] ?? "").split(/\s+/));
 	}
 
-	it("单图:整个图廊就是那一格,`pics` 与 `pic` 两个挂点落在同一个元素上;根上没有跟在文字后面的间距", async () => {
+	it("单图:整个图廊就是那一格,`images` 与 `image` 两个挂点落在同一个元素上;根上没有跟在文字后面的间距", async () => {
 		const node = nodeFromPost(imagePost([pic()]), FMT);
 		const html = await renderToString(
 			createSSRApp({ render: () => buildGallery(node.images ?? []) as never }),
 		);
-		expect(html).toMatch(/^<div data-bn="pics pic"/);
+		expect(html).toMatch(/^<div data-bn="images image"/);
 		expect(html).not.toContain("mt-[8px]");
 	});
 
-	it("多图:根挂 `pics`,每一格挂 `pic`", async () => {
+	it("多图:根挂 `images`,每一格挂 `image`", async () => {
 		const node = nodeFromPost(imagePost([pic(), pic(), pic()]), FMT);
 		const html = await renderToString(
 			createSSRApp({ render: () => buildGallery(node.images ?? []) as never }),
 		);
-		expect(html).toMatch(/^<div data-bn="pics"/);
-		expect(hooksIn(html).filter((hook) => hook === "pic")).toHaveLength(3);
+		expect(html).toMatch(/^<div data-bn="images"/);
+		expect(hooksIn(html).filter((hook) => hook === "image")).toHaveLength(3);
 	});
 
 	it("没有图 → 图廊是 null(块收起),专栏的头图取 article.images", () => {

@@ -526,7 +526,8 @@ describe("DEFAULT_CARD_SKIN", () => {
 		const SPLITTABLE: Record<"live" | "dynamic" | "sc" | "guard", string[]> = {
 			live: ["header", "data"],
 			dynamic: ["header", "content", "stats"],
-			sc: ["amount", "sender"],
+			// 复合块 `amount` 的名字在 ㉔c 被醒目留言卡的金额原子块接了过去(原 `price`),不再列在这里。
+			sc: ["sender"],
 			guard: ["name"],
 		};
 		for (const [kind, composites] of Object.entries(SPLITTABLE)) {
@@ -1170,7 +1171,7 @@ describe("退役的形态覆盖 — variants", () => {
  */
 describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
 	const card = DEFAULT_CARD_SKIN.cards.dynamic;
-	const VIDEO = ["video-cover", "video-title", "video-desc", "video-stats"];
+	const VIDEO = ["video-cover", "video-title", "video-description", "video-stats"];
 	const rowOf = (id: string) => {
 		const block = card?.blocks.find((b) => b.id === id);
 		if (!block) throw new Error(`默认皮肤的动态卡没有「${id}」这一块`);
@@ -1178,19 +1179,19 @@ describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
 	};
 
 	it("图廊与视频封面从同一行起", () => {
-		expect(rowOf("pics")).toBe(rowOf("video-cover"));
+		expect(rowOf("images")).toBe(rowOf("video-cover"));
 	});
 
 	// 让位让完还得有人接上:转发框与互动数得排在两组媒体**之后**,不然图文那一场里
 	// 图廊会盖到互动数上。
 	it("转发框与互动数排在两组媒体之后", () => {
 		const mediaEnd = Math.max(
-			...[...VIDEO, "pics"].map((id) => {
+			...[...VIDEO, "images"].map((id) => {
 				const b = card?.blocks.find((x) => x.id === id);
 				return (b?.grid.row ?? 0) + ((b?.grid.rowSpan ?? 1) - 1);
 			}),
 		);
-		for (const id of ["forward", "additional", "divider-2", "like-count"]) {
+		for (const id of ["repost", "attachment", "divider-2", "like-count"]) {
 			expect(rowOf(id), `${id} 撞进了媒体那片行`).toBeGreaterThan(mediaEnd);
 		}
 	});
@@ -1261,8 +1262,8 @@ describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 //
 // ㉔a(2026-10-06)先钉住改名前的样子:七个卡种键、每种卡的字段路径(带类型)、每种卡的块 key、每块的挂点。
 // 皮肤格式的这三张表是「对外 API,只增不删不改名」,而 ㉔ 是它们改名的那一次(皮肤格式版本抬一次):后面几小片按改名表逐项
-// 改下面的字面量,每一处改名都在这里留下一笔 diff。㉔b 已把**字段路径**改到最终名字;**卡种键**(㉔e)、**块 key 与挂点**(㉔c)
-// 还是老叫法,各自随那一片改。**字面量是故意写死的,不从常量现算** —— 现算的断言在常量被改坏时跟着一起变,永远不会红。
+// 改下面的字面量,每一处改名都在这里留下一笔 diff。㉔b 已把**字段路径**改到最终名字,㉔c 已把**块 key 与挂点**改到最终名字;**卡种键**(㉔e)
+// 还是老叫法,随那一片改。**字面量是故意写死的,不从常量现算** —— 现算的断言在常量被改坏时跟着一起变,永远不会红。
 
 const FIELDS: Record<string, string[]> = {
 	live: [
@@ -1338,50 +1339,52 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 		cover: ["image"],
 		status: ["pill"],
 		title: ["text"],
-		desc: ["text"],
+		description: ["text"],
 		divider: ["line"],
-		avatar: ["image"],
-		name: ["text"],
+		creatorAvatar: ["image"],
+		creatorName: ["text"],
 		time: ["text"],
-		popularity: ["text"],
-		area: ["text"],
-		fans: ["text"],
+		currentViewers: ["text"],
+		likes: ["text"],
+		category: ["text"],
+		followers: ["text"],
+		totalViewers: ["text"],
 	},
 	dynamic: {
-		additional: ["card", "cover", "button"],
+		attachment: ["card", "cover", "button"],
 		divider: ["line"],
-		avatar: ["image"],
-		name: ["text"],
+		creatorAvatar: ["image"],
+		creatorName: ["text"],
 		time: ["text"],
 		topic: ["text"],
 		text: ["body"],
 		videoCover: ["image"],
 		videoDuration: ["pill"],
 		videoTitle: ["text"],
-		videoDesc: ["text"],
+		videoDescription: ["text"],
 		videoStats: ["text", "stat"],
-		pics: ["pics", "pic"],
-		forward: ["bubble"],
-		forwardCount: ["text", "icon"],
+		images: ["images", "image"],
+		repost: ["bubble"],
+		shareCount: ["text", "icon"],
 		commentCount: ["text", "icon"],
 		likeCount: ["text", "icon"],
 	},
 	sc: {
 		message: ["bubble", "text"],
 		divider: ["line"],
-		avatar: ["image"],
-		name: ["pill"],
-		price: ["text"],
+		viewerAvatar: ["image"],
+		viewerName: ["pill"],
+		amount: ["text"],
 		duration: ["pill"],
-		to: ["text", "label", "master", "masterAvatar", "masterName"],
+		to: ["text", "label", "creator", "creatorAvatar", "creatorName"],
 	},
 	guard: {
-		badge: ["image"],
-		text: ["text"],
+		icon: ["image"],
+		announcement: ["text"],
 		divider: ["line"],
-		avatar: ["image"],
-		user: ["pill", "text"],
-		master: ["pill", "masterAvatar", "masterName"],
+		viewerAvatar: ["image"],
+		viewerName: ["pill", "text"],
+		creator: ["pill", "creatorAvatar", "creatorName"],
 	},
 	roastBoard: {
 		body: [],

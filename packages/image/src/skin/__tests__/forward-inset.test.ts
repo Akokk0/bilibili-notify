@@ -9,7 +9,7 @@
  * 这份钉的就是那条线:内层与外层**同一份皮肤、同一套块、同一批 class**,而数据各算各的
  * (`showIf` 与占位符在内层要看内层那条动态)。
  *
- * 每张测试皮肤都要摆一个 `forward` 块 —— 转发框就是它画的(从前它长在 `content` 复合块
+ * 每张测试皮肤都要摆一个 `repost` 块 —— 转发框就是它画的(从前它长在 `content` 复合块
  * 里,复合块退役后成了独立的原子块)。它在**内层**没有数据,所以自己收起,不进内层块序。
  */
 
@@ -32,7 +32,7 @@ beforeAll(async () => {
 });
 
 /**
- * 下面几条拿 `name`(UP 主名)当「头部那一块」的替身:它恒有数据。从前用的是 `avatar`,而 B 站这条路
+ * 下面几条拿 `creatorName`(创作者名)当「头部那一块」的替身:它恒有数据。从前用的是 `avatar`,而 B 站这条路
  * 造的 node 到 3a 之前不带头像地址、头像块会整块收起(见 `PostNode.avatarUrl`),替身就画不出来了。
  */
 const block = (
@@ -56,7 +56,7 @@ async function render(blocks: CardSkinCard["blocks"]): Promise<Document> {
 }
 
 /**
- * 这张卡上的转发框。`forward` 原子块的根**就是**那个框,它挂着自己的根挂点 `bubble`
+ * 这张卡上的转发框。`repost` 原子块的根**就是**那个框,它挂着自己的根挂点 `bubble`
  * (框的样子写在默认皮肤这个挂点的规则里),所以按挂点认。
  */
 function inner(doc: Document): Element {
@@ -77,22 +77,22 @@ describe("转发框里的内层卡 — 跟着皮肤走", () => {
 		// 皮肤把正文摆在头部**上面**:内层也得是这个顺序。
 		const doc = await render([
 			block("c", "text", 1),
-			block("h", "name", 2),
-			block("f", "forward", 3),
+			block("h", "creatorName", 2),
+			block("f", "repost", 3),
 		]);
-		expect(innerLabels(doc)).toEqual(["text", "name"]);
+		expect(innerLabels(doc)).toEqual(["text", "creatorName"]);
 	});
 
 	it("皮肤没摆的块,内层也不画", async () => {
-		const doc = await render([block("c", "text", 1), block("f", "forward", 2)]);
+		const doc = await render([block("c", "text", 1), block("f", "repost", 2)]);
 		expect(innerLabels(doc)).toEqual(["text"]);
 	});
 
 	it("内层块挂的是同一批 bn-blk- class —— 一条皮肤 CSS 同时管内外两层", async () => {
 		const doc = await render([
-			block("h", "name", 1),
+			block("h", "creatorName", 1),
 			block("c", "text", 2),
-			block("f", "forward", 3),
+			block("f", "repost", 3),
 		]);
 		expect([...inner(doc).querySelectorAll(".bn-blk-h")].length).toBe(1);
 		expect(doc.querySelectorAll(".bn-blk-h").length).toBe(2);
@@ -100,9 +100,9 @@ describe("转发框里的内层卡 — 跟着皮肤走", () => {
 
 	it("内层是网格容器 —— 皮肤的分栏在内层照样成立", async () => {
 		const doc = await render([
-			block("h", "name", 1),
+			block("h", "creatorName", 1),
 			block("c", "text", 2),
-			block("f", "forward", 3),
+			block("f", "repost", 3),
 		]);
 		const grid = inner(doc).firstElementChild;
 		expect(grid?.getAttribute("style") ?? "").toContain("display:grid");
@@ -114,7 +114,7 @@ describe("转发框里的内层卡 — 数据各算各的", () => {
 		const doc = await render([
 			customBlock("who", "<div>{creator.name}</div>", 1),
 			block("c", "text", 2),
-			block("f", "forward", 3),
+			block("f", "repost", 3),
 		]);
 		const all = [...doc.querySelectorAll(".bn-blk-who")].map((el) => el.textContent);
 		expect(all).toEqual(["示例转发者", "示例UP·大会员"]);
@@ -124,7 +124,7 @@ describe("转发框里的内层卡 — 数据各算各的", () => {
 		const doc = await render([
 			block("c", "text", 1),
 			customBlock("tag", "<div>转发</div>", 2),
-			block("f", "forward", 3),
+			block("f", "repost", 3),
 		]);
 		// 外层那份画出来了(它确实是转发),内层那份没有。
 		expect(doc.querySelectorAll(".bn-blk-tag").length).toBe(2);
@@ -132,7 +132,7 @@ describe("转发框里的内层卡 — 数据各算各的", () => {
 		const guarded = await render([
 			block("c", "text", 1),
 			{ ...customBlock("tag", "<div>转发</div>", 2), showIf: "post.hasRepost" } as never,
-			block("f", "forward", 3),
+			block("f", "repost", 3),
 		]);
 		expect(guarded.querySelectorAll(".bn-blk-tag").length).toBe(1);
 		expect(innerLabels(guarded)).toEqual(["text"]);

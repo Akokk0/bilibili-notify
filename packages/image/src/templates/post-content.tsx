@@ -11,7 +11,7 @@
  * - `node.text` / `node.media` 是同一份正文**拆开的两半**(决策 8 的 2026-09-18 🔗),分别进
  *   `text` / `media` 原子块:文字那半带着 `body` 挂点(挂在 `rich-text.tsx` 的根 div 上),
  *   媒体那半是主视频卡(`video` / `videoCover` / `videoTitle`)或图廊(`pics` / `pic`)。
- * - `node.attachment` 进 `additional` 块 —— 四种附加卡的外壳(`card`)、封面(`cover`)与
+ * - `node.attachment` 进 `attachment` 块 —— 四种附加卡的外壳(`card`)、封面(`cover`)与
  *   按钮(`button`)。`cover` 一律挂在**封面 img** 上(与 `videoCover` 同口径),不挂外面那层定
  *   宽框:框是版式,图才是「封面」。
  *
@@ -169,7 +169,11 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 			) : null;
 		return (
 			// 单图时整个图廊就是那一格,两个挂点落在同一个元素上。
-			<div data-bn="pics pic" class="relative overflow-hidden rounded-lg" style="max-width: 600px;">
+			<div
+				data-bn="images image"
+				class="relative overflow-hidden rounded-lg"
+				style="max-width: 600px;"
+			>
 				{isSuperLong ? (
 					<div class="relative" style="height: 400px; overflow: hidden;">
 						<img class="w-full h-full object-cover object-top block" src={pic.url} alt="" />
@@ -205,7 +209,7 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 		? "relative w-[calc(50%-4px)] aspect-square shrink-0"
 		: "relative w-[calc(33.33%-6px)] aspect-square shrink-0";
 	return (
-		<div data-bn="pics" class="flex flex-wrap gap-[8px]" style="max-width: 600px;">
+		<div data-bn="images" class="flex flex-wrap gap-[8px]" style="max-width: 600px;">
 			{shown.map((p, i) => {
 				const isLong = tallerThan(p, 2);
 				const badge = picBadgeText(p, isLong);
@@ -213,7 +217,7 @@ export function buildGallery(images: readonly GalleryImage[]): VNode | null {
 				// 三列也就散了。
 				const more = overflow > 0 && i === shown.length - 1 ? overflow : 0;
 				return (
-					<div key={i} data-bn="pic" class={containerClass}>
+					<div key={i} data-bn="image" class={containerClass}>
 						<img
 							class={`w-full h-full object-cover ${isLong ? "object-top" : ""} rounded`}
 							src={p.url}

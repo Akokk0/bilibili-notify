@@ -336,7 +336,7 @@ function uniqueName(base: string, taken: ReadonlySet<string>, maxLen?: number): 
 /**
  * 给新块起一个这张卡里没人用的 id。
  *
- * 内置块名不全合规(2026-09-18 起有驼峰的 `forwardCount` 这类),而 id 是**存进皮肤包**的
+ * 内置块名不全合规(2026-09-18 起有驼峰的 `shareCount` 这类),而 id 是**存进皮肤包**的
  * 东西,门在 schema 那头(`^[a-z][a-z0-9-]{0,31}$`)—— 所以这里先洗一遍,不靠目录里的
  * 名字恰好都是小写。让开撞名那半归 {@link uniqueName}。
  */

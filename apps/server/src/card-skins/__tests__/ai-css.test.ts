@@ -117,8 +117,8 @@ describe("提示词拼装", () => {
 	 * (决策 8 的 2026-09-18 🔗:封面就是一张图,状态角标自己是一块)。
 	 */
 	it("块的挂点连人话名一起递给模型 —— 名字记不住是写皮肤第一道坎", () => {
-		const user = prepared({ kind: "dynamic", blockId: "additional" }).user("圆角大一点");
-		const hooks = Object.entries(CARD_SKIN_BUILTIN_BLOCKS.dynamic.additional?.hooks ?? {});
+		const user = prepared({ kind: "dynamic", blockId: "attachment" }).user("圆角大一点");
+		const hooks = Object.entries(CARD_SKIN_BUILTIN_BLOCKS.dynamic.attachment?.hooks ?? {});
 		expect(hooks.length).toBeGreaterThan(0);
 		for (const [hook, label] of hooks) {
 			expect(user).toContain(`[data-bn="${hook}"]`);
@@ -127,7 +127,7 @@ describe("提示词拼装", () => {
 	});
 
 	it("清洗用的是这个框自己那张挂点表", () => {
-		const additional = prepared({ kind: "dynamic", blockId: "additional" });
+		const additional = prepared({ kind: "dynamic", blockId: "attachment" });
 		const own = additional.sanitize('[data-bn="button"]{color:red}');
 		expect(own).toMatchObject({ ok: true, warnings: [] });
 		const foreign = additional.sanitize('[data-bn="avatar"]{color:red}');

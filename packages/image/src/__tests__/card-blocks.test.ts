@@ -53,16 +53,16 @@ const SPLIT_ATOMS: Record<string, Record<string, string>> = {
 		videoCover: "视频封面",
 		videoDuration: "视频时长",
 		videoTitle: "视频标题",
-		videoDesc: "视频简介",
+		videoDescription: "视频简介",
 		videoStats: "播放 · 弹幕数",
-		pics: "图廊",
-		forward: "转发框",
-		forwardCount: "转发数",
+		images: "图廊",
+		repost: "转发框",
+		shareCount: "转发数",
 		commentCount: "评论数",
 		likeCount: "点赞数",
 	},
-	sc: { price: "金额", duration: "时长胶囊", to: "「SC to」那一行" },
-	guard: { user: "用户名胶囊", master: "主播胶囊" },
+	sc: { amount: "金额", duration: "时长胶囊", to: "「SC to」那一行" },
+	guard: { viewerName: "用户名胶囊", creator: "主播胶囊" },
 };
 
 describe("块库 — 2026-09-18 补的原子块在目录里", () => {
@@ -91,7 +91,7 @@ describe("块库 — 2026-09-18 补的原子块在目录里", () => {
 const NON_ATOM: Record<string, readonly string[]> = {
 	live: [],
 	// 预约 / 商品 / 通用 / 关联视频四种形态结构各异,字段也不在契约里 —— 主人拍板不拆。
-	dynamic: ["additional"],
+	dynamic: ["attachment"],
 	sc: [],
 	guard: [],
 	// 三种不可编辑卡:一块就是一整张卡。

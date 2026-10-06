@@ -44,7 +44,7 @@ beforeAll(async () => {
 	if (!live || !guard) throw new Error("夹具表里少了 live-streaming / guard-captain");
 	liveProps = (await live.build()).props as unknown as LiveCardView;
 	// 夹具是 B 站形状、不给观众头像(头像块整块收起);这一组数的是「五个块各一个格子层」,所以补一个头像地址让
-	// `avatar` 块也画出来。
+	// `viewerAvatar` 块也画出来。
 	guardProps = {
 		...((await guard.build()).props as unknown as MembershipCardView),
 		viewerAvatarUrl: "data:image/png;base64,FACE",
@@ -185,7 +185,7 @@ describe("格子层 — 哪些声明跟着搬到外层", () => {
 });
 
 describe("格子层 — 自带 data-block 的块", () => {
-	// 上舰徽章的块根自带 `data-block="badge"`,今天靠 `selfLabelled` 躲开「一块两个
+	// 上舰徽章的块根自带 `data-block="icon"`,今天靠 `selfLabelled` 躲开「一块两个
 	// data-block」。加了外层之后这个特例照旧成立:外层挂的是 data-cell,不是 data-block。
 	it("上舰徽章:外层是 data-cell,DOM 里仍只有一个 [data-block]", async () => {
 		const { vnode } = renderSkinnedCard({
@@ -195,8 +195,8 @@ describe("格子层 — 自带 data-block 的块", () => {
 		});
 		const doc = new JSDOM(await renderToString(createSSRApp({ render: () => vnode }))).window
 			.document;
-		expect(doc.querySelectorAll('[data-block="badge"]')).toHaveLength(1);
-		const cell = doc.querySelector('[data-cell="badge"]');
+		expect(doc.querySelectorAll('[data-block="icon"]')).toHaveLength(1);
+		const cell = doc.querySelector('[data-cell="icon"]');
 		expect(cell).not.toBeNull();
 		expect(cell?.hasAttribute("data-block")).toBe(false);
 		expect(cell?.getAttribute("style")).toContain("grid-column:9 / span 4");
@@ -213,6 +213,6 @@ describe("格子层 — 自带 data-block 的块", () => {
 			.document;
 		expect(
 			[...doc.querySelectorAll("[data-cell]")].map((el) => el.getAttribute("data-cell")),
-		).toEqual(["avatar", "user", "master", "text", "badge"]);
+		).toEqual(["viewer-avatar", "viewer-name", "creator", "announcement", "icon"]);
 	});
 });

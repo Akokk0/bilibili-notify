@@ -29,16 +29,18 @@ describe("新默认皮肤 — 转发框里的内层卡也是原子块", () => {
 	it("框里摆的是头像 / 名字 / 时间 / 正文这些原子块,没有头部与正文复合块", async () => {
 		const html = await render("dynamic", "forward", DEFAULT_CARD_SKIN);
 		const { document } = new JSDOM(html).window;
-		const inset = document.querySelector('[data-block="forward"]');
+		const inset = document.querySelector('[data-block="repost"]');
 		expect(inset).not.toBeNull();
 		const inner = [...(inset?.querySelectorAll("[data-block]") ?? [])].map((e) =>
 			e.getAttribute("data-block"),
 		);
 		// 转发框里那条是视频投稿,所以视频卡那几块也在 —— 内层与外层同一份皮肤、同一套块。
-		expect(inner).toEqual(expect.arrayContaining(["name", "time", "videoCover", "videoTitle"]));
+		expect(inner).toEqual(
+			expect.arrayContaining(["creatorName", "time", "videoCover", "videoTitle"]),
+		);
 		// 示例作者带内置的示例头像引用(`SAMPLE_AVATAR_REF`),示例的解析口认得它:内层卡的头像块也在。
 		// (头像块没有数据就收起 —— 真出卡里 B 站这条路到 3a 之前不给头像引用,见 `generate-post-card.test.ts`。)
-		expect(inner).toContain("avatar");
+		expect(inner).toContain("creatorAvatar");
 		expect(inner).not.toContain("header");
 		expect(inner).not.toContain("content");
 	});

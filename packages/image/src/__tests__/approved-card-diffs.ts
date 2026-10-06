@@ -173,6 +173,43 @@ const MEMBERSHIP_ADMIN_SWAP_DROPPED = {
 } as const;
 
 /**
+ * ㉔c(2026-10-06):块名、挂点名与字段用同一套词,**全部改一遍**(皮肤格式版本只在 alpha 前抬一次的那一次)。块名进 HTML 的
+ * `data-block`,块 id 进 `bn-blk-<id>` / `data-cell`,挂点名进 `data-bn`。默认皮肤里块 id 默认是块名的连字符写法
+ * (`creatorAvatar` → `creator-avatar`;块 id 只准小写字母、数字与连字符),显式块 id 里带旧叫法的也跟着改
+ * (`video-desc` → `video-description`、`forward-count` → `share-count`)。画面不变,**块 CSS 的声明一个字没动**,只有选择器
+ * 与属性里的名字变了。
+ *
+ * 十六个走默认皮肤、没拆块的样例(`dynamic-*` 十份、醒目留言三份、会员三份)同一次批准:把变更前快照里的旧名按改名表机械替换成新名,
+ * 与新快照**逐字节相同**(脚本逐样例比过)。改名表见 `docs/1.0/construction-plan.md` 的「㉔ 开片」。
+ */
+const BLOCK_VOCABULARY_RENAMED = {
+	category: "master-approved",
+	approvedOn: "2026-10-06",
+	change:
+		"块名、挂点名与块 id 改用同一套词(data-block / bn-blk-<id> / data-cell / data-bn 里的名字变了),画面与块 CSS 声明一字未动",
+	basis: "ADR-0023 决策 3 的 2026-10-06 🔗(㉔ 开片拷问):块名、挂点名与字段用同一套词",
+} as const;
+
+/**
+ * ㉔c(2026-10-06):直播卡随状态换含义的两块拆成四块(`popularity` → `currentViewers` + `likes`、`fans` → `followers` +
+ * `totalViewers`),每块只画一样东西、各自只在该出现的状态下有内容,默认皮肤里摆在原来那两块的位置。别的块名与块 id 一样
+ * 跟着改(`avatar` / `name` / `desc` / `area` → `creatorAvatar` / `creatorName` / `description` / `category`)。
+ *
+ * 字节上:没渲染的块不输出任何东西(整块收起,wrapper 与块 CSS 都不出),所以一张卡里仍只出现原来那两块位置上的那一块 ——
+ * 开播 / 直播中是 `currentViewers` / `followers`,下播是 `likes` / `totalViewers`,它们的块 CSS 与原 `popularity` /
+ * `fans` 的**逐字相同**。旧快照按改名表(`popularity` / `fans` 按那张卡的状态换成对应的新块)机械替换后,与新快照逐字节相同。
+ * 四个直播样例同一次批准。
+ */
+const LIVE_STATS_BLOCKS_SPLIT = {
+	category: "master-approved",
+	approvedOn: "2026-10-06",
+	change:
+		"直播卡数据区随状态换含义的两块拆成四块(popularity → currentViewers / likes,fans → followers / totalViewers),块名、块 id、挂点名同步改用新词;画面不变",
+	basis:
+		"ADR-0023 决策 3 的 2026-10-06 🔗(㉔ 开片拷问):直播卡随状态换含义的两块拆成四块;块名、挂点名与字段用同一套词",
+} as const;
+
+/**
  * ㉓c 第 3 步(2026-10-05):醒目留言卡的时长走核心统一的排版 `formatDuration`、金额走 `formatAmount`。
  * 预期只有时长文字变,金额字节不变 —— 实测正是如此:`sc-low` 的时长胶囊「60秒」→「1分」(少 1 字节),
  * `¥30` 一个字没动;`sc-high` 的「2小时」两种写法本来就一样,字节不变;`sc-custom-layout` 的版式里没摆时长块,不变。
@@ -335,5 +372,27 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "guard-governor", ...MEMBERSHIP_ADMIN_SWAP_DROPPED, hash: "c6046af40cdb3746" },
 		// ㉓c 第 3 步:醒目留言卡的时长 / 金额走核心的统一排版。
 		{ sample: "sc-low", ...SUPERCHAT_DURATION_FORMATTED, hash: "c9155605556417e8" },
+		// ㉔c:块名、挂点名与块 id 改用同一套词。
+		{ sample: "dynamic-article", ...BLOCK_VOCABULARY_RENAMED, hash: "c4d925ddb89c44b5" },
+		{ sample: "dynamic-av", ...BLOCK_VOCABULARY_RENAMED, hash: "cdbfc71d73730c3c" },
+		{ sample: "dynamic-charge-only", ...BLOCK_VOCABULARY_RENAMED, hash: "9ed916665e49ad1f" },
+		{ sample: "dynamic-custom-layout", ...BLOCK_VOCABULARY_RENAMED, hash: "d08c0e6075fa52a9" },
+		{ sample: "dynamic-draw-single", ...BLOCK_VOCABULARY_RENAMED, hash: "0205801e97f06d9d" },
+		{ sample: "dynamic-draw", ...BLOCK_VOCABULARY_RENAMED, hash: "4a38fe9500087ef8" },
+		{ sample: "dynamic-forward", ...BLOCK_VOCABULARY_RENAMED, hash: "d291f3b6905be44d" },
+		{ sample: "dynamic-unrenderable", ...BLOCK_VOCABULARY_RENAMED, hash: "e52a5afe684ea5d5" },
+		{ sample: "dynamic-with-additional", ...BLOCK_VOCABULARY_RENAMED, hash: "384cdf3298cd7501" },
+		{ sample: "dynamic-word", ...BLOCK_VOCABULARY_RENAMED, hash: "015120578aaefea9" },
+		{ sample: "guard-badge-left", ...BLOCK_VOCABULARY_RENAMED, hash: "bb046499f81d892b" },
+		{ sample: "guard-captain", ...BLOCK_VOCABULARY_RENAMED, hash: "8194193e29d3eb69" },
+		{ sample: "guard-governor", ...BLOCK_VOCABULARY_RENAMED, hash: "2687d90e60dc6c4f" },
+		{ sample: "sc-custom-layout", ...BLOCK_VOCABULARY_RENAMED, hash: "b90b32246bd52667" },
+		{ sample: "sc-high", ...BLOCK_VOCABULARY_RENAMED, hash: "c5eeddec7b251038" },
+		{ sample: "sc-low", ...BLOCK_VOCABULARY_RENAMED, hash: "fd994311c43241cb" },
+		// ㉔c:直播卡随状态换含义的两块拆成四块。
+		{ sample: "live-ended", ...LIVE_STATS_BLOCKS_SPLIT, hash: "e33076cdcfe5924a" },
+		{ sample: "live-minimal", ...LIVE_STATS_BLOCKS_SPLIT, hash: "757474e9ae300ea1" },
+		{ sample: "live-streaming", ...LIVE_STATS_BLOCKS_SPLIT, hash: "7b364adbfb42801c" },
+		{ sample: "live-with-fontface", ...LIVE_STATS_BLOCKS_SPLIT, hash: "17b6355ef07a2733" },
 	],
 };

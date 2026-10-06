@@ -28,7 +28,7 @@ beforeEach(async () => {
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
-/** 转发框:`forward` 原子块自己的根,挂着根挂点 `bubble`。 */
+/** 转发框:`repost` 原子块自己的根,挂着根挂点 `bubble`。 */
 const FORWARD_BUBBLE = 'data-bn="bubble"';
 
 /** 一套动态卡皮肤:一个写着占位符的自定义块 + 正文块(转发框住在正文块里)。 */
@@ -51,15 +51,15 @@ function skinWith(html: string): unknown {
 						grid: { row: 3, column: 1, span: 12 },
 					},
 					{
-						id: "pics",
+						id: "images",
 						kind: "builtin",
-						builtin: "pics",
+						builtin: "images",
 						grid: { row: 4, column: 1, span: 12 },
 					},
 					{
-						id: "forward",
+						id: "repost",
 						kind: "builtin",
-						builtin: "forward",
+						builtin: "repost",
 						grid: { row: 5, column: 1, span: 12 },
 					},
 				],
@@ -105,7 +105,7 @@ describe("实时预览 — 转发场面", () => {
 			preview(skinWith("<div>x</div>"), "forward"),
 			preview(skinWith("<div>x</div>")),
 		]);
-		// 转发框是 `forward` 原子块自己的根,挂着根挂点 `bubble`。
+		// 转发框是 `repost` 原子块自己的根,挂着根挂点 `bubble`。
 		expect(forward).toContain(FORWARD_BUBBLE);
 		expect(text).not.toContain(FORWARD_BUBBLE);
 	});
