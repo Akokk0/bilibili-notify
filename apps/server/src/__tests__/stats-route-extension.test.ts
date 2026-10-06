@@ -396,3 +396,104 @@ describe("拓展行:缓存键", () => {
 		expect(reads).toBe(after);
 	});
 });
+
+describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,每一格都有非平凡的值)", () => {
+	// 验红:把 routes/stats.ts 成行处的 `dynamics: hasCoverage ? counts.dynamics : null` 改成取 counts.archives,本条红。
+	it("GET /overview 的完整返回", async () => {
+		const body = await get(
+			makeDeps({
+				bili: [{ id: B1, uid: "42" }],
+				ext: [{ id: E1, externalId: "MS4wLjAB/甲" }],
+				fansEntries: [{ subscriptionId: B1, uid: "42", current: 1060 }],
+				profileFans: { [E1]: 540 },
+				liveExt: new Set([E1]),
+				samples: {
+					// 05-13 有两个样本,取日末值 1010;05-14 没有样本。窗口之前的样本不在夹具里 → 首日没有基线。
+					[B1]: [
+						{ ts: at(4), value: 1000 },
+						{ ts: at(3, 3), value: 1005 },
+						{ ts: at(3), value: 1010 },
+						{ ts: at(1), value: 1030 },
+						{ ts: at(0, 2), value: 1050 },
+					],
+					[E1]: [
+						{ ts: at(3), value: 500 },
+						{ ts: at(2), value: 520 },
+						{ ts: at(0, 2), value: 530 },
+					],
+				},
+				posts: {
+					[B1]: [
+						{ id: "v1", kind: "video", ts: at(3) },
+						{ id: "p1", kind: "post", ts: at(2) },
+						{ id: "p2", kind: "post", ts: at(1, 2) },
+						// 开播公告:不算作品、不进热力图,只当「最后活动」的证据(它是最晚的一条)。
+						{ id: "l1", kind: "live", ts: at(0, 1) },
+					],
+					[E1]: [
+						{ id: "ev", kind: "video", ts: at(4) },
+						{ id: "ep", kind: "post", ts: at(0, 5) },
+					],
+				},
+				sessions: {
+					[B1]: [
+						{ startedAt: at(3, 4), endedAt: at(3, 2), peakViewers: 1200 },
+						{ startedAt: at(1, 8), endedAt: at(1, 5), peakViewers: 800 },
+					],
+					[E1]: [
+						{ startedAt: at(2, 6), endedAt: at(2, 4), peakViewers: 500 },
+						// 仍在进行的一场:时长按开播到现在(1 小时)算,没有累计观看。
+						{ startedAt: at(0, 1), current: true },
+					],
+				},
+				seen: { [E1]: [{ ts: at(4) }, { ts: at(2) }, { ts: at(0, 3) }] },
+			}),
+		);
+		expect(body).toStrictEqual({
+			days: 5,
+			rows: [
+				{
+					subscriptionId: B1,
+					uid: "42",
+					fans: 1060,
+					net1d: 20,
+					net7d: null,
+					netWindow: 50,
+					series: [null, 10, null, 20, 20],
+					cumulative: [1000, 1010, null, 1030, 1050],
+					activity: [0, 2, null, 2, 0],
+					archives: 1,
+					dynamics: 2,
+					liveSessions: 2,
+					liveHours: 5,
+					liveTimedSessions: 2,
+					maxViewers: 1200,
+					avgViewers: 1000,
+					lastActivityAt: at(0, 1),
+					live: false,
+				},
+				{
+					subscriptionId: E1,
+					extensionId: EXT,
+					externalId: "MS4wLjAB/甲",
+					fans: 540,
+					net1d: 10,
+					net7d: null,
+					netWindow: 30,
+					series: [null, null, 20, null, 10],
+					cumulative: [null, 500, 520, null, 530],
+					activity: [1, null, 1, null, 2],
+					archives: 1,
+					dynamics: 1,
+					liveSessions: 2,
+					liveHours: 3,
+					liveTimedSessions: 2,
+					maxViewers: 500,
+					avgViewers: 500,
+					lastActivityAt: at(0, 1),
+					live: true,
+				},
+			],
+		});
+	});
+});

@@ -507,3 +507,42 @@ describe("两支混着比(ADR-0020 决策 12 / 3 / 18)", () => {
 		expect(data.名称).toBe("抖音同号");
 	});
 });
+
+describe("overview 行 → 提示词:「投稿 / 动态」取的是行上的 archives / dynamics", () => {
+	beforeEach(() => {
+		comment.mockClear();
+	});
+	const rowWith = (uid: string, archives: number | null, dynamics: number | null) => ({
+		...row(uid),
+		archives,
+		dynamics,
+	});
+	const dataLine = () => String(comment.mock.calls.at(-1)?.[0]).split("\n")[1] ?? "";
+
+	// 验红:把 roast-generate.ts 的 toRoastInput 里 archives / dynamics 两行对调取值,本组全红。
+	it("榜单:每一行的 投稿 / 动态 各取各的格,null 写「无记录」", async () => {
+		await generateBoardRoast(makeDeps(["1", "2"]), {
+			days: 7,
+			tz: 0,
+			fetchOverview: async () =>
+				({ rows: [rowWith("1", 3, 5), rowWith("2", null, 7)] }) as unknown as StatsOverviewResponse,
+		});
+		const table = JSON.parse(dataLine()) as Array<Record<string, unknown>>;
+		expect(table.map((t) => [t.投稿, t.动态])).toEqual([
+			[3, 5],
+			["无记录", 7],
+		]);
+	});
+
+	it("单人:同样两格", async () => {
+		await generateSoloRoast(makeDeps(["1"]), {
+			subscriptionId: biliId("1"),
+			days: 7,
+			tz: 0,
+			fetchOverview: async () =>
+				({ rows: [rowWith("1", 3, 5)] }) as unknown as StatsOverviewResponse,
+		});
+		const data = JSON.parse(dataLine()) as Record<string, unknown>;
+		expect([data.投稿, data.动态]).toEqual([3, 5]);
+	});
+});

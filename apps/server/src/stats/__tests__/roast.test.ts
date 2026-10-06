@@ -313,3 +313,31 @@ describe("parseSoloRoastReply", () => {
 		expect(r && "uid" in r).toBe(false);
 	});
 });
+
+// 验红:把 roast.ts 里 buildRoastPrompt / buildSoloRoastPrompt 的「投稿」与「动态」两格对调取值,本组全红。
+describe("提示词里的「投稿 / 动态」两个数 —— 取的是 archives / dynamics 这两格,各自不串", () => {
+	const UP: RoastInput = { ...(UPS[0] as RoastInput), archives: 3, dynamics: 5 };
+
+	it("榜单:数据表里 投稿=archives、动态=dynamics,写成 JSON 片段", () => {
+		const p = buildRoastPrompt([UP], 30);
+		const table = JSON.parse(p.split("\n")[1] ?? "[]") as Array<Record<string, unknown>>;
+		expect(table[0]?.投稿).toBe(3);
+		expect(table[0]?.动态).toBe(5);
+		expect(p).toContain('"投稿":3,"动态":5,');
+	});
+
+	it("单人:同样的两格、同样的写法", () => {
+		const p = buildSoloRoastPrompt(UP, 30);
+		const data = JSON.parse(p.split("\n")[1] ?? "{}") as Record<string, unknown>;
+		expect(data.投稿).toBe(3);
+		expect(data.动态).toBe(5);
+		expect(p).toContain('"投稿":3,"动态":5,');
+	});
+
+	it("两格各自为 null → 各自写「无记录」,不互相顶替、不写成 0", () => {
+		const p = buildRoastPrompt([{ ...UP, archives: null }], 30);
+		expect(p).toContain('"投稿":"无记录","动态":5,');
+		const q = buildSoloRoastPrompt({ ...UP, dynamics: null }, 30);
+		expect(q).toContain('"投稿":3,"动态":"无记录",');
+	});
+});
