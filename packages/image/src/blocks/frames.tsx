@@ -34,7 +34,7 @@
  * 外框(而且构建全绿,只在看图时才发现)。
  */
 
-import type { CardSkinKind } from "@bilibili-notify/internal";
+import { CARD_SKIN_RANK_ATTR, type CardSkinKind } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import type { LiveCardView } from "../templates/live-card";
 import type { MembershipCardView } from "../templates/membership-card";
@@ -51,6 +51,11 @@ export interface FrameExtra {
 	glass?: string;
 	/** 卡宽 px。只有锐评两张卡的外框自带宽度,其余卡的宽度由 `renderCard` 的 htmlWidth 定。 */
 	width?: number;
+	/**
+	 * 档位(㉔d):只有档位卡(醒目留言 / 会员)给,且有真档位才给(会员没有 rank 的档不给)。外框写成属性
+	 * {@link CARD_SKIN_RANK_ATTR},皮肤 CSS 按它换色。别的卡不读。
+	 */
+	rank?: number;
 }
 
 /**
@@ -89,9 +94,19 @@ export interface CardPropsByKind {
 const SC_GLASS_CLASS = "flex flex-col items-center";
 const GUARD_GLASS_CLASS = "flex items-center";
 
+/** 档位属性:有档位才写,没有就一个字节都不加(包括会员没有 rank 的档)。 */
+export function rankAttrs(rank: number | undefined): Record<string, string> {
+	return rank === undefined ? {} : { [CARD_SKIN_RANK_ATTR]: String(rank) };
+}
+
 function tierFrame(glassClass: string, children: VNode | VNode[], extra: FrameExtra): VNode {
 	return (
-		<div data-bn="frame" class="flex justify-center items-center" style={[extra.frame]}>
+		<div
+			data-bn="frame"
+			{...rankAttrs(extra.rank)}
+			class="flex justify-center items-center"
+			style={[extra.frame]}
+		>
 			<div data-bn="glass" class={glassClass} style={[extra.glass]}>
 				{children}
 			</div>

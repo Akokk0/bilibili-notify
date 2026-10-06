@@ -210,6 +210,19 @@ const LIVE_STATS_BLOCKS_SPLIT = {
 } as const;
 
 /**
+ * ㉔d(2026-10-06):醒目留言卡与会员卡的外框(`data-bn="frame"` 那一层)和每个块的 wrapper(带 `bn-blk-<id>` 的那层 div)
+ * 多一个属性 `data-rank="<档位>"`,皮肤 CSS 用 `[data-bn="self"][data-rank="3"]` 之类的属性选择器按档换色。醒目留言用视图上夹进
+ * 1–6 的有效档位,会员用视图的 `rank`(没有 rank 的档不加)。六个档位卡样例同一次批准:把新快照里的 ` data-rank="N"` 全部删掉,
+ * 与 ㉔c 的快照**逐字节相同**(脚本逐样例比过);别的样例(直播 / 作品 / 锐评 / 词云)零变化。
+ */
+const RANK_ATTR_ADDED = {
+	category: "master-approved",
+	approvedOn: "2026-10-06",
+	change: "外框与每个块的 wrapper 多了属性 data-rank=<档位>(只多属性,别的一个字节没变)",
+	basis: "ADR-0028 决策 4 的 2026-10-06 🔗(㉔ 开片拷问):按档换色的挂点是属性 data-rank",
+} as const;
+
+/**
  * ㉓c 第 3 步(2026-10-05):醒目留言卡的时长走核心统一的排版 `formatDuration`、金额走 `formatAmount`。
  * 预期只有时长文字变,金额字节不变 —— 实测正是如此:`sc-low` 的时长胶囊「60秒」→「1分」(少 1 字节),
  * `¥30` 一个字没动;`sc-high` 的「2小时」两种写法本来就一样,字节不变;`sc-custom-layout` 的版式里没摆时长块,不变。
@@ -394,5 +407,12 @@ export const APPROVED_CARD_DIFFS: CardDiffList = {
 		{ sample: "live-minimal", ...LIVE_STATS_BLOCKS_SPLIT, hash: "757474e9ae300ea1" },
 		{ sample: "live-streaming", ...LIVE_STATS_BLOCKS_SPLIT, hash: "7b364adbfb42801c" },
 		{ sample: "live-with-fontface", ...LIVE_STATS_BLOCKS_SPLIT, hash: "17b6355ef07a2733" },
+		// ㉔d:档位卡的外框与块 wrapper 多了 data-rank。
+		{ sample: "guard-badge-left", ...RANK_ATTR_ADDED, hash: "a66d72d9a2374557" },
+		{ sample: "guard-captain", ...RANK_ATTR_ADDED, hash: "0b13b8d5a5aa5eff" },
+		{ sample: "guard-governor", ...RANK_ATTR_ADDED, hash: "64d5def3b6a060f8" },
+		{ sample: "sc-custom-layout", ...RANK_ATTR_ADDED, hash: "5198152ee2a52e61" },
+		{ sample: "sc-high", ...RANK_ATTR_ADDED, hash: "52403a0490276fe2" },
+		{ sample: "sc-low", ...RANK_ATTR_ADDED, hash: "6b9739af41b95f2e" },
 	],
 };

@@ -21,6 +21,7 @@ import {
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_KINDS,
+	CARD_SKIN_RANK_GUIDE,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
@@ -594,6 +595,11 @@ describe("提示词从契约常量拼", () => {
 		for (const kind of CARD_SKIN_KINDS) {
 			for (const field of CARD_SKIN_FIELDS[kind]) expect(system).toContain(field.path);
 		}
+	});
+
+	// ㉔d:工坊那口与编辑器那口共用一段按档换色的说明(含「档色变量盖不掉」的限制)。
+	it("按档换色的说明在(data-rank 的写法与限制)", () => {
+		expect(system).toContain(CARD_SKIN_RANK_GUIDE);
 	});
 
 	it("清洗器真在执行的规矩都在:禁用属性、HTML 标签白名单", () => {

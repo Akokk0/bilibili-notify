@@ -13,7 +13,7 @@
  *   这里只做**替换与转义**,不再清洗 —— 别在这儿补第二道闸,补了就会有人以为这儿能拦。
  * - **块内层一个字节都不碰**:块库返回什么就铺什么,皮肤只能从外面(wrapper + CSS)改。
  * - **挂点按 hook 翻译**:皮肤写 `[data-bn="avatar"]`,这里翻成 `.bn-blk-<id> [data-bn~="avatar"]`。
- *   用 `~=` 不用 `=`:单图图廊那个容器挂的是 `"pics pic"` 双挂点,`=` 会漏掉它。
+ *   用 `~=` 不用 `=`:单图图廊那个容器挂的是 `"images image"` 双挂点,`=` 会漏掉它。
  * - **取不到的字段一律空串**,绝不让 `undefined` 或原样的 `{a.b}` 进图里。
  */
 
@@ -22,6 +22,7 @@ import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_VARIABLES,
 	type CardSkinBlock,
@@ -36,7 +37,7 @@ import {
 	rowMapOf,
 } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
-import { type CardPropsByKind, FRAMES, type FrameExtra } from "../blocks/frames";
+import { type CardPropsByKind, FRAMES, type FrameExtra, rankAttrs } from "../blocks/frames";
 import { LIVE_BLOCKS } from "../blocks/live";
 import { MEMBERSHIP_BLOCKS } from "../blocks/membership";
 import { POST_BLOCKS } from "../blocks/post";
@@ -358,22 +359,25 @@ function gridStyleOf(card: CardSkinCard): string {
  * 一个块的 wrapper。自定义块把清洗过的 HTML 经 `innerHTML` 铺进去;内置块把块的内层
  * VNode 原样放进来 —— 内层一个字节都不碰,皮肤只能从 wrapper 与 CSS 这两面改它。
  */
-function wrapBlock(item: PlacedBlock, cls: string, style: string): VNode {
+function wrapBlock(item: PlacedBlock, cls: string, style: string, rank?: number): VNode {
 	const label = item.block.kind === "builtin" ? item.block.builtin : "custom";
+	// 档位卡的块 wrapper 带 `data-rank`(㉔d):块 CSS 必须以 `self` 起头,而 `self` 翻成的就是这一层的 class,
+	// 所以属性得写在这一层上,皮肤才写得出 `[data-bn="self"][data-rank="3"]`。
+	const rankAttr = rankAttrs(rank);
 	if (item.html !== undefined) {
-		return <div data-block={label} class={cls} style={style} innerHTML={item.html} />;
+		return <div data-block={label} {...rankAttr} class={cls} style={style} innerHTML={item.html} />;
 	}
 	// 块自带 `data-block` 时 wrapper 不重复挂:一个块在 DOM 里出现两个 `[data-block]`,
 	// 按「一块一个」数序列的验收门当场对不上(今天只有 guard.badge 这一个)。
 	if (item.selfLabelled) {
 		return (
-			<div class={cls} style={style}>
+			<div {...rankAttr} class={cls} style={style}>
 				{item.inner}
 			</div>
 		);
 	}
 	return (
-		<div data-block={label} class={cls} style={style}>
+		<div data-block={label} {...rankAttr} class={cls} style={style}>
 			{item.inner}
 		</div>
 	);
@@ -407,6 +411,8 @@ interface AssembleCtx {
 	resolveAsset?: (name: string) => string | undefined;
 	/** 真画出来过的块 id(内外两层合起来)。 */
 	used: Set<string>;
+	/** 档位卡的有效档位(醒目留言 1–6、会员 rank);别的卡与没有 rank 的会员档是 `undefined`,不写 `data-rank`。 */
+	rank?: number;
 }
 
 /**
@@ -496,8 +502,18 @@ function placeBlocks(ctx: AssembleCtx, props: unknown): VNode[] {
 		const vars = assetVarsStyle(item.block.assets, ctx.resolveAsset);
 		const inner = `min-width:0${sizedHeight(kind, item.block)}${vars ? `;${vars}` : ""}`;
 		const cell = cellStyle(item.block, rowMap.get(item.block.grid.row) ?? 1);
-		return wrapCell(id, cell, wrapBlock(item, cls, inner));
+		return wrapCell(id, cell, wrapBlock(item, cls, inner, ctx.rank));
 	});
+}
+
+/**
+ * 档位卡的有效档位(㉔d):醒目留言用视图上夹进 1–6 的 `rank`,会员用视图的 `rank`;**没有真档位**(不是正整数,
+ * 会员没有 rank 的档是 0)与不是档位卡的一律 `undefined`,不写 `data-rank`。
+ */
+function rankOf(kind: CardSkinKind, props: unknown): number | undefined {
+	if (!(CARD_SKIN_RANKED_KINDS as readonly string[]).includes(kind)) return undefined;
+	const rank = (props as { rank?: unknown } | null)?.rank;
+	return typeof rank === "number" && Number.isInteger(rank) && rank > 0 ? rank : undefined;
 }
 
 /** 按皮肤装配一张卡:块铺成网格,外面套这张卡的外框。 */
@@ -505,13 +521,14 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 	o: SkinRenderOptions<K>,
 ): SkinRenderResult {
 	const { kind, card } = o;
+	const { props } = o;
 	const ctx: AssembleCtx = {
 		kind,
 		card,
 		resolveAsset: o.resolveAsset,
 		used: new Set(),
+		rank: rankOf(kind, props),
 	};
-	const { props } = o;
 	const children = placeBlocks(ctx, props);
 
 	// 翻译 CSS。按 `card.blocks` 的顺序走而不是按画出来的顺序 —— 内层先画完也不会把
@@ -536,6 +553,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 			assetVarsStyle(card.assets, o.resolveAsset),
 		glass: gridStyleOf(card),
 		width: card.width,
+		rank: ctx.rank,
 	};
 	// 外框不吃 props(见 `FrameRenderer`)—— 于是 `FRAMES[kind]` 对每个卡种都是同一个
 	// 类型,这儿不必再 cast 一次。从前那句 `as` 是唯一调用点上一道关着的闸。

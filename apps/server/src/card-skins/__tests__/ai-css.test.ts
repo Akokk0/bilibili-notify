@@ -9,6 +9,8 @@
 import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_RANK_ATTR,
+	CARD_SKIN_RANK_GUIDE,
 	CARD_SKIN_VARIABLES,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
@@ -71,6 +73,16 @@ describe("提示词拼装", () => {
 		// 卡片是静态截图 —— 这条不讲,模型会写一堆 hover 和动画。
 		expect(system).toMatch(/静态/);
 		expect(system).toMatch(/只输出 CSS/);
+	});
+
+	// ㉔d:按档换色靠属性 data-rank,说明从常量拼(编辑器那口与工坊那口共用),并写明限制:档色变量盖不掉。
+	it("按档换色:data-rank 的写法与限制都在(取自常量,不手抄)", () => {
+		const system = buildCardCssAiSystem();
+		expect(system).toContain(CARD_SKIN_RANK_ATTR);
+		expect(system).toContain(CARD_SKIN_RANK_GUIDE);
+		expect(CARD_SKIN_RANK_GUIDE).toMatch(/盖不掉/);
+		expect(CARD_SKIN_RANK_GUIDE).toContain('[data-bn="self"][data-rank="3"]');
+		expect(CARD_SKIN_RANK_GUIDE).toContain('[data-bn="frame"][data-rank="3"]');
 	});
 
 	it("内置块:给这块的挂点、它现在的 CSS、外框 CSS、整卡轮廓、旋钮;不给别的块的 CSS", () => {

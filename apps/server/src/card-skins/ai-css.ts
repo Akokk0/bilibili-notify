@@ -17,6 +17,7 @@ import {
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_RANK_GUIDE,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_VARIABLES,
 	type CardSkinAssetVars,
@@ -75,6 +76,9 @@ export function cardCssRules(where: string): string {
 - 不以挂点起头的选择器会被自动补上前缀、收进这个框里,所以 class、标签、伪类(:is / :has / :not / :first-child…)、::before / ::after 都能写。
 - 只准用给你的那几个挂点;别的挂点属于别的块,写了整条规则被丢。
 - 挂点后面不能接 \`+\` 或 \`~\`,那会摸到别的块。
+
+## 按档换色(醒目留言卡与会员卡)
+- ${CARD_SKIN_RANK_GUIDE}
 
 ## 属性与值
 - 属性基本都能写(布局、间距、字号、背景、边框、阴影、滤镜……),只有这几个不收:${[...CARD_CSS_DENY_PROPS].join(" / ")}。

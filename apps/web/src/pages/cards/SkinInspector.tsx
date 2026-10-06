@@ -18,6 +18,8 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_RANK_GUIDE,
+	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	cardSkinBytes,
 } from "@bilibili-notify/internal/constants";
@@ -167,6 +169,7 @@ export function SkinInspector({
 		if (!card) return <EmptyNote size="sm">这套皮肤没有定义这种卡。</EmptyNote>;
 		return (
 			<FrameInspector
+				kind={kind}
 				card={card}
 				onFrame={onFrame}
 				onColumns={onColumns}
@@ -285,6 +288,7 @@ export function SkinInspector({
 				value={block.css ?? ""}
 				onChange={(css) => onCss(block.id, css)}
 				ai={bindAi(ai, { blockId: block.id })}
+				note={rankNote(kind)}
 			/>
 
 			{onRemove ? (
@@ -322,6 +326,7 @@ export function SkinInspector({
  * CSS 是同一件东西(同一个编辑器、同一套清洗规矩),跟着「高级 CSS」那一片一起做。
  */
 function FrameInspector({
+	kind,
 	card,
 	onFrame,
 	onColumns,
@@ -329,6 +334,7 @@ function FrameInspector({
 	onDropCard,
 	ai,
 }: {
+	kind: CardSkinKind;
 	card: Card;
 	onFrame: (patch: FramePatch) => void;
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
@@ -427,6 +433,7 @@ function FrameInspector({
 				value={card.css ?? ""}
 				onChange={onFrameCss}
 				ai={bindAi(ai, {})}
+				note={rankNote(kind)}
 			/>
 
 			{onDropCard ? (
@@ -562,6 +569,16 @@ function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[s
 }
 
 /**
+ * 档位卡(醒目留言 / 会员)的 CSS 一节要带上「按档换色」的说明;别的卡没有「档」,不给。
+ * 说明与 AI 的规则提示词读同一段常量({@link CARD_SKIN_RANK_GUIDE})。
+ */
+function rankNote(kind: CardSkinKind): string | undefined {
+	return (CARD_SKIN_RANKED_KINDS as readonly string[]).includes(kind)
+		? CARD_SKIN_RANK_GUIDE
+		: undefined;
+}
+
+/**
  * CSS 那一节:结构化编辑器(规则 → 声明,按值给控件)+ 源码切换(ADR-0014 决策 21 的
  * 2026-09-19 🔗),外加女仆钮与字节计数。清洗与「削掉了什么」归 server —— 预览那栏已经把
  * warnings 逐条列出来了,这里只拦一条前端自己就能判的:超上限。
@@ -573,6 +590,7 @@ function CssSection({
 	value,
 	onChange,
 	ai,
+	note,
 }: {
 	label: string;
 	hooksLabel: string;
@@ -580,6 +598,8 @@ function CssSection({
 	value: string;
 	onChange: (css: string) => void;
 	ai?: CssAiBinding;
+	/** 这一节 CSS 旁边给作者的一段说明(档位卡的「按档换色」);没有就不画。 */
+	note?: string;
 }) {
 	// 同上:计数器与那道闸必须是同一把尺(UTF-8 字节)。
 	const bytes = cardSkinBytes(value);
@@ -597,6 +617,8 @@ function CssSection({
 					ariaLabel={label}
 					placeholder={'[data-bn="self"]{padding:12px 16px}'}
 				/>
+
+				{note ? <span className="text-bn-2xs text-bn-text-tertiary">{note}</span> : null}
 
 				{over ? (
 					<ErrorNote size="sm">

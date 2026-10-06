@@ -1705,6 +1705,29 @@ export const CARD_SKIN_FRAME_HOOKS = {
 } as const;
 export type CardSkinFrameHook = keyof typeof CARD_SKIN_FRAME_HOOKS;
 
+/**
+ * **档位属性**(㉔d,ADR-0028 决策 4 的 2026-10-06 🔗:按档换色的挂点是属性,不是 `data-bn` 挂点)。出图器在带档位的
+ * 两种卡({@link CARD_SKIN_RANKED_KINDS})的**外框**(`frame` 那一层)和**每个块的 wrapper**(带 `bn-blk-<id>` 的那层 div)
+ * 上写 `data-rank="<档位>"`:醒目留言是视图上夹进 1–6 的有效档位,会员是视图的 `rank`、没有 rank(0)的档不写;
+ * 别的卡一律不写。皮肤 CSS 用属性选择器按档写规则 —— 清洗器对 `data-bn` 以外的属性一概不查,所以零改动。
+ * **对外 API**,只增不改。
+ */
+export const CARD_SKIN_RANK_ATTR = "data-rank";
+
+/** 带档位属性的卡种:醒目留言卡与会员卡(其余卡没有「档」这回事)。 */
+export const CARD_SKIN_RANKED_KINDS = ["sc", "guard"] as const satisfies readonly CardSkinKind[];
+
+/**
+ * 给皮肤作者与 AI 做皮肤的说明:按档换色怎么写、限制是什么。编辑器的 CSS 一节与 AI 的规则提示词读同一段,不各抄一份。
+ */
+export const CARD_SKIN_RANK_GUIDE =
+	`醒目留言卡与会员卡的外框和每个块的 wrapper 上有属性 ${CARD_SKIN_RANK_ATTR}="<档位>"` +
+	`(醒目留言是 1–6、1 最低;会员是档位的 rank、从 1 起、1 最低;没有 rank 的会员档不带这个属性)。` +
+	`按档换色用属性选择器:块的 CSS 写 [data-bn="${CARD_SKIN_SELF_HOOK}"][${CARD_SKIN_RANK_ATTR}="3"]{…},` +
+	`外框的 CSS 写 [data-bn="frame"][${CARD_SKIN_RANK_ATTR}="3"]{…}。` +
+	`限制:档色变量(--bn-card-tier-color 等)是出图器直接写在元素上的,皮肤 CSS 盖不掉它,` +
+	`所以按档换色要对想换的部位直接写颜色属性(color / background-color / border-color…),不要去改那个变量。`;
+
 /** 主人自己传上来的资产在旋钮值里的前缀。**对外 API**,只增不改。 */
 export const CARD_SKIN_UPLOAD_PREFIX = "upload:";
 

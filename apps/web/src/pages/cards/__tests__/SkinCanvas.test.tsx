@@ -13,6 +13,7 @@ import type { CardSkinManifest } from "@bilibili-notify/contract";
 import {
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_RANK_GUIDE,
 	type CardSkinKind,
 } from "@bilibili-notify/internal/constants";
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
@@ -80,6 +81,19 @@ const manifest = (): CardSkinManifest =>
 						kind: "builtin",
 						builtin: "creatorAvatar",
 						grid: { row: 2, column: 1, span: 3 },
+					},
+				],
+			},
+			// 档位卡:检查器的 CSS 一节要带上「按档换色」的说明(㉔d)。
+			sc: {
+				width: 290,
+				css: "",
+				blocks: [
+					{
+						id: "amount",
+						kind: "builtin",
+						builtin: "amount",
+						grid: { row: 1, column: 1, span: 12 },
 					},
 				],
 			},
@@ -356,6 +370,31 @@ describe("添加块 / 删块", () => {
 		expect(screen.queryByText(/添加块/)).toBeNull();
 		fireEvent.click(blockBtn("主播名"));
 		expect(screen.queryByText(/删除这个块/)).toBeNull();
+	});
+});
+
+/**
+ * ㉔d:档位卡(醒目留言 / 会员)的 CSS 一节给皮肤作者一段「按档换色」的说明(`CARD_SKIN_RANK_GUIDE`,与 AI 的规则
+ * 提示词同一段):`data-rank` 怎么写、档色变量盖不掉。别的卡没有这段 —— 它们没有「档」。
+ * 验红:去掉 `SkinInspector` 里按卡种给的那条说明,或让它对所有卡都显示,这组红。
+ */
+describe("检查器 · 按档换色的说明", () => {
+	it("醒目留言卡:外框的 CSS 与块的 CSS 都带这段说明", () => {
+		render(<Harness kind="sc" />);
+		fireEvent.click(screen.getByText("卡片外框"));
+		expect(screen.getByText(CARD_SKIN_RANK_GUIDE)).toBeTruthy();
+		cleanup();
+		render(<Harness kind="sc" />);
+		fireEvent.click(blockBtn("金额"));
+		expect(screen.getByText(CARD_SKIN_RANK_GUIDE)).toBeTruthy();
+	});
+
+	it("直播卡:没有这段说明(它没有档位)", () => {
+		render(<Harness />);
+		fireEvent.click(screen.getByText("卡片外框"));
+		expect(screen.queryByText(CARD_SKIN_RANK_GUIDE)).toBeNull();
+		fireEvent.click(blockBtn("封面图"));
+		expect(screen.queryByText(CARD_SKIN_RANK_GUIDE)).toBeNull();
 	});
 });
 

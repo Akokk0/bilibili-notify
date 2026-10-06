@@ -37,6 +37,9 @@ import {
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
 	CARD_SKIN_LIMITS,
+	CARD_SKIN_RANK_ATTR,
+	CARD_SKIN_RANK_GUIDE,
+	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_UPLOAD_PREFIX,
 	type CardSkinBuiltinBlock,
@@ -79,7 +82,14 @@ export { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_LIMITS, cardSkinBytes };
 export type { CardSkinFrameHook };
 // 挂点名住零依赖的 `constants.ts`(理由同块目录:编辑器要照它们给作者列「这块能挂哪些
 // 选择器」,而从根入口取值会把 zod 拽进前端 bundle)。这里原样再导出。
-export { CARD_SKIN_FRAME_HOOKS, CARD_SKIN_SELF_HOOK };
+// 档位属性(㉔d)同住那里:出图器写它、编辑器与 AI 的说明读它。
+export {
+	CARD_SKIN_FRAME_HOOKS,
+	CARD_SKIN_RANK_ATTR,
+	CARD_SKIN_RANK_GUIDE,
+	CARD_SKIN_RANKED_KINDS,
+	CARD_SKIN_SELF_HOOK,
+};
 
 // ---- 变量 -------------------------------------------------------------------
 
