@@ -346,6 +346,44 @@ describe("直播卡的几种状态", () => {
 	});
 });
 
+/**
+ * ㉔a 钉住现状:`stats.popularity` / `stats.fans` 是**随状态换含义**的两格(㉔b 把它们拆成 `currentViewers` / `likes`、
+ * `followers` / `totalViewers`,每格只装名字说的那一样)。四个来源格给**互不相同**的值,断言才分得出取的是哪一格;
+ * 来源格为空串时(`stats.*` 的「缺了就是空串」)也钉一遍。
+ * 验红:把 `liveData` 里 `ended ? str(p.likes) : str(p.online)` 的两边对调,或 `fans` 的三元里换掉分支,这组红。
+ */
+describe("㉔a 直播卡 stats.popularity / stats.fans 各状态取哪一格", () => {
+	const SOURCES = { online: "ON", likes: "LK", totalViewers: "TV", fans: "FN" };
+
+	it.each([
+		// 状态,popularity 取的值,fans 取的值
+		["start", "ON", "FN"],
+		["streaming", "ON", "FN"],
+		["end", "LK", "TV"],
+		["offline", "ON", ""],
+	] as const)("%s:popularity = %s,fans = %s", (status, popularity, fans) => {
+		const d = buildCardData("live", liveProps({ status, ...SOURCES }));
+		expect(d.stats.popularity).toBe(popularity);
+		expect(d.stats.fans).toBe(fans);
+	});
+
+	it("来源格是空串:下播没有点赞 → popularity 空(不退回人气);下播没有累计观看 → fans 空;开播没有粉丝数 → fans 空", () => {
+		const ended = buildCardData("live", liveProps({ status: "end", likes: "", totalViewers: "" }));
+		expect(ended.stats.popularity).toBe("");
+		expect(ended.stats.fans).toBe("");
+		expect(buildCardData("live", liveProps({ status: "streaming", fans: "" })).stats.fans).toBe("");
+		expect(
+			buildCardData("live", liveProps({ status: "streaming", online: "" })).stats.popularity,
+		).toBe("");
+	});
+
+	it("stats.area 与 live.area 同值(给数据行用的副本)", () => {
+		const d = buildCardData("live", liveProps({ area: "虚拟主播" }));
+		expect(d.stats.area).toBe("虚拟主播");
+		expect(d.live.area).toBe("虚拟主播");
+	});
+});
+
 describe("直播卡的封面", () => {
 	// 用哪一张(关键帧 / 房间封面 / 自定义封面)在出卡入口之前就定好了 —— B 站那头的翻译
 	// (`liveCardInputFromRoomInfo`,`packages/live` 的 `live-card-input.test.ts` 钉着)与出卡入口

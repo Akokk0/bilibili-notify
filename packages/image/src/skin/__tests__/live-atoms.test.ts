@@ -17,6 +17,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
+import { LIVE_BLOCKS } from "../../blocks/live";
 import type { LiveCardView } from "../../templates/live-card";
 import { renderSkinnedCard } from "../render-skin";
 
@@ -98,5 +99,55 @@ describe("直播卡数据区 — 摆哪几块就画哪几件", () => {
 			renderSkinnedCard({ kind: "live", card: cardWith(ALL_ON), props }).vnode,
 		);
 		expect(probe(viaSkin)).toEqual(ALL_ON);
+	});
+});
+
+/**
+ * ㉔a 钉住现状:默认皮肤里 `popularity` / `fans` 两个块**随状态换字**(㉔b 起它们按状态去读拆出来的四个字段,
+ * 画出来的字不变;块本身的拆分是 ㉔c)。两个块各画一个状态的文案前缀 + 视图里对应那一格的值,前缀原文如下。
+ * 验红:把 `blocks/live.tsx` 里 `statsLeft` / `followerText` 的前缀改一个字,或把下播那支的取值对调。
+ */
+describe("㉔a 直播卡 popularity / fans 块各状态画出的字", () => {
+	const view = (over: Partial<LiveCardView>): LiveCardView => ({
+		status: "streaming",
+		username: "阿可",
+		userface: "",
+		title: "t",
+		area: "虚拟主播",
+		description: "d",
+		cover: "https://img/cover.jpg",
+		hasCover: true,
+		time: "直播时长：1小时",
+		online: "ON",
+		likes: "LK",
+		totalViewers: "TV",
+		fans: "FN",
+		fansChanged: "+1",
+		...over,
+	});
+
+	/** 块渲染成的文字;块返回 null(收起)时是 null。 */
+	async function textOf(block: "popularity" | "fans", p: LiveCardView): Promise<string | null> {
+		const node = LIVE_BLOCKS[block]?.(p);
+		if (!node) return null;
+		return (await html(node)).replace(/<[^>]*>/g, "");
+	}
+
+	it.each([
+		["start", "人气：ON", "当前粉丝数：FN"],
+		["streaming", "人气：ON", "当前粉丝数：FN"],
+		["end", "点赞：LK", "累计观看人数：TV"],
+		["offline", "人气：ON", null],
+	] as const)("%s:popularity 块「%s」、fans 块「%s」", async (status, popularity, fans) => {
+		const p = view({ status });
+		expect(await textOf("popularity", p)).toBe(popularity);
+		expect(await textOf("fans", p)).toBe(fans);
+	});
+
+	it("那一格没有数 → 块收起,不留只有前缀的空行", async () => {
+		expect(await textOf("popularity", view({ status: "streaming", online: "" }))).toBeNull();
+		expect(await textOf("popularity", view({ status: "end", likes: "" }))).toBeNull();
+		expect(await textOf("fans", view({ status: "streaming", fans: "" }))).toBeNull();
+		expect(await textOf("fans", view({ status: "end", totalViewers: "" }))).toBeNull();
 	});
 });

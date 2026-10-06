@@ -11,6 +11,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
 import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
+import { buildCardData } from "../skin/card-data";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { nodeFromPost } from "../templates/post-node";
 
@@ -71,6 +72,63 @@ describe("作者、时间与 label", () => {
 		const node = nodeFromPost(post({ text: "转发语", repost: post({ label: "投稿了视频" }) }), FMT);
 		expect(node.forward?.headerLabel).toBe("投稿了视频");
 		expect(node.forward?.pubTime).toBe("T1700000000");
+	});
+});
+
+/**
+ * ㉔a 钉住现状:作品卡的动作标签(`label`)外层拼进「时间」那一行、内层单独给(`headerLabel`);皮肤字段
+ * `dynamic.time` / `dynamic.action` 在内外层各是什么;默认皮肤的 `name` / `time` 两块画出来的字。
+ * ㉔b 起视图上时间只装时间、标签单独一格(内外层都填),`dynamic.time` / `dynamic.action` 改叫 `post.time` /
+ * `post.label`,默认皮肤的两块仍画出同样的字 —— 下面这组断言届时按改名表改,文字一个不变。
+ * 验红:把 `post-node.tsx` 里 `pubTime` 的拼法或 `headerLabel` 的赋值对调 / 删掉。
+ */
+describe("㉔a 动作标签的现状:视图、皮肤字段与默认皮肤的两块", () => {
+	const REPOST_VIDEO = post({
+		text: "转发语",
+		label: "转发了动态",
+		repost: post({ creator: { name: "原UP" }, label: "投稿了视频" }),
+	});
+
+	it("皮肤字段:外层 time 带「 · 标签」后缀、action 为空;内层 time 是纯时间、action 是标签", () => {
+		const outer = nodeFromPost(REPOST_VIDEO, FMT);
+		const inner = outer.forward;
+		if (!inner) throw new Error("应有转发内层");
+		const o = buildCardData("dynamic", { node: outer });
+		const i = buildCardData("dynamic", { node: inner });
+		expect(o.dynamic.time).toBe("T1700000000 · 转发了动态");
+		expect(o.dynamic.action).toBe("");
+		expect(i.dynamic.time).toBe("T1700000000");
+		expect(i.dynamic.action).toBe("投稿了视频");
+	});
+
+	it("没有 label 的作品:time 是纯时间、action 为空(内外层一样)", () => {
+		const outer = nodeFromPost(post({ repost: post() }), FMT);
+		const d = buildCardData("dynamic", { node: outer });
+		expect(d.dynamic.time).toBe("T1700000000");
+		expect(d.dynamic.action).toBe("");
+		const inner = outer.forward;
+		if (!inner) throw new Error("应有转发内层");
+		expect(buildCardData("dynamic", { node: inner }).dynamic.action).toBe("");
+	});
+
+	/** 默认皮肤的 `name` / `time` 块画出的文字(去掉标签)。 */
+	async function lineOf(block: "name" | "time", node: ReturnType<typeof nodeFromPost>) {
+		const vnode = DYNAMIC_BLOCKS[block]?.({ node, renderForward: () => [] });
+		if (!vnode) throw new Error(`${block} 块收起了`);
+		return (await htmlOf(vnode)).replace(/<[^>]*>/g, "");
+	}
+
+	it("默认皮肤:外层的标签在时间那一行(「时间 · 标签」),名字行只有名字", async () => {
+		const outer = nodeFromPost(REPOST_VIDEO, FMT);
+		expect(await lineOf("time", outer)).toBe("T1700000000 · 转发了动态");
+		expect(await lineOf("name", outer)).toBe("示例UP");
+	});
+
+	it("默认皮肤:内层的标签接在名字后(用空格连),时间行只有时间", async () => {
+		const inner = nodeFromPost(REPOST_VIDEO, FMT).forward;
+		if (!inner) throw new Error("应有转发内层");
+		expect(await lineOf("name", inner)).toBe("原UP 投稿了视频");
+		expect(await lineOf("time", inner)).toBe("T1700000000");
 	});
 });
 

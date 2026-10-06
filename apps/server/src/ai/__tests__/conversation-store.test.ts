@@ -646,6 +646,44 @@ describe("卡片皮肤工坊", () => {
 		expect(done?.cardSkins).toEqual([{ id: "a1", kinds: ["live", "sc"] }]);
 		expect(idle && "cardSkins" in idle).toBe(false);
 	});
+
+	/**
+	 * ㉔a 钉住现状:会话文件里 `cardSkins[].kinds` 是盘上的卡种键,读出来**无校验、原样**给 —— 认得出的新旧键、
+	 * 认不出的字符串、甚至不是字符串的值都一样。㉔e 卡种键改名后,开发期会话里的旧键(`dynamic` / `sc` / `guard`)
+	 * 读时要认不出就丢掉(不写迁移),这条断言届时改成「丢掉认不出的」。
+	 * 验红:在 `appendMessages` / 读路径上过滤 kinds,或把读出来的 kinds 换成别的,这条红。
+	 */
+	it("㉔a 读盘上的 kinds:旧键、认不出的键原样读出来,不过滤", async () => {
+		const id = "11111111-1111-4111-8111-111111111111";
+		const now = new Date(useClockStart).toISOString();
+		await mkdir(join(dataDir, ...CONVERSATIONS_DIR), { recursive: true });
+		await writeFile(
+			join(dataDir, ...CONVERSATIONS_DIR, `${id}.json`),
+			JSON.stringify({
+				id,
+				title: "老会话",
+				createdAt: now,
+				updatedAt: now,
+				mode: "skin",
+				persona: false,
+				skinTarget: "card",
+				messages: [
+					{
+						id: "m1",
+						role: "assistant",
+						content: "好了",
+						ts: now,
+						cardSkins: [{ id: "a1", kinds: ["live", "dynamic", "sc", "guard", "nope", 7] }],
+					},
+				],
+			}),
+			"utf8",
+		);
+		const conv = await store.get(id);
+		expect(conv?.messages[0]?.cardSkins).toEqual([
+			{ id: "a1", kinds: ["live", "dynamic", "sc", "guard", "nope", 7] },
+		]);
+	});
 });
 
 describe("ConversationStore.listImageRefs — 图库引用方交出的名单", () => {

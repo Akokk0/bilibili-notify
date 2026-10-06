@@ -28,6 +28,7 @@ import {
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
 } from "../card-skin";
+import { CardKindSchema } from "../common";
 
 function minimal(over: Partial<CardSkinManifest> = {}): unknown {
 	return {
@@ -1254,4 +1255,183 @@ describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 			expect(clashes).toEqual([]);
 		});
 	}
+});
+
+// ── ㉔ 改名前的词表全集 ─────────────────────────────────────────────────────────────
+//
+// ㉔a(2026-10-06)只加测试、钉住「改之前长这样」:七个卡种键、每种卡的字段路径(带类型)、每种卡的块 key、每块的挂点。
+// 皮肤格式的这三张表是「对外 API,只增不删不改名」,而 ㉔ 是它们改名的那一次(皮肤格式版本抬一次):后面 ㉔b / ㉔c / ㉔e
+// 按改名表逐项改下面的字面量,每一处改名都在这里留下一笔 diff。**字面量是故意写死的,不从常量现算** ——
+// 现算的断言在常量被改坏时跟着一起变,永远不会红。
+
+const FIELDS_BEFORE: Record<string, string[]> = {
+	live: [
+		"up.name:text",
+		"up.face:image",
+		"live.title:text",
+		"live.area:text",
+		"live.time:text",
+		"live.description:text",
+		"live.cover:image",
+		"live.hasCover:bool",
+		"live.isStreaming:bool",
+		"live.isEnded:bool",
+		"stats.popularity:text",
+		"stats.area:text",
+		"stats.fans:text",
+		"stats.fansChanged:text",
+		"stats.hasFansChanged:bool",
+	],
+	dynamic: [
+		"up.name:text",
+		"up.face:image",
+		"up.isVip:bool",
+		"dynamic.type:text",
+		"dynamic.action:text",
+		"dynamic.time:text",
+		"dynamic.topic:text",
+		"dynamic.hasTopic:bool",
+		"dynamic.isForward:bool",
+		"dynamic.hasAdditional:bool",
+		"dynamic.hasVideo:bool",
+		"dynamic.hasPics:bool",
+		"video.title:text",
+		"video.desc:text",
+		"video.cover:image",
+		"video.duration:text",
+		"video.views:text",
+		"video.danmaku:text",
+		"pics.count:number",
+		"pics.first:image",
+		"stats.forward:text",
+		"stats.comment:text",
+		"stats.like:text",
+	],
+	sc: [
+		"viewer.name:text",
+		"viewer.avatar:image",
+		"master.name:text",
+		"master.face:image",
+		"superchat.amount:text",
+		"superchat.amountValue:number",
+		"superchat.duration:text",
+		"superchat.rank:number",
+		"superchat.text:text",
+	],
+	guard: [
+		"viewer.name:text",
+		"viewer.avatar:image",
+		"master.name:text",
+		"master.face:image",
+		"membership.rank:number",
+		"membership.tierName:text",
+		"membership.icon:image",
+		"membership.announcement:text",
+	],
+	roastBoard: ["master.name:text", "report.days:number"],
+	roastSolo: ["up.name:text", "up.face:image", "report.days:number"],
+	wordcloud: ["master.name:text", "master.face:image"],
+};
+
+const BLOCKS_BEFORE: Record<string, Record<string, string[]>> = {
+	live: {
+		cover: ["image"],
+		status: ["pill"],
+		title: ["text"],
+		desc: ["text"],
+		divider: ["line"],
+		avatar: ["image"],
+		name: ["text"],
+		time: ["text"],
+		popularity: ["text"],
+		area: ["text"],
+		fans: ["text"],
+	},
+	dynamic: {
+		additional: ["card", "cover", "button"],
+		divider: ["line"],
+		avatar: ["image"],
+		name: ["text"],
+		time: ["text"],
+		topic: ["text"],
+		text: ["body"],
+		videoCover: ["image"],
+		videoDuration: ["pill"],
+		videoTitle: ["text"],
+		videoDesc: ["text"],
+		videoStats: ["text", "stat"],
+		pics: ["pics", "pic"],
+		forward: ["bubble"],
+		forwardCount: ["text", "icon"],
+		commentCount: ["text", "icon"],
+		likeCount: ["text", "icon"],
+	},
+	sc: {
+		message: ["bubble", "text"],
+		divider: ["line"],
+		avatar: ["image"],
+		name: ["pill"],
+		price: ["text"],
+		duration: ["pill"],
+		to: ["text", "label", "master", "masterAvatar", "masterName"],
+	},
+	guard: {
+		badge: ["image"],
+		text: ["text"],
+		divider: ["line"],
+		avatar: ["image"],
+		user: ["pill", "text"],
+		master: ["pill", "masterAvatar", "masterName"],
+	},
+	roastBoard: {
+		body: [],
+	},
+	roastSolo: {
+		body: [],
+	},
+	wordcloud: {
+		body: [],
+	},
+};
+describe("㉔a 改名前的词表:卡种键、字段、块、挂点", () => {
+	it("七个卡种键(顺序也钉)", () => {
+		expect([...CARD_SKIN_KINDS]).toEqual([
+			"live",
+			"dynamic",
+			"sc",
+			"guard",
+			"roastBoard",
+			"roastSolo",
+			"wordcloud",
+		]);
+	});
+
+	it("`CardKind`(只给 cardStyleByKind 做键的那套)是前四种,`dynamic` / `sc` / `guard` 还是老叫法", () => {
+		expect([...CardKindSchema.options]).toEqual(["live", "dynamic", "sc", "guard"]);
+	});
+
+	it("每种卡的字段路径与类型全集(顺序也钉)", () => {
+		const actual = Object.fromEntries(
+			CARD_SKIN_KINDS.map((kind) => [
+				kind,
+				CARD_SKIN_FIELDS[kind].map((f) => `${f.path}:${f.type}`),
+			]),
+		);
+		expect(actual).toEqual(FIELDS_BEFORE);
+	});
+
+	it("每种卡的块 key 全集,以及每块的挂点全集", () => {
+		const actual = Object.fromEntries(
+			CARD_SKIN_KINDS.map((kind) => [
+				kind,
+				Object.fromEntries(
+					Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind]).map(([block, def]) => [
+						block,
+						Object.keys(def.hooks),
+					]),
+				),
+			]),
+		);
+		expect(actual).toEqual(BLOCKS_BEFORE);
+	});
 });
