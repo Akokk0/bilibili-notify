@@ -193,11 +193,25 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		const posts = await lines("stats", "posts", `${ON}.jsonl`);
 		expect(posts?.map((row) => row.hasVideo)).toEqual([false, true]);
 		for (const row of posts ?? []) {
-			expect(row).toEqual({
+			// 三格老的,加上多收的五格(㉖g,可选):假源的作品都带链接与正文,所以有 url 与 summary;不会有别的格。
+			expect(row).toMatchObject({
 				id: expect.any(String),
 				hasVideo: row.hasVideo,
 				publishedAt: expect.any(String),
+				url: expect.stringContaining("fake-source.invalid"),
+				summary: expect.any(String),
 			});
+			const allowed = [
+				"id",
+				"hasVideo",
+				"publishedAt",
+				"url",
+				"title",
+				"summary",
+				"topic",
+				"videoDurationSec",
+			];
+			expect(Object.keys(row).filter((key) => !allowed.includes(key))).toEqual([]);
 		}
 
 		// 两份资料是紧挨着报的,不密过 B 站粉丝轮询(默认每 10 分钟):只留先到的那份。

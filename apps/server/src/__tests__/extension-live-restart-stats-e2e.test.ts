@@ -266,7 +266,13 @@ describe("拓展直播跨重启 e2e:BN 重启、拓展重启、断流接续之�
 		await vi.waitFor(
 			async () =>
 				expect(await lines("posts", SUB.id)).toEqual([
-					{ id: "restart-post-1", hasVideo: false, publishedAt: expect.any(String) },
+					{
+						id: "restart-post-1",
+						hasVideo: false,
+						publishedAt: expect.any(String),
+						url: "https://live.restart-probe.invalid/1",
+						summary: "推送关着也记",
+					},
 				]),
 			{ timeout: 3_000, interval: 50 },
 		);

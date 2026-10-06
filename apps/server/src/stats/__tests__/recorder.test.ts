@@ -55,6 +55,7 @@ function makeStore() {
 	return {
 		appendPost: vi.fn(async () => {}),
 		listPosts: vi.fn(async () => []),
+		listRecentPosts: vi.fn(async () => []),
 		openLiveSession: vi.fn(async () => {}),
 		closeLiveSession: vi.fn(async () => {}),
 		listLiveSessions: vi.fn(async () => []),

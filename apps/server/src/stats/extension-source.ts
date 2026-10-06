@@ -1,12 +1,17 @@
 import {
 	BILIBILI_SOURCE_KEY,
 	type Disposable,
+	fail,
 	type MessageBus,
+	type SubscriptionReportValue,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
+import { deferImageWrites, postFromReport } from "../runtime/post-from-report.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
+import { postEntryExtras } from "./post-entry-extras.js";
 import type { StatsRecorderCore } from "./recorder.js";
+import type { PostEntry } from "./store.js";
 
 /**
  * 统计的**拓展适配**(ADR-0020 决策 17):把订阅源拓展的上报与拓展直播的场次翻成记录器的中立调用,按
@@ -76,6 +81,30 @@ export function fansSampleGapMs(cron: string): number {
 /** 毫秒 → 盘上的 ISO。 */
 const iso = (ms: number) => new Date(ms).toISOString();
 
+/**
+ * 一条拓展作品上报 → 作品行。先翻成中立的 `Post`(`postFromReport`,与出卡同一份翻译),再经 `postEntryExtras`
+ * 从 `{ 上报的 url, Post }` 取多收的五格,不直接读上报的原始字段(两套取法)。
+ *
+ * **统计不为图写盘**:翻译要一个存图的口,给它 {@link deferImageWrites} 的 `sink`、**永不 `commit()`** ——
+ * 引用只是内容哈希、字节记在内存里就丢,图库一个字节也不会写。翻译失败照旧记一行不带这五格的(不丢行)。
+ */
+async function postEntryOf(post: SubscriptionReportValue<"post">): Promise<PostEntry> {
+	const entry: PostEntry = {
+		id: post.id,
+		hasVideo: extensionHasVideo(post),
+		publishedAt: iso(post.publishedAt),
+	};
+	try {
+		const { sink } = deferImageWrites({
+			put: async () => fail("unavailable", "统计不写图库"),
+		});
+		const translated = await postFromReport(post, { authorName: "", images: sink });
+		return { ...entry, ...postEntryExtras({ url: post.url, post: translated }) };
+	} catch {
+		return entry;
+	}
+}
+
 export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): Disposable {
 	const { bus, recorder } = opts;
 	/** 交给记录器开着的场次(文件键)。关的时候只关这里有的 —— 一场恰好一帧下播。 */
@@ -117,11 +146,7 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 					case "post":
 						// 作品开关关着不落作品行。
 						if (!sub.recordsPosts) break;
-						recorder.recordPost(key, {
-							id: report.value.id,
-							hasVideo: extensionHasVideo(report.value),
-							publishedAt: iso(report.value.publishedAt),
-						});
+						recorder.recordPost(key, postEntryOf(report.value));
 						break;
 					case "profile":
 						if (report.value.fans !== undefined) {

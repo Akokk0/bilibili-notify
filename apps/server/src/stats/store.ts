@@ -44,6 +44,20 @@ export interface PostEntry {
 	hasVideo: boolean;
 	/** 发布时间(ISO)。 */
 	publishedAt: string;
+	/**
+	 * 以下五格是多收的(ADR-0027 决策 4 / 12,规矩见 `docs/agents/conventions/stats-collection.md`):来源交到手的现成字段,
+	 * **全部可选**、没有就不写;老行没有这些格。取法在 `post-entry-extras.ts`。
+	 */
+	/** 作品链接。 */
+	url?: string;
+	/** 标题(截 100 字)。 */
+	title?: string;
+	/** 摘要:取段函数的 AI 拼法,截 200 字。 */
+	summary?: string;
+	/** 话题,一个字符串(同 `Post.topic`)。 */
+	topic?: string;
+	/** 视频时长,秒。 */
+	videoDurationSec?: number;
 }
 
 /** 配对后的一场直播。`endedAt` 缺失 = 仍在直播或 end 帧丢失,不计入时长。 */
@@ -91,6 +105,11 @@ export interface StatsStore {
 	 * 读回 publishedAt >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。
 	 */
 	listPosts(key: string, sinceIso: string): Promise<PostEntry[]>;
+	/**
+	 * 最近 `limit` 条作品,按 `publishedAt` 从新到旧,同 id 只留先落盘的那条;`limit` 不是正整数回空。
+	 * 今天没有调用方(3b 的 `get_creator_posts` 用)。
+	 */
+	listRecentPosts(key: string, limit: number): Promise<PostEntry[]>;
 	/** 记一帧开播。 */
 	openLiveSession(key: string, startedAtIso: string): Promise<void>;
 	/** 记一帧下播,可带本场累计观看(不是有限数就不带)。 */
@@ -110,7 +129,26 @@ function readPostRow(parsed: unknown): PostEntry | undefined {
 	const row = parsed as { id?: unknown; hasVideo?: unknown; publishedAt?: unknown } | null;
 	if (typeof row?.id !== "string" || typeof row.publishedAt !== "string") return undefined;
 	if (typeof row.hasVideo !== "boolean") return undefined;
-	return { id: row.id, hasVideo: row.hasVideo, publishedAt: row.publishedAt };
+	return {
+		id: row.id,
+		hasVideo: row.hasVideo,
+		publishedAt: row.publishedAt,
+		...optionalPostFields(parsed),
+	};
+}
+
+/** 多收的五格:类型对的才要,类型不对就当没有这一格(行不丢)。 */
+function optionalPostFields(parsed: unknown): Partial<PostEntry> {
+	const row = parsed as Record<string, unknown>;
+	const out: Partial<PostEntry> = {};
+	if (typeof row.url === "string") out.url = row.url;
+	if (typeof row.title === "string") out.title = row.title;
+	if (typeof row.summary === "string") out.summary = row.summary;
+	if (typeof row.topic === "string") out.topic = row.topic;
+	if (typeof row.videoDurationSec === "number" && Number.isFinite(row.videoDurationSec)) {
+		out.videoDurationSec = row.videoDurationSec;
+	}
+	return out;
 }
 
 /**
@@ -217,11 +255,12 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			// 现有 id 挡掉重复,换取文件本身就是干净的。
 			const existing = await readPosts(key);
 			if (existing.some((e) => e.id === event.id)) return;
-			// 只写这三格:行格式是契约(决策 16),调用方对象上多带的东西不许漏进盘。
+			// 只写定义好的这些格:行格式是契约(决策 16),调用方对象上多带的东西不许漏进盘;多收的五格没有就不写。
 			const row: PostEntry = {
 				id: event.id,
 				hasVideo: event.hasVideo,
 				publishedAt: event.publishedAt,
+				...optionalPostFields(event),
 			};
 			await appendLine(postsFile(key), row, `posts ${key}`);
 		},
@@ -230,6 +269,18 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			await ensureRoots();
 			const all = await readPosts(key);
 			return all.filter((e) => e.publishedAt >= sinceIso);
+		},
+
+		async listRecentPosts(key, limit) {
+			if (!Number.isInteger(limit) || limit <= 0) return [];
+			await ensureRoots();
+			const all = await readPosts(key);
+			// 稳定排序:发布时刻相同的保持落盘顺序。
+			return [...all]
+				.sort((a, b) =>
+					a.publishedAt < b.publishedAt ? 1 : a.publishedAt > b.publishedAt ? -1 : 0,
+				)
+				.slice(0, limit);
 		},
 
 		async openLiveSession(key, startedAtIso) {

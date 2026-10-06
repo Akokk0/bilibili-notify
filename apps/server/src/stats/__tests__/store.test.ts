@@ -233,6 +233,98 @@ describe("StatsStore — drop", () => {
 	});
 });
 
+describe("StatsStore — 作品行多收的五格", () => {
+	const FULL = {
+		id: "a",
+		hasVideo: true,
+		publishedAt: T(1),
+		url: "https://example.com/a",
+		title: "标题",
+		summary: "摘要",
+		topic: "话题",
+		videoDurationSec: 61,
+	};
+
+	it("五格写得进、读得出;盘上的键是固定的那几个", async () => {
+		await store.appendPost("1", FULL);
+		expect(await store.listPosts("1", T(0))).toEqual([FULL]);
+		const raw = await readFile(join(dataDir, "stats", "posts", "1.jsonl"), "utf-8");
+		expect(Object.keys(JSON.parse(raw.trim())).sort()).toEqual(
+			[
+				"hasVideo",
+				"id",
+				"publishedAt",
+				"summary",
+				"title",
+				"topic",
+				"url",
+				"videoDurationSec",
+			].sort(),
+		);
+	});
+
+	it("没有的格不写(不写 undefined / 默认值),多带的东西仍不进盘", async () => {
+		await store.appendPost("1", {
+			id: "b",
+			hasVideo: false,
+			publishedAt: T(2),
+			extra: "x",
+		} as never);
+		const raw = await readFile(join(dataDir, "stats", "posts", "1.jsonl"), "utf-8");
+		expect(raw.trim()).toBe(JSON.stringify({ id: "b", hasVideo: false, publishedAt: T(2) }));
+	});
+
+	it("读行时格的类型不对就当没有这一格,行保留", async () => {
+		await mkdir(join(dataDir, "stats", "posts"), { recursive: true });
+		await writeFile(
+			join(dataDir, "stats", "posts", "2.jsonl"),
+			`${JSON.stringify({ id: "c", hasVideo: true, publishedAt: T(1), url: 5, title: ["x"], summary: null, topic: {}, videoDurationSec: "61" })}\n` +
+				`${JSON.stringify({ id: "d", hasVideo: true, publishedAt: T(2), title: "好的", videoDurationSec: Number.NaN })}\n`,
+		);
+		expect(await store.listPosts("2", T(0))).toEqual([
+			{ id: "c", hasVideo: true, publishedAt: T(1) },
+			{ id: "d", hasVideo: true, publishedAt: T(2), title: "好的" },
+		]);
+	});
+});
+
+describe("StatsStore — listRecentPosts(最近几条)", () => {
+	it("按发布时刻从新到旧,limit 截断", async () => {
+		await store.appendPost("1", { id: "a", hasVideo: false, publishedAt: T(3) });
+		await store.appendPost("1", { id: "b", hasVideo: false, publishedAt: T(9) });
+		await store.appendPost("1", { id: "c", hasVideo: true, publishedAt: T(5) });
+		expect((await store.listRecentPosts("1", 2)).map((p) => p.id)).toEqual(["b", "c"]);
+		expect((await store.listRecentPosts("1", 10)).map((p) => p.id)).toEqual(["b", "c", "a"]);
+	});
+
+	it("同 id 去重(盘上有重复行也只回一条,留先落盘的)", async () => {
+		await mkdir(join(dataDir, "stats", "posts"), { recursive: true });
+		await writeFile(
+			join(dataDir, "stats", "posts", "3.jsonl"),
+			`${JSON.stringify({ id: "x", hasVideo: false, publishedAt: T(4), title: "先" })}\n` +
+				`${JSON.stringify({ id: "x", hasVideo: false, publishedAt: T(4), title: "后" })}\n`,
+		);
+		expect(await store.listRecentPosts("3", 5)).toEqual([
+			{ id: "x", hasVideo: false, publishedAt: T(4), title: "先" },
+		]);
+	});
+
+	it("带着五格回;没有文件、limit 不是正数 → 空", async () => {
+		await store.appendPost("1", {
+			id: "a",
+			hasVideo: true,
+			publishedAt: T(1),
+			url: "https://example.com/a",
+			summary: "摘要",
+		});
+		expect(await store.listRecentPosts("1", 1)).toEqual([
+			{ id: "a", hasVideo: true, publishedAt: T(1), url: "https://example.com/a", summary: "摘要" },
+		]);
+		expect(await store.listRecentPosts("404", 5)).toEqual([]);
+		expect(await store.listRecentPosts("1", 0)).toEqual([]);
+	});
+});
+
 describe("StatsStore — 「在记」小账(ADR-0027 决策 13)", () => {
 	const hour = (n: number) => new Date(Date.UTC(2026, 4, 16, n)).toISOString();
 	const row = (kind: "posts" | "live" | "followers", from: number, to: number) => ({

@@ -28,7 +28,7 @@ export const HOUR_MS = 3_600_000;
 /** 各来源适配看得到的那一面。所有写入都是 fire-and-forget,失败只丢这一条统计。 */
 export interface StatsRecorderCore {
 	/** 记一条作品行(开播公告不记,见 `bili-format`)。同一个键下同 id 只留首条(去重在 store)。 */
-	recordPost(key: string, post: PostEntry): void;
+	recordPost(key: string, post: PostEntry | Promise<PostEntry>): void;
 	/** 开一场。这个键在飞的累计观看清零,从这一场重新取最大值。 */
 	openSession(key: string, startedAtIso: string): void;
 	/** 报一次本场累计观看(看过的人数)。只留最大值;不是有限数就不收。 */
@@ -171,7 +171,9 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 
 	return {
 		recordPost(key, post) {
-			enqueue(key, "appendPost", () => opts.store.appendPost(key, post));
+			// 行可以是还在翻译的(拓展作品先翻成中立的 `Post` 再取字段):排进这个键的队里等它翻好再写,
+			// 顺序不乱、`flush()` 也等得到。
+			enqueue(key, "appendPost", async () => opts.store.appendPost(key, await post));
 		},
 
 		openSession(key, startedAtIso) {

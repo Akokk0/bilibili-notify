@@ -234,8 +234,8 @@ describe("作品(决策 5)", () => {
 		report(bus, post({ id: "t1", publishedAt: T0 - 3 * MINUTE, text: "一条图文" }));
 		await recorder.flush();
 		expect(await dynRows()).toEqual([
-			{ id: "v1", hasVideo: true, publishedAt: iso(T0 - 5 * MINUTE) },
-			{ id: "t1", hasVideo: false, publishedAt: iso(T0 - 3 * MINUTE) },
+			expect.objectContaining({ id: "v1", hasVideo: true, publishedAt: iso(T0 - 5 * MINUTE) }),
+			expect.objectContaining({ id: "t1", hasVideo: false, publishedAt: iso(T0 - 3 * MINUTE) }),
 		]);
 	});
 
@@ -245,6 +245,94 @@ describe("作品(决策 5)", () => {
 		report(bus, post({ id: "dup" }));
 		await recorder.flush();
 		expect(await dynRows()).toHaveLength(1);
+	});
+});
+
+describe("作品行多收的五格(ADR-0027 决策 4 / 12,先翻成中立的 Post 再取)", () => {
+	it("带视频、话题、正文的上报:五格都对(期望值手写)", async () => {
+		const { bus, recorder } = boot();
+		report(
+			bus,
+			post({
+				id: "full",
+				url: "https://www.douyin.com/video/full",
+				publishedAt: T0 - 5 * MINUTE,
+				text: "今天去了海边 #旅行#",
+				topics: ["旅行"],
+				video: { title: "海边一日", duration: 125 },
+			}),
+		);
+		await recorder.flush();
+		expect(await dynRows()).toEqual([
+			{
+				id: "full",
+				hasVideo: true,
+				publishedAt: iso(T0 - 5 * MINUTE),
+				url: "https://www.douyin.com/video/full",
+				title: "海边一日",
+				summary: "今天去了海边 #旅行#\n视频标题：海边一日",
+				topic: "旅行",
+				videoDurationSec: 125,
+			},
+		]);
+	});
+
+	it("纯文字的上报:只有链接与摘要,其余格不写", async () => {
+		const { bus, recorder } = boot();
+		report(bus, post({ id: "plain", url: "https://www.douyin.com/plain", text: "一句话" }));
+		await recorder.flush();
+		const [row] = (await dynRows()) ?? [];
+		expect(row).toEqual({
+			id: "plain",
+			hasVideo: false,
+			publishedAt: iso(T0 - MINUTE),
+			url: "https://www.douyin.com/plain",
+			summary: "一句话",
+		});
+	});
+
+	it("超长正文:摘要正好 200 个字符", async () => {
+		const { bus, recorder } = boot();
+		report(bus, post({ id: "long", text: "字".repeat(1000) }));
+		await recorder.flush();
+		const [row] = (await dynRows()) ?? [];
+		expect([...String((row as { summary?: string }).summary)]).toHaveLength(200);
+	});
+
+	it("翻成 Post 失败:这一行还在,只是没有这五格", async () => {
+		const { bus, recorder } = boot();
+		const broken = post({ id: "broken" });
+		Object.defineProperty(broken.value, "text", {
+			get() {
+				throw new Error("翻不了");
+			},
+			enumerable: true,
+		});
+		report(bus, broken);
+		await recorder.flush();
+		expect(await dynRows()).toEqual([
+			{ id: "broken", hasVideo: false, publishedAt: iso(T0 - MINUTE) },
+		]);
+	});
+
+	it("统计不因为翻译而把图写进图库:带配图、封面的上报之后,数据根下没有图库目录", async () => {
+		const { bus, recorder } = boot();
+		const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+		report(
+			bus,
+			post({ id: "pics", text: "有图", images: [png], video: { title: "片", cover: png } }),
+		);
+		await recorder.flush();
+		expect(await dynRows()).toHaveLength(1);
+		expect(await exists("images")).toBe(false);
+	});
+
+	it("作品开关关着:不落行(㉖f),这五格也就无从谈起", async () => {
+		switches = { posts: false, live: true };
+		const { bus, recorder } = boot();
+		report(bus, post({ id: "off", text: "不该记" }));
+		await recorder.flush();
+		expect(await dynRows()).toBeUndefined();
 	});
 });
 
