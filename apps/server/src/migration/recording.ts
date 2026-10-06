@@ -34,6 +34,7 @@ import {
 	STATS_RECORDING_DIR,
 } from "../stats/store.js";
 import { isPlainObject, readJsonFile, rewriteTextFile } from "./files.js";
+import { hourSetOf, readFollowerSampleTimes } from "./follower-times.js";
 
 const HOUR_MS = 3_600_000;
 /** 老的「在记」证据目录与水位线文件:读完就删,新代不再有它们。 */
@@ -248,7 +249,7 @@ export async function migrateRecordingLedger(
 			id: row.id,
 			builtIn,
 			live: recordingSwitches(features, special).live,
-			samples: await hoursOf(join(followersDir, file), "ts"),
+			samples: hourSetOf(await readFollowerSampleTimes(join(followersDir, file))),
 			posts: await hoursOf(join(postsDir, file), "publishedAt"),
 			liveSpans: live.spans,
 			liveStarts: live.starts,

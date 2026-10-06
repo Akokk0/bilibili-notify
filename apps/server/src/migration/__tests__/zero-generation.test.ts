@@ -270,7 +270,9 @@ const ZERO_FILES: Record<string, string> = {
 	"stats/dyn/12345.jsonl": '{"id":"d1","type":"DYNAMIC_TYPE_AV","ts":"2026-09-30T00:00:00.000Z"}\n',
 	"stats/live/12345.jsonl":
 		'{"k":"start","ts":"2026-09-30T10:00:00.000Z"}\n{"k":"end","ts":"2026-09-30T12:00:00.000Z","peak":"1.2万"}\n',
-	"fans/12345.jsonl": '{"ts":"2026-09-30T00:00:00.000Z","fans":10}\n',
+	// 两个样本、隔十分钟:运行记录的回填(㉗b)据此在 2026-09-30 的 00 点记 10 分钟。
+	"fans/12345.jsonl":
+		'{"ts":"2026-09-30T00:00:00.000Z","fans":10}\n{"ts":"2026-09-30T00:10:00.000Z","fans":11}\n',
 	"fans/sub-1.jsonl": '{"value":1}\n',
 	"assets/card-bg/0123abcd.png": "bg",
 	"assets/font/index.json": "{}",
@@ -367,6 +369,8 @@ const REWRITTEN = [
 	// 「在记」小账(㉖f)由迁移推出来写进新代:这一条订阅(uid 12345)有粉丝样本;`stats/seen/` 与 `stats/since` 读完就删,
 	// 不进新代。
 	"stats/recording/33333333-3333-4333-8333-333333333333.jsonl",
+	// 运行记录(㉗b)由迁移从粉丝样本推出来写进新代。
+	"uptime/hours.jsonl",
 ];
 
 async function placeZeroGeneration(): Promise<void> {
@@ -437,6 +441,8 @@ describe("migrateZeroGeneration", () => {
 			"history/retention.json",
 			// 统计的「在记」小账是迁移新写的(㉖f)。
 			"stats/recording/33333333-3333-4333-8333-333333333333.jsonl",
+			// 运行记录是迁移新写的(㉗b)。
+			"uptime/hours.jsonl",
 			`images/${CHAT_REF}`,
 			`images/${AVATAR_REF}`,
 			`images/${HISTORY_REF}`,
@@ -711,8 +717,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 31,
-			output: "9e97eb6901a0cede30aeed100243df037ea211037b71474cefa6ace2424fca14",
+			revision: 32,
+			output: "8b94d4110fdb2a2e2553995f9509f435a6165af217dc01eb8d0bbf530dea9be3",
 		});
 	});
 });

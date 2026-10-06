@@ -291,6 +291,18 @@ async function expectMigrated(
 		}
 	}
 
+	// 运行记录由迁移从粉丝样本推出来(㉗b):合成盘每个订阅都是 2025-10-01 00:00 起每 10 分钟一条、连续 365 天
+	// (最后一条在 2026-09-30 23:50),各订阅时刻对齐、合并去重后是一整段,于是 365 × 24 = 8760 个小时一小时一行,
+	// 前 8759 行各 60 分钟、最后一行(23 点)50 分钟,合计 8759 × 60 + 50 = 525590 分钟。
+	const uptimeRows = (await readLines(join(generation, "uptime", "hours.jsonl"))).map(
+		(line) => JSON.parse(line) as { hourStartedAt: string; minutes: number },
+	);
+	expect(uptimeRows).toHaveLength(8760);
+	expect(uptimeRows[0]).toEqual({ hourStartedAt: "2025-10-01T00:00:00.000Z", minutes: 60 });
+	expect(uptimeRows[8758]).toEqual({ hourStartedAt: "2026-09-30T22:00:00.000Z", minutes: 60 });
+	expect(uptimeRows[8759]).toEqual({ hourStartedAt: "2026-09-30T23:00:00.000Z", minutes: 50 });
+	expect(uptimeRows.reduce((sum, row) => sum + row.minutes, 0)).toBe(525_590);
+
 	// 订阅:两份合成一个文件({ tags, subscriptions },ADR-0034),每行带身份。
 	const { subscriptions } = JSON.parse(
 		await readFile(join(generation, "config", "subscriptions.json"), "utf8"),

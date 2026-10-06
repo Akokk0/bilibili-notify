@@ -62,13 +62,14 @@ import {
 	migrateSubscriptionFiles,
 	readBiliSubscriptionKeys,
 } from "./subscriptions.js";
+import { migrateUptime } from "./uptime.js";
 
 /**
  * 迁移修订号(见 `runtime/generations.ts`):开发期每改一次迁移的产出(搬什么、搬到哪、怎么搬、丢下什么、
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 31;
+export const MIGRATION_REVISION = 32;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -427,6 +428,11 @@ const REWRITES: readonly {
 			migrateRecordingLedger(opts.targetDir, (reason) =>
 				report.skipped.push({ path: "stats/recording", reason }),
 			),
+	},
+	{
+		// 在「统计」之后:读它迁好的粉丝样本,推出老日子每个小时 BN 跑了多少分钟(运行记录,㉗b)。
+		label: "运行记录",
+		run: (opts) => migrateUptime(opts.targetDir),
 	},
 	{
 		label: "锐评草稿",
