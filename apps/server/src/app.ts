@@ -48,7 +48,7 @@ import {
 } from "./routes/respond-failure.js";
 import { createSessionRoute } from "./routes/session.js";
 import { createSettingsRoute } from "./routes/settings.js";
-import { createStatsRoute } from "./routes/stats.js";
+import { createStatsRoute, type StatsOverviewReader } from "./routes/stats.js";
 import { createStatsFollowersRoute } from "./routes/stats-followers.js";
 import { createSubscriptionsRoute } from "./routes/subscriptions.js";
 import { type CreateSystemRouteInput, createSystemRoute } from "./routes/system.js";
@@ -161,15 +161,12 @@ export interface CreateAppOptions {
 	 */
 	basicAuthCredentials?: BasicAuthCredentials;
 	/**
-	 * 把 stats 子路由实例递出去。
+	 * `/api/stats/overview` 与手动锐评用的取数函数(`createStatsOverview` 的产物)。
 	 *
-	 * 定时锐评的调度器要取统计数据,而取数是「内部代理一次 `/overview`」——
-	 * 手动锐评在 handler 里做的就是这件事(`fetchOverview(app, …)`,传的正是这个
-	 * 子实例)。子实例上没有鉴权中间件,鉴权挂在父 app 的 `/api/*`;调度器与
-	 * handler 同属鉴权边界之内的进程内代码,所以这里递出去的是**同一条已有路径**
-	 * 的引用,不是新开的信任面。走父 app 反而会被自己的鉴权 401 掉(它没有 cookie)。
+	 * `index.ts` 建好一个、同时交给定时锐评的调度器:三处吃同一份 30 秒缓存。不传就由统计路由自建一个
+	 * (路由测试);生产里不传的话缓存就不共用了,所以 `index.ts` 必须传。
 	 */
-	onStatsRoute?: (route: Hono) => void;
+	statsOverview?: StatsOverviewReader;
 	/**
 	 * 立刻跑一轮 —— 面板上的「试一次」。带订阅 id 跑那条订阅的单人锐评(两支都行),不带跑榜单。
 	 * 由 `index.ts` 交给调度器;不传就是「还没就绪」,端点回 503。
@@ -360,11 +357,13 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		);
 		// 粉丝样本只喂统计与首页的统计卡,所以是统计的子路由(ADR-0036)。
 		app.route("/api/stats/followers", createStatsFollowersRoute(deps));
-		const statsRoute = createStatsRoute(deps, {
-			...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
-		});
-		app.route("/api/stats", statsRoute);
-		options.onStatsRoute?.(statsRoute);
+		app.route(
+			"/api/stats",
+			createStatsRoute(deps, {
+				...(options.statsOverview ? { overview: options.statsOverview } : {}),
+				...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
+			}),
+		);
 		app.route("/api/qq", createQQRoute(deps));
 		// 面板那一侧的拓展口。URL 面用短词 `ext`(ADR-0012 决策 38),代码面照旧全称。
 		app.route(

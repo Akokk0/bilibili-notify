@@ -3,16 +3,15 @@
  *
  * 这里不测统计数值本身(那是 stats/aggregate 的单测),只钉两条路由层契约:
  *   - 缓存键必须覆盖**响应里所有会变的输入**,否则页面会自我矛盾;
- *   - 内部代理调用失败时要给出可读的失败(`{ code, message }`),而不是把异常抛出去;
- *   - 子实例被进程内直接 `request` 时(定时锐评的调度器就是这么取数的),它抛的错也是失败的形状,
- *     不是 Hono 默认处理回的纯文本 500。
+ *   - 取数失败时锐评要给出可读的失败(`{ code, message }`),而不是把异常抛出去;
+ *   - 路由与两处锐评都**直接调**注入的取数函数(接线):剪断哪一根都有一条测试红。
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { requestErrorHandler } from "../respond-failure.js";
-import { createStatsRoute } from "../stats.js";
+import { createStatsRoute, roastOverviewFetcher } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
 interface StubOpts {
@@ -93,12 +92,12 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 	});
 });
 
-describe("POST /roast — 内部代理失败时的错误信封", () => {
-	it("/overview 抛错 → 返回可读的失败(503 unavailable),而不是把 SyntaxError 抛出去", async () => {
-		// 代理调用原本直接 `.json()` 而不看状态码。/overview 一抛错,Hono 默认的
-		// onError 回的是纯文本 "Internal Server Error",`.json()` 于是 reject 出
-		// SyntaxError,逃出 handler 变成一个没有 body 的裸 500 —— 用户点「生成 AI
-		// 锐评」只看到卡片里一行生硬的 `POST /api/stats/roast → 500`。
+describe("POST /roast — 取数失败时的错误信封", () => {
+	it("取数抛错 → 返回可读的失败(503 unavailable),而不是把异常抛出去", async () => {
+		// 取数原本是进程内代理一次 /overview、直接 `.json()` 而不看状态码:/overview 一抛错,回的是纯文本
+		// 500,`.json()` 于是 reject 出 SyntaxError,逃出 handler 变成一个没有 body 的裸 500 —— 用户点「生成 AI
+		// 锐评」只看到卡片里一行生硬的 `POST /api/stats/roast → 500`。现在直接调取数函数,抛错在
+		// `roastOverviewFetcher` 收成 null,生成那头翻成可读的失败。
 		const { deps } = makeDeps({ failOverview: true });
 		const app = createStatsRoute(deps);
 
@@ -127,9 +126,7 @@ describe("POST /roast — 内部代理失败时的错误信封", () => {
 	});
 });
 
-describe("子实例被进程内直接 request —— 抛错也是失败的形状", () => {
-	// 定时锐评的调度器与手动锐评都不经父实例,直接 `request("/overview")`。子实例自己不挂出错处理的话,
-	// /overview 抛的错走 Hono 默认处理,回一份纯文本 500 —— 不是 { code, message }。
+describe("取数抛错 —— 挂进带全局出错处理的父实例后是失败的形状", () => {
 	it("/overview 抛错 → 503 + { code, message },原话进错误日志、不回给调用方", async () => {
 		const { deps } = makeDeps({ failOverview: true });
 		const error = vi.fn();
@@ -139,9 +136,11 @@ describe("子实例被进程内直接 request —— 抛错也是失败的形状
 			warn() {},
 			error,
 		};
-		const app = createStatsRoute(deps);
+		const parent = new Hono();
+		parent.onError(requestErrorHandler({ error }));
+		parent.route("/api/stats", createStatsRoute(deps));
 
-		const res = await app.request("/overview?days=7&tz=0");
+		const res = await parent.request("/api/stats/overview?days=7&tz=0");
 
 		expect(res.status).toBe(503);
 		expect(res.headers.get("content-type")).toContain("application/json");
@@ -151,7 +150,7 @@ describe("子实例被进程内直接 request —— 抛错也是失败的形状
 		expect(error).toHaveBeenCalledWith("unhandled request error", expect.any(Error));
 	});
 
-	it("挂进带全局出错处理的父实例后,抛错的样子与直接 request 一模一样(子实例自带的 onError 优先,得是同一份)", async () => {
+	it("锐评取数抛错:原话进错误日志,锐评那头只拿到失败(统计数据读取失败)", async () => {
 		const { deps } = makeDeps({ failOverview: true });
 		const error = vi.fn();
 		(deps.runtime.serviceCtx as unknown as { logger: unknown }).logger = {
@@ -160,14 +159,60 @@ describe("子实例被进程内直接 request —— 抛错也是失败的形状
 			warn() {},
 			error,
 		};
-		const direct = await createStatsRoute(deps).request("/overview?days=7&tz=0");
+		const res = await createStatsRoute(deps).request("/roast?days=7", { method: "POST" });
 
-		const parent = new Hono();
-		parent.onError(requestErrorHandler({ error }));
-		parent.route("/api/stats", createStatsRoute(deps));
-		const mounted = await parent.request("/api/stats/overview?days=7&tz=0");
+		expect(res.status).toBe(503);
+		expect(((await res.json()) as any).message).toContain("统计数据读取失败");
+		expect(error).toHaveBeenCalledWith("unhandled request error", expect.any(Error));
+	});
+});
 
-		expect(mounted.status).toBe(direct.status);
-		expect(await mounted.json()).toEqual(await direct.json());
+describe("取数函数是注入的那一个 —— 路由与两处锐评直接调它(接线)", () => {
+	/** 回一份空榜的取数函数;每次调用记下它收到的(已校验的)天数与时区偏移。 */
+	const makeReader = () =>
+		vi.fn(async (days: number, _tzOffsetMin: number) => ({ days, rows: [] }));
+
+	it("GET /overview:天数与时区先在路由层校验(夹到 1..90、±840),再交给取数函数;回的就是它给的", async () => {
+		const { deps } = makeDeps();
+		const overview = makeReader();
+		const app = createStatsRoute(deps, { overview });
+
+		const res = await app.request("/overview?days=999&tz=99999");
+
+		expect(await res.json()).toEqual({ days: 90, rows: [] });
+		expect(overview).toHaveBeenCalledTimes(1);
+		expect(overview).toHaveBeenCalledWith(90, 0);
+	});
+
+	it("手动锐评(榜单与单人)取数走它:收到的是路由校验过的值,路由自己不再另读盘", async () => {
+		const { deps } = makeDeps();
+		const listPosts = vi.spyOn(deps.runtime.statsStore, "listPosts");
+		const overview = makeReader();
+		const app = createStatsRoute(deps, { overview });
+
+		const board = await app.request("/roast?days=7&tz=-480", { method: "POST" });
+		const solo = await app.request("/roast/s1?days=14&tz=60", { method: "POST" });
+
+		// 空榜:榜单要至少 2 位、单人找不到他的行 —— 都是取到数之后才有的失败,证明确实取了。
+		expect(((await board.json()) as any).code).toBe("not_configured");
+		expect(((await solo.json()) as any).code).toBe("not_found");
+		expect(overview.mock.calls).toEqual([
+			[7, -480],
+			[14, 60],
+		]);
+		expect(listPosts).not.toHaveBeenCalled();
+	});
+
+	it("定时锐评用的取数(roastOverviewFetcher)包的就是传给它的函数,失败收成 null", async () => {
+		const { deps } = makeDeps();
+		const overview = makeReader();
+		const fetcher = roastOverviewFetcher(overview, deps);
+		expect(await fetcher(30, 480)).toEqual({ days: 30, rows: [] });
+		expect(overview).toHaveBeenCalledWith(30, 480);
+
+		const failing = roastOverviewFetcher(async () => {
+			throw new Error("盘挂了");
+		}, deps);
+		expect(await failing(30, 480)).toBeNull();
 	});
 });

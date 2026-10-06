@@ -29,12 +29,12 @@ import {
 } from "../stats/aggregate.js";
 import { statsFileKey } from "../stats/file-key.js";
 import { deliverRoast } from "../stats/roast-deliver.js";
-import { generateBoardRoast, generateSoloRoast } from "../stats/roast-generate.js";
 import {
-	ENGINES_NOT_READY_MESSAGE,
-	requestErrorHandler,
-	respondFailure,
-} from "./respond-failure.js";
+	generateBoardRoast,
+	generateSoloRoast,
+	type OverviewFetcher,
+} from "../stats/roast-generate.js";
+import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
 /** 这条订阅订的是 B 站吗 —— 统计页两支的取数各算各的(ADR-0020 决策 9),分岔都看身份的来源。 */
@@ -122,51 +122,27 @@ function sumTail(series: Array<number | null>, n: number): number | null {
 }
 
 /**
- * 两处锐评共用的取数:内部代理一次自己的 `/overview`。
- *
- * **必须先看状态码再 `.json()`。** `/overview` 一旦抛错(某个 store 方法在 try 之外
- * reject),回的是一份失败的错误体(子实例自己挂着全局出错处理,见 `createStatsRoute`),
- * 不是一份 `StatsOverviewResponse`;不看状态码就把它当成功体读,拿到的是一份没有 `rows` 的东西。
- * 取数失败在这里收成 `null`,由生成那头翻成一条可读的失败(`overview-failed`)。
+ * `/overview` 的取数函数:入参是**已经校验过的**天数与时区偏移(范围与出错响应归路由层:`clampDays` /
+ * `parseTz`),出参就是响应体。读盘 / 读仓抛错就原样抛出来:路由那头交给全局出错处理,锐评那头经
+ * {@link roastOverviewFetcher} 收成 `null`。
  */
-async function fetchOverview(
-	app: Hono,
+export type StatsOverviewReader = (
 	days: number,
-	tz: number,
-): Promise<StatsOverviewResponse | null> {
-	const res = await app.request(`/overview?days=${days}&tz=${tz}`);
-	if (!res.ok) return null;
-	try {
-		return (await res.json()) as StatsOverviewResponse;
-	} catch {
-		return null;
-	}
-}
+	tzOffsetMin: number,
+) => Promise<StatsOverviewResponse>;
 
-export interface StatsRouteOptions {
-	/**
-	 * 立刻跑一轮 —— 面板上的「试一次」按它。带订阅 id 跑那条订阅的单人锐评(两支都行,ADR-0020
-	 * 决策 18),不带则跑全局那条榜单周报。
-	 *
-	 * 由 `index.ts` late-bind 进来(调度器建得比路由晚):没传就等于「还没就绪」,
-	 * 端点回 503 而不是假装成功。**它调的就是 cron 到点调的那个函数** —— 另写一条
-	 * 「测试专用」的路径,测出来的就不是真到点时会发生的事。
-	 */
-	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunOutcome>;
-}
+/** 取数只读这两样,不牵整份 RouteDeps(定时锐评的调度器手里就只有它们)。 */
+export type StatsOverviewDeps = Pick<RouteDeps, "runtime" | "store">;
 
-export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {
-	const app = new Hono();
-	// 全局出错处理(app.ts 挂的那份)的同一份,子实例自己再挂一遍:定时锐评的调度器与手动锐评都是**进程内**
-	// 直接 `request` 这个子实例的 `/overview`(见 `onStatsRoute`),不经父实例,不挂的话它抛的错走 Hono 默认
-	// 处理、回纯文本 500。挂进父实例后子实例自带的 onError 优先,所以必须是同一份。logger 现取:
-	// 只有抛错时才用得上。
-	app.onError((err, c) => requestErrorHandler(deps.runtime.serviceCtx.logger)(err, c));
+/**
+ * 建一个取数函数,**路由与两处锐评(手动、定时)共用它**。短 TTL 缓存挂在返回函数的闭包里,所以走它的人
+ * (面板、手动锐评、定时锐评)吃的是同一份缓存;要共用就得是同一个实例 —— `index.ts` 建一个、同时交给调度器与
+ * `createApp`。
+ */
+export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReader {
 	const cache = new Map<string, CacheEntry>();
 
-	app.get("/overview", async (c) => {
-		const days = clampDays(c.req.query("days"));
-		const tzOffsetMin = parseTz(c.req.query("tz"));
+	return async (days, tzOffsetMin) => {
 		// 两支订阅都列(ADR-0020):停用的照样列 —— 统计页看的是「他这段时间做了什么」;拓展没在跑的
 		// 也照样列,它仍是一条订阅。行的顺序跟着订阅列表走。
 		const subs = deps.store.getSubscriptions();
@@ -217,7 +193,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 
 		const hit = cache.get(key);
 		if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-			return c.json<StatsOverviewResponse>(hit.payload);
+			return hit.payload;
 		}
 
 		// 窗口起点对齐**本地日边界**,与页面上按本地日分桶的每一条序列同一把尺子
@@ -441,8 +417,58 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			if (oldest.done) break;
 			cache.delete(oldest.value);
 		}
-		return c.json<StatsOverviewResponse>(payload);
-	});
+		return payload;
+	};
+}
+
+/**
+ * 两处锐评要的取数:把 {@link StatsOverviewReader} 收成「失败是 `null`」的 {@link OverviewFetcher},由生成那头翻成
+ * 一条可读的失败(`overview-failed`)。
+ *
+ * 抛出来的是 bug 或盘坏了:原话进错误日志(logger 现取,只有抛错时才用得上),调用方只拿到 `null`。
+ */
+export function roastOverviewFetcher(
+	read: StatsOverviewReader,
+	deps: Pick<RouteDeps, "runtime">,
+): OverviewFetcher {
+	return async (days, tz) => {
+		try {
+			return await read(days, tz);
+		} catch (err) {
+			deps.runtime.serviceCtx.logger.error("unhandled request error", err);
+			return null;
+		}
+	};
+}
+
+export interface StatsRouteOptions {
+	/**
+	 * `/overview` 与手动锐评用的取数。`index.ts` 建好一个、同时交给定时锐评的调度器,两边吃同一份 30 秒缓存;
+	 * 不传就自建一个(路由测试)。
+	 */
+	overview?: StatsOverviewReader;
+	/**
+	 * 立刻跑一轮 —— 面板上的「试一次」按它。带订阅 id 跑那条订阅的单人锐评(两支都行,ADR-0020
+	 * 决策 18),不带则跑全局那条榜单周报。
+	 *
+	 * 由 `index.ts` late-bind 进来(调度器建得比路由晚):没传就等于「还没就绪」,
+	 * 端点回 503 而不是假装成功。**它调的就是 cron 到点调的那个函数** —— 另写一条
+	 * 「测试专用」的路径,测出来的就不是真到点时会发生的事。
+	 */
+	runRoastNow?: (subscriptionId?: string) => Promise<RoastRunOutcome>;
+}
+
+export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {}): Hono {
+	const app = new Hono();
+	// 面板、手动锐评共用这一个取数(定时锐评那条在 index.ts 里拿到的是同一个实例,缓存才共用)。
+	const overview = options.overview ?? createStatsOverview(deps);
+	const roastOverview = roastOverviewFetcher(overview, deps);
+
+	app.get("/overview", async (c) =>
+		c.json<StatsOverviewResponse>(
+			await overview(clampDays(c.req.query("days")), parseTz(c.req.query("tz"))),
+		),
+	);
 
 	/**
 	 * `POST /api/stats/roast` —— 把统计数据喂给智能女仆,评鸽王 / 勤奋榜。
@@ -456,7 +482,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 		const gen = await generateBoardRoast(deps, {
 			days: clampDays(c.req.query("days")),
 			tz: parseTz(c.req.query("tz")),
-			fetchOverview: (d, t) => fetchOverview(app, d, t),
+			fetchOverview: roastOverview,
 		});
 		// 生成没成:码与话在 roast-generate.ts 产生的地方定好,这里直接回(状态码从码推)。
 		if (!gen.ok) return respondFailure(c, gen);
@@ -559,7 +585,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			subscriptionId: c.req.param("subscriptionId"),
 			days: clampDays(c.req.query("days")),
 			tz: parseTz(c.req.query("tz")),
-			fetchOverview: (d, t) => fetchOverview(app, d, t),
+			fetchOverview: roastOverview,
 		});
 		if (!gen.ok) return respondFailure(c, gen);
 		return c.json<StatsSoloRoastResponse>(ok({ result: gen.result }));

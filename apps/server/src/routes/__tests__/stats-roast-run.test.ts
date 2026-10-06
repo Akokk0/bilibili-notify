@@ -9,9 +9,10 @@
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { RoastRunOutcome } from "../../runtime/roast-scheduler.js";
-import { UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
+import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
 
@@ -102,8 +103,11 @@ describe("POST /roast/run", () => {
 		const runRoastNow = vi.fn(async () => {
 			throw boom;
 		});
-		const app = createStatsRoute(deps, { runRoastNow });
-		const res = await app.request("/roast/run", { method: "POST" });
+		// 抛错交给全局出错处理(统计子路由自己不再挂一份):照 app.ts 的样子挂进带它的父实例再请求。
+		const app = new Hono();
+		app.onError(requestErrorHandler(logger));
+		app.route("/api/stats", createStatsRoute(deps, { runRoastNow }));
+		const res = await app.request("/api/stats/roast/run", { method: "POST" });
 		expect(res.status).toBe(503);
 		expect(await res.json()).toEqual({ code: "unavailable", message: UNHANDLED_ERROR_MESSAGE });
 		expect(logger.error).toHaveBeenCalledWith("unhandled request error", boom);

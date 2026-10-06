@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { GenerationSourceKind, StatsOverviewResponse } from "@bilibili-notify/contract";
+import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
@@ -17,7 +17,6 @@ import {
 } from "@bilibili-notify/internal";
 import { createKeyProvider, type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
 import { type ServerType, serve } from "@hono/node-server";
-import type { Hono } from "hono";
 import { createApp, createCardSkinStore, createStartupApp } from "./app.js";
 import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { type AuthSystem, createAuthSystem } from "./auth/index.js";
@@ -61,6 +60,7 @@ import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq
 import { createAdapterRegistry } from "./platforms/registry.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
+import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import {
 	type CommandSpec,
@@ -880,12 +880,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// ── 定时锐评 ──────────────────────────────────────────────────────────
 		// 草稿库 → 调度器 → 审批指令,按依赖顺序建;取数与主人私聊两个口子是回填的
-		// (statsRoute 要等 createApp,engines 上面刚建好)。
+		// (engines 上面刚建好,统计的取数函数在下面先建、交给 createApp 共用)。
 		const roastDrafts = createRoastDraftStore({ dataRoot: runtime.dataRoot, logger: log });
 		await roastDrafts.load();
 		runtime.serviceCtx.onDispose(() => roastDrafts.close(), "flush");
 
-		let statsRoute: Hono | null = null;
+		// 取数函数只建一个,同时交给调度器与 createApp:手动锐评、面板、定时锐评三处吃同一份 30 秒缓存。
+		const statsOverview = createStatsOverview({ runtime, store: runtime.configStore });
 		/** 私聊主人。发不出去由调用方各自兜住(调度器与指令处理器都不让它拖垮流程)。 */
 		const tellMaster = async (text: string): Promise<void> => {
 			await engines?.push.sendPrivateMsg(text);
@@ -900,19 +901,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			deps: { runtime, store: runtime.configStore },
 			drafts: roastDrafts,
 			logger: log,
-			// 与手动锐评**同一条路径**:内部代理一次 stats 子路由的 /overview。
-			// 子路由上没有鉴权中间件(鉴权在父 app 的 /api/*),而调度器与 route
-			// handler 同属鉴权边界内的进程内代码 —— 走父 app 反而会被自己 401。
-			fetchOverview: async (days, tz) => {
-				if (!statsRoute) return null;
-				const res = await statsRoute.request(`/overview?days=${days}&tz=${tz}`);
-				if (!res.ok) return null;
-				try {
-					return (await res.json()) as StatsOverviewResponse;
-				} catch {
-					return null;
-				}
-			},
+			// 与手动锐评**同一个取数函数**(同一份缓存),直接调用。
+			fetchOverview: roastOverviewFetcher(statsOverview, { runtime }),
 			tellMaster,
 			tellMasterPayload,
 		});
@@ -1294,9 +1284,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 注册表交给路由:别名冲突检查与 `GET /api/commands` 都照它来,
 			// 面板上那张指令卡片不必再手写一份清单。
 			commands,
-			onStatsRoute: (route) => {
-				statsRoute = route;
-			},
+			statsOverview,
 			// 面板上的「试一次」—— 调的就是 cron 到点调的那两个函数,不是模拟。
 			runRoastNow: (subscriptionId) =>
 				subscriptionId ? roastScheduler.runSoloOnce(subscriptionId) : roastScheduler.runBoardOnce(),

@@ -6,9 +6,9 @@
  * 生成。定时推送没有前端也没有人在场,于是把生成部分抽到这里,让路由和调度器共用
  * 同一份实现 —— 否则两条路会各自演化,页面上看到的和定时发出去的迟早不是一回事。
  *
- * **取数用注入的回调**,不在这里自己实现:`/overview` 那个 handler 背着 TTL 缓存、
- * 跨 UP 的热力图遮罩和时区对齐,把它拆成纯函数是另一场重构,与本功能无关。路由把
- * 自己的 `app.request('/overview')` 传进来,调度器传同一份。
+ * **取数用注入的回调**,不在这里自己实现:`/overview` 的取数背着 TTL 缓存、跨 UP 的热力图遮罩和
+ * 时区对齐。路由与调度器传进来的都是 `createStatsOverview` 那个函数(经 `roastOverviewFetcher` 收成失败为
+ * `null` 的形状),直接调用,不再绕一圈进程内 HTTP。
  */
 
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
@@ -34,7 +34,7 @@ import { roastPlatformLabel, roastRowName } from "./roast-subject.js";
 /** 生成只用得到这两样,不牵整份 RouteDeps —— 调度器不该为了生成一份周报去凑 puppeteer。 */
 export type RoastGenDeps = Pick<RouteDeps, "runtime" | "store">;
 
-/** 取数回调。路由与调度器各自提供,内部都是代理一次 `/overview`。 */
+/** 取数回调。路由与调度器各自提供,内部都是直接调 `/overview` 的那个取数函数;取不到是 `null`。 */
 export type OverviewFetcher = (days: number, tz: number) => Promise<StatsOverviewResponse | null>;
 
 /**

@@ -112,10 +112,7 @@ export function failureOfHttpException(err: HTTPException): {
  * 固定的话,`String(err)` 不再外泄(里头可能带路径、内部状态)。`HTTPException` 是中间件 / 路由主动
  * 抛的,按它的状态码挑码、状态码与 message 照原样。
  *
- * 挂在 `app.onError`,`app.ts` 一处、**还有被进程内直接 `request` 的子实例**(统计路由:定时锐评的
- * 调度器与手动锐评都内部代理它的 `/overview`)各挂一份:子实例自己没有 onError 的话,它抛的错走的是
- * Hono 的默认处理,回一份纯文本 500 —— 直接调它的人拿到的不是失败的形状。挂载进父实例后子实例自带的
- * onError 优先,所以两处必须是**同一份**,免得挂载前后抛错的样子不一样。
+ * 挂在 `app.onError`,`app.ts` 一处。
  */
 export function requestErrorHandler(logger: Pick<Logger, "error">): ErrorHandler {
 	return (err, c) => {
