@@ -102,6 +102,7 @@ import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { dataPath, hostPath } from "./runtime/roots.js";
 import { createStatusCommand } from "./runtime/status-command.js";
+import { createStorageUsage } from "./runtime/storage-usage.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
 import { createSystemNoticeStore } from "./runtime/system-notices.js";
@@ -1245,6 +1246,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			}
 		});
 
+		// 旧版本数据的列表 / 删除与存储占用里「旧版本数据」那一行共用这份参数。
+		const generationUsage = {
+			hostRoot: runtime.hostRoot,
+			currentSeq: generation.seq,
+			formatVersion: FORMAT_VERSION,
+			now: () => Date.now(),
+		};
 		const app = createApp(runtime, {
 			...appShell,
 			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
@@ -1327,19 +1335,31 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				requestGeneration: (source) => writePendingGeneration(runtime.hostRoot, { kind: source }),
 				zeroGenerationExists: () => zeroGenerationExists(runtime.hostRoot),
 				// 旧版本数据的列表与删除(㉙c):能不能删由 generation-usage 判,删的活登记进 track(关停等它)。
-				generations: (() => {
-					const usage = {
-						hostRoot: runtime.hostRoot,
-						currentSeq: generation.seq,
-						formatVersion: FORMAT_VERSION,
-						now: () => Date.now(),
-					};
-					return {
-						list: () => listGenerationUsage(usage),
-						remove: (seq: number) =>
-							removeGeneration({ ...usage, track: (task) => runtime.serviceCtx.track(task) }, seq),
-					};
-				})(),
+				generations: {
+					list: () => listGenerationUsage(generationUsage),
+					remove: (seq: number) =>
+						removeGeneration(
+							{ ...generationUsage, track: (task) => runtime.serviceCtx.track(task) },
+							seq,
+						),
+				},
+				// 存储占用(㉙d):用量表、四类整类清空、手动清一次图库。每类删什么、经哪条写队在 storage-usage;
+				// 清理与清扫登记进 track(关停等它)。粉丝轮询开机之后才有,所以现取。
+				storage: createStorageUsage({
+					dataRoot: runtime.dataRoot,
+					hostRoot: runtime.hostRoot,
+					imageStore: runtime.imageStore,
+					listGenerations: () => listGenerationUsage(generationUsage),
+					statsRecorder: runtime.statsRecorder,
+					subRuntime: runtime.subRuntimeStore,
+					fansPoller: () => runtime.fansPoller,
+					invalidateStatsOverview: () => statsOverview.invalidate(),
+					historyStore: runtime.historyStore,
+					conversationStore: runtime.conversationStore,
+					logger: log,
+					now: () => new Date(),
+					track: (task) => runtime.serviceCtx.track(task),
+				}),
 			},
 		});
 

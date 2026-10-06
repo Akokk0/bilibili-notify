@@ -12,12 +12,16 @@
  */
 
 import type {
+	ClearableStorageCategory,
 	GenerationDeleteResponse,
 	GenerationInfo,
 	GenerationSourceKind,
 	GenerationsResponse,
+	ImageSweepResponse,
 	RestartAbility,
 	RestartResponse,
+	StorageClearResponse,
+	StorageUsageResponse,
 	SystemNotice,
 	SystemNoticesResponse,
 } from "@bilibili-notify/contract";
@@ -42,6 +46,11 @@ function boot(
 		requestGeneration,
 		zeroGenerationExists: async () => true,
 		generations: { list: async () => [], remove: async () => ({ kind: "not_found" }) },
+		storage: {
+			list: async () => ({ rows: [] }),
+			clear: async () => ({ freedBytes: 0 }),
+			sweepImages: async () => ({ removedCount: 0, removedBytes: 0, referenced: 0, inGrace: 0 }),
+		},
 		...over,
 	};
 	return { app: createSystemRoute(input), restart, requestGeneration: input.requestGeneration };
@@ -327,5 +336,101 @@ describe("/api/system/generations(㉙c 旧版本数据)", () => {
 		const res = await app.request("/generations/1/2", { method: "DELETE" });
 		expect(res.status).toBe(404);
 		expect(remove).not.toHaveBeenCalled();
+	});
+});
+
+describe("存储占用(㉙d)", () => {
+	function withStorage(over: Partial<CreateSystemRouteInput["storage"]> = {}) {
+		const clear = vi.fn(
+			async (_category: ClearableStorageCategory): Promise<StorageClearResponse> => ({
+				freedBytes: 123,
+			}),
+		);
+		const list = vi.fn(
+			async (): Promise<StorageUsageResponse> => ({
+				rows: [{ category: "stats", sizeBytes: 9, clearable: true }],
+			}),
+		);
+		const sweepImages = vi.fn(
+			async (): Promise<ImageSweepResponse> => ({
+				removedCount: 2,
+				removedBytes: 50,
+				referenced: 3,
+				inGrace: 4,
+			}),
+		);
+		const { app } = boot({ can: true, how: "desktop" }, undefined, {
+			storage: { list, clear, sweepImages, ...over },
+		});
+		return { app, clear, list, sweepImages };
+	}
+
+	it("GET /storage:原样回用量表", async () => {
+		const { app, list } = withStorage();
+		const res = await app.request("/storage");
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			rows: [{ category: "stats", sizeBytes: 9, clearable: true }],
+		});
+		expect(list).toHaveBeenCalledOnce();
+	});
+
+	it.each(["stats", "historyText", "historyImages", "ai"] as const)(
+		"DELETE /storage/%s:清,回 { freedBytes }",
+		async (category) => {
+			const { app, clear } = withStorage();
+			const res = await app.request(`/storage/${category}`, { method: "DELETE" });
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({ freedBytes: 123 });
+			expect(clear).toHaveBeenCalledExactlyOnceWith(category);
+		},
+	);
+
+	it.each([
+		["generations", "逐代删"],
+		["logs", "只读"],
+		["otherImages", "只读"],
+		["nope", "没有这一类"],
+		["Stats", "没有这一类"],
+		["stats%2F..", "没有这一类"],
+	])("DELETE /storage/%s → 400 invalid,不调清理", async (category, hint) => {
+		const { app, clear } = withStorage();
+		const res = await app.request(`/storage/${category}`, { method: "DELETE" });
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { code: string; message: string };
+		expect(body.code).toBe("invalid");
+		expect(body.message).toContain(hint);
+		expect(clear).not.toHaveBeenCalled();
+	});
+
+	it("清理抛错 → 不吞,交给全局出错处理(路由自己不回 200)", async () => {
+		const { app } = withStorage({
+			clear: async () => {
+				throw new Error("disk gone");
+			},
+		});
+		await expect(app.request("/storage/ai", { method: "DELETE" })).resolves.toMatchObject({
+			status: 500,
+		});
+	});
+
+	it("POST /storage/images/sweep:回清扫结果", async () => {
+		const { app, sweepImages } = withStorage();
+		const res = await app.request("/storage/images/sweep", { method: "POST" });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			removedCount: 2,
+			removedBytes: 50,
+			referenced: 3,
+			inGrace: 4,
+		});
+		expect(sweepImages).toHaveBeenCalledOnce();
+	});
+
+	it("清扫只认 POST(GET 不会触发一次清扫)", async () => {
+		const { app, sweepImages } = withStorage();
+		const res = await app.request("/storage/images/sweep");
+		expect(res.status).toBe(404);
+		expect(sweepImages).not.toHaveBeenCalled();
 	});
 });

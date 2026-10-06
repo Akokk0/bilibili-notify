@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
@@ -109,6 +109,14 @@ export interface DeleteRangeOptions {
 }
 
 export interface HistoryStore {
+	/**
+	 * 整类清空文字(㉙d,「存储占用」):真删全部 `history/<日>.jsonl`(不是写成空文件 —— 那是 {@link deleteRange}
+	 * 给「删一段」用的),经同一条写道,排在在飞的 `record` / `appendToRow` 之后;内存里还能被追加的行
+	 * 与「刚补完的那一行」一并忘掉。**连同重推原件**:同一趟里整个删掉 `history/repush/`(行没了,原件没有任何入口
+	 * 能读到,还经「重推原件」那一家留着图;`deleteRange` 对被删行的原件也是这么处理)。**不动**图的保留水位线 `retention.json`。
+	 * 一个日文件都没有也成功。
+	 */
+	clear(): Promise<void>;
 	/**
 	 * 记一次推送对一个目标的一段消息。同 pushId + 同目标第一次来建行,之后追加;
 	 * 返回合并后的整行。
@@ -772,6 +780,21 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		return writes.run(WRITE_KEY, () => deleteRangeSerialized(options));
 	}
 
+	async function clearSerialized(): Promise<void> {
+		for (const name of await listDayFiles(opts.dataRoot)) {
+			await rm(join(root, name), { force: true });
+		}
+		// 行没了:内存里「同一次推送还能追加」的那张表与刚补完的那一行都不能再指着它们,
+		// 否则下一次 `record` 会往一个已经不存在的行后面追加。
+		open.deleteWhere(() => true);
+		hotRow = null;
+		await rm(join(root, "repush"), { recursive: true, force: true });
+	}
+
+	function clear(): Promise<void> {
+		return writes.run(WRITE_KEY, clearSerialized);
+	}
+
 	return {
 		record,
 		appendToRow,
@@ -779,6 +802,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		query,
 		aggregateDaily,
 		deleteRange,
+		clear,
 		close: () => writes.close(),
 	};
 }

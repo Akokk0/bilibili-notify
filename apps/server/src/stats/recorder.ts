@@ -78,7 +78,22 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	 * 压缩读整份、写回的这段时间里记的小时排在后面,不会被换名盖掉。回汇总;某个键压不动只记 warn、不算进汇总。
 	 */
 	compactRecording(now: Date): Promise<RecordingCompactSummary>;
-	/** 清掉全部在飞状态(dispose 时)。只动内存里的在飞状态,不删盘。 */
+	/**
+	 * 整类清空数据统计(㉙d,「存储占用」):删掉作品、直播、「在记」小账、粉丝样本四个目录里的全部文件。
+	 *
+	 * 与 {@link reset} 的区别:**`clear` 删盘,`reset` 只清内存**(dispose 时用)。`clear` 也清内存里的在飞状态。
+	 *
+	 * - 删文件**必须经各键的写队**:直接删会被排在队里的在飞写入(作品、粉丝样本、「在记」)重新写出来。键取盘上列得出的
+	 *   与此刻队里有的并集(队里还没落盘的第一条写入,文件还不存在);删完再清粉丝仓(它自己的按键队)。
+	 * - **正在播的场次**:这一刻开着的场次的开播帧随文件一起没了,所以把它们当作没开过 —— 之后它们的下播帧不写
+	 *   (否则盘上留一个只有 `end`、没有 `start` 的半场)。这之后新开的场次照常记。
+	 *   局限:只认本进程内存里开着的场次。开播发生在本次启动之前的那一场,清完以后它的下播帧会写成一条没有开播帧的
+	 *   `end`;读的一方(`StatsStore.listLiveSessions`)本来就丢弃孤立的 `end`,所以无害(`store.test.ts`「孤立的 end」钉着)。
+	 * - 不看总开关(`isEnabled`):开着关着都能清。
+	 * 全部落地才返回。
+	 */
+	clear(): Promise<void>;
+	/** 清掉全部在飞状态(dispose 时)。只动内存里的在飞状态,不删盘(要删盘用 {@link clear})。 */
 	reset(): void;
 } {
 	const now = opts.now ?? (() => new Date());
@@ -86,6 +101,8 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	const peaks = new Map<string, number>();
 	/** 当前仍在播的键。关服时据此补下播帧;正常下播会把它摘掉。 */
 	const openLive = new Set<string>();
+	/** `clear` 时正开着的键:它们的开播帧已随文件删了,下一次下播不写孤立的 `end`(见 {@link StatsRecorderCore.clear})。 */
+	const discardedOpen = new Set<string>();
 	/** 每个键上一条落盘的粉丝样本的时刻(毫秒)。第一次用到时从盘上接上,见 {@link thinned}。 */
 	const lastFans = new Map<string, number>();
 	/**
@@ -196,6 +213,8 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		openSession(key, startedAtIso) {
 			// 关着时新来的开播不开场(之后的下播也就没有「这场开没开过」可收,见 closeSession)。
 			if (!opts.isEnabled()) return;
+			// 清空之后新开的一场是真的开场,不再算「被清掉的那场」。
+			discardedOpen.delete(key);
 			peaks.delete(key);
 			openLive.add(key);
 			enqueue(key, "openLiveSession", () => opts.store.openLiveSession(key, startedAtIso));
@@ -217,7 +236,10 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			// 「这场开没开过」要在 forget 之前读(forget 会把它摘掉),而 forget 无条件照跑。
 			// 关着时:开着时开的场次照常收尾(一场的头尾不分家),没开过场的下播不写孤立的 end。
 			const opened = openLive.has(key);
+			const cleared = discardedOpen.delete(key);
 			forget(key);
+			// 清空时开着的场次:开播帧已经被清掉,收尾也不写(不留半场)。
+			if (cleared) return;
 			if (!opened && !opts.isEnabled()) return;
 			enqueue(key, "closeLiveSession", () => opts.store.closeLiveSession(key, endedAtIso, final));
 		},
@@ -331,6 +353,18 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			return summary;
 		},
 
+		async clear() {
+			for (const key of openLive) discardedOpen.add(key);
+			peaks.clear();
+			openLive.clear();
+			lastFans.clear();
+			slots.clear();
+			const keys = new Set(await opts.store.keys());
+			for (const key of tails.keys()) keys.add(key);
+			await Promise.all([...keys].map((key) => enqueue(key, "clear", () => opts.store.drop(key))));
+			await opts.fans.clear();
+		},
+
 		reset() {
 			peaks.clear();
 			openLive.clear();
@@ -381,6 +415,8 @@ export interface StatsRecorderHandle extends Disposable {
 	flush(): Promise<void>;
 	/** 压「在记」的账,见 {@link StatsRecorderCore} 那头的同名口子。 */
 	compactRecording(now: Date): Promise<RecordingCompactSummary>;
+	/** 整类清空数据统计(删盘),见 {@link StatsRecorderCore} 那头的同名口子。 */
+	clear(): Promise<void>;
 	/**
 	 * 回填「B 站登录有效」的读口(`index.ts` 建好登录系统之后调,同 `attachFansPoller` 的回填口)。
 	 * 没绑之前当作 B 站没在跑(不记);绑上后 B 站适配立刻看一眼。读口每次现读,不靠事件记状态。
@@ -425,6 +461,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		closeOpenSessions: () => recorder.closeOpenSessions(),
 		flush: () => recorder.flush(),
 		compactRecording: (at) => recorder.compactRecording(at),
+		clear: () => recorder.clear(),
 		bindLoginState(next) {
 			isLoggedIn = next;
 			biliSource.tick();

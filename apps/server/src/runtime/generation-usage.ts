@@ -232,7 +232,7 @@ async function lstatOrUndefined(path: string): Promise<Stats | undefined> {
 	}
 }
 
-interface Measured {
+export interface Measured {
 	size: number;
 	reclaimable: number;
 }
@@ -255,7 +255,7 @@ const STAT_BATCH = 64;
  * (硬链接的文件在别的代还活着,删这一代腾不出它)。不跟符号链接,目录自身的大小不算。
  * `path` 本身是文件也行(第 0 代有文件键)。路径不在量出 0。
  */
-async function measureTree(path: string): Promise<Measured> {
+export async function measureTree(path: string): Promise<Measured> {
 	const total: Measured = { size: 0, reclaimable: 0 };
 	const first = await lstatOrUndefined(path);
 	if (!first) return total;

@@ -123,6 +123,8 @@ export interface StatsStore {
 	listRecording(key: string, sinceIso: string): Promise<RecordingEntry[]>;
 	/** 盘上有「在记」账文件的键(订阅 id)。目录还没建回空。 */
 	recordingKeys(): Promise<string[]>;
+	/** 盘上有作品、直播场次或「在记」账文件的键(三个目录的并集,订阅 id)。整类清空要对每个键各删一次。 */
+	keys(): Promise<string[]>;
 	/**
 	 * 压缩这个键的账:读整份 → 逐行解析(坏行丢掉并计数)→ {@link compressRecordingEntries} → 与原来逐行相同就什么都不写,
 	 * 不同就原子换名写回。文件不在回全 0;读不动抛。
@@ -279,6 +281,20 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		}
 	}
 
+	/** 一个目录里的键(`<键>.jsonl` 的键,不含改名换写的临时残留);目录还没建回空。 */
+	async function keysIn(root: string): Promise<string[]> {
+		let names: string[];
+		try {
+			names = await readdir(root);
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+			throw err;
+		}
+		return names
+			.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
+			.map((name) => name.slice(0, -".jsonl".length));
+	}
+
 	return {
 		async appendPost(key, event) {
 			await ensureRoots();
@@ -424,17 +440,11 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			return rows;
 		},
 
-		async recordingKeys() {
-			let names: string[];
-			try {
-				names = await readdir(recordingRoot);
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-				throw err;
-			}
-			return names
-				.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
-				.map((name) => name.slice(0, -".jsonl".length));
+		recordingKeys: () => keysIn(recordingRoot),
+
+		async keys() {
+			const all = await Promise.all([postsRoot, liveRoot, recordingRoot].map(keysIn));
+			return [...new Set(all.flat())];
 		},
 
 		async compactRecording(key, now) {

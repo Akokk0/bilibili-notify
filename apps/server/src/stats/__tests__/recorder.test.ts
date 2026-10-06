@@ -62,6 +62,7 @@ function makeStore() {
 		appendRecording: vi.fn(async () => {}),
 		listRecording: vi.fn(async () => []),
 		recordingKeys: vi.fn(async () => []),
+		keys: vi.fn(async () => []),
 		compactRecording: vi.fn(async () => ({
 			rowsBefore: 0,
 			rowsAfter: 0,
@@ -87,6 +88,7 @@ function makeFans() {
 		listSamplesSince: vi.fn(async () => []),
 		drop: vi.fn(async () => {}),
 		keys: vi.fn(async () => []),
+		clear: vi.fn(async () => {}),
 		compact: vi.fn(async () => ({ rowsBefore: 0, rowsAfter: 0, badLines: 0, rewritten: false })),
 		close: vi.fn(async () => {}),
 	} satisfies Record<keyof FollowersStore, unknown> as unknown as FollowersStore;

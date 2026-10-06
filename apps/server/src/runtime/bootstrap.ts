@@ -79,7 +79,7 @@ export interface AppRuntime {
 	 */
 	statsStore: StatsStore;
 	/** 统计采集。构造时只挂上总线、不碰盘;登录系统建好后 `bindLoginState` 回填 B 站登录读口,绑上才开始记 B 站的「在记」。 */
-	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState" | "compactRecording">;
+	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState" | "compactRecording" | "clear">;
 	/**
 	 * 数据统计的总开关(`stats.enabled`)的缓存读口 —— 记录器入口用的就是它,B 站粉丝轮询(直接写粉丝仓、
 	 * 绕开记录器)由 `index.ts` 从这里取去用。设置变了下一次读就是新值,不用重启。

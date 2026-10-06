@@ -54,6 +54,12 @@ export interface FollowersStore {
 	/** 盘上有粉丝样本文件的键(订阅 id)。目录还没建回空。 */
 	keys(): Promise<string[]>;
 	/**
+	 * 整类清空(㉙d,「存储占用」):对盘上每个键各排一次 {@link drop}(同一条按键的写队,排在这个键在飞的追加 /
+	 * 压缩之后,不会被它们重新写出来)。没有文件也成功。只认调用时盘上列得出的键;调用方要先让别处的在飞写入落地
+	 * (统计记录器的 `clear` 就是先等它们)。
+	 */
+	clear(): Promise<void>;
+	/**
 	 * 压缩这个键的样本:在这个键的队里读整份文件 → 逐行解析(坏行丢掉并计数)→ {@link compressFollowersSamples}
 	 * → 与原来逐行相同就什么都不写,不同就原子换名写回。`now` 决定切线(现在往前 8 天,取整到 UTC 整点)。
 	 * 文件不在回全 0。读不动文件就抛(调用方一个文件一个文件地接)。
@@ -135,6 +141,31 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 		}
 	}
 
+	async function keys(): Promise<string[]> {
+		let names: string[];
+		try {
+			names = await readdir(root);
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+			throw err;
+		}
+		return names
+			.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
+			.map((name) => name.slice(0, -".jsonl".length));
+	}
+
+	function drop(key: string): Promise<void> {
+		return writes.run(key, async () => {
+			try {
+				await unlink(fileFor(key));
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+					opts.logger.warn(`[followers-store] drop ${key} failed: ${String(err)}`);
+				}
+			}
+		});
+	}
+
 	return {
 		append(key, sample) {
 			// 只写这两格:行格式是契约,调用方对象上多带的东西不许漏进盘。
@@ -186,29 +217,12 @@ export function createFollowersStore(opts: CreateFollowersStoreOptions): Followe
 			return expandFollowersSamples(rows, { sinceIso });
 		},
 
-		drop(key) {
-			return writes.run(key, async () => {
-				try {
-					await unlink(fileFor(key));
-				} catch (err) {
-					if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-						opts.logger.warn(`[followers-store] drop ${key} failed: ${String(err)}`);
-					}
-				}
-			});
-		},
+		drop,
 
-		async keys() {
-			let names: string[];
-			try {
-				names = await readdir(root);
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-				throw err;
-			}
-			return names
-				.filter((name) => name.endsWith(".jsonl") && !isLeftoverName(name))
-				.map((name) => name.slice(0, -".jsonl".length));
+		keys,
+
+		async clear() {
+			await Promise.all((await keys()).map(drop));
 		},
 
 		compact(key, now) {

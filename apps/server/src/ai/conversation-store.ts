@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, unlink } from "node:fs/promises";
+import { readdir, readFile, rm, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiCardSkinTouchDTO, AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
 import {
@@ -171,6 +171,13 @@ export interface ConversationStore {
 	recordCardSkin(id: string, entry: CardSkinLedgerEntry): Promise<boolean>;
 	/** 删除一个会话。返回它此前是否存在。图不跟着删:图是图库的,清扫会收走没人引用的。 */
 	remove(id: string): Promise<boolean>;
+	/**
+	 * 整类清空(㉙d,「存储占用」):删掉会话目录里的**全部**文件 —— 零消息的空壳、读不成 JSON 的坏文件也一并删。
+	 * 经同一条写道,排在在飞的写之后。**在跑的那一轮**照 {@link remove} 的口径:它拿到回复后的
+	 * `appendMessages` 对已删的会话回 `null`(不凭空造一个),路由那头报错。图不跟着删,由图库清扫收走。
+	 * 目录不在也成功。
+	 */
+	clear(): Promise<void>;
 	/**
 	 * 盘上所有会话所有消息引用的图(去重)—— 图库清扫要的「这一家引用着谁」,在图库里登记成引用方时交出去。
 	 *
@@ -503,6 +510,19 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 				} catch {
 					return false;
 				}
+			});
+		},
+
+		clear() {
+			return serial(async () => {
+				let names: string[];
+				try {
+					names = await readdir(dir);
+				} catch (err) {
+					if (isMissing(err)) return;
+					throw err;
+				}
+				for (const name of names) await rm(join(dir, name), { recursive: true, force: true });
 			});
 		},
 

@@ -12,18 +12,23 @@
  */
 
 import type {
+	ClearableStorageCategory,
 	GenerationDeleteResponse,
 	GenerationLockReason,
 	GenerationSourceKind,
 	GenerationsResponse,
+	ImageSweepResponse,
 	RestartAbility,
 	RestartResponse,
+	StorageClearResponse,
+	StorageUsageResponse,
 	SystemNoticesResponse,
 } from "@bilibili-notify/contract";
 import { fail, formatZodIssues, issuesFromZod } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { GenerationRemoval } from "../runtime/generation-usage.js";
+import { isClearableCategory } from "../runtime/storage-usage.js";
 import type { SystemNoticeStore } from "../runtime/system-notices.js";
 import { respondFailure } from "./respond-failure.js";
 
@@ -50,6 +55,15 @@ export interface CreateSystemRouteInput {
 		list: () => Promise<GenerationsResponse["generations"]>;
 		remove: (seq: number) => Promise<GenerationRemoval>;
 	};
+	/**
+	 * 存储占用(㉙d):用量表、整类清空、手动清一次图库。由 index.ts 注入 —— 路由不碰数据根;每一类删什么、经哪条
+	 * 写队、清完接什么都在 `runtime/storage-usage.ts`,路由只认类别键、翻译成响应。
+	 */
+	storage: {
+		list: () => Promise<StorageUsageResponse>;
+		clear: (category: ClearableStorageCategory) => Promise<StorageClearResponse>;
+		sweepImages: () => Promise<ImageSweepResponse>;
+	};
 }
 
 const GenerationCreateSchema = z.strictObject({ source: z.enum(["empty", "zero"]) });
@@ -64,6 +78,17 @@ const LOCK_MESSAGES = {
 	"protected-previous": "这是当前这一代的上一代,要等当前这一代用满 30 天才能删",
 	"current-age-unknown": "读不到当前这一代的创建时间,没法判断满没满 30 天,暂时都不能删",
 } as const satisfies Record<GenerationLockReason, string>;
+
+/** 不能整类清空时那句话:面板原样显示。只读的两行与旧版本数据各有各的说法。 */
+function notClearable(category: string): string {
+	if (category === "generations") {
+		return "旧版本数据不走整类清空,请在旧版本数据里逐代删(/api/system/generations)";
+	}
+	if (category === "logs" || category === "otherImages") {
+		return "这一类是只读的,不能清理(日志按天数滚动;其它图片会随引用它的东西一起被清扫收走)";
+	}
+	return "没有这一类,能清的只有 stats / historyText / historyImages / ai";
+}
 
 /** 序号只认规范的纯数字(0 或不带前导零),不收符号、小数、路径分隔符与超出安全整数的。 */
 function parseSeq(raw: string): number | undefined {
@@ -163,6 +188,26 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 			return respondFailure(c, fail("conflict", LOCK_MESSAGES[result.reason]));
 		}
 		const body: GenerationDeleteResponse = { freedBytes: result.freedBytes };
+		return c.json(body);
+	});
+
+	// 量大小要遍历目录与图库,可能慢(秒级),不缓存 —— 只有主人打开「存储占用」才调。
+	app.get("/storage", async (c) => c.json(await input.storage.list()));
+
+	// 🔴 不可恢复。只认四个可清的类别键,别的(未知、只读的两行、旧版本数据)一律 400;不设二次确认的参数
+	// (确认是面板的事),幂等:已经空了回成功、0。图库清扫有 24 小时宽限期,`freedBytes` 回实际腾出的、不是预计的。
+	app.delete("/storage/:category", async (c) => {
+		const category = c.req.param("category");
+		if (!isClearableCategory(category)) {
+			return respondFailure(c, fail("invalid", notClearable(category)));
+		}
+		const body: StorageClearResponse = await input.storage.clear(category);
+		return c.json(body);
+	});
+
+	// 手动清一次图库:价值是不等定时的那一轮,不绕过宽限期。动词收尾(ADR-0036:其余能用方法表达的都用方法)。
+	app.post("/storage/images/sweep", async (c) => {
+		const body: ImageSweepResponse = await input.storage.sweepImages();
 		return c.json(body);
 	});
 

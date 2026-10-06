@@ -83,6 +83,12 @@ export interface FansPollerHandle extends Disposable {
 	 * 还在跑就跳过、回 false,与 cron 撞上时的规矩一样。回的 promise 在这一轮结束时落定。
 	 */
 	pollNow(): Promise<boolean>;
+	/**
+	 * 数据统计被清空之后(㉙d,「存储占用」)让手里的快照不再用旧数:每一条的「订阅以来 / 24 小时 / 7 天」涨跌置空
+	 * (当前粉丝数保留),拓展那几条按(已被清空的)时序重算,然后发一次 `fans-refreshed`。只动内存,不碰盘、不问 B 站
+	 * —— 涨粉起点在订阅运行态里(清它是调用方的事),下一次采样从当时的粉丝数重新算「订阅以来」。
+	 */
+	reset(): Promise<void>;
 }
 
 /**
@@ -686,5 +692,13 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			return Array.from(lastBySub.values());
 		},
 		pollNow: tickOnce,
+		async reset(): Promise<void> {
+			if (disposed) return;
+			for (const [id, entry] of lastBySub) {
+				lastBySub.set(id, { ...entry, deltaSubscribed: null, delta24h: null, delta7d: null });
+			}
+			await refreshExtensionEntries();
+			if (!disposed) emitSnapshot();
+		},
 	};
 }

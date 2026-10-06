@@ -65,6 +65,11 @@ const NEW_PATHS: Probe[] = [
 	// 旧版本数据(㉙c):列表只读;删除带了不存在的号,处理函数自己回「没有这一代」(那也是挂上了的证据)。
 	get("/api/system/generations"),
 	{ method: "DELETE", path: "/api/system/generations/7" },
+	// 存储占用(㉙d):列表只读;清理带了不认的类别,处理函数自己回 400(那也是挂上了的证据);清扫的 POST 没有请求体要校验,
+	// 注入的是一份什么都不删的替身。
+	get("/api/system/storage"),
+	{ method: "DELETE", path: "/api/system/storage/nope" },
+	post("/api/system/storage/images/sweep"),
 	get("/api/cards/skins"),
 	post(`/api/cards/skins/${ID}/ai`),
 	get("/api/dashboard/skins"),
@@ -181,6 +186,11 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 			requestGeneration: async () => {},
 			zeroGenerationExists: async () => false,
 			generations: { list: async () => [], remove: async () => ({ kind: "not_found" }) },
+			storage: {
+				list: async () => ({ rows: [] }),
+				clear: async () => ({ freedBytes: 0 }),
+				sweepImages: async () => ({ removedCount: 0, removedBytes: 0, referenced: 0, inGrace: 0 }),
+			},
 		},
 		devtools: createDevRoute({
 			registry: createDevRegistry([]),
@@ -245,6 +255,9 @@ describe("路由按资源整理(ADR-0036)的挂载", () => {
 			get("/api/system/notices"),
 			get("/api/system/generations"),
 			{ method: "DELETE", path: "/api/system/generations/7" } as Probe,
+			get("/api/system/storage"),
+			{ method: "DELETE", path: "/api/system/storage/stats" } as Probe,
+			post("/api/system/storage/images/sweep"),
 			post("/api/system/restart"),
 		]) {
 			expect(await isRouteMissing(await hit(app, probe)), label(probe)).toBe(true);

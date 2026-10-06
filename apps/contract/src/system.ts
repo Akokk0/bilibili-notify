@@ -136,3 +136,76 @@ export interface GenerationDeleteResponse {
 	/** 腾出的字节数:删之前量的 {@link GenerationInfo.reclaimableBytes}(下界)。 */
 	freedBytes: number;
 }
+
+/**
+ * 「存储占用」里的类别(ADR-0027 决策 10 / 17;㉙d)。
+ *
+ * - 可清的四类:`stats`(数据统计:作品、直播、「在记」小账、粉丝样本)、`historyText`(推送历史的文字)、
+ *   `historyImages`(推送历史的图 + 重推原件)、`ai`(女仆对话与只被对话引用的图);
+ * - 只读的两行:`logs`(日志,按天数滚动)、`otherImages`(图库里不属于上面两个图类的全部:订阅头像、作品配图、
+ *   拓展直播的图、没人引用的、同时被两类引用的);
+ * - `generations`(旧版本数据):不走整类清空,面板去调 `/api/system/generations` 逐代删。
+ */
+export type StorageCategory =
+	| "stats"
+	| "historyText"
+	| "historyImages"
+	| "ai"
+	| "logs"
+	| "otherImages"
+	| "generations";
+
+/** 能用 `DELETE /api/system/storage/:category` 整类清空的那几类。 */
+export type ClearableStorageCategory = Extract<
+	StorageCategory,
+	"stats" | "historyText" | "historyImages" | "ai"
+>;
+
+/** `GET /api/system/storage` 里的一行。 */
+export interface StorageUsageRow {
+	category: StorageCategory;
+	/**
+	 * 这一类占了多少字节(全树文件大小之和,不跟符号链接)。`generations` 一行是各个**可删的**旧代的
+	 * `reclaimableBytes` 之和(删掉真能腾出的下界),不是目录看上去的大小。
+	 */
+	sizeBytes: number;
+	/** 能不能用整类清空的口清。只读的两行与 `generations` 是 `false`。 */
+	clearable: boolean;
+	/** 只有 `generations` 这一行带:现在能删的旧代有几代(逐代删去 `/api/system/generations`)。 */
+	deletableGenerations?: number;
+}
+
+/** `GET /api/system/storage` 的回话:每个类别一行,次序固定。量大小要遍历目录与图库,可能慢(秒级),不缓存。 */
+export interface StorageUsageResponse {
+	rows: StorageUsageRow[];
+}
+
+/**
+ * `DELETE /api/system/storage/:category` 的回话。整类清空**不可恢复**;已经空了回成功、0(幂等);
+ * 不是四个可清类别之一(未知键、只读的两行、`generations`)是 400。
+ *
+ * `historyText` 清的是推送历史的日文件**连同重推原件**(行没了,原件没有入口能读到;原件引用的图随之由清扫收走),
+ * 图的保留水位线不动。
+ */
+export interface StorageClearResponse {
+	/**
+	 * **实际**腾出的字节数:文件按清理前后各量一次的差,图按这一次图库清扫真删掉的字节。图库清扫只删没人引用
+	 * **且存进来超过 24 小时**的图,所以清完立刻腾出的可能比用量表上那一行少 —— 这里回的是已经发生的,不是预计。
+	 */
+	freedBytes: number;
+}
+
+/**
+ * `POST /api/system/storage/images/sweep` 的回话:手动触发一次图库清扫的结果。它**不绕过**宽限期
+ * (刚存进来 24 小时内的图不删),价值只是不用等定时的那一轮。
+ */
+export interface ImageSweepResponse {
+	/** 这一次删掉几张图。 */
+	removedCount: number;
+	/** 删掉的图一共多少字节。 */
+	removedBytes: number;
+	/** 过了宽限期、因为还有人引用而留下的张数。 */
+	referenced: number;
+	/** 还在宽限期里的张数。 */
+	inGrace: number;
+}
