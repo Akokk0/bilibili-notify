@@ -28,6 +28,7 @@ function sentinel(over: Partial<UpStatsRow> & { uid?: string } = {}): UpStatsRow
 		series: [],
 		cumulative: [],
 		activity: [],
+		recording: { posts: [], live: [], followers: [] },
 		// 投稿 5、动态 6:行上存的是带视频的 5 条与全部作品 11 条,「动态」是相减出来的。
 		videoPosts: 5,
 		posts: 11,

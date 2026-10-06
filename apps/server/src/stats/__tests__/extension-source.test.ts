@@ -2,14 +2,15 @@
  * 统计的**拓展适配**(`extension-source.ts`,ADR-0020 决策 4 / 5 / 6 / 7 / 8 / 9 / 16 / 17)。
  *
  * 照 bootstrap 那样接一整套:真总线、真统计仓与粉丝仓(临时目录)、记录器、在播表与场次(引擎里建的那一份)。
- * 看的是**盘上**:作品行、直播帧、粉丝样本、「在记」那一行。
+ * 看的是**盘上**:作品行、直播帧、粉丝样本、「在记」小账的行。
  *
  * - 启用着就记、与推送开关无关;停用的、不认识的一样都不记(停用的资料照收也不记,决策 4);
  * - 作品:带视频 → `video`,其余 → `post`,按发布时刻(决策 5);
  * - 场次跟着 `extension-live-session` 开 / 关,每种结束原因都关;峰值照抄结束帧带的本场累计观看(决策 6 / 7,
  *   怎么算的在场次那边测);BN 重启之后按开播时刻接回同一场,峰值不被后一段拽小;
  * - 粉丝:资料带粉丝数就记,不密过 B 站那边的粉丝轮询(决策 8);
- * - 「在记」:收到任何上报记一条,最密 10 分钟一条,第一条就是开始记录(决策 9 / 16);
+ * - 「在记」小账(ADR-0027 决策 2 / 13):这个小时收到过任何上报 = 来源在跑,按作品 / 直播开关记当前整点小时;
+ *   资料带粉丝数记粉丝;同一小时同一项只一行,重启后也不重复;开关关着不落作品行、不开新场次;
  * - 删订阅四份文件全删,停用留着。
  */
 
@@ -58,6 +59,8 @@ let clock: number;
 let subs: Subscription[];
 let running: boolean;
 let fansCron: string;
+/** 订阅的作品开关 / 直播类开关(有效值,真线上由 bootstrap 算好交给适配)。 */
+let switches: { posts: boolean; live: boolean };
 /** 这一轮起的几套(重启的用例起两套),收尾时一起拆。 */
 let worlds: World[];
 
@@ -116,7 +119,14 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 		fansCron: () => fansCron,
 		logger,
 		now,
-		subscriptions: () => subs,
+		subscriptions: () =>
+			subs.map((sub) => ({
+				id: sub.id,
+				identity: sub.identity,
+				enabled: sub.enabled,
+				recordsPosts: sub.enabled && switches.posts,
+				recordsLive: sub.enabled && switches.live,
+			})),
 	});
 	let down = false;
 	const world: World = {
@@ -186,7 +196,12 @@ async function lines(dir: string, id: string): Promise<unknown[] | undefined> {
 const dynRows = (id = SUB.id) => lines(join("stats", "posts"), id);
 const liveFrames = (id = SUB.id) => lines(join("stats", "live"), id);
 const fansRows = (id = SUB.id) => lines(join(...FOLLOWERS_DIR), id);
-const seenRows = (id = SUB.id) => lines(join("stats", "seen"), id);
+const recordingRows = (id = SUB.id) => lines(join("stats", "recording"), id);
+/** 某个时刻所在的整点小时,账里的一行。 */
+const hourRow = (kind: "posts" | "live" | "followers", at = T0) => {
+	const from = Math.floor(at / 3_600_000) * 3_600_000;
+	return { kind, startedAt: iso(from), endedAt: iso(from + 3_600_000) };
+};
 
 async function exists(path: string): Promise<boolean> {
 	try {
@@ -203,6 +218,7 @@ beforeEach(async () => {
 	subs = [SUB, OFF];
 	running = true;
 	fansCron = "*/10 * * * *";
+	switches = { posts: true, live: true };
 	worlds = [];
 });
 
@@ -233,13 +249,7 @@ describe("作品(决策 5)", () => {
 });
 
 describe("记谁(决策 4)", () => {
-	it("推送开关全关着也照记 —— 统计记的是 UP 做了什么", async () => {
-		subs = [
-			makeExtensionSubscription({
-				...SUB,
-				overrides: { features: { post: false, liveStart: false, liveEnd: false } },
-			}),
-		];
+	it("没有推送目标也照记 —— 「开着」只看开关、不看有没有目标;粉丝只看订阅启用", async () => {
 		const { bus, recorder } = boot();
 		report(bus, post({ id: "quiet" }));
 		report(bus, profile({ fans: 42 }));
@@ -259,7 +269,7 @@ describe("记谁(决策 4)", () => {
 		expect(await dynRows()).toEqual([expect.objectContaining({ id: "on-post" })]);
 		expect(await dynRows(OFF.id)).toBeUndefined();
 		expect(await fansRows(OFF.id)).toBeUndefined();
-		expect(await seenRows(OFF.id)).toBeUndefined();
+		expect(await recordingRows(OFF.id)).toBeUndefined();
 		expect(await liveFrames(OFF.id)).toBeUndefined();
 	});
 
@@ -271,7 +281,7 @@ describe("记谁(决策 4)", () => {
 		await recorder.flush();
 		expect(await dynRows(ghost.id)).toBeUndefined();
 		expect(await fansRows(ghost.id)).toBeUndefined();
-		expect(await seenRows(ghost.id)).toBeUndefined();
+		expect(await recordingRows(ghost.id)).toBeUndefined();
 	});
 });
 
@@ -550,8 +560,8 @@ describe("粉丝(决策 8)", () => {
 	});
 });
 
-describe("「在记」(决策 9 / 16)", () => {
-	it("五种上报哪一种来了都记一条", async () => {
+describe("「在记」小账(ADR-0027 决策 2 / 13)", () => {
+	it("五种上报哪一种来了都算「来源在跑」:作品与直播两项记当前整点小时", async () => {
 		const people = ["01", "02", "03", "04", "05"].map((n) =>
 			makeExtensionSubscription({
 				id: `e3000000-0000-4000-8000-0000000001${n}`,
@@ -564,29 +574,32 @@ describe("「在记」(决策 9 / 16)", () => {
 		const reports = [post(), profile({ name: "只报名字" }), liveStart(), liveStatus(), liveEnd()];
 		for (const [i, r] of reports.entries()) report(world.bus, r, people[i]);
 		await world.recorder.flush();
-		for (const person of people) expect(await seenRows(person.id)).toEqual([{ ts: iso(T0) }]);
+		for (const person of people) {
+			expect(await recordingRows(person.id)).toEqual([hourRow("posts"), hourRow("live")]);
+		}
 	});
 
-	it("最密 10 分钟一条;第一条就是开始记录", async () => {
+	it("同一小时同一项只落一行;换一个小时再落一行", async () => {
 		const world = boot();
 		report(world.bus, post());
 		clock = T0 + MINUTE;
 		report(world.bus, profile({ name: "又报了资料" }));
-		clock = T0 + 9 * MINUTE;
+		clock = T0 + 59 * MINUTE;
 		report(world.bus, liveStatus({ live: false }));
-		clock = T0 + 10 * MINUTE;
-		report(world.bus, liveEnd());
-		clock = T0 + 25 * MINUTE;
-		report(world.bus, profile({ fans: 1 }));
 		await world.recorder.flush();
-		expect(await seenRows()).toEqual([
-			{ ts: iso(T0) },
-			{ ts: iso(T0 + 10 * MINUTE) },
-			{ ts: iso(T0 + 25 * MINUTE) },
+		expect(await recordingRows()).toEqual([hourRow("posts"), hourRow("live")]);
+		clock = T0 + 61 * MINUTE;
+		report(world.bus, profile({ name: "下一个小时" }));
+		await world.recorder.flush();
+		expect(await recordingRows()).toEqual([
+			hourRow("posts"),
+			hourRow("live"),
+			hourRow("posts", T0 + 61 * MINUTE),
+			hourRow("live", T0 + 61 * MINUTE),
 		]);
 	});
 
-	it("BN 重启之后的第一条也不紧贴着重启前的最后一条", async () => {
+	it("BN 重启之后同一小时不重复落(第一次写之前读一次盘把这个小时已有的种进去)", async () => {
 		const first = boot();
 		report(first.bus, post());
 		await first.shutdown();
@@ -594,10 +607,66 @@ describe("「在记」(决策 9 / 16)", () => {
 		const second = boot();
 		report(second.bus, post({ id: "p2" }));
 		await second.recorder.flush();
-		expect(await seenRows()).toEqual([{ ts: iso(T0) }]);
+		expect(await recordingRows()).toEqual([hourRow("posts"), hourRow("live")]);
 	});
 
-	it("只有拓展订阅写:B 站订阅的事件不留「在记」", async () => {
+	it("资料带粉丝数就记粉丝(不管粉丝样本被稀释掉没有);没带粉丝数的资料不记", async () => {
+		const world = boot();
+		report(world.bus, profile({ name: "没带粉丝" }));
+		await world.recorder.flush();
+		expect(await recordingRows()).not.toContainEqual(hourRow("followers"));
+		report(world.bus, profile({ fans: 7 }));
+		clock = T0 + MINUTE;
+		// 第二条粉丝样本被稀释掉(不足 10 分钟),账照样只有这一小时的一行。
+		report(world.bus, profile({ fans: 8 }));
+		await world.recorder.flush();
+		expect(await fansRows()).toHaveLength(1);
+		expect(
+			((await recordingRows()) ?? []).filter((r) => (r as { kind: string }).kind === "followers"),
+		).toEqual([hourRow("followers")]);
+	});
+
+	it("作品开关关着:作品不落行、也不记 posts;直播与粉丝照记", async () => {
+		switches = { posts: false, live: true };
+		const world = boot();
+		report(world.bus, post({ id: "quiet" }));
+		report(world.bus, profile({ fans: 3 }));
+		await world.recorder.flush();
+		expect(await dynRows()).toBeUndefined();
+		expect(await recordingRows()).toEqual([hourRow("live"), hourRow("followers")]);
+	});
+
+	it("直播类开关都关着:不开新场次、不记 live;作品照记", async () => {
+		switches = { posts: true, live: false };
+		const world = boot();
+		report(world.bus, liveStart());
+		report(world.bus, post());
+		await world.recorder.flush();
+		expect(await liveFrames()).toBeUndefined();
+		expect(await recordingRows()).toEqual([hourRow("posts")]);
+	});
+
+	it("一场进行中把直播类开关关掉:这一场照常收尾(下播事件到了就关),之后的开播不再开场", async () => {
+		const world = boot();
+		report(world.bus, liveStart());
+		await world.recorder.flush();
+		switches = { posts: true, live: false };
+		// 全局默认改了,适配的订阅快照作废、下次取到新的开关。
+		world.bus.emit("config-changed", { scope: "globals" });
+		clock = T0 + 30 * MINUTE;
+		report(world.bus, liveEnd());
+		await world.recorder.flush();
+		expect(await liveFrames()).toEqual([
+			{ kind: "start", occurredAt: iso(T0) },
+			{ kind: "end", occurredAt: iso(T0 + 30 * MINUTE) },
+		]);
+		clock = T0 + 40 * MINUTE;
+		report(world.bus, liveStart({ startedAt: clock }));
+		await world.recorder.flush();
+		expect(await liveFrames()).toHaveLength(2);
+	});
+
+	it("B 站订阅的事件不经拓展适配落「在记」(B 站的由登录状态定时记,没登录就没有)", async () => {
 		subs = [
 			SUB,
 			makeEmptySubscription({ id: "b-7", identity: { sourceKey: "bilibili", externalId: "7" } }),
@@ -611,7 +680,7 @@ describe("「在记」(决策 9 / 16)", () => {
 		});
 		await world.recorder.flush();
 		expect(await dynRows("b-7")).toEqual([{ id: "d1", hasVideo: true, publishedAt: iso(T0) }]);
-		expect(await exists(join("stats", "seen", "b-7.jsonl"))).toBe(false);
+		expect(await exists(join("stats", "recording", "b-7.jsonl"))).toBe(false);
 	});
 });
 
@@ -624,7 +693,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		await world.recorder.flush();
 		expect(await dynRows()).toHaveLength(1);
 		expect(await fansRows()).toHaveLength(1);
-		expect(await seenRows()).toHaveLength(1);
+		expect(await recordingRows()).toHaveLength(3);
 		expect(await liveFrames()).toHaveLength(1);
 	}
 
@@ -636,7 +705,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		await world.recorder.flush();
 		expect(await dynRows()).toBeUndefined();
 		expect(await liveFrames()).toBeUndefined();
-		expect(await seenRows()).toBeUndefined();
+		expect(await recordingRows()).toBeUndefined();
 		expect(await fansRows()).toBeUndefined();
 		// 关机时也不给它补帧。
 		await world.shutdown();
@@ -655,7 +724,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		await world.recorder.flush();
 		expect(await dynRows()).toHaveLength(1);
 		expect(await fansRows()).toHaveLength(1);
-		expect(await seenRows()).toHaveLength(1);
+		expect(await recordingRows()).toHaveLength(3);
 		expect(await liveFrames()).toEqual([
 			{ kind: "start", occurredAt: iso(T0) },
 			{ kind: "end", occurredAt: iso(T0 + 7 * MINUTE) },

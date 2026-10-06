@@ -23,7 +23,7 @@ import {
 	countPosts,
 	dailyActivityCounts,
 	dailyFansSeries,
-	localDayKey,
+	recordingDays,
 	summarizeLiveSessions,
 	windowSinceIso,
 } from "../stats/aggregate.js";
@@ -95,16 +95,6 @@ function parseTz(raw: string | undefined): number {
 function maxIso(values: readonly string[]): string | null {
 	let out: string | null = null;
 	for (const v of values) if (out === null || v > out) out = v;
-	return out;
-}
-
-/** 一串时刻里最早的那个本地日键。空串 / 全是脏值时返回 null。 */
-function minLocalDay(values: readonly string[], tzOffsetMin: number): string | null {
-	let out: string | null = null;
-	for (const v of values) {
-		const d = localDayKey(v, tzOffsetMin);
-		if (d && (out === null || d < out)) out = d;
-	}
 	return out;
 }
 
@@ -201,159 +191,52 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 		// 那小半天,KPI 与紧挨着它的热力图对不上。
 		const since = windowSinceIso(days, tzOffsetMin);
 		const sinceMs = Date.parse(since);
-		// 活动采集的起始日:早于它的日子没有活动数据可言,热力图必须显示成
-		// 「无记录」而不是「活跃度 0」。详见 StatsStore.recordingSince 的说明。
-		const recordingSinceDay = localDayKey(
-			await deps.runtime.statsStore.recordingSince(),
-			tzOffsetMin,
-		);
 
-		// 先把每位 UP 的原始序列取回来。热力图的遮罩要用到**跨 UP** 的全局事实,
-		// 在单个 UP 的闭包里判不出来,所以取数与成行分成两趟。
+		// 每位订阅的原始序列与「在记」账。「那天有没有记录」只看账(ADR-0027 决策 13),不再拿粉丝样本并集、
+		// 拓展的上报证据或采集水位线去猜。
 		const perSub = await Promise.all(
 			subs.map(async (sub, index) => {
-				// 两个仓都按订阅 id 分文件(ADR-0020 决策 2 的 🔗 / 16);老的 uid 文件开机时已迁过来。
+				// 各个仓都按订阅 id 分文件(ADR-0020 决策 2 的 🔗 / 16);老的 uid 文件开机时已迁过来。
 				const key = statsFileKey(sub);
-				const [samples, events, sessions, seen] = await Promise.all([
+				const [samples, events, sessions, ledger] = await Promise.all([
 					deps.runtime.fansStore.listSamplesSince(key, since),
 					deps.runtime.statsStore.listPosts(key, since),
 					deps.runtime.statsStore.listLiveSessions(key, since),
-					// 「在记」只有拓展订阅有(决策 9 / 16),B 站行「那天有没有记录」看粉丝采样(见下)。
-					fromBilibili(sub)
-						? Promise.resolve([])
-						: deps.runtime.statsStore.listSeenSince(key, since),
+					deps.runtime.statsStore.listRecording(key, since),
 				]);
 				return {
 					sub,
 					samples,
 					events,
 					sessions,
-					seen,
+					ledger,
 					live: liveNow[index] === true,
 					followers: fansNow[index],
 				};
 			}),
 		);
 
-		// 哪些天服务器确实在跑 —— fans poller 每 2min 一次,有采样就说明我们当时看着。
-		//
-		// 取**所有 UP 的并集**,而不是每位 UP 各看各的:服务器在不在跑是服务器的
-		// 属性,与具体订阅了谁无关。按 UP 各判会踩一个很难发现的坑 —— ADR-0020 决策 10
-		// 之前禁用订阅会物理删掉那位 UP 的 fans jsonl(现在不删了,但老数据里还留着
-		// 那种断档),于是订阅了三个月的 UP 只要被禁用再启用过,热力图就整片变「无记录」,尽管它的
-		// 动态和场次原封不动在盘上。
-		//
-		// 残留的空档:所有 UP 的采样都缺失时(只订阅了一位且刚被禁用过)仍会判成
-		// 「没在跑」。那种情况下盘上确实不存在任何佐证,宁可显示「无记录」也不瞎猜。
-		//
-		// **只收 B 站那几位的采样**(ADR-0020 决策 9:各算各的)。这些采样是粉丝轮询问 B 站问来的,
-		// 证明的是「B 站那头在看着」;拓展报来的粉丝数证明不了 —— B 站没登录、轮询一轮都没成时,
-		// 拿拓展的样本把 B 站行那天判成「在记、是 0」就是撒谎。拓展行也不借这一份,见 extensionActivity。
-		const coveredDays = new Set<string>();
-		for (const { sub, samples } of perSub) {
-			if (!fromBilibili(sub)) continue;
-			for (const s of samples) {
-				const d = localDayKey(s.ts, tzOffsetMin);
-				if (d) coveredDays.add(d);
-			}
-		}
-
-		/**
-		 * B 站行的热力图遮罩 —— 改之前的规矩,一字不动(ADR-0020 决策 9:B 站行的规矩不变)。
-		 * `samples` / `events` / `sessions` 是这一位自己的。
-		 */
-		const biliActivity = (
-			activityCounts: readonly number[],
-			daily: ReturnType<typeof dailyFansSeries>,
-			{ samples, events, sessions }: (typeof perSub)[number],
-		): Array<number | null> => {
-			// 活动热力图:计数本身恒有值(没活动就是 0),但有两种情况必须显示成
-			// 空格而不是 0 —— 0 会被读成「这位 UP 那天什么都没发」:
-			//   · 那天服务根本没跑 —— 见上方 coveredDays;
-			//   · 那天还没开始采集活动 —— fans 采样比统计功能上线得早,光看采样
-			//     会把上线之前的日子全判成「活跃度 0」。
-			//   · 那天我们还没在看**这一位** —— 见下方 firstSampleDay。
-			// 这位 UP 自己的首个 fans 采样日。fans poller 只采**订阅中**的 UP、每 2min
-			// 一轮,稠密到足以当「那天我们在看着他」的凭证 —— 而 coveredDays 是跨 UP
-			// 并集,只证明得了服务器在跑,证明不了这一位在不在册。
-			const firstSampleDay = minLocalDay(
-				samples.map((s) => s.ts),
-				tzOffsetMin,
-			);
-			// 盘上关于这位 UP 有没有任何东西。三样全空 = 一无所知,整行留白。
-			const hasEvidence = samples.length > 0 || events.length > 0 || sessions.length > 0;
-			return activityCounts.map((c, i) => {
-				const day = daily[i];
-				if (!day || !coveredDays.has(day.d)) return null;
-				// 严格小于:采集起始日**当天**照常出数。
-				//
-				// 已知的精度损失 —— 那天多半只采到了后半天(18:00 才装上的话,之前的
-				// 活动没记到),格子却和其他整天一样着色。权衡过:遮成 null 会把那天
-				// 真实记到的活动一并抹掉,那是拿「不完整」换「假装没有」,更不诚实。
-				// 页面上另有「已记录 N 日」的提示告诉用户采集覆盖了多久。
-				if (recordingSinceDay && day.d < recordingSinceDay) return null;
-				// 别的 UP 的采样能证明服务器在跑,证明不了我们在看他。
-				if (!hasEvidence) return null;
-				// 早于本 UP 首采日、且那天什么都没发生 → 留白。昨天开服、今天新订阅
-				// 一位 UP,他昨天那格本会被画成灰色的 0,读起来是「他昨天什么都没发」,
-				// 而那天他还不在订阅列表里。
-				//
-				// **只遮 0** 是要紧的:ADR-0020 决策 10 之前禁用订阅会物理删掉
-				// fans jsonl(老数据里还留着那种断档),订阅了三个月的 UP 被禁用再启用过,首采日就成了那天,
-				// 而他更早的动态与场次原封不动在盘上 —— 那些格子有铁证,一刀切会把
-				// 已经知道的事实重新抹成「不知道」。
-				if (firstSampleDay && day.d < firstSampleDay && c === 0) return null;
-				return c;
-			});
-		};
-
-		/**
-		 * 拓展行的热力图遮罩(ADR-0020 决策 9):「那天有记录」只看**它自己**的「在记」——
-		 * 收到它的任何上报(资料、直播状态、作品)就记一条,最密 10 分钟一条,第一条就是开始记录(决策 16)。
-		 *
-		 * - 那天有「在记」→ 我们在看着他,没活动就是 0;
-		 * - 那天没有 → 无记录:开始记录之前的日子、BN 或拓展没在跑的日子都落在这里,一律不画 0。
-		 *   不借 B 站的 coveredDays —— 那只证明 B 站那头在看着;也不借全局的采集水位线 ——
-		 *   这一位的第一条「在记」就是它自己的水位线;
-		 * - 那天有活动 → 照数,哪怕那天没有「在记」:作品报上来本身就是铁证(与 B 站那边「只遮 0」
-		 *   同一个道理 —— 遮成 null 是拿「不完整」换「假装没有」)。
-		 *
-		 * 粉丝样本不另算:它们跟着资料上报走,那一刻也记了「在记」。
-		 */
-		const extensionActivity = (
-			activityCounts: readonly number[],
-			daily: ReturnType<typeof dailyFansSeries>,
-			{ seen }: (typeof perSub)[number],
-		): Array<number | null> => {
-			const seenDays = new Set<string>();
-			for (const row of seen) {
-				const d = localDayKey(row.ts, tzOffsetMin);
-				if (d) seenDays.add(d);
-			}
-			return activityCounts.map((c, i) => {
-				const day = daily[i];
-				if (!day) return null;
-				return c > 0 || seenDays.has(day.d) ? c : null;
-			});
-		};
-
 		const rows = perSub.map((one): UpStatsRow => {
-			const { sub, samples, events, sessions } = one;
+			const { sub, samples, events, sessions, ledger } = one;
 			const identity = subscriptionIdentityOf(sub);
 			const daily = dailyFansSeries(samples, { days, tzOffsetMin });
 			const series = daily.map((p) => p.net);
-			// 计数、场次、峰值、粉丝两支同一套聚合;只有「那天有没有记录」各算各的(决策 9)。
-			const activityCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
-			const activity = fromBilibili(sub)
-				? biliActivity(activityCounts, daily, one)
-				: extensionActivity(activityCounts, daily, one);
-			// 窗口内是否有**任何**采集覆盖。三种证据取并集:
-			//   · `activity` 有非 null 位 —— fans 采样证明服务当时在跑(拓展行:那天有它的「在记」);
-			//   · 盘上有动态 / 场次记录 —— 能记下来本身就说明我们在记。
-			// 只认第一种是不够的:fans jsonl 曾被物理删掉(ADR-0020 决策 10 之前的禁用订阅),
-			// 而动态与场次记录原封不动留着 —— 那时把计数判成「无记录」就是睁眼说瞎话。
-			const hasCoverage =
-				activity.some((v) => v !== null) || events.length > 0 || sessions.length > 0;
+			// 三项各自在窗口里每天在不在记。
+			const recording = {
+				posts: recordingDays(ledger, "posts", { days, tzOffsetMin }),
+				live: recordingDays(ledger, "live", { days, tzOffsetMin }),
+				followers: recordingDays(ledger, "followers", { days, tzOffsetMin }),
+			};
+			const postsRecorded = recording.posts.some(Boolean);
+			const liveRecorded = recording.live.some(Boolean);
+			// 计数、场次、峰值两支同一套聚合。每天的活动 = 那天在记的那几项的计数之和;两项都没在记就是「无记录」。
+			const dayCounts = dailyActivityCounts(events, sessions, { days, tzOffsetMin });
+			const activity = dayCounts.posts.map((postCount, i) => {
+				const postsOn = recording.posts[i] === true;
+				const liveOn = recording.live[i] === true;
+				if (!postsOn && !liveOn) return null;
+				return (postsOn ? postCount : 0) + (liveOn ? (dayCounts.live[i] ?? 0) : 0);
+			});
 			const counts = countPosts(events);
 			// 在播状态来自引擎(唯一权威;拓展是场次模块),用来区分「这场正在播」与「end 帧丢了」。
 			const live = summarizeLiveSessions(sessions, { isLive: one.live, sinceMs });
@@ -390,17 +273,17 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 				series,
 				cumulative: daily.map((p) => p.value),
 				activity,
-				// 与 `activity` 同一把尺子:窗口内一天都没覆盖到时,这些计数不是 0
-				// 而是「不知道」。0 会被读成「这位 UP 什么都没发」,而热力图同一行
-				// 正画着一片「无记录」—— 两个数在一屏里互相打脸。
-				videoPosts: hasCoverage ? counts.videoPosts : null,
-				posts: hasCoverage ? counts.posts : null,
-				liveSessions: hasCoverage ? live.sessions : null,
-				liveHours: hasCoverage ? live.hours : null,
-				liveTimedSessions: hasCoverage ? live.timedSessions : null,
+				recording,
+				// 「没记录」看账:窗口里这一项一天都没在记时,这些计数不是 0 而是「不知道」。
+				// 0 会被读成「这位 UP 什么都没发」,而热力图同一行正画着一片「无记录」—— 两个数在一屏里互相打脸。
+				videoPosts: postsRecorded ? counts.videoPosts : null,
+				posts: postsRecorded ? counts.posts : null,
+				liveSessions: liveRecorded ? live.sessions : null,
+				liveHours: liveRecorded ? live.hours : null,
+				liveTimedSessions: liveRecorded ? live.timedSessions : null,
 				// 每场的数是本场累计观看,所以这两格叫单场最高 / 场均观看(决策 7 / 18)。
-				maxViewers: live.maxViewers,
-				avgViewers: live.avgViewers,
+				maxViewers: liveRecorded ? live.maxViewers : null,
+				avgViewers: liveRecorded ? live.avgViewers : null,
 				lastActivityAt,
 				live: one.live,
 			};

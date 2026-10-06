@@ -124,8 +124,7 @@ function makeDeps(
 			statsStore: {
 				listPosts: async () => [],
 				listLiveSessions: async () => [],
-				listSeenSince: async () => [],
-				recordingSince: async () => "1970-01-01T00:00:00.000Z",
+				listRecording: async () => [],
 			},
 			engines: {
 				api: {},

@@ -33,6 +33,7 @@ function row(over: Partial<UpStatsRow> & { uid?: string } = {}): UpStatsRow {
 		series: [1, 2, 3],
 		cumulative: [100, 102, 105],
 		activity: [0, 1, 2],
+		recording: { posts: [], live: [], followers: [] },
 		videoPosts: 1,
 		posts: 3,
 		liveSessions: 1,

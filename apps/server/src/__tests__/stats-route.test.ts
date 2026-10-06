@@ -9,6 +9,7 @@ import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createStatsRoute, MAX_CACHE_ENTRIES } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
+import type { RecordingEntry, RecordingKind } from "../stats/store.js";
 
 const DAY = 86_400_000;
 /** 固定"现在",让每日分桶可预期。 */
@@ -25,8 +26,11 @@ interface Fixture {
 	liveRooms?: Array<{ uid: string; isLive: boolean }>;
 	/** 粉丝轮询的快照,按 uid 写(好读);轮询按订阅 id 记,makeDeps 替它补上 `subscriptionId`。 */
 	fansEntries?: Array<{ uid: string; current: number }>;
-	/** 活动采集的起始时刻。缺省取足够早的值,等于「一直在采」。 */
-	recordingSince?: string;
+	/**
+	 * 「在记」账,按 uid 写。缺省(整个字段不写)= 每位订阅三项都从很早以前一直在记;写 `{}` = 谁都没在记;
+	 * 某位不在表里 = 这位什么都没记。
+	 */
+	recording?: Record<string, RecordingEntry[]>;
 }
 
 /**
@@ -34,6 +38,16 @@ interface Fixture {
  * `id-<uid>`,mock 的仓按它查回夹具 —— 路由拿 uid 去读的话一样都读不到。
  */
 const subId = (uid: string) => `id-${uid}`;
+
+/** 一项在某段时间里一直在记。 */
+const span = (kind: RecordingKind, fromMs: number, toMs: number): RecordingEntry => ({
+	kind,
+	startedAt: new Date(fromMs).toISOString(),
+	endedAt: new Date(toMs).toISOString(),
+});
+const ALWAYS: RecordingEntry[] = (["posts", "live", "followers"] as const).map((kind) =>
+	span(kind, NOW - 400 * 86_400_000, NOW + 86_400_000),
+);
 const uidOf = (key: string) => (key.startsWith("id-") ? key.slice(3) : `(不是订阅 id:${key})`);
 
 function makeDeps(f: Fixture): RouteDeps {
@@ -45,7 +59,8 @@ function makeDeps(f: Fixture): RouteDeps {
 			statsStore: {
 				listPosts: async (key: string) => f.posts?.[uidOf(key)] ?? [],
 				listLiveSessions: async (key: string) => f.sessions?.[uidOf(key)] ?? [],
-				recordingSince: async () => f.recordingSince ?? "1970-01-01T00:00:00.000Z",
+				listRecording: async (key: string) =>
+					f.recording?.[uidOf(key)] ?? (f.recording ? [] : ALWAYS),
 			},
 			engines: f.liveRooms ? { listLiveRooms: () => f.liveRooms } : null,
 			fansPoller: f.fansEntries
@@ -133,7 +148,7 @@ describe("GET /api/stats/overview — null 语义", () => {
 		// 「0」是我们在记、他确实没发;「null」是我们没在记。用 0 顶替会让老库升级后
 		// 的近 90 日视图把一位高产 UP 显示成「投稿 0 个」,而同一行热力图正画着
 		// 一片「无记录」——两个数在同一屏里互相打脸。
-		const body = await get(makeDeps({ subs: [{ uid: "1" }] }));
+		const body = await get(makeDeps({ subs: [{ uid: "1" }], recording: {} }));
 		expect(body.rows[0]?.videoPosts).toBeNull();
 		expect(body.rows[0]?.posts).toBeNull();
 		expect(body.rows[0]?.liveSessions).toBeNull();
@@ -290,141 +305,152 @@ describe("GET /api/stats/overview — 数据投影", () => {
 	});
 });
 
-describe("GET /api/stats/overview — 活动热力图的采集水位线", () => {
-	/** 近 5 天每天一条粉丝采样 —— 「服务当天在跑」的证据。 */
-	const dailySamples = () =>
-		Array.from({ length: 5 }, (_, i) => ({
-			ts: new Date(NOW - (4 - i) * DAY).toISOString(),
-			value: 1000 + i,
-		}));
+describe("GET /api/stats/overview — 「在记」账", () => {
+	const HOUR = 3_600_000;
+	/** 北京时间(UTC+8)2026-05-16 的零点 = UTC 15 日 16:00。 */
+	const CN_MIDNIGHT = Date.UTC(2026, 4, 15, 16, 0, 0);
 
-	it("采集开始之前的日子是 null,不是 0 —— 那几天我们根本没在记", async () => {
-		// 粉丝采样从 5 天前就有,活动采集昨天才开始。中间那几天既没有活动记录,
-		// 也不该声称「记了,是 0」——0 会被读成「这位 UP 那天什么都没发」。
+	it("账里什么都没有 → 整行「无记录」:热力图全 null、计数全 null、recording 全 false", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			samples: { "1": dailySamples() },
-			recordingSince: new Date(NOW - DAY).toISOString(),
+			samples: { "1": [{ ts: new Date(NOW).toISOString(), value: 1 }] },
+			posts: { "1": [{ id: "a", hasVideo: true, publishedAt: new Date(NOW).toISOString() }] },
+			recording: {},
 		});
-		const activity = (await get(deps, "?days=5")).rows[0]?.activity;
-		// 最后两格(昨天 / 今天)在水位线之后 → 0;更早的三格 → null。
-		expect(activity).toEqual([null, null, null, 0, 0]);
+		const row = (await get(deps, "?days=3")).rows[0];
+		expect(row?.activity).toEqual([null, null, null]);
+		expect(row?.recording).toEqual({
+			posts: [false, false, false],
+			live: [false, false, false],
+			followers: [false, false, false],
+		});
+		expect(row?.videoPosts).toBeNull();
+		expect(row?.liveSessions).toBeNull();
+		expect(row?.maxViewers).toBeNull();
 	});
 
-	it("水位线之后仍然区分 0 与 null —— 服务那天没跑照旧是 null", async () => {
-		// 只有今天一条粉丝采样:今天之前虽在水位线之后,但服务没跑,仍是 null。
-		const deps = makeDeps({
-			subs: [{ uid: "1" }],
-			samples: { "1": [{ ts: new Date(NOW).toISOString(), value: 1000 }] },
-			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
-		});
-		const activity = (await get(deps, "?days=3")).rows[0]?.activity;
-		expect(activity).toEqual([null, null, 0]);
-	});
-
-	it("某个 UP 的粉丝档案被删过,不该抹掉它的活动热力图", async () => {
-		// 回归:「服务当天在跑」曾按**每个 UP 自己**的粉丝采样判断,而 ADR-0020 决策 10 之前禁用订阅
-		// 会 `dropUid` 物理删掉该 UP 的 fans jsonl(老数据里还留着那种断档)。于是订阅了三个月的 UP 只要被禁用
-		// 再启用,热力图整片变「无记录」—— 尽管它的动态和场次原封不动在盘上。
-		//
-		// 「服务器那天在不在跑」是**服务器**的属性,不是某个 UP 的属性:只要当天
-		// 有任何一位 UP 采到过样本,就足以证明我们在看着。
-		const deps = makeDeps({
-			subs: [{ uid: "1" }, { uid: "2" }],
-			samples: { "1": dailySamples() }, // uid 2 的档案被删了
-			posts: {
-				"2": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
-			},
-			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
-		});
-		const rows = (await get(deps, "?days=5")).rows;
-		const row2 = rows.find((r) => r.identity.externalId === "2");
-		expect(row2?.activity).toEqual([0, 0, 0, 0, 1]);
-	});
-
-	it("所有 UP 都没有采样 → 仍然全是 null,不凭空断言服务在跑", async () => {
+	it("作品开着直播关着:作品那几格有数、直播那几格 null,recording 三个数组逐天对", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
 			posts: {
-				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
+				"1": [{ id: "a", hasVideo: true, publishedAt: new Date(NOW - DAY).toISOString() }],
 			},
-			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
+			sessions: {
+				"1": [
+					{
+						startedAt: new Date(NOW - DAY).toISOString(),
+						endedAt: new Date(NOW - DAY + HOUR).toISOString(),
+						peakTotalViewers: 500,
+					},
+				],
+			},
+			recording: {
+				// 作品:前天起在记;粉丝:只有今天;直播:没有。
+				"1": [span("posts", NOW - 2 * DAY, NOW + DAY), span("followers", NOW - HOUR, NOW)],
+			},
 		});
-		const activity = (await get(deps, "?days=3")).rows[0]?.activity;
-		expect(activity).toEqual([null, null, null]);
+		const row = (await get(deps, "?days=4")).rows[0];
+		expect(row?.recording).toEqual({
+			posts: [false, true, true, true],
+			live: [false, false, false, false],
+			followers: [false, false, false, true],
+		});
+		expect(row?.videoPosts).toBe(1);
+		expect(row?.posts).toBe(1);
+		// 直播没在记:场次与观看都是 null(盘上有场次也不算)。
+		expect(row?.liveSessions).toBeNull();
+		expect(row?.liveHours).toBeNull();
+		expect(row?.liveTimedSessions).toBeNull();
+		expect(row?.maxViewers).toBeNull();
+		expect(row?.avgViewers).toBeNull();
+		// 活动:只数在记的那几项 —— 昨天作品在记(1 条),直播不在记所以那场不加;没在记的头一天是 null。
+		expect(row?.activity).toEqual([null, 0, 1, 0]);
 	});
 
-	it("今天才订阅的 UP,昨天那格是留白而不是灰色的 0", async () => {
-		// 昨天开的服(uid 1 从 5 天前就有采样),今天才订阅 uid 2 —— 昨天它根本不在
-		// 订阅列表里,没人采过它。但 coveredDays 是**跨 UP 并集**(服务器在不在跑是
-		// 服务器的属性),uid 1 昨天的采样让昨天算「在跑」,于是 uid 2 昨天那格被画成
-		// 0,读起来是「他昨天什么都没发」—— 真相是那天我们根本没在看他。
+	it("某天作品与直播各有一项在记:活动是在记的那几项的计数之和", async () => {
 		const deps = makeDeps({
-			subs: [{ uid: "1" }, { uid: "2" }],
-			samples: {
-				"1": dailySamples(),
-				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
+			subs: [{ uid: "1" }],
+			posts: {
+				"1": [
+					{ id: "a", hasVideo: false, publishedAt: new Date(NOW - DAY).toISOString() },
+					{ id: "b", hasVideo: false, publishedAt: new Date(NOW - DAY + HOUR).toISOString() },
+				],
 			},
-			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
+			sessions: { "1": [{ startedAt: new Date(NOW - DAY).toISOString() }] },
 		});
-		const rows = (await get(deps, "?days=5")).rows;
-		expect(rows.find((r) => r.identity.externalId === "2")?.activity).toEqual([
-			null,
-			null,
-			null,
-			null,
-			0,
+		// 缺省三项都在记:2 条作品 + 1 场开播。
+		expect((await get(deps, "?days=3")).rows[0]?.activity).toEqual([0, 3, 0]);
+		const postsOnly = makeDeps({
+			subs: [{ uid: "1" }],
+			posts: {
+				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW - DAY).toISOString() }],
+			},
+			sessions: { "1": [{ startedAt: new Date(NOW - DAY).toISOString() }] },
+			recording: { "1": [span("posts", NOW - 5 * DAY, NOW + DAY)] },
+		});
+		expect((await get(postsOnly, "?days=3")).rows[0]?.activity).toEqual([0, 1, 0]);
+	});
+
+	it("那天没在记就是 null,哪怕盘上那天有作品 —— 账说了算,不再拿作品当铁证", async () => {
+		const deps = makeDeps({
+			subs: [{ uid: "1" }],
+			posts: {
+				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW - 3 * DAY).toISOString() }],
+			},
+			recording: { "1": [span("posts", NOW - DAY, NOW + DAY)] },
+		});
+		const row = (await get(deps, "?days=5")).rows[0];
+		expect(row?.activity).toEqual([null, null, null, 0, 0]);
+	});
+
+	it("日界跟着请求的时区走:账里一个跨 UTC 零点的小时,在两个时区下落到不同的天", async () => {
+		// 账只有一行:UTC 5 月 15 日 23:00 - 5 月 16 日 01:00(两个小时,跨 UTC 零点)。
+		const entry = span("posts", Date.UTC(2026, 4, 15, 23, 0, 0), Date.UTC(2026, 4, 16, 1, 0, 0));
+		const mk = () => makeDeps({ subs: [{ uid: "1" }], recording: { "1": [entry] } });
+		// UTC:两个小时分属 15 日与 16 日 → 窗口最后两天都在记(今天是 16 日)。
+		expect((await get(mk(), "?days=3&tz=0")).rows[0]?.recording.posts).toEqual([false, true, true]);
+		// UTC+8:这段在本地是 5 月 16 日 07:00 - 09:00,只落在 16 日一天。
+		expect((await get(mk(), "?days=3&tz=-480")).rows[0]?.recording.posts).toEqual([
+			false,
+			false,
+			true,
 		]);
-		// 老 UP 不受牵连 —— 这 5 天它一直在被采。
-		expect(rows.find((r) => r.identity.externalId === "1")?.activity).toEqual([0, 0, 0, 0, 0]);
+		// UTC-5(tz=300):本地 15 日 18:00 - 20:00,落在 15 日一天,今天(16 日)没有。
+		expect((await get(mk(), "?days=3&tz=300")).rows[0]?.recording.posts).toEqual([
+			false,
+			true,
+			false,
+		]);
 	});
 
-	it("刚订阅、第一轮采样都还没跑的 UP → 整行留白", async () => {
-		// 别的 UP 在采样 ⇒ coveredDays 非空 ⇒ 旧实现给这位新 UP 画满一行 0。
-		// 而盘上关于它没有任何东西:没采样、没动态、没场次 —— 一无所知就该留白。
-		const deps = makeDeps({
-			subs: [{ uid: "1" }, { uid: "2" }],
-			samples: { "1": dailySamples() },
-			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
-		});
-		const row2 = (await get(deps, "?days=5")).rows.find((r) => r.identity.externalId === "2");
-		expect(row2?.activity).toEqual([null, null, null, null, null]);
-		// 一无所知时计数也是「不知道」,不是 0 —— 与热力图同一把尺子。
-		expect(row2?.posts).toBeNull();
-	});
-
-	it("早于首次采样、但盘上真有活动的那天照常上色 —— 新遮罩只遮 0", async () => {
-		// ADR-0020 决策 10 之前禁用订阅会 `dropUid` 物理删掉 fans jsonl(老数据里还留着那种断档),
-		// 重新启用后首采日是那天,而它三天前那条动态原封不动在盘上。有活动就是有活动,铁证 ——
-		// 按首采日一刀切会把这格一起抹掉,那是拿「不知道」覆盖已经知道的事。
-		const deps = makeDeps({
-			subs: [{ uid: "1" }, { uid: "2" }],
-			samples: {
-				"1": dailySamples(),
-				"2": [{ ts: new Date(NOW).toISOString(), value: 500 }],
-			},
-			posts: {
-				"2": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW - 3 * DAY).toISOString() }],
-			},
-			recordingSince: new Date(NOW - 30 * DAY).toISOString(),
-		});
-		const activity = (await get(deps, "?days=5")).rows.find(
-			(r) => r.identity.externalId === "2",
-		)?.activity;
-		expect(activity).toEqual([null, 1, null, null, 0]);
-	});
-
-	it("水位线当天有活动就照常上色,不被水位线抹掉", async () => {
+	it("读得了任意长度的区间、重复行与重叠行", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			samples: { "1": dailySamples() },
-			posts: {
-				"1": [{ id: "a", hasVideo: false, publishedAt: new Date(NOW).toISOString() }],
+			recording: {
+				"1": [
+					span("posts", CN_MIDNIGHT - 10 * DAY, CN_MIDNIGHT - 8 * DAY), // 一段长区间
+					span("posts", CN_MIDNIGHT - 10 * DAY, CN_MIDNIGHT - 8 * DAY), // 重复
+					span("posts", CN_MIDNIGHT - 9 * DAY, CN_MIDNIGHT - 8 * DAY + HOUR), // 重叠
+					span("posts", NOW - HOUR, NOW), // 一个整点小时
+					span("posts", NOW - HOUR, NOW), // 重复
+				],
 			},
-			recordingSince: new Date(NOW).toISOString(),
 		});
-		const activity = (await get(deps, "?days=5")).rows[0]?.activity;
-		expect(activity?.at(-1)).toBe(1);
+		const row = (await get(deps, "?days=11&tz=-480")).rows[0];
+		// 本地 6 日 - 8 日(长区间 + 重叠的那段延到 8 日 01:00)在记,9 日 - 15 日空着,今天有那个整点小时。
+		expect(row?.recording.posts).toEqual([
+			true,
+			true,
+			true,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			true,
+		]);
 	});
 });
 

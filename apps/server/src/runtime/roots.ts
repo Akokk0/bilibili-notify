@@ -38,7 +38,8 @@ export const DATA_ROOT_LAYOUT = {
 	history:
 		"推送历史 <日>.jsonl(文字不删)、重推原件 repush/<日>/、图与原件清到哪天的水位线 retention.json;图在图库 images/,这里只存引用",
 	images: "图库:按内容存的图 <sha256>.<ext>,作品图、封面、头像、历史快照、聊天附件共用",
-	stats: "作品 posts/、直播 live/、seen/、粉丝时序 followers/(按订阅一个 jsonl)与水位线 since",
+	stats:
+		"作品 posts/、直播 live/、「在记」小账 recording/、粉丝时序 followers/(都按订阅一个 jsonl)",
 	ai: "女仆对话 conversations/",
 	skins: "卡片皮肤 card/<id>/、界面皮肤 dashboard/<id>/ 与 dashboard/active.json",
 	library: "素材库:卡片背景 images/、字体 fonts/(连同名字清单)",

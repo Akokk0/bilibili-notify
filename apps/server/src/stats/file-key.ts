@@ -3,8 +3,16 @@ import type { Subscription } from "@bilibili-notify/internal";
 /** 认得出订的是谁、带着订阅 id 的最小订阅形状 —— 线上的 DTO、测试里的半截订阅都能直接传。 */
 export type KeyedSubscription = Pick<Subscription, "id" | "identity">;
 
-/** 统计的来源适配看订阅看这几样:订的是谁(身份)、订阅 id、启用着没有。 */
-export type StatsSubscription = KeyedSubscription & { enabled: boolean };
+/**
+ * 统计的来源适配看订阅看这几样:订的是谁(身份)、订阅 id、启用着没有,以及两格算好的「在记」条件
+ * (ADR-0027 决策 2):`recordsPosts` = 启用着 ∧ 作品开关开着;`recordsLive` = 启用着 ∧ 直播类开关任一开着。
+ * 开关取**有效值**(订阅覆盖合并全局默认之后),在提供订阅清单的地方(`runtime/bootstrap.ts`)算好,适配不认配置。
+ */
+export type StatsSubscription = KeyedSubscription & {
+	enabled: boolean;
+	recordsPosts: boolean;
+	recordsLive: boolean;
+};
 
 /**
  * 一条订阅在统计仓与粉丝仓里的**文件键**:就是**订阅 id**(ADR-0020 决策 2 的 🔗)。

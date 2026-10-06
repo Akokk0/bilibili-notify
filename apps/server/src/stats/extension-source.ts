@@ -22,7 +22,8 @@ import type { StatsRecorderCore } from "./recorder.js";
  *   - 峰值(决策 7)照抄结束帧带的 `totalViewers`:本场报过的最大累计观看,也由场次那边算(一场报过什么只有
  *     它全看得见);没带(平台只报此刻在线)这一场就不带峰值。
  *   - 资料里的粉丝数 → 粉丝时序(决策 8),不密过 B 站粉丝轮询的间隔({@link fansSampleGapMs})。
- *   - 收到任何上报 → 一条「在记」(决策 9 / 16),最密 10 分钟一条(记录器管)。
+ *   - 「来源在跑」= 这个小时收到过这条订阅的任何上报(ADR-0027 决策 2):按开关记当前小时的 `posts` /
+ *     `live`;资料里带粉丝数(不管被不被稀释掉)记 `followers`。作品开关关着不落作品行;直播类开关都关着不开新场次。
  *   - 订阅删了 → 四份文件全删;停用的留着(决策 10)。
  */
 export interface ExtensionStatsSourceOptions {
@@ -82,35 +83,40 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 	const handles: Disposable[] = [];
 
 	/**
-	 * 订阅 id → 启用着没有,只收拓展订阅。惰性建、订阅一变就作废;查不到时重建一次(刚加的不必等作废通知)。
-	 * 资料更新可能一口气报一百条,不能每条都把整份订阅深拷一遍。
+	 * 订阅 id → 这条拓展订阅(启用着没有、两格「在记」条件),只收拓展订阅。惰性建、订阅或设置一变就作废
+	 * (开关是订阅覆盖合并全局默认之后的有效值,全局改了也要重算);查不到时重建一次(刚加的不必等作废通知)。
+	 * 资料更新可能一口气报一百条,不能每条都重算一遍。
 	 */
-	let enabledById: Map<string, boolean> | undefined;
+	let subById: Map<string, StatsSubscription> | undefined;
 	const buildIndex = () => {
-		const index = new Map<string, boolean>();
+		const index = new Map<string, StatsSubscription>();
 		for (const sub of opts.subscriptions()) {
-			if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY) {
-				index.set(sub.id, sub.enabled);
-			}
+			if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY) index.set(sub.id, sub);
 		}
 		return index;
 	};
-	/** 这条拓展订阅启用着吗;不是拓展订阅(或不在了)是 `undefined`。 */
-	const enabledOf = (id: string): boolean | undefined => {
-		enabledById ??= buildIndex();
-		if (!enabledById.has(id)) enabledById = buildIndex();
-		return enabledById.get(id);
+	const subOf = (id: string): StatsSubscription | undefined => {
+		subById ??= buildIndex();
+		if (!subById.has(id)) subById = buildIndex();
+		return subById.get(id);
 	};
+	/** 这条拓展订阅启用着吗;不是拓展订阅(或不在了)是 `undefined`。 */
+	const enabledOf = (id: string): boolean | undefined => subOf(id)?.enabled;
 
 	handles.push(
 		bus.on("subscription-reported", (delivery) => {
 			const { report } = delivery;
 			for (const id of delivery.subscriptionIds) {
-				if (enabledOf(id) !== true) continue;
+				const sub = subOf(id);
+				if (sub?.enabled !== true) continue;
 				const key = statsFileKey({ id });
-				recorder.recordSeen(key);
+				// 收到上报 = 来源这个小时在跑,按开关记。
+				if (sub.recordsPosts) recorder.recordActive(key, "posts");
+				if (sub.recordsLive) recorder.recordActive(key, "live");
 				switch (report.kind) {
 					case "post":
+						// 作品开关关着不落作品行。
+						if (!sub.recordsPosts) break;
 						recorder.recordPost(key, {
 							id: report.value.id,
 							hasVideo: extensionHasVideo(report.value),
@@ -119,6 +125,8 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 						break;
 					case "profile":
 						if (report.value.fans !== undefined) {
+							// 这个小时拉资料成功过(不管粉丝样本被不被稀释掉)。
+							recorder.recordActive(key, "followers");
 							recorder.recordFans(key, report.value.fans, fansSampleGapMs(opts.fansCron()));
 						}
 						break;
@@ -132,7 +140,9 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 		bus.on("extension-live-session", (event) => {
 			const key = statsFileKey({ id: event.subscriptionId });
 			if (event.phase === "start") {
-				if (enabledOf(event.subscriptionId) !== true) return;
+				const sub = subOf(event.subscriptionId);
+				// 直播类开关都关着不开新场次(进行中的场次照常收尾,见下面的关场)。
+				if (sub?.enabled !== true || !sub.recordsLive) return;
 				open.add(key);
 				recorder.openSession(key, event.startedAt);
 				return;
@@ -147,9 +157,12 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 		}),
 	);
 
+	// 开关是有效值,全局默认改了(`config-changed`)订阅清单里的两格也跟着变,别吃旧的。
+	handles.push(bus.on("config-changed", () => (subById = undefined)));
+
 	handles.push(
 		bus.on("subscription-changed", ({ ops }) => {
-			enabledById = undefined;
+			subById = undefined;
 			for (const op of ops) {
 				// B 站那一支由 B 站适配删;这里只管拓展这一支。停用的文件留着。
 				if (op.type !== "remove") continue;

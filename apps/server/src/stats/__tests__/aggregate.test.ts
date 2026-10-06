@@ -12,9 +12,11 @@ import {
 	dailyActivityCounts,
 	dailyFansSeries,
 	localDayKey,
+	recordingDays,
 	summarizeLiveSessions,
 	windowSinceIso,
 } from "../aggregate.js";
+import type { RecordingKind } from "../store.js";
 
 /** UTC+8 的 getTimezoneOffset() 口径。 */
 const TZ_CN = -480;
@@ -250,7 +252,7 @@ describe("坏时间戳守卫 —— 一行脏数据不能掀翻整个接口", ()
 			[],
 			{ days: 2, tzOffsetMin: -480, now: new Date(Date.parse(CN(16, 12))) },
 		);
-		expect(counts).toEqual([0, 1]);
+		expect(counts).toEqual({ posts: [0, 1], live: [0, 0] });
 	});
 });
 
@@ -264,13 +266,13 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 			{ days: 3, tzOffsetMin: -480, now: new Date(Date.parse(CN(17, 12))) },
 		);
 		// 轴是 [15日, 16日, 17日];这一场只该记在 16 日那格。
-		expect(counts).toEqual([0, 1, 0]);
+		expect(counts).toEqual({ posts: [0, 0, 0], live: [0, 1, 0] });
 	});
 
 	const now = new Date(CN(16, 23));
 	const opts = { days: 3, tzOffsetMin: TZ_CN, now };
 
-	it("动态 / 投稿 / 开播都算一次活动,按本地日归并", () => {
+	it("动态 / 投稿 / 开播都算一次活动,按本地日归并;作品与直播分开数", () => {
 		const got = dailyActivityCounts(
 			[
 				{ id: "a", hasVideo: true, publishedAt: CN(15, 10) },
@@ -281,11 +283,11 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 			opts,
 		);
 		// 14 号无活动、15 号两条动态、16 号一条动态 + 一场直播
-		expect(got).toEqual([0, 2, 2]);
+		expect(got).toEqual({ posts: [0, 2, 1], live: [0, 0, 1] });
 	});
 
 	it("长度恒等于 days,无活动的日子是 0", () => {
-		expect(dailyActivityCounts([], [], opts)).toEqual([0, 0, 0]);
+		expect(dailyActivityCounts([], [], opts)).toEqual({ posts: [0, 0, 0], live: [0, 0, 0] });
 	});
 
 	it("窗口外的事件不计入", () => {
@@ -294,7 +296,70 @@ describe("dailyActivityCounts — 逐日活动次数(热力图数据源)", () =>
 			[],
 			opts,
 		);
-		expect(got).toEqual([0, 0, 0]);
+		expect(got).toEqual({ posts: [0, 0, 0], live: [0, 0, 0] });
+	});
+});
+
+describe("recordingDays —— 「在记」账 → 窗口里每天在不在记", () => {
+	const now = new Date(CN(16, 23));
+	const entry = (kind: RecordingKind, fromIso: string, toIso: string) => ({
+		kind,
+		startedAt: fromIso,
+		endedAt: toIso,
+	});
+
+	it("与某一天有交集就算在记,按请求的时区切天", () => {
+		// 北京时间 15 日 23:00 - 16 日 01:00:跨北京零点的两个小时。
+		const rows = [entry("posts", CN(15, 23), CN(16, 1))];
+		expect(recordingDays(rows, "posts", { days: 3, tzOffsetMin: TZ_CN, now })).toEqual([
+			false,
+			true,
+			true,
+		]);
+		// 同一份账换成 UTC:这两个小时是 UTC 的 15 日 15:00 - 17:00,只落在一天。
+		expect(recordingDays(rows, "posts", { days: 3, tzOffsetMin: 0, now })).toEqual([
+			false,
+			true,
+			false,
+		]);
+	});
+
+	it("区间左闭右开:恰好在零点结束的区间不算占了下一天", () => {
+		const rows = [entry("posts", CN(15, 22), CN(16, 0))];
+		expect(recordingDays(rows, "posts", { days: 2, tzOffsetMin: TZ_CN, now })).toEqual([
+			true,
+			false,
+		]);
+	});
+
+	it("只看这一项;重复、重叠、坏区间都不影响", () => {
+		const rows = [
+			entry("live", CN(16, 10), CN(16, 11)),
+			entry("posts", CN(15, 3), CN(15, 3 + 1)),
+			entry("posts", CN(15, 3), CN(15, 3 + 1)),
+			entry("posts", CN(15, 3), CN(15, 20)),
+			entry("posts", "坏", "坏"),
+			entry("posts", CN(15, 10), CN(15, 9)),
+		];
+		expect(recordingDays(rows, "posts", { days: 3, tzOffsetMin: TZ_CN, now })).toEqual([
+			false,
+			true,
+			false,
+		]);
+		expect(recordingDays(rows, "live", { days: 3, tzOffsetMin: TZ_CN, now })).toEqual([
+			false,
+			false,
+			true,
+		]);
+	});
+
+	it("长度恒等于 days,没有账就全是 false", () => {
+		expect(recordingDays([], "followers", { days: 4, tzOffsetMin: 0, now })).toEqual([
+			false,
+			false,
+			false,
+			false,
+		]);
 	});
 });
 

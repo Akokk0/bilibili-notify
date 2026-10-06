@@ -51,6 +51,7 @@ import {
 import { createHistoryImages, historyInputReason } from "./history-images.js";
 import { ZERO_GLOBAL_LIVE_FACTS } from "./live-split.js";
 import { migrateProfileAvatars } from "./profile-avatars.js";
+import { migrateRecordingLedger } from "./recording.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSecretBag } from "./secrets.js";
 import { migrateSettingsFiles, readMigratedRetentionDays, readZeroLiveFacts } from "./settings.js";
@@ -67,7 +68,7 @@ import {
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 30;
+export const MIGRATION_REVISION = 31;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -418,6 +419,14 @@ const REWRITES: readonly {
 		run: withBiliSubscriptions((opts, subscriptions) =>
 			migrateStatsFiles(opts.targetDir, subscriptions),
 		),
+	},
+	{
+		// 在「统计」之后:读它迁好的作品 / 直播 / 粉丝文件与订阅文件,推出老日子的「在记」小账。
+		label: "统计的在记",
+		run: (opts, report) =>
+			migrateRecordingLedger(opts.targetDir, (reason) =>
+				report.skipped.push({ path: "stats/recording", reason }),
+			),
 	},
 	{
 		label: "锐评草稿",

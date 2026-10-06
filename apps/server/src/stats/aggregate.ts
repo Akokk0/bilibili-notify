@@ -1,5 +1,5 @@
 import type { FansSample } from "../fans/store.js";
-import type { LiveSessionEntry, PostEntry } from "./store.js";
+import type { LiveSessionEntry, PostEntry, RecordingEntry, RecordingKind } from "./store.js";
 
 /**
  * stats 聚合层 —— 纯函数,不碰 IO。路由只负责把 store 读出来的原始序列喂进来。
@@ -126,7 +126,8 @@ export function dailyFansSeries(
 }
 
 /**
- * 逐日活动次数 —— 热力图的数据源。一条动态、一次投稿、一场开播各算一次。
+ * 逐日活动次数 —— 热力图的数据源,**作品与直播分开数**:一条作品算一次,一场开播算一次(按开播那天)。
+ * 热力图每天取哪几项相加,看那天哪几项在记(`recordingDays`),所以这里不先加起来。
  *
  * 单独一个函数而不是复用 `countPosts`,是因为热力图要的是**按天散开**的
  * 分布,而不是窗口总计;两者的口径必须一致,否则热力图和
@@ -136,26 +137,59 @@ export function dailyActivityCounts(
 	events: readonly PostEntry[],
 	sessions: readonly LiveSessionEntry[],
 	opts: DailySeriesOptions,
-): number[] {
+): { posts: number[]; live: number[] } {
 	const tz = opts.tzOffsetMin ?? 0;
 	const nowMs = (opts.now ?? new Date()).getTime();
 	const localKey = (utcMs: number) => new Date(utcMs - tz * 60_000).toISOString().slice(0, 10);
 
-	const counts = new Map<string, number>();
-	const bump = (iso: string) => {
+	const bumpInto = (counts: Map<string, number>, iso: string) => {
 		const ms = Date.parse(iso);
 		if (Number.isNaN(ms)) return;
 		const k = localKey(ms);
 		counts.set(k, (counts.get(k) ?? 0) + 1);
 	};
-
-	for (const e of events) bump(e.publishedAt);
+	const postCounts = new Map<string, number>();
+	const liveCounts = new Map<string, number>();
+	for (const e of events) bumpInto(postCounts, e.publishedAt);
 	// 直播按**开播**那天记一次,不按跨天时长摊开 —— 通宵直播算一次活动。
-	for (const s of sessions) bump(s.startedAt);
+	for (const s of sessions) bumpInto(liveCounts, s.startedAt);
 
-	const out: number[] = [];
+	const posts: number[] = [];
+	const live: number[] = [];
 	for (let i = opts.days - 1; i >= 0; i--) {
-		out.push(counts.get(localKey(nowMs - i * 86_400_000)) ?? 0);
+		const k = localKey(nowMs - i * 86_400_000);
+		posts.push(postCounts.get(k) ?? 0);
+		live.push(liveCounts.get(k) ?? 0);
+	}
+	return { posts, live };
+}
+
+/**
+ * 「在记」账 → 窗口里每个本地日这一项在不在记(长度与顺序同 `dailyFansSeries` / `dailyActivityCounts`,末位是今天)。
+ *
+ * 那一天(按请求的时区切)与这一项的**任何一段区间**有交集就算在记。区间任意长(记录器写的是一个整点小时,
+ * 迁移写的是合好的长区间),重复与重叠都不影响结果。
+ */
+export function recordingDays(
+	entries: readonly RecordingEntry[],
+	kind: RecordingKind,
+	opts: DailySeriesOptions,
+): boolean[] {
+	const tz = opts.tzOffsetMin ?? 0;
+	const nowMs = (opts.now ?? new Date()).getTime();
+	const ranges: Array<[number, number]> = [];
+	for (const e of entries) {
+		if (e.kind !== kind) continue;
+		const from = Date.parse(e.startedAt);
+		const to = Date.parse(e.endedAt);
+		if (Number.isFinite(from) && Number.isFinite(to) && from < to) ranges.push([from, to]);
+	}
+	const out: boolean[] = [];
+	for (let i = opts.days - 1; i >= 0; i--) {
+		const key = new Date(nowMs - i * 86_400_000 - tz * 60_000).toISOString().slice(0, 10);
+		const dayStart = Date.parse(`${key}T00:00:00.000Z`) + tz * 60_000;
+		const dayEnd = dayStart + 86_400_000;
+		out.push(ranges.some(([from, to]) => from < dayEnd && to > dayStart));
 	}
 	return out;
 }

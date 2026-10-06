@@ -114,6 +114,8 @@ const jsonl = (rows: unknown[]) => `${rows.map((r) => JSON.stringify(r)).join("\
 const FANS = jsonl([
 	{ ts: "2026-05-10T00:00:00.000Z", value: 100 },
 	{ ts: "2026-05-11T00:00:00.000Z", value: 110 },
+	// 此刻的一条:迁移推「在记」小账靠粉丝样本所在的小时(B 站「那个小时在跑」的老规矩),统计页近 7 日才有记录。
+	{ ts: new Date().toISOString(), value: 120 },
 ]);
 
 describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就挪到了 <订阅 id>.jsonl", () => {

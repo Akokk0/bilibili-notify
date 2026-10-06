@@ -5,17 +5,22 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { classifyBiliDynamic } from "./bili-format.js";
-import { type KeyedSubscription, statsFileKey } from "./file-key.js";
-import type { StatsRecorderCore } from "./recorder.js";
+import { type StatsSubscription, statsFileKey } from "./file-key.js";
+import { HOUR_MS, type StatsRecorderCore } from "./recorder.js";
 
 /**
  * 统计的 **B 站适配**(ADR-0020 决策 17):把 B 站引擎已经在总线上的事件翻成记录器的中立调用。
  *
  * B 站的规矩只写在这里(与 `bili-format`):
  *   - `dynamic-detected` → 记成「有没有视频」的作品,开播那两种不记(不是作品,场次另从直播事件记);
+ *     订阅的作品开关关着就不记(ADR-0027 决策 1,不动引擎);
  *   - `live-viewers-changed` → 总线上就是精确数(㉒d),直接报给记录器取本场最大值(不再解析「1.2万」);
  *   - `live-state-changed` → 开一场 / 关一场,开播时刻取 B 站的真实 `live_time`;
- *   - `auth-lost` / 删订阅 → 忘掉 / 删掉 B 站这头的在飞状态与文件。
+ *   - `auth-lost` / 删订阅 → 忘掉 / 删掉 B 站这头的在飞状态与文件;
+ *   - **「来源在跑」= B 站登录有效**(ADR-0027 决策 2):定时(每 {@link BILI_SOURCE_CHECK_MS})看一眼登录状态,有效就给每条
+ *     满足条件的订阅记当前小时的 `posts` / `live`;挂上时、`auth-restored` 时各立刻看一眼;登录无效不记。状态每次现读
+ *     (`isLoggedIn`),事件只用来立刻补记一次,不拿它记状态;
+ *   - `fans-refreshed` → 条目是 B 站订阅的、启用着的,记它采样所在小时的 `followers`(「这个小时拉资料成功过」)。
  *
  * **uid → 订阅 id 在这里换**(ADR-0020 决策 2 的 🔗):B 站引擎与总线照旧只带 uid,统计仓按
  * 订阅 id 分文件({@link statsFileKey})。找不到订阅的 uid 一样都不记 —— 改之前按 uid 照记,
@@ -26,9 +31,14 @@ export interface BiliStatsSourceOptions {
 	bus: MessageBus;
 	recorder: StatsRecorderCore;
 	now: () => Date;
-	/** 当前全部订阅(拓展的会被跳过)。按 uid 找订阅 id 用;订阅一变就重查。 */
-	subscriptions: () => readonly KeyedSubscription[];
+	/** 当前全部订阅(拓展的会被跳过)。按 uid 找订阅 id、看「在记」的开关用。 */
+	subscriptions: () => readonly StatsSubscription[];
+	/** B 站现在登录有效吗。每次现读。没绑好之前由调用方回 false。 */
+	isLoggedIn: () => boolean;
 }
+
+/** 看一眼 B 站登录、给在记的订阅记当前小时的间隔:5 分钟(一小时里至少看十来次,漏一两次也不丢整点)。 */
+export const BILI_SOURCE_CHECK_MS = 5 * 60_000;
 
 /**
  * 取本场的开播时刻:优先用 B 站给的真实 `live_time`,拿不到才退回「我们发现的时刻」。
@@ -46,7 +56,7 @@ function liveStartIso(raw: string | undefined, at: Date): string | undefined {
 	return new Date(ms).toISOString();
 }
 
-export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable {
+export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable & { tick(): void } {
 	const { bus, recorder, now } = opts;
 	/**
 	 * per-UID 本场已经用过的 `startedAt` —— 只在 **live_time 用不了** 时兜底。
@@ -100,12 +110,51 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 		return ids ?? [];
 	};
 
+	/** 这个小时的账:登录有效才记,给每条满足条件的 B 站订阅记 `posts` / `live`。 */
+	const tick = () => {
+		if (!opts.isLoggedIn()) return;
+		for (const sub of opts.subscriptions()) {
+			if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY) continue;
+			const key = statsFileKey(sub);
+			if (sub.recordsPosts) recorder.recordActive(key, "posts");
+			if (sub.recordsLive) recorder.recordActive(key, "live");
+		}
+	};
+	const timer = setInterval(tick, BILI_SOURCE_CHECK_MS);
+	timer.unref?.();
+	tick();
+
+	handles.push(bus.on("auth-restored", tick));
+
+	handles.push(
+		bus.on("fans-refreshed", ({ entries }) => {
+			const nowMs = now().getTime();
+			const biliSubs = new Map<string, StatsSubscription>();
+			for (const sub of opts.subscriptions()) {
+				if (subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
+					biliSubs.set(sub.id, sub);
+			}
+			for (const entry of entries) {
+				if (biliSubs.get(entry.subscriptionId)?.enabled !== true) continue;
+				// 条目的 `ts` 是这次采样的时刻;快照里没跟上这一轮的老条目(采样失败)不算「这个小时拉成功了」。
+				const sampledAt = Date.parse(entry.ts);
+				if (!Number.isFinite(sampledAt) || nowMs - sampledAt >= HOUR_MS) continue;
+				recorder.recordActive(statsFileKey({ id: entry.subscriptionId }), "followers", sampledAt);
+			}
+		}),
+	);
+
 	handles.push(
 		bus.on("dynamic-detected", (event) => {
 			const post = classifyBiliDynamic(event.type);
 			// 开播公告不是作品,直播按场次另记(见 `bili-format`)。
 			if (!post) return;
+			// 作品开关关着就不记(ADR-0027 决策 1):开关取现在的有效值,所以每次现查订阅清单(作品事件很稀疏)。
+			const wanted = new Set(
+				opts.subscriptions().flatMap((sub) => (sub.recordsPosts ? [statsFileKey(sub)] : [])),
+			);
 			for (const key of keysOf(event.uid)) {
+				if (!wanted.has(key)) continue;
 				recorder.recordPost(key, { id: event.id, hasVideo: post.hasVideo, publishedAt: event.ts });
 			}
 		}),
@@ -180,7 +229,9 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 	);
 
 	return {
+		tick,
 		dispose() {
+			clearInterval(timer);
 			for (const h of handles) h.dispose();
 			handles.length = 0;
 		},

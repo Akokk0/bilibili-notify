@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BiliLoginStatus } from "@bilibili-notify/api";
 import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -507,10 +508,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// SecretStore.save() is first needed (e.g. changing a setting that holds a secret), making
 		// the normal "主密钥加载成功" log look like it was caused by that setting.
 		await runtime.keyProvider.getKey();
-		// 统计采集从这一刻算起:数据那一代已经就位,引擎还没起(ADR-0022 决策 2 —— 建运行时那会儿
-		// 不许碰盘)。
-		runtime.statsRecorder.start();
-
 		// Load on-disk runtime config (config/settings/core.json, config/subscriptions.json, config/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
@@ -538,6 +535,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			throw err;
 		}
 		runtime.serviceCtx.onDispose(() => authSystem?.dispose(), "stop");
+		// 统计的「B 站在跑」= 登录有效:读口回填给记录器(它建在运行时里、比登录系统早;数据那一代已经就位,
+		// 到这里才开始记,ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。每次现读状态,不靠事件记。
+		const loginStatus = authSystem.status;
+		runtime.statsRecorder.bindLoginState(() => loginStatus().status === BiliLoginStatus.LOGGED_IN);
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview

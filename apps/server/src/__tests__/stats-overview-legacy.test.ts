@@ -19,6 +19,8 @@
  * 靠公告撑着「最后活动」与计数 0,公告比场次晚几分钟的那位「最后活动」落在公告上;现在这些格子要么落到场次 / 作品
  * 上、要么整行是「无记录」null —— 其余每一格仍是改之前的数。
  *
+ * **㉖f 起又有一处有意的不同**:「近 1 日(UTC)」窗口里订阅 105 改前整行 null、现在是 0(详见该用例里的注释)。
+ *
  * 要紧的几个角都在夹具里:只有开播公告、没有场次的 UP;开播公告比场次晚几分钟;接回的场次、解析不出的老峰值、
  * 孤立的 end、窗口外的老行、坏行。
  */
@@ -260,7 +262,7 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 		});
 	});
 
-	it("近 1 日(UTC)—— 只有开播公告的那位(公告不再记)整行是无记录 null", async () => {
+	it("近 1 日(UTC)—— 只有开播公告的那位(公告不再记)整行是无记录 null;105 按账是 0(有意变化,见下)", async () => {
 		const deps = await writeLegacyFixture();
 		expect(await overview(deps, "?days=1&tz=0")).toEqual({
 			"101": {
@@ -307,16 +309,19 @@ describe("A. 盘上的老 B 站数据 → /overview 与改之前一致", () => {
 				lastActivityAt: null,
 				activity: [null],
 			},
+			// ㉖f 有意的变化:105 在 1 日窗口里改前是整行 null(老规则的「一无所知」只看窗口内的样本 / 作品 / 场次,
+			// 它窗口内什么都没有),而 7 日、90 日窗口里它同一天显示 0。老规则随窗口长短变,按小时记的账表达不了;
+			// 现在按账走,与它在 7 日 / 90 日窗口里的显示一致:在记、0。
 			"105": {
-				videoPosts: null,
-				posts: null,
-				liveSessions: null,
-				liveHours: null,
-				liveTimedSessions: null,
+				videoPosts: 0,
+				posts: 0,
+				liveSessions: 0,
+				liveHours: 0,
+				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
 				lastActivityAt: null,
-				activity: [null],
+				activity: [0],
 			},
 		});
 	});
@@ -434,10 +439,18 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			fansCron: () => "*/10 * * * *",
 			logger,
 			now,
-			subscriptions: () => bilibili(uids) as never,
+			// 作品与直播开关都开着(与老版本「不看开关都记」同一个结果)。
+			subscriptions: () =>
+				bilibili(uids).map((sub) => ({
+					...sub,
+					enabled: true,
+					recordsPosts: true,
+					recordsLive: true,
+				})),
 		});
-		// 采集开始:水位线钉在此刻(改之前是构造时就钉,现在开机迁完数据才调 start)。
-		recorder.start();
+		// 登录有效:「在记」按小时账记。老版本拿粉丝样本当「那天 B 站在看着」的证据,样本落在这几天(见文件尾);
+		// 现在账记的是 B 站适配的定时检查,下面每到一天就让它看一眼(`auth-restored` 立刻补记一次),天数与样本那几天一致。
+		recorder.bindLoginState(() => true);
 		// 落盘是 fire-and-forget,每条事件之后让它写完,免得同一文件的「先读再追加」互相踩。
 		const fire = async (ev: string, payload?: unknown) => {
 			for (const h of handlers.get(ev) ?? []) h(payload);
@@ -464,6 +477,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		}
 		// 203:一场完整直播,观看数有大有小、有不是数的(NaN);下播带真实时刻。
 		clock = NOW - 2 * D;
+		await fire("auth-restored");
 		await fire("live-state-changed", { uid: "203", status: "live", at: at(2, 1) });
 		await dyn("203", "r1", "DYNAMIC_TYPE_LIVE_RCMD", at(2, 1, 1));
 		await fire("live-viewers-changed", { uid: "203", viewers: 8000 });
@@ -474,6 +488,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		await fire("live-state-changed", { uid: "203", status: "idle", at: at(2, -1, 58) });
 		// 204:开播时刻解析不出 → 回退此刻;auth-lost 之后再开一场;关服收尾。
 		clock = NOW - D;
+		await fire("auth-restored");
 		await fire("live-state-changed", { uid: "204", status: "live", at: "不是时间" });
 		await fire("live-viewers-changed", { uid: "204", viewers: 30_000 });
 		await fire("auth-lost");
@@ -482,6 +497,8 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		await fire("live-viewers-changed", { uid: "204", viewers: 150_000_000 });
 		clock = NOW - H;
 		await recorder.closeOpenSessions();
+		clock = NOW;
+		await fire("auth-restored");
 
 		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		for (const uid of ["201", "202", "203"]) {

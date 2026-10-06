@@ -54,7 +54,7 @@ export function parseBiliViewers(raw: string): number {
  */
 const ZERO_POSTS_DIR: Dir = ["stats", "dyn"];
 
-/** 这三处按文件键分文件。`stats/seen` 从一开始就按订阅 id 命名,不认它。 */
+/** 这三处按文件键分文件。`stats/seen` 从一开始就按订阅 id 命名,不在这里改;它与 `stats/since` 由「在记」那一步读完就删(`recording.ts`)。 */
 const KEYED_DIRS: readonly Dir[] = [ZERO_POSTS_DIR, STATS_LIVE_DIR, FOLLOWERS_DIR];
 
 /**

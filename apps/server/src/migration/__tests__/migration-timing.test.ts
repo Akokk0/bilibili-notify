@@ -278,6 +278,19 @@ async function expectMigrated(
 		expect(existsSync(join(generation, "stats", "posts", `${uid}.jsonl`))).toBe(false);
 	}
 
+	// 「在记」小账由迁移从老数据推出来(㉖f):每条有数据的订阅一个文件、行是 `{kind, startedAt, endedAt}` 的区间;
+	// 旧的 `stats/seen/` 与水位线 `stats/since` 读完就删,新代里没有。
+	expect(existsSync(join(generation, "stats", "seen"))).toBe(false);
+	expect(existsSync(join(generation, "stats", "since"))).toBe(false);
+	const recordingFiles = await readdir(join(generation, "stats", "recording"));
+	expect(recordingFiles.length).toBeGreaterThan(0);
+	for (const name of recordingFiles) {
+		for (const line of await readLines(join(generation, "stats", "recording", name))) {
+			const row = JSON.parse(line) as Record<string, unknown>;
+			expect(Object.keys(row).sort().join()).toBe("endedAt,kind,startedAt");
+		}
+	}
+
 	// 订阅:两份合成一个文件({ tags, subscriptions },ADR-0034),每行带身份。
 	const { subscriptions } = JSON.parse(
 		await readFile(join(generation, "config", "subscriptions.json"), "utf8"),

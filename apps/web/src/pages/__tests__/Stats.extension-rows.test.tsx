@@ -41,6 +41,7 @@ function row(over: Partial<UpStatsRow>): UpStatsRow {
 		series: fill(1),
 		cumulative: fill(1000),
 		activity: fill(1),
+		recording: { posts: [], live: [], followers: [] },
 		videoPosts: 1,
 		posts: 3,
 		liveSessions: 1,

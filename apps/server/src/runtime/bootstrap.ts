@@ -1,5 +1,5 @@
 import { buildFontFace } from "@bilibili-notify/image";
-import type { ImageRef, MessageBus } from "@bilibili-notify/internal";
+import { type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
@@ -21,6 +21,7 @@ import {
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
+import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
 import type { EnginesRuntime } from "./engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "./extension-live.js";
@@ -73,8 +74,8 @@ export interface AppRuntime {
 	 * StatsRecorder(订阅总线,随 runtime 一起起停),读侧是 `/api/stats`。
 	 */
 	statsStore: StatsStore;
-	/** 统计采集。构造时只挂上总线、不碰盘;开机数据段迁完再 `start()`,钉下水位线。 */
-	statsRecorder: Pick<StatsRecorderHandle, "start">;
+	/** 统计采集。构造时只挂上总线、不碰盘;登录系统建好后 `bindLoginState` 回填 B 站登录读口,绑上才开始记 B 站的「在记」。 */
+	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState">;
 	/**
 	 * Per-subscription runtime data (display cache + fans anchor), externalized
 	 * out of the persisted `Subscription` config so FansPoller's per-tick
@@ -278,8 +279,24 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
 		fansCron: () => configStore.getGlobals().app.fansCron,
 		logger: serviceCtx.logger,
-		// 按 uid 找订阅 id、判拓展订阅启用着没有。读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
-		subscriptions: () => configStore.getSubscriptions(),
+		// 按 uid 找订阅 id、判拓展订阅启用着没有、两格「在记」条件(启用着 ∧ 作品开关 / 直播类开关,取有效值)。
+		// 读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。
+		subscriptions: () => {
+			const { defaults } = configStore.getGlobals();
+			return configStore.getSubscriptions().map((sub) => {
+				const switches = recordingSwitches(
+					resolve(sub, defaults).features,
+					specialUserFlagsOf(sub),
+				);
+				return {
+					id: sub.id,
+					identity: sub.identity,
+					enabled: sub.enabled,
+					recordsPosts: sub.enabled && switches.posts,
+					recordsLive: sub.enabled && switches.live,
+				};
+			});
+		},
 	});
 	serviceCtx.onDispose(async () => {
 		// 排在 flush 段:生产者都停了、后台活都落定了,这时补的下播帧才是最后一帧。

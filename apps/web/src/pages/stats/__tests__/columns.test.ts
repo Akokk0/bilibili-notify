@@ -34,6 +34,7 @@ const row: UpStatsRow = {
 	series: [],
 	cumulative: [],
 	activity: [],
+	recording: { posts: [], live: [], followers: [] },
 	avgViewers: null,
 	lastActivityAt: null,
 	live: false,

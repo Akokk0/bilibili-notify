@@ -1,9 +1,9 @@
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, unlink } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Logger } from "@bilibili-notify/internal";
-import { appendJsonl, atomicWriteFile } from "@bilibili-notify/storage";
+import { appendJsonl } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
 
 /**
@@ -12,7 +12,7 @@ import { dataPath } from "../runtime/roots.js";
  * 文件布局(`<key>` 是 {@link statsFileKey}:两支都是订阅 id):
  *   `<dataDir>/stats/posts/<key>.jsonl` 每行一条 {@link PostEntry}
  *   `<dataDir>/stats/live/<key>.jsonl`  每行一帧 {@link LiveFrame}
- *   `<dataDir>/stats/seen/<key>.jsonl`  每行一条 {@link StatsSeenEntry}(「在记」的证据,只有拓展订阅有)
+ *   `<dataDir>/stats/recording/<key>.jsonl` 每行一条 {@link RecordingEntry}(「在记」的小账:这一项从几点到几点在记)
  * 0.x 按 uid 命名的 B 站文件由迁移器改成订阅 id(`migration/stats.ts`)。
  *
  * **盘上的行是中立的**(ADR-0020 决策 16、ADR-0027):作品行记「有没有视频」与发布时刻,下播帧的峰值存
@@ -62,12 +62,18 @@ export interface LiveSessionEntry {
 	current?: boolean;
 }
 
+/** 「在记」账里的三项:作品、直播、粉丝(ADR-0027 决策 2)。 */
+export type RecordingKind = "posts" | "live" | "followers";
+
 /**
- * 「在记」的一条证据(ADR-0020 决策 9 / 16):收到这位的某条上报的时刻。**第一条就是这位的开始记录** ——
- * 不另存。只有拓展订阅写(B 站行「那天有没有记录」的规矩不变,看粉丝采样);最密多少一条由记录器管。
+ * 「在记」小账的一行(ADR-0027 决策 13):`kind` 这一项从 `startedAt` 到 `endedAt`(ISO,左闭右开)一直在记。
+ * 记录器写的每一行正好是一个 UTC 整点小时;读的一方吃任意长度的区间(迁移直接写合好的长区间,压缩也会把相邻的合成长区间),
+ * 对重复与重叠不在乎。读的时候按请求的时区切天:那天与任何一段区间有交集,这一项那天就算在记。
  */
-export interface StatsSeenEntry {
-	ts: string;
+export interface RecordingEntry {
+	kind: RecordingKind;
+	startedAt: string;
+	endedAt: string;
 }
 
 /** 落盘的单帧(新写的形状)。读时按顺序配对成 {@link LiveSessionEntry}。 */
@@ -91,19 +97,10 @@ export interface StatsStore {
 	closeLiveSession(key: string, endedAtIso: string, peakTotalViewers?: number): Promise<void>;
 	/** 配对后返回开播时间 >= sinceIso 的场次,按开播时间顺序。 */
 	listLiveSessions(key: string, sinceIso: string): Promise<LiveSessionEntry[]>;
-	/**
-	 * 活动采集的起始时刻(ISO)。首次建库时落盘,此后恒定。
-	 *
-	 * 存在的理由:活动是「有事才留痕」的稀疏数据,**没有记录**与**没在记录**在
-	 * 盘上长得一模一样。粉丝采样又比统计功能上线得早,拿它当「我们当时在看着」
-	 * 的证据,会把统计上线之前的日子一律判成「活跃度 0」——等于向用户断言
-	 * 「这位 UP 那天什么都没发」。这条水位线就是用来把那段日子还原成「无记录」的。
-	 */
-	recordingSince(): Promise<string>;
-	/** 记一条「在记」。不去重、不稀释 —— 最密多少一条是记录器的事。 */
-	appendSeen(key: string, tsIso: string): Promise<void>;
-	/** 读回 ts >= sinceIso 的「在记」行,按落盘顺序(时间只增不减)。`""` 读全部,第一条就是开始记录。 */
-	listSeenSince(key: string, sinceIso: string): Promise<StatsSeenEntry[]>;
+	/** 追加一行「在记」。不去重 —— 同一小时同一项只写一行是记录器的事。 */
+	appendRecording(key: string, entry: RecordingEntry): Promise<void>;
+	/** 读回结束时刻晚于 `sinceIso` 的「在记」行(与 `since` 之后有交集的),按落盘顺序;坏行跳过。`""` 读全部。 */
+	listRecording(key: string, sinceIso: string): Promise<RecordingEntry[]>;
 	/** 删除这个键的三类文件(订阅被移除时调用)。 */
 	drop(key: string): Promise<void>;
 }
@@ -122,8 +119,8 @@ function readPostRow(parsed: unknown): PostEntry | undefined {
  */
 export const STATS_POSTS_DIR = ["stats", "posts"] as const;
 export const STATS_LIVE_DIR = ["stats", "live"] as const;
-/** 「在记」住的目录。从一开始就按订阅 id 命名,开机迁移不认它。 */
-export const STATS_SEEN_DIR = ["stats", "seen"] as const;
+/** 「在记」小账住的目录。从一开始就按订阅 id 命名,开机迁移不认它(迁移自己写它)。 */
+export const STATS_RECORDING_DIR = ["stats", "recording"] as const;
 
 export interface CreateStatsStoreOptions {
 	dataRoot: string;
@@ -133,60 +130,22 @@ export interface CreateStatsStoreOptions {
 }
 
 export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
-	const statsRoot = dataPath(opts.dataRoot, "stats");
 	const postsRoot = dataPath(opts.dataRoot, ...STATS_POSTS_DIR);
 	const liveRoot = dataPath(opts.dataRoot, ...STATS_LIVE_DIR);
-	const seenRoot = dataPath(opts.dataRoot, ...STATS_SEEN_DIR);
-	const sinceFile = join(statsRoot, "since");
-	const now = opts.now ?? (() => new Date());
+	const recordingRoot = dataPath(opts.dataRoot, ...STATS_RECORDING_DIR);
 	let ensured = false;
-	/** 进程内缓存 —— 水位线一旦定下就不再变,每次 overview 没必要重读。 */
-	let sinceCache: string | undefined;
 
 	async function ensureRoots(): Promise<void> {
 		if (ensured) return;
 		await mkdir(postsRoot, { recursive: true });
 		await mkdir(liveRoot, { recursive: true });
-		await mkdir(seenRoot, { recursive: true });
+		await mkdir(recordingRoot, { recursive: true });
 		ensured = true;
-	}
-
-	/**
-	 * 读水位线,没有就以「此刻」建一个。
-	 *
-	 * 老库(统计功能上线前就存在的 dataDir)没有这个文件,补写的是升级那一刻而非
-	 * 真实起始 —— 但比较按**本地日**做,所以只会影响升级当天之前的日子,而那些
-	 * 日子本来就没有活动数据,判成「无记录」正是我们要的。
-	 */
-	async function readSince(): Promise<string> {
-		if (sinceCache) return sinceCache;
-		await ensureRoots();
-		try {
-			const raw = (await readFile(sinceFile, "utf-8")).trim();
-			if (raw && Number.isFinite(Date.parse(raw))) {
-				sinceCache = raw;
-				return raw;
-			}
-		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-				opts.logger.warn(`[stats-store] read since failed: ${String(err)}`);
-			}
-		}
-		const stamp = now().toISOString();
-		try {
-			// 盘上是裸的 ISO 串(不是 JSON):读的一方 trim 后直接 Date.parse。
-			await atomicWriteFile(sinceFile, stamp);
-		} catch (err) {
-			// 写不进去不致命:这次按「此刻」处理,下次再试。
-			opts.logger.warn(`[stats-store] write since failed: ${String(err)}`);
-		}
-		sinceCache = stamp;
-		return stamp;
 	}
 
 	const postsFile = (key: string) => join(postsRoot, `${key}.jsonl`);
 	const liveFile = (key: string) => join(liveRoot, `${key}.jsonl`);
-	const seenFile = (key: string) => join(seenRoot, `${key}.jsonl`);
+	const recordingFile = (key: string) => join(recordingRoot, `${key}.jsonl`);
 
 	/**
 	 * 逐行流式读一个 jsonl,把每行交给 `onLine`。文件不存在是正常情况
@@ -361,20 +320,28 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			return sessions.filter((s) => s.current === true || s.startedAt >= sinceIso);
 		},
 
-		recordingSince: readSince,
-
-		async appendSeen(key, tsIso) {
+		async appendRecording(key, entry) {
 			await ensureRoots();
-			const row: StatsSeenEntry = { ts: tsIso };
-			await appendLine(seenFile(key), row, `seen ${key}`);
+			// 只写这三格:行格式是契约,调用方对象上多带的东西不许漏进盘。
+			const row: RecordingEntry = {
+				kind: entry.kind,
+				startedAt: entry.startedAt,
+				endedAt: entry.endedAt,
+			};
+			await appendLine(recordingFile(key), row, `recording ${key}`);
 		},
 
-		async listSeenSince(key, sinceIso) {
+		async listRecording(key, sinceIso) {
 			await ensureRoots();
-			const rows: StatsSeenEntry[] = [];
-			await readLines(seenFile(key), (parsed) => {
-				const ts = (parsed as { ts?: unknown } | null)?.ts;
-				if (typeof ts === "string" && ts >= sinceIso) rows.push({ ts });
+			const rows: RecordingEntry[] = [];
+			await readLines(recordingFile(key), (parsed) => {
+				const row = parsed as { kind?: unknown; startedAt?: unknown; endedAt?: unknown } | null;
+				if (row?.kind !== "posts" && row?.kind !== "live" && row?.kind !== "followers") return;
+				if (typeof row.startedAt !== "string" || typeof row.endedAt !== "string") return;
+				if (!(Date.parse(row.startedAt) < Date.parse(row.endedAt))) return;
+				if (row.endedAt > sinceIso) {
+					rows.push({ kind: row.kind, startedAt: row.startedAt, endedAt: row.endedAt });
+				}
 			});
 			return rows;
 		},
@@ -382,7 +349,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 		async drop(key) {
 			await unlinkQuiet(postsFile(key));
 			await unlinkQuiet(liveFile(key));
-			await unlinkQuiet(seenFile(key));
+			await unlinkQuiet(recordingFile(key));
 		},
 	};
 }

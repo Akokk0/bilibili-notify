@@ -9,7 +9,7 @@
  *       · 未闭合的 start(仍在直播 / 崩溃丢了 end)→ endedAt 为 undefined,不算时长
  *       · 孤立的 end(没有对应 start)→ 丢弃,不产出半场
  *   - drop:三类文件(作品 / 直播 / 「在记」)一并删;缺文件时静默
- *   - 「在记」:`{ts}` 逐行追加,按 since 读回(ADR-0020 决策 16)
+ *   - 「在记」小账:`{kind, startedAt, endedAt}` 逐行追加,按 since 读回(ADR-0027 决策 13)
  *   - 盘上的行是中立的(ADR-0020 决策 16):作品 `{id, hasVideo, publishedAt}`、下播帧 `{kind, occurredAt, peakTotalViewers}`、峰值是数字
  *   - 文件按订阅 id 命名,两支一样(`statsFileKey`)
  *   - 盘上已有的行:同 id 不追加、同 id 两行只认先落盘的那条
@@ -233,94 +233,79 @@ describe("StatsStore — drop", () => {
 	});
 });
 
-describe("StatsStore — 「在记」(ADR-0020 决策 9 / 16)", () => {
-	it("追加的 {ts} 按落盘顺序读回;since 之前的滤掉,空串读全部(第一条就是开始记录)", async () => {
-		await store.appendSeen("s1", T(1));
-		await store.appendSeen("s1", T(3));
-		await store.appendSeen("s1", T(5));
-		expect(await store.listSeenSince("s1", "")).toEqual([{ ts: T(1) }, { ts: T(3) }, { ts: T(5) }]);
-		expect(await store.listSeenSince("s1", T(3))).toEqual([{ ts: T(3) }, { ts: T(5) }]);
-		expect(await readdir(join(dataDir, "stats", "seen"))).toEqual(["s1.jsonl"]);
-		// 逐字节:紧凑 JSON、一行一条、末尾换行。
-		expect(await readFile(join(dataDir, "stats", "seen", "s1.jsonl"), "utf-8")).toBe(
-			`{"ts":"${T(1)}"}\n{"ts":"${T(3)}"}\n{"ts":"${T(5)}"}\n`,
+describe("StatsStore — 「在记」小账(ADR-0027 决策 13)", () => {
+	const hour = (n: number) => new Date(Date.UTC(2026, 4, 16, n)).toISOString();
+	const row = (kind: "posts" | "live" | "followers", from: number, to: number) => ({
+		kind,
+		startedAt: hour(from),
+		endedAt: hour(to),
+	});
+
+	it("追加的区间行按落盘顺序读回;结束不晚于 since 的滤掉,空串读全部", async () => {
+		await store.appendRecording("s1", row("posts", 1, 2));
+		await store.appendRecording("s1", row("live", 3, 4));
+		await store.appendRecording("s1", row("followers", 3, 9));
+		expect(await store.listRecording("s1", "")).toEqual([
+			row("posts", 1, 2),
+			row("live", 3, 4),
+			row("followers", 3, 9),
+		]);
+		// 以 4 点为界:结束时刻晚于它的才留(区间左闭右开,恰好 4 点结束的那条与 since 之后没有交集)。
+		expect(await store.listRecording("s1", hour(4))).toEqual([row("followers", 3, 9)]);
+		expect(await readdir(join(dataDir, "stats", "recording"))).toEqual(["s1.jsonl"]);
+		// 逐字节:紧凑 JSON、一行一条、末尾换行、三格的顺序固定。
+		expect(await readFile(join(dataDir, "stats", "recording", "s1.jsonl"), "utf-8")).toBe(
+			`{"kind":"posts","startedAt":"${hour(1)}","endedAt":"${hour(2)}"}\n` +
+				`{"kind":"live","startedAt":"${hour(3)}","endedAt":"${hour(4)}"}\n` +
+				`{"kind":"followers","startedAt":"${hour(3)}","endedAt":"${hour(9)}"}\n`,
+		);
+	});
+
+	it("调用方对象上多带的东西不漏进盘", async () => {
+		await store.appendRecording("s1", {
+			...row("posts", 1, 2),
+			extra: "不该落盘",
+		} as never);
+		expect(await readFile(join(dataDir, "stats", "recording", "s1.jsonl"), "utf-8")).not.toContain(
+			"extra",
 		);
 	});
 
 	it("写不进去只 warn、不抛(键名对上的是个目录)", async () => {
-		await mkdir(join(dataDir, "stats", "seen", "s9.jsonl"), { recursive: true });
-		await expect(store.appendSeen("s9", T(1))).resolves.toBeUndefined();
+		await mkdir(join(dataDir, "stats", "recording", "s9.jsonl"), { recursive: true });
+		await expect(store.appendRecording("s9", row("posts", 1, 2))).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledTimes(1);
-		expect(String(logger.warn.mock.calls[0]?.[0])).toContain("[stats-store] append seen s9 failed");
+		expect(String(logger.warn.mock.calls[0]?.[0])).toContain(
+			"[stats-store] append recording s9 failed",
+		);
 	});
 
-	it("没有文件 → 空;坏行跳过", async () => {
-		expect(await store.listSeenSince("404", "")).toEqual([]);
-		await mkdir(join(dataDir, "stats", "seen"), { recursive: true });
+	it("没有文件 → 空;坏行、不认的项、倒置或空的区间跳过", async () => {
+		expect(await store.listRecording("404", "")).toEqual([]);
+		await mkdir(join(dataDir, "stats", "recording"), { recursive: true });
+		const good = row("posts", 1, 2);
 		await writeFile(
-			join(dataDir, "stats", "seen", "s2.jsonl"),
-			`{"ts":"${T(1)}"}\nnot json\n{"nope":1}\n\n{"ts":"${T(2)}"}\n`,
+			join(dataDir, "stats", "recording", "s2.jsonl"),
+			[
+				JSON.stringify(good),
+				"not json",
+				'{"nope":1}',
+				"",
+				JSON.stringify({ kind: "seen", startedAt: hour(1), endedAt: hour(2) }),
+				JSON.stringify({ kind: "posts", startedAt: hour(5), endedAt: hour(5) }),
+				JSON.stringify({ kind: "posts", startedAt: hour(6), endedAt: hour(5) }),
+				JSON.stringify({ kind: "live", startedAt: "坏", endedAt: hour(5) }),
+			].join("\n"),
 		);
-		expect(await store.listSeenSince("s2", "")).toEqual([{ ts: T(1) }, { ts: T(2) }]);
+		expect(await store.listRecording("s2", "")).toEqual([good]);
 	});
 
-	it("drop 连「在记」一起删", async () => {
-		await store.appendSeen("s3", T(1));
+	it("drop 连「在记」一起删;统计目录里不再有 seen 与 since", async () => {
+		await store.appendRecording("s3", row("posts", 1, 2));
 		await store.drop("s3");
-		expect(await store.listSeenSince("s3", "")).toEqual([]);
-		expect(await readdir(join(dataDir, "stats", "seen"))).toEqual([]);
-	});
-});
-
-describe("StatsStore — 采集水位线", () => {
-	it("首次调用落盘「此刻」,之后恒定不动", async () => {
-		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(5)) });
-		expect(await s.recordingSince()).toBe(T(5));
-		// 时钟往前走,水位线不该跟着漂 —— 它记的是「从哪天开始记的」。
-		expect(await s.recordingSince()).toBe(T(5));
-	});
-
-	it("跨实例(重启)沿用同一条水位线,不被重启刷新", async () => {
-		const first = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(5)) });
-		await first.recordingSince();
-		const restarted = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(9)) });
-		expect(await restarted.recordingSince()).toBe(T(5));
-	});
-
-	it("水位线文件损坏 → 重新落一个,不抛错也不返回坏值", async () => {
-		await mkdir(join(dataDir, "stats"), { recursive: true });
-		await writeFile(join(dataDir, "stats", "since"), "不是时间", "utf-8");
-		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(7)) });
-		expect(await s.recordingSince()).toBe(T(7));
-	});
-
-	it("盘上就是裸的 ISO 串:不带引号、不带换行(读的一方 trim 后 Date.parse)", async () => {
-		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(5)) });
-		await s.recordingSince();
-		expect(await readFile(join(dataDir, "stats", "since"), "utf-8")).toBe(T(5));
-		// 目录里只有三个子目录与它,没有落下临时文件。
-		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual([
-			"live",
-			"posts",
-			"seen",
-			"since",
-		]);
-	});
-
-	it("水位线写不进去 → 只 warn、这次按「此刻」算,不抛、不留临时文件", async () => {
-		// 占位:`since` 是个目录,读它报 EISDIR、写它也报 EISDIR。
-		await mkdir(join(dataDir, "stats", "since"), { recursive: true });
-		const s = createStatsStore({ dataRoot: dataDir, logger, now: () => new Date(T(7)) });
-		expect(await s.recordingSince()).toBe(T(7));
-		expect(logger.warn.mock.calls.map((c) => String(c[0])).join("\n")).toContain(
-			"[stats-store] write since failed",
-		);
-		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual([
-			"live",
-			"posts",
-			"seen",
-			"since",
-		]);
+		expect(await store.listRecording("s3", "")).toEqual([]);
+		expect(await readdir(join(dataDir, "stats", "recording"))).toEqual([]);
+		expect((await readdir(join(dataDir, "stats"))).sort()).toEqual(["live", "posts", "recording"]);
 	});
 });
 

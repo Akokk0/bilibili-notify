@@ -356,15 +356,27 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 			),
 		);
 
-		// 采集水位线:六天前(第一趟开机盖的是「现在」,B 站那几天的老数据会被它整片遮掉)。
-		await writeFile(join(gen, "stats", "since"), at(6));
-		for (const dir of [FOLLOWERS_DIR, ["stats", "posts"], ["stats", "live"], ["stats", "seen"]]) {
+		for (const dir of [
+			FOLLOWERS_DIR,
+			["stats", "posts"],
+			["stats", "live"],
+			["stats", "recording"],
+		]) {
 			await mkdir(join(gen, ...dir), { recursive: true });
 		}
-		// 拓展前几天的(按订阅 id 命名):三天前、昨天在记;三天前一支视频;两条粉丝样本。
+		// 拓展前几天的(按订阅 id 命名):三天前、昨天各有一个整点小时在记(作品、直播两项);三天前一支视频;两条粉丝样本。
+		// (B 站那位的「在记」小账是第一趟开机时由迁移从老数据推出来的,不在这里写。)
+		const hourOf = (kind: "posts" | "live", iso: string) => {
+			const from = Math.floor(Date.parse(iso) / 3_600_000) * 3_600_000;
+			return {
+				kind,
+				startedAt: new Date(from).toISOString(),
+				endedAt: new Date(from + 3_600_000).toISOString(),
+			};
+		};
 		await writeFile(
-			join(gen, "stats", "seen", `${S_EXT}.jsonl`),
-			jsonl([{ ts: at(3) }, { ts: at(1) }]),
+			join(gen, "stats", "recording", `${S_EXT}.jsonl`),
+			jsonl([at(3), at(1)].flatMap((iso) => [hourOf("posts", iso), hourOf("live", iso)])),
 		);
 		await writeFile(
 			join(gen, "stats", "posts", `${S_EXT}.jsonl`),
@@ -387,13 +399,17 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 
 		// 今天:假源紧挨着报两份资料(粉丝 1111、2222,带头像)。粉丝样本不密过 B 站的采样间隔,只落先到的 1111;
 		// 资料缓存是最新的 2222 —— 两处「当前粉丝」于是分得出取的是哪一个(决策 8:取资料)。等三样都落了地 ——
-		// 「在记」、粉丝样本(记录器排队写)、资料缓存(合并窗口满了才写)—— 再往下问,免得读到半截的盘、又被
-		// overview 的缓存钉住。
+		// 「在记」小账(今天这个小时的粉丝一行)、粉丝样本(记录器排队写)、资料缓存(合并窗口满了才写)—— 再往下问,
+		// 免得读到半截的盘、又被 overview 的缓存钉住。
 		await ok(await api(`/api/ext/${FAKE}/actions/report.profile`, { method: "POST" }));
 		await ok(await api(`/api/ext/${FAKE}/actions/report.profile`, { method: "POST" }));
 		await vi.waitFor(
 			async () => {
-				expect(await lines("stats", "seen", `${S_EXT}.jsonl`)).toHaveLength(3);
+				expect(
+					(await lines("stats", "recording", `${S_EXT}.jsonl`))?.some(
+						(row) => row.kind === "followers",
+					),
+				).toBe(true);
 				expect((await lines(...FOLLOWERS_DIR, `${S_EXT}.jsonl`))?.map((row) => row.value)).toEqual([
 					1000, 1050, 1111,
 				]);
@@ -556,7 +572,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		);
 		for (const path of [
 			[...FOLLOWERS_DIR, `${S_EXT}.jsonl`],
-			["stats", "seen", `${S_EXT}.jsonl`],
+			["stats", "recording", `${S_EXT}.jsonl`],
 			["stats", "posts", `${S_EXT}.jsonl`],
 		]) {
 			expect(await exists(...path), path.join("/")).toBe(true);
@@ -570,7 +586,7 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		}
 		const files = [
 			[...FOLLOWERS_DIR, `${S_EXT}.jsonl`],
-			["stats", "seen", `${S_EXT}.jsonl`],
+			["stats", "recording", `${S_EXT}.jsonl`],
 			["stats", "posts", `${S_EXT}.jsonl`],
 			[...FOLLOWERS_DIR, `${S_BILI}.jsonl`],
 			["stats", "posts", `${S_BILI}.jsonl`],

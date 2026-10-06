@@ -3,7 +3,7 @@ import type { FansStore } from "../fans/store.js";
 import { attachBiliStatsSource } from "./bili-source.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import type { StatsSubscription } from "./file-key.js";
-import type { PostEntry, StatsStore } from "./store.js";
+import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
 
 /**
  * 统计的采集层 = 一个**中立的记录器** + 每个来源一个**适配**(ADR-0020 决策 17)。
@@ -16,14 +16,14 @@ import type { PostEntry, StatsStore } from "./store.js";
  *       「有没有视频」的作品(开播公告不记)、把 uid 换成订阅 id 记。引擎与总线
  *       为统计一行不改。
  *     · 拓展(`extension-source.ts`):听订阅上报与拓展直播的场次,作品记下有没有视频、资料里的粉丝数
- *       按 B 站粉丝轮询的间隔稀释、累计观看取本场最大,外加一条「在记」的证据。
+ *       按 B 站粉丝轮询的间隔稀释、累计观看取本场最大;收到上报 = 来源在跑,按开关记「在记」。
  *
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
  * 追加重新写出来),{@link StatsRecorderHandle.flush} 等得到全部落地 —— 关机补帧靠它。
  */
 
-/** 「在记」最密多少一条(ADR-0020 决策 16):10 分钟。 */
-export const STATS_SEEN_MIN_GAP_MS = 10 * 60_000;
+/** 一个小时的毫秒数。「在记」的账按 UTC 整点小时记(ADR-0027 决策 13)。 */
+export const HOUR_MS = 3_600_000;
 
 /** 各来源适配看得到的那一面。所有写入都是 fire-and-forget,失败只丢这一条统计。 */
 export interface StatsRecorderCore {
@@ -47,8 +47,11 @@ export interface StatsRecorderCore {
 	 * 留先到的那条,不密过来源给的间隔。
 	 */
 	recordFans(key: string, value: number, minGapMs: number): void;
-	/** 记一次「在记」,时刻取「现在」。最密 {@link STATS_SEEN_MIN_GAP_MS} 一条,规矩同 {@link recordFans}。 */
-	recordSeen(key: string): void;
+	/**
+	 * 记「这个小时这一项在记」(ADR-0027 决策 2 / 13):`atMs` 所在的 UTC 整点小时,缺省取「现在」。
+	 * 同一个小时同一项只落一行 —— 进程内用集合挡重复,重启后第一次写某个键之前读一次账、把这个小时已有的种进去。
+	 */
+	recordActive(key: string, kind: RecordingKind, atMs?: number): void;
 }
 
 export interface StatsRecorderCoreOptions {
@@ -60,12 +63,7 @@ export interface StatsRecorderCoreOptions {
 	now?: () => Date;
 }
 
-/** 不属于任何键的写入(水位线)排的那一队。订阅 id 是 UUID,撞不上。 */
-const UNKEYED = "\u0000";
-
 export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRecorderCore & {
-	/** 采集开始:钉下水位线。见 {@link StatsRecorderHandle.start}。 */
-	start(): void;
 	/** 给还在播的场次补一帧下播,时刻取「现在」,并等全部写入落地。见 {@link StatsRecorderHandle.closeOpenSessions}。 */
 	closeOpenSessions(): Promise<void>;
 	/** 等已经交出去的写入全部落地。见 {@link StatsRecorderHandle.flush}。 */
@@ -78,9 +76,18 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	const peaks = new Map<string, number>();
 	/** 当前仍在播的键。关服时据此补下播帧;正常下播会把它摘掉。 */
 	const openLive = new Set<string>();
-	/** 每个键上一条落盘的粉丝样本 / 「在记」的时刻(毫秒)。第一次用到时从盘上接上,见 {@link thinned}。 */
+	/** 每个键上一条落盘的粉丝样本的时刻(毫秒)。第一次用到时从盘上接上,见 {@link thinned}。 */
 	const lastFans = new Map<string, number>();
-	const lastSeen = new Map<string, number>();
+	/**
+	 * 「在记」账的内存挡板,条目都以小时的毫秒数打头(`小时\0键\0项`):已经交出去(或盘上已有)的。只留最新的
+	 * 两个小时 —— 粉丝轮询一轮可能跨过整点(上一个小时采的样本、下一个小时才发出事件),所以上一个小时还收;
+	 * 再早的不会再有人写。`seededKeys`(`小时\0键`)是已经从盘上种过的,重启后第一次写某个键前读一次。
+	 */
+	const activeMarks = new Set<string>();
+	/** 盘上已有 / 已写的 `小时\0键\0项`。写之前看它,seed 与写入都往里加。 */
+	const onDisk = new Set<string>();
+	const seededKeys = new Set<string>();
+	let activeHour = Number.NEGATIVE_INFINITY;
 
 	/**
 	 * 落盘不挡调用方:bus handler 是同步签名,而这些写入都不在任何关键路径上。统计写失败只该丢一条统计,
@@ -98,7 +105,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	 */
 	const tails = new Map<string, Promise<void>>();
 	function enqueue(key: string, what: string, task: () => Promise<unknown>): void {
-		const onError = swallow(`${what} ${key === UNKEYED ? "" : key}`.trim());
+		const onError = swallow(`${what} ${key}`.trim());
 		const run = (): Promise<void> => {
 			try {
 				return task().then(() => undefined, onError);
@@ -163,16 +170,6 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	};
 
 	return {
-		start() {
-			// **这里就是「采集开始」的定义** —— 记录器在位才有人往盘上写活动。开机在数据段迁完、
-			// 引擎起来之前调它;放在构造里的话,建运行时那一刻就往还没迁好的那一代里写盘。
-			//
-			// 留给首次 overview 请求去惰性创建的话,盖下的是「第一次有人打开统计页」的
-			// 时刻:升级后过几天才点开,这几天真采到的活动全部落在水位线之前,被判成
-			// 「无记录」—— 数据在盘上,界面上却是空白,而且水位线一旦落下就恒定,这段
-			// 永远显示不出来。
-			enqueue(UNKEYED, "recordingSince", () => opts.store.recordingSince());
-		},
 		recordPost(key, post) {
 			enqueue(key, "appendPost", () => opts.store.appendPost(key, post));
 		},
@@ -206,7 +203,9 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			// 从此是一份没人会读、也没人会再清的孤儿。
 			forget(key);
 			lastFans.delete(key);
-			lastSeen.delete(key);
+			for (const set of [activeMarks, onDisk, seededKeys]) {
+				for (const mark of [...set]) if (mark.split("\0")[1] === key) set.delete(mark);
+			}
 			// 排在这个键还没落地的写入后面:先删的话,它们落地时会把文件重新写出来。
 			enqueue(key, "drop", async () => {
 				await opts.store.drop(key);
@@ -227,16 +226,43 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			);
 		},
 
-		recordSeen(key) {
-			thinned(
-				key,
-				"appendSeen",
-				STATS_SEEN_MIN_GAP_MS,
-				lastSeen,
-				async (sinceIso) =>
-					latestOf((await opts.store.listSeenSince(key, sinceIso)).map((row) => row.ts)),
-				(ts) => opts.store.appendSeen(key, ts),
-			);
+		recordActive(key, kind, atMs) {
+			const hourStart = Math.floor((atMs ?? now().getTime()) / HOUR_MS) * HOUR_MS;
+			if (!Number.isFinite(hourStart)) return;
+			// 只认最新的两个小时(见上面的挡板说明):更早的丢掉。
+			if (hourStart > activeHour) {
+				activeHour = hourStart;
+				for (const set of [activeMarks, onDisk, seededKeys]) {
+					for (const mark of [...set]) {
+						if (Number(mark.split("\0")[0]) < hourStart - HOUR_MS) set.delete(mark);
+					}
+				}
+			} else if (hourStart < activeHour - HOUR_MS) {
+				return;
+			}
+			const mark = `${hourStart}\0${key}\0${kind}`;
+			if (activeMarks.has(mark)) return;
+			activeMarks.add(mark);
+			const startedAt = new Date(hourStart).toISOString();
+			const endedAt = new Date(hourStart + HOUR_MS).toISOString();
+			enqueue(key, "appendRecording", async () => {
+				// 重启之后第一次写这个键:先把盘上这个小时已有的种进来,免得重启后同一小时再落一行。
+				const seedMark = `${hourStart}\0${key}`;
+				if (!seededKeys.has(seedMark)) {
+					seededKeys.add(seedMark);
+					for (const row of await opts.store.listRecording(key, startedAt)) {
+						if (
+							Date.parse(row.startedAt) <= hourStart &&
+							Date.parse(row.endedAt) >= hourStart + HOUR_MS
+						) {
+							onDisk.add(`${hourStart}\0${key}\0${row.kind}`);
+						}
+					}
+				}
+				if (onDisk.has(mark)) return;
+				onDisk.add(mark);
+				await opts.store.appendRecording(key, { kind, startedAt, endedAt });
+			});
 		},
 
 		async closeOpenSessions() {
@@ -286,10 +312,6 @@ export interface StatsRecorderOptions {
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
 export interface StatsRecorderHandle extends Disposable {
 	/**
-	 * 采集开始:钉下水位线(「从这天起在记」)。开机数据段迁完、引擎起来之前调一次;构造时不碰盘。
-	 */
-	start(): void;
-	/**
 	 * 给当前仍在播的场次补一帧下播,时刻取「现在」。**关服前调用**。
 	 *
 	 * 关服路径(`teardown` / `stop` / `cancel`)都不翻 `liveStatus`,所以不会有
@@ -307,6 +329,11 @@ export interface StatsRecorderHandle extends Disposable {
 	closeOpenSessions(): Promise<void>;
 	/** 等已经交出去的写入全部落地(写失败的只记日志,也算落地)。 */
 	flush(): Promise<void>;
+	/**
+	 * 回填「B 站登录有效」的读口(`index.ts` 建好登录系统之后调,同 `attachFansPoller` 的回填口)。
+	 * 没绑之前当作 B 站没在跑(不记);绑上后 B 站适配立刻看一眼。读口每次现读,不靠事件记状态。
+	 */
+	bindLoginState(isLoggedIn: () => boolean): void;
 }
 
 /**
@@ -323,8 +350,16 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		logger: opts.logger,
 		now,
 	});
+	let isLoggedIn: (() => boolean) | undefined;
+	const biliSource = attachBiliStatsSource({
+		bus: opts.bus,
+		recorder,
+		now,
+		subscriptions: opts.subscriptions,
+		isLoggedIn: () => isLoggedIn?.() === true,
+	});
 	const sources: Disposable[] = [
-		attachBiliStatsSource({ bus: opts.bus, recorder, now, subscriptions: opts.subscriptions }),
+		biliSource,
 		attachExtensionStatsSource({
 			bus: opts.bus,
 			recorder,
@@ -334,9 +369,12 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	];
 
 	return {
-		start: () => recorder.start(),
 		closeOpenSessions: () => recorder.closeOpenSessions(),
 		flush: () => recorder.flush(),
+		bindLoginState(next) {
+			isLoggedIn = next;
+			biliSource.tick();
+		},
 
 		dispose() {
 			for (const s of sources) s.dispose();

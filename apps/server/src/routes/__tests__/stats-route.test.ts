@@ -39,9 +39,9 @@ function makeDeps(opts: StubOpts = {}) {
 			},
 			fansStore: { listSamplesSince: async () => [] },
 			statsStore: {
-				recordingSince: async () => {
+				listRecording: async () => {
 					if (opts.failOverview) throw new Error("盘挂了");
-					return "1970-01-01T00:00:00.000Z";
+					return [];
 				},
 				listPosts: async () => [],
 				listLiveSessions: async () => [],

@@ -205,8 +205,17 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 			{ ts: expect.any(String), value: 1111 },
 		]);
 
-		// 六条上报都在 10 分钟里:一条,它就是这位的开始记录。
-		expect(await lines("stats", "seen", `${ON}.jsonl`)).toEqual([{ ts: expect.any(String) }]);
+		// 六条上报都在同一个小时里(跨整点的几毫秒之差留给测试之外):作品、直播、粉丝三项各一行,每行正好一个整点小时。
+		const recording = (await lines("stats", "recording", `${ON}.jsonl`)) ?? [];
+		expect([...new Set(recording.map((row) => row.kind))].sort()).toEqual([
+			"followers",
+			"live",
+			"posts",
+		]);
+		for (const row of recording) {
+			expect(Date.parse(String(row.endedAt)) - Date.parse(String(row.startedAt))).toBe(3_600_000);
+			expect(Date.parse(String(row.startedAt)) % 3_600_000).toBe(0);
+		}
 
 		// 关机补的下播恰好一帧,峰值是报过的最大累计观看。
 		const frames = await lines("stats", "live", `${ON}.jsonl`);
@@ -216,7 +225,12 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		]);
 
 		// 停用的乙一份都没有;盘上只有甲那几份。
-		for (const dir of [["stats", "posts"], ["stats", "live"], ["stats", "seen"], FOLLOWERS_DIR]) {
+		for (const dir of [
+			["stats", "posts"],
+			["stats", "live"],
+			["stats", "recording"],
+			FOLLOWERS_DIR,
+		]) {
 			expect(await readdir(join(gen, ...dir))).toEqual([`${ON}.jsonl`]);
 		}
 		expect(await lines(...FOLLOWERS_DIR, `${OFF}.jsonl`)).toBeUndefined();

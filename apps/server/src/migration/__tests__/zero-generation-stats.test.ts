@@ -117,9 +117,10 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 			const events = await store.listPosts("1", SINCE);
 			const sessions = await store.listLiveSessions("1", SINCE);
 			expect(countPosts(events)).toEqual({ videoPosts: 2, posts: 6 });
-			expect(dailyActivityCounts(events, sessions, { days: 3, tzOffsetMin: 0, now: NOW })).toEqual([
-				0, 3, 6,
-			]);
+			// 作品与直播分开数;加起来就是改之前那串 [0, 3, 6]。
+			const counts = dailyActivityCounts(events, sessions, { days: 3, tzOffsetMin: 0, now: NOW });
+			expect(counts.posts.map((n, i) => n + (counts.live[i] ?? 0))).toEqual([0, 3, 6]);
+			expect(counts).toEqual({ posts: [0, 2, 4], live: [0, 1, 2] });
 		});
 
 		it("读出来的是中立形状,B 站类型串不再往上漏;开播那两种不在了", async () => {

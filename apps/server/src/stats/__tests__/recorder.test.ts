@@ -58,11 +58,12 @@ function makeStore() {
 		openLiveSession: vi.fn(async () => {}),
 		closeLiveSession: vi.fn(async () => {}),
 		listLiveSessions: vi.fn(async () => []),
-		recordingSince: vi.fn(async () => "1970-01-01T00:00:00.000Z"),
-		appendSeen: vi.fn(async () => {}),
-		listSeenSince: vi.fn(async () => []),
+		appendRecording: vi.fn(async () => {}),
+		listRecording: vi.fn(async () => []),
 		drop: vi.fn(async () => {}),
 	} satisfies Record<keyof StatsStore, unknown> as unknown as StatsStore & {
+		appendRecording: ReturnType<typeof vi.fn>;
+		listRecording: ReturnType<typeof vi.fn>;
 		appendPost: ReturnType<typeof vi.fn>;
 		openLiveSession: ReturnType<typeof vi.fn>;
 		closeLiveSession: ReturnType<typeof vi.fn>;
@@ -90,10 +91,13 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
+/** 订阅启用着、作品与直播开关都开着(「在记」的两格条件)。 */
+const ON = { enabled: true, recordsPosts: true, recordsLive: true };
+
 /** 两位 UP:uid "1" / "2",订阅 id "id-1" / "id-2"。 */
 const SUBS = [
-	{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
-	{ id: "id-2", identity: { sourceKey: "bilibili", externalId: "2" } },
+	{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" }, ...ON },
+	{ id: "id-2", identity: { sourceKey: "bilibili", externalId: "2" }, ...ON },
 ];
 
 function setup(subs: () => readonly unknown[] = () => SUBS) {
@@ -514,23 +518,6 @@ describe("StatsRecorder — 关服时闭合在播场次", () => {
 	});
 });
 
-describe("StatsRecorder — 采集水位线", () => {
-	it("start() 就钉下水位线,不等第一次有人来读", async () => {
-		// 惰性创建的话,水位线盖的是「第一次打开统计页」的时刻。升级后过几天才
-		// 点开统计页,这几天真采到的活动会全被判成「无记录」—— 数据在盘上,
-		// 界面上却是空白,而且水位线一旦落下就恒定,永远显示不出来。
-		const { store, handle } = setup();
-		handle.start();
-		await vi.waitFor(() => expect(store.recordingSince).toHaveBeenCalled());
-	});
-
-	it("只建不 start,不碰盘:建运行时的时候数据那一代可能还没迁好", async () => {
-		const { store, handle } = setup();
-		await handle.flush();
-		expect(store.recordingSince).not.toHaveBeenCalled();
-	});
-});
-
 /**
  * 总线上的观看数是精确数(㉒d),B 站适配直接喂给记录器、不再解析「1.2万」。不是有限的数(帧坏了才会有)由记录器自己
  * 不收(`reportViewers` 的 `Number.isFinite`),这条走的是总线 → 适配 → 记录器的整条路。
@@ -585,7 +572,13 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		const { bus, trigger } = makeBus();
 		const store = makeStore();
 		const recorder = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
-		attachBiliStatsSource({ bus, recorder, now, subscriptions: () => SUBS as never });
+		attachBiliStatsSource({
+			bus,
+			recorder,
+			now,
+			subscriptions: () => SUBS as never,
+			isLoggedIn: () => false,
+		});
 		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		recorder.openSession("ext-x", "2026-05-16T09:30:00.000Z");
 		recorder.reportViewers("ext-x", 42);
@@ -635,8 +628,8 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 
 	it("同一个 uid 两条 B 站订阅(服务端不判重)→ 两条都记", async () => {
 		const { trigger, store } = setup(() => [
-			{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
-			{ id: "id-1b", identity: { sourceKey: "bilibili", externalId: "1" } },
+			{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" }, ...ON },
+			{ id: "id-1b", identity: { sourceKey: "bilibili", externalId: "1" }, ...ON },
 		]);
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -657,7 +650,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 
 	it("拓展订阅的外部 id 撞上 uid 也不认 —— 只查 B 站那一支", async () => {
 		const { trigger, store, handle } = setup(() => [
-			{ id: "ext-x", identity: { sourceKey: "douyin", externalId: "1" } },
+			{ id: "ext-x", identity: { sourceKey: "douyin", externalId: "1" }, ...ON },
 		]);
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -678,7 +671,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		subs = [{ id: "id-7", identity: { sourceKey: "bilibili", externalId: "7" } }];
+		subs = [{ id: "id-7", identity: { sourceKey: "bilibili", externalId: "7" }, ...ON }];
 		trigger("subscription-changed", { ops: [{ type: "add", sub: subs[0] }] });
 		trigger("dynamic-detected", {
 			uid: "7",
@@ -729,5 +722,101 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 		await handle.flush();
 		expect(store.closeLiveSession).not.toHaveBeenCalled();
 		expect(store.appendPost).not.toHaveBeenCalled();
+	});
+});
+
+describe("中立记录器 —— 「在记」小账按整点小时记(ADR-0027 决策 13)", () => {
+	const HOUR = 3_600_000;
+	const T = Date.parse("2026-05-16T10:20:00.000Z");
+	const hourRow = (kind: string, at = T) => {
+		const from = Math.floor(at / HOUR) * HOUR;
+		return {
+			kind,
+			startedAt: new Date(from).toISOString(),
+			endedAt: new Date(from + HOUR).toISOString(),
+		};
+	};
+	const make = (existing: Array<ReturnType<typeof hourRow>> = []) => {
+		const store = makeStore();
+		store.listRecording.mockResolvedValue(existing);
+		const core = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
+		return { store, core };
+	};
+
+	it("同一小时同一项只落一行:正好一个 UTC 整点小时", async () => {
+		const { store, core } = make();
+		core.recordActive("id-1", "posts");
+		core.recordActive("id-1", "posts");
+		core.recordActive("id-1", "posts", T + 30 * 60_000);
+		await core.flush();
+		expect(store.appendRecording).toHaveBeenCalledTimes(1);
+		expect(store.appendRecording).toHaveBeenCalledWith("id-1", hourRow("posts"));
+	});
+
+	it("项与键各自独立;跨小时落第二行", async () => {
+		const { store, core } = make();
+		core.recordActive("id-1", "posts");
+		core.recordActive("id-1", "live");
+		core.recordActive("id-2", "posts");
+		await core.flush();
+		expect(
+			store.appendRecording.mock.calls
+				.map((c) => `${c[0]}/${(c[1] as { kind: string }).kind}`)
+				.sort(),
+		).toEqual(["id-1/live", "id-1/posts", "id-2/posts"]);
+		core.recordActive("id-1", "posts", T + HOUR);
+		await core.flush();
+		expect(store.appendRecording).toHaveBeenCalledTimes(4);
+		expect(store.appendRecording).toHaveBeenLastCalledWith("id-1", hourRow("posts", T + HOUR));
+	});
+
+	it("重启(新建记录器、同一份盘)后同一小时不重复落;盘上没有的项照落", async () => {
+		const { store: first, core: firstCore } = make();
+		firstCore.recordActive("id-1", "posts");
+		await firstCore.flush();
+		expect(first.appendRecording).toHaveBeenCalledTimes(1);
+		// 重启:新记录器,盘上已有这个小时的 posts(还有一条合好的长区间 followers 盖着这个小时)。
+		const { store, core } = make([
+			hourRow("posts"),
+			{
+				kind: "followers",
+				startedAt: "2026-05-16T00:00:00.000Z",
+				endedAt: "2026-05-16T23:00:00.000Z",
+			},
+		]);
+		core.recordActive("id-1", "posts");
+		core.recordActive("id-1", "followers");
+		core.recordActive("id-1", "live");
+		await core.flush();
+		expect(store.appendRecording.mock.calls.map((c) => (c[1] as { kind: string }).kind)).toEqual([
+			"live",
+		]);
+	});
+
+	it("上一个小时的也收(粉丝轮询一轮跨过整点:上个小时采的、下个小时才发出事件),再早的丢掉", async () => {
+		const { store, core } = make();
+		core.recordActive("id-1", "posts", T + HOUR);
+		core.recordActive("id-1", "followers", T + 30 * 60_000);
+		core.recordActive("id-1", "followers", T - HOUR);
+		await core.flush();
+		expect(
+			store.appendRecording.mock.calls.map(
+				(c) =>
+					`${c[0]}/${(c[1] as { kind: string; startedAt: string }).kind}/${(c[1] as { startedAt: string }).startedAt}`,
+			),
+		).toEqual([
+			`id-1/posts/${hourRow("posts", T + HOUR).startedAt}`,
+			`id-1/followers/${hourRow("followers", T).startedAt}`,
+		]);
+	});
+
+	it("订阅删了(drop):内存里的小时标记一并忘掉,同名键重新来过", async () => {
+		const { store, core } = make();
+		core.recordActive("id-1", "posts");
+		await core.flush();
+		core.drop("id-1");
+		core.recordActive("id-1", "posts");
+		await core.flush();
+		expect(store.appendRecording).toHaveBeenCalledTimes(2);
 	});
 });

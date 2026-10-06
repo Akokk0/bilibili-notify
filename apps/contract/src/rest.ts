@@ -675,10 +675,16 @@ export interface UpStatsRow {
 	 */
 	cumulative: Array<number | null>;
 	/**
-	 * 每日活动次数(动态 + 投稿 + 开播),长度同 `series`,热力图用。
-	 * `null` = 那天没在记(B 站行:那天没有粉丝采样;拓展行:那天没收到它的上报),与「当天没活动」的 0 区分。
+	 * 每日活动次数(作品 + 开播),长度同 `series`,热力图用。每天加的是**那天在记的那几项**的计数
+	 * (见 `recording`);`null` = 那天作品与直播都没在记,与「当天没活动」的 0 区分。
 	 */
 	activity: Array<number | null>;
+	/**
+	 * 「在记」账(ADR-0027 决策 2 / 13):作品、直播、粉丝三项各自**每个本地日**在不在记,长度与对齐方式同 `activity`
+	 * (末位是今天,日界按请求的时区切)。那天与这一项的任何一段在记区间有交集就是 `true`。
+	 * 各格的「没记录」(null)都从这里推:窗口里一天都没在记的那一项,它的计数就是 null。
+	 */
+	recording: { posts: boolean[]; live: boolean[]; followers: boolean[] };
 	/**
 	 * 以下计数一律与 `activity` 同口径:窗口内**完全没有采集覆盖**时为 `null`,
 	 * 而不是 0。

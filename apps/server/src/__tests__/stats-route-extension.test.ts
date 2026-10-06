@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FansSample } from "../fans/store.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
-import type { LiveSessionEntry, PostEntry, StatsSeenEntry } from "../stats/store.js";
+import type { LiveSessionEntry, PostEntry, RecordingEntry } from "../stats/store.js";
 
 const H = 3_600_000;
 const DAY = 86_400_000;
@@ -38,7 +38,15 @@ interface Fixture {
 	samples?: Record<string, FansSample[]>;
 	posts?: Record<string, PostEntry[]>;
 	sessions?: Record<string, LiveSessionEntry[]>;
-	seen?: Record<string, StatsSeenEntry[]>;
+	/**
+	 * 「在记」账的夹具写法:这些时刻所在的小时,作品与直播两项在记(拓展:这个小时收到过上报)。
+	 * 订阅 id 不在这里、又没有 `recording` 的,账里什么都没有。
+	 */
+	seen?: Record<string, Array<{ ts: string }>>;
+	/** 直接写账的行(优先于 `seen` 与 `recordedBy`)。 */
+	recording?: Record<string, RecordingEntry[]>;
+	/** 这些订阅的账由它们自己的粉丝样本所在的小时造出(三项都在记),B 站「那天粉丝轮询在跑」的写法。 */
+	recordedBySamples?: string[];
 	/** 资料缓存里的粉丝数(拓展报资料时更新,决策 8)。 */
 	profileFans?: Record<string, number>;
 	/** 此刻有一场在播的拓展订阅(场次模块手里有这一场)。 */
@@ -61,9 +69,30 @@ function makeDeps(f: Fixture): RouteDeps {
 					(f.posts?.[key] ?? []).filter((e) => e.publishedAt >= since),
 				listLiveSessions: async (key: string, since: string) =>
 					(f.sessions?.[key] ?? []).filter((s) => s.current === true || s.startedAt >= since),
-				listSeenSince: async (key: string, since: string) =>
-					(f.seen?.[key] ?? []).filter((r) => r.ts >= since),
-				recordingSince: async () => "1970-01-01T00:00:00.000Z",
+				listRecording: async (key: string, since: string) => {
+					const direct = f.recording?.[key];
+					if (direct) return direct.filter((r) => r.endedAt > since);
+					const hourOf = (ts: string): RecordingEntry => {
+						const from = Math.floor(Date.parse(ts) / H) * H;
+						return {
+							kind: "posts",
+							startedAt: new Date(from).toISOString(),
+							endedAt: new Date(from + H).toISOString(),
+						};
+					};
+					const rows: RecordingEntry[] = [];
+					for (const r of f.seen?.[key] ?? []) {
+						rows.push(hourOf(r.ts), { ...hourOf(r.ts), kind: "live" });
+					}
+					if (f.recordedBySamples?.includes(key)) {
+						for (const sample of f.samples?.[key] ?? []) {
+							for (const kind of ["posts", "live", "followers"] as const) {
+								rows.push({ ...hourOf(sample.ts), kind });
+							}
+						}
+					}
+					return rows.filter((r) => r.endedAt > since);
+				},
 			},
 			subRuntimeStore: {
 				get: (id: string) =>
@@ -201,10 +230,9 @@ describe("拓展行:计数、场次、峰值与 B 站同一套聚合", () => {
 });
 
 describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)", () => {
-	it("第一条「在记」之前没有 0;之后没「在记」的那天(BN 没跑)也是无记录;有作品的那天照数", async () => {
+	it("第一条「在记」之前没有 0;之后没「在记」的那天(BN 没跑)也是无记录 —— 账说了算,盘上有作品也不例外", async () => {
 		// 日轴 05-11 .. 05-16。「在记」在 05-13、05-15、05-16 —— 05-13 是开始记录那天,05-14 BN 没跑。
-		// 05-11 那条作品发在开始记录之前(拓展头一轮报上来的):那天确实发了,照数;05-12 什么都没有,
-		// 画 0 就是在说「那天他什么都没发」,而那天我们根本没在看他。
+		// 05-11 那条作品发在开始记录之前:那天账里没有,是无记录(计数仍有数,因为窗口里别的日子在记)。
 		const body = await get(
 			makeDeps({
 				ext: [{ id: E1 }],
@@ -219,7 +247,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 			"?days=6&tz=0",
 		);
 		const row = rowOf(body, E1);
-		expect(row.activity).toEqual([1, null, 0, null, 1, 0]);
+		expect(row.activity).toEqual([null, null, 0, null, 1, 0]);
 		expect(row.videoPosts).toBe(1);
 		expect(row.posts).toBe(2);
 	});
@@ -230,6 +258,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
 				samples: { [B1]: everyDay(5).map((ts, i) => ({ ts, value: 1000 + i })) },
+				recordedBySamples: [B1],
 				ext: [{ id: E1 }],
 			}),
 		);
@@ -245,24 +274,24 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		expect(rowOf(body, B1).activity).toEqual([0, 0, 0, 0, 0]);
 	});
 
-	it("不借 B 站的覆盖:B 站天天在采,拓展行只有作品那天有数", async () => {
+	it("不借 B 站的覆盖:B 站天天在记,拓展行账里没有就全是无记录(盘上有作品也不算)", async () => {
 		const body = await get(
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
 				samples: { [B1]: everyDay(5).map((ts, i) => ({ ts, value: 1000 + i })) },
+				recordedBySamples: [B1],
 				ext: [{ id: E1 }],
 				posts: { [E1]: [{ id: "p", hasVideo: false, publishedAt: at(2) }] },
 			}),
 		);
 		const row = rowOf(body, E1);
-		expect(row.activity).toEqual([null, null, 1, null, null]);
-		// 能记下来本身就说明在记(与 B 站同一条):计数有数,不是 null。
-		expect(row.posts).toBe(1);
-		expect(row.videoPosts).toBe(0);
+		expect(row.activity).toEqual([null, null, null, null, null]);
+		expect(row.posts).toBeNull();
+		expect(row.videoPosts).toBeNull();
 	});
 
 	it("B 站也不借拓展的:拓展的「在记」与粉丝样本不让 B 站行那天算有记录", async () => {
-		// B 站行的规矩一字不动 —— 所有 B 站 UP 都没采到样本(B 站没登录),它就全是无记录。
+		// B 站没登录、账里没有这一位 → 全是无记录。
 		const body = await get(
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
@@ -385,8 +414,8 @@ describe("拓展行:缓存键", () => {
 	it("什么都没变时照常命中缓存", async () => {
 		let reads = 0;
 		const deps = makeDeps({ ext: [{ id: E1 }], seen: { [E1]: [{ ts: at(0) }] } });
-		const inner = deps.runtime.statsStore.listSeenSince;
-		deps.runtime.statsStore.listSeenSince = async (key: string, since: string) => {
+		const inner = deps.runtime.statsStore.listRecording;
+		deps.runtime.statsStore.listRecording = async (key: string, since: string) => {
 			reads++;
 			return inner(key, since);
 		};
@@ -405,6 +434,7 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 		const body = await get(
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
+				recordedBySamples: [B1],
 				ext: [{ id: E1, externalId: "MS4wLjAB/甲" }],
 				fansEntries: [{ subscriptionId: B1, uid: "42", current: 1060 }],
 				profileFans: { [E1]: 540 },
@@ -462,6 +492,11 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 					series: [null, 10, null, 20, 20],
 					cumulative: [1000, 1010, null, 1030, 1050],
 					activity: [0, 2, null, 2, 0],
+					recording: {
+						posts: [true, true, false, true, true],
+						live: [true, true, false, true, true],
+						followers: [true, true, false, true, true],
+					},
 					videoPosts: 1,
 					posts: 3,
 					liveSessions: 2,
@@ -483,6 +518,11 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 					series: [null, null, 20, null, 10],
 					cumulative: [null, 500, 520, null, 530],
 					activity: [1, null, 1, null, 2],
+					recording: {
+						posts: [true, false, true, false, true],
+						live: [true, false, true, false, true],
+						followers: [false, false, false, false, false],
+					},
 					videoPosts: 1,
 					posts: 2,
 					liveSessions: 2,
