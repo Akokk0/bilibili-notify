@@ -73,6 +73,9 @@
 | 作品的摘要 | `summary`（取段函数拼出、截过的整条文字） | `excerpt`、`digest`、`desc` |
 | 把老数据压小 | `compact`（动作与定时活：`compact(key, now)`、`startStatsCompaction`）；纯函数叫 `compress…` | `prune`、`trim`（那是删）、`sweep`（那是按引用清图） |
 | 粉丝样本的一段同值 | 不单起类型：`FollowersSample` 多一格 `lastSampledAt` | `Span`、`Run`、`Interval` |
+| 整类清空 | `clear`（各仓的 `clear()`、`DELETE /api/system/storage/:category`）；只清内存里在飞的状态叫 `reset` | `purge`、`dropAll`、`wipe` |
+| 存储占用 | `storage`（`/api/system/storage`；类别 `stats` / `historyText` / `historyImages` / `ai` / `generations` / `otherImages` / `logs`） | `usage`（只用于图库的 `usage()`）、`disk` |
+| 数据代 | `generation`（`seq` 序号、`formatVersion` 格式版本） | `gen`、`epoch` |
 | 名字 | `name` | `uname`、`username`、`mastername` |
 | 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef`；历史行上「推送那一刻的头像」叫 `avatarSnapshot`（也是 `ImageRef`，与 `nameSnapshot` 成对） | `face`、`userface`、当网址用的 `avatar` |
 | 粉丝数 | `followers` | `fans`、`fansNum`、`followerNum` |

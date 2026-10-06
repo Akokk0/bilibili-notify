@@ -94,10 +94,13 @@ src/
     extension-live-push.ts 拓展直播的推送与周期计时器;live-card-input-from-report.ts 把在播表里的原件(封面与事件头像是字节、开播时刻是毫秒)翻成中立的 LiveCardInput(图经 `runtime.liveImages` 存进图库)
     sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像存进图库、这里只放引用(资料缓存是图库的一家引用方,`listImageRefs()` 交名单)
     fans-poller.ts        FansPoller —— 问 B 站、写 <数据根>/stats/followers/<订阅 id>.jsonl,emit fans-refreshed(首页粉丝面板的快照,拓展订阅那几行从统计写的时序算)
+    generation-usage.ts   旧版本数据(代)的列表、两个大小、删除(能不能删在这里判)与开机收残骸;/api/system/generations
+    storage-usage.ts      系统页「存储占用」:按类量大小、整类清空、手动图库清扫;/api/system/storage
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
   followers/store.ts    粉丝时序(<数据根>/stats/followers/<订阅 id>.jsonl):按订阅排队追加,满 8 天的由 stats/compaction.ts 那趟压缩成每小时末值与同值段,读口把段展开回点
-  stats/                统计仓(<dataDir>/stats/{dyn,live}/<订阅 id>.jsonl,行格式中立)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评(ADR-0020);0.x 按 uid 命名的文件与老行由迁移器一次改好(migration/stats.ts)
+  stats/                统计仓(<数据根>/stats/{posts,live,recording}/<订阅 id>.jsonl,行格式中立;recording 是「在记」按小时的账)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评(ADR-0020 / 0027);enabled.ts 是统计总开关 stats.enabled 的缓存读口;compaction.ts 那趟(开机一次、每 6 小时)压粉丝样本与账;0.x 的文件与老行由迁移器一次改好(migration/stats.ts、recording.ts、followers.ts)
+  uptime/               运行记录(<数据根>/uptime/hours.jsonl:每个 UTC 整点小时 BN 跑了多少分钟;不算统计、不受统计总开关管);0.x 的由 migration/uptime.ts 从粉丝样本回填
   history/              HistoryStore(<dataDir>/history/<日期>.jsonl,一行 = 一次推送 × 一个目标,追加写补丁行读时并回;配图与头像快照存的是图库引用)+ retention(文字不删,重推原件按水位线清,图由图库按引用清扫;`listHistoryImageRefs` 是历史这一家的引用方名单)+ repush-store(重推原件,图也在图库)+ view(REST / WS 共用投影)
   logs/                 LogStore + retention + redact(凭据脱敏)+ sink
   skins/                皮肤库(<数据根>/skins/dashboard/<id>/skin.json + assets/)+ CSS 白名单 + 聊天里的 create_skin
