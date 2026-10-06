@@ -9,7 +9,7 @@
 import { formatAmount, formatDuration } from "@bilibili-notify/internal";
 import type { ImageUrlOf } from "./rich-text";
 import { effectiveTierRank, tierColorOf } from "./styles";
-import type { SuperchatCardInput, SuperchatCardView } from "./templates/sc-card";
+import type { SuperchatCardInput, SuperchatCardView } from "./templates/superchat-card";
 
 export interface SuperchatCardViewOptions {
 	/** 图库引用 → 可画的地址。出图器事先把输入里用到的引用都解析好,这里同步查;不给 = 所有引用都解析不到。 */
@@ -38,13 +38,13 @@ export function buildSuperchatCardView(
 ): SuperchatCardView {
 	const rank = effectiveTierRank(input.tier?.rank);
 	const viewerAvatar = input.viewer.avatar;
-	const masterAvatar = input.creator.avatar;
+	const creatorAvatar = input.creator.avatar;
 	return {
 		viewerName: input.viewer.name,
 		viewerAvatarUrl: (viewerAvatar !== undefined ? imageUrl?.(viewerAvatar) : undefined) || "",
-		masterName: input.creator.name,
-		masterAvatarUrl:
-			(masterAvatar !== undefined ? imageUrl?.(masterAvatar) : undefined) || undefined,
+		creatorName: input.creator.name,
+		creatorAvatarUrl:
+			(creatorAvatar !== undefined ? imageUrl?.(creatorAvatar) : undefined) || undefined,
 		text: input.text,
 		amount: formatAmount(input.amount, input.currency),
 		amountValue: Number.isFinite(input.amount) ? input.amount : 0,

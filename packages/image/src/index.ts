@@ -1,12 +1,10 @@
 export type { Component, VNode } from "vue";
 // Re-export vue's h so consumers (e.g. apps/server's preview route
-// that needs to construct VNodes for a DynamicNode's body/additional) link
+// that needs to construct VNodes for a PostNode's body/additional) link
 // against THIS package's vue copy. Without it a second vue install in the
 // consumer's tree creates mismatched VNode / Component types — TS rejects the
 // argument because the two `Component` types are unrelated nominally.
 export { h } from "vue";
-// 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
-export { DYNAMIC_BLOCKS, type DynamicBlockProps } from "./blocks/dynamic";
 // 卡片外框(根块):皮肤渲染器给每张卡套的那两层壳。
 export {
 	type CardPropsByKind,
@@ -14,10 +12,12 @@ export {
 	type FrameExtra,
 	type FrameRenderer,
 } from "./blocks/frames";
-export { GUARD_BLOCKS } from "./blocks/guard";
 export { LIVE_BLOCKS } from "./blocks/live";
+export { MEMBERSHIP_BLOCKS } from "./blocks/membership";
+// 块库:每种卡一张表,键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`(ADR-0014 的卡片皮肤按块装配)。
+export { POST_BLOCKS, type PostBlockProps } from "./blocks/post";
 export { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "./blocks/roast";
-export { SC_BLOCKS } from "./blocks/sc";
+export { SUPERCHAT_BLOCKS } from "./blocks/superchat";
 export type { BlockRenderer } from "./blocks/types";
 export { WORDCLOUD_BLOCKS } from "./blocks/wordcloud";
 export { formatCardTime } from "./format";
@@ -86,21 +86,21 @@ export {
 // `resolveKnobAssets` 入参的调用方都该把它接上,否则大图照旧静默不出。
 export { shrinkImageForCssVar } from "./skin/shrink-image";
 export { buildSuperchatCardView, type SuperchatCardViewOptions } from "./superchat-view";
-// 七种卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
-// 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
-export type { DynamicCardProps } from "./templates/dynamic-card";
-// 图廊最多铺几格:来源据此决定往图库存前几张(排在后面的不画,不必存)。
-export { GALLERY_MAX_IMAGES } from "./templates/dynamic-content";
-// 会员卡(ADR-0021 决策 26):中立的输入交给 `ImageRenderer.generateMembershipCard`,视图是块与皮肤契约吃的那一份
-// (`buildMembershipCardView` 从输入排出来)。醒目留言卡同理(`generateSuperchatCard` / `buildSuperchatCardView`)。
-export type { MembershipCardInput, MembershipCardView } from "./templates/guard-card";
 // 直播卡(ADR-0019 决策 68):中立的输入交给 `ImageRenderer.generateLiveCard`;
 // 视图是块与皮肤契约吃的那一份(`buildLiveCardView` 从输入排出来)。
 export type { LiveCardInput, LiveCardStatus, LiveCardView } from "./templates/live-card";
+// 会员卡(ADR-0021 决策 26):中立的输入交给 `ImageRenderer.generateMembershipCard`,视图是块与皮肤契约吃的那一份
+// (`buildMembershipCardView` 从输入排出来)。醒目留言卡同理(`generateSuperchatCard` / `buildSuperchatCardView`)。
+export type { MembershipCardInput, MembershipCardView } from "./templates/membership-card";
+// 七种卡的 **props 契约**。整卡模板已退役(ADR-0014 决策 24 的 2026-09-18 🔗) ——
+// 出图一律走 `renderCardWithSkin`,这里只剩「一张卡要哪些数据」这层类型。
+export type { PostCardView } from "./templates/post-card";
+// 图廊最多铺几格:来源据此决定往图库存前几张(排在后面的不画,不必存)。
+export { GALLERY_MAX_IMAGES } from "./templates/post-content";
 export type {
 	RoastBoardCardProps,
-	RoastCardUp,
+	RoastCardCreator,
 	RoastSoloCardProps,
 } from "./templates/roast-card";
-export type { SuperchatCardInput, SuperchatCardView } from "./templates/sc-card";
+export type { SuperchatCardInput, SuperchatCardView } from "./templates/superchat-card";
 export type { CardColorOptions, CardSkinChoice } from "./types";

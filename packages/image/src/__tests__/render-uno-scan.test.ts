@@ -38,7 +38,7 @@ function soloHtml(over: Record<string, unknown> = {}): Promise<string> {
 		"roastSolo",
 		{
 			days: 30,
-			up: { name: "机智的党妹", color: "#bf7cff" },
+			creator: { name: "机智的党妹", color: "#bf7cff" },
 			verdict: "一个月就发一条",
 			score: 32,
 			highlights: [],
@@ -62,8 +62,8 @@ describe("renderCard — HTML 正文不得吃掉 class", () => {
 	it("UP 名字里的方括号不影响任何类名 —— 名字是用户自己取的,什么都可能有", async () => {
 		// `bili-[酱]` 这种形状最毒:`-[` 紧贴,extractor 会从这里一路吃到后面
 		// 第一个 `]`,把中途所有类名并成一个无效 token。
-		const dirty = await soloHtml({ up: { name: "bili-[酱", color: "#bf7cff" } });
-		const clean = await soloHtml({ up: { name: "普通名字", color: "#bf7cff" } });
+		const dirty = await soloHtml({ creator: { name: "bili-[酱", color: "#bf7cff" } });
+		const clean = await soloHtml({ creator: { name: "普通名字", color: "#bf7cff" } });
 		expect(cssOf(dirty)).toBe(cssOf(clean));
 	});
 

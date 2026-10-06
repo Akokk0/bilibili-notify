@@ -1605,22 +1605,24 @@ const f = (path: string, type: CardSkinFieldType, label: string): CardSkinField 
 	label,
 });
 
-const AUTHOR_FIELDS = (who: string) => [
-	f("up.name", "text", `${who}名`),
-	f("up.face", "image", `${who}头像`),
+/** 各卡的创作者那两格。同名同义:每种卡上 `creator.*` 都是「这张卡讲的创作者」,没有平台的叫法(UP 主 / 主播 / master)。 */
+const CREATOR_FIELDS = [
+	f("creator.name", "text", "创作者名"),
+	f("creator.avatar", "image", "创作者头像"),
 ];
 
 /**
- * 每种卡对外承诺的字段(ADR-0014 决策 14)。**只增不删不改名。**(㉓ 把醒目留言与会员两张卡的字段改到最终名字
- * 是例外:皮肤格式版本只在 alpha 前抬一次,那时没有 1.0 的皮肤可言,老包拒收 —— ADR-0021 决策 26 下 2026-10-05 的 🔗。)
+ * 每种卡对外承诺的字段(ADR-0014 决策 14)。**只增不删不改名。**(㉓ 把醒目留言与会员两张卡的字段改到最终名字、㉔ 把其余
+ * 卡的字段改到最终名字是例外:皮肤格式版本只在 alpha 前抬一次,那时没有 1.0 的皮肤可言,老包拒收 —— ADR-0021 决策 26 下
+ * 2026-10-05 的 🔗、ADR-0023 决策 3 下 2026-10-06 的 🔗。)
  * 已格式化的文本(「1.2 万」「已开播 1 小时」)直接给,占位符不带过滤器。
  * `is*` / `has*` 一律 bool,是 `showIf` 的目标。
  */
 export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = {
 	live: [
-		...AUTHOR_FIELDS("主播"),
+		...CREATOR_FIELDS,
 		f("live.title", "text", "直播标题"),
-		f("live.area", "text", "分区"),
+		f("live.category", "text", "分类"),
 		f("live.time", "text", "开播时长 / 下播时间那句"),
 		f("live.description", "text", "房间简介(纯文本)"),
 		// 封面永远画得出来:没有真封面时 `live.cover` 给 BN 自带的占位图(不是空串 —— 没写
@@ -1629,43 +1631,43 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 		f("live.hasCover", "bool", "有没有真封面(占位图不算)"),
 		f("live.isStreaming", "bool", "正在直播"),
 		f("live.isEnded", "bool", "已下播"),
-		f("stats.popularity", "text", "人气(直播中)/ 点赞(下播)"),
-		f("stats.area", "text", "分区(同 live.area,给数据行用)"),
-		f("stats.fans", "text", "粉丝数(直播中)/ 累计观看(下播)"),
-		f("stats.fansChanged", "text", "粉丝变化(下播才有)"),
-		f("stats.hasFansChanged", "bool", "有没有粉丝变化"),
+		// 每格只装名字说的那一样;不该有值的状态下是空串(字段表规定永不 undefined)。
+		f("stats.currentViewers", "text", "在看人数(开播 / 直播中)"),
+		f("stats.likes", "text", "点赞(下播)"),
+		f("stats.followers", "text", "粉丝数(开播 / 直播中)"),
+		f("stats.totalViewers", "text", "累计观看(下播)"),
+		f("stats.followersDelta", "text", "粉丝变化(下播才有)"),
+		f("stats.hasFollowersDelta", "bool", "有没有粉丝变化"),
 	],
 	dynamic: [
-		...AUTHOR_FIELDS("UP 主"),
-		f("up.isVip", "bool", "是大会员"),
-		f("dynamic.type", "text", "动态类型(DYNAMIC_TYPE_*)"),
-		f("dynamic.action", "text", "「投稿了视频」这类动作标签"),
-		f("dynamic.time", "text", "发布时间"),
-		f("dynamic.topic", "text", "话题"),
-		f("dynamic.hasTopic", "bool", "有没有话题"),
-		f("dynamic.isForward", "bool", "是转发"),
-		f("dynamic.hasAdditional", "bool", "有没有附加内容(预约 / 商品…)"),
-		f("dynamic.hasVideo", "bool", "带视频卡"),
-		f("dynamic.hasPics", "bool", "带图"),
+		...CREATOR_FIELDS,
+		f("creator.isPremium", "bool", "是付费会员"),
+		f("post.label", "text", "「投稿了视频」这类动作标签(内外层卡都有)"),
+		f("post.time", "text", "发布时间(只有时间,不带标签)"),
+		f("post.topic", "text", "话题"),
+		f("post.hasTopic", "bool", "有没有话题"),
+		f("post.hasRepost", "bool", "是转发"),
+		f("post.hasAttachment", "bool", "有没有附加内容(预约 / 商品…)"),
+		f("post.hasVideo", "bool", "带视频卡"),
+		f("post.hasImages", "bool", "带图"),
 		f("video.title", "text", "视频标题"),
-		f("video.desc", "text", "视频简介"),
+		f("video.description", "text", "视频简介"),
 		f("video.cover", "image", "视频封面"),
 		f("video.duration", "text", "视频时长"),
 		f("video.views", "text", "播放量"),
 		f("video.danmaku", "text", "弹幕数"),
-		f("pics.count", "number", "图片张数"),
-		f("pics.first", "image", "第一张图"),
-		f("stats.forward", "text", "转发数"),
-		f("stats.comment", "text", "评论数"),
-		f("stats.like", "text", "点赞数"),
+		f("images.count", "number", "图片张数"),
+		f("images.first", "image", "第一张图"),
+		f("stats.shares", "text", "转发数"),
+		f("stats.comments", "text", "评论数"),
+		f("stats.likes", "text", "点赞数"),
 	],
 	// 醒目留言卡与会员卡两组字段随 ㉓ 改到最终名字(ADR-0021 决策 26 下 2026-10-05 的 🔗):观众是 `viewer.*`,
-	// 醒目留言的东西在 `superchat.*`,会员的在 `membership.*`;主播那两格 `master.*` 留给 ㉔。
+	// 醒目留言的东西在 `superchat.*`,会员的在 `membership.*`;主播那两格 `master.*` 随 ㉔b 改成 `creator.*`。
 	sc: [
 		f("viewer.name", "text", "观众名"),
 		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
-		f("master.name", "text", "主播名"),
-		f("master.face", "image", "主播头像"),
+		...CREATOR_FIELDS,
 		f("superchat.amount", "text", "金额(带货币符号,排好的字)"),
 		f("superchat.amountValue", "number", "金额数字"),
 		f("superchat.duration", "text", "留言时长(来源没给就是空串)"),
@@ -1675,20 +1677,16 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 	guard: [
 		f("viewer.name", "text", "观众名"),
 		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
-		f("master.name", "text", "主播名"),
-		f("master.face", "image", "主播头像"),
+		...CREATOR_FIELDS,
 		f("membership.rank", "number", "档位(从 1 起、1 最低;没有 rank 的档是 0)"),
 		f("membership.tierName", "text", "档名"),
 		f("membership.icon", "image", "徽章图"),
 		f("membership.announcement", "text", "宣告语(档位没声明就是空串)"),
 	],
-	roastBoard: [f("master.name", "text", "主播名"), f("report.days", "number", "统计天数")],
-	roastSolo: [
-		f("up.name", "text", "UP 主名"),
-		f("up.face", "image", "UP 主头像"),
-		f("report.days", "number", "统计天数"),
-	],
-	wordcloud: [f("master.name", "text", "主播名"), f("master.face", "image", "主播头像")],
+	// 榜单周报不属于任何单个创作者,没有创作者那两格(从前留着一个恒为空串的 `master.name`,㉔b 删了)。
+	roastBoard: [f("report.days", "number", "统计天数")],
+	roastSolo: [...CREATOR_FIELDS, f("report.days", "number", "统计天数")],
+	wordcloud: [...CREATOR_FIELDS],
 };
 
 /**
@@ -1857,7 +1855,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		avatar: { label: "头像", atom: true, hooks: { image: "头像图片" } },
 		name: { label: "UP 主名", atom: true, hooks: { text: "文字" } },
 		time: { label: "发布时间", atom: true, hooks: { text: "文字" } },
-		// 文字与媒体是呈现态里分开的几份(`DynamicNode.text` / `.video` / `.pics`)。
+		// 文字与媒体是呈现态里分开的几份(`PostNode.text` / `.video` / `.pics`)。
 		topic: { label: "话题", atom: true, hooks: { text: "文字" } },
 		// 正文富文本整段留在渲染器(决策 7 的 2026-09-19 🔗),所以这块没有根挂点 ——
 		// `body` 是富文本自己的根,样子也归它。

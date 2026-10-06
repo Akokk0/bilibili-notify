@@ -1,7 +1,7 @@
 /** @jsxImportSource vue */
 
 /**
- * 一条动态的「呈现态」:节点类型({@link DynamicNode})与图廊构建器。
+ * 一条作品的「呈现态」:节点类型({@link PostNode})与图廊构建器。
  *
  * 节点只由 `post-node.tsx` 的 `nodeFromPost` 从中立的 `Post` 造出来(B 站动态、拓展作品、链接预览都是先成
  * `Post`),块吃的就是它。出图器不认识任何平台的原始数据。
@@ -11,14 +11,14 @@
  * - `node.text` / `node.media` 是同一份正文**拆开的两半**(决策 8 的 2026-09-18 🔗),分别进
  *   `text` / `media` 原子块:文字那半带着 `body` 挂点(挂在 `rich-text.tsx` 的根 div 上),
  *   媒体那半是主视频卡(`video` / `videoCover` / `videoTitle`)或图廊(`pics` / `pic`)。
- * - `node.additional` 进 `additional` 块 —— 四种附加卡的外壳(`card`)、封面(`cover`)与
+ * - `node.attachment` 进 `additional` 块 —— 四种附加卡的外壳(`card`)、封面(`cover`)与
  *   按钮(`button`)。`cover` 一律挂在**封面 img** 上(与 `videoCover` 同口径),不挂外面那层定
  *   宽框:框是版式,图才是「封面」。
  *
  * 挂点集合由 `__tests__/card-hooks.test.ts` 两头钉着:块里出现的挂点必须都在目录里,目录里
  * 声明的挂点也必须真被挂上。
  *
- * **这里暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗,与 `blocks/dynamic.tsx` 同一张表):颜色的
+ * **这里暴露的 CSS 变量**(ADR-0014 决策 13 的 🔗,与 `blocks/post.tsx` 同一张表):颜色的
  * **值**留在 inline 的 `--bn-*` 自定义属性里,颜色**属性**写到 class 上 —— 皮肤 CSS 的
  * `!important` 被清洗器摘掉,inline 声明永远压不过,写成 class 皮肤才染得动。
  *
@@ -36,9 +36,9 @@
 import type { VNode } from "vue";
 
 /**
- * 一条动态的「呈现态」结构树 —— 与任何平台的原始数据解耦,供 DynamicCard 按版式块装配。
- * 转发动态的内部原动态是 `forward`(同样是 DynamicNode),由卡片模版用**同一套版式**
- * 递归渲染。`body` 只含正文 + 主媒体(无附加内容、无转发框);`additional` 是拆出来的
+ * 一条作品的「呈现态」结构树 —— 与任何平台的原始数据解耦,供作品卡按版式块装配。
+ * 被转发的原作品是 `repost`(同样是 PostNode),由卡片模版用**同一套版式**
+ * 递归渲染。`body` 只含正文 + 主媒体(无附加内容、无转发框);`attachment` 是拆出来的
  * 附加内容块(预约 / 商品 / 通用卡);`stats` 仅外层有(内部转发不展示互动数)。
  *
  * `text` 与 `media` 是正文的两半,各进一个原子块。从前还有第三份 `body`(两半粘在一起,
@@ -53,11 +53,11 @@ import type { VNode } from "vue";
  * 播放数与弹幕数都**选填**(ADR-0019 决策 55):拓展的作品不收弹幕数、播放数是选填的,缺了哪一格
  * 就不画哪一格的图标与数字(从前只要有视频就无条件画,拓展作品会画出空图标)。B 站两格恒有。
  */
-export type DynamicVideo = {
+export type PostNodeVideo = {
 	cover: string;
 	duration: string;
 	title: string;
-	desc: string;
+	description: string;
 	views?: string;
 	danmaku?: string;
 };
@@ -77,24 +77,25 @@ export type GalleryImage = {
 	animated?: boolean;
 };
 
-export type DynamicNode = {
+export type PostNode = {
 	/**
-	 * 头像地址。**选填,没有就不画头像**(头像块整块收起,皮肤契约的 `up.face` 是空串)。
+	 * 头像地址。**选填,没有就不画头像**(头像块整块收起,皮肤契约的 `creator.avatar` 是空串)。
 	 *
 	 * `nodeFromPost` 据 `Creator.avatar`(图库引用)解析出来:有引用就给(解析不到给占位,留一块空的头像位),
 	 * 没有引用就不给(B 站要到 3a 才存头像)。
 	 */
-	avatarUrl?: string;
-	upName: string;
-	upIsVip: boolean;
-	pubTime: string;
+	creatorAvatarUrl?: string;
+	creatorName: string;
+	creatorIsPremium: boolean;
+	/** 发布时间,**只有时间**(皮肤契约的 `post.time`);动作标签单独在 {@link PostNode.label}。 */
+	time: string;
 	/**
-	 * 动态类型(`DYNAMIC_TYPE_*`),皮肤契约的 `dynamic.type`。造 node 时顺手记下(决策 68)——
-	 * `Post` 这条路由 `nodeFromPost` 从作品的形状推;拓展作品套进 B 站的类型(决策 69)。不给就是空串。
+	 * 动作标签(如「投稿了视频」),皮肤契约的 `post.label`,内外层卡都填、没有就不给。**画在哪由块定**:默认皮肤里
+	 * 外层卡把它接在时间那一行(「时间 · 标签」),被转发的内层卡({@link PostNode.isReposted})接在作者名后。
 	 */
-	type?: string;
-	/** 作为内部转发渲染时,附在作者名后的类型标签(如「投稿了视频」)。 */
-	headerLabel?: string;
+	label?: string;
+	/** 这是被转发的原作品那一层(转发框里的内层卡);外层卡不给。默认皮肤按它决定标签画在时间行还是名字行。 */
+	isReposted?: true;
 	topic?: string;
 	/**
 	 * 正文文字,进 `text` 原子块:正文的富文本(专栏连标题),充电专属是那块占位,`notice` 是那句提示。
@@ -106,20 +107,20 @@ export type DynamicNode = {
 	 * 简介 / 播放·弹幕数),每块自己取自己那一份(决策 8 的 2026-09-18 🔗)。不是投稿视频
 	 * 就为空;转发的原视频在 `forward.video` 里,不往外层提。
 	 */
-	video?: DynamicVideo | null;
+	video?: PostNodeVideo | null;
 	/**
 	 * 图廊(图文 / 专栏)的图,**数据**不是画好的 VNode:`pics` 块拿它现画(`buildGallery`),
-	 * 皮肤契约的张数 / 首图(`pics.count` / `pics.first`)也从这一份取 —— 画的和说的同一个
+	 * 皮肤契约的张数 / 首图(`images.count` / `images.first`)也从这一份取 —— 画的和说的同一个
 	 * 来源,不会一边有图一边说没有。没有图就不给(或给空数组)。
 	 */
 	images?: readonly GalleryImage[];
-	additional?: VNode | null;
-	forward?: DynamicNode;
+	attachment?: VNode | null;
+	repost?: PostNode;
 	/**
 	 * 互动数,已排好版的文本。某一项是空串 = 没有这一项,那一格连图标一起不画(拓展的作品三样各自
 	 * 选填,决策 55);B 站三样恒有。
 	 */
-	stats?: { forward: string; comment: string; like: string };
+	stats?: { shares: string; comments: string; likes: string };
 };
 
 /**

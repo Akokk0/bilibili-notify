@@ -1257,61 +1257,61 @@ describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 	}
 });
 
-// ── ㉔ 改名前的词表全集 ─────────────────────────────────────────────────────────────
+// ── ㉔ 的词表全集 ─────────────────────────────────────────────────────────────────────
 //
-// ㉔a(2026-10-06)只加测试、钉住「改之前长这样」:七个卡种键、每种卡的字段路径(带类型)、每种卡的块 key、每块的挂点。
-// 皮肤格式的这三张表是「对外 API,只增不删不改名」,而 ㉔ 是它们改名的那一次(皮肤格式版本抬一次):后面 ㉔b / ㉔c / ㉔e
-// 按改名表逐项改下面的字面量,每一处改名都在这里留下一笔 diff。**字面量是故意写死的,不从常量现算** ——
-// 现算的断言在常量被改坏时跟着一起变,永远不会红。
+// ㉔a(2026-10-06)先钉住改名前的样子:七个卡种键、每种卡的字段路径(带类型)、每种卡的块 key、每块的挂点。
+// 皮肤格式的这三张表是「对外 API,只增不删不改名」,而 ㉔ 是它们改名的那一次(皮肤格式版本抬一次):后面几小片按改名表逐项
+// 改下面的字面量,每一处改名都在这里留下一笔 diff。㉔b 已把**字段路径**改到最终名字;**卡种键**(㉔e)、**块 key 与挂点**(㉔c)
+// 还是老叫法,各自随那一片改。**字面量是故意写死的,不从常量现算** —— 现算的断言在常量被改坏时跟着一起变,永远不会红。
 
-const FIELDS_BEFORE: Record<string, string[]> = {
+const FIELDS: Record<string, string[]> = {
 	live: [
-		"up.name:text",
-		"up.face:image",
+		"creator.name:text",
+		"creator.avatar:image",
 		"live.title:text",
-		"live.area:text",
+		"live.category:text",
 		"live.time:text",
 		"live.description:text",
 		"live.cover:image",
 		"live.hasCover:bool",
 		"live.isStreaming:bool",
 		"live.isEnded:bool",
-		"stats.popularity:text",
-		"stats.area:text",
-		"stats.fans:text",
-		"stats.fansChanged:text",
-		"stats.hasFansChanged:bool",
+		"stats.currentViewers:text",
+		"stats.likes:text",
+		"stats.followers:text",
+		"stats.totalViewers:text",
+		"stats.followersDelta:text",
+		"stats.hasFollowersDelta:bool",
 	],
 	dynamic: [
-		"up.name:text",
-		"up.face:image",
-		"up.isVip:bool",
-		"dynamic.type:text",
-		"dynamic.action:text",
-		"dynamic.time:text",
-		"dynamic.topic:text",
-		"dynamic.hasTopic:bool",
-		"dynamic.isForward:bool",
-		"dynamic.hasAdditional:bool",
-		"dynamic.hasVideo:bool",
-		"dynamic.hasPics:bool",
+		"creator.name:text",
+		"creator.avatar:image",
+		"creator.isPremium:bool",
+		"post.label:text",
+		"post.time:text",
+		"post.topic:text",
+		"post.hasTopic:bool",
+		"post.hasRepost:bool",
+		"post.hasAttachment:bool",
+		"post.hasVideo:bool",
+		"post.hasImages:bool",
 		"video.title:text",
-		"video.desc:text",
+		"video.description:text",
 		"video.cover:image",
 		"video.duration:text",
 		"video.views:text",
 		"video.danmaku:text",
-		"pics.count:number",
-		"pics.first:image",
-		"stats.forward:text",
-		"stats.comment:text",
-		"stats.like:text",
+		"images.count:number",
+		"images.first:image",
+		"stats.shares:text",
+		"stats.comments:text",
+		"stats.likes:text",
 	],
 	sc: [
 		"viewer.name:text",
 		"viewer.avatar:image",
-		"master.name:text",
-		"master.face:image",
+		"creator.name:text",
+		"creator.avatar:image",
 		"superchat.amount:text",
 		"superchat.amountValue:number",
 		"superchat.duration:text",
@@ -1321,19 +1321,19 @@ const FIELDS_BEFORE: Record<string, string[]> = {
 	guard: [
 		"viewer.name:text",
 		"viewer.avatar:image",
-		"master.name:text",
-		"master.face:image",
+		"creator.name:text",
+		"creator.avatar:image",
 		"membership.rank:number",
 		"membership.tierName:text",
 		"membership.icon:image",
 		"membership.announcement:text",
 	],
-	roastBoard: ["master.name:text", "report.days:number"],
-	roastSolo: ["up.name:text", "up.face:image", "report.days:number"],
-	wordcloud: ["master.name:text", "master.face:image"],
+	roastBoard: ["report.days:number"],
+	roastSolo: ["creator.name:text", "creator.avatar:image", "report.days:number"],
+	wordcloud: ["creator.name:text", "creator.avatar:image"],
 };
 
-const BLOCKS_BEFORE: Record<string, Record<string, string[]>> = {
+const BLOCKS: Record<string, Record<string, string[]>> = {
 	live: {
 		cover: ["image"],
 		status: ["pill"],
@@ -1393,7 +1393,7 @@ const BLOCKS_BEFORE: Record<string, Record<string, string[]>> = {
 		body: [],
 	},
 };
-describe("㉔a 改名前的词表:卡种键、字段、块、挂点", () => {
+describe("㉔ 词表全集:卡种键、字段、块、挂点", () => {
 	it("七个卡种键(顺序也钉)", () => {
 		expect([...CARD_SKIN_KINDS]).toEqual([
 			"live",
@@ -1406,7 +1406,7 @@ describe("㉔a 改名前的词表:卡种键、字段、块、挂点", () => {
 		]);
 	});
 
-	it("`CardKind`(只给 cardStyleByKind 做键的那套)是前四种,`dynamic` / `sc` / `guard` 还是老叫法", () => {
+	it("`CardKind`(只给 cardStyleByKind 做键的那套)是前四种,`dynamic` / `sc` / `guard` 还是老叫法(㉔e 改)", () => {
 		expect([...CardKindSchema.options]).toEqual(["live", "dynamic", "sc", "guard"]);
 	});
 
@@ -1417,7 +1417,7 @@ describe("㉔a 改名前的词表:卡种键、字段、块、挂点", () => {
 				CARD_SKIN_FIELDS[kind].map((f) => `${f.path}:${f.type}`),
 			]),
 		);
-		expect(actual).toEqual(FIELDS_BEFORE);
+		expect(actual).toEqual(FIELDS);
 	});
 
 	it("每种卡的块 key 全集,以及每块的挂点全集", () => {
@@ -1432,6 +1432,6 @@ describe("㉔a 改名前的词表:卡种键、字段、块、挂点", () => {
 				),
 			]),
 		);
-		expect(actual).toEqual(BLOCKS_BEFORE);
+		expect(actual).toEqual(BLOCKS);
 	});
 });

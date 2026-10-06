@@ -46,7 +46,7 @@ function statusLabel(p: LiveCardView): { text: string; bg: string } {
  */
 function statsLeft(p: LiveCardView): string {
 	if (p.status === "end") return p.likes ? `点赞：${p.likes}` : "";
-	return p.online ? `人气：${p.online}` : "";
+	return p.currentViewers ? `人气：${p.currentViewers}` : "";
 }
 
 /**
@@ -54,7 +54,7 @@ function statsLeft(p: LiveCardView): string {
  * **不上默认卡**(决策 76,它进下播文案;皮肤契约照给,想画的皮肤自己画)。
  */
 function followerText(p: LiveCardView): string {
-	if (isOnAir(p)) return p.fans ? `当前粉丝数：${p.fans}` : "";
+	if (isOnAir(p)) return p.followers ? `当前粉丝数：${p.followers}` : "";
 	if (p.status === "end") return p.totalViewers ? `累计观看人数：${p.totalViewers}` : "";
 	return "";
 }
@@ -64,12 +64,12 @@ function followerText(p: LiveCardView): string {
  * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `LiveCardInput.author`);拓展直播照旧画。
  */
 const avatar: BlockRenderer<LiveCardView> = (p) =>
-	p.userface ? (
-		<img data-bn="image" class="object-cover shrink-0" src={p.userface} alt="主播头像" />
+	p.creatorAvatarUrl ? (
+		<img data-bn="image" class="object-cover shrink-0" src={p.creatorAvatarUrl} alt="主播头像" />
 	) : null;
 
 /** 主播名(原子块)。 */
-const name: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.username}</span>;
+const name: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.creatorName}</span>;
 
 /** 开播时间(原子块)。 */
 const time: BlockRenderer<LiveCardView> = (p) => <span data-bn="text">{p.time}</span>;
@@ -101,10 +101,10 @@ const popularity: BlockRenderer<LiveCardView> = (p) => {
  * 没有(同人气 / 点赞那一格)。
  */
 const area: BlockRenderer<LiveCardView> = (p) => {
-	if (!p.area) return null;
+	if (!p.category) return null;
 	return (
 		<span data-bn="text" class="block">
-			{`分区：${p.area}`}
+			{`分区：${p.category}`}
 		</span>
 	);
 };

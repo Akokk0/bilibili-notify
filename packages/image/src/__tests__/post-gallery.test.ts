@@ -17,7 +17,7 @@ import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, h } from "vue";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
-import { buildGallery } from "../templates/dynamic-content";
+import { buildGallery } from "../templates/post-content";
 import { nodeFromPost } from "../templates/post-node";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 

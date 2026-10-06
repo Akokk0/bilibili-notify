@@ -4,6 +4,6 @@
  * 与外框吃的仍是这份 props,所以类型留在原地。
  */
 export type WordCloudCardProps = {
-	masterName: string;
-	masterAvatarUrl?: string;
+	creatorName: string;
+	creatorAvatarUrl?: string;
 };

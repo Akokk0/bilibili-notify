@@ -6,7 +6,7 @@
 import type { ImageRef } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { buildMembershipCardView } from "../membership-view";
-import type { MembershipCardInput } from "../templates/guard-card";
+import type { MembershipCardInput } from "../templates/membership-card";
 
 function input(over: Partial<MembershipCardInput> = {}): MembershipCardInput {
 	return {
@@ -21,7 +21,7 @@ describe("buildMembershipCardView", () => {
 	it("名字、档名、rank 原样", () => {
 		const view = buildMembershipCardView(input());
 		expect(view.viewerName).toBe("观众");
-		expect(view.masterName).toBe("主播");
+		expect(view.creatorName).toBe("主播");
 		expect(view.tierName).toBe("银牌");
 		expect(view.rank).toBe(2);
 	});
@@ -98,7 +98,7 @@ describe("buildMembershipCardView", () => {
 				{ imageUrl },
 			);
 			expect(view.viewerAvatarUrl).toBe("data:viewer");
-			expect(view.masterAvatarUrl).toBe("data:master");
+			expect(view.creatorAvatarUrl).toBe("data:master");
 			const lost = buildMembershipCardView(
 				input({
 					viewer: { name: "观众", avatar: VIEWER },
@@ -106,7 +106,7 @@ describe("buildMembershipCardView", () => {
 				}),
 			);
 			expect(lost.viewerAvatarUrl).toBe("");
-			expect(lost.masterAvatarUrl).toBe("");
+			expect(lost.creatorAvatarUrl).toBe("");
 		});
 	});
 });

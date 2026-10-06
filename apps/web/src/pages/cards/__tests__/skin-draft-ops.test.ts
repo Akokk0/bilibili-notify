@@ -402,9 +402,9 @@ describe("addCustomBlock / setBlockHtml", () => {
 	it("改 HTML → 写进那一块;内置块没有 html 可改,原样返回", () => {
 		const one = addCustomBlock(manifest(), "live");
 		if (!one) throw new Error("加得下");
-		const edited = setBlockHtml(one.manifest, "live", one.blockId, "<div>{up.name}</div>");
+		const edited = setBlockHtml(one.manifest, "live", one.blockId, "<div>{creator.name}</div>");
 		expect((blockOf(cardOf(edited, "live"), one.blockId) as { html: string }).html).toBe(
-			"<div>{up.name}</div>",
+			"<div>{creator.name}</div>",
 		);
 		expect(setBlockHtml(edited, "live", "title", "<div>x</div>")).toBe(edited);
 	});

@@ -276,7 +276,7 @@ export function addBlock(
 /**
  * 添一个**自定义块** —— 里面的 HTML 由作者自己写(受限子集,清洗在 server)。
  *
- * 起手那段 HTML 刻意不带占位符:占位符是**按卡种**承诺的,写死一个 `{up.name}` 在词云卡
+ * 起手那段 HTML 刻意不带占位符:占位符是**按卡种**承诺的,写死一个 `{creator.name}` 在榜单卡
  * 里就是一条「契约里没有这个字段」的装包错误,而块刚建出来就红着,人会以为是自己点坏了。
  */
 export function addCustomBlock(manifest: CardSkinManifest, kind: CardSkinKind): AddedBlock | null {

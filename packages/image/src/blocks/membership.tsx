@@ -36,7 +36,7 @@
  */
 
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
-import type { MembershipCardView } from "../templates/guard-card";
+import type { MembershipCardView } from "../templates/membership-card";
 import type { BlockRenderer } from "./types";
 
 /**
@@ -77,15 +77,15 @@ const master: BlockRenderer<MembershipCardView> = (p) => (
 		class="flex items-center overflow-hidden"
 		style={{ "--bn-card-tier-color": p.bgColor[0] }}
 	>
-		{p.masterAvatarUrl && (
+		{p.creatorAvatarUrl && (
 			<div
 				data-bn="masterAvatar"
 				class="bg-cover bg-center shrink-0"
-				style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
+				style={{ backgroundImage: `url("${p.creatorAvatarUrl}")` }}
 			/>
 		)}
 		<span data-bn="masterName" class="truncate">
-			{p.masterName}
+			{p.creatorName}
 		</span>
 	</div>
 );
@@ -94,7 +94,7 @@ const master: BlockRenderer<MembershipCardView> = (p) => (
  * guard 卡的块表。name / text / divider 走内容列的 `renderBlocks`;badge 是受限 2D 里的
  * 常驻块,由模板按 `badgeSide` 直接定位(所以它自带 `data-block`)。
  */
-export const GUARD_BLOCKS: Record<string, BlockRenderer<MembershipCardView>> = {
+export const MEMBERSHIP_BLOCKS: Record<string, BlockRenderer<MembershipCardView>> = {
 	// 线的颜色是数据(档位色加两成透明),注在 `--bn-divider-color` 里;粗细 / 上下留白归皮肤。
 	[DIVIDER_TYPE]: (p) => (
 		<div data-bn="line" style={{ "--bn-divider-color": `${p.bgColor[0]}33` }} />

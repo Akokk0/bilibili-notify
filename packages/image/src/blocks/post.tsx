@@ -1,7 +1,7 @@
 /** @jsxImportSource vue */
 
 /**
- * 动态卡的块库。
+ * 作品卡的块库。
  *
  * 每块只画**结构**:元素、它们的嵌套、撑住布局的那几个 class(`flex` / `w-full` /
  * `line-clamp-2` …)。它**长什么样**(字号、字色、圆角、角标底色、头像尺寸、转发框那圈
@@ -18,11 +18,11 @@
  *
  * 两块**没有根挂点**,因为它们的根不归这里管:`text` 的正文是 VNode 插槽(`node.text`),
  * **不给它包一层壳** —— `body` 挂点挂在 `rich-text.tsx` 的富文本根 div 上;`pics` / `additional`
- * 同理由 `templates/dynamic-content.tsx` 里那几个 builder 画好,挂点住在它们身上。那几段富文本
+ * 同理由 `templates/post-content.tsx` 里那几个 builder 画好,挂点住在它们身上。那几段富文本
  * 是决策 7 正文「内置块渲染逻辑不动」的地盘,外观没跟着搬。
  *
- * 唯一留在 inline 的 CSS 变量是 `--bn-up-name-color`(UP 主名的颜色:大会员粉 / 常规墨色)
- * —— 它是**数据**不是外观,由 `node.upIsVip` 算出来,皮肤在 `name` 的 `text` 规则里用
+ * 唯一留在 inline 的 CSS 变量是 `--bn-up-name-color`(创作者名的颜色:付费会员粉 / 常规墨色)
+ * —— 它是**数据**不是外观,由 `node.creatorIsPremium` 算出来,皮肤在 `name` 的 `text` 规则里用
  * `var(--bn-up-name-color)` 引它。
  *
  * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`,一个不多一个不少(`__tests__/card-blocks.test.ts`
@@ -32,7 +32,7 @@
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
 import { SVG_COMMENT, SVG_DANMAKU, SVG_FORWARD, SVG_LIKE, SVG_TOPIC, SVG_VIEW } from "../icons";
-import { buildGallery, type DynamicNode } from "../templates/dynamic-content";
+import { buildGallery, type PostNode } from "../templates/post-content";
 import type { BlockRenderer } from "./types";
 
 /**
@@ -56,44 +56,52 @@ const ICON_COMMENT = withIconHook(SVG_COMMENT);
 const ICON_LIKE = withIconHook(SVG_LIKE);
 
 /**
- * 动态块吃的 props:一个 DynamicNode + **内层卡怎么装**。
+ * 作品块吃的 props:一个 PostNode + **内层卡怎么装**。
  *
  * 转发框里是另一张完整的卡,而「一张卡怎么装」这件事块库不该知道 —— 模板路按一维竖栈装、
  * 皮肤路按网格装,两条路各自把自己的装配方式递进来。块只负责把结果放进转发框里。
  * 内层因此永远与外层同一套装配:模板路跟同一份 layout,皮肤路跟同一份皮肤。
  */
-export type DynamicBlockProps = {
-	node: DynamicNode;
-	renderForward: (node: DynamicNode) => VNode | VNode[];
+export type PostBlockProps = {
+	node: PostNode;
+	renderForward: (node: PostNode) => VNode | VNode[];
 };
 
 /**
  * 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。
- * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `DynamicNode.avatarUrl`)。
+ * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `PostNode.creatorAvatarUrl`)。
  */
-const avatar: BlockRenderer<DynamicBlockProps> = ({ node }) =>
-	node.avatarUrl ? (
-		<img data-bn="image" class="shrink-0 object-cover" src={node.avatarUrl} alt="头像" />
+const avatar: BlockRenderer<PostBlockProps> = ({ node }) =>
+	node.creatorAvatarUrl ? (
+		<img data-bn="image" class="shrink-0 object-cover" src={node.creatorAvatarUrl} alt="头像" />
 	) : null;
 
 /**
- * UP 主名(原子块,含类型标签后缀)。名字的**颜色**是数据(大会员粉 / 常规墨色),留在
+ * 创作者名(原子块,被转发的内层卡含动作标签后缀)。名字的**颜色**是数据(付费会员粉 / 常规墨色),留在
  * inline 的 `--bn-up-name-color` 里,皮肤用 `var()` 引。
  */
-const name: BlockRenderer<DynamicBlockProps> = ({ node }) => (
-	<span data-bn="text" style={{ "--bn-up-name-color": node.upIsVip ? "#FB7299" : "#18191C" }}>
-		{node.upName}
-		{node.headerLabel ? ` ${node.headerLabel}` : ""}
+const name: BlockRenderer<PostBlockProps> = ({ node }) => (
+	<span
+		data-bn="text"
+		style={{ "--bn-up-name-color": node.creatorIsPremium ? "#FB7299" : "#18191C" }}
+	>
+		{node.creatorName}
+		{node.isReposted && node.label ? ` ${node.label}` : ""}
 	</span>
 );
 
-/** 发布时间(原子块)。 */
-const time: BlockRenderer<DynamicBlockProps> = ({ node }) => (
-	<span data-bn="text">{node.pubTime}</span>
+/**
+ * 发布时间(原子块)。外层卡把动作标签接在时间后面(「时间 · 标签」),被转发的内层卡只有时间
+ * (它的标签在名字那一行)。一行字拼成**一个**文本节点,与从前的 `pubTime` 一字不差。
+ */
+const time: BlockRenderer<PostBlockProps> = ({ node }) => (
+	<span data-bn="text">
+		{!node.isReposted && node.label ? `${node.time} · ${node.label}` : node.time}
+	</span>
 );
 
 /** 话题(原子块):图标 + 话题名那一行。没有话题就收起。 */
-const topic: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+const topic: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.topic ? (
 		<div data-bn="text" class="flex items-center">
 			{SVG_TOPIC}
@@ -105,7 +113,7 @@ const topic: BlockRenderer<DynamicBlockProps> = ({ node }) =>
  * 正文文字(原子块):`node.text`,即 `node.body` 的文字那一半。不包壳 —— `body` 挂点在富文本
  * 自己的根上,那段富文本的外观也归它(决策 7 正文「内置块渲染逻辑不动」)。一个字都没有就收起。
  */
-const text: BlockRenderer<DynamicBlockProps> = ({ node }) => node.text ?? null;
+const text: BlockRenderer<PostBlockProps> = ({ node }) => node.text ?? null;
 
 /**
  * 投稿视频那张卡的五块(决策 8 的 2026-09-18 🔗)。从前它们是 `media` 一整块里的部件 ——
@@ -115,7 +123,7 @@ const text: BlockRenderer<DynamicBlockProps> = ({ node }) => node.text ?? null;
  *
  * 没有投稿视频就各自收起 —— 转发那条自己没有视频,原视频归转发框里那张卡。
  */
-const videoCover: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+const videoCover: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.video ? (
 		<img
 			data-bn="image"
@@ -132,10 +140,10 @@ const videoCover: BlockRenderer<DynamicBlockProps> = ({ node }) =>
  * 封面是主体,压暗会让整张图发灰,而封面右下角是什么颜色完全由 UP 决定,亮底上的白字加弱
  * 阴影会糊没。贴哪个角由皮肤说,所以这里**不写定位**。接口没给时长就收起(直播回放这类)。
  */
-const videoDuration: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+const videoDuration: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.video?.duration ? <span data-bn="pill">{node.video.duration}</span> : null;
 
-const videoTitle: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+const videoTitle: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.video ? (
 		<div data-bn="text" class="line-clamp-2">
 			{node.video.title}
@@ -143,10 +151,10 @@ const videoTitle: BlockRenderer<DynamicBlockProps> = ({ node }) =>
 	) : null;
 
 /** 简介常为空串 —— 空就整块收起,免得标题与播放数之间多出一条空白。 */
-const videoDesc: BlockRenderer<DynamicBlockProps> = ({ node }) =>
-	node.video?.desc ? (
+const videoDesc: BlockRenderer<PostBlockProps> = ({ node }) =>
+	node.video?.description ? (
 		<div data-bn="text" class="line-clamp-2">
-			{node.video.desc}
+			{node.video.description}
 		</div>
 	) : null;
 
@@ -156,7 +164,7 @@ const videoDesc: BlockRenderer<DynamicBlockProps> = ({ node }) =>
  * 两项都是选填的(ADR-0019 决策 55:拓展的作品不收弹幕数、播放数选填),缺哪项就连图标一起不画
  * —— 从前只要有视频就无条件画,画出空着的图标;两项都没有整块收起。
  */
-const videoStats: BlockRenderer<DynamicBlockProps> = ({ node }) =>
+const videoStats: BlockRenderer<PostBlockProps> = ({ node }) =>
 	node.video && (node.video.views || node.video.danmaku) ? (
 		<div data-bn="text" class="flex items-center">
 			{node.video.views ? (
@@ -179,26 +187,26 @@ const videoStats: BlockRenderer<DynamicBlockProps> = ({ node }) =>
  * (`pics` / `pic`)在它画的部件上。没有图就收起。每次调用各画一份 VNode —— 皮肤把这块摆
  * 两回也不会共用同一个实例。
  */
-const pics: BlockRenderer<DynamicBlockProps> = ({ node }) => buildGallery(node.images ?? []);
+const pics: BlockRenderer<PostBlockProps> = ({ node }) => buildGallery(node.images ?? []);
 
 /**
  * 转发框(原子块)。根**就是**那个框,样子(灰底、圆角、左边那道蓝、`zoom`)写在皮肤的
  * `bubble` 规则里;框里那张卡照旧交给 `renderForward` 装。不是转发就收起。
  */
-const forward: BlockRenderer<DynamicBlockProps> = ({ node, renderForward }) =>
-	node.forward ? <div data-bn="bubble">{renderForward(node.forward)}</div> : null;
+const forward: BlockRenderer<PostBlockProps> = ({ node, renderForward }) =>
+	node.repost ? <div data-bn="bubble">{renderForward(node.repost)}</div> : null;
 
 /** 互动数三件共用的结构:图标与数并排、竖向居中。间距与字色归皮肤的 `text` 规则。 */
 const STAT_ATOM_CLASS = "flex items-center";
 
-type DynamicStats = NonNullable<DynamicNode["stats"]>;
+type DynamicStats = NonNullable<PostNode["stats"]>;
 
 /**
  * 一项互动数(原子块):图标 + 数。没有互动数就收起 —— 转发框里的原动态本来就不带;这一项是空串
  * 也收起(拓展的作品三样各自选填,ADR-0019 决策 55),不画一个空着的图标。
  */
 const statAtom =
-	(icon: VNode, pick: (s: DynamicStats) => string): BlockRenderer<DynamicBlockProps> =>
+	(icon: VNode, pick: (s: DynamicStats) => string): BlockRenderer<PostBlockProps> =>
 	({ node }) =>
 		node.stats && pick(node.stats) ? (
 			<div data-bn="text" class={STAT_ATOM_CLASS}>
@@ -211,13 +219,13 @@ const statAtom =
  * dynamic 卡的块表。每块返回内层 VNode(无 `data-block` —— 由 `renderBlocks` 的 wrapper
  * 统一加),无数据时返回 null 自动收起。
  */
-export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = {
+export const POST_BLOCKS: Record<string, BlockRenderer<PostBlockProps>> = {
 	[DIVIDER_TYPE]: () => <div data-bn="line" />,
 
-	// 附加卡是 `templates/dynamic-content.tsx` 画好的一整块(挂点住在它身上),这里只把它
+	// 附加卡是 `templates/post-content.tsx` 画好的一整块(挂点住在它身上),这里只把它
 	// 放进格子。从前那层 `px-[16px]` 搬进了皮肤这块 `self` 的 `padding` —— 根是块级 div、
 	// 填满格子,写在外面那层 wrapper 上像素一样。
-	additional: ({ node }) => (node.additional ? <div>{node.additional}</div> : null),
+	additional: ({ node }) => (node.attachment ? <div>{node.attachment}</div> : null),
 
 	avatar,
 	name,
@@ -231,7 +239,7 @@ export const DYNAMIC_BLOCKS: Record<string, BlockRenderer<DynamicBlockProps>> = 
 	videoStats,
 	pics,
 	forward,
-	forwardCount: statAtom(ICON_FORWARD, (s) => s.forward),
-	commentCount: statAtom(ICON_COMMENT, (s) => s.comment),
-	likeCount: statAtom(ICON_LIKE, (s) => s.like),
+	forwardCount: statAtom(ICON_FORWARD, (s) => s.shares),
+	commentCount: statAtom(ICON_COMMENT, (s) => s.comments),
+	likeCount: statAtom(ICON_LIKE, (s) => s.likes),
 };

@@ -375,7 +375,7 @@ describe("改块与删块", () => {
 			skin: id,
 			kind: "live",
 			block: "tag",
-			html: "<span>{live.area}</span>",
+			html: "<span>{live.category}</span>",
 			grid: { row: 2, column: 1, span: 6 },
 		});
 		const tag = store.get(id)?.cards.live?.blocks.find((b) => b.id === "tag");

@@ -37,7 +37,7 @@
 import { DIVIDER_TYPE } from "@bilibili-notify/internal";
 import { escapeHtmlWithBreaks } from "../html-escape";
 import { SVG_DURATION } from "../icons";
-import type { SuperchatCardView } from "../templates/sc-card";
+import type { SuperchatCardView } from "../templates/superchat-card";
 import type { BlockRenderer } from "./types";
 
 /**
@@ -101,14 +101,14 @@ const to: BlockRenderer<SuperchatCardView> = (p) => (
 	<div data-bn="text" class="flex items-center">
 		<span data-bn="label">SC to</span>
 		<div data-bn="master" class="flex items-center">
-			{p.masterAvatarUrl && (
+			{p.creatorAvatarUrl && (
 				<div
 					data-bn="masterAvatar"
 					class="bg-cover bg-center"
-					style={{ backgroundImage: `url("${p.masterAvatarUrl}")` }}
+					style={{ backgroundImage: `url("${p.creatorAvatarUrl}")` }}
 				/>
 			)}
-			<span data-bn="masterName">{p.masterName}</span>
+			<span data-bn="masterName">{p.creatorName}</span>
 		</div>
 	</div>
 );
@@ -117,7 +117,7 @@ const to: BlockRenderer<SuperchatCardView> = (p) => (
  * sc 卡的块表。每块返回内层 VNode(无 `data-block`),无数据时返回 null。
  * divider 是 sc 专属的渐变分割线(可重复)。
  */
-export const SC_BLOCKS: Record<string, BlockRenderer<SuperchatCardView>> = {
+export const SUPERCHAT_BLOCKS: Record<string, BlockRenderer<SuperchatCardView>> = {
 	// 渐变的中段是档位色(数据),注在 `--bn-card-tier-color` 里;渐变本身归皮肤的 `line` 规则。
 	[DIVIDER_TYPE]: (p) => (
 		<div data-bn="line" class="w-full" style={{ "--bn-card-tier-color": p.bgColor[0] }} />

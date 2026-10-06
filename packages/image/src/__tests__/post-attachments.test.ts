@@ -40,11 +40,11 @@ function postWith(attachment: Attachment): Post {
 	};
 }
 
-/** 一份附加块画出来的 HTML(就是 `additional` 块里装的那段)。 */
+/** 一份附加块画出来的 HTML(就是 `additional` 块里装的那段,即 `node.attachment`)。 */
 async function attachmentHtml(attachment: Attachment): Promise<string> {
 	const node = nodeFromPost(postWith(attachment), FMT);
-	if (!node.additional) throw new Error("没有附加块");
-	return htmlOf(node.additional);
+	if (!node.attachment) throw new Error("没有附加块");
+	return htmlOf(node.attachment);
 }
 
 const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;

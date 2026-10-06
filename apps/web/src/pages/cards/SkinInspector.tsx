@@ -463,7 +463,7 @@ function FrameInspector({
  * 自定义块的内容那一节:能引用的字段 + 一个纯文本框。
  *
  * 字段点一下补进去,`image` 类型补的是一整个 `<img src="{…}">` —— 占位符只有坐在 `src`
- * 上才是图,单写一个 `{up.face}` 出来的是一串 URL 文本(清洗器认的就是这条规矩)。
+ * 上才是图,单写一个 `{creator.avatar}` 出来的是一串 URL 文本(清洗器认的就是这条规矩)。
  */
 function HtmlSection({
 	kind,
@@ -507,7 +507,7 @@ function HtmlSection({
 					rows={6}
 					mono
 					ariaLabel="这个块的 HTML"
-					placeholder="<div>{up.name}</div>"
+					placeholder="<div>{creator.name}</div>"
 				/>
 
 				{empty ? (

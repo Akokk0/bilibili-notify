@@ -36,18 +36,18 @@ import {
 	rowMapOf,
 } from "@bilibili-notify/internal";
 import { h, type VNode } from "vue";
-import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
 import { type CardPropsByKind, FRAMES, type FrameExtra } from "../blocks/frames";
-import { GUARD_BLOCKS } from "../blocks/guard";
 import { LIVE_BLOCKS } from "../blocks/live";
+import { MEMBERSHIP_BLOCKS } from "../blocks/membership";
+import { POST_BLOCKS } from "../blocks/post";
 import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
-import { SC_BLOCKS } from "../blocks/sc";
+import { SUPERCHAT_BLOCKS } from "../blocks/superchat";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import { escapeHtml } from "../html-escape";
 import { renderCard } from "../render";
-import type { DynamicCardProps } from "../templates/dynamic-card";
-import type { DynamicNode } from "../templates/dynamic-content";
+import type { PostCardView } from "../templates/post-card";
+import type { PostNode } from "../templates/post-content";
 import { buildCardData, type CardData, readCardField } from "./card-data";
 import type { ResolvedKnobAssets } from "./knob-assets";
 
@@ -61,9 +61,9 @@ export const BLOCKED_IMG_PLACEHOLDER =
 /** 每种卡的块表(键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`)。 */
 const BLOCK_TABLES: Record<CardSkinKind, Record<string, BlockRenderer<never>>> = {
 	live: LIVE_BLOCKS,
-	dynamic: DYNAMIC_BLOCKS,
-	sc: SC_BLOCKS,
-	guard: GUARD_BLOCKS,
+	dynamic: POST_BLOCKS,
+	sc: SUPERCHAT_BLOCKS,
+	guard: MEMBERSHIP_BLOCKS,
 	roastBoard: ROAST_BOARD_BLOCKS,
 	roastSolo: ROAST_SOLO_BLOCKS,
 	wordcloud: WORDCLOUD_BLOCKS,
@@ -235,22 +235,22 @@ function frameVariables(props: unknown): string {
 // ── 块 ────────────────────────────────────────────────────────────────────────
 
 /**
- * 块表吃的 props:除动态卡外就是卡片 props 本身。
+ * 块表吃的 props:除作品卡外就是卡片 props 本身。
  *
- * 动态卡多一样 `renderForward` —— 转发框里是**另一张完整的卡**,按同一份皮肤再装一遍
+ * 作品卡多一样 `renderForward` —— 转发框里是**另一张完整的卡**,按同一份皮肤再装一遍
  * (数据换成内层那条动态)。这条递归以前走的是模板那条一维竖栈,而且因为全仓已经没人往
  * props 里传 `layout`,实际是钉死在出厂默认版式上:换皮肤不跟,迁移过自己版式的也拿不回来。
  */
 function blockPropsOf(ctx: AssembleCtx, props: unknown): unknown {
 	if (ctx.kind !== "dynamic") return props;
-	const p = props as DynamicCardProps;
+	const p = props as PostCardView;
 	return {
 		node: p.node,
-		renderForward: (node: DynamicNode): VNode =>
+		renderForward: (node: PostNode): VNode =>
 			h(
 				"div",
 				{ style: gridStyleOf(ctx.card) },
-				// 内层那张卡的契约数据(`{video.title}` / `hasPics` / `dynamic.type`…)跟着内层
+				// 内层那张卡的契约数据(`{video.title}` / `post.hasImages`…)跟着内层
 				// 那棵 node 走 —— 它自己带着类型与图,不必再回头找外层的原始数据。
 				placeBlocks(ctx, { ...p, node }),
 			),

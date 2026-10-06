@@ -4,9 +4,9 @@
  * 一、**对表**:七种卡各造一份「样样都有」的夹具,产出的字段路径集合必须与
  *    `CARD_SKIN_FIELDS[kind]` 一字不差(多一个 = 皮肤引用不到的死数据,少一个 = 皮肤写了
  *    取不到值),且每个值的 typeof 与字段表声明的 type 对得上(text / image → string)。
- * 二、**缺数据不炸**:再造一份「什么都没有」的夹具(可选字段全缺、动态卡的 node 上连类型
+ * 二、**缺数据不炸**:再造一份「什么都没有」的夹具(可选字段全缺、作品卡的 node 上连视频
  *    与图都没有),每个字段仍有值 —— 没有 undefined,不会有 "undefined" 被替换进模板。
- * 三、**语义**:几条最容易在重构里被改掉的分支(直播卡的几种状态、封面、动态卡的几组字段
+ * 三、**语义**:几条最容易在重构里被改掉的分支(直播卡的几种状态、封面、作品卡的几组字段
  *    都从 node 取、会员卡的档位各项、醒目留言的金额与档)。
  * 四、**取值**:`readCardField` 只认两段路径、只认自有属性,原型链上的名字一律取不到。
  */
@@ -20,11 +20,11 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import { h } from "vue";
 import { LIVE_COVER_PLACEHOLDER } from "../../live-view";
-import type { DynamicCardProps, DynamicNode } from "../../templates/dynamic-card";
-import type { MembershipCardView } from "../../templates/guard-card";
 import type { LiveCardView } from "../../templates/live-card";
+import type { MembershipCardView } from "../../templates/membership-card";
+import type { PostCardView, PostNode } from "../../templates/post-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../../templates/roast-card";
-import type { SuperchatCardView } from "../../templates/sc-card";
+import type { SuperchatCardView } from "../../templates/superchat-card";
 import type { WordCloudCardProps } from "../../templates/wordcloud-card";
 import { buildCardData, type CardData, type CardDataValue, readCardField } from "../card-data";
 
@@ -33,19 +33,19 @@ import { buildCardData, type CardData, type CardDataValue, readCardField } from 
 function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 	return {
 		status: "streaming",
-		username: "阿可",
-		userface: "https://img/face.jpg",
+		creatorName: "阿可",
+		creatorAvatarUrl: "https://img/face.jpg",
 		title: "今天也在打游戏",
-		area: "虚拟主播",
+		category: "虚拟主播",
 		description: "简介第一行 第二行",
 		cover: "https://img/cover.jpg",
 		hasCover: true,
 		time: "直播时长：1小时",
-		online: "1.2万",
+		currentViewers: "1.2万",
 		likes: "3000",
 		totalViewers: "5.4万",
-		fans: "10.1万",
-		fansChanged: "+123",
+		followers: "10.1万",
+		followersDelta: "+123",
 		...over,
 	};
 }
@@ -54,38 +54,40 @@ function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 function emptyLiveProps(): LiveCardView {
 	return {
 		status: "offline",
-		username: "",
-		userface: "",
+		creatorName: "",
+		creatorAvatarUrl: "",
 		title: "",
-		area: "",
+		category: "",
 		description: "",
 		cover: "",
 		hasCover: false,
 		time: "",
-		online: "",
+		currentViewers: "",
 		likes: "",
 		totalViewers: "",
-		fans: "",
-		fansChanged: "",
+		followers: "",
+		followersDelta: "",
 	};
 }
 
-function dynamicNode(over: Partial<DynamicNode> = {}): DynamicNode {
+function dynamicNode(over: Partial<PostNode> = {}): PostNode {
 	return {
-		avatarUrl: "https://img/up.jpg",
-		upName: "某 UP 主",
-		upIsVip: true,
-		pubTime: "1 小时前",
-		headerLabel: "投稿了视频",
+		creatorAvatarUrl: "https://img/up.jpg",
+		creatorName: "某创作者",
+		creatorIsPremium: true,
+		time: "1 小时前",
+		label: "投稿了视频",
 		topic: "#今日话题#",
-		additional: h("div"),
-		forward: {
-			avatarUrl: "https://img/orig.jpg",
-			upName: "原 UP 主",
-			upIsVip: false,
-			pubTime: "2 小时前",
+		attachment: h("div"),
+		repost: {
+			creatorAvatarUrl: "https://img/orig.jpg",
+			creatorName: "原创作者",
+			creatorIsPremium: false,
+			time: "2 小时前",
+			label: "发布了动态",
+			isReposted: true,
 		},
-		stats: { forward: "12", comment: "34", like: "5.6万" },
+		stats: { shares: "12", comments: "34", likes: "5.6万" },
 		...over,
 	};
 }
@@ -97,12 +99,12 @@ const NODE_VIDEO = {
 	cover: "https://img/video-cover.jpg",
 	duration: "12:34",
 	title: "这是一期视频",
-	desc: "",
+	description: "",
 	views: "6.5万",
 	danmaku: "1024",
 };
 
-function dynamicProps(node: DynamicNode = dynamicNode()): DynamicCardProps {
+function dynamicProps(node: PostNode = dynamicNode()): PostCardView {
 	return { node };
 }
 
@@ -110,8 +112,8 @@ function scProps(over: Partial<SuperchatCardView> = {}): SuperchatCardView {
 	return {
 		viewerAvatarUrl: "https://img/sender.jpg",
 		viewerName: "热心观众",
-		masterName: "阿可",
-		masterAvatarUrl: "https://img/master.jpg",
+		creatorName: "阿可",
+		creatorAvatarUrl: "https://img/master.jpg",
 		text: "加油！",
 		amount: "¥30",
 		amountValue: 30,
@@ -126,7 +128,7 @@ function emptySCProps(): SuperchatCardView {
 	return {
 		viewerAvatarUrl: "",
 		viewerName: "",
-		masterName: "",
+		creatorName: "",
 		text: "",
 		amount: "",
 		amountValue: 0,
@@ -140,8 +142,8 @@ function guardProps(over: Partial<MembershipCardView> = {}): MembershipCardView 
 	return {
 		viewerAvatarUrl: "https://img/user.jpg",
 		viewerName: "热心观众",
-		masterAvatarUrl: "https://img/master.jpg",
-		masterName: "阿可",
+		creatorAvatarUrl: "https://img/master.jpg",
+		creatorName: "阿可",
 		tierName: "舰长",
 		rank: 1,
 		iconUrl: "https://img/captain.png",
@@ -155,8 +157,8 @@ function emptyGuardProps(): MembershipCardView {
 	return {
 		viewerAvatarUrl: "",
 		viewerName: "",
-		masterAvatarUrl: "",
-		masterName: "",
+		creatorAvatarUrl: "",
+		creatorName: "",
 		tierName: "",
 		rank: 0,
 		iconUrl: "",
@@ -165,7 +167,7 @@ function emptyGuardProps(): MembershipCardView {
 	};
 }
 
-const ROAST_UP = { name: "某 UP 主", avatar: "https://img/up.jpg", color: "#ff6699" };
+const ROAST_UP = { name: "某创作者", avatar: "https://img/up.jpg", color: "#ff6699" };
 
 function roastBoardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProps {
 	return {
@@ -181,7 +183,7 @@ function roastBoardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCar
 function roastSoloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
 	return {
 		days: 30,
-		up: ROAST_UP,
+		creator: ROAST_UP,
 		verdict: "还行",
 		score: 60,
 		highlights: [{ label: "勤奋", comment: "尚可" }],
@@ -191,8 +193,8 @@ function roastSoloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardPr
 
 function wordCloudProps(over: Partial<WordCloudCardProps> = {}): WordCloudCardProps {
 	return {
-		masterName: "阿可",
-		masterAvatarUrl: "https://img/master.jpg",
+		creatorName: "阿可",
+		creatorAvatarUrl: "https://img/master.jpg",
 		...over,
 	};
 }
@@ -201,10 +203,7 @@ function wordCloudProps(over: Partial<WordCloudCardProps> = {}): WordCloudCardPr
 const FULL: Record<CardSkinKind, () => CardData> = {
 	live: () => buildCardData("live", liveProps()),
 	dynamic: () =>
-		buildCardData(
-			"dynamic",
-			dynamicProps(dynamicNode({ type: "DYNAMIC_TYPE_AV", video: NODE_VIDEO, images: FULL_PICS })),
-		),
+		buildCardData("dynamic", dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS }))),
 	sc: () => buildCardData("sc", scProps()),
 	guard: () => buildCardData("guard", guardProps()),
 	roastBoard: () => buildCardData("roastBoard", roastBoardProps()),
@@ -212,17 +211,17 @@ const FULL: Record<CardSkinKind, () => CardData> = {
 	wordcloud: () => buildCardData("wordcloud", wordCloudProps()),
 };
 
-/** 七种卡的「什么都没有」夹具:可选字段全缺、动态卡的 node 上没有类型、视频与图。 */
+/** 七种卡的「什么都没有」夹具:可选字段全缺、作品卡的 node 上没有标签、视频与图。 */
 const EMPTY: Record<CardSkinKind, () => CardData> = {
 	live: () => buildCardData("live", emptyLiveProps()),
 	dynamic: () =>
 		buildCardData(
 			"dynamic",
 			dynamicProps({
-				avatarUrl: "",
-				upName: "",
-				upIsVip: false,
-				pubTime: "",
+				creatorAvatarUrl: "",
+				creatorName: "",
+				creatorIsPremium: false,
+				time: "",
 			}),
 		),
 	sc: () => buildCardData("sc", emptySCProps()),
@@ -230,8 +229,8 @@ const EMPTY: Record<CardSkinKind, () => CardData> = {
 	roastBoard: () =>
 		buildCardData("roastBoard", roastBoardProps({ days: 0, roast: [], scores: [] })),
 	roastSolo: () =>
-		buildCardData("roastSolo", roastSoloProps({ days: 0, up: { name: "", color: "" } })),
-	wordcloud: () => buildCardData("wordcloud", { masterName: "" }),
+		buildCardData("roastSolo", roastSoloProps({ days: 0, creator: { name: "", color: "" } })),
+	wordcloud: () => buildCardData("wordcloud", { creatorName: "" }),
 };
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────
@@ -309,78 +308,92 @@ describe("缺数据时每个字段仍有值", () => {
 // ── 三、语义 ──────────────────────────────────────────────────────────────────
 
 describe("直播卡的几种状态", () => {
-	it("开播与直播中:isStreaming、人气、当前粉丝数", () => {
+	it("开播与直播中:isStreaming、在看人数、当前粉丝数(点赞与累计观看为空)", () => {
 		for (const status of ["start", "streaming"] as const) {
 			const d = buildCardData("live", liveProps({ status }));
 			expect(d.live.isStreaming, status).toBe(true);
 			expect(d.live.isEnded, status).toBe(false);
-			expect(d.stats.popularity, status).toBe("1.2万");
-			expect(d.stats.fans, status).toBe("10.1万");
+			expect(d.stats.currentViewers, status).toBe("1.2万");
+			expect(d.stats.followers, status).toBe("10.1万");
+			expect(d.stats.likes, status).toBe("");
+			expect(d.stats.totalViewers, status).toBe("");
 		}
 	});
 
-	/** 决策 76:下播时人气位是点赞、粉丝位是累计观看。验红:把 popularity 改回恒取人气。 */
-	it("下播:isEnded、点赞、累计观看", () => {
+	/** 决策 76:下播卡画点赞与累计观看。验红:把 `likes` 改回恒取视图的点赞(下播以外也给值),或把下播的 `currentViewers` 改成有值。 */
+	it("下播:isEnded、点赞、累计观看(在看人数与粉丝数为空)", () => {
 		const d = buildCardData("live", liveProps({ status: "end" }));
 		expect(d.live.isStreaming).toBe(false);
 		expect(d.live.isEnded).toBe(true);
-		expect(d.stats.popularity).toBe("3000");
-		expect(d.stats.fans).toBe("5.4万");
+		expect(d.stats.likes).toBe("3000");
+		expect(d.stats.totalViewers).toBe("5.4万");
+		expect(d.stats.currentViewers).toBe("");
+		expect(d.stats.followers).toBe("");
 	});
 
-	it("没在播:两个 is* 都为假,人气照给,粉丝位为空", () => {
+	it("没在播:两个 is* 都为假,在看人数照给,别的三格为空", () => {
 		const d = buildCardData("live", liveProps({ status: "offline" }));
 		expect(d.live.isStreaming).toBe(false);
 		expect(d.live.isEnded).toBe(false);
-		expect(d.stats.popularity).toBe("1.2万");
-		expect(d.stats.fans).toBe("");
+		expect(d.stats.currentViewers).toBe("1.2万");
+		expect(d.stats.followers).toBe("");
+		expect(d.stats.likes).toBe("");
+		expect(d.stats.totalViewers).toBe("");
 	});
 
 	it("粉丝数变化哪种状态都照给(自己做皮肤的人想画就能画)", () => {
 		for (const status of ["start", "streaming", "end", "offline"] as const) {
 			const d = buildCardData("live", liveProps({ status }));
-			expect(d.stats.fansChanged, status).toBe("+123");
-			expect(d.stats.hasFansChanged, status).toBe(true);
+			expect(d.stats.followersDelta, status).toBe("+123");
+			expect(d.stats.hasFollowersDelta, status).toBe(true);
 		}
-		expect(buildCardData("live", liveProps({ fansChanged: "" })).stats.hasFansChanged).toBe(false);
+		expect(buildCardData("live", liveProps({ followersDelta: "" })).stats.hasFollowersDelta).toBe(
+			false,
+		);
 	});
 });
 
 /**
- * ㉔a 钉住现状:`stats.popularity` / `stats.fans` 是**随状态换含义**的两格(㉔b 把它们拆成 `currentViewers` / `likes`、
- * `followers` / `totalViewers`,每格只装名字说的那一样)。四个来源格给**互不相同**的值,断言才分得出取的是哪一格;
- * 来源格为空串时(`stats.*` 的「缺了就是空串」)也钉一遍。
- * 验红:把 `liveData` 里 `ended ? str(p.likes) : str(p.online)` 的两边对调,或 `fans` 的三元里换掉分支,这组红。
+ * 直播卡 `stats` 的四格各只装名字说的那一样:`currentViewers`(在看人数)、`likes`(下播后的点赞)、`followers`(粉丝数)、
+ * `totalViewers`(下播后的累计观看),不该有值的状态下是空串。(㉔a 钉住的是拆分之前的现状:`stats.popularity` 下播取点赞、
+ * 其余取在线人数;`stats.fans` 开播 / 直播中取粉丝数、下播取累计观看、没在播为空 —— ㉔b 拆成这四格。)
+ * 四个来源格给**互不相同**的值,断言才分得出取的是哪一格;来源格为空串时也钉一遍。
+ * 验红:把 `liveData` 里四格的三元条件任一个对调。
  */
-describe("㉔a 直播卡 stats.popularity / stats.fans 各状态取哪一格", () => {
-	const SOURCES = { online: "ON", likes: "LK", totalViewers: "TV", fans: "FN" };
+describe("直播卡 stats 四格各状态取哪一格", () => {
+	const SOURCES = { currentViewers: "ON", likes: "LK", totalViewers: "TV", followers: "FN" };
 
 	it.each([
-		// 状态,popularity 取的值,fans 取的值
-		["start", "ON", "FN"],
-		["streaming", "ON", "FN"],
-		["end", "LK", "TV"],
-		["offline", "ON", ""],
-	] as const)("%s:popularity = %s,fans = %s", (status, popularity, fans) => {
-		const d = buildCardData("live", liveProps({ status, ...SOURCES }));
-		expect(d.stats.popularity).toBe(popularity);
-		expect(d.stats.fans).toBe(fans);
-	});
+		// 状态,currentViewers,likes,followers,totalViewers
+		["start", "ON", "", "FN", ""],
+		["streaming", "ON", "", "FN", ""],
+		["end", "", "LK", "", "TV"],
+		["offline", "ON", "", "", ""],
+	] as const)(
+		"%s:currentViewers = %s,likes = %s,followers = %s,totalViewers = %s",
+		(status, currentViewers, likes, followers, totalViewers) => {
+			const d = buildCardData("live", liveProps({ status, ...SOURCES }));
+			expect(d.stats).toMatchObject({ currentViewers, likes, followers, totalViewers });
+		},
+	);
 
-	it("来源格是空串:下播没有点赞 → popularity 空(不退回人气);下播没有累计观看 → fans 空;开播没有粉丝数 → fans 空", () => {
+	it("来源格是空串:下播没有点赞 / 累计观看 → 对应格空(不退回别的格);开播没有粉丝数 / 在看人数 → 对应格空", () => {
 		const ended = buildCardData("live", liveProps({ status: "end", likes: "", totalViewers: "" }));
-		expect(ended.stats.popularity).toBe("");
-		expect(ended.stats.fans).toBe("");
-		expect(buildCardData("live", liveProps({ status: "streaming", fans: "" })).stats.fans).toBe("");
+		expect(ended.stats.likes).toBe("");
+		expect(ended.stats.totalViewers).toBe("");
 		expect(
-			buildCardData("live", liveProps({ status: "streaming", online: "" })).stats.popularity,
+			buildCardData("live", liveProps({ status: "streaming", followers: "" })).stats.followers,
+		).toBe("");
+		expect(
+			buildCardData("live", liveProps({ status: "streaming", currentViewers: "" })).stats
+				.currentViewers,
 		).toBe("");
 	});
 
-	it("stats.area 与 live.area 同值(给数据行用的副本)", () => {
-		const d = buildCardData("live", liveProps({ area: "虚拟主播" }));
-		expect(d.stats.area).toBe("虚拟主播");
-		expect(d.live.area).toBe("虚拟主播");
+	it("没有 stats.area(分类只在 live.category)", () => {
+		const d = buildCardData("live", liveProps({ category: "虚拟主播" }));
+		expect("area" in d.stats).toBe(false);
+		expect(d.live.category).toBe("虚拟主播");
 	});
 });
 
@@ -405,49 +418,49 @@ describe("直播卡的封面", () => {
 	});
 });
 
-describe("动态卡的视频与图廊", () => {
+describe("作品卡的视频与图廊", () => {
 	/**
-	 * 三组都从 node 取(ADR-0019 决策 68):出卡入口只收 node,不再另收平台的原始数据。
-	 * 验红:把 `dynamic.type` / `pics.*` 改回从别处取(或写死空值),这条红。
+	 * 两组都从 node 取(ADR-0019 决策 68):出卡入口只收 node,不再另收平台的原始数据。
+	 * 验红:把 `post.hasVideo` / `images.*` 改回从别处取(或写死空值),这条红。
 	 */
-	it("类型、视频、图廊三组都从 node 取", () => {
+	it("视频、图廊两组都从 node 取", () => {
 		const d = buildCardData(
 			"dynamic",
-			dynamicProps(dynamicNode({ type: "DYNAMIC_TYPE_AV", video: NODE_VIDEO, images: FULL_PICS })),
+			dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS })),
 		);
-		expect(d.dynamic.type).toBe("DYNAMIC_TYPE_AV");
-		expect(d.dynamic.hasVideo).toBe(true);
+		expect(d.post.hasVideo).toBe(true);
 		expect(d.video.title).toBe("这是一期视频");
 		expect(d.video.cover).toBe("https://img/video-cover.jpg");
 		expect(d.video.duration).toBe("12:34");
 		expect(d.video.views).toBe("6.5万");
 		// 接口给的弹幕数可能是数字,契约里是 text。
 		expect(d.video.danmaku).toBe("1024");
-		expect(d.dynamic.hasPics).toBe(true);
-		expect(d.pics.count).toBe(2);
-		expect(d.pics.first).toBe("https://img/pic1.jpg");
+		expect(d.post.hasImages).toBe(true);
+		expect(d.images.count).toBe(2);
+		expect(d.images.first).toBe("https://img/pic1.jpg");
 	});
 
-	it("node 上没有类型、视频与图:三组字段全空,两个 has* 为假,别的字段照常", () => {
+	it("node 上没有视频与图:两组字段全空,两个 has* 为假,别的字段照常", () => {
 		const d = buildCardData("dynamic", dynamicProps());
-		expect(d.dynamic.type).toBe("");
-		expect(d.dynamic.hasVideo).toBe(false);
+		expect(d.post.hasVideo).toBe(false);
 		expect(d.video.title).toBe("");
 		expect(d.video.cover).toBe("");
-		expect(d.dynamic.hasPics).toBe(false);
-		expect(d.pics.count).toBe(0);
-		expect(d.pics.first).toBe("");
-		// 别的几组不受这三组缺席影响。
-		expect(d.up.name).toBe("某 UP 主");
-		expect(d.dynamic.action).toBe("投稿了视频");
-		expect(d.dynamic.isForward).toBe(true);
-		expect(d.stats.like).toBe("5.6万");
+		expect(d.post.hasImages).toBe(false);
+		expect(d.images.count).toBe(0);
+		expect(d.images.first).toBe("");
+		// 别的几组不受这两组缺席影响。
+		expect(d.creator.name).toBe("某创作者");
+		expect(d.post.label).toBe("投稿了视频");
+		expect(d.post.time).toBe("1 小时前");
+		expect(d.post.hasRepost).toBe(true);
+		expect(d.post.hasAttachment).toBe(true);
+		expect(d.stats.likes).toBe("5.6万");
 	});
 
 	/**
 	 * 🔴 「有没有视频」这一条,**块与契约必须同一个判据**。
 	 *
-	 * 块画的判据是 `node.video` 在不在(`blocks/dynamic.tsx` 的五个视频块);契约这边从前
+	 * 块画的判据是 `node.video` 在不在(`blocks/post.tsx` 的五个视频块);契约这边从前
 	 * 自己去 raw 里刨了一遍 archive,再拿「标题非空」当判据 —— 一条没标题的投稿于是画出了
 	 * 封面,却告诉皮肤的 `showIf` 说没视频,皮肤要么摆出一块空的、要么把封面那格藏了。
 	 *
@@ -458,20 +471,16 @@ describe("动态卡的视频与图廊", () => {
 			"dynamic",
 			dynamicProps(dynamicNode({ video: { ...NODE_VIDEO, title: "" } })),
 		);
-		expect(d.dynamic.hasVideo).toBe(true);
+		expect(d.post.hasVideo).toBe(true);
 		expect(d.video.title).toBe("");
 		expect(d.video.cover).toBe("https://img/video-cover.jpg");
 	});
 
-	it("不是视频动态:video 全空,图廊照取", () => {
-		const d = buildCardData(
-			"dynamic",
-			dynamicProps(dynamicNode({ type: "DYNAMIC_TYPE_DRAW", images: FULL_PICS })),
-		);
-		expect(d.dynamic.type).toBe("DYNAMIC_TYPE_DRAW");
-		expect(d.dynamic.hasVideo).toBe(false);
+	it("不是视频作品:video 全空,图廊照取", () => {
+		const d = buildCardData("dynamic", dynamicProps(dynamicNode({ images: FULL_PICS })));
+		expect(d.post.hasVideo).toBe(false);
 		expect(d.video.duration).toBe("");
-		expect(d.pics.count).toBe(2);
+		expect(d.images.count).toBe(2);
 	});
 });
 
@@ -485,7 +494,7 @@ describe("会员卡的数据", () => {
 			announcement: '"热心观众号"加入\n"阿可"大航海舰队！',
 		});
 		expect(d.viewer).toEqual({ name: "热心观众", avatar: "https://img/user.jpg" });
-		expect(d.master).toEqual({ name: "阿可", face: "https://img/master.jpg" });
+		expect(d.creator).toEqual({ name: "阿可", avatar: "https://img/master.jpg" });
 	});
 
 	// 没有 rank 的体系(档位由主播自定的那种)交上来的档没有 `rank`:视图里是 0,字段就是 0 —— `rank` 本身从 1 起,
@@ -526,8 +535,8 @@ describe("醒目留言卡的数据", () => {
 		expect(d.viewer.name).toBe("热心观众");
 	});
 
-	it("主播头像没给 → master.face 是空串", () => {
-		expect(buildCardData("sc", scProps({ masterAvatarUrl: undefined })).master.face).toBe("");
+	it("主播头像没给 → creator.avatar 是空串", () => {
+		expect(buildCardData("sc", scProps({ creatorAvatarUrl: undefined })).creator.avatar).toBe("");
 	});
 });
 
@@ -537,7 +546,7 @@ describe("readCardField", () => {
 	const data = buildCardData("live", liveProps());
 
 	it("两段路径取得到值", () => {
-		expect(readCardField(data, "up.name")).toBe("阿可");
+		expect(readCardField(data, "creator.name")).toBe("阿可");
 		expect(readCardField(data, "live.isStreaming")).toBe(true);
 	});
 
@@ -555,9 +564,9 @@ describe("readCardField", () => {
 
 		expect(readCardField(data, "constructor.name")).toBeUndefined();
 		expect(readCardField(data, "__proto__.constructor")).toBeUndefined();
-		expect(readCardField(data, "up.__proto__")).toBeUndefined();
-		expect(readCardField(data, "up.constructor")).toBeUndefined();
+		expect(readCardField(data, "creator.__proto__")).toBeUndefined();
+		expect(readCardField(data, "creator.constructor")).toBeUndefined();
 		expect(readCardField(data, "prototype.x")).toBeUndefined();
-		expect(readCardField(data, "up.toString")).toBeUndefined();
+		expect(readCardField(data, "creator.toString")).toBeUndefined();
 	});
 });

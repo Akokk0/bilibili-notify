@@ -61,19 +61,19 @@ describe("buildLiveCardView — 整个视图", () => {
 		vi.setSystemTime(STARTED_AT_MS + (2 * 3600 + 13 * 60 + 5) * 1000);
 		expect(buildLiveCardView(input(), { imageUrl })).toEqual({
 			status: "streaming",
-			username: "示例主播",
-			userface: "data:image/png;base64,AVATAR",
+			creatorName: "示例主播",
+			creatorAvatarUrl: "data:image/png;base64,AVATAR",
 			title: "一场直播",
-			area: "虚拟主播",
+			category: "虚拟主播",
 			description: "纯文本简介",
 			cover: "data:image/png;base64,COVER",
 			hasCover: true,
 			time: "直播时长：2小时13分5秒",
-			online: "1.2万",
+			currentViewers: "1.2万",
 			likes: "2.0万",
 			totalViewers: "3.1万",
-			fans: "8.9万",
-			fansChanged: "+1234",
+			followers: "8.9万",
+			followersDelta: "+1234",
 		});
 	});
 
@@ -82,19 +82,19 @@ describe("buildLiveCardView — 整个视图", () => {
 		const view = buildLiveCardView({ status: "end", creator: { name: "甲" } });
 		expect(view).toEqual({
 			status: "end",
-			username: "甲",
-			userface: "",
+			creatorName: "甲",
+			creatorAvatarUrl: "",
 			title: "",
-			area: "",
+			category: "",
 			description: "",
 			cover: LIVE_COVER_PLACEHOLDER,
 			hasCover: false,
 			time: "",
-			online: "",
+			currentViewers: "",
 			likes: "",
 			totalViewers: "",
-			fans: "",
-			fansChanged: "",
+			followers: "",
+			followersDelta: "",
 		});
 	});
 
@@ -111,9 +111,9 @@ describe("buildLiveCardView — 整个视图", () => {
 			}),
 		);
 		expect(view).toMatchObject({
-			username: "名字",
+			creatorName: "名字",
 			title: "标题",
-			area: "分区",
+			category: "分区",
 			// 富文本是 B 站那头先剥的(`liveCardInputFromRoomInfo`);视图这一步不再动它。
 			description: "简介 <原样> & 不再剥",
 		});
@@ -122,18 +122,20 @@ describe("buildLiveCardView — 整个视图", () => {
 
 describe("buildLiveCardView — 主播头像(creator.avatar 是引用)", () => {
 	/**
-	 * 验红:让 `userface` 不再经 `imageUrl` 解析,第一条红;让解析不到时回引用本身(或占位),后两条红。
+	 * 验红:让 `creatorAvatarUrl` 不再经 `imageUrl` 解析,第一条红;让解析不到时回引用本身(或占位),后两条红。
 	 */
-	it("引用解析到了:userface 是解析出的地址", () => {
-		expect(buildLiveCardView(input(), { imageUrl }).userface).toBe("data:image/png;base64,AVATAR");
+	it("引用解析到了:creatorAvatarUrl 是解析出的地址", () => {
+		expect(buildLiveCardView(input(), { imageUrl }).creatorAvatarUrl).toBe(
+			"data:image/png;base64,AVATAR",
+		);
 	});
 
-	it("引用解析不到、或没注入解析口:userface 是空串(头像块收起)", () => {
-		expect(buildLiveCardView(input(), { imageUrl: () => undefined }).userface).toBe("");
-		expect(buildLiveCardView(input()).userface).toBe("");
+	it("引用解析不到、或没注入解析口:creatorAvatarUrl 是空串(头像块收起)", () => {
+		expect(buildLiveCardView(input(), { imageUrl: () => undefined }).creatorAvatarUrl).toBe("");
+		expect(buildLiveCardView(input()).creatorAvatarUrl).toBe("");
 	});
 
-	it("没有头像:userface 是空串,解析口一次也没被问", () => {
+	it("没有头像:creatorAvatarUrl 是空串,解析口一次也没被问", () => {
 		const asked: string[] = [];
 		const view = buildLiveCardView(input({ creator: { name: "甲" } }), {
 			imageUrl: (ref) => {
@@ -141,7 +143,7 @@ describe("buildLiveCardView — 主播头像(creator.avatar 是引用)", () => {
 				return TABLE[ref];
 			},
 		});
-		expect(view.userface).toBe("");
+		expect(view.creatorAvatarUrl).toBe("");
 		expect(asked).toEqual([]);
 	});
 });
@@ -224,10 +226,10 @@ describe("buildLiveCardView — 数字格(只收精确数)", () => {
 			}),
 		);
 		expect(view).toMatchObject({
-			online: "9999",
+			currentViewers: "9999",
 			likes: "1.2万",
 			totalViewers: "1.0亿",
-			fans: "8.9万",
+			followers: "8.9万",
 		});
 	});
 
@@ -247,11 +249,11 @@ describe("buildLiveCardView — 数字格(只收精确数)", () => {
 			}),
 		);
 		expect(view).toMatchObject({
-			online: "0",
+			currentViewers: "0",
 			likes: "0",
 			totalViewers: "0",
-			fans: "0",
-			fansChanged: "0",
+			followers: "0",
+			followersDelta: "0",
 		});
 	});
 
@@ -267,11 +269,11 @@ describe("buildLiveCardView — 数字格(只收精确数)", () => {
 			}),
 		);
 		expect(view).toMatchObject({
-			online: "",
+			currentViewers: "",
 			likes: "",
 			totalViewers: "",
-			fans: "",
-			fansChanged: "",
+			followers: "",
+			followersDelta: "",
 		});
 	});
 
@@ -286,11 +288,11 @@ describe("buildLiveCardView — 数字格(只收精确数)", () => {
 			}),
 		);
 		expect(view).toMatchObject({
-			online: "",
+			currentViewers: "",
 			likes: "",
 			totalViewers: "",
-			fans: "",
-			fansChanged: "",
+			followers: "",
+			followersDelta: "",
 		});
 	});
 });
@@ -298,7 +300,8 @@ describe("buildLiveCardView — 数字格(只收精确数)", () => {
 describe("buildLiveCardView — 粉丝数变化带正负号", () => {
 	/** 验红:去掉 `countText(input.followersDelta, { signed: true })` 里的 `signed`,这条红。 */
 	it("正数加 +、负数是 -、零是 0;过万写「万」", () => {
-		const of = (followersDelta: number) => buildLiveCardView(input({ followersDelta })).fansChanged;
+		const of = (followersDelta: number) =>
+			buildLiveCardView(input({ followersDelta })).followersDelta;
 		expect(of(1_234)).toBe("+1234");
 		expect(of(-35)).toBe("-35");
 		expect(of(0)).toBe("0");
@@ -308,8 +311,8 @@ describe("buildLiveCardView — 粉丝数变化带正负号", () => {
 
 	it("别的数字格不带 +", () => {
 		expect(buildLiveCardView(input({ currentViewers: 1_234, followers: 1_234 }))).toMatchObject({
-			online: "1234",
-			fans: "1234",
+			currentViewers: "1234",
+			followers: "1234",
 		});
 	});
 });

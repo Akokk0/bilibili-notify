@@ -17,7 +17,7 @@
  * 推送的纯文字消息不受此限(那边由 IM 客户端画)。
  */
 
-export type RoastCardUp = {
+export type RoastCardCreator = {
 	name: string;
 	/**
 	 * 头像地址(ADR-0020 决策 15):B 站订阅是 CDN 图链(渲染前内联成 data URL);拓展订阅是服务端从图库读好、
@@ -31,15 +31,15 @@ export type RoastCardUp = {
 export type RoastBoardCardProps = {
 	/** 统计窗口天数。必须标在卡上:同一份榜单在 7 日和 30 日下讲的不是一回事。 */
 	days: number;
-	pigeon: RoastCardUp & { reason: string };
-	diligent: RoastCardUp & { reason: string };
-	roast: Array<RoastCardUp & { comment: string }>;
-	scores: Array<RoastCardUp & { score: number }>;
+	pigeon: RoastCardCreator & { reason: string };
+	diligent: RoastCardCreator & { reason: string };
+	roast: Array<RoastCardCreator & { comment: string }>;
+	scores: Array<RoastCardCreator & { score: number }>;
 };
 
 export type RoastSoloCardProps = {
 	days: number;
-	up: RoastCardUp;
+	creator: RoastCardCreator;
 	verdict: string;
 	score: number;
 	highlights: Array<{ label: string; comment: string }>;

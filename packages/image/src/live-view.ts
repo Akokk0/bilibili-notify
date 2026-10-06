@@ -120,18 +120,18 @@ export function buildLiveCardView(
 	const avatar = input.creator.avatar;
 	return {
 		status: input.status,
-		username: input.creator.name,
-		userface: (avatar !== undefined ? imageUrl?.(avatar) : undefined) || "",
+		creatorName: input.creator.name,
+		creatorAvatarUrl: (avatar !== undefined ? imageUrl?.(avatar) : undefined) || "",
 		title: input.title ?? "",
-		area: input.category ?? "",
+		category: input.category ?? "",
 		description: input.description ?? "",
 		cover: cover || LIVE_COVER_PLACEHOLDER,
 		hasCover: cover !== "",
 		time: liveTimeText(input.status, input.startedAt),
-		online: countText(input.currentViewers),
+		currentViewers: countText(input.currentViewers),
 		likes: countText(input.likes),
 		totalViewers: countText(input.totalViewers),
-		fans: countText(input.followers),
-		fansChanged: countText(input.followersDelta, { signed: true }),
+		followers: countText(input.followers),
+		followersDelta: countText(input.followersDelta, { signed: true }),
 	};
 }

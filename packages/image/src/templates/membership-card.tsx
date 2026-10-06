@@ -39,15 +39,15 @@ export type MembershipCardInput = {
  * 块与皮肤契约吃的那一份:**全是排好的文字 / 地址**,缺的格子是空串(`rank` 是 0)。由 `buildMembershipCardView` 从
  * {@link MembershipCardInput} 算出来;预览的示例数据与卡片基线的夹具直接写它。
  *
- * 主播那两格(`masterName` / `masterAvatarUrl`,皮肤字段 `master.name` / `master.face`)的名字不动,留给 ㉔。
+ * 主播那两格(`creatorName` / `creatorAvatarUrl`,皮肤字段 `creator.name` / `creator.avatar`)与观众那两格同一套叫法(㉔b)。
  */
 export type MembershipCardView = {
 	viewerName: string;
 	/** 观众头像的可画地址;没有就是空串(头像块整块收起)。 */
 	viewerAvatarUrl: string;
-	masterName: string;
+	creatorName: string;
 	/** 主播头像的可画地址;没有就是空串(主播胶囊里不画小头像)。 */
-	masterAvatarUrl: string;
+	creatorAvatarUrl: string;
 	tierName: string;
 	/** 档位,从 1 起、1 最低;没有 rank 的档是 0(`rank` 本身从 1 起,所以 0 不会与真档混淆)。 */
 	rank: number;

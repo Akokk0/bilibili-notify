@@ -436,7 +436,7 @@ function BlockCatalogue({
 							自定义块
 						</Btn>
 						<span className="text-bn-2xs text-bn-text-tertiary">
-							一段自己写的 HTML,字段用 {"{up.name}"} 这样的占位符引。
+							一段自己写的 HTML,字段用 {"{creator.name}"} 这样的占位符引。
 						</span>
 					</div>
 				</div>

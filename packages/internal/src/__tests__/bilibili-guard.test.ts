@@ -91,7 +91,7 @@ describe("BILIBILI_GUARD_PROGRAM —— 徽章(今天那三条官方图链,逐�
 });
 
 describe("BILIBILI_GUARD_PROGRAM —— 宣告语", () => {
-	// 期望值是 ㉓a 钉在出图器里的那三句(`blocks/guard.tsx` 的 `GUARD_DESC`)的字面值:引号是半角双引号,
+	// 期望值是 ㉓a 钉在出图器里的那三句(`blocks/membership.tsx` 的 `GUARD_DESC`)的字面值:引号是半角双引号,
 	// 换行是真换行,只有舰长那句带「号」。拿它们比,才能证明搬到档位表以后一个字没变。
 	it.each([
 		[3, '"示例观众号"加入\n"示例主播"大航海舰队！'],

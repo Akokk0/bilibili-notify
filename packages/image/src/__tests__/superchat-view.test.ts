@@ -6,7 +6,7 @@
 import type { ImageRef } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { buildSuperchatCardView } from "../superchat-view";
-import type { SuperchatCardInput } from "../templates/sc-card";
+import type { SuperchatCardInput } from "../templates/superchat-card";
 
 function input(over: Partial<SuperchatCardInput> = {}): SuperchatCardInput {
 	return {
@@ -23,7 +23,7 @@ describe("buildSuperchatCardView", () => {
 	it("名字、留言原样;金额排成字(formatAmount)、数字另给", () => {
 		const view = buildSuperchatCardView(input({ amount: 30.5, currency: "USD" }));
 		expect(view.viewerName).toBe("观众");
-		expect(view.masterName).toBe("主播");
+		expect(view.creatorName).toBe("主播");
 		expect(view.text).toBe("加油");
 		expect(view.amount).toBe("US$30.5");
 		expect(view.amountValue).toBe(30.5);
@@ -97,7 +97,7 @@ describe("buildSuperchatCardView", () => {
 				{ imageUrl },
 			);
 			expect(view.viewerAvatarUrl).toBe("data:viewer");
-			expect(view.masterAvatarUrl).toBe("data:master");
+			expect(view.creatorAvatarUrl).toBe("data:master");
 		});
 
 		// 验红:把 `viewerAvatarUrl` 那一句的 `|| ""` 去掉,观众头像「没给」那一行红(是 undefined 不是空串)。
@@ -111,11 +111,11 @@ describe("buildSuperchatCardView", () => {
 					opts,
 				);
 				expect(view.viewerAvatarUrl).toBe("");
-				expect(view.masterAvatarUrl).toBeUndefined();
+				expect(view.creatorAvatarUrl).toBeUndefined();
 			}
 			const bare = buildSuperchatCardView(input());
 			expect(bare.viewerAvatarUrl).toBe("");
-			expect(bare.masterAvatarUrl).toBeUndefined();
+			expect(bare.creatorAvatarUrl).toBeUndefined();
 		});
 	});
 });

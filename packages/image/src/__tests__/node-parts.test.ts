@@ -14,7 +14,7 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
-import { buildGallery, type GalleryImage } from "../templates/dynamic-content";
+import { buildGallery, type GalleryImage } from "../templates/post-content";
 
 async function htmlOf(v: VNode | null): Promise<string> {
 	if (!v) throw new Error("零件回了 null");

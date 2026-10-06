@@ -36,7 +36,7 @@ export type LiveCardInput = {
 	status: LiveCardStatus;
 	/**
 	 * 卡上的主播。`avatar` 是图库引用,**选填,没有(或引用解析不到)就不画头像** —— 头像块整块收起,
-	 * 皮肤契约的 `up.face` 是空串。
+	 * 皮肤契约的 `creator.avatar` 是空串。
 	 *
 	 * B 站这条路不给:`Creator.avatar` 只收图库引用,B 站的头像是远端地址,要到 3a 才存进图库
 	 * (ADR-0021 决策 24 下 2026-10-05 的 🔗,照决策 22 下作品卡的先例)。拓展直播自己带着头像,照旧画。
@@ -69,7 +69,7 @@ export type LiveCardInput = {
 	followers?: number;
 	/**
 	 * 本场粉丝数变化。**默认卡不画**(决策 76,它进下播文案),皮肤契约照给
-	 * (`stats.fansChanged`),自己做皮肤的人想画就能画。数字排成带正负号的写法。
+	 * (`stats.followersDelta`),自己做皮肤的人想画就能画。数字排成带正负号的写法。
 	 */
 	followersDelta?: number;
 };
@@ -80,11 +80,11 @@ export type LiveCardInput = {
  */
 export type LiveCardView = {
 	status: LiveCardStatus;
-	username: string;
+	creatorName: string;
 	/** 头像地址;空串 = 没有头像,头像块整块收起(见 {@link LiveCardInput.creator})。 */
-	userface: string;
+	creatorAvatarUrl: string;
 	title: string;
-	area: string;
+	category: string;
 	/** 纯文本。 */
 	description: string;
 	/**
@@ -96,9 +96,9 @@ export type LiveCardView = {
 	hasCover: boolean;
 	/** 「开播时间：…」/「直播时长：…」/「未开播」那一句。 */
 	time: string;
-	online: string;
+	currentViewers: string;
 	likes: string;
 	totalViewers: string;
-	fans: string;
-	fansChanged: string;
+	followers: string;
+	followersDelta: string;
 };

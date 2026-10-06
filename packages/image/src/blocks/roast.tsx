@@ -33,7 +33,11 @@
  */
 
 import { SVG_CHART_BARS, SVG_FEATHER, SVG_TROPHY } from "../icons";
-import type { RoastBoardCardProps, RoastCardUp, RoastSoloCardProps } from "../templates/roast-card";
+import type {
+	RoastBoardCardProps,
+	RoastCardCreator,
+	RoastSoloCardProps,
+} from "../templates/roast-card";
 import type { BlockRenderer } from "./types";
 
 const INK = "#18191C";
@@ -45,11 +49,16 @@ function barWidth(score: number): string {
 }
 
 /** 头像:有图用图,没图退首字母圆牌。展开成码点数组,免得 emoji 名字被劈成半个代理对。 */
-function UpAvatar(p: { up: RoastCardUp; size: number }) {
+function CreatorAvatar(p: { creator: RoastCardCreator; size: number }) {
 	const box = { width: `${p.size}px`, height: `${p.size}px` };
-	if (p.up.avatar) {
+	if (p.creator.avatar) {
 		return (
-			<img class="rounded-full object-cover shrink-0" style={box} src={p.up.avatar} alt="头像" />
+			<img
+				class="rounded-full object-cover shrink-0"
+				style={box}
+				src={p.creator.avatar}
+				alt="头像"
+			/>
 		);
 	}
 	return (
@@ -57,11 +66,11 @@ function UpAvatar(p: { up: RoastCardUp; size: number }) {
 			class="flex shrink-0 items-center justify-center rounded-full font-bold text-white [background:var(--bn-row-color)]"
 			style={{
 				...box,
-				"--bn-row-color": p.up.color,
+				"--bn-row-color": p.creator.color,
 				fontSize: `${Math.round(p.size * 0.44)}px`,
 			}}
 		>
-			{[...p.up.name][0] ?? "?"}
+			{[...p.creator.name][0] ?? "?"}
 		</div>
 	);
 }
@@ -82,15 +91,15 @@ function Divider() {
  * 单人卡只有一行,没有对齐对象 —— 定宽只会白白把名字截成「极客湾Geeker…」,
  * 所以传 `autoName` 让它按内容撑开;再用 max-width 兜底,免得超长名把条挤没。
  */
-function ScoreRow(p: { up: RoastCardUp; score: number; autoName?: boolean }) {
+function ScoreRow(p: { creator: RoastCardCreator; score: number; autoName?: boolean }) {
 	return (
 		<div class="flex items-center gap-[8px]">
 			<span
 				class={`${p.autoName ? "max-w-[46%]" : "w-[120px]"} shrink-0 truncate text-[12px] font-semibold [color:var(--bn-ink)]`}
 				style={{ "--bn-ink": INK }}
-				title={p.up.name}
+				title={p.creator.name}
 			>
-				{p.up.name}
+				{p.creator.name}
 			</span>
 			<div
 				class="h-[10px] flex-1 overflow-hidden rounded-full [background:var(--bn-track-bg)]"
@@ -98,7 +107,7 @@ function ScoreRow(p: { up: RoastCardUp; score: number; autoName?: boolean }) {
 			>
 				<div
 					class="h-full rounded-full [background:var(--bn-row-color)]"
-					style={{ width: barWidth(p.score), "--bn-row-color": p.up.color }}
+					style={{ width: barWidth(p.score), "--bn-row-color": p.creator.color }}
 				/>
 			</div>
 			<span
@@ -132,7 +141,7 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 					<span>{label}</span>
 				</div>
 				<div class="mb-[6px] flex items-center gap-[8px]">
-					<UpAvatar up={who} size={26} />
+					<CreatorAvatar creator={who} size={26} />
 					<span
 						class="truncate text-[14px] font-bold [color:var(--bn-ink)]"
 						style={{ "--bn-ink": INK }}
@@ -220,7 +229,7 @@ export const ROAST_BOARD_BLOCKS: Record<string, BlockRenderer<RoastBoardCardProp
 								{[...p.scores]
 									.sort((a, b) => b.score - a.score)
 									.map((s) => (
-										<ScoreRow up={s} score={s.score} />
+										<ScoreRow creator={s} score={s.score} />
 									))}
 							</div>
 						</div>
@@ -236,13 +245,13 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>
 	body: (p) => (
 		<>
 			<div class="flex items-center gap-[14px] px-[16px] pt-[14px] pb-[11px]">
-				<UpAvatar up={p.up} size={40} />
+				<CreatorAvatar creator={p.creator} size={40} />
 				<div class="flex min-w-0 flex-col gap-[4px]">
 					<span
 						class="truncate text-[16px] font-bold leading-none [color:var(--bn-ink)]"
 						style={{ "--bn-ink": INK }}
 					>
-						{p.up.name}
+						{p.creator.name}
 					</span>
 					<span
 						class="text-[11.5px] [color:var(--bn-ink-soft)]"
@@ -271,7 +280,7 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>
 				>
 					综合勤奋度 · 0–100
 				</div>
-				<ScoreRow up={p.up} score={p.score} autoName />
+				<ScoreRow creator={p.creator} score={p.score} autoName />
 			</div>
 
 			{p.highlights.length > 0 && (
@@ -286,7 +295,7 @@ export const ROAST_SOLO_BLOCKS: Record<string, BlockRenderer<RoastSoloCardProps>
 							<div class="flex items-start gap-[8px] text-[12px] leading-[1.6]">
 								<span
 									class="mt-[1px] shrink-0 rounded-[5px] px-[7px] py-[2px] text-[11px] font-bold text-white [background:var(--bn-row-color)]"
-									style={{ "--bn-row-color": p.up.color }}
+									style={{ "--bn-row-color": p.creator.color }}
 								>
 									{hl.label}
 								</span>

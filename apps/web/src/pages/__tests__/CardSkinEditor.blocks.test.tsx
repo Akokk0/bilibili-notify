@@ -154,12 +154,15 @@ describe("编辑器 · 增删块的接线", () => {
 		const catalogue = screen.getByRole("group", { name: "可以添加的块" });
 		fireEvent.click(within(catalogue).getByRole("button", { name: /自定义块/ }));
 		fireEvent.change(screen.getByLabelText("这个块的 HTML"), {
-			target: { value: "<div>{up.name}</div>" },
+			target: { value: "<div>{creator.name}</div>" },
 		});
 		save();
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
-		expect(savedBlocks().at(-1)).toMatchObject({ kind: "custom", html: "<div>{up.name}</div>" });
+		expect(savedBlocks().at(-1)).toMatchObject({
+			kind: "custom",
+			html: "<div>{creator.name}</div>",
+		});
 	});
 
 	it("接管一种卡:抄出厂那份,存出去的清单里真的多了这张卡", async () => {

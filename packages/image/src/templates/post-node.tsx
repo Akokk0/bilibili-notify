@@ -1,15 +1,15 @@
 /** @jsxImportSource vue */
 
 /**
- * `Post` → 动态卡的节点(`DynamicNode`)(㉑c 第 5 步)。
+ * `Post` → 作品卡的节点(`PostNode`)(㉑c 第 5 步)。
  *
  * 出图器只认中立的 `Post`,不认识任何平台的原始字段。这一层把一份作品造成卡片块吃的呈现态:皮肤契约要的
- * 那几格(动态类型、图廊张数 / 首图、转发内层那一份)都记在节点上。B 站动态与拓展作品都是先翻成 `Post`
+ * 那几格(图廊张数 / 首图、转发内层那一份)都记在节点上。B 站动态与拓展作品都是先翻成 `Post`
  * 再走这一层,出图器内部只剩这一种入口。
  *
- * 几条「出卡时照旧拼回去」的约定(形状不逼的字节一个都不动,留给 ㉔):
- * - 发布时间与 `label` 在模型里是分开的:外层卡拼成「时间 · 投稿了视频」,被转发的内层卡把 `label` 接在作者名后;
- * - `dynamic.type`(皮肤契约的 `DYNAMIC_TYPE_*`)从形状推,见 {@link dynamicTypeOf};
+ * 几条「出卡时照旧拼回去」的约定:
+ * - 发布时间与 `label` 在模型里是分开的,在节点上也是分开的(`time` 只有时间、`label` 单独一格,内外层卡都填);
+ *   外层卡拼成「时间 · 投稿了视频」、被转发的内层卡把 `label` 接在作者名后,那是默认皮肤的块的事(见 `blocks/post.tsx`);
  * - `title` 与 `article` 是两种画法:专栏(有 `article`)走 innerHTML 那条五行截断的路,`title` 是带标题的
  *   普通作品,画在正文上方,排版照普通作品;
  * - `notice` 画成紧跟正文之后的一句 `<p>`,正文没有字时只剩这句 `<p>`;
@@ -26,8 +26,8 @@ import type { VNode } from "vue";
 import { type ImageUrlOf, renderRichText } from "../rich-text";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { attachmentNode } from "./attachment";
-import type { DynamicNode, DynamicVideo, GalleryImage } from "./dynamic-content";
 import { pictureUrl } from "./picture-url";
+import type { GalleryImage, PostNode, PostNodeVideo } from "./post-content";
 
 /** 注入的格式化器:时间按机器本地时区排,由出图器给(行为不变)。 */
 export interface PostNodeFormatters {
@@ -37,24 +37,6 @@ export interface PostNodeFormatters {
 	 * 图库引用 → 可画的地址(调用方事先把这张作品里用到的引用都解析好,这里同步查)。不给或解析不到的引用画占位。
 	 */
 	imageUrl?: ImageUrlOf;
-}
-
-const DYNAMIC_TYPE_AV = "DYNAMIC_TYPE_AV";
-const DYNAMIC_TYPE_FORWARD = "DYNAMIC_TYPE_FORWARD";
-const DYNAMIC_TYPE_ARTICLE = "DYNAMIC_TYPE_ARTICLE";
-const DYNAMIC_TYPE_DRAW = "DYNAMIC_TYPE_DRAW";
-const DYNAMIC_TYPE_WORD = "DYNAMIC_TYPE_WORD";
-
-/**
- * 皮肤契约的 `dynamic.type` 从形状推:有视频 → AV,有被转发的原作品 → FORWARD,专栏 → ARTICLE,有图集 → DRAW,
- * 其余 → WORD。「暂时无法渲染」那一族(收藏夹、番剧、直播预约…)的原值在 `Post` 里不存在,按其余算(默认皮肤不引用它)。
- */
-function dynamicTypeOf(post: Post): string {
-	if (post.video) return DYNAMIC_TYPE_AV;
-	if (post.repost) return DYNAMIC_TYPE_FORWARD;
-	if (post.article) return DYNAMIC_TYPE_ARTICLE;
-	if ((post.images?.length ?? 0) > 0) return DYNAMIC_TYPE_DRAW;
-	return DYNAMIC_TYPE_WORD;
 }
 
 /**
@@ -77,27 +59,27 @@ function galleryOf(
 function videoOf(
 	video: NonNullable<Post["video"]>,
 	imageUrl: ImageUrlOf | undefined,
-): DynamicVideo {
+): PostNodeVideo {
 	return {
 		cover: pictureUrl(video.cover, imageUrl),
 		duration: video.durationSec === undefined ? "" : formatClock(video.durationSec),
 		title: video.title,
-		desc: video.description,
+		description: video.description,
 		...(video.views === undefined ? {} : { views: formatCount(video.views) }),
 		...(video.danmaku === undefined ? {} : { danmaku: formatCount(video.danmaku) }),
 	};
 }
 
 /** 互动数:某一项空串 = 没有这一项(那一格连图标一起不画);三项都没有就整个没有。 */
-function statsOf(stats: Post["stats"]): DynamicNode["stats"] {
+function statsOf(stats: Post["stats"]): PostNode["stats"] {
 	if (!stats) return undefined;
 	const cell = (n: number | undefined) => (n === undefined ? "" : formatCount(n));
 	const out = {
-		forward: cell(stats.shares),
-		comment: cell(stats.comments),
-		like: cell(stats.likes),
+		shares: cell(stats.shares),
+		comments: cell(stats.comments),
+		likes: cell(stats.likes),
 	};
-	return out.forward || out.comment || out.like ? out : undefined;
+	return out.shares || out.comments || out.likes ? out : undefined;
 }
 
 /**
@@ -146,35 +128,35 @@ function textOf(post: Post, imageUrl: ImageUrlOf | undefined): VNode | null {
 	);
 }
 
-function build(post: Post, fmt: PostNodeFormatters, isRepost: boolean): DynamicNode {
+function build(post: Post, fmt: PostNodeFormatters, isRepost: boolean): PostNode {
 	const seconds = Math.floor(Date.parse(post.publishedAt) / 1000);
 	const time = fmt.time(seconds);
-	const node: DynamicNode = {
-		upName: post.creator.name,
-		upIsVip: post.creator.isPremium === true,
-		// 外层卡:类型标签接在发布时间后;被转发的内层卡:接在作者名后(`headerLabel`)。
-		pubTime: !isRepost && post.label ? `${time} · ${post.label}` : time,
-		type: dynamicTypeOf(post),
+	const node: PostNode = {
+		creatorName: post.creator.name,
+		creatorIsPremium: post.creator.isPremium === true,
+		// 时间只是时间;动作标签单独一格,内外层卡都填(画在哪由块定)。
+		time,
 		topic: post.topic || undefined,
-		additional: post.attachment ? attachmentNode(post.attachment, fmt.imageUrl) : null,
+		attachment: post.attachment ? attachmentNode(post.attachment, fmt.imageUrl) : null,
 		// 内层不展示互动数(版式上 stats 块自动收起)。
 		stats: isRepost ? undefined : statsOf(post.stats),
 	};
-	if (isRepost && post.label) node.headerLabel = post.label;
+	if (post.label) node.label = post.label;
+	if (isRepost) node.isReposted = true;
 	// 头像:有引用就画(解析不到画占位,留一块空的头像位),没有引用头像块整块收起。
 	if (post.creator.avatar !== undefined) {
-		node.avatarUrl = fmt.imageUrl?.(post.creator.avatar) ?? BLOCKED_IMG_PLACEHOLDER;
+		node.creatorAvatarUrl = fmt.imageUrl?.(post.creator.avatar) ?? BLOCKED_IMG_PLACEHOLDER;
 	}
 	const text = textOf(post, fmt.imageUrl);
 	if (text) node.text = text;
 	const images = galleryOf(post.article ? post.article.images : post.images, fmt.imageUrl);
 	if (images.length > 0) node.images = images;
 	if (post.video) node.video = videoOf(post.video, fmt.imageUrl);
-	if (post.repost) node.forward = build(post.repost, fmt, true);
+	if (post.repost) node.repost = build(post.repost, fmt, true);
 	return node;
 }
 
-/** 一份 `Post` → 动态卡的节点。被转发的原作品(`repost`)递归成 `node.forward`。 */
-export function nodeFromPost(post: Post, fmt: PostNodeFormatters): DynamicNode {
+/** 一份 `Post` → 作品卡的节点。被转发的原作品(`repost`)递归成 `node.repost`。 */
+export function nodeFromPost(post: Post, fmt: PostNodeFormatters): PostNode {
 	return build(post, fmt, false);
 }

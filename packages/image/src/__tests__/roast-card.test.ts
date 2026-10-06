@@ -43,7 +43,7 @@ function boardProps(over: Partial<RoastBoardCardProps> = {}): RoastBoardCardProp
 function soloProps(over: Partial<RoastSoloCardProps> = {}): RoastSoloCardProps {
 	return {
 		days: 30,
-		up: up("机智的党妹"),
+		creator: up("机智的党妹"),
 		verdict: "一个月就发一条,鸽子精本精",
 		score: 32,
 		highlights: [{ label: "涨粉", comment: "掉了两万" }],
@@ -167,7 +167,7 @@ describe("单人锐评卡", () => {
 	 */
 	it("名字按内容撑开而不是塞进定宽列 —— 定宽会把长 ID 截成「极客湾Geeker…」", async () => {
 		// 单人卡的评分条只有一行,没有对齐对象,定宽纯属白白截断。
-		const html = await renderSolo({ up: up("极客湾Geekerwan") });
+		const html = await renderSolo({ creator: up("极客湾Geekerwan") });
 		expect(html).toContain("max-w-[46%]");
 		expect(html).not.toContain("w-[120px]");
 		// 榜单卡多行并列,定宽是刻意的:名字长短不一会把进度条起点推得参差不齐。

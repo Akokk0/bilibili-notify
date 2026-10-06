@@ -13,11 +13,11 @@
 
 import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_KINDS } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
-import { GUARD_BLOCKS } from "../blocks/guard";
 import { LIVE_BLOCKS } from "../blocks/live";
+import { MEMBERSHIP_BLOCKS } from "../blocks/membership";
+import { POST_BLOCKS } from "../blocks/post";
 import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
-import { SC_BLOCKS } from "../blocks/sc";
+import { SUPERCHAT_BLOCKS } from "../blocks/superchat";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 
@@ -25,9 +25,9 @@ import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 
 const TABLES: Record<string, Record<string, BlockRenderer<never>>> = {
 	live: LIVE_BLOCKS,
-	dynamic: DYNAMIC_BLOCKS,
-	sc: SC_BLOCKS,
-	guard: GUARD_BLOCKS,
+	dynamic: POST_BLOCKS,
+	sc: SUPERCHAT_BLOCKS,
+	guard: MEMBERSHIP_BLOCKS,
 	roastBoard: ROAST_BOARD_BLOCKS,
 	roastSolo: ROAST_SOLO_BLOCKS,
 	wordcloud: WORDCLOUD_BLOCKS,

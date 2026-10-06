@@ -187,8 +187,8 @@ describe("buildRoastPayload — 卡上的人", () => {
 		const out = await buildRoastPayload(deps, { kind: "solo", result: solo, days: 7 });
 		expect(out.mode).toBe("image");
 		const up = (
-			generateRoastSoloCard.mock.calls[0]?.[0] as { up: Record<string, unknown> } | undefined
-		)?.up;
+			generateRoastSoloCard.mock.calls[0]?.[0] as { creator: Record<string, unknown> } | undefined
+		)?.creator;
 		expect(up?.avatar).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
 		expect(up?.name).toBe("抖音乙");
 		expect(up?.color).toBe(upColor({ extensionId: "douyin", externalId: "12345" }));
@@ -230,8 +230,8 @@ describe("buildRoastPayload — 卡上的人", () => {
 			days: 7,
 		});
 		const up = (
-			generateRoastSoloCard.mock.calls[0]?.[0] as { up: Record<string, unknown> } | undefined
-		)?.up;
+			generateRoastSoloCard.mock.calls[0]?.[0] as { creator: Record<string, unknown> } | undefined
+		)?.creator;
 		expect(up?.name).toBe("抖音乙");
 		expect(up?.avatar).toBeUndefined();
 	});
@@ -245,8 +245,8 @@ describe("buildRoastPayload — 卡上的人", () => {
 		});
 		expect(out.mode).toBe("image");
 		const up = (
-			generateRoastSoloCard.mock.calls[0]?.[0] as { up: Record<string, unknown> } | undefined
-		)?.up;
+			generateRoastSoloCard.mock.calls[0]?.[0] as { creator: Record<string, unknown> } | undefined
+		)?.creator;
 		expect(up).toBeDefined();
 		expect(up?.avatar).toBeUndefined();
 	});

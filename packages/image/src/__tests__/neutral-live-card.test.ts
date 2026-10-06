@@ -7,12 +7,12 @@
  * 1. 默认块在每种状态下画出的文字 —— 下播卡是「点赞 + 累计观看人数」,粉丝数变化不上默认卡
  *    (决策 76);没有的格子那一行不画(只收精确数,缺了就缺键);
  * 2. 卡上那句时间由 ISO 开播时刻算(北京时间),读不懂当没有;数字排成「1.2万」,粉丝数变化带正负号;
- * 3. 皮肤契约的直播取值(下播时 `stats.popularity` = 点赞、`stats.fans` = 累计观看,
- *    `stats.fansChanged` 有就给);
+ * 3. 皮肤契约的直播取值(下播时 `stats.likes` = 点赞、`stats.totalViewers` = 累计观看,
+ *    `stats.followersDelta` 有就给);
  * 4. 封面:引用解析到画解析结果、解析不到当成没有、只有 `url` 原样用、两样都没有画占位;自定义直播封面盖在
  *    输入的封面上;契约的 `live.cover` 永远画得出来、`live.hasCover` 如实说;
  * 5. 头像:`creator.avatar` 是引用,解析到了画,没有或解析不到整块收起(B 站那条到 3a 之前不给,㉒b),
- *    契约的 `up.face` 随之是地址 / 空串。
+ *    契约的 `creator.avatar` 随之是地址 / 空串。
  */
 
 import type { CardSkinManifest, ImageRef, ServiceContext } from "@bilibili-notify/internal";
@@ -256,7 +256,7 @@ const PROBE: CardSkinManifest = {
 				{
 					id: "probe",
 					kind: "custom",
-					html: "<div>探针[{stats.popularity}|{stats.fans}|{stats.fansChanged}|{live.isStreaming}|{live.isEnded}]</div>",
+					html: "<div>探针[{stats.currentViewers}|{stats.likes}|{stats.followers}|{stats.totalViewers}|{stats.followersDelta}|{live.isStreaming}|{live.isEnded}]</div>",
 					grid: { row: 1, column: 1, span: 12 },
 				},
 			],
@@ -420,13 +420,13 @@ describe("generateLiveCard — 皮肤契约的封面", () => {
 });
 
 describe("generateLiveCard — 皮肤契约的直播取值", () => {
-	it("下播:popularity = 点赞、fans = 累计观看,粉丝数变化照给", async () => {
-		expect(await contract(input({ status: "end" }))).toBe("2.0万|3.1万|+1234|false|true");
+	it("下播:likes = 点赞、totalViewers = 累计观看(在看人数与粉丝数为空),粉丝数变化照给", async () => {
+		expect(await contract(input({ status: "end" }))).toBe("|2.0万||3.1万|+1234|false|true");
 	});
 
-	it("开播 / 直播中:popularity = 人气、fans = 当前粉丝数", async () => {
-		expect(await contract(input({ status: "start" }))).toBe("1.2万|8.9万|+1234|true|false");
-		expect(await contract(input({ status: "streaming" }))).toBe("1.2万|8.9万|+1234|true|false");
+	it("开播 / 直播中:currentViewers = 在看人数、followers = 当前粉丝数(点赞与累计观看为空)", async () => {
+		expect(await contract(input({ status: "start" }))).toBe("1.2万||8.9万||+1234|true|false");
+		expect(await contract(input({ status: "streaming" }))).toBe("1.2万||8.9万||+1234|true|false");
 	});
 
 	it("粉丝数变化带正负号,过万写成「万」", async () => {
@@ -436,7 +436,7 @@ describe("generateLiveCard — 皮肤契约的直播取值", () => {
 	});
 });
 
-/** 头像探针:一个自定义块把 `up.face` 原样印出来。 */
+/** 头像探针:一个自定义块把 `creator.avatar` 原样印出来。 */
 const FACE_PROBE: CardSkinManifest = {
 	...DEFAULT_CARD_SKIN,
 	cards: {
@@ -447,7 +447,7 @@ const FACE_PROBE: CardSkinManifest = {
 				{
 					id: "probe",
 					kind: "custom",
-					html: "<div>头像[{up.face}]</div>",
+					html: "<div>头像[{creator.avatar}]</div>",
 					grid: { row: 1, column: 1, span: 12 },
 				},
 			],
@@ -504,8 +504,8 @@ describe("generateLiveCard — 头像", () => {
 		}
 	});
 
-	/** 皮肤契约的 `up.face` 字段留着(字段表只增不删):有头像是地址,没有是空串。 */
-	it("皮肤契约:up.face 有头像是地址、没有是空串", async () => {
+	/** 皮肤契约的 `creator.avatar` 字段留着(字段表只增不删):有头像是地址,没有是空串。 */
+	it("皮肤契约:creator.avatar 有头像是地址、没有是空串", async () => {
 		const upFace = async (i: LiveCardInput): Promise<string> => {
 			const { renderer, captured } = makeRenderer({
 				resolveCardSkin: (id) => (id === "face-probe" ? FACE_PROBE : undefined),

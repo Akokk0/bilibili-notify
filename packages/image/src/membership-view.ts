@@ -10,7 +10,7 @@ import { interpolate } from "@bilibili-notify/internal";
 import { coverUrlOf } from "./live-view";
 import type { ImageUrlOf } from "./rich-text";
 import { DEFAULT_TIER_COLORS } from "./styles";
-import type { MembershipCardInput, MembershipCardView } from "./templates/guard-card";
+import type { MembershipCardInput, MembershipCardView } from "./templates/membership-card";
 
 export interface MembershipCardViewOptions {
 	/** 图库引用 → 可画的地址。出图器事先把输入里用到的引用都解析好,这里同步查;不给 = 所有引用都解析不到。 */
@@ -45,12 +45,12 @@ export function buildMembershipCardView(
 ): MembershipCardView {
 	const { tier } = input;
 	const viewerAvatar = input.viewer.avatar;
-	const masterAvatar = input.creator.avatar;
+	const creatorAvatar = input.creator.avatar;
 	return {
 		viewerName: input.viewer.name,
 		viewerAvatarUrl: (viewerAvatar !== undefined ? imageUrl?.(viewerAvatar) : undefined) || "",
-		masterName: input.creator.name,
-		masterAvatarUrl: (masterAvatar !== undefined ? imageUrl?.(masterAvatar) : undefined) || "",
+		creatorName: input.creator.name,
+		creatorAvatarUrl: (creatorAvatar !== undefined ? imageUrl?.(creatorAvatar) : undefined) || "",
 		tierName: tier.name,
 		rank: typeof tier.rank === "number" && Number.isFinite(tier.rank) ? tier.rank : 0,
 		iconUrl: coverUrlOf(tier.icon, imageUrl) || "",

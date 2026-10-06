@@ -534,10 +534,10 @@ describe("检查器 · 自定义块的内容", () => {
 		addCustom();
 
 		fireEvent.change(screen.getByLabelText("这个块的 HTML"), {
-			target: { value: "<div>{up.name}</div>" },
+			target: { value: "<div>{creator.name}</div>" },
 		});
 
-		expect(lastHtml(lastDraft(onDraft))).toBe("<div>{up.name}</div>");
+		expect(lastHtml(lastDraft(onDraft))).toBe("<div>{creator.name}</div>");
 	});
 
 	it("字段点一下补进去;图片字段补的是一整个 img —— 占位符只能坐在 src 上", () => {
@@ -546,11 +546,11 @@ describe("检查器 · 自定义块的内容", () => {
 		addCustom();
 		const fields = screen.getByLabelText("这种卡能引用的字段");
 
-		fireEvent.click(within(fields).getByText("主播名"));
-		expect(lastHtml(lastDraft(onDraft))).toContain("{up.name}");
+		fireEvent.click(within(fields).getByText("创作者名"));
+		expect(lastHtml(lastDraft(onDraft))).toContain("{creator.name}");
 
-		fireEvent.click(within(fields).getByText("主播头像"));
-		expect(lastHtml(lastDraft(onDraft))).toContain('<img src="{up.face}">');
+		fireEvent.click(within(fields).getByText("创作者头像"));
+		expect(lastHtml(lastDraft(onDraft))).toContain('<img src="{creator.avatar}">');
 	});
 
 	it("清空内容当场说一句 —— 装包门那头判的是「清洗后什么都不剩」", () => {

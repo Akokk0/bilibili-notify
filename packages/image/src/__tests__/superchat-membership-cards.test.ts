@@ -17,8 +17,8 @@ import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ImageRenderer, type ImageRendererOptions } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
-import type { MembershipCardInput } from "../templates/guard-card";
-import type { SuperchatCardInput } from "../templates/sc-card";
+import type { MembershipCardInput } from "../templates/membership-card";
+import type { SuperchatCardInput } from "../templates/superchat-card";
 
 // 卡里的头像 / 徽章都是远端地址,渲染器会在 Node 这边预取。测试不许真去拉,一律 404。
 beforeEach(() => {

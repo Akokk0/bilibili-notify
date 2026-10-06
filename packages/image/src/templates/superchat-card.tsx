@@ -34,15 +34,15 @@ export type SuperchatCardInput = {
  * 块与皮肤契约吃的那一份:**全是排好的文字 / 地址**。由 `buildSuperchatCardView` 从 {@link SuperchatCardInput}
  * 算出来;预览的示例数据与卡片基线的夹具直接写它。
  *
- * 主播那两格(`masterName` / `masterAvatarUrl`,皮肤字段 `master.name` / `master.face`)的名字不动,留给 ㉔。
+ * 主播那两格(`creatorName` / `creatorAvatarUrl`,皮肤字段 `creator.name` / `creator.avatar`)与观众那两格同一套叫法(㉔b)。
  */
 export type SuperchatCardView = {
 	viewerName: string;
 	/** 观众头像的可画地址;没有就是空串(头像块整块收起)。 */
 	viewerAvatarUrl: string;
-	masterName: string;
+	creatorName: string;
 	/** 主播头像的可画地址;没有就不给(「SC to」那一行不画小头像)。 */
-	masterAvatarUrl?: string;
+	creatorAvatarUrl?: string;
 	text: string;
 	/** 排好版的金额(「¥30」「US$30」),`formatAmount` 出的。 */
 	amount: string;

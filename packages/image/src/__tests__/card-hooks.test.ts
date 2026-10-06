@@ -31,20 +31,20 @@ import { renderToString } from "@vue/server-renderer";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
-import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
-import { GUARD_BLOCKS } from "../blocks/guard";
 import { LIVE_BLOCKS } from "../blocks/live";
+import { MEMBERSHIP_BLOCKS } from "../blocks/membership";
+import { POST_BLOCKS } from "../blocks/post";
 import { ROAST_BOARD_BLOCKS, ROAST_SOLO_BLOCKS } from "../blocks/roast";
-import { SC_BLOCKS } from "../blocks/sc";
+import { SUPERCHAT_BLOCKS } from "../blocks/superchat";
 import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import { blockPropsOf, CARD_FIXTURES } from "./fixtures/card-fixtures";
 
 const TABLES: Record<CardSkinKind, Record<string, BlockRenderer<never>>> = {
 	live: LIVE_BLOCKS,
-	dynamic: DYNAMIC_BLOCKS,
-	sc: SC_BLOCKS,
-	guard: GUARD_BLOCKS,
+	dynamic: POST_BLOCKS,
+	sc: SUPERCHAT_BLOCKS,
+	guard: MEMBERSHIP_BLOCKS,
 	roastBoard: ROAST_BOARD_BLOCKS,
 	roastSolo: ROAST_SOLO_BLOCKS,
 	wordcloud: WORDCLOUD_BLOCKS,
@@ -87,11 +87,11 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
 /**
  * 夹具表覆盖不到、却仍然活着的路径,补的**旁路探针**(只看挂点,不进快照)。
  *
- * 动态卡的头像块:B 站这条路造的 node 到 3a 之前不带头像地址、头像块整块收起(`DynamicNode.avatarUrl`),
+ * 动态卡的头像块:B 站这条路造的 node 到 3a 之前不带头像地址、头像块整块收起(`PostNode.creatorAvatarUrl`),
  * 而夹具表里的动态卡全是 `Post` 字面量、经 `nodeFromPost` 造 node(`Post` 里没有头像地址可给),于是 `dynamic.avatar` 的挂点不再出现在任何夹具里。拓展作品那条
  * 路(`apps/server/src/runtime/extension-post-work.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
  *
- * 直播卡的头像块同理(㉒b):四份直播夹具是 B 站形状、`userface` 为空串,头像块整块收起,`live.avatar` 的挂点不再
+ * 直播卡的头像块同理(㉒b):四份直播夹具是 B 站形状、`creatorAvatarUrl` 为空串,头像块整块收起,`live.avatar` 的挂点不再
  * 出现在任何夹具里。拓展直播(`extension-live-push.ts`)照旧给头像,所以补一份带头像地址的视图。
  *
  * 醒目留言卡与会员卡的头像同理(㉓c):六份夹具是 B 站形状,观众与主播的头像格都不画,`avatar` 块与
@@ -104,19 +104,19 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			name: "(旁路探针)拓展直播形状的视图,带头像",
 			props: {
 				status: "streaming",
-				username: "某人",
-				userface: "data:image/png;base64,FACE",
+				creatorName: "某人",
+				creatorAvatarUrl: "data:image/png;base64,FACE",
 				title: "标题",
-				area: "",
+				category: "",
 				description: "",
 				cover: "data:image/png;base64,COVER",
 				hasCover: true,
 				time: "",
-				online: "",
+				currentViewers: "",
 				likes: "",
 				totalViewers: "",
-				fans: "",
-				fansChanged: "",
+				followers: "",
+				followersDelta: "",
 			},
 		},
 	],
@@ -126,8 +126,8 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			props: {
 				viewerAvatarUrl: "data:image/png;base64,FACE",
 				viewerName: "某人",
-				masterName: "某主播",
-				masterAvatarUrl: "data:image/png;base64,MASTER",
+				creatorName: "某主播",
+				creatorAvatarUrl: "data:image/png;base64,MASTER",
 				text: "加油",
 				amount: "¥30",
 				amountValue: 30,
@@ -143,8 +143,8 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			props: {
 				viewerAvatarUrl: "data:image/png;base64,FACE",
 				viewerName: "某人",
-				masterAvatarUrl: "data:image/png;base64,MASTER",
-				masterName: "某主播",
+				creatorAvatarUrl: "data:image/png;base64,MASTER",
+				creatorName: "某主播",
 				tierName: "某档",
 				rank: 1,
 				iconUrl: "data:image/png;base64,BADGE",
@@ -158,10 +158,10 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			name: "(旁路探针)拓展作品形状的 node,带头像",
 			props: {
 				node: {
-					avatarUrl: "data:image/png;base64,FACE",
-					upName: "某人",
-					upIsVip: false,
-					pubTime: "刚刚",
+					creatorAvatarUrl: "data:image/png;base64,FACE",
+					creatorName: "某人",
+					creatorIsPremium: false,
+					time: "刚刚",
 				},
 				renderForward: (): [] => [],
 			},

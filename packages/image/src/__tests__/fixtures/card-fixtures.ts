@@ -95,26 +95,26 @@ const RICH_DESCRIPTION =
  * formatCount)。
  *
  * 这四份夹具是 **B 站形状**的直播卡(简介走 `htmlToPlain`、封面是 B 站的房间封面 / 关键帧),所以
- * `userface` 是空串:B 站这条路到 3a 之前不给头像(`LiveCardInput.author`),头像块整块收起。夹具直接写
+ * `creatorAvatarUrl` 是空串:B 站这条路到 3a 之前不给头像(`LiveCardInput.author`),头像块整块收起。夹具直接写
  * 排好的视图、不经 `liveCardInputFromRoomInfo`,这一格得跟着真实产物手写。拓展直播那条路仍带头像,
  * 头像块的挂点由 `card-hooks.test.ts` 的旁路探针看着,画不画由 `neutral-live-card.test.ts` 钉着。
  */
 function liveProps(over: Partial<LiveCardView> = {}): LiveCardView {
 	return {
 		status: "streaming",
-		username: "示例主播",
-		userface: "",
+		creatorName: "示例主播",
+		creatorAvatarUrl: "",
 		title: "【4K】周年庆典特别直播，今晚不见不散！",
-		area: "虚拟主播",
+		category: "虚拟主播",
 		description: htmlToPlain(RICH_DESCRIPTION),
 		cover: USER_COVER,
 		hasCover: true,
 		time: "开播时间：2026-09-13 20:00:00",
-		online: formatCount(123_456),
+		currentViewers: formatCount(123_456),
 		likes: "",
 		totalViewers: "",
-		fans: formatCount(88_800),
-		fansChanged: "",
+		followers: formatCount(88_800),
+		followersDelta: "",
 		...over,
 	};
 }
@@ -173,8 +173,8 @@ function scProps(
 		// 夹具直接写块吃的视图,所以这两格得跟着真实产物手写成「没有」(照 ㉒b 直播卡的先例)。
 		viewerAvatarUrl: "",
 		viewerName: "示例观众",
-		masterName: "示例主播",
-		masterAvatarUrl: undefined,
+		creatorName: "示例主播",
+		creatorAvatarUrl: undefined,
 		text: "主播加油！",
 		amount: `¥${amount}`,
 		amountValue: amount,
@@ -232,17 +232,17 @@ function guardProps(
 ): Record<string, unknown> {
 	const tier = GUARD_TIER_VIEW[guardLevel];
 	const viewerName = over.viewerName ?? "示例观众";
-	const masterName = "示例主播";
+	const creatorName = "示例主播";
 	return {
 		viewerName,
 		// 同 `scProps`:B 站这条路到 3a 之前不给头像,观众与主播的头像格都不画。
 		viewerAvatarUrl: "",
-		masterAvatarUrl: "",
-		masterName,
+		creatorAvatarUrl: "",
+		creatorName,
 		tierName: tier.tierName,
 		rank: tier.rank,
 		iconUrl: GUARD_IMG[guardLevel],
-		announcement: tier.announcement(viewerName, masterName),
+		announcement: tier.announcement(viewerName, creatorName),
 		bgColor: [tier.color, tier.colorEnd],
 	};
 }
@@ -292,7 +292,7 @@ const BOARD_PROPS: RoastBoardCardProps = {
 
 const SOLO_PROPS: RoastSoloCardProps = {
 	days: 7,
-	up: roastUp("示例UP·甲", "#fb7299", "http://i0.hdslb.com/bfs/face/roast-a.jpg"),
+	creator: roastUp("示例UP·甲", "#fb7299", "http://i0.hdslb.com/bfs/face/roast-a.jpg"),
 	verdict: "这周唯一的产出是一条「在剪了」，剪了七天，还在剪。",
 	score: 32,
 	highlights: [
@@ -326,7 +326,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 			cover: "http://i0.hdslb.com/bfs/album/bn-custom-live-cover-0001.png",
 			likes: formatCount(20_133),
 			totalViewers: formatCount(31_200),
-			fansChanged: "+1.2万",
+			followersDelta: "+1.2万",
 		}),
 	},
 	{
@@ -508,8 +508,8 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 		// 这里走的是旧模板那条路,它现在的身份就是「标尺」(见 `templates/block-layout.tsx`)。
 		build: async () => ({
 			props: {
-				masterName: "示例主播",
-				masterAvatarUrl:
+				creatorName: "示例主播",
+				creatorAvatarUrl:
 					"http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
 			},
 			options: { title: "弹幕词云", font: FONT, htmlWidth: 720 },

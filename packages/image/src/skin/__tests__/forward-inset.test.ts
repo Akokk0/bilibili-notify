@@ -19,21 +19,21 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import type { DynamicCardProps } from "../../templates/dynamic-card";
+import type { PostCardView } from "../../templates/post-card";
 import { renderSkinnedCard } from "../render-skin";
 
 /** dynamic-forward 那份 props:示例转发者 转发了 示例UP 的一条视频投稿。 */
-let props: DynamicCardProps;
+let props: PostCardView;
 
 beforeAll(async () => {
 	const fixture = CARD_FIXTURES.find((f) => f.name === "dynamic-forward");
 	if (!fixture) throw new Error("夹具表里没有 dynamic-forward");
-	props = (await fixture.build()).props as unknown as DynamicCardProps;
+	props = (await fixture.build()).props as unknown as PostCardView;
 });
 
 /**
  * 下面几条拿 `name`(UP 主名)当「头部那一块」的替身:它恒有数据。从前用的是 `avatar`,而 B 站这条路
- * 造的 node 到 3a 之前不带头像地址、头像块会整块收起(见 `DynamicNode.avatarUrl`),替身就画不出来了。
+ * 造的 node 到 3a 之前不带头像地址、头像块会整块收起(见 `PostNode.avatarUrl`),替身就画不出来了。
  */
 const block = (
 	id: string,
@@ -112,7 +112,7 @@ describe("转发框里的内层卡 — 跟着皮肤走", () => {
 describe("转发框里的内层卡 — 数据各算各的", () => {
 	it("占位符读的是内层那条动态的作者,不是转发者", async () => {
 		const doc = await render([
-			customBlock("who", "<div>{up.name}</div>", 1),
+			customBlock("who", "<div>{creator.name}</div>", 1),
 			block("c", "text", 2),
 			block("f", "forward", 3),
 		]);
@@ -131,7 +131,7 @@ describe("转发框里的内层卡 — 数据各算各的", () => {
 
 		const guarded = await render([
 			block("c", "text", 1),
-			{ ...customBlock("tag", "<div>转发</div>", 2), showIf: "dynamic.isForward" } as never,
+			{ ...customBlock("tag", "<div>转发</div>", 2), showIf: "post.hasRepost" } as never,
 			block("f", "forward", 3),
 		]);
 		expect(guarded.querySelectorAll(".bn-blk-tag").length).toBe(1);

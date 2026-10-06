@@ -31,8 +31,8 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { createSSRApp } from "vue";
 import { CARD_FIXTURES } from "../../__tests__/fixtures/card-fixtures";
-import type { MembershipCardView } from "../../templates/guard-card";
 import type { LiveCardView } from "../../templates/live-card";
+import type { MembershipCardView } from "../../templates/membership-card";
 import { renderSkinnedCard } from "../render-skin";
 
 let liveProps: LiveCardView;

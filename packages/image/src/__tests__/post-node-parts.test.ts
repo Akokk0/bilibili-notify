@@ -2,8 +2,8 @@
  * 作品节点的两处结构性规矩(`nodeFromPost` 造出来的 node 与头像块)。
  *
  * 1. **头像只认 `Creator.avatar`(图库引用)**:拓展的头像存在图库里,引用经出卡器注入的解析口变成地址;B 站要到 3a
- *    才存头像,没有引用就不带头像地址,头像块整块收起(皮肤契约的 `up.face` 是空串,字段表只增不删)。头像块自己
- *    吃的是 node 上的 `avatarUrl`:有地址就画、没地址整块收起。
+ *    才存头像,没有引用就不带头像地址,头像块整块收起(皮肤契约的 `creator.avatar` 是空串,字段表只增不删)。头像块自己
+ *    吃的是 node 上的 `creatorAvatarUrl`:有地址就画、没地址整块收起。
  * 2. **`text` 与 `pics` 不共用 VNode 实例**:Vue 文档要求一棵组件树里的 vnode 各不相同,客户端挂载时会往 vnode
  *    上写 `el` / `component`,同一个实例出现在两处,后一处就把前一处的记录盖掉。皮肤把正文文字与图廊摆进同一张卡
  *    是常态(出厂默认皮肤就是这么摆的)。出图走 SSR,实测共用一个实例今天也画得出来(所以没有哪条出图测试会因
@@ -13,9 +13,9 @@
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, isVNode, type VNode } from "vue";
-import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
+import { POST_BLOCKS } from "../blocks/post";
 import * as ICONS from "../icons";
-import { buildGallery, type DynamicNode } from "../templates/dynamic-content";
+import { buildGallery, type PostNode } from "../templates/post-content";
 import { nodeFromPost } from "../templates/post-node";
 import { DYNAMIC_SAMPLE_POSTS } from "./fixtures/post-fixtures";
 
@@ -43,24 +43,24 @@ describe("头像 —— 只认 `Creator.avatar`(图库引用)", () => {
 			},
 			{ ...FMT, imageUrl },
 		);
-		expect(outer.avatarUrl).toBe("data:image/png;base64,outer.png");
-		expect(outer.forward?.avatarUrl).toBe("data:image/png;base64,inner.png");
+		expect(outer.creatorAvatarUrl).toBe("data:image/png;base64,outer.png");
+		expect(outer.repost?.creatorAvatarUrl).toBe("data:image/png;base64,inner.png");
 	});
 
 	it("没有引用就没有头像地址:十份 B 站基准里没有一份画出头像(到 3a 才有)", () => {
 		for (const post of Object.values(DYNAMIC_SAMPLE_POSTS)) {
-			expect(nodeFromPost(post, { ...FMT, imageUrl }).avatarUrl).toBeUndefined();
+			expect(nodeFromPost(post, { ...FMT, imageUrl }).creatorAvatarUrl).toBeUndefined();
 		}
 	});
 
 	it("头像块:node 带了地址就画 <img>(拓展作品那条路)", async () => {
-		const node: DynamicNode = {
-			avatarUrl: "data:image/png;base64,FACE",
-			upName: "某人",
-			upIsVip: false,
-			pubTime: "刚刚",
+		const node: PostNode = {
+			creatorAvatarUrl: "data:image/png;base64,FACE",
+			creatorName: "某人",
+			creatorIsPremium: false,
+			time: "刚刚",
 		};
-		const vnode = DYNAMIC_BLOCKS.avatar({ node, renderForward: () => [] });
+		const vnode = POST_BLOCKS.avatar({ node, renderForward: () => [] });
 		expect(vnode).not.toBeNull();
 		const html = await htmlOf(vnode as VNode);
 		expect(html).toContain('src="data:image/png;base64,FACE"');
@@ -69,10 +69,10 @@ describe("头像 —— 只认 `Creator.avatar`(图库引用)", () => {
 	});
 
 	it("头像块:node 没有地址(或是空串)就整块收起,不画 src 为空的裂图", () => {
-		const base = { upName: "某人", upIsVip: false, pubTime: "刚刚" };
-		expect(DYNAMIC_BLOCKS.avatar({ node: base, renderForward: () => [] })).toBeNull();
+		const base = { creatorName: "某人", creatorIsPremium: false, time: "刚刚" };
+		expect(POST_BLOCKS.avatar({ node: base, renderForward: () => [] })).toBeNull();
 		expect(
-			DYNAMIC_BLOCKS.avatar({ node: { ...base, avatarUrl: "" }, renderForward: () => [] }),
+			POST_BLOCKS.avatar({ node: { ...base, creatorAvatarUrl: "" }, renderForward: () => [] }),
 		).toBeNull();
 	});
 });
@@ -97,7 +97,7 @@ describe("nodeFromPost —— text 与 pics 不共用 VNode 实例", () => {
 
 		for (const [name, post] of Object.entries(DYNAMIC_SAMPLE_POSTS)) {
 			const outer = nodeFromPost(post, FMT);
-			for (const node of outer.forward ? [outer, outer.forward] : [outer]) {
+			for (const node of outer.repost ? [outer, outer.repost] : [outer]) {
 				const inText = collectVNodes(node.text, new Set());
 				const inPics = collectVNodes(buildGallery(node.images ?? []), new Set());
 				const reused = [...inPics].filter((v) => inText.has(v) && !shared.has(v));

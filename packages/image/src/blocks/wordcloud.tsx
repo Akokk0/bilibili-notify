@@ -38,10 +38,10 @@ export function wordCloudBodyChildren(p: WordCloudCardProps): VNode[] {
 	return [
 		/* ── 头部：头像 + 标题 ── */
 		<div class="flex items-center gap-[10px] px-[16px] pt-[14px] pb-[10px]">
-			{p.masterAvatarUrl && (
+			{p.creatorAvatarUrl && (
 				<img
 					class="w-[44px] h-[44px] rounded-full object-cover shrink-0"
-					src={p.masterAvatarUrl}
+					src={p.creatorAvatarUrl}
 					alt="头像"
 				/>
 			)}
@@ -50,7 +50,7 @@ export function wordCloudBodyChildren(p: WordCloudCardProps): VNode[] {
 					class="text-[16px] font-bold leading-none [color:var(--bn-ink)]"
 					style="--bn-ink: #18191C;"
 				>
-					{p.masterName}
+					{p.creatorName}
 				</span>
 				<span class="text-[12px] [color:var(--bn-ink-faint)]" style="--bn-ink-faint: #999;">
 					本场直播弹幕词云

@@ -252,7 +252,7 @@ describe("checkCardSkinPackage:清单层", () => {
 									id: "note",
 									kind: "custom",
 									grid: { row: 2, column: 1, span: 12 },
-									html: '<div class="note">{up.name}</div><script>alert(1)</script>',
+									html: '<div class="note">{creator.name}</div><script>alert(1)</script>',
 								},
 							],
 						},
@@ -268,7 +268,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		// 块级 CSS 的产物带着归一后的 self 前缀(2026-09-13「开放重写」):`image` 是
 		// 块内部的挂点、不能打头,清洗时补 `[data-bn="self"] ` 把它关回块里。
 		expect(cover?.css).toBe('[data-bn="self"] [data-bn="image"]{border-radius:8px}');
-		expect(note?.kind === "custom" ? note.html : "").toBe('<div class="note">{up.name}</div>');
+		expect(note?.kind === "custom" ? note.html : "").toBe('<div class="note">{creator.name}</div>');
 		expect(JSON.stringify(r.manifest)).not.toContain("evil");
 		expect(JSON.stringify(r.manifest)).not.toContain("script");
 		expect(r.warnings.join()).toContain("cards.dynamic.css");
@@ -327,7 +327,7 @@ describe("checkCardSkinPackage:清单层", () => {
 	});
 
 	it("自定义块引用包内资产:在包里 → 留;不在 → 丢掉那个 <img> 并告警", () => {
-		const html = '<div>{up.name}<img src="asset:assets/logo.png" alt="logo"></div>';
+		const html = '<div>{creator.name}<img src="asset:assets/logo.png" alt="logo"></div>';
 		const card = (h: string) => ({
 			live: {
 				width: 600,

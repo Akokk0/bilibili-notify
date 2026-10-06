@@ -86,7 +86,7 @@ const PROBE: CardSkinManifest = {
 				{
 					id: "probe",
 					kind: "custom",
-					html: "<div>探针[{dynamic.type}|{pics.count}|{pics.first}|{video.danmaku}]</div>",
+					html: "<div>探针[{post.hasVideo}|{post.hasRepost}|{images.count}|{images.first}|{video.danmaku}]</div>",
 					grid: { row: 1, column: 1, span: 12 },
 				},
 				{
@@ -116,21 +116,21 @@ async function htmlOf(p: Post, options: HarnessOptions = {}): Promise<string> {
 
 describe("generatePostCard — 皮肤契约从作品取", () => {
 	/**
-	 * 验红:把 `skin/card-data.ts` 里 `dynamic.type` 或 `pics.*` 改成读别处(比如写死空值),
+	 * 验红:把 `skin/card-data.ts` 里 `post.hasVideo` / `post.hasRepost` 或 `images.*` 改成读别处(比如写死空值),
 	 * 这条红。
 	 */
-	it("动态类型(从形状推)、图廊张数与首图都从作品上取", async () => {
+	it("有没有视频 / 转发、图廊张数与首图都从作品上取", async () => {
 		const out = await probe(
 			post({ images: [{ url: img("P1") }, { url: img("P2") }, { url: img("P3") }] }),
 		);
-		expect(out).toEqual([`DYNAMIC_TYPE_DRAW|3|${img("P1")}|`]);
+		expect(out).toEqual([`false|false|3|${img("P1")}|`]);
 	});
 
 	/**
 	 * 转发内层取**它自己**的那几格 —— 不是外层的,也不是空的。
 	 * 验红:把 `render-skin.tsx` 的 `renderForward` 改成拿外层的 props 装内层,这条红。
 	 */
-	it("转发框里那张卡取内层作品的类型与图", async () => {
+	it("转发框里那张卡取内层作品的有无视频与图", async () => {
 		const out = await probe(
 			post({
 				repost: post({
@@ -140,7 +140,7 @@ describe("generatePostCard — 皮肤契约从作品取", () => {
 				}),
 			}),
 		);
-		expect(out).toEqual(["DYNAMIC_TYPE_FORWARD|0||", `DYNAMIC_TYPE_AV|1|${img("INNER")}|`]);
+		expect(out).toEqual(["false|true|0||", `true|false|1|${img("INNER")}|`]);
 	});
 });
 
@@ -163,7 +163,7 @@ describe("generatePostCard — 视频那一行", () => {
 		expect(html).toContain('aria-label="播放量"');
 		expect(html).toContain("1.2万");
 		expect(html).not.toContain('aria-label="弹幕"');
-		expect(await probe(post({ video: video() }))).toEqual(["DYNAMIC_TYPE_AV|0||"]);
+		expect(await probe(post({ video: video() }))).toEqual(["true|false|0||"]);
 	});
 
 	it("有弹幕数:图标与数字都画", async () => {
@@ -244,7 +244,7 @@ describe("generatePostCard — 作品卡的入口(吃中立的 Post)", () => {
 			resolveCardSkin: (id) => (id === "probe" ? PROBE : undefined),
 		});
 		await renderer.generatePostCard(POST, { cardSkin: "probe" });
-		expect(captured[0] ?? "").toContain("探针[DYNAMIC_TYPE_AV|0||129]");
+		expect(captured[0] ?? "").toContain("探针[true|false|0||129]");
 	});
 
 	it("被转发的原作品是内层卡:label 接在作者名后", async () => {

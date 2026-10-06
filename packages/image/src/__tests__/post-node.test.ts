@@ -1,8 +1,8 @@
 /**
  * `Post` → 动态卡的节点(`nodeFromPost`,㉑c 第 5 步)。
  *
- * 十份基准快照钉着「`Post` 字面量 → 字节」,这里钉**规则**:皮肤契约的 `dynamic.type` 从形状推,发布时间与
- * `label` 出卡时拼回老位置,标题两种画法,`notice` 的结构,`card` 按有无 `cover` 分两种版式,图认 `ref`
+ * 十份基准快照钉着「`Post` 字面量 → 字节」,这里钉**规则**:发布时间与 `label` 在节点上分开、默认皮肤的块把它们
+ * 拼回老位置,标题两种画法,`notice` 的结构,`card` 按有无 `cover` 分两种版式,图认 `ref`
  * (经注入的解析口)与 `url`、都没有画占位,数字统一经 internal 排版,头像只认引用。
  */
 
@@ -10,7 +10,7 @@ import type { Post } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
-import { DYNAMIC_BLOCKS } from "../blocks/dynamic";
+import { POST_BLOCKS } from "../blocks/post";
 import { buildCardData } from "../skin/card-data";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { nodeFromPost } from "../templates/post-node";
@@ -34,10 +34,10 @@ const count = (haystack: string, needle: string) => haystack.split(needle).lengt
 describe("作者、时间与 label", () => {
 	it("名字与大会员;发布时间交给注入的格式化器(unix 秒)", () => {
 		const node = nodeFromPost(post({ creator: { name: "某人", isPremium: true } }), FMT);
-		expect(node.upName).toBe("某人");
-		expect(node.upIsVip).toBe(true);
-		expect(node.pubTime).toBe("T1700000000");
-		expect(nodeFromPost(post(), FMT).upIsVip).toBe(false);
+		expect(node.creatorName).toBe("某人");
+		expect(node.creatorIsPremium).toBe(true);
+		expect(node.time).toBe("T1700000000");
+		expect(nodeFromPost(post(), FMT).creatorIsPremium).toBe(false);
 	});
 
 	it("头像:Creator.avatar 是图库引用,经注入的解析口变成地址;没有引用就没有头像地址", () => {
@@ -47,8 +47,8 @@ describe("作者、时间与 label", () => {
 			...FMT,
 			imageUrl,
 		});
-		expect(withRef.avatarUrl).toBe("data:image/png;base64,FACE");
-		expect(nodeFromPost(post(), { ...FMT, imageUrl }).avatarUrl).toBeUndefined();
+		expect(withRef.creatorAvatarUrl).toBe("data:image/png;base64,FACE");
+		expect(nodeFromPost(post(), { ...FMT, imageUrl }).creatorAvatarUrl).toBeUndefined();
 	});
 
 	it("头像引用解析不到(或没注入解析口):给占位,留一块空的头像位,不抛", () => {
@@ -56,64 +56,67 @@ describe("作者、时间与 label", () => {
 			...FMT,
 			imageUrl: () => undefined,
 		});
-		expect(gone.avatarUrl).toBe(BLOCKED_IMG_PLACEHOLDER);
+		expect(gone.creatorAvatarUrl).toBe(BLOCKED_IMG_PLACEHOLDER);
 		expect(
-			nodeFromPost(post({ creator: { name: "某人", avatar: "gone.png" } }), FMT).avatarUrl,
+			nodeFromPost(post({ creator: { name: "某人", avatar: "gone.png" } }), FMT).creatorAvatarUrl,
 		).toBe(BLOCKED_IMG_PLACEHOLDER);
 	});
 
-	it("外层卡:label 接在发布时间后(「时间 · 投稿了视频」),没有 headerLabel", () => {
+	it("外层卡:time 只有时间,label 单独一格(拼成「时间 · 投稿了视频」是默认皮肤时间块的事),也不是被转发的那层", () => {
 		const node = nodeFromPost(post({ label: "投稿了视频" }), FMT);
-		expect(node.pubTime).toBe("T1700000000 · 投稿了视频");
-		expect(node.headerLabel).toBeUndefined();
+		expect(node.time).toBe("T1700000000");
+		expect(node.label).toBe("投稿了视频");
+		expect(node.isReposted).toBeUndefined();
 	});
 
-	it("被转发的内层卡:label 接在作者名后(headerLabel),发布时间不带后缀", () => {
+	it("被转发的内层卡:time 只有时间、label 单独一格,并标明自己是被转发的那层;没有 label 就不给这一格", () => {
 		const node = nodeFromPost(post({ text: "转发语", repost: post({ label: "投稿了视频" }) }), FMT);
-		expect(node.forward?.headerLabel).toBe("投稿了视频");
-		expect(node.forward?.pubTime).toBe("T1700000000");
+		expect(node.repost?.label).toBe("投稿了视频");
+		expect(node.repost?.time).toBe("T1700000000");
+		expect(node.repost?.isReposted).toBe(true);
+		expect("label" in nodeFromPost(post({ repost: post() }), FMT)).toBe(false);
 	});
 });
 
 /**
- * ㉔a 钉住现状:作品卡的动作标签(`label`)外层拼进「时间」那一行、内层单独给(`headerLabel`);皮肤字段
- * `dynamic.time` / `dynamic.action` 在内外层各是什么;默认皮肤的 `name` / `time` 两块画出来的字。
- * ㉔b 起视图上时间只装时间、标签单独一格(内外层都填),`dynamic.time` / `dynamic.action` 改叫 `post.time` /
- * `post.label`,默认皮肤的两块仍画出同样的字 —— 下面这组断言届时按改名表改,文字一个不变。
- * 验红:把 `post-node.tsx` 里 `pubTime` 的拼法或 `headerLabel` 的赋值对调 / 删掉。
+ * 作品卡的动作标签(`label`):视图上时间只装时间、标签单独一格(内外层卡都填);皮肤字段 `post.time` 只是时间、
+ * `post.label` 两层都有值;默认皮肤的 `name` / `time` 两块把它们拼回从前那一行字 —— 外层拼进「时间 · 标签」,
+ * 被转发的内层接在名字后。(㉔a 先钉的是改名前的现状:`dynamic.time` 外层带标签后缀、`dynamic.action` 外层为空,
+ * 默认皮肤画出的字 ㉔b 一个没变。)
+ * 验红:把 `post-node.tsx` 里 `label` / `isReposted` 的赋值删掉,或把 `blocks/post.tsx` 里拼标签的位置对调。
  */
-describe("㉔a 动作标签的现状:视图、皮肤字段与默认皮肤的两块", () => {
+describe("动作标签:视图、皮肤字段与默认皮肤的两块", () => {
 	const REPOST_VIDEO = post({
 		text: "转发语",
 		label: "转发了动态",
 		repost: post({ creator: { name: "原UP" }, label: "投稿了视频" }),
 	});
 
-	it("皮肤字段:外层 time 带「 · 标签」后缀、action 为空;内层 time 是纯时间、action 是标签", () => {
+	it("皮肤字段:内外层的 post.time 都是纯时间,post.label 都有值", () => {
 		const outer = nodeFromPost(REPOST_VIDEO, FMT);
-		const inner = outer.forward;
+		const inner = outer.repost;
 		if (!inner) throw new Error("应有转发内层");
 		const o = buildCardData("dynamic", { node: outer });
 		const i = buildCardData("dynamic", { node: inner });
-		expect(o.dynamic.time).toBe("T1700000000 · 转发了动态");
-		expect(o.dynamic.action).toBe("");
-		expect(i.dynamic.time).toBe("T1700000000");
-		expect(i.dynamic.action).toBe("投稿了视频");
+		expect(o.post.time).toBe("T1700000000");
+		expect(o.post.label).toBe("转发了动态");
+		expect(i.post.time).toBe("T1700000000");
+		expect(i.post.label).toBe("投稿了视频");
 	});
 
-	it("没有 label 的作品:time 是纯时间、action 为空(内外层一样)", () => {
+	it("没有 label 的作品:post.time 是纯时间、post.label 为空(内外层一样)", () => {
 		const outer = nodeFromPost(post({ repost: post() }), FMT);
 		const d = buildCardData("dynamic", { node: outer });
-		expect(d.dynamic.time).toBe("T1700000000");
-		expect(d.dynamic.action).toBe("");
-		const inner = outer.forward;
+		expect(d.post.time).toBe("T1700000000");
+		expect(d.post.label).toBe("");
+		const inner = outer.repost;
 		if (!inner) throw new Error("应有转发内层");
-		expect(buildCardData("dynamic", { node: inner }).dynamic.action).toBe("");
+		expect(buildCardData("dynamic", { node: inner }).post.label).toBe("");
 	});
 
 	/** 默认皮肤的 `name` / `time` 块画出的文字(去掉标签)。 */
 	async function lineOf(block: "name" | "time", node: ReturnType<typeof nodeFromPost>) {
-		const vnode = DYNAMIC_BLOCKS[block]?.({ node, renderForward: () => [] });
+		const vnode = POST_BLOCKS[block]?.({ node, renderForward: () => [] });
 		if (!vnode) throw new Error(`${block} 块收起了`);
 		return (await htmlOf(vnode)).replace(/<[^>]*>/g, "");
 	}
@@ -125,28 +128,10 @@ describe("㉔a 动作标签的现状:视图、皮肤字段与默认皮肤的两�
 	});
 
 	it("默认皮肤:内层的标签接在名字后(用空格连),时间行只有时间", async () => {
-		const inner = nodeFromPost(REPOST_VIDEO, FMT).forward;
+		const inner = nodeFromPost(REPOST_VIDEO, FMT).repost;
 		if (!inner) throw new Error("应有转发内层");
 		expect(await lineOf("name", inner)).toBe("原UP 投稿了视频");
 		expect(await lineOf("time", inner)).toBe("T1700000000");
-	});
-});
-
-describe("dynamic.type 从形状推", () => {
-	it.each([
-		["有视频 → AV", { video: { cover: {}, title: "t", description: "" } }, "DYNAMIC_TYPE_AV"],
-		["有被转发的原作品 → FORWARD", { repost: post() }, "DYNAMIC_TYPE_FORWARD"],
-		["专栏 → ARTICLE", { article: { title: "t" } }, "DYNAMIC_TYPE_ARTICLE"],
-		["有图集 → DRAW", { images: [{ url: "u" }] }, "DYNAMIC_TYPE_DRAW"],
-		["其余 → WORD", { notice: "无法渲染" }, "DYNAMIC_TYPE_WORD"],
-	] as [string, Partial<Post>, string][])("%s", (_label, over, type) => {
-		expect(nodeFromPost(post(over), FMT).type).toBe(type);
-	});
-
-	it("转发自己带图仍是 FORWARD(转发优先于图集)", () => {
-		expect(nodeFromPost(post({ repost: post(), images: [{ url: "u" }] }), FMT).type).toBe(
-			"DYNAMIC_TYPE_FORWARD",
-		);
 	});
 });
 
@@ -249,8 +234,8 @@ describe("被转发的内层卡", () => {
 			}),
 			FMT,
 		);
-		const inner = node.forward;
-		expect(inner?.upName).toBe("原作者");
+		const inner = node.repost;
+		expect(inner?.creatorName).toBe("原作者");
 		const html = await htmlOf(inner?.text as VNode);
 		expect(html).toContain("充电专属");
 		expect(html).toContain("为 原作者 充电即可查看完整内容");
@@ -266,8 +251,8 @@ describe("被转发的内层卡", () => {
 		);
 		expect(await htmlOf(node.text as VNode)).not.toContain("原动态的正文");
 		expect(node.images).toBeUndefined();
-		expect(await htmlOf(node.forward?.text as VNode)).toContain("原动态的正文");
-		expect(node.forward?.images).toHaveLength(2);
+		expect(await htmlOf(node.repost?.text as VNode)).toContain("原动态的正文");
+		expect(node.repost?.images).toHaveLength(2);
 	});
 });
 
@@ -314,7 +299,7 @@ describe("图集与视频", () => {
 			cover: "c",
 			duration: "16:07",
 			title: "t",
-			desc: "d",
+			description: "d",
 			views: "1.8万",
 			danmaku: "129",
 		});
@@ -322,7 +307,7 @@ describe("图集与视频", () => {
 			post({ video: { cover: { url: "c" }, title: "t", description: "" } }),
 			FMT,
 		);
-		expect(bare.video).toEqual({ cover: "c", duration: "", title: "t", desc: "" });
+		expect(bare.video).toEqual({ cover: "c", duration: "", title: "t", description: "" });
 	});
 
 	it.each([
@@ -368,8 +353,8 @@ describe("图集与视频", () => {
 			node,
 			renderForward: (): [] => [],
 		});
-		expect(DYNAMIC_BLOCKS.videoDuration(props(video()))).toBeNull();
-		expect(await htmlOf(DYNAMIC_BLOCKS.videoDuration(props(video(0))) as VNode)).toContain("0:00");
+		expect(POST_BLOCKS.videoDuration(props(video()))).toBeNull();
+		expect(await htmlOf(POST_BLOCKS.videoDuration(props(video(0))) as VNode)).toContain("0:00");
 	});
 });
 
@@ -378,14 +363,14 @@ describe("互动数与转发", () => {
 		expect(
 			nodeFromPost(post({ stats: { shares: 12_345, comments: 9999, likes: 0 } }), FMT).stats,
 		).toEqual({
-			forward: "1.2万",
-			comment: "9999",
-			like: "0",
+			shares: "1.2万",
+			comments: "9999",
+			likes: "0",
 		});
 		expect(nodeFromPost(post({ stats: { likes: 7 } }), FMT).stats).toEqual({
-			forward: "",
-			comment: "",
-			like: "7",
+			shares: "",
+			comments: "",
+			likes: "7",
 		});
 		expect(nodeFromPost(post({ stats: {} }), FMT).stats).toBeUndefined();
 		expect(nodeFromPost(post(), FMT).stats).toBeUndefined();
@@ -396,7 +381,7 @@ describe("互动数与转发", () => {
 			post({ repost: post({ stats: { shares: 1, comments: 2, likes: 3 } }) }),
 			FMT,
 		);
-		expect(node.forward?.stats).toBeUndefined();
+		expect(node.repost?.stats).toBeUndefined();
 	});
 });
 
@@ -411,17 +396,15 @@ describe("出卡器自己的图标不动", () => {
 			FMT,
 		);
 		const props = { node, renderForward: (): [] => [] };
-		expect(await htmlOf(DYNAMIC_BLOCKS.topic(props) as VNode)).toContain("<svg");
+		expect(await htmlOf(POST_BLOCKS.topic(props) as VNode)).toContain("<svg");
 		for (const [block, label] of [
 			["forwardCount", "转发"],
 			["commentCount", "评论"],
 			["likeCount", "点赞"],
 		] as const) {
-			expect(await htmlOf(DYNAMIC_BLOCKS[block](props) as VNode)).toContain(
-				`aria-label="${label}"`,
-			);
+			expect(await htmlOf(POST_BLOCKS[block](props) as VNode)).toContain(`aria-label="${label}"`);
 		}
-		const stats = await htmlOf(DYNAMIC_BLOCKS.videoStats(props) as VNode);
+		const stats = await htmlOf(POST_BLOCKS.videoStats(props) as VNode);
 		expect(stats).toContain('aria-label="播放量"');
 		expect(stats).toContain('aria-label="弹幕"');
 	});
@@ -442,7 +425,7 @@ describe("附加块", () => {
 			}),
 			FMT,
 		);
-		const a = await htmlOf(withCover.additional as VNode);
+		const a = await htmlOf(withCover.attachment as VNode);
 		expect(a).toContain("相关游戏");
 		expect(a).toContain('data-bn="cover"');
 		expect(a).toContain("text-[13px] font-bold");
@@ -457,14 +440,14 @@ describe("附加块", () => {
 			}),
 			FMT,
 		);
-		const b = await htmlOf(noCover.additional as VNode);
+		const b = await htmlOf(noCover.attachment as VNode);
 		expect(b).not.toContain('data-bn="cover"');
 		expect(b).toContain("text-[14px] font-bold");
 		expect(b).toContain("bg-[#f5f5f5] text-[#999]");
 		expect(count(b, 'data-bn="button"')).toBe(1);
 	});
 
-	it("没有 attachment:additional 是 null(块收起)", () => {
-		expect(nodeFromPost(post(), FMT).additional).toBeNull();
+	it("没有 attachment:node.attachment 是 null(块收起)", () => {
+		expect(nodeFromPost(post(), FMT).attachment).toBeNull();
 	});
 });

@@ -43,7 +43,7 @@ describe("ASSET_DIR — 自带静态资源的所在", () => {
 		// 照 `ImageRenderer.generateWordCloudImg` 的拼法:皮肤画卡 + 把画词那段脚本
 		// 注在 `</body>` 之前。脚本是从 ASSET_DIR 现读的两个文件拼出来的。
 		const html = injectWordCloudScript(
-			await renderViaDefaultSkin("wordcloud", { masterName: "咩栗" }, { title: "弹幕词云" }),
+			await renderViaDefaultSkin("wordcloud", { creatorName: "咩栗" }, { title: "弹幕词云" }),
 			wordCloudInitScript([["弹幕", 3]], ASSET_DIR),
 		);
 		// wordcloud2.min.js 的入口名与 render.js 里的函数名,各证明一个文件读到了。

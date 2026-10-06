@@ -12,18 +12,18 @@
  * - **已格式化的文本直接给**(「1.2 万」「已开播 1 小时」),占位符不带过滤器。
  */
 
-import type { DynamicCardProps } from "../templates/dynamic-card";
-import type { MembershipCardView } from "../templates/guard-card";
 import type { LiveCardView } from "../templates/live-card";
+import type { MembershipCardView } from "../templates/membership-card";
+import type { PostCardView } from "../templates/post-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
-import type { SuperchatCardView } from "../templates/sc-card";
+import type { SuperchatCardView } from "../templates/superchat-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
 
 /** 契约里一个字段的值。对应 `CardSkinFieldType`:`text` / `image` → string。 */
 export type CardDataValue = string | number | boolean;
 
 /**
- * 一张卡的契约数据。恰好两层 —— 外层是字段路径的第一段(`up` / `live` / `stats`…),
+ * 一张卡的契约数据。恰好两层 —— 外层是字段路径的第一段(`creator` / `live` / `stats`…),
  * 内层是第二段。字段路径只有两段,所以这里不需要更深的嵌套。
  */
 export type CardData = Record<string, Record<string, CardDataValue>>;
@@ -49,12 +49,12 @@ function num(v: unknown): number {
 function liveData(p: LiveCardView): CardData {
 	const onAir = p.status === "start" || p.status === "streaming";
 	const ended = p.status === "end";
-	const fansChanged = str(p.fansChanged);
+	const followersDelta = str(p.followersDelta);
 	return {
-		up: { name: str(p.username), face: str(p.userface) },
+		creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) },
 		live: {
 			title: str(p.title),
-			area: str(p.area),
+			category: str(p.category),
 			time: str(p.time),
 			// 视图里的简介已经是纯文本(B 站那头剥过富文本)。
 			description: str(p.description),
@@ -65,16 +65,17 @@ function liveData(p: LiveCardView): CardData {
 			isStreaming: onAir,
 			isEnded: ended,
 		},
+		// 每格只装名字说的那一样,不该有值的状态下是空串(字段表规定永不 undefined)。四格的分支与 `blocks/live.tsx`
+		// 的 `statsLeft` / `followerText` 同一套(下播是点赞与累计观看,决策 76),只是不带「人气：」这类前缀
+		// (前缀归皮肤的模板写)。
 		stats: {
-			// 与 `blocks/live.tsx` 的 statsLeft 同一套分支:下播是点赞(决策 76),其余是此刻在线。
-			popularity: ended ? str(p.likes) : str(p.online),
-			area: str(p.area),
-			// 粉丝那一格的**数值部分** —— 与 `blocks/live.tsx` 的 `followerText` 同一套分支,
-			// 只是不带「当前粉丝数：」这类前缀(前缀归皮肤的模板写)。
-			fans: onAir ? str(p.fans) : ended ? str(p.totalViewers) : "",
+			currentViewers: ended ? "" : str(p.currentViewers),
+			likes: ended ? str(p.likes) : "",
+			followers: onAir ? str(p.followers) : "",
+			totalViewers: ended ? str(p.totalViewers) : "",
 			// 默认卡不画它(决策 76,它进下播文案),契约照给 —— 自己做皮肤的人想画就能画。
-			fansChanged,
-			hasFansChanged: fansChanged !== "",
+			followersDelta,
+			hasFollowersDelta: followersDelta !== "",
 		},
 	};
 }
@@ -82,34 +83,38 @@ function liveData(p: LiveCardView): CardData {
 // ── dynamic ──────────────────────────────────────────────────────────────────
 
 /**
- * 动态卡的数据**全从 node 取**(ADR-0019 决策 68)。
+ * 作品卡的数据**全从 node 取**(ADR-0019 决策 68)。
  *
  * 块画什么、契约就说什么,判据只有一份:视频那一组读 `node.video`(五个视频块画的就是它),
- * 图廊那一组读 `node.images`(`pics` 块拿它现画),动态类型读 `node.type`。从前后两样要回头
+ * 图廊那一组读 `node.images`(`images` 块拿它现画)。从前后两样要回头
  * 去 B 站原始数据里刨,出卡入口因此得另收一份原始数据 —— 拓展的作品没有那份东西;而各刨
  * 各的,判据迟早分叉(从前拿「标题非空」当 `hasVideo`,一条没标题的投稿会画出封面,却告诉
  * 皮肤的 `showIf` 说没视频)。
  */
-function dynamicData(p: DynamicCardProps): CardData {
+function dynamicData(p: PostCardView): CardData {
 	const node = p.node;
 	const images = node.images ?? [];
 	const video = node.video;
 	return {
-		up: { name: str(node.upName), face: str(node.avatarUrl), isVip: !!node.upIsVip },
-		dynamic: {
-			type: str(node.type),
-			action: str(node.headerLabel),
-			time: str(node.pubTime),
+		creator: {
+			name: str(node.creatorName),
+			avatar: str(node.creatorAvatarUrl),
+			isPremium: !!node.creatorIsPremium,
+		},
+		// `time` 只是时间,`label` 是动作标签,内外层卡各有各的值(默认皮肤的时间块把两样拼回「时间 · 标签」那一行)。
+		post: {
+			label: str(node.label),
+			time: str(node.time),
 			topic: str(node.topic),
 			hasTopic: !!node.topic,
-			isForward: !!node.forward,
-			hasAdditional: !!node.additional,
+			hasRepost: !!node.repost,
+			hasAttachment: !!node.attachment,
 			hasVideo: !!video,
-			hasPics: images.length > 0,
+			hasImages: images.length > 0,
 		},
 		video: {
 			title: str(video?.title),
-			desc: str(video?.desc),
+			description: str(video?.description),
 			cover: str(video?.cover),
 			duration: str(video?.duration),
 			// 接口给的播放 / 弹幕数可能已是格式化字符串("6.5万"),`videoOf` 原样转了文本。
@@ -117,11 +122,11 @@ function dynamicData(p: DynamicCardProps): CardData {
 			views: str(video?.views),
 			danmaku: str(video?.danmaku),
 		},
-		pics: { count: images.length, first: str(images[0]?.url) },
+		images: { count: images.length, first: str(images[0]?.url) },
 		stats: {
-			forward: str(node.stats?.forward),
-			comment: str(node.stats?.comment),
-			like: str(node.stats?.like),
+			shares: str(node.stats?.shares),
+			comments: str(node.stats?.comments),
+			likes: str(node.stats?.likes),
 		},
 	};
 }
@@ -129,13 +134,13 @@ function dynamicData(p: DynamicCardProps): CardData {
 // ── sc ───────────────────────────────────────────────────────────────────────
 
 /**
- * 醒目留言卡的数据全从 {@link SuperchatCardView} 取 —— 与块库(`blocks/sc.tsx`)吃的是同一份。金额与时长都是视图里
+ * 醒目留言卡的数据全从 {@link SuperchatCardView} 取 —— 与块库(`blocks/superchat.tsx`)吃的是同一份。金额与时长都是视图里
  * 排好的文字(`formatAmount` / `formatDuration`,时长缺了是空串);`rank` 是夹进 1–6 的有效档位,与取色用的是同一个值。
  */
 function scData(p: SuperchatCardView): CardData {
 	return {
 		viewer: { name: str(p.viewerName), avatar: str(p.viewerAvatarUrl) },
-		master: { name: str(p.masterName), face: str(p.masterAvatarUrl) },
+		creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) },
 		superchat: {
 			amount: str(p.amount),
 			amountValue: num(p.amountValue),
@@ -155,7 +160,7 @@ function scData(p: SuperchatCardView): CardData {
 function guardData(p: MembershipCardView): CardData {
 	return {
 		viewer: { name: str(p.viewerName), avatar: str(p.viewerAvatarUrl) },
-		master: { name: str(p.masterName), face: str(p.masterAvatarUrl) },
+		creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) },
 		membership: {
 			rank: num(p.rank),
 			tierName: str(p.tierName),
@@ -167,26 +172,26 @@ function guardData(p: MembershipCardView): CardData {
 
 // ── roast / wordcloud ────────────────────────────────────────────────────────
 
-/** 榜单周报不属于任何单个 UP,props 里压根没有主播名 —— 契约留着这个字段,值恒为空串。 */
+/** 榜单周报不属于任何单个创作者,契约里没有创作者那两格。 */
 function roastBoardData(p: RoastBoardCardProps): CardData {
-	return { master: { name: "" }, report: { days: num(p.days) } };
+	return { report: { days: num(p.days) } };
 }
 
 function roastSoloData(p: RoastSoloCardProps): CardData {
 	return {
-		up: { name: str(p.up?.name), face: str(p.up?.avatar) },
+		creator: { name: str(p.creator?.name), avatar: str(p.creator?.avatar) },
 		report: { days: num(p.days) },
 	};
 }
 
 function wordCloudData(p: WordCloudCardProps): CardData {
-	return { master: { name: str(p.masterName), face: str(p.masterAvatarUrl) } };
+	return { creator: { name: str(p.creatorName), avatar: str(p.creatorAvatarUrl) } };
 }
 
 // ── 入口 ──────────────────────────────────────────────────────────────────────
 
 export function buildCardData(kind: "live", props: LiveCardView): CardData;
-export function buildCardData(kind: "dynamic", props: DynamicCardProps): CardData;
+export function buildCardData(kind: "dynamic", props: PostCardView): CardData;
 export function buildCardData(kind: "sc", props: SuperchatCardView): CardData;
 export function buildCardData(kind: "guard", props: MembershipCardView): CardData;
 export function buildCardData(kind: "roastBoard", props: RoastBoardCardProps): CardData;
@@ -203,7 +208,7 @@ export function buildCardData(
 		case "live":
 			return liveData(props as LiveCardView);
 		case "dynamic":
-			return dynamicData(props as DynamicCardProps);
+			return dynamicData(props as PostCardView);
 		case "sc":
 			return scData(props as SuperchatCardView);
 		case "guard":

@@ -1501,7 +1501,7 @@ describe("cards route — /preview 走皮肤", () => {
 						id: "mark",
 						kind: "custom",
 						grid: { row: 1, column: 1, span: 12 },
-						html: "<p>SKIN-MARK-{up.name}</p>",
+						html: "<p>SKIN-MARK-{creator.name}</p>",
 					},
 				],
 			},

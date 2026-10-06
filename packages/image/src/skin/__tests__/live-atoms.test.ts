@@ -110,19 +110,19 @@ describe("直播卡数据区 — 摆哪几块就画哪几件", () => {
 describe("㉔a 直播卡 popularity / fans 块各状态画出的字", () => {
 	const view = (over: Partial<LiveCardView>): LiveCardView => ({
 		status: "streaming",
-		username: "阿可",
-		userface: "",
+		creatorName: "阿可",
+		creatorAvatarUrl: "",
 		title: "t",
-		area: "虚拟主播",
+		category: "虚拟主播",
 		description: "d",
 		cover: "https://img/cover.jpg",
 		hasCover: true,
 		time: "直播时长：1小时",
-		online: "ON",
+		currentViewers: "ON",
 		likes: "LK",
 		totalViewers: "TV",
-		fans: "FN",
-		fansChanged: "+1",
+		followers: "FN",
+		followersDelta: "+1",
 		...over,
 	});
 
@@ -145,9 +145,11 @@ describe("㉔a 直播卡 popularity / fans 块各状态画出的字", () => {
 	});
 
 	it("那一格没有数 → 块收起,不留只有前缀的空行", async () => {
-		expect(await textOf("popularity", view({ status: "streaming", online: "" }))).toBeNull();
+		expect(
+			await textOf("popularity", view({ status: "streaming", currentViewers: "" })),
+		).toBeNull();
 		expect(await textOf("popularity", view({ status: "end", likes: "" }))).toBeNull();
-		expect(await textOf("fans", view({ status: "streaming", fans: "" }))).toBeNull();
+		expect(await textOf("fans", view({ status: "streaming", followers: "" }))).toBeNull();
 		expect(await textOf("fans", view({ status: "end", totalViewers: "" }))).toBeNull();
 	});
 });

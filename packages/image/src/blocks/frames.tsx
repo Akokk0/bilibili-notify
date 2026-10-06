@@ -36,11 +36,11 @@
 
 import type { CardSkinKind } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
-import type { DynamicCardProps } from "../templates/dynamic-card";
-import type { MembershipCardView } from "../templates/guard-card";
 import type { LiveCardView } from "../templates/live-card";
+import type { MembershipCardView } from "../templates/membership-card";
+import type { PostCardView } from "../templates/post-card";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "../templates/roast-card";
-import type { SuperchatCardView } from "../templates/sc-card";
+import type { SuperchatCardView } from "../templates/superchat-card";
 import type { WordCloudCardProps } from "../templates/wordcloud-card";
 
 /** 皮肤渲染器往外框上追加的东西。 */
@@ -71,7 +71,7 @@ export type FrameRenderer = (children: VNode | VNode[], extra: FrameExtra) => VN
  */
 export interface CardPropsByKind {
 	live: LiveCardView;
-	dynamic: DynamicCardProps;
+	dynamic: PostCardView;
 	sc: SuperchatCardView;
 	guard: MembershipCardView;
 	roastBoard: RoastBoardCardProps;
@@ -83,7 +83,7 @@ export interface CardPropsByKind {
  * 档位色两张卡(醒目留言 / 上舰)共用的外框 —— 逐字符相同,只有玻璃层的排布 class 不同。
  *
  * class 拿常量传进来而不是写死在两处:`__tests__/blocks-bare.test.ts` 的扫描器除了
- * `class="…"` 还认 `*_CLASS = "…"` 这个命名(`blocks/dynamic.tsx` 的 `STAT_ATOM_CLASS`
+ * `class="…"` 还认 `*_CLASS = "…"` 这个命名(`blocks/post.tsx` 的 `STAT_ATOM_CLASS`
  * 立的规矩)—— 换个名字这两串 class 就从守卫眼皮底下消失了。
  */
 const SC_GLASS_CLASS = "flex flex-col items-center";

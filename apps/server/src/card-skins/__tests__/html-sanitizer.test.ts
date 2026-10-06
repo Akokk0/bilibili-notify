@@ -236,7 +236,7 @@ describe("img 的 src 只准两种值", () => {
 	});
 
 	it("image 类型的字段占位符放行", () => {
-		expect(ok('<img src="{up.face}">').html).toBe('<img src="{up.face}">');
+		expect(ok('<img src="{creator.avatar}">').html).toBe('<img src="{creator.avatar}">');
 	});
 
 	// ㉓c:醒目留言卡与会员卡的头像、徽章是 image 类型(皮肤作者要能把它们放进 `<img src>`),金额 / 档名是 text。
@@ -281,7 +281,7 @@ describe("img 的 src 只准两种值", () => {
 	});
 
 	it("占位符只能是整个值,拼在一起不算", () => {
-		const { html } = ok('<div>x</div><img src="https://i.example/{up.face}">');
+		const { html } = ok('<div>x</div><img src="https://i.example/{creator.avatar}">');
 		expect(html).toBe("<div>x</div>");
 	});
 
@@ -294,8 +294,8 @@ describe("img 的 src 只准两种值", () => {
 
 describe("占位符对表", () => {
 	it("认识的字段原样保留(渲染器才做替换)", () => {
-		const { html, warnings } = ok("<p>{up.name} 正在播:{live.title}</p>");
-		expect(html).toBe("<p>{up.name} 正在播:{live.title}</p>");
+		const { html, warnings } = ok("<p>{creator.name} 正在播:{live.title}</p>");
+		expect(html).toBe("<p>{creator.name} 正在播:{live.title}</p>");
 		expect(warnings).toEqual([]);
 	});
 
@@ -310,7 +310,9 @@ describe("占位符对表", () => {
 	});
 
 	it("alt 里的占位符同样对表", () => {
-		expect(ok('<img src="asset:bg.png" alt="{up.name} 的头像">').html).toContain("{up.name}");
+		expect(ok('<img src="asset:bg.png" alt="{creator.name} 的头像">').html).toContain(
+			"{creator.name}",
+		);
 		expect(bad('<img src="asset:bg.png" alt="{superchat.amount}">').join()).toContain(
 			"superchat.amount",
 		);
@@ -334,7 +336,7 @@ describe("转义与形状", () => {
 
 	it("合法样例原样出来", () => {
 		const input =
-			'<div class="row" style="color:#fb7299"><img src="asset:bg.png" alt="底图"><span>{up.name}</span><br><small>{live.time}</small></div>';
+			'<div class="row" style="color:#fb7299"><img src="asset:bg.png" alt="底图"><span>{creator.name}</span><br><small>{live.time}</small></div>';
 		expect(ok(input).html).toBe(input);
 	});
 });
@@ -373,7 +375,7 @@ describe("内联 svg", () => {
 			'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fb7299"></stop><stop offset="1" stop-color="#00f0ff"></stop></linearGradient></defs>' +
 			'<path d="M2 2h20v20H2z" fill="url(#g)" stroke="#fff" stroke-width="1.5"></path>' +
 			'<circle cx="12" cy="12" r="4" fill="currentColor"></circle>' +
-			'<use href="#g"></use><text x="0" y="10" font-size="8">{up.name}</text>' +
+			'<use href="#g"></use><text x="0" y="10" font-size="8">{creator.name}</text>' +
 			"</svg>";
 		const { html, warnings } = ok(input);
 		expect(html).toBe(input.replace(" onload=\"fetch('https://evil.example')\"", ""));

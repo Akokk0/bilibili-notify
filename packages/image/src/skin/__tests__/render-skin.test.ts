@@ -26,8 +26,8 @@ import {
 
 /**
  * live-streaming 那份 props(直播中、封面 / 分区 / 人气 / 粉丝全开、无粉丝变化),**外加一个头像地址**。
- * 夹具是 B 站形状、不带头像(`userface` 空串,㉒b);而这份测试要的是「每一块都有数据」的一张卡 —— 头像块要有东西
- * 可画、`{up.face}` 占位符要有值可替换,不然头像块整块收起、本文件里借它验 CSS 翻译的用例就落空了。
+ * 夹具是 B 站形状、不带头像(`creatorAvatarUrl` 空串,㉒b);而这份测试要的是「每一块都有数据」的一张卡 —— 头像块要有东西
+ * 可画、`{creator.avatar}` 占位符要有值可替换,不然头像块整块收起、本文件里借它验 CSS 翻译的用例就落空了。
  */
 let liveProps: LiveCardView;
 
@@ -36,7 +36,7 @@ beforeAll(async () => {
 	if (!fixture) throw new Error("夹具表里没有 live-streaming");
 	liveProps = {
 		...((await fixture.build()).props as unknown as LiveCardView),
-		userface: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
+		creatorAvatarUrl: "http://i0.hdslb.com/bfs/face/0011223344556677889900aabbccddeeff001122.jpg",
 	};
 });
 
@@ -131,7 +131,12 @@ describe("皮肤渲染器 — showIf", () => {
 	it("字段为假整块不画", async () => {
 		const { doc } = await render(
 			liveCard([
-				builtin("t", "title", { row: 1, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
+				builtin(
+					"t",
+					"title",
+					{ row: 1, column: 1, span: 12 },
+					{ showIf: "stats.hasFollowersDelta" },
+				),
 			]),
 		);
 		expect(labels(doc)).toEqual([]);
@@ -153,7 +158,12 @@ describe("皮肤渲染器 — 分割线的三条规矩", () => {
 				builtin("t", "title", { row: 2, column: 1, span: 12 }),
 				builtin("d1", "divider", { row: 3, column: 1, span: 12 }),
 				// data 块三个开关全开、但这份夹具没有粉丝变化 —— 它照画;换成 showIf 假的块来造悬空。
-				builtin("h", "avatar", { row: 4, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
+				builtin(
+					"h",
+					"avatar",
+					{ row: 4, column: 1, span: 12 },
+					{ showIf: "stats.hasFollowersDelta" },
+				),
 				builtin("d2", "divider", { row: 5, column: 1, span: 12 }),
 				builtin("t2", "desc", { row: 6, column: 1, span: 12 }),
 			]),
@@ -192,7 +202,12 @@ describe("皮肤渲染器 — 行压缩", () => {
 		const { doc } = await render(
 			liveCard([
 				builtin("a", "title", { row: 1, column: 1, span: 12 }),
-				builtin("b", "avatar", { row: 2, column: 1, span: 12 }, { showIf: "stats.hasFansChanged" }),
+				builtin(
+					"b",
+					"avatar",
+					{ row: 2, column: 1, span: 12 },
+					{ showIf: "stats.hasFollowersDelta" },
+				),
 				builtin("c", "desc", { row: 3, column: 1, span: 12 }),
 			]),
 		);
@@ -259,9 +274,12 @@ describe("皮肤渲染器 — 行压缩", () => {
 
 describe("皮肤渲染器 — 自定义块的占位符", () => {
 	it("文本位置的 {a.b} 换成字段值并转义", async () => {
-		const { html } = await render(liveCard([custom("c", "<div>{up.name} · {live.area}</div>")]), {
-			props: { ...liveProps, username: '<b>坏"名字</b>' },
-		});
+		const { html } = await render(
+			liveCard([custom("c", "<div>{creator.name} · {live.category}</div>")]),
+			{
+				props: { ...liveProps, creatorName: '<b>坏"名字</b>' },
+			},
+		);
 		expect(html).toContain("&lt;b&gt;坏&quot;名字&lt;/b&gt; · 虚拟主播");
 	});
 
@@ -273,9 +291,9 @@ describe("皮肤渲染器 — 自定义块的占位符", () => {
 
 	it("src 的整值占位符:图片字段才替换", async () => {
 		const { html } = await render(
-			liveCard([custom("c", '<img src="{up.face}"><img src="{live.title}">')]),
+			liveCard([custom("c", '<img src="{creator.avatar}"><img src="{live.title}">')]),
 		);
-		expect(html).toContain(`src="${liveProps.userface}"`);
+		expect(html).toContain(`src="${liveProps.creatorAvatarUrl}"`);
 		expect(html).toContain('<img src="">');
 		expect(html).not.toContain(liveProps.title);
 	});
@@ -303,9 +321,9 @@ describe("皮肤渲染器 — 自定义块的占位符", () => {
 	 */
 	it("内联 svg 原样铺进去,text 里的占位符照替换", async () => {
 		const svg =
-			'<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="#fb7299"></stop></linearGradient></defs><path d="M2 2h20v20H2z" fill="url(#g)"></path><text x="12" y="23">{up.name}</text></svg>';
+			'<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="#fb7299"></stop></linearGradient></defs><path d="M2 2h20v20H2z" fill="url(#g)"></path><text x="12" y="23">{creator.name}</text></svg>';
 		const { html } = await render(liveCard([custom("c", svg)]), {
-			props: { ...liveProps, username: "霓虹<up>" },
+			props: { ...liveProps, creatorName: "霓虹<up>" },
 		});
 		expect(html).toContain(
 			'<svg viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0" stop-color="#fb7299"></stop></linearGradient></defs><path d="M2 2h20v20H2z" fill="url(#g)"></path><text x="12" y="23">霓虹&lt;up&gt;</text></svg>',
@@ -429,7 +447,7 @@ describe("皮肤渲染器 — CSS 翻译", () => {
 					"t",
 					"title",
 					{ row: 1, column: 1, span: 12 },
-					{ showIf: "stats.hasFansChanged", css: '[data-bn="self"]{color:red}' },
+					{ showIf: "stats.hasFollowersDelta", css: '[data-bn="self"]{color:red}' },
 				),
 			]),
 		);

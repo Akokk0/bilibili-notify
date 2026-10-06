@@ -357,9 +357,9 @@ describe("拖块身 —— 叠放层数闸", () => {
 	it("底下那三个都写了 showIf → 一个都不数,照旧落得下去", () => {
 		const { onGrid } = mount({
 			card: withRow2(
-				filled("name", "up.name"),
-				filled("title", "up.name"),
-				filled("desc", "up.name"),
+				filled("name", "creator.name"),
+				filled("title", "creator.name"),
+				filled("desc", "creator.name"),
 			) as never,
 		});
 		dragFrom(blockEl(), { x: colX(1), y: rowY(1) }, { x: colX(1), y: rowY(2) });

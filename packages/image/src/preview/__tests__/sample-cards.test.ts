@@ -196,13 +196,13 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 	});
 
 	it("真值:带视频卡,没有话题、没有附加内容", async () => {
-		expect(
-			await truthy("video", ["dynamic.hasVideo", "dynamic.hasTopic", "dynamic.hasAdditional"]),
-		).toEqual({
-			"dynamic.hasVideo": true,
-			"dynamic.hasTopic": false,
-			"dynamic.hasAdditional": false,
-		});
+		expect(await truthy("video", ["post.hasVideo", "post.hasTopic", "post.hasAttachment"])).toEqual(
+			{
+				"post.hasVideo": true,
+				"post.hasTopic": false,
+				"post.hasAttachment": false,
+			},
+		);
 	});
 
 	it("动态卡的场面两两不同", async () => {
@@ -213,7 +213,7 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 });
 
 /**
- * **图文场面**(2026-09-17 加)。契约里的 `pics.*` 与 `dynamic.hasPics` 从前没有一个场面带图,
+ * **图文场面**(2026-09-17 加)。契约里的 `images.*` 与 `post.hasImages` 从前没有一个场面带图,
  * 皮肤作者写了也看不到;图廊的样式(九宫格、长图角标)同样无处可看。给的是图廊最满的情况。
  */
 describe("出厂示例数据 — 动态卡的图文场面", () => {
@@ -223,7 +223,7 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
 		expect(html).not.toContain("【示例视频】");
 	});
 
-	it("{pics.count} 是 9,{pics.first} 取得到第一张图", async () => {
+	it("{images.count} 是 9,{images.first} 取得到第一张图", async () => {
 		const sample = await sampleCard("dynamic", "pics");
 		const html = await renderCardWithSkin(
 			"dynamic",
@@ -238,7 +238,7 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
 							{
 								id: "probe",
 								kind: "custom",
-								html: "<div>探针:{pics.count}|探针图:{pics.first}</div>",
+								html: "<div>探针:{images.count}|探针图:{images.first}</div>",
 								grid: { row: 1, column: 1, span: 12 },
 							},
 						],
@@ -251,9 +251,9 @@ describe("出厂示例数据 — 动态卡的图文场面", () => {
 	});
 
 	it("真值:带图,没有视频卡", async () => {
-		expect(await truthy("pics", ["dynamic.hasPics", "dynamic.hasVideo"])).toEqual({
-			"dynamic.hasPics": true,
-			"dynamic.hasVideo": false,
+		expect(await truthy("pics", ["post.hasImages", "post.hasVideo"])).toEqual({
+			"post.hasImages": true,
+			"post.hasVideo": false,
 		});
 	});
 });
@@ -316,7 +316,7 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 		expect(await probe("video", "探针:{video.title}")).toContain("探针:【示例视频】");
 	});
 
-	it("showIf 的 dynamic.hasVideo 也随之为真", async () => {
+	it("showIf 的 post.hasVideo 也随之为真", async () => {
 		const sample = await sampleCard("dynamic", "video");
 		const html = await renderCardWithSkin(
 			"dynamic",
@@ -332,7 +332,7 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 								id: "probe",
 								kind: "custom",
 								html: "<div>有视频</div>",
-								showIf: "dynamic.hasVideo",
+								showIf: "post.hasVideo",
 								grid: { row: 1, column: 1, span: 12 },
 							},
 						],

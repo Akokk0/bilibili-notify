@@ -40,10 +40,10 @@ import type {
 import { postFromDynamic } from "@bilibili-notify/dynamic";
 import {
 	type CardSkinChoice,
-	type DynamicCardProps,
 	h,
 	ImageRenderer,
 	type LiveCardView,
+	type PostCardView,
 	renderCardWithSkin,
 	resolveKnobAssets,
 	shrinkImageForCssVar,
@@ -1234,7 +1234,7 @@ async function renderRealDynamic(
  */
 type PreviewSpec =
 	| { kind: "live"; props: LiveCardView; title: string }
-	| { kind: "dynamic"; props: DynamicCardProps; title: string };
+	| { kind: "dynamic"; props: PostCardView; title: string };
 
 function buildPreviewSpec(
 	kind: "live" | "dyn",
@@ -1275,23 +1275,23 @@ const PREVIEW_SC_DURATION_SEC = [60, 120, 300, 1800, 3600, 7200] as const;
 function buildLivePreviewProps(coverDataUrl?: string): LiveCardView {
 	return {
 		status: "streaming",
-		username: "示例 UP 主",
-		userface: SVG_AVATAR_BLUE,
+		creatorName: "示例 UP 主",
+		creatorAvatarUrl: SVG_AVATAR_BLUE,
 		title: "【赛博朋克 2077】资料片实况首播！",
-		area: "游戏",
+		category: "游戏",
 		description: "今晚 7 点开始，欢迎围观。这是一段示例直播间简介。",
 		cover: coverDataUrl || SVG_COVER,
 		hasCover: true,
 		time: "2026-05-09 19:00:00",
-		online: "1.2万",
+		currentViewers: "1.2万",
 		likes: "8.7万",
 		totalViewers: "3.4万",
-		fans: "215万",
-		fansChanged: "+128",
+		followers: "215万",
+		followersDelta: "+128",
 	};
 }
 
-function buildDynamicPreviewProps(): DynamicCardProps {
+function buildDynamicPreviewProps(): PostCardView {
 	const text = h(
 		"div",
 		{
@@ -1300,7 +1300,7 @@ function buildDynamicPreviewProps(): DynamicCardProps {
 		"这是一段示例动态正文。你可以在「卡片预览·样式」里看到改色后的渲染效果。\n第二行用来演示换行和留白。",
 	);
 	// 附加内容块的示例(预约样式),让用户在预览里看到 additional 块独立排版的位置。
-	const additional = h(
+	const attachment = h(
 		"div",
 		{ style: "background:rgba(0,0,0,0.04);border-radius:8px;padding:10px;" },
 		[
@@ -1316,33 +1316,34 @@ function buildDynamicPreviewProps(): DynamicCardProps {
 			),
 		],
 	);
-	// 转发示例:内部原动态用同一套版式递归渲染,标签贴在内部作者名后。
-	const forward = {
-		avatarUrl: SVG_AVATAR_PINK,
-		upName: "被转发的 UP 主",
-		upIsVip: false,
-		pubTime: "2026-05-08 10:30:00",
-		headerLabel: "投稿了视频",
+	// 转发示例:被转发的原作品用同一套版式递归渲染,标签贴在内层作者名后。
+	const repost = {
+		creatorAvatarUrl: SVG_AVATAR_PINK,
+		creatorName: "被转发的 UP 主",
+		creatorIsPremium: false,
+		time: "2026-05-08 10:30:00",
+		label: "投稿了视频",
+		isReposted: true as const,
 		topic: undefined,
 		text: h(
 			"div",
 			{ style: "font-size:14px;line-height:1.7;color:#444;" },
 			"这是被转发的原动态正文 —— 内部也跟随同一套版式（块顺序 / 显隐 / 边距）。",
 		),
-		additional: null,
+		attachment: null,
 		stats: undefined,
 	};
 	return {
 		node: {
-			avatarUrl: SVG_AVATAR_BLUE,
-			upName: "示例 UP 主",
-			upIsVip: true,
-			pubTime: "2026-05-09 18:24:00",
+			creatorAvatarUrl: SVG_AVATAR_BLUE,
+			creatorName: "示例 UP 主",
+			creatorIsPremium: true,
+			time: "2026-05-09 18:24:00",
 			topic: "示例话题",
 			text,
-			additional,
-			forward,
-			stats: { forward: "1.2万", comment: "5,891", like: "8.7万" },
+			attachment,
+			repost,
+			stats: { shares: "1.2万", comments: "5,891", likes: "8.7万" },
 		},
 	};
 }

@@ -33,12 +33,12 @@ import {
 } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { buildSuperchatCardView } from "./superchat-view";
-import type { MembershipCardInput } from "./templates/guard-card";
 import type { LiveCardInput } from "./templates/live-card";
+import type { MembershipCardInput } from "./templates/membership-card";
 import { nodeFromPost } from "./templates/post-node";
 import { collectImageRefs } from "./templates/post-refs";
 import type { RoastBoardCardProps, RoastSoloCardProps } from "./templates/roast-card";
-import type { SuperchatCardInput } from "./templates/sc-card";
+import type { SuperchatCardInput } from "./templates/superchat-card";
 import { injectWordCloudScript, wordCloudInitScript } from "./templates/wordcloud";
 import type { CardColorOptions, CardSkinChoice } from "./types";
 
@@ -715,7 +715,7 @@ export class ImageRenderer {
 			time: (seconds) => this.unixTimestampToString(seconds),
 			imageUrl: (ref) => resolved.get(ref),
 		});
-		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.upName}`);
+		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.creatorName}`);
 		return this.renderWithSkin({
 			kind: "dynamic",
 			title: "动态通知",
@@ -726,7 +726,9 @@ export class ImageRenderer {
 			props: { node },
 		})
 			.then((buf) => {
-				this.logger.debug(`[dynamic] 动态卡片渲染完成：${node.upName}（${Date.now() - t0}ms）`);
+				this.logger.debug(
+					`[dynamic] 动态卡片渲染完成：${node.creatorName}（${Date.now() - t0}ms）`,
+				);
 				return buf;
 			})
 			.catch((e) => {
@@ -754,15 +756,15 @@ export class ImageRenderer {
 
 	async generateWordCloudImg(
 		words: Array<[string, number]>,
-		masterName: string,
-		masterAvatarUrl?: string,
+		creatorName: string,
+		creatorAvatarUrl?: string,
 		/**
 		 * 用哪套皮肤、这位 UP 怎么拧它;词云卡整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。
 		 */
 		opts: CardSkinChoice = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${masterName}（${words.length} 词）`);
+		this.logger.debug(`[wordcloud] 开始渲染词云卡片：${creatorName}（${words.length} 词）`);
 		// 画布(`#wordCloudCanvas`)在内置块里,皮肤路径出的 HTML 照样有它 —— 画词的脚本
 		// 原样注进 `</body>` 之前(`wordCloudInitScript`,读盘拼脚本那一半单独住在那儿)。
 		const script = wordCloudInitScript(words, ASSET_DIR);
@@ -774,10 +776,10 @@ export class ImageRenderer {
 			font: await this.resolveFont(),
 			waitFor: "window.wordcloudDone === true",
 			postProcess: (html) => injectWordCloudScript(html, script),
-			props: { masterName, masterAvatarUrl },
+			props: { creatorName, creatorAvatarUrl },
 		})
 			.then((buf) => {
-				this.logger.debug(`[wordcloud] 词云卡片渲染完成：${masterName}（${Date.now() - t0}ms）`);
+				this.logger.debug(`[wordcloud] 词云卡片渲染完成：${creatorName}（${Date.now() - t0}ms）`);
 				return buf;
 			})
 			.catch((e) => {
@@ -814,7 +816,7 @@ export class ImageRenderer {
 		opts: { cardSkin?: string } = {},
 	): Promise<Buffer> {
 		const t0 = Date.now();
-		this.logger.debug(`[roast] 开始渲染单人锐评卡片：${data.up.name}`);
+		this.logger.debug(`[roast] 开始渲染单人锐评卡片：${data.creator.name}`);
 		return this.renderWithSkin({
 			kind: "roastSolo",
 			title: "UP 主锐评",
@@ -823,7 +825,9 @@ export class ImageRenderer {
 			props: { ...data },
 		})
 			.then((buf) => {
-				this.logger.debug(`[roast] 单人锐评卡片渲染完成：${data.up.name}（${Date.now() - t0}ms）`);
+				this.logger.debug(
+					`[roast] 单人锐评卡片渲染完成：${data.creator.name}（${Date.now() - t0}ms）`,
+				);
 				return buf;
 			})
 			.catch((e) => {

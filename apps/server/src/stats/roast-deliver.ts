@@ -6,7 +6,7 @@
  * 的话,「渲染挂了降级成文字」这类行为迟早只有一条路上还留着。
  */
 
-import type { RoastCardUp } from "@bilibili-notify/image";
+import type { RoastCardCreator } from "@bilibili-notify/image";
 import {
 	BILIBILI_SOURCE_KEY,
 	identityColor,
@@ -79,7 +79,7 @@ async function cardUp(
 	deps: RoastDeliverDeps,
 	subscriptionId: string,
 	sub: Subscription | undefined,
-): Promise<RoastCardUp> {
+): Promise<RoastCardCreator> {
 	if (!sub) return { name: UNKNOWN_UP_NAME, color: upColor({}, subscriptionId) };
 	const name = roastSubjectName(deps, sub);
 	const identity = subscriptionIdentityOf(sub);
@@ -100,9 +100,9 @@ async function cardUp(
 export async function makeUpMeta(
 	deps: RoastDeliverDeps,
 	subscriptionIds: Iterable<string>,
-): Promise<(subscriptionId: string) => RoastCardUp> {
+): Promise<(subscriptionId: string) => RoastCardCreator> {
 	const subById = new Map(deps.store.getSubscriptions().map((s) => [s.id, s]));
-	const metas = new Map<string, RoastCardUp>();
+	const metas = new Map<string, RoastCardCreator>();
 	await Promise.all(
 		[...new Set(subscriptionIds)].map(async (id) => {
 			metas.set(id, await cardUp(deps, id, subById.get(id)));
@@ -123,7 +123,7 @@ export function roastPushText(
 	kind: "board" | "solo",
 	result: BoardLike | SoloLike,
 	days: number,
-	upMeta: (subscriptionId: string) => RoastCardUp,
+	upMeta: (subscriptionId: string) => RoastCardCreator,
 ): string {
 	if (result.pushText.trim()) return result.pushText;
 	if (kind === "board") {
@@ -246,7 +246,7 @@ export async function deliverRoast(
 	return { mode, sent, skipped, failed, text };
 }
 
-function boardCardData(r: BoardLike, days: number, upMeta: (id: string) => RoastCardUp) {
+function boardCardData(r: BoardLike, days: number, upMeta: (id: string) => RoastCardCreator) {
 	return {
 		days,
 		pigeon: { ...upMeta(r.pigeon.subscriptionId), reason: r.pigeon.reason },
@@ -256,10 +256,10 @@ function boardCardData(r: BoardLike, days: number, upMeta: (id: string) => Roast
 	};
 }
 
-function soloCardData(s: SoloLike, days: number, upMeta: (id: string) => RoastCardUp) {
+function soloCardData(s: SoloLike, days: number, upMeta: (id: string) => RoastCardCreator) {
 	return {
 		days,
-		up: upMeta(s.subscriptionId),
+		creator: upMeta(s.subscriptionId),
 		verdict: s.verdict,
 		score: s.score,
 		highlights: s.highlights,

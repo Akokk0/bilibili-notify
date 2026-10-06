@@ -596,7 +596,7 @@ describe("ImageRenderer 皮肤里的自定义块", () => {
 						id: "hello",
 						kind: "custom",
 						grid: { row: 1, column: 1, span: 12 },
-						html: '<p>{up.name}</p><img src="asset:assets/logo.png">',
+						html: '<p>{creator.name}</p><img src="asset:assets/logo.png">',
 					},
 				],
 			},

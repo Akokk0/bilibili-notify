@@ -71,14 +71,14 @@ const MASTER = { name: "示例 UP 主", face: SVG_AVATAR_BLUE } as const;
  * `blocks/live.tsx` 的 `statsLeft` / `followerText`)。
  */
 type LiveSceneOverlay = Pick<LiveCardView, "status" | "time"> &
-	Partial<Pick<LiveCardView, "online" | "likes" | "totalViewers" | "fans">>;
+	Partial<Pick<LiveCardView, "currentViewers" | "likes" | "totalViewers" | "followers">>;
 
 const LIVE_SCENES: Record<string, LiveSceneOverlay> = {
 	streaming: {
 		status: "streaming",
 		time: "直播时长：2小时13分",
-		online: formatCount(123_456),
-		fans: formatCount(88_800),
+		currentViewers: formatCount(123_456),
+		followers: formatCount(88_800),
 	},
 	ended: {
 		status: "end",
@@ -90,19 +90,19 @@ const LIVE_SCENES: Record<string, LiveSceneOverlay> = {
 
 function liveSample(scene: string): LiveCardView {
 	return {
-		username: MASTER.name,
-		userface: MASTER.face,
+		creatorName: MASTER.name,
+		creatorAvatarUrl: MASTER.face,
 		title: "【示例】周年庆典特别直播，今晚不见不散！",
-		area: "虚拟主播",
+		category: "虚拟主播",
 		description: "这是一段示例直播间简介：每晚八点开播，周末加场。",
 		// 「正在直播」那一档真机上铺的是实时关键帧;示例里两个场景是同一块占位图。
 		cover: SVG_COVER,
 		hasCover: true,
-		online: "",
+		currentViewers: "",
 		likes: "",
 		totalViewers: "",
-		fans: "",
-		fansChanged: "",
+		followers: "",
+		followersDelta: "",
 		...LIVE_SCENES[scene],
 	};
 }
@@ -355,7 +355,7 @@ function roastBoardSample(): SampleProps<"roastBoard"> {
 function roastSoloSample(): SampleProps<"roastSolo"> {
 	return {
 		days: 7,
-		up: SAMPLE_UPS.first,
+		creator: SAMPLE_UPS.first,
 		verdict: "示例锐评：这周唯一的产出是一条「在剪了」，剪了七天，还在剪。",
 		score: 32,
 		highlights: [
@@ -370,7 +370,7 @@ function roastSoloSample(): SampleProps<"roastSolo"> {
 function wordCloudSample(): SampleProps<"wordcloud"> {
 	// 画布上的词由 `wordCloudInitScript` 另行追加(几百 KB 的脚本),卡壳这一半不带词 ——
 	// 预览里那块画布是空的,皮肤能改的也正是卡壳这一半。
-	return { masterName: MASTER.name, masterAvatarUrl: MASTER.face };
+	return { creatorName: MASTER.name, creatorAvatarUrl: MASTER.face };
 }
 
 // ── 出口 ──────────────────────────────────────────────────────────────────────
