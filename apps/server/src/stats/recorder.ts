@@ -3,7 +3,7 @@ import type { FansStore } from "../fans/store.js";
 import { attachBiliStatsSource } from "./bili-source.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import type { StatsSubscription } from "./file-key.js";
-import type { StatsStore, UpDynamicEvent } from "./store.js";
+import type { PostEntry, StatsStore } from "./store.js";
 
 /**
  * 统计的采集层 = 一个**中立的记录器** + 每个来源一个**适配**(ADR-0020 决策 17)。
@@ -28,7 +28,7 @@ export const STATS_SEEN_MIN_GAP_MS = 10 * 60_000;
 /** 各来源适配看得到的那一面。所有写入都是 fire-and-forget,失败只丢这一条统计。 */
 export interface StatsRecorderCore {
 	/** 记一条作品行(含 `live` 开播公告)。同一个键下同 id 只留首条(去重在 store)。 */
-	recordPost(key: string, post: UpDynamicEvent): void;
+	recordPost(key: string, post: PostEntry): void;
 	/** 开一场。这个键在飞的累计观看清零,从这一场重新取最大值。 */
 	openSession(key: string, startedAtIso: string): void;
 	/** 报一次本场累计观看(看过的人数)。只留最大值;不是有限数就不收。 */
@@ -174,7 +174,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			enqueue(UNKEYED, "recordingSince", () => opts.store.recordingSince());
 		},
 		recordPost(key, post) {
-			enqueue(key, "appendDynamic", () => opts.store.appendDynamic(key, post));
+			enqueue(key, "appendPost", () => opts.store.appendPost(key, post));
 		},
 
 		openSession(key, startedAtIso) {

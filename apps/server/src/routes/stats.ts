@@ -20,7 +20,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type { RoastRunOutcome } from "../runtime/roast-scheduler.js";
 import {
-	countDynamics,
+	countPosts,
 	dailyActivityCounts,
 	dailyFansSeries,
 	localDayKey,
@@ -240,7 +240,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 				const key = statsFileKey(sub);
 				const [samples, events, sessions, seen] = await Promise.all([
 					deps.runtime.fansStore.listSamplesSince(key, since),
-					deps.runtime.statsStore.listDynamics(key, since),
+					deps.runtime.statsStore.listPosts(key, since),
 					deps.runtime.statsStore.listLiveSessions(key, since),
 					// 「在记」只有拓展订阅有(决策 9 / 16),B 站行「那天有没有记录」看粉丝采样(见下)。
 					fromBilibili(sub)
@@ -378,7 +378,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			// 而动态与场次记录原封不动留着 —— 那时把计数判成「无记录」就是睁眼说瞎话。
 			const hasCoverage =
 				activity.some((v) => v !== null) || events.length > 0 || sessions.length > 0;
-			const counts = countDynamics(events);
+			const counts = countPosts(events);
 			// 在播状态来自引擎(唯一权威;拓展是场次模块),用来区分「这场正在播」与「end 帧丢了」。
 			const live = summarizeLiveSessions(sessions, { isLive: one.live, sinceMs });
 
@@ -389,7 +389,7 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			// 直播类推送的 UP 不记场次,开播公告是他开过播的唯一痕迹(ADR-0020 决策 5 的
 			// 第二个 🔗)。上面的 hasEvidence / hasCoverage 同理。
 			//
-			// 动态取**最大 ts** 而不是末元素:`listDynamics` 的契约是「按落盘顺序」
+			// 动态取**最大 ts** 而不是末元素:`listPosts` 的契约是「按落盘顺序」
 			// = 检测顺序,而 B 站动态流按惯例最新在前,一轮里检测到多条时末元素
 			// 反而是最旧的那条。直播那侧同样按 ts 取:`listLiveSessions` 返回的是
 			// 「首次出现顺序」,而场次按 startedAt 认,被重新打开的早场次未必排在末尾。

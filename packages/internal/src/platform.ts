@@ -197,7 +197,7 @@ export interface BusEvents {
 	 *
 	 * **不是 exactly-once**:投递失败走 `markFail`,时间线锚点不前移,下一轮
 	 * 重判会把同一条再 emit 一次。消费方必须按 `id` 幂等 —— `StatsRecorder`
-	 * 靠 `StatsStore.appendDynamic` 的 id 去重挡掉,新消费方别忘了这一层。
+	 * 靠 `StatsStore.appendPost` 的 id 去重挡掉,新消费方别忘了这一层。
 	 */
 	"dynamic-detected": DynamicDetectedEvent;
 }

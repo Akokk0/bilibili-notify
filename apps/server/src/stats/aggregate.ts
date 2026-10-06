@@ -1,5 +1,5 @@
 import type { FansSample } from "../fans/store.js";
-import type { LiveSessionRecord, UpDynamicEvent } from "./store.js";
+import type { LiveSessionEntry, PostEntry } from "./store.js";
 
 /**
  * stats 聚合层 —— 纯函数,不碰 IO。路由只负责把 store 读出来的原始序列喂进来。
@@ -45,7 +45,7 @@ export function windowSinceIso(days: number, tzOffsetMin: number, now = new Date
 	return new Date(Date.parse(`${firstDay}T00:00:00.000Z`) + tzOffsetMin * 60_000).toISOString();
 }
 
-export interface DynamicCounts {
+export interface PostCounts {
 	archives: number;
 	dynamics: number;
 }
@@ -54,7 +54,7 @@ export interface DynamicCounts {
  * 投稿 = `video`,动态 = `post`(页面上照旧叫「投稿 / 动态」,ADR-0019 决策 65)。
  * 开播公告 `live` 哪一栏都不进 —— 直播按场次另算。
  */
-export function countDynamics(events: readonly UpDynamicEvent[]): DynamicCounts {
+export function countPosts(events: readonly PostEntry[]): PostCounts {
 	let archives = 0;
 	let dynamics = 0;
 	for (const e of events) {
@@ -135,13 +135,13 @@ export function dailyFansSeries(
 /**
  * 逐日活动次数 —— 热力图的数据源。一条动态、一次投稿、一场开播各算一次。
  *
- * 单独一个函数而不是复用 `countDynamics`,是因为热力图要的是**按天散开**的
+ * 单独一个函数而不是复用 `countPosts`,是因为热力图要的是**按天散开**的
  * 分布,而不是窗口总计;两者的口径必须一致(开播公告 `live` 照样不计),否则热力图和
  * 表格里的数字会对不上。一场直播只按下面的场次、在开播那天算一次。
  */
 export function dailyActivityCounts(
-	events: readonly UpDynamicEvent[],
-	sessions: readonly LiveSessionRecord[],
+	events: readonly PostEntry[],
+	sessions: readonly LiveSessionEntry[],
 	opts: DailySeriesOptions,
 ): number[] {
 	const tz = opts.tzOffsetMin ?? 0;
@@ -170,7 +170,7 @@ export function dailyActivityCounts(
 	return out;
 }
 
-export interface LiveSummary {
+export interface LiveStatsView {
 	/** 窗口内的场次(含仍在直播的那场)。 */
 	sessions: number;
 	/** 总时长(小时)。已闭合的场按实际时长,仍在播的按「开播到现在」。 */
@@ -191,9 +191,9 @@ export interface LiveSummary {
 }
 
 export function summarizeLiveSessions(
-	sessions: readonly LiveSessionRecord[],
+	sessions: readonly LiveSessionEntry[],
 	opts: { now?: Date; isLive?: boolean; sinceMs?: number } = {},
-): LiveSummary {
+): LiveStatsView {
 	const nowMs = (opts.now ?? new Date()).getTime();
 	let hours = 0;
 	let timedSessions = 0;

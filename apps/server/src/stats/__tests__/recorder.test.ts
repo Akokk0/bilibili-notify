@@ -53,8 +53,8 @@ function makeBus() {
 
 function makeStore() {
 	return {
-		appendDynamic: vi.fn(async () => {}),
-		listDynamics: vi.fn(async () => []),
+		appendPost: vi.fn(async () => {}),
+		listPosts: vi.fn(async () => []),
 		openLiveSession: vi.fn(async () => {}),
 		closeLiveSession: vi.fn(async () => {}),
 		listLiveSessions: vi.fn(async () => []),
@@ -63,7 +63,7 @@ function makeStore() {
 		listSeenSince: vi.fn(async () => []),
 		drop: vi.fn(async () => {}),
 	} satisfies Record<keyof StatsStore, unknown> as unknown as StatsStore & {
-		appendDynamic: ReturnType<typeof vi.fn>;
+		appendPost: ReturnType<typeof vi.fn>;
 		openLiveSession: ReturnType<typeof vi.fn>;
 		closeLiveSession: ReturnType<typeof vi.fn>;
 		drop: ReturnType<typeof vi.fn>;
@@ -112,7 +112,7 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 }
 
 describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
-	it("dynamic-detected 的视频投稿 → appendDynamic 记成 video,按订阅 id 落(不是 uid)", async () => {
+	it("dynamic-detected 的视频投稿 → appendPost 记成 video,按订阅 id 落(不是 uid)", async () => {
 		const { trigger, store } = setup();
 		trigger("dynamic-detected", {
 			uid: "1",
@@ -120,8 +120,8 @@ describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		await vi.waitFor(() => expect(store.appendDynamic).toHaveBeenCalled());
-		expect(store.appendDynamic).toHaveBeenCalledWith("id-1", {
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
+		expect(store.appendPost).toHaveBeenCalledWith("id-1", {
 			id: "abc",
 			kind: "video",
 			ts: "2026-05-16T09:00:00.000Z",
@@ -139,8 +139,8 @@ describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
 		for (const [i, type] of types.entries()) {
 			trigger("dynamic-detected", { uid: "1", id: `d${i}`, type, ts: "2026-05-16T09:00:00.000Z" });
 		}
-		await vi.waitFor(() => expect(store.appendDynamic).toHaveBeenCalledTimes(types.length));
-		expect(store.appendDynamic.mock.calls.map((c) => c[1].kind)).toEqual([
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(types.length));
+		expect(store.appendPost.mock.calls.map((c) => c[1].kind)).toEqual([
 			"post",
 			"post",
 			"post",
@@ -164,13 +164,13 @@ describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
 			type: "DYNAMIC_TYPE_LIVE",
 			ts: "2026-05-16T09:05:00.000Z",
 		});
-		await vi.waitFor(() => expect(store.appendDynamic).toHaveBeenCalledTimes(2));
-		expect(store.appendDynamic).toHaveBeenNthCalledWith(1, "id-1", {
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(2));
+		expect(store.appendPost).toHaveBeenNthCalledWith(1, "id-1", {
 			id: "l1",
 			kind: "live",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		expect(store.appendDynamic).toHaveBeenNthCalledWith(2, "id-1", {
+		expect(store.appendPost).toHaveBeenNthCalledWith(2, "id-1", {
 			id: "l2",
 			kind: "live",
 			ts: "2026-05-16T09:05:00.000Z",
@@ -465,7 +465,7 @@ describe("StatsRecorder — dispose", () => {
 		trigger("dynamic-detected", { uid: "1", id: "a", type: "T", ts: "2026-05-16T09:00:00.000Z" });
 		trigger("live-state-changed", { uid: "1", status: "live" });
 		await handle.flush();
-		expect(store.appendDynamic).not.toHaveBeenCalled();
+		expect(store.appendPost).not.toHaveBeenCalled();
 		expect(store.openLiveSession).not.toHaveBeenCalled();
 	});
 });
@@ -627,9 +627,9 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		await vi.waitFor(() => expect(store.appendDynamic).toHaveBeenCalled());
-		expect(store.appendDynamic).toHaveBeenCalledTimes(1);
-		expect(store.appendDynamic).toHaveBeenCalledWith("id-1", expect.objectContaining({ id: "y" }));
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
+		expect(store.appendPost).toHaveBeenCalledTimes(1);
+		expect(store.appendPost).toHaveBeenCalledWith("id-1", expect.objectContaining({ id: "y" }));
 		expect(store.openLiveSession).not.toHaveBeenCalled();
 		expect(store.closeLiveSession).not.toHaveBeenCalled();
 	});
@@ -649,7 +649,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 		trigger("live-viewers-changed", { uid: "1", viewers: 500 });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
-		expect(store.appendDynamic.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-1b"]);
+		expect(store.appendPost.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-1b"]);
 		expect(store.closeLiveSession.mock.calls.map((c) => [c[0], c[2]])).toEqual([
 			["id-1", 500],
 			["id-1b", 500],
@@ -667,7 +667,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			ts: "2026-05-16T09:00:00.000Z",
 		});
 		await handle.flush();
-		expect(store.appendDynamic).not.toHaveBeenCalled();
+		expect(store.appendPost).not.toHaveBeenCalled();
 	});
 
 	it("新加的订阅认得出:订阅列表变了之后,那个 uid 的事件就记在新订阅名下", async () => {
@@ -687,12 +687,9 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		await vi.waitFor(() => expect(store.appendDynamic).toHaveBeenCalled());
-		expect(store.appendDynamic).toHaveBeenCalledTimes(1);
-		expect(store.appendDynamic).toHaveBeenCalledWith(
-			"id-7",
-			expect.objectContaining({ id: "late" }),
-		);
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
+		expect(store.appendPost).toHaveBeenCalledTimes(1);
+		expect(store.appendPost).toHaveBeenCalledWith("id-7", expect.objectContaining({ id: "late" }));
 	});
 
 	it("刚加的订阅,作废通知还没到也认得出 —— 查不到时重查一次", async () => {
@@ -711,8 +708,8 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			type: "DYNAMIC_TYPE_AV",
 			ts: "2026-05-16T09:00:00.000Z",
 		});
-		await vi.waitFor(() => expect(store.appendDynamic).toHaveBeenCalledTimes(2));
-		expect(store.appendDynamic.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-2"]);
+		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(2));
+		expect(store.appendPost.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-2"]);
 	});
 
 	it("删掉的订阅不再记:之后同 uid 的事件不会把文件重新写出来", async () => {
@@ -732,6 +729,6 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledWith("id-1"));
 		await handle.flush();
 		expect(store.closeLiveSession).not.toHaveBeenCalled();
-		expect(store.appendDynamic).not.toHaveBeenCalled();
+		expect(store.appendPost).not.toHaveBeenCalled();
 	});
 });

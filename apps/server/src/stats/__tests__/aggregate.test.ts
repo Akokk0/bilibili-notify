@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import {
-	countDynamics,
+	countPosts,
 	dailyActivityCounts,
 	dailyFansSeries,
 	localDayKey,
@@ -21,9 +21,9 @@ const TZ_CN = -480;
 /** 北京时间 2026-05-16 h 时的 UTC ISO。 */
 const CN = (day: number, h: number) => new Date(Date.UTC(2026, 4, day, h - 8, 0, 0)).toISOString();
 
-describe("countDynamics", () => {
+describe("countPosts", () => {
 	it("按种类分别计数:video 进投稿,post 进动态,开播公告(live)哪一栏都不进", () => {
-		const got = countDynamics([
+		const got = countPosts([
 			{ id: "1", kind: "video", ts: CN(16, 10) },
 			{ id: "2", kind: "video", ts: CN(16, 11) },
 			{ id: "3", kind: "post", ts: CN(16, 12) },
@@ -33,7 +33,7 @@ describe("countDynamics", () => {
 	});
 
 	it("空输入 → 全 0", () => {
-		expect(countDynamics([])).toEqual({ archives: 0, dynamics: 0 });
+		expect(countPosts([])).toEqual({ archives: 0, dynamics: 0 });
 	});
 });
 

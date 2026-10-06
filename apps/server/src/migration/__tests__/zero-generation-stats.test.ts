@@ -23,7 +23,7 @@ import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { CONFIG_DIR } from "../../config/store.js";
 import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
 import {
-	countDynamics,
+	countPosts,
 	dailyActivityCounts,
 	dailyFansSeries,
 	summarizeLiveSessions,
@@ -82,9 +82,9 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 	describe("老 B 站行 → 与改之前同样的统计数", () => {
 		it("投稿 / 动态 / 热力图照原来的规矩归类:AV 算投稿,开播那两种不算作品也不加热力", async () => {
 			const store = await migrateAndOpen();
-			const events = await store.listDynamics("1", SINCE);
+			const events = await store.listPosts("1", SINCE);
 			const sessions = await store.listLiveSessions("1", SINCE);
-			expect(countDynamics(events)).toEqual({ archives: 2, dynamics: 4 });
+			expect(countPosts(events)).toEqual({ archives: 2, dynamics: 4 });
 			expect(dailyActivityCounts(events, sessions, { days: 3, tzOffsetMin: 0, now: NOW })).toEqual([
 				0, 3, 6,
 			]);
@@ -92,7 +92,7 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 
 		it("读出来的是中立种类,B 站类型串不再往上漏;开播那两种留作 live(活动证据)", async () => {
 			const store = await migrateAndOpen();
-			const events = await store.listDynamics("1", SINCE);
+			const events = await store.listPosts("1", SINCE);
 			expect(events).toEqual([
 				{ id: "a", kind: "video", ts: "2026-05-15T02:00:00.000Z" },
 				{ id: "b", kind: "post", ts: "2026-05-15T03:00:00.000Z" },
@@ -124,8 +124,8 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 		it("读过、再往里记,盘上已有的行原样还在", async () => {
 			const store = await migrateAndOpen();
 			const before = await readTarget("stats/dyn/1.jsonl");
-			await store.listDynamics("1", SINCE);
-			await store.appendDynamic("1", { id: "z", kind: "post", ts: "2026-05-16T19:00:00.000Z" });
+			await store.listPosts("1", SINCE);
+			await store.appendPost("1", { id: "z", kind: "post", ts: "2026-05-16T19:00:00.000Z" });
 			const raw = await readTarget("stats/dyn/1.jsonl");
 			expect(raw.startsWith(before)).toBe(true);
 			expect(raw.slice(before.length)).toContain('"id":"z"');
@@ -139,24 +139,24 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 		it("老行里已有的 id,新写一条同 id 的 → 不追加,读回只有一条", async () => {
 			const store = await migrateAndOpen();
 			const before = await readTarget("stats/dyn/1.jsonl");
-			await store.appendDynamic("1", { id: "a", kind: "video", ts: "2026-05-15T02:00:00.000Z" });
+			await store.appendPost("1", { id: "a", kind: "video", ts: "2026-05-15T02:00:00.000Z" });
 			expect(await readTarget("stats/dyn/1.jsonl")).toBe(before);
-			const got = await store.listDynamics("1", SINCE);
+			const got = await store.listPosts("1", SINCE);
 			expect(got.filter((e) => e.id === "a")).toHaveLength(1);
 		});
 
 		it("老的开播伪动态也挡得住同 id 的重写", async () => {
 			const store = await migrateAndOpen();
 			const before = await readTarget("stats/dyn/1.jsonl");
-			await store.appendDynamic("1", { id: "c", kind: "post", ts: "2026-05-15T12:00:00.000Z" });
+			await store.appendPost("1", { id: "c", kind: "post", ts: "2026-05-15T12:00:00.000Z" });
 			expect(await readTarget("stats/dyn/1.jsonl")).toBe(before);
 		});
 
 		it("新行之间照旧去重 —— 引擎重放同一条不虚增", async () => {
 			const store = await migrateAndOpen();
-			await store.appendDynamic("2", { id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" });
-			await store.appendDynamic("2", { id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" });
-			expect(await store.listDynamics("2", SINCE)).toEqual([
+			await store.appendPost("2", { id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" });
+			await store.appendPost("2", { id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" });
+			expect(await store.listPosts("2", SINCE)).toEqual([
 				{ id: "x", kind: "video", ts: "2026-05-16T01:00:00.000Z" },
 			]);
 		});
@@ -175,12 +175,12 @@ describe("老 B 站行经迁移器 → 与改之前同样的统计数(原 legacy
 				]),
 			);
 			const store = await migrateAndOpen();
-			const events = await store.listDynamics("5", SINCE);
+			const events = await store.listPosts("5", SINCE);
 			expect(events).toEqual([
 				{ id: "n1", kind: "video", ts: "2026-05-16T01:00:00.000Z" },
 				{ id: "n2", kind: "post", ts: "2026-05-16T02:00:00.000Z" },
 			]);
-			expect(countDynamics(events)).toEqual({ archives: 1, dynamics: 1 });
+			expect(countPosts(events)).toEqual({ archives: 1, dynamics: 1 });
 		});
 	});
 
@@ -486,9 +486,7 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			const stats = createStatsStore({ dataRoot: sandbox.target, logger: silentLogger });
 			const fans = createFansStore({ dataRoot: sandbox.target, logger: silentLogger });
 			const since = T(1);
-			expect(await stats.listDynamics("dup", since)).toEqual(
-				await stats.listDynamics("clean", since),
-			);
+			expect(await stats.listPosts("dup", since)).toEqual(await stats.listPosts("clean", since));
 			expect(await stats.listLiveSessions("dup", since)).toEqual(
 				await stats.listLiveSessions("clean", since),
 			);

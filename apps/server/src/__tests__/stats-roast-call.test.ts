@@ -122,7 +122,7 @@ function makeDeps(
 		runtime: {
 			fansStore: { listSamplesSince: async () => [] },
 			statsStore: {
-				listDynamics: async () => [],
+				listPosts: async () => [],
 				listLiveSessions: async () => [],
 				listSeenSince: async () => [],
 				recordingSince: async () => "1970-01-01T00:00:00.000Z",

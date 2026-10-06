@@ -44,7 +44,7 @@ function makeDeps(opts: StubOpts = {}) {
 					if (opts.failOverview) throw new Error("盘挂了");
 					return "1970-01-01T00:00:00.000Z";
 				},
-				listDynamics: async () => [],
+				listPosts: async () => [],
 				listLiveSessions: async () => [],
 			},
 			subRuntimeStore: { get: () => undefined },
@@ -84,12 +84,12 @@ describe("GET /overview — 缓存键覆盖所有会变的输入", () => {
 
 	it("输入全没变时照常命中缓存 —— 别把缓存改成摆设", async () => {
 		const { deps } = makeDeps();
-		const listDynamics = vi.spyOn(deps.runtime.statsStore, "listDynamics");
+		const listPosts = vi.spyOn(deps.runtime.statsStore, "listPosts");
 		const app = createStatsRoute(deps);
 
 		await app.request("/overview?days=7&tz=0");
 		await app.request("/overview?days=7&tz=0");
-		expect(listDynamics).toHaveBeenCalledTimes(1);
+		expect(listPosts).toHaveBeenCalledTimes(1);
 	});
 });
 

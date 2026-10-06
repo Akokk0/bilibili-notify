@@ -2,8 +2,8 @@
  * 单元测试 — `createStatsStore`(真实 tmpdir FS)。
  *
  * 守护契约:
- *   - appendDynamic:按需建目录 + 追加一行;按 id 幂等(同一动态重放不重复计数)
- *   - listDynamics:只回 ts >= since 的事件;坏行/空行跳过;文件缺失 → []
+ *   - appendPost:按需建目录 + 追加一行;按 id 幂等(同一动态重放不重复计数)
+ *   - listPosts:只回 ts >= since 的事件;坏行/空行跳过;文件缺失 → []
  *   - 直播场次以 start/end 两种帧 append-only 落盘,读时配对:
  *       · 正常 start→end 配成一场,带 peakViewers
  *       · 未闭合的 start(仍在直播 / 崩溃丢了 end)→ endedAt 为 undefined,不算时长
@@ -46,39 +46,39 @@ const T = (h: number) => `2026-05-16T${String(h).padStart(2, "0")}:00:00.000Z`;
 
 describe("StatsStore — 动态事件", () => {
 	it("append 后可按 since 读回", async () => {
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendDynamic("1", { id: "b", kind: "post", ts: T(3) });
-		expect(await store.listDynamics("1", T(0))).toEqual([
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "b", kind: "post", ts: T(3) });
+		expect(await store.listPosts("1", T(0))).toEqual([
 			{ id: "a", kind: "video", ts: T(1) },
 			{ id: "b", kind: "post", ts: T(3) },
 		]);
 	});
 
 	it("since 之前的事件被过滤掉", async () => {
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendDynamic("1", { id: "b", kind: "post", ts: T(5) });
-		const got = await store.listDynamics("1", T(3));
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "b", kind: "post", ts: T(5) });
+		const got = await store.listPosts("1", T(3));
 		expect(got.map((e) => e.id)).toEqual(["b"]);
 	});
 
 	it("同 id 重复 append → 只保留一条(引擎重放不该虚增投稿数)", async () => {
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
-		expect(await store.listDynamics("1", T(0))).toHaveLength(1);
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		expect(await store.listPosts("1", T(0))).toHaveLength(1);
 	});
 
 	it("坏行 / 空行跳过,不影响其余", async () => {
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
 		await writeFile(join(dataDir, "stats", "dyn", "1.jsonl"), '{"bad\n\n{"id":"c"}\n', {
 			flag: "a",
 		});
-		await store.appendDynamic("1", { id: "d", kind: "post", ts: T(4) });
-		const got = await store.listDynamics("1", T(0));
+		await store.appendPost("1", { id: "d", kind: "post", ts: T(4) });
+		const got = await store.listPosts("1", T(0));
 		expect(got.map((e) => e.id)).toEqual(["a", "d"]);
 	});
 
 	it("文件缺失 → 空数组,不 warn", async () => {
-		expect(await store.listDynamics("404", T(0))).toEqual([]);
+		expect(await store.listPosts("404", T(0))).toEqual([]);
 		expect(logger.warn).not.toHaveBeenCalled();
 	});
 });
@@ -187,10 +187,10 @@ describe("StatsStore — 直播场次", () => {
 
 describe("StatsStore — drop", () => {
 	it("删掉该 uid 的动态与直播两类文件", async () => {
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
 		await store.openLiveSession("1", T(1));
 		await store.drop("1");
-		expect(await store.listDynamics("1", T(0))).toEqual([]);
+		expect(await store.listPosts("1", T(0))).toEqual([]);
 		expect(await store.listLiveSessions("1", T(0))).toEqual([]);
 	});
 
@@ -339,8 +339,8 @@ describe("StatsStore — 场次身份由 startedAt 决定", () => {
 
 describe("StatsStore — 盘上的行是中立的", () => {
 	it("作品行只写 {id, kind, ts},不带任何平台类型", async () => {
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
-		await store.appendDynamic("1", { id: "b", kind: "post", ts: T(2) });
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "b", kind: "post", ts: T(2) });
 		const raw = await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8");
 		expect(raw).toBe(
 			`${JSON.stringify({ id: "a", kind: "video", ts: T(1) })}\n${JSON.stringify({ id: "b", kind: "post", ts: T(2) })}\n`,
@@ -371,8 +371,8 @@ describe("StatsStore — 盘上的行是中立的", () => {
 	});
 
 	it("开播公告记成 live,原样读回", async () => {
-		await store.appendDynamic("1", { id: "l", kind: "live", ts: T(1) });
-		expect(await store.listDynamics("1", T(0))).toEqual([{ id: "l", kind: "live", ts: T(1) }]);
+		await store.appendPost("1", { id: "l", kind: "live", ts: T(1) });
+		expect(await store.listPosts("1", T(0))).toEqual([{ id: "l", kind: "live", ts: T(1) }]);
 	});
 
 	it("种类不认识的新行跳过,不猜", async () => {
@@ -381,7 +381,7 @@ describe("StatsStore — 盘上的行是中立的", () => {
 			join(dataDir, "stats", "dyn", "1.jsonl"),
 			`${JSON.stringify({ id: "a", kind: "reel", ts: T(1) })}\n`,
 		);
-		expect(await store.listDynamics("1", T(0))).toEqual([]);
+		expect(await store.listPosts("1", T(0))).toEqual([]);
 	});
 });
 
@@ -403,14 +403,14 @@ describe("StatsStore — 盘上已有的行", () => {
 			{ id: "a", kind: "video", ts: T(1) },
 			{ id: "b", kind: "post", ts: T(2) },
 		]);
-		await store.appendDynamic("1", { id: "a", kind: "video", ts: T(1) });
+		await store.appendPost("1", { id: "a", kind: "video", ts: T(1) });
 		expect(await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8")).toBe(text);
-		expect((await store.listDynamics("1", T(0))).filter((e) => e.id === "a")).toHaveLength(1);
+		expect((await store.listPosts("1", T(0))).filter((e) => e.id === "a")).toHaveLength(1);
 	});
 
 	it("kind: live 的开播公告行也挡得住同 id 重写", async () => {
 		const text = await putRows("dyn", "1", [{ id: "c", kind: "live", ts: T(1) }]);
-		await store.appendDynamic("1", { id: "c", kind: "post", ts: T(1) });
+		await store.appendPost("1", { id: "c", kind: "post", ts: T(1) });
 		expect(await readFile(join(dataDir, "stats", "dyn", "1.jsonl"), "utf-8")).toBe(text);
 	});
 
@@ -423,7 +423,7 @@ describe("StatsStore — 盘上已有的行", () => {
 			{ id: "n2", kind: "post", ts: T(2) },
 			{ id: "n2", kind: "post", ts: T(2) },
 		]);
-		expect(await store.listDynamics("5", T(0))).toEqual([
+		expect(await store.listPosts("5", T(0))).toEqual([
 			{ id: "n1", kind: "video", ts: T(1) },
 			{ id: "n2", kind: "post", ts: T(2) },
 		]);
@@ -436,7 +436,7 @@ describe("StatsStore — 不认老形状(0.x 的老行归迁移器改写,这一�
 			{ id: "old", type: "DYNAMIC_TYPE_AV", ts: T(1) },
 			{ id: "new", kind: "video", ts: T(2) },
 		]);
-		expect(await store.listDynamics("1", T(0))).toEqual([{ id: "new", kind: "video", ts: T(2) }]);
+		expect(await store.listPosts("1", T(0))).toEqual([{ id: "new", kind: "video", ts: T(2) }]);
 	});
 
 	it("老下播帧的字符串峰值当没带:这一场没有峰值", async () => {
@@ -480,12 +480,12 @@ describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 
 
 	it("订阅 id 那一格就是文件名,两类文件落在同一套目录里", async () => {
 		const key = statsFileKey(BILI_SUB);
-		await store.appendDynamic(key, { id: "w1", kind: "video", ts: T(1) });
+		await store.appendPost(key, { id: "w1", kind: "video", ts: T(1) });
 		await store.openLiveSession(key, T(2));
 		await store.closeLiveSession(key, T(3), 500);
 		expect(await readdir(join(dataDir, "stats", "dyn"))).toEqual([`${BILI_SUB.id}.jsonl`]);
 		expect(await readdir(join(dataDir, "stats", "live"))).toEqual([`${BILI_SUB.id}.jsonl`]);
-		expect(await store.listDynamics(key, T(0))).toEqual([{ id: "w1", kind: "video", ts: T(1) }]);
+		expect(await store.listPosts(key, T(0))).toEqual([{ id: "w1", kind: "video", ts: T(1) }]);
 		expect(await store.listLiveSessions(key, T(0))).toEqual([
 			{ startedAt: T(2), endedAt: T(3), peakViewers: 500 },
 		]);
@@ -494,9 +494,9 @@ describe("StatsStore — 文件按订阅 id 命名(ADR-0020 决策 2 的 🔗 / 
 	it("drop 只删这条订阅的两类文件,别的订阅的不动", async () => {
 		const mine = statsFileKey(EXT_SUB);
 		const other = statsFileKey(BILI_SUB);
-		await store.appendDynamic(mine, { id: "w1", kind: "video", ts: T(1) });
+		await store.appendPost(mine, { id: "w1", kind: "video", ts: T(1) });
 		await store.openLiveSession(mine, T(2));
-		await store.appendDynamic(other, { id: "a", kind: "post", ts: T(1) });
+		await store.appendPost(other, { id: "a", kind: "post", ts: T(1) });
 		await store.drop(mine);
 		expect(await readdir(join(dataDir, "stats", "dyn"))).toEqual([`${other}.jsonl`]);
 		expect(await readdir(join(dataDir, "stats", "live"))).toEqual([]);

@@ -10,9 +10,9 @@ import { dataPath } from "../runtime/roots.js";
  * 按订阅分文件的「UP 产出」时序持久化 —— 数据统计页 Tab 的原始数据源。
  *
  * 文件布局(`<key>` 是 {@link statsFileKey}:两支都是订阅 id):
- *   `<dataDir>/stats/dyn/<key>.jsonl`   每行一条 {@link UpDynamicEvent}
+ *   `<dataDir>/stats/dyn/<key>.jsonl`   每行一条 {@link PostEntry}
  *   `<dataDir>/stats/live/<key>.jsonl`  每行一帧 {@link LiveFrame}
- *   `<dataDir>/stats/seen/<key>.jsonl`  每行一条 {@link StatsSeenRow}(「在记」的证据,只有拓展订阅有)
+ *   `<dataDir>/stats/seen/<key>.jsonl`  每行一条 {@link StatsSeenEntry}(「在记」的证据,只有拓展订阅有)
  * 0.x 按 uid 命名的 B 站文件由迁移器改成订阅 id(`migration/stats.ts`)。
  *
  * **盘上的行是中立的**(ADR-0020 决策 16):作品行记 `video` / `post` / `live`,峰值存数字。平台的
@@ -45,7 +45,7 @@ export type StatsPostKind = "video" | "post";
 export type StatsFeedKind = StatsPostKind | "live";
 
 /** 一条作品行。 */
-export interface UpDynamicEvent {
+export interface PostEntry {
 	/** 平台给的作品 id(B 站是动态 id_str);同一个键下的幂等键。 */
 	id: string;
 	/** 中立种类。分类由各来源自己做(ADR-0020 决策 5 的 🔗),这一层不认平台类型。 */
@@ -55,7 +55,7 @@ export interface UpDynamicEvent {
 }
 
 /** 配对后的一场直播。`endedAt` 缺失 = 仍在直播或 end 帧丢失,不计入时长。 */
-export interface LiveSessionRecord {
+export interface LiveSessionEntry {
 	startedAt: string;
 	endedAt?: string;
 	/** 本场累计观看(看过的人数,ADR-0020 决策 7);未采到时缺失。 */
@@ -74,11 +74,11 @@ export interface LiveSessionRecord {
  * 「在记」的一条证据(ADR-0020 决策 9 / 16):收到这位的某条上报的时刻。**第一条就是这位的开始记录** ——
  * 不另存。只有拓展订阅写(B 站行「那天有没有记录」的规矩不变,看粉丝采样);最密多少一条由记录器管。
  */
-export interface StatsSeenRow {
+export interface StatsSeenEntry {
 	ts: string;
 }
 
-/** 落盘的单帧(新写的形状)。读时按顺序配对成 {@link LiveSessionRecord}。 */
+/** 落盘的单帧(新写的形状)。读时按顺序配对成 {@link LiveSessionEntry}。 */
 interface LiveFrame {
 	k: "start" | "end";
 	ts: string;
@@ -88,18 +88,18 @@ interface LiveFrame {
 
 export interface StatsStore {
 	/** 追加一条作品。同一个键下同 id 重复调用只保留首条(引擎重放不虚增计数)。 */
-	appendDynamic(key: string, event: UpDynamicEvent): Promise<void>;
+	appendPost(key: string, event: PostEntry): Promise<void>;
 	/**
 	 * 读回 ts >= sinceIso 的作品行,按落盘顺序;同 id 只留先落盘的那条。开播公告是 `live`,调用方
 	 * 自己决定它算不算作品。
 	 */
-	listDynamics(key: string, sinceIso: string): Promise<UpDynamicEvent[]>;
+	listPosts(key: string, sinceIso: string): Promise<PostEntry[]>;
 	/** 记一帧开播。 */
 	openLiveSession(key: string, startedAtIso: string): Promise<void>;
 	/** 记一帧下播,可带本场累计观看(不是有限数就不带)。 */
 	closeLiveSession(key: string, endedAtIso: string, peakViewers?: number): Promise<void>;
 	/** 配对后返回开播时间 >= sinceIso 的场次,按开播时间顺序。 */
-	listLiveSessions(key: string, sinceIso: string): Promise<LiveSessionRecord[]>;
+	listLiveSessions(key: string, sinceIso: string): Promise<LiveSessionEntry[]>;
 	/**
 	 * 活动采集的起始时刻(ISO)。首次建库时落盘,此后恒定。
 	 *
@@ -112,7 +112,7 @@ export interface StatsStore {
 	/** 记一条「在记」。不去重、不稀释 —— 最密多少一条是记录器的事。 */
 	appendSeen(key: string, tsIso: string): Promise<void>;
 	/** 读回 ts >= sinceIso 的「在记」行,按落盘顺序(时间只增不减)。`""` 读全部,第一条就是开始记录。 */
-	listSeenSince(key: string, sinceIso: string): Promise<StatsSeenRow[]>;
+	listSeenSince(key: string, sinceIso: string): Promise<StatsSeenEntry[]>;
 	/** 删除这个键的三类文件(订阅被移除时调用)。 */
 	drop(key: string): Promise<void>;
 }
@@ -120,7 +120,7 @@ export interface StatsStore {
 const FEED_KINDS: ReadonlySet<unknown> = new Set<StatsFeedKind>(["video", "post", "live"]);
 
 /** 读一行作品。返回 `undefined` = 这行不认(坏行、种类不认识),跳过。 */
-function readPostRow(parsed: unknown): UpDynamicEvent | undefined {
+function readPostRow(parsed: unknown): PostEntry | undefined {
 	const row = parsed as { id?: unknown; kind?: unknown; ts?: unknown } | null;
 	if (typeof row?.id !== "string" || typeof row.ts !== "string") return undefined;
 	if (!FEED_KINDS.has(row.kind)) return undefined;
@@ -239,8 +239,8 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	 * `dynamic-detected` 又不保证只发一次(投递失败走 markFail,下轮重发)。0.x 之间降级跑过
 	 * 一阵再升级回来,同一条作品在盘上就有两行,迁移器翻完行也还是两行,不去重的话计数全部翻倍。
 	 */
-	async function readDynamics(key: string): Promise<UpDynamicEvent[]> {
-		const posts: UpDynamicEvent[] = [];
+	async function readPosts(key: string): Promise<PostEntry[]> {
+		const posts: PostEntry[] = [];
 		const ids = new Set<string>();
 		await readLines(dynFile(key), (parsed) => {
 			const post = readPostRow(parsed);
@@ -262,21 +262,21 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	}
 
 	return {
-		async appendDynamic(key, event) {
+		async appendPost(key, event) {
 			await ensureRoots();
-			// 幂等靠读时去重代价更低,但那样 jsonl 会无限增长且 listDynamics 每次
+			// 幂等靠读时去重代价更低,但那样 jsonl 会无限增长且 listPosts 每次
 			// 都要建 Set;动态写入频率极低(一轮 cron 至多几条),这里直接读一遍
 			// 现有 id 挡掉重复,换取文件本身就是干净的。
-			const existing = await readDynamics(key);
+			const existing = await readPosts(key);
 			if (existing.some((e) => e.id === event.id)) return;
 			// 只写这三格:行格式是契约(决策 16),调用方对象上多带的东西不许漏进盘。
-			const row: UpDynamicEvent = { id: event.id, kind: event.kind, ts: event.ts };
+			const row: PostEntry = { id: event.id, kind: event.kind, ts: event.ts };
 			await appendLine(dynFile(key), row, `dyn ${key}`);
 		},
 
-		async listDynamics(key, sinceIso) {
+		async listPosts(key, sinceIso) {
 			await ensureRoots();
-			const all = await readDynamics(key);
+			const all = await readPosts(key);
 			return all.filter((e) => e.ts >= sinceIso);
 		},
 
@@ -295,7 +295,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 		async listLiveSessions(key, sinceIso) {
 			await ensureRoots();
-			const sessions: LiveSessionRecord[] = [];
+			const sessions: LiveSessionEntry[] = [];
 			// 配对:start 开一场并立即入列(所以未闭合的场次也留得住),随后的
 			// end 就近闭合最后一场未闭合的。孤立的 end 无处可挂 → 丢弃,绝不
 			// 凭空造一场只有下播时间的「半场」出来污染场次数。
@@ -306,8 +306,8 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 			// (关服截断一帧、真下播一帧)。曾经只比对「当前敞开的那场」,于是
 			// 「end 之后又来一帧同时刻 start」会凭空开出第二场 —— 线上真出现过,
 			// 一场直播被记成三场。
-			const byStart = new Map<string, LiveSessionRecord>();
-			let open: LiveSessionRecord | undefined;
+			const byStart = new Map<string, LiveSessionEntry>();
+			let open: LiveSessionEntry | undefined;
 			await readLines(liveFile(key), (parsed) => {
 				const f = parsed as { k?: unknown; ts?: unknown; peak?: unknown } | null;
 				if (typeof f?.ts !== "string") return;
@@ -360,13 +360,13 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 		async appendSeen(key, tsIso) {
 			await ensureRoots();
-			const row: StatsSeenRow = { ts: tsIso };
+			const row: StatsSeenEntry = { ts: tsIso };
 			await appendLine(seenFile(key), row, `seen ${key}`);
 		},
 
 		async listSeenSince(key, sinceIso) {
 			await ensureRoots();
-			const rows: StatsSeenRow[] = [];
+			const rows: StatsSeenEntry[] = [];
 			await readLines(seenFile(key), (parsed) => {
 				const ts = (parsed as { ts?: unknown } | null)?.ts;
 				if (typeof ts === "string" && ts >= sinceIso) rows.push({ ts });

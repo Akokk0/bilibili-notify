@@ -40,7 +40,7 @@ function makeDeps(f: Fixture): RouteDeps {
 				listSamplesSince: async (key: string) => f.samples?.[uidOf(key)] ?? [],
 			},
 			statsStore: {
-				listDynamics: async (key: string) => f.dynamics?.[uidOf(key)] ?? [],
+				listPosts: async (key: string) => f.dynamics?.[uidOf(key)] ?? [],
 				listLiveSessions: async (key: string) => f.sessions?.[uidOf(key)] ?? [],
 				recordingSince: async () => f.recordingSince ?? "1970-01-01T00:00:00.000Z",
 			},
@@ -239,7 +239,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 	});
 
 	it("动态落盘顺序与发布时间不一致时,lastActivityAt 仍取最晚的一条", async () => {
-		// listDynamics 的契约是「按落盘顺序」= 检测顺序,而 B 站动态流按惯例
+		// listPosts 的契约是「按落盘顺序」= 检测顺序,而 B 站动态流按惯例
 		// 最新在前 —— 一轮检测到多条时,最后落盘的反而是这批里最旧的那条。
 		// 取末元素会读出错的时间,必须按 ts 比较。
 		const older = new Date(NOW - 3 * DAY).toISOString();
@@ -517,8 +517,8 @@ describe("GET /api/stats/overview — 缓存键", () => {
 		let reads = 0;
 		const f: Fixture = { subs: [{ uid: "1" }] };
 		const deps = makeDeps(f);
-		const inner = deps.runtime.statsStore.listDynamics;
-		deps.runtime.statsStore.listDynamics = async (uid: string, since: string) => {
+		const inner = deps.runtime.statsStore.listPosts;
+		deps.runtime.statsStore.listPosts = async (uid: string, since: string) => {
 			reads++;
 			return inner(uid, since);
 		};

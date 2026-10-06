@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FansSample } from "../fans/store.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
-import type { LiveSessionRecord, StatsSeenRow, UpDynamicEvent } from "../stats/store.js";
+import type { LiveSessionEntry, PostEntry, StatsSeenEntry } from "../stats/store.js";
 
 const H = 3_600_000;
 const DAY = 86_400_000;
@@ -36,9 +36,9 @@ interface Fixture {
 	ext?: Array<{ id: string; externalId?: string; enabled?: boolean }>;
 	/** 以下全按**订阅 id** 记。 */
 	samples?: Record<string, FansSample[]>;
-	posts?: Record<string, UpDynamicEvent[]>;
-	sessions?: Record<string, LiveSessionRecord[]>;
-	seen?: Record<string, StatsSeenRow[]>;
+	posts?: Record<string, PostEntry[]>;
+	sessions?: Record<string, LiveSessionEntry[]>;
+	seen?: Record<string, StatsSeenEntry[]>;
 	/** 资料缓存里的粉丝数(拓展报资料时更新,决策 8)。 */
 	profileFans?: Record<string, number>;
 	/** 此刻有一场在播的拓展订阅(场次模块手里有这一场)。 */
@@ -57,7 +57,7 @@ function makeDeps(f: Fixture): RouteDeps {
 					(f.samples?.[key] ?? []).filter((s) => s.ts >= since),
 			},
 			statsStore: {
-				listDynamics: async (key: string, since: string) =>
+				listPosts: async (key: string, since: string) =>
 					(f.posts?.[key] ?? []).filter((e) => e.ts >= since),
 				listLiveSessions: async (key: string, since: string) =>
 					(f.sessions?.[key] ?? []).filter((s) => s.current === true || s.startedAt >= since),
@@ -330,7 +330,7 @@ describe("拓展行:粉丝(决策 8)", () => {
 describe("拓展行:在播(决策 6)", () => {
 	it("场次模块手里有这一场 → live=true,这一场的时长算到现在;没有的那条同样的帧不计时长", async () => {
 		// 盘上两条一模一样的敞着的场次:一条真在播,一条是崩溃遗留(下播帧没写成)。
-		const open: LiveSessionRecord[] = [{ startedAt: at(0, 2), current: true }];
+		const open: LiveSessionEntry[] = [{ startedAt: at(0, 2), current: true }];
 		const body = await get(
 			makeDeps({
 				ext: [{ id: E1 }, { id: E2 }],
