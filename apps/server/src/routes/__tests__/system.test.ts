@@ -12,13 +12,17 @@
  */
 
 import type {
+	GenerationDeleteResponse,
+	GenerationInfo,
 	GenerationSourceKind,
+	GenerationsResponse,
 	RestartAbility,
 	RestartResponse,
 	SystemNotice,
 	SystemNoticesResponse,
 } from "@bilibili-notify/contract";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { GenerationRemoval } from "../../runtime/generation-usage.js";
 import { type CreateSystemRouteInput, createSystemRoute } from "../system.js";
 
 const STARTED = "2026-09-10T00:00:00.000Z";
@@ -37,6 +41,7 @@ function boot(
 		notices: { list: async () => [], acknowledge: async () => false },
 		requestGeneration,
 		zeroGenerationExists: async () => true,
+		generations: { list: async () => [], remove: async () => ({ kind: "not_found" }) },
 		...over,
 	};
 	return { app: createSystemRoute(input), restart, requestGeneration: input.requestGeneration };
@@ -241,5 +246,86 @@ describe("POST /api/system/generations", () => {
 		expect(res.status).toBe(500);
 		await settle();
 		expect(restart).not.toHaveBeenCalled();
+	});
+});
+
+describe("/api/system/generations(㉙c 旧版本数据)", () => {
+	const info: GenerationInfo = {
+		seq: 0,
+		current: false,
+		partial: false,
+		formatVersion: null,
+		createdBy: "0.x",
+		lastActiveAt: null,
+		deletable: true,
+		lockReason: null,
+		deletableAt: null,
+		sizeBytes: 10,
+		reclaimableBytes: 4,
+	};
+
+	function withGenerations(result: GenerationRemoval = { kind: "removed", freedBytes: 4 }) {
+		const remove = vi.fn(async (_seq: number) => result);
+		const { app } = boot({ can: true, how: "desktop" }, undefined, {
+			generations: { list: async () => [info], remove },
+		});
+		return { app, remove };
+	}
+
+	it("GET:原样回列表", async () => {
+		const { app } = withGenerations();
+		const res = await app.request("/generations");
+		expect(res.status).toBe(200);
+		expect((await res.json()) as GenerationsResponse).toEqual({ generations: [info] });
+	});
+
+	it("DELETE:成功回腾出的字节;第 0 代的 :seq 是 0,传给注入的函数的是数字", async () => {
+		const { app, remove } = withGenerations();
+		const res = await app.request("/generations/0", { method: "DELETE" });
+		expect(res.status).toBe(200);
+		expect((await res.json()) as GenerationDeleteResponse).toEqual({ freedBytes: 4 });
+		expect(remove).toHaveBeenCalledWith(0);
+	});
+
+	it("DELETE 被锁:409 conflict,message 说人话,错误体不带原因码(upstreamCode 是上游的码)", async () => {
+		const { app } = withGenerations({ kind: "locked", reason: "protected-source" });
+		const res = await app.request("/generations/0", { method: "DELETE" });
+		expect(res.status).toBe(409);
+		const body = (await res.json()) as Record<string, unknown>;
+		expect(body).toMatchObject({ code: "conflict", message: expect.stringContaining("30 天") });
+		expect(body).not.toHaveProperty("upstreamCode");
+	});
+
+	it("DELETE 没有这一代:404 not_found(同别的 DELETE,不做幂等)", async () => {
+		const { app } = withGenerations({ kind: "not_found" });
+		const res = await app.request("/generations/9", { method: "DELETE" });
+		expect(res.status).toBe(404);
+		expect(await res.json()).toMatchObject({ code: "not_found" });
+	});
+
+	it.each([
+		"abc",
+		"1.5",
+		"-1",
+		"+1",
+		"007",
+		"1e3",
+		"99999999999999999999",
+		"..%2F1",
+		"1%2F..%2F2",
+		"1.partial",
+	])("DELETE :seq=%s 非规范纯数字 → 400 invalid,根本不调删除", async (seq) => {
+		const { app, remove } = withGenerations();
+		const res = await app.request(`/generations/${seq}`, { method: "DELETE" });
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ code: "invalid" });
+		expect(remove).not.toHaveBeenCalled();
+	});
+
+	it("带真路径分隔符的 /generations/1/2 根本匹配不到删除口", async () => {
+		const { app, remove } = withGenerations();
+		const res = await app.request("/generations/1/2", { method: "DELETE" });
+		expect(res.status).toBe(404);
+		expect(remove).not.toHaveBeenCalled();
 	});
 });

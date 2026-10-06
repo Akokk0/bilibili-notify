@@ -74,6 +74,11 @@ import { createEngines } from "./runtime/engines.js";
 import { isEntrypoint } from "./runtime/entrypoint.js";
 import { startFansPoller } from "./runtime/fans-poller.js";
 import {
+	listGenerationUsage,
+	removeGeneration,
+	sweepGenerationLeftovers,
+} from "./runtime/generation-usage.js";
+import {
 	copyKeyMaterial,
 	createGeneration,
 	FORMAT_VERSION,
@@ -201,11 +206,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	// 临时文件是这个进程正在写的(Docker 里每次开机 pid 常常一样,靠不住),而存储与日志落盘都从
 	// 下面的 createAppRuntime 起,所以放在它前面;logger 此刻还没有,结果先留着,等它起来再记一行。
 	// 读不动 / 清不掉的地方清扫自己跳过、记进报告;万一它整个抛了也不挡开机:留下的只是些垃圾。
-	// 只扫宿主根的 versions/ 和要用的那一代:第 0 代与别的旧代都是备份,不碰;要开的新代这时还不存在。
-	const bootSweep = await sweepBootRoots([
-		hostPath(hostRoot, "versions"),
-		...(selection.kind === "use" ? [selection.dir] : []),
-	]).then(
+	// 整棵扫宿主根的 versions/ 和要用的那一代:第 0 代与别的旧代都是备份,内部不碰;要开的新代这时还不存在。
+	// 另外只扫 generations/ 与宿主根「这一层」里删代删到一半的残骸(见 sweepGenerationLeftovers)。
+	const bootSweep = await sweepBootRoots(
+		[hostPath(hostRoot, "versions"), ...(selection.kind === "use" ? [selection.dir] : [])],
+		hostRoot,
+	).then(
 		(report) => ({ report }) as const,
 		(error: unknown) => ({ error }) as const,
 	);
@@ -1319,6 +1325,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				notices: noticeStore,
 				requestGeneration: (source) => writePendingGeneration(runtime.hostRoot, { kind: source }),
 				zeroGenerationExists: () => zeroGenerationExists(runtime.hostRoot),
+				// 旧版本数据的列表与删除(㉙c):能不能删由 generation-usage 判,删的活登记进 track(关停等它)。
+				generations: (() => {
+					const usage = {
+						hostRoot: runtime.hostRoot,
+						currentSeq: generation.seq,
+						formatVersion: FORMAT_VERSION,
+						now: () => Date.now(),
+					};
+					return {
+						list: () => listGenerationUsage(usage),
+						remove: (seq: number) =>
+							removeGeneration({ ...usage, track: (task) => runtime.serviceCtx.track(task) }, seq),
+					};
+				})(),
 			},
 		});
 
@@ -1391,10 +1411,12 @@ async function resolveEffectiveWebDistDir(input: ResolveWebDistDirInput): Promis
  * 开机清扫的结果写成日志:清掉 / 挪回的一行 info,跳过的一行 warn;哪样都没有就不写(常态,不占日志)。
  */
 /** 开机清扫几个根,报告合成一份。 */
-async function sweepBootRoots(roots: readonly string[]): Promise<SweepReport> {
+async function sweepBootRoots(roots: readonly string[], hostRoot: string): Promise<SweepReport> {
 	const merged: SweepReport = { removed: [], restored: [], skipped: [] };
-	for (const root of roots) {
-		const report = await sweepTempFiles(root);
+	const reports: SweepReport[] = [];
+	for (const root of roots) reports.push(await sweepTempFiles(root));
+	reports.push(await sweepGenerationLeftovers(hostRoot));
+	for (const report of reports) {
 		merged.removed.push(...report.removed);
 		merged.restored.push(...report.restored);
 		merged.skipped.push(...report.skipped);

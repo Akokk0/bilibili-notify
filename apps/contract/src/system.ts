@@ -76,3 +76,63 @@ export type SystemNotice =
 export interface SystemNoticesResponse {
 	notices: SystemNotice[];
 }
+
+/**
+ * 一代为什么不许删(服务端判,面板据此出文案;规则见 ADR-0022 决策 7 与 2026-10-06 的 🔗):
+ *
+ * - `current` —— 正在用的这一代,永远不许删;
+ * - `partial` —— 写到一半的(`<序号>.partial/`),要么还在写、要么等开机清掉;
+ * - `unreadable` —— `generation.json` 读不懂。它可能是更新版本的程序写的,拿不准就不删;
+ *   真损坏的代只能手动清盘;
+ * - `newer-format` —— 格式版本比这一版认得的新:那是更新版本的数据;
+ * - `protected-source` / `protected-previous` —— 当前代的来源代 / 上一代,要等当前代满 30 天,
+ *   到期时刻见 {@link GenerationInfo.deletableAt};两者同时算时报 `protected-source`;
+ * - `current-age-unknown` —— 当前代自己的创建时间读不到,没法算满没满,一律当作没满、全部锁住。
+ */
+export type GenerationLockReason =
+	| "current"
+	| "partial"
+	| "unreadable"
+	| "newer-format"
+	| "protected-source"
+	| "protected-previous"
+	| "current-age-unknown";
+
+/** `GET /api/system/generations` 里的一代。第 0 代(0.x 留在宿主根上的数据)序号是 0。 */
+export interface GenerationInfo {
+	seq: number;
+	current: boolean;
+	/** 写到一半的(`<序号>.partial/`);同一个序号可以同时有一份完整的和一份写到一半的。 */
+	partial: boolean;
+	/** 数据格式版本。第 0 代、写到一半的、读不懂的没有。 */
+	formatVersion: number | null;
+	/** 是哪个版本的程序建的。第 0 代是 `"0.x"`;写到一半的、读不懂的没有。 */
+	createdBy: string | null;
+	/** 最后一次开机用到它的时刻(ISO)。第 0 代没有这个记录,也不拿文件修改时间顶替。 */
+	lastActiveAt: string | null;
+	/** 现在能不能删。服务端判,`DELETE` 同一套判断。 */
+	deletable: boolean;
+	/** 不能删的原因;能删是 `null`。 */
+	lockReason: GenerationLockReason | null;
+	/** 受 30 天保护的给出到期时刻(ISO,= 当前代创建时刻 + 30 天);已到期或不受时间保护的是 `null`。 */
+	deletableAt: string | null;
+	/** 目录看上去多大(全树文件大小之和,不跟符号链接)。硬链接的文件在别的代还活着,所以会高估删了能腾的。 */
+	sizeBytes: number;
+	/** 删掉真能腾出多少的**下界**:只数硬链接数为 1 的文件。 */
+	reclaimableBytes: number;
+}
+
+/** `GET /api/system/generations` 的回话:第 0 代(存在才列)与 `generations/` 下的每一代,序号小的在前。 */
+export interface GenerationsResponse {
+	generations: GenerationInfo[];
+}
+
+/**
+ * `DELETE /api/system/generations/:seq` 的回话。删除**不可恢复**。
+ * 不能删是 409 `conflict`(只带人话;原因码读列表里的 {@link GenerationInfo.lockReason});序号不是纯数字是 400,
+ * 没有这一代是 404(与别的 `DELETE` 同口径,不做幂等)。
+ */
+export interface GenerationDeleteResponse {
+	/** 腾出的字节数:删之前量的 {@link GenerationInfo.reclaimableBytes}(下界)。 */
+	freedBytes: number;
+}

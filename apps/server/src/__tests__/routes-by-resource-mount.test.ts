@@ -62,6 +62,9 @@ const NEW_PATHS: Probe[] = [
 	get("/api/system/update"),
 	post("/api/system/backup/export"),
 	get("/api/system/notices"),
+	// 旧版本数据(㉙c):列表只读;删除带了不存在的号,处理函数自己回「没有这一代」(那也是挂上了的证据)。
+	get("/api/system/generations"),
+	{ method: "DELETE", path: "/api/system/generations/7" },
 	get("/api/cards/skins"),
 	post(`/api/cards/skins/${ID}/ai`),
 	get("/api/dashboard/skins"),
@@ -177,6 +180,7 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 			notices: { list: async () => [], acknowledge: async () => false },
 			requestGeneration: async () => {},
 			zeroGenerationExists: async () => false,
+			generations: { list: async () => [], remove: async () => ({ kind: "not_found" }) },
 		},
 		devtools: createDevRoute({
 			registry: createDevRegistry([]),
@@ -239,6 +243,8 @@ describe("路由按资源整理(ADR-0036)的挂载", () => {
 			get("/api/system/update"),
 			post("/api/system/backup/export"),
 			get("/api/system/notices"),
+			get("/api/system/generations"),
+			{ method: "DELETE", path: "/api/system/generations/7" } as Probe,
 			post("/api/system/restart"),
 		]) {
 			expect(await isRouteMissing(await hit(app, probe)), label(probe)).toBe(true);

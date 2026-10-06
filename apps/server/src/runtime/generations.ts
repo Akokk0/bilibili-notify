@@ -255,6 +255,36 @@ export async function copyKeyMaterial(fromDir: string, toDir: string): Promise<v
 	}
 }
 
+/** 盘上的一代(只读)。`file` 缺了或读不懂是 `undefined`,写到一半的不读。 */
+export interface GenerationEntry {
+	seq: number;
+	partial: boolean;
+	dir: string;
+	file: GenerationFile | undefined;
+}
+
+/**
+ * 列出 `generations/` 里的每一代(完整的与 `.partial`),序号小的在前;认不得的名字(`pending.json`、
+ * 删到一半的 `.bn-tmp` 残骸)不算。只读盘,给系统页的「旧版本数据」用。
+ */
+export async function listGenerationEntries(hostRoot: string): Promise<GenerationEntry[]> {
+	const entries: GenerationEntry[] = [];
+	for (const name of await listGenerationNames(hostRoot)) {
+		const partial = PARTIAL_NAME.exec(name);
+		const complete = COMPLETE_NAME.exec(name);
+		const match = partial ?? complete;
+		if (!match) continue;
+		const dir = hostPath(hostRoot, "generations", name);
+		entries.push({
+			seq: Number(match[1]),
+			partial: partial !== null,
+			dir,
+			file: partial ? undefined : await readGenerationFile(dir),
+		});
+	}
+	return entries.sort((a, b) => a.seq - b.seq || Number(a.partial) - Number(b.partial));
+}
+
 async function listGenerationNames(hostRoot: string): Promise<string[]> {
 	try {
 		return await readdir(hostPath(hostRoot, "generations"));

@@ -12,7 +12,10 @@
  */
 
 import type {
+	GenerationDeleteResponse,
+	GenerationLockReason,
 	GenerationSourceKind,
+	GenerationsResponse,
 	RestartAbility,
 	RestartResponse,
 	SystemNoticesResponse,
@@ -20,6 +23,7 @@ import type {
 import { fail, formatZodIssues, issuesFromZod } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
+import type { GenerationRemoval } from "../runtime/generation-usage.js";
 import type { SystemNoticeStore } from "../runtime/system-notices.js";
 import { respondFailure } from "./respond-failure.js";
 
@@ -38,9 +42,35 @@ export interface CreateSystemRouteInput {
 	requestGeneration: (source: GenerationSourceKind) => Promise<void>;
 	/** 第 0 代(0.x 的数据)还在不在:从旧代重新迁移要它。 */
 	zeroGenerationExists: () => Promise<boolean>;
+	/**
+	 * 旧版本数据(代)的列表与删除(㉙c)。由 index.ts 注入 —— 路由不碰宿主根;能不能删由这里面判,
+	 * 路由只翻译成响应。
+	 */
+	generations: {
+		list: () => Promise<GenerationsResponse["generations"]>;
+		remove: (seq: number) => Promise<GenerationRemoval>;
+	};
 }
 
 const GenerationCreateSchema = z.strictObject({ source: z.enum(["empty", "zero"]) });
+
+/** 不许删时那句话,面板原样显示;要原因码读列表里的 `lockReason`(错误体不带它)。 */
+const LOCK_MESSAGES = {
+	current: "这是正在用的那一代,不能删",
+	partial: "这一代还没写完(或上次写到一半被中断),不能删",
+	unreadable: "读不懂这一代的 generation.json(可能是更新版本的程序写的),为了不误删不能在这里删",
+	"newer-format": "这一代的数据格式比这一版新(是更新版本的数据),不能删",
+	"protected-source": "这是当前这一代的来源,要等当前这一代用满 30 天才能删",
+	"protected-previous": "这是当前这一代的上一代,要等当前这一代用满 30 天才能删",
+	"current-age-unknown": "读不到当前这一代的创建时间,没法判断满没满 30 天,暂时都不能删",
+} as const satisfies Record<GenerationLockReason, string>;
+
+/** 序号只认规范的纯数字(0 或不带前导零),不收符号、小数、路径分隔符与超出安全整数的。 */
+function parseSeq(raw: string): number | undefined {
+	if (!/^(0|[1-9]\d*)$/.test(raw)) return undefined;
+	const seq = Number(raw);
+	return Number.isSafeInteger(seq) ? seq : undefined;
+}
 
 /** 拉不起来时那句话。**说清是哪一种** —— 面板只有这一条线索,而两种的出路不一样。 */
 function refusal(ability: Extract<RestartAbility, { can: false }>): string {
@@ -113,6 +143,27 @@ export function createSystemRoute(input: CreateSystemRouteInput): Hono {
 		// 标记没写成就抛出去、不重启:重启回来什么都没变,主人还以为点过了。
 		await input.requestGeneration(source);
 		return respondThenRestart(c);
+	});
+
+	app.get("/generations", async (c) => {
+		const body: GenerationsResponse = { generations: await input.generations.list() };
+		return c.json(body);
+	});
+
+	// 🔴 不可恢复。能不能删由服务端判(同 `/restart`:按钮藏起来 ≠ 没人发这个请求);第 0 代的 `:seq` 取 0。
+	// 先例:同类 `DELETE` 对不存在的回 404(不做幂等),不许删回 409 `conflict` + 人话(原因码在列表的 `lockReason`)。
+	app.delete("/generations/:seq", async (c) => {
+		const seq = parseSeq(c.req.param("seq"));
+		if (seq === undefined) {
+			return respondFailure(c, fail("invalid", "序号只能是纯数字(第 0 代用 0)"));
+		}
+		const result = await input.generations.remove(seq);
+		if (result.kind === "not_found") return respondFailure(c, fail("not_found", "没有这一代"));
+		if (result.kind === "locked") {
+			return respondFailure(c, fail("conflict", LOCK_MESSAGES[result.reason]));
+		}
+		const body: GenerationDeleteResponse = { freedBytes: result.freedBytes };
+		return c.json(body);
 	});
 
 	return app;

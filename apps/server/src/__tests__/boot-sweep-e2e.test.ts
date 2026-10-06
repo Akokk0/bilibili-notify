@@ -124,6 +124,65 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 		expect(lines[0]).toContain("x.json.bn-tmp.123.abcdef");
 	});
 
+	/**
+	 * ㉙c:删代走「先改名再删」,删到一半被杀的残骸在 `generations/` 这一层与宿主根这一层。开机清扫只补这两层、
+	 * 只认那个改名规则产生的名字:旧代内部、`generations/` 里别的东西、宿主根上别人的临时文件都不碰。
+	 */
+	it("删代删到一半的残骸(generations/ 与宿主根第 0 代键的那一层)被收走,正常的代与旧代内部原样", async () => {
+		const generation = await openTestGeneration(dataDir);
+		// 一个不是当前代的旧代(格式版本比我新,选代不理它):内部的残留是备份的一部分,不扫。
+		const oldGen = join(dataDir, "generations", "9");
+		await mkdir(oldGen, { recursive: true });
+		await writeFile(
+			join(oldGen, "generation.json"),
+			JSON.stringify({
+				formatVersion: 99,
+				migrationRevision: 1,
+				createdAt: "2026-10-01T00:00:00.000Z",
+				createdBy: "9.9.9",
+				lastActiveAt: "2026-10-01T00:00:00.000Z",
+				source: { kind: "empty" },
+			}),
+		);
+		await writeFile(join(oldGen, "x.json.bn-tmp.1.abc"), "旧代内部的残留");
+		await mkdir(join(dataDir, "generations", "4.bn-tmp.1.abc"));
+		await writeFile(join(dataDir, "generations", "4.bn-tmp.1.abc", "half"), "删了一半的旧代");
+		await mkdir(join(dataDir, "state.bn-tmp.1.abc"));
+		await writeFile(join(dataDir, "bn.config.yaml.bn-tmp.1.abc"), "别人的临时文件");
+
+		await bootAndClose();
+
+		expect(existsSync(join(dataDir, "generations", "4.bn-tmp.1.abc"))).toBe(false);
+		expect(existsSync(join(dataDir, "state.bn-tmp.1.abc"))).toBe(false);
+		expect(existsSync(join(oldGen, "x.json.bn-tmp.1.abc"))).toBe(true);
+		expect(existsSync(join(oldGen, "generation.json"))).toBe(true);
+		expect(existsSync(join(generation, "generation.json"))).toBe(true);
+		expect(existsSync(join(dataDir, "bn.config.yaml.bn-tmp.1.abc"))).toBe(true);
+	});
+
+	/** ㉙c 的接线:index.ts 真把旧代的列表口注入给了 `/api/system`(少一行,面板上「旧版本数据」永远读不出来)。 */
+	it("起真服务:GET /api/system/generations 列出在用的这一代", async () => {
+		await openTestGeneration(dataDir);
+		const port = await findFreePort();
+		handle = await startServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"silent",
+			],
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+		const res = await fetch(`http://127.0.0.1:${port}/api/system/generations`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { generations: { seq: number; current: boolean }[] };
+		expect(body.generations).toMatchObject([{ seq: 1, current: true, lockReason: "current" }]);
+	});
+
 	it("什么都没清 → 不记开机清扫那一行(常态不占日志)", async () => {
 		await writeFile(join(dataDir, "keep.txt"), "普通文件");
 

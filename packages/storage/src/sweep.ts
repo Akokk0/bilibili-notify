@@ -40,13 +40,26 @@ export interface SweepReport {
  * 读不动的目录、删不掉 / 挪不回的残留只跳过那一处、记进报告,别处照清,整个清扫不抛:数据目录里
  * 常有主人自己丢进来、权限不对的东西,不能因为它就一处都不清。
  */
-export async function sweepTempFiles(root: string): Promise<SweepReport> {
+export async function sweepTempFiles(
+	root: string,
+	options: SweepOptions = {},
+): Promise<SweepReport> {
 	const report: SweepReport = { removed: [], restored: [], skipped: [] };
-	await sweepDir(root, report);
+	await sweepDir(root, report, options);
 	return report;
 }
 
-async function sweepDir(dir: string, report: SweepReport): Promise<void> {
+export interface SweepOptions {
+	/** 往子目录里钻吗。默认钻;给 `false` 就只看 root 这一层(旧代的内部不该被碰时用)。 */
+	recurse?: boolean;
+	/**
+	 * 只收基名(去掉临时后缀的那段,即被写 / 被换的那个名字)过得了它的残留;缺省全收。
+	 * 给「宿主根这种一层里还住着别人东西」的地方用:只认自己改名规则产生的那几个名字。
+	 */
+	only?: (baseName: string) => boolean;
+}
+
+async function sweepDir(dir: string, report: SweepReport, options: SweepOptions): Promise<void> {
 	let entries: Dirent[];
 	try {
 		entries = await readdir(dir, { withFileTypes: true });
@@ -58,12 +71,14 @@ async function sweepDir(dir: string, report: SweepReport): Promise<void> {
 		const path = join(dir, entry.name);
 		try {
 			if (TEMP_NAME.test(entry.name)) {
+				if (options.only && !options.only(entry.name.replace(TEMP_NAME, ""))) continue;
 				await rm(path, { recursive: true, force: true });
 				report.removed.push(path);
 				continue;
 			}
 			const old = OLD_NAME.exec(entry.name);
 			if (old) {
+				if (options.only && !options.only(old[1] as string)) continue;
 				const target = join(dir, old[1] as string);
 				if (await exists(target)) {
 					await rm(path, { recursive: true, force: true });
@@ -78,7 +93,7 @@ async function sweepDir(dir: string, report: SweepReport): Promise<void> {
 			skip(report, path, err);
 			continue;
 		}
-		if (entry.isDirectory()) await sweepDir(path, report);
+		if (options.recurse !== false && entry.isDirectory()) await sweepDir(path, report, options);
 	}
 }
 

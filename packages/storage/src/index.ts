@@ -39,7 +39,7 @@ export {
 	gcmEncrypt,
 	isGcmBlob,
 } from "./secret-box";
-export { isLeftoverName, type SweepReport, sweepTempFiles } from "./sweep";
+export { isLeftoverName, type SweepOptions, type SweepReport, sweepTempFiles } from "./sweep";
 export type { StoredCookies } from "./types";
 
 export interface StorageManagerOptions {

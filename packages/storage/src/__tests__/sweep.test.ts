@@ -27,6 +27,28 @@ async function tree(root: string): Promise<string[]> {
 }
 
 describe("sweepTempFiles", () => {
+	it("recurse: false 只看这一层:这一层的残留清掉,子目录里的一字不动", async () => {
+		await mkdir(join(dir, "1"), { recursive: true });
+		await writeFile(join(dir, "1", "a.json.bn-tmp.7.abcdef"), "旧代里的");
+		await mkdir(join(dir, "2.bn-tmp.7.abcdef", "deep"), { recursive: true });
+		const report = await sweepTempFiles(dir, { recurse: false });
+		expect(await tree(dir)).toEqual(["1", "1/a.json.bn-tmp.7.abcdef"]);
+		expect(report.removed).toEqual([join(dir, "2.bn-tmp.7.abcdef")]);
+	});
+
+	it("only 只认基名过得了它的残留:别的残留(哪怕形状对)原样留着", async () => {
+		await writeFile(join(dir, "state.bn-tmp.7.abcdef"), "x");
+		await writeFile(join(dir, "bn.config.yaml.bn-tmp.7.abcdef"), "别人的");
+		await mkdir(join(dir, "3.bn-old.7.abcdef"));
+		const report = await sweepTempFiles(dir, {
+			recurse: false,
+			only: (base) => base === "state" || base === "3",
+		});
+		expect(await tree(dir)).toEqual(["3", "bn.config.yaml.bn-tmp.7.abcdef"]);
+		expect(report.removed).toEqual([join(dir, "state.bn-tmp.7.abcdef")]);
+		expect(report.restored).toEqual([join(dir, "3")]);
+	});
+
 	it("各层里残留的临时文件与暂存目录删掉,别的原样", async () => {
 		await mkdir(join(dir, "config"), { recursive: true });
 		await writeFile(join(dir, "config", "settings.json"), "{}");

@@ -50,11 +50,45 @@ describe("/api/system 挂载", () => {
 				notices: { list: async () => [], acknowledge: async () => false },
 				requestGeneration: async () => {},
 				zeroGenerationExists: async () => false,
+				generations: { list: async () => [], remove: async () => ({ kind: "not_found" }) },
 			},
 		});
 		expect((await app.request("/api/system/restart", { method: "POST" })).status).toBe(200);
 		await new Promise((r) => setTimeout(r, 5));
 		expect(restart).toHaveBeenCalledOnce();
+		await runtime.dispose();
+	});
+
+	it("旧版本数据的两个口跟着 system 一起挂:没给 404,给了列表与删除都答(㉙c)", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		await runtime.configStore.load();
+		const bare = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
+		});
+		expect((await bare.request("/api/system/generations")).status).toBe(404);
+		expect((await bare.request("/api/system/generations/1", { method: "DELETE" })).status).toBe(
+			404,
+		);
+		const remove = vi.fn(async () => ({ kind: "removed", freedBytes: 5 }) as const);
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
+			system: {
+				ability: { can: true, how: "container" },
+				startedAt: "2026-09-10T00:00:00.000Z",
+				version: "0.10.1",
+				restart: async () => {},
+				notices: { list: async () => [], acknowledge: async () => false },
+				requestGeneration: async () => {},
+				zeroGenerationExists: async () => false,
+				generations: { list: async () => [], remove },
+			},
+		});
+		const list = await app.request("/api/system/generations");
+		expect(list.status).toBe(200);
+		expect(await list.json()).toEqual({ generations: [] });
+		const del = await app.request("/api/system/generations/3", { method: "DELETE" });
+		expect(await del.json()).toEqual({ freedBytes: 5 });
+		expect(remove).toHaveBeenCalledWith(3);
 		await runtime.dispose();
 	});
 });
