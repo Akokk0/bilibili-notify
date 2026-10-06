@@ -72,8 +72,9 @@
 | 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef`；历史行上「推送那一刻的头像」叫 `avatarSnapshot`（也是 `ImageRef`，与 `nameSnapshot` 成对） | `face`、`userface`、当网址用的 `avatar` |
 | 粉丝数 | `followers` | `fans`、`fansNum`、`followerNum` |
 | 会员档 | 核心里 `tier`；B 站里 `guard`（大航海） | — |
+| 锐评 | `roast`（卡种 `roastBoard` 榜单、`roastSolo` 单人） | — |
 | 会员体系（一个平台的一套档位） | `Program`（`MembershipProgram`，订阅上的值叫 `program`） | `System`、`Scheme` |
-| 醒目留言 | `superchat`（`SuperchatEvent`、`SuperchatCardInput`） | `sc`、`SC`（卡种键 `sc` 到 ㉔ 改） |
+| 醒目留言 | `superchat`（`SuperchatEvent`、`SuperchatCardInput`） | `sc`、`SC` |
 | 金额 | `amount` + `currency`；排好版的字由 `formatAmount` 出 | `price`、当人民币元用的裸数字 |
 | 粉丝团 | 核心里 `fanClub`；B 站里 `medal`（粉丝牌） | `badge` |
 | 作品 | 核心里 `post`；B 站里 `dynamic`（动态） | `work` |

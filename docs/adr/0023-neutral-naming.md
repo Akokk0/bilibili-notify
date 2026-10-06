@@ -37,6 +37,10 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
    - 上舰、SC 出图输入里的 `uname`、`face` 改成 `viewer.name`、`viewer.avatar`，`isAdmin: number` 改成 `isModerator: boolean`；
      🔗 **2026-10-05**（㉓ 开片，主人拍板）：`isModerator` 这一格不要了。它在会员卡上唯一的用处是把主播名换成「房管」两个字，各平台的房管标记也都在聊天消息上、不在会员事件上。词本身没有问题，哪天聊天消息要带这个标记仍用它。
    - 拓展契约里的 `author` 字段改成 `creator`，`viewers` 改成 `currentViewers`。
+   🔗 **2026-10-06**（㉔ 开片拷问，主人拍板；改名表与被否的备选见 construction-plan「㉔ 开片」）：
+   - **卡种键**：`dynamic` → `post`、`sc` → `superchat`、`guard` → `membership`，`live` / `roastBoard` / `roastSolo` / `wordcloud` 不改；全仓只有一套七个键，预览请求里的 `dyn` 取消。
+   - **皮肤的块名、挂点名与字段用同一套词**，随抬皮肤格式版本一次改完；头像与名字的块带上是谁的（`creatorAvatar` / `viewerName`），一块只显示一样东西（直播卡随状态换含义的两块拆成四块）。
+   - **卡片样式设置不再按卡种分层**：`cards { enabled, liveCoverImageIds }`。
 4. **同一类东西用同一种写法**：
    - 时刻：ISO 字符串，以 `…At` 结尾；
    - 开关：`enabled`；

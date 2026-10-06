@@ -128,7 +128,7 @@
 | ㉑ | （10-05 开片，切成 ㉑a–㉑e，见表下「㉑ 开片」）作品模型 `Post` / `PostImage` / `Creator` / `RichText` + 唯一取段函数；出卡改吃 `Post`；过滤键改名 | ✅ 已落（10-05，修订号 27，备份版本 7） |
 | ㉒ | 直播卡输入：人数只收精确数（缺键不画）、封面走 `PostImage`、`startedAt` 改 ISO；B 站改存 `WATCHED_CHANGE` 的 `num`（10-02 从 3b 挪来） | ✅ 已落（10-05，切成 ㉒a–㉒d，㉒e 并进 ㉒c，见表下「㉒ 开片」；不动盘、修订号不抬） |
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a。10-05 开片，切成 ㉓a–㉓e，见表下「㉓ 开片」 | ✅ 已落（10-06，修订号 28，备份版本 8） |
-| ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份。醒目留言卡与会员卡两组字段 10-05 已随 ㉓ 改到最终名字，这一片只剩卡种键与其余卡；皮肤按档换色的挂点 10-05 从 ㉓ 挪来（见「㉓ 开片」） | 未开工 |
+| ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份。醒目留言卡与会员卡两组字段 10-05 已随 ㉓ 改到最终名字，这一片只剩卡种键与其余卡；皮肤按档换色的挂点 10-05 从 ㉓ 挪来（见「㉓ 开片」）。10-06 开片，切成 ㉔a–㉔f，见表下「㉔ 开片」 | 施工中 |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
 | ㉖ | 统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、粉丝行 `followers` / `sampledAt`；ADR-0027 服务端那半（按特性在记、开播公告不记、多收字段、最近作品缓存并入、删 `?uid=`、CSV 合列） | 未开工 |
 | ㉗ | 运行记录 + 迁移时从 0.x 粉丝样本回填运行时长（ADR-0033 决策 3，必须先于 ㉘） | 未开工 |
@@ -283,6 +283,41 @@
     - 棘轮：`bilibili-guard.ts` 1、`membership-programs.ts` 2，别的文件数字没变。
   - 留着的：迁移后，0.x 里手写过字面 `{name}` 的上舰文案会被当成主播名（0.x 不认它、原样印出）；`subscription-sources.md` 等处讲 3a 设计时仍写「面板的 `guard-levels.ts` 删掉」，那个文件 ㉓e 已删。
   - 真机待看（㉓ 全片）：会员卡与醒目留言卡没有头像时默认皮肤的样子；醒目留言时长写成「1分」「30分」的样子；会员卡背景仍是渐变；规则页直播门槛一节与上舰文案一节（体系默认 + 每档、占位显示跟随默认、清空一格能清掉）；面板三档色块换成卡片那套色；卡片预览页选档出图；改门槛不重启就生效；真实 0.x 数据迁一遍后门槛、改过的上舰文案、`-uname` 老写法对不对，且不亮「默认文案有更新」。
+- **㉔ 开片（10-06）**：先勘察，再一题一题问主人（定案在 ADR-0023 决策 3 下 10-06 的 🔗）。这一片里是三类风险不同的活：纯改名（卡种键、字段、视图类型、文件，快照里没有这些字符串，零字节）、会改字节的（块名与挂点名进 HTML 的 `data-block` / `bn-blk-<id>` / `data-cell` / `data-bn`，画面不变）、动盘的（卡片样式设置搬家、皮肤包抬版、迁移）。㉔e 动盘（修订号 28 → 29，备份版本 8 → 9）。切成六小片依次提交：
+  - ㉔a 只加测试钉住现状：七个卡种键与字段、块、挂点的全集；直播卡 `stats.popularity` / `stats.fans` 在三种状态下各取什么；作品卡外层把动作标签拼进时间那一行；`cardStyleByKind` 非空与皮肤指针指向自建皮肤时走迁移的现状（0.x 夹具里这两样今天全是空的）。
+  - ㉔b 字段改名、视图类型改名、文件改名（目标零字节）：字段照 data-model「皮肤字段」对照表；`dynamic.action` → `post.label` 且时间字段只装时间（默认皮肤的时间块照旧把两样拼成同一行字，目标字节不变，变了就单独登记）；直播卡 `stats.popularity` 拆成 `stats.currentViewers` / `stats.likes`、`stats.fans` 拆成 `stats.followers` / `stats.totalViewers`；`LiveCardView` 等视图的字段名跟上；文件 `sc-card.tsx` → `superchat-card.tsx`、`guard-card.tsx` → `membership-card.tsx`、`dynamic-*` → `post-*`，`blocks/` 同理。
+  - ㉔c 块名与挂点名按下表改，默认皮肤同步（显式块 id `video-desc` → `video-description`、`forward-count` → `share-count`）；字节变化逐类登记批准清单。
+  - ㉔d 出图器给醒目留言卡与会员卡的外框和每个块加 `data-rank="<档位>"`（没有 rank 的会员档不带）；给皮肤作者与 AI 做皮肤的说明同步。六张基线的字节变（多了属性）。
+  - ㉔e 卡种键改名、三套词表收成一套、卡片样式设置搬家、老皮肤指针回默认、皮肤包抬版与删退役字段、迁移；面板同片跟到照旧能用。
+  - ㉔f 卡种中文名收成一份、守卫、文档。
+  - 主人定的：
+    - **卡种键**：`dynamic` → `post`、`sc` → `superchat`、`guard` → `membership`；`live`、`roastBoard`、`roastSolo`、`wordcloud` 不改（已经是中立词，`live` 与直播那一族特性键同根）。预览与测试推送请求里的 `dyn` 并进 `post`；`CardKind`（4 种）与 `CardSkinKind`（7 种）收成一套七个键。起名表补 `roast`。
+    - **块名、挂点名、字段用同一套词，全部改一遍**（这是抬皮肤格式版本的那一次，1.0 之后改不动）。被否的备选：只改定案点名的四个；块名与挂点名都不动。改名表（没列的不改）：
+      - 直播：`avatar` / `name` → `creatorAvatar` / `creatorName`；`desc` → `description`；`area` → `category`；`popularity` 拆成 `currentViewers` 与 `likes`；`fans` 拆成 `followers` 与 `totalViewers`。
+      - 作品：`avatar` / `name` → `creatorAvatar` / `creatorName`；`additional` → `attachment`；`pics`（挂点 `pics` / `pic`）→ `images`（挂点 `images` / `image`）；`forward` → `repost`；`forwardCount` → `shareCount`；`videoDesc` → `videoDescription`。
+      - 醒目留言：`avatar` / `name` → `viewerAvatar` / `viewerName`；`price` → `amount`；`to` 的挂点 `master` / `masterAvatar` / `masterName` → `creator` / `creatorAvatar` / `creatorName`。
+      - 会员：`avatar` → `viewerAvatar`；`user` → `viewerName`；`master`（挂点 `masterAvatar` / `masterName`）→ `creator`（挂点 `creatorAvatar` / `creatorName`）；`badge` → `icon`；`text` → `announcement`。
+      - 三处是这次的设计：头像与名字的块带上是谁的（「同名在所有卡上同义」也用到块名上）；直播卡两个随状态换含义的块拆成四个只显示一样东西的块，各自只在该出现的状态下显示，默认皮肤摆在原位、画面不变；会员卡的 `user` 改 `viewerName`（原定 `viewer`），与醒目留言卡一致。
+    - **去掉「按卡种分开存的卡片样式」这一层**：`defaults.cardStyle` / `cardStyleByKind` → `defaults.cards { enabled, liveCoverImageIds }`，逐订阅覆盖 `overrides.cards { liveCoverImageIds? }`。迁移时把 `cardStyleByKind.live` 下的封面图并上来（两处都有时卡种那份赢，照今天的优先级），退役的 `font` / `fontAsset` / `glassOpacity` / `glassClear` 与没人读的逐订阅 / 按卡种 `enabled` 丢掉。理由：按卡种这一层原是给每种卡各配字体与玻璃效果的，那些挪进皮肤后只剩直播封面一个用途。被否的备选：照原定留 `byKind`（一层只有 `live` 有意义的壳）；七种卡都能配。
+    - **皮肤按档换色用属性 `data-rank`**：清洗器今天就放行非 `data-bn` 的属性选择器，零改动。限制：默认皮肤用的档色变量是出图器写在元素上的，皮肤 CSS 盖不掉，换色要对每个部位各写一条规则。「皮肤包里声明一张色表、全卡生效」那条路以后有需要再加，两者不冲突。
+    - **老皮肤包被拒收的提示**：「这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。」
+    - **开发期做的 1.0 皮肤抬版后失效**（开机被跳过、文件不删、用到它的地方回落默认皮肤），不写转换。
+    - **皮肤数据版本号 `CARD_DATA_VERSION`** 跟皮肤格式版本一起从 1 抬到 2。
+  - 照定案、照先例或施工时直接定的：
+    - 老皮肤指针回默认（ADR-0022 决策 12 早就定了，迁移漏做）：指向用户自建老皮肤的全局与逐订阅指针改回 `default`，没有对应皮肤的旋钮删掉，补夹具与测试。
+    - 皮肤包的退役字段 `variables` / `variablesByKind` 整套删（它们只为让老包装得进来，老包抬版后一律拒收）。
+    - 卡片基线的样例名不改（批准清单按样例名认账、只追加）。目标表没提到的字段保持原名（`report.days`、`live.title` 等）。锐评榜单卡恒为空串的 `master.name` 删。
+    - AI 对话里存的卡种键只有开发期会话里有，读时认不出的丢掉，不写迁移。
+    - 去头像后空出来的列不在这一片收拾：头像 3a 就回来，拓展的卡现在就带头像，一张卡的列宽也没法按有没有头像切换。
+  - 勘察到的事实（施工时不用重查）：
+    - 卡种中文名 5 处各写一份：`constants.ts` 的 `CARD_SKIN_KIND_NAMES`、面板 `CardSkinEditor.tsx`、`cards/CardSkinSection.tsx`、`Cards.tsx`（两张表）、服务端 `routes/cards.ts`。
+    - 落盘或过 wire 的卡种键：全局与逐订阅的 `cardStyleByKind`、皮肤包 `card-skin.json` 的 `cards.<kind>` 与 `variablesByKind`、AI 对话消息的 `cardSkins[].kinds`、contract 里预览与 AI 写 CSS 请求的 `kind`、皮肤摘要的 `kinds`、AI 工具的枚举。只在进程内的：`CardPropsByKind`、`FRAMES`、块库、`resolvedCardStyle`。
+    - `cardStyle` 今天真有人读的只有 `enabled`（出图总开关）与 `liveCoverImages`；`cardStyleByKind` 只有 `live.liveCoverImages` 有意义；`cardStyleToColorOptions` 写死 `enable: true`。
+    - 默认卡片皮肤是代码里的 `DEFAULT_CARD_SKIN`，不落盘；「`default.json` / `skin.json` 双文件」说的是界面皮肤，与这一片无关。默认皮肤里没有字段占位符也没有 `showIf`，所以字段改名零字节。
+    - 老包拒收走 `parseCardSkin`，文案是 zod 的「schemaVersion 必须是 N」。测试与夹具里钉着字面 `schemaVersion: 1` 的有卡片皮肤与界面皮肤两批，界面皮肤那批不要动。
+    - 皮肤 CSS 清洗器 free 档只查 `data-bn`（精确等号、值在挂点表里、起头挂点后不许紧跟 `+` / `~`），别的属性名不查；at 规则只放行 `@media`。块 CSS 必须以 `self` 起头，所以 `data-rank` 也要挂在块自己的 wrapper 上。
+    - 守卫 13 的四条待迁（`cardStyleByKind` 全局与逐订阅、皮肤包 `variablesByKind` 与 `cards`）都归这一片；搬家后清单要同步。
+    - 迁移是搬家不是改名，照 ㉓d 新开一个文件接在会员搬家之后、直播拆键之前；`live-split.ts` 里两张键序数组列着 `cardStyle` / `cardStyleByKind`，要跟着换成 `cards`。
 - 开片时要问主人的名字（词表没有的先问再用）：⑭ 请求客户端与 cookie 罐的类名；⑮ `ImageRef` 带不带扩展名（10-03 定：带）；⑲ 图片保留天数的键名（10-04 定：`history.retentionDays`，不带 `image` 前缀）；㉔ 直播、榜单、词云、直播总结的卡种键；㉙ 统计总开关的键名。
 
 ## 分支与发 alpha

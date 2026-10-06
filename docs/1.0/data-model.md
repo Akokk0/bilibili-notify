@@ -402,7 +402,7 @@ type PostPushPart = "post" | "post-images";
 
 ⛔ 命名：`liveNow`（仓里 4 处表示「此刻在播」）、`onAir`（6 处表示状态）、`liveStatus`（95 处，拓展事件名）都撞，所以叫 `liveStreaming`。
 
-卡种：作品卡 `post`、直播卡、榜单（锐评）、醒目留言 `superchat`、会员 `membership`、词云、直播总结，全由核心登记。附加块 card / video / goods 核心直接渲染。历史行状态多一种 `silenced`，见 [push.md](./push.md)。
+卡种七种，全由核心登记：作品 `post`、直播 `live`、醒目留言 `superchat`、会员 `membership`、锐评榜单 `roastBoard`、锐评单人 `roastSolo`、词云 `wordcloud`（直播总结只是一段文字，没有卡）。附加块 card / video / goods 核心直接渲染。历史行状态多一种 `silenced`，见 [push.md](./push.md)。
 
 ## 统计
 
@@ -448,14 +448,14 @@ AI 跟着来源走（ADR-0030）。工具与技能的全表见 [subscription-sou
 | --- | --- |
 | 所有卡种的 `up.*` 与 `master.*` | `creator.*`；`up.isVip` → `creator.isPremium` |
 | `sender.*`、`user.*`（付钱的观众） | `viewer.*` |
-| 会员卡（原上舰卡）的积木 `user` | `viewer`（对齐皮肤字段 `viewer.*`） |
+| 会员卡（原上舰卡）的积木 `user` | `viewerName`（㉔ 定：块名带上是谁的，全表见 construction-plan「㉔ 开片」） |
 | `dynamic.time` / `dynamic.action` | `post.time` / `post.label`（内外层卡都填） |
 | `dynamic.topic` / `dynamic.hasTopic` | `post.topic` / `post.hasTopic` |
 | `dynamic.isForward` / `dynamic.hasAdditional` | `post.hasRepost` / `post.hasAttachment` |
 | `dynamic.hasVideo` / `dynamic.hasPics` | `post.hasVideo` / `post.hasImages` |
 | `pics.count` / `pics.first` | `images.count` / `images.first` |
 | 作品卡 `stats.forward` / `stats.comment` / `stats.like` | `stats.shares` / `stats.comments` / `stats.likes` |
-| 下播卡 `stats.fans` / `stats.popularity`（装的是累计观看 / 点赞） | `stats.totalViewers` / `stats.likes` |
+| 下播卡 `stats.fans` / `stats.popularity`（装的是累计观看 / 点赞） | `stats.totalViewers` / `stats.likes`（块也拆开，一块只显示一样） |
 | 直播卡 `live.area`、`stats.area` | `live.category`；`stats.area` 删 |
 | 直播中 `stats.popularity`、`stats.fans`、`stats.fansChanged`、`stats.hasFansChanged` | `stats.currentViewers`、`stats.followers`、`stats.followersDelta`、`stats.hasFollowersDelta` |
 | `video.desc` | `video.description`；`video.duration` 装排好版的文字；`danmaku` 保留 |
@@ -507,7 +507,7 @@ interface GlobalDefaults {
   superchat: { minAmount?: number };
   membership: { minRank?: Record<string, number> };
   ai: { presetId?: string };          // 订阅能覆盖的只有人格预设
-  cards: { enabled: boolean; byKind; liveCoverImageIds: string[] };
+  cards: { enabled: boolean; liveCoverImageIds: string[] };   // 不按卡种分层（㉔）；订阅覆盖只有 liveCoverImageIds
   cardSkin; cardSkinKnobs;
   imageGroup: { enabled; mergeForward; … };
 }
@@ -740,7 +740,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.timezone`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`；`core.history.retentionDays`；`core.timezone`；`bilibili.loginCheckIntervalMinutes` |
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
-| `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards` / `cards.byKind` / `liveCoverImageIds`；从 schema 删掉 |
+| `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔）；从 schema 删掉 |
 | `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkPreview`（摊平，没有默认行那一层）/ `enabled` / `replyForm` / `byTarget` |
 | 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；类型 `NativeShare…`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧能力名 `miniapp-card` alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
 | `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen` |
