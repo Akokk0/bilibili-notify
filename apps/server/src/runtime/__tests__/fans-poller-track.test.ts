@@ -74,6 +74,7 @@ function start(options: Options = {}) {
 	const getUserCardsBatch = vi.fn(async () => ({ code: 0, data: {} }));
 	const setTimeout = vi.fn(() => ({ dispose() {} }));
 	handle = startFansPoller({
+		isStatsEnabled: () => true,
 		bus,
 		logger: logger as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

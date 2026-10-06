@@ -115,6 +115,7 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 	const { bus, trigger } = makeBus();
 	const store = makeStore();
 	const handle = createStatsRecorder({
+		isEnabled: () => true,
 		bus,
 		store,
 		fans: makeFans(),
@@ -551,7 +552,13 @@ describe("StatsRecorder — 观看数不是有限的数", () => {
 describe("中立记录器(给各来源适配用的那一面)", () => {
 	function core() {
 		const store = makeStore();
-		const recorder = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
+		const recorder = createStatsRecorderCore({
+			store,
+			fans: makeFans(),
+			logger,
+			now,
+			isEnabled: () => true,
+		});
 		return { store, recorder };
 	}
 
@@ -582,7 +589,13 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 		// 拓展那一场不该跟着被忘掉 —— 否则关服时它等不到补的那帧下播。
 		const { bus, trigger } = makeBus();
 		const store = makeStore();
-		const recorder = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
+		const recorder = createStatsRecorderCore({
+			store,
+			fans: makeFans(),
+			logger,
+			now,
+			isEnabled: () => true,
+		});
 		attachBiliStatsSource({
 			bus,
 			recorder,
@@ -750,7 +763,13 @@ describe("中立记录器 —— 「在记」小账按整点小时记(ADR-0027 �
 	const make = (existing: Array<ReturnType<typeof hourRow>> = []) => {
 		const store = makeStore();
 		store.listRecording.mockResolvedValue(existing);
-		const core = createStatsRecorderCore({ store, fans: makeFans(), logger, now });
+		const core = createStatsRecorderCore({
+			store,
+			fans: makeFans(),
+			logger,
+			now,
+			isEnabled: () => true,
+		});
 		return { store, core };
 	};
 

@@ -155,6 +155,7 @@ describe("B 站适配 —— 登录读口没绑好之前当作没在跑", () => 
 			drop: vi.fn(async () => {}),
 		} as unknown as StatsStore & { appendRecording: ReturnType<typeof vi.fn> };
 		const handle = createStatsRecorder({
+			isEnabled: () => true,
 			bus,
 			store,
 			fans: {} as never,

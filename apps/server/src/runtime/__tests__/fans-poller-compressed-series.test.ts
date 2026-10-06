@@ -70,6 +70,7 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 		signal: new AbortController().signal,
 	};
 	handle = startFansPoller({
+		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
 		logger: silent,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

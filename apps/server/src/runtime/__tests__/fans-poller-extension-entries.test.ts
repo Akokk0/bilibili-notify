@@ -96,6 +96,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		signal: new AbortController().signal,
 	};
 	handle = startFansPoller({
+		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

@@ -56,6 +56,8 @@ export type RoastGenResult<T> = Result<{ result: T }>;
 const GEN_FAILURE = {
 	notReady: () => fail("unavailable", "服务尚未就绪,请稍后重试"),
 	aiDisabled: () => fail("not_configured", "智能女仆尚未启用"),
+	/** 数据统计总开关关着:锐评只读统计,数据停更还去评旧数据没有意义(ADR-0027 决策 9)。 */
+	statsDisabled: () => fail("not_configured", "数据统计已关闭,开启后才能锐评"),
 	overviewFailed: () => fail("unavailable", "统计数据读取失败,请稍后重试"),
 	tooFewUps: () => fail("not_configured", "至少要订阅 2 位 UP 主才评得出鸽王"),
 	notSubscribed: () => fail("not_found", "该 UP 主不在订阅列表里"),
@@ -135,8 +137,10 @@ export async function generateBoardRoast(
 	const engines = deps.runtime.engines;
 	if (!engines) return GEN_FAILURE.notReady();
 
-	const aiSettings = deps.store.getGlobals().defaults.ai;
+	const globals = deps.store.getGlobals();
+	const aiSettings = globals.defaults.ai;
 	if (!aiSettings.enabled) return GEN_FAILURE.aiDisabled();
+	if (!globals.stats.enabled) return GEN_FAILURE.statsDisabled();
 
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
 	if (!overview) return GEN_FAILURE.overviewFailed();
@@ -184,8 +188,10 @@ export async function generateSoloRoast(
 	const sub = deps.store.getSubscriptions().find((s) => s.id === opts.subscriptionId);
 	if (!sub) return GEN_FAILURE.notSubscribed();
 
-	const aiSettings = deps.store.getGlobals().defaults.ai;
+	const globals = deps.store.getGlobals();
+	const aiSettings = globals.defaults.ai;
 	if (!aiSettings.enabled) return GEN_FAILURE.aiDisabled();
+	if (!globals.stats.enabled) return GEN_FAILURE.statsDisabled();
 
 	const overview = await opts.fetchOverview(opts.days, opts.tz);
 	if (!overview) return GEN_FAILURE.overviewFailed();

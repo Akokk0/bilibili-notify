@@ -893,6 +893,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			fansStore: runtime.fansStore,
 			api: authSystem.api,
 			serviceCtx: runtime.serviceCtx,
+			isStatsEnabled: runtime.isStatsEnabled,
 		});
 		runtime.attachFansPoller(fansPoller);
 		runtime.serviceCtx.onDispose(() => fansPoller.dispose(), "stop");

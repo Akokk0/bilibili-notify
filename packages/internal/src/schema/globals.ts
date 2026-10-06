@@ -113,6 +113,18 @@ export const DEFAULT_HISTORY_SETTINGS: HistorySettings = {
 	retentionDays: DEFAULT_HISTORY_RETENTION_DAYS,
 };
 
+/**
+ * 数据统计的设置(ADR-0027 决策 9、16)。只有一格总开关:开着才记作品、直播场次、粉丝样本与「在记」的账,
+ * 关了就不记、已攒的数据留着。资料刷新、当前粉丝数照常。
+ *
+ * 顶层一节而不是挂在 `defaults` 下:订阅覆盖不了它。缺这一节的老设置 / 老备份靠默认值补成开着,不走迁移。
+ */
+export const StatsSettingsSchema = z.object({
+	enabled: z.boolean().default(true),
+});
+export type StatsSettings = z.infer<typeof StatsSettingsSchema>;
+export const DEFAULT_STATS_SETTINGS: StatsSettings = { enabled: true };
+
 export const AppConfigSchema = z.object({
 	logLevel: LogLevelSchema.default("info"),
 	logLevels: ModuleLogLevelsSchema,
@@ -289,6 +301,7 @@ export const GlobalConfigSchema = z.object({
 	app: AppConfigSchema,
 	/** 推送历史:图片与重推原件的保留天数。缺这一节的老设置补默认。 */
 	history: HistorySettingsSchema.default(() => structuredClone(DEFAULT_HISTORY_SETTINGS)),
+	stats: StatsSettingsSchema.default(() => structuredClone(DEFAULT_STATS_SETTINGS)),
 	master: MasterConfigSchema,
 	defaults: GlobalDefaultsSchema,
 	/**

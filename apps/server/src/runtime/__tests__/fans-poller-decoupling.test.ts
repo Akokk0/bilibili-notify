@@ -107,6 +107,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		bus.on("subscription-changed", subChangedSpy);
 
 		handle = startFansPoller({
+			isStatsEnabled: () => true,
 			bus,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 			configStore: {
@@ -183,6 +184,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		const api = makeApi(120);
 
 		handle = startFansPoller({
+			isStatsEnabled: () => true,
 			bus,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 			configStore: { getGlobals: () => GLOBALS, patchSubscription } as never,

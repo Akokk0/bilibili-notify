@@ -21,6 +21,7 @@ import {
 } from "../images/image-store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
+import { createStatsEnabled } from "../stats/enabled.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
 import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
@@ -79,6 +80,11 @@ export interface AppRuntime {
 	statsStore: StatsStore;
 	/** 统计采集。构造时只挂上总线、不碰盘;登录系统建好后 `bindLoginState` 回填 B 站登录读口,绑上才开始记 B 站的「在记」。 */
 	statsRecorder: Pick<StatsRecorderHandle, "bindLoginState" | "compactRecording">;
+	/**
+	 * 数据统计的总开关(`stats.enabled`)的缓存读口 —— 记录器入口用的就是它,B 站粉丝轮询(直接写粉丝仓、
+	 * 绕开记录器)由 `index.ts` 从这里取去用。设置变了下一次读就是新值,不用重启。
+	 */
+	isStatsEnabled: () => boolean;
 	/**
 	 * Per-subscription runtime data (display cache + fans anchor), externalized
 	 * out of the persisted `Subscription` config so FansPoller's per-tick
@@ -282,10 +288,13 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 	// 早起一点反而更稳:引擎一开始 emit 就有人接着,不会漏掉启动瞬间的事件。
 	//
 	// 拓展那一支(ADR-0020 S3)也在这里挂上:它听订阅上报与 `extension-live-session`(场次在引擎里建)。
+	// 数据统计总开关(`stats.enabled`):一个缓存布尔,设置变了作废。记录器入口与粉丝轮询共用这一个。
+	const statsEnabled = createStatsEnabled({ bus, getGlobals: () => configStore.getGlobals() });
 	const statsRecorder = createStatsRecorder({
 		bus,
 		store: statsStore,
 		fans: fansStore,
+		isEnabled: statsEnabled.isEnabled,
 		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
 		fansCron: () => configStore.getGlobals().app.fansCron,
 		logger: serviceCtx.logger,
@@ -316,6 +325,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		// 且不会给它们补第二帧。
 		await statsRecorder.closeOpenSessions();
 		statsRecorder.dispose();
+		statsEnabled.dispose();
 	}, "flush");
 	// 运行记录:整点记一行、关停补一行。不挂总线、不依赖统计,单独一条;`start()` 在 index.ts 里等数据那一代就位。
 	const uptimeStore = createUptimeStore({ dataRoot, logger: serviceCtx.logger });
@@ -437,6 +447,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		fansStore,
 		statsStore,
 		statsRecorder,
+		isStatsEnabled: statsEnabled.isEnabled,
 		uptimeStore,
 		uptimeRecorder,
 		subRuntimeStore,

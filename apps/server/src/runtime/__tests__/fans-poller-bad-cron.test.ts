@@ -62,6 +62,7 @@ describe("FansPoller — 无法解析的 fansCron", () => {
 
 		expect(() => {
 			handle = startFansPoller({
+				isStatsEnabled: () => true,
 				bus,
 				logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: errorLog } as never,
 				configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

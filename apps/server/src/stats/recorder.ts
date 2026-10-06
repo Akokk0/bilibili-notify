@@ -60,6 +60,12 @@ export interface StatsRecorderCoreOptions {
 	logger: Logger;
 	/** 注入时钟,测试用;缺省取系统时间。 */
 	now?: () => Date;
+	/**
+	 * 数据统计的总开关(`stats.enabled`,ADR-0027 决策 9、16),**现取**:读缓存布尔、不要每次读设置
+	 * (观看人数约两秒一帧)。关着时作品、新开的场次、粉丝样本、「在记」的账都不记;开着时开的场次照常收尾。
+	 * 压缩、关停补帧、删文件不看它。
+	 */
+	isEnabled: () => boolean;
 }
 
 export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRecorderCore & {
@@ -72,8 +78,8 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	 * 压缩读整份、写回的这段时间里记的小时排在后面,不会被换名盖掉。回汇总;某个键压不动只记 warn、不算进汇总。
 	 */
 	compactRecording(now: Date): Promise<RecordingCompactSummary>;
-	/** 清掉全部在飞状态(dispose 时)。 */
-	clear(): void;
+	/** 清掉全部在飞状态(dispose 时)。只动内存里的在飞状态,不删盘。 */
+	reset(): void;
 } {
 	const now = opts.now ?? (() => new Date());
 	/** 每个键本场的最大累计观看。开播时清空,下播时取走 —— 天然不跨场、不跨订阅串味。 */
@@ -181,12 +187,15 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 
 	return {
 		recordPost(key, post) {
+			if (!opts.isEnabled()) return;
 			// 行可以是还在翻译的(拓展作品先翻成中立的 `Post` 再取字段):排进这个键的队里等它翻好再写,
 			// 顺序不乱、`flush()` 也等得到。
 			enqueue(key, "appendPost", async () => opts.store.appendPost(key, await post));
 		},
 
 		openSession(key, startedAtIso) {
+			// 关着时新来的开播不开场(之后的下播也就没有「这场开没开过」可收,见 closeSession)。
+			if (!opts.isEnabled()) return;
 			peaks.delete(key);
 			openLive.add(key);
 			enqueue(key, "openLiveSession", () => opts.store.openLiveSession(key, startedAtIso));
@@ -194,6 +203,8 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 
 		reportViewers(key, cumulative) {
 			if (!Number.isFinite(cumulative)) return;
+			// 只替开着的场次累计峰值;关着时没开场的键不攒(开关打开后第一场从 openSession 起重新取最大)。
+			if (!openLive.has(key) && !opts.isEnabled()) return;
 			const cur = peaks.get(key);
 			if (cur === undefined || cumulative > cur) peaks.set(key, cumulative);
 		},
@@ -203,7 +214,11 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			const given = peak !== undefined && Number.isFinite(peak) ? peak : undefined;
 			const final =
 				tracked === undefined ? given : given === undefined ? tracked : Math.max(tracked, given);
+			// 「这场开没开过」要在 forget 之前读(forget 会把它摘掉),而 forget 无条件照跑。
+			// 关着时:开着时开的场次照常收尾(一场的头尾不分家),没开过场的下播不写孤立的 end。
+			const opened = openLive.has(key);
 			forget(key);
+			if (!opened && !opts.isEnabled()) return;
 			enqueue(key, "closeLiveSession", () => opts.store.closeLiveSession(key, endedAtIso, final));
 		},
 
@@ -224,7 +239,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		},
 
 		recordFans(key, value, minGapMs) {
-			if (!Number.isFinite(value)) return;
+			if (!Number.isFinite(value) || !opts.isEnabled()) return;
 			thinned(
 				key,
 				"appendFans",
@@ -239,6 +254,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 		},
 
 		recordActive(key, kind, atMs) {
+			if (!opts.isEnabled()) return;
 			const hourStart = Math.floor((atMs ?? now().getTime()) / HOUR_MS) * HOUR_MS;
 			if (!Number.isFinite(hourStart)) return;
 			// 只认最新的两个小时(见上面的挡板说明):更早的丢掉。
@@ -315,7 +331,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 			return summary;
 		},
 
-		clear() {
+		reset() {
 			peaks.clear();
 			openLive.clear();
 		},
@@ -339,6 +355,8 @@ export interface StatsRecorderOptions {
 	subscriptions: () => readonly StatsSubscription[];
 	/** 注入时钟,测试用;缺省取系统时间。 */
 	now?: () => Date;
+	/** 数据统计的总开关,见 {@link StatsRecorderCoreOptions.isEnabled}。装配处给一个读缓存布尔的函数。 */
+	isEnabled: () => boolean;
 }
 
 /** Recorder 句柄:除了解绑,还要在关服前把在播的场次收尾。 */
@@ -383,6 +401,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		fans: opts.fans,
 		logger: opts.logger,
 		now,
+		isEnabled: opts.isEnabled,
 	});
 	let isLoggedIn: (() => boolean) | undefined;
 	const biliSource = attachBiliStatsSource({
@@ -414,7 +433,7 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 		dispose() {
 			for (const s of sources) s.dispose();
 			sources.length = 0;
-			recorder.clear();
+			recorder.reset();
 		},
 	};
 }

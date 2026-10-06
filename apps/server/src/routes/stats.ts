@@ -121,6 +121,15 @@ export type StatsOverviewReader = (
 	tzOffsetMin: number,
 ) => Promise<StatsOverviewResponse>;
 
+/**
+ * 取数函数 + 它缓存的作废口。清掉统计数据之后要调 {@link StatsOverview.invalidate},否则缓存的 30 秒里
+ * 面板还会读到已经不存在的行(缓存键不含「统计被清」这件事)。
+ */
+export interface StatsOverview extends StatsOverviewReader {
+	/** 作废全部缓存条目;正在算的那几份算完也不再写进缓存(它们读的是作废之前的盘)。 */
+	invalidate(): void;
+}
+
 /** 取数只读这两样,不牵整份 RouteDeps(定时锐评的调度器手里就只有它们)。 */
 export type StatsOverviewDeps = Pick<RouteDeps, "runtime" | "store">;
 
@@ -129,10 +138,13 @@ export type StatsOverviewDeps = Pick<RouteDeps, "runtime" | "store">;
  * (面板、手动锐评、定时锐评)吃的是同一份缓存;要共用就得是同一个实例 —— `index.ts` 建一个、同时交给调度器与
  * `createApp`。
  */
-export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReader {
+export function createStatsOverview(deps: StatsOverviewDeps): StatsOverview {
 	const cache = new Map<string, CacheEntry>();
+	/** 作废一次加一。算的时候记下起点的代数,写缓存前对不上就不写。 */
+	let epoch = 0;
 
-	return async (days, tzOffsetMin) => {
+	const read: StatsOverviewReader = async (days, tzOffsetMin) => {
+		const startedEpoch = epoch;
 		// 两支订阅都列(ADR-0020):停用的照样列 —— 统计页看的是「他这段时间做了什么」;拓展没在跑的
 		// 也照样列,它仍是一条订阅。行的顺序跟着订阅列表走。
 		const subs = deps.store.getSubscriptions();
@@ -302,7 +314,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 		// 先清过期条目(稳态下这就够了),再按插入序挤掉最旧的顶住上限 ——
 		// Map 的迭代序就是插入序,`keys().next()` 拿到的即最早那条。
 		for (const [k, v] of cache) if (at - v.at >= CACHE_TTL_MS) cache.delete(k);
-		cache.set(key, { at, payload });
+		if (startedEpoch === epoch) cache.set(key, { at, payload });
 		while (cache.size > MAX_CACHE_ENTRIES) {
 			const oldest = cache.keys().next();
 			if (oldest.done) break;
@@ -310,6 +322,12 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 		}
 		return payload;
 	};
+	return Object.assign(read, {
+		invalidate() {
+			epoch += 1;
+			cache.clear();
+		},
+	});
 }
 
 /**

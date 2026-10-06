@@ -87,6 +87,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 		runtime.set(id, { ...runtime.get(id), ...p });
 	});
 	handle = startFansPoller({
+		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

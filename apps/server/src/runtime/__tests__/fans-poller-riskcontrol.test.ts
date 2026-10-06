@@ -52,6 +52,7 @@ function baseDeps(over: {
 	const bus = createNodeMessageBus();
 	return {
 		bus,
+		isStatsEnabled: () => true,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
 		subscriptionStore: { list: () => over.subs } as never,

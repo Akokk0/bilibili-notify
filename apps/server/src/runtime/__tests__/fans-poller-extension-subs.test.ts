@@ -31,6 +31,7 @@ function start(list: () => unknown[]) {
 	const dropUid = vi.fn(async (_uid: string) => {});
 	const getRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
 	handle = startFansPoller({
+		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

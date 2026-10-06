@@ -20,6 +20,8 @@ interface StubOpts {
 	/** 让 /overview 内部抛错,用来验错误信封。 */
 	failOverview?: boolean;
 	aiEnabled?: boolean;
+	/** 数据统计总开关,缺省开着。 */
+	statsEnabled?: boolean;
 }
 
 function makeDeps(opts: StubOpts = {}) {
@@ -27,7 +29,10 @@ function makeDeps(opts: StubOpts = {}) {
 	const deps = {
 		store: {
 			getSubscriptions: () => [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }],
-			getGlobals: () => ({ defaults: { ai: { enabled: opts.aiEnabled ?? true } } }),
+			getGlobals: () => ({
+				defaults: { ai: { enabled: opts.aiEnabled ?? true } },
+				stats: { enabled: opts.statsEnabled ?? true },
+			}),
 		},
 		runtime: {
 			engines: {
@@ -214,5 +219,35 @@ describe("取数函数是注入的那一个 —— 路由与两处锐评直接�
 			throw new Error("盘挂了");
 		}, deps);
 		expect(await failing(30, 480)).toBeNull();
+	});
+});
+
+describe("数据统计总开关关着时(㉙a)", () => {
+	it("读口照常回已攒的数据,不加「关着」标记:/overview 不看开关", async () => {
+		const { deps } = makeDeps({ statsEnabled: false });
+		const res = await createStatsRoute(deps).request("/overview?days=7");
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as Record<string, unknown>;
+		expect(Object.keys(body).sort()).toEqual(["days", "rows"]);
+	});
+
+	it("手动榜单锐评:409 not_configured + 「数据统计已关闭,开启后才能锐评」", async () => {
+		const { deps } = makeDeps({ statsEnabled: false });
+		const res = await createStatsRoute(deps).request("/roast?days=7", { method: "POST" });
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({
+			code: "not_configured",
+			message: "数据统计已关闭,开启后才能锐评",
+		});
+	});
+
+	it("手动单人锐评:同一个码、同一句话", async () => {
+		const { deps } = makeDeps({ statsEnabled: false });
+		const res = await createStatsRoute(deps).request("/roast/s1?days=7", { method: "POST" });
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({
+			code: "not_configured",
+			message: "数据统计已关闭,开启后才能锐评",
+		});
 	});
 });

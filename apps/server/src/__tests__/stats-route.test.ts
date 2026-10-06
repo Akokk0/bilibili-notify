@@ -526,6 +526,7 @@ describe("POST /api/stats/roast/:subscriptionId — 单 UP 锐评", () => {
 		(deps.runtime as unknown as { engines: unknown }).engines = { api: {} };
 		(deps.store as unknown as { getGlobals: unknown }).getGlobals = () => ({
 			defaults: { ai: { enabled } },
+			stats: { enabled: true },
 		});
 		(deps.runtime as unknown as { subRuntimeStore: unknown }).subRuntimeStore = {
 			get: () => undefined,

@@ -54,6 +54,7 @@ describe("服务器在 UP 已开播时启动", () => {
 	async function bootWhileLive() {
 		const store = createStatsStore({ dataRoot: dir, logger });
 		const recorder = createStatsRecorder({
+			isEnabled: () => true,
 			bus,
 			store,
 			fans: createFollowersStore({ dataRoot: dir, logger }),

@@ -113,6 +113,7 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 		now: () => clock,
 	});
 	const recorder = createStatsRecorder({
+		isEnabled: () => true,
 		bus,
 		store,
 		fans: createFollowersStore({ dataRoot: dataDir, logger }),

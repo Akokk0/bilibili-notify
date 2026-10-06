@@ -63,6 +63,12 @@ export interface FansPollerOptions {
 	 * 空跑句柄。同 packages/push / packages/api 的 P1-B 风格。
 	 */
 	serviceCtx: ServiceContext;
+	/**
+	 * 数据统计的总开关(`stats.enabled`,ADR-0027 决策 9)**现取**,读缓存布尔。粉丝轮询直接写粉丝仓、绕开
+	 * 统计记录器,所以要在这里单独拦:关着时不写粉丝样本、不新建 / 不改写涨粉起点,「24 小时 / 7 天涨跌」给空;
+	 * 资料刷新、当前粉丝数、`fans-refreshed` 照常。
+	 */
+	isStatsEnabled: () => boolean;
 }
 
 export interface FansPollerHandle extends Disposable {
@@ -112,6 +118,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		fansStore,
 		api,
 		serviceCtx,
+		isStatsEnabled,
 	} = opts;
 
 	let currentCron = configStore.getGlobals().app.fansCron;
@@ -166,22 +173,32 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	): Promise<FansRefreshEntry | undefined> {
 		const key = statsFileKey(sub);
 		const identity = subscriptionIdentityOf(sub);
+		// 统计关着时不记粉丝样本、涨跌与起点(都靠时序)给空,当前数只取最近报的资料 / 盘上已有的末值。
+		const statsOn = isStatsEnabled();
 		const [latest, first, near24h, near7d] = await Promise.all([
 			fansStore.findNearestBefore(key, FUTURE_ISO),
-			fansStore.findEarliest(key),
-			fansStore.findNearestBefore(key, new Date(nowMs - TWENTY_FOUR_HOURS_MS).toISOString()),
-			fansStore.findNearestBefore(key, new Date(nowMs - SEVEN_DAYS_MS).toISOString()),
+			statsOn ? fansStore.findEarliest(key) : undefined,
+			statsOn
+				? fansStore.findNearestBefore(key, new Date(nowMs - TWENTY_FOUR_HOURS_MS).toISOString())
+				: undefined,
+			statsOn
+				? fansStore.findNearestBefore(key, new Date(nowMs - SEVEN_DAYS_MS).toISOString())
+				: undefined,
 		]);
-		if (!latest) return undefined;
 		const profile = subRuntimeStore.get(sub.id)?.cachedProfile;
 		const reported = profile?.fans;
-		const current = reported ?? latest.followers;
+		if (!latest && (statsOn || reported === undefined)) return undefined;
+		const current = reported ?? latest?.followers;
+		if (current === undefined) return undefined;
 		return {
 			subscriptionId: sub.id,
 			extensionId: identity.sourceKey,
 			externalId: identity.externalId,
 			current,
-			ts: reported !== undefined && profile ? profile.lastRefreshedAt : latest.sampledAt,
+			ts:
+				reported !== undefined && profile
+					? profile.lastRefreshedAt
+					: (latest?.sampledAt ?? new Date(nowMs).toISOString()),
 			deltaSubscribed: first ? current - first.followers : null,
 			delta24h: near24h ? current - near24h.followers : null,
 			delta7d: near7d ? current - near7d.followers : null,
@@ -390,20 +407,26 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				}
 				if (typeof current !== "number" || current < 0) continue;
 
+				// 统计总开关:关着时不写样本、不查涨跌、不新建起点 —— 当前数与资料缓存照常往下走。
+				const statsOn = isStatsEnabled();
 				const key = statsFileKey(sub);
-				await fansStore.append(key, { sampledAt: nowIso, followers: current });
-				writtenKeys.add(key);
-				if (disposed) return;
-
-				const [near24h, near7d] = await Promise.all([
-					fansStore.findNearestBefore(key, target24hIso),
-					fansStore.findNearestBefore(key, target7dIso),
-				]);
-				if (disposed) return;
+				let near24h: { followers: number } | null | undefined;
+				let near7d: { followers: number } | null | undefined;
+				if (statsOn) {
+					await fansStore.append(key, { sampledAt: nowIso, followers: current });
+					writtenKeys.add(key);
+					if (disposed) return;
+					[near24h, near7d] = await Promise.all([
+						fansStore.findNearestBefore(key, target24hIso),
+						fansStore.findNearestBefore(key, target7dIso),
+					]);
+					if (disposed) return;
+				}
 
 				const baseline = prev?.fansBaseline;
-				const nextBaseline = baseline ?? { value: current, ts: nowIso };
-				const deltaSubscribed = current - nextBaseline.value;
+				const nextBaseline = baseline ?? (statsOn ? { value: current, ts: nowIso } : undefined);
+				// 关着时没有起点(新订阅的第一次采样不新建它)就没有「订阅以来」可算。
+				const deltaSubscribed = nextBaseline ? current - nextBaseline.value : null;
 
 				const delta24h = near24h ? current - near24h.followers : null;
 				const delta7d = near7d ? current - near7d.followers : null;
@@ -423,7 +446,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					lastRefreshedAt: nowIso,
 				};
 				const runtimePatch: SubRuntime = { cachedProfile };
-				if (!baseline) runtimePatch.fansBaseline = nextBaseline;
+				if (!baseline && nextBaseline) runtimePatch.fansBaseline = nextBaseline;
 				try {
 					await subRuntimeStore.patch(sub.id, runtimePatch);
 				} catch (err) {
@@ -496,7 +519,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				// 启动时若发现 jsonl earliest 比 baseline 早,以 earliest 校准 baseline。
 				let baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
 				const earliest = await fansStore.findEarliest(statsFileKey(sub));
-				if (earliest && baseline && earliest.sampledAt < baseline.ts) {
+				// 总开关关着时不改写涨粉起点(自愈也是一次改写)。
+				if (isStatsEnabled() && earliest && baseline && earliest.sampledAt < baseline.ts) {
 					logger.info(
 						`[fans-poller] baseline self-heal uid=${uid}: ${baseline.ts}(${baseline.value}) → ${earliest.sampledAt}(${earliest.followers})`,
 					);

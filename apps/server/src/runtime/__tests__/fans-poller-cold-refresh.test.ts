@@ -65,6 +65,7 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 		}));
 
 		handle = startFansPoller({
+			isStatsEnabled: () => true,
 			bus: createNodeMessageBus(),
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 			configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

@@ -123,6 +123,7 @@ describe("recorder.compactRecording", () => {
 	let clock: Date;
 	const makeRecorder = () =>
 		createStatsRecorderCore({
+			isEnabled: () => true,
 			store,
 			fans: {} as never,
 			logger: log,

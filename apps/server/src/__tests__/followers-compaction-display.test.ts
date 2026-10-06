@@ -263,6 +263,7 @@ async function panelEntries(root: string): Promise<FansRefreshEntry[]> {
 		signal: new AbortController().signal,
 	};
 	const handle: FansPollerHandle = startFansPoller({
+		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
 		logger: silent,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,
