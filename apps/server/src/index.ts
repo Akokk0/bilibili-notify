@@ -508,6 +508,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// SecretStore.save() is first needed (e.g. changing a setting that holds a secret), making
 		// the normal "主密钥加载成功" log look like it was caused by that setting.
 		await runtime.keyProvider.getKey();
+		// 运行记录从这一刻算起:数据那一代已经就位,引擎还没起(ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。
+		runtime.uptimeRecorder.start();
 		// Load on-disk runtime config (config/settings/core.json, config/subscriptions.json, config/targets.json).
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.

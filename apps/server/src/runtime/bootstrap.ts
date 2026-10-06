@@ -23,6 +23,8 @@ import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
 import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
+import { createUptimeRecorder, type UptimeRecorder } from "../uptime/recorder.js";
+import { createUptimeStore, type UptimeStore } from "../uptime/store.js";
 import type { EnginesRuntime } from "./engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "./extension-live.js";
 import type { FansPollerHandle } from "./fans-poller.js";
@@ -84,6 +86,10 @@ export interface AppRuntime {
 	 * `/api/subscriptions` join.
 	 */
 	subRuntimeStore: SubRuntimeStore;
+	/** 运行记录(ADR-0033 决策 3):每个 UTC 整点小时里 BN 跑了多少分钟。不算数据统计,与 `statsStore` 无关。 */
+	uptimeStore: UptimeStore;
+	/** 运行记录的记录器。构造时不碰盘、不排定时器;`index.ts` 在数据那一代就位之后 `start()`,关停的 flush 段补记并停表。 */
+	uptimeRecorder: UptimeRecorder;
 	/**
 	 * 图库 `<dataRoot>/images/`(ADR-0022 决策 9):所有图按内容摘要存一份,引用就是文件名。全进程共用这一个;
 	 * `GET /api/images/:ref` 读。
@@ -307,6 +313,14 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		await statsRecorder.closeOpenSessions();
 		statsRecorder.dispose();
 	}, "flush");
+	// 运行记录:整点记一行、关停补一行。不挂总线、不依赖统计,单独一条;`start()` 在 index.ts 里等数据那一代就位。
+	const uptimeStore = createUptimeStore({ dataRoot, logger: serviceCtx.logger });
+	const uptimeRecorder = createUptimeRecorder({ store: uptimeStore, logger: serviceCtx.logger });
+	serviceCtx.onDispose(async () => {
+		// 先补记当前这一小时、停表,再关仓门 —— 反过来补的那一行会被拒掉。
+		await uptimeRecorder.stop();
+		await uptimeStore.close();
+	}, "flush");
 	const subRuntimeStore = createSubRuntimeStore({
 		dataRoot,
 		logger: serviceCtx.logger,
@@ -419,6 +433,8 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		fansStore,
 		statsStore,
 		statsRecorder,
+		uptimeStore,
+		uptimeRecorder,
 		subRuntimeStore,
 		imageStore,
 		chatImages,

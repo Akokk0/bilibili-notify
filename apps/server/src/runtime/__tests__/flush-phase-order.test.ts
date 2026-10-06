@@ -82,6 +82,29 @@ describe("createAppRuntime 的 flush 段", () => {
 		await expect(
 			runtime.imageStore.register({ name: "测试", listRefs: async () => [] }).put(PNG_BYTES),
 		).rejects.toMatchObject(CLOSED);
+		await expect(
+			runtime.uptimeStore.append({ hourStartedAt: "2026-10-06T08:00:00.000Z", minutes: 1 }),
+		).rejects.toMatchObject(CLOSED);
+	});
+
+	it("运行记录:关停先补记当前这一小时,再关门;之后记录器也不再写", async () => {
+		// 只拨 Date:假时钟让「开机到关停」隔了 30 分钟,真时钟下不到一分钟、补记的那一行会是 0 分钟而不写。
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			vi.setSystemTime(new Date("2026-10-06T08:20:00.000Z"));
+			runtime.uptimeRecorder.start();
+			vi.setSystemTime(new Date("2026-10-06T08:50:00.000Z"));
+			await runtime.dispose();
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(await readFile(dataPath(dataDir, "uptime", "hours.jsonl"), "utf8")).toBe(
+			`${JSON.stringify({ hourStartedAt: "2026-10-06T08:00:00.000Z", minutes: 30 })}\n`,
+		);
+		await expect(
+			runtime.uptimeStore.append({ hourStartedAt: "2026-10-06T09:00:00.000Z", minutes: 1 }),
+		).rejects.toMatchObject(CLOSED);
 	});
 
 	it("在途的资料更新先走空,图库与资料缓存仓才关门:关停返回时那条资料与它的头像已在盘上", async () => {

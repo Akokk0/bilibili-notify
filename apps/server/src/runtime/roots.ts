@@ -40,6 +40,8 @@ export const DATA_ROOT_LAYOUT = {
 	images: "图库:按内容存的图 <sha256>.<ext>,作品图、封面、头像、历史快照、聊天附件共用",
 	stats:
 		"作品 posts/、直播 live/、「在记」小账 recording/、粉丝时序 followers/(都按订阅一个 jsonl)",
+	uptime:
+		"运行记录 hours.jsonl:每行一个 UTC 整点小时里 BN 跑了多少分钟,整个 BN 一份;不算数据统计,不受统计总开关管,不进备份",
 	ai: "女仆对话 conversations/",
 	skins: "卡片皮肤 card/<id>/、界面皮肤 dashboard/<id>/ 与 dashboard/active.json",
 	library: "素材库:卡片背景 images/、字体 fonts/(连同名字清单)",
