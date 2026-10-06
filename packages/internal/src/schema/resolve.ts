@@ -2,8 +2,7 @@ import { type Identity, resolveActivePersona, resolveAIProfile } from "../consta
 import type {
 	AIPersona,
 	AISettings,
-	CardKind,
-	CardStyle,
+	CardsSettings,
 	ContentFilters,
 	FeatureFlags,
 	FeatureFlagsPartial,
@@ -23,7 +22,6 @@ import type {
 	SpecialUser,
 	Subscription,
 	SubscriptionExtraTargets,
-	SubscriptionOverrides,
 	SubscriptionRouting,
 } from "./subscriptions";
 
@@ -56,7 +54,7 @@ export interface EffectiveSubscription {
 	membership: Required<MembershipSettings>;
 	templates: TemplateBundle;
 	ai: ResolvedAI;
-	cardStyle: CardStyle;
+	cards: CardsSettings;
 	/** 生效的卡片皮肤 id(per-UP 指了就用它,否则全局)。 */
 	cardSkin: string;
 	messageLayout: MessageLayout;
@@ -158,22 +156,6 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	return { ...base, persona, dynamicPrompt, liveSummaryPrompt };
 }
 
-/**
- * 解析某卡片类型的生效样式。字段级 merge,优先级由低到高依次叠加:
- * 全局基准 → 全局·该类型 → UP·基准 → UP·该类型。`overrides` 传 null = 全局作用域。
- * 缺各层即跳过(merge 对 undefined 是 no-op),故老数据(无 cardStyleByKind)恒回退基准。
- */
-export function resolveCardStyleForKind(
-	defaults: GlobalDefaults,
-	overrides: SubscriptionOverrides | null,
-	kind: CardKind,
-): CardStyle {
-	let style: CardStyle = merge(defaults.cardStyle, defaults.cardStyleByKind?.[kind]);
-	style = merge(style, overrides?.cardStyle);
-	style = merge(style, overrides?.cardStyleByKind?.[kind]);
-	return style;
-}
-
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */
 export function resolve(sub: Subscription, defaults: GlobalDefaults): EffectiveSubscription {
 	// P2:merge() 在 override 缺失时直接返回 base 引用,且 {...base} 仅浅拷贝 ——
@@ -206,7 +188,7 @@ function resolveCommon(
 		membership: { minRank: { ...defaults.membership.minRank, ...ov.membership?.minRank } },
 		templates: mergeTemplates(defaults.templates, ov.templates),
 		ai: resolveAI(defaults.ai, ov.ai),
-		cardStyle: merge(defaults.cardStyle, ov.cardStyle),
+		cards: merge(defaults.cards, ov.cards),
 		// 皮肤是整份引用,没有合并可言:指了就是它。旧的 `cardLayout` 不再折进来 ——
 		// 出图只认皮肤,而那个键连同折它进来的开机迁移已一并删掉(ADR-0014 决策 17 的
 		// 2026-09-18 🔗:没选过皮肤的一律用出厂默认)。

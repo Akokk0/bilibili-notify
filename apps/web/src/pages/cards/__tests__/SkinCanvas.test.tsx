@@ -14,7 +14,7 @@ import {
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_RANK_GUIDE,
-	type CardSkinKind,
+	type CardKind,
 } from "@bilibili-notify/internal/constants";
 import { SELECTED_LANGUAGE } from "@bilibili-notify/ui";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -41,7 +41,7 @@ const toSource = () => fireEvent.click(screen.getByRole("button", { name: "源�
 
 const manifest = (): CardSkinManifest =>
 	({
-		schemaVersion: 1,
+		schemaVersion: 2,
 		name: "测试皮肤",
 		cards: {
 			live: {
@@ -66,7 +66,7 @@ const manifest = (): CardSkinManifest =>
 			},
 			// 直播卡已经全是原子块、一个挂点都没有了,所以「内置块徽章」与「挂点列表」
 			// 这两条改用动态卡的附加内容照 —— 它是主人拍板不拆的那几块之一。
-			dynamic: {
+			post: {
 				width: 600,
 				css: "",
 				blocks: [
@@ -85,7 +85,7 @@ const manifest = (): CardSkinManifest =>
 				],
 			},
 			// 档位卡:检查器的 CSS 一节要带上「按档换色」的说明(㉔d)。
-			sc: {
+			superchat: {
 				width: 290,
 				css: "",
 				blocks: [
@@ -116,7 +116,7 @@ function Harness({
 	 * 画哪种卡。默认直播卡 —— 但直播卡拆完已经**一个复合块、一个挂点都不剩**了,
 	 * 所以「内置块徽章」「挂点列表」那两条要拿动态卡照(ADR-0014 决策 8 的 2026-09-18 🔗)。
 	 */
-	kind?: CardSkinKind;
+	kind?: CardKind;
 }) {
 	const [draft, setDraft] = useState<CardSkinManifest>(manifest());
 	const [selection, setSelection] = useState<SkinSelection>(null);
@@ -248,7 +248,7 @@ describe("网格画布", () => {
 		expect(blockBtn("自定义块").textContent).toContain("自定义");
 		cleanup();
 
-		render(<Harness kind="dynamic" />);
+		render(<Harness kind="post" />);
 		expect(blockBtn("附加内容").textContent).toContain("内置");
 		expect(blockBtn("头像").textContent).toContain("原子");
 	});
@@ -292,7 +292,13 @@ describe("网格画布", () => {
 
 	it("皮肤没定义这种卡 → 说清楚它跟着出厂默认,不是白屏", () => {
 		render(
-			<SkinCanvas kind="sc" scene="default" card={undefined} selection={null} onSelect={vi.fn()} />,
+			<SkinCanvas
+				kind="superchat"
+				scene="default"
+				card={undefined}
+				selection={null}
+				onSelect={vi.fn()}
+			/>,
 		);
 		expect(screen.getByText(/没有定义这种卡/)).toBeTruthy();
 	});
@@ -380,11 +386,11 @@ describe("添加块 / 删块", () => {
  */
 describe("检查器 · 按档换色的说明", () => {
 	it("醒目留言卡:外框的 CSS 与块的 CSS 都带这段说明", () => {
-		render(<Harness kind="sc" />);
+		render(<Harness kind="superchat" />);
 		fireEvent.click(screen.getByText("卡片外框"));
 		expect(screen.getByText(CARD_SKIN_RANK_GUIDE)).toBeTruthy();
 		cleanup();
-		render(<Harness kind="sc" />);
+		render(<Harness kind="superchat" />);
 		fireEvent.click(blockBtn("金额"));
 		expect(screen.getByText(CARD_SKIN_RANK_GUIDE)).toBeTruthy();
 	});
@@ -474,13 +480,13 @@ describe("检查器 · CSS", () => {
 
 	it("挂点是对外 API,列出来还能点一下补进去 —— 名字记不住是写皮肤第一道坎", () => {
 		const onDraft = vi.fn();
-		render(<Harness kind="dynamic" onDraft={onDraft} />);
+		render(<Harness kind="post" onDraft={onDraft} />);
 		fireEvent.click(blockBtn("附加内容"));
 
 		// 附加内容块内部有「附加卡」「附加卡封面」「按钮」三个挂点。
 		fireEvent.click(within(screen.getByLabelText("这个块的挂点")).getByText("附加卡"));
 
-		expect(cardOf(lastDraft(onDraft), "dynamic")?.blocks[0]?.css).toContain('[data-bn="card"]');
+		expect(cardOf(lastDraft(onDraft), "post")?.blocks[0]?.css).toContain('[data-bn="card"]');
 	});
 
 	it("外框的两层挂点摆在外框那一节", () => {
@@ -613,7 +619,7 @@ describe("接管 / 交还一种卡", () => {
 		const onAdopt = vi.fn();
 		render(
 			<SkinCanvas
-				kind="sc"
+				kind="superchat"
 				scene="default"
 				card={undefined}
 				selection={null}
@@ -628,7 +634,7 @@ describe("接管 / 交还一种卡", () => {
 	it("出厂皮肤还没读到时那颗钮禁着 —— 接管要抄的就是它", () => {
 		render(
 			<SkinCanvas
-				kind="sc"
+				kind="superchat"
 				scene="default"
 				card={undefined}
 				selection={null}
@@ -644,7 +650,13 @@ describe("接管 / 交还一种卡", () => {
 
 	it("只读的皮肤不给接管的口", () => {
 		render(
-			<SkinCanvas kind="sc" scene="default" card={undefined} selection={null} onSelect={vi.fn()} />,
+			<SkinCanvas
+				kind="superchat"
+				scene="default"
+				card={undefined}
+				selection={null}
+				onSelect={vi.fn()}
+			/>,
 		);
 		expect(screen.queryByText(/接管这种卡/)).toBeNull();
 	});
@@ -843,7 +855,7 @@ describe("网格画布 — 只摆这一场的块,和出图一样紧", () => {
 	const canvas = (scene: string, over: Record<string, unknown> = {}) =>
 		render(
 			<SkinCanvas
-				kind="dynamic"
+				kind="post"
 				card={{ width: 600, blocks } as never}
 				selection={null}
 				onSelect={vi.fn()}

@@ -16,8 +16,8 @@ import { CardSkinIdSchema, CardSkinKnobOverridesSchema, DEFAULT_CARD_SKIN_ID } f
 import { CommandConfigSchema, DEFAULT_COMMAND_CONFIG } from "./commands";
 import {
 	AISettingsSchema,
-	CardStyleByKindSchema,
-	CardStyleSchema,
+	type CardsSettings,
+	CardsSettingsSchema,
 	ContentFiltersSchema,
 	DEFAULT_CONTENT_FILTERS,
 	DEFAULT_FEATURE_FLAGS,
@@ -153,10 +153,8 @@ export const GlobalDefaultsSchema = z.object({
 	membership: MembershipSettingsSchema.default(() => structuredClone(DEFAULT_MEMBERSHIP_SETTINGS)),
 	templates: TemplateBundleSchema,
 	ai: AISettingsSchema,
-	cardStyle: CardStyleSchema,
-	// 按卡片类型的样式覆盖(渐变/字体/玻璃片/背景图);缺该字段的老 globals.json 自动补 {}
-	// (= 所有卡片跟随 cardStyle 基准,复刻现状)。生效解析见 resolveCardStyleForKind。
-	cardStyleByKind: CardStyleByKindSchema.default({}),
+	// 卡片设置(㉔e):出图总开关与直播封面,不再按卡种分层。缺这一段的老配置补出厂值。
+	cards: CardsSettingsSchema.default(() => structuredClone(DEFAULT_CARDS)),
 	// 全局用哪套卡片皮肤(ADR-0014)。缺字段的老 globals.json 补成内置默认皮肤;版式
 	// 本身住皮肤包里,不再住配置。存量的 `cardLayout` 键**直接丢**(决策 17 的
 	// 2026-09-18 🔗:迁移退役,升级上来的一律用出厂默认皮肤)—— 这几个配置 schema 都是
@@ -386,17 +384,8 @@ export const DEFAULT_AI = {
 	activePreset: BUILTIN_AI_PRESETS[0].id,
 } as const;
 
-export const DEFAULT_CARD_STYLE = {
-	enabled: true,
-	// 渐变起 / 止色已退役(ADR-0014 决策 15 的 🔗)—— 出厂色住在
-	// `card-skin.ts` 的 `DEFAULT_CARD_GRADIENT`,由默认皮肤的外框 CSS 画出来。
-	// 字体与背景图已退役(2026-09-14,同玻璃那次):两项都归**皮肤自己的旋钮**,新装的机器
-	// 一个键都不写 —— 退役字段不该由出厂值写回去。
-	// 数据区那三件 2026-09-14 也退役了(同字体 / 背景图那次):人气 / 分区 / 粉丝拆成三个
-	// 原子块,schema 里连字段都不剩,这里自然也没有。
-	// (这几句从前的理由是「写了开机迁移就判不出搬过没有」——「旧版式 → 皮肤」那个迁移已于
-	// 2026-09-18 整个退役,见 ADR-0014 决策 17 的 🔗:升级上来的一律用出厂默认皮肤。)
-} as const;
+/** 出厂的卡片设置:出图开着、没有自定义直播封面。 */
+export const DEFAULT_CARDS: CardsSettings = { enabled: true, liveCoverImageIds: [] };
 
 /** 工厂:创建一份完整的默认 GlobalConfig(不含 bootstrap)—— server 的出厂值与测试夹具共用。 */
 export function makeDefaultGlobalConfig(): GlobalConfig {
@@ -413,7 +402,7 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			membership: DEFAULT_MEMBERSHIP_SETTINGS,
 			templates: DEFAULT_TEMPLATES,
 			ai: DEFAULT_AI,
-			cardStyle: DEFAULT_CARD_STYLE,
+			cards: DEFAULT_CARDS,
 			imageGroup: DEFAULT_IMAGE_GROUP,
 			// 全新安装把账本一次填满:他拿到的就是当前默认,没什么可更新的。
 			// 空着的话,他一动手改文案就会被提示「默认文案有更新」—— 更新到哪去?

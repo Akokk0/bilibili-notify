@@ -13,7 +13,7 @@ import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import {
 	type AISettings,
 	AISettingsSchema,
-	type CardSkinKind,
+	type CardKind,
 	fail,
 	type ImageRef,
 	issuesFromZod,
@@ -120,7 +120,7 @@ export function createAiRoute(
 		 * 给卡片工坊的 `look_card` 截一张图(data URL);回 null = 服务端没装 Chrome。
 		 * 不给就当截不了(决策 19 的 🔗:看不见不报错)。
 		 */
-		cardSkinShot?: (skinId: string, kind: CardSkinKind) => Promise<string | null>;
+		cardSkinShot?: (skinId: string, kind: CardKind) => Promise<string | null>;
 	},
 ): Hono {
 	const app = new Hono();

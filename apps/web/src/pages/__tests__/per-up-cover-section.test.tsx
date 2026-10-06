@@ -33,36 +33,26 @@ describe("PerUpCoverSection", () => {
 		expect(screen.queryByText(/上传/)).toBeNull();
 	});
 
-	it("打开覆盖开关 → 快照全局封面列表,并保留 partial 里已有的颜色键", () => {
+	it("打开覆盖开关 → 快照全局封面列表当起点", () => {
 		const onChange = vi.fn();
 		renderWithQuery(
-			<PerUpCoverSection base={["g1", "g2"]} value={{ font: "F0 Sans" }} onChange={onChange} />,
+			<PerUpCoverSection base={["g1", "g2"]} value={undefined} onChange={onChange} />,
 		);
 		fireEvent.click(screen.getByRole("button"));
-		expect(onChange).toHaveBeenCalledWith({
-			font: "F0 Sans",
-			liveCoverImages: ["g1", "g2"],
-		});
+		expect(onChange).toHaveBeenCalledWith(["g1", "g2"]);
 	});
 
-	it("关闭覆盖开关 → 只剥封面键;还剩颜色键则保留,否则清空为 undefined", () => {
+	// 验红:把 `toggleOverride` 里关掉时的 `undefined` 换成 `[]`,这条红(关掉被存成「不用自定义封面」)。
+	it("关闭覆盖开关 → 回 undefined(跟随全局),不是空列表", () => {
 		const onChange = vi.fn();
-		const { unmount } = renderWithQuery(
-			<PerUpCoverSection
-				base={[]}
-				value={{ font: "F0 Sans", liveCoverImages: ["c1"] }}
-				onChange={onChange}
-			/>,
-		);
+		renderWithQuery(<PerUpCoverSection base={[]} value={["c1"]} onChange={onChange} />);
 		fireEvent.click(screen.getByRole("button"));
-		expect(onChange).toHaveBeenCalledWith({ font: "F0 Sans" });
-		unmount();
+		expect(onChange).toHaveBeenCalledWith(undefined);
+	});
 
-		const onChange2 = vi.fn();
-		renderWithQuery(
-			<PerUpCoverSection base={[]} value={{ liveCoverImages: ["c1"] }} onChange={onChange2} />,
-		);
-		fireEvent.click(screen.getByRole("button"));
-		expect(onChange2).toHaveBeenCalledWith(undefined);
+	it("空列表也是「单独设置」态:不渲染成跟随", () => {
+		renderWithQuery(<PerUpCoverSection base={["g1"]} value={[]} onChange={() => {}} />);
+		expect(screen.queryByText(/跟随全局封面/)).toBeNull();
+		expect(screen.getByText("单独设置")).toBeTruthy();
 	});
 });

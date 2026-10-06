@@ -12,7 +12,7 @@
  * `__tests__/card-hooks.test.ts`。
  */
 
-import { type CardSkinKind, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import { type CardKind, DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
 import { sampleCard } from "../../preview/sample-cards";
@@ -26,11 +26,7 @@ const VIDEO_TITLE = "【示例视频】这是一条用来预览卡片的示例�
 /**
  * 一套只摆这几个内置块的皮肤,每块占一整行。画出来的整卡 HTML 解析成文档返回。
  */
-async function renderWith(
-	kind: CardSkinKind,
-	builtins: string[],
-	scene?: string,
-): Promise<Document> {
+async function renderWith(kind: CardKind, builtins: string[], scene?: string): Promise<Document> {
 	const sample = await sampleCard(kind, scene);
 	const html = await renderCardWithSkin(
 		kind,
@@ -82,39 +78,39 @@ function hooksUnder(el: Element): Set<string> {
 
 describe("动态卡 — topic(话题)", () => {
 	it("画的是话题那一行:图标 + 话题名,根挂着 text", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["topic"]), "topic");
+		const root = soleRoot(await renderWith("post", ["topic"]), "topic");
 		expect(root.textContent).toBe("示例话题");
 		expect(root.querySelector("svg")?.getAttribute("aria-label")).toBe("话题");
 		expect(hooksOn(root)).toEqual(["text"]);
 	});
 
 	it("没有话题的动态 → 整块收起", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["topic"], "video"), "topic")).toEqual([]);
+		expect(blocksOf(await renderWith("post", ["topic"], "video"), "topic")).toEqual([]);
 	});
 });
 
 describe("动态卡 — text(正文文字)", () => {
 	it("画的是正文富文本,带着 body 挂点,不带视频卡", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["text"]), "text");
+		const root = soleRoot(await renderWith("post", ["text"]), "text");
 		expect(root.textContent).toContain(AV_TEXT);
 		expect(hooksOn(root)).toEqual(["body"]);
 		expect(root.textContent).not.toContain(VIDEO_TITLE);
 	});
 
 	it("图文场面:正文在,九张图不在", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["text"], "pics"), "text");
+		const root = soleRoot(await renderWith("post", ["text"], "pics"), "text");
 		expect(root.textContent).toContain("这是一段示例图文正文");
 		expect(root.querySelector("img")).toBeNull();
 	});
 
 	it("只有视频卡、没有正文的投稿 → 整块收起", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["text"], "video"), "text")).toEqual([]);
+		expect(blocksOf(await renderWith("post", ["text"], "video"), "text")).toEqual([]);
 	});
 });
 
 describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
 	it("封面只是一张图,挂点在图上", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["videoCover"], "video"), "videoCover");
+		const root = soleRoot(await renderWith("post", ["videoCover"], "video"), "videoCover");
 		expect(root.tagName).toBe("IMG");
 		expect(hooksOn(root)).toEqual(["image"]);
 		expect(root.textContent).toBe("");
@@ -122,7 +118,7 @@ describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
 
 	it("标题 / 简介 / 播放弹幕各画各的一段,谁都不带正文", async () => {
 		const html = await renderWith(
-			"dynamic",
+			"post",
 			["videoTitle", "videoDescription", "videoStats"],
 			"video",
 		);
@@ -133,45 +129,45 @@ describe("动态卡 — 投稿视频那张卡拆成的五块", () => {
 	});
 
 	it("时长角标不自带定位 —— 贴哪个角归皮肤说,根挂着 pill", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["videoDuration"], "video"), "videoDuration");
+		const root = soleRoot(await renderWith("post", ["videoDuration"], "video"), "videoDuration");
 		expect(hooksOn(root)).toEqual(["pill"]);
 		expect(root.getAttribute("class") ?? "").not.toMatch(/absolute|bottom-|right-/);
 	});
 
 	it("不是投稿视频 → 五块一起收起", async () => {
 		const ids = ["videoCover", "videoDuration", "videoTitle", "videoDescription", "videoStats"];
-		const html = await renderWith("dynamic", ids, "pics");
+		const html = await renderWith("post", ids, "pics");
 		for (const id of ids) expect(blocksOf(html, id), id).toEqual([]);
 	});
 });
 
 describe("动态卡 — images(图廊)", () => {
 	it("图文:画的是图廊本身(九格),不带正文后面那层间距", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["images"], "pics"), "images");
+		const root = soleRoot(await renderWith("post", ["images"], "pics"), "images");
 		expect(hooksOn(root)).toEqual(["images"]);
 		expect(root.querySelectorAll('[data-bn="image"]')).toHaveLength(9);
 		expect(root.textContent).not.toContain("这是一段示例图文正文");
 	});
 
 	it("视频投稿没有图廊 → 整块收起", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["images"], "video"), "images")).toEqual([]);
+		expect(blocksOf(await renderWith("post", ["images"], "video"), "images")).toEqual([]);
 	});
 
 	it("转发那条自己没有图 → 整块收起(原动态的图归转发框里那张卡)", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["images"], "forward"), "images")).toEqual([]);
+		expect(blocksOf(await renderWith("post", ["images"], "forward"), "images")).toEqual([]);
 	});
 });
 
 describe("动态卡 — repost(转发框)", () => {
 	it("画的是转发框本身,根挂着 bubble(不是复合块时代的 forward)", async () => {
-		const root = soleRoot(await renderWith("dynamic", ["repost"], "forward"), "repost");
+		const root = soleRoot(await renderWith("post", ["repost"], "forward"), "repost");
 		expect(root.tagName).toBe("DIV");
 		// 框的样子(灰底 / 圆角 / 左边那道蓝 / zoom)住在默认皮肤这个挂点的规则里,认框认它。
 		expect(hooksOn(root)).toEqual(["bubble"]);
 	});
 
 	it("框里是原动态那张卡,跟着同一份皮肤摆:外层的正文是转发语,框里的是原动态正文", async () => {
-		const doc = await renderWith("dynamic", ["repost", "text"], "forward");
+		const doc = await renderWith("post", ["repost", "text"], "forward");
 		const inset = soleRoot(doc, "repost");
 		const texts = blocksOf(doc, "text");
 		expect(texts).toHaveLength(2);
@@ -183,7 +179,7 @@ describe("动态卡 — repost(转发框)", () => {
 	});
 
 	it("不是转发 → 整块收起", async () => {
-		expect(blocksOf(await renderWith("dynamic", ["repost"]), "repost")).toEqual([]);
+		expect(blocksOf(await renderWith("post", ["repost"]), "repost")).toEqual([]);
 	});
 });
 
@@ -196,7 +192,7 @@ describe("动态卡 — 三个互动数", () => {
 
 	for (const [builtin, label, count] of CASES) {
 		it(`${builtin}:画的是${label}那一项(图标 + 数),图标带 icon 挂点`, async () => {
-			const root = soleRoot(await renderWith("dynamic", [builtin]), builtin);
+			const root = soleRoot(await renderWith("post", [builtin]), builtin);
 			expect(root.textContent).toBe(count);
 			const icons = root.querySelectorAll('[data-bn="icon"]');
 			expect(icons).toHaveLength(1);
@@ -205,7 +201,7 @@ describe("动态卡 — 三个互动数", () => {
 		});
 
 		it(`${builtin}:转发框里的原动态没有互动数 → 框里那份收起,外层照画`, async () => {
-			const doc = await renderWith("dynamic", ["repost", builtin], "forward");
+			const doc = await renderWith("post", ["repost", builtin], "forward");
 			const inset = soleRoot(doc, "repost");
 			const all = blocksOf(doc, builtin);
 			expect(all).toHaveLength(1);
@@ -216,7 +212,7 @@ describe("动态卡 — 三个互动数", () => {
 
 describe("醒目留言卡 — amount / duration / to", () => {
 	it("amount:画的是金额数字,档位色的两个变量跟着它自己走", async () => {
-		const root = soleRoot(await renderWith("sc", ["amount"]), "amount");
+		const root = soleRoot(await renderWith("superchat", ["amount"]), "amount");
 		expect(root.textContent).toBe("¥100");
 		const style = root.getAttribute("style") ?? "";
 		// 金额是渐变裁字:两个变量缺一个,字就是透明的 —— 复合块里它们挂在根上,单独摆没有那个根。
@@ -226,7 +222,7 @@ describe("醒目留言卡 — amount / duration / to", () => {
 	});
 
 	it("duration:画的是时长胶囊(图标 + 时长),档位色变量跟着它自己走", async () => {
-		const root = soleRoot(await renderWith("sc", ["duration"]), "duration");
+		const root = soleRoot(await renderWith("superchat", ["duration"]), "duration");
 		expect(root.querySelector("svg")).not.toBeNull();
 		expect(root.textContent?.trim()).not.toBe("");
 		expect(root.textContent).not.toContain("¥");
@@ -235,7 +231,7 @@ describe("醒目留言卡 — amount / duration / to", () => {
 	});
 
 	it("to:画的是「SC to」那一行,主播小头像与主播名的挂点都在", async () => {
-		const root = soleRoot(await renderWith("sc", ["to"]), "to");
+		const root = soleRoot(await renderWith("superchat", ["to"]), "to");
 		expect(root.textContent).toContain("SC to");
 		expect(root.textContent).toContain("示例 UP 主");
 		expect(root.textContent).not.toContain("示例粉丝");
@@ -248,14 +244,14 @@ describe("醒目留言卡 — amount / duration / to", () => {
 
 describe("上舰卡 — viewerName / creator", () => {
 	it("viewerName:画的是用户名胶囊,档位色变量跟着它自己走", async () => {
-		const root = soleRoot(await renderWith("guard", ["viewerName"]), "viewerName");
+		const root = soleRoot(await renderWith("membership", ["viewerName"]), "viewerName");
 		expect(root.textContent).toBe("示例粉丝");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
 		expect(hooksUnder(root)).toEqual(new Set(["pill", "text"]));
 	});
 
 	it("creator:画的是主播胶囊,主播小头像与主播名的挂点都在", async () => {
-		const root = soleRoot(await renderWith("guard", ["creator"]), "creator");
+		const root = soleRoot(await renderWith("membership", ["creator"]), "creator");
 		expect(root.textContent).toBe("示例 UP 主");
 		expect(root.getAttribute("style") ?? "").toContain("--bn-card-tier-color:");
 		expect(hooksOn(root)).toEqual(["pill"]);

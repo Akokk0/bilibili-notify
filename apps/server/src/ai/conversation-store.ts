@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { AiCardSkinTouchDTO, AiChatMode, AiSkinTarget } from "@bilibili-notify/contract";
-import { createSerialQueue, type ImageRef, type Logger } from "@bilibili-notify/internal";
+import {
+	CARD_KINDS,
+	createSerialQueue,
+	type ImageRef,
+	type Logger,
+} from "@bilibili-notify/internal";
 import { atomicWriteJson } from "@bilibili-notify/storage";
 import { dataPath } from "../runtime/roots.js";
 
@@ -231,6 +236,19 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 	const writes = createSerialQueue();
 	const serial = <T>(fn: () => Promise<T>): Promise<T> => writes.run(WRITE_KEY, fn);
 
+	/**
+	 * 消息里存的 `cardSkins[].kinds` 是盘上的卡种键(只有 1.0 开发期的会话里有 —— 0.x 的会话已被迁移整个剥掉)。卡种键在 ㉔e
+	 * 改了名,读的时候**认不出的键丢掉**(不写迁移):留着只会让面板按名字取中文名取到 `undefined`。
+	 */
+	function dropUnknownCardKinds(conv: Conversation): void {
+		const known: readonly string[] = CARD_KINDS;
+		for (const m of conv.messages) {
+			for (const t of m.cardSkins ?? []) {
+				t.kinds = t.kinds.filter((k) => known.includes(k));
+			}
+		}
+	}
+
 	async function readOne(file: string): Promise<Conversation | null> {
 		let raw: string;
 		try {
@@ -252,6 +270,7 @@ export function createConversationStore(opts: ConversationStoreOptions): Convers
 			) {
 				throw new Error("shape mismatch");
 			}
+			dropUnknownCardKinds(parsed);
 			return parsed;
 		} catch (err) {
 			// 一条脏记录不该让侧栏整个空掉:跳过它,别的照常列出来。

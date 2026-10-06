@@ -20,16 +20,16 @@ import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import {
 	CARD_DATA_VERSION,
+	CARD_KIND_NAMES,
+	CARD_KINDS,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
-	CARD_SKIN_KIND_NAMES,
-	CARD_SKIN_KINDS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
 	CARD_SKIN_SELF_HOOK,
+	type CardKind,
 	type CardSkinCard,
 	type CardSkinFieldType,
-	type CardSkinKind,
 	type CardSkinManifest,
 	cardSkinBytes,
 	DEFAULT_CARD_SKIN,
@@ -48,7 +48,7 @@ export const CARD_WORKSHOP_MAX_TOOL_ROUNDS = 24;
 /** 一轮最多碰几套(决策 23)。新建、复制都算碰;同一套里写多少次不限。 */
 const MAX_SKINS_PER_TURN = 2;
 
-const KIND_NAMES = CARD_SKIN_KIND_NAMES;
+const KIND_NAMES = CARD_KIND_NAMES;
 
 const FIELD_TYPE_NAMES: Record<CardSkinFieldType, string> = {
 	text: "文字",
@@ -58,9 +58,7 @@ const FIELD_TYPE_NAMES: Record<CardSkinFieldType, string> = {
 };
 
 /** 整张就是一个固定内置块的卡种(ADR-0014 决策 3):只能改外框与那一块的样子。 */
-const FIXED_KINDS = CARD_SKIN_KINDS.filter(
-	(k) => Object.keys(CARD_SKIN_BUILTIN_BLOCKS[k]).length === 1,
-);
+const FIXED_KINDS = CARD_KINDS.filter((k) => Object.keys(CARD_SKIN_BUILTIN_BLOCKS[k]).length === 1);
 
 /** 读盘时的账本:这场对话建过哪些、给哪些原件复制过副本。 */
 export interface CardWorkshopLedger {
@@ -81,13 +79,13 @@ export interface CardWorkshopDeps {
 	/** 全局在用哪套,list_skins 据此标「正在用」。 */
 	activeId: () => string;
 	/** 截一张图(data URL);回 null 或不给 = 服务端没装 Chrome,截不了。 */
-	shoot?: (skinId: string, kind: CardSkinKind) => Promise<string | null>;
+	shoot?: (skinId: string, kind: CardKind) => Promise<string | null>;
 }
 
 /** 这一轮碰过的一套:预览块按它画,`kinds` 是写过的卡种、按先后。 */
 export interface CardWorkshopTouch {
 	id: string;
-	kinds: CardSkinKind[];
+	kinds: CardKind[];
 }
 
 type Card = CardSkinCard;
@@ -102,9 +100,9 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 	const { store } = deps;
 	const owned = new Set(deps.ledger.owned);
 	const forks = new Map(Object.entries(deps.ledger.forks));
-	const touched = new Map<string, CardSkinKind[]>();
+	const touched = new Map<string, CardKind[]>();
 
-	function touch(id: string, kind?: CardSkinKind): void {
+	function touch(id: string, kind?: CardKind): void {
 		const kinds = touched.get(id) ?? [];
 		if (kind && !kinds.includes(kind)) kinds.push(kind);
 		touched.set(id, kinds);
@@ -181,7 +179,7 @@ export function createCardWorkshopTools(deps: CardWorkshopDeps): {
 	}
 
 	/** 这种卡已经写过才能改块;没写过就指路 write_card。 */
-	function cardOf(manifest: CardSkinManifest, kind: CardSkinKind): Card {
+	function cardOf(manifest: CardSkinManifest, kind: CardKind): Card {
 		const card = manifest.cards[kind];
 		if (!card) {
 			throw new Error(
@@ -570,7 +568,7 @@ export function slimCardToolArgs(
 // ---- 摘要 -------------------------------------------------------------------
 
 /** 一张卡的摘要(决策 14):不含块的 CSS / HTML 正文。 */
-function summarize(kind: CardSkinKind, card: Card): string {
+function summarize(kind: CardKind, card: Card): string {
 	const gap = card.gap
 		? `行间距 ${card.gap.row ?? "默认"}、列间距 ${card.gap.column ?? "默认"}`
 		: "间距没写(用默认)";
@@ -639,7 +637,7 @@ function assetVars(assets: Record<string, string>): string {
 // ---- 入参 -------------------------------------------------------------------
 
 const SKIN_PARAM = { type: "string", description: "皮肤 id(list_skins 里看得到)" };
-const KIND_PARAM = { type: "string", enum: [...CARD_SKIN_KINDS], description: "卡种" };
+const KIND_PARAM = { type: "string", enum: [...CARD_KINDS], description: "卡种" };
 const BLOCK_PARAM = { type: "string", description: "块 id" };
 
 function fn(
@@ -664,12 +662,12 @@ function text(v: string | undefined, name: string): string {
 	return t;
 }
 
-function kindOf(v: string | undefined): CardSkinKind {
+function kindOf(v: string | undefined): CardKind {
 	const k = text(v, "kind");
-	if (!(CARD_SKIN_KINDS as readonly string[]).includes(k)) {
-		throw new Error(`没有「${k}」这种卡,只能是 ${CARD_SKIN_KINDS.join(" / ")}`);
+	if (!(CARD_KINDS as readonly string[]).includes(k)) {
+		throw new Error(`没有「${k}」这种卡,只能是 ${CARD_KINDS.join(" / ")}`);
 	}
-	return k as CardSkinKind;
+	return k as CardKind;
 }
 
 function json(v: string | undefined, name: string): unknown {
@@ -704,7 +702,7 @@ function compact<T extends Record<string, unknown>>(o: T): T {
 	return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 }
 
-function withCard(manifest: CardSkinManifest, kind: CardSkinKind, card: unknown): unknown {
+function withCard(manifest: CardSkinManifest, kind: CardKind, card: unknown): unknown {
 	return { ...manifest, cards: { ...manifest.cards, [kind]: card } };
 }
 
@@ -721,8 +719,8 @@ function warned(warnings: readonly string[]): string {
  * 如实回话。
  */
 export function buildCardWorkshopSystem(): string {
-	const kinds = CARD_SKIN_KINDS.map((k) => `\`${k}\`(${KIND_NAMES[k]})`).join("、");
-	const catalog = CARD_SKIN_KINDS.map((kind) => {
+	const kinds = CARD_KINDS.map((k) => `\`${k}\`(${KIND_NAMES[k]})`).join("、");
+	const catalog = CARD_KINDS.map((kind) => {
 		const blocks = Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind]).map(([name, b]) => {
 			const hooks = Object.entries(b.hooks);
 			const tail =
@@ -733,7 +731,7 @@ export function buildCardWorkshopSystem(): string {
 		});
 		return `- ${kind}(${KIND_NAMES[kind]}):\n${blocks.join("\n")}`;
 	}).join("\n");
-	const fields = CARD_SKIN_KINDS.map(
+	const fields = CARD_KINDS.map(
 		(kind) =>
 			`- ${kind}:${CARD_SKIN_FIELDS[kind].map((f) => `\`${f.path}\`(${f.label},${FIELD_TYPE_NAMES[f.type]})`).join("、")}`,
 	).join("\n");
@@ -742,7 +740,7 @@ export function buildCardWorkshopSystem(): string {
 	 * 「跨行 = 真高度」的那几块(块目录里标了 `heightFromRows` 的)。**现算不手写** ——
 	 * 目录里多标一块而这句话没跟上,女仆就会拿错的规矩去写高度(有测试两头对表钉着)。
 	 */
-	const sizedBlocks = CARD_SKIN_KINDS.flatMap((kind) =>
+	const sizedBlocks = CARD_KINDS.flatMap((kind) =>
 		Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])
 			.filter(([, meta]) => meta.heightFromRows === true)
 			.map(([name, meta]) => `\`${kind}.${name}\`(${meta.label})`),

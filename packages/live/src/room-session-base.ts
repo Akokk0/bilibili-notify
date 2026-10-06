@@ -144,10 +144,10 @@ export abstract class RoomSessionBase {
 	}
 
 	/**
-	 * 取某卡片类型的生效样式:优先该 kind 的 per-kind 覆盖,缺失回退基准 `customCardStyle`。
+	 * 取某卡片类型的生效样式:就是这条订阅的 `customCardStyle`(㉔e 起没有按卡种分层,卡种只决定要不要轮换封面)。
 	 * 始终有定义(基准恒在);是否启用由调用点据 `enable` 自行判定 —— SC / guard 把未启用
 	 * 折成 undefined 让 generate* 走渲染器全局 config 兜底,live 则原样透传(room-helpers
-	 * 再据 enable 门控)。adapter 已把 per-kind 折算成完整样式,这里只做选取。
+	 * 再据 enable 门控)。
 	 *
 	 * 直播封面「每次推送轮换」:优先用该样式自带的 `liveCoverImages`;若该 UP / kind 没有
 	 * 任何覆盖(样式自带列表为空)→ 落回引擎级 `defaultLiveCoverImages`(全局默认封面廊)。
@@ -161,7 +161,7 @@ export abstract class RoomSessionBase {
 	 * 自己的 `image` 旋钮,轮出来的那张从 2026-09-19 起已经喂不到任何 CSS。
 	 */
 	protected resolvedCardStyle(kind: CardKind): CustomCardStyleLike {
-		const style = this.sub.customCardStyleByKind?.[kind] ?? this.sub.customCardStyle;
+		const style = this.sub.customCardStyle;
 		if (kind !== "live") return style;
 		// 封面轮换与拓展订阅的直播共用一份规矩(`rotateLiveCover`)。
 		return rotateLiveCover(

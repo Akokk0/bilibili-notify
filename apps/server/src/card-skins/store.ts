@@ -18,7 +18,7 @@
 import type { CardSkinSummary } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_LIMITS,
-	type CardSkinKind,
+	type CardKind,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
@@ -446,7 +446,7 @@ function summary(
 		builtin,
 		updatedAt,
 		...(m.knobs?.length ? { knobs: m.knobs } : {}),
-		kinds: Object.keys(m.cards) as CardSkinKind[],
+		kinds: Object.keys(m.cards) as CardKind[],
 	};
 }
 

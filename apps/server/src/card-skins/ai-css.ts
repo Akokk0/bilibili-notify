@@ -20,8 +20,8 @@ import {
 	CARD_SKIN_RANK_GUIDE,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_VARIABLES,
+	type CardKind,
 	type CardSkinAssetVars,
-	type CardSkinKind,
 	type CardSkinKnob,
 	type CardSkinManifest,
 	cardSkinKnobVar,
@@ -34,12 +34,12 @@ import {
 	sanitizeCardFrameCss,
 } from "./css-sanitizer.js";
 
-type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
+type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 type Block = Card["blocks"][number];
 
 /** 写哪个框:给了 `blockId` 是那一块,没给是这种卡的外框。 */
 export interface CardCssAiTarget {
-	kind: CardSkinKind;
+	kind: CardKind;
 	blockId?: string;
 }
 
@@ -184,7 +184,7 @@ export function prepareCardCssAi(
 	};
 }
 
-export function blockLabel(kind: CardSkinKind, block: Block): string {
+export function blockLabel(kind: CardKind, block: Block): string {
 	if (block.kind === "custom") return "自定义块";
 	return CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin]?.label ?? block.builtin;
 }
@@ -197,7 +197,7 @@ export function fenced(lang: string, body: string | undefined): string {
 	return body?.trim() ? `\`\`\`${lang}\n${body}\n\`\`\`` : "(空)";
 }
 
-function outline(kind: CardSkinKind, card: Card, target: Block | undefined): string {
+function outline(kind: CardKind, card: Card, target: Block | undefined): string {
 	return [...card.blocks]
 		.sort((a, b) => a.grid.row - b.grid.row || a.grid.column - b.grid.column)
 		.map((b) => {

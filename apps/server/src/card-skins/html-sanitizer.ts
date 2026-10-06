@@ -24,8 +24,8 @@
 import {
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_LIMITS,
+	type CardKind,
 	type CardSkinFieldType,
-	type CardSkinKind,
 } from "@bilibili-notify/internal";
 import {
 	type DefaultTreeAdapterTypes,
@@ -430,7 +430,7 @@ const ASSET_PREFIX = "asset:";
 export const CARD_HTML_ALLOWED_TAGS: ReadonlySet<string> = ALLOWED_TAGS;
 
 export interface SanitizeCardHtmlOptions {
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 包内资产名。`src="asset:<名>"` 必须落在这里面。 */
 	assets: ReadonlySet<string>;
 }
@@ -454,7 +454,7 @@ type ParentNode = DefaultTreeAdapterTypes.ParentNode;
 type ChildNode = DefaultTreeAdapterTypes.ChildNode;
 
 interface Ctx {
-	kind: CardSkinKind;
+	kind: CardKind;
 	assets: ReadonlySet<string>;
 	fields: Map<string, CardSkinFieldType>;
 	warnings: string[];

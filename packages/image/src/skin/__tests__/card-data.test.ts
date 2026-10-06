@@ -12,10 +12,10 @@
  */
 
 import {
+	CARD_KINDS,
 	CARD_SKIN_FIELDS,
-	CARD_SKIN_KINDS,
+	type CardKind,
 	type CardSkinFieldType,
-	type CardSkinKind,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { h } from "vue";
@@ -200,23 +200,23 @@ function wordCloudProps(over: Partial<WordCloudCardProps> = {}): WordCloudCardPr
 }
 
 /** 七种卡的「样样都有」夹具。 */
-const FULL: Record<CardSkinKind, () => CardData> = {
+const FULL: Record<CardKind, () => CardData> = {
 	live: () => buildCardData("live", liveProps()),
-	dynamic: () =>
-		buildCardData("dynamic", dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS }))),
-	sc: () => buildCardData("sc", scProps()),
-	guard: () => buildCardData("guard", guardProps()),
+	post: () =>
+		buildCardData("post", dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS }))),
+	superchat: () => buildCardData("superchat", scProps()),
+	membership: () => buildCardData("membership", guardProps()),
 	roastBoard: () => buildCardData("roastBoard", roastBoardProps()),
 	roastSolo: () => buildCardData("roastSolo", roastSoloProps()),
 	wordcloud: () => buildCardData("wordcloud", wordCloudProps()),
 };
 
 /** 七种卡的「什么都没有」夹具:可选字段全缺、作品卡的 node 上没有标签、视频与图。 */
-const EMPTY: Record<CardSkinKind, () => CardData> = {
+const EMPTY: Record<CardKind, () => CardData> = {
 	live: () => buildCardData("live", emptyLiveProps()),
-	dynamic: () =>
+	post: () =>
 		buildCardData(
-			"dynamic",
+			"post",
 			dynamicProps({
 				creatorAvatarUrl: "",
 				creatorName: "",
@@ -224,8 +224,8 @@ const EMPTY: Record<CardSkinKind, () => CardData> = {
 				time: "",
 			}),
 		),
-	sc: () => buildCardData("sc", emptySCProps()),
-	guard: () => buildCardData("guard", emptyGuardProps()),
+	superchat: () => buildCardData("superchat", emptySCProps()),
+	membership: () => buildCardData("membership", emptyGuardProps()),
 	roastBoard: () =>
 		buildCardData("roastBoard", roastBoardProps({ days: 0, roast: [], scores: [] })),
 	roastSolo: () =>
@@ -254,7 +254,7 @@ const TYPEOF_OF: Record<CardSkinFieldType, string> = {
 // ── 一、对表 ──────────────────────────────────────────────────────────────────
 
 describe("buildCardData 与 CARD_SKIN_FIELDS 对表", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind} 卡的产出恰好覆盖契约字段,且类型对得上`, () => {
 			const produced = flatten(FULL[kind]());
 			const declared = CARD_SKIN_FIELDS[kind];
@@ -279,7 +279,7 @@ describe("buildCardData 与 CARD_SKIN_FIELDS 对表", () => {
 const EMPTY_EXCEPTIONS: Record<string, CardDataValue> = {};
 
 describe("缺数据时每个字段仍有值", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind} 卡的空夹具不产生 undefined`, () => {
 			const produced = flatten(EMPTY[kind]());
 			const declared = CARD_SKIN_FIELDS[kind];
@@ -425,7 +425,7 @@ describe("作品卡的视频与图廊", () => {
 	 */
 	it("视频、图廊两组都从 node 取", () => {
 		const d = buildCardData(
-			"dynamic",
+			"post",
 			dynamicProps(dynamicNode({ video: NODE_VIDEO, images: FULL_PICS })),
 		);
 		expect(d.post.hasVideo).toBe(true);
@@ -441,7 +441,7 @@ describe("作品卡的视频与图廊", () => {
 	});
 
 	it("node 上没有视频与图:两组字段全空,两个 has* 为假,别的字段照常", () => {
-		const d = buildCardData("dynamic", dynamicProps());
+		const d = buildCardData("post", dynamicProps());
 		expect(d.post.hasVideo).toBe(false);
 		expect(d.video.title).toBe("");
 		expect(d.video.cover).toBe("");
@@ -468,7 +468,7 @@ describe("作品卡的视频与图廊", () => {
 	 */
 	it("标题是空的投稿:hasVideo 仍为真 —— 判据是有没有这张卡,不是有没有标题", () => {
 		const d = buildCardData(
-			"dynamic",
+			"post",
 			dynamicProps(dynamicNode({ video: { ...NODE_VIDEO, title: "" } })),
 		);
 		expect(d.post.hasVideo).toBe(true);
@@ -477,7 +477,7 @@ describe("作品卡的视频与图廊", () => {
 	});
 
 	it("不是视频作品:video 全空,图廊照取", () => {
-		const d = buildCardData("dynamic", dynamicProps(dynamicNode({ images: FULL_PICS })));
+		const d = buildCardData("post", dynamicProps(dynamicNode({ images: FULL_PICS })));
 		expect(d.post.hasVideo).toBe(false);
 		expect(d.video.duration).toBe("");
 		expect(d.images.count).toBe(2);
@@ -486,7 +486,7 @@ describe("作品卡的视频与图廊", () => {
 
 describe("会员卡的数据", () => {
 	it("档位的各项原样取自视图:rank、档名、徽章、宣告语;观众与主播的头像也是视图里的地址", () => {
-		const d = buildCardData("guard", guardProps());
+		const d = buildCardData("membership", guardProps());
 		expect(d.membership).toEqual({
 			rank: 1,
 			tierName: "舰长",
@@ -501,21 +501,21 @@ describe("会员卡的数据", () => {
 	// 所以 0 不会与真档混淆。数字类型的字段「缺了」都是 0(`num()`),不单为它开一个例外。
 	it("没有 rank 的档 → membership.rank 是 0;没声明宣告语 → 空串;没有徽章 → 空串", () => {
 		const d = buildCardData(
-			"guard",
+			"membership",
 			guardProps({ rank: 0, announcement: "", iconUrl: "", tierName: "自定义档" }),
 		);
 		expect(d.membership).toEqual({ rank: 0, tierName: "自定义档", icon: "", announcement: "" });
 	});
 
 	it("rank 不是有限的数 → 0(契约里的数字永不是 NaN)", () => {
-		expect(buildCardData("guard", guardProps({ rank: Number.NaN })).membership.rank).toBe(0);
+		expect(buildCardData("membership", guardProps({ rank: Number.NaN })).membership.rank).toBe(0);
 	});
 });
 
 describe("醒目留言卡的数据", () => {
 	it("金额是视图里排好的字、数字另给;rank 是夹进 1–6 的有效档位;时长是排好的字", () => {
 		const d = buildCardData(
-			"sc",
+			"superchat",
 			scProps({ amount: "US$30", amountValue: 30, rank: 4, duration: "30分" }),
 		);
 		expect(d.superchat).toEqual({
@@ -529,14 +529,16 @@ describe("醒目留言卡的数据", () => {
 	});
 
 	it("来源没给留言时长 → superchat.duration 是空串;观众头像没有 → viewer.avatar 是空串", () => {
-		const d = buildCardData("sc", scProps({ duration: "", viewerAvatarUrl: "" }));
+		const d = buildCardData("superchat", scProps({ duration: "", viewerAvatarUrl: "" }));
 		expect(d.superchat.duration).toBe("");
 		expect(d.viewer.avatar).toBe("");
 		expect(d.viewer.name).toBe("热心观众");
 	});
 
 	it("主播头像没给 → creator.avatar 是空串", () => {
-		expect(buildCardData("sc", scProps({ creatorAvatarUrl: undefined })).creator.avatar).toBe("");
+		expect(
+			buildCardData("superchat", scProps({ creatorAvatarUrl: undefined })).creator.avatar,
+		).toBe("");
 	});
 });
 

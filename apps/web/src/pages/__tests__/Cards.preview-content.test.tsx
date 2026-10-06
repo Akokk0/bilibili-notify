@@ -74,13 +74,13 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		renderCards();
 		await waitFor(
 			() => {
-				expect(previewBodies("sc").length).toBeGreaterThan(0);
-				expect(previewBodies("guard").length).toBeGreaterThan(0);
+				expect(previewBodies("superchat").length).toBeGreaterThan(0);
+				expect(previewBodies("membership").length).toBeGreaterThan(0);
 			},
 			{ timeout: 5000 },
 		);
-		const sc = previewBodies("sc")[0].content ?? {};
-		const guard = previewBodies("guard")[0].content ?? {};
+		const sc = previewBodies("superchat")[0].content ?? {};
+		const guard = previewBodies("membership")[0].content ?? {};
 		expect(sc.amount).toBe(30);
 		expect("price" in sc).toBe(false);
 		expect(guard.tierKey).toBe("captain");
@@ -112,7 +112,9 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		fireEvent.click(governor);
 		await waitFor(
 			() =>
-				expect(previewBodies("guard").some((b) => b.content?.tierKey === "governor")).toBe(true),
+				expect(previewBodies("membership").some((b) => b.content?.tierKey === "governor")).toBe(
+					true,
+				),
 			{ timeout: 5000 },
 		);
 	});
@@ -130,7 +132,7 @@ describe("预览请求体里的 SC 金额与上舰档", () => {
 		});
 		fireEvent.change(input, { target: { value: "500" } });
 		await waitFor(
-			() => expect(previewBodies("sc").some((b) => b.content?.amount === 500)).toBe(true),
+			() => expect(previewBodies("superchat").some((b) => b.content?.amount === 500)).toBe(true),
 			{
 				timeout: 5000,
 			},

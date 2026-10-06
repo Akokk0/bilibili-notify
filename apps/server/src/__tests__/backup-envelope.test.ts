@@ -98,8 +98,15 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("会员与醒目留言的设置搬家以后导出的备份是版本 8(版本 7 是开发期的:两个直播门槛还在 filters 里,上舰文案还叫 templates.guardBuy)", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(8);
+	it("卡片设置搬家以后导出的备份是版本 9(版本 8 是开发期的:卡片设置还叫 cardStyle / cardStyleByKind,卡种键还是 dynamic / sc / guard)", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(9);
+	});
+
+	it("版本 8 的备份(卡片设置还叫 cardStyle / cardStyleByKind)→ unsupported:装不进新 schema,所以不放进来", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 8 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
 	});
 
 	it("版本 7 的备份(门槛还在 filters 里、上舰文案是 guardBuy)→ unsupported:装不进新 schema,所以不放进来", () => {

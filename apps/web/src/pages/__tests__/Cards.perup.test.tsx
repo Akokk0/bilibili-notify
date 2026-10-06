@@ -4,9 +4,9 @@
  * Cards 页 per-UP 作用域接线测试。
  *
  * 验证:① 全局作用域以 pageKey "cards" 注册灵动岛;② 点已定制 UP 的 tab 切到
- * pageKey "cards-perup";③ per-UP 保存只下发卡片四片(cardStyle + cardStyleByKind
- * + cardSkin + cardSkinKnobs),不碰该 sub 的其它 overrides slice;④ 已有按类型覆盖往返不丢;
- * ⑤ 全局 tab 右侧铺四卡全家福(四种 kind 各发一次预览)。
+ * pageKey "cards-perup";③ per-UP 保存只下发卡片三片(cards + cardSkin + cardSkinKnobs),
+ * 不碰该 sub 的其它 overrides slice;④ 全局 tab 右侧铺四卡全家福(四种 kind 各发一次预览)。
+ * (封面覆盖的关闭与空列表见 Cards.cover-override.test.tsx。)
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -26,12 +26,12 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-// 已定制 UP:只有 cardStyle 覆盖(无 cardSkin),并带一个无关 slice(imageGroup)
+// 已定制 UP:只有 cards 覆盖(无 cardSkin),并带一个无关 slice(imageGroup)
 // 用来确认 per-UP 保存不会动它。
 const CUSTOMIZED: Subscription = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 	overrides: {
-		cardStyle: { font: "PerUP Sans" },
+		cards: { liveCoverImageIds: ["per-up-cover"] },
 		imageGroup: { enable: false },
 	},
 };
@@ -111,7 +111,7 @@ describe("Cards per-UP 作用域接线", () => {
 						.mock.calls.filter(([url]) => url === "/api/cards/preview")
 						.map(([, body]) => (body as { kind?: string }).kind),
 				);
-				expect(kinds).toEqual(new Set(["live", "dyn", "sc", "guard"]));
+				expect(kinds).toEqual(new Set(["live", "post", "superchat", "membership"]));
 			},
 			{ timeout: 2000 },
 		);
@@ -163,14 +163,14 @@ describe("Cards per-UP 作用域接线", () => {
 							return url === "/api/cards/preview" && b?.kind === kind && b.fallback === true;
 						})
 						.map(([, body]) => (body as { content: Record<string, unknown> }).content);
-				for (const kind of ["live", "dyn", "sc", "guard"]) {
+				for (const kind of ["live", "post", "superchat", "membership"]) {
 					expect(
 						contentOf(kind).some((c) => c.uid === "123456"),
 						kind,
 					).toBe(true);
 				}
 				expect(contentOf("live")).toContainEqual({ uid: "123456" });
-				expect(contentOf("dyn")).toContainEqual({ uid: "123456", offset: 1 });
+				expect(contentOf("post")).toContainEqual({ uid: "123456", offset: 1 });
 			},
 			{ timeout: 2000 },
 		);
@@ -190,7 +190,7 @@ describe("Cards per-UP 作用域接线", () => {
 						.mock.calls.filter(([url]) => url === "/api/cards/preview")
 						.map(([, body]) => (body as { kind?: string }).kind),
 				);
-				expect(kinds).toEqual(new Set(["live", "dyn", "sc", "guard"]));
+				expect(kinds).toEqual(new Set(["live", "post", "superchat", "membership"]));
 			},
 			{ timeout: 2000 },
 		);
@@ -230,7 +230,9 @@ describe("Cards per-UP 作用域接线", () => {
 			() => {
 				const call = vi.mocked(api.post).mock.calls.find(([url, body]) => {
 					const b = body as { kind?: string; content?: { uid?: string } };
-					return url === "/api/cards/preview" && b?.kind === "sc" && b.content?.uid === "123456";
+					return (
+						url === "/api/cards/preview" && b?.kind === "superchat" && b.content?.uid === "123456"
+					);
 				});
 				expect(call).toBeTruthy();
 			},
@@ -303,82 +305,12 @@ describe("Cards per-UP 作用域接线", () => {
 		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
 		expect(url).toBe(`/api/subscriptions/${CUSTOMIZED.id}`);
 		const overrides = body.overrides as Record<string, unknown>;
-		// 只含卡片四片:cardStyle 为完整快照、cardSkin 未覆盖故 null、cardStyleByKind 无
-		// 按类型覆盖故 null、cardSkinKnobs 一枚都没单独拧故 null(ADR-0014 决策 17 的 🔗);
-		// 不带 imageGroup(不动该 UP 其它 slice)。
-		expect(Object.keys(overrides).sort()).toEqual([
-			"cardSkin",
-			"cardSkinKnobs",
-			"cardStyle",
-			"cardStyleByKind",
-		]);
+		// 只含卡片三片:cards 是封面覆盖(列表整份替换,原样带上)、cardSkin 未覆盖故 null、
+		// cardSkinKnobs 一枚都没单独拧故 null(ADR-0014 决策 17 的 🔗);不带 imageGroup(不动该 UP 其它 slice)。
+		expect(Object.keys(overrides).sort()).toEqual(["cardSkin", "cardSkinKnobs", "cards"]);
 		expect(overrides.cardSkin).toBeNull();
-		expect(overrides.cardStyleByKind).toBeNull();
 		expect(overrides.cardSkinKnobs).toBeNull();
-		expect((overrides.cardStyle as { font: string }).font).toBe("PerUP Sans");
-	});
-
-	it("per-UP 已有按类型覆盖 → 保存原样下发 cardStyleByKind(不丢)", async () => {
-		// 仅含 cardStyleByKind 覆盖的 UP(无基准 cardStyle)：确认它进 tab、seed 进草稿、
-		// 保存时按类型覆盖原样回传,基准 cardStyle 仍下发 null。
-		const byKindSub: Subscription = {
-			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "654321" }),
-			overrides: {
-				cardStyleByKind: { sc: { font: "SC Sans" } },
-				imageGroup: { enable: false },
-			},
-		};
-		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subscriptions")) return Promise.resolve([byKindSub]);
-			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
-			return Promise.resolve(GLOBALS);
-		});
-
-		renderCards();
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
-		fireEvent.click(await screen.findByText("UID 654321"));
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
-
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
-		expect(url).toBe(`/api/subscriptions/${byKindSub.id}`);
-		const overrides = body.overrides as Record<string, unknown>;
-		expect(overrides.cardStyle).toBeNull();
-		// 有覆盖的类型原样带上,没覆盖过的**不**凭空发 null —— 删除哨兵只发给「基线
-		// 里有、草稿里没了」的键(见 buildPatch)。关掉已保存的类型会发 null,那条在
-		// Cards.bykind-off.test.tsx。
-		expect(overrides.cardStyleByKind).toEqual({ sc: { font: "SC Sans" } });
-	});
-
-	it("per-UP live 外观 + 封面共存于 cardStyleByKind.live,保存两者都不丢", async () => {
-		// 字段不相交(外观 omitCover、封面 pickCover)→ seed 同时含两类覆盖时往返保留。
-		// 从前的第三族「数据区 show」2026-09-14 随三个开关一起退役。
-		const mixedSub: Subscription = {
-			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "555666" }),
-			overrides: { cardStyleByKind: { live: { font: "Abc Sans", liveCoverImages: ["c1"] } } },
-		};
-		vi.mocked(api.get).mockImplementation((url: string) => {
-			if (url.includes("/api/subscriptions")) return Promise.resolve([mixedSub]);
-			if (url.includes("/api/targets")) return Promise.resolve([]);
-			if (url.includes("/api/cards/skins")) return Promise.resolve(SKINS);
-			return Promise.resolve(GLOBALS);
-		});
-
-		renderCards();
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards"));
-		fireEvent.click(await screen.findByText("UID 555666"));
-		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("cards-perup"));
-
-		useDraftStore.getState().current?.onSave();
-		await waitFor(() => expect(api.patch).toHaveBeenCalled());
-		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [string, { overrides: unknown }];
-		const overrides = body.overrides as { cardStyleByKind?: { live?: Record<string, unknown> } };
-		expect(overrides.cardStyleByKind?.live).toEqual({
-			font: "Abc Sans",
-			liveCoverImages: ["c1"],
-		});
+		expect(overrides.cards).toEqual({ liveCoverImageIds: ["per-up-cover"] });
 	});
 
 	it("per-UP 动态 → 选「第几条」,offset 进预览请求", async () => {
@@ -405,7 +337,7 @@ describe("Cards per-UP 作用域接线", () => {
 					const b = body as { kind?: string; content?: { uid?: string; offset?: number } };
 					return (
 						url === "/api/cards/preview" &&
-						b?.kind === "dyn" &&
+						b?.kind === "post" &&
 						b.content?.uid === "123456" &&
 						b.content?.offset === 3
 					);

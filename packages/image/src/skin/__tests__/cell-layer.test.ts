@@ -189,8 +189,8 @@ describe("格子层 — 自带 data-block 的块", () => {
 	// data-block」。加了外层之后这个特例照旧成立:外层挂的是 data-cell,不是 data-block。
 	it("上舰徽章:外层是 data-cell,DOM 里仍只有一个 [data-block]", async () => {
 		const { vnode } = renderSkinnedCard({
-			kind: "guard",
-			card: DEFAULT_CARD_SKIN.cards.guard as CardSkinCard,
+			kind: "membership",
+			card: DEFAULT_CARD_SKIN.cards.membership as CardSkinCard,
 			props: guardProps,
 		});
 		const doc = new JSDOM(await renderToString(createSSRApp({ render: () => vnode }))).window
@@ -205,8 +205,8 @@ describe("格子层 — 自带 data-block 的块", () => {
 	// 出厂皮肤每一块都得有自己的格子 —— 少一个就是画布上有个框在 DOM 里没有对应物。
 	it("出厂上舰卡的五个块,一块一个格子层", async () => {
 		const { vnode } = renderSkinnedCard({
-			kind: "guard",
-			card: DEFAULT_CARD_SKIN.cards.guard as CardSkinCard,
+			kind: "membership",
+			card: DEFAULT_CARD_SKIN.cards.membership as CardSkinCard,
 			props: guardProps,
 		});
 		const doc = new JSDOM(await renderToString(createSSRApp({ render: () => vnode }))).window

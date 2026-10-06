@@ -77,28 +77,6 @@ export function pickUploadedFont(v: FontChoice, id: string): FontChoice {
 }
 
 /**
- * 某款字体删盘之后,把它从一份样式里剔除(没选它的样式原样返回)。
- *
- * 与背景图的 `removeAssetFromStyle` 同一件事:页面上还攥着这个 id 的其他样式草稿
- * (全局基准 / per-kind / per-UP)若不清扫,下次保存就落盘成悬空引用。
- */
-export function removeFontFromStyle<T extends { fontAsset?: string }>(style: T, id: string): T {
-	if (style.fontAsset !== id) return style;
-	const { fontAsset: _drop, ...rest } = style;
-	return rest as T;
-}
-
-/** 同上,作用于 per-kind 覆盖表:逐 kind 清扫,没选这款的原样保留。 */
-export function removeFontFromByKind<T extends { fontAsset?: string }>(
-	byKind: Record<string, T>,
-	id: string,
-): Record<string, T> {
-	const out: Record<string, T> = {};
-	for (const [kind, style] of Object.entries(byKind)) out[kind] = removeFontFromStyle(style, id);
-	return out;
-}
-
-/**
  * 传上来的这款字体够大到该提醒吗?返回提醒文案,不用提醒则返回 null。
  *
  * 上限(20MB)是按「文件本身多大」定的,**没算出图时的开销**:字体会被 base64 内联进

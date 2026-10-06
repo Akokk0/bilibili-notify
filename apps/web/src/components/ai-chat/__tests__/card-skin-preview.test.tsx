@@ -78,7 +78,7 @@ describe("预览块", () => {
 		wrap(
 			<CardSkinPreviews
 				touches={[
-					{ id: "s1", kinds: ["sc", "live"] },
+					{ id: "s1", kinds: ["superchat", "live"] },
 					{ id: "s2", kinds: [] },
 				]}
 			/>,
@@ -88,7 +88,7 @@ describe("预览块", () => {
 		expect(await within(blocks[0] as HTMLElement).findByText(/樱花粉/)).toBeTruthy();
 		expect(within(blocks[0] as HTMLElement).getByText(/当前样子/)).toBeTruthy();
 		await waitFor(() => expect(frames()).toHaveLength(2));
-		expect(H.previews).toContainEqual({ id: "s1", kind: "sc" });
+		expect(H.previews).toContainEqual({ id: "s1", kind: "superchat" });
 		// 只改了名字的那套:没有写过的卡种,落在第一种。
 		expect(H.previews).toContainEqual({ id: "s2", kind: "live" });
 		// 画出来的就在沙箱里:只给同源(量卡高用),不给脚本。
@@ -96,7 +96,7 @@ describe("预览块", () => {
 	});
 
 	it("切卡种 → 画那一种", async () => {
-		wrap(<CardSkinPreviews touches={[{ id: "s1", kinds: ["sc"] }]} />);
+		wrap(<CardSkinPreviews touches={[{ id: "s1", kinds: ["superchat"] }]} />);
 		const block = await screen.findByTestId("card-skin-preview");
 		fireEvent.click(within(block).getByRole("tab", { name: "直播卡" }));
 		await waitFor(() => expect(H.previews).toContainEqual({ id: "s1", kind: "live" }));

@@ -27,7 +27,7 @@ export const REDACTED_API_KEY = "__BN_REDACTED__";
  * No PUT (full set) — keep the API surface deliberately small until a UI demands it.
  *
  * Enable-check pre-flight (plan: 启用前验证):
- * When the resulting config would have `defaults.cardStyle.enabled = true` or
+ * When the resulting config would have `defaults.cards.enabled = true` or
  * `defaults.ai.enabled = true`, we actively probe before letting the patch
  * land. For image we require puppeteer to be wired AND able to spawn a page;
  * for AI we require apiKey/baseUrl/model + a successful OpenAI-compatible
@@ -206,12 +206,12 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 	// the scope. Otherwise saving the Cards tab would re-validate the live AI
 	// connection (and vice versa) simply because the persisted state already had
 	// `enabled = true`. Each dashboard tab now only validates what it owns.
-	const touchesCardStyle = pluck(args.patch, ["defaults", "cardStyle"]) !== undefined;
+	const touchesCards = pluck(args.patch, ["defaults", "cards"]) !== undefined;
 
-	if (touchesCardStyle) {
+	if (touchesCards) {
 		const cardEnabled = mergedFlag(
-			args.current.defaults.cardStyle.enabled,
-			pluck(args.patch, ["defaults", "cardStyle", "enabled"]),
+			args.current.defaults.cards.enabled,
+			pluck(args.patch, ["defaults", "cards", "enabled"]),
 		);
 		if (cardEnabled) {
 			const r = await checkCardEnable(args.puppeteer);

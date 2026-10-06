@@ -15,7 +15,6 @@ import {
 	pickDefaultFont,
 	pickFamilyFont,
 	pickUploadedFont,
-	removeFontFromStyle,
 } from "../font-ops";
 
 const UPLOADED = `${"a".repeat(32)}.woff2`;
@@ -83,26 +82,6 @@ describe("切档", () => {
 	it("从上传款切回默认 → 资产同样清掉,家族名也清空", () => {
 		const got = pickDefaultFont({ font: "旧的", fontAsset: UPLOADED });
 		expect(got).toEqual({ font: "" });
-	});
-});
-
-describe("删盘之后的悬空清扫", () => {
-	it("样式里选着这款 → 清掉,别让悬空 id 跟着落盘", () => {
-		expect(removeFontFromStyle({ font: "兜底", fontAsset: UPLOADED }, UPLOADED)).toEqual({
-			font: "兜底",
-		});
-	});
-
-	it("选的是别款 → 一个字不动", () => {
-		const style = { font: "兜底", fontAsset: OTHER };
-		expect(removeFontFromStyle(style, UPLOADED)).toEqual(style);
-	});
-
-	it("压根没选字体的样式 → 原样返回,不平白多出一个 fontAsset 键", () => {
-		const style: { glassOpacity: number; fontAsset?: string } = { glassOpacity: 0.5 };
-		const got = removeFontFromStyle(style, UPLOADED);
-		expect(got).toEqual(style);
-		expect("fontAsset" in got).toBe(false);
 	});
 });
 

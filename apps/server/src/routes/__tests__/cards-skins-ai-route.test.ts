@@ -24,8 +24,8 @@ import { createCardsSkinsRoute } from "../cards-skins.js";
 
 function manifest(): Record<string, any> {
 	return {
-		schemaVersion: 1,
-		dataVersion: 1,
+		schemaVersion: 2,
+		dataVersion: 2,
 		name: "测试卡片皮肤",
 		cards: {
 			live: {

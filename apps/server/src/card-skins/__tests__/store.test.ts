@@ -25,8 +25,8 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function manifest(extra?: Record<string, unknown>): Record<string, unknown> {
 	return {
-		schemaVersion: 1,
-		dataVersion: 1,
+		schemaVersion: 2,
+		dataVersion: 2,
 		name: "测试卡片皮肤",
 		author: "伦伦酱",
 		cards: {
@@ -304,7 +304,7 @@ describe("坏皮肤不拖死 init", () => {
 		await mkdir(join(dir, "形状不对"), { recursive: true });
 		await writeFile(
 			join(dir, "形状不对", CARD_SKIN_MANIFEST_FILE),
-			JSON.stringify({ schemaVersion: 1, name: "缺 cards" }),
+			JSON.stringify({ schemaVersion: 2, name: "缺 cards" }),
 		);
 		await mkdir(join(dir, DEFAULT_CARD_SKIN_ID), { recursive: true });
 		await writeFile(
@@ -324,6 +324,26 @@ describe("坏皮肤不拖死 init", () => {
 		expect(warnings).toContain(DEFAULT_CARD_SKIN_ID);
 		// 坏目录不动它 —— 交给人查,别静默删数据。
 		expect(await readdir(dir)).toEqual(expect.arrayContaining(["坏json", "形状不对"]));
+	});
+
+	// ㉔e:格式版本抬到 2,盘上版本 1 的皮肤(开发期装的)不迁、不删,init 跳过并记一句话让人知道为什么不见了。
+	// 验红:把 `parseCardSkin` 的按版本分流去掉,warning 变成逐格原因,这条红;让 init 删目录,最后一条红。
+	it("盘上版本 1 的老皮肤:init 跳过并记「旧版本」warning,目录原样留着,装包 / 保存同样拒", async () => {
+		const { id } = await store.install(pack());
+		await mkdir(join(dir, "老皮肤"), { recursive: true });
+		await writeFile(
+			join(dir, "老皮肤", CARD_SKIN_MANIFEST_FILE),
+			JSON.stringify(manifest({ schemaVersion: 1, dataVersion: 1 })),
+		);
+		const reopened = new CardSkinStore({ dir });
+		await reopened.init();
+		expect(reopened.list().map((s) => s.id)).toEqual([DEFAULT_CARD_SKIN_ID, id]);
+		expect(reopened.warnings().join("\n")).toContain("这是旧版本的卡片皮肤");
+		expect(await readdir(dir)).toContain("老皮肤");
+
+		const old = manifest({ schemaVersion: 1, dataVersion: 1 });
+		await expect(store.install(pack(old))).rejects.toThrow("这是旧版本的卡片皮肤");
+		await expect(store.save(id, old)).rejects.toThrow("这是旧版本的卡片皮肤");
 	});
 
 	it("写到一半的 .tmp / 删到一半的 .deleting 静默跳过,不当成坏皮肤刷警告", async () => {

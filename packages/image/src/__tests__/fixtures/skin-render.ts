@@ -7,9 +7,9 @@
  */
 
 import {
+	type CardKind,
 	type CardSkinBlock,
 	type CardSkinCard,
-	type CardSkinKind,
 	DEFAULT_CARD_SKIN,
 } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
@@ -18,14 +18,14 @@ import { renderSkinnedCard } from "../../skin/render-skin";
 import { CARD_FIXTURES, type CardFixture, type CardRenderInput } from "./card-fixtures";
 
 /** 出厂默认皮肤里那张卡,拿来改一改。 */
-function base(kind: CardSkinKind): CardSkinCard {
+function base(kind: CardKind): CardSkinCard {
 	const card = DEFAULT_CARD_SKIN.cards[kind];
 	if (!card) throw new Error(`出厂默认皮肤缺 ${kind} 卡`);
 	return card;
 }
 
 /** 按 id 挑出几块,重新编行号(1..n)。挑不到的 id 直接报错 —— 默认皮肤改了名要当场发现。 */
-function pick(kind: CardSkinKind, ids: readonly string[]): CardSkinBlock[] {
+function pick(kind: CardKind, ids: readonly string[]): CardSkinBlock[] {
 	const card = base(kind);
 	return ids.map((id, i) => {
 		const block = card.blocks.find((b) => b.id === id);
@@ -49,18 +49,18 @@ const CUSTOM_CARDS: Record<string, () => CardSkinCard> = {
 	}),
 	// 末尾摆一条分割线(该被弹掉),互动数整个不摆。
 	"dynamic-custom-layout": () => ({
-		...base("dynamic"),
+		...base("post"),
 		// 这条夹具是图文(DRAW),媒体那半是图廊 —— 摆 `images`,视频那五块摆了也画不出东西。
-		blocks: pick("dynamic", ["creator-name", "text", "images", "attachment", "divider-2"]),
+		blocks: pick("post", ["creator-name", "text", "images", "attachment", "divider-2"]),
 	}),
 	// 留言是空的 → 那一块收起,排在它后面的分割线就悬空在开头了,该被抑制。
 	"sc-custom-layout": () => ({
-		...base("sc"),
-		blocks: pick("sc", ["message", "divider-1", "amount", "viewer-name"]),
+		...base("superchat"),
+		blocks: pick("superchat", ["message", "divider-1", "amount", "viewer-name"]),
 	}),
 	// 徽章挪到左边四列,内容列跟着靠右 —— 与默认皮肤正好镜像。
 	"guard-badge-left": () => {
-		const card = base("guard");
+		const card = base("membership");
 		return {
 			...card,
 			blocks: card.blocks.map((b) =>
@@ -87,7 +87,7 @@ export function skinCardOf(fixture: CardFixture): CardSkinCard {
 
 /** 一张皮肤卡 + 一份 props 出的完整 HTML(含皮肤那段 CSS)。 */
 async function render(
-	kind: CardSkinKind,
+	kind: CardKind,
 	card: CardSkinCard,
 	props: unknown,
 	options: CardRenderInput["options"],
@@ -107,7 +107,7 @@ export async function renderViaSkin(fixture: CardFixture, input: CardRenderInput
 
 /** 出厂默认皮肤画一张卡 —— 给不走夹具、只想看某种卡画出什么的测试用。 */
 export async function renderViaDefaultSkin(
-	kind: CardSkinKind,
+	kind: CardKind,
 	props: unknown,
 	options: CardRenderInput["options"] = {},
 ): Promise<string> {

@@ -16,7 +16,7 @@ import { sanitizeCardBlockCss, sanitizeCardFrameCss } from "../css-sanitizer.js"
 const BLOCK_RULE = `[data-bn="self"][data-rank="3"]{color:rgb(1,2,3)}`;
 const FRAME_RULE = `[data-bn="frame"][data-rank="3"]{outline:2px solid rgb(4,5,6)}`;
 
-function sanitizedBlock(kind: "sc" | "guard", builtin: string, css: string): string {
+function sanitizedBlock(kind: "superchat" | "membership", builtin: string, css: string): string {
 	const res = sanitizeCardBlockCss(css, { kind, builtin });
 	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
@@ -32,8 +32,8 @@ function sanitizedFrame(css: string): string {
 
 describe("清洗器放行 data-rank 属性选择器(清洗器零改动)", () => {
 	it('块 CSS:[data-bn="self"][data-rank="3"]{…} 原样保留', () => {
-		expect(sanitizedBlock("sc", "amount", BLOCK_RULE)).toBe(BLOCK_RULE);
-		expect(sanitizedBlock("guard", "viewerName", BLOCK_RULE)).toBe(BLOCK_RULE);
+		expect(sanitizedBlock("superchat", "amount", BLOCK_RULE)).toBe(BLOCK_RULE);
+		expect(sanitizedBlock("membership", "viewerName", BLOCK_RULE)).toBe(BLOCK_RULE);
 	});
 
 	it('外框 CSS:[data-bn="frame"][data-rank="3"]{…} 原样保留', () => {

@@ -34,7 +34,7 @@
  * 外框(而且构建全绿,只在看图时才发现)。
  */
 
-import { CARD_SKIN_RANK_ATTR, type CardSkinKind } from "@bilibili-notify/internal";
+import { CARD_SKIN_RANK_ATTR, type CardKind } from "@bilibili-notify/internal";
 import type { VNode } from "vue";
 import type { LiveCardView } from "../templates/live-card";
 import type { MembershipCardView } from "../templates/membership-card";
@@ -76,9 +76,9 @@ export type FrameRenderer = (children: VNode | VNode[], extra: FrameExtra) => VN
  */
 export interface CardPropsByKind {
 	live: LiveCardView;
-	dynamic: PostCardView;
-	sc: SuperchatCardView;
-	guard: MembershipCardView;
+	post: PostCardView;
+	superchat: SuperchatCardView;
+	membership: MembershipCardView;
 	roastBoard: RoastBoardCardProps;
 	roastSolo: RoastSoloCardProps;
 	wordcloud: WordCloudCardProps;
@@ -134,7 +134,7 @@ function roastFrame(children: VNode | VNode[], defaultWidth: number, extra: Fram
  * 「开播卡和词云卡的壳从此永远一样」;哪天词云要换更宽的壳或加一圈出血,得先把合并拆
  * 回来,而那时未必有人记得当初合并只是因为「那天它俩正好一样」。
  */
-export const FRAMES: Record<CardSkinKind, FrameRenderer> = {
+export const FRAMES: Record<CardKind, FrameRenderer> = {
 	live: (children, extra) => (
 		<div data-bn="frame" class="h-auto" style={[extra.frame]}>
 			<div data-bn="glass" class="overflow-hidden" style={extra.glass ?? ""}>
@@ -143,7 +143,7 @@ export const FRAMES: Record<CardSkinKind, FrameRenderer> = {
 		</div>
 	),
 
-	dynamic: (children, extra) => (
+	post: (children, extra) => (
 		<div data-bn="frame" class="h-auto" style={[{ minWidth: "380px" }, extra.frame]}>
 			<div data-bn="glass" class="w-full overflow-hidden" style={extra.glass ?? ""}>
 				{children}
@@ -151,8 +151,8 @@ export const FRAMES: Record<CardSkinKind, FrameRenderer> = {
 		</div>
 	),
 
-	sc: (children, extra) => tierFrame(SC_GLASS_CLASS, children, extra),
-	guard: (children, extra) => tierFrame(GUARD_GLASS_CLASS, children, extra),
+	superchat: (children, extra) => tierFrame(SC_GLASS_CLASS, children, extra),
+	membership: (children, extra) => tierFrame(GUARD_GLASS_CLASS, children, extra),
 
 	roastBoard: (children, extra) => roastFrame(children, 600, extra),
 	roastSolo: (children, extra) => roastFrame(children, 430, extra),

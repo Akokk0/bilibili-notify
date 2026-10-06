@@ -27,6 +27,10 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 9 = 卡片设置搬家以后导出的备份(设置 `defaults.cardStyle` / `cardStyleByKind` 并成了 `defaults.cards = { enabled, liveCoverImageIds }`,
+ * 订阅的 `overrides.cardStyle` / `cardStyleByKind` 并成了 `overrides.cards = { liveCoverImageIds? }`;退役的字体 / 玻璃字段没有了;
+ * 卡种键改叫 `live` / `post` / `superchat` / `membership` / `roastBoard` / `roastSolo` / `wordcloud`;卡片皮肤包的格式版本是 2,
+ * 皮肤包里不再有 `variables` / `variablesByKind`)。
  * 8 = 会员与醒目留言的设置搬家以后导出的备份(两个直播门槛搬出了 `filters`:`filters.minScPrice` 成了 `defaults.superchat.minAmount`,
  * `filters.minGuardLevel` 成了 `defaults.membership.minRank.guard`(rank 与旧等级倒过来),订阅的 `overrides` 里同样各多一段;
  * 上舰文案 `templates.guardBuy` 成了 `templates.membership.guard = { enabled, default, tiers }`,占位符叫 `{viewer}` / `{name}` /
@@ -47,7 +51,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 8 as const;
+export const BACKUP_SCHEMA_VERSION = 9 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

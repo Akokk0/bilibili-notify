@@ -1125,7 +1125,7 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 		expect(Object.keys(out.defaults.messageLayout)).toEqual(["version", "post", "live"]);
 		expect(out.defaults.templateDefaultsSeen.post).toBe("7uw5nq");
 		expect(out.defaults.templateDefaultsSeen.postVideo).toBe("1omlggn");
-		// 卡种键与日志级别键不归这一步(㉔ / 3a)。
+		// 卡种键与日志级别键不归这一步(卡种键归 card-moves.ts,日志级别键 3a)。
 		expect(out.defaults.cardStyleByKind).toEqual({});
 	});
 

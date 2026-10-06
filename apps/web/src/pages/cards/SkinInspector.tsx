@@ -9,7 +9,7 @@
  * 边过的,拒了的话想敲两位数就永远敲不出第一位。
  */
 
-import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinColumn } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_BUILTIN_BLOCKS,
@@ -57,7 +57,7 @@ import {
 	skinMetaError,
 } from "./skin-draft-ops";
 
-type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
+type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 type Grid = Card["blocks"][number]["grid"];
 /** 外框那几个数。`gap` 在清单里是个对象,控件上是两个独立的框,所以拍平成两项。 */
 export type FramePatch = {
@@ -116,7 +116,7 @@ export function SkinInspector({
 	ai,
 }: {
 	manifest: CardSkinManifest | null;
-	kind: CardSkinKind;
+	kind: CardKind;
 	selection: SkinSelection;
 	onGrid: (blockId: string, patch: Partial<Grid>) => void;
 	onCss: (blockId: string, css: string) => void;
@@ -334,7 +334,7 @@ function FrameInspector({
 	onDropCard,
 	ai,
 }: {
-	kind: CardSkinKind;
+	kind: CardKind;
 	card: Card;
 	onFrame: (patch: FramePatch) => void;
 	onColumns: (columns: CardSkinColumn[] | undefined) => void;
@@ -477,7 +477,7 @@ function HtmlSection({
 	value,
 	onChange,
 }: {
-	kind: CardSkinKind;
+	kind: CardKind;
 	value: string;
 	onChange: (html: string) => void;
 }) {
@@ -546,7 +546,7 @@ function appendField(html: string, path: string, image: boolean): string {
  * `showIf` 立的;其余字段也收(真值才画,空字符串是假),只是在人话名前标一句「非空时」,
  * 免得作者以为选了「主播名」就是「等于某个名字」。
  */
-function showIfOptions(kind: CardSkinKind): Array<{ value: string; label: string }> {
+function showIfOptions(kind: CardKind): Array<{ value: string; label: string }> {
 	const fields = CARD_SKIN_FIELDS[kind];
 	const order = [...fields].sort((a, b) => Number(b.type === "bool") - Number(a.type === "bool"));
 	return [
@@ -562,7 +562,7 @@ function showIfOptions(kind: CardSkinKind): Array<{ value: string; label: string
  * 这个块的 CSS 能挂哪些选择器:`self`(整块)+ 内置块内部那几个部件。自定义块只有
  * `self` —— 里面的 HTML 是作者自己写的,挂点也就该由他自己在 HTML 里定。
  */
-function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[string, string]> {
+function blockHooks(kind: CardKind, block: Card["blocks"][number]): Array<[string, string]> {
 	const meta =
 		block.kind === "builtin" ? CARD_SKIN_BUILTIN_BLOCKS[kind]?.[block.builtin] : undefined;
 	return [[CARD_SKIN_SELF_HOOK, "整块"], ...Object.entries(meta?.hooks ?? {})];
@@ -572,7 +572,7 @@ function blockHooks(kind: CardSkinKind, block: Card["blocks"][number]): Array<[s
  * 档位卡(醒目留言 / 会员)的 CSS 一节要带上「按档换色」的说明;别的卡没有「档」,不给。
  * 说明与 AI 的规则提示词读同一段常量({@link CARD_SKIN_RANK_GUIDE})。
  */
-function rankNote(kind: CardSkinKind): string | undefined {
+function rankNote(kind: CardKind): string | undefined {
 	return (CARD_SKIN_RANKED_KINDS as readonly string[]).includes(kind)
 		? CARD_SKIN_RANK_GUIDE
 		: undefined;

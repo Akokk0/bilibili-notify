@@ -74,34 +74,6 @@ beforeEach(async () => {
 });
 
 describe("patchGlobals 的删除语义", () => {
-	it("显式 null 删掉某个卡片类型的覆盖,其它类型不受牵连", async () => {
-		await store.patchGlobals({
-			defaults: {
-				cardStyleByKind: {
-					live: { glassOpacity: 0.1 },
-					sc: { glassOpacity: 0.2 },
-				},
-			},
-		});
-		expect(store.getGlobals().defaults.cardStyleByKind?.live).toBeTruthy();
-
-		// 前端「关掉直播卡的单独样式」下发的形状:关掉的给 null,留着的原样。
-		await store.patchGlobals({
-			defaults: {
-				cardStyleByKind: {
-					live: null,
-					dynamic: null,
-					sc: { glassOpacity: 0.2 },
-					guard: null,
-				},
-			},
-		} as never);
-
-		const byKind = store.getGlobals().defaults.cardStyleByKind;
-		expect(byKind?.live).toBeUndefined();
-		expect(byKind?.sc).toEqual({ glassOpacity: 0.2 });
-	});
-
 	/**
 	 * **旋钮的「还原」压在同一条语义上**(ADR-0014 决策 16 的 🔗):旋钮是「存覆盖不存值」,
 	 * 还原 = 把那个键真的删掉,让皮肤 CSS 的兜底重新生效。写回 default 值不叫还原 ——
@@ -146,12 +118,12 @@ describe("patchGlobals 的删除语义", () => {
 
 	it("键不出现 = 不改 —— 这正是「关不掉」的成因,钉住它免得被当成删除", async () => {
 		await store.patchGlobals({
-			defaults: { cardStyleByKind: { live: { glassOpacity: 0.1 } } },
+			defaults: { cardSkinKnobs: { default: { "gradient-start": "#ff0000" } } },
 		});
-		// 老前端的下发形状:live 被 delete 掉,于是整个 map 是空的。
-		await store.patchGlobals({ defaults: { cardStyleByKind: {} } });
-		expect(store.getGlobals().defaults.cardStyleByKind?.live).toEqual({
-			glassOpacity: 0.1,
+		// 老前端的下发形状:该 delete 的键被 delete 掉,于是整个 map 是空的。
+		await store.patchGlobals({ defaults: { cardSkinKnobs: {} } });
+		expect(store.getGlobals().defaults.cardSkinKnobs.default).toEqual({
+			"gradient-start": "#ff0000",
 		});
 	});
 

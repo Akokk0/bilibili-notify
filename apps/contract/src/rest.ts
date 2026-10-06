@@ -13,7 +13,7 @@ import type {
 } from "@bilibili-notify/extension/wire";
 import type {
 	CachedProfile,
-	CardSkinKind,
+	CardKind,
 	ConnectionCapabilities,
 	ExtensionProvides,
 	ExtensionRunState,
@@ -933,7 +933,7 @@ export interface AiChatMessageDTO {
 /** 一条回复碰过的一套卡片皮肤。`kinds` 是这条回复写过的卡种,按先后;只改了名字时为空。 */
 export interface AiCardSkinTouchDTO {
 	id: string;
-	kinds: CardSkinKind[];
+	kinds: CardKind[];
 }
 
 /**

@@ -15,7 +15,7 @@ import { parse } from "css-tree/dist/csstree.esm";
 import { describe, expect, it } from "vite-plus/test";
 import { sanitizeCardBlockCss, sanitizeCardFrameCss } from "../css-sanitizer.js";
 
-function ok(css: string, builtin?: string, kind: "dynamic" | "sc" = "dynamic") {
+function ok(css: string, builtin?: string, kind: "post" | "superchat" = "post") {
 	const res = sanitizeCardBlockCss(css, { kind, builtin });
 	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
@@ -194,7 +194,7 @@ describe("挂点仍按块对表(自由的是别的段,不是挂点)", () => {
 	});
 
 	it("同一个挂点名换个块就该放行 —— sc/to 认识 creatorName", () => {
-		const { css, warnings } = ok(`[data-bn="creatorName"]{color:red}`, "to", "sc");
+		const { css, warnings } = ok(`[data-bn="creatorName"]{color:red}`, "to", "superchat");
 		expect(css).toBe('[data-bn="self"] [data-bn="creatorName"]{color:red}');
 		expect(warnings).toEqual([]);
 	});
@@ -539,7 +539,7 @@ describe("出厂默认皮肤 — 每段 CSS 都是清洗器的规范形", () => 
 			if (!block.css) continue;
 			it(`${kind}.${block.id}:块 CSS 原样通过、零警告`, () => {
 				const res = sanitizeCardBlockCss(block.css ?? "", {
-					kind: kind as "dynamic",
+					kind: kind as "post",
 					builtin: block.kind === "builtin" ? block.builtin : undefined,
 				});
 				expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);

@@ -11,7 +11,7 @@ import {
 	AI_TOOL_LOAD_SKILL,
 	AI_CARD_WORKSHOP_TOOLS as CARD,
 } from "@bilibili-notify/contract";
-import { CARD_SKIN_KIND_NAMES } from "@bilibili-notify/internal/constants";
+import { CARD_KIND_NAMES } from "@bilibili-notify/internal/constants";
 
 /** 入参里挑哪几个键来补上下文,按顺序取第一个有值的。 */
 interface LabelSpec {
@@ -23,7 +23,7 @@ interface LabelSpec {
 
 /** 卡种名翻成中文;认不出就原样留着,别留一片空白。 */
 const kindName = (kind: string): string =>
-	(CARD_SKIN_KIND_NAMES as Readonly<Record<string, string>>)[kind] ?? kind;
+	(CARD_KIND_NAMES as Readonly<Record<string, string>>)[kind] ?? kind;
 
 const TOOL_LABELS: Record<string, LabelSpec> = {
 	list_subscriptions: { label: "查看订阅列表" },

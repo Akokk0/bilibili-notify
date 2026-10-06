@@ -27,8 +27,8 @@ import {
 } from "@bilibili-notify/contract";
 import {
 	CARD_SKIN_LIMITS,
+	CardKindSchema,
 	CardSkinIdSchema,
-	CardSkinKindSchema,
 	DEFAULT_CARD_SKIN_ID,
 	fail,
 	issuesFromZod,
@@ -61,14 +61,14 @@ const MAX_CARD_SKIN_ZIP_BYTES = MAX_CARD_SKIN_TOTAL_BYTES;
 
 /** 预览请求体。`manifest` 不在这儿校形 —— 它要过的是装包门那一整套,比 zod 这层严得多。 */
 const PreviewBodySchema = z.object({
-	kind: CardSkinKindSchema,
+	kind: CardKindSchema,
 	scene: z.string().max(40).optional(),
 	manifest: z.unknown(),
 });
 
 /** 「请女仆帮忙写」的请求体。草稿同预览那条,形状交给装包门去判。 */
 const AiCssBodySchema = z.object({
-	kind: CardSkinKindSchema,
+	kind: CardKindSchema,
 	blockId: z.string().max(64).optional(),
 	instruction: z.string().trim().min(1).max(CARD_SKIN_AI_INSTRUCTION_MAX),
 	manifest: z.unknown(),

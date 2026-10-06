@@ -16,7 +16,7 @@
  * 守卫(剪断必红)。
  */
 
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardKind, CardSkinManifest } from "@bilibili-notify/contract";
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -27,7 +27,7 @@ import {
 	readGridTracks,
 } from "../canvas-tracks";
 
-type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
+type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 
 /** 出厂上舰卡的列定义:8 根等分 + 4 根 43.75px 的定宽。 */
 const guardCard = (): Card =>

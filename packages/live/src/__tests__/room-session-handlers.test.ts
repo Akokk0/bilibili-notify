@@ -343,7 +343,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		});
 	});
 
-	it("有 per-kind sc 样式 → generateSuperchatCard 收到 sc 专属 colorOptions(而非基准)", async () => {
+	it("醒目留言 → generateSuperchatCard 收到这条订阅的 colorOptions(不按卡种分层)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
@@ -352,15 +352,12 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				superchat: true,
 				minSuperchatAmount: 30,
 				customCardStyle: { enable: true, font: "Base Sans" },
-				customCardStyleByKind: {
-					sc: { enable: true, font: "SC Sans" },
-				},
 			}),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
-		// 第二参 = colorOptions(sc 专属覆盖基准)。
-		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ font: "SC Sans" });
+		// 第二参 = colorOptions(就是订阅那一份)。
+		expect(m.generateSuperchatCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
 	});
 
 	it("无 per-kind sc 覆盖 → generateSuperchatCard 回退到基准 customCardStyle", async () => {
@@ -1006,7 +1003,7 @@ describe("RoomSession.onGuardBuy", () => {
 		});
 	});
 
-	it("有 per-kind guard 样式 → generateMembershipCard 收到 guard 专属 colorOptions", async () => {
+	it("会员 → generateMembershipCard 收到这条订阅的 colorOptions(不按卡种分层)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
@@ -1014,14 +1011,11 @@ describe("RoomSession.onGuardBuy", () => {
 			makeSub({
 				membership: true,
 				customCardStyle: { enable: true, font: "Base Sans" },
-				customCardStyleByKind: {
-					guard: { enable: true, font: "Guard Sans" },
-				},
 			}),
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
-		// 第二参 = colorOptions(guard 专属)。
-		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toMatchObject({ font: "Guard Sans" });
+		// 第二参 = colorOptions(订阅那一份)。
+		expect(m.generateMembershipCard.mock.calls[0]?.[1]).toMatchObject({ font: "Base Sans" });
 	});
 });
 
@@ -1076,13 +1070,12 @@ describe("RoomSession.onLiveStart", () => {
 		expect(s.armPeriodicTimer).toHaveBeenCalledTimes(1);
 	});
 
-	it("有 per-kind live 样式 → sendLiveNotifyCard 收到 live 专属 cardStyle(而非基准)", async () => {
+	it("直播 → sendLiveNotifyCard 收到这条订阅的 cardStyle(不按卡种分层)", async () => {
 		const { ctx, m } = makeCtx();
 		const s = new RoomSession(
 			ctx,
 			makeSub({
 				customCardStyle: { enable: true, font: "Base Sans" },
-				customCardStyleByKind: { live: { enable: true, font: "Live Sans" } },
 			}),
 		) as AnySession;
 		s.useLiveRoomInfo = vi.fn(async () => {
@@ -1102,7 +1095,7 @@ describe("RoomSession.onLiveStart", () => {
 		s.armPeriodicTimer = vi.fn();
 		await s.onLiveStart();
 		expect(m.sendLiveNotifyCard.mock.calls[0]?.[0]?.cardStyle).toMatchObject({
-			font: "Live Sans",
+			font: "Base Sans",
 		});
 	});
 

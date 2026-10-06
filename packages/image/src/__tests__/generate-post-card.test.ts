@@ -80,7 +80,7 @@ const PROBE: CardSkinManifest = {
 	...DEFAULT_CARD_SKIN,
 	cards: {
 		...DEFAULT_CARD_SKIN.cards,
-		dynamic: {
+		post: {
 			width: 600,
 			blocks: [
 				{

@@ -7,7 +7,7 @@ import type {
 	ExtensionPushView,
 	RestartAbility,
 } from "@bilibili-notify/contract";
-import { type CardSkinKind, fail, type Logger } from "@bilibili-notify/internal";
+import { type CardKind, fail, type Logger } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import type { ZodType } from "zod";
@@ -347,8 +347,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		 * 卡片工坊 `look_card` 的截图口。握着 Chrome 的是 `/api/cards`,而它装配在聊天路由之后 ——
 		 * 这里先放一个晚绑定的口子,卡片路由建好时把真的交进来(见 `onSkinShot`)。
 		 */
-		let shootCardSkin: ((skinId: string, kind: CardSkinKind) => Promise<string | null>) | null =
-			null;
+		let shootCardSkin: ((skinId: string, kind: CardKind) => Promise<string | null>) | null = null;
 		app.route(
 			"/api/ai",
 			createAiRoute(deps, {

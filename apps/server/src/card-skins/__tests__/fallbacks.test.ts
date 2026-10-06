@@ -34,7 +34,7 @@ describe("createCardSkinFallbackLog", () => {
 	it("换了卡种 / 换了原因就是另一条", () => {
 		const { log } = makeLog();
 		log.record({ skinId: "s1", kind: "live", reason: "皮肤不存在" });
-		log.record({ skinId: "s1", kind: "sc", reason: "皮肤不存在" });
+		log.record({ skinId: "s1", kind: "superchat", reason: "皮肤不存在" });
 		log.record({ skinId: "s1", kind: "live", reason: "渲染失败(boom)" });
 		expect(log.list()).toHaveLength(3);
 	});
@@ -54,7 +54,7 @@ describe("createCardSkinFallbackLog", () => {
 	it("清空之后账本是空的,但新的回落照样记得进来", () => {
 		const log = createCardSkinFallbackLog({ now: () => 1 });
 		log.record({ skinId: "a", kind: "live", reason: "渲染失败" });
-		log.record({ skinId: "b", kind: "sc", reason: "皮肤不存在" });
+		log.record({ skinId: "b", kind: "superchat", reason: "皮肤不存在" });
 		expect(log.list()).toHaveLength(2);
 
 		log.clear();

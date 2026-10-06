@@ -25,22 +25,16 @@
  * 找到,登记在 `history` 一族名下(0.x 住在 `kind`)。
  */
 
-import {
-	CARD_SKIN_KINDS,
-	CardKindSchema,
-	EXTRA_KEYS,
-	FEATURE_KEYS,
-} from "@bilibili-notify/internal";
+import { CARD_KINDS, EXTRA_KEYS, FEATURE_KEYS } from "@bilibili-notify/internal";
 
-/** 被拿来做键的几套词表。`CardKind`(4 种卡)是 `CardSkinKind`(7 种卡)的子集,两套今天各用各的。 */
-export type KeyedVocabulary = "FeatureKey" | "ExtraKey" | "CardKind" | "CardSkinKind";
+/** 被拿来做键的几套词表。卡种键只有一套(㉔e 把从前的四种卡与七种卡两套收成了一套)。 */
+export type KeyedVocabulary = "FeatureKey" | "ExtraKey" | "CardKind";
 
 /** 每套词表现行的键。判定函数拿它认位置;守卫拿它核「出来的键都是活的」。 */
 export const KEYED_VOCABULARIES: Record<KeyedVocabulary, readonly string[]> = {
 	FeatureKey: FEATURE_KEYS,
 	ExtraKey: EXTRA_KEYS,
-	CardKind: CardKindSchema.options,
-	CardSkinKind: CARD_SKIN_KINDS,
+	CardKind: CARD_KINDS,
 };
 
 /** 存盘的根:一个仓读写的那份 schema。 */
@@ -52,6 +46,7 @@ export type KeyedRecordRoot = "GlobalConfig" | "Subscription" | "HistoryEntry" |
  * - `subscription`:订阅那一族的 1.0 步骤(`subscriptions.ts` 的 `toCurrentRow`:改名 + 直播拆键);
  * - `history`:历史那一族的 1.0 步骤(`history.ts` 的 `migrateHistoryLine`:老 `source` → 0.x 的推送种类 → 特性键)。
  *   它登记的是一个**值**(推送种类那一格),`zeroPath` 是 0.x 里装种类名的那一格;
+ * - `rejected`:不迁、整份拒收(卡片皮肤包:格式版本不对的包进不了门,所以盘上没有要改写的键),`note` 说明为什么;
  * - `pending`:归某一片、还没做。`slice` 是片号,`note` 说明为什么归它。
  *
  * `zeroPath`:这条记录在 0.x 里住的路径;1.0 挪过窝才写(订阅顶层的逐目标表 `extras` → `extraTargets`、历史行的 `kind` →
@@ -59,6 +54,7 @@ export type KeyedRecordRoot = "GlobalConfig" | "Subscription" | "HistoryEntry" |
  */
 export type KeyedRecordHandledBy =
 	| { kind: "settings" | "subscription" | "history"; zeroPath?: string }
+	| { kind: "rejected"; note: string }
 	| { kind: "pending"; slice: string; note: string };
 
 /** 清单的一条。`path` 的写法见 `__tests__/keyed-record-finder.ts`(对象键 `.`,数组元素 `[]`,record 的值 `*`)。 */
@@ -68,20 +64,6 @@ export interface KeyedRecordEntry {
 	vocabulary: KeyedVocabulary;
 	handledBy: KeyedRecordHandledBy;
 }
-
-/** 卡种键与卡片皮肤共用 `live` / `dynamic` / `sc` / `guard`,`live` 的新名要 ㉔ 才定,分两趟改两边会对不上。 */
-const CARD_KINDS_ARE_SLICE_24: KeyedRecordHandledBy = {
-	kind: "pending",
-	slice: "㉔",
-	note: "卡种键改名与 `cardStyleByKind` 挪进 `defaults.cards.byKind` 一起做",
-};
-
-/** 卡片皮肤包不迁、旧包拒收(`docs/1.0/data-and-migration.md`):盘上没有要改写的,但包的 schema 抬版归 ㉔。 */
-const CARD_SKIN_PACK_IS_SLICE_24: KeyedRecordHandledBy = {
-	kind: "pending",
-	slice: "㉔",
-	note: "卡片皮肤包不迁、旧包拒收;皮肤 schema 抬版时一起改卡种键",
-};
 
 export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 	// 全局设置
@@ -96,12 +78,6 @@ export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 		path: "defaults.features.extras",
 		vocabulary: "ExtraKey",
 		handledBy: { kind: "settings" },
-	},
-	{
-		root: "GlobalConfig",
-		path: "defaults.cardStyleByKind",
-		vocabulary: "CardKind",
-		handledBy: CARD_KINDS_ARE_SLICE_24,
 	},
 
 	// 订阅
@@ -129,12 +105,6 @@ export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 		vocabulary: "ExtraKey",
 		handledBy: { kind: "subscription" },
 	},
-	{
-		root: "Subscription",
-		path: "overrides.cardStyleByKind",
-		vocabulary: "CardKind",
-		handledBy: CARD_KINDS_ARE_SLICE_24,
-	},
 
 	// 历史行:推送种类那一格(值用特性键);0.x 住在 `kind`,值是八种推送种类名
 	{
@@ -147,14 +117,11 @@ export const KEYED_RECORD_ENTRIES: readonly KeyedRecordEntry[] = [
 	// 卡片皮肤包的清单
 	{
 		root: "CardSkinManifest",
-		path: "variablesByKind",
-		vocabulary: "CardSkinKind",
-		handledBy: CARD_SKIN_PACK_IS_SLICE_24,
-	},
-	{
-		root: "CardSkinManifest",
 		path: "cards",
-		vocabulary: "CardSkinKind",
-		handledBy: CARD_SKIN_PACK_IS_SLICE_24,
+		vocabulary: "CardKind",
+		handledBy: {
+			kind: "rejected",
+			note: "卡片皮肤包不迁:格式版本不对的包整份拒收(`parseCardSkin`),盘上没有要改写的键",
+		},
 	},
 ];

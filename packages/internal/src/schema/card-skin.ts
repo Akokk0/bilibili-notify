@@ -15,24 +15,37 @@ import { z } from "zod";
 
 // ---- 版本 -------------------------------------------------------------------
 
-/** 皮肤包格式的版本。结构不兼容地演进时递增。 */
-export const CARD_SKIN_SCHEMA_VERSION = 1;
+/**
+ * 皮肤包格式的版本。结构不兼容地演进时递增。
+ *
+ * 2 = 1.0:卡种键、字段路径、块名与挂点名改用同一套词(ADR-0023 决策 3 的 2026-10-06 🔗),退役的 `variables` /
+ * `variablesByKind` 删掉。版本 1(0.x 与 1.0 开发期做的包)一律拒收,不写转换 —— 提示见 {@link OLD_CARD_SKIN_MESSAGE}。
+ */
+export const CARD_SKIN_SCHEMA_VERSION = 2;
+
+/** 老版本(格式版本比当前小)的包被拒收时给的话。装包、编辑器保存、预览、AI 写 CSS 走的是同一道门(`parseCardSkin`)。 */
+export const OLD_CARD_SKIN_MESSAGE =
+	"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。";
+
+/** 新版本(格式版本比当前大)的包被拒收时给的话:它来自更新的 BN,这一版读不了。不报版本数字,用户不关心。 */
+export const NEWER_CARD_SKIN_MESSAGE =
+	"这个卡片皮肤是用更新版本的 BN 做的，请先把 BN 更新到最新版再装。";
 
 /**
  * 数据契约(`CARD_SKIN_FIELDS`)的版本。字段**只增**,所以它只在「有字段被加进来」时递增,
  * 老皮肤永远能画 —— 皮肤包记下自己写时依据的版本,只是给编辑器提示「有新字段可用」。
  */
-export const CARD_DATA_VERSION = 1;
+export const CARD_DATA_VERSION = 2;
 
 // ---- 卡种 -------------------------------------------------------------------
 
 import {
+	CARD_KIND_NAMES,
+	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
-	CARD_SKIN_KIND_NAMES,
-	CARD_SKIN_KINDS,
 	CARD_SKIN_KNOB_KEY_RE,
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_KNOB_UNITS,
@@ -42,12 +55,12 @@ import {
 	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_UPLOAD_PREFIX,
+	type CardKind,
 	type CardSkinBuiltinBlock,
 	type CardSkinField,
 	type CardSkinFieldType,
 	type CardSkinFrameHook,
 	type CardSkinGrid,
-	type CardSkinKind,
 	type CardSkinKnobUnit,
 	cardSkinBytes,
 	DIVIDER_TYPE,
@@ -59,19 +72,13 @@ import {
 	rowMapOf,
 } from "../constants.js";
 
-export type { CardSkinGrid, CardSkinKind, PreviewScene };
+export type { CardKind, CardSkinGrid, PreviewScene };
 // 七种卡与预览场景表都住零依赖的 `constants.ts`:面板(apps/web)要拿它们画那排卡种 tab
 // 与那排场景按钮,而从根入口取值会把 zod 整张 schema 图拽进前端 bundle
 // (`internal-entry-conformance.test.ts` 钉着这条)。这里原样再导出,后端与出图端照旧从
 // 根入口拿。
-export {
-	CARD_PREVIEW_SCENES,
-	CARD_SKIN_KIND_NAMES,
-	CARD_SKIN_KINDS,
-	resolvePreviewScene,
-	rowMapOf,
-};
-export const CardSkinKindSchema = z.enum(CARD_SKIN_KINDS);
+export { CARD_KIND_NAMES, CARD_KINDS, CARD_PREVIEW_SCENES, resolvePreviewScene, rowMapOf };
+export const CardKindSchema = z.enum(CARD_KINDS);
 
 export type { CardSkinBuiltinBlock };
 // 上限与内置块目录同样住 `constants.ts`(理由同上:编辑器要照它们画控件与块名)。
@@ -640,31 +647,6 @@ export const CardSkinCardSchema = CardSkinCardShapeSchema.transform(
 );
 export type CardSkinCard = z.infer<typeof CardSkinCardSchema>;
 
-/**
- * 🪦 **已退役**(2026-09-14 主人拍板)。皮肤自带的变量默认值 —— 旋钮出现**之前**那套
- * 「皮肤给默认值、面板覆盖它」的设计。
- *
- * 它的四个字段今天全都是旋钮({@link DEFAULT_SKIN_KNOB_KEYS}):旋钮把同一件事做得更干净
- * —— 皮肤声明控件、`default` 只是面板的起手位置、**不注入**,真默认值是皮肤 CSS 里
- * `var(--bn-knob-<key>, 兜底)` 的那个兜底。留着就是同一件事两个入口。
- *
- * 它**从来没被接进渲染**(`packages/image` 一次都没读过),所以退役不是迁移:装包 / 保存时
- * 由 `dropRetiredVariables` 丢掉,出的图一个像素都不变。
- *
- * 字段**留着不删**:清单是 `.strict()` 的,删了之后已经装着这一项的老皮肤会以
- * `Unrecognized key: "variables"` 装不进来也存不下去。
- */
-export const CardSkinVariableDefaultsSchema = z
-	.object({
-		// 渐变起 / 止色已退役(决策 15 的 🔗):皮肤想要什么底自己在外框 CSS 里写。
-		glassOpacity: z.number().min(0).max(1).optional(),
-		glassClear: z.boolean().optional(),
-		font: z.string().max(200).optional(),
-		backgroundImage: z.string().max(80).optional(),
-	})
-	.strict();
-export type CardSkinVariableDefaults = z.infer<typeof CardSkinVariableDefaultsSchema>;
-
 /** CSS `font-family` 名:能不加引号地出现在 `@font-face` 与 `font-family` 里的那种。 */
 const FONT_FAMILY_RE = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/;
 
@@ -697,16 +679,12 @@ export const CardSkinManifestSchema = z
 			.array(CardSkinKnobSchema)
 			.max(CARD_SKIN_KNOB_LIMITS.maxKnobs, `knobs 最多 ${CARD_SKIN_KNOB_LIMITS.maxKnobs} 枚`)
 			.optional(),
-		/** 🪦 已退役,只为让老皮肤装得进来而保留;装包 / 保存时丢弃。见 {@link CardSkinVariableDefaultsSchema}。 */
-		variables: CardSkinVariableDefaultsSchema.optional(),
-		/** 🪦 同上。 */
-		variablesByKind: z.partialRecord(CardSkinKindSchema, CardSkinVariableDefaultsSchema).optional(),
 		/** 皮肤自带的字体(family 全表唯一,装包时对包内资产)。 */
 		fonts: z
 			.array(CardSkinFontSchema)
 			.max(CARD_SKIN_LIMITS.maxFonts, `fonts 最多 ${CARD_SKIN_LIMITS.maxFonts} 款`)
 			.optional(),
-		cards: z.partialRecord(CardSkinKindSchema, CardSkinCardSchema),
+		cards: z.partialRecord(CardKindSchema, CardSkinCardSchema),
 	})
 	.strict();
 export type CardSkinManifest = z.infer<typeof CardSkinManifestSchema>;
@@ -714,6 +692,18 @@ export type CardSkinManifest = z.infer<typeof CardSkinManifestSchema>;
 export type ParseCardSkinResult =
 	| { ok: true; manifest: CardSkinManifest }
 	| { ok: false; errors: string[] };
+
+/**
+ * 格式版本不对的包,只回那一句话(没有就是版本没毛病、往下走形状校验)。先于一切形状校验:老包的字段名整套换过,
+ * 逐项报「认不得的键」只会淹没真正的原因。清单里 `schemaVersion` 是字面量,版本不对时形状校验一定也过不了。
+ */
+function versionRejection(raw: unknown): string[] | undefined {
+	const version = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
+	if (typeof version !== "number" || !Number.isInteger(version)) return undefined;
+	if (version < CARD_SKIN_SCHEMA_VERSION) return [OLD_CARD_SKIN_MESSAGE];
+	if (version > CARD_SKIN_SCHEMA_VERSION) return [NEWER_CARD_SKIN_MESSAGE];
+	return undefined;
+}
 
 /**
  * 装包 / 保存的门:形状(zod)+ 跨字段规矩(id 唯一、内置块名在目录里、网格不越界、
@@ -724,7 +714,9 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 	if (!parsed.success) {
 		return {
 			ok: false,
-			errors: parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
+			errors:
+				versionRejection(raw) ??
+				parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
 		};
 	}
 	const m = parsed.data;
@@ -750,7 +742,7 @@ export function parseCardSkin(raw: unknown): ParseCardSkinResult {
 			errors.push(`${at}: 默认值「${k.default}」不在候选里`);
 		}
 	});
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = m.cards[kind];
 		if (!card) continue;
 		// 定宽列吃光卡宽 → fr 列全塌成 0,块要么互相叠、要么整列看不见。宁可拒收:
@@ -1050,7 +1042,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				),
 			],
 		},
-		dynamic: {
+		post: {
 			width: 600,
 			// 16 + 52(头像)+ 12(间距)
 			columns: avatarColumns(80),
@@ -1167,7 +1159,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				at("likeCount", { row: 18, column: 9, span: 4 }, CENTER, STAT_TEXT, "like-count"),
 			],
 		},
-		sc: {
+		superchat: {
 			width: 290,
 			css: `${FRAME_BG_TIER}${frameBox("width:290px;padding:15px")}${GLASS_SC}`,
 			blocks: [
@@ -1224,7 +1216,7 @@ export const DEFAULT_CARD_SKIN: CardSkinManifest = {
 				),
 			],
 		},
-		guard: {
+		membership: {
 			width: 430,
 			columns: [
 				...Array.from({ length: 8 }, () => ({ fr: 1 })),

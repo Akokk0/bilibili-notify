@@ -21,7 +21,7 @@ describe("resolve()", () => {
 		expect(eff.schedule).toEqual(globals.defaults.schedule);
 		expect(eff.liveStart).toEqual(globals.defaults.liveStart);
 		expect(eff.liveStreaming).toEqual(globals.defaults.liveStreaming);
-		expect(eff.cardStyle).toEqual(globals.defaults.cardStyle);
+		expect(eff.cards).toEqual(globals.defaults.cards);
 		expect(eff.ai.model).toBe(resolveAIProfile(globals.defaults.ai).model);
 		expect(eff.ai.persona).toEqual(globals.defaults.ai.persona);
 	});

@@ -7,7 +7,7 @@
  * `Post`),块吃的就是它。出图器不认识任何平台的原始数据。
  *
  * 这里画出来的东西最终落在卡片皮肤的块里(ADR-0014 决策 9),所以部件上挂着那些块的
- * 挂点(`data-bn="<挂点>"`,名字取自 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`):
+ * 挂点(`data-bn="<挂点>"`,名字取自 `CARD_SKIN_BUILTIN_BLOCKS.post`):
  * - `node.text` / `node.media` 是同一份正文**拆开的两半**(决策 8 的 2026-09-18 🔗),分别进
  *   `text` / `media` 原子块:文字那半带着 `body` 挂点(挂在 `rich-text.tsx` 的根 div 上),
  *   媒体那半是主视频卡(`video` / `videoCover` / `videoTitle`)或图廊(`pics` / `pic`)。

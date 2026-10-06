@@ -12,7 +12,7 @@
  */
 
 import type {
-	CardSkinKind,
+	CardKind,
 	CardSkinKnob,
 	CardSkinManifest,
 	Issue,
@@ -20,7 +20,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { ErrorResponse } from "./rest";
 
-export type { CardSkinKind, CardSkinKnob, CardSkinManifest };
+export type { CardKind, CardSkinKnob, CardSkinManifest };
 
 /**
  * 皮肤库列表里的一行。**服务端 `CardSkinStore.list()` 实现的就是这个类型** ——
@@ -44,7 +44,7 @@ export interface CardSkinSummary {
 	 * 这套皮肤写了哪几种卡。同上那条理由:列表这一趟就带上 —— 否则问的人只能挨个去取
 	 * 整份清单(那是七张卡的 CSS 与 HTML,一份到 MB 级),只为读一串键名。
 	 */
-	kinds: CardSkinKind[];
+	kinds: CardKind[];
 }
 
 /**
@@ -66,7 +66,7 @@ export interface CardSkinListResponse {
 /** 一条回落记录。同一套皮肤 + 同一种卡 + 同一个原因只占一条,`count` 说它发生了几次。 */
 export interface CardSkinFallback {
 	skinId: string;
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 人话原因:「皮肤不存在」「渲染失败(…)」「卡片高度 5200 超过上限 4000」。 */
 	reason: string;
 	/** 最近一次发生的时刻(ms)。 */
@@ -112,7 +112,7 @@ export interface CardSkinSaveResponse {
  * 原样 —— 两边各走各的,作者就会看着一个能用的预览、存出一套被清洗器削过的皮肤。
  */
 export interface CardSkinPreviewRequest {
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 场景 id(`CARD_PREVIEW_SCENES`);缺省 / 不认识 = 该卡种的第一个。 */
 	scene?: string;
 	/** 正在编辑的**草稿**清单(还没存盘)。 */
@@ -141,7 +141,7 @@ export const CARD_SKIN_AI_INSTRUCTION_MAX = 2000;
  * 用户点「停」就断开这条连接,服务端跟着掐断到模型的请求。
  */
 export interface CardSkinAiCssRequest {
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 写哪一块;不给 = 这种卡的外框。 */
 	blockId?: string;
 	instruction: string;

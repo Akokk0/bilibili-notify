@@ -2,8 +2,8 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	CARD_SKIN_LIMITS,
+	type CardKind,
 	type CardSkinCard,
-	type CardSkinKind,
 	type CardSkinKnobOverrides,
 	type CardSkinManifest,
 	createSerialGate,
@@ -188,7 +188,7 @@ export interface ImageRendererOptions {
 	 *
 	 * **去重归宿主**:同一套皮肤每张卡都会回落一次,渲染器这一层不认识「同一个原因」。
 	 */
-	onCardSkinFallback?: (info: { skinId: string; kind: CardSkinKind; reason: string }) => void;
+	onCardSkinFallback?: (info: { skinId: string; kind: CardKind; reason: string }) => void;
 }
 
 export class ImageRenderer {
@@ -217,7 +217,7 @@ export class ImageRenderer {
 	) => Promise<string | undefined>;
 	private readonly onCardSkinFallback?: (info: {
 		skinId: string;
-		kind: CardSkinKind;
+		kind: CardKind;
 		reason: string;
 	}) => void;
 
@@ -482,7 +482,7 @@ export class ImageRenderer {
 	 * 三道都经 {@link ImageRendererOptions.onCardSkinFallback} 报给宿主;**id 本来就是
 	 * 默认皮肤时不算回落**,不报(没换过皮肤的人不该收到「皮肤回落」的告警)。
 	 */
-	private async renderWithSkin<K extends CardSkinKind>(args: {
+	private async renderWithSkin<K extends CardKind>(args: {
 		kind: K;
 		props: CardPropsByKind[K];
 		/** `<title>`;截图里看不见,排障时看得见。 */
@@ -633,7 +633,7 @@ export class ImageRenderer {
 		const resolved = await this.resolveImageRefs(refs);
 
 		return this.renderWithSkin({
-			kind: "guard",
+			kind: "membership",
 			title: "上舰通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
@@ -672,7 +672,7 @@ export class ImageRenderer {
 		const resolved = await this.resolveImageRefs(refs);
 
 		return this.renderWithSkin({
-			kind: "sc",
+			kind: "superchat",
 			title: "醒目留言通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,
@@ -717,7 +717,7 @@ export class ImageRenderer {
 		});
 		this.logger.debug(`[dynamic] 开始渲染动态卡片：${node.creatorName}`);
 		return this.renderWithSkin({
-			kind: "dynamic",
+			kind: "post",
 			title: "动态通知",
 			skinId: this.skinIdOf(colorOptions),
 			skinKnobs: colorOptions.cardSkinKnobs,

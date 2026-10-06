@@ -237,7 +237,7 @@ describe("video:封面 + 时长角标 + 标题 + subtitle;没有标题上方的�
 	// 的 —— 一旦被吞,封面就没了尺寸约束,而构建 / 类型 / lint 全绿。
 	it("封面尺寸类名真的生成了 CSS 规则,没被 Fragment 锚点吞掉", async () => {
 		const node = nodeFromPost(postWith(video()), FMT);
-		const html = await renderViaDefaultSkin("dynamic", { node }, { htmlWidth: 600 });
+		const html = await renderViaDefaultSkin("post", { node }, { htmlWidth: 600 });
 		const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
 		for (const cls of ["w-[140px]", "h-[80px]"]) {
 			// UnoCSS 输出里类名的方括号是反斜杠转义的:`w-[140px]` → `.w-\[140px\]{…}`。

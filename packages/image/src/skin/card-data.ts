@@ -12,6 +12,7 @@
  * - **已格式化的文本直接给**(「1.2 万」「已开播 1 小时」),占位符不带过滤器。
  */
 
+import type { CardKind } from "@bilibili-notify/internal";
 import type { LiveCardView } from "../templates/live-card";
 import type { MembershipCardView } from "../templates/membership-card";
 import type { PostCardView } from "../templates/post-card";
@@ -191,9 +192,9 @@ function wordCloudData(p: WordCloudCardProps): CardData {
 // ── 入口 ──────────────────────────────────────────────────────────────────────
 
 export function buildCardData(kind: "live", props: LiveCardView): CardData;
-export function buildCardData(kind: "dynamic", props: PostCardView): CardData;
-export function buildCardData(kind: "sc", props: SuperchatCardView): CardData;
-export function buildCardData(kind: "guard", props: MembershipCardView): CardData;
+export function buildCardData(kind: "post", props: PostCardView): CardData;
+export function buildCardData(kind: "superchat", props: SuperchatCardView): CardData;
+export function buildCardData(kind: "membership", props: MembershipCardView): CardData;
 export function buildCardData(kind: "roastBoard", props: RoastBoardCardProps): CardData;
 export function buildCardData(kind: "roastSolo", props: RoastSoloCardProps): CardData;
 export function buildCardData(kind: "wordcloud", props: WordCloudCardProps): CardData;
@@ -201,17 +202,17 @@ export function buildCardData(kind: "wordcloud", props: WordCloudCardProps): Car
  * 把一张卡的 props 翻成它那份契约数据。产出的路径集合与 `CARD_SKIN_FIELDS[kind]` 一字不差。
  */
 export function buildCardData(
-	kind: "live" | "dynamic" | "sc" | "guard" | "roastBoard" | "roastSolo" | "wordcloud",
+	kind: CardKind | "roastSolo" | "wordcloud",
 	props: unknown,
 ): CardData {
 	switch (kind) {
 		case "live":
 			return liveData(props as LiveCardView);
-		case "dynamic":
+		case "post":
 			return dynamicData(props as PostCardView);
-		case "sc":
+		case "superchat":
 			return scData(props as SuperchatCardView);
-		case "guard":
+		case "membership":
 			return guardData(props as MembershipCardView);
 		case "roastBoard":
 			return roastBoardData(props as RoastBoardCardProps);

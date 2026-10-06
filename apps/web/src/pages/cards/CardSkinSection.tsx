@@ -15,7 +15,7 @@
  */
 
 import type { CardSkinDuplicateResponse, CardSkinSummary } from "@bilibili-notify/contract";
-import type { CardSkinKind } from "@bilibili-notify/internal";
+import type { CardKind } from "@bilibili-notify/internal";
 import {
 	Btn,
 	ConfirmDialog,
@@ -37,11 +37,11 @@ import { errorTextOf } from "../../services/error-text";
 import { CARD_SKINS_KEY, useActivateCardSkin, useCardSkinList } from "./card-skins-query";
 
 /** 七种卡在回落告警里怎么称呼。 */
-const KIND_LABEL: Record<CardSkinKind, string> = {
+const KIND_LABEL: Record<CardKind, string> = {
 	live: "直播",
-	dynamic: "动态",
-	sc: "SC",
-	guard: "上舰",
+	post: "动态",
+	superchat: "SC",
+	membership: "上舰",
 	roastBoard: "锐评榜单",
 	roastSolo: "单人锐评",
 	wordcloud: "词云",

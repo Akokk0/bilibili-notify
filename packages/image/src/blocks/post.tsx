@@ -12,7 +12,7 @@
  * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
  * 什么」取名的挂点(`image` / `text` / `pill` / `bubble` / `line`),默认皮肤的外观规则就写在
  * 它上面;根之外的部件照挂(图廊的 `pics` / `pic`、互动数的 `icon`、播放·弹幕数里的 `stat`)。
- * 名字取自 `CARD_SKIN_BUILTIN_BLOCKS.dynamic[<块>].hooks`,是对外 API
+ * 名字取自 `CARD_SKIN_BUILTIN_BLOCKS.post[<块>].hooks`,是对外 API
  * (`__tests__/card-hooks.test.ts` 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也
  * 必须真被挂上)。
  *
@@ -25,7 +25,7 @@
  * —— 它是**数据**不是外观,由 `node.creatorIsPremium` 算出来,皮肤在 `name` 的 `text` 规则里用
  * `var(--bn-up-name-color)` 引它。
  *
- * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.dynamic`,一个不多一个不少(`__tests__/card-blocks.test.ts`
+ * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.post`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
  */
 

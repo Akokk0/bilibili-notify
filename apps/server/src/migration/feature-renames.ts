@@ -17,7 +17,7 @@
  * | 内容过滤的白名单 `whitelistKeywords` / `whitelistRegex` | `allowKeywords` / `allowRegex` |
  *
  * 值原样搬、键序不变;认不得的形状原样放过(由配置仓开机时报出来);已经是新键的数据再跑一遍不变,新老键并存时以新键为准、
- * 老键丢掉。**不碰**的同名不同义:`app.logLevels` 的 `dynamic` / `live`(日志模块名,3a)、`cardStyleByKind` 的卡种键(㉔)、
+ * 老键丢掉。**不碰**的同名不同义:`app.logLevels` 的 `dynamic` / `live`(日志模块名,3a)、`cardStyleByKind` 的卡种键(归 `card-moves.ts`)、
  * `ai.search.engines` 与 AI 场景、历史行的推送种类(⑱)。直播拆键里不是改名的那部分(新特性 `liveStreaming`、`pushTime` /
  * `restartPush` 拆成间隔与补报、`routing.liveStreaming` 拷贝、逐订阅按合并值算开关)在 `live-split.ts`,接在这一步的产出之后。
  *

@@ -198,7 +198,7 @@ describe("stripRedactedSecrets — 占位回传即保留原值", () => {
 	});
 
 	it("patch 里完全没碰 ai 时原样返回", () => {
-		const patch = { defaults: { cardStyle: { enabled: false } } };
+		const patch = { defaults: { cards: { enabled: false } } };
 		expect(stripRedactedSecrets(patch)).toBe(patch);
 	});
 });

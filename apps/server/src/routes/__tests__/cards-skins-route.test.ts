@@ -34,8 +34,8 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function manifest(extra?: Record<string, unknown>): Record<string, unknown> {
 	return {
-		schemaVersion: 1,
-		dataVersion: 1,
+		schemaVersion: 2,
+		dataVersion: 2,
 		name: "测试卡片皮肤",
 		cards: {
 			live: {
@@ -189,7 +189,7 @@ describe("POST / —— 装包", () => {
 		const form = new FormData();
 		form.append(
 			"file",
-			new File([pack({ schemaVersion: 1 })], "skin.zip", { type: "application/zip" }),
+			new File([pack({ schemaVersion: 2 })], "skin.zip", { type: "application/zip" }),
 		);
 		const res = await app.request("/", { method: "POST", body: form });
 		expect(res.status).toBe(400);
@@ -201,6 +201,31 @@ describe("POST / —— 装包", () => {
 		// 旧壳(`ok` / `errors`)不再有。
 		expect(body).not.toHaveProperty("ok");
 		expect(body).not.toHaveProperty("errors");
+	});
+
+	// ㉔e:格式版本 1 的包(0.x 与 1.0 开发期做的)每扇门同一句话 —— 装包 / 编辑器保存(实时预览在下面预览那一组)。
+	// 验红:把 `parseCardSkin` 开头按版本分流的那一步去掉,三条都改报 zod 的一串逐格原因,这条红。
+	it("格式版本 1 的老包:装包、保存都只回「旧版本」那一句,什么都没落盘", async () => {
+		const oldPack = manifest({ schemaVersion: 1, dataVersion: 1 });
+		const form = new FormData();
+		form.append("file", new File([pack(oldPack)], "skin.zip", { type: "application/zip" }));
+		const installed = await app.request("/", { method: "POST", body: form });
+		expect(installed.status).toBe(400);
+		expect(((await installed.json()) as any).message).toContain(
+			"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。",
+		);
+
+		const id = await install();
+		const saved = await app.request(`/${id}`, {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(oldPack),
+		});
+		expect(saved.status).toBe(400);
+		expect(((await saved.json()) as any).message).toContain(
+			"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。",
+		);
+		expect(store.list().map((s) => s.id)).toEqual([DEFAULT_CARD_SKIN_ID, id]);
 	});
 
 	it("不是 zip 的字节 → invalid(400),原因只有一句就只在 message 里", async () => {
@@ -352,13 +377,25 @@ describe("POST /:id/preview —— 编辑器的实时预览", () => {
 	});
 
 	it("装包拒了 → invalid(400) + 原因逐条进 issues,不是一张空白卡", async () => {
-		const { res, json } = await preview({ kind: "live", manifest: { schemaVersion: 1 } });
+		const { res, json } = await preview({ kind: "live", manifest: { schemaVersion: 2 } });
 		expect(res.status).toBe(400);
 		expect(json.code).toBe("invalid");
 		expect(json.message).toContain("没通过检查");
 		expect(Array.isArray(json.issues)).toBe(true);
 		expect(json.issues.length).toBeGreaterThan(0);
 		expect(json).not.toHaveProperty("errors");
+	});
+
+	// 验红:去掉 `parseCardSkin` 按版本分流的那一步,message 变成 zod 的逐格原因,这条红。
+	it("格式版本 1 的老草稿 → invalid(400),只回「旧版本」那一句", async () => {
+		const { res, json } = await preview({
+			kind: "live",
+			manifest: manifest({ schemaVersion: 1, dataVersion: 1 }),
+		});
+		expect(res.status).toBe(400);
+		expect(json.message).toContain(
+			"这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。",
+		);
 	});
 
 	it("卡种不认识 / 请求体不成形 → invalid(400),zod 的逐格原因进 issues", async () => {
@@ -523,7 +560,7 @@ describe("PUT /:id —— 编辑器保存", () => {
 		const res = await app.request(`/${id}`, {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ schemaVersion: 1 }),
+			body: JSON.stringify({ schemaVersion: 2 }),
 		});
 		expect(res.status).toBe(400);
 		const body = (await res.json()) as any;

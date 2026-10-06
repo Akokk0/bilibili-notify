@@ -18,8 +18,8 @@ import { createAppRuntime } from "../runtime/bootstrap.js";
 import type { EnginesRuntime } from "../runtime/engines.js";
 
 const MANIFEST = {
-	schemaVersion: 1,
-	dataVersion: 1,
+	schemaVersion: 2,
+	dataVersion: 2,
 	name: "接线测试",
 	cards: {
 		live: {

@@ -1,6 +1,6 @@
 /**
  * 图廊选择的纯操作。`selected` 是一串资产 id —— 选中顺序即轮换顺序(空=不覆盖,1=单张,
- * >1=每次推送顺序轮换)。今天两家在用:皮肤的 `image` 旋钮与 `cardStyle.liveCoverImages`。
+ * >1=每次推送顺序轮换)。今天两家在用:皮肤的 `image` 旋钮与 `cards.liveCoverImageIds`。
  * 全部不可变,供 GalleryPicker 与单测复用。
  */
 
@@ -21,30 +21,4 @@ export function moveSelected(selected: string[], from: number, to: number): stri
 	const [moved] = next.splice(from, 1);
 	if (moved !== undefined) next.splice(to, 0, moved);
 	return next;
-}
-
-/** 样式对象里的图列表字段 —— 删盘清扫只碰它。(`backgroundImages` 那条链已删,见 ADR-0014。) */
-interface StyleWithImageLists {
-	liveCoverImages?: string[];
-}
-
-/**
- * 资产删盘后,把该 id 从样式对象的图列表里剔除(缺省字段保持缺省,其余键不动)。
- * 图廊删除只会同步当前 picker 绑定的字段;页面上其他样式状态(全局基准 / per-kind /
- * per-UP)若还攥着这个 id,下次保存就会落盘成悬空引用 —— Cards 页删盘回调用它全量清扫。
- */
-export function removeAssetFromStyle<T extends StyleWithImageLists>(style: T, id: string): T {
-	const out = { ...style };
-	if (out.liveCoverImages) out.liveCoverImages = removeFromGallery(out.liveCoverImages, id);
-	return out;
-}
-
-/** 同上,作用于 per-kind 覆盖表:逐 kind 清扫,非列表键原样保留。 */
-export function removeAssetFromByKind<T extends StyleWithImageLists>(
-	byKind: Record<string, T>,
-	id: string,
-): Record<string, T> {
-	const out: Record<string, T> = {};
-	for (const [kind, style] of Object.entries(byKind)) out[kind] = removeAssetFromStyle(style, id);
-	return out;
 }

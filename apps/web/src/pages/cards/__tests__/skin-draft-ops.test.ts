@@ -58,7 +58,7 @@ import {
 
 const manifest = (): CardSkinManifest =>
 	({
-		schemaVersion: 1,
+		schemaVersion: 2,
 		name: "测试皮肤",
 		cards: {
 			live: {
@@ -159,7 +159,7 @@ describe("setBlockGrid", () => {
 
 	it("这套皮肤没定义这种卡 → 原样返回(别凭空造一张出来)", () => {
 		const before = manifest();
-		expect(setBlockGrid(before, "sc", "title", { row: 2 })).toBe(before);
+		expect(setBlockGrid(before, "superchat", "title", { row: 2 })).toBe(before);
 	});
 
 	it("块 id 对不上 → 清单内容不变", () => {
@@ -216,8 +216,8 @@ describe("addBlock", () => {
 	});
 
 	it("这套皮肤没定义这种卡 → 回 null(别凭空造一张出来)", () => {
-		expect(addBlock(manifest(), "sc", "amount")).toBe(null);
-		expect(canAddBlock(cardOf(manifest(), "sc"))).toBe(false);
+		expect(addBlock(manifest(), "superchat", "amount")).toBe(null);
+		expect(canAddBlock(cardOf(manifest(), "superchat"))).toBe(false);
 	});
 });
 
@@ -239,7 +239,7 @@ describe("removeBlock", () => {
 	it("id 对不上 / 没这种卡 → 原样返回", () => {
 		const before = manifest();
 		expect(removeBlock(before, "live", "没这个块")).toBe(before);
-		expect(removeBlock(before, "sc", "amount")).toBe(before);
+		expect(removeBlock(before, "superchat", "amount")).toBe(before);
 	});
 });
 
@@ -300,7 +300,7 @@ describe("setFrame", () => {
 		const after = setFrame(before, "live", { width: 500 });
 		expect(JSON.stringify(before)).toBe(snapshot);
 		expect(after).not.toBe(before);
-		expect(setFrame(before, "sc", { width: 500 })).toBe(before);
+		expect(setFrame(before, "superchat", { width: 500 })).toBe(before);
 	});
 });
 
@@ -359,8 +359,8 @@ describe("setBlockCss / setFrameCss", () => {
 		expect(setBlockCss(before, "live", "title", CSS)).not.toBe(before);
 		expect(JSON.stringify(before)).toBe(snapshot);
 		expect(setBlockCss(before, "live", "没这个块", CSS)).toBe(before);
-		expect(setBlockCss(before, "sc", "title", CSS)).toBe(before);
-		expect(setFrameCss(before, "sc", CSS)).toBe(before);
+		expect(setBlockCss(before, "superchat", "title", CSS)).toBe(before);
+		expect(setFrameCss(before, "superchat", CSS)).toBe(before);
 	});
 });
 
@@ -378,7 +378,7 @@ describe("setBlockShowIf", () => {
 		expect(setBlockShowIf(before, "live", "title", "live.isEnded")).not.toBe(before);
 		expect(JSON.stringify(before)).toBe(snapshot);
 		expect(setBlockShowIf(before, "live", "没这个块", "live.isEnded")).toBe(before);
-		expect(setBlockShowIf(before, "sc", "title", "live.isEnded")).toBe(before);
+		expect(setBlockShowIf(before, "superchat", "title", "live.isEnded")).toBe(before);
 	});
 });
 
@@ -415,12 +415,12 @@ describe("adoptCard / dropCard", () => {
 
 	it("接管:把出厂那张卡整份抄进来,而且连块都是新的一份(不是同一批对象)", () => {
 		const src = source();
-		const after = adoptCard(manifest(), "sc", src);
-		expect(cardOf(after, "sc")?.blocks).toHaveLength(2);
+		const after = adoptCard(manifest(), "superchat", src);
+		expect(cardOf(after, "superchat")?.blocks).toHaveLength(2);
 		// 钉的是**引用**:源是 react-query 缓存里出厂皮肤的那一份,共用同一批块对象的话,
 		// 哪天有人写了个就地改的 op,改的就是缓存里的出厂皮肤。
-		expect(cardOf(after, "sc")).not.toBe(src);
-		expect(cardOf(after, "sc")?.blocks[0]).not.toBe(src.blocks[0]);
+		expect(cardOf(after, "superchat")).not.toBe(src);
+		expect(cardOf(after, "superchat")?.blocks[0]).not.toBe(src.blocks[0]);
 	});
 
 	it("已经有这种卡就不动它 —— 接管只对空着的卡种开口", () => {
@@ -889,7 +889,7 @@ describe("overlappingBlocks", () => {
 describe("dropBlockGrid", () => {
 	const manifest = (blocks: Array<Record<string, unknown>>) =>
 		({
-			schemaVersion: 1,
+			schemaVersion: 2,
 			name: "测试皮肤",
 			cards: { live: { width: 600, blocks } },
 		}) as never;
@@ -949,7 +949,7 @@ describe("dropBlockGrid", () => {
 
 	it("卡没定义 / 块不在里头 → 原样回,别在这儿抛", () => {
 		const m = manifest([at("a", 1, 1, 4)]);
-		expect(dropBlockGrid(m, "sc", "a", { row: 2 })).toBe(m);
+		expect(dropBlockGrid(m, "superchat", "a", { row: 2 })).toBe(m);
 		expect(ids(dropBlockGrid(m, "live", "没这个块", { row: 2 }))).toEqual(["a"]);
 	});
 });

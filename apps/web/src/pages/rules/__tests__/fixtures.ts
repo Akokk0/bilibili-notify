@@ -24,7 +24,7 @@ export function makeDefaults(): GlobalDefaults {
 	};
 	const defaults = {
 		features: { ...DEFAULT_FEATURE_FLAGS },
-		cardStyleByKind: {},
+		cards: { enabled: true, liveCoverImageIds: [] },
 		cardSkin: "default",
 		filters: {
 			blockReposts: false,
@@ -76,12 +76,6 @@ export function makeDefaults(): GlobalDefaults {
 				engines: { dynamic: false, live: false, roast: false },
 			},
 			presets: [],
-		},
-		cardStyle: {
-			enabled: true,
-			font: "",
-			liveCoverImages: [],
-			glassClear: false,
 		},
 		imageGroup: { enable: true, forward: false },
 		messageLayout: {

@@ -20,7 +20,7 @@
 
 import {
 	type Attachment,
-	type CardSkinKind,
+	type CardKind,
 	formatCount,
 	guardTierOf,
 	type Post,
@@ -34,7 +34,7 @@ import type { LiveCardView } from "../templates/live-card";
 import { nodeFromPost } from "../templates/post-node";
 
 /** 一份示例 props 就是该卡种的真 props。 */
-type SampleProps<K extends CardSkinKind> = CardPropsByKind[K];
+type SampleProps<K extends CardKind> = CardPropsByKind[K];
 
 // ── 占位图 ────────────────────────────────────────────────────────────────────
 //
@@ -275,13 +275,13 @@ const DYNAMIC_SCENES: Record<string, Post> = {
 	forward: SAMPLE_FORWARD_POST,
 };
 
-function dynamicSample(scene: string): SampleProps<"dynamic"> {
+function dynamicSample(scene: string): SampleProps<"post"> {
 	return { node: nodeFromPost(DYNAMIC_SCENES[scene] ?? SAMPLE_TEXT_POST, FMT) };
 }
 
 // ── 醒目留言卡 ────────────────────────────────────────────────────────────────
 
-function scSample(): SampleProps<"sc"> {
+function scSample(): SampleProps<"superchat"> {
 	// 档由来源按平台规矩算好、随输入带来(B 站那头在 `superchatEventFromLiveEvent`:100 元落第 3 档、挂 300 秒);
 	// 示例直接写算好的档,颜色与时长的排版走真出卡同一条路(`buildSuperchatCardView`),不手抄一份。
 	return buildSuperchatCardView(
@@ -299,7 +299,7 @@ function scSample(): SampleProps<"sc"> {
 
 // ── 上舰卡 ────────────────────────────────────────────────────────────────────
 
-function guardSample(): SampleProps<"guard"> {
+function guardSample(): SampleProps<"membership"> {
 	// 档的各项取自档位表(档色与宣告语哪天调了,预览不会还停在老样子);徽章换成内联的色块 —— 真卡上那是远端图,
 	// 预览不许联网。
 	const captain = guardTierOf(3);
@@ -377,12 +377,12 @@ function wordCloudSample(): SampleProps<"wordcloud"> {
 
 /** 动态那份要 await(正文由真正的构建器造),别的都是同步 —— 出口那头统一 await 一次。 */
 const SAMPLES: {
-	[K in CardSkinKind]: (scene: string) => SampleProps<K> | Promise<SampleProps<K>>;
+	[K in CardKind]: (scene: string) => SampleProps<K> | Promise<SampleProps<K>>;
 } = {
 	live: liveSample,
-	dynamic: dynamicSample,
-	sc: scSample,
-	guard: guardSample,
+	post: dynamicSample,
+	superchat: scSample,
+	membership: guardSample,
 	roastBoard: roastBoardSample,
 	roastSolo: roastSoloSample,
 	wordcloud: wordCloudSample,
@@ -398,7 +398,7 @@ const SAMPLES: {
  * 喂 `renderCardWithSkin(kind, props, manifest)`。契约里视频 / 图廊那两组字段、动态类型都
  * 跟着 `node` 走(ADR-0019 决策 68),不再另交原始动态。
  */
-export async function sampleCard(kind: CardSkinKind, scene?: string): Promise<{ props: unknown }> {
+export async function sampleCard(kind: CardKind, scene?: string): Promise<{ props: unknown }> {
 	const picked = resolvePreviewScene(kind, scene);
 	const props = await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
 	return { props };

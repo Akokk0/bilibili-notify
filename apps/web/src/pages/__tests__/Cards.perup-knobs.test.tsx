@@ -142,7 +142,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 	it("没单独指皮肤 → 摆全局那套的旋钮,全部标「跟随全局」,起始位置取全局那份", async () => {
 		const sub: Subscription = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
-			overrides: { cardSkin: undefined, cardStyle: { font: "x" } },
+			overrides: { cardSkin: undefined, cards: { liveCoverImageIds: ["x"] } },
 		};
 		mockApi(sub);
 		renderCards();
@@ -177,7 +177,7 @@ describe("per-UP 那侧的旋钮面板", () => {
 	it("拧一枚 → PATCH 带上它,预览请求也带着草稿;那一行不再标「跟随全局」", async () => {
 		const sub: Subscription = {
 			...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
-			overrides: { cardStyle: { font: "x" } },
+			overrides: { cards: { liveCoverImageIds: ["x"] } },
 		};
 		mockApi(sub);
 		renderCards();

@@ -11,7 +11,7 @@
  * `card-baseline.test.ts` 的字节基准守着(出厂默认皮肤全是原子块,掉一句字节就变)。
  */
 
-import { CARD_SKIN_BUILTIN_BLOCKS, CARD_SKIN_KINDS } from "@bilibili-notify/internal";
+import { CARD_KINDS, CARD_SKIN_BUILTIN_BLOCKS } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { LIVE_BLOCKS } from "../blocks/live";
 import { MEMBERSHIP_BLOCKS } from "../blocks/membership";
@@ -25,16 +25,16 @@ import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 
 const TABLES: Record<string, Record<string, BlockRenderer<never>>> = {
 	live: LIVE_BLOCKS,
-	dynamic: POST_BLOCKS,
-	sc: SUPERCHAT_BLOCKS,
-	guard: MEMBERSHIP_BLOCKS,
+	post: POST_BLOCKS,
+	superchat: SUPERCHAT_BLOCKS,
+	membership: MEMBERSHIP_BLOCKS,
 	roastBoard: ROAST_BOARD_BLOCKS,
 	roastSolo: ROAST_SOLO_BLOCKS,
 	wordcloud: WORDCLOUD_BLOCKS,
 } as unknown as Record<string, Record<string, BlockRenderer<never>>>;
 
 describe("块库 — 键名与内置块目录对表", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind}:块表键名 = CARD_SKIN_BUILTIN_BLOCKS.${kind} 的键集`, () => {
 			expect(Object.keys(TABLES[kind]).sort()).toEqual(
 				Object.keys(CARD_SKIN_BUILTIN_BLOCKS[kind]).sort(),
@@ -47,7 +47,7 @@ describe("块库 — 键名与内置块目录对表", () => {
 
 /** 块名是对外 API(主人定的),一个字不许改;label 是编辑器里那颗按钮上的字。 */
 const SPLIT_ATOMS: Record<string, Record<string, string>> = {
-	dynamic: {
+	post: {
 		topic: "话题",
 		text: "正文文字",
 		videoCover: "视频封面",
@@ -61,8 +61,8 @@ const SPLIT_ATOMS: Record<string, Record<string, string>> = {
 		commentCount: "评论数",
 		likeCount: "点赞数",
 	},
-	sc: { amount: "金额", duration: "时长胶囊", to: "「SC to」那一行" },
-	guard: { viewerName: "用户名胶囊", creator: "主播胶囊" },
+	superchat: { amount: "金额", duration: "时长胶囊", to: "「SC to」那一行" },
+	membership: { viewerName: "用户名胶囊", creator: "主播胶囊" },
 };
 
 describe("块库 — 2026-09-18 补的原子块在目录里", () => {
@@ -91,9 +91,9 @@ describe("块库 — 2026-09-18 补的原子块在目录里", () => {
 const NON_ATOM: Record<string, readonly string[]> = {
 	live: [],
 	// 预约 / 商品 / 通用 / 关联视频四种形态结构各异,字段也不在契约里 —— 主人拍板不拆。
-	dynamic: ["attachment"],
-	sc: [],
-	guard: [],
+	post: ["attachment"],
+	superchat: [],
+	membership: [],
 	// 三种不可编辑卡:一块就是一整张卡。
 	roastBoard: ["body"],
 	roastSolo: ["body"],
@@ -101,7 +101,7 @@ const NON_ATOM: Record<string, readonly string[]> = {
 };
 
 describe("块目录 — 非原子块只剩这些", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind}:${NON_ATOM[kind].length === 0 ? "全是原子块" : NON_ATOM[kind].join(" / ")}`, () => {
 			const left = Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])
 				.filter(([, meta]) => meta.atom !== true)

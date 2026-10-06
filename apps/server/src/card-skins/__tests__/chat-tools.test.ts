@@ -17,10 +17,10 @@ import { join } from "node:path";
 import type { ExtraTool, ExtraToolResult } from "@bilibili-notify/ai";
 import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import {
+	CARD_KINDS,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
 	CARD_SKIN_FRAME_HOOKS,
-	CARD_SKIN_KINDS,
 	CARD_SKIN_RANK_GUIDE,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
@@ -56,8 +56,8 @@ afterEach(async () => {
 /** 一套「别人的」皮肤:不在账本里,直接装进库。 */
 async function installForeign(): Promise<string> {
 	const manifest = {
-		schemaVersion: 1,
-		dataVersion: 1,
+		schemaVersion: 2,
+		dataVersion: 2,
 		name: "别人做的",
 		cards: {
 			live: {
@@ -413,7 +413,7 @@ describe("改块与删块", () => {
 		const h = harness();
 		const id = await ownLive(h);
 		await expect(
-			h.run(T.setBlock, { skin: id, kind: "sc", block: "amount", css: "x{}" }),
+			h.run(T.setBlock, { skin: id, kind: "superchat", block: "amount", css: "x{}" }),
 		).rejects.toThrow(/write_card/);
 	});
 
@@ -502,10 +502,10 @@ describe("读", () => {
 
 	it("read_card 没写过的卡种 → 说明会回落默认皮肤,并给默认皮肤那张的摘要", async () => {
 		const foreign = await installForeign();
-		const out = await harness().text(T.readCard, { skin: foreign, kind: "sc" });
+		const out = await harness().text(T.readCard, { skin: foreign, kind: "superchat" });
 		expect(out).toMatch(/默认/);
 		// 摘要里是出厂默认皮肤那张醒目留言卡的块(块怎么拆归默认皮肤,这里不抄名单)。
-		const blocks = DEFAULT_CARD_SKIN.cards.sc?.blocks ?? [];
+		const blocks = DEFAULT_CARD_SKIN.cards.superchat?.blocks ?? [];
 		expect(blocks.length).toBeGreaterThan(0);
 		for (const b of blocks) expect(out).toContain(b.id);
 	});
@@ -516,7 +516,7 @@ describe("读", () => {
 	 */
 	it("read_card 退回默认皮肤那张时,点明其中的旋钮这套没有,叫它换成具体的值", async () => {
 		const foreign = await installForeign();
-		const out = await harness().text(T.readCard, { skin: foreign, kind: "sc" });
+		const out = await harness().text(T.readCard, { skin: foreign, kind: "superchat" });
 		expect(out).toContain("var(--bn-knob-font");
 		expect(out).toMatch(/没有声明这些旋钮/);
 		expect(out).toMatch(/换成具体的值/);
@@ -531,7 +531,7 @@ describe("读", () => {
 		};
 		const zip = zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(manifest)) });
 		const { id } = await store.install(zip);
-		const out = await harness().text(T.readCard, { skin: id, kind: "sc" });
+		const out = await harness().text(T.readCard, { skin: id, kind: "superchat" });
 		expect(out).toContain("var(--bn-knob-font");
 		expect(out).not.toMatch(/没有声明这些旋钮/);
 	});
@@ -580,7 +580,7 @@ describe("提示词从契约常量拼", () => {
 	const system = buildCardWorkshopSystem();
 
 	it("七种卡、每种卡的内置块名、外框挂点都在", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			expect(system).toContain(kind);
 			for (const block of Object.keys(CARD_SKIN_BUILTIN_BLOCKS[kind])) {
 				expect(system).toContain(block);
@@ -592,7 +592,7 @@ describe("提示词从契约常量拼", () => {
 	});
 
 	it("每种卡的字段路径都在", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			for (const field of CARD_SKIN_FIELDS[kind]) expect(system).toContain(field.path);
 		}
 	});
@@ -619,7 +619,7 @@ describe("提示词从契约常量拼", () => {
 	it("跨行是真高度的那几块,提示词逐个点名 —— 且只点这几块", () => {
 		const marked: string[] = [];
 		const unmarked: string[] = [];
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			for (const [name, meta] of Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])) {
 				(meta.heightFromRows === true ? marked : unmarked).push(`${kind}.${name}`);
 			}

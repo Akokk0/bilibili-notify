@@ -348,7 +348,9 @@ const markerOf = (zeroKey: string) => `ZERO:${zeroKey}`;
 
 function migratedKeysProblems(entry: KeyedRecordEntry, family: Family, input: Obj) {
 	const { handledBy } = entry;
-	if (handledBy.kind === "pending") throw new Error("pending 的条目不做行为核对");
+	if (handledBy.kind === "pending" || handledBy.kind === "rejected") {
+		throw new Error(`${handledBy.kind} 的条目不做行为核对`);
+	}
 	const zeroPath = handledBy.zeroPath ?? entry.path;
 	const live = KEYED_VOCABULARIES[entry.vocabulary];
 	const zero = ZERO_VOCABULARIES[entry.vocabulary];
@@ -406,7 +408,7 @@ describe("守卫 13 前半 (b):归设置 / 订阅那一族的记录,0.x 的旧�
 		expect(
 			new Set(
 				KEYED_RECORD_ENTRIES.map((entry) => entry.handledBy.kind).filter(
-					(kind) => kind !== "pending",
+					(kind) => kind !== "pending" && kind !== "rejected",
 				),
 			),
 		).toEqual(new Set(["settings", "subscription", "history"]));
@@ -505,11 +507,19 @@ describe("守卫 13 前半 (c):归某一片、还没做的条目", () => {
 		const pending = KEYED_RECORD_ENTRIES.flatMap((entry) =>
 			entry.handledBy.kind === "pending" ? [`${lineOf(entry)} → ${entry.handledBy.slice}`] : [],
 		);
-		expect(pending).toEqual([
-			"GlobalConfig defaults.cardStyleByKind [CardKind] → ㉔",
-			"Subscription overrides.cardStyleByKind [CardKind] → ㉔",
-			"CardSkinManifest variablesByKind [CardSkinKind] → ㉔",
-			"CardSkinManifest cards [CardSkinKind] → ㉔",
+		expect(pending).toEqual([]);
+	});
+
+	// ㉔e:卡种键住的地方只剩皮肤包清单的 `cards`,它不迁、整份拒收(格式版本 1 → 2);
+	// 设置里的 per-kind 样式整个并进了 `cards`(见 card-moves.ts),不再有按卡种键的记录。
+	// 验红:把 keyed-records.ts 里那条的 `kind: "rejected"` 改回 pending / 删掉那条,这条红。
+	it("卡种键现存一处:皮肤包清单的 cards,登记为「整份拒收」并写明理由", () => {
+		const cardKindEntries = KEYED_RECORD_ENTRIES.filter((entry) => entry.vocabulary === "CardKind");
+		expect(cardKindEntries.map((entry) => `${entry.root} ${entry.path}`)).toEqual([
+			"CardSkinManifest cards",
 		]);
+		const handledBy = cardKindEntries[0]?.handledBy;
+		expect(handledBy?.kind).toBe("rejected");
+		expect(handledBy?.kind === "rejected" ? handledBy.note.length : 0).toBeGreaterThan(0);
 	});
 });

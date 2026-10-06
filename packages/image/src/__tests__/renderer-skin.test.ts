@@ -13,7 +13,7 @@
  * 每条的验红方式都写在用例里 —— 「守卫只钉形状不钉性质」那一族的防身符。
  */
 
-import type { CardSkinKind, CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
+import type { CardKind, CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_LIMITS,
 	DEFAULT_CARD_SKIN,
@@ -97,7 +97,7 @@ function makePuppeteer(height = 400) {
 interface Harness {
 	renderer: ImageRenderer;
 	captured: string[];
-	fallbacks: Array<{ skinId: string; kind: CardSkinKind; reason: string }>;
+	fallbacks: Array<{ skinId: string; kind: CardKind; reason: string }>;
 }
 
 function makeHarness(extra: Partial<ImageRendererOptions> = {}, height = 400): Harness {
@@ -484,7 +484,7 @@ describe("ImageRenderer 皮肤回落", () => {
 	it("皮肤里没有这种卡 → 回落,原因说得出是哪一种缺", async () => {
 		const noLive: CardSkinManifest = {
 			...DEFAULT_CARD_SKIN,
-			cards: { dynamic: DEFAULT_CARD_SKIN.cards.dynamic },
+			cards: { post: DEFAULT_CARD_SKIN.cards.post },
 		};
 		const h = makeHarness({ resolveCardSkin: () => noLive });
 		await liveCard(h.renderer, "only-dynamic");

@@ -4,8 +4,7 @@ import { z } from "zod";
 import { extrasRecord } from "../constants";
 import { CardSkinIdSchema, CardSkinKnobOverridesSchema } from "./card-skin";
 import {
-	CardStyleByKindSchema,
-	CardStylePartialSchema,
+	CardsOverridesSchema,
 	ContentFiltersPartialSchema,
 	EXTRA_KEYS,
 	FEATURE_KEYS,
@@ -148,9 +147,8 @@ export const SubscriptionOverridesSchema = z.object({
 	membership: MembershipSettingsPartialSchema.optional(),
 	templates: TemplateBundlePartialSchema.optional(),
 	ai: AIOverrideSchema.optional(),
-	cardStyle: CardStylePartialSchema.optional(),
-	// 按卡片类型的样式覆盖(可选);叠在该 UP 的 cardStyle 基准之上。见 resolveCardStyleForKind。
-	cardStyleByKind: CardStyleByKindSchema.optional(),
+	// 卡片设置的覆盖(㉔e):只有直播封面能按订阅覆盖。
+	cards: CardsOverridesSchema.optional(),
 	// 这个 UP 单独用哪套卡片皮肤(ADR-0014 决策 17:per-UP = 选皮肤 + 变量覆盖,不再
 	// 有版式补丁)。缺 = 跟全局。
 	cardSkin: CardSkinIdSchema.optional(),

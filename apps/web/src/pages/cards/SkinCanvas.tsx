@@ -28,7 +28,7 @@
  * 用 `realGridPatch` 换回真行号;行号列上印的仍是真行号,检查器里那个数字才对得上。
  */
 
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardKind, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinBuiltinBlock } from "@bilibili-notify/internal";
 import {
 	CARD_PREVIEW_SCENES,
@@ -95,7 +95,7 @@ export type SkinSelection =
 const STACK_OFFSET_X = 8;
 const STACK_SINK_Y = 4;
 
-type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
+type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 type Block = Card["blocks"][number];
 
 /** 画布交回去的位置改动。与检查器那几个数字框走同一个口(`setBlockGrid`)。 */
@@ -119,7 +119,7 @@ export function SkinCanvas({
 	rowHeights,
 	onHover,
 }: {
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 这张卡的定义。`undefined` = 这套皮肤没定义这种卡(出图时跟着出厂默认)。 */
 	card: Card | undefined;
 	selection: SkinSelection;
@@ -387,7 +387,7 @@ function BlockCatalogue({
 	onPick,
 	onPickCustom,
 }: {
-	kind: CardSkinKind;
+	kind: CardKind;
 	used: Set<string>;
 	onPick: (builtin: string) => void;
 	onPickCustom?: () => void;
@@ -809,7 +809,7 @@ function CanvasBlock({
 	onHover,
 	drag,
 }: {
-	kind: CardSkinKind;
+	kind: CardKind;
 	block: Block;
 	/** 它压着几个块。0 = 没压着谁(被别人压着不影响它怎么画,它停在自己的格子上)。 */
 	covers: number;
@@ -974,7 +974,7 @@ function CanvasBlock({
  * `scenes`)是 `null`。场名照 `CARD_PREVIEW_SCENES` 印,目录里指着不存在的场由 internal
  * 那边的守卫拦,这儿不再报。
  */
-function sceneMarkOf(kind: CardSkinKind, meta: CardSkinBuiltinBlock): string | null {
+function sceneMarkOf(kind: CardKind, meta: CardSkinBuiltinBlock): string | null {
 	if (!meta.scenes) return null;
 	const labels = meta.scenes.map(
 		(id) => CARD_PREVIEW_SCENES[kind].find((sc) => sc.id === id)?.label ?? id,

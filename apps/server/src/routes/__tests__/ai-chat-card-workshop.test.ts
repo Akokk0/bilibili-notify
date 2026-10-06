@@ -210,9 +210,9 @@ describe("卡片工坊的装配", () => {
 	it("截图口接到了 look_card 上", async () => {
 		const { app, shot } = await makeDeps();
 		const conv = await open(app, CARD);
-		H.calls = [{ name: T.lookCard, args: { skin: DEFAULT_CARD_SKIN_ID, kind: "sc" } }];
+		H.calls = [{ name: T.lookCard, args: { skin: DEFAULT_CARD_SKIN_ID, kind: "superchat" } }];
 		await say(app, conv.id);
-		expect(shot).toHaveBeenCalledWith(DEFAULT_CARD_SKIN_ID, "sc");
+		expect(shot).toHaveBeenCalledWith(DEFAULT_CARD_SKIN_ID, "superchat");
 	});
 });
 
@@ -263,12 +263,12 @@ describe("落盘", () => {
 		const id = created[0].id;
 
 		H.calls = [
-			{ name: T.writeCard, args: { skin: id, kind: "sc", width: 400, blocks: [] } },
+			{ name: T.writeCard, args: { skin: id, kind: "superchat", width: 400, blocks: [] } },
 			{ name: T.writeCard, args: { skin: id, kind: "live", width: 600, blocks: [COVER] } },
 		];
 		const second = await say(app, conv.id);
 		const reply = second.events.find((e) => e.event === "done")?.data.reply;
-		expect(reply.cardSkins).toEqual([{ id, kinds: ["sc", "live"] }]);
+		expect(reply.cardSkins).toEqual([{ id, kinds: ["superchat", "live"] }]);
 	});
 
 	it("没碰皮肤的回复不带这个字段", async () => {

@@ -92,7 +92,7 @@ describe("工具名覆盖", () => {
 
 	it("卡片工坊的小条写清动的是哪张卡", () => {
 		expect(toolLabel("write_card", { skin: "abc", kind: "live" })).toBe("写卡片「直播卡」");
-		expect(toolLabel("set_block", { skin: "abc", kind: "sc", block: "amount" })).toBe(
+		expect(toolLabel("set_block", { skin: "abc", kind: "superchat", block: "amount" })).toBe(
 			"改卡片的块「amount」",
 		);
 	});

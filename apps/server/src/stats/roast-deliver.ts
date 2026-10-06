@@ -178,7 +178,7 @@ export async function buildRoastPayload(
 	const text = roastPushText(opts.kind, opts.result, opts.days, upMeta);
 
 	const renderer = deps.runtime.engines?.imageRenderer ?? null;
-	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cardStyle.enabled;
+	const imageWanted = renderer !== null && deps.store.getGlobals().defaults.cards.enabled;
 	if (!imageWanted || !renderer) return { mode: "text", payload: { kind: "text", text }, text };
 
 	// 锐评卡与词云卡同源:不属于任何单个 UP,吃的是全局那套皮肤(ADR-0014)。

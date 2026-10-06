@@ -14,8 +14,8 @@ import type {
 	CardSkinManifestResponse,
 	CardSkinPreviewResponse,
 } from "@bilibili-notify/contract";
-import type { CardSkinKind } from "@bilibili-notify/internal";
-import { CARD_SKIN_KIND_NAMES, CARD_SKIN_KINDS } from "@bilibili-notify/internal/constants";
+import type { CardKind } from "@bilibili-notify/internal";
+import { CARD_KIND_NAMES, CARD_KINDS } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ErrorNote,
@@ -38,7 +38,7 @@ const VIEW_H = 460;
 /** 量不到可用宽度时(首帧、jsdom 里没有 ResizeObserver)的兜底。 */
 const FALLBACK_WIDTH = 600;
 
-const KIND_TABS = CARD_SKIN_KINDS.map((id) => ({ id, label: CARD_SKIN_KIND_NAMES[id] }));
+const KIND_TABS = CARD_KINDS.map((id) => ({ id, label: CARD_KIND_NAMES[id] }));
 
 export function CardSkinPreviews({ touches }: { touches: readonly AiCardSkinTouchDTO[] }) {
 	return (
@@ -54,7 +54,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 	const list = useCardSkinList();
 	const skin = list.data?.skins.find((s) => s.id === touch.id);
 	const inUse = list.data?.active === touch.id;
-	const [kind, setKind] = useState<CardSkinKind>(touch.kinds[0] ?? CARD_SKIN_KINDS[0]);
+	const [kind, setKind] = useState<CardKind>(touch.kinds[0] ?? CARD_KINDS[0]);
 
 	const preview = useQuery({
 		queryKey: ["ai-chat", "card-skin-preview", touch.id, kind, skin?.updatedAt ?? 0],
@@ -118,7 +118,7 @@ function CardSkinPreviewBlock({ touch }: { touch: AiCardSkinTouchDTO }) {
 								width={preview.data.width}
 								usable={measured ?? FALLBACK_WIDTH}
 								fallbackHeight={VIEW_H}
-								title={`「${skin?.name ?? touch.id}」的${CARD_SKIN_KIND_NAMES[kind]}`}
+								title={`「${skin?.name ?? touch.id}」的${CARD_KIND_NAMES[kind]}`}
 							/>
 						) : preview.isError ? (
 							<ErrorNote size="sm" className="w-full">

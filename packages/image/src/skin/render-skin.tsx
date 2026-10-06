@@ -25,9 +25,9 @@ import {
 	CARD_SKIN_RANKED_KINDS,
 	CARD_SKIN_SELF_HOOK,
 	CARD_SKIN_VARIABLES,
+	type CardKind,
 	type CardSkinBlock,
 	type CardSkinCard,
-	type CardSkinKind,
 	type CardSkinKnob,
 	type CardSkinKnobOverrides,
 	type CardSkinManifest,
@@ -60,17 +60,17 @@ export const BLOCKED_IMG_PLACEHOLDER =
 	"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 /** 每种卡的块表(键名对齐 `CARD_SKIN_BUILTIN_BLOCKS`)。 */
-const BLOCK_TABLES: Record<CardSkinKind, Record<string, BlockRenderer<never>>> = {
+const BLOCK_TABLES: Record<CardKind, Record<string, BlockRenderer<never>>> = {
 	live: LIVE_BLOCKS,
-	dynamic: POST_BLOCKS,
-	sc: SUPERCHAT_BLOCKS,
-	guard: MEMBERSHIP_BLOCKS,
+	post: POST_BLOCKS,
+	superchat: SUPERCHAT_BLOCKS,
+	membership: MEMBERSHIP_BLOCKS,
 	roastBoard: ROAST_BOARD_BLOCKS,
 	roastSolo: ROAST_SOLO_BLOCKS,
 	wordcloud: WORDCLOUD_BLOCKS,
-} as unknown as Record<CardSkinKind, Record<string, BlockRenderer<never>>>;
+} as unknown as Record<CardKind, Record<string, BlockRenderer<never>>>;
 
-export interface SkinRenderOptions<K extends CardSkinKind = CardSkinKind> {
+export interface SkinRenderOptions<K extends CardKind = CardKind> {
 	kind: K;
 	/** 该卡种的皮肤条目(已由 server 清洗 / 校验过)。 */
 	card: CardSkinCard;
@@ -169,7 +169,7 @@ function translateRootCss(css: string): string {
 const CUSTOM_HTML_RE = /src="([^"]*)"|\{([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\}/g;
 
 /** 该卡种里这个字段是不是图片类型 —— 只有图片类型才准进 `src`(ADR-0014 决策 12)。 */
-function isImageField(kind: CardSkinKind, path: string): boolean {
+function isImageField(kind: CardKind, path: string): boolean {
 	return CARD_SKIN_FIELDS[kind].some((f) => f.path === path && f.type === "image");
 }
 
@@ -183,7 +183,7 @@ function isImageField(kind: CardSkinKind, path: string): boolean {
  */
 function renderCustomHtml(
 	html: string,
-	kind: CardSkinKind,
+	kind: CardKind,
 	data: CardData,
 	resolveAsset?: (name: string) => string | undefined,
 ): string {
@@ -243,7 +243,7 @@ function frameVariables(props: unknown): string {
  * props 里传 `layout`,实际是钉死在出厂默认版式上:换皮肤不跟,迁移过自己版式的也拿不回来。
  */
 function blockPropsOf(ctx: AssembleCtx, props: unknown): unknown {
-	if (ctx.kind !== "dynamic") return props;
+	if (ctx.kind !== "post") return props;
 	const p = props as PostCardView;
 	return {
 		node: p.node,
@@ -327,7 +327,7 @@ function cellStyle(block: CardSkinBlock, row: number): string {
  *
  * (`z` 不一样:内层的 `z-index` 只在自己那一格里排序,压不过隔壁块,所以它必须在外层。)
  */
-function sizedHeight(kind: CardSkinKind, block: CardSkinBlock): string {
+function sizedHeight(kind: CardKind, block: CardSkinBlock): string {
 	const { rowSpan } = block.grid;
 	const sized =
 		rowSpan !== undefined &&
@@ -405,7 +405,7 @@ function wrapCell(id: string, style: string, inner: VNode): VNode {
  * 也得记上 —— 漏了它的规则就只有内层没样式。
  */
 interface AssembleCtx {
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 这张卡的版式。**只有这一份** —— 出图端没有形态,每一层拿的都是它。 */
 	card: CardSkinCard;
 	resolveAsset?: (name: string) => string | undefined;
@@ -427,7 +427,7 @@ function placeBlocks(ctx: AssembleCtx, props: unknown): VNode[] {
 	const { kind, card } = ctx;
 	// 契约数据每层各算一份:`showIf` 与这一层所有自定义块的占位符共用它。(重载签名按 kind
 	// 分支,这里 kind 是运行时值,按同一份实现的宽签名调。)
-	const data = (buildCardData as (k: CardSkinKind, p: unknown) => CardData)(kind, props);
+	const data = (buildCardData as (k: CardKind, p: unknown) => CardData)(kind, props);
 	const table = BLOCK_TABLES[kind] as Record<string, BlockRenderer<unknown>>;
 	const blockProps = blockPropsOf(ctx, props);
 
@@ -510,16 +510,14 @@ function placeBlocks(ctx: AssembleCtx, props: unknown): VNode[] {
  * 档位卡的有效档位(㉔d):醒目留言用视图上夹进 1–6 的 `rank`,会员用视图的 `rank`;**没有真档位**(不是正整数,
  * 会员没有 rank 的档是 0)与不是档位卡的一律 `undefined`,不写 `data-rank`。
  */
-function rankOf(kind: CardSkinKind, props: unknown): number | undefined {
+function rankOf(kind: CardKind, props: unknown): number | undefined {
 	if (!(CARD_SKIN_RANKED_KINDS as readonly string[]).includes(kind)) return undefined;
 	const rank = (props as { rank?: unknown } | null)?.rank;
 	return typeof rank === "number" && Number.isInteger(rank) && rank > 0 ? rank : undefined;
 }
 
 /** 按皮肤装配一张卡:块铺成网格,外面套这张卡的外框。 */
-export function renderSkinnedCard<K extends CardSkinKind>(
-	o: SkinRenderOptions<K>,
-): SkinRenderResult {
+export function renderSkinnedCard<K extends CardKind>(o: SkinRenderOptions<K>): SkinRenderResult {
 	const { kind, card } = o;
 	const { props } = o;
 	const ctx: AssembleCtx = {
@@ -563,7 +561,7 @@ export function renderSkinnedCard<K extends CardSkinKind>(
 // ── 一整张卡的 HTML ──────────────────────────────────────────────────────────
 
 /** 这份清单里该卡种的条目;没有就回落出厂默认皮肤的同一种卡。 */
-export function cardOfManifest(manifest: CardSkinManifest, kind: CardSkinKind): CardSkinCard {
+export function cardOfManifest(manifest: CardSkinManifest, kind: CardKind): CardSkinCard {
 	// biome-ignore lint/style/noNonNullAssertion: 出厂默认皮肤七种卡齐全,是最后一道回落
 	return manifest.cards[kind] ?? DEFAULT_CARD_SKIN.cards[kind]!;
 }
@@ -592,7 +590,7 @@ export interface SkinCardHtmlOptions {
  *
  * 卡宽取皮肤定的 `card.width`,不再是写死的 600 / 430 / 290 / 720。
  */
-export async function renderCardWithSkin<K extends CardSkinKind>(
+export async function renderCardWithSkin<K extends CardKind>(
 	kind: K,
 	props: CardPropsByKind[K],
 	manifest: CardSkinManifest,

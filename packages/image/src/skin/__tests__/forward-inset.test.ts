@@ -48,7 +48,7 @@ const customBlock = (id: string, html: string, row: number): CardSkinCard["block
 
 async function render(blocks: CardSkinCard["blocks"]): Promise<Document> {
 	const { vnode } = renderSkinnedCard({
-		kind: "dynamic",
+		kind: "post",
 		card: { width: 600, blocks },
 		props,
 	});

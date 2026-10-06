@@ -39,7 +39,6 @@ import {
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	CardKind,
-	CardSkinKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
 	Disposable,
@@ -59,7 +58,6 @@ import type {
 	PushTarget,
 	Subscription,
 	SubscriptionOp,
-	SubscriptionOverrides,
 	TemplateBundle,
 } from "@bilibili-notify/internal";
 import {
@@ -69,7 +67,6 @@ import {
 	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
-	resolveCardStyleForKind,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import {
@@ -289,7 +286,7 @@ export interface CreateEnginesOptions {
 		/** 包内资产名 → data URL。 */
 		asset: (skinId: string, name: string) => Promise<string | undefined>;
 		/** 出图回落了。宿主负责去重与「怎么让主人看见」。 */
-		onFallback: (info: { skinId: string; kind: CardSkinKind; reason: string }) => void;
+		onFallback: (info: { skinId: string; kind: CardKind; reason: string }) => void;
 	};
 }
 
@@ -553,7 +550,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			dynamicCron: settingsOf(opts.configStore).dynamicCron,
 			dynamicVideoUrlToBV: false,
 			imageGroup: globals().defaults.imageGroup,
-			imageEnabled: globals().defaults.cardStyle.enabled,
+			imageEnabled: globals().defaults.cards.enabled,
 			aiEnabled: globals().defaults.ai.enabled,
 			aiWebSearch: globals().defaults.ai.search.engines.dynamic,
 			dynamicTemplate: globals().defaults.templates.post,
@@ -623,7 +620,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 经 live.updateConfig → setStopwords 热更)。per-UP 覆盖另经 SubItemView 在
 			// dispatch 时过滤。
 			wordcloudStopWords: g.defaults.templates.wordcloudStopWords,
-			imageEnabled: g.defaults.cardStyle.enabled,
+			imageEnabled: g.defaults.cards.enabled,
 			aiEnabled: g.defaults.ai.enabled,
 			aiWebSearch: g.defaults.ai.search.engines.live,
 			guardTemplate: guardTemplateOf(g.defaults.templates),
@@ -637,7 +634,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				customLiveEnd: g.defaults.templates.liveEnd,
 			},
 			// 无覆盖的 UP 靠它轮换全局默认直播封面(独立端专属,见 resolvedCardStyle)。
-			defaultLiveCoverImages: g.defaults.cardStyle.liveCoverImages,
+			defaultLiveCoverImages: g.defaults.cards.liveCoverImageIds,
 		};
 	};
 
@@ -758,12 +755,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
 				settings: (sub) => liveWorkSettings(sub, globals()),
-				// 按种类 ?? 基准,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
+				// 订阅的封面 ?? 全局的,再轮一张自定义封面 —— 与 B 站的直播间同一份规矩;游标键跟着人走(决策 73)。
 				cardStyle: (sub, settings) => {
 					const identity = subscriptionIdentityOf(sub);
 					return rotateLiveCover(
-						settings.customCardStyleByKind?.live ?? settings.customCardStyle,
-						globals().defaults.cardStyle.liveCoverImages,
+						settings.customCardStyle,
+						globals().defaults.cards.liveCoverImageIds,
 						pickExistingCardBg,
 						`${identity.sourceKey}:${identity.externalId}:live-cover`,
 					);
@@ -772,7 +769,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 				liveImages,
 				sendFor: (id) => boundLivePush(bindSubscriptionPush(push, id)),
-				renderer: () => (globals().defaults.cardStyle.enabled ? imageRenderer : null),
+				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
 				reportProblem: (problem) => opts.extensionReportProblem?.(problem),
 			}),
 		);
@@ -891,7 +888,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		config: g.linkParsing,
 		// 链接卡没有 UP 可言,吃的就是全局那套皮肤(与推送动态卡在没有 per-UP 覆盖时同源)。
 		cardSkin: g.defaults.cardSkin,
-		style: resolveDynamicCardStyle(g.defaults, null),
+		// 动态卡没有按订阅的封面可言:链接卡就是「没有样式覆盖」(渲染器逐字段回退自己的全局配置)。
+		style: { enable: false } as const,
 	});
 	let linkCard = linkCardViewOf(initialGlobals);
 	// 逐群答案从默认行 + 例外 + 目标表 + 连接表算出来,三者任一变了都重算(见接口上的说明)。
@@ -943,7 +941,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 				const aiChanged = !eq(prev.defaults.ai, g.defaults.ai);
 				const imageGroupChanged = !eq(prev.defaults.imageGroup, g.defaults.imageGroup);
-				const cardStyleChanged = !eq(prev.defaults.cardStyle, g.defaults.cardStyle);
+				const cardStyleChanged = !eq(prev.defaults.cards, g.defaults.cards);
 				const scheduleChanged = !eq(prev.defaults.schedule, g.defaults.schedule);
 				// 直播拆键(⑬d):启动补报与周期间隔从 schedule 里搬出来各成一段,热更的门一并跟着。
 				const liveSettingsChanged =
@@ -1204,7 +1202,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return {
 				dynamic: true,
 				live: liveReady,
-				image: imageRenderer !== null && g.defaults.cardStyle.enabled,
+				image: imageRenderer !== null && g.defaults.cards.enabled,
 				ai: commentary !== null && g.defaults.ai.enabled,
 			};
 		},
@@ -1559,7 +1557,7 @@ function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverrid
  * (背景图归皮肤自己的 `image` 旋钮)。
  */
 function cardStyleToColorOptions(s: {
-	liveCoverImages?: string[];
+	liveCoverImageIds?: string[];
 }): LiveSubView["customCardStyle"] {
 	return {
 		enable: true,
@@ -1577,30 +1575,9 @@ function cardStyleToColorOptions(s: {
 		// 读者;想换字体请拧那套皮肤的字体旋钮。
 		//
 		// 直播封面(独立端专属,仅 live 卡消费)。
-		liveCoverImage: s.liveCoverImages?.[0],
-		liveCoverImages: s.liveCoverImages,
+		liveCoverImage: s.liveCoverImageIds?.[0],
+		liveCoverImages: s.liveCoverImageIds,
 	};
-}
-
-/**
- * 折算 SubItemView.customCardStyleByKind:为「真有 per-kind 覆盖」的 kind(全局或 UP 的
- * cardStyleByKind 设了该 kind)emit 完整解析样式(resolveCardStyleForKind),无覆盖的 kind
- * 省略 → 引擎走基准 customCardStyle / 渲染器全局 config 兜底(保持热更)。
- */
-function buildCardStyleByKind(
-	defaults: GlobalDefaults,
-	overrides: SubscriptionOverrides,
-	kinds: readonly CardKind[],
-): LiveSubView["customCardStyleByKind"] {
-	const out: NonNullable<LiveSubView["customCardStyleByKind"]> = {};
-	for (const kind of kinds) {
-		const hasKindOverride =
-			defaults.cardStyleByKind?.[kind] !== undefined ||
-			overrides.cardStyleByKind?.[kind] !== undefined;
-		if (!hasKindOverride) continue;
-		out[kind] = cardStyleToColorOptions(resolveCardStyleForKind(defaults, overrides, kind));
-	}
-	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** B 站引擎说的 uid → 订阅身份(B 站的外部 id 就是 uid)。 */
@@ -1643,27 +1620,6 @@ export function buildDynamicSubsView(
  * 全局值合进 eff 伪装成 per-UP,而 dynamicSubManager 快照不刷 → 全局改了 dynamic 端
  * 永远沿用旧值。
  */
-/**
- * 动态卡的生效样式:有 dynamic per-kind 覆盖(全局或 UP)→ 用完整解析样式;否则维持
- * 原行为(per-UP 基准折算 ? styled : enable:false → 引擎走渲染器全局兜底,保持热更)。
- * `overrides` 传 null = 全局作用域。
- *
- * 推送的动态卡(per-UP 视图)与群里贴链接出的那张卡都从这里拿 —— 各算一份的话,主人在
- * 卡片页给「动态」这一类调的样式只有推送卡认,版式那半边就曾经这样漏过一回。
- */
-export function resolveDynamicCardStyle(
-	defaults: GlobalDefaults,
-	overrides: SubscriptionOverrides | null,
-): NonNullable<DynamicSubsView[string]["customCardStyle"]> {
-	const hasDynamicKind =
-		defaults.cardStyleByKind?.dynamic !== undefined ||
-		overrides?.cardStyleByKind?.dynamic !== undefined;
-	if (hasDynamicKind) {
-		return cardStyleToColorOptions(resolveCardStyleForKind(defaults, overrides, "dynamic"));
-	}
-	return overrides?.cardStyle ? cardStyleToColorOptions(overrides.cardStyle) : { enable: false };
-}
-
 export function buildDynamicSubViewSingle(
 	sub: Subscription,
 	subRuntimeStore: SubRuntimeStore,
@@ -1706,7 +1662,8 @@ export function dynamicWorkSettings(
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): DynamicWorkSettings {
 	return {
-		customCardStyle: resolveDynamicCardStyle(globals.defaults, sub.overrides),
+		// 作品卡不读直播封面,样式覆盖一律「没有」:渲染器逐字段回退自己的全局配置,随全局热更。
+		customCardStyle: { enable: false },
 		filter: sub.overrides.filters ? eff.filters : undefined,
 		aiOverride: resolveAiOverride(sub, globals.defaults),
 		imageGroupEnable: sub.overrides.imageGroup?.enable,
@@ -1758,7 +1715,7 @@ function buildLiveSubsView(
 
 /**
  * 一条订阅折好的**直播设置** —— 开播 / 正在直播 / 下播三张卡共用的那几格(ADR-0019 决策 65 / 67):
- * 两个特性开关、卡片样式(基准 + 按种类)、皮肤、消息版式、三句文案模板,以及推送频率 / 重启补推 /
+ * 两个特性开关、卡片样式(订阅的直播封面)、皮肤、消息版式、三句文案模板,以及推送频率 / 重启补推 /
  * 断流接续这几格按 UP 折好的值。
  */
 export type LiveWorkSettings = Pick<
@@ -1767,7 +1724,6 @@ export type LiveWorkSettings = Pick<
 	| "liveStreaming"
 	| "liveEnd"
 	| "customCardStyle"
-	| "customCardStyleByKind"
 	| "cardSkin"
 	| "cardSkinKnobs"
 	| "messageLayout"
@@ -1783,14 +1739,12 @@ export type LiveWorkSettings = Pick<
  * 与拓展订阅的直播都从这里拿,别抄第二份 —— 与 {@link dynamicWorkSettings} 同一个道理:两份的话主人给某个
  * 抖音号换的文案 / 版式 / 推送频率,迟早有一格只有 B 站那头认。
  *
- * `cardKinds`:为哪几类卡折按种类的样式。B 站的直播引擎还要出 SC / 上舰卡(`live` / `sc` / `guard`);
- * 拓展订阅只出直播卡(缺省 `live`)。`eff` 给了就不再折一遍。
+ * `eff` 给了就不再折一遍。
  */
 export function liveWorkSettings(
 	sub: Subscription,
 	globals: GlobalConfig,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
-	cardKinds: readonly CardKind[] = ["live"],
 ): LiveWorkSettings {
 	return {
 		// 特性布尔 = features.X(source-side gate)。routing 由推送层 BilibiliPush 在 broadcastToFeature
@@ -1802,12 +1756,9 @@ export function liveWorkSettings(
 		// customCardStyle 只在真有 per-UP override 时生成(对齐 dynamic 端 buildDynamicSubsView 同名
 		// 字段)。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
 		// undefined`)自动传 undefined → ImageRenderer 走 this.config 兜底,跟全局 hot-reload 同步。
-		customCardStyle: sub.overrides.cardStyle
-			? cardStyleToColorOptions(sub.overrides.cardStyle)
+		customCardStyle: sub.overrides.cards?.liveCoverImageIds
+			? cardStyleToColorOptions(sub.overrides.cards)
 			: { enable: false },
-		// per-kind 样式:仅为真有 per-kind 覆盖的 kind emit 完整解析样式;无覆盖的 kind 省略 → 推送点
-		// 回退基准 customCardStyle。
-		customCardStyleByKind: buildCardStyleByKind(globals.defaults, sub.overrides, cardKinds),
 		// Per-UP 调度(per-UP ?? 全局,resolve 已折算)。B 站:已活跃 listener 通过 LiveScopedChange 同步
 		// 增量更新(`subscriptionOpsToLive` 在 update 分支把这些字段一并带上,LiveEngine.applyOps
 		// Object.assign 后即刻生效;`liveStreaming` 开关或间隔变化时 engine 额外 rearm 一次 setInterval)。
@@ -1861,7 +1812,7 @@ export function buildLiveSubViewSingle(
 		target: eff.routing,
 		// 开播 / 正在直播 / 下播三张卡共用的那几格(与拓展订阅的直播同一份)。dynamic 卡不经 LiveEngine
 		// (走 DynamicEngine),所以按种类的样式只折 live / sc / guard。
-		...liveWorkSettings(sub, globals, eff, ["live", "sc", "guard"]),
+		...liveWorkSettings(sub, globals, eff),
 		// Per-UP 门槛 / AI;adapter 在 add 路径上灌入(门槛是折好的生效值,没配 = 不设门槛),room-session 在 SC / guard /
 		// liveSummary 调用点先取 sub 值,缺失时回退全局。aiOverride 只在真有 per-UP override 时生成 —— 无 override →
 		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
@@ -1993,7 +1944,6 @@ function subscriptionOpsToLive(
 						aiOverride: view.aiOverride,
 						wordcloudStopWords: view.wordcloudStopWords,
 						customCardStyle: view.customCardStyle,
-						customCardStyleByKind: view.customCardStyleByKind,
 						customLiveMsg: view.customLiveMsg,
 						guardTemplate: view.guardTemplate,
 						customLiveSummary: view.customLiveSummary,

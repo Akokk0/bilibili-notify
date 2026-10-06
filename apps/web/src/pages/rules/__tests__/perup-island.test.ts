@@ -77,12 +77,12 @@ describe("projectPerUpIsland — schedule/liveStart/liveStreaming/templates/ai �
 });
 
 describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () => {
-	it("cardStyle 不再投影 —— 卡片覆盖已迁到 /cards,改它不进 Rules per-UP 灵动岛", () => {
+	it("cards 不投影 —— 卡片覆盖在 /cards,改它不进 Rules per-UP 灵动岛", () => {
 		const codes = diffCodes(
-			{ cardStyle: { font: "One Sans" } },
-			{ cardStyle: { font: "Two Sans" } },
+			{ cards: { liveCoverImageIds: ["one"] } },
+			{ cards: { liveCoverImageIds: ["two"] } },
 		);
-		expect(codes).not.toContain("font");
+		expect(codes).not.toContain("liveCoverImageIds");
 		expect(codes).toEqual([]);
 	});
 

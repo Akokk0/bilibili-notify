@@ -526,9 +526,10 @@ describe("皮肤渲染器 — 皮肤变量", () => {
 	it("SC / 上舰的档位色注成 --bn-card-tier-color / -end", async () => {
 		const fixture = CARD_FIXTURES.find((f) => f.name === "sc-high");
 		if (!fixture) throw new Error("夹具表里没有 sc-high");
-		const props = (await fixture.build()).props as unknown as SkinRenderOptions<"sc">["props"];
+		const props = (await fixture.build())
+			.props as unknown as SkinRenderOptions<"superchat">["props"];
 		const { vnode } = renderSkinnedCard({
-			kind: "sc",
+			kind: "superchat",
 			card: {
 				width: 290,
 				blocks: [

@@ -77,10 +77,10 @@ describe("data-rank:没有 rank 的会员档、别的卡一律不加", () => {
 	it("会员卡 rank 为 0(没有 rank 的体系)→ 整张卡一个 data-rank 都没有", async () => {
 		const fixture = fixtureOf("guard-captain");
 		const props = (await fixture.build()).props as unknown as Record<string, unknown>;
-		const html = await renderViaDefaultSkin("guard", { ...props, rank: 0 });
+		const html = await renderViaDefaultSkin("membership", { ...props, rank: 0 });
 		expect(html).not.toContain("data-rank");
 		// 对照:同一张卡有 rank 时是有的 —— 上面那条不是因为根本没渲染出东西才绿。
-		const withRank = await renderViaDefaultSkin("guard", { ...props, rank: 2 });
+		const withRank = await renderViaDefaultSkin("membership", { ...props, rank: 2 });
 		expect(withRank).toContain('data-rank="2"');
 	});
 
@@ -100,12 +100,12 @@ const FRAME_RULE = `[data-bn="frame"][data-rank="3"]{outline:2px solid rgb(4,5,6
 
 /** 默认皮肤的醒目留言卡:外框 CSS 追加 {@link FRAME_RULE},`amount` 块 CSS 追加 {@link BLOCK_RULE}。 */
 function skinWithRankRules(): CardSkinManifest {
-	const base = DEFAULT_CARD_SKIN.cards.sc as CardSkinCard;
+	const base = DEFAULT_CARD_SKIN.cards.superchat as CardSkinCard;
 	return {
 		...DEFAULT_CARD_SKIN,
 		cards: {
 			...DEFAULT_CARD_SKIN.cards,
-			sc: {
+			superchat: {
 				...base,
 				css: `${base.css ?? ""}${FRAME_RULE}`,
 				blocks: base.blocks.map((b) =>
@@ -130,7 +130,7 @@ async function scProps(name: string, rank: number): Promise<unknown> {
 describe("data-rank:翻译后的选择器在渲染出的 DOM 上档位对上的选得中、对不上的选不中", () => {
 	it("醒目留言 rank 3:块规则与外框规则各选中自己的那一个元素", async () => {
 		const html = await renderCardWithSkin(
-			"sc",
+			"superchat",
 			(await scProps("sc-low", 3)) as never,
 			skinWithRankRules(),
 		);
@@ -148,7 +148,7 @@ describe("data-rank:翻译后的选择器在渲染出的 DOM 上档位对上的�
 
 	it("rank 1:同一套规则(写的是第 3 档)一个元素都选不中", async () => {
 		const html = await renderCardWithSkin(
-			"sc",
+			"superchat",
 			(await scProps("sc-low", 1)) as never,
 			skinWithRankRules(),
 		);
@@ -159,19 +159,19 @@ describe("data-rank:翻译后的选择器在渲染出的 DOM 上档位对上的�
 	});
 
 	it("没有 rank 的会员档:整张卡没有 data-rank,按档的外框规则一条也选不中", async () => {
-		const guard = DEFAULT_CARD_SKIN.cards.guard as CardSkinCard;
+		const guard = DEFAULT_CARD_SKIN.cards.membership as CardSkinCard;
 		const skin = {
 			...DEFAULT_CARD_SKIN,
 			cards: {
 				...DEFAULT_CARD_SKIN.cards,
-				guard: { ...guard, css: `${guard.css ?? ""}${FRAME_RULE}` },
+				membership: { ...guard, css: `${guard.css ?? ""}${FRAME_RULE}` },
 			},
 		} as CardSkinManifest;
 		const props = (await fixtureOf("guard-captain").build()).props as unknown as Record<
 			string,
 			unknown
 		>;
-		const html = await renderCardWithSkin("guard", { ...props, rank: 0 } as never, skin);
+		const html = await renderCardWithSkin("membership", { ...props, rank: 0 } as never, skin);
 		const doc = docOf(html);
 		expect(doc.querySelectorAll("[data-rank]")).toHaveLength(0);
 		const selectors = rankSelectors(html);

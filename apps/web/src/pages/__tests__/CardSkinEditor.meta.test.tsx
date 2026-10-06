@@ -29,7 +29,7 @@ import { api } from "../../services/api";
 import CardSkinEditor from "../CardSkinEditor";
 
 const MANIFEST = {
-	schemaVersion: 1,
+	schemaVersion: 2,
 	name: "霓虹",
 	author: "阿绫",
 	cards: {

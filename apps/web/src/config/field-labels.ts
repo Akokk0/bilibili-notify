@@ -386,17 +386,7 @@ export const FIELD_LABELS = {
 	},
 
 	// ── 卡片样式 ──────────────────────────────────────────────────────────
-	font: {
-		label: "字体",
-		hint: "字体家族名。渲染那台机器没装这个字体时自动回退到内置兜底链(Microsoft YaHei / Noto Sans CJK / sans-serif)。想用别的字体就把文件传上来。",
-		section: "cardStyle",
-	},
-	fontAsset: {
-		label: "自带字体",
-		hint: "主人上传的字体文件。设了就优先于字体家族名;文件被删掉时静静回退,不会让出图崩。",
-		section: "cardStyle",
-	},
-	liveCoverImages: { label: "直播封面替换", section: "cardStyle" },
+	liveCoverImageIds: { label: "直播封面替换", section: "cardStyle" },
 	// 卡片皮肤(ADR-0014):整套外观住皮肤包里,旧的一维版式编辑器已退役。全局那一档
 	// 由皮肤库当场启用(PUT /api/cards/skins/active),不走草稿;这个 code 只给 per-UP
 	// 的「这个 UP 用哪套」——「跟随全局」= 把 overrides.cardSkin 整个键清掉。

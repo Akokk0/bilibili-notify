@@ -14,7 +14,7 @@
  */
 
 import type { CardSkinShotResponse } from "@bilibili-notify/contract";
-import type { CardSkinKind } from "@bilibili-notify/internal";
+import type { CardKind } from "@bilibili-notify/internal";
 import {
 	Btn,
 	ErrorNote,
@@ -57,7 +57,7 @@ export function SkinPreviewPane({
 	hotCell,
 }: {
 	skinId: string;
-	kind: CardSkinKind;
+	kind: CardKind;
 	scene: string;
 	/** 当前草稿。`null` = 清单还没到。 */
 	manifest: unknown;

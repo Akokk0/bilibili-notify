@@ -14,7 +14,7 @@
  * 不碰真实时钟 —— 所以入参是**异步工厂**(`build()`)而不是一份现成的常量。
  */
 
-import { type CardSkinKind, formatCount } from "@bilibili-notify/internal";
+import { type CardKind, formatCount } from "@bilibili-notify/internal";
 import { htmlToPlain } from "../../html-to-plain";
 import type { LiveCardView } from "../../templates/live-card";
 import { nodeFromPost } from "../../templates/post-node";
@@ -37,7 +37,7 @@ export interface CardFixture {
 	readonly group: string;
 	/** 基准用例的描述,一字照抄原来的 `it(...)`。 */
 	readonly label: string;
-	readonly kind: CardSkinKind;
+	readonly kind: CardKind;
 	/** 现造一份渲染入参。 */
 	readonly build: () => Promise<CardRenderInput>;
 }
@@ -50,8 +50,8 @@ export interface CardFixture {
  * 是皮肤的事(整卡那条路由 `renderSkinnedCard` 自己往 `renderForward` 里递网格装配),
  * 与块级对表无关。
  */
-export function blockPropsOf(kind: CardSkinKind, input: CardRenderInput): unknown {
-	if (kind !== "dynamic") return input.props;
+export function blockPropsOf(kind: CardKind, input: CardRenderInput): unknown {
+	if (kind !== "post") return input.props;
 	return { node: input.props.node, renderForward: (): [] => [] };
 }
 
@@ -360,70 +360,70 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 	{
 		name: "dynamic-av",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-av：视频投稿(大会员名字色 + 投稿标签 + 主视频卡)",
 		build: dynamicInput("dynamic-av"),
 	},
 	{
 		name: "dynamic-draw",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-draw：图文九宫格(12 张 → 9 格 + +3，含动图 / 长图角标) + 话题 + 多件商品",
 		build: dynamicInput("dynamic-draw"),
 	},
 	{
 		name: "dynamic-draw-single",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-draw-single：单张普通比例的图 + 单件商品卡",
 		build: dynamicInput("dynamic-draw-single"),
 	},
 	{
 		name: "dynamic-word",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-word：纯文字(emoji / @ / 话题 / BV / 抽奖 / 外链 + 换行) + 通用卡",
 		build: dynamicInput("dynamic-word"),
 	},
 	{
 		name: "dynamic-forward",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-forward：转发一条视频投稿 + 已结束的预约卡",
 		build: dynamicInput("dynamic-forward"),
 	},
 	{
 		name: "dynamic-article",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-article：专栏(标题 + 5 行截断 + emoji + 转义) + 超长单图",
 		build: dynamicInput("dynamic-article"),
 	},
 	{
 		name: "dynamic-with-additional",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-with-additional：两列图廊 + 可预约的预约卡(含抽奖行)",
 		build: dynamicInput("dynamic-with-additional"),
 	},
 	{
 		name: "dynamic-custom-layout",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-custom-layout：改顺序 + 隐藏互动数 + 末尾分割线被弹掉 + 关联视频卡",
 		build: dynamicInput("dynamic-custom-layout"),
 	},
 	{
 		name: "dynamic-charge-only",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-charge-only：充电专属未充电的占位正文",
 		build: dynamicInput("dynamic-charge-only"),
 	},
 	{
 		name: "dynamic-unrenderable",
 		group: "动态卡",
-		kind: "dynamic",
+		kind: "post",
 		label: "dynamic-unrenderable：「暂时无法渲染」一族，附加内容被清空",
 		build: dynamicInput("dynamic-unrenderable"),
 	},
@@ -431,14 +431,14 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 	{
 		name: "sc-low",
 		group: "醒目留言卡",
-		kind: "sc",
+		kind: "superchat",
 		label: "sc-low：最低档(¥30 → Level1 配色)，留言里的 & < > 与换行都要转义",
 		build: scInput(30, 1, { text: "  主播加油！\n<b>今天也很好听</b> & 明天见  " }),
 	},
 	{
 		name: "sc-high",
 		group: "醒目留言卡",
-		kind: "sc",
+		kind: "superchat",
 		label: "sc-high：最高档(¥2000 → Level6 配色)",
 		build: scInput(2000, 6, {
 			viewerName: "示例大哥",
@@ -448,7 +448,7 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 	{
 		name: "sc-custom-layout",
 		group: "醒目留言卡",
-		kind: "sc",
+		kind: "superchat",
 		label: "sc-custom-layout：改顺序 + 空留言(块收起) + 首尾分割线的抑制与弹出",
 		build: scInput(100, 3, { text: "" }),
 	},
@@ -456,21 +456,21 @@ export const CARD_FIXTURES: readonly CardFixture[] = [
 	{
 		name: "guard-captain",
 		group: "上舰卡",
-		kind: "guard",
+		kind: "membership",
 		label: "guard-captain：舰长(level 3)，徽章在右",
 		build: guardInput(3),
 	},
 	{
 		name: "guard-governor",
 		group: "上舰卡",
-		kind: "guard",
+		kind: "membership",
 		label: "guard-governor：总督(level 1)，另一个观众名",
 		build: guardInput(1, { viewerName: "示例大哥" }),
 	},
 	{
 		name: "guard-badge-left",
 		group: "上舰卡",
-		kind: "guard",
+		kind: "membership",
 		label: "guard-badge-left：提督(level 2)，徽章在左(整列镜像右对齐) + 内容列改顺序 + 分割线",
 		build: guardInput(2),
 	},

@@ -93,6 +93,6 @@ describe("跨行 = 真高度(只对单张图的块)", () => {
 				if (meta.heightFromRows) marked.push(`${kind}.${name}`);
 			}
 		}
-		expect(marked.sort()).toEqual(["dynamic.videoCover", "live.cover"]);
+		expect(marked.sort()).toEqual(["live.cover", "post.videoCover"]);
 	});
 });

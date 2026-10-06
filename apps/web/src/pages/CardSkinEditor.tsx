@@ -16,8 +16,8 @@
 import type { CardSkinManifest } from "@bilibili-notify/contract";
 // 值走**零依赖子路径**:从根入口取值会把 zod 整张 schema 图拽进前端 bundle,而症状只是
 // 产物悄悄胖一圈,任何门禁都是绿的(`internal-entry-conformance.test.ts` 钉着这条)。
-import type { CardSkinKind, GlobalConfig } from "@bilibili-notify/internal";
-import { CARD_PREVIEW_SCENES, CARD_SKIN_KINDS } from "@bilibili-notify/internal/constants";
+import type { CardKind, GlobalConfig } from "@bilibili-notify/internal";
+import { CARD_KINDS, CARD_PREVIEW_SCENES } from "@bilibili-notify/internal/constants";
 import {
 	Btn,
 	ErrorNote,
@@ -96,12 +96,12 @@ const PREVIEW_COL_MAX = 720;
  */
 const INSPECTOR_COL = 380;
 
-/** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_SKIN_KINDS`。 */
-const KIND_META: Record<CardSkinKind, { label: string; icon: keyof typeof Icon }> = {
+/** 七种卡在顶栏 tab 上的中文名与图标。顺序就是 `CARD_KINDS`。 */
+const KIND_META: Record<CardKind, { label: string; icon: keyof typeof Icon }> = {
 	live: { label: "直播", icon: "live" },
-	dynamic: { label: "动态", icon: "dyn" },
-	sc: { label: "SC", icon: "sc" },
-	guard: { label: "上舰", icon: "guard" },
+	post: { label: "动态", icon: "dyn" },
+	superchat: { label: "SC", icon: "sc" },
+	membership: { label: "上舰", icon: "guard" },
 	roastBoard: { label: "锐评榜单", icon: "trophy" },
 	roastSolo: { label: "单人锐评", icon: "feather" },
 	wordcloud: { label: "词云", icon: "sparkle" },
@@ -116,7 +116,7 @@ export default function CardSkinEditor() {
 
 	/** 正在编的那份草稿。`null` = 清单还没到。 */
 	const [draft, setDraft] = useState<CardSkinManifest | null>(null);
-	const [kind, setKind] = useState<CardSkinKind>("live");
+	const [kind, setKind] = useState<CardKind>("live");
 	const [selection, setSelection] = useState<SkinSelection>(null);
 	/**
 	 * 预览框里**量到的**网格(ADR-0018 决策 3):列轨道给画布画列线,行轨道给它印行高。
@@ -275,7 +275,7 @@ export default function CardSkinEditor() {
 
 				<div className="shrink-0">
 					<div className="flex flex-wrap gap-1 rounded-md bg-bn-surface-muted p-1">
-						{CARD_SKIN_KINDS.map((k) => {
+						{CARD_KINDS.map((k) => {
 							const meta = KIND_META[k];
 							const IconComp = Icon[meta.icon];
 							const active = k === kind;

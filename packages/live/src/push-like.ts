@@ -13,7 +13,6 @@
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
 import type {
-	CardKind,
 	ExtraKey,
 	MembershipTemplateBundle,
 	MessageKindLayout,
@@ -175,13 +174,6 @@ export interface SubItemView {
 	extras: PushExtrasLike;
 	target: SubItemTargetLike;
 	customCardStyle: CustomCardStyleLike;
-	/**
-	 * 按卡片类型的样式覆盖(per-kind)。adapter 已用 `resolveCardStyleForKind` 把
-	 * 「全局基准 → 全局类型 → UP 基准 → UP 类型」折算成每 kind 的**完整** colorOptions
-	 * (enable:true);各 generate* 调用点优先取本 kind 的条目,缺失则回退基准
-	 * {@link customCardStyle}。缺省时全部回退基准。
-	 */
-	customCardStyleByKind?: Partial<Record<CardKind, CustomCardStyleLike>>;
 	customLiveMsg: CustomLiveMsgLike;
 	/**
 	 * 这条订阅上 B 站的会员体系(`guard`)的文案(`overrides.templates.membership.guard`,没覆盖就是全局那份,㉓d)。
@@ -259,7 +251,6 @@ export type LiveScopedChange = { scope: "live" } & Partial<
 		| "uname"
 		| "roomId"
 		| "customCardStyle"
-		| "customCardStyleByKind"
 		| "customLiveMsg"
 		| "guardTemplate"
 		| "customLiveSummary"

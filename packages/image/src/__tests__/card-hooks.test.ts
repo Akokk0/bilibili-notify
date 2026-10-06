@@ -22,11 +22,7 @@
  * 目录里声明的根挂点若没真挂上,默认皮肤写的那段外观就一条都选不中。
  */
 
-import {
-	CARD_SKIN_BUILTIN_BLOCKS,
-	CARD_SKIN_KINDS,
-	type CardSkinKind,
-} from "@bilibili-notify/internal";
+import { CARD_KINDS, CARD_SKIN_BUILTIN_BLOCKS, type CardKind } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vite-plus/test";
@@ -40,15 +36,15 @@ import type { BlockRenderer } from "../blocks/types";
 import { WORDCLOUD_BLOCKS } from "../blocks/wordcloud";
 import { blockPropsOf, CARD_FIXTURES } from "./fixtures/card-fixtures";
 
-const TABLES: Record<CardSkinKind, Record<string, BlockRenderer<never>>> = {
+const TABLES: Record<CardKind, Record<string, BlockRenderer<never>>> = {
 	live: LIVE_BLOCKS,
-	dynamic: POST_BLOCKS,
-	sc: SUPERCHAT_BLOCKS,
-	guard: MEMBERSHIP_BLOCKS,
+	post: POST_BLOCKS,
+	superchat: SUPERCHAT_BLOCKS,
+	membership: MEMBERSHIP_BLOCKS,
 	roastBoard: ROAST_BOARD_BLOCKS,
 	roastSolo: ROAST_SOLO_BLOCKS,
 	wordcloud: WORDCLOUD_BLOCKS,
-} as unknown as Record<CardSkinKind, Record<string, BlockRenderer<never>>>;
+} as unknown as Record<CardKind, Record<string, BlockRenderer<never>>>;
 
 /**
  * 「到此为止,不再往里看」的挂点。
@@ -98,7 +94,7 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
  * 「SC to」「主播胶囊」里的小头像挂点不再出现在任何夹具里。这两种卡的输入对别的平台开放头像(图库引用,3a 起
  * 有来源会给),所以补一份带头像地址的视图。
  */
-const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }[]>> = {
+const SIDE_PROBES: Partial<Record<CardKind, { name: string; props: unknown }[]>> = {
 	live: [
 		{
 			name: "(旁路探针)拓展直播形状的视图,带头像",
@@ -120,7 +116,7 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			},
 		},
 	],
-	sc: [
+	superchat: [
 		{
 			name: "(旁路探针)带观众与主播头像的视图",
 			props: {
@@ -137,7 +133,7 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			},
 		},
 	],
-	guard: [
+	membership: [
 		{
 			name: "(旁路探针)带观众与主播头像的视图",
 			props: {
@@ -153,7 +149,7 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 			},
 		},
 	],
-	dynamic: [
+	post: [
 		{
 			name: "(旁路探针)拓展作品形状的 node,带头像",
 			props: {
@@ -170,7 +166,7 @@ const SIDE_PROBES: Partial<Record<CardSkinKind, { name: string; props: unknown }
 };
 
 /** 把一种卡的所有夹具(外加旁路探针)逐块渲染一遍,记下每块出现的挂点。 */
-async function collect(kind: CardSkinKind): Promise<BlockHooks[]> {
+async function collect(kind: CardKind): Promise<BlockHooks[]> {
 	const out: BlockHooks[] = [];
 	const table = TABLES[kind] as Record<string, BlockRenderer<unknown>>;
 	const inputs: { name: string; props: unknown }[] = [];
@@ -193,8 +189,8 @@ async function collect(kind: CardSkinKind): Promise<BlockHooks[]> {
 	return out;
 }
 
-const cache = new Map<CardSkinKind, Promise<BlockHooks[]>>();
-function collected(kind: CardSkinKind): Promise<BlockHooks[]> {
+const cache = new Map<CardKind, Promise<BlockHooks[]>>();
+function collected(kind: CardKind): Promise<BlockHooks[]> {
 	const hit = cache.get(kind);
 	if (hit) return hit;
 	const p = collect(kind);
@@ -203,7 +199,7 @@ function collected(kind: CardSkinKind): Promise<BlockHooks[]> {
 }
 
 describe("内置块挂点 — 块里出现的挂点都在目录里", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind}:每块的 data-bn ⊆ CARD_SKIN_BUILTIN_BLOCKS.${kind}[块].hooks`, async () => {
 			const catalogue = CARD_SKIN_BUILTIN_BLOCKS[kind];
 			const strays = (await collected(kind)).flatMap(({ fixture, block, hooks }) =>
@@ -217,7 +213,7 @@ describe("内置块挂点 — 块里出现的挂点都在目录里", () => {
 });
 
 describe("内置块挂点 — 目录里声明的挂点都真被挂上", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind}:每个声明过的挂点至少在一份夹具里出现过`, async () => {
 			const catalogue = CARD_SKIN_BUILTIN_BLOCKS[kind];
 			const seen = new Map<string, Set<string>>();

@@ -98,7 +98,7 @@ describe("PATCH /api/settings 的失败", () => {
 	it("启用卡片渲染但没配 Chrome → 409 not_configured,话里指路(BN_CHROME_PATH)", async () => {
 		const { runtime, patch } = await boot();
 		const before = runtime.configStore.getGlobals();
-		const res = await patch({ defaults: { cardStyle: { enabled: true } } });
+		const res = await patch({ defaults: { cards: { enabled: true } } });
 		expect(res.status).toBe(409);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("not_configured");
@@ -115,7 +115,7 @@ describe("PATCH /api/settings 的失败", () => {
 			},
 		});
 		const before = runtime.configStore.getGlobals();
-		const res = await patch({ defaults: { cardStyle: { enabled: true } } });
+		const res = await patch({ defaults: { cards: { enabled: true } } });
 		expect(res.status).toBe(503);
 		const body = (await res.json()) as { code: string; message: string };
 		expect(body.code).toBe("unavailable");
@@ -128,7 +128,7 @@ describe("PATCH /api/settings 的失败", () => {
 		const { runtime, patch } = await boot(undefined, {
 			page: async () => ({ close: async () => {} }),
 		});
-		const res = await patch({ defaults: { cardStyle: { enabled: true } } });
+		const res = await patch({ defaults: { cards: { enabled: true } } });
 		expect(res.status).toBe(200);
 		await runtime.dispose();
 	});

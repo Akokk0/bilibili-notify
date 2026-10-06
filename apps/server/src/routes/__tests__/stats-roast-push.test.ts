@@ -38,7 +38,7 @@ interface StubOpts {
 	/** 有没有 puppeteer(未装 Chrome 时为 null)。 */
 	renderer?: boolean;
 	/** 全局图片渲染总开关。 */
-	cardStyleEnabled?: boolean;
+	cardsEnabled?: boolean;
 	/** 让渲染抛错,验降级。 */
 	renderThrows?: boolean;
 	/** 让投递失败。 */
@@ -81,7 +81,7 @@ function makeDeps(opts: StubOpts = {}) {
 			getGlobals: () => ({
 				defaults: {
 					ai: { enabled: true },
-					cardStyle: { enabled: opts.cardStyleEnabled ?? true },
+					cards: { enabled: opts.cardsEnabled ?? true, liveCoverImageIds: [] },
 					cardSkin: opts.cardSkin ?? "default",
 				},
 			}),
@@ -188,7 +188,7 @@ describe("POST /roast/push — 图片优先", () => {
 
 describe("POST /roast/push — 降级成文字", () => {
 	it("关掉图片渲染总开关 → 推文字", async () => {
-		const { deps, sendToTarget, generateRoastBoardCard } = makeDeps({ cardStyleEnabled: false });
+		const { deps, sendToTarget, generateRoastBoardCard } = makeDeps({ cardsEnabled: false });
 		const res = await push(createStatsRoute(deps), boardBody());
 
 		expect(((await res.json()) as any).mode).toBe("text");
@@ -219,7 +219,7 @@ describe("POST /roast/push — 降级成文字", () => {
 	});
 
 	it("模型没给周报文本时用结构化数据兜底,绝不推一条空消息", async () => {
-		const { deps, sendToTarget } = makeDeps({ cardStyleEnabled: false });
+		const { deps, sendToTarget } = makeDeps({ cardsEnabled: false });
 		await push(createStatsRoute(deps), boardBody({ result: { ...BOARD, pushText: "" } }));
 
 		const text = (sendToTarget.mock.calls[0] as any)[1].text as string;
@@ -231,7 +231,7 @@ describe("POST /roast/push — 降级成文字", () => {
 	});
 
 	it("单人锐评的兜底文本也走名字", async () => {
-		const { deps, sendToTarget } = makeDeps({ cardStyleEnabled: false });
+		const { deps, sendToTarget } = makeDeps({ cardsEnabled: false });
 		await push(createStatsRoute(deps), {
 			targetId: TARGET,
 			days: 7,

@@ -150,3 +150,9 @@ export const ZERO_PUSH_KINDS = [
 ] as const;
 
 export type ZeroPushKind = (typeof ZERO_PUSH_KINDS)[number];
+
+/** 0.x 卡片设置里按卡种分开存的键(0.12 `CardStyleByKindSchema`):只有 `live` 下的直播封面有人读,别的卡种下的东西丢掉。 */
+export const ZERO_CARD_KIND_KEYS = ["live", "dynamic", "sc", "guard"] as const;
+
+/** 0.x 里唯一内置的卡片皮肤 id。0.x 的卡片皮肤整体不迁(老皮肤格式作废),所以指针只有指它的才留。 */
+export const ZERO_BUILTIN_CARD_SKIN_ID = "default";

@@ -27,6 +27,7 @@ import {
 	HistorySettingsSchema,
 } from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
+import { moveGlobalCards } from "./card-moves.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
@@ -58,12 +59,14 @@ export function migrateGlobals(raw: unknown): unknown {
 
 /**
  * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 会员与醒目留言的搬家(两个直播阈值、
- * 上舰文案,㉓d,`membership-moves.ts`) → 直播拆键 → 历史保留天数换键。设置那一步({@link migrateSettingsFiles})和订阅那一步
+ * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 历史保留天数换键。设置那一步({@link migrateSettingsFiles})和订阅那一步
  * 要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的全局值只有一个读法。
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
 	return moveHistoryRetention(
-		splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+		splitGlobalLiveSettings(
+			moveGlobalCards(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+		),
 	);
 }
 

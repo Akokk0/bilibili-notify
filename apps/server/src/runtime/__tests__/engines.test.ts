@@ -200,7 +200,6 @@ const {
 	liveTypeToFeature,
 	liveTypeAllowsAtAll,
 	buildDynamicSubViewSingle,
-	resolveDynamicCardStyle,
 	buildLiveSubViewSingle,
 	boundLivePush,
 } = await import("../engines.js");
@@ -1418,14 +1417,14 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(cfg.videoTemplate).toBe("🎬 {name} {url}");
 	});
 
-	it("回归:改全局 cardStyle.liveCoverImages → live config 带 defaultLiveCoverImages(无覆盖的 UP 靠它轮换)", () => {
+	it("回归:改全局 cards.liveCoverImageIds → live config 带 defaultLiveCoverImages(无覆盖的 UP 靠它轮换)", () => {
 		// 此前 liveConfig() 没有把全局默认封面廊透传给引擎,导致无 per-UP / per-kind
 		// 覆盖的 UP 永远只渲染第一张,封面配再多张也不轮换。
 		// (背景图从前有一条同构的 `defaultBackgroundImages`;整条链 2026-09-20 删掉。)
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.liveCoverImages = ["a", "b"];
+			g.defaults.cards.liveCoverImageIds = ["a", "b"];
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		const liveCfg = H.live[0].updateConfig.mock.calls.at(-1)?.[0];
@@ -1726,7 +1725,7 @@ describe("createEngines — image 配色热更", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyle.liveCoverImages = ["cover-1"];
+			g.defaults.cards.liveCoverImageIds = ["cover-1"];
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.image[0].updateConfig).toHaveBeenCalled();
@@ -2235,48 +2234,11 @@ describe("createEngines — 消息版式", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 链接卡与推送动态卡问同一处
+// 链接卡的呈现
 //
-// 主人在卡片页给「动态」这一类调样式,推送卡认、链接卡不认 —— 版式那半边已经修过一回
-// (只传版式不传配色),这里把另一半钉住:两种卡的样式解析必须是同一个函数,链接卡
-// 的整份呈现(样式 + 图廊轮换 + 版式)从引擎拿,并且随 config-changed 刷新。
+// 动态卡没有按订阅的样式覆盖(㉔e 起,卡片设置只剩直播封面),链接卡的整份呈现(样式 + 图廊轮换 + 版式)
+// 从引擎拿,并且随 config-changed 刷新。
 // ---------------------------------------------------------------------------
-
-describe("resolveDynamicCardStyle — 推送卡与链接卡同一把尺", () => {
-	it("全局没给「动态」单独调过 → enable:false(走渲染器全局兜底,保持热更)", () => {
-		const g = makeDefaultGlobalConfig();
-		expect(resolveDynamicCardStyle(g.defaults, null)).toEqual({ enable: false });
-	});
-
-	it("全局给「动态」调了样式 → 全局作用域(null)也解析出完整样式", () => {
-		const g = makeDefaultGlobalConfig();
-		// 载体 2026-09-20 从 `font` 换成 `liveCoverImages`:字体已不再往下喂(见
-		// `cardStyleToColorOptions`),拿它当「有内容的样式」会连着这条一起红。测的是解析,不是字体。
-		g.defaults.cardStyleByKind = { dynamic: { liveCoverImages: ["dyn.png"] } } as any;
-		const style = resolveDynamicCardStyle(g.defaults, null);
-		expect(style).toMatchObject({ enable: true, liveCoverImages: ["dyn.png"] });
-		// 与 per-UP 视图走的是同一个函数:没有 UP 覆盖的订阅算出来的必须一模一样。
-		const sub = makeEmptySubscription({
-			id: "s1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const subRt = { get: () => undefined } as any;
-		expect(buildDynamicSubViewSingle(sub, subRt, g).customCardStyle).toEqual(style);
-	});
-
-	it("只有 UP 自己的基准覆盖、没有 per-kind → 折算那份基准", () => {
-		const g = makeDefaultGlobalConfig();
-		const sub = makeEmptySubscription({
-			id: "s1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		sub.overrides.cardStyle = { liveCoverImages: ["up.png"] } as any;
-		expect(resolveDynamicCardStyle(g.defaults, sub.overrides)).toMatchObject({
-			enable: true,
-			liveCoverImages: ["up.png"],
-		});
-	});
-});
 
 describe("createEngines — 链接卡的呈现与开关", () => {
 	it("开关与版式随 config-changed 刷新,不用每条消息整份深拷贝 globals", () => {
@@ -2375,18 +2337,16 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(false);
 	});
 
-	it("配色 = 全局「动态」样式;没调过就 undefined(渲染器全局兜底)", () => {
+	it("链接卡没有样式覆盖可言:配色恒为 undefined(渲染器逐字段回退全局),改全局封面也不带进来", () => {
 		const c = setup();
 		active = c;
 		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
 
 		patchGlobals(c, (g) => {
-			g.defaults.cardStyleByKind = { dynamic: { liveCoverImages: ["dyn.png"] } } as any;
+			g.defaults.cards.liveCoverImageIds = ["cover.png"];
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(c.runtime.linkCardPresentation().colors).toMatchObject({
-			liveCoverImages: ["dyn.png"],
-		});
+		expect(c.runtime.linkCardPresentation().colors).toBeUndefined();
 	});
 });
 

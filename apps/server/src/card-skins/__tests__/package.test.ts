@@ -25,8 +25,8 @@ const WOFF2 = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
 
 function manifest(extra?: Record<string, unknown>): Record<string, unknown> {
 	return {
-		schemaVersion: 1,
-		dataVersion: 1,
+		schemaVersion: 2,
+		dataVersion: 2,
 		name: "测试卡片皮肤",
 		cards: {
 			live: {
@@ -237,7 +237,7 @@ describe("checkCardSkinPackage:清单层", () => {
 					cards: {
 						// 用动态卡的视频封面照 —— 直播卡拆成原子块之后一个挂点都不剩了,
 						// 而这条要照的正是「块内部的挂点会被关回块里」(决策 8 的 2026-09-18 🔗)。
-						dynamic: {
+						post: {
 							width: 600,
 							css: '[data-bn="glass"]{border-radius:12px}[data-bn="evilhook"]{color:red}',
 							blocks: [
@@ -262,7 +262,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		);
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
-		const card = r.manifest.cards.dynamic;
+		const card = r.manifest.cards.post;
 		expect(card?.css).toBe('[data-bn="glass"]{border-radius:12px}');
 		const [cover, note] = card?.blocks ?? [];
 		// 块级 CSS 的产物带着归一后的 self 前缀(2026-09-13「开放重写」):`image` 是
@@ -271,7 +271,7 @@ describe("checkCardSkinPackage:清单层", () => {
 		expect(note?.kind === "custom" ? note.html : "").toBe('<div class="note">{creator.name}</div>');
 		expect(JSON.stringify(r.manifest)).not.toContain("evil");
 		expect(JSON.stringify(r.manifest)).not.toContain("script");
-		expect(r.warnings.join()).toContain("cards.dynamic.css");
+		expect(r.warnings.join()).toContain("cards.post.css");
 		expect(r.warnings.join()).toContain("script");
 	});
 
@@ -475,8 +475,8 @@ describe("checkCardSkinPackage:资产变量与皮肤字体的引用(ADR-0014 决
  */
 describe("旋钮声明与 css 引用对表", () => {
 	const withKnobs = (knobs: unknown, css: string): unknown => ({
-		schemaVersion: 1,
-		dataVersion: 1,
+		schemaVersion: 2,
+		dataVersion: 2,
 		name: "旋钮皮肤",
 		knobs,
 		cards: {
@@ -537,65 +537,42 @@ describe("旋钮声明与 css 引用对表", () => {
 });
 
 /**
- * **`variables` / `variablesByKind` 已退役**(2026-09-14 主人拍板)。
+ * **`variables` / `variablesByKind` 随格式版本 2 删除**(㉔e)。
  *
- * 它是旋钮出现**之前**的设计(皮肤给默认值、面板覆盖它),而它的四个字段 ——
- * `glassOpacity` / `glassClear` / `font` / `backgroundImage` —— 今天全都成了旋钮:皮肤声明
- * 控件、`default` 只是起手位置、不注入。留着就是同一件事两个入口。
- *
- * 关键在于它**从来没有被接进渲染**(`packages/image` 里一次都没读过),所以退役不是迁移 ——
- * 洗掉它,出的图一个像素都不变。
- *
- * 走「留字段 + 清洗时丢弃」而不是直接从 schema 删:清单是 `.strict()` 的,删了字段之后
- * 老皮肤会以 `Unrecognized key: "variables"` **装不进来也存不下去**。
+ * 它是旋钮出现**之前**的设计,从来没被接进渲染;从前「留字段 + 清洗时丢弃」只为让老皮肤装得进来。格式版本抬到 2
+ * 之后老包整份拒收,这两个字段就不必再留 —— 清单是 `.strict()` 的,版本 2 的包里再写它就是未知键。
+ * 验红:把 `variables` 加回清单 schema,第一条红。
  */
-describe("退役的 variables", () => {
-	const withVars = (extra: Record<string, unknown>) => ({
-		schemaVersion: 1,
-		dataVersion: 1,
-		name: "老皮肤",
+describe("已删除的 variables / variablesByKind", () => {
+	const withVars = (extra: Record<string, unknown>, version = 2) => ({
+		schemaVersion: version,
+		dataVersion: version,
+		name: "皮肤",
 		cards: {},
 		...extra,
 	});
 
-	it("老包照样装得进来 —— 别把主人已经装着的皮肤挡在门外", () => {
-		const res = checkCardSkinPackage(
-			withVars({ variables: { glassClear: true, font: "Menlo" } }),
-			new Set(),
-		);
-		expect(res.ok).toBe(true);
-	});
-
-	it("但清洗产物里没有它了 —— 盘上不该再留一份没人读的设置", () => {
-		const res = checkCardSkinPackage(
-			withVars({
-				variables: { glassClear: true, font: "Menlo" },
-				variablesByKind: { live: { glassOpacity: 0.5 } },
-			}),
-			new Set(),
-		);
-		if (!res.ok) throw new Error(res.errors.join("；"));
-		expect("variables" in res.manifest).toBe(false);
-		expect("variablesByKind" in res.manifest).toBe(false);
-	});
-
-	it("洗掉了要说一句 —— 作者写了它,得知道为什么没了", () => {
+	it("版本 2 的包里写了它 → 拒,错误点名那个键", () => {
 		const res = checkCardSkinPackage(withVars({ variables: { font: "Menlo" } }), new Set());
-		if (!res.ok) throw new Error(res.errors.join("；"));
-		expect(res.warnings.join("\n")).toContain("variables");
-	});
-
-	it("没写过它的包,warnings 里一个字都不多", () => {
-		const res = checkCardSkinPackage(withVars({}), new Set());
-		if (!res.ok) throw new Error(res.errors.join("；"));
-		expect(res.warnings.filter((w) => w.includes("variables"))).toEqual([]);
-	});
-
-	it("它指着一份不存在的资产也不再是错 —— 整项都不读了,没有「指错」可言", () => {
-		const res = checkCardSkinPackage(
-			withVars({ variables: { backgroundImage: "assets/nope.png" } }),
+		expect(res.ok).toBe(false);
+		if (res.ok) return;
+		expect(res.errors.join("\n")).toContain("variables");
+		const byKind = checkCardSkinPackage(
+			withVars({ variablesByKind: { live: { glassOpacity: 0.5 } } }),
 			new Set(),
 		);
+		expect(byKind.ok).toBe(false);
+	});
+
+	it("版本 1 的老包(带着它)→ 只有「旧版本」那一句,不被未知键的报错淹没", () => {
+		const res = checkCardSkinPackage(withVars({ variables: { font: "Menlo" } }, 1), new Set());
+		expect(res.ok).toBe(false);
+		if (res.ok) return;
+		expect(res.errors).toEqual(["这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。"]);
+	});
+
+	it("没写它的版本 2 包照常装进来", () => {
+		const res = checkCardSkinPackage(withVars({}), new Set());
 		expect(res.ok).toBe(true);
 	});
 });

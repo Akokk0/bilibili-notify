@@ -43,7 +43,7 @@ function makeVideoPost(over: Partial<NonNullable<Post["video"]>> = {}): Post {
  */
 async function videoCardHtml(post: Post = makeVideoPost()): Promise<string> {
 	const node = nodeFromPost(post, FMT);
-	return await renderViaDefaultSkin("dynamic", { node }, { htmlWidth: 600 });
+	return await renderViaDefaultSkin("post", { node }, { htmlWidth: 600 });
 }
 
 /** 封面 img 自己的 class —— 封面是主体还是缩略图,全写在这一串里。 */

@@ -28,7 +28,7 @@ import { streamCardSkinAiCss } from "../../services/cardSkinAi";
 import CardSkinEditor from "../CardSkinEditor";
 
 const MANIFEST = {
-	schemaVersion: 1,
+	schemaVersion: 2,
 	name: "霓虹",
 	cards: {
 		live: {

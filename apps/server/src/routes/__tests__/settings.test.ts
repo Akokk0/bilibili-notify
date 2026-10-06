@@ -212,7 +212,7 @@ describe("checkApprovalEnable", () => {
 	it("这次 patch 没碰 roastSchedule → 不检查（存别的 tab 不该被它拦住）", () => {
 		const g = withApproval(true);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, { defaults: { cardStyle: {} } }, [webhookTarget] as Targets);
+		const r = checkApprovalEnable(g, { defaults: { cards: {} } }, [webhookTarget] as Targets);
 		expect(r.ok).toBe(true);
 	});
 

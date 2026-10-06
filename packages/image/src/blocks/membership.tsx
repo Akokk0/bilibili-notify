@@ -12,7 +12,7 @@
  * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
  * 什么」取名的挂点(`image` / `text` / `pill` / `line`),默认皮肤的外观规则就写在它上面;根
  * 之外的部件照挂(用户名胶囊里的 `text`、主播胶囊里的 `creatorAvatar` / `creatorName`)。名字
- * 取自 `CARD_SKIN_BUILTIN_BLOCKS.guard[<块>].hooks`,是对外 API(`__tests__/card-hooks.test.ts`
+ * 取自 `CARD_SKIN_BUILTIN_BLOCKS.membership[<块>].hooks`,是对外 API(`__tests__/card-hooks.test.ts`
  * 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点也必须真被挂上)。
  *
  * 两处要说明:
@@ -31,7 +31,7 @@
  * 分割线单开一个变量而不是复用档位色:它的值是**运行期拼出来的**(`${档位色}33`),
  * CSS 里没有「给一个 hex 追加 alpha」的写法,`color-mix` 又要过一趟色彩空间换算(会动像素)。
  *
- * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.guard`,一个不多一个不少(`__tests__/card-blocks.test.ts`
+ * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.membership`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
  */
 

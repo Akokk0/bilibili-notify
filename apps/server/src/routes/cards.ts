@@ -8,7 +8,7 @@
  *   live + content.roomId  → fetch real LiveRoomInfo + MasterInfo via
  *                            BilibiliAPI, render through ImageRenderer
  *                            (same code path as production push).
- *   dyn  + content.uid     → fetch the user's space dynamic feed,
+ *   post + content.uid     → fetch the user's space dynamic feed,
  *                            pick the offset-th item, render via
  *                            postFromDynamic → ImageRenderer.generatePostCard.
  *   sc   + content.text    → text override on top of the superchat card mock.
@@ -47,15 +47,14 @@ import {
 	renderCardWithSkin,
 	resolveKnobAssets,
 	shrinkImageForCssVar,
-	USER_FONT_FAMILY,
 } from "@bilibili-notify/image";
 import {
 	BILIBILI_SOURCE_KEY,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_UPLOAD_PREFIX,
+	type CardKind,
+	CardKindSchema,
 	CardSkinIdSchema,
-	type CardSkinKind,
-	CardSkinKindSchema,
 	type CardSkinKnobOverrides,
 	CardSkinKnobOverridesSchema,
 	type CardSkinManifest,
@@ -153,15 +152,16 @@ export interface CardsRouteOptions {
 	 * 把「截一张盘上皮肤」的口子交出去 —— 卡片工坊的 `look_card` 要用(ADR-0015 决策 19 的 🔗)。
 	 * 握着 Chrome 的是这条路由,截图口只能从这里借;交出去的是闭包,热启用换了 Chrome 照样用新的。
 	 */
-	onSkinShot?: (shoot: (skinId: string, kind: CardSkinKind) => Promise<string | null>) => void;
+	onSkinShot?: (shoot: (skinId: string, kind: CardKind) => Promise<string | null>) => void;
 }
 
+/**
+ * 预览与测试推送请求里的卡片样式。只剩直播封面:字体与玻璃归皮肤自己的旋钮(从前这里还带 `font` / `fontAsset`,
+ * 随设置里的退役字段一起没了)。
+ */
 const StyleSchema = z.object({
-	font: z.string().optional(),
-	/** 主人自带字体的资产 id;设了优先于 `font`(预览与出图必须用同一款,否则「预览好看、推出去变样」)。 */
-	fontAsset: z.string().optional(),
 	/** 直播封面资产 id 列表(空 = B 站封面;>1 = 轮换,预览端取首张)。仅 live 卡。 */
-	liveCoverImages: z.array(z.string()).optional(),
+	liveCoverImageIds: z.array(z.string()).optional(),
 });
 
 const ContentSchema = z
@@ -192,7 +192,7 @@ const ContentSchema = z
 const PreviewKnobDraftSchema = z.record(CardSkinIdSchema, CardSkinKnobOverridesSchema).optional();
 
 const PreviewRequestSchema = z.object({
-	kind: z.enum(["live", "dyn", "sc", "guard"]),
+	kind: z.enum(["live", "post", "superchat", "membership"]),
 	style: StyleSchema,
 	content: ContentSchema,
 	/** 预览用哪套皮肤(ADR-0014);缺省 = 全局在用的那套。 */
@@ -223,7 +223,7 @@ type PreviewContent = z.infer<typeof ContentSchema>;
 
 const TestPushRequestSchema = z.object({
 	targetId: z.uuid(),
-	kind: z.enum(["live", "dyn", "sc", "guard"]),
+	kind: z.enum(["live", "post", "superchat", "membership"]),
 	style: StyleSchema,
 	content: ContentSchema,
 	cardSkin: CardSkinIdSchema.optional(),
@@ -236,9 +236,9 @@ const RENDER_TIMEOUT_MS = 20_000;
 /** 测试推送图说用的卡片类型中文标签。 */
 const KIND_LABEL: Record<PreviewKind, string> = {
 	live: "开播",
-	dyn: "动态",
-	sc: "醒目留言",
-	guard: "上舰",
+	post: "动态",
+	superchat: "醒目留言",
+	membership: "上舰",
 };
 
 /**
@@ -304,20 +304,17 @@ function knobReferences(
  * 指向空气的 id,出图时静静回落渐变 —— 主人只会觉得「壁纸自己没了」。
  */
 function cardBgReferences(globals: GlobalConfig, subs: Subscription[], id: string): string[] {
-	const inStyle = (style?: { liveCoverImages?: string[] }): boolean =>
-		style?.liveCoverImages?.includes(id) ?? false;
-	// per-kind 是各类型对基准的覆盖层;任一类型引用即算被引用。
-	const inByKind = (byKind?: Record<string, { liveCoverImages?: string[] }>): boolean =>
-		byKind ? Object.values(byKind).some(inStyle) : false;
+	const inCards = (cards?: { liveCoverImageIds?: string[] }): boolean =>
+		cards?.liveCoverImageIds?.includes(id) ?? false;
 
 	// 旋钮值是「一串 id」(图片旋钮)。
 	const refs = knobReferences(globals, subs, (v) => Array.isArray(v) && v.includes(id));
-	if (inStyle(globals.defaults.cardStyle) || inByKind(globals.defaults.cardStyleByKind)) {
+	if (inCards(globals.defaults.cards)) {
 		refs.push("全局默认");
 	}
 	// 两支订阅都算(ADR-0019 决策 47):漏看拓展订阅,它引用的图会被当成「没人用」删掉。
 	for (const s of subs) {
-		if (inStyle(s.overrides.cardStyle) || inByKind(s.overrides.cardStyleByKind)) {
+		if (inCards(s.overrides.cards)) {
 			refs.push(subscriptionLabel(s));
 		}
 	}
@@ -356,7 +353,7 @@ const NO_CHROME_HINT =
  * 皮肤 id 在路径里(`/skins/:id/screenshot`,ADR-0036),不在体里。
  */
 const SkinShotRequestSchema = z.object({
-	kind: CardSkinKindSchema,
+	kind: CardKindSchema,
 	scene: z.string().max(40).optional(),
 	manifest: z.unknown(),
 });
@@ -669,13 +666,11 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	// 新 adapter 并 dispose 旧的,若不比对直接复用,imageRenderer 会一直攥着已销毁的
 	// 旧 adapter(ImageRenderer.puppeteer 是 readonly,updateConfig 换不了它)。
 	let imageRendererPuppeteer: PuppeteerAdapter | null = null;
-	async function getImageRenderer(style: PreviewStyle): Promise<ImageRenderer | null> {
+	async function getImageRenderer(): Promise<ImageRenderer | null> {
 		if (!currentPuppeteer) return null;
 		const config = {
-			font: style.font ?? "PingFang SC, sans-serif",
-			// 预览得跟出图用同一款字体,否则「预览好看、推出去变样」。悬空 id 由
-			// resolveFontFace 兜成空串,渲染器据此回落家族名。
-			fontAsset: style.fontAsset,
+			// 字体归皮肤自己的旋钮(从前这里读设置里的 `font` / `fontAsset`,退役了),预览与出图都走旋钮。
+			font: "PingFang SC, sans-serif",
 			// 旋钮覆盖:SC / 上舰的预览走渲染器这条路,不给就只有另外两种卡的预览跟着
 			// 旋钮变 —— 「预览好看、推出去变样」的同一个坑,换个卡种再踩一次。
 			cardSkinKnobs: opts.deps.store.getGlobals().defaults.cardSkinKnobs,
@@ -706,7 +701,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 
 	/**
 	 * 只要**截图管线**(串行闸 + 页池),不碰 config —— 皮肤的「最终效果」喂的是现成 HTML,
-	 * 配置对它没有影响,而 `getImageRenderer(style)` 会热更 config:拿它去截图会把并发的
+	 * 配置对它没有影响,而 `getImageRenderer()` 会热更 config:拿它去截图会把并发的
 	 * `/preview` 刚设好的样式冲掉(「预览好看、推出去变样」的同一族)。
 	 *
 	 * 仍复用同一个实例 —— 闸是实例私有的,另起一个等于两条并发的 Chrome 渲染。
@@ -715,14 +710,14 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		if (!currentPuppeteer) return null;
 		if (imageRenderer && imageRendererPuppeteer === currentPuppeteer) return imageRenderer;
 		// 还没建过:照常建一个(config 随下一次 `/preview` 热更)。
-		return await getImageRenderer({});
+		return await getImageRenderer();
 	}
 
 	/**
 	 * 截一张**盘上那份**皮肤(默认场景),回 data URL;没 Chrome 回 null。与「最终效果」同一条路
 	 * (清单 → HTML → 截图),只是清单取自皮肤库而不是草稿。
 	 */
-	async function shootSavedSkin(skinId: string, kind: CardSkinKind): Promise<string | null> {
+	async function shootSavedSkin(skinId: string, kind: CardKind): Promise<string | null> {
 		const store = opts.cardSkins;
 		if (!store) return null;
 		const renderer = await getScreenshotRenderer();
@@ -802,8 +797,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const skinId = previewSkinId(requested.cardSkin);
 		const skin: CardSkinChoice = { cardSkin: skinId, cardSkinKnobs: requested.cardSkinKnobs };
 
-		if (kind === "sc") {
-			const renderer = await getImageRenderer(style);
+		if (kind === "superchat") {
+			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error("puppeteer 未就绪");
 			// 登录账号 = SC 发送者(「我在别人直播间发条 SC 会长啥样」);接收方 = 该 UP。
 			const me = await getLoggedInAccount();
@@ -831,13 +826,13 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					currency: event.currency,
 					tier: { rank, durationSec: PREVIEW_SC_DURATION_SEC[rank - 1] },
 				},
-				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
+				// 预览样式已由 getImageRenderer() 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
 				skin,
 			);
 			return { buffer, mime: "image/jpeg" };
 		}
-		if (kind === "guard") {
-			const renderer = await getImageRenderer(style);
+		if (kind === "membership") {
+			const renderer = await getImageRenderer();
 			if (!renderer) throw new Error("puppeteer 未就绪");
 			// 登录账号 = 新舰长(触发上舰事件的人);显式 text 覆写仍优先。接收方 = 该 UP。
 			const me = await getLoggedInAccount();
@@ -861,7 +856,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 						announcement: tier.announcement,
 					},
 				},
-				// 预览样式已由 getImageRenderer(style) 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
+				// 预览样式已由 getImageRenderer() 烤进渲染器 config,故只带皮肤(id + 草稿旋钮)。
 				skin,
 			);
 			return { buffer, mime: "image/jpeg" };
@@ -871,7 +866,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 否则(全局显式输入)把错误原样抛出告知用户。
 		if (kind === "live" && (content?.roomId?.trim() || content?.uid?.trim())) {
 			try {
-				const renderer = await getImageRenderer(style);
+				const renderer = await getImageRenderer();
 				if (!renderer) throw new Error("puppeteer 未就绪");
 				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
 				const roomId =
@@ -891,9 +886,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				log.info(`[cards] live 真实渲染失败,回退示例数据:${(err as Error).message}`);
 			}
 		}
-		if (kind === "dyn" && content?.uid?.trim()) {
+		if (kind === "post" && content?.uid?.trim()) {
 			try {
-				const renderer = await getImageRenderer(style);
+				const renderer = await getImageRenderer();
 				if (!renderer) throw new Error("puppeteer 未就绪");
 				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
 				const buffer = await renderRealDynamic(
@@ -906,7 +901,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				return { buffer, mime: "image/jpeg" };
 			} catch (err) {
 				if (!fallback) throw err;
-				log.info(`[cards] dyn 真实渲染失败,回退示例数据:${(err as Error).message}`);
+				log.info(`[cards] post 真实渲染失败,回退示例数据:${(err as Error).message}`);
 			}
 		}
 		// Live + Dyn 无真实数据(或回退):虚构 mock 数据,走 renderCard + screenshot 流水线
@@ -915,14 +910,12 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// `image` 旋钮,由下面的 `resolveKnobAssets` 解析。
 		const dataRoot = opts.deps.runtime.dataRoot;
 		// 直播封面与自带字体互不依赖(各自独立的资产解析),并发发起省一次串行 I/O。
-		const [coverDataUrl, fontFace] = await Promise.all([
+		const coverDataUrl =
 			kind === "live"
-				? firstExistingCardBg(dataRoot, style.liveCoverImages).then((id) =>
+				? await firstExistingCardBg(dataRoot, style.liveCoverImageIds).then((id) =>
 						readCardBgDataUrl(dataRoot, id),
 					)
-				: Promise.resolve(""),
-			loadFontFace(style.fontAsset ?? ""),
-		]);
+				: "";
 		const spec = buildPreviewSpec(kind, coverDataUrl);
 		// 皮肤那条路与推送出图**同一个函数**(`renderCardWithSkin`)—— 各拼一份的话必然出现
 		// 「预览是这套皮肤、推出去是另一副样子」,而两边都说不出哪儿错了。
@@ -951,8 +944,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		// 改一支漏一支的症状是「直播卡对、动态卡不对」,而两处代码看着都对。
 		const common = {
 			title: spec.title,
-			font: fontFace ? USER_FONT_FAMILY : (style.font ?? "PingFang SC, sans-serif"),
-			fontFace: fontFace || undefined,
+			font: "PingFang SC, sans-serif",
 			resolveAsset: (name: string) => assets.get(name),
 			knobValues,
 			knobAssets,
@@ -960,7 +952,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		const html =
 			spec.kind === "live"
 				? await renderCardWithSkin("live", spec.props, manifest, common)
-				: await renderCardWithSkin("dynamic", spec.props, manifest, common);
+				: await renderCardWithSkin("post", spec.props, manifest, common);
 		const buffer = await screenshotHtml(puppeteer, html);
 		return { buffer, mime: "image/png" };
 	}
@@ -1191,7 +1183,7 @@ async function renderRealLive(
 			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
 			// 与 mock 预览 / 生产推送同一条守卫,否则第一张是幽灵 id 时会静默回退
 			// B 站原始封面,即便后面还有张有效图。
-			liveCoverImage: await firstExistingCardBg(dataRoot, style.liveCoverImages),
+			liveCoverImage: await firstExistingCardBg(dataRoot, style.liveCoverImageIds),
 			...skin,
 		},
 	);
@@ -1234,10 +1226,10 @@ async function renderRealDynamic(
  */
 type PreviewSpec =
 	| { kind: "live"; props: LiveCardView; title: string }
-	| { kind: "dynamic"; props: PostCardView; title: string };
+	| { kind: "post"; props: PostCardView; title: string };
 
 function buildPreviewSpec(
-	kind: "live" | "dyn",
+	kind: "live" | "post",
 	/** 已解析的直播封面 data URL(mock SSR 路径不经 generate*,需在此注入;仅 live 卡消费)。 */
 	coverDataUrl?: string,
 ): PreviewSpec {
@@ -1248,7 +1240,7 @@ function buildPreviewSpec(
 			title: "卡片预览 · 直播",
 		};
 	}
-	return { kind: "dynamic", props: buildDynamicPreviewProps(), title: "卡片预览 · 动态" };
+	return { kind: "post", props: buildDynamicPreviewProps(), title: "卡片预览 · 动态" };
 }
 
 const SVG_COVER =

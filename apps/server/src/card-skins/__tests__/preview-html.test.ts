@@ -37,7 +37,7 @@ function skinWith(html: string): unknown {
 		...DEFAULT_CARD_SKIN,
 		cards: {
 			...DEFAULT_CARD_SKIN.cards,
-			dynamic: {
+			post: {
 				width: 600,
 				blocks: [
 					{ id: "probe", kind: "custom", html, grid: { row: 1, column: 1, span: 12 } },
@@ -72,7 +72,7 @@ async function preview(manifest: unknown, scene?: string): Promise<string> {
 	const out = await renderSkinPreviewHtml({
 		store,
 		skinId: "default",
-		kind: "dynamic",
+		kind: "post",
 		manifest,
 		...(scene ? { scene } : {}),
 	});
@@ -114,7 +114,7 @@ describe("实时预览 — 转发场面", () => {
 		const out = await renderSkinPreviewHtml({
 			store,
 			skinId: "default",
-			kind: "dynamic",
+			kind: "post",
 			manifest: skinWith("<div>x</div>"),
 			scene: "这个场景不存在",
 		});

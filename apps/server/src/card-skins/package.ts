@@ -15,7 +15,7 @@
  */
 
 import {
-	CARD_SKIN_KINDS,
+	CARD_KINDS,
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
 	parseCardSkin,
@@ -51,7 +51,7 @@ export function isCardSkinAssetName(name: string): boolean {
  * 都顶格),再留四分之一给 JSON 的引号、转义与网格字段。
  */
 export const MAX_CARD_SKIN_MANIFEST_BYTES = Math.ceil(
-	CARD_SKIN_KINDS.length *
+	CARD_KINDS.length *
 		(CARD_SKIN_LIMITS.maxCssBytes +
 			CARD_SKIN_LIMITS.maxBlocks * (CARD_SKIN_LIMITS.maxCssBytes + CARD_SKIN_LIMITS.maxHtmlBytes)) *
 		1.25,
@@ -158,7 +158,7 @@ export function checkCardSkinPackage(
 	const errors: string[] = [];
 	const warnings: string[] = [];
 
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = manifest.cards[kind];
 		if (!card) continue;
 		if (card.css !== undefined) {
@@ -218,7 +218,7 @@ export function checkCardSkinPackage(
 		}
 	}
 
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = manifest.cards[kind];
 		if (!card) continue;
 		checkAssetVars(card.assets, `cards.${kind}.assets`, assetNames, errors);
@@ -241,7 +241,6 @@ export function checkCardSkinPackage(
 	});
 
 	warnings.push(...checkKnobUsage(manifest));
-	warnings.push(...dropRetiredVariables(manifest));
 
 	return errors.length > 0 ? { ok: false, errors } : { ok: true, manifest, warnings };
 }
@@ -263,7 +262,7 @@ export const KNOB_VAR_RE = /var\(--bn-knob-([a-z][a-z0-9-]*)/g;
 function checkKnobUsage(manifest: CardSkinManifest): string[] {
 	const declared = new Set((manifest.knobs ?? []).map((k) => k.key));
 	const used = new Set<string>();
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = manifest.cards[kind];
 		if (!card) continue;
 		for (const css of [card.css, ...card.blocks.map((b) => b.css)]) {
@@ -301,31 +300,4 @@ function checkAssetVars(
 		const name = ref.slice(ASSET_REF_PREFIX.length);
 		if (!assetNames.has(name)) errors.push(`${at}.${key}: 指了「${name}」,但包里没有这份资产`);
 	}
-}
-
-/**
- * **丢掉退役的 `variables` / `variablesByKind`**(2026-09-14 主人拍板)。
- *
- * 它是旋钮出现之前那套「皮肤给默认值、面板覆盖它」的设计,而它的四个字段
- * (`glassOpacity` / `glassClear` / `font` / `backgroundImage`)今天全都成了旋钮 —— 留着
- * 就是同一件事两个入口,正是「用了皮肤这里设置什么都不管用」那个抱怨换个地方再来一遍。
- *
- * 它**从来没被接进渲染**(`packages/image` 一次都没读过),所以这不是迁移:洗掉它,出的图
- * 一个像素都不变。也正因此不必替作者把值折进旋钮 —— 那个值本来就没生效,而「写进外框 CSS
- * 还是声明成旋钮」是作者的取舍,替他选反而选错。
- *
- * 就地改 `manifest`:调用方拿到的就是清洗产物,落盘的是这一份。
- */
-function dropRetiredVariables(manifest: CardSkinManifest): string[] {
-	const had: string[] = [];
-	const m = manifest as CardSkinManifest & Record<string, unknown>;
-	for (const key of ["variables", "variablesByKind"] as const) {
-		if (m[key] === undefined) continue;
-		delete m[key];
-		had.push(key);
-	}
-	if (had.length === 0) return [];
-	return [
-		`${had.join(" / ")} 已退役,这一项被丢掉了 —— 玻璃 / 字体 / 背景图改由旋钮声明(面板照声明生成控件),固定不给调的写进外框 CSS 即可`,
-	];
 }

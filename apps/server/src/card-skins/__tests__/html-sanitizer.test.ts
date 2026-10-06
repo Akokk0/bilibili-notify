@@ -12,18 +12,18 @@ import { sanitizeCardBlockHtml } from "../html-sanitizer.js";
 
 const ASSETS = new Set(["bg.png", "sticker.webp"]);
 
-function run(input: string, kind: "live" | "sc" | "guard" = "live") {
+function run(input: string, kind: "live" | "superchat" | "membership" = "live") {
 	return sanitizeCardBlockHtml(input, { kind, assets: ASSETS });
 }
 
-function ok(input: string, kind: "live" | "sc" | "guard" = "live") {
+function ok(input: string, kind: "live" | "superchat" | "membership" = "live") {
 	const res = run(input, kind);
 	expect(res.ok, res.ok ? "" : res.errors.join(" / ")).toBe(true);
 	if (!res.ok) throw new Error("unreachable");
 	return { html: res.html, warnings: res.warnings };
 }
 
-function bad(input: string, kind: "live" | "sc" | "guard" = "live") {
+function bad(input: string, kind: "live" | "superchat" | "membership" = "live") {
 	const res = run(input, kind);
 	expect(res.ok).toBe(false);
 	if (res.ok) throw new Error("unreachable");
@@ -242,13 +242,17 @@ describe("img 的 src 只准两种值", () => {
 	// ㉓c:醒目留言卡与会员卡的头像、徽章是 image 类型(皮肤作者要能把它们放进 `<img src>`),金额 / 档名是 text。
 	// 验红:把字段表里 `viewer.avatar` 或 `membership.icon` 声明成 text,对应那一行红。
 	it("醒目留言卡与会员卡的头像、徽章字段是 image 类型 → 放行;金额与档名是 text → 当不了图", () => {
-		expect(ok('<img src="{viewer.avatar}">', "sc").html).toBe('<img src="{viewer.avatar}">');
-		expect(ok('<img src="{viewer.avatar}">', "guard").html).toBe('<img src="{viewer.avatar}">');
-		expect(ok('<img src="{membership.icon}">', "guard").html).toBe('<img src="{membership.icon}">');
-		const amount = ok('<div>x</div><img src="{superchat.amount}">', "sc");
+		expect(ok('<img src="{viewer.avatar}">', "superchat").html).toBe('<img src="{viewer.avatar}">');
+		expect(ok('<img src="{viewer.avatar}">', "membership").html).toBe(
+			'<img src="{viewer.avatar}">',
+		);
+		expect(ok('<img src="{membership.icon}">', "membership").html).toBe(
+			'<img src="{membership.icon}">',
+		);
+		const amount = ok('<div>x</div><img src="{superchat.amount}">', "superchat");
 		expect(amount.html).toBe("<div>x</div>");
 		expect(amount.warnings.join()).toContain("text");
-		const tierName = ok('<div>x</div><img src="{membership.tierName}">', "guard");
+		const tierName = ok('<div>x</div><img src="{membership.tierName}">', "membership");
 		expect(tierName.html).toBe("<div>x</div>");
 	});
 
@@ -324,7 +328,7 @@ describe("占位符对表", () => {
 	});
 
 	it("换个卡种,同一个路径就该认识", () => {
-		expect(ok("<p>{superchat.amount}</p>", "sc").html).toBe("<p>{superchat.amount}</p>");
+		expect(ok("<p>{superchat.amount}</p>", "superchat").html).toBe("<p>{superchat.amount}</p>");
 	});
 });
 
@@ -515,7 +519,7 @@ describe("内联 svg", () => {
  * 「你那个 `<image>` 被丢了」。
  */
 describe("svg 的命名空间声明", () => {
-	const svg = (inner: string) => sanitizeCardBlockHtml(inner, { kind: "dynamic", assets: ASSETS });
+	const svg = (inner: string) => sanitizeCardBlockHtml(inner, { kind: "post", assets: ASSETS });
 
 	it("xmlns 丢掉但不吭声", () => {
 		const r = svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect/></svg>');

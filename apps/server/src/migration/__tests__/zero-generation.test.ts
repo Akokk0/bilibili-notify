@@ -131,6 +131,12 @@ const ZERO_FILES: Record<string, string> = {
 				"guardBuy.captain.template": "1n2b5zl",
 				"guardBuy.captain.imageUrl": "ztntfp",
 			},
+			// 卡片样式搬成 `cards`、按卡种那一层取消、指向自建皮肤的指针回默认(㉔e,`card-moves.test.ts` 钉细节,
+			// 这里让摘要认得到这一步):直播卡种那份封面盖过基准那份,退役的字体与别的卡种下的东西丢掉。
+			cardStyle: { enabled: true, font: "OldFont", liveCoverImages: ["base-cover.png"] },
+			cardStyleByKind: { live: { liveCoverImages: ["live-cover.png"] }, sc: { enabled: false } },
+			cardSkin: "my-old-skin",
+			cardSkinKnobs: { "my-old-skin": { accent: "#ff0000" }, default: { accent: "#00ff00" } },
 		},
 		// 0.9.1 的「范围 + 白名单」
 		linkParsing: {
@@ -156,6 +162,10 @@ const ZERO_FILES: Record<string, string> = {
 				schedule: { pushTime: 5, restartPush: false },
 				// 逐订阅的阈值与上舰文案(㉓d):覆盖里写的出厂值照样搬;逐订阅文案里更早一代的默认原文不经 0.x 的旧默认迁移
 				filters: { blockDraw: true, whitelistRegex: ["^上新"], minScPrice: 0, minGuardLevel: 3 },
+				// 逐订阅的卡片样式与皮肤指针(㉔e):同一套并法,指针与孤儿旋钮同样处理
+				cardStyleByKind: { live: { liveCoverImages: ["sub-cover.png"] } },
+				cardSkin: "my-old-skin",
+				cardSkinKnobs: { "my-old-skin": { accent: "#0000ff" } },
 				templates: {
 					guardBuy: {
 						enable: true,
@@ -696,8 +706,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 28,
-			output: "0601b3e1cbaeeee032e304dc4e3298d966287019c4bc0d049ddc07b3df242274",
+			revision: 29,
+			output: "6c203f3564b2ae6fbe899d689ece01eaea4b2a5dfae2bf13dac9e684b2946cc3",
 		});
 	});
 });

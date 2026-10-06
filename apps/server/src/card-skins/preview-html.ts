@@ -11,7 +11,7 @@
  */
 
 import { cardOfManifest, renderCardWithSkin, sampleCard } from "@bilibili-notify/image";
-import { type CardSkinKind, resolvePreviewScene } from "@bilibili-notify/internal";
+import { type CardKind, resolvePreviewScene } from "@bilibili-notify/internal";
 import { prefetchCardSkinAssets } from "./asset-url.js";
 import { checkCardSkinPackage } from "./package.js";
 import type { CardSkinStore } from "./store.js";
@@ -31,7 +31,7 @@ export async function renderSkinPreviewHtml(args: {
 	store: CardSkinStore;
 	/** 资产(图 / 字体)仍住在**已存盘**那套皮肤的目录里 —— 草稿只带清单,引用的是名字。 */
 	skinId: string;
-	kind: CardSkinKind;
+	kind: CardKind;
 	scene?: string;
 	manifest: unknown;
 	/**

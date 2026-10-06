@@ -550,7 +550,7 @@ export class RoomSession extends RoomSessionBase {
 		const masterName = this.masterInfo?.username ?? "";
 		if (this.ctx.imageRenderer?.generateSuperchatCard) {
 			try {
-				const scStyle = this.resolvedCardStyle("sc");
+				const scStyle = this.resolvedCardStyle("superchat");
 				const buf = await this.ctx.imageRenderer.generateSuperchatCard(
 					{
 						viewer: { name: event.viewer.name },
@@ -636,7 +636,7 @@ export class RoomSession extends RoomSessionBase {
 		}
 		if (this.ctx.imageRenderer?.generateMembershipCard) {
 			try {
-				const guardStyle = this.resolvedCardStyle("guard");
+				const guardStyle = this.resolvedCardStyle("membership");
 				const buf = await this.ctx.imageRenderer.generateMembershipCard(
 					{
 						viewer: { name: event.viewer.name },

@@ -6,15 +6,17 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import {
+	CARD_DATA_VERSION,
+	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
 	CARD_SKIN_BUILTIN_BLOCKS,
 	CARD_SKIN_FIELDS,
-	CARD_SKIN_KINDS,
 	CARD_SKIN_KNOB_LIMITS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SCHEMA_VERSION,
+	type CardKind,
+	CardKindSchema,
 	type CardSkinCard,
-	type CardSkinKind,
 	type CardSkinKnob,
 	CardSkinKnobValueSchema,
 	type CardSkinManifest,
@@ -28,7 +30,6 @@ import {
 	parseCardSkinFontKnobValue,
 	parseCardSkinImageKnobValue,
 } from "../card-skin";
-import { CardKindSchema } from "../common";
 
 function minimal(over: Partial<CardSkinManifest> = {}): unknown {
 	return {
@@ -68,11 +69,36 @@ describe("parseCardSkin", () => {
 		const m = ok(minimal());
 		expect(m.name).toBe("测试皮肤");
 		expect(m.cards.live?.blocks).toHaveLength(1);
-		expect(m.cards.dynamic).toBeUndefined();
+		expect(m.cards.post).toBeUndefined();
 	});
 
 	it("schemaVersion 不对整包拒收", () => {
-		expect(errorsOf(minimal({ schemaVersion: 99 as never }))).toMatch(/schemaVersion/);
+		expect(errorsOf(minimal({ schemaVersion: "x" as never }))).toMatch(/schemaVersion/);
+	});
+
+	// 格式版本比当前小的(0.x 与 1.0 开发期做的包)一律是同一句人话;比当前大的另给一句说明它来自更新的版本。
+	// 验红:把 `parseCardSkin` 开头那道按版本分流的判断去掉,两条都红(回到 zod 的「schemaVersion 必须是 2」)。
+	it("老版本的包 → 「这是旧版本的卡片皮肤…」这一句话,别的错误不跟着淹没它", () => {
+		const res = parseCardSkin(minimal({ schemaVersion: 1 as never }));
+		expect(res.ok).toBe(false);
+		if (res.ok) throw new Error("unreachable");
+		expect(res.errors).toEqual(["这是旧版本的卡片皮肤，1.0 起卡片皮肤的格式变了，需要重新制作。"]);
+		// 版本 0 与负数同样算「旧」。
+		expect(parseCardSkin(minimal({ schemaVersion: 0 as never }))).toEqual(res);
+	});
+
+	it("新版本的包 → 说明它来自更新的版本,不是「格式坏了」", () => {
+		const res = parseCardSkin(minimal({ schemaVersion: 99 as never }));
+		expect(res.ok).toBe(false);
+		if (res.ok) throw new Error("unreachable");
+		expect(res.errors).toEqual([
+			"这个卡片皮肤是用更新版本的 BN 做的，请先把 BN 更新到最新版再装。",
+		]);
+	});
+
+	it("格式版本现在是 2(㉔e 抬版),数据契约版本同样", () => {
+		expect(CARD_SKIN_SCHEMA_VERSION).toBe(2);
+		expect(CARD_DATA_VERSION).toBe(2);
 	});
 
 	it("内置块名必须在该卡种的目录里", () => {
@@ -409,7 +435,7 @@ describe("出血(辉光的那圈余量)", () => {
 
 describe("目录与契约的一致性", () => {
 	it("每种卡都有块目录与字段表", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			expect(Object.keys(CARD_SKIN_BUILTIN_BLOCKS[kind]).length, kind).toBeGreaterThan(0);
 			expect(CARD_SKIN_FIELDS[kind].length, kind).toBeGreaterThan(0);
 		}
@@ -423,7 +449,7 @@ describe("目录与契约的一致性", () => {
 	 * 门禁全绿,只有在面板上找不着那块的人知道。
 	 */
 	it("块目录的 scenes 只列该卡种真有的场景 id", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			const ids = new Set(CARD_PREVIEW_SCENES[kind].map((s) => s.id));
 			for (const [name, block] of Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind])) {
 				for (const scene of block.scenes ?? []) {
@@ -436,7 +462,7 @@ describe("目录与契约的一致性", () => {
 	});
 
 	it("字段路径全表唯一,且每个 showIf 能指的布尔字段都标成 bool", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			const paths = CARD_SKIN_FIELDS[kind].map((f) => f.path);
 			expect(new Set(paths).size, kind).toBe(paths.length);
 			for (const f of CARD_SKIN_FIELDS[kind]) {
@@ -458,11 +484,11 @@ describe("DEFAULT_CARD_SKIN", () => {
 	// 静默消失:这三种整张是一个固定内置块,没有原子块、也不在「拆得开的复合块」表里,
 	// 四种可编辑卡的门一条都照不到它们,出图时只会悄悄回落兜底 —— 真机才看得见。
 	it("七种卡一张都不少", () => {
-		expect(Object.keys(DEFAULT_CARD_SKIN.cards).sort()).toEqual([...CARD_SKIN_KINDS].sort());
+		expect(Object.keys(DEFAULT_CARD_SKIN.cards).sort()).toEqual([...CARD_KINDS].sort());
 	});
 
 	it("七种卡的外框底色都由皮肤 CSS 写(frame 规则),不靠外框自画", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			expect(DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").toMatch(
 				/\[data-bn="frame"\]\{[^}]*background:var\(--bn-knob-wallpaper,/,
 			);
@@ -477,14 +503,14 @@ describe("DEFAULT_CARD_SKIN", () => {
 	it("七种卡的玻璃层吃旋钮变量,兜底值就是各卡原来的白纱基线", () => {
 		const BASELINE: Record<string, string> = {
 			live: ".82",
-			dynamic: ".82",
-			sc: ".75",
-			guard: ".75",
+			post: ".82",
+			superchat: ".75",
+			membership: ".75",
 			roastBoard: ".86",
 			roastSolo: ".86",
 			wordcloud: ".82",
 		};
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			const css = DEFAULT_CARD_SKIN.cards[kind]?.css ?? "";
 			expect(css, kind).toContain(
 				`background:rgba(255,255,255,var(--bn-knob-glass-opacity,${BASELINE[kind]}))`,
@@ -501,7 +527,7 @@ describe("DEFAULT_CARD_SKIN", () => {
 		const declared = new Set((DEFAULT_CARD_SKIN.knobs ?? []).map((k) => cardSkinKnobVar(k.key)));
 		expect(declared.size).toBeGreaterThan(0);
 		const used = new Set<string>();
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			for (const m of (DEFAULT_CARD_SKIN.cards[kind]?.css ?? "").matchAll(
 				/var\((--bn-knob-[a-z0-9-]+)/g,
 			)) {
@@ -513,7 +539,7 @@ describe("DEFAULT_CARD_SKIN", () => {
 	});
 
 	it("七种卡都在,id 是保留字", () => {
-		for (const kind of CARD_SKIN_KINDS) expect(DEFAULT_CARD_SKIN.cards[kind], kind).toBeDefined();
+		for (const kind of CARD_KINDS) expect(DEFAULT_CARD_SKIN.cards[kind], kind).toBeDefined();
 		expect(DEFAULT_CARD_SKIN_ID).toBe("default");
 	});
 
@@ -523,15 +549,15 @@ describe("DEFAULT_CARD_SKIN", () => {
 	 * (封面、标题、简介、附加内容、留言、文字信息)照用。
 	 */
 	it("四种可编辑卡不再用拆得开的复合块", () => {
-		const SPLITTABLE: Record<"live" | "dynamic" | "sc" | "guard", string[]> = {
+		const SPLITTABLE: Record<"live" | "post" | "superchat" | "membership", string[]> = {
 			live: ["header", "data"],
-			dynamic: ["header", "content", "stats"],
+			post: ["header", "content", "stats"],
 			// 复合块 `amount` 的名字在 ㉔c 被醒目留言卡的金额原子块接了过去(原 `price`),不再列在这里。
-			sc: ["sender"],
-			guard: ["name"],
+			superchat: ["sender"],
+			membership: ["name"],
 		};
 		for (const [kind, composites] of Object.entries(SPLITTABLE)) {
-			const used = (DEFAULT_CARD_SKIN.cards[kind as CardSkinKind]?.blocks ?? []).map((b) =>
+			const used = (DEFAULT_CARD_SKIN.cards[kind as CardKind]?.blocks ?? []).map((b) =>
 				b.kind === "builtin" ? b.builtin : b.kind,
 			);
 			expect(used.length, kind).toBeGreaterThan(0);
@@ -952,21 +978,21 @@ describe("皮肤自定义旋钮", () => {
  */
 describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
 	it("七种卡一种不少,每种至少一个场景", () => {
-		expect(Object.keys(CARD_PREVIEW_SCENES).sort()).toEqual([...CARD_SKIN_KINDS].sort());
-		for (const kind of CARD_SKIN_KINDS) {
+		expect(Object.keys(CARD_PREVIEW_SCENES).sort()).toEqual([...CARD_KINDS].sort());
+		for (const kind of CARD_KINDS) {
 			expect(CARD_PREVIEW_SCENES[kind].length).toBeGreaterThan(0);
 		}
 	});
 
 	it("同一种卡里场景 id 不重复", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			const ids = CARD_PREVIEW_SCENES[kind].map((s) => s.id);
 			expect(new Set(ids).size).toBe(ids.length);
 		}
 	});
 
 	it("id 是小写 kebab(要进 URL / 请求体),label 非空", () => {
-		for (const kind of CARD_SKIN_KINDS) {
+		for (const kind of CARD_KINDS) {
 			for (const scene of CARD_PREVIEW_SCENES[kind]) {
 				expect(scene.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
 				expect(scene.label.trim()).not.toBe("");
@@ -987,7 +1013,7 @@ describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
 	// 「全字段」(视频 + 正文 + 话题)砍了 —— 它与「视频投稿」在出图端是同一种卡;纯文字
 	// 顶上来当默认,因为那是底档:正文、话题、附加内容都只在它那儿看得全。
 	it("动态卡:纯文字(默认)/ 视频投稿 / 图文 / 转发", () => {
-		expect(CARD_PREVIEW_SCENES.dynamic).toEqual([
+		expect(CARD_PREVIEW_SCENES.post).toEqual([
 			{ id: "text", label: "纯文字" },
 			{ id: "video", label: "视频投稿" },
 			{ id: "pics", label: "图文" },
@@ -1010,7 +1036,7 @@ describe("预览场景表 — CARD_PREVIEW_SCENES", () => {
 describe("块的层次", () => {
 	const withZ = (z: unknown) =>
 		parseCardSkin({
-			schemaVersion: 1,
+			schemaVersion: CARD_SKIN_SCHEMA_VERSION,
 			dataVersion: 1,
 			name: "t",
 			cards: {
@@ -1073,7 +1099,7 @@ describe("块的层次", () => {
  * 格子右沿,格子从第 1 列起还是第 11 列起都一样),像素门与字节门都不会红。
  */
 describe("DEFAULT_CARD_SKIN — 自己缩小的块不占通栏", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = DEFAULT_CARD_SKIN.cards[kind];
 		const shrinking = (card?.blocks ?? []).filter((b) => (b.css ?? "").includes("justify-self"));
 		if (shrinking.length === 0) continue;
@@ -1097,7 +1123,7 @@ describe("DEFAULT_CARD_SKIN — 自己缩小的块不占通栏", () => {
  * 胶囊,它们贴着一头放**而且真的**占着那几行,声明的是实话。
  */
 describe("DEFAULT_CARD_SKIN — 覆盖层只占它真正占的那一小块", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = DEFAULT_CARD_SKIN.cards[kind];
 		for (const block of (card?.blocks ?? []).filter((b) => b.grid.z)) {
 			it(`${kind}.${block.id}:不通栏、不跨行`, () => {
@@ -1120,7 +1146,7 @@ describe("退役的形态覆盖 — variants", () => {
 	function withVariants(variants: unknown): unknown {
 		return minimal({
 			cards: {
-				dynamic: {
+				post: {
 					width: 600,
 					blocks: [
 						{ id: "text", kind: "builtin", builtin: "text", grid: { row: 1, column: 1, span: 12 } },
@@ -1139,7 +1165,7 @@ describe("退役的形态覆盖 — variants", () => {
 
 	// 丢掉而不是留着:留在结果里的话,下游随手就能把它读回去,而这一层已经没人认它了。
 	it("装进来之后这张卡上没有 variants", () => {
-		const card = ok(withVariants({ video: { blocks: { text: { hidden: true } } } })).cards.dynamic;
+		const card = ok(withVariants({ video: { blocks: { text: { hidden: true } } } })).cards.post;
 		expect(card).toBeDefined();
 		expect(Object.hasOwn(card as object, "variants")).toBe(false);
 	});
@@ -1148,7 +1174,7 @@ describe("退役的形态覆盖 — variants", () => {
 	it("别的未知键照旧拒收", () => {
 		const raw = minimal({
 			cards: {
-				dynamic: {
+				post: {
 					width: 600,
 					blocks: [],
 					varaints: {},
@@ -1170,7 +1196,7 @@ describe("退役的形态覆盖 — variants", () => {
  * 退役 —— 所以这里不再有「两个形态各把对方藏起来」那一条。
  */
 describe("DEFAULT_CARD_SKIN — 两组媒体占同一片行", () => {
-	const card = DEFAULT_CARD_SKIN.cards.dynamic;
+	const card = DEFAULT_CARD_SKIN.cards.post;
 	const VIDEO = ["video-cover", "video-title", "video-description", "video-stats"];
 	const rowOf = (id: string) => {
 		const block = card?.blocks.find((b) => b.id === id);
@@ -1226,7 +1252,7 @@ describe("DEFAULT_CARD_SKIN — 没有不小心叠上的块", () => {
 		return x.r0 <= y.r1 && y.r0 <= x.r1 && x.c0 <= y.c1 && y.c0 <= x.c1;
 	}
 
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		const card = DEFAULT_CARD_SKIN.cards[kind];
 		if (!card) continue;
 		it(`${kind} 卡:叠在一起的块要么写了层次,要么互斥`, () => {
@@ -1284,7 +1310,7 @@ const FIELDS: Record<string, string[]> = {
 		"stats.followersDelta:text",
 		"stats.hasFollowersDelta:bool",
 	],
-	dynamic: [
+	post: [
 		"creator.name:text",
 		"creator.avatar:image",
 		"creator.isPremium:bool",
@@ -1308,7 +1334,7 @@ const FIELDS: Record<string, string[]> = {
 		"stats.comments:text",
 		"stats.likes:text",
 	],
-	sc: [
+	superchat: [
 		"viewer.name:text",
 		"viewer.avatar:image",
 		"creator.name:text",
@@ -1319,7 +1345,7 @@ const FIELDS: Record<string, string[]> = {
 		"superchat.rank:number",
 		"superchat.text:text",
 	],
-	guard: [
+	membership: [
 		"viewer.name:text",
 		"viewer.avatar:image",
 		"creator.name:text",
@@ -1350,7 +1376,7 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 		followers: ["text"],
 		totalViewers: ["text"],
 	},
-	dynamic: {
+	post: {
 		attachment: ["card", "cover", "button"],
 		divider: ["line"],
 		creatorAvatar: ["image"],
@@ -1369,7 +1395,7 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 		commentCount: ["text", "icon"],
 		likeCount: ["text", "icon"],
 	},
-	sc: {
+	superchat: {
 		message: ["bubble", "text"],
 		divider: ["line"],
 		viewerAvatar: ["image"],
@@ -1378,7 +1404,7 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 		duration: ["pill"],
 		to: ["text", "label", "creator", "creatorAvatar", "creatorName"],
 	},
-	guard: {
+	membership: {
 		icon: ["image"],
 		announcement: ["text"],
 		divider: ["line"],
@@ -1398,34 +1424,39 @@ const BLOCKS: Record<string, Record<string, string[]>> = {
 };
 describe("㉔ 词表全集:卡种键、字段、块、挂点", () => {
 	it("七个卡种键(顺序也钉)", () => {
-		expect([...CARD_SKIN_KINDS]).toEqual([
+		expect([...CARD_KINDS]).toEqual([
 			"live",
-			"dynamic",
-			"sc",
-			"guard",
+			"post",
+			"superchat",
+			"membership",
 			"roastBoard",
 			"roastSolo",
 			"wordcloud",
 		]);
 	});
 
-	it("`CardKind`(只给 cardStyleByKind 做键的那套)是前四种,`dynamic` / `sc` / `guard` 还是老叫法(㉔e 改)", () => {
-		expect([...CardKindSchema.options]).toEqual(["live", "dynamic", "sc", "guard"]);
+	it("卡种键只有一套 `CardKind`(㉔e 把从前的四种卡与七种卡两套收成了一套):七个键一个不多一个不少", () => {
+		expect([...CardKindSchema.options]).toEqual([
+			"live",
+			"post",
+			"superchat",
+			"membership",
+			"roastBoard",
+			"roastSolo",
+			"wordcloud",
+		]);
 	});
 
 	it("每种卡的字段路径与类型全集(顺序也钉)", () => {
 		const actual = Object.fromEntries(
-			CARD_SKIN_KINDS.map((kind) => [
-				kind,
-				CARD_SKIN_FIELDS[kind].map((f) => `${f.path}:${f.type}`),
-			]),
+			CARD_KINDS.map((kind) => [kind, CARD_SKIN_FIELDS[kind].map((f) => `${f.path}:${f.type}`)]),
 		);
 		expect(actual).toEqual(FIELDS);
 	});
 
 	it("每种卡的块 key 全集,以及每块的挂点全集", () => {
 		const actual = Object.fromEntries(
-			CARD_SKIN_KINDS.map((kind) => [
+			CARD_KINDS.map((kind) => [
 				kind,
 				Object.fromEntries(
 					Object.entries(CARD_SKIN_BUILTIN_BLOCKS[kind]).map(([block, def]) => [

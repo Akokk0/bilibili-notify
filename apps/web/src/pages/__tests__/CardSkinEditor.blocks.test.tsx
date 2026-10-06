@@ -24,7 +24,7 @@ import { api } from "../../services/api";
 import CardSkinEditor from "../CardSkinEditor";
 
 const MANIFEST = {
-	schemaVersion: 1,
+	schemaVersion: 2,
 	name: "霓虹",
 	cards: {
 		live: {
@@ -56,10 +56,10 @@ function mockApi(builtin = false, manifest: unknown = MANIFEST): void {
 		if (url === "/api/cards/skins/default") {
 			return Promise.resolve({
 				manifest: {
-					schemaVersion: 1,
+					schemaVersion: 2,
 					name: "默认",
 					cards: {
-						sc: {
+						superchat: {
 							width: 430,
 							blocks: [
 								{
@@ -177,9 +177,9 @@ describe("编辑器 · 增删块的接线", () => {
 
 		await waitFor(() => expect(api.put).toHaveBeenCalled());
 		const body = vi.mocked(api.put).mock.calls.at(-1)?.[1] as {
-			cards: { sc?: { blocks: unknown[] } };
+			cards: { superchat?: { blocks: unknown[] } };
 		};
-		expect(body.cards.sc?.blocks).toHaveLength(1);
+		expect(body.cards.superchat?.blocks).toHaveLength(1);
 	});
 
 	it("内置皮肤是只读的 —— 增删的口一个都不给", async () => {
@@ -204,7 +204,7 @@ describe("编辑器 · 增删块的接线", () => {
  */
 describe("编辑器 · 放下一个块的接线", () => {
 	const TWO = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		name: "霓虹",
 		cards: {
 			live: {

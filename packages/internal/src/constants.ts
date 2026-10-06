@@ -1331,26 +1331,26 @@ export const EXTENSION_IMAGE_DATA_URL_RE =
  * 七种卡。前四种有块可排;后三种(AI 周报榜单 / 单人锐评 / 弹幕词云)各自整张是**一个固定
  * 内置块**,皮肤只管外框(ADR-0014 决策 3)。
  */
-export const CARD_SKIN_KINDS = [
+export const CARD_KINDS = [
 	"live",
-	"dynamic",
-	"sc",
-	"guard",
+	"post",
+	"superchat",
+	"membership",
 	"roastBoard",
 	"roastSolo",
 	"wordcloud",
 ] as const;
-export type CardSkinKind = (typeof CARD_SKIN_KINDS)[number];
+export type CardKind = (typeof CARD_KINDS)[number];
 
 /**
  * 七种卡的中文名。卡片工坊的提示词与聊天里的工具小条共用这一份 —— 各写一份的话,
  * 加第八种卡时总有一边漏掉,而漏掉的那边是静默的。
  */
-export const CARD_SKIN_KIND_NAMES: Readonly<Record<CardSkinKind, string>> = {
+export const CARD_KIND_NAMES: Readonly<Record<CardKind, string>> = {
 	live: "直播卡",
-	dynamic: "动态卡",
-	sc: "醒目留言卡",
-	guard: "上舰卡",
+	post: "动态卡",
+	superchat: "醒目留言卡",
+	membership: "上舰卡",
 	roastBoard: "锐评榜单卡",
 	roastSolo: "单人锐评卡",
 	wordcloud: "弹幕词云卡",
@@ -1380,7 +1380,7 @@ export interface PreviewScene {
  * `CARD_SKIN_FIELDS` 是同一类东西:**契约常量**。场景对应的示例 props 是另一回事,那是
  * 出图端的活,住在 `packages/image` 的 `preview/sample-cards.ts`,面板一个字都不碰。
  */
-export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly PreviewScene[]>> = {
+export const CARD_PREVIEW_SCENES: Readonly<Record<CardKind, readonly PreviewScene[]>> = {
 	// 直播卡两态各画各的(角标、时间行、粉丝行都不同);默认落在「直播中」—— 那是最常被
 	// 看到的一张。「开播」不单列:它与直播中 `liveStatus` 都是 1,只差一句文案,出图端分不开,
 	// 留着就只能是别名(ADR-0014 决策 10 的 2026-09-19 🔗)。
@@ -1394,14 +1394,14 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly Preview
 	// 那一种,图廊只有它看得到;转发单给一场:它里头是**另一整张卡**(转发框 + 跟着同一份
 	// 皮肤摆的块),不单列的话皮肤作者在面板上一眼都看不到这一层。
 	// 从前的「全字段」(视频 + 正文 + 话题)砍了 —— 它在出图端与「视频投稿」是同一种卡。
-	dynamic: [
+	post: [
 		{ id: "text", label: "纯文字" },
 		{ id: "video", label: "视频投稿" },
 		{ id: "pics", label: "图文" },
 		{ id: "forward", label: "转发" },
 	],
-	sc: [{ id: "default", label: "醒目留言" }],
-	guard: [{ id: "default", label: "上舰" }],
+	superchat: [{ id: "default", label: "醒目留言" }],
+	membership: [{ id: "default", label: "上舰" }],
 	roastBoard: [{ id: "default", label: "锐评榜单" }],
 	roastSolo: [{ id: "default", label: "单人锐评" }],
 	wordcloud: [{ id: "default", label: "词云" }],
@@ -1414,7 +1414,7 @@ export const CARD_PREVIEW_SCENES: Readonly<Record<CardSkinKind, readonly Preview
  * 收成一处是因为有**两个**调用方(出图端挑示例数据、预览路由回报「实际用了哪个」),
  * 各写一遍 `find ?? 第一个` 的话,哪天回落规则改了就只改得动其中一边。
  */
-export function resolvePreviewScene(kind: CardSkinKind, scene?: string): PreviewScene {
+export function resolvePreviewScene(kind: CardKind, scene?: string): PreviewScene {
 	const scenes = CARD_PREVIEW_SCENES[kind];
 	// biome-ignore lint/style/noNonNullAssertion: 表里每种卡都至少一个场景,有测试钉着
 	return scenes.find((s) => s.id === scene) ?? scenes[0]!;
@@ -1618,7 +1618,7 @@ const CREATOR_FIELDS = [
  * 已格式化的文本(「1.2 万」「已开播 1 小时」)直接给,占位符不带过滤器。
  * `is*` / `has*` 一律 bool,是 `showIf` 的目标。
  */
-export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = {
+export const CARD_SKIN_FIELDS: Record<CardKind, readonly CardSkinField[]> = {
 	live: [
 		...CREATOR_FIELDS,
 		f("live.title", "text", "直播标题"),
@@ -1639,7 +1639,7 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 		f("stats.followersDelta", "text", "粉丝变化(下播才有)"),
 		f("stats.hasFollowersDelta", "bool", "有没有粉丝变化"),
 	],
-	dynamic: [
+	post: [
 		...CREATOR_FIELDS,
 		f("creator.isPremium", "bool", "是付费会员"),
 		f("post.label", "text", "「投稿了视频」这类动作标签(内外层卡都有)"),
@@ -1664,7 +1664,7 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 	],
 	// 醒目留言卡与会员卡两组字段随 ㉓ 改到最终名字(ADR-0021 决策 26 下 2026-10-05 的 🔗):观众是 `viewer.*`,
 	// 醒目留言的东西在 `superchat.*`,会员的在 `membership.*`;主播那两格 `master.*` 随 ㉔b 改成 `creator.*`。
-	sc: [
+	superchat: [
 		f("viewer.name", "text", "观众名"),
 		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
 		...CREATOR_FIELDS,
@@ -1674,7 +1674,7 @@ export const CARD_SKIN_FIELDS: Record<CardSkinKind, readonly CardSkinField[]> = 
 		f("superchat.rank", "number", "价位档(1~6,1 最低)"),
 		f("superchat.text", "text", "留言"),
 	],
-	guard: [
+	membership: [
 		f("viewer.name", "text", "观众名"),
 		f("viewer.avatar", "image", "观众头像(没有就是空串)"),
 		...CREATOR_FIELDS,
@@ -1715,7 +1715,10 @@ export type CardSkinFrameHook = keyof typeof CARD_SKIN_FRAME_HOOKS;
 export const CARD_SKIN_RANK_ATTR = "data-rank";
 
 /** 带档位属性的卡种:醒目留言卡与会员卡(其余卡没有「档」这回事)。 */
-export const CARD_SKIN_RANKED_KINDS = ["sc", "guard"] as const satisfies readonly CardSkinKind[];
+export const CARD_SKIN_RANKED_KINDS = [
+	"superchat",
+	"membership",
+] as const satisfies readonly CardKind[];
 
 /**
  * 给皮肤作者与 AI 做皮肤的说明:按档换色怎么写、限制是什么。编辑器的 CSS 一节与 AI 的规则提示词读同一段,不各抄一份。
@@ -1845,10 +1848,7 @@ const DIVIDER_BLOCK: CardSkinBuiltinBlock = { label: "分割线", atom: true, ho
  * 非原子块是一份**闭集**,由 `card-blocks.test.ts` 钉着:附加内容(预约 / 商品 / 通用 /
  * 关联视频四种形态结构各异、字段不在契约里,主人拍板不拆)与三种不可编辑卡的整卡块。
  */
-export const CARD_SKIN_BUILTIN_BLOCKS: Record<
-	CardSkinKind,
-	Record<string, CardSkinBuiltinBlock>
-> = {
+export const CARD_SKIN_BUILTIN_BLOCKS: Record<CardKind, Record<string, CardSkinBuiltinBlock>> = {
 	live: {
 		// 角标与封面**占同一片格子**、层次更高,不再嵌在封面里(决策 8 的 2026-09-18 🔗)。
 		// ⚠️ `image` 挂点是拆封面之前就有的**公开 API**,拆的时候连同 `<img>` 上那个
@@ -1878,7 +1878,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		followers: { label: "粉丝数", atom: true, hooks: { text: "文字" }, scenes: ["streaming"] },
 		totalViewers: { label: "累计观看", atom: true, hooks: { text: "文字" }, scenes: ["ended"] },
 	},
-	dynamic: {
+	post: {
 		attachment: {
 			label: "附加内容",
 			hooks: { card: "附加卡", cover: "附加卡封面", button: "按钮" },
@@ -1925,7 +1925,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 		commentCount: { label: "评论数", atom: true, hooks: { text: "文字", icon: "图标" } },
 		likeCount: { label: "点赞数", atom: true, hooks: { text: "文字", icon: "图标" } },
 	},
-	sc: {
+	superchat: {
 		// 留言的根是一层撑满格子的壳(居中靠块的 `self` 说),气泡与文字各一个挂点。
 		message: { label: "留言", atom: true, hooks: { bubble: "留言气泡", text: "留言文本" } },
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,
@@ -1946,7 +1946,7 @@ export const CARD_SKIN_BUILTIN_BLOCKS: Record<
 			},
 		},
 	},
-	guard: {
+	membership: {
 		icon: { label: "会员徽章", atom: true, hooks: { image: "徽章图" } },
 		announcement: { label: "宣告语", atom: true, hooks: { text: "文字" } },
 		[DIVIDER_TYPE]: DIVIDER_BLOCK,

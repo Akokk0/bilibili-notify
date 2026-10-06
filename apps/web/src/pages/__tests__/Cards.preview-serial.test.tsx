@@ -119,7 +119,7 @@ describe("全家福预览的请求节奏", () => {
 				const kinds = new Set(
 					previewCalls().map((c) => (c as [string, { kind?: string }])[1]?.kind),
 				);
-				expect(kinds).toEqual(new Set(["live", "dyn", "sc", "guard"]));
+				expect(kinds).toEqual(new Set(["live", "post", "superchat", "membership"]));
 			},
 			{ timeout: 5000 },
 		);

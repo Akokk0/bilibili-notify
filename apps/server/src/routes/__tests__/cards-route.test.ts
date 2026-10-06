@@ -92,22 +92,12 @@ describe("cards route — 图廊列表 GET /assets", () => {
 describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 	function depsWithStore(opts: {
 		dataDir: string;
-		/**
-		 * 存量配置里那个**退役的** `cardStyle.backgroundImages`。整条链 2026-09-20 删掉,
-		 * 但老 globals.json 里这个键还在(schema 不 strict,加载时被静静剥掉)—— 这里手工
-		 * 塞进来,就是为了钉「它不再算一条引用」。
-		 */
-		legacyBg?: string[];
-		/** 全局某 per-kind 样式(sc)的封面列表 —— 验证删除引用检查覆盖 cardStyleByKind。 */
-		globalKindCover?: string[];
-		/** 全局直播封面列表(liveCoverImages)—— 验证删除引用检查覆盖封面引用。 */
+		/** 全局直播封面列表(`cards.liveCoverImageIds`)—— 验证删除引用检查覆盖封面引用。 */
 		globalCover?: string[];
 		/** 皮肤旋钮那一层(2026-09-14 起背景图的正主)。 */
 		knobs?: Record<string, Record<string, unknown>>;
 		subs?: Array<
 			{
-				legacyBg?: string[];
-				kindCover?: string[];
 				cover?: string[];
 				/** 这位 UP 自己那层旋钮覆盖(ADR-0014 决策 17 的 🔗)。 */
 				knobs?: Record<string, Record<string, unknown>>;
@@ -126,13 +116,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 					defaults: {
 						cardSkin: "default",
 						cardSkinKnobs: opts.knobs ?? {},
-						cardStyle: {
-							backgroundImages: opts.legacyBg ?? [],
-							liveCoverImages: opts.globalCover ?? [],
-						},
-						cardStyleByKind: opts.globalKindCover
-							? { sc: { liveCoverImages: opts.globalKindCover } }
-							: {},
+						cards: { enabled: true, liveCoverImageIds: opts.globalCover ?? [] },
 					},
 				}),
 				getSubscriptions: () =>
@@ -141,13 +125,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 							? { identity: { sourceKey: "bilibili", externalId: s.uid } }
 							: { identity: { sourceKey: "douyin", externalId: s.externalId } }),
 						overrides: {
-							cardStyle:
-								s.legacyBg || s.cover
-									? { backgroundImages: s.legacyBg, liveCoverImages: s.cover }
-									: undefined,
-							cardStyleByKind: s.kindCover
-								? { guard: { liveCoverImages: s.kindCover } }
-								: undefined,
+							cards: s.cover ? { liveCoverImageIds: s.cover } : undefined,
 							cardSkinKnobs: s.knobs,
 						},
 					})),
@@ -173,7 +151,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除仅被全局 liveCoverImages(直播封面)引用的图 → 409 拦截", async () => {
+	it("删除仅被全局直播封面(cards.liveCoverImageIds)引用的图 → 409 拦截", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -190,7 +168,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除被某 UP liveCoverImages 引用的图 → conflict(409),message 指出该 UP", async () => {
+	it("删除被某 UP 的直播封面引用的图 → conflict(409),message 指出该 UP", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-up-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -206,36 +184,6 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			expect(json.message).toContain("UP 30303");
 			// 用家并进了 message,不再另占一格。
 			expect(json).not.toHaveProperty("referencedBy");
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
-	});
-
-	/**
-	 * ⚠️ **一处主人看得见的行为变化**(2026-09-20,`cardStyle.backgroundImages` 整条链删干净
-	 * 那次)。这条从前是反过来的:「删除被全局引用的背景图 → 409 拦截,文件保留」。
-	 *
-	 * 今天那个键只可能出现在**存量**配置里(schema 不 strict,加载时被静静剥掉),而它从
-	 * 2026-09-19 起已经画不出任何东西(背景图走皮肤的 `image` 旋钮 / `--bn-knob-wallpaper`)。
-	 * 再拿它拦删除,只会让主人删不掉一张早就不出现在任何卡上的图 —— 所以**放行**。
-	 * 判据:把 `cardBgReferences` 里那条 `backgroundImages` 判据加回去,这条红。
-	 */
-	it("只被退役的 backgroundImages 引用的图 → 200,删得掉(它已画不出任何东西)", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "bn-del-legacy-bg-"));
-		try {
-			const id = await saveCardBg(dir, PNG, "image/png");
-			const app = createCardsRoute({
-				deps: depsWithStore({
-					dataDir: dir,
-					legacyBg: [id],
-					subs: [{ uid: "10086", legacyBg: [id] }],
-				}),
-				puppeteer: null,
-				api: null,
-			});
-			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
-			expect(res.status).toBe(200);
-			expect(await listCardBg(dir)).toEqual([]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -318,23 +266,6 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 		}
 	});
 
-	it("删除仅被全局 per-kind 样式引用的封面图 → 409(覆盖 cardStyleByKind)", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-"));
-		try {
-			const id = await saveCardBg(dir, PNG, "image/png");
-			const app = createCardsRoute({
-				deps: depsWithStore({ dataDir: dir, globalKindCover: [id] }),
-				puppeteer: null,
-				api: null,
-			});
-			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
-			expect(res.status).toBe(409);
-			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
-	});
-
 	it("删除被拓展订阅引用的封面图 → conflict(409),message 用外部 id 指认(ADR-0019 决策 47;别名已退役,ADR-0021 决策 16)", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-del-cover-ext-"));
 		try {
@@ -344,7 +275,7 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 					dataDir: dir,
 					subs: [
 						{ kind: "extension", externalId: "MS4wLjAB-sec", cover: [id] },
-						{ kind: "extension", externalId: "sec-2", kindCover: [id] },
+						{ kind: "extension", externalId: "sec-2", cover: [id] },
 					],
 				}),
 				puppeteer: null,
@@ -355,24 +286,6 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 			const json = (await res.json()) as { message: string };
 			expect(json.message).toContain("订阅「MS4wLjAB-sec」、订阅「sec-2」");
 			expect(await listCardBg(dir)).toEqual([id]); // 仍在盘上
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("删除仅被某 UP 的 per-kind 样式引用的封面图 → conflict(409),message 指出该 UP", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "bn-del-kind-up-"));
-		try {
-			const id = await saveCardBg(dir, PNG, "image/png");
-			const app = createCardsRoute({
-				deps: depsWithStore({ dataDir: dir, subs: [{ uid: "20020", kindCover: [id] }] }),
-				puppeteer: null,
-				api: null,
-			});
-			const res = await app.request(`/asset/${id}`, { method: "DELETE" });
-			expect(res.status).toBe(409);
-			const json = (await res.json()) as { message: string };
-			expect(json.message).toContain("UP 20020");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -415,10 +328,10 @@ describe("cards route — 图廊删除 DELETE /asset/:id", () => {
 describe("cards route — testPushCaption(测试推送图说)", () => {
 	it("每种卡片类型 → 带「测试推送」前缀 + 该类型中文标签的文案", () => {
 		expect(testPushCaption("live")).toContain("开播");
-		expect(testPushCaption("dyn")).toContain("动态");
-		expect(testPushCaption("sc")).toContain("醒目留言");
-		expect(testPushCaption("guard")).toContain("上舰");
-		for (const k of ["live", "dyn", "sc", "guard"] as const) {
+		expect(testPushCaption("post")).toContain("动态");
+		expect(testPushCaption("superchat")).toContain("醒目留言");
+		expect(testPushCaption("membership")).toContain("上舰");
+		for (const k of ["live", "post", "superchat", "membership"] as const) {
 			// 非空且带前缀 —— 顶替 QQ 富媒体空 content 的占位空格,接收方一眼知是测试。
 			expect(testPushCaption(k)).toContain("测试推送");
 			expect(testPushCaption(k).trim().length).toBeGreaterThan(0);
@@ -777,7 +690,7 @@ describe("cards route — POST /renderer(热启用渲染)", () => {
 });
 
 describe("cards route — 热切换后预览渲染器随之失效重建", () => {
-	const STYLE = { font: "PingFang SC, sans-serif" };
+	const STYLE = {};
 
 	function depsWithEnginesAndDataDir(swapImageRendering: ReturnType<typeof vi.fn>): RouteDeps {
 		return {
@@ -838,7 +751,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		const first = await app.request("/preview", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ kind: "sc", style: STYLE, content: { amount: 30 } }),
+			body: JSON.stringify({ kind: "superchat", style: STYLE, content: { amount: 30 } }),
 		});
 		expect(first.status).toBe(200);
 		expect(pupA.page).toHaveBeenCalledTimes(1);
@@ -861,7 +774,7 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 		const second = await app.request("/preview", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ kind: "sc", style: STYLE, content: { amount: 30 } }),
+			body: JSON.stringify({ kind: "superchat", style: STYLE, content: { amount: 30 } }),
 		});
 		expect(second.status).toBe(200);
 		expect((pupB.page as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(
@@ -896,7 +809,7 @@ describe("cards route — resolveRoomIdFromUid (uid → 房间号)", () => {
 });
 
 describe("cards route — /preview live-by-uid fallback", () => {
-	const STYLE = { font: "PingFang SC, sans-serif" };
+	const STYLE = {};
 
 	function postPreview(app: ReturnType<typeof createCardsRoute>, body: unknown) {
 		return app.request("/preview", {
@@ -989,7 +902,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		}
 	});
 
-	it("mock live 预览:liveCoverImages 首张悬空 → 跳过,封面用第一张存在的图", async () => {
+	it("mock live 预览:liveCoverImageIds 首张悬空 → 跳过,封面用第一张存在的图", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-preview-ghost-cover-"));
 		try {
 			const real = await saveCardBg(dir, PNG, "image/png");
@@ -1011,7 +924,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
 			const res = await postPreview(app, {
 				kind: "live",
-				style: { ...STYLE, liveCoverImages: [ghost, real] },
+				style: { ...STYLE, liveCoverImageIds: [ghost, real] },
 			});
 			expect(res.status).toBe(200);
 			expect(captured.html).toContain("data:image/png;base64,");
@@ -1021,7 +934,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		}
 	});
 
-	it("mock live 预览:style.liveCoverImages 首张解析成 data URL 注入封面", async () => {
+	it("mock live 预览:style.liveCoverImageIds 首张解析成 data URL 注入封面", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-preview-cover-"));
 		try {
 			const id = await saveCardBg(dir, PNG, "image/png");
@@ -1043,7 +956,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			const app = createCardsRoute({ deps: depsWithDataDir(dir), puppeteer, api: null });
 			const res = await postPreview(app, {
 				kind: "live",
-				style: { ...STYLE, liveCoverImages: [id] },
+				style: { ...STYLE, liveCoverImageIds: [id] },
 			});
 			expect(res.status).toBe(200);
 			// 封面被自定义图(data:image/png)替换,示例 SVG 封面不再出现。
@@ -1056,8 +969,8 @@ describe("cards route — /preview live-by-uid fallback", () => {
 		}
 	});
 
-	it("live 真实数据预览(有 roomId,走 renderRealLive):liveCoverImages 首张悬空 → 跳过,不再传幽灵 id 给 renderer", async () => {
-		// renderRealLive 曾漏加 firstExistingCardBg 守卫,直接把 liveCoverImages[0] 透传 ——
+	it("live 真实数据预览(有 roomId,走 renderRealLive):liveCoverImageIds 首张悬空 → 跳过,不再传幽灵 id 给 renderer", async () => {
+		// renderRealLive 曾漏加 firstExistingCardBg 守卫,直接把 liveCoverImageIds[0] 透传 ——
 		// 幽灵 id 解析失败会静默回退 B 站原始封面,即便第二张图有效。这里用真实数据分支
 		// (content.roomId 命中,不落 mock 兜底)验证 colorOptions.liveCoverImage 拿到的是
 		// 第一张盘上存在的图,不是幽灵 id。
@@ -1085,7 +998,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			});
 			const res = await postPreview(app, {
 				kind: "live",
-				style: { ...STYLE, liveCoverImages: [ghost, real] },
+				style: { ...STYLE, liveCoverImageIds: [ghost, real] },
 				content: { roomId: "778899" },
 			});
 			expect(res.status).toBe(200);
@@ -1153,7 +1066,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 });
 
 describe("cards route — /preview sc/guard 发送者取登录账号", () => {
-	const STYLE = { font: "PingFang SC, sans-serif" };
+	const STYLE = {};
 
 	function loggedInApi(): BilibiliAPI {
 		return {
@@ -1183,7 +1096,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			api: loggedInApi(),
 		});
 		const res = await postPreview(app, {
-			kind: "sc",
+			kind: "superchat",
 			style: STYLE,
 			content: { amount: 30 },
 			fallback: true,
@@ -1216,7 +1129,12 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			puppeteer: makeFakePuppeteer(),
 			api: loggedInApi(),
 		});
-		const body = { kind: "sc" as const, style: STYLE, content: { amount: 30 }, fallback: true };
+		const body = {
+			kind: "superchat" as const,
+			style: STYLE,
+			content: { amount: 30 },
+			fallback: true,
+		};
 		// 第一趟构造渲染器,第二趟才走 updateConfig —— 两趟都发,拿得到那份 config。
 		expect((await postPreview(app, body)).status).toBe(200);
 		expect((await postPreview(app, body)).status).toBe(200);
@@ -1243,7 +1161,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			api: loggedInApi(),
 		});
 		const res = await postPreview(app, {
-			kind: "sc",
+			kind: "superchat",
 			style: STYLE,
 			content: { amount: price },
 			fallback: true,
@@ -1274,7 +1192,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 				api: loggedInApi(),
 			});
 			const res = await postPreview(app, {
-				kind: "guard",
+				kind: "membership",
 				style: STYLE,
 				content: { tierKey },
 				fallback: true,
@@ -1300,7 +1218,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			api: loggedInApi(),
 		});
 		const res = await postPreview(app, {
-			kind: "guard",
+			kind: "membership",
 			style: STYLE,
 			content: {},
 			fallback: true,
@@ -1323,7 +1241,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 				api: loggedInApi(),
 			});
 			const res = await postPreview(app, {
-				kind: "guard",
+				kind: "membership",
 				style: STYLE,
 				content: { tierKey },
 				fallback: true,
@@ -1343,7 +1261,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		});
 		for (const amount of [0, -1, 1.5]) {
 			const res = await postPreview(app, {
-				kind: "sc",
+				kind: "superchat",
 				style: STYLE,
 				content: { amount },
 				fallback: true,
@@ -1363,8 +1281,13 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
-		await postPreview(app, { kind: "sc", style: STYLE, content: { amount: 30 }, fallback: true });
-		await postPreview(app, { kind: "guard", style: STYLE, content: {}, fallback: true });
+		await postPreview(app, {
+			kind: "superchat",
+			style: STYLE,
+			content: { amount: 30 },
+			fallback: true,
+		});
+		await postPreview(app, { kind: "membership", style: STYLE, content: {}, fallback: true });
 		expect(api.getUserCardInfo).not.toHaveBeenCalled();
 		expect(sc.mock.calls[0]?.[0]?.viewer.name).toBe("登录名");
 		sc.mockRestore();
@@ -1381,7 +1304,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			api: loggedInApi(),
 		});
 		const res = await postPreview(app, {
-			kind: "guard",
+			kind: "membership",
 			style: STYLE,
 			content: { tierKey: "captain" },
 			fallback: true,
@@ -1409,7 +1332,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
 		const res = await postPreview(app, {
-			kind: "sc",
+			kind: "superchat",
 			style: STYLE,
 			content: { uid: "12345", amount: 30 },
 			fallback: true,
@@ -1437,7 +1360,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			.mockResolvedValue(Buffer.from("x"));
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
 		const res = await postPreview(app, {
-			kind: "sc",
+			kind: "superchat",
 			style: STYLE,
 			content: { uid: "12345", amount: 30 },
 			fallback: true,
@@ -1470,10 +1393,10 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			api,
 		});
 
-		await postPreview(app, { kind: "sc", style: STYLE, content: { amount: 30 } });
+		await postPreview(app, { kind: "superchat", style: STYLE, content: { amount: 30 } });
 		// 跨过 5 分钟 TTL,迫使第二次重新解析 → getMyselfInfoCached 抛错 → 走 stale-while-error。
 		vi.setSystemTime(new Date("2026-01-01T00:06:00Z"));
-		await postPreview(app, { kind: "sc", style: STYLE, content: { amount: 30 } });
+		await postPreview(app, { kind: "superchat", style: STYLE, content: { amount: 30 } });
 
 		const lastArg = spy.mock.calls.at(-1)?.[0] as { viewer: { name: string } };
 		expect(lastArg.viewer.name).toBe("登录名"); // 没有闪回「示例粉丝」
@@ -1486,7 +1409,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 // ── 预览也走皮肤(ADR-0014 决策 15 / 22) ──────────────────────────────────────
 
 describe("cards route — /preview 走皮肤", () => {
-	const STYLE = { font: "PingFang SC, sans-serif" };
+	const STYLE = {};
 
 	/** 一套认得出来的皮肤:直播卡只有一个自定义块,里头写死一句标记。 */
 	const MARKED: CardSkinManifest = {
@@ -1699,7 +1622,7 @@ describe("cards route — /preview 走皮肤", () => {
 			cardSkins: skinStore({ marked: MARKED }),
 		});
 		const res = await postPreview(app, {
-			kind: "dyn",
+			kind: "post",
 			style: STYLE,
 			content: { uid: "12345" },
 			cardSkin: "marked",
@@ -1723,7 +1646,7 @@ describe("cards route — /preview 走皮肤", () => {
 			cardSkins: skinStore({ marked: MARKED }),
 		});
 		const res = await postPreview(app, {
-			kind: "sc",
+			kind: "superchat",
 			style: STYLE,
 			content: { amount: 30 },
 			cardSkin: "marked",
@@ -1753,7 +1676,7 @@ describe("cards route — /preview 走皮肤", () => {
 			cardSkins: skinStore({ marked: MARKED }),
 		});
 		const res = await postPreview(app, {
-			kind: "sc",
+			kind: "superchat",
 			style: STYLE,
 			content: { amount: 30 },
 			fallback: true,
@@ -1824,7 +1747,7 @@ describe("cards route — /preview 走皮肤", () => {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({
 					targetId: TARGET_ID,
-					kind: "sc",
+					kind: "superchat",
 					style: STYLE,
 					content: { amount: 30 },
 					cardSkin: "marked",
@@ -1938,7 +1861,7 @@ describe("cards route — POST /skins/:id/screenshot 最终效果", () => {
 
 	it("草稿过的是与实时预览同一道装包门 —— 拒了就 invalid(400),逐条原因进 issues", async () => {
 		const { res, json } = await shot(
-			{ kind: "live", manifest: { schemaVersion: 1 } },
+			{ kind: "live", manifest: { schemaVersion: 2 } },
 			makeFakePuppeteer(),
 		);
 		expect(res.status).toBe(400);
@@ -2027,7 +1950,7 @@ describe("cards route — 预览:背景图 / 字体旋钮要经宿主解析", ()
 		} as unknown as RouteDeps;
 	}
 
-	for (const kind of ["live", "dyn"] as const) {
+	for (const kind of ["live", "post"] as const) {
 		it(`${kind} 卡:拧了「卡片背景图」→ --bn-knob-wallpaper 真的注进去了`, async () => {
 			const dir = await mkdtemp(join(tmpdir(), "bn-knob-preview-"));
 			try {
@@ -2228,7 +2151,7 @@ describe("cards route — per-UP 预览带草稿旋钮", () => {
 		const dir = await mkdtemp(join(tmpdir(), "bn-perup-preview-sc-"));
 		try {
 			const html = await preview(dir, {
-				kind: "sc",
+				kind: "superchat",
 				content: { amount: 30 },
 				cardSkinKnobs: { [DEFAULT_CARD_SKIN_ID]: { "gradient-start": "#aaaaaa" } },
 			});

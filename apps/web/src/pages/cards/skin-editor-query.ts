@@ -13,7 +13,7 @@ import type {
 	CardSkinSaveResponse,
 	CardSkinShotResponse,
 } from "@bilibili-notify/contract";
-import type { CardSkinKind } from "@bilibili-notify/internal";
+import type { CardKind } from "@bilibili-notify/internal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../services/api";
 import { CARD_SKINS_KEY } from "./card-skins-query";
@@ -120,7 +120,7 @@ export function useShotCardSkin() {
 			...body
 		}: {
 			skinId: string;
-			kind: CardSkinKind;
+			kind: CardKind;
 			scene?: string;
 			manifest: unknown;
 		}) =>
@@ -139,7 +139,7 @@ export function useShotCardSkin() {
  */
 export function usePreviewCardSkin(id: string) {
 	return useMutation({
-		mutationFn: (v: { kind: CardSkinKind; scene?: string; manifest: unknown }) =>
+		mutationFn: (v: { kind: CardKind; scene?: string; manifest: unknown }) =>
 			api.post<CardSkinPreviewResponse>(`/api/cards/skins/${id}/preview`, v),
 	});
 }

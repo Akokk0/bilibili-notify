@@ -32,7 +32,7 @@ import {
 	CARD_SKIN_FRAME_HOOKS,
 	CARD_SKIN_LIMITS,
 	CARD_SKIN_SELF_HOOK,
-	type CardSkinKind,
+	type CardKind,
 } from "@bilibili-notify/internal";
 import {
 	type SanitizeCssResult,
@@ -89,7 +89,7 @@ const FRAME_HOOKS: ReadonlySet<string> = new Set(Object.keys(CARD_SKIN_FRAME_HOO
 const FRAME_FALLBACK_HOOK: keyof typeof CARD_SKIN_FRAME_HOOKS = "frame";
 
 export interface CardBlockCssOptions {
-	kind: CardSkinKind;
+	kind: CardKind;
 	/** 内置块名;缺省 = 自定义块(只有 `self`,没有内部挂点)。 */
 	builtin?: string;
 }

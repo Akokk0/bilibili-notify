@@ -13,7 +13,7 @@
  */
 
 import { cardOfManifest, skinAssetRefs } from "@bilibili-notify/image";
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/internal";
+import type { CardKind, CardSkinManifest } from "@bilibili-notify/internal";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
 import { EXT_TO_MIME } from "../runtime/image-mime.js";
 import type { CardSkinStore } from "./store.js";
@@ -49,7 +49,7 @@ export async function prefetchCardSkinAssets(
 	store: Pick<CardSkinStore, "readAsset" | "ensureReady">,
 	skinId: string,
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 ): Promise<Map<string, string>> {
 	const out = new Map<string, string>();
 	await Promise.all(

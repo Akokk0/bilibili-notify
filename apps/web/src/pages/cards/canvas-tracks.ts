@@ -20,11 +20,11 @@
  * 皮肤,换一套内边距不同的照样错;要准就把真值接上。
  */
 
-import type { CardSkinKind, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardKind, CardSkinManifest } from "@bilibili-notify/contract";
 import { CARD_SKIN_LIMITS } from "@bilibili-notify/internal/constants";
 import { columnsOf } from "./skin-draft-ops";
 
-type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
+type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 
 /** 画布最前面那根行号列的宽度 px。画布的 CSS 与拖拽的量尺共用它。 */
 export const ROW_LABEL_COL = 28;

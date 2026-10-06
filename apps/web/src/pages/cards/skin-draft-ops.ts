@@ -5,7 +5,7 @@
  * 两边都察觉不到,界面上看着值变了、预览一动不动(正是「拧了没反应」那一类)。
  */
 
-import type { CardSkinKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardKind, CardSkinKnob, CardSkinManifest } from "@bilibili-notify/contract";
 import type { CardSkinColumn } from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_BUILTIN_BLOCKS,
@@ -15,14 +15,14 @@ import {
 	CARD_SKIN_LIMITS,
 } from "@bilibili-notify/internal/constants";
 
-type Card = NonNullable<CardSkinManifest["cards"][CardSkinKind]>;
+type Card = NonNullable<CardSkinManifest["cards"][CardKind]>;
 type Block = Card["blocks"][number];
 type Grid = Block["grid"];
 /** 加完一个块:新清单 + 新块的 id(调用方要拿它立刻选中)。 */
 type AddedBlock = { manifest: CardSkinManifest; blockId: string };
 
 /** 这张卡的块表。皮肤没定义这种卡时是 `undefined`(出图跟着出厂默认)。 */
-export function cardOf(manifest: CardSkinManifest | null, kind: CardSkinKind): Card | undefined {
+export function cardOf(manifest: CardSkinManifest | null, kind: CardKind): Card | undefined {
 	return manifest?.cards[kind];
 }
 
@@ -59,7 +59,7 @@ export function gridLimits(grid: Grid): Record<keyof Grid, { min: number; max: n
  */
 function mapCard(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	fn: (card: Card) => Card,
 ): CardSkinManifest {
 	const card = manifest.cards[kind];
@@ -75,7 +75,7 @@ function mapCard(
  */
 function mapBlock(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 	fn: (block: Block) => Block,
 ): CardSkinManifest {
@@ -96,7 +96,7 @@ function mapBlock(
  */
 export function setBlockGrid(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 	patch: Partial<Grid>,
 ): CardSkinManifest {
@@ -184,7 +184,7 @@ export function overlappingBlocks(card: Card | undefined, blockId: string): stri
  */
 export function dropBlockGrid(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 	patch: Partial<Grid>,
 ): CardSkinManifest {
@@ -240,7 +240,7 @@ export function stackingOf(
  * `scenes` 就只属于那几场,没标 = 共有块、每一场都有;自定义块永远共有。皮肤格式里没有任何
  * 场景名单 —— 场景只决定画布上露不露它,块的位置只有一份。
  */
-export function blockInScene(kind: CardSkinKind, block: Block, scene: string): boolean {
+export function blockInScene(kind: CardKind, block: Block, scene: string): boolean {
 	if (block.kind !== "builtin") return true;
 	const scenes = CARD_SKIN_BUILTIN_BLOCKS[kind][block.builtin]?.scenes;
 	return scenes === undefined || scenes.includes(scene);
@@ -262,7 +262,7 @@ export function canAddBlock(card: Card | undefined): boolean {
  */
 export function addBlock(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	builtin: string,
 ): AddedBlock | null {
 	return appendBlock(manifest, kind, builtin, (id, grid) => ({
@@ -279,7 +279,7 @@ export function addBlock(
  * 起手那段 HTML 刻意不带占位符:占位符是**按卡种**承诺的,写死一个 `{creator.name}` 在榜单卡
  * 里就是一条「契约里没有这个字段」的装包错误,而块刚建出来就红着,人会以为是自己点坏了。
  */
-export function addCustomBlock(manifest: CardSkinManifest, kind: CardSkinKind): AddedBlock | null {
+export function addCustomBlock(manifest: CardSkinManifest, kind: CardKind): AddedBlock | null {
 	return appendBlock(manifest, kind, "custom", (id, grid) => ({
 		id,
 		kind: "custom",
@@ -291,7 +291,7 @@ export function addCustomBlock(manifest: CardSkinManifest, kind: CardSkinKind): 
 /** 新块落在**最后一行的下一行、整宽**,理由见 {@link addBlock}。 */
 function appendBlock(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	idBase: string,
 	make: (id: string, grid: Grid) => unknown,
 ): AddedBlock | null {
@@ -356,7 +356,7 @@ function nextBlockId(card: Card, base: string): string {
  */
 export function removeBlock(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 ): CardSkinManifest {
 	return mapCard(manifest, kind, (card) =>
@@ -373,7 +373,7 @@ export function removeBlock(
  */
 export function setFrame(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	patch: {
 		width?: number;
 		gapRow?: number;
@@ -429,7 +429,7 @@ export function columnsOf(card: Card | undefined): CardSkinColumn[] {
  */
 export function setColumns(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	columns: CardSkinColumn[] | undefined,
 ): CardSkinManifest {
 	return mapCard(manifest, kind, (card) => {
@@ -459,7 +459,7 @@ function normalizeColumn(c: CardSkinColumn): CardSkinColumn {
  */
 export function setBlockCss(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 	css: string,
 ): CardSkinManifest {
@@ -474,7 +474,7 @@ export function setBlockCss(
 /** 改卡片外框的 CSS(根块两层)。空白同样删键,理由见 {@link setBlockCss}。 */
 export function setFrameCss(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	css: string,
 ): CardSkinManifest {
 	return mapCard(manifest, kind, (card) => {
@@ -491,7 +491,7 @@ export function setFrameCss(
  */
 export function setBlockShowIf(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 	showIf: string | undefined,
 ): CardSkinManifest {
@@ -511,7 +511,7 @@ export function setBlockShowIf(
  */
 export function setBlockHtml(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	blockId: string,
 	html: string,
 ): CardSkinManifest {
@@ -528,7 +528,7 @@ export function setBlockHtml(
  */
 export function adoptCard(
 	manifest: CardSkinManifest,
-	kind: CardSkinKind,
+	kind: CardKind,
 	source: Card,
 ): CardSkinManifest {
 	if (manifest.cards[kind]) return manifest;
@@ -539,7 +539,7 @@ export function adoptCard(
 }
 
 /** 交还一种卡:整张从清单里删掉,出图时它跟着出厂默认走。 */
-export function dropCard(manifest: CardSkinManifest, kind: CardSkinKind): CardSkinManifest {
+export function dropCard(manifest: CardSkinManifest, kind: CardKind): CardSkinManifest {
 	if (!manifest.cards[kind]) return manifest;
 	const cards = { ...manifest.cards };
 	delete cards[kind];

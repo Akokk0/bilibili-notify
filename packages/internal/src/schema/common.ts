@@ -445,119 +445,34 @@ const AISettingsObjectSchema = z.object({
 export const AISettingsSchema = AISettingsObjectSchema;
 export type AISettings = z.infer<typeof AISettingsSchema>;
 
-const CardStyleObjectSchema = z.object({
-	/**
-	 * 卡片图片渲染功能总开关。关闭后,push 流程会跳过图片生成,仅发送文本回退。
-	 * 默认 true 以兼容老数据文件;独立端的 puppeteer 适配器仍按 `bootstrap.chromePath`
-	 * 是否注入决定能不能渲染,这个 flag 是 *用户意图* 层。
-	 */
+/**
+ * 卡片设置(㉔e,ADR-0023 决策 3 的 2026-10-06 🔗)。从前这里是 `cardStyle`(出图开关、直播封面与一批退役字段)加
+ * `cardStyleByKind`(同一份形状按卡种再存一遍),按卡种这一层原是给每种卡各配字体与玻璃效果的,那些早就挪进了皮肤,
+ * 只剩直播封面一个用途 —— 所以收成一个 `cards`:
+ *
+ * - `enabled` 卡片图片渲染总开关。关闭后推送跳过出图、只发文字回退。默认 true;独立端的 puppeteer 适配器仍按
+ *   `bootstrap.chromePath` 是否注入决定能不能渲染,这个开关是**用户意图**层;
+ * - `liveCoverImageIds` 直播卡自定义封面图的图库资产 id **列表**(独立端专属)。空 = 沿用来源的封面(B 站房间封面 / 关键帧);
+ *   一张 = 固定;多张 = 每次推送顺序轮换。只对直播卡有意义。
+ *
+ * 退役的 `font` / `fontAsset` / `glassOpacity` / `glassClear`(字体与玻璃归皮肤自己的旋钮)与没人读的逐订阅 / 按卡种
+ * `enabled` 都不再存在;0.x 的老数据由迁移(`apps/server/src/migration/card-moves.ts`)搬家并丢掉它们。
+ */
+export const CardsSettingsSchema = z.object({
 	enabled: z.boolean().default(true),
-	/**
-	 * **退役字段**(2026-09-14 主人拍板,同玻璃那次):字体归**皮肤自己的旋钮**。
-	 * 理由是它在皮肤底下多半不生效 —— 皮肤只要写一句 `font-family` 就盖掉了它,而面板
-	 * 照样让人选(赛博朋克那套正是如此)。本来说好由开机迁移把它搬进 `cardSkinKnobs`,
-	 * 那个迁移已于 2026-09-18 整个退役(ADR-0014 决策 17 的 🔗):没人再搬它,存量值
-	 * 按定案直接作废 —— 升级上来的一律用出厂默认皮肤,想换字体请拧那套皮肤的字体旋钮。
-	 * ⛔ 新代码不许读它。保持 `.optional()`、不补回 `.default(...)`:退役字段不该由我们
-	 * 往新配置里写回去。
-	 *
-	 * 字体家族名。`packages/image` 的 `renderCard` 在它后面追加
-	 * `"Microsoft YaHei","Source Han Sans","Noto Sans CJK",sans-serif` 兜底链,
-	 * 缺字体不会渲染崩。`.default(...)` 让缺该字段的老 globals.json 加载时自动补全。
-	 *
-	 * 独立端的设置页已改成**字体选择器**,交出来的是单个家族名(空串 = 只走兜底链);
-	 * 逗号列表只会来自老配置与「手填(高级)」那一档,`cssFontFamily` 会逐项处理。
-	 * 想用主人自己的字体文件走下面的 `fontAsset`,它优先。
-	 */
-	font: z.string().optional(),
-	/**
-	 * **退役字段**(同上面的 `font`):搬进字体旋钮时写成 `upload:<id>`。⛔ 新代码不许读它。
-	 *
-	 * 主人上传的字体文件资产 id(与卡片背景图同一套「落盘 + id 引用 +
-	 * 渲染期解析成 data URL」形态)。
-	 *
-	 * 设了就**优先于 `font`**:渲染期由服务端读盘拼成 `@font-face` 内联给模版。指向一个
-	 * 已被删掉的资产时静静回落 `font` —— 与背景图同一条纪律,不让一次删除把出图弄崩。
-	 */
-	fontAsset: z.string().optional(),
-	// 🪦 `backgroundImages`(以及更老的单值 `backgroundImage`)2026-09-20 整条链**删干净**。
-	// 背景图 2026-09-14 退役成皮肤自己的 `image` 旋钮(值走 `--bn-knob-wallpaper`),
-	// 2026-09-19 起全仓零条 CSS 再读 `--bn-card-bg-image` —— 字段留着只是喂一条谁都不读的
-	// 入参链。本 schema **不是 `.strict()`**,存量 globals.json / 订阅覆盖里的这两个键
-	// 解析时静静剥掉,不会像皮肤清单那样整份拒收。⛔ 别把它加回来。
-	/**
-	 * 直播卡自定义封面图资产 id **列表**(独立端专属,复用卡片背景同一图廊)。空列表
-	 * (默认)= 沿用 B 站房间封面 / 关键帧;长度 1 = 固定单张;长度 >1 = 每次推送顺序
-	 * 轮换(游标与背景图同一 rotator,key 维度独立)。仅对 live 卡有意义,其余卡忽略。
-	 */
-	liveCoverImages: z.array(z.string()).default([]),
-	/**
-	 * **退役字段**(ADR-0014 决策 16 的 🔗,2026-09-14 主人拍板):玻璃片归**皮肤自己的旋钮**
-	 * (默认皮肤声明 `glass-opacity` / `glass-blur` 两枚),不再是用户配置项。本来说好由
-	 * 开机迁移把值搬进 `globals.defaults.cardSkinKnobs`,那个迁移已于 2026-09-18 整个退役
-	 * (ADR-0014 决策 17 的 🔗):没人再搬它,存量值按定案直接作废,升级上来的一律用出厂
-	 * 默认皮肤。
-	 *
-	 * 于是当初认下的代价还要再大一档:玻璃从前能按卡种 / 按 UP 分别覆盖,如今连全局那一份
-	 * 都不搬了。想调玻璃就调皮肤的旋钮 —— 给某位 UP 单独调的话,在卡片页切到他、拧他那一侧的
-	 * 旋钮(per-UP 旋钮覆盖 `overrides.cardSkinKnobs`,ADR-0014 决策 17 的 🔗,2026-09-24;在那
-	 * 之前只能复制一套皮肤挂给他)。按卡种分开调仍然归皮肤作者:多声明一枚旋钮。
-	 *
-	 * ⛔ 新代码不许读这两个字段。出图的玻璃在皮肤的块 CSS 里。
-	 */
-	glassOpacity: z.number().min(0).max(1).optional(),
-	/**
-	 * 退役字段,见上面 `glassOpacity`。`.optional()` 而不是从前的 `.default(false)`:当初
-	 * 是为了让开机迁移判得出「搬过没有」,迁移 2026-09-18 退役(ADR-0014 决策 17 的 🔗)
-	 * 之后理由换成更简单的一条 —— 退役字段不该由我们往新配置里写回去。
-	 */
-	glassClear: z.boolean().optional(),
+	liveCoverImageIds: z.array(z.string()).default([]),
 });
+export type CardsSettings = z.infer<typeof CardsSettingsSchema>;
 
 /**
- * 卡片样式。0.x 退役的 `hideDesc` / `hideFollower` 不用专门处理:本 schema 不是 `.strict()`,存量值读的时候
- * 自己剥掉(守卫在 `card-style.test.ts`)。
+ * 逐订阅的卡片设置覆盖:只有直播封面这一格能覆盖(出图总开关是全局的,订阅上没有)。
+ * **无默认的纯可选** —— `.default([])` 会让「没覆盖」被注入成「覆盖成空」,合并时盖掉全局的封面
+ * (与 ContentFilters / TemplateBundle 的 Partial 同源问题)。
  */
-export const CardStyleSchema = CardStyleObjectSchema;
-export type CardStyle = z.infer<typeof CardStyleSchema>;
-
-// `.partial()` 只把字段变可选,**不剥离内层 `.default()`**(与 ContentFilters /
-// ScheduleConfig / TemplateBundle 三个 PartialSchema 同源问题):CardStyleObjectSchema
-// 有带 default 的字段,per-UP 只覆盖一个字段(如 glassOpacity)时,partial 会把
-// `enabled:true` / `liveCoverImages:[]` 一并注入。resolve() 的
-// merge(defaults.cardStyle, ov.cardStyle) 视其为「已覆盖」而盖掉全局自定义值 ——
-// 最严重:全局 enabled=false(关图片渲染)被注入的 true 悄悄翻开。故它们在 override
-// 维度必须是「无默认的纯可选」,与全局 CardStyleObjectSchema(带 .default 供
-// globals.json 缺字段回填)分开。
-//
-// 下面 `.extend()` 的单子从前是 7 个,今天**只有 enabled 与 liveCoverImages 两条是承重的**
-// ——`font` 自己已经是 optional(留着是照着全局那张表逐条对,少一条就是下一个洞),
-// `showPopularity` / `showArea` / `showFans` 随旧版式整个退役(ADR-0014 决策 17 的
-// 2026-09-18 🔗),`glassClear` 是 2026-09-14 那次退役的,`backgroundImages` 2026-09-20
-// 整条链删掉。
-export const CardStylePartialSchema = CardStyleObjectSchema.partial().extend({
-	enabled: z.boolean().optional(),
-	font: z.string().optional(),
-	liveCoverImages: z.array(z.string()).optional(),
+export const CardsOverridesSchema = z.object({
+	liveCoverImageIds: z.array(z.string()).optional(),
 });
-export type CardStylePartial = z.infer<typeof CardStylePartialSchema>;
-
-/** 卡片类型 —— 按类型分别配置样式 / 背景;键对齐 CardLayout 的 live/dynamic/sc/guard。 */
-export const CardKindSchema = z.enum(["live", "dynamic", "sc", "guard"]);
-export type CardKind = z.infer<typeof CardKindSchema>;
-
-/**
- * 按卡片类型的样式覆盖:每个类型一份可选 `CardStylePartial`,叠在基准 `cardStyle` 之上
- * (字段级 merge)。缺某类型 = 该类型跟随基准。全局默认与 per-UP 覆盖各持一份,生效优先级
- * 由高到低:UP·类型 > UP·基准 > 全局·类型 > 全局·基准(见 `resolveCardStyleForKind`)。
- */
-export const CardStyleByKindSchema = z.object({
-	live: CardStylePartialSchema.optional(),
-	dynamic: CardStylePartialSchema.optional(),
-	sc: CardStylePartialSchema.optional(),
-	guard: CardStylePartialSchema.optional(),
-});
-export type CardStyleByKind = z.infer<typeof CardStyleByKindSchema>;
+export type CardsOverrides = z.infer<typeof CardsOverridesSchema>;
 
 export const DEFAULT_CONTENT_FILTERS: ContentFilters = {
 	blockReposts: false,

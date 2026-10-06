@@ -23,10 +23,10 @@ import CardSkinEditor from "../CardSkinEditor";
 
 /** 动态卡摆三块:头像共有,图廊只属图文,视频封面只属视频投稿。 */
 const MANIFEST = {
-	schemaVersion: 1,
+	schemaVersion: 2,
 	name: "霓虹",
 	cards: {
-		dynamic: {
+		post: {
 			width: 600,
 			css: "",
 			blocks: [

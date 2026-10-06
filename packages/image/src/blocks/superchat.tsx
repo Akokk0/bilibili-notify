@@ -12,7 +12,7 @@
  * 挂点(ADR-0014 决策 9):`self` 是渲染器包在块外面的 wrapper,块的**根**另挂一个按「它是
  * 什么」取名的挂点(`image` / `text` / `pill` / `line`),默认皮肤的外观规则就写在它上面;根
  * 之外的部件照挂(留言的 `bubble` 与 `text`、「SC to」那行里的 `label` / `creator` /
- * `creatorAvatar` / `creatorName`)。名字取自 `CARD_SKIN_BUILTIN_BLOCKS.sc[<块>].hooks`,是对外
+ * `creatorAvatar` / `creatorName`)。名字取自 `CARD_SKIN_BUILTIN_BLOCKS.superchat[<块>].hooks`,是对外
  * API(`__tests__/card-hooks.test.ts` 两头钉着:块内出现的挂点必须都在目录里,目录里的挂点
  * 也必须真被挂上)。
  *
@@ -30,7 +30,7 @@
  * | `--bn-card-tier-color` | 价位档位色的起色(`bgColor[0]`) | `divider`(= 线自己)、`name` 胶囊、`price`、`duration` |
  * | `--bn-card-tier-color-end` | 价位档位色的止色(`bgColor[1]`) | `price`(金额是渐变裁字,缺一个字就透明了) |
  *
- * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.sc`,一个不多一个不少(`__tests__/card-blocks.test.ts`
+ * 键名对齐 `CARD_SKIN_BUILTIN_BLOCKS.superchat`,一个不多一个不少(`__tests__/card-blocks.test.ts`
  * 对表钉着)。
  */
 

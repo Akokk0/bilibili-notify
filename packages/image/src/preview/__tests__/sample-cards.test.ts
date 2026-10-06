@@ -11,8 +11,8 @@
 
 import { readFileSync } from "node:fs";
 import {
+	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
-	CARD_SKIN_KINDS,
 	DEFAULT_CARD_SKIN,
 	IMAGE_REF_PATTERN,
 } from "@bilibili-notify/internal";
@@ -26,7 +26,7 @@ const FORWARD_BUBBLE = 'data-bn="bubble"';
 /** 卡外框的挂点(`data-bn="frame"`)—— 画出来的东西至少得有个外框。 */
 const FRAME_HOOK = /data-bn="(?:[^"]*\s)?frame(?:\s[^"]*)?"/;
 
-async function render(kind: (typeof CARD_SKIN_KINDS)[number], scene?: string): Promise<string> {
+async function render(kind: (typeof CARD_KINDS)[number], scene?: string): Promise<string> {
 	// `as never`:出口刻意回 unknown(示例数据不是对外契约,别让调用方照它写类型),
 	// 这里替调用方把 props 递进去。
 	const sample = await sampleCard(kind, scene);
@@ -34,7 +34,7 @@ async function render(kind: (typeof CARD_SKIN_KINDS)[number], scene?: string): P
 }
 
 describe("出厂示例数据 — 七种卡都画得出来", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind}:默认场景渲染出带外框的 HTML`, async () => {
 			const html = await render(kind);
 			expect(html).toMatch(FRAME_HOOK);
@@ -70,7 +70,7 @@ describe("出厂示例数据 — 直播卡的头像", () => {
 });
 
 describe("出厂示例数据 — 场景回落", () => {
-	for (const kind of CARD_SKIN_KINDS) {
+	for (const kind of CARD_KINDS) {
 		it(`${kind}:不认识的场景名回落到第一个场景,与不传 scene 逐字节相同`, async () => {
 			const [fallback, bare, first] = await Promise.all([
 				render(kind, "这个场景不存在"),
@@ -109,13 +109,13 @@ describe("出厂示例数据 — 确定性", () => {
 describe("出厂示例数据 — 动态卡的转发场面", () => {
 	// 出厂默认皮肤里转发框是原子块(`data-block="repost"`),不再是正文复合块里那个挂点。
 	it("转发场面画得出转发框,纯文字场面没有", async () => {
-		const [forward, text] = await Promise.all([render("dynamic", "forward"), render("dynamic")]);
+		const [forward, text] = await Promise.all([render("post", "forward"), render("post")]);
 		expect(forward).toContain('data-block="repost"');
 		expect(text).not.toContain('data-block="repost"');
 	});
 
 	it("框里是另一整张卡 —— 块跟着同一份皮肤摆,不是写死的旧版式", async () => {
-		const html = await render("dynamic", "forward");
+		const html = await render("post", "forward");
 		const at = html.indexOf('data-block="repost"');
 		expect(at).toBeGreaterThan(-1);
 		const inset = html.slice(at);
@@ -134,15 +134,15 @@ describe("出厂示例数据 — 动态卡的头像", () => {
 		[...html.matchAll(/<img[^>]*alt="头像"[^>]*>/g)].map((m) => m[0].match(/src="([^"]*)"/)?.[1]);
 
 	it("每个动态场面外层作者都带示例头像,不是透明占位", async () => {
-		for (const { id } of CARD_PREVIEW_SCENES.dynamic) {
-			const srcs = avatarSrcs(await render("dynamic", id));
+		for (const { id } of CARD_PREVIEW_SCENES.post) {
+			const srcs = avatarSrcs(await render("post", id));
 			expect(srcs.length, id).toBeGreaterThanOrEqual(1);
 			for (const src of srcs) expect(src, id).toMatch(/^data:image\/svg\+xml/);
 		}
 	});
 
 	it("转发场面内外两层各有一个头像", async () => {
-		expect(avatarSrcs(await render("dynamic", "forward"))).toHaveLength(2);
+		expect(avatarSrcs(await render("post", "forward"))).toHaveLength(2);
 	});
 
 	it("示例引用形状合规(`<sha256>.<扩展名>`),不会与任何真图撞名", () => {
@@ -155,15 +155,15 @@ describe("出厂示例数据 — 动态卡的头像", () => {
  * 画出来之后看哪几句在,就知道这个场面下哪几个真值为真 —— 走的是渲染器真实的取值那条路。
  */
 async function truthy(scene: string, fields: readonly string[]): Promise<Record<string, boolean>> {
-	const sample = await sampleCard("dynamic", scene);
+	const sample = await sampleCard("post", scene);
 	const html = await renderCardWithSkin(
-		"dynamic",
+		"post",
 		sample.props as never,
 		{
 			...DEFAULT_CARD_SKIN,
 			cards: {
 				...DEFAULT_CARD_SKIN.cards,
-				dynamic: {
+				post: {
 					width: 600,
 					blocks: fields.map((field, i) => ({
 						id: `probe-${i}`,
@@ -186,7 +186,7 @@ async function truthy(scene: string, fields: readonly string[]): Promise<Record<
  */
 describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 	it("有视频卡、头部带「投稿了视频」;没有正文、话题、预约", async () => {
-		const html = await render("dynamic", "video");
+		const html = await render("post", "video");
 		expect(html).toContain("【示例视频】");
 		expect(html).toContain("投稿了视频");
 		// 这三样纯文字那场都有 —— 回落到默认场面的话这里红。
@@ -206,8 +206,8 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
 	});
 
 	it("动态卡的场面两两不同", async () => {
-		const ids = CARD_PREVIEW_SCENES.dynamic.map((s) => s.id);
-		const htmls = await Promise.all(ids.map((id) => render("dynamic", id)));
+		const ids = CARD_PREVIEW_SCENES.post.map((s) => s.id);
+		const htmls = await Promise.all(ids.map((id) => render("post", id)));
 		expect(new Set(htmls).size).toBe(ids.length);
 	});
 });
@@ -218,21 +218,21 @@ describe("出厂示例数据 — 动态卡的视频投稿场面", () => {
  */
 describe("出厂示例数据 — 动态卡的图文场面", () => {
 	it("图廊铺满九格,没有视频卡", async () => {
-		const html = await render("dynamic", "pics");
+		const html = await render("post", "pics");
 		expect(html.match(/data-bn="image" class="relative/g)?.length).toBe(9);
 		expect(html).not.toContain("【示例视频】");
 	});
 
 	it("{images.count} 是 9,{images.first} 取得到第一张图", async () => {
-		const sample = await sampleCard("dynamic", "pics");
+		const sample = await sampleCard("post", "pics");
 		const html = await renderCardWithSkin(
-			"dynamic",
+			"post",
 			sample.props as never,
 			{
 				...DEFAULT_CARD_SKIN,
 				cards: {
 					...DEFAULT_CARD_SKIN.cards,
-					dynamic: {
+					post: {
 						width: 600,
 						blocks: [
 							{
@@ -275,7 +275,7 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 			...DEFAULT_CARD_SKIN,
 			cards: {
 				...DEFAULT_CARD_SKIN.cards,
-				dynamic: {
+				post: {
 					width: 600,
 					blocks: [
 						{ id: "probe", kind: "custom", html, grid: { row: 1, column: 1, span: 12 } },
@@ -303,9 +303,9 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 		}) as never;
 
 	async function probe(scene: string | undefined, placeholder: string): Promise<string> {
-		const sample = await sampleCard("dynamic", scene);
+		const sample = await sampleCard("post", scene);
 		return await renderCardWithSkin(
-			"dynamic",
+			"post",
 			sample.props as never,
 			probeSkin(`<div>${placeholder}</div>`),
 		);
@@ -317,15 +317,15 @@ describe("出厂示例数据 — 视频 / 图廊那组字段在预览里取得�
 	});
 
 	it("showIf 的 post.hasVideo 也随之为真", async () => {
-		const sample = await sampleCard("dynamic", "video");
+		const sample = await sampleCard("post", "video");
 		const html = await renderCardWithSkin(
-			"dynamic",
+			"post",
 			sample.props as never,
 			{
 				...DEFAULT_CARD_SKIN,
 				cards: {
 					...DEFAULT_CARD_SKIN.cards,
-					dynamic: {
+					post: {
 						width: 600,
 						blocks: [
 							{
