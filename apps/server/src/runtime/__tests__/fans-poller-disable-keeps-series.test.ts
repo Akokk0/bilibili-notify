@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FansRefreshEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
@@ -57,7 +57,7 @@ async function samples(key: string): Promise<number[]> {
 	return raw
 		.trim()
 		.split("\n")
-		.map((line) => (JSON.parse(line) as { value: number }).value);
+		.map((line) => (JSON.parse(line) as { followers: number }).followers);
 }
 
 async function start(initial: ReturnType<typeof biliSub>[]) {
@@ -93,7 +93,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 			prune: vi.fn(async () => {}),
 			load: vi.fn(async () => {}),
 		} as never,
-		fansStore: createFansStore({
+		fansStore: createFollowersStore({
 			dataRoot: dataDir,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
@@ -131,7 +131,7 @@ describe("fans poller:粉丝文件按订阅 id 读写", () => {
 		await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 		await writeFile(
 			fanFile("a"),
-			`${JSON.stringify({ ts: "2026-05-16T00:00:00.000Z", value: 777 })}\n`,
+			`${JSON.stringify({ sampledAt: "2026-05-16T00:00:00.000Z", followers: 777 })}\n`,
 		);
 		const p = await start([biliSub("a", "1")]);
 		expect(p.handle.getLastEntries()).toEqual([

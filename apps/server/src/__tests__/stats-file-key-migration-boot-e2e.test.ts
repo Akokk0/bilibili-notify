@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { FOLLOWERS_DIR } from "../fans/store.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { activeGeneration } from "./support/generation.js";
@@ -111,12 +111,17 @@ const MIGRATED = {
 };
 
 const jsonl = (rows: unknown[]) => `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`;
-const FANS = jsonl([
+const FANS_ROWS = [
 	{ ts: "2026-05-10T00:00:00.000Z", value: 100 },
 	{ ts: "2026-05-11T00:00:00.000Z", value: 110 },
 	// 此刻的一条:迁移推「在记」小账靠粉丝样本所在的小时(B 站「那个小时在跑」的老规矩),统计页近 7 日才有记录。
 	{ ts: new Date().toISOString(), value: 120 },
-]);
+];
+const FANS = jsonl(FANS_ROWS);
+/** 过完迁移的粉丝文件(㉘c):0.x 的 `{ ts, value }` 换成 `{ sampledAt, followers }`;这三条隔得远、值各不相同,压完各是一个点。 */
+const FANS_MIGRATED = jsonl(
+	FANS_ROWS.map(({ ts, value }) => ({ sampledAt: ts, followers: value })),
+);
 
 describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就挪到了 <订阅 id>.jsonl", () => {
 	let handle: ServerHandle | undefined;
@@ -176,13 +181,13 @@ describe("开机迁移 e2e:老的 <uid>.jsonl 在轮询 / 引擎起来之前就�
 		expect(probe.atEngines).toEqual(MIGRATED);
 	});
 
-	it("找不到订阅的 uid 文件原样留着", async () => {
+	it("找不到订阅的 uid 文件留着原名(内容也过一遍新形状的压缩)", async () => {
 		expect(
 			await readFile(
 				join(await activeGeneration(probe.dataDir), ...FOLLOWERS_DIR, `${ORPHAN_UID}.jsonl`),
 				"utf-8",
 			),
-		).toBe(FANS);
+		).toBe(FANS_MIGRATED);
 	});
 
 	it("统计页读得到挪过去的数据(停用的订阅照样列着)", async () => {

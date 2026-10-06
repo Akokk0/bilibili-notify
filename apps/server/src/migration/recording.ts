@@ -23,7 +23,8 @@ import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { BILIBILI_SOURCE_KEY, DEFAULT_FEATURE_FLAGS } from "@bilibili-notify/internal";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
-import { FOLLOWERS_DIR } from "../fans/store.js";
+import { HOUR_MS } from "../followers/cutoff.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { dataPath } from "../runtime/roots.js";
 import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
 import {
@@ -36,7 +37,6 @@ import {
 import { isPlainObject, readJsonFile, rewriteTextFile } from "./files.js";
 import { hourSetOf, readFollowerSampleTimes } from "./follower-times.js";
 
-const HOUR_MS = 3_600_000;
 /** 老的「在记」证据目录与水位线文件:读完就删,新代不再有它们。 */
 const ZERO_SEEN_DIR = ["stats", "seen"] as const;
 const ZERO_SINCE_FILE = ["stats", "since"] as const;

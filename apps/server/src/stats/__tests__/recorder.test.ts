@@ -16,7 +16,7 @@
 
 import type { MessageBus } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { FansStore } from "../../fans/store.js";
+import type { FollowersStore } from "../../followers/store.js";
 import { attachBiliStatsSource } from "../bili-source.js";
 import { createStatsRecorder, createStatsRecorderCore } from "../recorder.js";
 import type { StatsStore } from "../store.js";
@@ -79,7 +79,10 @@ function makeFans() {
 		findEarliest: vi.fn(async () => undefined),
 		listSamplesSince: vi.fn(async () => []),
 		drop: vi.fn(async () => {}),
-	} satisfies Record<keyof FansStore, unknown> as unknown as FansStore;
+		keys: vi.fn(async () => []),
+		compact: vi.fn(async () => ({ rowsBefore: 0, rowsAfter: 0, badLines: 0, rewritten: false })),
+		close: vi.fn(async () => {}),
+	} satisfies Record<keyof FollowersStore, unknown> as unknown as FollowersStore;
 }
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };

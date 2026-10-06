@@ -1,5 +1,6 @@
 import type { Disposable, Logger, MessageBus } from "@bilibili-notify/internal";
-import type { FansStore } from "../fans/store.js";
+import { HOUR_MS } from "../followers/cutoff.js";
+import type { FollowersStore } from "../followers/store.js";
 import { attachBiliStatsSource } from "./bili-source.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
 import type { StatsSubscription } from "./file-key.js";
@@ -21,9 +22,6 @@ import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
  * 追加重新写出来),{@link StatsRecorderHandle.flush} 等得到全部落地 —— 关机补帧靠它。
  */
-
-/** 一个小时的毫秒数。「在记」的账按 UTC 整点小时记(ADR-0027 决策 13)。 */
-export const HOUR_MS = 3_600_000;
 
 /** 各来源适配看得到的那一面。所有写入都是 fire-and-forget,失败只丢这一条统计。 */
 export interface StatsRecorderCore {
@@ -57,7 +55,7 @@ export interface StatsRecorderCore {
 export interface StatsRecorderCoreOptions {
 	store: StatsStore;
 	/** 粉丝时序 —— 拓展的粉丝数从这里落(B 站的由粉丝轮询自己写)。 */
-	fans: FansStore;
+	fans: FollowersStore;
 	logger: Logger;
 	/** 注入时钟,测试用;缺省取系统时间。 */
 	now?: () => Date;
@@ -223,8 +221,10 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 				minGapMs,
 				lastFans,
 				async (sinceIso) =>
-					latestOf((await opts.fans.listSamplesSince(key, sinceIso)).map((sample) => sample.ts)),
-				(ts) => opts.fans.append(key, { ts, value }),
+					latestOf(
+						(await opts.fans.listSamplesSince(key, sinceIso)).map((sample) => sample.sampledAt),
+					),
+				(sampledAt) => opts.fans.append(key, { sampledAt, followers: value }),
 			);
 		},
 
@@ -296,7 +296,7 @@ export interface StatsRecorderOptions {
 	bus: MessageBus;
 	store: StatsStore;
 	/** 粉丝时序 —— 拓展的粉丝数从资料上报里来,落在这里(B 站的由粉丝轮询写)。 */
-	fans: FansStore;
+	fans: FollowersStore;
 	/**
 	 * B 站粉丝轮询的 cron(`globals.app.fansCron`,现取)。拓展报的粉丝数不密过它(ADR-0020 决策 8),
 	 * 两边的粉丝曲线一样疏密。

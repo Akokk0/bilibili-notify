@@ -17,7 +17,7 @@ import { join } from "node:path";
 import type { FansRefreshEntry, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createStatsFollowersRoute } from "../../routes/stats-followers.js";
 import type { RouteDeps } from "../../routes/types.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
@@ -44,8 +44,8 @@ const ago = (ms: number) => Date.now() - ms;
 const isoAgo = (ms: number) => new Date(ago(ms)).toISOString();
 
 /** ㉘c 只改这一个帮手:一条粉丝样本在盘上的行。 */
-function sampleRow(atMs: number, value: number): { ts: string; value: number } {
-	return { ts: new Date(atMs).toISOString(), value };
+function sampleRow(atMs: number, value: number): { sampledAt: string; followers: number } {
+	return { sampledAt: new Date(atMs).toISOString(), followers: value };
 }
 
 type Sample = [atMs: number, value: number];
@@ -98,7 +98,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 			prune: vi.fn(async () => {}),
 			load: vi.fn(async () => {}),
 		} as never,
-		fansStore: createFansStore({
+		fansStore: createFollowersStore({
 			dataRoot: dataDir,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),

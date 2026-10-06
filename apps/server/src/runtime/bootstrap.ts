@@ -7,7 +7,7 @@ import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
-import { createFansStore, type FansStore } from "../fans/store.js";
+import { createFollowersStore, type FollowersStore } from "../followers/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
@@ -70,7 +70,7 @@ export interface AppRuntime {
 	 * 每请求现建一个,并发挡就等于没有,两个标签页各点一下真会往群里多发一条。
 	 */
 	repushRunner: RepushRunner;
-	fansStore: FansStore;
+	fansStore: FollowersStore;
 	/**
 	 * 「UP 产出」时序(动态事件 + 直播场次),数据统计 Tab 的数据源。写侧是
 	 * StatsRecorder(订阅总线,随 runtime 一起起停),读侧是 `/api/stats`。
@@ -266,10 +266,13 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		repush: repushStore,
 	});
 	serviceCtx.onDispose(() => historyStore.close(), "flush");
-	const fansStore = createFansStore({
+	const fansStore = createFollowersStore({
 		dataRoot,
 		logger: serviceCtx.logger,
 	});
+	// 粉丝样本的写(轮询追加、记录器代拓展追加、定时压缩)同走仓里按订阅的队。同段后登记的先跑:这一行必须排在
+	// 记录器收尾(下面 statsRecorder 那条 flush 钩子)**之前**登记,记录器排着的粉丝写才落得进还开着的仓。
+	serviceCtx.onDispose(() => fansStore.close(), "flush");
 	const statsStore = createStatsStore({
 		dataRoot,
 		logger: serviceCtx.logger,

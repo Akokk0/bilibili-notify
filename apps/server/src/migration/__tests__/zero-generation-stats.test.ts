@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { CONFIG_DIR } from "../../config/store.js";
-import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import {
 	countPosts,
 	dailyActivityCounts,
@@ -314,10 +314,19 @@ const LIVE = jsonl([
 	{ kind: "start", occurredAt: T(10, 1) },
 	{ kind: "end", occurredAt: T(10, 3), peakTotalViewers: 12_000 },
 ]);
-const FANS = jsonl([
+const FANS_ROWS = [
 	{ ts: T(10), value: 100 },
 	{ ts: T(11), value: 110 },
-]);
+];
+const FANS = jsonl(FANS_ROWS);
+/**
+ * 粉丝样本过完迁移的样子(㉘c):0.x 的 `{ ts, value }` 改成 `{ sampledAt, followers }` 再压一遍(「粉丝样本压缩」那一步,
+ * 排在统计那步之后)。这些夹具的样本都隔了好几天、值各不相同,每一条压完仍是一个点,所以只是换了键名。
+ * 这一组守的是**改名并档**,粉丝文件的内容断言因此都落在新形状上。
+ */
+const newFans = (rows: readonly { ts: string; value: number }[]) =>
+	jsonl(rows.map(({ ts, value }) => ({ sampledAt: ts, followers: value })));
+const FANS_NEW = newFans(FANS_ROWS);
 
 describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () => {
 	beforeEach(async () => {
@@ -368,7 +377,7 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			for (const [dir, content] of [
 				[DIRS[0], DYN],
 				[DIRS[1], LIVE],
-				[DIRS[2], FANS],
+				[DIRS[2], FANS_NEW],
 			] as const) {
 				expect(await ls(dir)).toEqual([`${ID_A}.jsonl`]);
 				expect(await read(dir, ID_A)).toBe(content);
@@ -426,15 +435,15 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 
 	describe("回退过又升级回来:两份都在 → 并", () => {
 		it("id 那份在前、uid 那份接在后面,uid 那份删掉", async () => {
-			const before = jsonl([{ ts: T(10), value: 100 }]);
-			const during = jsonl([
+			const beforeRows = [{ ts: T(10), value: 100 }];
+			const duringRows = [
 				{ ts: T(12), value: 120 },
 				{ ts: T(13), value: 130 },
-			]);
-			await put(DIRS[2], ID_A, before);
-			await put(DIRS[2], "101", during);
+			];
+			await put(DIRS[2], ID_A, jsonl(beforeRows));
+			await put(DIRS[2], "101", jsonl(duringRows));
 			expect((await run([bili(ID_A, "101")])).rewritten).toEqual(rewrittenIn(DIRS[2], ID_A));
-			expect(await read(DIRS[2], ID_A)).toBe(before + during);
+			expect(await read(DIRS[2], ID_A)).toBe(newFans([...beforeRows, ...duringRows]));
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
 		});
 
@@ -454,12 +463,13 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 
 	describe("半路崩了", () => {
 		it("并好的内容已经换上、uid 那份还没删 → 再跑一次只删 uid 那份,不再接一遍", async () => {
-			const during = jsonl([{ ts: T(12), value: 120 }]);
-			await put(DIRS[2], ID_A, FANS + during); // 换上了
-			await put(DIRS[2], "101", during); // 还没删
-			// 原件这里 `merged: 1`(只删了 uid 那份、没有写);迁移器不写 id 那份,所以汇报里没有它。
-			expect((await run([bili(ID_A, "101")])).rewritten).toEqual([]);
-			expect(await read(DIRS[2], ID_A)).toBe(FANS + during);
+			const duringRows = [{ ts: T(12), value: 120 }];
+			await put(DIRS[2], ID_A, FANS + jsonl(duringRows)); // 换上了
+			await put(DIRS[2], "101", jsonl(duringRows)); // 还没删
+			// 原件这里 `merged: 1`(只删了 uid 那份、没有写);统计那步不写 id 那份,但紧接着的粉丝样本压缩改写它(㉘c),
+			// 所以汇报里有它 —— 内容是 id 那份原有的(没有再接一遍)。
+			expect((await run([bili(ID_A, "101")])).rewritten).toEqual(rewrittenIn(DIRS[2], ID_A));
+			expect(await read(DIRS[2], ID_A)).toBe(newFans([...FANS_ROWS, ...duringRows]));
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
 		});
 
@@ -467,22 +477,22 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			await put(DIRS[2], "101", FANS);
 			await put(DIRS[2], ID_A, FANS); // 两份内容一样:id 那份是上次写好的
 			await run([bili(ID_A, "101")]);
-			expect(await read(DIRS[2], ID_A)).toBe(FANS);
+			expect(await read(DIRS[2], ID_A)).toBe(FANS_NEW);
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
 		});
 
 		// 原件两条「.migrating」:0.x 迁到一半留下的临时文件,下次开机要清掉。迁移器搬的时候就把它当 0.x 的残留
 		// 丢下了(进 `report.skipped`、不进新代),所以除了原来的断言(并的结果、目录里只剩一份),再断言这一点。
 		it("临时文件写了一半没换上 → 两份原样都在,再跑一次正常并完、临时文件不留", async () => {
-			const during = jsonl([{ ts: T(12), value: 120 }]);
+			const duringRows = [{ ts: T(12), value: 120 }];
 			await put(DIRS[2], ID_A, FANS);
-			await put(DIRS[2], "101", during);
+			await put(DIRS[2], "101", jsonl(duringRows));
 			await writeFile(
 				join(sandbox.zero, DIRS[2].zero, `${ID_A}.jsonl.migrating`),
 				'{"ts":"2026-05-1',
 			);
 			const got = await run([bili(ID_A, "101")]);
-			expect(await read(DIRS[2], ID_A)).toBe(FANS + during);
+			expect(await read(DIRS[2], ID_A)).toBe(newFans([...FANS_ROWS, ...duringRows]));
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
 			expect(got.skipped).toContainEqual({
 				path: `${DIRS[2].zero}/${ID_A}.jsonl.migrating`,
@@ -499,7 +509,7 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			);
 			const got = await run([bili(ID_A, "101")]);
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`]);
-			expect(await read(DIRS[2], ID_A)).toBe(FANS);
+			expect(await read(DIRS[2], ID_A)).toBe(FANS_NEW);
 			expect(got.skipped).toContainEqual({
 				path: `${DIRS[2].zero}/${ID_A}.jsonl.migrating`,
 				reason: expect.stringContaining("临时件"),
@@ -536,7 +546,7 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			// 没有订阅配 clean / dup:两组文件原名留着,读的人按这两个键读。
 			await sandbox.migrate();
 			const stats = createStatsStore({ dataRoot: sandbox.target, logger: silentLogger });
-			const fans = createFansStore({ dataRoot: sandbox.target, logger: silentLogger });
+			const fans = createFollowersStore({ dataRoot: sandbox.target, logger: silentLogger });
 			const since = T(1);
 			expect(await stats.listPosts("dup", since)).toEqual(await stats.listPosts("clean", since));
 			expect(await stats.listLiveSessions("dup", since)).toEqual(
@@ -570,7 +580,8 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			await put(DIRS[2], "101", FANS);
 			await run([bili(ID_A, "101"), ext(ID_EXT)]);
 			expect(await ls(DIRS[2])).toEqual(["999.jsonl", `${ID_A}.jsonl`].sort());
-			expect(await read(DIRS[2], "999")).toBe(FANS);
+			// 没有订阅的原名文件也过一遍压缩(整个粉丝目录都是新形状)。
+			expect(await read(DIRS[2], "999")).toBe(FANS_NEW);
 		});
 
 		it("拓展订阅本来就按订阅 id 命名,没有什么可改名的:作品只是跟着目录搬进 stats/posts,内容不变", async () => {
@@ -596,16 +607,16 @@ describe("B 站 <uid>.jsonl → <订阅 id>.jsonl(原 migrate-file-keys)", () =>
 			// 原件的 `renamed + copied === 2`:汇报里两条订阅各一份新文件。
 			expect(got.rewritten).toEqual(rewrittenIn(DIRS[2], ID_A, ID_B).sort());
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`, `${ID_B}.jsonl`].sort());
-			expect(await read(DIRS[2], ID_A)).toBe(FANS);
-			expect(await read(DIRS[2], ID_B)).toBe(FANS);
+			expect(await read(DIRS[2], ID_A)).toBe(FANS_NEW);
+			expect(await read(DIRS[2], ID_B)).toBe(FANS_NEW);
 		});
 
 		it("复制到一半崩了 → 再跑一次补完,已经有的那份不重复", async () => {
 			await put(DIRS[2], "101", FANS);
 			await put(DIRS[2], ID_A, FANS); // 第一份已复制
 			await run([bili(ID_A, "101"), bili(ID_B, "101")]);
-			expect(await read(DIRS[2], ID_A)).toBe(FANS);
-			expect(await read(DIRS[2], ID_B)).toBe(FANS);
+			expect(await read(DIRS[2], ID_A)).toBe(FANS_NEW);
+			expect(await read(DIRS[2], ID_B)).toBe(FANS_NEW);
 			expect(await ls(DIRS[2])).toEqual([`${ID_A}.jsonl`, `${ID_B}.jsonl`].sort());
 		});
 	});
@@ -761,7 +772,8 @@ describe("迁移器自己的钉", () => {
 		]);
 
 		// 两份都在的粉丝文件:id 那份在前、uid 那份接在后面。
-		expect(files[`stats/followers/${ID_A}.jsonl`]).toBe(jsonl(FANS_ID_BEFORE) + jsonl(FANS_UID));
+		// (新形状:换了键名,几条样本隔了好几天、值各不相同,压完各是一个点。)
+		expect(files[`stats/followers/${ID_A}.jsonl`]).toBe(newFans([...FANS_ID_BEFORE, ...FANS_UID]));
 	});
 
 	it("迁两遍和迁一遍一样:对新代再迁一次回 [],文件字节不变", async () => {

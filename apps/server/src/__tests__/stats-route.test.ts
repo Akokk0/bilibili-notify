@@ -17,7 +17,7 @@ const NOW = Date.UTC(2026, 4, 16, 12, 0, 0);
 
 interface Fixture {
 	subs?: Array<{ uid: string }>;
-	samples?: Record<string, Array<{ ts: string; value: number }>>;
+	samples?: Record<string, Array<{ sampledAt: string; followers: number }>>;
 	posts?: Record<string, Array<{ id: string; hasVideo: boolean; publishedAt: string }>>;
 	sessions?: Record<
 		string,
@@ -161,7 +161,7 @@ describe("GET /api/stats/overview — null 语义", () => {
 		const body = await get(
 			makeDeps({
 				subs: [{ uid: "1" }],
-				samples: { "1": [{ ts: new Date(NOW).toISOString(), value: 100 }] },
+				samples: { "1": [{ sampledAt: new Date(NOW).toISOString(), followers: 100 }] },
 			}),
 		);
 		expect(body.rows[0]?.videoPosts).toBe(0);
@@ -174,8 +174,8 @@ describe("GET /api/stats/overview — 窗口净增口径", () => {
 	/** 连续 n+1 天每天一条采样,每天恰好 +100。 */
 	const rising = (n: number) =>
 		Array.from({ length: n + 1 }, (_, i) => ({
-			ts: new Date(NOW - (n - i) * DAY).toISOString(),
-			value: 1000 + i * 100,
+			sampledAt: new Date(NOW - (n - i) * DAY).toISOString(),
+			followers: 1000 + i * 100,
 		}));
 
 	it("netWindow 覆盖整个请求窗口 —— 旧的 net30d 无论选 7/30/90 都只加 30 天", async () => {
@@ -201,7 +201,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 	it("fans 优先取 poller 快照(比 jsonl 末行新)", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			samples: { "1": [{ ts: new Date(NOW - DAY).toISOString(), value: 100 }] },
+			samples: { "1": [{ sampledAt: new Date(NOW - DAY).toISOString(), followers: 100 }] },
 			fansEntries: [{ uid: "1", current: 175 }],
 		});
 		expect((await get(deps)).rows[0]?.followers).toBe(175);
@@ -210,7 +210,7 @@ describe("GET /api/stats/overview — 数据投影", () => {
 	it("poller 未就绪时回退到采样末值", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			samples: { "1": [{ ts: new Date(NOW - DAY).toISOString(), value: 100 }] },
+			samples: { "1": [{ sampledAt: new Date(NOW - DAY).toISOString(), followers: 100 }] },
 		});
 		expect((await get(deps)).rows[0]?.followers).toBe(100);
 	});
@@ -313,7 +313,7 @@ describe("GET /api/stats/overview — 「在记」账", () => {
 	it("账里什么都没有 → 整行「无记录」:热力图全 null、计数全 null、recording 全 false", async () => {
 		const deps = makeDeps({
 			subs: [{ uid: "1" }],
-			samples: { "1": [{ ts: new Date(NOW).toISOString(), value: 1 }] },
+			samples: { "1": [{ sampledAt: new Date(NOW).toISOString(), followers: 1 }] },
 			posts: { "1": [{ id: "a", hasVideo: true, publishedAt: new Date(NOW).toISOString() }] },
 			recording: {},
 		});

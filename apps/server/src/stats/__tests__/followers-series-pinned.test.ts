@@ -13,8 +13,8 @@ const NOW = new Date("2026-06-30T12:00:00.000Z");
 const at = (iso: string) => Date.parse(iso);
 
 /** ㉘c 只改这一个帮手:喂给聚合函数的一条粉丝样本。 */
-function sampleRow(atMs: number, value: number): { ts: string; value: number } {
-	return { ts: new Date(atMs).toISOString(), value };
+function sampleRow(atMs: number, value: number): { sampledAt: string; followers: number } {
+	return { sampledAt: new Date(atMs).toISOString(), followers: value };
 }
 const rows = (list: Array<[string, number]>) => list.map(([iso, v]) => sampleRow(at(iso), v));
 

@@ -13,7 +13,7 @@
 
 import type { StatsOverviewResponse, UpStatsRow } from "@bilibili-notify/contract";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { FansSample } from "../fans/store.js";
+import type { FollowersAt } from "../followers/lookup.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
 import type { LiveSessionEntry, PostEntry, RecordingEntry } from "../stats/store.js";
@@ -35,7 +35,7 @@ interface Fixture {
 	bili?: Array<{ id: string; uid: string; enabled?: boolean }>;
 	ext?: Array<{ id: string; externalId?: string; enabled?: boolean }>;
 	/** 以下全按**订阅 id** 记。 */
-	samples?: Record<string, FansSample[]>;
+	samples?: Record<string, FollowersAt[]>;
 	posts?: Record<string, PostEntry[]>;
 	sessions?: Record<string, LiveSessionEntry[]>;
 	/**
@@ -62,7 +62,7 @@ function makeDeps(f: Fixture): RouteDeps {
 		runtime: {
 			fansStore: {
 				listSamplesSince: async (key: string, since: string) =>
-					(f.samples?.[key] ?? []).filter((s) => s.ts >= since),
+					(f.samples?.[key] ?? []).filter((s) => s.sampledAt >= since),
 			},
 			statsStore: {
 				listPosts: async (key: string, since: string) =>
@@ -87,7 +87,7 @@ function makeDeps(f: Fixture): RouteDeps {
 					if (f.recordedBySamples?.includes(key)) {
 						for (const sample of f.samples?.[key] ?? []) {
 							for (const kind of ["posts", "live", "followers"] as const) {
-								rows.push({ ...hourOf(sample.ts), kind });
+								rows.push({ ...hourOf(sample.sampledAt), kind });
 							}
 						}
 					}
@@ -257,7 +257,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		const body = await get(
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
-				samples: { [B1]: everyDay(5).map((ts, i) => ({ ts, value: 1000 + i })) },
+				samples: { [B1]: everyDay(5).map((sampledAt, i) => ({ sampledAt, followers: 1000 + i })) },
 				recordedBySamples: [B1],
 				ext: [{ id: E1 }],
 			}),
@@ -278,7 +278,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 		const body = await get(
 			makeDeps({
 				bili: [{ id: B1, uid: "42" }],
-				samples: { [B1]: everyDay(5).map((ts, i) => ({ ts, value: 1000 + i })) },
+				samples: { [B1]: everyDay(5).map((sampledAt, i) => ({ sampledAt, followers: 1000 + i })) },
 				recordedBySamples: [B1],
 				ext: [{ id: E1 }],
 				posts: { [E1]: [{ id: "p", hasVideo: false, publishedAt: at(2) }] },
@@ -298,7 +298,7 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 				posts: { [B1]: [{ id: "d", hasVideo: false, publishedAt: at(0) }] },
 				ext: [{ id: E1 }],
 				seen: { [E1]: everyDay(5).map((ts) => ({ ts })) },
-				samples: { [E1]: everyDay(5).map((ts, i) => ({ ts, value: 10 + i })) },
+				samples: { [E1]: everyDay(5).map((sampledAt, i) => ({ sampledAt, followers: 10 + i })) },
 			}),
 		);
 		expect(rowOf(body, B1).activity).toEqual([null, null, null, null, null]);
@@ -309,7 +309,9 @@ describe("拓展行:「那天有记录」看它自己的「在记」(决策 9)",
 			makeDeps({
 				ext: [{ id: E1 }],
 				seen: { [E1]: everyDay(3).map((ts) => ({ ts })) },
-				samples: { [E1]: everyDay(3).map((ts, i) => ({ ts, value: 500 + 10 * i })) },
+				samples: {
+					[E1]: everyDay(3).map((sampledAt, i) => ({ sampledAt, followers: 500 + 10 * i })),
+				},
 				posts: { [E1]: [{ id: "v", hasVideo: true, publishedAt: at(1) }] },
 			}),
 		);
@@ -340,7 +342,7 @@ describe("拓展行:粉丝(决策 8)", () => {
 	});
 
 	it("当前粉丝取资料缓存(比样本新);停用的退回样本末值 —— 同 B 站的快照不含停用的", async () => {
-		const samples = everyDay(5).map((ts, i) => ({ ts, value: 1000 + 100 * i }));
+		const samples = everyDay(5).map((sampledAt, i) => ({ sampledAt, followers: 1000 + 100 * i }));
 		const body = await get(
 			makeDeps({
 				ext: [{ id: E1 }, { id: E2, enabled: false }],
@@ -442,16 +444,16 @@ describe("整份响应逐字段钉住(一条 B 站订阅 + 一条拓展订阅,�
 				samples: {
 					// 05-13 有两个样本,取日末值 1010;05-14 没有样本。窗口之前的样本不在夹具里 → 首日没有基线。
 					[B1]: [
-						{ ts: at(4), value: 1000 },
-						{ ts: at(3, 3), value: 1005 },
-						{ ts: at(3), value: 1010 },
-						{ ts: at(1), value: 1030 },
-						{ ts: at(0, 2), value: 1050 },
+						{ sampledAt: at(4), followers: 1000 },
+						{ sampledAt: at(3, 3), followers: 1005 },
+						{ sampledAt: at(3), followers: 1010 },
+						{ sampledAt: at(1), followers: 1030 },
+						{ sampledAt: at(0, 2), followers: 1050 },
 					],
 					[E1]: [
-						{ ts: at(3), value: 500 },
-						{ ts: at(2), value: 520 },
-						{ ts: at(0, 2), value: 530 },
+						{ sampledAt: at(3), followers: 500 },
+						{ sampledAt: at(2), followers: 520 },
+						{ sampledAt: at(0, 2), followers: 530 },
 					],
 				},
 				posts: {

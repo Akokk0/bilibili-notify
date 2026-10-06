@@ -26,7 +26,7 @@ import type {
 	StatsOverviewResponse,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
-import { FOLLOWERS_DIR } from "../fans/store.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { activeGeneration } from "./support/generation.js";
@@ -216,7 +216,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 
 		// 两份资料是紧挨着报的,不密过 B 站粉丝轮询(默认每 10 分钟):只留先到的那份。
 		expect(await lines(...FOLLOWERS_DIR, `${ON}.jsonl`)).toEqual([
-			{ ts: expect.any(String), value: 1111 },
+			{ sampledAt: expect.any(String), followers: 1111 },
 		]);
 
 		// 六条上报都在同一个小时里(跨整点的几毫秒之差留给测试之外):作品、直播、粉丝三项各一行,每行正好一个整点小时。

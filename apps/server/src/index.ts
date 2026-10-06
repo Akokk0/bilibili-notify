@@ -44,6 +44,7 @@ import { createMarketplace } from "./extensions/marketplace.js";
 import { createExtensionMounts } from "./extensions/mount.js";
 import { createReportProblemLog } from "./extensions/report-problems.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
+import { startFollowersCompaction } from "./followers/compaction.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { startLogRetention } from "./logs/retention.js";
@@ -855,6 +856,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			store: runtime.configStore,
 			dataRoot: runtime.dataRoot,
 			images: runtime.imageStore,
+			logger: log,
+		});
+
+		// 粉丝样本的压缩:开机一次、之后每 6 小时一次(ADR-0027 决策 15)。数据那一代已就位才到这里,
+		// 与上面的历史保留是各自的活。
+		startFollowersCompaction({
+			serviceCtx: runtime.serviceCtx,
+			store: runtime.fansStore,
 			logger: log,
 		});
 

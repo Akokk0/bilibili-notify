@@ -1,4 +1,4 @@
-import type { FansSample } from "../fans/store.js";
+import type { FollowersAt } from "../followers/lookup.js";
 import type { LiveSessionEntry, PostEntry, RecordingEntry, RecordingKind } from "./store.js";
 
 /**
@@ -88,7 +88,7 @@ export interface DailySeriesOptions {
  * 平稳的零增长直线。
  */
 export function dailyFansSeries(
-	samples: readonly FansSample[],
+	samples: readonly FollowersAt[],
 	opts: DailySeriesOptions,
 ): DailyFansPoint[] {
 	const tz = opts.tzOffsetMin ?? 0;
@@ -98,9 +98,9 @@ export function dailyFansSeries(
 	// 每个本地日的末值。samples 是时间升序的,后写覆盖前写即得末值。
 	const lastByDay = new Map<string, number>();
 	for (const s of samples) {
-		const ms = Date.parse(s.ts);
+		const ms = Date.parse(s.sampledAt);
 		if (Number.isNaN(ms)) continue;
-		lastByDay.set(localKey(ms), s.value);
+		lastByDay.set(localKey(ms), s.followers);
 	}
 
 	const wantedDays: string[] = [];

@@ -16,7 +16,7 @@
 import { readFile, rmdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { syncDirectory } from "@bilibili-notify/storage";
-import { FOLLOWERS_DIR } from "../fans/store.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
 import { classifyBiliDynamic } from "../stats/bili-format.js";
 import { STATS_LIVE_DIR, STATS_POSTS_DIR } from "../stats/store.js";
@@ -109,7 +109,7 @@ async function removeDirIfEmpty(dir: string): Promise<void> {
  *   - 没有 `<uid>.jsonl`:什么都不做;
  *   - 只有 uid 那份:整份写成 id 那份(权限沿用 uid 那份),再删 uid 那份;
  *   - 两份都在(0.x 之间回退过):id 那份在前、uid 那份接在后面 —— 回退期间写的一定更晚,接在后面时间
- *     仍然只增不减;粉丝仓按「时间只增不减」扫文件,见 FansStore.findNearestBefore。id 那份已经以 uid 那份
+ *     仍然只增不减;粉丝仓按「时间只增不减」扫文件,见 FollowersStore.findNearestBefore。id 那份已经以 uid 那份
  *     的内容结尾的(0.x 自己并到一半崩了:并好了、还没删),只删不再接。
  *
  * 找不到 B 站订阅的 uid 文件不碰(可能是删订阅时没删干净的,也可能是别的什么 —— 不是我们的就别动)。同一个

@@ -20,8 +20,8 @@
 
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { FOLLOWERS_DIR } from "../fans/store.js";
 import { HOUR_MS } from "../followers/cutoff.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { dataPath } from "../runtime/roots.js";
 import { UPTIME_FILE, type UptimeEntry } from "../uptime/store.js";
 import { listFiles, rewriteTextFile } from "./files.js";

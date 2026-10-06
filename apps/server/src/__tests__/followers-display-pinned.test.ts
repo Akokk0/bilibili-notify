@@ -24,7 +24,7 @@ import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import type { Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore, FOLLOWERS_DIR } from "../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../followers/store.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
@@ -34,8 +34,8 @@ const MIN = 60_000;
 const D = 30;
 
 /** ㉘c 只改这一个帮手:一条粉丝样本在盘上的行。 */
-function sampleRow(atMs: number, value: number): { ts: string; value: number } {
-	return { ts: new Date(atMs).toISOString(), value };
+function sampleRow(atMs: number, value: number): { sampledAt: string; followers: number } {
+	return { sampledAt: new Date(atMs).toISOString(), followers: value };
 }
 
 const at = (iso: string) => Date.parse(iso);
@@ -150,7 +150,7 @@ function makeDeps(): RouteDeps {
 			fansPoller: {
 				getLastEntries: () => [{ subscriptionId: "b-flat", uid: "1002", current: 8888 }],
 			},
-			fansStore: createFansStore({
+			fansStore: createFollowersStore({
 				dataRoot: dataDir,
 				logger: { debug() {}, info() {}, warn() {}, error() {} } as never,
 			}),

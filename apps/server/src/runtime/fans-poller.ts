@@ -13,7 +13,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
 import type { ConfigStore } from "../config/store.js";
-import type { FansStore } from "../fans/store.js";
+import type { FollowersStore } from "../followers/store.js";
 import { statsFileKey } from "../stats/file-key.js";
 import {
 	pruneOrphanSubRuntime,
@@ -55,7 +55,7 @@ export interface FansPollerOptions {
 	 * re-triggered DynamicEngine every tick (the Logs-Tab `[ops]` flooding bug).
 	 */
 	subRuntimeStore: SubRuntimeStore;
-	fansStore: FansStore;
+	fansStore: FollowersStore;
 	api: BilibiliAPI;
 	/**
 	 * 用于 dispose-safe 延时(首次 tick 等 auth 起来的 3s 窗口)。dispose() 时
@@ -82,7 +82,7 @@ export interface FansPollerHandle extends Disposable {
 /**
  * Per-tick:遍历所有 enabled subs,逐个拉 B 站 `getUserCardInfo` 取 fans;
  *
- *   1. 追加一行样本到 FansStore(<dataDir>/fans/<订阅 id>.jsonl,ADR-0020 决策 2 的 🔗);
+ *   1. 追加一行样本到 FollowersStore(<dataDir>/stats/followers/<订阅 id>.jsonl,ADR-0020 决策 2 的 🔗);
  *   2. 第一次见该 sub → 把当前值作为 fansBaseline(订阅起点)写进 SubRuntimeStore;
  *   3. 同步更新 SubRuntimeStore 里该 sub 的 cachedProfile.fans + lastRefreshedAt
  *      (不再走 configStore.patchSubscription —— 见 FansPollerOptions 注释);
@@ -175,16 +175,16 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		if (!latest) return undefined;
 		const profile = subRuntimeStore.get(sub.id)?.cachedProfile;
 		const reported = profile?.fans;
-		const current = reported ?? latest.value;
+		const current = reported ?? latest.followers;
 		return {
 			subscriptionId: sub.id,
 			extensionId: identity.sourceKey,
 			externalId: identity.externalId,
 			current,
-			ts: reported !== undefined && profile ? profile.lastRefreshedAt : latest.ts,
-			deltaSubscribed: first ? current - first.value : null,
-			delta24h: near24h ? current - near24h.value : null,
-			delta7d: near7d ? current - near7d.value : null,
+			ts: reported !== undefined && profile ? profile.lastRefreshedAt : latest.sampledAt,
+			deltaSubscribed: first ? current - first.followers : null,
+			delta24h: near24h ? current - near24h.followers : null,
+			delta7d: near7d ? current - near7d.followers : null,
 		};
 	}
 
@@ -391,7 +391,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				if (typeof current !== "number" || current < 0) continue;
 
 				const key = statsFileKey(sub);
-				await fansStore.append(key, { ts: nowIso, value: current });
+				await fansStore.append(key, { sampledAt: nowIso, followers: current });
 				writtenKeys.add(key);
 				if (disposed) return;
 
@@ -405,8 +405,8 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				const nextBaseline = baseline ?? { value: current, ts: nowIso };
 				const deltaSubscribed = current - nextBaseline.value;
 
-				const delta24h = near24h ? current - near24h.value : null;
-				const delta7d = near7d ? current - near7d.value : null;
+				const delta24h = near24h ? current - near24h.followers : null;
+				const delta7d = near7d ? current - near7d.followers : null;
 
 				// 写进 SubRuntimeStore(独立文件 + 原子写,**不发** config-changed)——
 				// fansBaseline 首次写、cachedProfile.fans/lastRefreshedAt 每次写。
@@ -496,23 +496,25 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				// 启动时若发现 jsonl earliest 比 baseline 早,以 earliest 校准 baseline。
 				let baseline = subRuntimeStore.get(sub.id)?.fansBaseline;
 				const earliest = await fansStore.findEarliest(statsFileKey(sub));
-				if (earliest && baseline && earliest.ts < baseline.ts) {
+				if (earliest && baseline && earliest.sampledAt < baseline.ts) {
 					logger.info(
-						`[fans-poller] baseline self-heal uid=${uid}: ${baseline.ts}(${baseline.value}) → ${earliest.ts}(${earliest.value})`,
+						`[fans-poller] baseline self-heal uid=${uid}: ${baseline.ts}(${baseline.value}) → ${earliest.sampledAt}(${earliest.followers})`,
 					);
 					try {
-						await subRuntimeStore.patch(sub.id, { fansBaseline: earliest });
-						baseline = earliest;
+						// 起点盘上是 `{ value, ts }`(packages/internal 的 schema 不动),与仓的样本显式映射。
+						const healed = { value: earliest.followers, ts: earliest.sampledAt };
+						await subRuntimeStore.patch(sub.id, { fansBaseline: healed });
+						baseline = healed;
 					} catch (err) {
 						logger.warn(`[fans-poller] baseline self-heal ${uid} failed: ${String(err)}`);
 					}
 				}
-				const deltaSubscribed = baseline ? last.value - baseline.value : 0;
+				const deltaSubscribed = baseline ? last.followers - baseline.value : 0;
 				lastBySub.set(sub.id, {
 					subscriptionId: sub.id,
 					uid,
-					current: last.value,
-					ts: last.ts,
+					current: last.followers,
+					ts: last.sampledAt,
 					deltaSubscribed,
 					delta24h: null,
 					delta7d: null,

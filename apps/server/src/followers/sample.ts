@@ -39,3 +39,12 @@ export function parseFollowersSample(raw: unknown): FollowersSample | undefined 
 	if (endMs === undefined || endMs < startMs) return undefined;
 	return { sampledAt: sampledAt as string, followers, lastSampledAt: row.lastSampledAt as string };
 }
+
+/**
+ * 解析**仓里**的一行:只认新形状 `{ sampledAt, followers, lastSampledAt? }`。0.x 的 `{ ts, value }` 在新代里不该
+ * 出现 —— 它只有迁移认(用 {@link parseFollowersSample}),仓读到就当坏行跳过。
+ */
+export function parseStoredFollowersSample(raw: unknown): FollowersSample | undefined {
+	if (typeof raw !== "object" || raw === null || !("sampledAt" in raw)) return undefined;
+	return parseFollowersSample(raw);
+}

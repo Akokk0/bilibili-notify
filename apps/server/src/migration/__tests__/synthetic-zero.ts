@@ -58,6 +58,11 @@ import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 export const FULL_YEAR_DAYS = 365;
 /** 粉丝采样间隔(分钟)。 */
 export const FOLLOWER_SAMPLE_MINUTES = 10;
+/**
+ * 每隔几个粉丝文件有一份「粉丝数一整年不变」的(第 0、4、8 … 份,也就是 `index % 4 === 0`)。其余的值每十分钟都在变,
+ * 压缩时每小时留一个点、永远合不了段;这几份让「相邻同值小时合成一段」在耗时测试里真的发生(满量 11 份、四分之一量 3 份)。
+ */
+export const FLAT_FOLLOWER_EVERY = 4;
 /** 一个订阅的粉丝文件有多少行:每天 144 个点。 */
 export const followerRowsPerSubscription = (days: number) =>
 	(days * 24 * 60) / FOLLOWER_SAMPLE_MINUTES;
@@ -150,6 +155,8 @@ export interface SyntheticZeroCounts {
 	followerFiles: number;
 	/** 一个订阅的粉丝文件有多少行。 */
 	followerRowsPerSubscription: number;
+	/** 其中「粉丝数一整年不变」的文件数(见 {@link FLAT_FOLLOWER_EVERY})。 */
+	flatFollowerFiles: number;
 	/** 所有粉丝文件的总行数。 */
 	followerRows: number;
 	/** 作品行(B 站 + 拓展)。 */
@@ -318,6 +325,9 @@ export async function placeSyntheticZero(
 		...stats,
 		followerFiles: biliSubscriptions.length + extensionSubscriptionIds.length,
 		followerRowsPerSubscription: followerRowsPerSubscription(plan.days),
+		flatFollowerFiles: Math.ceil(
+			(biliSubscriptions.length + extensionSubscriptionIds.length) / FLAT_FOLLOWER_EVERY,
+		),
 		followerRows,
 		...conversations,
 		chatAttachments: plan.attachments,
@@ -666,7 +676,10 @@ async function placeStats(
 	return { postRows, liveFrames, seenRows };
 }
 
-/** 粉丝时序:每个订阅一个文件,十分钟一个点、覆盖全部天数(B 站的按 uid 命名)。回总行数。 */
+/**
+ * 粉丝时序:每个订阅一个文件,十分钟一个点、覆盖全部天数(B 站的按 uid 命名);每第 {@link FLAT_FOLLOWER_EVERY} 份的值不变。
+ * 回总行数。
+ */
 async function placeFollowers(
 	tree: Tree,
 	days: number,
@@ -680,7 +693,8 @@ async function placeFollowers(
 		const lines = new Array<string>(rowsPerFile);
 		const base = 100_000 + index * 5_000;
 		for (let i = 0; i < rowsPerFile; i += 1) {
-			const value = base + Math.floor(i / 12) + (i % 5);
+			// 每第 `FLAT_FOLLOWER_EVERY` 份的粉丝数一整年不变,其余的每十分钟都在变。
+			const value = index % FLAT_FOLLOWER_EVERY === 0 ? base : base + Math.floor(i / 12) + (i % 5);
 			lines[i] = `{"ts":"${iso(START_MS + i * stepMs)}","value":${value}}`;
 		}
 		await tree.putJsonl(`fans/${key}.jsonl`, lines);

@@ -17,7 +17,7 @@ import type { GlobalDefaults, Subscription } from "@bilibili-notify/internal";
 import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createStatsOverview } from "../../routes/stats.js";
 import type { RouteDeps } from "../../routes/types.js";
 import type { RoastGenDeps } from "../roast-generate.js";
@@ -39,8 +39,8 @@ const DAYS = 30;
 const at = (iso: string) => Date.parse(iso);
 
 /** ㉘c 只改这一个帮手:一条粉丝样本在盘上的行。 */
-function sampleRow(atMs: number, value: number): { ts: string; value: number } {
-	return { ts: new Date(atMs).toISOString(), value };
+function sampleRow(atMs: number, value: number): { sampledAt: string; followers: number } {
+	return { sampledAt: new Date(atMs).toISOString(), followers: value };
 }
 type Sample = [atMs: number, value: number];
 
@@ -106,7 +106,7 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 			extensionPlatformLabel: () => "抖音",
 		},
 		fansPoller: null,
-		fansStore: createFansStore({
+		fansStore: createFollowersStore({
 			dataRoot: dataDir,
 			logger: { debug() {}, info() {}, warn() {}, error() {} } as never,
 		}),

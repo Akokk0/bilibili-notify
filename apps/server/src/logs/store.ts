@@ -12,7 +12,7 @@ import { LOG_LEVELS, type LogEntry } from "../ws/types.js";
 /**
  * jsonl-by-day log archive — the on-disk half of the Logs tab.
  *
- * Mirrors {@link HistoryStore}/{@link FansStore} layout: one append-only file
+ * Mirrors {@link HistoryStore}/{@link FollowersStore} layout: one append-only file
  * per day at `<hostRoot>/logs/<YYYY-MM-DD>.jsonl`. Unlike those two, ingest is
  * BUFFERED — when a module is cranked to `debug` entries can arrive dozens/sec
  * and a per-entry `await appendFile` would serialise I/O onto the business hot

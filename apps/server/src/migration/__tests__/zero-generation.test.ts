@@ -362,6 +362,8 @@ const REWRITTEN = [
 	"skins/dashboard/active.json",
 	"skins/dashboard/skin-1/skin.json",
 	"stats/followers/33333333-3333-4333-8333-333333333333.jsonl",
+	// 粉丝样本压缩(㉘c)改写了粉丝目录里的每一份:这份只有一行读不懂的,压完是个空文件。
+	"stats/followers/sub-1.jsonl",
 	"stats/live/33333333-3333-4333-8333-333333333333.jsonl",
 	// 作品连文件带目录搬进 `stats/posts/`(㉖c):搬了位置的都算改写,哪怕这一份里没有要翻的行。
 	"stats/posts/33333333-3333-4333-8333-333333333333.jsonl",
@@ -663,6 +665,8 @@ describe("migrateZeroGeneration", () => {
 				"state/globals.json.bn-tmp.123.abcdef",
 				"state/targets.json.bak",
 				"state/targets.json.restore.bak",
+				// 粉丝样本压缩(㉘c):`fans/sub-1.jsonl` 里那一行 `{"value":1}` 读不懂,丢掉、合起来记一条。
+				"stats/followers",
 			].sort(),
 		);
 		for (const skipped of report.skipped) expect(skipped.reason.length).toBeGreaterThan(0);
@@ -717,8 +721,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 32,
-			output: "8b94d4110fdb2a2e2553995f9509f435a6165af217dc01eb8d0bbf530dea9be3",
+			revision: 33,
+			output: "7968ed998a3dfc7f06c0825ae45537409b1674e0f14d7642b75c0efa3b4f2d51",
 		});
 	});
 });

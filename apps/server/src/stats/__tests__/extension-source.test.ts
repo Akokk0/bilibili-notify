@@ -24,7 +24,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createExtensionLiveTable } from "../../runtime/extension-live.js";
 import {
 	createExtensionLiveSessions,
@@ -115,7 +115,7 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 	const recorder = createStatsRecorder({
 		bus,
 		store,
-		fans: createFansStore({ dataRoot: dataDir, logger }),
+		fans: createFollowersStore({ dataRoot: dataDir, logger }),
 		fansCron: () => fansCron,
 		logger,
 		now,
@@ -343,7 +343,7 @@ describe("记谁(决策 4)", () => {
 		report(bus, profile({ fans: 42 }));
 		await recorder.flush();
 		expect(await dynRows()).toEqual([expect.objectContaining({ id: "quiet" })]);
-		expect(await fansRows()).toEqual([{ ts: iso(T0), value: 42 }]);
+		expect(await fansRows()).toEqual([{ sampledAt: iso(T0), followers: 42 }]);
 	});
 
 	it("停用的订阅一样都不记 —— 它的资料照样报上来(ADR-0019 决策 62),粉丝与「在记」也不记", async () => {
@@ -589,8 +589,8 @@ describe("粉丝(决策 8)", () => {
 		report(world.bus, profile({ fans: 120 }));
 		await world.recorder.flush();
 		expect(await fansRows()).toEqual([
-			{ ts: iso(T0), value: 100 },
-			{ ts: iso(T0 + 10 * MINUTE), value: 120 },
+			{ sampledAt: iso(T0), followers: 100 },
+			{ sampledAt: iso(T0 + 10 * MINUTE), followers: 120 },
 		]);
 	});
 
@@ -599,7 +599,7 @@ describe("粉丝(决策 8)", () => {
 		report(world.bus, profile({ fans: 100 }));
 		report(world.bus, profile({ fans: 101 }));
 		await world.recorder.flush();
-		expect(await fansRows()).toEqual([{ ts: iso(T0), value: 100 }]);
+		expect(await fansRows()).toEqual([{ sampledAt: iso(T0), followers: 100 }]);
 	});
 
 	it("没带粉丝数的资料(平台不报)不记粉丝", async () => {
@@ -617,8 +617,8 @@ describe("粉丝(决策 8)", () => {
 		report(world.bus, profile({ fans: 102 }));
 		await world.recorder.flush();
 		expect(await fansRows()).toEqual([
-			{ ts: iso(T0), value: 100 },
-			{ ts: iso(T0 + 2 * MINUTE), value: 102 },
+			{ sampledAt: iso(T0), followers: 100 },
+			{ sampledAt: iso(T0 + 2 * MINUTE), followers: 102 },
 		]);
 	});
 
@@ -631,7 +631,9 @@ describe("粉丝(决策 8)", () => {
 		clock = T0 + 10 * MINUTE;
 		report(world.bus, profile({ fans: 110 }));
 		await world.recorder.flush();
-		expect((await fansRows())?.map((row) => (row as { value: number }).value)).toEqual([100, 110]);
+		expect((await fansRows())?.map((row) => (row as { followers: number }).followers)).toEqual([
+			100, 110,
+		]);
 	});
 
 	it("BN 重启之后的第一份也不紧贴着重启前的最后一个样本", async () => {
@@ -644,7 +646,9 @@ describe("粉丝(决策 8)", () => {
 		clock = T0 + 10 * MINUTE;
 		report(second.bus, profile({ fans: 110 }));
 		await second.recorder.flush();
-		expect((await fansRows())?.map((row) => (row as { value: number }).value)).toEqual([100, 110]);
+		expect((await fansRows())?.map((row) => (row as { followers: number }).followers)).toEqual([
+			100, 110,
+		]);
 	});
 });
 

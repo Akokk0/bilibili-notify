@@ -19,7 +19,7 @@ import { dataPath } from "../runtime/roots.js";
  * 数字。平台的写法由各来源的适配在交进来之前翻好;0.x 落盘的老 B 站行由迁移器一次翻好(`migration/stats.ts`),
  * 这一层不认任何平台的写法。**开播公告不记**:直播按场次另算,公告再记一行就是把一场直播算两次。
  *
- * 与 FansStore 同构:append-only、逐行 JSON、坏行跳过、缺文件视为空。区别在于
+ * 与 FollowersStore 同构:append-only、逐行 JSON、坏行跳过、缺文件视为空。区别在于
  * 直播场次天然是「区间」而非「采样点」,而 append-only 又写不了区间,所以落盘的
  * 是 start / end 两种**帧**,配对推迟到读时({@link StatsStore.listLiveSessions})。
  * 这样进程在直播中途崩溃只会留下一个未闭合的 start,不需要启动时做修复扫描。
@@ -187,7 +187,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 
 	/**
 	 * 逐行流式读一个 jsonl,把每行交给 `onLine`。文件不存在是正常情况
-	 * (这个键还没有任何记录),静默返回而不 warn —— 与 FansStore 一致。
+	 * (这个键还没有任何记录),静默返回而不 warn —— 与 FollowersStore 一致。
 	 */
 	async function readLines(file: string, onLine: (parsed: unknown) => void): Promise<void> {
 		try {

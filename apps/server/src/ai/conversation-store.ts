@@ -16,7 +16,7 @@ import { dataPath } from "../runtime/roots.js";
  *
  * 文件布局:`<dataRoot>/ai/chat/<id>.json`,一会话一个文件,整体读写。
  *
- * 与 FansStore / StatsStore 的 append-only jsonl **刻意不同**。那两者是不断
+ * 与 FollowersStore / StatsStore 的 append-only jsonl **刻意不同**。那两者是不断
  * 追加的时序采样,只增不改;会话不是 —— 标题会补、旧消息会被裁掉,都是对
  * 已落盘内容的修改,append-only 表达不了。而单个会话的体量(几十条消息)整体
  * 重写完全不成问题,拆成 jsonl 反而要自己维护一份可变的元信息。

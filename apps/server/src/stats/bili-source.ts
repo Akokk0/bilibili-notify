@@ -4,9 +4,10 @@ import {
 	type MessageBus,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { HOUR_MS } from "../followers/cutoff.js";
 import { classifyBiliDynamic } from "./bili-format.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
-import { HOUR_MS, type StatsRecorderCore } from "./recorder.js";
+import type { StatsRecorderCore } from "./recorder.js";
 
 /**
  * 统计的 **B 站适配**(ADR-0020 决策 17):把 B 站引擎已经在总线上的事件翻成记录器的中立调用。
@@ -219,7 +220,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 				const identity = subscriptionIdentityOf(op.sub);
 				if (identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
 				const key = statsFileKey(op.sub);
-				// 取消订阅就把这条订阅的统计文件一并删掉,与 FansStore 的处置一致 ——
+				// 取消订阅就把这条订阅的统计文件一并删掉,与 FollowersStore 的处置一致 ——
 				// 否则退订过的 UP 会在 stats 目录里永久留一份读不到、也删不掉的孤儿。
 				openStart.delete(identity.externalId);
 				keys.delete(key);

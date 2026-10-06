@@ -85,6 +85,11 @@ describe("createAppRuntime 的 flush 段", () => {
 		await expect(
 			runtime.uptimeStore.append({ hourStartedAt: "2026-10-06T08:00:00.000Z", minutes: 1 }),
 		).rejects.toMatchObject(CLOSED);
+		// 粉丝样本仓(㉘c):追加、压缩、删除同一条按订阅的队,关停时一并关门。
+		await expect(
+			runtime.fansStore.append(SUB.id, { sampledAt: "2026-10-06T08:00:00.000Z", followers: 1 }),
+		).rejects.toMatchObject(CLOSED);
+		await expect(runtime.fansStore.compact(SUB.id, new Date())).rejects.toMatchObject(CLOSED);
 	});
 
 	it("运行记录:关停先补记当前这一小时,再关门;之后记录器也不再写", async () => {
@@ -105,6 +110,28 @@ describe("createAppRuntime 的 flush 段", () => {
 		await expect(
 			runtime.uptimeStore.append({ hourStartedAt: "2026-10-06T09:00:00.000Z", minutes: 1 }),
 		).rejects.toMatchObject(CLOSED);
+	});
+
+	it("记录器先收尾、粉丝仓后关门:记录器排着的拓展粉丝写落得进还开着的仓", async () => {
+		// 记录器代拓展写粉丝样本(经它自己的按键队),这些写可能在关停开始以后才轮到;粉丝仓要是先关了门,
+		// 那一笔被拒、样本丢掉,只在记录器日志里留一句 —— 所以 `fansStore.close()` 的登记得排在记录器收尾之前。
+		// 时序靠闸门卡不出确定的结果(哪一笔先到仓取决于关停各段的快慢),这里直接记两件事发生的先后。
+		const order: string[] = [];
+		const recorder = runtime.statsRecorder as unknown as {
+			closeOpenSessions(): Promise<void>;
+		};
+		const closeOpenSessions = recorder.closeOpenSessions.bind(recorder);
+		recorder.closeOpenSessions = async () => {
+			await closeOpenSessions();
+			order.push("recorder-drained");
+		};
+		const closeFans = runtime.fansStore.close.bind(runtime.fansStore);
+		runtime.fansStore.close = () => {
+			order.push("fans-closed");
+			return closeFans();
+		};
+		await runtime.dispose();
+		expect(order).toEqual(["recorder-drained", "fans-closed"]);
 	});
 
 	it("在途的资料更新先走空,图库与资料缓存仓才关门:关停返回时那条资料与它的头像已在盘上", async () => {

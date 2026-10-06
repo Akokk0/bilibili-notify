@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { FansRefreshEntry, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { createFansStore, FOLLOWERS_DIR } from "../../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
@@ -40,7 +40,7 @@ afterEach(async () => {
 
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
 
-async function writeSeries(key: string, samples: Array<{ ts: string; value: number }>) {
+async function writeSeries(key: string, samples: Array<{ sampledAt: string; followers: number }>) {
 	await mkdir(join(dataDir, ...FOLLOWERS_DIR), { recursive: true });
 	await writeFile(
 		join(dataDir, ...FOLLOWERS_DIR, `${key}.jsonl`),
@@ -59,10 +59,10 @@ async function exists(path: string): Promise<boolean> {
 
 /** 抖音订阅 e1:十天前开始记,每隔几天一条。 */
 const E1_SERIES = [
-	{ ts: iso(10 * DAY), value: 100 },
-	{ ts: iso(8 * DAY), value: 150 },
-	{ ts: iso(2 * DAY), value: 300 },
-	{ ts: iso(HOUR), value: 400 },
+	{ sampledAt: iso(10 * DAY), followers: 100 },
+	{ sampledAt: iso(8 * DAY), followers: 150 },
+	{ sampledAt: iso(2 * DAY), followers: 300 },
+	{ sampledAt: iso(HOUR), followers: 400 },
 ];
 
 function extSub(id: string, externalId: string, enabled = true): Subscription {
@@ -109,7 +109,7 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 			prune: vi.fn(async () => {}),
 			load: vi.fn(async () => {}),
 		} as never,
-		fansStore: createFansStore({
+		fansStore: createFollowersStore({
 			dataRoot: dataDir,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
@@ -184,7 +184,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		await p.handle.pollNow();
 		expect(p.entryOf("e1")).toMatchObject({
 			current: 400,
-			ts: E1_SERIES[3]?.ts,
+			ts: E1_SERIES[3]?.sampledAt,
 			deltaSubscribed: 300,
 			delta24h: 100,
 			delta7d: 250,
@@ -192,7 +192,7 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 	});
 
 	it("刚开始记、24h / 7d 之前还没有样本 → 那两格 null,起点照算", async () => {
-		await writeSeries("e1", [{ ts: iso(HOUR), value: 400 }]);
+		await writeSeries("e1", [{ sampledAt: iso(HOUR), followers: 400 }]);
 		const p = await start([extSub("e1", "sec-1")], { e1: profile(420) });
 		await p.handle.pollNow();
 		expect(p.entryOf("e1")).toMatchObject({

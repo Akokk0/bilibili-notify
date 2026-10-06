@@ -43,10 +43,10 @@ describe("dailyFansSeries — 按本地日归并的每日净增", () => {
 
 	it("每日净增 = 当日末值 − 前一日末值", () => {
 		const samples = [
-			{ ts: CN(14, 23), value: 1000 },
-			{ ts: CN(15, 10), value: 1050 },
-			{ ts: CN(15, 23), value: 1100 },
-			{ ts: CN(16, 22), value: 1180 },
+			{ sampledAt: CN(14, 23), followers: 1000 },
+			{ sampledAt: CN(15, 10), followers: 1050 },
+			{ sampledAt: CN(15, 23), followers: 1100 },
+			{ sampledAt: CN(16, 22), followers: 1180 },
 		];
 		const got = dailyFansSeries(samples, { days: 2, tzOffsetMin: TZ_CN, now });
 		expect(got).toEqual([
@@ -57,8 +57,8 @@ describe("dailyFansSeries — 按本地日归并的每日净增", () => {
 
 	it("按本地日切分 —— UTC+8 的当日 07:00 属于当天,不能落到前一天", () => {
 		const samples = [
-			{ ts: CN(15, 23), value: 500 },
-			{ ts: CN(16, 7), value: 560 },
+			{ sampledAt: CN(15, 23), followers: 500 },
+			{ sampledAt: CN(16, 7), followers: 560 },
 		];
 		const got = dailyFansSeries(samples, { days: 1, tzOffsetMin: TZ_CN, now });
 		expect(got).toEqual([{ d: "2026-05-16", net: 60, value: 560 }]);
@@ -66,8 +66,8 @@ describe("dailyFansSeries — 按本地日归并的每日净增", () => {
 
 	it("某日无样本 → net 为 null,不拿 0 冒充「当天没涨粉」", () => {
 		const samples = [
-			{ ts: CN(14, 23), value: 1000 },
-			{ ts: CN(16, 12), value: 1200 },
+			{ sampledAt: CN(14, 23), followers: 1000 },
+			{ sampledAt: CN(16, 12), followers: 1200 },
 		];
 		const got = dailyFansSeries(samples, { days: 2, tzOffsetMin: TZ_CN, now });
 		expect(got[0]).toEqual({ d: "2026-05-15", net: null, value: null });
@@ -76,15 +76,15 @@ describe("dailyFansSeries — 按本地日归并的每日净增", () => {
 	});
 
 	it("窗口内最早一天没有前一日基线 → net 为 null", () => {
-		const samples = [{ ts: CN(16, 12), value: 300 }];
+		const samples = [{ sampledAt: CN(16, 12), followers: 300 }];
 		const got = dailyFansSeries(samples, { days: 1, tzOffsetMin: TZ_CN, now });
 		expect(got).toEqual([{ d: "2026-05-16", net: null, value: 300 }]);
 	});
 
 	it("掉粉 → 负数净增", () => {
 		const samples = [
-			{ ts: CN(15, 23), value: 900 },
-			{ ts: CN(16, 23), value: 850 },
+			{ sampledAt: CN(15, 23), followers: 900 },
+			{ sampledAt: CN(16, 23), followers: 850 },
 		];
 		const got = dailyFansSeries(samples, { days: 1, tzOffsetMin: TZ_CN, now });
 		expect(got[0]?.net).toBe(-50);
@@ -233,9 +233,9 @@ describe("坏时间戳守卫 —— 一行脏数据不能掀翻整个接口", ()
 	it("dailyFansSeries 跳过坏采样,其余照常出数", () => {
 		const got = dailyFansSeries(
 			[
-				{ ts: CN(15, 10), value: 100 },
-				{ ts: "坏行", value: 999 },
-				{ ts: CN(16, 10), value: 150 },
+				{ sampledAt: CN(15, 10), followers: 100 },
+				{ sampledAt: "坏行", followers: 999 },
+				{ sampledAt: CN(16, 10), followers: 150 },
 			],
 			{ days: 2, tzOffsetMin: -480, now: new Date(Date.parse(CN(16, 12))) },
 		);

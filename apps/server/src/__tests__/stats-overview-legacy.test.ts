@@ -30,7 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore, FOLLOWERS_DIR } from "../fans/store.js";
+import { createFollowersStore, FOLLOWERS_DIR } from "../followers/store.js";
 import { migrateZeroGeneration } from "../migration/zero-generation.js";
 import { createStatsRoute } from "../routes/stats.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -68,7 +68,7 @@ function bilibili(uids: string[]) {
 function makeDeps(dataDir: string, uids: string[], liveUids: string[]): RouteDeps {
 	return {
 		runtime: {
-			fansStore: createFansStore({ dataRoot: dataDir, logger }),
+			fansStore: createFollowersStore({ dataRoot: dataDir, logger }),
 			statsStore: createStatsStore({ dataRoot: dataDir, logger }),
 			engines: {
 				listLiveRooms: () => uids.map((uid) => ({ uid, isLive: liveUids.includes(uid) })),
@@ -435,7 +435,7 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		const recorder = createStatsRecorder({
 			bus,
 			store,
-			fans: createFansStore({ dataRoot: dataDir, logger }),
+			fans: createFollowersStore({ dataRoot: dataDir, logger }),
 			fansCron: () => "*/10 * * * *",
 			logger,
 			now,
@@ -504,7 +504,9 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		for (const uid of ["201", "202", "203"]) {
 			await writeFile(
 				join(dataDir, ...FOLLOWERS_DIR, `s${uid}.jsonl`),
-				jsonl(Array.from({ length: 4 }, (_, i) => ({ ts: at(3 - i, 1), value: 10 * i }))),
+				jsonl(
+					Array.from({ length: 4 }, (_, i) => ({ sampledAt: at(3 - i, 1), followers: 10 * i })),
+				),
 			);
 		}
 		return makeDeps(dataDir, uids, ["204"]);

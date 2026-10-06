@@ -35,7 +35,7 @@ import type {
 import { type SubscriptionTag, upColor } from "@bilibili-notify/internal";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import { CONFIG_DIR, CORE_SETTINGS_FILE } from "../config/store.js";
-import { FOLLOWERS_DIR } from "../fans/store.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { isValidImageRef } from "../images/image-store.js";
 import { type ServerHandle, startServer } from "../index.js";
 import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
@@ -385,8 +385,8 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		await writeFile(
 			join(gen, ...FOLLOWERS_DIR, `${S_EXT}.jsonl`),
 			jsonl([
-				{ ts: at(3), value: 1000 },
-				{ ts: at(1), value: 1050 },
+				{ sampledAt: at(3), followers: 1000 },
+				{ sampledAt: at(1), followers: 1050 },
 			]),
 		);
 
@@ -410,9 +410,9 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 						(row) => row.kind === "followers",
 					),
 				).toBe(true);
-				expect((await lines(...FOLLOWERS_DIR, `${S_EXT}.jsonl`))?.map((row) => row.value)).toEqual([
-					1000, 1050, 1111,
-				]);
+				expect(
+					(await lines(...FOLLOWERS_DIR, `${S_EXT}.jsonl`))?.map((row) => row.followers),
+				).toEqual([1000, 1050, 1111]);
 				const profile = (await extSub())?.cachedProfile;
 				expect(profile?.fans).toBe(2222);
 				expect(profile?.avatar && isValidImageRef(profile.avatar)).toBe(true);

@@ -32,7 +32,7 @@ import {
 	extensionSettingsFile,
 	integrationSettingsFile,
 } from "../config/store.js";
-import { FOLLOWERS_DIR } from "../fans/store.js";
+import { FOLLOWERS_DIR } from "../followers/store.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../runtime/card-assets.js";
 import { FONT_DIR } from "../runtime/font-assets.js";
 import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
@@ -43,6 +43,7 @@ import { createChatAttachmentMigrator } from "./chat-attachments.js";
 import { migrateConnectionFiles } from "./connections.js";
 import { migrateConversationFiles } from "./conversations.js";
 import { leftoverReason } from "./files.js";
+import { migrateFollowerCompression } from "./followers.js";
 import {
 	migrateHistoryDayFiles,
 	migrateRepushSnapshotFiles,
@@ -69,7 +70,7 @@ import { migrateUptime } from "./uptime.js";
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 32;
+export const MIGRATION_REVISION = 33;
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -286,10 +287,15 @@ export async function migrateZeroGeneration(
 		);
 	}
 
+	// 同一个文件被好几步改写(粉丝样本:统计那步改名并档、压缩那步改形),汇报里只记一次。
+	const rewrittenSeen = new Set<string>();
 	for (const [index, rewrite] of REWRITES.entries()) {
 		opts.onProgress?.({ done: moves.length + index, total, label: rewrite.label });
 		for (const path of await rewrite.run(opts, report)) {
-			report.rewritten.push(portable(relative(opts.targetDir, path)));
+			const name = portable(relative(opts.targetDir, path));
+			if (rewrittenSeen.has(name)) continue;
+			rewrittenSeen.add(name);
+			report.rewritten.push(name);
 		}
 	}
 	// 图库里的图是迁移器逐张直接写的(文件各自 fsync,目录没逐个同步,见 `image-library.ts`):整个目录同步一次。
@@ -433,6 +439,15 @@ const REWRITES: readonly {
 		// 在「统计」之后:读它迁好的粉丝样本,推出老日子每个小时 BN 跑了多少分钟(运行记录,㉗b)。
 		label: "运行记录",
 		run: (opts) => migrateUptime(opts.targetDir),
+	},
+	{
+		// 在「统计的在记」与「运行记录」之后:那两步读的是旧形状里逐条的 `"ts"`,压缩之后就没有了。把粉丝样本改成新形状、
+		// 按「现在」压一遍(ADR-0027 决策 8、15;㉘c)。
+		label: "粉丝样本压缩",
+		run: (opts, report) =>
+			migrateFollowerCompression(opts.targetDir, opts.now ?? new Date(), (reason) =>
+				report.skipped.push({ path: FOLLOWERS_DIR.join("/"), reason }),
+			),
 	},
 	{
 		label: "锐评草稿",

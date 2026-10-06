@@ -111,12 +111,6 @@ const describeSteps = ({ steps }: Timed): string =>
 		.map((step) => `${step.label} ${step.seconds.toFixed(1)} 秒`)
 		.join(",");
 
-const countNewlines = (buffer: Buffer): number => {
-	let count = 0;
-	for (let at = buffer.indexOf(10); at !== -1; at = buffer.indexOf(10, at + 1)) count += 1;
-	return count;
-};
-
 const readLines = async (path: string): Promise<string[]> =>
 	(await readFile(path, "utf8")).split("\n").filter(Boolean);
 
@@ -233,7 +227,15 @@ async function expectMigrated(
 	expect(snapshots).toBe(keptDays * counts.plan.repushPerDay);
 	expect(snapshotsNotMigrated).toBe(0);
 
-	// 粉丝:每个订阅一个文件、按订阅 id 命名(uid 文件并进去了,不剩),一年的点一个不少。
+	// 粉丝:每个订阅一个文件、按订阅 id 命名(uid 文件并进去了,不剩),都是新形状、压过了(㉘c,「现在」是历史的最后一天
+	// 的 12:00Z,切线是 09-22T12:00Z)。每个文件的行数闭式可算:
+	//   - 样本是 2025-10-01T00:00Z 起每 10 分钟一条、一年(最后一条 2026-09-30T23:50Z)。
+	//   - 切线之后原样:09-22 的 12:00–23:50 是 72 条,之后 8 天各 144 条 = 1152,共 1224 行。
+	//   - 切线之前是 2025-10-01 00 点到 2026-09-22 11 点的小时,356 × 24 + 12 = 8556 个,每小时都有样本。值每十分钟都在变的
+	//     文件,每小时留最晚的一条(小时序号 h 的值 = base + ⌊h/2⌋ + h % 5,相邻小时的差只会是 1、2、−3、−4,永远合不了),
+	//     就是 8556 行,合计 8556 + 1224 = 9780;粉丝数一整年不变的文件,8556 个小时连着、同值,合成 1 段,合计 1 + 1224 = 1225。
+	const FLAT_ROWS = 1225;
+	const VARYING_ROWS = 9780;
 	const followersDir = join(generation, "stats", "followers");
 	const subscriptionIds = [
 		...counts.biliSubscriptions.map((s) => s.id),
@@ -242,9 +244,32 @@ async function expectMigrated(
 	expect((await readdir(followersDir)).sort()).toEqual(
 		subscriptionIds.map((id) => `${id}.jsonl`).sort(),
 	);
+	const followerLines: Record<string, string[]> = {};
 	for (const id of subscriptionIds) {
-		const lines = countNewlines(await readFile(join(followersDir, `${id}.jsonl`)));
-		expect(lines, `${id} 的粉丝点`).toBe(counts.followerRowsPerSubscription);
+		followerLines[id] = await readLines(join(followersDir, `${id}.jsonl`));
+	}
+	const lengths = Object.values(followerLines).map((lines) => lines.length);
+	expect(lengths.filter((n) => n === FLAT_ROWS)).toHaveLength(counts.flatFollowerFiles);
+	expect(lengths.filter((n) => n === VARYING_ROWS)).toHaveLength(
+		subscriptionIds.length - counts.flatFollowerFiles,
+	);
+	// 第 0 份(base = 100000)是不变的那种:一整段;第 1 份(base = 105000)每小时一个点,末一条是最后一个样本。
+	const [flatId, varyingId] = subscriptionIds as [string, string];
+	expect(followerLines[flatId]?.[0]).toBe(
+		'{"sampledAt":"2025-10-01T00:50:00.000Z","followers":100000,"lastSampledAt":"2026-09-22T11:50:00.000Z"}',
+	);
+	expect(followerLines[flatId]?.[1]).toBe(
+		'{"sampledAt":"2026-09-22T12:00:00.000Z","followers":100000}',
+	);
+	expect(followerLines[varyingId]?.[0]).toBe(
+		'{"sampledAt":"2025-10-01T00:50:00.000Z","followers":105000}',
+	);
+	expect(followerLines[varyingId]?.at(-1)).toBe(
+		'{"sampledAt":"2026-09-30T23:50:00.000Z","followers":109383}',
+	);
+	// 没有一行还是 0.x 的形状。
+	for (const lines of Object.values(followerLines)) {
+		expect(lines.some((line) => line.includes('"ts"') || line.includes('"value"'))).toBe(false);
 	}
 
 	// 作品与直播:文件都按订阅 id 命名,老行翻成了现在的行(作品住 stats/posts、没有 `type` / `kind`,帧是

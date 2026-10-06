@@ -13,7 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createFansStore } from "../../fans/store.js";
+import { createFollowersStore } from "../../followers/store.js";
 import { summarizeLiveSessions } from "../aggregate.js";
 import { createStatsRecorder } from "../recorder.js";
 import { createStatsStore } from "../store.js";
@@ -56,7 +56,7 @@ describe("服务器在 UP 已开播时启动", () => {
 		const recorder = createStatsRecorder({
 			bus,
 			store,
-			fans: createFansStore({ dataRoot: dir, logger }),
+			fans: createFollowersStore({ dataRoot: dir, logger }),
 			fansCron: () => "*/10 * * * *",
 			logger,
 			now: () => BOOT,

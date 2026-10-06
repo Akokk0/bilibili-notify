@@ -100,8 +100,8 @@ describe("restoreFromDisk — fansBaseline 自愈", () => {
 	it("读的是这条订阅的 id 那份(ADR-0020 决策 2 的 🔗),不是 uid 那份", async () => {
 		const findEarliest = vi.fn(async (_key: string) => undefined);
 		const findNearestBefore = vi.fn(async (_key: string, _before: string) => ({
-			ts: "2026-05-20T00:00:00.000Z",
-			value: 1600,
+			sampledAt: "2026-05-20T00:00:00.000Z",
+			followers: 1600,
 		}));
 		handle = runPoller({
 			rtGet: vi.fn(() => ({})),
@@ -118,29 +118,39 @@ describe("restoreFromDisk — fansBaseline 自愈", () => {
 	});
 
 	it("earliest 比 baseline 早 → patch 重置 baseline 为 earliest", async () => {
-		const earliest = { ts: "2026-05-13T10:00:00.000Z", value: 1000 };
+		const earliest = { sampledAt: "2026-05-13T10:00:00.000Z", followers: 1000 };
 		const oldBaseline = { ts: "2026-05-19T06:30:00.000Z", value: 1500 };
 		const rtPatch = vi.fn(async () => {});
 		handle = runPoller({
 			rtGet: vi.fn(() => ({ fansBaseline: oldBaseline })),
 			rtPatch,
 			findEarliest: vi.fn(async () => earliest),
-			findNearestBefore: vi.fn(async () => ({ ts: "2026-05-20T00:00:00.000Z", value: 1600 })),
+			findNearestBefore: vi.fn(async () => ({
+				sampledAt: "2026-05-20T00:00:00.000Z",
+				followers: 1600,
+			})),
 		});
 		await vi.waitFor(
-			() => expect(rtPatch).toHaveBeenCalledWith("sub-1", { fansBaseline: earliest }),
+			() =>
+				expect(rtPatch).toHaveBeenCalledWith("sub-1", {
+					fansBaseline: { ts: earliest.sampledAt, value: earliest.followers },
+				}),
 			{ timeout: 2000, interval: 10 },
 		);
 	});
 
 	it("earliest 等于 baseline → 不调 patch(语义一致,正常态)", async () => {
 		const same = { ts: "2026-05-19T06:30:00.000Z", value: 1500 };
+		const sameSample = { sampledAt: same.ts, followers: same.value };
 		const rtPatch = vi.fn(async () => {});
 		handle = runPoller({
 			rtGet: vi.fn(() => ({ fansBaseline: same })),
 			rtPatch,
-			findEarliest: vi.fn(async () => same),
-			findNearestBefore: vi.fn(async () => ({ ts: "2026-05-20T00:00:00.000Z", value: 1600 })),
+			findEarliest: vi.fn(async () => sameSample),
+			findNearestBefore: vi.fn(async () => ({
+				sampledAt: "2026-05-20T00:00:00.000Z",
+				followers: 1600,
+			})),
 		});
 		// 给后台 restoreFromDisk 跑完的窗口(它无 cron 触发,但有 await)。
 		await new Promise((r) => setTimeout(r, 200));
@@ -149,26 +159,32 @@ describe("restoreFromDisk — fansBaseline 自愈", () => {
 
 	it("earliest 晚于 baseline(理论不应出现,但容错)→ 不调 patch", async () => {
 		const oldBaseline = { ts: "2026-05-13T10:00:00.000Z", value: 1000 };
-		const later = { ts: "2026-05-19T00:00:00.000Z", value: 1300 };
+		const later = { sampledAt: "2026-05-19T00:00:00.000Z", followers: 1300 };
 		const rtPatch = vi.fn(async () => {});
 		handle = runPoller({
 			rtGet: vi.fn(() => ({ fansBaseline: oldBaseline })),
 			rtPatch,
 			findEarliest: vi.fn(async () => later),
-			findNearestBefore: vi.fn(async () => ({ ts: "2026-05-20T00:00:00.000Z", value: 1600 })),
+			findNearestBefore: vi.fn(async () => ({
+				sampledAt: "2026-05-20T00:00:00.000Z",
+				followers: 1600,
+			})),
 		});
 		await new Promise((r) => setTimeout(r, 200));
 		expect(rtPatch).not.toHaveBeenCalled();
 	});
 
 	it("baseline 不存在(全新 sub)→ 不触发 self-heal,留给首次 tick 写", async () => {
-		const earliest = { ts: "2026-05-13T10:00:00.000Z", value: 1000 };
+		const earliest = { sampledAt: "2026-05-13T10:00:00.000Z", followers: 1000 };
 		const rtPatch = vi.fn(async () => {});
 		handle = runPoller({
 			rtGet: vi.fn(() => ({})),
 			rtPatch,
 			findEarliest: vi.fn(async () => earliest),
-			findNearestBefore: vi.fn(async () => ({ ts: "2026-05-20T00:00:00.000Z", value: 1600 })),
+			findNearestBefore: vi.fn(async () => ({
+				sampledAt: "2026-05-20T00:00:00.000Z",
+				followers: 1600,
+			})),
 		});
 		await new Promise((r) => setTimeout(r, 200));
 		expect(rtPatch).not.toHaveBeenCalled();
@@ -181,7 +197,10 @@ describe("restoreFromDisk — fansBaseline 自愈", () => {
 			rtGet: vi.fn(() => ({ fansBaseline: oldBaseline })),
 			rtPatch,
 			findEarliest: vi.fn(async () => undefined),
-			findNearestBefore: vi.fn(async () => ({ ts: "2026-05-20T00:00:00.000Z", value: 1600 })),
+			findNearestBefore: vi.fn(async () => ({
+				sampledAt: "2026-05-20T00:00:00.000Z",
+				followers: 1600,
+			})),
 		});
 		await new Promise((r) => setTimeout(r, 200));
 		expect(rtPatch).not.toHaveBeenCalled();
