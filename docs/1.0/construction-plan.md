@@ -130,7 +130,7 @@
 | ㉓ | 会员与醒目留言：`MembershipTier`、`SuperchatEvent.tier`、`templates.membership` 重做（顺手修图片空串不兜底）；`filters.minScPrice` → `defaults.superchat.minAmount`、`filters.minGuardLevel` → `defaults.membership.minRank`（10-05 主人定归这一片）。舰长图标改本地资产 10-02 从 3b 挪来、10-03 随 ⑯ ㉕ 回 3a。10-05 开片，切成 ㉓a–㉓e，见表下「㉓ 开片」 | ✅ 已落（10-06，修订号 28，备份版本 8） |
 | ㉔ | 皮肤字段改名、卡种键改名（含 `cardStyleByKind` 的键与它挪进 `defaults.cards.byKind`，10-02 从 ⑬ 挪来）、皮肤 schema 抬版；卡种中文名收一份。醒目留言卡与会员卡两组字段 10-05 已随 ㉓ 改到最终名字，这一片只剩卡种键与其余卡；皮肤按档换色的挂点 10-05 从 ㉓ 挪来（见「㉓ 开片」）。10-06 开片，切成 ㉔a–㉔f，见表下「㉔ 开片」 | ✅ 已落（10-06，修订号 29，备份版本 9，皮肤包格式版本 2） |
 | ㉕ | 出图器零联网守卫：渲染页只许 `data:` 与本机图库，其余拦下计数；出网棘轮里 `image-renderer` 清零 | 并进 3a（10-03，随 ⑯：出图器不再自己抓图，要等 B 站上报引用） |
-| ㉖ | （10-06 开片，切成 ㉖a–㉖h，见表下「㉖ 开片」）统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、统计行 `followers` / `videoPosts` / `posts` / `identity`；ADR-0027 服务端那半里今天做得了的（「在记」的按天小账、开播公告不记、拓展作品多收字段、「取最近几条」的读口）；锐评取数改成直接调函数 | 施工中 |
+| ㉖ | （10-06 开片，切成 ㉖a–㉖h，见表下「㉖ 开片」）统计改写：`PostEntry` / `LiveSessionEntry`、帧字段改名、`stats/posts`、统计行 `followers` / `videoPosts` / `posts` / `identity`；ADR-0027 服务端那半里今天做得了的（「在记」的按天小账、开播公告不记、拓展作品多收字段、「取最近几条」的读口）；锐评取数改成直接调函数 | ✅ 已落（10-06） |
 | ㉗ | （10-06 开片，切成 ㉗a–㉗c，见表下「㉗ ㉘ 开片」）运行记录 + 迁移时从 0.x 粉丝样本回填运行时长（ADR-0033 决策 3，必须先于 ㉘） | 未开工 |
 | ㉘ | （10-06 开片，切成 ㉘a–㉘e，见表下「㉗ ㉘ 开片」）粉丝样本的行改名（`ts` / `value` → `sampledAt` / `followers`，10-06 从 ㉖ 挪来，和压缩同一遍重写）、降精度再合区间；「在记」的账满 8 天的也在这一趟合成区间（10-06 加，ADR-0027 决策 13）：最近 8 天原样、每天一趟压缩、迁移压 0.x 老样本；⑨ 复测 | 未开工 |
 | ㉙ | 统计总开关；系统页「存储占用」的服务端；旧代的列表、大小、删除服务口 | 未开工 |
@@ -338,6 +338,16 @@
   - ㉖g 拓展作品多记链接、摘要、话题、视频时长；统计仓加「取最近几条」的读口（没有调用方，3b 的 `get_creator_posts` 用）。
   - ㉖h 文档、守卫数字、计划勾销。
   - 开工前各问一次的名字：㉖f 的目录名与账里三项的取值；㉖g 的摘要等字段名。
+  - ✅ 已落要点（修订号 31，备份版本没动）：
+    - 作品行 `{ id, hasVideo, publishedAt }` 外加可选的 `url` / `title` / `summary` / `topic` / `videoDurationSec`（今天只有拓展作品在填，取五格的函数在 `stats/post-entry-extras.ts`，3a 的 B 站适配直接复用）；直播帧 `{ kind, occurredAt, peakTotalViewers }`；目录 `stats/posts`。
+    - 「在记」的账 `stats/recording/<订阅 id>.jsonl`，行 `RecordingEntry = { kind: "posts" | "live" | "followers", startedAt, endedAt }`，现场写的每行正好一个 UTC 整点小时，迁移写合好的区间，读的一方吃任意长度。B 站认登录有效（每 5 分钟现读一次）、拓展认收到上报、粉丝认拉到资料。`seen/` 与水位线 `since` 删了。
+    - 统计行：`followers`、`videoPosts`、`posts`（全部作品）、`identity`、`recording`（三份逐天的在记，面板第 4 期才读）。面板的「动态」只在 `services/stats.ts` 的 `plainPostCount` 相减。
+    - 「直播类开关开着」的判定抽成 `packages/live` 的纯函数 `needsLiveMonitor`，房间上下文与统计共用；`engines.ts` 的 `getModuleState` 那份手抄（读 `routing`）留给 3b 的唯一判定。
+    - 统计总览的取数是一个函数 `createStatsOverview`，面板、手动锐评、定时锐评共用同一份 30 秒缓存。
+    - B 站替身棘轮：`routes/stats.ts` 11 → 5；`stats/roast-subject.ts` 4 → 6、`stats/bili-source.ts` 8 → 15、`stats/recorder.ts` 2 → 5、`index.ts` 3 → 5（主人批的，3b 搬进 `bilibili/` 后不计）。
+  - 行为变化：开播公告不记；作品开关关着的订阅不记作品、那些天显示「没记录」；直播类开关关着的订阅直播那几格（含最高与平均观看）显示「没记录」；拓展订阅没在记的日子即使盘上有作品也显示「没记录」；一条从没有粉丝样本的 B 站订阅，在窗口里没有任何记录时从整行「没记录」变成显示 0（老规则随窗口长短变，账表达不了）。
+  - 留着的：`index.ts` 里把 B 站登录读口交给统计的那一行没有测试覆盖（端到端测试里启用的 B 站订阅会去连真接口、被防联网的守卫拦下），3b 搬 B 站适配时补；记录器里挡重复用了三个集合，㉘ 给账加压缩时一起收；「在记」的缓存键没有加开关状态（查账得来，不需要）。
+  - 真机待看：统计页（开关关着的订阅各格显示「没记录」、热力图、投稿与动态两个数、CSV 两列）；真实 0.x 数据迁移后的老日子。
   - 粉丝样本的行改名挪去 ㉘；B 站作品的多收字段挪去 3a、直播场次的挪去 3b；CSV 合列挪去第 4 期；`UpStatsRow` 的类型改名随第 4 期、`fans-refreshed` 的事件改名随 3b。
 - **㉗ ㉘ 开片（10-06）**：先勘察（报告在 `.bn-design/s27-28-survey.md`），再一题一题问主人，定案在 ADR-0033 决策 3 的 🔗 与 ADR-0027 决策 15。两片各抬一次修订号（㉗b → 32、㉘c → 33），备份版本不抬。㉗a、㉘a、㉘b 文件面不相交，各开一个工作区并行；其余排队：
   - ㉗a 运行记录的现场记录：新仓、每个整点记一行 `{ hourStartedAt, minutes }`、关停补记；数据根目录表加 `uptime`。只写新目录，不抬修订号。
@@ -391,7 +401,7 @@ CLAUDE.md 与 `docs/agents/build-release.md` 的「分支」都还没提 dev-nex
 | 原生分享：解析器交中立描述，由 OneBot 适配器去签。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表（ADR-0029 决策 2）；重推原件里小程序卡那一种的迁移随之（10-03 从 ⑱ 挪来） | 3b |
 | 测试助手重复：scripts 6 处各算 repoRoot、internal 三份 BASE AI 夹具、面板 UpDialog 三份 renderDialog 与造目标、`extSub` 与 `makeExtSub` 重复、backup 两份 pickFile | 各区重写那期合并，没重写到的归 5 |
 | 还在用正则扫 TS 源码的守卫迁上 AST 共用工具（09-29 定的规矩，见 architecture「守卫」开头）：devtools 隔离（服务端、面板各一份）、`constants-imports.test.ts`、`index-background-work-tracked.test.ts`（今天只钉形状）、面板 `walk.ts` / `blankComments` 的 13 个消费方与颜色 token 等处的内联剥注释、`font-reader-singleton`、`tour-anchors-exist`、`asset-dir`；碰到哪道先迁哪道 | 5（守卫补齐） |
-| 统计的 `/overview` 被定时锐评与手动锐评**在进程内当 HTTP 请求打**（`statsRoute.request("/overview")`），为此统计子路由自挂了一份出错处理（④b 第 4 组）：把取数抽成函数、两处直接调，子路由的那份出错处理随之删掉 | 随 ADR-0027 的服务端那半（统计多收字段时本来就要动这里） |
+| 统计的 `/overview` 被定时锐评与手动锐评**在进程内当 HTTP 请求打**（`statsRoute.request("/overview")`），为此统计子路由自挂了一份出错处理（④b 第 4 组）：把取数抽成函数、两处直接调，子路由的那份出错处理随之删掉 | ✅ 已落（㉖e，10-06） |
 | knip 报的 3 个老的未使用文件（`devtools/stub.ts`、两个 shape-pin；knip 不在 CI） | 5 |
 | `constants-imports.test.ts` 按行判，多行 `export {…} from "zod"` 会漏；`UpDialog.test.tsx` 没有 JSX，应是 `.ts`；network-guard 夹具路径写了两处 | 5（守卫补齐） |
 | 设置页的 AI 连通测试从 `routes/globals.ts` 挪进 `packages/ai`（出网点名表不给路由开白名单） | 最迟 3b 末（出网点名表清零） |

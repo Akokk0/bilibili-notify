@@ -766,7 +766,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `StoredSettingsVerdict` / `judgeStoredSettings` | `StoredSettingsCheckResult` / `checkStoredSettings` |
 | `ParsedExtraParams`（装的是 `{ ok, value, error }`） | `ExtraParamsParseResult` |
 | `SweepReport`（这次清扫的结果）；`StatusReport`（status 指令现算的） | `SweepResult`；`StatusView` |
-| `LiveSessionRecord`；`StatsSeenRow`；`ProvenanceRecord`；`ProcRow` | `LiveSessionEntry`；`StatsSeenEntry`；`ProvenanceEntry`；`ProcessEntry` |
+| `LiveSessionRecord`；`StatsSeenRow`；`ProvenanceRecord`；`ProcRow` | `LiveSessionEntry`；（seen 行没有了，并进「在记」的账 `RecordingEntry`，ADR-0027 决策 13）；`ProvenanceEntry`；`ProcessEntry` |
 | `ModuleStatus`（装的是四个布尔的对象） | `ModuleState` |
 | contract 的 `BrowserProcessState`（装的是取值）与 WS 字段 `ResourceSample.browserState`；服务端 `BrowserProcessInfo`（`{ state, pid }`） | `BrowserProcessStatus` 与 `browserStatus`；`BrowserProcessState`，里面的 `state` 改 `status` |
 | `LoginSnapshot`（internal、B 站 api、面板各一份）；服务端 `LoginSnapshotView`；devtools 登录场景的 `OverridableStatus` | 中立一侧用 `AuthState`，`bilibili/` 里还要原形就叫 `BiliLoginState`；删掉（`login` 改核心通用指令、场景搬进 `bilibili/` 的 devtools，都读 `AuthState`） |

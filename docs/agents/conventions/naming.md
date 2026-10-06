@@ -68,6 +68,9 @@
 | 弹幕 | `danmaku` | `danmu`、`dm` |
 | 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
 | 直播间 id | `roomId` | `roomid` |
+| 统计「在记」 | `recording`（目录 `stats/recording/`、行 `RecordingEntry`，三项 `posts` / `live` / `followers`） | `seen`、`coverage` |
+| BN 跑了多久 | `uptime`（目录 `uptime/`、行 `UptimeEntry { hourStartedAt, minutes }`） | `run…`（和 `runtime` 混） |
+| 作品的摘要 | `summary`（取段函数拼出、截过的整条文字） | `excerpt`、`digest`、`desc` |
 | 名字 | `name` | `uname`、`username`、`mastername` |
 | 头像 | 网址叫 `avatarUrl`；存进图库的叫 `avatar: ImageRef`；历史行上「推送那一刻的头像」叫 `avatarSnapshot`（也是 `ImageRef`，与 `nameSnapshot` 成对） | `face`、`userface`、当网址用的 `avatar` |
 | 粉丝数 | `followers` | `fans`、`fansNum`、`followerNum` |
