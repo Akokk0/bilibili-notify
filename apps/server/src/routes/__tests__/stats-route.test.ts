@@ -37,7 +37,7 @@ function makeDeps(opts: StubOpts = {}) {
 			fansPoller: {
 				getLastEntries: () => [{ subscriptionId: "s1", uid: "1", current: state.fans }],
 			},
-			fansStore: { listSamplesSince: async () => [] },
+			fansStore: { listSamplesSince: async () => [], findNearestBefore: async () => undefined },
 			statsStore: {
 				listRecording: async () => {
 					if (opts.failOverview) throw new Error("盘挂了");

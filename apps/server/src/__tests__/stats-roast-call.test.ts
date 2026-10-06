@@ -120,7 +120,7 @@ function makeDeps(
 	globals.defaults.ai.presets = [...globals.defaults.ai.presets, PER_UP_PRESET];
 	return {
 		runtime: {
-			fansStore: { listSamplesSince: async () => [] },
+			fansStore: { listSamplesSince: async () => [], findNearestBefore: async () => undefined },
 			statsStore: {
 				listPosts: async () => [],
 				listLiveSessions: async () => [],

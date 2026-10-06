@@ -55,6 +55,9 @@ function makeDeps(f: Fixture): RouteDeps {
 		runtime: {
 			fansStore: {
 				listSamplesSince: async (key: string) => f.samples?.[uidOf(key)] ?? [],
+				// 与真仓一致:替身手里这条订阅的样本里,不晚于入参时刻的最近一条;没有就 undefined。
+				findNearestBefore: async (key: string, iso: string) =>
+					(f.samples?.[uidOf(key)] ?? []).filter((s) => s.sampledAt <= iso).at(-1),
 			},
 			statsStore: {
 				listPosts: async (key: string) => f.posts?.[uidOf(key)] ?? [],
@@ -458,7 +461,10 @@ describe("GET /api/stats/overview — 缓存", () => {
 	it("同参数二次请求走缓存,不重复读盘", async () => {
 		const listSamplesSince = vi.fn(async () => []);
 		const deps = makeDeps({ subs: [{ uid: "1" }] });
-		(deps.runtime as unknown as { fansStore: unknown }).fansStore = { listSamplesSince };
+		(deps.runtime as unknown as { fansStore: unknown }).fansStore = {
+			listSamplesSince,
+			findNearestBefore: async () => undefined,
+		};
 		const app = createStatsRoute(deps);
 		await app.request("/overview?days=30");
 		await app.request("/overview?days=30");
@@ -468,7 +474,10 @@ describe("GET /api/stats/overview — 缓存", () => {
 	it("换了 days 就不吃上一份缓存", async () => {
 		const listSamplesSince = vi.fn(async () => []);
 		const deps = makeDeps({ subs: [{ uid: "1" }] });
-		(deps.runtime as unknown as { fansStore: unknown }).fansStore = { listSamplesSince };
+		(deps.runtime as unknown as { fansStore: unknown }).fansStore = {
+			listSamplesSince,
+			findNearestBefore: async () => undefined,
+		};
 		const app = createStatsRoute(deps);
 		await app.request("/overview?days=30");
 		await app.request("/overview?days=7");
@@ -478,7 +487,10 @@ describe("GET /api/stats/overview — 缓存", () => {
 	it("TTL 过期后重新读盘", async () => {
 		const listSamplesSince = vi.fn(async () => []);
 		const deps = makeDeps({ subs: [{ uid: "1" }] });
-		(deps.runtime as unknown as { fansStore: unknown }).fansStore = { listSamplesSince };
+		(deps.runtime as unknown as { fansStore: unknown }).fansStore = {
+			listSamplesSince,
+			findNearestBefore: async () => undefined,
+		};
 		const app = createStatsRoute(deps);
 		await app.request("/overview?days=30");
 		vi.setSystemTime(NOW + 31_000);
@@ -491,7 +503,10 @@ describe("GET /api/stats/overview — 缓存", () => {
 		// 换着参数刷就能把独立端(Docker 堆上限 512MB)顶爆。
 		const listSamplesSince = vi.fn(async () => []);
 		const deps = makeDeps({ subs: [{ uid: "1" }] });
-		(deps.runtime as unknown as { fansStore: unknown }).fansStore = { listSamplesSince };
+		(deps.runtime as unknown as { fansStore: unknown }).fansStore = {
+			listSamplesSince,
+			findNearestBefore: async () => undefined,
+		};
 		const app = createStatsRoute(deps);
 
 		// 塞满并溢出:tz 各不相同,全都在 TTL 内。

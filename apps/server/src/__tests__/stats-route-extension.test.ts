@@ -63,6 +63,9 @@ function makeDeps(f: Fixture): RouteDeps {
 			fansStore: {
 				listSamplesSince: async (key: string, since: string) =>
 					(f.samples?.[key] ?? []).filter((s) => s.sampledAt >= since),
+				// 与真仓一致:替身手里这条订阅的样本里,不晚于入参时刻的最近一条;没有就 undefined。
+				findNearestBefore: async (key: string, iso: string) =>
+					(f.samples?.[key] ?? []).filter((s) => s.sampledAt <= iso).at(-1),
 			},
 			statsStore: {
 				listPosts: async (key: string, since: string) =>

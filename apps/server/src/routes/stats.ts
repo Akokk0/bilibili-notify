@@ -198,8 +198,10 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 			subs.map(async (sub, index) => {
 				// 各个仓都按订阅 id 分文件(ADR-0020 决策 2 的 🔗 / 16);老的 uid 文件开机时已迁过来。
 				const key = statsFileKey(sub);
-				const [samples, events, sessions, ledger] = await Promise.all([
+				const [samples, baseline, events, sessions, ledger] = await Promise.all([
 					deps.runtime.fansStore.listSamplesSince(key, since),
+					// 窗口之前最近的一条:窗口里第一个有样本的日子拿它当基线(见下面 `dailyFansSeries` 那一行)。
+					deps.runtime.fansStore.findNearestBefore(key, new Date(sinceMs - 1).toISOString()),
 					deps.runtime.statsStore.listPosts(key, since),
 					deps.runtime.statsStore.listLiveSessions(key, since),
 					deps.runtime.statsStore.listRecording(key, since),
@@ -207,6 +209,7 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 				return {
 					sub,
 					samples,
+					baseline,
 					events,
 					sessions,
 					ledger,
@@ -217,9 +220,14 @@ export function createStatsOverview(deps: StatsOverviewDeps): StatsOverviewReade
 		);
 
 		const rows = perSub.map((one): UpStatsRow => {
-			const { sub, samples, events, sessions, ledger } = one;
+			const { sub, samples, baseline, events, sessions, ledger } = one;
 			const identity = subscriptionIdentityOf(sub);
-			const daily = dailyFansSeries(samples, { days, tzOffsetMin });
+			// 基线要能回溯到窗口之前:只给窗口内的样本的话,窗口里第一个有样本的日子没有前一天可比,净增是
+			// 「没记录」,窗口越短丢得越多(近 7 日涨跌整个没了)。基线只参与算净增,不进窗口里的任何一天。
+			const daily = dailyFansSeries(baseline ? [baseline, ...samples] : samples, {
+				days,
+				tzOffsetMin,
+			});
 			const series = daily.map((p) => p.net);
 			// 三项各自在窗口里每天在不在记。
 			const recording = {

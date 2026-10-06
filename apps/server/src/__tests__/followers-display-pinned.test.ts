@@ -11,7 +11,8 @@
  * 形态:每 10 分钟都在变的活跃订阅、好几天不变的长平段、BN 关了两天的缺口、一天只有一两条、压在整点与本地日边界上的样本。
  *
  * 钉的是现状,包括看着别扭的几处(见各用例注释里的「现状」):
- *   - 路由只读窗口内的样本(`listSamplesSince(since)`),窗口第一天永远没有基线,净增是 null,哪怕盘上更早还有样本;
+ *   - 路由多读一条窗口之前最近的样本当基线(`findNearestBefore(since − 1ms)`,只参与算净增,不进窗口里的任何一天):
+ *     窗口里第一个有样本的日子的净增 = 它的末值 − 这条基线;窗口之前盘上一条样本都没有,那天的净增才是 null;
  *   - 净增是「当日末值 − 前一个有数据的日的末值」,缺口之后第一天的净增吃下整段缺口的变化,
  *     而缺口之后的平稳日是 0(不是 null)。
  *
@@ -213,7 +214,14 @@ const ACT_CUM: Record<number, number[]> = {
 /** act 的最后一天只走了一部分(现在是 12:00Z),所以净增各时区不同。 */
 const ACT_LAST_NET: Record<number, number> = { 0: 73, [-480]: 121, 300: 43 };
 const ACT_NET7D: Record<number, number> = { 0: 937, [-480]: 985, 300: 907 };
-const ACT_NETWINDOW: Record<number, number> = { 0: 4105, [-480]: 4153, 300: 4075 };
+/**
+ * 窗口首日的净增:tz=0 与 tz=-480 时窗口起点(06-01T00:00Z / 05-31T16:00Z)不晚于 act 的第一条样本(06-01T00:00Z),
+ * 窗口之前没有样本 → null;tz=300 时窗口起点是 06-01T05:00Z,之前还有 00:00..04:50 的 30 条样本,基线是 04:50Z 那条(10029),
+ * 首日末值 10173 → 净增 144。
+ */
+const ACT_FIRST_NET: Record<number, number | null> = { 0: null, [-480]: null, 300: 144 };
+/** 窗口内全部净增之和:tz=300 比原来多出首日的 144(4075 + 144)。 */
+const ACT_NETWINDOW: Record<number, number> = { 0: 4105, [-480]: 4153, 300: 4219 };
 
 const TZS = [0, -480, 300] as const;
 
@@ -224,8 +232,8 @@ describe("GET /api/stats/overview — 粉丝曲线(同一份数据三个时区�
 		await seedAll();
 		const row = (await overview(D, tz))("b-act");
 		expect(row.cumulative).toEqual(ACT_CUM[tz]);
-		// 第一天没有基线(盘上窗口之前没有被读进来),之后每天 +144,最后一天只走了一部分。
-		expect(row.series).toEqual([null, ...Array(28).fill(144), ACT_LAST_NET[tz]]);
+		// 首日有没有基线看窗口之前盘上有没有样本(见 ACT_FIRST_NET),之后每天 +144,最后一天只走了一部分。
+		expect(row.series).toEqual([ACT_FIRST_NET[tz], ...Array(28).fill(144), ACT_LAST_NET[tz]]);
 		expect(row.net1d).toBe(ACT_LAST_NET[tz]);
 		expect(row.net7d).toBe(ACT_NET7D[tz]);
 		expect(row.netWindow).toBe(ACT_NETWINDOW[tz]);
@@ -240,11 +248,12 @@ describe("GET /api/stats/overview — 粉丝曲线(同一份数据三个时区�
 		async (tz) => {
 			await seedAll();
 			const row = (await overview(D, tz))("b-flat");
-			// 现状:06-03 是窗口里第一个有样本的日,它前面的 05-20 在窗口之外、路由不读,所以 06-03 的净增是 null 而不是 +10。
+			// 06-03 是窗口里第一个有样本的日,它前面的 05-20(6990)在窗口之外,当基线:06-03 的净增是 7000 − 6990 = 10。
 			// 06-04..06-12 一天两条同值 → 0;06-13 涨 10;06-14、06-15 缺;06-16 仍 7010 → 0;06-17 涨 15;
 			// 06-18..06-29 缺;06-30 的样本 7025 与 06-17 的末值比 → 0(吃下 13 天缺口,仍是 0)。
 			expect(row.series).toEqual(
 				days30({
+					2: 10,
 					3: 0,
 					4: 0,
 					5: 0,
@@ -280,7 +289,7 @@ describe("GET /api/stats/overview — 粉丝曲线(同一份数据三个时区�
 			);
 			expect(row.net1d).toBe(0);
 			expect(row.net7d).toBe(0);
-			expect(row.netWindow).toBe(25);
+			expect(row.netWindow).toBe(35); // 原来的 25 加上首日的 10
 			// 当前粉丝取轮询快照(8888),不是样本末值 7025。
 			expect(row.followers).toBe(8888);
 		},
@@ -362,52 +371,61 @@ describe("GET /api/stats/overview — 粉丝曲线(同一份数据三个时区�
 
 describe("GET /api/stats/overview — 窗口长度对 net7d / netWindow 的影响", () => {
 	const ACT7 = {
-		0: { cum: [13455, 13599, 13743, 13887, 14031, 14175, 14248], last: 73, sum: 793 },
-		[-480]: { cum: [13407, 13551, 13695, 13839, 13983, 14127, 14248], last: 121, sum: 841 },
-		300: { cum: [13485, 13629, 13773, 13917, 14061, 14205, 14248], last: 43, sum: 763 },
+		// sum 含窗口首日的 144:首日以窗口之前最近的一条样本(各时区的 23:50 / 15:50 / 04:50)为基线,不再是 null。
+		0: { cum: [13455, 13599, 13743, 13887, 14031, 14175, 14248], last: 73, sum: 937 },
+		[-480]: { cum: [13407, 13551, 13695, 13839, 13983, 14127, 14248], last: 121, sum: 985 },
+		300: { cum: [13485, 13629, 13773, 13917, 14061, 14205, 14248], last: 43, sum: 907 },
 	} as const;
 
 	// 验红:把 `net7d: days >= 7 ? …` 的门槛改成 `days >= 3`,下面「3 天窗口」那条的 net7d 不再是 null,红。
-	it.each(TZS)("7 天窗口:net7d 与 netWindow 同值,窗口首日没有基线 [tz=%i]", async (tz) => {
-		await seedAll();
-		const row = (await overview(7, tz))("b-act");
-		const want = ACT7[tz];
-		expect(row.cumulative).toEqual(want.cum);
-		expect(row.series).toEqual([null, 144, 144, 144, 144, 144, want.last]);
-		expect(row.net1d).toBe(want.last);
-		expect(row.net7d).toBe(want.sum);
-		expect(row.netWindow).toBe(want.sum);
-	});
+	it.each(TZS)(
+		"7 天窗口:net7d 与 netWindow 同值,窗口首日以窗口之前最近的样本为基线 [tz=%i]",
+		async (tz) => {
+			await seedAll();
+			const row = (await overview(7, tz))("b-act");
+			const want = ACT7[tz];
+			expect(row.cumulative).toEqual(want.cum);
+			expect(row.series).toEqual([144, 144, 144, 144, 144, 144, want.last]);
+			expect(row.net1d).toBe(want.last);
+			expect(row.net7d).toBe(want.sum);
+			expect(row.netWindow).toBe(want.sum);
+		},
+	);
 
 	it.each([
-		{ tz: 0, cum: [14031, 14175, 14248], last: 73, window: 217 },
-		{ tz: -480, cum: [13983, 14127, 14248], last: 121, window: 265 },
-		{ tz: 300, cum: [14061, 14205, 14248], last: 43, window: 187 },
+		// window 含窗口首日的 144(基线是窗口之前最近的一条样本)。
+		{ tz: 0, cum: [14031, 14175, 14248], last: 73, window: 361 },
+		{ tz: -480, cum: [13983, 14127, 14248], last: 121, window: 409 },
+		{ tz: 300, cum: [14061, 14205, 14248], last: 43, window: 331 },
 	])(
 		"3 天窗口:net7d 为 null(窗口装不下 7 天),netWindow 照给 [tz=$tz]",
 		async ({ tz, cum, last, window }) => {
 			await seedAll();
 			const row = (await overview(3, tz))("b-act");
 			expect(row.cumulative).toEqual(cum);
-			expect(row.series).toEqual([null, 144, last]);
+			expect(row.series).toEqual([144, 144, last]);
 			expect(row.net7d).toBeNull();
 			expect(row.netWindow).toBe(window);
 		},
 	);
 
-	// 现状:窗口前的样本不进来。sparse 在 06-21 有一条 905,但 7 天窗口从 06-24(tz=0)起,
-	// 路由不读窗口之前的样本,于是 06-25 的 880 没有基线,净增是 null 而不是 -25 —— 与 30 天窗口里同一天的 -25 不一样。
-	// 验红:让路由把 since 往前放宽一天(`listSamplesSince(key, since - 1 天)`),这条红。
+	// 窗口之前最近的一条样本当基线(修于 ㉘ 之后:注释一直说「基线要能回溯到窗口之前」,路由却只读窗口内的样本)。
+	// sparse 在 06-21 有一条 905,7 天窗口从 06-24(tz=0)起,06-25 的 880 以它为基线,净增是 -25 ——
+	// 与 30 天窗口里同一天的 -25 一致;窗口变短不再把这一天的净增丢成 null。
+	// 验红:路由不读窗口之前的那一条(只把窗口内的样本交给 `dailyFansSeries`),这条红。
 	it.each([
-		{ tz: 0, cum: { 1: 880 } },
-		{ tz: -480, cum: { 1: 880 } },
-		{ tz: 300, cum: { 0: 880 } },
-	])("窗口之前盘上还有样本也不拿来当基线:窗口首日的净增恒为 null [tz=$tz]", async ({ tz, cum }) => {
-		await seedAll();
-		const row = (await overview(7, tz))("b-sparse");
-		expect(row.cumulative).toEqual(days30(cum, 7));
-		expect(row.series).toEqual(days30({}, 7));
-		expect(row.net7d).toBeNull();
-		expect(row.netWindow).toBeNull();
-	});
+		{ tz: 0, cum: { 1: 880 }, net: { 1: -25 } },
+		{ tz: -480, cum: { 1: 880 }, net: { 1: -25 } },
+		{ tz: 300, cum: { 0: 880 }, net: { 0: -25 } },
+	])(
+		"窗口之前最近的一条样本当基线:窗口变短,同一天的净增不变 [tz=$tz]",
+		async ({ tz, cum, net }) => {
+			await seedAll();
+			const row = (await overview(7, tz))("b-sparse");
+			expect(row.cumulative).toEqual(days30(cum, 7));
+			expect(row.series).toEqual(days30(net, 7));
+			expect(row.net7d).toBe(-25);
+			expect(row.netWindow).toBe(-25);
+		},
+	);
 });
