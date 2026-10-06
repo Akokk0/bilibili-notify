@@ -467,6 +467,12 @@ describe("listHistoryImageRefs — 历史这一家的名单", () => {
 		await expect(listHistoryImageRefs(dataDir)).resolves.toEqual([]);
 	});
 
+	it("历史目录列不出来(同名是文件):抛,不当成一天都没有", async () => {
+		// 当成空名单的话,只被历史行引用的图在这一轮清扫里全成了没人引用的。
+		await writeFile(join(dataDir, "history"), "不是目录");
+		await expect(listHistoryImageRefs(dataDir)).rejects.toThrow();
+	});
+
 	it("没有历史目录 → 空", async () => {
 		expect(await listHistoryImageRefs(dataDir)).toEqual([]);
 	});

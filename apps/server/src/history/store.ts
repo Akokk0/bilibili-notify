@@ -852,15 +852,20 @@ export function isPatchLine(line: string): boolean {
 	return line.startsWith('{"rowId":');
 }
 
-/** Internal helper used by retention.ts. */
+/**
+ * 历史目录里的日文件名。目录还不在回空;**列不出来(不是「不在」)就抛** —— 图库的引用名单从这里起
+ * (`retention.ts` 的 `listHistoryImageRefs`),把读错当成「一天都没有」,清扫会把还在用的图当垃圾删掉。
+ */
 export async function listDayFiles(dataRoot: string): Promise<string[]> {
 	const root = dataPath(dataRoot, "history");
+	let all: string[];
 	try {
-		const all = await readdir(root);
-		return all.filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f));
-	} catch {
-		return [];
+		all = await readdir(root);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
 	}
+	return all.filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f));
 }
 
 /**
