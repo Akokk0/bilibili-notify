@@ -35,6 +35,7 @@
 | 负责存盘的仓库 | `Store` | 不存盘的（按职责改名，如 `…Cache`） |
 | 内存里按键查的表（不存盘、不是登记表） | `Table` | — |
 | 登记表或映射的键 | `Key` | — |
+| 按名取用的一组格子（表单的一组字段、一份数据里挑出来读的那几格） | `Fields`（`RoastScheduleFields`、`LiveRoomFields`） | — |
 | 指向别处一份东西的引用（只装认出它要的那几格，不装内容本身） | `Ref`（`ImageRef`、`VideoRef`）；装引用的**字段**按装的是什么起名（`avatar`、`cover`），不另挂 `Ref` | 不是引用的东西用 `Ref` |
 | 供人挑选、还没成为实体的候选 | `Candidate` | — |
 | 富文本里的一段（文字、链接、表情、提及……） | `Segment`（`RichTextSegment`） | `Node`、`Part`、`Chunk` |
@@ -53,7 +54,8 @@
 - **核心接口用角色名，交进登记表的那一整包叫 `…Def`**：`PlatformAdapter` 对 `PlatformAdapterDef`，`SubscriptionSource` 对 `SubscriptionSourceDef`。
 - **核心里的 `Source` 只指订阅来源**：读数据的口子叫 `…Reader` 或 `…Lookups`。「市场源」是主人在界面上看得到的叫法，算例外。
 - **`Summary` 只用于「一个东西的缩略版」**，并且要和 AI 的直播总结（`liveSummary`）错开。
-- **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。
+- **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。**别的词不缩写**：`Msg` 写 `Message`，`Sub` / `Subs` 写 `Subscription` / `Subscriptions`（10-07 主人定；后缀表里已点名的 `Opts`、`Ctx`、`Args` 同理）。
+- **不用 TS `enum`**：一组取值写成 `as const` 的常量对象，类型取它的值的联合（`type GuardLevel = (typeof GuardLevel)[keyof typeof GuardLevel]`）。`enum` 的值面板引用不了，两头就得各写一份再钉住（10-07 主人定）。
 - **外部接口的回应**：外壳叫 `…Envelope<T>`（B 站的 `{ code, message, data }` 叫 `BiliEnvelope<T>`）；某个接口回的内容叫 `…Response`（`UserCardResponse`）；回应里嵌套的结构用名词、不加后缀（`DynamicItem`、`ModuleAuthor`）。`Data`、`Info` 在这里也不用；`Result` 只指我们自己操作的结果。
 - **外部协议的原字段名只留在回应上**：`mid`、`face`、`uname` 这类只准出现在描述那份数据的类型上，以及直接读它的代码里；我们自己定义的形状（事件、状态、函数参数、返回值）用下面词表里的词。
 
@@ -63,7 +65,7 @@
 
 | 概念 | 用这个 | 不再用 |
 | --- | --- | --- |
-| 平台前缀 | 集成目录里默认不加；和中立名字撞了才加，B 站写 `Bili`（`BiliEnvelope`、`BiliLoginState`） | `Bilibili…`、`BA…`、`BL…` |
+| 平台前缀 | 集成目录里默认不加（已经限定在那个目录下了：B 站的接口客户端就叫 `Api`，10-07 主人定）；和别处的名字撞了才加，B 站写 `Bili`（`BiliEnvelope`、`BiliLoginState`、`BiliSettings`） | `Bilibili…`、`BA…`、`BL…` |
 | 创作者 | 核心里 `creator`；B 站里 `up`（`upUid`、`upName`，开播的也是它） | `master`（只指主人）、`anchor`、`author`（只指皮肤或拓展的作者） |
 | 弹幕 | `danmaku` | `danmu`、`dm` |
 | 用户 id | 核心里 `externalId`；B 站里 `uid` | `mid`、`vmid`、`fid`、`ruid` |
@@ -89,6 +91,7 @@
 | 产品形态 | 不加限定词，只剩一种 | `Standalone…`、「独立端」（冻住的 `startStandaloneServer` 除外，见 ADR-0005 决策 4） |
 | 镜像或安装包里预装的那一版载荷 | `preinstalled`（预装版本） | `image…`（桌面版没有镜像；环境变量旧名 `BN_IMAGE_*` 只作兜底，随换 Node 大版本那一版删，见 ADR-0005 决策 4） |
 | 面板（整个前端）、概览页、页面上的一块区域 | 整个前端叫 `dashboard`（中文照旧「面板」，`BN_DASHBOARD_USER` 说的就是它）；概览页叫 `overview`；页面上框起来的一块叫 `Panel`（`GlassPanel`、`FansPanel`） | 指整个前端的 `panel`、指概览页的 `Dashboard`（剩下的旧名随第 5 期清扫） |
+| 外部接口的地址常量 | 名词加 `_URL`（`USER_CARD_URL`、`TICKET_URL`）；只是路径的叫 `_PATH`（10-07 主人定） | 带动词的 `GET_…`、什么都不带的 |
 | 走网络取数 | `fetch…`；`get…` 只留给不走网络的读取（`ctx.state.get`） | 走网络却叫 `get…` 的 |
 | 单个 / 一批 | `fetchUserCard` / `fetchUserCards` | `…Batch`、单复数对不上 |
 | 一次操作失败的那一支 | `Failure`（`{ ok: false, code, message, … }`）；整个结果 `Result<T>`，标准码 `FailureCode`；HTTP 非 2xx 的回应体 `ErrorResponse`（装的是去掉 `ok` 的 `Failure`） | `err`、`reason`、`why`（只管失败原因，ADR-0026 决策 2） |
