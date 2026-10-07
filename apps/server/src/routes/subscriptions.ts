@@ -1,4 +1,3 @@
-import { ensureFollowed } from "@bilibili-notify/api";
 import type { SubscriptionDTO } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -14,6 +13,7 @@ import {
 } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
+import { ensureFollowed } from "../bilibili/api/index.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";

@@ -1,5 +1,6 @@
-import type { LiveClient, LiveEvent } from "@bilibili-notify/blive";
 import { describe, expect, it } from "vite-plus/test";
+import type { LiveClient } from "../../bilibili/live/client.js";
+import type { LiveEvent } from "../../bilibili/live/events.js";
 import { createLiveRooms } from "../live-rooms.js";
 
 /**

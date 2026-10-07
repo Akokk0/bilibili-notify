@@ -1,5 +1,5 @@
-import { BiliLoginStatus } from "@bilibili-notify/api";
 import type { LoginSnapshot, MessageBus } from "@bilibili-notify/internal";
+import { BiliLoginStatus } from "../../bilibili/api/index.js";
 import { fakeQrDataUrl } from "../fake-qr.js";
 import type { DevScenarioDef } from "../registry.js";
 

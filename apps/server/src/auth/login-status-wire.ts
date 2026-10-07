@@ -1,8 +1,8 @@
-import type { BiliLoginStatus } from "@bilibili-notify/api";
 import {
 	BiliLoginStatus as WireLoginStatus,
 	type BiliLoginStatusValue as WireLoginStatusValue,
 } from "@bilibili-notify/contract";
+import type { BiliLoginStatus } from "../bilibili/api/index.js";
 
 /**
  * 把契约里的登录状态取值表(面板读的那份)与服务端实际发出去的 `BiliLoginStatus` enum 钉在一起,

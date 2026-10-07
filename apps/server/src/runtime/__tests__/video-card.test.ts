@@ -6,9 +6,9 @@
  * `archive.badge.text === "投稿视频"` 这个隐含耦合。
  */
 
-import type { VideoInfo } from "@bilibili-notify/api";
 import { normalizePost } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import type { VideoInfo } from "../../bilibili/api/index.js";
 import { videoToPost } from "../video-card.js";
 
 const INFO: VideoInfo = {

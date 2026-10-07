@@ -23,7 +23,6 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { BiliLoginStatus } from "@bilibili-notify/api";
 import type {
 	Connection,
 	GlobalConfig,
@@ -48,6 +47,7 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
+import { BiliLoginStatus } from "../../bilibili/api/index.js";
 import { type BilibiliSettings, BilibiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
@@ -84,8 +84,8 @@ vi.mock("@bilibili-notify/push", () => ({
 	},
 }));
 
-vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@bilibili-notify/dynamic")>();
+vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../bilibili/dynamic/index.js")>();
 	return {
 		// 纯函数走真实实现(@全体抑制、动态卡配色解析):它们是没有副作用的规则,在这儿
 		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
@@ -114,8 +114,8 @@ vi.mock("@bilibili-notify/dynamic", async (importOriginal) => {
 	};
 });
 
-vi.mock("@bilibili-notify/live", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@bilibili-notify/live")>();
+vi.mock("../../bilibili/live/index.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../bilibili/live/index.js")>();
 	return {
 		// 拓展作品每条订阅一道串行闸,纯函数,走真的。
 		createSerialGate: actual.createSerialGate,

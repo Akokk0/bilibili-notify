@@ -24,10 +24,10 @@ import {
 	type ServiceContext,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import type { LiveNotifySend } from "@bilibili-notify/live";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import type { LiveNotifySend } from "../../bilibili/live/index.js";
 import {
 	buildDynamicSubsView,
 	buildLiveSubViewSingle,

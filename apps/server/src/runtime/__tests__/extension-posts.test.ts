@@ -6,11 +6,6 @@
  * 这个。闸拿掉,别的测试一条都不会红(e2e 的渲染本来就经浏览器那道全局的闸串着),所以单独钉一条。
  */
 
-import {
-	type BoundWorkPush,
-	createCardFailureTracker,
-	type PushSegment,
-} from "@bilibili-notify/dynamic";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	checkSubscriptionReport,
@@ -26,6 +21,11 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
+import {
+	type BoundWorkPush,
+	createCardFailureTracker,
+	type PushSegment,
+} from "../../bilibili/dynamic/index.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { bindExtensionPosts } from "../extension-posts.js";
 import { createNodeMessageBus } from "../message-bus.js";

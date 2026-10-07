@@ -1,11 +1,11 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BiliLoginStatus, type LoginSnapshot } from "@bilibili-notify/api";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import type { AuthSystem } from "../auth/index.js";
+import { BiliLoginStatus, type LoginSnapshot } from "../bilibili/api/index.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 

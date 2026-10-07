@@ -1,7 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import { CSS_CUSTOM_PROPERTY_MAX_CHARS, ImageRenderer } from "@bilibili-notify/image";
 import {
 	CARD_SKIN_LIMITS,
@@ -10,6 +9,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { BilibiliAPI } from "../../bilibili/api/index.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";

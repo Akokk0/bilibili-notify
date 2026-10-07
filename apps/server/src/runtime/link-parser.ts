@@ -11,7 +11,6 @@
  * 消息,平台的原始帧长什么样到这里已经不可见了 —— 桥后面那些平台我们连帧都没见过。
  */
 
-import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
 import type { InboundGroupMessage } from "@bilibili-notify/internal";
 import {
@@ -28,6 +27,7 @@ import {
 	type VideoLinkRef,
 	videoLinkKey,
 } from "@bilibili-notify/internal";
+import type { VideoInfo, VideoRef } from "../bilibili/api/index.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
 import { videoToPost } from "./video-card.js";

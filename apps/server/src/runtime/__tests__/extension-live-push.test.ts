@@ -22,7 +22,6 @@ import {
 	type SubscriptionEventKind,
 	type SubscriptionReport,
 } from "@bilibili-notify/internal";
-import { type LiveNotifySend, LivePushType } from "@bilibili-notify/live";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import {
@@ -30,6 +29,7 @@ import {
 	makeTrackingContext,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
+import { type LiveNotifySend, LivePushType } from "../../bilibili/live/index.js";
 import type { SubscriptionReportProblem } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
 import type { LiveWorkSettings } from "../engines.js";

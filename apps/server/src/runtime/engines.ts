@@ -20,22 +20,7 @@
 import { readFileSync } from "node:fs";
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-notify/ai";
-import { type BilibiliAPI, BiliLoginStatus } from "@bilibili-notify/api";
 import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
-import {
-	type BoundWorkPush,
-	broadcastOptionsForPostPart,
-	createCardFailureTracker,
-	DynamicEngine,
-	type DynamicEngineConfig,
-	type PushLike as DynamicPushLike,
-	type SubscriptionOpView as DynamicSubOp,
-	type SubscriptionsView as DynamicSubsView,
-	type PostFilterSettings,
-	type PushSegment,
-	resolveDynamicColorOptions,
-	type WorkSubscriptionSettings,
-} from "@bilibili-notify/dynamic";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
 	CardKind,
@@ -69,6 +54,25 @@ import {
 	resolveAIProfile,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { type BroadcastOptions, PushRouter } from "@bilibili-notify/push";
+import { atomicWriteJsonSync } from "@bilibili-notify/storage";
+import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
+import { type BilibiliAPI, BiliLoginStatus } from "../bilibili/api/index.js";
+import {
+	type BoundWorkPush,
+	broadcastOptionsForPostPart,
+	createCardFailureTracker,
+	DynamicEngine,
+	type DynamicEngineConfig,
+	type PushLike as DynamicPushLike,
+	type SubscriptionOpView as DynamicSubOp,
+	type SubscriptionsView as DynamicSubsView,
+	type PostFilterSettings,
+	type PushSegment,
+	resolveDynamicColorOptions,
+	type WorkSubscriptionSettings,
+} from "../bilibili/dynamic/index.js";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -78,11 +82,7 @@ import {
 	type SubscriptionsView as LiveSubsView,
 	type SubItemView as LiveSubView,
 	rotateLiveCover,
-} from "@bilibili-notify/live";
-import { type BroadcastOptions, PushRouter } from "@bilibili-notify/push";
-import { atomicWriteJsonSync } from "@bilibili-notify/storage";
-import type { SubscriptionStore } from "@bilibili-notify/subscription";
-import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
+} from "../bilibili/live/index.js";
 import { settingsOf, watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { SubscriptionReportProblem } from "../extensions/context.js";
@@ -214,7 +214,7 @@ export interface CreateEnginesOptions {
 	 * Auth subsystem 的 LoginFlow 实例。engines.ts 用它在 config-changed 时
 	 * 把 B 站设置的 `healthCheckMinutes` 热推到登录健康检查定时器(见 `watchSettings`)。
 	 */
-	loginFlow: import("@bilibili-notify/api").LoginFlow;
+	loginFlow: import("../bilibili/api/index.js").LoginFlow;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;
@@ -1180,7 +1180,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			const g = globals();
 			// "live ready" = at least one enabled subscription has any live-related
 			// feature routed to a target. Mirrors the LIVE_ROOM_MASTER_KEYS set
-			// inside @bilibili-notify/live's `needsLiveMonitor` plus the two
+			// inside bilibili/live's `needsLiveMonitor` plus the two
 			// special-user features.
 			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
 			const liveReady = opts.subscriptionStore

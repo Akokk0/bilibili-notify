@@ -1,13 +1,3 @@
-import {
-	type BoundWorkPush,
-	blockedNotice,
-	deliverWork,
-	filterPost,
-	type PostFilterSettings,
-	type WorkDeliveryConfig,
-	type WorkDeliveryDeps,
-	type WorkSubscriptionSettings,
-} from "@bilibili-notify/dynamic";
 import type {
 	Disposable,
 	ImageRef,
@@ -18,7 +8,17 @@ import type {
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
-import { createSerialGate, type SerialGate } from "@bilibili-notify/live";
+import {
+	type BoundWorkPush,
+	blockedNotice,
+	deliverWork,
+	filterPost,
+	type PostFilterSettings,
+	type WorkDeliveryConfig,
+	type WorkDeliveryDeps,
+	type WorkSubscriptionSettings,
+} from "../bilibili/dynamic/index.js";
+import { createSerialGate, type SerialGate } from "../bilibili/live/index.js";
 import { extensionPostWork } from "./extension-post-work.js";
 import {
 	type ExtensionSourceLookups,

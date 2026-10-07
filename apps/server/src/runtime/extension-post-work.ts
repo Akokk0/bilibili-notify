@@ -1,5 +1,5 @@
-import { type NeutralWork, WORK_COMMENT_IMAGES_MAX } from "@bilibili-notify/dynamic";
 import { type Post, postText, type SubscriptionReportValue } from "@bilibili-notify/internal";
+import { type NeutralWork, WORK_COMMENT_IMAGES_MAX } from "../bilibili/dynamic/index.js";
 import { imageDataUrl } from "./extension-push-common.js";
 
 /**

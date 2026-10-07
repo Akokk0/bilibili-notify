@@ -44,7 +44,7 @@ const NET_FUNCTIONS = new Set(["request", "get", "connect", "createConnection"])
  * 只有两类 —— 集成的请求客户端;BN 自己的出口(AI 服务商走 OpenAI SDK,不扫第三方)与开发版。
  */
 export const ALLOWLIST = {
-	// 集成的请求客户端(⑭a 起在 packages/http;packages/api 里 B 站那层薄包经它出网,自己不调 fetch)。
+	// 集成的请求客户端(⑭a 起在 packages/http;`apps/server/src/bilibili/api` 里 B 站那层薄包经它出网,自己不调 fetch)。
 	"packages/http/src/http-client.ts": "集成的请求客户端",
 	// 集成的 WebSocket 建连(⑭b:B 站弹幕经 `HttpClient.websocket` 走到这里,blive 不再自己建连)。
 	"packages/http/src/websocket.ts": "集成的 WebSocket 建连",
@@ -364,8 +364,7 @@ describe("仓里的出网点都点了名", () => {
 		const roots = scopeRoots();
 		for (const expected of [
 			"apps/server/src",
-			"packages/api/src",
-			"packages/blive/src",
+			"packages/http/src",
 			"packages/image/src",
 			"extensions/bridge/src",
 		]) {

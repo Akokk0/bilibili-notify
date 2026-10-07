@@ -26,7 +26,7 @@ interface RefreshCallbacks {
 /** `BilibiliAPI` 构造时收到的回调 —— 替身把它截下来,测试里当作 api 刷完 cookie 那一刻去调。 */
 const captured = vi.hoisted(() => ({ callbacks: undefined as RefreshCallbacks | undefined }));
 
-vi.mock("@bilibili-notify/api", () => ({
+vi.mock("../../bilibili/api/index.js", () => ({
 	BilibiliAPI: class {
 		constructor(opts: { callbacks: RefreshCallbacks }) {
 			captured.callbacks = opts.callbacks;

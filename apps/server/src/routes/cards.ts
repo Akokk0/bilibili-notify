@@ -31,13 +31,11 @@
  * delivery that wasn't accepted) answers 200 with a `Result`.
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import type {
 	CardSkinShotResponse,
 	PreviewResponse,
 	TestPushResponse,
 } from "@bilibili-notify/contract";
-import { postFromDynamic } from "@bilibili-notify/dynamic";
 import {
 	type CardSkinChoice,
 	h,
@@ -70,10 +68,12 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "@bilibili-notify/live";
 import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
+import type { BilibiliAPI } from "../bilibili/api/index.js";
+import { postFromDynamic } from "../bilibili/dynamic/index.js";
+import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";

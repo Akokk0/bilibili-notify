@@ -8,7 +8,7 @@ import type {
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
-import { liveEndGraceMinutes } from "@bilibili-notify/live";
+import { liveEndGraceMinutes } from "../bilibili/live/index.js";
 import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
 import { extensionSubscriptionPushable } from "./extension-push-common.js";

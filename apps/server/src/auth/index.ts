@@ -1,6 +1,6 @@
-import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "@bilibili-notify/api";
 import type { Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { type CookieData, type KeyProvider, StorageManager } from "@bilibili-notify/storage";
+import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "../bilibili/api/index.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { dataPath } from "../runtime/roots.js";
 

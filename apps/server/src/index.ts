@@ -3,7 +3,6 @@ import { access } from "node:fs/promises";
 import type { Server as HttpServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BiliLoginStatus } from "@bilibili-notify/api";
 import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -24,6 +23,7 @@ import { type AuthSystem, createAuthSystem } from "./auth/index.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
+import { BiliLoginStatus } from "./bilibili/api/index.js";
 import { settingsOf } from "./bilibili/settings.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";

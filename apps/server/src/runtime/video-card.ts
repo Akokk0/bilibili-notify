@@ -8,8 +8,8 @@
  * 明说的 `label`。
  */
 
-import type { VideoInfo } from "@bilibili-notify/api";
 import type { Post } from "@bilibili-notify/internal";
+import type { VideoInfo } from "../bilibili/api/index.js";
 
 /** unix 秒 → ISO;不是有效数就落在纪元(别让一个坏时间把整张卡弄抛)。 */
 function isoOfSeconds(seconds: number): string {

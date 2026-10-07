@@ -1,4 +1,5 @@
-import type { LiveConnectionInfo, LiveEvent } from "@bilibili-notify/blive";
+import type { LiveConnectionInfo } from "../bilibili/live/client.js";
+import type { LiveEvent } from "../bilibili/live/events.js";
 
 /**
  * 直播间连接登记 —— blive 的连接观察钩子(`observeLiveConnections`)把每条连接报到这里,

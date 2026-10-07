@@ -1,11 +1,11 @@
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "@bilibili-notify/api";
 import {
 	BILIBILI_SOURCE_KEY,
 	type Logger,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import type { BilibiliAPI } from "../bilibili/api/index.js";
+import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "../bilibili/api/index.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**

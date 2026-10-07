@@ -10,12 +10,12 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WORK_COMMENT_IMAGES_MAX } from "@bilibili-notify/dynamic";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Post as NeutralPost, SubscriptionReportValue } from "@bilibili-notify/internal";
 import { postText } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { png } from "../../__tests__/support/report-images.js";
+import { WORK_COMMENT_IMAGES_MAX } from "../../bilibili/dynamic/index.js";
 import { createImageStore, imageRefOf } from "../../images/image-store.js";
 import { extensionPostWork, POST_COMMENT_IMAGE_MAX_BYTES } from "../extension-post-work.js";
 import { deferImageWrites, type ImageSink, postFromReport } from "../post-from-report.js";

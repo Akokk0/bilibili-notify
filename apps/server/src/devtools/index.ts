@@ -1,6 +1,4 @@
 import { getHeapStatistics } from "node:v8";
-import type { BilibiliAPI } from "@bilibili-notify/api";
-import { observeLiveConnections } from "@bilibili-notify/blive";
 import type {
 	ChatIdentity,
 	Connection,
@@ -10,6 +8,8 @@ import type {
 } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
+import type { BilibiliAPI } from "../bilibili/api/index.js";
+import { observeLiveConnections } from "../bilibili/live/client.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";

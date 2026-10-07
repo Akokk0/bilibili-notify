@@ -1,4 +1,4 @@
-import { GuardLevel, type LiveUser } from "@bilibili-notify/blive";
+import { GuardLevel, type LiveUser } from "../../bilibili/live/events.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 import { pickRoom, type RoomPickerDeps } from "./live.js";
 

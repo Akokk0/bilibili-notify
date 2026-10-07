@@ -23,7 +23,7 @@ import {
 	pushLiveNotify,
 	renderLiveText,
 	type SerialGate,
-} from "@bilibili-notify/live";
+} from "../bilibili/live/index.js";
 import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";

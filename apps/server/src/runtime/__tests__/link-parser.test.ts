@@ -7,7 +7,6 @@
  * 四个协作者全是假的:配置(现读)、B 站接口、渲染器、发送。
  */
 
-import type { VideoInfo, VideoRef } from "@bilibili-notify/api";
 import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
 import type {
 	ConnectionCapabilities,
@@ -19,6 +18,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { LINK_LIMITS, type LinkLimits } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { VideoInfo, VideoRef } from "../../bilibili/api/index.js";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
 import { createLinkParser, type LinkParser, type LinkReplyDestination } from "../link-parser.js";
 

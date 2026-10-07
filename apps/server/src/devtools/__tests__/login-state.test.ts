@@ -1,6 +1,6 @@
-import { BiliLoginStatus } from "@bilibili-notify/api";
 import type { LoginSnapshot } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { BiliLoginStatus } from "../../bilibili/api/index.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { overridableApi } from "../api-overrides.js";
 import { createDevRegistry } from "../registry.js";

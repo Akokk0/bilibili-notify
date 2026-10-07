@@ -33,7 +33,7 @@ const distDir = resolve(repoRoot, "apps/server/dist");
 // 从**声明了这些依赖的包**出发解析,而不是从仓库根:pnpm 默认(isolated)布局下根
 // node_modules 只有根自己声明的东西,jsdom / jieba-wasm 都不在,从根解析就是幻影依赖。
 const requireFromImage = createRequire(resolve(repoRoot, "packages/image/package.json"));
-const requireFromLive = createRequire(resolve(repoRoot, "packages/live/package.json"));
+const requireFromServer = createRequire(resolve(repoRoot, "apps/server/package.json"));
 const jsdomXhrSyncWorker = requireFromImage.resolve(
 	"jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js",
 );
@@ -43,7 +43,7 @@ const jsdomDefaultStylesheet = requireFromImage.resolve(
 	"jsdom/lib/jsdom/browser/default-stylesheet.css",
 );
 const jiebaWasm = resolve(
-	dirname(requireFromLive.resolve("jieba-wasm/node")),
+	dirname(requireFromServer.resolve("jieba-wasm/node")),
 	"jieba_rs_wasm_bg.wasm",
 );
 const imageStaticDir = resolve(repoRoot, "packages/image/src/static");

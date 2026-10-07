@@ -1,5 +1,5 @@
-import type { LiveEvent } from "@bilibili-notify/blive";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { LiveEvent } from "../../bilibili/live/events.js";
 import { overridableApi } from "../api-overrides.js";
 import { createLiveRooms } from "../live-rooms.js";
 import { createDevRegistry, DevParamError } from "../registry.js";

@@ -43,9 +43,10 @@ export const ALLOWLIST = {
  * - 桥拓展:拓展只能从 `@bilibili-notify/extension` 拿东西,那个包还没有 `ok()` / `fail()`,等 3b 的契约 v3。
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
  * - devtools 假桥发的 `result` 帧:3b 桥协议的回执统一成结果形状后改用 `fail()` 展开(ADR-0026 决策 7)。
- * - `packages/api/src/follow.ts`:B 站的码塞在 `code` 里,3a 随 api 包删掉。
+ * - `apps/server/src/bilibili/api/follow.ts`:B 站的码塞在 `code` 里(3a-24 随 api 包搬进来,原样没动),3a-25 起改。
  */
 export const RATCHET = {
+	"apps/server/src/bilibili/api/follow.ts": 1,
 	"apps/server/src/card-skins/ai-css.ts": 7,
 	"apps/server/src/card-skins/html-sanitizer.ts": 5,
 	"apps/server/src/card-skins/package.ts": 6,
@@ -84,7 +85,6 @@ export const RATCHET = {
 	"extensions/bridge/src/protocol.ts": 5,
 	"extensions/bridge/src/server.ts": 10,
 	"packages/ai/src/extra-params.ts": 5,
-	"packages/api/src/follow.ts": 1,
 	"packages/internal/src/schema/card-skin.ts": 3,
 	"packages/internal/src/schema/extension-manifest.ts": 6,
 	"packages/internal/src/schema/extension-marketplace.ts": 8,

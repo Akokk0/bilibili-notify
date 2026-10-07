@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import type {
 	CardSkinFallback,
 	ExtensionBotView,
@@ -18,6 +17,7 @@ import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
+import type { BilibiliAPI } from "./bilibili/api/index.js";
 import { CARD_SKINS_DIR, CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
 import type { ActionOutcome, LookupOutcome } from "./extensions/context.js";

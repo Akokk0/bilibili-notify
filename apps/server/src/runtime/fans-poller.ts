@@ -1,4 +1,3 @@
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
 	BILIBILI_SOURCE_KEY,
 	type CachedProfile,
@@ -12,6 +11,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
+import type { BilibiliAPI } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { FollowersStore } from "../followers/store.js";
 import { statsFileKey } from "../stats/file-key.js";

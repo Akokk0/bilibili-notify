@@ -1,5 +1,5 @@
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { DevParamValues } from "@bilibili-notify/contract";
+import type { BilibiliAPI } from "../../bilibili/api/index.js";
 import type { OverridableApi } from "../api-overrides.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 import type { SubPick } from "./live.js";
