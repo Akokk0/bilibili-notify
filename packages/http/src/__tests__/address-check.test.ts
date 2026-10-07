@@ -9,7 +9,7 @@
  * 注入一个放行回环的判定;被拒的用例要是真去连了(10.0.0.1 之类),测试的拦外网守卫会把这条判红。
  *
  * 不给 `addressCheck` 的请求走的还是原来那条路,线上一个字节不变 —— 那一半由 `http-client.test.ts` 与
- * `packages/api` 的头序测试原样钉着。
+ * `apps/server/src/bilibili/api` 的头序测试原样钉着。
  */
 
 import { createServer, type IncomingMessage, type Server } from "node:http";

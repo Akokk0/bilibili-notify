@@ -136,7 +136,7 @@ const FMT = { time: () => "刚刚" };
 
 /**
  * 十份动态卡的输入是 **`Post` 字面量**({@link DYNAMIC_SAMPLE_POSTS}),经 `nodeFromPost` 造成块吃的节点 ——
- * 与真出卡(`ImageRenderer.generatePostCard`)同一条路。B 站原始夹具住在 `packages/dynamic`,那边的
+ * 与真出卡(`ImageRenderer.generatePostCard`)同一条路。B 站原始夹具住在 `apps/server/src/bilibili/dynamic`,那边的
  * `post-from-dynamic.test.ts` 把它们翻成 `Post` 与这里逐项对一遍(见 `post-fixtures.ts`)。
  */
 const dynamicInput = (name: string): (() => Promise<CardRenderInput>) => {

@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `retry`(指数退避通用重试,packages/api 韧性地基)。
+ * 单元测试 — `retry`(指数退避通用重试,apps/server/src/bilibili/api 韧性地基)。
  *
  * 守护契约:
  *   - 首次成功 → 不重试

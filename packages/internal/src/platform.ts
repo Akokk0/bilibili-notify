@@ -313,7 +313,7 @@ export type ConfigScope =
 	| "targets"
 	| "secrets";
 
-/** 用于 'login-status-report' 事件 / Dashboard auth channel；具体 schema 在 packages/api。 */
+/** 用于 'login-status-report' 事件 / Dashboard auth channel；具体 schema 在 apps/server/src/bilibili/api。 */
 export interface LoginSnapshot {
 	status: number;
 	msg: string;

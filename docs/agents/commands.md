@@ -271,5 +271,5 @@ interface ConfirmationWindow {
 排版(`formatCount` / `formatClock`),不再伪造一条 B 站原始动态。
 
 三处纯函数各自有测试钉着:`extractVideoLinks`(`packages/internal`,域名用负向后顾钉边界,`notbilibili.com` 不算)、
-`BilibiliAPI.getVideoInfo` / `resolveShortLink`(`packages/api`)、`createLinkParser`(`apps/server/src/runtime/__tests__/link-parser.test.ts`,
+`BilibiliAPI.getVideoInfo` / `resolveShortLink`(`apps/server/src/bilibili/api`)、`createLinkParser`(`apps/server/src/runtime/__tests__/link-parser.test.ts`,
 四个协作者全假,三处闸门做过变异验证会红)、官机网关的群消息出口(`qq-official-conn.test.ts`,两种事件都进、C2C 不进、抛错不断连)。

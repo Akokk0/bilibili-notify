@@ -150,7 +150,7 @@ export type LiveStreamingSettingsPartial = z.infer<typeof LiveStreamingSettingsP
 
 /**
  * 醒目留言的设置(㉓d 起自成一段,原先是 `filters.minScPrice`)。`minAmount`:低于它不推,按人民币元算,别的币种放行
- * (见 `packages/live` 的 `superchatPassesMinAmount`);没配 = 不设门槛,0 与没配是一回事。
+ * (见 `apps/server/src/bilibili/live` 的 `superchatPassesMinAmount`);没配 = 不设门槛,0 与没配是一回事。
  */
 export const SuperchatSettingsSchema = z.object({
 	minAmount: z.number().min(0).optional(),
@@ -216,7 +216,7 @@ export const TemplateBundleSchema = z.object({
 	 * 弹幕词云的额外停用词,英文逗号分隔,**追加**到内置中文停用词表后再分词。
 	 * `.default("")` 让缺该字段的老 globals.json 仍能通过 schema 校验(与 post /
 	 * postVideo 同源的老配置兜底)。per-UP override 经 merge 替换全局值,在该 UP
-	 * 的词云生成时额外过滤(详见 packages/live room-session dispatch)。
+	 * 的词云生成时额外过滤(详见 apps/server/src/bilibili/live room-session dispatch)。
 	 */
 	wordcloudStopWords: z.string().default(""),
 	specialDanmaku: z.string(),

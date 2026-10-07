@@ -5,7 +5,7 @@
  *
  * 醒目留言卡有两份形状(ADR-0021 决策 26 下 2026-10-05 的 🔗,照直播卡 `LiveCardInput` / `LiveCardView` 的先例):
  * - {@link SuperchatCardInput}:**中立的输入**,出卡入口 `generateSuperchatCard` 吃它。纯数据、不带任何平台的原始结构。
- *   B 站那头由 `@bilibili-notify/live` 的 `superchatEventFromLiveEvent` 先翻成 `SuperchatEvent`(档位在那一步按价格算),
+ *   B 站那头由 `apps/server/src/bilibili/live` 的 `superchatEventFromLiveEvent` 先翻成 `SuperchatEvent`(档位在那一步按价格算),
  *   再由直播会话组成这份输入。
  * - {@link SuperchatCardView}:块与皮肤契约吃的那一份 —— 金额与时长已经排好成文字、档位已经换成颜色。从输入到它
  *   只有一步(`buildSuperchatCardView`)。

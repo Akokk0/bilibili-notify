@@ -1,12 +1,12 @@
 /**
  * 十份 `dynamic-*` 出图基准的输入 —— **`Post` 字面量**(㉑c 第 5 步)。
  *
- * 出图器(本包)只认 `Post`,不认识 B 站原始动态。这十份是 B 站原始夹具(住在 `packages/dynamic` 的
+ * 出图器(本包)只认 `Post`,不认识 B 站原始动态。这十份是 B 站原始夹具(住在 `apps/server/src/bilibili/dynamic` 的
  * `__tests__/fixtures/bili-dynamic-fixtures.ts`)经 `postFromDynamic` 翻出来的样子:本包的基准快照
- * (`card-baseline.test.ts`)拿它们出图,`packages/dynamic` 的 `post-from-dynamic.test.ts` 拿翻译结果与它们逐项对一遍 ——
+ * (`card-baseline.test.ts`)拿它们出图,`apps/server/src/bilibili/dynamic` 的 `post-from-dynamic.test.ts` 拿翻译结果与它们逐项对一遍 ——
  * 同一份中间产物夹在两腿中间,「原始数据 → 字节」整条链才都钉着。
  *
- * 经 `@bilibili-notify/image/testing` 给 `packages/dynamic` 的测试用(见 `src/testing.ts`)。夹具的图地址都是不会被访问的假地址。
+ * 经 `@bilibili-notify/image/testing` 给 `apps/server/src/bilibili/dynamic` 的测试用(见 `src/testing.ts`)。夹具的图地址都是不会被访问的假地址。
  *
  * ⚠️ 改这里的字段 = 改出图基准的输入。字节要变就得走批准清单(`approved-card-diffs.ts`),别光 `-u`。
  */

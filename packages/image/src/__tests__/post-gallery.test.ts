@@ -8,7 +8,7 @@
  *      那一帧看着就是张静图,没人知道原动态是会动的。
  *
  * 动图只认来源给的 `PostImage.isAnimated`,图廊自己不猜地址结尾:B 站那头的判据(`live_url` 非空**或** URL 后缀是
- * `.gif`,先削掉 `@` 后缀与 query)在 `packages/dynamic` 的翻译里,`post-from-dynamic.test.ts` 钉着;拓展的图是
+ * `.gif`,先削掉 `@` 后缀与 query)在 `apps/server/src/bilibili/dynamic` 的翻译里,`post-from-dynamic.test.ts` 钉着;拓展的图是
  * data URL,「看结尾」对它不成立。宁可漏标也不误标。
  */
 

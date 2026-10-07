@@ -553,7 +553,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // adapter 接线 —— 「真实开播时刻」这条链路唯一没人守的一段
 //
-// packages/live 侧钉住了 RoomSession **发出** startedAt,recorder 侧钉住了它**消费**
+// apps/server/src/bilibili/live 侧钉住了 RoomSession **发出** startedAt,recorder 侧钉住了它**消费**
 // startedAt,live-midstream-start 还把 recorder→store→aggregate 三层串起来测了。
 // 唯独把两头缝上的这一行没有任何测试:它是 adapter 里的一句 lambda,少写 `at`
 // 依然类型正确(载荷上 at 是可选的)、构建全绿、2483 条测试全过,而整个特性
@@ -1079,7 +1079,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 });
 
 // 「直播就绪」:至少一个启用的 B 站订阅给任一直播类特性配了目标。「监听开不开」手抄的三份清单之一
-// (另两份是 packages/live 的 LIVE_ROOM_MASTER_KEYS 与面板首页),⑬d 起都得认 liveStreaming;合成一个判定随 ㉖。
+// (另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_MASTER_KEYS 与面板首页),⑬d 起都得认 liveStreaming;合成一个判定随 ㉖。
 describe("createEngines — getModuleState.live", () => {
 	const TARGET = "10000000-0000-4000-8000-000000000001";
 	function subRouting(routing: Partial<Subscription["routing"]>): Subscription {

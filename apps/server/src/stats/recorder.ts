@@ -427,7 +427,7 @@ export interface StatsRecorderHandle extends Disposable {
 /**
  * 起采集:一个记录器,挂上各来源的适配。bootstrap 只认这一个入口。
  *
- * 之所以整个采集都长在 apps/server 而非 packages/live、packages/dynamic 里:B 站需要的
+ * 之所以整个采集都长在 `stats/` 而非 `bilibili/live`、`bilibili/dynamic` 里:B 站需要的
  * 三条事件本来就已经在总线上了,业务包不必为统计再开一个出口。
  */
 export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHandle {

@@ -4,7 +4,7 @@
  * 装配(`deliverWork`)只认 `NeutralWork` 那几格。这里钉的是翻好的 `Post` 与上报原件交到手之后每一格从哪来:
  * 卡是出卡那一刻才把推迟的图写进图库、再把**同一份** `Post` 交给出图器的 `generatePostCard`(样式原样带过去,
  * 没出卡就不写盘)、链接 / 名字 / 叫法、AI 看的正文(`postText(post, "labeled")`,取段只此一份)与图。
- * 过滤看的字不在这里了:过滤吃 `Post`,走 `filterPost`(`packages/dynamic`)。
+ * 过滤看的字不在这里了:过滤吃 `Post`,走 `filterPost`(`apps/server/src/bilibili/dynamic`)。
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";

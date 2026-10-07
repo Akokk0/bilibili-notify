@@ -1,6 +1,6 @@
 /**
  * **直播卡的入口**(ADR-0019 决策 68 / 76):`generateLiveCard(input)` 吃一份中立的直播卡输入,不收任何
- * 平台的原始结构,状态明写。B 站那头的翻译(`liveCardInputFromRoomInfo`)在 `packages/live`、拓展那头的在服务端,
+ * 平台的原始结构,状态明写。B 站那头的翻译(`liveCardInputFromRoomInfo`)在 `apps/server/src/bilibili/live`、拓展那头的在服务端,
  * 各自的测试钉着;㉒c 之前这里还有一个吃 B 站原始数据的 `generateLiveCard`(适配层),随翻译搬走、入口收成一个。
  * 这里钉的是:
  *

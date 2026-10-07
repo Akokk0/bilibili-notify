@@ -9,7 +9,7 @@
  * ㉒a 钉过一版(旧形状:`author` / `area` / `online` / `fans` / `fansChanged`,开播时刻是毫秒,数字格也收文字);
  * ㉒c 把输入换成最终形状,这里跟着翻 —— 期望值(视图那一侧)一个没动,动的是输入的字段名与类型:
  * - 数字格只收精确数:「文字原样上卡」那几条没有了(类型就不让写);「累计观看是文字『暂未获取到』」那条也没有了
- *   (B 站翻译不再把字符串交给卡,见 `packages/live` 的 `live-card-input.test.ts`);换成「不是有限的数当作没有」;
+ *   (B 站翻译不再把字符串交给卡,见 `apps/server/src/bilibili/live` 的 `live-card-input.test.ts`);换成「不是有限的数当作没有」;
  * - 开播时刻是 ISO:原来的 NaN / Infinity 换成读不懂的字符串;
  * - 头像、封面是引用:经 `imageUrl` 解析,解析不到的收起 / 画占位。
  */

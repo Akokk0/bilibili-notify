@@ -19,15 +19,15 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 | 包 | npm 名 | 角色 |
 |---|---|---|
 | `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription —— 一种形状、带 identity,见 subscriptions.md —— / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / TargetDispatcher / NotificationPayload)+ 工具(withLock / retry / interpolate)+ 按版式装配消息组 `assembleMessageGroups`(动态与直播共用) |
-| `packages/api` | `@bilibili-notify/api` | `BilibiliAPI`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
+| `apps/server/src/bilibili/api` | 不是包(3a-24 搬进服务端) | `BilibiliAPI`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
 | `packages/storage` | `@bilibili-notify/storage` | `StorageManager` —— cookie/密钥持久化 + AES 加密 |
-| `packages/http` | `@bilibili-notify/http` | 集成的请求底座,通用、不带任何平台的默认值:`HttpClient`(`fetch` 回 `Result<HttpResponse>`:手动逐跳跟重定向并收 Set-Cookie、每跳之前可否决,非 2xx 不抛,网络断 / 超时 / 被中止 / 被否决回失败结果)、`CookieJar`(RFC 6265 子集,`load` / `clear` 原地换、`onChange` 通知、`epoch` 挡迟到响应)、浏览器身份(`generateBrowserIdentity` / `upgradeBrowserIdentity`)。B 站经 `packages/api` 里的 `ApiClient` 薄包用它,保住「非 2xx 抛错、JSON 自动解析、-101 探测」。出网点名表的白名单是它的 `http-client.ts` |
+| `packages/http` | `@bilibili-notify/http` | 集成的请求底座,通用、不带任何平台的默认值:`HttpClient`(`fetch` 回 `Result<HttpResponse>`:手动逐跳跟重定向并收 Set-Cookie、每跳之前可否决,非 2xx 不抛,网络断 / 超时 / 被中止 / 被否决回失败结果)、`CookieJar`(RFC 6265 子集,`load` / `clear` 原地换、`onChange` 通知、`epoch` 挡迟到响应)、浏览器身份(`generateBrowserIdentity` / `upgradeBrowserIdentity`)。B 站经 `bilibili/api` 里的 `ApiClient` 薄包用它,保住「非 2xx 抛错、JSON 自动解析、-101 探测」。出网点名表的白名单是它的 `http-client.ts` |
 | `packages/push` | `@bilibili-notify/push` | `PushRouter` —— 经 `PushLike` 适配器做推送路由;只把**启用的**目标当候选,每个目标收完一段序列回调一次 `onSend`(带 `pushId` / `kind` / 逐条结果),一个可用目标都没有时以 `target: null` 回调一次(见 events.md「推送历史的行模型」) |
 | `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff。B 站与拓展的订阅同一份列表;`findById` 按订阅 id 找,`findByIdentity` 按身份(来源 + 外部 id)找 |
-| `packages/dynamic` | `@bilibili-notify/dynamic` | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发。另有**中立作品装配** `deliverWork`(出卡 → AI → 模板 → 版式 → 推送 → 图集,不认 uid;B 站动态与拓展作品共用)、出图失败计数 `createCardFailureTracker`、**作品过滤** `filterPost`(吃中立的 `Post`,B 站与拓展作品同一个;文字走 `postText`,类型开关只看最外层)。见 push.md ① |
-| `packages/live` | `@bilibili-notify/live` | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester)。另有**中立直播装配** `pushLiveNotify`(吃 `LiveCardInput`,不认 uid)、B 站房间数据 → `LiveCardInput` 的翻译 `liveCardInputFromRoomInfo` 与串行闸 `createSerialGate` |
-| `packages/blive` | `@bilibili-notify/blive` | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;建连口 `createSocket` 必填、只收地址,握手头由 `packages/http` 的 `websocket()` 出,blive 不依赖 `ws`;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |
-| `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS/JSDOM SSR + 经 `PuppeteerLike` 接口包 puppeteer。作品卡的出卡入口是 `generatePostCard(post)`(吃中立的 `Post`,B 站动态由 `packages/dynamic` 的 `postFromDynamic` 先翻成 `Post`;拓展作品经服务端的 `postFromReport` 翻成 `Post`、图先存进图库,出图器按引用取图(注入的 `resolveImageRef`));直播卡的出卡入口是 `generateLiveCard(input)`(吃中立的 `LiveCardInput`,图是图库引用、开播时刻是 ISO、人数只收精确数;B 站由 `packages/live` 的 `liveCardInputFromRoomInfo` 翻、拓展订阅由服务端的 `liveCardInputFromReport` 翻,出图器不再认 B 站原始数据) |
+| `apps/server/src/bilibili/dynamic` | 不是包(3a-24 搬进服务端) | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发。另有**中立作品装配** `deliverWork`(出卡 → AI → 模板 → 版式 → 推送 → 图集,不认 uid;B 站动态与拓展作品共用)、出图失败计数 `createCardFailureTracker`、**作品过滤** `filterPost`(吃中立的 `Post`,B 站与拓展作品同一个;文字走 `postText`,类型开关只看最外层)。见 push.md ① |
+| `apps/server/src/bilibili/live` | 不是包(3a-24 搬进服务端) | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester)。另有**中立直播装配** `pushLiveNotify`(吃 `LiveCardInput`,不认 uid)、B 站房间数据 → `LiveCardInput` 的翻译 `liveCardInputFromRoomInfo` 与串行闸 `createSerialGate` |
+| `apps/server/src/bilibili/live`(`client.ts` / `codec.ts` / `events.ts` / `parser.ts`,原 blive 包) | 不是包(3a-24 平铺并进 `live/`) | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;建连口 `createSocket` 必填、只收地址,握手头由 `packages/http` 的 `websocket()` 出,blive 不依赖 `ws`;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |
+| `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS/JSDOM SSR + 经 `PuppeteerLike` 接口包 puppeteer。作品卡的出卡入口是 `generatePostCard(post)`(吃中立的 `Post`,B 站动态由 `bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post`;拓展作品经服务端的 `postFromReport` 翻成 `Post`、图先存进图库,出图器按引用取图(注入的 `resolveImageRef`));直播卡的出卡入口是 `generateLiveCard(input)`(吃中立的 `LiveCardInput`,图是图库引用、开播时刻是 ISO、人数只收精确数;B 站由 `bilibili/live` 的 `liveCardInputFromRoomInfo` 翻、拓展订阅由服务端的 `liveCardInputFromReport` 翻,出图器不再认 B 站原始数据) |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` —— OpenAI 兼容的 chat / summary / commentary |
 | `packages/extension` | `@bilibili-notify/extension` | **宿主给拓展的那一面**,也是拓展拿 BN 东西的**唯一一扇门**:ctx / 挂载点 / upgrade / 表单字段表定义在这里,推送源契约与域类型从 `internal` **转出一道**。只放类型不放实现(拓展会被打成自包含 bundle)。列出来的就是契约的全部 —— 加一格是一次明确的加宽决定 |
 | `packages/ui` | `@bilibili-notify/ui` | 纯展示 React 基础件 + design tokens(theme.css)。**源码直出**(exports 指 src,无构建步),仅 vite 系消费者(web / desktop 启动页)。组件清单在包内 README |
@@ -47,7 +47,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 ```
 ConfigStore        (apps/server/src/config;globals / subscriptions / targets / connections 的文件权威,写入后 emit config-changed;
                     订阅一个文件 subscriptions.json,行行带 identity)
-BilibiliAPI        (@bilibili-notify/api)
+BilibiliAPI        (apps/server/src/bilibili/api)
 SubscriptionStore  (@bilibili-notify/subscription;Subscription[] 的内存权威,B 站与拓展同一份)
 PushRouter       (@bilibili-notify/push;dispatcher = TargetDispatcher → 各平台 adapter,注入 defaults / muted / serviceCtx)
 
@@ -79,7 +79,7 @@ live   (恒造)                     → LiveEngine({ api, push, contentBuilder, 
 src/
   index.ts              CLI / bootstrap 入口
   app.ts                Hono app 组装 + 鉴权 + 路由挂载
-  auth/                 经 @bilibili-notify/api LoginFlow 的扫码 + cookie 状态;bare-auth-policy / session / ws-ticket
+  auth/                 经 bilibili/api 的 LoginFlow 的扫码 + cookie 状态;bare-auth-policy / session / ws-ticket
   config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <数据根>/config/*.json,emit config-changed)+ schema
   migration/            0.x → 数据代的一次性迁移:第 0 代(宿主根上 0.x 的文件)只读,先按代布局搬进 <序号>.partial,再逐族把 0.x 各版本的形状改写成 0.x 最新的形状(connections.ts 连接与目标、settings.ts 设置、subscriptions.ts 订阅,history.ts 推送历史,stats.ts 统计的文件名与行,roast-drafts.ts 锐评草稿,skins.ts 界面皮肤,conversations.ts 女仆对话,secrets.ts 加密袋,features.ts / ai.ts / link-parsing.ts / templates.ts 是各组老形状的变换,files.ts 共用的读写);旧格式的知识只住这里,各个 store 只认最新形状(ADR-0022)
   runtime/
@@ -110,6 +110,7 @@ src/
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   push/                 `target-dispatcher.ts`:TargetDispatcher 分发(PushTarget.id → 平台适配器)+ `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛)+ `dispatch.ts`(按连接找适配器)
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter;推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
+  bilibili/             B 站的代码(3a-24 从四个包搬来,名字原样):settings.ts(B 站设置)+ api/(BilibiliAPI / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine / deliverWork / postFromDynamic / filterPost)+ live/(LiveEngine / RoomSession / pushLiveNotify,以及直播信息流客户端 client / codec / events / parser,说明在 live/README.md)
   integrations/         集成宿主(内置集成与拓展共用):registry(通用登记表 Registry,按键认领、只撤自己那行)
   extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
 ```

@@ -19,7 +19,7 @@
  * 在 `fixtures/skin-render.ts`。
  *
  * 十份 `dynamic-*` 的输入是 `Post` 字面量(`fixtures/post-fixtures.ts`),B 站原始夹具与「原始数据 → `Post`」
- * 的那一腿在 `packages/dynamic` 的 `post-from-dynamic.test.ts`。**这十份必须仍在这里按原顺序渲染**:UnoCSS 的
+ * 的那一腿在 `apps/server/src/bilibili/dynamic` 的 `post-from-dynamic.test.ts`。**这十份必须仍在这里按原顺序渲染**:UnoCSS 的
  * 生成器进程内只有一个,属性层会把前面渲染过的卡用到的 `--un-*` 变量带进后面的卡(醒目留言 / 上舰 / 锐评 / 词云
  * 排在动态卡后面),挪走几份、顺序一变,后面那些快照的字节就跟着动。
  */

@@ -77,8 +77,8 @@ export const ModuleLogLevelsSchema = z
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 
 /**
- * dynamic 轮询 cron 默认值。B 站设置的 `dynamicCron`(`apps/server/src/bilibili/settings.ts`)用它;3a 随
- * `packages/dynamic` 搬进 `bilibili/`。
+ * dynamic 轮询 cron 默认值。B 站设置的 `dynamicCron`(`apps/server/src/bilibili/settings.ts`)用它;引擎 3a-24 已搬进
+ * `apps/server/src/bilibili/dynamic`,这个常量还留在这里,3a 里跟过去。
  *
  * **六字段**(秒 分 时 日 月 周),秒位是 `30` —— 每 2 分钟的第 30 秒拉,而不是整分。
  * 整分是全网默认节拍:一堆客户端(以及本项目此前的所有实例)都卡在 `:00` 同时打

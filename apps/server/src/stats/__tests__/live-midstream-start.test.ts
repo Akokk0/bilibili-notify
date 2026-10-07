@@ -6,7 +6,7 @@
  * 自己那一段,但没有一条能证明接起来还成立 —— 而这正是主人报过的那个故障
  * (「15 分钟前启动服务器,显示 15 分钟前直播中,直播时长 Top 空着」)。
  *
- * 事件本身带不带真实开播时刻,由 `packages/live` 那侧的 bootstrap 测试守。
+ * 事件本身带不带真实开播时刻,由 `apps/server/src/bilibili/live` 那侧的 bootstrap 测试守。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";

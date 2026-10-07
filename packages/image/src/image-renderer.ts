@@ -561,7 +561,7 @@ export class ImageRenderer {
 
 	/**
 	 * **直播卡的入口**(ADR-0019 决策 68):吃一份 {@link LiveCardInput},不收任何平台的原始数据 ——
-	 * B 站那头由 `@bilibili-notify/live` 的 `liveCardInputFromRoomInfo` 翻、拓展订阅那头由服务端的
+	 * B 站那头由 `apps/server/src/bilibili/live` 的 `liveCardInputFromRoomInfo` 翻、拓展订阅那头由服务端的
 	 * `liveCardInputFromReport` 翻,都来这一个口。状态明写(开播 / 直播中 / 下播 / 没在播),卡上那句时间由开播时刻算。
 	 *
 	 * 主人给这条订阅设的自定义直播封面(`colorOptions.liveCoverImage`,独立端专属)在这里
@@ -694,7 +694,7 @@ export class ImageRenderer {
 	 * **作品卡的入口**:吃一份平台中立的 {@link Post},不收任何平台的原始数据。`Post` → 卡片节点
 	 * ({@link nodeFromPost})→ 皮肤出卡。发布时间由本渲染器按机器本地时区排({@link unixTimestampToString})。
 	 *
-	 * B 站动态由 `packages/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;拓展作品由服务端的 `postFromReport`
+	 * B 站动态由 `apps/server/src/bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post` 再来;拓展作品由服务端的 `postFromReport`
 	 * 翻成 `Post`(图已存进图库,`PostImage` 只放 `ref`);链接预览手里有现成的数据,直接造 `Post`。
 	 *
 	 * **图库引用在这里事先解析**:作品里用到的每个引用(配图、封面、头像、正文里的小图标与表情图、附加块文字行的

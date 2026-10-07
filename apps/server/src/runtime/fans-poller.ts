@@ -29,7 +29,7 @@ const FUTURE_ISO = "9999-12-31T00:00:00.000Z";
 
 /**
  * 命中即判定为风控/限流的响应码。-352 风控、-403 越权风控、-412 请求被拦、
- * -799 请求过于频繁。与 packages/api `classifyRefreshCode` 的口径同源、再补上
+ * -799 请求过于频繁。与 apps/server/src/bilibili/api `classifyRefreshCode` 的口径同源、再补上
  * 限流码 —— fans 轮询逐 UP 请求,量最大,熔断口径要更宽。
  */
 const RISK_CONTROL_CODES = new Set([-352, -403, -412, -799]);
@@ -60,7 +60,7 @@ export interface FansPollerOptions {
 	/**
 	 * 用于 dispose-safe 延时(首次 tick 等 auth 起来的 3s 窗口)。dispose() 时
 	 * runtime 一并清掉 pending timer,避免 stop/restart 期间裸 setTimeout 留 3s
-	 * 空跑句柄。同 packages/push / packages/api 的 P1-B 风格。
+	 * 空跑句柄。同 packages/push / apps/server/src/bilibili/api 的 P1-B 风格。
 	 */
 	serviceCtx: ServiceContext;
 	/**

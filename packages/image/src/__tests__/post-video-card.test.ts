@@ -6,7 +6,7 @@
  *
  * 这里钉的是**版面骨架**(封面占满整宽、时长角标自带深色底、封面不再整张压暗),
  * 字号与间距属观感,留手动验证。输入是 `Post`(从前是 B 站原始动态);「接口的数字 / 时长怎么翻成 `Post.video`」
- * 在 `packages/dynamic` 的 `post-from-dynamic.test.ts`。
+ * 在 `apps/server/src/bilibili/dynamic` 的 `post-from-dynamic.test.ts`。
  */
 
 import type { Post } from "@bilibili-notify/internal";

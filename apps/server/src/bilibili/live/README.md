@@ -2,7 +2,7 @@
 
 > 原 `packages/blive`,3a-24 平铺并进这个目录:`client.ts` / `codec.ts` / `events.ts` / `parser.ts` 与几份 proto。下文的「本包」「包内」指这几份文件。
 
-自实现的 B 站直播信息流 WSS 客户端 —— 替代 `blive-message-listener` / `tiny-bilibili-ws`。private 包,不发 npm,仓内经 `workspace:*` 消费(内联进 server 单文件 bundle)。
+自实现的 B 站直播信息流 WSS 客户端 —— 替代 `blive-message-listener` / `tiny-bilibili-ws`。原先是个 private 包,现在就是服务端里的几份文件(照旧内联进 server 的 bundle)。
 
 ## 设计边界:哑管道
 

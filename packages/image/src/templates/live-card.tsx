@@ -5,7 +5,7 @@
  *
  * 直播卡有两份形状(ADR-0019 决策 68):
  * - {@link LiveCardInput}:**中立的输入**,出卡入口 `generateLiveCard` 吃它。纯数据、
- *   不带任何平台的原始结构,状态明写。B 站那头(`liveCardInputFromRoomInfo`,在 `@bilibili-notify/live`)
+ *   不带任何平台的原始结构,状态明写。B 站那头(`liveCardInputFromRoomInfo`,在 `apps/server/src/bilibili/live`)
  *   与拓展订阅那头(`liveCardInputFromReport`,在服务端)各把自己的数据翻成它。
  * - {@link LiveCardView}:块与皮肤契约吃的那一份 —— 全是排好的文字(数字排成「1.2万」、
  *   开播时刻算成「直播时长：…」那句)。从输入到它只有一步(`buildLiveCardView`),预览的

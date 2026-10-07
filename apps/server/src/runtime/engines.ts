@@ -1,5 +1,5 @@
 /**
- * Server-side engine wiring: the engines from packages/dynamic + packages/live,
+ * Server-side engine wiring: the engines from apps/server/src/bilibili/dynamic + apps/server/src/bilibili/live,
  * driven by the file-backed ConfigStore + TargetDispatcher.
  *
  * Construction order:
@@ -1497,7 +1497,7 @@ export function liveBroadcastOpts(
  * 重启补报(`CatchUp`=11)也翻译成 `feature === "liveStart"`,光看 feature 区分不出
  * 真开播 vs 补报 —— push 层据本结果决定是否进 atAll 分支,否则每条补报都 @全体
  * (从前周期复推就这么出过 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
- * packages/live 的 LivePushType 保持一致。
+ * apps/server/src/bilibili/live 的 LivePushType 保持一致。
  */
 export function liveTypeAllowsAtAll(type: number): boolean {
 	return type === 3;

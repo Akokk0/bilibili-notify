@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
-| 已完成 | 11 / 41（3a-01 至 3a-06、3a-08、3a-11、3a-13、3a-14、3a-23；3a-07 并进 3a-28） |
+| 已完成 | 12 / 41（3a-01 至 3a-06、3a-08、3a-11、3a-13、3a-14、3a-23、3a-24；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -58,7 +58,7 @@
 | 3a-22 | 连接新形状（`adapterKey` / `settings` / `platformSnapshot`），删 `CONNECTION_PLATFORMS` 闭集 | 3a-21 | 连接、备份 |
 | **丁 B 站搬家与接入** | | | |
 | 3a-23 ✅ | 搬家前置：面板的登录态类型、`packages/ai` 都先脱开 `@bilibili-notify/api`（包不能反过来依赖服务端） | 无 | 无 |
-| 3a-24 | 纯搬：四包 → `apps/server/src/bilibili/`（`blive` 并进 `bilibili/live/`），只改 import 路径；构建配方、装配脚本、守卫里写死的路径同一个提交带上。**独占工作区**，约 150 个文件 | 3a-01、3a-06、3a-23 | 无 |
+| 3a-24 ✅ | 纯搬：四包 → `apps/server/src/bilibili/`（`blive` 并进 `bilibili/live/`），只改 import 路径；构建配方、装配脚本、守卫里写死的路径同一个提交带上。**独占工作区**，约 150 个文件 | 3a-01、3a-06、3a-23 | 无 |
 | 3a-25 | 改名（单独一个提交）：按 naming.md 的词表；外部接口回应的起名；原字段名只留在回应上。**独占工作区** | 3a-24 | 无 |
 | 3a-26 | B 站的 cookie 与浏览器身份进 `ctx`；`packages/storage` 的 `CookieStore` 退役 | 3a-10、3a-12、3a-25 | 密钥文件 |
 | 3a-27 | `PostEvent` 信封与 `post-detected` 事件取代 `dynamic-detected`；`deliverWork` → `deliverPost`、`NeutralWork` 退场；B 站作品的统计多收字段；中立部分拆进 `posts/` | 3a-08、3a-24 | 无 |
@@ -113,6 +113,11 @@
 
 - 3a-23 开工前定的（主人选 A）：**AI 包用一个过渡的小接口脱开 B 站接口包**。`packages/ai` 自己声明只含它用到的七个查询方法的 `BiliLookups`，服务端照旧把 B 站客户端递进来；六个 B 站工具的名字与行为不变。**这个接口 3b 做「来源自带 AI 工具」时必删**，不从包里导出成正式的东西。被否的备选：现在就做最终形态（3a 再大一截，ADR-0030 是按 3b 排的）；3a 期间先把工具摘掉（现查：六个内置女仆技能全靠这六个工具，摘了全不可用，13 个测试文件要删了再写回，而 3b 还远）。面板的登录状态类型同片改从契约包拿（architecture.md 已写明）。
 - 3a-23 已落（`f13cca2b`）：`packages/ai/src/tools.ts` 的 `BiliLookups`（七个方法，不从包入口导出）；登录状态的定义在 `apps/contract/src/auth.ts`（`BiliLoginStatus`、`LoginSnapshot`，名字没改，3a-29 换 `SourceAuth`），面板的 `types/auth.ts` 只转出；服务端 `auth/login-status-wire.ts` 把契约的值与 api 包的枚举两头钉住（哪边加减一档都编译不过）。`packages/ai` 与 `apps/web` 的依赖里都没有 api 包了。棘轮（主人同意）：面板 `types/auth.ts` 9 → 2，新登记契约 `auth.ts` 5、服务端那份 6，净增 4 —— 定义挪了地方、名字故意没改。
+- 3a-24 已落（两个提交）：`e7c1d89d` 先在原地把四包测试里 32 处过不了服务端编译设置的写法修掉（全在测试，正式代码零处），`fcdfddb4` 才是搬家，所以搬家那个提交只动路径。落点：`apps/server/src/bilibili/{api,dynamic,live}/`，`blive` 平铺进 `live/`（`client.ts` / `codec.ts` / `events.ts` / `parser.ts` 与几份 proto）；`blive` 的出口文件不留，引用方直接指到具体文件，另三个目录的 `index.ts` 留着。被搬的文件内部的相对引用原样不动（不带 `.js`），新写的跨目录引用带 `.js`。四个包壳连同各自的 CHANGELOG 删了（从没发过 npm，git 历史里有），`blive` 的 README 跟到 `bilibili/live/README.md`。
+  - 构建：服务端多了四个直接依赖（`jieba-wasm`、`luxon`、`md5`、`protobufjs`），都登进了 `apps/server/vite.config.ts` 的 `alwaysBundle`。**勘察时的推断验过了**：拿掉这四条，`vp run build:update-payload` 照样退出 0，产物里却留着四个裸引用（载荷里没有 node_modules，运行期才炸）。拦它的是 `scripts/__tests__/assemble-server-bundle.test.mjs` 的「bundle 自包含」那条：只拿掉 `luxon` 一条，它连同另外两条起包的用例一起红。所以漏登记靠全量测试拦，光跑装配命令看不出来。
+  - 守卫：B 站替身摘掉 13 条共 85 处（搬进了放行目录）；出网守卫的范围断言换掉两个旧根；「结果不手写」的 `follow.ts: 1` 跟着文件换了路径、数不变。
+  - 真机脚本（10-07 主人定：放 B 站自己的目录，进 `__tests__` 是因为它们本来就算测试那一类，守卫 17 不扫测试目录、文件名不带 `.test` 所以不会被自动跑）：五个脚本在 `apps/server/src/bilibili/live/scripts/__tests__/`，从此也在服务端的类型检查范围里；原来靠 `node --experimental-transform-types` 吃构建产物，包没了之后吃不到，改成在 `apps/server` 下 `vp exec tsx src/bilibili/live/scripts/__tests__/<脚本>` 直接吃源码。`pb-walk.ts`（离线的那只）实际跑通了，另外三只要登录态、伦伦酱没跑。
+  - 测试数：搬家前后都是 998 个文件、13883 条。
 - 丁组的施工顺序：3a-23 与 3a-13 后半合回之后做 3a-24（纯搬，独占工作区）→ 3a-25（改名，独占）；这两片期间不开别的会改服务端的活。丙组的 3a-15 起、戊组的 3a-34 / 3a-35 都排在 3a-25 之后（它们要改的文件正是被搬的那批）。
 - 3a-15 的拓展边界（伦伦酱照既有设计定的）：投递结果改形状时，仓里的桥拓展与契约类型这一期不动，宿主在拓展边界上把拓展交回的旧形状翻成新形状；契约 v3 与桥迁 v3 仍在 3b。3a 与 3b 之间没有发版，仓外的 v2 拓展不受这段中间态影响。
 

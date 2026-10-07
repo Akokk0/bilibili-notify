@@ -10,7 +10,7 @@
  * - `video`:封面 + 时长角标 + 标题 + `subtitle`;没有标题上方的说明;
  * - 三种都**没有任何图标**(`icon` 要到 3a 才有图库引用可给;铃铛与购物袋形状里压根没有位置)。
  *
- * 翻译那一头(接口的预约卡 / 通用卡 / 商品 / UGC 怎么落成这三种)在 `packages/dynamic` 的
+ * 翻译那一头(接口的预约卡 / 通用卡 / 商品 / UGC 怎么落成这三种)在 `apps/server/src/bilibili/dynamic` 的
  * `post-from-dynamic.test.ts`;这里钉的是它们**画成什么样**。
  *
  * 这几样**有快照照见**:预约卡在 `dynamic-with-additional`(可预约、含抽奖行)与 `dynamic-forward`(已结束),
