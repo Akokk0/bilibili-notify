@@ -110,7 +110,7 @@ src/
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   push/                 `target-dispatcher.ts`:TargetDispatcher 分发(PushTarget.id → 平台适配器)+ `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛)+ `dispatch.ts`(按连接找适配器)
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter;推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
-  bilibili/             B 站的代码(3a-24 从四个包搬来,名字原样):settings.ts(B 站设置)+ api/(Api / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine / deliverWork / postFromDynamic / filterPost)+ live/(LiveEngine / RoomSession / pushLiveNotify,以及直播信息流客户端 client / codec / events / parser,说明在 live/README.md)
+  bilibili/             B 站的代码:settings.ts(B 站设置)+ api/(Api / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine / deliverWork / postFromDynamic / filterPost)+ live/(根上:翻译函数 membership-event / superchat-event / live-card-input、徽章图标 guard-icons、以后搬去核心的 live-notify / template-renderer / content-builder;protocol/ 弹幕连接的协议层 client / codec / events / parser,说明在它的 README.md;session/ LiveEngine / ListenerManager / RoomSession;recap/ 下播后的回顾:弹幕收集、词云、AI 总结的请求器)
   integrations/         集成宿主(内置集成与拓展共用):registry(通用登记表 Registry,按键认领、只撤自己那行)
   extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
 ```
