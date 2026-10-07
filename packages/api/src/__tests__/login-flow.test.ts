@@ -145,7 +145,7 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
 		const reports = eventsOfKind(h.events, "login-status-report");
 		expect(reports).toHaveLength(1);
-		expect(reports[0].payload).toMatchObject({ status: BiliLoginStatus.LOGGED_IN });
+		expect(reports[0]?.payload).toMatchObject({ status: BiliLoginStatus.LOGGED_IN });
 	});
 
 	it("code === -101 transitions to NOT_LOGIN and emits auth-lost only when previously LOGGED_IN", async () => {
@@ -209,7 +209,7 @@ describe("LoginFlow.transition() dedupe", () => {
 
 		const reports = eventsOfKind(h.events, "login-status-report");
 		expect(reports).toHaveLength(1);
-		expect(reports[0].payload).toMatchObject({ status: BiliLoginStatus.NOT_LOGIN });
+		expect(reports[0]?.payload).toMatchObject({ status: BiliLoginStatus.NOT_LOGIN });
 	});
 });
 
@@ -268,7 +268,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 		// Interval registered. Fire it once.
 		expect(h.scFake.intervals).toHaveLength(1);
-		await h.scFake.intervals[0].handle.fire();
+		await h.scFake.intervals[0]?.handle.fire();
 
 		expect(h.saveCookies).toHaveBeenCalledTimes(1);
 		expect(h.saveCookies).toHaveBeenCalledWith({
@@ -278,7 +278,7 @@ describe("LoginFlow.beginLogin()", () => {
 		expect(h.api.getMyselfInfo).toHaveBeenCalledTimes(1);
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
 		// The interval timer must have been cleared.
-		expect(h.scFake.intervals[0].handle.disposed).toBe(true);
+		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
 	});
 
 	it("poll code === 86038 (qr invalidated): cleans up the poll timer", async () => {
@@ -291,9 +291,9 @@ describe("LoginFlow.beginLogin()", () => {
 
 		await h.flow.beginLogin(async () => "data:url");
 		expect(h.scFake.intervals).toHaveLength(1);
-		await h.scFake.intervals[0].handle.fire();
+		await h.scFake.intervals[0]?.handle.fire();
 
-		expect(h.scFake.intervals[0].handle.disposed).toBe(true);
+		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
 	});
 
@@ -306,11 +306,11 @@ describe("LoginFlow.beginLogin()", () => {
 		h.api.getLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 
 		await h.flow.beginLogin(async () => "data:url");
-		await h.scFake.intervals[0].handle.fire();
+		await h.scFake.intervals[0]?.handle.fire();
 
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGING_QR);
 		expect(h.saveCookies).not.toHaveBeenCalled();
-		expect(h.scFake.intervals[0].handle.disposed).toBe(false);
+		expect(h.scFake.intervals[0]?.handle.disposed).toBe(false);
 	});
 
 	it("LOGIN_QR → LOGGING_QR (waitScan/waitConfirm) preserves the QR data field", async () => {
@@ -328,7 +328,7 @@ describe("LoginFlow.beginLogin()", () => {
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_QR);
 		expect(h.flow.current().data).toBe("data:image/png;base64,QR_BASE64_PAYLOAD");
 
-		await h.scFake.intervals[0].handle.fire();
+		await h.scFake.intervals[0]?.handle.fire();
 
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGING_QR);
 		// The QR is still useful (user hasn't confirmed on phone yet) — must not be dropped.
@@ -361,7 +361,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 		h.saveCookies.mockReturnValueOnce(save.promise);
 		await h.flow.beginLogin(async () => "data:url");
 
-		void h.scFake.intervals[0].handle.fire();
+		void h.scFake.intervals[0]?.handle.fire();
 		await flush();
 
 		expect(h.scFake.tracked).toHaveLength(1);
@@ -394,12 +394,12 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 			throw new Error("boom");
 		});
 
-		await h.scFake.intervals[0].handle.fire();
+		await h.scFake.intervals[0]?.handle.fire();
 
 		await expect(h.scFake.tracked[0]).resolves.toBeUndefined();
 		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
 		h.api.getLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
-		await h.scFake.intervals[0].handle.fire();
+		await h.scFake.intervals[0]?.handle.fire();
 		expect(h.scFake.tracked).toHaveLength(2); // polling 标志复位了,下一拍照常轮询
 	});
 });
@@ -425,8 +425,8 @@ describe("LoginFlow.stop()", () => {
 		expect(h.scFake.timeouts).toHaveLength(1);
 
 		h.flow.stop();
-		expect(h.scFake.intervals[0].handle.disposed).toBe(true);
-		expect(h.scFake.timeouts[0].handle.disposed).toBe(true);
+		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
+		expect(h.scFake.timeouts[0]?.handle.disposed).toBe(true);
 	});
 });
 
@@ -499,7 +499,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		// 心跳发出探活请求,此刻会话还活着,B 站也还认。
 		const probe = deferred<{ code: number; data: { mid: number } }>();
 		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
-		h.scFake.intervals[0].handle.fire();
+		h.scFake.intervals[0]?.handle.fire();
 		await flush();
 
 		// 探活在途期间,cookie 刷新链撞上 -101 —— 拦截器同步走到这里。
@@ -547,7 +547,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 
 		const probe = deferred<{ code: number; data: { mid: number } }>();
 		h.api.getMyselfInfo.mockReturnValueOnce(probe.promise);
-		h.scFake.intervals[0].handle.fire();
+		h.scFake.intervals[0]?.handle.fire();
 		await flush();
 
 		h.flow.reportLoggedOut("notLogin");

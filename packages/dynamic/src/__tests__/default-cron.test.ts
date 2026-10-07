@@ -27,9 +27,9 @@ describe("DEFAULT_DYNAMIC_CRON", () => {
 	});
 
 	it("每 2 分钟触发一次", () => {
-		const [first, second, third] = nextFew(DEFAULT_DYNAMIC_CRON, 3);
-		expect(second.getTime() - first.getTime()).toBe(120_000);
-		expect(third.getTime() - second.getTime()).toBe(120_000);
+		const times = nextFew(DEFAULT_DYNAMIC_CRON, 3).map((date) => date.getTime());
+		const gaps = times.slice(1).map((time, index) => time - (times[index] ?? Number.NaN));
+		expect(gaps).toEqual([120_000, 120_000]);
 	});
 
 	it("落在整分钟的第 30 秒,而不是整分", () => {

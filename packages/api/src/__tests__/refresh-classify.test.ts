@@ -120,7 +120,7 @@ describe("刷新链跨 await 之后都比对 gen —— 换号以后旧链不再
 		const realEncrypt = globalThis.crypto.subtle.encrypt.bind(globalThis.crypto.subtle);
 		const encrypt = vi
 			.spyOn(globalThis.crypto.subtle, "encrypt")
-			.mockImplementation(async (...args: Parameters<SubtleCrypto["encrypt"]>) => {
+			.mockImplementation(async (...args: Parameters<typeof realEncrypt>) => {
 				await api.clearCookies();
 				return realEncrypt(...args);
 			});

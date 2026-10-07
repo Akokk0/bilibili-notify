@@ -466,7 +466,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		b.getAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
-		const msg = String(b.push.sendPrivateMsg.mock.calls[1][0]);
+		const msg = String(b.push.sendPrivateMsg.mock.calls[1]?.[0]);
 		expect(msg).toContain("恢复");
 		expect(msg).toContain("4101132");
 	});
@@ -527,7 +527,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		b.getAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
-		expect(String(b.push.sendPrivateMsg.mock.calls[1][0])).toContain("风控");
+		expect(String(b.push.sendPrivateMsg.mock.calls[1]?.[0])).toContain("风控");
 	});
 
 	it("风控与瞬时错误同时挂着 → 恢复报一条,两样都说到", async () => {
@@ -542,8 +542,8 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		await detect(b.engine);
 		const recovery = b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("恢复"));
 		expect(recovery).toHaveLength(1);
-		expect(String(recovery[0][0])).toContain("风控");
-		expect(String(recovery[0][0])).toContain("4101132");
+		expect(String(recovery[0]?.[0])).toContain("风控");
+		expect(String(recovery[0]?.[0])).toContain("4101132");
 	});
 
 	it("跨 -101 后恢复:不拿陈旧错误码报喜(登录恢复由上层 auth-restored 负责)", async () => {

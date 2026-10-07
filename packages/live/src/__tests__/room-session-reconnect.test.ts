@@ -236,7 +236,7 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 		// 5 次 startLiveRoomListener 都失败 → reconnectLoop 跑满 5 档退避后退出 while → 放弃
 		expect(mocks.startLiveRoomListener).toHaveBeenCalledTimes(5);
 		expect(mocks.emitEngineError).toHaveBeenCalledTimes(1);
-		expect(mocks.emitEngineError.mock.calls[0][0]).toMatch(/重试 5 次后放弃监听/);
+		expect(mocks.emitEngineError.mock.calls[0]?.[0]).toMatch(/重试 5 次后放弃监听/);
 
 		// 耗尽路径之后不应该再 schedule 新 backoff
 		const backoffOnly = mocks.delays().filter((d) => d > 0);

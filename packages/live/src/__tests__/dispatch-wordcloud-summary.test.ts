@@ -178,10 +178,10 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		const session = new TestSession(ctx, sub);
 		await session.runDispatch();
 
-		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
 		expect(wcArg).toEqual([["精彩", 5]]);
-		const sumArg = (ctx.liveSummaryRequester.generate as ReturnType<typeof vi.fn>).mock.calls[0][0]
-			.sortedWords;
+		const sumArg = (ctx.liveSummaryRequester.generate as ReturnType<typeof vi.fn>).mock
+			.calls[0]?.[0].sortedWords;
 		expect(sumArg).toEqual([["精彩", 5]]);
 	});
 
@@ -197,7 +197,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		sub.cardSkin = "k6eee-cafed00d";
 		await new TestSession(ctx, sub).runDispatch();
 		const call = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
-		expect(call[3]).toBe("k6eee-cafed00d");
+		expect(call?.[3]).toBe("k6eee-cafed00d");
 	});
 
 	// 词云卡也吃这位 UP 那份旋钮(不分卡种,ADR-0014 决策 17 的 🔗)。
@@ -213,7 +213,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		sub.cardSkinKnobs = cardSkinKnobs;
 		await new TestSession(ctx, sub).runDispatch();
 		const call = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
-		expect(call[4]).toEqual(cardSkinKnobs);
+		expect(call?.[4]).toEqual(cardSkinKnobs);
 	});
 
 	it("无 per-UP 停用词时 sortedWords 原样透传", async () => {
@@ -229,7 +229,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		const session = new TestSession(ctx, makeSub());
 		await session.runDispatch();
 
-		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
 		expect(wcArg).toEqual([
 			["精彩", 5],
 			["哈哈", 3],
