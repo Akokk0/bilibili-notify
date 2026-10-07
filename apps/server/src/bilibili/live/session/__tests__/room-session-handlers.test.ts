@@ -15,8 +15,8 @@
  * handleLiveEnd/armPeriodicTimer 用 `(s as any).x = vi.fn()` 就地打桩。
  */
 
-import type { MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
-import { defaultMessageKindLayout } from "@bilibili-notify/internal";
+import type { ImageRef, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout, ok } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { membershipEventFromLiveEvent } from "../../membership-event";
@@ -1646,9 +1646,16 @@ describe("RoomSession.onIncomeDanmaku — 特别关注用户的弹幕", () => {
 // ---------------------------------------------------------------------------
 
 describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", () => {
-	function makeRoomCtx(): {
+	function makeRoomCtx(
+		over: {
+			/** 渲染器;不给 = 没有(只发文字)。 */
+			renderer?: { generateLiveCard: ReturnType<typeof vi.fn> };
+			imageEnabled?: boolean;
+		} = {},
+	): {
 		ctx: RoomContext;
 		broadcastToTargets: ReturnType<typeof vi.fn>;
+		fetchImage: ReturnType<typeof vi.fn>;
 	} {
 		const fakeServiceCtx: ServiceContext = {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -1659,6 +1666,11 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			track: () => {},
 		};
 		const broadcastToTargets = vi.fn(async () => {});
+		const fetchImage = vi.fn(async (url: string) =>
+			ok({
+				ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef,
+			}),
+		);
 		const ctx = new RoomContext({
 			serviceCtx: fakeServiceCtx,
 			// 其余依赖在 sendLiveNotifyCard 路径上不触达,给最小 stub。
@@ -1680,20 +1692,22 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			danmakuCollector: {} as never,
 			// imageRenderer=null → 没有 card 部件(buffer undefined),版式路径只剩文本,依旧调
 			// push.broadcastToTargets(uid, msg, pushType),pushType 即被测的映射结果。
-			getImageRenderer: () => null,
+			getImageRenderer: () => (over.renderer as never) ?? null,
 			config: {
 				guardTemplate: GUARD_TEMPLATE_OFF,
 				customLiveMsg: { enable: false },
 				liveSummaryDefault: "",
+				...(over.imageEnabled === undefined ? {} : { imageEnabled: over.imageEnabled }),
 			},
 			emitEngineError: vi.fn(),
 			emitLiveState: vi.fn(),
 			emitViewers: vi.fn(),
 			pickCardBackground: () => undefined,
 			guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
+			imageFetcher: { fetchImage },
 			onRoomIdResolved: vi.fn(),
 		});
-		return { ctx, broadcastToTargets };
+		return { ctx, broadcastToTargets, fetchImage };
 	}
 
 	const liveRoomInfo = {
@@ -1773,6 +1787,62 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 
 	it("NotLiveBroadcast → LivePushType.Live(0)(兜底 else,也不 @全体)", async () => {
 		expect(await pushTypeFor(LiveType.NotLiveBroadcast)).toBe(LivePushType.Live);
+	});
+
+	// 3a-34:封面在**确定要出卡时**才抓进图库。零件(抓图函数、出卡装配)各自绿,证明不了直播引擎真的接上了。
+	describe("封面抓进图库", () => {
+		const COVER_URL = "https://i0.hdslb.com/bfs/live/cover.jpg";
+		const roomWithCover = { ...(liveRoomInfo as object), user_cover: COVER_URL } as never;
+		const send = (
+			ctx: RoomContext,
+			messageLayout: ReturnType<typeof defaultMessageKindLayout> = defaultMessageKindLayout("live"),
+		) =>
+			ctx.sendLiveNotifyCard({
+				liveType: LiveType.StartBroadcasting,
+				liveData: {},
+				liveRoomInfo: roomWithCover,
+				master,
+				cardStyle: { enable: false },
+				uid: "u1",
+				notifyMsg: "msg",
+				messageLayout,
+			});
+
+		it("要出卡:出卡器收到的封面带 ref(原地址还在),抓的是缩放地址", async () => {
+			const generateLiveCard = vi.fn(async (_input: unknown) => Buffer.from("card"));
+			const { ctx, fetchImage } = makeRoomCtx({ renderer: { generateLiveCard } });
+			await send(ctx);
+			expect(fetchImage).toHaveBeenCalledTimes(1);
+			expect(fetchImage.mock.calls[0]?.[0]).toBe(`${COVER_URL}@1280w_80q_1s.webp`);
+			const input = generateLiveCard.mock.calls[0]?.[0] as unknown as {
+				cover?: { url?: string; ref?: string };
+			};
+			expect(input.cover?.url).toBe(COVER_URL);
+			expect(input.cover?.ref).toBeDefined();
+		});
+
+		it("版式把卡片块藏了:不出卡,也就不抓封面", async () => {
+			const generateLiveCard = vi.fn(async () => Buffer.from("card"));
+			const { ctx, fetchImage } = makeRoomCtx({ renderer: { generateLiveCard } });
+			const hidden = defaultMessageKindLayout("live");
+			await send(ctx, {
+				...hidden,
+				blocks: hidden.blocks.map((b) => (b.type === "card" ? { ...b, visible: false } : b)),
+			});
+			expect(generateLiveCard).not.toHaveBeenCalled();
+			expect(fetchImage).not.toHaveBeenCalled();
+		});
+
+		it("没有渲染器 / 关了出图:不出卡,也就不抓封面", async () => {
+			const generateLiveCard = vi.fn(async () => Buffer.from("card"));
+			const none = makeRoomCtx();
+			await send(none.ctx);
+			const off = makeRoomCtx({ renderer: { generateLiveCard }, imageEnabled: false });
+			await send(off.ctx);
+			expect(none.fetchImage).not.toHaveBeenCalled();
+			expect(off.fetchImage).not.toHaveBeenCalled();
+			expect(generateLiveCard).not.toHaveBeenCalled();
+		});
 	});
 });
 

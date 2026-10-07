@@ -6,7 +6,7 @@
 
 import type { ImageRef } from "./constants";
 
-/** 出卡认 `ref`;`url` 给「查看原图」,B 站在 3a 交引用之前也靠它画。 */
+/** 出卡认 `ref`;`url` 给「查看原图」;抓不到图库的图(B 站抓图失败)时出卡仍靠它画。 */
 export interface PostImage {
 	ref?: ImageRef;
 	url?: string;

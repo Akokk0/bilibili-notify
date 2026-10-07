@@ -172,6 +172,13 @@ export class Api {
 	}
 
 	/**
+	 * 请求客户端的只读窄口(同一份 cookie 罐与身份):抓图进图库用它,不外露客户端别的口子。
+	 */
+	get http(): Pick<HttpClient, "fetch"> {
+		return this.client.http;
+	}
+
+	/**
 	 * 弹幕服的建连口(blive 的 `createSocket` 接的就是它):经长期有效的那个客户端建连,握手头由
 	 * 客户端按身份与 cookie 罐装配 —— `Cookie`(这个地址该带的)在前、`User-Agent`(身份的)在后,不带
 	 * `sec-ch-ua` / `Origin`。这里不再另给头:握手的 UA 与同进程的 HTTP 请求是同一份身份。

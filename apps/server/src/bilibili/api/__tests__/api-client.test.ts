@@ -214,6 +214,23 @@ describe("ApiClient — 请求头", () => {
 	});
 });
 
+describe("ApiClient.http —— 抓图进图库用的只读窄口", () => {
+	// 验红:把 `get http()` 改成回一个新建的 HttpClient,默认头与 cookie 罐两条红。
+	it("同一个客户端:带它的默认头与 cookie 罐,非 2xx 不抛、回结果(不是 get 的抛错语义)", async () => {
+		const jar = new CookieJar();
+		jar.setFromSetCookie("SESSDATA=sess; Path=/", `${baseURL}/`);
+		const client = makeClient(jar);
+
+		const response = await client.http.fetch(new URL(`${baseURL}/status-412`), {
+			cookies: "send-only",
+		});
+
+		expect(response.ok && response.status).toBe(412);
+		expect(lastReq.headers?.["user-agent"]).toBe("test-ua/1.0");
+		expect(lastReq.headers?.cookie).toContain("SESSDATA=sess");
+	});
+});
+
 describe("ApiClient.redirectLocation", () => {
 	it("只取第一跳的 Location(补成绝对地址),不跟过去", async () => {
 		const client = makeClient();

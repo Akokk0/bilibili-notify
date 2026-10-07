@@ -16,6 +16,9 @@
  * - 充电专属 → `locked`(`hint` 用作者名拼好);「暂时无法渲染」「原动态不可见」→ `notice`;
  * - 转发 → `repost`(内层不带互动数);互动数 → `stats`。
  *
+ * **图只给 `url`、不给 `ref`**:这里是同步的翻译,不碰网络与图库。出卡前由 `bilibili/images.ts` 的
+ * `fetchPostImages` 把配图、封面、商品图、徽标抓进图库,在图上加 `ref`(原地址还留着)。
+ *
  * 翻出来的 `Post` 过一遍 {@link normalizePost}(片段的字拼起来必须等于 `text`,对不上就丢掉 `richText`)。
  * 这里的翻译保证对得上 —— 对不上被丢掉的话,正文里的高亮会无声消失,`post-from-dynamic.test.ts` 有一条直说原因的测试。
  *

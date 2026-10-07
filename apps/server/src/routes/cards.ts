@@ -73,12 +73,14 @@ import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
 import type { Api } from "../bilibili/api/index.js";
 import { postFromDynamic } from "../bilibili/dynamic/index.js";
+import { fetchLiveCover, fetchPostImages, type ImagesDeps } from "../bilibili/images.js";
 import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
 import { imageRefDataUrl } from "../images/image-data-url.js";
+import { createImageFetcher } from "../images/image-fetcher.js";
 import {
 	deleteCardBg,
 	firstExistingCardBg,
@@ -355,6 +357,11 @@ const SkinShotRequestSchema = z.object({
 export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	const app = new Hono();
 	const log = opts.deps.runtime.serviceCtx.logger;
+	// 预览的真实拉取与真推送一样:出卡前把图抓进图库。请求客户端是 B 站接口那个,引用方是 `postImages` 这一家。
+	const imagesDepsOf = (api: Api): ImagesDeps => ({
+		images: createImageFetcher({ http: api.http, images: opts.deps.runtime.postImages }),
+		logger: log,
+	});
 
 	// 自动探测本机 Chrome —— dashboard「自动探测」按钮。未配 chromePath 时一键找到
 	// 本地浏览器,免手填路径;探测不到返回 { path: null }。
@@ -874,6 +881,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					(await resolveRoomIdFromUid(opts.api, content.uid?.trim() ?? ""));
 				const buffer = await renderRealLive(
 					opts.api,
+					imagesDepsOf(opts.api),
 					renderer,
 					roomId,
 					style,
@@ -893,6 +901,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				if (!opts.api) throw new Error("auth system 未就绪 — 后端账号尚未登录");
 				const buffer = await renderRealDynamic(
 					opts.api,
+					imagesDepsOf(opts.api),
 					renderer,
 					content.uid.trim(),
 					content.offset ?? 1,
@@ -1137,6 +1146,7 @@ export async function resolveRoomIdFromUid(api: Api, uid: string): Promise<strin
 
 async function renderRealLive(
 	api: Api,
+	imagesDeps: ImagesDeps,
 	renderer: ImageRenderer,
 	roomId: string,
 	style: PreviewStyle,
@@ -1172,12 +1182,16 @@ async function renderRealLive(
 	// us aligned with what the periodic ongoing-tick passes in production.
 	// 先翻成中立的输入(与直播引擎的推送同一份翻译),再交给出卡入口。主播头像 B 站到 3a 才有(`master` 里的
 	// `face` 是远端地址,不进输入)。
+	// 封面出卡前先抓进图库(3a-34),与直播引擎的推送同一条:预览与真推送画出来一个样。
 	return renderer.generateLiveCard(
-		liveCardInputFromRoomInfo(
-			room.data,
-			master.data.info.uname,
-			{}, // liveData — no danmaku context in preview, watched/liked left blank
-			2,
+		await fetchLiveCover(
+			liveCardInputFromRoomInfo(
+				room.data,
+				master.data.info.uname,
+				{}, // liveData — no danmaku context in preview, watched/liked left blank
+				2,
+			),
+			imagesDeps,
 		),
 		{
 			// 自定义直播封面:跳过悬空引用(文件已删的 id),取第一张盘上存在的图 ——
@@ -1191,6 +1205,7 @@ async function renderRealLive(
 
 async function renderRealDynamic(
 	api: Api,
+	imagesDeps: ImagesDeps,
 	renderer: ImageRenderer,
 	uid: string,
 	offset: number,
@@ -1215,7 +1230,8 @@ async function renderRealDynamic(
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
 	// 真实动态:B 站原始数据先翻成中立的 `Post`,再走出卡器的唯一入口(推送与链接预览同一条)。
-	return renderer.generatePostCard(postFromDynamic(item), skin);
+	// 配图出卡前先抓进图库(3a-34),与动态引擎的推送同一条。
+	return renderer.generatePostCard(await fetchPostImages(postFromDynamic(item), imagesDeps), skin);
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────

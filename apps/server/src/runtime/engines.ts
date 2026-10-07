@@ -73,6 +73,7 @@ import {
 	resolveDynamicColorOptions,
 	type WorkSubscriptionSettings,
 } from "../bilibili/dynamic/index.js";
+import type { ImagesDeps } from "../bilibili/images.js";
 import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import {
 	LiveEngine,
@@ -277,6 +278,11 @@ export interface CreateEnginesOptions {
 	 * 开机时调一次 `ensure()` 抓图(不等它),直播间出卡前再补一次。
 	 */
 	guardIcons: GuardIcons;
+	/**
+	 * B 站作品图 / 直播封面的抓图服务(用 B 站接口那个请求客户端、`AppRuntime.postImages` 这一家引用方建的,接线层给):
+	 * 出卡前把图抓进图库(3a-34)。必给 —— 漏给是编译不过,不是悄悄不出图。
+	 */
+	imageFetcher: ImagesDeps["images"];
 	/**
 	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
 	 * 记进去。不给就只记日志。
@@ -576,6 +582,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		push: dynamicPushLike,
 		image: imageRenderer ?? undefined,
 		ai: commentary ?? undefined,
+		imageFetcher: opts.imageFetcher,
 		cardFailures,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
@@ -650,6 +657,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		push: livePushLike,
 		contentBuilder: segmentContentBuilder,
 		guardIcons: opts.guardIcons,
+		imageFetcher: opts.imageFetcher,
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
 		config: liveConfig(),

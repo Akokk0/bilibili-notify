@@ -32,6 +32,7 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	DEFAULT_MESSAGE_LAYOUT,
+	fail,
 	type Identity,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -403,6 +404,8 @@ function setup(opts?: {
 	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
 	/** 大航海徽章图标(接线层给的 `runtime.guardIcons`);不给 = 一个什么都没有的替身。 */
 	guardIcons?: Parameters<typeof createEngines>[0]["guardIcons"];
+	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
+	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
 	loginStatus?: BiliLoginStatus;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
@@ -471,6 +474,9 @@ function setup(opts?: {
 			ensure: async () => {},
 			iconOf: () => undefined,
 			refs: () => [],
+		},
+		imageFetcher: opts?.imageFetcher ?? {
+			fetchImage: async () => fail("unavailable", "测试替身不联网"),
 		},
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
 		...(opts?.cardSkins ? { cardSkins: opts.cardSkins } : {}),
@@ -627,6 +633,19 @@ describe("createEngines — 大航海徽章图标接线", () => {
 		const guardIcons = makeIcons(async () => {});
 		setup({ guardIcons });
 		expect(H.live[0].opts.guardIcons).toBe(guardIcons);
+	});
+});
+
+describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
+	// 验红:把 engines.ts 里递给 DynamicEngine / LiveEngine 的 `imageFetcher: opts.imageFetcher` 各删一次,对应那条红
+	// (动态卡 / 直播卡出卡前没人去抓图,卡上的图只剩地址,出图器只认引用 —— 一张图都没有而门禁全绿)。
+	it("同一份抓图服务分别递给 DynamicEngine 与 LiveEngine", () => {
+		const imageFetcher = { fetchImage: vi.fn() } as unknown as NonNullable<
+			Parameters<typeof createEngines>[0]["imageFetcher"]
+		>;
+		setup({ imageFetcher });
+		expect(H.dynamic[0].opts.imageFetcher).toBe(imageFetcher);
+		expect(H.live[0].opts.imageFetcher).toBe(imageFetcher);
 	});
 });
 

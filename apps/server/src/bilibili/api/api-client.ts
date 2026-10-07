@@ -43,12 +43,20 @@ function setHeaderIn(headers: Record<string, string>, name: string, value: strin
 }
 
 export class ApiClient {
-	private readonly http: HttpClient;
+	private readonly httpClient: HttpClient;
 	private readonly onBody?: (body: unknown) => void;
 
 	constructor(opts: ApiClientOptions) {
-		this.http = opts.http;
+		this.httpClient = opts.http;
 		this.onBody = opts.onBody;
+	}
+
+	/**
+	 * 同一个 `HttpClient` 的只读窄口:要走 B 站这套 cookie 与身份、又不要这一层「非 2xx 抛错」语义的调用方
+	 * (抓图进图库,`createImageFetcher({ http })`)拿它。只开 `fetch`,别的口子不外露。
+	 */
+	get http(): Pick<HttpClient, "fetch"> {
+		return this.httpClient;
 	}
 
 	/**
@@ -56,7 +64,7 @@ export class ApiClient {
 	 * 和 `get` / `postForm` 的头(默认头、这次请求的头)无关 —— 那些是 fetch 的头。
 	 */
 	websocket(url: string, options?: WebSocketOptions): WebSocketLike {
-		return this.http.websocket(url, options);
+		return this.httpClient.websocket(url, options);
 	}
 
 	async get(url: string, opts?: RequestOptions): Promise<unknown> {
@@ -69,7 +77,7 @@ export class ApiClient {
 	 * 相对 Location 按当前地址补成绝对地址。只外发 cookie、不摄入那一跳的 Set-Cookie。
 	 */
 	async redirectLocation(url: string): Promise<string | null> {
-		const result = await this.http.fetch(url, {
+		const result = await this.httpClient.fetch(url, {
 			maxRedirects: 0,
 			cookies: "send-only",
 		});
@@ -105,7 +113,7 @@ export class ApiClient {
 		}
 		if (contentType) setHeaderIn(headers, "Content-Type", contentType);
 
-		const result = await this.http.fetch(url, {
+		const result = await this.httpClient.fetch(url, {
 			method,
 			headers,
 			body,

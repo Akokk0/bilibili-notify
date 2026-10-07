@@ -11,6 +11,7 @@ import {
 	type MembershipTier,
 	type Result,
 } from "@bilibili-notify/internal";
+import { IMAGE_REQUEST_HEADERS } from "../images";
 
 /** 档位表里的三档(体系声明成逐档列出,不会是 `"custom"`)。 */
 const GUARD_TIERS: readonly MembershipTier[] = Array.isArray(BILIBILI_GUARD_PROGRAM.tiers)
@@ -18,7 +19,7 @@ const GUARD_TIERS: readonly MembershipTier[] = Array.isArray(BILIBILI_GUARD_PROG
 	: [];
 
 /** 抓这几张图时带的请求头:B 站静态站的图按站内引用来取。装配处建请求客户端时用它,核心那边不写 B 站的地址。 */
-export const GUARD_ICON_REQUEST_HEADERS = { Referer: "https://www.bilibili.com/" } as const;
+export const GUARD_ICON_REQUEST_HEADERS = IMAGE_REQUEST_HEADERS;
 
 /** 两次抓取尝试之间的最小间隔:抓不到时别每条上舰都去打一次网络。 */
 export const GUARD_ICON_RETRY_INTERVAL_MS = 5 * 60 * 1000;

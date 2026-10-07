@@ -46,6 +46,7 @@ import { createReportProblemLog } from "./extensions/report-problems.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
+import { createImageFetcher } from "./images/image-fetcher.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import {
@@ -798,6 +799,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			liveImages: runtime.liveImages,
 			// 大航海徽章图标(3a-33):开机抓、上舰卡按档取;引用方「来源声明的图」在 bootstrap 里登记。
 			guardIcons: runtime.guardIcons,
+			// B 站的作品图与直播封面(3a-34):出卡前经 B 站接口那个请求客户端(同一套 cookie 与身份)抓进图库,
+			// 引用方是 `postImages` 这一家(名单恒空,靠新图的宽限期活到卡片画完)。
+			imageFetcher: createImageFetcher({ http: authSystem.api.http, images: runtime.postImages }),
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,

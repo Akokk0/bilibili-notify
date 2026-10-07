@@ -1,10 +1,15 @@
-import type { MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
+import {
+	isBlockVisible,
+	type MessageKindLayout,
+	type MessageLayoutSegment,
+} from "@bilibili-notify/internal";
 import {
 	type LiveRoomResponse,
 	type MasterInfoData,
 	type MyselfResponse,
 	RiskControlError,
 } from "../../api/index.js";
+import { fetchLiveCover } from "../../images";
 import { liveCardInputFromRoomInfo } from "../live-card-input";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "../live-notify";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
@@ -309,9 +314,14 @@ export class RoomContext extends RoomContextBase {
 		pushId?: string;
 	}): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, uid } = params;
+		let input = liveCardInputFromRoomInfo(liveRoomInfo, master.username, liveData, liveType);
+		// 封面在**确定要出卡时**才抓进图库(3a-34):出卡条件与 `pushLiveNotify` 同一份(有渲染器、版式里卡片块可见)。
+		if (this.imageRenderer && isBlockVisible(params.messageLayout, "card")) {
+			input = await fetchLiveCover(input, { images: this.imageFetcher, logger: this.logger });
+		}
 		await pushLiveNotify(
 			{
-				input: liveCardInputFromRoomInfo(liveRoomInfo, master.username, liveData, liveType),
+				input,
 				text: params.notifyMsg,
 				link: params.roomLink ?? "",
 				layout: params.messageLayout,

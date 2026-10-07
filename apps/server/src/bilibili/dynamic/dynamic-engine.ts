@@ -13,6 +13,7 @@ import {
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import type { Api } from "../api/index.js";
+import { fetchPostImages, type ImagesDeps } from "../images";
 import {
 	blockedNotice,
 	filterPost,
@@ -139,6 +140,11 @@ export interface DynamicEngineOptions {
 	image?: ImageRenderer;
 	/** 可选注入：AI 点评生成器；缺失时跳过 AI 文案生成。 */
 	ai?: CommentaryProvider;
+	/**
+	 * 抓图服务(用 B 站接口那个请求客户端建的,`runtime/engines.ts`):出卡前把作品里只有地址的图抓进图库。
+	 * 必给 —— 漏给是编译不过,不是悄悄不出图。
+	 */
+	imageFetcher: ImagesDeps["images"];
 	config: DynamicEngineConfig;
 	/**
 	 * 出图连续失败的计数(只提醒一次)。宿主想让 B 站动态与拓展作品共用一份(同一个渲染器,
@@ -222,11 +228,18 @@ function workFromDynamic(
 	post: Post,
 	name: string,
 	videoUrlToBV: boolean,
+	imagesDeps: ImagesDeps,
 ): NeutralWork {
 	const isVideo = item.type === "DYNAMIC_TYPE_AV";
+	// 图在**确定要出卡时**才抓进图库(renderCard 被调到才抓):被过滤掉的、关了出图的、没有渲染器的动态
+	// 一张都不抓。一条作品只抓一次(抓图不抛,所以缓存的是 Promise 本身,并发的几次调用共用同一趟)。
+	let fetched: Promise<Post> | undefined;
 	return {
 		// 出图器不认识任何 B 站字段,走出卡器的唯一入口。
-		renderCard: (image, colorOptions) => image.generatePostCard(post, colorOptions),
+		renderCard: async (image, colorOptions) => {
+			fetched ??= fetchPostImages(post, imagesDeps);
+			return image.generatePostCard(await fetched, colorOptions);
+		},
 		link: dynamicLink(item, isVideo, videoUrlToBV),
 		name,
 		isVideo,
@@ -250,6 +263,7 @@ export class DynamicEngine {
 	private readonly push: PushLike;
 	private image?: ImageRenderer;
 	private ai?: CommentaryProvider;
+	private readonly imageFetcher: ImagesDeps["images"];
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
 
@@ -310,6 +324,7 @@ export class DynamicEngine {
 		this.push = opts.push;
 		this.image = opts.image;
 		this.ai = opts.ai;
+		this.imageFetcher = opts.imageFetcher;
 		this.config = opts.config;
 		this.getSubs = opts.getSubs;
 		this.logger = opts.serviceCtx.logger;
@@ -840,7 +855,10 @@ export class DynamicEngine {
 				// 订阅的设置用本轮捕获的那份 —— 过滤之后到这里没有 await,就是此刻表里那份。
 				// 主卡发送抛错往外冒到下面的 catch → markFail,下一轮再来。
 				const outcome = await deliverWork({
-					work: workFromDynamic(item, post, name, this.config.dynamicVideoUrlToBV),
+					work: workFromDynamic(item, post, name, this.config.dynamicVideoUrlToBV, {
+						images: this.imageFetcher,
+						logger: this.logger,
+					}),
 					settings: subAtCapture,
 					push: {
 						broadcast: (segments, part, opts) =>

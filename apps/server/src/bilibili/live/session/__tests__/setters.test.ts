@@ -112,6 +112,7 @@ const buildEngineWith = (initialImage: ImageRenderer | null, logger: Logger): Li
 		// biome-ignore lint/suspicious/noExplicitAny: 同上
 		contentBuilder: {} as any,
 		guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
+		imageFetcher: { fetchImage: vi.fn() },
 		imageRenderer: initialImage,
 		commentary: null,
 		config: {

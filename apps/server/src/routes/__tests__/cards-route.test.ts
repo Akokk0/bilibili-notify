@@ -7,8 +7,11 @@ import {
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
+	fail,
+	ok,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { png } from "../../__tests__/support/report-images.js";
 import type { Api } from "../../bilibili/api/index.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
@@ -47,10 +50,31 @@ function makeGuardIcons(opts: { gets?: boolean } = {}) {
 	return { ensure, iconOf, refs: () => [] };
 }
 
+/** 预览路由抓图存进图库后得到的引用(假的图库每张都回它)。 */
+const PREVIEW_IMAGE_REF = `${"e".repeat(64)}.png`;
+
+/** 假的 B 站请求客户端(`Api.http`):每个地址回一张 png,数一数抓了哪些地址。不联网。 */
+function imageHttp() {
+	const fetch = vi.fn(async (url: URL | string) =>
+		ok({
+			url: String(url),
+			status: 200,
+			headers: new Headers(),
+			body: png(8, 8, 1),
+			isSuccess: true,
+			text: () => "",
+			json: () => ({ ok: false as const, code: "invalid" as const, message: "不是 json" }),
+		}),
+	);
+	return { fetch };
+}
+
 function makeDeps(guardIcons = makeGuardIcons()): RouteDeps {
 	return {
 		runtime: {
 			guardIcons,
+			// 预览抓图存进的图库(`postImages` 这一家):每张都回同一个引用。
+			postImages: { put: vi.fn(async () => ok({ ref: PREVIEW_IMAGE_REF })) },
 			dataRoot: join(tmpdir(), "bn-test-cards-route-no-such-dir"),
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -1046,6 +1070,8 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				close: vi.fn(async () => {}),
 			};
 			const api = {
+				// 抓不到图(图库那头不收 data URL):封面保持只有地址,原样交给出图器 —— 这几条测的是挑哪张封面。
+				http: { fetch: vi.fn(async () => fail("unavailable", "测试不联网")) },
 				fetchLiveRoomInfo: vi.fn(async () => ({
 					code: 0,
 					data: { uid: 12345, live_status: 0, title: "没在播", ...room },
@@ -1594,8 +1620,10 @@ describe("cards route — /preview 走皮肤", () => {
 	 * 验红:把 renderRealLive 里的 `liveCardInputFromRoomInfo(…)` 换成直接递房间数据,或把状态写死成别的,这条红。
 	 * 主播的头像地址(`face`)是远端地址,B 站到 3a 才有引用可给,不进输入。
 	 */
-	it("真实直播那条路:先翻成中立输入再交给 generateLiveCard,头像不进输入", async () => {
+	it("真实直播那条路:先翻成中立输入、封面抓进图库,再交给 generateLiveCard,头像不进输入", async () => {
+		const http = imageHttp();
 		const api = {
+			http,
 			fetchLiveRoomInfo: vi.fn(async () => ({
 				code: 0,
 				data: {
@@ -1635,10 +1663,13 @@ describe("cards route — /preview 走皮肤", () => {
 			title: "真实标题",
 			category: "真实分区",
 			description: "",
-			cover: { url: "https://i0.hdslb.com/cover.png" },
+			// 预览与真推送同一条:出卡前封面经 B 站接口的请求客户端抓进图库(3a-34),原地址留着。
+			// 验红:删掉 renderRealLive 里的 `fetchLiveCover`,这条红(封面只有地址)。
+			cover: { url: "https://i0.hdslb.com/cover.png", ref: PREVIEW_IMAGE_REF },
 			startedAt: "2026-09-13T12:00:00.000Z",
 			currentViewers: 321,
 		});
+		expect(String(http.fetch.mock.calls[0]?.[0])).toBe("https://i0.hdslb.com/cover.png");
 		spy.mockRestore();
 	});
 
@@ -1688,6 +1719,43 @@ describe("cards route — /preview 走皮肤", () => {
 		expect(post).toMatchObject({ creator: { name: "真实UP" }, text: "你好" });
 		expect(post).not.toHaveProperty("modules");
 		expect((spy.mock.calls[0]?.[1] as { cardSkin?: string } | undefined)?.cardSkin).toBe("marked");
+		spy.mockRestore();
+	});
+
+	// 验红:删掉 renderRealDynamic 里的 `fetchPostImages`,这条红(配图只有地址,出图器只认引用)。
+	it("真实动态那条路:作品里的配图先抓进图库,再交给 generatePostCard", async () => {
+		const pic = "https://i0.hdslb.com/bfs/new_dyn/pic.jpg";
+		const rawItem = {
+			basic: {},
+			id_str: "1",
+			type: "DYNAMIC_TYPE_DRAW",
+			modules: {
+				module_author: { name: "真实UP", pub_ts: 1_700_000_000, vip: { type: 0 } },
+				module_dynamic: {
+					desc: { text: "", rich_text_nodes: [] },
+					major: { opus: { pics: [{ url: pic, width: 10, height: 20 }] } },
+				},
+				module_stat: { forward: { count: 1 }, comment: { count: 2 }, like: { count: 3 } },
+			},
+		};
+		const http = imageHttp();
+		const api = {
+			http,
+			fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+		} as unknown as Api;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generatePostCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
+			puppeteer: makeFakePuppeteer(),
+			api,
+		});
+		const res = await postPreview(app, { kind: "post", style: STYLE, content: { uid: "12345" } });
+		expect(res.status).toBe(200);
+		const post = spy.mock.calls[0]?.[0] as { images?: { url?: string; ref?: string }[] };
+		expect(post.images?.[0]).toMatchObject({ url: pic, ref: PREVIEW_IMAGE_REF });
+		expect(String(http.fetch.mock.calls[0]?.[0])).toBe(`${pic}@1280w_80q_1s.webp`);
 		spy.mockRestore();
 	});
 

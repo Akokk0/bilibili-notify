@@ -22,7 +22,9 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	DEFAULT_CONTENT_FILTERS,
 	defaultMessageKindLayout,
+	type ImageRef,
 	type MessageBus,
+	ok,
 	type Post,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
@@ -240,6 +242,8 @@ interface EngineBag {
 	trigger: (event: string, payload?: unknown) => void;
 	disposers: Array<() => void | Promise<void>>;
 	generatePostCard: ReturnType<typeof vi.fn>;
+	/** 注入给引擎的抓图服务(`imageFetcher` 选项):每个地址回一个以它命名的引用,测试数调用。 */
+	fetchImage: ReturnType<typeof vi.fn>;
 	comment: ReturnType<typeof vi.fn>;
 	logs: LogRec[];
 	/** 注入给引擎的出图失败计数(`cardFailures` 选项),测试直接读它。 */
@@ -269,6 +273,9 @@ function makeEngine(
 		sendErrorMsg: vi.fn(async () => {}),
 	};
 	const generatePostCard = vi.fn();
+	const fetchImage = vi.fn(async (url: string) =>
+		ok({ ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef }),
+	);
 	const image = { generatePostCard } as unknown as ImageRenderer;
 	const comment = vi.fn();
 	const ai = { comment } as unknown as CommentaryGenerator;
@@ -280,6 +287,7 @@ function makeEngine(
 		push: push as unknown as PushLike,
 		image: over.withImage ? image : undefined,
 		ai: over.withAi ? ai : undefined,
+		imageFetcher: { fetchImage },
 		config: {
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
@@ -298,6 +306,7 @@ function makeEngine(
 		trigger,
 		disposers,
 		generatePostCard,
+		fetchImage,
 		comment,
 		logs,
 		cardFailures,
@@ -854,6 +863,64 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 			text: "你好世界",
 		});
 		expect(post).not.toHaveProperty("modules");
+	});
+
+	// 3a-34:B 站的图在出卡前自己抓进图库。零件(抓图函数、出卡器)各自绿,证明不了引擎真的接上了。
+	// 验红:把 dynamic-engine.ts `workFromDynamic` 里 renderCard 的 `await fetched` 换成直接交 `post`,这条红。
+	it("出卡时作品里只有地址的图先抓进图库,出卡器收到的 Post 带 ref", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] }),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
+		expect(post.images).toHaveLength(1);
+		expect(post.images?.[0]?.ref).toBeDefined();
+		expect(post.images?.[0]?.url).toBe("https://i0.hdslb.com/bfs/new_dyn/a.jpg");
+	});
+
+	it("关了出图 / 没有渲染器:不出卡也就一张图都不抓", async () => {
+		for (const over of [
+			{ withImage: false },
+			{ withImage: true, config: { imageEnabled: false } },
+		]) {
+			const b = makeEngine(over);
+			b.fetchAllDynamic.mockResolvedValue(
+				resp([
+					makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] }),
+				]),
+			);
+			seed(b.engine, "1", 0);
+			await detect(b.engine);
+			expect(b.fetchImage).not.toHaveBeenCalled();
+		}
+	});
+
+	it("被过滤掉的动态一张图都不抓", async () => {
+		const b = makeEngine({ withImage: true });
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1500,
+					text: "含禁词",
+					drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0, {
+			uid: "1",
+			uname: "UP",
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+		});
+		await detect(b.engine);
+		expect(b.generatePostCard).not.toHaveBeenCalled();
+		expect(b.fetchImage).not.toHaveBeenCalled();
 	});
 
 	// per-UP 的皮肤 id 要一路走到 generatePostCard —— 断在哪一跳都是
@@ -1632,7 +1699,8 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 		await detect(b.engine);
 		expect(postFromDynamic).toHaveBeenCalledTimes(1);
 		const translated = vi.mocked(postFromDynamic).mock.results[0]?.value;
-		expect(b.generatePostCard.mock.calls[0]?.[0]).toBe(translated);
+		// 出卡前抓图换出的是一份新对象(3a-34),这条作品没有图要抓,所以内容与翻译出来的那份一致。
+		expect(b.generatePostCard.mock.calls[0]?.[0]).toEqual(translated);
 		// 点评的文字取自同一份 Post(`postText(post, "labeled")`)。
 		expect(b.comment.mock.calls[0]?.[0]).toContain("正文");
 	});
@@ -1883,6 +1951,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			bus,
 			api,
 			push,
+			imageFetcher: { fetchImage: vi.fn() },
 			config: {
 				dynamicCron: "*/2 * * * *",
 				dynamicVideoUrlToBV: false,
