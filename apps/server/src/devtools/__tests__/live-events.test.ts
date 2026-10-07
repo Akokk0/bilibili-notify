@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { GuardLevel, type LiveEvent } from "../../bilibili/live/events.js";
+import { GuardLevel, type LiveEvent } from "../../bilibili/live/protocol/events.js";
 import { createLiveRooms } from "../live-rooms.js";
 import { createDevRegistry, DevParamError } from "../registry.js";
 import type { SubPick } from "../scenarios/live.js";

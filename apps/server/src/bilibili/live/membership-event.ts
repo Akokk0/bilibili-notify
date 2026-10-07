@@ -7,7 +7,7 @@
  */
 
 import { guardTierOf, type MembershipEvent } from "@bilibili-notify/internal";
-import type { LiveEvent } from "./events.js";
+import type { LiveEvent } from "./protocol/events.js";
 
 type GuardBuyEvent = Extract<LiveEvent, { kind: "guard-buy" }>;
 

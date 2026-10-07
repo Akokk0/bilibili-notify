@@ -6,7 +6,7 @@
  */
 
 import type { SuperchatEvent } from "@bilibili-notify/internal";
-import type { LiveEvent } from "./events.js";
+import type { LiveEvent } from "./protocol/events.js";
 
 type SuperChatEvent = Extract<LiveEvent, { kind: "superchat" }>;
 

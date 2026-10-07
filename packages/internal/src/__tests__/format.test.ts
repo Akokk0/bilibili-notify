@@ -121,7 +121,7 @@ describe("formatClock", () => {
  * ㉒d 起 B 站观看人数传精确数 `num`,排版归 `formatCount`(面板「正在直播」那一列、文字模板的 `{watched}`、下播卡的
  * 「累计观看人数」),不再沿用 B 站排好的字。这张表是给主人看的对照 —— **如实列,不为了对上去改 `formatCount`**:
  * - `formatCount` 那一列是现状,断言钉着;
- * - `bili` 那一列:`certain: true` 的是仓库里有**真实录制帧**为证的(`apps/server/src/bilibili/live/__tests__/fixtures/payloads.json`
+ * - `bili` 那一列:`certain: true` 的是仓库里有**真实录制帧**为证的(`apps/server/src/bilibili/live/protocol/__tests__/fixtures/payloads.json`
  *   的 `WATCHED_CHANGE`:`num: 87334` ↔ `text_small: "8.7万"`),断言两边相同;`certain: false` 的是我按 B 站惯例
  *   的**推测**,仓库里没有录制帧能证实,只写在这里供人核对,**不进断言**(`bili` 写的是我的推测值)。
  *

@@ -1,0 +1,271 @@
+import type { ImageRenderer } from "@bilibili-notify/image";
+import type { Logger, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
+import type { Api } from "../../api/index.js";
+import type { LiveContentBuilder } from "../content-builder";
+import type { GuardIcons } from "../guard-icons.js";
+import type { LiveClient } from "../protocol/client.js";
+import {
+	type LiveCreatorFeature,
+	needsLiveMonitor,
+	type PickLiveCover,
+	type PushLike,
+	type SubItemView,
+	wantsLiveEndExtras,
+} from "../push-like";
+import type { DanmakuCollector } from "../recap/danmaku-collector";
+import type { LiveSummaryRequester } from "../recap/live-summary-requester";
+import type { WordcloudGenerator } from "../recap/wordcloud-generator";
+import type { LiveTemplateRenderer } from "../template-renderer";
+
+/**
+ * 模板 / 渲染层全局配置,listener-manager + room-session 共用。
+ *
+ * 不含 `streamingIntervalHours` / `catchUpOnBoot` / `minSuperchatAmount` / `minGuardRank` —— 那些是
+ * per-UP 字段,adapter build SubItemView 时已折算好,引擎直接读 `SubItemView.X`。
+ */
+export interface ListenerManagerConfig {
+	/** 全局的上舰文案(`defaults.templates.membership.guard`,㉓d):订阅自己没开自定义文案时用它。 */
+	guardTemplate: MembershipTemplateBundle;
+	customLiveMsg: {
+		enable: boolean;
+		customLiveStart?: string;
+		customLiveStreaming?: string;
+		customLiveEnd?: string;
+	};
+	/** Default global `liveSummary` template (joined with `\n`). */
+	liveSummaryDefault: string;
+	/**
+	 * 图片卡片渲染总开关。`false` 时 RoomContext 暴露的 imageRenderer 始终为 null,
+	 * 直播开播 / SC / 上舰 等路径自然走 `if (renderer?.generateXxx)` 落入文字回退。缺省视为 true。
+	 */
+	imageEnabled?: boolean;
+	/**
+	 * 全局默认直播封面列表(`defaults.cardStyle.liveCoverImages`,独立端专属)。
+	 * 该 UP 无覆盖时 `resolvedCardStyle("live")` 拿它做封面轮换兜底,语义同上。
+	 */
+	defaultLiveCoverImages?: string[];
+}
+
+/**
+ * Constructor options for {@link RoomContext}. Mirrors the dependency set
+ * passed into `LiveEngine`; the engine builds one `RoomContext` and shares it
+ * with both {@link import("./listener-manager").ListenerManager} (for lifecycle
+ * + connection setup) and {@link import("./room-session").RoomSession} (for
+ * per-room dispatcher).
+ */
+export interface RoomContextOptions {
+	serviceCtx: ServiceContext;
+	api: Api;
+	push: PushLike;
+	contentBuilder: LiveContentBuilder;
+	templateRenderer: LiveTemplateRenderer;
+	wordcloudGenerator: WordcloudGenerator;
+	liveSummaryRequester: LiveSummaryRequester;
+	danmakuCollector: DanmakuCollector;
+	/**
+	 * 渲染器 provider —— LiveEngine 在 image 服务上下线时通过 setImageRenderer
+	 * 替换内部状态;getter `imageRenderer` 每次现取,所有 RoomContext 自动同步。
+	 */
+	getImageRenderer: () => ImageRenderer | null;
+	config: ListenerManagerConfig;
+	emitEngineError: (message: string) => void;
+	/**
+	 * 推送 per-UID 直播状态变化(`onLiveStart` / `onLiveEnd` / `bootstrap 已开播` /
+	 * `stopMonitoring 时挂掉的活房间`)。宿主实现:`(uid, status) => bus.emit("live-state-changed", { uid, status })`。
+	 */
+	emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
+	/**
+	 * 推送 per-UID 累计观看人数变化(B 站 `WATCHED_CHANGE` 帧的精确数 `num`,节流后转发)。宿主实现:
+	 * `(uid, viewers) => bus.emit("live-viewers-changed", { uid, viewers })`。room-session 在调用前
+	 * 做 per-UID 2s throttle,所以这里收到的频率已经稀疏(每个直播间最多每 2s 一次)。
+	 */
+	emitViewers: (uid: string, viewers: number) => void;
+	/**
+	 * 背景图轮换选择器。多图卡片「每次推送轮换」;返回 undefined → 推送点回退单图。
+	 * 独立端由 `createCardBgRotator` 支撑(fs 持久化游标)。
+	 */
+	pickCardBackground: PickLiveCover;
+	/** 大航海徽章图标(图库里的引用):上舰卡按档取,没抓到的出卡前补抓一次。 */
+	guardIcons: GuardIcons;
+	/**
+	 * uid → roomId 解析成功后的回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
+	 * 省掉每次逐 UP 的 `fetchUserInfo` 房号解析请求。
+	 */
+	onRoomIdResolved: (uid: string, roomId: string) => void;
+}
+
+/**
+ * Shared room-level infrastructure surface. Stores all engine-injected deps,
+ * the per-room listener registry, and the periodic-timer registry; offers the
+ * lifecycle / predicate / disposal primitives consumed by both
+ * {@link import("./listener-manager").ListenerManager} and
+ * {@link import("./room-session").RoomSession}.
+ *
+ * The data-fetch / card-render / time-format helpers live in
+ * {@link import("./room-helpers").RoomContextHelpers} (a subclass of this
+ * class). The split keeps each file focused: this one handles state + WS
+ * lifecycle, the helpers file wraps every external API/IO call.
+ */
+export class RoomContextBase {
+	readonly serviceCtx: ServiceContext;
+	readonly logger: Logger;
+	readonly api: Api;
+	readonly push: PushLike;
+	readonly contentBuilder: LiveContentBuilder;
+	readonly templateRenderer: LiveTemplateRenderer;
+	readonly wordcloudGenerator: WordcloudGenerator;
+	readonly liveSummaryRequester: LiveSummaryRequester;
+	readonly danmakuCollector: DanmakuCollector;
+	/**
+	 * 渲染器 provider —— private 是因为外部应通过 `imageRenderer` getter 访问 ——
+	 * 后者会在 `config.imageEnabled === false` 时返回 null,让所有
+	 * `if (this.imageRenderer?.generateXxx)` 自然落入文字回退分支。
+	 * provider 形式让 LiveEngine 的 setImageRenderer 无需逐 RoomContext 推。
+	 *
+	 * **不要直接调 `this._getImageRenderer()` 绕过 imageEnabled 门控**,业务路径
+	 * 必须通过 `this.imageRenderer` getter,否则用户在 dashboard 关掉卡片渲染时
+	 * 这条路径仍会渲图。
+	 */
+	private readonly _getImageRenderer: () => ImageRenderer | null;
+	readonly emitEngineError: (message: string) => void;
+	/** 分发 per-UID 直播状态变化给宿主。 */
+	readonly emitLiveState: (uid: string, status: "live" | "idle", startedAt?: string) => void;
+	/** 分发 per-UID 观看人数变化给宿主。room-session 已做 per-UID 节流,这里只是分发。 */
+	readonly emitViewers: (uid: string, viewers: number) => void;
+	/**
+	 * 背景图轮换:多图时返回本次该用的背景并推进游标;选择器返回 undefined 或列表 ≤1 张
+	 * → 调用方回退单图。
+	 */
+	readonly pickBackground: PickLiveCover;
+	/** 大航海徽章图标。 */
+	readonly guardIcons: GuardIcons;
+	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
+	readonly onRoomIdResolved: (uid: string, roomId: string) => void;
+
+	config: ListenerManagerConfig;
+
+	readonly listenerRecord: Record<string, LiveClient> = {};
+	readonly livePushTimerManager: Map<string, () => void> = new Map();
+
+	private disposed = false;
+	private readonly instanceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+	constructor(opts: RoomContextOptions) {
+		this.serviceCtx = opts.serviceCtx;
+		this.logger = opts.serviceCtx.logger;
+		this.api = opts.api;
+		this.push = opts.push;
+		this.contentBuilder = opts.contentBuilder;
+		this.templateRenderer = opts.templateRenderer;
+		this.wordcloudGenerator = opts.wordcloudGenerator;
+		this.liveSummaryRequester = opts.liveSummaryRequester;
+		this.danmakuCollector = opts.danmakuCollector;
+		this._getImageRenderer = opts.getImageRenderer;
+		this.config = opts.config;
+		this.emitEngineError = opts.emitEngineError;
+		this.emitLiveState = opts.emitLiveState;
+		this.emitViewers = opts.emitViewers;
+		this.pickBackground = opts.pickCardBackground;
+		this.guardIcons = opts.guardIcons;
+		this.onRoomIdResolved = opts.onRoomIdResolved;
+	}
+
+	/** 受 `config.imageEnabled` 门控的渲染器视图;关闭时返回 null。 */
+	get imageRenderer(): ImageRenderer | null {
+		return this.config.imageEnabled === false ? null : this._getImageRenderer();
+	}
+
+	updateConfig(config: ListenerManagerConfig): void {
+		this.config = config;
+	}
+
+	isDisposed(): boolean {
+		return this.disposed;
+	}
+
+	setDisposed(value: boolean): void {
+		this.disposed = value;
+	}
+
+	getListenerCount(): number {
+		return Object.keys(this.listenerRecord).length;
+	}
+
+	logSideEffectState(stage: string): void {
+		this.logger.debug(
+			`[conn] [live:${this.instanceId}] ${stage} listeners=${this.getListenerCount()} timers=${this.livePushTimerManager.size} disposed=${this.disposed}`,
+		);
+	}
+
+	isSubscribed(sub: SubItemView, type: LiveCreatorFeature): boolean {
+		// features.X = true 即视为「订阅了该特性」;routing 由推送层(PushRouter)兜底,
+		// routing 空时 broadcast 自然不外发。这样 features.X=true / routing.X=[] 的 UP 仍开
+		// WS、仍 build payload,后续加 routing 时下一次事件立即生效。
+		return sub[type];
+	}
+
+	/** 要不要为这位 UP 攒弹幕(词云 / 总结的原料):下播开着,且至少一个附加项开着。 */
+	collectsDanmaku(sub: SubItemView): boolean {
+		return wantsLiveEndExtras(sub);
+	}
+
+	needsLiveMonitor(sub: SubItemView): boolean {
+		return needsLiveMonitor(sub);
+	}
+
+	closeListener(roomId: string): void {
+		const listener = this.listenerRecord[roomId];
+		if (!listener) {
+			this.logger.debug(`[conn] 直播间 [${roomId}] 连接不存在，跳过关闭`);
+			return;
+		}
+		if (listener.closed) {
+			// 已经结束了(自己关过,或者对面断了)—— 再 close 一次没有意义,记录摘掉就行。
+			this.logger.debug(`[conn] 直播间 [${roomId}] 连接已结束,跳过关闭`);
+			delete this.listenerRecord[roomId];
+			return;
+		}
+		// close() 之后客户端保证静默(连 close 回声都不会上报),不需要再记
+		// 「有意关闭」的账 —— 旧库会把主动关闭的 onClose 也派发出来,只能靠
+		// intentionalCloseRooms 集合事后对暗号,那套记账已随之退役。
+		listener.close();
+		delete this.listenerRecord[roomId];
+		this.logger.info(`[conn] 直播间 [${roomId}] 连接已关闭`);
+		this.logSideEffectState(`listener:closed room=${roomId}`);
+	}
+
+	clearListeners(): void {
+		this.logSideEffectState("listeners:before-clear");
+		// Object.keys() 已是快照,迭代期间 closeListener 删除 record 不影响本循环;
+		// closeListener 内部自身已 delete,此处无需再 delete 一次(原冗余双删)。
+		for (const key of Object.keys(this.listenerRecord)) {
+			this.closeListener(key);
+		}
+		this.logSideEffectState("listeners:after-clear");
+	}
+
+	clearPushTimers(): void {
+		this.logSideEffectState("timers:before-clear");
+		for (const [, timer] of this.livePushTimerManager) timer?.();
+		this.livePushTimerManager.clear();
+		this.logSideEffectState("timers:after-clear");
+	}
+
+	stopMonitoring(reason: string, roomId?: string): void {
+		if (roomId) {
+			this.logger.error(`[conn] [${roomId}] ${reason}，已停止该房间的监测`);
+			this.closeListener(roomId);
+			const timer = this.livePushTimerManager.get(roomId);
+			if (timer) {
+				timer();
+				this.livePushTimerManager.delete(roomId);
+			}
+			this.emitEngineError(`[${roomId}] ${reason}`);
+			return;
+		}
+		this.logger.error(`[conn] ${reason}，直播监测已停止`);
+		this.clearListeners();
+		this.clearPushTimers();
+		this.emitEngineError(reason);
+	}
+}

@@ -8,7 +8,7 @@ import {
 	createGuardIcons,
 	GUARD_ICON_REQUEST_HEADERS,
 	type GuardIcons,
-} from "../bilibili/guard-icons.js";
+} from "../bilibili/live/guard-icons.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";

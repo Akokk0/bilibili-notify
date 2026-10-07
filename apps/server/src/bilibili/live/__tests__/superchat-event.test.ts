@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import type { LiveEvent } from "../events.js";
+import type { LiveEvent } from "../protocol/events.js";
 import { superchatEventFromLiveEvent } from "../superchat-event";
 
 type SuperChat = Extract<LiveEvent, { kind: "superchat" }>;

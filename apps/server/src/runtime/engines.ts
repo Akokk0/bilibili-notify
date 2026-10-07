@@ -73,7 +73,7 @@ import {
 	resolveDynamicColorOptions,
 	type WorkSubscriptionSettings,
 } from "../bilibili/dynamic/index.js";
-import type { GuardIcons } from "../bilibili/guard-icons.js";
+import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import {
 	LiveEngine,
 	type LiveEngineConfig,

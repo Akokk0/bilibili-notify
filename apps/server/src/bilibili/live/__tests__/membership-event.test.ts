@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import type { GuardLevel, LiveEvent } from "../events.js";
 import { membershipEventFromLiveEvent } from "../membership-event";
+import type { GuardLevel, LiveEvent } from "../protocol/events.js";
 
 type GuardBuy = Extract<LiveEvent, { kind: "guard-buy" }>;
 

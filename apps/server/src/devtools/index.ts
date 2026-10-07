@@ -9,7 +9,7 @@ import type {
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { Api } from "../bilibili/api/index.js";
-import { observeLiveConnections } from "../bilibili/live/client.js";
+import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
