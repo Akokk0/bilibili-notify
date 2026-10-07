@@ -2,8 +2,8 @@ import { EXTENSION_MOUNT_PREFIX } from "@bilibili-notify/contract";
 import type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 import { fail, type Logger } from "@bilibili-notify/internal";
 import { type Context, Hono } from "hono";
+import { createRegistry } from "../integrations/registry.js";
 import { respondFailure } from "../routes/respond-failure.js";
-import { createClaimTable } from "./claim-table.js";
 
 export type { ExtensionFetchHandler } from "@bilibili-notify/extension";
 /**
@@ -41,7 +41,7 @@ export function extensionMountPrefix(id: string): string {
  * `unavailable`,**原话只进日志**(`logger`),不回给对家 —— 那是拓展自己的报错,可能带路径。
  */
 export function createExtensionMounts(options: { logger: Logger }): ExtensionMounts {
-	const table = createClaimTable<ExtensionFetchHandler>((id) => `extension ${id} already mounted`);
+	const table = createRegistry<ExtensionFetchHandler>((id) => `extension ${id} already mounted`);
 	const route = new Hono();
 
 	route.all("/:id{[^/]+}/*", (c) => dispatch(c, c.req.param("id")));

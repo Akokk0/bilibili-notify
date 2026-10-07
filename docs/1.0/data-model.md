@@ -778,7 +778,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `QQTokenManager` / `QQTokenManagerOptions`；`KeyManager` | `QQTokenCache` / `QQTokenCacheOptions`；`KeyFileLoader` |
 | `StorageManager` / `StorageManagerOptions` | 删掉（B 站 cookie 改走 `ctx.secrets`） |
 | `SubscriptionStore`（`packages/subscription`，不存盘的内存镜像）；`WsTicketStore`（内存里的一次性票）、桥的 `BridgeBlobStore`（内存里取过即焚的图） | `SubscriptionCache`；`WsTicketIssuer`；`BridgeBlobCache` |
-| `createClaimTable` / `ClaimTable<T>`（登记表） | `Registry<T>`（补一个 `entries()`，见 [architecture.md](./architecture.md)「接口族与登记表」），工厂照 `create*` 规矩跟着改 |
+| `createClaimTable` / `ClaimTable<T>`（登记表） | `Registry<T>` / `createRegistry`，住 `integrations/registry.ts`（3a-08 已落；`entries()` 等第一个调用方出现再补，见 [architecture.md](./architecture.md)「接口族与登记表」） |
 | 拓展契约 `ExtensionSubscriptionView`；v1 的 `ExtensionDescriptor` / `ExtensionConfigField` | 摊平进 `SourceDescriptor`；删掉 |
 | 搬进 `bilibili/` 的 api：`BilibiliAPIConfig`（⑭c 已删：只剩自定义 UA 一格，随 UA 一起删了）、`RefreshOutcome`、`FollowOutcome` | `…Options`、`…Result`（`API` 写成 `Api`） |
 | 搬进 `bilibili/` 的 blive：`LiveConnectionInfo` | 按装的东西起名，施工时定 |

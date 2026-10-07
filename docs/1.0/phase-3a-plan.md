@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
-| 已完成 | 6 / 41（3a-01 至 3a-06；3a-07 并进 3a-28） |
+| 已完成 | 7 / 41（3a-01 至 3a-06、3a-08；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -40,7 +40,7 @@
 | 3a-06 ✅ | `dynamic` 与 `live` 两份一样的 `CommentaryClient` 换成 ai 包已有的 `CommentaryProvider`。另外三个「重名」（`PushLike`、`SubItemView`、`SubscriptionsView`）其实是名字相同、形状不同的两个东西，不能合并只能改名，挪去 3a-25 | 无 | 无 |
 | 3a-07 → 并进 3a-28 | 档位表的中立取法：出图器的示例卡与卡片路由不再直接读 B 站档位表。10-07 现查：档位表住 `packages/internal`，纯搬（3a-24）不动它，所以它不是搬家的前置；要到 3a-28 档位表进来源描述符时才需要换取法，而那时才有登记表可以问。现在做只能造一层临时的注入 | — | — |
 | **乙 接口骨架（纯新增，还没有 B 站调用方）** | | | |
-| 3a-08 | 中立类型落点与登记表：`SubscriptionSource`、`SourceDescriptor`、`SourceContext`、`IntegrationContext` 等；`claim-table` 改成通用登记表 | 无 | 无 |
+| 3a-08 ✅ | 建 `integrations/` 目录，通用登记表从 `extensions/claim-table.ts` 搬来改名 `Registry` / `createRegistry`。原定「把来源接口那一整套类型先建出来」不做：照规范「没有实现者的接口不造」，各接口类型跟着第一个实现它的那一片落地（`KeyValueStore` 随 3a-10、`IntegrationContext` 随 3a-12、`SubscriptionSource` 一族随 3a-28） | 无 | 无 |
 | 3a-09 | 问题表（全在内存）+ `/api/problems` + 变更事件；拓展侧「上报被拒记录」家族改名腾出 `reportProblem` 这个名字；私聊节流与「已恢复」 | 3a-08 | 无 |
 | 3a-10 | 集成的 `state` / `secrets` 存储宿主 | 3a-08 | 备份（加两节） |
 | 3a-11 | 抓图核心服务（逐跳查重定向、拦内网、8MB 截断、嗅探、存库）+ 来源图的引用方登记 | 无（先做成核心服务，3a-12 再挂到 ctx） | 无 |
@@ -104,3 +104,8 @@
 - 3a-05 `321e652d`：预览路由的出卡器传上 `resolveImageRef`。路由本来就拿得到图库，没有新增传参。接线测试用一份「徽章是图库引用」的档位表走 `POST /preview`。
 - 3a-06 `47c4fe0d`：见切片表那一行。勘察没点出的一处：`packages/ai/src/tools.ts` 里还有第三个 `SubItemView`，3a-25 一起处理。
 - 3a-07 并进 3a-28（理由见切片表那一行）。甲组到此做完。
+
+### 乙组（10-07 起）
+
+- **集成宿主住 `integrations/`**（主人选 A）。里面放：`IntegrationContext` 的构造、生命周期、运行状态、通用登记表。不放：各张具体的登记表与来源 / 适配器专用的 ctx（各自的功能目录）、B 站与平台适配器的实现、拓展特有的装载与市场、`compose.ts` 的登记清单、抓图与小存储的本体。问题表放哪 3a-09 开工时问。
+- 3a-08：只搬登记表。`entries()` 没有调用方，没加。补了一份直接钉三条规矩的单测 `integrations/__tests__/registry.test.ts`（原来只经挂载点与 upgrade 的测试间接盖着）。

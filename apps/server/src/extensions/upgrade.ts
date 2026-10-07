@@ -2,7 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ExtensionUpgradeHandler } from "@bilibili-notify/extension";
 import type { Disposable } from "@bilibili-notify/internal";
-import { createClaimTable } from "./claim-table.js";
+import { createRegistry } from "../integrations/registry.js";
 import { EXTENSION_MOUNT_PREFIX, extensionMountPrefix } from "./mount.js";
 
 export type { ExtensionUpgrade, ExtensionUpgradeHandler } from "@bilibili-notify/extension";
@@ -55,7 +55,7 @@ function reject(socket: Duplex): void {
  * 桥的 401(token 不对,别重连)与 503(眼下不收,退避重连)是**协议语义**,宿主不该懂。
  */
 export function createExtensionUpgrades(): ExtensionUpgrades {
-	const table = createClaimTable<ExtensionUpgradeHandler>(
+	const table = createRegistry<ExtensionUpgradeHandler>(
 		(id) => `extension ${id} already claimed its upgrade path`,
 	);
 	let attached: HttpServer | undefined;

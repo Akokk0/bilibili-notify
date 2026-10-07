@@ -123,7 +123,8 @@ roast/             锐评：生成、审批、定时、投递（从 stats/ 拆�
 stats/             统计仓与聚合（含粉丝时序；「在记」按特性算，热力图也读它；能回最近几条作品）
 history/ ai/ skins/ library/ maid-skills/
 process/           进程基础件：puppeteer、资源采样、宿主看护（孤儿自检与 stdin 关停、重启能力）
-extensions/        拓展宿主：生命周期、ctx、市场、安装、设置、视图 + 收件口
+integrations/      集成宿主：IntegrationContext 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 Registry
+extensions/        拓展特有的：装载、市场、安装、设置、视图 + 收件口
 bilibili/          B 站：SubscriptionSource 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
 bilibili/devtools/ B 站的 DevtoolsProvider，只在开发版登记
 runtime/           只留 service-context、message-bus、引擎编排（engines.ts 拆三份）
@@ -134,7 +135,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 - 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。
 - `platforms/` 只放内置适配器的实现。今天放在里面的登记表与分发（`platforms/registry.ts`、`dispatch.ts`）是中立件，和 `sink/` 一起挪进 `push/`。核心不许 import `platforms/`，只有 `compose.ts` 能（推送守卫①）。
 - `link-preview/` 由 `runtime/link-parser.ts` 与 `link-scope.ts` 改来（原定的 `link-cards/` 作废，ADR-0029）。
-- 集成宿主（`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态）和问题表放哪个目录，施工时定：今天拓展宿主在 `extensions/`，内置集成要走同一套。
+- 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-09 开工时定。
 - jieba 的 wasm 跟着 `live/` 进打包清单，改完要跑 `vp run build:update-payload`。
 - 被否的备选：适配文件散进各功能目录（B 站代码散在十几处，守卫只能靠文件名约定）；`sources/bilibili/` + `sources/extension/`（多一层，还把 BN 自己的中立逻辑挂成了「对接拓展」）。
 - `bilibili/devtools/` 被否的备选：放 `src/devtools/bilibili/`、B 站句柄从外面注入。
@@ -165,7 +166,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 - `PlatformAdapterDescriptor` 描述一个适配器（它的脸与设置字段）；`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法），由连接候选带来。
 
 ```ts
-interface Registry<T> {             // 原 ClaimTable<T>（extensions/claim-table.ts）改名，补一个 entries()；工厂照 create* 规矩跟着改名
+interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已由 extensions/claim-table.ts 搬来改名，工厂 createRegistry）；entries() 等第一个要列全表的调用方（/api/sources）出现时再补
   get(key: IntegrationKey): T | undefined;
   claim(key: IntegrationKey, value: T): { dispose(): void };   // 一个键一个主人；只撤自己那行；撤了能再登
   entries(): Iterable<[IntegrationKey, T]>;
