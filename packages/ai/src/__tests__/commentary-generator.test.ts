@@ -13,9 +13,9 @@
  * `./persona-presets#buildSystemPrompt` 保持真实(纯函数,产物不做精确断言)。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import type { BiliLookups } from "../tools";
 import {
 	aiConfig,
 	fakeServiceCtx,
@@ -73,7 +73,7 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 } {
 	const gen = new CommentaryGenerator({
 		serviceCtx: fakeServiceCtx(),
-		api: {} as BilibiliAPI,
+		api: {} as BiliLookups,
 		config: makeConfig(over),
 	});
 	return { gen };

@@ -9,8 +9,8 @@
  *   时,B 站那边会查出另一个人来,女仆会把他当成这位主播讲(决策 73 说的「静默认错人」)。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { BiliLookups } from "../tools";
 import { type ExtensionSubItemView, executeTool, type Subscriptions } from "../tools";
 
 const VIEW: Subscriptions = {
@@ -39,7 +39,7 @@ function apiStub() {
 }
 
 function run(name: string, args: Record<string, string>, api = apiStub()) {
-	return executeTool(name, args, api as unknown as BilibiliAPI, () => VIEW);
+	return executeTool(name, args, api as unknown as BiliLookups, () => VIEW);
 }
 
 describe("list_subscriptions", () => {
@@ -70,7 +70,7 @@ describe("get_live_status", () => {
 			startedAt: STARTED,
 			totalViewers: 23_456,
 		});
-		const out = await executeTool("get_live_status", {}, api as unknown as BilibiliAPI, () => view);
+		const out = await executeTool("get_live_status", {}, api as unknown as BiliLookups, () => view);
 		expect(api.getLiveRoomInfoByUids).toHaveBeenCalledWith(["1"]);
 		expect(out).toContain("晨风：直播中「晚间杂谈」");
 		const line = out.split("\n").find((l) => l.startsWith("抖音甲"));
@@ -82,11 +82,11 @@ describe("get_live_status", () => {
 	});
 
 	it("拓展报了不在播 → 未开播;没报的格不写", async () => {
-		const out = await executeTool("get_live_status", {}, apiStub() as unknown as BilibiliAPI, () =>
+		const out = await executeTool("get_live_status", {}, apiStub() as unknown as BiliLookups, () =>
 			ext({ state: "idle" }),
 		);
 		expect(out).toContain("抖音甲：未开播");
-		const live = await executeTool("get_live_status", {}, apiStub() as unknown as BilibiliAPI, () =>
+		const live = await executeTool("get_live_status", {}, apiStub() as unknown as BiliLookups, () =>
 			ext({ state: "live" }),
 		);
 		expect(live).toContain("抖音甲：直播中");
@@ -98,7 +98,7 @@ describe("get_live_status", () => {
 			const out = await executeTool(
 				"get_live_status",
 				{},
-				apiStub() as unknown as BilibiliAPI,
+				apiStub() as unknown as BiliLookups,
 				() => ext(liveNow),
 			);
 			expect(out).toContain("抖音甲：查不到");
@@ -112,7 +112,7 @@ describe("get_live_status", () => {
 		const view: Subscriptions = {
 			"sub-ext": { ...(VIEW["sub-ext"] as ExtensionSubItemView), liveNow: { state: "idle" } },
 		};
-		const out = await executeTool("get_live_status", {}, api as unknown as BilibiliAPI, () => view);
+		const out = await executeTool("get_live_status", {}, api as unknown as BiliLookups, () => view);
 		expect(api.getLiveRoomInfoByUids).not.toHaveBeenCalled();
 		expect(out).toContain("抖音甲：未开播");
 	});
@@ -155,7 +155,7 @@ describe("按 UID 查的工具", () => {
 			...VIEW,
 			"sub-ext-2": { platform: "抖音", externalId: "1", uname: "抖音乙" },
 		};
-		await executeTool("get_user_info", { uid: "1" }, api as unknown as BilibiliAPI, () => view);
+		await executeTool("get_user_info", { uid: "1" }, api as unknown as BiliLookups, () => view);
 		expect(api.getUserCardInfo).toHaveBeenCalledWith("1");
 	});
 });

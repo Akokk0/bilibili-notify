@@ -1,4 +1,3 @@
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import type OpenAI from "openai";
 
 /**
@@ -327,6 +326,28 @@ export interface VisionToolContext {
 }
 
 /**
+ * AI 工具要查的 B 站接口 —— 只含 `executeTool` 真用到的这七个方法,形状取自服务端的 B 站
+ * 客户端,服务端把真客户端递进来、结构上直接满足。
+ * 返回值一律 `unknown`:B 站响应没有声明类型,调用处自己断言。
+ *
+ * ⚠️ 过渡物:后面的阶段改成「来源自己登记 AI 工具」,届时这个接口整个删掉。AI 包不依赖 api 包,
+ * 是因为 B 站接口包要搬进 `apps/server`,包不能反向依赖应用。
+ */
+export interface BiliLookups {
+	getUserSpaceDynamic(mid: string): Promise<unknown>;
+	getUserCardInfo(mid: string, withPhoto?: boolean): Promise<unknown>;
+	getLiveRoomInfoByUids(uids: string[]): Promise<unknown>;
+	getUserUpstat(mid: string): Promise<unknown>;
+	getUserNavnum(mid: string): Promise<unknown>;
+	getUserVideos(mid: string, ps?: number): Promise<unknown>;
+	searchByType(
+		searchType: string,
+		keyword: string,
+		opts?: { page?: number; pageSize?: number },
+	): Promise<unknown>;
+}
+
+/**
  * 工具表是**只读**的 —— 没有任何工具会改订阅。
  *
  * 这不是"暂时还没做写功能",而是刻意下架的:群聊 AI 的上下文里塞满了外部可控
@@ -338,7 +359,7 @@ export interface VisionToolContext {
 export async function executeTool(
 	name: string,
 	args: Record<string, string>,
-	api: BilibiliAPI,
+	api: BiliLookups,
 	getSubs: () => Subscriptions | null,
 	visionCtx?: VisionToolContext,
 ): Promise<string> {

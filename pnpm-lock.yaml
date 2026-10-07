@@ -483,9 +483,6 @@ importers:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.2.18)(react@19.2.8)
     devDependencies:
-      '@bilibili-notify/api':
-        specifier: workspace:*
-        version: link:../../packages/api
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.3(@voidzero-dev/vite-plus-core@1.0.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.99.0)(tsx@4.23.12)(typescript@5.9.3)(yaml@2.9.0))
@@ -544,9 +541,6 @@ importers:
 
   packages/ai:
     dependencies:
-      '@bilibili-notify/api':
-        specifier: workspace:^
-        version: link:../api
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal

@@ -26,7 +26,6 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@bilibili-notify/api": "workspace:^",
 		"@bilibili-notify/internal": "workspace:^",
 		"openai": "^7.8.0"
 	},

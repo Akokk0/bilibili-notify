@@ -11,11 +11,11 @@
  * 收序号则只能索引到本轮已经在场的那几张图,编不出新的目标。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { BiliLookups } from "../tools";
 import { DESCRIBE_IMAGE_TOOL, executeTool, TOOL_DEFINITIONS } from "../tools";
 
-const api = {} as BilibiliAPI;
+const api = {} as BiliLookups;
 const noSubs = () => null;
 
 function ctx(images: string[] = ["http://img/a.jpg", "http://img/b.jpg"]) {

@@ -16,8 +16,8 @@
  * 这里立刻红。删这个文件比让它变绿更难 —— 那正是它存在的意义。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import { describe, expect, it } from "vite-plus/test";
+import type { BiliLookups } from "../tools";
 import { executeTool, TOOL_DEFINITIONS } from "../tools";
 
 /** 曾经存在、现已下架的三个写工具。名字写死,不从源码反推。 */
@@ -42,7 +42,7 @@ describe("AI 工具表 — 只读约束", () => {
 	it("即便模型硬编造出写工具名,executeTool 也无分支可走", async () => {
 		// 工具定义不下发只挡住了「模型知道有这个工具」;万一它凭记忆瞎猜一个名字,
 		// 执行层也必须没有对应实现,而不是靠上游少传一个依赖来兜。
-		const api = {} as BilibiliAPI;
+		const api = {} as BiliLookups;
 		for (const w of WRITE_TOOLS) {
 			const out = await executeTool(w, { uid: "123", name: "谁" }, api, () => ({
 				"123": { uid: "123", uname: "谁", post: true, live: true },

@@ -8,18 +8,18 @@
  * 这是 tools.ts 的首份独立测试(报告点名"tools.ts 无独立测试,建议补")。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { BiliLookups } from "../tools";
 import { executeTool } from "../tools";
 
-function fakeApi(over: Partial<Record<"getUserUpstat" | "getUserNavnum", unknown>>): BilibiliAPI {
+function fakeApi(over: Partial<Record<"getUserUpstat" | "getUserNavnum", unknown>>): BiliLookups {
 	return {
 		getUserUpstat: vi.fn(async () => over.getUserUpstat),
 		getUserNavnum: vi.fn(async () => over.getUserNavnum),
-	} as unknown as BilibiliAPI;
+	} as unknown as BiliLookups;
 }
 
-const run = (api: BilibiliAPI) => executeTool("get_user_stats", { uid: "123" }, api, () => null);
+const run = (api: BiliLookups) => executeTool("get_user_stats", { uid: "123" }, api, () => null);
 
 describe("executeTool get_user_stats — navnum.code 校验 (P2-G)", () => {
 	it("navnum.code !== 0(接口错误)→ 显式失败,不伪装成数据空", async () => {
@@ -67,7 +67,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 				code: 0,
 				data: { list: { vlist: [{ title: "新曲", play: 10, created: nowS() - 3 * 86_400 }] } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as BiliLookups;
 		const out = await executeTool("get_user_videos", { uid: "123" }, api, () => null);
 		expect(out).toContain("3 天前");
 		expect(out).toContain("新曲");
@@ -88,7 +88,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 					],
 				},
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as BiliLookups;
 		const out = await executeTool("get_user_dynamics", { uid: "123" }, api, () => null);
 		expect(out).toContain("5 小时前");
 		expect(out).toContain("今晚八点开播");
@@ -100,7 +100,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 				code: 0,
 				data: { list: { vlist: [{ title: "旧作", play: 1 }] } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as BiliLookups;
 		const out = await executeTool("get_user_videos", { uid: "123" }, api, () => null);
 		expect(out).toContain("未知时间");
 		expect(out).not.toMatch(/Invalid Date|NaN/);

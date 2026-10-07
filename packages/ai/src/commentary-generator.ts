@@ -1,4 +1,3 @@
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import {
 	type AIProviderId,
 	type APIFlavorId,
@@ -22,6 +21,7 @@ import {
 	toResponsesTools,
 } from "./responses-api";
 import {
+	type BiliLookups,
 	DESCRIBE_IMAGE_TOOL,
 	type ExtraTool,
 	executeTool,
@@ -402,7 +402,7 @@ export interface CommentaryProvider {
 
 export interface CommentaryGeneratorOptions {
 	serviceCtx: ServiceContext;
-	api: BilibiliAPI;
+	api: BiliLookups;
 	config: CommentaryGeneratorConfig;
 }
 
@@ -495,11 +495,11 @@ export interface ChatStatelessOptions {
 
 /**
  * 平台中立的 AI 点评 / 多轮对话核心。
- * 不依赖任何宿主框架;宿主负责配置 logger、提供 BilibiliAPI 与可选的订阅管理钩子。
+ * 不依赖任何宿主框架;宿主负责配置 logger、提供 BiliLookups 与可选的订阅管理钩子。
  */
 export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
-	private readonly api: BilibiliAPI;
+	private readonly api: BiliLookups;
 	private config: CommentaryGeneratorConfig;
 
 	private subsAccessor: (() => Subscriptions | null) | null = null;

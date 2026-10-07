@@ -46,9 +46,13 @@ export const ALLOWLIST = {};
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
+	// 3a-23:登录状态的定义从面板挪进 contract(面板不再依赖 api 包),名字没改;3a-29 换成 `SourceAuth`。
+	"apps/contract/src/auth.ts": 5,
 	"apps/server/src/ai/read-only-tools.ts": 2,
 	"apps/server/src/app.ts": 2,
 	"apps/server/src/auth/index.ts": 4,
+	// 3a-23:把 contract 的登录状态值与 api 包的枚举两头钉住;3a-29 `SourceAuth` 状态机落地时一起走。
+	"apps/server/src/auth/login-status-wire.ts": 6,
 	"apps/server/src/devtools/index.ts": 3,
 	"apps/server/src/devtools/scenarios/dynamic.ts": 3,
 	"apps/server/src/devtools/scenarios/live.ts": 2,
@@ -90,7 +94,7 @@ export const RATCHET = {
 	"apps/web/src/pages/up/UpCard.tsx": 6,
 	"apps/web/src/pages/up/UpDialog.tsx": 10,
 	"apps/web/src/pages/up/subscription-source.ts": 2,
-	"apps/web/src/types/auth.ts": 9,
+	"apps/web/src/types/auth.ts": 2,
 	"apps/web/src/types/domain.ts": 2,
 	"apps/web/src/utils/up-display.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 3,

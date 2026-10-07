@@ -14,10 +14,10 @@
  * `openai` 整体 mock,不碰任何真实接口。
  */
 
-import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
+import type { BiliLookups } from "../tools";
 import { aiConfig, streamOf, textChunk } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	};
 	const gen = new CommentaryGenerator({
 		serviceCtx,
-		api: {} as BilibiliAPI,
+		api: {} as BiliLookups,
 		config: aiConfig(over),
 	});
 	return { gen, info };
