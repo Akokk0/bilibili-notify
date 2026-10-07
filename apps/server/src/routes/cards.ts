@@ -839,6 +839,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 宣告语都取自档位表,与真推送同一份。认不出的 key 在请求校验那一步就是 400,走不到这里。
 			const tier = guardTierByKey(content?.tierKey ?? "captain");
 			if (!tier) throw new Error(`没有这一档:tierKey=${content?.tierKey}`);
+			// 徽章图标在图库里:没抓到的先补抓一次(有最小间隔),还是没有就不带 `icon`、徽章块自己收起。
+			await opts.deps.runtime.guardIcons.ensure();
+			const icon = opts.deps.runtime.guardIcons.iconOf(tier.key);
 			// 预览不传头像(同上,B 站 3a 才交图库引用)。
 			const buffer = await renderer.generateMembershipCard(
 				{
@@ -847,7 +850,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					tier: {
 						name: tier.name,
 						rank: tier.rank,
-						icon: tier.icon,
+						...(icon ? { icon } : {}),
 						color: tier.color,
 						colorEnd: tier.colorEnd,
 						announcement: tier.announcement,

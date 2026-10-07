@@ -2,6 +2,7 @@ import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { Api } from "../api/index.js";
+import type { GuardIcons } from "../guard-icons.js";
 import type { LiveContentBuilder } from "./content-builder";
 import { DanmakuCollector } from "./danmaku-collector";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
@@ -82,6 +83,8 @@ export interface LiveEngineOptions {
 	 * through to every RoomContext.
 	 */
 	pickCardBackground: PickLiveCover;
+	/** 大航海徽章图标(图库引用),透传到每个 RoomContext。 */
+	guardIcons: GuardIcons;
 	/**
 	 * uid→roomId 解析成功回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
 	 * 省掉逐 UP 的 `fetchUserInfo` 房号解析请求。透传到每个 RoomContext。
@@ -156,6 +159,7 @@ export class LiveEngine {
 			emitLiveState: opts.emitLiveState,
 			emitViewers: opts.emitViewers,
 			pickCardBackground: opts.pickCardBackground,
+			guardIcons: opts.guardIcons,
 			onRoomIdResolved: opts.onRoomIdResolved,
 		});
 	}

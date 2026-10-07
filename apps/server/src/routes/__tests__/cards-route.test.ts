@@ -36,9 +36,21 @@ function depsWithDataDir(dataDir: string): RouteDeps {
 	} as unknown as RouteDeps;
 }
 
-function makeDeps(): RouteDeps {
+/** 假的徽章图标:`ensure()` 跑过之后 `iconOf` 才给图库引用(模拟「出卡前先抓」)。 */
+const GUARD_ICON_REF = `${"d".repeat(64)}.png`;
+function makeGuardIcons(opts: { gets?: boolean } = {}) {
+	let fetched = false;
+	const ensure = vi.fn(async () => {
+		fetched = opts.gets !== false;
+	});
+	const iconOf = vi.fn((_key: string) => (fetched ? { ref: GUARD_ICON_REF } : undefined));
+	return { ensure, iconOf, refs: () => [] };
+}
+
+function makeDeps(guardIcons = makeGuardIcons()): RouteDeps {
 	return {
 		runtime: {
+			guardIcons,
 			dataRoot: join(tmpdir(), "bn-test-cards-route-no-such-dir"),
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -1200,13 +1212,57 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			expect(res.status).toBe(200);
 			const arg = spy.mock.calls[0]?.[0];
 			expect(arg?.tier).toMatchObject({ name, rank, color });
-			expect(arg?.tier.icon?.url).toMatch(/^https:\/\/s1\.hdslb\.com\//);
+			expect(arg?.tier.icon).toEqual({ ref: GUARD_ICON_REF });
 			expect(arg?.tier.announcement).toContain("{viewer}");
 			expect(Object.keys(arg?.viewer ?? {})).toEqual(["name"]);
 			expect(Object.keys(arg?.creator ?? {})).toEqual(["name"]);
 			spy.mockRestore();
 		},
 	);
+
+	// 验红:把 cards.ts 里上舰预览那句 `await opts.deps.runtime.guardIcons.ensure()` 删掉,这条红(没抓到就取了)。
+	it("guard:预览前先 ensure() 再按档取图标", async () => {
+		const guardIcons = makeGuardIcons();
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(guardIcons),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		await postPreview(app, {
+			kind: "membership",
+			style: STYLE,
+			content: { tierKey: "governor" },
+			fallback: true,
+		});
+		expect(guardIcons.ensure).toHaveBeenCalledTimes(1);
+		expect(guardIcons.iconOf).toHaveBeenCalledWith("governor");
+		expect(spy.mock.calls[0]?.[0]?.tier.icon).toEqual({ ref: GUARD_ICON_REF });
+		spy.mockRestore();
+	});
+
+	// 验红:把 cards.ts 里 `icon` 那一格改回 `icon: tier.icon`(档位表的地址),这条红。
+	it("guard:没抓到图标 → 出卡输入没有 icon 这一格,预览照出", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(makeGuardIcons({ gets: false })),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const res = await postPreview(app, {
+			kind: "membership",
+			style: STYLE,
+			content: {},
+			fallback: true,
+		});
+		expect(res.status).toBe(200);
+		expect(spy.mock.calls[0]?.[0]?.tier).not.toHaveProperty("icon");
+		spy.mockRestore();
+	});
 
 	it("guard:没带 tierKey → 最低一档(舰长)", async () => {
 		const spy = vi

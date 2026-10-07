@@ -102,13 +102,24 @@ interface CtxMocks {
 	isSubscribed: ReturnType<typeof vi.fn>;
 	collectsDanmaku: ReturnType<typeof vi.fn>;
 	safeBroadcast: ReturnType<typeof vi.fn>;
+	/** 徽章图标:抓到之前 `iconOf` 给 undefined,`ensure()` 跑过之后才有(模拟「出卡前先抓」)。 */
+	guardIconsEnsure: ReturnType<typeof vi.fn>;
+	guardIconsIconOf: ReturnType<typeof vi.fn>;
 }
+
+/** 假图库引用(64 位 hex + 扩展名),按档 key 各一张。 */
+const GUARD_ICON_REF: Record<string, string> = {
+	captain: `${"a".repeat(64)}.png`,
+	commander: `${"b".repeat(64)}.png`,
+	governor: `${"c".repeat(64)}.png`,
+};
 
 function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 	ctx: RoomContext;
 	m: CtxMocks;
 } {
 	const warn = vi.fn();
+	let fetched = false;
 	const fakeServiceCtx: ServiceContext = {
 		logger: { debug() {}, info() {}, warn, error() {} },
 		setInterval: () => ({ dispose() {} }),
@@ -134,8 +145,15 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		isSubscribed: vi.fn(() => false),
 		collectsDanmaku: vi.fn((sub: SubItemView) => wantsLiveEndExtras(sub)),
 		safeBroadcast: vi.fn(),
+		guardIconsEnsure: vi.fn(async () => {
+			fetched = true;
+		}),
+		guardIconsIconOf: vi.fn((key: string) =>
+			fetched && GUARD_ICON_REF[key] ? { ref: GUARD_ICON_REF[key] } : undefined,
+		),
 	};
 	const ctx = {
+		guardIcons: { ensure: m.guardIconsEnsure, iconOf: m.guardIconsIconOf, refs: () => [] },
 		serviceCtx: fakeServiceCtx,
 		logger: fakeServiceCtx.logger,
 		isDisposed: () => false,
@@ -943,10 +961,35 @@ describe("RoomSession.onGuardBuy", () => {
 					rank: 1,
 					color: "#4ebcec",
 					colorEnd: "#b494e5",
-					icon: { url: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
+					icon: { ref: GUARD_ICON_REF.captain },
 					announcement: '"{viewer}号"加入\n"{name}"大航海舰队！',
 				},
 			});
+		});
+
+		// 验红:把 room-session.ts 里出卡前那句 `await this.ctx.guardIcons.ensure()` 删掉,这条红(图标还没抓到就取了)。
+		it("出卡前先 ensure() 再取图标:没抓到过时,出卡输入里带的是刚抓到的那张", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
+			await s.onGuardBuy(guardBody);
+			expect(m.guardIconsEnsure).toHaveBeenCalledTimes(1);
+			expect(m.guardIconsIconOf).toHaveBeenCalledWith("captain");
+			expect(m.generateMembershipCard.mock.calls[0]?.[0].tier.icon).toEqual({
+				ref: GUARD_ICON_REF.captain,
+			});
+		});
+
+		// 验红:把 room-session.ts 里 `icon` 那一格改成 `icon: tier.icon`(回到档位表的地址),这条红。
+		it("没抓到图标:出卡输入里没有 icon 这一格(徽章块自己收起),卡照出", async () => {
+			const { ctx, m } = makeCtx();
+			m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+			m.guardIconsEnsure.mockResolvedValue(undefined); // 抓了也没抓到:iconOf 一直给 undefined
+			const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
+			await s.onGuardBuy(guardBody);
+			const input = m.generateMembershipCard.mock.calls[0]?.[0];
+			expect(input.tier).not.toHaveProperty("icon");
+			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		});
 
 		it("总督:同一条路,换成总督那一档(rank 3、档色 #f2a053、徽章与宣告语都是总督的)", async () => {
@@ -960,7 +1003,7 @@ describe("RoomSession.onGuardBuy", () => {
 					rank: 3,
 					color: "#f2a053",
 					colorEnd: "#ef5f5f",
-					icon: { url: OFFICIAL_GUARD_IMG[GuardLevel.Governor] },
+					icon: { ref: GUARD_ICON_REF.governor },
 					announcement: '"{viewer}"上任\n"{name}"大航海舰队总督！',
 				},
 			});
@@ -1647,6 +1690,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			emitLiveState: vi.fn(),
 			emitViewers: vi.fn(),
 			pickCardBackground: () => undefined,
+			guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
 			onRoomIdResolved: vi.fn(),
 		});
 		return { ctx, broadcastToTargets };

@@ -796,6 +796,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			postImages: runtime.postImages,
 			// 拓展直播卡同理(㉒c):封面与事件头像经 `liveImages` 存进图库,出图器经同一个 `resolveImageRef` 取回。
 			liveImages: runtime.liveImages,
+			// 大航海徽章图标(3a-33):开机抓、上舰卡按档取;引用方「来源声明的图」在 bootstrap 里登记。
+			guardIcons: runtime.guardIcons,
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,

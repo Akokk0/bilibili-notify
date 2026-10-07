@@ -1,8 +1,14 @@
+import { CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import { buildFontFace } from "@bilibili-notify/image";
 import { type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
+import {
+	createGuardIcons,
+	GUARD_ICON_REQUEST_HEADERS,
+	type GuardIcons,
+} from "../bilibili/guard-icons.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
@@ -12,6 +18,7 @@ import { createRepushRunner, type RepushRunner } from "../history/repush-runner.
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
 import { listHistoryImageRefs } from "../history/retention.js";
 import { createHistoryStore, type HistoryStore } from "../history/store.js";
+import { createImageFetcher } from "../images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "../images/image-referrers.js";
 import {
 	createImageStore,
@@ -126,6 +133,11 @@ export interface AppRuntime {
 	 */
 	liveImages: ImageWriter;
 	/**
+	 * 大航海三档的徽章图(3a-33):B 站这边运行时从静态站抓进图库,会员卡按档取图库引用。仓库与安装包里不放这些图。
+	 * 这一家引用的是手里抓到的那几张(`guardIcons.refs()`),装配时登记成图库的「来源声明的图」。
+	 */
+	guardIcons: GuardIcons;
+	/**
 	 * 推送历史往图库存图的口:配图 `put`、拓展行的头像快照 `keep`(续期)。历史仓用它存图;这一家引用方登记的名单是
 	 * 保留期内(水位线之后)的日文件里所有 `image` 与 `avatarSnapshot`(`listHistoryImageRefs`)。重推原件是另一家引用方
 	 * (`listRepushImageRefs`),各登记各的 —— 拿到的是同一个口,这里只暴露历史这一份。
@@ -190,7 +202,17 @@ export interface AppRuntimeRoots {
 	dataRoot: string;
 }
 
-export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRoots): AppRuntime {
+/** 装配时可换的外部依赖;不给就用真的。 */
+export interface AppRuntimeDeps {
+	/** 抓大航海徽章图用的请求客户端。测试换成不联网的。 */
+	guardIconHttp?: Pick<HttpClient, "fetch">;
+}
+
+export function createAppRuntime(
+	bootstrap: BootstrapConfig,
+	roots: AppRuntimeRoots,
+	deps: AppRuntimeDeps = {},
+): AppRuntime {
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
 		level: bootstrap.logLevel,
@@ -377,6 +399,27 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		name: IMAGE_REFERRERS.posts,
 		listRefs: async () => [],
 	});
+	// 来源声明的图是图库的一家引用方:大航海徽章图运行时抓进图库(3a-33),名单是手里抓到的那几张。
+	// 抓不到的时候名单为空、卡上的徽章块自己收起。请求客户端是自带的一个(不借 B 站接口那个:抓静态图不用登录态、
+	// 也不该把它的 cookie 带出去),用完在 drain 段关掉它攒的连接。
+	let guardIconHttp = deps.guardIconHttp;
+	if (!guardIconHttp) {
+		const http = new HttpClient({
+			jar: new CookieJar(),
+			identity: generateBrowserIdentity(),
+			headers: GUARD_ICON_REQUEST_HEADERS,
+		});
+		serviceCtx.onDispose(() => http.dispose(), "drain");
+		guardIconHttp = http;
+	}
+	const sourceDeclaredImages = imageStore.register({
+		name: IMAGE_REFERRERS.sourceDeclared,
+		listRefs: async () => guardIcons.refs(),
+	});
+	const guardIcons = createGuardIcons({
+		images: createImageFetcher({ http: guardIconHttp, images: sourceDeclaredImages }),
+		logger: serviceCtx.logger,
+	});
 	const logStore = createLogStore({
 		hostRoot,
 		serviceCtx,
@@ -456,6 +499,7 @@ export function createAppRuntime(bootstrap: BootstrapConfig, roots: AppRuntimeRo
 		profileImages,
 		postImages,
 		liveImages,
+		guardIcons,
 		historyImages,
 		conversationStore,
 		logStore,

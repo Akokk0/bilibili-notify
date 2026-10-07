@@ -1,6 +1,7 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
 import type { Api } from "../api/index.js";
+import type { GuardIcons } from "../guard-icons.js";
 import type { LiveClient } from "./client.js";
 import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
@@ -84,6 +85,8 @@ export interface RoomContextOptions {
 	 * 独立端由 `createCardBgRotator` 支撑(fs 持久化游标)。
 	 */
 	pickCardBackground: PickLiveCover;
+	/** 大航海徽章图标(图库里的引用):上舰卡按档取,没抓到的出卡前补抓一次。 */
+	guardIcons: GuardIcons;
 	/**
 	 * uid → roomId 解析成功后的回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
 	 * 省掉每次逐 UP 的 `fetchUserInfo` 房号解析请求。
@@ -134,6 +137,8 @@ export class RoomContextBase {
 	 * → 调用方回退单图。
 	 */
 	readonly pickBackground: PickLiveCover;
+	/** 大航海徽章图标。 */
+	readonly guardIcons: GuardIcons;
 	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
 	readonly onRoomIdResolved: (uid: string, roomId: string) => void;
 
@@ -161,6 +166,7 @@ export class RoomContextBase {
 		this.emitLiveState = opts.emitLiveState;
 		this.emitViewers = opts.emitViewers;
 		this.pickBackground = opts.pickCardBackground;
+		this.guardIcons = opts.guardIcons;
 		this.onRoomIdResolved = opts.onRoomIdResolved;
 	}
 

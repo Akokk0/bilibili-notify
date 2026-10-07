@@ -18,6 +18,8 @@ export const IMAGE_REFERRERS = {
 	posts: "作品配图",
 	/** 拓展直播:在播表里的封面与头像。 */
 	extensionLive: "拓展直播图",
+	/** 来源声明的图:来源自己带的素材(今天是 B 站大航海三档的徽章),运行时抓进图库、名单是手里抓到的那几张。 */
+	sourceDeclared: "来源声明的图",
 } as const;
 
 export type ImageReferrerName = (typeof IMAGE_REFERRERS)[keyof typeof IMAGE_REFERRERS];

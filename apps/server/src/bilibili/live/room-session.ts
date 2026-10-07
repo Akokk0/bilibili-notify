@@ -637,6 +637,10 @@ export class RoomSession extends RoomSessionBase {
 		if (this.ctx.imageRenderer?.generateMembershipCard) {
 			try {
 				const guardStyle = this.resolvedCardStyle("membership");
+				// 徽章图标在图库里,开机那一轮没抓到的这时补一次(两次尝试之间有最小间隔,不会每条上舰都打一次网络);
+				// 还是没有就不带 `icon`,卡上的徽章块自己收起。
+				await this.ctx.guardIcons.ensure();
+				const icon = this.ctx.guardIcons.iconOf(tier.key);
 				const buf = await this.ctx.imageRenderer.generateMembershipCard(
 					{
 						viewer: { name: event.viewer.name },
@@ -644,7 +648,7 @@ export class RoomSession extends RoomSessionBase {
 						tier: {
 							name: tier.name,
 							rank: tier.rank,
-							icon: tier.icon,
+							...(icon ? { icon } : {}),
 							color: tier.color,
 							colorEnd: tier.colorEnd,
 							announcement: tier.announcement,

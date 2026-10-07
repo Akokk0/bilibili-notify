@@ -401,6 +401,8 @@ function setup(opts?: {
 	/** 拓展订阅的在播表与上报问题框(接线层给的);不给 = 不接拓展订阅的直播。 */
 	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
 	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
+	/** 大航海徽章图标(接线层给的 `runtime.guardIcons`);不给 = 一个什么都没有的替身。 */
+	guardIcons?: Parameters<typeof createEngines>[0]["guardIcons"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
 	loginStatus?: BiliLoginStatus;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
@@ -465,6 +467,11 @@ function setup(opts?: {
 		} as any,
 		bus,
 		adapters: createPlatformAdapterRegistry(opts?.platformAdapters ?? []),
+		guardIcons: opts?.guardIcons ?? {
+			ensure: async () => {},
+			iconOf: () => undefined,
+			refs: () => [],
+		},
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
 		...(opts?.cardSkins ? { cardSkins: opts.cardSkins } : {}),
 		...(opts?.extensionPlatformLabel
@@ -590,6 +597,39 @@ describe("createEngines — live-state-changed 接线", () => {
  * `live-viewers-changed { uid, viewers }`(统计、WS、面板都挂在它后面);在播快照里的 `viewers` 也原样进
  * 「正在直播」那份快照。两处都是 adapter 里的一句 lambda,各自的单测证明不了接上了。
  */
+describe("createEngines — 大航海徽章图标接线", () => {
+	const makeIcons = (ensure: () => Promise<void>) => ({
+		ensure: vi.fn(ensure),
+		iconOf: vi.fn(() => undefined),
+		refs: () => [],
+	});
+
+	const biliSub = () =>
+		makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } });
+
+	// 验红:把 engines.ts 里 `live.start` 旁边那句 `void opts.guardIcons.ensure()` 删掉,这条红(开机没人去抓徽章,首条上舰才补抓)。
+	it("有 B 站直播订阅、直播引擎起来时调一次 ensure(),而且不等它:抓图永不返回时 createEngines 照样建成", () => {
+		const guardIcons = makeIcons(() => new Promise<void>(() => {}));
+		const c = setup({ guardIcons, subs: [biliSub()] });
+		expect(guardIcons.ensure).toHaveBeenCalledTimes(1);
+		expect(c.runtime).toBeDefined();
+	});
+
+	// 验红:把那句挪到 `if` 外面(无条件开机就抓),这条红 —— 不带订阅的真开机 e2e 也会去连 B 站静态站,被测试的外网闸判红。
+	it("没有 B 站订阅(直播引擎没起来)时开机不去抓图,等首条上舰或预览再补", () => {
+		const guardIcons = makeIcons(async () => {});
+		setup({ guardIcons });
+		expect(guardIcons.ensure).not.toHaveBeenCalled();
+	});
+
+	// 验红:把 engines.ts 里递给 LiveEngine 的 `guardIcons: opts.guardIcons` 删掉,这条红(直播间拿不到图标)。
+	it("同一份 guardIcons 递给 LiveEngine(上舰卡取图标用它)", () => {
+		const guardIcons = makeIcons(async () => {});
+		setup({ guardIcons });
+		expect(H.live[0].opts.guardIcons).toBe(guardIcons);
+	});
+});
+
 describe("createEngines — 观看人数接线(精确数)", () => {
 	it("emitViewers 的精确数原样转发到 bus 的 live-viewers-changed,不被转成字符串", () => {
 		const c = setup();

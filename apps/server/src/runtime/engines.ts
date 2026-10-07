@@ -73,6 +73,7 @@ import {
 	resolveDynamicColorOptions,
 	type WorkSubscriptionSettings,
 } from "../bilibili/dynamic/index.js";
+import type { GuardIcons } from "../bilibili/guard-icons.js";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -271,6 +272,11 @@ export interface CreateEnginesOptions {
 	 * 漏给是开机直接抛,不是悄悄不出图。
 	 */
 	liveImages?: ImageSink;
+	/**
+	 * 大航海徽章图标(`AppRuntime.guardIcons`,3a-33):B 站的上舰卡按档取图库引用。必给 —— 漏给上舰卡的徽章块静默收起。
+	 * 开机时调一次 `ensure()` 抓图(不等它),直播间出卡前再补一次。
+	 */
+	guardIcons: GuardIcons;
 	/**
 	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
 	 * 记进去。不给就只记日志。
@@ -643,6 +649,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		api: opts.api,
 		push: livePushLike,
 		contentBuilder: segmentContentBuilder,
+		guardIcons: opts.guardIcons,
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
 		config: liveConfig(),
@@ -672,6 +679,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		globals(),
 	);
 	if (Object.keys(initialLiveView).length > 0) {
+		// B 站直播起来了就把徽章图抓进图库,但**不等它**:抓图慢或断网都不能拖住启动(`ensure` 不抛、失败只记日志)。
+		// 没有 B 站订阅时不抓:没人会上舰,首条上舰与卡片预览出卡前自己会补抓。
+		void opts.guardIcons.ensure();
 		live.start(initialLiveView);
 	}
 
