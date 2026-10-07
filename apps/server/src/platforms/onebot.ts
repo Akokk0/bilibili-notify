@@ -306,7 +306,7 @@ function buildSendActionFromSegments(
  * 目标的地址 → OneBot 要的那个数字 id,外加「这一发是不是私聊」。
  *
  * `opts.private` 是「强制私聊」覆盖标志,**仅 `=== true` 时**覆盖 `target.scope`。
- * 旧写法 `opts.private ?? scope==="private"` 的坑:caller(MultiplexSink.send)恒传
+ * 旧写法 `opts.private ?? scope==="private"` 的坑:caller(TargetDispatcher.send)恒传
  * `{ private: false }`,`??` 不替换 false,于是 scope==="private" 的 target 永远走
  * group 分支并返回 "group: groupId missing"。
  *

@@ -8,7 +8,7 @@ import type { Disposable, PlatformAdapter } from "@bilibili-notify/internal";
  * 共享数组里 push 有一颗**只在开发版炸**的雷 —— dev 下拿到的是 devtools 包过一层的**另一
  * 份**,往原数组 push 的话开发版里根本看不见,两边都不报错。
  */
-export interface AdapterRegistry {
+export interface PlatformAdapterRegistry {
 	/**
 	 * 注册一个出口,回一个撤下它的把手。
 	 *
@@ -25,7 +25,9 @@ export interface AdapterRegistry {
 	list(): readonly PlatformAdapter[];
 }
 
-export function createAdapterRegistry(initial: readonly PlatformAdapter[] = []): AdapterRegistry {
+export function createPlatformAdapterRegistry(
+	initial: readonly PlatformAdapter[] = [],
+): PlatformAdapterRegistry {
 	const adapters: PlatformAdapter[] = [];
 	const keys = new Set<string>();
 

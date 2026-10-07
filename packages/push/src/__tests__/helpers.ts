@@ -47,7 +47,7 @@ function realTimerCtx(): ServiceContext {
  * 用例拿 `defaults()` 改一改来验闸门(关 feature / 设 quietHours)时,改动也得留得住。
  */
 export function pushBase(): Pick<
-	import("../bilibili-push").BilibiliPushOptions,
+	import("../push-router").PushRouterOptions,
 	"serviceCtx" | "defaults" | "muted"
 > {
 	const defaults = loopbackDefaults();
@@ -77,3 +77,6 @@ export function makeExtensionSub(opts: {
 		identity: { sourceKey: opts.extensionId ?? "douyin", externalId: opts.externalId },
 	});
 }
+
+/** 推送路由只用得到分发器的这五个方法,单测里的假实现也只交这五个。 */
+export type FakeDispatcher = import("../push-router").PushRouterOptions["dispatcher"];

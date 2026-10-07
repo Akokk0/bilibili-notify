@@ -357,7 +357,7 @@ describe("桥 adapter", () => {
 	// ---- 私聊覆盖 ----------------------------------------------------------
 
 	/**
-	 * 调用方(`MultiplexSink.send`)**恒传 `{ private: false }`**,所以这里只能认
+	 * 调用方(`TargetDispatcher.send`)**恒传 `{ private: false }`**,所以这里只能认
 	 * `=== true`。写成 `opts.private ?? scope === "private"` 的话 `??` 不替换 false,
 	 * scope 是 private 的目标会永远走群那一支 —— onebot 上栽过一次的坑。
 	 */

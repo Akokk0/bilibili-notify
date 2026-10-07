@@ -18,7 +18,7 @@
  * ## 静音挡的是什么
  *
  * 挡**订阅推送**(动态 / 直播 / SC / 上舰 / 词云 / 总结 / 下播),闸在
- * `BilibiliPush.broadcastToFeature`。
+ * `PushRouter.broadcastToFeature`。
  *
  * **不挡**发给主人的私聊 —— 运行错误告警、还有指令回复本身。否则主人敲下 `/mute`
  * 之后连「好的,静音到几点」这句都收不到,他只会以为指令坏了。

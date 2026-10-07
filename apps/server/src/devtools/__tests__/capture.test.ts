@@ -86,7 +86,7 @@ describe("createCaptureGate", () => {
 		});
 
 		expect(send).not.toHaveBeenCalled();
-		expect(res).toEqual({ ok: true, latencyMs: 0, synthetic: true });
+		expect(res).toEqual({ ok: true, latencyMs: 0, isSynthetic: true });
 		expect(gate.entries()).toEqual([
 			{
 				id: "1",
@@ -232,15 +232,15 @@ describe("createCaptureGate", () => {
 		expect(await full.probeCapabilities?.(ADAPTER)).toBe(caps);
 	});
 
-	it("拦下来那条回的结果标了 synthetic —— 它没出网,不能拿去翻目标的可达状态", async () => {
-		// 回 ok 是为了让调用链照常跑完(推送引擎、历史那行都当它成了)。但 sink 的
+	it("拦下来那条回的结果标了 isSynthetic —— 它没出网,不能拿去翻目标的可达状态", async () => {
+		// 回 ok 是为了让调用链照常跑完(推送引擎、历史那行都当它成了)。但 dispatcher 的
 		// onDelivery 会拿同一个结果去写 target.testStatus —— 那是落盘、还广播
 		// config-changed 的。截流期间把一个发不出去的目标标成绿的,还活得比截流久。
 		const gate = createCaptureGate();
 		const { inner } = fakeInner();
 		gate.enable();
 		const res = await gate.wrap(inner).send(ADAPTER, TARGET, { kind: "text", text: "x" });
-		expect(res).toMatchObject({ ok: true, synthetic: true });
+		expect(res).toMatchObject({ ok: true, isSynthetic: true });
 		expect(isReachabilityEvidence(res)).toBe(false);
 	});
 	it("count() 只回条数,不拷整张表 —— 生效条每几秒念一次拦下几条", async () => {

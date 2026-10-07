@@ -11,8 +11,8 @@ describe("testResultOfDelivery", () => {
 		expect(testResultOfDelivery({ ok: true, latencyMs: 42 })).toEqual({ ok: true, latencyMs: 42 });
 	});
 
-	it("截流标记(synthetic)不上线", () => {
-		expect(testResultOfDelivery({ ok: true, latencyMs: 0, synthetic: true })).toEqual({
+	it("截流标记(isSynthetic)不上线", () => {
+		expect(testResultOfDelivery({ ok: true, latencyMs: 0, isSynthetic: true })).toEqual({
 			ok: true,
 			latencyMs: 0,
 		});

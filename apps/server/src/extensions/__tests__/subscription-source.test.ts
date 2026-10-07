@@ -17,7 +17,7 @@ import { join } from "node:path";
 import type { Disposable, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import type { ExtensionContext } from "../context.js";
 import { type LoadedExtensions, loadExtensions } from "../loader.js";
 import { createExtensionMounts } from "../mount.js";
@@ -102,7 +102,7 @@ async function boot(
 		root,
 		host,
 		mounts: createExtensionMounts({ logger: silentLogger }),
-		adapters: createAdapterRegistry(),
+		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		subscriptions: () => rows,

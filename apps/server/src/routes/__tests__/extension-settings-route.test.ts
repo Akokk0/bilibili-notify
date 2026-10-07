@@ -32,7 +32,7 @@ import type { ExtensionContext } from "../../extensions/context.js";
 import { type LoadedExtensions, loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { type AppRuntime, createAppRuntime } from "../../runtime/bootstrap.js";
 import { attachChannelWiring } from "../../ws/channels.js";
 import { createLogChannel } from "../../ws/log-channel.js";
@@ -190,7 +190,7 @@ async function boot(opts: {
 		root: join(dataDir, "extensions"),
 		host: quietHost(),
 		mounts,
-		adapters: createAdapterRegistry(),
+		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		subscriptions: () => [],

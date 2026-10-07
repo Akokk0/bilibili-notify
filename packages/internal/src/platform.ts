@@ -1,3 +1,4 @@
+import type { ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
 import type { SubscriptionReportDelivery } from "./schema/subscription-report";
 import type { Subscription } from "./schema/subscriptions";
@@ -340,7 +341,7 @@ export type PayloadSegment =
 	 * - Webhook: JSON 序列化时保留 `{ type: "at-all" }`,由接收方自行处理
 	 * - Web Dashboard: 渲染成可视化 "@全体" 文本(非真实 @)
 	 *
-	 * **它是一条自己的消息,不是本体的修饰**(ADR-0016):`BilibiliPush` 把这一段单独包成
+	 * **它是一条自己的消息,不是本体的修饰**(ADR-0016):`PushRouter` 把这一段单独包成
 	 * 一条 composite payload,排在本体之前发出,落历史时 `role: "extra"` —— 与下播的词云 /
 	 * AI 总结同类,都是挂在某把主特性下面的附加项。发不发由「全局 + per-UP 合并后的
 	 * `features.extras.atAll<Scope>`」定,某个目标要不要另说则看订阅上的三态表
@@ -402,7 +403,7 @@ export type NotificationPayload =
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。
  * Adapter 实现内部按 target.platform 分发到具体 platform adapter。
  */
-export interface NotificationSink {
+export interface TargetDispatcher {
 	send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 	sendPrivate(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 	/** 允许 adapter 通过 id 查目标的元数据（platform / scope / 启停状态）。 */
@@ -414,6 +415,17 @@ export interface NotificationSink {
 	isEnabled(targetId: string): boolean;
 	/** 健康检查：目标当前是否可投递（bot 在线 / endpoint 可达）。 */
 	isAvailable(targetId: string): boolean;
+	/**
+	 * 带外的连接探测入口,给 `/api/connections/:id/probe` 与引擎的周期健康探测用。
+	 */
+	probeConnection(connectionId: string): Promise<ProbeResult>;
+	/**
+	 * 这条连接所在平台的能力快照(能不能签小程序卡);连接缺、平台实现缺、平台没有能力
+	 * 概念都是 undefined —— 调用方按「什么都不支持」处理。
+	 */
+	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
+	/** 主动探一次能力;同上的三种缺失回 undefined。 */
+	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 }
 
 export interface DeliveryResult {
@@ -426,7 +438,7 @@ export interface DeliveryResult {
 	 * 就是凭空把一个发不出去的目标标成绿的,而且会落盘、活得比截流本身还久。
 	 * 读之前先过 {@link isReachabilityEvidence}。
 	 */
-	synthetic?: true;
+	isSynthetic?: true;
 }
 
 /**
@@ -434,7 +446,7 @@ export interface DeliveryResult {
  * 只有可达性判断要过这道。
  */
 export function isReachabilityEvidence(result: DeliveryResult): boolean {
-	return result.synthetic !== true;
+	return result.isSynthetic !== true;
 }
 
 /**

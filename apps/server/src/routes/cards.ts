@@ -1084,7 +1084,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		};
 		const result = await engines.push.sendToTarget(target.id, payload);
 		// `DeliveryResult` 还是老形状(`err`,且落盘进历史 / 目标的 `testStatus`),只在这个出口翻成线上的;
-		// 落盘那条路(sink 的 `onDelivery`)不经这里,照旧写 `err`。
+		// 落盘那条路(dispatcher 的 `onDelivery`)不经这里,照旧写 `err`。
 		return c.json<TestPushResponse>(testResultOfDelivery(result));
 	});
 

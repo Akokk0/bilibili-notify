@@ -1,5 +1,5 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import type { BilibiliPush } from "@bilibili-notify/push";
+import type { PushRouter } from "@bilibili-notify/push";
 
 /**
  * 60s 节流窗口。同一 sourceKey 上次告警之后 60s 内的后续告警吞掉，避免连串错误
@@ -12,10 +12,10 @@ type SourceKey = string;
 
 export interface MasterNotifierOptions {
 	bus: MessageBus;
-	push: BilibiliPush;
+	push: PushRouter;
 	logger: Logger;
 	/**
-	 * 私聊是发出去不等的后台活:登记进 `track`,关停等它发完 —— 发送经 sink 回调的目标可达性写回,
+	 * 私聊是发出去不等的后台活:登记进 `track`,关停等它发完 —— 发送经 dispatcher 回调的目标可达性写回,
 	 * 得赶在各写道关门之前交进去。
 	 */
 	serviceCtx: Pick<ServiceContext, "track">;

@@ -9,7 +9,7 @@
  * ```
  * connections.json 里那条接入 → 宿主按 zod 解出 config → ctx 交给桥 → 桥认 token
  *   → upgrade 分发到桥 → 握手 → bot 名单 → publishView
- * POST /api/targets/:id/test → sink 按**分发键**找 adapter(键 = 拓展 id)→ 桥 adapter
+ * POST /api/targets/:id/test → dispatcher 按**分发键**找 adapter(键 = 拓展 id)→ 桥 adapter
  *   → server.send → `send` 帧 → 桥回 `result` → 回执一路回到 HTTP 响应
  * ```
  *

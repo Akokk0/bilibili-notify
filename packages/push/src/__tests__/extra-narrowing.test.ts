@@ -19,7 +19,6 @@ import {
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type NotificationPayload,
-	type NotificationSink,
 	type PushTarget,
 	type Subscription,
 	sameIdentity,
@@ -27,12 +26,12 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { PushRouter, type PushSendResult } from "../push-router";
+import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
 
-function makeSink(): { sink: NotificationSink; calls: string[] } {
+function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 	const calls: string[] = [];
-	const sink: NotificationSink = {
+	const dispatcher: FakeDispatcher = {
 		isAvailable: () => true,
 		isEnabled: () => true,
 		send: async (targetId) => {
@@ -53,7 +52,7 @@ function makeSink(): { sink: NotificationSink; calls: string[] } {
 				enabled: true,
 			}) as unknown as PushTarget,
 	};
-	return { sink, calls };
+	return { dispatcher, calls };
 }
 
 function makeStore(subs: Subscription[]): SubscriptionStore {
@@ -85,13 +84,13 @@ function subWithThreeLiveEndTargets(): Subscription {
 	return sub;
 }
 
-function makePush(sub: Subscription, seen?: PushSendInfo[]) {
-	const { sink, calls } = makeSink();
+function makePush(sub: Subscription, seen?: PushSendResult[]) {
+	const { dispatcher, calls } = makeDispatcher();
 	const defaults = loopbackDefaults();
-	const push = new BilibiliPush({
+	const push = new PushRouter({
 		...pushBase(),
 		defaults: () => defaults,
-		sink,
+		dispatcher,
 		store: makeStore([sub]),
 		logger: silentLogger,
 		onSend: seen ? (info) => seen.push(info) : undefined,
@@ -149,7 +148,7 @@ describe("附加项按目标收窄", () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extraTargets.wordcloud = { t1: false, t2: false, t3: false };
-		const seen: PushSendInfo[] = [];
+		const seen: PushSendResult[] = [];
 		const { push, calls } = makePush(sub, seen);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
@@ -165,7 +164,7 @@ describe("附加项按目标收窄", () => {
 			identity: { sourceKey: "bilibili", externalId: "u1" },
 		});
 		sub.routing.liveEnd = [];
-		const seen: PushSendInfo[] = [];
+		const seen: PushSendResult[] = [];
 		const { push, calls } = makePush(sub, seen);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
 			extra: "wordcloud",
@@ -180,7 +179,7 @@ describe("附加项按目标收窄", () => {
 		const sub = subWithThreeLiveEndTargets();
 		sub.routing.liveEnd = ["t1"];
 		setExtraDefault(sub, "wordcloud", true);
-		const seen: PushSendInfo[] = [];
+		const seen: PushSendResult[] = [];
 		const { push } = makePush(sub, seen);
 		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, { extra: "wordcloud" });
 		expect(seen[0]?.messages.map((m) => m.role)).toEqual(["extra"]);
@@ -203,7 +202,7 @@ describe("附加项按目标收窄", () => {
 		sub.routing.liveEnd = ["t1", "t2"];
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extraTargets.wordcloud = { t1: false };
-		const seen: PushSendInfo[] = [];
+		const seen: PushSendResult[] = [];
 		const { push } = makePush(sub, seen);
 		const pushId = "p1";
 		await push.broadcastToFeature("s1", "liveEnd", { kind: "text", text: "下播卡" }, { pushId });

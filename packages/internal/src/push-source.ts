@@ -82,7 +82,7 @@ export interface PlatformDialect {
 
 /**
  * 一个平台实现 —— 今天两半都由同一个对象扛,所以它就是那两个接口的交集。
- * 矩阵({@link MultiplexNotificationSink})拿它按 `connection.platform` 分发。
+ * 矩阵({@link TargetDispatcher})拿它按 `connection.platform` 分发。
  *
  * 实现**不许抛**:返回 `{ ok: false, err: "..." }`,重试由路由层决定。
  *

@@ -27,7 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { type ZodType, z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../push/dispatch.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext, STATUS_CHANGED_COALESCE_MS } from "../context.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
@@ -90,7 +90,7 @@ function harness(
 	/** 全表 / 单条各被问了几次 —— 全表那口在宿主那头是 deepClone 整张连接表。 */
 	let connectionsReads = 0;
 	let connectionReads = 0;
-	const adapters = createAdapterRegistry();
+	const adapters = createPlatformAdapterRegistry();
 
 	const runtime = createExtensionContext({
 		id: "bridge",
@@ -1122,7 +1122,7 @@ describe("认领 WS upgrade", () => {
 				onDispose() {},
 			} as unknown as ServiceContext,
 			mounts: createExtensionMounts({ logger: silentLogger }),
-			adapters: createAdapterRegistry(),
+			adapters: createPlatformAdapterRegistry(),
 			connections: () => [],
 			onConnectionsChanged: () => ({ dispose() {} }),
 			subscriptions: () => [],

@@ -59,7 +59,7 @@ import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { adapterForConnection } from "./push/dispatch.js";
-import { createAdapterRegistry } from "./push/registry.js";
+import { createPlatformAdapterRegistry } from "./push/registry.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
@@ -581,7 +581,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//   1. SubscriptionStore binding mirrors the file-backed config into an
 		//      in-memory store + emits subscription-changed on diffs.
 		//   2. Platform adapters are constructed from logger; they hold no state.
-		//   3. createEngines() builds Sink → BilibiliPush → DynamicEngine + LiveEngine
+		//   3. createEngines() builds Dispatcher → PushRouter → DynamicEngine + LiveEngine
 		//      and registers serviceCtx.onDispose for graceful shutdown.
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
@@ -654,7 +654,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		];
 		// 出口从此住在一张**活的注册表**里:内置这几个开机就在,拓展注册进来的后到、
 		// 拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
-		const adapterRegistry = createAdapterRegistry(rawAdapters);
+		const adapterRegistry = createPlatformAdapterRegistry(rawAdapters);
 
 		// 主人是「谁」—— 平台 + 地址(+ 是哪个 bot 看到的)三坐标,不是一个裸字符串。
 		// onebot 的 user_id 与官机的 C2C openid 是两个命名空间,撞上就等于认错人;
@@ -1047,7 +1047,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			api: runtimeEngines.api,
 			renderer: () => runtimeEngines.imageRenderer,
 			presentation: () => runtimeEngines.linkCardPresentation(),
-			// 能力走 sink 那条连接寻址(健康探测与 /api/connections/capabilities 用的是同一份),
+			// 能力走 dispatcher 那条连接寻址(健康探测与 /api/connections/capabilities 用的是同一份),
 			// 别在接线层再手写一条 —— 两条路会各自漂。
 			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>

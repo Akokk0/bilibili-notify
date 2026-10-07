@@ -22,7 +22,7 @@ import type { HistoryStore } from "./store.js";
  * 一行补 N 条就是 190s × N —— HTTP 请求绝不能同步等着。按下按钮立刻回一句「收到」,
  * 消息一条条补,每补一条就往历史行里追加、`history-updated` 推到面板,那条路早就通着。
  *
- * **发送口固定注入 `BilibiliPush.sendToTarget`**,因为它恰好就是定案里那三条闸的交汇点:
+ * **发送口固定注入 `PushRouter.sendToTarget`**,因为它恰好就是定案里那三条闸的交汇点:
  *
  * - 自带退避重试 → 目标不可达不挡(决策 12),那正是重推要解决的东西;
  * - 每次重试前复检 routing → 用户已经取消了就停(决策 10),与入口那道闸同源;
@@ -64,7 +64,7 @@ export interface CreateRepushRunnerOptions {
 	history: Pick<HistoryStore, "findRow" | "appendToRow">;
 	repush: RepushStore;
 	/**
-	 * 把一条消息发给一个目标。**约定注入 `BilibiliPush.sendToTarget`**(见文件头:
+	 * 把一条消息发给一个目标。**约定注入 `PushRouter.sendToTarget`**(见文件头:
 	 * 那三条闸就是靠选它而自动满足的)。
 	 */
 	send(
@@ -80,7 +80,7 @@ export interface CreateRepushRunnerOptions {
 	 * 旧历史照样能重推。都找不到回 undefined。
 	 */
 	currentSubscriptionOf(row: HistoryRowIdentity): string | undefined;
-	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */
+	/** 目标与它所属的连接都还启用着(`dispatcher.isEnabled`)。 */
 	targetEnabled(targetId: string): boolean;
 	logger: Logger;
 	/**

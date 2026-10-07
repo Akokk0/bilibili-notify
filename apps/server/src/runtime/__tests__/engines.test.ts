@@ -2,7 +2,7 @@
 /**
  * 单元测试 — `createEngines` 的「无重启热重载」契约(独立端配置流向核心)。
  *
- * engines.ts 自身构造真实 DynamicEngine / LiveEngine / BilibiliPush / CommentaryGenerator /
+ * engines.ts 自身构造真实 DynamicEngine / LiveEngine / PushRouter / CommentaryGenerator /
  * ImageRenderer,代价太大且与本测试无关 —— 这里把这 5 个引擎包 `vi.mock` 成 spy class,
  * 用真实 NodeMessageBus 驱动事件,聚焦验证 engines.ts 的 wiring 与热重载分支:
  *
@@ -52,7 +52,7 @@ import { type BilibiliSettings, BilibiliSettingsSchema } from "../../bilibili/se
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -69,7 +69,7 @@ const H = vi.hoisted(() => ({
 }));
 
 vi.mock("@bilibili-notify/push", () => ({
-	BilibiliPush: class {
+	PushRouter: class {
 		opts: any;
 		start = vi.fn();
 		stop = vi.fn();
@@ -464,7 +464,7 @@ function setup(opts?: {
 			...opts?.overrides?.subRuntimeStore,
 		} as any,
 		bus,
-		adapters: createAdapterRegistry(opts?.platformAdapters ?? []),
+		adapters: createPlatformAdapterRegistry(opts?.platformAdapters ?? []),
 		puppeteer: opts?.puppeteer ? ({} as any) : null,
 		...(opts?.cardSkins ? { cardSkins: opts.cardSkins } : {}),
 		...(opts?.extensionPlatformLabel
@@ -2149,7 +2149,7 @@ describe("createEngines — 消息版式", () => {
 		expect(dyn.messageLayout?.blocks.map((b: { type: string }) => b.type)).toContain("link");
 	});
 
-	it("dynamicPushLike.broadcastDynamicSequence → BilibiliPush 收到 payload 数组", async () => {
+	it("dynamicPushLike.broadcastDynamicSequence → PushRouter 收到 payload 数组", async () => {
 		// 引擎说 uid,推送层认订阅 id —— 这个 uid 得真有一条订阅,适配器才往下交。
 		const c = setup({
 			subs: [
@@ -2568,8 +2568,8 @@ describe("createEngines — 后台写登记进 track", () => {
 		await new Promise((r) => setTimeout(r, 0));
 		const before = c.serviceCtx.tracking.tracked.length;
 
-		// 连接不在 → 投递失败,sink 照样回调 onDelivery。
-		await H.push[0].opts.sink.send(TARGET_ID, { kind: "text", text: "hi" });
+		// 连接不在 → 投递失败,dispatcher 照样回调 onDelivery。
+		await H.push[0].opts.dispatcher.send(TARGET_ID, { kind: "text", text: "hi" });
 
 		expect(recordTargetTestStatus).toHaveBeenCalledTimes(1);
 		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);

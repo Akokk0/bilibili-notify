@@ -192,7 +192,7 @@ export class RoomContextBase {
 	}
 
 	isSubscribed(sub: SubItemView, type: LiveMasterFeature): boolean {
-		// features.X = true 即视为「订阅了该特性」;routing 由推送层(BilibiliPush)兜底,
+		// features.X = true 即视为「订阅了该特性」;routing 由推送层(PushRouter)兜底,
 		// routing 空时 broadcast 自然不外发。这样 features.X=true / routing.X=[] 的 UP 仍开
 		// WS、仍 build payload,后续加 routing 时下一次事件立即生效。
 		return sub[type];

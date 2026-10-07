@@ -308,7 +308,7 @@ export type LiveSubscriptionOp =
 
 /**
  * Push-out interface required by live-engine. Mirrors the methods on
- * `@bilibili-notify/push`'s `BilibiliPush` we actually call.
+ * `@bilibili-notify/push`'s `PushRouter` we actually call.
  *
  * `content` is intentionally `unknown` — the host passes its own
  * `NotificationPayload`; the engine only forwards the value through.

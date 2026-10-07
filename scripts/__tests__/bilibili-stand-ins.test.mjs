@@ -59,11 +59,10 @@ export const RATCHET = {
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
 	"apps/server/src/routes/subscriptions.ts": 9,
-	"apps/server/src/runtime/engines.ts": 25,
+	"apps/server/src/runtime/engines.ts": 20,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 19,
 	"apps/server/src/runtime/follow-sync.ts": 5,
-	"apps/server/src/runtime/master-notifier.ts": 2,
 	"apps/server/src/runtime/push-history.ts": 5,
 	"apps/server/src/stats/bili-format.ts": 1,
 	"apps/server/src/stats/bili-source.ts": 15,
@@ -114,8 +113,7 @@ export const RATCHET = {
 	"packages/live/src/live-engine.ts": 2,
 	"packages/live/src/room-context.ts": 3,
 	"packages/live/src/room-session-base.ts": 3,
-	"packages/push/src/bilibili-push.ts": 5,
-	"packages/push/src/index.ts": 2,
+	"packages/push/src/push-router.ts": 2,
 };
 
 /** 字符串字面量里算 B 站替身的那两个值。 */

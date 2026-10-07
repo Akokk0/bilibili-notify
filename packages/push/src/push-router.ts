@@ -7,12 +7,12 @@ import type {
 	GlobalDefaults,
 	Logger,
 	NotificationPayload,
-	NotificationSink,
 	PayloadSegment,
 	PushMessageRole,
 	PushTarget,
 	ServiceContext,
 	Subscription,
+	TargetDispatcher,
 } from "@bilibili-notify/internal";
 import {
 	BILIBILI_SOURCE_KEY,
@@ -59,7 +59,7 @@ export interface PushMessage {
 export interface PushMessageOutcome extends PushMessage {
 	/**
 	 * 缺省 = **这条从来没出过网**:同一目标的前一条失败、整段序列就此中止,后面这些
-	 * 连 sink 都没进(ADR-0017 决策 17)。它们照样回调,好让历史记全「本来要发几条」——
+	 * 连 dispatcher 都没进(ADR-0017 决策 17)。它们照样回调,好让历史记全「本来要发几条」——
 	 * 从前静默丢掉,一次本该发 3 条的推送在面板上只剩 1 条,少掉的无从查起。
 	 *
 	 * 与无目标行的每一条同形状(那一整行也都没有结果)。
@@ -94,14 +94,14 @@ interface PushSendBase {
  * 照带、没有结果 —— 宿主据此落「无目标」那一行,面板上才看得见。上游闸(静音 / 特性关 /
  * 免扰 / 无订阅)不回调:那不是「无目标」,是本来就不该推。
  *
- * multiplex sink 拿不到订阅 / feature(它只看 PushTarget),所以历史只能从这一层注入。
+ * TargetDispatcher 拿不到订阅 / feature(它只看 PushTarget),所以历史只能从这一层注入。
  */
-export type PushSendInfo =
+export type PushSendResult =
 	| (PushSendBase & { target: PushTarget; messages: PushMessageOutcome[] })
 	| (PushSendBase & { target: null; messages: PushMessage[] });
 
 /** 一次广播在发送层内部带着走的上下文。 */
-export interface SendContext {
+export interface SendMeta {
 	subscriptionId: string;
 	feature: FeatureKey;
 	pushId: string;
@@ -109,7 +109,7 @@ export interface SendContext {
 }
 
 export interface BroadcastOptions {
-	/** 见 {@link PushSendInfo.pushId};不传就现生成一个(只在这一次广播里通用)。 */
+	/** 见 {@link PushSendResult.pushId};不传就现生成一个(只在这一次广播里通用)。 */
 	pushId?: string;
 	/** 显式 false 抑制 @全体(周期「正在直播」等非开播的 live 推送);不传 = 按 feature 决定。 */
 	allowAtAll?: boolean;
@@ -127,10 +127,13 @@ export interface BroadcastOptions {
 	extra?: ExtraKey;
 }
 
-/** Options for constructing a BilibiliPush instance. */
-export interface BilibiliPushOptions {
-	/** Platform-neutral push sink — translates targetId → platform delivery. */
-	sink: NotificationSink;
+/** Options for constructing a PushRouter instance. */
+export interface PushRouterOptions {
+	/** Platform-neutral push dispatcher — translates targetId → platform delivery. */
+	dispatcher: Pick<
+		TargetDispatcher,
+		"send" | "sendPrivate" | "resolve" | "isEnabled" | "isAvailable"
+	>;
 	/** Subscription store — used to resolve routing per subscription id + feature. */
 	store: SubscriptionStore;
 	/** Optional master PushTarget for private error notifications. */
@@ -148,10 +151,10 @@ export interface BilibiliPushOptions {
 	 * current globals state (not a stale snapshot).
 	 */
 	defaults: () => GlobalDefaults;
-	/** 推送落地的回调,契约见 {@link PushSendInfo}。独立端接到历史仓。 */
-	onSend?: (info: PushSendInfo) => void;
+	/** 推送落地的回调,契约见 {@link PushSendResult}。独立端接到历史仓。 */
+	onSend?: (info: PushSendResult) => void;
 	/**
-	 * 全局静音 —— 「安静一会儿」。返回 true 时 {@link BilibiliPush.broadcastToFeature}
+	 * 全局静音 —— 「安静一会儿」。返回 true 时 {@link PushRouter.broadcastToFeature}
 	 * 整条短路,所有 feature 一起挡。
 	 *
 	 * **每条推送现问一次**,不快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
@@ -171,12 +174,12 @@ export interface BilibiliPushOptions {
  * Platform-neutral push router.
  *
  * The standalone runtime's push router. Routing comes from
- * store.findById(subscriptionId)?.routing[feature] → targetId[] → sink.send(targetId, payload).
+ * store.findById(subscriptionId)?.routing[feature] → targetId[] → dispatcher.send(targetId, payload).
  * 键是订阅自己的 id,不是 B 站 uid(ADR-0019 决策 50):B 站引擎那条边在宿主里先把 uid 翻成 id。
  * The old pushArrMap, broadcastToTargets, sendPrivateMsg/sendErrorMsg are gone.
  */
-export class BilibiliPush {
-	private readonly sink: NotificationSink;
+export class PushRouter {
+	private readonly dispatcher: PushRouterOptions["dispatcher"];
 	private readonly store: SubscriptionStore;
 	private master: PushTarget | null;
 	/**
@@ -189,7 +192,7 @@ export class BilibiliPush {
 	private readonly defaults: () => GlobalDefaults;
 	private readonly muted: () => boolean;
 	private readonly quietHoursNow: () => Date;
-	private readonly onSend?: (info: PushSendInfo) => void;
+	private readonly onSend?: (info: PushSendResult) => void;
 	private readonly serviceCtx: ServiceContext;
 	private disposed = false;
 	/**
@@ -205,8 +208,8 @@ export class BilibiliPush {
 	 */
 	private readonly sleepWakers = new Set<() => void>();
 
-	constructor(opts: BilibiliPushOptions) {
-		this.sink = opts.sink;
+	constructor(opts: PushRouterOptions) {
+		this.dispatcher = opts.dispatcher;
 		this.store = opts.store;
 		this.master = opts.master ?? null;
 		this.logger = opts.logger;
@@ -243,7 +246,7 @@ export class BilibiliPush {
 			this.masterReachable = undefined;
 			return false;
 		}
-		const available = this.sink.isAvailable(this.master.id);
+		const available = this.dispatcher.isAvailable(this.master.id);
 		if (available) {
 			if (this.masterReachable === false) {
 				this.logger.info("[push] master 目标已恢复可达");
@@ -332,14 +335,14 @@ export class BilibiliPush {
 			return [];
 		}
 
-		const ctx: SendContext = {
+		const ctx: SendMeta = {
 			subscriptionId,
 			feature,
 			pushId: opts?.pushId ?? randomUUID(),
 			role: opts?.role ?? (opts?.extra ? "extra" : "main"),
 		};
 		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
-		const routed = (sub.routing[feature] ?? []).filter((id) => this.sink.isEnabled(id));
+		const routed = (sub.routing[feature] ?? []).filter((id) => this.dispatcher.isEnabled(id));
 		if (routed.length === 0) {
 			this.logger.debug(`[push] ${who} feature=${feature} 无可用目标`);
 			this.onSend?.({
@@ -387,7 +390,7 @@ export class BilibiliPush {
 		const plainTargets: string[] = [];
 		for (const id of targetIds) {
 			// 平台不支持 @全体的目标不进 @全体 分支:抽屉里它的开关本就显示为关。
-			const target = this.sink.resolve(id);
+			const target = this.dispatcher.resolve(id);
 			const supported = target !== undefined && platformSupportsAtAll(target.platform);
 			const explicit = overrides[id];
 			const shouldAtAll = supported && (explicit ?? defaultOn);
@@ -421,13 +424,13 @@ export class BilibiliPush {
 	 * 「@全体先出、图片隔很久才出、推送历史标失败」)。fire-and-forget 后 @全体
 	 * 第一时间发出、失败也只异步落历史,卡片正文与后续任务都不再被它拖住。
 	 *
-	 * 顺序保证:@全体 的 `sendToTarget` 在卡片之前**同步发起**(其内部 `sink.send`
+	 * 顺序保证:@全体 的 `sendToTarget` 在卡片之前**同步发起**(其内部 `dispatcher.send`
 	 * 先于卡片被调用),故接收端仍是 @ 提醒在前、卡片在后。
 	 */
 	private async sendAtAllThenCard(
 		atAllTargets: string[],
 		payloads: NotificationPayload[],
-		ctx: SendContext,
+		ctx: SendMeta,
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const myGen = this.generation;
@@ -435,7 +438,7 @@ export class BilibiliPush {
 		const results: DeliveryResult[] = [];
 		for (const id of atAllTargets) {
 			if (this.disposed || this.generation !== myGen) break;
-			// @全体 best-effort:同步发起(先于序列首条入 sink),不 await。
+			// @全体 best-effort:同步发起(先于序列首条入 dispatcher),不 await。
 			const atAllPayload = makeAtAllPayload();
 			const atAllJob = this.sendToTarget(id, atAllPayload, { routing });
 			const outcomes = await this.sendSequence(id, payloads, ctx, myGen);
@@ -458,14 +461,14 @@ export class BilibiliPush {
 	/**
 	 * 把同一段消息序列发给一批目标。失败逐目标捕获,不抛。
 	 *
-	 * 每个目标收完整段序列后回调一次 onSend(见 {@link PushSendInfo});生命周期翻转
+	 * 每个目标收完整段序列后回调一次 onSend(见 {@link PushSendResult});生命周期翻转
 	 * (stop→start)时放弃剩余目标,最后那条已 in-flight 的结果是生命周期 artifact,
 	 * 不回调、不计入。
 	 */
 	async sendBatch(
 		targetIds: string[],
 		payload: NotificationPayload | NotificationPayload[],
-		ctx: SendContext,
+		ctx: SendMeta,
 	): Promise<DeliveryResult[]> {
 		if (this.disposed) return [];
 		const payloads = Array.isArray(payload) ? payload : [payload];
@@ -486,13 +489,13 @@ export class BilibiliPush {
 	/**
 	 * 一个目标的一段序列:顺序发,某条失败即中止其后续条(失败后大概率继续失败,且乱序
 	 * 补发比缺失更糟)。失败那条留在结果里;**被中止的也留在结果里,但不带 `result`**
-	 * —— 它们一次都没进 sink,只是让历史记得住「本来还有几条」(ADR-0017 决策 17)。
+	 * —— 它们一次都没进 dispatcher,只是让历史记得住「本来还有几条」(ADR-0017 决策 17)。
 	 * 返回 null = 生命周期翻转,这一段作废。
 	 */
 	private async sendSequence(
 		targetId: string,
 		payloads: NotificationPayload[],
-		ctx: SendContext,
+		ctx: SendMeta,
 		myGen: number,
 	): Promise<PushMessageOutcome[] | null> {
 		const routing = { subscriptionId: ctx.subscriptionId, feature: ctx.feature };
@@ -512,10 +515,10 @@ export class BilibiliPush {
 		return outcomes;
 	}
 
-	/** 把一个目标这一段的结果交给 onSend。target 由 sink 反解 id 得到,反解不到就静默跳过。 */
-	private emit(ctx: SendContext, targetId: string, messages: PushMessageOutcome[]): void {
+	/** 把一个目标这一段的结果交给 onSend。target 由 dispatcher 反解 id 得到,反解不到就静默跳过。 */
+	private emit(ctx: SendMeta, targetId: string, messages: PushMessageOutcome[]): void {
 		if (!this.onSend) return;
-		const target = this.sink.resolve(targetId);
+		const target = this.dispatcher.resolve(targetId);
 		if (!target) return;
 		this.onSend({
 			pushId: ctx.pushId,
@@ -528,7 +531,7 @@ export class BilibiliPush {
 
 	/**
 	 * Send a notification to a single target.
-	 * Retries with exponential back-off if the sink indicates the target is temporarily unavailable.
+	 * Retries with exponential back-off if the dispatcher indicates the target is temporarily unavailable.
 	 *
 	 * `opts.routing` re-checks (每次重试前,不只入口一次)`targetId` 是否仍在
 	 * `store.findById(subscriptionId).routing[feature]` 里。退避重试窗口最长可达约 190s
@@ -558,7 +561,7 @@ export class BilibiliPush {
 				this.logger.info(`[push] ${msg}`);
 				return { ok: false, latencyMs: 0, err: msg };
 			}
-			if (!this.sink.isAvailable(targetId)) {
+			if (!this.dispatcher.isAvailable(targetId)) {
 				if (delay > MAX_RETRY_DELAY_MS) {
 					const msg = `target=${targetId} 持续不可达，放弃推送`;
 					this.logger.error(`[push] ${msg}`);
@@ -573,8 +576,8 @@ export class BilibiliPush {
 			const t0 = Date.now();
 			try {
 				const result = opts?.private
-					? await this.sink.sendPrivate(targetId, payload)
-					: await this.sink.send(targetId, payload);
+					? await this.dispatcher.sendPrivate(targetId, payload)
+					: await this.dispatcher.send(targetId, payload);
 				return result;
 			} catch (e) {
 				const err = e instanceof Error ? e.message : String(e);

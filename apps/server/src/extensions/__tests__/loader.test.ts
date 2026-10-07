@@ -18,7 +18,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";
@@ -81,7 +81,7 @@ const HEALTHY = `export function activate(ctx) {
 /** 与核心打交道那几格在 `context-grants.test.ts` 里钉;这里只关心装载。 */
 function coreStubs() {
 	return {
-		adapters: createAdapterRegistry(),
+		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		subscriptions: () => [],
@@ -343,7 +343,7 @@ describe("加载拓展", () => {
 describe("拓展声明的密钥字段", () => {
 	it("跑起来的拓展把它的 secret 键交出来 —— 备份脱敏照这份抹", async () => {
 		await plant("bridge", "export function activate() {}");
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		const loaded = await loadExtensions({
 			root,
 			host: fakeHost().ctx,

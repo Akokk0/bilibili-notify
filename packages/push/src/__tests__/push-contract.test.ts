@@ -1,11 +1,11 @@
 /**
- * `BilibiliPush.broadcastToFeature` 的推送契约 —— 历史一行 = 一次推送 × 一个目标。
+ * `PushRouter.broadcastToFeature` 的推送契约 —— 历史一行 = 一次推送 × 一个目标。
  *
  * 锁住:
  *   - 一次广播对每个目标只回调 `onSend` 一次,带这一段的全部消息与逐条结果
  *   - `pushId` 透传;没传就现生成,同一次广播里各目标拿到同一个
  *   - 某条失败仍中止该目标后续条:失败那条在消息列表里,被中止的不在
- *   - 可用目标为零(没配,或配的全停用)→ 以 `target: null` 回调一次,不调 sink、不重试
+ *   - 可用目标为零(没配,或配的全停用)→ 以 `target: null` 回调一次,不调 dispatcher、不重试
  *   - 停用目标不当候选:只推给启用的,停用的既不发也不记
  *   - 附加项(`role: "extra"`)与本体分开标;@全体 恒为附加项,且在本体那次回调之后
  *   - 上游闸(静音 / 特性关 / 免扰 / 无订阅)一律不回调 —— 那不是「无目标」
@@ -16,7 +16,6 @@ import {
 	FEATURE_KEYS,
 	makeEmptySubscription,
 	type NotificationPayload,
-	type NotificationSink,
 	type PushTarget,
 	type Subscription,
 	sameIdentity,
@@ -24,8 +23,8 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { PushRouter, type PushSendResult } from "../push-router";
+import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
 
 const T1 = "11111111-1111-4111-8111-111111111111";
 const T2 = "22222222-2222-4222-8222-222222222222";
@@ -40,18 +39,18 @@ function textOf(p: NotificationPayload): string {
 	return p.kind;
 }
 
-interface SinkOptions {
+interface DispatcherOptions {
 	/** 哪些目标停用了(配置层面);缺省全启用。 */
 	disabled?: string[];
 	/** 按 (targetId, 该目标第几次 send) 指定失败。 */
 	failOn?: (targetId: string, nth: number) => boolean;
 }
 
-function makeSink(opts: SinkOptions = {}) {
+function makeDispatcher(opts: DispatcherOptions = {}) {
 	const calls: Array<{ targetId: string; payload: NotificationPayload }> = [];
 	const perTarget = new Map<string, number>();
 	const isAvailable = vi.fn(() => true);
-	const sink: NotificationSink = {
+	const dispatcher: FakeDispatcher = {
 		isAvailable,
 		isEnabled: (id) => !opts.disabled?.includes(id),
 		send: async (targetId, payload) => {
@@ -72,7 +71,7 @@ function makeSink(opts: SinkOptions = {}) {
 				enabled: !opts.disabled?.includes(id),
 			}) as unknown as PushTarget,
 	};
-	return { sink, calls, isAvailable };
+	return { dispatcher, calls, isAvailable };
 }
 
 function makeStore(subs: Subscription[]): SubscriptionStore {
@@ -97,12 +96,12 @@ function subWith(targets: string[], atAll = false): Subscription {
 	return sub;
 }
 
-function setup(sub: Subscription, sinkOpts: SinkOptions = {}) {
-	const { sink, calls, isAvailable } = makeSink(sinkOpts);
-	const seen: PushSendInfo[] = [];
-	const push = new BilibiliPush({
+function setup(sub: Subscription, dispatcherOpts: DispatcherOptions = {}) {
+	const { dispatcher, calls, isAvailable } = makeDispatcher(dispatcherOpts);
+	const seen: PushSendResult[] = [];
+	const push = new PushRouter({
 		...pushBase(),
-		sink,
+		dispatcher,
 		store: makeStore([sub]),
 		logger: silentLogger,
 		onSend: (info) => seen.push(info),
@@ -117,10 +116,10 @@ function setup(sub: Subscription, sinkOpts: SinkOptions = {}) {
  * `ok: null` 有两种来源,在这一层刻意压成同一个:无目标行的每一条,和被中止、
  * 从没出过网的那几条(ADR-0017 决策 17)。两者本就是同一个形状 ——「没有结果」。
  */
-function flat(info: PushSendInfo): [string | null, Array<[string, string, boolean | null]>] {
+function flat(info: PushSendResult): [string | null, Array<[string, string, boolean | null]>] {
 	return [
 		info.target?.id ?? null,
-		// `PushSendInfo` 是个联合,无目标那一支的消息类型上压根没有 `result` 这个键,
+		// `PushSendResult` 是个联合,无目标那一支的消息类型上压根没有 `result` 这个键,
 		// 所以得先 `in` 一道再取。
 		info.messages.map((m) => [
 			textOf(m.payload),
@@ -167,8 +166,8 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 
 	/**
 	 * **中止仍是中止 —— 只是不再静默。** 被挡下的那几条照样出现在列表里,结果是 `null`
-	 * (没有 `result` = 从没出过网,ADR-0017 决策 17)。它们没有进 sink,这一点由
-	 * `payload-sequence.test.ts` 的「被中止的那几条一次都没进 sink」钉着。
+	 * (没有 `result` = 从没出过网,ADR-0017 决策 17)。它们没有进 dispatcher,这一点由
+	 * `payload-sequence.test.ts` 的「被中止的那几条一次都没进 dispatcher」钉着。
 	 *
 	 * 为什么要记:人工重推的按钮上写着「补 N 条」,而从前这一行只剩 2 条,第 3 条连存在过
 	 * 都看不出来 —— 补不回来,也查不出少了什么。
@@ -247,7 +246,7 @@ describe("推送契约:历史记的就是广播的特性键", () => {
 });
 
 describe("推送契约:无可用目标", () => {
-	it("没配目标 → target:null 回调一次,消息照带(没有结果),不调 sink,返回空", async () => {
+	it("没配目标 → target:null 回调一次,消息照带(没有结果),不调 dispatcher,返回空", async () => {
 		const { push, seen, calls } = setup(subWith([]));
 		const out = await push.broadcastToFeature("s1", "post", [M1, M2], { pushId: "p1" });
 		expect(out).toEqual([]);
@@ -340,12 +339,12 @@ describe("推送契约:上游闸不算无目标", () => {
 	});
 
 	it("全局静音 → 不回调", async () => {
-		const { sink } = makeSink();
-		const seen: PushSendInfo[] = [];
-		const push = new BilibiliPush({
+		const { dispatcher } = makeDispatcher();
+		const seen: PushSendResult[] = [];
+		const push = new PushRouter({
 			...pushBase(),
 			muted: () => true,
-			sink,
+			dispatcher,
 			store: makeStore([subWith([])]),
 			logger: silentLogger,
 			onSend: (info) => seen.push(info),

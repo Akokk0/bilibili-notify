@@ -4,7 +4,7 @@ import { inboundScenarios } from "../scenarios/inbound.js";
 
 /**
  * A4:私聊指令 / 群链接 —— 直接调接线层那两个入站口(`onInboundPrivate` / `onInboundGroup`),
- * 与 adapter 收到真帧后调的是同一个函数;回复走真链路(sink / 来源 adapter),开着截流就拦得住。
+ * 与 adapter 收到真帧后调的是同一个函数;回复走真链路(dispatcher / 来源 adapter),开着截流就拦得住。
  */
 
 const ADAPTERS = [

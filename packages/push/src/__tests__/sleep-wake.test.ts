@@ -1,5 +1,5 @@
 /**
- * 回归守护 — P1-B 短期-a:BilibiliPush.stop() 唤醒 sleepWakers,retry 循环立即收敛。
+ * 回归守护 — P1-B 短期-a:PushRouter.stop() 唤醒 sleepWakers,retry 循环立即收敛。
  *
  * 不变量:sendToTarget 在 target 持续不可达 → 进入 sleep retry 循环;若此时 stop()
  * 触发,sleep 应立即返回,sendToTarget 在下一轮检测 disposed=true 后返回失败结果,
@@ -9,18 +9,13 @@
  * 裸 setTimeout 但忘了对接 wake,这条契约立刻挂。
  */
 
-import type {
-	DeliveryResult,
-	NotificationSink,
-	PushTarget,
-	ServiceContext,
-} from "@bilibili-notify/internal";
+import type { DeliveryResult, PushTarget, ServiceContext } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BilibiliPush } from "../bilibili-push";
-import { pushBase, silentLogger } from "./helpers";
+import { PushRouter } from "../push-router";
+import { type FakeDispatcher, pushBase, silentLogger } from "./helpers";
 
-function makeUnreachableSink(): NotificationSink {
+function makeUnreachableDispatcher(): FakeDispatcher {
 	return {
 		isAvailable: () => false, // 永远不可达 → sendToTarget 进入 sleep retry 循环
 		isEnabled: () => true,
@@ -51,7 +46,7 @@ function permissiveStore(subscriptionId: string, targetIds: string[]): Subscript
 	} as unknown as SubscriptionStore;
 }
 
-describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
+describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 	it("fake serviceCtx 永不自动 fire timer:sendToTarget 必须靠 stop() 唤醒才返回", async () => {
 		// 这个 fake setTimeout 故意不自动 invoke fn — 把 sleep 拘在 pending 态。
 		// 任何"伪造唤醒"或被 release.dispose 误触发的代码路径都会让本 case 在
@@ -75,9 +70,9 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			track: () => {},
 		};
 
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink: makeUnreachableSink(),
+			dispatcher: makeUnreachableDispatcher(),
 			store: emptyStore,
 			logger: silentLogger,
 			serviceCtx: fakeServiceCtx,
@@ -133,7 +128,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const send = vi.fn(
 			async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }) as DeliveryResult,
 		);
-		const sink: NotificationSink = {
+		const dispatcher: FakeDispatcher = {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send,
@@ -141,9 +136,9 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: emptyStore,
 			logger: silentLogger,
 			serviceCtx: fakeServiceCtx,
@@ -169,7 +164,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 
 	it("②7:sendBatch 跨 stop()→start() 不拆发剩余目标、不记录边界 artifact", async () => {
 		const sent: string[] = [];
-		let push!: BilibiliPush;
+		let push!: PushRouter;
 		const send = vi.fn(async (id: string): Promise<DeliveryResult> => {
 			sent.push(id);
 			// 第一个目标投递期间发生 stop()→start()(generation 1→2)。
@@ -179,7 +174,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			}
 			return { ok: true, latencyMs: 1 };
 		});
-		const sink: NotificationSink = {
+		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
 			isEnabled: () => true,
 			send: (id) => send(id),
@@ -187,9 +182,9 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 		const onSend = vi.fn();
-		push = new BilibiliPush({
+		push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: permissiveStore("s1", ["a", "b"]),
 			logger: silentLogger,
 			onSend,
@@ -202,7 +197,7 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			{ subscriptionId: "s1", feature: "liveStart", pushId: "p1", role: "main" },
 		);
 
-		// 仅 "a" 触达 sink;generation 1→2 后 "b" 被放弃,不跨生命周期拆发。
+		// 仅 "a" 触达 dispatcher;generation 1→2 后 "b" 被放弃,不跨生命周期拆发。
 		expect(sent).toEqual(["a"]);
 		// 边界 artifact("a" 完成时 lifecycle 已翻)不 onSend / 不计入 results。
 		expect(onSend).not.toHaveBeenCalled();
@@ -211,9 +206,9 @@ describe("BilibiliPush.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 
 	// 上一条用的是永不 fire 的假时钟;这条用 pushBase() 的真时钟,验 stop() 抢在 backoff 到期前唤醒。
 	it("真时钟 serviceCtx 下 stop() 也能立即唤醒 backoff 中的重试", async () => {
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink: makeUnreachableSink(),
+			dispatcher: makeUnreachableDispatcher(),
 			store: emptyStore,
 			logger: silentLogger,
 		});

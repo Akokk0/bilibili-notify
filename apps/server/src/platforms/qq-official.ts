@@ -686,7 +686,7 @@ export function qqFilesPath(scope: "group" | "private", openid: string): string 
 	return scope === "group" ? `/v2/groups/${openid}/files` : `/v2/users/${openid}/files`;
 }
 
-export type QQSendVerdict =
+export type QQSendResult =
 	| { ok: true; id?: string; pendingAudit?: true; auditId?: string }
 	| { ok: false; err: string };
 
@@ -695,7 +695,7 @@ export type QQSendVerdict =
  * `code 304023` + `audit_id` —— 算「已提交·审核中」(ok,后台听 MESSAGE_AUDIT 才知拒绝);
  * 200 + id = 已发;2xx 但带非零业务 code(无 id/audit)= 失败;非 2xx = 失败。
  */
-export function interpretQQSend(status: number, body: unknown): QQSendVerdict {
+export function interpretQQSend(status: number, body: unknown): QQSendResult {
 	const b = (body ?? {}) as {
 		id?: unknown;
 		code?: unknown;

@@ -29,7 +29,7 @@ import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js"
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createReportProblemLog, type ReportProblemLog } from "../../extensions/report-problems.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createExtensionsRoute } from "../extensions.js";
 import { requestErrorHandler, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
@@ -151,7 +151,7 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 		root: installRoot,
 		host: quietHost(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
-		adapters: createAdapterRegistry(),
+		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		subscriptions: () => [],

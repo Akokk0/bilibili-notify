@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `BilibiliPush` master 可达性边沿状态机(Q5)。
+ * 单元测试 — `PushRouter` master 可达性边沿状态机(Q5)。
  *
  * 契约(改坏 = 告警背channel断了运维不知道,或 per-tick 刷 error 复刻 Bug-1):
  *   - master available→unreachable 跳变(含首次未知→不可达)→ `error` 恰一次
@@ -12,13 +12,12 @@ import type {
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
-	NotificationSink,
 	PushTarget,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliPush } from "../bilibili-push";
-import { pushBase } from "./helpers";
+import { PushRouter } from "../push-router";
+import { type FakeDispatcher, pushBase } from "./helpers";
 
 type LogRec = { level: "info" | "warn" | "error" | "debug"; msg: string };
 
@@ -33,10 +32,10 @@ function makeLogger(): { logger: Logger; logs: LogRec[] } {
 	};
 }
 
-/** 可切换可达性的 sink。`box.up` 控制 isAvailable。 */
-function makeSink(box: { up: boolean }): { sink: NotificationSink; sent: string[] } {
+/** 可切换可达性的 dispatcher。`box.up` 控制 isAvailable。 */
+function makeDispatcher(box: { up: boolean }): { dispatcher: FakeDispatcher; sent: string[] } {
 	const sent: string[] = [];
-	const sink: NotificationSink = {
+	const dispatcher: FakeDispatcher = {
 		isAvailable: () => box.up,
 		isEnabled: () => true,
 		send: async (id) => {
@@ -49,7 +48,7 @@ function makeSink(box: { up: boolean }): { sink: NotificationSink; sent: string[
 		},
 		resolve: (id) => ({ id, name: id }) as unknown as PushTarget,
 	};
-	return { sink, sent };
+	return { dispatcher, sent };
 }
 
 const emptyStore: SubscriptionStore = {
@@ -67,12 +66,12 @@ const text: NotificationPayload = { kind: "text", text: "hi" };
 const lv = (logs: LogRec[], level: LogRec["level"], frag: string) =>
 	logs.filter((l) => l.level === level && l.msg.includes(frag));
 
-describe("BilibiliPush — master 可达性边沿状态机(Q5)", () => {
+describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 	it("持续不可达只 error 一次,后续 sendToMaster 走 debug 跳过", async () => {
 		const box = { up: false };
-		const { sink } = makeSink(box);
+		const { dispatcher } = makeDispatcher(box);
 		const { logger, logs } = makeLogger();
-		const push = new BilibiliPush({ ...pushBase(), sink, store: emptyStore, master, logger });
+		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 
 		push.start(); // 首次未知→不可达 → error 一次
 		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
@@ -86,9 +85,9 @@ describe("BilibiliPush — master 可达性边沿状态机(Q5)", () => {
 
 	it("unreachable→available 恢复 → info 一次 + 私信真正投递", async () => {
 		const box = { up: false };
-		const { sink, sent } = makeSink(box);
+		const { dispatcher, sent } = makeDispatcher(box);
 		const { logger, logs } = makeLogger();
-		const push = new BilibiliPush({ ...pushBase(), sink, store: emptyStore, master, logger });
+		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 
 		push.start(); // error 一次
 		await push.sendToMaster(text); // debug 跳过
@@ -105,18 +104,18 @@ describe("BilibiliPush — master 可达性边沿状态机(Q5)", () => {
 
 	it("健康启动(master 可达)→ 不打 error/info 噪音", () => {
 		const box = { up: true };
-		const { sink } = makeSink(box);
+		const { dispatcher } = makeDispatcher(box);
 		const { logger, logs } = makeLogger();
-		const push = new BilibiliPush({ ...pushBase(), sink, store: emptyStore, master, logger });
+		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 		push.start();
 		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(0);
 		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(0);
 	});
 	it("setMaster 切目标重置边沿:新目标首次不可达是一次全新 error", async () => {
 		const box = { up: true };
-		const { sink } = makeSink(box);
+		const { dispatcher } = makeDispatcher(box);
 		const { logger, logs } = makeLogger();
-		const push = new BilibiliPush({ ...pushBase(), sink, store: emptyStore, master, logger });
+		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 		push.start(); // 可达,无 error
 
 		box.up = false;

@@ -4,43 +4,27 @@ import type {
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
-	NotificationSink,
 	PlatformAdapter,
 	ProbeResult,
 	PushTarget,
+	TargetDispatcher,
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, isTargetPaused } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "./dispatch.js";
-import type { AdapterRegistry } from "./registry.js";
+import type { PlatformAdapterRegistry } from "./registry.js";
 
 /**
- * Extended sink — keeps the canonical NotificationSink surface but adds an
- * `out-of-band` connection probe entry point, used by
- * `/api/connections/:id/probe` and by the engines' periodic health probe.
- */
-export interface MultiplexSink extends NotificationSink {
-	probeConnection(connectionId: string): Promise<ProbeResult>;
-	/**
-	 * 这条连接所在平台的能力快照(能不能签小程序卡);连接缺、平台实现缺、平台没有能力
-	 * 概念都是 undefined —— 调用方按「什么都不支持」处理。
-	 */
-	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
-	/** 主动探一次能力;同上的三种缺失回 undefined。 */
-	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
-}
-
-/**
- * The server's {@link NotificationSink} implementation.
+ * The server's {@link TargetDispatcher} implementation.
  *
  * Resolves `targetId → PushTarget → Connection` against the live ConfigStore,
  * looks up the matching {@link PlatformAdapter} by `connection.platform`, and
- * delegates the delivery. The sink itself stays generic — adding a new platform
+ * delegates the delivery. The dispatcher itself stays generic — adding a new platform
  * just means registering another platform adapter.
  */
-export interface MultiplexSinkOptions {
+export interface TargetDispatcherOptions {
 	store: ConfigStore;
-	adapters: AdapterRegistry;
+	adapters: PlatformAdapterRegistry;
 	logger: Logger;
 	/** Optional hook fired after every send (success or failure). Used by the history store. */
 	onDelivery?: (
@@ -51,7 +35,7 @@ export interface MultiplexSinkOptions {
 	) => void;
 }
 
-export function createMultiplexSink(opts: MultiplexSinkOptions): MultiplexSink {
+export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDispatcher {
 	const log = opts.logger;
 	// 出口**每次现问注册表** —— 拓展是后加载的,而且拨一下开关就会来去(ADR-0012 决策 29)。
 	// 从前这里自己建了一张键 → adapter 的 Map,那是「哪个 adapter 管这条连接」的第二份

@@ -1,7 +1,7 @@
 /**
  * 免扰时钟 —— 「当作现在是 hh:mm」的单点覆盖。
  *
- * **不是假时钟**:只有推送的免扰判定读它(`BilibiliPush.quietHoursNow`),延迟 / 超时 /
+ * **不是假时钟**:只有推送的免扰判定读它(`PushRouter.quietHoursNow`),延迟 / 超时 /
  * 历史时间戳 / 统计全是真时间。日期沿用今天,只换时分。
  */
 export interface DevClock {

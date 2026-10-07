@@ -13,7 +13,7 @@ import type { AuthSystem } from "../auth/index.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
-import type { AdapterRegistry } from "../push/registry.js";
+import type { PlatformAdapterRegistry } from "../push/registry.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";
@@ -62,7 +62,7 @@ export interface CreateDevtoolsInput {
 	sourceRun: boolean;
 	updateService: UpdateService;
 	/** 推送出口的注册表。交回去的是包过截流闸的那份**视图**。 */
-	adapters: AdapterRegistry;
+	adapters: PlatformAdapterRegistry;
 	/**
 	 * 拓展那三条场景要的两个目录 + 装载器本体(**现取**,拓展比 devtools 后起来)。
 	 *
@@ -127,7 +127,7 @@ export interface Devtools {
 	/** 交给 `/api/ext/marketplace*` 的那份 —— 装饰过的。 */
 	marketplace: Marketplace;
 	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
-	adapters: AdapterRegistry;
+	adapters: PlatformAdapterRegistry;
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
 	api: BilibiliAPI;
 	/**

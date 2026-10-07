@@ -1,12 +1,12 @@
 /**
  * Server-side engine wiring: the engines from packages/dynamic + packages/live,
- * driven by the file-backed ConfigStore + MultiplexSink.
+ * driven by the file-backed ConfigStore + TargetDispatcher.
  *
  * Construction order:
  *
  *   1. Bind SubscriptionStore to ConfigStore
- *   2. Build MultiplexNotificationSink (subscribers: HistoryStore via onDelivery)
- *   3. Construct BilibiliPush({ sink, store, master })
+ *   2. Build TargetDispatcher (subscribers: HistoryStore via onDelivery)
+ *   3. Construct PushRouter({ dispatcher, store, master })
  *   4. Optionally construct CommentaryGenerator (when apiKey + baseUrl set; the
  *      `enabled` flag is enforced at engine-config gating layer in step 5/6)
  *   5. Construct DynamicEngine + LiveEngine with PushLike adapters
@@ -79,7 +79,7 @@ import {
 	type SubItemView as LiveSubView,
 	rotateLiveCover,
 } from "@bilibili-notify/live";
-import { BilibiliPush, type BroadcastOptions } from "@bilibili-notify/push";
+import { type BroadcastOptions, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
@@ -87,8 +87,8 @@ import { settingsOf, watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
-import { createMultiplexSink } from "../push/multiplex.js";
-import type { AdapterRegistry } from "../push/registry.js";
+import type { PlatformAdapterRegistry } from "../push/registry.js";
+import { createTargetDispatcher } from "../push/target-dispatcher.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
@@ -119,7 +119,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
 export interface EnginesRuntime extends Disposable {
 	readonly dynamic: DynamicEngine;
 	readonly live: LiveEngine;
-	readonly push: BilibiliPush;
+	readonly push: PushRouter;
 	/**
 	 * 全局静音。`push` 已经接了闸(订阅推送在 `broadcastToFeature` 处被挡),
 	 * 这里暴露出来是给指令与面板改状态用的。
@@ -173,7 +173,7 @@ export interface EnginesRuntime extends Disposable {
 	probeConnection(connectionId: string): Promise<ProbeResult>;
 	/** 这条连接所在平台的能力快照(能不能签小程序卡);没有能力概念的平台是 undefined。 */
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
-	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 sink 的连接寻址。 */
+	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 dispatcher 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 	/** 各引擎模块开没开,`/api/health` 的 `modules` 那一格。 */
 	getModuleState(): ModuleState;
@@ -225,7 +225,7 @@ export interface CreateEnginesOptions {
 	 */
 	subRuntimeStore: SubRuntimeStore;
 	bus: import("@bilibili-notify/internal").MessageBus;
-	adapters: AdapterRegistry;
+	adapters: PlatformAdapterRegistry;
 	/**
 	 * Optional puppeteer adapter. When provided the engines spin up a shared
 	 * {@link ImageRenderer} so live / dynamic cards render to JPEG instead of
@@ -235,7 +235,7 @@ export interface CreateEnginesOptions {
 	puppeteer?: PuppeteerLike | null;
 	/**
 	 * 推送免扰按哪一刻判。缺省真时钟;devtools 用它做「当作现在是 xx:xx」的单点覆盖,
-	 * 原样交给 `BilibiliPush.quietHoursNow`。
+	 * 原样交给 `PushRouter.quietHoursNow`。
 	 */
 	quietHoursNow?: () => Date;
 	/**
@@ -314,17 +314,17 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// / bn.config logLevel) only governs the pre-engines early window (config
 	// load + bootstrap, before the core settings are applied). From engines-up onward
 	// the base logger is the "core" module bucket — every non-engine log
-	// (push / sink / master-notifier / fans-poller / routes / config / history /
+	// (push / dispatcher / master-notifier / fans-poller / routes / config / history /
 	// ws) goes through it, so it follows `logLevels.core ?? app.logLevel` just
 	// like the subsystem ctxs follow their own keys. Apply once here so it does
 	// NOT wait for the first config-changed. Mirrors the change-path apply below.
 	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
 
-	// ---------- Sink + push ----------
-	// onDelivery 只负责 target.testStatus 同步 —— sink 拿不到订阅 + feature,
-	// 没法填 history 的订阅 / uid 字段。history 写入挂到 BilibiliPush.onSend
+	// ---------- Dispatcher + push ----------
+	// onDelivery 只负责 target.testStatus 同步 —— dispatcher 拿不到订阅 + feature,
+	// 没法填 history 的订阅 / uid 字段。history 写入挂到 PushRouter.onSend
 	// (见下方),那里能拿到完整的发起上下文。
-	const sink = createMultiplexSink({
+	const dispatcher = createTargetDispatcher({
 		store: opts.configStore,
 		adapters: opts.adapters,
 		logger: log,
@@ -370,8 +370,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 	});
 
-	const push = new BilibiliPush({
-		sink,
+	const push = new PushRouter({
+		dispatcher,
 		store: opts.subscriptionStore,
 		master: masterTarget() ?? null,
 		logger: log,
@@ -823,12 +823,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 * 只补「未探测」的,已经有答案的不重探 —— 那是 reconcile 的事。
 	 */
 	async function probeConnectionAndCapabilities(connectionId: string): Promise<ProbeResult> {
-		const result = await sink.probeConnection(connectionId);
+		const result = await dispatcher.probeConnection(connectionId);
 		// 连都连不上的连接,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
 		// 而这条路是每五分钟一轮、逐个 await 的,离线的连接会把整轮时间翻倍。
 		if (result.ok === false) return result;
-		if (sink.connectionCapabilities(connectionId)?.miniAppCard.state === "unknown") {
-			await sink.probeConnectionCapabilities(connectionId);
+		if (dispatcher.connectionCapabilities(connectionId)?.miniAppCard.state === "unknown") {
+			await dispatcher.probeConnectionCapabilities(connectionId);
 		}
 		return result;
 	}
@@ -1165,9 +1165,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		extensionLiveSession: (subscriptionId: string) => extensionLiveSessions?.get(subscriptionId),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
 		probeConnection: (connectionId: string) => probeConnectionAndCapabilities(connectionId),
-		connectionCapabilities: (connectionId: string) => sink.connectionCapabilities(connectionId),
+		connectionCapabilities: (connectionId: string) =>
+			dispatcher.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>
-			sink.probeConnectionCapabilities(connectionId),
+			dispatcher.probeConnectionCapabilities(connectionId),
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
@@ -1286,7 +1287,7 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
  * 全失效）、`allowAtAll`（掉了「每条直播推送都 @全体」那个修过的 bug 直接回归）。
  * 历史记成什么不在选项里：它记的就是广播的那把特性键。
  */
-type PushForEngines = Pick<BilibiliPush, "broadcastToFeature" | "sendPrivateMsg" | "sendErrorMsg">;
+type PushForEngines = Pick<PushRouter, "broadcastToFeature" | "sendPrivateMsg" | "sendErrorMsg">;
 
 /**
  * B 站 uid → 订阅 id。引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50),
@@ -1306,7 +1307,7 @@ export type SubscriptionPush = (
 ) => Promise<void>;
 
 export function bindSubscriptionPush(
-	push: Pick<BilibiliPush, "broadcastToFeature">,
+	push: Pick<PushRouter, "broadcastToFeature">,
 	subscriptionId: string,
 ): SubscriptionPush {
 	return async (feature, payload, opts) => {
@@ -1324,7 +1325,7 @@ export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
 		// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
 		broadcast: (segments, part, o) =>
 			send("post", pushSegmentsToPayload(segments), broadcastOptionsForPostPart(part, o?.pushId)),
-		// 消息版式分条:多条 payload 交给 BilibiliPush 的序列语义(同 target 顺序发、
+		// 消息版式分条:多条 payload 交给 PushRouter 的序列语义(同 target 顺序发、
 		// 某条失败中止该 target 后续条、@全体只跟首条之前)。
 		broadcastSequence: (messages, part, o) =>
 			send(
@@ -1747,8 +1748,8 @@ export function liveWorkSettings(
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): LiveWorkSettings {
 	return {
-		// 特性布尔 = features.X(source-side gate)。routing 由推送层 BilibiliPush 在 broadcastToFeature
-		// 时按 routing 空 = 无 sink 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
+		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在 broadcastToFeature
+		// 时按 routing 空 = 无 dispatcher 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
 		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
 		liveStart: eff.features.liveStart,
 		liveStreaming: eff.features.liveStreaming,

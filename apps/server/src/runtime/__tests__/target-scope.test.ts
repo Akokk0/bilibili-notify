@@ -9,7 +9,7 @@
  * 所以这里钉三件事:
  *   1. 答案对:路由按订阅自己的 id 查(ADR-0019 决策 50),停用一律不算;重推回查「行上那条
  *      订阅现在是哪一条」时先认 id、再按 B 站 uid 找(同 uid 先出现的说了算);
- *   2. 🔴 `targetEnabled` 与真 `sink.isEnabled` **对得上**(那是同一条判定的第二份手抄,
+ *   2. 🔴 `targetEnabled` 与真 `dispatcher.isEnabled` **对得上**(那是同一条判定的第二份手抄,
  *      `isEnabled` 将来多一个条件而这儿没跟上时,重推的闸会静默留在旧口径上);
  *   3. 问 N 次只折一次,而 `config-changed` 一来就重折(不失效 = 停用了目标还能补,
  *      失效得太勤 = 白付那 600 份副本)。
@@ -25,8 +25,8 @@ import type {
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { ConfigStore } from "../../config/store.js";
-import { createMultiplexSink } from "../../push/multiplex.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
+import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createTargetScope, resolveTargetScope } from "../target-scope.js";
 
@@ -230,21 +230,21 @@ describe("resolveTargetScope — currentSubscriptionOf(拓展行)", () => {
 /**
  * 🔴 **同一条判定的两份实现,拿真的那份来对答案。**
  *
- * `NotificationSink.isEnabled`(`sink/multiplex.ts`)与这张表都在回答「这个目标现在还
+ * `TargetDispatcher.isEnabled`(`push/target-dispatcher.ts`)与这张表都在回答「这个目标现在还
  * 该不该收」。两边各写各的时,`isEnabled` 多一个条件不会让任何东西红 —— 重推的闸就
  * 静默留在旧口径上,症状是「面板说能补,发出去却被推送层自己挡了」(或者反过来)。
  *
- * 这条守卫把两边喂同一份配置、逐个目标对一遍。sink 的实现改了口径而这儿没跟上就红。
+ * 这条守卫把两边喂同一份配置、逐个目标对一遍。dispatcher 的实现改了口径而这儿没跟上就红。
  */
-describe("targetEnabled ≡ sink.isEnabled", () => {
+describe("targetEnabled ≡ dispatcher.isEnabled", () => {
 	it("同一份配置下,逐个目标两边答案一样", () => {
 		const store = {
 			getTargets: () => TARGETS,
 			getConnections: () => CONNECTIONS,
 		} as unknown as ConfigStore;
-		const sink = createMultiplexSink({
+		const dispatcher = createTargetDispatcher({
 			store,
-			adapters: createAdapterRegistry(),
+			adapters: createPlatformAdapterRegistry(),
 			logger: logger(),
 		});
 		const table = resolveTargetScope({
@@ -253,9 +253,11 @@ describe("targetEnabled ≡ sink.isEnabled", () => {
 			connections: CONNECTIONS,
 		});
 		const ids = [...TARGETS.map((t) => t.id), T_UNKNOWN];
-		expect(ids.map((id) => table.targetEnabled(id))).toEqual(ids.map((id) => sink.isEnabled(id)));
+		expect(ids.map((id) => table.targetEnabled(id))).toEqual(
+			ids.map((id) => dispatcher.isEnabled(id)),
+		);
 		// 全 true / 全 false 的矩阵对上了也说明不了什么 —— 确认这一把里两种答案都有。
-		expect(new Set(ids.map((id) => sink.isEnabled(id)))).toEqual(new Set([true, false]));
+		expect(new Set(ids.map((id) => dispatcher.isEnabled(id)))).toEqual(new Set([true, false]));
 	});
 });
 

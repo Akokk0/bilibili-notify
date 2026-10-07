@@ -150,7 +150,7 @@ export interface AppRuntime {
 	 */
 	extensionLive: ExtensionLiveTable;
 	/**
-	 * Engine layer: BilibiliPush + DynamicEngine + LiveEngine + Sink.
+	 * Engine layer: PushRouter + DynamicEngine + LiveEngine + Dispatcher.
 	 *
 	 * `null` until {@link attachEngines} is called. The auth system has to come
 	 * up first (engines need a started BilibiliAPI), so the bootstrap split is:
@@ -180,7 +180,7 @@ export interface AppRuntime {
  * Glues a parsed bootstrap config + a fresh NodeServiceContext + NodeMessageBus + ConfigStore
  * into a single object. Higher layers (Hono routes, engines, sinks) consume this.
  *
- * Stage 2.1 keeps this minimal — no engines, no API client, no sink. Those wire in stage 2.2+.
+ * Stage 2.1 keeps this minimal — no engines, no API client, no dispatcher. Those wire in stage 2.2+.
  */
 export interface AppRuntimeRoots {
 	/**

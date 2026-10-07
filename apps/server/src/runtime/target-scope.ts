@@ -49,9 +49,9 @@ export interface TargetScopeTable {
 	/**
 	 * 目标与它所属的连接都还启用着。
 	 *
-	 * 🔴 **与 `NotificationSink.isEnabled`(`sink/multiplex.ts`)同一口径**,两边都是
+	 * 🔴 **与 `TargetDispatcher.isEnabled`(`push/target-dispatcher.ts`)同一口径**,两边都是
 	 * `!isTargetPaused(target, connections)`。它多一个条件而这儿没跟上时,重推的闸会
-	 * 静默留在旧口径上 —— `target-scope.test.ts` 里有一条拿真 sink 对答案的守卫钉着。
+	 * 静默留在旧口径上 —— `target-scope.test.ts` 里有一条拿真 dispatcher 对答案的守卫钉着。
 	 */
 	targetEnabled(targetId: string): boolean;
 }

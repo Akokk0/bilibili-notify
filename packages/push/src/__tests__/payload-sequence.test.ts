@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `BilibiliPush.broadcastToFeature` 多 payload 序列发送(消息版式分条)。
+ * 单元测试 — `PushRouter.broadcastToFeature` 多 payload 序列发送(消息版式分条)。
  *
  * 消息版式允许一次推送拆成多条消息。语义锁定:
  *   - 同一 target 内 payload 顺序 await 保序
@@ -18,7 +18,6 @@ import {
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type NotificationPayload,
-	type NotificationSink,
 	type PushTarget,
 	type Subscription,
 	sameIdentity,
@@ -26,22 +25,22 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliPush, type PushSendInfo } from "../bilibili-push";
-import { pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { PushRouter, type PushSendResult } from "../push-router";
+import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
 
 interface SendCall {
 	targetId: string;
 	payload: NotificationPayload;
 }
 
-/** sink:可按 (targetId, 第几次调用) 指定失败。 */
-function makeSink(failOn?: (targetId: string, nthCallForTarget: number) => boolean): {
-	sink: NotificationSink;
+/** dispatcher:可按 (targetId, 第几次调用) 指定失败。 */
+function makeDispatcher(failOn?: (targetId: string, nthCallForTarget: number) => boolean): {
+	dispatcher: FakeDispatcher;
 	calls: SendCall[];
 } {
 	const calls: SendCall[] = [];
 	const perTarget = new Map<string, number>();
-	const sink: NotificationSink = {
+	const dispatcher: FakeDispatcher = {
 		isAvailable: () => true,
 		isEnabled: () => true,
 		send: async (targetId, payload) => {
@@ -67,7 +66,7 @@ function makeSink(failOn?: (targetId: string, nthCallForTarget: number) => boole
 				enabled: true,
 			}) as unknown as PushTarget,
 	};
-	return { sink, calls };
+	return { dispatcher, calls };
 }
 
 function makeStore(subs: Subscription[]): SubscriptionStore {
@@ -110,12 +109,12 @@ function textOf(p: NotificationPayload): string {
 	return p.kind === "text" ? p.text : p.kind;
 }
 
-describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
+describe("PushRouter.broadcastToFeature — payload 序列", () => {
 	it("payload 数组 → 每个 target 顺序收到全部消息", async () => {
-		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({
+		const { dispatcher, calls } = makeDispatcher();
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1, T2])]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
@@ -131,10 +130,10 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	});
 
 	it("某 target 首条失败 → 该 target 后续条中止,其他 target 不受影响", async () => {
-		const { sink, calls } = makeSink((id, nth) => id === T1 && nth === 1);
-		const push = new BilibiliPush({
+		const { dispatcher, calls } = makeDispatcher((id, nth) => id === T1 && nth === 1);
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1, T2])]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
@@ -158,15 +157,15 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	 * 缺省表示「它从来没出过网」,与无目标行的每一条同形状。
 	 */
 	it("onSend 每个 target 回调一次:含失败那条,也含被中止的(它们没有结果)", async () => {
-		const { sink } = makeSink((id, nth) => id === T1 && nth === 2);
+		const { dispatcher } = makeDispatcher((id, nth) => id === T1 && nth === 2);
 		const seen: Array<[string | null, Array<[string, boolean | undefined]>]> = [];
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1])]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
-			onSend: (info: PushSendInfo) => {
+			onSend: (info: PushSendResult) => {
 				if (info.target === null) return;
 				seen.push([info.target.id, info.messages.map((m) => [textOf(m.payload), m.result?.ok])]);
 			},
@@ -191,11 +190,11 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	 * 硬着头皮继续发的实现也能让上一条变绿,而那正是「失败即中止」要挡的东西
 	 * (失败后大概率继续失败,乱序补发比缺失更糟)。
 	 */
-	it("被中止的那几条一次都没进 sink", async () => {
-		const { sink, calls } = makeSink((id, nth) => id === T1 && nth === 2);
-		const push = new BilibiliPush({
+	it("被中止的那几条一次都没进 dispatcher", async () => {
+		const { dispatcher, calls } = makeDispatcher((id, nth) => id === T1 && nth === 2);
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1])]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
@@ -205,11 +204,11 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 		expect(calls.map((c) => textOf(c.payload))).toEqual(["m1", "m2"]);
 	});
 
-	it("空数组 → 不调 sink", async () => {
-		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({
+	it("空数组 → 不调 dispatcher", async () => {
+		const { dispatcher, calls } = makeDispatcher();
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1])]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
@@ -221,10 +220,10 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	});
 
 	it("单 payload(非数组)→ 行为与旧签名一致", async () => {
-		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({
+		const { dispatcher, calls } = makeDispatcher();
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1, T2])]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
@@ -239,17 +238,17 @@ describe("BilibiliPush.broadcastToFeature — payload 序列", () => {
 	});
 
 	it("@全体 target:独立 at-all 消息先发,再顺序发序列", async () => {
-		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({
+		const { dispatcher, calls } = makeDispatcher();
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([subWithTargets([T1], true)]),
 			logger: silentLogger,
 			defaults: loopbackDefaults,
 		});
 		push.start();
 		await push.broadcastToFeature("s1", "post", [M1, M2]);
-		// at-all 是独立 composite 一条,先于序列首条入 sink
+		// at-all 是独立 composite 一条,先于序列首条入 dispatcher
 		expect(calls).toHaveLength(3);
 		expect(calls[0]?.payload.kind).toBe("composite");
 		expect(calls.slice(1).map((c) => textOf(c.payload))).toEqual(["m1", "m2"]);

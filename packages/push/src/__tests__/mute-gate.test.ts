@@ -16,7 +16,6 @@ import {
 	type DeliveryResult,
 	makeEmptySubscription,
 	type NotificationPayload,
-	type NotificationSink,
 	type PushTarget,
 	type Subscription,
 	sameIdentity,
@@ -24,12 +23,12 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliPush } from "../bilibili-push";
-import { pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { PushRouter } from "../push-router";
+import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
 
-function makeSink(): { sink: NotificationSink; calls: string[] } {
+function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 	const calls: string[] = [];
-	const sink: NotificationSink = {
+	const dispatcher: FakeDispatcher = {
 		isAvailable: () => true,
 		isEnabled: () => true,
 		send: async (targetId) => {
@@ -42,7 +41,7 @@ function makeSink(): { sink: NotificationSink; calls: string[] } {
 		},
 		resolve: (id) => ({ id, name: id, connectionId: "a" }) as unknown as PushTarget,
 	};
-	return { sink, calls };
+	return { dispatcher, calls };
 }
 
 function makeStore(subs: Subscription[]): SubscriptionStore {
@@ -68,10 +67,10 @@ function setup(muted: () => boolean) {
 	sub.routing.post = ["t1"];
 	setExtraDefault(sub, "atAllLiveStart", false);
 	setExtraDefault(sub, "atAllPost", false);
-	const { sink, calls } = makeSink();
-	const push = new BilibiliPush({
+	const { dispatcher, calls } = makeDispatcher();
+	const push = new PushRouter({
 		...pushBase(),
-		sink,
+		dispatcher,
 		store: makeStore([sub]),
 		logger: silentLogger,
 		master: MASTER,
@@ -84,7 +83,7 @@ function setup(muted: () => boolean) {
 const TEXT: NotificationPayload = { kind: "text", text: "x" };
 
 describe("全局静音闸", () => {
-	it("静音中 → 订阅推送不发,sink 一次都不调", async () => {
+	it("静音中 → 订阅推送不发,dispatcher 一次都不调", async () => {
 		const { push, calls } = setup(() => true);
 		const out = await push.broadcastToFeature("s1", "liveStart", TEXT);
 		expect(out).toEqual([]);
@@ -135,10 +134,10 @@ describe("全局静音闸", () => {
 		});
 		sub.routing.liveStart = ["t1"];
 		setExtraDefault(sub, "atAllLiveStart", false);
-		const { sink, calls } = makeSink();
-		const push = new BilibiliPush({
+		const { dispatcher, calls } = makeDispatcher();
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store: makeStore([sub]),
 			logger: silentLogger,
 		});

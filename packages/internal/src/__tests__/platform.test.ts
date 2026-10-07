@@ -15,6 +15,6 @@ describe("isReachabilityEvidence", () => {
 	});
 
 	it("没出网的(截流造出来的成功)不是证据 —— 拿它翻目标状态等于凭空说「通了」", () => {
-		expect(isReachabilityEvidence({ ...base, synthetic: true })).toBe(false);
+		expect(isReachabilityEvidence({ ...base, isSynthetic: true })).toBe(false);
 	});
 });

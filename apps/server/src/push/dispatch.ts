@@ -8,7 +8,7 @@ import { type Connection, connectionDispatchKey } from "@bilibili-notify/interna
  * `telegram`,而认领它的 adapter 声明的是 `bridge` —— 拿平台名去问就找不到,而且是
  * **静默**找不到:症状是「群里贴了链接没回卡」,日志上却写着「连接不存在」。
  *
- * 「哪个 adapter 管这条连接」全仓只此一份 —— 推送热路径(`createMultiplexSink`)也是每次
+ * 「哪个 adapter 管这条连接」全仓只此一份 —— 推送热路径(`createTargetDispatcher`)也是每次
  * 现问这个函数,不另存索引:拓展是后加载的,拨一下开关就会来去(ADR-0012 决策 29)。
  */
 export function adapterForConnection<T extends { readonly platforms: readonly string[] }>(

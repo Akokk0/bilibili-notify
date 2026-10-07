@@ -365,7 +365,7 @@ export function UpDialog({
 	/**
 	 * Toggle a master feature on the subscription. **只写 `overrides.features`**,
 	 * 不再级联 routing —— features 是 runtime 总开关,routing 是 per-target 细控,两条
-	 * 正交轴。关 features.X 时 routing 数据原样保留;backend `BilibiliPush` 头部 gate
+	 * 正交轴。关 features.X 时 routing 数据原样保留;backend `PushRouter` 头部 gate
 	 * `if (!eff.features[k]) return [];` 实际拦推送。重开 features.X 后,所有 routing
 	 * 里的 target 立刻恢复推送,不丢配置。
 	 *

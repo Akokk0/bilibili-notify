@@ -1,7 +1,7 @@
 # @bilibili-notify/push
 
-`bilibili-notify` monorepo 内部包:平台中立的推送路由器(`BilibiliPush`)。独立端 runtime
-注入 sink(按 target 投递到 OneBot / webhook / QQ 官方机器人等平台)、订阅仓、globals
+`bilibili-notify` monorepo 内部包:平台中立的推送路由器(`PushRouter`)。独立端 runtime
+注入 dispatcher(按 target 投递到 OneBot / webhook / QQ 官方机器人等平台)、订阅仓、globals
 provider 与静音闸,它负责把「某个 UP 的某类推送」翻成对每个目标的投递。
 
 > [!NOTE]

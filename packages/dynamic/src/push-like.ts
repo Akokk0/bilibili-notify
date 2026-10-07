@@ -2,7 +2,7 @@
  * 平台中立的推送出口接口与最小订阅视图。
  *
  * dynamic-engine 不直接 import `@bilibili-notify/push`;宿主(独立端 runtime)在装配
- * DynamicEngine 时实现 PushLike,并桥接到 BilibiliPush 的 channel 路由。
+ * DynamicEngine 时实现 PushLike,并桥接到 PushRouter 的 channel 路由。
  *
  * 这里的接口仅声明 dynamic-engine 实际调用到的方法;任何字段/方法的扩展应该先在
  * 业务代码中显现需求,再回填到此接口,避免接口与实现脱节。
@@ -55,7 +55,7 @@ export interface DynamicBroadcastOptions {
 }
 
 /**
- * 一次 `broadcastDynamic` 交给推送层(`BilibiliPush.broadcastToFeature`)的选项。
+ * 一次 `broadcastDynamic` 交给推送层(`PushRouter.broadcastToFeature`)的选项。
  *
  * 背景:一条 DYNAMIC_TYPE_DRAW 图文动态(开启图集推送时)会发**两次** —— 主卡片
  * (`part="post"`)与图集附图(`part="post-images"`),两者都映射到
@@ -89,7 +89,7 @@ export interface PushLike {
 	): Promise<void>;
 
 	/**
-	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(由 BilibiliPush 的
+	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(由 PushRouter 的
 	 * payload 序列实现):同一 target 内按序发送;某条失败即中止该 target 的后续条;
 	 * @全体(若启用)只跟随序列首条之前发一次。
 	 */

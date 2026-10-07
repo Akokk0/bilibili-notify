@@ -16,7 +16,7 @@
 | `subscription-changed` | `{ ops }`:`SubscriptionStore` CRUD 后的 `SubscriptionOp[]` diff |
 | `config-changed` | `{ scope }`:独立端 `ConfigStore` 写入后发出;scope ∈ `globals\|subscriptions\|targets\|connections\|secrets`。引擎据此 reconcile cron / 刷新状态 / 重建连接 |
 | `engine-error` | 引擎或子系统的运行时错误 `{ source, message }`。`master-notifier`(→ master 私聊)+ `log` WS channel(→ AlertShell)消费 |
-| `history-recorded` | `HistoryStore.record` 建起一行(一次推送 × 一个目标,本体落地那一刻;无目标行也建)时发出的完整 `HistoryEntry`;独立端转到 `push-events` WS channel。`BilibiliPush.onSend` 每个目标一段回调 → `runtime/push-history.ts` 搬字段 → `record` |
+| `history-recorded` | `HistoryStore.record` 建起一行(一次推送 × 一个目标,本体落地那一刻;无目标行也建)时发出的完整 `HistoryEntry`;独立端转到 `push-events` WS channel。`PushRouter.onSend` 每个目标一段回调 → `runtime/push-history.ts` 搬字段 → `record` |
 | `history-updated` | 同一次推送的后续消息(@全体 / 图集 / 词云 / 总结)追加到已有那一行之后发出的**合并后整行**;前端按 `id` 换缓存、小卡同 id 换字不重弹。盘上是补丁行,读时并回 |
 | `dynamic-detected` | `DynamicEngine` 每条动态首次越过 per-uid 时间线闸门时发出 `DynamicDetectedEvent{uid,id,type,ts}`。刻意放在**过滤器 / per-UP 开关 / 投递之前** —— 口径是「UP 发了多少」,被屏蔽或推送失败的动态照样算产出(「我们推了多少」看 `history-recorded`,两者不可混用)。`type` 是 B 站原始类型串,事件层不做语义归类;归类在统计的 B 站适配里做(`apps/server/src/stats/bili-format.ts`:AV → 带视频的作品、开播那两种**不记**(ADR-0027 决策 3)、其余 → 不带视频的作品),统计仓的作品行只有 `hasVideo`。统计只给作品开关开着的订阅记(决策 1),事件本身照旧对每条订阅都发。**bus 上不是严格 exactly-once**:投递失败走 `markFail`、时间线锚点不前移,下轮重判会把同一条再发一次。现有消费方 `StatsRecorder` 靠 `StatsStore.appendPost` 的 `id` 幂等挡掉(读的时候再按 `id` 去重一次),新消费方同样需要按 `id` 去重 |
 | `live-state-changed` | `LiveEngine` 的开/关播切换 `{ uid, status: "live"\|"idle", at? }`(grace 闸门之后,断流接续不翻转)。转 `live` 时 `at` 带 B 站 `live_time` 的真实开播时刻(ISO;`room-session` 按 UTC+8 解析后转换),缺失时消费方回落到收到事件的时刻 —— 服务端在 UP 已开播时启动也能算出真实时长 |

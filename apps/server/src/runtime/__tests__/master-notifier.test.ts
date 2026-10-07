@@ -8,7 +8,7 @@
  */
 
 import type { Logger } from "@bilibili-notify/internal";
-import type { BilibiliPush } from "@bilibili-notify/push";
+import type { PushRouter } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { deferred, makeTrackingContext, stillPending } from "../../__tests__/support/track-context";
@@ -30,7 +30,7 @@ function makeSilentLogger() {
 function makePush() {
 	return {
 		sendPrivateMsg: vi.fn().mockResolvedValue(undefined),
-	} as unknown as BilibiliPush & { sendPrivateMsg: ReturnType<typeof vi.fn> };
+	} as unknown as PushRouter & { sendPrivateMsg: ReturnType<typeof vi.fn> };
 }
 
 describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
@@ -148,7 +148,7 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 
 /**
  * 关停(切片 ③)。私聊是发出去不等的后台活;登记进 `ctx.track()` 之后,关停等它发完 ——
- * 发送经 sink 回调的目标可达性写回,得赶在各写道关门之前交进去。
+ * 发送经 dispatcher 回调的目标可达性写回,得赶在各写道关门之前交进去。
  */
 describe("MasterNotifier — 登记进 track", () => {
 	it("auth-lost → 私聊发完它才落定", async () => {

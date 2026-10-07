@@ -12,7 +12,7 @@
 import type { Connection, PlatformAdapter } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { adapterForConnection } from "../dispatch.js";
-import { createAdapterRegistry } from "../registry.js";
+import { createPlatformAdapterRegistry } from "../registry.js";
 
 function fakeAdapter(...platforms: string[]): PlatformAdapter {
 	return { platforms, isAvailable: () => true } as unknown as PlatformAdapter;
@@ -32,7 +32,7 @@ function extensionConnection(extensionId: string): Connection {
 describe("adapter 注册表", () => {
 	it("开机那几个照旧,注册进来的也在", () => {
 		const builtin = fakeAdapter("onebot");
-		const registry = createAdapterRegistry([builtin]);
+		const registry = createPlatformAdapterRegistry([builtin]);
 		expect(registry.list()).toEqual([builtin]);
 
 		const bridge = fakeAdapter("bridge");
@@ -41,7 +41,7 @@ describe("adapter 注册表", () => {
 	});
 
 	it("**分发那一刻现问** —— 早就拿到注册表的消费者,下一次问就看得见新注册的", () => {
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		// 消费方只握着注册表,不握着某一次的结果。
 		const route = (connection: Connection) => adapterForConnection(registry.list(), connection);
 		expect(route(extensionConnection("bridge"))).toBeUndefined();
@@ -52,7 +52,7 @@ describe("adapter 注册表", () => {
 	});
 
 	it("撤下之后就找不到了 —— 卸载一个拓展 = 从表里删一行", () => {
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		const handle = registry.register(fakeAdapter("bridge"));
 		expect(adapterForConnection(registry.list(), extensionConnection("bridge"))).toBeDefined();
 
@@ -62,12 +62,12 @@ describe("adapter 注册表", () => {
 	});
 
 	it("键被占了 → 抛。**不许悄悄顶掉** —— 那等于把别人的连接整个截走", () => {
-		const registry = createAdapterRegistry([fakeAdapter("onebot")]);
+		const registry = createPlatformAdapterRegistry([fakeAdapter("onebot")]);
 		expect(() => registry.register(fakeAdapter("onebot"))).toThrow(/onebot/);
 	});
 
 	it("撤下之后同一个键可以重来 —— 停用再启用走的就是这条", () => {
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		registry.register(fakeAdapter("bridge")).dispose();
 		const second = fakeAdapter("bridge");
 		registry.register(second);
@@ -75,7 +75,7 @@ describe("adapter 注册表", () => {
 	});
 
 	it("一个 adapter 认领好几个键(webhook 那族)—— 一起进,一起走", () => {
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		const handle = registry.register(fakeAdapter("feishu", "dingtalk"));
 		expect(() => registry.register(fakeAdapter("dingtalk"))).toThrow(/dingtalk/);
 		handle.dispose();
@@ -84,7 +84,7 @@ describe("adapter 注册表", () => {
 	});
 
 	it("dispose 是幂等的", () => {
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		const handle = registry.register(fakeAdapter("bridge"));
 		handle.dispose();
 		expect(() => handle.dispose()).not.toThrow();

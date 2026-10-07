@@ -1,5 +1,5 @@
 /**
- * `BilibiliPush.onSend` → `HistoryStore.record` 的字段搬运。
+ * `PushRouter.onSend` → `HistoryStore.record` 的字段搬运。
  *
  * 推送层只知道订阅 id / feature / target / 消息与结果;历史行还要「替谁发的」(B 站 uid,或拓展 id +
  * 外部 id)、UP 的名字头像快照。这一层把它们拼齐:无目标那次照记(target: null),附加项的
@@ -7,7 +7,7 @@
  */
 
 import { makeEmptySubscription } from "@bilibili-notify/internal";
-import type { PushSendInfo } from "@bilibili-notify/push";
+import type { PushSendResult } from "@bilibili-notify/push";
 import { describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { historyRecordFromSend } from "../push-history.js";
@@ -21,7 +21,7 @@ const target = {
 	scope: "group",
 	enabled: true,
 	session: {},
-} as unknown as PushSendInfo["target"] & object;
+} as unknown as PushSendResult["target"] & object;
 
 const EXT_ID = "33333333-3333-4333-8333-333333333333";
 const EXT_AVATAR = `${"a".repeat(64)}.png`;
@@ -51,7 +51,7 @@ const lookups = {
 
 describe("historyRecordFromSend", () => {
 	it("有目标:pushId / feature / 订阅 id / 快照 / 消息逐条带 role 与结果", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p1",
 			subscriptionId: SUB_ID,
 			feature: "liveEnd",
@@ -85,7 +85,7 @@ describe("historyRecordFromSend", () => {
 
 	// B 站行的头像快照这一片空着(抓图服务在 3a):订阅资料里有远端网址 `avatarUrl` 也不抄,面板退到订阅现在的头像。
 	it("B 站行:不带头像快照,哪怕资料里有头像网址", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p1",
 			subscriptionId: SUB_ID,
 			feature: "post",
@@ -99,7 +99,7 @@ describe("historyRecordFromSend", () => {
 	});
 
 	it("无目标:target null、消息没有结果", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p2",
 			subscriptionId: SUB_ID,
 			feature: "post",
@@ -114,7 +114,7 @@ describe("historyRecordFromSend", () => {
 	});
 
 	it("查不到订阅(推送中途被删)→ 没有订阅 id 就不记,返回 null", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p3",
 			subscriptionId: "44444444-4444-4444-8444-444444444444",
 			feature: "post",
@@ -125,7 +125,7 @@ describe("historyRecordFromSend", () => {
 	});
 
 	it("行的订阅 id 就是推送层带来的那个,身份从订阅上取(推送层不带身份)", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p4",
 			subscriptionId: SUB_ID,
 			feature: "post",
@@ -141,7 +141,7 @@ describe("historyRecordFromSend", () => {
 	// 拓展行的身份就是订阅的 `identity`(来源键 = 拓展 id + 外部 id,ADR-0019 决策 73);头像快照抄资料里存进
 	// 图库的 `avatar`(⑳d 起,取代决策 74 的「拓展行不存头像快照」),写行前由历史仓续期。
 	it("拓展订阅 → 照记:带来源键(拓展 id)与外部 id、有名字快照、头像快照是资料里的图库引用", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p5",
 			subscriptionId: EXT_ID,
 			feature: "post",
@@ -171,7 +171,7 @@ describe("historyRecordFromSend", () => {
 	// 填的别名已退役(ADR-0021 决策 16),外部 id 在行上另有一格。`notes` 是自由文字,不当名字用。
 	describe("拓展行的名字快照:只取资料里的名字,没有就留空(别名已退役,ADR-0021 决策 16)", () => {
 		const EXT_NO_PROFILE = "55555555-5555-4555-8555-555555555555";
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p7",
 			subscriptionId: EXT_NO_PROFILE,
 			feature: "post",
@@ -243,7 +243,7 @@ describe("historyRecordFromSend", () => {
 	});
 
 	it("B 站订阅的行没有散格(uid / extensionId / externalId),身份只有 identity 一格", () => {
-		const info: PushSendInfo = {
+		const info: PushSendResult = {
 			pushId: "p6",
 			subscriptionId: SUB_ID,
 			feature: "post",

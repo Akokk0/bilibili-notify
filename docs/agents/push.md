@@ -6,7 +6,7 @@
 
 ## 一句话
 
-**总开关管引擎，推送路由管发给谁，sink 管怎么送达。** 三把刀各切各的，谁都不许越界。
+**总开关管引擎，推送路由管发给谁，dispatcher 管怎么送达。** 三把刀各切各的，谁都不许越界。
 
 **B 站也只是一个来源**（ADR-0019 决策 65）：① 里分**来源层**（B 站的动态 / 直播引擎、拓展作品的消费者：拉数据或收上报、时间线、计时器、过滤，各管各的）与**中立装配**（出卡 → 按版式分组 → 交给绑到订阅上的发送，谁来都走同一段）；②–⑥ 对任何来源都是同一条链，按订阅 id 走。拓展订阅的**作品**（`runtime/extension-posts.ts`，与 B 站动态同一段装配）与**直播**（`runtime/extension-live-push.ts`，与 B 站直播同一个 `pushLiveNotify`）都已接上；拓展直播「什么时候推」由 BN 为它写的计时器模块决定（决策 57 / 58 / 61 / 67），不复用 B 站直播引擎的计时器；这一场从哪开始、到哪结束（含断流接续）另算在 `runtime/extension-live-sessions.ts`，推送与统计共用（ADR-0020 决策 6）—— 推送开关只管推不推，不管这一场在不在。
 
@@ -18,7 +18,7 @@
 | ② 适配 | `apps/server/src/runtime/engines.ts` | 把引擎的枚举翻成推送的词；B 站那条边把 uid 翻成订阅 id；把发送钉到一条订阅上 |
 | ③ 路由与闸 | `packages/push` · `broadcastToFeature` | 七道闸 + 选目标 |
 | ④ 发送 | 同上 · `sendBatch` → `sendSequence` → `sendToTarget` | 分条、重试、@全体 分流 |
-| ⑤ 投递 | `apps/server/src/push/multiplex.ts` | 按连接找 adapter，真发出去 |
+| ⑤ 投递 | `apps/server/src/push/target-dispatcher.ts` | 按连接找 adapter，真发出去 |
 | ⑥ 历史 | `onSend` → `runtime/push-history.ts` → `history/store.ts` | 一行 = 一次推送 × 一个目标 |
 
 ### ① 引擎 —— 只认总开关
@@ -100,7 +100,7 @@
 
 行 → 订阅一律「**先认 `subscriptionId`、找不到再按身份认、绝不跨来源**」：找第一个来源键与外部 id 都相同的订阅（两层 map，不拼串）。服务端是 `runtime/target-scope.ts` 的 `currentSubscriptionOf`（重推用），面板是 `pages/up/subscription-lookup.ts` 的 `forRow`，同一条规矩两份实现。行的颜色跟着人走（`utils/up-display.ts` 的 `historyRowColor`），删了再加也不变。
 
-**人工重推**（ADR-0017，`history/repush-runner.ts`）从历史行再发一次：发送口固定注入 `BilibiliPush.sendToTarget(…, { routing })` —— 所以静音 / 免扰 / 总开关三道（在它上游的 `broadcastToFeature` 里）天然不参与，退避重试与重试前复检 routing 照有；订阅按上面那条规矩找回，结果追加进原来那一行。
+**人工重推**（ADR-0017，`history/repush-runner.ts`）从历史行再发一次：发送口固定注入 `PushRouter.sendToTarget(…, { routing })` —— 所以静音 / 免扰 / 总开关三道（在它上游的 `broadcastToFeature` 里）天然不参与，退避重试与重试前复检 routing 照有；订阅按上面那条规矩找回，结果追加进原来那一行。
 
 **保留分两层**（ADR-0022 决策 9，`history/retention.ts`）：文字不设上限，日文件一份都不删；图与重推原件按保留天数清。清到哪一天记成一条水位线 `history/retention.json` 的 `clearedThrough`（UTC 日、含当天，只往前走），清扫每 6 小时加开机一次，只处理水位线之后、到期日及以前的那几天：删那几天的重推原件目录，再把水位线推过去，紧接着跑一轮图库清扫。**清扫本身不碰图**：图在图库 `images/`，历史行的配图（`payload.image`）与头像快照（`avatarSnapshot`）、重推原件里的图各是图库的一家引用方（`listHistoryImageRefs` 只读水位线之后的日文件，本体行与补丁行都数，读不动就抛；`listRepushImageRefs` 读盘上每份原件），水位线一推过去，那几天的行就不再留住它们的图，由图库按引用收走。`deleteRange`、重推原件的 `drop` 同样只删行与 JSON，不删图。列表接口给水位线及以前的行带上 `isPastRetention`，面板在原来画图的位置写「图已清理」（消息的 `kind` 是 `image`、或带着 `image` 格；迁移时过期的老行图格已拿掉，所以要靠 `kind`），这些行的头像快照面板也不用；这些行的原件也没了，重推按钮照旧因为「原件不在」而灰掉。唯一还会删文字的是 devtools 清截流记录用的 `deleteRange`。从 0.x 迁上来时，迁移在「推送历史」那一步里先跑一次同样的清扫（`migration/history.ts` 的 `sweepMigratedHistory`，水位线随新代一起就位），再迁日文件与原件：`history/img/` 不整目录搬，保留期内的行与原件引用着的逐张复制进图库（`migration/history-images.ts`），过了保留期的行只拿掉图格、不读图文件，孤儿不搬。保留天数是 `history.retentionDays`，只许 90 / 60 / 30 / 15 / 7 / 3 / 1 七档。
 
@@ -146,8 +146,8 @@
 | 旁路 | 入口 | 差在哪 |
 |---|---|---|
 | 主人私聊 | `sendToMaster` / `sendPrivateMsg` / `sendErrorMsg` | 强制私聊，**不受全局静音管** —— 指令回复走的就是这条，挡掉的话主人只会看到指令毫无反应 |
-| 手动发一条 | `push.sendToTarget` —— 连接自测、卡片预览发送、AI 试一句、锐评投递 | 走同一套重试与 sink，但**不查 routing、不落历史** |
-| 链接解析回卡 | `createLinkParser` 的 `send` | **根本不进 `BilibiliPush`**：按收到那一帧的连接直接找 adapter 回源群 |
+| 手动发一条 | `push.sendToTarget` —— 连接自测、卡片预览发送、AI 试一句、锐评投递 | 走同一套重试与 dispatcher，但**不查 routing、不落历史** |
+| 链接解析回卡 | `createLinkParser` 的 `send` | **根本不进 `PushRouter`**：按收到那一帧的连接直接找 adapter 回源群 |
 
 devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md](./devtools.md)。
 
@@ -156,7 +156,7 @@ devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md]
 - **引擎不许知道目标。** 词云照渲、AI 照问，发不发是推送层的事。认下的代价：把某个附加项的所有目标都关掉却留着总开关时，那次 AI 调用照花钱。
 - **`packages/live` / `packages/dynamic` 不许知道 @全体。** 今天靠「特性是个裸布尔」天然挡住。
 - **中立装配不许认身份、不许读平台原始数据。** `deliverWork` / `pushLiveNotify` / 两个中立出卡入口只吃中立形状，uid 或订阅 id 由调用方绑进发送、设置与「还订阅着吗」的回问。一段步骤两个来源共用 —— B 站那条以后加了什么，拓展那条自动有；往来源那头另加一步，另一边就静默漏掉（决策 66）。
-- **推送层不许知道平台。** 它只认订阅 id 与 `targetId`，翻译成投递是 sink 的事；订阅是哪一支它也不看（只有日志那一截按支写）。
+- **推送层不许知道平台。** 它只认订阅 id 与 `targetId`，翻译成投递是 dispatcher 的事；订阅是哪一支它也不看（只有日志那一截按支写）。
 - **MessageBus 不在这条链上。** 它走 `live-state-changed` 这类状态通知去仪表盘，与推送载荷两条路。
 
 ## 要改的时候

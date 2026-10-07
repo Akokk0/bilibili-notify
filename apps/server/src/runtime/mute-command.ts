@@ -1,7 +1,7 @@
 /**
  * `/mute` —— 「安静一会儿」。
  *
- * 状态与闸门都在别处({@link ./mute-state.js} 判到期,`BilibiliPush.broadcastToFeature`
+ * 状态与闸门都在别处({@link ./mute-state.js} 判到期,`PushRouter.broadcastToFeature`
  * 挡推送),这里只剩指令这一层:改状态,然后把「几点恢复」说清楚。
  *
  * 那句回复不是客套。静音是个**无声**的状态 —— 主人过一会儿发现没推送,分不清是自己

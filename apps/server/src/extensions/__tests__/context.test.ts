@@ -10,7 +10,7 @@ import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext } from "../context.js";
 import { createExtensionMounts, EXTENSION_MOUNT_PREFIX } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
@@ -65,7 +65,7 @@ function coreStubs() {
 			apiVersion: 1,
 			provides: ["push"],
 		} as const satisfies ExtensionManifest,
-		adapters: createAdapterRegistry(),
+		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
 		subscriptions: () => [],

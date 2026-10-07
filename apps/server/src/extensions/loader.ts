@@ -16,7 +16,7 @@ import {
 	type SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { AdapterRegistry } from "../push/registry.js";
+import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { ExtensionConflictError } from "./conflict-error.js";
 import {
 	type ActionOutcome,
@@ -214,7 +214,7 @@ export interface LoadExtensionsOptions {
 	host: ServiceContext;
 	mounts: ExtensionMounts;
 	/** 出口的活注册表。拓展注册的推送源往这里进。 */
-	adapters: AdapterRegistry;
+	adapters: PlatformAdapterRegistry;
 	/** 全部连接,现读。属于谁由 ctx 那一层筛。 */
 	connections: () => readonly Connection[];
 	/** 按 id 取一条(入站热路径用),见 `ExtensionContextOptions.connection`。 */

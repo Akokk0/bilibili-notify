@@ -3,7 +3,7 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import type { PushSendInfo } from "@bilibili-notify/push";
+import type { PushSendResult } from "@bilibili-notify/push";
 import type { NewHistoryEntry } from "../history/store.js";
 
 export interface PushHistoryLookups {
@@ -20,7 +20,7 @@ export interface PushHistoryLookups {
 }
 
 /**
- * `BilibiliPush.onSend` 的一次回调 → 历史仓的一次 `record`。
+ * `PushRouter.onSend` 的一次回调 → 历史仓的一次 `record`。
  *
  * 推送层只知道订阅 id / feature / 目标 / 消息与结果;历史行还要「替谁发的」、以及 UP
  * 当时的名字头像快照(订阅以后被删,面板上仍显示得出「当时是谁」)。无目标那次照记
@@ -39,7 +39,7 @@ export interface PushHistoryLookups {
  * `notes` 是自由文字,不当名字用。B 站行照旧只认资料里的名字。
  */
 export function historyRecordFromSend(
-	info: PushSendInfo,
+	info: PushSendResult,
 	lookups: PushHistoryLookups,
 ): NewHistoryEntry | null {
 	const found = lookups.subscriptionOf(info.subscriptionId);

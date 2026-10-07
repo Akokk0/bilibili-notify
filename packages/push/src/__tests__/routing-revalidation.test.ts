@@ -12,12 +12,11 @@
  *
  * 修复后:`sendBatch`/`sendAtAllThenCard` 把订阅 id + feature 透传给
  * `sendToTarget`,重试循环每一轮先核对 targetId 是否仍在
- * `store.findById(subscriptionId).routing[feature]` 里,不在就放弃、不再调用 sink.send。
+ * `store.findById(subscriptionId).routing[feature]` 里,不在就放弃、不再调用 dispatcher.send。
  */
 
 import type {
 	DeliveryResult,
-	NotificationSink,
 	PushTarget,
 	ServiceContext,
 	Subscription,
@@ -29,8 +28,8 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BilibiliPush } from "../bilibili-push";
-import { pushBase, silentLogger } from "./helpers";
+import { PushRouter } from "../push-router";
+import { type FakeDispatcher, pushBase, silentLogger } from "./helpers";
 
 /** 受控 serviceCtx:setTimeout 只登记,不自动触发,由测试手动 fire。 */
 function makeControlledServiceCtx(): { ctx: ServiceContext; pending: Array<() => void> } {
@@ -69,8 +68,8 @@ function makeStore(...initial: Subscription[]): SubscriptionStore {
 	};
 }
 
-describe("BilibiliPush — 退避重试期间的路由复检", () => {
-	it("重试等待期间 target 被移出 routing → 恢复可达后不再发送(sink.send 从未被调)", async () => {
+describe("PushRouter — 退避重试期间的路由复检", () => {
+	it("重试等待期间 target 被移出 routing → 恢复可达后不再发送(dispatcher.send 从未被调)", async () => {
 		const { ctx, pending } = makeControlledServiceCtx();
 
 		const sub = makeEmptySubscription({
@@ -83,7 +82,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 		// target-a 起初不可达(触发 sleep 重试),之后翻可达。
 		let aAvailable = false;
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
-		const sink: NotificationSink = {
+		const dispatcher: FakeDispatcher = {
 			isAvailable: (id) => (id === "target-a" ? aAvailable : true),
 			isEnabled: () => true,
 			send: () => send(),
@@ -91,9 +90,9 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store,
 			logger: silentLogger,
 			serviceCtx: ctx,
@@ -143,7 +142,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 
 		let available = false;
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
-		const sink: NotificationSink = {
+		const dispatcher: FakeDispatcher = {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send: () => send(),
@@ -151,9 +150,9 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store,
 			logger: silentLogger,
 			serviceCtx: ctx,
@@ -202,7 +201,7 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 
 		let available = false;
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
-		const sink: NotificationSink = {
+		const dispatcher: FakeDispatcher = {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send: () => send(),
@@ -210,9 +209,9 @@ describe("BilibiliPush — 退避重试期间的路由复检", () => {
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
-		const push = new BilibiliPush({
+		const push = new PushRouter({
 			...pushBase(),
-			sink,
+			dispatcher,
 			store,
 			logger: silentLogger,
 			serviceCtx: ctx,

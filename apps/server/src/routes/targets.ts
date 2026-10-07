@@ -14,7 +14,7 @@ import type { RouteDeps } from "./types.js";
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码
  * (不合规 `invalid` 400、没这一条 `not_found` 404、托管的不许动 `conflict` 409),路由按码回、不嗅文案。
  *
- * `POST /:id/test` —— 往**一个**推送目标上丢一条已知良好的载荷,走真实的 MultiplexNotificationSink,
+ * `POST /:id/test` —— 往**一个**推送目标上丢一条已知良好的载荷,走真实的 TargetDispatcher,
  * 与真事件投递同一条路径。卡片页的「发送测试推送」按钮与推送目标页的「测试」按钮用它。
  * (目标 id 从前在请求体里的 `targetId`,ADR-0036 挪进了路径。)
  *
@@ -120,7 +120,7 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 			kind: "text",
 			text: text ?? KIND_TEXTS[kind],
 		};
-		// The push.sendToTarget path goes through the same retry / sink lookup
+		// The push.sendToTarget path goes through the same retry / dispatcher lookup
 		// engines use, so the test exercises real behaviour.
 		const result = await engines.push.sendToTarget(target.id, payload);
 		// `DeliveryResult` 还是老形状(`err`,且落盘进历史 / testStatus),只在这个出口翻成线上的。

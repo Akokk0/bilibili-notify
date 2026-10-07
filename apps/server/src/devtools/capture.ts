@@ -98,7 +98,7 @@ export function createCaptureGate(): CaptureGate {
 			windows = on ? [{ from: Date.now(), to: null }] : [];
 		},
 		wrap(inner) {
-			// 展开而不是逐个转发:可选方法有就有、没有就没有(sink 与能力探测按「方法在不在」判
+			// 展开而不是逐个转发:可选方法有就有、没有就没有(dispatcher 与能力探测按「方法在不在」判
 			// 「这个平台有没有这个概念」),接口多一个方法这里也不用跟。前提是 adapter 的方法不吃
 			// `this`,那条写在 PlatformAdapter 的文档上。
 			return {
@@ -119,8 +119,8 @@ export function createCaptureGate(): CaptureGate {
 						...summarize(payload),
 					});
 					if (list.length > ENTRY_CAP) list = list.slice(list.length - ENTRY_CAP);
-					// `synthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
-					return { ok: true, latencyMs: 0, synthetic: true };
+					// `isSynthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
+					return { ok: true, latencyMs: 0, isSynthetic: true };
 				},
 			};
 		},

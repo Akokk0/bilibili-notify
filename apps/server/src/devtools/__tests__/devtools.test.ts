@@ -3,7 +3,7 @@ import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
-import { createAdapterRegistry } from "../../push/registry.js";
+import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import type { UpdateService } from "../../update/service.js";
 import { createDevtools } from "../index.js";
@@ -37,7 +37,7 @@ const REAL_MARKET: Marketplace = {
 const BARE = {
 	updateService,
 	marketplace: REAL_MARKET,
-	adapters: createAdapterRegistry(),
+	adapters: createPlatformAdapterRegistry(),
 	historyStore: { deleteRange: async () => 0 },
 	api: {} as never,
 	subs: () => [],
@@ -109,7 +109,7 @@ describe("createDevtools · 截流接线", () => {
 		const dev = createDevtools({
 			...BARE,
 			payloadVersion: "0.0.0-dev",
-			adapters: createAdapterRegistry([inner]),
+			adapters: createPlatformAdapterRegistry([inner]),
 			historyStore: { deleteRange } as never,
 		});
 		if (dev === null) throw new Error("unreachable");
@@ -125,7 +125,7 @@ describe("createDevtools · 截流接线", () => {
 	 */
 	it("createDevtools 之后**才注册**的出口,照样看得见、照样是包过闸的", async () => {
 		const send = vi.fn(async () => ({ ok: true, latencyMs: 1 }));
-		const registry = createAdapterRegistry();
+		const registry = createPlatformAdapterRegistry();
 		const dev = createDevtools({
 			...BARE,
 			payloadVersion: "0.0.0-dev",

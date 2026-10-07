@@ -36,7 +36,7 @@ import {
 	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { AdapterRegistry } from "../push/registry.js";
+import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
@@ -262,7 +262,7 @@ export interface CreateExtensionContextOptions {
 	host: ServiceContext;
 	mounts: ExtensionMounts;
 	/** 出口的活注册表。拓展注册的推送源往这里进。 */
-	adapters: AdapterRegistry;
+	adapters: PlatformAdapterRegistry;
 	/** 全部连接,**现读**。属于谁由宿主筛。 */
 	connections: () => readonly Connection[];
 	/**

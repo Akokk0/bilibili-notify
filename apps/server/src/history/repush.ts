@@ -64,7 +64,7 @@ export interface RepushGateInput {
 	 * (`identity`:来源键 + 外部 id)解析到**现在**那一条(ADR-0019 决策 50);订阅已经没了就是空。
 	 */
 	routedTargets: readonly string[];
-	/** 目标与它所属的连接都还启用着(`sink.isEnabled`)。 */
+	/** 目标与它所属的连接都还启用着(`dispatcher.isEnabled`)。 */
 	targetEnabled: boolean;
 	/** 这一行正在补 —— 服务端自己记的,不靠前端的禁用态。 */
 	running: boolean;
