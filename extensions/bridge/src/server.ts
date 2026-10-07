@@ -72,11 +72,11 @@ export const DEFAULT_BRIDGE_PING_TIMEOUT_MS = 5_000;
 export interface BridgeServerOptions {
 	logger: Logger;
 	/**
-	 * 心跳与看门狗那两只定时器从这儿走。**裸 `setInterval` 是禁止的**(ADR-0012 决策 11:
+	 * 心跳、看门狗、握手窗口与回执超时这几只定时器都从这儿走。**裸 `setInterval` / `setTimeout` 是禁止的**(ADR-0012 决策 11:
 	 * 那是「卸载得干净」的唯一承重条件)—— 留一条旁路的话,把桥的开关关掉之后面板写着
 	 * 「已停用」,而心跳还在照打。同 `blob.ts`。
 	 */
-	ctx: Pick<ExtensionContext, "setInterval">;
+	ctx: Pick<ExtensionContext, "setInterval" | "setTimeout">;
 	/**
 	 * token → 这是哪条桥接入(连接 id)。认不出回 `null` → upgrade 401。
 	 *
@@ -196,7 +196,7 @@ interface BridgeConn {
 	remoteAddress?: string;
 	connectedAt: number;
 	lastSeenAt: number;
-	handshakeTimer?: NodeJS.Timeout;
+	handshakeTimer?: Disposable;
 	/**
 	 * 桥在 `hello` 里自报的那些。**没握手时是 undefined** —— 「握没握手」与「桥自报了
 	 * 什么」是同一件事,别拆成两格,拆了迟早出现一个「握了手但没有 kind」的态。
@@ -233,19 +233,19 @@ interface PendingTable<T> {
 	failAll(outcome: T): void;
 }
 
-function pendingTable<T>(): PendingTable<T> {
-	const entries = new Map<string, { settle(outcome: T): void; timer: NodeJS.Timeout }>();
+function pendingTable<T>(ctx: Pick<ExtensionContext, "setTimeout">): PendingTable<T> {
+	const entries = new Map<string, { settle(outcome: T): void; timer: Disposable }>();
 	return {
 		start(id, timeoutMs, onTimeout, resolve) {
 			// 只结算一次:后到的那几路看见表里没有这一格就散了。
 			const settle = (outcome: T): void => {
 				const entry = entries.get(id);
 				if (!entry) return;
-				clearTimeout(entry.timer);
+				entry.timer.dispose();
 				entries.delete(id);
 				resolve(outcome);
 			};
-			entries.set(id, { settle, timer: setTimeout(() => settle(onTimeout), timeoutMs) });
+			entries.set(id, { settle, timer: ctx.setTimeout(() => settle(onTimeout), timeoutMs) });
 			return settle;
 		},
 		settle(id, outcome) {
@@ -364,7 +364,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	function drop(conn: BridgeConn): void {
 		if (!conns.delete(conn)) return;
 		if (conn.handshakeTimer) {
-			clearTimeout(conn.handshakeTimer);
+			conn.handshakeTimer.dispose();
 			conn.handshakeTimer = undefined;
 		}
 		failPending(conn, "桥断开了");
@@ -423,7 +423,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			return;
 		}
 		if (conn.handshakeTimer) {
-			clearTimeout(conn.handshakeTimer);
+			conn.handshakeTimer.dispose();
 			conn.handshakeTimer = undefined;
 		}
 		conn.hello = {
@@ -554,12 +554,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			connectedAt: now,
 			lastSeenAt: now,
 			bots: [],
-			pending: pendingTable<BridgeSendOutcome>(),
-			pendingPings: pendingTable<BridgePingOutcome>(),
+			pending: pendingTable<BridgeSendOutcome>(opts.ctx),
+			pendingPings: pendingTable<BridgePingOutcome>(opts.ctx),
 		};
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
-			conn.handshakeTimer = setTimeout(() => {
+			conn.handshakeTimer = opts.ctx.setTimeout(() => {
 				log.warn(`bridge ${linkId} never sent hello`);
 				close(conn, BRIDGE_CLOSE_CODES.handshakeTimeout, "handshake timeout");
 			}, handshakeTimeoutMs);

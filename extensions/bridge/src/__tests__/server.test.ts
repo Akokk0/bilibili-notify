@@ -9,7 +9,7 @@
 
 import { createServer, type Server as HttpServer, type IncomingMessage } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { BRIDGE_CLOSE_CODES, BRIDGE_PROTOCOL_VERSION } from "../contract.js";
 import {
@@ -31,7 +31,38 @@ const HOST_TIMERS = {
 		const handle = setInterval(fn, ms);
 		return { dispose: () => clearInterval(handle) };
 	},
+	setTimeout(fn: () => void, ms: number) {
+		const handle = setTimeout(fn, ms);
+		return { dispose: () => clearTimeout(handle) };
+	},
 };
+
+/** 记账版:攒着「叫过 ctx.setTimeout、还没触发也没被 dispose」的那几只,量桥有没有把自己的收干净。 */
+function spyTimers() {
+	const live = new Set<number>();
+	let calls = 0;
+	return {
+		ctx: {
+			setInterval: HOST_TIMERS.setInterval,
+			setTimeout(fn: () => void, ms: number) {
+				const n = calls++;
+				live.add(n);
+				const handle = setTimeout(() => {
+					live.delete(n);
+					fn();
+				}, ms);
+				return {
+					dispose: () => {
+						live.delete(n);
+						clearTimeout(handle);
+					},
+				};
+			},
+		},
+		live: () => live.size,
+		calls: () => calls,
+	};
+}
 
 /**
  * 把桥接上一台真 HTTP server —— **宿主做的就是这件事**:按 `/ext/<id>` 前缀挑出属于它的
@@ -587,6 +618,51 @@ describe("/bridge 端点", () => {
 		});
 		await new Promise((r) => setTimeout(r, 150));
 		expect(p.socket.readyState).toBe(WebSocket.OPEN);
+	});
+
+	// ---- 定时器都走 ctx.setTimeout,而且收得干净 ---------------------------------
+
+	it("握手窗口那只定时器走 ctx —— hello 到了就摘掉,不留到 20 秒后", async () => {
+		const spy = spyTimers();
+		await boot({ ctx: spy.ctx });
+		const p = join();
+		await p.open();
+		await vi.waitFor(() => expect(spy.live()).toBe(1));
+		p.send(helloFrame());
+		await p.next();
+		expect(spy.live()).toBe(0);
+	});
+
+	it("没握手就断线:握手窗口那只也摘掉", async () => {
+		const spy = spyTimers();
+		await boot({ ctx: spy.ctx });
+		const p = join();
+		await p.open();
+		await vi.waitFor(() => expect(spy.live()).toBe(1));
+		p.dispose();
+		await vi.waitFor(() => expect(spy.live()).toBe(0));
+	});
+
+	it("在飞的探活超时走 ctx —— pong 回来结算就摘掉,断线时在飞的也摘掉", async () => {
+		const spy = spyTimers();
+		await boot({ ctx: spy.ctx, heartbeatIntervalMs: 0 });
+		const p = await handshaken();
+		expect(spy.live()).toBe(0);
+		p.socket.on("message", (raw) => {
+			const frame = JSON.parse(raw.toString("utf8")) as { type?: string; id?: string };
+			if (frame.type === "ping" && frame.id) p.send({ type: "pong", id: frame.id });
+		});
+		await server.ping(CONNECTION_ID);
+		expect(spy.calls()).toBeGreaterThan(1); // 握手窗口 + 这一趟探活
+		expect(spy.live()).toBe(0);
+
+		// 这回不回 pong,中途断线:在飞的那只随连接一起收。
+		p.socket.removeAllListeners("message");
+		const probing = server.ping(CONNECTION_ID);
+		await vi.waitFor(() => expect(spy.live()).toBe(1));
+		p.dispose();
+		await probing;
+		expect(spy.live()).toBe(0);
 	});
 
 	// ---- 探活:面板那颗「测试」按钮 -------------------------------------------

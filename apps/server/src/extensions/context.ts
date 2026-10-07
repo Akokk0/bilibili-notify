@@ -739,7 +739,23 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
 		hostVersion: opts.hostVersion ?? "0.0.0-dev",
 		logger,
-		setTimeout: (fn, ms) => (disposed ? refuse("setTimeout") : track(host.setTimeout(fn, ms))),
+		setTimeout: (fn, ms) => {
+			if (disposed) return refuse("setTimeout");
+			// 一次性的:触发完就从名册上放掉,不然每调一次漏一个小对象,直到卸载。
+			let fired = false;
+			const inner = host.setTimeout(() => {
+				fired = true;
+				registered.delete(inner);
+				fn();
+			}, ms);
+			const tracked = track(inner);
+			return {
+				dispose() {
+					// 触发之后再 dispose:宿主那只已经跑完,不再去叫它。
+					if (!fired) tracked.dispose();
+				},
+			};
+		},
 		setInterval: (fn, ms) => (disposed ? refuse("setInterval") : track(host.setInterval(fn, ms))),
 		mount(handler) {
 			// 卸载之后还来挂:不进表(那才是幽灵端点),但前缀照答 —— 拓展要的只是一段字符串。

@@ -31,9 +31,14 @@ function fakeHost() {
 			timers.add(fn);
 			return { dispose: () => timers.delete(fn) };
 		},
+		// 同真宿主:一次性的,触发时自己从表里走。
 		setTimeout(fn) {
-			timers.add(fn);
-			return { dispose: () => timers.delete(fn) };
+			const run = () => {
+				timers.delete(run);
+				fn();
+			};
+			timers.add(run);
+			return { dispose: () => timers.delete(run) };
 		},
 		onDispose() {},
 		signal: new AbortController().signal,
@@ -104,6 +109,43 @@ describe("拓展 ctx", () => {
 		expect(host.pending()).toBe(0);
 		host.tick();
 		expect(ticks).toBe(2);
+	});
+
+	it("一次性定时器触发之后自己从登记里放掉 —— 卸载时不再去摘它,手动 dispose 也不出错", async () => {
+		const host = fakeHost();
+		const fires: Array<() => void> = [];
+		const disposed: number[] = [];
+		let seq = 0;
+		// 宿主那面的 setTimeout:把回调留给测试手动触发,并记下谁的 dispose 被叫过。
+		host.ctx.setTimeout = (fn) => {
+			const n = seq++;
+			fires.push(fn);
+			return { dispose: () => void disposed.push(n) };
+		};
+		const mounts = createExtensionMounts({ logger: silentLogger });
+		const runtime = createExtensionContext({
+			id: "bridge",
+			host: host.ctx,
+			mounts,
+			...coreStubs(),
+		});
+		let ran = 0;
+		const fired = runtime.ctx.setTimeout(() => ran++, 1000);
+		const pendingOne = runtime.ctx.setTimeout(() => ran++, 1000);
+		const cancelled = runtime.ctx.setTimeout(() => ran++, 1000);
+
+		cancelled.dispose();
+		expect(disposed).toEqual([2]);
+		fires[0]?.();
+		expect(ran).toBe(1);
+		// 触发之后再 dispose:不出错,也不再去叫宿主那只已经跑完的定时器。
+		expect(() => fired.dispose()).not.toThrow();
+		expect(disposed).toEqual([2]);
+
+		// 卸载只收还没触发的那一只(#1);跑完的 #0 早已放掉。
+		await runtime.dispose();
+		expect(disposed).toEqual([2, 1]);
+		pendingOne.dispose();
 	});
 
 	it("卸载之后它那条路由就没了", async () => {
