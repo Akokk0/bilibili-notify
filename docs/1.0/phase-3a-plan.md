@@ -113,4 +113,5 @@
   - **抓图防 DNS 重绑定**：内网判定做在真正建连接用的那一次解析上，不做「先解析检查、再正常发请求」。BN 多跑在家里的局域网或 Docker 里，图链又来自外部内容与第三方拓展。被否的备选：不防。
   - **图库的 `put` 整个回结果**：磁盘写失败回 `unavailable`、不再抛，调用方改看返回值（先用刻画测试钉住现有的降级行为）。被否的备选：`put` 照抛、只在给集成用的 `storeImage` / `fetchImage` 那一层转换（同一件事两种写法）。
   - 服务叫 `ImageFetcher`、工厂 `createImageFetcher`、依赖包 `ImageFetcherDeps`，住 `images/image-fetcher.ts`；对外两个函数的签名照 subscription-sources.md。
+- 3a-13 开工前定的（10-07 主人拍板）：**这一片只做下发打码，不动盘**。连接凭据在盘上照旧明文存在 `config/connections.json`；搬不搬进加密存储，3a-22（连接换新形状，本来就要动这份文件、抬修订号与备份版本）开工时带上这一题再问，迁移只写一次。被否的备选：这一片就搬（3a-22 还得再搬一次）；现在就定「永远不搬」。
 - 3a-08：只搬登记表。`entries()` 没有调用方，没加。补了一份直接钉三条规矩的单测 `integrations/__tests__/registry.test.ts`（原来只经挂载点与 upgrade 的测试间接盖着）。
