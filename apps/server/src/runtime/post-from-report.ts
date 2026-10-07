@@ -157,14 +157,30 @@ function isoOfMillis(ms: number): string {
 }
 
 /**
+ * 存一张图,回引用;图库不收(`invalid`:格式不认、超限)回 `undefined`,那一格缺着。别的失败(磁盘写失败回的
+ * `unavailable`)抛 —— 与 {@link deferImageWrites} 的 `commit()` 同一个口径:这一次出卡失败,装配降级成纯文字,
+ * 不是悄悄少一张图。生产里拿到的口是 `deferImageWrites` 的 `sink`(不碰盘,只回 ok / `invalid`),走不到抛的那一支;
+ * 它防的是哪天有人把真图库的口直接传进来。拓展直播卡(`liveCardInputFromReport`)也用它。
+ */
+export async function storeOrSkip(
+	images: ImageSink,
+	bytes: Uint8Array,
+): Promise<ImageRef | undefined> {
+	const stored = await images.put(bytes);
+	if (stored.ok) return stored.ref;
+	if (stored.code === "invalid") return undefined;
+	throw new Error(`图存不进图库:${stored.message}`);
+}
+
+/**
  * 一张图的字节 → 存进图库,回装了引用的 `PostImage`(带宽高与动图标记)。图库不收就没有 `ref`(出图器画占位),
  * 宽高与动图标记照样带 —— 那是字节自己的事。这里拿到的口是 {@link deferImageWrites} 的 `sink`,不碰盘;磁盘写失败
  * 在 `commit()` 那一刻才见得到,由它抛出去(这一次出卡失败,装配降级成纯文字)。
  */
 async function storeImage(bytes: Uint8Array, images: ImageSink): Promise<PostImage> {
-	const stored = await images.put(bytes);
+	const ref = await storeOrSkip(images, bytes);
 	return {
-		...(stored.ok ? { ref: stored.ref } : {}),
+		...(ref === undefined ? {} : { ref }),
 		...readImageSize(bytes),
 		isAnimated: sniffImageFormat(bytes) === "gif",
 	};
@@ -176,10 +192,7 @@ export async function postFromReport(
 ): Promise<Post> {
 	// 作者头像:事件带了字节且图库收就存、用它;否则用订阅资料里的引用;都没有就没有头像(头像块收起)。
 	let avatar: ImageRef | undefined;
-	if (report.author?.avatar) {
-		const stored = await opts.images.put(report.author.avatar);
-		if (stored.ok) avatar = stored.ref;
-	}
+	if (report.author?.avatar) avatar = await storeOrSkip(opts.images, report.author.avatar);
 	avatar ??= opts.profileAvatar;
 
 	const text = (report.text ?? "").replace(/\r\n?/g, "\n");

@@ -91,6 +91,7 @@ catalog:
   react-dom: ^19.2.8
   tailwindcss: ^4.3.3
   tsx: ^4.23.12
+  undici: ^8.10.0
   ws: ^8.21.3
   zod: ^4.4.3
 

@@ -169,3 +169,28 @@ describe("liveCardInputFromReport — 图库写盘失败", () => {
 		).rejects.toThrow("磁盘满了");
 	});
 });
+
+describe("liveCardInputFromReport — 存图口回的不是 invalid", () => {
+	/** 今天生产里拿到的口是 `deferImageWrites` 的 `sink`,只回 ok / invalid;真图库直接传进来时盘满回的是 unavailable。 */
+	const opts = {
+		status: "start" as const,
+		authorName: "抖音甲",
+		images: {
+			put: async () => ({
+				ok: false as const,
+				code: "unavailable" as const,
+				message: "图库写盘失败:盘满了",
+			}),
+		},
+	};
+
+	it("封面存不下来(unavailable):抛、原因带着,不是悄悄没有封面", async () => {
+		await expect(liveCardInputFromReport({ cover: PNG }, opts)).rejects.toThrow("盘满了");
+	});
+
+	it("事件带的头像存不下来(unavailable):抛,不是悄悄换成资料里那张", async () => {
+		await expect(liveCardInputFromReport({ author: { avatar: PNG } }, opts)).rejects.toThrow(
+			"盘满了",
+		);
+	});
+});

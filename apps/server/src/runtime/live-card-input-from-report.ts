@@ -19,7 +19,7 @@
 import type { LiveCardInput, LiveCardStatus } from "@bilibili-notify/image";
 import type { ImageRef } from "@bilibili-notify/internal";
 import type { ExtensionLiveRow } from "./extension-live.js";
-import type { ImageSink } from "./post-from-report.js";
+import { type ImageSink, storeOrSkip } from "./post-from-report.js";
 
 /** 卡上要的直播那几格 —— 在播表那一行与事件长得一样(都是拓展交的原件:封面与头像是字节)。 */
 export type LiveCardFacts = Partial<
@@ -62,16 +62,13 @@ export async function liveCardInputFromReport(
 	opts: LiveCardInputFromReportOptions,
 ): Promise<LiveCardInput> {
 	let avatar: ImageRef | undefined;
-	if (facts.author?.avatar) {
-		const stored = await opts.images.put(facts.author.avatar);
-		if (stored.ok) avatar = stored.ref;
-	}
+	if (facts.author?.avatar) avatar = await storeOrSkip(opts.images, facts.author.avatar);
 	avatar ??= opts.profileAvatar;
 
 	let cover: LiveCardInput["cover"];
 	if (facts.cover) {
-		const stored = await opts.images.put(facts.cover);
-		if (stored.ok) cover = { ref: stored.ref };
+		const ref = await storeOrSkip(opts.images, facts.cover);
+		if (ref !== undefined) cover = { ref };
 	}
 
 	return present({

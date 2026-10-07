@@ -227,6 +227,9 @@ catalogs:
     tsx:
       specifier: ^4.23.12
       version: 4.23.12
+    undici:
+      specifier: ^8.10.0
+      version: 8.10.0
     ws:
       specifier: ^8.21.3
       version: 8.21.3
@@ -352,6 +355,9 @@ importers:
       '@bilibili-notify/extension':
         specifier: workspace:*
         version: link:../../packages/extension
+      '@bilibili-notify/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@bilibili-notify/image':
         specifier: workspace:*
         version: link:../../packages/image
@@ -637,6 +643,9 @@ importers:
       '@bilibili-notify/internal':
         specifier: workspace:^
         version: link:../internal
+      undici:
+        specifier: 'catalog:'
+        version: 8.10.0
       ws:
         specifier: 'catalog:'
         version: 8.21.3

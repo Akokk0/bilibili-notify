@@ -486,3 +486,26 @@ describe("deferImageWrites — 真图库写盘失败(环境的事)", () => {
 		await expect(deferred.commit()).rejects.toThrow(/ENOTDIR/);
 	});
 });
+
+describe("postFromReport — 存图口回的不是 invalid", () => {
+	/** 今天生产里拿到的口是 `deferImageWrites` 的 `sink`,只回 ok / invalid;真图库直接传进来时盘满回的是 unavailable。 */
+	const unavailable: ImageSink = {
+		put: async () => ({ ok: false, code: "unavailable", message: "图库写盘失败:盘满了" }),
+	};
+
+	it("配图存不下来(unavailable):抛、原因带着,不是悄悄少一张图", async () => {
+		await expect(
+			postFromReport(report({ images: [png(10, 10)] }), { authorName: "甲", images: unavailable }),
+		).rejects.toThrow("盘满了");
+	});
+
+	it("事件带的头像存不下来(unavailable):抛,不是悄悄换成资料里那张", async () => {
+		await expect(
+			postFromReport(report({ author: { avatar: png(8, 8) } }), {
+				authorName: "甲",
+				profileAvatar: `${"a".repeat(64)}.png`,
+				images: unavailable,
+			}),
+		).rejects.toThrow("盘满了");
+	});
+});
