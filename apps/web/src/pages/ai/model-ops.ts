@@ -1,5 +1,5 @@
 /**
- * AI 设置页两个左栏的增删操作 —— 对 `AISettings` 草稿的纯变换,一律返回新对象。
+ * AI 设置页两个左栏的增删操作 —— 对 `AISettingsDraft` 草稿的纯变换,一律返回新对象。
  *
  * 抽出来是因为这里的分支最容易悄悄错、又最难在界面上看出来:删掉正在用的那份之后
  * 指针指向哪、删到一份不剩会不会炸、新实例 / 新人格的 id 撞没撞上。
@@ -12,9 +12,9 @@ import {
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
 } from "@bilibili-notify/internal/constants";
-import type { AIPersona, AISettings } from "../../types/globals";
+import type { AIPersona, AISettingsDraft } from "../../types/globals";
 
-type AIPreset = AISettings["presets"][number];
+type AIPreset = AISettingsDraft["presets"][number];
 
 // ── 服务商实例左栏 ──────────────────────────────────────────────────────
 //
@@ -34,7 +34,7 @@ export interface ProfileRailItem {
  * 纯键序的话,主人先加硅基后加 OpenRouter,左栏就与「+ 添加服务商」清单里的
  * 顺序不一致;删掉再加回来还会自己换位置。
  */
-function railOrder(ai: AISettings): string[] {
+function railOrder(ai: AISettingsDraft): string[] {
 	const rank = new Map<string, number>(AI_PROVIDER_IDS.map((id, i) => [id, i]));
 	return Object.keys(ai.providers)
 		.map((id, at) => ({
@@ -46,7 +46,7 @@ function railOrder(ai: AISettings): string[] {
 		.map((x) => x.id);
 }
 
-export function profileRailItems(ai: AISettings): ProfileRailItem[] {
+export function profileRailItems(ai: AISettingsDraft): ProfileRailItem[] {
 	return railOrder(ai).map((id) => {
 		const p = ai.providers[id];
 		const provider = p?.provider ?? "custom";
@@ -65,7 +65,10 @@ export function profileRailItems(ai: AISettings): ProfileRailItem[] {
  *   (与人格的 `activePreset` 同一套语义)。唯一的例外是指针还没着落时(全新配置):
  *   头一份添加的就成了在用的那份,否则主人填好密钥、女仆却仍然「没配齐」。
  */
-export function addProfile(ai: AISettings, provider: AIProviderId): { ai: AISettings; id: string } {
+export function addProfile(
+	ai: AISettingsDraft,
+	provider: AIProviderId,
+): { ai: AISettingsDraft; id: string } {
 	const taken = new Set(Object.keys(ai.providers));
 	let id: string = provider;
 	let n = 1;
@@ -95,13 +98,13 @@ export function addProfile(ai: AISettings, provider: AIProviderId): { ai: AISett
  * 桶不存在就**不动**:指向一份没添加过的实例是悬空引用,左栏里没有它、
  * `resolveAIProfile` 兜一套空档案,于是女仆静默停工而主人以为选好了。
  */
-export function setActiveProfile(ai: AISettings, id: string): AISettings {
+export function setActiveProfile(ai: AISettingsDraft, id: string): AISettingsDraft {
 	if (ai.providers[id] === undefined) return ai;
 	return { ...ai, activeProfile: id };
 }
 
 /** 给实例改显示名。清空 = 回落到注册表里那家的名字(见 {@link profileRailItems})。 */
-export function renameProfile(ai: AISettings, id: string, label: string): AISettings {
+export function renameProfile(ai: AISettingsDraft, id: string, label: string): AISettingsDraft {
 	const p = ai.providers[id];
 	if (p === undefined) return ai;
 	return { ...ai, providers: { ...ai.providers, [id]: { ...p, label } } };
@@ -117,7 +120,7 @@ export function renameProfile(ai: AISettings, id: string, label: string): AISett
  * 收敛顺序:看的那份还在 → 原样;否则落到在用的那份;在用的那份也没添加过(全新
  * 配置、或删到只剩别份)→ 左栏第一项(与渲染同序);一份都没有 → null,右侧出添加面板。
  */
-export function resolveEditingProfile(ai: AISettings, id: string | null): string | null {
+export function resolveEditingProfile(ai: AISettingsDraft, id: string | null): string | null {
 	if (id !== null && ai.providers[id] !== undefined) return id;
 	if (ai.providers[ai.activeProfile] !== undefined) return ai.activeProfile;
 	return railOrder(ai)[0] ?? null;
@@ -133,11 +136,11 @@ export function resolveEditingProfile(ai: AISettings, id: string | null): string
  * 这份的密钥不用在这里处理:落盘时 `writeGlobals` 用 `collectAiSecrets` 整袋重算,
  * 桶没了它自然不再写进加密袋。
  */
-export function removeProfile(ai: AISettings, id: string): AISettings {
+export function removeProfile(ai: AISettingsDraft, id: string): AISettingsDraft {
 	if (ai.providers[id] === undefined) return ai;
 	// 用「浅拷贝 + delete」而非计算键 rest 解构:后者会让 TS 把 rest 推成 `{}`,
 	// 之后按字符串索引就报隐式 any。
-	const rest: AISettings["providers"] = { ...ai.providers };
+	const rest: AISettingsDraft["providers"] = { ...ai.providers };
 	delete rest[id];
 	const fallback = railOrder({ ...ai, providers: rest })[0];
 	return {
@@ -165,7 +168,7 @@ export interface PersonaRailItem {
 	label: string;
 }
 
-export function personaRailItems(ai: AISettings): PersonaRailItem[] {
+export function personaRailItems(ai: AISettingsDraft): PersonaRailItem[] {
 	return ai.presets.map((p) => ({
 		id: `${PRESET_RAIL_PREFIX}${p.id}`,
 		presetId: p.id,
@@ -181,7 +184,7 @@ export interface PersonaDraft {
 }
 
 /** 左栏 id → presets[] 下标。不是预设、或该预设已不存在时返回 -1。 */
-function presetIndex(ai: AISettings, railId: string): number {
+function presetIndex(ai: AISettingsDraft, railId: string): number {
 	if (!railId.startsWith(PRESET_RAIL_PREFIX)) return -1;
 	const id = railId.slice(PRESET_RAIL_PREFIX.length);
 	return ai.presets.findIndex((p) => p.id === id);
@@ -193,7 +196,7 @@ function presetIndex(ai: AISettings, railId: string): number {
  * 选中项可能凭空消失(刚被删掉、备份导入换了一批)。不收敛的话左栏没有任何一项高亮、
  * 右侧却显示着别的内容 —— 高亮项与内容各说各话。
  */
-export function resolvePersonaRailId(ai: AISettings, railId: string): string {
+export function resolvePersonaRailId(ai: AISettingsDraft, railId: string): string {
 	if (presetIndex(ai, railId) >= 0) return railId;
 	const first = ai.presets[0];
 	return first ? `${PRESET_RAIL_PREFIX}${first.id}` : "";
@@ -206,7 +209,7 @@ export function resolvePersonaRailId(ai: AISettings, railId: string): string {
  * 这里**照实显示为空**而不是把全局文案搬过来充数 —— 后者一保存就把「跟随」坐实成
  * 一份副本,此后改全局再也带不动它,而界面上完全看不出发生了这件事。
  */
-export function personaAt(ai: AISettings, railId: string): PersonaDraft {
+export function personaAt(ai: AISettingsDraft, railId: string): PersonaDraft {
 	const i = presetIndex(ai, resolvePersonaRailId(ai, railId));
 	const preset = i >= 0 ? ai.presets[i] : undefined;
 	if (!preset) {
@@ -231,10 +234,10 @@ export function personaAt(ai: AISettings, railId: string): PersonaDraft {
  * 一段**空** prompt —— 主人看到的是输入框空着,实际效果却截然不同。
  */
 export function updatePersonaAt(
-	ai: AISettings,
+	ai: AISettingsDraft,
 	railId: string,
 	patch: Partial<PersonaDraft>,
-): AISettings {
+): AISettingsDraft {
 	const i = presetIndex(ai, resolvePersonaRailId(ai, railId));
 	// 内置那几份是只读的参照库。界面上字段已经禁掉,这里是第二道闸 —— 一处漏了
 	// 另一处还拦得住,而「内置被改花了」是不可逆的(此后无从恢复)。
@@ -274,7 +277,10 @@ const EMPTY_PERSONA: AIPersona = {
  *
  * 两段 prompt 留 `undefined` = 一开始就用全局那份,而不是塞两段空串把它坐实。
  */
-export function addPersona(ai: AISettings, label = "新性格"): { ai: AISettings; railId: string } {
+export function addPersona(
+	ai: AISettingsDraft,
+	label = "新性格",
+): { ai: AISettingsDraft; railId: string } {
 	const taken = new Set(ai.presets.map((p) => p.id));
 	let n = 1;
 	while (taken.has(`persona-${n}`)) n += 1;
@@ -293,11 +299,11 @@ export function addPersona(ai: AISettings, label = "新性格"): { ai: AISetting
  * 指针落到剩下的第一份(而不是变成悬空引用:那会跟着备份导出,日后又添加一份同 id
  * 的预设时莫名复活)。
  */
-export function removePersona(ai: AISettings, railId: string): AISettings {
+export function removePersona(ai: AISettingsDraft, railId: string): AISettingsDraft {
 	const i = presetIndex(ai, railId);
 	if (i < 0 || ai.presets.length <= 1) return ai;
 	const presets = ai.presets.filter((_, idx) => idx !== i);
-	const next: AISettings = { ...ai, presets };
+	const next: AISettingsDraft = { ...ai, presets };
 	if (ai.activePreset !== undefined && ai.activePreset === ai.presets[i]?.id) {
 		next.activePreset = presets[0]?.id;
 	}
@@ -305,14 +311,14 @@ export function removePersona(ai: AISettings, railId: string): AISettings {
 }
 
 /** 给人格改名。 */
-export function renamePersona(ai: AISettings, railId: string, label: string): AISettings {
+export function renamePersona(ai: AISettingsDraft, railId: string, label: string): AISettingsDraft {
 	const i = presetIndex(ai, railId);
 	if (i < 0 || isBuiltinPersona(ai.presets[i]?.id ?? "")) return ai;
 	return { ...ai, presets: ai.presets.map((p, idx) => (idx === i ? { ...p, label } : p)) };
 }
 
 /** 全局此刻用的是哪一份 —— 读 `ai.activePreset` 指针,换算成左栏 id。 */
-export function globalPersonaRailId(ai: AISettings): string {
+export function globalPersonaRailId(ai: AISettingsDraft): string {
 	return resolvePersonaRailId(ai, `${PRESET_RAIL_PREFIX}${ai.activePreset ?? ""}`);
 }
 
@@ -323,7 +329,7 @@ export function globalPersonaRailId(ai: AISettings): string {
  * 且换不回来;想显示「现在选的是哪份」还得拿 persona 去逐字段比对猜。指针把两个毛病
  * 一并解决。
  */
-export function setGlobalPersona(ai: AISettings, railId: string): AISettings {
+export function setGlobalPersona(ai: AISettingsDraft, railId: string): AISettingsDraft {
 	const i = presetIndex(ai, railId);
 	if (i < 0) return ai;
 	return { ...ai, activePreset: ai.presets[i]?.id };
@@ -342,7 +348,7 @@ export function isBuiltinPersona(presetId: string): boolean {
 }
 
 /** 被删掉的内置人格 —— 「从内置恢复」列的就是这些。空数组 = 一份没删,入口收起来。 */
-export function missingBuiltinPersonas(ai: AISettings): { id: string; label: string }[] {
+export function missingBuiltinPersonas(ai: AISettingsDraft): { id: string; label: string }[] {
 	const have = new Set(ai.presets.map((p) => p.id));
 	return BUILTIN_AI_PRESETS.filter((p) => !have.has(p.id)).map((p) => ({
 		id: p.id,
@@ -365,9 +371,9 @@ function clonePreset(p: AIPreset): AIPreset {
  * 否则恢复一次清单就乱一次(自建的人格会夹在内置中间)。
  */
 export function restoreBuiltinPersona(
-	ai: AISettings,
+	ai: AISettingsDraft,
 	presetId: string,
-): { ai: AISettings; railId: string } {
+): { ai: AISettingsDraft; railId: string } {
 	const railId = `${PRESET_RAIL_PREFIX}${presetId}`;
 	const src = BUILTIN_AI_PRESETS.find((p) => p.id === presetId);
 	if (!src || ai.presets.some((p) => p.id === presetId)) return { ai, railId };
@@ -390,9 +396,9 @@ export function restoreBuiltinPersona(
  * 新 id 走 `persona-N`,于是它不再是内置、也就不受只读闸限制。
  */
 export function duplicatePersona(
-	ai: AISettings,
+	ai: AISettingsDraft,
 	railId: string,
-): { ai: AISettings; railId: string } {
+): { ai: AISettingsDraft; railId: string } {
 	const i = presetIndex(ai, railId);
 	const src = i >= 0 ? ai.presets[i] : undefined;
 	if (!src) return { ai, railId };

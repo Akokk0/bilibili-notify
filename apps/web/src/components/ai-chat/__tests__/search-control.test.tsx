@@ -20,14 +20,17 @@ vi.mock("../../../services/api", () => ({
 
 import { api } from "../../../services/api";
 
-function globalsWith(bochaKey: string) {
+function globalsWith(bochaKey: string | { masked: string }) {
 	const g = makeDefaultGlobalConfig();
-	// GET 出来的形态:key 非空时是脱敏占位,不是明文。
-	g.defaults.ai.search.keys.bocha = bochaKey;
+	// GET 出来的形态:key 非空时是 `{ masked }`,不是明文;没配是空串。
+	g.defaults.ai.search.keys.bocha = bochaKey as string;
 	return g;
 }
 
-function mount(bochaKey: string, props: { on: boolean; onToggle: (v: boolean) => void }) {
+function mount(
+	bochaKey: string | { masked: string },
+	props: { on: boolean; onToggle: (v: boolean) => void },
+) {
 	vi.mocked(api.get).mockResolvedValue(JSON.parse(JSON.stringify(globalsWith(bochaKey))));
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
@@ -41,9 +44,9 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe("SearchControl — 会话级受控胶囊", () => {
-	it("key 已配(脱敏占位也算)→ 可点,点一下回调 onToggle 且不写配置", async () => {
+	it("key 已配(下发的是遮挡)→ 可点,点一下回调 onToggle 且不写配置", async () => {
 		const onToggle = vi.fn();
-		mount("__BN_REDACTED__", { on: false, onToggle });
+		mount({ masked: "••••••••" }, { on: false, onToggle });
 		const btn = (await screen.findByRole("button", { name: "联网搜索" })) as HTMLButtonElement;
 		expect(btn.disabled).toBe(false);
 		fireEvent.click(btn);
@@ -60,7 +63,7 @@ describe("SearchControl — 会话级受控胶囊", () => {
 	});
 
 	it("aria-pressed 跟 props 走", async () => {
-		mount("__BN_REDACTED__", { on: true, onToggle: () => {} });
+		mount({ masked: "••••••••" }, { on: true, onToggle: () => {} });
 		const btn = await screen.findByRole("button", { name: "联网搜索" });
 		expect(btn.getAttribute("aria-pressed")).toBe("true");
 	});

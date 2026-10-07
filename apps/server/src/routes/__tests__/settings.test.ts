@@ -95,7 +95,7 @@ describe("shouldRunAiEnableCheck", () => {
 	it("patch 含连接字段但值跟 current 相同 → 不触发探活(前端整段 patch 兼容)", () => {
 		const cur = enabledAiGlobals();
 		// 模拟 Ai.tsx 现状:用户只改 persona,但前端把整段 defaults.ai 送上,
-		// baseUrl/model 跟 current 完全一致(apiKey 经 stripRedactedSecrets 已剔除)。
+		// baseUrl/model 跟 current 完全一致(没动的 apiKey 面板不发)。
 		const p = cur.defaults.ai.providers.deepseek;
 		expect(
 			shouldRunAiEnableCheck(cur, {

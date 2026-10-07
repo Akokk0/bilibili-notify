@@ -44,6 +44,11 @@ export type ConnectionField =
 			placeholder?: string;
 			mono?: boolean;
 			secret?: boolean;
+			/**
+			 * 下发时是打码的凭据格(ADR-0021 决策 44):已存着的画成「遮挡胶囊 + 换一份」,不是输入框。
+			 * 与 `secret`(输入时画成点)是两件事 —— webhook 的地址是凭据,但输入时要看得见。
+			 */
+			credential?: boolean;
 			set: (v: string) => Connection;
 	  })
 	| (FieldBase & {
@@ -173,6 +178,7 @@ function onebotFields(
 		code: "config.accessToken",
 		label: "accessToken",
 		secret: true,
+		credential: true,
 		hint:
 			cfg.transport === "ws-reverse"
 				? "校验连入 bot 的握手;反向 WS 强烈建议设置,否则端口对局域网裸开"
@@ -304,6 +310,7 @@ function qqOfficialFields(
 			label: "AppSecret",
 			required: true,
 			secret: true,
+			credential: true,
 			hint: "机器人密钥;用于换取 App Access Token",
 			value: cfg.appSecret,
 			set: (v) => setCfg({ ...cfg, appSecret: v }),
@@ -352,6 +359,7 @@ function webhookFields(
 			required: true,
 			mono: true,
 			placeholder: webhookUrlPlaceholder(platform),
+			credential: true,
 			value: cfg.url,
 			set: (v) => ({ ...connection, config: { ...cfg, url: v } }),
 		},
@@ -360,6 +368,7 @@ function webhookFields(
 			code: "config.secret",
 			label: "Secret",
 			secret: true,
+			credential: true,
 			hint: webhookSecretHint(platform),
 			value: cfg.secret ?? "",
 			set: (v) => ({ ...connection, config: { ...cfg, secret: v || undefined } }),

@@ -20,8 +20,8 @@
  * 存盘走 PATCH /api/settings { defaults: { ai: ... } }。
  */
 
+import type { GlobalConfigView, SecretCellDraft } from "@bilibili-notify/contract";
 import {
-	type AIProviderProfileShape,
 	type APIFlavorId,
 	canProfileThink,
 	EMPTY_AI_PROVIDER_PROFILE,
@@ -51,11 +51,12 @@ import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
+import { DraftSecretInput } from "../components/secret-cell";
 import { AI_PURPLE } from "../config/colors";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { api } from "../services/api";
-import type { AIPersona, AISettings, GlobalConfig } from "../types/globals";
+import type { AIPersona, AIProviderProfileDraft, AISettingsDraft } from "../types/globals";
 import { MaidSkills } from "./ai/MaidSkills";
 import {
 	addPersona,
@@ -118,7 +119,7 @@ const TAB_HINTS: Record<TopTab, string> = {
  * `(未设置) → ""` 的噪音。真有内容的桶被删掉时照样逐字段亮;全默认的那只桶靠
  * 下面那行 providerList 兜(它就是为这一刻存在的)。
  */
-function packProviders(ai: AISettings, keys: readonly string[]): Record<string, unknown> {
+function packProviders(ai: AISettingsDraft, keys: readonly string[]): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const id of keys) out[id] = ai.providers[id] ?? EMPTY_AI_PROVIDER_PROFILE;
 	return out;
@@ -132,7 +133,7 @@ function packProviders(ai: AISettings, keys: readonly string[]): Record<string, 
  * - 连接 / 参数:`<Field code={`ai.providers.${家}.apiKey`}>` → `ai.providers` 下逐家
  * - 人格 / 预设:`<Field code="persona.name">` / `code="presets"` → 顶层
  */
-function packIsland(ai: AISettings, providerKeys: readonly string[]) {
+function packIsland(ai: AISettingsDraft, providerKeys: readonly string[]) {
 	const {
 		dynamicPrompt,
 		liveSummaryPrompt,
@@ -187,10 +188,10 @@ export default function Ai() {
 	const qc = useQueryClient();
 	const globalsQuery = useQuery({
 		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
+		queryFn: () => api.get<GlobalConfigView>("/api/settings"),
 	});
 
-	const [draft, setDraft] = useState<AISettings | null>(null);
+	const [draft, setDraft] = useState<AISettingsDraft | null>(null);
 	const [tab, setTab] = useState<TopTab>("global");
 	// 左栏选中的那份人格。存左栏 id 而不是 presets 下标 —— 下标会在删除时整体前移,
 	// 指向另一份人格。空串交给 resolvePersonaRailId 收敛到第一份。
@@ -210,12 +211,12 @@ export default function Ai() {
 	}, [globalsQuery.data]);
 
 	const save = useMutation({
-		mutationFn: async (payload: { ai: AISettings }) => {
+		mutationFn: async (payload: { ai: AISettingsDraft }) => {
 			// 只挑本页编辑的 scope 做 diff:草稿里消失的键(被删掉的服务商桶)由
 			// buildPatch 变成显式 null,服务端 deepMerge 据此删键。手写 payload 时这些
 			// 消失的键会被 JSON.stringify 一起丢掉 → 服务端当「不改」→ 删了却没真删。
 			const base = globalsQuery.data;
-			return await api.patch<GlobalConfig>(
+			return await api.patch<GlobalConfigView>(
 				"/api/settings",
 				buildPatch({ defaults: { ai: payload.ai } }, { defaults: { ai: base?.defaults.ai } }),
 			);
@@ -282,6 +283,9 @@ export default function Ai() {
 	// **设置页上显示什么由它说了算**:摆出一个那家根本不支持的选项,主人调了
 	// 没反应,只会以为是保存坏了。
 	const meta = providerMeta(profile.provider);
+	// 基线(服务端下发的)里同一份实例 —— 密钥格是遮挡才算「已存着」(`DraftSecretInput` 据此画胶囊)。
+	const savedProfile =
+		editing === null ? undefined : globalsQuery.data?.defaults.ai.providers[editing];
 	// 左栏 / 删除按钮上的显示名。
 	const rail = profileRailItems(draft);
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
@@ -315,7 +319,7 @@ export default function Ai() {
 			personaIconKey(personaRailItems(draft).find((i) => i.id === activePersonaId)?.presetId ?? "")
 		];
 
-	function setAi<K extends keyof AISettings>(k: K, v: AISettings[K]): void {
+	function setAi<K extends keyof AISettingsDraft>(k: K, v: AISettingsDraft[K]): void {
 		setDraft((d) => (d ? { ...d, [k]: v } : d));
 	}
 	/**
@@ -325,9 +329,9 @@ export default function Ai() {
 	 * 补上其余的 —— 漏一层内 spread 就是静默丢兄弟键(换后端丢另一家的 key)。
 	 */
 	function setSearch(delta: {
-		backend?: AISettings["search"]["backend"];
-		keys?: Partial<AISettings["search"]["keys"]>;
-		engines?: Partial<AISettings["search"]["engines"]>;
+		backend?: AISettingsDraft["search"]["backend"];
+		keys?: Partial<AISettingsDraft["search"]["keys"]>;
+		engines?: Partial<AISettingsDraft["search"]["engines"]>;
 	}): void {
 		setDraft((d) =>
 			d
@@ -347,9 +351,9 @@ export default function Ai() {
 	 * 改**正在编辑**那家桶里的一项(不是在用的那家 —— 两者可以不是同一家)。
 	 * 桶不存在时按当前显示值(空默认)建出来。
 	 */
-	function setProfile<K extends keyof AIProviderProfileShape>(
+	function setProfile<K extends keyof AIProviderProfileDraft>(
 		k: K,
-		v: AIProviderProfileShape[K],
+		v: AIProviderProfileDraft[K],
 	): void {
 		if (editing === null) return;
 		setDraft((d) =>
@@ -367,7 +371,7 @@ export default function Ai() {
 				: d,
 		);
 	}
-	function setVision(k: "baseUrl" | "apiKey" | "model", v: string): void {
+	function setVision(k: "baseUrl" | "apiKey" | "model", v: SecretCellDraft | string): void {
 		setProfile("vision", { ...profile.vision, [k]: v });
 	}
 	/** 改当前编辑的那份人格里的一项 —— 落在 `ai.persona` 还是 `presets[i]` 由左栏选中项决定。 */
@@ -497,7 +501,7 @@ export default function Ai() {
 						badge="search"
 					>
 						<Field code="ai.search.backend" full>
-							<Picker<AISettings["search"]["backend"]>
+							<Picker<AISettingsDraft["search"]["backend"]>
 								value={draft.search.backend}
 								onChange={(v) => setSearch({ backend: v })}
 								options={WEB_SEARCH_BACKENDS.map((b) => ({ value: b.id, label: b.label }))}
@@ -508,11 +512,10 @@ export default function Ai() {
 							full
 							hint={`到 ${webSearchBackendMeta(draft.search.backend).keyUrl} 申请;两家的 key 各存一格,换来换去不会丢`}
 						>
-							<TInput
+							<DraftSecretInput
 								value={draft.search.keys[draft.search.backend]}
+								saved={globalsQuery.data?.defaults.ai.search.keys[draft.search.backend]}
 								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
-								secret
-								mono
 							/>
 						</Field>
 						{/* 三个引擎开关按表生成 —— 手抄三块只差 key/ariaLabel 的 JSX,
@@ -707,11 +710,10 @@ export default function Ai() {
 										/>
 									</Field>
 									<Field code={`ai.providers.${editing}.apiKey`} required>
-										<TInput
+										<DraftSecretInput
 											value={profile.apiKey}
+											saved={savedProfile?.apiKey}
 											onChange={(v) => setProfile("apiKey", v)}
-											secret
-											mono
 										/>
 									</Field>
 									<Field
@@ -810,11 +812,10 @@ export default function Ai() {
 									    模型 ID 框,结论是「没法给它单配地址和密钥」,而副标题偏偏还写着有。
 									    三格全是选填(留空即跟随主模型 / 不启用),摆着不会被当成漏填。 */}
 									<Field code={`ai.providers.${editing}.vision.apiKey`} full>
-										<TInput
+										<DraftSecretInput
 											value={profile.vision.apiKey}
+											saved={savedProfile?.vision.apiKey}
 											onChange={(v) => setVision("apiKey", v)}
-											secret
-											mono
 											placeholder="留空则跟随上面主模型的 apiKey"
 										/>
 									</Field>

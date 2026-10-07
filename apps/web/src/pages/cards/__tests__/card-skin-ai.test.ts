@@ -5,11 +5,14 @@
  * 不管这颗钮。默认皮肤一律按不动 —— 它的草稿存不下来。按不动时必须说得出为什么。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalConfigView } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
 import { cardSkinAiReadiness } from "../card-skin-ai";
 
-function globals(profile: { apiKey?: string; baseUrl?: string }, enabled = true): GlobalConfig {
+function globals(
+	profile: { apiKey?: unknown; baseUrl?: string },
+	enabled = true,
+): GlobalConfigView {
 	return {
 		defaults: {
 			ai: {
@@ -20,12 +23,12 @@ function globals(profile: { apiKey?: string; baseUrl?: string }, enabled = true)
 				},
 			},
 		},
-	} as unknown as GlobalConfig;
+	} as unknown as GlobalConfigView;
 }
 
 describe("cardSkinAiReadiness", () => {
 	it("key 与地址都填了 → 按得动(总开关关着也一样)", () => {
-		const full = { apiKey: "••••", baseUrl: "https://api.test/v1" };
+		const full = { apiKey: { masked: "••••••••" }, baseUrl: "https://api.test/v1" };
 		expect(cardSkinAiReadiness({ globals: globals(full), readOnly: false })).toEqual({
 			ready: true,
 		});
@@ -35,7 +38,10 @@ describe("cardSkinAiReadiness", () => {
 	});
 
 	it("少一样 → 按不动,并指路「智能女仆」", () => {
-		for (const profile of [{ baseUrl: "https://api.test/v1" }, { apiKey: "••••" }]) {
+		for (const profile of [
+			{ baseUrl: "https://api.test/v1" },
+			{ apiKey: { masked: "••••••••" } },
+		]) {
 			const r = cardSkinAiReadiness({ globals: globals(profile), readOnly: false });
 			expect(r.ready).toBe(false);
 			expect(r.ready === false && r.reason).toMatch(/智能女仆/);
@@ -46,7 +52,9 @@ describe("cardSkinAiReadiness", () => {
 		const dangling = globals({ apiKey: "k", baseUrl: "u" });
 		(dangling.defaults.ai as { activeProfile: string }).activeProfile = "gone";
 		expect(cardSkinAiReadiness({ globals: dangling, readOnly: false }).ready).toBe(false);
-		expect(cardSkinAiReadiness({ globals: {} as GlobalConfig, readOnly: false }).ready).toBe(false);
+		expect(cardSkinAiReadiness({ globals: {} as GlobalConfigView, readOnly: false }).ready).toBe(
+			false,
+		);
 	});
 
 	it("配置还没读到 → 按不动,说在读", () => {

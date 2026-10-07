@@ -12,6 +12,7 @@ import {
 	Toggle,
 } from "@bilibili-notify/ui";
 import { type HTMLAttributes, type ReactNode, useState } from "react";
+import { SavedSecretControl } from "../../../components/secret-cell";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
 import { settingsIssuesOf, settingsValuesOf, writeReasonOf } from "./list-items";
@@ -423,27 +424,15 @@ function FieldControl({
 		);
 	}
 	if (field.type === "string" && field.secret) {
-		const hasSaved = savedMask !== undefined;
-		if (hasSaved && !replacing) {
-			return (
-				<div className="flex flex-wrap items-center gap-2.5">
-					<SecretChip text={savedMask} />
-					<Btn variant="outline" size="sm" onClick={onReplace}>
-						换一份
-					</Btn>
-				</div>
-			);
-		}
-		const input = <ScalarControl field={field} value={value} onChange={onChange} />;
-		return hasSaved ? (
-			<div className="flex items-start gap-2.5">
-				<div className="min-w-0 flex-1">{input}</div>
-				<Btn variant="ghost" size="sm" onClick={onCancelReplace}>
-					不换了
-				</Btn>
-			</div>
-		) : (
-			input
+		return (
+			<SavedSecretControl
+				savedMask={savedMask}
+				replacing={replacing}
+				onReplace={onReplace}
+				onCancelReplace={onCancelReplace}
+			>
+				<ScalarControl field={field} value={value} onChange={onChange} />
+			</SavedSecretControl>
 		);
 	}
 	return <ScalarControl field={field} value={value} onChange={onChange} />;

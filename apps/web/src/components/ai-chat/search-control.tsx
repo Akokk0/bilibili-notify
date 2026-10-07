@@ -1,4 +1,4 @@
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalConfigView } from "@bilibili-notify/contract";
 import { webSearchBackendMeta } from "@bilibili-notify/internal/constants";
 import { Icon } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import { ComposerPill } from "./composer-pill";
 export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boolean) => void }) {
 	const globalsQuery = useQuery({
 		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
+		queryFn: () => api.get<GlobalConfigView>("/api/settings"),
 	});
 	const ai = globalsQuery.data?.defaults.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。

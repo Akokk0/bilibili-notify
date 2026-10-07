@@ -1,5 +1,6 @@
 import type {
 	ConnectionTestResponse,
+	ConnectionView,
 	ExtensionBotsResponse,
 	ExtensionBotView,
 	ExtensionDTO,
@@ -32,6 +33,7 @@ import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 
 import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/forms";
 import { useConnectionFace } from "../components/platform-meta";
 import { QQQrBindButton } from "../components/qq-qr-bind";
+import { SavedSecretControl } from "../components/secret-cell";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
 	extensionBotsKey,
@@ -39,6 +41,12 @@ import {
 	useExtensions,
 } from "../hooks/useExtensions";
 import { ApiError, api } from "../services/api";
+import {
+	clearedCredentials,
+	connectionPatch,
+	displayConnection,
+	savedMasksOf,
+} from "../types/connection-credentials";
 import {
 	type ConnectionField,
 	connectionFields,
@@ -53,7 +61,6 @@ import {
 	makeEmptyExtensionConnection,
 	makeEmptyTarget,
 	makeExtensionConnectionDraft,
-	maskWebhookUrl,
 	type PushTarget,
 	type PushTargetScope,
 } from "../types/domain";
@@ -132,7 +139,8 @@ function connectionEndpointSummary(a: Connection, platformLabel: (p: string) => 
 		return `QQ ${domain} · ${id}${c.sandbox ? " · 沙箱" : ""}`;
 	}
 	// webhook 那一族:平台名已经写在同一行的前半段(platformLabel),这里只报地址。
-	return maskWebhookUrl(a.config.url);
+	// 地址是凭据:下发的是服务端算好的遮挡串(列表里的连接已经把它换成了那串字),原样显示。
+	return a.config.url || "未配置地址";
 }
 
 /**
@@ -335,9 +343,23 @@ function TargetCard({
 
 // ── Editor: Adapter ─────────────────────────────────────────────────────────
 
+/** 连接弹窗的草稿。编辑时 `base` 是列表里那条(凭据格是遮挡串),`saved` 记着哪些凭据格已配了。 */
+interface ConnectionDraft {
+	mode: "add" | "edit";
+	value: Connection;
+	base?: Connection;
+	/** 已存着的凭据格 → 服务端算好的遮挡串,按字段 code 索引。 */
+	saved: Record<string, string>;
+	/** 点了「换一份」的凭据格(按字段 code)。 */
+	replacing: Record<string, boolean>;
+}
+
 interface ConnectionEditorProps {
 	mode: "add" | "edit";
 	value: Connection;
+	saved: Record<string, string>;
+	replacing: Record<string, boolean>;
+	onReplacingChange: (code: string, on: boolean) => void;
 	/**
 	 * 开推送源那一口的拓展(停着的 v2 也在,见 {@link PushExtension})—— 在场的是平台那一排的
 	 * 后几档;名字与连接配置项照它们交的画,停着也画。
@@ -353,6 +375,9 @@ interface ConnectionEditorProps {
 function ConnectionEditorModal({
 	mode,
 	value,
+	saved,
+	replacing,
+	onReplacingChange,
 	extensions,
 	onChange,
 	onSave,
@@ -368,7 +393,12 @@ function ConnectionEditorModal({
 	// 必填的空着也不许存 —— 拓展的字段表里标了 required 的尤其。
 	const requiredMissing = fields.find(
 		(f): f is Extract<ConnectionField, { kind: "text" }> =>
-			f.kind === "text" && f.required === true && f.value.trim().length === 0,
+			f.kind === "text" &&
+			f.required === true &&
+			f.value.trim().length === 0 &&
+			// 已存着的凭据格草稿里是空的(没点「换一份」时存着的那份就是它的值;点了之后留空 = 清空,
+			// 是主人明确要的,服务端校验不过会原样说出来)。
+			saved[f.code] === undefined,
 	);
 	// 拓展连接就是一个 bot(ADR-0012 决策 45):没挑 bot 的连接没有平台,存不了。
 	const botMissing = value.kind === "extension" && value.platform === "";
@@ -474,7 +504,14 @@ function ConnectionEditorModal({
 						}
 						accent={tint}
 					>
-						<ConnectionConfigFields fields={fields} connection={value} onChange={onChange} />
+						<ConnectionConfigFields
+							fields={fields}
+							connection={value}
+							saved={saved}
+							replacing={replacing}
+							onReplacingChange={onReplacingChange}
+							onChange={onChange}
+						/>
 					</SectionBox>
 				)}
 			</div>
@@ -736,10 +773,16 @@ function editorFields(
 function ConnectionConfigFields({
 	fields,
 	connection,
+	saved,
+	replacing,
+	onReplacingChange,
 	onChange,
 }: {
 	fields: ConnectionField[];
 	connection: Connection;
+	saved: Record<string, string>;
+	replacing: Record<string, boolean>;
+	onReplacingChange: (code: string, on: boolean) => void;
 	onChange: (next: Connection) => void;
 }) {
 	const platformTint = usePlatformTint();
@@ -755,7 +798,15 @@ function ConnectionConfigFields({
 						/* 行框吃 Field 的 FIELD_ROW_CHROME —— 扫码行要与底下的字段行排同一栏,
 						   此前逐字符手抄,行距一漂两种行就对不齐。 */
 						<div key="qq-bind" className={`flex flex-wrap items-center gap-3 ${FIELD_ROW_CHROME}`}>
-							<QQQrBindButton onCredentials={(creds) => onChange(field.apply(creds))} />
+							<QQQrBindButton
+								onCredentials={(creds) => {
+									onChange(field.apply(creds));
+									// 扫出来的新凭据是「换了一份」:已存着的 appSecret 不能还画成胶囊盖住它。
+									if (saved["config.appSecret"] !== undefined) {
+										onReplacingChange("config.appSecret", true);
+									}
+								}}
+							/>
 							<span className="text-bn-xs text-bn-text-secondary">
 								没有机器人?扫码在腾讯页面一键创建,凭据自动回填下方两栏
 							</span>
@@ -773,6 +824,9 @@ function ConnectionConfigFields({
 						<ConnectionFieldControl
 							field={field}
 							tint={platformTint(face(connection))}
+							savedMask={saved[field.code]}
+							replacing={replacing[field.code] === true}
+							onReplacingChange={(on) => onReplacingChange(field.code, on)}
 							onChange={onChange}
 						/>
 					</Field>
@@ -823,15 +877,22 @@ function ReverseWsAddressRow({ port }: { port: number }) {
 function ConnectionFieldControl({
 	field,
 	tint,
+	savedMask,
+	replacing,
+	onReplacingChange,
 	onChange,
 }: {
 	field: Exclude<ConnectionField, { kind: "qq-bind" | "ws-reverse-address" }>;
 	tint: string;
+	/** 这一栏是凭据且已存着时,服务端算好的遮挡串。 */
+	savedMask: string | undefined;
+	replacing: boolean;
+	onReplacingChange: (on: boolean) => void;
 	onChange: (next: Connection) => void;
 }) {
 	switch (field.kind) {
-		case "text":
-			return (
+		case "text": {
+			const input = (
 				<TInput
 					value={field.value}
 					onChange={(v) => onChange(field.set(v))}
@@ -840,6 +901,22 @@ function ConnectionFieldControl({
 					secret={field.secret}
 				/>
 			);
+			if (!field.credential) return input;
+			return (
+				<SavedSecretControl
+					savedMask={savedMask}
+					replacing={replacing}
+					onReplace={() => onReplacingChange(true)}
+					onCancelReplace={() => {
+						// 不换了:草稿里这格清回空(已存着的那份仍在服务端),保存时不进 PATCH。
+						onChange(field.set(""));
+						onReplacingChange(false);
+					}}
+				>
+					{input}
+				</SavedSecretControl>
+			);
+		}
 		case "number":
 			return (
 				<TNum
@@ -1549,7 +1626,7 @@ export default function Targets() {
 
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
-		queryFn: () => api.get<Connection[]>("/api/connections"),
+		queryFn: () => api.get<ConnectionView[]>("/api/connections"),
 	});
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
@@ -1560,10 +1637,7 @@ export default function Targets() {
 	const extensionsQuery = useExtensions({ retry: false });
 	const pushExtensions = pushExtensionsOf(extensionsQuery.data?.extensions ?? []);
 
-	const [connectionDraft, setConnectionDraft] = useState<{
-		mode: "add" | "edit";
-		value: Connection;
-	} | null>(null);
+	const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft | null>(null);
 	const [targetDraft, setTargetDraft] = useState<{
 		mode: "add" | "edit";
 		value: PushTarget;
@@ -1587,7 +1661,8 @@ export default function Targets() {
 	}, []);
 	const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
 
-	const connections = connectionsQuery.data ?? [];
+	// 凭据格下发时是遮挡:列表与表单用的是把遮挡换成那串字的 `Connection`(只用来显示,从不写回)。
+	const connections = (connectionsQuery.data ?? []).map(displayConnection);
 	const targets = targetsQuery.data ?? [];
 	const connectionsById = new Map(connections.map((a) => [a.id, a]));
 	const targetCountByConnection = new Map<string, number>();
@@ -1626,11 +1701,22 @@ export default function Targets() {
 		toastTimer.current = window.setTimeout(() => setToast(null), TOAST_DURATION_MS);
 	};
 
-	const upsertConnection = useMutation({
-		mutationFn: async (a: Connection) => {
+	/**
+	 * 新建 POST、编辑 PATCH(`POST` 只管新建,整条覆盖分不开「没带这格」与「清空这格」)。编辑时没动过的
+	 * 凭据格不进 PATCH,见 `connectionPatch`。编辑中途换了平台(新 id)就是新建。
+	 */
+	const saveConnection = useMutation({
+		mutationFn: async (d: ConnectionDraft) => {
 			setError(null);
 			try {
-				await api.post<Connection[]>("/api/connections", a);
+				if (d.mode === "edit" && d.base !== undefined && d.base.id === d.value.id) {
+					await api.patch(
+						`/api/connections/${d.value.id}`,
+						connectionPatch(d.value, d.base, d.saved, d.replacing),
+					);
+				} else {
+					await api.post("/api/connections", d.value);
+				}
 			} catch (err) {
 				if (err instanceof ApiError) setError(err.message);
 				else setError(String(err));
@@ -1644,7 +1730,7 @@ export default function Targets() {
 			// 5 秒内再开一次弹窗读到的还是旧名单 —— 刚绑走的那个仍然「挑得动」,于是同一个
 			// bot 建出两条连接,每条推一遍。整个前缀一起失效:哪个拓展的名单变了这里说不准。
 			qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
-			showToast(connectionDraft?.mode === "add" ? "已新建连接" : "连接已保存");
+			showToast(connectionDraft?.base === undefined ? "已新建连接" : "连接已保存");
 			setConnectionDraft(null);
 		},
 	});
@@ -1807,12 +1893,20 @@ export default function Targets() {
 		setConnectionDraft({
 			mode: "add",
 			value: makeEmptyConnection("onebot" as ConnectionPlatform, ""),
+			saved: {},
+			replacing: {},
 		});
 	}
 
 	function startEditConnection(a: Connection): void {
 		setError(null);
-		setConnectionDraft({ mode: "edit", value: a });
+		setConnectionDraft({
+			mode: "edit",
+			value: clearedCredentials(a),
+			base: a,
+			saved: savedMasksOf(a),
+			replacing: {},
+		});
 	}
 
 	function startNewTarget(connection?: Connection): void {
@@ -2089,13 +2183,28 @@ export default function Targets() {
 					mode={connectionDraft.mode}
 					value={connectionDraft.value}
 					extensions={pushExtensions}
-					onChange={(v) => setConnectionDraft({ mode: connectionDraft.mode, value: v })}
-					onSave={() => upsertConnection.mutate(connectionDraft.value)}
+					saved={connectionDraft.saved}
+					replacing={connectionDraft.replacing}
+					onReplacingChange={(code, on) =>
+						setConnectionDraft({
+							...connectionDraft,
+							replacing: { ...connectionDraft.replacing, [code]: on },
+						})
+					}
+					onChange={(v) =>
+						// 换了平台 = 新 id:上一条连接「已存着」的凭据与它的基线都不作数了。
+						setConnectionDraft(
+							v.id === connectionDraft.value.id
+								? { ...connectionDraft, value: v }
+								: { mode: connectionDraft.mode, value: v, saved: {}, replacing: {} },
+						)
+					}
+					onSave={() => saveConnection.mutate(connectionDraft)}
 					onCancel={() => {
 						setConnectionDraft(null);
 						setError(null);
 					}}
-					saving={upsertConnection.isPending}
+					saving={saveConnection.isPending}
 					error={error}
 				/>
 			) : null}

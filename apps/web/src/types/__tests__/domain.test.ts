@@ -13,7 +13,6 @@ import {
 	KNOWN_PLATFORMS,
 	makeEmptyConnection,
 	makeEmptyTarget,
-	maskWebhookUrl,
 	newId,
 	switchOnebotTransport,
 	webhookSecretHint,
@@ -116,19 +115,6 @@ describe("webhook adapter factories", () => {
 		expect(webhookUrlPlaceholder("wecom")).toContain("qyapi.weixin.qq.com");
 		expect(webhookUrlPlaceholder("wecom")).toContain("key=");
 		expect(webhookSecretHint("wecom")).toContain("不需要 Secret");
-	});
-
-	it("maskWebhookUrl 隐藏 query token 与 path token", () => {
-		expect(maskWebhookUrl("https://oapi.dingtalk.com/robot/send?access_token=tok123")).toBe(
-			"https://oapi.dingtalk.com/***?…",
-		);
-		expect(maskWebhookUrl("https://open.feishu.cn/open-apis/bot/v2/hook/token123")).toBe(
-			"https://open.feishu.cn/***",
-		);
-		expect(maskWebhookUrl("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wx-key")).toBe(
-			"https://qyapi.weixin.qq.com/***?…",
-		);
-		expect(maskWebhookUrl("not a url")).toBe("已配置 webhook URL");
 	});
 });
 

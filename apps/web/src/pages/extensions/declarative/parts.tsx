@@ -3,7 +3,6 @@ import {
 	HintNote,
 	Icon,
 	IconButton,
-	MonoChip,
 	TRISTATE_TEXT,
 	type TriState,
 	TriStateMark,
@@ -73,15 +72,8 @@ export function CopyControl({
 
 // ── 密钥 ─────────────────────────────────────────────────────────────────────
 
-/**
- * 密钥那一格的值:等宽小字胶囊。设置表单(遮住的密钥、生成的那一格)与列表卡的密钥行共用。
- *
- * `text` 是**摆放处决定好的那一串**:存着的那一把是服务端给的遮挡(`maskedOf`,浏览器不自己截);
- * 刚生成的那一把是明文 —— 主人要把它抄进对面去,只有那一刻明文在面板手里(决策 38)。
- */
-export function SecretChip({ text }: { text: string }) {
-	return <MonoChip className="min-w-0 flex-1 truncate px-[9px] py-[5px]">{text}</MonoChip>;
-}
+// `SecretChip` 搬去了 `components/secret-cell.tsx`(连接表单、智能女仆页共用),这里转出。
+export { SecretChip } from "../../../components/secret-cell";
 
 /**
  * 「重新生成」那一颗。红描边:存下之后旧的那一把就作废,正用着它的那一头会断开。`label` 是念给

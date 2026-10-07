@@ -12,7 +12,6 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
-import { REDACTED_API_KEY } from "../settings.js";
 import type { RouteDeps } from "../types.js";
 
 const TARGET_ID = "11111111-1111-4111-8111-111111111111";
@@ -212,20 +211,51 @@ describe("POST /api/ai/test", () => {
 		expect(cfg.dynamicPrompt).toBe("用恶魔兔的口气讲");
 	});
 
-	// 前端 GET /api/settings 拿到的 apiKey 是 REDACTED 占位。用户只要没动过那一栏,
-	// 草稿里带回来的就是占位串本身 —— 直接拿它当 key 去调 OpenAI 必然 401。
-	it("草稿的 apiKey 是脱敏占位 → 回落到已存的真 key", async () => {
+	// 页面看不到真 key(下发的是 `{ masked }`),用户没动过的 key 草稿里**不带这一格**;
+	// 不带 = 用已存的真 key,带了 = 草稿里的(空串就是拿空 key 去试)。
+	it("草稿没带 apiKey → 回落到已存的真 key(主模型与副模型各自判断)", async () => {
 		const { deps } = makeDeps(); // store 里存着 sk-stored
 		const app = createAiRoute(deps);
+		const ai = draftAi();
+		const bucket = ai.providers.deepseek as Record<string, unknown>;
+		delete bucket.apiKey;
+		delete (bucket.vision as Record<string, unknown>).apiKey;
 
-		await post(app, {
-			targetId: TARGET_ID,
-			message: "在吗?",
-			ai: draftAi({ apiKey: REDACTED_API_KEY }),
-		});
+		await post(app, { targetId: TARGET_ID, message: "在吗?", ai });
 
 		const cfg = H.instances[0]?.config as { apiKey: string };
 		expect(cfg.apiKey).toBe("sk-stored");
+	});
+
+	it("草稿带着 { masked } → 400,不问 AI 也不推送", async () => {
+		const { deps, sendToTarget } = makeDeps();
+		const app = createAiRoute(deps);
+
+		const res = await post(app, {
+			targetId: TARGET_ID,
+			message: "在吗?",
+			// 面板送出的草稿不会带遮挡;这里造一个带着的坏请求。
+			ai: draftAi({ apiKey: { masked: "••••••••" } as unknown as string }),
+		});
+
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("遮挡"),
+			issues: [{ path: ["ai", "providers", "deepseek", "apiKey"] }],
+		});
+		expect(H.instances).toHaveLength(0);
+		expect(sendToTarget).not.toHaveBeenCalled();
+	});
+
+	it("草稿的 apiKey 是空串 → 就用空串去试,不替他补已存的", async () => {
+		const { deps } = makeDeps();
+		const app = createAiRoute(deps);
+
+		await post(app, { targetId: TARGET_ID, message: "在吗?", ai: draftAi({ apiKey: "" }) });
+
+		const cfg = H.instances[0]?.config as { apiKey: string };
+		expect(cfg.apiKey).toBe("");
 	});
 
 	it("草稿的 apiKey 是新填的 → 用新的(还没保存也能先试)", async () => {

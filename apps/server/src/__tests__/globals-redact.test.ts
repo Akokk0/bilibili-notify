@@ -1,15 +1,14 @@
 /**
  * 回归守护 — P0-3 fix(security): redact AI apiKey on GET /api/settings
  *
- * 三件事:
- *   a) GET 返回时 apiKey 非空 → __BN_REDACTED__ 占位(不向浏览器泄漏)
- *   b) PATCH 收到 apiKey === __BN_REDACTED__ → 删除该字段,store 保留原值
- *      (这是最危险的回归点:写坏会把所有用户的 apiKey 静默覆盖为占位字符串)
- *   c) PATCH 收到正常新 apiKey → 替换为新值
+ * 密钥下发只有一种打码(ADR-0021 决策 44):`MaskedSecret { masked }`,哨兵字符串退役。
+ *   a) GET 返回时 apiKey 非空 → `{ masked }`(不向浏览器泄漏),空串照旧是空串
+ *   b) PATCH 带着 `{ masked }` → 400,store 保留原值;不带这一格 = 保留
+ *      (这是最危险的回归点:写坏会把所有用户的 apiKey 静默覆盖成遮挡)
+ *   c) PATCH 收到正常新 apiKey → 替换为新值;空串 → 清空
  *
- * 走的是 createApp + 真实 store 的**端到端**路径。两个纯函数
- * (redactGlobals / stripRedactedSecrets)自己的单测在 `routes/__tests__/
- * globals-redact-fns.test.ts`,那边按「每家一桶、每桶两把」逐一遍历。
+ * 走的是 createApp + 真实 store 的**端到端**路径。下发那一半按 schema 标记逐桶遍历的单测在
+ * `routes/__tests__/secret-view.test.ts`。
  *
  * 夹具是当代形状:新建的桶写明 `provider`(面板的 `addProfile` 也是这么建的;从前靠 schema 的 preprocess
  * 按键名盖章,那是给 0.x 老配置的,⑥c 搬进了迁移器)。
@@ -26,8 +25,6 @@ import { createApp, createCardSkinStore } from "../app.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
-const REDACTED = "__BN_REDACTED__";
-
 function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
 }
@@ -43,7 +40,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("a) GET /api/settings 返回 apiKey 时是 __BN_REDACTED__ 占位(且仅当原值非空)", async () => {
+	it("a) GET /api/settings 返回 apiKey 时是 { masked }(且仅当原值非空)", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		// 先写一个真实 apiKey
@@ -59,9 +56,10 @@ describe("globals apiKey redact — P0-3", () => {
 		const res = await app.request("/api/settings");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			defaults: { ai: { providers: Record<string, { apiKey: string }> } };
+			defaults: { ai: { providers: Record<string, { apiKey: unknown }> } };
 		};
-		expect(body.defaults.ai.providers.deepseek?.apiKey).toBe(REDACTED);
+		expect(body.defaults.ai.providers.deepseek?.apiKey).toEqual({ masked: "••••••••" });
+		expect(JSON.stringify(body)).not.toContain("sk-secret-real-key");
 		// 内部 store 仍持真实 key
 		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe(
 			"sk-secret-real-key",
@@ -70,7 +68,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.dispose();
 	});
 
-	it("a') 原 apiKey 为空时 GET 返回空字符串(不返回 redact 占位,前端能区分'未配置')", async () => {
+	it("a') 原 apiKey 为空时 GET 返回空字符串(不返回遮挡,前端能区分'未配置')", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
@@ -87,7 +85,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.dispose();
 	});
 
-	it("b) PATCH 回传 REDACTED 占位 → store 保留原 apiKey(不被破坏)", async () => {
+	it("b) PATCH 带着 { masked } → 400,store 保留原 apiKey(不被破坏)", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
@@ -98,19 +96,36 @@ describe("globals apiKey redact — P0-3", () => {
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
+		const patch = (body: unknown) =>
+			app.request("/api/settings", {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
 
-		const patchRes = await app.request("/api/settings", {
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				defaults: { ai: { providers: { deepseek: { apiKey: REDACTED, model: "gpt-4o-mini" } } } },
-			}),
+		const bad = await patch({
+			defaults: {
+				ai: { providers: { deepseek: { apiKey: { masked: "••••••••" }, model: "gpt-4o-mini" } } },
+			},
 		});
-		expect(patchRes.status).toBe(200);
-		// store 内 apiKey 必须仍是原值 — 这是 P0-3 最危险的回归点
+		expect(bad.status).toBe(400);
+		// 话里说的是「这是遮挡、不是新值」,不是 zod 的「期望字符串」—— 后者是别的原因也会有的 400。
+		expect(await bad.json()).toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("遮挡"),
+			issues: [{ path: ["defaults", "ai", "providers", "deepseek", "apiKey"] }],
+		});
 		const ds = () => runtime.configStore.getGlobals().defaults.ai.providers.deepseek;
+		// store 内 apiKey 必须仍是原值,整发作废(model 也没落地)—— 这是 P0-3 最危险的回归点
 		expect(ds()?.apiKey).toBe("sk-original-key");
-		// 同桶其他字段(model)应正常落地
+		expect(ds()?.model).not.toBe("gpt-4o-mini");
+
+		// 不带 apiKey 这一格 = 保留已存的,同桶其他字段正常落地
+		const ok = await patch({
+			defaults: { ai: { providers: { deepseek: { model: "gpt-4o-mini" } } } },
+		});
+		expect(ok.status).toBe(200);
+		expect(ds()?.apiKey).toBe("sk-original-key");
 		expect(ds()?.model).toBe("gpt-4o-mini");
 
 		await runtime.dispose();
@@ -140,6 +155,36 @@ describe("globals apiKey redact — P0-3", () => {
 
 		await runtime.dispose();
 	});
+	it("c') PATCH 带空串 → 清空这把 key(联网搜索 key 同理)", async () => {
+		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		await runtime.configStore.load();
+		await runtime.configStore.patchGlobals({
+			defaults: {
+				ai: {
+					providers: { deepseek: { provider: "deepseek", apiKey: "sk-old" } },
+					search: { keys: { bocha: "sk-bocha" } },
+				},
+			},
+		});
+		const app = createApp(runtime, {
+			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
+		});
+		const res = await app.request("/api/settings", {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				defaults: {
+					ai: { providers: { deepseek: { apiKey: "" } }, search: { keys: { bocha: "" } } },
+				},
+			}),
+		});
+		expect(res.status).toBe(200);
+		const ai = runtime.configStore.getGlobals().defaults.ai;
+		expect(ai.providers.deepseek?.apiKey).toBe("");
+		expect(ai.search.keys.bocha).toBe("");
+		await runtime.dispose();
+	});
+
 	it("d) PATCH 把某家的桶置为 null → 桶真的消失,落盘文件里那把钥匙也不再有", async () => {
 		// 主人在设置页删掉一家。前端经 buildPatch 把「消失的键」编译成显式 null,
 		// deepMerge 据此删键。要紧的是**加密袋**要跟着掉:writeGlobals 每次都用

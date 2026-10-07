@@ -49,6 +49,16 @@ function isPlainObject(x: unknown): x is Record<string, unknown> {
 }
 
 /**
+ * 一格密钥下发时的样子(契约的 `MaskedSecret`):只有一个字符串键 `masked` 的普通对象。
+ * 这个文件零 import,所以认形状、不认契约类型。
+ */
+export function isMaskedCell(x: unknown): boolean {
+	if (!isPlainObject(x)) return false;
+	const keys = Object.keys(x);
+	return keys.length === 1 && keys[0] === "masked" && typeof x.masked === "string";
+}
+
+/**
  * 递归 diff。两边都是 plain object 才往下走,其余(标量 / 数组 / 类型不对齐)一律
  * 整体当叶子 —— 数组不做逐元素 diff,服务端对数组也是整体替换。
  *
@@ -56,6 +66,9 @@ function isPlainObject(x: unknown): x is Record<string, unknown> {
  * 等价,但一旦哪天 diff 判等出错就会变成静默丢改动。宁可多发几个字节。
  */
 function diff(baseline: unknown, draft: unknown): unknown {
+	// 两边都还是下发时的密钥遮挡 = 面板没碰过这一格:不进 PATCH(带遮挡写回是 400,而「不提」
+	// 正是「保留已存的」)。草稿里换成了明文 / 空串 / 删掉,走下面的老路。
+	if (isMaskedCell(baseline) && isMaskedCell(draft)) return undefined;
 	// 草稿里没了:基线里有就发删除哨兵,基线里本来也没有就压根不提。
 	if (draft === undefined) return baseline === undefined ? undefined : null;
 	if (isPlainObject(baseline) && isPlainObject(draft)) {
@@ -67,6 +80,20 @@ function diff(baseline: unknown, draft: unknown): unknown {
 		return out;
 	}
 	return draft;
+}
+
+/**
+ * 一份草稿里把还是遮挡的密钥格整格拿掉 —— 不走 PATCH、而是把整份草稿送给后端的接口用(「试一句」):
+ * 没动的密钥格不带 = 后端用已存的;带着遮挡是 400。数组与普通对象递归,其余原样。
+ */
+export function withoutMaskedCells<T>(value: T): T {
+	if (Array.isArray(value)) return value.map(withoutMaskedCells) as T;
+	if (!isPlainObject(value)) return value;
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(value)) {
+		if (!isMaskedCell(v)) out[k] = withoutMaskedCells(v);
+	}
+	return out as T;
 }
 
 /**

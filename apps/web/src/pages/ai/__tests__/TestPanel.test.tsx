@@ -10,7 +10,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { AISettings } from "../../../types/globals";
+import type { AISettingsDraft } from "../../../types/globals";
 import { AiTestPanel } from "../TestPanel";
 
 vi.mock("../../../services/api", () => ({
@@ -37,12 +37,14 @@ const TARGETS = [
 
 const DRAFT = {
 	enabled: true,
-	apiKey: "__BN_REDACTED__",
+	// 下发的遮挡(没动过的 key):送出去前要拿掉,带着它是 400。
+	apiKey: { masked: "••••••••" },
+	vision: { apiKey: { masked: "••••••••" }, baseUrl: "", model: "" },
 	baseUrl: "https://api.example.com/v1",
 	model: "test-model",
 	persona: { name: "恶魔兔", traits: "调皮，会整活" },
 	presets: [],
-} as unknown as AISettings;
+} as unknown as AISettingsDraft;
 
 function renderPanel() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -78,7 +80,15 @@ describe("AI 试一句面板", () => {
 			expect(api.post).toHaveBeenCalledWith("/api/ai/test", {
 				targetId: TARGETS[1]?.id,
 				message: "今天过得怎么样?",
-				ai: DRAFT, // 草稿原样送上 —— 未保存的人格也要生效
+				// 草稿送上 —— 未保存的人格也要生效;没动过的密钥格(遮挡)不带,后端就用已存的真 key。
+				ai: {
+					enabled: true,
+					baseUrl: "https://api.example.com/v1",
+					model: "test-model",
+					persona: { name: "恶魔兔", traits: "调皮，会整活" },
+					presets: [],
+					vision: { baseUrl: "", model: "" },
+				},
 			});
 		});
 

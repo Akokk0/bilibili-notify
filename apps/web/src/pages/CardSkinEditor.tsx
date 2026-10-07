@@ -13,10 +13,10 @@
  * 挨着往里填 —— 每片都要能独立验,所以先把「打开哪套皮肤、编的是哪种卡」这层状态钉住。
  */
 
-import type { CardSkinManifest } from "@bilibili-notify/contract";
+import type { CardSkinManifest, GlobalConfigView } from "@bilibili-notify/contract";
 // 值走**零依赖子路径**:从根入口取值会把 zod 整张 schema 图拽进前端 bundle,而症状只是
 // 产物悄悄胖一圈,任何门禁都是绿的(`internal-entry-conformance.test.ts` 钉着这条)。
-import type { CardKind, GlobalConfig } from "@bilibili-notify/internal";
+import type { CardKind } from "@bilibili-notify/internal";
 import {
 	CARD_KIND_SHORT_NAMES,
 	CARD_KINDS,
@@ -186,7 +186,7 @@ export default function CardSkinEditor() {
 	// 该是用户眼前这份,不是盘上那份。草稿走 ref —— 流是异步的,闭包里那份早就旧了。
 	const globalsQuery = useQuery({
 		queryKey: ["settings"],
-		queryFn: () => api.get<GlobalConfig>("/api/settings"),
+		queryFn: () => api.get<GlobalConfigView>("/api/settings"),
 	});
 	const draftRef = useRef(draft);
 	draftRef.current = draft;

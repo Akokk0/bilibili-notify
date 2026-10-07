@@ -2,19 +2,19 @@
  * CSS 框旁那颗「请女仆帮忙写」按不按得动(ADR-0015 决策 10 与它的 🔗)。
  *
  * 判据与服务端建 AI 实例那一条同源(`runtime/engines.ts` 的 `!p.apiKey || !p.baseUrl`):
- * 当前实例的 key 与地址都填了。GET 回来的 key 是脱敏占位,但「非空 = 配了」照常成立。
+ * 当前实例的 key 与地址都填了。GET 回来的 key 是遮挡(`{ masked }`),没配是空串:「有值 = 配了」照常成立。
  * 「智能女仆」总开关不管这颗钮 —— 那是聊天的闸,dashboard 的「让女仆改」也不看它。
  *
  * 按不动时必须说得出为什么:让人填完需求、等一圈、再被服务端拒绝(没配模型是 `not_configured`)是最气人的那一种。
  */
 
-import type { GlobalConfig } from "@bilibili-notify/internal";
+import type { GlobalConfigView } from "@bilibili-notify/contract";
 import { resolveAIProfile } from "@bilibili-notify/internal/constants";
 
 export type CardSkinAiReadiness = { ready: true } | { ready: false; reason: string };
 
 export function cardSkinAiReadiness(input: {
-	globals: GlobalConfig | undefined;
+	globals: GlobalConfigView | undefined;
 	/** 内置的默认皮肤:草稿改得动但存不下来。 */
 	readOnly: boolean;
 }): CardSkinAiReadiness {

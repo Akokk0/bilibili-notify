@@ -4,6 +4,11 @@
  * web 运行时仍是纯 JSON 消费者)。本文件自留的只剩 UI 侧派生别名与 PATCH 工具类型。
  */
 
+import type {
+	AIProviderProfileView,
+	AISettingsView,
+	SecretCellDraft,
+} from "@bilibili-notify/contract";
 import type { GlobalConfig } from "@bilibili-notify/internal";
 
 export type {
@@ -44,6 +49,13 @@ export type GlobalConfigPatch = DeepPartial<GlobalConfig>;
  * 10-01 的 🔗)。集成那几份的形状由各集成定,面板只在画到它的那一处认得(系统页;第 4 期起按集成的描述画)。
  */
 export type GlobalsResponse = GlobalConfig & { readonly [integrationKey: string]: unknown };
+
+/**
+ * 智能女仆页的草稿:密钥格要么还是下发的遮挡(没动),要么是字符串(换了新的;空串 = 清空)。
+ * 下发的形状(密钥格是遮挡或空串)是 contract 的 {@link AISettingsView}。
+ */
+export type AISettingsDraft = AISettingsView<SecretCellDraft>;
+export type AIProviderProfileDraft = AIProviderProfileView<SecretCellDraft>;
 
 /** `/api/settings` 的 PATCH:核心那份的补丁,各集成的补丁挂在自己的键下(与 {@link GlobalsResponse} 同一个形状)。 */
 export type GlobalsPatch = GlobalConfigPatch & { [integrationKey: string]: unknown };

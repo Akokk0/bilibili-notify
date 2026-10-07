@@ -1,10 +1,12 @@
-import type { ConnectionTestResponse } from "@bilibili-notify/contract";
+import type { ConnectionTestResponse, ConnectionView } from "@bilibili-notify/contract";
 import type { ConnectionCapabilities } from "@bilibili-notify/internal";
 import { fail, isDirectConnection } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
+import { maskedCellsFailure } from "./masked-cells.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { ENGINES_NOT_READY_MESSAGE, respondFailure } from "./respond-failure.js";
+import { connectionView } from "./secret-view.js";
 import { testResultOfProbe } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 
@@ -16,6 +18,9 @@ import type { RouteDeps } from "./types.js";
  * deleting a connection any target still points at is rejected with 409 and
  * the caller detaches first.
  *
+ * 凭据下发打码(ADR-0021 决策 44):读与写的响应里 `secret` 标记的格是 `{ masked }`;写入带着遮挡回 400,
+ * 不带 = 保留已存的,清空交空串 / null。POST 只管新建(同 id 已存在回 409),编辑走 PATCH。
+ *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码,
  * 路由按码回(不合规 400、没这条 404、还被目标引用着 409),不嗅文案。
  */
@@ -23,7 +28,10 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
 
-	app.get("/", (c) => c.json(deps.store.getConnections()));
+	/** 下发前密钥格打码(`secret` 标记);盘上与引擎里仍是明文。 */
+	const viewsOf = (): ConnectionView[] => deps.store.getConnections().map(connectionView);
+
+	app.get("/", (c) => c.json(viewsOf()));
 
 	/**
 	 * 平台能力快照(今天只有「能不能签小程序卡」),连接 id → 平台名 → 能力。只列有能力
@@ -52,9 +60,12 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.post("/", async (c) => {
 		const read = await readJsonBody(c);
 		if (!read.ok) return respondFailure(c, read);
+		const masked = maskedCellsFailure(read.body);
+		if (masked) return respondFailure(c, masked);
 		try {
-			await deps.store.upsertConnection(read.body as never);
-			return c.json(deps.store.getConnections(), 200);
+			// 只管新建 —— 整条覆盖里「没带这一格」与「清空这一格」分不开,编辑一律走 PATCH。
+			await deps.store.createConnection(read.body as never);
+			return c.json(viewsOf(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("POST /api/connections failed", err);
@@ -66,9 +77,11 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const id = c.req.param("id");
 		const read = await readJsonObject(c);
 		if (!read.ok) return respondFailure(c, read);
+		const masked = maskedCellsFailure(read.body);
+		if (masked) return respondFailure(c, masked);
 		try {
 			const next = await deps.store.patchConnection(id, read.body);
-			return c.json(next);
+			return c.json(connectionView(next));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/connections/:id failed", err);

@@ -5,10 +5,11 @@
  * 递一句话 / 一个问题给女仆,她的回复真实推到选定的 PushTarget,同时就地显示在页面上
  * —— 不必为了看一句回复跑去 QQ 里翻。
  *
- * 草稿原样送后端;apiKey 若还是 REDACTED 占位,后端会回落到已存的真 key。
+ * 草稿送后端前把没动的密钥格(下发的遮挡)拿掉 —— 不带这一格,后端就用已存的真 key;带着遮挡是 400。
  */
 
 import type { AiTestPushResponse as TestPushResponse } from "@bilibili-notify/contract";
+import { withoutMaskedCells } from "@bilibili-notify/internal/patch";
 import { Btn, ErrorNote, GlassBox, Icon } from "@bilibili-notify/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -16,11 +17,11 @@ import { Field, TArea, TSelect } from "../../components/forms";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
 import type { PushTarget } from "../../types/domain";
-import type { AISettings } from "../../types/globals";
+import type { AISettingsDraft } from "../../types/globals";
 
 const MAX_MESSAGE = 500;
 
-export function AiTestPanel({ draft }: { draft: AISettings }) {
+export function AiTestPanel({ draft }: { draft: AISettingsDraft }) {
 	const targetsQuery = useQuery({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
@@ -38,7 +39,12 @@ export function AiTestPanel({ draft }: { draft: AISettings }) {
 	}, [targets, targetId]);
 
 	const test = useMutation({
-		mutationFn: () => api.post<TestPushResponse>("/api/ai/test", { targetId, message, ai: draft }),
+		mutationFn: () =>
+			api.post<TestPushResponse>("/api/ai/test", {
+				targetId,
+				message,
+				ai: withoutMaskedCells(draft),
+			}),
 		onMutate: () => {
 			setReply(null);
 			setErr(null);

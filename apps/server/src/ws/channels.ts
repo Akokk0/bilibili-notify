@@ -41,7 +41,7 @@ export interface ChannelWiringDeps {
  * consumer that discards them.
  *
  * If the round-trip saving is ever wanted, the client must read a **redacted**
- * snapshot (see `redactGlobals` in routes/settings.ts) — never `getGlobals()`.
+ * snapshot (see `globalConfigView` in routes/secret-view.ts) — never `getGlobals()`.
  */
 export function buildStateHydrate(): WsEventEnvelope<"state"> {
 	return envelope("state", "hydrate", null);

@@ -145,17 +145,6 @@ export function webhookSecretHint(platform: WebhookPlatform): string {
 	}
 }
 
-export function maskWebhookUrl(url: string): string {
-	try {
-		const parsed = new URL(url);
-		const safePath = parsed.pathname === "/" ? "" : "/***";
-		const queryHint = parsed.search ? "?…" : "";
-		return `${parsed.origin}${safePath}${queryHint}`;
-	} catch {
-		return "已配置 webhook URL";
-	}
-}
-
 /**
  * 平台选择器的候选 —— 顺序与显示名都从 {@link PLATFORM_REGISTRY} 取。
  *

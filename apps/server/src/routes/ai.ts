@@ -46,13 +46,13 @@ import {
 	SKIN_MODE_SYSTEM_PROMPT,
 } from "../skins/chat-tool.js";
 import type { SkinStore } from "../skins/store.js";
+import { maskedCellsFailure } from "./masked-cells.js";
 import {
 	ENGINES_NOT_READY_MESSAGE,
 	errorBodyOf,
 	respondFailure,
 	UNHANDLED_ERROR_MESSAGE,
 } from "./respond-failure.js";
-import { REDACTED_API_KEY } from "./settings.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -134,6 +134,9 @@ export function createAiRoute(
 
 	app.post("/test", async (c) => {
 		const body = (await c.req.json().catch(() => null)) as unknown;
+		// 草稿里的密钥格:带着下发时的遮挡一律 400(没动的格不带,带的是新明文或空串)。
+		const masked = maskedCellsFailure(body);
+		if (masked) return respondFailure(c, masked);
 		const parsed = TestPushRequestSchema.safeParse(body);
 		if (!parsed.success) {
 			return respondFailure(
@@ -155,9 +158,11 @@ export function createAiRoute(
 		const generator = new CommentaryGenerator({
 			serviceCtx: deps.runtime.serviceCtx,
 			api: engines.api,
-			// 草稿里的 apiKey 可能是脱敏占位(页面从未见过真值) —— 用已存的那把补回来。
+			// 草稿里没带的 apiKey(页面从未见过真值) —— 用已存的那把补回来。
 			// 两边都要按**同一个桶**取:草稿选的是哪家,就拿那家已存的 key。
-			config: toGeneratorConfig(withStoredApiKey(ai, deps.store.getGlobals().defaults.ai)),
+			config: toGeneratorConfig(
+				withStoredApiKey(ai, deps.store.getGlobals().defaults.ai, (body as { ai?: unknown }).ai),
+			),
 		});
 
 		// 试一次、回报结果(同 cards / push 的测试推送):女仆没答上来、投递没成都是 200 + 失败那一支。
@@ -753,21 +758,6 @@ function toDetail(conv: Conversation): AiConversationDTO {
 }
 
 /**
- * 草稿里的 apiKey → 真正拿去调 OpenAI 的那把 key。
- *
- * 前端 GET /api/settings 拿到的 apiKey 是 REDACTED 占位(真 key 从不出后端)。用户只要
- * 没动过那一栏,草稿回传的就是占位串本身 —— 原样拿去当 key 必然 401。占位 = 「没改」,
- * 回落到已存的真 key;否则用草稿里的新值(这样还没保存就能先试一把)。
- *
- * 与 `settings.ts` 的 `stripRedactedSecrets` 同一约定,共用同一个哨兵常量 —— 这个
- * magic string 只能有一个定义处。
- */
-export function resolveDraftApiKey(draft: string | undefined, stored: string | undefined): string {
-	if (draft === REDACTED_API_KEY) return stored ?? "";
-	return draft ?? "";
-}
-
-/**
  * 聊天附件的规矩(图库本身不管):不收 gif、不超 5MB;格式按字节嗅探,**不信**客户端声明的
  * `file.type`。收的回 `undefined`,不收的回给主人看的中文原因。
  */
@@ -819,30 +809,44 @@ async function resolveAttachedImages(
 }
 
 /**
- * 把草稿里的脱敏占位换回真实密钥。
+ * 草稿里没带的密钥格,用已存的那把补上。
  *
- * 页面永远看不到真 key(GET /globals 一律回占位),所以主人没改过 key 时草稿里带的
- * 就是那个占位。直接拿去请求必然 401。这里按**草稿选中的那份实例**去已存配置里
- * 取回对应桶的真 key —— 取错桶就会用 A 家的 key 打 B 家的接口。
+ * 页面永远看不到真 key(下发的是 `{ masked }`),所以主人没改过的 key 面板**不发**这一格。
+ * 带了 = 用草稿里的(新值,还没保存也能先试;空串就是拿空 key 去试,不替他补);没带 = 已存的。
+ * zod 的 `.default("")` 会把「没带」和「空串」糊成一个,所以按**解析前的原始体**判断带没带。
  *
- * 主模型与视觉副模型两把各自还原:主人可能只换了其中一把。
+ * 按**草稿选中的那份实例**去已存配置里取对应桶的 key —— 取错桶就会用 A 家的 key 打 B 家的接口。
+ * 主模型与视觉副模型两把各自判断:主人可能只换了其中一把。
  */
-export function withStoredApiKey(draft: AISettings, stored: AISettings): AISettings {
+export function withStoredApiKey(
+	draft: AISettings,
+	stored: AISettings,
+	rawDraft: unknown,
+): AISettings {
 	const id = draft.activeProfile;
 	const d = draft.providers[id];
 	if (!d) return draft;
 	const s = stored.providers[id];
+	const rawBucket = asRecord(asRecord(asRecord(rawDraft).providers)[id]);
+	const sent = (bag: Record<string, unknown>) => typeof bag.apiKey === "string";
 	return {
 		...draft,
 		providers: {
 			...draft.providers,
 			[id]: {
 				...d,
-				apiKey: resolveDraftApiKey(d.apiKey, s?.apiKey),
-				vision: { ...d.vision, apiKey: resolveDraftApiKey(d.vision.apiKey, s?.vision.apiKey) },
+				apiKey: sent(rawBucket) ? d.apiKey : (s?.apiKey ?? ""),
+				vision: {
+					...d.vision,
+					apiKey: sent(asRecord(rawBucket.vision)) ? d.vision.apiKey : (s?.vision.apiKey ?? ""),
+				},
 			},
 		},
 	};
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 // 草稿 AI 配置 → CommentaryGeneratorConfig 的翻译住在 `runtime/ai-config.ts` ——

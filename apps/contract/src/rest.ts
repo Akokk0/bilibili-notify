@@ -12,25 +12,34 @@ import type {
 	ExtensionSubscriptionView,
 } from "@bilibili-notify/extension/wire";
 import type {
+	AIProviderProfile,
+	AISettings,
 	CachedProfile,
 	CardKind,
 	ConnectionCapabilities,
+	DirectConnection,
+	ExtensionConnection,
 	ExtensionProvides,
 	ExtensionRunState,
 	Failure,
 	FailureCode,
 	FansRefreshEntry,
 	FeatureKey,
+	GlobalConfig,
+	GlobalDefaults,
 	HistoryPayload,
 	Identity,
 	ImageRef,
 	Issue,
+	OnebotConnectionConfig,
 	PushMessageRole,
 	PushStatus,
+	QQOfficialConnectionConfig,
 	Result,
 	Subscription,
 	SubscriptionReportKind,
 	SubscriptionTag,
+	WebhookConnectionConfig,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
@@ -227,6 +236,69 @@ export interface ExtensionLookupResponse {
 export interface MaskedSecret {
 	masked: string;
 }
+
+// ---- 下发时密钥格打码的视图 -----------------------------------------------------------
+//
+// 凭据字段在 schema 上标 `secret`(`markSecret`),下发打码读的就是这个标记:`GET /api/connections`
+// 与 `/api/settings`(含各自写入的响应)里,标了的格换成 {@link MaskedSecret},空串 / 没配照旧。
+// `backupOnly` 那一档(OneBot 地址、AI baseUrl、请求头的值)面板照常显示,不在这里。
+//
+// 🔴 **写回规矩全仓一条**:任何写入接口里 `{ masked }` 这个形状的值都回 400;不带这一格 = 保留已存的;
+// 清空交空串(必填的格)或 `null`(可选的格)。所以面板「没动过的密钥格」不进 PATCH。
+
+/** 下发的一格密钥:配了是遮挡,没配是空串。 */
+export type SecretCellView = MaskedSecret | "";
+
+/** 面板草稿里的一格密钥:没动是遮挡,换了新的是明文(留空 = 清空)。 */
+export type SecretCellDraft = MaskedSecret | string;
+
+/** 值是字符串的那几格换成 `S`(可选的仍可选、`undefined` 仍可以);联合逐支套。 */
+type CellsAs<T, K extends PropertyKey, S> = T extends unknown
+	? {
+			[P in keyof T]: P extends K
+				? T[P] extends string | undefined
+					? S | Exclude<T[P], string>
+					: T[P]
+				: T[P];
+		}
+	: never;
+
+type WithConfig<C extends { config: unknown }, Config> = Omit<C, "config"> & { config: Config };
+
+/** 一条连接下发时的样子(`GET /api/connections` 与连接写入的响应)。拓展那一支的 `config` 本片不打码。 */
+export type ConnectionView =
+	| WithConfig<
+			Extract<DirectConnection, { platform: "onebot" }>,
+			CellsAs<OnebotConnectionConfig, "accessToken", SecretCellView>
+	  >
+	| WithConfig<
+			Extract<DirectConnection, { connector: "webhook" }>,
+			CellsAs<WebhookConnectionConfig, "url" | "secret", SecretCellView>
+	  >
+	| WithConfig<
+			Extract<DirectConnection, { platform: "qq-official" }>,
+			CellsAs<QQOfficialConnectionConfig, "appSecret", SecretCellView>
+	  >
+	| ExtensionConnection;
+
+/** 一份服务商实例下发时的样子:主模型与看图副模型两把 key。`S` 缺省是下发形状,草稿用 {@link SecretCellDraft}。 */
+export type AIProviderProfileView<S = SecretCellView> = Omit<
+	CellsAs<AIProviderProfile, "apiKey", S>,
+	"vision"
+> & { vision: CellsAs<AIProviderProfile["vision"], "apiKey", S> };
+
+/** AI 设置下发时的样子:各实例的 key 与联网搜索的 key。 */
+export type AISettingsView<S = SecretCellView> = Omit<AISettings, "providers" | "search"> & {
+	providers: Record<string, AIProviderProfileView<S>>;
+	search: Omit<AISettings["search"], "keys"> & {
+		keys: { [Backend in keyof AISettings["search"]["keys"]]: S };
+	};
+};
+
+/** `GET /api/settings` 的核心那一份(各集成的设置另挂在自己的键下,与 PATCH 收的同一个形状)。 */
+export type GlobalConfigView<S = SecretCellView> = Omit<GlobalConfig, "defaults"> & {
+	defaults: Omit<GlobalDefaults, "ai"> & { ai: AISettingsView<S> };
+};
 
 /** `GET /api/ext/:id/settings`。 */
 export interface ExtensionSettingsResponse {

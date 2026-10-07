@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { buildPatch } from "../patch";
+import { buildPatch, withoutMaskedCells } from "../patch";
 
 describe("buildPatch", () => {
 	it("草稿里消失的键 → 显式 null(删除哨兵)", () => {
@@ -61,5 +61,63 @@ describe("buildPatch", () => {
 		buildPatch(draft, baseline);
 		expect(draft).toEqual({ a: { b: 1 } });
 		expect(baseline).toEqual({ a: { b: 2 }, c: 3 });
+	});
+
+	/**
+	 * 密钥格下发时是 `{ masked }`(只读的遮挡,写回一律 400):草稿与基线里同一格都还是它 =
+	 * 没动过,不进 PATCH。`buildPatch` 刻意不做「相同就省略」,这是唯一的例外。
+	 */
+	describe("没动过的密钥格(`{ masked }`)不进 PATCH", () => {
+		const M = { masked: "••••••••" };
+
+		it("两边都是遮挡 → 这一格不出现,别的格照常", () => {
+			expect(buildPatch({ apiKey: M, model: "b" }, { apiKey: M, model: "a" })).toEqual({
+				model: "b",
+			});
+		});
+
+		it("嵌套在更深处 / record 里也一样", () => {
+			const base = { providers: { ds: { apiKey: M, label: "x" } } };
+			const draft = { providers: { ds: { apiKey: { masked: "••••••••" }, label: "y" } } };
+			expect(buildPatch(draft, base)).toEqual({ providers: { ds: { label: "y" } } });
+		});
+
+		it("换成新明文 → 照常下发;清成空串 → 照常下发", () => {
+			expect(buildPatch({ k: "new" } as { k: unknown }, { k: M })).toEqual({ k: "new" });
+			expect(buildPatch({ k: "" } as { k: unknown }, { k: M })).toEqual({ k: "" });
+		});
+
+		it("草稿里把整格删了 → 照常发 null(清掉)", () => {
+			expect(buildPatch({} as { k?: unknown }, { k: M })).toEqual({ k: null });
+		});
+
+		it("只有一个 masked 字符串键才算遮挡:带别的键的普通对象照常 diff", () => {
+			expect(buildPatch({ a: { masked: "x", n: 1 } }, { a: { masked: "x", n: 1 } })).toEqual({
+				a: { masked: "x", n: 1 },
+			});
+			expect(buildPatch({ a: { masked: 1 } }, { a: { masked: 1 } })).toEqual({ a: { masked: 1 } });
+		});
+	});
+
+	describe("withoutMaskedCells — 整份草稿送出去前拿掉没动的密钥格", () => {
+		const M = { masked: "••••••••" };
+
+		it("遮挡整格拿掉(嵌套、数组里都算),新明文与空串留着", () => {
+			const draft = {
+				a: M,
+				b: "new",
+				c: "",
+				d: { e: M, f: 1 },
+				g: [{ h: M, i: "x" }],
+			};
+			expect(withoutMaskedCells(draft)).toEqual({ b: "new", c: "", d: { f: 1 }, g: [{ i: "x" }] });
+		});
+
+		it("不改传进来的那份;没有遮挡的原样", () => {
+			const draft = { a: M };
+			withoutMaskedCells(draft);
+			expect(draft).toEqual({ a: M });
+			expect(withoutMaskedCells({ x: 1, y: [1, 2] })).toEqual({ x: 1, y: [1, 2] });
+		});
 	});
 });

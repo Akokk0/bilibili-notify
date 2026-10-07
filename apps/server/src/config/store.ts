@@ -189,6 +189,8 @@ export interface ConfigStore {
 	 */
 	replaceSubscriptionTags(tags: SubscriptionTag[]): Promise<SubscriptionTag[]>;
 	upsertConnection(connection: Connection): Promise<void>;
+	/** 只管新建:同 id 已存在回 `conflict`(编辑走 {@link patchConnection} —— 整条覆盖分不开「没带」与「清空」)。 */
+	createConnection(connection: Connection): Promise<void>;
 	patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection>;
 	deleteConnection(id: string): Promise<boolean>;
 	upsertTarget(target: PushTarget): Promise<void>;
@@ -1368,12 +1370,26 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async upsertConnection(connection: Connection): Promise<void> {
+		await this.writeConnection(connection, "upsert");
+	}
+
+	async createConnection(connection: Connection): Promise<void> {
+		await this.writeConnection(connection, "create");
+	}
+
+	private async writeConnection(connection: Connection, mode: "upsert" | "create"): Promise<void> {
 		const saved = await this.runScoped("connections", async () => {
 			const parsed = ConnectionSchema.safeParse(connection);
 			if (!parsed.success) {
 				throw ConfigValidationError.fromZod("connections", parsed.error);
 			}
 			const existing = this.connections.find((a) => a.id === parsed.data.id);
+			if (existing && mode === "create") {
+				throw ConfigValidationError.conflict(
+					"connections",
+					"这条连接已经存在 —— 要改请用 PATCH /api/connections/:id,新建别复用 id",
+				);
+			}
 			if (existing) assertConnectionIdentityStable(existing, parsed.data);
 			const next = upsertById(this.connections, parsed.data);
 			await atomicWriteJson(this.path("connections"), next);

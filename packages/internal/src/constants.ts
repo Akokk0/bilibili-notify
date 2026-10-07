@@ -705,7 +705,7 @@ export function canProfileThink(p: { provider: AIProviderId; apiFlavor?: APIFlav
  * 类型声明在这里而不是 schema 里,是为了让**零依赖**的 {@link resolveAIProfile}
  * 也能用上 —— 设置页经 `/constants` 子路径运行时消费它,不能把 zod 拖进前端 bundle。
  */
-export interface AIProviderProfileShape {
+export interface AIProviderProfileShape<S = string> {
 	/**
 	 * 这桶配置属于哪家服务商 —— 决定「开思考」翻译成哪家方言。桶键只是**实例 id**
 	 * (同一家可以有多份实例),方言归属必须写在桶里,不能再从键名推。
@@ -713,7 +713,8 @@ export interface AIProviderProfileShape {
 	provider: AIProviderId;
 	/** 实例的显示名。空串 = 用注册表里那家的名字(避免把家名抄进配置,改名会过期)。 */
 	label: string;
-	apiKey: string;
+	/** 密钥格的类型 `S`:后端是明文 `string`,面板读到的是遮挡(`SecretCellView`),见 contract。 */
+	apiKey: S;
 	baseUrl: string;
 	model: string;
 	/** 这桶走哪套 wire 协议。默认 `chat`;能否选 `responses` 见 {@link AIProviderMeta.supportsResponses}。 */
@@ -722,7 +723,7 @@ export interface AIProviderProfileShape {
 	thinkingLevel: ThinkingLevel;
 	extraParams: string;
 	enableVision: boolean;
-	vision: { baseUrl: string; apiKey: string; model: string };
+	vision: { baseUrl: string; apiKey: S; model: string };
 }
 
 /**
@@ -754,10 +755,10 @@ export const EMPTY_AI_PROVIDER_PROFILE: AIProviderProfileShape = {
  * 对残缺入参也不炸(`providers` 整个缺席时同样兜空档案) —— 它同时服务于前端的
  * 局部状态与后端的完整配置,前者在数据还没到齐时就会渲染。
  */
-export function resolveAIProfile(ai: {
+export function resolveAIProfile<S = string>(ai: {
 	activeProfile?: string;
-	providers?: Record<string, AIProviderProfileShape | undefined>;
-}): AIProviderProfileShape {
+	providers?: Record<string, AIProviderProfileShape<S> | undefined>;
+}): AIProviderProfileShape<S | string> {
 	return ai.providers?.[ai.activeProfile ?? ""] ?? EMPTY_AI_PROVIDER_PROFILE;
 }
 
@@ -771,9 +772,9 @@ export function resolveAIProfile(ai: {
  * 只剩**等级**没有开关:聊天的思考开关是**会话级**的(输入框旁那颗胶囊,默认关、
  * 手动开、不落盘),按消息走请求体 —— 配置里没有它的位置。
  */
-export function resolveChatThinkingLevel(ai: {
+export function resolveChatThinkingLevel<S = string>(ai: {
 	activeProfile?: string;
-	providers?: Record<string, AIProviderProfileShape | undefined>;
+	providers?: Record<string, AIProviderProfileShape<S> | undefined>;
 	chat?: { thinkingLevel?: ThinkingLevel };
 }): ThinkingLevel {
 	return ai.chat?.thinkingLevel ?? resolveAIProfile(ai).thinkingLevel;
