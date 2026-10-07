@@ -10,6 +10,7 @@ import {
 	WEBHOOK_PLATFORMS,
 } from "../constants.js";
 import { ExtensionIdSchema } from "./extension-manifest.js";
+import { markBackupOnly, markSecret } from "./secret";
 
 // 会话种类、目标形态、连接器这三个词表的本体都在零依赖的 constants —— 类型从那边导,
 // 别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
@@ -54,7 +55,7 @@ export const PushTargetScopeSchema = z.enum(PUSH_TARGET_SCOPES);
  * `transport` 是连接属性,只活在连接的 config 里 —— PushTarget 不受影响。
  */
 const onebotCommonConfigShape = {
-	accessToken: z.string().optional(),
+	accessToken: markSecret(z.string()).optional(),
 	/** OneBot 协议版本；首期固定 v11，留位以便后续扩展 v12。 */
 	protocolVersion: z.literal("v11").default("v11"),
 	/** 单次操作总超时（毫秒）。HTTP = 请求超时；WS = 等 echo 响应超时。 */
@@ -80,9 +81,9 @@ export const OnebotHttpConfigSchema = z
 		// 字段,union 试到本 branch 时 default 补上 → 旧数据按 http 加载。
 		transport: z.literal("http").default("http"),
 		/** bot 的 OneBot HTTP API 根地址。 */
-		baseUrl: z.url(),
+		baseUrl: markBackupOnly(z.url(), { url: true }),
 		/** 附加到每次请求的 HTTP header（例如自定义鉴权头）。 */
-		headers: z.record(z.string(), z.string()).default({}),
+		headers: z.record(z.string(), markBackupOnly(z.string())).default({}),
 		...onebotCommonConfigShape,
 	})
 	.strict();
@@ -92,9 +93,11 @@ export const OnebotWsConfigSchema = z
 	.object({
 		transport: z.literal("ws"),
 		/** bot 的 OneBot 正向 WS 地址,必须 `ws://` 或 `wss://`。 */
-		url: z.string().regex(/^wss?:\/\/\S+$/i, "必须是 ws:// 或 wss:// 地址"),
+		url: markBackupOnly(z.string().regex(/^wss?:\/\/\S+$/i, "必须是 ws:// 或 wss:// 地址"), {
+			url: true,
+		}),
 		/** WS 握手请求头（例如自定义鉴权头）。 */
-		headers: z.record(z.string(), z.string()).default({}),
+		headers: z.record(z.string(), markBackupOnly(z.string())).default({}),
 		...onebotCommonConfigShape,
 	})
 	.strict();
@@ -136,10 +139,10 @@ export const WebhookPlatformSchema = z.enum(WEBHOOK_PLATFORMS);
  * 的 z.object,所以万一漏了一条,strip 掉也不会让主人开不了机。
  */
 export const WebhookConnectionConfigSchema = z.object({
-	url: z.url(),
-	secret: z.string().optional(),
+	url: markSecret(z.url(), { url: true }),
+	secret: markSecret(z.string()).optional(),
 	/** 自定义 header 例如 Authorization */
-	headers: z.record(z.string(), z.string()).default({}),
+	headers: z.record(z.string(), markBackupOnly(z.string())).default({}),
 });
 export type WebhookConnectionConfig = z.infer<typeof WebhookConnectionConfigSchema>;
 
@@ -166,7 +169,7 @@ export const QQOfficialConnectionConfigSchema = z
 		 * `platforms/qq-official.ts` 的 isAvailable / reconcile,两处都拒绝空密钥的
 		 * adapter,不会拿空密钥去撞 QQ 网关。
 		 */
-		appSecret: z.string(),
+		appSecret: markSecret(z.string()),
 		sandbox: z.boolean().default(false),
 		botType: QQOfficialBotTypeSchema.default("public"),
 		/** 是否记录网关 RECONNECT/RESUMED 事件日志。QQ 官方网关每约 30 分钟主动要求

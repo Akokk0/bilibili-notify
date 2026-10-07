@@ -1,20 +1,29 @@
+import {
+	ConnectionSchema,
+	GlobalConfigSchema,
+	mapMarked,
+	REDACTED_URL_HOST,
+	type SecretMark,
+} from "@bilibili-notify/internal";
+import { z } from "zod";
+
 /**
- * Sanitization core for the backup feature.
+ * 备份脱敏的核心:脱敏档与完整档的明文段都不许带任何凭据。
  *
- * The sanitized backup must never carry a credential. Rather than enumerate
- * every platform-specific secret field (a denylist that silently rots as new
- * connection/target platforms land), {@link redactSecretKeys} walks the whole tree
- * and blanks any leaf whose *key name* is a known secret. This is structural:
- * a newly-added `accessToken` under any future shape is caught for free.
+ * **判据是 schema 上的标记**(`markSecret` / `markBackupOnly`,ADR-0021 决策 44):核心设置与连接这两节
+ * 有 schema,拿 {@link mapMarked} 按值走,命中标记的叶子抹掉 —— 新加的字段叫什么名都一样,标了就抹。
  *
- * Two kinds of credential are not leaves with names of their own, so they get
- * their own structural rules: containers whose leaf names the user invents
- * ({@link SECRET_CONTAINER_KEYS} — `headers`, `keys`) and credentials embedded
- * inside a URL ({@link URL_KEYS}).
+ * 标记管不到的地方照旧按**键名**猜(下面那份黑名单):别的几节本来就没有凭据字段、拓展那几格
+ * (`config` / 设置)的形状归拓展自己定,而 schema 里没声明的键、`z.unknown()` 的格也一样 ——
+ * 宁可多抹,不留一个明文。黑名单同时是**守卫**:`backup-redaction-parity.test.ts` 钉住「键名
+ * 在黑名单里的字符串叶子必须带标记」,换判据不许让被抹的叶子集合变一个。
  *
- * Blanks to `""` (rather than deleting) so the object keeps its shape — an
- * imported sanitized config still parses; the user just re-enters the blanked
- * credentials. The value, never the key, is what leaks.
+ * 两类凭据不是一个有自己名字的叶子,所以另有结构规则:叶子名由用户起的容器
+ * ({@link SECRET_CONTAINER_KEYS} —— `headers`、`keys`)与藏在 URL 里的凭据({@link URL_KEYS})。
+ * 前者在 schema 上是容器值类型上的标记,后者是带 `url` 位的标记。
+ *
+ * 抹成 `""` 而不是删键,对象保持原形 —— 脱敏档导进来仍然通过 schema,主人只需重填被抹的凭据。
+ * 漏出去的是值,不是键。
  */
 
 /** Key names whose values are credentials anywhere they appear in the config tree. */
@@ -54,13 +63,6 @@ export const URL_KEYS: readonly string[] = ["url", "baseUrl"];
  * wrong", and none of them is an endpoint that can carry a bearer token.
  */
 const PLACEHOLDER_SCHEMES = new Set(["http:", "https:", "ws:", "wss:"]);
-
-/**
- * Host used for the placeholder. `.invalid` is reserved by RFC 2606 and can
- * never resolve, so a restored backup whose endpoint was not refilled fails
- * loudly at DNS instead of quietly reaching some other real host.
- */
-const REDACTED_URL_HOST = "redacted.invalid";
 
 const SECRET_KEY_SET = new Set<string>(SECRET_KEYS);
 const SECRET_CONTAINER_SET = new Set<string>(SECRET_CONTAINER_KEYS);
@@ -112,9 +114,36 @@ export function redactBackupSections<T>(
 	sections: T,
 	extensionSecrets: ExtensionSecretCodes = new Map(),
 ): T {
-	const out = redactSecretKeys(sections);
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(sections as Record<string, unknown>)) {
+		const schema = TYPED_SECTIONS[key];
+		out[key] = schema ? redactByMarks(schema, value) : redact(value);
+	}
 	redactExtensionScopes(out as ExtensionScopedSections, extensionSecrets);
-	return out;
+	return out as T;
+}
+
+/** 有 schema 的两节:凭据靠标记。别的几节没有凭据字段,继续按键名。 */
+const TYPED_SECTIONS: Record<string, z.ZodType | undefined> = {
+	globals: GlobalConfigSchema,
+	connections: z.array(ConnectionSchema),
+};
+
+/** 命中标记的叶子抹成什么:网络地址换占位(要能恢复),其余抹成空串。 */
+function eraseMarked(value: unknown, mark: SecretMark): unknown {
+	return mark.url ? redactUrl(value, SECRET_KEY_SET) : blankLeaves(value);
+}
+
+function redactByMarks(schema: z.ZodType, value: unknown): unknown {
+	return mapMarked(schema, value, {
+		onMark: eraseMarked,
+		// schema 管不到的:没声明的键带着键名走黑名单,其余整片走黑名单。
+		onUntyped: (v, key) => {
+			if (key === undefined) return redact(v);
+			const wrapped = redact({ [key]: v }) as Record<string, unknown>;
+			return wrapped[key];
+		},
+	});
 }
 
 /** 就地把拓展那两格再抹一遍。入参是 {@link redactSecretKeys} 刚克隆出来的结果。 */

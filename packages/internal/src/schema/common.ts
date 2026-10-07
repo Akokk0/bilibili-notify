@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_TEMPLATES, extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
+import { markBackupOnly, markSecret } from "./secret";
 
 export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
 
@@ -270,8 +271,8 @@ export const AIProviderProfileSchema = z.object({
 	provider: z.enum(AI_PROVIDER_IDS),
 	/** 实例的显示名。空串 = 用注册表里那家的名字(不把家名抄进配置,免得改名过期)。 */
 	label: z.string().default(""),
-	apiKey: z.string().default(""),
-	baseUrl: z.string().default(""),
+	apiKey: markSecret(z.string()).default(""),
+	baseUrl: markBackupOnly(z.string(), { url: true }).default(""),
 	model: z.string().default(""),
 	/**
 	 * 这桶走哪套 wire 协议:`chat`(chat completions,现状)或 `responses`
@@ -324,8 +325,8 @@ export const AIProviderProfileSchema = z.object({
 	 */
 	vision: z
 		.object({
-			baseUrl: z.string().default(""),
-			apiKey: z.string().default(""),
+			baseUrl: markBackupOnly(z.string(), { url: true }).default(""),
+			apiKey: markSecret(z.string()).default(""),
 			model: z.string().default(""),
 		})
 		.default({ baseUrl: "", apiKey: "", model: "" }),
@@ -391,8 +392,8 @@ const AISettingsObjectSchema = z.object({
 			backend: z.enum(WEB_SEARCH_BACKEND_IDS).default("bocha"),
 			keys: z
 				.object({
-					bocha: z.string().default(""),
-					tavily: z.string().default(""),
+					bocha: markSecret(z.string()).default(""),
+					tavily: markSecret(z.string()).default(""),
 				})
 				.default({ bocha: "", tavily: "" }),
 			engines: z

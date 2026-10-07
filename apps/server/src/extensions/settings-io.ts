@@ -1,14 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import type {
-	ExtensionSettingsIssue,
-	ExtensionSettingsOp,
-	MaskedSecret,
-} from "@bilibili-notify/contract";
+import type { ExtensionSettingsIssue, ExtensionSettingsOp } from "@bilibili-notify/contract";
 import {
 	type ExtensionManifestField,
 	type ExtensionManifestListField,
 	isSecretField,
 	LIST_ITEM_ID_KEY,
+	maskCell,
 	settingsFieldSchema,
 	settingsListItemSchema,
 } from "@bilibili-notify/internal";
@@ -30,32 +27,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 // ---- 读:遮密钥 ------------------------------------------------------------------------
-
-/** 遮挡的点 —— **固定 8 个**,不随原文长度变:点数本身就泄露长度。 */
-const DOTS = "•".repeat(8);
-
-/**
- * 不到这么长的整段打点。头尾各四位加起来八位:九到十二位时,头尾几乎就是全文(决策 35 修订了
- * 决策 30 的「八位及以下」)。BN 生成的 token 是 32 位,落在露头尾那一档 —— 两条接入才分得出谁是谁。
- */
-const REVEAL_MIN_LENGTH = 24;
-
-/** 一段密钥在屏幕上的样子。按字符数(不按 UTF-16 码元)切,免得把一个字劈成两半。 */
-function maskSecret(value: string): string {
-	const chars = Array.from(value);
-	if (chars.length < REVEAL_MIN_LENGTH) return DOTS;
-	return `${chars.slice(0, 4).join("")}${DOTS}${chars.slice(-4).join("")}`;
-}
-
-/**
- * 一格密钥下发时换成什么。空串照旧是空串、没有照旧是没有 —— 面板要分得开「没配」与「配了」。
- * 不是字符串的(手改过文件)也遮:一格声明成密钥的值,不管长什么样都不原样出门。
- */
-function maskCell(value: unknown): unknown {
-	if (value === undefined || value === null || value === "") return value;
-	const masked: MaskedSecret = { masked: typeof value === "string" ? maskSecret(value) : DOTS };
-	return masked;
-}
 
 /**
  * 存着的那份,密钥格(`secret` / `generate`,顶层与列表项里都算)换成遮挡。清单没声明的键原样带着

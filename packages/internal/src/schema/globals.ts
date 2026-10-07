@@ -7,6 +7,7 @@ import {
 	MIRROR_PREFIX_RE,
 } from "../constants";
 import { allTemplateFingerprints } from "../template-defaults";
+import { markBackupOnly, markSecret } from "./secret";
 
 // 模板默认值住在零依赖的 `constants.ts` —— 前端要拿它跟盘上的值比对(「默认文案有
 // 更新」那套),从这里(带 zod)拿会把 zod 拽进浏览器 bundle。同 BUILTIN_AI_PRESETS。
@@ -51,7 +52,7 @@ export const BootstrapConfigSchema = z.object({
 	dashboardAuth: z
 		.object({
 			username: z.string(),
-			password: z.string(),
+			password: markSecret(z.string()),
 		})
 		.optional(),
 });
@@ -274,7 +275,9 @@ export const MarketplaceSourceSchema = z.object({
 	 * 用户加源时**只填地址**,不用起名。
 	 */
 	name: z.string().min(1).max(40).optional(),
-	url: z.string().url().regex(MIRROR_PREFIX_RE, "源地址必须是 https:// 开头"),
+	url: markBackupOnly(z.string().url().regex(MIRROR_PREFIX_RE, "源地址必须是 https:// 开头"), {
+		url: true,
+	}),
 });
 export type MarketplaceSource = z.infer<typeof MarketplaceSourceSchema>;
 

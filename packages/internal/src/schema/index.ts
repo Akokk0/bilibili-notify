@@ -11,6 +11,7 @@ export * from "./link-parsing";
 export * from "./message-layout";
 export * from "./resolve";
 export * from "./roast-schedule";
+export * from "./secret";
 export * from "./subscription-report";
 export * from "./subscriptions";
 export * from "./targets";
