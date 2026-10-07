@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
-| 已完成 | 9 / 41（3a-01 至 3a-06、3a-08、3a-11、3a-14；3a-13 做了前半；3a-07 并进 3a-28） |
+| 已完成 | 10 / 41（3a-01 至 3a-06、3a-08、3a-11、3a-13、3a-14；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -45,7 +45,7 @@
 | 3a-10 | 集成的 `state` / `secrets` 存储宿主 | 3a-08 | 备份（加两节） |
 | 3a-11 ✅ | 抓图核心服务 `ImageFetcher`（建连接时判内网、每跳都判、8MB 流式截断、嗅探、存库）；图库的 `put` 磁盘写失败改回结果。**没做来源图的引用方登记**：现在还没有生产调用方，登记随第一个调用方做（3a-33、3a-35） | 无 | 无 |
 | 3a-12 | 集成宿主：`IntegrationContext` 的构造、生命周期与运行状态；拓展与内置集成收成同一套。最大的一片，开工时再切三小片 | 3a-08 至 3a-11 | 无 |
-| 3a-13（前半 ✅） | 密钥打码的服务端半：schema 标 `secret: true`，接口与 WS 按 `MaskedSecret` 下发，备份脱敏改读这个标记；面板同片跟到照旧能用。**已落**：标记（`markSecret` / `markBackupOnly`）、共用打码函数、备份脱敏按标记。**未做**：接口下发换形与面板，等主人定面板上密钥格的交互 | 无 | 无（连接凭据搬不搬加密存储 3a-22 再问） |
+| 3a-13 ✅ | 密钥打码：schema 上标 `secret`，连接与设置接口按 `MaskedSecret` 下发，写回打码对象 400、没带保留、空串或 `null` 清空；连接新建走 POST（同 id 409）、编辑走 PATCH；面板三处密钥格统一成「打码胶囊 + 换一份 / 不换了」；备份脱敏按标记 | 无 | 无（连接凭据搬不搬加密存储 3a-22 再问） |
 | **丙 推送侧** | | | |
 | 3a-14 ✅ | 纯搬与改名：`registry` / `dispatch` / `sink/` 搬进 `push/`；`NotificationSink` → `TargetDispatcher` 等一批类名，只改名不改行为 | 3a-04 | 无 |
 | 3a-15 | 投递结果改成结果形状：三个适配器各自把错误翻成标准码；历史行跟上，盘上旧失败转 `unknown` | 3a-04、3a-14 | 历史 |
@@ -94,6 +94,13 @@
   - `packages/http` 的 `engines.node` 抬到 `>=24.0.0`（`undici` 8 要 22.19 以上）；`undici` 进 catalog，lockfile 里只有一份，打进服务端 bundle 后装配自检照过。
   - 留着的：HTTPS 那条路只手验过（SNI 与证书按原主机名），仓里没有证书夹具所以没有用例；带守卫的连接池按判定函数的身份建，每次传新的箭头函数会多一个池，要传固定引用；`fetch-through-mirrors.ts` 与 `packages/image` 各一份 `readCapped` 没收（后者随 3a-37 删）。
 - 3a-13 前半 `801b49fe`：标记两档（`secret` 面板打码 + 备份抹；`backupOnly` 面板照显、备份抹），另有一位 `url` 只管备份里抹成地址占位还是空串。联合按值走（OneBot ws 的 `url` 不是密钥、webhook 的是）。备份被抹的叶子改前改后逐个相同、整份输出逐字节相同。盘点核出的事实：WS `state` 频道今天不带任何设置；连接的编辑今天是整条覆盖（后半要改成只提交改过的格）；面板的 `buildPatch` 会把没变的值也发出去（后半要让它跳过打码对象）；拓展连接 `config` 里的密钥这一片不覆盖（随 3a-22）。
+- 3a-13 后半 `bacad6d1`（主人定的交互：照拓展设置页，清空 = 点「换一份」后留空保存，不加「清除」按钮）：
+  - 服务端：`routes/secret-view.ts`（`connectionView` / `globalConfigView`，只打 `secret` 一档）、`routes/masked-cells.ts`（写入体里带打码对象就 400、issues 指到那一格）；`store.createConnection`；AI 的哨兵字符串与配套函数全删；`/api/ai/test` 按解析前的原始体判断密钥格带没带。
+  - 契约：`SecretCellView`、`SecretCellDraft`、`ConnectionView`、`AISettingsView`、`AIProviderProfileView`、`GlobalConfigView`。
+  - 面板：`components/secret-cell.tsx`（从拓展设置页抽出来复用，不是新组件）；连接表单的草稿里不放打码对象，「已存着」另记，存盘由 `types/connection-credentials.ts` 的 `connectionPatch` 算；`buildPatch` 加一条规则「两边都是打码对象的格不进 PATCH」（AI 页用）；webhook 列表行副标题直接显示打码字符；死掉的 `maskWebhookUrl` 删了。
+  - 守卫：面板那张手写的「哪种连接哪几格是凭据」的表与 schema 的 `secret` 标记逐分支对拍（`apps/web/src/types/__tests__/connection-credentials-schema.test.ts`）。
+  - 留着的：拓展连接 `config` 里的密钥仍明文下发（随 3a-22）；`headers` 的值面板照旧显示；面板自己的几份「是不是密钥」判断（`field-labels.ts`、`formatDiffValue.ts`、`connection-fields.ts`）没并；面板里不读密钥格的十几处仍标域类型 `GlobalConfig` / `Connection`。
+  - 真机待看：① OneBot 连接的 token 是胶囊，只改名保存后还连得上，「换一份」留空保存后被清掉；② OneBot 三种连法互相切换后保存不报错、token 还在；③ webhook 的地址与 secret 都是胶囊、列表副标题是打码字、只改名后照常推送；④ QQ 官机编辑时扫码回填，密钥栏自动变成输入框显示新值；⑤ 三种平台各新建一条，凭据栏是普通输入框，保存后列表里立刻是打码；⑥ 智能女仆页三把 key 的「换一份 / 不换了」，只改模型名保存后 key 不丢、「有改动」的提示会消失，「试一句」没动 key 时用已存的；⑦ 拓展设置页的密钥格和改前一样；⑧ 浏览器开发者工具里 `GET /api/connections`、`GET /api/settings` 的回应搜不到明文密钥。
 
 ### 丙组（10-07 起）
 
