@@ -442,6 +442,7 @@
 | 去掉 Standalone 之三：中文「独立端」（CHANGELOG、ADR、发布公告这类历史记录不动）、面板连不上后端时那句「standalone 服务」、CLAUDE.md | 5 |
 | 去掉 Standalone 之四：流水线脚本 `*standalone-version*.sh`、`create-standalone-github-release.sh` 与 `BN_STANDALONE_VERSION` 改名；流水线只能靠 dry-run 验，和打 alpha 前那一轮 dry-run 一起 | 6 |
 | 文档同步：CLAUDE.md 与 `docs/agents/` 的 push、architecture、commands、events、devtools、self-update、extension-marketplace；补上 `subscriptions.md`（整篇讲 B 站 / 拓展两支、两个文件、两种键，1.0 后全错）、`build-release.md`（没有 dev-next 与 alpha 的打法）与 CLAUDE.md 的「分支」一节；CLAUDE.md「项目」一节里「`CONNECTION_PLATFORMS` 不加档、拓展连接走 `kind: "extension"`」那条（闭集与 `kind` 都已删掉，ADR-0024）；示例 yaml 写清每个键对应的环境变量（ADR-0022 决策 14） | 5 |
+| 面板文案：订阅面板上的「特别用户进房」改成「特别用户」（10-07 真机时主人提）。这句是特性 `specialUserEnter` 的中文名，只有一处定义（`apps/web/src/types/domain.ts` 的特性名表），规则页、历史等别处用的是同一个名字，动手时先问主人是全部跟着改还是只改订阅面板 | 4 |
 
 ### 还没归期的（施工时定）
 
