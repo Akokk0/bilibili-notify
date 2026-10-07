@@ -649,6 +649,23 @@ describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
 	});
 });
 
+describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
+	// 验红:把 engines.ts 里递给 DynamicEngine / LiveEngine 的 `avatarOf: profileAvatarOf` 各删一次(类型会先红,
+	// 临时用 undefined 顶替),或把读口改成开机时取一次值,对应那条红 —— 之后才补上的头像永远出不了卡。
+	it("两个引擎拿到的读口按订阅 id 现读订阅资料,资料之后换了值,下一次读到新的", () => {
+		let profile: { avatar?: string } = {};
+		const get = vi.fn((_id: string) => ({ cachedProfile: profile }));
+		setup({ overrides: { subRuntimeStore: { get } } });
+		for (const opts of [H.dynamic[0].opts, H.live[0].opts]) {
+			expect(opts.avatarOf("sub-1")).toBeUndefined();
+			profile = { avatar: `${"c".repeat(64)}.jpg` };
+			expect(opts.avatarOf("sub-1")).toBe(profile.avatar);
+			expect(get).toHaveBeenLastCalledWith("sub-1");
+			profile = {};
+		}
+	});
+});
+
 describe("createEngines — 观看人数接线(精确数)", () => {
 	it("emitViewers 的精确数原样转发到 bus 的 live-viewers-changed,不被转成字符串", () => {
 		const c = setup();

@@ -30,6 +30,8 @@ export interface FanMedal {
 export interface LiveUser {
 	uid: number;
 	name: string;
+	/** 头像的来源地址;只有自带头像的帧(醒目留言)才有,没有就缺键。出卡前由宿主抓进图库。 */
+	avatarUrl?: string;
 	medal?: FanMedal;
 	guardLevel?: GuardLevel;
 	isRoomAdmin?: boolean;

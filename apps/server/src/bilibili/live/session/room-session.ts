@@ -6,12 +6,14 @@ import {
 	membershipTemplateOf,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { fetchAvatar } from "../../images";
 import { membershipEventFromLiveEvent } from "../membership-event";
 import type { LiveEvent, LiveUser, UserActionKind } from "../protocol/events.js";
 import { LivePushType } from "../push-like";
 import { superchatEventFromLiveEvent } from "../superchat-event";
 import { buildRoomLink } from "../template-renderer";
 import { LiveType } from "../types";
+import { fetchGuardViewerAvatar } from "../viewer-avatar";
 import { passesMembershipMinRank, passesSuperchatMinAmount } from "./interaction-gates";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
@@ -532,8 +534,8 @@ export class RoomSession extends RoomSessionBase {
 	/**
 	 * 醒目留言:先翻成中立的 {@link SuperchatEvent}(档位在那一步按价格算,B 站的原始数据到此为止),再按事件出卡。
 	 *
-	 * 出卡**不再调接口查发送者**:名字用消息里带的(头像 B 站 3a 才交图库引用,卡上先不画),所以「查发送者失败退成文字」
-	 * 那条路没有了 —— 出不了卡(没开出图器 / 出卡抛错)才退到一句文字。门槛(㉓d):金额低于 `minSuperchatAmount` 才拦,
+	 * 出卡**不调接口查发送者**:名字用消息里带的,头像是帧里自带的地址(出卡前抓进图库,抓不到只是没有头像),所以
+	 * 「查发送者失败退成文字」那条路没有了 —— 出不了卡(没开出图器 / 出卡抛错)才退到一句文字。门槛(㉓d):金额低于 `minSuperchatAmount` 才拦,
 	 * 只在币种是人民币时比(别的币种放行),没配不拦;被拦的正文照样先记进弹幕收集。
 	 */
 	private async onIncomeSuperChat(ev: SuperChatEvent): Promise<void> {
@@ -551,10 +553,24 @@ export class RoomSession extends RoomSessionBase {
 		if (this.ctx.imageRenderer?.generateSuperchatCard) {
 			try {
 				const scStyle = this.resolvedCardStyle("superchat");
+				// 头像在**确定要出卡**之后才抓:观众的取自帧里自带的地址,主播的是订阅资料里已有的引用(零网络)。
+				const viewerAvatar = ev.user.avatarUrl
+					? await fetchAvatar(ev.user.avatarUrl, {
+							images: this.ctx.imageFetcher,
+							logger: this.ctx.logger,
+						})
+					: undefined;
+				const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
 				const buf = await this.ctx.imageRenderer.generateSuperchatCard(
 					{
-						viewer: { name: event.viewer.name },
-						creator: { name: masterName },
+						viewer: {
+							name: event.viewer.name,
+							...(viewerAvatar === undefined ? {} : { avatar: viewerAvatar }),
+						},
+						creator: {
+							name: masterName,
+							...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
+						},
 						text: event.text,
 						amount: event.amount,
 						currency: event.currency,
@@ -592,8 +608,8 @@ export class RoomSession extends RoomSessionBase {
 	 *
 	 * 门槛(㉓d)按事件的档位 `tier.rank` 比:低于 `minGuardRank` 才拦,没配不拦 —— 这里不再有任何地方拿原始 `guard_level` 比大小。
 	 * 自定义文案那一支按事件的档位(`tier.key`)取那一档的文案与图片({@link membershipTemplateOf}:没填的格用体系默认),
-	 * 文字由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`,图片没填就用档位表里该档的徽章。出卡那一支**不再调接口查用户**:
-	 * 名字用事件里的,头像 3a 才有。出不了卡照旧退到「官方图 + 一句文字」。
+	 * 文字由 `interpolate` 填 `{viewer}` / `{name}` / `{tier}`,图片没填就用档位表里该档的徽章。出卡那一支名字用事件里的、不查用户;
+	 * 头像帧里没有,出卡前为它查一次接口再抓进图库(失败只是没有观众头像,卡照出)。出不了卡照旧退到「官方图 + 一句文字」。
 	 */
 	private async onGuardBuy(ev: GuardBuyEvent): Promise<void> {
 		if (!this.ctx.isSubscribed(this.sub, "membership")) return;
@@ -641,10 +657,24 @@ export class RoomSession extends RoomSessionBase {
 				// 还是没有就不带 `icon`,卡上的徽章块自己收起。
 				await this.ctx.guardIcons.ensure();
 				const icon = this.ctx.guardIcons.iconOf(tier.key);
+				// 上舰帧里没有头像,出卡前向 B 站查一次这位观众的(失败只是没有观众头像,卡照出);主播的读订阅资料。
+				const viewerAvatar = await fetchGuardViewerAvatar(
+					event.viewer.id,
+					this.sub.uid,
+					this.ctx.api,
+					{ images: this.ctx.imageFetcher, logger: this.ctx.logger },
+				);
+				const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
 				const buf = await this.ctx.imageRenderer.generateMembershipCard(
 					{
-						viewer: { name: event.viewer.name },
-						creator: { name: masterName },
+						viewer: {
+							name: event.viewer.name,
+							...(viewerAvatar === undefined ? {} : { avatar: viewerAvatar }),
+						},
+						creator: {
+							name: masterName,
+							...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
+						},
 						tier: {
 							name: tier.name,
 							rank: tier.rank,
@@ -792,6 +822,7 @@ export class RoomSession extends RoomSessionBase {
 				master,
 				cardStyle: this.resolvedCardStyle("live"),
 				...this.skinChoice(),
+				subscriptionId: this.sub.subscriptionId,
 				uid: this.sub.uid,
 				notifyMsg: liveStartMsg,
 				messageLayout: this.sub.messageLayout,

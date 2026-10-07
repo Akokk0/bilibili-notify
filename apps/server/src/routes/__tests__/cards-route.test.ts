@@ -3,12 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CSS_CUSTOM_PROPERTY_MAX_CHARS, ImageRenderer } from "@bilibili-notify/image";
 import {
+	BILIBILI_SOURCE_KEY,
 	CARD_SKIN_LIMITS,
 	type CardSkinManifest,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
 	fail,
+	makeEmptySubscription,
 	ok,
+	type Post,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { png } from "../../__tests__/support/report-images.js";
@@ -35,7 +38,8 @@ function depsWithDataDir(dataDir: string): RouteDeps {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 			},
 		},
-		store: { getGlobals: () => EMPTY_GLOBALS },
+		// 预览的真实拉取要按 uid 找订阅(读资料里的头像);这些用例没有订阅。
+		store: { getGlobals: () => EMPTY_GLOBALS, getSubscriptions: () => [] },
 	} as unknown as RouteDeps;
 }
 
@@ -69,10 +73,25 @@ function imageHttp() {
 	return { fetch };
 }
 
-function makeDeps(guardIcons = makeGuardIcons()): RouteDeps {
+/** 预览里「已订阅的那位 UP」:有这一个订阅,资料里存着头像引用。 */
+const SUBSCRIBED_UID = "12345";
+const SUBSCRIBED_AVATAR = `${"f".repeat(64)}.jpg`;
+
+function makeDeps(guardIcons = makeGuardIcons(), opts: { subscribed?: boolean } = {}): RouteDeps {
+	const subscription = makeEmptySubscription({
+		id: "11111111-1111-1111-1111-111111111111",
+		identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: SUBSCRIBED_UID },
+	});
 	return {
 		runtime: {
 			guardIcons,
+			// 订阅资料里的头像(`cachedProfile.avatar`):预览的真实拉取读它,不为头像联网。
+			subRuntimeStore: {
+				get: (id: string) =>
+					opts.subscribed && id === subscription.id
+						? { cachedProfile: { name: "真实UP", avatar: SUBSCRIBED_AVATAR } }
+						: undefined,
+			},
 			// 预览抓图存进的图库(`postImages` 这一家):每张都回同一个引用。
 			postImages: { put: vi.fn(async () => ok({ ref: PREVIEW_IMAGE_REF })) },
 			dataRoot: join(tmpdir(), "bn-test-cards-route-no-such-dir"),
@@ -84,6 +103,7 @@ function makeDeps(guardIcons = makeGuardIcons()): RouteDeps {
 		// 用 OS 临时目录下的不存在子目录(跨平台:不硬编码 POSIX /tmp,无真实路径/密钥)。
 		store: {
 			getGlobals: () => EMPTY_GLOBALS,
+			getSubscriptions: () => (opts.subscribed ? [subscription] : []),
 		},
 	} as unknown as RouteDeps;
 }
@@ -1618,9 +1638,9 @@ describe("cards route — /preview 走皮肤", () => {
 	 * 真实直播预览(`renderRealLive`)是「B 站房间数据 → `liveCardInputFromRoomInfo` → `generateLiveCard`」这一条
 	 * (㉒c,出卡入口收成一个以后不再有吃原始数据的那个):路由没有测试钉着的话,零件各自绿也证明不了它接上了。
 	 * 验红:把 renderRealLive 里的 `liveCardInputFromRoomInfo(…)` 换成直接递房间数据,或把状态写死成别的,这条红。
-	 * 主播的头像地址(`face`)是远端地址,B 站到 3a 才有引用可给,不进输入。
+	 * 这位 UP 不是订阅的:按主播信息里的头像地址现抓(本例的图库抓取走假客户端,见下面「没订阅的 UP」用例)。
 	 */
-	it("真实直播那条路:先翻成中立输入、封面抓进图库,再交给 generateLiveCard,头像不进输入", async () => {
+	it("真实直播那条路:先翻成中立输入、封面抓进图库,再交给 generateLiveCard,没订阅的 UP 头像现抓", async () => {
 		const http = imageHttp();
 		const api = {
 			http,
@@ -1659,7 +1679,8 @@ describe("cards route — /preview 走皮肤", () => {
 		expect(spy.mock.calls[0]?.[0]).toStrictEqual({
 			// 预览恒按「直播中」出卡(状态码 2),没在播的房间也一样。
 			status: "streaming",
-			creator: { name: "真实UP" },
+			// 这位 UP 没订阅:头像按主播信息里的地址现抓(头像档)。
+			creator: { name: "真实UP", avatar: PREVIEW_IMAGE_REF },
 			title: "真实标题",
 			category: "真实分区",
 			description: "",
@@ -1669,7 +1690,135 @@ describe("cards route — /preview 走皮肤", () => {
 			startedAt: "2026-09-13T12:00:00.000Z",
 			currentViewers: 321,
 		});
-		expect(String(http.fetch.mock.calls[0]?.[0])).toBe("https://i0.hdslb.com/cover.png");
+		expect(http.fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+			"https://i0.hdslb.com/up.png",
+			"https://i0.hdslb.com/cover.png",
+		]);
+		spy.mockRestore();
+	});
+
+	// 3a-35(主人定):预览里没订阅的 UP,头像按拉回来的地址现抓(头像档),抓到有头像、抓不到不画、预览照出。
+	// 验红:去掉 cards.ts `renderRealLive` 里 `fetchAvatar(...)` 那一支,头一条红。
+	it("真实直播那条路:没订阅的 UP 按主播信息里的头像地址现抓;抓不到就没有头像、预览照出", async () => {
+		const face = "https://i0.hdslb.com/bfs/face/up.jpg";
+		const apiOf = (http: unknown) =>
+			({
+				http,
+				fetchLiveRoomInfo: vi.fn(async () => ({
+					code: 0,
+					data: { uid: 999, live_status: 1, title: "t", user_cover: "", keyframe: "" },
+				})),
+				getMasterInfo: vi.fn(async () => ({
+					code: 0,
+					data: { info: { uname: "路人UP", face } },
+				})),
+			}) as unknown as Api;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateLiveCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const okHttp = imageHttp();
+		const okApp = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: apiOf(okHttp),
+		});
+		expect(
+			(await postPreview(okApp, { kind: "live", style: STYLE, content: { roomId: "778899" } }))
+				.status,
+		).toBe(200);
+		expect(okHttp.fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+			`${face}@480w_80q_1s.webp`,
+		]);
+		expect(spy.mock.calls[0]?.[0]).toMatchObject({
+			creator: { name: "路人UP", avatar: PREVIEW_IMAGE_REF },
+		});
+
+		const failHttp = { fetch: vi.fn(async () => fail("unavailable", "测试不联网")) };
+		const failApp = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: apiOf(failHttp),
+		});
+		expect(
+			(await postPreview(failApp, { kind: "live", style: STYLE, content: { roomId: "778899" } }))
+				.status,
+		).toBe(200);
+		expect((spy.mock.calls[1]?.[0] as { creator: object } | undefined)?.creator).toStrictEqual({
+			name: "路人UP",
+		});
+		spy.mockRestore();
+	});
+
+	it("真实动态那条路:没订阅的 UP 按外层作者的头像地址现抓;抓不到就没有头像", async () => {
+		const face = "https://i0.hdslb.com/bfs/face/author.jpg";
+		const rawItem = {
+			basic: {},
+			id_str: "1",
+			type: "DYNAMIC_TYPE_WORD",
+			modules: {
+				module_author: { name: "路人UP", face, pub_ts: 1_700_000_000, vip: { type: 0 } },
+				module_dynamic: { desc: { text: "你好", rich_text_nodes: [] } },
+			},
+		};
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generatePostCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const run = async (http: unknown) => {
+			const api = {
+				http,
+				fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+			} as unknown as Api;
+			const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
+			return postPreview(app, { kind: "post", style: STYLE, content: { uid: "999" } });
+		};
+		const okHttp = imageHttp();
+		expect((await run(okHttp)).status).toBe(200);
+		expect(okHttp.fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+			`${face}@480w_80q_1s.webp`,
+		]);
+		expect((spy.mock.calls[0]?.[0] as Post | undefined)?.creator.avatar).toBe(PREVIEW_IMAGE_REF);
+		expect(
+			(await run({ fetch: vi.fn(async () => fail("unavailable", "测试不联网")) })).status,
+		).toBe(200);
+		// 先钉第二张卡确实出了,下面那句「没有头像」才不是空过。
+		expect(spy).toHaveBeenCalledTimes(2);
+		expect((spy.mock.calls[1]?.[0] as Post | undefined)?.creator.avatar).toBeUndefined();
+		spy.mockRestore();
+	});
+
+	// 3a-35:已订阅的 UP,真实直播预览的主播头像读订阅资料里的引用(和真推送一致)。
+	// 验红:去掉 cards.ts `renderRealLive` 里递给 `liveCardInputFromRoomInfo` 的头像,这条红。
+	it("真实直播那条路:已订阅的 UP 带资料里的头像,不为它联网", async () => {
+		const http = imageHttp();
+		const api = {
+			http,
+			fetchLiveRoomInfo: vi.fn(async () => ({
+				code: 0,
+				data: { uid: 12345, live_status: 1, title: "t", user_cover: "", keyframe: "" },
+			})),
+			getMasterInfo: vi.fn(async () => ({
+				code: 0,
+				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
+			})),
+		} as unknown as Api;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateLiveCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: makeDeps(undefined, { subscribed: true }),
+			puppeteer: makeFakePuppeteer(),
+			api,
+		});
+		const res = await postPreview(app, {
+			kind: "live",
+			style: STYLE,
+			content: { roomId: "778899" },
+		});
+		expect(res.status).toBe(200);
+		expect(spy.mock.calls[0]?.[0]).toMatchObject({
+			creator: { name: "真实UP", avatar: SUBSCRIBED_AVATAR },
+		});
+		expect(http.fetch).not.toHaveBeenCalled();
 		spy.mockRestore();
 	});
 
@@ -1756,6 +1905,50 @@ describe("cards route — /preview 走皮肤", () => {
 		const post = spy.mock.calls[0]?.[0] as { images?: { url?: string; ref?: string }[] };
 		expect(post.images?.[0]).toMatchObject({ url: pic, ref: PREVIEW_IMAGE_REF });
 		expect(String(http.fetch.mock.calls[0]?.[0])).toBe(`${pic}@1280w_80q_1s.webp`);
+		spy.mockRestore();
+	});
+
+	// 3a-35:预览的真实拉取与真推送一致 —— 已订阅的 UP 读订阅资料里的头像引用,转发的原作者头像现抓。
+	// 验红:去掉 cards.ts `renderRealDynamic` 里递给 fetchPostImages 的 `avatar` / `repostAvatarUrl`,这条红。
+	it("真实动态那条路:已订阅的 UP 带资料里的头像,转发的原作者头像现抓", async () => {
+		const face = "https://i0.hdslb.com/bfs/face/orig.jpg";
+		const rawItem = {
+			basic: {},
+			id_str: "1",
+			type: "DYNAMIC_TYPE_FORWARD",
+			modules: {
+				module_author: { name: "真实UP", pub_ts: 1_700_000_000, vip: { type: 0 } },
+				module_dynamic: { desc: { text: "转发", rich_text_nodes: [] } },
+			},
+			orig: {
+				type: "DYNAMIC_TYPE_WORD",
+				modules: {
+					module_author: { name: "原作者", face, pub_ts: 1_700_000_000, vip: { type: 0 } },
+					module_dynamic: { desc: { text: "原文", rich_text_nodes: [] } },
+				},
+			},
+		};
+		const http = imageHttp();
+		const api = {
+			http,
+			fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+		} as unknown as Api;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generatePostCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const deps = makeDeps(undefined, { subscribed: true });
+		(deps.store as unknown as { getGlobals: () => unknown }).getGlobals = () => ({
+			defaults: { cardSkin: DEFAULT_CARD_SKIN_ID },
+		});
+		const app = createCardsRoute({ deps, puppeteer: makeFakePuppeteer(), api });
+		const res = await postPreview(app, { kind: "post", style: STYLE, content: { uid: "12345" } });
+		expect(res.status).toBe(200);
+		const post = spy.mock.calls[0]?.[0] as Post;
+		expect(post.creator.avatar).toBe(SUBSCRIBED_AVATAR);
+		expect(post.repost?.creator.avatar).toBe(PREVIEW_IMAGE_REF);
+		expect(http.fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+			`${face}@480w_80q_1s.webp`,
+		]);
 		spy.mockRestore();
 	});
 

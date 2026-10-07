@@ -42,7 +42,7 @@ function statusLabel(p: LiveCardView): { text: string; bg: string } {
 
 /**
  * 头像(原子块)。`object-cover` 是裁法不是样子:尺寸与圆由皮肤的 `image` 规则说。
- * 没有头像地址就整块收起(B 站这条路到 3a 之前不给,见 `LiveCardInput.author`);拓展直播照旧画。
+ * 没有头像地址就整块收起(见 `LiveCardInput.creator`:拿不到引用就不给)。
  */
 const creatorAvatar: BlockRenderer<LiveCardView> = (p) =>
 	p.creatorAvatarUrl ? (

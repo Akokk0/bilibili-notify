@@ -10,13 +10,16 @@
 
 import { urlWithoutQuery } from "@bilibili-notify/http";
 import type { LiveCardInput } from "@bilibili-notify/image";
-import type {
-	CachedProfile,
-	ImageRef,
-	Logger,
-	Post,
-	PostImage,
-	Result,
+import {
+	BILIBILI_SOURCE_KEY,
+	type CachedProfile,
+	type ImageRef,
+	type Logger,
+	type Post,
+	type PostImage,
+	type Result,
+	type Subscription,
+	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 
 export interface ImagesDeps {
@@ -133,35 +136,70 @@ async function fetchRef(url: string, deps: ImagesDeps): Promise<ImageRef | undef
 	return undefined;
 }
 
-/** 一批地址(去重)抓进图库,同时最多 {@link FETCH_CONCURRENCY} 张;回「地址 → 引用」(抓不到的不在表里)。 */
-async function fetchRefs(urls: Iterable<string>, deps: ImagesDeps): Promise<Map<string, ImageRef>> {
-	const queue = [...new Set(urls)];
-	const refs = new Map<string, ImageRef>();
+/** 一批活同时最多跑 {@link FETCH_CONCURRENCY} 个(每个活自己吞掉失败,不抛)。 */
+async function runLimited(jobs: Array<() => Promise<void>>): Promise<void> {
+	const queue = [...jobs];
 	const worker = async (): Promise<void> => {
-		for (let url = queue.shift(); url !== undefined; url = queue.shift()) {
-			const ref = await fetchRef(url, deps);
-			if (ref !== undefined) refs.set(url, ref);
-		}
+		for (let job = queue.shift(); job !== undefined; job = queue.shift()) await job();
 	};
 	await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, queue.length) }, worker));
-	return refs;
 }
 
 /**
  * 把一条作品里所有只有地址没有引用的图抓进图库,回新对象(不改入参;已有引用的图不动,转发的内层作品也走)。
  * 抓到的图加 `ref`、保留原来的 `url`;抓不到的保持只有 `url`,别的图照抓。
+ *
+ * 头像一并处理(第三参):外层作者的引用直接填进去;转发的原作者头像地址和配图同一步、同一个并发上限
+ * 现抓(头像那一档,见 {@link fetchAvatar}),抓不到就不画。作品不是转发就没有地方放,不抓。
+ *
+ * @param avatars.avatar 外层作者的头像(图库引用,通常取自订阅资料);填进 `creator.avatar`,不碰网络。
+ * @param avatars.repostAvatarUrl 被转发的原作者的头像地址(他通常不是订阅的人,资料里没有);
+ *   现抓,抓到的填进 `repost.creator.avatar`。
  */
-export async function fetchPostImages(post: Post, deps: ImagesDeps): Promise<Post> {
-	const urls: string[] = [];
+export async function fetchPostImages(
+	post: Post,
+	deps: ImagesDeps,
+	avatars: { avatar?: ImageRef; repostAvatarUrl?: string } = {},
+): Promise<Post> {
+	const urls = new Set<string>();
 	mapPostImages(post, (image) => {
-		if (needsFetch(image)) urls.push(image.url);
+		if (needsFetch(image)) urls.add(image.url);
 		return image;
 	});
-	const refs = await fetchRefs(urls, deps);
-	return mapPostImages(post, (image) => {
+	const refs = new Map<string, ImageRef>();
+	const jobs = [...urls].map((url) => async () => {
+		const ref = await fetchRef(url, deps);
+		if (ref !== undefined) refs.set(url, ref);
+	});
+	let repostAvatar: ImageRef | undefined;
+	const { repostAvatarUrl } = avatars;
+	if (post.repost !== undefined && repostAvatarUrl) {
+		jobs.push(async () => {
+			repostAvatar = await fetchAvatar(repostAvatarUrl, deps);
+		});
+	}
+	await runLimited(jobs);
+	const filled = mapPostImages(post, (image) => {
 		const ref = needsFetch(image) ? refs.get(image.url) : undefined;
 		return ref === undefined ? image : { ...image, ref };
 	});
+	return withAvatars(filled, avatars.avatar, repostAvatar);
+}
+
+/** 把头像引用填进作品(外层作者、转发的原作者),回新对象;没有引用的那一处原样。 */
+function withAvatars(
+	post: Post,
+	avatar: ImageRef | undefined,
+	repostAvatar: ImageRef | undefined,
+): Post {
+	const repost = post.repost;
+	return {
+		...post,
+		...(avatar === undefined ? {} : { creator: { ...post.creator, avatar } }),
+		...(repost === undefined || repostAvatar === undefined
+			? {}
+			: { repost: { ...repost, creator: { ...repost.creator, avatar: repostAvatar } } }),
+	};
 }
 
 /**
@@ -180,16 +218,23 @@ export async function fetchLiveCover(
 /**
  * 把一张头像抓进图库,回图库引用;抓不到回 `undefined`、记一条 warn(地址不带 query),不抛。
  * 头像单独一档缩放({@link AVATAR_MAX_WIDTH} 宽),**缩放版抓不到不回退原图**(和作品图不同):这一轮就没头像,
- * 下一轮由调用方再试。非 B 站图床的地址(缩放不动它)只抓一次原地址。
+ * 下一轮由调用方再试;抓图服务本身抛了也回 `undefined`、记 warn。非 B 站图床的地址(缩放不动它)只抓一次原地址。
  */
 export async function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
-	const result = await deps.images.fetchImage(scaledImageUrl(url, AVATAR_MAX_WIDTH), {
-		headers: IMAGE_REQUEST_HEADERS,
-	});
-	if (result.ok) return result.ref;
-	deps.logger.warn(
-		`[bilibili-images] 头像抓取失败,这一轮没有头像 ${urlWithoutQuery(url)}: ${result.code}: ${result.message}`,
-	);
+	try {
+		const result = await deps.images.fetchImage(scaledImageUrl(url, AVATAR_MAX_WIDTH), {
+			headers: IMAGE_REQUEST_HEADERS,
+		});
+		if (result.ok) return result.ref;
+		deps.logger.warn(
+			`[bilibili-images] 头像抓取失败,这一轮没有头像 ${urlWithoutQuery(url)}: ${result.code}: ${result.message}`,
+		);
+	} catch (e) {
+		// 抓图服务本身抛了也是「这一轮没有头像」:约定是不抛,调用方不必再包一层。
+		deps.logger.warn(
+			`[bilibili-images] 头像抓取出错,这一轮没有头像 ${urlWithoutQuery(url)}: ${(e as Error).message}`,
+		);
+	}
 	return undefined;
 }
 
@@ -221,4 +266,20 @@ export async function syncProfileAvatar(
 	const avatar = await fetchAvatar(avatarUrl, deps);
 	if (avatar !== undefined) return { avatar, avatarUrl };
 	return current?.avatar === undefined ? { avatarUrl } : kept;
+}
+
+/**
+ * uid 对应的**已订阅**的 B 站 UP 在订阅资料里的头像引用;没订阅、资料里还没有头像都回 `undefined`(卡上不画)。
+ * 面板预览的真实拉取用它:预览里那位 UP 不一定订阅了,订阅了就和真推送一样读资料、零网络。
+ */
+export function subscribedAvatar(
+	subscriptions: readonly Subscription[],
+	profileOf: (subscriptionId: string) => Pick<CachedProfile, "avatar"> | undefined,
+	uid: string,
+): ImageRef | undefined {
+	const subscription = subscriptions.find((sub) => {
+		const identity = subscriptionIdentityOf(sub);
+		return identity.sourceKey === BILIBILI_SOURCE_KEY && identity.externalId === uid;
+	});
+	return subscription ? profileOf(subscription.id)?.avatar : undefined;
 }

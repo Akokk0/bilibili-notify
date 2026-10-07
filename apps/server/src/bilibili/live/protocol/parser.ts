@@ -178,11 +178,12 @@ function fanMedalOf(medal: unknown): FanMedal | undefined {
 function makeUser(
 	uid: number,
 	uname: string,
-	extra?: { medal?: FanMedal; guardLevel?: GuardLevel; isRoomAdmin?: boolean },
+	extra?: { medal?: FanMedal; guardLevel?: GuardLevel; isRoomAdmin?: boolean; avatarUrl?: string },
 ): LiveUser {
 	return {
 		uid,
 		name: uname,
+		...(extra?.avatarUrl ? { avatarUrl: extra.avatarUrl } : {}),
 		...(extra?.medal ? { medal: extra.medal } : {}),
 		...(extra?.guardLevel ? { guardLevel: extra.guardLevel } : {}),
 		...(extra?.isRoomAdmin ? { isRoomAdmin: true } : {}),
@@ -264,7 +265,7 @@ function parseSuperChat(record: Record<string, unknown> | null): LiveEvent | und
 		| {
 				id?: unknown;
 				uid?: unknown;
-				user_info?: { uname?: unknown; guard_level?: unknown; manager?: unknown };
+				user_info?: { uname?: unknown; face?: unknown; guard_level?: unknown; manager?: unknown };
 				medal_info?: unknown;
 				message?: unknown;
 				price?: unknown;
@@ -293,6 +294,8 @@ function parseSuperChat(record: Record<string, unknown> | null): LiveEvent | und
 			medal: fanMedalOf(data?.medal_info),
 			guardLevel: guardLevelOf(data?.user_info?.guard_level),
 			isRoomAdmin: data?.user_info?.manager === 1,
+			// B 站回应里的头像地址字段(醒目留言帧自带);空串当没有。
+			avatarUrl: str(data?.user_info?.face),
 		}),
 		...(id !== undefined ? { id } : {}),
 		...(durationSec !== undefined ? { durationSec } : {}),

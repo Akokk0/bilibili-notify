@@ -44,8 +44,8 @@ import type { BlockRenderer } from "./types";
  * 发送者头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
  * img 只负责填满并按比例裁(`overflow-hidden` 是裁法不是样子)。
  *
- * **没有头像就整块收起**(返回 null):`SuperchatCardInput.viewer.avatar` 只收图库引用,B 站的头像是远端地址,
- * 3a 才存进图库,所以 B 站这条路到那时不给(ADR-0021 决策 26 下 2026-10-05 的 🔗,照 ㉑ ㉒ 的先例)。
+ * **没有头像就整块收起**(返回 null):`SuperchatCardInput.viewer.avatar` 只收图库引用,B 站这条路出卡前把留言帧自带的头像地址抓进图库,
+ * 抓不到就不给(ADR-0021 决策 26 下 2026-10-05 的 🔗)。
  */
 const viewerAvatar: BlockRenderer<SuperchatCardView> = (p) =>
 	p.viewerAvatarUrl ? (

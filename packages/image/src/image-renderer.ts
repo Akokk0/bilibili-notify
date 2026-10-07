@@ -757,7 +757,11 @@ export class ImageRenderer {
 	async generateWordCloudImg(
 		words: Array<[string, number]>,
 		creatorName: string,
-		creatorAvatarUrl?: string,
+		/**
+		 * 主播头像的图库引用(选填;没有、或引用解析不到就不画头像块)。和别的卡一样,出图器在这里经宿主注入的
+		 * {@link ImageRendererOptions.resolveImageRef} 事先认成可画的地址。
+		 */
+		creatorAvatar?: ImageRef,
 		/**
 		 * 用哪套皮肤、这位 UP 怎么拧它;词云卡整张是一个内置块,皮肤只管外框(ADR-0014 决策 3)。
 		 */
@@ -768,6 +772,10 @@ export class ImageRenderer {
 		// 画布(`#wordCloudCanvas`)在内置块里,皮肤路径出的 HTML 照样有它 —— 画词的脚本
 		// 原样注进 `</body>` 之前(`wordCloudInitScript`,读盘拼脚本那一半单独住在那儿)。
 		const script = wordCloudInitScript(words, ASSET_DIR);
+		const resolved = await this.resolveImageRefs(
+			creatorAvatar === undefined ? new Set<ImageRef>() : new Set([creatorAvatar]),
+		);
+		const creatorAvatarUrl = creatorAvatar === undefined ? undefined : resolved.get(creatorAvatar);
 		return this.renderWithSkin({
 			kind: "wordcloud",
 			title: "弹幕词云",

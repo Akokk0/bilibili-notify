@@ -6,7 +6,9 @@
  * 就不画」(见 `packages/image` 里各卡的说明)。
  *
  * 翻译表:
- * - 作者 → `creator`(只有名字与大会员,**头像不给**:`Creator.avatar` 只收图库引用,B 站 3a 才存);
+ * - 作者 → `creator`(只有名字与大会员,**头像不在这里给**:`Creator.avatar` 只收图库引用,同步翻译不碰图库;
+ *   外层作者的头像引用由订阅资料带,转发的原作者头像地址由 {@link repostAvatarUrlOf} 读出,都在出卡前的抓图那一步
+ *   (`fetchPostImages`)填上);
  * - 发布时间(秒)→ ISO 字符串;类型标签 → `label`(「投稿了视频」「投稿了专栏」),卡上由出图器拼回老位置;
  * - 正文:desc 与 opus 摘要合成一段(换行连接)→ `text`,富文本节点 → `richText` 五种片段(`mention` / `topic` /
  *   `link` / `emoji` / `text`);**不带图标与表情图**(它们只收图库引用);
@@ -104,6 +106,15 @@ type RawNode = {
  */
 export function postFromDynamic(item: Dynamic): Post {
 	return normalizePost(translate(item, false));
+}
+
+/**
+ * 转发动态里**原作者**的头像地址(B 站回应里作者模块的 `face`);不是转发、原动态已删或没给就是 `undefined`。
+ * 原作者通常不是订阅的人,资料里没有他的头像,出卡前由 `fetchPostImages` 按这个地址现抓。
+ */
+export function repostAvatarUrlOf(item: Dynamic): string | undefined {
+	const face = (item.orig?.modules?.module_author as { face?: unknown } | undefined)?.face;
+	return typeof face === "string" && face !== "" ? face : undefined;
 }
 
 function translate(item: Dynamic, isRepost: boolean): Post {

@@ -61,7 +61,8 @@ function makeCtx() {
 	const broadcastToTargets = vi.fn(
 		async (_uid: string, _content: unknown, _type: LivePushType, _opts?: unknown) => {},
 	);
-	const wordcloud = vi.fn(async () => Buffer.from("wc"));
+	const wordcloud = vi.fn(async (..._args: unknown[]) => Buffer.from("wc"));
+	const avatarOf = vi.fn((_subscriptionId: string): string | undefined => undefined);
 	const summary = vi.fn(async () => "总结文本");
 	const ctx = {
 		serviceCtx,
@@ -84,10 +85,11 @@ function makeCtx() {
 		sendLiveNotifyCard,
 		wordcloudGenerator: { generate: wordcloud },
 		liveSummaryRequester: { generate: summary },
+		avatarOf,
 		stopMonitoring: vi.fn(),
 		emitLiveState: vi.fn(),
 	} as unknown as RoomContext;
-	return { ctx, sendLiveNotifyCard, broadcastToTargets, wordcloud, summary };
+	return { ctx, sendLiveNotifyCard, broadcastToTargets, wordcloud, summary, avatarOf };
 }
 
 const ROOM = {
@@ -133,6 +135,29 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 			[LivePushType.WordCloudAndLiveSummary, { pushId: card?.pushId, role: "extra" }],
 			[LivePushType.LiveSummary, { pushId: card?.pushId, role: "extra" }],
 		]);
+	});
+
+	// 3a-35:词云卡的主播头像是订阅资料里的图库引用,做词云那一刻按订阅 id 现读;直播间接口给的远端地址不再往出图器送。
+	// 验红:把 room-session-base.ts 里交给 `wordcloudGenerator.generate` 的第三个实参换回 `this.masterInfo?.userface`,这条红。
+	it("词云的主播头像按订阅 id 现读订阅资料里的引用,不用直播间接口给的地址", async () => {
+		const { ctx, wordcloud, avatarOf } = makeCtx();
+		avatarOf.mockReturnValue("0123abcd.webp");
+		const session = liveSession(ctx, makeSub());
+		session.masterInfo = { ...MASTER, userface: "https://i0.hdslb.com/bfs/face/x.jpg" };
+		await session.handleLiveEnd("ws");
+
+		expect(avatarOf).toHaveBeenCalledWith("sub-1");
+		expect(wordcloud.mock.calls[0]?.[2]).toBe("0123abcd.webp");
+	});
+
+	it("订阅资料里还没有头像 → 词云不带头像", async () => {
+		const { ctx, wordcloud } = makeCtx();
+		const session = liveSession(ctx, makeSub());
+		session.masterInfo = { ...MASTER, userface: "https://i0.hdslb.com/bfs/face/x.jpg" };
+		await session.handleLiveEnd("ws");
+
+		expect(wordcloud).toHaveBeenCalledTimes(1);
+		expect(wordcloud.mock.calls[0]?.[2]).toBeUndefined();
 	});
 
 	// 三处 sendLiveNotifyCard(开播 / 直播中 / 下播)都得把 sub 的皮肤递出去;漏一处的
@@ -220,6 +245,7 @@ describe("sendLiveNotifyCard — pushId 透传给推送层", () => {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			isDisposed: () => false,
 			imageRenderer: null,
+			avatarOf: () => undefined,
 			contentBuilder: {
 				text: (t: string) => ({ kind: "text", text: t }),
 				image: () => ({ kind: "image" }),

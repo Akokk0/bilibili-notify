@@ -306,6 +306,8 @@ export class RoomContext extends RoomContextBase {
 		cardSkin?: string;
 		/** 这位 UP 那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);undefined = 全跟全局。 */
 		cardSkinKnobs?: SubItemView["cardSkinKnobs"];
+		/** 订阅 id:出卡那一刻按它现读订阅资料里的主播头像(`avatarOf`),没有就不画。 */
+		subscriptionId: string;
 		uid: string;
 		notifyMsg: string;
 		messageLayout: MessageKindLayout;
@@ -314,7 +316,13 @@ export class RoomContext extends RoomContextBase {
 		pushId?: string;
 	}): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, uid } = params;
-		let input = liveCardInputFromRoomInfo(liveRoomInfo, master.username, liveData, liveType);
+		let input = liveCardInputFromRoomInfo(
+			liveRoomInfo,
+			master.username,
+			liveData,
+			liveType,
+			this.avatarOf(params.subscriptionId),
+		);
 		// 封面在**确定要出卡时**才抓进图库(3a-34):出卡条件与 `pushLiveNotify` 同一份(有渲染器、版式里卡片块可见)。
 		if (this.imageRenderer && isBlockVisible(params.messageLayout, "card")) {
 			input = await fetchLiveCover(input, { images: this.imageFetcher, logger: this.logger });

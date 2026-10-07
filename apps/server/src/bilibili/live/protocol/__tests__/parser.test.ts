@@ -85,6 +85,31 @@ describe("parseCommand(合成 payload)", () => {
 		});
 	});
 
+	// 醒目留言帧自带发送者头像地址(user_info.face);读出来放到事件的用户上,出卡前才抓进图库。
+	// 验红:把 parser.ts `parseSuperChat` 里读 `face` 的那一格去掉,头一条红。
+	it("SUPER_CHAT_MESSAGE 带 user_info.face → user.avatarUrl;没带 / 空串 / 不是字符串 → 缺键", () => {
+		const frame = (face: unknown) => ({
+			cmd: "SUPER_CHAT_MESSAGE",
+			data: {
+				id: 1,
+				uid: 8888,
+				user_info: { uname: "金主", ...(face === undefined ? {} : { face }) },
+				message: "加油",
+				price: 30,
+			},
+		});
+
+		expect(parseCommand(frame("https://i0.hdslb.com/bfs/face/viewer.jpg"))).toMatchObject({
+			kind: "superchat",
+			user: { uid: 8888, name: "金主", avatarUrl: "https://i0.hdslb.com/bfs/face/viewer.jpg" },
+		});
+		for (const face of [undefined, "", 12, null]) {
+			const event = parseCommand(frame(face));
+			expect(event).toMatchObject({ kind: "superchat" });
+			expect((event as { user: object }).user).toStrictEqual({ uid: 8888, name: "金主" });
+		}
+	});
+
 	it("GUARD_BUY → guard-buy:username 字段是昵称", () => {
 		const payload = {
 			cmd: "GUARD_BUY",

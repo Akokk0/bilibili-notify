@@ -16,7 +16,7 @@
  */
 
 import type { ImageRef, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
-import { defaultMessageKindLayout, ok } from "@bilibili-notify/internal";
+import { defaultMessageKindLayout, fail, ok } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { membershipEventFromLiveEvent } from "../../membership-event";
@@ -88,6 +88,10 @@ interface CtxMocks {
 	recordDanmaku: ReturnType<typeof vi.fn>;
 	broadcastToTargets: ReturnType<typeof vi.fn>;
 	fetchUserInfoInLive: ReturnType<typeof vi.fn>;
+	/** 注入的抓图服务(`ctx.imageFetcher`):每个地址回一个以它命名的引用,测试数调用。 */
+	fetchImage: ReturnType<typeof vi.fn>;
+	/** 注入的头像读口(`ctx.avatarOf`):订阅 id → 资料里的头像引用,默认没有。 */
+	avatarOf: ReturnType<typeof vi.fn>;
 	/** `logger.warn` 收到的每一次调用(认不出的档位丢弃时记一条)。 */
 	warn: ReturnType<typeof vi.fn>;
 	generateSuperchatCard: ReturnType<typeof vi.fn>;
@@ -131,7 +135,14 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 	const m: CtxMocks = {
 		recordDanmaku: vi.fn(),
 		broadcastToTargets: vi.fn(async () => {}),
-		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人", face: "f" } })),
+		// 默认不给头像地址:只有专门测头像的用例才覆写,其余用例的出卡输入里观众就没有 avatar。
+		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人" } })),
+		fetchImage: vi.fn(async (url: string) =>
+			ok({
+				ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef,
+			}),
+		),
+		avatarOf: vi.fn((_subscriptionId: string): string | undefined => undefined),
 		warn,
 		generateSuperchatCard: vi.fn(async () => Buffer.from("sc")),
 		generateMembershipCard: vi.fn(async () => Buffer.from("guard")),
@@ -162,6 +173,8 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 			customLiveMsg: { enable: false },
 		},
 		api: { fetchUserInfoInLive: m.fetchUserInfoInLive },
+		imageFetcher: { fetchImage: m.fetchImage },
+		avatarOf: m.avatarOf,
 		push: { broadcastToTargets: m.broadcastToTargets },
 		imageRenderer: {
 			generateSuperchatCard: m.generateSuperchatCard,
@@ -663,7 +676,6 @@ describe("RoomSession.onGuardBuy", () => {
 			});
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
-			expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 			return m.broadcastToTargets.mock.calls[0]?.[1];
 		}
 
@@ -922,7 +934,7 @@ describe("RoomSession.onGuardBuy", () => {
 		});
 	});
 
-	it("默认(custom 关)+ 出图器 → 图片卡片(LiveGuardBuy),不再调 fetchUserInfoInLive 查用户", async () => {
+	it("默认(custom 关)+ 出图器 → 图片卡片(LiveGuardBuy);出卡前为观众头像查一次 fetchUserInfoInLive(观众 uid, 主播 uid)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
@@ -930,9 +942,10 @@ describe("RoomSession.onGuardBuy", () => {
 		expect(m.generateMembershipCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
-		// ㉓c:出卡前不再查用户(名字用事件里的,房管那一格随之没了)。
-		// 验红:把 room-session.ts 里上舰出卡前加回一次 `await this.ctx.api.fetchUserInfoInLive(...)`,这条红。
-		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
+		// ㉓c 之后名字用事件里的、不再查用户;3a-35 起只为观众头像查一次(上舰帧里没有头像地址)。
+		// 验红:把 room-session.ts 里出卡前的 `fetchGuardViewerAvatar(...)` 去掉,这条红。
+		expect(m.fetchUserInfoInLive).toHaveBeenCalledTimes(1);
+		expect(m.fetchUserInfoInLive).toHaveBeenCalledWith(String(guardBody.user.uid), "u1");
 	});
 
 	/**
@@ -1705,6 +1718,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			pickCardBackground: () => undefined,
 			guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
 			imageFetcher: { fetchImage },
+			avatarOf: () => undefined,
 			onRoomIdResolved: vi.fn(),
 		});
 		return { ctx, broadcastToTargets, fetchImage };
@@ -1737,6 +1751,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			cardStyle: { enable: false },
 			uid: "u1",
 			notifyMsg: "msg",
+			subscriptionId: "sub-1",
 			messageLayout: defaultMessageKindLayout("live"),
 		});
 		expect(broadcastToTargets).toHaveBeenCalledTimes(1);
@@ -1764,6 +1779,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			cardStyle: { enable: false },
 			uid: "u1",
 			notifyMsg: "msg",
+			subscriptionId: "sub-1",
 			messageLayout: defaultMessageKindLayout("live"),
 		});
 		expect(broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.CatchUp);
@@ -1805,6 +1821,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 				cardStyle: { enable: false },
 				uid: "u1",
 				notifyMsg: "msg",
+				subscriptionId: "sub-1",
 				messageLayout,
 			});
 
@@ -2077,5 +2094,220 @@ describe("RoomSession.onLiveStart — 第二场直播的开播时刻", () => {
 		release();
 		await starting;
 		expect(s.liveStatus).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 3a-35:醒目留言 / 上舰卡的头像
+//
+// 主播头像读订阅视图的 `avatar`(零网络);观众头像只在**确定要出卡**时才取:醒目留言取帧里自带的地址,上舰要为此查一次
+// B 站接口。头像只是点缀:取不到卡照出、不退文字、不抛。
+// ---------------------------------------------------------------------------
+
+describe("RoomSession — 醒目留言 / 上舰卡的头像", () => {
+	const FACE = "https://i0.hdslb.com/bfs/face/viewer.jpg";
+	const ANCHOR_AVATAR = `${"d".repeat(64)}.jpg` as ImageRef;
+	const REF_PATTERN = /^[0-9a-f]{64}\.jpg$/;
+	const scBody = {
+		kind: "superchat" as const,
+		content: "加油",
+		user: { name: "粉丝", uid: 42, avatarUrl: FACE },
+		price: 50,
+	};
+	const guardBody = {
+		kind: "guard-buy" as const,
+		guardLevel: GuardLevel.Captain,
+		giftName: "舰长",
+		user: { name: "船员", uid: 7 },
+	};
+
+	function scSession(over: Partial<SubItemView> = {}) {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
+		const s = new RoomSession(ctx, makeSub({ superchat: true, ...over })) as AnySession;
+		return { ctx, m, s };
+	}
+	function guardSession(over: Partial<SubItemView> = {}) {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
+		m.fetchUserInfoInLive.mockResolvedValue({ code: 0, data: { uname: "船员", face: FACE } });
+		const s = new RoomSession(ctx, makeSub({ membership: true, ...over })) as AnySession;
+		return { ctx, m, s };
+	}
+
+	describe("醒目留言", () => {
+		// 验红:把 room-session.ts 里出卡前抓观众头像的那一句去掉(或不填进 `viewer`),这条红。
+		it("帧里有头像地址 → 出卡前按头像档抓一次,viewer.avatar 是抓到的引用", async () => {
+			const { m, s } = scSession();
+			await s.onIncomeSuperChat(scBody);
+			expect(m.fetchImage).toHaveBeenCalledTimes(1);
+			expect(m.fetchImage.mock.calls[0]?.[0]).toBe(`${FACE}@480w_80q_1s.webp`);
+			expect(m.generateSuperchatCard.mock.calls[0]?.[0].viewer.avatar).toMatch(REF_PATTERN);
+		});
+
+		// 验红:把 room-session.ts 里 `creator` 那一格的主播头像去掉,这条红。
+		it("主播头像出卡时按订阅 id 向读口现读,不为它联网", async () => {
+			const { m, s } = scSession();
+			m.avatarOf.mockReturnValue(ANCHOR_AVATAR);
+			await s.onIncomeSuperChat({ ...scBody, user: { name: "粉丝", uid: 42 } });
+			expect(m.fetchImage).not.toHaveBeenCalled();
+			expect(m.avatarOf).toHaveBeenCalledWith("sub-1");
+			const input = m.generateSuperchatCard.mock.calls[0]?.[0];
+			expect(input.creator.avatar).toBe(ANCHOR_AVATAR);
+			expect(input.viewer).toStrictEqual({ name: "粉丝" });
+		});
+
+		it("头像抓不到(或抓图服务抛了)→ 卡照出、viewer 没有 avatar,不抛", async () => {
+			for (const failure of [
+				async () => fail("unavailable", "连不上"),
+				async () => {
+					throw new Error("boom");
+				},
+			]) {
+				const { m, s } = scSession();
+				m.fetchImage.mockImplementation(failure);
+				await s.onIncomeSuperChat(scBody);
+				expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
+				expect(m.generateSuperchatCard.mock.calls[0]?.[0].viewer).toStrictEqual({ name: "粉丝" });
+				expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			}
+		});
+
+		it("不出卡的几种情形一次头像都不抓:没有出图器 / 低于门槛 / 没订阅醒目留言", async () => {
+			const noRenderer = scSession();
+			(noRenderer.ctx as AnySession).imageRenderer = null;
+			await noRenderer.s.onIncomeSuperChat(scBody);
+			expect(noRenderer.m.fetchImage).not.toHaveBeenCalled();
+
+			const belowMin = scSession({ minSuperchatAmount: 100 });
+			await belowMin.s.onIncomeSuperChat(scBody);
+			expect(belowMin.m.fetchImage).not.toHaveBeenCalled();
+
+			const { ctx, m } = makeCtx();
+			const notSubscribed = new RoomSession(ctx, makeSub({ superchat: false })) as AnySession;
+			await notSubscribed.onIncomeSuperChat(scBody);
+			expect(m.fetchImage).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("上舰", () => {
+		// 验红:把 room-session.ts 里出卡前的 `fetchGuardViewerAvatar(...)` 去掉(或不填进 `viewer`),这条红。
+		it("出卡前查观众的头像地址并抓成引用:viewer.avatar 有值;查的是(观众 uid, 主播 uid)", async () => {
+			const { m, s } = guardSession();
+			m.avatarOf.mockReturnValue(ANCHOR_AVATAR);
+			await s.onGuardBuy(guardBody);
+			expect(m.fetchUserInfoInLive).toHaveBeenCalledWith("7", "u1");
+			expect(m.fetchImage.mock.calls[0]?.[0]).toBe(`${FACE}@480w_80q_1s.webp`);
+			const input = m.generateMembershipCard.mock.calls[0]?.[0];
+			expect(input.viewer.avatar).toMatch(REF_PATTERN);
+			expect(input.creator.avatar).toBe(ANCHOR_AVATAR);
+		});
+
+		it("接口失败 / 抛 / 风控 / 没给地址 / 头像抓不到:都只是没有观众头像,卡照出、不退文字、不抛", async () => {
+			const cases: Array<(m: CtxMocks) => void> = [
+				(m) => m.fetchUserInfoInLive.mockRejectedValue(new Error("网络断了")),
+				(m) => m.fetchUserInfoInLive.mockResolvedValue({ code: -352, data: null }),
+				(m) => m.fetchUserInfoInLive.mockResolvedValue({ code: 0, data: { uname: "船员" } }),
+				(m) => m.fetchUserInfoInLive.mockResolvedValue(undefined),
+				(m) => m.fetchImage.mockResolvedValue(fail("unavailable", "连不上")),
+			];
+			for (const arrange of cases) {
+				const { m, s } = guardSession();
+				arrange(m);
+				await s.onGuardBuy(guardBody);
+				expect(m.generateMembershipCard).toHaveBeenCalledTimes(1);
+				expect(m.generateMembershipCard.mock.calls[0]?.[0].viewer).toStrictEqual({ name: "船员" });
+				expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+				const pushed = m.broadcastToTargets.mock.calls[0]?.[1];
+				expect(pushed).toEqual({ kind: "image" });
+			}
+		});
+
+		it("不出卡的几种情形接口与抓图都零调用:没有出图器 / 低于门槛 / 自定义文案 / 没订阅上舰", async () => {
+			const noRenderer = guardSession();
+			(noRenderer.ctx as AnySession).imageRenderer = null;
+			await noRenderer.s.onGuardBuy(guardBody);
+
+			const belowMin = guardSession({ minGuardRank: 3 });
+			await belowMin.s.onGuardBuy(guardBody);
+
+			const custom = guardSession({ guardTemplate: guardTemplateOn() });
+			await custom.s.onGuardBuy(guardBody);
+
+			const { ctx, m: notSubscribedMocks } = makeCtx();
+			await (new RoomSession(ctx, makeSub({ membership: false })) as AnySession).onGuardBuy(
+				guardBody,
+			);
+
+			for (const m of [noRenderer.m, belowMin.m, custom.m, notSubscribedMocks]) {
+				expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
+				expect(m.fetchImage).not.toHaveBeenCalled();
+			}
+		});
+	});
+});
+
+// 3a-35:开播 / 直播中 / 下播 / 重启补报四处 sendLiveNotifyCard,都得把订阅 id 递过去(它凭此现读主播头像)。
+// 漏一处的症状是「那一类推送的主播头像没了」,而且全绿(参数没有头像时照样出卡)。
+
+describe("RoomSession — 直播卡的主播头像(出卡时按订阅 id 现读)", () => {
+	function primeRoom(s: AnySession): void {
+		s.useLiveRoomInfo = vi.fn(async () => {
+			s.liveRoomInfo = {
+				live_time: "2026-01-01 00:00:00",
+				live_status: 1,
+				short_id: 0,
+				room_id: 12345,
+				title: "标题",
+				user_cover: "",
+			};
+			return true;
+		});
+		s.useMasterInfo = vi.fn(async () => {
+			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 100 };
+			return true;
+		});
+		s.onListenerStarted = vi.fn();
+		s.armPeriodicTimer = vi.fn();
+	}
+	const subscriptionOfFirstCard = (m: CtxMocks) =>
+		m.sendLiveNotifyCard.mock.calls[0]?.[0]?.subscriptionId;
+
+	// 验红:把 room-session.ts `onLiveStart` 里 sendLiveNotifyCard 的 `subscriptionId` 去掉,这条红。
+	it("开播卡", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeRoom(s);
+		await s.onLiveStart();
+		expect(subscriptionOfFirstCard(m)).toBe("sub-1");
+	});
+
+	// 验红:同上,去掉 room-session-base.ts `tickPushAtTime` 里那一句。
+	it("周期「正在直播」卡", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeRoom(s);
+		await s.tickPushAtTime();
+		expect(subscriptionOfFirstCard(m)).toBe("sub-1");
+	});
+
+	// 验红:同上,去掉 room-session-base.ts `bootstrapRoomStateInner` 重启补报里那一句。
+	it("重启补报卡", async () => {
+		const { ctx, m } = makeCtx();
+		const s = new RoomSession(ctx, makeSub({ liveStart: true, catchUpOnBoot: true })) as AnySession;
+		primeRoom(s);
+		await s.bootstrapRoomState();
+		expect(subscriptionOfFirstCard(m)).toBe("sub-1");
+	});
+
+	// 验红:同上,去掉 room-session-base.ts `handleLiveEnd` 里那一句。
+	it("下播卡", async () => {
+		const { ctx, m } = makeCtx();
+		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "liveEnd");
+		const s = new RoomSession(ctx, makeSub()) as AnySession;
+		primeRoom(s);
+		s.liveStatus = true;
+		await s.handleLiveEnd("ws");
+		expect(subscriptionOfFirstCard(m)).toBe("sub-1");
 	});
 });

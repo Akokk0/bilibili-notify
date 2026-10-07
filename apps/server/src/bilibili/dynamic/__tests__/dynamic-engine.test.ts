@@ -223,6 +223,7 @@ function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicResponse {
 /** 测试里写的订阅视图:除 uid / uname 外都可省,messageLayout 缺省为默认版式。 */
 type SeedView = Partial<SubItemView> & Pick<SubItemView, "uid" | "uname">;
 const viewOf = (v: SeedView): SubItemView => ({
+	subscriptionId: `sub-${v.uid}`,
 	messageLayout: defaultMessageKindLayout("post"),
 	...v,
 });
@@ -244,6 +245,8 @@ interface EngineBag {
 	generatePostCard: ReturnType<typeof vi.fn>;
 	/** 注入给引擎的抓图服务(`imageFetcher` 选项):每个地址回一个以它命名的引用,测试数调用。 */
 	fetchImage: ReturnType<typeof vi.fn>;
+	/** 注入给引擎的头像读口(`avatarOf` 选项):测试改它背后的值来模拟资料里的头像补上 / 换掉。 */
+	avatarOf: ReturnType<typeof vi.fn>;
 	comment: ReturnType<typeof vi.fn>;
 	logs: LogRec[];
 	/** 注入给引擎的出图失败计数(`cardFailures` 选项),测试直接读它。 */
@@ -276,6 +279,7 @@ function makeEngine(
 	const fetchImage = vi.fn(async (url: string) =>
 		ok({ ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef }),
 	);
+	const avatarOf = vi.fn((_subscriptionId: string): ImageRef | undefined => undefined);
 	const image = { generatePostCard } as unknown as ImageRenderer;
 	const comment = vi.fn();
 	const ai = { comment } as unknown as CommentaryGenerator;
@@ -288,6 +292,7 @@ function makeEngine(
 		image: over.withImage ? image : undefined,
 		ai: over.withAi ? ai : undefined,
 		imageFetcher: { fetchImage },
+		avatarOf,
 		config: {
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
@@ -307,6 +312,7 @@ function makeEngine(
 		disposers,
 		generatePostCard,
 		fetchImage,
+		avatarOf,
 		comment,
 		logs,
 		cardFailures,
@@ -882,6 +888,95 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(post.images).toHaveLength(1);
 		expect(post.images?.[0]?.ref).toBeDefined();
 		expect(post.images?.[0]?.url).toBe("https://i0.hdslb.com/bfs/new_dyn/a.jpg");
+	});
+
+	// 3a-35:外层作者的头像由引擎出卡那一刻按订阅 id 向宿主读(`avatarOf`),出卡时零网络。
+	// 验红:把 dynamic-engine.ts `workFromDynamic` 里传给 fetchPostImages 的 `avatar: readAvatar()` 去掉,这条红。
+	it("读口给了头像引用:出卡器收到的 Post.creator.avatar 就是它(按视图上的订阅 id 读),不为头像联网", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "你好" })]));
+		const avatar = `${"a".repeat(64)}.jpg` as ImageRef;
+		b.avatarOf.mockReturnValue(avatar);
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", subscriptionId: "sub-xyz" });
+		await detect(b.engine);
+		expect(b.avatarOf).toHaveBeenCalledWith("sub-xyz");
+		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
+		expect(post.creator.avatar).toBe(avatar);
+		expect(b.fetchImage).not.toHaveBeenCalled();
+	});
+
+	// 现读:同一个引擎实例,资料里的头像之后才补上,下一张卡就要有。验红:把读取提前到引擎构造时 / 视图建立时,这条红。
+	it("头像每张卡现读:同一个引擎先出一张没头像的卡,读口背后换成引用,下一张就有", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+		b.fetchAllDynamic
+			.mockResolvedValueOnce(resp([makeItem({ uid: 1, pubTs: 1000, text: "第一条" })]))
+			.mockResolvedValueOnce(resp([makeItem({ uid: 1, pubTs: 2000, text: "第二条" })]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const avatar = `${"b".repeat(64)}.jpg` as ImageRef;
+		b.avatarOf.mockReturnValue(avatar);
+		await detect(b.engine);
+		expect(
+			(b.generatePostCard.mock.calls[0]?.[0] as Post | undefined)?.creator.avatar,
+		).toBeUndefined();
+		expect((b.generatePostCard.mock.calls[1]?.[0] as Post | undefined)?.creator.avatar).toBe(
+			avatar,
+		);
+	});
+
+	/** 一条转发:原作者的头像地址写在原动态的作者模块里。 */
+	const repostItem = (): Dynamic => {
+		const item = makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_FORWARD", text: "转发" });
+		item.orig = {
+			type: "DYNAMIC_TYPE_WORD",
+			modules: {
+				module_author: { name: "原作者", face: "https://i0.hdslb.com/bfs/face/orig.jpg" },
+				module_dynamic: { desc: { text: "原文", rich_text_nodes: [] } },
+			},
+		} as unknown as Dynamic;
+		return item;
+	};
+
+	// 验红:把 dynamic-engine.ts `workFromDynamic` 里传给 fetchPostImages 的 `repostAvatarUrl` 去掉,这条红。
+	it("转发:原作者的头像出卡时现抓(480 宽头像档),填进 repost.creator.avatar", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+		b.fetchAllDynamic.mockResolvedValue(resp([repostItem()]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		expect(b.fetchImage.mock.calls[0]?.[0]).toBe(
+			"https://i0.hdslb.com/bfs/face/orig.jpg@480w_80q_1s.webp",
+		);
+		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
+		expect(post.repost?.creator.avatar).toBeDefined();
+		expect(post.creator.avatar).toBeUndefined();
+	});
+
+	it("转发的动态被过滤掉 / 没有渲染器:原作者的头像一次都不抓", async () => {
+		const filtered = makeEngine({ withImage: true });
+		const item = repostItem();
+		item.modules.module_dynamic.desc = {
+			text: "含禁词",
+			rich_text_nodes: [{ text: "含禁词", type: "RICH_TEXT_NODE_TYPE_TEXT" } as never],
+		};
+		filtered.fetchAllDynamic.mockResolvedValue(resp([item]));
+		seed(filtered.engine, "1", 0, {
+			uid: "1",
+			uname: "UP",
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+		});
+		await detect(filtered.engine);
+		expect(filtered.generatePostCard).not.toHaveBeenCalled();
+		expect(filtered.fetchImage).not.toHaveBeenCalled();
+
+		const noRenderer = makeEngine({ withImage: false });
+		noRenderer.fetchAllDynamic.mockResolvedValue(resp([repostItem()]));
+		seed(noRenderer.engine, "1", 0);
+		await detect(noRenderer.engine);
+		expect(noRenderer.fetchImage).not.toHaveBeenCalled();
 	});
 
 	it("关了出图 / 没有渲染器:不出卡也就一张图都不抓", async () => {
@@ -1947,6 +2042,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			sendErrorMsg: vi.fn(async () => {}),
 		} as unknown as PushLike;
 		const engine = new DynamicEngine({
+			avatarOf: () => undefined,
 			serviceCtx: ctx,
 			bus,
 			api,

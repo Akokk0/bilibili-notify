@@ -34,10 +34,13 @@ function makeCtx(opts?: { renderFail?: boolean }) {
 				throw new Error("boom");
 			})
 		: vi.fn(async (..._args: unknown[]) => Buffer.from("img"));
+	// 订阅 id → 资料里的头像引用(宿主注入的读口):默认没有。
+	const avatarOf = vi.fn((_subscriptionId: string): string | undefined => undefined);
 	const ctx = {
 		logger: silentLogger,
 		isDisposed: () => false,
 		imageRenderer: { generateLiveCard },
+		avatarOf,
 		contentBuilder: {
 			text: (t: string): Seg => ({ kind: "text", text: t }),
 			image: (): Seg => ({ kind: "image" }),
@@ -47,7 +50,7 @@ function makeCtx(opts?: { renderFail?: boolean }) {
 	} as unknown as RoomContext;
 	// 白盒:挂上真实原型,让 sendLiveNotifyCard 内部调用的私有 helper 可达。
 	Object.setPrototypeOf(ctx, RoomContext.prototype);
-	return { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard };
+	return { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard, avatarOf };
 }
 
 const LINK = "https://live.bilibili.com/123";
@@ -76,6 +79,7 @@ function baseParams(over?: Record<string, unknown>) {
 		master: { username: "主播", userface: "", roomId: "123" } as never,
 		cardStyle: { enable: false } as SubItemView["customCardStyle"],
 		uid: "u1",
+		subscriptionId: "sub-1",
 		notifyMsg: "开播文案",
 		roomLink: LINK,
 		// 宿主恒填版式;单个用例按需覆盖。
@@ -132,6 +136,22 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 			status: "end",
 			creator: { name: "主播" },
 			title: "标题",
+		});
+	});
+
+	// 3a-35:主播头像出卡这一刻按订阅 id 向读口现读,进出卡输入的 `creator.avatar`;没有就缺键,卡上头像块收起。
+	// 验红:把 room-helpers.ts 里交给 `liveCardInputFromRoomInfo` 的 `this.avatarOf(params.subscriptionId)` 去掉,这条红。
+	it("主播头像按订阅 id 现读进出卡输入的 creator.avatar;读口没有就缺键", async () => {
+		const { ctx, generateLiveCard, avatarOf } = makeCtx();
+		const avatar = `${"c".repeat(64)}.jpg`;
+		await send(ctx, baseParams());
+		avatarOf.mockReturnValue(avatar);
+		await send(ctx, baseParams());
+		expect(avatarOf).toHaveBeenCalledWith("sub-1");
+		const first = generateLiveCard.mock.calls[0]?.[0] as { creator: object };
+		expect(first.creator).toStrictEqual({ name: "主播" });
+		expect(generateLiveCard.mock.calls[1]?.[0]).toMatchObject({
+			creator: { name: "主播", avatar },
 		});
 	});
 

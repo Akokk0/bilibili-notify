@@ -82,7 +82,7 @@ export type PostNode = {
 	 * 头像地址。**选填,没有就不画头像**(头像块整块收起,皮肤契约的 `creator.avatar` 是空串)。
 	 *
 	 * `nodeFromPost` 据 `Creator.avatar`(图库引用)解析出来:有引用就给(解析不到给占位,留一块空的头像位),
-	 * 没有引用就不给(B 站要到 3a 才存头像)。
+	 * 没有引用就不给(B 站:外层作者读订阅资料里的引用,转发的原作者出卡前现抓,抓不到就不给)。
 	 */
 	creatorAvatarUrl?: string;
 	creatorName: string;

@@ -1,5 +1,5 @@
 import type { CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
-import type { Logger } from "@bilibili-notify/internal";
+import type { ImageRef, Logger } from "@bilibili-notify/internal";
 
 /**
  * Threshold for refusing to render a wordcloud — stays in sync with the
@@ -44,7 +44,7 @@ export class WordcloudGenerator {
 	}
 
 	/**
-	 * Render a wordcloud image for `(masterName, masterAvatarUrl)`.
+	 * Render a wordcloud image for `(masterName, masterAvatar)`.
 	 *
 	 * Returns `undefined` when:
 	 * - There are fewer than {@link WORDCLOUD_MIN_WORDS} unique words.
@@ -55,7 +55,8 @@ export class WordcloudGenerator {
 	async generate(
 		sortedWords: Array<[string, number]>,
 		masterName: string,
-		masterAvatarUrl?: string,
+		/** 主播头像的图库引用(订阅资料里的那张);没有就不画头像。 */
+		masterAvatar?: ImageRef,
 		/** 这张卡用哪套皮肤(ADR-0014);undefined = 内置默认。 */
 		cardSkin?: string,
 		/** 这位 UP 那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);undefined = 全跟全局。 */
@@ -75,7 +76,7 @@ export class WordcloudGenerator {
 			return await renderer.generateWordCloudImg(
 				sortedWords.slice(0, WORDCLOUD_TOP_WORDS),
 				masterName,
-				masterAvatarUrl,
+				masterAvatar,
 				{ cardSkin, cardSkinKnobs },
 			);
 		} catch (e) {

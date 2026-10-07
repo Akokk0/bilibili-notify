@@ -62,6 +62,7 @@ import {
 	fail,
 	type GlobalConfig,
 	guardTierByKey,
+	type ImageRef,
 	issuesFromZod,
 	type NotificationPayload,
 	ok,
@@ -72,8 +73,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
 import type { Api } from "../bilibili/api/index.js";
-import { postFromDynamic } from "../bilibili/dynamic/index.js";
-import { fetchLiveCover, fetchPostImages, type ImagesDeps } from "../bilibili/images.js";
+import { postFromDynamic, repostAvatarUrlOf } from "../bilibili/dynamic/index.js";
+import {
+	fetchAvatar,
+	fetchLiveCover,
+	fetchPostImages,
+	type ImagesDeps,
+	subscribedAvatar,
+} from "../bilibili/images.js";
 import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
@@ -362,6 +369,15 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 		images: createImageFetcher({ http: api.http, images: opts.deps.runtime.postImages }),
 		logger: log,
 	});
+
+	// 预览里那位 UP 若是已订阅的,头像读订阅资料里存好的引用(和真推送一致,零网络)。
+	// 没订阅的(资料里没有他):预览按拉回来的头像地址现抓(见 renderRealLive / renderRealDynamic),抓不到就不画。
+	const subscribedAvatarOf = (uid: string): ImageRef | undefined =>
+		subscribedAvatar(
+			opts.deps.store.getSubscriptions(),
+			(id) => opts.deps.runtime.subRuntimeStore.get(id)?.cachedProfile,
+			uid,
+		);
 
 	// 自动探测本机 Chrome —— dashboard「自动探测」按钮。未配 chromePath 时一键找到
 	// 本地浏览器,免手填路径;探测不到返回 { path: null }。
@@ -819,8 +835,8 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				"preview",
 			);
 			const rank = event.tier?.rank ?? 1;
-			// 预览不传头像:`viewer.avatar` / `creator.avatar` 只收图库引用,B 站的头像是远端地址,3a 才存进图库
-			// (原来拿登录账号的头像当发送者头像,现在不传 —— B 站推送出来的卡也没有头像)。
+			// 示例数据没有头像:这张预览不传(`viewer.avatar` / `creator.avatar` 只收图库引用,示例里没有可给的;
+			// 真推送里观众头像取自帧里的地址、主播头像读订阅资料)。
 			const buffer = await renderer.generateSuperchatCard(
 				{
 					viewer: { name: event.viewer.name },
@@ -849,7 +865,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 			// 徽章图标在图库里:没抓到的先补抓一次(有最小间隔),还是没有就不带 `icon`、徽章块自己收起。
 			await opts.deps.runtime.guardIcons.ensure();
 			const icon = opts.deps.runtime.guardIcons.iconOf(tier.key);
-			// 预览不传头像(同上,B 站 3a 才交图库引用)。
+			// 示例数据没有头像:预览不传(同上)。
 			const buffer = await renderer.generateMembershipCard(
 				{
 					viewer: { name: uname },
@@ -886,6 +902,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					roomId,
 					style,
 					opts.deps.runtime.dataRoot,
+					subscribedAvatarOf,
 					skin,
 				);
 				return { buffer, mime: "image/jpeg" };
@@ -905,6 +922,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					renderer,
 					content.uid.trim(),
 					content.offset ?? 1,
+					subscribedAvatarOf,
 					skin,
 				);
 				return { buffer, mime: "image/jpeg" };
@@ -1151,6 +1169,8 @@ async function renderRealLive(
 	roomId: string,
 	style: PreviewStyle,
 	dataRoot: string,
+	/** 已订阅的 UP 在订阅资料里的头像引用(uid → 引用);不是订阅的给 `undefined`。 */
+	avatarOf: (uid: string) => ImageRef | undefined,
 	skin: CardSkinChoice = {},
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
@@ -1180,9 +1200,14 @@ async function renderRealLive(
 	// real status, so a closed room still renders something visible. The
 	// renderer normalises liveStatus internally; using 2 = LiveBroadcast keeps
 	// us aligned with what the periodic ongoing-tick passes in production.
-	// 先翻成中立的输入(与直播引擎的推送同一份翻译),再交给出卡入口。主播头像 B 站到 3a 才有(`master` 里的
-	// `face` 是远端地址,不进输入)。
+	// 先翻成中立的输入(与直播引擎的推送同一份翻译),再交给出卡入口。主播头像和真推送一致:已订阅的 UP 读订阅资料里的
+	// 引用(零网络);没订阅的按主播信息里的头像地址
+	// `fetchAvatar` 现抓(头像档),抓不到就不画。
 	// 封面出卡前先抓进图库(3a-34),与直播引擎的推送同一条:预览与真推送画出来一个样。
+	// 已订阅的读资料里的引用;没订阅的按 B 站给的头像地址(回应里的 `face`)现抓,抓不到就不画。
+	const avatarUrl = master.data.info.face;
+	const avatar =
+		avatarOf(uid) ?? (avatarUrl ? await fetchAvatar(avatarUrl, imagesDeps) : undefined);
 	return renderer.generateLiveCard(
 		await fetchLiveCover(
 			liveCardInputFromRoomInfo(
@@ -1190,6 +1215,7 @@ async function renderRealLive(
 				master.data.info.uname,
 				{}, // liveData — no danmaku context in preview, watched/liked left blank
 				2,
+				avatar,
 			),
 			imagesDeps,
 		),
@@ -1209,6 +1235,8 @@ async function renderRealDynamic(
 	renderer: ImageRenderer,
 	uid: string,
 	offset: number,
+	/** 已订阅的 UP 在订阅资料里的头像引用(uid → 引用);不是订阅的给 `undefined`。 */
+	avatarOf: (uid: string) => ImageRef | undefined,
 	skin: CardSkinChoice = {},
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
@@ -1230,8 +1258,18 @@ async function renderRealDynamic(
 	if (!item) throw new Error(`第 ${offset} 条动态为空`);
 
 	// 真实动态:B 站原始数据先翻成中立的 `Post`,再走出卡器的唯一入口(推送与链接预览同一条)。
-	// 配图出卡前先抓进图库(3a-34),与动态引擎的推送同一条。
-	return renderer.generatePostCard(await fetchPostImages(postFromDynamic(item), imagesDeps), skin);
+	// 配图出卡前先抓进图库(3a-34),与动态引擎的推送同一条:外层作者的头像读订阅资料(没订阅的按作者模块里的地址现抓,抓不到就不画),
+	// 转发的原作者头像按原始动态里的地址现抓。
+	const avatarUrl = (item.modules?.module_author as { face?: string } | undefined)?.face;
+	const avatar =
+		avatarOf(uid) ?? (avatarUrl ? await fetchAvatar(avatarUrl, imagesDeps) : undefined);
+	return renderer.generatePostCard(
+		await fetchPostImages(postFromDynamic(item), imagesDeps, {
+			avatar,
+			repostAvatarUrl: repostAvatarUrlOf(item),
+		}),
+		skin,
+	);
 }
 
 // ── Mock pipeline (fall-through path) ────────────────────────────────────────

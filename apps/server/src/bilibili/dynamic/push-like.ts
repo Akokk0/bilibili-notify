@@ -116,6 +116,11 @@ export interface PushLike {
 export interface SubItemView {
 	uid: string;
 	uname: string;
+	/**
+	 * 这条订阅在核心里的 id(`Subscription.id`),由宿主 `buildDynamicSubViewSingle` 填。引擎认人靠 `uid`,
+	 * 出卡时按它向宿主现读资料里的头像(`avatarOf`)。
+	 */
+	subscriptionId: string;
 	post?: boolean;
 	customCardStyle?: {
 		enable?: boolean;

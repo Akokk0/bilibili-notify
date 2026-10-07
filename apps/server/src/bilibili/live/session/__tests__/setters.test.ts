@@ -113,6 +113,7 @@ const buildEngineWith = (initialImage: ImageRenderer | null, logger: Logger): Li
 		contentBuilder: {} as any,
 		guardIcons: { ensure: async () => {}, iconOf: () => undefined, refs: () => [] },
 		imageFetcher: { fetchImage: vi.fn() },
+		avatarOf: () => undefined,
 		imageRenderer: initialImage,
 		commentary: null,
 		config: {

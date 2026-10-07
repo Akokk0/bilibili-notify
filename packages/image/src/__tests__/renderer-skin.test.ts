@@ -13,7 +13,12 @@
  * 每条的验红方式都写在用例里 —— 「守卫只钉形状不钉性质」那一族的防身符。
  */
 
-import type { CardKind, CardSkinManifest, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	CardKind,
+	CardSkinManifest,
+	ImageRef,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import {
 	CARD_SKIN_LIMITS,
 	DEFAULT_CARD_SKIN,
@@ -654,6 +659,34 @@ describe("ImageRenderer 词云卡", () => {
 		expect(html).toContain("renderAutoFitWordCloud");
 		expect(html.indexOf("renderAutoFitWordCloud")).toBeLessThan(html.indexOf("</body>"));
 		expect(h.fallbacks).toEqual([]);
+	});
+
+	// 第三参是图库引用,和别的卡一样经宿主注入的 `resolveImageRef` 认成可画的地址(3a-35)。
+	// 验红:让入口不经 resolveImageRefs(把引用当地址直接画),或不传给视图,这两条红。
+	const AVATAR_REF = `${"a".repeat(64)}.jpg` as ImageRef;
+	const words: Array<[string, number]> = [["词", 3]];
+
+	it("头像引用解析成地址:词云卡头部画出这张头像", async () => {
+		const resolveImageRef = vi.fn(async (_ref: ImageRef) => "data:image/png;base64,AVATAR");
+		const h = makeHarness({ resolveImageRef });
+		await h.renderer.generateWordCloudImg(words, "示例UP", AVATAR_REF);
+		expect(resolveImageRef).toHaveBeenCalledWith(AVATAR_REF);
+		const doc = new JSDOM(h.captured[0] ?? "").window.document;
+		expect(doc.querySelector('img[alt="头像"]')?.getAttribute("src")).toBe(
+			"data:image/png;base64,AVATAR",
+		);
+	});
+
+	it("引用解析不到 / 没给引用:不画头像块,卡照出", async () => {
+		const lost = makeHarness({ resolveImageRef: async () => undefined });
+		await lost.renderer.generateWordCloudImg(words, "示例UP", AVATAR_REF);
+		const none = makeHarness();
+		await none.renderer.generateWordCloudImg(words, "示例UP");
+		for (const h of [lost, none]) {
+			const doc = new JSDOM(h.captured[0] ?? "").window.document;
+			expect(doc.querySelector('img[alt="头像"]')).toBeNull();
+			expect(doc.querySelector("#wordCloudCanvas")).not.toBeNull();
+		}
 	});
 });
 

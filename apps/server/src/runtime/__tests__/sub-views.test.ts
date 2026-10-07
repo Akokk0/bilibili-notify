@@ -14,6 +14,7 @@
  */
 import {
 	type GlobalConfig,
+	type ImageRef,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type Subscription,
@@ -246,5 +247,27 @@ describe("buildLiveSubViewSingle — 两个直播门槛", () => {
 			g,
 		);
 		expect(view.minGuardRank).toBe(3);
+	});
+});
+
+describe("订阅视图不抄头像(3a-35):头像由引擎出卡时按订阅 id 现读", () => {
+	const avatar = `${"b".repeat(64)}.jpg` as ImageRef;
+	const runtime = {
+		get: () => ({ cachedProfile: { name: "UP", avatar } }),
+	} as unknown as SubRuntimeStore;
+
+	// 验红:让 buildDynamicSubViewSingle 把 `subscriptionId: sub.id` 去掉,第一条红;往两份视图里抄回 avatar,第二条红。
+	it("动态视图带订阅 id(引擎凭它读头像)", () => {
+		const sub = makeSub();
+		const view = buildDynamicSubsView(fakeStore([sub]), runtime, makeDefaultGlobalConfig());
+		expect(view["12345"]?.subscriptionId).toBe(sub.id);
+	});
+
+	it("资料里有头像也不抄进动态 / 直播视图(抄了就是开机快照,之后补上的头像永远跟不上)", () => {
+		const sub = makeSub();
+		const dynamicView = buildDynamicSubsView(fakeStore([sub]), runtime, makeDefaultGlobalConfig());
+		const liveView = buildLiveSubViewSingle(sub, runtime, makeDefaultGlobalConfig());
+		expect(dynamicView["12345"]).not.toHaveProperty("avatar");
+		expect(liveView).not.toHaveProperty("avatar");
 	});
 });

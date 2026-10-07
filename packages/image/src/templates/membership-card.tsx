@@ -15,7 +15,8 @@ import type { Creator, ImageRef, PostImage } from "@bilibili-notify/internal";
 /**
  * **中立的会员卡输入**。
  *
- * 头像是图库引用,**选填,没有(或引用解析不到)就不画那一格**:B 站这条路不给(3a 才存进图库,照 ㉑ ㉒ 的先例)。
+ * 头像是图库引用,**选填,没有(或引用解析不到)就不画那一格**:B 站这条路,主播头像读订阅资料里的引用,观众头像出卡前向 B 站查一次再抓进图库,
+ * 查不到 / 抓不到就不给。
  * 档的各项都来自来源声明的档位表(`MembershipTier`):`color` 是档色(一个值,起止色同值;没有就回落默认配色表的第一色)、
  * `icon` 是徽章(带 `url` 照画,带 `ref` 走图库解析)、`announcement` 是宣告语模板(`{viewer}` `{name}` `{tier}`;
  * 没声明就不画那一句)、`rank` 没有就是没有 rank 的体系(皮肤字段 `membership.rank` 给 0)。

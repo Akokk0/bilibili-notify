@@ -9,6 +9,7 @@
  */
 
 import { htmlToPlain, type LiveCardInput, type LiveCardStatus } from "@bilibili-notify/image";
+import type { ImageRef } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import type { LiveData } from "./types";
 
@@ -67,8 +68,8 @@ function present<T extends object>(value: T): T {
  * - 其余状态码(比如 4 首次开播,今天没有调用方传进出卡)照旧画成「直播中」角标、不写那句
  *   时间、先用房间封面 —— 与从前的默认分支一个样。
  * - 简介是富文本(可能带 `<p>` / `<br>` 或 entity-encoded 形式),先剥成纯文本。
- * - **不给主播头像**:`Creator.avatar` 只收图库引用,B 站的头像是远端地址,3a 才存进图库(ADR-0021 决策 24 下
- *   2026-10-05 的 🔗)。
+ * - 主播头像:`Creator.avatar` 只收图库引用,这里是同步的翻译、不碰图库,由调用方把订阅资料里已有的引用
+ *   (`avatar` 参数)原样带进来;没有就缺键,卡上头像块收起。
  * - 人数**只收精确数,缺了就缺键**:此刻在线读房间接口的 `online`(缺了不补 0);点赞、粉丝数、粉丝数变化是直播
  *   引擎攒的(没收到点赞帧就没有点赞这一格)。累计观看是引擎存的 `WATCHED_CHANGE` 帧的精确数(㉒d),
  *   一帧没收到就没有这一格(下播卡不画,不再印「暂未获取到」)。
@@ -76,12 +77,14 @@ function present<T extends object>(value: T): T {
  * @param data B 站直播间接口的 `data`(`fetchLiveRoomInfo`)。
  * @param liveData 直播引擎攒下的那几个数。
  * @param liveStatus 见 {@link BILI_LIVE_STATUS}。
+ * @param avatar 主播头像的图库引用(订阅资料里的 `avatar`);没有就不给。
  */
 export function liveCardInputFromRoomInfo(
 	data: LiveRoomFields | null | undefined,
 	username: string,
 	liveData: LiveData,
 	liveStatus: number,
+	avatar?: ImageRef,
 ): LiveCardInput {
 	const known = BILI_LIVE_STATUS[liveStatus];
 	const status = known ?? "start";
@@ -91,7 +94,7 @@ export function liveCardInputFromRoomInfo(
 		(status === "streaming" ? keyframe || roomCover : roomCover || keyframe) || undefined;
 	return present({
 		status,
-		creator: { name: username },
+		creator: { name: username, ...(avatar === undefined ? {} : { avatar }) },
 		title: text(data?.title),
 		category: text(data?.area_name),
 		description: htmlToPlain(text(data?.description)),

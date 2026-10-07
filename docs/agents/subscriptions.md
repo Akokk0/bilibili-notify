@@ -58,7 +58,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 |---|---|---|
 | 新建时 | `seedCachedProfile` 问一次 user card，头像当场抓进图库再回应（抓不到不让新建失败） | 面板把解析门里挑中的候选（`{ id, name, avatar?, fans? }`，头像是 data URL）预填成草稿的 `cachedProfile { name, avatarUrl?, fans? }` 随 `POST /api/subscriptions` 交进来（data URL 是个网址，所以放 `avatarUrl`），`seedExtensionProfile` 种资料、头像存进图库 |
 | 之后 | `FansPoller` 每 tick 写 fans；首次采样兜底种资料时抓头像；开机冷刷 name，并补头像（见下） | **只认「报资料更新」**（`reportProfile`，见下）。事件里带的作者只上卡、不改资料（决策 54） |
-| 头像存的是 | `avatar`：抓进图库的头像（`bilibili/images.ts` 的 `fetchAvatar`：480 宽、第一帧、webp 的缩放版，缩放版抓不到不回退原图）；`avatarUrl`：**只要有 `avatar`，它就是那张图的来源地址**（B 站给的原地址）。抓不到时：原本有 `avatar` 就两格保持原样，原本没有就只记新地址（`syncProfileAvatar`）。规矩：地址变了、或有地址却没有 `avatar` 才抓，否则零网络；开机冷刷是并发上限 3、不拖名字更新的一条独立活，老资料只有 `avatarUrl` 的就是这么补上头像的 | `avatar`：图库引用 `ImageRef`，面板从 `/api/images/<ref>` 取；没有头像就**两格都缺**，不写空串 |
+| 头像存的是 | `avatar`：抓进图库的头像（`bilibili/images.ts` 的 `fetchAvatar`：480 宽、第一帧、webp 的缩放版，缩放版抓不到不回退原图）；`avatarUrl`：**只要有 `avatar`，它就是那张图的来源地址**（B 站给的原地址）。抓不到时：原本有 `avatar` 就两格保持原样，原本没有就只记新地址（`syncProfileAvatar`）。规矩：地址变了、或有地址却没有 `avatar` 才抓，否则零网络；开机冷刷是并发上限 3、不拖名字更新的一条独立活，老资料只有 `avatarUrl` 的就是这么补上头像的 | `avatar`：图库引用 `ImageRef`，面板从 `/api/images/<ref>` 取；没有头像就**两格都缺**，不写空串。**卡片也读它**：`runtime/engines.ts` 拼动态 / 直播两份订阅视图时把 `cachedProfile.avatar` 抄进 `SubItemView.avatar`（缺键就是没有），动态外层作者、开播 / 直播中 / 下播、会员、醒目留言卡的主播头像都读这一格，出卡时零网络；面板预览的真实拉取同理（已订阅的 UP 读资料；没订阅的暂时不画，现抓还是不画待拍板） |
 | `fans` | 总有 | 可缺 —— 缺了写 0 就是在面板上印一句「0 粉丝」的假话 |
 
 **拓展资料的落盘**：`subscription-reported`（`kind === "profile"`）→ `runtime/reported-profiles.ts` 的 `bindReportedProfiles`：给了哪格改哪格；停用的订阅照样更新；订阅刚删时报上来的不再种；排一条队（两条交错读改写会互相冲掉）；面板看得见的名字 / 头像 / 粉丝**真变了**才发 `subscription-profiles-changed`（250ms 窗口合并）。

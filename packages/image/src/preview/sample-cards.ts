@@ -141,7 +141,7 @@ export const SAMPLE_AVATAR_REF = `${"0".repeat(63)}1.png`;
 
 /**
  * 醒目留言卡 / 会员卡示例里观众的头像引用。与真出卡同一条路(输入里的头像是图库引用,经示例的解析口认成内置图):
- * 真机上 B 站这条路到 3a 之前不给头像,示例照样画出来 —— 皮肤作者要对着看头像格,别的来源有头像时就是这个样子。
+ * 示例里画出头像格,皮肤作者好对着看;真机上拿不到头像时那一格整块收起。
  */
 const SAMPLE_FAN_AVATAR_REF = `${"0".repeat(63)}2.png`;
 const SAMPLE_NEW_MEMBER_AVATAR_REF = `${"0".repeat(63)}3.png`;

@@ -1,5 +1,10 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
+import type {
+	ImageRef,
+	Logger,
+	MembershipTemplateBundle,
+	ServiceContext,
+} from "@bilibili-notify/internal";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
 import type { LiveContentBuilder } from "../content-builder";
@@ -90,6 +95,8 @@ export interface RoomContextOptions {
 	guardIcons: GuardIcons;
 	/** 抓图服务:直播卡的封面在出卡前抓进图库。 */
 	imageFetcher: ImagesDeps["images"];
+	/** 订阅 id → 订阅资料里的头像引用;出卡那一刻现读。 */
+	avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	/**
 	 * uid → roomId 解析成功后的回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
 	 * 省掉每次逐 UP 的 `fetchUserInfo` 房号解析请求。
@@ -144,6 +151,8 @@ export class RoomContextBase {
 	readonly guardIcons: GuardIcons;
 	/** 抓图服务。 */
 	readonly imageFetcher: ImagesDeps["images"];
+	/** 订阅 id → 订阅资料里的头像引用(出卡那一刻现读,没有就是 `undefined`)。 */
+	readonly avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
 	readonly onRoomIdResolved: (uid: string, roomId: string) => void;
 
@@ -173,6 +182,7 @@ export class RoomContextBase {
 		this.pickBackground = opts.pickCardBackground;
 		this.guardIcons = opts.guardIcons;
 		this.imageFetcher = opts.imageFetcher;
+		this.avatarOf = opts.avatarOf;
 		this.onRoomIdResolved = opts.onRoomIdResolved;
 	}
 

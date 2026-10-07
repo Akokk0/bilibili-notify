@@ -43,8 +43,8 @@ import type { BlockRenderer } from "./types";
  * 头像(原子块):一个把图裁圆的框 + 填满它的 img。尺寸与圆写在框的 `image` 规则里,
  * img 只负责填满并按比例裁(`overflow-hidden` 是裁法不是样子)。
  *
- * **没有头像就整块收起**(返回 null):`MembershipCardInput.viewer.avatar` 只收图库引用,B 站的头像是远端地址,
- * 3a 才存进图库,所以 B 站这条路到那时不给(ADR-0021 决策 26 下 2026-10-05 的 🔗,照 ㉑ ㉒ 的先例)。
+ * **没有头像就整块收起**(返回 null):`MembershipCardInput.viewer.avatar` 只收图库引用,B 站这条路出卡前才查观众的头像地址并抓进图库,
+ * 查不到 / 抓不到就不给(ADR-0021 决策 26 下 2026-10-05 的 🔗)。
  */
 const viewerAvatar: BlockRenderer<MembershipCardView> = (p) =>
 	p.viewerAvatarUrl ? (
@@ -68,8 +68,8 @@ const viewerName: BlockRenderer<MembershipCardView> = (p) => (
 
 /**
  * 主播胶囊(原子块)。小头像的图是**数据**,走 inline 的 `background-image`;`bg-cover` /
- * `bg-center` 是它的裁法与定位,不是样子。**没有主播头像就不画那一格**(`Creator.avatar` 只收图库引用,B 站 3a 才交,
- * 同 {@link avatar});醒目留言卡的「SC to」那一行本来就是这个写法。
+ * `bg-center` 是它的裁法与定位,不是样子。**没有主播头像就不画那一格**(`Creator.avatar` 只收图库引用,B 站读订阅资料里的,
+ * 没有就不给,同 {@link avatar});醒目留言卡的「SC to」那一行本来就是这个写法。
  */
 const creator: BlockRenderer<MembershipCardView> = (p) => (
 	<div

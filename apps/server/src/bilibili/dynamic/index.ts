@@ -12,7 +12,7 @@ export {
 	type PostFilterRules,
 	type PostFilterSettings,
 } from "./post-filter";
-export { postFromDynamic } from "./post-from-dynamic";
+export { postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {
 	DynamicBroadcastOptions,
 	PostPushPart,

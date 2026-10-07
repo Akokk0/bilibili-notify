@@ -301,7 +301,7 @@ describe("字段深化:danmu", () => {
 });
 
 describe("字段深化:superchat / guard-buy", () => {
-	it("SC:id/持续时长/粉丝牌", () => {
+	it("SC:id/持续时长/粉丝牌/头像地址", () => {
 		expect(parseCommand(ref.superchat)).toEqual({
 			kind: "superchat",
 			content: "__MOCK_MESSAGE_CONTENT__",
@@ -311,6 +311,8 @@ describe("字段深化:superchat / guard-buy", () => {
 			user: {
 				uid: 77777777771,
 				name: "__MOCK_UNAME__",
+				// 帧自带的发送者头像地址(录制夹具里 user_info.face 一直在,从前没读)。
+				avatarUrl: "http://__MOCK_FACE__.jpg",
 				medal: {
 					level: 16,
 					name: "__MOCK_BADGE_NAME__",

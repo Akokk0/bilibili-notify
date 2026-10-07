@@ -575,6 +575,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// **全进程一份**,两条路各记各的话同一次故障会各提醒一遍。
 	const cardFailures = createCardFailureTracker();
 
+	// 卡上的主播头像:订阅 id → 订阅资料里的头像引用。**每次出卡现读**,所以资料之后补上 / 换掉的头像不用重启就跟上。
+	const profileAvatarOf = (subscriptionId: string): ImageRef | undefined =>
+		opts.subRuntimeStore.get(subscriptionId)?.cachedProfile?.avatar;
+
 	const dynamic = new DynamicEngine({
 		serviceCtx: dynamicCtx,
 		bus: opts.bus,
@@ -583,6 +587,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		image: imageRenderer ?? undefined,
 		ai: commentary ?? undefined,
 		imageFetcher: opts.imageFetcher,
+		avatarOf: profileAvatarOf,
 		cardFailures,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
@@ -658,6 +663,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		contentBuilder: segmentContentBuilder,
 		guardIcons: opts.guardIcons,
 		imageFetcher: opts.imageFetcher,
+		avatarOf: profileAvatarOf,
 		imageRenderer: imageRenderer ?? null,
 		commentary: commentary ?? null,
 		config: liveConfig(),
@@ -1648,6 +1654,7 @@ export function buildDynamicSubViewSingle(
 	// B 站引擎以 uid 为键:B 站订阅的外部 id 就是 uid。调用方只给 B 站订阅。
 	const uid = subscriptionIdentityOf(sub).externalId;
 	return {
+		subscriptionId: sub.id,
 		uid,
 		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
 		// enabled 门 + features.post:add op 可能收到 disabled sub,engine applyOps

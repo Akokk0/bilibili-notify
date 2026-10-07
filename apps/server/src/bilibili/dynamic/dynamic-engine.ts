@@ -4,6 +4,7 @@ import {
 	DEFAULT_CONTENT_FILTERS,
 	type Disposable,
 	type ForwardImage,
+	type ImageRef,
 	type Logger,
 	type MessageBus,
 	type Post,
@@ -20,7 +21,7 @@ import {
 	type PostFilterReason,
 	type PostFilterSettings,
 } from "./post-filter";
-import { postFromDynamic } from "./post-from-dynamic";
+import { postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type {
 	PushLike,
 	SubItemView,
@@ -145,6 +146,11 @@ export interface DynamicEngineOptions {
 	 * 必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
 	imageFetcher: ImagesDeps["images"];
+	/**
+	 * 订阅 id → 订阅资料里的头像引用。**出卡那一刻现读**(资料里的头像之后才补上、或被换掉都要跟上),
+	 * 必给 —— 漏给编译不过。
+	 */
+	avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	config: DynamicEngineConfig;
 	/**
 	 * 出图连续失败的计数(只提醒一次)。宿主想让 B 站动态与拓展作品共用一份(同一个渲染器,
@@ -229,6 +235,8 @@ function workFromDynamic(
 	name: string,
 	videoUrlToBV: boolean,
 	imagesDeps: ImagesDeps,
+	/** 外层作者的头像(订阅资料里的图库引用):出卡那一刻才调,每张卡现读;没有就是 `undefined`。 */
+	readAvatar: () => ImageRef | undefined,
 ): NeutralWork {
 	const isVideo = item.type === "DYNAMIC_TYPE_AV";
 	// 图在**确定要出卡时**才抓进图库(renderCard 被调到才抓):被过滤掉的、关了出图的、没有渲染器的动态
@@ -237,7 +245,11 @@ function workFromDynamic(
 	return {
 		// 出图器不认识任何 B 站字段,走出卡器的唯一入口。
 		renderCard: async (image, colorOptions) => {
-			fetched ??= fetchPostImages(post, imagesDeps);
+			// 头像:外层作者读订阅资料里的引用(出卡这一刻现读、零网络),转发的原作者按原始动态里的地址和配图一起现抓。
+			fetched ??= fetchPostImages(post, imagesDeps, {
+				avatar: readAvatar(),
+				repostAvatarUrl: repostAvatarUrlOf(item),
+			});
 			return image.generatePostCard(await fetched, colorOptions);
 		},
 		link: dynamicLink(item, isVideo, videoUrlToBV),
@@ -264,6 +276,7 @@ export class DynamicEngine {
 	private image?: ImageRenderer;
 	private ai?: CommentaryProvider;
 	private readonly imageFetcher: ImagesDeps["images"];
+	private readonly avatarOf: (subscriptionId: string) => ImageRef | undefined;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
 
@@ -325,6 +338,7 @@ export class DynamicEngine {
 		this.image = opts.image;
 		this.ai = opts.ai;
 		this.imageFetcher = opts.imageFetcher;
+		this.avatarOf = opts.avatarOf;
 		this.config = opts.config;
 		this.getSubs = opts.getSubs;
 		this.logger = opts.serviceCtx.logger;
@@ -855,10 +869,17 @@ export class DynamicEngine {
 				// 订阅的设置用本轮捕获的那份 —— 过滤之后到这里没有 await,就是此刻表里那份。
 				// 主卡发送抛错往外冒到下面的 catch → markFail,下一轮再来。
 				const outcome = await deliverWork({
-					work: workFromDynamic(item, post, name, this.config.dynamicVideoUrlToBV, {
-						images: this.imageFetcher,
-						logger: this.logger,
-					}),
+					work: workFromDynamic(
+						item,
+						post,
+						name,
+						this.config.dynamicVideoUrlToBV,
+						{
+							images: this.imageFetcher,
+							logger: this.logger,
+						},
+						() => this.avatarOf(subAtCapture.subscriptionId),
+					),
 					settings: subAtCapture,
 					push: {
 						broadcast: (segments, part, opts) =>

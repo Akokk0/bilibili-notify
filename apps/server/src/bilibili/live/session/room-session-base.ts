@@ -421,6 +421,7 @@ export abstract class RoomSessionBase {
 						master,
 						cardStyle: this.resolvedCardStyle("live"),
 						...this.skinChoice(),
+						subscriptionId: this.sub.subscriptionId,
 						uid: this.sub.uid,
 						notifyMsg: liveMsg,
 						messageLayout: this.sub.messageLayout,
@@ -582,6 +583,7 @@ export abstract class RoomSessionBase {
 				master,
 				cardStyle: this.resolvedCardStyle("live"),
 				...this.skinChoice(),
+				subscriptionId: this.sub.subscriptionId,
 				uid: this.sub.uid,
 				notifyMsg: liveMsg,
 				messageLayout: this.sub.messageLayout,
@@ -752,6 +754,7 @@ export abstract class RoomSessionBase {
 						master,
 						cardStyle: this.resolvedCardStyle("live"),
 						...this.skinChoice(),
+						subscriptionId: this.sub.subscriptionId,
 						uid: this.sub.uid,
 						notifyMsg: liveEndMsg,
 						messageLayout: this.sub.messageLayout,
@@ -799,7 +802,8 @@ export abstract class RoomSessionBase {
 				? this.ctx.wordcloudGenerator.generate(
 						sortedWords,
 						this.masterInfo?.username ?? "",
-						this.masterInfo?.userface,
+						// 主播头像:订阅资料里的图库引用,这一刻现读(直播间接口给的是远端地址,不往出图器送)。
+						this.ctx.avatarOf(this.sub.subscriptionId),
 						this.sub.cardSkin,
 						this.sub.cardSkinKnobs,
 					)

@@ -93,6 +93,8 @@ function makeCtx(opts: CtxOpts): { ctx: RoomContext; calls: Call[]; sub: SubItem
 			snapshot: () => ({ sortedWords: opts.sortedWords ?? [], senderRecord: {} }),
 		},
 		wordcloudGenerator: { generate: vi.fn(async () => opts.wcImage) },
+		// 词云的主播头像出卡那一刻按订阅 id 现读(3a-35);这组用例不关心头像。
+		avatarOf: () => undefined,
 		liveSummaryRequester: { generate: vi.fn(async () => opts.summaryText) },
 		contentBuilder: {
 			image: (buf: Buffer, mime: string) => ({ kind: "image", buffer: buf, mime }),

@@ -1,5 +1,5 @@
 import type { ImageRef, Logger, Post } from "@bilibili-notify/internal";
-import { fail, ok } from "@bilibili-notify/internal";
+import { fail, makeEmptySubscription, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	fetchAvatar,
@@ -7,6 +7,7 @@ import {
 	fetchPostImages,
 	type ImagesDeps,
 	scaledImageUrl,
+	subscribedAvatar,
 	syncProfileAvatar,
 } from "../images";
 
@@ -222,6 +223,85 @@ describe("fetchPostImages", () => {
 	});
 });
 
+describe("fetchPostImages 的头像", () => {
+	it("外层作者的头像引用填进 creator.avatar,零网络;别的格子不动", async () => {
+		const { calls, deps } = fakeImages();
+		const post = basePost({ creator: { name: "UP", isPremium: true } });
+
+		const result = await fetchPostImages(post, deps, { avatar: refOf(70) });
+
+		expect(calls).toEqual([]);
+		expect(result.creator).toEqual({ name: "UP", isPremium: true, avatar: refOf(70) });
+		expect(post.creator).toEqual({ name: "UP", isPremium: true });
+	});
+});
+
+describe("fetchPostImages 的转发原作者头像", () => {
+	const faceUrl = "https://i0.hdslb.com/bfs/face/orig.jpg";
+	const repostPost = () => basePost({ repost: basePost({ creator: { name: "原作者" } }) });
+
+	it("按头像地址现抓(头像那一档 480 宽、带 Referer),填进 repost.creator.avatar", async () => {
+		const { calls, deps } = fakeImages();
+
+		const result = await fetchPostImages(repostPost(), deps, { repostAvatarUrl: faceUrl });
+
+		expect(calls).toEqual([
+			{ url: `${faceUrl}@480w_80q_1s.webp`, headers: { Referer: "https://www.bilibili.com/" } },
+		]);
+		expect(result.repost?.creator).toEqual({ name: "原作者", avatar: refOf(1) });
+		expect(result.creator.avatar).toBeUndefined();
+	});
+
+	it("抓不到:内层没有头像、不回退原图,配图照抓,不抛", async () => {
+		const img = "https://i0.hdslb.com/bfs/x/a.jpg";
+		const { calls, deps } = fakeImages((url) => url.includes("orig.jpg"));
+		const post = basePost({
+			images: [{ url: img }],
+			repost: basePost({ creator: { name: "原作者" } }),
+		});
+
+		const result = await fetchPostImages(post, deps, { repostAvatarUrl: faceUrl });
+
+		expect(calls.filter((c) => c.url.includes("orig.jpg"))).toHaveLength(1);
+		expect(result.repost?.creator).toEqual({ name: "原作者" });
+		expect(result.images?.[0]?.ref).toBeDefined();
+	});
+
+	it("作品不是转发就没有地方放,头像地址不抓", async () => {
+		const { calls, deps } = fakeImages();
+
+		await fetchPostImages(basePost(), deps, { repostAvatarUrl: faceUrl });
+
+		expect(calls).toEqual([]);
+	});
+
+	it("和配图共用同一个并发上限:同时在抓的仍不超过 3 张", async () => {
+		let inFlight = 0;
+		let peak = 0;
+		const fetchImage: ImagesDeps["images"]["fetchImage"] = async (url) => {
+			inFlight++;
+			peak = Math.max(peak, inFlight);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			inFlight--;
+			return ok({ ref: refOf(url.length) });
+		};
+		const images = Array.from({ length: 6 }, (_, i) => ({
+			url: `https://i0.hdslb.com/bfs/x/${"a".repeat(i + 1)}.jpg`,
+		}));
+		const post = basePost({ images, repost: basePost({ creator: { name: "原作者" } }) });
+
+		await fetchPostImages(
+			post,
+			{ images: { fetchImage }, logger: silentLogger() },
+			{
+				repostAvatarUrl: faceUrl,
+			},
+		);
+
+		expect(peak).toBe(3);
+	});
+});
+
 describe("fetchLiveCover", () => {
 	const input = (cover?: { url?: string; ref?: ImageRef }) => ({
 		status: "start" as const,
@@ -265,6 +345,22 @@ describe("fetchLiveCover", () => {
 
 describe("fetchAvatar", () => {
 	const face = "https://i1.hdslb.com/bfs/face/abc.jpg";
+
+	// 验红:去掉 fetchAvatar 里的 try/catch,这条红(抓图服务抛了就直接抛给调用方)。
+	it("抓图服务本身抛了 → 回 undefined、记一条不带 query 的 warn,不抛", async () => {
+		const deps: ImagesDeps = {
+			images: {
+				fetchImage: async () => {
+					throw new Error("boom");
+				},
+			},
+			logger: silentLogger(),
+		};
+		await expect(fetchAvatar(`${face}?token=secret`, deps)).resolves.toBeUndefined();
+		const line = String(vi.mocked(deps.logger.warn).mock.calls[0]?.[0]);
+		expect(line).toContain("boom");
+		expect(line).not.toContain("secret");
+	});
 
 	it("抓 480 宽、第一帧、webp 的缩放版,带站内引用头,回图库引用", async () => {
 		const { deps, calls } = fakeImages();
@@ -363,5 +459,27 @@ describe("syncProfileAvatar", () => {
 		expect(await syncProfileAvatar(current, undefined, deps)).toEqual(current);
 		expect(await syncProfileAvatar(undefined, "", deps)).toEqual({});
 		expect(calls).toHaveLength(0);
+	});
+});
+
+describe("subscribedAvatar", () => {
+	const subscription = (id: string, sourceKey: string, externalId: string) =>
+		makeEmptySubscription({ id, identity: { sourceKey, externalId } });
+	const profiles: Record<string, { avatar?: ImageRef }> = { "sub-b": { avatar: refOf(5) } };
+	const profileOf = (id: string) => profiles[id];
+
+	it("按 uid 找已订阅的 B 站 UP,回资料里的头像引用", () => {
+		const subs = [subscription("sub-b", "bilibili", "123")];
+		expect(subscribedAvatar(subs, profileOf, "123")).toBe(refOf(5));
+	});
+
+	it("没订阅、资料里没有头像、或者只是别的来源里碰巧同号的外部 id:都回 undefined", () => {
+		const subs = [
+			subscription("sub-x", "other-source", "456"),
+			subscription("sub-n", "bilibili", "789"),
+		];
+		expect(subscribedAvatar(subs, profileOf, "123")).toBeUndefined();
+		expect(subscribedAvatar(subs, profileOf, "456")).toBeUndefined();
+		expect(subscribedAvatar(subs, profileOf, "789")).toBeUndefined();
 	});
 });
