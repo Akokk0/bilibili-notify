@@ -3,6 +3,7 @@ import {
 	assembleMessageGroups,
 	DEFAULT_MESSAGE_LAYOUT,
 	defaultMessageKindLayout,
+	isBlockVisible,
 	MESSAGE_SPLIT_TYPE,
 	type MessageBlock,
 	type MessageKindLayout,
@@ -183,5 +184,28 @@ describe("assembleMessageGroups", () => {
 		expect(
 			assembleMessageGroups(layout([b("card", false), b("text", false), b("link", false)]), ALL),
 		).toEqual([]);
+	});
+});
+
+describe("isBlockVisible", () => {
+	const layout = (blocks: MessageBlock[]): MessageKindLayout => ({ blocks, separator: "\n" });
+
+	it("版式里有一个可见的该种块 → true", () => {
+		expect(isBlockVisible(defaultMessageKindLayout("live"), "card")).toBe(true);
+	});
+
+	it("有该种块但藏了 → false;别种块可见也不算", () => {
+		const l = layout([
+			{ id: "card", type: "card", visible: false },
+			{ id: "text", type: "text", visible: true },
+		]);
+		expect(isBlockVisible(l, "card")).toBe(false);
+		expect(isBlockVisible(l, "text")).toBe(true);
+	});
+
+	it("没有这种块 → false", () => {
+		expect(isBlockVisible(layout([{ id: "text", type: "text", visible: true }]), "link")).toBe(
+			false,
+		);
 	});
 });

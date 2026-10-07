@@ -13,6 +13,7 @@
 import type { CardSkinChoice, ImageRenderer, LiveCardInput } from "@bilibili-notify/image";
 import {
 	assembleMessageGroups,
+	isBlockVisible,
 	type Logger,
 	type MessageKindLayout,
 	type MessageLayoutSegment,
@@ -76,7 +77,7 @@ export async function pushLiveNotify(
 ): Promise<void> {
 	const { layout } = params;
 	// 版式里 card 块隐藏 → 连图片渲染都跳过(白渲染更亏)。
-	const wantCard = layout.blocks.some((b) => b.visible && b.type === "card");
+	const wantCard = isBlockVisible(layout, "card");
 
 	let card: Buffer | undefined;
 	if (deps.renderer && wantCard) {

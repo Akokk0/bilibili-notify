@@ -62,6 +62,14 @@ export const DEFAULT_MESSAGE_LAYOUT: MessageLayout = {
 	live: { blocks: [part("card"), part("text"), part("link")], separator: "\n" },
 };
 
+/**
+ * 版式里有没有一个**可见**的该种块。只看版式 —— 渲染器在不在、出图开没开由调用处自己判;
+ * 静音、免扰不归它管(静音期间照样出卡)。
+ */
+export function isBlockVisible(layout: MessageKindLayout, type: MessagePartType): boolean {
+	return layout.blocks.some((b) => b.visible && b.type === type);
+}
+
 /** 测试夹具:某推送类型默认版式的深拷贝,改它不会污染 DEFAULT_MESSAGE_LAYOUT。 */
 export function defaultMessageKindLayout(kind: "post" | "live"): MessageKindLayout {
 	return structuredClone(DEFAULT_MESSAGE_LAYOUT[kind]);

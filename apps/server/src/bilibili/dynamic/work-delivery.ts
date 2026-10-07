@@ -11,8 +11,8 @@
 import { randomUUID } from "node:crypto";
 import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { CardColorOptions, ImageRenderer } from "@bilibili-notify/image";
-import type { ForwardImage, Logger } from "@bilibili-notify/internal";
-import { assembleMessageGroups, interpolate } from "@bilibili-notify/internal";
+import type { ForwardImage, Logger, MessagePartType } from "@bilibili-notify/internal";
+import { assembleMessageGroups, interpolate, isBlockVisible } from "@bilibili-notify/internal";
 import { resolveDynamicColorOptions } from "./card-style";
 import type { DynamicBroadcastOptions, PostPushPart, PushSegment, SubItemView } from "./push-like";
 
@@ -258,7 +258,7 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 	const { work, settings, push, config, deps, logLabel } = args;
 	const { logger } = deps;
 	const layout = settings.messageLayout;
-	const wantPart = (t: string): boolean => layout.blocks.some((b) => b.visible && b.type === t);
+	const wantPart = (t: MessagePartType): boolean => isBlockVisible(layout, t);
 
 	// 出卡
 	let card: Buffer | undefined;
