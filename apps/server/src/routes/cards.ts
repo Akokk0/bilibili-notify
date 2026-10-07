@@ -78,6 +78,7 @@ import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/
 import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import type { CardSkinStore } from "../card-skins/store.js";
 import type { ChromeSource } from "../config/persist.js";
+import { imageRefDataUrl } from "../images/image-data-url.js";
 import {
 	deleteCardBg,
 	firstExistingCardBg,
@@ -677,6 +678,9 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 				resolveAsset: (id) => readCardBgDataUrl(opts.deps.runtime.dataRoot, id),
 				// 字体 id → 拼好的 @font-face(读 <dataRoot>/assets/font)。
 				resolveFontFace: loadFontFace,
+				// 图库引用 → data URL:与推送出图(runtime/engines.ts)同一个解析口,预览里带引用的图才不会
+				// 画成占位、与真推送分家。
+				resolveImageRef: imageRefDataUrl(opts.deps.runtime.imageStore),
 				// 皮肤:与推送出图问的是同一家店(app.ts 传进来的那一个实例)。
 				resolveCardSkin: (id) => opts.cardSkins?.get(id) ?? undefined,
 				resolveCardSkinAsset: async (skinId, name) =>
