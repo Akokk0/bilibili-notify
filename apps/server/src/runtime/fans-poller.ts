@@ -12,6 +12,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
 import type { Api } from "../bilibili/api/index.js";
+import { FETCH_CONCURRENCY, type ImagesDeps, syncProfileAvatar } from "../bilibili/images.js";
 import type { ConfigStore } from "../config/store.js";
 import type { FollowersStore } from "../followers/store.js";
 import { statsFileKey } from "../stats/file-key.js";
@@ -57,6 +58,11 @@ export interface FansPollerOptions {
 	subRuntimeStore: SubRuntimeStore;
 	fansStore: FollowersStore;
 	api: Api;
+	/**
+	 * 头像抓图服务(B 站接口那个请求客户端建的,引用方是订阅资料这一家):首轮采样兜底种资料与开机冷刷
+	 * 时把 B 站的头像抓进图库(`syncProfileAvatar`)。
+	 */
+	images: ImagesDeps["images"];
 	/**
 	 * 用于 dispose-safe 延时(首次 tick 等 auth 起来的 3s 窗口)。dispose() 时
 	 * runtime 一并清掉 pending timer,避免 stop/restart 期间裸 setTimeout 留 3s
@@ -123,6 +129,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		subRuntimeStore,
 		fansStore,
 		api,
+		images,
 		serviceCtx,
 		isStatsEnabled,
 	} = opts;
@@ -439,13 +446,18 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 
 				// 写进 SubRuntimeStore(独立文件 + 原子写,**不发** config-changed)——
 				// fansBaseline 首次写、cachedProfile.fans/lastRefreshedAt 每次写。
-				// name/avatarUrl/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card(首见时
+				// name/avatar/avatarUrl/sign 沿用既有(POST 自 seed / 上一次),缺失才从 card(首见时
 				// 的 seedCard)兜底。稳态走 relation/stat 时 seedCard 为空,直接用既有 profile。
-				// B 站的头像是远端网址 `avatarUrl`(服务端不抓 B 站头像,抓图服务在 3a);没有就缺这一格。
+				// 头像在首见时抓进图库(`avatar` + 来源地址 `avatarUrl`);抓不到先只记地址,冷刷再补。
+				const seedAvatar = prev?.cachedProfile
+					? undefined
+					: await syncProfileAvatar(undefined, seedCard?.face, { images, logger });
+				if (disposed) return;
+				// 沿用的资料现取最新的一份:上面的 await 期间冷刷可能刚补上了头像,用开头读到的会把它盖掉。
 				const cachedProfile: CachedProfile = {
-					...(prev?.cachedProfile ?? {
+					...(subRuntimeStore.get(sub.id)?.cachedProfile ?? {
 						name: seedCard?.name ?? uid,
-						...(seedCard?.face ? { avatarUrl: seedCard.face } : {}),
+						...seedAvatar,
 						sign: seedCard?.sign ?? "",
 					}),
 					fans: current,
@@ -561,25 +573,39 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	/**
-	 * ⑥ name/avatar 批量冷刷:启动时用批量 user/cards(≤50 一发)把已 seed 的
-	 * cachedProfile 的昵称/头像刷新一遍,替代「每 tick 逐 UP 拉整张 card」里那份
-	 * 从未在稳态被消费的 name/avatar。只更 name/avatar,fans/sign/lastRefreshedAt
-	 * 保持不动(fans 由 tick 负责)。命中风控即退避、停止后续分片。
+	 * 一张头像待补:资料里该订阅的头像要按 `avatarUrl` 重新对一遍(`syncProfileAvatar`)。
 	 */
-	async function refreshProfilesBatch(): Promise<void> {
-		if (disposed) return;
+	interface AvatarJob {
+		subscriptionId: string;
+		uid: string;
+		avatarUrl: string;
+	}
+
+	/**
+	 * ⑥ name/avatar 批量冷刷:启动时用批量 user/cards(≤50 一发)把已 seed 的
+	 * cachedProfile 的昵称刷新一遍,替代「每 tick 逐 UP 拉整张 card」里那份
+	 * 从未在稳态被消费的 name/avatar。fans/sign/lastRefreshedAt 保持不动(fans 由 tick 负责)。
+	 * 命中风控即退避、停止后续分片。
+	 *
+	 * 名字当场写;头像要抓图(慢、会失败),不在这里等 —— 返回待核的头像清单,由 {@link syncAvatars} 另行补上
+	 * (所以名字的更新不会被某一张慢头像拖住)。清单里每一项要不要真去抓,由 `syncProfileAvatar` 判:已有头像、
+	 * 地址又没变的零网络;老资料只有 `avatarUrl` 没有 `avatar` 的会抓 —— 这就是已有的老数据在开机时补上头像的路。
+	 */
+	async function refreshProfilesBatch(): Promise<AvatarJob[]> {
+		const jobs: AvatarJob[] = [];
+		if (disposed) return jobs;
 		const targets = enabledBiliSubs().filter((s) => subRuntimeStore.get(s.id)?.cachedProfile);
 		for (let i = 0; i < targets.length; i += CARDS_BATCH_SIZE) {
-			if (disposed) return;
+			if (disposed) return jobs;
 			const chunk = targets.slice(i, i + CARDS_BATCH_SIZE);
 			try {
 				const res = await api.fetchUserCards(
 					chunk.map((s) => subscriptionIdentityOf(s).externalId),
 				);
-				if (disposed) return;
+				if (disposed) return jobs;
 				if (RISK_CONTROL_CODES.has(res.code)) {
 					enterRiskBackoff(res.code);
-					return;
+					return jobs;
 				}
 				if (res.code !== 0 || !res.data) continue;
 				const data = res.data;
@@ -588,17 +614,12 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					const brief = data[uid];
 					const prevProfile = subRuntimeStore.get(sub.id)?.cachedProfile;
 					if (!brief || !prevProfile) continue;
-					const name = brief.name || prevProfile.name;
 					const avatarUrl = brief.face || prevProfile.avatarUrl;
-					if (name === prevProfile.name && avatarUrl === prevProfile.avatarUrl) continue;
+					if (avatarUrl) jobs.push({ subscriptionId: sub.id, uid, avatarUrl });
+					const name = brief.name || prevProfile.name;
+					if (name === prevProfile.name) continue;
 					try {
-						await subRuntimeStore.patch(sub.id, {
-							cachedProfile: {
-								...prevProfile,
-								name,
-								...(avatarUrl === undefined ? {} : { avatarUrl }),
-							},
-						});
+						await subRuntimeStore.patch(sub.id, { cachedProfile: { ...prevProfile, name } });
 					} catch (err) {
 						logger.warn(`[fans-poller] 冷刷 profile ${uid} 持久化失败: ${String(err)}`);
 					}
@@ -607,6 +628,32 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				logger.warn(`[fans-poller] 批量刷 profile 失败: ${String(err)}`);
 			}
 		}
+		return jobs;
+	}
+
+	/** 补冷刷清单里的头像:同时最多 {@link FETCH_CONCURRENCY} 张,抓到才写资料(抓不到的规矩见 `syncProfileAvatar`)。 */
+	async function syncAvatars(jobs: readonly AvatarJob[]): Promise<void> {
+		const queue = [...jobs];
+		const worker = async (): Promise<void> => {
+			for (let job = queue.shift(); job !== undefined && !disposed; job = queue.shift()) {
+				try {
+					const before = subRuntimeStore.get(job.subscriptionId)?.cachedProfile;
+					if (!before) continue;
+					const fields = await syncProfileAvatar(before, job.avatarUrl, { images, logger });
+					if (disposed) return;
+					// 抓图期间资料可能被别处改过(轮询写了粉丝数),在最新的一份上并进头像两格。
+					const latest = subRuntimeStore.get(job.subscriptionId)?.cachedProfile;
+					if (!latest) continue;
+					if (fields.avatar === latest.avatar && fields.avatarUrl === latest.avatarUrl) continue;
+					await subRuntimeStore.patch(job.subscriptionId, {
+						cachedProfile: { ...latest, ...fields },
+					});
+				} catch (err) {
+					logger.warn(`[fans-poller] 冷刷头像 ${job.uid} 失败: ${String(err)}`);
+				}
+			}
+		};
+		await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, queue.length) }, worker));
 	}
 
 	startJob();
@@ -621,8 +668,14 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			if (disposed) return;
 			await sleepUnlessShutdown(3000);
 			if (disposed || serviceCtx.signal.aborted) return;
-			await refreshProfilesBatch();
+			const avatarJobs = await refreshProfilesBatch();
 			if (disposed) return;
+			// 头像另起一条活并行补:登记进 track,关停得等它收完;首轮 tick 不等它。
+			serviceCtx.track(
+				syncAvatars(avatarJobs).catch((err) => {
+					logger.warn(`[fans-poller] 冷刷头像失败: ${String(err)}`);
+				}),
+			);
 			await tickOnce();
 		})().catch((err) => {
 			logger.warn(`[fans-poller] 首轮启动失败: ${String(err)}`);

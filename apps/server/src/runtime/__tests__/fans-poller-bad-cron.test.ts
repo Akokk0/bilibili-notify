@@ -11,6 +11,7 @@
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
 // cron mock — 镜像真实 `cron` 包对无法解析表达式的同步抛错(同 dynamic-engine.test 套路)。
 const cronMock = vi.hoisted(() => {
@@ -62,6 +63,7 @@ describe("FansPoller — 无法解析的 fansCron", () => {
 
 		expect(() => {
 			handle = startFansPoller({
+				images: fakeProfileImages(),
 				isStatsEnabled: () => true,
 				bus,
 				logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: errorLog } as never,

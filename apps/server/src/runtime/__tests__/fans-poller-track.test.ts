@@ -8,6 +8,7 @@
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import {
 	deferred,
 	makeTrackingContext,
@@ -74,6 +75,7 @@ function start(options: Options = {}) {
 	const fetchUserCards = vi.fn(async () => ({ code: 0, data: {} }));
 	const setTimeout = vi.fn(() => ({ dispose() {} }));
 	handle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
 		logger: logger as never,

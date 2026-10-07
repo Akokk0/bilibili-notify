@@ -1,7 +1,14 @@
 import type { ImageRef, Logger, Post } from "@bilibili-notify/internal";
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { fetchLiveCover, fetchPostImages, type ImagesDeps, scaledImageUrl } from "../images";
+import {
+	fetchAvatar,
+	fetchLiveCover,
+	fetchPostImages,
+	type ImagesDeps,
+	scaledImageUrl,
+	syncProfileAvatar,
+} from "../images";
 
 const refOf = (n: number): ImageRef => `${n.toString(16).padStart(64, "0")}.jpg` as ImageRef;
 
@@ -253,5 +260,108 @@ describe("fetchLiveCover", () => {
 
 		expect(result.cover).toEqual({ url });
 		expect(deps.logger.warn).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("fetchAvatar", () => {
+	const face = "https://i1.hdslb.com/bfs/face/abc.jpg";
+
+	it("抓 480 宽、第一帧、webp 的缩放版,带站内引用头,回图库引用", async () => {
+		const { deps, calls } = fakeImages();
+		const ref = await fetchAvatar(face, deps);
+		expect(calls).toEqual([
+			{
+				url: "https://i1.hdslb.com/bfs/face/abc.jpg@480w_80q_1s.webp",
+				headers: { Referer: "https://www.bilibili.com/" },
+			},
+		]);
+		expect(ref).toBe(refOf(1));
+	});
+
+	it("缩放版抓不到不回退原图:只调一次、回 undefined、不抛", async () => {
+		const { deps, calls } = fakeImages(() => true);
+		expect(await fetchAvatar(face, deps)).toBeUndefined();
+		expect(calls).toHaveLength(1);
+	});
+
+	it("抓不到记的 warn 带地址但不带 query", async () => {
+		const { deps } = fakeImages(() => true);
+		await fetchAvatar(`${face}?token=secret`, deps);
+		const warned = vi.mocked(deps.logger.warn).mock.calls.flat().join("\n");
+		expect(warned).toContain(face);
+		expect(warned).not.toContain("secret");
+	});
+
+	it("非 B 站图床的地址只抓一次原地址", async () => {
+		const { deps, calls } = fakeImages();
+		const url = "https://example.com/a.png";
+		expect(await fetchAvatar(url, deps)).toBe(refOf(1));
+		expect(calls.map((call) => call.url)).toEqual([url]);
+	});
+});
+
+describe("syncProfileAvatar", () => {
+	const face = "https://i1.hdslb.com/bfs/face/abc.jpg";
+	const newFace = "https://i2.hdslb.com/bfs/face/new.jpg";
+	const oldRef = refOf(99);
+
+	it("资料里没有头像:抓到就 avatar 与 avatarUrl(原样来源地址,不是缩放后的)一起记", async () => {
+		const { deps } = fakeImages();
+		expect(await syncProfileAvatar(undefined, face, deps)).toEqual({
+			avatar: refOf(1),
+			avatarUrl: face,
+		});
+	});
+
+	it("地址没变且已有 avatar:零网络、原样返回", async () => {
+		const { deps, calls } = fakeImages();
+		const current = { avatar: oldRef, avatarUrl: face };
+		expect(await syncProfileAvatar(current, face, deps)).toEqual(current);
+		expect(calls).toHaveLength(0);
+	});
+
+	it("有地址却没有 avatar:再抓一次", async () => {
+		const { deps, calls } = fakeImages();
+		expect(await syncProfileAvatar({ avatarUrl: face }, face, deps)).toEqual({
+			avatar: refOf(1),
+			avatarUrl: face,
+		});
+		expect(calls).toHaveLength(1);
+	});
+
+	it("地址变了且抓到:两格一起换成新的", async () => {
+		const { deps } = fakeImages();
+		expect(await syncProfileAvatar({ avatar: oldRef, avatarUrl: face }, newFace, deps)).toEqual({
+			avatar: refOf(1),
+			avatarUrl: newFace,
+		});
+	});
+
+	it("抓不到、原本没有 avatar:avatarUrl 记新地址、avatar 缺键", async () => {
+		const { deps } = fakeImages(() => true);
+		const result = await syncProfileAvatar(undefined, face, deps);
+		expect(result).toEqual({ avatarUrl: face });
+		expect("avatar" in result).toBe(false);
+	});
+
+	it("抓不到、原本有 avatar:两格保持原样,下一轮地址仍不同、真的又去抓", async () => {
+		let down = true;
+		const { deps, calls } = fakeImages(() => down);
+		const current = { avatar: oldRef, avatarUrl: face };
+		const first = await syncProfileAvatar(current, newFace, deps);
+		expect(first).toEqual(current);
+		expect(calls).toHaveLength(1);
+		down = false;
+		const second = await syncProfileAvatar(first, newFace, deps);
+		expect(calls).toHaveLength(2);
+		expect(second).toEqual({ avatar: refOf(1), avatarUrl: newFace });
+	});
+
+	it("B 站没给地址:原样返回,不抓", async () => {
+		const { deps, calls } = fakeImages();
+		const current = { avatar: oldRef, avatarUrl: face };
+		expect(await syncProfileAvatar(current, undefined, deps)).toEqual(current);
+		expect(await syncProfileAvatar(undefined, "", deps)).toEqual({});
+		expect(calls).toHaveLength(0);
 	});
 });

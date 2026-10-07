@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
@@ -22,6 +23,7 @@ afterEach(() => {
 
 function start(fetchRelationStat: ReturnType<typeof vi.fn>) {
 	handle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,

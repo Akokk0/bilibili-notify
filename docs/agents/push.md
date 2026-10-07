@@ -94,7 +94,7 @@
 | | B 站行 | 拓展行 |
 |---|---|---|
 | 身份 | `{ sourceKey: "bilibili", externalId: uid }` | `{ sourceKey: 拓展 id, externalId: 外部 id }` |
-| 快照 | 名字（`nameSnapshot`）；头像快照缺着（`avatarSnapshot` 只装图库引用，服务端不抓 B 站头像，抓图服务在 3a）；面板退到订阅现在的头像、再退到首字 | 名字 + 头像（`nameSnapshot` / `avatarSnapshot`：写行时抄资料缓存里存进图库的 `avatar`，历史仓先续期，续不上就不写这一格；⑳d 取代 ADR-0019 决策 74 的「拓展行不存头像快照」） |
+| 快照 | 名字（`nameSnapshot`）；头像快照（`avatarSnapshot` 只装图库引用）：写行时抄资料缓存里的 `avatar`，B 站头像抓进图库后同样有；资料里还没有 `avatar` 时缺着，面板退到订阅现在的头像、再退到首字 | 名字 + 头像（`nameSnapshot` / `avatarSnapshot`：写行时抄资料缓存里存进图库的 `avatar`，历史仓先续期，续不上就不写这一格；⑳d 取代 ADR-0019 决策 74 的「拓展行不存头像快照」） |
 
 ⚠️ 身份两格一起比：外部 id 恰好是一串等于某个 B 站 uid 的数字，来源键不同，也不是同一个人。0.x 与 ⑱b 之前的行（`uid` / `extensionId` + `externalId` 散格）由迁移并成 `identity`（`migration/history.ts`），推不出身份的是坏行、原样不动。
 

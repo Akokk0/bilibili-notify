@@ -11,6 +11,7 @@
 import type { FansRefreshEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { makeStorageWorld, type StorageWorld } from "../../__tests__/support/storage-world.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -59,6 +60,7 @@ async function start() {
 	await world.fansStore.append("e1", { sampledAt: iso(10 * DAY), followers: 50 });
 	await world.fansStore.append("e1", { sampledAt: iso(HOUR), followers: 80 });
 	handle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,

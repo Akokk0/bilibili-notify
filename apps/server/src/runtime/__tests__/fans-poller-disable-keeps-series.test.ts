@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FansRefreshEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -80,6 +81,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		signal: new AbortController().signal,
 	};
 	handle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,

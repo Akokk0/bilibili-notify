@@ -14,8 +14,10 @@ import {
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { ensureFollowed } from "../bilibili/api/index.js";
+import { syncProfileAvatar } from "../bilibili/images.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
+import { createImageFetcher } from "../images/image-fetcher.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
@@ -137,10 +139,18 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			const res = await engines.api.fetchUserCard(uid);
 			if (res.code !== 0 || !res.data?.card) return;
 			const card = res.data.card;
+			// 头像当场抓进图库再回应(经 B 站接口那个请求客户端,引用方是订阅资料这一家);抓不到不让新建失败,
+			// 资料里先只记地址,下一轮粉丝轮询的冷刷会补(见 `syncProfileAvatar`)。
+			const avatarFields = await syncProfileAvatar(undefined, card.face, {
+				images: createImageFetcher({
+					http: engines.api.http,
+					images: deps.runtime.profileImages,
+				}),
+				logger: log,
+			});
 			const cachedProfile: CachedProfile = {
 				name: card.name ?? uid,
-				// B 站的头像是 B 站 CDN 的图链,留成网址(服务端不抓 B 站头像,抓图服务在 3a);没有就缺这一格。
-				...(card.face ? { avatarUrl: card.face } : {}),
+				...avatarFields,
 				sign: card.sign ?? "",
 				fans: typeof card.fans === "number" && card.fans >= 0 ? card.fans : 0,
 				lastRefreshedAt: new Date().toISOString(),

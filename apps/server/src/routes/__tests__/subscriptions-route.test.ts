@@ -8,8 +8,10 @@
  * 为 null 时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
  */
 
+import { fail, type ImageRef, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { png } from "../../__tests__/support/report-images.js";
 import { ConfigValidationError } from "../../config/store.js";
 import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
@@ -33,7 +35,13 @@ const PROFILE = {
 	lastRefreshedAt: "2026-05-19T00:00:00.000Z",
 };
 
+/** 头像抓进图库后的引用(假的图库每张都回它)。 */
+const AVATAR_REF = `${"a".repeat(64)}.png` as ImageRef;
+
 interface Harness {
+	/** 假的 B 站请求客户端(`Api.http`)收到的请求。 */
+	httpFetch: ReturnType<typeof vi.fn>;
+	putImage: ReturnType<typeof vi.fn>;
 	app: ReturnType<typeof createSubscriptionsRoute>;
 	getSubscriptions: ReturnType<typeof vi.fn>;
 	upsertSubscription: ReturnType<typeof vi.fn>;
@@ -50,6 +58,8 @@ function makeHarness(opts?: {
 	engines?: "ok" | "null" | "throw" | "code-fail";
 	/** follow() 的结果:ok=已关注成功;already=22014 已关注过;fail=业务码失败;throw=网络炸。 */
 	follow?: "ok" | "already" | "fail" | "throw";
+	/** 抓头像:ok=抓到一张 png;fail=对端连不上。 */
+	avatar?: "ok" | "fail";
 }): Harness {
 	const subs = opts?.subs ?? [SUB];
 	const rtRecord = opts?.rtRecord ?? {};
@@ -86,18 +96,37 @@ function makeHarness(opts?: {
 		return { code: 0, message: "0" };
 	});
 
-	const engines = enginesMode === "null" ? null : { api: { fetchUserCard, follow } };
+	// 假的请求客户端:不联网,数一数抓了哪些地址。
+	const httpFetch = vi.fn(async (url: URL | string) =>
+		opts?.avatar === "fail"
+			? fail("unavailable", "连不上")
+			: ok({
+					url: String(url),
+					status: 200,
+					headers: new Headers(),
+					body: png(8, 8, 1),
+					isSuccess: true,
+					text: () => "",
+					json: () => ({ ok: false as const, code: "invalid" as const, message: "不是 json" }),
+				}),
+	);
+	const putImage = vi.fn(async () => ok({ ref: AVATAR_REF }));
+	const engines =
+		enginesMode === "null" ? null : { api: { fetchUserCard, follow, http: { fetch: httpFetch } } };
 
 	const deps = {
 		store: { getSubscriptions, upsertSubscription, patchSubscription },
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 			subRuntimeStore: { get: rtGet, patch: rtPatch },
+			profileImages: { put: putImage },
 			engines,
 		},
 	} as unknown as RouteDeps;
 
 	return {
+		httpFetch,
+		putImage,
 		app: createSubscriptionsRoute(deps),
 		getSubscriptions,
 		upsertSubscription,
@@ -177,7 +206,8 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		expect(id).toBe(SUB.id);
 		expect(patch.cachedProfile).toMatchObject({
 			name: PROFILE.name,
-			// B 站的头像是远端网址:放 `avatarUrl`,不是图库引用 `avatar`。
+			// B 站的头像抓进图库:`avatar` 是图库引用,`avatarUrl` 记抓图用的来源地址。
+			avatar: AVATAR_REF,
 			avatarUrl: PROFILE.avatarUrl,
 			sign: PROFILE.sign,
 			fans: PROFILE.fans,
@@ -186,6 +216,31 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		// 响应也走 toDTO(数组)
 		const body = (await res.json()) as Array<Record<string, unknown>>;
 		expect(body[0]).not.toHaveProperty("state");
+	});
+
+	it("新建订阅当场把头像抓进图库再回应,只抓一次", async () => {
+		const h = makeHarness({ rtRecord: {} });
+		await h.app.request("/", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(SUB),
+		});
+		expect(h.httpFetch).toHaveBeenCalledTimes(1);
+		expect(String(h.httpFetch.mock.calls[0]?.[0])).toBe(PROFILE.avatarUrl);
+		expect(h.putImage).toHaveBeenCalledTimes(1);
+	});
+
+	it("头像抓不到 → 订阅照建(200),资料里只有 avatarUrl、没有 avatar", async () => {
+		const h = makeHarness({ rtRecord: {}, avatar: "fail" });
+		const res = await h.app.request("/", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(SUB),
+		});
+		expect(res.status).toBe(200);
+		const [, patch] = seedCalls(h)[0] as [string, { cachedProfile: Record<string, unknown> }];
+		expect(patch.cachedProfile.avatarUrl).toBe(PROFILE.avatarUrl);
+		expect(patch.cachedProfile).not.toHaveProperty("avatar");
 	});
 
 	it("已有 cachedProfile → 跳过 seed(bounded,不重复打 B 站)", async () => {

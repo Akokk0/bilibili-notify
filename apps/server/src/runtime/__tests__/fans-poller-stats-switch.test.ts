@@ -14,6 +14,7 @@
 import type { FansRefreshEntry } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
 
 const cronMock = vi.hoisted(() => {
@@ -93,6 +94,7 @@ async function start(
 	const fans = over.fans ?? 4242;
 	const setTimeoutSpy = vi.fn(() => undefined);
 	const poller = startFansPoller({
+		images: fakeProfileImages(),
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

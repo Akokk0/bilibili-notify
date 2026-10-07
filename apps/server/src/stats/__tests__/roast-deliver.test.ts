@@ -120,7 +120,7 @@ describe("deliverRoast — 停用的目标", () => {
  * 卡上的人(ADR-0020 决策 15 / 3):按订阅 id 认,两支订阅都行。
  *
  * - 拓展的头像在资料里是图库引用(`avatar`),面板用的同源地址 `/api/images/<ref>` 截图的浏览器加载不到 —— 出卡前
- *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像(`avatarUrl`)照旧是 CDN 图链。
+ *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像抓进图库后同样读图库;头像还没抓到(资料里只有来源地址 `avatarUrl`)时退回 CDN 图链,由出图器预取。
  * - 颜色跟着人走,与面板同一个算法(`upColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
  * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
  */
@@ -130,6 +130,12 @@ describe("buildRoastPayload — 卡上的人", () => {
 	const BILI = {
 		id: "s-bili",
 		identity: { sourceKey: "bilibili", externalId: "12345" },
+		overrides: {},
+	};
+	/** 头像已经抓进图库的 B 站订阅(资料里有 `avatar` 引用,也记着来源地址)。 */
+	const BILI_STORED = {
+		id: "s-bili-stored",
+		identity: { sourceKey: "bilibili", externalId: "67890" },
 		overrides: {},
 	};
 	const EXT = {
@@ -145,13 +151,22 @@ describe("buildRoastPayload — 卡上的人", () => {
 
 	/** 拓展订阅 s-dy 资料里的头像引用。 */
 	const DY_REF = `${"d".repeat(64)}.png`;
+	/** B 站订阅 s-bili-stored 资料里的头像引用。 */
+	const BILI_REF = `${"e".repeat(64)}.png`;
 
 	/** `images`:图库里每个引用对应的字节(`"throws"` = 读盘抛了);默认 s-dy 的头像在。 */
-	function makeCardDeps(images: Record<string, Buffer | "throws"> = { [DY_REF]: PNG }) {
+	function makeCardDeps(
+		images: Record<string, Buffer | "throws"> = { [DY_REF]: PNG, [BILI_REF]: PNG },
+	) {
 		const generateRoastBoardCard = vi.fn(async (..._args: unknown[]) => Buffer.from("B"));
 		const generateRoastSoloCard = vi.fn(async (..._args: unknown[]) => Buffer.from("S"));
 		const profiles: Record<string, { name: string; avatar?: string; avatarUrl?: string }> = {
 			"s-bili": { name: "B 站甲", avatarUrl: "https://i0.hdslb.com/a.jpg" },
+			"s-bili-stored": {
+				name: "B 站丙",
+				avatar: BILI_REF,
+				avatarUrl: "https://i0.hdslb.com/stored.jpg",
+			},
 			"s-dy": { name: "抖音乙", avatar: DY_REF },
 		};
 		const deps = {
@@ -169,7 +184,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 			},
 			store: {
 				getGlobals: () => makeDefaultGlobalConfig(),
-				getSubscriptions: () => [BILI, EXT, EXT_BARE],
+				getSubscriptions: () => [BILI, BILI_STORED, EXT, EXT_BARE],
 			},
 		} as unknown as RoastDeliverDeps;
 		return { deps, generateRoastBoardCard, generateRoastSoloCard };
@@ -196,7 +211,26 @@ describe("buildRoastPayload — 卡上的人", () => {
 		expect(out.text).toContain("抖音乙");
 	});
 
-	it("榜单两支混着:B 站头像照旧是图链;颜色 = upColor(按人,外部 id 与 uid 同串也不同色)", async () => {
+	it("B 站订阅的头像已在图库:和拓展一样读图库、内嵌成 data URL(不再交远端图链)", async () => {
+		const { deps, generateRoastSoloCard } = makeCardDeps();
+		await buildRoastPayload(deps, {
+			kind: "solo",
+			result: {
+				pushText: "",
+				subscriptionId: "s-bili-stored",
+				verdict: "v",
+				score: 1,
+				highlights: [],
+			},
+			days: 7,
+		});
+		const up = (
+			generateRoastSoloCard.mock.calls[0]?.[0] as { creator: Record<string, unknown> } | undefined
+		)?.creator;
+		expect(up?.avatar).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
+	});
+
+	it("榜单两支混着:B 站头像还没进图库时退回远端图链;颜色 = upColor(按人,外部 id 与 uid 同串也不同色)", async () => {
 		const { deps, generateRoastBoardCard } = makeCardDeps();
 		const board: BoardLike = {
 			pushText: "x",

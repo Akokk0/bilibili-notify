@@ -16,6 +16,7 @@
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];
@@ -67,6 +68,7 @@ function runPoller(opts: {
 }) {
 	const bus = createNodeMessageBus();
 	return startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,

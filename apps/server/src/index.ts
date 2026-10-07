@@ -899,6 +899,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subRuntimeStore: runtime.subRuntimeStore,
 			fansStore: runtime.fansStore,
 			api: authSystem.api,
+			// B 站订阅的头像抓进图库(3a-35):首见种资料与开机冷刷用,引用方是订阅资料这一家。
+			images: createImageFetcher({ http: authSystem.api.http, images: runtime.profileImages }),
 			serviceCtx: runtime.serviceCtx,
 			isStatsEnabled: runtime.isStatsEnabled,
 		});

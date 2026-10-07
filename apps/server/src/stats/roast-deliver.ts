@@ -61,11 +61,11 @@ export interface DeliverOutcome {
 export const UNKNOWN_UP_NAME = "未知 UP";
 
 /**
- * 拓展订阅卡上的头像:资料里引用的那张图库图转成内嵌图(ADR-0020 决策 15)。面板用的同源地址
+ * 卡上的头像:资料里引用的那张图库图转成内嵌图(ADR-0020 决策 15)。面板用的同源地址
  * (`/api/images/<ref>`)截图的浏览器加载不到(同 ADR-0019 决策 68 那个坑)。没存、图已经不在、认不出
  * 类型、读盘抛了都给 `undefined` —— 卡上画首字母圆牌,不因为一张头像让整张卡降级成文字。
  */
-async function extensionAvatar(deps: RoastDeliverDeps, subscriptionId: string) {
+async function storedAvatar(deps: RoastDeliverDeps, subscriptionId: string) {
 	try {
 		const stored = await readProfileAvatar(deps.runtime, subscriptionId);
 		return stored ? imageDataUrl(stored.bytes) : undefined;
@@ -85,17 +85,20 @@ async function cardUp(
 	const identity = subscriptionIdentityOf(sub);
 	// 颜色跟着人走:种子与面板的 `upColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
 	const color = identityColor(identity);
-	if (identity.sourceKey === BILIBILI_SOURCE_KEY) {
-		// B 站照旧:头像是 CDN 图链(`avatarUrl`),渲染器出图前自己内联。
-		const avatar = deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl;
-		return { name, avatar, color };
-	}
-	return { name, avatar: await extensionAvatar(deps, sub.id), color };
+	const avatar = await storedAvatar(deps, sub.id);
+	if (identity.sourceKey !== BILIBILI_SOURCE_KEY) return { name, avatar, color };
+	// B 站的头像抓进图库后同样读图库;还没抓到(新订阅抓不到、或老资料等着开机冷刷补)时退回头像的来源地址
+	// `avatarUrl`,交给出图器自己预取 —— 这段时间锐评卡不丢头像。
+	return {
+		name,
+		avatar: avatar ?? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl,
+		color,
+	};
 }
 
 /**
  * 订阅 id → 名称 / 头像 / 配色(两支订阅都行,ADR-0020 决策 18)。名字走 `roast-subject.ts`(与提示词里的
- * 同一份);拓展的头像要读盘,所以先把这份锐评提到的人一次备齐,返回的查表是同步的。
+ * 同一份);头像要读盘,所以先把这份锐评提到的人一次备齐,返回的查表是同步的。
  */
 export async function makeUpMeta(
 	deps: RoastDeliverDeps,

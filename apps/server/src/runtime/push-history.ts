@@ -8,8 +8,8 @@ import type { NewHistoryEntry } from "../history/store.js";
 
 export interface PushHistoryLookups {
 	/**
-	 * 订阅 id → 订阅本身与当时的名字 / 头像(SubRuntimeStore 的 cachedProfile:`avatar` 是拓展订阅存进图库的头像引用,
-	 * `avatarUrl` 是 B 站订阅的远端网址)。查不到 = 推送中途被退订。一次查完:订阅表是线性扫的,两个回调就要扫两遍。
+	 * 订阅 id → 订阅本身与当时的名字 / 头像(SubRuntimeStore 的 cachedProfile:`avatar` 是存进图库的头像引用,
+	 * `avatarUrl` 是它的来源地址)。查不到 = 推送中途被退订。一次查完:订阅表是线性扫的,两个回调就要扫两遍。
 	 */
 	subscriptionOf(subscriptionId: string):
 		| {
@@ -31,8 +31,8 @@ export interface PushHistoryLookups {
  * 外部 id 恰好等于某个 B 站 uid 时,订阅删掉之后也不会被认成那位 B 站 UP(ADR-0019 决策 73)。
  *
  * 头像快照只装图库引用(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗;⑳d 起取代 ADR-0019 决策 74 的「拓展行不存头像
- * 快照」—— 那时头像是订阅一删就没的相对地址,现在是历史行自己引用着的图库里的图):拓展行抄资料里的 `avatar`
- * (历史仓写行前先续期);**B 站行不带** —— 服务端不抓 B 站头像,抓图服务在 3a。
+ * 快照」—— 那时头像是订阅一删就没的相对地址,现在是历史行自己引用着的图库里的图):两支订阅的行都抄资料里的 `avatar`
+ * (历史仓写行前先续期);B 站头像抓进图库后(3a-35)B 站行也有,资料里还没有 `avatar` 的行缺这一格。
  *
  * 拓展行的名字快照走决策 77 的名字链(少了事件里的作者名那一层,这里拿不到):资料里的名字 → 主人填的
  * 别名(订阅的 `name`)。拓展没报过资料时订阅上没有资料名字,不退到别名的话这一行就没有「当时是谁」。
@@ -58,7 +58,7 @@ export function historyRecordFromSend(
 		// 逐条重建只是把字段抄一遍,还多一处「加字段记得同步」的维护点。
 		messages: info.messages,
 		nameSnapshot,
-		...(!fromBilibili && profile?.avatar ? { avatarSnapshot: profile.avatar } : {}),
+		...(profile?.avatar ? { avatarSnapshot: profile.avatar } : {}),
 	};
 }
 

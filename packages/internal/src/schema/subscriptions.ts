@@ -57,9 +57,11 @@ export const SubscriptionRoutingSchema = SubscriptionRoutingObjectSchema.transfo
  * `JSON.parse`、不过这份 schema,所以旧载荷读到缺这一格的条目也照常开机。
  *
  * 头像按来源不同,分两格(ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗,命名见 `docs/agents/conventions/naming.md`):
- * - `avatar`:存进图库的头像,是 `ImageRef`,面板从 `/api/images/<ref>` 取。这一期只有**拓展订阅**有;
- * - `avatarUrl`:远端网址。这一期只有 **B 站订阅**有(B 站 CDN 的图链)—— 服务端从不抓 B 站的头像,抓图服务在
- *   3a,到那时它也换成 `avatar`。
+ * - `avatar`:存进图库的头像,是 `ImageRef`,面板从 `/api/images/<ref>` 取。两支订阅都有(B 站的由服务端抓,
+ *   拓展的由拓展报上来);
+ * - `avatarUrl`:远端网址。**只要有 `avatar`,`avatarUrl` 就是那张图的来源地址**(B 站给的原地址,不是缩放后的)。
+ *   B 站订阅用它认「头像要不要重新抓」:地址变了、或有地址却没有 `avatar` 才抓;抓不到时原本有 `avatar` 的两格
+ *   保持原样,原本没有的只记地址(下一轮再试,面板与锐评卡也还有地址可退)。拓展订阅没有这一格。
  *
  * 没有头像就是**两格都缺**,不再写空串。
  */

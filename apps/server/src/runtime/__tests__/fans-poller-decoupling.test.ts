@@ -18,6 +18,7 @@
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages, PROFILE_IMAGE_REF } from "../../__tests__/support/profile-images.js";
 
 // cron mock — FakeCronJob 捕获 onTick,不真正排程(同 dynamic-engine.test 套路)。
 const cronMock = vi.hoisted(() => {
@@ -107,6 +108,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		bus.on("subscription-changed", subChangedSpy);
 
 		handle = startFansPoller({
+			images: fakeProfileImages(),
 			isStatsEnabled: () => true,
 			bus,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
@@ -161,9 +163,11 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		];
 		expect(id).toBe("sub-1");
 		expect(payload.cachedProfile).toMatchObject({ name: "测试UP", fans: 4242 });
-		// B 站的头像是远端网址:放 `avatarUrl`,图库引用那一格 `avatar` 是拓展订阅才有的。
-		expect(payload.cachedProfile).toMatchObject({ avatarUrl: "f.png" });
-		expect(payload.cachedProfile).not.toHaveProperty("avatar");
+		// 首见时头像抓进图库:`avatar` 是图库引用,`avatarUrl` 记抓图用的来源地址。
+		expect(payload.cachedProfile).toMatchObject({
+			avatar: PROFILE_IMAGE_REF,
+			avatarUrl: "f.png",
+		});
 		expect(payload.cachedProfile?.lastRefreshedAt).toBeTypeOf("string");
 		expect(payload.fansBaseline).toMatchObject({ value: 4242 });
 
@@ -184,6 +188,7 @@ describe("FansPoller 一次 tick — 与 ConfigStore 解耦", () => {
 		const api = makeApi(120);
 
 		handle = startFansPoller({
+			images: fakeProfileImages(),
 			isStatsEnabled: () => true,
 			bus,
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,

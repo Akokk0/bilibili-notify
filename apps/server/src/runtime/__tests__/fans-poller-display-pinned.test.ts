@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { FansRefreshEntry, Subscription } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
 import { createStatsFollowersRoute } from "../../routes/stats-followers.js";
 import type { RouteDeps } from "../../routes/types.js";
@@ -87,6 +88,7 @@ async function start(subs: Subscription[], seed: Record<string, SubRuntime>) {
 		runtime.set(id, { ...runtime.get(id), ...p });
 	});
 	handle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,

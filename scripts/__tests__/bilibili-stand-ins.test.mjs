@@ -62,7 +62,7 @@ export const RATCHET = {
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
-	"apps/server/src/runtime/push-history.ts": 5,
+	"apps/server/src/runtime/push-history.ts": 4,
 	"apps/server/src/stats/bili-format.ts": 1,
 	"apps/server/src/stats/bili-source.ts": 15,
 	"apps/server/src/stats/extension-source.ts": 3,

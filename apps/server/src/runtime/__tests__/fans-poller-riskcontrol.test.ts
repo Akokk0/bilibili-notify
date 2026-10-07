@@ -9,6 +9,7 @@
 
 import type { GlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 
 const cronMock = vi.hoisted(() => {
 	const instances: Array<{ cronTime: string; onTick: () => void }> = [];
@@ -52,6 +53,7 @@ function baseDeps(over: {
 	const bus = createNodeMessageBus();
 	return {
 		bus,
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		configStore: { getGlobals: () => GLOBALS, patchSubscription: vi.fn() } as never,

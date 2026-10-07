@@ -25,6 +25,7 @@ const target = {
 
 const EXT_ID = "33333333-3333-4333-8333-333333333333";
 const EXT_AVATAR = `${"a".repeat(64)}.png`;
+const BILI_AVATAR = `${"b".repeat(64)}.webp`;
 const lookups = {
 	subscriptionOf: (subscriptionId: string) =>
 		subscriptionId === SUB_ID
@@ -33,7 +34,7 @@ const lookups = {
 						id: SUB_ID,
 						identity: { sourceKey: "bilibili", externalId: "u1" },
 					}),
-					profile: { name: "某UP", avatarUrl: "http://a/x.jpg" },
+					profile: { name: "某UP", avatar: BILI_AVATAR, avatarUrl: "http://a/x.jpg" },
 				}
 			: subscriptionId === EXT_ID
 				? {
@@ -80,11 +81,12 @@ describe("historyRecordFromSend", () => {
 				},
 			],
 			nameSnapshot: "某UP",
+			avatarSnapshot: BILI_AVATAR,
 		});
 	});
 
-	// B 站行的头像快照这一片空着(抓图服务在 3a):订阅资料里有远端网址 `avatarUrl` 也不抄,面板退到订阅现在的头像。
-	it("B 站行:不带头像快照,哪怕资料里有头像网址", () => {
+	// B 站头像抓进了图库(3a-35):B 站行和拓展行一样,抄资料里的图库引用 `avatar`;远端网址 `avatarUrl` 不抄。
+	it("B 站行:带头像快照(资料里的图库引用);资料里只有头像网址时不带", () => {
 		const info: PushSendResult = {
 			pushId: "p1",
 			subscriptionId: SUB_ID,
@@ -93,9 +95,16 @@ describe("historyRecordFromSend", () => {
 			messages: [],
 		};
 		const input = historyRecordFromSend(info, lookups);
-		expect(input).toMatchObject({ nameSnapshot: "某UP" });
-		expect(input).not.toHaveProperty("avatarSnapshot");
+		expect(input).toMatchObject({ nameSnapshot: "某UP", avatarSnapshot: BILI_AVATAR });
 		expect(input).not.toHaveProperty("uavatarSnapshot");
+
+		const onlyUrl = historyRecordFromSend(info, {
+			subscriptionOf: (id) => {
+				const found = lookups.subscriptionOf(id);
+				return found && { ...found, profile: { name: "某UP", avatarUrl: "http://a/x.jpg" } };
+			},
+		});
+		expect(onlyUrl).not.toHaveProperty("avatarSnapshot");
 	});
 
 	it("无目标:target null、消息没有结果", () => {

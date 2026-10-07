@@ -27,6 +27,7 @@ import { type FansPollerHandle, startFansPoller } from "../runtime/fans-poller.j
 import { createNodeMessageBus } from "../runtime/message-bus.js";
 import type { SubRuntime } from "../runtime/sub-runtime-store.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
+import { fakeProfileImages } from "./support/profile-images.js";
 
 const at = (iso: string) => Date.parse(iso);
 const NOW = at("2026-06-30T12:00:00.000Z");
@@ -263,6 +264,7 @@ async function panelEntries(root: string): Promise<FansRefreshEntry[]> {
 		signal: new AbortController().signal,
 	};
 	const handle: FansPollerHandle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
 		logger: silent,

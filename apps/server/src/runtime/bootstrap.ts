@@ -115,8 +115,8 @@ export interface AppRuntime {
 	 */
 	chatImages: ImageWriter;
 	/**
-	 * 拓展订阅的头像往图库存图的口(ADR-0019 决策 49;头像进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):新建订阅
-	 * 那条路与拓展「报资料更新」存头像,资料缓存里放回来的引用。这一家引用的是资料缓存里的 `avatar`
+	 * 订阅头像往图库存图的口(ADR-0019 决策 49;头像进图库见 ADR-0022 决策 9 下 10-04「⑳ 开片」的 🔗):新建订阅
+	 * 那条路、拓展「报资料更新」与 B 站头像的抓取(3a-35,经抓图服务)存头像,资料缓存里放回来的引用。这一家引用的是资料缓存里的 `avatar`
 	 * (`subRuntimeStore.listImageRefs`),装配时登记。
 	 */
 	profileImages: ImageWriter;

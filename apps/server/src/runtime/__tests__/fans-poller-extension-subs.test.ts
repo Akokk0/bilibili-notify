@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { fakeProfileImages } from "../../__tests__/support/profile-images.js";
 import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 
@@ -31,6 +32,7 @@ function start(list: () => unknown[]) {
 	const dropUid = vi.fn(async (_uid: string) => {});
 	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
 	handle = startFansPoller({
+		images: fakeProfileImages(),
 		isStatsEnabled: () => true,
 		bus,
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
