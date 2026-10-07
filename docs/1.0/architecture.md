@@ -370,7 +370,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - 推送侧另有两道数据守卫（ADR-0024 决策 9，3a）：改目标的 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。
 - 守卫 17 在 3a（`bilibili/` 在 3a 才出现），守卫 18 的三个内置适配器的键已落（`RESERVED_INTEGRATION_KEYS`）；哪一期改了盘上形状，就在同一期往迁移模块加条目、钉进守卫 13 的清单。各道守卫哪期开、哪期清零，与 [construction-plan.md](./construction-plan.md)「中立性守卫的归期」对不上时以那边为准。
 
-守卫 4 上线前要先清掉现有重名：`BootstrapConfigSchema` 两份（服务端 `config/schema.ts` 那份 `cookieEncryptionKey` 可选、至少 1 位；internal 那份必填且至少 16 位）合一并**按可选**（否则没设密钥的用户开不了机）；`CommentaryClient` / `SubscriptionsView` / `ConversationRole` 各两份合并；`createDevtools` 的 stub 和零 import 文件里的 `isPlainObject` 进白名单并写明理由；`runtime/video-card.ts` 的 `formatDuration(seconds)` 改叫 `formatClock`。
+守卫 4 上线前要先清掉现有重名：`BootstrapConfigSchema` 两份（服务端 `config/schema.ts` 那份 `cookieEncryptionKey` 可选、至少 1 位；internal 那份必填且至少 16 位）合一并**按可选**（否则没设密钥的用户开不了机）；`SubscriptionsView` / `ConversationRole` 各两份处理掉（`CommentaryClient` 已在 3a-06 换成 ai 包的 `CommentaryProvider`；`SubscriptionsView` 两份形状不同，3a-25 改名）；`createDevtools` 的 stub 和零 import 文件里的 `isPlainObject` 进白名单并写明理由；`runtime/video-card.ts` 的 `formatDuration(seconds)` 改叫 `formatClock`。
 
 ## 明确不改的
 

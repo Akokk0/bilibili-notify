@@ -6,8 +6,8 @@
 
 | 项 | 现状 |
 | --- | --- |
-| 切片表 | 提案，等主人认 |
-| 已完成 | 0 / 42 |
+| 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
+| 已完成 | 6 / 41（3a-01 至 3a-06；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -32,13 +32,13 @@
 | 片 | 做什么 | 依赖 | 动盘 |
 | --- | --- | --- | --- |
 | **甲 随时能做的小片** | | | |
-| 3a-01 | `/api/health` 的 `moduleVersions` 删 api / dynamic / live 三格 | 无 | 无 |
-| 3a-02 | 拓展定时器收口（一次性定时器触发后自动放掉；桥改用 `ctx.setTimeout`）+ 守卫 22 开张 | 无 | 无 |
-| 3a-03 | 守卫 17 开张（`bilibili/`、`platforms/` 不许 import fs，开张即绿） | 无 | 无 |
-| 3a-04 | 推送冻结线：webhook 出站 JSON 与桥的线上格式各钉一条快照（今天一条都没有，而 webhook 直接把内部载荷名写到线上）；推送侧几道棘轮以现状开张 | 无 | 无 |
-| 3a-05 | 卡片预览路由的出卡器接上图库解析 | 无 | 无 |
-| 3a-06 | `dynamic` 与 `live` 之间 4 个重名类型合并（`CommentaryClient`、`PushLike`、`SubItemView`、`SubscriptionsView`） | 无 | 无 |
-| 3a-07 | 档位表的中立取法：出图器的示例卡与卡片路由不再直接读 B 站档位表 | 无 | 无 |
+| 3a-01 ✅ | `/api/health` 的 `moduleVersions` 删 api / dynamic / live 三格 | 无 | 无 |
+| 3a-02 ✅ | 拓展定时器收口（一次性定时器触发后自动放掉；桥改用 `ctx.setTimeout`）+ 守卫 22 开张 | 无 | 无 |
+| 3a-03 ✅ | 守卫 17 开张（`bilibili/`、`platforms/` 不许 import fs，开张即绿） | 无 | 无 |
+| 3a-04 ✅ | 推送冻结线：webhook 出站 JSON 与桥的线上格式各钉一条快照（今天一条都没有，而 webhook 直接把内部载荷名写到线上）。推送侧几道棘轮的开张挪去 3a-41，和别的棘轮一起定时点 | 无 | 无 |
+| 3a-05 ✅ | 卡片预览路由的出卡器接上图库解析 | 无 | 无 |
+| 3a-06 ✅ | `dynamic` 与 `live` 两份一样的 `CommentaryClient` 换成 ai 包已有的 `CommentaryProvider`。另外三个「重名」（`PushLike`、`SubItemView`、`SubscriptionsView`）其实是名字相同、形状不同的两个东西，不能合并只能改名，挪去 3a-25 | 无 | 无 |
+| 3a-07 → 并进 3a-28 | 档位表的中立取法：出图器的示例卡与卡片路由不再直接读 B 站档位表。10-07 现查：档位表住 `packages/internal`，纯搬（3a-24）不动它，所以它不是搬家的前置；要到 3a-28 档位表进来源描述符时才需要换取法，而那时才有登记表可以问。现在做只能造一层临时的注入 | — | — |
 | **乙 接口骨架（纯新增，还没有 B 站调用方）** | | | |
 | 3a-08 | 中立类型落点与登记表：`SubscriptionSource`、`SourceDescriptor`、`SourceContext`、`IntegrationContext` 等；`claim-table` 改成通用登记表 | 无 | 无 |
 | 3a-09 | 问题表（全在内存）+ `/api/problems` + 变更事件；拓展侧「上报被拒记录」家族改名腾出 `reportProblem` 这个名字；私聊节流与「已恢复」 | 3a-08 | 无 |
@@ -58,7 +58,7 @@
 | 3a-22 | 连接新形状（`adapterKey` / `settings` / `platformSnapshot`），删 `CONNECTION_PLATFORMS` 闭集 | 3a-21 | 连接、备份 |
 | **丁 B 站搬家与接入** | | | |
 | 3a-23 | 搬家前置：面板的登录态类型、`packages/ai` 都先脱开 `@bilibili-notify/api`（包不能反过来依赖服务端） | 待问 | 无 |
-| 3a-24 | 纯搬：四包 → `apps/server/src/bilibili/`（`blive` 并进 `bilibili/live/`），只改 import 路径；构建配方、装配脚本、守卫里写死的路径同一个提交带上。**独占工作区**，约 150 个文件 | 3a-01、3a-06、3a-07、3a-23 | 无 |
+| 3a-24 | 纯搬：四包 → `apps/server/src/bilibili/`（`blive` 并进 `bilibili/live/`），只改 import 路径；构建配方、装配脚本、守卫里写死的路径同一个提交带上。**独占工作区**，约 150 个文件 | 3a-01、3a-06、3a-23 | 无 |
 | 3a-25 | 改名（单独一个提交）：按 naming.md 的词表；外部接口回应的起名；原字段名只留在回应上。**独占工作区** | 3a-24 | 无 |
 | 3a-26 | B 站的 cookie 与浏览器身份进 `ctx`；`packages/storage` 的 `CookieStore` 退役 | 3a-10、3a-12、3a-25 | 密钥文件 |
 | 3a-27 | `PostEvent` 信封与 `post-detected` 事件取代 `dynamic-detected`；`deliverWork` → `deliverPost`、`NeutralWork` 退场；B 站作品的统计多收字段；中立部分拆进 `posts/` | 3a-08、3a-24 | 无 |
@@ -94,3 +94,13 @@
 ## 各组开工记录
 
 （每组开工时在这里加一小节：那一组问过主人的题与答案、施工时定的要点、留着的尾巴、真机待看。）
+
+### 甲组（10-07）
+
+- 3a-01 `fc0db31d`：`moduleVersions` 只剩 storage / subscription / push / image / ai 五格；装配自检改看其中两格。面板本来就不读这一格。
+- 3a-02 `69c41707` + 守卫 22 `scripts/__tests__/extension-bare-timers.test.mjs`：拓展的一次性定时器触发后自己从登记里放掉，触发后再 dispose 是空操作；桥的握手窗口与回执超时改走 `ctx.setTimeout`。守卫 22 的判据：裸调用与挂在 `globalThis` 等全局对象上的定时器调用、`node:timers` 的 import、`createServer`、不带 `noServer: true` 的 `WebSocketServer`；开张即绿，没有白名单。
+- 3a-03 `89cb662a` `scripts/__tests__/integration-no-fs.test.mjs`：守卫 17 开张即绿，没有白名单也没有棘轮。四包搬进 `bilibili/` 时要过这道闸。
+- 3a-04 `41f06b20`：两份刻画测试，`platforms/__tests__/webhook-wire.test.ts`（通用 JSON 五种载荷的完整请求体、请求头、`private` 的现状；钉钉 / 飞书 / 企业微信各五种载荷压成的文字）与桥的 `wire-frame.test.ts`（适配器交给传输层的请求）。施工时核出的事实：载荷是**五种**不是四种（多一个 `miniapp-card`）；只有通用 webhook 把内部名直接写到线上，三家机器人方言只发文字，但压文字时读 `kind` 与段的 `type`，改名写歪文字会变，所以也钉了；桥的代码与 `PROTOCOL.md` 没有不一致。
+- 3a-05 `321e652d`：预览路由的出卡器传上 `resolveImageRef`。路由本来就拿得到图库，没有新增传参。接线测试用一份「徽章是图库引用」的档位表走 `POST /preview`。
+- 3a-06 `47c4fe0d`：见切片表那一行。勘察没点出的一处：`packages/ai/src/tools.ts` 里还有第三个 `SubItemView`，3a-25 一起处理。
+- 3a-07 并进 3a-28（理由见切片表那一行）。甲组到此做完。
