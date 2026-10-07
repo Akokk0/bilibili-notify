@@ -78,9 +78,13 @@ describe("resolveAppVersion", () => {
  */
 describe("MODULE_VERSIONS — 与 workspace 核心包版本一致", () => {
 	const require_ = createRequire(import.meta.url);
-	const ids = ["api", "storage", "subscription", "push", "dynamic", "live", "image", "ai"] as const;
+	const ids = ["storage", "subscription", "push", "image", "ai"] as const;
 
-	it("8 个核心包版本逐一相等,且无 0.0.0 降级", () => {
+	it("恰好是这五个包(B 站那三个包不再是独立的包,没有版本可报)", () => {
+		expect(Object.keys(MODULE_VERSIONS).sort()).toEqual([...ids].sort());
+	});
+
+	it("每个核心包版本逐一相等,且无 0.0.0 降级", () => {
 		for (const id of ids) {
 			const pkg = require_(`@bilibili-notify/${id}/package.json`) as { version: string };
 			expect(MODULE_VERSIONS[id], `模块 ${id}`).toBe(pkg.version);

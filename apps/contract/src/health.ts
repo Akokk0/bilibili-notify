@@ -9,14 +9,8 @@ export interface HealthResponse {
 	status: "ok";
 	/** 这份载荷的版本(`apps/server/package.json#version`,发版时按 tag 同步)。 */
 	version: string;
-	/**
-	 * 各核心包自己的 `package.json#version`,启动期一次读出。api / dynamic / live 三格
-	 * 等这几个包在 3a 删掉时一起删。
-	 */
-	moduleVersions: Record<
-		"api" | "storage" | "subscription" | "push" | "dynamic" | "live" | "image" | "ai",
-		string
-	>;
+	/** 各核心包自己的 `package.json#version`,启动期一次读出。 */
+	moduleVersions: Record<"storage" | "subscription" | "push" | "image" | "ai", string>;
 	/** 进程跑了多少秒。 */
 	uptime: number;
 	/** 这个进程的启动时刻(ISO)。换了进程才会变 —— 面板靠它认「真的重启完了」。 */

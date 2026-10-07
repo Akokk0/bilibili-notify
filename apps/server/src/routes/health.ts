@@ -5,11 +5,8 @@ import { fileURLToPath } from "node:url";
 // 把 version 内联进产物,单文件 bundle 旁没有 node_modules 也能显示真实版本;dev(tsx)/
 // 测试(vitest)/外置 lib 构建下,import attributes 由 node / vite 原生支持,行为一致。
 import aiPkg from "@bilibili-notify/ai/package.json" with { type: "json" };
-import apiPkg from "@bilibili-notify/api/package.json" with { type: "json" };
 import type { HealthResponse } from "@bilibili-notify/contract";
-import dynamicPkg from "@bilibili-notify/dynamic/package.json" with { type: "json" };
 import imagePkg from "@bilibili-notify/image/package.json" with { type: "json" };
-import livePkg from "@bilibili-notify/live/package.json" with { type: "json" };
 import pushPkg from "@bilibili-notify/push/package.json" with { type: "json" };
 import storagePkg from "@bilibili-notify/storage/package.json" with { type: "json" };
 import subscriptionPkg from "@bilibili-notify/subscription/package.json" with { type: "json" };
@@ -35,17 +32,14 @@ interface HealthDetailsBody {
 	};
 }
 
-// infra 4 个 + engine 4 个,顺序与 dashboard 卡片排序保持一致
-// (api → storage → subscription → push → dynamic → live → image → ai)。
+// 顺序与 dashboard 卡片排序保持一致(storage → subscription → push → image → ai)。
+// B 站那三个包(api / dynamic / live)3a 搬进服务端、不再是独立的包,没有自己的版本可报。
 // Docker builder 不再执行 `changeset version`;这里读到的是构建输入中的
 // workspace package.json#version,仅用于展示核心包版本,不驱动独立端发布版本。
 export const MODULE_VERSIONS: ModuleVersions = {
-	api: apiPkg.version,
 	storage: storagePkg.version,
 	subscription: subscriptionPkg.version,
 	push: pushPkg.version,
-	dynamic: dynamicPkg.version,
-	live: livePkg.version,
 	image: imagePkg.version,
 	ai: aiPkg.version,
 };
