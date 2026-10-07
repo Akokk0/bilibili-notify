@@ -8,7 +8,7 @@
  * 沿用也是抄引用,要先 `keep` 续期,图已经不在了就两格都缺。
  */
 
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, SubscriptionReportDelivery } from "@bilibili-notify/internal";
@@ -292,5 +292,40 @@ describe("bindReportedProfiles.close", () => {
 		expect(storageWriteGate.writes).toBe(writesAtClose);
 		expect(await readFile(runtimeFile(), "utf8")).toBe(before);
 		await expect(imagesOnDisk()).rejects.toMatchObject({ code: "ENOENT" });
+	});
+});
+
+describe("bindReportedProfiles — 真图库写盘失败(环境的事)", () => {
+	it("图库的目录建不出来:名字与粉丝照样更新,头像留着原来那张,记一句 warn", async () => {
+		const old = await images.put(PNG_BYTES);
+		if (!old.ok) throw new Error(old.message);
+		await subRuntime.patch(A, {
+			cachedProfile: { name: "旧名字", avatar: old.ref, sign: "", fans: 1, lastRefreshedAt: "t" },
+		});
+		// 另开一个图库,目录是个普通文件:往里写必挂(ENOTDIR)。续期仍走好的那个(旧头像在它那儿)。
+		const blocked = join(dataDir, "挡路");
+		await writeFile(blocked, "x");
+		const broken = createImageStore({ dir: blocked }).register({
+			name: "订阅资料",
+			listRefs: async () => [],
+		});
+		const logger = makeLogger();
+		handle = bindReportedProfiles({
+			bus,
+			subRuntime,
+			images: { put: broken.put, keep: images.keep },
+			subscriptionIds: () => alive,
+			logger,
+			coalesceMs: 30,
+		});
+		bus.emit("subscription-reported", profileReport([A], { name: "新名字", avatar: JPEG_BYTES }));
+		await handle.idle();
+
+		expect(subRuntime.get(A)?.cachedProfile).toMatchObject({
+			name: "新名字",
+			avatar: old.ref,
+			fans: 1,
+		});
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/没存下来.*ENOTDIR/));
 	});
 });

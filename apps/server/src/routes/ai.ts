@@ -46,7 +46,12 @@ import {
 	SKIN_MODE_SYSTEM_PROMPT,
 } from "../skins/chat-tool.js";
 import type { SkinStore } from "../skins/store.js";
-import { ENGINES_NOT_READY_MESSAGE, errorBodyOf, respondFailure } from "./respond-failure.js";
+import {
+	ENGINES_NOT_READY_MESSAGE,
+	errorBodyOf,
+	respondFailure,
+	UNHANDLED_ERROR_MESSAGE,
+} from "./respond-failure.js";
 import { REDACTED_API_KEY } from "./settings.js";
 import { testResultOfDelivery } from "./test-result.js";
 import type { RouteDeps } from "./types.js";
@@ -227,9 +232,13 @@ export function createAiRoute(
 		const bytes = new Uint8Array(await file.arrayBuffer());
 		const refusal = chatUploadRefusal(bytes);
 		if (refusal) return respondFailure(c, fail("invalid", refusal));
-		// 磁盘写失败之类是环境的事,往外抛交给全局出错处理(原话进日志,`String(err)` 里可能带路径)。
 		const stored = await deps.runtime.chatImages.put(bytes);
-		if (!stored.ok) return respondFailure(c, stored);
+		if (!stored.ok) {
+			if (stored.code === "invalid") return respondFailure(c, stored);
+			// 磁盘写失败之类是环境的事:原话(里头可能带路径)只进日志,客户端拿一句固定的话 —— 与全局出错处理同一个口径。
+			deps.runtime.serviceCtx.logger.error("[ai] 附件存不进图库", new Error(stored.message));
+			return respondFailure(c, fail(stored.code, UNHANDLED_ERROR_MESSAGE));
+		}
 		return c.json(ok({ id: stored.ref }));
 	});
 

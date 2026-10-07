@@ -7,13 +7,16 @@
  * 过滤看的字不在这里了:过滤吃 `Post`,走 `filterPost`(`packages/dynamic`)。
  */
 
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { WORK_COMMENT_IMAGES_MAX } from "@bilibili-notify/dynamic";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Post as NeutralPost, SubscriptionReportValue } from "@bilibili-notify/internal";
 import { postText } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { png } from "../../__tests__/support/report-images.js";
-import { imageRefOf } from "../../images/image-store.js";
+import { createImageStore, imageRefOf } from "../../images/image-store.js";
 import { extensionPostWork, POST_COMMENT_IMAGE_MAX_BYTES } from "../extension-post-work.js";
 import { deferImageWrites, type ImageSink, postFromReport } from "../post-from-report.js";
 
@@ -199,5 +202,28 @@ describe("装配要的那几格", () => {
 	it("AI 的图点评真要看时才编,而且只编一次", async () => {
 		const { work } = await workOf(post({ images: [png(8, 8, 1)] }));
 		expect(work.commentImages).toBe(work.commentImages);
+	});
+});
+
+describe("真图库写盘失败(环境的事)", () => {
+	it("图库的目录建不出来:renderCard 跟着抛、原因带着,出图器没被调", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "bn-post-work-"));
+		try {
+			// 图库的目录是个普通文件:往里写必挂(ENOTDIR)。
+			const blocked = join(dir, "挡路");
+			await writeFile(blocked, "x");
+			const images = createImageStore({ dir: blocked }).register({
+				name: "作品配图",
+				listRefs: async () => [],
+			});
+			const generatePostCard = vi.fn(async () => Buffer.from("card"));
+			const image = { generatePostCard } as unknown as ImageRenderer;
+			const { work } = await workOf(post({ images: [png(10, 10)] }), { images });
+
+			await expect(work.renderCard(image, {})).rejects.toThrow(/ENOTDIR/);
+			expect(generatePostCard).not.toHaveBeenCalled();
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });

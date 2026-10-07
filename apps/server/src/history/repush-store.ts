@@ -158,7 +158,7 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 		}
 	}
 
-	/** 原件里的一张图存进图库,回引用。存不进(不是图库收的图)就抛 —— 原件不完整比没有更糟,由 `append` 的调用方收成 warn。 */
+	/** 原件里的一张图存进图库,回引用。存不进(不是图库收的图、磁盘写失败)就抛 —— 原件不完整比没有更糟,由 `append` 的调用方收成 warn。 */
 	async function storeImage(buffer: Uint8Array): Promise<ImageRef> {
 		const stored = await opts.images.put(buffer);
 		if (!stored.ok) throw new Error(`图存不进图库:${stored.message}`);

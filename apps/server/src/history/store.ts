@@ -269,12 +269,14 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 
 	/**
 	 * 配图存进图库,回引用。过不了图库(不是 png / jpg / gif / webp、超 8MB)这一格缺着、记一句 warn,行照写 ——
-	 * 从前是信 payload 声明的 mime 直接落盘,现在一律按嗅探。磁盘写失败是抛错,同从前。同一份字节再存一次回同一个
-	 * 引用(只刷新修改时间),所以重推每试一次不会再多写一份。
+	 * 从前是信 payload 声明的 mime 直接落盘,现在一律按嗅探。磁盘写失败(图库回的不是 `invalid`)在这里抛出去、
+	 * 这一行不写,同从前 —— 那时是图库自己抛。同一份字节再存一次回同一个引用(只刷新修改时间),所以重推每试一次
+	 * 不会再多写一份。
 	 */
 	async function putImage(bytes: Uint8Array, label: string): Promise<ImageRef | undefined> {
 		const stored = await opts.images.put(bytes);
 		if (stored.ok) return stored.ref;
+		if (stored.code !== "invalid") throw new Error(`配图存不进图库:${label} — ${stored.message}`);
 		opts.logger.warn(`[history] 配图存不进图库,这条消息不带图:${label} — ${stored.message}`);
 		return undefined;
 	}

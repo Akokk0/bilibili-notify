@@ -659,3 +659,28 @@ describe("close — 关停时等在途的写、关门后拒写", () => {
 		expect(recorded).toHaveLength(1);
 	});
 });
+
+describe("record — 图库写盘失败(环境的事)", () => {
+	it("图库的目录建不出来:record 整个拒、原因带着,行不写、不 emit;不是「这一格缺着」那条 warn", async () => {
+		// `<dataRoot>/images` 是个普通文件:图库往里写必挂(ENOTDIR)。
+		await writeFile(join(dataDir, "images"), "挡路");
+
+		await expect(
+			store.record(
+				baseInput({
+					messages: [
+						{
+							payload: { kind: "image", image: { buffer: PNG_BYTES, mime: "image/png" } },
+							role: "main",
+							result: { ok: true, latencyMs: 1 },
+						},
+					],
+				}),
+			),
+		).rejects.toThrow(/ENOTDIR/);
+
+		expect(await store.query({ limit: 10 })).toEqual([]);
+		expect(recorded).toEqual([]);
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+});

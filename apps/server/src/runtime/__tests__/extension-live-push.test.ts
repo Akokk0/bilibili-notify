@@ -156,7 +156,7 @@ function start(): void {
 		liveImages: {
 			put: async (bytes) => {
 				if (putFails)
-					return { ok: false as const, code: "invalid", message: "磁盘写失败" } as never;
+					return { ok: false as const, code: "unavailable", message: "磁盘写失败" } as never;
 				storedImages.push(bytes);
 				const ref = imageRefOf(bytes);
 				if (!ref) throw new Error("夹具图不合规");

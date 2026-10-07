@@ -330,3 +330,25 @@ describe("登记与关门", () => {
 		expect((await store.read(ref))?.mime).toBe("image/png");
 	});
 });
+
+describe("put — 磁盘写失败", () => {
+	/** 图库的目录是个普通文件:往里写必挂(ENOTDIR),盘满 / 权限不对是同一类。 */
+	async function brokenWriter(): Promise<ImageWriter> {
+		const blocked = join(dir, "挡路");
+		await writeFile(blocked, "x");
+		return createImageStore({ dir: blocked }).register({ name: "测试", listRefs: async () => [] });
+	}
+
+	it("回 unavailable、不抛;message 带着原因,不吞", async () => {
+		const result = await (await brokenWriter()).put(PNG);
+
+		expect(result).toMatchObject({ ok: false, code: "unavailable" });
+		if (result.ok) throw new Error("不该存得进去");
+		expect(result.message).toContain("ENOTDIR");
+	});
+
+	it("不是图库收的图照旧是 invalid(先判图、后碰盘)", async () => {
+		const result = await (await brokenWriter()).put(Uint8Array.from([1, 2, 3]));
+		expect(result).toMatchObject({ ok: false, code: "invalid" });
+	});
+});

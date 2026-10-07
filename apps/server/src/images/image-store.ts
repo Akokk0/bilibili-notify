@@ -5,6 +5,8 @@
  *   SVG 一律拒。
  * - 单张 8MB 是图库自己的线;上传那层更紧的规矩(5MB、聊天附件不收 gif)留在上传那层。
  * - 同一份字节再存一次不重写、只刷新修改时间:清扫的新图宽限期按修改时间算。
+ * - 存图的失败都是结果、不抛(docs/agents/conventions/failure-results.md 规矩 8):不收的图回 `invalid`,磁盘写失败
+ *   (盘满、权限不对)回 `unavailable`。抛出来的只有关门之后还来存的那一种。
  *
  * 以上几条的来由见 ADR-0022 决策 9 下 10-03 的 🔗。存储本身是 {@link createAssetStore} 按摘要取名的那一种。
  * 引用的形状({@link isValidImageRef})、一份字节会得到的引用({@link imageRefOf})、引用的扩展名({@link imageExtOf})
@@ -101,7 +103,10 @@ export interface ImageReferrer {
 
 /** 登记成引用方才拿得到的两个口。 */
 export interface ImageWriter {
-	/** 存一张图,回引用;不是收的那几种图、超上限回 `invalid`。磁盘写失败是抛错。 */
+	/**
+	 * 存一张图,回引用;不是收的那几种图、超上限回 `invalid`,磁盘写失败回 `unavailable`(`message` 带着原话,
+	 * 里头可能有路径 —— 往面板回之前别原样带出去)。不抛;关门之后还来存是例外,那是写道的 `SerialQueueClosedError`。
+	 */
 	put(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>>;
 	/**
 	 * 续期:要把别家的引用抄进自己这儿之前调(新历史行抄资料缓存里的头像)。图已经不在回 `false`,
@@ -226,8 +231,13 @@ export function createImageStore(options: { dir: string }): ImageStore {
 			return writes.run(WRITE_KEY, async () => {
 				const format = sniffImageFormat(bytes);
 				if (!format) return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp)");
-				const result = await assets.put({ bytes, ext: EXT_OF_FORMAT[format] });
-				return result.ok ? ok({ ref: result.id }) : result;
+				try {
+					const result = await assets.put({ bytes, ext: EXT_OF_FORMAT[format] });
+					return result.ok ? ok({ ref: result.id }) : result;
+				} catch (error) {
+					// 资产库那头磁盘写失败是抛(刷新修改时间、建目录、落文件都可能);图库这一层收成结果,原话照带。
+					return fail("unavailable", `图库写盘失败:${String(error)}`);
+				}
 			});
 		},
 		keep(ref) {

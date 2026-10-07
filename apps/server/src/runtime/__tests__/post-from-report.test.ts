@@ -6,7 +6,7 @@
  * 时间。图用**真的图库**存(临时目录),引用是真的内容哈希,字节能从图库读回来。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GALLERY_MAX_IMAGES } from "@bilibili-notify/image";
@@ -468,5 +468,21 @@ describe("deferImageWrites — 翻译时只算引用,出卡前才真正写进图
 		for (const ref of refs) expect(await store.read(ref)).toBeUndefined();
 		await deferred.commit();
 		for (const ref of refs) expect(await store.read(ref)).toBeDefined();
+	});
+});
+
+describe("deferImageWrites — 真图库写盘失败(环境的事)", () => {
+	it("图库的目录建不出来:commit 抛、原因带着(这一次出卡失败,装配降级成纯文字)", async () => {
+		// 图库的目录是个普通文件:往里写必挂(ENOTDIR)。
+		const blocked = join(dir, "挡路");
+		await writeFile(blocked, "x");
+		const broken = createImageStore({ dir: blocked }).register({
+			name: "作品配图",
+			listRefs: async () => [],
+		});
+		const deferred = deferImageWrites(broken);
+		await deferred.sink.put(png(10, 10, 1));
+
+		await expect(deferred.commit()).rejects.toThrow(/ENOTDIR/);
 	});
 });

@@ -406,3 +406,19 @@ describe("listRepushImageRefs — 图库的引用方名单", () => {
 		expect(await imagesOnDisk()).toEqual([]);
 	});
 });
+
+describe("图库写盘失败(环境的事)", () => {
+	it("图库的目录建不出来:append 抛、原因带着,不留半份原件", async () => {
+		// `<dataRoot>/images` 是个普通文件:图库往里写必挂(ENOTDIR)。
+		await writeFile(join(dataDir, "images"), "挡路");
+		const id = randomUUID();
+
+		await expect(
+			store.append(id, TS, [
+				{ payload: text("卡片"), role: "main" },
+				{ payload: png(1), role: "extra" },
+			]),
+		).rejects.toThrow(/ENOTDIR/);
+		expect(await store.has(id, TS)).toBe(false);
+	});
+});

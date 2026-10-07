@@ -49,8 +49,8 @@ export interface ImageSink {
  * 藏起卡片的作品根本不出卡,不该为它们往图库写盘。引用是内容哈希({@link imageRefOf},与真存图起的名字是同一份规矩),
  * 翻译时不用写就知道 —— `sink.put` 只算引用、把字节记下来,`commit()` 才真的存(出卡前调,多次调只写一次)。
  *
- * 图库不收的图(格式不认、超限)`put` 当场回 `invalid`,与真存一样;`commit` 时图库说存不进(磁盘写失败、
- * 或与本地判断对不上)是抛错,这一次出卡失败,装配降级成纯文字。
+ * 图库不收的图(格式不认、超限)`put` 当场回 `invalid`,与真存一样;`commit` 时图库说存不进(磁盘写失败回的
+ * `unavailable`、或与本地判断对不上)在这里抛出去,这一次出卡失败,装配降级成纯文字。
  */
 export function deferImageWrites(writer: ImageSink): {
 	sink: ImageSink;
@@ -158,7 +158,8 @@ function isoOfMillis(ms: number): string {
 
 /**
  * 一张图的字节 → 存进图库,回装了引用的 `PostImage`(带宽高与动图标记)。图库不收就没有 `ref`(出图器画占位),
- * 宽高与动图标记照样带 —— 那是字节自己的事。磁盘写失败是抛错(这一次出卡失败,装配降级成纯文字)。
+ * 宽高与动图标记照样带 —— 那是字节自己的事。这里拿到的口是 {@link deferImageWrites} 的 `sink`,不碰盘;磁盘写失败
+ * 在 `commit()` 那一刻才见得到,由它抛出去(这一次出卡失败,装配降级成纯文字)。
  */
 async function storeImage(bytes: Uint8Array, images: ImageSink): Promise<PostImage> {
 	const stored = await images.put(bytes);
