@@ -47,17 +47,6 @@ export interface Result<T = unknown> {
 	data: T | null;
 }
 
-export interface CreateGroup {
-	tagid: number;
-}
-
-export interface GroupList {
-	tagid: number;
-	name: string;
-	count: number;
-	tip: string;
-}
-
 // ---- User Info ----
 
 export interface MySelfInfoData {
@@ -207,30 +196,6 @@ export interface MasterInfoData {
 }
 
 // ---- Risk Control ----
-
-export interface V_VoucherCaptchaData {
-	code: number;
-	message: string;
-	data: {
-		type: string;
-		token: string;
-		geetest: {
-			challenge: string;
-			gt: string;
-		};
-		tencent: unknown;
-	};
-}
-
-export interface ValidateCaptchaData {
-	code: number;
-	message: string;
-	data: {
-		grisk_id: string;
-		mobile_verify: boolean;
-		success_type: number;
-	} | null;
-}
 
 /** 按 BV 号或 av 号定位一个视频。 */
 export type VideoRef = { bvid: string } | { aid: string };

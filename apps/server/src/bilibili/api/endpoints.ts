@@ -2,7 +2,6 @@ export const GET_USER_SPACE_DYNAMIC_LIST =
 	"https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?platform=web&features=itemOpusStyle";
 export const GET_ALL_DYNAMIC_LIST =
 	"https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all?platform=web&features=itemOpusStyle";
-export const HAS_NEW_DYNAMIC = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all/update";
 export const GET_COOKIES_INFO = "https://passport.bilibili.com/x/passport-login/web/cookie/info";
 export const GET_USER_INFO = "https://api.bilibili.com/x/space/wbi/acc/info";
 export const GET_MYSELF_INFO = "https://api.bilibili.com/x/member/web/account";
@@ -16,9 +15,6 @@ export const GET_USER_CARD_INFO = "https://api.bilibili.com/x/web-interface/card
 export const GET_RELATION_STAT = "https://api.bilibili.com/x/relation/stat";
 /** 多用户详细信息(name/face/vip),uids 逗号分隔、单次最多 50 个。 */
 export const GET_USER_CARDS_BATCH = "https://api.bilibili.com/x/polymer/pc-electron/v1/user/cards";
-export const GET_LATEST_UPDATED_UPS = "https://api.bilibili.com/x/polymer/web-dynamic/v1/portal";
-export const GET_ONLINE_GOLD_RANK =
-	"https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank";
 export const GET_USER_INFO_IN_LIVE = "https://api.live.bilibili.com/xlive/app-ucenter/v2/card/user";
 export const MODIFY_RELATION = "https://api.bilibili.com/x/relation/modify";
 /**
@@ -26,10 +22,6 @@ export const MODIFY_RELATION = "https://api.bilibili.com/x/relation/modify";
  * 免得对每个订阅都盲发一次 follow(写接口的风控比读严得多)。
  */
 export const GET_RELATIONS = "https://api.bilibili.com/x/relation/relations";
-export const CREATE_GROUP = "https://api.bilibili.com/x/relation/tag/create";
-export const GET_ALL_GROUP = "https://api.bilibili.com/x/relation/tags";
-export const COPY_USER_TO_GROUP = "https://api.bilibili.com/x/relation/tags/copyUsers";
-export const GET_RELATION_GROUP_DETAIL = "https://api.bilibili.com/x/relation/tag";
 export const GET_LIVE_ROOM_INFO_STREAM_KEY =
 	"https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
 export const GET_LIVE_ROOMS_INFO =
@@ -41,8 +33,6 @@ export const COOKIE_REFRESH_URL =
 	"https://passport.bilibili.com/x/passport-login/web/cookie/refresh";
 export const COOKIE_REFRESH_CONFIRM_URL =
 	"https://passport.bilibili.com/x/passport-login/web/confirm/refresh";
-export const V_VOUCHER_CAPTCHA_URL = "https://api.bilibili.com/x/gaia-vgate/v1/register";
-export const VALIDATE_CAPTCHA_URL = "https://api.bilibili.com/x/gaia-vgate/v1/validate";
 export const GET_USER_UPSTAT = "https://api.bilibili.com/x/space/upstat";
 export const GET_USER_NAVNUM = "https://api.bilibili.com/x/space/navnum";
 export const GET_USER_VIDEOS = "https://api.bilibili.com/x/space/wbi/arc/search";

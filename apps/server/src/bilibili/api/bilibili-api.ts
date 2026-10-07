@@ -26,8 +26,6 @@ import type {
 	RelationsBatchData,
 	UserCardInfoData,
 	UserCardsBatchData,
-	V_VoucherCaptchaData,
-	ValidateCaptchaData,
 	VideoInfo,
 	VideoRef,
 } from "./types";
@@ -700,13 +698,6 @@ export class BilibiliAPI {
 		);
 	}
 
-	async hasNewDynamic(updateBaseline: string) {
-		return this.getJson(
-			`${EP.HAS_NEW_DYNAMIC}?update_baseline=${encodeURIComponent(updateBaseline)}`,
-			"hasNewDynamic",
-		);
-	}
-
 	async getLoginQRCode() {
 		return this.getJson(EP.GET_LOGIN_QRCODE, "getLoginQRCode");
 	}
@@ -843,22 +834,11 @@ export class BilibiliAPI {
 		return this.getJson(`${EP.GET_LIVE_ROOMS_INFO}?${params}`, "getLiveRoomInfoByUids");
 	}
 
-	async getOnlineGoldRank(roomId: string, ruid: string, page = 1, pageSize = 20) {
-		return this.getJson(
-			`${EP.GET_ONLINE_GOLD_RANK}?room_id=${encodeURIComponent(roomId)}&ruid=${encodeURIComponent(ruid)}&page=${page}&page_size=${pageSize}`,
-			"getOnlineGoldRank",
-		);
-	}
-
 	async getUserInfoInLive(uid: string, ruid: string) {
 		return this.getJson(
 			`${EP.GET_USER_INFO_IN_LIVE}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(ruid)}`,
 			"getUserInfoInLive",
 		);
-	}
-
-	async getTheUserWhoIsLiveStreaming() {
-		return this.getJson(EP.GET_LATEST_UPDATED_UPS, "getTheUserWhoIsLiveStreaming");
 	}
 
 	async getUserUpstat(mid: string) {
@@ -987,65 +967,5 @@ export class BilibiliAPI {
 		if (!fids.length) return { code: 0, data: {} };
 		const list = fids.map((f) => encodeURIComponent(f)).join(",");
 		return this.getJson(`${EP.GET_RELATIONS}?fids=${list}`, "getRelations");
-	}
-
-	async createGroup(tag: string) {
-		return this.postFormJson(EP.CREATE_GROUP, () => ({ tag, csrf: this.getCSRF() }), "createGroup");
-	}
-
-	async getAllGroup() {
-		return this.getJson(EP.GET_ALL_GROUP, "getAllGroup");
-	}
-
-	async copyUserToGroup(mid: string, groupId: string) {
-		return this.postFormJson(
-			EP.COPY_USER_TO_GROUP,
-			() => ({ fids: mid, tagids: groupId, csrf: this.getCSRF() }),
-			"copyUserToGroup",
-		);
-	}
-
-	async getRelationGroupDetail(tagid: string) {
-		return this.getJson(`${EP.GET_RELATION_GROUP_DETAIL}?tagid=${tagid}`, "getRelationGroupDetail");
-	}
-
-	async v_voucherCaptcha(v_voucher: string): Promise<V_VoucherCaptchaData["data"]> {
-		// P2:与其余接口一致走 this.retry。**仅网络 POST 进 retry**,code≠0 是
-		// 逻辑失败(非瞬时)放在 retry 外判,避免对逻辑错误盲重试 4 次。
-		const data = await this.postFormJson(
-			EP.V_VOUCHER_CAPTCHA_URL,
-			() => ({ csrf: this.getCSRF(), v_voucher }),
-			"v_voucherCaptcha",
-		);
-		const result = data as V_VoucherCaptchaData;
-		if (result.code !== 0) throw new Error(`获取验证码失败: ${result.message}`);
-		return result.data;
-	}
-
-	async validateCaptcha(
-		challenge: string,
-		token: string,
-		validate: string,
-		seccode: string,
-	): Promise<ValidateCaptchaData["data"] | null> {
-		// P2:与其余接口一致走 this.retry(仅网络 POST 进 retry;code≠0 在外判)。
-		const data = await this.postFormJson(
-			EP.VALIDATE_CAPTCHA_URL,
-			() => ({ csrf: this.getCSRF(), challenge, token, validate, seccode }),
-			"validateCaptcha",
-		);
-		const result = data as ValidateCaptchaData;
-		if (result.code !== 0) {
-			this.logger.debug(`[captcha] 验证失败: code=${result.code}`);
-			return null;
-		}
-		// code===0 但 data===null(B 站常见):此前仍 addCookie("...=undefined")
-		// 污染 jar。强校验 grisk_id 存在才写 cookie。
-		if (!result.data?.grisk_id) {
-			this.logger.debug("[captcha] code=0 但缺 grisk_id,不写 x-bili-gaia-vtoken cookie");
-			return null;
-		}
-		this.addCookie(`x-bili-gaia-vtoken=${result.data.grisk_id}`);
-		return result.data;
 	}
 }
