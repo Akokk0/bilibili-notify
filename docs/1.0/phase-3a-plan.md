@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
-| 已完成 | 7 / 41（3a-01 至 3a-06、3a-08；3a-07 并进 3a-28） |
+| 已完成 | 8 / 41（3a-01 至 3a-06、3a-08、3a-14；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -47,7 +47,7 @@
 | 3a-12 | 集成宿主：`IntegrationContext` 的构造、生命周期与运行状态；拓展与内置集成收成同一套。最大的一片，开工时再切三小片 | 3a-08 至 3a-11 | 无 |
 | 3a-13 | 密钥打码的服务端半：schema 标 `secret: true`，接口与 WS 按 `MaskedSecret` 下发，备份脱敏改读这个标记；面板同片跟到照旧能用 | 无 | 无（待问：连接凭据迁不迁进加密存储） |
 | **丙 推送侧** | | | |
-| 3a-14 | 纯搬与改名：`registry` / `dispatch` / `sink/` 搬进 `push/`；`NotificationSink` → `TargetDispatcher` 等一批类名，只改名不改行为 | 3a-04 | 无 |
+| 3a-14 ✅ | 纯搬与改名：`registry` / `dispatch` / `sink/` 搬进 `push/`；`NotificationSink` → `TargetDispatcher` 等一批类名，只改名不改行为 | 3a-04 | 无 |
 | 3a-15 | 投递结果改成结果形状：三个适配器各自把错误翻成标准码；历史行跟上，盘上旧失败转 `unknown` | 3a-04、3a-14 | 历史 |
 | 3a-16 | 载荷改名（`forward-images` → `image-group`、段的判别键统一成 `kind`）+ 重推原件迁移 + 守卫 13 加重推原件这个根；线上格式由 3a-04 的快照保住不变 | 3a-04 | 重推原件 |
 | 3a-17 | 出口咽喉：只有 `TargetDispatcher` 能发送；`sendToAddress`；链接回复改走它（今天唯一一条绕过派发器的真路径） | 3a-14、3a-15 | 无 |
@@ -86,6 +86,13 @@
 - 勘察里标了「推断、没验」的：`apps/server/vite.config.ts` 的 `alwaysBundle` 缺 `md5` / `luxon` / `protobufjs` / `jieba-wasm`（没跑装配自检），`3a-24` 动手时现验。
 - 勘察顺手核出的：守卫 18 的保留 id 早已落地（`packages/internal/src/constants.ts` 的 `RESERVED_INTEGRATION_KEYS` 里已有三个内置适配器的键），不是 3a 的活。
 - 未决项四份报告合计 64 条，分三类：会改这张表形状的，现在一题一题问；只卡某一片的，那一片开工时问；文档自己写着「施工时定」的，记在那一片。
+
+### 丙组（10-07 起）
+
+- 3a-14 分两个提交：`3bc63da5` 纯搬（`platforms/registry.ts`、`platforms/dispatch.ts`、`sink/multiplex.ts` → `push/`，只改 import）与改名提交。改名：`NotificationSink` + `MultiplexSink` → 一个 `TargetDispatcher`（住 internal，8 个方法；`PushRouterOptions.dispatcher` 取其中 5 个的 `Pick`），工厂 `createTargetDispatcher`、文件 `push/target-dispatcher.ts`；`BilibiliPush` → `PushRouter`（`push-router.ts`），它的 `sink` 选项与变量 → `dispatcher`；`PushSendInfo` → `PushSendResult`、`SendContext` → `SendMeta`、`QQSendVerdict` → `QQSendResult`、`AdapterRegistry` → `PlatformAdapterRegistry`、投递结果上的 `synthetic` → `isSynthetic`。
+- 盘点核出的事实：这批名字没有一个经 `@bilibili-notify/extension` 导出；`isSynthetic` 住在被导出的 `DeliveryResult` 上，但只有宿主的 devtools 截流闸写、宿主自己读，不上线也不落盘。两份线上格式快照的期望值没动。
+- 这一片没做、留给后面的：`InboundSinks` → `InboundHandlers`（devtools 里已有同名不同形的接口，入站这块 3a-20 整个重做时一起改）；`PushMessageOutcome` → `PushMessageResult`（随 3a-15 的结果形状）；`PushMessageRole` 的新名（文档写「施工时定」）；日志前缀 `[sink]` 三处（改日志文字不算只改名）。
+- 棘轮：B 站替身 `engines.ts` 25 → 20，`master-notifier.ts` 与 `packages/push/src/index.ts` 清零摘掉，`push-router.ts` 2；「结果不手写」两条跟着文件改名、数不变。推送守卫① 还没开张（归 3a-41），所以「基线降到 3 处」现在没有数可记。
 
 ## 已定的事
 
