@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
-| 已完成 | 12 / 41（3a-01 至 3a-06、3a-08、3a-11、3a-13、3a-14、3a-23、3a-24；3a-07 并进 3a-28） |
+| 已完成 | 13 / 41（3a-01 至 3a-06、3a-08、3a-11、3a-13、3a-14、3a-23 至 3a-25；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -59,7 +59,7 @@
 | **丁 B 站搬家与接入** | | | |
 | 3a-23 ✅ | 搬家前置：面板的登录态类型、`packages/ai` 都先脱开 `@bilibili-notify/api`（包不能反过来依赖服务端） | 无 | 无 |
 | 3a-24 ✅ | 纯搬：四包 → `apps/server/src/bilibili/`（`blive` 并进 `bilibili/live/`），只改 import 路径；构建配方、装配脚本、守卫里写死的路径同一个提交带上。**独占工作区**，约 150 个文件 | 3a-01、3a-06、3a-23 | 无 |
-| 3a-25 | 改名（单独一个提交）：按 naming.md 的词表；外部接口回应的起名；原字段名只留在回应上。**独占工作区** | 3a-24 | 无 |
+| 3a-25 ✅ | 改名（单独一个提交）：按 naming.md 的词表；外部接口回应的起名；原字段名只留在回应上。**独占工作区** | 3a-24 | 无 |
 | 3a-26 | B 站的 cookie 与浏览器身份进 `ctx`；`packages/storage` 的 `CookieStore` 退役 | 3a-10、3a-12、3a-25 | 密钥文件 |
 | 3a-27 | `PostEvent` 信封与 `post-detected` 事件取代 `dynamic-detected`；`deliverWork` → `deliverPost`、`NeutralWork` 退场；B 站作品的统计多收字段；中立部分拆进 `posts/` | 3a-08、3a-24 | 无 |
 | 3a-28 | （接线提醒：谁建了带内网守卫的请求客户端谁负责 `dispose()`，接进关停流程后剪线验一次）B 站实现 `SubscriptionSource`（搜人、取资料、名单驱动、上报作品与直播）+ `/api/sources`；档位表进来源描述符 | 3a-12、3a-25、3a-27 | 无 |
@@ -128,6 +128,11 @@
   - **这一片不动的，归谁**：登录那一族（`BiliLoginStatus`、`LoginSnapshot`、`BiliDataServer`、`UserCardInfo` 与 `UserCard` 的字段，字段和取值在线上）→ 3a-29；`work-delivery.ts` 整个文件 → 3a-27；房间会话一族、`LiveType`、`LivePushType`、`LiveNotify…`、`ListenerManager…`、`RoomContext…`、`LiveData` → 3b 合并两套直播引擎时；`RefreshOutcome` / `FollowOutcome` / `WorkDeliveryOutcome`、直播事件的 `price`、登录轮询失败的 `reason` → 改名要连带改形状，归各自动形状的那一片；事件种类的取值 `"danmu"` → 是取值，没定哪一片改；TS `enum` 剩下的三个（`BiliLoginStatus`、`LivePushType`、`LiveType`）跟各自那一族走。
   - **没有着落的三组**（文档写了要合并或删掉，但没写在哪一片做，排到相关的片时问主人）：① `PushLike` / `SubItemView` / `SubscriptionsView`（动态、直播、AI 各一份，data-model 写「各合成一份」）连同 7 个 `…Like`、`LiveMonitorInput`、`DynamicCardStyle`、带 `Sub` 缩写的那几个；② 直播内部的 `MasterInfo` 一族（含 `getMasterInfo`、`masterName`、`masterAvatarUrl`，data-model 写「删掉，拆进 `Creator`」）；③ `DynamicEngineConfig`、`DynamicTimelineManager`、`SubManagerView`（data-model 写「随包消失」）。
   - **直播的串行闸没改名**：对照表写的新名 `createSerialQueue` 已经被 `packages/internal/src/util/serial-queue.ts` 占了，而且两份不是一回事（核心那份按键分队、能关门；B 站这份一条链、没有键）。合不合、叫什么，等主人定。
+- 3a-25 已落（三个提交）：`fbd2b5b8` 删 9 个死方法 → `eefbc908` 三个 `enum`（`GuardLevel`、`WsOp`、`PostFilterReason`）换常量对象 → `f657c38b` 改名（121 个文件）。测试数前后一样（998 个文件、13883 条），线上格式快照没动，B 站替身棘轮降 27 处、摘掉 5 条。
+  - 落地时定的三处（表里没有，伦伦酱照规范定的）：`getBuvid3` 没改（类里已有私有的 `fetchBuvid3` 管真正走网络那一半，公开这个是读缓存的外壳，和 `getMyselfInfoCached` 同理）；`badgeFromMedal` 机械改会变成 `medalFromMedal`，主人定叫 `fanMedalOf`（和旁边的 `guardLevelOf` 一个写法；伦伦酱先起的 `fanMedalFromMedalInfo` 把 B 站的原字段名抄进了函数名，被主人问住）；`RoomHelpers` 自己那个 `getLiveRoomInfo` 不是 `Api` 的方法，属于房间会话一族，没动。
+  - 留着的旧名（文字，不是标识符）：`routes/cards.ts` 两条报错文案里的 `getLiveRoomInfo` / `getUserSpaceDynamic`、面板 `field-labels.ts` 里的「向 B 站 getMyselfInfo 探活」、devtools 一处描述。它们是给人看的字，改了就不是「一个字节不变」；而且把内部方法名写给主人看本身就不对，归文案那一片收。
+  - 留着的不一致：`template-renderer.ts` 的 `renderSpecialDanmaku` / `renderSpecialUserEnter` 形参还叫 `uname`（模板变量的入口），直播事件上已经是 `name`。
+  - 跟着方法改了名的日志文字：`api.ts` 里 19 处重试标签，加上 cookie 刷新那三句日志里的 `getCookieInfo` → `fetchCookieInfo`。没有测试按这些字断言。
 - 丁组的施工顺序：3a-23 与 3a-13 后半合回之后做 3a-24（纯搬，独占工作区）→ 3a-25（改名，独占）；这两片期间不开别的会改服务端的活。丙组的 3a-15 起、戊组的 3a-34 / 3a-35 都排在 3a-25 之后（它们要改的文件正是被搬的那批）。
 - 3a-15 的拓展边界（伦伦酱照既有设计定的）：投递结果改形状时，仓里的桥拓展与契约类型这一期不动，宿主在拓展边界上把拓展交回的旧形状翻成新形状；契约 v3 与桥迁 v3 仍在 3b。3a 与 3b 之间没有发版，仓外的 v2 拓展不受这段中间态影响。
 
