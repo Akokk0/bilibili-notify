@@ -302,6 +302,208 @@ describe("fetchPostImages 的转发原作者头像", () => {
 	});
 });
 
+describe("fetchPostImages 的表情图", () => {
+	const doge = "https://i0.hdslb.com/bfs/emote/doge.png";
+	const emojiUrls = new Map([["[doge]", doge]]);
+	const postWithEmoji = (extra: Partial<Post> = {}): Post =>
+		basePost({
+			text: "看[doge]",
+			richText: [
+				{ kind: "text", text: "看" },
+				{ kind: "emoji", text: "[doge]" },
+			],
+			...extra,
+		});
+
+	it("表情节点按文字查地址:抓 128 宽第一帧的缩放版、带 Referer,图库引用填进 image", async () => {
+		const { calls, deps } = fakeImages();
+
+		const result = await fetchPostImages(postWithEmoji(), deps, { emojiUrls });
+
+		expect(calls).toEqual([
+			{ url: `${doge}@128w_80q_1s.webp`, headers: { Referer: "https://www.bilibili.com/" } },
+		]);
+		expect(result.richText).toEqual([
+			{ kind: "text", text: "看" },
+			{ kind: "emoji", text: "[doge]", image: refOf(1) },
+		]);
+	});
+
+	it("同一个表情出现几次(外层、转发内层)只抓一次,每处都拿到引用", async () => {
+		const { calls, deps } = fakeImages();
+		const post = postWithEmoji({
+			richText: [
+				{ kind: "emoji", text: "[doge]" },
+				{ kind: "emoji", text: "[doge]" },
+			],
+			repost: basePost({ richText: [{ kind: "emoji", text: "[doge]" }] }),
+		});
+
+		const result = await fetchPostImages(post, deps, { emojiUrls });
+
+		expect(calls).toHaveLength(1);
+		const refs = [...(result.richText ?? []), ...(result.repost?.richText ?? [])].map((segment) =>
+			segment.kind === "emoji" ? segment.image : undefined,
+		);
+		expect(refs).toEqual([refOf(1), refOf(1), refOf(1)]);
+	});
+
+	it("转发内层的表情也填", async () => {
+		const { calls, deps } = fakeImages();
+		const post = basePost({
+			repost: basePost({ richText: [{ kind: "emoji", text: "[doge]" }], text: "[doge]" }),
+		});
+
+		const result = await fetchPostImages(post, deps, { emojiUrls });
+
+		expect(calls).toHaveLength(1);
+		expect(result.repost?.richText).toEqual([{ kind: "emoji", text: "[doge]", image: refOf(1) }]);
+	});
+
+	it("已有 image 的表情不动、不抓;表里没有地址的表情保持文字,别的片段原样", async () => {
+		const { calls, deps } = fakeImages();
+		const kept = refOf(99);
+		const post = basePost({
+			text: "[doge][other]@甲",
+			richText: [
+				{ kind: "emoji", text: "[doge]", image: kept },
+				{ kind: "emoji", text: "[other]" },
+				{ kind: "mention", text: "@甲", userId: "1" },
+			],
+		});
+
+		const result = await fetchPostImages(post, deps, { emojiUrls });
+
+		expect(calls).toEqual([]);
+		expect(result.richText).toEqual(post.richText);
+	});
+
+	it("同一个表情文字,有 image 的那个不被换掉、没有的那个照填", async () => {
+		const { calls, deps } = fakeImages();
+		const kept = refOf(99);
+		const post = basePost({
+			text: "[doge][doge]",
+			richText: [
+				{ kind: "emoji", text: "[doge]", image: kept },
+				{ kind: "emoji", text: "[doge]" },
+			],
+		});
+
+		const result = await fetchPostImages(post, deps, { emojiUrls });
+
+		expect(calls).toHaveLength(1);
+		expect(result.richText).toEqual([
+			{ kind: "emoji", text: "[doge]", image: kept },
+			{ kind: "emoji", text: "[doge]", image: refOf(1) },
+		]);
+	});
+
+	it("不给 emojiUrls:表情节点原样,一张都不抓", async () => {
+		const { calls, deps } = fakeImages();
+
+		const result = await fetchPostImages(postWithEmoji(), deps);
+
+		expect(calls).toEqual([]);
+		expect(result.richText).toEqual(postWithEmoji().richText);
+	});
+
+	it("抓不到:那个表情保持文字、不回退原图、不抛,warn 不带 query;别的表情与配图照抓", async () => {
+		const bad = "https://i0.hdslb.com/bfs/emote/bad.png?token=secret";
+		const { calls, deps } = fakeImages((url) => url.includes("bad.png"));
+		const post = postWithEmoji({
+			images: [{ url: "https://i0.hdslb.com/bfs/x/a.jpg" }],
+			richText: [
+				{ kind: "emoji", text: "[bad]" },
+				{ kind: "emoji", text: "[doge]" },
+			],
+		});
+
+		const result = await fetchPostImages(post, deps, {
+			emojiUrls: new Map([...emojiUrls, ["[bad]", bad]]),
+		});
+
+		expect(calls.filter((c) => c.url.includes("bad.png"))).toEqual([
+			{
+				url: "https://i0.hdslb.com/bfs/emote/bad.png@128w_80q_1s.webp?token=secret",
+				headers: { Referer: "https://www.bilibili.com/" },
+			},
+		]);
+		expect(result.richText).toEqual([
+			{ kind: "emoji", text: "[bad]" },
+			{ kind: "emoji", text: "[doge]", image: expect.any(String) },
+		]);
+		expect(result.images?.[0]?.ref).toBeDefined();
+		const warns = vi.mocked(deps.logger.warn).mock.calls.map((call) => String(call[0]));
+		expect(warns).toHaveLength(1);
+		expect(warns[0]).toContain("https://i0.hdslb.com/bfs/emote/bad.png");
+		expect(warns[0]).not.toContain("token");
+		expect(warns[0]).not.toContain("secret");
+	});
+
+	it("抓图服务本身抛了:表情保持文字、不抛", async () => {
+		const deps: ImagesDeps = {
+			images: {
+				fetchImage: async () => {
+					throw new Error("炸了");
+				},
+			},
+			logger: silentLogger(),
+		};
+
+		const result = await fetchPostImages(postWithEmoji(), deps, { emojiUrls });
+
+		expect(vi.mocked(deps.logger.warn)).toHaveBeenCalledTimes(1);
+		expect(result.richText).toEqual(postWithEmoji().richText);
+	});
+
+	it("不改入参:原作品的 richText 数组与片段原样", async () => {
+		const { calls, deps } = fakeImages();
+		const post = postWithEmoji({
+			repost: basePost({ richText: [{ kind: "emoji", text: "[doge]" }] }),
+		});
+		const before = structuredClone(post);
+
+		await fetchPostImages(post, deps, { emojiUrls });
+
+		expect(calls).toHaveLength(1);
+		expect(post).toEqual(before);
+	});
+
+	it("和配图、头像共用同一个并发上限:同时在抓的仍不超过 3 张", async () => {
+		let inFlight = 0;
+		let peak = 0;
+		const fetchImage: ImagesDeps["images"]["fetchImage"] = async (url) => {
+			inFlight++;
+			peak = Math.max(peak, inFlight);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			inFlight--;
+			return ok({ ref: refOf(url.length) });
+		};
+		const codes = Array.from({ length: 6 }, (_, i) => `[e${"x".repeat(i)}]`);
+		const post = basePost({
+			images: Array.from({ length: 3 }, (_, i) => ({
+				url: `https://i0.hdslb.com/bfs/x/${"a".repeat(i + 1)}.jpg`,
+			})),
+			richText: codes.map((text) => ({ kind: "emoji" as const, text })),
+			text: codes.join(""),
+			repost: basePost({ creator: { name: "原作者" } }),
+		});
+
+		await fetchPostImages(
+			post,
+			{ images: { fetchImage }, logger: silentLogger() },
+			{
+				repostAvatarUrl: "https://i0.hdslb.com/bfs/face/orig.jpg",
+				emojiUrls: new Map(
+					codes.map((code) => [code, `https://i0.hdslb.com/bfs/emote/${code.length}.png`]),
+				),
+			},
+		);
+
+		expect(peak).toBe(3);
+	});
+});
+
 describe("fetchLiveCover", () => {
 	const input = (cover?: { url?: string; ref?: ImageRef }) => ({
 		status: "start" as const,

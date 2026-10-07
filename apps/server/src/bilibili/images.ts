@@ -1,5 +1,5 @@
 /**
- * B 站集成自己把图存进图库:作品里的图、直播卡的封面在**出卡之前**抓进图库,交给出卡器的只带图库引用
+ * B 站集成自己把图存进图库:作品里的图、正文表情图、直播卡的封面在**出卡之前**抓进图库,交给出卡器的只带图库引用
  * (ADR-0021 决策 22)。翻译(`postFromDynamic`、`liveCardInputFromRoomInfo`)是同步的、只填 `url`,抓图是这里
  * 单独的一步;调用方在确定要出卡时才调(被过滤的、不出卡的一张都不抓)。
  *
@@ -18,6 +18,7 @@ import {
 	type Post,
 	type PostImage,
 	type Result,
+	type RichText,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -40,6 +41,8 @@ export interface ImagesDeps {
 const SCALED_MAX_WIDTH = 1280;
 /** 头像单独一档:卡上最大也就画几百像素,480 宽够用,存下来的体积小得多。 */
 const AVATAR_MAX_WIDTH = 480;
+/** 表情图单独一档:卡上表情只画十几到几十像素,128 宽已是两倍像素,够用;原图可能是体积很大的动图。 */
+const EMOJI_MAX_WIDTH = 128;
 const SCALED_QUALITY = 80;
 /**
  * 「只要第一帧」。**没有它 GIF 会被转成动画 webp** —— 实测一张 6.7MB 的 GIF:
@@ -117,6 +120,34 @@ function mapPostImages(post: Post, replace: (image: PostImage) => PostImage): Po
 	};
 }
 
+/** 富文本里的表情节点换成 `replace` 给的图库引用(回新数组、不改入参);别的片段原样。 */
+function mapRichTextEmojis(
+	richText: RichText,
+	replace: (text: string, image: ImageRef | undefined) => ImageRef | undefined,
+): RichText {
+	return richText.map((segment) => {
+		if (segment.kind !== "emoji") return segment;
+		const image = replace(segment.text, segment.image);
+		return image === undefined ? segment : { ...segment, image };
+	});
+}
+
+/**
+ * 把作品里每个表情节点的 `image` 换成 `replace` 给的(回新对象,不改入参);被转发的原作品一起走。
+ * `Post` 里长 `RichText` 的格子只有 `richText`(外层与 `repost` 内层各一份);加了新格子,这里要跟着加。
+ */
+function mapPostEmojis(
+	post: Post,
+	replace: (text: string, image: ImageRef | undefined) => ImageRef | undefined,
+): Post {
+	const { richText, repost } = post;
+	return {
+		...post,
+		...(richText ? { richText: mapRichTextEmojis(richText, replace) } : {}),
+		...(repost ? { repost: mapPostEmojis(repost, replace) } : {}),
+	};
+}
+
 /**
  * 抓一张图:先抓缩放地址,失败且缩放地址与原地址不同再抓一次原地址。两次都失败回 `undefined`、记一条
  * warn(地址不带 query,里头可能是凭据)。
@@ -152,14 +183,21 @@ async function runLimited(jobs: Array<() => Promise<void>>): Promise<void> {
  * 头像一并处理(第三参):外层作者的引用直接填进去;转发的原作者头像地址和配图同一步、同一个并发上限
  * 现抓(头像那一档,见 {@link fetchAvatar}),抓不到就不画。作品不是转发就没有地方放,不抓。
  *
- * @param avatars.avatar 外层作者的头像(图库引用,通常取自订阅资料);填进 `creator.avatar`,不碰网络。
- * @param avatars.repostAvatarUrl 被转发的原作者的头像地址(他通常不是订阅的人,资料里没有);
+ * @param options.avatar 外层作者的头像(图库引用,通常取自订阅资料);填进 `creator.avatar`,不碰网络。
+ * @param options.repostAvatarUrl 被转发的原作者的头像地址(他通常不是订阅的人,资料里没有);
  *   现抓,抓到的填进 `repost.creator.avatar`。
+ * @param options.emojiUrls 正文表情的「表情文字 → 图片地址」(`emojiUrlsOf` 从原始动态读出):作品里(外层与
+ *   转发内层)每个还没有 `image` 的表情节点按 `text` 查,同一个地址只抓一次(表情那一档,见 {@link fetchEmoji}),
+ *   抓到的填进 `image`,抓不到的保持文字。和配图、头像同一步、同一个并发上限。
  */
 export async function fetchPostImages(
 	post: Post,
 	deps: ImagesDeps,
-	avatars: { avatar?: ImageRef; repostAvatarUrl?: string } = {},
+	options: {
+		avatar?: ImageRef;
+		repostAvatarUrl?: string;
+		emojiUrls?: ReadonlyMap<string, string>;
+	} = {},
 ): Promise<Post> {
 	const urls = new Set<string>();
 	mapPostImages(post, (image) => {
@@ -172,18 +210,36 @@ export async function fetchPostImages(
 		if (ref !== undefined) refs.set(url, ref);
 	});
 	let repostAvatar: ImageRef | undefined;
-	const { repostAvatarUrl } = avatars;
+	const { repostAvatarUrl } = options;
 	if (post.repost !== undefined && repostAvatarUrl) {
 		jobs.push(async () => {
 			repostAvatar = await fetchAvatar(repostAvatarUrl, deps);
 		});
+	}
+	const emojiRefs = new Map<string, ImageRef>();
+	const { emojiUrls } = options;
+	if (emojiUrls !== undefined) {
+		const emojiTexts = new Set<string>();
+		mapPostEmojis(post, (text, image) => {
+			if (image === undefined && emojiUrls.has(text)) emojiTexts.add(text);
+			return image;
+		});
+		for (const text of emojiTexts) {
+			const url = emojiUrls.get(text);
+			if (url === undefined) continue;
+			jobs.push(async () => {
+				const ref = await fetchEmoji(url, deps);
+				if (ref !== undefined) emojiRefs.set(text, ref);
+			});
+		}
 	}
 	await runLimited(jobs);
 	const filled = mapPostImages(post, (image) => {
 		const ref = needsFetch(image) ? refs.get(image.url) : undefined;
 		return ref === undefined ? image : { ...image, ref };
 	});
-	return withAvatars(filled, avatars.avatar, repostAvatar);
+	const emojiFilled = mapPostEmojis(filled, (text, image) => image ?? emojiRefs.get(text));
+	return withAvatars(emojiFilled, options.avatar, repostAvatar);
 }
 
 /** 把头像引用填进作品(外层作者、转发的原作者),回新对象;没有引用的那一处原样。 */
@@ -216,26 +272,47 @@ export async function fetchLiveCover(
 }
 
 /**
- * 把一张头像抓进图库,回图库引用;抓不到回 `undefined`、记一条 warn(地址不带 query),不抛。
- * 头像单独一档缩放({@link AVATAR_MAX_WIDTH} 宽),**缩放版抓不到不回退原图**(和作品图不同):这一轮就没头像,
- * 下一轮由调用方再试;抓图服务本身抛了也回 `undefined`、记 warn。非 B 站图床的地址(缩放不动它)只抓一次原地址。
+ * 抓某一档缩放版进图库,回图库引用;**缩放版抓不到不回退原图**,回 `undefined`、记一条 warn(地址不带 query),不抛。
+ * 抓图服务本身抛了同样回 `undefined`。非 B 站图床的地址(缩放不动它)只抓一次原地址。`what` 是 warn 里的叫法。
  */
-export async function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
+async function fetchScaledOnly(
+	url: string,
+	maxWidth: number,
+	what: string,
+	deps: ImagesDeps,
+): Promise<ImageRef | undefined> {
 	try {
-		const result = await deps.images.fetchImage(scaledImageUrl(url, AVATAR_MAX_WIDTH), {
+		const result = await deps.images.fetchImage(scaledImageUrl(url, maxWidth), {
 			headers: IMAGE_REQUEST_HEADERS,
 		});
 		if (result.ok) return result.ref;
 		deps.logger.warn(
-			`[bilibili-images] 头像抓取失败,这一轮没有头像 ${urlWithoutQuery(url)}: ${result.code}: ${result.message}`,
+			`[bilibili-images] ${what}抓取失败,这一轮没有${what} ${urlWithoutQuery(url)}: ${result.code}: ${result.message}`,
 		);
 	} catch (e) {
-		// 抓图服务本身抛了也是「这一轮没有头像」:约定是不抛,调用方不必再包一层。
+		// 抓图服务本身抛了也是「这一轮没有」:约定是不抛,调用方不必再包一层。
 		deps.logger.warn(
-			`[bilibili-images] 头像抓取出错,这一轮没有头像 ${urlWithoutQuery(url)}: ${(e as Error).message}`,
+			`[bilibili-images] ${what}抓取出错,这一轮没有${what} ${urlWithoutQuery(url)}: ${(e as Error).message}`,
 		);
 	}
 	return undefined;
+}
+
+/**
+ * 把一张头像抓进图库,回图库引用;抓不到回 `undefined`、记一条 warn(地址不带 query),不抛。
+ * 头像单独一档缩放({@link AVATAR_MAX_WIDTH} 宽),**缩放版抓不到不回退原图**(和作品图不同):这一轮就没头像,
+ * 下一轮由调用方再试。
+ */
+export function fetchAvatar(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
+	return fetchScaledOnly(url, AVATAR_MAX_WIDTH, "头像", deps);
+}
+
+/**
+ * 把一个表情图抓进图库,回图库引用;抓不到回 `undefined`、记 warn,不抛。表情单独一档缩放
+ * ({@link EMOJI_MAX_WIDTH} 宽),**缩放版抓不到不回退原图**(表情原图可能是很大的动图):那个表情这一轮卡上画文字。
+ */
+function fetchEmoji(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
+	return fetchScaledOnly(url, EMOJI_MAX_WIDTH, "表情图", deps);
 }
 
 /** 资料缓存里头像的两格:`avatar` 是图库引用,`avatarUrl` 是那张图的来源地址。 */

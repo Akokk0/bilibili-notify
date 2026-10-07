@@ -1952,6 +1952,53 @@ describe("cards route — /preview 走皮肤", () => {
 		spy.mockRestore();
 	});
 
+	// 验红:去掉 cards.ts `renderRealDynamic` 里递给 fetchPostImages 的 `emojiUrls`,这条红。
+	it("真实动态那条路:正文表情按 icon_url 抓成图(128 宽那一档),Post 里表情带 image", async () => {
+		const doge = "https://i0.hdslb.com/bfs/emote/doge.png";
+		const rawItem = {
+			basic: {},
+			id_str: "1",
+			type: "DYNAMIC_TYPE_WORD",
+			modules: {
+				module_author: { name: "真实UP", pub_ts: 1_700_000_000, vip: { type: 0 } },
+				module_dynamic: {
+					desc: {
+						text: "看[doge]",
+						rich_text_nodes: [
+							{ type: "RICH_TEXT_NODE_TYPE_TEXT", text: "看" },
+							{
+								type: "RICH_TEXT_NODE_TYPE_EMOJI",
+								text: "[doge]",
+								emoji: { icon_url: doge, size: 1, text: "[doge]", type: 1 },
+							},
+						],
+					},
+				},
+			},
+		};
+		const http = imageHttp();
+		const api = {
+			http,
+			fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+		} as unknown as Api;
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generatePostCard")
+			.mockResolvedValue(Buffer.from("x"));
+		const app = createCardsRoute({
+			deps: globalsDeps(DEFAULT_CARD_SKIN_ID),
+			puppeteer: makeFakePuppeteer(),
+			api,
+		});
+		const res = await postPreview(app, { kind: "post", style: STYLE, content: { uid: "12345" } });
+		expect(res.status).toBe(200);
+		expect(http.fetch.mock.calls.map((call) => String(call[0]))).toContain(
+			`${doge}@128w_80q_1s.webp`,
+		);
+		const post = spy.mock.calls[0]?.[0] as Post;
+		expect(post.richText?.[1]).toEqual({ kind: "emoji", text: "[doge]", image: PREVIEW_IMAGE_REF });
+		spy.mockRestore();
+	});
+
 	it("SC / 上舰同样带着皮肤 id", async () => {
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")

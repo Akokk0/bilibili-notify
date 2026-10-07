@@ -979,6 +979,69 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(noRenderer.fetchImage).not.toHaveBeenCalled();
 	});
 
+	/** 一条带表情的动态:表情图地址写在富文本节点的 `emoji.icon_url`。 */
+	const emojiItem = (): Dynamic => {
+		const item = makeItem({ uid: 1, pubTs: 1000, text: "看[doge]" });
+		item.modules.module_dynamic.desc = {
+			text: "看[doge]",
+			rich_text_nodes: [
+				{ text: "看", type: "RICH_TEXT_NODE_TYPE_TEXT" },
+				{
+					text: "[doge]",
+					type: "RICH_TEXT_NODE_TYPE_EMOJI",
+					emoji: {
+						icon_url: "https://i0.hdslb.com/bfs/emote/doge.png",
+						size: 1,
+						text: "[doge]",
+						type: 1,
+					},
+				},
+			] as never,
+		};
+		return item;
+	};
+
+	// 验红:把 dynamic-engine.ts `workFromDynamic` 里传给 fetchPostImages 的 `emojiUrls` 去掉,这条红。
+	it("正文里的表情出卡时抓成图(表情那一档 128 宽),出卡器收到的 Post 里表情带 image", async () => {
+		const b = makeEngine({ withImage: true });
+		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+		b.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		expect(b.fetchImage.mock.calls[0]?.[0]).toBe(
+			"https://i0.hdslb.com/bfs/emote/doge.png@128w_80q_1s.webp",
+		);
+		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
+		const emoji = post.richText?.find((segment) => segment.kind === "emoji");
+		expect(emoji).toMatchObject({ text: "[doge]" });
+		expect(emoji).toHaveProperty("image");
+	});
+
+	it("带表情的动态被过滤掉 / 没有渲染器 / 关了出图:表情一个都不抓", async () => {
+		const filtered = makeEngine({ withImage: true });
+		filtered.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
+		seed(filtered.engine, "1", 0, {
+			uid: "1",
+			uname: "UP",
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["看"], notify: false },
+		});
+		await detect(filtered.engine);
+		expect(filtered.generatePostCard).not.toHaveBeenCalled();
+		expect(filtered.fetchImage).not.toHaveBeenCalled();
+
+		for (const over of [
+			{ withImage: false },
+			{ withImage: true, config: { imageEnabled: false } },
+		]) {
+			const b = makeEngine(over);
+			b.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
+			seed(b.engine, "1", 0);
+			await detect(b.engine);
+			expect(b.fetchImage).not.toHaveBeenCalled();
+		}
+	});
+
 	it("关了出图 / 没有渲染器:不出卡也就一张图都不抓", async () => {
 		for (const over of [
 			{ withImage: false },

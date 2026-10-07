@@ -21,7 +21,7 @@ import {
 	type PostFilterReason,
 	type PostFilterSettings,
 } from "./post-filter";
-import { postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
+import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type {
 	PushLike,
 	SubItemView,
@@ -245,10 +245,12 @@ function workFromDynamic(
 	return {
 		// 出图器不认识任何 B 站字段,走出卡器的唯一入口。
 		renderCard: async (image, colorOptions) => {
-			// 头像:外层作者读订阅资料里的引用(出卡这一刻现读、零网络),转发的原作者按原始动态里的地址和配图一起现抓。
+			// 头像:外层作者读订阅资料里的引用(出卡这一刻现读、零网络),转发的原作者按原始动态里的地址和配图一起现抓;
+			// 正文表情的图地址也从原始动态读(翻译不带),同一步抓。
 			fetched ??= fetchPostImages(post, imagesDeps, {
 				avatar: readAvatar(),
 				repostAvatarUrl: repostAvatarUrlOf(item),
+				emojiUrls: emojiUrlsOf(item),
 			});
 			return image.generatePostCard(await fetched, colorOptions);
 		},

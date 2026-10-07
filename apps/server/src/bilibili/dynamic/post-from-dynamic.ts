@@ -11,7 +11,7 @@
  *   (`fetchPostImages`)填上);
  * - 发布时间(秒)→ ISO 字符串;类型标签 → `label`(「投稿了视频」「投稿了专栏」),卡上由出图器拼回老位置;
  * - 正文:desc 与 opus 摘要合成一段(换行连接)→ `text`,富文本节点 → `richText` 五种片段(`mention` / `topic` /
- *   `link` / `emoji` / `text`);**不带图标与表情图**(它们只收图库引用);
+ *   `link` / `emoji` / `text`);**不带图标与表情图**(它们只收图库引用):表情图出卡前抓(地址由 {@link emojiUrlsOf} 另外读出),链接与行图标 B 站不给;
  * - opus 标题:专栏 → `article.title`,别的(带标题的图文)→ `title`;
  * - 图文的图 → `images`(专栏的 → `article.images`);任何 AV archive → `video`(播放 / 弹幕 / 时长先成数字);
  * - 附加块 → `attachment`:预约卡与通用卡 → `card`,商品 → `goods`,引用的 UGC 视频 → `video`;
@@ -19,7 +19,7 @@
  * - 转发 → `repost`(内层不带互动数);互动数 → `stats`。
  *
  * **图只给 `url`、不给 `ref`**:这里是同步的翻译,不碰网络与图库。出卡前由 `bilibili/images.ts` 的
- * `fetchPostImages` 把配图、封面、商品图、徽标抓进图库,在图上加 `ref`(原地址还留着)。
+ * `fetchPostImages` 把配图、封面、商品图、徽标抓进图库,在图上加 `ref`(原地址还留着);表情图同一步抓、填进表情片段的 `image`。
  *
  * 翻出来的 `Post` 过一遍 {@link normalizePost}(片段的字拼起来必须等于 `text`,对不上就丢掉 `richText`)。
  * 这里的翻译保证对得上 —— 对不上被丢掉的话,正文里的高亮会无声消失,`post-from-dynamic.test.ts` 有一条直说原因的测试。
@@ -91,7 +91,8 @@ type RawNode = {
 	text?: string;
 	jump_url?: string;
 	rid?: string | number;
-	emoji?: unknown;
+	/** 表情节点才有;`icon_url` 是 B 站给的表情图地址(出卡前抓进图库,见 {@link emojiUrlsOf})。 */
+	emoji?: { icon_url?: unknown };
 };
 
 // ── 入口 ──────────────────────────────────────────────────────────────────────
@@ -115,6 +116,25 @@ export function postFromDynamic(item: Dynamic): Post {
 export function repostAvatarUrlOf(item: Dynamic): string | undefined {
 	const face = (item.orig?.modules?.module_author as { face?: unknown } | undefined)?.face;
 	return typeof face === "string" && face !== "" ? face : undefined;
+}
+
+/**
+ * 一条原始动态里所有表情的「表情文字 → 图片地址」(B 站回应里表情节点的 `icon_url`)。翻译(`postFromDynamic`)
+ * 同步、不碰网络,表情节点只带 `text`;出卡前的抓图那一步(`fetchPostImages`)按这张表给每个表情抓图、填 `image`。
+ * 键与翻译出的表情片段的 `text` 是同一个写法({@link textOfNode})。
+ */
+export function emojiUrlsOf(item: Dynamic): Map<string, string> {
+	const urls = new Map<string, string>();
+	// 被转发的原动态(翻译里递归的 `repost`)一并收,再往里一层也一样。
+	for (let layer: Dynamic | undefined = item; layer !== undefined; layer = layer.orig) {
+		const mod = (layer.modules as Loose | undefined)?.module_dynamic ?? {};
+		const { desc, summary } = bodyNodesOf(mod);
+		for (const node of [...desc, ...summary]) {
+			const iconUrl = node.emoji?.icon_url;
+			if (typeof iconUrl === "string" && iconUrl !== "") urls.set(textOfNode(node), iconUrl);
+		}
+	}
+	return urls;
 }
 
 function translate(item: Dynamic, isRepost: boolean): Post {
@@ -257,9 +277,22 @@ function isChargeOnlyLocked(item: Dynamic): boolean {
 /** desc 与摘要两件合成一段时,夹在中间的那个换行。 */
 const JOIN_NEWLINE: RichTextSegment = { kind: "text", text: "\n" };
 
-/** 一个接口富文本节点 → 一个中立片段。图标与表情图不带(只收图库引用),表情当文字。 */
+/** 接口富文本节点的字:翻译出的片段与 {@link emojiUrlsOf} 的键都取这一个。 */
+function textOfNode(node: RawNode): string {
+	return node.text ?? "";
+}
+
+/** 正文的两批富文本节点:desc 的、opus 摘要的(翻译 {@link applyBody} 与 {@link emojiUrlsOf} 读同一处)。 */
+function bodyNodesOf(mod: Loose): { desc: RawNode[]; summary: RawNode[] } {
+	return {
+		desc: mod.desc?.rich_text_nodes ?? [],
+		summary: mod.major?.opus?.summary?.rich_text_nodes ?? [],
+	};
+}
+
+/** 一个接口富文本节点 → 一个中立片段。图标不带,表情只带字(表情图出卡前由抓图那一步按 {@link emojiUrlsOf} 补)。 */
 function segmentOf(node: RawNode): RichTextSegment {
-	const text = node.text ?? "";
+	const text = textOfNode(node);
 	if (node.emoji) return { kind: "emoji", text };
 	if (node.type === TYPE_AT) {
 		const userId = node.rid === undefined || node.rid === "" ? undefined : String(node.rid);
@@ -277,12 +310,11 @@ function segmentOf(node: RawNode): RichTextSegment {
  * {@link normalizePost} 的校验。标题(`opus.title`)专栏进 `article.title`,别的进 `title`。
  */
 function applyBody(post: Post, mod: Loose, options: { asArticle?: boolean } = {}): void {
-	const descNodes: RawNode[] | undefined = mod.desc?.rich_text_nodes;
-	const summaryNodes: RawNode[] | undefined = mod.major?.opus?.summary?.rich_text_nodes;
+	const { desc, summary } = bodyNodesOf(mod);
 	const segments: RichText = [
-		...(descNodes ?? []).map(segmentOf),
-		...(descNodes?.length && summaryNodes?.length ? [JOIN_NEWLINE] : []),
-		...(summaryNodes ?? []).map(segmentOf),
+		...desc.map(segmentOf),
+		...(desc.length && summary.length ? [JOIN_NEWLINE] : []),
+		...summary.map(segmentOf),
 	];
 	post.text = segments.map((segment) => segment.text).join("");
 	if (segments.length > 0) post.richText = segments;

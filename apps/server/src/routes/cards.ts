@@ -73,7 +73,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
 import type { Api } from "../bilibili/api/index.js";
-import { postFromDynamic, repostAvatarUrlOf } from "../bilibili/dynamic/index.js";
+import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "../bilibili/dynamic/index.js";
 import {
 	fetchAvatar,
 	fetchLiveCover,
@@ -1259,7 +1259,7 @@ async function renderRealDynamic(
 
 	// 真实动态:B 站原始数据先翻成中立的 `Post`,再走出卡器的唯一入口(推送与链接预览同一条)。
 	// 配图出卡前先抓进图库(3a-34),与动态引擎的推送同一条:外层作者的头像读订阅资料(没订阅的按作者模块里的地址现抓,抓不到就不画),
-	// 转发的原作者头像按原始动态里的地址现抓。
+	// 转发的原作者头像按原始动态里的地址现抓,正文表情的图地址也从原始动态读。
 	const avatarUrl = (item.modules?.module_author as { face?: string } | undefined)?.face;
 	const avatar =
 		avatarOf(uid) ?? (avatarUrl ? await fetchAvatar(avatarUrl, imagesDeps) : undefined);
@@ -1267,6 +1267,7 @@ async function renderRealDynamic(
 		await fetchPostImages(postFromDynamic(item), imagesDeps, {
 			avatar,
 			repostAvatarUrl: repostAvatarUrlOf(item),
+			emojiUrls: emojiUrlsOf(item),
 		}),
 		skin,
 	);

@@ -15,7 +15,7 @@
 import { DYNAMIC_SAMPLE_POSTS } from "@bilibili-notify/image/testing";
 import { normalizePost, type Post } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { postFromDynamic } from "../post-from-dynamic";
+import { emojiUrlsOf, postFromDynamic } from "../post-from-dynamic";
 import type { Dynamic } from "../types";
 import { BILI_DYNAMIC_SAMPLES, LIVE_RCMD_DYNAMIC } from "./fixtures/bili-dynamic-fixtures";
 
@@ -766,5 +766,83 @@ describe("宽容:接口缺什么就少什么,不抛", () => {
 		const post = postFromDynamic(minimal);
 		expect(post.creator.name).toBe("甲");
 		expect(post.text).toBe("");
+	});
+});
+
+describe("emojiUrlsOf:表情文字 → 图片地址(出卡前抓表情图用)", () => {
+	const emojiNode = (code: string, iconUrl: unknown) => ({
+		...node("RICH_TEXT_NODE_TYPE_EMOJI", code),
+		emoji: { icon_url: iconUrl, size: 1, text: code, type: 1 },
+	});
+
+	it("外层正文里的表情收成「文字 → 地址」", () => {
+		const item = raw(
+			"DYNAMIC_TYPE_WORD",
+			desc(text("看"), emojiNode("[doge]", "https://i0.hdslb.com/bfs/emote/doge.png")),
+		);
+
+		const urls = emojiUrlsOf(item);
+
+		expect(urls.size).toBe(1);
+		expect(urls.get("[doge]")).toBe("https://i0.hdslb.com/bfs/emote/doge.png");
+	});
+
+	it("被转发的原动态(含再往里一层)里的表情也收", () => {
+		const inner = raw(
+			"DYNAMIC_TYPE_WORD",
+			desc(emojiNode("[inner]", "https://i0.hdslb.com/bfs/emote/inner.png")),
+		);
+		const middle = raw(
+			"DYNAMIC_TYPE_FORWARD",
+			desc(emojiNode("[middle]", "https://i0.hdslb.com/bfs/emote/middle.png")),
+			{ orig: inner },
+		);
+		const item = raw(
+			"DYNAMIC_TYPE_FORWARD",
+			desc(emojiNode("[outer]", "https://i0.hdslb.com/bfs/emote/outer.png")),
+			{ orig: middle },
+		);
+
+		expect([...emojiUrlsOf(item)]).toEqual([
+			["[outer]", "https://i0.hdslb.com/bfs/emote/outer.png"],
+			["[middle]", "https://i0.hdslb.com/bfs/emote/middle.png"],
+			["[inner]", "https://i0.hdslb.com/bfs/emote/inner.png"],
+		]);
+	});
+
+	it("地址不是字符串、是空串、没有 emoji 对象的节点都不收", () => {
+		const item = raw(
+			"DYNAMIC_TYPE_WORD",
+			desc(
+				emojiNode("[good]", "https://i0.hdslb.com/bfs/emote/good.png"),
+				emojiNode("[empty]", ""),
+				emojiNode("[num]", 42),
+				emojiNode("[missing]", undefined),
+				{ ...node("RICH_TEXT_NODE_TYPE_EMOJI", "[nobody]"), emoji: null },
+				text("文字"),
+			),
+		);
+
+		expect([...emojiUrlsOf(item).keys()]).toEqual(["[good]"]);
+	});
+
+	it("键与翻译出的表情片段的 text 逐字相同:专栏摘要、desc 与摘要并存、转发内层都对得上", () => {
+		const item = raw(
+			"DYNAMIC_TYPE_FORWARD",
+			desc(emojiNode("[a]", "https://i0.hdslb.com/bfs/emote/a.png")),
+			{
+				orig: raw("DYNAMIC_TYPE_ARTICLE", {
+					...desc(emojiNode("[b]", "https://i0.hdslb.com/bfs/emote/b.png")),
+					...opus({ summary: [emojiNode("[c]", "https://i0.hdslb.com/bfs/emote/c.png")] }),
+				}),
+			},
+		);
+		const post = postFromDynamic(item);
+		const emojiTexts = [...(post.richText ?? []), ...(post.repost?.richText ?? [])]
+			.filter((segment) => segment.kind === "emoji")
+			.map((segment) => segment.text);
+
+		expect(emojiTexts).toEqual(["[a]", "[b]", "[c]"]);
+		expect([...emojiUrlsOf(item).keys()]).toEqual(emojiTexts);
 	});
 });

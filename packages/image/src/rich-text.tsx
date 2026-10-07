@@ -10,7 +10,7 @@
  * **小图标与表情图只认图库引用**(ADR-0021 决策 22 的 2026-10-05 🔗):`RichText` 的 `link.icon` /
  * `emoji.image` 是图库引用,由调用方给的 {@link ImageUrlOf} 解析成可画的地址。解析得到就画 —— 链接前的小图标、
  * 表情图;没有引用或解析不到(图已被清扫)就退成文字:链接只画文字(颜色照旧),表情画它的 `text`(「[doge]」)。
- * B 站的要到 3a 才存进图库,目前没有来源给。
+ * B 站这边只给表情图(出卡前由服务端抓进图库);链接前的小图标 B 站不给。
  */
 
 import type { ImageRef, RichText } from "@bilibili-notify/internal";
