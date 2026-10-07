@@ -10,13 +10,14 @@ import { brotliDecompressSync, inflateSync } from "node:zlib";
  * (ver 2 zlib / ver 3 brotli)由解码侧处理。
  */
 
-export enum WsOp {
-	Heartbeat = 2,
-	HeartbeatReply = 3,
-	Message = 5,
-	Auth = 7,
-	AuthReply = 8,
-}
+export const WsOp = {
+	Heartbeat: 2,
+	HeartbeatReply: 3,
+	Message: 5,
+	Auth: 7,
+	AuthReply: 8,
+} as const;
+export type WsOp = (typeof WsOp)[keyof typeof WsOp];
 
 const HEADER_LENGTH = 16;
 const CLIENT_PROTOCOL_VERSION = 1;

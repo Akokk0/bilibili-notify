@@ -39,14 +39,15 @@ export type PostFilterRules = Pick<
  */
 export type PostFilterSettings = PostFilterRules & { notify?: boolean };
 
-export enum PostFilterReason {
-	BlockedKeyword = "blocked-keyword",
-	BlockedReposts = "blocked-reposts",
-	BlockedArticles = "blocked-articles",
-	BlockedImages = "blocked-images",
-	BlockedVideos = "blocked-videos",
-	AllowlistUnmatched = "allowlist-unmatched",
-}
+export const PostFilterReason = {
+	BlockedKeyword: "blocked-keyword",
+	BlockedReposts: "blocked-reposts",
+	BlockedArticles: "blocked-articles",
+	BlockedImages: "blocked-images",
+	BlockedVideos: "blocked-videos",
+	AllowlistUnmatched: "allowlist-unmatched",
+} as const;
+export type PostFilterReason = (typeof PostFilterReason)[keyof typeof PostFilterReason];
 
 export interface PostFilterResult {
 	blocked: boolean;

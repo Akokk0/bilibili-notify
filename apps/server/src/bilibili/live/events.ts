@@ -4,12 +4,13 @@
  */
 
 /** 大航海等级。数值与 B 站原始 guard_level 一致。 */
-export enum GuardLevel {
-	None = 0,
-	Governor = 1,
-	Admiral = 2,
-	Captain = 3,
-}
+export const GuardLevel = {
+	None: 0,
+	Governor: 1,
+	Admiral: 2,
+	Captain: 3,
+} as const;
+export type GuardLevel = (typeof GuardLevel)[keyof typeof GuardLevel];
 
 /** 粉丝勋章(牌子)。各帧携带的字段不齐,缺的省略。 */
 export interface FanBadge {

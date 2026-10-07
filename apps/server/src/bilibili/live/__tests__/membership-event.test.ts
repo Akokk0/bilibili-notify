@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import type { LiveEvent } from "../events.js";
+import type { GuardLevel, LiveEvent } from "../events.js";
 import { membershipEventFromLiveEvent } from "../membership-event";
 
 type GuardBuy = Extract<LiveEvent, { kind: "guard-buy" }>;
@@ -90,7 +90,7 @@ describe("membershipEventFromLiveEvent —— B 站上舰 → 会员事件", () 
 	it("认不出的档位(guard_level 不是 1 / 2 / 3)→ undefined,由调用方丢弃并记警告", () => {
 		for (const level of [0, 4, -1]) {
 			expect(
-				membershipEventFromLiveEvent(guardBuy({ guardLevel: level }), "s"),
+				membershipEventFromLiveEvent(guardBuy({ guardLevel: level as GuardLevel }), "s"),
 				`guard_level ${level}`,
 			).toBeUndefined();
 		}
