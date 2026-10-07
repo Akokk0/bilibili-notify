@@ -11,9 +11,9 @@
 
 import { formatClock, formatCount } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { parseBiliClock, parseBiliCount } from "../bili-display-values";
+import { parseClock, parseCount } from "../bili-display-values";
 
-describe("parseBiliCount", () => {
+describe("parseCount", () => {
 	it.each([
 		[0, 0],
 		[129, 129],
@@ -30,14 +30,14 @@ describe("parseBiliCount", () => {
 		["1.2亿", 120_000_000],
 		["3亿", 300_000_000],
 	])("%j → %d", (input, expected) => {
-		expect(parseBiliCount(input)).toBe(expected);
+		expect(parseCount(input)).toBe(expected);
 	});
 
 	it("「万」「亿」乘出来的数取整,不留浮点尾巴", () => {
 		// 0.07 * 1e4 是 700.0000000000001,1.15 * 1e8 是 114999999.99999999,2.3 * 1e8 是 229999999.99999997
-		expect(parseBiliCount("0.07万")).toBe(700);
-		expect(parseBiliCount("1.15亿")).toBe(115_000_000);
-		expect(parseBiliCount("2.3亿")).toBe(230_000_000);
+		expect(parseCount("0.07万")).toBe(700);
+		expect(parseCount("1.15亿")).toBe(115_000_000);
+		expect(parseCount("2.3亿")).toBe(230_000_000);
 	});
 
 	it.each([
@@ -57,39 +57,39 @@ describe("parseBiliCount", () => {
 		"NaN",
 		"Infinity",
 	])("认不得的字 %j → undefined", (input) => {
-		expect(parseBiliCount(input)).toBeUndefined();
+		expect(parseCount(input)).toBeUndefined();
 	});
 
 	it.each([undefined, null, -1, Number.NaN, Number.POSITIVE_INFINITY, true, {}, []])(
 		"不是数字也不是字符串 / 不合理的数 %j → undefined",
 		(input) => {
-			expect(parseBiliCount(input)).toBeUndefined();
+			expect(parseCount(input)).toBeUndefined();
 		},
 	);
 
 	it("解析不出来就是 undefined,不是 NaN", () => {
 		for (const bad of ["", "abc", "万", "1.8w"]) {
-			expect(Number.isNaN(parseBiliCount(bad) as number)).toBe(false);
+			expect(Number.isNaN(parseCount(bad) as number)).toBe(false);
 		}
 	});
 
 	it("往返:formatCount 排出来的字解析回去再排,字不变", () => {
 		for (const n of [0, 7, 129, 9999, 10_000, 12_345, 18_000, 65_000, 999_999, 123_456_789]) {
 			const text = formatCount(n);
-			const back = parseBiliCount(text);
+			const back = parseCount(text);
 			expect(back, text).toBeDefined();
 			expect(formatCount(back as number), text).toBe(text);
 		}
 	});
 
 	it("接口给整数「万」时,排版补上小数位(「1万」→「1.0万」)", () => {
-		expect(formatCount(parseBiliCount("1万") as number)).toBe("1.0万");
-		expect(formatCount(parseBiliCount("100万") as number)).toBe("100.0万");
-		expect(formatCount(parseBiliCount("1.8万") as number)).toBe("1.8万");
+		expect(formatCount(parseCount("1万") as number)).toBe("1.0万");
+		expect(formatCount(parseCount("100万") as number)).toBe("100.0万");
+		expect(formatCount(parseCount("1.8万") as number)).toBe("1.8万");
 	});
 });
 
-describe("parseBiliClock", () => {
+describe("parseClock", () => {
 	it.each([
 		["0:00", 0],
 		["00:00", 0],
@@ -103,7 +103,7 @@ describe("parseBiliClock", () => {
 		["10:00:00", 36_000],
 		["  16:07 ", 967],
 	])("%j → %d 秒", (input, expected) => {
-		expect(parseBiliClock(input)).toBe(expected);
+		expect(parseClock(input)).toBe(expected);
 	});
 
 	it.each([
@@ -125,28 +125,28 @@ describe("parseBiliClock", () => {
 		"一分钟",
 		"16：07",
 	])("非法 %j → undefined", (input) => {
-		expect(parseBiliClock(input)).toBeUndefined();
+		expect(parseClock(input)).toBeUndefined();
 	});
 
 	it.each([undefined, null, 967, Number.NaN, {}, []])(
 		"不是字符串 %j → undefined(秒数本来就是数字,不需要解析)",
 		(input) => {
-			expect(parseBiliClock(input)).toBeUndefined();
+			expect(parseClock(input)).toBeUndefined();
 		},
 	);
 
 	it("往返:formatClock 排出来的字解析回去再排,字不变", () => {
 		for (const sec of [0, 1, 29, 59, 60, 967, 3599, 3600, 3723, 36_000]) {
 			const text = formatClock(sec);
-			const back = parseBiliClock(text);
+			const back = parseClock(text);
 			expect(back, text).toBe(sec);
 			expect(formatClock(back as number), text).toBe(text);
 		}
 	});
 
 	it("前导零在排版时消失(「00:29」→「0:29」),秒数不变", () => {
-		expect(formatClock(parseBiliClock("00:29") as number)).toBe("0:29");
-		expect(formatClock(parseBiliClock("01:02:03") as number)).toBe("1:02:03");
-		expect(formatClock(parseBiliClock("16:07") as number)).toBe("16:07");
+		expect(formatClock(parseClock("00:29") as number)).toBe("0:29");
+		expect(formatClock(parseClock("01:02:03") as number)).toBe("1:02:03");
+		expect(formatClock(parseClock("16:07") as number)).toBe("16:07");
 	});
 });

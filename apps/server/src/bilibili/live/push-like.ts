@@ -64,13 +64,13 @@ export type LivePushFeature =
  * `LivePushFeature` which omits `specialDanmaku` / `specialUserEnter`
  * (those are gated by `customSpecial*.enable` instead).
  */
-export type LiveMasterFeature = Exclude<LivePushFeature, "specialDanmaku" | "specialUserEnter">;
+export type LiveCreatorFeature = Exclude<LivePushFeature, "specialDanmaku" | "specialUserEnter">;
 
 /**
- * Subset of `LiveMasterFeature` whose subscription requires an active live-room
+ * Subset of `LiveCreatorFeature` whose subscription requires an active live-room
  * WebSocket connection. Mirrors `@bilibili-notify/push`'s `LIVE_ROOM_MASTERS`.
  */
-export const LIVE_ROOM_MASTER_KEYS: readonly LiveMasterFeature[] = [
+export const LIVE_ROOM_CREATOR_KEYS: readonly LiveCreatorFeature[] = [
 	"liveStart",
 	"liveStreaming",
 	"liveEnd",
@@ -91,13 +91,13 @@ export type LiveMonitorInput = Pick<
 >;
 
 /**
- * 这位订阅要不要监听直播间:直播类主开关(`LIVE_ROOM_MASTER_KEYS`)任一开着,或配了特别弹幕 / 特别关注进场。
+ * 这位订阅要不要监听直播间:直播类主开关(`LIVE_ROOM_CREATOR_KEYS`)任一开着,或配了特别弹幕 / 特别关注进场。
  * 只看折好的生效值,不依赖房间上下文 —— 引擎判断开不开监听与统计判断「直播在不在记」都问它(只此一份)。
  * 没有特殊用户的订阅(拓展订阅)把那两格的 `enable` 传 `false`。
  */
 export function needsLiveMonitor(sub: LiveMonitorInput): boolean {
 	return (
-		(LIVE_ROOM_MASTER_KEYS as readonly (keyof LiveMonitorInput)[]).some((k) => sub[k] === true) ||
+		(LIVE_ROOM_CREATOR_KEYS as readonly (keyof LiveMonitorInput)[]).some((k) => sub[k] === true) ||
 		sub.customSpecialDanmakuUsers.enable ||
 		sub.customSpecialUsersEnterTheRoom.enable
 	);
@@ -145,7 +145,7 @@ export interface CustomCardStyleLike {
  * 名字里的 "Background" 是历史:它从前也管卡片背景图轮换,那条链 2026-09-20 删掉了
  * (背景图归皮肤的 `image` 旋钮),今天只剩直播封面在用。
  */
-export type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
+export type PickLiveCover = (scopeKey: string, images: string[]) => string | undefined;
 
 export interface CustomLiveMsgLike {
 	enable: boolean;

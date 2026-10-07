@@ -31,7 +31,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 
 /**
  * 通用重试。失败时按指数退避延迟，达 attempts 后抛出最后一次错误。
- * 替代 apps/server/src/bilibili/api/bilibili-api.ts 中手写的 pRetry-like 逻辑（被 plan §七 列入清理项）。
+ * 替代 apps/server/src/bilibili/api/api.ts 中手写的 pRetry-like 逻辑（被 plan §七 列入清理项）。
  */
 export async function retry<T>(
 	fn: (attempt: number) => Promise<T>,

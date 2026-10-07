@@ -51,19 +51,19 @@ describe("直播事件场景", () => {
 		const res = await reg.run("live.danmaku", { count: 60, senders: 8 });
 
 		expect(events).toHaveLength(60);
-		const danmus = events.filter((e) => e.kind === "danmu");
-		expect(danmus).toHaveLength(60);
-		expect(new Set(danmus.map((e) => e.user.uid)).size).toBe(8);
-		expect(new Set(danmus.map((e) => e.content)).size).toBeGreaterThanOrEqual(50);
-		expect(danmus.every((e) => typeof e.timestamp === "number")).toBe(true);
+		const danmakus = events.filter((e) => e.kind === "danmu");
+		expect(danmakus).toHaveLength(60);
+		expect(new Set(danmakus.map((e) => e.user.uid)).size).toBe(8);
+		expect(new Set(danmakus.map((e) => e.content)).size).toBeGreaterThanOrEqual(50);
+		expect(danmakus.every((e) => typeof e.timestamp === "number")).toBe(true);
 		expect(res.summary).toContain("60");
 	});
 
 	it("弹幕批量:给了 uid 就全由这一位发 —— 拿来试特别关注的弹幕推送", async () => {
 		const { reg, events } = setup();
 		await reg.run("live.danmaku", { count: 3, senders: 8, uid: "777" });
-		const danmus = events.filter((e) => e.kind === "danmu");
-		expect(danmus.map((e) => e.user.uid)).toEqual([777, 777, 777]);
+		const danmakus = events.filter((e) => e.kind === "danmu");
+		expect(danmakus.map((e) => e.user.uid)).toEqual([777, 777, 777]);
 	});
 
 	it("弹幕批量默认冲门槛:60 条 / 8 人", () => {
@@ -77,7 +77,7 @@ describe("直播事件场景", () => {
 		);
 	});
 
-	it("SC:价格与正文照给,发言人有 uid / uname", async () => {
+	it("SC:价格与正文照给,发言人有 uid / name", async () => {
 		const { reg, events } = setup();
 		await reg.run("live.superchat", { price: 50, text: "主播晚上好" });
 		expect(events).toEqual([
@@ -85,7 +85,7 @@ describe("直播事件场景", () => {
 				kind: "superchat",
 				price: 50,
 				content: "主播晚上好",
-				user: expect.objectContaining({ uid: expect.any(Number), uname: expect.any(String) }),
+				user: expect.objectContaining({ uid: expect.any(Number), name: expect.any(String) }),
 			}),
 		]);
 	});

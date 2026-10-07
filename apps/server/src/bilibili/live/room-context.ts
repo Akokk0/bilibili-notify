@@ -1,14 +1,14 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, MembershipTemplateBundle, ServiceContext } from "@bilibili-notify/internal";
-import type { BilibiliAPI } from "../api/index.js";
+import type { Api } from "../api/index.js";
 import type { LiveClient } from "./client.js";
 import type { LiveContentBuilder } from "./content-builder";
 import type { DanmakuCollector } from "./danmaku-collector";
 import type { LiveSummaryRequester } from "./live-summary-requester";
 import {
-	type LiveMasterFeature,
+	type LiveCreatorFeature,
 	needsLiveMonitor,
-	type PickCardBackground,
+	type PickLiveCover,
 	type PushLike,
 	type SubItemView,
 	wantsLiveEndExtras,
@@ -54,7 +54,7 @@ export interface ListenerManagerConfig {
  */
 export interface RoomContextOptions {
 	serviceCtx: ServiceContext;
-	api: BilibiliAPI;
+	api: Api;
 	push: PushLike;
 	contentBuilder: LiveContentBuilder;
 	templateRenderer: LiveTemplateRenderer;
@@ -83,10 +83,10 @@ export interface RoomContextOptions {
 	 * 背景图轮换选择器。多图卡片「每次推送轮换」;返回 undefined → 推送点回退单图。
 	 * 独立端由 `createCardBgRotator` 支撑(fs 持久化游标)。
 	 */
-	pickCardBackground: PickCardBackground;
+	pickCardBackground: PickLiveCover;
 	/**
 	 * uid → roomId 解析成功后的回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
-	 * 省掉每次逐 UP 的 `getUserInfo` 房号解析请求。
+	 * 省掉每次逐 UP 的 `fetchUserInfo` 房号解析请求。
 	 */
 	onRoomIdResolved: (uid: string, roomId: string) => void;
 }
@@ -106,7 +106,7 @@ export interface RoomContextOptions {
 export class RoomContextBase {
 	readonly serviceCtx: ServiceContext;
 	readonly logger: Logger;
-	readonly api: BilibiliAPI;
+	readonly api: Api;
 	readonly push: PushLike;
 	readonly contentBuilder: LiveContentBuilder;
 	readonly templateRenderer: LiveTemplateRenderer;
@@ -133,7 +133,7 @@ export class RoomContextBase {
 	 * 背景图轮换:多图时返回本次该用的背景并推进游标;选择器返回 undefined 或列表 ≤1 张
 	 * → 调用方回退单图。
 	 */
-	readonly pickBackground: PickCardBackground;
+	readonly pickBackground: PickLiveCover;
 	/** uid → roomId 解析成功回调:宿主据此把房号写盘复用。 */
 	readonly onRoomIdResolved: (uid: string, roomId: string) => void;
 
@@ -191,7 +191,7 @@ export class RoomContextBase {
 		);
 	}
 
-	isSubscribed(sub: SubItemView, type: LiveMasterFeature): boolean {
+	isSubscribed(sub: SubItemView, type: LiveCreatorFeature): boolean {
 		// features.X = true 即视为「订阅了该特性」;routing 由推送层(PushRouter)兜底,
 		// routing 空时 broadcast 自然不外发。这样 features.X=true / routing.X=[] 的 UP 仍开
 		// WS、仍 build payload,后续加 routing 时下一次事件立即生效。

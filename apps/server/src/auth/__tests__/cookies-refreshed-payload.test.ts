@@ -8,7 +8,7 @@
  * 别的字段都会让它红,而不只是塞回那两个名字。
  *
  * 走真的 `createAuthSystem()` + 真的 FileKeyProvider / StorageManager,只把会联网的 B 站
- * API 与登录流换成替身,并把 `BilibiliAPI` 收到的回调截下来直接调用。
+ * API 与登录流换成替身,并把 `Api` 收到的回调截下来直接调用。
  */
 
 import { mkdtemp, rm, stat } from "node:fs/promises";
@@ -23,11 +23,11 @@ interface RefreshCallbacks {
 	onCookiesRefreshed?: (payload: { cookiesJson: string; refreshToken: string }) => Promise<void>;
 }
 
-/** `BilibiliAPI` 构造时收到的回调 —— 替身把它截下来,测试里当作 api 刷完 cookie 那一刻去调。 */
+/** `Api` 构造时收到的回调 —— 替身把它截下来,测试里当作 api 刷完 cookie 那一刻去调。 */
 const captured = vi.hoisted(() => ({ callbacks: undefined as RefreshCallbacks | undefined }));
 
 vi.mock("../../bilibili/api/index.js", () => ({
-	BilibiliAPI: class {
+	Api: class {
 		constructor(opts: { callbacks: RefreshCallbacks }) {
 			captured.callbacks = opts.callbacks;
 		}

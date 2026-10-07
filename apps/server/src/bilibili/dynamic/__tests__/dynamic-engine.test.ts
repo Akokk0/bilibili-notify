@@ -27,11 +27,11 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { BilibiliAPI } from "../../api/index.js";
+import type { Api } from "../../api/index.js";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
 import { postFromDynamic } from "../post-from-dynamic";
 import type { PushLike, SubItemView, SubscriptionsView } from "../push-like";
-import type { AllDynamicInfo, Dynamic } from "../types";
+import type { AllDynamicResponse, Dynamic } from "../types";
 import { type CardFailureTracker, createCardFailureTracker } from "../work-delivery";
 
 // ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ function makeItem(opts: {
 	} as unknown as Dynamic;
 }
 
-function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicInfo {
+function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicResponse {
 	return {
 		code,
 		message,
@@ -229,7 +229,7 @@ const viewsOf = (subs: Record<string, SeedView>): SubscriptionsView =>
 
 interface EngineBag {
 	engine: DynamicEngineType;
-	getAllDynamic: ReturnType<typeof vi.fn>;
+	fetchAllDynamic: ReturnType<typeof vi.fn>;
 	push: PushLike & {
 		broadcastDynamic: ReturnType<typeof vi.fn>;
 		broadcastDynamicSequence: ReturnType<typeof vi.fn>;
@@ -260,8 +260,8 @@ function makeEngine(
 	(ctx as { onDispose: (fn: () => void) => void }).onDispose = (fn) => {
 		disposers.push(fn);
 	};
-	const getAllDynamic = vi.fn();
-	const api = { getAllDynamic } as unknown as BilibiliAPI;
+	const fetchAllDynamic = vi.fn();
+	const api = { fetchAllDynamic } as unknown as Api;
 	const push = {
 		broadcastDynamic: vi.fn(async () => {}),
 		broadcastDynamicSequence: vi.fn(async () => {}),
@@ -292,7 +292,7 @@ function makeEngine(
 	});
 	return {
 		engine,
-		getAllDynamic,
+		fetchAllDynamic,
 		push: push as EngineBag["push"],
 		emits,
 		trigger,
@@ -322,9 +322,9 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("DynamicEngine.detectDynamics — API 错误处理", () => {
-	it("getAllDynamic 抛错 → 不广播,静默返回", async () => {
+	it("fetchAllDynamic 抛错 → 不广播,静默返回", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockRejectedValue(new Error("network down"));
+		b.fetchAllDynamic.mockRejectedValue(new Error("network down"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -332,7 +332,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 
 	it("code=-101(未登录)→ emit engine-error「账号未登录」,不广播", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -346,7 +346,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 
 	it("code=-352(风控)→ sendPrivateMsg + emit engine-error「账号被风控」", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
@@ -370,7 +370,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		const dmCount = () =>
 			b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("账号被风控")).length;
 
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 进入风控
 		await detect(b.engine); // 仍风控 → 抑制
 		expect(dmCount()).toBe(1);
@@ -380,11 +380,11 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		);
 		expect(b.logs.some((l) => l.level === "debug" && l.msg.includes("仍处于风控态"))).toBe(true);
 
-		b.getAllDynamic.mockResolvedValue(resp([])); // code 0 → 恢复
+		b.fetchAllDynamic.mockResolvedValue(resp([])); // code 0 → 恢复
 		await detect(b.engine);
 		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("风控已解除"))).toBe(true);
 
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 再次风控 → 边沿复位后重新告警
 		expect(dmCount()).toBe(2);
 		expect(ecCount()).toBe(2);
@@ -398,17 +398,17 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号被风控"),
 			).length;
 
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 风控 episode #1 → 告警 1
 		expect(riskEc()).toBe(1);
 
-		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		await detect(b.engine); // auth-loss:独立 episode,复位风控边沿
 
-		b.getAllDynamic.mockResolvedValue(resp([])); // 恢复(code 0)
+		b.fetchAllDynamic.mockResolvedValue(resp([])); // 恢复(code 0)
 		await detect(b.engine);
 
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 风控 episode #2(跨过 -101)→ 必须重新告警
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
 		expect(riskEc()).toBe(2);
@@ -425,7 +425,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
@@ -434,7 +434,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
@@ -459,11 +459,11 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
 		const msg = String(b.push.sendPrivateMsg.mock.calls[1]?.[0]);
@@ -474,7 +474,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("从没坏过的成功拉取不发恢复通知(否则每个 cron tick 刷一条)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).not.toHaveBeenCalled();
@@ -483,9 +483,9 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("恢复只报一次,后续成功拉取保持安静", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine); // 恢复 → 报一次
 		await detect(b.engine); // 已经好了 → 不该再报
 		await detect(b.engine);
@@ -495,7 +495,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("瞬时错误连续失败只告警一次(与风控边沿对称,不每 300s 打扰一次)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		await detect(b.engine);
 		await detect(b.engine);
@@ -510,9 +510,9 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("错误码变了 → 当作新故障重新告警", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
-		b.getAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
 	});
@@ -520,11 +520,11 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("风控解除同样私聊说一声", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
 		expect(String(b.push.sendPrivateMsg.mock.calls[1]?.[0])).toContain("风控");
@@ -533,12 +533,12 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("风控与瞬时错误同时挂着 → 恢复报一条,两样都说到", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // riskControlled 置位
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine); // transientErrorCode 也置位(风控边沿不清)
 
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
 		const recovery = b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("恢复"));
 		expect(recovery).toHaveLength(1);
@@ -549,11 +549,11 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("跨 -101 后恢复:不拿陈旧错误码报喜(登录恢复由上层 auth-restored 负责)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine); // DM #1:报错
-		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		await detect(b.engine); // 独立 episode,-101 不发 DM
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine); // 成功,但这是登录恢复,不该由这里报喜
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 	});
@@ -561,13 +561,13 @@ describe("DynamicEngine — 故障恢复通知", () => {
 	it("恢复通知发不出去不能打断本轮动态推送", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		b.getAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 
 		// 私聊通道自己坏了(master 不可达 / 适配器抛错)。恢复通知是锦上添花,
 		// 绝不能因为它发不出去就把这一轮真正要推的动态吞掉。
 		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalled();
 	});
@@ -607,7 +607,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		b.engine.start();
 		b.trigger("auth-lost");
 
-		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 
@@ -621,7 +621,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		const b = makeEngine(oneSub);
 		b.engine.start();
 
-		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 
@@ -635,7 +635,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		b.trigger("auth-lost");
 		b.trigger("auth-restored");
 
-		b.getAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 
@@ -671,7 +671,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 	it("timeline >= pub_ts → 已推过,跳过不广播", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 1000); // timeline == pub_ts
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -679,7 +679,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 
 	it("未订阅 uid(无 timeline 条目)→ 跳过", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 999, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 999, pubTs: 1000 })]));
 		seed(b.engine, "1", 0); // 订阅的是 1,动态来自 999
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -689,7 +689,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		const b = makeEngine();
 		const bad = makeItem({ uid: 1 });
 		(bad.modules.module_author as { pub_ts: unknown }).pub_ts = "oops";
-		b.getAllDynamic.mockResolvedValue(resp([bad]));
+		b.fetchAllDynamic.mockResolvedValue(resp([bad]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -699,7 +699,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		const b = makeEngine();
 		const bad = makeItem({ uid: 999 });
 		(bad.modules.module_author as { pub_ts: unknown }).pub_ts = "oops";
-		b.getAllDynamic.mockResolvedValue(resp([bad]));
+		b.fetchAllDynamic.mockResolvedValue(resp([bad]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -712,7 +712,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1 });
 		(item.modules.module_author as { pub_ts: unknown }).pub_ts = "1234";
-		b.getAllDynamic.mockResolvedValue(resp([item]));
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -723,7 +723,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1 });
 		(item.modules.module_author as { pub_ts: unknown }).pub_ts = "1717067523000";
-		b.getAllDynamic.mockResolvedValue(resp([item]));
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -735,7 +735,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		const item = makeItem({ uid: 1 });
 		(item.modules.module_author as { pub_ts?: unknown }).pub_ts = undefined;
 		(item.modules.module_author as { pub_time: string }).pub_time = "2026-05-30 12:12:00";
-		b.getAllDynamic.mockResolvedValue(resp([item]));
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -750,7 +750,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 			const item = makeItem({ uid: 1 });
 			(item.modules.module_author as { pub_ts?: unknown }).pub_ts = undefined;
 			(item.modules.module_author as { pub_time: string }).pub_time = "昨天 11:30";
-			b.getAllDynamic.mockResolvedValue(resp([item]));
+			b.fetchAllDynamic.mockResolvedValue(resp([item]));
 			seed(b.engine, "1", 0);
 			await detect(b.engine);
 			expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -762,7 +762,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 
 	it("新动态推送后 timeline 推进到 pub_ts", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1234 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1234 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1234);
@@ -771,7 +771,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 	it("DY1:同 uid 多条全部成功 → 锚点推进到最大 pub_ts", async () => {
 		const b = makeEngine();
 		// 新→旧
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 200 }), makeItem({ uid: 1, pubTs: 100 })]),
 		);
 		seed(b.engine, "1", 0);
@@ -782,7 +782,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 
 	it("DY1:某 uid 推送失败 → 不 abort 其它 uid,失败 uid 锚点不前移(下轮重试)", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 100 }), makeItem({ uid: 2, pubTs: 300 })]),
 		);
 		seed(b.engine, "1", 0);
@@ -808,7 +808,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 
 	it("DY1:锚点单调,绝不回退(已 push 过的更新 pub_ts 不倒退)", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 100 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 100 })]));
 		seed(b.engine, "1", 500); // 既有锚点已高于来项
 		await detect(b.engine);
 		// timeline(500) >= 100 → 跳过,锚点保持 500,绝不被 set 成 100。
@@ -821,7 +821,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("有 image 实例 + 无 AI → 广播 [image] 段,part=post", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -840,7 +840,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("出卡时先把原始动态翻成 Post 再交给 generatePostCard", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, name: "示例UP", pubTs: 1_700_000_000, text: "你好世界" })]),
 		);
 		seed(b.engine, "1", 0);
@@ -861,7 +861,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("per-UP 皮肤 id 进 colorOptions;样式没启用时也只多这一个键", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710" });
 		await detect(b.engine);
 		// 验红:把 work-delivery.ts 里那句 `cardSkin: settings.cardSkin` 删掉,这条红。
@@ -874,7 +874,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("per-UP 旋钮覆盖随皮肤 id 进 colorOptions", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		const cardSkinKnobs = { "k5aaa-b0a710": { accent: "#aaaaaa" } };
 		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710", cardSkinKnobs });
 		await detect(b.engine);
@@ -888,7 +888,9 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		const b = makeEngine({ withImage: true, withAi: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
 		b.comment.mockResolvedValue("这条很有意思");
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]));
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]),
+		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{
@@ -906,7 +908,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("无 image 实例 → 纯文字段降级", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ type: string }>;
@@ -916,7 +918,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("imageEnabled=false → 即使注入了 image 也跳过渲染,纯文字", async () => {
 		const b = makeEngine({ withImage: true, config: { imageEnabled: false } });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.generatePostCard).not.toHaveBeenCalled();
@@ -926,7 +928,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("imageGroup.enable + DYNAMIC_TYPE_DRAW 带 pics → 追加 post-images 广播", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -944,7 +946,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("主卡与图集是同一次推送:两次 broadcast 带同一个 pushId;下一条动态换新的", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -975,7 +977,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("图组发送失败 → 主卡已发出,锚点仍推进(不因附属图组失败而重发主卡 + 重复 @全体)", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1001,7 +1003,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("P2-A:DRAW 图在 major.draw.items[].src → 不再静默丢图组(此前只读 opus.pics)", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1024,7 +1026,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("图集 image-group 透传 B站原始尺寸(QQ 原生 markdown 多图需 width/height)", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1045,7 +1047,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("imageGroupForward 默认 false → image-group segment 的 forward 为 false", async () => {
 		// 默认不走合并转发,避开 NapCat SsoSendLongMsg 长消息通道。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1064,7 +1066,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("imageGroupForward=true + 多张图 → image-group segment 的 forward 为 true", async () => {
 		// 主动开启 + 多张图时 segment 携带 forward:true,下游 adapter 走合并转发路径。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: true } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1083,7 +1085,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("imageGroupForward=true 但只有 1 张图 → forward 强制 false(单图合并转发无意义)", async () => {
 		// 即使主动开启 imageGroupForward,单张图也不走 forward(聊天记录卡片包 1 张图无意义)。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: true } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1102,7 +1104,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("per-UP imageGroupEnable=false 覆盖全局 true → 不推图集", async () => {
 		// 全局开 imageGroup.enable,但 sub 视图带 imageGroupEnable:false → 不发图集广播。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1122,7 +1124,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	it("per-UP imageGroupEnable=true 覆盖全局 false → 推图集", async () => {
 		// 全局关 imageGroup.enable,但 sub 视图 imageGroupEnable:true → 发图集。
 		const b = makeEngine({ config: { imageGroup: { enable: false, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1142,7 +1144,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		// 守护 dynamic-engine 用 `??` 折叠而非 `||`:undefined 走 fallback,但 false
 		// 显式 per-UP 关闭不被吃。本用例钉「缺省=继承」一向。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1161,7 +1163,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 
 	it("per-UP imageGroupForward=true 覆盖全局 false → 多图走 forward", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1186,7 +1188,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 	it("无图 + 无 AI → 默认模板文案 + 链接部件(默认版式同条换行连接)", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(textOf(segsOf(b))).toBe(`阿绫发布了一条动态\nhttps://t.bilibili.com/id-1`);
@@ -1194,7 +1196,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 	it("版式隐藏 link 部件 → 无链接", async () => {
 		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态" } });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		const noLink = defaultMessageKindLayout("post");
 		for (const blk of noLink.blocks) if (blk.type === "link") blk.visible = false;
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", messageLayout: noLink });
@@ -1206,7 +1208,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		const b = makeEngine({
 			config: { dynamicVideoUrlToBV: true, videoTemplate: "{name}发布了新视频" },
 		});
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1225,7 +1227,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 	it("Part A:有图分支的文字段 == 无图分支的文字段(模板单源,无双前缀)", async () => {
 		const withImg = makeEngine({ withImage: true });
 		withImg.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		withImg.getAllDynamic.mockResolvedValue(
+		withImg.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]),
 		);
 		seed(withImg.engine, "1", 0);
@@ -1234,7 +1236,9 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		expect(imgSegs[0]?.type).toBe("image");
 
 		const noImg = makeEngine();
-		noImg.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		noImg.fetchAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]),
+		);
 		seed(noImg.engine, "1", 0);
 		await detect(noImg.engine);
 		expect(textOf(imgSegs)).toBe(`阿绫发布了一条动态\nhttps://t.bilibili.com/id-1`);
@@ -1243,7 +1247,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 	it("视频动态(DYNAMIC_TYPE_AV)走 videoTemplate + jump_url 链接", async () => {
 		const b = makeEngine({ config: { videoTemplate: "{name}发布了新视频" } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1261,7 +1265,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 	it("per-UP customDynamicTemplate 覆盖内建模板", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
@@ -1273,7 +1277,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 
 	it("全局 config.dynamicTemplate 覆盖内建兜底", async () => {
 		const b = makeEngine({ config: { dynamicTemplate: "【动态】{name}" } });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(textOf(segsOf(b))).toBe(`【动态】阿绫\nhttps://t.bilibili.com/id-1`);
@@ -1282,7 +1286,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 	it("有 AI 点评时两分支都用点评,不走模板", async () => {
 		const b = makeEngine({ withAi: true });
 		b.comment.mockResolvedValue("这条很有意思");
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", text: "原始内容" })]),
 		);
 		seed(b.engine, "1", 0);
@@ -1331,7 +1335,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 	it("AI 点评:提示词带名字与正文(标题 / 摘要 / 转发原文及它的视频标题),图取前 4 张", async () => {
 		const b = makeEngine({ withAi: true });
 		b.comment.mockResolvedValue("点评");
-		b.getAllDynamic.mockResolvedValue(resp([richItem()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([richItem()]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.comment).toHaveBeenCalledTimes(1);
@@ -1353,7 +1357,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 
 	it("没有可点评的正文 → 不调 AI,走模板", async () => {
 		const b = makeEngine({ withAi: true });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.comment).not.toHaveBeenCalled();
@@ -1364,7 +1368,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 	it("AI 点评失败 → 回退到模板,照常推送", async () => {
 		const b = makeEngine({ withAi: true });
 		b.comment.mockRejectedValue(new Error("额度用完"));
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", text: "原始内容" })]),
 		);
 		seed(b.engine, "1", 0);
@@ -1377,7 +1381,9 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 	it("per-UP 的 AI 覆盖原样交给这一次点评", async () => {
 		const b = makeEngine({ withAi: true });
 		b.comment.mockResolvedValue("点评");
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]));
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]),
+		);
 		const aiOverride = { dynamicPrompt: "这位 UP 专属的场景提示" };
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", aiOverride });
 		await detect(b.engine);
@@ -1386,7 +1392,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 
 	it("视频链接换 BV:jump_url 里有 BV 号 → 链接部件就是 BV 号", async () => {
 		const b = makeEngine({ config: { dynamicVideoUrlToBV: true } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1405,7 +1411,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 
 	it("per-UP 视频模板盖过全局视频模板", async () => {
 		const b = makeEngine({ config: { videoTemplate: "全局 {name}" } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({
 					uid: 1,
@@ -1425,7 +1431,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 	it("per-UP 卡片样式启用 → 样式与皮肤一起进 colorOptions", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
@@ -1442,7 +1448,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 
 	it("图集只认图文动态:别的类型带图也不附图集", async () => {
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, drawPics: ["http://a/1.jpg", "http://a/2.jpg"] })]),
 		);
 		seed(b.engine, "1", 0);
@@ -1455,7 +1461,7 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 	it("命中过滤 + notify=false → 不广播,但 timeline 仍推进", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
@@ -1468,7 +1474,7 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 
 	it("命中过滤 + notify=true → 广播屏蔽原因文案", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, name: "阿伟", pubTs: 1500, text: "含禁词" })]),
 		);
 		seed(b.engine, "1", 0, {
@@ -1536,14 +1542,14 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 	for (const [name, key, build] of cases) {
 		it(`${name}:开着 → 不广播、timeline 照推进;没开 → 照常推`, async () => {
 			const blocked = makeEngine();
-			blocked.getAllDynamic.mockResolvedValue(resp([build()]));
+			blocked.fetchAllDynamic.mockResolvedValue(resp([build()]));
 			seed(blocked.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ [key]: true }) });
 			await detect(blocked.engine);
 			expect(blocked.push.broadcastDynamic).not.toHaveBeenCalled();
 			expect(priv(blocked.engine).dynamicTimelineManager.get("1")).toBe(1500);
 
 			const open = makeEngine();
-			open.getAllDynamic.mockResolvedValue(resp([build()]));
+			open.fetchAllDynamic.mockResolvedValue(resp([build()]));
 			seed(open.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({}) });
 			await detect(open.engine);
 			expect(open.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -1552,7 +1558,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 
 	it("看的是「有没有图集」不是外层类型码:没带图的图文动态,blockImages 不拦", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_DRAW", text: "只有字" })]),
 		);
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockImages: true }) });
@@ -1562,7 +1568,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 
 	it("全局那份过滤(config.filter)同样吃 Post:per-UP 没覆盖就用它", async () => {
 		const b = makeEngine({ config: { filter: rules({ blockVideos: true }) } });
-		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -1570,7 +1576,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 
 	it("per-UP 覆盖盖过全局:全局拦视频,这位 UP 单独放开 → 照推", async () => {
 		const b = makeEngine({ config: { filter: rules({ blockVideos: true }) } });
-		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({}) });
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -1586,7 +1592,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 			},
 		} as unknown as Dynamic;
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([item]));
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockVideos: true }) });
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -1594,7 +1600,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 
 	it("dynamic-detected 仍在过滤之前发,载荷里是原始类型码(3a 才换,这一片不动)", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockVideos: true }) });
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).not.toHaveBeenCalled();
@@ -1604,7 +1610,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 
 	it("屏蔽提醒(notify 开着)用中立措辞,作品叫「动态」", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([videoItem()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
@@ -1619,7 +1625,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 		const b = makeEngine({ withImage: true, withAi: true });
 		b.comment.mockResolvedValue("点评");
 		b.generatePostCard.mockResolvedValue(Buffer.from("card"));
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1500, name: "阿伟", text: "正文" })]),
 		);
 		seed(b.engine, "1", 0);
@@ -1636,7 +1642,7 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 		vi.mocked(postFromDynamic).mockImplementationOnce(() => {
 			throw new Error("翻不动");
 		});
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([
 				makeItem({ uid: 1, pubTs: 1500, name: "阿伟", text: "新的" }),
 				makeItem({ uid: 1, pubTs: 1200, name: "阿伟", text: "旧的" }),
@@ -1661,7 +1667,7 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 	it("渲染失败一次 → streak=1,sendErrorMsg+emit 各一次,仍降级纯文字推送", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 
@@ -1677,11 +1683,11 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 	it("连续失败两轮 → sendErrorMsg / engine-error 全程仅一次(notified 守卫)", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		// 第二轮:新动态(pub_ts 更大),仍失败
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
 		await detect(b.engine);
 
 		expect(b.cardFailures.streak).toBe(2);
@@ -1692,7 +1698,7 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 	it("A3:首次失败的 sendErrorMsg reject → notified 不置位,下轮失败重试通知", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 
 		// 轮1:渲染失败 + 通知本身 reject。
@@ -1704,7 +1710,7 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 		expect(b.cardFailures.notified).toBe(false);
 
 		// 轮2:再失败,这次通知成功 → 因 notified 仍 false,重试并送达后才置位。
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
 		await detect(b.engine);
 		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
 		expect(b.cardFailures.notified).toBe(true);
@@ -1712,7 +1718,7 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 
 	it("失败 → 成功(复位)→ 再失败:能再次告警(sendErrorMsg 共两次)", async () => {
 		const b = makeEngine({ withImage: true });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 
 		// 轮1:失败 → 告警#1
@@ -1722,14 +1728,14 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 
 		// 轮2:成功 → streak/notified 复位
 		b.generatePostCard.mockResolvedValueOnce(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
 		await detect(b.engine);
 		expect(b.cardFailures.streak).toBe(0);
 		expect(b.cardFailures.notified).toBe(false);
 
 		// 轮3:再失败 → 告警#2(复位后恢复了告警能力)
 		b.generatePostCard.mockRejectedValueOnce(new Error("crash again"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 3000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 3000 })]));
 		await detect(b.engine);
 		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
 	});
@@ -1753,7 +1759,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 
 	it("关了出图 → 不推送,锚点照常前移", async () => {
 		const b = makeEngine({ withImage: true, config: { imageEnabled: false } });
-		b.getAllDynamic.mockResolvedValue(resp([liveRcmd()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expectSkipped(b);
@@ -1761,7 +1767,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 
 	it("版式藏起卡片 → 不推送,锚点照常前移", async () => {
 		const b = makeEngine({ withImage: true });
-		b.getAllDynamic.mockResolvedValue(resp([liveRcmd()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
@@ -1778,7 +1784,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 
 	it("开着出图也不去出卡、不点评:不计出图失败、不告警", async () => {
 		const b = makeEngine({ withImage: true, withAi: true });
-		b.getAllDynamic.mockResolvedValue(resp([liveRcmd()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expectSkipped(b);
@@ -1789,7 +1795,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 
 	it("统计照常看得见它(统计那头自己按类型忽略)", async () => {
 		const b = makeEngine({ config: { imageEnabled: false } });
-		b.getAllDynamic.mockResolvedValue(resp([liveRcmd()]));
+		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const detected = b.emits.filter((e) => e.event === "dynamic-detected");
@@ -1801,7 +1807,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)", () => {
 	it("渲染 await 期间 delete 该 UID → 不推送 + 不复活时间线", async () => {
 		const b = makeEngine({ withImage: true });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		// 模拟交错:generatePostCard 解析前,adapter 收到 subscription-changed
 		// 调 applyOps 退订 uid 1(stopDynamicForUid 删两张表)。
@@ -1834,7 +1840,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 
 		// 进入 -352 风控:handleApiError 停 job(dynamicJob=undefined)并排一次性退避重启
 		// (detectorRestartTimer 置位;fake setTimeout 不触发,故退避一直挂着)。
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
 
 		// 退避窗口内 adapter 收到订阅变更 → applyOps → reconcileJob。subManager 仍非空,
@@ -1866,7 +1872,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		let snap: SubscriptionsView | null = null;
 		const { ctx } = makeServiceCtx();
 		const { bus, trigger } = makeBus();
-		const api = { getAllDynamic: vi.fn() } as unknown as BilibiliAPI;
+		const api = { fetchAllDynamic: vi.fn() } as unknown as Api;
 		const push = {
 			broadcastDynamic: vi.fn(async () => {}),
 			sendPrivateMsg: vi.fn(async () => {}),
@@ -2005,10 +2011,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 			config: { aiEnabled: true },
 		});
 		seed(b.engine, "1", 500);
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [dyn()] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 
 		await detect(b.engine);
 		// 没注入 ai → 不调 ai.comment
@@ -2023,10 +2029,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		const next = dyn();
 		(next as { id_str: string }).id_str = "d2";
 		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [next] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(comment).toHaveBeenCalledTimes(1);
 	});
@@ -2041,10 +2047,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		});
 		seed(b.engine, "1", 500);
 		b.engine.setAi(ai);
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [dyn()] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(comment).toHaveBeenCalledTimes(1);
 
@@ -2052,10 +2058,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		const next = dyn();
 		(next as { id_str: string }).id_str = "d2";
 		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [next] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(comment).toHaveBeenCalledTimes(1); // 没新增调用
 	});
@@ -2066,10 +2072,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 			withAi: false,
 		});
 		seed(b.engine, "1", 500);
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [dyn()] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 
 		await detect(b.engine);
 		expect(b.generatePostCard).not.toHaveBeenCalled();
@@ -2081,10 +2087,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		const next = dyn();
 		(next as { id_str: string }).id_str = "d2";
 		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [next] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(generatePostCard).toHaveBeenCalledTimes(1);
 	});
@@ -2103,10 +2109,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		b.engine.setAi(oldAi);
 		b.engine.setAi(newAi); // 第二次替换 = ai plugin reload
 
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [dyn()] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(oldComment).not.toHaveBeenCalled();
 		expect(newComment).toHaveBeenCalledTimes(1);
@@ -2121,10 +2127,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		});
 		seed(b.engine, "1", 500);
 		b.engine.setImage(image);
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [dyn()] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(generatePostCard).toHaveBeenCalledTimes(1);
 
@@ -2132,10 +2138,10 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 		const next = dyn();
 		(next as { id_str: string }).id_str = "d2";
 		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.getAllDynamic.mockResolvedValue({
+		b.fetchAllDynamic.mockResolvedValue({
 			code: 0,
 			data: { items: [next] },
-		} as unknown as AllDynamicInfo);
+		} as unknown as AllDynamicResponse);
 		await detect(b.engine);
 		expect(generatePostCard).toHaveBeenCalledTimes(1);
 	});
@@ -2170,7 +2176,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 	it("默认版式(card,text,link 合并一条):模板按 url='' 渲染,链接独立成段,同条内换行连接", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
@@ -2184,7 +2190,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 	it("分条符切两条 → 走 broadcastDynamicSequence,不再走单条 broadcastDynamic", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(
 			b,
 			layoutOf([
@@ -2214,7 +2220,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 
 	it("隐藏 card 块 → 直接跳过图片渲染(不浪费渲染)", async () => {
 		const b = makeEngine({ withImage: true });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "card", visible: false }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);
 		expect(b.generatePostCard).not.toHaveBeenCalled();
@@ -2225,7 +2231,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 	it("隐藏 text 块 → 跳过 AI 调用(省 token),消息里无文本部件", async () => {
 		const b = makeEngine({ withImage: true, withAi: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, text: "有可提取文本" })]),
 		);
 		seedLayout(b, layoutOf([{ type: "card" }, { type: "text", visible: false }, { type: "link" }]));
@@ -2238,7 +2244,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 
 	it("全部块隐藏 → 本条不推送,但锚点照常推进(下轮不重推)", async () => {
 		const b = makeEngine({ withImage: true });
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(
 			b,
 			layoutOf([
@@ -2259,7 +2265,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 	it("自定义连接符连相邻文字;隐藏的分条符不切组", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(
 			b,
 			layoutOf(
@@ -2283,7 +2289,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		const b = makeEngine({ withImage: true });
 		const png = Buffer.from("png");
 		b.generatePostCard.mockResolvedValue(png);
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "text" }, { type: "card" }, { type: "link" }]));
 		await detect(b.engine);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<
@@ -2298,7 +2304,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 	it("渲染失败 → card 部件缺席,其余部件照发(软降级不变)", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockRejectedValue(new Error("boom"));
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
@@ -2317,7 +2323,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 
 	it("新动态过闸 → emit 一次,携带 uid / id / 原始 type / ISO 发布时间", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_AV" })]),
 		);
 		seed(b.engine, "1", 0);
@@ -2333,7 +2339,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 
 	it("timeline >= pub_ts(已处理过)→ 不重复 emit,避免统计重复计数", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 1000);
 		await detect(b.engine);
 		expect(detected(b)).toHaveLength(0);
@@ -2341,7 +2347,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 
 	it("未订阅 uid → 不 emit", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 99, pubTs: 1000 })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 99, pubTs: 1000 })]));
 		await detect(b.engine);
 		expect(detected(b)).toHaveLength(0);
 	});
@@ -2369,7 +2375,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		// 让 hasCoverage 为真,于是投稿/动态给出的是**笃定的 0** 而不是「无记录」。
 		// 一位窗口内投了 40 个视频的 UP 在表里显示 0,AI 锐评还据此给他加冕鸽王。
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
 		seedStatsOnly(b, "1");
 		await detect(b.engine);
 		expect(detected(b)).toHaveLength(1);
@@ -2378,7 +2384,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 
 	it("推送关掉的 UP 锚点照常推进 —— 否则每轮把同一条重新 emit 一遍", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
 		seedStatsOnly(b, "1");
 		await detect(b.engine);
 		await detect(b.engine);
@@ -2399,7 +2405,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
 			},
 		});
-		b.getAllDynamic.mockResolvedValue(
+		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),
 		);
 		seed(b.engine, "1", 0);
@@ -2425,7 +2431,7 @@ describe("DynamicEngine.lastFetchAt", () => {
 
 	it("成功拉到一轮 → 记下时刻", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		seed(b.engine, "1", 0);
 		const before = Date.now();
 		await detect(b.engine);
@@ -2436,24 +2442,24 @@ describe("DynamicEngine.lastFetchAt", () => {
 
 	it("拉取抛错 → 不刷新(否则「还在跑吗」永远答是)", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const first = b.engine.lastFetchAt();
 
-		b.getAllDynamic.mockRejectedValue(new Error("network down"));
+		b.fetchAllDynamic.mockRejectedValue(new Error("network down"));
 		await detect(b.engine);
 		expect(b.engine.lastFetchAt()).toBe(first);
 	});
 
 	it("接口返回错误码 → 同样不刷新", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const first = b.engine.lastFetchAt();
 
-		b.getAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
 		expect(b.engine.lastFetchAt()).toBe(first);
 	});
@@ -2471,7 +2477,7 @@ describe("联网搜索 override(aiWebSearch)", () => {
 	it("aiWebSearch 开着 → comment 的 override 带 webSearch:true", async () => {
 		const b = makeEngine({ withAi: true, config: { aiEnabled: true, aiWebSearch: true } });
 		b.comment.mockResolvedValue("点评");
-		b.getAllDynamic.mockResolvedValue(oneDyn());
+		b.fetchAllDynamic.mockResolvedValue(oneDyn());
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.comment).toHaveBeenCalledWith(
@@ -2485,7 +2491,7 @@ describe("联网搜索 override(aiWebSearch)", () => {
 	it("没开 aiWebSearch → override 不带 webSearch(现状不变)", async () => {
 		const b = makeEngine({ withAi: true, config: { aiEnabled: true } });
 		b.comment.mockResolvedValue("点评");
-		b.getAllDynamic.mockResolvedValue(oneDyn());
+		b.fetchAllDynamic.mockResolvedValue(oneDyn());
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const override = b.comment.mock.calls[0]?.[3] as Record<string, unknown> | undefined;
@@ -2513,32 +2519,32 @@ describe("K. detectNow", () => {
 
 	it("跑一轮:拉 feed、处理,promise 在这一轮结束时落定", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "x" })]));
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "x" })]));
 		seed(b.engine, "1", 0);
 		await b.engine.detectNow();
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
 	});
 
 	it("cron tick 撞上在跑的一轮就跳过;detectNow 撞上则排在后面再跑一轮", async () => {
 		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
 		const first = deferred();
-		b.getAllDynamic.mockReturnValueOnce(first.promise).mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockReturnValueOnce(first.promise).mockResolvedValue(resp([]));
 		b.engine.start();
 		const tick = cronMock.instances[0];
 		if (!tick) throw new Error("cron 没建起来");
 
 		tick.onTick();
 		tick.onTick();
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
 
 		const second = b.engine.detectNow();
 		await Promise.resolve();
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
 
 		first.resolve(resp([]));
 		await second;
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(2);
 	});
 
 	it("一轮卡住不落定:检测器重启之后新 job 的 tick 还得能跑,不能被旧锁永久堵死", async () => {
@@ -2547,29 +2553,29 @@ describe("K. detectNow", () => {
 		// 也救不回来。停掉检测器时锁得跟着松开,重启才算真的重新武装。
 		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
 		const stuck = deferred();
-		b.getAllDynamic.mockReturnValueOnce(stuck.promise).mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockReturnValueOnce(stuck.promise).mockResolvedValue(resp([]));
 		b.engine.start();
 		const first = cronMock.instances[0];
 		if (!first) throw new Error("cron 没建起来");
 		first.onTick();
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(1);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
 
 		b.engine.stop();
 		b.engine.start();
 		const second = cronMock.instances[1];
 		if (!second) throw new Error("重启后 cron 没重建");
 		second.onTick();
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(2);
 
 		stuck.resolve(resp([]));
 	});
 
 	it("那一轮抛了:记日志、锁释放,下一次还能跑", async () => {
 		const b = makeEngine();
-		b.getAllDynamic.mockRejectedValueOnce(new TypeError("boom")).mockResolvedValue(resp([]));
+		b.fetchAllDynamic.mockRejectedValueOnce(new TypeError("boom")).mockResolvedValue(resp([]));
 		seed(b.engine, "1", 0);
 		await b.engine.detectNow();
 		await b.engine.detectNow();
-		expect(b.getAllDynamic).toHaveBeenCalledTimes(2);
+		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(2);
 	});
 });

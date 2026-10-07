@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliAPI } from "../bilibili-api";
-import { GET_LIVE_ROOM_INFO_STREAM_KEY } from "../endpoints";
+import { Api } from "../api";
+import { LIVE_ROOM_INFO_STREAM_KEY_URL } from "../endpoints";
 
 /**
  * 复现并锁住「弹幕连接预检漏 wbi 签名」回归：B 站 getDanmuInfo 现在强制要 wbi 签名，
- * 不带 w_rid/wts 一律返回 code=-352。getLiveRoomInfoStreamKey 必须走 wbiGet，否则
+ * 不带 w_rid/wts 一律返回 code=-352。fetchLiveRoomInfoStreamKey 必须走 wbiGet，否则
  * 预检每次被风控拦截、一路回退直接建连，#810 的受限房识别形同空转。
  */
 function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
@@ -29,14 +29,14 @@ function makeApi() {
 	return { api, calls };
 }
 
-describe("getLiveRoomInfoStreamKey 弹幕连接预检", () => {
+describe("fetchLiveRoomInfoStreamKey 弹幕连接预检", () => {
 	it("请求必须带 wbi 签名（w_rid + wts），否则 B 站固定 -352", async () => {
 		const { api, calls } = makeApi();
-		const res = await api.getLiveRoomInfoStreamKey("6154037");
+		const res = await api.fetchLiveRoomInfoStreamKey("6154037");
 
 		expect(calls).toHaveLength(1);
 		const url = calls[0];
-		expect(url).toContain(GET_LIVE_ROOM_INFO_STREAM_KEY);
+		expect(url).toContain(LIVE_ROOM_INFO_STREAM_KEY_URL);
 		expect(url).toContain("id=6154037");
 		expect(url).toMatch(/[?&]wts=\d+/);
 		expect(url).toMatch(/[?&]w_rid=[a-f0-9]{32}/);

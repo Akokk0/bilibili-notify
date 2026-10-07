@@ -22,7 +22,7 @@ describe("parseCommand: gift(SEND_GIFT)", () => {
 	it("银瓜子免费礼物:无连击无牌子", () => {
 		expect(parseCommand(ref.giftNoBadge)).toEqual({
 			kind: "gift",
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+			user: { uid: 77777777771, name: "__MOCK_UNAME__" },
 			giftId: 1,
 			giftName: "辣条",
 			coinType: "silver",
@@ -47,11 +47,11 @@ describe("parseCommand: gift(SEND_GIFT)", () => {
 			},
 		});
 		if (ev.kind !== "gift") throw new Error("unreachable");
-		expect(ev.user.badge).toEqual({
+		expect(ev.user.medal).toEqual({
 			level: 3,
 			name: "__MOCK_BADGE_NAME__",
 			active: false,
-			anchorUid: 77777777772,
+			upUid: 77777777772,
 		});
 	});
 });
@@ -65,7 +65,7 @@ describe("parseCommand: gift(SEND_GIFT_V2,自录真帧)", () => {
 	it("V2 礼物帧 → gift(与 SEND_GIFT 同一 kind)", () => {
 		expect(parseCommand(payloads.giftV2)).toEqual({
 			kind: "gift",
-			user: { uid: 1567394869, uname: "哎小呜Awu" },
+			user: { uid: 1567394869, name: "哎小呜Awu" },
 			giftId: 33988,
 			giftName: "人气票",
 			coinType: "gold",
@@ -85,8 +85,8 @@ describe("parseCommand: gift(SEND_GIFT_V2,自录真帧)", () => {
 		expect(ev.giftName).toBe("粉丝团灯牌");
 		expect(ev.user).toEqual({
 			uid: 2040421492,
-			uname: "时代浩铭团",
-			badge: { level: 2, name: "KPL", active: true, anchorUid: 392836434 },
+			name: "时代浩铭团",
+			medal: { level: 2, name: "KPL", active: true, upUid: 392836434 },
 		});
 	});
 });
@@ -113,8 +113,8 @@ describe("parseCommand: 抽奖组", () => {
 		expect(parseCommand(ref.redPocketStart)).toEqual({
 			kind: "red-pocket-start",
 			id: 8646402,
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
-			danmu: "老板大气！点点红包抽礼物",
+			user: { uid: 77777777771, name: "__MOCK_UNAME__" },
+			danmaku: "老板大气！点点红包抽礼物",
 			durationSec: 180,
 			totalPrice: 1600,
 			awards: [{ giftId: 31212, giftName: "打call", num: 2 }, expect.anything(), expect.anything()],
@@ -127,7 +127,7 @@ describe("parseCommand: 抽奖组", () => {
 		if (ev.kind !== "red-pocket-end") throw new Error("unreachable");
 		expect(ev.winners[0]).toEqual({
 			uid: 77777777771,
-			uname: "__MOCK_UNAME__",
+			name: "__MOCK_UNAME__",
 			awardName: "打call",
 		});
 	});
@@ -140,7 +140,7 @@ describe("parseCommand: 抽奖组", () => {
 			awardName: "情书",
 			awardNum: 1,
 			virtualAward: true,
-			requireDanmu: "__MOCK_MESSAGE_CONTENT__",
+			requireDanmaku: "__MOCK_MESSAGE_CONTENT__",
 			requireText: "关注主播",
 		});
 	});
@@ -155,7 +155,7 @@ describe("parseCommand: 抽奖组", () => {
 			awardName: "50Q币（中奖登记Q号）",
 			awardNum: 1,
 			virtualAward: false,
-			requireDanmu: "恭喜上海EDG.M！",
+			requireDanmaku: "恭喜上海EDG.M！",
 			requireText: "关注主播",
 		});
 		expect(parseCommand(payloads.anchorLotAwardReal)).toMatchObject({
@@ -170,7 +170,7 @@ describe("parseCommand: 抽奖组", () => {
 			kind: "anchor-lottery-end",
 			id: 3782966,
 			awardName: "情书",
-			winners: [{ uid: 77777777771, uname: "__MOCK_UNAME__", num: 1 }],
+			winners: [{ uid: 77777777771, name: "__MOCK_UNAME__", num: 1 }],
 		});
 	});
 });
@@ -228,7 +228,7 @@ describe("parseCommand: entry-effect / like-click(独立 kind,不碰 user-action
 	it("ENTRY_EFFECT → entry-effect,昵称从 copy_writing 提取", () => {
 		expect(parseCommand(ref.entryEffectNone)).toEqual({
 			kind: "entry-effect",
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+			user: { uid: 77777777771, name: "__MOCK_UNAME__" },
 		});
 	});
 
@@ -236,7 +236,7 @@ describe("parseCommand: entry-effect / like-click(独立 kind,不碰 user-action
 		const ev = parseCommand(ref.entryEffectJianzhang);
 		expect(ev).toEqual({
 			kind: "entry-effect",
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__", guardLevel: GuardLevel.Captain },
+			user: { uid: 77777777771, name: "__MOCK_UNAME__", guardLevel: GuardLevel.Captain },
 		});
 	});
 
@@ -245,8 +245,8 @@ describe("parseCommand: entry-effect / like-click(独立 kind,不碰 user-action
 			kind: "like-click",
 			user: {
 				uid: 77777777771,
-				uname: "__MOCK_UNAME__",
-				badge: { level: 5, name: "__MOCK_BADGE_NAME__", active: true, anchorUid: 77777777772 },
+				name: "__MOCK_UNAME__",
+				medal: { level: 5, name: "__MOCK_BADGE_NAME__", active: true, upUid: 77777777772 },
 			},
 		});
 	});
@@ -259,17 +259,17 @@ describe("字段深化:danmu", () => {
 			content: "赞",
 			user: {
 				uid: 77777777771,
-				uname: "__MOCK_UNAME__",
+				name: "__MOCK_UNAME__",
 				guardLevel: GuardLevel.Captain,
-				badge: {
+				medal: {
 					level: 21,
 					name: "__MOCK_BADGE_NAME__",
 					active: true,
-					anchorUid: 77777777772,
-					anchorRoomId: 77777777773,
+					upUid: 77777777772,
+					upRoomId: 77777777773,
 				},
 			},
-			danmuType: 1,
+			danmakuType: 1,
 			timestamp: 1662305224469,
 			emoticon: {
 				id: "official_147",
@@ -285,17 +285,17 @@ describe("字段深化:danmu", () => {
 		expect(ev).toMatchObject({ kind: "danmu", isLottery: true });
 	});
 
-	it("房管的底部弹幕:isRoomAdmin + danmuType=4", () => {
+	it("房管的底部弹幕:isRoomAdmin + danmakuType=4", () => {
 		const ev = parseCommand(ref.danmuRoomAdmin);
 		if (ev.kind !== "danmu") throw new Error(`expected danmu, got ${ev.kind}`);
 		expect(ev.user.isRoomAdmin).toBe(true);
-		expect(ev.danmuType).toBe(4);
+		expect(ev.danmakuType).toBe(4);
 	});
 
-	it("无牌子表情弹幕:badge 缺省,emoticon 在", () => {
+	it("无牌子表情弹幕:medal 缺省,emoticon 在", () => {
 		const ev = parseCommand(ref.danmuEmoticon);
 		if (ev.kind !== "danmu") throw new Error(`expected danmu, got ${ev.kind}`);
-		expect(ev.user.badge).toBeUndefined();
+		expect(ev.user.medal).toBeUndefined();
 		expect(ev.emoticon?.id).toBe("official_147");
 	});
 });
@@ -310,13 +310,13 @@ describe("字段深化:superchat / guard-buy", () => {
 			durationSec: 60,
 			user: {
 				uid: 77777777771,
-				uname: "__MOCK_UNAME__",
-				badge: {
+				name: "__MOCK_UNAME__",
+				medal: {
 					level: 16,
 					name: "__MOCK_BADGE_NAME__",
 					active: true,
-					anchorUid: 77777777772,
-					anchorRoomId: 77777777773,
+					upUid: 77777777772,
+					upRoomId: 77777777773,
 				},
 			},
 		});
@@ -332,7 +332,7 @@ describe("字段深化:superchat / guard-buy", () => {
 			num: 1,
 			startTime: 1661604507,
 			endTime: 1661604507,
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+			user: { uid: 77777777771, name: "__MOCK_UNAME__" },
 		});
 	});
 });
@@ -354,7 +354,7 @@ describe("parseCommand: guard-toast(USER_TOAST_MSG / _V2,独立 kind,不碰 guar
 			startTime: 1674568760,
 			endTime: 1674568760,
 			toastMsg: "<%__MOCK_UNAME__%> 开通了舰长，今天是TA陪伴主播的第1天",
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+			user: { uid: 77777777771, name: "__MOCK_UNAME__" },
 		});
 	});
 
@@ -381,7 +381,7 @@ describe("parseCommand: guard-toast(USER_TOAST_MSG / _V2,独立 kind,不碰 guar
 			endTime: 1722503296,
 			toastMsg:
 				"<%__MOCK_UNAME__%> 在主播__MOCK_ANCHOR_UNAME__的直播间开通了舰长，今天是TA陪伴主播的第1天",
-			user: { uid: 77777777771, uname: "__MOCK_UNAME__" },
+			user: { uid: 77777777771, name: "__MOCK_UNAME__" },
 		});
 	});
 
@@ -407,7 +407,7 @@ describe("parseCommand: guard-toast(USER_TOAST_MSG / _V2,独立 kind,不碰 guar
 				num: 1,
 				startTime: 1787843141,
 				endTime: 1787843141,
-				user: { uid: 237158, uname: "想不起名字的哈曼" },
+				user: { uid: 237158, name: "想不起名字的哈曼" },
 			});
 		});
 
@@ -420,7 +420,7 @@ describe("parseCommand: guard-toast(USER_TOAST_MSG / _V2,独立 kind,不碰 guar
 				num: 1,
 				unit: "月",
 				price: 1598000,
-				user: { uid: 237158, uname: "想不起名字的哈曼" },
+				user: { uid: 237158, name: "想不起名字的哈曼" },
 			};
 			expect(parseCommand(payloads.userToastRenewReal)).toMatchObject(expected);
 			expect(parseCommand(payloads.userToastV2RenewReal)).toMatchObject(expected);

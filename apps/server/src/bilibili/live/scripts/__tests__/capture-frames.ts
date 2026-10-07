@@ -62,12 +62,12 @@ if (roomIdInput === "auto") {
 }
 const outFile = process.argv[4] ?? join(process.cwd(), `blive-capture-${roomIdArg}.jsonl`);
 
-const danmuInfo = await api.getLiveRoomInfoStreamKey(roomIdArg);
-if (danmuInfo.code !== 0 || !danmuInfo.data?.token) {
-	console.error(`getDanmuInfo 失败 code=${danmuInfo.code} message=${danmuInfo.message ?? ""}`);
+const danmakuInfo = await api.fetchLiveRoomInfoStreamKey(roomIdArg);
+if (danmakuInfo.code !== 0 || !danmakuInfo.data?.token) {
+	console.error(`getDanmuInfo 失败 code=${danmakuInfo.code} message=${danmakuInfo.message ?? ""}`);
 	process.exit(1);
 }
-const hostList = danmuInfo.data.host_list as { host: string; wss_port: number }[];
+const hostList = danmakuInfo.data.host_list as { host: string; wss_port: number }[];
 const host = hostList[0];
 if (!host) {
 	console.error("host_list 为空");
@@ -108,7 +108,7 @@ ws.on("open", () => {
 			protover: 3,
 			platform: "web",
 			type: 2,
-			key: danmuInfo.data?.token,
+			key: danmakuInfo.data?.token,
 			buvid: buvid || undefined,
 		}),
 	);

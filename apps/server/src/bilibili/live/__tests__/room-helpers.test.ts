@@ -3,15 +3,15 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../push-like";
 import type { RoomContextOptions } from "../room-context";
 import {
-	describeLiveRoomDanmuAccessDenied,
-	describeLiveRoomDanmuPreflightFallback,
+	describeLiveRoomDanmakuAccessDenied,
+	describeLiveRoomDanmakuPreflightFallback,
 	RoomContext,
 } from "../room-helpers";
 
-describe("describeLiveRoomDanmuAccessDenied", () => {
+describe("describeLiveRoomDanmakuAccessDenied", () => {
 	it("accepts a complete danmu info response", () => {
 		expect(
-			describeLiveRoomDanmuAccessDenied({
+			describeLiveRoomDanmakuAccessDenied({
 				code: 0,
 				data: { token: "token", host_list: [{ host: "example.com" }] },
 			}),
@@ -20,7 +20,7 @@ describe("describeLiveRoomDanmuAccessDenied", () => {
 
 	it("rejects upstream non-zero responses without exposing token-like data", () => {
 		expect(
-			describeLiveRoomDanmuAccessDenied({
+			describeLiveRoomDanmakuAccessDenied({
 				code: -400,
 				message: "room is encrypted",
 				data: null,
@@ -34,20 +34,20 @@ describe("describeLiveRoomDanmuAccessDenied", () => {
 			message: "-352",
 			data: null,
 		};
-		expect(describeLiveRoomDanmuPreflightFallback(info)).toBe("B 站返回 code=-352 message=-352");
-		expect(describeLiveRoomDanmuAccessDenied(info)).toBeUndefined();
+		expect(describeLiveRoomDanmakuPreflightFallback(info)).toBe("B 站返回 code=-352 message=-352");
+		expect(describeLiveRoomDanmakuAccessDenied(info)).toBeUndefined();
 	});
 
 	it("rejects missing token or host list", () => {
 		expect(
-			describeLiveRoomDanmuAccessDenied({
+			describeLiveRoomDanmakuAccessDenied({
 				code: 0,
 				data: { host_list: [{ host: "example.com" }] },
 			}),
 		).toBe("B 站未返回弹幕 token");
 
 		expect(
-			describeLiveRoomDanmuAccessDenied({
+			describeLiveRoomDanmakuAccessDenied({
 				code: 0,
 				data: { token: "token", host_list: [] },
 			}),

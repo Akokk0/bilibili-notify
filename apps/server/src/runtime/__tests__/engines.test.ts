@@ -48,7 +48,7 @@ import {
 	stillPending,
 } from "../../__tests__/support/track-context.js";
 import { BiliLoginStatus } from "../../bilibili/api/index.js";
-import { type BilibiliSettings, BilibiliSettingsSchema } from "../../bilibili/settings.js";
+import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
@@ -327,7 +327,7 @@ function makeServiceCtx() {
 function makeConfigStore(
 	initial: GlobalConfig,
 	bus: ReturnType<typeof createNodeMessageBus>,
-	initialBilibili: BilibiliSettings,
+	initialBilibili: BiliSettings,
 ) {
 	let g = initial;
 	let bilibili = initialBilibili;
@@ -352,7 +352,7 @@ function makeConfigStore(
 			g = next;
 		},
 		_getBilibili: () => bilibili,
-		_setBilibili: (next: BilibiliSettings) => {
+		_setBilibili: (next: BiliSettings) => {
 			bilibili = next;
 		},
 		_setTargets: (next: PushTarget[]) => {
@@ -370,7 +370,7 @@ interface Ctx {
 	serviceCtx: ReturnType<typeof makeServiceCtx>;
 	configStore: ReturnType<typeof makeConfigStore>;
 	api: {
-		getRelations: ReturnType<typeof vi.fn>;
+		fetchRelations: ReturnType<typeof vi.fn>;
 		follow?: ReturnType<typeof vi.fn>;
 	};
 	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
@@ -379,7 +379,7 @@ interface Ctx {
 function setup(opts?: {
 	globals?: GlobalConfig;
 	/** 开机那一刻的 B 站设置(只给要改的几格,其余取格式的默认值);不给 = 全默认。 */
-	bilibili?: Partial<BilibiliSettings>;
+	bilibili?: Partial<BiliSettings>;
 	puppeteer?: boolean;
 	subs?: Subscription[];
 	/** 配置表里的连接(开机健康探测会挨个探它们)。 */
@@ -419,14 +419,14 @@ function setup(opts?: {
 		makeConfigStore(
 			opts?.globals ?? makeDefaultGlobalConfig(),
 			bus,
-			BilibiliSettingsSchema.parse(opts?.bilibili ?? {}),
+			BiliSettingsSchema.parse(opts?.bilibili ?? {}),
 		),
 		opts?.overrides?.configStore,
 	);
 	if (opts?.connections) configStore._setConnections(opts.connections);
 	// 关系查询回「都已关注」:补关注走到这一步就停,不再发写请求。
 	const api = {
-		getRelations: vi.fn(async (uids: string[]) => ({
+		fetchRelations: vi.fn(async (uids: string[]) => ({
 			code: 0,
 			data: Object.fromEntries(uids.map((uid) => [uid, { attribute: 2 }])),
 		})),
@@ -505,10 +505,10 @@ function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
  * 当前 B 站设置 → mutate → 写回替身(模拟配置仓写入之后的快照)。过一遍格式,与真仓一样永远是规范形态
  * (`watchSettings` 靠整份比字符串判变没变,键序要稳)。
  */
-function patchBilibili(c: Ctx, mutate: (b: BilibiliSettings) => void): void {
+function patchBilibili(c: Ctx, mutate: (b: BiliSettings) => void): void {
 	const next = structuredClone(c.configStore._getBilibili());
 	mutate(next);
-	c.configStore._setBilibili(BilibiliSettingsSchema.parse(next));
+	c.configStore._setBilibili(BiliSettingsSchema.parse(next));
 }
 
 function aiGlobals(): GlobalConfig {
@@ -1079,7 +1079,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 });
 
 // 「直播就绪」:至少一个启用的 B 站订阅给任一直播类特性配了目标。「监听开不开」手抄的三份清单之一
-// (另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_MASTER_KEYS 与面板首页),⑬d 起都得认 liveStreaming;合成一个判定随 ㉖。
+// (另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_CREATOR_KEYS 与面板首页),⑬d 起都得认 liveStreaming;合成一个判定随 ㉖。
 describe("createEngines — getModuleState.live", () => {
 	const TARGET = "10000000-0000-4000-8000-000000000001";
 	function subRouting(routing: Partial<Subscription["routing"]>): Subscription {
@@ -2440,7 +2440,7 @@ describe("createEngines — 开机补关注", () => {
 		});
 		active = c;
 		await new Promise((r) => setTimeout(r, 0));
-		expect(c.api.getRelations).not.toHaveBeenCalled();
+		expect(c.api.fetchRelations).not.toHaveBeenCalled();
 	});
 
 	it("已登录开机:查一次关注关系", async () => {
@@ -2451,7 +2451,7 @@ describe("createEngines — 开机补关注", () => {
 			loginStatus: BiliLoginStatus.LOGGED_IN,
 		});
 		active = c;
-		await vi.waitFor(() => expect(c.api.getRelations).toHaveBeenCalledWith(["1"]));
+		await vi.waitFor(() => expect(c.api.fetchRelations).toHaveBeenCalledWith(["1"]));
 	});
 
 	it("未登录开机、之后登录恢复:补上那一次", async () => {
@@ -2462,7 +2462,7 @@ describe("createEngines — 开机补关注", () => {
 		});
 		active = c;
 		c.bus.emit("auth-restored");
-		await vi.waitFor(() => expect(c.api.getRelations).toHaveBeenCalledWith(["1"]));
+		await vi.waitFor(() => expect(c.api.fetchRelations).toHaveBeenCalledWith(["1"]));
 	});
 });
 
@@ -2674,7 +2674,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			const c = setup({
 				subs: twoSubs,
 				loginStatus: BiliLoginStatus.LOGGED_IN,
-				overrides: { api: { getRelations: noneFollowed, follow } },
+				overrides: { api: { fetchRelations: noneFollowed, follow } },
 			});
 			active = c;
 			await vi.waitFor(() => expect(follow).toHaveBeenCalledTimes(1));

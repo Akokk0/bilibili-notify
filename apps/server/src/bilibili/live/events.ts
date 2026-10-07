@@ -13,14 +13,14 @@ export const GuardLevel = {
 export type GuardLevel = (typeof GuardLevel)[keyof typeof GuardLevel];
 
 /** 粉丝勋章(牌子)。各帧携带的字段不齐,缺的省略。 */
-export interface FanBadge {
+export interface FanMedal {
 	level: number;
 	name: string;
 	/** 点亮状态(灰牌为 false)。 */
 	active?: boolean;
 	/** 牌子归属的主播 uid / 房号。 */
-	anchorUid?: number;
-	anchorRoomId?: number;
+	upUid?: number;
+	upRoomId?: number;
 }
 
 /**
@@ -29,13 +29,13 @@ export interface FanBadge {
  */
 export interface LiveUser {
 	uid: number;
-	uname: string;
-	badge?: FanBadge;
+	name: string;
+	medal?: FanMedal;
 	guardLevel?: GuardLevel;
 	isRoomAdmin?: boolean;
 }
 
-export type UserActionType = "enter" | "follow" | "share" | "unknown";
+export type UserActionKind = "enter" | "follow" | "share" | "unknown";
 
 export type LiveEvent =
 	// ── 连接生命周期(client 发出)──────────────────────────────
@@ -51,7 +51,7 @@ export type LiveEvent =
 			content: string;
 			user: LiveUser;
 			/** 1/2/3 普通;4 底部;5 顶部。 */
-			danmuType?: number;
+			danmakuType?: number;
 			/** 发送时间,毫秒时间戳。 */
 			timestamp?: number;
 			/** 天选/抽奖口令弹幕。 */
@@ -125,7 +125,7 @@ export type LiveEvent =
 	| { kind: "liked"; count: number }
 	| { kind: "live-start" }
 	| { kind: "live-end" }
-	| { kind: "user-action"; action: UserActionType; user: LiveUser }
+	| { kind: "user-action"; action: UserActionKind; user: LiveUser }
 	// ── 房间态 ────────────────────────────────────────────────
 	| {
 			kind: "room-change";
@@ -142,7 +142,7 @@ export type LiveEvent =
 			id: number;
 			user: LiveUser;
 			/** 参与口令弹幕。 */
-			danmu: string;
+			danmaku: string;
 			durationSec: number;
 			/** 奖品总价值,金瓜子(/1000 为 RMB)。 */
 			totalPrice: number;
@@ -152,7 +152,7 @@ export type LiveEvent =
 			kind: "red-pocket-end";
 			id: number;
 			totalNum: number;
-			winners: { uid: number; uname: string; awardName?: string }[];
+			winners: { uid: number; name: string; awardName?: string }[];
 	  }
 	| {
 			kind: "anchor-lottery-start";
@@ -163,7 +163,7 @@ export type LiveEvent =
 			/** 虚拟礼物奖品(false = 实物)。 */
 			virtualAward: boolean;
 			/** 参与口令弹幕;无需弹幕时省略。 */
-			requireDanmu?: string;
+			requireDanmaku?: string;
 			/** 参与要求的人话描述(如「关注主播」);无要求时省略。 */
 			requireText?: string;
 	  }
@@ -171,7 +171,7 @@ export type LiveEvent =
 			kind: "anchor-lottery-end";
 			id: number;
 			awardName: string;
-			winners: { uid: number; uname: string; num: number }[];
+			winners: { uid: number; name: string; num: number }[];
 	  }
 	// ── 管理组 ────────────────────────────────────────────────
 	| { kind: "room-warn"; warnType: "warning" | "cut"; msg: string }

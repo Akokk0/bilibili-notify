@@ -49,7 +49,7 @@ const root = protobuf.Root.fromJSON({
 
 const SendGiftV2 = root.lookupType("SendGiftV2");
 
-export interface SendGiftV2Decoded {
+export interface SendGiftV2Payload {
 	uid?: number;
 	uname?: string;
 	guard_level?: number;
@@ -73,9 +73,9 @@ export interface SendGiftV2Decoded {
 }
 
 /** 解开 SEND_GIFT_V2 的 base64 protobuf。坏数据抛错,由调用方降级。 */
-export function decodeSendGiftV2(pbBase64: string): SendGiftV2Decoded {
+export function decodeSendGiftV2(pbBase64: string): SendGiftV2Payload {
 	const bytes = Buffer.from(pbBase64, "base64");
 	return SendGiftV2.toObject(SendGiftV2.decode(bytes), {
 		longs: Number,
-	}) as SendGiftV2Decoded;
+	}) as SendGiftV2Payload;
 }

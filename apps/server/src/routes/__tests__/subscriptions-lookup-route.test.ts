@@ -13,7 +13,7 @@ import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
 
 interface Api {
-	getUserCardInfo?: (uid: string) => Promise<unknown>;
+	fetchUserCard?: (uid: string) => Promise<unknown>;
 	searchByType?: (type: string, q: string, opts: unknown) => Promise<unknown>;
 }
 
@@ -37,7 +37,7 @@ const CARD = {
 
 describe("GET /api/subscriptions/lookup", () => {
 	it("uid 不是纯数字 → 400 invalid", async () => {
-		const { app } = makeApp({ getUserCardInfo: async () => CARD });
+		const { app } = makeApp({ fetchUserCard: async () => CARD });
 		const res = await app.request("/lookup?uid=abc");
 		expect(res.status).toBe(400);
 		expect(await res.json()).toEqual({ code: "invalid", message: "uid 必须是纯数字 UID" });
@@ -54,7 +54,7 @@ describe("GET /api/subscriptions/lookup", () => {
 	});
 
 	it("B 站说查无此人 → 404 not_found;B 站的数字码在 upstreamCode,不占 code", async () => {
-		const { app } = makeApp({ getUserCardInfo: async () => ({ code: -404, data: null }) });
+		const { app } = makeApp({ fetchUserCard: async () => ({ code: -404, data: null }) });
 		const res = await app.request("/lookup?uid=12345");
 		expect(res.status).toBe(404);
 		const body = await res.json();
@@ -67,7 +67,7 @@ describe("GET /api/subscriptions/lookup", () => {
 	});
 
 	it("风控 -352 现在的意思照旧(not_found),码同样只放 upstreamCode —— 分类是 3a 的事", async () => {
-		const { app } = makeApp({ getUserCardInfo: async () => ({ code: -352, data: null }) });
+		const { app } = makeApp({ fetchUserCard: async () => ({ code: -352, data: null }) });
 		const res = await app.request("/lookup?uid=12345");
 		expect(res.status).toBe(404);
 		expect(await res.json()).toMatchObject({ code: "not_found", upstreamCode: -352 });
@@ -75,7 +75,7 @@ describe("GET /api/subscriptions/lookup", () => {
 
 	it("调用抛错 → 503 unavailable,原话只进日志、不回给面板", async () => {
 		const { app, warn } = makeApp({
-			getUserCardInfo: async () => {
+			fetchUserCard: async () => {
 				throw new Error("getaddrinfo ENOTFOUND api.bilibili.com");
 			},
 		});
@@ -91,7 +91,7 @@ describe("GET /api/subscriptions/lookup", () => {
 	});
 
 	it("查到了 → 200 资料", async () => {
-		const { app } = makeApp({ getUserCardInfo: async () => CARD });
+		const { app } = makeApp({ fetchUserCard: async () => CARD });
 		const res = await app.request("/lookup?uid=12345");
 		expect(res.status).toBe(200);
 		expect(await res.json()).toMatchObject({ uid: "12345", name: "测试UP" });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { BilibiliAPI } from "../bilibili-api";
+import { Api } from "../api";
 
 /**
  * 开机不碰 B 站:start() 只起 HTTP 客户端与每日 ticket 定时,不预取 ticket。
@@ -15,11 +15,11 @@ import { BilibiliAPI } from "../bilibili-api";
 const logger = { info() {}, warn() {}, error() {}, debug() {} };
 
 function makeApi() {
-	return new BilibiliAPI({ serviceCtx: { logger } as never, callbacks: {} });
+	return new Api({ serviceCtx: { logger } as never, callbacks: {} });
 }
 
 describe("开机不碰 B 站", () => {
-	let api: BilibiliAPI | undefined;
+	let api: Api | undefined;
 	afterEach(() => api?.stop());
 
 	it("start() 不联网,连不上 B 站也照样起来", async () => {
@@ -50,7 +50,7 @@ describe("开机不碰 B 站", () => {
 				};
 			},
 		};
-		await Promise.all([api.getUserInfo("1"), api.getUserInfo("2")]);
+		await Promise.all([api.fetchUserInfo("1"), api.fetchUserInfo("2")]);
 		expect(calls.filter((c) => c.startsWith("POST"))).toEqual([
 			"POST /bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket",
 		]);

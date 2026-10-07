@@ -10,7 +10,7 @@ import {
  * B 站请求客户端 —— `@bilibili-notify/http` 的 `HttpClient` 之上的一层薄包。
  *
  * 通用底座对「非 2xx 不抛、回原始字节、失败回结果形状」,而 B 站这一路从 axios 时代起就靠下面
- * 这几条语义跑着,这里原样保住,调用方(BilibiliAPI 与外层 retry)一个字不用改:
+ * 这几条语义跑着,这里原样保住,调用方(Api 与外层 retry)一个字不用改:
  * - **非 2xx 抛错**:等价 axios validateStatus 默认 —— 412 风控页等以异常进入外层 retry,
  *   不会被当成功响应。消息里的 URL 去掉 query(凭据常塞在 query 里,见 {@link urlWithoutQuery})。
  * - **JSON 尝试解析、失败回退原文**:JSON API 得对象,correspond HTML 页得字符串。

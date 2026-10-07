@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliAPI } from "../bilibili-api";
-import { GET_MYSELF_INFO } from "../endpoints";
+import { Api } from "../api";
+import { MYSELF_INFO_URL } from "../endpoints";
 
 /**
  * getMyselfInfoCached 挂在客户端上、被直播建连 / 卡片预览共享:
- *   - 连续调用去重(命中缓存),只落一次 GET_MYSELF_INFO;
+ *   - 连续调用去重(命中缓存),只落一次 MYSELF_INFO_URL;
  *   - 登出(clearCookies)后缓存失效,下次真调 —— 换号不会用旧账号身份。
  */
 function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
 	let myselfCalls = 0;
 	const mockClient = {
 		get: async (url: string) => {
-			if (url.startsWith(GET_MYSELF_INFO)) myselfCalls++;
+			if (url.startsWith(MYSELF_INFO_URL)) myselfCalls++;
 			return { code: 0, data: { mid: 1, uname: "me", face: "f" } };
 		},
 	};
@@ -27,8 +27,8 @@ function makeApi() {
 	return { api, inject, calls: () => myselfCalls };
 }
 
-describe("BilibiliAPI.getMyselfInfoCached", () => {
-	it("连续调用去重,只落一次 GET_MYSELF_INFO", async () => {
+describe("Api.getMyselfInfoCached", () => {
+	it("连续调用去重,只落一次 MYSELF_INFO_URL", async () => {
 		const { api, calls } = makeApi();
 		await Promise.all([api.getMyselfInfoCached(), api.getMyselfInfoCached()]);
 		await api.getMyselfInfoCached();

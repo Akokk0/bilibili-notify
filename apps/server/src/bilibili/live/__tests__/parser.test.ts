@@ -15,12 +15,12 @@ import payloads from "./fixtures/payloads.json" with { type: "json" };
 
 describe("parseCommand(真实录制 payload)", () => {
 	it("DANMU_MSG → danmu:正文 + 发送者", () => {
-		// 字段深化(danmuType/timestamp 等)在 parser-extended.test.ts 里钉;
+		// 字段深化(danmakuType/timestamp 等)在 parser-extended.test.ts 里钉;
 		// 这里只钉真实录制帧的基础字段映射。
 		expect(parseCommand(payloads.danmu)).toMatchObject({
 			kind: "danmu",
 			content: "太有互动感了",
-			user: { uid: 6170115, uname: "琴七" },
+			user: { uid: 6170115, name: "琴七" },
 		});
 	});
 
@@ -58,7 +58,7 @@ describe("parseCommand(真实录制 payload)", () => {
 		expect(parseCommand(payloads.interactV2)).toEqual({
 			kind: "user-action",
 			action: "enter",
-			user: { uid: 33088372, uname: "_无言I" },
+			user: { uid: 33088372, name: "_无言I" },
 		});
 	});
 });
@@ -81,7 +81,7 @@ describe("parseCommand(合成 payload)", () => {
 			kind: "superchat",
 			content: "加油",
 			price: 30,
-			user: { uid: 8888, uname: "金主" },
+			user: { uid: 8888, name: "金主" },
 		});
 	});
 
@@ -103,7 +103,7 @@ describe("parseCommand(合成 payload)", () => {
 			kind: "guard-buy",
 			guardLevel: GuardLevel.Captain,
 			giftName: "舰长",
-			user: { uid: 7777, uname: "舰长大人" },
+			user: { uid: 7777, name: "舰长大人" },
 		});
 	});
 

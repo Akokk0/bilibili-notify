@@ -21,7 +21,7 @@ import { createAuthSystem } from "../index.js";
 
 // 替身只留 auth 层碰得到的几个口,不起真的 HTTP 客户端与登录流程。
 vi.mock("../../bilibili/api/index.js", () => ({
-	BilibiliAPI: class {
+	Api: class {
 		start = vi.fn(async () => {});
 		stop = vi.fn();
 		loadCookies = vi.fn(async () => {});

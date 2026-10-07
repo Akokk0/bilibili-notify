@@ -17,7 +17,7 @@ import { createIpRateLimiter } from "./auth/ip-rate-limit.js";
 import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
-import type { BilibiliAPI } from "./bilibili/api/index.js";
+import type { Api } from "./bilibili/api/index.js";
 import { CARD_SKINS_DIR, CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
 import type { ActionOutcome, LookupOutcome } from "./extensions/context.js";
@@ -78,7 +78,7 @@ export interface CreateAppOptions {
 	 * 拿不到装饰过的那份(devtools 把 api 包了一层 Proxy 按方法覆盖,而 `authSystem` 上的
 	 * `api` 是个普通数据属性,Proxy 原样放行)。要让预览也吃到覆盖,就得显式传进来。
 	 */
-	api?: BilibiliAPI | null;
+	api?: Api | null;
 	/** Optional backup/restore service; when present /api/system/backup/* is mounted. */
 	backupService?: BackupService;
 	/**

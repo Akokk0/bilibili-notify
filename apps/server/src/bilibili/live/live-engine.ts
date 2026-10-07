@@ -1,14 +1,14 @@
 import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
-import type { BilibiliAPI } from "../api/index.js";
+import type { Api } from "../api/index.js";
 import type { LiveContentBuilder } from "./content-builder";
 import { DanmakuCollector } from "./danmaku-collector";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
 import { LiveSummaryRequester } from "./live-summary-requester";
 import type {
 	LiveSubscriptionOp,
-	PickCardBackground,
+	PickLiveCover,
 	PushLike,
 	SubItemView,
 	SubscriptionsView,
@@ -59,7 +59,7 @@ export interface LiveEngineConfig {
 
 export interface LiveEngineOptions {
 	serviceCtx: ServiceContext;
-	api: BilibiliAPI;
+	api: Api;
 	push: PushLike;
 	contentBuilder: LiveContentBuilder;
 	/** Optional — if absent, image-based pushes are skipped / fall back to text. */
@@ -81,10 +81,10 @@ export interface LiveEngineOptions {
 	 * one-per-push; returning undefined keeps the first background. Threaded straight
 	 * through to every RoomContext.
 	 */
-	pickCardBackground: PickCardBackground;
+	pickCardBackground: PickLiveCover;
 	/**
 	 * uid→roomId 解析成功回调。宿主据此把房号写盘,下次启动/reload 直接读盘复用,
-	 * 省掉逐 UP 的 `getUserInfo` 房号解析请求。透传到每个 RoomContext。
+	 * 省掉逐 UP 的 `fetchUserInfo` 房号解析请求。透传到每个 RoomContext。
 	 */
 	onRoomIdResolved: (uid: string, roomId: string) => void;
 }

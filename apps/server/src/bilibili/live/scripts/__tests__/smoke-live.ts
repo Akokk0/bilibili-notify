@@ -25,7 +25,7 @@ if (rec.code !== 0 || !top) {
 }
 console.log("room:", top.roomid, top.uname);
 
-const info = await api.getLiveRoomInfoStreamKey(String(top.roomid));
+const info = await api.fetchLiveRoomInfoStreamKey(String(top.roomid));
 const token = typeof info.data?.token === "string" ? info.data.token : "";
 const hostListRaw = (info.data?.host_list ?? []) as { host: string; wss_port: number }[];
 if (info.code !== 0 || !token || hostListRaw.length === 0) {
@@ -46,7 +46,7 @@ const client = connectLiveRoom({
 	onEvent: (ev) => {
 		counts.set(ev.kind, (counts.get(ev.kind) ?? 0) + 1);
 		if (ev.kind === "danmu" && (counts.get("danmu") ?? 0) <= 3) {
-			console.log("弹幕:", ev.user.uname, "→", ev.content);
+			console.log("弹幕:", ev.user.name, "→", ev.content);
 		}
 		if (ev.kind === "auth-ok" || ev.kind === "auth-failed" || ev.kind === "error") {
 			console.log("事件:", JSON.stringify(ev));

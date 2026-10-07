@@ -1,7 +1,7 @@
-import type { MySelfInfoData } from "./types";
+import type { MyselfResponse } from "./types";
 
 /**
- * `getMyselfInfo` 的短 TTL + 在途合流缓存。挂在 {@link BilibiliAPI} 客户端上,
+ * `fetchMyselfInfo` 的短 TTL + 在途合流缓存。挂在 {@link Api} 客户端上,
  * 对外经 `getMyselfInfoCached()` 共享给所有「需要当前账号身份、但不需要实时」的
  * 调用方(直播弹幕建连、卡片预览发送方解析…)。
  *
@@ -11,34 +11,34 @@ import type { MySelfInfoData } from "./types";
  *   - **只缓存成功**:code≠0 / data 缺失不写缓存(下次仍真调)。
  *
  * **谁不该用它**:登录健康检查(`LoginFlow.runHealthCheck`)必须走裸
- * `getMyselfInfo()` —— 它靠这次请求探 -101 会话死活,缓存会掩盖会话失效。
+ * `fetchMyselfInfo()` —— 它靠这次请求探 -101 会话死活,缓存会掩盖会话失效。
  *
- * **失效**:登出 / 换号 / -101 会切换账号身份,`BilibiliAPI` 在
+ * **失效**:登出 / 换号 / -101 会切换账号身份,`Api` 在
  * `clearCookies` / `loadCookies` / `terminateSession` 里调 `invalidate()` 精准清缓存,
  * 不靠 TTL 硬扛陈旧身份。TTL 仍刻意短(默认 60s)作为兜底。
  */
-export interface SelfInfoCache {
-	get(): Promise<MySelfInfoData>;
+export interface MyselfCache {
+	get(): Promise<MyselfResponse>;
 	invalidate(): void;
 }
 
 const DEFAULT_SELF_INFO_TTL_MS = 60_000;
 
-export function createSelfInfoCache(
-	api: { getMyselfInfo(): Promise<MySelfInfoData> },
+export function createMyselfCache(
+	api: { fetchMyselfInfo(): Promise<MyselfResponse> },
 	opts?: { ttlMs?: number; now?: () => number },
-): SelfInfoCache {
+): MyselfCache {
 	const ttlMs = opts?.ttlMs ?? DEFAULT_SELF_INFO_TTL_MS;
 	const now = opts?.now ?? (() => Date.now());
-	let cached: { at: number; data: MySelfInfoData } | undefined;
-	let inflight: Promise<MySelfInfoData> | undefined;
+	let cached: { at: number; data: MyselfResponse } | undefined;
+	let inflight: Promise<MyselfResponse> | undefined;
 
 	return {
-		async get(): Promise<MySelfInfoData> {
+		async get(): Promise<MyselfResponse> {
 			if (cached && now() - cached.at < ttlMs) return cached.data;
 			if (inflight) return inflight;
 			const p = Promise.resolve()
-				.then(() => api.getMyselfInfo())
+				.then(() => api.fetchMyselfInfo())
 				.then((res) => {
 					if (res.code === 0 && res.data) cached = { at: now(), data: res };
 					return res;

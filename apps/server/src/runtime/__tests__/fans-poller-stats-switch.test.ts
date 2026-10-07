@@ -106,12 +106,12 @@ async function start(
 		} as never,
 		fansStore: { append, findNearestBefore, findEarliest, drop: vi.fn(async () => {}) } as never,
 		api: {
-			getUserCardInfo: vi.fn(async () => ({
+			fetchUserCard: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "UP", face: "f", sign: "s", fans } },
 			})),
-			getRelationStat: vi.fn(async () => ({ code: 0, data: { follower: fans } })),
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower: fans } })),
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,
 		serviceCtx: {
 			// 不放行启动那次 3s 延时 tick:只看各用例自己 pollNow 的那几轮。

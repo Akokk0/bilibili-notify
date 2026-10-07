@@ -18,11 +18,11 @@
  */
 
 import {
-	type FanBadge,
+	type FanMedal,
 	GuardLevel,
 	type LiveEvent,
 	type LiveUser,
-	type UserActionType,
+	type UserActionKind,
 } from "./events.js";
 import { decodeInteractWordV2 } from "./interact-word-v2-proto.js";
 import { decodeSendGiftV2 } from "./send-gift-v2-proto.js";
@@ -76,7 +76,7 @@ export function parseCommand(payload: unknown): LiveEvent {
 	try {
 		// DANMU_MSG 有带后缀的变体(如 DANMU_MSG:4:0:2:2:2:0)
 		if (cmd === "DANMU_MSG" || cmd.startsWith("DANMU_MSG:")) {
-			return parseDanmu(record) ?? degraded;
+			return parseDanmaku(record) ?? degraded;
 		}
 		switch (cmd) {
 			case "SUPER_CHAT_MESSAGE":
@@ -150,7 +150,7 @@ function guardLevelOf(v: unknown): GuardLevel | undefined {
  * data 系帧的粉丝牌(medal_info / fans_medal 同构:medal_level / medal_name /
  * is_lighted / target_id / anchor_roomid)。level 或 name 缺损 → 无牌。
  */
-function badgeFromMedal(medal: unknown): FanBadge | undefined {
+function fanMedalOf(medal: unknown): FanMedal | undefined {
 	const m = medal as
 		| {
 				medal_level?: unknown;
@@ -163,14 +163,14 @@ function badgeFromMedal(medal: unknown): FanBadge | undefined {
 	const level = num(m?.medal_level);
 	const name = str(m?.medal_name);
 	if (!level || name === undefined) return undefined;
-	const anchorUid = num(m?.target_id);
-	const anchorRoomId = num(m?.anchor_roomid);
+	const upUid = num(m?.target_id);
+	const upRoomId = num(m?.anchor_roomid);
 	return {
 		level,
 		name,
 		active: m?.is_lighted === 1,
-		...(anchorUid ? { anchorUid } : {}),
-		...(anchorRoomId ? { anchorRoomId } : {}),
+		...(upUid ? { upUid } : {}),
+		...(upRoomId ? { upRoomId } : {}),
 	};
 }
 
@@ -178,12 +178,12 @@ function badgeFromMedal(medal: unknown): FanBadge | undefined {
 function makeUser(
 	uid: number,
 	uname: string,
-	extra?: { badge?: FanBadge; guardLevel?: GuardLevel; isRoomAdmin?: boolean },
+	extra?: { medal?: FanMedal; guardLevel?: GuardLevel; isRoomAdmin?: boolean },
 ): LiveUser {
 	return {
 		uid,
-		uname,
-		...(extra?.badge ? { badge: extra.badge } : {}),
+		name: uname,
+		...(extra?.medal ? { medal: extra.medal } : {}),
 		...(extra?.guardLevel ? { guardLevel: extra.guardLevel } : {}),
 		...(extra?.isRoomAdmin ? { isRoomAdmin: true } : {}),
 	};
@@ -191,7 +191,7 @@ function makeUser(
 
 // ── 弹幕 ────────────────────────────────────────────────────────
 
-function parseDanmu(record: Record<string, unknown> | null): LiveEvent | undefined {
+function parseDanmaku(record: Record<string, unknown> | null): LiveEvent | undefined {
 	// info[0] = 元数据数组,info[1] = 正文,info[2] = [uid, uname, isAdmin, ...],
 	// info[3] = 粉丝牌数组,info[7] = guard_level
 	const info = record?.info;
@@ -203,29 +203,29 @@ function parseDanmu(record: Record<string, unknown> | null): LiveEvent | undefin
 	const uname = sender[1];
 	if (typeof uid !== "number" || typeof uname !== "string") return undefined;
 
-	// 粉丝牌数组:[level, name, anchorUname, roomId, color, _, _, colorBorder,
+	// 粉丝牌数组:[level, name, upName, roomId, color, _, _, colorBorder,
 	// colorStart, colorEnd, guardLevel, _, targetUid];灰牌的 colorBorder 恒为
 	// 12632256(#c0c0c0),旧库以此判点亮 —— data 系帧才有显式 is_lighted。
-	const badgeArr = Array.isArray(info[3]) && info[3].length > 0 ? info[3] : undefined;
-	const badge: FanBadge | undefined = badgeArr
+	const medalArr = Array.isArray(info[3]) && info[3].length > 0 ? info[3] : undefined;
+	const medal: FanMedal | undefined = medalArr
 		? (() => {
-				const level = num(badgeArr[0]);
-				const name = str(badgeArr[1]);
+				const level = num(medalArr[0]);
+				const name = str(medalArr[1]);
 				if (!level || name === undefined) return undefined;
-				const anchorUid = num(badgeArr[12]);
-				const anchorRoomId = num(badgeArr[3]);
+				const upUid = num(medalArr[12]);
+				const upRoomId = num(medalArr[3]);
 				return {
 					level,
 					name,
-					active: badgeArr[7] !== 12632256,
-					...(anchorUid ? { anchorUid } : {}),
-					...(anchorRoomId ? { anchorRoomId } : {}),
+					active: medalArr[7] !== 12632256,
+					...(upUid ? { upUid } : {}),
+					...(upRoomId ? { upRoomId } : {}),
 				};
 			})()
 		: undefined;
 
 	const meta = Array.isArray(info[0]) ? info[0] : [];
-	const danmuType = num(meta[1]);
+	const danmakuType = num(meta[1]);
 	const timestamp = num(meta[4]);
 	const isLottery = typeof meta[9] === "number" && meta[9] !== 0;
 	const emoticonRaw = meta[13] as
@@ -246,11 +246,11 @@ function parseDanmu(record: Record<string, unknown> | null): LiveEvent | undefin
 		kind: "danmu",
 		content,
 		user: makeUser(uid, uname, {
-			badge,
+			medal,
 			guardLevel: guardLevelOf(info[7]),
 			isRoomAdmin: sender[2] === 1,
 		}),
-		...(danmuType !== undefined ? { danmuType } : {}),
+		...(danmakuType !== undefined ? { danmakuType: danmakuType } : {}),
 		...(timestamp !== undefined ? { timestamp } : {}),
 		...(isLottery ? { isLottery } : {}),
 		...(emoticon ? { emoticon } : {}),
@@ -290,7 +290,7 @@ function parseSuperChat(record: Record<string, unknown> | null): LiveEvent | und
 		content,
 		price,
 		user: makeUser(uid, uname, {
-			badge: badgeFromMedal(data?.medal_info),
+			medal: fanMedalOf(data?.medal_info),
 			guardLevel: guardLevelOf(data?.user_info?.guard_level),
 			isRoomAdmin: data?.user_info?.manager === 1,
 		}),
@@ -334,7 +334,7 @@ function parseGuardBuy(record: Record<string, unknown> | null): LiveEvent | unde
 		kind: "guard-buy",
 		guardLevel: guardLevel as GuardLevel,
 		giftName,
-		user: { uid, uname },
+		user: { uid, name: uname },
 		...(giftId !== undefined ? { giftId } : {}),
 		...(price !== undefined ? { price } : {}),
 		...(count !== undefined ? { num: count } : {}),
@@ -375,7 +375,7 @@ function parseGuardToast(record: Record<string, unknown> | null): LiveEvent | un
 	) {
 		return undefined;
 	}
-	return buildGuardToast(opType, guardLevel, { uid, uname }, data ?? {});
+	return buildGuardToast(opType, guardLevel, { uid, name: uname }, data ?? {});
 }
 
 /**
@@ -412,7 +412,7 @@ function parseGuardToastV2(record: Record<string, unknown> | null): LiveEvent | 
 	return buildGuardToast(
 		opType,
 		guardLevel,
-		{ uid, uname },
+		{ uid, name: uname },
 		{
 			role_name: data?.guard_info?.role_name,
 			num: data?.pay_info?.num,
@@ -509,7 +509,7 @@ function parseGift(record: Record<string, unknown> | null): LiveEvent | undefine
 	return {
 		kind: "gift",
 		user: makeUser(uid, uname, {
-			badge: badgeFromMedal(data?.medal_info),
+			medal: fanMedalOf(data?.medal_info),
 			guardLevel: guardLevelOf(data?.guard_level),
 		}),
 		giftId,
@@ -548,16 +548,16 @@ function parseGiftV2(record: Record<string, unknown> | null): LiveEvent | undefi
 	) {
 		return undefined;
 	}
-	// protobuf 缺省值语义:medal_level=0 即无牌,badgeFromMedal 自会拒收
-	const medal = decoded.medal_info;
-	const badge = badgeFromMedal(
-		medal
+	// protobuf 缺省值语义:medal_level=0 即无牌,fanMedalOf 自会拒收
+	const medalInfo = decoded.medal_info;
+	const medal = fanMedalOf(
+		medalInfo
 			? {
-					medal_level: medal.medal_level,
-					medal_name: medal.medal_name,
-					is_lighted: medal.is_lighted,
-					target_id: medal.target_id,
-					anchor_roomid: medal.anchor_roomid,
+					medal_level: medalInfo.medal_level,
+					medal_name: medalInfo.medal_name,
+					is_lighted: medalInfo.is_lighted,
+					target_id: medalInfo.target_id,
+					anchor_roomid: medalInfo.anchor_roomid,
 				}
 			: undefined,
 	);
@@ -571,7 +571,7 @@ function parseGiftV2(record: Record<string, unknown> | null): LiveEvent | undefi
 		: undefined;
 	return {
 		kind: "gift",
-		user: makeUser(uid, uname, { badge, guardLevel: guardLevelOf(decoded.guard_level) }),
+		user: makeUser(uid, uname, { medal, guardLevel: guardLevelOf(decoded.guard_level) }),
 		giftId,
 		giftName,
 		coinType,
@@ -598,7 +598,7 @@ function parseLiked(record: Record<string, unknown> | null): LiveEvent | undefin
 
 // ── user-action(INTERACT_WORD_V2 独供)──────────────────────────
 
-const USER_ACTION_TYPES: Record<number, UserActionType> = {
+const USER_ACTION_TYPES: Record<number, UserActionKind> = {
 	1: "enter",
 	2: "follow",
 	3: "share",
@@ -614,7 +614,7 @@ function parseUserAction(record: Record<string, unknown> | null): LiveEvent | un
 	return {
 		kind: "user-action",
 		action: USER_ACTION_TYPES[decoded.msg_type ?? 0] ?? "unknown",
-		user: { uid, uname },
+		user: { uid, name: uname },
 	};
 }
 
@@ -669,14 +669,14 @@ function parseRedPocketStart(record: Record<string, unknown> | null): LiveEvent 
 	const id = num(data?.lot_id);
 	const uid = num(data?.sender_uid);
 	const uname = str(data?.sender_name);
-	const danmu = str(data?.danmu);
+	const danmaku = str(data?.danmu);
 	const durationSec = num(data?.last_time);
 	const totalPrice = num(data?.total_price);
 	if (
 		id === undefined ||
 		uid === undefined ||
 		uname === undefined ||
-		danmu === undefined ||
+		danmaku === undefined ||
 		durationSec === undefined ||
 		totalPrice === undefined
 	) {
@@ -695,8 +695,8 @@ function parseRedPocketStart(record: Record<string, unknown> | null): LiveEvent 
 	return {
 		kind: "red-pocket-start",
 		id,
-		user: { uid, uname },
-		danmu,
+		user: { uid, name: uname },
+		danmaku: danmaku,
 		durationSec,
 		totalPrice,
 		awards,
@@ -719,7 +719,7 @@ function parseRedPocketEnd(record: Record<string, unknown> | null): LiveEvent | 
 		const uname = str(w[1]);
 		if (uid === undefined || uname === undefined) return [];
 		const awardName = str(awardNames[String(w[3])]?.award_name);
-		return [{ uid, uname, ...(awardName !== undefined ? { awardName } : {}) }];
+		return [{ uid, name: uname, ...(awardName !== undefined ? { awardName } : {}) }];
 	});
 	return { kind: "red-pocket-end", id, totalNum, winners };
 }
@@ -748,7 +748,7 @@ function parseAnchorLotteryStart(record: Record<string, unknown> | null): LiveEv
 	) {
 		return undefined;
 	}
-	const requireDanmu = str(data?.danmu);
+	const requireDanmaku = str(data?.danmu);
 	const requireText = str(data?.require_text);
 	return {
 		kind: "anchor-lottery-start",
@@ -757,7 +757,7 @@ function parseAnchorLotteryStart(record: Record<string, unknown> | null): LiveEv
 		awardName,
 		awardNum,
 		virtualAward: data?.award_type === 1,
-		...(requireDanmu ? { requireDanmu } : {}),
+		...(requireDanmaku ? { requireDanmaku: requireDanmaku } : {}),
 		...(requireText ? { requireText } : {}),
 	};
 }
@@ -775,7 +775,7 @@ function parseAnchorLotteryEnd(record: Record<string, unknown> | null): LiveEven
 		const uid = num(user?.uid);
 		const uname = str(user?.uname);
 		return uid !== undefined && uname !== undefined
-			? [{ uid, uname, num: num(user?.num) ?? 1 }]
+			? [{ uid, name: uname, num: num(user?.num) ?? 1 }]
 			: [];
 	});
 	return { kind: "anchor-lottery-end", id, awardName, winners };
@@ -849,7 +849,7 @@ function parseLikeClick(record: Record<string, unknown> | null): LiveEvent | und
 	if (uid === undefined || uname === undefined) return undefined;
 	return {
 		kind: "like-click",
-		user: makeUser(uid, uname, { badge: badgeFromMedal(data?.fans_medal) }),
+		user: makeUser(uid, uname, { medal: fanMedalOf(data?.fans_medal) }),
 	};
 }
 

@@ -5,7 +5,7 @@
  * 再把 {@link LiveCardInput} 交给出卡入口 `ImageRenderer.generateLiveCard` —— 两边各翻一份的话,迟早出现
  * 「预览是这样、推出去是那样」。拓展订阅那头的对应翻译是服务端的 `liveCardInputFromReport`。
  *
- * 同住这里的 {@link biliLiveTimeToIso}:B 站 `live_time` 的唯一一份解析(此前出图器那头还有一份,合并了)。
+ * 同住这里的 {@link liveTimeToIso}:B 站 `live_time` 的唯一一份解析(此前出图器那头还有一份,合并了)。
  */
 
 import { htmlToPlain, type LiveCardInput, type LiveCardStatus } from "@bilibili-notify/image";
@@ -18,7 +18,7 @@ import type { LiveData } from "./types";
  * 显式按 `+08:00` 读,与进程时区无关(容器常常是 UTC,按本地时区读会平白差出 8 小时)。
  * 缺失、空串或解析不出(B 站对没开播的房间给 `0000-00-00 00:00:00`)回 `undefined`。
  */
-export function biliLiveTimeToIso(raw: string | undefined): string | undefined {
+export function liveTimeToIso(raw: string | undefined): string | undefined {
 	if (!raw) return undefined;
 	const at = DateTime.fromFormat(raw, "yyyy-MM-dd HH:mm:ss", { zone: "UTC+8" });
 	return at.isValid ? (at.toUTC().toISO() ?? undefined) : undefined;
@@ -26,10 +26,10 @@ export function biliLiveTimeToIso(raw: string | undefined): string | undefined {
 
 /**
  * 房间接口的 `data`。翻译读的是 `title` / `area_name` / `user_cover` / `keyframe` / `description` / `live_time` /
- * `online` 这几格,一律当 `unknown` 读 —— 接口的真实返回比 `LiveRoomInfo["data"]` 声明的多(`description`、
+ * `online` 这几格,一律当 `unknown` 读 —— 接口的真实返回比 `LiveRoomResponse["data"]` 声明的多(`description`、
  * `online` 类型里没有),预览路由拿到的也只是一个带索引签名的对象。
  */
-export type LiveRoomInfoFields = Readonly<Record<string, unknown>>;
+export type LiveRoomFields = Readonly<Record<string, unknown>>;
 
 /**
  * B 站给卡片的状态码 → 明写的状态。直播引擎传 `LiveType`,面板的真实拉取预览传 2,两套在 0 ~ 3 上恰好对得上。
@@ -73,12 +73,12 @@ function present<T extends object>(value: T): T {
  *   引擎攒的(没收到点赞帧就没有点赞这一格)。累计观看是引擎存的 `WATCHED_CHANGE` 帧的精确数(㉒d),
  *   一帧没收到就没有这一格(下播卡不画,不再印「暂未获取到」)。
  *
- * @param data B 站直播间接口的 `data`(`getLiveRoomInfo`)。
+ * @param data B 站直播间接口的 `data`(`fetchLiveRoomInfo`)。
  * @param liveData 直播引擎攒下的那几个数。
  * @param liveStatus 见 {@link BILI_LIVE_STATUS}。
  */
 export function liveCardInputFromRoomInfo(
-	data: LiveRoomInfoFields | null | undefined,
+	data: LiveRoomFields | null | undefined,
 	username: string,
 	liveData: LiveData,
 	liveStatus: number,
@@ -96,7 +96,7 @@ export function liveCardInputFromRoomInfo(
 		category: text(data?.area_name),
 		description: htmlToPlain(text(data?.description)),
 		cover: coverUrl === undefined ? undefined : { url: coverUrl },
-		startedAt: known ? biliLiveTimeToIso(text(data?.live_time)) : undefined,
+		startedAt: known ? liveTimeToIso(text(data?.live_time)) : undefined,
 		currentViewers: countOf(data?.online),
 		likes: liveData.likedNum,
 		totalViewers: liveData.watchedNum,

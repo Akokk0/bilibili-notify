@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	connectLiveRoom,
-	type LiveConnectionInfo,
+	type LiveConnectionEvent,
 	type LiveConnectOptions,
 	observeLiveConnections,
 	type SocketLike,
@@ -335,7 +335,7 @@ describe("observeLiveConnections", () => {
 	});
 
 	it("每建一条连接报一声,带 roomId / onEvent / client;卸掉后不再报", () => {
-		const seen: LiveConnectionInfo[] = [];
+		const seen: LiveConnectionEvent[] = [];
 		observeLiveConnections((info) => seen.push(info));
 		const socket = new FakeSocket();
 		const events: LiveEvent[] = [];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { LIVE_ROOM_MASTER_KEYS, type LiveMonitorInput, needsLiveMonitor } from "../push-like";
+import { LIVE_ROOM_CREATOR_KEYS, type LiveMonitorInput, needsLiveMonitor } from "../push-like";
 
 const allOff = (): LiveMonitorInput => ({
 	liveStart: false,
@@ -16,7 +16,7 @@ describe("needsLiveMonitor —— 监听直播间的唯一判定", () => {
 		expect(needsLiveMonitor(allOff())).toBe(false);
 	});
 
-	it.each(LIVE_ROOM_MASTER_KEYS)("只开 %s 一把 → 监听", (key) => {
+	it.each(LIVE_ROOM_CREATOR_KEYS)("只开 %s 一把 → 监听", (key) => {
 		expect(needsLiveMonitor({ ...allOff(), [key]: true })).toBe(true);
 	});
 

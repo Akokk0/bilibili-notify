@@ -31,7 +31,7 @@ export function membershipEventFromLiveEvent(
 	if (tier === undefined) return undefined;
 	return {
 		subscriptionId,
-		viewer: { id: String(event.user.uid), name: event.user.uname },
+		viewer: { id: String(event.user.uid), name: event.user.name },
 		program: "guard",
 		tier: { key: tier.key, name: tier.name, rank: tier.rank },
 		...(event.num !== undefined ? { months: event.num } : {}),

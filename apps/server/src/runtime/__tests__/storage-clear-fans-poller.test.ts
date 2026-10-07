@@ -67,9 +67,9 @@ async function start() {
 		subRuntimeStore: world.subRuntimeStore,
 		fansStore: world.fansStore,
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat: vi.fn(async () => ({ code: 0, data: { follower } })),
-			getUserCardInfo: vi.fn(),
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower } })),
+			fetchUserCard: vi.fn(),
 		} as never,
 		// 不放行启动那次延时 tick:只看各用例自己触发的那一轮。
 		serviceCtx: {

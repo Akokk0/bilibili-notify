@@ -6,7 +6,7 @@ import {
 	membershipTemplateOf,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import type { LiveEvent, LiveUser, UserActionType } from "./events.js";
+import type { LiveEvent, LiveUser, UserActionKind } from "./events.js";
 import { passesMembershipMinRank, passesSuperchatMinAmount } from "./interaction-gates";
 import { membershipEventFromLiveEvent } from "./membership-event";
 import { LivePushType } from "./push-like";
@@ -24,7 +24,7 @@ type GuardBuyEvent = Extract<LiveEvent, { kind: "guard-buy" }>;
  *
  * Extends {@link RoomSessionBase} (state + lifecycle + transitions) with the
  * single-callback event funnel (`buildEventHandler`) and the per-event handlers
- * (`onLiveStart`, `onIncomeDanmu`, `onIncomeSuperChat`, `onGuardBuy`,
+ * (`onLiveStart`, `onIncomeDanmaku`, `onIncomeSuperChat`, `onGuardBuy`,
  * `onLiveEnd`, `onError`, `onUserAction`).
  *
  * Each handler reads / mutates the protected state defined on the base.
@@ -209,7 +209,7 @@ export class RoomSession extends RoomSessionBase {
 					return this.onError();
 				case "danmu":
 					this.markLiveWsActivity("danmu");
-					this.onIncomeDanmu(ev);
+					this.onIncomeDanmaku(ev);
 					return;
 				case "superchat":
 					this.markLiveWsActivity("superchat");
@@ -505,9 +505,9 @@ export class RoomSession extends RoomSessionBase {
 		});
 	}
 
-	private onIncomeDanmu(body: { content: string; user: { uname: string; uid: number } }): void {
+	private onIncomeDanmaku(body: { content: string; user: { name: string; uid: number } }): void {
 		if (this.ctx.collectsDanmaku(this.sub)) {
-			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.uname);
+			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.name);
 		}
 		// 不按目标挡:没配目标的推送由推送层记成「无目标」,面板上才看得见。
 		if (
@@ -516,7 +516,7 @@ export class RoomSession extends RoomSessionBase {
 		) {
 			const text = this.ctx.templateRenderer.renderSpecialDanmaku({
 				template: this.sub.customSpecialDanmakuUsers.msgTemplate,
-				uname: body.user.uname,
+				uname: body.user.name,
 				master: this.masterInfo,
 				content: body.content,
 			});
@@ -541,7 +541,7 @@ export class RoomSession extends RoomSessionBase {
 		const pushesSC = this.ctx.isSubscribed(this.sub, "superchat");
 		if (!collectsDanmaku && !pushesSC) return;
 		if (collectsDanmaku) {
-			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, ev.content, ev.user.uname);
+			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, ev.content, ev.user.name);
 		}
 		if (!pushesSC) return;
 		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);
@@ -757,7 +757,7 @@ export class RoomSession extends RoomSessionBase {
 		this.ctx.logger.info(
 			`[stat] 房间号：${this.masterInfo.roomId}，开播时的粉丝数：${this.masterInfo.liveOpenFollowerNum}`,
 		);
-		// live_time 是北京时间,兜底也得按北京时间拼:读它的 biliLiveTimeToIso 一律当北京时间读。
+		// live_time 是北京时间,兜底也得按北京时间拼:读它的 liveTimeToIso 一律当北京时间读。
 		this.liveTime =
 			this.liveRoomInfo.live_time ||
 			DateTime.now().setZone("UTC+8").toFormat("yyyy-MM-dd HH:mm:ss");
@@ -836,7 +836,7 @@ export class RoomSession extends RoomSessionBase {
 	 *
 	 * `user.uid` 是 number,而白名单存的是 string,比对前必须转。
 	 */
-	private async onUserAction(ev: { action: UserActionType; user: LiveUser }): Promise<void> {
+	private async onUserAction(ev: { action: UserActionKind; user: LiveUser }): Promise<void> {
 		// 同特别弹幕:不按目标挡,「无目标」由推送层记账。
 		if (!this.sub.customSpecialUsersEnterTheRoom.enable) return;
 		if (ev.action !== "enter") return;
@@ -844,7 +844,7 @@ export class RoomSession extends RoomSessionBase {
 		if (!this.sub.customSpecialUsersEnterTheRoom.specialUsersEnterTheRoom?.includes(uid)) return;
 		const text = this.ctx.templateRenderer.renderSpecialUserEnter({
 			template: this.sub.customSpecialUsersEnterTheRoom.msgTemplate,
-			uname: ev.user.uname,
+			uname: ev.user.name,
 			master: this.masterInfo,
 		});
 		this.ctx.safeBroadcast(

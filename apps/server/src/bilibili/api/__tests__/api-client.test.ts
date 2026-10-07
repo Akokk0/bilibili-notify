@@ -147,7 +147,7 @@ describe("ApiClient — 失败一律抛(进外层 retry)", () => {
 	});
 
 	it("错误消息不泄漏 URL query 里的凭据(bili_jct / qrcode_key)", async () => {
-		// getCookieInfo 等接口把 csrf=bili_jct 拼进 query;非 2xx 时这个 Error 会经
+		// fetchCookieInfo 等接口把 csrf=bili_jct 拼进 query;非 2xx 时这个 Error 会经
 		// onRetry warn + 上层 catch 落日志。错误消息必须只保留路径,绝不带 query。
 		const err = await makeClient()
 			.get(`${baseURL}/status-412?csrf=SECRET_JCT_TOKEN&qrcode_key=SECRET_QR`)

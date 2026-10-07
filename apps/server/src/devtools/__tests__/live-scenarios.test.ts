@@ -6,7 +6,7 @@ import { createDevRegistry, DevParamError } from "../registry.js";
 import { liveScenarios, type SubPick } from "../scenarios/live.js";
 
 /**
- * A1:开播 / 下播。往房间的事件漏斗塞 `live-start`,同时让 `getLiveRoomInfo` 对那个房间说
+ * A1:开播 / 下播。往房间的事件漏斗塞 `live-start`,同时让 `fetchLiveRoomInfo` 对那个房间说
  * 「在播」—— room-session 收到开播事件会立刻去拉房间信息,拉到 `live_status: 0` 就当没开;
  * `live_time` 是这一场的身份,得是「现在」而不是上一场的。下播反过来:塞 `live-end`,补丁摘掉。
  */
@@ -18,7 +18,7 @@ const SUBS: SubPick[] = [
 ];
 
 class FakeApi {
-	async getLiveRoomInfo(roomId: string) {
+	async fetchLiveRoomInfo(roomId: string) {
 		return {
 			code: 0,
 			data: {
@@ -74,7 +74,7 @@ describe("live.start / live.end", () => {
 
 		expect(events).toEqual([{ kind: "live-start" }]);
 		expect(res.summary).toContain("5050");
-		const info = await api.getLiveRoomInfo("5050");
+		const info = await api.fetchLiveRoomInfo("5050");
 		expect(info.data).toMatchObject({
 			live_status: 1,
 			live_time: "2026-09-06 16:00:00",
@@ -82,14 +82,14 @@ describe("live.start / live.end", () => {
 			uid: 100,
 		});
 		// 别的房间不受影响。
-		expect((await api.getLiveRoomInfo("7070")).data.live_status).toBe(0);
+		expect((await api.fetchLiveRoomInfo("7070")).data.live_status).toBe(0);
 		expect(res.active).toEqual([{ scenarioId: "live.start", label: "假直播中 · 甲" }]);
 	});
 
 	it("指定 sub 与标题", async () => {
 		const { reg, api } = setup();
 		await reg.run("live.start", { sub: "s1", title: "今晚打老虎" });
-		expect((await api.getLiveRoomInfo("5050")).data.title).toBe("今晚打老虎");
+		expect((await api.fetchLiveRoomInfo("5050")).data.title).toBe("今晚打老虎");
 	});
 
 	it("房间没连上 → 参数错误,说清楚是哪个", async () => {
@@ -105,7 +105,7 @@ describe("live.start / live.end", () => {
 		const res = await reg.run("live.end", {});
 
 		expect(events).toEqual([{ kind: "live-start" }, { kind: "live-end" }]);
-		expect((await api.getLiveRoomInfo("5050")).data.live_status).toBe(0);
+		expect((await api.fetchLiveRoomInfo("5050")).data.live_status).toBe(0);
 		expect(res.active).toEqual([]);
 	});
 
@@ -114,7 +114,7 @@ describe("live.start / live.end", () => {
 		await reg.run("live.start", {});
 		expect(await reg.reset("live.start")).toEqual([]);
 		expect(events.at(-1)).toEqual({ kind: "live-end" });
-		expect((await api.getLiveRoomInfo("5050")).data.live_status).toBe(0);
+		expect((await api.fetchLiveRoomInfo("5050")).data.live_status).toBe(0);
 	});
 
 	it("没在假直播的房间也能下播 —— 那是在结束一场真的,回执里说明白", async () => {

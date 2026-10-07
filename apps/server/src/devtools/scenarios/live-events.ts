@@ -13,7 +13,7 @@ import { pickRoom, type RoomPickerDeps } from "./live.js";
 
 /** 假观众:uid 从 9 亿起,与真人不撞。 */
 function fakeUser(i: number): LiveUser {
-	return { uid: 900_000_000 + i, uname: `假观众${i + 1}号` };
+	return { uid: 900_000_000 + i, name: `假观众${i + 1}号` };
 }
 
 /** 弹幕池:各不相同、词汇散开,分词后能凑出 50 个以上热词。 */
@@ -117,7 +117,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				const user =
 					fixedUid === ""
 						? fakeUser(i % senders)
-						: { uid: Number(fixedUid), uname: `特别关注${fixedUid}` };
+						: { uid: Number(fixedUid), name: `特别关注${fixedUid}` };
 				const content = `${DANMAKU_POOL[i % DANMAKU_POOL.length]}${i >= DANMAKU_POOL.length ? ` ${Math.floor(i / DANMAKU_POOL.length) + 1}` : ""}`;
 				handle.inject({ kind: "danmu", content, user, timestamp: now + i });
 			}
@@ -145,7 +145,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				kind: "superchat",
 				content: str(params.text, "devtools 送来的醒目留言"),
 				price,
-				user: { uid: 900_100_001, uname: str(params.uname, "醒目留言测试员") },
+				user: { uid: 900_100_001, name: str(params.uname, "醒目留言测试员") },
 				id: Date.now(),
 				durationSec: price >= 100 ? 300 : 60,
 			});
@@ -189,7 +189,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 				kind: "guard-buy",
 				guardLevel: g.level,
 				giftName: g.name,
-				user: { uid: 900_200_001, uname: str(params.uname, "上舰测试员") },
+				user: { uid: 900_200_001, name: str(params.uname, "上舰测试员") },
 				price: g.price,
 				num: 1,
 				startTime: now,
@@ -216,7 +216,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			const n = num(params.num, 1);
 			handle.inject({
 				kind: "gift",
-				user: { uid: 900_300_001, uname: str(params.uname, "送礼测试员") },
+				user: { uid: 900_300_001, name: str(params.uname, "送礼测试员") },
 				giftId: 30607,
 				giftName: str(params.name, "小心心"),
 				coinType: "gold",
@@ -251,7 +251,7 @@ export function liveEventScenarios(deps: RoomPickerDeps): DevScenarioDef[] {
 			handle.inject({
 				kind: "user-action",
 				action: "enter",
-				user: { uid: Number(uid), uname: str(params.uname, "进场测试员") },
+				user: { uid: Number(uid), name: str(params.uname, "进场测试员") },
 			});
 			return { summary: `已向 ${sub.name} 的直播间 ${roomId} 塞了 uid ${uid} 的进场。` };
 		},

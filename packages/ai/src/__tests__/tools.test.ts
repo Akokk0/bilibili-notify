@@ -12,10 +12,12 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { BiliLookups } from "../tools";
 import { executeTool } from "../tools";
 
-function fakeApi(over: Partial<Record<"getUserUpstat" | "getUserNavnum", unknown>>): BiliLookups {
+function fakeApi(
+	over: Partial<Record<"fetchUserUpstat" | "fetchUserNavnum", unknown>>,
+): BiliLookups {
 	return {
-		getUserUpstat: vi.fn(async () => over.getUserUpstat),
-		getUserNavnum: vi.fn(async () => over.getUserNavnum),
+		fetchUserUpstat: vi.fn(async () => over.fetchUserUpstat),
+		fetchUserNavnum: vi.fn(async () => over.fetchUserNavnum),
 	} as unknown as BiliLookups;
 }
 
@@ -24,8 +26,8 @@ const run = (api: BiliLookups) => executeTool("get_user_stats", { uid: "123" }, 
 describe("executeTool get_user_stats — navnum.code 校验 (P2-G)", () => {
 	it("navnum.code !== 0(接口错误)→ 显式失败,不伪装成数据空", async () => {
 		const api = fakeApi({
-			getUserUpstat: { code: 0, data: { archive: { view: 100 }, likes: 9 } },
-			getUserNavnum: { code: -404, message: "啥也没有" },
+			fetchUserUpstat: { code: 0, data: { archive: { view: 100 }, likes: 9 } },
+			fetchUserNavnum: { code: -404, message: "啥也没有" },
 		});
 		const out = await run(api);
 		expect(out).toContain("获取数据失败");
@@ -35,16 +37,16 @@ describe("executeTool get_user_stats — navnum.code 校验 (P2-G)", () => {
 
 	it("upstat.code !== 0 → 显式失败(既有行为回归)", async () => {
 		const api = fakeApi({
-			getUserUpstat: { code: -403, message: "权限不足" },
-			getUserNavnum: { code: 0, data: { video: 5, upos: 3 } },
+			fetchUserUpstat: { code: -403, message: "权限不足" },
+			fetchUserNavnum: { code: 0, data: { video: 5, upos: 3 } },
 		});
 		expect(await run(api)).toContain("获取数据失败");
 	});
 
 	it("两接口皆 code=0 → 正常返回完整统计串(回归)", async () => {
 		const api = fakeApi({
-			getUserUpstat: { code: 0, data: { archive: { view: 12345 }, likes: 678 } },
-			getUserNavnum: { code: 0, data: { video: 42, upos: 99 } },
+			fetchUserUpstat: { code: 0, data: { archive: { view: 12345 }, likes: 678 } },
+			fetchUserNavnum: { code: 0, data: { video: 42, upos: 99 } },
 		});
 		const out = await run(api);
 		expect(out).toContain("总播放量: 12345");
@@ -63,7 +65,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 
 	it("get_user_videos:超过一天的按天报", async () => {
 		const api = {
-			getUserVideos: vi.fn(async () => ({
+			fetchUserVideos: vi.fn(async () => ({
 				code: 0,
 				data: { list: { vlist: [{ title: "新曲", play: 10, created: nowS() - 3 * 86_400 }] } },
 			})),
@@ -75,7 +77,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 
 	it("get_user_dynamics:一天之内的按小时报", async () => {
 		const api = {
-			getUserSpaceDynamic: vi.fn(async () => ({
+			fetchUserSpaceDynamic: vi.fn(async () => ({
 				code: 0,
 				data: {
 					items: [
@@ -96,7 +98,7 @@ describe("executeTool 的发布时间 —— 距今多久在代码里算好", ()
 
 	it("时间戳缺失 → 「未知时间」,不拼出 Invalid Date / NaN", async () => {
 		const api = {
-			getUserVideos: vi.fn(async () => ({
+			fetchUserVideos: vi.fn(async () => ({
 				code: 0,
 				data: { list: { vlist: [{ title: "旧作", play: 1 }] } },
 			})),

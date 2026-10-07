@@ -7,10 +7,10 @@
  */
 
 /** scope 取下一张背景:空列表→undefined,单图→该图(不推进),多图→顺序轮换并推进游标。 */
-type PickCardBackground = (scopeKey: string, images: string[]) => string | undefined;
+type PickLiveCover = (scopeKey: string, images: string[]) => string | undefined;
 
 export interface CardBgRotator {
-	pick: PickCardBackground;
+	pick: PickLiveCover;
 	/** 当前游标快照(浅拷贝),交给持久化层落盘。 */
 	snapshot(): Record<string, number>;
 	/** 自上次 clearDirty 起是否有过推进(用于 debounce 持久化,避免无谓写盘)。 */

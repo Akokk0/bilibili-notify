@@ -2,7 +2,7 @@
  * ① fansCron 解耦 + ② 风控熔断。
  *
  * ①:FansPoller 的 cron 取 `globals.app.fansCron`(不再复用 dynamicCron)。
- * ②:稳态用 getRelationStat 取 follower;某个 UP 命中风控码(-352 等)时立即
+ * ②:稳态用 fetchRelationStat 取 follower;某个 UP 命中风控码(-352 等)时立即
  *    **中止本轮 sweep**(不继续刷后面的 UP)并退避,下一 tick 直接跳过 —— 对齐
  *    动态引擎「被限流就别继续敲」的机制。
  */
@@ -46,7 +46,7 @@ function baseDeps(over: {
 		identity: { sourceKey: string; externalId: string };
 		enabled: boolean;
 	}>;
-	getRelationStat: ReturnType<typeof vi.fn>;
+	fetchRelationStat: ReturnType<typeof vi.fn>;
 	rtGet?: ReturnType<typeof vi.fn>;
 }) {
 	const bus = createNodeMessageBus();
@@ -70,9 +70,9 @@ function baseDeps(over: {
 			drop: vi.fn(async () => {}),
 		} as never,
 		api: {
-			getRelationStat: over.getRelationStat,
-			getUserCardInfo: vi.fn(async () => ({ code: 0, data: { card: { ...PROFILE, fans: 1 } } })),
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat: over.fetchRelationStat,
+			fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { ...PROFILE, fans: 1 } } })),
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
 		} as never,
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),
@@ -99,7 +99,7 @@ describe("① fansCron 解耦", () => {
 		handle = startFansPoller(
 			baseDeps({
 				subs: [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true }],
-				getRelationStat: vi.fn(),
+				fetchRelationStat: vi.fn(),
 			}),
 		);
 		expect(cronMock.instances).toHaveLength(1);
@@ -109,7 +109,7 @@ describe("① fansCron 解耦", () => {
 
 describe("② 风控熔断", () => {
 	it("首个 UP 命中 -352 → 中止 sweep,后续 UP 不再请求;下一 tick 直接跳过", async () => {
-		const getRelationStat = vi.fn(async (uid: string) =>
+		const fetchRelationStat = vi.fn(async (uid: string) =>
 			uid === "1" ? { code: -352, data: null } : { code: 0, data: { follower: 5 } },
 		);
 		handle = startFansPoller(
@@ -118,21 +118,21 @@ describe("② 风控熔断", () => {
 					{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true },
 					{ id: "s2", identity: { sourceKey: "bilibili", externalId: "2" }, enabled: true },
 				],
-				getRelationStat,
+				fetchRelationStat,
 			}),
 		);
 
 		cronMock.instances[0]?.onTick();
 		// 首个 UP 打了一次(-352),sweep 立即中止 → 第二个 UP(uid=2)永不被请求。
-		await vi.waitFor(() => expect(getRelationStat).toHaveBeenCalledTimes(1), {
+		await vi.waitFor(() => expect(fetchRelationStat).toHaveBeenCalledTimes(1), {
 			timeout: 2000,
 			interval: 10,
 		});
-		expect(getRelationStat.mock.calls.every(([uid]) => uid === "1")).toBe(true);
+		expect(fetchRelationStat.mock.calls.every(([uid]) => uid === "1")).toBe(true);
 
 		// 再驱动一次 tick:仍在退避窗口内 → 整轮跳过,不新增任何请求。
 		cronMock.instances[0]?.onTick();
 		await new Promise((r) => setTimeout(r, 50));
-		expect(getRelationStat).toHaveBeenCalledTimes(1);
+		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
 	});
 });

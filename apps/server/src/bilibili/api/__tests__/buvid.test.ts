@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliAPI } from "../bilibili-api";
-import { GET_FINGER_SPI } from "../endpoints";
+import { Api } from "../api";
+import { FINGER_SPI_URL } from "../endpoints";
 
 /**
  * 弹幕连接认证包需要**真** buvid3。cookie 罐里的那条是 loadCookies 填的占位假值
@@ -9,7 +9,7 @@ import { GET_FINGER_SPI } from "../endpoints";
  */
 function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
@@ -28,7 +28,7 @@ describe("getBuvid3", () => {
 		const { api, calls } = makeApi();
 
 		await expect(api.getBuvid3()).resolves.toBe("real-buvid3-value");
-		expect(calls).toEqual([GET_FINGER_SPI]);
+		expect(calls).toEqual([FINGER_SPI_URL]);
 	});
 
 	it("同进程缓存,第二次不再联网", async () => {

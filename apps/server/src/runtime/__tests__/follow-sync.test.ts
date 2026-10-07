@@ -21,7 +21,7 @@ function makeDeps(opts?: {
 	relationsThrows?: boolean;
 	followFails?: string[];
 }) {
-	const getRelations = vi.fn(async (_fids: string[]) => {
+	const fetchRelations = vi.fn(async (_fids: string[]) => {
 		if (opts?.relationsThrows) throw new Error("network down");
 		return (opts?.relations ?? {
 			code: 0,
@@ -37,7 +37,7 @@ function makeDeps(opts?: {
 
 	return {
 		deps: {
-			api: { getRelations, follow } as never,
+			api: { fetchRelations, follow } as never,
 			subs: () =>
 				UIDS.map((uid, i) => ({
 					id: `sub-${i}`,
@@ -46,7 +46,7 @@ function makeDeps(opts?: {
 			rt: { patch } as never,
 			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
 		},
-		getRelations,
+		fetchRelations,
 		follow,
 		patch,
 	};
@@ -54,11 +54,11 @@ function makeDeps(opts?: {
 
 describe("syncFollows — 启动时补齐关注", () => {
 	it("只对**没关注**的那个补 follow,已关注的一个写请求都不发", async () => {
-		const { deps, getRelations, follow } = makeDeps();
+		const { deps, fetchRelations, follow } = makeDeps();
 
 		const r = await syncFollows(deps);
 
-		expect(getRelations).toHaveBeenCalledTimes(1); // 一次读问清全部
+		expect(fetchRelations).toHaveBeenCalledTimes(1); // 一次读问清全部
 		expect(follow).toHaveBeenCalledTimes(1); // 只补缺的那个
 		expect(follow).toHaveBeenCalledWith("333");
 		expect(r.followed).toBe(1);
@@ -149,12 +149,12 @@ describe("syncFollows — 启动时补齐关注", () => {
 	});
 
 	it("没有订阅 → 一个请求都不发", async () => {
-		const { deps, getRelations, follow } = makeDeps();
+		const { deps, fetchRelations, follow } = makeDeps();
 		const empty = { ...deps, subs: () => [] as never };
 
 		const r = await syncFollows(empty);
 
-		expect(getRelations).not.toHaveBeenCalled();
+		expect(fetchRelations).not.toHaveBeenCalled();
 		expect(follow).not.toHaveBeenCalled();
 		expect(r.checked).toBe(0);
 	});

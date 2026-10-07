@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliAPI } from "../bilibili-api";
-import { GET_RELATION_STAT, GET_USER_CARDS_BATCH } from "../endpoints";
+import { Api } from "../api";
+import { RELATION_STAT_URL, USER_CARDS_URL } from "../endpoints";
 
 /**
  * ⑥ 粉丝计数换轻接口 + 批量 name/avatar。
@@ -9,7 +9,7 @@ import { GET_RELATION_STAT, GET_USER_CARDS_BATCH } from "../endpoints";
  */
 function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
@@ -23,29 +23,29 @@ function makeApi() {
 	return { api, calls };
 }
 
-describe("getRelationStat", () => {
+describe("fetchRelationStat", () => {
 	it("打到 relation/stat 且带 vmid", async () => {
 		const { api, calls } = makeApi();
-		await api.getRelationStat("332704117");
+		await api.fetchRelationStat("332704117");
 		expect(calls).toHaveLength(1);
-		expect(calls[0]).toContain(GET_RELATION_STAT);
+		expect(calls[0]).toContain(RELATION_STAT_URL);
 		expect(calls[0]).toContain("vmid=332704117");
 	});
 });
 
-describe("getUserCardsBatch", () => {
+describe("fetchUserCards", () => {
 	it("uids 以逗号拼接打到批量端点", async () => {
 		const { api, calls } = makeApi();
-		await api.getUserCardsBatch(["1", "2", "3"]);
+		await api.fetchUserCards(["1", "2", "3"]);
 		expect(calls).toHaveLength(1);
-		expect(calls[0]).toContain(GET_USER_CARDS_BATCH);
+		expect(calls[0]).toContain(USER_CARDS_URL);
 		// B 站契约:逗号分隔(字面逗号,不 encode)。
 		expect(calls[0]).toContain("uids=1,2,3");
 	});
 
 	it("空列表短路:不发请求,回 code=0 空 data", async () => {
 		const { api, calls } = makeApi();
-		const res = await api.getUserCardsBatch([]);
+		const res = await api.fetchUserCards([]);
 		expect(calls).toHaveLength(0);
 		expect(res).toEqual({ code: 0, data: {} });
 	});

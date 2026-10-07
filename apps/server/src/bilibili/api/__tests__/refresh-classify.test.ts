@@ -15,7 +15,7 @@
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BilibiliAPI, classifyRefreshCode } from "../bilibili-api";
+import { Api, classifyRefreshCode } from "../api";
 
 describe("classifyRefreshCode — ②4 判别式", () => {
 	it("0 → ok", () => {
@@ -52,7 +52,7 @@ function makeCtx(): { ctx: ServiceContext; logger: Logger; tracked: Promise<unkn
 describe("loadCookies — 损坏 JSON 不崩启动链 (P1)", () => {
 	it("非法 JSON → 不抛、记 error、保持未登录", async () => {
 		const { ctx, logger } = makeCtx();
-		const api = new BilibiliAPI({ serviceCtx: ctx });
+		const api = new Api({ serviceCtx: ctx });
 		await expect(
 			api.loadCookies({ cookiesJson: "{not-json" } as unknown as CookieData),
 		).resolves.toBeUndefined();
@@ -62,7 +62,7 @@ describe("loadCookies — 损坏 JSON 不崩启动链 (P1)", () => {
 
 	it("合法 JSON 但非数组 → 同样安全降级", async () => {
 		const { ctx, logger } = makeCtx();
-		const api = new BilibiliAPI({ serviceCtx: ctx });
+		const api = new Api({ serviceCtx: ctx });
 		await expect(
 			api.loadCookies({ cookiesJson: '{"a":1}' } as unknown as CookieData),
 		).resolves.toBeUndefined();
@@ -74,11 +74,11 @@ describe("loadCookies — 损坏 JSON 不崩启动链 (P1)", () => {
 describe("stop — 作废在途的 cookie 刷新", () => {
 	it("stop 之后,在途那轮等到回应也不再往下刷(关停返回后不许再回写 cookie)", async () => {
 		const { ctx } = makeCtx();
-		const api = new BilibiliAPI({ serviceCtx: ctx });
+		const api = new Api({ serviceCtx: ctx });
 		let answer!: (info: unknown) => void;
 		vi.spyOn(
-			api as unknown as { getCookieInfo: () => Promise<unknown> },
-			"getCookieInfo",
+			api as unknown as { fetchCookieInfo: () => Promise<unknown> },
+			"fetchCookieInfo",
 		).mockReturnValue(new Promise((resolve) => (answer = resolve)));
 		const importKey = vi.spyOn(globalThis.crypto.subtle, "importKey");
 
@@ -106,10 +106,10 @@ describe("刷新链跨 await 之后都比对 gen —— 换号以后旧链不再
 	};
 	function startChain() {
 		const { ctx } = makeCtx();
-		const api = new BilibiliAPI({ serviceCtx: ctx });
+		const api = new Api({ serviceCtx: ctx });
 		vi.spyOn(
-			api as unknown as { getCookieInfo: () => Promise<unknown> },
-			"getCookieInfo",
+			api as unknown as { fetchCookieInfo: () => Promise<unknown> },
+			"fetchCookieInfo",
 		).mockResolvedValue({ code: 0, data: { refresh: true, timestamp: Date.now() } });
 		const client = (api as unknown as { client: Client }).client;
 		return { api, client };
@@ -163,7 +163,7 @@ describe("triggerRefreshCheck — 登记进 track", () => {
 
 	it("加载 cookie 发起的那轮刷新登记进 track:刷新链走完它才落定", async () => {
 		const { ctx, tracked } = makeCtx();
-		const api = new BilibiliAPI({ serviceCtx: ctx });
+		const api = new Api({ serviceCtx: ctx });
 		let finish!: () => void;
 		const running = new Promise<void>((resolve) => {
 			finish = resolve;
@@ -188,7 +188,7 @@ describe("triggerRefreshCheck — 登记进 track", () => {
 
 	it("刷新检查抛错:登记进去的这件事不拒,记一条 warn,并放开「已在刷新」的闸", async () => {
 		const { ctx, logger, tracked } = makeCtx();
-		const api = new BilibiliAPI({ serviceCtx: ctx });
+		const api = new Api({ serviceCtx: ctx });
 		vi.spyOn(api, "checkIfTokenNeedRefresh").mockRejectedValue(new Error("network down"));
 
 		await api.loadCookies({ cookiesJson: COOKIES, refreshToken: "rt" } as unknown as CookieData);

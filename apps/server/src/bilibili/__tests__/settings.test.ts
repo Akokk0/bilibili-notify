@@ -26,22 +26,22 @@ import {
 } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
-	type BilibiliSettings,
-	BilibiliSettingsSchema,
+	type BiliSettings,
+	BiliSettingsSchema,
 	settingsOf,
 	settingsSegment,
 	watchSettings,
 } from "../settings.js";
 
 // 这一份的 checkWrite 一定在;类型上它是可选的,取出来省得每处都 `!`。
-function checkWrite(next: BilibiliSettings, prev?: BilibiliSettings) {
+function checkWrite(next: BiliSettings, prev?: BiliSettings) {
 	const check = settingsSegment.checkWrite;
 	if (!check) throw new Error("settingsSegment 应当带 checkWrite");
 	return check(next, prev);
 }
 
-function parsed(over: Partial<BilibiliSettings>): BilibiliSettings {
-	return BilibiliSettingsSchema.parse(over);
+function parsed(over: Partial<BiliSettings>): BiliSettings {
+	return BiliSettingsSchema.parse(over);
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ function parsed(over: Partial<BilibiliSettings>): BilibiliSettings {
 
 describe("B 站设置 — 格式", () => {
 	it("全空 → 取默认值", () => {
-		expect(BilibiliSettingsSchema.parse({})).toEqual({
+		expect(BiliSettingsSchema.parse({})).toEqual({
 			dynamicCron: DEFAULT_DYNAMIC_CRON,
 			healthCheckMinutes: DEFAULT_HEALTH_CHECK_MINUTES,
 		});
@@ -59,7 +59,7 @@ describe("B 站设置 — 格式", () => {
 	// 自定义 UA 从格式里删了(浏览器身份一律由 packages/http 生成,ADR-0025 决策 7)。格式不是 strict:老值读进来
 	// 不拒收、静默剥掉 —— 盘上留着一份老 bilibili.json、或备份里带着这一格,都不该让开机 / 恢复失败。
 	it("userAgent 不是格:带了不拒收,解析出来没有它,别的格不受影响", () => {
-		const parsedWithStale = BilibiliSettingsSchema.parse({
+		const parsedWithStale = BiliSettingsSchema.parse({
 			userAgent: "UA/1.0",
 			healthCheckMinutes: 45,
 		});
@@ -72,7 +72,7 @@ describe("B 站设置 — 格式", () => {
 	});
 
 	it("读盘对 cron 宽松:一条解析不了的存量值照读,不抛(能不能解析归写入那一道管)", () => {
-		const stored = BilibiliSettingsSchema.parse({ dynamicCron: "not a cron expr" });
+		const stored = BiliSettingsSchema.parse({ dynamicCron: "not a cron expr" });
 
 		expect(stored.dynamicCron).toBe("not a cron expr");
 		// 同一份值,写入那一道会拦。
@@ -80,8 +80,7 @@ describe("B 站设置 — 格式", () => {
 	});
 
 	it("healthCheckMinutes 的范围:5 到 180 的整数分钟", () => {
-		const accepts = (n: number) =>
-			BilibiliSettingsSchema.safeParse({ healthCheckMinutes: n }).success;
+		const accepts = (n: number) => BiliSettingsSchema.safeParse({ healthCheckMinutes: n }).success;
 
 		expect(accepts(5)).toBe(true);
 		expect(accepts(180)).toBe(true);
@@ -348,11 +347,11 @@ describe("B 站设置 — 经配置仓", () => {
 
 describe("watchSettings", () => {
 	/** 一个手动驱动的仓:改 `state`、再 `fire(scope)` 模拟配置仓广播。 */
-	function makeFakeStore(initial: BilibiliSettings) {
+	function makeFakeStore(initial: BiliSettings) {
 		const bus = createNodeMessageBus();
 		let state = initial;
 		return {
-			set(next: BilibiliSettings) {
+			set(next: BiliSettings) {
 				state = next;
 			},
 			fire(scope: ConfigScope) {

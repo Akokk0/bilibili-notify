@@ -28,7 +28,7 @@ export type {
 } from "./push-like";
 export { broadcastOptionsForPostPart } from "./push-like";
 export type {
-	AllDynamicInfo,
+	AllDynamicResponse,
 	Dynamic,
 	DynamicTimelineManager,
 	RichTextNode,

@@ -58,7 +58,7 @@ import { type BroadcastOptions, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
-import { type BilibiliAPI, BiliLoginStatus } from "../bilibili/api/index.js";
+import { type Api, BiliLoginStatus } from "../bilibili/api/index.js";
 import {
 	type BoundWorkPush,
 	broadcastOptionsForPostPart,
@@ -127,8 +127,8 @@ export interface EnginesRuntime extends Disposable {
 	readonly muteState: MuteState;
 	readonly subscriptionStore: SubscriptionStore;
 	readonly commentary: CommentaryGenerator | null;
-	/** Started BilibiliAPI; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
-	readonly api: BilibiliAPI;
+	/** Started Api; consumed by routes that need ad-hoc B-station calls (e.g. subs lookup). */
+	readonly api: Api;
 	/**
 	 * 推送用的卡片渲染器,`null` = 没有 puppeteer(未装 / 未配 Chrome)。
 	 *
@@ -209,7 +209,7 @@ export interface CreateEnginesOptions {
 	 * 缓存里留的就是那条几十兆的 `@font-face`,建两个就在堆里存两遍。
 	 */
 	loadFontFace: (id: string) => Promise<string>;
-	api: BilibiliAPI;
+	api: Api;
 	/**
 	 * Auth subsystem 的 LoginFlow 实例。engines.ts 用它在 config-changed 时
 	 * 把 B 站设置的 `healthCheckMinutes` 热推到登录健康检查定时器(见 `watchSettings`)。
@@ -652,7 +652,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		emitViewers: (uid, viewers) => opts.bus.emit("live-viewers-changed", { uid, viewers }),
 		pickCardBackground: pickExistingCardBg,
 		// ③ 解析出房号即写盘(仅在与既有值不同时),下次启动/reload 直接读盘复用,
-		// 省掉逐 UP 的 getUserInfo 房号解析请求。
+		// 省掉逐 UP 的 fetchUserInfo 房号解析请求。
 		onRoomIdResolved: (uid, roomId) => {
 			const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
 			if (!sub) return;
@@ -1179,7 +1179,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		getModuleState: (): ModuleState => {
 			const g = globals();
 			// "live ready" = at least one enabled subscription has any live-related
-			// feature routed to a target. Mirrors the LIVE_ROOM_MASTER_KEYS set
+			// feature routed to a target. Mirrors the LIVE_ROOM_CREATOR_KEYS set
 			// inside bilibili/live's `needsLiveMonitor` plus the two
 			// special-user features.
 			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。

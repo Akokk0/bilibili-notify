@@ -5,7 +5,7 @@ import { dynamicScenarios } from "../scenarios/dynamic.js";
 import type { SubPick } from "../scenarios/live.js";
 
 /**
- * A3:四类动态 —— 往传给 DynamicEngine 的 `api.getAllDynamic()` 结果里**并进**一条假动态
+ * A3:四类动态 —— 往传给 DynamicEngine 的 `api.fetchAllDynamic()` 结果里**并进**一条假动态
  * (真 feed 照拉,假的排在最前),然后立刻让引擎跑一轮检测。守的是形状:渲染器按 `type`
  * 分发,缺 `module_stat` / `vip` / `major.archive.badge` 这类字段就是一次渲染期 undefined。
  */
@@ -27,12 +27,12 @@ class FakeApi {
 			update_num: 0,
 		},
 	}));
-	getAllDynamic() {
+	fetchAllDynamic() {
 		return this.real();
 	}
 }
 
-type Feed = Awaited<ReturnType<FakeApi["getAllDynamic"]>>;
+type Feed = Awaited<ReturnType<FakeApi["fetchAllDynamic"]>>;
 
 /** 引擎那一轮看到的 feed:假动态只在那一轮里存在,跑完就撤,所以得在 detectNow 里抓。 */
 function setup() {
@@ -40,7 +40,7 @@ function setup() {
 	const api = overridableApi(raw);
 	let seen: Feed | undefined;
 	const detectNow = vi.fn(async () => {
-		seen = await api.api.getAllDynamic();
+		seen = await api.api.fetchAllDynamic();
 	});
 	const reg = createDevRegistry(
 		dynamicScenarios({ subs: () => SUBS, api, dynamic: () => ({ detectNow }) }),
@@ -155,7 +155,7 @@ describe("dynamic.post", () => {
 		const { reg, api } = setup();
 		await reg.run("dynamic.post", {});
 		// run 里 await 了 detectNow;之后再拉 feed 就该只剩真的。
-		expect((await api.getAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
+		expect((await api.fetchAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
 	});
 
 	it("真 feed 拉不到(没登录)也照样造:用一份空底", async () => {
@@ -164,7 +164,7 @@ describe("dynamic.post", () => {
 		await expect(reg.run("dynamic.post", {})).resolves.toBeTruthy();
 		expect(seen().data.items).toHaveLength(1);
 		// 撤掉之后又回到真的那条路,照样抛。
-		await expect(api.getAllDynamic()).rejects.toThrow("-101");
+		await expect(api.fetchAllDynamic()).rejects.toThrow("-101");
 	});
 
 	it("sub 省略取第一个启用的;停用的也能指定;没这个订阅就拒", async () => {
@@ -184,6 +184,6 @@ describe("dynamic.post", () => {
 			dynamicScenarios({ subs: () => SUBS, api, dynamic: () => undefined }),
 		);
 		await expect(reg.run("dynamic.post", {})).rejects.toBeInstanceOf(DevParamError);
-		expect((await api.api.getAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
+		expect((await api.api.fetchAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
 	});
 });

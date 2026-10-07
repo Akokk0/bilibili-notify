@@ -59,7 +59,7 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 			lastRefreshedAt: "x",
 		};
 		const rtPatch = vi.fn(async () => {});
-		const getUserCardsBatch = vi.fn(async () => ({
+		const fetchUserCards = vi.fn(async () => ({
 			code: 0,
 			data: { "1": { mid: "1", name: "新名", face: "新头" } },
 		}));
@@ -84,10 +84,10 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 				drop: vi.fn(async () => {}),
 			} as never,
 			api: {
-				getUserCardsBatch,
+				fetchUserCards,
 				// 冷刷后首轮 tick 会走 relation/stat —— 给个稳定返回,避免未 mock 抛错。
-				getRelationStat: vi.fn(async () => ({ code: 0, data: { follower: 100 } })),
-				getUserCardInfo: vi.fn(),
+				fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower: 100 } })),
+				fetchUserCard: vi.fn(),
 			} as never,
 			// 即时触发 3s 门,让启动流程一路跑到冷刷 + 首轮 tick。
 			serviceCtx: {
@@ -101,7 +101,7 @@ describe("⑥ 启动批量冷刷 name/avatar", () => {
 			} as never,
 		});
 
-		await vi.waitFor(() => expect(getUserCardsBatch).toHaveBeenCalledWith(["1"]), {
+		await vi.waitFor(() => expect(fetchUserCards).toHaveBeenCalledWith(["1"]), {
 			timeout: 2000,
 			interval: 10,
 		});

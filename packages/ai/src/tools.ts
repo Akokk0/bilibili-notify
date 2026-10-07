@@ -334,12 +334,12 @@ export interface VisionToolContext {
  * 是因为 B 站接口包要搬进 `apps/server`,包不能反向依赖应用。
  */
 export interface BiliLookups {
-	getUserSpaceDynamic(mid: string): Promise<unknown>;
-	getUserCardInfo(mid: string, withPhoto?: boolean): Promise<unknown>;
-	getLiveRoomInfoByUids(uids: string[]): Promise<unknown>;
-	getUserUpstat(mid: string): Promise<unknown>;
-	getUserNavnum(mid: string): Promise<unknown>;
-	getUserVideos(mid: string, ps?: number): Promise<unknown>;
+	fetchUserSpaceDynamic(uid: string): Promise<unknown>;
+	fetchUserCard(uid: string, withPhoto?: boolean): Promise<unknown>;
+	fetchLiveRoomInfoByUids(uids: string[]): Promise<unknown>;
+	fetchUserUpstat(uid: string): Promise<unknown>;
+	fetchUserNavnum(uid: string): Promise<unknown>;
+	fetchUserVideos(uid: string, ps?: number): Promise<unknown>;
 	searchByType(
 		searchType: string,
 		keyword: string,
@@ -401,7 +401,7 @@ export async function executeTool(
 			const note = notBiliUidNote(args.uid, getSubs);
 			if (note) return note;
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.getUserSpaceDynamic(args.uid)) as any;
+			const res = (await api.fetchUserSpaceDynamic(args.uid)) as any;
 			if (res.code !== 0) return `获取动态失败: ${res.message}`;
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
 			const items: any[] = (res.data?.items ?? []).slice(0, 5);
@@ -418,7 +418,7 @@ export async function executeTool(
 			const note = notBiliUidNote(args.uid, getSubs);
 			if (note) return note;
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.getUserCardInfo(args.uid)) as any;
+			const res = (await api.fetchUserCard(args.uid)) as any;
 			if (res.code !== 0) return `获取用户信息失败: ${res.message}`;
 			const card = res.data?.card;
 			if (!card) return "未找到用户";
@@ -435,7 +435,7 @@ export async function executeTool(
 			let rooms: Record<string, any> = {};
 			if (uids.length > 0) {
 				// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-				const res = (await api.getLiveRoomInfoByUids(uids)) as any;
+				const res = (await api.fetchLiveRoomInfoByUids(uids)) as any;
 				if (res.code !== 0) return `获取直播状态失败: ${res.message}`;
 				rooms = res.data ?? {};
 			}
@@ -455,8 +455,8 @@ export async function executeTool(
 			if (note) return note;
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API responses have no declared types
 			const [upstat, navnum]: [any, any] = await Promise.all([
-				api.getUserUpstat(args.uid),
-				api.getUserNavnum(args.uid),
+				api.fetchUserUpstat(args.uid),
+				api.fetchUserNavnum(args.uid),
 			]);
 			if (upstat.code !== 0) return `获取数据失败: ${upstat.message}`;
 			// 此前不校验 navnum.code:接口错误时 navnum.data 为空 → 视频/动态数
@@ -472,7 +472,7 @@ export async function executeTool(
 			const note = notBiliUidNote(args.uid, getSubs);
 			if (note) return note;
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
-			const res = (await api.getUserVideos(args.uid)) as any;
+			const res = (await api.fetchUserVideos(args.uid)) as any;
 			if (res.code !== 0) return `获取视频失败: ${res.message}`;
 			// biome-ignore lint/suspicious/noExplicitAny: bilibili API response
 			const vlist: any[] = res.data?.list?.vlist ?? [];

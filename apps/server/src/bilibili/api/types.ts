@@ -18,7 +18,7 @@ export interface BiliDataServer {
 
 // ---- Ticket ----
 
-export interface BiliTicket {
+export interface TicketResponse {
 	code: number;
 	message: string;
 	data: {
@@ -35,21 +35,9 @@ export interface BiliTicket {
 
 // ---- API Results ----
 
-/**
- * B 站统一响应信封。**`data` 可为 null** —— 错误码(-101/-352/-403/-509…)常
- * 返回 `data:null` 或缺 data;把它建模为必有会诱导调用方无保护解引用(本仓多处
- * "data null" 类缺陷的共同根因)。注:各具体 *Data 接口仍各自把 data 建模为
- * 必有,收敛它们属根因级重构(跨区爆破),本轮仅收信封层 + 逐点修可达解引用。
- */
-export interface Result<T = unknown> {
-	code: number;
-	message: string;
-	data: T | null;
-}
-
 // ---- User Info ----
 
-export interface MySelfInfoData {
+export interface MyselfResponse {
 	code: number;
 	data: {
 		mid: number;
@@ -83,14 +71,14 @@ export interface UserCardSpace {
 	l_img: string;
 }
 
-/** Body of `UserCardInfoData.data` — exported for client-side consumers. */
+/** Body of `UserCardResponse.data` — exported for client-side consumers. */
 export interface UserCardInfo {
 	card: UserCard;
 	space: UserCardSpace;
 	like_num: number;
 }
 
-export interface UserCardInfoData {
+export interface UserCardResponse {
 	code: number;
 	data: UserCardInfo;
 }
@@ -99,7 +87,7 @@ export interface UserCardInfoData {
  * `x/relation/stat` —— 关系状态数。粉丝计数轮询的轻量数据源(只回数字,不含
  * name/face/sign 等主页卡字段)。`data` 可能为 null(风控/错误码)。
  */
-export interface RelationStatData {
+export interface RelationStatResponse {
 	code: number;
 	message?: string;
 	data: {
@@ -112,7 +100,7 @@ export interface RelationStatData {
 }
 
 /** 批量 `user/cards` 单个成员的精简信息(冷刷 name/avatar 用)。 */
-export interface UserCardBrief {
+export interface UserCardsItem {
 	mid: string;
 	name: string;
 	face: string;
@@ -122,10 +110,10 @@ export interface UserCardBrief {
  * `x/polymer/pc-electron/v1/user/cards` —— 多用户详细信息。`data` 以 mid 字符串
  * 为键。单次最多 50 个 uid(超限返回 code=40143)。`data` 可能为 null。
  */
-export interface UserCardsBatchData {
+export interface UserCardsResponse {
 	code: number;
 	message?: string;
-	data: Record<string, UserCardBrief> | null;
+	data: Record<string, UserCardsItem> | null;
 }
 
 /**
@@ -138,7 +126,7 @@ export interface UserRelation {
 }
 
 /** `x/relation/relations` 的响应,`data` 以 mid 字符串为键。 */
-export interface RelationsBatchData {
+export interface RelationsResponse {
 	code: number;
 	message?: string;
 	data: Record<string, UserRelation> | null;
@@ -149,7 +137,7 @@ export const FOLLOWED_ATTRIBUTES: ReadonlySet<number> = new Set([2, 6]);
 
 // ---- Live ----
 
-export interface LiveRoomInfo {
+export interface LiveRoomResponse {
 	code: number;
 	data: {
 		uid: number;
@@ -166,7 +154,7 @@ export interface LiveRoomInfo {
 	};
 }
 
-export interface LiveRoomDanmuInfo {
+export interface LiveRoomDanmakuResponse {
 	code: number;
 	message?: string;
 	msg?: string;
@@ -201,7 +189,7 @@ export interface MasterInfoData {
 export type VideoRef = { bvid: string } | { aid: string };
 
 /** `x/web-interface/view` 裁剪后的单视频信息 —— 链接解析的卡片就吃这个。 */
-export interface VideoInfo {
+export interface VideoResponse {
 	bvid: string;
 	aid: number;
 	title: string;

@@ -11,7 +11,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { CronJob } from "cron";
-import type { BilibiliAPI } from "../bilibili/api/index.js";
+import type { Api } from "../bilibili/api/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { FollowersStore } from "../followers/store.js";
 import { statsFileKey } from "../stats/file-key.js";
@@ -56,7 +56,7 @@ export interface FansPollerOptions {
 	 */
 	subRuntimeStore: SubRuntimeStore;
 	fansStore: FollowersStore;
-	api: BilibiliAPI;
+	api: Api;
 	/**
 	 * 用于 dispose-safe 延时(首次 tick 等 auth 起来的 3s 窗口)。dispose() 时
 	 * runtime 一并清掉 pending timer,避免 stop/restart 期间裸 setTimeout 留 3s
@@ -92,7 +92,7 @@ export interface FansPollerHandle extends Disposable {
 }
 
 /**
- * Per-tick:遍历所有 enabled subs,逐个拉 B 站 `getUserCardInfo` 取 fans;
+ * Per-tick:遍历所有 enabled subs,逐个拉 B 站 `fetchUserCard` 取 fans;
  *
  *   1. 追加一行样本到 FollowersStore(<dataDir>/stats/followers/<订阅 id>.jsonl,ADR-0020 决策 2 的 🔗);
  *   2. 第一次见该 sub → 把当前值作为 fansBaseline(订阅起点)写进 SubRuntimeStore;
@@ -111,7 +111,7 @@ export interface FansPollerHandle extends Disposable {
  * (B 站风控退避时也算 —— 它不问 B 站),拓展报了新的粉丝数(`subscription-profiles-changed`)时只算报了的那几条。
  *
  * auth-lost / auth-restored:auth 丢失期间任何调用都会失败,所以 poller 不
- * 自己暂停,而是依赖 BilibiliAPI 内部状态;失败的轮次产出全 null delta,前
+ * 自己暂停,而是依赖 Api 内部状态;失败的轮次产出全 null delta,前
  * 端面板会显示 "—"。这样 auth 恢复后无需重新初始化 poller。
  */
 export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
@@ -378,7 +378,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 				let current: number | undefined;
 				let seedCard: { name?: string; face?: string; sign?: string } | undefined;
 				if (prev?.cachedProfile) {
-					const stat = await api.getRelationStat(uid);
+					const stat = await api.fetchRelationStat(uid);
 					if (disposed) return;
 					if (RISK_CONTROL_CODES.has(stat.code)) {
 						enterRiskBackoff(stat.code); // ② 中止 sweep
@@ -390,7 +390,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 					}
 					current = stat.data.follower;
 				} else {
-					const res = await api.getUserCardInfo(uid);
+					const res = await api.fetchUserCard(uid);
 					if (disposed) return;
 					if (RISK_CONTROL_CODES.has(res.code)) {
 						enterRiskBackoff(res.code); // ② 中止 sweep
@@ -573,7 +573,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 			if (disposed) return;
 			const chunk = targets.slice(i, i + CARDS_BATCH_SIZE);
 			try {
-				const res = await api.getUserCardsBatch(
+				const res = await api.fetchUserCards(
 					chunk.map((s) => subscriptionIdentityOf(s).externalId),
 				);
 				if (disposed) return;

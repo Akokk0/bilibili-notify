@@ -9,7 +9,7 @@
  */
 
 import type { Post } from "@bilibili-notify/internal";
-import type { VideoInfo } from "../bilibili/api/index.js";
+import type { VideoResponse } from "../bilibili/api/index.js";
 
 /** unix 秒 → ISO;不是有效数就落在纪元(别让一个坏时间把整张卡弄抛)。 */
 function isoOfSeconds(seconds: number): string {
@@ -17,7 +17,7 @@ function isoOfSeconds(seconds: number): string {
 	return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString();
 }
 
-export function videoToPost(info: VideoInfo): Post {
+export function videoToPost(info: VideoResponse): Post {
 	return {
 		// 头像不给:`Creator.avatar` 只收图库引用,B 站 3a 才存。
 		creator: { name: info.owner.name },

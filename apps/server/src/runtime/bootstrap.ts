@@ -153,12 +153,12 @@ export interface AppRuntime {
 	 * Engine layer: PushRouter + DynamicEngine + LiveEngine + Dispatcher.
 	 *
 	 * `null` until {@link attachEngines} is called. The auth system has to come
-	 * up first (engines need a started BilibiliAPI), so the bootstrap split is:
+	 * up first (engines need a started Api), so the bootstrap split is:
 	 *
 	 *   1. createAppRuntime(bootstrap) — produces ConfigStore + HistoryStore
 	 *   2. keyProvider.getKey() — eagerly loads/creates the at-rest secrets key
 	 *   3. configStore.load()
-	 *   4. createAuthSystem(...) — produces BilibiliAPI
+	 *   4. createAuthSystem(...) — produces Api
 	 *   5. attachEngines(runtime, { api, adapters }) — fills `engines`
 	 *   6. createApp(runtime, ...) — mounts routes
 	 */

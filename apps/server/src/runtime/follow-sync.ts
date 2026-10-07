@@ -4,7 +4,7 @@ import {
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import type { BilibiliAPI } from "../bilibili/api/index.js";
+import type { Api } from "../bilibili/api/index.js";
 import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "../bilibili/api/index.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
@@ -25,7 +25,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
  */
 
 export interface FollowSyncDeps {
-	api: BilibiliAPI;
+	api: Api;
 	subs: () => Subscription[];
 	rt: SubRuntimeStore;
 	logger: Logger;
@@ -82,12 +82,12 @@ const sleep = (ms: number, signal?: AbortSignal) =>
  * 是成功码。功能没坏(降级路径兜住了),但白发一次查询、还骗人说接口挂了。
  */
 async function queryFollowed(
-	api: BilibiliAPI,
+	api: Api,
 	uids: string[],
 	logger: Logger,
 ): Promise<Set<string> | null> {
 	try {
-		const res = await api.getRelations(uids);
+		const res = await api.fetchRelations(uids);
 		if (res.code !== 0) {
 			// 真失败:-101 未登录、-400 请求错误…
 			logger.warn(

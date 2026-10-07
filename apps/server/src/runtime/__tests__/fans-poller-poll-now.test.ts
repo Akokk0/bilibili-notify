@@ -20,7 +20,7 @@ afterEach(() => {
 	handle = undefined;
 });
 
-function start(getRelationStat: ReturnType<typeof vi.fn>) {
+function start(fetchRelationStat: ReturnType<typeof vi.fn>) {
 	handle = startFansPoller({
 		isStatsEnabled: () => true,
 		bus: createNodeMessageBus(),
@@ -43,9 +43,9 @@ function start(getRelationStat: ReturnType<typeof vi.fn>) {
 			drop: vi.fn(async () => {}),
 		} as never,
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat,
-			getUserCardInfo: vi.fn(),
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat,
+			fetchUserCard: vi.fn(),
 		} as never,
 		// 不放行启动那次延时 tick:这里只看 pollNow 自己触发的那一轮。
 		serviceCtx: {
@@ -60,10 +60,10 @@ function start(getRelationStat: ReturnType<typeof vi.fn>) {
 
 describe("fans poller pollNow", () => {
 	it("立刻跑一轮:拉每个启用订阅的粉丝数,promise 在这一轮结束时落定", async () => {
-		const getRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
-		const h = start(getRelationStat);
+		const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
+		const h = start(fetchRelationStat);
 		expect(await h.pollNow()).toBe(true);
-		expect(getRelationStat).toHaveBeenCalledWith("1");
+		expect(fetchRelationStat).toHaveBeenCalledWith("1");
 		expect(h.getLastEntries().map((e) => e.uid)).toEqual(["1"]);
 	});
 
@@ -72,16 +72,16 @@ describe("fans poller pollNow", () => {
 		const gate = new Promise<void>((r) => {
 			release = r;
 		});
-		const getRelationStat = vi.fn(async () => {
+		const fetchRelationStat = vi.fn(async () => {
 			await gate;
 			return { code: 0, data: { follower: 1 } };
 		});
-		const h = start(getRelationStat);
+		const h = start(fetchRelationStat);
 		const first = h.pollNow();
 		await Promise.resolve();
 		expect(await h.pollNow()).toBe(false);
 		release();
 		expect(await first).toBe(true);
-		expect(getRelationStat).toHaveBeenCalledTimes(1);
+		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
 	});
 });

@@ -8,7 +8,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
-import type { BilibiliAPI } from "../bilibili/api/index.js";
+import type { Api } from "../bilibili/api/index.js";
 import { observeLiveConnections } from "../bilibili/live/client.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
@@ -84,7 +84,7 @@ export interface CreateDevtoolsInput {
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
 	/** 传给引擎的 B 站 API。交回去的是套了 Proxy 的那份(假直播期间房间信息说在播)。 */
-	api: BilibiliAPI;
+	api: Api;
 	/** 场景挑订阅用:每次现读,订阅表会变。 */
 	subs: () => SubPick[];
 	/** 动态引擎(「发动态」之后立刻跑一轮)。引擎后建,现取。 */
@@ -129,7 +129,7 @@ export interface Devtools {
 	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
 	adapters: PlatformAdapterRegistry;
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
-	api: BilibiliAPI;
+	api: Api;
 	/**
 	 * 交给采样器的堆读数口 —— 真 `process.memoryUsage()` 外面包了一层注入。
 	 *

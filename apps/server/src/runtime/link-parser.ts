@@ -27,7 +27,7 @@ import {
 	type VideoLinkRef,
 	videoLinkKey,
 } from "@bilibili-notify/internal";
-import type { VideoInfo, VideoRef } from "../bilibili/api/index.js";
+import type { VideoRef, VideoResponse } from "../bilibili/api/index.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
 import { videoToPost } from "./video-card.js";
@@ -75,7 +75,7 @@ export interface LinkParserOptions {
 	 */
 	policyFor: (key: string) => LinkParsingPolicy;
 	api: {
-		getVideoInfo(ref: VideoRef): Promise<VideoInfo>;
+		fetchVideoInfo(ref: VideoRef): Promise<VideoResponse>;
 		resolveShortLink(url: string): Promise<string | null>;
 	};
 	/** 推送用的卡片渲染器;`null` = 没有 Chrome,整个功能静默不动。**每次现取**,别攥着。 */
@@ -162,7 +162,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	 * 解出来的是 `pages/video/video?bvid=…&share_source=qq_ugc&unique_k=…`,后两个是统计
 	 * 参数,只带 bvid 真机验过能开(2026-09-07)。
 	 */
-	function miniAppCardOf(info: VideoInfo): NotificationPayload {
+	function miniAppCardOf(info: VideoResponse): NotificationPayload {
 		const desc = info.desc.trim().slice(0, 80);
 		return {
 			kind: "miniapp-card",
@@ -194,7 +194,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 	 * 缓存翻不翻由适配器自己定(只有再收到 1404 才翻),这里不猜。
 	 */
 	async function reply(dest: LinkReplyDestination, ref: VideoRef, useMiniApp: boolean) {
-		const info = await opts.api.getVideoInfo(ref);
+		const info = await opts.api.fetchVideoInfo(ref);
 		if (useMiniApp) {
 			const result = await opts.send(dest, miniAppCardOf(info));
 			if (result.ok) {
@@ -210,7 +210,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		await replyWithImageCard(dest, info);
 	}
 
-	async function replyWithImageCard(dest: LinkReplyDestination, info: VideoInfo) {
+	async function replyWithImageCard(dest: LinkReplyDestination, info: VideoResponse) {
 		const renderer = opts.renderer();
 		if (!renderer) return;
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做

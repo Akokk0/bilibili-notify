@@ -86,7 +86,7 @@ function runPoller(opts: {
 			drop: vi.fn(async () => {}),
 		} as never,
 		api: {
-			getUserCardInfo: vi.fn(async () => ({ code: 0, data: { card: { fans: 0 } } })),
+			fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { fans: 0 } } })),
 		} as never,
 		serviceCtx: {
 			setTimeout: vi.fn(() => undefined),

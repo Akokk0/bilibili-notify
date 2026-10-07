@@ -526,7 +526,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
 
-		// Stage 2.4: assemble the auth stack (StorageManager → BilibiliAPI → LoginFlow). Bus
+		// Stage 2.4: assemble the auth stack (StorageManager → Api → LoginFlow). Bus
 		// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
 		try {
 			authSystem = await createAuthSystem({
@@ -540,7 +540,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				healthCheckMs: settingsOf(runtime.configStore).healthCheckMinutes * 60_000,
 			});
 		} catch (err) {
-			// Fatal: without StorageManager / BilibiliAPI the dashboard can't function.
+			// Fatal: without StorageManager / Api the dashboard can't function.
 			log.error("auth system init failed", err);
 			throw err;
 		}

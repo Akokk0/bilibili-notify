@@ -70,8 +70,8 @@ function start(options: Options = {}) {
 	const append = vi.fn(options.append ?? (async () => {}));
 	const drop = vi.fn(options.drop ?? (async () => {}));
 	const prune = vi.fn(options.prune ?? (async () => {}));
-	const getRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 4242 } }));
-	const getUserCardsBatch = vi.fn(async () => ({ code: 0, data: {} }));
+	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 4242 } }));
+	const fetchUserCards = vi.fn(async () => ({ code: 0, data: {} }));
 	const setTimeout = vi.fn(() => ({ dispose() {} }));
 	handle = startFansPoller({
 		isStatsEnabled: () => true,
@@ -94,7 +94,7 @@ function start(options: Options = {}) {
 			findEarliest: vi.fn(async () => undefined),
 			drop,
 		} as never,
-		api: { getRelationStat, getUserCardsBatch, getUserCardInfo: vi.fn() } as never,
+		api: { fetchRelationStat, fetchUserCards, fetchUserCard: vi.fn() } as never,
 		serviceCtx: {
 			setTimeout,
 			setInterval: vi.fn(() => ({ dispose() {} })),
@@ -110,8 +110,8 @@ function start(options: Options = {}) {
 		append,
 		drop,
 		prune,
-		getRelationStat,
-		getUserCardsBatch,
+		fetchRelationStat,
+		fetchUserCards,
 		setTimeout,
 	};
 }
@@ -136,7 +136,7 @@ describe("fans poller × ctx.track", () => {
 	});
 
 	it("开机首轮:等 3s 门的时候被关停叫醒,马上落定,不再冷刷、不再跑 sweep", async () => {
-		const { ctx, append, getUserCardsBatch, setTimeout } = start();
+		const { ctx, append, fetchUserCards, setTimeout } = start();
 		await vi.waitFor(() => expect(setTimeout).toHaveBeenCalled()); // 走到了 3s 门
 		expect(ctx.tracked).toHaveLength(1);
 		const first = ctx.tracked[0] as Promise<unknown>;
@@ -146,7 +146,7 @@ describe("fans poller × ctx.track", () => {
 		ctx.abort();
 
 		expect(await stillPending(first, 200)).toBe(false);
-		expect(getUserCardsBatch).not.toHaveBeenCalled();
+		expect(fetchUserCards).not.toHaveBeenCalled();
 		expect(append).not.toHaveBeenCalled();
 	});
 

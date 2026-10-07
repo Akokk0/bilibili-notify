@@ -87,7 +87,7 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 interface CtxMocks {
 	recordDanmaku: ReturnType<typeof vi.fn>;
 	broadcastToTargets: ReturnType<typeof vi.fn>;
-	getUserInfoInLive: ReturnType<typeof vi.fn>;
+	fetchUserInfoInLive: ReturnType<typeof vi.fn>;
 	/** `logger.warn` 收到的每一次调用(认不出的档位丢弃时记一条)。 */
 	warn: ReturnType<typeof vi.fn>;
 	generateSuperchatCard: ReturnType<typeof vi.fn>;
@@ -120,7 +120,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 	const m: CtxMocks = {
 		recordDanmaku: vi.fn(),
 		broadcastToTargets: vi.fn(async () => {}),
-		getUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人", face: "f" } })),
+		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人", face: "f" } })),
 		warn,
 		generateSuperchatCard: vi.fn(async () => Buffer.from("sc")),
 		generateMembershipCard: vi.fn(async () => Buffer.from("guard")),
@@ -143,7 +143,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 			guardTemplate: opts?.guardTemplate ?? GUARD_TEMPLATE_OFF,
 			customLiveMsg: { enable: false },
 		},
-		api: { getUserInfoInLive: m.getUserInfoInLive },
+		api: { fetchUserInfoInLive: m.fetchUserInfoInLive },
 		push: { broadcastToTargets: m.broadcastToTargets },
 		imageRenderer: {
 			generateSuperchatCard: m.generateSuperchatCard,
@@ -188,7 +188,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 	const scBody = {
 		kind: "superchat" as const,
 		content: "加油",
-		user: { uname: "粉丝", uid: 42 },
+		user: { name: "粉丝", uid: 42 },
 		price: 50,
 	};
 
@@ -197,7 +197,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.recordDanmaku).not.toHaveBeenCalled();
-		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		expect(m.broadcastToTargets).not.toHaveBeenCalled();
 	});
 
@@ -238,22 +238,22 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 		// ㉓c:出卡前不再查发送者(名字用消息里带的)。
-		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 	});
 
 	// ㉓c:原来这里有一条「查发送者失败 → 退成一行文字、不出卡」。出卡前不再查发送者以后,那条路没有了:
 	// 就算这个接口坏了,也总是出卡。
-	// 验红:把 room-session.ts 里的 SC 出卡前加回一次 `await this.ctx.api.getUserInfoInLive(...)`,这条红。
-	it("订阅 SC → 不调 getUserInfoInLive,总是出卡(原「查发送者失败退文字」那条路没有了)", async () => {
+	// 验红:把 room-session.ts 里的 SC 出卡前加回一次 `await this.ctx.api.fetchUserInfoInLive(...)`,这条红。
+	it("订阅 SC → 不调 fetchUserInfoInLive,总是出卡(原「查发送者失败退文字」那条路没有了)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
-		m.getUserInfoInLive.mockResolvedValue({ code: -1, data: {} });
+		m.fetchUserInfoInLive.mockResolvedValue({ code: -1, data: {} });
 		const s = new RoomSession(
 			ctx,
 			makeSub({ superchat: true, minSuperchatAmount: 30 }),
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
-		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
@@ -415,7 +415,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
 			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 			// 放行与否,出卡前都不查发送者(㉓c;从前只有被拦的才不白打接口)。
-			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+			expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		});
 
 		// 会话接的是门槛函数(币种也看):B 站的翻译今天只产出 CNY,所以这里让翻译回一条美元的,钉住「门槛只在人民币时比」。
@@ -486,7 +486,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				mm.generateSuperchatCard.mockRejectedValueOnce(new Error("boom"));
 			});
 			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】粉丝的SC:加油（50元）" }]);
-			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+			expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		});
 
 		it("图片渲染没开(没有出图器)→ 同一句兜底", async () => {
@@ -494,7 +494,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				(ctx as AnySession).imageRenderer = null;
 			});
 			expect(pushed).toEqual([{ kind: "text", text: "【主播的直播间】粉丝的SC:加油（50元）" }]);
-			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+			expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		});
 	});
 
@@ -512,7 +512,7 @@ describe("RoomSession.onGuardBuy", () => {
 		kind: "guard-buy" as const,
 		guardLevel: GuardLevel.Captain,
 		giftName: "舰长",
-		user: { uname: "船员", uid: 7 },
+		user: { name: "船员", uid: 7 },
 	};
 
 	it("未订阅 membership → 早 return", async () => {
@@ -641,11 +641,11 @@ describe("RoomSession.onGuardBuy", () => {
 				kind: "guard-buy",
 				guardLevel: level,
 				giftName,
-				user: { uname: "船员", uid: 7 },
+				user: { name: "船员", uid: 7 },
 			});
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
-			expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+			expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 			return m.broadcastToTargets.mock.calls[0]?.[1];
 		}
 
@@ -672,7 +672,7 @@ describe("RoomSession.onGuardBuy", () => {
 			let lookups: ReturnType<typeof vi.fn> | undefined;
 			const pushed = await guardPushOf(GuardLevel.Captain, "舰长", (m, ctx) => {
 				(ctx as AnySession).imageRenderer = null;
-				lookups = m.getUserInfoInLive;
+				lookups = m.fetchUserInfoInLive;
 			});
 			expect(pushed).toEqual([
 				{ kind: "image", src: OFFICIAL_GUARD_IMG[GuardLevel.Captain] },
@@ -738,7 +738,7 @@ describe("RoomSession.onGuardBuy", () => {
 				kind: "guard-buy",
 				guardLevel: level,
 				giftName,
-				user: { uname: "船员", uid: 7 },
+				user: { name: "船员", uid: 7 },
 			});
 			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 			return m.broadcastToTargets.mock.calls[0]?.[1];
@@ -904,7 +904,7 @@ describe("RoomSession.onGuardBuy", () => {
 		});
 	});
 
-	it("默认(custom 关)+ 出图器 → 图片卡片(LiveGuardBuy),不再调 getUserInfoInLive 查用户", async () => {
+	it("默认(custom 关)+ 出图器 → 图片卡片(LiveGuardBuy),不再调 fetchUserInfoInLive 查用户", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
@@ -913,8 +913,8 @@ describe("RoomSession.onGuardBuy", () => {
 		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
 		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
 		// ㉓c:出卡前不再查用户(名字用事件里的,房管那一格随之没了)。
-		// 验红:把 room-session.ts 里上舰出卡前加回一次 `await this.ctx.api.getUserInfoInLive(...)`,这条红。
-		expect(m.getUserInfoInLive).not.toHaveBeenCalled();
+		// 验红:把 room-session.ts 里上舰出卡前加回一次 `await this.ctx.api.fetchUserInfoInLive(...)`,这条红。
+		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 	});
 
 	/**
@@ -1373,7 +1373,7 @@ describe("RoomSession.handleLiveEnd — 消息版式", () => {
 // 文案里 {time} 那一句 —— 开播 / 正在直播 / 下播三路都从 live_time 现算
 //
 // 从前是 ctx 上的一个异步钩子(没配出图器时落进一个不带秒、不看时区的兜底),现在会话自己用
-// `formatDuration(biliLiveTimeToIso(liveTime))` 算,不经 ctx —— 测试替身再也注入不了它,所以
+// `formatDuration(liveTimeToIso(liveTime))` 算,不经 ctx —— 测试替身再也注入不了它,所以
 // 给真的 live_time 与固定的钟,期望值写字面量。
 // ---------------------------------------------------------------------------
 
@@ -1503,7 +1503,7 @@ function makeSpecialUserSub() {
 }
 
 function enterEvent(uid: number, uname = "特别用户") {
-	return { action: "enter" as const, user: { uid, uname } };
+	return { action: "enter" as const, user: { uid, name: uname } };
 }
 
 describe("RoomSession.onUserAction", () => {
@@ -1561,7 +1561,7 @@ describe("RoomSession.onUserAction", () => {
 	});
 });
 
-describe("RoomSession.onIncomeDanmu — 特别关注用户的弹幕", () => {
+describe("RoomSession.onIncomeDanmaku — 特别关注用户的弹幕", () => {
 	it("没配 specialDanmaku 的推送目标 → 照样广播(UserDanmakuMsg),不在引擎里按目标挡", () => {
 		const { ctx, m } = makeCtx();
 		const sub = makeSub({
@@ -1574,7 +1574,7 @@ describe("RoomSession.onIncomeDanmu — 特别关注用户的弹幕", () => {
 		});
 		const s = new RoomSession(ctx, sub) as AnySession;
 
-		s.onIncomeDanmu({ content: "你好", user: { uname: "特别用户", uid: 42 } });
+		s.onIncomeDanmaku({ content: "你好", user: { name: "特别用户", uid: 42 } });
 
 		expect(m.safeBroadcast).toHaveBeenCalledTimes(1);
 		expect(m.safeBroadcast.mock.calls[0]?.[2]).toBe(LivePushType.UserDanmakuMsg);

@@ -4,7 +4,7 @@
  * 封面 / 等待时长迟早有一格只有 B 站那头认。
  */
 
-import type { CustomCardStyleLike, PickCardBackground } from "./push-like";
+import type { CustomCardStyleLike, PickLiveCover } from "./push-like";
 
 /** 断流接续等多久(分钟):设置里的值,缺省 2,防御性夹到 [1, 10]。 */
 export function liveEndGraceMinutes(configured: number | undefined): number {
@@ -22,7 +22,7 @@ export function liveEndGraceMinutes(configured: number | undefined): number {
 export function rotateLiveCover(
 	style: CustomCardStyleLike,
 	defaultCovers: string[] | undefined,
-	pick: PickCardBackground,
+	pick: PickLiveCover,
 	scopeKey: string,
 ): CustomCardStyleLike {
 	const covers =

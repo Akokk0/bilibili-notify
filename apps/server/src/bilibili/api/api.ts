@@ -15,19 +15,19 @@ import type { CookieData } from "@bilibili-notify/storage";
 import { CronJob } from "cron";
 import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
-import { createSelfInfoCache, type SelfInfoCache } from "./self-info-cache";
+import { createMyselfCache, type MyselfCache } from "./self-info-cache";
 import type {
-	BiliTicket,
-	LiveRoomDanmuInfo,
-	LiveRoomInfo,
+	LiveRoomDanmakuResponse,
+	LiveRoomResponse,
 	MasterInfoData,
-	MySelfInfoData,
-	RelationStatData,
-	RelationsBatchData,
-	UserCardInfoData,
-	UserCardsBatchData,
-	VideoInfo,
+	MyselfResponse,
+	RelationStatResponse,
+	RelationsResponse,
+	TicketResponse,
+	UserCardResponse,
+	UserCardsResponse,
 	VideoRef,
+	VideoResponse,
 } from "./types";
 import { buildTicketParams, encWbi, type WbiKeys } from "./wbi";
 
@@ -36,7 +36,7 @@ interface CookiesRefreshedPayload {
 	refreshToken: string;
 }
 
-export interface BilibiliAPICallbacks {
+export interface ApiHandlers {
 	/**
 	 * Persist refreshed cookies. May be async — the refresh path `await`s it and
 	 * loudly logs a reject (in-memory jar is already updated; only disk lagged),
@@ -80,15 +80,15 @@ export class RiskControlError extends Error {
 	}
 }
 
-export interface BilibiliAPIOptions {
+export interface ApiOptions {
 	serviceCtx: ServiceContext;
-	callbacks?: BilibiliAPICallbacks;
+	callbacks?: ApiHandlers;
 }
 
-export class BilibiliAPI {
+export class Api {
 	readonly logger: Logger;
 	private readonly serviceCtx: ServiceContext;
-	private readonly callbacks: BilibiliAPICallbacks;
+	private readonly callbacks: ApiHandlers;
 
 	/**
 	 * 本实例的浏览器身份(UA + sec-ch-ua 全家,版本互相咬合)。启动时生成一次、终身不变 ——
@@ -120,21 +120,21 @@ export class BilibiliAPI {
 	/** Single-in-flight guard so the hourly timer + loadCookies don't run the RSA dance concurrently. */
 	private refreshInFlight = false;
 	/**
-	 * BiliTicket 在途去重。并发签名(或 wbiGet -352 清空 wbiKeys 后多个并行
+	 * TicketResponse 在途去重。并发签名(或 wbiGet -352 清空 wbiKeys 后多个并行
 	 * 重试)会各自触发一次 ticket POST 风暴;共享同一在途 Promise 收敛为一次。
 	 */
 	private biliTicketInFlight?: Promise<void>;
 	/**
 	 * ④ 账号身份缓存(getMyselfInfoCached 共享给直播建连 / 卡片预览)。换号 / 登出 /
-	 * -101 时 invalidate。lazy 调 `this.getMyselfInfo`,故传 `this` 安全。
+	 * -101 时 invalidate。lazy 调 `this.fetchMyselfInfo`,故传 `this` 安全。
 	 */
-	private readonly selfInfoCache: SelfInfoCache = createSelfInfoCache(this);
+	private readonly selfInfoCache: MyselfCache = createMyselfCache(this);
 
 	/** finger/spi 的 buvid3 进程内缓存(设备指纹,不随账号变)。 */
 	private buvid3Cache = "";
 	private buvid3Inflight: Promise<string> | undefined;
 
-	constructor(opts: BilibiliAPIOptions) {
+	constructor(opts: ApiOptions) {
 		this.serviceCtx = opts.serviceCtx;
 		this.callbacks = opts.callbacks ?? {};
 		this.logger = opts.serviceCtx.logger;
@@ -153,7 +153,7 @@ export class BilibiliAPI {
 			"0 0 * * *",
 			() => {
 				this.updateBiliTicket().catch((e: Error) =>
-					this.logger.error(`[init] 更新 BiliTicket 失败: ${e.message}`),
+					this.logger.error(`[init] 更新 TicketResponse 失败: ${e.message}`),
 				);
 			},
 			null,
@@ -416,29 +416,29 @@ export class BilibiliAPI {
 		}
 		try {
 			// 传真实 bili_jct(优先 live jar,回退调用方传入值),不是 refreshToken。
-			const info = await this.getCookieInfo(this.getCSRF() ?? csrf);
+			const info = await this.fetchCookieInfo(this.getCSRF() ?? csrf);
 			// 跨 await 后必须重校 gen(②修不全:此前缺这一处,旧 refreshToken
 			// 在重登/登出后仍用新 jar 继续刷新)。
 			if (gen !== this.refreshGeneration) {
-				this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(getCookieInfo 后),跳过本轮");
+				this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
 				return;
 			}
 			const probeCode = typeof info?.code === "number" ? info.code : 0;
 			if (probeCode === -101) {
 				// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
-				await this.terminateSession("[cookie] getCookieInfo 返回 -101(账号未登录),终止会话");
+				await this.terminateSession("[cookie] fetchCookieInfo 返回 -101(账号未登录),终止会话");
 				return;
 			}
 			if (classifyRefreshCode(probeCode) === "risk-control") {
 				// 风控/限流:非终态。跳过本轮,等下个 interval 自愈(可 bili cap)。
 				this.logger.warn(
-					`[cookie] getCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮自愈)`,
+					`[cookie] fetchCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮自愈)`,
 				);
 				return;
 			}
 			if (!info?.data?.refresh) return;
 		} catch (e) {
-			// P2:此前这里还有一层 3 次 ×3s 递归重试,而内层 getCookieInfo 已被
+			// P2:此前这里还有一层 3 次 ×3s 递归重试,而内层 fetchCookieInfo 已被
 			// this.retry(4 次指数退避)包住 → 双层乘积最坏 ~16 次 HTTP,且整段
 			// 占住 refreshInFlight 阻塞 hourly timer 数分钟。内层 retry 已足够吸收
 			// 瞬时抖动;失败即放弃本轮,等下个 interval 再探(绝不 fall through
@@ -584,7 +584,7 @@ export class BilibiliAPI {
 		const csrf = this.getCSRF();
 		const ticket = await this.getBiliTicket(csrf);
 		if (ticket.code !== 0) {
-			throw new Error(`获取 BiliTicket 失败: ${ticket.message}`);
+			throw new Error(`获取 TicketResponse 失败: ${ticket.message}`);
 		}
 		const extract = (url: string) => url.slice(url.lastIndexOf("/") + 1, url.lastIndexOf("."));
 		this.wbiKeys = {
@@ -593,10 +593,10 @@ export class BilibiliAPI {
 		};
 	}
 
-	private async getBiliTicket(csrf?: string): Promise<BiliTicket> {
+	private async getBiliTicket(csrf?: string): Promise<TicketResponse> {
 		const params = buildTicketParams(csrf);
-		const resp = await this.client.postForm(`${EP.BILI_TICKET_URL}?${params.toString()}`, {});
-		return resp as BiliTicket;
+		const resp = await this.client.postForm(`${EP.TICKET_URL}?${params.toString()}`, {});
+		return resp as TicketResponse;
 	}
 
 	private async getWbi(params: Record<string, string | number | object>): Promise<string> {
@@ -687,25 +687,25 @@ export class BilibiliAPI {
 
 	// ---- Public API methods ----
 
-	async getAllDynamic() {
-		return this.getJson(EP.GET_ALL_DYNAMIC_LIST, "getAllDynamic");
+	async fetchAllDynamic() {
+		return this.getJson(EP.ALL_DYNAMIC_URL, "fetchAllDynamic");
 	}
 
-	async getUserSpaceDynamic(mid: string) {
+	async fetchUserSpaceDynamic(uid: string) {
 		return this.getJson(
-			`${EP.GET_USER_SPACE_DYNAMIC_LIST}&host_mid=${encodeURIComponent(mid)}`,
-			"getUserSpaceDynamic",
+			`${EP.USER_SPACE_DYNAMIC_URL}&host_mid=${encodeURIComponent(uid)}`,
+			"fetchUserSpaceDynamic",
 		);
 	}
 
-	async getLoginQRCode() {
-		return this.getJson(EP.GET_LOGIN_QRCODE, "getLoginQRCode");
+	async fetchLoginQrCode() {
+		return this.getJson(EP.LOGIN_QR_CODE_URL, "fetchLoginQrCode");
 	}
 
-	async getLoginStatus(qrcodeKey: string) {
+	async fetchLoginStatus(qrcodeKey: string) {
 		return this.getJson(
-			`${EP.GET_LOGIN_STATUS}?qrcode_key=${encodeURIComponent(qrcodeKey)}`,
-			"getLoginStatus",
+			`${EP.LOGIN_STATUS_URL}?qrcode_key=${encodeURIComponent(qrcodeKey)}`,
+			"fetchLoginStatus",
 		);
 	}
 
@@ -714,8 +714,8 @@ export class BilibiliAPI {
 	 * 健康检查靠它探 -101 会话死活，缓存会掩盖会话失效。需要账号身份但不要求实时
 	 * 的调用方(直播建连 / 卡片预览)请改用 {@link getMyselfInfoCached}。
 	 */
-	async getMyselfInfo(): Promise<MySelfInfoData> {
-		return this.getJson(EP.GET_MYSELF_INFO, "getMyselfInfo");
+	async fetchMyselfInfo(): Promise<MyselfResponse> {
+		return this.getJson(EP.MYSELF_INFO_URL, "fetchMyselfInfo");
 	}
 
 	/**
@@ -723,25 +723,25 @@ export class BilibiliAPI {
 	 * 多处反复要(直播重连风暴 / 卡片预览);共享一份缓存收敛掉重复请求。换号 /
 	 * 登出 / -101 时由本类精准 invalidate,不靠 TTL 硬扛陈旧身份。
 	 */
-	getMyselfInfoCached(): Promise<MySelfInfoData> {
+	getMyselfInfoCached(): Promise<MyselfResponse> {
 		return this.selfInfoCache.get();
 	}
 
-	async getUserCardInfo(mid: string, withPhoto = false): Promise<UserCardInfoData> {
+	async fetchUserCard(uid: string, withPhoto = false): Promise<UserCardResponse> {
 		return this.getJson(
-			`${EP.GET_USER_CARD_INFO}?mid=${encodeURIComponent(mid)}${withPhoto ? "&photo=true" : ""}`,
-			"getUserCardInfo",
+			`${EP.USER_CARD_URL}?mid=${encodeURIComponent(uid)}${withPhoto ? "&photo=true" : ""}`,
+			"fetchUserCard",
 		);
 	}
 
 	/**
-	 * 关系状态数(粉丝/关注)。粉丝计数轮询稳态用这个替代 `getUserCardInfo` ——
+	 * 关系状态数(粉丝/关注)。粉丝计数轮询稳态用这个替代 `fetchUserCard` ——
 	 * 载荷远小于整张主页卡,更贴近 B 站对「实时粉丝计数」的预期用法。
 	 */
-	async getRelationStat(vmid: string): Promise<RelationStatData> {
+	async fetchRelationStat(uid: string): Promise<RelationStatResponse> {
 		return this.getJson(
-			`${EP.GET_RELATION_STAT}?vmid=${encodeURIComponent(vmid)}`,
-			"getRelationStat",
+			`${EP.RELATION_STAT_URL}?vmid=${encodeURIComponent(uid)}`,
+			"fetchRelationStat",
 		);
 	}
 
@@ -749,34 +749,34 @@ export class BilibiliAPI {
 	 * 批量拉多用户 name/face(冷刷 cachedProfile 用)。**单次最多 50 个** uid ——
 	 * 调用方负责分片;此处只发一个请求。空列表直接短路,不发请求。
 	 */
-	async getUserCardsBatch(uids: string[]): Promise<UserCardsBatchData> {
+	async fetchUserCards(uids: string[]): Promise<UserCardsResponse> {
 		if (!uids.length) return { code: 0, data: {} };
 		const list = uids.map((u) => encodeURIComponent(u)).join(",");
-		return this.getJson(`${EP.GET_USER_CARDS_BATCH}?uids=${list}`, "getUserCardsBatch");
+		return this.getJson(`${EP.USER_CARDS_URL}?uids=${list}`, "fetchUserCards");
 	}
 
-	async getUserInfo(mid: string, griskId?: string) {
+	async fetchUserInfo(uid: string, griskId?: string) {
 		return this.retry(
 			async () => {
-				if (mid === BANGUMI_TRIP_UID) {
+				if (uid === BANGUMI_TRIP_UID) {
 					return {
 						code: 0,
 						data: { live_room: { roomid: BANGUMI_TRIP_ROOM_ID } },
 					};
 				}
-				const params: Record<string, string> = { mid };
+				const params: Record<string, string> = { mid: uid };
 				if (griskId) params.grisk_id = griskId;
-				return this.wbiGet(EP.GET_USER_INFO, params);
+				return this.wbiGet(EP.USER_INFO_URL, params);
 			},
-			"getUserInfo",
-			BilibiliAPI.retryUnlessRiskControl,
+			"fetchUserInfo",
+			Api.retryUnlessRiskControl,
 		);
 	}
 
-	async getLiveRoomInfo(roomId: string): Promise<LiveRoomInfo> {
+	async fetchLiveRoomInfo(roomId: string): Promise<LiveRoomResponse> {
 		return this.getJson(
-			`${EP.GET_LIVE_ROOM_INFO}?room_id=${encodeURIComponent(roomId)}`,
-			"getLiveRoomInfo",
+			`${EP.LIVE_ROOM_INFO_URL}?room_id=${encodeURIComponent(roomId)}`,
+			"fetchLiveRoomInfo",
 		);
 	}
 
@@ -787,7 +787,7 @@ export class BilibiliAPI {
 	 */
 	async getBuvid3(): Promise<string> {
 		if (this.buvid3Cache) return this.buvid3Cache;
-		// 在途合流(同 createSelfInfoCache 模式):启动时 N 个房间并发 bootstrap,
+		// 在途合流(同 createMyselfCache 模式):启动时 N 个房间并发 bootstrap,
 		// 缓存落位前各自联网等于把 N 条相同请求同时打在风控敏感面上。
 		if (!this.buvid3Inflight) {
 			this.buvid3Inflight = this.fetchBuvid3().finally(() => {
@@ -800,7 +800,7 @@ export class BilibiliAPI {
 	private async fetchBuvid3(): Promise<string> {
 		try {
 			const res = await this.getJson<{ code: number; data?: { b_3?: string } }>(
-				EP.GET_FINGER_SPI,
+				EP.FINGER_SPI_URL,
 				"getBuvid3",
 			);
 			const b3 = res?.data?.b_3;
@@ -815,45 +815,45 @@ export class BilibiliAPI {
 	}
 
 	async getMasterInfo(uid: string): Promise<MasterInfoData> {
-		return this.getJson(`${EP.GET_MASTER_INFO}?uid=${encodeURIComponent(uid)}`, "getMasterInfo");
+		return this.getJson(`${EP.MASTER_INFO_URL}?uid=${encodeURIComponent(uid)}`, "getMasterInfo");
 	}
 
-	async getLiveRoomInfoStreamKey(roomId: string): Promise<LiveRoomDanmuInfo> {
+	async fetchLiveRoomInfoStreamKey(roomId: string): Promise<LiveRoomDanmakuResponse> {
 		// getDanmuInfo 现已强制 wbi 签名，裸 GET 一律被风控拦成 -352。必须走
 		// wbiGet（自动加 wts + w_rid，并自带 -352 → 刷新 wbiKeys 重试一次的自愈）。
 		return this.retry(
-			async () => this.wbiGet(EP.GET_LIVE_ROOM_INFO_STREAM_KEY, { id: roomId }),
-			"getLiveRoomInfoStreamKey",
-			BilibiliAPI.retryUnlessRiskControl,
+			async () => this.wbiGet(EP.LIVE_ROOM_INFO_STREAM_KEY_URL, { id: roomId }),
+			"fetchLiveRoomInfoStreamKey",
+			Api.retryUnlessRiskControl,
 		);
 	}
 
-	async getLiveRoomInfoByUids(uids: string[]) {
+	async fetchLiveRoomInfoByUids(uids: string[]) {
 		if (!uids.length) return { code: 0, data: {} };
 		const params = uids.map((uid) => `uids[]=${encodeURIComponent(uid)}`).join("&");
-		return this.getJson(`${EP.GET_LIVE_ROOMS_INFO}?${params}`, "getLiveRoomInfoByUids");
+		return this.getJson(`${EP.LIVE_ROOMS_INFO_URL}?${params}`, "fetchLiveRoomInfoByUids");
 	}
 
-	async getUserInfoInLive(uid: string, ruid: string) {
+	async fetchUserInfoInLive(uid: string, upUid: string) {
 		return this.getJson(
-			`${EP.GET_USER_INFO_IN_LIVE}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(ruid)}`,
-			"getUserInfoInLive",
+			`${EP.USER_INFO_IN_LIVE_URL}?uid=${encodeURIComponent(uid)}&ruid=${encodeURIComponent(upUid)}`,
+			"fetchUserInfoInLive",
 		);
 	}
 
-	async getUserUpstat(mid: string) {
-		return this.getJson(`${EP.GET_USER_UPSTAT}?mid=${encodeURIComponent(mid)}`, "getUserUpstat");
+	async fetchUserUpstat(uid: string) {
+		return this.getJson(`${EP.USER_UPSTAT_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserUpstat");
 	}
 
-	async getUserNavnum(mid: string) {
-		return this.getJson(`${EP.GET_USER_NAVNUM}?mid=${encodeURIComponent(mid)}`, "getUserNavnum");
+	async fetchUserNavnum(uid: string) {
+		return this.getJson(`${EP.USER_NAVNUM_URL}?mid=${encodeURIComponent(uid)}`, "fetchUserNavnum");
 	}
 
-	async getUserVideos(mid: string, ps = 5) {
+	async fetchUserVideos(uid: string, ps = 5) {
 		return this.retry(
-			async () => this.wbiGet(EP.GET_USER_VIDEOS, { mid, order: "pubdate", ps }),
-			"getUserVideos",
-			BilibiliAPI.retryUnlessRiskControl,
+			async () => this.wbiGet(EP.USER_VIDEOS_URL, { mid: uid, order: "pubdate", ps }),
+			"fetchUserVideos",
+			Api.retryUnlessRiskControl,
 		);
 	}
 
@@ -861,14 +861,14 @@ export class BilibiliAPI {
 	 * 单个视频的信息。接口 code 非 0(-404 不存在 / 62002 不可见 / 62012 仅自己可见…)
 	 * 直接抛,带上对方的 message —— 调用方(链接解析)对任何失败都保持沉默,只记日志。
 	 */
-	async getVideoInfo(ref: VideoRef): Promise<VideoInfo> {
+	async fetchVideoInfo(ref: VideoRef): Promise<VideoResponse> {
 		const query =
 			"bvid" in ref ? `bvid=${encodeURIComponent(ref.bvid)}` : `aid=${encodeURIComponent(ref.aid)}`;
-		// wire 上的 data 字段远不止这些;`VideoInfo` 就是「我们用得到的那几个」的那份声明,
+		// wire 上的 data 字段远不止这些;`VideoResponse` 就是「我们用得到的那几个」的那份声明,
 		// 下面逐字段抄一遍 —— 照单全收但不透传。
-		const result = await this.getJson<{ code: number; message?: string; data?: VideoInfo }>(
-			`${EP.GET_VIDEO_INFO}?${query}`,
-			"getVideoInfo",
+		const result = await this.getJson<{ code: number; message?: string; data?: VideoResponse }>(
+			`${EP.VIDEO_INFO_URL}?${query}`,
+			"fetchVideoInfo",
 		);
 		if (result.code !== 0 || !result.data) {
 			throw new Error(`获取视频信息失败(${result.code}): ${result.message ?? "unknown"}`);
@@ -929,10 +929,10 @@ export class BilibiliAPI {
 				const params: Record<string, string> = { search_type: searchType, keyword };
 				if (opts?.page) params.page = String(opts.page);
 				if (opts?.pageSize) params.page_size = String(opts.pageSize);
-				return this.wbiGet(EP.SEARCH_BY_TYPE, params);
+				return this.wbiGet(EP.SEARCH_BY_TYPE_URL, params);
 			},
 			"searchByType",
-			BilibiliAPI.retryUnlessRiskControl,
+			Api.retryUnlessRiskControl,
 		);
 	}
 
@@ -942,14 +942,17 @@ export class BilibiliAPI {
 	 * csrf 可选,传错多被服务端忽略,但与官方契约不符且一旦服务端开始校验
 	 * 该参数即会整条刷新探测失效。统一传真实 bili_jct csrf。
 	 */
-	async getCookieInfo(csrf: string) {
-		return this.getJson(`${EP.GET_COOKIES_INFO}?csrf=${encodeURIComponent(csrf)}`, "getCookieInfo");
+	async fetchCookieInfo(csrf: string) {
+		return this.getJson(
+			`${EP.COOKIE_INFO_URL}?csrf=${encodeURIComponent(csrf)}`,
+			"fetchCookieInfo",
+		);
 	}
 
-	async follow(fid: string) {
+	async follow(uid: string) {
 		return this.postFormJson(
-			EP.MODIFY_RELATION,
-			() => ({ fid, act: 1, re_src: 11, csrf: this.getCSRF() }),
+			EP.RELATION_MODIFY_URL,
+			() => ({ fid: uid, act: 1, re_src: 11, csrf: this.getCSRF() }),
 			"follow",
 		);
 	}
@@ -963,9 +966,9 @@ export class BilibiliAPI {
 	 * 调用方必须把它当**优化**而非正确性依赖:失败 / 结构不符时要能降级成直接 follow
 	 * (follow 本身幂等,22014=已关注)。
 	 */
-	async getRelations(fids: string[]): Promise<RelationsBatchData> {
-		if (!fids.length) return { code: 0, data: {} };
-		const list = fids.map((f) => encodeURIComponent(f)).join(",");
-		return this.getJson(`${EP.GET_RELATIONS}?fids=${list}`, "getRelations");
+	async fetchRelations(uids: string[]): Promise<RelationsResponse> {
+		if (!uids.length) return { code: 0, data: {} };
+		const list = uids.map((f) => encodeURIComponent(f)).join(",");
+		return this.getJson(`${EP.RELATIONS_URL}?fids=${list}`, "fetchRelations");
 	}
 }

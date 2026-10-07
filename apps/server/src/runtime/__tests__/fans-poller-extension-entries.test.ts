@@ -81,11 +81,11 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 	bus.on("fans-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
-	const getRelationStat = vi.fn(async (_uid: string) => ({
+	const fetchRelationStat = vi.fn(async (_uid: string) => ({
 		code: 0,
 		data: { follower: 777 },
 	}));
-	const getUserCardInfo = vi.fn(async (uid: string) => ({
+	const fetchUserCard = vi.fn(async (uid: string) => ({
 		code: 0,
 		data: { card: { fans: 777, name: `UP${uid}`, face: "", sign: "" } },
 	}));
@@ -115,9 +115,9 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat,
-			getUserCardInfo,
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat,
+			fetchUserCard,
 		} as never,
 		// 不放行启动那次 3s 延时 tick:只看各用例自己 pollNow 的那几轮。
 		serviceCtx: serviceCtx as never,
@@ -129,8 +129,8 @@ async function start(initial: Subscription[], runtimeSeed: Record<string, SubRun
 		handle,
 		runtime,
 		snapshots,
-		getRelationStat,
-		getUserCardInfo,
+		fetchRelationStat,
+		fetchUserCard,
 		setSubs(next: Subscription[]) {
 			subs = next;
 		},
@@ -173,8 +173,8 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 			},
 		]);
 		// 粉丝轮询不拿外部 id 去问 B 站。
-		expect(p.getRelationStat).not.toHaveBeenCalled();
-		expect(p.getUserCardInfo).not.toHaveBeenCalled();
+		expect(p.fetchRelationStat).not.toHaveBeenCalled();
+		expect(p.fetchUserCard).not.toHaveBeenCalled();
 		// 快照照样 emit 出去 —— 面板靠它覆盖式刷新。
 		expect(p.snapshots.at(-1)?.map((e) => e.subscriptionId)).toEqual(["e1"]);
 	});
@@ -249,9 +249,9 @@ describe("粉丝面板 × 拓展订阅:有时序的进快照,数从时序里算"
 		// 外部 id 恰好是同一串数字:两条各是各的,拓展那条不带 uid。
 		expect(p.entryOf("e1")).toMatchObject({ extensionId: "douyin", externalId: "12345" });
 		expect(p.entryOf("e1")).not.toHaveProperty("uid");
-		expect(p.getRelationStat).not.toHaveBeenCalled();
-		expect(p.getUserCardInfo).toHaveBeenCalledTimes(1);
-		expect(p.getUserCardInfo).toHaveBeenCalledWith("12345");
+		expect(p.fetchRelationStat).not.toHaveBeenCalled();
+		expect(p.fetchUserCard).toHaveBeenCalledTimes(1);
+		expect(p.fetchUserCard).toHaveBeenCalledWith("12345");
 	});
 
 	it("开机恢复也带拓展条目:首屏不必等第一轮", async () => {
@@ -310,13 +310,13 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 			b1: { cachedProfile: { name: "B", sign: "", fans: 1, lastRefreshedAt: "x" } },
 			e1: profile(450),
 		});
-		p.getRelationStat.mockResolvedValue({ code: -352, data: null } as never);
+		p.fetchRelationStat.mockResolvedValue({ code: -352, data: null } as never);
 		await p.handle.pollNow();
-		expect(p.getRelationStat).toHaveBeenCalledTimes(1);
+		expect(p.fetchRelationStat).toHaveBeenCalledTimes(1);
 
 		p.runtime.set("e1", profile(600));
 		await p.handle.pollNow();
-		expect(p.getRelationStat).toHaveBeenCalledTimes(1);
+		expect(p.fetchRelationStat).toHaveBeenCalledTimes(1);
 		expect(p.entryOf("e1")?.current).toBe(600);
 	});
 });

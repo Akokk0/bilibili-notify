@@ -1,11 +1,11 @@
 import type { MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
 import {
-	type LiveRoomInfo,
+	type LiveRoomResponse,
 	type MasterInfoData,
-	type MySelfInfoData,
+	type MyselfResponse,
 	RiskControlError,
 } from "../api/index.js";
-import { connectLiveRoom, type DanmuHost } from "./client.js";
+import { connectLiveRoom, type DanmakuHost } from "./client.js";
 import type { LiveEvent } from "./events.js";
 import { liveCardInputFromRoomInfo } from "./live-card-input";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify";
@@ -13,7 +13,7 @@ import { type LiveBroadcastOptions, LivePushType, type SubItemView } from "./pus
 import { RoomContextBase } from "./room-context";
 import { type LiveData, LiveType, type MasterInfo } from "./types";
 
-type LiveRoomDanmuInfo = {
+type LiveRoomDanmakuResponse = {
 	code: number;
 	message?: string;
 	msg?: string;
@@ -45,8 +45,8 @@ export class LiveRoomPreflightBlockedError extends Error {
 	}
 }
 
-export function describeLiveRoomDanmuPreflightFallback(
-	info: LiveRoomDanmuInfo,
+export function describeLiveRoomDanmakuPreflightFallback(
+	info: LiveRoomDanmakuResponse,
 ): string | undefined {
 	const message = info.message || info.msg;
 	const messageSuffix = message ? ` message=${message}` : "";
@@ -56,8 +56,10 @@ export function describeLiveRoomDanmuPreflightFallback(
 	return undefined;
 }
 
-export function describeLiveRoomDanmuAccessDenied(info: LiveRoomDanmuInfo): string | undefined {
-	if (describeLiveRoomDanmuPreflightFallback(info)) return undefined;
+export function describeLiveRoomDanmakuAccessDenied(
+	info: LiveRoomDanmakuResponse,
+): string | undefined {
+	if (describeLiveRoomDanmakuPreflightFallback(info)) return undefined;
 	const message = info.message || info.msg;
 	const messageSuffix = message ? ` message=${message}` : "";
 	if (info.code !== 0) return `B 站返回 code=${info.code}${messageSuffix}`;
@@ -102,7 +104,7 @@ export class RoomContext extends RoomContextBase {
 		shouldAbort?: () => boolean,
 	): Promise<boolean> {
 		// ②6:per-session 取消探针。此方法只认 engine 级 isDisposed(),感知不到
-		// 单房间被 stopForUid 取消;getMyselfInfo 这段 await 期间若 session 被取消,
+		// 单房间被 stopForUid 取消;fetchMyselfInfo 这段 await 期间若 session 被取消,
 		// 继续建 listener 即孤儿。每个检查点并行查 shouldAbort,已建则关闭。
 		const aborted = () => this.isDisposed() || shouldAbort?.() === true;
 		if (aborted()) return false;
@@ -118,9 +120,9 @@ export class RoomContext extends RoomContextBase {
 			return true;
 		}
 
-		let danmuInfo: LiveRoomDanmuInfo;
+		let danmakuInfo: LiveRoomDanmakuResponse;
 		try {
-			danmuInfo = await this.api.getLiveRoomInfoStreamKey(roomId);
+			danmakuInfo = await this.api.fetchLiveRoomInfoStreamKey(roomId);
 		} catch (e) {
 			// 持续 -352 经 wbiGet 以 RiskControlError **异常**到达(它绝不把 -352 body
 			// 返回给调用方)—— 必须映射成预检拦截交给长尾退避;吞成 return false 会让
@@ -132,27 +134,27 @@ export class RoomContext extends RoomContextBase {
 			this.logger.warn(`[conn] 获取弹幕连接信息异常，房间 [${roomId}]：${message}`);
 			return false;
 		}
-		const fallbackReason = describeLiveRoomDanmuPreflightFallback(danmuInfo);
+		const fallbackReason = describeLiveRoomDanmakuPreflightFallback(danmakuInfo);
 		if (fallbackReason) {
 			throw new LiveRoomPreflightBlockedError(fallbackReason);
 		}
-		const deniedReason = describeLiveRoomDanmuAccessDenied(danmuInfo);
+		const deniedReason = describeLiveRoomDanmakuAccessDenied(danmakuInfo);
 		if (deniedReason) {
 			throw new LiveRoomAccessDeniedError(deniedReason);
 		}
-		// describeLiveRoomDanmuAccessDenied 已保证 token / host_list 非空
-		const token = this.readDanmuToken(danmuInfo);
-		const hostList = this.readDanmuHosts(danmuInfo);
+		// describeLiveRoomDanmakuAccessDenied 已保证 token / host_list 非空
+		const token = this.readDanmakuToken(danmakuInfo);
+		const hostList = this.readDanmakuHosts(danmakuInfo);
 		if (!token || hostList.length === 0) {
 			this.logger.warn(`[conn] 直播间 [${roomId}] 弹幕连接信息不完整,视为本轮失败`);
 			return false;
 		}
 		if (aborted()) return false;
 
-		let mySelfInfo: MySelfInfoData;
+		let mySelfInfo: MyselfResponse;
 		try {
 			// ④ 走客户端共享的账号身份缓存(短 TTL + 在途合流):多房间同时重连时
-			// 「自己的信息」只落一次请求;换号/登出由 BilibiliAPI 精准 invalidate。
+			// 「自己的信息」只落一次请求;换号/登出由 Api 精准 invalidate。
 			mySelfInfo = await this.api.getMyselfInfoCached();
 		} catch (e) {
 			const message = (e as Error).message ?? String(e);
@@ -199,14 +201,14 @@ export class RoomContext extends RoomContextBase {
 		return true;
 	}
 
-	private readDanmuToken(info: LiveRoomDanmuInfo): string {
+	private readDanmakuToken(info: LiveRoomDanmakuResponse): string {
 		const token = info.data?.token;
 		return typeof token === "string" ? token.trim() : "";
 	}
 
-	private readDanmuHosts(info: LiveRoomDanmuInfo): DanmuHost[] {
+	private readDanmakuHosts(info: LiveRoomDanmakuResponse): DanmakuHost[] {
 		const raw = Array.isArray(info.data?.host_list) ? info.data.host_list : [];
-		const hosts: DanmuHost[] = [];
+		const hosts: DanmakuHost[] = [];
 		for (const entry of raw) {
 			const h = entry as { host?: unknown; wss_port?: unknown };
 			if (typeof h.host === "string" && h.host && typeof h.wss_port === "number") {
@@ -217,9 +219,9 @@ export class RoomContext extends RoomContextBase {
 	}
 
 	/** Fetch live-room info; on failure, notifies admin + tears down this room. */
-	async getLiveRoomInfo(roomId: string): Promise<LiveRoomInfo["data"] | undefined> {
+	async getLiveRoomInfo(roomId: string): Promise<LiveRoomResponse["data"] | undefined> {
 		try {
-			const content = await this.api.getLiveRoomInfo(roomId);
+			const content = await this.api.fetchLiveRoomInfo(roomId);
 			return content.data;
 		} catch (e) {
 			// Q3 carve-out:catch 内『已停止该房间监测』—— 非自愈、需最终介入,留 error。
@@ -292,7 +294,7 @@ export class RoomContext extends RoomContextBase {
 		 */
 		pushType?: LiveNotifyPushType;
 		liveData: LiveData;
-		liveRoomInfo: LiveRoomInfo["data"];
+		liveRoomInfo: LiveRoomResponse["data"];
 		master: MasterInfo;
 		cardStyle: SubItemView["customCardStyle"];
 		/** 这张卡用哪套皮肤(ADR-0014);undefined = 内置默认。 */

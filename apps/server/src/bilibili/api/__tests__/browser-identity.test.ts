@@ -1,7 +1,7 @@
 /**
- * BilibiliAPI 的浏览器身份与长期客户端接线(身份的生成与「只升不降」归 packages/http,测在那边)。
+ * Api 的浏览器身份与长期客户端接线(身份的生成与「只升不降」归 packages/http,测在那边)。
  *
- * 观察点是**线上真正发出去的头**:`api.client` 就是 BilibiliAPI 自己持的那个客户端,拿它往回环
+ * 观察点是**线上真正发出去的头**:`api.client` 就是 Api 自己持的那个客户端,拿它往回环
  * server 打一个请求,头里有什么就是 B 站会看到的东西(B 站的默认头、生成身份的 UA 与 sec-ch-ua
  * 三件)。UA 只来自身份:没有自定义 UA 这个设置、也没有改 UA 的口子(ADR-0025 决策 7)——
  * 填了自定义 UA 而 sec-ch-ua 仍是生成的 Chrome 身份,拼出来是一个自相矛盾的指纹。
@@ -13,8 +13,8 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { Api } from "../api";
 import type { ApiClient } from "../api-client";
-import { BilibiliAPI } from "../bilibili-api";
 
 let server: Server;
 let baseURL: string;
@@ -38,7 +38,7 @@ afterEach(async () => {
 
 function makeApi() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
@@ -47,12 +47,12 @@ function makeApi() {
 }
 
 /** 本实例的生成身份(私有字段;线上所有 UA 的唯一来源)。 */
-const identityOf = (api: BilibiliAPI) =>
+const identityOf = (api: Api) =>
 	(api as unknown as { browserIdentity: { userAgent: string; secChUa: string } }).browserIdentity;
 
 const major = (ua: string | undefined) => /Chrome\/(\d+)\./.exec(ua ?? "")?.[1];
 
-describe("BilibiliAPI — 浏览器身份接线", () => {
+describe("Api — 浏览器身份接线", () => {
 	it("线上是生成身份:UA 与 sec-ch-ua 版本自洽,B 站默认头都在", async () => {
 		const { api, client } = makeApi();
 		await client.get(`${baseURL}/x`);
@@ -84,7 +84,7 @@ describe("BilibiliAPI — 浏览器身份接线", () => {
 	});
 
 	// 自定义 UA 删了:这两个口子是它仅有的入口(设置里填的值经它们改 UA)。口子还在,谁都能再把 UA 和身份拆开。
-	it("没有改 UA 的口子:BilibiliAPI 上没有 setUserAgent / getUserAgent", () => {
+	it("没有改 UA 的口子:Api 上没有 setUserAgent / getUserAgent", () => {
 		const { api } = makeApi();
 
 		expect("setUserAgent" in api).toBe(false);
@@ -92,8 +92,8 @@ describe("BilibiliAPI — 浏览器身份接线", () => {
 	});
 });
 
-describe("BilibiliAPI — 每一条出站请求的 UA 都是身份的那一个", () => {
-	const update = (api: BilibiliAPI) =>
+describe("Api — 每一条出站请求的 UA 都是身份的那一个", () => {
+	const update = (api: Api) =>
 		(api as unknown as { updateBiliTicket(): Promise<void> }).updateBiliTicket();
 
 	it("取 ticket 的 POST 没有自己的 UA 特例:不带逐请求的 UA 覆盖,走客户端默认头(身份的)", async () => {
@@ -149,14 +149,14 @@ describe("BilibiliAPI — 每一条出站请求的 UA 都是身份的那一个",
 	});
 });
 
-describe("BilibiliAPI — 登出再登录:客户端是同一个,罐子里是新内容", () => {
+describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", () => {
 	// 回环地址当 cookie 的域,这样线上也看得到 cookie。
 	const session = (sess: string, jct: string) =>
 		JSON.stringify([
 			{ key: "SESSDATA", value: sess, domain: "127.0.0.1", path: "/", expires: "Infinity" },
 			{ key: "bili_jct", value: jct, domain: "127.0.0.1", path: "/", expires: "Infinity" },
 		]);
-	const jarKeys = (api: BilibiliAPI) =>
+	const jarKeys = (api: Api) =>
 		(JSON.parse(api.getCookiesJson() ?? "[]") as Array<{ key: string; value: string }>).map(
 			(c) => `${c.key}=${c.value}`,
 		);

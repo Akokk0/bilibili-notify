@@ -1,6 +1,6 @@
 import type { Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { type CookieData, type KeyProvider, StorageManager } from "@bilibili-notify/storage";
-import { BilibiliAPI, LoginFlow, type LoginSnapshot } from "../bilibili/api/index.js";
+import { Api, LoginFlow, type LoginSnapshot } from "../bilibili/api/index.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { dataPath } from "../runtime/roots.js";
 
@@ -12,7 +12,7 @@ const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
  *
  * Construction order (must remain stable for cookie-load → api.start → flow.reportAccountInfo):
  *   1. StorageManager (with `paths` under <dataRoot>/secrets/) → init() loads-or-creates master.key
- *   2. BilibiliAPI(callbacks: onCookiesRefreshed → cookieStore.save, onAuthLost → flow.handleAuthLost)
+ *   2. Api(callbacks: onCookiesRefreshed → cookieStore.save, onAuthLost → flow.handleAuthLost)
  *      — `flow` is captured by reference; constructed in step 4, so the callback closes over `let flow`.
  *   3. api.start()
  *   4. LoginFlow + flow.start() (no-op today; symmetric)
@@ -20,7 +20,7 @@ const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
  *   6. flow.reportAccountInfo() if a login cookie was found, else flow.reportLoggedOut("notLogin").
  */
 export interface AuthSystem extends Disposable {
-	readonly api: BilibiliAPI;
+	readonly api: Api;
 	readonly storage: StorageManager;
 	readonly flow: LoginFlow;
 	/** Trigger a fresh QR login session. Renders the QR PNG using the `qrcode` npm dep. */
@@ -79,9 +79,9 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 	await storage.init();
 	log.debug("[auth] StorageManager initialised");
 
-	// 2. BilibiliAPI. The `onAuthLost` callback closes over `flow` — built in step 4.
+	// 2. Api. The `onAuthLost` callback closes over `flow` — built in step 4.
 	let flow: LoginFlow | undefined;
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: opts.serviceCtx,
 		callbacks: {
 			// async + await:让 api 端能 await 持久化并在 reject 时响亮记日志
@@ -105,7 +105,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 
 	// 3. api.start() — initialise HTTP client + ticket cron.
 	await api.start();
-	log.debug("[auth] BilibiliAPI started");
+	log.debug("[auth] Api started");
 
 	// 4. LoginFlow.
 	flow = new LoginFlow({
@@ -198,7 +198,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 }
 
 /** 是否已有登录 cookie(SESSDATA 在场)。 */
-function hasLoginCookie(api: BilibiliAPI): boolean {
+function hasLoginCookie(api: Api): boolean {
 	const cookiesJson = api.getCookiesJson();
 	if (!cookiesJson || cookiesJson === "[]") return false;
 	try {

@@ -9,7 +9,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BilibiliAPI } from "../../bilibili/api/index.js";
+import type { Api } from "../../bilibili/api/index.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
@@ -786,24 +786,24 @@ describe("cards route — 热切换后预览渲染器随之失效重建", () => 
 });
 
 describe("cards route — resolveRoomIdFromUid (uid → 房间号)", () => {
-	it("getUserInfo 返回 live_room.roomid → 解析成房间号字符串", async () => {
+	it("fetchUserInfo 返回 live_room.roomid → 解析成房间号字符串", async () => {
 		const api = {
-			getUserInfo: vi.fn(async () => ({ code: 0, data: { live_room: { roomid: 778899 } } })),
-		} as unknown as BilibiliAPI;
+			fetchUserInfo: vi.fn(async () => ({ code: 0, data: { live_room: { roomid: 778899 } } })),
+		} as unknown as Api;
 		expect(await resolveRoomIdFromUid(api, "12345")).toBe("778899");
 	});
 
 	it("非纯数字 uid → 抛错(不打接口)", async () => {
-		const getUserInfo = vi.fn();
-		const api = { getUserInfo } as unknown as BilibiliAPI;
+		const fetchUserInfo = vi.fn();
+		const api = { fetchUserInfo } as unknown as Api;
 		await expect(resolveRoomIdFromUid(api, "abc")).rejects.toThrow();
-		expect(getUserInfo).not.toHaveBeenCalled();
+		expect(fetchUserInfo).not.toHaveBeenCalled();
 	});
 
 	it("未开通直播间(live_room 缺失 / roomid<=0)→ 抛错", async () => {
 		const api = {
-			getUserInfo: vi.fn(async () => ({ code: 0, data: { live_room: { roomid: 0 } } })),
-		} as unknown as BilibiliAPI;
+			fetchUserInfo: vi.fn(async () => ({ code: 0, data: { live_room: { roomid: 0 } } })),
+		} as unknown as Api;
 		await expect(resolveRoomIdFromUid(api, "12345")).rejects.toThrow(/未开通直播间|无法解析/);
 	});
 });
@@ -820,12 +820,12 @@ describe("cards route — /preview live-by-uid fallback", () => {
 	}
 
 	it("fallback:true 且真实拉取失败 → 回退示例数据,200 ok", async () => {
-		// getUserInfo 抛错(网络) → live 真实路径失败 → fallback 回退 mock 渲染。
+		// fetchUserInfo 抛错(网络) → live 真实路径失败 → fallback 回退 mock 渲染。
 		const api = {
-			getUserInfo: vi.fn(async () => {
+			fetchUserInfo: vi.fn(async () => {
 				throw new Error("network down");
 			}),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
 		const res = await postPreview(app, {
 			kind: "live",
@@ -841,10 +841,10 @@ describe("cards route — /preview live-by-uid fallback", () => {
 
 	it("fallback 缺省(false)且真实拉取失败 → 200 + 失败那一支(unavailable),把原话交给用户", async () => {
 		const api = {
-			getUserInfo: vi.fn(async () => {
+			fetchUserInfo: vi.fn(async () => {
 				throw new Error("network down");
 			}),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const app = createCardsRoute({ deps: makeDeps(), puppeteer: makeFakePuppeteer(), api });
 		const res = await postPreview(app, {
 			kind: "live",
@@ -979,7 +979,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 			const real = await saveCardBg(dir, PNG, "image/png");
 			const ghost = `${"c".repeat(32)}.png`;
 			const api = {
-				getLiveRoomInfo: vi.fn(async () => ({
+				fetchLiveRoomInfo: vi.fn(async () => ({
 					code: 0,
 					data: { uid: 12345, live_status: 1 },
 				})),
@@ -987,7 +987,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 					code: 0,
 					data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
 				})),
-			} as unknown as BilibiliAPI;
+			} as unknown as Api;
 			const spy = vi
 				.spyOn(ImageRenderer.prototype, "generateLiveCard")
 				.mockResolvedValue(Buffer.from("x"));
@@ -1034,7 +1034,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				close: vi.fn(async () => {}),
 			};
 			const api = {
-				getLiveRoomInfo: vi.fn(async () => ({
+				fetchLiveRoomInfo: vi.fn(async () => ({
 					code: 0,
 					data: { uid: 12345, live_status: 0, title: "没在播", ...room },
 				})),
@@ -1042,7 +1042,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 					code: 0,
 					data: { info: { uname: "真实UP", face: "data:image/png;base64,FACE" } },
 				})),
-			} as unknown as BilibiliAPI;
+			} as unknown as Api;
 			const puppeteer = { page: async () => page } as unknown as PuppeteerAdapter;
 			const app = createCardsRoute({ deps: makeDeps(), puppeteer, api });
 			const res = await postPreview(app, {
@@ -1068,14 +1068,14 @@ describe("cards route — /preview live-by-uid fallback", () => {
 describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	const STYLE = {};
 
-	function loggedInApi(): BilibiliAPI {
+	function loggedInApi(): Api {
 		return {
 			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
-			getUserCardInfo: vi.fn(async () => ({
+			fetchUserCard: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 	}
 
 	function postPreview(app: ReturnType<typeof createCardsRoute>, body: unknown) {
@@ -1270,9 +1270,9 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		}
 	});
 
-	// 预览不画头像,也就不为头像多调一次接口:登录账号只取名字(`getMyselfInfoCached`),不再调 `getUserCardInfo`。
-	// 验红:把 cards.ts 的 getLoggedInAccount 加回 `getUserCardInfo` 那一步,这条红。
-	it("sc / guard:登录账号只取名字,不为头像再调 getUserCardInfo", async () => {
+	// 预览不画头像,也就不为头像多调一次接口:登录账号只取名字(`getMyselfInfoCached`),不再调 `fetchUserCard`。
+	// 验红:把 cards.ts 的 getLoggedInAccount 加回 `fetchUserCard` 那一步,这条红。
+	it("sc / guard:登录账号只取名字,不为头像再调 fetchUserCard", async () => {
 		const api = loggedInApi();
 		const sc = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
@@ -1288,7 +1288,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			fallback: true,
 		});
 		await postPreview(app, { kind: "membership", style: STYLE, content: {}, fallback: true });
-		expect(api.getUserCardInfo).not.toHaveBeenCalled();
+		expect(api.fetchUserCard).not.toHaveBeenCalled();
 		expect(sc.mock.calls[0]?.[0]?.viewer.name).toBe("登录名");
 		sc.mockRestore();
 		guard.mockRestore();
@@ -1318,7 +1318,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	it("sc:per-UP 传 uid → 接收方按 getMasterInfo 解析真实 UP,发送者仍为登录账号", async () => {
 		const api = {
 			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
-			getUserCardInfo: vi.fn(async () => ({
+			fetchUserCard: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
 			})),
@@ -1326,7 +1326,7 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 				code: 0,
 				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1347,14 +1347,14 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 	it("sc:接收方 getMasterInfo 失败 + fallback → 回退示例 UP,200", async () => {
 		const api = {
 			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
-			getUserCardInfo: vi.fn(async () => ({
+			fetchUserCard: vi.fn(async () => ({
 				code: 0,
 				data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
 			})),
 			getMasterInfo: vi.fn(async () => {
 				throw new Error("network");
 			}),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1379,11 +1379,11 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			.fn()
 			.mockResolvedValueOnce({ code: 0, data: { mid: 999, uname: "登录名" } })
 			.mockRejectedValue(new Error("network"));
-		const getUserCardInfo = vi.fn(async () => ({
+		const fetchUserCard = vi.fn(async () => ({
 			code: 0,
 			data: { card: { name: "登录名", face: "https://i0.hdslb.com/face.png" } },
 		}));
-		const api = { getMyselfInfoCached, getUserCardInfo } as unknown as BilibiliAPI;
+		const api = { getMyselfInfoCached, fetchUserCard } as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateSuperchatCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1504,12 +1504,12 @@ describe("cards route — /preview 走皮肤", () => {
 
 	it("真实拉取那条路把皮肤 id 交给 generateLiveCard 的 colorOptions", async () => {
 		const api = {
-			getLiveRoomInfo: vi.fn(async () => ({ code: 0, data: { uid: 12345, live_status: 1 } })),
+			fetchLiveRoomInfo: vi.fn(async () => ({ code: 0, data: { uid: 12345, live_status: 1 } })),
 			getMasterInfo: vi.fn(async () => ({
 				code: 0,
 				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateLiveCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1540,7 +1540,7 @@ describe("cards route — /preview 走皮肤", () => {
 	 */
 	it("真实直播那条路:先翻成中立输入再交给 generateLiveCard,头像不进输入", async () => {
 		const api = {
-			getLiveRoomInfo: vi.fn(async () => ({
+			fetchLiveRoomInfo: vi.fn(async () => ({
 				code: 0,
 				data: {
 					uid: 12345,
@@ -1557,7 +1557,7 @@ describe("cards route — /preview 走皮肤", () => {
 				code: 0,
 				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateLiveCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1610,8 +1610,8 @@ describe("cards route — /preview 走皮肤", () => {
 			},
 		};
 		const api = {
-			getUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
-		} as unknown as BilibiliAPI;
+			fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [rawItem] } })),
+		} as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generatePostCard")
 			.mockResolvedValue(Buffer.from("x"));
@@ -1691,12 +1691,12 @@ describe("cards route — /preview 走皮肤", () => {
 
 	it("请求没指皮肤 → 真实拉取那条也用全局在用的那套", async () => {
 		const api = {
-			getLiveRoomInfo: vi.fn(async () => ({ code: 0, data: { uid: 12345, live_status: 1 } })),
+			fetchLiveRoomInfo: vi.fn(async () => ({ code: 0, data: { uid: 12345, live_status: 1 } })),
 			getMasterInfo: vi.fn(async () => ({
 				code: 0,
 				data: { info: { uname: "真实UP", face: "https://i0.hdslb.com/up.png" } },
 			})),
-		} as unknown as BilibiliAPI;
+		} as unknown as Api;
 		const spy = vi
 			.spyOn(ImageRenderer.prototype, "generateLiveCard")
 			.mockResolvedValue(Buffer.from("x"));

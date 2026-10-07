@@ -1,5 +1,5 @@
 import type { DevParamValues } from "@bilibili-notify/contract";
-import type { BilibiliAPI } from "../../bilibili/api/index.js";
+import type { Api } from "../../bilibili/api/index.js";
 import type { OverridableApi } from "../api-overrides.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 import type { SubPick } from "./live.js";
@@ -7,7 +7,7 @@ import type { SubPick } from "./live.js";
 /**
  * A3:四类动态(文字 / 图文 / 视频 / 专栏,外加转发)。
  *
- * 引擎每轮 cron 拉 `api.getAllDynamic()`,按作者 mid 认订阅、按 `pub_ts` 越过锚点就推。这里
+ * 引擎每轮 cron 拉 `api.fetchAllDynamic()`,按作者 mid 认订阅、按 `pub_ts` 越过锚点就推。这里
  * 把一条假动态**并进**那个结果(真 feed 照拉、假的排最前),然后立刻让引擎跑一轮 —— 渲染、
  * 过滤、AI 点评、推送全是真链路,引擎分不出真假。跑完那一轮就把假的撤掉:锚点已经推过了,
  * 留着只是脏 feed。
@@ -26,12 +26,12 @@ export interface DynamicEngineLike {
 
 export interface DynamicScenarioDeps {
 	subs: () => SubPick[];
-	api: OverridableApi<Pick<BilibiliAPI, "getAllDynamic">>;
+	api: OverridableApi<Pick<Api, "fetchAllDynamic">>;
 	/** 引擎是后建的,现取;还没起来就 undefined。 */
 	dynamic: () => DynamicEngineLike | undefined;
 }
 
-type Feed = Awaited<ReturnType<BilibiliAPI["getAllDynamic"]>>;
+type Feed = Awaited<ReturnType<Api["fetchAllDynamic"]>>;
 type FeedItem = Feed["data"]["items"][number];
 
 const DEFAULT_TEXT = "devtools 造的一条动态:今天也要元气满满！";
@@ -211,10 +211,10 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 
 	function syncOverride(): void {
 		if (pending.length === 0) {
-			deps.api.clear("getAllDynamic");
+			deps.api.clear("fetchAllDynamic");
 			return;
 		}
-		deps.api.override("getAllDynamic", async (real) => {
+		deps.api.override("fetchAllDynamic", async (real) => {
 			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。引擎收到 code≠0 会走错误处理,
 			// 那不是这次要看的东西。
 			let feed: Feed;

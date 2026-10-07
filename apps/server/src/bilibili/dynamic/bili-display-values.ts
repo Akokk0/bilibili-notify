@@ -23,7 +23,7 @@ const UNIT: Readonly<Record<string, number>> = { 万: 1e4, 亿: 1e8 };
  * 「万」「亿」乘出来的数取整:`0.07 * 1e4` 是 `700.0000000000001`,不取整的话往下排版会带着浮点尾巴。
  * 接口只给一位小数,所以取整不丢东西;丢的是「1.8万」本来就丢了的那几位。
  */
-export function parseBiliCount(raw: unknown): number | undefined {
+export function parseCount(raw: unknown): number | undefined {
 	if (typeof raw === "number") return Number.isFinite(raw) && raw >= 0 ? raw : undefined;
 	if (typeof raw !== "string") return undefined;
 	const hit = COUNT_TEXT.exec(raw.trim());
@@ -40,9 +40,9 @@ const CLOCK_TEXT = /^(?:(\d+):)?(\d+):(\d{2})$/;
  *
  * 两段是「分:秒」,分钟不限位数(「75:30」);三段是「时:分:秒」,分与秒各两位。秒(以及三段里的分)
  * 必须小于 60,否则是 `undefined`。其余 —— 空串、一段、四段、全角冒号、小数、别的类型 —— 同样是 `undefined`。
- * 秒数本来就是数字的(链接预览手里的 `VideoInfo.duration`)不需要它,所以不收数字。
+ * 秒数本来就是数字的(链接预览手里的 `VideoResponse.duration`)不需要它,所以不收数字。
  */
-export function parseBiliClock(raw: unknown): number | undefined {
+export function parseClock(raw: unknown): number | undefined {
 	if (typeof raw !== "string") return undefined;
 	const hit = CLOCK_TEXT.exec(raw.trim());
 	if (!hit) return undefined;

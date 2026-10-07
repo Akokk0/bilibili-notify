@@ -69,7 +69,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 	bus.on("fans-refreshed", ({ entries }) => {
 		snapshots.push(entries);
 	});
-	const getRelationStat = vi.fn(async (uid: string) => ({
+	const fetchRelationStat = vi.fn(async (uid: string) => ({
 		code: 0,
 		data: { follower: followers.get(uid) ?? 0 },
 	}));
@@ -99,9 +99,9 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
 		}),
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat,
-			getUserCardInfo: vi.fn(async (uid: string) => ({
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat,
+			fetchUserCard: vi.fn(async (uid: string) => ({
 				code: 0,
 				data: { card: { fans: followers.get(uid) ?? 0, name: `UP${uid}`, face: "", sign: "" } },
 			})),
@@ -117,7 +117,7 @@ async function start(initial: ReturnType<typeof biliSub>[]) {
 		followers,
 		runtime,
 		snapshots,
-		getRelationStat,
+		fetchRelationStat,
 		setSubs(next: ReturnType<typeof biliSub>[]) {
 			subs = next;
 		},
@@ -149,12 +149,12 @@ describe("fans poller:粉丝文件按订阅 id 读写", () => {
 		const gate = new Promise<void>((r) => {
 			release = r;
 		});
-		p.getRelationStat.mockImplementationOnce(async () => {
+		p.fetchRelationStat.mockImplementationOnce(async () => {
 			await gate;
 			return { code: 0, data: { follower: 101 } };
 		});
 		const inFlight = p.handle.pollNow();
-		await vi.waitFor(() => expect(p.getRelationStat).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(p.fetchRelationStat).toHaveBeenCalledTimes(1));
 
 		// 删掉 a、立刻又订了同一个 uid(新订阅 id c)。
 		p.setSubs([biliSub("c", "1")]);
@@ -236,12 +236,12 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		const gate = new Promise<void>((r) => {
 			release = r;
 		});
-		p.getRelationStat.mockImplementationOnce(async () => {
+		p.fetchRelationStat.mockImplementationOnce(async () => {
 			await gate;
 			return { code: 0, data: { follower: 101 } };
 		});
 		const inFlight = p.handle.pollNow();
-		await vi.waitFor(() => expect(p.getRelationStat).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(p.fetchRelationStat).toHaveBeenCalledTimes(1));
 
 		p.setSubs([]);
 		p.bus.emit("subscription-changed", {

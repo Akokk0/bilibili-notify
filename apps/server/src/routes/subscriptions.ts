@@ -134,7 +134,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		if (!engines) return;
 		const uid = subscriptionIdentityOf(sub).externalId;
 		try {
-			const res = await engines.api.getUserCardInfo(uid);
+			const res = await engines.api.fetchUserCard(uid);
 			if (res.code !== 0 || !res.data?.card) return;
 			const card = res.data.card;
 			const cachedProfile: CachedProfile = {
@@ -255,7 +255,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 
 	/**
 	 * Pre-flight UID resolution for the "add UP" dialog. Hits B-station's user
-	 * card endpoint via BilibiliAPI; on success returns the four fields the
+	 * card endpoint via Api; on success returns the four fields the
 	 * client wants to show in confirmation (and writes back into
 	 * Subscription.cachedProfile when the user clicks add).
 	 *
@@ -330,7 +330,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		const engines = deps.runtime.engines;
 		if (!engines) return respondFailure(c, fail("unavailable", BILI_API_NOT_READY_MESSAGE));
 		try {
-			const res = await engines.api.getUserCardInfo(uid);
+			const res = await engines.api.fetchUserCard(uid);
 			if (res.code !== 0 || !res.data?.card) {
 				// 现在的意思照旧:B 站回了非 0 就当「查无此人」(风控 / 未登录也在里头 —— 分类是 3a 的
 				// `searchCreators` 的事)。B 站的数字码只放 upstreamCode。

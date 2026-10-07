@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { type CardKind, type Disposable, formatDuration } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import type { LiveRoomInfo } from "../api/index.js";
+import type { LiveRoomResponse } from "../api/index.js";
 import type { LiveEvent } from "./events.js";
-import { biliLiveTimeToIso } from "./live-card-input";
+import { liveTimeToIso } from "./live-card-input";
 import { liveEndGraceMinutes, rotateLiveCover } from "./live-settings";
 import { type CustomCardStyleLike, LivePushType, type SubItemView } from "./push-like";
 import {
@@ -37,7 +37,7 @@ export abstract class RoomSessionBase {
 
 	protected liveTime!: string;
 	protected liveStatus = false;
-	protected liveRoomInfo: LiveRoomInfo["data"] | undefined;
+	protected liveRoomInfo: LiveRoomResponse["data"] | undefined;
 	protected masterInfo: MasterInfo | undefined;
 	protected readonly liveData: LiveData = {};
 
@@ -204,7 +204,7 @@ export abstract class RoomSessionBase {
 		this.ctx.emitLiveState(
 			this.sub.uid,
 			next ? "live" : "idle",
-			next ? biliLiveTimeToIso(this.liveRoomInfo?.live_time) : endedAt,
+			next ? liveTimeToIso(this.liveRoomInfo?.live_time) : endedAt,
 		);
 	}
 
@@ -256,7 +256,7 @@ export abstract class RoomSessionBase {
 	 * 读的是 {@link liveTime} —— 调用前它要已经落定。
 	 */
 	protected liveElapsed(): string {
-		return formatDuration(biliLiveTimeToIso(this.liveTime) ?? Number.NaN);
+		return formatDuration(liveTimeToIso(this.liveTime) ?? Number.NaN);
 	}
 
 	/**
@@ -720,7 +720,7 @@ export abstract class RoomSessionBase {
 			`[stat] 开播时粉丝数：${this.masterInfo.liveOpenFollowerNum}，下播时粉丝数：${this.masterInfo.liveEndFollowerNum}，粉丝数变化：${this.masterInfo.liveFollowerChange}`,
 		);
 
-		// live_time 是北京时间,兜底也得按北京时间拼:读它的 biliLiveTimeToIso 一律当北京时间读。
+		// live_time 是北京时间,兜底也得按北京时间拼:读它的 liveTimeToIso 一律当北京时间读。
 		this.liveTime =
 			this.liveRoomInfo.live_time ||
 			DateTime.now().setZone("UTC+8").toFormat("yyyy-MM-dd HH:mm:ss");

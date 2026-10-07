@@ -15,7 +15,7 @@ function guardBuy(over: Partial<GuardBuy> = {}): GuardBuy {
 		kind: "guard-buy",
 		guardLevel: 3,
 		giftName: "舰长",
-		user: { uid: 1001, uname: "示例观众" },
+		user: { uid: 1001, name: "示例观众" },
 		...over,
 	};
 }

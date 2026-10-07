@@ -18,7 +18,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { LINK_LIMITS, type LinkLimits } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { VideoInfo, VideoRef } from "../../bilibili/api/index.js";
+import type { VideoRef, VideoResponse } from "../../bilibili/api/index.js";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
 import { createLinkParser, type LinkParser, type LinkReplyDestination } from "../link-parser.js";
 
@@ -27,7 +27,7 @@ const GROUP = 123456;
 const BOT = 10000;
 const SOMEONE = 20002;
 
-const VIDEO: VideoInfo = {
+const VIDEO: VideoResponse = {
 	bvid: "BV1zMtU6uEEb",
 	aid: 114514,
 	title: "示例标题",
@@ -90,7 +90,7 @@ function makeParser(
 		groups: {},
 		...over,
 	};
-	const getVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
+	const fetchVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	const generatePostCard = vi.fn(
 		async (_post: Post, _colors?: CardColorOptions, _options?: { priority?: RenderPriority }) =>
@@ -115,7 +115,7 @@ function makeParser(
 	const parser = createLinkParser({
 		logger,
 		config: readConfig,
-		api: { getVideoInfo, resolveShortLink },
+		api: { fetchVideoInfo, resolveShortLink },
 		renderer,
 		presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
 		send,
@@ -130,7 +130,7 @@ function makeParser(
 		config,
 		readConfig,
 		renderer,
-		getVideoInfo,
+		fetchVideoInfo,
 		resolveShortLink,
 		generatePostCard,
 		send,
@@ -147,7 +147,7 @@ describe("createLinkParser", () => {
 		const h = makeParser();
 		await feed(h.parser, groupFrame("看这个 https://www.bilibili.com/video/BV1zMtU6uEEb/ 好看"));
 
-		expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+		expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
 
 		expect(h.generatePostCard).toHaveBeenCalledTimes(1);
 		const post = firstArg(h.generatePostCard.mock.calls);
@@ -195,27 +195,27 @@ describe("createLinkParser", () => {
 		it("功能关着:不打接口、不发", async () => {
 			const h = makeParser({ enabled: false });
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
 		it("私聊里贴链接不算(这版只做群)", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame(LINK, { message_type: "private", group_id: undefined }));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
 		it("机器人自己发的消息不解析", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame(LINK, { user_id: BOT }));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 		});
 
 		it("正文里没有链接就不打接口 —— 连配置都不读:群里每句话都进这儿,读配置要整份深拷贝", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame("今天天气不错"));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.readConfig).not.toHaveBeenCalled();
 		});
 
@@ -224,7 +224,7 @@ describe("createLinkParser", () => {
 			const parser = createLinkParser({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
 				config: () => h.config,
-				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
+				api: { fetchVideoInfo: h.fetchVideoInfo, resolveShortLink: h.resolveShortLink },
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
@@ -240,7 +240,7 @@ describe("createLinkParser", () => {
 			const parser = createLinkParser({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
 				config: () => h.config,
-				api: { getVideoInfo: h.getVideoInfo, resolveShortLink: h.resolveShortLink },
+				api: { fetchVideoInfo: h.fetchVideoInfo, resolveShortLink: h.resolveShortLink },
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
@@ -248,7 +248,7 @@ describe("createLinkParser", () => {
 				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame(LINK));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 	});
@@ -280,10 +280,10 @@ describe("createLinkParser", () => {
 
 		it("链接坏了也吃冷却:同一条坏链接反复贴,接口只被打一次", async () => {
 			const h = makeParser();
-			h.getVideoInfo.mockRejectedValue(new Error("获取视频信息失败(-404): 啥都木有"));
+			h.fetchVideoInfo.mockRejectedValue(new Error("获取视频信息失败(-404): 啥都木有"));
 			await feed(h.parser, groupFrame(LINK));
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.getVideoInfo).toHaveBeenCalledTimes(1);
+			expect(h.fetchVideoInfo).toHaveBeenCalledTimes(1);
 			expect(h.sent).toHaveLength(0);
 		});
 	});
@@ -325,7 +325,7 @@ describe("createLinkParser", () => {
 				await new Promise((r) => setTimeout(r, 1));
 			}
 			// 第 maxInflight+1 条连接口都没打 —— 不是排队,是直接放弃。
-			expect(h.getVideoInfo).toHaveBeenCalledTimes(LINK_LIMITS.maxInflight);
+			expect(h.fetchVideoInfo).toHaveBeenCalledTimes(LINK_LIMITS.maxInflight);
 			for (const r of release) r();
 			await Promise.all(runs);
 			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight);
@@ -356,7 +356,7 @@ describe("createLinkParser", () => {
 
 		it("接口失败:不发任何东西,handle 正常返回", async () => {
 			const h = makeParser();
-			h.getVideoInfo.mockRejectedValue(new Error("boom"));
+			h.fetchVideoInfo.mockRejectedValue(new Error("boom"));
 			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
 			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
@@ -388,7 +388,7 @@ describe("createLinkParser", () => {
 				cardLinks: [],
 				miniAppCardLinks: [],
 			});
-			expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+			expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
 			expect(h.sent).toHaveLength(1);
 			expect(h.sent[0]?.dest).toEqual({
 				platform: "qq-official",
@@ -436,7 +436,7 @@ describe("createLinkParser", () => {
 				await feed(h.parser, cardFrame());
 				expect(h.sent).toHaveLength(0);
 				expect(h.resolveShortLink).not.toHaveBeenCalled();
-				expect(h.getVideoInfo).not.toHaveBeenCalled();
+				expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			}
 		});
 
@@ -472,7 +472,7 @@ describe("createLinkParser", () => {
 			);
 			await feed(h.parser, groupFrame("分享 https://b23.tv/abc123"));
 			expect(h.resolveShortLink).toHaveBeenCalledWith("https://b23.tv/abc123");
-			expect(h.getVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+			expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
 			expect(h.sent).toHaveLength(1);
 		});
 
@@ -480,7 +480,7 @@ describe("createLinkParser", () => {
 			const h = makeParser();
 			h.resolveShortLink.mockResolvedValue(null);
 			await feed(h.parser, groupFrame("https://b23.tv/notvideo"));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
@@ -506,8 +506,8 @@ describe("createLinkParser", () => {
 				.map((id) => `https://www.bilibili.com/video/${id}`)
 				.join(" ");
 			await feed(h.parser, groupFrame(text));
-			expect(h.getVideoInfo).toHaveBeenCalledTimes(3);
-			expect(h.getVideoInfo.mock.calls.map(([ref]) => ref)).toEqual([
+			expect(h.fetchVideoInfo).toHaveBeenCalledTimes(3);
+			expect(h.fetchVideoInfo.mock.calls.map(([ref]) => ref)).toEqual([
 				{ bvid: "BV1aaaaaaaaa" },
 				{ bvid: "BV1bbbbbbbbb" },
 				{ bvid: "BV1ccccccccc" },
@@ -531,7 +531,7 @@ describe("createLinkParser", () => {
 		it("这个群的答案是不解析 → 不打接口、不碰渲染器、不发", async () => {
 			const h = makeParser({}, undefined, { policyFor: only(`onebot:${ADAPTER}:999999`) });
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.getVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.renderer).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});

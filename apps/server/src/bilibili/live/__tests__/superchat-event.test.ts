@@ -16,7 +16,7 @@ function superchat(over: Partial<SuperChat> = {}): SuperChat {
 		kind: "superchat",
 		content: "主播加油！",
 		price: 30,
-		user: { uid: 2002, uname: "示例观众" },
+		user: { uid: 2002, name: "示例观众" },
 		...over,
 	};
 }

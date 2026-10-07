@@ -2,14 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { overridableApi } from "../api-overrides.js";
 
 /**
- * 传给引擎的 `api` 外面套一层:平时原样透传(连 `this` 都保住 —— BilibiliAPI 是个类,方法里
+ * 传给引擎的 `api` 外面套一层:平时原样透传(连 `this` 都保住 —— Api 是个类,方法里
  * 到处是 `this.`),devtools 想让某个方法说谎时按方法名盖一下,收摊就摘掉。引擎拿到的是
  * 同一个对象,从头到尾不知道有这一层。
  */
 
 class FakeApi {
 	private secret = "real";
-	async getLiveRoomInfo(roomId: string) {
+	async fetchLiveRoomInfo(roomId: string) {
 		return { code: 0, data: { room_id: Number(roomId), live_status: 0, from: this.secret } };
 	}
 	getUserAgent() {
@@ -21,18 +21,18 @@ describe("overridableApi", () => {
 	it("没盖的时候原样透传,this 也保住", async () => {
 		const { api } = overridableApi(new FakeApi());
 		expect(api.getUserAgent()).toBe("UA/real");
-		expect(await api.getLiveRoomInfo("1")).toMatchObject({
+		expect(await api.fetchLiveRoomInfo("1")).toMatchObject({
 			data: { live_status: 0, from: "real" },
 		});
 	});
 
 	it("盖上之后走假的,假的还能拿到真的(往真结果上打补丁)", async () => {
 		const { api, override } = overridableApi(new FakeApi());
-		override("getLiveRoomInfo", async (real, roomId) => {
+		override("fetchLiveRoomInfo", async (real, roomId) => {
 			const res = await real(roomId);
 			return { ...res, data: { ...res.data, live_status: 1 } };
 		});
-		expect(await api.getLiveRoomInfo("7")).toMatchObject({
+		expect(await api.fetchLiveRoomInfo("7")).toMatchObject({
 			data: { room_id: 7, live_status: 1, from: "real" },
 		});
 		// 没盖的方法不受影响。
@@ -41,17 +41,17 @@ describe("overridableApi", () => {
 
 	it("摘掉就回真的;盖两次以后来的为准", async () => {
 		const { api, override, clear } = overridableApi(new FakeApi());
-		override("getLiveRoomInfo", async () => ({
+		override("fetchLiveRoomInfo", async () => ({
 			code: 0,
 			data: { room_id: 1, live_status: 1, from: "a" },
 		}));
-		override("getLiveRoomInfo", async () => ({
+		override("fetchLiveRoomInfo", async () => ({
 			code: 0,
 			data: { room_id: 1, live_status: 2, from: "b" },
 		}));
-		expect((await api.getLiveRoomInfo("1")).data.live_status).toBe(2);
-		clear("getLiveRoomInfo");
-		expect((await api.getLiveRoomInfo("1")).data.live_status).toBe(0);
+		expect((await api.fetchLiveRoomInfo("1")).data.live_status).toBe(2);
+		clear("fetchLiveRoomInfo");
+		expect((await api.fetchLiveRoomInfo("1")).data.live_status).toBe(0);
 	});
 
 	it("引擎拿到的就是同一个对象:两次取同名方法是同一个函数(有人拿它当 key 也不炸)", () => {
@@ -72,7 +72,7 @@ describe("overridableApi", () => {
 	});
 
 	it("覆盖在**调用时**生效:先把方法引用取走,之后再盖 / 再摘,那个引用照样跟着走", () => {
-		// 引擎多半在构造时就把方法存下来了(`this.api.getLiveRoomInfo` 之类),devtools 是后来才
+		// 引擎多半在构造时就把方法存下来了(`this.api.fetchLiveRoomInfo` 之类),devtools 是后来才
 		// 盖的。覆盖要是烤在取出来的那一刻,存好的引用永远是真的,场景就白跑了。
 		const { api, override, clear } = overridableApi(new FakeApi());
 		const ref = api.getUserAgent;

@@ -1,5 +1,5 @@
 import type { DevParamValues } from "@bilibili-notify/contract";
-import type { BilibiliAPI } from "../../bilibili/api/index.js";
+import type { Api } from "../../bilibili/api/index.js";
 import type { OverridableApi } from "../api-overrides.js";
 import type { LiveRoomHandle, LiveRooms } from "../live-rooms.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
@@ -9,7 +9,7 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
  * 回调,后面渲染开播卡、推送、下播卡、词云、总结全是真链路(想不出网就先开截流)。
  *
  * 光塞事件不够:room-session 收到开播会立刻拉房间信息,拉到 `live_status: 0` 就当没开;
- * 而 `live_time` 是这一场的身份(统计按它认场次)。所以假直播期间 `getLiveRoomInfo` 对那个
+ * 而 `live_time` 是这一场的身份(统计按它认场次)。所以假直播期间 `fetchLiveRoomInfo` 对那个
  * 房间打补丁 —— 真结果 + `live_status: 1` + `live_time` = 现在 + 假标题;别的房间不受影响,
  * 下播即摘掉。
  */
@@ -33,8 +33,8 @@ export interface RoomPickerDeps {
 }
 
 export interface LiveScenarioDeps extends RoomPickerDeps {
-	/** 用 Pick 而不是整个 OverridableApi<BilibiliAPI>:测试里只需要装得下 `getLiveRoomInfo`。 */
-	api: OverridableApi<Pick<BilibiliAPI, "getLiveRoomInfo">>;
+	/** 用 Pick 而不是整个 OverridableApi<Api>:测试里只需要装得下 `fetchLiveRoomInfo`。 */
+	api: OverridableApi<Pick<Api, "fetchLiveRoomInfo">>;
 }
 
 /**
@@ -87,10 +87,10 @@ export function liveScenarios(deps: LiveScenarioDeps): DevScenarioDef[] {
 
 	function syncOverride(): void {
 		if (fakes.size === 0) {
-			deps.api.clear("getLiveRoomInfo");
+			deps.api.clear("fetchLiveRoomInfo");
 			return;
 		}
-		deps.api.override("getLiveRoomInfo", async (real, roomId) => {
+		deps.api.override("fetchLiveRoomInfo", async (real, roomId) => {
 			const res = await real(roomId);
 			const fake = fakes.get(Number(roomId));
 			if (!fake || !res.data) return res;

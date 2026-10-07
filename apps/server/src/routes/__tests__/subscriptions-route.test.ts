@@ -4,7 +4,7 @@
  * cachedProfile 已从 Subscription 外置(M2)。DTO 必须把 cachedProfile 从 SubRuntimeStore join 回(有才带,
  * 无则 undefined)。从前还补一个恒为「未知」的 `state` 常量,没人写过它,1.0 第 2 期 ⑫ 删掉 —— 这里钉着它不再回来。
  * POST 创建后服务端自 seed:engines 就绪且该 sub 尚无 cachedProfile 时,调
- * getUserCardInfo 拉一次写进 SubRuntimeStore;失败 best-effort 不致命;engines
+ * fetchUserCard 拉一次写进 SubRuntimeStore;失败 best-effort 不致命;engines
  * 为 null 时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
  */
 
@@ -40,7 +40,7 @@ interface Harness {
 	patchSubscription: ReturnType<typeof vi.fn>;
 	rtGet: ReturnType<typeof vi.fn>;
 	rtPatch: ReturnType<typeof vi.fn>;
-	getUserCardInfo: ReturnType<typeof vi.fn>;
+	fetchUserCard: ReturnType<typeof vi.fn>;
 	follow: ReturnType<typeof vi.fn>;
 }
 
@@ -61,7 +61,7 @@ function makeHarness(opts?: {
 	const rtGet = vi.fn((id: string) => rtRecord[id]);
 	const rtPatch = vi.fn(async () => {});
 
-	const getUserCardInfo = vi.fn(async (_uid: string) => {
+	const fetchUserCard = vi.fn(async (_uid: string) => {
 		if (enginesMode === "throw") throw new Error("network down");
 		if (enginesMode === "code-fail") return { code: -404, data: null };
 		return {
@@ -86,7 +86,7 @@ function makeHarness(opts?: {
 		return { code: 0, message: "0" };
 	});
 
-	const engines = enginesMode === "null" ? null : { api: { getUserCardInfo, follow } };
+	const engines = enginesMode === "null" ? null : { api: { fetchUserCard, follow } };
 
 	const deps = {
 		store: { getSubscriptions, upsertSubscription, patchSubscription },
@@ -104,7 +104,7 @@ function makeHarness(opts?: {
 		patchSubscription,
 		rtGet,
 		rtPatch,
-		getUserCardInfo,
+		fetchUserCard,
 		follow,
 	};
 }
@@ -161,7 +161,7 @@ function seedCalls(h: Harness) {
 describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile", () => {
 	beforeEach(() => vi.restoreAllMocks());
 
-	it("新 sub 且 engines 就绪 → 调 getUserCardInfo 并 patch 进 SubRuntimeStore", async () => {
+	it("新 sub 且 engines 就绪 → 调 fetchUserCard 并 patch 进 SubRuntimeStore", async () => {
 		const h = makeHarness({ rtRecord: {} });
 		const res = await h.app.request("/", {
 			method: "POST",
@@ -170,7 +170,7 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		});
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
-		expect(h.getUserCardInfo).toHaveBeenCalledWith(SUB.identity.externalId);
+		expect(h.fetchUserCard).toHaveBeenCalledWith(SUB.identity.externalId);
 		const seeds = seedCalls(h);
 		expect(seeds).toHaveLength(1);
 		const [id, patch] = seeds[0] as [string, { cachedProfile: typeof PROFILE }];
@@ -196,7 +196,7 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 			body: JSON.stringify(SUB),
 		});
 		expect(res.status).toBe(200);
-		expect(h.getUserCardInfo).not.toHaveBeenCalled();
+		expect(h.fetchUserCard).not.toHaveBeenCalled();
 		expect(seedCalls(h)).toHaveLength(0);
 	});
 
@@ -211,7 +211,7 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		expect(seedCalls(h)).toHaveLength(0);
 	});
 
-	it("getUserCardInfo 抛错 → best-effort,POST 仍 200", async () => {
+	it("fetchUserCard 抛错 → best-effort,POST 仍 200", async () => {
 		const h = makeHarness({ engines: "throw" });
 		const res = await h.app.request("/", {
 			method: "POST",
@@ -222,7 +222,7 @@ describe("/api/subscriptions POST — 创建后服务端自 seed cachedProfile",
 		expect(seedCalls(h)).toHaveLength(0);
 	});
 
-	it("getUserCardInfo 返回 code!=0 → 不 patch,POST 仍 200", async () => {
+	it("fetchUserCard 返回 code!=0 → 不 patch,POST 仍 200", async () => {
 		const h = makeHarness({ engines: "code-fail" });
 		const res = await h.app.request("/", {
 			method: "POST",
@@ -459,7 +459,7 @@ describe("/api/subscriptions × 拓展订阅", () => {
 		expect(res.status).toBe(200);
 		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
 		expect(h.follow).not.toHaveBeenCalled();
-		expect(h.getUserCardInfo).not.toHaveBeenCalled();
+		expect(h.fetchUserCard).not.toHaveBeenCalled();
 		expect(h.rtPatch).not.toHaveBeenCalled();
 	});
 

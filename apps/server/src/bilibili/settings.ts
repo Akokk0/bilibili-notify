@@ -20,7 +20,7 @@ import { CronTime } from "cron";
 import { z } from "zod";
 import type { ConfigStore, IntegrationSettingsSegment } from "../config/store.js";
 
-export const BilibiliSettingsSchema = z.object({
+export const BiliSettingsSchema = z.object({
 	/**
 	 * 动态轮询的 cron。读盘只认它是字符串:对存量宽松,一条解析不了的老值不该让开机失败(运行期
 	 * `new CronJob` 另有 try/catch 兜着);能不能解析在写入那一道核({@link settingsSegment})。
@@ -29,7 +29,7 @@ export const BilibiliSettingsSchema = z.object({
 	/** 登录健康检查的间隔(分钟)。 */
 	healthCheckMinutes: z.number().int().min(5).max(180).default(DEFAULT_HEALTH_CHECK_MINUTES),
 });
-export type BilibiliSettings = z.infer<typeof BilibiliSettingsSchema>;
+export type BiliSettings = z.infer<typeof BiliSettingsSchema>;
 
 /** cron 能不能解析:委托给 `cron` 包的 `CronTime`,与动态引擎、粉丝轮询实际排程用的是同一个解析器。 */
 function isParsableCron(expr: string): boolean {
@@ -46,9 +46,9 @@ function isParsableCron(expr: string): boolean {
  * `new CronJob` 同步抛错、把整个服务崩穿 —— 拦在保存这一刻,主人当场看见原因。只核这次改了的 cron:盘上留着的
  * 一条老坏值不挡主人改健康检查间隔(与从前路由上那道「补丁里带了才核」同一个口径)。
  */
-export const settingsSegment: IntegrationSettingsSegment<BilibiliSettings> = {
+export const settingsSegment: IntegrationSettingsSegment<BiliSettings> = {
 	key: BILIBILI_SOURCE_KEY,
-	schema: BilibiliSettingsSchema,
+	schema: BiliSettingsSchema,
 	checkWrite(next, prev) {
 		if (next.dynamicCron === prev?.dynamicCron || isParsableCron(next.dynamicCron)) return [];
 		return [{ path: ["dynamicCron"], message: `不是合法的 cron 表达式："${next.dynamicCron}"` }];
@@ -56,7 +56,7 @@ export const settingsSegment: IntegrationSettingsSegment<BilibiliSettings> = {
 };
 
 /** 此刻的设置。 */
-export function settingsOf(store: Pick<ConfigStore, "getIntegrationSettings">): BilibiliSettings {
+export function settingsOf(store: Pick<ConfigStore, "getIntegrationSettings">): BiliSettings {
 	return store.getIntegrationSettings(settingsSegment);
 }
 
@@ -66,7 +66,7 @@ export function settingsOf(store: Pick<ConfigStore, "getIntegrationSettings">): 
  */
 export function watchSettings(
 	store: Pick<ConfigStore, "getIntegrationSettings" | "onChange">,
-	apply: (prev: BilibiliSettings, next: BilibiliSettings) => void,
+	apply: (prev: BiliSettings, next: BiliSettings) => void,
 ): Disposable {
 	let prev = settingsOf(store);
 	return store.onChange((scope) => {

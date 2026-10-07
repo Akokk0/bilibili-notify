@@ -5,8 +5,8 @@
  * Two routing paths per kind, picked by what the request body's `content`
  * field carries:
  *
- *   live + content.roomId  → fetch real LiveRoomInfo + MasterInfo via
- *                            BilibiliAPI, render through ImageRenderer
+ *   live + content.roomId  → fetch real LiveRoomResponse + MasterInfo via
+ *                            Api, render through ImageRenderer
  *                            (same code path as production push).
  *   post + content.uid     → fetch the user's space dynamic feed,
  *                            pick the offset-th item, render via
@@ -71,7 +71,7 @@ import {
 import { Hono } from "hono";
 import { z } from "zod";
 import { AssetRejectedError } from "../assets/asset-store.js";
-import type { BilibiliAPI } from "../bilibili/api/index.js";
+import type { Api } from "../bilibili/api/index.js";
 import { postFromDynamic } from "../bilibili/dynamic/index.js";
 import { liveCardInputFromRoomInfo, superchatEventFromLiveEvent } from "../bilibili/live/index.js";
 import { prefetchCardSkinAssets, readCardSkinAssetDataUrl } from "../card-skins/asset-url.js";
@@ -117,10 +117,10 @@ export interface CardsRouteOptions {
 	 */
 	initialChromeSource?: ChromeSource;
 	/**
-	 * BilibiliAPI from authSystem. When null, real-data fetch paths
+	 * Api from authSystem. When null, real-data fetch paths
 	 * (live + dyn with content) return an actionable error.
 	 */
-	api: BilibiliAPI | null;
+	api: Api | null;
 	/**
 	 * 探测本机 Chrome 路径(默认 resolveChromePath 扫常见安装位置);注入便于测试。
 	 * 供 GET /chrome 的「自动探测」按钮。
@@ -168,7 +168,7 @@ const StyleSchema = z.object({
 
 const ContentSchema = z
 	.object({
-		// live: roomId triggers a real fetch via BilibiliAPI when present + non-empty.
+		// live: roomId triggers a real fetch via Api when present + non-empty.
 		roomId: z.string().optional(),
 		// dyn: uid + offset (1 = newest). offset defaults to 1 when only uid given.
 		uid: z.string().optional(),
@@ -729,7 +729,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 	opts.onSkinShot?.(shootSavedSkin);
 
 	// 登录的 B 站账号的名字(缓存快照)。SC / 上舰预览拿它当**发送者**(付 SC 的人、新上舰的人),接收方是订阅的 UP,
-	// 预览里仍是「示例 UP 主」。这两种预览不画头像,所以只取名字,不再为头像多调 `getUserCardInfo`。每 5 分钟刷新;
+	// 预览里仍是「示例 UP 主」。这两种预览不画头像,所以只取名字,不再为头像多调 `fetchUserCard`。每 5 分钟刷新;
 	// 没登录或调用失败时回 null(曾成功过则沿用旧快照)。
 	const LOGGED_IN_TTL_MS = 5 * 60 * 1000;
 	let loggedInCache: { name: string; ts: number } | null = null;
@@ -807,7 +807,7 @@ export function createCardsRoute(opts: CardsRouteOptions): Hono {
 					kind: "superchat",
 					content: content?.text?.trim() || "主播加油！这首要听到！示例 UP 主唱得太好了！",
 					price: content?.amount ?? 30,
-					user: { uid: 0, uname: me?.name ?? "示例粉丝" },
+					user: { uid: 0, name: me?.name ?? "示例粉丝" },
 				},
 				"preview",
 			);
@@ -1105,7 +1105,7 @@ interface BilibiliEnvelope<T> {
  * per-UP 预览传该 UP 的 uid,后端实时拉真实资料,免依赖 dashboard 端可能缺失的
  * cachedProfile。走 getMasterInfo(与 live 真实渲染同一接口),失败抛 Error。
  */
-async function resolveMasterInfo(api: BilibiliAPI, uid: string): Promise<{ name: string }> {
+async function resolveMasterInfo(api: Api, uid: string): Promise<{ name: string }> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
 	const master = (await api.getMasterInfo(uid)) as BilibiliEnvelope<{
 		info: { uname: string };
@@ -1117,13 +1117,13 @@ async function resolveMasterInfo(api: BilibiliAPI, uid: string): Promise<{ name:
 }
 
 /**
- * uid → 直播间号。走 `getUserInfo(uid).data.live_room.roomid`(与 live 引擎
+ * uid → 直播间号。走 `fetchUserInfo(uid).data.live_room.roomid`(与 live 引擎
  * listener 解析房间号同一路径)。per-UP 自动预览只持有 uid,live 真实拉取前先解析。
  * 未开通直播间 / 解析失败抛 Error。
  */
-export async function resolveRoomIdFromUid(api: BilibiliAPI, uid: string): Promise<string> {
+export async function resolveRoomIdFromUid(api: Api, uid: string): Promise<string> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
-	const info = (await api.getUserInfo(uid)) as BilibiliEnvelope<{
+	const info = (await api.fetchUserInfo(uid)) as BilibiliEnvelope<{
 		live_room?: { roomid?: number };
 	}>;
 	const roomid = info?.data?.live_room?.roomid;
@@ -1133,7 +1133,7 @@ export async function resolveRoomIdFromUid(api: BilibiliAPI, uid: string): Promi
 }
 
 async function renderRealLive(
-	api: BilibiliAPI,
+	api: Api,
 	renderer: ImageRenderer,
 	roomId: string,
 	style: PreviewStyle,
@@ -1142,7 +1142,7 @@ async function renderRealLive(
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(roomId)) throw new Error("直播间号必须是纯数字");
 
-	const room = (await api.getLiveRoomInfo(roomId)) as BilibiliEnvelope<{
+	const room = (await api.fetchLiveRoomInfo(roomId)) as BilibiliEnvelope<{
 		uid: number;
 		live_status: number;
 		short_id?: number;
@@ -1187,7 +1187,7 @@ async function renderRealLive(
 }
 
 async function renderRealDynamic(
-	api: BilibiliAPI,
+	api: Api,
 	renderer: ImageRenderer,
 	uid: string,
 	offset: number,
@@ -1195,7 +1195,7 @@ async function renderRealDynamic(
 ): Promise<Buffer> {
 	if (!/^\d+$/.test(uid)) throw new Error("UID 必须是纯数字");
 
-	const feed = (await api.getUserSpaceDynamic(uid)) as BilibiliEnvelope<{
+	const feed = (await api.fetchUserSpaceDynamic(uid)) as BilibiliEnvelope<{
 		// biome-ignore lint/suspicious/noExplicitAny: Bilibili 动态接口返回原样透传给渲染器
 		items?: any[];
 	}>;

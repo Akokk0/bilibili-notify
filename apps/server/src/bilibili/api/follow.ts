@@ -1,4 +1,4 @@
-import type { BilibiliAPI } from "./bilibili-api.js";
+import type { Api } from "./api.js";
 
 /**
  * 关注 UP 主 —— 订阅能否工作的**前提**,不是可有可无的元数据。
@@ -32,7 +32,7 @@ export interface FollowOutcome {
  * **绝不抛**:网络炸 / 响应结构不符都返回 `ok:false` + 原因。调用方(新增订阅、启动
  * 时自愈)都不该因为一次关注失败就崩掉或中断整批。
  */
-export async function ensureFollowed(api: BilibiliAPI, uid: string): Promise<FollowOutcome> {
+export async function ensureFollowed(api: Api, uid: string): Promise<FollowOutcome> {
 	try {
 		const res = (await api.follow(uid)) as { code?: unknown; message?: unknown } | null;
 		const code = typeof res?.code === "number" ? res.code : -1;

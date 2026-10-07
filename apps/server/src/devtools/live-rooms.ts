@@ -1,4 +1,4 @@
-import type { LiveConnectionInfo } from "../bilibili/live/client.js";
+import type { LiveConnectionEvent } from "../bilibili/live/client.js";
 import type { LiveEvent } from "../bilibili/live/events.js";
 
 /**
@@ -14,16 +14,16 @@ export interface LiveRoomHandle {
 
 export interface LiveRooms {
 	/** 交给 `observeLiveConnections` 的那个回调。 */
-	observe(info: LiveConnectionInfo): void;
+	observe(info: LiveConnectionEvent): void;
 	find(roomId: number): LiveRoomHandle | undefined;
 	/** 现在连着的房号。 */
 	rooms(): number[];
 }
 
 export function createLiveRooms(): LiveRooms {
-	const byRoom = new Map<number, LiveConnectionInfo>();
+	const byRoom = new Map<number, LiveConnectionEvent>();
 
-	function live(roomId: number): LiveConnectionInfo | undefined {
+	function live(roomId: number): LiveConnectionEvent | undefined {
 		const info = byRoom.get(roomId);
 		if (!info) return undefined;
 		if (info.client.closed) {

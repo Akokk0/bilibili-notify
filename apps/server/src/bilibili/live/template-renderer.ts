@@ -59,7 +59,7 @@ export function applyTemplate(template: string, vars: Record<string, string>): s
 		.replaceAll("\\n", "\n");
 }
 
-/** Build the canonical room link from `LiveRoomInfo.data` style fields. */
+/** Build the canonical room link from `LiveRoomResponse.data` style fields. */
 export function buildRoomLink(info: { short_id: number; room_id: number }): string {
 	return `https://live.bilibili.com/${info.short_id === 0 ? info.room_id : info.short_id}`;
 }
@@ -72,7 +72,7 @@ export type LiveTextKind = "liveStart" | "liveStreaming" | "liveEnd";
  * 东西翻成它。数字由渲染排成「1.2万」(粉丝数变化带正负号),平台给的成品文字原样;没有的格子空着
  * (决策 56:拓展没报过资料,粉丝那一格就空着)。
  */
-export interface LiveTextValues {
+export interface LiveTextInput {
 	/** `{name}`。 */
 	name: string;
 	/** `{time}`:开播到此刻(下播:到下播那一刻)播了多久,已经排好的一句。 */
@@ -103,7 +103,7 @@ function textOf(v: number | string | undefined, format: (n: number) => string): 
 export function renderLiveText(
 	kind: LiveTextKind,
 	template: string | undefined,
-	values: LiveTextValues,
+	values: LiveTextInput,
 ): string {
 	const vars: Record<string, string> = { name: values.name, time: values.time };
 	switch (kind) {

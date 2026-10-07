@@ -10,9 +10,9 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { Api } from "../api";
 import { ApiClient } from "../api-client";
-import { BilibiliAPI } from "../bilibili-api";
-import { GET_VIDEO_INFO } from "../endpoints";
+import { VIDEO_INFO_URL } from "../endpoints";
 
 /** 真实接口 data 的形状(字段照 x/web-interface/view 抓包裁剪)。 */
 const RAW_VIDEO = {
@@ -33,7 +33,7 @@ const RAW_VIDEO = {
 
 function makeApi(respond: (url: string) => unknown, redirects: Record<string, string | null> = {}) {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
@@ -52,12 +52,12 @@ function makeApi(respond: (url: string) => unknown, redirects: Record<string, st
 	return { api, calls, redirectCalls };
 }
 
-describe("getVideoInfo", () => {
+describe("fetchVideoInfo", () => {
 	it("按 bvid 打到 web-interface/view,回来的是裁剪过的视频信息", async () => {
 		const { api, calls } = makeApi(() => ({ code: 0, message: "0", data: RAW_VIDEO }));
-		const info = await api.getVideoInfo({ bvid: "BV1zMtU6uEEb" });
+		const info = await api.fetchVideoInfo({ bvid: "BV1zMtU6uEEb" });
 		expect(calls).toHaveLength(1);
-		expect(calls[0]).toContain(GET_VIDEO_INFO);
+		expect(calls[0]).toContain(VIDEO_INFO_URL);
 		expect(calls[0]).toContain("bvid=BV1zMtU6uEEb");
 		expect(info).toEqual({
 			bvid: "BV1zMtU6uEEb",
@@ -83,14 +83,14 @@ describe("getVideoInfo", () => {
 
 	it("按 av 号则带 aid 参数", async () => {
 		const { api, calls } = makeApi(() => ({ code: 0, message: "0", data: RAW_VIDEO }));
-		await api.getVideoInfo({ aid: "170001" });
+		await api.fetchVideoInfo({ aid: "170001" });
 		expect(calls[0]).toContain("aid=170001");
 		expect(calls[0]).not.toContain("bvid=");
 	});
 
 	it("接口报错(视频不存在 / 不可见)就抛,带上对方的说法", async () => {
 		const { api } = makeApi(() => ({ code: -404, message: "啥都木有", data: null }));
-		await expect(api.getVideoInfo({ bvid: "BV1zMtU6uEEb" })).rejects.toThrow(/啥都木有/);
+		await expect(api.fetchVideoInfo({ bvid: "BV1zMtU6uEEb" })).rejects.toThrow(/啥都木有/);
 	});
 });
 

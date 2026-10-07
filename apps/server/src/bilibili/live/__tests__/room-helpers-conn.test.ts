@@ -26,7 +26,7 @@ vi.mock("../client.js", async (importOriginal) => {
 	};
 });
 
-const goodDanmuInfo = {
+const goodDanmakuInfo = {
 	code: 0,
 	data: {
 		token: "tok",
@@ -50,7 +50,7 @@ function makeCtx(streamKeyImpl: () => Promise<unknown>) {
 		track: () => {},
 	};
 	const api = {
-		getLiveRoomInfoStreamKey: vi.fn(streamKeyImpl),
+		fetchLiveRoomInfoStreamKey: vi.fn(streamKeyImpl),
 		getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 42 } })),
 		getBuvid3: vi.fn(async () => "buv"),
 		openDanmakuSocket: vi.fn((_url: string) => fakeSocket),
@@ -97,7 +97,7 @@ describe("startLiveRoomListener × 持续风控", () => {
 
 describe("startLiveRoomListener × 建连口", () => {
 	it("createSocket 接的是 api 的弹幕建连口:真调一次,地址原样交给它,拿回的 socket 原样交出去", async () => {
-		const { ctx, api } = makeCtx(async () => goodDanmuInfo);
+		const { ctx, api } = makeCtx(async () => goodDanmakuInfo);
 		await ctx.startLiveRoomListener("5050", () => {});
 
 		const options = vi.mocked(connectLiveRoom).mock.calls[0]?.[0];
@@ -109,7 +109,7 @@ describe("startLiveRoomListener × 建连口", () => {
 	});
 
 	it("不再自己拼握手头:交给 blive 的参数里没有 cookieHeader / userAgent", async () => {
-		const { ctx } = makeCtx(async () => goodDanmuInfo);
+		const { ctx } = makeCtx(async () => goodDanmakuInfo);
 		await ctx.startLiveRoomListener("5050", () => {});
 
 		const options = vi.mocked(connectLiveRoom).mock.calls[0]?.[0];
@@ -120,7 +120,7 @@ describe("startLiveRoomListener × 建连口", () => {
 
 describe("startLiveRoomListener × host 轮转", () => {
 	it("每轮建连换下一个 host,轮完回卷 —— 不钉死 host_list 首项", async () => {
-		const { ctx } = makeCtx(async () => goodDanmuInfo);
+		const { ctx } = makeCtx(async () => goodDanmakuInfo);
 		const onEvent = () => {};
 
 		for (let i = 0; i < 4; i++) {
@@ -138,7 +138,7 @@ describe("startLiveRoomListener × host 轮转", () => {
 	});
 
 	it("轮转只改次序不丢 host:每轮传给 client 的列表仍是全量", async () => {
-		const { ctx } = makeCtx(async () => goodDanmuInfo);
+		const { ctx } = makeCtx(async () => goodDanmakuInfo);
 		const onEvent = () => {};
 		await ctx.startLiveRoomListener("5050", onEvent);
 		ctx.closeListener("5050");

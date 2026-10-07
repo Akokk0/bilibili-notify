@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { BilibiliAPI } from "../bilibili-api";
+import { Api } from "../api";
 
 /**
  * ⑤ 风控收敛:持续 -352 的 wbi 签名请求不该被外层 this.retry 快速重试放大。
@@ -12,7 +12,7 @@ import { BilibiliAPI } from "../bilibili-api";
  */
 function makeApi(getImpl: (url: string) => unknown) {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({
+	const api = new Api({
 		serviceCtx: { logger } as never,
 		callbacks: {},
 	});
@@ -47,7 +47,7 @@ function makeApi(getImpl: (url: string) => unknown) {
 describe("wbiGet 持续 -352 收敛", () => {
 	it("持续 -352 → 抛错但不被外层 retry 放大(GET 次数收敛,不是 4 轮)", async () => {
 		const { api, calls } = makeApi(() => ({ code: -352 }));
-		await expect(api.getUserInfo("123")).rejects.toThrow();
+		await expect(api.fetchUserInfo("123")).rejects.toThrow();
 		// 一轮 wbiGet 至多 2 次 GET(首发 + 刷新后重试一次);外层不再重跑 3 轮。
 		expect(calls.get).toBeLessThanOrEqual(2);
 	});
@@ -58,7 +58,7 @@ describe("wbiGet 持续 -352 收敛", () => {
 			n++;
 			return n === 1 ? { code: -352 } : { code: 0, data: { ok: true } };
 		});
-		const res = (await api.getUserInfo("123")) as { code: number };
+		const res = (await api.fetchUserInfo("123")) as { code: number };
 		expect(res.code).toBe(0);
 	});
 });

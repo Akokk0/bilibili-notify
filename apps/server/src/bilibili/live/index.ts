@@ -6,7 +6,7 @@ export {
 } from "./listener-manager";
 // B 站房间数据 → 中立的直播卡输入(ADR-0019 决策 65 / 68)。直播引擎的推送与面板的真实拉取预览共用这一份,
 // 别再各翻一遍。
-export { type LiveRoomInfoFields, liveCardInputFromRoomInfo } from "./live-card-input";
+export { type LiveRoomFields, liveCardInputFromRoomInfo } from "./live-card-input";
 export {
 	LiveEngine,
 	type LiveEngineConfig,
@@ -36,9 +36,9 @@ export {
 	type CustomSpecialDanmakuUsersLike,
 	type CustomSpecialUsersEnterTheRoomLike,
 	type DynamicScopedChange,
-	LIVE_ROOM_MASTER_KEYS,
+	LIVE_ROOM_CREATOR_KEYS,
 	type LiveBroadcastOptions,
-	type LiveMasterFeature,
+	type LiveCreatorFeature,
 	type LiveMonitorInput,
 	type LivePushFeature,
 	LivePushType,
@@ -69,8 +69,8 @@ export {
 	buildRoomLink,
 	DEFAULT_LIVE_TEMPLATES,
 	LiveTemplateRenderer,
+	type LiveTextInput,
 	type LiveTextKind,
-	type LiveTextValues,
 	renderLiveText,
 } from "./template-renderer";
 export {

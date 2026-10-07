@@ -36,7 +36,7 @@ export function superchatEventFromLiveEvent(
 ): SuperchatEvent {
 	return {
 		subscriptionId,
-		viewer: { id: String(event.user.uid), name: event.user.uname },
+		viewer: { id: String(event.user.uid), name: event.user.name },
 		text: event.content,
 		amount: event.price,
 		currency: "CNY",

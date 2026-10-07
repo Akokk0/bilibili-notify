@@ -221,7 +221,7 @@ describe("正在直播 · 没配直播目标的提示", () => {
 		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
 	});
 
-	// 「监听开不开」手抄的三份清单之一(另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_MASTER_KEYS 与服务端的 getModuleState):
+	// 「监听开不开」手抄的三份清单之一(另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_CREATOR_KEYS 与服务端的 getModuleState):
 	// ⑬d 起周期「正在直播」有自己的特性与目标,只给它配了目标的订阅也会被监听,不该被算进「不会被监听」。
 	it("只给周期「正在直播」(liveStreaming)配了目标的 B 站订阅也不数", () => {
 		const routed = biliSub("s-1", "u1", "甲");

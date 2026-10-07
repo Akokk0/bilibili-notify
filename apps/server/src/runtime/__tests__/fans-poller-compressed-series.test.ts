@@ -84,9 +84,9 @@ async function start(subs: Subscription[], seeded: Record<string, SubRuntime>) {
 		} as never,
 		fansStore: createFollowersStore({ dataRoot: dataDir, logger: silent }),
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat: vi.fn(async () => ({ code: 0, data: { follower: 0 } })),
-			getUserCardInfo: vi.fn(async () => ({ code: 0, data: { card: {} } })),
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat: vi.fn(async () => ({ code: 0, data: { follower: 0 } })),
+			fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: {} } })),
 		} as never,
 		serviceCtx: serviceCtx as never,
 	});

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { StorageManager } from "@bilibili-notify/storage";
-import { BilibiliAPI } from "../../../api/index.js";
+import { Api } from "../../../api/index.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../../../..", import.meta.url));
 /** 服务端的数据目录;跑别的实例用 BN_DATA_DIR 指过去。 */
@@ -43,10 +43,10 @@ export function makeServiceCtx(logger: Logger = consoleLogger): ServiceContext {
 }
 
 /**
- * 用服务端落盘的登录态起一个**只读**的 BilibiliAPI。没有登录态直接退出进程 —— 三个脚本
+ * 用服务端落盘的登录态起一个**只读**的 Api。没有登录态直接退出进程 —— 三个脚本
  * 没有登录态都没法往下走。
  */
-export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<BilibiliAPI> {
+export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> {
 	const storage = new StorageManager({
 		serviceCtx,
 		paths: {
@@ -63,7 +63,7 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Bilib
 		);
 		process.exit(1);
 	}
-	const api = new BilibiliAPI({ serviceCtx });
+	const api = new Api({ serviceCtx });
 	await api.start();
 	await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
 	return api;

@@ -29,7 +29,7 @@ function start(list: () => unknown[]) {
 	const bus = createNodeMessageBus();
 	const prune = vi.fn(async (_keep: readonly string[]) => {});
 	const dropUid = vi.fn(async (_uid: string) => {});
-	const getRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
+	const fetchRelationStat = vi.fn(async () => ({ code: 0, data: { follower: 123 } }));
 	handle = startFansPoller({
 		isStatsEnabled: () => true,
 		bus,
@@ -52,9 +52,9 @@ function start(list: () => unknown[]) {
 			drop: dropUid,
 		} as never,
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat,
-			getUserCardInfo: vi.fn(),
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat,
+			fetchUserCard: vi.fn(),
 		} as never,
 		// 不放行启动那次延时 tick:只看各用例自己触发的那一轮。
 		serviceCtx: {
@@ -64,15 +64,15 @@ function start(list: () => unknown[]) {
 			signal: new AbortController().signal,
 		} as never,
 	});
-	return { bus, prune, dropUid, getRelationStat, handle };
+	return { bus, prune, dropUid, fetchRelationStat, handle };
 }
 
 describe("fans poller × 拓展订阅", () => {
 	it("只问 B 站订阅的粉丝数 —— 外部 id 恰好是同一串数字也不拿去问", async () => {
-		const { getRelationStat, handle: h } = start(() => [BILI, EXT]);
+		const { fetchRelationStat, handle: h } = start(() => [BILI, EXT]);
 		expect(await h.pollNow()).toBe(true);
-		expect(getRelationStat).toHaveBeenCalledTimes(1);
-		expect(getRelationStat).toHaveBeenCalledWith("1");
+		expect(fetchRelationStat).toHaveBeenCalledTimes(1);
+		expect(fetchRelationStat).toHaveBeenCalledWith("1");
 		expect(h.getLastEntries().map((e) => e.uid)).toEqual(["1"]);
 	});
 

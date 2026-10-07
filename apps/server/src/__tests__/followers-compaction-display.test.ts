@@ -279,12 +279,12 @@ async function panelEntries(root: string): Promise<FansRefreshEntry[]> {
 		} as never,
 		fansStore: storeOf(root),
 		api: {
-			getUserCardsBatch: vi.fn(async () => ({ code: 0, data: {} })),
-			getRelationStat: vi.fn(async (uid: string) => ({
+			fetchUserCards: vi.fn(async () => ({ code: 0, data: {} })),
+			fetchRelationStat: vi.fn(async (uid: string) => ({
 				code: 0,
 				data: { follower: follower[uid] },
 			})),
-			getUserCardInfo: vi.fn(async (uid: string) => ({
+			fetchUserCard: vi.fn(async (uid: string) => ({
 				code: 0,
 				data: { card: { fans: follower[uid], name: `UP${uid}`, face: "", sign: "" } },
 			})),

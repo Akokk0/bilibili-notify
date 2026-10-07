@@ -14,8 +14,8 @@
 
 import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { Api } from "../api";
 import type { ApiClient } from "../api-client";
-import { BilibiliAPI } from "../bilibili-api";
 
 /** 我们自己掌控的头,按改造前线上的顺序(含大小写)。其余的是 undici 自己加的,不管。 */
 const OUR_HEADERS_BEFORE = [
@@ -74,7 +74,7 @@ const ourNamesOnWire = (head: string[]) =>
 
 function makeClient() {
 	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new BilibiliAPI({ serviceCtx: { logger } as never, callbacks: {} });
+	const api = new Api({ serviceCtx: { logger } as never, callbacks: {} });
 	return { api, client: (api as unknown as { client: ApiClient }).client };
 }
 

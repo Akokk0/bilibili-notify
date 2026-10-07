@@ -1,11 +1,11 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import type { CookieData } from "@bilibili-notify/storage";
 import QRCode from "qrcode";
-import type { BilibiliAPI } from "./bilibili-api";
+import type { Api } from "./api";
 import {
 	type BiliDataServer,
 	BiliLoginStatus,
-	type MySelfInfoData,
+	type MyselfResponse,
 	type UserCardInfo,
 } from "./types";
 
@@ -54,7 +54,7 @@ export type LoginPollResult =
 
 export interface LoginFlowOptions {
 	serviceCtx: ServiceContext;
-	api: BilibiliAPI;
+	api: Api;
 	bus: MessageBus;
 	/** Periodic auth probe cadence in ms. 0 disables the heartbeat. */
 	healthCheckMs: number;
@@ -78,7 +78,7 @@ const AUTH_LOST_NOTIFY_DEBOUNCE_MS = 60_000;
  * Platform-neutral login state machine + QR session driver. Owns:
  *
  * - The single-source `LoginSnapshot` (transitions emit `login-status-report` over the MessageBus).
- * - Periodic auth probe (`getMyselfInfo`) keyed on `healthCheckMs`.
+ * - Periodic auth probe (`fetchMyselfInfo`) keyed on `healthCheckMs`.
  * - QR-code request → polling → cookie save handshake.
  *
  * Adapter-side concerns (sending master notifications) stay outside.
@@ -96,7 +96,7 @@ async function defaultRenderQr(url: string): Promise<string> {
 
 export class LoginFlow {
 	private readonly serviceCtx: ServiceContext;
-	private readonly api: BilibiliAPI;
+	private readonly api: Api;
 	private readonly bus: MessageBus;
 	private healthCheckMs: number;
 	private readonly saveCookies: (data: CookieData) => Promise<void>;
@@ -140,7 +140,7 @@ export class LoginFlow {
 	 * 这个窗口不是理论上的:健康检查默认 30 分钟、cookie 刷新固定 60 分钟,两者
 	 * 每小时对齐一次,而刷新是四次网络往返的长链,探活很容易正卡在里面。
 	 *
-	 * `BilibiliAPI.refreshGeneration` 对 cookie 刷新做的是同一件事,这里补的是
+	 * `Api.refreshGeneration` 对 cookie 刷新做的是同一件事,这里补的是
 	 * 登录流那一半。
 	 */
 	private authGeneration = 0;
@@ -172,14 +172,14 @@ export class LoginFlow {
 	}
 
 	/**
-	 * Probe `getMyselfInfo`, transition snapshot accordingly, and attach the periodic health check.
+	 * Probe `fetchMyselfInfo`, transition snapshot accordingly, and attach the periodic health check.
 	 * Network failures keep the current status (transient) and are logged at warn.
 	 */
 	async reportAccountInfo(): Promise<void> {
 		const gen = this.authGeneration;
-		let personalInfo: MySelfInfoData;
+		let personalInfo: MyselfResponse;
 		try {
-			personalInfo = await this.api.getMyselfInfo();
+			personalInfo = await this.api.fetchMyselfInfo();
 		} catch (e) {
 			if (this.supersededSince(gen)) return;
 			this.logger.warn(`[account] 获取个人信息异常: ${e}`);
@@ -195,7 +195,7 @@ export class LoginFlow {
 		}
 		let card: UserCardInfo | undefined;
 		try {
-			const cardInfo = await this.api.getUserCardInfo(personalInfo.data.mid.toString(), true);
+			const cardInfo = await this.api.fetchUserCard(personalInfo.data.mid.toString(), true);
 			card = cardInfo.data;
 		} catch (e) {
 			this.logger.warn(`[account] 获取用户卡片失败: ${e}`);
@@ -256,7 +256,7 @@ export class LoginFlow {
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let qrContent: any;
 		try {
-			qrContent = await this.api.getLoginQRCode();
+			qrContent = await this.api.fetchLoginQrCode();
 		} catch (e) {
 			this.logger.warn(`[login] 获取登录二维码失败：${e instanceof Error ? e.message : String(e)}`);
 			return;
@@ -309,7 +309,7 @@ export class LoginFlow {
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let loginContent: any;
 		try {
-			loginContent = await this.api.getLoginStatus(qrcodeKey);
+			loginContent = await this.api.fetchLoginStatus(qrcodeKey);
 		} catch (e) {
 			this.logger.warn(`[login] 获取登录状态失败：${e instanceof Error ? e.message : String(e)}`);
 			return;
@@ -486,7 +486,7 @@ export class LoginFlow {
 		// skip 判据取的是**发请求之前**那一帧,答复回来时状态可能早就变了。
 		const gen = this.authGeneration;
 		try {
-			const res = await this.api.getMyselfInfo();
+			const res = await this.api.fetchMyselfInfo();
 			if (this.supersededSince(gen)) return;
 			this.reportLoginCheck(res.code);
 		} catch (e) {

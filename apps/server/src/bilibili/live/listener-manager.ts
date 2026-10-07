@@ -134,7 +134,7 @@ export class ListenerManager {
 	private async resolveRoomId(uid: string, logPrefix: string): Promise<string | undefined> {
 		try {
 			// biome-ignore lint/suspicious/noExplicitAny: B-station response shape
-			const info = (await this.ctx.api.getUserInfo(uid)) as any;
+			const info = (await this.ctx.api.fetchUserInfo(uid)) as any;
 			const roomid = info?.data?.live_room?.roomid;
 			const n = Number(roomid);
 			if (!Number.isFinite(n) || n <= 0) {

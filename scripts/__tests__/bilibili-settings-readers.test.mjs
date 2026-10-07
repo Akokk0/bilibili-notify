@@ -88,7 +88,7 @@ describe("引用 B 站设置的判据:算", () => {
 			linesIn(
 				"apps/server/src/routes/health.ts",
 				[
-					`import type { BilibiliSettings } from "../bilibili/settings.js";`,
+					`import type { BiliSettings } from "../bilibili/settings.js";`,
 					`export { settingsOf } from "../bilibili/settings.js";`,
 					`const m = await import("../bilibili/settings.js");`,
 					`import { x } from "../bilibili/settings/schema.js";`,

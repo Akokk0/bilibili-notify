@@ -46,7 +46,7 @@ const root = protobuf.Root.fromJSON({
 
 const InteractWordV2 = root.lookupType("InteractWordV2");
 
-export interface InteractWordV2Decoded {
+export interface InteractWordV2Payload {
 	uid?: number;
 	uname?: string;
 	msg_type?: number;
@@ -54,9 +54,9 @@ export interface InteractWordV2Decoded {
 }
 
 /** 解开 INTERACT_WORD_V2 的 base64 protobuf。坏数据抛错,由调用方降级。 */
-export function decodeInteractWordV2(pbBase64: string): InteractWordV2Decoded {
+export function decodeInteractWordV2(pbBase64: string): InteractWordV2Payload {
 	const bytes = Buffer.from(pbBase64, "base64");
 	return InteractWordV2.toObject(InteractWordV2.decode(bytes), {
 		longs: Number,
-	}) as InteractWordV2Decoded;
+	}) as InteractWordV2Payload;
 }

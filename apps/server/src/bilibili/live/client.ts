@@ -22,7 +22,7 @@ export interface SocketLike {
 	close(): void;
 }
 
-export interface DanmuHost {
+export interface DanmakuHost {
 	host: string;
 	wssPort: number;
 }
@@ -37,7 +37,7 @@ export interface LiveConnectOptions {
 	/** 真实 buvid3(finger/spi 或 cookie 罐),进认证包。 */
 	buvid: string;
 	/** getDanmuInfo 返回的服务器列表,取首项。 */
-	hostList: DanmuHost[];
+	hostList: DanmakuHost[];
 	onEvent: (ev: LiveEvent) => void;
 	/**
 	 * **必传**:建连的口。握手头(UA、cookie)由它背后的客户端按身份与罐子装配 —— WSS 必须与
@@ -72,17 +72,17 @@ export interface LiveClient {
  * 事件,走的是与真帧完全相同的那条回调,上游引擎一行不动、也分不出真假。全局只有一个
  * 观察者(devtools 是进程里唯一的宿主),不装就什么都不发生。
  */
-export interface LiveConnectionInfo {
+export interface LiveConnectionEvent {
 	roomId: number;
 	onEvent: (ev: LiveEvent) => void;
 	client: LiveClient;
 }
 
-export type LiveConnectionObserver = (info: LiveConnectionInfo) => void;
+export type LiveConnectionHandler = (info: LiveConnectionEvent) => void;
 
-let connectionObserver: LiveConnectionObserver | null = null;
+let connectionObserver: LiveConnectionHandler | null = null;
 
-export function observeLiveConnections(observer: LiveConnectionObserver | null): void {
+export function observeLiveConnections(observer: LiveConnectionHandler | null): void {
 	connectionObserver = observer;
 }
 

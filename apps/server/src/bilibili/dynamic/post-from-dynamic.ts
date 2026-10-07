@@ -30,7 +30,7 @@ import {
 	type RichText,
 	type RichTextSegment,
 } from "@bilibili-notify/internal";
-import { parseBiliClock, parseBiliCount } from "./bili-display-values";
+import { parseClock, parseCount } from "./bili-display-values";
 import type { Dynamic } from "./types";
 
 // ── 接口里用到的那几个字面量 ──────────────────────────────────────────────────
@@ -221,7 +221,7 @@ function isoOfSeconds(raw: unknown): string {
 
 /** `{ count }` 形状的互动数;没有就是 0(三项恒有,缺了当没人点)。 */
 function countOf(stat: Loose): number {
-	return parseBiliCount(stat?.count) ?? 0;
+	return parseCount(stat?.count) ?? 0;
 }
 
 // ── 充电专属 ──────────────────────────────────────────────────────────────────
@@ -316,9 +316,9 @@ function isAnimatedPic(pic: Loose): boolean {
 
 /** 投稿视频那张卡。播放 / 弹幕 / 时长是接口排好的字,先解析成数字(认不得的那一格不带)。 */
 function videoOf(archive: Loose): NonNullable<Post["video"]> {
-	const durationSec = parseBiliClock(archive.duration_text);
-	const views = parseBiliCount(archive.stat?.play);
-	const danmaku = parseBiliCount(archive.stat?.danmaku);
+	const durationSec = parseClock(archive.duration_text);
+	const views = parseCount(archive.stat?.play);
+	const danmaku = parseCount(archive.stat?.danmaku);
 	return {
 		cover: { url: archive.cover },
 		title: archive.title ?? "",
@@ -404,7 +404,7 @@ function goodsOf(goods: Loose): Attachment | undefined {
  * 不拆;时长是接口排好的字,先解析成秒。
  */
 function ugcVideo(ugc: Loose): Attachment {
-	const durationSec = parseBiliClock(ugc.duration);
+	const durationSec = parseClock(ugc.duration);
 	return {
 		kind: "video",
 		cover: { url: ugc.cover },

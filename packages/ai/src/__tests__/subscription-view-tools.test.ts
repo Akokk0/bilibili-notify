@@ -26,15 +26,15 @@ const VIEW: Subscriptions = {
 
 function apiStub() {
 	return {
-		getLiveRoomInfoByUids: vi.fn(async () => ({
+		fetchLiveRoomInfoByUids: vi.fn(async () => ({
 			code: 0,
 			data: { "1": { live_status: 1, title: "晚间杂谈" } },
 		})),
-		getUserCardInfo: vi.fn(async () => ({ code: 0, data: { card: { name: "别人", fans: 1 } } })),
-		getUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [] } })),
-		getUserUpstat: vi.fn(async () => ({ code: 0, data: {} })),
-		getUserNavnum: vi.fn(async () => ({ code: 0, data: {} })),
-		getUserVideos: vi.fn(async () => ({ code: 0, data: { list: { vlist: [] } } })),
+		fetchUserCard: vi.fn(async () => ({ code: 0, data: { card: { name: "别人", fans: 1 } } })),
+		fetchUserSpaceDynamic: vi.fn(async () => ({ code: 0, data: { items: [] } })),
+		fetchUserUpstat: vi.fn(async () => ({ code: 0, data: {} })),
+		fetchUserNavnum: vi.fn(async () => ({ code: 0, data: {} })),
+		fetchUserVideos: vi.fn(async () => ({ code: 0, data: { list: { vlist: [] } } })),
 	};
 }
 
@@ -71,7 +71,7 @@ describe("get_live_status", () => {
 			totalViewers: 23_456,
 		});
 		const out = await executeTool("get_live_status", {}, api as unknown as BiliLookups, () => view);
-		expect(api.getLiveRoomInfoByUids).toHaveBeenCalledWith(["1"]);
+		expect(api.fetchLiveRoomInfoByUids).toHaveBeenCalledWith(["1"]);
 		expect(out).toContain("晨风：直播中「晚间杂谈」");
 		const line = out.split("\n").find((l) => l.startsWith("抖音甲"));
 		expect(line).toMatch(/^抖音甲：直播中「晚饭直播」/);
@@ -113,17 +113,17 @@ describe("get_live_status", () => {
 			"sub-ext": { ...(VIEW["sub-ext"] as ExtensionSubItemView), liveNow: { state: "idle" } },
 		};
 		const out = await executeTool("get_live_status", {}, api as unknown as BiliLookups, () => view);
-		expect(api.getLiveRoomInfoByUids).not.toHaveBeenCalled();
+		expect(api.fetchLiveRoomInfoByUids).not.toHaveBeenCalled();
 		expect(out).toContain("抖音甲：未开播");
 	});
 });
 
 describe("按 UID 查的工具", () => {
 	const UID_TOOLS: [string, keyof ReturnType<typeof apiStub>][] = [
-		["get_user_info", "getUserCardInfo"],
-		["get_user_dynamics", "getUserSpaceDynamic"],
-		["get_user_stats", "getUserUpstat"],
-		["get_user_videos", "getUserVideos"],
+		["get_user_info", "fetchUserCard"],
+		["get_user_dynamics", "fetchUserSpaceDynamic"],
+		["get_user_stats", "fetchUserUpstat"],
+		["get_user_videos", "fetchUserVideos"],
 	];
 
 	it.each(UID_TOOLS)(
@@ -146,7 +146,7 @@ describe("按 UID 查的工具", () => {
 	it("没订阅的 B 站用户(搜出来的 UID)照旧查得了", async () => {
 		const api = apiStub();
 		await run("get_user_info", { uid: "999" }, api);
-		expect(api.getUserCardInfo).toHaveBeenCalledWith("999");
+		expect(api.fetchUserCard).toHaveBeenCalledWith("999");
 	});
 
 	it("外部 id 与某位 B 站订阅的 UID 撞号 → 照查 B 站那位(按 UID 问得到的只有他)", async () => {
@@ -156,6 +156,6 @@ describe("按 UID 查的工具", () => {
 			"sub-ext-2": { platform: "抖音", externalId: "1", uname: "抖音乙" },
 		};
 		await executeTool("get_user_info", { uid: "1" }, api as unknown as BiliLookups, () => view);
-		expect(api.getUserCardInfo).toHaveBeenCalledWith("1");
+		expect(api.fetchUserCard).toHaveBeenCalledWith("1");
 	});
 });

@@ -70,7 +70,7 @@ export type Dynamic = {
 	};
 };
 
-export type AllDynamicInfo = {
+export type AllDynamicResponse = {
 	code: number;
 	message: string;
 	data: {

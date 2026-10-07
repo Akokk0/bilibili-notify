@@ -12,7 +12,7 @@ import {
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
-import type { BilibiliAPI } from "../api/index.js";
+import type { Api } from "../api/index.js";
 import {
 	blockedNotice,
 	filterPost,
@@ -27,7 +27,7 @@ import type {
 	SubscriptionOpView,
 	SubscriptionsView,
 } from "./push-like";
-import type { AllDynamicInfo, Dynamic, DynamicTimelineManager } from "./types";
+import type { AllDynamicResponse, Dynamic, DynamicTimelineManager } from "./types";
 import {
 	type CardFailureTracker,
 	createCardFailureTracker,
@@ -133,7 +133,7 @@ export interface DynamicEngineConfig extends WorkDeliveryConfig {
 export interface DynamicEngineOptions {
 	serviceCtx: ServiceContext;
 	bus: MessageBus;
-	api: BilibiliAPI;
+	api: Api;
 	push: PushLike;
 	/** 可选注入：图片渲染器；缺失时降级为纯文字推送。 */
 	image?: ImageRenderer;
@@ -246,7 +246,7 @@ function workFromDynamic(
 export class DynamicEngine {
 	private readonly serviceCtx: ServiceContext;
 	private readonly bus: MessageBus;
-	private readonly api: BilibiliAPI;
+	private readonly api: Api;
 	private readonly push: PushLike;
 	private image?: ImageRenderer;
 	private ai?: CommentaryProvider;
@@ -682,9 +682,9 @@ export class DynamicEngine {
 	private async detectDynamics(): Promise<void> {
 		this.logger.debug("[detector] 开始获取动态信息");
 
-		let content: AllDynamicInfo | undefined;
+		let content: AllDynamicResponse | undefined;
 		try {
-			content = (await this.api.getAllDynamic()) as AllDynamicInfo;
+			content = (await this.api.fetchAllDynamic()) as AllDynamicResponse;
 		} catch (e) {
 			// Q3:per-tick 拉取失败,cron 下一 tick 自重试、系统继续 → warn 不冒充事故。
 			this.logger.warn(`[api] 获取动态失败：${e instanceof Error ? e.message : String(e)}`);

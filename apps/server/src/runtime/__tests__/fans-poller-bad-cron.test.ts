@@ -80,7 +80,7 @@ describe("FansPoller — 无法解析的 fansCron", () => {
 					findEarliest: vi.fn(async () => undefined),
 					drop: vi.fn(async () => {}),
 				} as never,
-				api: { getUserCardInfo: vi.fn() } as never,
+				api: { fetchUserCard: vi.fn() } as never,
 				serviceCtx: {
 					setTimeout: vi.fn(() => undefined),
 					setInterval: vi.fn(() => undefined),
