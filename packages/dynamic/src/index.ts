@@ -36,7 +36,6 @@ export type {
 export {
 	type BoundWorkPush,
 	type CardFailureTracker,
-	type CommentaryClient,
 	createCardFailureTracker,
 	type DeliverWorkArgs,
 	deliverWork,

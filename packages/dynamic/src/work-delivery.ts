@@ -9,22 +9,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { CardColorOptions, ImageRenderer } from "@bilibili-notify/image";
 import type { ForwardImage, Logger } from "@bilibili-notify/internal";
 import { assembleMessageGroups, interpolate } from "@bilibili-notify/internal";
 import { resolveDynamicColorOptions } from "./card-style";
 import type { DynamicBroadcastOptions, PostPushPart, PushSegment, SubItemView } from "./push-like";
-
-/** AI 点评生成器(宿主注入 `CommentaryGenerator`,这里只认用到的那一个方法)。 */
-export interface CommentaryClient {
-	comment(
-		content: string,
-		scene?: AIScene,
-		imageUrls?: string[],
-		override?: CommentaryCallOverride,
-	): Promise<string>;
-}
 
 /** AI 点评最多看几张图(决策 71:拓展作品与 B 站同一个数)。来源交多了,装配截前这么多张。 */
 export const WORK_COMMENT_IMAGES_MAX = 4;
@@ -118,7 +108,7 @@ export interface WorkDeliveryConfig {
 	 */
 	imageEnabled?: boolean;
 	/**
-	 * 是否做 AI 点评。`false` 时不调 `CommentaryClient.comment()`,推送只用模板文字。缺省视为 true。
+	 * 是否做 AI 点评。`false` 时不调 `CommentaryProvider.comment()`,推送只用模板文字。缺省视为 true。
 	 * 宿主通常用 `globals.defaults.ai.enabled` 填充。
 	 */
 	aiEnabled?: boolean;
@@ -226,7 +216,7 @@ export function createCardFailureTracker(): CardFailureTracker {
 export interface WorkDeliveryDeps {
 	logger: Logger;
 	image?: ImageRenderer;
-	ai?: CommentaryClient;
+	ai?: CommentaryProvider;
 	/** 出图连续失败的计数;两条路传同一份。 */
 	cardFailures: CardFailureTracker;
 	/** 出图失败、这一串还没提醒过时私聊主人一句。抛错 = 没送达,下次失败再提醒。 */

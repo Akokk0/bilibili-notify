@@ -1,4 +1,4 @@
-import type { AIScene, CommentaryCallOverride } from "@bilibili-notify/ai";
+import type { CommentaryCallOverride, CommentaryProvider } from "@bilibili-notify/ai";
 import type { Logger } from "@bilibili-notify/internal";
 import type { LiveTemplateRenderer } from "./template-renderer";
 import type { MasterInfo } from "./types";
@@ -9,17 +9,8 @@ import type { MasterInfo } from "./types";
  */
 export const LIVE_SUMMARY_MIN_SENDERS = 5;
 
-export interface CommentaryClient {
-	comment(
-		content: string,
-		scene?: AIScene,
-		imageUrls?: string[],
-		override?: CommentaryCallOverride,
-	): Promise<string>;
-}
-
 /**
- * Builds the AI prompt + dispatches it through {@link CommentaryClient},
+ * Builds the AI prompt + dispatches it through {@link CommentaryProvider},
  * falling back to the template-based summary when AI is unavailable or fails.
  *
  * Two-tier strategy (kept identical to live-service):
@@ -33,14 +24,14 @@ export interface CommentaryClient {
  * caller to skip the summary push entirely).
  */
 export class LiveSummaryRequester {
-	private commentary: CommentaryClient | null;
+	private commentary: CommentaryProvider | null;
 	private readonly isAiEnabled: () => boolean;
 	private readonly isWebSearchEnabled: () => boolean;
 	private readonly templateRenderer: LiveTemplateRenderer;
 	private readonly logger: Logger;
 
 	constructor(opts: {
-		commentary: CommentaryClient | null;
+		commentary: CommentaryProvider | null;
 		/**
 		 * AI 总开关查询。返回 false 时跳过 commentary 调用,直接走模板回退,
 		 * 与 commentary === null 行为等价。Adapter 用 `() => globals.defaults.ai.enabled` 填充,
@@ -64,8 +55,8 @@ export class LiveSummaryRequester {
 		this.logger = opts.logger;
 	}
 
-	/** 热替换 CommentaryClient 实例。null 表示降级到模板回退。 */
-	setCommentary(commentary: CommentaryClient | null): void {
+	/** 热替换 CommentaryProvider 实例。null 表示降级到模板回退。 */
+	setCommentary(commentary: CommentaryProvider | null): void {
 		this.commentary = commentary;
 	}
 
@@ -76,7 +67,7 @@ export class LiveSummaryRequester {
 		customLiveSummary: string;
 		/**
 		 * per-UP AI 覆盖。adapter 在 SubItemView.aiOverride 上注入,room-session 在调
-		 * `generate()` 时透传过来。CommentaryClient 内部 `?? this.config` 兜底,
+		 * `generate()` 时透传过来。CommentaryProvider 内部 `?? this.config` 兜底,
 		 * 缺失字段不影响其它字段生效。
 		 */
 		aiOverride?: CommentaryCallOverride;

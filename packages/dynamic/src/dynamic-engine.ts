@@ -1,3 +1,4 @@
+import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { BilibiliAPI } from "@bilibili-notify/api";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import {
@@ -29,7 +30,6 @@ import type {
 import type { AllDynamicInfo, Dynamic, DynamicTimelineManager } from "./types";
 import {
 	type CardFailureTracker,
-	type CommentaryClient,
 	createCardFailureTracker,
 	deliverWork,
 	type NeutralWork,
@@ -138,7 +138,7 @@ export interface DynamicEngineOptions {
 	/** 可选注入：图片渲染器；缺失时降级为纯文字推送。 */
 	image?: ImageRenderer;
 	/** 可选注入：AI 点评生成器；缺失时跳过 AI 文案生成。 */
-	ai?: CommentaryClient;
+	ai?: CommentaryProvider;
 	config: DynamicEngineConfig;
 	/**
 	 * 出图连续失败的计数(只提醒一次)。宿主想让 B 站动态与拓展作品共用一份(同一个渲染器,
@@ -249,7 +249,7 @@ export class DynamicEngine {
 	private readonly api: BilibiliAPI;
 	private readonly push: PushLike;
 	private image?: ImageRenderer;
-	private ai?: CommentaryClient;
+	private ai?: CommentaryProvider;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
 
@@ -403,7 +403,7 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 热替换 CommentaryClient 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
+	 * 热替换 CommentaryProvider 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
 	 * 配置后调用,引擎随后的动态点评会立即用新实例 (或回退到纯文字) ,无需重启 server。
 	 */
 	/**
@@ -414,7 +414,7 @@ export class DynamicEngine {
 		return this.lastSuccessfulFetchAt;
 	}
 
-	setAi(ai: CommentaryClient | undefined): void {
+	setAi(ai: CommentaryProvider | undefined): void {
 		this.ai = ai;
 	}
 
