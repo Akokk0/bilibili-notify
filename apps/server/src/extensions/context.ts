@@ -36,7 +36,7 @@ import {
 	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { AdapterRegistry } from "../platforms/registry.js";
+import type { AdapterRegistry } from "../push/registry.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";

@@ -17,7 +17,7 @@ import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { loadExtensions } from "../../extensions/loader.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { extensionScenarios } from "../scenarios/extensions.js";
 
 let repoDir: string;

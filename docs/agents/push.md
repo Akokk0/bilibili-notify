@@ -18,7 +18,7 @@
 | ② 适配 | `apps/server/src/runtime/engines.ts` | 把引擎的枚举翻成推送的词；B 站那条边把 uid 翻成订阅 id；把发送钉到一条订阅上 |
 | ③ 路由与闸 | `packages/push` · `broadcastToFeature` | 七道闸 + 选目标 |
 | ④ 发送 | 同上 · `sendBatch` → `sendSequence` → `sendToTarget` | 分条、重试、@全体 分流 |
-| ⑤ 投递 | `apps/server/src/sink/multiplex.ts` | 按连接找 adapter，真发出去 |
+| ⑤ 投递 | `apps/server/src/push/multiplex.ts` | 按连接找 adapter，真发出去 |
 | ⑥ 历史 | `onSend` → `runtime/push-history.ts` → `history/store.ts` | 一行 = 一次推送 × 一个目标 |
 
 ### ① 引擎 —— 只认总开关

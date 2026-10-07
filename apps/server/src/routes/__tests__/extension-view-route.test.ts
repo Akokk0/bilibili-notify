@@ -20,7 +20,7 @@ import type { ConfigStore } from "../../config/store.js";
 import { createExtensionContext } from "../../extensions/context.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { createExtensionsRoute } from "../extensions.js";
 
 const MANIFEST = {

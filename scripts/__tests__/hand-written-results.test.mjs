@@ -64,7 +64,7 @@ export const RATCHET = {
 	"apps/server/src/routes/ai.ts": 2,
 	"apps/server/src/runtime/bootstrap.ts": 1,
 	"apps/server/src/runtime/command-params.ts": 4,
-	"apps/server/src/sink/multiplex.ts": 5,
+	"apps/server/src/push/multiplex.ts": 5,
 	"apps/server/src/skins/ai-edit.ts": 3,
 	"apps/server/src/skins/package.ts": 5,
 	"apps/server/src/skins/schema.ts": 5,

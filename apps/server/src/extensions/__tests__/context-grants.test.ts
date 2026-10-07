@@ -26,8 +26,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { adapterForConnection } from "../../platforms/dispatch.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { adapterForConnection } from "../../push/dispatch.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext, STATUS_CHANGED_COALESCE_MS } from "../context.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";

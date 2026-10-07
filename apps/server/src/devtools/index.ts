@@ -13,7 +13,7 @@ import type { AuthSystem } from "../auth/index.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
-import type { AdapterRegistry } from "../platforms/registry.js";
+import type { AdapterRegistry } from "../push/registry.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";

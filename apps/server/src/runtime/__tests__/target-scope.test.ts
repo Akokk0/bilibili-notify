@@ -25,8 +25,8 @@ import type {
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { ConfigStore } from "../../config/store.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
-import { createMultiplexSink } from "../../sink/multiplex.js";
+import { createMultiplexSink } from "../../push/multiplex.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createTargetScope, resolveTargetScope } from "../target-scope.js";
 

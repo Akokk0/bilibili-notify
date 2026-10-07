@@ -55,11 +55,11 @@ import {
 	type ZeroMigrationResult,
 	zeroGenerationExists,
 } from "./migration/zero-generation.js";
-import { adapterForConnection } from "./platforms/dispatch.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
-import { createAdapterRegistry } from "./platforms/registry.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
+import { adapterForConnection } from "./push/dispatch.js";
+import { createAdapterRegistry } from "./push/registry.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";

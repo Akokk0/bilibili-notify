@@ -24,8 +24,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
 import { createMultiplexSink } from "../multiplex.js";
+import { createAdapterRegistry } from "../registry.js";
 
 const PAYLOAD: NotificationPayload = { kind: "text", text: "hi" };
 

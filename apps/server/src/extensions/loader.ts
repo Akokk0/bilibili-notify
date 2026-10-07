@@ -16,7 +16,7 @@ import {
 	type SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type { AdapterRegistry } from "../platforms/registry.js";
+import type { AdapterRegistry } from "../push/registry.js";
 import { ExtensionConflictError } from "./conflict-error.js";
 import {
 	type ActionOutcome,

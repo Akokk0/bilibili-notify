@@ -11,8 +11,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, isTargetPaused } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
-import { adapterForConnection } from "../platforms/dispatch.js";
-import type { AdapterRegistry } from "../platforms/registry.js";
+import { adapterForConnection } from "./dispatch.js";
+import type { AdapterRegistry } from "./registry.js";
 
 /**
  * Extended sink — keeps the canonical NotificationSink surface but adds an

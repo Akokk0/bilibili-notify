@@ -52,7 +52,7 @@ import { type BilibiliSettings, BilibiliSettingsSchema } from "../../bilibili/se
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";

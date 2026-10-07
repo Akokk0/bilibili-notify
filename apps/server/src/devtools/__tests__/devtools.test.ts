@@ -3,7 +3,7 @@ import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import type { UpdateService } from "../../update/service.js";
 import { createDevtools } from "../index.js";

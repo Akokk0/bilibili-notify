@@ -18,7 +18,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
 import type { ExtensionContext } from "../context.js";
 import { readLoadLedger } from "../load-ledger.js";

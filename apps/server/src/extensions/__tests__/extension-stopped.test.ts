@@ -12,7 +12,7 @@ import { join } from "node:path";
 import type { Logger, ServiceContext, SubscriptionReportDelivery } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
-import { createAdapterRegistry } from "../../platforms/registry.js";
+import { createAdapterRegistry } from "../../push/registry.js";
 import type { ExtensionContext } from "../context.js";
 import { loadExtensions } from "../loader.js";
 import { createExtensionMounts } from "../mount.js";

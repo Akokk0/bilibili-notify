@@ -87,8 +87,8 @@ import { settingsOf, watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
-import type { AdapterRegistry } from "../platforms/registry.js";
-import { createMultiplexSink } from "../sink/multiplex.js";
+import { createMultiplexSink } from "../push/multiplex.js";
+import type { AdapterRegistry } from "../push/registry.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
