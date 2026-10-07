@@ -118,6 +118,16 @@
   - 守卫：B 站替身摘掉 13 条共 85 处（搬进了放行目录）；出网守卫的范围断言换掉两个旧根；「结果不手写」的 `follow.ts: 1` 跟着文件换了路径、数不变。
   - 真机脚本（10-07 主人定：放 B 站自己的目录，进 `__tests__` 是因为它们本来就算测试那一类，守卫 17 不扫测试目录、文件名不带 `.test` 所以不会被自动跑）：五个脚本在 `apps/server/src/bilibili/live/scripts/__tests__/`，从此也在服务端的类型检查范围里；原来靠 `node --experimental-transform-types` 吃构建产物，包没了之后吃不到，改成在 `apps/server` 下 `vp exec tsx src/bilibili/live/scripts/__tests__/<脚本>` 直接吃源码。`pb-walk.ts`（离线的那只）实际跑通了，另外三只要登录态、伦伦酱没跑。
   - 测试数：搬家前后都是 998 个文件、13883 条。
+- 3a-25 开工前定的（10-07，主人逐题拍板）：
+  - **主播的叫法按「最后住哪」定**：以后留在 `bilibili/` 的叫 `up`；data-model 改名对照表点了名、要拆进核心的直接叫 `creator`，一步到位。
+  - **这一片只改名字**：行为、形状、线上格式、盘上数据都不变。要连带改形状的、后面的片本来就要换掉的、取值，一律不碰。
+  - **9 个没有任何调用方的接口方法先删**（`fbd2b5b8`，连同 4 个类型、9 个地址常量）：关注分组 4 个、验证码 2 个、零散查询 3 个。
+  - **类名叫 `Api`，不加平台前缀**（主人：已经限定在 `bilibili/` 下了）。撞名才加 `Bili`：B 站设置的类型撞了拓展清单里的 `SettingsSchema`，所以叫 `BiliSettings` / `BiliSettingsSchema`。
+  - **命名规范补了四条**（`3e5f6801`）：不缩写（`Ai`、`Api` 除外）、不用 TS `enum`、`Fields` 后缀、外部接口的地址常量叫「名词 + `_URL`」。
+  - 改名的全表在子代理的施工单里，落地后以提交为准；盘点报告在 `.bn-design/s3a-25-rename-inventory.md`（不入库）。
+  - **这一片不动的，归谁**：登录那一族（`BiliLoginStatus`、`LoginSnapshot`、`BiliDataServer`、`UserCardInfo` 与 `UserCard` 的字段，字段和取值在线上）→ 3a-29；`work-delivery.ts` 整个文件 → 3a-27；房间会话一族、`LiveType`、`LivePushType`、`LiveNotify…`、`ListenerManager…`、`RoomContext…`、`LiveData` → 3b 合并两套直播引擎时；`RefreshOutcome` / `FollowOutcome` / `WorkDeliveryOutcome`、直播事件的 `price`、登录轮询失败的 `reason` → 改名要连带改形状，归各自动形状的那一片；事件种类的取值 `"danmu"` → 是取值，没定哪一片改；TS `enum` 剩下的三个（`BiliLoginStatus`、`LivePushType`、`LiveType`）跟各自那一族走。
+  - **没有着落的三组**（文档写了要合并或删掉，但没写在哪一片做，排到相关的片时问主人）：① `PushLike` / `SubItemView` / `SubscriptionsView`（动态、直播、AI 各一份，data-model 写「各合成一份」）连同 7 个 `…Like`、`LiveMonitorInput`、`DynamicCardStyle`、带 `Sub` 缩写的那几个；② 直播内部的 `MasterInfo` 一族（含 `getMasterInfo`、`masterName`、`masterAvatarUrl`，data-model 写「删掉，拆进 `Creator`」）；③ `DynamicEngineConfig`、`DynamicTimelineManager`、`SubManagerView`（data-model 写「随包消失」）。
+  - **直播的串行闸没改名**：对照表写的新名 `createSerialQueue` 已经被 `packages/internal/src/util/serial-queue.ts` 占了，而且两份不是一回事（核心那份按键分队、能关门；B 站这份一条链、没有键）。合不合、叫什么，等主人定。
 - 丁组的施工顺序：3a-23 与 3a-13 后半合回之后做 3a-24（纯搬，独占工作区）→ 3a-25（改名，独占）；这两片期间不开别的会改服务端的活。丙组的 3a-15 起、戊组的 3a-34 / 3a-35 都排在 3a-25 之后（它们要改的文件正是被搬的那批）。
 - 3a-15 的拓展边界（伦伦酱照既有设计定的）：投递结果改形状时，仓里的桥拓展与契约类型这一期不动，宿主在拓展边界上把拓展交回的旧形状翻成新形状；契约 v3 与桥迁 v3 仍在 3b。3a 与 3b 之间没有发版，仓外的 v2 拓展不受这段中间态影响。
 
