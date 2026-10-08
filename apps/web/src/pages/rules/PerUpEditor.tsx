@@ -1252,7 +1252,7 @@ function AiOverrideBox({
 	);
 }
 
-/* -------- ImageGroup (enable + forward) ---------------------------------- */
+/* -------- ImageGroup (enabled + mergeForward) ---------------------------------- */
 
 function ImageGroupOverrideBox({
 	value,
@@ -1265,8 +1265,8 @@ function ImageGroupOverrideBox({
 }) {
 	const enabled = value !== undefined;
 	const cur = value ?? {};
-	const effEnable = cur.enable ?? baseline.enable;
-	const effForward = cur.forward ?? baseline.forward;
+	const effEnable = cur.enabled ?? baseline.enabled;
+	const effForward = cur.mergeForward ?? baseline.mergeForward;
 	function set<K extends keyof ImageGroupOverride>(k: K, v: ImageGroupOverride[K]): void {
 		onChange({ ...cur, [k]: v });
 	}
@@ -1278,15 +1278,17 @@ function ImageGroupOverrideBox({
 			icon={<Icon.dyn size={14} />}
 			enabled={enabled}
 			onToggle={(on) =>
-				onChange(on ? { enable: baseline.enable, forward: baseline.forward } : undefined)
+				onChange(
+					on ? { enabled: baseline.enabled, mergeForward: baseline.mergeForward } : undefined,
+				)
 			}
 			inheritNote="该 UP 将继承全局动态图集策略"
 		>
-			<Field code="enable">
-				<Toggle value={effEnable} onChange={(v) => set("enable", v)} />
+			<Field code="imageGroup.enabled">
+				<Toggle value={effEnable} onChange={(v) => set("enabled", v)} />
 			</Field>
-			<Field code="forward">
-				<Toggle value={effForward} onChange={(v) => set("forward", v)} disabled={!effEnable} />
+			<Field code="imageGroup.mergeForward">
+				<Toggle value={effForward} onChange={(v) => set("mergeForward", v)} disabled={!effEnable} />
 			</Field>
 		</OverrideBox>
 	);

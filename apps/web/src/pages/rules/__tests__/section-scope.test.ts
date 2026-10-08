@@ -84,7 +84,7 @@ describe("isSectionCustomized filter / live 分域", () => {
 	});
 
 	it("imageGroup 判定保持不变", () => {
-		const sub = subWith({ imageGroup: { enable: true, forward: false } });
+		const sub = subWith({ imageGroup: { enabled: true, mergeForward: false } });
 		expect(isSectionCustomized(sub, "imageGroup")).toBe(true);
 		expect(isSectionCustomized(sub, "filter")).toBe(false);
 	});

@@ -1262,7 +1262,7 @@ function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
 		};
 	}
 	if (segments.length === 1 && segments[0]?.kind === "image-group") {
-		// segment.mergeForward 由 dynamic engine config 的 imageGroupForward 决定:
+		// segment.mergeForward 由设置里的 imageGroup.mergeForward(全局与逐订阅覆盖)决定:
 		//   true  → adapter 走 send_group_forward_msg 合并转发
 		//   false → adapter 走多 image segment 合并到一条普通 send_group_msg
 		return {
@@ -1686,8 +1686,8 @@ export function dynamicWorkSettings(
 		customCardStyle: { enable: false },
 		filter: sub.overrides.filters ? eff.filters : undefined,
 		aiOverride: resolveAiOverride(sub, globals.defaults),
-		imageGroupEnable: sub.overrides.imageGroup?.enable,
-		imageGroupForward: sub.overrides.imageGroup?.forward,
+		imageGroupEnabled: sub.overrides.imageGroup?.enabled,
+		imageGroupMergeForward: sub.overrides.imageGroup?.mergeForward,
 		customDynamicTemplate: sub.overrides.templates?.post,
 		customVideoTemplate: sub.overrides.templates?.postVideo,
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。

@@ -821,6 +821,96 @@ describe("⑱c:重推原件 `v` → `version`", () => {
 });
 
 /**
+ * 3a-16:原件里的载荷改成活的名字 —— 图集 `forward-images` → `image-group`、`forward` → `mergeForward`,composite 段的
+ * 判别键 `type` → `kind`。每种载荷迁完真的仓读不读得回,在 `repush-snapshot-payloads.test.ts`(守卫 13);这里钉盘上的字节:
+ * 键留在原位、别的格不动、迁两遍和迁一遍一样。夹具是这里自己编的。
+ */
+describe("3a-16:重推原件的载荷改名", () => {
+	const DAY_DIR = "history/repush/2026-05-10";
+	const rel = (name: string) => `${DAY_DIR}/${name}`;
+	const read = (name: string) => readFile(join(sandbox.target, rel(name)), "utf8");
+	const compact = (text: string) => JSON.stringify(JSON.parse(text));
+	const ZERO_MESSAGES = [
+		{
+			payload: {
+				kind: "forward-images",
+				images: [{ url: "https://example.com/1.jpg", width: 1080, height: 1920 }],
+				forward: true,
+			},
+			role: "extra",
+		},
+		{
+			payload: {
+				kind: "composite",
+				segments: [
+					{ type: "text", text: "正文" },
+					{ type: "link", href: "https://example.com/v", title: "视频" },
+					{ type: "at-all" },
+				],
+			},
+			role: "main",
+		},
+	];
+	const CURRENT_MESSAGES = [
+		{
+			payload: {
+				kind: "image-group",
+				images: [{ url: "https://example.com/1.jpg", width: 1080, height: 1920 }],
+				mergeForward: true,
+			},
+			role: "extra",
+		},
+		{
+			payload: {
+				kind: "composite",
+				segments: [
+					{ kind: "text", text: "正文" },
+					{ kind: "link", href: "https://example.com/v", title: "视频" },
+					{ kind: "at-all" },
+				],
+			},
+			role: "main",
+		},
+	];
+
+	it("0.x 的原件:种类、开关、段的判别键都换成新名字,键留在原来的位置,别的格一个字不动", async () => {
+		const name = `${randomUUID()}.json`;
+		await sandbox.placeZero(rel(name), { v: 1, messages: ZERO_MESSAGES });
+		await sandbox.migrate();
+		// 比的是重新序列化后的文本:键序也是产出的一部分(改写过的原件是带缩进写的,所以不直接比原文)。
+		expect(compact(await read(name))).toBe(
+			JSON.stringify({ version: 1, messages: CURRENT_MESSAGES }),
+		);
+	});
+
+	it("开发期写下的原件(已经是 `version`、载荷还是旧名字)同样改写", async () => {
+		const name = `${randomUUID()}.json`;
+		await sandbox.placeZero(rel(name), { version: 1, messages: ZERO_MESSAGES });
+		await sandbox.migrate();
+		expect(compact(await read(name))).toBe(
+			JSON.stringify({ version: 1, messages: CURRENT_MESSAGES }),
+		);
+	});
+
+	it("已经是新名字的原件一个字节不动", async () => {
+		const name = `${randomUUID()}.json`;
+		const text = JSON.stringify({ version: 1, messages: CURRENT_MESSAGES });
+		await sandbox.placeZeroText(rel(name), text);
+		await sandbox.migrate();
+		expect(await read(name)).toBe(text);
+	});
+
+	it("迁两遍和迁一遍一样:对新代再迁一次回 [],原件字节不变", async () => {
+		const name = `${randomUUID()}.json`;
+		await sandbox.placeZero(rel(name), { v: 1, messages: ZERO_MESSAGES });
+		await sandbox.migrate();
+		const once = await read(name);
+		expect(await rerunMigrators()).toEqual([]);
+		expect(await read(name)).toBe(once);
+	});
+});
+
+/**
  * **迁移里先替主人跑一次清扫**(ADR-0022 决策 9 下 10-04 的 🔗):和开机后的清扫是同一个函数,时钟注入。照换算后的
  * 天数,过了保留期的重推原件整天目录不带过来、水位线定好;文字照搬。⑳d 起清扫不碰图 —— `history/img/` 不整目录搬,
  * 保留期内的行引用的图逐张复制进图库,过了保留期的行拿掉图格、不读图文件,孤儿不搬(细节见

@@ -13,7 +13,6 @@ import type {
 	OnebotConnectionConfig,
 	PayloadSegment,
 	PlatformAdapter,
-	PostImage,
 	ProbeResult,
 	PushTarget,
 	Result,
@@ -25,6 +24,7 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { imageGroupUrls } from "./image-group.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
 
 /**
@@ -65,7 +65,7 @@ export interface OnebotPlatformAdapterOptions {
 	 * 真正生效的下限来自 adapter config 的同名字段(界面上「合并转发超时下限」那栏);
 	 * 本项只在配置里没这个字段时才用得上 —— 测试注入,以及未过 schema 的裸配置。
 	 */
-	forwardMinTimeoutMs?: number;
+	mergeForwardMinTimeoutMs?: number;
 	/**
 	 * **带图**普通消息(send_group_msg / send_private_msg 里含 image 段)的超时下限
 	 * (ms)**兜底值**,默认 30s。与 forward 同一个道理,只是当初只想到了合并转发:带图
@@ -158,11 +158,11 @@ function minTimeoutFor(
  * 无视 —— 串行扇出下,每个目标多等的那几十秒是要累加的。
  */
 function minTimeoutLimits(
-	cfg: { forwardMinTimeoutMs?: number; imageMinTimeoutMs?: number },
+	cfg: { mergeForwardMinTimeoutMs?: number; imageMinTimeoutMs?: number },
 	fallbacks: { forward: number; image: number },
 ): { forward: number; image: number } {
 	return {
-		forward: cfg.forwardMinTimeoutMs ?? fallbacks.forward,
+		forward: cfg.mergeForwardMinTimeoutMs ?? fallbacks.forward,
 		image: cfg.imageMinTimeoutMs ?? fallbacks.image,
 	};
 }
@@ -222,11 +222,6 @@ function segmentToOnebot(seg: PayloadSegment): OneBotMessageSegment {
 	}
 }
 
-/** 图集照 `url` 发;没有 `url` 的图(只带图库引用)这里发不了,跳过。 */
-function imageGroupUrls(images: readonly PostImage[]): string[] {
-	return images.flatMap((img) => (img.url ? [img.url] : []));
-}
-
 function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 	switch (payload.kind) {
 		case "text":
@@ -246,7 +241,10 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 			// 到一条普通 send_group_msg(对齐上游 koishi 框架 onebot adapter 的多图默认行为,避开
 			// NapCat 长消息 SsoSendLongMsg 通道的潜在超时)。
 			if (payload.mergeForward) return [];
-			return imageGroupUrls(payload.images).map((url) => ({ type: "image", data: { file: url } }));
+			return imageGroupUrls(payload.images).map(({ url }) => ({
+				type: "image",
+				data: { file: url },
+			}));
 		case "miniapp-card":
 			// 要先向腾讯签 ark 才有段可发,send() 单独走 sendMiniAppCard;这里没有现成的段。
 			return [];
@@ -287,14 +285,14 @@ function buildSendAction(
 	opts: { private?: boolean },
 	botInfo: BotIdentity = FALLBACK_BOT_IDENTITY,
 ): Result<OnebotAction> {
-	// 图集合并转发分支:payload.mergeForward 由 dynamic engine config 的 `imageGroupForward`
+	// 图集合并转发分支:payload.mergeForward 由设置里的 `imageGroup.mergeForward`
 	// 决定。走 send_group_forward_msg / send_private_forward_msg 长消息通道(NapCat
 	// 的 SsoSendLongMsg trpc 在某些部署不稳,故默认 false)。
 	if (payload.kind === "image-group" && payload.mergeForward) {
 		// node.name + node.uin 决定客户端展示的发送人头像 / 昵称。用机器人真身
 		// (botInfo)→ 收件人看到的是"机器人发的",对齐上游 koishi 框架的 onebot adapter
 		// (它在 src/bot/message.ts 用 `bot.user.name` / `bot.userId` 当 fallback)。
-		const nodes = imageGroupUrls(payload.images).map((url) => ({
+		const nodes = imageGroupUrls(payload.images).map(({ url }) => ({
 			type: "node",
 			data: {
 				name: botInfo.name,
@@ -859,7 +857,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	const fallbackTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	// 「adapter 配置里没写」时才用得上的兜底;真正生效的值见 minTimeoutLimits()。
 	const minTimeoutFallbacks = {
-		forward: opts.forwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS,
+		forward: opts.mergeForwardMinTimeoutMs ?? DEFAULT_FORWARD_MIN_TIMEOUT_MS,
 		image: opts.imageMinTimeoutMs ?? DEFAULT_IMAGE_MIN_TIMEOUT_MS,
 	};
 

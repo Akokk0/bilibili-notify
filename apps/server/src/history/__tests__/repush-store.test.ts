@@ -117,45 +117,35 @@ describe("盘上形状 —— 原件是 `{ version, messages }`(⑱c)", () => {
 });
 
 /**
- * 3a-16 第一轮:活的载荷已经改名(图集 `image-group` / `mergeForward`、段的判别键 `kind`),**盘上还是改名前的
- * 样子** —— 写与读在仓的边界上换算。这一组钉的是盘上的字;第二轮盘上形状跟着改(带迁移)时整组重写。
+ * 3a-16:盘上的载荷与活的 `NotificationPayload` 同名同格(图集 `image-group` / `mergeForward` / `PostImage`、段的判别键
+ * `kind`)。写盘不过 schema、读盘过的是不 strict 的 schema —— 漏登记一格读回时会被静默剥掉,所以这一组读**盘上 JSON 原文**
+ * 钉新名字都在、旧名字都不在,再钉读回来一格不少。
  */
-describe("盘上形状 —— 3a-16 第一轮:载荷改了名,盘上的名字还没动", () => {
-	const readRaw = async (id: string) =>
-		JSON.parse(await readFile(join(dayDir(), `${id}.json`), "utf8")).messages[0].payload;
+describe("盘上形状 —— 载荷与活的同名(3a-16)", () => {
+	const readText = (id: string) => readFile(join(dayDir(), `${id}.json`), "utf8");
+	const REF = `${"a".repeat(64)}.jpg`;
+	const group: NotificationPayload = {
+		kind: "image-group",
+		images: [
+			{ ref: REF, url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600, isAnimated: true },
+			{ ref: REF },
+			{ url: "https://i0.hdslb.com/b.jpg" },
+		],
+		mergeForward: true,
+	};
 
-	it("图集:盘上是 `forward-images` / `forward`,每张图只有 url 与尺寸", async () => {
+	it("图集:盘上是 `image-group` / `mergeForward`,图的五格(含 `ref`)都在;旧名一个不剩", async () => {
 		const id = randomUUID();
-		await store.append(id, TS, [
-			{
-				payload: {
-					kind: "image-group",
-					images: [
-						{
-							ref: `${"a".repeat(64)}.jpg`,
-							url: "https://i0.hdslb.com/a.jpg",
-							width: 800,
-							height: 600,
-							isAnimated: true,
-						},
-						{ url: "https://i0.hdslb.com/b.jpg" },
-					],
-					mergeForward: true,
-				},
-				role: "extra",
-			},
-		]);
-		expect(await readRaw(id)).toEqual({
-			kind: "forward-images",
-			images: [
-				{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 },
-				{ url: "https://i0.hdslb.com/b.jpg" },
-			],
-			forward: true,
-		});
+		await store.append(id, TS, [{ payload: group, role: "extra" }]);
+		const raw = await readText(id);
+		expect(JSON.parse(raw).messages[0].payload).toEqual(group);
+		expect(raw).not.toContain("forward-images");
+		expect(raw).not.toContain('"forward"');
+		// 读回来一格不少:schema 漏了哪一格,这里就少哪一格。
+		expect((await store.load(id, TS, 1))?.messages[0]?.payload).toEqual(group);
 	});
 
-	it("composite:盘上的段用判别键 `type`,四种段都是", async () => {
+	it("composite:盘上的段用判别键 `kind`,四种段都是;`type` 一个不剩", async () => {
 		const id = randomUUID();
 		await store.append(id, TS, [
 			{
@@ -172,59 +162,42 @@ describe("盘上形状 —— 3a-16 第一轮:载荷改了名,盘上的名字还
 				role: "main",
 			},
 		]);
-		expect(await readRaw(id)).toEqual({
+		const raw = await readText(id);
+		expect(JSON.parse(raw).messages[0].payload).toEqual({
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "正文" },
-				{ type: "image", image: expect.stringMatching(/^[0-9a-f]{64}\.png$/) },
-				{ type: "link", href: "https://b23.tv/x", title: "链接" },
-				{ type: "link", href: "https://b23.tv/bare" },
-				{ type: "at-all" },
+				{ kind: "text", text: "正文" },
+				{ kind: "image", image: expect.stringMatching(/^[0-9a-f]{64}\.png$/) },
+				{ kind: "link", href: "https://b23.tv/x", title: "链接" },
+				{ kind: "link", href: "https://b23.tv/bare" },
+				{ kind: "at-all" },
 			],
 		});
+		expect(raw).not.toContain('"type"');
 	});
 
-	it("盘上改名前的原件读得回来,交出去的是活的名字", async () => {
-		const id = randomUUID();
+	it("改名前的原件不认(迁移早把它改写了):图集的旧名、段的 `type` 都读回 null", async () => {
 		await mkdir(dayDir(), { recursive: true });
-		const messages = [
+		const olds = [
 			{
-				payload: {
-					kind: "forward-images",
-					images: [{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 }],
-					forward: false,
-				},
-				role: "extra",
+				kind: "forward-images",
+				images: [{ url: "https://i0.hdslb.com/a.jpg" }],
+				forward: false,
 			},
-			{
-				payload: {
-					kind: "composite",
-					segments: [
-						{ type: "text", text: "正文" },
-						{ type: "link", href: "https://b23.tv/x" },
-						{ type: "at-all" },
-					],
-				},
-				role: "main",
-			},
+			{ kind: "composite", segments: [{ type: "text", text: "正文" }] },
 		];
-		await writeFile(join(dayDir(), `${id}.json`), JSON.stringify({ version: 1, messages }));
-		const out = await store.load(id, TS, 2);
-		expect(out?.messages.map((m) => m.payload)).toEqual([
-			{
-				kind: "image-group",
-				images: [{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 }],
-				mergeForward: false,
-			},
-			{
-				kind: "composite",
-				segments: [
-					{ kind: "text", text: "正文" },
-					{ kind: "link", href: "https://b23.tv/x" },
-					{ kind: "at-all" },
-				],
-			},
-		]);
+		for (const payload of olds) {
+			const id = randomUUID();
+			const messages = [{ payload, role: "main" }];
+			await writeFile(join(dayDir(), `${id}.json`), JSON.stringify({ version: 1, messages }));
+			expect(await store.load(id, TS, 1), payload.kind).toBeNull();
+		}
+	});
+
+	it("图集的图带着的 `ref` 算原件引用的图(图库清扫不收它)", async () => {
+		const id = randomUUID();
+		await store.append(id, TS, [{ payload: group, role: "extra" }]);
+		expect(await listRepushImageRefs(dataDir)).toEqual([REF, REF]);
 	});
 });
 

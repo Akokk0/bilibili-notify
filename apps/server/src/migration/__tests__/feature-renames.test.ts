@@ -1181,3 +1181,91 @@ describe("0.x 最新 → 1.0 改名 · 函数级", () => {
 		expect(out.app.logLevels).toEqual({ dynamic: "debug", live: "warn" });
 	});
 });
+
+/**
+ * 3a-16:图集设置里总开关 `enable` → `enabled`、合并转发的开关 `forward` → `mergeForward`,全局 `defaults.imageGroup` 与订阅 `overrides.imageGroup` 两处。
+ * 全局那格是必填的(老键留着,整份设置开机被拒);逐订阅的覆盖是稀疏的(老键会被 schema 静默剥掉,主人设的覆盖就没了)。
+ */
+describe("3a-16:imageGroup 的 enable → enabled、forward → mergeForward", () => {
+	const sandbox = useZeroSandbox("bn-image-group-rename-");
+	const SPARSE_SUB_ID = "66666666-6666-4666-8666-666666666666";
+
+	it("接缝:全局与逐订阅覆盖(B 站与拓展)都换名,值原样、键序不变;稀疏覆盖不长出键;配置仓开机装得进来", async () => {
+		await sandbox.placeZero("state/connections.json", [CONNECTION]);
+		await sandbox.placeZero("state/targets.json", TARGETS);
+		const globals = makeZeroGlobals();
+		(globals.defaults as Obj).imageGroup = { enable: false, forward: true };
+		await sandbox.placeZero("state/globals.json", globals);
+		await sandbox.placeZero("state/subscriptions.json", [
+			zeroBiliRow(
+				{ id: SUB_ID, uid: "12345" },
+				{ overrides: { imageGroup: { enable: true, forward: false } } },
+			),
+			// 只覆盖了合并转发那一格
+			zeroBiliRow(
+				{ id: SPARSE_SUB_ID, uid: "777" },
+				{ overrides: { imageGroup: { forward: true } } },
+			),
+		]);
+		await sandbox.placeZero("state/extension-subscriptions.json", [
+			zeroExtensionRow(
+				{ id: EXT_SUB_ID, extensionId: "dev-source", externalId: "e1" },
+				{ overrides: { imageGroup: { enable: true } } },
+			),
+		]);
+
+		await sandbox.migrate();
+
+		const core = await sandbox.readConfig<{ defaults: { imageGroup: Obj } }>("settings/core.json");
+		expect(core.defaults.imageGroup).toEqual({ enabled: false, mergeForward: true });
+		expect(Object.keys(core.defaults.imageGroup)).toEqual(["enabled", "mergeForward"]);
+		const override = async (id: string) =>
+			((await subscriptionRow(sandbox, id)).overrides as Obj).imageGroup as Obj;
+		expect(await override(SUB_ID)).toEqual({ enabled: true, mergeForward: false });
+		expect(Object.keys(await override(SUB_ID))).toEqual(["enabled", "mergeForward"]);
+		expect(await override(SPARSE_SUB_ID)).toEqual({ mergeForward: true });
+		// 只写了总开关的覆盖:只换这一格,合并转发那一格不凭空长出来。
+		expect(await override(EXT_SUB_ID)).toEqual({ enabled: true });
+		// 盘上 0.x 的两个旧键一个不剩。
+		const disk = JSON.stringify([core, await subscriptionRow(sandbox, SUB_ID)]);
+		expect(disk).not.toContain('"enable"');
+		expect(disk).not.toContain('"forward"');
+
+		const store = await sandbox.load();
+		expect(store.getGlobals().defaults.imageGroup).toEqual({ enabled: false, mergeForward: true });
+		const loaded = (id: string) =>
+			store.getSubscriptions().find((sub) => sub.id === id)?.overrides.imageGroup;
+		expect(loaded(SUB_ID)).toEqual({ enabled: true, mergeForward: false });
+		expect(loaded(SPARSE_SUB_ID)).toEqual({ mergeForward: true });
+		expect(loaded(EXT_SUB_ID)).toEqual({ enabled: true });
+	});
+
+	it("函数级:全局与订阅行,幂等;新老键并存以新键为准、老键丢掉;不是对象的原样", () => {
+		const globals = { defaults: { imageGroup: { enable: true, forward: true } } };
+		const once = renameGlobalSettingsKeys(globals);
+		expect(once).toEqual({ defaults: { imageGroup: { enabled: true, mergeForward: true } } });
+		expect(renameGlobalSettingsKeys(once)).toEqual(once);
+		// 新老键并存:两格都以新键为准,老键丢掉(不看谁排在前)。
+		expect(
+			renameGlobalSettingsKeys({
+				defaults: {
+					imageGroup: { forward: true, enable: true, enabled: false, mergeForward: false },
+				},
+			}),
+		).toEqual({ defaults: { imageGroup: { enabled: false, mergeForward: false } } });
+		expect(renameGlobalSettingsKeys({ defaults: { imageGroup: 5 } })).toEqual({
+			defaults: { imageGroup: 5 },
+		});
+
+		const row = { overrides: { imageGroup: { forward: false } } };
+		const rowOnce = renameSubscriptionKeys(row);
+		expect(rowOnce).toEqual({ overrides: { imageGroup: { mergeForward: false } } });
+		expect(renameSubscriptionKeys(rowOnce)).toEqual(rowOnce);
+		// 稀疏覆盖只换写过的键:只写了总开关的,出来只有 `enabled`。
+		const onlyEnable = renameSubscriptionKeys({ overrides: { imageGroup: { enable: false } } });
+		expect(onlyEnable).toEqual({ overrides: { imageGroup: { enabled: false } } });
+		expect(renameSubscriptionKeys(onlyEnable)).toEqual(onlyEnable);
+		// 没有图集覆盖的行不凭空长出来。
+		expect(renameSubscriptionKeys({ overrides: {} })).toEqual({ overrides: {} });
+	});
+});

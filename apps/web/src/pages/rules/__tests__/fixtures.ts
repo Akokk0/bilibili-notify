@@ -77,7 +77,7 @@ export function makeDefaults(): GlobalDefaults {
 			},
 			presets: [],
 		},
-		imageGroup: { enable: true, forward: false },
+		imageGroup: { enabled: true, mergeForward: false },
 		messageLayout: {
 			version: 1,
 			post: {

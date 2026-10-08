@@ -151,7 +151,7 @@ describe("connections route — 写入的失败(真 store)", () => {
 			headers: {},
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
-			forwardMinTimeoutMs: 60_000,
+			mergeForwardMinTimeoutMs: 60_000,
 			retryTimes: 0,
 			retryIntervalMs: 1_000,
 		},

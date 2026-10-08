@@ -67,7 +67,7 @@ const onebotCommonConfigShape = {
 	 */
 	imageMinTimeoutMs: z.number().int().min(0).default(ONEBOT_IMAGE_MIN_TIMEOUT_MS),
 	/** 合并转发（`send_*_forward_msg`）的超时下限（毫秒）。语义同上，`0` = 关闭放宽。 */
-	forwardMinTimeoutMs: z.number().int().min(0).default(ONEBOT_FORWARD_MIN_TIMEOUT_MS),
+	mergeForwardMinTimeoutMs: z.number().int().min(0).default(ONEBOT_FORWARD_MIN_TIMEOUT_MS),
 	/** 失败时的重试次数（不含首次）。 */
 	retryTimes: z.number().int().min(0).default(0),
 	/** 两次重试之间的等待（毫秒）。 */

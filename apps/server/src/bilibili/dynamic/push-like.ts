@@ -139,15 +139,15 @@ export interface SubItemView {
 	/** Per-UP AI 覆盖；undefined 时使用 CommentaryGenerator 的全局 config。 */
 	aiOverride?: CommentaryCallOverride;
 	/**
-	 * Per-UP 是否推送动态图集图片;undefined 继承 engine config `imageGroup.enable`。
-	 * Adapter 折叠 `Subscription.overrides.imageGroup.enable` 后填入。
+	 * Per-UP 是否推送动态图集图片;undefined 继承 engine config `imageGroup.enabled`。
+	 * Adapter 折叠 `Subscription.overrides.imageGroup.enabled` 后填入。
 	 */
-	imageGroupEnable?: boolean;
+	imageGroupEnabled?: boolean;
 	/**
-	 * Per-UP 图集合并转发开关;undefined 继承 engine config `imageGroup.forward`。
+	 * Per-UP 图集合并转发开关;undefined 继承 engine config `imageGroup.mergeForward`。
 	 * 单图永远不走合并转发(在 engine 内已守卫)。
 	 */
-	imageGroupForward?: boolean;
+	imageGroupMergeForward?: boolean;
 	/**
 	 * Per-UP 非视频动态文本模板;undefined 继承 engine config `dynamicTemplate`。
 	 * Adapter 折叠 `Subscription.overrides.templates.post` 后填入。

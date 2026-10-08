@@ -40,7 +40,7 @@ function onebot(id: string, token: string): Connection {
 			protocolVersion: "v11",
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
-			forwardMinTimeoutMs: 60_000,
+			mergeForwardMinTimeoutMs: 60_000,
 			retryTimes: 0,
 			retryIntervalMs: 1_000,
 		},
@@ -369,7 +369,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
-			expect(env.schemaVersion).toBe(9);
+			expect(env.schemaVersion).toBe(10);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
 			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1", "e1"]);
 			expect(sections.subscriptions?.map((s) => s.identity.sourceKey)).toEqual([

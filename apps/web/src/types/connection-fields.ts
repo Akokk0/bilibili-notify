@@ -220,15 +220,15 @@ function onebotFields(
 		},
 		{
 			kind: "number",
-			code: "config.forwardMinTimeoutMs",
+			code: "config.mergeForwardMinTimeoutMs",
 			label: "合并转发超时下限",
 			hint: `语义同上，只是合并转发要把每张图逐张下载再上传组装，更慢（默认 ${ONEBOT_FORWARD_MIN_TIMEOUT_MS / 1000}s）。填 0 = 不放宽`,
 			min: 0,
 			step: 1000,
 			suffix: "ms",
 			width: 120,
-			value: cfg.forwardMinTimeoutMs,
-			set: (v) => patch({ forwardMinTimeoutMs: v }),
+			value: cfg.mergeForwardMinTimeoutMs,
+			set: (v) => patch({ mergeForwardMinTimeoutMs: v }),
 		},
 		{
 			kind: "number",

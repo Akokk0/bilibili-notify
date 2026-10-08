@@ -24,7 +24,7 @@ import { api } from "../../services/api";
 
 const CUSTOMIZED: Subscription = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
-	overrides: { imageGroup: { enable: true, forward: false } },
+	overrides: { imageGroup: { enabled: true, mergeForward: false } },
 };
 
 const GLOBALS = {

@@ -211,13 +211,13 @@ describe("OnebotConnectionConfigSchema (transport discriminatedUnion)", () => {
 		expect(http.success).toBe(true);
 		if (http.success && http.data.transport === "http") {
 			expect(http.data.imageMinTimeoutMs).toBe(30_000);
-			expect(http.data.forwardMinTimeoutMs).toBe(60_000);
+			expect(http.data.mergeForwardMinTimeoutMs).toBe(60_000);
 		}
 		const rev = OnebotConnectionConfigSchema.safeParse({ transport: "ws-reverse", port: 6700 });
 		expect(rev.success).toBe(true);
 		if (rev.success && rev.data.transport === "ws-reverse") {
 			expect(rev.data.imageMinTimeoutMs).toBe(30_000);
-			expect(rev.data.forwardMinTimeoutMs).toBe(60_000);
+			expect(rev.data.mergeForwardMinTimeoutMs).toBe(60_000);
 		}
 	});
 
@@ -225,12 +225,12 @@ describe("OnebotConnectionConfigSchema (transport discriminatedUnion)", () => {
 		const r = OnebotConnectionConfigSchema.safeParse({
 			baseUrl: "http://localhost:5700",
 			imageMinTimeoutMs: 0,
-			forwardMinTimeoutMs: 0,
+			mergeForwardMinTimeoutMs: 0,
 		});
 		expect(r.success).toBe(true);
 		if (r.success && r.data.transport === "http") {
 			expect(r.data.imageMinTimeoutMs).toBe(0);
-			expect(r.data.forwardMinTimeoutMs).toBe(0);
+			expect(r.data.mergeForwardMinTimeoutMs).toBe(0);
 		}
 	});
 
@@ -244,7 +244,7 @@ describe("OnebotConnectionConfigSchema (transport discriminatedUnion)", () => {
 		expect(
 			OnebotConnectionConfigSchema.safeParse({
 				baseUrl: "http://localhost:5700",
-				forwardMinTimeoutMs: -1,
+				mergeForwardMinTimeoutMs: -1,
 			}).success,
 		).toBe(false);
 	});

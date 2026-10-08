@@ -137,6 +137,8 @@ const ZERO_FILES: Record<string, string> = {
 			cardStyleByKind: { live: { liveCoverImages: ["live-cover.png"] }, sc: { enabled: false } },
 			cardSkin: "my-old-skin",
 			cardSkinKnobs: { "my-old-skin": { accent: "#ff0000" }, default: { accent: "#00ff00" } },
+			// 图集设置里总开关与合并转发的开关改名(3a-16,`feature-renames.test.ts` 钉细节,这里让摘要认得到这一步)
+			imageGroup: { enable: true, forward: true },
 		},
 		// 0.9.1 的「范围 + 白名单」
 		linkParsing: {
@@ -166,6 +168,8 @@ const ZERO_FILES: Record<string, string> = {
 				cardStyleByKind: { live: { liveCoverImages: ["sub-cover.png"] } },
 				cardSkin: "my-old-skin",
 				cardSkinKnobs: { "my-old-skin": { accent: "#0000ff" } },
+				// 逐订阅的图集覆盖(3a-16):两格都写了
+				imageGroup: { enable: false, forward: false },
 				templates: {
 					guardBuy: {
 						enable: true,
@@ -189,7 +193,8 @@ const ZERO_FILES: Record<string, string> = {
 			name: "NapCat",
 			enabled: true,
 			platform: "onebot",
-			config: { transport: "http", baseUrl: "http://127.0.0.1:3000" },
+			// 合并转发的超时下限改名(3a-16,`zero-generation-connections.test.ts` 钉细节)
+			config: { transport: "http", baseUrl: "http://127.0.0.1:3000", forwardMinTimeoutMs: 90000 },
 		},
 	]),
 	"state/targets.json": JSON.stringify([
@@ -277,6 +282,28 @@ const ZERO_FILES: Record<string, string> = {
 	// 0.x 的重推原件(⑱c 起 `v` → `version`)。
 	"history/repush/2026-09-30/row-1.json":
 		'{"v":1,"messages":[{"payload":{"kind":"text","text":"下播了"},"role":"main"}]}',
+	// 载荷改名(3a-16):图集 `forward-images` → `image-group`、`forward` → `mergeForward`,composite 段的判别键 `type` → `kind`
+	// (`repush-snapshot-payloads.test.ts` 与 `zero-generation-history.test.ts` 钉细节,这里让摘要认得到这一步)。
+	"history/repush/2026-09-30/row-2.json": JSON.stringify({
+		v: 1,
+		messages: [
+			{
+				payload: {
+					kind: "forward-images",
+					images: [{ url: "https://example.com/1.jpg", width: 1080, height: 1920 }],
+					forward: true,
+				},
+				role: "extra",
+			},
+			{
+				payload: {
+					kind: "composite",
+					segments: [{ type: "at-all" }, { type: "text", text: "发了动态" }],
+				},
+				role: "main",
+			},
+		],
+	}),
 	"stats/dyn/sub-1.jsonl": '{"k":"post"}\n',
 	"stats/live/sub-1.jsonl": '{"k":"start"}\n',
 	"stats/seen/sub-1.jsonl": '{"d":"2026-09-30"}\n',
@@ -341,6 +368,7 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"secrets/cookies.json": "secrets/cookies.json",
 	"history/2026-09-30.jsonl": "history/2026-09-30.jsonl",
 	"history/repush/2026-09-30/row-1.json": "history/repush/2026-09-30/row-1.json",
+	"history/repush/2026-09-30/row-2.json": "history/repush/2026-09-30/row-2.json",
 	"stats/dyn/sub-1.jsonl": "stats/posts/sub-1.jsonl",
 	"stats/live/sub-1.jsonl": "stats/live/sub-1.jsonl",
 	"stats/dyn/12345.jsonl": "stats/posts/33333333-3333-4333-8333-333333333333.jsonl",
@@ -372,6 +400,7 @@ const REWRITTEN = [
 	"config/targets.json",
 	"history/2026-09-30.jsonl",
 	"history/repush/2026-09-30/row-1.json",
+	"history/repush/2026-09-30/row-2.json",
 	"runtime/roast-drafts.json",
 	"runtime/sub-runtime.json",
 	"skins/dashboard/active.json",
@@ -737,8 +766,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 36,
-			output: "b088874508fae2e3a6e531540a3252f6a573734c49ed74f3bf3900d0dca997b9",
+			revision: 37,
+			output: "06ac77762e5a1660386e46ff9ba883df281460750361f057ef9bb176f91234ad",
 		});
 	});
 });

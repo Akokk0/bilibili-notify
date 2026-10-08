@@ -273,7 +273,7 @@ export function makeEmptyConnection(platform: ConnectionPlatform, name: string):
 				headers: {},
 				timeoutMs: 15_000,
 				imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-				forwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+				mergeForwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 				retryTimes: 0,
 				retryIntervalMs: 1_000,
 			},
@@ -303,7 +303,7 @@ type OnebotConnectionConfigCommon = Pick<
 	| "protocolVersion"
 	| "timeoutMs"
 	| "imageMinTimeoutMs"
-	| "forwardMinTimeoutMs"
+	| "mergeForwardMinTimeoutMs"
 	| "retryTimes"
 	| "retryIntervalMs"
 >;
@@ -322,7 +322,7 @@ export function switchOnebotTransport(
 		protocolVersion: cfg.protocolVersion ?? "v11",
 		timeoutMs: cfg.timeoutMs,
 		imageMinTimeoutMs: cfg.imageMinTimeoutMs,
-		forwardMinTimeoutMs: cfg.forwardMinTimeoutMs,
+		mergeForwardMinTimeoutMs: cfg.mergeForwardMinTimeoutMs,
 		retryTimes: cfg.retryTimes || (transport === "http" ? 0 : 3),
 		retryIntervalMs: cfg.retryIntervalMs,
 	};

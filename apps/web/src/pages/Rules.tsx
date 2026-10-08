@@ -146,9 +146,9 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 
 /**
  * 全局 island 绑定器 —— 把 GlobalDefaults 打平成扁平 code 结构喂 useDirtyDraft:
- * filters / imageGroup 顶层字段无前缀(字典 code 无前缀)→ 打平;schedule / liveStart /
- * liveStreaming / templates 字典 code 带前缀 → 保 nested,walkTreeDiff 递归出 `schedule.X` /
- * `liveStart.X` / `liveStreaming.X` / `templates.X`。`features` 只投影周期那一把(这一页只编辑它)。
+ * filters 顶层字段无前缀(字典 code 无前缀)→ 打平;imageGroup / schedule / liveStart /
+ * liveStreaming / templates 字典 code 带前缀 → 保 nested,walkTreeDiff 递归出 `imageGroup.X` / `schedule.X` /
+ * `liveStart.X` / `liveStreaming.X` / `templates.X`(图集的总开关叫 `enabled`,打平会和 AI 页的 `enabled` 撞键)。`features` 只投影周期那一把(这一页只编辑它)。
  *
  * 刻意抽成独立组件、仅在 isGlobal 时挂载,与 per-UP 的 PerUpEditor(自调
  * pageKey "rules-perup" 的 useDirtyDraft)**互斥** —— 同一时刻只有一个 binder
@@ -169,7 +169,7 @@ export function GlobalDraftBinder({
 	const islandDraft = useMemo(
 		() => ({
 			...defaults.filters,
-			...defaults.imageGroup,
+			imageGroup: defaults.imageGroup,
 			schedule: defaults.schedule,
 			liveStart: defaults.liveStart,
 			liveStreaming: defaults.liveStreaming,
@@ -188,7 +188,7 @@ export function GlobalDraftBinder({
 	const islandBaseline = useMemo(
 		() => ({
 			...baseline.filters,
-			...baseline.imageGroup,
+			imageGroup: baseline.imageGroup,
 			schedule: baseline.schedule,
 			liveStart: baseline.liveStart,
 			liveStreaming: baseline.liveStreaming,

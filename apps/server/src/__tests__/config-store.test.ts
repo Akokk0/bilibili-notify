@@ -134,7 +134,7 @@ function makeOnebotConnection(
 			headers: {},
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
-			forwardMinTimeoutMs: 60_000,
+			mergeForwardMinTimeoutMs: 60_000,
 			retryTimes: 0,
 			retryIntervalMs: 1_000,
 		},
@@ -372,11 +372,14 @@ describe("ConfigStore", () => {
 		const sub = makeSampleSubscription("99999");
 		await store.upsertSubscription(sub);
 		await store.patchSubscription(sub.id, {
-			overrides: { imageGroup: { enable: true, forward: true }, superchat: { minAmount: 30 } },
+			overrides: {
+				imageGroup: { enabled: true, mergeForward: true },
+				superchat: { minAmount: 30 },
+			},
 		});
 		expect(store.getSubscriptions()[0]?.overrides.imageGroup).toEqual({
-			enable: true,
-			forward: true,
+			enabled: true,
+			mergeForward: true,
 		});
 
 		// null = 显式清除 imageGroup;同一 patch 里不带 superchat 键 → superchat 保留(“不改”)。
@@ -387,6 +390,30 @@ describe("ConfigStore", () => {
 		expect(after?.overrides.imageGroup).toBeUndefined();
 		// superchat slice 不被 null patch 波及,先前写入的门槛仍在。
 		expect(after?.overrides.superchat?.minAmount).toBe(30);
+	});
+
+	it("SY1:图集覆盖里只清合并转发那一格(`mergeForward: null`)—— 那一格回到跟默认,同段的 enabled 留着;反过来只清 `enabled` 也一样", async () => {
+		// 3a-16 改名之后的键同样要清得掉:面板对「段还在、这一格删了」下发的是这一格的显式 null。
+		const sub = makeSampleSubscription("31415");
+		await store.upsertSubscription(sub);
+		await store.patchSubscription(sub.id, {
+			overrides: { imageGroup: { enabled: false, mergeForward: true } },
+		});
+		await store.patchSubscription(sub.id, {
+			overrides: { imageGroup: { mergeForward: null } },
+		} as never);
+		expect(store.getSubscriptions()[0]?.overrides.imageGroup).toEqual({ enabled: false });
+		// 反过来:只清总开关那一格,合并转发那一格留着。
+		await store.patchSubscription(sub.id, {
+			overrides: { imageGroup: { enabled: false, mergeForward: true } },
+		});
+		await store.patchSubscription(sub.id, {
+			overrides: { imageGroup: { enabled: null } },
+		} as never);
+		expect(store.getSubscriptions()[0]?.overrides.imageGroup).toEqual({ mergeForward: true });
+		// 再清整段:显式 null 删掉整段。
+		await store.patchSubscription(sub.id, { overrides: { imageGroup: null } } as never);
+		expect(store.getSubscriptions()[0]?.overrides.imageGroup).toBeUndefined();
 	});
 
 	it("SY1:醒目留言 / 会员门槛的覆盖能清掉 —— 整段置 null 删掉整段;minRank 里只清 guard 一个键,别的体系的门槛留着", async () => {

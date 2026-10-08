@@ -55,31 +55,31 @@ afterEach(() => {
 
 describe("PerUpEditor 接入草稿灵动岛", () => {
 	it("mount → 以 pageKey 'rules-perup' 注册到 draftStore", () => {
-		renderEditor(makeSub({ imageGroup: { enable: true, forward: false } }), "imageGroup");
+		renderEditor(makeSub({ imageGroup: { enabled: true, mergeForward: false } }), "imageGroup");
 		expect(useDraftStore.getState().current?.pageKey).toBe("rules-perup");
 	});
 
 	it("编辑字段 → draftStore diff 检出对应 code(draft→投影→hook 路径活)", async () => {
 		const { container } = renderEditor(
-			makeSub({ imageGroup: { enable: true, forward: false } }),
+			makeSub({ imageGroup: { enabled: true, mergeForward: false } }),
 			"imageGroup",
 		);
-		const enableToggle = container.querySelector('[data-code="enable"] button');
+		const enableToggle = container.querySelector('[data-code="imageGroup.enabled"] button');
 		expect(enableToggle).not.toBeNull();
 		fireEvent.click(enableToggle as Element);
 		await waitFor(() => {
 			const codes = useDraftStore.getState().current?.diff.map((d) => d.code) ?? [];
-			expect(codes).toContain("enable");
+			expect(codes).toContain("imageGroup.enabled");
 		});
 	});
 
 	it("即使变 dirty 也不渲染页内『保存』『丢弃』按钮(统一到灵动岛)", async () => {
 		const { container } = renderEditor(
-			makeSub({ imageGroup: { enable: true, forward: false } }),
+			makeSub({ imageGroup: { enabled: true, mergeForward: false } }),
 			"imageGroup",
 		);
 		// 先编辑成 dirty —— 移除前此时页内会冒出保存/丢弃按钮,移除后不应有。
-		fireEvent.click(container.querySelector('[data-code="enable"] button') as Element);
+		fireEvent.click(container.querySelector('[data-code="imageGroup.enabled"] button') as Element);
 		await waitFor(() => {
 			expect(useDraftStore.getState().current?.diff.length ?? 0).toBeGreaterThan(0);
 		});

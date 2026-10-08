@@ -23,6 +23,7 @@ import {
 	fail,
 	type Identity,
 	type Logger,
+	type NotificationPayload,
 } from "@bilibili-notify/internal";
 import { sweepHistoryRetention } from "../history/retention.js";
 import { isPatchLine, listDayFiles } from "../history/store.js";
@@ -36,7 +37,7 @@ import {
 	rewriteJsonlFile,
 } from "./files.js";
 import type { HistoryImages } from "./history-images.js";
-import type { ZeroPushKind } from "./zero-vocabulary.js";
+import type { ZeroPayloadKind, ZeroPushKind } from "./zero-vocabulary.js";
 
 /**
  * `live` 只当开播(老格式分不出周期复推),`live-summary`(词云 / 总结)归到下播。pushId 借行 id —— 老行本来
@@ -277,14 +278,80 @@ function migrateLineShape(line: string): string {
 }
 
 /**
- * ⑱c:一份重推原件(`history/repush/<日>/<行 id>.json`)的 `v` → `version`,**键留在原来的位置**、消息一个字不动。
- * 已经是 `version` 的、读不懂的回 `undefined`(不改写)。载荷种类的改名随活的载荷改名那一期(3a / 3b),不在这里。
+ * 0.x 的每种载荷在 1.0 叫什么(3a-16)。`miniapp-card` 今天原样留着:它改成原生分享(连同字段)归 3b。
+ * 0.x 多一种、这里没给去向,编译不过;守卫见 `__tests__/repush-snapshot-payloads.test.ts`。
+ */
+const PAYLOAD_KIND_RENAMES = {
+	text: "text",
+	image: "image",
+	composite: "composite",
+	"forward-images": "image-group",
+	"miniapp-card": "miniapp-card",
+} as const satisfies Record<ZeroPayloadKind, NotificationPayload["kind"]>;
+
+/** 把对象里的一个键换个名字,**键留在原来的位置**、值不动。 */
+function renameKey(
+	value: Record<string, unknown>,
+	from: string,
+	to: string,
+): Record<string, unknown> {
+	return Object.fromEntries(Object.entries(value).map(([key, v]) => [key === from ? to : key, v]));
+}
+
+/**
+ * 3a-16:原件里一条载荷改成活的 `NotificationPayload` 的名字 —— 图集 `forward-images` → `image-group`、它的开关
+ * `forward` → `mergeForward`(图的 `{ url, width?, height? }` 本来就是 `PostImage` 的子集,照搬);composite 每一段的
+ * 判别键 `type` → `kind`。键都留在原来的位置。已经是新名字的、读不懂的回同一个对象。
+ */
+function migrateRepushPayload(payload: unknown): unknown {
+	if (!isPlainObject(payload)) return payload;
+	let next = payload;
+	if (payload.kind === "forward-images") {
+		next = {
+			...renameKey(payload, "forward", "mergeForward"),
+			kind: PAYLOAD_KIND_RENAMES["forward-images"],
+		};
+	}
+	if (Array.isArray(payload.segments)) {
+		let changed = false;
+		const segments = (payload.segments as unknown[]).map((seg) => {
+			if (!isPlainObject(seg) || !("type" in seg) || "kind" in seg) return seg;
+			changed = true;
+			return renameKey(seg, "type", "kind");
+		});
+		if (changed) next = { ...next, segments };
+	}
+	return next;
+}
+
+/**
+ * 一份重推原件(`history/repush/<日>/<行 id>.json`)改成现在的形状:`v` → `version`(⑱c,**键留在原来的位置**),每条消息的
+ * 载荷改成活的名字(3a-16,{@link migrateRepushPayload})。什么都不用改的、读不懂的回 `undefined`(不改写),所以迁两遍和
+ * 迁一遍一样。小程序卡那一种的改名归 3b,不在这里。
  */
 function migrateRepushSnapshot(value: unknown): Record<string, unknown> | undefined {
-	if (!isPlainObject(value) || !("v" in value) || "version" in value) return undefined;
-	return Object.fromEntries(
-		Object.entries(value).map(([key, v]) => (key === "v" ? ["version", v] : [key, v])),
-	);
+	if (!isPlainObject(value)) return undefined;
+	let changed = false;
+	let next = value;
+	if ("v" in value && !("version" in value)) {
+		next = renameKey(value, "v", "version");
+		changed = true;
+	}
+	if (Array.isArray(value.messages)) {
+		let payloadChanged = false;
+		const messages = (value.messages as unknown[]).map((message) => {
+			if (!isPlainObject(message)) return message;
+			const payload = migrateRepushPayload(message.payload);
+			if (payload === message.payload) return message;
+			payloadChanged = true;
+			return { ...message, payload };
+		});
+		if (payloadChanged) {
+			next = { ...next, messages };
+			changed = true;
+		}
+	}
+	return changed ? next : undefined;
 }
 
 export interface RepushSnapshotMigration {
@@ -295,8 +362,8 @@ export interface RepushSnapshotMigration {
 }
 
 /**
- * 新代里每份重推原件迁成最新的形状:`v` → `version`(⑱c),图格 `{ ref, mime, own? }` → 图库引用(⑳d,见
- * `history-images.ts`),**一份只写一次**。有一张图读不到的原件整份作废:从新代里删掉(搬位置时是复制,删的是新代
+ * 新代里每份重推原件迁成最新的形状:`v` → `version`(⑱c)、载荷改成活的名字(3a-16),图格 `{ ref, mime, own? }` →
+ * 图库引用(⑳d,见 `history-images.ts`;它排在改名之后,读的是段的新判别键 `kind`),**一份只写一次**。有一张图读不到的原件整份作废:从新代里删掉(搬位置时是复制,删的是新代
  * 这一个名字,第 0 代那份不动)。日目录里原件自己存的图不进新代(搬位置时就没搬),这里只认 `.json`。
  */
 export async function migrateRepushSnapshotFiles(

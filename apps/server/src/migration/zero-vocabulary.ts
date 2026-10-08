@@ -151,6 +151,22 @@ export const ZERO_PUSH_KINDS = [
 
 export type ZeroPushKind = (typeof ZERO_PUSH_KINDS)[number];
 
+/**
+ * 0.x 的推送载荷种类(0.12 `NotificationPayload` 的 `kind`),重推原件(`history/repush/<日>/<行 id>.json`)里每条消息的
+ * 载荷就是其中一种。1.0 把图集那一种改叫 `image-group`(`history.ts` 的对照表用 `satisfies Record<ZeroPayloadKind, …>`
+ * 钉着:这里多一种、对照表没给去向,编译不过);守卫 13 拿这张表给每一种各造一份旧原件、迁完用真的仓读回
+ * (`__tests__/repush-snapshot-payloads.test.ts`)。
+ */
+export const ZERO_PAYLOAD_KINDS = [
+	"text",
+	"image",
+	"composite",
+	"forward-images",
+	"miniapp-card",
+] as const;
+
+export type ZeroPayloadKind = (typeof ZERO_PAYLOAD_KINDS)[number];
+
 /** 0.x 卡片设置里按卡种分开存的键(0.12 `CardStyleByKindSchema`):只有 `live` 下的直播封面有人读,别的卡种下的东西丢掉。 */
 export const ZERO_CARD_KIND_KEYS = ["live", "dynamic", "sc", "guard"] as const;
 

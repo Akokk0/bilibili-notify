@@ -11,7 +11,6 @@ import type {
 	Logger,
 	NotificationPayload,
 	PlatformAdapter,
-	PostImage,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
@@ -21,6 +20,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, fail, isConnectionOn, ok } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
+import { imageGroupUrls } from "./image-group.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
@@ -829,15 +829,6 @@ export function buildQQV2Message(opts: { content?: string; media?: QQFileMedia }
  * 私域机器人可一条消息带多张图。尺寸来自 B站图集元数据;缺失则退化为无尺寸
  * `![图片](url)`(QQ 可能按默认尺寸渲染)。依赖 QQ 能拉取图片 url(hdslb 公网可达)。
  */
-/** 图集照 `url` 发;没有 `url` 的图(只带图库引用)这里发不了,跳过。 */
-function imageGroupUrlImages(
-	images: readonly PostImage[],
-): { url: string; width?: number; height?: number }[] {
-	return images.flatMap((img) =>
-		img.url ? [{ url: img.url, width: img.width, height: img.height }] : [],
-	);
-}
-
 export function buildQQMarkdownGallery(
 	images: { url: string; width?: number; height?: number }[],
 ): string {
@@ -913,7 +904,7 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 			return [{ kind: "image-buffer", buffer: payload.image.buffer, caption: payload.caption }];
 		case "image-group":
 			// QQ 无合并转发 —— mergeForward 标志忽略,每张图展开成独立片段(尺寸透传给 markdown 用)。
-			return imageGroupUrlImages(payload.images).map((img) => ({
+			return imageGroupUrls(payload.images).map((img) => ({
 				kind: "image-url" as const,
 				...img,
 			}));
@@ -1318,7 +1309,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// markdown 图集门控:仅私域机器人 + 群/C2C 的图集 → 合并成一条原生 markdown
 			// 多图(绕过 QQ「无合并转发」)。公域不支持原生 markdown(需报备模板),回落 N 条
 			// media;频道有独立消息 API,也不走这里。卡片 Buffer(image kind)永远走 media。
-			const gallery = payload.kind === "image-group" ? imageGroupUrlImages(payload.images) : [];
+			const gallery = payload.kind === "image-group" ? imageGroupUrls(payload.images) : [];
 			if (
 				cfg.botType === "private" &&
 				(scope === "group" || scope === "private") &&

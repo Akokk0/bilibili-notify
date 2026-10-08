@@ -81,7 +81,7 @@ describe("OneBot 连接", () => {
 			"config.accessToken",
 			"config.timeoutMs",
 			"config.imageMinTimeoutMs",
-			"config.forwardMinTimeoutMs",
+			"config.mergeForwardMinTimeoutMs",
 			"config.retryTimes",
 			"config.retryIntervalMs",
 			"config.headers",

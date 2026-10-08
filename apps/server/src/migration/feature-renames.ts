@@ -15,6 +15,7 @@
  * | 订阅顶层的逐目标表 `extras` | `extraTargets` |
  * | 内容过滤 `filters`(全局 `defaults.filters` 与订阅 `overrides.filters`):`blockForward` / `blockArticle` / `blockDraw` / `blockAv` | `blockReposts` / `blockArticles` / `blockImages` / `blockVideos` |
  * | 内容过滤的白名单 `whitelistKeywords` / `whitelistRegex` | `allowKeywords` / `allowRegex` |
+ * | 图集设置 `imageGroup`(全局 `defaults.imageGroup` 与订阅 `overrides.imageGroup`)的 `enable` / `forward`(3a-16) | `enabled` / `mergeForward` |
  *
  * 值原样搬、键序不变;认不得的形状原样放过(由配置仓开机时报出来);已经是新键的数据再跑一遍不变,新老键并存时以新键为准、
  * 老键丢掉。**不碰**的同名不同义:`app.logLevels` 的 `dynamic` / `live`(日志模块名,3a)、`cardStyleByKind` 的卡种键(归 `card-moves.ts`)、
@@ -34,6 +35,7 @@ import type {
 	ContentFilters,
 	ExtraKey,
 	FeatureKey,
+	ImageGroupSettings,
 	MessageLayout,
 	TemplateBundle,
 } from "@bilibili-notify/internal";
@@ -113,6 +115,12 @@ const FILTER_KEY_RENAMES = {
 /** 订阅顶层的逐目标表。 */
 const SUBSCRIPTION_KEY_RENAMES = { extras: "extraTargets" } as const;
 
+/** 图集设置:`defaults.imageGroup` 与订阅的 `overrides.imageGroup` 共用。总开关改叫 `enabled`、合并转发的开关改叫 `mergeForward`(3a-16)。 */
+const IMAGE_GROUP_KEY_RENAMES = {
+	enable: "enabled",
+	forward: "mergeForward",
+} as const satisfies Record<"enable" | "forward", keyof ImageGroupSettings>;
+
 // ── 换键的零件 ──────────────────────────────────────────────────────────────────
 
 type KeyRename = (key: string) => string;
@@ -156,6 +164,10 @@ const renameFilters: ValueRewrite = (value) => renameKeys(value, byTable(FILTER_
 
 const renameTemplates: ValueRewrite = (value) => renameKeys(value, byTable(TEMPLATE_KEY_RENAMES));
 
+/** 全局 `defaults.imageGroup` 与逐订阅 `overrides.imageGroup`:稀疏的覆盖只换写过的键。 */
+const renameImageGroup: ValueRewrite = (value) =>
+	renameKeys(value, byTable(IMAGE_GROUP_KEY_RENAMES));
+
 const renameMessageLayout: ValueRewrite = (value) =>
 	renameKeys(value, byTable(MESSAGE_LAYOUT_KEY_RENAMES));
 
@@ -170,7 +182,7 @@ const renameTemplateLedger: ValueRewrite = (value) =>
 
 /**
  * 整份全局设置(0.x 最新形状,`state/globals.json` → `settings/core.json`)的 raw → raw:`defaults` 里的特性开关、
- * 内容过滤、文案、版式与账本换成 1.0 的键。认不得的形状原样放过。
+ * 内容过滤、图集设置、文案、版式与账本换成 1.0 的键。认不得的形状原样放过。
  */
 export function renameGlobalSettingsKeys(raw: unknown): unknown {
 	return renameKeys(raw, (key) => key, {
@@ -178,6 +190,7 @@ export function renameGlobalSettingsKeys(raw: unknown): unknown {
 			renameKeys(defaults, (key) => key, {
 				features: renameFeatureFlags,
 				filters: renameFilters,
+				imageGroup: renameImageGroup,
 				templates: renameTemplates,
 				messageLayout: renameMessageLayout,
 				templateDefaultsSeen: renameTemplateLedger,
@@ -187,7 +200,7 @@ export function renameGlobalSettingsKeys(raw: unknown): unknown {
 
 /**
  * 一条订阅(0.x 最新形状,B 站或拓展)的 raw → raw:`routing`、顶层的逐目标表 `extras` → `extraTargets`(含里面的附加项键)、
- * 与 `overrides` 里的 `features` / `filters` / `templates` / `messageLayout` 一次改完。认不得的形状原样放过。
+ * 与 `overrides` 里的 `features` / `filters` / `imageGroup` / `templates` / `messageLayout` 一次改完。认不得的形状原样放过。
  */
 export function renameSubscriptionKeys(row: unknown): unknown {
 	return renameKeys(row, byTable(SUBSCRIPTION_KEY_RENAMES), {
@@ -198,6 +211,7 @@ export function renameSubscriptionKeys(row: unknown): unknown {
 			renameKeys(overrides, (key) => key, {
 				features: renameFeatureFlags,
 				filters: renameFilters,
+				imageGroup: renameImageGroup,
 				templates: renameTemplates,
 				messageLayout: renameMessageLayout,
 			}),

@@ -21,11 +21,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import {
-	type Connection,
-	makeDefaultGlobalConfig,
-	type PushTarget,
-} from "@bilibili-notify/internal";
+import { makeDefaultGlobalConfig, type PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { useZeroSandbox } from "./support.js";
 import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
@@ -37,7 +33,8 @@ const SUB_ID = "33333333-3333-4333-8333-333333333333";
 const EXT_SUB_ID = "55555555-5555-4555-8555-555555555555";
 
 /** 新形状的连接与目标 —— 这一份夹具只关心订阅与设置,它们不该被改写。 */
-const CONNECTION: Connection = {
+/** 0.x 形状的连接(迁移的输入):合并转发的超时下限还叫 `forwardMinTimeoutMs`。 */
+const CONNECTION = {
 	id: CONNECTION_ID,
 	name: "NapCat",
 	platform: "onebot",

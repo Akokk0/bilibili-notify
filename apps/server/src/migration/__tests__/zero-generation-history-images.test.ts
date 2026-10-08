@@ -379,10 +379,11 @@ describe("重推原件:图格 { ref, mime, own? } → 图库引用", () => {
 		});
 		expect(snapshot.messages[1]?.payload).toEqual({
 			kind: "composite",
+			// 段的判别键随 3a-16 一起改成 `kind`(输入是 0.x 的 `type`)。
 			segments: [
-				{ type: "text", text: "正文" },
-				{ type: "image", image: pngRef },
-				{ type: "image", image: jpgRef },
+				{ kind: "text", text: "正文" },
+				{ kind: "image", image: pngRef },
+				{ kind: "image", image: jpgRef },
 			],
 		});
 		expect(await libraryFiles()).toEqual([pngRef, jpgRef].sort());

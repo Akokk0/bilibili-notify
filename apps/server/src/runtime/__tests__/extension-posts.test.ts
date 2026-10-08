@@ -94,7 +94,7 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 				events: () => ["post"],
 			},
 			pushFor: () => push,
-			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
 				image,
@@ -163,7 +163,7 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 				events: () => ["post"],
 			},
 			pushFor: () => push,
-			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
 				image,
@@ -225,7 +225,7 @@ describe("bindExtensionPosts — 登记进 track", () => {
 				events: () => ["post"],
 			},
 			pushFor: () => push,
-			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
 				image,
@@ -313,7 +313,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 				events: () => ["post"],
 			},
 			pushFor: () => push,
-			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false } }),
+			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
 				image,
@@ -388,7 +388,10 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 			}),
 			sources: { running: () => true, postNoun: () => "作品", events: () => ["post"] },
 			pushFor: () => push,
-			deliveryConfig: () => ({ imageGroup: { enable: false, forward: false }, ...deliveryConfig }),
+			deliveryConfig: () => ({
+				imageGroup: { enabled: false, mergeForward: false },
+				...deliveryConfig,
+			}),
 			deliveryDeps: () => ({
 				logger,
 				image,

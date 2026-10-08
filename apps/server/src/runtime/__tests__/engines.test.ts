@@ -1388,7 +1388,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.imageGroup.enable = !g.defaults.imageGroup.enable;
+			g.defaults.imageGroup.enabled = !g.defaults.imageGroup.enabled;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 
@@ -2061,7 +2061,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		// imageGroup / filter / 模板覆盖的订阅首推会用全局,要等下次全量刷新。现走
 		// buildDynamicSubViewSingle 全量投影。
 		const sub = makeSub("600", true);
-		sub.overrides.imageGroup = { enable: false };
+		sub.overrides.imageGroup = { enabled: false };
 		sub.overrides.templates = { post: "🔔 {name} {url}", postVideo: "🎬 {name} {url}" };
 		const c = setup({ subs: [sub] });
 		active = c;
@@ -2073,7 +2073,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const view = dynOps[0].sub;
 		expect(view.uid).toBe("600");
 		expect(view.post).toBe(true);
-		expect(view.imageGroupEnable).toBe(false);
+		expect(view.imageGroupEnabled).toBe(false);
 		expect(view.customDynamicTemplate).toBe("🔔 {name} {url}");
 		expect(view.customVideoTemplate).toBe("🎬 {name} {url}");
 	});

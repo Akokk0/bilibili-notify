@@ -186,7 +186,7 @@ describe("高级规则 × 拓展订阅:露哪几节", () => {
 	});
 
 	it("B 站订阅照旧全露", async () => {
-		subs = [{ ...BILI, overrides: { imageGroup: { enable: true, forward: false } } }];
+		subs = [{ ...BILI, overrides: { imageGroup: { enabled: true, mergeForward: false } } }];
 		const { container } = renderRules();
 		fireEvent.click(await screen.findByText("UID 111"));
 		await waitFor(() => expect(railLabels(container)).toContain("直播阈值"));

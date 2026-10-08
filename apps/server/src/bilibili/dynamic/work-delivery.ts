@@ -75,8 +75,8 @@ export type WorkSubscriptionSettings = Pick<
 	| "cardSkin"
 	| "cardSkinKnobs"
 	| "aiOverride"
-	| "imageGroupEnable"
-	| "imageGroupForward"
+	| "imageGroupEnabled"
+	| "imageGroupMergeForward"
 	| "customDynamicTemplate"
 	| "customVideoTemplate"
 >;
@@ -94,13 +94,13 @@ export interface WorkDeliveryConfig {
 	 */
 	videoTemplate?: string;
 	/**
-	 * 图集推送。enable=false 时不附图集,只发文本/卡片。forward=true 时走合并转发(聊天记录卡片,
-	 * 走 OneBot send_group_forward_msg,部分 OneBot 实现/NapCat 长消息通道不稳);forward=false
+	 * 图集推送。enabled=false 时不附图集,只发文本/卡片。mergeForward=true 时走合并转发(聊天记录卡片,
+	 * 走 OneBot send_group_forward_msg,部分 OneBot 实现/NapCat 长消息通道不稳);mergeForward=false
 	 * 多图合并到一条普通 send_group_msg。单图永远不走合并转发。
 	 */
 	imageGroup: {
-		enable: boolean;
-		forward: boolean;
+		enabled: boolean;
+		mergeForward: boolean;
 	};
 	/**
 	 * 是否出图片卡片。`false` 时不调渲染器,推送降级为纯文字。缺省视为 true。宿主通常用
@@ -333,9 +333,9 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 	}
 
 	// 图集 —— per-UP 的开关优先,留空继承全局。
-	const galleryEnabled = settings.imageGroupEnable ?? config.imageGroup.enable;
+	const galleryEnabled = settings.imageGroupEnabled ?? config.imageGroup.enabled;
 	if (galleryEnabled && work.gallery.length > 0) {
-		const forwardWanted = settings.imageGroupForward ?? config.imageGroup.forward;
+		const forwardWanted = settings.imageGroupMergeForward ?? config.imageGroup.mergeForward;
 		// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
 		const mergeForward = forwardWanted && work.gallery.length > 1;
 		// 图集是主卡的**附属物**,主卡此时已成功发出。它走 forward/NapCat 长消息通道(不稳),

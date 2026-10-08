@@ -10,7 +10,7 @@ import { buildOverridesPatch } from "../overrides-patch";
  */
 describe("buildOverridesPatch", () => {
 	it("回填 null 清除被关闭的覆盖 slice(imageGroup)", () => {
-		const base: OverridesShape = { imageGroup: { enable: false, forward: false } };
+		const base: OverridesShape = { imageGroup: { enabled: false, mergeForward: false } };
 		const draft: OverridesShape = {}; // 用户关闭覆盖框 → slice 已删
 		const patch = buildOverridesPatch(draft, base);
 		expect(patch.imageGroup).toBeNull();
@@ -19,10 +19,10 @@ describe("buildOverridesPatch", () => {
 	});
 
 	it("仍存在的 slice 原样保留、不被 null 化", () => {
-		const base: OverridesShape = { imageGroup: { enable: true, forward: false } };
-		const draft: OverridesShape = { imageGroup: { enable: false, forward: false } };
+		const base: OverridesShape = { imageGroup: { enabled: true, mergeForward: false } };
+		const draft: OverridesShape = { imageGroup: { enabled: false, mergeForward: false } };
 		const patch = buildOverridesPatch(draft, base);
-		expect(patch.imageGroup).toEqual({ enable: false, forward: false });
+		expect(patch.imageGroup).toEqual({ enabled: false, mergeForward: false });
 	});
 
 	it("baseline 没有的 slice 被关闭 → 不下发 null(无需清除)", () => {
@@ -41,7 +41,7 @@ describe("buildOverridesPatch", () => {
 		const base: OverridesShape = {
 			superchat: { minAmount: 30 },
 			membership: { minRank: { guard: 2 } },
-			imageGroup: { enable: true, forward: true },
+			imageGroup: { enabled: true, mergeForward: true },
 			templates: { liveSummary: "x" },
 		};
 		const patch = buildOverridesPatch({}, base);
@@ -56,7 +56,7 @@ describe("buildOverridesPatch", () => {
 	it("多 slice:一个保留、一个清除", () => {
 		const base: OverridesShape = {
 			superchat: { minAmount: 30 },
-			imageGroup: { enable: true, forward: true },
+			imageGroup: { enabled: true, mergeForward: true },
 		};
 		const draft: OverridesShape = { superchat: { minAmount: 50 } };
 		const patch = buildOverridesPatch(draft, base);
@@ -78,6 +78,21 @@ describe("buildOverridesPatch", () => {
 		};
 		const patch = buildOverridesPatch(draft, base);
 		expect(patch.filters).toEqual({ blockKeywords: null, blockReposts: true });
+	});
+
+	it("图集覆盖里只删合并转发那一格 → `mergeForward` 回填 null,同段的 enabled 原样;只删总开关那一格同理(3a-16 改名后的键也清得掉)", () => {
+		const base: OverridesShape = { imageGroup: { enabled: false, mergeForward: true } };
+		const draft: OverridesShape = { imageGroup: { enabled: false } };
+		const patch = buildOverridesPatch(draft, base);
+		expect(patch.imageGroup).toEqual({ enabled: false, mergeForward: null });
+		expect(JSON.parse(JSON.stringify(patch))).toEqual({
+			imageGroup: { enabled: false, mergeForward: null },
+		});
+		// 反过来:只删总开关那一格 → `enabled` 回填 null。
+		expect(buildOverridesPatch({ imageGroup: { mergeForward: true } }, base).imageGroup).toEqual({
+			enabled: null,
+			mergeForward: true,
+		});
 	});
 
 	it("嵌套对象内单个字段被删(templates.membership 与 templates.liveStart 共享 templates)", () => {

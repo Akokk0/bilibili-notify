@@ -161,7 +161,7 @@ describe("switchOnebotTransport", () => {
 			...http,
 			timeoutMs: 45_000,
 			imageMinTimeoutMs: 0,
-			forwardMinTimeoutMs: 90_000,
+			mergeForwardMinTimeoutMs: 90_000,
 			retryTimes: 2,
 			retryIntervalMs: 500,
 		};
@@ -171,7 +171,7 @@ describe("switchOnebotTransport", () => {
 			expect(next.transport).toBe(transport);
 			expect(next.timeoutMs).toBe(45_000);
 			expect(next.imageMinTimeoutMs).toBe(0);
-			expect(next.forwardMinTimeoutMs).toBe(90_000);
+			expect(next.mergeForwardMinTimeoutMs).toBe(90_000);
 			expect(next.retryIntervalMs).toBe(500);
 		}
 	});

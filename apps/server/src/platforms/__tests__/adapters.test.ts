@@ -391,7 +391,7 @@ describe("onebot — send 路由", () => {
 	});
 
 	it("image-group mergeForward:false → send_group_msg 多 image 合并(默认行为)", async () => {
-		// imageGroupForward=false 默认路径:多图合并到一条普通 send_group_msg,
+		// imageGroup.mergeForward=false 默认路径:多图合并到一条普通 send_group_msg,
 		// 避开 NapCat SsoSendLongMsg 长消息通道。
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
@@ -439,7 +439,7 @@ describe("onebot — send 路由", () => {
 	});
 
 	it("image-group mergeForward:true → send_group_forward_msg + node 用 bot 真身 uin/name", async () => {
-		// imageGroupForward=true 路径:走 OneBot 合并转发 = 聊天记录卡片。
+		// imageGroup.mergeForward=true 路径:走 OneBot 合并转发 = 聊天记录卡片。
 		// 知道自己 OneBot 实现支持长消息(非 NapCat 或 NapCat 已调优)的用户可以开。
 		//
 		// 第一次 fetch:adapter 先 lazy 调 /get_login_info 拿 bot 自己的 user_id+
@@ -876,7 +876,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200);
 			},
 		});
-		const ad = createOnebotAdapter({ ...obOpts(), forwardMinTimeoutMs: 1000 });
+		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
 		ad.reconcile?.([connection]);
 		await waitFor(() => bot.connections.length > 0);
@@ -926,7 +926,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 					});
 				}),
 		);
-		const ad = createOnebotAdapter({ ...obOpts(), forwardMinTimeoutMs: 1000 });
+		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
 		// get_login_info 用 cfg.timeoutMs(50ms)会先超时 → fallback 身份;forward 本体
 		// 在放宽后的 1000ms 下限内等到 150ms 的慢成功。
 		const r = await ad.send(obConnection({ timeoutMs: 50, retryTimes: 0 }), obTarget(), {
@@ -992,7 +992,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 	});
 
 	it("WS 图集不走合并转发(forward=false)→ 并成普通多图消息,同样放宽", async () => {
-		// 这条走的是 send_group_msg 而非 send_group_forward_msg,forwardMinTimeoutMs
+		// 这条走的是 send_group_msg 而非 send_group_forward_msg,mergeForwardMinTimeoutMs
 		// 够不着它 —— 但 bot 侧照样要逐张下载再上传,是最该放宽的一类。
 		const bot = await startFakeBotServer({
 			onFrame: (frame, reply) =>
@@ -1099,7 +1099,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		ad.dispose?.();
 	});
 
-	it("cfg.forwardMinTimeoutMs=0 → 合并转发的放宽同样关得掉", async () => {
+	it("cfg.mergeForwardMinTimeoutMs=0 → 合并转发的放宽同样关得掉", async () => {
 		const bot = await startFakeBotServer({
 			onFrame: (frame, reply) => {
 				if (frame.action === "get_login_info") {
@@ -1118,7 +1118,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
 			retryTimes: 0,
-			forwardMinTimeoutMs: 0,
+			mergeForwardMinTimeoutMs: 0,
 		});
 		ad.reconcile?.([connection]);
 		await waitFor(() => bot.connections.length > 0);

@@ -347,14 +347,14 @@ export function ImageGroupSection({
 			icon={<Icon.dyn size={14} />}
 			badge="imageGroup"
 		>
-			<Field code="enable">
-				<Toggle value={value.enable} onChange={(v) => set("enable", v)} />
+			<Field code="imageGroup.enabled">
+				<Toggle value={value.enabled} onChange={(v) => set("enabled", v)} />
 			</Field>
-			<Field code="forward">
+			<Field code="imageGroup.mergeForward">
 				<Toggle
-					value={value.forward}
-					onChange={(v) => set("forward", v)}
-					disabled={!value.enable}
+					value={value.mergeForward}
+					onChange={(v) => set("mergeForward", v)}
+					disabled={!value.enabled}
 				/>
 			</Field>
 		</GlassBox>

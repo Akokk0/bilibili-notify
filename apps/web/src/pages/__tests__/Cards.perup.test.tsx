@@ -32,7 +32,7 @@ const CUSTOMIZED: Subscription = {
 	...makeEmptySubscription({ sourceKey: "bilibili", externalId: "123456" }),
 	overrides: {
 		cards: { liveCoverImageIds: ["per-up-cover"] },
-		imageGroup: { enable: false },
+		imageGroup: { enabled: false },
 	},
 };
 

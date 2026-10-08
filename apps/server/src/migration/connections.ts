@@ -374,7 +374,7 @@ export function migrateLegacyTargets(raw: readonly unknown[]): {
 						headers: {},
 						timeoutMs: 15_000,
 						imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-						forwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+						mergeForwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 						retryTimes: 0,
 						retryIntervalMs: 1_000,
 					},
@@ -501,6 +501,35 @@ function keepTarget(raw: unknown): boolean {
 	return PushTargetSchema.safeParse(raw).success || !isRetiredTargetRecord(raw);
 }
 
+// ── 1.0 的改名 ────────────────────────────────────────────────────────────────
+
+/** 连接 `config` 里 1.0 改了名的键(3a-16:合并转发的超时下限)。 */
+const CONNECTION_CONFIG_KEY_RENAMES: Readonly<Record<string, string>> = {
+	forwardMinTimeoutMs: "mergeForwardMinTimeoutMs",
+};
+
+/**
+ * 一条连接(0.x 最新形状)的 `config` 里改了名的键换成 1.0 的名字,**键留在原来的位置**。新键已经在的以它为准、老键那一项
+ * 丢掉。没有要改的回同一个对象,所以迁两遍和迁一遍一样。连接的 schema 是 strict 的:老键留着,这条连接整条读不进来。
+ */
+function renameConnectionConfigKeys(entry: unknown): unknown {
+	if (!isRecord(entry) || !isRecord(entry.config)) return entry;
+	const config = entry.config;
+	if (!Object.keys(config).some((key) => Object.hasOwn(CONNECTION_CONFIG_KEY_RENAMES, key))) {
+		return entry;
+	}
+	const renamed: Array<[string, unknown]> = [];
+	for (const [key, value] of Object.entries(config)) {
+		const next = CONNECTION_CONFIG_KEY_RENAMES[key];
+		if (next === undefined || !Object.hasOwn(CONNECTION_CONFIG_KEY_RENAMES, key)) {
+			renamed.push([key, value]);
+		} else if (!Object.hasOwn(config, next)) {
+			renamed.push([next, value]);
+		}
+	}
+	return { ...entry, config: Object.fromEntries(renamed) };
+}
+
 // ── 新代里的两份文件 ──────────────────────────────────────────────────────────
 
 export interface ConnectionFilesInput {
@@ -552,10 +581,12 @@ export async function migrateConnectionFiles(input: ConnectionFilesInput): Promi
 		connections: connectionsFile.value,
 		targets: targets ?? [],
 	});
-	const connections = migrated.connections.filter(keepConnection);
+	const renamed = migrated.connections.map(renameConnectionConfigKeys);
+	const connections = renamed.filter(keepConnection);
 	if (
 		fromAdapters ||
 		migrated.changed.connections ||
+		renamed.some((entry, i) => entry !== migrated.connections[i]) ||
 		connections.length !== migrated.connections.length
 	) {
 		await write(connectionsPath, connections, fromAdapters ? input.adaptersPath : connectionsPath);

@@ -46,23 +46,35 @@ import { dataPath } from "../runtime/roots.js";
  */
 const StoredImageSchema = ImageRefSchema;
 
-const StoredSegmentSchema = z.discriminatedUnion("type", [
-	z.object({ type: z.literal("text"), text: z.string() }),
-	z.object({ type: z.literal("image"), image: StoredImageSchema }),
-	z.object({ type: z.literal("link"), href: z.string(), title: z.string().optional() }),
-	z.object({ type: z.literal("at-all") }),
+/** composite 的一段。判别键与活的 `PayloadSegment` 一样叫 `kind`(3a-16 之前盘上叫 `type`,由迁移改写)。 */
+const StoredSegmentSchema = z.discriminatedUnion("kind", [
+	z.object({ kind: z.literal("text"), text: z.string() }),
+	z.object({ kind: z.literal("image"), image: StoredImageSchema }),
+	z.object({ kind: z.literal("link"), href: z.string(), title: z.string().optional() }),
+	z.object({ kind: z.literal("at-all") }),
 ]);
 
+/** 图集里的一张图:活的 `PostImage` 的每一格都在。`ref` 只是带着(适配器照 `url` 发),读回时不去图库取字节。 */
+const StoredPostImageSchema = z.object({
+	ref: ImageRefSchema.optional(),
+	url: z.string().optional(),
+	width: z.number().optional(),
+	height: z.number().optional(),
+	isAnimated: z.boolean().optional(),
+});
+
+/**
+ * 载荷在盘上的样子:与活的 `NotificationPayload` 同名同格,只有图的字节换成了图库引用。3a-16 之前图集叫
+ * `forward-images` / `forward`,由迁移改写(`migration/history.ts`),这里只认新的。
+ */
 const StoredPayloadSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("text"), text: z.string() }),
 	z.object({ kind: z.literal("image"), image: StoredImageSchema, caption: z.string().optional() }),
 	z.object({ kind: z.literal("composite"), segments: z.array(StoredSegmentSchema) }),
 	z.object({
-		kind: z.literal("forward-images"),
-		images: z.array(
-			z.object({ url: z.string(), width: z.number().optional(), height: z.number().optional() }),
-		),
-		forward: z.boolean(),
+		kind: z.literal("image-group"),
+		images: z.array(StoredPostImageSchema),
+		mergeForward: z.boolean(),
 	}),
 	z.object({
 		kind: z.literal("miniapp-card"),
@@ -186,67 +198,25 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					...(payload.caption !== undefined ? { caption: payload.caption } : {}),
 				};
 			case "image-group":
-				// 图集本来就是一串 url(没有 buffer),抄过去。历史那边只剩一句摘要。
-				// 3a-16 第二轮删:盘上暂时还是改名前的样子(种类 `forward-images`、开关 `forward`、图只有
-				// url 与尺寸),在这里换算;没有 `url` 的图盘上的旧形状装不下,不写。
+				// 图集本来就是一串 url(没有 buffer),照抄过去。历史那边只剩一句摘要。
 				return {
-					kind: "forward-images",
-					images: payload.images.flatMap((i) =>
-						i.url
-							? [
-									{
-										url: i.url,
-										...(i.width !== undefined ? { width: i.width } : {}),
-										...(i.height !== undefined ? { height: i.height } : {}),
-									},
-								]
-							: [],
-					),
-					forward: payload.mergeForward,
+					kind: "image-group",
+					images: payload.images.map((i) => ({ ...i })),
+					mergeForward: payload.mergeForward,
 				};
 			case "miniapp-card":
 				return { ...payload };
 			case "composite": {
 				const segments: StoredSegment[] = [];
-				for (const seg of payload.segments) segments.push(await toStoredSegment(seg));
+				for (const seg of payload.segments) {
+					segments.push(
+						seg.kind === "image"
+							? { kind: "image", image: await storeImage(seg.buffer) }
+							: { ...seg },
+					);
+				}
 				return { kind: "composite", segments };
 			}
-		}
-	}
-
-	/** 3a-16 第二轮删:盘上的段暂时还用判别键 `type`,在这里换算。 */
-	async function toStoredSegment(seg: PayloadSegment): Promise<StoredSegment> {
-		switch (seg.kind) {
-			case "text":
-				return { type: "text", text: seg.text };
-			case "image":
-				return { type: "image", image: await storeImage(seg.buffer) };
-			case "link":
-				return {
-					type: "link",
-					href: seg.href,
-					...(seg.title !== undefined ? { title: seg.title } : {}),
-				};
-			case "at-all":
-				return { type: "at-all" };
-		}
-	}
-
-	/** 3a-16 第二轮删:{@link toStoredSegment} 的反方向。 */
-	async function toPayloadSegment(seg: StoredSegment): Promise<PayloadSegment> {
-		switch (seg.type) {
-			case "text":
-				return { kind: "text", text: seg.text };
-			case "image":
-				return { kind: "image", ...(await loadImage(seg.image)) };
-			case "link":
-				return {
-					kind: "link",
-					href: seg.href,
-					...(seg.title !== undefined ? { title: seg.title } : {}),
-				};
-			case "at-all":
-				return { kind: "at-all" };
 		}
 	}
 
@@ -261,18 +231,21 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					image: await loadImage(stored.image),
 					...(stored.caption !== undefined ? { caption: stored.caption } : {}),
 				};
-			// 3a-16 第二轮删:盘上的旧名换算回活的载荷(种类名、`forward` → `mergeForward`)。
-			case "forward-images":
+			case "image-group":
 				return {
 					kind: "image-group",
 					images: stored.images.map((i) => ({ ...i })),
-					mergeForward: stored.forward,
+					mergeForward: stored.mergeForward,
 				};
 			case "miniapp-card":
 				return { ...stored };
 			case "composite": {
 				const segments: PayloadSegment[] = [];
-				for (const seg of stored.segments) segments.push(await toPayloadSegment(seg));
+				for (const seg of stored.segments) {
+					segments.push(
+						seg.kind === "image" ? { kind: "image", ...(await loadImage(seg.image)) } : { ...seg },
+					);
+				}
 				return { kind: "composite", segments };
 			}
 		}
@@ -391,7 +364,10 @@ export async function listRepushImageRefs(dataRoot: string): Promise<ImageRef[]>
 	return out;
 }
 
-/** 一份原件的 JSON 文本里所有图的引用:`image` 格(整张图的消息)与 composite 图段里的 `image` 格。读不懂的文本没有引用。 */
+/**
+ * 一份原件的 JSON 文本里所有图的引用:`image` 格(整张图的消息)、composite 图段里的 `image` 格、图集每张图带着的 `ref`。
+ * 读不懂的文本没有引用。
+ */
 function imageRefsIn(text: string): ImageRef[] {
 	let snapshot: unknown;
 	try {
@@ -406,11 +382,16 @@ function imageRefsIn(text: string): ImageRef[] {
 	const messages = (snapshot as { messages?: unknown } | null)?.messages;
 	if (!Array.isArray(messages)) return out;
 	for (const message of messages) {
-		const payload = (message as { payload?: { image?: unknown; segments?: unknown } } | null)
-			?.payload;
+		const payload = (
+			message as { payload?: { image?: unknown; segments?: unknown; images?: unknown } } | null
+		)?.payload;
 		take(payload?.image);
-		if (!Array.isArray(payload?.segments)) continue;
-		for (const seg of payload.segments) take((seg as { image?: unknown } | null)?.image);
+		if (Array.isArray(payload?.segments)) {
+			for (const seg of payload.segments) take((seg as { image?: unknown } | null)?.image);
+		}
+		if (Array.isArray(payload?.images)) {
+			for (const image of payload.images) take((image as { ref?: unknown } | null)?.ref);
+		}
 	}
 	return out;
 }

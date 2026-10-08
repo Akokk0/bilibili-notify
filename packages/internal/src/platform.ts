@@ -370,7 +370,7 @@ export type NotificationPayload =
 	 *     trpc 在某些部署上不稳),失败时所有图都丢。
 	 *   - `false` —— 走 OneBot `send_group_msg` 多 image segment。
 	 *     普通多图。稳但 N+ 张大图会一排刷屏。
-	 * 默认值由上游 dynamic engine config(`imageGroupForward`)决定。
+	 * 默认值由设置里的 `imageGroup.mergeForward`(全局与逐订阅覆盖)决定。
 	 */
 	| { kind: "image-group"; images: PostImage[]; mergeForward: boolean }
 	/**

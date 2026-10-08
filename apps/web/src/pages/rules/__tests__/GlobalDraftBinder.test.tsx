@@ -50,6 +50,22 @@ describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 		expect(codes).not.toContain("defaults.filters.blockKeywords");
 	});
 
+	it("图集两格改了 → diff 检出带前缀的 code 'imageGroup.enabled' / 'imageGroup.mergeForward',不冒出顶层的 enabled", () => {
+		const baseline = makeDefaults();
+		const draft = makeDefaults();
+		draft.imageGroup = {
+			enabled: !baseline.imageGroup.enabled,
+			mergeForward: !baseline.imageGroup.mergeForward,
+		};
+		render(
+			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+		);
+		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
+		expect(codes).toContain("imageGroup.enabled");
+		expect(codes).toContain("imageGroup.mergeForward");
+		expect(codes).not.toContain("enabled");
+	});
+
 	// 直播拆键(⑬d):周期开关、间隔与启动补报从 schedule 里搬出来各成一格,全局那一页的草稿要认得它们。
 	it("周期开关 / 间隔 / 启动补报改了 → diff 检出对应的 code(schedule 那一段不再有它们)", () => {
 		const baseline = makeDefaults();

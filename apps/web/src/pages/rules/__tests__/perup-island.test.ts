@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import { getFieldLabel } from "../../../config/field-labels";
 import type { OverridesShape, SpecialUser } from "../../../types/domain";
-import { sectionOf } from "../../../utils/groupDiffs";
+import { groupDiffsBySection, sectionOf } from "../../../utils/groupDiffs";
 import { walkTreeDiff } from "../../../utils/walkTreeDiff";
 import { projectPerUpIsland } from "../perup-island";
 
@@ -76,7 +77,7 @@ describe("projectPerUpIsland — schedule/liveStart/liveStreaming/templates/ai �
 	});
 });
 
-describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () => {
+describe("projectPerUpIsland — imageGroup 保 nested + specialUsers 叶子", () => {
 	it("cards 不投影 —— 卡片覆盖在 /cards,改它不进 Rules per-UP 灵动岛", () => {
 		const codes = diffCodes(
 			{ cards: { liveCoverImageIds: ["one"] } },
@@ -86,10 +87,41 @@ describe("projectPerUpIsland — imageGroup 打平 + specialUsers 叶子", () =>
 		expect(codes).toEqual([]);
 	});
 
-	it("改 imageGroup.enable → 'enable',section=imageGroup", () => {
-		const codes = diffCodes({ imageGroup: { enable: false } }, { imageGroup: { enable: true } });
-		expect(codes).toContain("enable");
-		expect(sectionOf("enable")).toBe("imageGroup");
+	// 图集的总开关叫 `enabled`,打平成顶层键会和 AI 页的 `enabled`(「启用 / 通用」)撞:保存条里这一格会被认成别人。
+	// 所以图集保 nested,code 带前缀;标签与分区和改名前一模一样。
+	it("改图集的总开关 → code 'imageGroup.enabled',保存条里是「推送动态图集 / 动态图集」那一条", () => {
+		const codes = diffCodes({ imageGroup: { enabled: false } }, { imageGroup: { enabled: true } });
+		expect(codes).toEqual(["imageGroup.enabled"]);
+		expect(getFieldLabel("imageGroup.enabled")?.label).toBe("推送动态图集");
+		expect(sectionOf("imageGroup.enabled")).toBe("imageGroup");
+		const [section] = groupDiffsBySection([
+			{ code: "imageGroup.enabled", oldValue: false, newValue: true },
+		]);
+		expect(section?.label).toBe("动态图集");
+	});
+
+	it("改图集的合并转发 → code 'imageGroup.mergeForward',保存条里是「图集走合并转发 / 动态图集」那一条", () => {
+		const codes = diffCodes(
+			{ imageGroup: { enabled: true, mergeForward: false } },
+			{ imageGroup: { enabled: true, mergeForward: true } },
+		);
+		expect(codes).toEqual(["imageGroup.mergeForward"]);
+		expect(getFieldLabel("imageGroup.mergeForward")?.label).toBe("图集走合并转发");
+		expect(sectionOf("imageGroup.mergeForward")).toBe("imageGroup");
+	});
+
+	it("开 / 关整段图集覆盖 → 两格各出一条带前缀的 code,不冒出顶层的 enabled", () => {
+		const on: OverridesShape = { imageGroup: { enabled: true, mergeForward: false } };
+		expect([...diffCodes({}, on)].sort()).toEqual([
+			"imageGroup.enabled",
+			"imageGroup.mergeForward",
+		]);
+		expect([...diffCodes(on, {})].sort()).toEqual([
+			"imageGroup.enabled",
+			"imageGroup.mergeForward",
+		]);
+		// 两边都没有图集覆盖:不脏。
+		expect(diffCodes({}, {})).toEqual([]);
 	});
 
 	it("改 specialUsers(整数组叶子)→ 'specialUsers',section=specialUsers", () => {

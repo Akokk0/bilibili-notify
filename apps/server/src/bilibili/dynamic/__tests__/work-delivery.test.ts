@@ -85,7 +85,7 @@ function harness(
 		settings: { messageLayout: defaultMessageKindLayout("post"), ...over.settings },
 		push: { broadcast, broadcastSequence },
 		stillSubscribed: over.stillSubscribed ?? (() => true),
-		config: { imageGroup: { enable: false, forward: false }, ...over.config },
+		config: { imageGroup: { enabled: false, mergeForward: false }, ...over.config },
 		deps: {
 			logger: { info: rec("info"), warn: rec("warn"), error: rec("error"), debug: rec("debug") },
 			// 渲染器只是交给作品自己的 renderCard 的那个把手,装配不调它的方法。
@@ -409,7 +409,7 @@ describe("deliverWork — 还订阅着吗", () => {
 					return CARD;
 				}),
 			},
-			config: { imageGroup: { enable: true, forward: false } },
+			config: { imageGroup: { enabled: true, mergeForward: false } },
 			stillSubscribed: () => subscribed,
 		});
 		expect(await deliverWork(h.args)).toBe("unsubscribed");
@@ -427,7 +427,7 @@ describe("deliverWork — 发送失败与图集", () => {
 	it("主卡发送失败 → 往外抛,不再附图集", async () => {
 		const h = harness({
 			work: { gallery },
-			config: { imageGroup: { enable: true, forward: false } },
+			config: { imageGroup: { enabled: true, mergeForward: false } },
 		});
 		h.broadcast.mockRejectedValueOnce(new Error("bot 掉线"));
 		await expect(deliverWork(h.args)).rejects.toThrow("bot 掉线");
@@ -437,7 +437,7 @@ describe("deliverWork — 发送失败与图集", () => {
 	it("图集附在主卡之后,同一个 pushId,part=post-images", async () => {
 		const h = harness({
 			work: { gallery },
-			config: { imageGroup: { enable: true, forward: true } },
+			config: { imageGroup: { enabled: true, mergeForward: true } },
 		});
 		await deliverWork(h.args);
 		const calls = h.broadcast.mock.calls as Array<[PushSegment[], string, { pushId?: string }]>;
@@ -449,7 +449,7 @@ describe("deliverWork — 发送失败与图集", () => {
 	it("图集发送失败 → 吞掉,仍算走完", async () => {
 		const h = harness({
 			work: { gallery },
-			config: { imageGroup: { enable: true, forward: false } },
+			config: { imageGroup: { enabled: true, mergeForward: false } },
 		});
 		h.broadcast.mockImplementation(async (_segs: unknown, part: string) => {
 			if (part === "post-images") throw new Error("图组通道抖动");
@@ -463,27 +463,27 @@ describe("deliverWork — 发送失败与图集", () => {
 	it("单张图不走合并转发;没有图不附;这条订阅的开关盖过全局", async () => {
 		const single = harness({
 			work: { gallery: [{ url: "http://a/1.jpg" }] },
-			config: { imageGroup: { enable: true, forward: true } },
+			config: { imageGroup: { enabled: true, mergeForward: true } },
 		});
 		await deliverWork(single.args);
 		expect((segsOf(single, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(false);
 
-		const none = harness({ config: { imageGroup: { enable: true, forward: false } } });
+		const none = harness({ config: { imageGroup: { enabled: true, mergeForward: false } } });
 		await deliverWork(none.args);
 		expect(none.broadcast).toHaveBeenCalledTimes(1);
 
 		const offForSub = harness({
 			work: { gallery },
-			config: { imageGroup: { enable: true, forward: false } },
-			settings: { imageGroupEnable: false },
+			config: { imageGroup: { enabled: true, mergeForward: false } },
+			settings: { imageGroupEnabled: false },
 		});
 		await deliverWork(offForSub.args);
 		expect(offForSub.broadcast).toHaveBeenCalledTimes(1);
 
 		const onForSub = harness({
 			work: { gallery },
-			config: { imageGroup: { enable: false, forward: false } },
-			settings: { imageGroupEnable: true, imageGroupForward: true },
+			config: { imageGroup: { enabled: false, mergeForward: false } },
+			settings: { imageGroupEnabled: true, imageGroupMergeForward: true },
 		});
 		await deliverWork(onForSub.args);
 		expect((segsOf(onForSub, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(true);

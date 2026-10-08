@@ -29,7 +29,7 @@ const onebotView = {
 		headers: {},
 		timeoutMs: 15_000,
 		imageMinTimeoutMs: 30_000,
-		forwardMinTimeoutMs: 60_000,
+		mergeForwardMinTimeoutMs: 60_000,
 		retryTimes: 0,
 		retryIntervalMs: 1_000,
 		accessToken: { masked: "abcd••••••••wxyz" },

@@ -66,7 +66,7 @@ function makeOnebotConnection(
 			headers: {},
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
-			forwardMinTimeoutMs: 60_000,
+			mergeForwardMinTimeoutMs: 60_000,
 			retryTimes: 0,
 			retryIntervalMs: 1_000,
 		},
@@ -241,6 +241,54 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			expect(store.getTargets()).toEqual([
 				expect.objectContaining({ id: legacyId, kind: "endpoint", managedBy: "connection" }),
 			]);
+		});
+
+		it("3a-16:连接 config 的 `forwardMinTimeoutMs` → `mergeForwardMinTimeoutMs`,键留在原位、值照搬;迁完配置仓读得进", async () => {
+			// 0.x 的连接:合并转发的超时下限还叫旧名字,主人改过值。
+			const zero = {
+				id: randomUUID(),
+				name: "NapCat",
+				platform: "onebot",
+				enabled: true,
+				kind: "direct",
+				connector: "http",
+				config: {
+					transport: "http",
+					baseUrl: "http://127.0.0.1:3000",
+					protocolVersion: "v11",
+					headers: {},
+					timeoutMs: 15_000,
+					imageMinTimeoutMs: 30_000,
+					forwardMinTimeoutMs: 90_000,
+					retryTimes: 0,
+					retryIntervalMs: 1_000,
+				},
+			};
+			await sandbox.placeZero("state/connections.json", [zero]);
+			await sandbox.placeZero("state/targets.json", []);
+
+			const report = await sandbox.migrate();
+
+			expect(report.rewritten).toContain("config/connections.json");
+			const [onDisk] =
+				await sandbox.readConfig<{ config: Record<string, unknown> }[]>("connections.json");
+			expect(Object.keys(onDisk?.config ?? {})).toEqual([
+				"transport",
+				"baseUrl",
+				"protocolVersion",
+				"headers",
+				"timeoutMs",
+				"imageMinTimeoutMs",
+				"mergeForwardMinTimeoutMs",
+				"retryTimes",
+				"retryIntervalMs",
+			]);
+			expect(onDisk?.config.mergeForwardMinTimeoutMs).toBe(90_000);
+			// 连接的 schema 是 strict 的:老键留着的话这条连接整条读不进来。
+			const store = await sandbox.load();
+			const [loaded] = store.getConnections();
+			if (loaded?.kind !== "direct" || loaded.platform !== "onebot") throw new Error("形状");
+			expect(loaded.config.mergeForwardMinTimeoutMs).toBe(90_000);
 		});
 
 		it("已经是新形状的连接与目标不改写 —— 新代里还是搬过来的那个文件", async () => {

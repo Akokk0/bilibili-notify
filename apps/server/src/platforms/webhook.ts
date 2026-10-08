@@ -11,12 +11,12 @@ import {
 	type NotificationPayload,
 	ok,
 	type PayloadSegment,
-	type PostImage,
 	type PushTarget,
 	WEBHOOK_PLATFORMS,
 	type WebhookConnectionConfig,
 	type WebhookPlatform,
 } from "@bilibili-notify/internal";
+import { imageGroupUrls } from "./image-group.js";
 
 /**
  * Webhook adapter — POST payloads to either the legacy bilibili-notify JSON
@@ -408,17 +408,12 @@ function notificationPayloadToRobotText(payload: NotificationPayload): string {
 			return text || "[通知]";
 		}
 		case "image-group": {
-			const urls = imageGroupUrls(payload.images);
+			const urls = imageGroupUrls(payload.images).map((img) => img.url);
 			return urls.length > 0 ? `图片:\n${urls.join("\n")}` : "[图片]";
 		}
 		case "miniapp-card":
 			return `${payload.title}\n${payload.jumpUrl}`;
 	}
-}
-
-/** 图集照 `url` 发;没有 `url` 的图(只带图库引用)这里发不了,跳过。 */
-function imageGroupUrls(images: readonly PostImage[]): string[] {
-	return images.flatMap((img) => (img.url ? [img.url] : []));
 }
 
 function segmentToRobotText(segment: PayloadSegment): string {
@@ -470,9 +465,7 @@ function serializePayload(payload: NotificationPayload): unknown {
 		case "image-group":
 			return {
 				kind: "forward-images",
-				images: payload.images.flatMap((img) =>
-					img.url ? [{ url: img.url, width: img.width, height: img.height }] : [],
-				),
+				images: imageGroupUrls(payload.images),
 				forward: payload.mergeForward,
 			};
 		case "miniapp-card":

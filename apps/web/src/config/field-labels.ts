@@ -64,7 +64,7 @@ export interface FieldLabel {
  * 部分 code 在不同上下文有不同语义:
  * - `bilibili.healthCheckMinutes` — 此处沿用 schema 真实语义(LoginFlow 登录健康检查
  *   间隔),replace sections.tsx 历史上写错的 master 节流文案。
- * - `enable` / `forward` — 取 sections.tsx 的「全局段」详细 hint;per-UP 覆盖
+ * - `imageGroup.enabled` / `imageGroup.mergeForward` — 取 sections.tsx 的「全局段」详细 hint;per-UP 覆盖
  *   场景如需短版,Field prop 可 hint override。
  *
  * 个别字段语义:
@@ -550,12 +550,12 @@ export const FIELD_LABELS = {
 	specialUsers: { label: "UID 列表", section: "specialUsers" },
 
 	// ── 动态图集 ──────────────────────────────────────────────────────────
-	enable: {
+	"imageGroup.enabled": {
 		label: "推送动态图集",
 		hint: "图集类动态在文本后再发一组图 · 关 = 只发卡片",
 		section: "imageGroup",
 	},
-	forward: {
+	"imageGroup.mergeForward": {
 		label: "图集走合并转发",
 		hint: "开 = 聊天记录卡片 · 关 = 多图普通消息;单图不走合并转发",
 		section: "imageGroup",
@@ -593,7 +593,7 @@ export const FIELD_LABELS = {
 		hint: "带图消息实际等 max(超时, 此值);0 = 不放宽",
 		section: "transport",
 	},
-	"config.forwardMinTimeoutMs": {
+	"config.mergeForwardMinTimeoutMs": {
 		label: "合并转发超时下限",
 		hint: "合并转发要逐张下载再上传,比单图更慢;0 = 不放宽",
 		section: "transport",

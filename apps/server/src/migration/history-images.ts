@@ -208,7 +208,8 @@ export function createHistoryImages(options: {
 		if (Array.isArray(payload.segments)) {
 			const segments: unknown[] = [];
 			for (const seg of payload.segments as unknown[]) {
-				if (!isPlainObject(seg) || seg.type !== "image") {
+				// 段的判别键已经由前一步(`history.ts` 的 `migrateRepushSnapshot`)改成 `kind`。
+				if (!isPlainObject(seg) || seg.kind !== "image") {
 					segments.push(seg);
 					continue;
 				}
