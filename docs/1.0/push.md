@@ -35,7 +35,7 @@
 
 | 步骤 | 规矩 |
 | --- | --- |
-| 过滤 | 第一步，对所有来源生效：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」；`allowKeywords` / `allowRegex` 与 `blockKeywords` / `blockRegex` 看文字。文字取自 `posts/` 里唯一的取段函数（过滤与 AI 看同一份字）。被挡时的「屏蔽后提醒」带 `postNoun` |
+| 过滤 | 第一步，对所有来源生效：`blockReposts` / `blockArticles` / `blockImages` / `blockVideos` 看 `Post` 上「有没有」；`allowKeywords` / `allowRegex` 与 `blockKeywords` / `blockRegex` 看文字。文字取自 `posts/` 里唯一的取段函数（过滤与 AI 看同一份字）。被过滤的作品在历史里留一行 `filtered`（一条订阅一行、带 `filteredBy`、只留痕不生产，ADR-0021 决策 34 的 🔗）；「屏蔽后提醒」那段走不到的代码 10-08 删掉（它从来没有设置项） |
 | 出卡 | `packages/image` 的 `generatePostCard` / `generateLiveCard`，只吃中立形状、只内联图库引用、不联网。出卡失败就降级成纯文字 |
 | AI 正文 | `packages/ai`。动态点评与直播总结都是「正文用 AI 写还是用模板写」，按目标选（`core.ai.writing`，ADR-0032）：模板正文总备好；默认开着或任一例外开着才生成 AI 正文；没配、AI 总开关关着或生成失败，全部用模板正文 |
 | 套文案 | 全仓唯一的 `interpolate`（internal）；变量 `{name}`、`{postNoun}`、`{viewer}`、`{key}`，会员档名 `{tier}`（原 `{guard}`）、粉丝团名 `{fanclub}`（原 `{mdn}`） |
