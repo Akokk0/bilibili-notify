@@ -27,6 +27,7 @@ import type {
 	Connection,
 	GlobalConfig,
 	PlatformAdapter,
+	ProbeResult,
 	PushTarget,
 	Subscription,
 } from "@bilibili-notify/internal";
@@ -36,6 +37,7 @@ import {
 	type Identity,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	ok,
 	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -2446,7 +2448,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 			platforms: ["onebot"],
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
-			probe: vi.fn(async () => ({ ok: probeOk, latencyMs: 1 })),
+			probe: vi.fn(async () => (probeOk ? ok({ latencyMs: 1 }) : fail("unavailable", "连不上"))),
 			capabilities: () => caps(),
 			probeCapabilities,
 		};
@@ -2643,6 +2645,13 @@ describe("createEngines — 后台写登记进 track", () => {
 		await H.push[0].opts.dispatcher.send(TARGET_ID, { kind: "text", text: "hi" });
 
 		expect(recordTargetTestStatus).toHaveBeenCalledTimes(1);
+		// 盘上的 testStatus 还是老格式:失败的原话填进 `err`,码不落盘,失败没有耗时。
+		expect(recordTargetTestStatus).toHaveBeenCalledWith(TARGET_ID, {
+			ok: false,
+			lastCheckedAt: expect.any(String),
+			latencyMs: undefined,
+			err: `connection not found: connectionId=${CONNECTION_ID}`,
+		});
 		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
 		const registered = newlyTracked(c, before);
 		expect(await stillPending(registered)).toBe(true);
@@ -2682,9 +2691,7 @@ describe("createEngines — 后台写登记进 track", () => {
 				platform: "onebot",
 				config: {},
 			}) as any;
-		const okPlatform = (
-			probe: () => Promise<{ ok: boolean; latencyMs: number }>,
-		): PlatformAdapter => ({
+		const okPlatform = (probe: () => Promise<ProbeResult>): PlatformAdapter => ({
 			platforms: ["onebot"],
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
@@ -2709,8 +2716,61 @@ describe("createEngines — 后台写登记进 track", () => {
 			await Promise.all(tracked);
 		});
 
+		it("探测没通:失败的原话填进 testStatus.err,码不落盘,不带耗时", async () => {
+			const patchConnection = vi.fn(async () => {});
+			const c = setup({
+				connections: [onebot(CONNECTION_ID)],
+				platformAdapters: [
+					okPlatform(async () => fail("unauthorized", "token 不对", { upstreamCode: "http:401" })),
+				],
+				overrides: { configStore: { patchConnection } },
+			});
+			active = c;
+			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
+			expect(patchConnection).toHaveBeenCalledWith(CONNECTION_ID, {
+				testStatus: {
+					ok: false,
+					lastCheckedAt: expect.any(String),
+					latencyMs: undefined,
+					err: "token 不对",
+				},
+			});
+		});
+
+		it("探测通了:照旧写 ok 与耗时", async () => {
+			const patchConnection = vi.fn(async () => {});
+			const c = setup({
+				connections: [onebot(CONNECTION_ID)],
+				platformAdapters: [okPlatform(async () => ok({ latencyMs: 7 }))],
+				overrides: { configStore: { patchConnection } },
+			});
+			active = c;
+			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
+			expect(patchConnection).toHaveBeenCalledWith(CONNECTION_ID, {
+				testStatus: { ok: true, lastCheckedAt: expect.any(String), latencyMs: 7, err: undefined },
+			});
+		});
+
+		it("适配器没有探测协议(unsupported):既不是通也不是不通,连接状态不动", async () => {
+			const other = "44444444-4444-4444-8444-444444444444";
+			const patchConnection = vi.fn(async () => {});
+			const probe = vi
+				.fn<() => Promise<ProbeResult>>()
+				.mockResolvedValueOnce(fail("unsupported", "no probe"))
+				.mockResolvedValueOnce(ok({ latencyMs: 1 }));
+			const c = setup({
+				connections: [onebot(CONNECTION_ID), onebot(other)],
+				platformAdapters: [okPlatform(probe)],
+				overrides: { configStore: { patchConnection } },
+			});
+			active = c;
+			// 第二条连接的结果写了,说明这一轮走完了;第一条(unsupported)一次都没写。
+			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
+			expect(patchConnection).toHaveBeenCalledWith(other, expect.anything());
+		});
+
 		it("关停一开始就不再起新的探测:一轮探下来要等每条连接的超时,登记之后不能靠预算硬等", async () => {
-			const first = deferred<{ ok: boolean; latencyMs: number }>();
+			const first = deferred<ProbeResult>();
 			const probe = vi.fn(() => first.promise);
 			const other = "44444444-4444-4444-8444-444444444444";
 			const c = setup({

@@ -1,6 +1,6 @@
 import { CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import { buildFontFace } from "@bilibili-notify/image";
-import { type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
+import { fail, type ImageRef, type MessageBus, resolve } from "@bilibili-notify/internal";
 import { createKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { type ConversationStore, createConversationStore } from "../ai/conversation-store.js";
 import { flushAssetLabelWrites } from "../assets/asset-store.js";
@@ -464,7 +464,7 @@ export function createAppRuntime(
 		history: historyStore,
 		repush: repushStore,
 		send: async (targetId, payload, routing) => {
-			if (!engines) return { ok: false, latencyMs: 0, err: "推送引擎还没起来，稍后再试" };
+			if (!engines) return fail("unavailable", "推送引擎还没起来，稍后再试");
 			return engines.push.sendToTarget(targetId, payload, { routing });
 		},
 		routedTargets: (subscriptionId, feature) => targetScope.routedTargets(subscriptionId, feature),

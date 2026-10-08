@@ -416,8 +416,10 @@ describe("createLinkParser", () => {
 
 		it("发送返回失败:不抛", async () => {
 			const h = makeParser();
-			h.send.mockResolvedValue({ ok: false, latencyMs: 3, err: "group: groupId missing" });
+			h.send.mockResolvedValue(fail("invalid", "group: groupId missing"));
 			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
+			// 失败的原话得进日志:群里没回话时,这一行是唯一说得清原因的地方。
+			expect(h.warn).toHaveBeenCalledWith(expect.stringContaining("group: groupId missing"));
 		});
 	});
 
@@ -696,11 +698,14 @@ describe("createLinkParser", () => {
 				capabilities: () => caps("supported"),
 				sendResult: (p) =>
 					p.kind === "miniapp-card"
-						? { ok: false, latencyMs: 1, err: "签小程序卡失败: packet 后端未就绪" }
+						? fail("unavailable", "签小程序卡失败: packet 后端未就绪")
 						: { ok: true, latencyMs: 1 },
 			});
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["miniapp-card", "image"]);
+			expect(h.warn).toHaveBeenCalledWith(
+				expect.stringContaining("签小程序卡失败: packet 后端未就绪,回落图片卡"),
+			);
 		});
 
 		it("平台没有能力概念(官机)→ 形式选了小程序卡也回图片卡", async () => {

@@ -8,20 +8,15 @@
  * ⚠️ 这里只放**契约**,不放任何一个实现:实现要碰网络、要认平台方言,而这个包是平台中立的。
  */
 
+import type { Result } from "./constants";
 import type { ConnectionCapabilities, DeliveryResult, NotificationPayload } from "./platform";
 import type { ChatIdentity, Connection, PushTarget } from "./schema/targets";
 
 /**
- * Connection-level probe outcome. Distinct from {@link DeliveryResult} so the
- * caller can tell "this platform doesn't support a no-message probe" apart
- * from "probe ran and failed".
+ * 一次连接探测的结果(ADR-0026):通了是 `{ ok: true, latencyMs }`,没通是 `Failure`。
+ * 这个适配器没有探测协议时回 `unsupported` —— 它不是「探了、没通」,调用方据此不改连接的状态。
  */
-export interface ProbeResult {
-	/** `true` = reachable; `false` = reachable test failed; `null` = adapter has no probe protocol */
-	ok: boolean | null;
-	latencyMs: number;
-	err?: string;
-}
+export type ProbeResult = Result<{ latencyMs: number }>;
 
 /**
  * 「**怎么**连」—— 建连、重连退避、心跳、生命周期。与「连到**哪个**平台」正交。
@@ -38,7 +33,7 @@ export interface Connector {
 	/**
 	 * Side-effect-free reachability probe. Used by the connection status indicator
 	 * and the auto-poller. Implementations that have no out-of-band ping should
-	 * return `{ ok: null }` so the UI can render "probe unsupported".
+	 * return `fail("unsupported", …)` so the UI can render "probe unsupported".
 	 */
 	probe(connection: Connection): Promise<ProbeResult>;
 	/**
@@ -84,7 +79,8 @@ export interface PlatformDialect {
  * 一个平台实现 —— 今天两半都由同一个对象扛,所以它就是那两个接口的交集。
  * 矩阵({@link TargetDispatcher})拿它按 `connection.platform` 分发。
  *
- * 实现**不许抛**:返回 `{ ok: false, err: "..." }`,重试由路由层决定。
+ * 实现**不许抛**:失败回 `fail(code, message)`(码取标准码表,平台自己的码放 `upstreamCode`),
+ * 重试由路由层决定。真抛了算 bug,派发器在边界接住按 `unavailable` 记。
  *
  * 方法**不依赖 `this`**:三个实现都是工厂里返回的闭包字面量,状态全在闭包里。这条是承重的 ——
  * devtools 的装饰器(截流闸、能力注入)拿展开语法叠在外面(`{ ...inner, send }`),被复制过去的

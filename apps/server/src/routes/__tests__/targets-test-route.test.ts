@@ -5,6 +5,7 @@
  * 这条路由此前没有测试走到,它的旧形状不在守卫的白名单里 —— 这里补上。
  */
 
+import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createTargetsRoute } from "../targets.js";
 import type { RouteDeps } from "../types.js";
@@ -101,7 +102,7 @@ describe("POST /api/targets/:id/test 投递的结果(照旧回 200,体是 Result
 	});
 
 	it("没送达 → 200 { ok: false, code, message },没有假的 latencyMs", async () => {
-		const { app } = makeApp({ sendToTarget: { ok: false, latencyMs: 0, err: "群不存在" } });
+		const { app } = makeApp({ sendToTarget: fail("unavailable", "群不存在") });
 		const res = await post(app);
 		expect(res.status).toBe(200);
 		const body = await res.json();

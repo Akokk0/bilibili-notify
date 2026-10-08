@@ -346,11 +346,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			if (!isReachabilityEvidence(result)) return;
 			const prev = target.testStatus;
 			if (!prev || prev.ok !== result.ok) {
+				// `testStatus.err` 是盘上的老格式(3a-22 换成 `reachability`):失败的原话填进去,码不落盘。
 				const nextStatus = {
 					ok: result.ok,
 					lastCheckedAt: new Date().toISOString(),
-					latencyMs: result.latencyMs,
-					err: result.err,
+					latencyMs: result.ok ? result.latencyMs : undefined,
+					err: result.ok ? undefined : result.message,
 				};
 				// 发出去不等,但登记进 track:关停得等这笔写交进 config 写道,写道才能关门。
 				opts.serviceCtx.track(
@@ -848,7 +849,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		const result = await dispatcher.probeConnection(connectionId);
 		// 连都连不上的连接,能力必然也探不出来 —— 再问一次只是白等满一整个超时,
 		// 而这条路是每五分钟一轮、逐个 await 的,离线的连接会把整轮时间翻倍。
-		if (result.ok === false) return result;
+		// (`unsupported` 是「没有探测协议」,不是连不上,不在此列。)
+		if (!result.ok && result.code !== "unsupported") return result;
 		if (dispatcher.connectionCapabilities(connectionId)?.miniAppCard.state === "unknown") {
 			await dispatcher.probeConnectionCapabilities(connectionId);
 		}
@@ -866,13 +868,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				if (opts.serviceCtx.signal.aborted) break;
 				try {
 					const result = await probeConnectionAndCapabilities(connection.id);
-					if (result.ok === null) continue; // platform doesn't support probe (e.g. webhook)
+					// platform doesn't support probe (e.g. webhook):不是通也不是不通,状态不动。
+					if (!result.ok && result.code === "unsupported") continue;
+					// `testStatus.err` 是盘上的老格式(3a-21 换成 `probeState`):失败的原话填进去,码不落盘。
 					await opts.configStore.patchConnection(connection.id, {
 						testStatus: {
 							ok: result.ok,
 							lastCheckedAt: new Date().toISOString(),
-							latencyMs: result.latencyMs,
-							err: result.err,
+							latencyMs: result.ok ? result.latencyMs : undefined,
+							err: result.ok ? undefined : result.message,
 						},
 					});
 				} catch (e) {

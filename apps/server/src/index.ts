@@ -7,6 +7,7 @@ import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
+	fail,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
@@ -1069,13 +1070,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				runtimeEngines.probeConnectionCapabilities(connectionId),
 			send: async ({ platform, connectionId, groupId }, payload) => {
 				const route = replyRoute(connectionId);
-				if (!route) {
-					return {
-						ok: false,
-						latencyMs: 0,
-						err: `connection not found: connectionId=${connectionId}`,
-					};
-				}
+				if (!route) return fail("not_found", `connection not found: connectionId=${connectionId}`);
 				const { connection, platformAdapter } = route;
 				const common = {
 					id: `link-reply:${groupId}`,

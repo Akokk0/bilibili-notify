@@ -45,21 +45,56 @@ describe("interpretQQSend — A+ 投递语义(提交即成功)", () => {
 		});
 	});
 
-	it("2xx 但带非零业务 code(无 id/audit)→ 失败(带 code + message)", () => {
+	it("2xx 但带非零业务 code(无 id/audit)→ unknown,QQ 的码放 upstreamCode", () => {
 		expect(interpretQQSend(200, { code: 40034, message: "rich media type error" })).toEqual({
 			ok: false,
-			err: "code 40034: rich media type error",
+			code: "unknown",
+			message: "code 40034: rich media type error",
+			upstreamCode: 40034,
 		});
 	});
 
-	it("4xx → 失败(带 code + message)", () => {
+	it("4xx → 标准码按 HTTP 状态取,QQ 的码放 upstreamCode", () => {
 		expect(interpretQQSend(400, { code: 11293, message: "bad request" })).toEqual({
 			ok: false,
-			err: "code 11293: bad request",
+			code: "invalid",
+			message: "code 11293: bad request",
+			upstreamCode: 11293,
 		});
 	});
 
-	it("非 2xx 且无 body message → 回退 HTTP {status}", () => {
-		expect(interpretQQSend(500, {})).toEqual({ ok: false, err: "HTTP 500" });
+	it("非 2xx 的状态码对照:401/403 unauthorized、404/410 not_found、429 rate_limited、其余 4xx invalid、5xx unavailable", () => {
+		const cases: Array<[number, string]> = [
+			[401, "unauthorized"],
+			[403, "unauthorized"],
+			[404, "not_found"],
+			[410, "not_found"],
+			[429, "rate_limited"],
+			[422, "invalid"],
+			[502, "unavailable"],
+		];
+		for (const [status, code] of cases) {
+			expect(interpretQQSend(status, { code: 22009, message: "x" }), `HTTP ${status}`).toEqual({
+				ok: false,
+				code,
+				message: "code 22009: x",
+				upstreamCode: 22009,
+			});
+		}
+	});
+
+	it("非 2xx 且无 body message → 回退 HTTP {status};没有 QQ 的码就把 HTTP 状态写成 http:<status>", () => {
+		expect(interpretQQSend(500, {})).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "HTTP 500",
+			upstreamCode: "http:500",
+		});
+	});
+
+	it("非 2xx 的错误体即便带 audit_id 也是失败", () => {
+		expect(
+			interpretQQSend(403, { code: 304023, data: { message_audit: { audit_id: "A" } } }),
+		).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: 304023 });
 	});
 });

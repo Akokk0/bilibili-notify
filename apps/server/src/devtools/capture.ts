@@ -1,6 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
 import type { NotificationPayload, PlatformAdapter } from "@bilibili-notify/internal";
-import { connectionDispatchKey } from "@bilibili-notify/internal";
+import { connectionDispatchKey, ok } from "@bilibili-notify/internal";
 
 /**
  * D1 截流:推送出口(`PlatformAdapter.send`)外面套一层闸。
@@ -120,7 +120,7 @@ export function createCaptureGate(): CaptureGate {
 					});
 					if (list.length > ENTRY_CAP) list = list.slice(list.length - ENTRY_CAP);
 					// `isSynthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
-					return { ok: true, latencyMs: 0, isSynthetic: true };
+					return ok({ latencyMs: 0, isSynthetic: true as const });
 				},
 			};
 		},

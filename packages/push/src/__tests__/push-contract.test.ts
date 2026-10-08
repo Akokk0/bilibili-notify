@@ -14,6 +14,7 @@
 import {
 	type DeliveryResult,
 	FEATURE_KEYS,
+	fail,
 	makeEmptySubscription,
 	type NotificationPayload,
 	type PushTarget,
@@ -57,7 +58,7 @@ function makeDispatcher(opts: DispatcherOptions = {}) {
 			const nth = (perTarget.get(targetId) ?? 0) + 1;
 			perTarget.set(targetId, nth);
 			calls.push({ targetId, payload });
-			if (opts.failOn?.(targetId, nth)) return { ok: false, latencyMs: 1, err: "boom" };
+			if (opts.failOn?.(targetId, nth)) return fail("unavailable", "boom");
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
 		sendPrivate: async () => ({ ok: true, latencyMs: 1 }),

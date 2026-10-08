@@ -20,6 +20,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { distinctPng } from "../../__tests__/support/chat-images.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
@@ -36,8 +37,10 @@ let updated: HistoryEntry[];
 
 const SUB = randomUUID();
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
-const FAIL = { ok: false, latencyMs: 7, err: "boom" };
+const OK = ok({ latencyMs: 5 });
+const FAIL = fail("unavailable", "boom");
+/** 盘上那一格的失败(手工造行用)。这一轮盘上还是老形状,第二轮改历史行 schema 时一起换。 */
+const STORED_FAIL = { ok: false, latencyMs: 7, err: "boom" };
 
 const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
@@ -143,7 +146,7 @@ describe("appendToRow", () => {
 			subscriptionId: SUB,
 			targetId: T1,
 			status: "failed",
-			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main", result: FAIL }],
+			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main", result: STORED_FAIL }],
 		};
 		await mkdir(join(dataDir, "history"), { recursive: true });
 		await writeFile(join(dataDir, "history", "2026-09-17.jsonl"), `${JSON.stringify(row)}\n`);

@@ -15,6 +15,7 @@ import { mkdtemp, readdir, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
@@ -49,7 +50,7 @@ afterEach(() => {
 
 const SUB = randomUUID();
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
+const OK = ok({ latencyMs: 5 });
 
 const text = (t: string): NotificationPayload => ({ kind: "text", text: t });
 
@@ -87,6 +88,38 @@ describe("历史落盘的字节", () => {
 			true,
 		);
 		for (const line of lines) expect(JSON.stringify(JSON.parse(line))).toBe(line);
+	});
+
+	/**
+	 * ⚠️ 3a-15 第一轮的中间态:投递结果在内存里已经是结果形状(`code` + `message`),盘上那一格还是
+	 * 老的 `{ ok, err?, latencyMs }`。第二轮改历史行 schema 时这条跟着改。
+	 */
+	it("投递结果落盘还是老形状:失败只留原话(进 err)、耗时写 0,码不落盘;截流标记不落盘", async () => {
+		const entry = await store.record(
+			input({
+				messages: [
+					{
+						payload: text("卡片"),
+						role: "main",
+						result: ok({ latencyMs: 5, isSynthetic: true as const }),
+					},
+					{
+						payload: text("词云"),
+						role: "extra",
+						result: fail("unknown", "bot 说不行", { upstreamCode: 1200 }),
+					},
+					{ payload: text("总结"), role: "extra" },
+				],
+			}),
+		);
+		const raw = await readFile(dayPath(entry.createdAt), "utf8");
+		const row = JSON.parse(raw.slice(0, -1)) as { messages: Array<{ result?: unknown }> };
+		expect(JSON.stringify(row.messages.map((m) => m.result))).toBe(
+			'[{"ok":true,"latencyMs":5},{"ok":false,"err":"bot 说不行","latencyMs":0},null]',
+		);
+		expect(raw).not.toContain("upstreamCode");
+		expect(raw).not.toContain('"code"');
+		expect(entry.status).toBe("partial");
 	});
 
 	it("图片按原字节存进图库(含非 UTF-8 字节),文件名 = 摘要 + 扩展名,images/ 里只有它自己、history/ 里没有 img", async () => {

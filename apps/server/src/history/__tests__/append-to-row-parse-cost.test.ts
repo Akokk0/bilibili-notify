@@ -22,6 +22,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -37,8 +38,10 @@ let store: HistoryStore;
 
 const SUB = randomUUID();
 const T1 = randomUUID();
-const FAIL = { ok: false, latencyMs: 7, err: "boom" };
-const OK = { ok: true, latencyMs: 5 };
+const FAIL = fail("unavailable", "boom");
+/** 盘上那一格的失败(手工造行用)。这一轮盘上还是老形状,第二轮改历史行 schema 时一起换。 */
+const STORED_FAIL = { ok: false, latencyMs: 7, err: "boom" };
+const OK = ok({ latencyMs: 5 });
 
 const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
 
@@ -112,7 +115,9 @@ describe("appendToRow — 解析成本", () => {
 		const intruder = {
 			rowId: entry.id,
 			status: "partial",
-			messages: [{ payload: { kind: "text", text: "别人写的" }, role: "extra", result: FAIL }],
+			messages: [
+				{ payload: { kind: "text", text: "别人写的" }, role: "extra", result: STORED_FAIL },
+			],
 		};
 		await writeFile(dayPath(entry.createdAt), `${JSON.stringify(intruder)}\n`, {
 			flag: "a",

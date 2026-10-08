@@ -258,7 +258,7 @@ describe("POST /test", () => {
 	});
 
 	it("没送达 → 200 + 失败那一支,对端的原话进 message,不带 latencyMs", async () => {
-		const sendToTarget = vi.fn(async () => ({ ok: false, latencyMs: 0, err: "群不存在" }));
+		const sendToTarget = vi.fn(async () => fail("unavailable", "群不存在"));
 		const app = createCardsRoute({
 			deps: makeDeps({ engines: { push: { sendToTarget } } }),
 			puppeteer: workingPuppeteer(),

@@ -16,6 +16,8 @@
  *
  * ⚠️ **只放类型,不放实现。** 拓展会被打成自包含的 `index.mjs`,从这里 import 一个运行时
  * 值等于把一份宿主代码的拷贝塞进拓展包里。真有非放不可的值,先想清楚再破例。
+ * 破的唯一一例:造结果的 `ok()` / `fail()`(ADR-0026 决策 6)—— 两个不带状态的纯函数,
+ * 拷一份进拓展包不会与宿主那份打架。
  *
  * ⛔ 一格都别多给:`ExtensionRuntime`(谁来收摊)、`ExtensionMounts` / `ExtensionUpgrades`
  * (两张宿主的分发表)、`InboundSinks`(绕过归属校验的那条管子)刻意都不在这儿 ——
@@ -34,6 +36,8 @@ export type {
 	Connector,
 	DeliveryResult,
 	Disposable,
+	Failure,
+	FailureCode,
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
@@ -49,7 +53,13 @@ export type {
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
+	Result,
 } from "@bilibili-notify/internal";
+/**
+ * 造结果的两个函数(ADR-0026 决策 6)。`send` / `probe` 回的 `DeliveryResult` / `ProbeResult`
+ * 就是 `Result`,一律拿它们造,不手写 `{ ok: false, … }`。
+ */
+export { fail, ok } from "@bilibili-notify/internal/constants";
 
 /**
  * 面板也要认的那几个形状住零依赖子入口 `./wire`(理由见那个文件的文件头),这里**转出来**

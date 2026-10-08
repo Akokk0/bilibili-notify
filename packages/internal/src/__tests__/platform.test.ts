@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { fail } from "../constants.js";
 import { type DeliveryResult, isReachabilityEvidence } from "../platform.js";
 
 /**
@@ -11,7 +12,7 @@ describe("isReachabilityEvidence", () => {
 
 	it("真发出去的:成功与失败都是证据", () => {
 		expect(isReachabilityEvidence(base)).toBe(true);
-		expect(isReachabilityEvidence({ ok: false, latencyMs: 5, err: "kicked" })).toBe(true);
+		expect(isReachabilityEvidence(fail("unknown", "kicked", { upstreamCode: 100 }))).toBe(true);
 	});
 
 	it("没出网的(截流造出来的成功)不是证据 —— 拿它翻目标状态等于凭空说「通了」", () => {

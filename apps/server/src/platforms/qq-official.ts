@@ -4,6 +4,7 @@ import type {
 	DeliveryResult,
 	DirectConnection,
 	Disposable,
+	Failure,
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
@@ -14,9 +15,10 @@ import type {
 	PushTarget,
 	PushTargetScope,
 	QQOfficialConnectionConfig,
+	Result,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { connectionDispatchKey, isConnectionOn } from "@bilibili-notify/internal";
+import { connectionDispatchKey, fail, isConnectionOn, ok } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
@@ -26,6 +28,19 @@ export interface QQAccessToken {
 	token: string;
 	/** 有效期(秒),通常 7200;token 管理器据此提前刷新。 */
 	expiresInSec: number;
+}
+
+/**
+ * 换 token 没成的两种「对端答了」的情形。带上够翻标准码的那一点信息:回了非 2xx 的带状态码;
+ * 回了 2xx 却没给 token 的不带。连不上时抛的是 fetch 自己的错,不是它。
+ */
+class QQTokenError extends Error {
+	constructor(
+		message: string,
+		readonly httpStatus?: number,
+	) {
+		super(message);
+	}
 }
 
 /**
@@ -41,9 +56,9 @@ export async function fetchAppAccessToken(
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ appId, clientSecret }),
 	});
-	if (!res.ok) throw new Error(`getAppAccessToken HTTP ${res.status}`);
+	if (!res.ok) throw new QQTokenError(`getAppAccessToken HTTP ${res.status}`, res.status);
 	const data = (await res.json()) as { access_token?: string; expires_in?: number | string };
-	if (!data.access_token) throw new Error("getAppAccessToken: 响应缺 access_token");
+	if (!data.access_token) throw new QQTokenError("getAppAccessToken: 响应缺 access_token");
 	const expiresInSec = Number(data.expires_in);
 	return {
 		token: data.access_token,
@@ -655,21 +670,21 @@ export function createQQGatewayConn(opts: QQGatewayConnOptions): QQGatewayConn {
  * - group(群):POST /v2/groups/{groupOpenid}/messages
  * - private(C2C 单聊):POST /v2/users/{userOpenid}/messages
  *
- * 会话缺对应字段时返回 `{ err }` —— 发送前运行期校验(群/C2C 的 openid 只能从入站
+ * 会话缺对应字段时回 `invalid` —— 发送前运行期校验(群/C2C 的 openid 只能从入站
  * 事件捞,缺失即配置未就绪),不浪费一次注定失败的 REST 往返。
  */
 export function qqMessageEndpoint(
 	scope: PushTargetScope,
 	address: string,
-): { path: string } | { err: string } {
+): Result<{ path: string }> {
 	if (!address) {
 		const what =
 			scope === "channel" ? "channelId" : scope === "group" ? "groupOpenid" : "userOpenid";
-		return { err: `${scope}: ${what} missing` };
+		return fail("invalid", `${scope}: ${what} missing`);
 	}
-	if (scope === "channel") return { path: `/channels/${address}/messages` };
-	if (scope === "group") return { path: `/v2/groups/${address}/messages` };
-	return { path: `/v2/users/${address}/messages` };
+	if (scope === "channel") return ok({ path: `/channels/${address}/messages` });
+	if (scope === "group") return ok({ path: `/v2/groups/${address}/messages` });
+	return ok({ path: `/v2/users/${address}/messages` });
 }
 
 // ---------------------------------------------------------------------------
@@ -686,14 +701,40 @@ export function qqFilesPath(scope: "group" | "private", openid: string): string 
 	return scope === "group" ? `/v2/groups/${openid}/files` : `/v2/users/${openid}/files`;
 }
 
-export type QQSendResult =
-	| { ok: true; id?: string; pendingAudit?: true; auditId?: string }
-	| { ok: false; err: string };
+export type QQSendResult = Result<{ id?: string; pendingAudit?: true; auditId?: string }>;
+
+/**
+ * 对端回了非 2xx:状态码 → 标准码。`upstreamCode` 放 QQ 自己的错误码;错误体里没有码时
+ * 放 HTTP 状态,写成 `http:<status>`(与 QQ 的数字码分得开)。
+ */
+function httpFailure(status: number, message: string, qqCode?: number): Failure {
+	const upstreamCode = qqCode ?? `http:${status}`;
+	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
+	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
+	if (status === 429) return fail("rate_limited", message, { upstreamCode });
+	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
+	return fail("unavailable", message, { upstreamCode });
+}
+
+/** 换 token 没成 → 失败。它发生在任何一条消息发出去之前。 */
+function tokenFailure(e: unknown): Failure {
+	const message = `取 App Access Token 失败: ${String(e)}`;
+	if (e instanceof QQTokenError) {
+		// 回了 2xx 却没给 token:回应不是约定的形状。
+		return e.httpStatus === undefined
+			? fail("invalid", message)
+			: httpFailure(e.httpStatus, message);
+	}
+	return fail("unavailable", message);
+}
 
 /**
  * 解析发送响应为 A+ 投递语义(提交即成功)。主动推送几乎总是走审核:HTTP 202 +
  * `code 304023` + `audit_id` —— 算「已提交·审核中」(ok,后台听 MESSAGE_AUDIT 才知拒绝);
  * 200 + id = 已发;2xx 但带非零业务 code(无 id/audit)= 失败;非 2xx = 失败。
+ *
+ * 失败的码(ADR-0026):非 2xx 按 HTTP 状态翻;2xx 包着的业务错误这里没有对照,记 `unknown`。
+ * QQ 自己的错误码一律只进 `upstreamCode`。
  */
 export function interpretQQSend(status: number, body: unknown): QQSendResult {
 	const b = (body ?? {}) as {
@@ -713,13 +754,15 @@ export function interpretQQSend(status: number, body: unknown): QQSendResult {
 	if (status >= 200 && status < 300) {
 		// audit 判定收进 2xx 门内:主动推送的审核回执是 HTTP 202;非 2xx 错误体即便
 		// 回带 audit_id 也是失败,不能误判成「已提交·审核中」而吞掉一条发不出去的推送。
-		if (typeof auditId === "string") return { ok: true, pendingAudit: true, auditId };
-		if (typeof b.id === "string" || typeof b.id === "number") return { ok: true, id: String(b.id) };
+		if (typeof auditId === "string") return ok({ pendingAudit: true as const, auditId });
+		if (typeof b.id === "string" || typeof b.id === "number") return ok({ id: String(b.id) });
 		// 2xx 但带非零业务 code 且无 id/audit = QQ 以 200 包装的业务错误。
-		if (code !== undefined && code !== 0) return { ok: false, err: `code ${code}: ${message}` };
-		return { ok: true };
+		if (code !== undefined && code !== 0) {
+			return fail("unknown", `code ${code}: ${message}`, { upstreamCode: code });
+		}
+		return ok();
 	}
-	return { ok: false, err: code !== undefined ? `code ${code}: ${message}` : message };
+	return httpFailure(status, code !== undefined ? `code ${code}: ${message}` : message, code);
 }
 
 /** QQ 官方富媒体类型:1=图片 2=视频 3=语音(本插件只发图)。 */
@@ -926,20 +969,21 @@ async function qqPostChannelForm(
 	return { status: res.status, body: parsed };
 }
 
-/** 群/C2C 富媒体两步第一步:上传拿 file_info。失败返回 err。 */
+/** 群/C2C 富媒体两步第一步:上传拿 file_info。 */
 async function qqUploadMedia(
 	base: string,
 	headers: Record<string, string>,
 	scope: "group" | "private",
 	openid: string,
 	upload: QQFileUploadBody | { file_type: number; srv_send_msg: boolean; url: string },
-): Promise<{ ok: true; media: QQFileMedia } | { ok: false; err: string }> {
+): Promise<Result<{ media: QQFileMedia }>> {
 	const { status, body } = await qqPostJson(base, headers, qqFilesPath(scope, openid), upload);
 	const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 	const fileInfo = data.file_info;
-	if (typeof fileInfo === "string") return { ok: true, media: { ...data, file_info: fileInfo } };
+	if (typeof fileInfo === "string") return ok({ media: { ...data, file_info: fileInfo } });
 	const verdict = interpretQQSend(status, body);
-	return { ok: false, err: verdict.ok ? "上传成功但无 file_info" : verdict.err };
+	// 回了 2xx 却没给 file_info:回应不是约定的形状。
+	return verdict.ok ? fail("invalid", "上传成功但无 file_info") : verdict;
 }
 
 interface QQGuildChannel {
@@ -1113,7 +1157,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 	serviceCtx.onDispose(disposeAll, "stop");
 
-	/** 发一个片段。返回 REST `{status, body}` 或前置 `{err}`(上传失败)。 */
+	/** 发一个片段。返回 REST `{status, body}`,或上传那一步的失败。 */
 	async function sendPart(
 		base: string,
 		headers: Record<string, string>,
@@ -1121,7 +1165,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		address: string,
 		messagesPath: string,
 		part: QQSendPart,
-	): Promise<{ status: number; body: unknown } | { err: string }> {
+	): Promise<{ status: number; body: unknown } | Failure> {
 		if (scope === "channel") {
 			if (part.kind === "text") {
 				return qqPostJson(base, headers, messagesPath, { content: part.text });
@@ -1144,7 +1188,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				? buildQQFileUpload(part.buffer)
 				: { file_type: QQ_FILE_TYPE_IMAGE, srv_send_msg: false, url: part.url };
 		const up = await qqUploadMedia(base, headers, gScope, address, upload);
-		if (!up.ok) return { err: up.err };
+		if (!up.ok) return up;
 		const content =
 			part.kind === "image-buffer" || part.kind === "image-url" ? part.caption : undefined;
 		return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content, media: up.media }));
@@ -1208,11 +1252,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		async probe(connection: Connection): Promise<ProbeResult> {
 			const t0 = Date.now();
 			if (!isConnectionOn(connection, "qq-official")) {
-				return {
-					ok: false,
-					latencyMs: 0,
-					err: `wrong platform: ${connectionDispatchKey(connection)}`,
-				};
+				return fail("invalid", `wrong platform: ${connectionDispatchKey(connection)}`);
 			}
 			// 实际推送走 REST(token + /v2/.../messages),与 WS 网关(仅用于捞 openid)彼此独立
 			// —— 探连通性应该测「REST 能不能通」,不是「WS 握手有没有跑完」。此前用
@@ -1226,23 +1266,15 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			try {
 				token = await tokenManagerFor(connection).getToken();
 			} catch (e) {
-				return {
-					ok: false,
-					latencyMs: Date.now() - t0,
-					err: `取 App Access Token 失败: ${String(e)}`,
-				};
+				return tokenFailure(e);
 			}
 			try {
 				const res = await fetch(`${base}/gateway`, { headers: qqRestHeaders(token, cfg.appId) });
 				return res.ok
-					? { ok: true, latencyMs: Date.now() - t0 }
-					: { ok: false, latencyMs: Date.now() - t0, err: `HTTP ${res.status}` };
+					? ok({ latencyMs: Date.now() - t0 })
+					: httpFailure(res.status, `HTTP ${res.status}`);
 			} catch (e) {
-				return {
-					ok: false,
-					latencyMs: Date.now() - t0,
-					err: e instanceof Error ? e.message : String(e),
-				};
+				return fail("unavailable", e instanceof Error ? e.message : String(e));
 			}
 		},
 
@@ -1253,17 +1285,16 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			_opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			if (!isConnectionOn(connection, "qq-official") || target.platform !== "qq-official") {
-				return {
-					ok: false,
-					latencyMs: 0,
-					err: `wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
-				};
+				return fail(
+					"invalid",
+					`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
+				);
 			}
 			const scope = target.scope;
 			const address = target.kind === "session" ? target.address : "";
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
-			if ("err" in endpoint) return { ok: false, latencyMs: 0, err: endpoint.err };
+			if (!endpoint.ok) return endpoint;
 
 			const t0 = Date.now();
 			const cfg = connection.config;
@@ -1272,11 +1303,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			try {
 				token = await tokenManagerFor(connection).getToken();
 			} catch (e) {
-				return {
-					ok: false,
-					latencyMs: Date.now() - t0,
-					err: `取 App Access Token 失败: ${String(e)}`,
-				};
+				return tokenFailure(e);
 			}
 			const headers = qqRestHeaders(token, cfg.appId);
 
@@ -1298,45 +1325,45 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					);
 					const verdict = interpretQQSend(status, body);
 					if (!verdict.ok) {
-						logger.warn(`[qq] target=${target.id} markdown 图集发送失败: ${verdict.err}`);
-						return { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
+						logger.warn(`[qq] target=${target.id} markdown 图集发送失败: ${verdict.message}`);
+						return verdict;
 					}
-					return { ok: true, latencyMs: Date.now() - t0 };
+					return ok({ latencyMs: Date.now() - t0 });
 				} catch (e) {
-					const err = e instanceof Error ? e.message : String(e);
-					logger.warn(`[qq] target=${target.id} markdown 图集发送异常: ${err}`);
-					return { ok: false, latencyMs: Date.now() - t0, err };
+					const message = e instanceof Error ? e.message : String(e);
+					logger.warn(`[qq] target=${target.id} markdown 图集发送异常: ${message}`);
+					return fail("unavailable", message);
 				}
 			}
 
 			const parts = qqPayloadToParts(payload);
-			if (parts.length === 0)
-				return { ok: false, latencyMs: Date.now() - t0, err: "empty payload" };
+			if (parts.length === 0) return fail("invalid", "empty payload");
 
 			// QQ 一条 media 只能带一张图,多片段逐条发;任一条失败即整体失败(已发的无法回滚)。
-			let lastErr = "";
+			let failure: Failure | null = null;
 			for (const part of parts) {
 				try {
 					const r = await sendPart(base, headers, scope, address, endpoint.path, part);
-					if ("err" in r) {
-						lastErr = r.err;
+					// 上传那一步就没成:失败原样带出。
+					if ("ok" in r) {
+						failure = r;
 						break;
 					}
 					const verdict = interpretQQSend(r.status, r.body);
 					if (!verdict.ok) {
-						lastErr = verdict.err;
+						failure = verdict;
 						break;
 					}
 				} catch (e) {
-					lastErr = e instanceof Error ? e.message : String(e);
+					failure = fail("unavailable", e instanceof Error ? e.message : String(e));
 					break;
 				}
 			}
-			if (lastErr) {
-				logger.warn(`[qq] target=${target.id} send failed: ${lastErr}`);
-				return { ok: false, latencyMs: Date.now() - t0, err: lastErr };
+			if (failure) {
+				logger.warn(`[qq] target=${target.id} send failed: ${failure.message}`);
+				return failure;
 			}
-			return { ok: true, latencyMs: Date.now() - t0 };
+			return ok({ latencyMs: Date.now() - t0 });
 		},
 	};
 }

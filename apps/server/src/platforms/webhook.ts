@@ -4,9 +4,12 @@ import {
 	type Connection,
 	connectionDispatchKey,
 	type DeliveryResult,
+	type Failure,
+	fail,
 	isWebhookConnection,
 	type Logger,
 	type NotificationPayload,
+	ok,
 	type PayloadSegment,
 	type PushTarget,
 	WEBHOOK_PLATFORMS,
@@ -49,10 +52,10 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 		},
 		async probe(_connection: Connection): Promise<ProbeResult> {
 			// Webhook has no standard side-effect-free ping verb — most endpoints
-			// reject everything except the exact POST shape they expect. Returning
-			// ok:null tells the UI to render "probe unsupported" and prompt the
+			// reject everything except the exact POST shape they expect. `unsupported`
+			// tells the UI to render "probe unsupported" and prompt the
 			// user to verify with a real send-test.
-			return { ok: null, latencyMs: 0, err: "webhook does not support connection probe" };
+			return fail("unsupported", "webhook does not support connection probe");
 		},
 		async send(
 			connection: Connection,
@@ -61,22 +64,28 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			if (!isWebhookConnection(connection) || target.kind !== "endpoint") {
-				return {
-					ok: false,
-					latencyMs: 0,
-					err:
-						`wrong shape: connection=${connectionDispatchKey(connection)} ` +
+				return fail(
+					"invalid",
+					`wrong shape: connection=${connectionDispatchKey(connection)} ` +
 						`target=${target.platform}/${target.kind}`,
-				};
+				);
 			}
 			const cfg = connection.config;
 			// 方言由**连接的平台**说了算 —— 原先它藏在 config.provider 里。
 			const provider = connection.platform;
+			// 请求拼不出来(配置的地址不合法,签名时 `new URL` 就抛)是输入的问题,一个字节都没发出去。
+			let req: WebhookHttpRequest;
+			try {
+				req = buildWebhookRequest(provider, cfg, target, payload, pushOpts);
+			} catch (e) {
+				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
+				log.warn(`[webhook] target=${target.id} send failed: ${message}`);
+				return fail("invalid", message);
+			}
 			const t0 = Date.now();
 			const ctrl = new AbortController();
 			const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 			try {
-				const req = buildWebhookRequest(provider, cfg, target, payload, pushOpts);
 				const res = await fetch(req.url, {
 					method: "POST",
 					headers: req.headers,
@@ -85,22 +94,17 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 				});
 				const latencyMs = Date.now() - t0;
 				if (!res.ok) {
-					return {
-						ok: false,
-						latencyMs,
-						err: sanitizeWebhookError(`HTTP ${res.status} ${res.statusText}`, cfg),
-					};
+					return sanitized(httpFailure(res.status, `HTTP ${res.status} ${res.statusText}`), cfg);
 				}
-				const businessErr =
+				const rejected =
 					provider === "generic" ? null : parseBusinessResponse(provider, await res.text());
-				if (businessErr)
-					return { ok: false, latencyMs, err: sanitizeWebhookError(businessErr, cfg) };
-				return { ok: true, latencyMs };
+				if (rejected) return sanitized(rejected, cfg);
+				return ok({ latencyMs });
 			} catch (e) {
-				const latencyMs = Date.now() - t0;
-				const err = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
-				log.warn(`[webhook] target=${target.id} send failed: ${err}`);
-				return { ok: false, latencyMs, err };
+				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
+				log.warn(`[webhook] target=${target.id} send failed: ${message}`);
+				// 我们自己的超时掐断:请求已经发出去了,对端可能照样处理完 —— 结果不明,不是「没通」。
+				return ctrl.signal.aborted ? fail("indeterminate", message) : fail("unavailable", message);
 			} finally {
 				clearTimeout(timer);
 			}
@@ -232,17 +236,37 @@ function signFeishu(
 	};
 }
 
+/** 对端回了非 2xx:状态码 → 标准码;状态码本身留在 `upstreamCode`(写成 `http:<status>`)。 */
+function httpFailure(status: number, message: string): Failure {
+	const upstreamCode = `http:${status}`;
+	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
+	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
+	if (status === 429) return fail("rate_limited", message, { upstreamCode });
+	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
+	return fail("unavailable", message, { upstreamCode });
+}
+
+/** 失败的原话过一遍脱敏(地址里的密钥、签名);码与 `upstreamCode` 不动。 */
+function sanitized(failure: Failure, cfg: WebhookConnectionConfig): Failure {
+	return { ...failure, message: sanitizeWebhookError(failure.message, cfg) };
+}
+
+/**
+ * 三家机器人 2xx 回应里的业务结果:成功回 null。对端给了业务码的,这里没有对照 ——
+ * 记 `unknown`,码放 `upstreamCode`;回应连约定的形状都不是的记 `invalid`。
+ */
 function parseBusinessResponse(
 	provider: Exclude<WebhookPlatform, "generic">,
 	text: string,
-): string | null {
+): Failure | null {
 	let body: unknown;
 	try {
 		body = JSON.parse(text);
 	} catch {
-		return `${providerLabel(provider)} response is not JSON`;
+		return fail("invalid", `${providerLabel(provider)} response is not JSON`);
 	}
-	if (!isRecord(body)) return `${providerLabel(provider)} response is not an object`;
+	if (!isRecord(body))
+		return fail("invalid", `${providerLabel(provider)} response is not an object`);
 	switch (provider) {
 		case "dingtalk":
 			return parseDingTalkBusinessResult(body);
@@ -253,39 +277,49 @@ function parseBusinessResponse(
 	}
 }
 
-function parseDingTalkBusinessResult(body: Record<string, unknown>): string | null {
+function parseDingTalkBusinessResult(body: Record<string, unknown>): Failure | null {
 	const errcode = body.errcode;
 	if (isZeroCode(errcode)) return null;
 	const errmsg = stringValue(body.errmsg);
-	const code = codeLabel(errcode);
-	if (code) return `DingTalk errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`;
-	return `DingTalk response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`;
+	const code = businessCode(errcode);
+	if (code !== null) {
+		return rejectedByPeer(code, `DingTalk errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`);
+	}
+	return fail("invalid", `DingTalk response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`);
 }
 
-function parseFeishuBusinessResult(body: Record<string, unknown>): string | null {
-	const code = firstPresent(body.code, body.StatusCode, body.status_code);
-	if (isZeroCode(code)) return null;
+function parseFeishuBusinessResult(body: Record<string, unknown>): Failure | null {
+	const raw = firstPresent(body.code, body.StatusCode, body.status_code);
+	if (isZeroCode(raw)) return null;
 	const msg = firstString(body.msg, body.message, body.StatusMessage, body.errmsg);
-	const label = codeLabel(code);
-	if (label) return `Feishu code=${label}${msg ? ` msg=${msg}` : ""}`;
-	return `Feishu response missing code${msg ? ` msg=${msg}` : ""}`;
+	const code = businessCode(raw);
+	if (code !== null) return rejectedByPeer(code, `Feishu code=${code}${msg ? ` msg=${msg}` : ""}`);
+	return fail("invalid", `Feishu response missing code${msg ? ` msg=${msg}` : ""}`);
 }
 
-function parseWeComBusinessResult(body: Record<string, unknown>): string | null {
+function parseWeComBusinessResult(body: Record<string, unknown>): Failure | null {
 	const errcode = body.errcode;
 	if (isZeroCode(errcode)) return null;
 	const errmsg = stringValue(body.errmsg);
-	const code = codeLabel(errcode);
-	if (code) return `WeCom errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`;
-	return `WeCom response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`;
+	const code = businessCode(errcode);
+	if (code !== null) {
+		return rejectedByPeer(code, `WeCom errcode=${code}${errmsg ? ` errmsg=${errmsg}` : ""}`);
+	}
+	return fail("invalid", `WeCom response missing errcode${errmsg ? ` errmsg=${errmsg}` : ""}`);
+}
+
+/** 对端明确回了失败、只给了我们没有对照的业务码。 */
+function rejectedByPeer(upstreamCode: number | string, message: string): Failure {
+	return fail("unknown", message, { upstreamCode });
 }
 
 function isZeroCode(value: unknown): boolean {
 	return value === 0 || value === "0";
 }
 
-function codeLabel(value: unknown): string | null {
-	if (typeof value === "number" && Number.isFinite(value)) return String(value);
+/** 对端的业务码:数字与非空字符串原样留着(进 `upstreamCode`),别的不算码。 */
+function businessCode(value: unknown): number | string | null {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
 	if (typeof value === "string" && value.length > 0) return value;
 	return null;
 }

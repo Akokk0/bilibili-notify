@@ -9,7 +9,7 @@
  * 「问一句 AI」。OpenAI 那一跳是外部边界,mock 掉。
  */
 import type { GlobalConfig } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { fail, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createAiRoute } from "../ai.js";
 import type { RouteDeps } from "../types.js";
@@ -93,7 +93,7 @@ function draftAi(
 function makeDeps(opts: { sendFails?: boolean } = {}) {
 	const sendToTarget = vi.fn(async () =>
 		opts.sendFails
-			? { ok: false as const, latencyMs: 3, err: "OneBot 连接已断开" }
+			? fail("unavailable", "OneBot 连接已断开")
 			: { ok: true as const, latencyMs: 12 },
 	);
 	const globals = makeDefaultGlobalConfig();

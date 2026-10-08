@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fail } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { createAppRuntime } from "../bootstrap.js";
@@ -45,7 +46,7 @@ describe("createAppRuntime", () => {
 				{
 					payload: { kind: "text", text: "卡片" },
 					role: "main",
-					result: { ok: false, latencyMs: 1, err: "boom" },
+					result: fail("unavailable", "boom"),
 				},
 			],
 		});
@@ -79,7 +80,7 @@ describe("createAppRuntime", () => {
 				{
 					payload: { kind: "text", text: "卡片" },
 					role: "main",
-					result: { ok: false, latencyMs: 1, err: "boom" },
+					result: fail("unavailable", "boom"),
 				},
 			],
 		});
@@ -116,7 +117,7 @@ describe("createAppRuntime", () => {
 				{
 					payload: { kind: "text", text: "卡片" },
 					role: "main",
-					result: { ok: false, latencyMs: 1, err: "boom" },
+					result: fail("unavailable", "boom"),
 				},
 			],
 		});

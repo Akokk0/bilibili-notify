@@ -375,9 +375,10 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 		client.send({ type: "result", id: frame.id, ok: false, err: "telegram 说这个群不存在" });
 
 		// 线上的形状是 `Result`:桥的话原样进 `message`;没送达就没有耗时,不带一个假的 `latencyMs`。
+		// 协议的回执只带 `err`,桥拓展进门翻成 `unknown`(ADR-0026 决策 3),这个码一路原样到面板。
 		expect(await (await pushed).json()).toEqual({
 			ok: false,
-			code: "unavailable",
+			code: "unknown",
 			message: "telegram 说这个群不存在",
 		});
 	});

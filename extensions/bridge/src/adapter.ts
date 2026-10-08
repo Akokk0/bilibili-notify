@@ -20,7 +20,9 @@ import type {
 	PlatformAdapter,
 	ProbeResult,
 	PushTarget,
+	Result,
 } from "@bilibili-notify/extension";
+import { fail, ok } from "@bilibili-notify/extension";
 import { BRIDGE_BLOB_SEGMENT, type BridgeBlobStore } from "./blob.js";
 import type { BridgeConnectionConfig } from "./config.js";
 import {
@@ -70,19 +72,14 @@ type PlainText = (text: string) => string;
 
 type SessionTarget = Extract<PushTarget, { kind: "session" }>;
 
-type Located =
-	| {
-			ok: true;
-			connection: BridgeConnection;
-			link: BridgeLink;
-			session: BridgeSession;
-			bot: BridgeBot;
-	  }
-	| { ok: false; err: string };
+type Located = Result<{
+	connection: BridgeConnection;
+	link: BridgeLink;
+	session: BridgeSession;
+	bot: BridgeBot;
+}>;
 
-type Resolved =
-	| { ok: true; bot: BridgeBot; target: SessionTarget; session: BridgeSession }
-	| { ok: false; err: string };
+type Resolved = Result<{ bot: BridgeBot; target: SessionTarget; session: BridgeSession }>;
 
 function toSegment(segment: PayloadSegment, blobUrl: BlobUrl, plain: PlainText): BridgeSegment {
 	switch (segment.type) {
@@ -180,24 +177,27 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		// 从**自己那份名单**里找,而不是自己去 parse 一条来路不明的连接:宿主只把属于这个
 		// 拓展、且 config 解得出形状的那些交过来(决策 30)。找不到就不是我的活。
 		const mine = opts.connections().find((candidate) => candidate.id === connection.id);
-		if (!mine) return { ok: false, err: "不是桥连接" };
+		//
+		// 失败的码(ADR-0026):不是我的连接是输入不对;接入删了是「不存在」;被主人停用的要去把开关
+		// 打开,等是等不好的;没连着、bot 暂时不在名单上,等它连回来就好。
+		if (!mine) return fail("invalid", "不是桥连接");
 		const link = opts.links().find((candidate) => candidate.id === mine.config.link);
-		if (!link) return { ok: false, err: "这条连接绑的那条接入已经删了" };
-		if (!link.enabled) return { ok: false, err: `接入「${link.name}」已停用` };
+		if (!link) return fail("not_found", "这条连接绑的那条接入已经删了");
+		if (!link.enabled) return fail("not_configured", `接入「${link.name}」已停用`);
 		const session = server.getSession(link.id);
-		if (!session) return { ok: false, err: `接入「${link.name}」没连着` };
+		if (!session) return fail("unavailable", `接入「${link.name}」没连着`);
 		const bot = session.bots.find((candidate) => candidate.botId === mine.config.botId);
-		if (!bot) return { ok: false, err: `桥上现在没有这个 bot(${mine.config.botId})` };
-		return { ok: true, connection: mine, link, session, bot };
+		if (!bot) return fail("unavailable", `桥上现在没有这个 bot(${mine.config.botId})`);
+		return ok({ connection: mine, link, session, bot });
 	}
 
 	function resolve(connection: Connection, target: PushTarget): Resolved {
 		const located = locate(connection);
 		if (!located.ok) return located;
-		if (target.kind !== "session") return { ok: false, err: "桥只发会话目标" };
-		if (!located.connection.enabled) return { ok: false, err: "这条连接已停用" };
-		if (!target.enabled) return { ok: false, err: "这个推送目标已停用" };
-		return { ok: true, bot: located.bot, target, session: located.session };
+		if (target.kind !== "session") return fail("invalid", "桥只发会话目标");
+		if (!located.connection.enabled) return fail("not_configured", "这条连接已停用");
+		if (!target.enabled) return fail("not_configured", "这个推送目标已停用");
+		return ok({ bot: located.bot, target, session: located.session });
 	}
 
 	/**
@@ -226,9 +226,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 			// 名单上通了才打网络:真打一趟 ping → pong,面板上那个「N ms」是到插件的往返,
 			// 不是「查了一下名单」的 0ms。
 			const located = locate(connection);
-			if (!located.ok) return { ok: false, latencyMs: 0, err: located.err };
-			const outcome = await server.ping(located.link.id);
-			return { ok: outcome.ok, latencyMs: outcome.latencyMs, err: outcome.err };
+			if (!located.ok) return located;
+			return server.ping(located.link.id);
 		},
 
 		async send(
@@ -239,7 +238,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		): Promise<DeliveryResult> {
 			const t0 = Date.now();
 			const resolved = resolve(connection, target);
-			if (!resolved.ok) return { ok: false, latencyMs: 0, err: resolved.err };
+			if (!resolved.ok) return resolved;
 			// `private` 是**覆盖标志**,不是「这一发是不是私聊」:调用方恒传
 			// `{ private: false }`,所以只能读 `=== true`。onebot 上把它当后者读、拿
 			// `??` 兜底,结果 scope 本来就是 private 的目标永远走了群那一支。
@@ -261,7 +260,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 				message: toBridgeMessage(payload, blobUrl, plain),
 			};
 			const outcome = await server.send(resolved.session.linkId, request);
-			return { ok: outcome.ok, latencyMs: Date.now() - t0, err: outcome.err };
+			return outcome.ok ? ok({ latencyMs: Date.now() - t0 }) : outcome;
 		},
 
 		/**
@@ -305,14 +304,14 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		 */
 		capabilities(connection: Connection): ConnectionCapabilities {
 			const located = locate(connection);
-			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.err } };
+			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.message } };
 			return capabilitiesOf(located);
 		},
 
 		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
 			// 不打网络:能力是桥握手时报的,再问一次也是同一份。
 			const located = locate(connection);
-			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.err } };
+			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.message } };
 			return capabilitiesOf(located);
 		},
 	};

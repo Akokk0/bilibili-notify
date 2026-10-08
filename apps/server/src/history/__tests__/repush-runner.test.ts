@@ -22,9 +22,11 @@ import {
 	type DeliveryResult,
 	FEATURE_KEYS,
 	type FeatureKey,
+	fail,
 	type HistoryEntry,
 	makeEmptySubscription,
 	type NotificationPayload,
+	ok,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -50,13 +52,16 @@ let ctx: TrackingContext;
 /** 每次发送记一笔;`fail` 指定第几次(1 起)失败。 */
 let sent: Array<{ targetId: string; text: string; subscriptionId: string; feature: FeatureKey }>;
 let failOn: (nth: number) => boolean;
+/** 给了就让发送口在第 n 次调用时抛这句话(发送口本不该抛,这是在演 bug)。 */
+let throwOn: ((nth: number) => string | undefined) | null;
+let log: ReturnType<typeof logger>;
 /** 卡住发送 —— 用来看「立刻回」。 */
 let gate: (() => void) | null;
 
 const SUB = randomUUID();
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
-const FAIL = { ok: false, latencyMs: 7, err: "boom" };
+const OK = ok({ latencyMs: 5 });
+const FAIL = fail("unavailable", "boom");
 
 let routed: string[];
 let enabled: boolean;
@@ -65,7 +70,7 @@ const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-runner-"));
-	const log = logger();
+	log = logger();
 	const images = makeHistoryImages(dataDir);
 	repush = createRepushStore({
 		dataRoot: dataDir,
@@ -82,6 +87,7 @@ beforeEach(async () => {
 	});
 	sent = [];
 	failOn = () => false;
+	throwOn = null;
 	gate = null;
 	routed = [T1];
 	enabled = true;
@@ -115,6 +121,8 @@ async function recordingSend(
 		subscriptionId: routing.subscriptionId,
 		feature: routing.feature,
 	});
+	const boom = throwOn?.(sent.length);
+	if (boom !== undefined) throw new Error(boom);
 	return (failOn(sent.length) ? FAIL : OK) as DeliveryResult;
 }
 
@@ -225,6 +233,22 @@ describe("结果写回历史", () => {
 		await runner.start(entry.id, entry.createdAt, "missing");
 		await settled(entry);
 		expect(sent.map((s) => s.text)).toEqual(["词云"]);
+	});
+
+	// 发送口不许抛;真抛了算 bug(ADR-0026 决策 1):按一次失败记进行里(盘上留原话),并留 error 日志,
+	// 这一趟到此为止 —— 不能静默停住、行上什么都不留。
+	it("发送口抛错 → 记成一次失败(行里留原话)+ error 日志,后面那条不再发", async () => {
+		const entry = await seedPartial();
+		throwOn = (n) => (n === 1 ? "sender exploded" : undefined);
+		await runner.start(entry.id, entry.createdAt, "missing");
+		const row = await settled(entry);
+		expect(sent.map((s) => s.text)).toEqual(["词云"]);
+		expect(row.messages).toHaveLength(4);
+		expect(row.messages[3]).toMatchObject({
+			repushOf: 1,
+			result: { ok: false, err: "sender exploded" },
+		});
+		expect(log.error).toHaveBeenCalledWith(expect.stringContaining("sender exploded"));
 	});
 });
 

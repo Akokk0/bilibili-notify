@@ -6,7 +6,7 @@
  * role 与逐条结果原样带过去。头像快照只装图库引用(⑳d):拓展行抄资料里的 `avatar`,B 站行不带(服务端不抓 B 站头像)。
  */
 
-import { makeEmptySubscription } from "@bilibili-notify/internal";
+import { fail, makeEmptySubscription } from "@bilibili-notify/internal";
 import type { PushSendResult } from "@bilibili-notify/push";
 import { describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
@@ -62,7 +62,7 @@ describe("historyRecordFromSend", () => {
 				{
 					payload: { kind: "text", text: "词云" },
 					role: "extra",
-					result: { ok: false, latencyMs: 9, err: "boom" },
+					result: fail("unavailable", "boom"),
 				},
 			],
 		};
@@ -77,7 +77,7 @@ describe("historyRecordFromSend", () => {
 				{
 					payload: { kind: "text", text: "词云" },
 					role: "extra",
-					result: { ok: false, latencyMs: 9, err: "boom" },
+					result: fail("unavailable", "boom"),
 				},
 			],
 			nameSnapshot: "某UP",

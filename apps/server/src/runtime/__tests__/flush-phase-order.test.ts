@@ -16,6 +16,7 @@
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fail } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
@@ -182,7 +183,7 @@ describe("createAppRuntime 的 flush 段", () => {
 				{
 					payload: { kind: "image", image: { buffer: PNG_BYTES, mime: "image/png" } },
 					role: "main",
-					result: { ok: false, latencyMs: 1, err: "boom" },
+					result: fail("unavailable", "boom"),
 				},
 			],
 		});

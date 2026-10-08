@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { DailyHistoryCount } from "@bilibili-notify/contract";
 import type {
+	DeliveryResult,
 	FeatureKey,
 	HistoryEntry,
 	HistoryMessage,
@@ -50,8 +51,22 @@ import type { RepushStore } from "./repush-store.js";
 export interface HistoryRecordMessage {
 	payload: NotificationPayload;
 	role: PushMessageRole;
-	/** 无目标行没有它。 */
-	result?: HistoryMessageResult;
+	/** 无目标行没有它;被前一条失败中止、从没出过网的那几条也没有。 */
+	result?: DeliveryResult;
+}
+
+/**
+ * 投递结果 → 盘上那一格。
+ *
+ * ⚠️ 中间态(3a-15 第一轮):盘上还是老形状 `{ ok, latencyMs, err? }`,失败只留原话(进 `err`)、
+ * 码与 `upstreamCode` 不落盘,失败没有耗时所以写 0。第二轮改历史行 schema 时换掉这个函数。
+ */
+function storedResult(result: DeliveryResult): HistoryMessageResult {
+	return {
+		ok: result.ok,
+		latencyMs: result.ok ? result.latencyMs : 0,
+		...(result.ok ? {} : { err: result.message }),
+	};
 }
 
 export interface NewHistoryEntry {
@@ -354,7 +369,11 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		const out: HistoryMessage[] = [];
 		for (const [i, msg] of messages.entries()) {
 			const payload = await reduce(msg, `${rowId}-${offset + i}`, feature);
-			out.push({ payload, role: msg.role, ...(msg.result ? { result: msg.result } : {}) });
+			out.push({
+				payload,
+				role: msg.role,
+				...(msg.result ? { result: storedResult(msg.result) } : {}),
+			});
 		}
 		return out;
 	}

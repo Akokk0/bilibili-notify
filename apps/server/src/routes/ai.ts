@@ -178,7 +178,6 @@ export function createAiRoute(
 
 		const payload: NotificationPayload = { kind: "text", text: reply };
 		const result = await engines.push.sendToTarget(target.id, payload);
-		// `DeliveryResult` 还是老形状(`err`,且落盘进历史 / 目标的 `testStatus`),只在这个出口翻成线上的。
 		const delivered = testResultOfDelivery(result);
 		return c.json<AiTestPushResponse>(
 			delivered.ok ? ok({ latencyMs: delivered.latencyMs, reply }) : delivered,

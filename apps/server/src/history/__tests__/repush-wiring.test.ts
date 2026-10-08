@@ -20,6 +20,7 @@ import { mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { distinctPng } from "../../__tests__/support/chat-images.js";
@@ -36,8 +37,8 @@ let historyImages: ImageWriter;
 
 const SUB = randomUUID();
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
-const FAIL = { ok: false, latencyMs: 7, err: "boom" };
+const OK = ok({ latencyMs: 5 });
+const FAIL = fail("unavailable", "boom");
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-repush-wire-"));

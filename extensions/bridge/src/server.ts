@@ -28,7 +28,9 @@ import type {
 	ExtensionUpgrade,
 	ExtensionUpgradeHandler,
 	Logger,
+	Result,
 } from "@bilibili-notify/extension";
+import { fail, ok } from "@bilibili-notify/extension";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import {
 	BRIDGE_CLOSE_CODES,
@@ -144,18 +146,20 @@ export interface BridgeSession {
 /** `id` 由这一层生成并配对,所以调用方给不了也不用给。 */
 export type BridgeSendRequest = Omit<BridgeSendFrame, "type" | "id">;
 
-/** 一次投递的结果。**永远不抛** —— 上面那层要的是投递结果,不是异常。 */
-export interface BridgeSendOutcome {
-	ok: boolean;
-	err?: string;
-}
+/**
+ * 一次投递的结果(ADR-0026 的结果形状)。**永远不抛** —— 上面那层要的是投递结果,不是异常。
+ *
+ * 失败的码:桥没连着 `unavailable`;帧发出去之后没等到回执、或桥中途断了 `indeterminate`
+ * (插件可能已经把消息送出去了);插件回了失败 `unknown` —— 线上的回执只带一句 `err`,
+ * 说不清是哪一种(协议的回执改成结果形状在 ADR-0026 决策 7,不在这一期)。
+ */
+export type BridgeSendOutcome = Result;
 
-/** 一趟探活的结果。`latencyMs` 是 ping → pong 的真实往返;不通时为 0。**永远不抛**。 */
-export interface BridgePingOutcome {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-}
+/**
+ * 一趟探活的结果。`latencyMs` 是 ping → pong 的真实往返,只在通了的那一支。**永远不抛**。
+ * 探活是幂等的:没等到 pong 是 `timeout`,桥没连着 / 中途断了是 `unavailable`。
+ */
+export type BridgePingOutcome = Result<{ latencyMs: number }>;
 
 export interface BridgeServer extends Disposable {
 	/**
@@ -349,9 +353,10 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 	 * 桥断了 → 在飞的**立刻失败**,不排队不补推。协议里写死的:推送有时效,补推一条
 	 * 三小时前的「正在直播」比不推更糟。
 	 */
-	function failPending(conn: BridgeConn, err: string): void {
-		conn.pending.failAll({ ok: false, err });
-		conn.pendingPings.failAll({ ok: false, latencyMs: 0, err });
+	function failPending(conn: BridgeConn, message: string): void {
+		// 在飞的投递:帧已经发出去了,插件可能已经送达 —— 结果不明。探活没有这层顾虑。
+		conn.pending.failAll(fail("indeterminate", message));
+		conn.pendingPings.failAll(fail("unavailable", message));
 	}
 
 	/**
@@ -506,7 +511,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			case "result": {
 				// 结算不了的:超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
 				// 断连不合适;而已经结算过的那条投递也不该被翻案。
-				if (!conn.pending.settle(frame.id, { ok: frame.ok, err: frame.err }))
+				// 线上的回执只带 `err`(协议帧这一期不动):失败的在这里翻成结果形状,说不清原因,记 `unknown`。
+				const outcome: BridgeSendOutcome = frame.ok
+					? ok()
+					: fail("unknown", frame.err || "桥回了失败,没说原因");
+				if (!conn.pending.settle(frame.id, outcome))
 					log.debug(`bridge ${conn.linkId} sent a result for an unknown id`);
 				break;
 			}
@@ -515,7 +524,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				// 记过了,看门狗满足。拿它去结算任何一趟探活的话,面板那颗「测试」的读数就是
 				// 偷来的 —— 宁可让那趟探活如实超时,也别报一个不知道量的是谁的数。
 				if (!frame.id) break;
-				conn.pendingPings.settle(frame.id, { ok: true, latencyMs: 0 });
+				// 往返时长由 `ping()` 在结算那一刻量,这里的 0 只是占位。
+				conn.pendingPings.settle(frame.id, ok({ latencyMs: 0 }));
 				break;
 			}
 		}
@@ -646,37 +656,38 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 
 	function send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome> {
 		const conn = sessions.get(linkId);
-		if (!conn) return Promise.resolve({ ok: false, err: "桥没连着" });
+		if (!conn) return Promise.resolve(fail("unavailable", "桥没连着"));
 		const id = randomUUID();
 		return new Promise<BridgeSendOutcome>((resolve) => {
 			const settle = conn.pending.start(
 				id,
 				sendTimeoutMs,
-				{ ok: false, err: `桥 ${sendTimeoutMs}ms 内没给回执` },
+				// 帧发出去了、只是没等到回执:消息可能已经送达。
+				fail("indeterminate", `桥 ${sendTimeoutMs}ms 内没给回执`),
 				resolve,
 			);
 			if (!sendFrame(conn, { type: "send", id, ...request })) {
-				settle({ ok: false, err: "桥没连着" });
+				settle(fail("unavailable", "桥没连着"));
 			}
 		});
 	}
 
 	function ping(linkId: string): Promise<BridgePingOutcome> {
 		const conn = sessions.get(linkId);
-		if (!conn) return Promise.resolve({ ok: false, latencyMs: 0, err: "桥没连着" });
+		if (!conn) return Promise.resolve(fail("unavailable", "桥没连着"));
 		const id = randomUUID();
 		const t0 = Date.now();
 		return new Promise<BridgePingOutcome>((resolve) => {
 			// 往返时长在**结算那一刻**才算得出来,所以套在 resolve 外面;不通的那几路
-			// 把自己的 `latencyMs: 0` 原样带出去。
+			// 把自己的失败原样带出去(失败不带耗时)。
 			const settle = conn.pendingPings.start(
 				id,
 				pingTimeoutMs,
-				{ ok: false, latencyMs: 0, err: `桥 ${pingTimeoutMs}ms 内没回 pong` },
-				(outcome) => resolve(outcome.ok ? { ok: true, latencyMs: Date.now() - t0 } : outcome),
+				fail("timeout", `桥 ${pingTimeoutMs}ms 内没回 pong`),
+				(outcome) => resolve(outcome.ok ? ok({ latencyMs: Date.now() - t0 }) : outcome),
 			);
 			if (!sendFrame(conn, { type: "ping", id })) {
-				settle({ ok: false, latencyMs: 0, err: "桥没连着" });
+				settle(fail("unavailable", "桥没连着"));
 			}
 		});
 	}

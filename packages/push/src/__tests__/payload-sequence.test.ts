@@ -14,6 +14,7 @@
 import {
 	type DeliveryResult,
 	FEATURE_KEYS,
+	fail,
 	type GlobalDefaults,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -48,7 +49,7 @@ function makeDispatcher(failOn?: (targetId: string, nthCallForTarget: number) =>
 			perTarget.set(targetId, nth);
 			calls.push({ targetId, payload });
 			if (failOn?.(targetId, nth)) {
-				return { ok: false, latencyMs: 1, err: "boom" } as DeliveryResult;
+				return fail("unavailable", "boom") as DeliveryResult;
 			}
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},

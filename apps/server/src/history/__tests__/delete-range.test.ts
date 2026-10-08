@@ -14,6 +14,7 @@ import { chmod, mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HistoryEntry, NotificationPayload } from "@bilibili-notify/internal";
+import { ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { distinctPng } from "../../__tests__/support/chat-images.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
@@ -43,7 +44,7 @@ afterEach(() => {
 
 const SUB = randomUUID();
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
+const OK = ok({ latencyMs: 5 });
 
 function text(t: string): NotificationPayload {
 	return { kind: "text", text: t };

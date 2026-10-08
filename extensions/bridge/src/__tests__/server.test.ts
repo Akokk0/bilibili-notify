@@ -683,7 +683,7 @@ describe("/bridge 端点", () => {
 		});
 		const outcome = await server.ping(CONNECTION_ID);
 		expect(outcome).toMatchObject({ ok: true });
-		expect(outcome.latencyMs).toBeGreaterThanOrEqual(25);
+		expect(outcome.ok && outcome.latencyMs).toBeGreaterThanOrEqual(25);
 	});
 
 	/**
@@ -718,12 +718,27 @@ describe("/bridge 端点", () => {
 		await boot({ heartbeatIntervalMs: 0, pingTimeoutMs: 40 });
 		await handshaken();
 		const outcome = await server.ping(CONNECTION_ID);
-		expect(outcome.ok).toBe(false);
-		expect(outcome.err).toMatch(/pong/);
+		// 探活是幂等的:超时就是 timeout;没通的结果不带耗时。
+		expect(outcome).toMatchObject({ ok: false, code: "timeout" });
+		expect(!outcome.ok && outcome.message).toMatch(/pong/);
+		expect(outcome).not.toHaveProperty("latencyMs");
 	});
 
 	it("ping():桥没连着 → 直接不通", async () => {
-		expect(await server.ping("nobody")).toMatchObject({ ok: false });
+		expect(await server.ping("nobody")).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "桥没连着",
+		});
+	});
+
+	it("ping():等 pong 的时候桥断了 → unavailable", async () => {
+		await boot({ heartbeatIntervalMs: 0 });
+		const p = await handshaken();
+		const probing = server.ping(CONNECTION_ID);
+		await p.next();
+		p.socket.terminate();
+		expect(await probing).toMatchObject({ ok: false, code: "unavailable" });
 	});
 
 	it("心跳:不回 pong → 踢掉,会话清干净", async () => {
@@ -758,15 +773,27 @@ describe("/bridge 端点", () => {
 		const pending = server.send(CONNECTION_ID, sendRequest);
 		const frame = await p.next();
 		p.send({ type: "result", id: frame.id, ok: false, err: "bot 掉线了" });
-		expect(await pending).toEqual({ ok: false, err: "bot 掉线了" });
+		// 线上的回执只带 `err`(协议这一期不动):说不清原因,进门翻成 unknown + 原话。
+		expect(await pending).toEqual({ ok: false, code: "unknown", message: "bot 掉线了" });
+	});
+
+	it("回执报失败却一个字都没给 → 仍是 unknown,补一句能读的话", async () => {
+		const p = await handshaken();
+		const pending = server.send(CONNECTION_ID, sendRequest);
+		const frame = await p.next();
+		p.send({ type: "result", id: frame.id, ok: false });
+		const outcome = await pending;
+		expect(outcome).toMatchObject({ ok: false, code: "unknown" });
+		expect(!outcome.ok && outcome.message).not.toBe("");
 	});
 
 	it("桥不回 → 超时后失败,而不是永远吊着", async () => {
 		await boot({ sendTimeoutMs: 40 });
 		const p = await handshaken();
 		const outcome = await server.send(CONNECTION_ID, sendRequest);
-		expect(outcome.ok).toBe(false);
-		expect(outcome.err).toContain("回执");
+		// 帧已经发出去了、只是没等到回执:消息可能已经送达,结果不明。
+		expect(outcome).toMatchObject({ ok: false, code: "indeterminate" });
+		expect(!outcome.ok && outcome.message).toContain("回执");
 		expect(p.socket.readyState).toBe(WebSocket.OPEN);
 	});
 
@@ -794,14 +821,14 @@ describe("/bridge 端点", () => {
 		await p.next();
 		p.socket.terminate();
 		const outcome = await pending;
-		expect(outcome.ok).toBe(false);
-		expect(outcome.err).toBeTruthy();
+		// 帧发出去之后桥才断:插件可能已经把消息送出去了,结果不明。
+		expect(outcome).toEqual({ ok: false, code: "indeterminate", message: "桥断开了" });
 	});
 
 	it("桥没连着 → 立刻失败,不等超时", async () => {
 		const started = Date.now();
 		const outcome = await server.send(CONNECTION_ID, sendRequest);
-		expect(outcome.ok).toBe(false);
+		expect(outcome).toEqual({ ok: false, code: "unavailable", message: "桥没连着" });
 		expect(Date.now() - started).toBeLessThan(1_000);
 	});
 
@@ -816,7 +843,7 @@ describe("/bridge 端点", () => {
 		p.send({ type: "result", id: b.id, ok: false, err: "第二条炸了" });
 		p.send({ type: "result", id: a.id, ok: true });
 		expect(await first).toEqual({ ok: true });
-		expect(await second).toEqual({ ok: false, err: "第二条炸了" });
+		expect(await second).toEqual({ ok: false, code: "unknown", message: "第二条炸了" });
 	});
 
 	// ---- 共存与收摊 --------------------------------------------------------

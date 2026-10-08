@@ -9,6 +9,8 @@
  *                                    Connection 缺(warn + onDelivery)/ platformAdapter 缺(warn + onDelivery)/
  *                                    happy(委派 platformAdapter.send + onDelivery,private 透传)
  *   - probeConnection                 → adapter 缺 / platformAdapter 缺 / happy 委派 platformAdapter.probe
+ *   - 自己造的失败的码(ADR-0026):目标 / 连接找不到 `not_found`,没有适配器 `unavailable`;
+ *                                    适配器抛错算 bug,在这里接住 → `unavailable` + error 日志
  *
  * 纯单元:ConfigStore / PlatformAdapter / Logger 全部用最小 fake,无任何 I/O。
  */
@@ -22,6 +24,7 @@ import type {
 	ProbeResult,
 	PushTarget,
 } from "@bilibili-notify/internal";
+import { fail } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
@@ -65,13 +68,13 @@ function makeStore(connections: Connection[], targets: PushTarget[]): ConfigStor
 }
 
 type LogFn = (msg: string, ...args: unknown[]) => void;
-function makeLogger(): Logger & { warn: Mock<LogFn> } {
+function makeLogger(): Logger & { warn: Mock<LogFn>; error: Mock<LogFn> } {
 	return {
 		info: vi.fn<LogFn>(),
 		warn: vi.fn<LogFn>(),
 		error: vi.fn<LogFn>(),
 		debug: vi.fn<LogFn>(),
-	} as unknown as Logger & { warn: Mock<LogFn> };
+	} as unknown as Logger & { warn: Mock<LogFn>; error: Mock<LogFn> };
 }
 
 function makePlatformAdapter(
@@ -175,7 +178,7 @@ describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
 			onDelivery,
 		});
 		const r = await dispatcher.send("ghost", PAYLOAD);
-		expect(r).toEqual({ ok: false, latencyMs: 0, err: "target not found" });
+		expect(r).toEqual({ ok: false, code: "not_found", message: "target not found" });
 		expect(onDelivery).not.toHaveBeenCalled();
 	});
 
@@ -188,10 +191,14 @@ describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
 			onDelivery,
 		});
 		const r = await dispatcher.send("t1", PAYLOAD);
-		expect(r.ok).toBe(false);
-		expect(r.err).toBe("connection not found: connectionId=ghost");
+		expect(r).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "connection not found: connectionId=ghost",
+		});
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("connection not found"));
 		expect(onDelivery).toHaveBeenCalledTimes(1);
+		expect(onDelivery.mock.calls[0]?.[2]).toBe(r);
 	});
 
 	it("platformAdapter 缺:返回 no platform adapter + warn + onDelivery", async () => {
@@ -206,8 +213,12 @@ describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
 			onDelivery,
 		});
 		const r = await dispatcher.send("t1", PAYLOAD);
-		expect(r.ok).toBe(false);
-		expect(r.err).toBe("no platform adapter for telegram");
+		// 拓展可能晚到(热装载):等一会儿可能就好,所以是 unavailable。
+		expect(r).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "no platform adapter for telegram",
+		});
 		expect(logger.warn).toHaveBeenCalledWith(
 			expect.stringContaining("no platform adapter for telegram"),
 		);
@@ -254,6 +265,63 @@ describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
 	});
 });
 
+describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", () => {
+	it("send 抛错 → unavailable + error 日志,onDelivery 照样收到这条失败", async () => {
+		const logger = makeLogger();
+		const onDelivery = vi.fn<OnDeliveryFn>();
+		const target = makeTarget({ id: "t1", connectionId: "a1" });
+		const pa = makePlatformAdapter(["feishu"], {
+			send: vi.fn(async () => {
+				throw new Error("adapter exploded");
+			}),
+		});
+		const dispatcher = createTargetDispatcher({
+			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger,
+			onDelivery,
+		});
+		const r = await dispatcher.send("t1", PAYLOAD);
+		expect(r).toEqual({ ok: false, code: "unavailable", message: "adapter exploded" });
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r, { private: false });
+	});
+
+	it("probe 抛错 → unavailable + error 日志", async () => {
+		const logger = makeLogger();
+		const pa = makePlatformAdapter(["feishu"], {
+			probe: vi.fn(async () => {
+				throw new Error("probe exploded");
+			}),
+		});
+		const dispatcher = createTargetDispatcher({
+			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], []),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger,
+		});
+		expect(await dispatcher.probeConnection("a1")).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "probe exploded",
+		});
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("probe exploded"));
+	});
+
+	it("适配器回的失败原样透出(码与 upstreamCode 不动)", async () => {
+		const failure = fail("rate_limited", "慢点", { upstreamCode: 22009 });
+		const pa = makePlatformAdapter(["feishu"], { send: vi.fn(async () => failure) });
+		const dispatcher = createTargetDispatcher({
+			store: makeStore(
+				[makeConnection({ id: "a1", platform: "feishu" })],
+				[makeTarget({ id: "t1", connectionId: "a1" })],
+			),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger: makeLogger(),
+		});
+		expect(await dispatcher.send("t1", PAYLOAD)).toBe(failure);
+	});
+});
+
 describe("createTargetDispatcher — probeConnection", () => {
 	it("连接缺:connection not found", async () => {
 		const dispatcher = createTargetDispatcher({
@@ -263,8 +331,8 @@ describe("createTargetDispatcher — probeConnection", () => {
 		});
 		expect(await dispatcher.probeConnection("ghost")).toEqual({
 			ok: false,
-			latencyMs: 0,
-			err: "connection not found",
+			code: "not_found",
+			message: "connection not found",
 		});
 	});
 
@@ -276,16 +344,16 @@ describe("createTargetDispatcher — probeConnection", () => {
 		});
 		expect(await dispatcher.probeConnection("a1")).toEqual({
 			ok: false,
-			latencyMs: 0,
-			err: "no platform adapter for telegram",
+			code: "unavailable",
+			message: "no platform adapter for telegram",
 		});
 	});
 
 	it("happy:委派 platformAdapter.probe(adapter) 并回传其 ProbeResult", async () => {
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
-		const pa = makePlatformAdapter(["feishu"], {
-			probe: vi.fn(async () => ({ ok: null as boolean | null, latencyMs: 0 })),
-		});
+		// 没有探测协议的适配器回 unsupported:原样透出,由调用方决定不改连接状态。
+		const unsupported = fail("unsupported", "no probe");
+		const pa = makePlatformAdapter(["feishu"], { probe: vi.fn(async () => unsupported) });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], []),
 			adapters: createPlatformAdapterRegistry([pa]),
@@ -293,7 +361,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 		});
 		const r = await dispatcher.probeConnection("a1");
 		expect(pa.probe).toHaveBeenCalledWith(connection);
-		expect(r).toEqual({ ok: null, latencyMs: 0 });
+		expect(r).toBe(unsupported);
 	});
 });
 

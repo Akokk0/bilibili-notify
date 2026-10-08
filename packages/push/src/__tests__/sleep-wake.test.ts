@@ -10,6 +10,7 @@
  */
 
 import type { DeliveryResult, PushTarget, ServiceContext } from "@bilibili-notify/internal";
+import { fail } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { PushRouter } from "../push-router";
@@ -19,12 +20,8 @@ function makeUnreachableDispatcher(): FakeDispatcher {
 	return {
 		isAvailable: () => false, // 永远不可达 → sendToTarget 进入 sleep retry 循环
 		isEnabled: () => true,
-		send: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0, err: "unreachable" }),
-		sendPrivate: async (): Promise<DeliveryResult> => ({
-			ok: false,
-			latencyMs: 0,
-			err: "unreachable",
-		}),
+		send: async (): Promise<DeliveryResult> => fail("unavailable", "unreachable"),
+		sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "unreachable"),
 		resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 	};
 }
@@ -99,8 +96,8 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		push.stop();
 		const result = await sendPromise;
 		expect(settled).toBe(true);
-		expect(result.ok).toBe(false);
-		expect(result.err).toBe("disposed");
+		// 生命周期收尾的产物:按「暂时不可用」记(ADR-0026),不带耗时。
+		expect(result).toEqual({ ok: false, code: "unavailable", message: "disposed" });
 	});
 
 	it("P2-C:stop()→start() 不复活上一生命周期遗留的 in-flight retry(generation 守卫)", async () => {
@@ -132,7 +129,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send,
-			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
+			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -158,7 +155,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const result = await sendPromise;
 		// generation 守卫:in-flight 循环 myGen=1 ≠ 当前 2 → 直接退出,
 		// 绝不在新生命周期上 send()。
-		expect(result.ok).toBe(false);
+		expect(result).toEqual({ ok: false, code: "unavailable", message: "superseded" });
 		expect(send).not.toHaveBeenCalled();
 	});
 
@@ -178,7 +175,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			isAvailable: () => true,
 			isEnabled: () => true,
 			send: (id) => send(id),
-			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
+			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 		const onSend = vi.fn();
@@ -202,6 +199,62 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		// 边界 artifact("a" 完成时 lifecycle 已翻)不 onSend / 不计入 results。
 		expect(onSend).not.toHaveBeenCalled();
 		expect(results).toEqual([]);
+	});
+
+	it("退避用尽仍不可达 → unavailable,原话带目标 id", async () => {
+		// 假时钟一到就放行:六轮退避瞬间走完,不等真的 190 秒。
+		const instantCtx: ServiceContext = {
+			logger: silentLogger,
+			setInterval: vi.fn(),
+			setTimeout: (fn) => {
+				queueMicrotask(fn);
+				return { dispose: () => {} };
+			},
+			onDispose: () => {},
+			signal: new AbortController().signal,
+			track: () => {},
+		};
+		const push = new PushRouter({
+			...pushBase(),
+			dispatcher: makeUnreachableDispatcher(),
+			store: emptyStore,
+			logger: silentLogger,
+			serviceCtx: instantCtx,
+		});
+		push.start();
+
+		const result = await push.sendToTarget("target-x", { kind: "text", text: "x" });
+
+		expect(result).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "target=target-x 持续不可达，放弃推送",
+		});
+	});
+
+	it("派发器抛错算 bug:接住按 unavailable 记,并打 error 日志", async () => {
+		const error = vi.fn();
+		const dispatcher: FakeDispatcher = {
+			isAvailable: () => true,
+			isEnabled: () => true,
+			send: async (): Promise<DeliveryResult> => {
+				throw new Error("dispatcher exploded");
+			},
+			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
+			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
+		};
+		const push = new PushRouter({
+			...pushBase(),
+			dispatcher,
+			store: emptyStore,
+			logger: { ...silentLogger, error },
+		});
+		push.start();
+
+		const result = await push.sendToTarget("t", { kind: "text", text: "x" });
+
+		expect(result).toEqual({ ok: false, code: "unavailable", message: "dispatcher exploded" });
+		expect(error).toHaveBeenCalledWith(expect.stringContaining("dispatcher exploded"));
 	});
 
 	// 上一条用的是永不 fire 的假时钟;这条用 pushBase() 的真时钟,验 stop() 抢在 backoff 到期前唤醒。

@@ -22,6 +22,7 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import {
+	fail,
 	makeEmptySubscription,
 	sameIdentity,
 	subscriptionIdentityOf,
@@ -86,7 +87,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 			isAvailable: (id) => (id === "target-a" ? aAvailable : true),
 			isEnabled: () => true,
 			send: () => send(),
-			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
+			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -125,9 +126,10 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 
 		// 核心断言:target-a 已不在 routing 里,即便它现在可达,也绝不能真的发出去。
 		expect(send).not.toHaveBeenCalled();
-		expect(result.ok).toBe(false);
-		expect(result.err).toContain("target-a");
-		expect(result.err).toContain("移除");
+		// 与当前路由冲突(ADR-0026 的 conflict):不是对端坏了,是这条推送自己过期了。
+		expect(result).toMatchObject({ ok: false, code: "conflict" });
+		expect(!result.ok && result.message).toContain("target-a");
+		expect(!result.ok && result.message).toContain("移除");
 	});
 
 	it("routing 期间保持不变 → 重试成功后正常发送(不误伤正常场景)", async () => {
@@ -146,7 +148,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send: () => send(),
-			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
+			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -205,7 +207,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send: () => send(),
-			sendPrivate: async (): Promise<DeliveryResult> => ({ ok: false, latencyMs: 0 }),
+			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -236,7 +238,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 
 		const result = await resultPromise;
 		expect(send).not.toHaveBeenCalled();
-		expect(result.ok).toBe(false);
-		expect(result.err).toContain("移除");
+		expect(result).toMatchObject({ ok: false, code: "conflict" });
+		expect(!result.ok && result.message).toContain("移除");
 	});
 });

@@ -3,6 +3,7 @@ import type {
 	ConnectionCapabilities,
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
+import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createCapabilityInjector } from "../capability-injection.js";
 import { createDevRegistry, DevParamError } from "../registry.js";
@@ -49,7 +50,7 @@ function webhook(): PlatformAdapter {
 		platforms: ["webhook"],
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
-		probe: async () => ({ ok: null, latencyMs: 0 }),
+		probe: async () => fail("unsupported", "no probe"),
 	};
 }
 

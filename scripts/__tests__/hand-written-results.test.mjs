@@ -40,7 +40,8 @@ export const ALLOWLIST = {
  * - `{ ok, reason }` / `{ ok, err }`(应用内更新、拓展市场与清单、女仆技能、头像、正则、
  *   订阅源上报、拓展设置、指令参数):更新的 kebab `reason` 改 snake 码(决策 3),其余改 `code` + `message`。
  * - 面板:登录的 `{ ok, kind, message }` 与 devtools 的几处。
- * - 桥拓展:拓展只能从 `@bilibili-notify/extension` 拿东西,那个包还没有 `ok()` / `fail()`,等 3b 的契约 v3。
+ * - 桥拓展剩下的两个文件:`protocol.ts` 是协议帧的解析结果,`blob-route.ts` 是回给薄插件的 HTTP 体,都是线上字节,
+ *   随 3b 桥协议统一成结果形状时改(投递与探活的结果 3a-15 已换成契约包导出的 `ok()` / `fail()`)。
  * - 不是结果但带 `ok` 的:AI 工具结束的 SSE 帧。
  * - devtools 假桥发的 `result` 帧:3b 桥协议的回执统一成结果形状后改用 `fail()` 展开(ADR-0026 决策 7)。
  * - `apps/server/src/bilibili/api/follow.ts`:B 站的码塞在 `code` 里(3a-24 随 api 包搬进来,原样没动),3a-25 起改。
@@ -51,21 +52,13 @@ export const RATCHET = {
 	"apps/server/src/card-skins/html-sanitizer.ts": 5,
 	"apps/server/src/card-skins/package.ts": 6,
 	"apps/server/src/card-skins/preview-html.ts": 2,
-	"apps/server/src/devtools/capture.ts": 1,
 	"apps/server/src/devtools/fake-bridge.ts": 3,
 	"apps/server/src/devtools/scenarios/bridge.ts": 3,
 	"apps/server/src/extensions/marketplace.ts": 14,
 	"apps/server/src/extensions/settings-io.ts": 9,
-	"apps/server/src/history/repush-runner.ts": 1,
-	"apps/server/src/index.ts": 1,
 	"apps/server/src/maid-skills/parse.ts": 8,
-	"apps/server/src/platforms/onebot.ts": 29,
-	"apps/server/src/platforms/qq-official.ts": 21,
-	"apps/server/src/platforms/webhook.ts": 5,
 	"apps/server/src/routes/ai.ts": 2,
-	"apps/server/src/runtime/bootstrap.ts": 1,
 	"apps/server/src/runtime/command-params.ts": 4,
-	"apps/server/src/push/target-dispatcher.ts": 5,
 	"apps/server/src/skins/ai-edit.ts": 3,
 	"apps/server/src/skins/package.ts": 5,
 	"apps/server/src/skins/schema.ts": 5,
@@ -80,17 +73,14 @@ export const RATCHET = {
 	"apps/web/src/devtools/ext-motion.ts": 3,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
 	"apps/web/src/services/session.ts": 6,
-	"extensions/bridge/src/adapter.ts": 12,
 	"extensions/bridge/src/blob-route.ts": 1,
 	"extensions/bridge/src/protocol.ts": 5,
-	"extensions/bridge/src/server.ts": 10,
 	"packages/ai/src/extra-params.ts": 5,
 	"packages/internal/src/schema/card-skin.ts": 3,
 	"packages/internal/src/schema/extension-manifest.ts": 6,
 	"packages/internal/src/schema/extension-marketplace.ts": 8,
 	"packages/internal/src/schema/subscription-report.ts": 17,
 	"packages/internal/src/util/regex-safety.ts": 4,
-	"packages/push/src/push-router.ts": 5,
 };
 
 /** 剥掉只改类型、不改值的外壳:括号、`as`、`satisfies`、`<T>x`、`x!`。 */

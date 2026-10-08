@@ -1,3 +1,4 @@
+import type { Result } from "./constants";
 import type { ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
 import type { SubscriptionReportDelivery } from "./schema/subscription-report";
@@ -428,25 +429,23 @@ export interface TargetDispatcher {
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
 }
 
-export interface DeliveryResult {
-	ok: boolean;
-	latencyMs: number;
-	err?: string;
-	/**
-	 * 这条投递**没有真的出网**(目前只有 devtools 的推送截流会这么标)。结果照样往上回,
-	 * 好让调用链跑完;但它不携带任何「目标通不通」的信息 —— 拿它去翻 `target.testStatus`
-	 * 就是凭空把一个发不出去的目标标成绿的,而且会落盘、活得比截流本身还久。
-	 * 读之前先过 {@link isReachabilityEvidence}。
-	 */
-	isSynthetic?: true;
-}
+/**
+ * 一次投递的结果(ADR-0026):送达了是 `{ ok: true, latencyMs }`,没送达是 `Failure`。
+ * 耗时只在成功那一支 —— 没真发出去的失败不带一个假的 `0`。
+ *
+ * `isSynthetic`:这条投递**没有真的出网**(目前只有 devtools 的推送截流会这么标)。结果照样往上回,
+ * 好让调用链跑完;但它不携带任何「目标通不通」的信息 —— 拿它去翻 `target.testStatus`
+ * 就是凭空把一个发不出去的目标标成绿的,而且会落盘、活得比截流本身还久。
+ * 读之前先过 {@link isReachabilityEvidence}。
+ */
+export type DeliveryResult = Result<{ latencyMs: number; isSynthetic?: true }>;
 
 /**
  * 这条投递结果算不算「目标可达」的证据。历史那行照记不误(它记的是这次推送发生了什么),
  * 只有可达性判断要过这道。
  */
 export function isReachabilityEvidence(result: DeliveryResult): boolean {
-	return result.isSynthetic !== true;
+	return !(result.ok && result.isSynthetic === true);
 }
 
 /**

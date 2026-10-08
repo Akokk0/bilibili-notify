@@ -9,6 +9,7 @@
  */
 
 // biome-ignore-all lint/suspicious/noExplicitAny: 断言 JSON 响应体,不为测试再造一遍 wire 类型
+import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createStatsRoute } from "../stats.js";
 import type { RouteDeps } from "../types.js";
@@ -51,11 +52,9 @@ interface StubOpts {
 const ADAPTER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function makeDeps(opts: StubOpts = {}) {
-	const sendToTarget = vi.fn(async () => ({
-		ok: !opts.sendFails,
-		latencyMs: 1,
-		err: opts.sendFails ? "目标不可达" : undefined,
-	}));
+	const sendToTarget = vi.fn(async () =>
+		opts.sendFails ? fail("unavailable", "目标不可达") : ok({ latencyMs: 1 }),
+	);
 	// 变参签名照抄真身:写成零参的话 `mock.calls[0][1]` 在类型上是「长度 0 的元组」,
 	// 断言第二个参数(皮肤 id)根本编译不过。
 	const generateRoastBoardCard = vi.fn(async (..._args: unknown[]) => {

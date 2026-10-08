@@ -5,6 +5,7 @@ import type {
 	DeliveryResult,
 	DirectConnection,
 	Disposable,
+	Failure,
 	InboundSinks,
 	Logger,
 	MiniAppCardSupport,
@@ -14,9 +15,10 @@ import type {
 	PlatformAdapter,
 	ProbeResult,
 	PushTarget,
+	Result,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { connectionDispatchKey, isConnectionOn } from "@bilibili-notify/internal";
+import { connectionDispatchKey, fail, isConnectionOn, ok } from "@bilibili-notify/internal";
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
@@ -97,9 +99,17 @@ const DEFAULT_IMAGE_MIN_TIMEOUT_MS = ONEBOT_IMAGE_MIN_TIMEOUT_MS;
  * 重试、如实报失败;只有「确定没发出去」(无连接 / 发送即抛错 / bot 明确报失败)
  * 才允许走重试。
  */
-class IndeterminateActionError extends Error {}
+class IndeterminateActionError extends Error {
+	constructor(
+		message: string,
+		/** 是等响应等到超时(true),还是连接中途断了(false)。幂等的探测靠它分 `timeout` 与 `unavailable`。 */
+		readonly isTimeout: boolean,
+	) {
+		super(message);
+	}
+}
 
-/** 附在「结果未知」失败的 err 上,提示用户群里可能已收到、且为何不再重试。 */
+/** 附在「结果未知」失败的原话上,提示用户群里可能已收到、且为何不再重试。 */
 const INDETERMINATE_NOTE = "(动作已发出、结果未知,为免重复送达不再重试)";
 
 /** 合并转发动作 —— NapCat 要逐张下载图片再上传组装,处理时长远超普通消息。 */
@@ -176,6 +186,11 @@ interface OneBotMessageSegment {
 interface OneBotResponse {
 	status?: "ok" | "failed" | "async";
 	retcode?: number;
+	/**
+	 * 不是协议里的格:HTTP 非 2xx 时我们自己合成的那一帧才有,装 HTTP 状态。`retcode` 里照旧也抄一份
+	 * (重试与「接口不存在」的判读都看它),翻成失败时靠这一格把「HTTP 状态」与「bot 的 retcode」分开。
+	 */
+	httpStatus?: number;
 	message?: string;
 	wording?: string;
 	msg?: string;
@@ -247,6 +262,12 @@ interface BotIdentity {
  */
 const FALLBACK_BOT_IDENTITY: BotIdentity = { uin: "10000", name: "bilibili-notify" };
 
+/** 一条翻好的 OneBot 动作:HTTP 把 `action` 当 endpoint,WS 当 action 帧的字段。 */
+interface OnebotAction {
+	action: string;
+	params: Record<string, unknown>;
+}
+
 /**
  * 把一次推送翻成 OneBot action(`send_group_msg` / `send_private_msg`)+ params。
  * HTTP 把 action 当 endpoint(加前导 `/`),WS 直接作 action 帧字段。
@@ -259,7 +280,7 @@ function buildSendAction(
 	payload: NotificationPayload,
 	opts: { private?: boolean },
 	botInfo: BotIdentity = FALLBACK_BOT_IDENTITY,
-): { action: string; params: Record<string, unknown> } | { err: string } {
+): Result<OnebotAction> {
 	// 图集合并转发分支:payload.forward 由 dynamic engine config 的 `imageGroupForward`
 	// 决定。走 send_group_forward_msg / send_private_forward_msg 长消息通道(NapCat
 	// 的 SsoSendLongMsg trpc 在某些部署不稳,故默认 false)。
@@ -276,10 +297,10 @@ function buildSendAction(
 			},
 		}));
 		const to = onebotNumericAddress(target, opts);
-		if ("err" in to) return to;
+		if (!to.ok) return to;
 		return to.private
-			? { action: "send_private_forward_msg", params: { user_id: to.id, messages: nodes } }
-			: { action: "send_group_forward_msg", params: { group_id: to.id, messages: nodes } };
+			? ok({ action: "send_private_forward_msg", params: { user_id: to.id, messages: nodes } })
+			: ok({ action: "send_group_forward_msg", params: { group_id: to.id, messages: nodes } });
 	}
 	return buildSendActionFromSegments(target, buildSegments(payload), opts);
 }
@@ -289,17 +310,17 @@ function buildSendActionFromSegments(
 	target: PushTarget,
 	segments: OneBotMessageSegment[],
 	opts: { private?: boolean },
-): { action: string; params: Record<string, unknown> } | { err: string } {
-	if (segments.length === 0) return { err: "empty payload" };
+): Result<OnebotAction> {
+	if (segments.length === 0) return fail("invalid", "empty payload");
 	const to = onebotNumericAddress(target, opts);
-	if ("err" in to) return to;
+	if (!to.ok) return to;
 	const params: Record<string, unknown> = { message: segments };
 	if (to.private) {
 		params.user_id = to.id;
-		return { action: "send_private_msg", params };
+		return ok({ action: "send_private_msg", params });
 	}
 	params.group_id = to.id;
-	return { action: "send_group_msg", params };
+	return ok({ action: "send_group_msg", params });
 }
 
 /**
@@ -315,14 +336,14 @@ function buildSendActionFromSegments(
 function onebotNumericAddress(
 	target: PushTarget,
 	opts: { private?: boolean },
-): { private: boolean; id: number } | { err: string } {
+): Result<{ private: boolean; id: number }> {
 	const isPrivate = opts.private === true || target.scope === "private";
 	const what = isPrivate ? "private: userId" : "group: groupId";
-	if (target.kind !== "session") return { err: `${what} missing` };
-	if (!target.address) return { err: `${what} missing` };
+	if (target.kind !== "session") return fail("invalid", `${what} missing`);
+	if (!target.address) return fail("invalid", `${what} missing`);
 	const id = Number(target.address);
-	if (!Number.isFinite(id)) return { err: `${what} 非数字 (${target.address})` };
-	return { private: isPrivate, id };
+	if (!Number.isFinite(id)) return fail("invalid", `${what} 非数字 (${target.address})`);
+	return ok({ private: isPrivate, id });
 }
 
 /**
@@ -346,12 +367,48 @@ function isLikelyNapcatDisconnected(err: string): boolean {
 }
 const NAPCAT_DISCONNECT_SUFFIX = "(NapCat 可能掉线 / QQ 未登录,请检查 NapCat 状态)";
 
-/** OneBot 响应判定:`status:"ok"` + `retcode:0` 为成功。 */
-function interpretResponse(r: OneBotResponse): { ok: true } | { ok: false; err: string } {
-	if (r.status === "ok" && (r.retcode ?? 0) === 0) return { ok: true };
+/** OneBot 11 的「不支持的动作」—— 这个实现没有这个接口。 */
+const RETCODE_ACTION_NOT_FOUND = 1404;
+
+/**
+ * OneBot 响应判定:`status:"ok"` + `retcode:0` 为成功。失败翻成标准码(ADR-0026):
+ * - HTTP 非 2xx(我们合成的那一帧)按状态码翻,`upstreamCode` 写成 `http:<status>`;
+ * - retcode 1404 是「接口不存在」→ `unsupported`;
+ * - 别的 retcode 这里没有对照 → `unknown`,数字原样放 `upstreamCode`。
+ */
+function interpretResponse(r: OneBotResponse): Result {
+	if (r.status === "ok" && (r.retcode ?? 0) === 0) return ok();
 	const raw = r.wording ?? r.message ?? r.msg ?? `retcode=${r.retcode}`;
-	const err = isLikelyNapcatDisconnected(raw) ? `${raw} ${NAPCAT_DISCONNECT_SUFFIX}` : raw;
-	return { ok: false, err };
+	const message = isLikelyNapcatDisconnected(raw) ? `${raw} ${NAPCAT_DISCONNECT_SUFFIX}` : raw;
+	if (r.httpStatus !== undefined) return httpFailure(r.httpStatus, message);
+	if (r.retcode === RETCODE_ACTION_NOT_FOUND) {
+		return fail("unsupported", message, { upstreamCode: r.retcode });
+	}
+	return fail("unknown", message, r.retcode === undefined ? {} : { upstreamCode: r.retcode });
+}
+
+/** 对端回了非 2xx:状态码 → 标准码;状态码本身留在 `upstreamCode`,带 `http:` 前缀好与 retcode 分开。 */
+function httpFailure(status: number, message: string): Failure {
+	const upstreamCode = `http:${status}`;
+	if (status === 401 || status === 403) return fail("unauthorized", message, { upstreamCode });
+	if (status === 404 || status === 410) return fail("not_found", message, { upstreamCode });
+	if (status === 429) return fail("rate_limited", message, { upstreamCode });
+	if (status >= 400 && status < 500) return fail("invalid", message, { upstreamCode });
+	return fail("unavailable", message, { upstreamCode });
+}
+
+/**
+ * 调用抛出来的错 → 失败。分两种场合:
+ * - `sent`:非幂等的 send_* 已经发出去了。「结果未知」(超时 / 断连)记 `indeterminate`,原话注明不再重试;
+ * - `idempotent`:探测、签卡这类可以重来、且真正的消息还没发的。超时记 `timeout`。
+ * 两种场合下别的错(连不上、没连着、发帧即抛)都是 `unavailable`。
+ */
+function thrownFailure(e: unknown, phase: "sent" | "idempotent"): Failure {
+	if (e instanceof IndeterminateActionError) {
+		if (phase === "sent") return fail("indeterminate", e.message + INDETERMINATE_NOTE);
+		return fail(e.isTimeout ? "timeout" : "unavailable", e.message);
+	}
+	return fail("unavailable", describeFetchError(e));
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +455,7 @@ async function postOnebotOnce(
 			return {
 				status: "failed",
 				retcode: res.status,
+				httpStatus: res.status,
 				message: `HTTP ${res.status} ${res.statusText}`,
 			};
 		}
@@ -405,7 +463,7 @@ async function postOnebotOnce(
 	} catch (e) {
 		// 我们自己的超时 abort:请求已发出、结果未知 —— 与 WS 响应超时同等对待。
 		if ((e as Error | undefined)?.name === "AbortError") {
-			throw new IndeterminateActionError(`HTTP 请求超时 (${timeoutMs}ms)`);
+			throw new IndeterminateActionError(`HTTP 请求超时 (${timeoutMs}ms)`, true);
 		}
 		throw e;
 	} finally {
@@ -496,7 +554,7 @@ class WsChannel {
 			const timer = this.serviceCtx.setTimeout(() => {
 				this.pending.delete(echo);
 				// 帧已发出、只是没等到响应 → 结果未知(bot 可能仍在处理并最终发出消息)。
-				reject(new IndeterminateActionError(`ws action ${action} 响应超时 (${timeoutMs}ms)`));
+				reject(new IndeterminateActionError(`ws action ${action} 响应超时 (${timeoutMs}ms)`, true));
 			}, timeoutMs);
 			this.pending.set(echo, { resolve, reject, timer });
 			try {
@@ -544,7 +602,9 @@ class WsChannel {
 		for (const p of this.pending.values()) {
 			p.timer.dispose();
 			p.reject(
-				err instanceof IndeterminateActionError ? err : new IndeterminateActionError(err.message),
+				err instanceof IndeterminateActionError
+					? err
+					: new IndeterminateActionError(err.message, false),
 			);
 		}
 		this.pending.clear();
@@ -1037,25 +1097,29 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					reason,
 					checkedAt: Date.now(),
 				});
-				return { ok: false, latencyMs: Date.now() - t0, err: reason };
+				// 把 action 当路径的实现回的是 HTTP 404:在这里它的意思同样是「没有这个接口」。
+				return fail("unsupported", reason, {
+					upstreamCode: r.httpStatus === undefined ? r.retcode : `http:${r.httpStatus}`,
+				});
 			}
 			const verdict = interpretResponse(r);
-			if (!verdict.ok) {
-				return { ok: false, latencyMs: Date.now() - t0, err: `签小程序卡失败: ${verdict.err}` };
-			}
+			if (!verdict.ok) return signFailure(verdict);
 			ark = r.data;
 		} catch (e) {
-			const err = e instanceof Error ? e.message : String(e);
-			return { ok: false, latencyMs: Date.now() - t0, err: `签小程序卡失败: ${err}` };
+			// 签卡可以重来,真正的消息还没发:超时就是超时,不是「结果未知」。
+			return signFailure(thrownFailure(e, "idempotent"));
 		}
 		const data = arkToSegmentData(ark);
-		if (data === null) {
-			return { ok: false, latencyMs: Date.now() - t0, err: "签小程序卡失败: 返回的不是 ark" };
-		}
+		if (data === null) return fail("invalid", "签小程序卡失败: 返回的不是 ark");
 		miniAppCardSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
 		const built = buildSendActionFromSegments(target, [{ type: "json", data: { data } }], opts);
-		if ("err" in built) return { ok: false, latencyMs: Date.now() - t0, err: built.err };
+		if (!built.ok) return built;
 		return dispatch(connection, target, built, t0);
+	}
+
+	/** 签卡那一步的失败:码与 `upstreamCode` 照留,原话前面说明是哪一步。 */
+	function signFailure(failure: Failure): Failure {
+		return { ...failure, message: `签小程序卡失败: ${failure.message}` };
 	}
 
 	/**
@@ -1090,7 +1154,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	async function dispatch(
 		connection: OnebotConnection,
 		target: PushTarget,
-		built: { action: string; params: Record<string, unknown> },
+		built: OnebotAction,
 		t0: number,
 	): Promise<DeliveryResult> {
 		const cfg = connection.config;
@@ -1106,17 +1170,16 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				});
 				const verdict = interpretResponse(result);
 				if (!verdict.ok) {
-					log.warn(`[onebot] target=${target.id} send failed: ${verdict.err}`);
-					return { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
+					log.warn(`[onebot] target=${target.id} send failed: ${verdict.message}`);
+					return verdict;
 				}
-				return { ok: true, latencyMs: Date.now() - t0 };
+				return ok({ latencyMs: Date.now() - t0 });
 			} catch (e) {
-				const err =
-					e instanceof IndeterminateActionError
-						? e.message + INDETERMINATE_NOTE
-						: describeFetchError(e);
-				log.warn(`[onebot] target=${target.id} send threw: ${err} (baseUrl=${cfg.baseUrl})`);
-				return { ok: false, latencyMs: Date.now() - t0, err };
+				const failure = thrownFailure(e, "sent");
+				log.warn(
+					`[onebot] target=${target.id} send threw: ${failure.message} (baseUrl=${cfg.baseUrl})`,
+				);
+				return failure;
 			}
 		}
 		return sendOverWs(connection.id, cfg, built.action, built.params, target.id, t0);
@@ -1138,36 +1201,36 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		);
 		const retryTimes = cfg.retryTimes ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
-		let lastErr = "ws send failed";
+		let last: Failure = fail("unavailable", "ws send failed");
 		for (let attempt = 0; attempt <= retryTimes; attempt++) {
 			const channel =
 				cfg.transport === "ws"
 					? (forwardConns.get(connectionId)?.getChannel() ?? null)
 					: (reverseListeners.get(connectionId)?.getChannel() ?? null);
 			if (!channel) {
-				lastErr = cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)";
+				last = fail(
+					"unavailable",
+					cfg.transport === "ws" ? "正向 WS 未连接" : "无 bot 连入(反向 WS)",
+				);
 			} else {
 				try {
 					const verdict = interpretResponse(await channel.call(action, params, timeoutMs));
-					if (verdict.ok) return { ok: true, latencyMs: Date.now() - t0 };
-					lastErr = verdict.err;
+					if (verdict.ok) return ok({ latencyMs: Date.now() - t0 });
+					last = verdict;
 				} catch (e) {
-					lastErr = e instanceof Error ? e.message : String(e);
+					last = thrownFailure(e, "sent");
 					// 结果未知(超时/连接中断):帧已发出,bot 可能已把消息发进群。send_*
 					// 非幂等 —— 盲重试 = 群里收到 retryTimes+1 份(用户实测的图集重复
 					// 推送)。立即放弃,如实报失败并注明可能已送达。
-					if (e instanceof IndeterminateActionError) {
-						lastErr += INDETERMINATE_NOTE;
-						break;
-					}
+					if (last.code === "indeterminate") break;
 				}
 			}
 			if (attempt < retryTimes && retryIntervalMs > 0) {
 				await new Promise((r) => setTimeout(r, retryIntervalMs));
 			}
 		}
-		log.warn(`[onebot] target=${targetId} ws send failed: ${lastErr}`);
-		return { ok: false, latencyMs: Date.now() - t0, err: lastErr };
+		log.warn(`[onebot] target=${targetId} ws send failed: ${last.message}`);
+		return last;
 	}
 
 	return {
@@ -1274,91 +1337,41 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 		async probe(connection: Connection): Promise<ProbeResult> {
 			if (!isConnectionOn(connection, "onebot")) {
-				return {
-					ok: false,
-					latencyMs: 0,
-					err: `wrong platform: ${connectionDispatchKey(connection)}`,
-				};
+				return fail("invalid", `wrong platform: ${connectionDispatchKey(connection)}`);
 			}
 			const cfg = connection.config;
 			const t0 = Date.now();
-			if (cfg.transport === "http") {
+			const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
+			/** 问一次 `get_status`。探测是幂等的:超时记 `timeout`,断连 / 连不上记 `unavailable`。 */
+			const ask = async (call: () => Promise<OneBotResponse>): Promise<ProbeResult> => {
 				try {
-					const result = await postOnebotOnce(
-						cfg,
-						"/get_status",
-						{},
-						cfg.timeoutMs ?? fallbackTimeoutMs,
-					);
-					const verdict = interpretResponse(result);
-					return verdict.ok
-						? { ok: true, latencyMs: Date.now() - t0 }
-						: { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
+					const verdict = interpretResponse(await call());
+					return verdict.ok ? ok({ latencyMs: Date.now() - t0 }) : verdict;
 				} catch (e) {
-					return { ok: false, latencyMs: Date.now() - t0, err: describeFetchError(e) };
+					return thrownFailure(e, "idempotent");
 				}
+			};
+			if (cfg.transport === "http") {
+				return ask(() => postOnebotOnce(cfg, "/get_status", {}, timeoutMs));
 			}
 
 			if (cfg.transport === "ws") {
 				const conn = forwardConns.get(connection.id);
 				const channel = conn?.getChannel() ?? null;
-				if (!channel) {
-					return {
-						ok: false,
-						latencyMs: Date.now() - t0,
-						err: conn?.lastError ?? "正向 WS 未连接",
-					};
-				}
-				try {
-					const verdict = interpretResponse(
-						await channel.call("get_status", {}, cfg.timeoutMs ?? fallbackTimeoutMs),
-					);
-					return verdict.ok
-						? { ok: true, latencyMs: Date.now() - t0 }
-						: { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
-				} catch (e) {
-					return {
-						ok: false,
-						latencyMs: Date.now() - t0,
-						err: e instanceof Error ? e.message : String(e),
-					};
-				}
+				if (!channel) return fail("unavailable", conn?.lastError ?? "正向 WS 未连接");
+				return ask(() => channel.call("get_status", {}, timeoutMs));
 			}
 
 			// ws-reverse
 			const lis = reverseListeners.get(connection.id);
-			if (!lis) {
-				return { ok: false, latencyMs: Date.now() - t0, err: "反向 WS 监听未启动" };
-			}
+			if (!lis) return fail("unavailable", "反向 WS 监听未启动");
+			// 端口绑不上(多半被别的进程占着)等是等不好的,得主人去换端口。
 			if (lis.bindError) {
-				return {
-					ok: false,
-					latencyMs: Date.now() - t0,
-					err: `端口 ${lis.port} 绑定失败: ${lis.bindError}`,
-				};
+				return fail("not_configured", `端口 ${lis.port} 绑定失败: ${lis.bindError}`);
 			}
 			const channel = lis.getChannel();
-			if (!channel) {
-				return {
-					ok: false,
-					latencyMs: Date.now() - t0,
-					err: `端口 ${lis.port} 已监听,等待 bot 连入`,
-				};
-			}
-			try {
-				const verdict = interpretResponse(
-					await channel.call("get_status", {}, cfg.timeoutMs ?? fallbackTimeoutMs),
-				);
-				return verdict.ok
-					? { ok: true, latencyMs: Date.now() - t0 }
-					: { ok: false, latencyMs: Date.now() - t0, err: verdict.err };
-			} catch (e) {
-				return {
-					ok: false,
-					latencyMs: Date.now() - t0,
-					err: e instanceof Error ? e.message : String(e),
-				};
-			}
+			if (!channel) return fail("unavailable", `端口 ${lis.port} 已监听,等待 bot 连入`);
+			return ask(() => channel.call("get_status", {}, timeoutMs));
 		},
 
 		async send(
@@ -1368,20 +1381,19 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			if (!isConnectionOn(connection, "onebot") || target.platform !== "onebot") {
-				return {
-					ok: false,
-					latencyMs: 0,
-					err: `wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
-				};
+				return fail(
+					"invalid",
+					`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
+				);
 			}
 			if (payload.kind === "miniapp-card")
 				return sendMiniAppCard(connection, target, payload, opts);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
-			// session.groupId / userId 缺失等"配错"立即 err 返回,不浪费 get_login_info
+			// session.groupId / userId 缺失等"配错"立即失败返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
 			// 这次结果。
 			let built = buildSendAction(target, payload, opts);
-			if ("err" in built) return { ok: false, latencyMs: 0, err: built.err };
+			if (!built.ok) return built;
 			const t0 = Date.now();
 
 			// forward 分支需要 bot 真身的 uin/name 才能显示成"机器人发的"。get_login_info
@@ -1391,11 +1403,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			if (payload.kind === "forward-images" && payload.forward) {
 				const botInfo = (await getBotIdentity(connection)) ?? undefined;
 				const rebuilt = buildSendAction(target, payload, opts, botInfo);
-				// rebuilt 与首次同 target/payload/opts;target 校验已过,此处 err 分支
+				// rebuilt 与首次同 target/payload/opts;target 校验已过,此处失败分支
 				// 理论不会触达。守一手保类型收敛。
-				if ("err" in rebuilt) {
-					return { ok: false, latencyMs: Date.now() - t0, err: rebuilt.err };
-				}
+				if (!rebuilt.ok) return rebuilt;
 				built = rebuilt;
 			}
 

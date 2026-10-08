@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fail } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -267,20 +268,36 @@ describe("connections route — POST /:id/probe", () => {
 	});
 
 	it("不通 → 200 { ok: false, code, message },没有假的 latencyMs;盘上仍写 err", async () => {
-		const { app, patchConnection } = testApp({ ok: false, latencyMs: 30, err: "拒绝连接" });
+		const { app, patchConnection } = testApp(
+			fail("unauthorized", "拒绝连接", { upstreamCode: "http:401" }),
+		);
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		const body = await res.json();
-		expect(body).toEqual({ ok: false, code: "unavailable", message: "拒绝连接" });
+		// 适配器给的码与 upstreamCode 原样过线。
+		expect(body).toEqual({
+			ok: false,
+			code: "unauthorized",
+			message: "拒绝连接",
+			upstreamCode: "http:401",
+		});
 		expect(body).not.toHaveProperty("latencyMs");
-		// 盘上的老格式一字不动:testStatus.err(改盘上形状是另一期的事)。
-		expect(patchConnection).toHaveBeenCalledWith("c1", {
-			testStatus: expect.objectContaining({ ok: false, latencyMs: 30, err: "拒绝连接" }),
+		// 盘上的老格式:原话填进 testStatus.err,码不落盘(改盘上形状是 3a-21 的事)。
+		const written = patchConnection.mock.calls[0] as unknown as [
+			string,
+			{ testStatus: Record<string, unknown> },
+		];
+		expect(written[0]).toBe("c1");
+		expect(written[1].testStatus).toEqual({
+			ok: false,
+			lastCheckedAt: expect.any(String),
+			latencyMs: undefined,
+			err: "拒绝连接",
 		});
 	});
 
-	it("平台没有探测协议(ok: null)→ 200 unsupported,不写 testStatus", async () => {
-		const { app, patchConnection } = testApp({ ok: null, latencyMs: 0, err: "no probe" });
+	it("平台没有探测协议(unsupported)→ 200 unsupported,不写 testStatus", async () => {
+		const { app, patchConnection } = testApp(fail("unsupported", "no probe"));
 		const res = await app.request("/c1/probe", { method: "POST" });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({

@@ -234,7 +234,7 @@ export async function deliverRoast(
 		try {
 			const delivery = await engines.push.sendToTarget(targetId, payload);
 			if (delivery.ok) sent.push(targetId);
-			else failed.push({ targetId, err: delivery.err ?? "推送失败" });
+			else failed.push({ targetId, err: delivery.message || "推送失败" });
 		} catch (err) {
 			failed.push({ targetId, err: err instanceof Error ? err.message : String(err) });
 		}

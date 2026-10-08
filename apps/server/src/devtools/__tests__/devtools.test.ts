@@ -1,5 +1,5 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
-import { fail } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
@@ -98,12 +98,12 @@ describe("createDevtools · 截流接线", () => {
 	const TARGET = { id: "t", name: "群", connectionId: "ad", platform: "onebot" } as never;
 
 	function setup() {
-		const send = vi.fn(async () => ({ ok: true, latencyMs: 1 }));
+		const send = vi.fn(async () => ok({ latencyMs: 1 }));
 		const inner = {
 			platforms: ["onebot"] as const,
 			isAvailable: () => true,
 			send,
-			probe: async () => ({ ok: true, latencyMs: 1 }),
+			probe: async () => ok({ latencyMs: 1 }),
 		};
 		const deleteRange = vi.fn(async () => 2);
 		const dev = createDevtools({

@@ -19,11 +19,18 @@ import type {
 	NotificationPayload,
 	PushTarget,
 } from "@bilibili-notify/extension";
+import { fail, ok } from "@bilibili-notify/extension";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createBridgeAdapter } from "../adapter.js";
 import type { BridgeConnectionConfig } from "../config.js";
 import type { BridgeCapabilityReport } from "../contract.js";
-import type { BridgeSendRequest, BridgeServer, BridgeSession } from "../server.js";
+import type {
+	BridgePingOutcome,
+	BridgeSendOutcome,
+	BridgeSendRequest,
+	BridgeServer,
+	BridgeSession,
+} from "../server.js";
 import type { BridgeLink } from "../settings.js";
 
 const LINK_ID = "link-home";
@@ -125,16 +132,11 @@ interface Harness {
 /** `live: null` = 桥没连着。**别用 `undefined`** —— 显式传它会触发默认参数,那条用例就空过了。 */
 function harness(live: BridgeSession | null = session()): Harness {
 	// 形参要写出来:mock 的 `calls` 元组是按形参推的,零形参的话 `calls[0][1]` 取不到。
-	const send = vi.fn(async (_id: string, _request: BridgeSendRequest) => ({
-		ok: true,
-		err: undefined as string | undefined,
-	}));
+	const send = vi.fn(
+		async (_id: string, _request: BridgeSendRequest): Promise<BridgeSendOutcome> => ok(),
+	);
 	const disconnect = vi.fn();
-	const ping = vi.fn(async (_id: string) => ({
-		ok: true,
-		latencyMs: 42,
-		err: undefined as string | undefined,
-	}));
+	const ping = vi.fn(async (_id: string): Promise<BridgePingOutcome> => ok({ latencyMs: 42 }));
 	const published: { mime: string; bytes: number }[] = [];
 	const server = {
 		getSession: (id: string) => (id === LINK_ID ? (live ?? undefined) : undefined),
@@ -208,9 +210,59 @@ describe("桥 adapter", () => {
 		const h = harness();
 		h.setLinks([]);
 		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
-		expect((await h.adapter.probe(connection())).err).toMatch(/接入/);
+		// 绑的那条接入不在了:要的东西不存在。
+		expect(await h.adapter.probe(connection())).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "这条连接绑的那条接入已经删了",
+		});
+		// 接入被主人停用了:等是等不好的,得去把开关打开。
 		h.setLinks([link({ enabled: false })]);
-		expect((await h.adapter.probe(connection())).err).toMatch(/停用/);
+		const disabled = await h.adapter.probe(connection());
+		expect(disabled).toMatchObject({ ok: false, code: "not_configured" });
+		expect(!disabled.ok && disabled.message).toMatch(/停用/);
+	});
+
+	it("发不出去的几种原因各有各的码(ADR-0026)", async () => {
+		const text = { kind: "text" as const, text: "喵" };
+		// 不是桥的连接:输入不对。
+		const h = harness();
+		h.setConnections([]);
+		expect(await h.adapter.send(connection(), target(), text)).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "不是桥连接",
+		});
+		// 桥没连着 / bot 不在名单上:等它连回来就好。
+		const offline = harness(null);
+		expect(await offline.adapter.send(connection(), target(), text)).toMatchObject({
+			ok: false,
+			code: "unavailable",
+		});
+		const noBot = harness();
+		noBot.setConnections([view({ config: { link: LINK_ID, botId: "没这个" } })]);
+		expect(await noBot.adapter.send(connection(), target(), text)).toMatchObject({
+			ok: false,
+			code: "unavailable",
+		});
+		// 连接或目标被主人停用:要去把开关打开。
+		const paused = harness();
+		paused.setConnections([view({ enabled: false })]);
+		expect(await paused.adapter.send(connection(), target(), text)).toEqual({
+			ok: false,
+			code: "not_configured",
+			message: "这条连接已停用",
+		});
+		paused.setConnections([view()]);
+		expect(await paused.adapter.send(connection(), target({ enabled: false }), text)).toEqual({
+			ok: false,
+			code: "not_configured",
+			message: "这个推送目标已停用",
+		});
+		// 桥只发会话目标:目标的形状不对。
+		expect(
+			await harness().adapter.send(connection(), { ...target(), kind: "endpoint" } as never, text),
+		).toEqual({ ok: false, code: "invalid", message: "桥只发会话目标" });
 	});
 
 	it("连接或目标停用 → 不可发", () => {
@@ -382,28 +434,35 @@ describe("桥 adapter", () => {
 
 	it("回执失败 → 原因原样带给用户", async () => {
 		const h = harness();
-		h.send.mockResolvedValueOnce({ ok: false, err: "telegram 说这个群没了" });
+		const failure = fail("unknown", "telegram 说这个群没了");
+		h.send.mockResolvedValueOnce(failure);
 		const result = await h.adapter.send(connection(), target(), { kind: "text", text: "x" });
-		expect(result.ok).toBe(false);
-		expect(result.err).toBe("telegram 说这个群没了");
+		// 传输层给的失败原样过:码、原话都不动,也不带耗时。
+		expect(result).toEqual({ ok: false, code: "unknown", message: "telegram 说这个群没了" });
+	});
+
+	it("送达 → 带上这一发的耗时", async () => {
+		const h = harness();
+		const result = await h.adapter.send(connection(), target(), { kind: "text", text: "x" });
+		expect(result).toEqual({ ok: true, latencyMs: expect.any(Number) });
 	});
 
 	// ---- 探测 --------------------------------------------------------------
 
 	it("probe:接入连着、bot 在名单上 → 真打一趟 ping,延迟是往返的那个数", async () => {
 		const h = harness();
-		expect(await h.adapter.probe(connection())).toEqual({
-			ok: true,
-			latencyMs: 42,
-			err: undefined,
-		});
+		expect(await h.adapter.probe(connection())).toEqual({ ok: true, latencyMs: 42 });
 		expect(h.ping).toHaveBeenCalledWith(LINK_ID);
 	});
 
 	it("probe:ping 没回来 → 不通,原因照抄", async () => {
 		const h = harness();
-		h.ping.mockResolvedValueOnce({ ok: false, latencyMs: 0, err: "桥 5000ms 内没回 pong" });
-		expect(await h.adapter.probe(connection())).toMatchObject({ ok: false, err: /pong/ });
+		h.ping.mockResolvedValueOnce(fail("timeout", "桥 5000ms 内没回 pong"));
+		expect(await h.adapter.probe(connection())).toEqual({
+			ok: false,
+			code: "timeout",
+			message: "桥 5000ms 内没回 pong",
+		});
 	});
 
 	it("probe:没连上是不通,而且不打 ping —— 没有 socket 可打", async () => {

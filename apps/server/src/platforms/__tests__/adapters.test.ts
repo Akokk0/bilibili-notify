@@ -4,11 +4,12 @@
  * 守护契约(onebot):
  *   - scope/opts.private 决定 /send_group_msg vs /send_private_msg + group_id/user_id
  *   - baseUrl 尾斜杠裁剪;accessToken → Authorization Bearer;payload 段 → OneBot segment
- *   - retcode!=0 / HTTP 非 2xx / fetch 抛错 → ok:false 且 logger.warn;空 payload → "empty payload"
+ *   - retcode!=0 / HTTP 非 2xx / fetch 抛错 → 失败且 logger.warn;空 payload → "empty payload"
+ *   - 失败一律是结果形状(ADR-0026):`code` 取标准码表,平台自己的码只在 `upstreamCode`
  *   - retryTimes 生效;wrong platform / probe(/get_status)/ isAvailable
  * 守护契约(webhook):
  *   - body 含 targetId/scope/private/payload(序列化)+ secret header;非 2xx/抛错 → ok:false
- *   - probe 恒为 ok:null(不支持);wrong platform / isAvailable
+ *   - probe 恒为 unsupported(没有探测协议);wrong platform / isAvailable
  *
  * fetch 用 vi.stubGlobal mock,不打真实网络。
  */
@@ -18,7 +19,9 @@ import { once } from "node:events";
 import { type AddressInfo, createServer } from "node:net";
 import type {
 	Connection,
+	DeliveryResult,
 	NotificationPayload,
+	ProbeResult,
 	PushTarget,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -55,6 +58,11 @@ function obOpts(logger = makeLogger()) {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** 失败那一支的原话。成功的回空串 —— 拿它断言「含某句话」的用例会自己红。 */
+function messageOf(result: DeliveryResult | ProbeResult): string {
+	return result.ok ? "" : result.message;
+}
 
 /** 轮询直到 `cond` 为真;支持 async 谓词。 */
 async function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 3000): Promise<void> {
@@ -305,19 +313,24 @@ describe("onebot — send 路由", () => {
 			}),
 		);
 		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toContain("NTEvent");
-		expect(r.err).toContain("NapCat 可能掉线");
+		// 对端明确回了失败、只给了没有对照的 retcode:code 是 unknown,数字码在 upstreamCode。
+		expect(r).toMatchObject({ ok: false, code: "unknown", upstreamCode: 1200 });
+		expect(messageOf(r)).toContain("NTEvent");
+		expect(messageOf(r)).toContain("NapCat 可能掉线");
 	});
 
 	it("非掉线错误 → 不附加 NapCat 提示", async () => {
 		// retry 守卫:不能把 "无权限" / 普通业务错误也挂上掉线提示文案误导用户。
 		fetchMock.mockResolvedValueOnce(
-			res({ ok: true, json: { status: "failed", retcode: 1404, wording: "无权限发送消息" } }),
+			res({ ok: true, json: { status: "failed", retcode: 1200, wording: "无权限发送消息" } }),
 		);
 		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toBe("无权限发送消息");
+		expect(r).toEqual({
+			ok: false,
+			code: "unknown",
+			message: "无权限发送消息",
+			upstreamCode: 1200,
+		});
 	});
 
 	it("opts.private=false 不应吃掉 scope:private(回归守卫)", async () => {
@@ -336,16 +349,24 @@ describe("onebot — send 路由", () => {
 	it("private 缺 userId / group 缺 groupId → ok:false 且不发请求", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const p = await ad.send(obConnection(), obTarget({ scope: "private", address: "" }), TEXT);
-		expect(p).toMatchObject({ ok: false, err: "private: userId missing" });
+		expect(p).toEqual({ ok: false, code: "invalid", message: "private: userId missing" });
 		const g = await ad.send(obConnection(), obTarget({ address: "" }), TEXT);
-		expect(g).toMatchObject({ ok: false, err: "group: groupId missing" });
+		expect(g).toEqual({ ok: false, code: "invalid", message: "group: groupId missing" });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("地址不是数字 → invalid,不发请求", async () => {
+		const ad = createOnebotAdapter(obOpts());
+		const r = await ad.send(obConnection(), obTarget({ address: "abc" }), TEXT);
+		expect(r).toMatchObject({ ok: false, code: "invalid" });
+		expect(messageOf(r)).toContain("非数字");
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("空 composite payload → empty payload,不发请求", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), { kind: "composite", segments: [] });
-		expect(r).toMatchObject({ ok: false, err: "empty payload" });
+		expect(r).toEqual({ ok: false, code: "invalid", message: "empty payload" });
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -583,7 +604,7 @@ describe("onebot — send 路由", () => {
 			images: [{ url: "https://x/1.jpg" }],
 			forward: true,
 		});
-		expect(r).toMatchObject({ ok: false, err: "group: groupId missing" });
+		expect(r).toEqual({ ok: false, code: "invalid", message: "group: groupId missing" });
 		expect(fetchMock).toHaveBeenCalledTimes(0); // 没调 /get_login_info
 	});
 
@@ -617,7 +638,7 @@ describe("onebot — send 路由", () => {
 			forward: true,
 		});
 		expect(r.ok).toBe(true);
-		expect(r.latencyMs).toBeGreaterThanOrEqual(45); // 留点抖动余量
+		expect(r.ok && r.latencyMs).toBeGreaterThanOrEqual(45); // 留点抖动余量
 	});
 
 	it("forward-images forward:true + private scope → send_private_forward_msg + bot 真身", async () => {
@@ -642,20 +663,80 @@ describe("onebot — send 路由", () => {
 });
 
 describe("onebot — 失败与重试", () => {
-	it("retcode!=0:ok:false,err 取 wording,logger.warn", async () => {
+	it("retcode!=0:失败,原话取 wording,retcode 进 upstreamCode,logger.warn", async () => {
 		fetchMock.mockResolvedValueOnce(
-			res({ ok: true, json: { status: "failed", retcode: 1404, wording: "无权限" } }),
+			res({ ok: true, json: { status: "failed", retcode: 100, wording: "无权限" } }),
 		);
 		const logger = makeLogger();
 		const r = await createOnebotAdapter(obOpts(logger)).send(obConnection(), obTarget(), TEXT);
-		expect(r).toMatchObject({ ok: false, err: "无权限" });
+		expect(r).toEqual({ ok: false, code: "unknown", message: "无权限", upstreamCode: 100 });
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
-	it("HTTP 非 2xx → ok:false err=HTTP <status>", async () => {
-		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 500, statusText: "Internal" }));
+	it("失败的结果不带耗时(耗时只在成功那一支)", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 100 } }));
+		const failed = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		expect(failed).not.toHaveProperty("latencyMs");
+
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const sent = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		expect(sent).toEqual({ ok: true, latencyMs: expect.any(Number) });
+	});
+
+	it("retcode 1404(接口不存在)→ unsupported", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { status: "failed", retcode: 1404, wording: "不支持的动作" } }),
+		);
 		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
-		expect(r).toMatchObject({ ok: false, err: "HTTP 500 Internal" });
+		expect(r).toEqual({
+			ok: false,
+			code: "unsupported",
+			message: "不支持的动作",
+			upstreamCode: 1404,
+		});
+	});
+
+	it("bot 回了失败却没给 retcode → unknown,不编一个 upstreamCode", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", wording: "炸了" } }));
+		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		expect(r).toEqual({ ok: false, code: "unknown", message: "炸了" });
+	});
+
+	it("HTTP 非 2xx → 按状态码翻标准码,upstreamCode 写成 http:<status>(与 retcode 分得开)", async () => {
+		const cases: Array<[number, string]> = [
+			[401, "unauthorized"],
+			[403, "unauthorized"],
+			[404, "not_found"],
+			[410, "not_found"],
+			[429, "rate_limited"],
+			[400, "invalid"],
+			[422, "invalid"],
+			[500, "unavailable"],
+			[502, "unavailable"],
+		];
+		for (const [status, code] of cases) {
+			fetchMock.mockResolvedValueOnce(res({ ok: false, status, statusText: "Nope" }));
+			const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+			expect(r, `HTTP ${status}`).toEqual({
+				ok: false,
+				code,
+				message: `HTTP ${status} Nope`,
+				upstreamCode: `http:${status}`,
+			});
+		}
+	});
+
+	it("真 retcode 恰好是个 HTTP 状态的数(502)→ 仍是数字的 upstreamCode,不当 HTTP 状态翻", async () => {
+		fetchMock.mockResolvedValueOnce(
+			res({ ok: true, json: { status: "failed", retcode: 502, wording: "bot 自己的 502" } }),
+		);
+		const r = await createOnebotAdapter(obOpts()).send(obConnection(), obTarget(), TEXT);
+		expect(r).toEqual({
+			ok: false,
+			code: "unknown",
+			message: "bot 自己的 502",
+			upstreamCode: 502,
+		});
 	});
 
 	it("fetch 抛错 → ok:false,展开 cause code,logger.warn", async () => {
@@ -663,8 +744,10 @@ describe("onebot — 失败与重试", () => {
 		fetchMock.mockRejectedValueOnce(Object.assign(new Error("fetch failed"), { cause }));
 		const logger = makeLogger();
 		const r = await createOnebotAdapter(obOpts(logger)).send(obConnection(), obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toContain("ECONNREFUSED");
+		// 连不上:没有平台码可带。
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(r).not.toHaveProperty("upstreamCode");
+		expect(messageOf(r)).toContain("ECONNREFUSED");
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
@@ -685,8 +768,8 @@ describe("onebot — 失败与重试", () => {
 			obTarget({ kind: "endpoint", platform: "feishu" }),
 			TEXT,
 		);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/wrong platform/);
+		expect(r).toMatchObject({ ok: false, code: "invalid" });
+		expect(messageOf(r)).toMatch(/wrong platform/);
 	});
 });
 
@@ -710,9 +793,9 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/超时/);
-		expect(r.err).toMatch(/结果未知/);
+		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
+		expect(messageOf(r)).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/结果未知/);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
 		ad.dispose?.();
 	});
@@ -732,8 +815,8 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toContain("风控");
+		expect(r).toMatchObject({ ok: false, code: "unknown", upstreamCode: 100 });
+		expect(messageOf(r)).toContain("风控");
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(3);
 		ad.dispose?.();
 	});
@@ -753,8 +836,8 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		await waitFor(() => bot.received.some((f) => f.action === "send_group_msg"));
 		bot.connections[0]?.terminate();
 		const r = await pending;
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/断开/);
+		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
+		expect(messageOf(r)).toMatch(/断开/);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
 		ad.dispose?.();
 	});
@@ -799,9 +882,9 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			obTarget(),
 			TEXT,
 		);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/超时/);
-		expect(r.err).toMatch(/结果未知/);
+		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
+		expect(messageOf(r)).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/结果未知/);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -886,7 +969,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/超时/);
 		ad.dispose?.();
 	});
 
@@ -992,7 +1075,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		const t0 = Date.now();
 		const r = await ad.send(connection, obTarget(), IMAGE);
 		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/超时/);
 		// 在配置的 60ms 附近就断,而不是被内建的 30s 下限拖住。
 		expect(Date.now() - t0).toBeLessThan(1000);
 		ad.dispose?.();
@@ -1029,7 +1112,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 			forward: true,
 		});
 		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/超时/);
+		expect(messageOf(r)).toMatch(/超时/);
 		expect(Date.now() - t0).toBeLessThan(1000);
 		ad.dispose?.();
 	});
@@ -1050,15 +1133,47 @@ describe("onebot — isAvailable / probe", () => {
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/get_status");
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 9 } }));
-		expect((await ad.probe(obConnection())).ok).toBe(false);
+		expect(await ad.probe(obConnection())).toEqual({
+			ok: false,
+			code: "unknown",
+			message: "retcode=9",
+			upstreamCode: 9,
+		});
+	});
+
+	it("probe:通了带耗时,没通不带", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
+		const ad = createOnebotAdapter(obOpts());
+		expect(await ad.probe(obConnection())).toEqual({ ok: true, latencyMs: expect.any(Number) });
+		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 401, statusText: "Unauthorized" }));
+		const failed = await ad.probe(obConnection());
+		expect(failed).toMatchObject({ ok: false, code: "unauthorized", upstreamCode: "http:401" });
+		expect(failed).not.toHaveProperty("latencyMs");
+	});
+
+	it("probe:HTTP 超时 → timeout(探测是幂等的,不是「结果未知」)", async () => {
+		fetchMock.mockRejectedValueOnce(
+			Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
+		);
+		const r = await createOnebotAdapter(obOpts()).probe(obConnection({ timeoutMs: 50 }));
+		expect(r).toMatchObject({ ok: false, code: "timeout" });
+		expect(messageOf(r)).toMatch(/超时/);
+	});
+
+	it("probe:连不上 → unavailable", async () => {
+		const cause = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+		fetchMock.mockRejectedValueOnce(Object.assign(new Error("fetch failed"), { cause }));
+		const r = await createOnebotAdapter(obOpts()).probe(obConnection());
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(r)).toContain("ECONNREFUSED");
 	});
 
 	it("probe:wrong platform → ok:false", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const wrong = { ...obConnection(), platform: "feishu" } as unknown as Connection;
 		const r = await ad.probe(wrong);
-		expect(r).toMatchObject({ ok: false });
-		expect(r.err).toMatch(/wrong platform/);
+		expect(r).toMatchObject({ ok: false, code: "invalid" });
+		expect(messageOf(r)).toMatch(/wrong platform/);
 	});
 });
 
@@ -1133,16 +1248,45 @@ describe("onebot — 正向 WS(ws)", () => {
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/超时/);
+		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
+		expect(messageOf(r)).toMatch(/超时/);
 		ad.dispose?.();
 	});
 
-	it("未 reconcile / 未连接时 send → ok:false", async () => {
+	it("未 reconcile / 未连接时 send → unavailable;probe 同样", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(obWsConnection(59_998), obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/未连接/);
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(r)).toMatch(/未连接/);
+		const p = await ad.probe(obWsConnection(59_998));
+		expect(p).toEqual({ ok: false, code: "unavailable", message: "正向 WS 未连接" });
+		ad.dispose?.();
+	});
+
+	it("probe:bot 不回 get_status → timeout", async () => {
+		const bot = await startFakeBotServer({ autoReply: false });
+		const ad = createOnebotAdapter(obOpts());
+		const connection = obWsConnection(bot.port, { timeoutMs: 120 });
+		ad.reconcile?.([connection]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const p = await ad.probe(connection);
+		expect(p).toMatchObject({ ok: false, code: "timeout" });
+		expect(messageOf(p)).toMatch(/超时/);
+		ad.dispose?.();
+	});
+
+	it("probe:等 get_status 期间连接断了 → unavailable", async () => {
+		const bot = await startFakeBotServer({ autoReply: false });
+		const ad = createOnebotAdapter(obOpts());
+		const connection = obWsConnection(bot.port, { timeoutMs: 5000 });
+		ad.reconcile?.([connection]);
+		await waitFor(() => bot.connections.length > 0);
+		await sleep(40);
+		const pending = ad.probe(connection);
+		await waitFor(() => bot.received.some((f) => f.action === "get_status"));
+		bot.connections[0]?.terminate();
+		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
 		ad.dispose?.();
 	});
 
@@ -1214,6 +1358,13 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		ad.dispose?.();
 	});
 
+	it("反向监听还没起(没 reconcile)→ probe unavailable", async () => {
+		const ad = createOnebotAdapter(obOpts());
+		const p = await ad.probe(obRevConnection(await freePort()));
+		expect(p).toEqual({ ok: false, code: "unavailable", message: "反向 WS 监听未启动" });
+		ad.dispose?.();
+	});
+
 	it("无 bot 连入 → send ok:false,probe 提示等待 bot", async () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());
@@ -1221,11 +1372,11 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		ad.reconcile?.([connection]);
 		await sleep(60);
 		const r = await ad.send(connection, obTarget(), TEXT);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/无 bot/);
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(r)).toMatch(/无 bot/);
 		const p = await ad.probe(connection);
-		expect(p.ok).toBe(false);
-		expect(p.err).toMatch(/等待 bot/);
+		expect(p).toMatchObject({ ok: false, code: "unavailable" });
+		expect(messageOf(p)).toMatch(/等待 bot/);
 		ad.dispose?.();
 	});
 
@@ -1256,8 +1407,10 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		ad.reconcile?.([connection]);
 		await waitFor(async () => {
 			const p = await ad.probe(connection);
-			return p.ok === false && /绑定失败|EADDRINUSE/i.test(p.err ?? "");
+			return p.ok === false && /绑定失败|EADDRINUSE/i.test(messageOf(p));
 		});
+		// 端口被占是要主人去换端口的事,等是等不好的。
+		expect(await ad.probe(connection)).toMatchObject({ ok: false, code: "not_configured" });
 		ad.dispose?.();
 	});
 
@@ -1439,7 +1592,7 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 		// bot 注销后 channel 为空 → probe 回到「等待 bot」
 		await waitFor(async () => {
 			const p = await ad.probe(connection);
-			return p.ok === false && /等待 bot/.test(p.err ?? "");
+			return p.ok === false && /等待 bot/.test(messageOf(p));
 		}, 4000);
 		ad.dispose?.();
 	});
@@ -1574,9 +1727,9 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(fail.ok).toBe(false);
-		expect(fail.err).toContain("DingTalk errcode=310000");
-		expect(fail.err).toContain("keywords not in content");
+		expect(fail).toMatchObject({ ok: false, code: "unknown", upstreamCode: 310000 });
+		expect(messageOf(fail)).toContain("DingTalk errcode=310000");
+		expect(messageOf(fail)).toContain("keywords not in content");
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
 		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
@@ -1584,7 +1737,11 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(invalid).toMatchObject({ ok: false, err: "DingTalk response is not JSON" });
+		expect(invalid).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "DingTalk response is not JSON",
+		});
 	});
 
 	it("feishu:text body + body 签名 + 业务成功码", async () => {
@@ -1630,9 +1787,9 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(fail.ok).toBe(false);
-		expect(fail.err).toContain("Feishu code=19021");
-		expect(fail.err).toContain("sign match fail");
+		expect(fail).toMatchObject({ ok: false, code: "unknown", upstreamCode: 19021 });
+		expect(messageOf(fail)).toContain("Feishu code=19021");
+		expect(messageOf(fail)).toContain("sign match fail");
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
 		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
@@ -1640,7 +1797,11 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(invalid).toMatchObject({ ok: false, err: "Feishu response is not JSON" });
+		expect(invalid).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "Feishu response is not JSON",
+		});
 	});
 
 	it("wecom:text body + 业务成功码", async () => {
@@ -1672,9 +1833,9 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(fail.ok).toBe(false);
-		expect(fail.err).toContain("WeCom errcode=93000");
-		expect(fail.err).toContain("invalid webhook key");
+		expect(fail).toMatchObject({ ok: false, code: "unknown", upstreamCode: 93000 });
+		expect(messageOf(fail)).toContain("WeCom errcode=93000");
+		expect(messageOf(fail)).toContain("invalid webhook key");
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, text: "not json" }));
 		const invalid = await createWebhookAdapter({ logger: makeLogger() }).send(
@@ -1682,7 +1843,11 @@ describe("webhook — send", () => {
 			whTarget(),
 			TEXT,
 		);
-		expect(invalid).toMatchObject({ ok: false, err: "WeCom response is not JSON" });
+		expect(invalid).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "WeCom response is not JSON",
+		});
 	});
 
 	it("platform providers 将 image/composite/forward-images 降级为可读文本", async () => {
@@ -1730,14 +1895,58 @@ describe("webhook — send", () => {
 		});
 	});
 
-	it("非 2xx → ok:false err=HTTP", async () => {
-		fetchMock.mockResolvedValueOnce(res({ ok: false, status: 503, statusText: "Unavailable" }));
+	it("非 2xx → 按状态码翻标准码,upstreamCode 是 http:<status>", async () => {
+		const cases: Array<[number, string]> = [
+			[401, "unauthorized"],
+			[403, "unauthorized"],
+			[404, "not_found"],
+			[410, "not_found"],
+			[429, "rate_limited"],
+			[400, "invalid"],
+			[503, "unavailable"],
+		];
+		for (const [status, code] of cases) {
+			fetchMock.mockResolvedValueOnce(res({ ok: false, status, statusText: "Nope" }));
+			const r = await createWebhookAdapter({ logger: makeLogger() }).send(
+				whConnection(),
+				whTarget(),
+				TEXT,
+			);
+			expect(r, `HTTP ${status}`).toEqual({
+				ok: false,
+				code,
+				message: `HTTP ${status} Nope`,
+				upstreamCode: `http:${status}`,
+			});
+		}
+	});
+
+	it("自己的超时掐断(abort):请求已发出,结果不明 → indeterminate", async () => {
+		fetchMock.mockImplementationOnce(
+			(_url: string, init: { signal: AbortSignal }) =>
+				new Promise((_resolve, reject) => {
+					init.signal.addEventListener("abort", () =>
+						reject(Object.assign(new Error("This operation was aborted"), { name: "AbortError" })),
+					);
+				}),
+		);
+		const r = await createWebhookAdapter({ logger: makeLogger(), timeoutMs: 30 }).send(
+			whConnection(),
+			whTarget(),
+			TEXT,
+		);
+		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
+		expect(r).not.toHaveProperty("latencyMs");
+	});
+
+	it("送达带耗时", async () => {
+		fetchMock.mockResolvedValueOnce(res({ ok: true }));
 		const r = await createWebhookAdapter({ logger: makeLogger() }).send(
 			whConnection(),
 			whTarget(),
 			TEXT,
 		);
-		expect(r).toMatchObject({ ok: false, err: "HTTP 503 Unavailable" });
+		expect(r).toEqual({ ok: true, latencyMs: expect.any(Number) });
 	});
 
 	it("非 2xx statusText 会脱敏 token/sign/secret", async () => {
@@ -1757,19 +1966,19 @@ describe("webhook — send", () => {
 			TEXT,
 		);
 		expect(r.ok).toBe(false);
-		expect(r.err).toContain("access_token=***");
-		expect(r.err).toContain("sign=***");
-		expect(r.err).toContain("secret=***");
-		expect(r.err).not.toContain("tok123");
-		expect(r.err).not.toContain("sig123");
-		expect(r.err).not.toContain("SECxxx");
+		expect(messageOf(r)).toContain("access_token=***");
+		expect(messageOf(r)).toContain("sign=***");
+		expect(messageOf(r)).toContain("secret=***");
+		expect(messageOf(r)).not.toContain("tok123");
+		expect(messageOf(r)).not.toContain("sig123");
+		expect(messageOf(r)).not.toContain("SECxxx");
 	});
 
 	it("fetch 抛错 → ok:false + logger.warn", async () => {
 		fetchMock.mockRejectedValueOnce(new Error("network down"));
 		const logger = makeLogger();
 		const r = await createWebhookAdapter({ logger }).send(whConnection(), whTarget(), TEXT);
-		expect(r).toMatchObject({ ok: false, err: "network down" });
+		expect(r).toEqual({ ok: false, code: "unavailable", message: "network down" });
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
@@ -1787,13 +1996,13 @@ describe("webhook — send", () => {
 			TEXT,
 		);
 		expect(r.ok).toBe(false);
-		expect(r.err).toContain("access_token=***");
-		expect(r.err).toContain("sign=***");
-		expect(r.err).toContain("secret=***");
-		expect(r.err).toContain("Authorization=Bearer ***");
-		expect(r.err).not.toContain("tok123");
-		expect(r.err).not.toContain("sig123");
-		expect(r.err).not.toContain("SECxxx");
+		expect(messageOf(r)).toContain("access_token=***");
+		expect(messageOf(r)).toContain("sign=***");
+		expect(messageOf(r)).toContain("secret=***");
+		expect(messageOf(r)).toContain("Authorization=Bearer ***");
+		expect(messageOf(r)).not.toContain("tok123");
+		expect(messageOf(r)).not.toContain("sig123");
+		expect(messageOf(r)).not.toContain("SECxxx");
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
 		expect(logMsg).not.toContain("tok123");
@@ -1811,9 +2020,9 @@ describe("webhook — send", () => {
 			TEXT,
 		);
 		expect(r.ok).toBe(false);
-		expect(r.err).toContain("https://open.feishu.cn/***");
-		expect(r.err).not.toContain(url);
-		expect(r.err).not.toContain("path-token-123");
+		expect(messageOf(r)).toContain("https://open.feishu.cn/***");
+		expect(messageOf(r)).not.toContain(url);
+		expect(messageOf(r)).not.toContain("path-token-123");
 		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
 		expect(logMsg).not.toContain(url);
 		expect(logMsg).not.toContain("path-token-123");
@@ -1829,13 +2038,25 @@ describe("webhook — send", () => {
 			TEXT,
 		);
 		expect(r.ok).toBe(false);
-		expect(r.err).toContain("key=***");
-		expect(r.err).not.toContain("wx-key-123");
-		expect(r.err).not.toContain("unused-secret");
+		expect(messageOf(r)).toContain("key=***");
+		expect(messageOf(r)).not.toContain("wx-key-123");
+		expect(messageOf(r)).not.toContain("unused-secret");
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 		const logMsg = String(logger.warn.mock.calls[0]?.[0]);
 		expect(logMsg).not.toContain("wx-key-123");
 		expect(logMsg).not.toContain("unused-secret");
+	});
+
+	it("地址拼不出请求(配置的 url 不合法)→ invalid,不发请求", async () => {
+		const logger = makeLogger();
+		const r = await createWebhookAdapter({ logger }).send(
+			whConnection("dingtalk", { url: "not a url", secret: "SECxxx" }),
+			whTarget(),
+			TEXT,
+		);
+		expect(r).toMatchObject({ ok: false, code: "invalid" });
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
 	it("形状不对 → ok:false", async () => {
@@ -1845,8 +2066,8 @@ describe("webhook — send", () => {
 			whTarget({ kind: "session", platform: "onebot" }),
 			TEXT,
 		);
-		expect(r.ok).toBe(false);
-		expect(r.err).toMatch(/wrong shape/);
+		expect(r).toMatchObject({ ok: false, code: "invalid" });
+		expect(messageOf(r)).toMatch(/wrong shape/);
 	});
 });
 
@@ -1858,11 +2079,11 @@ describe("webhook — isAvailable / probe", () => {
 		expect(ad.isAvailable(whConnection(), whTarget({ enabled: false }))).toBe(false);
 	});
 
-	it("probe 恒为 ok:null(webhook 无连通探测)", async () => {
+	it("probe 恒为 unsupported(webhook 无连通探测)", async () => {
 		const ad = createWebhookAdapter({ logger: makeLogger() });
 		const r = await ad.probe(whConnection());
-		expect(r.ok).toBeNull();
-		expect(r.err).toMatch(/does not support/);
+		expect(r).toMatchObject({ ok: false, code: "unsupported" });
+		expect(messageOf(r)).toMatch(/does not support/);
 	});
 });
 

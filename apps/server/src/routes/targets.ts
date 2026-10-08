@@ -123,7 +123,6 @@ export function createTargetsRoute(deps: RouteDeps): Hono {
 		// The push.sendToTarget path goes through the same retry / dispatcher lookup
 		// engines use, so the test exercises real behaviour.
 		const result = await engines.push.sendToTarget(target.id, payload);
-		// `DeliveryResult` 还是老形状(`err`,且落盘进历史 / testStatus),只在这个出口翻成线上的。
 		return c.json<TestResponse>(testResultOfDelivery(result));
 	});
 

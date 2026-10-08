@@ -210,7 +210,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 				return;
 			}
 			opts.logger.warn(
-				`[link] 小程序卡发送失败 group=${dest.groupId} ${info.bvid}: ${result.err},回落图片卡`,
+				`[link] 小程序卡发送失败 group=${dest.groupId} ${info.bvid}: ${result.message},回落图片卡`,
 			);
 		}
 		await replyWithImageCard(dest, info);
@@ -234,7 +234,9 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		);
 		const result = await opts.send(dest, { kind: "image", image: { buffer, mime: "image/jpeg" } });
 		if (!result.ok) {
-			opts.logger.warn(`[link] 视频卡片发送失败 group=${dest.groupId} ${info.bvid}: ${result.err}`);
+			opts.logger.warn(
+				`[link] 视频卡片发送失败 group=${dest.groupId} ${info.bvid}: ${result.message}`,
+			);
 			return;
 		}
 		// 成功也留一行:群里没回话只有两种解释(没触发 / 发失败),日志得能分清。

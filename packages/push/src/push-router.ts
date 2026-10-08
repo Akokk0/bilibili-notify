@@ -16,6 +16,7 @@ import type {
 } from "@bilibili-notify/internal";
 import {
 	BILIBILI_SOURCE_KEY,
+	fail,
 	inQuietHours,
 	platformSupportsAtAll,
 	resolve,
@@ -56,7 +57,7 @@ export interface PushMessage {
 	role: PushMessageRole;
 }
 
-export interface PushMessageOutcome extends PushMessage {
+export interface PushMessageResult extends PushMessage {
 	/**
 	 * 缺省 = **这条从来没出过网**:同一目标的前一条失败、整段序列就此中止,后面这些
 	 * 连 dispatcher 都没进(ADR-0017 决策 17)。它们照样回调,好让历史记全「本来要发几条」——
@@ -97,7 +98,7 @@ interface PushSendBase {
  * TargetDispatcher 拿不到订阅 / feature(它只看 PushTarget),所以历史只能从这一层注入。
  */
 export type PushSendResult =
-	| (PushSendBase & { target: PushTarget; messages: PushMessageOutcome[] })
+	| (PushSendBase & { target: PushTarget; messages: PushMessageResult[] })
 	| (PushSendBase & { target: null; messages: PushMessage[] });
 
 /** 一次广播在发送层内部带着走的上下文。 */
@@ -497,9 +498,9 @@ export class PushRouter {
 		payloads: NotificationPayload[],
 		ctx: SendMeta,
 		myGen: number,
-	): Promise<PushMessageOutcome[] | null> {
+	): Promise<PushMessageResult[] | null> {
 		const routing = { subscriptionId: ctx.subscriptionId, feature: ctx.feature };
-		const outcomes: PushMessageOutcome[] = [];
+		const outcomes: PushMessageResult[] = [];
 		for (const [i, payload] of payloads.entries()) {
 			const result = await this.sendToTarget(targetId, payload, { routing });
 			if (this.disposed || this.generation !== myGen) return null;
@@ -516,7 +517,7 @@ export class PushRouter {
 	}
 
 	/** 把一个目标这一段的结果交给 onSend。target 由 dispatcher 反解 id 得到,反解不到就静默跳过。 */
-	private emit(ctx: SendMeta, targetId: string, messages: PushMessageOutcome[]): void {
+	private emit(ctx: SendMeta, targetId: string, messages: PushMessageResult[]): void {
 		if (!this.onSend) return;
 		const target = this.dispatcher.resolve(targetId);
 		if (!target) return;
@@ -549,7 +550,7 @@ export class PushRouter {
 		payload: NotificationPayload,
 		opts?: { private?: boolean; routing?: { subscriptionId: string; feature: FeatureKey } },
 	): Promise<DeliveryResult> {
-		if (this.disposed) return { ok: false, latencyMs: 0, err: "disposed" };
+		if (this.disposed) return fail("unavailable", "disposed");
 
 		const myGen = this.generation;
 		const routing = opts?.routing;
@@ -559,13 +560,13 @@ export class PushRouter {
 				const who = this.labelOf(routing.subscriptionId);
 				const msg = `target=${targetId} 已从 ${who} feature=${routing.feature} 的路由中移除，放弃重试中的推送`;
 				this.logger.info(`[push] ${msg}`);
-				return { ok: false, latencyMs: 0, err: msg };
+				return fail("conflict", msg);
 			}
 			if (!this.dispatcher.isAvailable(targetId)) {
 				if (delay > MAX_RETRY_DELAY_MS) {
 					const msg = `target=${targetId} 持续不可达，放弃推送`;
 					this.logger.error(`[push] ${msg}`);
-					return { ok: false, latencyMs: 0, err: msg };
+					return fail("unavailable", msg);
 				}
 				this.logger.debug(`[push] target=${targetId} 暂不可达，${delay / 1000}s 后重试`);
 				await this.sleep(delay);
@@ -573,25 +574,21 @@ export class PushRouter {
 				continue;
 			}
 
-			const t0 = Date.now();
 			try {
 				const result = opts?.private
 					? await this.dispatcher.sendPrivate(targetId, payload)
 					: await this.dispatcher.send(targetId, payload);
 				return result;
 			} catch (e) {
-				const err = e instanceof Error ? e.message : String(e);
-				this.logger.error(`[push] target=${targetId} 发送失败: ${err}`);
-				return { ok: false, latencyMs: Date.now() - t0, err };
+				// 抛错只留给 bug(ADR-0026 决策 1):派发器自己不该抛,真抛了按「暂时不可用」记。
+				const message = e instanceof Error ? e.message : String(e);
+				this.logger.error(`[push] target=${targetId} 发送失败: ${message}`);
+				return fail("unavailable", message);
 			}
 		}
 		// ②7:while 退出有两因 —— disposed,或 generation 失配(stop→start)。
 		// 此前一律标 "disposed",generation 失配时误导诊断。区分之。
-		return {
-			ok: false,
-			latencyMs: 0,
-			err: this.disposed ? "disposed" : "superseded",
-		};
+		return fail("unavailable", this.disposed ? "disposed" : "superseded");
 	}
 
 	/** `targetId` 当前是否仍在这条订阅该 feature 的 routing 里。查不到订阅视为不再路由。 */

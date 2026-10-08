@@ -190,8 +190,11 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				});
 			} catch (err) {
 				// 发送层自己不抛,但注入进来的东西不是我们能打包票的。吞掉会让这一趟
-				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。
-				result = { ok: false, latencyMs: 0, err: err instanceof Error ? err.message : String(err) };
+				// 静默停住、行上什么都不留,主人只看得见「点了没反应」。抛错算 bug(ADR-0026 决策 1):
+				// 按「暂时不可用」记进行里,并留一条 error 日志。
+				const message = err instanceof Error ? err.message : String(err);
+				opts.logger.error(`[history] 重推第 ${i} 条时发送口抛错:${message}`);
+				result = fail("unavailable", message);
 			}
 			// 关停把发送层叫醒回来的失败是生命周期的产物(消息从没出过网),不是这个目标真的不通 ——
 			// 记进行里等于凭空添一条假失败。成功的照记:那条已经发出去了。
@@ -200,7 +203,7 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				{ payload: m.payload, role: m.role, result, repushOf: i },
 			]);
 			if (!result.ok) {
-				opts.logger.info(`[history] 重推第 ${i} 条没成，这一趟到此为止：${result.err ?? ""}`);
+				opts.logger.info(`[history] 重推第 ${i} 条没成，这一趟到此为止：${result.message}`);
 				break;
 			}
 		}

@@ -9,7 +9,7 @@ import type {
 	PushTarget,
 	TargetDispatcher,
 } from "@bilibili-notify/internal";
-import { connectionDispatchKey, isTargetPaused } from "@bilibili-notify/internal";
+import { connectionDispatchKey, fail, isTargetPaused } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "./dispatch.js";
 import type { PlatformAdapterRegistry } from "./registry.js";
@@ -102,20 +102,28 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 
 		async probeConnection(connectionId: string): Promise<ProbeResult> {
 			const connection = findConnection(connectionId);
-			if (!connection) {
-				return { ok: false, latencyMs: 0, err: CONNECTION_NOT_FOUND };
-			}
+			if (!connection) return fail("not_found", CONNECTION_NOT_FOUND);
 			const platformAdapter = adapterFor(connection);
-			if (!platformAdapter) {
-				return {
-					ok: false,
-					latencyMs: 0,
-					err: `no platform adapter for ${connectionDispatchKey(connection)}`,
-				};
+			if (!platformAdapter) return noAdapter(connection);
+			try {
+				return await platformAdapter.probe(connection);
+			} catch (e) {
+				return thrown(e, `connection=${connection.id} probe`);
 			}
-			return platformAdapter.probe(connection);
 		},
 	};
+
+	/** 这条连接眼下没有适配器管。拓展是后加载、还会来去的,所以是「暂时不可用」而不是「不存在」。 */
+	function noAdapter(connection: Connection) {
+		return fail("unavailable", `no platform adapter for ${connectionDispatchKey(connection)}`);
+	}
+
+	/** 适配器不许抛(ADR-0026 决策 1):真抛了算 bug,在这道边界接住,按「暂时不可用」记并留 error 日志。 */
+	function thrown(e: unknown, where: string) {
+		const message = e instanceof Error ? e.message : String(e);
+		log.error(`[sink] platform adapter threw (${where}): ${message}`);
+		return fail("unavailable", message);
+	}
 
 	async function dispatch(
 		targetId: string,
@@ -123,28 +131,18 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		options: { private: boolean },
 	): Promise<DeliveryResult> {
 		const target = findTarget(targetId);
-		if (!target) {
-			return { ok: false, latencyMs: 0, err: "target not found" };
-		}
+		if (!target) return fail("not_found", "target not found");
 		const connection = findConnection(target.connectionId);
 		if (!connection) {
-			const result: DeliveryResult = {
-				ok: false,
-				latencyMs: 0,
-				err: `connection not found: connectionId=${target.connectionId}`,
-			};
-			log.warn(`[sink] ${result.err} (target=${target.id})`);
+			const result = fail("not_found", `connection not found: connectionId=${target.connectionId}`);
+			log.warn(`[sink] ${result.message} (target=${target.id})`);
 			opts.onDelivery?.(target, payload, result, options);
 			return result;
 		}
 		const platformAdapter = adapterFor(connection);
 		if (!platformAdapter) {
-			const result: DeliveryResult = {
-				ok: false,
-				latencyMs: 0,
-				err: `no platform adapter for ${connectionDispatchKey(connection)}`,
-			};
-			log.warn(`[sink] ${result.err} (target=${target.id})`);
+			const result = noAdapter(connection);
+			log.warn(`[sink] ${result.message} (target=${target.id})`);
 			opts.onDelivery?.(target, payload, result, options);
 			return result;
 		}
@@ -153,7 +151,12 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		// 与 OneBot adapter 内 `opts.private ?? scope` 的 ?? 配合就会让 scope==="private"
 		// 的 target 走错分支(已同步修 onebot.ts,这里双层防御)。
 		const sendOpts = options.private ? { private: true } : {};
-		const result = await platformAdapter.send(connection, target, payload, sendOpts);
+		let result: DeliveryResult;
+		try {
+			result = await platformAdapter.send(connection, target, payload, sendOpts);
+		} catch (e) {
+			result = thrown(e, `target=${target.id} send`);
+		}
 		opts.onDelivery?.(target, payload, result, options);
 		return result;
 	}

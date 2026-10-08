@@ -12,29 +12,47 @@ import {
 
 describe("qqMessageEndpoint — target scope + 地址 → 发消息 REST 路径", () => {
 	it("channel → /channels/{channelId}/messages", () => {
-		expect(qqMessageEndpoint("channel", "c1")).toEqual({ path: "/channels/c1/messages" });
+		expect(qqMessageEndpoint("channel", "c1")).toEqual({ ok: true, path: "/channels/c1/messages" });
 	});
 
 	it("group → /v2/groups/{groupOpenid}/messages", () => {
-		expect(qqMessageEndpoint("group", "G123")).toEqual({ path: "/v2/groups/G123/messages" });
+		expect(qqMessageEndpoint("group", "G123")).toEqual({
+			ok: true,
+			path: "/v2/groups/G123/messages",
+		});
 	});
 
 	it("private(C2C) → /v2/users/{userOpenid}/messages", () => {
-		expect(qqMessageEndpoint("private", "U456")).toEqual({ path: "/v2/users/U456/messages" });
+		expect(qqMessageEndpoint("private", "U456")).toEqual({
+			ok: true,
+			path: "/v2/users/U456/messages",
+		});
 	});
 
 	// 地址收成一格之后这三条缺失只有一个来源(address 空),但**报错还得说清缺的是哪一格**
 	// —— 主人在面板上看到的是「群 openid」「子频道 ID」,报「address missing」等于没说。
-	it("channel 缺地址 → err(运行期校验,不发注定失败的 REST)", () => {
-		expect(qqMessageEndpoint("channel", "")).toEqual({ err: "channel: channelId missing" });
+	it("channel 缺地址 → invalid(运行期校验,不发注定失败的 REST)", () => {
+		expect(qqMessageEndpoint("channel", "")).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "channel: channelId missing",
+		});
 	});
 
-	it("group 缺地址 → err", () => {
-		expect(qqMessageEndpoint("group", "")).toEqual({ err: "group: groupOpenid missing" });
+	it("group 缺地址 → invalid", () => {
+		expect(qqMessageEndpoint("group", "")).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "group: groupOpenid missing",
+		});
 	});
 
-	it("private 缺地址 → err", () => {
-		expect(qqMessageEndpoint("private", "")).toEqual({ err: "private: userOpenid missing" });
+	it("private 缺地址 → invalid", () => {
+		expect(qqMessageEndpoint("private", "")).toEqual({
+			ok: false,
+			code: "invalid",
+			message: "private: userOpenid missing",
+		});
 	});
 });
 

@@ -98,18 +98,18 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const result = await engines.probeConnection(id);
 		// Persist the probe outcome to the connection's testStatus so the dashboard's
 		// status dot reflects this click without waiting for the 5-min poller.
-		// `ok: null` (probe unsupported) deliberately doesn't write back — we
-		// want the UI to remain "pending / unsupported" rather than green.
-		// 🔴 写盘这条路照旧读引擎给的 `err`:`testStatus.err` 是盘上的老格式,随改盘上形状的那一期
-		// 带迁移条目改(④b 只改线上)。回给面板的形状在 {@link testResultOfProbe} 里另翻。
-		if (result.ok !== null) {
+		// `unsupported` (no probe protocol) deliberately doesn't write back — we
+		// want the UI to remain "pending / unsupported" rather than green or red.
+		// 🔴 `testStatus.err` 是盘上的老格式(3a-21 整个换成 `probeState`):这里把失败的原话填进去,
+		// 码不落盘。回给面板的形状在 {@link testResultOfProbe} 里另翻。
+		if (result.ok || result.code !== "unsupported") {
 			try {
 				await deps.store.patchConnection(id, {
 					testStatus: {
 						ok: result.ok,
 						lastCheckedAt: new Date().toISOString(),
-						latencyMs: result.latencyMs,
-						err: result.err,
+						latencyMs: result.ok ? result.latencyMs : undefined,
+						err: result.ok ? undefined : result.message,
 					},
 				});
 			} catch (err) {
