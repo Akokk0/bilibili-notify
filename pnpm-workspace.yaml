@@ -108,4 +108,3 @@ allowBuilds:
 
 patchedDependencies:
   css-tree: patches/css-tree.patch
-  jsdom: patches/jsdom.patch

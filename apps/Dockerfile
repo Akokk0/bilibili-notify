@@ -74,8 +74,8 @@ RUN git init -q . && vp pm ci
 #      故必须显式点名 —— 漏了它 web / server 的构建会 TS2307 解析不到 @bilibili-notify/contract。
 #   2. apps/web    —— dashboard 静态资源。
 #   3. apps/server build:bundle + 装配 —— 自包含单文件 bundle(全部依赖内联),
-#      assemble-server-bundle.mjs 把运行时按路径读取的资产(jieba wasm / jsdom
-#      xhr worker / 词云 static)+ bn.config.example.yaml + package.json 搬进 dist/。
+#      assemble-server-bundle.mjs 把运行时按路径读取的资产(jieba wasm /
+#      词云 static)+ bn.config.example.yaml + package.json 搬进 dist/。
 # 旧 pnpm 版命令带 --stream(GHA buildx 的 batched 输出下看清卡在哪个包);
 # vp run 本身就是实时流式 + 拓扑序输出,诉求内置满足,无需对应 flag。
 # 注意 vp pm 只覆盖精选的 pnpm 子命令(没有 run),跑 script 必须走 vp run。

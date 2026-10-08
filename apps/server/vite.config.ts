@@ -29,7 +29,7 @@ const stubDevtools = {
 // 桌面安装包、应用内升级载荷装的都是这一份(scripts/server-bundle-assets.mjs 是它
 // 必须带齐的文件清单)。
 // 默认(不设 env)→ 外置 lib 构建,给裸跑(`node lib/index.mjs`)与 dev 用。
-// 运行时按路径读取的资产(jieba wasm / jsdom xhr worker / image static)不进 bundle,
+// 运行时按路径读取的资产(jieba wasm / image static)不进 bundle,
 // 由 scripts/assemble-server-bundle.mjs 搬到 dist/ 旁边。
 const bundle = process.env.BN_SERVER_BUNDLE === "1";
 

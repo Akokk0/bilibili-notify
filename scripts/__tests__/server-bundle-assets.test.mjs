@@ -60,8 +60,8 @@ describe("missingServerBundleFilesIn", () => {
 	it("按目录实际内容判断,子目录里的也算", async () => {
 		await seedManifestFiles();
 		await writeServerBundleManifest(dir);
-		await rm(join(dir, "xhr-sync-worker.js"));
-		expect(await missingServerBundleFilesIn(dir)).toEqual(["xhr-sync-worker.js"]);
+		await rm(join(dir, "jieba_rs_wasm_bg.wasm"));
+		expect(await missingServerBundleFilesIn(dir)).toEqual(["jieba_rs_wasm_bg.wasm"]);
 	});
 
 	// dist 不是一个文件:入口之外还有带 hash 的分块,名字每次构建都变。装配那一刻把盘上的

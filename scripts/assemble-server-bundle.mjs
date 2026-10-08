@@ -6,13 +6,12 @@ import { missingServerBundleFilesIn, writeServerBundleManifest } from "./server-
 
 // 把独立端 server 自包含 bundle(apps/server/dist,由 `build:bundle` 产出;入口 + hash 分块)补齐为
 // 可独立运行的目录:bundle 内联了全部 JS 依赖,但**运行时按路径读取**的资产不进
-// bundle,必须搬到产物旁边(三件运行时资产 + server 特有
+// bundle,必须搬到产物旁边(两件运行时资产 + server 特有
 // 两件)。本脚本只做纯复制、不 spawn 任何构建命令 —— Docker builder 里没有全局 vp,
 // 构建由调用方负责(本地 `vp run -F @bilibili-notify/server build:bundle`,Docker 里
 // `pnpm --filter @bilibili-notify/server run build:bundle`,vp 从根 devDependency 的
 // node_modules/.bin 解析)。
 //
-// - xhr-sync-worker.js:jsdom 同步 XHR worker,运行时按文件路径加载。
 // - jieba_rs_wasm_bg.wasm:jieba-wasm 的 wasm 本体,readFileSync(__dirname) 加载,
 //   bundle 后 __dirname 指向 dist/。
 // - static/*:词云模板,image 包运行时 readFileSync(resolve(__dirname, "static/*.js"))。
@@ -31,17 +30,8 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const distDir = resolve(repoRoot, "apps/server/dist");
 // 从**声明了这些依赖的包**出发解析,而不是从仓库根:pnpm 默认(isolated)布局下根
-// node_modules 只有根自己声明的东西,jsdom / jieba-wasm 都不在,从根解析就是幻影依赖。
-const requireFromImage = createRequire(resolve(repoRoot, "packages/image/package.json"));
+// node_modules 只有根自己声明的东西,jieba-wasm 不在,从根解析就是幻影依赖。
 const requireFromServer = createRequire(resolve(repoRoot, "apps/server/package.json"));
-const jsdomXhrSyncWorker = requireFromImage.resolve(
-	"jsdom/lib/jsdom/living/xhr/xhr-sync-worker.js",
-);
-// jsdom 30 起模块加载即 readFileSync 默认样式表;bundle 后 __dirname 相对路径逃出
-// 产物目录,靠 patches/jsdom.patch 的 fallback 读 bundle 旁的这份拷贝。
-const jsdomDefaultStylesheet = requireFromImage.resolve(
-	"jsdom/lib/jsdom/browser/default-stylesheet.css",
-);
 const jiebaWasm = resolve(
 	dirname(requireFromServer.resolve("jieba-wasm/node")),
 	"jieba_rs_wasm_bg.wasm",
@@ -49,8 +39,6 @@ const jiebaWasm = resolve(
 const imageStaticDir = resolve(repoRoot, "packages/image/src/static");
 
 await cp(imageStaticDir, resolve(distDir, "static"), { recursive: true });
-await copyFile(jsdomXhrSyncWorker, resolve(distDir, "xhr-sync-worker.js"));
-await copyFile(jsdomDefaultStylesheet, resolve(distDir, "default-stylesheet.css"));
 await copyFile(jiebaWasm, resolve(distDir, "jieba_rs_wasm_bg.wasm"));
 await copyFile(
 	resolve(repoRoot, "apps/server/bn.config.example.yaml"),
