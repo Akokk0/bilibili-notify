@@ -15,12 +15,7 @@ import { CronJob } from "cron";
 import { DateTime } from "luxon";
 import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../images";
-import {
-	blockedNotice,
-	filterPost,
-	type PostFilterReason,
-	type PostFilterSettings,
-} from "./post-filter";
+import { filterPost, type PostFilterReason, type PostFilterRules } from "./post-filter";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type {
 	FilteredPost,
@@ -129,8 +124,8 @@ export interface DynamicEngineConfig extends WorkDeliveryConfig {
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
-	/** 内容过滤(折好的 `ContentFilters`;`notify`：被屏蔽时是否通知,缺席 = 不通知)。 */
-	filter: PostFilterSettings;
+	/** 内容过滤(折好的 `ContentFilters`)。 */
+	filter: PostFilterRules;
 }
 
 export interface DynamicEngineOptions {
@@ -848,8 +843,8 @@ export class DynamicEngine {
 				const filterResult = filterPost(post, effFilter, this.logger);
 				if (filterResult.blocked) {
 					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
-					// 先留痕:交给宿主在推送历史里记一行。只交文字与地址 —— 不出卡、不抓图、不调 AI。
-					// best-effort,与下面的提醒同理:记不下就算了,绝不因此让这条动态下一轮重判。
+					// 留痕:交给宿主在推送历史里记一行。只交文字与地址 —— 不出卡、不抓图、不调 AI,也不往外发任何东西。
+					// best-effort:记不下就算了,绝不因此让这条动态下一轮重判(那会把同一条重复记进历史)。
 					try {
 						this.onPostFiltered({
 							uid,
@@ -861,38 +856,7 @@ export class DynamicEngine {
 					} catch (e) {
 						this.logger.warn(`[filter] 被过滤的动态留痕失败(忽略): ${(e as Error).message}`);
 					}
-					if (effFilter.notify && this.stillSubscribed(uid, subAtCapture)) {
-						// P2:屏蔽提示是 best-effort。此前广播抛错冒泡到外层 catch→
-						// markFail,锚点不前移 → 下轮重判重发,"已屏蔽"提示重复轰炸。
-						// 自包 try/catch:发不出就算了,绝不因此重试。
-						try {
-							await this.push.push({
-								uid,
-								anchors: [
-									{
-										role: "main",
-										messages: [
-											[
-												{
-													kind: "text",
-													text: blockedNotice(
-														name,
-														filterResult.reason as PostFilterReason,
-														"动态",
-													),
-												},
-											],
-										],
-									},
-								],
-							});
-						} catch (e) {
-							this.logger.warn(
-								`[filter] 屏蔽提示发送失败(忽略,不重试以免重复轰炸): ${(e as Error).message}`,
-							);
-						}
-					}
-					// 被过滤(含 notify 已发/已忽略)= 已处理,推进锚点避免下轮重判。
+					// 被过滤 = 已处理,推进锚点避免下轮重判。
 					markOk(uid, postTime);
 					continue;
 				}

@@ -100,7 +100,6 @@ vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
 		// B 站那条路接在同一份计数上。
 		deliverWork: actual.deliverWork,
 		filterPost: actual.filterPost,
-		blockedNotice: actual.blockedNotice,
 		DynamicEngine: class {
 			opts: any;
 			start = vi.fn();

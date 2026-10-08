@@ -66,7 +66,7 @@ import {
 	type PushLike as DynamicPushLike,
 	type SubscriptionOpView as DynamicSubOp,
 	type SubscriptionsView as DynamicSubsView,
-	type PostFilterSettings,
+	type PostFilterRules,
 	type PushSegment,
 	resolveDynamicColorOptions,
 	type WorkSubscriptionSettings,
@@ -1643,7 +1643,7 @@ export function buildDynamicSubViewSingle(
 /** 一条订阅折好的作品设置:装配吃的那几格 + per-UP 的过滤覆盖。 */
 export type DynamicWorkSettings = WorkSubscriptionSettings & {
 	/** Per-UP 过滤覆盖(折好的 `ContentFilters`,过滤直接吃它);没配是 undefined(用全局那份)。 */
-	filter?: PostFilterSettings;
+	filter?: PostFilterRules;
 };
 
 /**

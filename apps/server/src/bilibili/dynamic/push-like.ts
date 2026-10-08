@@ -17,7 +17,7 @@ import type {
 	PostImage,
 	PushMessageRole,
 } from "@bilibili-notify/internal";
-import type { PostFilterSettings } from "./post-filter";
+import type { PostFilterRules } from "./post-filter";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
 export interface PushImagePart {
@@ -125,7 +125,7 @@ export interface SubItemView {
 		fontAsset?: string;
 	};
 	/** Per-UP 作品过滤覆盖(折好的 `ContentFilters`);undefined 时使用 engine 的全局 filter。 */
-	filter?: PostFilterSettings;
+	filter?: PostFilterRules;
 	/** Per-UP AI 覆盖；undefined 时使用 CommentaryGenerator 的全局 config。 */
 	aiOverride?: CommentaryCallOverride;
 	/**

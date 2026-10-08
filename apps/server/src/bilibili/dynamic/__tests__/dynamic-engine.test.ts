@@ -986,7 +986,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(filtered.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
 		});
 		await detect(filtered.engine);
 		expect(filtered.generatePostCard).not.toHaveBeenCalled();
@@ -1044,7 +1044,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(filtered.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["看"], notify: false },
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["看"] },
 		});
 		await detect(filtered.engine);
 		expect(filtered.generatePostCard).not.toHaveBeenCalled();
@@ -1094,7 +1094,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
 		});
 		await detect(b.engine);
 		expect(b.generatePostCard).not.toHaveBeenCalled();
@@ -1704,37 +1704,21 @@ describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () 
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
-	it("命中过滤 + notify=false → 不广播,但 timeline 仍推进", async () => {
+describe("DynamicEngine.detectDynamics — 命中过滤", () => {
+	// 被挡下的只留痕(见下面「被过滤的作品交给 onPostFiltered」),不往任何目标发东西 —— 从前有一句
+	// 「屏蔽后提醒」,10-08 删了(ADR-0021 决策 34 的 🔗)。
+	it("命中过滤 → 什么都不广播,但 timeline 仍推进", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
 		seed(b.engine, "1", 0, {
 			uid: "1",
 			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
 		});
 		await detect(b.engine);
+		expect(b.push.push).not.toHaveBeenCalled();
 		expect(b.push.pushedMessage).not.toHaveBeenCalled();
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
-	});
-
-	it("命中过滤 + notify=true → 广播屏蔽原因文案", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, name: "阿伟", pubTs: 1500, text: "含禁词" })]),
-		);
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: true },
-		});
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<{
-			kind: string;
-			text?: string;
-		}>;
-		expect(segments[0]?.text).toContain("阿伟");
 	});
 });
 
@@ -1847,22 +1831,6 @@ describe("DynamicEngine.detectDynamics — 被过滤的作品交给 onPostFilter
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockReposts: true }) });
 		await detect(b.engine);
 		expect(b.onPostFiltered.mock.calls[0]?.[0].text).toBe("转一下\n原文");
-	});
-
-	it("「屏蔽后提醒」开着:先留痕,提醒照发", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...rules({ blockKeywords: ["禁词"] }), notify: true },
-		});
-		await detect(b.engine);
-		expect(b.onPostFiltered).toHaveBeenCalledTimes(1);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		expect(b.onPostFiltered.mock.invocationCallOrder[0]).toBeLessThan(
-			b.push.push.mock.invocationCallOrder[0] ?? 0,
-		);
 	});
 
 	it("出口抛错不连累这一轮:时间线照推进,记一条 warn", async () => {
@@ -1992,19 +1960,6 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 		expect(b.push.pushedMessage).not.toHaveBeenCalled();
 		expect(detected(b)).toHaveLength(1);
 		expect(detected(b)[0]?.payload).toMatchObject({ uid: "1", type: "DYNAMIC_TYPE_AV" });
-	});
-
-	it("屏蔽提醒(notify 开着)用中立措辞,作品叫「动态」", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...rules({ blockVideos: true }), notify: true },
-		});
-		await detect(b.engine);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<{ text?: string }>;
-		expect(segments[0]?.text).toBe("阿伟发布了一条带视频的动态，已屏蔽");
 	});
 
 	it("翻译只做一次:过滤、AI 点评、出卡共用同一份 Post", async () => {
@@ -2786,7 +2741,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 	it("被过滤器屏蔽 → 仍然 emit —— 统计的是 UP 的产出,不是推送次数", async () => {
 		const b = makeEngine({
 			config: {
-				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"], notify: false },
+				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
 			},
 		});
 		b.fetchAllDynamic.mockResolvedValue(

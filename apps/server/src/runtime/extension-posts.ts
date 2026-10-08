@@ -10,11 +10,10 @@ import type {
 } from "@bilibili-notify/internal";
 import { postText, subscriptionIdentityOf } from "@bilibili-notify/internal";
 import {
-	blockedNotice,
 	type DeliverWorkArgs,
 	deliverWork,
 	filterPost,
-	type PostFilterSettings,
+	type PostFilterRules,
 	type WorkDeliveryConfig,
 	type WorkDeliveryDeps,
 	type WorkSubscriptionSettings,
@@ -37,8 +36,8 @@ import { deferImageWrites, type ImageSink, postFromReport } from "./post-from-re
  *    也不出卡(推送层反正会挡,白出一张卡、白调一次 AI);
  * 2. 翻成中立的 `Post`(作者名按决策 54 取好;图的写盘推迟到出卡,见 `deferImageWrites`),再过滤 —— 过滤吃 `Post`、
  *    一份实现所有来源同一个(`filterPost`,ADR-0021 决策 43):关键词 / 正则 / 白名单加四个类型开关,全局 + 按 UP
- *    覆盖照常折叠,**类型开关对拓展作品同样生效**(不再豁免)。被挡下时「屏蔽后提醒」照 B 站的规矩(`notify`
- *    开着才发),措辞按平台的叫法;
+ *    覆盖照常折叠,**类型开关对拓展作品同样生效**(不再豁免)。被挡下的只在推送历史里留一行
+ *    (`onPostFiltered`),不往外发任何东西;
  * 3. 同一份 `Post` 交给与 B 站同一份的装配(`deliverWork`):AI 点评的文字、出卡共用它。
  *
  * - **同一条订阅的作品按到达顺序串行**(每条订阅一道 `createSerialGate`):拓展一口气报两条时,先报的那条
@@ -54,7 +53,7 @@ type ReportedPost = SubscriptionReportValue<"post">;
 /** 一条拓展订阅折好的作品设置:装配那几格 + 过滤(已折好全局)+ 动态总开关。 */
 export interface ExtensionPostSettings extends WorkSubscriptionSettings {
 	/** 这条订阅生效的过滤(折好的 `ContentFilters`:per-UP 覆盖 ?? 全局)。 */
-	filter: PostFilterSettings;
+	filter: PostFilterRules;
 	/** 作品总开关(全局 + per-UP 折好的 `features.post`)。 */
 	post: boolean;
 }
@@ -134,7 +133,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 		const postNoun = opts.sources.postNoun(subscriptionIdentityOf(sub).sourceKey);
 		const push = opts.pushFor(id);
 
-		// 翻成中立的 `Post`(过滤、AI 点评、出卡共用这一份)。名字按决策 54 取好,屏蔽提醒也用它;图只算引用、
+		// 翻成中立的 `Post`(过滤、AI 点评、出卡共用这一份)。名字按决策 54 取好;图只算引用、
 		// 写盘推迟到出卡 —— 被屏蔽的、不出卡的作品不往图库写。
 		const authorName = extensionSubscriptionName(sub, {
 			eventName: report.author?.name,
@@ -150,7 +149,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 		const filtered = filterPost(post, settings.filter, log);
 		if (filtered.blocked && filtered.reason) {
 			log.debug(`[ext-post] 订阅 ${id} 的作品 ${report.id} 被过滤,原因:${filtered.reason}`);
-			// 先留痕(推送历史里的一行)。只交文字与地址 —— 图还没写进图库、卡也不出。best-effort。
+			// 留痕(推送历史里的一行)。只交文字与地址 —— 图还没写进图库、卡也不出,也不往外发任何东西。best-effort。
 			try {
 				opts.onPostFiltered({
 					subscriptionId: id,
@@ -160,21 +159,6 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 				});
 			} catch (e) {
 				log.warn(`[ext-post] 被过滤的作品留痕失败(忽略): ${(e as Error).message}`);
-			}
-			if (settings.filter.notify) {
-				// 与 B 站同一条规矩:提醒是 best-effort,发不出就算了。
-				try {
-					await push([
-						{
-							role: "main",
-							messages: [
-								[{ kind: "text", text: blockedNotice(authorName, filtered.reason, postNoun) }],
-							],
-						},
-					]);
-				} catch (e) {
-					log.warn(`[ext-post] 屏蔽提示发送失败(忽略): ${(e as Error).message}`);
-				}
 			}
 			return;
 		}

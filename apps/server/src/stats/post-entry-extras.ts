@@ -24,8 +24,8 @@ export type PostEntryExtras = Pick<
 	"url" | "title" | "summary" | "topic" | "videoDurationSec"
 >;
 
-/** 按码点截到 `max` 个字符,不截断代理对。 */
-function clip(text: string, max: number): string {
+/** 按码点截到 `max` 个字符,不截断代理对。作品摘要的截法只此一份(推送历史里被过滤的作品留痕也用它)。 */
+export function clip(text: string, max: number): string {
 	const chars = [...text];
 	return chars.length <= max ? text : chars.slice(0, max).join("");
 }

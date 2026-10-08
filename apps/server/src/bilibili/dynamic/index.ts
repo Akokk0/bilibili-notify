@@ -5,12 +5,10 @@ export {
 	type DynamicEngineOptions,
 } from "./dynamic-engine";
 export {
-	blockedNotice,
 	filterPost,
 	PostFilterReason,
 	type PostFilterResult,
 	type PostFilterRules,
-	type PostFilterSettings,
 } from "./post-filter";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {

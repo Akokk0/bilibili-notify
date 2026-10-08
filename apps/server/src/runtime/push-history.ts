@@ -7,7 +7,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { PushSendResult } from "@bilibili-notify/push";
 import type { NewHistoryEntry } from "../history/store.js";
-import { POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
+import { clip, POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
 
 export interface PushHistoryLookups {
 	/**
@@ -70,7 +70,7 @@ export function historyRecordFromSend(
  * 查不到订阅同样不记。
  *
  * `text` 是整条文字(`postText(post, "plain")`,来源那头交来的、没截过),摘要在这儿截:B 站动态与拓展作品
- * 两条路都经这一处,截法只有一份。
+ * 两条路都经这一处,截法只有一份(`clip`,与统计那边的作品摘要同一个函数、同一个上限)。
  */
 export function historyRecordFromFilteredPost(
 	filtered: { subscriptionId: string; filteredBy: PostFilterReason; text: string; url?: string },
@@ -108,12 +108,6 @@ function rowIdentityOf(
 		nameSnapshot: fromBilibili ? profile?.name : filled(profile?.name),
 		...(profile?.avatar ? { avatarSnapshot: profile.avatar } : {}),
 	};
-}
-
-/** 按码点截到 `max` 个字符,不截断代理对(与统计那边作品摘要的截法一样;那一份是文件内的,没导出)。 */
-function clip(text: string, max: number): string {
-	const chars = [...text];
-	return chars.length <= max ? text : chars.slice(0, max).join("");
 }
 
 /** 有字才算有:空串、只有空白的都不算。 */

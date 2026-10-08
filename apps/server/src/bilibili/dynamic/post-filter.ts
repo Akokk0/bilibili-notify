@@ -37,12 +37,6 @@ export type PostFilterRules = Pick<
 	| "allowRegex"
 >;
 
-/**
- * 一条订阅生效的过滤设置:规则 + 屏蔽后是否提醒。`ContentFilters` 本身就合这个形状,`notify` 缺席就是不提醒 ——
- * 独立端没有「屏蔽后提醒」的开关,所以生产里恒不提醒。
- */
-export type PostFilterSettings = PostFilterRules & { notify?: boolean };
-
 export interface PostFilterResult {
 	blocked: boolean;
 	reason?: PostFilterReason;
@@ -122,25 +116,4 @@ export function filterPost(post: Post, rules: PostFilterRules, logger?: Logger):
 	}
 
 	return { blocked: false };
-}
-
-/**
- * 「屏蔽后提醒」那句话(过滤设置的 `notify` 开着时发给这条订阅的目标)。中立措辞,作品的叫法用平台的
- * (`postNoun`:B 站「动态」、抖音「作品」…,缺省「作品」)。
- */
-export function blockedNotice(name: string, reason: PostFilterReason, postNoun = "作品"): string {
-	switch (reason) {
-		case PostFilterReason.BlockedKeyword:
-			return `${name}发布了一条含有屏蔽关键字的${postNoun}`;
-		case PostFilterReason.BlockedReposts:
-			return `${name}转发了一条${postNoun}，已屏蔽`;
-		case PostFilterReason.BlockedArticles:
-			return `${name}发布了一篇文章，已屏蔽`;
-		case PostFilterReason.BlockedImages:
-			return `${name}发布了一条带图集的${postNoun}，已屏蔽`;
-		case PostFilterReason.BlockedVideos:
-			return `${name}发布了一条带视频的${postNoun}，已屏蔽`;
-		case PostFilterReason.AllowlistUnmatched:
-			return `${name}发布了一条不在白名单范围内的${postNoun}，已屏蔽`;
-	}
 }

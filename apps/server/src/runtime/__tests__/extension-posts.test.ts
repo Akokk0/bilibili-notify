@@ -279,11 +279,12 @@ describe("bindExtensionPosts — 登记进 track", () => {
 });
 
 /**
- * 屏蔽提醒里平台对作品的叫法(ADR-0019 决策 70):按**这条订阅所属的拓展**去取,不是随便哪个。
- * 别的测试里 `postNoun` 都是不看参数的桩,取错拓展也一样绿 —— 这里让它只认这条订阅的拓展。
+ * 平台对作品的叫法(ADR-0019 决策 70):按**这条订阅所属的拓展**去取,不是随便哪个。
+ * 别的测试里 `postNoun` 都是不看参数的桩,取错拓展也一样绿 —— 这里让它记下被问的是哪个拓展。
+ * (叫法交给装配之后用在哪,由 `extension-post-work.test.ts` 与装配自己的测试钉。)
  */
 describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展取", () => {
-	it("屏蔽提醒里写的是这个拓展的叫法(别的拓展没有叫法、会落回「作品」)", async () => {
+	it("推一条作品:问的是这条订阅所属的那个拓展,只问它", async () => {
 		const bus = createNodeMessageBus();
 		const image = {
 			generatePostCard: vi.fn(async () => Buffer.from("card")),
@@ -303,7 +304,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 			postImages,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
-				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["海边"], notify: true },
+				filter: DEFAULT_CONTENT_FILTERS,
 				post: true,
 			}),
 			sources: {
@@ -335,7 +336,6 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 
 		await vi.waitFor(() => expect(sent).toHaveLength(1));
 		expect(asked).toEqual([SUB.identity.sourceKey]);
-		expect(sent[0]).toEqual([{ kind: "text", text: "资料名发布了一条含有屏蔽关键字的视频" }]);
 		handle.dispose();
 	});
 });
@@ -355,7 +355,7 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 	]);
 
 	function bind(
-		filter: Partial<typeof DEFAULT_CONTENT_FILTERS> & { notify?: boolean },
+		filter: Partial<typeof DEFAULT_CONTENT_FILTERS>,
 		deliveryConfig: { imageEnabled?: boolean } = {},
 	) {
 		const bus = createNodeMessageBus();
@@ -489,7 +489,7 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 	 * 被过滤的作品交出去留痕(ADR-0021 决策 34 的 🔗):带订阅 id、原因、整条文字(`postText` 的 plain 拼法)与
 	 * 上报里的作品地址。只是交出去 —— 不出卡、不写图、不推。
 	 */
-	it("被挡的作品交给 onPostFiltered:订阅 id、原因、文字、地址;不出卡、不写图、不推", async () => {
+	it("被挡的作品交给 onPostFiltered:订阅 id、原因、文字、地址;不出卡、不写图、什么都不往外发", async () => {
 		const t = bind({ blockVideos: true });
 		t.emit(withVideo());
 		await t.settle();
@@ -524,23 +524,6 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 		t.emit(post(3));
 		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
 		expect(t.onPostFiltered).not.toHaveBeenCalled();
-		t.handle.dispose();
-	});
-
-	it("「屏蔽后提醒」开着:先留痕,提醒照发", async () => {
-		const t = bind({ blockVideos: true, notify: true });
-		t.emit(withVideo());
-		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
-		expect(t.onPostFiltered).toHaveBeenCalledTimes(1);
-		t.handle.dispose();
-	});
-
-	it("屏蔽提醒(notify 开着):类型开关挡下的作品也提醒,措辞中立、叫法用平台的", async () => {
-		const t = bind({ blockVideos: true, notify: true });
-		t.emit(withVideo());
-		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
-		expect(t.sent[0]).toEqual([{ kind: "text", text: "资料名发布了一条带视频的作品，已屏蔽" }]);
-		expect(t.render).not.toHaveBeenCalled();
 		t.handle.dispose();
 	});
 });

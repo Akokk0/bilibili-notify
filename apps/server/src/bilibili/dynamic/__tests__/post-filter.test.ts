@@ -19,7 +19,7 @@ import {
 	postText,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { blockedNotice, filterPost, PostFilterReason, type PostFilterRules } from "../post-filter";
+import { filterPost, PostFilterReason, type PostFilterRules } from "../post-filter";
 import { postFromDynamic } from "../post-from-dynamic";
 import type { Dynamic } from "../types";
 import { BILI_DYNAMIC_SAMPLES } from "./fixtures/bili-dynamic-fixtures";
@@ -495,46 +495,5 @@ describe("ReDoS 加固(正则走 internal 的统一闸门 + 只对前 1 万字�
 		expect(filterPost(far, rules({ blockRegex: ["禁词"] })).blocked).toBe(false);
 		// 关键词是 includes,不受这条限制。
 		expect(filterPost(far, rules({ blockKeywords: ["禁词"] })).blocked).toBe(true);
-	});
-});
-
-// ── 屏蔽后提醒的措辞 ──────────────────────────────────────────────────────────
-
-describe("blockedNotice — 屏蔽后提醒的措辞(中立,作品的叫法用 postNoun)", () => {
-	it("六种原因各一句;叫法缺省是「作品」", () => {
-		const said = Object.values(PostFilterReason).map((reason) => blockedNotice("某UP", reason));
-		expect(said).toEqual([
-			"某UP发布了一条含有屏蔽关键字的作品",
-			"某UP转发了一条作品，已屏蔽",
-			"某UP发布了一篇文章，已屏蔽",
-			"某UP发布了一条带图集的作品，已屏蔽",
-			"某UP发布了一条带视频的作品，已屏蔽",
-			"某UP发布了一条不在白名单范围内的作品，已屏蔽",
-		]);
-	});
-
-	it("叫法用平台的(B 站传「动态」,抖音传「作品」):关键词、白名单、转发、图集、视频五句都换", () => {
-		expect(blockedNotice("某UP", PostFilterReason.BlockedKeyword, "动态")).toBe(
-			"某UP发布了一条含有屏蔽关键字的动态",
-		);
-		expect(blockedNotice("某UP", PostFilterReason.BlockedReposts, "动态")).toBe(
-			"某UP转发了一条动态，已屏蔽",
-		);
-		expect(blockedNotice("某UP", PostFilterReason.BlockedImages, "视频号")).toBe(
-			"某UP发布了一条带图集的视频号，已屏蔽",
-		);
-		expect(blockedNotice("某UP", PostFilterReason.BlockedVideos, "动态")).toBe(
-			"某UP发布了一条带视频的动态，已屏蔽",
-		);
-		expect(blockedNotice("某UP", PostFilterReason.AllowlistUnmatched, "笔记")).toBe(
-			"某UP发布了一条不在白名单范围内的笔记，已屏蔽",
-		);
-	});
-
-	it("措辞里没有 B 站专属的叫法(专栏 / 图文动态 / 投稿)", () => {
-		for (const reason of Object.values(PostFilterReason)) {
-			const said = blockedNotice("某UP", reason, "作品");
-			for (const biliWord of ["专栏", "图文动态", "投稿"]) expect(said).not.toContain(biliWord);
-		}
 	});
 });
