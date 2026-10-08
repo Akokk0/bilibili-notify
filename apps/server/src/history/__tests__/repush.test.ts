@@ -24,8 +24,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { originalCount, repushDenial, unsentIndices } from "../repush.js";
 
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
-const FAIL = { ok: false, latencyMs: 7, err: "boom" };
+const OK = { ok: true, latencyMs: 5 } as const;
+const FAIL = { ok: false, code: "unknown", message: "boom" } as const;
 
 function msg(
 	role: HistoryMessage["role"],

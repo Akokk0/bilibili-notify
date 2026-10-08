@@ -258,6 +258,21 @@ const ZERO_FILES: Record<string, string> = {
 		// 头像快照是 B 站远端网址,迁移时丢掉。
 		payload: { kind: "image", text: "下播了", imageRef: "a.png" },
 		uavatarSnapshot: "https://i0.hdslb.com/bfs/face/x.jpg",
+	})}\n${JSON.stringify({
+		// 一行没送达的:老失败(`err`)迁成结果形状 `unknown` + 原话(3a-15)。放在这里是让下面的产出摘要看得见这一步。
+		id: "55555555-5555-4555-8555-555555555555",
+		ts: "2026-09-30T02:00:00.000Z",
+		source: "dynamic",
+		uid: "12345",
+		subscriptionId: "33333333-3333-4333-8333-333333333333",
+		targetIds: ["22222222-2222-4222-8222-222222222222"],
+		result: {
+			ok: false,
+			per: [
+				{ targetId: "22222222-2222-4222-8222-222222222222", ok: false, latencyMs: 9, err: "boom" },
+			],
+		},
+		payload: { kind: "text", text: "发了动态" },
 	})}\n`,
 	// 0.x 的重推原件(⑱c 起 `v` → `version`)。
 	"history/repush/2026-09-30/row-1.json":
@@ -722,8 +737,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 35,
-			output: "f352f3a0104bc0c2ad837a0d172562abd184c9ed66ab397d90868c9b6da7fcaa",
+			revision: 36,
+			output: "b088874508fae2e3a6e531540a3252f6a573734c49ed74f3bf3900d0dca997b9",
 		});
 	});
 });

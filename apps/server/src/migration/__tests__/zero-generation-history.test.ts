@@ -414,7 +414,13 @@ describe("迁移器自己的钉", () => {
 		});
 		expect(row).not.toHaveProperty("uavatarSnapshot");
 		const messages = row.messages as Record<string, unknown>[];
-		expect(messages[0]).toEqual(PRE_RENAME_ROW_OBJECT.messages[0]);
+		// 老失败没带原话:`unknown` + 一句固定的话(3a-15);消息里别的格、键的位置不动。
+		expect(messages[0]).toEqual({
+			payload: { kind: "text", text: "开播" },
+			role: "main",
+			result: { ok: false, code: "unknown", message: "没有送达，对端没说原因" },
+		});
+		expect(Object.keys(messages[0] ?? {})).toEqual(["payload", "role", "result"]);
 		// 重投那一条:`retryOf` → `repushOf`,在消息里原来的位置。
 		expect(messages[1]).toEqual({
 			payload: { kind: "text", text: "开播" },
@@ -459,7 +465,8 @@ describe("迁移器自己的钉", () => {
 				{
 					payload: { kind: "text", text: "词云" },
 					role: "extra",
-					result: { ok: false, latencyMs: 7, err: "boom" },
+					// 老失败 → `unknown` + 原话,不带耗时(3a-15)。
+					result: { ok: false, code: "unknown", message: "boom" },
 					repushOf: 1,
 				},
 			],
@@ -486,6 +493,203 @@ describe("迁移器自己的钉", () => {
 		const report = await sandbox.migrate();
 		expect((await readFile(dayPath(), "utf8")).split("\n")[0]).toBe(both);
 		expect(report.rewritten).not.toContain(`history/${DAY}.jsonl`);
+	});
+
+	/**
+	 * 3a-15:投递结果落盘改成结果形状(ADR-0026 决策 5)。老失败 `{ ok: false, latencyMs, err? }` →
+	 * `{ ok: false, code: "unknown", message: 原话 }`,不按原话猜标准码;送达的那一格一个字节不动。
+	 */
+	describe("老失败 → unknown + 原话", () => {
+		const oldFailure = (err?: string) => ({ ok: false, latencyMs: 7, ...(err ? { err } : {}) });
+		const resultsOf = (line: string | undefined): unknown[] =>
+			(JSON.parse(line ?? "") as { messages: { result?: unknown }[] }).messages.map(
+				(m) => m.result,
+			);
+		const migratedLines = async () => (await readFile(dayPath(), "utf8")).split("\n").slice(0, -1);
+
+		it("0.x 后期的行:失败带原话的抄原话、没带的填固定那句,耗时不留;同一行里送达的那一格字节不变", async () => {
+			const row = {
+				...ZERO_ROW_OBJECT,
+				status: "partial",
+				messages: [
+					{
+						payload: { kind: "text", text: "卡片" },
+						role: "main",
+						result: { ok: true, latencyMs: 5 },
+					},
+					{ payload: { kind: "text", text: "词云" }, role: "extra", result: oldFailure("boom") },
+					{ payload: { kind: "text", text: "总结" }, role: "extra", result: oldFailure() },
+					{ payload: { kind: "text", text: "没发的" }, role: "extra" },
+				],
+			};
+			await writeDay(DAY, [JSON.stringify(row)]);
+			await sandbox.migrate();
+			const [line] = await migratedLines();
+			expect(resultsOf(line).map((r) => JSON.stringify(r))).toEqual([
+				'{"ok":true,"latencyMs":5}',
+				'{"ok":false,"code":"unknown","message":"boom"}',
+				'{"ok":false,"code":"unknown","message":"没有送达，对端没说原因"}',
+				undefined,
+			]);
+			// 迁完的行历史仓读得进来(老失败的形状它不认)。
+			const [entry] = await openStore().query({});
+			expect(entry?.status).toBe("partial");
+			expect(entry?.messages[1]?.result).toEqual({ ok: false, code: "unknown", message: "boom" });
+		});
+
+		it("不按原话猜码:原话里写着超时、401、限流,也都是 unknown", async () => {
+			const row = {
+				...ZERO_ROW_OBJECT,
+				status: "failed",
+				messages: [
+					"ws action 响应超时 (15000ms)",
+					"HTTP 401 Unauthorized",
+					"被限流了 rate limit",
+				].map((err) => ({
+					payload: { kind: "text", text: "x" },
+					role: "main",
+					result: oldFailure(err),
+				})),
+			};
+			await writeDay(DAY, [JSON.stringify(row)]);
+			await sandbox.migrate();
+			const [line] = await migratedLines();
+			expect(resultsOf(line)).toEqual([
+				{ ok: false, code: "unknown", message: "ws action 响应超时 (15000ms)" },
+				{ ok: false, code: "unknown", message: "HTTP 401 Unauthorized" },
+				{ ok: false, code: "unknown", message: "被限流了 rate limit" },
+			]);
+		});
+
+		it("0.x 更老的行(`result.per[0]`):失败同样落成 unknown + 原话;送达的照旧", async () => {
+			const legacy = (ok: boolean, err?: string) =>
+				JSON.stringify({
+					id: randomUUID(),
+					ts: "2026-05-10T01:00:00.000Z",
+					source: "dynamic",
+					uid: "u9",
+					subscriptionId: SUB,
+					targetIds: [T2],
+					result: { ok, per: [{ targetId: T2, ok, latencyMs: 3, ...(err ? { err } : {}) }] },
+					payload: { kind: "text", text: "老的" },
+				});
+			await writeDay(DAY, [legacy(false, "kicked"), legacy(false), legacy(true)]);
+			await sandbox.migrate();
+			const lines = await migratedLines();
+			expect(lines.map((line) => JSON.stringify(resultsOf(line)[0]))).toEqual([
+				'{"ok":false,"code":"unknown","message":"kicked"}',
+				'{"ok":false,"code":"unknown","message":"没有送达，对端没说原因"}',
+				'{"ok":true,"latencyMs":3}',
+			]);
+			expect((await openStore().query({})).map((e) => e.status).sort()).toEqual([
+				"delivered",
+				"failed",
+				"failed",
+			]);
+		});
+
+		it("🔴 已经是现在形状的行(带 identity)与补丁行(rowId 打头)里的老失败也要改:不被「现形状原样回」跳过;键的位置不动", async () => {
+			const row = JSON.stringify({
+				...JSON.parse(CURRENT_ROW),
+				status: "failed",
+				messages: [
+					{ payload: { kind: "text", text: "卡片" }, role: "main", result: oldFailure("boom") },
+				],
+			});
+			const patch = JSON.stringify({
+				rowId: ROW_ID,
+				status: "partial",
+				messages: [
+					{
+						payload: { kind: "text", text: "词云" },
+						role: "extra",
+						result: oldFailure(),
+						repushOf: 1,
+					},
+				],
+			});
+			await writeDay(DAY, [row, patch]);
+			const report = await sandbox.migrate();
+			expect(report.rewritten).toContain(`history/${DAY}.jsonl`);
+			const [migratedRow, migratedPatch] = await migratedLines();
+			expect(resultsOf(migratedRow)).toEqual([{ ok: false, code: "unknown", message: "boom" }]);
+			expect(Object.keys(JSON.parse(migratedRow ?? "") as object)).toEqual(
+				Object.keys(JSON.parse(CURRENT_ROW) as object),
+			);
+			expect(migratedPatch?.startsWith('{"rowId":')).toBe(true);
+			expect(JSON.parse(migratedPatch ?? "")).toEqual({
+				rowId: ROW_ID,
+				status: "partial",
+				messages: [
+					{
+						payload: { kind: "text", text: "词云" },
+						role: "extra",
+						result: { ok: false, code: "unknown", message: "没有送达，对端没说原因" },
+						repushOf: 1,
+					},
+				],
+			});
+		});
+
+		it("幂等:已经是结果形状的失败(带 upstreamCode 的也算)一个字节不动,这一天的文件不算改写;再迁一遍回 []", async () => {
+			const row = JSON.stringify({
+				...JSON.parse(CURRENT_ROW),
+				status: "failed",
+				messages: [
+					{
+						payload: { kind: "text", text: "卡片" },
+						role: "main",
+						result: { ok: false, code: "rate_limited", message: "慢点", upstreamCode: 22009 },
+					},
+				],
+			});
+			const patch = JSON.stringify({
+				rowId: ROW_ID,
+				status: "failed",
+				messages: [
+					{
+						payload: { kind: "text", text: "词云" },
+						role: "extra",
+						result: {
+							ok: false,
+							code: "unavailable",
+							message: "HTTP 502",
+							upstreamCode: "http:502",
+						},
+					},
+				],
+			});
+			await writeDay(DAY, [row, patch]);
+			const report = await sandbox.migrate();
+			expect(report.rewritten).not.toContain(`history/${DAY}.jsonl`);
+			expect(await migratedLines()).toEqual([row, patch]);
+			expect(await rerunMigrators()).toEqual([]);
+			expect(await migratedLines()).toEqual([row, patch]);
+		});
+
+		it("老失败迁过一遍之后再迁一遍:回 [],字节不变", async () => {
+			await writeDay(DAY, [
+				JSON.stringify({
+					...ZERO_ROW_OBJECT,
+					status: "failed",
+					messages: [
+						{ payload: { kind: "text", text: "卡片" }, role: "main", result: oldFailure("boom") },
+					],
+				}),
+				PATCH_LINE,
+			]);
+			await sandbox.migrate();
+			const once = await migratedLines();
+			expect(once.join("\n")).not.toContain('"err"');
+			expect(await rerunMigrators()).toEqual([]);
+			expect(await migratedLines()).toEqual(once);
+		});
+
+		it("坏行(推不出「替谁发的」)里的老失败不碰:整行原样", async () => {
+			await writeDay(DAY, NO_IDENTITY_LINES);
+			await sandbox.migrate();
+			expect(await migratedLines()).toEqual(NO_IDENTITY_LINES);
+		});
 	});
 
 	it("迁两遍和迁一遍一样:对新代再迁一次回 [],文件字节不变", async () => {

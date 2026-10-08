@@ -39,8 +39,6 @@ let store: HistoryStore;
 const SUB = randomUUID();
 const T1 = randomUUID();
 const FAIL = fail("unavailable", "boom");
-/** 盘上那一格的失败(手工造行用)。这一轮盘上还是老形状,第二轮改历史行 schema 时一起换。 */
-const STORED_FAIL = { ok: false, latencyMs: 7, err: "boom" };
 const OK = ok({ latencyMs: 5 });
 
 const logger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() });
@@ -115,9 +113,7 @@ describe("appendToRow — 解析成本", () => {
 		const intruder = {
 			rowId: entry.id,
 			status: "partial",
-			messages: [
-				{ payload: { kind: "text", text: "别人写的" }, role: "extra", result: STORED_FAIL },
-			],
+			messages: [{ payload: { kind: "text", text: "别人写的" }, role: "extra", result: FAIL }],
 		};
 		await writeFile(dayPath(entry.createdAt), `${JSON.stringify(intruder)}\n`, {
 			flag: "a",

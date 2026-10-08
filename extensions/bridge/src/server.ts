@@ -153,13 +153,13 @@ export type BridgeSendRequest = Omit<BridgeSendFrame, "type" | "id">;
  * (插件可能已经把消息送出去了);插件回了失败 `unknown` —— 线上的回执只带一句 `err`,
  * 说不清是哪一种(协议的回执改成结果形状在 ADR-0026 决策 7,不在这一期)。
  */
-export type BridgeSendOutcome = Result;
+export type BridgeSendResult = Result;
 
 /**
  * 一趟探活的结果。`latencyMs` 是 ping → pong 的真实往返,只在通了的那一支。**永远不抛**。
  * 探活是幂等的:没等到 pong 是 `timeout`,桥没连着 / 中途断了是 `unavailable`。
  */
-export type BridgePingOutcome = Result<{ latencyMs: number }>;
+export type BridgePingResult = Result<{ latencyMs: number }>;
 
 export interface BridgeServer extends Disposable {
 	/**
@@ -179,14 +179,14 @@ export interface BridgeServer extends Disposable {
 	 * 发一条消息,等桥的回执。请求 ↔ 回执的配对是**传输层**的事(一条 socket 上多条
 	 * 在飞),不是 adapter 的 —— adapter 只负责把 payload 译成 {@link BridgeSendRequest}。
 	 */
-	send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome>;
+	send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendResult>;
 	/**
 	 * 打一趟 ping、等它的 pong,报真实往返时长 —— 面板那颗「测试」按钮量的就是它。
 	 *
 	 * **配对只认 id**(BN 的每一发 ping 都带,心跳那些也带)。不带 id 的 pong 只算「还活着」,
 	 * 结算不了任何一趟探活 —— 1.2 的老桥因此测不出读数,那比报一个被心跳回声偷来的数好。
 	 */
-	ping(linkId: string): Promise<BridgePingOutcome>;
+	ping(linkId: string): Promise<BridgePingResult>;
 	/** 吊销 token / 删接入 / 关模块 —— 按给的 close code 把那条桥踢下线。 */
 	disconnect(linkId: string, code: BridgeCloseCode): void;
 }
@@ -208,9 +208,9 @@ interface BridgeConn {
 	hello?: { kind: BridgeKind; name?: string; version?: string };
 	bots: BridgeBot[];
 	/** 这条 socket 上还没回执的 `send`。断线时全部就地失败。 */
-	pending: PendingTable<BridgeSendOutcome>;
+	pending: PendingTable<BridgeSendResult>;
 	/** 这条 socket 上还没回 pong 的探活 ping。断线时全部就地失败。 */
-	pendingPings: PendingTable<BridgePingOutcome>;
+	pendingPings: PendingTable<BridgePingResult>;
 }
 
 /**
@@ -512,7 +512,7 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 				// 结算不了的:超时之后才回来的,或者桥自己编的 id。**忽略** —— 帧本身是好的,
 				// 断连不合适;而已经结算过的那条投递也不该被翻案。
 				// 线上的回执只带 `err`(协议帧这一期不动):失败的在这里翻成结果形状,说不清原因,记 `unknown`。
-				const outcome: BridgeSendOutcome = frame.ok
+				const outcome: BridgeSendResult = frame.ok
 					? ok()
 					: fail("unknown", frame.err || "桥回了失败,没说原因");
 				if (!conn.pending.settle(frame.id, outcome))
@@ -564,8 +564,8 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 			connectedAt: now,
 			lastSeenAt: now,
 			bots: [],
-			pending: pendingTable<BridgeSendOutcome>(opts.ctx),
-			pendingPings: pendingTable<BridgePingOutcome>(opts.ctx),
+			pending: pendingTable<BridgeSendResult>(opts.ctx),
+			pendingPings: pendingTable<BridgePingResult>(opts.ctx),
 		};
 		conns.add(conn);
 		if (handshakeTimeoutMs > 0) {
@@ -654,11 +654,11 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		}
 	};
 
-	function send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendOutcome> {
+	function send(linkId: string, request: BridgeSendRequest): Promise<BridgeSendResult> {
 		const conn = sessions.get(linkId);
 		if (!conn) return Promise.resolve(fail("unavailable", "桥没连着"));
 		const id = randomUUID();
-		return new Promise<BridgeSendOutcome>((resolve) => {
+		return new Promise<BridgeSendResult>((resolve) => {
 			const settle = conn.pending.start(
 				id,
 				sendTimeoutMs,
@@ -672,12 +672,12 @@ export function createBridgeServer(opts: BridgeServerOptions): BridgeServer {
 		});
 	}
 
-	function ping(linkId: string): Promise<BridgePingOutcome> {
+	function ping(linkId: string): Promise<BridgePingResult> {
 		const conn = sessions.get(linkId);
 		if (!conn) return Promise.resolve(fail("unavailable", "桥没连着"));
 		const id = randomUUID();
 		const t0 = Date.now();
-		return new Promise<BridgePingOutcome>((resolve) => {
+		return new Promise<BridgePingResult>((resolve) => {
 			// 往返时长在**结算那一刻**才算得出来,所以套在 resolve 外面;不通的那几路
 			// 把自己的失败原样带出去(失败不带耗时)。
 			const settle = conn.pendingPings.start(

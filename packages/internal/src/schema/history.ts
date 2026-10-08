@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IMAGE_REF_PATTERN, PUSH_STATUSES } from "../constants";
+import { FAILURE_CODES, type FailureCode, IMAGE_REF_PATTERN, PUSH_STATUSES } from "../constants";
 import { FeatureKeySchema } from "./common";
 import { IdentitySchema } from "./subscriptions";
 
@@ -36,12 +36,22 @@ export type HistoryPayload = z.infer<typeof HistoryPayloadSchema>;
 export const PushMessageRoleSchema = z.enum(["main", "extra"]);
 export type PushMessageRole = z.infer<typeof PushMessageRoleSchema>;
 
-/** 一条消息对这个目标的投递结果。无目标行没有它。 */
-export const HistoryMessageResultSchema = z.object({
-	ok: z.boolean(),
-	err: z.string().optional(),
-	latencyMs: z.number().nonnegative(),
-});
+/**
+ * 一条消息对这个目标的投递结果,落盘就是结果形状(ADR-0026 决策 5):送达带耗时,没送达带标准码、原话与
+ * 平台自己的码(`upstreamCode`),不带耗时。无目标行、被前一条失败中止而从没发出去的消息没有它。
+ *
+ * 0.x 与开发期的老失败(`{ ok: false, latencyMs, err? }`)由迁移器改写成 `unknown` + 原话
+ * (`apps/server/src/migration/history.ts`),这里只认现在的形状。
+ */
+export const HistoryMessageResultSchema = z.discriminatedUnion("ok", [
+	z.object({ ok: z.literal(true), latencyMs: z.number().nonnegative() }),
+	z.object({
+		ok: z.literal(false),
+		code: z.enum(Object.keys(FAILURE_CODES) as [FailureCode, ...FailureCode[]]),
+		message: z.string(),
+		upstreamCode: z.union([z.number(), z.string()]).optional(),
+	}),
+]);
 export type HistoryMessageResult = z.infer<typeof HistoryMessageResultSchema>;
 
 export const HistoryMessageSchema = z.object({

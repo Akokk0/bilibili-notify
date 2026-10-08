@@ -47,7 +47,7 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		targetId: T1,
 		messages: [
 			{ text: "下播了", kind: "text", role: "main", ok: true },
-			{ text: "词云", kind: "text", role: "extra", ok: false, err: "boom" },
+			{ text: "词云", kind: "text", role: "extra", ok: false, code: "unknown", message: "boom" },
 			{ text: "总结", kind: "text", role: "extra" },
 		],
 		nameSnapshot: "某UP",
@@ -268,8 +268,15 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 		repush: undefined,
 		messages: [
 			{ text: "下播啦", kind: "text", role: "main", ok: true },
-			{ text: "词云图", kind: "text", role: "extra", ok: false, err: "boom" },
-			{ text: "直播总结", kind: "text", role: "extra", ok: false, err: "boom" },
+			{ text: "词云图", kind: "text", role: "extra", ok: false, code: "unknown", message: "boom" },
+			{
+				text: "直播总结",
+				kind: "text",
+				role: "extra",
+				ok: false,
+				code: "unknown",
+				message: "boom",
+			},
 			{ text: "词云图", kind: "text", role: "extra", ok: true, repushOf: 1 },
 			{ text: "直播总结", kind: "text", role: "extra", ok: true, repushOf: 2 },
 		],

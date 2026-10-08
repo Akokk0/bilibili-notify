@@ -24,8 +24,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { computeStatus } from "../store.js";
 
 const T1 = randomUUID();
-const OK = { ok: true, latencyMs: 5 };
-const FAIL = { ok: false, latencyMs: 7, err: "boom" };
+const OK = { ok: true, latencyMs: 5 } as const;
+const FAIL = { ok: false, code: "unknown", message: "boom" } as const;
 
 /** 一条消息。`repushOf` 给了就是某一号的重投。 */
 function msg(

@@ -568,8 +568,21 @@ interface SubscriptionRuntimeDTO {
 
 // ---- /api/history ----------------------------------------------------------
 
-/** 一行历史里的一条消息:文案 / 图 / 这条对这个目标的结果。无目标行没有 `ok`。 */
-export interface HistoryMessageView {
+/**
+ * 一行历史里的一条消息:文案 / 图 / 这条对这个目标的结果。
+ *
+ * 结果那几格铺平在消息上,和核心的投递结果同名同义(ADR-0026):送达是 `ok: true`,没送达是
+ * `ok: false` + `code` + `message`(+ 平台自己的码 `upstreamCode`)。耗时是内部字段,不过线。没有 `ok` = 这条没有结果:
+ * 无目标行的每一条,或者被前一条失败中止、从没发出去的。
+ */
+export type HistoryMessageView = HistoryMessageBase &
+	(
+		| { ok?: undefined }
+		| { ok: true }
+		| { ok: false; code: FailureCode; message: string; upstreamCode?: number | string }
+	);
+
+interface HistoryMessageBase {
 	text?: string;
 	/**
 	 * 这条消息本来是哪一类(纯文字 / 一张图 / 图文混合)。过了保留期的老行,迁移时图格被拿掉了(`image` 缺着),
@@ -579,8 +592,6 @@ export interface HistoryMessageView {
 	/** 这条消息的配图(图库引用),面板从 `/api/images/<ref>` 取。composite 只有第一张。缺着 = 没有、或图库没收下、或迁移时已拿掉。 */
 	image?: ImageRef;
 	role: PushMessageRole;
-	ok?: boolean;
-	err?: string;
 	/**
 	 * 这条是**哪一条的重投**(人工重推补的):值是被补的那条在本行 `messages` 里的下标。
 	 * 缺省 = 这条不是重投。面板拿它标「第 N 次尝试」。

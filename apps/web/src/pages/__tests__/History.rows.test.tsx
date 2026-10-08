@@ -39,8 +39,21 @@ function row(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
 		targetId: T1,
 		messages: [
 			{ text: "下播了", kind: "text", role: "main", ok: true },
-			{ text: "[弹幕词云]", kind: "image", image: WORDCLOUD, role: "extra", ok: true },
-			{ text: "总结正文", kind: "text", role: "extra", ok: false, err: "boom" },
+			{
+				text: "[弹幕词云]",
+				kind: "image",
+				image: WORDCLOUD,
+				role: "extra",
+				ok: true,
+			},
+			{
+				text: "总结正文",
+				kind: "text",
+				role: "extra",
+				ok: false,
+				code: "unknown",
+				message: "boom",
+			},
 		],
 		nameSnapshot: "某UP",
 		...over,
@@ -164,7 +177,9 @@ describe("推送历史 · 行", () => {
 			row({
 				id: "a",
 				status: "failed",
-				messages: [{ text: "卡", kind: "text", role: "main", ok: false }],
+				messages: [
+					{ text: "卡", kind: "text", role: "main", ok: false, code: "unknown", message: "boom" },
+				],
 			}),
 			row({
 				id: "b",

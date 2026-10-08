@@ -441,9 +441,10 @@ export function createStatsRoute(deps: RouteDeps, options: StatsRouteOptions = {
 			return respondFailure(c, fail("not_configured", "推送目标已停用"));
 		}
 		if (out.sent.length === 0) {
-			// 锐评投递的结果(`DeliverOutcome.failed`)只留了失败的原话、没带码,所以这里一律按 `unavailable` 回。
+			// 投递那头的失败原样回(码、原话、平台自己的码);原话是空的补一句能读的。
+			const failure = out.failed[0]?.failure ?? fail("unavailable", "");
 			return c.json<StatsRoastPushResponse>(
-				fail("unavailable", out.failed[0]?.err || "没有送达，对端没说原因"),
+				failure.message ? failure : { ...failure, message: "没有送达，对端没说原因" },
 			);
 		}
 		return c.json<StatsRoastPushResponse>(ok({ mode: out.mode }));

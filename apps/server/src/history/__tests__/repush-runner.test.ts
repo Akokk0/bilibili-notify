@@ -235,7 +235,7 @@ describe("结果写回历史", () => {
 		expect(sent.map((s) => s.text)).toEqual(["词云"]);
 	});
 
-	// 发送口不许抛;真抛了算 bug(ADR-0026 决策 1):按一次失败记进行里(盘上留原话),并留 error 日志,
+	// 发送口不许抛;真抛了算 bug(ADR-0026 决策 1):按一次失败记进行里(`unavailable` + 原话),并留 error 日志,
 	// 这一趟到此为止 —— 不能静默停住、行上什么都不留。
 	it("发送口抛错 → 记成一次失败(行里留原话)+ error 日志,后面那条不再发", async () => {
 		const entry = await seedPartial();
@@ -246,7 +246,7 @@ describe("结果写回历史", () => {
 		expect(row.messages).toHaveLength(4);
 		expect(row.messages[3]).toMatchObject({
 			repushOf: 1,
-			result: { ok: false, err: "sender exploded" },
+			result: { ok: false, code: "unavailable", message: "sender exploded" },
 		});
 		expect(log.error).toHaveBeenCalledWith(expect.stringContaining("sender exploded"));
 	});

@@ -29,12 +29,14 @@ function entry(messages: HistoryEntryView["messages"]): HistoryEntryView {
 	};
 }
 
-const main = { text: "下播了", kind: "text" as const, role: "main" as const, ok: true };
+const SENT = { ok: true } as const;
+const FAILED = { ok: false, code: "unknown", message: "boom" } as const;
+const main = { text: "下播了", kind: "text" as const, role: "main" as const, ...SENT };
 const extra = (ok: boolean) => ({
 	text: "词云",
 	kind: "text" as const,
 	role: "extra" as const,
-	ok,
+	...(ok ? SENT : FAILED),
 });
 
 describe("messageCountOf — 数的是「本来要发几条」", () => {
@@ -58,11 +60,20 @@ describe("messageCountOf — 数的是「本来要发几条」", () => {
 	});
 });
 
+describe("hasDetails — 只有一条时看有没有失败的原话", () => {
+	it("一条没送达的(带原话)→ 有的可看;一条送达的 → 没有", () => {
+		expect(hasDetails(entry([{ text: "下播了", kind: "text", role: "main", ...FAILED }]))).toBe(
+			true,
+		);
+		expect(hasDetails(entry([main]))).toBe(false);
+	});
+});
+
 describe("hasDetails — 补过的行照旧点得开", () => {
 	// 一条本体补过一次 = 行里两条,但「本来」只有一条。点开要能看见那两次尝试。
 	it("🔴 本来只有一条、但补过 → 仍然有的可看", () => {
 		const row = entry([
-			{ ...main, ok: false },
+			{ text: "下播了", kind: "text", role: "main", ...FAILED },
 			{ ...main, repushOf: 0 },
 		]);
 		expect(hasDetails(row)).toBe(true);

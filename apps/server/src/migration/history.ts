@@ -7,6 +7,8 @@
  * 再把推送种类那一格 `kind`(0.x 的八种名字)换成 `feature`(特性键,⑬f),最后把格改成现在的名字(⑱b:`ts` →
  * `createdAt`、`uid` / `extensionId` + `externalId` → `identity`、`unameSnapshot` → `nameSnapshot`、消息的 `retryOf` →
  * `repushOf`),键都留在原来的位置。补丁行也在这一趟里改写(`patch` → `rowId`、消息的 `retryOf` → `repushOf`)。
+ * 形状改完以后还有一步(3a-15):消息里老形状的失败结果 `{ ok: false, latencyMs, err? }` 改成结果形状
+ * `{ ok: false, code: "unknown", message }`(ADR-0026 决策 5)。它对行与补丁行、老行与已经是现在形状的行都做。
  *
  * 跟图有关的格(消息的 `imageRef` → `image`、行的 `uavatarSnapshot`、重推原件里的 `{ ref, mime, own? }`,⑳d)要读盘、
  * 复制进图库,不是纯函数,住在 `history-images.ts`;日文件与原件的逐文件改写在这里,和行级的形状改写**同一趟读写**
@@ -18,6 +20,7 @@ import { join } from "node:path";
 import {
 	BILIBILI_SOURCE_KEY,
 	type FeatureKey,
+	fail,
 	type Identity,
 	type Logger,
 } from "@bilibili-notify/internal";
@@ -193,12 +196,70 @@ function migrateLegacyPatchLine(line: string): string {
 	);
 }
 
+/** 老失败没留原话时填的那一句。 */
+const NO_REASON_MESSAGE = "没有送达，对端没说原因";
+
 /**
- * 一行历史(jsonl 的一行原文)迁成最新形状:老 `source` → 0.x 的推送种类 → `feature`,再把格改成现在的名字;老补丁行
- * 的 `patch` → `rowId`。已经是现在形状的行(带 `identity`、`rowId` 打头的补丁行)、推不出「替谁发的」的坏行
- * (既没有 `uid`、也没有 `extensionId` + `externalId` 一对)、推送种类认不得的坏行、读不懂的行回原文(一个字节不动)。
+ * 一条投递结果:老形状的失败(`ok: false`、没有 `code`)→ `{ ok: false, code: "unknown", message }`。原话抄 `err`,
+ * 没有就填固定那句;耗时不留(失败那一支没有耗时)。**不按原话猜标准码** —— 猜错比「原因不明」更坏(ADR-0026)。
+ * 送达的、已经是结果形状的、读不懂的原样回(同一个对象)。
+ */
+function migrateFailureResult(result: unknown): unknown {
+	if (!isPlainObject(result) || result.ok !== false || "code" in result) return result;
+	const message = isFilled(result.err) ? result.err : NO_REASON_MESSAGE;
+	return fail("unknown", message);
+}
+
+/** 一行文字里有没有可能装着失败的结果。只拿来免掉送达行的那一趟解析,判定在 {@link migrateFailureResult}。 */
+const FAILURE_HINT = /"ok"\s*:\s*false/;
+
+/**
+ * 3a-15:一行(或一条补丁行)里每条消息的老失败结果改成结果形状,`result` 留在消息里原来的位置、别的格不动。
+ * 只对现在形状的行做(带 `identity` 的行、`rowId` 打头的补丁行 —— 老行先由前面几步改成这个形状);坏行、
+ * 没有要改的失败的行回原文(一个字节不动)。
+ */
+function migrateFailureResults(line: string): string {
+	if (!FAILURE_HINT.test(line)) return line;
+	const row = parseJsonLine(line);
+	if (!isPlainObject(row) || !Array.isArray(row.messages)) return line;
+	if (!isPatchLine(line) && !("identity" in row)) return line;
+	let changed = false;
+	const messages = row.messages.map((message: unknown) => {
+		if (!isPlainObject(message)) return message;
+		const result = migrateFailureResult(message.result);
+		if (result === message.result) return message;
+		changed = true;
+		return Object.fromEntries(
+			Object.entries(message).map(([key, value]) =>
+				key === "result" ? [key, result] : [key, value],
+			),
+		);
+	});
+	if (!changed) return line;
+	return JSON.stringify(
+		Object.fromEntries(
+			Object.entries(row).map(([key, value]) =>
+				key === "messages" ? [key, messages] : [key, value],
+			),
+		),
+	);
+}
+
+/**
+ * 一行历史(jsonl 的一行原文)迁成最新形状:先改行的形状({@link migrateLineShape}),再把消息里老形状的失败结果
+ * 改成结果形状({@link migrateFailureResults})。后一步不看这一行是不是老行:开发期写下的、已经带 `identity` 的行
+ * 与 `rowId` 打头的补丁行里也有老失败。什么都不用改的行回原文(一个字节不动),所以迁两遍和迁一遍一样。
  */
 export function migrateHistoryLine(line: string): string {
+	return migrateFailureResults(migrateLineShape(line));
+}
+
+/**
+ * 行的形状:老 `source` → 0.x 的推送种类 → `feature`,再把格改成现在的名字;老补丁行的 `patch` → `rowId`。
+ * 已经是现在形状的行(带 `identity`、`rowId` 打头的补丁行)、推不出「替谁发的」的坏行
+ * (既没有 `uid`、也没有 `extensionId` + `externalId` 一对)、推送种类认不得的坏行、读不懂的行回原文(一个字节不动)。
+ */
+function migrateLineShape(line: string): string {
 	if (isPatchLine(line)) return line;
 	if (line.startsWith(LEGACY_PATCH_LINE_PREFIX)) return migrateLegacyPatchLine(line);
 	const row = parseJsonLine(line);

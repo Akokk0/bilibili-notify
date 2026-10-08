@@ -444,7 +444,7 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
 /**
  * 「这条连接不存在」在投递结果里的那一句。
  *
- * 🔴 **它落盘**:`push/target-dispatcher.ts` 拿它当投递失败的 `message`,历史每条消息的 `err` 里存的就是它
+ * 🔴 **它落盘**:`push/target-dispatcher.ts` 拿它当投递失败的 `message`,历史每条失败消息的 `message` 里存的就是它
  * (盘上存的失败字段随改盘上形状的那一期带迁移条目改,不在这里动)。配置写入这边不用它 ——
  * 找不到连接是 `ConfigValidationError` 的 `not_found` 码,路由按码回,不嗅文案。
  */

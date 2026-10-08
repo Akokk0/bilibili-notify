@@ -53,7 +53,9 @@ const ADAPTER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function makeDeps(opts: StubOpts = {}) {
 	const sendToTarget = vi.fn(async () =>
-		opts.sendFails ? fail("unavailable", "目标不可达") : ok({ latencyMs: 1 }),
+		opts.sendFails
+			? fail("rate_limited", "目标不可达", { upstreamCode: 22009 })
+			: ok({ latencyMs: 1 }),
 	);
 	// 变参签名照抄真身:写成零参的话 `mock.calls[0][1]` 在类型上是「长度 0 的元组」,
 	// 断言第二个参数(皮肤 id)根本编译不过。
@@ -328,7 +330,13 @@ describe("POST /roast/push — 诚实失败", () => {
 		const res = await push(createStatsRoute(deps), boardBody());
 		// 「试一次、回报结果」:请求没问题,是投递没成 —— 不是 HTTP 失败。
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ ok: false, code: "unavailable", message: "目标不可达" });
+		// 投递那头给的码与平台自己的码原样到面板,不再一律压成 unavailable。
+		expect(await res.json()).toEqual({
+			ok: false,
+			code: "rate_limited",
+			message: "目标不可达",
+			upstreamCode: 22009,
+		});
 	});
 });
 

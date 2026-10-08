@@ -496,7 +496,9 @@ function MessageItem({
 			) : null}
 			<span className="min-w-0 flex-1 break-words text-bn-text-secondary">
 				{message.text ?? <span className="text-bn-text-tertiary">（无内容）</span>}
-				{message.err ? <span className="ml-1.5 text-bn-danger">{message.err}</span> : null}
+				{message.ok === false && message.message ? (
+					<span className="ml-1.5 text-bn-danger">{message.message}</span>
+				) : null}
 				{superseded ? (
 					<span className="ml-1.5 text-bn-text-tertiary">女仆后来又补了一次～</span>
 				) : null}

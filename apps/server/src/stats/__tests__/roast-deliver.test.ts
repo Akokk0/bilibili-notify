@@ -9,8 +9,8 @@
  * 一次停用换来一条失败通知,而且要等好几分钟。
  */
 
-import type { Connection, PushTarget } from "@bilibili-notify/internal";
-import { makeDefaultGlobalConfig, upColor } from "@bilibili-notify/internal";
+import type { Connection, DeliveryResult, PushTarget } from "@bilibili-notify/internal";
+import { fail, makeDefaultGlobalConfig, ok, upColor } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	type BoardLike,
@@ -52,7 +52,7 @@ function connection(id: string, enabled: boolean): Connection {
 }
 
 function makeDeps() {
-	const sendToTarget = vi.fn(async (_id: string) => ({ ok: true, latencyMs: 1 }));
+	const sendToTarget = vi.fn(async (_id: string): Promise<DeliveryResult> => ok({ latencyMs: 1 }));
 	const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 	const deps = {
 		runtime: {
@@ -73,6 +73,37 @@ function makeDeps() {
 	} as unknown as RoastDeliverDeps;
 	return { deps, sendToTarget };
 }
+
+describe("deliverRoast — 没送到的带着投递那头的失败", () => {
+	const opts = { kind: "board" as const, result: BOARD, days: 7, targetIds: [T_ON] };
+
+	it("投递回了失败 → failed 里是那条失败原样(码、原话、upstreamCode)", async () => {
+		const { deps, sendToTarget } = makeDeps();
+		const failure = fail("rate_limited", "慢点", { upstreamCode: 22009 });
+		sendToTarget.mockResolvedValueOnce(failure);
+		const out = await deliverRoast(deps, opts);
+		expect(out.sent).toEqual([]);
+		expect(out.failed).toEqual([{ targetId: T_ON, failure }]);
+	});
+
+	it("发送口抛错 → unavailable + 原话", async () => {
+		const { deps, sendToTarget } = makeDeps();
+		sendToTarget.mockRejectedValueOnce(new Error("sender exploded"));
+		const out = await deliverRoast(deps, opts);
+		expect(out.failed).toEqual([
+			{ targetId: T_ON, failure: { ok: false, code: "unavailable", message: "sender exploded" } },
+		]);
+	});
+
+	it("推送引擎还没起 → unavailable", async () => {
+		const { deps } = makeDeps();
+		(deps.runtime as { engines: unknown }).engines = null;
+		const out = await deliverRoast(deps, opts);
+		expect(out.failed).toEqual([
+			{ targetId: T_ON, failure: { ok: false, code: "unavailable", message: "服务尚未就绪" } },
+		]);
+	});
+});
 
 describe("deliverRoast — 停用的目标", () => {
 	it("都启用 → 每个目标发一次,skipped 为空", async () => {

@@ -8,6 +8,8 @@
 
 import type { RoastCardCreator } from "@bilibili-notify/image";
 import {
+	type Failure,
+	fail,
 	identityColor,
 	isTargetPaused,
 	type NotificationPayload,
@@ -50,8 +52,11 @@ export interface DeliverOutcome {
 	 * 不可达」。判定与链接解析同一份(internal 的 `isTargetPaused`)。
 	 */
 	skipped: string[];
-	/** 没送出去的,带原因。管线自己已经退避重试过了,到这里就是彻底失败。 */
-	failed: Array<{ targetId: string; err: string }>;
+	/**
+	 * 没送出去的,带着投递那头的失败(标准码、原话、平台自己的码,ADR-0026)。管线自己已经退避重试过了,
+	 * 到这里就是彻底失败。
+	 */
+	failed: Array<{ targetId: string; failure: Failure }>;
 	/** 发出去的正文 —— 抄送主人时复用同一份,不另拼一遍。 */
 	text: string;
 }
@@ -228,15 +233,19 @@ export async function deliverRoast(
 			continue;
 		}
 		if (!engines) {
-			failed.push({ targetId, err: "服务尚未就绪" });
+			failed.push({ targetId, failure: fail("unavailable", "服务尚未就绪") });
 			continue;
 		}
 		try {
 			const delivery = await engines.push.sendToTarget(targetId, payload);
 			if (delivery.ok) sent.push(targetId);
-			else failed.push({ targetId, err: delivery.message || "推送失败" });
+			else failed.push({ targetId, failure: delivery });
 		} catch (err) {
-			failed.push({ targetId, err: err instanceof Error ? err.message : String(err) });
+			// 发送层自己不抛;真抛了算 bug(ADR-0026 决策 1),按「暂时不可用」记。
+			failed.push({
+				targetId,
+				failure: fail("unavailable", err instanceof Error ? err.message : String(err)),
+			});
 		}
 	}
 	return { mode, sent, skipped, failed, text };

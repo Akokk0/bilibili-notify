@@ -91,10 +91,10 @@ describe("历史落盘的字节", () => {
 	});
 
 	/**
-	 * ⚠️ 3a-15 第一轮的中间态:投递结果在内存里已经是结果形状(`code` + `message`),盘上那一格还是
-	 * 老的 `{ ok, err?, latencyMs }`。第二轮改历史行 schema 时这条跟着改。
+	 * 🔴 历史行的 schema 不是 strict,写盘前 `safeParse`:schema 漏了哪一格,zod 静默剥掉、行照写。
+	 * 所以这一条读的是**盘上的原始字节**,不是 store 返回的对象。
 	 */
-	it("投递结果落盘还是老形状:失败只留原话(进 err)、耗时写 0,码不落盘;截流标记不落盘", async () => {
+	it("投递结果落盘就是结果形状:失败带 code / message / upstreamCode,不带 err 与 latencyMs;送达只有耗时;截流标记不落盘", async () => {
 		const entry = await store.record(
 			input({
 				messages: [
@@ -108,18 +108,77 @@ describe("历史落盘的字节", () => {
 						role: "extra",
 						result: fail("unknown", "bot 说不行", { upstreamCode: 1200 }),
 					},
-					{ payload: text("总结"), role: "extra" },
+					{
+						payload: text("图集"),
+						role: "extra",
+						result: fail("unavailable", "HTTP 502 Bad Gateway", { upstreamCode: "http:502" }),
+					},
+					{ payload: text("总结"), role: "extra", result: fail("indeterminate", "超时") },
+					{ payload: text("没发的"), role: "extra" },
 				],
 			}),
 		);
 		const raw = await readFile(dayPath(entry.createdAt), "utf8");
 		const row = JSON.parse(raw.slice(0, -1)) as { messages: Array<{ result?: unknown }> };
-		expect(JSON.stringify(row.messages.map((m) => m.result))).toBe(
-			'[{"ok":true,"latencyMs":5},{"ok":false,"err":"bot 说不行","latencyMs":0},null]',
-		);
-		expect(raw).not.toContain("upstreamCode");
-		expect(raw).not.toContain('"code"');
+		expect(row.messages.map((m) => JSON.stringify(m.result))).toEqual([
+			'{"ok":true,"latencyMs":5}',
+			'{"ok":false,"code":"unknown","message":"bot 说不行","upstreamCode":1200}',
+			'{"ok":false,"code":"unavailable","message":"HTTP 502 Bad Gateway","upstreamCode":"http:502"}',
+			'{"ok":false,"code":"indeterminate","message":"超时"}',
+			undefined,
+		]);
+		expect(raw).not.toContain('"err"');
+		expect(raw).not.toContain("isSynthetic");
 		expect(entry.status).toBe("partial");
+	});
+
+	it("补丁行里的失败同样是结果形状(盘上原始字节)", async () => {
+		const pushId = randomUUID();
+		const entry = await store.record(input({ pushId }));
+		await store.record(
+			input({
+				pushId,
+				messages: [
+					{
+						payload: text("@全体"),
+						role: "extra",
+						result: fail("rate_limited", "慢点", { upstreamCode: 22009 }),
+					},
+					{
+						payload: text("图集"),
+						role: "extra",
+						result: ok({ latencyMs: 2, isSynthetic: true as const }),
+					},
+				],
+			}),
+		);
+		const lines = (await readFile(dayPath(entry.createdAt), "utf8")).slice(0, -1).split("\n");
+		expect(lines[1]).toContain(
+			'"result":{"ok":false,"code":"rate_limited","message":"慢点","upstreamCode":22009}',
+		);
+		// 补丁行也过 schema 再落盘:截流标记这类 schema 不认的格不留(和本体行同一条规矩)。
+		expect(lines[1]).toContain('"result":{"ok":true,"latencyMs":2}');
+		expect(lines[1]).not.toContain("isSynthetic");
+	});
+
+	it("补丁行整行的字节:键序 payload(kind → text → image)→ role → result → repushOf,和调用方交来的顺序一样", async () => {
+		const entry = await store.record(input());
+		await store.appendToRow(entry.id, entry.createdAt, [
+			{
+				payload: { kind: "image", image: { buffer: PNG_BYTES, mime: "image/png" } },
+				role: "main",
+				result: OK,
+				repushOf: 0,
+			},
+			{ payload: text("没发的"), role: "extra", repushOf: 0 },
+		]);
+		const lines = (await readFile(dayPath(entry.createdAt), "utf8")).slice(0, -1).split("\n");
+		const ref = `${createHash("sha256").update(PNG_BYTES).digest("hex")}.png`;
+		expect(lines[1]).toBe(
+			`{"rowId":"${entry.id}","status":"failed","messages":[` +
+				`{"payload":{"kind":"image","text":"[卡片图]","image":"${ref}"},"role":"main","result":{"ok":true,"latencyMs":5},"repushOf":0},` +
+				`{"payload":{"kind":"text","text":"没发的"},"role":"extra","repushOf":0}]}`,
+		);
 	});
 
 	it("图片按原字节存进图库(含非 UTF-8 字节),文件名 = 摘要 + 扩展名,images/ 里只有它自己、history/ 里没有 img", async () => {

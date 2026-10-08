@@ -202,7 +202,14 @@ describe("推送 toast —— 一次推送多条消息", () => {
 					status: "partial",
 					messages: [
 						{ text: "下播了", kind: "text", role: "main", ok: true },
-						{ text: "总结", kind: "text", role: "extra", ok: false },
+						{
+							text: "总结",
+							kind: "text",
+							role: "extra",
+							ok: false,
+							code: "unknown",
+							message: "boom",
+						},
 					],
 				}),
 			),

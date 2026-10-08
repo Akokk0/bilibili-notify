@@ -360,7 +360,14 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 				status: "partial",
 				messages: [
 					{ text: "x", kind: "text", role: "main", ok: true },
-					{ text: "词云", kind: "text", role: "extra", ok: false },
+					{
+						text: "词云",
+						kind: "text",
+						role: "extra",
+						ok: false,
+						code: "unknown",
+						message: "boom",
+					},
 				],
 			});
 			handlePushEnvelope(

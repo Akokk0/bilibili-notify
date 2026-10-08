@@ -233,7 +233,7 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 		// 跳过的(停用)只进日志,不进通知:停用是主人自己按的,不是「没发出去」。
 		const skippedNote = out.skipped.length > 0 ? `,跳过 ${out.skipped.length} 个已停用` : "";
 		if (out.failed.length > 0) {
-			const detail = out.failed.map((f) => `${f.targetId}：${f.err}`).join("\n");
+			const detail = out.failed.map((f) => `${f.targetId}：${f.failure.message}`).join("\n");
 			logger.warn(`[roast-sched] ${label} 部分目标推送失败${skippedNote}:\n${detail}`);
 			// 管线自己已经退避重试过了,到这儿就是终局 —— 说清哪些没成即可。
 			if (cfg.notifyOnError) {
@@ -252,9 +252,8 @@ export function createRoastScheduler(opts: CreateRoastSchedulerOptions): RoastSc
 			mode: out.mode,
 			sent: out.sent.length,
 			skipped: out.skipped,
-			// 投递那层的失败原因还叫 `err`(和盘上的投递结果同形,ADR-0026 决策 5 随改盘那一期改);
-			// 回给面板与指令的结局按失败规矩叫 `message`。
-			failed: out.failed.map((f) => ({ targetId: f.targetId, message: f.err })),
+			// 这一轮的结局里每个没成的目标只带原话(contract 的 `RoastRunOutcome`);码留在投递那层。
+			failed: out.failed.map((f) => ({ targetId: f.targetId, message: f.failure.message })),
 		};
 	}
 

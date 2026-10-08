@@ -9,7 +9,6 @@ import type {
 	FeatureKey,
 	HistoryEntry,
 	HistoryMessage,
-	HistoryMessageResult,
 	HistoryPayload,
 	Identity,
 	ImageRef,
@@ -53,20 +52,6 @@ export interface HistoryRecordMessage {
 	role: PushMessageRole;
 	/** 无目标行没有它;被前一条失败中止、从没出过网的那几条也没有。 */
 	result?: DeliveryResult;
-}
-
-/**
- * 投递结果 → 盘上那一格。
- *
- * ⚠️ 中间态(3a-15 第一轮):盘上还是老形状 `{ ok, latencyMs, err? }`,失败只留原话(进 `err`)、
- * 码与 `upstreamCode` 不落盘,失败没有耗时所以写 0。第二轮改历史行 schema 时换掉这个函数。
- */
-function storedResult(result: DeliveryResult): HistoryMessageResult {
-	return {
-		ok: result.ok,
-		latencyMs: result.ok ? result.latencyMs : 0,
-		...(result.ok ? {} : { err: result.message }),
-	};
 }
 
 export interface NewHistoryEntry {
@@ -369,11 +354,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		const out: HistoryMessage[] = [];
 		for (const [i, msg] of messages.entries()) {
 			const payload = await reduce(msg, `${rowId}-${offset + i}`, feature);
-			out.push({
-				payload,
-				role: msg.role,
-				...(msg.result ? { result: storedResult(msg.result) } : {}),
-			});
+			// 投递结果原样交下去:盘上那一格就是结果形状,截流标记这类 schema 不认的格在写盘前的校验里剥掉。
+			out.push({ payload, role: msg.role, ...(msg.result ? { result: msg.result } : {}) });
 		}
 		return out;
 	}
@@ -448,7 +430,13 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 			status: computeStatus(base.targetId, messages),
 			messages,
 		});
-		const patch = { rowId: merged.id, status: merged.status, messages: added };
+		// 落盘的是**过了 schema 的那几条**(`merged` 的尾巴),不是调用方交来的原样:schema 不认的格
+		// (截流标记之类)本体行不留,补丁行也不留。
+		const patch = {
+			rowId: merged.id,
+			status: merged.status,
+			messages: merged.messages.slice(base.messages.length),
+		};
 		await appendJsonl(path, [patch]);
 		// 这一行要是还在内存表里(刚推完就点了重推),把它也更新掉 —— 否则同一次推送
 		// 后面那几段(词云 / 总结)落地时会拿旧的算 offset 与状态。

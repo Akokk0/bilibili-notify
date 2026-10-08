@@ -25,9 +25,9 @@ import { createBridgeAdapter } from "../adapter.js";
 import type { BridgeConnectionConfig } from "../config.js";
 import type { BridgeCapabilityReport } from "../contract.js";
 import type {
-	BridgePingOutcome,
-	BridgeSendOutcome,
+	BridgePingResult,
 	BridgeSendRequest,
+	BridgeSendResult,
 	BridgeServer,
 	BridgeSession,
 } from "../server.js";
@@ -133,10 +133,10 @@ interface Harness {
 function harness(live: BridgeSession | null = session()): Harness {
 	// 形参要写出来:mock 的 `calls` 元组是按形参推的,零形参的话 `calls[0][1]` 取不到。
 	const send = vi.fn(
-		async (_id: string, _request: BridgeSendRequest): Promise<BridgeSendOutcome> => ok(),
+		async (_id: string, _request: BridgeSendRequest): Promise<BridgeSendResult> => ok(),
 	);
 	const disconnect = vi.fn();
-	const ping = vi.fn(async (_id: string): Promise<BridgePingOutcome> => ok({ latencyMs: 42 }));
+	const ping = vi.fn(async (_id: string): Promise<BridgePingResult> => ok({ latencyMs: 42 }));
 	const published: { mime: string; bytes: number }[] = [];
 	const server = {
 		getSession: (id: string) => (id === LINK_ID ? (live ?? undefined) : undefined),

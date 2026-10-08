@@ -316,7 +316,7 @@ describe("调度器 — 到点之后", () => {
 			mode: "image",
 			sent: ["t1"],
 			skipped: [],
-			failed: [{ targetId: "t2", err: "机器人不在群里" }],
+			failed: [{ targetId: "t2", failure: fail("unavailable", "机器人不在群里") }],
 			text: "x",
 		});
 		const { sched } = armed({ notifyOnError: true });
@@ -478,7 +478,7 @@ describe("调度器 — 一轮的结论", () => {
 			mode: "text",
 			sent: ["t1"],
 			skipped: [],
-			failed: [{ targetId: "t2", err: "机器人不在群里" }],
+			failed: [{ targetId: "t2", failure: fail("unavailable", "机器人不在群里") }],
 			text: "x",
 		});
 		const { sched } = armed();
@@ -586,7 +586,7 @@ describe("调度器 — 拓展订阅的单人锐评", () => {
 			mode: "text",
 			sent: [],
 			skipped: [],
-			failed: [{ targetId: "t1", err: "机器人不在群里" }],
+			failed: [{ targetId: "t1", failure: fail("unavailable", "机器人不在群里") }],
 			text: "x",
 		});
 		await sched.deliverApproved(draft);

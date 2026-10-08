@@ -156,7 +156,7 @@ const ROW = {
 		{
 			payload: { kind: "text", text: "总结" },
 			role: "extra",
-			result: { ok: false, latencyMs: 9, err: "boom" },
+			result: { ok: false, code: "unknown", message: "boom", upstreamCode: 1200 },
 		},
 	],
 	nameSnapshot: "UP",
@@ -174,14 +174,23 @@ const ROW_VIEW = {
 	targetId: "t1",
 	messages: [
 		{ text: "[卡片图]", kind: "image", image: IMAGE_REF, role: "main", ok: true },
-		{ text: "总结", kind: "text", image: undefined, role: "extra", ok: false, err: "boom" },
+		{
+			text: "总结",
+			kind: "text",
+			image: undefined,
+			role: "extra",
+			ok: false,
+			code: "unknown",
+			message: "boom",
+			upstreamCode: 1200,
+		},
 	],
 	nameSnapshot: "UP",
 	avatarSnapshot: AVATAR_REF,
 };
 
 describe("attachChannelWiring — history-recorded / history-updated 投影", () => {
-	it("history-recorded 投影为精简 view:消息逐条带文案 / 种类 / 图库引用 / 结果,头像快照也是图库引用,不外泄 latency", () => {
+	it("history-recorded 投影为精简 view:消息逐条带文案 / 种类 / 图库引用 / 结果(铺平:没送达带码 / 原话 / upstreamCode,没有 err),头像快照也是图库引用,不外泄 latency", () => {
 		const h = wire();
 		h.bus.emit("history-recorded", ROW as never);
 		const env = h.last();

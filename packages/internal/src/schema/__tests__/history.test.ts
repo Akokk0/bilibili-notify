@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { FEATURE_KEYS } from "../../constants.js";
-import { HistoryEntrySchema } from "../history.js";
+import { HistoryEntrySchema, HistoryMessageResultSchema } from "../history.js";
 
 const BASE = {
 	id: "11111111-1111-4111-8111-111111111111",
@@ -129,5 +129,68 @@ describe("HistoryEntrySchema — 头像快照只装图库引用(⑳d)", () => {
 		});
 		expect(parsed).not.toHaveProperty("uavatarSnapshot");
 		expect(parsed.avatarSnapshot).toBeUndefined();
+	});
+});
+
+/**
+ * 一条消息的投递结果落盘就是结果形状(ADR-0026 决策 5):送达 `{ ok: true, latencyMs }`,
+ * 没送达 `{ ok: false, code, message, upstreamCode? }` —— 失败不带耗时,原因不再叫 `err`。
+ */
+describe("HistoryMessageResultSchema — 结果形状", () => {
+	it("送达:只留 ok 与耗时(截流标记之类认不得的格剥掉)", () => {
+		expect(HistoryMessageResultSchema.parse({ ok: true, latencyMs: 5, isSynthetic: true })).toEqual(
+			{
+				ok: true,
+				latencyMs: 5,
+			},
+		);
+	});
+
+	it("没送达:码、原话、upstreamCode(数字或字符串)都留着", () => {
+		expect(
+			HistoryMessageResultSchema.parse({
+				ok: false,
+				code: "unknown",
+				message: "bot 说不行",
+				upstreamCode: 1200,
+			}),
+		).toEqual({ ok: false, code: "unknown", message: "bot 说不行", upstreamCode: 1200 });
+		expect(
+			HistoryMessageResultSchema.parse({
+				ok: false,
+				code: "unavailable",
+				message: "HTTP 502",
+				upstreamCode: "http:502",
+			}),
+		).toEqual({ ok: false, code: "unavailable", message: "HTTP 502", upstreamCode: "http:502" });
+		expect(
+			HistoryMessageResultSchema.parse({ ok: false, code: "indeterminate", message: "超时" }),
+		).toEqual({ ok: false, code: "indeterminate", message: "超时" });
+	});
+
+	it("没送达不带耗时:多写的 latencyMs / err 剥掉", () => {
+		expect(
+			HistoryMessageResultSchema.parse({
+				ok: false,
+				code: "unknown",
+				message: "x",
+				latencyMs: 7,
+				err: "x",
+			}),
+		).toEqual({ ok: false, code: "unknown", message: "x" });
+	});
+
+	it("老形状的失败(`{ ok: false, latencyMs, err }`,没有 code / message)读不进来 —— 那是迁移器的事", () => {
+		expect(
+			HistoryMessageResultSchema.safeParse({ ok: false, latencyMs: 7, err: "boom" }).success,
+		).toBe(false);
+		expect(HistoryMessageResultSchema.safeParse({ ok: false, latencyMs: 7 }).success).toBe(false);
+	});
+
+	it("码只认标准码表;送达必须带耗时", () => {
+		expect(
+			HistoryMessageResultSchema.safeParse({ ok: false, code: "nope", message: "x" }).success,
+		).toBe(false);
+		expect(HistoryMessageResultSchema.safeParse({ ok: true }).success).toBe(false);
 	});
 });
