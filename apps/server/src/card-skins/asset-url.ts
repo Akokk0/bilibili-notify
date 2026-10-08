@@ -3,7 +3,7 @@
  *
  * 出图这条路不能给浏览器一个 `http://…/api/cards/skins/…` 的地址:截图页面是
  * `--no-sandbox` 的 puppeteer 用 `setContent` 灌进去的一团 HTML,里头**不许有任何外部
- * 引用**(`image-renderer.ts` 的 `inlineRemoteImages` 就是在守这条)。所以资产在进 HTML
+ * 引用**(`runtime/puppeteer.ts` 的请求闸守着这条:渲染页只放行 `data:`)。所以资产在进 HTML
  * 之前就得变成 data URL。
  *
  * mime 查的是站内那两张唯一的表(图片 `image-mime.ts`、字体 `font-mime.ts`)—— 查不到就

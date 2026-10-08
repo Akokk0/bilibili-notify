@@ -53,8 +53,8 @@ import { buildCardData, type CardData, readCardField } from "./card-data";
 import type { ResolvedKnobAssets } from "./knob-assets";
 
 /**
- * 1×1 透明 GIF —— 取不到的包内资产退成它(与远端图被拦时同一串,见 `image-renderer.ts`)。
- * 单点定义:两处各写一份的话,迟早出现「一处换了、另一处还是老的」。
+ * 1×1 透明 GIF —— 取不到的包内资产、解析不到的图库引用都退成它。
+ * 单点定义:各处各写一份的话,迟早出现「一处换了、另一处还是老的」。
  */
 export const BLOCKED_IMG_PLACEHOLDER =
 	"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";

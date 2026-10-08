@@ -43,6 +43,9 @@ vi.mock("../runtime/puppeteer.js", async (importOriginal) => {
 		}),
 		screenshot: async () => Buffer.from("fake-card-jpeg"),
 		close: async () => {},
+		// 适配层给每一页开请求闸(只放行 data:);替身页不发请求,两样都是空操作。
+		on: () => {},
+		setRequestInterception: async () => {},
 	});
 	const browser = () => ({
 		connected: true,

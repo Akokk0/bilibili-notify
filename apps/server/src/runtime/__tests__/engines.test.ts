@@ -182,8 +182,6 @@ vi.mock("@bilibili-notify/image", async (importOriginal) => {
 		buildFontFace: (dataUrl: string) => `@font-face{src:url("${dataUrl}")}`,
 		ImageRenderer: class {
 			opts: any;
-			start = vi.fn();
-			stop = vi.fn();
 			updateConfig = vi.fn();
 			generatePostCard = vi.fn(async (..._args: unknown[]) => Buffer.from("card"));
 			generateLiveCard = vi.fn(async (..._args: unknown[]) => Buffer.from("live-card"));
@@ -1263,11 +1261,10 @@ describe("createEngines — boot wiring", () => {
 		expect(getSubs()[ext.id]?.liveNow).toEqual({ state: "live", title: "在播" });
 	});
 
-	it("puppeteer 在位:构造 ImageRenderer 并 start", () => {
+	it("puppeteer 在位:构造 ImageRenderer", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		expect(H.image).toHaveLength(1);
-		expect(H.image[0].start).toHaveBeenCalledTimes(1);
 	});
 
 	// 「接线要有自己的守卫」:三口各自都有测试,证明不了 engines 真的把它们接上了 ——
@@ -1302,14 +1299,13 @@ describe("createEngines — boot wiring", () => {
 });
 
 describe("createEngines — enableImageRendering 运行时热启用", () => {
-	it("启动无 puppeteer,运行时注入 → 构造 renderer + start + setImage/setImageRenderer", () => {
+	it("启动无 puppeteer,运行时注入 → 构造 renderer + setImage/setImageRenderer", () => {
 		const c = setup({ puppeteer: false });
 		active = c;
 		expect(H.image).toHaveLength(0); // 启动时无 renderer
 		const enabled = c.runtime.enableImageRendering({} as any);
 		expect(enabled).toBe(true);
 		expect(H.image).toHaveLength(1);
-		expect(H.image[0].start).toHaveBeenCalledTimes(1);
 		expect(H.dynamic[0].setImage).toHaveBeenCalledWith(H.image[0]);
 		expect(H.live[0].setImageRenderer).toHaveBeenCalledWith(H.image[0]);
 	});
@@ -1329,7 +1325,6 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 		expect(H.image).toHaveLength(1);
 		c.runtime.swapImageRendering({} as any);
 		expect(H.image).toHaveLength(2); // 新 renderer
-		expect(H.image[1].start).toHaveBeenCalledTimes(1);
 		expect(H.dynamic[0].setImage).toHaveBeenLastCalledWith(H.image[1]);
 		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[1]);
 	});

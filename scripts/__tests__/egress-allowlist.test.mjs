@@ -64,7 +64,6 @@ export const RATCHET = {
 	"apps/server/src/platforms/onebot.ts": 2,
 	"apps/server/src/platforms/qq-bind.ts": 1,
 	"apps/server/src/platforms/webhook.ts": 1,
-	"packages/image/src/image-renderer.ts": 1,
 	"apps/server/src/routes/settings.ts": 1,
 };
 

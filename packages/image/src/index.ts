@@ -38,6 +38,7 @@ export { buildMembershipCardView, type MembershipCardViewOptions } from "./membe
 // 刻意回 `unknown`:示例数据不是对外契约,别让调用方照它的形状写类型。
 export { sampleCard } from "./preview/sample-cards";
 export type {
+	BlockedRequestHandler,
 	BoundingBox,
 	ElementHandleLike,
 	PageLike,
@@ -49,6 +50,8 @@ export type {
 	SetContentOptions,
 	WaitForFunctionOptions,
 } from "./puppeteer";
+// 渲染页请求闸的唯一判断:只有 `data:` 地址算内嵌内容。闸在宿主的浏览器适配层。
+export { isEmbeddedUrl } from "./puppeteer";
 // `buildFontFace` / `USER_FONT_FAMILY` 给绕开 ImageRenderer 直接调 renderCard 的那条
 // 预览路径用 —— 两边必须拼出同一条 @font-face,否则「预览是这款、推出去是另一款」。
 export { buildFontFace, renderCard, USER_FONT_FAMILY } from "./render";

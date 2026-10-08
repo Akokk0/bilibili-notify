@@ -78,7 +78,7 @@ export function scaledImageUrl(url: string, maxWidth: number = SCALED_MAX_WIDTH)
 /** 抓这些图时带的请求头:B 站图床按站内引用来取。 */
 export const IMAGE_REQUEST_HEADERS = { Referer: "https://www.bilibili.com/" } as const;
 
-/** 一次最多同时抓几张(与出图器今天的预取并发一致)。 */
+/** 一次最多同时抓几张。 */
 export const FETCH_CONCURRENCY = 3;
 
 /** 还没存进图库的图:有地址、没有引用。 */

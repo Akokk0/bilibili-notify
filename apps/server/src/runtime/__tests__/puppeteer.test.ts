@@ -57,8 +57,34 @@ function makeLogger(): Logger {
 	return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 }
 
-function makeFakePage() {
+/** 渲染页发出的一个请求的替身。 */
+function makeFakeRequest(url: string) {
 	return {
+		url: () => url,
+		abort: vi.fn(async () => {}),
+		continue: vi.fn(async () => {}),
+	};
+}
+
+type FakeRequest = ReturnType<typeof makeFakeRequest>;
+
+function makeFakePage() {
+	/** 请求闸相关的调用,按发生的先后记 —— 「先挂监听、再开拦截」的次序靠它断言。 */
+	const calls: string[] = [];
+	const requestHandlers: Array<(request: FakeRequest) => void> = [];
+	return {
+		calls,
+		/** 演页面发出一个请求:挨个叫挂上来的监听。 */
+		emitRequest(request: FakeRequest): void {
+			for (const handler of requestHandlers) handler(request);
+		},
+		on: vi.fn((event: "request", handler: (request: FakeRequest) => void) => {
+			calls.push(`on:${event}`);
+			requestHandlers.push(handler);
+		}),
+		setRequestInterception: vi.fn(async (enabled: boolean) => {
+			calls.push(`setRequestInterception:${enabled}`);
+		}),
 		setContent: vi.fn(async () => {}),
 		waitForFunction: vi.fn(async () => undefined),
 		$: vi.fn(async () => null),
@@ -67,14 +93,22 @@ function makeFakePage() {
 	};
 }
 
+type FakePage = ReturnType<typeof makeFakePage>;
+
 function makeFakeBrowser(pid: number | null = 4242) {
 	let connected = true;
+	const pages: FakePage[] = [];
 	return {
+		pages,
 		get connected() {
 			return connected;
 		},
 		process: vi.fn(() => (pid === null ? null : { pid })),
-		newPage: vi.fn(async () => makeFakePage()),
+		newPage: vi.fn(async () => {
+			const page = makeFakePage();
+			pages.push(page);
+			return page;
+		}),
 		close: vi.fn(async () => {
 			connected = false;
 		}),
@@ -339,5 +373,125 @@ describe("createPuppeteerAdapter browserProcess", () => {
 		const page = await adapter.page();
 		expect(adapter.browserProcess()).toEqual({ state: "remote", pid: null });
 		await page.close();
+	});
+});
+
+/**
+ * 渲染页的请求闸(3a-37「出图器零联网」):每一页无条件开拦截,只放行内嵌内容(`data:`),
+ * 别的请求一律掐断并记一笔。出卡、压图、示例预览、探活都经 `page()`,所以闸长在这里。
+ */
+describe("createPuppeteerAdapter 渲染页请求闸", () => {
+	function makeAdapter(endpoint?: string) {
+		const launcher = makeFakeLauncher();
+		const logger = makeLogger();
+		const adapter = createPuppeteerAdapter({
+			...(endpoint ? { chromeEndpoint: endpoint } : { chromePath: "/fake/chrome" }),
+			logger,
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		const fakePage = (): FakePage => {
+			const page = launcher.browsers[0]?.pages[0];
+			if (!page) throw new Error("fake page not created");
+			return page;
+		};
+		return { adapter, logger, fakePage };
+	}
+
+	it.each([
+		["本机 Chrome", undefined],
+		["远程 Chrome", "ws://browserless:3000"],
+	])("%s:每一页都开拦截,且先挂监听、再开拦截", async (_name, endpoint) => {
+		// 反过来的话,开拦截到挂上监听之间发出的请求没人处理,会把 setContent 挂到超时。
+		const { adapter, fakePage } = makeAdapter(endpoint);
+		await adapter.page();
+		expect(fakePage().calls).toEqual(["on:request", "setRequestInterception:true"]);
+	});
+
+	it("不是内嵌内容的请求 → 掐断、回调收到原样的地址;账交给回调方记,适配层不再记一遍", async () => {
+		const { adapter, logger, fakePage } = makeAdapter();
+		const onBlockedRequest = vi.fn();
+		await adapter.page({ onBlockedRequest });
+		const request = makeFakeRequest("https://example.invalid/a.png?token=1");
+
+		fakePage().emitRequest(request);
+
+		expect(request.abort).toHaveBeenCalledTimes(1);
+		expect(request.continue).not.toHaveBeenCalled();
+		expect(onBlockedRequest.mock.calls).toEqual([["https://example.invalid/a.png?token=1"]]);
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("内嵌内容(data:)的请求 → 不掐断也不放行(它本来就拦不了),回调与日志都没有", async () => {
+		const { adapter, logger, fakePage } = makeAdapter();
+		const onBlockedRequest = vi.fn();
+		await adapter.page({ onBlockedRequest });
+		const request = makeFakeRequest("data:image/png;base64,AAAA");
+
+		fakePage().emitRequest(request);
+
+		expect(request.abort).not.toHaveBeenCalled();
+		expect(request.continue).not.toHaveBeenCalled();
+		expect(onBlockedRequest).not.toHaveBeenCalled();
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("掐断时请求已经没了(关页瞬间的在途请求)→ 不留未处理的拒绝", async () => {
+		const { adapter, fakePage } = makeAdapter();
+		await adapter.page();
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown): void => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", onUnhandled);
+		try {
+			// `abort` 用裸函数:`vi.fn` 会给返回的 Promise 挂上自己的处理(记 settledResults),
+			// 拒绝就算「有人处理了」,实现漏掉 catch 这条也照样绿。
+			fakePage().emitRequest({
+				...makeFakeRequest("https://example.invalid/a.png"),
+				abort: () => Promise.reject(new Error("Target closed")),
+			} as FakeRequest);
+			// 未处理的拒绝在微任务排空之后才报,等过一轮宏任务再看。
+			await new Promise((resolve) => setImmediate(resolve));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
+	it("闸没开成 → 这一页不交出去:关掉它、把错抛给调用方,下一次取页不受影响", async () => {
+		const launcher = makeFakeLauncher();
+		const adapter = createPuppeteerAdapter({
+			chromePath: "/fake/chrome",
+			logger: makeLogger(),
+			launcher,
+			idleTimeoutMs: 0,
+		});
+		await (await adapter.page()).close();
+		const bad = makeFakePage();
+		bad.setRequestInterception.mockRejectedValueOnce(new Error("Protocol error"));
+		launcher.browsers[0]?.newPage.mockResolvedValueOnce(bad);
+
+		await expect(adapter.page()).rejects.toThrow("Protocol error");
+		expect(bad.close).toHaveBeenCalledTimes(1);
+		// 串行闸已放开、活跃页没多记:下一页照常取得到。
+		const next = await adapter.page();
+		await next.close();
+		expect(await adapter.closeIdleNow()).toBe(true);
+	});
+
+	it("调用方没传回调 → 照样掐断,适配层自己记一条(地址不带参数)", async () => {
+		const { adapter, logger, fakePage } = makeAdapter();
+		await adapter.page();
+		const request = makeFakeRequest("https://example.invalid/a.png?token=1");
+
+		fakePage().emitRequest(request);
+
+		expect(request.abort).toHaveBeenCalledTimes(1);
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		// 查询串里可能有签名、令牌,不进日志。
+		const line = String(vi.mocked(logger.warn).mock.calls[0]?.[0]);
+		expect(line).toContain("https://example.invalid/a.png");
+		expect(line).not.toContain("token");
 	});
 });

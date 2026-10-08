@@ -94,7 +94,6 @@ export const RATCHET = {
 	"apps/web/src/utils/up-display.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 3,
 	"packages/ai/src/tools.ts": 14,
-	"packages/image/src/image-renderer.ts": 8,
 	// B 站大航海档位表(㉓b):3a 搬进 `bilibili/` 的来源描述符之前,面板、引擎、出图器共读这一份。
 	"packages/internal/src/bilibili-guard.ts": 1,
 	"packages/internal/src/constants.ts": 4,

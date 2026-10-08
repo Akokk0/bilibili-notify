@@ -28,8 +28,7 @@ import { EXTERNAL_ID_MAX } from "./subscriptions";
 const MiB = 1024 * 1024;
 
 /**
- * 单张图(作品图、视频 / 直播封面)的字节上限。与 BN 从 B 站取图那一道同一个数
- * (`packages/image` 的 `fetchOnce`):卡片与图集吃的是同一种图。
+ * 单张图(作品图、视频 / 直播封面)的字节上限:卡片与图集吃的是同一种图。
  */
 export const SUBSCRIPTION_REPORT_IMAGE_MAX_BYTES = 8 * MiB;
 

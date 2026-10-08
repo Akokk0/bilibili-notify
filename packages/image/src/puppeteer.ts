@@ -76,9 +76,28 @@ export interface PageLike {
  */
 export type RenderPriority = SerialPriority;
 
+/**
+ * 渲染页发出的这个请求是不是**内嵌内容**。只有 `data:` 地址算 —— 字节就写在地址里,
+ * 不出本进程。浏览器适配层的请求闸只看这一个判断:是的不管,不是的一律掐断。
+ *
+ * 没有主机白名单,也没有协议白名单(`file:`、`blob:`、`about:` 同样不放行):卡里的图
+ * 在出卡前都已经由来源抓进图库、再转成 data URL,渲染页不该有任何别的请求。
+ */
+export function isEmbeddedUrl(url: string): boolean {
+	return url.startsWith("data:");
+}
+
+/** 渲染页有请求被闸掐断时的回调;参数是被掐断的那个地址。 */
+export type BlockedRequestHandler = (url: string) => void;
+
 export interface PageOptions {
 	/** 缺省 `normal`。 */
 	priority?: RenderPriority;
+	/**
+	 * 这一页有请求被掐断时叫一次(每个请求一次)。传了它,记账就归调用方;不传,
+	 * 适配层自己逐个记日志。
+	 */
+	onBlockedRequest?: BlockedRequestHandler;
 }
 
 /** Puppeteer service facade. `page()` returns a fresh, disposable page each call. */

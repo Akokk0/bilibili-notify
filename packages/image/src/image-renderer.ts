@@ -9,7 +9,6 @@ import {
 	createSerialGate,
 	DEFAULT_CARD_SKIN,
 	DEFAULT_CARD_SKIN_ID,
-	type Disposable,
 	effectiveCardSkinKnobs,
 	formatAmount,
 	type ImageRef,
@@ -17,7 +16,6 @@ import {
 	type Post,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
-import { JSDOM } from "jsdom";
 import type { CardPropsByKind } from "./blocks/frames";
 import { formatCardTime } from "./format";
 import { buildLiveCardView } from "./live-view";
@@ -25,12 +23,7 @@ import { buildMembershipCardView } from "./membership-view";
 import type { PuppeteerLike, RenderPriority } from "./puppeteer";
 import { USER_FONT_FAMILY } from "./render";
 import { type ResolvedKnobAssets, resolveKnobAssets } from "./skin/knob-assets";
-import {
-	BLOCKED_IMG_PLACEHOLDER as BLOCKED_IMG_GIF,
-	cardOfManifest,
-	renderCardWithSkin,
-	skinAssetRefs,
-} from "./skin/render-skin";
+import { cardOfManifest, renderCardWithSkin, skinAssetRefs } from "./skin/render-skin";
 import { shrinkImageForCssVar } from "./skin/shrink-image";
 import { buildSuperchatCardView } from "./superchat-view";
 import type { LiveCardInput } from "./templates/live-card";
@@ -59,6 +52,19 @@ import type { CardColorOptions, CardSkinChoice } from "./types";
  * (打包器把本模块并进 dist/index.mjs,`static/` 由装配脚本搬到 dist/ 旁)。
  */
 export const ASSET_DIR = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * 被拦下的请求要去哪:有主机报主机,没有主机的(`file:` 之类)报协议。路径与参数不进日志
+ * —— 里头可能有签名、令牌,而排障只要知道是哪一处还在把远端地址交进来。
+ */
+function blockedTargetOf(url: string): string {
+	try {
+		const parsed = new URL(url);
+		return parsed.host || parsed.protocol;
+	} catch {
+		return "(解析不了的地址)";
+	}
+}
 
 /** 图旋钮的解析结果最多留几份。见 `ImageRenderer#rememberKnobImage`。 */
 const KNOB_IMAGE_CACHE_MAX = 4;
@@ -141,7 +147,7 @@ export interface ImageRendererOptions {
 	config: ImageRendererConfig;
 	/**
 	 * 把卡片背景图资产 id 解析成可渲染的 data URL(宿主注入,读 `<dataDir>/assets/card-bg`)。
-	 * 解析不出来返回空串。已是 data:/http URL 的值直接透传、不经此回调。
+	 * 解析不出来返回空串。
 	 */
 	resolveAsset: (id: string) => Promise<string>;
 	/**
@@ -177,7 +183,7 @@ export interface ImageRendererOptions {
 	 * 图库引用 → 可画的地址(宿主注入,读图库,**读字节转成 data URL**)。作品卡里的配图、封面、头像、正文小图标
 	 * 与表情图都是 `ImageRef`(`Post` 只收引用),出图前由 {@link ImageRenderer.generatePostCard} 逐个问它。
 	 *
-	 * 契约是 data URL 而不是本机地址:渲染页只许 `data:` 与白名单里的远端图,不该为了一张作品图去访问本机 HTTP
+	 * 契约是 data URL 而不是本机地址:渲染页只许 `data:`(别的请求被浏览器适配层的闸掐断),不该为了一张作品图去访问本机 HTTP
 	 * (还得带上面板的鉴权),而内容相同的字节转出来的 data URL 逐字相同。解析不到(图已被清扫)回 `undefined`,
 	 * 渲染器画占位;抛错同样当解析不到。不注入 = 所有引用都画占位。
 	 */
@@ -193,7 +199,6 @@ export interface ImageRendererOptions {
 
 export class ImageRenderer {
 	readonly logger: Logger;
-	private readonly serviceCtx: ServiceContext;
 	private readonly puppeteer: PuppeteerLike;
 	private config: ImageRendererConfig;
 	/**
@@ -233,33 +238,12 @@ export class ImageRenderer {
 	 */
 	private fontCache: { id: string; fontFace: string } | null = null;
 
-	// 图片 base64 缓存
-	private readonly imageCache = new Map<string, { dataUrl: string; updatedAt: number }>();
-	private clearCacheTimer?: Disposable;
-	private readonly CACHE_TTL_MS = 30 * 60 * 1000;
-	private readonly CACHE_MAX_SIZE = 300;
-
 	/**
-	 * IM1(SSRF):待内联的图片 URL 来自 B 站 API 的**不可信**字段(face /
-	 * cover / pics / decorate)。仅放行 B 站自有资产域 —— 任何 IP 字面量
-	 * (含 169.254.169.254 元数据 / 127.* / 10.* / 192.168.*)与外部域都不满足
-	 * 后缀匹配,天然被拒(无需 DNS 解析、无重绑定旁路)。
+	 * 渲染页一共有多少个请求被适配层的闸掐断(只增)。正常是 0:卡里的图在出卡前都已
+	 * 转成 data URL。不是 0 就是哪条路还在把远端地址交进来。只给测试断言用,没有公开的读口。
 	 */
-	private static readonly IMG_HOST_ALLOWLIST = [
-		"hdslb.com",
-		"biliimg.com",
-		"bilibili.com",
-		"bilivideo.com",
-		"bilivideo.cn",
-	] as const;
-	/**
-	 * 1x1 透明 GIF —— 被拦截的远端图替换成它,保证最终 HTML 无任何外部引用可被 puppeteer 再抓。
-	 * 与皮肤渲染器「取不到包内资产」时用的是**同一串**(那边是 `skin/render-skin.tsx` 的
-	 * `BLOCKED_IMG_PLACEHOLDER`),各写一份迟早漂移。
-	 */
-	private static readonly BLOCKED_IMG_PLACEHOLDER = BLOCKED_IMG_GIF;
-	/** IM2:单张远端图字节上限,防超大图全量入内存 + base64 膨胀驻留 cache → OOM。 */
-	private readonly MAX_REMOTE_IMG_BYTES = 8 * 1024 * 1024;
+	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: 只增不读是故意的 —— 读它的是测试(白盒)
+	private blockedRequestCount = 0;
 
 	/**
 	 * 串行渲染队列,避免 puppeteer 并发问题。带两条车道:链接卡这类低优先级的渲染在
@@ -269,7 +253,6 @@ export class ImageRenderer {
 	private readonly renderGate = createSerialGate();
 
 	constructor(opts: ImageRendererOptions) {
-		this.serviceCtx = opts.serviceCtx;
 		this.puppeteer = opts.puppeteer;
 		this.config = opts.config;
 		this.resolveAsset = opts.resolveAsset;
@@ -282,14 +265,9 @@ export class ImageRenderer {
 		this.logger = opts.serviceCtx.logger;
 	}
 
-	start(): void {
-		this.clearCacheTimer = this.serviceCtx.setInterval(() => this.pruneImageCache(), 5 * 60 * 1000);
-	}
-
 	/**
 	 * 热更运行时配置(卡片配色 / 字体 / 显示选项)。adapter 在 dashboard 编辑后调用,
 	 * 后续渲染的卡片立刻用新配色,无需重启 server。
-	 * 注意:已缓存的 base64 图(头像 / 封面)与配色无关,无需 invalidate。
 	 */
 	updateConfig(config: ImageRendererConfig): void {
 		const prev = this.config;
@@ -311,12 +289,6 @@ export class ImageRenderer {
 		else this.logger.info(line);
 	}
 
-	stop(): void {
-		this.clearCacheTimer?.dispose();
-		this.clearCacheTimer = undefined;
-		this.imageCache.clear();
-	}
-
 	// ── 公共工具方法 ─────────────────────────────────────────────────────────────
 
 	unixTimestampToString(timestamp: number): string {
@@ -324,15 +296,14 @@ export class ImageRenderer {
 	}
 
 	/**
-	 * 解析一个图片资产字段为可渲染 URL:空 → "";已是 data:/http URL → 透传(预览路由已解析);
-	 * 否则当资产 id,经注入的 resolveAsset 读盘解析成 data URL(解析不出来即 "")。
+	 * 解析一个图片资产字段为可渲染 URL:空 → "";否则当资产 id,经注入的 resolveAsset 读盘解析成
+	 * data URL(解析不出来即 "")。只认资产 id —— 现成的地址不透传,渲染页只画内嵌内容。
 	 *
 	 * 今天只剩**直播封面**(`liveCoverImage`)走它 —— 卡片背景图那条链 2026-09-20 整个删掉
 	 * (背景图归皮肤的 `image` 旋钮,走 `resolveKnobAssets`)。
 	 */
 	private async resolveBg(v?: string): Promise<string> {
 		if (!v) return "";
-		if (v.startsWith("data:") || v.startsWith("http")) return v;
 		return await this.resolveAsset(v);
 	}
 
@@ -571,7 +542,7 @@ export class ImageRenderer {
 	 * {@link ImageRendererOptions.resolveImageRef},拿到可画的地址再同步排视图。解析不到的引用,头像块收起、
 	 * 封面画「暂无封面」占位,不抛。出图器自己不读盘、不联网。
 	 *
-	 * 卡里的图最终只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
+	 * 卡里的图最终只认 data URL:渲染页不联网,远端网址进了卡也会被浏览器适配层的闸掐断、画不出来。
 	 */
 	async generateLiveCard(
 		input: LiveCardInput,
@@ -701,7 +672,7 @@ export class ImageRenderer {
 	 * 图标)交给宿主注入的 {@link ImageRendererOptions.resolveImageRef},拿到可画的地址再同步造节点。出图器自己不读盘、
 	 * 不联网。解析不到(图已被清扫、宿主没注入)的引用画占位,不抛。
 	 *
-	 * 卡里的图最终只认字符串地址(远端网址或 data URL):远端的走白名单预取,data URL 原样进卡。
+	 * 卡里的图最终只认 data URL:渲染页不联网,远端网址进了卡也会被浏览器适配层的闸掐断、画不出来。
 	 */
 	async generatePostCard(
 		post: Post,
@@ -845,297 +816,6 @@ export class ImageRenderer {
 
 	// ── 渲染管线（内部） ──────────────────────────────────────────────────────────
 
-	private isRemoteUrl(url?: string | null): url is string {
-		return Boolean(url && /^https?:\/\//i.test(url));
-	}
-
-	/**
-	 * IM1:SSRF 白名单闸门。仅 http(s) + B 站自有资产域后缀。任何 IP 字面量 /
-	 * 内网主机 / 外部域都不匹配 → 拒绝。被拒 URL 既不由本进程 fetch,也会在
-	 * {@link inlineRemoteImages} 里被透明占位替换,使 puppeteer 同样无从抓取。
-	 */
-	private isFetchAllowed(rawUrl: string): boolean {
-		let host: string;
-		try {
-			const u = new URL(rawUrl);
-			if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-			host = u.hostname.toLowerCase();
-		} catch {
-			return false;
-		}
-		return ImageRenderer.IMG_HOST_ALLOWLIST.some((d) => host === d || host.endsWith(`.${d}`));
-	}
-
-	private getMimeType(url: string): string {
-		const lower = url.toLowerCase();
-		if (lower.endsWith(".png")) return "image/png";
-		if (lower.endsWith(".webp")) return "image/webp";
-		if (lower.endsWith(".gif")) return "image/gif";
-		if (lower.endsWith(".bmp")) return "image/bmp";
-		if (lower.endsWith(".svg")) return "image/svg+xml";
-		return "image/jpeg";
-	}
-
-	private pruneImageCache(): void {
-		const now = Date.now();
-		for (const [url, entry] of this.imageCache.entries()) {
-			if (now - entry.updatedAt > this.CACHE_TTL_MS) {
-				this.imageCache.delete(url);
-			}
-		}
-		if (this.imageCache.size <= this.CACHE_MAX_SIZE) return;
-		const sorted = [...this.imageCache.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt);
-		const overflow = this.imageCache.size - this.CACHE_MAX_SIZE;
-		for (let i = 0; i < overflow; i++) {
-			this.imageCache.delete(sorted[i][0]);
-		}
-	}
-
-	/** B 站图片处理服务的缩放目标宽 / 质量(webp)。动态原图常达十几 MB,超 8MB 上限会
-	 * 被丢成透明占位 → 图渲染不出来。给 i*.hdslb.com 的 /bfs/ 资源加 `@<w>w_<q>q_1s.webp`
-	 * 后缀,让 CDN 直接返回缩放压缩版,既不触发上限,内联体积也小一个数量级。 */
-	private static readonly BILI_IMG_MAX_W = 1280;
-	private static readonly BILI_IMG_QUALITY = 80;
-	/**
-	 * 「只要第一帧」。**没有它 GIF 会被转成动画 webp** —— 实测一张 6.7MB 的 GIF:
-	 * 带 `_1s` 是 37KB / 0.17s 的静态图,不带是 2.33MB / 6.9s、含 74 个动画帧块。
-	 * 出图走截图,动画本来就只截得到一帧,那点体积和秒数纯属白烧,还正好撞上 10s
-	 * 抓取超时 —— 一超时就被静默换成 1x1 透明占位,于是卡片上凭空缺几张图。
-	 *
-	 * 对静图无副作用(实测两张 face 图带不带 `_1s` 返回字节分毫不差),所以不按源
-	 * 格式分流,一律带上 —— 少一条「靠扩展名猜是不是动图」的分支,也就少一处会错。
-	 */
-	private static readonly BILI_IMG_FIRST_FRAME = "_1s";
-
-	/**
-	 * 对 B 站图片处理服务器(i0/i1/i2…​.hdslb.com 的 /bfs/ 资源)的 URL 追加缩放 +
-	 * webp 转码后缀;已有 `@…` 处理后缀会被替换。其它 host / 非 /bfs/ 路径原样返回
-	 * (静态 s1 资源、第三方域不处理)。query 保留。
-	 */
-	private compressBiliImageUrl(url: string): string {
-		let host: string;
-		try {
-			host = new URL(url).hostname;
-		} catch {
-			return url;
-		}
-		if (!/^i\d+\.hdslb\.com$/.test(host)) return url;
-		if (!url.includes("/bfs/")) return url;
-		const [beforeQuery, query] = url.split("?", 2);
-		// B 站图 URL 无 userinfo,`@` 只可能是已有的处理后缀 → 截到它之前。
-		const cleanBase = beforeQuery.split("@")[0];
-		const suffix = `@${ImageRenderer.BILI_IMG_MAX_W}w_${ImageRenderer.BILI_IMG_QUALITY}q${ImageRenderer.BILI_IMG_FIRST_FRAME}.webp`;
-		return query ? `${cleanBase}${suffix}?${query}` : `${cleanBase}${suffix}`;
-	}
-
-	private async fetchImageAsDataUrl(rawUrl: string): Promise<string> {
-		// 大图先经 B 站处理服务缩放压缩,避免超 MAX_REMOTE_IMG_BYTES 被熔断成占位。
-		const url = this.compressBiliImageUrl(rawUrl);
-		const cached = this.imageCache.get(url);
-		if (cached) {
-			cached.updatedAt = Date.now();
-			return cached.dataUrl;
-		}
-
-		let dataUrl: string;
-		try {
-			dataUrl = await this.fetchOnce(url);
-		} catch (err) {
-			// 加处理后缀是**为了**避开 8MB 上限,但它自己也是一条会断的路:CDN 得现场
-			// 转码,可能超时,也可能对某个源根本不吃这套参数。而预取失败在上游是被吞掉
-			// 的(换 1x1 透明占位、整张卡照样「渲染成功」),主人只能靠肉眼发现某几格
-			// 是空的 —— 所以这条路断了必须退回原图再试一次。原图不需要转码,通常直接
-			// 命中 CDN 存储;只有它也拿不到才算真没辙。
-			if (url === rawUrl) throw err;
-			this.logger.warn(`[prefetch] 处理版取图失败,回退原图重试:${url} (${err})`);
-			dataUrl = await this.fetchOnce(rawUrl);
-		}
-		// 缓存键恒用处理后 URL(回退拿到的也记在这个键上)—— 同一张图在一张卡里常出现
-		// 多次,让后面几次直接命中,而不是每次都先把那条死路重撞一遍。
-		this.imageCache.set(url, { dataUrl, updatedAt: Date.now() });
-		this.pruneImageCache();
-		return dataUrl;
-	}
-
-	/** 真正发起一次抓取并转成 data URL。失败一律抛,由调用方决定要不要换条路再来。 */
-	private async fetchOnce(url: string): Promise<string> {
-		// IM1:SSRF 闸门(防御纵深 —— 调用方也已 gate,但这里才是真正发起 fetch
-		// 的点,独立守一道)。回退路径同样经过这里,不存在绕过。
-		if (!this.isFetchAllowed(url)) {
-			throw new Error(`SSRF blocked: non-allowlisted image host (${url})`);
-		}
-
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 10_000);
-
-		try {
-			const response = await fetch(url, {
-				signal: controller.signal,
-				headers: {
-					"User-Agent":
-						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-					Referer: "https://www.bilibili.com/",
-				},
-			});
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status} ${response.statusText}`);
-			}
-			// IM2:先看 Content-Length 早拒;无该头则边读边累计字节,超限即 abort
-			// 熔断 —— 不把超大图全量读进内存再判。
-			const declared = Number(response.headers.get("content-length"));
-			if (Number.isFinite(declared) && declared > this.MAX_REMOTE_IMG_BYTES) {
-				throw new Error(`image too large: declared ${declared} bytes`);
-			}
-			const buf = await this.readCapped(response, controller);
-			const contentType =
-				response.headers.get("content-type")?.split(";")[0]?.trim() || this.getMimeType(url);
-			// 写缓存由调用方统一做 —— 这里若自己写一笔,回退路径就会在 rawUrl 上多留
-			// 一个键,跟处理后 URL 那个键各存一份同一张图,白占额度还搅乱逐出顺序。
-			return `data:${contentType};base64,${buf.toString("base64")}`;
-		} finally {
-			clearTimeout(timeout);
-		}
-	}
-
-	/** IM2:流式读取并在累计字节超 {@link MAX_REMOTE_IMG_BYTES} 时 abort 熔断。 */
-	private async readCapped(response: Response, controller: AbortController): Promise<Buffer> {
-		const reader = response.body?.getReader();
-		if (!reader) {
-			// 极少数无 body stream 的实现:退化为缓冲后即时校验(仍兜住 cache 不驻留超大图)。
-			const ab = await response.arrayBuffer();
-			if (ab.byteLength > this.MAX_REMOTE_IMG_BYTES) {
-				throw new Error(`image exceeds ${this.MAX_REMOTE_IMG_BYTES} bytes`);
-			}
-			return Buffer.from(ab);
-		}
-		const chunks: Uint8Array[] = [];
-		let total = 0;
-		let chunk = await reader.read();
-		while (!chunk.done) {
-			total += chunk.value.byteLength;
-			if (total > this.MAX_REMOTE_IMG_BYTES) {
-				controller.abort();
-				throw new Error(`image exceeds ${this.MAX_REMOTE_IMG_BYTES} bytes`);
-			}
-			chunks.push(chunk.value);
-			chunk = await reader.read();
-		}
-		return Buffer.concat(chunks);
-	}
-
-	/** 按批次限制并发数量，避免同时发起过多请求 */
-	private async fetchWithConcurrencyLimit<T>(
-		tasks: (() => Promise<T>)[],
-		concurrency = 3,
-	): Promise<T[]> {
-		const results: T[] = [];
-		for (let i = 0; i < tasks.length; i += concurrency) {
-			const batch = tasks.slice(i, i + concurrency).map((task) => task());
-			results.push(...(await Promise.all(batch)));
-		}
-		return results;
-	}
-
-	/** 将 HTML 中所有远程图片和 CSS 背景替换为 base64 data URL，避免渲染时跨域 */
-	private async inlineRemoteImages(html: string): Promise<string> {
-		const dom = new JSDOM(html);
-		const { document } = dom.window;
-
-		// 内联 <img src="https://...">
-		const imgElements = Array.from(document.querySelectorAll("img"));
-		await this.fetchWithConcurrencyLimit(
-			imgElements.map((img) => async () => {
-				const src = img.getAttribute("src");
-				if (!this.isRemoteUrl(src)) return;
-				// IM1:非白名单(IP / 内网 / 外部域)→ 换透明占位,绝不保留原
-				// URL(否则 puppeteer 渲染时会自行抓取,SSRF 仍成立)。
-				if (!this.isFetchAllowed(src)) {
-					this.logger.warn(`[prefetch] 拦截非白名单图片 URL(SSRF 防护): ${src}`);
-					img.setAttribute("src", ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
-					return;
-				}
-				try {
-					img.setAttribute("src", await this.fetchImageAsDataUrl(src));
-				} catch (err) {
-					// ②5:预取失败**不得保留原 URL** —— 否则 puppeteer 渲染时自行
-					// 抓取,违背「零外部引用」承诺(白名单内域也是外部网络)。换占位。
-					this.logger.warn(`[prefetch] 图片预取失败，替换为占位(不留外部引用): ${src} (${err})`);
-					img.setAttribute("src", ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
-				}
-			}),
-		);
-
-		// 内联 CSS 远程引用。②5:仅 url(...) 不够 —— `@import "https://…"` 与
-		// `image-set("https://…" …)` 同样能让 puppeteer 解析样式时发起外部抓取
-		// (SSRF 残口)。三类一并收集 → 占位/内联。
-		const cssUrlRegex = /url\((['"]?)(https?:\/\/[^'")]+)\1\)/gi;
-		const cssImportRegex = /@import\s+(?:url\()?['"]?(https?:\/\/[^'")\s]+)/gi;
-		const cssImageSetRegex = /image-set\(\s*['"](https?:\/\/[^'"]+)['"]/gi;
-		const cssUrlSet = new Set<string>();
-
-		const collectCssUrls = (cssText: string) => {
-			for (const m of cssText.matchAll(cssUrlRegex)) {
-				if (this.isRemoteUrl(m[2])) cssUrlSet.add(m[2]);
-			}
-			for (const m of cssText.matchAll(cssImportRegex)) {
-				if (this.isRemoteUrl(m[1])) cssUrlSet.add(m[1]);
-			}
-			for (const m of cssText.matchAll(cssImageSetRegex)) {
-				if (this.isRemoteUrl(m[1])) cssUrlSet.add(m[1]);
-			}
-		};
-
-		for (const el of document.querySelectorAll("style")) {
-			collectCssUrls(el.textContent ?? "");
-		}
-		for (const el of document.querySelectorAll("[style]")) {
-			collectCssUrls(el.getAttribute("style") ?? "");
-		}
-
-		const cssUrlMap = new Map<string, string>();
-		await Promise.all(
-			[...cssUrlSet].map(async (url) => {
-				// IM1:非白名单 CSS 背景图同样换透明占位(否则 puppeteer 解析
-				// 样式时会去抓 url(...),SSRF 仍成立)。
-				if (!this.isFetchAllowed(url)) {
-					this.logger.warn(`[prefetch] 拦截非白名单 CSS 图片 URL(SSRF 防护): ${url}`);
-					cssUrlMap.set(url, ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
-					return;
-				}
-				try {
-					cssUrlMap.set(url, await this.fetchImageAsDataUrl(url));
-				} catch (err) {
-					// ②5:同 <img> —— 预取失败换占位,绝不留原 URL 给 puppeteer 抓。
-					this.logger.warn(
-						`[prefetch] CSS 图片预取失败，替换为占位(不留外部引用): ${url} (${err})`,
-					);
-					cssUrlMap.set(url, ImageRenderer.BLOCKED_IMG_PLACEHOLDER);
-				}
-			}),
-		);
-
-		if (cssUrlMap.size > 0) {
-			// ②5:按 URL 长度降序替换。否则若一个 URL 是另一个的前缀
-			// (`…/a` vs `…/a/b`),先替短的会把长的截断破坏。
-			const orderedEntries = [...cssUrlMap.entries()].sort(([a], [b]) => b.length - a.length);
-			const replaceCssUrls = (css: string) => {
-				let result = css;
-				for (const [url, dataUrl] of orderedEntries) {
-					result = result.replaceAll(url, dataUrl);
-				}
-				return result;
-			};
-			for (const el of document.querySelectorAll("style")) {
-				el.textContent = replaceCssUrls(el.textContent ?? "");
-			}
-			for (const el of document.querySelectorAll("[style]")) {
-				el.setAttribute("style", replaceCssUrls(el.getAttribute("style") ?? ""));
-			}
-		}
-
-		return dom.serialize();
-	}
-
 	/**
 	 * 回的是 `{ buffer, height }` 而不是光一个 buffer:**卡片最大高度那道闸要的正是这个数**
 	 * (ADR-0014 决策 19),而它只有在这儿(截图前量 `html` 的 boundingBox)拿得到 ——
@@ -1146,11 +826,17 @@ export class ImageRenderer {
 		waitForCondition?: string,
 		priority: RenderPriority = "normal",
 	): Promise<{ buffer: Buffer; height: number }> {
-		// 先 inline 远程图片（耗时操作），再获取 page，避免 page 在空闲期间被回收
-		const inlinedHtml = await this.inlineRemoteImages(html);
-		const page = await this.puppeteer.page({ priority });
+		// 这一张卡被闸拦下的请求,出完卡汇总记一条。
+		const blocked: string[] = [];
+		const page = await this.puppeteer.page({
+			priority,
+			onBlockedRequest: (url) => {
+				this.blockedRequestCount += 1;
+				blocked.push(url);
+			},
+		});
 		try {
-			await page.setContent(inlinedHtml, { waitUntil: "load", timeout: 15_000 });
+			await page.setContent(html, { waitUntil: "load", timeout: 15_000 });
 			if (waitForCondition) {
 				await page.waitForFunction(waitForCondition, { timeout: 30_000 });
 			}
@@ -1186,6 +872,10 @@ export class ImageRenderer {
 			}
 		} finally {
 			await page.close().catch(() => {}); // Chrome 已崩溃时 close() 也会抛错，忽略之
+			if (blocked.length > 0) {
+				const targets = [...new Set(blocked.map(blockedTargetOf))].join("、");
+				this.logger.warn(`[image] 渲染页拦下 ${blocked.length} 个请求(这些图画不出来)· ${targets}`);
+			}
 		}
 	}
 

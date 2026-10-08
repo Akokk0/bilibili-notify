@@ -500,7 +500,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const loadFontFace = opts.loadFontFace;
 
 	const buildImageRenderer = (pup: PuppeteerLike): ImageRenderer => {
-		const renderer = new ImageRenderer({
+		return new ImageRenderer({
 			serviceCtx: imageCtx,
 			puppeteer: pup,
 			config: {
@@ -517,8 +517,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			resolveCardSkinAsset: opts.cardSkins?.asset,
 			onCardSkinFallback: opts.cardSkins?.onFallback,
 		});
-		renderer.start();
-		return renderer;
 	};
 	if (opts.puppeteer) {
 		imageRenderer = buildImageRenderer(opts.puppeteer);
@@ -1140,11 +1138,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			log.warn(`[engines] live.stop failed: ${String(e)}`);
 		}
 		try {
-			imageRenderer?.stop();
-		} catch (e) {
-			log.warn(`[engines] image.stop failed: ${String(e)}`);
-		}
-		try {
 			push.stop();
 		} catch (e) {
 			log.warn(`[engines] push.stop failed: ${String(e)}`);
@@ -1242,13 +1235,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// renderer 并重新注入两个引擎。旧 adapter 的 dispose 由调用方(cards 路由)
 		// 负责 —— 引擎层不持有 adapter,只消费 renderer。
 		swapImageRendering: (pup: PuppeteerLike): void => {
-			// 旧 renderer 必须先 stop() —— buildImageRenderer 里的 start() 挂了个 5 分钟
-			// 一次的缓存清理定时器,只换引用不 stop 就会永久泄漏(每热切换一次多漏一个)。
-			const old = imageRenderer;
 			imageRenderer = buildImageRenderer(pup);
 			dynamic.setImage(imageRenderer);
 			live.setImageRenderer(imageRenderer);
-			old?.stop();
 		},
 		dispose,
 	};

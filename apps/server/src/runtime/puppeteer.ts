@@ -13,6 +13,7 @@
 import { existsSync } from "node:fs";
 import type { BrowserProcessState } from "@bilibili-notify/contract";
 import type {
+	BlockedRequestHandler,
 	BoundingBox,
 	ElementHandleLike,
 	PageLike,
@@ -22,6 +23,7 @@ import type {
 	SetContentOptions,
 	WaitForFunctionOptions,
 } from "@bilibili-notify/image";
+import { isEmbeddedUrl } from "@bilibili-notify/image";
 import { createSerialGate, type Logger } from "@bilibili-notify/internal";
 import puppeteer from "puppeteer-core";
 
@@ -89,6 +91,16 @@ export interface PageHandle {
 	$(selector: string): Promise<ElementHandleLike | null>;
 	screenshot(options?: ScreenshotOptions): Promise<Buffer | Uint8Array>;
 	close(): Promise<void>;
+	/** 请求闸用:页面每发一个请求叫一次(开了拦截之后 `data:` 请求也会来,只是拦不了)。 */
+	on(
+		event: "request",
+		handler: (request: {
+			url(): string;
+			abort(): Promise<void>;
+			continue(): Promise<void>;
+		}) => void,
+	): unknown;
+	setRequestInterception(enabled: boolean): Promise<void>;
 }
 
 /** adapter 消费的浏览器最小面 —— close 杀本地进程,disconnect 只断远端连接。 */
@@ -331,6 +343,13 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 			try {
 				const b = await ensure();
 				const p = await b.newPage();
+				try {
+					await guardPageRequests(p, opts.logger, options?.onBlockedRequest);
+				} catch (err) {
+					// 闸没开成的页不许拿去渲染;它还没计进活跃数,这里自己关掉。
+					await p.close().catch(() => {});
+					throw err;
+				}
 				activePages += 1;
 				// 2x DPI(retina / HiDPI 下截图够清晰)由 launch 的 defaultViewport 提供,
 				// 页面诞生即带 dSF=2 —— 不再 per-page setViewport。
@@ -351,6 +370,38 @@ export function createPuppeteerAdapter(opts: PuppeteerAdapterOptions): Puppeteer
 			if (b) await shutdownBrowser(b, "dispose");
 		},
 	};
+}
+
+/** 日志里的地址不带参数:查询串里可能有签名、令牌,而排障只要知道是哪台主机的哪个路径。 */
+function withoutQuery(url: string): string {
+	return url.split(/[?#]/, 1)[0] ?? url;
+}
+
+/**
+ * 渲染页的请求闸:只放行内嵌内容(`data:`),别的请求一律掐断。每一页都开,本机与远程
+ * Chrome 同一套 —— 卡里的图在出卡前都已转成 data URL,渲染页不该有任何别的请求。
+ *
+ * **先挂监听、再开拦截**:开了拦截之后每个请求都得有人处理,次序反过来的话中间那一下
+ * 发出的请求没人管,会把 `setContent` 挂到超时。
+ *
+ * 掐断的请求总有人记账:调用方传了回调就交给它(出图器按卡汇总),没传的(压图、
+ * 示例预览、探活)适配层自己逐个记一条。
+ */
+async function guardPageRequests(
+	page: PageHandle,
+	logger: Logger,
+	onBlockedRequest: BlockedRequestHandler | undefined,
+): Promise<void> {
+	page.on("request", (request) => {
+		const url = request.url();
+		// 内嵌内容不处理:开了拦截它也会来,但 puppeteer 拦不了它,abort / continue 都是空操作。
+		if (isEmbeddedUrl(url)) return;
+		if (onBlockedRequest) onBlockedRequest(url);
+		else logger.warn(`[puppeteer] 渲染页的请求被掐断(只放行 data:)· ${withoutQuery(url)}`);
+		// 关页瞬间还在途的请求,掐它会拒绝(目标已经没了)—— 本来就是要它别发出去,吞掉。
+		request.abort().catch(() => {});
+	});
+	await page.setRequestInterception(true);
 }
 
 function wrapPage(page: PageHandle, release: () => void, onClosed: () => void): PageLike {
