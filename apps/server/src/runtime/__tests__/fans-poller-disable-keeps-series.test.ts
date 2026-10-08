@@ -161,7 +161,7 @@ describe("fans poller:粉丝文件按订阅 id 读写", () => {
 		// 删掉 a、立刻又订了同一个 uid(新订阅 id c)。
 		p.setSubs([biliSub("c", "1")]);
 		p.bus.emit("subscription-changed", {
-			ops: [{ type: "remove", sub: biliSub("a", "1") as never }],
+			ops: [{ kind: "remove", sub: biliSub("a", "1") as never }],
 		});
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 		release();
@@ -220,7 +220,7 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 		// 事件到的时候订阅仓已经是删完的样子(config-changed → replaceAll → subscription-changed)。
 		p.setSubs([biliSub("b", "2")]);
 		p.bus.emit("subscription-changed", {
-			ops: [{ type: "remove", sub: biliSub("a", "1") as never }],
+			ops: [{ kind: "remove", sub: biliSub("a", "1") as never }],
 		});
 
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
@@ -247,7 +247,7 @@ describe("fans poller:停用留着粉丝时序,删除才删", () => {
 
 		p.setSubs([]);
 		p.bus.emit("subscription-changed", {
-			ops: [{ type: "remove", sub: biliSub("a", "1") as never }],
+			ops: [{ kind: "remove", sub: biliSub("a", "1") as never }],
 		});
 		await vi.waitFor(async () => expect(await exists(fanFile("a"))).toBe(false));
 

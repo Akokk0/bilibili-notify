@@ -231,8 +231,8 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 		const r = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "composite",
 			segments: [
-				{ type: "image", buffer: Buffer.from("png-bytes"), mime: "image/png" },
-				{ type: "text", text: "阿绫开播了" },
+				{ kind: "image", buffer: Buffer.from("png-bytes"), mime: "image/png" },
+				{ kind: "text", text: "阿绫开播了" },
 			],
 		});
 		expect(r.ok).toBe(true);
@@ -263,12 +263,12 @@ describe("createQQOfficialAdapter — send 图片(群/C2C 两步上传)", () => 
 
 describe("createQQOfficialAdapter — 图集 markdown 门控(按 botType)", () => {
 	const GALLERY: NotificationPayload = {
-		kind: "forward-images",
+		kind: "image-group",
 		images: [
 			{ url: "https://i0.hdslb.com/1.jpg", width: 800, height: 600 },
 			{ url: "https://i0.hdslb.com/2.jpg", width: 1000, height: 1000 },
 		],
-		forward: true,
+		mergeForward: true,
 	};
 
 	it("私域 group:图集合并成一条 markdown(msg_type 2),不走 /files 上传", async () => {
@@ -360,10 +360,10 @@ describe("createQQOfficialAdapter — A+ 投递语义 / 失败", () => {
 		});
 		const ad = createQQOfficialAdapter(adapterOpts());
 		const r = await ad.send(qqConnection({ botType: "private" }), qqTarget("group", "G1"), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.example/a.png", width: 1, height: 1 }],
-			forward: false,
-		} as NotificationPayload);
+			mergeForward: false,
+		});
 		expect(r).toMatchObject({ ok: false, code: "unknown", upstreamCode: 40034 });
 	});
 

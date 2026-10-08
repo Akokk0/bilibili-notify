@@ -350,7 +350,7 @@ describe("StatsRecorder — 场次身份在一场之内保持不变", () => {
 		trigger("subscription-changed", {
 			ops: [
 				{
-					type: "remove",
+					kind: "remove",
 					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
 				},
 			],
@@ -403,10 +403,10 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		trigger("subscription-changed", {
 			ops: [
 				{
-					type: "remove",
+					kind: "remove",
 					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
 				},
-				{ type: "add", sub: { identity: { sourceKey: "bilibili", externalId: "2" } } },
+				{ kind: "add", sub: { identity: { sourceKey: "bilibili", externalId: "2" } } },
 			],
 		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalled());
@@ -419,11 +419,11 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		trigger("subscription-changed", {
 			ops: [
 				{
-					type: "remove",
+					kind: "remove",
 					sub: { id: "ext-1", identity: { sourceKey: "douyin", externalId: "1" } },
 				},
 				{
-					type: "remove",
+					kind: "remove",
 					sub: { id: "id-2", identity: { sourceKey: "bilibili", externalId: "2" } },
 				},
 			],
@@ -444,7 +444,7 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		trigger("subscription-changed", {
 			ops: [
 				{
-					type: "remove",
+					kind: "remove",
 					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
 				},
 			],
@@ -462,7 +462,7 @@ describe("StatsRecorder — 订阅删除清理", () => {
 		trigger("subscription-changed", {
 			ops: [
 				{
-					type: "remove",
+					kind: "remove",
 					sub: { id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" } },
 				},
 			],
@@ -698,7 +698,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 			ts: "2026-05-16T09:00:00.000Z",
 		});
 		subs = [{ id: "id-7", identity: { sourceKey: "bilibili", externalId: "7" }, ...ON }];
-		trigger("subscription-changed", { ops: [{ type: "add", sub: subs[0] }] });
+		trigger("subscription-changed", { ops: [{ kind: "add", sub: subs[0] }] });
 		trigger("dynamic-detected", {
 			uid: "7",
 			id: "late",
@@ -736,7 +736,7 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
 		subs = [SUBS[1]];
-		trigger("subscription-changed", { ops: [{ type: "remove", sub: SUBS[0] }] });
+		trigger("subscription-changed", { ops: [{ kind: "remove", sub: SUBS[0] }] });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
 		trigger("dynamic-detected", {
 			uid: "1",

@@ -376,10 +376,10 @@ describe("onebot — send 路由", () => {
 		await ad.send(obConnection(), obTarget(), {
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "T" },
-				{ type: "image", buffer: Buffer.from("IMG"), mime: "image/png" },
-				{ type: "link", href: "https://x", title: "标题" },
-				{ type: "at-all" },
+				{ kind: "text", text: "T" },
+				{ kind: "image", buffer: Buffer.from("IMG"), mime: "image/png" },
+				{ kind: "link", href: "https://x", title: "标题" },
+				{ kind: "at-all" },
 			],
 		});
 		expect(lastBody().message).toEqual([
@@ -390,15 +390,15 @@ describe("onebot — send 路由", () => {
 		]);
 	});
 
-	it("forward-images forward:false → send_group_msg 多 image 合并(默认行为)", async () => {
+	it("image-group mergeForward:false → send_group_msg 多 image 合并(默认行为)", async () => {
 		// imageGroupForward=false 默认路径:多图合并到一条普通 send_group_msg,
 		// 避开 NapCat SsoSendLongMsg 长消息通道。
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obConnection(), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
-			forward: false,
+			mergeForward: false,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
 		expect(lastBody().message).toEqual([
@@ -407,20 +407,38 @@ describe("onebot — send 路由", () => {
 		]);
 	});
 
-	it("forward-images forward:false + private scope → send_private_msg 多 image", async () => {
+	it("image-group 里没有 url 的图(只带图库引用)跳过:适配器照 url 发,普通多图与合并转发都是", async () => {
+		fetchMock.mockResolvedValue(
+			res({ ok: true, json: { status: "ok", retcode: 0, data: { user_id: 42, nickname: "B" } } }),
+		);
+		const ad = createOnebotAdapter(obOpts());
+		const images = [
+			{ ref: `${"a".repeat(64)}.jpg` },
+			{ ref: `${"a".repeat(64)}.jpg`, url: "https://x/a.jpg" },
+		];
+		await ad.send(obConnection(), obTarget(), { kind: "image-group", images, mergeForward: false });
+		expect(lastBody().message).toEqual([{ type: "image", data: { file: "https://x/a.jpg" } }]);
+		await ad.send(obConnection(), obTarget(), { kind: "image-group", images, mergeForward: true });
+		const nodes = lastBody().messages as Array<{ data: { content: unknown } }>;
+		expect(nodes.map((n) => n.data.content)).toEqual([
+			[{ type: "image", data: { file: "https://x/a.jpg" } }],
+		]);
+	});
+
+	it("image-group mergeForward:false + private scope → send_private_msg 多 image", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obConnection(), obTarget({ scope: "private", address: "999" }), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/a.jpg" }],
-			forward: false,
+			mergeForward: false,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
 		expect(lastBody().user_id).toBe(999);
 		expect(lastBody().message).toEqual([{ type: "image", data: { file: "https://x/a.jpg" } }]);
 	});
 
-	it("forward-images forward:true → send_group_forward_msg + node 用 bot 真身 uin/name", async () => {
+	it("image-group mergeForward:true → send_group_forward_msg + node 用 bot 真身 uin/name", async () => {
 		// imageGroupForward=true 路径:走 OneBot 合并转发 = 聊天记录卡片。
 		// 知道自己 OneBot 实现支持长消息(非 NapCat 或 NapCat 已调优)的用户可以开。
 		//
@@ -439,9 +457,9 @@ describe("onebot — send 路由", () => {
 		);
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obConnection(), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/get_login_info");
 		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_group_forward_msg");
@@ -465,7 +483,7 @@ describe("onebot — send 路由", () => {
 		expect(nodes[1]?.data?.content?.[0]?.data?.file).toBe("https://i0.hdslb.com/2.jpg");
 	});
 
-	it("forward-images forward:true 缓存命中:第二次 send 不再调 get_login_info", async () => {
+	it("image-group mergeForward:true 缓存命中:第二次 send 不再调 get_login_info", async () => {
 		// per-adapter botIdentityCache 命中:连续两次 forward 只触发一次
 		// get_login_info,后续直接复用。
 		fetchMock.mockResolvedValueOnce(
@@ -476,14 +494,14 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obConnection();
 		await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/2.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		const endpoints = fetchMock.mock.calls.map((c) => c[0]);
 		expect(endpoints).toEqual([
@@ -493,7 +511,7 @@ describe("onebot — send 路由", () => {
 		]);
 	});
 
-	it("forward-images forward:true,get_login_info 失败后下次 send 重新探测(不长期缓存 null)", async () => {
+	it("image-group mergeForward:true,get_login_info 失败后下次 send 重新探测(不长期缓存 null)", async () => {
 		// P2-1 守护:失败结果不进缓存,下次 send 再发一次 get_login_info。
 		// 否则 OneBot 实现"暂时挂掉再起"时本进程永远 fallback 直到 reconcile。
 		fetchMock.mockResolvedValueOnce(
@@ -510,14 +528,14 @@ describe("onebot — send 路由", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obConnection();
 		await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/2.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		const endpoints = fetchMock.mock.calls.map((c) => c[0]);
 		expect(endpoints).toEqual([
@@ -532,7 +550,7 @@ describe("onebot — send 路由", () => {
 		expect(nodes[0]?.data?.name).toBe("Now");
 	});
 
-	it("forward-images forward:true,user_id 是数字字符串 → 兼容(NapCat 老版本 / JS 精度兜底场景)", async () => {
+	it("image-group mergeForward:true,user_id 是数字字符串 → 兼容(NapCat 老版本 / JS 精度兜底场景)", async () => {
 		// P2-3 守护:OneBot 部分实现把 user_id 序列化为字符串(尤其大数字 / JS 兜底),
 		// parseLoginInfo 必须接受 /^\d+$/ 的字符串,否则会错走 fallback uin=10000。
 		fetchMock.mockResolvedValueOnce(
@@ -548,16 +566,16 @@ describe("onebot — send 路由", () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obConnection(), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		const nodes = lastBody().messages as Array<{ data: { uin: string; name: string } }>;
 		expect(nodes[0]?.data?.uin).toBe("1234567890");
 		expect(nodes[0]?.data?.name).toBe("BigUin");
 	});
 
-	it("forward-images forward:true,get_login_info 失败 → fallback 旧硬编码,推送仍成功", async () => {
+	it("image-group mergeForward:true,get_login_info 失败 → fallback 旧硬编码,推送仍成功", async () => {
 		// 兼容老 / 阉割版 OneBot 实现:get_login_info 返回 retcode!=0(或 endpoint
 		// 不存在 / response 不符合形状),整条 forward 不能挂 —— buildSendAction 必须
 		// 兜到 FALLBACK_BOT_IDENTITY(uin=10000 / name="bilibili-notify"),把消息发出去。
@@ -569,9 +587,9 @@ describe("onebot — send 路由", () => {
 		);
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(r.ok).toBe(true); // 整条推送仍发出
 		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_group_forward_msg");
@@ -580,35 +598,35 @@ describe("onebot — send 路由", () => {
 		expect(nodes[0]?.data?.name).toBe("bilibili-notify");
 	});
 
-	it("forward-images forward:false 不触发 get_login_info(仅 forward 路径需要 bot 身份)", async () => {
+	it("image-group mergeForward:false 不触发 get_login_info(仅 forward 路径需要 bot 身份)", async () => {
 		// 优化路径:多 image segment 普通群消息不带 node,无需 bot 身份;省一次往返。
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obConnection(), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
-			forward: false,
+			mergeForward: false,
 		});
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
 	});
 
-	it("forward-images forward:true + misconfigured target → 立即 err,不调 get_login_info", async () => {
+	it("image-group mergeForward:true + misconfigured target → 立即 err,不调 get_login_info", async () => {
 		// P2-B 守护:target 缺 groupId 是配错,buildSendAction 会立即 err。
 		// 必须先做 target 校验再 await get_login_info,否则浪费 15s 超时在注定
 		// 发不出去的消息上。
 		const ad = createOnebotAdapter(obOpts());
 		// 故意把 target.address 改成空 → 触发 "group: groupId missing"。
 		const r = await ad.send(obConnection(), obTarget({ address: "" }), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(r).toEqual({ ok: false, code: "invalid", message: "group: groupId missing" });
 		expect(fetchMock).toHaveBeenCalledTimes(0); // 没调 /get_login_info
 	});
 
-	it("forward-images forward:true 的 latencyMs 包含 get_login_info 往返", async () => {
+	it("image-group mergeForward:true 的 latencyMs 包含 get_login_info 往返", async () => {
 		// P2-A 守护:bot 身份探测是发 forward 必经的一步,latencyMs 应反映本条
 		// 消息端到端开销。get_login_info mock 一个 50ms 延迟,断言 latencyMs ≥ 50。
 		fetchMock.mockImplementationOnce(
@@ -633,15 +651,15 @@ describe("onebot — send 路由", () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(obConnection(), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(r.ok).toBe(true);
 		expect(r.ok && r.latencyMs).toBeGreaterThanOrEqual(45); // 留点抖动余量
 	});
 
-	it("forward-images forward:true + private scope → send_private_forward_msg + bot 真身", async () => {
+	it("image-group mergeForward:true + private scope → send_private_forward_msg + bot 真身", async () => {
 		fetchMock.mockResolvedValueOnce(
 			res({ ok: true, json: { status: "ok", retcode: 0, data: { user_id: 999, nickname: "P" } } }),
 		);
@@ -650,9 +668,9 @@ describe("onebot — send 路由", () => {
 		);
 		const ad = createOnebotAdapter(obOpts());
 		await ad.send(obConnection(), obTarget({ scope: "private", address: "888" }), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/a.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(fetchMock.mock.calls[1]?.[0]).toBe("http://nb:3000/send_private_forward_msg");
 		expect(lastBody().user_id).toBe(888);
@@ -864,9 +882,9 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(r.ok).toBe(true);
 		expect(bot.received.filter((f) => f.action === "send_group_forward_msg")).toHaveLength(1);
@@ -912,9 +930,9 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		// get_login_info 用 cfg.timeoutMs(50ms)会先超时 → fallback 身份;forward 本体
 		// 在放宽后的 1000ms 下限内等到 150ms 的慢成功。
 		const r = await ad.send(obConnection({ timeoutMs: 50, retryTimes: 0 }), obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(r.ok).toBe(true);
 	});
@@ -986,9 +1004,9 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
-			forward: false,
+			mergeForward: false,
 		});
 		expect(r.ok).toBe(true);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
@@ -1107,9 +1125,9 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		await sleep(40);
 		const t0 = Date.now();
 		const r = await ad.send(connection, obTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(r.ok).toBe(false);
 		expect(messageOf(r)).toMatch(/超时/);
@@ -1684,8 +1702,8 @@ describe("webhook — send", () => {
 		await ad.send(whConnection(), whTarget(), {
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "t" },
-				{ type: "image", buffer: Buffer.from("Q"), mime: "image/jpeg" },
+				{ kind: "text", text: "t" },
+				{ kind: "image", buffer: Buffer.from("Q"), mime: "image/jpeg" },
 			],
 		});
 		expect(lastBody().payload).toEqual({
@@ -1850,7 +1868,7 @@ describe("webhook — send", () => {
 		});
 	});
 
-	it("platform providers 将 image/composite/forward-images 降级为可读文本", async () => {
+	it("platform providers 将 image/composite/image-group 降级为可读文本", async () => {
 		fetchMock.mockResolvedValue(res({ ok: true, json: { errcode: 0, errmsg: "ok" } }));
 		const ad = createWebhookAdapter({ logger: makeLogger() });
 		await ad.send(whConnection("dingtalk"), whTarget(), {
@@ -1862,10 +1880,10 @@ describe("webhook — send", () => {
 		await ad.send(whConnection("dingtalk"), whTarget(), {
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "正文" },
-				{ type: "link", href: "https://example.com", title: "链接" },
-				{ type: "image", buffer: Buffer.from("Q"), mime: "image/jpeg" },
-				{ type: "at-all" },
+				{ kind: "text", text: "正文" },
+				{ kind: "link", href: "https://example.com", title: "链接" },
+				{ kind: "image", buffer: Buffer.from("Q"), mime: "image/jpeg" },
+				{ kind: "at-all" },
 			],
 		});
 		expect(lastBody()).toEqual({
@@ -1875,9 +1893,9 @@ describe("webhook — send", () => {
 
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { code: 0, msg: "success" } }));
 		await ad.send(whConnection("feishu", { secret: undefined }), whTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/1.jpg" }, { url: "https://i0.hdslb.com/2.jpg" }],
-			forward: false,
+			mergeForward: false,
 		});
 		expect(lastBody()).toEqual({
 			msg_type: "text",
@@ -1885,9 +1903,9 @@ describe("webhook — send", () => {
 		});
 
 		await ad.send(whConnection("wecom", { secret: undefined }), whTarget(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/3.jpg" }, { url: "https://i0.hdslb.com/4.jpg" }],
-			forward: false,
+			mergeForward: false,
 		});
 		expect(lastBody()).toEqual({
 			msgtype: "text",

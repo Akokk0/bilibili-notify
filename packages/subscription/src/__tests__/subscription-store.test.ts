@@ -79,7 +79,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 			"sub-u1",
 		);
 		expect(store.findById("sub-u1")?.id).toBe("sub-u1");
-		expect(lastOps(bus)).toEqual([{ type: "add", sub }]);
+		expect(lastOps(bus)).toEqual([{ kind: "add", sub }]);
 	});
 
 	it("upsert 同 id → 触发 update op,不重复出现", () => {
@@ -93,7 +93,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 
 		expect(store.list()).toHaveLength(1);
 		expect(store.findById("sub-u1")?.notes).toBe("改了");
-		expect(lastOps(bus)).toEqual([{ type: "update", sub: sub2 }]);
+		expect(lastOps(bus)).toEqual([{ kind: "update", sub: sub2 }]);
 	});
 
 	it("removeById 存在 → 触发 remove op + 返回被删项", () => {
@@ -105,7 +105,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		const removed = store.removeById("sub-u1");
 		expect(removed?.id).toBe("sub-u1");
 		expect(store.list()).toHaveLength(0);
-		expect(lastOps(bus)).toEqual([{ type: "remove", sub }]);
+		expect(lastOps(bus)).toEqual([{ kind: "remove", sub }]);
 	});
 
 	it("findByIdentity 两格都相等才算 —— 同一个外部 id 在 B 站与某个拓展下各有一条,按身份各找各的", () => {
@@ -145,8 +145,8 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		const ext = makeExtSub("sec-1");
 		store.upsert(ext);
 		store.removeById(ext.id);
-		expect(lastOps(bus)).toEqual([{ type: "remove", sub: ext }]);
-		expect(diff([ext], [])).toEqual([{ type: "remove", sub: ext }]);
+		expect(lastOps(bus)).toEqual([{ kind: "remove", sub: ext }]);
+		expect(diff([ext], [])).toEqual([{ kind: "remove", sub: ext }]);
 	});
 
 	it("removeById 不存在 → 返回 undefined,不发事件", () => {
@@ -172,7 +172,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		const ops = lastOps(bus);
 		expect(ops).toBeDefined();
 		const byType = new Map<string, SubscriptionOp>();
-		for (const op of ops ?? []) byType.set(op.type, op);
+		for (const op of ops ?? []) byType.set(op.kind, op);
 		expect(byType.has("update")).toBe(true);
 		expect(byType.has("remove")).toBe(true);
 		expect(byType.has("add")).toBe(true);
@@ -203,9 +203,9 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		const b = makeSub("u2", "sub-b");
 		const a2 = { ...a, notes: "改" };
 
-		expect(diff([], [a])).toEqual([{ type: "add", sub: a }]);
-		expect(diff([a], [])).toEqual([{ type: "remove", sub: a }]);
-		expect(diff([a], [a2])).toEqual([{ type: "update", sub: a2 }]);
+		expect(diff([], [a])).toEqual([{ kind: "add", sub: a }]);
+		expect(diff([a], [])).toEqual([{ kind: "remove", sub: a }]);
+		expect(diff([a], [a2])).toEqual([{ kind: "update", sub: a2 }]);
 		expect(diff([a, b], [a, b])).toEqual([]);
 	});
 
@@ -241,7 +241,7 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		it("真实内容变更仍照常 update(不被误吞)", () => {
 			const a = makeSub("u1", "sub-a");
 			const a2 = { ...a, notes: "真改了" };
-			expect(diff([a], [a2])).toEqual([{ type: "update", sub: a2 }]);
+			expect(diff([a], [a2])).toEqual([{ kind: "update", sub: a2 }]);
 		});
 	});
 });

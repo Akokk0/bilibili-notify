@@ -36,7 +36,7 @@ const M3: NotificationPayload = { kind: "text", text: "m3" };
 
 function textOf(p: NotificationPayload): string {
 	if (p.kind === "text") return p.text;
-	if (p.kind === "composite" && p.segments[0]?.type === "at-all") return "@全体";
+	if (p.kind === "composite" && p.segments[0]?.kind === "at-all") return "@全体";
 	return p.kind;
 }
 

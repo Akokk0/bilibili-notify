@@ -1,10 +1,10 @@
 /**
  * 刻画测试 — webhook 适配器**发到线上的报文**。
  *
- * 通用 webhook 把内部的 `NotificationPayload` 直接序列化出去(`kind: "forward-images"`、
- * `forward`、composite 段的 `type` 都是内部名),所以内部改名会静默改掉别人接收端看到的
+ * 通用 webhook 的 JSON 当初是把内部的 `NotificationPayload` 直接序列化出去的(`kind: "forward-images"`、
+ * `forward`、composite 段的 `type` 都曾是内部名),所以内部改名会静默改掉别人接收端看到的
  * JSON。这里把每种载荷的**完整请求体**钉成字面值:内部怎么改名,下面的期望值都不许动
- * (要改只能在适配器里映射回这些名字)。
+ * (要改只能在适配器里映射回这些名字;3a-16 起内部已改叫 `image-group` / `mergeForward` / `kind`,适配器在映射)。
  *
  * 钉的是今天的真实输出,看着别扭也照实钉 —— 例如 `private` 今天是 `!!pushOpts.private`
  * (「强制私聊标志」),不是写死的 false。
@@ -72,27 +72,37 @@ function sentBody(): unknown {
 const PNG = Buffer.from("PNG-BYTES");
 const JPG = Buffer.from("JPG-BYTES");
 
-/** 五种载荷各一份有代表性的(composite 含 text / image / link / at-all 四种段)。 */
+/**
+ * 五种载荷各一份有代表性的(composite 含 text / image / link / at-all 四种段)。这里写的是**内部**的名字
+ * (图集叫 `image-group`、开关叫 `mergeForward`、段的判别键叫 `kind`);下面的期望值是线上的名字,不跟着改。
+ */
 const PAYLOADS = {
 	text: { kind: "text", text: "hello" },
 	image: { kind: "image", image: { buffer: PNG, mime: "image/png" }, caption: "卡片标题" },
 	composite: {
 		kind: "composite",
 		segments: [
-			{ type: "text", text: "正文" },
-			{ type: "image", buffer: JPG, mime: "image/jpeg" },
-			{ type: "link", href: "https://example.com/v", title: "视频" },
-			{ type: "link", href: "https://example.com/bare" },
-			{ type: "at-all" },
+			{ kind: "text", text: "正文" },
+			{ kind: "image", buffer: JPG, mime: "image/jpeg" },
+			{ kind: "link", href: "https://example.com/v", title: "视频" },
+			{ kind: "link", href: "https://example.com/bare" },
+			{ kind: "at-all" },
 		],
 	},
-	"forward-images": {
-		kind: "forward-images",
+	// 图是 `PostImage`:带着的图库引用与 `isAnimated` 不上线,线上每张图只有 url / width / height。
+	"image-group": {
+		kind: "image-group",
 		images: [
-			{ url: "https://i0.hdslb.com/1.jpg", width: 1080, height: 1920 },
+			{
+				ref: `${"a".repeat(64)}.jpg`,
+				url: "https://i0.hdslb.com/1.jpg",
+				width: 1080,
+				height: 1920,
+				isAnimated: false,
+			},
 			{ url: "https://i0.hdslb.com/2.jpg" },
 		],
-		forward: true,
+		mergeForward: true,
 	},
 	"miniapp-card": {
 		kind: "miniapp-card",
@@ -161,7 +171,7 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 	});
 
 	it("forward-images:kind 叫 `forward-images`,开关叫 `forward`", async () => {
-		await send("generic", PAYLOADS["forward-images"]);
+		await send("generic", PAYLOADS["image-group"]);
 		expect(sentBody()).toEqual({
 			...envelope,
 			payload: {
@@ -172,6 +182,31 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 				],
 				forward: true,
 			},
+		});
+	});
+
+	it("image-group 里没有 url 的图(只带图库引用)不上线:`images` 里只有带 url 的", async () => {
+		await send("generic", {
+			kind: "image-group",
+			images: [{ ref: `${"a".repeat(64)}.jpg` }, { url: "https://i0.hdslb.com/2.jpg" }],
+			mergeForward: false,
+		});
+		expect(sentBody()).toEqual({
+			...envelope,
+			payload: {
+				kind: "forward-images",
+				images: [{ url: "https://i0.hdslb.com/2.jpg" }],
+				forward: false,
+			},
+		});
+		await send("dingtalk", {
+			kind: "image-group",
+			images: [{ ref: `${"a".repeat(64)}.jpg` }, { url: "https://i0.hdslb.com/2.jpg" }],
+			mergeForward: false,
+		});
+		expect(sentBody()).toEqual({
+			msgtype: "text",
+			text: { content: "图片:\nhttps://i0.hdslb.com/2.jpg" },
 		});
 	});
 
@@ -221,7 +256,7 @@ describe("webhook 线上格式 — 机器人方言(只有文字,无内部名)", 
 		text: "hello",
 		image: "卡片标题",
 		composite: "正文\n[图片]\n视频 https://example.com/v\nhttps://example.com/bare\n@全体成员",
-		"forward-images": "图片:\nhttps://i0.hdslb.com/1.jpg\nhttps://i0.hdslb.com/2.jpg",
+		"image-group": "图片:\nhttps://i0.hdslb.com/1.jpg\nhttps://i0.hdslb.com/2.jpg",
 		"miniapp-card": "视频标题\nhttps://www.bilibili.com/video/BV1xx",
 	};
 

@@ -232,7 +232,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		// 第 1 条:@全体 单独一条 composite,只含 at-all 段
 		expect(calls[0].payload.kind).toBe("composite");
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
 		// 第 2 条:原 payload 原样不变(卡片 + 文字保持单独消息形态)
 		expect(calls[1].payload).toEqual({ kind: "text", text: "动态" });
@@ -262,7 +262,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		expect(calls[1]).toMatchObject({ targetId: "t2" });
 		expect(calls[1].payload.kind).toBe("composite"); // t2 第 1 条 @全体 only
 		if (calls[1].payload.kind === "composite") {
-			expect(calls[1].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[1].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
 		expect(calls[2]).toMatchObject({ targetId: "t2" });
 		expect(calls[2].payload).toEqual({ kind: "text", text: "开播" }); // t2 第 2 条原 payload
@@ -338,7 +338,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			expect(calls).toHaveLength(2);
 			expect(calls[0].payload.kind).toBe("composite");
 			if (calls[0].payload.kind === "composite") {
-				expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+				expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 			}
 			expect(calls[1].payload).toEqual({ kind: "text", text: "开播" });
 		};
@@ -393,8 +393,8 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		const payload: NotificationPayload = {
 			kind: "composite",
 			segments: [
-				{ type: "image", buffer: Buffer.from([1]), mime: "image/jpeg" },
-				{ type: "text", text: "开播啦" },
+				{ kind: "image", buffer: Buffer.from([1]), mime: "image/jpeg" },
+				{ kind: "text", text: "开播啦" },
 			],
 		};
 		await push.broadcastToFeature("s1", "liveStart", payload);
@@ -402,11 +402,11 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		// 第 1 条:@全体 only
 		expect(calls[0].payload.kind).toBe("composite");
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
 		// 第 2 条:原 [image, text] 不改不重组
 		if (calls[1].payload.kind === "composite") {
-			expect(calls[1].payload.segments.map((s) => s.type)).toEqual(["image", "text"]);
+			expect(calls[1].payload.segments.map((s) => s.kind)).toEqual(["image", "text"]);
 		}
 	});
 
@@ -428,16 +428,16 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		await push.broadcastToFeature("s1", "post", {
 			kind: "composite",
 			segments: [
-				{ type: "image", buffer: Buffer.from([3]), mime: "image/jpeg" },
-				{ type: "text", text: "发了条动态" },
+				{ kind: "image", buffer: Buffer.from([3]), mime: "image/jpeg" },
+				{ kind: "text", text: "发了条动态" },
 			],
 		});
 		expect(calls).toHaveLength(2);
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
 		if (calls[1].payload.kind === "composite") {
-			expect(calls[1].payload.segments.map((s) => s.type)).toEqual(["image", "text"]);
+			expect(calls[1].payload.segments.map((s) => s.kind)).toEqual(["image", "text"]);
 		}
 	});
 
@@ -464,7 +464,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		expect(calls).toHaveLength(2);
 		// 第 1 条:@全体 only
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
 		// 第 2 条:image+caption 原样(不被升级为 composite)
 		expect(calls[1].payload.kind).toBe("image");
@@ -476,12 +476,12 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "无图开播" });
 		expect(calls).toHaveLength(2);
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
 		expect(calls[1].payload).toEqual({ kind: "text", text: "无图开播" });
 	});
 
-	it("forward-images + atAllTargets:同样先发独立 @全体 再发合并转发", async () => {
+	it("image-group + atAllTargets:同样先发独立 @全体 再发合并转发", async () => {
 		// 合并转发节点跟外层独立 @全体 不冲突,一视同仁两条发出,@ 提醒在前。
 		const sub = makeEmptySubscription({
 			id: "s1",
@@ -498,18 +498,18 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		});
 		push.start();
 		await push.broadcastToFeature("s1", "post", {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "http://x/1.jpg" }],
-			forward: true,
+			mergeForward: true,
 		});
 		expect(calls).toHaveLength(2);
 		// 第 1 条:@全体 only
 		expect(calls[0].payload.kind).toBe("composite");
 		if (calls[0].payload.kind === "composite") {
-			expect(calls[0].payload.segments).toEqual([{ type: "at-all" }]);
+			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
 		}
-		// 第 2 条:原 forward-images 原样
-		expect(calls[1].payload.kind).toBe("forward-images");
+		// 第 2 条:原 image-group 原样
+		expect(calls[1].payload.kind).toBe("image-group");
 	});
 
 	it("非 post / liveStart 的 feature 不进入 atAll 分支(superchat 即使 extras.atAllPost=true)", async () => {
@@ -543,7 +543,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		setExtraDefault(sub, "atAllLiveStart", true);
 		const calls: SendCall[] = [];
 		const isAtAll = (p: NotificationPayload) =>
-			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.type === "at-all";
+			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.kind === "at-all";
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
 			isEnabled: () => true,
@@ -592,7 +592,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		sub.routing.liveStart = ["t1"];
 		setExtraDefault(sub, "atAllLiveStart", true);
 		const isAtAll = (p: NotificationPayload) =>
-			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.type === "at-all";
+			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.kind === "at-all";
 		let landAtAll!: (result: DeliveryResult) => void;
 		const atAllLanded = new Promise<DeliveryResult>((resolve) => {
 			landAtAll = resolve;

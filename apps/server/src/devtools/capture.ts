@@ -51,7 +51,7 @@ function summarize(payload: NotificationPayload): { text?: string; images: numbe
 			return payload.caption === undefined
 				? { images: 1 }
 				: { text: clip(payload.caption), images: 1 };
-		case "forward-images":
+		case "image-group":
 			return { images: payload.images.length };
 		case "miniapp-card":
 			return { text: clip(payload.title), images: 0 };
@@ -59,10 +59,10 @@ function summarize(payload: NotificationPayload): { text?: string; images: numbe
 			const parts: string[] = [];
 			let images = 0;
 			for (const seg of payload.segments) {
-				if (seg.type === "text") parts.push(seg.text);
-				else if (seg.type === "image") images++;
-				else if (seg.type === "link") parts.push(seg.title ? `${seg.title} ${seg.href}` : seg.href);
-				else if (seg.type === "at-all") parts.push("@全体");
+				if (seg.kind === "text") parts.push(seg.text);
+				else if (seg.kind === "image") images++;
+				else if (seg.kind === "link") parts.push(seg.title ? `${seg.title} ${seg.href}` : seg.href);
+				else if (seg.kind === "at-all") parts.push("@全体");
 			}
 			return parts.length === 0 ? { images } : { text: clip(parts.join("\n")), images };
 		}

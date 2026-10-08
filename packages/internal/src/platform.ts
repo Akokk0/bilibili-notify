@@ -1,4 +1,5 @@
 import type { Result } from "./constants";
+import type { PostImage } from "./post";
 import type { ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
 import type { SubscriptionReportDelivery } from "./schema/subscription-report";
@@ -57,9 +58,9 @@ export interface ServiceContext {
  * 去清,编译器一声不吭。带整条订阅,消费方按 `kind` 收窄之后才读得到 uid。
  */
 export type SubscriptionOp =
-	| { type: "add"; sub: Subscription }
-	| { type: "remove"; sub: Subscription }
-	| { type: "update"; sub: Subscription };
+	| { kind: "add"; sub: Subscription }
+	| { kind: "remove"; sub: Subscription }
+	| { kind: "update"; sub: Subscription };
 
 /**
  * 总线的事件表:事件名 → 载荷。业务核心唯一事件源,独立端 WS channel 都源自这里。
@@ -333,13 +334,13 @@ export interface MessageBus {
 
 /** 单段消息载荷类型。composite 中的 segment 之一。 */
 export type PayloadSegment =
-	| { type: "text"; text: string }
-	| { type: "image"; buffer: Buffer; mime: string }
-	| { type: "link"; href: string; title?: string }
+	| { kind: "text"; text: string }
+	| { kind: "image"; buffer: Buffer; mime: string }
+	| { kind: "link"; href: string; title?: string }
 	/**
 	 * @全体成员 段。各 platform adapter 自行翻译:
 	 * - OneBot v11: `{ type: "at", data: { qq: "all" } }`(真实 @ 全体)
-	 * - Webhook: JSON 序列化时保留 `{ type: "at-all" }`,由接收方自行处理
+	 * - Webhook: 通用 JSON 里写成 `{ type: "at-all" }`(线上的名字不随内部改),由接收方自行处理
 	 * - Web Dashboard: 渲染成可视化 "@全体" 文本(非真实 @)
 	 *
 	 * **它是一条自己的消息,不是本体的修饰**(ADR-0016):`PushRouter` 把这一段单独包成
@@ -348,18 +349,7 @@ export type PayloadSegment =
 	 * `features.extras.atAll<Scope>`」定,某个目标要不要另说则看订阅上的三态表
 	 * `extraTargets.atAll<Scope>[targetId]`。
 	 */
-	| { type: "at-all" };
-
-/**
- * 图集单图 —— url + 可选原始像素尺寸。尺寸来自 B站图集元数据(opus.pics / draw.items
- * 的 width/height),仅 QQ 官方原生 markdown 多图(`![文字 #宽px #高px](url)`)需要它来
- * 正常渲染;OneBot / webhook 等只用 `url`,尺寸缺失不影响。
- */
-export interface ForwardImage {
-	url: string;
-	width?: number;
-	height?: number;
-}
+	| { kind: "at-all" };
 
 /**
  * 平台中立的消息载荷。Adapter 翻译为各平台原生格式:
@@ -371,7 +361,9 @@ export type NotificationPayload =
 	| { kind: "image"; image: { buffer: Buffer; mime: string }; caption?: string }
 	| { kind: "composite"; segments: PayloadSegment[] }
 	/**
-	 * 图集 payload(典型来源:动态图集 / 多张大图)。`forward` 决定 adapter 用哪种
+	 * 图集 payload(典型来源:动态图集 / 多张大图)。适配器照 `images[].url` 发(`ref` 只是带着);
+	 * 尺寸来自来源的图集元数据,仅 QQ 官方原生 markdown 多图(`![文字 #宽px #高px](url)`)需要它来
+	 * 正常渲染,缺了不影响别的平台。`mergeForward` 决定 adapter 用哪种
 	 * 平台原生形式投递:
 	 *   - `true` —— 走 OneBot `send_group_forward_msg`,
 	 *     渲染成「聊天记录」卡片。视觉好但走长消息通道(NapCat 的 `SsoSendLongMsg`
@@ -380,7 +372,7 @@ export type NotificationPayload =
 	 *     普通多图。稳但 N+ 张大图会一排刷屏。
 	 * 默认值由上游 dynamic engine config(`imageGroupForward`)决定。
 	 */
-	| { kind: "forward-images"; images: ForwardImage[]; forward: boolean }
+	| { kind: "image-group"; images: PostImage[]; mergeForward: boolean }
 	/**
 	 * QQ 小程序卡(B 站 App「分享到 QQ」那种,点开进小程序播放)。只有能向腾讯签 ark 的
 	 * OneBot 实现发得出(扩展接口 `get_mini_app_ark`,见 server 的 platforms/onebot.ts);

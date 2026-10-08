@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { CardColorOptions, ImageRenderer } from "@bilibili-notify/image";
-import type { ForwardImage, Logger, MessagePartType } from "@bilibili-notify/internal";
+import type { Logger, MessagePartType, PostImage } from "@bilibili-notify/internal";
 import { assembleMessageGroups, interpolate, isBlockVisible } from "@bilibili-notify/internal";
 import { resolveDynamicColorOptions } from "./card-style";
 import type { DynamicBroadcastOptions, PostPushPart, PushSegment, SubItemView } from "./push-like";
@@ -61,7 +61,7 @@ export interface NeutralWork {
 	/** AI 提示词里「××发布了一条{postNoun}」的叫法:B 站「动态」,拓展按平台(决策 71)。 */
 	postNoun: string;
 	/** 图集的图;空 = 不附图集(开关开着也不附)。 */
-	gallery: readonly ForwardImage[];
+	gallery: readonly PostImage[];
 }
 
 /**
@@ -337,13 +337,13 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 	if (galleryEnabled && work.gallery.length > 0) {
 		const forwardWanted = settings.imageGroupForward ?? config.imageGroup.forward;
 		// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
-		const forward = forwardWanted && work.gallery.length > 1;
+		const mergeForward = forwardWanted && work.gallery.length > 1;
 		// 图集是主卡的**附属物**,主卡此时已成功发出。它走 forward/NapCat 长消息通道(不稳),
 		// reject 很现实。绝不能往外抛:B 站那头会因此不推进时间线,下轮整条重判、主卡以
 		// part='post' 重发,而 post 不抑制 @全体 → 每 tick 重复 @全体。发不出就算了。
 		try {
 			await push.broadcast(
-				[{ type: "image-group", forward, images: [...work.gallery] }],
+				[{ kind: "image-group", mergeForward, images: [...work.gallery] }],
 				"post-images",
 				{ pushId },
 			);

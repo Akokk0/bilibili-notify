@@ -384,8 +384,8 @@ export function createExtensionLiveSessions(
 		}),
 		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
-				if (op.type === "remove") end(op.sub.id, "removed");
-				else if (op.type === "update" && !op.sub.enabled) end(op.sub.id, "disabled");
+				if (op.kind === "remove") end(op.sub.id, "removed");
+				else if (op.kind === "update" && !op.sub.enabled) end(op.sub.id, "disabled");
 			}
 		}),
 	];

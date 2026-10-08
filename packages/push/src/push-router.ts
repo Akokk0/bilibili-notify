@@ -29,12 +29,12 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
  * @全体,再发原 payload(卡片 + 文字)—— 接收端看到的是两条独立消息,@ 提醒
  * 在前、卡片在后,不再把 at-all 段塞进卡片消息里。
  *
- * forward-images 同样适用:旧 `prependAtAll` 版本因要把 at-all 段塞进合并转发
+ * image-group 同样适用:旧 `prependAtAll` 版本因要把 at-all 段塞进合并转发
  * 节点内部语义不清而沉默忽略,新版本下 @全体 已经是**外层独立一条消息**,跟
  * 合并转发节点不冲突 → 一视同仁照常先发独立 @全体 再发合并转发。
  */
 function makeAtAllPayload(): NotificationPayload {
-	const at: PayloadSegment = { type: "at-all" };
+	const at: PayloadSegment = { kind: "at-all" };
 	return { kind: "composite", segments: [at] };
 }
 

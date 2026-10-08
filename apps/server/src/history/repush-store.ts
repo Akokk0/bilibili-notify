@@ -74,6 +74,7 @@ const StoredPayloadSchema = z.discriminatedUnion("kind", [
 	}),
 ]);
 type StoredPayload = z.infer<typeof StoredPayloadSchema>;
+type StoredSegment = z.infer<typeof StoredSegmentSchema>;
 
 /**
  * 一份重推原件在盘上的样子(`history/repush/<日>/<行 id>.json`)。`version` 是原件容器的版本;⑱c 之前叫 `v`,
@@ -184,26 +185,68 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					image: await storeImage(payload.image.buffer),
 					...(payload.caption !== undefined ? { caption: payload.caption } : {}),
 				};
-			case "forward-images":
-				// 图集本来就是一串 url(没有 buffer),原样抄过去。历史那边只剩一句摘要。
+			case "image-group":
+				// 图集本来就是一串 url(没有 buffer),抄过去。历史那边只剩一句摘要。
+				// 3a-16 第二轮删:盘上暂时还是改名前的样子(种类 `forward-images`、开关 `forward`、图只有
+				// url 与尺寸),在这里换算;没有 `url` 的图盘上的旧形状装不下,不写。
 				return {
 					kind: "forward-images",
-					images: payload.images.map((i) => ({ ...i })),
-					forward: payload.forward,
+					images: payload.images.flatMap((i) =>
+						i.url
+							? [
+									{
+										url: i.url,
+										...(i.width !== undefined ? { width: i.width } : {}),
+										...(i.height !== undefined ? { height: i.height } : {}),
+									},
+								]
+							: [],
+					),
+					forward: payload.mergeForward,
 				};
 			case "miniapp-card":
 				return { ...payload };
 			case "composite": {
-				const segments: z.infer<typeof StoredSegmentSchema>[] = [];
-				for (const seg of payload.segments) {
-					segments.push(
-						seg.type === "image"
-							? { type: "image", image: await storeImage(seg.buffer) }
-							: { ...seg },
-					);
-				}
+				const segments: StoredSegment[] = [];
+				for (const seg of payload.segments) segments.push(await toStoredSegment(seg));
 				return { kind: "composite", segments };
 			}
+		}
+	}
+
+	/** 3a-16 第二轮删:盘上的段暂时还用判别键 `type`,在这里换算。 */
+	async function toStoredSegment(seg: PayloadSegment): Promise<StoredSegment> {
+		switch (seg.kind) {
+			case "text":
+				return { type: "text", text: seg.text };
+			case "image":
+				return { type: "image", image: await storeImage(seg.buffer) };
+			case "link":
+				return {
+					type: "link",
+					href: seg.href,
+					...(seg.title !== undefined ? { title: seg.title } : {}),
+				};
+			case "at-all":
+				return { type: "at-all" };
+		}
+	}
+
+	/** 3a-16 第二轮删:{@link toStoredSegment} 的反方向。 */
+	async function toPayloadSegment(seg: StoredSegment): Promise<PayloadSegment> {
+		switch (seg.type) {
+			case "text":
+				return { kind: "text", text: seg.text };
+			case "image":
+				return { kind: "image", ...(await loadImage(seg.image)) };
+			case "link":
+				return {
+					kind: "link",
+					href: seg.href,
+					...(seg.title !== undefined ? { title: seg.title } : {}),
+				};
+			case "at-all":
+				return { kind: "at-all" };
 		}
 	}
 
@@ -218,21 +261,18 @@ export function createRepushStore(opts: CreateRepushStoreOptions): RepushStore {
 					image: await loadImage(stored.image),
 					...(stored.caption !== undefined ? { caption: stored.caption } : {}),
 				};
+			// 3a-16 第二轮删:盘上的旧名换算回活的载荷(种类名、`forward` → `mergeForward`)。
 			case "forward-images":
 				return {
-					kind: "forward-images",
+					kind: "image-group",
 					images: stored.images.map((i) => ({ ...i })),
-					forward: stored.forward,
+					mergeForward: stored.forward,
 				};
 			case "miniapp-card":
 				return { ...stored };
 			case "composite": {
 				const segments: PayloadSegment[] = [];
-				for (const seg of stored.segments) {
-					segments.push(
-						seg.type === "image" ? { type: "image", ...(await loadImage(seg.image)) } : { ...seg },
-					);
-				}
+				for (const seg of stored.segments) segments.push(await toPayloadSegment(seg));
 				return { kind: "composite", segments };
 			}
 		}

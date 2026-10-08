@@ -239,18 +239,18 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
  * 「正在直播」都 @全体、历史把周期推送记成开播。
  */
 describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给推送层", () => {
-	const card = { type: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
+	const card = { kind: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
 
 	it("开播:特性 liveStart(历史就记它)、允许 @全体;一组 = 一条载荷,卡 + 文字合成一条", async () => {
 		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[card, { type: "text", text: "开播啦" }]], 3, {});
+		await boundLivePush(send)([[card, { kind: "text", text: "开播啦" }]], 3, {});
 		expect(send).toHaveBeenCalledWith(
 			"liveStart",
 			{
 				kind: "composite",
 				segments: [
-					{ type: "image", buffer: card.buffer, mime: "image/jpeg" },
-					{ type: "text", text: "开播啦" },
+					{ kind: "image", buffer: card.buffer, mime: "image/jpeg" },
+					{ kind: "text", text: "开播啦" },
 				],
 			},
 			expect.objectContaining({ allowAtAll: true, extra: undefined }),
@@ -259,7 +259,7 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 
 	it("正在直播:特性 liveStreaming(自己的开关与目标,历史就记它)、不 @全体", async () => {
 		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[{ type: "text", text: "还在播" }]], 0, {});
+		await boundLivePush(send)([[{ kind: "text", text: "还在播" }]], 0, {});
 		expect(send).toHaveBeenCalledWith(
 			"liveStreaming",
 			{ kind: "text", text: "还在播" },
@@ -269,7 +269,7 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 
 	it("重启补报:特性 liveStart(走开播的路由,历史记成开播)、不 @全体", async () => {
 		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[{ type: "text", text: "补报" }]], 11, {});
+		await boundLivePush(send)([[{ kind: "text", text: "补报" }]], 11, {});
 		expect(send).toHaveBeenCalledWith(
 			"liveStart",
 			{ kind: "text", text: "补报" },
@@ -279,7 +279,7 @@ describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给�
 
 	it("下播:特性 liveEnd、不 @全体;几组 = 一串载荷,pushId 原样带上", async () => {
 		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[card], [{ type: "text", text: "下播啦" }]], 9, { pushId: "p1" });
+		await boundLivePush(send)([[card], [{ kind: "text", text: "下播啦" }]], 9, { pushId: "p1" });
 		expect(send).toHaveBeenCalledWith(
 			"liveEnd",
 			[
@@ -1570,7 +1570,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "globals" });
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
+		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 	});
 
 	it("回归:只改全局 cardSkin(不碰 cardStyle/ai/schedule 等)→ live.applyOps 与 dynamic.applyOps 都收到刷新(热更 gate 漏掉它的话,换了皮肤要重启才生效)", () => {
@@ -1589,13 +1589,13 @@ describe("createEngines — config-changed globals 热重载", () => {
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
+		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 		expect(liveOps[0].changes[0].cardSkin).toBe("skin-abc");
 
 		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps).toHaveLength(1);
-		expect(dynOps[0]).toMatchObject({ type: "update", uid: "1" });
+		expect(dynOps[0]).toMatchObject({ kind: "update", uid: "1" });
 	});
 
 	// 直播拆键(⑬d):周期「正在直播」的开关、间隔与启动补报各是自己的一格,从 schedule 里搬出来。
@@ -1970,11 +1970,11 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("100", false);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "100" }]);
+		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "100" }]);
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ type: "update", uid: "100", changes: [{ scope: "dynamic", post: false }] },
+			{ kind: "update", uid: "100", changes: [{ scope: "dynamic", post: false }] },
 		]);
 	});
 
@@ -1982,14 +1982,14 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("200", true);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0].type).toBe("update");
+		expect(liveOps[0].kind).toBe("update");
 		expect(liveOps[0].uid).toBe("200");
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ type: "update", uid: "200", changes: [{ scope: "dynamic", post: true }] },
+			{ kind: "update", uid: "200", changes: [{ scope: "dynamic", post: true }] },
 		]);
 	});
 
@@ -2004,12 +2004,12 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.cardSkinKnobs = { default: { "glass-opacity": 0.4 } };
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps[0].changes[0].cardSkinKnobs).toEqual({ default: { "glass-opacity": 0.4 } });
 
 		delete sub.overrides.cardSkinKnobs;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 		const cleared = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
 		expect(Object.hasOwn(cleared, "cardSkinKnobs")).toBe(true);
 		expect(cleared.cardSkinKnobs).toBeUndefined();
@@ -2022,7 +2022,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.liveStart = { catchUpOnBoot: true };
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 
 		const change = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0];
 		expect(change).toMatchObject({
@@ -2038,7 +2038,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("711", true);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].changes[0]).toMatchObject({
 			liveStreaming: false,
@@ -2051,7 +2051,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("300", false);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 	});
@@ -2065,11 +2065,11 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.templates = { post: "🔔 {name} {url}", postVideo: "🎬 {name} {url}" };
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps).toHaveLength(1);
-		expect(dynOps[0].type).toBe("add");
+		expect(dynOps[0].kind).toBe("add");
 		const view = dynOps[0].sub;
 		expect(view.uid).toBe("600");
 		expect(view.post).toBe(true);
@@ -2084,7 +2084,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		sub.overrides.cardSkin = "k9zzz-0badf00d";
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
 		expect(liveView.cardSkin).toBe("k9zzz-0badf00d");
@@ -2099,7 +2099,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		patchGlobals(c, (g) => {
 			g.defaults.cardSkin = "k1aaa-11111111";
 		});
-		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
 		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
@@ -2112,11 +2112,11 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("700", false);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(dynOps).toHaveLength(1);
-		expect(dynOps[0].type).toBe("add");
+		expect(dynOps[0].kind).toBe("add");
 		expect(dynOps[0].sub.uid).toBe("700");
 		expect(dynOps[0].sub.post).toBe(false);
 	});
@@ -2125,10 +2125,10 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		const sub = makeSub("400", true);
 		const c = setup({ subs: [sub] });
 		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ type: "remove", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub }] });
 
-		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "400" }]);
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ type: "delete", uid: "400" }]);
+		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "400" }]);
+		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "400" }]);
 	});
 
 	it("拓展订阅的增删改不进 B 站引擎(ADR-0019 决策 9)", () => {
@@ -2137,9 +2137,9 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		active = c;
 		c.bus.emit("subscription-changed", {
 			ops: [
-				{ type: "add", sub: ext },
-				{ type: "update", sub: ext },
-				{ type: "remove", sub: ext },
+				{ kind: "add", sub: ext },
+				{ kind: "update", sub: ext },
+				{ kind: "remove", sub: ext },
 			],
 		});
 
@@ -2155,19 +2155,19 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 
 		// disable
 		sub.enabled = false;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
-		expect(liveOpsOf()).toEqual([{ type: "delete", uid: "500" }]);
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
+		expect(liveOpsOf()).toEqual([{ kind: "delete", uid: "500" }]);
 
 		// re-enable → 完整 update(LiveEngine.applyOps 见无 listener 走 lookupFullSub 重建)
 		sub.enabled = true;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 		expect(liveOpsOf()).toHaveLength(1);
-		expect(liveOpsOf()[0].type).toBe("update");
+		expect(liveOpsOf()[0].kind).toBe("update");
 
 		// disable again
 		sub.enabled = false;
-		c.bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
-		expect(liveOpsOf()).toEqual([{ type: "delete", uid: "500" }]);
+		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
+		expect(liveOpsOf()).toEqual([{ kind: "delete", uid: "500" }]);
 	});
 });
 
@@ -2235,8 +2235,8 @@ describe("createEngines — 消息版式", () => {
 		await seq(
 			"1",
 			[
-				[{ type: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
-				[{ type: "text", text: "正文" }],
+				[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
+				[{ kind: "text", text: "正文" }],
 			],
 			"post",
 		);
@@ -2294,7 +2294,7 @@ describe("createEngines — 消息版式", () => {
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
-		expect(liveOps[0]).toMatchObject({ type: "update", uid: "1" });
+		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 		// live 的 update change 带上 messageLayout(live 切片)
 		expect(liveOps[0].changes[0].messageLayout).toEqual(
 			c.configStore.getGlobals().defaults.messageLayout.live,
@@ -2302,7 +2302,7 @@ describe("createEngines — 消息版式", () => {
 
 		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
 		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(dynOps[0]).toMatchObject({ type: "update", uid: "1" });
+		expect(dynOps[0]).toMatchObject({ kind: "update", uid: "1" });
 	});
 });
 

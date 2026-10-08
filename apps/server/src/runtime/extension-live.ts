@@ -222,7 +222,7 @@ export function createExtensionLiveTable(
 		}),
 		bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
-				if (op.type === "remove" || (op.type === "update" && !op.sub.enabled)) {
+				if (op.kind === "remove" || (op.kind === "update" && !op.sub.enabled)) {
 					put(op.sub.id, undefined);
 				}
 			}

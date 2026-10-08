@@ -1,8 +1,9 @@
 /**
  * 刻画测试 — 桥适配器发给对端的**线上帧内容**(`NotificationPayload` → `message`)。
  *
- * 桥的 `message` 判别键(`kind` / 段的 `type`)与内部载荷的名字今天是同一套,
- * `toBridgeMessage` 是逐格抄过去的。内部改名时这里的期望值**一个字都不许动**:
+ * 桥的 `message` 判别键(`kind` / 段的 `type`)与内部载荷的名字当初是同一套,`toBridgeMessage` 逐格抄过去;
+ * 3a-16 起内部改叫 `image-group` / `mergeForward`、段的判别键 `kind`,适配器在映射回帧里的名字。
+ * 下面的输入写内部的名字,期望值是线上的名字 —— 内部改名时期望值**一个字都不许动**:
  * 线上协议(`PROTOCOL.md` §6)是对着 koishi / AstrBot 两端写好的插件的,它们不会跟着改。
  *
  * 断言对象是 `JSON.parse(JSON.stringify(request))`:适配器会留下值为 `undefined` 的格
@@ -167,11 +168,11 @@ describe("桥适配器 — 线上帧内容", () => {
 			await harness().sent({
 				kind: "composite",
 				segments: [
-					{ type: "text", text: "正文" },
-					{ type: "image", buffer: Buffer.from("JPG"), mime: "image/jpeg" },
-					{ type: "link", href: "https://example.com/v", title: "视频" },
-					{ type: "link", href: "https://example.com/bare" },
-					{ type: "at-all" },
+					{ kind: "text", text: "正文" },
+					{ kind: "image", buffer: Buffer.from("JPG"), mime: "image/jpeg" },
+					{ kind: "link", href: "https://example.com/v", title: "视频" },
+					{ kind: "link", href: "https://example.com/bare" },
+					{ kind: "at-all" },
 				],
 			}),
 		).toEqual({
@@ -191,13 +192,20 @@ describe("桥适配器 — 线上帧内容", () => {
 
 	it("forward-images:kind 叫 `forward-images`,开关叫 `forward`,URL 原样透传不进 blob", async () => {
 		expect(
+			// 输入是内部的名字(`image-group` / `mergeForward`,图是 `PostImage`);带着的图库引用与 `isAnimated` 不上线。
 			await harness().sent({
-				kind: "forward-images",
+				kind: "image-group",
 				images: [
-					{ url: "https://i0.hdslb.com/1.jpg", width: 1080, height: 1920 },
+					{
+						ref: `${"a".repeat(64)}.jpg`,
+						url: "https://i0.hdslb.com/1.jpg",
+						width: 1080,
+						height: 1920,
+						isAnimated: false,
+					},
 					{ url: "https://i0.hdslb.com/2.jpg" },
 				],
-				forward: true,
+				mergeForward: true,
 			}),
 		).toEqual({
 			...HEAD,
@@ -208,6 +216,23 @@ describe("桥适配器 — 线上帧内容", () => {
 					{ url: "https://i0.hdslb.com/2.jpg" },
 				],
 				forward: true,
+			},
+		});
+	});
+
+	it("image-group 里没有 url 的图(只带图库引用)不进帧", async () => {
+		expect(
+			await harness().sent({
+				kind: "image-group",
+				images: [{ ref: `${"a".repeat(64)}.jpg` }, { url: "https://i0.hdslb.com/2.jpg" }],
+				mergeForward: false,
+			}),
+		).toEqual({
+			...HEAD,
+			message: {
+				kind: "forward-images",
+				images: [{ url: "https://i0.hdslb.com/2.jpg" }],
+				forward: false,
 			},
 		});
 	});
@@ -251,8 +276,8 @@ describe("桥适配器 — 线上帧内容", () => {
 		const out = (await h.sent({
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "**粗**" },
-				{ type: "link", href: "https://example.com", title: "**标**" },
+				{ kind: "text", text: "**粗**" },
+				{ kind: "link", href: "https://example.com", title: "**标**" },
 			],
 		})) as { message: { segments: { text?: string; title?: string }[] } };
 		// 具体剥成什么由 markdown.ts 的单测管;这里钉的是「走了剥离、没有星号」。

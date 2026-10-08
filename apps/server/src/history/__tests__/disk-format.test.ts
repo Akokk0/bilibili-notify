@@ -227,9 +227,9 @@ describe("历史落盘的字节", () => {
 						payload: {
 							kind: "composite",
 							segments: [
-								{ type: "text", text: "前" },
-								{ type: "image", buffer: first, mime: "image/webp" },
-								{ type: "image", buffer: second, mime: "image/webp" },
+								{ kind: "text", text: "前" },
+								{ kind: "image", buffer: first, mime: "image/webp" },
+								{ kind: "image", buffer: second, mime: "image/webp" },
 							],
 						},
 						role: "main",

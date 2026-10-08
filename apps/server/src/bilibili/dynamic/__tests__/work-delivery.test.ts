@@ -18,7 +18,7 @@ import {
 	type WorkSubscriptionSettings,
 } from "../work-delivery";
 
-type Seg = { type: string; text?: string; buffer?: Buffer; mime?: string };
+type Seg = { kind: string; text?: string; buffer?: Buffer; mime?: string };
 
 const CARD = Buffer.from("card");
 const LINK = "https://example.com/post/1";
@@ -119,7 +119,7 @@ describe("deliverWork — 按版式装配", () => {
 		const [segs, part, opts] = h.broadcast.mock.calls[0] as [Seg[], string, { pushId?: string }];
 		expect(part).toBe("post");
 		expect(opts.pushId).toMatch(/^[0-9a-f-]{36}$/);
-		expect(segs.map((s) => s.type)).toEqual(["image", "text"]);
+		expect(segs.map((s) => s.kind)).toEqual(["image", "text"]);
 		expect(segs[0]).toMatchObject({ buffer: CARD, mime: "image/jpeg" });
 		expect(segs[1]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
 	});
@@ -134,13 +134,13 @@ describe("deliverWork — 按版式装配", () => {
 		expect(h.broadcast).not.toHaveBeenCalled();
 		const [messages, part] = h.broadcastSequence.mock.calls[0] as [Seg[][], string];
 		expect(part).toBe("post");
-		expect(messages.map((m) => m.map((s) => s.type))).toEqual([["image"], ["text"]]);
+		expect(messages.map((m) => m.map((s) => s.kind))).toEqual([["image"], ["text"]]);
 	});
 
 	it("链接为空串 → 链接部件缺席", async () => {
 		const h = harness({ withImage: false, work: { link: "" } });
 		await deliverWork(h.args);
-		expect(segsOf(h)).toEqual([{ type: "text", text: "阿绫发布了一条动态" }]);
+		expect(segsOf(h)).toEqual([{ kind: "text", text: "阿绫发布了一条动态" }]);
 	});
 
 	it("全部块藏起来 → 一条都不发,仍算走完", async () => {
@@ -204,7 +204,7 @@ describe("deliverWork — 出卡", () => {
 		for (const h of cases) {
 			await deliverWork(h.args);
 			expect(h.work.renderCard).not.toHaveBeenCalled();
-			expect(segsOf(h).map((s) => s.type)).toEqual(["text"]);
+			expect(segsOf(h).map((s) => s.kind)).toEqual(["text"]);
 		}
 	});
 
@@ -213,7 +213,7 @@ describe("deliverWork — 出卡", () => {
 			work: { renderCard: vi.fn(async () => Promise.reject(new Error("boom"))) },
 		});
 		expect(await deliverWork(h.args)).toBe("delivered");
-		expect(segsOf(h)).toEqual([{ type: "text", text: `阿绫发布了一条动态\n${LINK}` }]);
+		expect(segsOf(h)).toEqual([{ kind: "text", text: `阿绫发布了一条动态\n${LINK}` }]);
 	});
 });
 
@@ -443,7 +443,7 @@ describe("deliverWork — 发送失败与图集", () => {
 		const calls = h.broadcast.mock.calls as Array<[PushSegment[], string, { pushId?: string }]>;
 		expect(calls.map((c) => c[1])).toEqual(["post", "post-images"]);
 		expect(calls[1]?.[2].pushId).toBe(calls[0]?.[2].pushId);
-		expect(calls[1]?.[0]).toEqual([{ type: "image-group", forward: true, images: gallery }]);
+		expect(calls[1]?.[0]).toEqual([{ kind: "image-group", mergeForward: true, images: gallery }]);
 	});
 
 	it("图集发送失败 → 吞掉,仍算走完", async () => {
@@ -466,7 +466,7 @@ describe("deliverWork — 发送失败与图集", () => {
 			config: { imageGroup: { enable: true, forward: true } },
 		});
 		await deliverWork(single.args);
-		expect((segsOf(single, 1)[0] as { forward?: boolean }).forward).toBe(false);
+		expect((segsOf(single, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(false);
 
 		const none = harness({ config: { imageGroup: { enable: true, forward: false } } });
 		await deliverWork(none.args);
@@ -486,6 +486,6 @@ describe("deliverWork — 发送失败与图集", () => {
 			settings: { imageGroupEnable: true, imageGroupForward: true },
 		});
 		await deliverWork(onForSub.args);
-		expect((segsOf(onForSub, 1)[0] as { forward?: boolean }).forward).toBe(true);
+		expect((segsOf(onForSub, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(true);
 	});
 });

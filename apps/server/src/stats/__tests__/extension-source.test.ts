@@ -433,12 +433,12 @@ describe("直播场次(决策 6)", () => {
 		const disabled = { ...SUB, enabled: false };
 		subs = [disabled, OFF];
 		world.bus.emit("subscription-changed", {
-			ops: [{ type: "update", sub: disabled, prev: SUB }] as never,
+			ops: [{ kind: "update", sub: disabled, prev: SUB }] as never,
 		});
 		// 再启用、再开一场;这回是关机。
 		subs = [SUB, OFF];
 		world.bus.emit("subscription-changed", {
-			ops: [{ type: "update", sub: SUB, prev: disabled }] as never,
+			ops: [{ kind: "update", sub: SUB, prev: disabled }] as never,
 		});
 		clock = T0 + 40 * MINUTE;
 		report(world.bus, liveStart({ startedAt: T0 + 40 * MINUTE }));
@@ -794,7 +794,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		const world = boot();
 		await fillAll(world);
 		subs = [OFF];
-		world.bus.emit("subscription-changed", { ops: [{ type: "remove", sub: SUB }] });
+		world.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB }] });
 		await world.recorder.flush();
 		expect(await dynRows()).toBeUndefined();
 		expect(await liveFrames()).toBeUndefined();
@@ -812,7 +812,7 @@ describe("删订阅 / 停用(决策 10)", () => {
 		const disabled = { ...SUB, enabled: false };
 		subs = [disabled, OFF];
 		world.bus.emit("subscription-changed", {
-			ops: [{ type: "update", sub: disabled, prev: SUB }] as never,
+			ops: [{ kind: "update", sub: disabled, prev: SUB }] as never,
 		});
 		await world.recorder.flush();
 		expect(await dynRows()).toHaveLength(1);

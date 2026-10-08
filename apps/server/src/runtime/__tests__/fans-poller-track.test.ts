@@ -162,7 +162,7 @@ describe("fans poller × ctx.track", () => {
 		});
 		await vi.waitFor(() => expect(ctx.tracked).toHaveLength(1));
 
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: SUB as never }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB as never }] });
 
 		expect(drop).toHaveBeenCalledWith("sub-1");
 		expect(prune).toHaveBeenCalled();
@@ -191,7 +191,7 @@ describe("fans poller × ctx.track", () => {
 		});
 		await vi.waitFor(() => expect(ctx.tracked).toHaveLength(1));
 
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: SUB as never }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB as never }] });
 
 		const [, dropTask, pruneTask] = ctx.tracked as [
 			Promise<unknown>,

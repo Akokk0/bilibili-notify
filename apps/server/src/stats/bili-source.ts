@@ -216,7 +216,7 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 			idsByUid = undefined;
 			for (const op of ops) {
 				// 拓展订阅的统计文件由拓展适配自己删(ADR-0020 S3);这里只管 B 站这一支。
-				if (op.type !== "remove") continue;
+				if (op.kind !== "remove") continue;
 				const identity = subscriptionIdentityOf(op.sub);
 				if (identity.sourceKey !== BILIBILI_SOURCE_KEY) continue;
 				const key = statsFileKey(op.sub);

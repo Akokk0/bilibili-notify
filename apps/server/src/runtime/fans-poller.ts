@@ -693,7 +693,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		let removedAny = false;
 		let hadRemove = false;
 		for (const op of ops) {
-			if (op.type !== "remove") continue;
+			if (op.kind !== "remove") continue;
 			// 删掉的是哪一支都要清资料缓存(下面那次 prune)、撤下面板上那一行。
 			hadRemove = true;
 			if (lastBySub.delete(op.sub.id)) removedAny = true;

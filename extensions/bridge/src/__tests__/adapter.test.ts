@@ -329,10 +329,10 @@ describe("桥 adapter", () => {
 		await h.adapter.send(connection(), target(), {
 			kind: "composite",
 			segments: [
-				{ type: "at-all" },
-				{ type: "text", text: "看这个" },
-				{ type: "image", buffer: Buffer.from([9]), mime: "image/jpeg" },
-				{ type: "link", href: "https://b23.tv/x", title: "视频" },
+				{ kind: "at-all" },
+				{ kind: "text", text: "看这个" },
+				{ kind: "image", buffer: Buffer.from([9]), mime: "image/jpeg" },
+				{ kind: "link", href: "https://b23.tv/x", title: "视频" },
 			],
 		});
 		expect(h.lastRequest().message).toEqual({
@@ -349,9 +349,9 @@ describe("桥 adapter", () => {
 	it("**远端 URL 原样透传,不进 blob** —— 图廊与小程序卡的图本来就是公网可达的", async () => {
 		const h = harness();
 		await h.adapter.send(connection(), target(), {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/a.jpg", width: 1080, height: 1920 }],
-			forward: true,
+			mergeForward: true,
 		});
 		await h.adapter.send(connection(), target(), {
 			kind: "miniapp-card",
@@ -381,11 +381,11 @@ describe("桥 adapter", () => {
 	const EVERY_PAYLOAD: Record<NotificationPayload["kind"], NotificationPayload> = {
 		text: { kind: "text", text: "x" },
 		image: { kind: "image", image: { buffer: Buffer.from([1]), mime: "image/png" } },
-		composite: { kind: "composite", segments: [{ type: "text", text: "x" }] },
-		"forward-images": {
-			kind: "forward-images",
+		composite: { kind: "composite", segments: [{ kind: "text", text: "x" }] },
+		"image-group": {
+			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }],
-			forward: false,
+			mergeForward: false,
 		},
 		"miniapp-card": {
 			kind: "miniapp-card",
@@ -402,7 +402,10 @@ describe("桥 adapter", () => {
 		for (const [kind, payload] of Object.entries(EVERY_PAYLOAD)) {
 			const result = await h.adapter.send(connection(), target(), payload);
 			expect(result.ok, kind).toBe(true);
-			expect(h.lastRequest().message.kind, kind).toBe(kind);
+			// 帧里的名字是线上协议的:内部的 `image-group` 在帧里照旧叫 `forward-images`,其余同名。
+			expect(h.lastRequest().message.kind, kind).toBe(
+				kind === "image-group" ? "forward-images" : kind,
+			);
 		}
 	});
 
@@ -618,9 +621,9 @@ describe("markdown 按能力降级", () => {
 			{
 				kind: "composite",
 				segments: [
-					{ type: "text", text: RICH },
-					{ type: "image", buffer: Buffer.from("x"), mime: "image/png" },
-					{ type: "link", href: "https://b23.tv/a", title: "**标题**" },
+					{ kind: "text", text: RICH },
+					{ kind: "image", buffer: Buffer.from("x"), mime: "image/png" },
+					{ kind: "link", href: "https://b23.tv/a", title: "**标题**" },
 				],
 			},
 			{},

@@ -216,13 +216,13 @@ describe("作废", () => {
 		const a = makeExtensionSubscription({ id: SUB_A, extensionId: EXT, externalId: "sec-1" });
 		const b = makeExtensionSubscription({ id: SUB_B, extensionId: EXT, externalId: "sec-1" });
 
-		bus.emit("subscription-changed", { ops: [{ type: "update", sub: { ...a, notes: "备注" } }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: { ...a, notes: "备注" } }] });
 		expect(table.get(SUB_A)).toBeDefined();
 
-		bus.emit("subscription-changed", { ops: [{ type: "update", sub: { ...a, enabled: false } }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: { ...a, enabled: false } }] });
 		expect(table.get(SUB_A)).toBeUndefined();
 
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: b }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: b }] });
 		expect(table.list()).toEqual([]);
 	});
 });

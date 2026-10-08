@@ -11,6 +11,7 @@ import type {
 	Logger,
 	NotificationPayload,
 	PlatformAdapter,
+	PostImage,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
@@ -828,6 +829,15 @@ export function buildQQV2Message(opts: { content?: string; media?: QQFileMedia }
  * 私域机器人可一条消息带多张图。尺寸来自 B站图集元数据;缺失则退化为无尺寸
  * `![图片](url)`(QQ 可能按默认尺寸渲染)。依赖 QQ 能拉取图片 url(hdslb 公网可达)。
  */
+/** 图集照 `url` 发;没有 `url` 的图(只带图库引用)这里发不了,跳过。 */
+function imageGroupUrlImages(
+	images: readonly PostImage[],
+): { url: string; width?: number; height?: number }[] {
+	return images.flatMap((img) =>
+		img.url ? [{ url: img.url, width: img.width, height: img.height }] : [],
+	);
+}
+
 export function buildQQMarkdownGallery(
 	images: { url: string; width?: number; height?: number }[],
 ): string {
@@ -892,7 +902,7 @@ function attachFollowingTextToImages(parts: QQSendPart[]): QQSendPart[] {
 
 /**
  * 把平台中立 `NotificationPayload` 翻译成有序发送片段。QQ 无「合并转发」,多图一律展开成
- * 多条;`forward-images` 的 `forward` 标志对 QQ 无意义。卡片 Buffer 走 image-buffer
+ * 多条;`image-group` 的 `mergeForward` 标志对 QQ 无意义。卡片 Buffer 走 image-buffer
  * (群/C2C base64 上传 / 频道 multipart),图集 URL 走 image-url。
  */
 export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
@@ -901,20 +911,18 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 			return [{ kind: "text", text: payload.text }];
 		case "image":
 			return [{ kind: "image-buffer", buffer: payload.image.buffer, caption: payload.caption }];
-		case "forward-images":
-			// QQ 无合并转发 —— forward 标志忽略,每张图展开成独立片段(尺寸透传给 markdown 用)。
-			return payload.images.map((img) => ({
+		case "image-group":
+			// QQ 无合并转发 —— mergeForward 标志忽略,每张图展开成独立片段(尺寸透传给 markdown 用)。
+			return imageGroupUrlImages(payload.images).map((img) => ({
 				kind: "image-url" as const,
-				url: img.url,
-				width: img.width,
-				height: img.height,
+				...img,
 			}));
 		case "composite": {
 			const parts: QQSendPart[] = [];
 			for (const seg of payload.segments) {
-				if (seg.type === "text") parts.push({ kind: "text", text: seg.text });
-				else if (seg.type === "image") parts.push({ kind: "image-buffer", buffer: seg.buffer });
-				else if (seg.type === "link")
+				if (seg.kind === "text") parts.push({ kind: "text", text: seg.text });
+				else if (seg.kind === "image") parts.push({ kind: "image-buffer", buffer: seg.buffer });
+				else if (seg.kind === "link")
 					parts.push({ kind: "text", text: seg.title ? `${seg.title} ${seg.href}` : seg.href });
 				// at-all:QQ 群 @全体需特殊权限,一律丢弃。推送层据 platformSupportsAtAll 不给本平台
 				// 单发 @全体,这里只是兜底 —— 混在别的段里时不让它阻断那条消息。
@@ -1310,18 +1318,18 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			// markdown 图集门控:仅私域机器人 + 群/C2C 的图集 → 合并成一条原生 markdown
 			// 多图(绕过 QQ「无合并转发」)。公域不支持原生 markdown(需报备模板),回落 N 条
 			// media;频道有独立消息 API,也不走这里。卡片 Buffer(image kind)永远走 media。
+			const gallery = payload.kind === "image-group" ? imageGroupUrlImages(payload.images) : [];
 			if (
-				payload.kind === "forward-images" &&
 				cfg.botType === "private" &&
 				(scope === "group" || scope === "private") &&
-				payload.images.length > 0
+				gallery.length > 0
 			) {
 				try {
 					const { status, body } = await qqPostJson(
 						base,
 						headers,
 						endpoint.path,
-						buildQQV2MarkdownMessage(buildQQMarkdownGallery(payload.images)),
+						buildQQV2MarkdownMessage(buildQQMarkdownGallery(gallery)),
 					);
 					const verdict = interpretQQSend(status, body);
 					if (!verdict.ok) {

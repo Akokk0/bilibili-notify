@@ -13,6 +13,7 @@ import type {
 	OnebotConnectionConfig,
 	PayloadSegment,
 	PlatformAdapter,
+	PostImage,
 	ProbeResult,
 	PushTarget,
 	Result,
@@ -122,7 +123,7 @@ function isForwardAction(action: string): boolean {
  * 图多大关系不大(卡片图只有 0.1MB 量级),但稳定压在十几秒。
  *
  * 按**最终要发出去的 message 段**判,不按 payload.kind:段才是真正决定 bot 侧干多少
- * 活的东西。`forward-images` 且 `forward:false` 就是活例 —— 它 kind 看着像图集,却被
+ * 活的东西。`image-group` 且 `mergeForward:false` 就是活例 —— 它 kind 看着像图集,却被
  * buildSegments 并成了普通多图 send_group_msg,照 kind 判会漏掉最该放宽的那一类。
  */
 function hasImageSegment(params: Record<string, unknown>): boolean {
@@ -209,7 +210,7 @@ function bufferToBase64Uri(buffer: Buffer): string {
 }
 
 function segmentToOnebot(seg: PayloadSegment): OneBotMessageSegment {
-	switch (seg.type) {
+	switch (seg.kind) {
 		case "text":
 			return { type: "text", data: { text: seg.text } };
 		case "image":
@@ -219,6 +220,11 @@ function segmentToOnebot(seg: PayloadSegment): OneBotMessageSegment {
 		case "at-all":
 			return { type: "at", data: { qq: "all" } };
 	}
+}
+
+/** 图集照 `url` 发;没有 `url` 的图(只带图库引用)这里发不了,跳过。 */
+function imageGroupUrls(images: readonly PostImage[]): string[] {
+	return images.flatMap((img) => (img.url ? [img.url] : []));
 }
 
 function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
@@ -234,13 +240,13 @@ function buildSegments(payload: NotificationPayload): OneBotMessageSegment[] {
 		}
 		case "composite":
 			return payload.segments.map(segmentToOnebot);
-		case "forward-images":
-			// payload.forward === true 时 buildSendAction 会单独走 send_group_forward_msg
-			// 路径,这里返回 []。forward === false 时把多个 URL 转为多 image segment 合并
+		case "image-group":
+			// payload.mergeForward === true 时 buildSendAction 会单独走 send_group_forward_msg
+			// 路径,这里返回 []。mergeForward === false 时把多个 URL 转为多 image segment 合并
 			// 到一条普通 send_group_msg(对齐上游 koishi 框架 onebot adapter 的多图默认行为,避开
 			// NapCat 长消息 SsoSendLongMsg 通道的潜在超时)。
-			if (payload.forward) return [];
-			return payload.images.map((img) => ({ type: "image", data: { file: img.url } }));
+			if (payload.mergeForward) return [];
+			return imageGroupUrls(payload.images).map((url) => ({ type: "image", data: { file: url } }));
 		case "miniapp-card":
 			// 要先向腾讯签 ark 才有段可发,send() 单独走 sendMiniAppCard;这里没有现成的段。
 			return [];
@@ -281,19 +287,19 @@ function buildSendAction(
 	opts: { private?: boolean },
 	botInfo: BotIdentity = FALLBACK_BOT_IDENTITY,
 ): Result<OnebotAction> {
-	// 图集合并转发分支:payload.forward 由 dynamic engine config 的 `imageGroupForward`
+	// 图集合并转发分支:payload.mergeForward 由 dynamic engine config 的 `imageGroupForward`
 	// 决定。走 send_group_forward_msg / send_private_forward_msg 长消息通道(NapCat
 	// 的 SsoSendLongMsg trpc 在某些部署不稳,故默认 false)。
-	if (payload.kind === "forward-images" && payload.forward) {
+	if (payload.kind === "image-group" && payload.mergeForward) {
 		// node.name + node.uin 决定客户端展示的发送人头像 / 昵称。用机器人真身
 		// (botInfo)→ 收件人看到的是"机器人发的",对齐上游 koishi 框架的 onebot adapter
 		// (它在 src/bot/message.ts 用 `bot.user.name` / `bot.userId` 当 fallback)。
-		const nodes = payload.images.map((img) => ({
+		const nodes = imageGroupUrls(payload.images).map((url) => ({
 			type: "node",
 			data: {
 				name: botInfo.name,
 				uin: botInfo.uin,
-				content: [{ type: "image", data: { file: img.url } }],
+				content: [{ type: "image", data: { file: url } }],
 			},
 		}));
 		const to = onebotNumericAddress(target, opts);
@@ -1400,7 +1406,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 往返计入 latencyMs(t0 已起表),让 history / UI 看到的延迟反映本条消息的
 			// 完整端到端开销 —— 用户视角 latency = 这条消息真发出来花了多久,bot 身份
 			// 探测是发它必经的一步。getBotIdentity 内部 lazy 缓存,大多数情况下命中走 O(1)。
-			if (payload.kind === "forward-images" && payload.forward) {
+			if (payload.kind === "image-group" && payload.mergeForward) {
 				const botInfo = (await getBotIdentity(connection)) ?? undefined;
 				const rebuilt = buildSendAction(target, payload, opts, botInfo);
 				// rebuilt 与首次同 target/payload/opts;target 校验已过,此处失败分支

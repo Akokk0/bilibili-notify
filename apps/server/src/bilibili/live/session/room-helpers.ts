@@ -355,7 +355,7 @@ export class RoomContext extends RoomContextBase {
 			const buildContent = (segs: readonly MessageLayoutSegment[]): unknown =>
 				this.contentBuilder.message(
 					segs.map((s) =>
-						s.type === "image"
+						s.kind === "image"
 							? this.contentBuilder.image(s.buffer, s.mime)
 							: this.contentBuilder.text(s.text),
 					),

@@ -1072,7 +1072,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					messageLayoutChanged
 				) {
 					const refreshOps = subscriptionOpsToLive(
-						opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
+						opts.subscriptionStore.list().map((sub) => ({ kind: "update" as const, sub })),
 						opts.subscriptionStore,
 						opts.subRuntimeStore,
 						g,
@@ -1089,7 +1089,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				if (skinChanged || messageLayoutChanged) {
 					dynamic.applyOps(
 						subscriptionOpsToDynamic(
-							opts.subscriptionStore.list().map((sub) => ({ type: "update" as const, sub })),
+							opts.subscriptionStore.list().map((sub) => ({ kind: "update" as const, sub })),
 							opts.subscriptionStore,
 							opts.subRuntimeStore,
 							g,
@@ -1252,31 +1252,32 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 // ----------------------------------------------------------------------------
 
 function pushSegmentsToPayload(segments: PushSegment[]): NotificationPayload {
-	if (segments.length === 1 && segments[0]?.type === "text") {
+	if (segments.length === 1 && segments[0]?.kind === "text") {
 		return { kind: "text", text: segments[0].text };
 	}
-	if (segments.length === 1 && segments[0]?.type === "image") {
+	if (segments.length === 1 && segments[0]?.kind === "image") {
 		return {
 			kind: "image",
 			image: { buffer: segments[0].buffer, mime: segments[0].mime },
 		};
 	}
-	if (segments.length === 1 && segments[0]?.type === "image-group") {
-		// segment.forward 由 dynamic engine config 的 imageGroupForward 决定:
+	if (segments.length === 1 && segments[0]?.kind === "image-group") {
+		// segment.mergeForward 由 dynamic engine config 的 imageGroupForward 决定:
 		//   true  → adapter 走 send_group_forward_msg 合并转发
 		//   false → adapter 走多 image segment 合并到一条普通 send_group_msg
 		return {
-			kind: "forward-images",
+			kind: "image-group",
 			images: segments[0].images,
-			forward: segments[0].forward,
+			mergeForward: segments[0].mergeForward,
 		};
 	}
 	const mapped: PayloadSegment[] = [];
 	for (const s of segments) {
-		if (s.type === "text") mapped.push({ type: "text", text: s.text });
-		else if (s.type === "image") mapped.push({ type: "image", buffer: s.buffer, mime: s.mime });
-		else if (s.type === "image-group") {
-			for (const img of s.images) mapped.push({ type: "link", href: img.url });
+		if (s.kind === "text") mapped.push({ kind: "text", text: s.text });
+		else if (s.kind === "image") mapped.push({ kind: "image", buffer: s.buffer, mime: s.mime });
+		else if (s.kind === "image-group") {
+			// 混在别的段里的图集降成链接;没有 `url` 的图(只带图库引用)没有链接可给,跳过。
+			for (const img of s.images) if (img.url) mapped.push({ kind: "link", href: img.url });
 		}
 	}
 	if (mapped.length === 0) return { kind: "text", text: "" };
@@ -1288,8 +1289,8 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
 	if (segments.length === 1) {
 		const only = segments[0];
 		if (!only) return { kind: "text", text: "" };
-		if (only.type === "text") return { kind: "text", text: only.text };
-		if (only.type === "image") {
+		if (only.kind === "text") return { kind: "text", text: only.text };
+		if (only.kind === "image") {
 			return { kind: "image", image: { buffer: only.buffer, mime: only.mime } };
 		}
 	}
@@ -1368,7 +1369,7 @@ export function boundLivePush(send: SubscriptionPush): LiveNotifySend {
 				segmentToPayload(
 					segmentContentBuilder.message(
 						segs.map((seg) =>
-							seg.type === "image"
+							seg.kind === "image"
 								? segmentContentBuilder.image(seg.buffer, seg.mime)
 								: segmentContentBuilder.text(seg.text),
 						),
@@ -1884,21 +1885,21 @@ function subscriptionOpsToDynamic(
 		// B 站动态引擎只管 B 站订阅(ADR-0019 决策 9),拓展订阅的增删改与它无关。
 		if (!fromBilibili(op.sub)) continue;
 		const identity = subscriptionIdentityOf(op.sub);
-		if (op.type === "add") {
+		if (op.kind === "add") {
 			// 全量视图(filter/imageGroup/ai/模板 per-UP 覆盖一并带上),与
 			// buildDynamicSubsView 投影一致 —— 新增即带覆盖的订阅首推就生效,
 			// 不必等下次全量刷新。post 字段已含 enabled 门(见 buildDynamicSubViewSingle)。
 			out.push({
-				type: "add",
+				kind: "add",
 				sub: buildDynamicSubViewSingle(op.sub, subRuntimeStore, globals),
 			});
-		} else if (op.type === "remove") {
-			out.push({ type: "delete", uid: identity.externalId });
+		} else if (op.kind === "remove") {
+			out.push({ kind: "delete", uid: identity.externalId });
 		} else {
 			const sub = store.findByIdentity(identity);
 			if (!sub) continue;
 			out.push({
-				type: "update",
+				kind: "update",
 				uid: identity.externalId,
 				changes: [{ scope: "dynamic", post: hasDyn(sub) }],
 			});
@@ -1918,12 +1919,12 @@ function subscriptionOpsToLive(
 		// 同 subscriptionOpsToDynamic:直播引擎只管 B 站订阅。
 		if (!fromBilibili(op.sub)) continue;
 		const identity = subscriptionIdentityOf(op.sub);
-		if (op.type === "add") {
+		if (op.kind === "add") {
 			// 禁用态新增不开监听器。新增订阅默认 enabled,此处为防御性兜底。
 			if (!op.sub.enabled) continue;
-			out.push({ type: "add", sub: buildLiveSubViewSingle(op.sub, subRuntimeStore, globals) });
-		} else if (op.type === "remove") {
-			out.push({ type: "delete", uid: identity.externalId });
+			out.push({ kind: "add", sub: buildLiveSubViewSingle(op.sub, subRuntimeStore, globals) });
+		} else if (op.kind === "remove") {
+			out.push({ kind: "delete", uid: identity.externalId });
 		} else {
 			const sub = store.findByIdentity(identity);
 			if (!sub) continue;
@@ -1933,7 +1934,7 @@ function subscriptionOpsToLive(
 			// 走下面的 update 分支发完整 LiveScopedChange,LiveEngine.applyOps 见无
 			// 活跃 listener → lookupFullSub → startForUid 重新拉起。
 			if (!sub.enabled) {
-				out.push({ type: "delete", uid: identity.externalId });
+				out.push({ kind: "delete", uid: identity.externalId });
 				continue;
 			}
 			// 用完整 SubItemView 投影出所有 LiveScopedChange 支持的字段——路由布尔、
@@ -1942,7 +1943,7 @@ function subscriptionOpsToLive(
 			// 没必要弱化语义)。周期间隔与开关变化由 engine 在 applyOps 内单独 rearm。
 			const view = buildLiveSubViewSingle(sub, subRuntimeStore, globals);
 			out.push({
-				type: "update",
+				kind: "update",
 				uid: identity.externalId,
 				changes: [
 					{

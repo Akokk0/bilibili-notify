@@ -66,8 +66,8 @@ function deps(opts: { renderFail?: boolean; noRenderer?: boolean } = {}) {
 	};
 }
 
-const image: MessageLayoutSegment = { type: "image", buffer: CARD, mime: "image/jpeg" };
-const text = (t: string): MessageLayoutSegment => ({ type: "text", text: t });
+const image: MessageLayoutSegment = { kind: "image", buffer: CARD, mime: "image/jpeg" };
+const text = (t: string): MessageLayoutSegment => ({ kind: "text", text: t });
 
 describe("pushLiveNotify — 出卡", () => {
 	it("中立的输入原样交给渲染器;样式没启用时只带皮肤 id", async () => {

@@ -112,7 +112,7 @@ describe("record → 原件", () => {
 	 * 四个字发出去。
 	 */
 	it("at-all 段经过历史仓仍是段,没被碾成字面文字", async () => {
-		const payload: NotificationPayload = { kind: "composite", segments: [{ type: "at-all" }] };
+		const payload: NotificationPayload = { kind: "composite", segments: [{ kind: "at-all" }] };
 		const entry = await store.record(
 			input({ messages: [{ payload, role: "extra", result: FAIL }] }),
 		);

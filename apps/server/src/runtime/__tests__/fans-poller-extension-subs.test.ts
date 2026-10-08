@@ -81,7 +81,7 @@ describe("fans poller × 拓展订阅", () => {
 	it("删掉一条 B 站订阅 → 资料缓存的保留名单里仍有拓展订阅", () => {
 		// 事件到的时候订阅仓已经是删完的样子(config-changed → replaceAll → subscription-changed)。
 		const { bus, prune, dropUid } = start(() => [EXT]);
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: BILI as never }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: BILI as never }] });
 		expect(prune).toHaveBeenCalledWith(["e1"]);
 		// 粉丝文件按订阅 id 命名(ADR-0020 决策 2 的 🔗),删的是这条订阅的 id,不是 uid。
 		expect(dropUid).toHaveBeenCalledWith("b1");
@@ -89,7 +89,7 @@ describe("fans poller × 拓展订阅", () => {
 
 	it("删掉一条拓展订阅 → 照样清资料缓存,不碰粉丝时序", () => {
 		const { bus, prune, dropUid } = start(() => [BILI]);
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: EXT }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: EXT }] });
 		expect(prune).toHaveBeenCalledWith(["b1"]);
 		expect(dropUid).not.toHaveBeenCalled();
 	});

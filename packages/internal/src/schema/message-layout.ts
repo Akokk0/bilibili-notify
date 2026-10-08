@@ -154,8 +154,8 @@ export function planMessageGroups(
  * 消息形状(动态直接当 `PushSegment` 发,直播经 `LiveContentBuilder` 包一层)。
  */
 export type MessageLayoutSegment =
-	| { type: "image"; buffer: Buffer; mime: string }
-	| { type: "text"; text: string };
+	| { kind: "image"; buffer: Buffer; mime: string }
+	| { kind: "text"; text: string };
 
 /**
  * 本次推送三个部件的值。没给 / 空串 = 本次没有这个部件(块隐藏没生产、关了出图、
@@ -192,14 +192,14 @@ export function assembleMessageGroups(
 		let texts: string[] = [];
 		const flushText = (): void => {
 			if (texts.length > 0) {
-				segs.push({ type: "text", text: texts.join(layout.separator) });
+				segs.push({ kind: "text", text: texts.join(layout.separator) });
 				texts = [];
 			}
 		};
 		for (const part of group) {
 			if (part === "card" && card) {
 				flushText();
-				segs.push({ type: "image", buffer: card, mime: "image/jpeg" });
+				segs.push({ kind: "image", buffer: card, mime: "image/jpeg" });
 			} else if (part === "text" && text) {
 				texts.push(text);
 			} else if (part === "link" && link) {

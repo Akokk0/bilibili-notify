@@ -310,10 +310,10 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 					(feature === "liveEnd" && msg.role === "extra" ? "[弹幕词云]" : "[卡片图]");
 				return { kind: "image", text, image };
 			}
-			case "forward-images":
+			case "image-group":
 				return {
 					kind: "text",
-					text: `[图集 ${payload.images.length} 张${payload.forward ? " · 合并转发" : ""}]`,
+					text: `[图集 ${payload.images.length} 张${payload.mergeForward ? " · 合并转发" : ""}]`,
 				};
 			case "miniapp-card":
 				return { kind: "text", text: `[小程序卡] ${payload.title}` };
@@ -322,15 +322,15 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				let image: ImageRef | undefined;
 				let firstImageSeen = false;
 				for (const seg of payload.segments) {
-					if (seg.type === "text") {
+					if (seg.kind === "text") {
 						textParts.push(seg.text);
-					} else if (seg.type === "image" && !firstImageSeen) {
+					} else if (seg.kind === "image" && !firstImageSeen) {
 						// 历史行只记第一张(重推原件里每一张都在);第一张存不进图库,后面的也不顶上。
 						firstImageSeen = true;
 						image = await putImage(seg.buffer, label);
-					} else if (seg.type === "link") {
+					} else if (seg.kind === "link") {
 						textParts.push(seg.title ? `${seg.title} ${seg.href}` : seg.href);
-					} else if (seg.type === "at-all") {
+					} else if (seg.kind === "at-all") {
 						// @全体 段无文字载体,但 History 需要可读标记,否则独立的 @全体 提醒
 						// 消息会整条落成「（无内容）」。按段序前置拼接(@全体 通常单独成消息)。
 						textParts.push("@全体");

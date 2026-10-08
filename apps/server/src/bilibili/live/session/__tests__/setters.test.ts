@@ -254,7 +254,7 @@ describe("LiveEngine.applyOps — 周期「正在直播」的重排", () => {
 	}
 	const update = (engine: LiveEngine, fields: Record<string, unknown>) =>
 		engine.applyOps(
-			[{ type: "update", uid: "u1", changes: [{ scope: "live", ...fields }] }],
+			[{ kind: "update", uid: "u1", changes: [{ scope: "live", ...fields }] }],
 			() => undefined,
 		);
 

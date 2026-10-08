@@ -48,23 +48,23 @@ describe("segmentToPayload — 解码", () => {
 
 	it("string:空 → [],非空 → [text]", () => {
 		expect(segmentToPayload("")).toEqual([]);
-		expect(segmentToPayload("hello")).toEqual([{ type: "text", text: "hello" }]);
+		expect(segmentToPayload("hello")).toEqual([{ kind: "text", text: "hello" }]);
 	});
 
 	it("text 段:空文本丢弃,非空保留", () => {
 		expect(segmentToPayload({ kind: "text", text: "" })).toEqual([]);
-		expect(segmentToPayload({ kind: "text", text: "x" })).toEqual([{ type: "text", text: "x" }]);
+		expect(segmentToPayload({ kind: "text", text: "x" })).toEqual([{ kind: "text", text: "x" }]);
 	});
 
 	it("image-url → link;image-buf → image;atAll → @全体成员 文本", () => {
 		expect(segmentToPayload({ kind: "image-url", url: "http://x" })).toEqual([
-			{ type: "link", href: "http://x" },
+			{ kind: "link", href: "http://x" },
 		]);
 		const buf = Buffer.from("Z");
 		expect(segmentToPayload({ kind: "image-buf", buffer: buf, mime: "image/png" })).toEqual([
-			{ type: "image", buffer: buf, mime: "image/png" },
+			{ kind: "image", buffer: buf, mime: "image/png" },
 		]);
-		expect(segmentToPayload({ kind: "atAll" })).toEqual([{ type: "text", text: "@全体成员 " }]);
+		expect(segmentToPayload({ kind: "atAll" })).toEqual([{ kind: "text", text: "@全体成员 " }]);
 	});
 
 	it("message:递归 flatMap 展平嵌套,空文本沿途丢弃", () => {
@@ -81,9 +81,9 @@ describe("segmentToPayload — 解码", () => {
 		};
 		const out: PayloadSegment[] = segmentToPayload(tree);
 		expect(out).toEqual([
-			{ type: "text", text: "a" },
-			{ type: "link", href: "http://i" },
-			{ type: "text", text: "@全体成员 " },
+			{ kind: "text", text: "a" },
+			{ kind: "link", href: "http://i" },
+			{ kind: "text", text: "@全体成员 " },
 		]);
 	});
 });

@@ -142,7 +142,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 				// 与 B 站同一条规矩:提醒是 best-effort,发不出就算了。
 				try {
 					await push.broadcast(
-						[{ type: "text", text: blockedNotice(authorName, filtered.reason, postNoun) }],
+						[{ kind: "text", text: blockedNotice(authorName, filtered.reason, postNoun) }],
 						"post",
 					);
 				} catch (e) {
@@ -184,7 +184,7 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			}
 		}),
 		opts.bus.on("subscription-changed", ({ ops }) => {
-			for (const op of ops) if (op.type === "remove") gates.delete(op.sub.id);
+			for (const op of ops) if (op.kind === "remove") gates.delete(op.sub.id);
 		}),
 	];
 

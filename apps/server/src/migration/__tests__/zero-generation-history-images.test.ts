@@ -580,7 +580,7 @@ describe("迁出来的一代:真的历史仓、重推原件仓、图库读得通
 		const draft = await repush.load(id, `${LIVE_DAY}T08:00:00.000Z`, 1);
 		const payload = draft?.messages[0]?.payload;
 		if (payload?.kind !== "composite") throw new Error("kind");
-		const images = payload.segments.flatMap((seg) => (seg.type === "image" ? [seg] : []));
+		const images = payload.segments.flatMap((seg) => (seg.kind === "image" ? [seg] : []));
 		expect(images.map((i) => i.mime)).toEqual(["image/png", "image/jpeg"]);
 		expect(new Uint8Array(images[1]?.buffer ?? [])).toEqual(new Uint8Array(JPEG_BYTES));
 	});

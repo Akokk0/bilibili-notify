@@ -666,7 +666,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		const after = cronMock.instances.length;
 
 		b.engine.applyOps([
-			{ type: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
+			{ kind: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
 		]);
 
 		expect(cronMock.instances.length).toBe(after);
@@ -842,12 +842,12 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
 		const [uid, segments, part] = b.push.broadcastDynamic.mock.calls[0] as [
 			string,
-			Array<{ type: string }>,
+			Array<{ kind: string }>,
 			string,
 		];
 		expect(uid).toBe("1");
 		expect(part).toBe("post");
-		expect(segments[0]?.type).toBe("image");
+		expect(segments[0]?.kind).toBe("image");
 	});
 
 	// 引擎出卡的唯一入口是 `generatePostCard(postFromDynamic(原始动态))`:零件各自绿(翻译有翻译的测试、出卡有出卡
@@ -1119,14 +1119,14 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{
-			type: string;
+			kind: string;
 			text?: string;
 		}>;
-		expect(segments.some((s) => s.type === "image")).toBe(true);
+		expect(segments.some((s) => s.kind === "image")).toBe(true);
 		// 默认版式:AI 点评后跟链接部件,同条内以换行连接。
 		expect(
 			segments.some(
-				(s) => s.type === "text" && s.text === `这条很有意思\nhttps://t.bilibili.com/id-1`,
+				(s) => s.kind === "text" && s.text === `这条很有意思\nhttps://t.bilibili.com/id-1`,
 			),
 		).toBe(true);
 	});
@@ -1136,9 +1136,9 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ type: string }>;
+		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ kind: string }>;
 		expect(segments).toHaveLength(1);
-		expect(segments[0]?.type).toBe("text");
+		expect(segments[0]?.kind).toBe("text");
 	});
 
 	it("imageEnabled=false → 即使注入了 image 也跳过渲染,纯文字", async () => {
@@ -1147,8 +1147,8 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.generatePostCard).not.toHaveBeenCalled();
-		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ type: string }>;
-		expect(segments[0]?.type).toBe("text");
+		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ kind: string }>;
+		expect(segments[0]?.kind).toBe("text");
 	});
 
 	it("imageGroup.enable + DYNAMIC_TYPE_DRAW 带 pics → 追加 post-images 广播", async () => {
@@ -1244,7 +1244,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		const call = b.push.broadcastDynamic.mock.calls[1];
 		expect(call?.[2]).toBe("post-images");
 		expect(call?.[1]?.[0]).toMatchObject({
-			type: "image-group",
+			kind: "image-group",
 			images: [{ url: "http://a/x1.jpg" }, { url: "http://a/x2.jpg" }],
 		});
 	});
@@ -1269,7 +1269,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		]);
 	});
 
-	it("imageGroupForward 默认 false → image-group segment 的 forward 为 false", async () => {
+	it("imageGroupForward 默认 false → image-group segment 的 mergeForward 为 false", async () => {
 		// 默认不走合并转发,避开 NapCat SsoSendLongMsg 长消息通道。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: false } } });
 		b.fetchAllDynamic.mockResolvedValue(
@@ -1285,11 +1285,11 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(false);
+		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(false);
 	});
 
-	it("imageGroupForward=true + 多张图 → image-group segment 的 forward 为 true", async () => {
-		// 主动开启 + 多张图时 segment 携带 forward:true,下游 adapter 走合并转发路径。
+	it("imageGroupForward=true + 多张图 → image-group segment 的 mergeForward 为 true", async () => {
+		// 主动开启 + 多张图时 segment 携带 mergeForward:true,下游 adapter 走合并转发路径。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: true } } });
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([
@@ -1304,10 +1304,10 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(true);
+		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(true);
 	});
 
-	it("imageGroupForward=true 但只有 1 张图 → forward 强制 false(单图合并转发无意义)", async () => {
+	it("imageGroupForward=true 但只有 1 张图 → mergeForward 强制 false(单图合并转发无意义)", async () => {
 		// 即使主动开启 imageGroupForward,单张图也不走 forward(聊天记录卡片包 1 张图无意义)。
 		const b = makeEngine({ config: { imageGroup: { enable: true, forward: true } } });
 		b.fetchAllDynamic.mockResolvedValue(
@@ -1323,7 +1323,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(false);
+		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(false);
 	});
 
 	it("per-UP imageGroupEnable=false 覆盖全局 true → 不推图集", async () => {
@@ -1401,14 +1401,14 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupForward: true });
 		await detect(b.engine);
 		const call = b.push.broadcastDynamic.mock.calls[1];
-		expect((call?.[1]?.[0] as { forward: boolean } | undefined)?.forward).toBe(true);
+		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(true);
 	});
 });
 
 describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () => {
-	type Seg = { type: string; text?: string };
+	type Seg = { kind: string; text?: string };
 	const textOf = (segments: Seg[]): string | undefined =>
-		segments.find((s) => s.type === "text")?.text;
+		segments.find((s) => s.kind === "text")?.text;
 	const segsOf = (b: EngineBag): Seg[] => b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
 
 	it("无图 + 无 AI → 默认模板文案 + 链接部件(默认版式同条换行连接)", async () => {
@@ -1458,7 +1458,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 		seed(withImg.engine, "1", 0);
 		await detect(withImg.engine);
 		const imgSegs = segsOf(withImg);
-		expect(imgSegs[0]?.type).toBe("image");
+		expect(imgSegs[0]?.kind).toBe("image");
 
 		const noImg = makeEngine();
 		noImg.fetchAllDynamic.mockResolvedValue(
@@ -1525,7 +1525,7 @@ describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () =>
 // 由 B 站那头先翻成作品,装配只认翻好的。㉑e 起 AI 点评的文字也走 `postText(post, "labeled")`,
 // 不再是引擎自己拼的那一份。
 describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () => {
-	type Seg = { type: string; text?: string };
+	type Seg = { kind: string; text?: string };
 	const textNode = (text: string) => ({ text, type: "RICH_TEXT_NODE_TYPE_TEXT" });
 	/** 一条带标题的图文,转发了一条视频投稿(接口里的字都写在富文本节点上)。 */
 	const richItem = (): Dynamic => {
@@ -1710,7 +1710,7 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{
-			type: string;
+			kind: string;
 			text?: string;
 		}>;
 		expect(segments[0]?.text).toContain("阿伟");
@@ -1902,8 +1902,8 @@ describe("DynamicEngine — 图片失败软降级状态机", () => {
 		expect(b.emits.filter((e) => e.event === "engine-error")).toHaveLength(1);
 		// 软降级:推送照常发生,只是退化为纯文字
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
-		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ type: string }>;
-		expect(segments[0]?.type).toBe("text");
+		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<{ kind: string }>;
+		expect(segments[0]?.kind).toBe("text");
 	});
 
 	it("连续失败两轮 → sendErrorMsg / engine-error 全程仅一次(notified 守卫)", async () => {
@@ -2038,7 +2038,7 @@ describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)"
 		// 模拟交错:generatePostCard 解析前,adapter 收到 subscription-changed
 		// 调 applyOps 退订 uid 1(stopDynamicForUid 删两张表)。
 		b.generatePostCard.mockImplementation(async () => {
-			b.engine.applyOps([{ type: "delete", uid: "1" }]);
+			b.engine.applyOps([{ kind: "delete", uid: "1" }]);
 			return undefined;
 		});
 
@@ -2073,7 +2073,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.isActive 会立即 startJob,提前去戳
 		// 仍在风控的端点,击穿退避。修复后应识别 detectorRestartTimer 待执行而跳过。
 		b.engine.applyOps([
-			{ type: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
+			{ kind: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
 		]);
 
 		expect(cronMock.instances.length).toBe(afterStart); // 没有新建 cron
@@ -2165,10 +2165,10 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		b.engine.start(); // 快照里 sub.post=true → 已有 running job
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 
-		b.engine.applyOps([{ type: "delete", uid: "1" }]);
+		b.engine.applyOps([{ kind: "delete", uid: "1" }]);
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 
-		b.engine.applyOps([{ type: "add", sub }]);
+		b.engine.applyOps([{ kind: "add", sub }]);
 		// 重新有订阅 → reconcile 重启(可能复用或新建 instance,断言最终处于 running)
 		const last = cronMock.instances[cronMock.instances.length - 1];
 		expect(last?.isActive).toBe(true);
@@ -2193,8 +2193,8 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		const b = makeEngine({ subs: { "1": s1, "2": s2 } });
 		b.logs.length = 0;
 		b.engine.applyOps([
-			{ type: "add", sub: s1 },
-			{ type: "add", sub: s2 },
+			{ kind: "add", sub: s1 },
+			{ kind: "add", sub: s2 },
 		]);
 		const summary = b.logs.filter(
 			(l) => l.level === "info" && l.msg.includes("动态订阅变更已应用"),
@@ -2384,7 +2384,7 @@ describe("DynamicEngine — setAi / setImage 后置注入", () => {
 // ---------------------------------------------------------------------------
 
 describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
-	type Seg = { type: string; text?: string };
+	type Seg = { kind: string; text?: string };
 	const layoutOf = (
 		blocks: Array<{ type: string; visible?: boolean; id?: string }>,
 		separator = "\n",
@@ -2409,7 +2409,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamic).toHaveBeenCalledTimes(1);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.type)).toEqual(["image", "text"]);
+		expect(segments.map((s) => s.kind)).toEqual(["image", "text"]);
 		// 默认模板 "{name}发布了一条动态" → "UP发布了一条动态",链接作为独立部件在同条内以
 		// 分隔符(\n)连接。
 		expect(segments[1]?.text).toBe(`UP发布了一条动态\n${URL1}`);
@@ -2441,8 +2441,8 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		expect(part).toBe("post");
 		expect(opts?.pushId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(messages).toHaveLength(2);
-		expect(messages[0]?.map((s) => s.type)).toEqual(["image"]);
-		expect(messages[1]?.map((s) => s.type)).toEqual(["text"]);
+		expect(messages[0]?.map((s) => s.kind)).toEqual(["image"]);
+		expect(messages[1]?.map((s) => s.kind)).toEqual(["text"]);
 		expect(messages[1]?.[0]?.text).toBe(`UP发布了一条动态\n${URL1}`);
 	});
 
@@ -2453,7 +2453,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.generatePostCard).not.toHaveBeenCalled();
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.type)).toEqual(["text"]);
+		expect(segments.map((s) => s.kind)).toEqual(["text"]);
 	});
 
 	it("隐藏 text 块 → 跳过 AI 调用(省 token),消息里无文本部件", async () => {
@@ -2466,7 +2466,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.comment).not.toHaveBeenCalled();
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.type)).toEqual(["image", "text"]);
+		expect(segments.map((s) => s.kind)).toEqual(["image", "text"]);
 		expect(segments[1]?.text).toBe(URL1);
 	});
 
@@ -2509,7 +2509,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		await detect(b.engine);
 		expect(b.push.broadcastDynamicSequence).not.toHaveBeenCalled();
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.type)).toEqual(["text", "image"]);
+		expect(segments.map((s) => s.kind)).toEqual(["text", "image"]);
 		expect(segments[0]?.text).toBe(`${URL1} | UP发布了一条动态`);
 	});
 
@@ -2523,7 +2523,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Array<
 			Seg & { buffer?: Buffer; mime?: string }
 		>;
-		expect(segments.map((s) => s.type)).toEqual(["text", "image", "text"]);
+		expect(segments.map((s) => s.kind)).toEqual(["text", "image", "text"]);
 		expect(segments[0]?.text).toBe("UP发布了一条动态");
 		expect(segments[1]).toMatchObject({ buffer: png, mime: "image/jpeg" });
 		expect(segments[2]?.text).toBe(URL1);
@@ -2536,7 +2536,7 @@ describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
 		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
 		await detect(b.engine);
 		const segments = b.push.broadcastDynamic.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.type)).toEqual(["text"]);
+		expect(segments.map((s) => s.kind)).toEqual(["text"]);
 		expect(segments[0]?.text).toBe(`UP发布了一条动态\n${URL1}`);
 	});
 });
@@ -2623,7 +2623,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		const b = makeEngine();
 		seedStatsOnly(b, "1");
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(true);
-		b.engine.applyOps([{ type: "delete", uid: "1" }]);
+		b.engine.applyOps([{ kind: "delete", uid: "1" }]);
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
 	});
 

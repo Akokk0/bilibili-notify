@@ -115,16 +115,29 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 		]);
 	});
 
-	it("forward-images(图集 URL)→ 多个 image-url 片段(QQ 无合并转发,展开成多条)", () => {
+	it("image-group(图集 URL)→ 多个 image-url 片段(QQ 无合并转发,展开成多条)", () => {
 		const payload: NotificationPayload = {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [{ url: "https://i0.hdslb.com/a.jpg" }, { url: "https://i0.hdslb.com/b.jpg" }],
-			forward: true,
+			mergeForward: true,
 		};
 		expect(qqPayloadToParts(payload)).toEqual([
 			{ kind: "image-url", url: "https://i0.hdslb.com/a.jpg" },
 			{ kind: "image-url", url: "https://i0.hdslb.com/b.jpg" },
 		]);
+	});
+
+	it("image-group 里没有 url 的图(只带图库引用)跳过", () => {
+		expect(
+			qqPayloadToParts({
+				kind: "image-group",
+				images: [
+					{ ref: `${"a".repeat(64)}.jpg` },
+					{ url: "https://i0.hdslb.com/b.jpg", width: 4, height: 3 },
+				],
+				mergeForward: false,
+			}),
+		).toEqual([{ kind: "image-url", url: "https://i0.hdslb.com/b.jpg", width: 4, height: 3 }]);
 	});
 
 	it("miniapp-card(官机签不了 ark)→ 降级成标题 + 链接,不是空片段", () => {
@@ -146,10 +159,10 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 		const payload: NotificationPayload = {
 			kind: "composite",
 			segments: [
-				{ type: "at-all" },
-				{ type: "image", buffer: buf, mime: "image/png" },
-				{ type: "text", text: "标题" },
-				{ type: "link", href: "https://t.bilibili.com/1", title: "动态" },
+				{ kind: "at-all" },
+				{ kind: "image", buffer: buf, mime: "image/png" },
+				{ kind: "text", text: "标题" },
+				{ kind: "link", href: "https://t.bilibili.com/1", title: "动态" },
 			],
 		};
 		expect(qqPayloadToParts(payload)).toEqual([
@@ -162,9 +175,9 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 		const payload: NotificationPayload = {
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "前置" },
-				{ type: "image", buffer: buf, mime: "image/png" },
-				{ type: "text", text: "后置" },
+				{ kind: "text", text: "前置" },
+				{ kind: "image", buffer: buf, mime: "image/png" },
+				{ kind: "text", text: "后置" },
 			],
 		};
 		expect(qqPayloadToParts(payload)).toEqual([
@@ -176,7 +189,7 @@ describe("qqPayloadToParts — NotificationPayload → 有序发送片段", () =
 	it("composite 的 link 无 title → 仅 href", () => {
 		const payload: NotificationPayload = {
 			kind: "composite",
-			segments: [{ type: "link", href: "https://t.bilibili.com/2" }],
+			segments: [{ kind: "link", href: "https://t.bilibili.com/2" }],
 		};
 		expect(qqPayloadToParts(payload)).toEqual([{ kind: "text", text: "https://t.bilibili.com/2" }]);
 	});

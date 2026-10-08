@@ -81,8 +81,9 @@ type Located = Result<{
 
 type Resolved = Result<{ bot: BridgeBot; target: SessionTarget; session: BridgeSession }>;
 
+/** 段的判别键内部叫 `kind`,帧里叫 `type`(线上的名字不随内部改),逐种写出来。 */
 function toSegment(segment: PayloadSegment, blobUrl: BlobUrl, plain: PlainText): BridgeSegment {
-	switch (segment.type) {
+	switch (segment.kind) {
 		case "text":
 			return { type: "text", text: plain(segment.text) };
 		case "image":
@@ -107,6 +108,10 @@ function toSegment(segment: PayloadSegment, blobUrl: BlobUrl, plain: PlainText):
  *
  * 唯一的实质转换是**图**:`Buffer` 过不了 JSON,换成一次性取图 URL。已经是远端 URL 的
  * (图廊、小程序卡封面)原样透传 —— 它们本来就公网可达,再倒一手只是白占内存。
+ *
+ * 帧里的名字是线上协议的名字,不随内部改:图集内部叫 `image-group` / `mergeForward`,帧里照旧是
+ * `forward-images` / `forward`(`wire-frame.test.ts` 钉着);图集的图只把 url 与尺寸写进帧,没有 `url`
+ * 的图(只带图库引用)帧里装不下,跳过。
  */
 function toBridgeMessage(
 	payload: NotificationPayload,
@@ -128,15 +133,13 @@ function toBridgeMessage(
 				kind: "composite",
 				segments: payload.segments.map((segment) => toSegment(segment, blobUrl, plain)),
 			};
-		case "forward-images":
+		case "image-group":
 			return {
 				kind: "forward-images",
-				images: payload.images.map((image) => ({
-					url: image.url,
-					width: image.width,
-					height: image.height,
-				})),
-				forward: payload.forward,
+				images: payload.images.flatMap((image) =>
+					image.url ? [{ url: image.url, width: image.width, height: image.height }] : [],
+				),
+				forward: payload.mergeForward,
 			};
 		case "miniapp-card":
 			// 小程序卡那几格**不过剥离**:它们是卡片的结构化字段,由平台自己渲染,

@@ -592,11 +592,11 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		}),
 		opts.bus.on("subscription-changed", ({ ops }) => {
 			for (const op of ops) {
-				if (op.type === "remove") {
+				if (op.kind === "remove") {
 					dropRun(op.sub.id, "订阅删了");
 					gates.delete(op.sub.id);
 					seen.delete(op.sub.id);
-				} else if (op.type === "update") {
+				} else if (op.kind === "update") {
 					if (op.sub.enabled) reconcile(op.sub.id);
 					else dropRun(op.sub.id, "订阅停用了");
 				}

@@ -11,6 +11,7 @@ import {
 	type NotificationPayload,
 	ok,
 	type PayloadSegment,
+	type PostImage,
 	type PushTarget,
 	WEBHOOK_PLATFORMS,
 	type WebhookConnectionConfig,
@@ -406,17 +407,22 @@ function notificationPayloadToRobotText(payload: NotificationPayload): string {
 			const text = payload.segments.map(segmentToRobotText).filter(Boolean).join("\n").trim();
 			return text || "[通知]";
 		}
-		case "forward-images":
-			return payload.images.length > 0
-				? `图片:\n${payload.images.map((img) => img.url).join("\n")}`
-				: "[图片]";
+		case "image-group": {
+			const urls = imageGroupUrls(payload.images);
+			return urls.length > 0 ? `图片:\n${urls.join("\n")}` : "[图片]";
+		}
 		case "miniapp-card":
 			return `${payload.title}\n${payload.jumpUrl}`;
 	}
 }
 
+/** 图集照 `url` 发;没有 `url` 的图(只带图库引用)这里发不了,跳过。 */
+function imageGroupUrls(images: readonly PostImage[]): string[] {
+	return images.flatMap((img) => (img.url ? [img.url] : []));
+}
+
 function segmentToRobotText(segment: PayloadSegment): string {
-	switch (segment.type) {
+	switch (segment.kind) {
 		case "text":
 			return segment.text;
 		case "image":
@@ -428,6 +434,24 @@ function segmentToRobotText(segment: PayloadSegment): string {
 	}
 }
 
+/**
+ * 通用 JSON 里的一段。线上的判别键叫 `type`(内部叫 `kind`),逐种写出来 —— 不许把内部对象原样交出去,
+ * 内部再改名线上也不动(`webhook-wire.test.ts` 钉着)。
+ */
+function serializeSegment(segment: PayloadSegment): unknown {
+	switch (segment.kind) {
+		case "text":
+			return { type: "text", text: segment.text };
+		case "image":
+			return { type: "image", mime: segment.mime, data: segment.buffer.toString("base64") };
+		case "link":
+			return { type: "link", href: segment.href, title: segment.title };
+		case "at-all":
+			return { type: "at-all" };
+	}
+}
+
+/** 通用 JSON 的 `payload`。字段名是线上的名字:图集叫 `forward-images`、开关叫 `forward`,不随内部改。 */
 function serializePayload(payload: NotificationPayload): unknown {
 	switch (payload.kind) {
 		case "text":
@@ -442,16 +466,15 @@ function serializePayload(payload: NotificationPayload): unknown {
 				caption: payload.caption,
 			};
 		case "composite":
+			return { kind: "composite", segments: payload.segments.map(serializeSegment) };
+		case "image-group":
 			return {
-				kind: "composite",
-				segments: payload.segments.map((s) =>
-					s.type === "image"
-						? { type: "image", mime: s.mime, data: s.buffer.toString("base64") }
-						: s,
+				kind: "forward-images",
+				images: payload.images.flatMap((img) =>
+					img.url ? [{ url: img.url, width: img.width, height: img.height }] : [],
 				),
+				forward: payload.mergeForward,
 			};
-		case "forward-images":
-			return { kind: "forward-images", images: payload.images, forward: payload.forward };
 		case "miniapp-card":
 			return payload;
 	}

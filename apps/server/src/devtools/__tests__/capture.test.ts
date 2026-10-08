@@ -78,10 +78,10 @@ describe("createCaptureGate", () => {
 		const res = await wrapped.send(ADAPTER, TARGET, {
 			kind: "composite",
 			segments: [
-				{ type: "at-all" },
-				{ type: "text", text: "开播啦" },
-				{ type: "image", buffer: Buffer.from("x"), mime: "image/png" },
-				{ type: "link", href: "https://live.bilibili.com/1", title: "直播间" },
+				{ kind: "at-all" },
+				{ kind: "text", text: "开播啦" },
+				{ kind: "image", buffer: Buffer.from("x"), mime: "image/png" },
+				{ kind: "link", href: "https://live.bilibili.com/1", title: "直播间" },
 			],
 		});
 
@@ -114,8 +114,8 @@ describe("createCaptureGate", () => {
 			{ kind: "image", text: "说明", images: 1 },
 		],
 		[
-			{ kind: "forward-images", images: [{ url: "a" }, { url: "b" }], forward: true },
-			{ kind: "forward-images", images: 2 },
+			{ kind: "image-group", images: [{ url: "a" }, { url: "b" }], mergeForward: true },
+			{ kind: "image-group", images: 2 },
 		],
 		[
 			{

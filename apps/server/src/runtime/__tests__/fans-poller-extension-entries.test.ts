@@ -300,7 +300,7 @@ describe("粉丝面板 × 拓展订阅:什么时候刷新", () => {
 		expect(p.entryOf("e1")).toBeDefined();
 
 		p.setSubs([]);
-		p.bus.emit("subscription-changed", { ops: [{ type: "remove", sub: sub as never }] });
+		p.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: sub as never }] });
 		expect(p.entryOf("e1")).toBeUndefined();
 		expect(p.snapshots.at(-1)).toEqual([]);
 		expect(await exists(join(dataDir, ...FOLLOWERS_DIR, "e1.jsonl"))).toBe(true);

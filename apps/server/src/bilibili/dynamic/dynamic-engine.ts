@@ -3,11 +3,11 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import {
 	DEFAULT_CONTENT_FILTERS,
 	type Disposable,
-	type ForwardImage,
 	type ImageRef,
 	type Logger,
 	type MessageBus,
 	type Post,
+	type PostImage,
 	postText,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
@@ -206,10 +206,10 @@ function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): st
  * width/height(B 站图集元数据)—— 透传给需要原始尺寸的平台(QQ 原生 markdown 多图
  * `![#宽px #高px]`),其余平台只用 url。
  */
-function extractGallery(item: Dynamic): ForwardImage[] {
+function extractGallery(item: Dynamic): PostImage[] {
 	if (item.type !== "DYNAMIC_TYPE_DRAW") return [];
 	const major = item.modules?.module_dynamic?.major;
-	const images: ForwardImage[] = [];
+	const images: PostImage[] = [];
 	for (const it of (major?.draw?.items ?? []) as Array<{
 		src?: string;
 		width?: number;
@@ -551,7 +551,7 @@ export class DynamicEngine {
 		let opened = 0;
 		let removed = 0;
 		for (const op of ops) {
-			switch (op.type) {
+			switch (op.kind) {
 				case "add": {
 					// 锚点覆盖全部订阅(统计口径),推送订阅表只收开着开关的。
 					this.ensureTimelineAnchor(op.sub.uid);
@@ -849,7 +849,7 @@ export class DynamicEngine {
 								uid,
 								[
 									{
-										type: "text",
+										kind: "text",
 										text: blockedNotice(name, filterResult.reason as PostFilterReason, "动态"),
 									},
 								],

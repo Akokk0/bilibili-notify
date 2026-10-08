@@ -302,9 +302,9 @@ export type TargetScopedChange = { scope: "target" } & Pick<SubItemView, "target
 export type LiveSubChange = LiveScopedChange | DynamicScopedChange | TargetScopedChange;
 
 export type LiveSubscriptionOp =
-	| { type: "add"; sub: SubItemView }
-	| { type: "delete"; uid: string }
-	| { type: "update"; uid: string; changes: LiveSubChange[] };
+	| { kind: "add"; sub: SubItemView }
+	| { kind: "delete"; uid: string }
+	| { kind: "update"; uid: string; changes: LiveSubChange[] };
 
 /**
  * Push-out interface required by live-engine. Mirrors the methods on

@@ -322,7 +322,7 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		liveStart();
 		settings = { ...settings, liveStart: false, liveEnd: false };
 		bus.emit("config-changed", { scope: "globals" });
-		bus.emit("subscription-changed", { ops: [{ type: "update", sub: SUB }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: SUB }] });
 		liveStatus();
 		expect(summary().map((c) => c.type)).toEqual(["start", "status"]);
 		expect(sessions.get(SUB.id)?.startedAt).toBe(T0);
@@ -357,8 +357,8 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		liveStart({}, OTHER);
 		const disabled = { ...SUB, enabled: false };
-		bus.emit("subscription-changed", { ops: [{ type: "update", sub: disabled }] });
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: OTHER }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: disabled }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: OTHER }] });
 		expect(changes.filter((c) => c.type === "end")).toEqual([
 			expect.objectContaining({ subscriptionId: SUB.id, reason: "disabled" }),
 			expect.objectContaining({ subscriptionId: OTHER.id, reason: "removed" }),
@@ -472,7 +472,7 @@ describe("总线上的场次事件(给统计)", () => {
 		vi.advanceTimersByTime(MINUTE);
 		liveStart({ startedAt: Date.now() }, third);
 		bus.emit("subscription-changed", {
-			ops: [{ type: "update", sub: { ...OTHER, enabled: false } }],
+			ops: [{ kind: "update", sub: { ...OTHER, enabled: false } }],
 		});
 		bus.emit("extension-stopped", { extensionId: EXT });
 		const endsSoFar = frames.filter((f) => f.phase === "end");
@@ -484,7 +484,7 @@ describe("总线上的场次事件(给统计)", () => {
 		]);
 
 		liveStart({}, OTHER);
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: OTHER }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: OTHER }] });
 		liveStart();
 		sessions.dispose();
 		const last = frames.filter((f) => f.phase === "end").slice(4);
@@ -644,7 +644,7 @@ describe("本场累计观看(ADR-0020 决策 7)", () => {
 		liveStart({ totalViewers: 1 });
 		liveStart({ totalViewers: 2 }, OTHER);
 		bus.emit("subscription-changed", {
-			ops: [{ type: "update", sub: { ...OTHER, enabled: false } }],
+			ops: [{ kind: "update", sub: { ...OTHER, enabled: false } }],
 		});
 		bus.emit("extension-stopped", { extensionId: EXT });
 		subs.set(SUB.id, SUB);

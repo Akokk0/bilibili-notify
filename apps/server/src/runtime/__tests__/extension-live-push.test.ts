@@ -168,7 +168,7 @@ function start(): void {
 			async (groups, type) => {
 				const text = groups
 					.flat()
-					.flatMap((seg) => (seg.type === "text" ? [seg.text] : []))
+					.flatMap((seg) => (seg.kind === "text" ? [seg.text] : []))
 					.join("\n");
 				sent.push({ id, type, text, input: renderedInputs.at(-1) });
 			},
@@ -595,10 +595,10 @@ describe("周期「正在直播」", () => {
 		await settle();
 		const disabled = { ...SUB, enabled: false };
 		subs.set(SUB.id, disabled);
-		bus.emit("subscription-changed", { ops: [{ type: "update", sub: disabled }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: disabled }] });
 		// 马上又启用回来:停用那一刻这一场就作废了,启用不会把它的计时器救回来。
 		subs.set(SUB.id, SUB);
-		bus.emit("subscription-changed", { ops: [{ type: "update", sub: SUB }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: SUB }] });
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
@@ -610,7 +610,7 @@ describe("周期「正在直播」", () => {
 		liveStart();
 		await settle();
 		subs.delete(SUB.id);
-		bus.emit("subscription-changed", { ops: [{ type: "remove", sub: SUB }] });
+		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: SUB }] });
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);

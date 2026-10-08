@@ -180,11 +180,11 @@ describe("record — payload reduce + 落盘 + emit", () => {
 						payload: {
 							kind: "composite",
 							segments: [
-								{ type: "text", text: "line1" },
-								{ type: "image", buffer: JPEG_BYTES, mime: "image/jpeg" },
-								{ type: "image", buffer: PNG_BYTES, mime: "image/png" },
-								{ type: "link", href: "https://x", title: "T" },
-								{ type: "link", href: "https://y" },
+								{ kind: "text", text: "line1" },
+								{ kind: "image", buffer: JPEG_BYTES, mime: "image/jpeg" },
+								{ kind: "image", buffer: PNG_BYTES, mime: "image/png" },
+								{ kind: "link", href: "https://x", title: "T" },
+								{ kind: "link", href: "https://y" },
 							],
 						},
 						role: "main",
@@ -212,8 +212,8 @@ describe("record — payload reduce + 落盘 + emit", () => {
 						payload: {
 							kind: "composite",
 							segments: [
-								{ type: "image", buffer: Buffer.from("<svg/>"), mime: "image/png" },
-								{ type: "image", buffer: PNG_BYTES, mime: "image/png" },
+								{ kind: "image", buffer: Buffer.from("<svg/>"), mime: "image/png" },
+								{ kind: "image", buffer: PNG_BYTES, mime: "image/png" },
 							],
 						},
 						role: "main",
@@ -230,7 +230,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 			baseInput({
 				feature: "liveStart",
 				messages: [
-					{ payload: { kind: "composite", segments: [{ type: "at-all" }] }, role: "extra" },
+					{ payload: { kind: "composite", segments: [{ kind: "at-all" }] }, role: "extra" },
 				],
 			}),
 		);
@@ -242,7 +242,7 @@ describe("record — payload reduce + 落盘 + emit", () => {
 					{
 						payload: {
 							kind: "composite",
-							segments: [{ type: "at-all" }, { type: "text", text: "开播啦" }],
+							segments: [{ kind: "at-all" }, { kind: "text", text: "开播啦" }],
 						},
 						role: "main",
 					},
@@ -252,15 +252,15 @@ describe("record — payload reduce + 落盘 + emit", () => {
 		expect(only(mixed).payload.text).toBe("@全体\n开播啦");
 	});
 
-	it("forward-images → 一句「[图集 N 张]」摘要", async () => {
+	it("image-group → 一句「[图集 N 张]」摘要", async () => {
 		const entry = await store.record(
 			baseInput({
 				messages: [
 					{
 						payload: {
-							kind: "forward-images",
+							kind: "image-group",
 							images: [{ url: "https://a" }, { url: "https://b" }],
-							forward: true,
+							mergeForward: true,
 						},
 						role: "extra",
 						result: { ok: true, latencyMs: 1 },

@@ -116,6 +116,118 @@ describe("盘上形状 —— 原件是 `{ version, messages }`(⑱c)", () => {
 	});
 });
 
+/**
+ * 3a-16 第一轮:活的载荷已经改名(图集 `image-group` / `mergeForward`、段的判别键 `kind`),**盘上还是改名前的
+ * 样子** —— 写与读在仓的边界上换算。这一组钉的是盘上的字;第二轮盘上形状跟着改(带迁移)时整组重写。
+ */
+describe("盘上形状 —— 3a-16 第一轮:载荷改了名,盘上的名字还没动", () => {
+	const readRaw = async (id: string) =>
+		JSON.parse(await readFile(join(dayDir(), `${id}.json`), "utf8")).messages[0].payload;
+
+	it("图集:盘上是 `forward-images` / `forward`,每张图只有 url 与尺寸", async () => {
+		const id = randomUUID();
+		await store.append(id, TS, [
+			{
+				payload: {
+					kind: "image-group",
+					images: [
+						{
+							ref: `${"a".repeat(64)}.jpg`,
+							url: "https://i0.hdslb.com/a.jpg",
+							width: 800,
+							height: 600,
+							isAnimated: true,
+						},
+						{ url: "https://i0.hdslb.com/b.jpg" },
+					],
+					mergeForward: true,
+				},
+				role: "extra",
+			},
+		]);
+		expect(await readRaw(id)).toEqual({
+			kind: "forward-images",
+			images: [
+				{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 },
+				{ url: "https://i0.hdslb.com/b.jpg" },
+			],
+			forward: true,
+		});
+	});
+
+	it("composite:盘上的段用判别键 `type`,四种段都是", async () => {
+		const id = randomUUID();
+		await store.append(id, TS, [
+			{
+				payload: {
+					kind: "composite",
+					segments: [
+						{ kind: "text", text: "正文" },
+						{ kind: "image", buffer: distinctPng(1), mime: "image/png" },
+						{ kind: "link", href: "https://b23.tv/x", title: "链接" },
+						{ kind: "link", href: "https://b23.tv/bare" },
+						{ kind: "at-all" },
+					],
+				},
+				role: "main",
+			},
+		]);
+		expect(await readRaw(id)).toEqual({
+			kind: "composite",
+			segments: [
+				{ type: "text", text: "正文" },
+				{ type: "image", image: expect.stringMatching(/^[0-9a-f]{64}\.png$/) },
+				{ type: "link", href: "https://b23.tv/x", title: "链接" },
+				{ type: "link", href: "https://b23.tv/bare" },
+				{ type: "at-all" },
+			],
+		});
+	});
+
+	it("盘上改名前的原件读得回来,交出去的是活的名字", async () => {
+		const id = randomUUID();
+		await mkdir(dayDir(), { recursive: true });
+		const messages = [
+			{
+				payload: {
+					kind: "forward-images",
+					images: [{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 }],
+					forward: false,
+				},
+				role: "extra",
+			},
+			{
+				payload: {
+					kind: "composite",
+					segments: [
+						{ type: "text", text: "正文" },
+						{ type: "link", href: "https://b23.tv/x" },
+						{ type: "at-all" },
+					],
+				},
+				role: "main",
+			},
+		];
+		await writeFile(join(dayDir(), `${id}.json`), JSON.stringify({ version: 1, messages }));
+		const out = await store.load(id, TS, 2);
+		expect(out?.messages.map((m) => m.payload)).toEqual([
+			{
+				kind: "image-group",
+				images: [{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 }],
+				mergeForward: false,
+			},
+			{
+				kind: "composite",
+				segments: [
+					{ kind: "text", text: "正文" },
+					{ kind: "link", href: "https://b23.tv/x" },
+					{ kind: "at-all" },
+				],
+			},
+		]);
+	});
+});
+
 describe("append + load — 进去什么,出来还是什么", () => {
 	it("纯文字:原样回来", async () => {
 		const id = randomUUID();
@@ -192,24 +304,24 @@ describe("append + load — 进去什么,出来还是什么", () => {
 describe("三种历史丢得最狠的 payload", () => {
 	it("at-all 段:原件留住段本身(历史只剩字面文字「@全体」)", async () => {
 		const id = randomUUID();
-		const payload: NotificationPayload = { kind: "composite", segments: [{ type: "at-all" }] };
+		const payload: NotificationPayload = { kind: "composite", segments: [{ kind: "at-all" }] };
 		await store.append(id, TS, [{ payload, role: "extra" }]);
 		const out = await store.load(id, TS, 1);
 		expect(out?.messages[0]?.payload).toEqual({
 			kind: "composite",
-			segments: [{ type: "at-all" }],
+			segments: [{ kind: "at-all" }],
 		});
 	});
 
 	it("图集:N 张的 url 全留着(历史只剩「[图集 N 张]」)", async () => {
 		const id = randomUUID();
 		const payload: NotificationPayload = {
-			kind: "forward-images",
+			kind: "image-group",
 			images: [
 				{ url: "https://i0.hdslb.com/a.jpg", width: 800, height: 600 },
 				{ url: "https://i0.hdslb.com/b.jpg" },
 			],
-			forward: true,
+			mergeForward: true,
 		};
 		await store.append(id, TS, [{ payload, role: "extra" }]);
 		const out = await store.load(id, TS, 1);
@@ -236,10 +348,10 @@ describe("三种历史丢得最狠的 payload", () => {
 		const payload: NotificationPayload = {
 			kind: "composite",
 			segments: [
-				{ type: "text", text: "正文" },
-				{ type: "image", buffer: PNG_BYTES, mime: "image/png" },
-				{ type: "link", href: "https://b23.tv/x", title: "链接" },
-				{ type: "image", buffer: JPEG_BYTES, mime: "image/jpeg" },
+				{ kind: "text", text: "正文" },
+				{ kind: "image", buffer: PNG_BYTES, mime: "image/png" },
+				{ kind: "link", href: "https://b23.tv/x", title: "链接" },
+				{ kind: "image", buffer: JPEG_BYTES, mime: "image/jpeg" },
 			],
 		};
 		await store.append(id, TS, [{ payload, role: "main" }]);
@@ -249,8 +361,8 @@ describe("三种历史丢得最狠的 payload", () => {
 		const out = await store.load(id, TS, 1);
 		const p = out?.messages[0]?.payload;
 		if (p?.kind !== "composite") throw new Error("kind");
-		expect(p.segments.map((s) => s.type)).toEqual(["text", "image", "link", "image"]);
-		const images = p.segments.flatMap((s) => (s.type === "image" ? [s] : []));
+		expect(p.segments.map((s) => s.kind)).toEqual(["text", "image", "link", "image"]);
+		const images = p.segments.flatMap((s) => (s.kind === "image" ? [s] : []));
 		expect(images.map((s) => s.mime)).toEqual(["image/png", "image/jpeg"]);
 		expect(new Uint8Array(images[0]?.buffer ?? [])).toEqual(new Uint8Array(PNG_BYTES));
 		expect(new Uint8Array(images[1]?.buffer ?? [])).toEqual(new Uint8Array(JPEG_BYTES));
@@ -362,8 +474,8 @@ describe("listRepushImageRefs — 图库的引用方名单", () => {
 				payload: {
 					kind: "composite",
 					segments: [
-						{ type: "image", buffer: distinctPng(2), mime: "image/png" },
-						{ type: "image", buffer: distinctPng(3), mime: "image/png" },
+						{ kind: "image", buffer: distinctPng(2), mime: "image/png" },
+						{ kind: "image", buffer: distinctPng(3), mime: "image/png" },
 					],
 				},
 				role: "extra",

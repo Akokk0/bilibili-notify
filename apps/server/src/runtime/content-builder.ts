@@ -43,18 +43,18 @@ export const segmentContentBuilder: LiveContentBuilder = {
 export function segmentToPayload(value: unknown): PayloadSegment[] {
 	if (value == null) return [];
 	if (typeof value === "string") {
-		return value.length > 0 ? [{ type: "text", text: value }] : [];
+		return value.length > 0 ? [{ kind: "text", text: value }] : [];
 	}
 	const v = value as SegmentValue;
 	switch (v.kind) {
 		case "text":
-			return v.text.length > 0 ? [{ type: "text", text: v.text }] : [];
+			return v.text.length > 0 ? [{ kind: "text", text: v.text }] : [];
 		case "image-url":
-			return [{ type: "link", href: v.url }];
+			return [{ kind: "link", href: v.url }];
 		case "image-buf":
-			return [{ type: "image", buffer: v.buffer, mime: v.mime }];
+			return [{ kind: "image", buffer: v.buffer, mime: v.mime }];
 		case "atAll":
-			return [{ type: "text", text: "@全体成员 " }];
+			return [{ kind: "text", text: "@全体成员 " }];
 		case "message":
 			return v.segments.flatMap((s) => segmentToPayload(s));
 	}

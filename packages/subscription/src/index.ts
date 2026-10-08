@@ -68,16 +68,16 @@ export function diff(prev: Subscription[], next: Subscription[]): SubscriptionOp
 	const nextMap = new Map(next.map((s) => [s.id, s]));
 
 	for (const [id, sub] of prevMap) {
-		if (!nextMap.has(id)) ops.push({ type: "remove", sub });
+		if (!nextMap.has(id)) ops.push({ kind: "remove", sub });
 	}
 	for (const [id, sub] of nextMap) {
 		if (!prevMap.has(id)) {
-			ops.push({ type: "add", sub });
+			ops.push({ kind: "add", sub });
 		} else {
 			// 稳定比较:对 key 序 / undefined 不敏感,不再产伪 update op。
 			const prev = prevMap.get(id);
 			if (prev && !sameSubscription(prev, sub)) {
-				ops.push({ type: "update", sub });
+				ops.push({ kind: "update", sub });
 			}
 		}
 	}
@@ -183,18 +183,18 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 				// P2:内容未变则不发 update op(此前必发,engine 无谓 reconcile)。
 				if (sameSubscription(subs[idx] as Subscription, sub)) return;
 				subs = [...subs.slice(0, idx), sub, ...subs.slice(idx + 1)];
-				bus.emit("subscription-changed", { ops: [{ type: "update", sub }] });
+				bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 				return;
 			}
 			subs = [...subs, sub];
-			bus.emit("subscription-changed", { ops: [{ type: "add", sub }] });
+			bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 		},
 		removeById(id) {
 			const idx = subs.findIndex((s) => s.id === id);
 			if (idx === -1) return undefined;
 			const removed = subs[idx];
 			subs = [...subs.slice(0, idx), ...subs.slice(idx + 1)];
-			bus.emit("subscription-changed", { ops: [{ type: "remove", sub: removed }] });
+			bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: removed }] });
 			return removed;
 		},
 		replaceAll(next) {

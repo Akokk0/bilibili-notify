@@ -335,7 +335,8 @@ describe("消息投影", () => {
 		text: "text",
 		image: "image",
 		composite: "composite",
-		"forward-images": "forward-images",
+		// 内部的图集叫 `image-group`,帧里照旧是 `forward-images`(适配器在映射)。
+		"image-group": "forward-images",
 		"miniapp-card": "miniapp-card",
 	};
 

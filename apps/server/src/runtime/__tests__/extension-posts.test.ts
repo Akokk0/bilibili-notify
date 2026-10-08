@@ -69,8 +69,8 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 		const sent: string[] = [];
 		const push: BoundWorkPush = {
 			broadcast: async (segments: PushSegment[]) => {
-				const text = segments.find((s) => s.type === "text");
-				sent.push(text?.type === "text" ? (text.text.split("\n").pop() ?? "") : "");
+				const text = segments.find((s) => s.kind === "text");
+				sent.push(text?.kind === "text" ? (text.text.split("\n").pop() ?? "") : "");
 			},
 			broadcastSequence: async () => {},
 		};
@@ -332,7 +332,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 
 		await vi.waitFor(() => expect(sent).toHaveLength(1));
 		expect(asked).toEqual([SUB.identity.sourceKey]);
-		expect(sent[0]).toEqual([{ type: "text", text: "资料名发布了一条含有屏蔽关键字的视频" }]);
+		expect(sent[0]).toEqual([{ kind: "text", text: "资料名发布了一条含有屏蔽关键字的视频" }]);
 		handle.dispose();
 	});
 });
@@ -484,7 +484,7 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 		const t = bind({ blockVideos: true, notify: true });
 		t.emit(withVideo());
 		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
-		expect(t.sent[0]).toEqual([{ type: "text", text: "资料名发布了一条带视频的作品，已屏蔽" }]);
+		expect(t.sent[0]).toEqual([{ kind: "text", text: "资料名发布了一条带视频的作品，已屏蔽" }]);
 		expect(t.render).not.toHaveBeenCalled();
 		t.handle.dispose();
 	});

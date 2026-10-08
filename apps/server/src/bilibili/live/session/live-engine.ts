@@ -209,7 +209,7 @@ export class LiveEngine {
 		lookupFullSub: (uid: string) => SubItemView | undefined,
 	): void {
 		for (const op of ops) {
-			switch (op.type) {
+			switch (op.kind) {
 				case "add": {
 					if (!this.listener.needsLiveMonitor(op.sub)) break;
 					this.listener.startForUid(op.sub);
