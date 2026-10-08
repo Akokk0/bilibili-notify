@@ -580,11 +580,13 @@ export class RoomSession extends RoomSessionBase {
 				);
 				if (this.ctx.isDisposed()) return;
 				await this.enqueuePush(() =>
-					this.ctx.push.broadcastToTargets(
-						this.sub.uid,
-						this.ctx.contentBuilder.image(buf, "image/jpeg"),
-						LivePushType.Superchat,
-					),
+					this.ctx.push.push({
+						uid: this.sub.uid,
+						type: LivePushType.Superchat,
+						anchors: [
+							{ role: "main", messages: [this.ctx.contentBuilder.image(buf, "image/jpeg")] },
+						],
+					}),
 				);
 				return;
 			} catch (e) {
@@ -594,11 +596,16 @@ export class RoomSession extends RoomSessionBase {
 		const fallback = `【${masterName}的直播间】${event.viewer.name}的SC:${event.text}（${event.amount}元）`;
 		if (this.ctx.isDisposed()) return;
 		await this.enqueuePush(() =>
-			this.ctx.push.broadcastToTargets(
-				this.sub.uid,
-				this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(fallback)]),
-				LivePushType.Superchat,
-			),
+			this.ctx.push.push({
+				uid: this.sub.uid,
+				type: LivePushType.Superchat,
+				anchors: [
+					{
+						role: "main",
+						messages: [this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(fallback)])],
+					},
+				],
+			}),
 		);
 	}
 
@@ -640,14 +647,21 @@ export class RoomSession extends RoomSessionBase {
 			}).replaceAll("\\n", "\n");
 			if (this.ctx.isDisposed()) return;
 			// 图片没填就回落该档的官方徽章。默认配置里每档 imageUrl 就是空串,空串不是「缺」,`??` 兜不住。
-			await this.ctx.push.broadcastToTargets(
-				this.sub.uid,
-				this.ctx.contentBuilder.message([
-					this.ctx.contentBuilder.image(custom.imageUrl || guardImg),
-					this.ctx.contentBuilder.text(text),
-				]),
-				LivePushType.LiveGuardBuy,
-			);
+			await this.ctx.push.push({
+				uid: this.sub.uid,
+				type: LivePushType.LiveGuardBuy,
+				anchors: [
+					{
+						role: "main",
+						messages: [
+							this.ctx.contentBuilder.message([
+								this.ctx.contentBuilder.image(custom.imageUrl || guardImg),
+								this.ctx.contentBuilder.text(text),
+							]),
+						],
+					},
+				],
+			});
 			return;
 		}
 		if (this.ctx.imageRenderer?.generateMembershipCard) {
@@ -687,27 +701,34 @@ export class RoomSession extends RoomSessionBase {
 					{ ...(guardStyle.enable ? guardStyle : undefined), ...this.skinChoice() },
 				);
 				if (this.ctx.isDisposed()) return;
-				await this.ctx.push.broadcastToTargets(
-					this.sub.uid,
-					this.ctx.contentBuilder.image(buf, "image/jpeg"),
-					LivePushType.LiveGuardBuy,
-				);
+				await this.ctx.push.push({
+					uid: this.sub.uid,
+					type: LivePushType.LiveGuardBuy,
+					anchors: [{ role: "main", messages: [this.ctx.contentBuilder.image(buf, "image/jpeg")] }],
+				});
 				return;
 			} catch (e) {
 				this.ctx.logger.error(`[guard] 生成上舰图片失败：${(e as Error).message}`);
 			}
 		}
 		if (this.ctx.isDisposed()) return;
-		await this.ctx.push.broadcastToTargets(
-			this.sub.uid,
-			this.ctx.contentBuilder.message([
-				this.ctx.contentBuilder.image(guardImg),
-				this.ctx.contentBuilder.text(
-					`【${masterName}的直播间】${event.viewer.name}加入了大航海（${ev.giftName}）`,
-				),
-			]),
-			LivePushType.LiveGuardBuy,
-		);
+		await this.ctx.push.push({
+			uid: this.sub.uid,
+			type: LivePushType.LiveGuardBuy,
+			anchors: [
+				{
+					role: "main",
+					messages: [
+						this.ctx.contentBuilder.message([
+							this.ctx.contentBuilder.image(guardImg),
+							this.ctx.contentBuilder.text(
+								`【${masterName}的直播间】${event.viewer.name}加入了大航海（${ev.giftName}）`,
+							),
+						]),
+					],
+				},
+			],
+		});
 	}
 
 	private async onLiveStart(): Promise<void> {

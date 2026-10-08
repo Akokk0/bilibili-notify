@@ -4,17 +4,16 @@
  * 各记一份顺序的话,B 站那条以后加了什么,拓展那条会悄悄漏掉。
  *
  * 它**不认 uid、不读任何平台的原始数据**:来源先把自己的数据翻成 {@link NeutralWork}(B 站动态引擎
- * 读 B 站原始动态,拓展读上报的作品),带上这条订阅折好的设置与绑到这条订阅上的发送交进来。过滤、
+ * 读 B 站原始动态,拓展读上报的作品),带上这条订阅折好的设置与绑到这条订阅上的推送口交进来。过滤、
  * 时间线闸、统计事件、失败了怎么办,都是来源自己的事。
  */
 
-import { randomUUID } from "node:crypto";
 import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { CardColorOptions, ImageRenderer } from "@bilibili-notify/image";
 import type { Logger, MessagePartType, PostImage } from "@bilibili-notify/internal";
 import { assembleMessageGroups, interpolate, isBlockVisible } from "@bilibili-notify/internal";
 import { resolveDynamicColorOptions } from "./card-style";
-import type { DynamicBroadcastOptions, PostPushPart, PushSegment, SubItemView } from "./push-like";
+import type { PostPushAnchor, PushSegment, SubItemView } from "./push-like";
 
 /** AI 点评最多看几张图(决策 71:拓展作品与 B 站同一个数)。来源交多了,装配截前这么多张。 */
 export const WORK_COMMENT_IMAGES_MAX = 4;
@@ -121,27 +120,6 @@ export interface WorkDeliveryConfig {
 }
 
 /**
- * 绑到这条订阅上的发送 —— `PushLike` 的两个广播口去掉 uid:B 站按 uid 绑,拓展按订阅 id 绑。
- *
- * `part`:主卡 `post`、图集 `post-images`;推送层据它把图集当附加项、抑制 @全体
- * (`broadcastOptionsForPostPart`)。主卡与图集带同一个 pushId,历史落同一行。
- */
-export interface BoundWorkPush {
-	/** 一条消息。 */
-	broadcast(
-		segments: PushSegment[],
-		part: PostPushPart,
-		opts?: DynamicBroadcastOptions,
-	): Promise<void>;
-	/** 消息版式分条:一次推送拆成多条消息的序列(语义见 `PushLike.broadcastDynamicSequence`)。 */
-	broadcastSequence(
-		messages: PushSegment[][],
-		part: PostPushPart,
-		opts?: DynamicBroadcastOptions,
-	): Promise<void>;
-}
-
-/**
  * 出图连续失败的计数:连着失败只提醒主人一次,出图恢复后复位、下一串失败再提醒。
  *
  * 从动态引擎实例上搬出来成一个小对象(决策 66):B 站与拓展用的是同一个渲染器,两条路共用
@@ -229,8 +207,12 @@ export interface DeliverWorkArgs {
 	work: NeutralWork;
 	/** 这条订阅折好的设置。 */
 	settings: WorkSubscriptionSettings;
-	/** 绑到这条订阅上的发送。 */
-	push: BoundWorkPush;
+	/**
+	 * 绑到这条订阅上的推送口 —— `PushLike.push` 去掉 uid:B 站按 uid 绑,拓展按订阅 id 绑。
+	 * 一条作品只调一次:主卡(本体)与图集(附加项)是同一次推送的锚点,历史落同一行。
+	 * 本体发完时返回;图集在推送层的后台接着发,发不出也不往这边抛。
+	 */
+	push(anchors: PostPushAnchor[]): Promise<void>;
 	/**
 	 * 还订阅着吗 —— 出卡、点评几个 await 之后、发送之前回问一次。期间被退订(或被换成另一条订阅)
 	 * 就不发:给已退订的推送是打扰,拿陈旧的设置推也不对。
@@ -321,15 +303,13 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 		: (settings.customDynamicTemplate ?? config.dynamicTemplate ?? DEFAULT_DYNAMIC_TEXT.dynamic);
 	const text = wantPart("text") ? (aiComment ?? renderDynamicText(template, work.name)) : "";
 	const messages: PushSegment[][] = assembleMessageGroups(layout, { card, text, link: work.link });
-	// 这一条作品 = 一次推送:主卡(可能分条)与后面的图集共用一个 pushId,宿主的历史落同一行、
-	// 图集是追加上去的附加项。
-	const pushId = randomUUID();
+	// 这一条作品 = 一次推送:主卡(可能分条)是本体,图集是排在它后面的附加项锚点,一起交出去 ——
+	// 宿主的历史落同一行。开关、静音与免扰就在交出去的这一刻判一次。
+	const anchors: PostPushAnchor[] = [];
 	if (messages.length === 0) {
 		logger.debug(`[push] ${logLabel} 消息版式所有部件隐藏/缺失,本条不推送`);
-	} else if (messages.length === 1) {
-		await push.broadcast(messages[0] as PushSegment[], "post", { pushId });
 	} else {
-		await push.broadcastSequence(messages, "post", { pushId });
+		anchors.push({ role: "main", messages });
 	}
 
 	// 图集 —— per-UP 的开关优先,留空继承全局。
@@ -338,21 +318,15 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 		const forwardWanted = settings.imageGroupMergeForward ?? config.imageGroup.mergeForward;
 		// 单张图永远不走合并转发(1 张图包成「聊天记录」卡片无意义)。
 		const mergeForward = forwardWanted && work.gallery.length > 1;
-		// 图集是主卡的**附属物**,主卡此时已成功发出。它走 forward/NapCat 长消息通道(不稳),
-		// reject 很现实。绝不能往外抛:B 站那头会因此不推进时间线,下轮整条重判、主卡以
-		// part='post' 重发,而 post 不抑制 @全体 → 每 tick 重复 @全体。发不出就算了。
-		try {
-			await push.broadcast(
-				[{ kind: "image-group", mergeForward, images: [...work.gallery] }],
-				"post-images",
-				{ pushId },
-			);
-		} catch (e) {
-			logger.warn(
-				`[push] ${logLabel} 图组发送失败(忽略,不重试以免重发主卡): ${(e as Error).message}`,
-			);
-		}
+		// 图集是主卡的**附属物**:附加项锚点永不带 @全体,在推送层的后台发。它走 forward/NapCat
+		// 长消息通道(不稳),发不出只记在那个目标的历史里,不往这边抛 —— 否则 B 站那头会因此
+		// 不推进时间线,下轮整条重判、主卡重发并再 @ 一次全体。
+		anchors.push({
+			role: "extra",
+			messages: [[{ kind: "image-group", mergeForward, images: [...work.gallery] }]],
+		});
 	}
+	if (anchors.length > 0) await push(anchors);
 	return "delivered";
 }
 

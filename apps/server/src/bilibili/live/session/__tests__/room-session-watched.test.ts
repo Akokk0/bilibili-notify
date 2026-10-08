@@ -385,7 +385,7 @@ describe("下播卡的累计观看取自同一份直播数据", () => {
 	function primeStopBroadcast(s: AnySession): void {
 		s.liveStatus = true;
 		primeLiveRoom(s);
-		s.dispatchWordCloudAndSummary = vi.fn(async () => {});
+		s.recapAnchors = vi.fn(() => []);
 	}
 
 	const ROOM = { title: "标题", live_time: "2026-01-01 00:00:00" };
@@ -465,7 +465,7 @@ describe("每场重置:上一场的观看人数与点赞不留到下一场", () 
 	function primeStopBroadcast(s: AnySession): void {
 		s.liveStatus = true;
 		primeLiveRoom(s);
-		s.dispatchWordCloudAndSummary = vi.fn(async () => {});
+		s.recapAnchors = vi.fn(() => []);
 	}
 
 	/** 上一场收到过数 → 下播。 */

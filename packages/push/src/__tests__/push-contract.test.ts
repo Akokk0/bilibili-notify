@@ -1,14 +1,15 @@
 /**
- * `PushRouter.broadcastToFeature` 的推送契约 —— 历史一行 = 一次推送 × 一个目标。
+ * `PushRouter.push` 的推送契约 —— 历史一行 = 一次推送 × 一个目标。
  *
  * 锁住:
- *   - 一次广播对每个目标只回调 `onSend` 一次,带这一段的全部消息与逐条结果
- *   - `pushId` 透传;没传就现生成,同一次广播里各目标拿到同一个
+ *   - 一个锚点对每个目标只回调 `onSend` 一次,带这一段的全部消息与逐条结果
+ *   - `pushId` 由推送层自己生成:同一次推送里各目标、各锚点拿到同一个,另一次是新的
  *   - 某条失败仍中止该目标后续条:失败那条在消息列表里,被中止的不在
  *   - 可用目标为零(没配,或配的全停用)→ 以 `target: null` 回调一次,不调 dispatcher、不重试
  *   - 停用目标不当候选:只推给启用的,停用的既不发也不记
  *   - 附加项(`role: "extra"`)与本体分开标;@全体 恒为附加项,且在本体那次回调之后
- *   - 上游闸(静音 / 特性关 / 免扰 / 无订阅)一律不回调 —— 那不是「无目标」
+ *   - 交进来时就被挡下的(静音 / 特性关 / 免扰 / 无订阅)一律不回调 —— 那不是「无目标」
+ *   - 上面这四样只在交进来时判一次(文末「一次推送只判一次」);锚点按先后发(「一次推送按锚点发」)
  */
 
 import {
@@ -25,7 +26,14 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { PushRouter, type PushSendResult } from "../push-router";
-import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
+import {
+	type FakeDispatcher,
+	pushBase,
+	pushMain,
+	setExtraDefault,
+	silentLogger,
+	trackedPushBase,
+} from "./helpers";
 
 const T1 = "11111111-1111-4111-8111-111111111111";
 const T2 = "22222222-2222-4222-8222-222222222222";
@@ -100,15 +108,16 @@ function subWith(targets: string[], atAll = false): Subscription {
 function setup(sub: Subscription, dispatcherOpts: DispatcherOptions = {}) {
 	const { dispatcher, calls, isAvailable } = makeDispatcher(dispatcherOpts);
 	const seen: PushSendResult[] = [];
+	const { base, settled } = trackedPushBase();
 	const push = new PushRouter({
-		...pushBase(),
+		...base,
 		dispatcher,
 		store: makeStore([sub]),
 		logger: silentLogger,
 		onSend: (info) => seen.push(info),
 	});
 	push.start();
-	return { push, calls, seen, isAvailable };
+	return { push, calls, seen, isAvailable, settled };
 }
 
 /**
@@ -130,10 +139,10 @@ function flat(info: PushSendResult): [string | null, Array<[string, string, bool
 	];
 }
 
-describe("推送契约:一次广播 × 每个目标回调一次", () => {
+describe("推送契约:一个锚点 × 每个目标回调一次", () => {
 	it("两个目标各收两条 → 回调两次,各带整段消息与逐条结果,pushId 相同", async () => {
 		const { push, seen } = setup(subWith([T1, T2]));
-		await push.broadcastToFeature("s1", "post", [M1, M2], { pushId: "p1" });
+		await pushMain(push, "s1", "post", [M1, M2]);
 		expect(seen.map(flat)).toEqual([
 			[
 				T1,
@@ -150,14 +159,14 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 				],
 			],
 		]);
-		expect(seen.map((s) => s.pushId)).toEqual(["p1", "p1"]);
+		expect(seen[0]?.pushId).toBe(seen[1]?.pushId);
 		expect(seen[0]).toMatchObject({ subscriptionId: "s1", feature: "post" });
 	});
 
-	it("没传 pushId → 现生成一个,同一次广播里各目标同一个;下一次广播是新的", async () => {
+	it("pushId 是推送层自己生成的:同一次推送里各目标同一个;另一次是新的", async () => {
 		const { push, seen } = setup(subWith([T1, T2]));
-		await push.broadcastToFeature("s1", "post", M1);
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		const ids = seen.map((s) => s.pushId);
 		expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
 		expect(ids[0]).toBe(ids[1]);
@@ -177,7 +186,7 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 		const { push, seen } = setup(subWith([T1, T2]), {
 			failOn: (id, nth) => id === T1 && nth === 2,
 		});
-		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
+		await pushMain(push, "s1", "post", [M1, M2, M3]);
 		expect(seen.map(flat)).toEqual([
 			[
 				T1,
@@ -198,10 +207,17 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 		]);
 	});
 
-	it("role: 附加项(图集 / 词云 / 总结)按调用方说的标,缺省是本体", async () => {
-		const { push, seen } = setup(subWith([T1]));
-		await push.broadcastToFeature("s1", "post", M1, { pushId: "p1" });
-		await push.broadcastToFeature("s1", "post", M2, { pushId: "p1", role: "extra" });
+	it("role: 本体锚点标本体,附加项锚点(图集 / 词云 / 总结)标附加项", async () => {
+		const { push, seen, settled } = setup(subWith([T1]));
+		await push.push({
+			subscriptionId: "s1",
+			feature: "post",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: [M2] },
+			],
+		});
+		await settled();
 		expect(seen.map(flat)).toEqual([
 			[T1, [["m1", "main", true]]],
 			[T1, [["m2", "extra", true]]],
@@ -210,37 +226,37 @@ describe("推送契约:一次广播 × 每个目标回调一次", () => {
 });
 
 /**
- * 历史行记的就是广播的那把特性键(⑬f):回调的 `feature` 原样是 `broadcastToFeature` 收到的那把,
- * 不另带一份「推送种类」—— 补报与周期各记什么,由引擎选哪把键广播决定(见 `engine-push-adapters.test.ts`)。
+ * 历史行记的就是这次推送的那把特性键(⑬f):回调的 `feature` 原样是 `push()` 收到的那把,
+ * 不另带一份「推送种类」—— 补报与周期各记什么,由引擎选哪把键推决定(见 `engine-push-adapters.test.ts`)。
  */
-describe("推送契约:历史记的就是广播的特性键", () => {
+describe("推送契约:历史记的就是这次推送的特性键", () => {
 	it.each(FEATURE_KEYS)(
-		"%s:回调带的 feature 就是广播的那把,没有第二个种类字段",
+		"%s:回调带的 feature 就是交进来的那把,没有第二个种类字段",
 		async (feature) => {
 			const sub = subWith([]);
 			sub.routing[feature] = [T1];
 			const { push, seen } = setup(sub);
 			// 开播默认会 @全体(再回调一次),这里只看本体那一次。
-			await push.broadcastToFeature("s1", feature, M1, { allowAtAll: false });
+			await pushMain(push, "s1", feature, M1, { allowAtAll: false });
 			expect(seen).toHaveLength(1);
 			expect(seen[0]?.feature).toBe(feature);
 			expect(seen[0]).not.toHaveProperty("kind");
 		},
 	);
 
-	it("同一订阅连着广播两把不同的键,各记各的(补报记开播、周期记正在直播的前提)", async () => {
+	it("同一订阅连着推两把不同的键,各记各的(补报记开播、周期记正在直播的前提)", async () => {
 		const sub = subWith([]);
 		sub.routing.liveStart = [T1];
 		sub.routing.liveStreaming = [T1];
 		const { push, seen } = setup(sub);
-		await push.broadcastToFeature("s1", "liveStart", M1, { allowAtAll: false });
-		await push.broadcastToFeature("s1", "liveStreaming", M2, { allowAtAll: false });
+		await pushMain(push, "s1", "liveStart", M1, { allowAtAll: false });
+		await pushMain(push, "s1", "liveStreaming", M2, { allowAtAll: false });
 		expect(seen.map((s) => s.feature)).toEqual(["liveStart", "liveStreaming"]);
 	});
 
 	it("无目标那次回调也带 feature", async () => {
 		const { push, seen } = setup(subWith([]));
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		expect(seen[0]).toMatchObject({ target: null, feature: "post" });
 		expect(seen[0]).not.toHaveProperty("kind");
 	});
@@ -249,7 +265,7 @@ describe("推送契约:历史记的就是广播的特性键", () => {
 describe("推送契约:无可用目标", () => {
 	it("没配目标 → target:null 回调一次,消息照带(没有结果),不调 dispatcher,返回空", async () => {
 		const { push, seen, calls } = setup(subWith([]));
-		const out = await push.broadcastToFeature("s1", "post", [M1, M2], { pushId: "p1" });
+		const out = await pushMain(push, "s1", "post", [M1, M2]);
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 		expect(seen.map(flat)).toEqual([
@@ -261,14 +277,14 @@ describe("推送契约:无可用目标", () => {
 				],
 			],
 		]);
-		expect(seen[0]).toMatchObject({ pushId: "p1", subscriptionId: "s1", feature: "post" });
+		expect(seen[0]).toMatchObject({ subscriptionId: "s1", feature: "post" });
 	});
 
 	it("配了目标但全停用 → 同样是无目标;停用的不进可达性重试", async () => {
 		const { push, seen, calls, isAvailable } = setup(subWith([T1, T2]), {
 			disabled: [T1, T2],
 		});
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		expect(calls).toHaveLength(0);
 		expect(isAvailable).not.toHaveBeenCalled();
 		expect(seen.map(flat)).toEqual([[null, [["m1", "main", null]]]]);
@@ -276,15 +292,23 @@ describe("推送契约:无可用目标", () => {
 
 	it("一个启用一个停用 → 只推给启用的;停用的既不发也不记", async () => {
 		const { push, seen, calls } = setup(subWith([T1, T2]), { disabled: [T2] });
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		expect(calls.map((c) => c.targetId)).toEqual([T1]);
 		expect(seen.map(flat)).toEqual([[T1, [["m1", "main", true]]]]);
 	});
 
-	it("附加项那次广播也走无目标:同一 pushId 再回调一次 target:null", async () => {
-		const { push, seen } = setup(subWith([]));
-		await push.broadcastToFeature("s1", "post", M1, { pushId: "p1" });
-		await push.broadcastToFeature("s1", "post", M2, { pushId: "p1", role: "extra" });
+	it("附加项的锚点也走无目标:同一 pushId 再回调一次 target:null", async () => {
+		const { push, seen, settled } = setup(subWith([]));
+		await push.push({
+			subscriptionId: "s1",
+			feature: "post",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: [M2] },
+			],
+		});
+		await settled();
+		expect(seen[0]?.pushId).toBe(seen[1]?.pushId);
 		expect(seen.map(flat)).toEqual([
 			[null, [["m1", "main", null]]],
 			[null, [["m2", "extra", null]]],
@@ -295,7 +319,7 @@ describe("推送契约:无可用目标", () => {
 describe("推送契约:@全体 是附加项", () => {
 	it("本体那次回调在前;@全体 单独一次回调、标 extra、同一 pushId 同一目标", async () => {
 		const { push, seen } = setup(subWith([T1], true));
-		await push.broadcastToFeature("s1", "post", [M1, M2], { pushId: "p1" });
+		await pushMain(push, "s1", "post", [M1, M2]);
 		// @全体 是 fire-and-forget,等它落地。
 		await vi.waitFor(() => expect(seen).toHaveLength(2));
 		expect(seen.map(flat)).toEqual([
@@ -308,14 +332,14 @@ describe("推送契约:@全体 是附加项", () => {
 			],
 			[T1, [["@全体", "extra", true]]],
 		]);
-		expect(seen.map((s) => s.pushId)).toEqual(["p1", "p1"]);
+		expect(seen[0]?.pushId).toBe(seen[1]?.pushId);
 	});
 
 	it("@全体 发失败 → 本体照旧记成功,附加项那次回调带失败结果", async () => {
 		const { push, seen } = setup(subWith([T1], true), {
 			failOn: (id, nth) => id === T1 && nth === 1,
 		});
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		await vi.waitFor(() => expect(seen).toHaveLength(2));
 		expect(seen.map(flat)).toEqual([
 			[T1, [["m1", "main", true]]],
@@ -324,18 +348,18 @@ describe("推送契约:@全体 是附加项", () => {
 	});
 });
 
-describe("推送契约:上游闸不算无目标", () => {
+describe("推送契约:交进来时被挡下不算无目标", () => {
 	it("特性关着 → 不回调、不记", async () => {
 		const sub = subWith([]);
 		sub.overrides = { features: { post: false } };
 		const { push, seen } = setup(sub);
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		expect(seen).toHaveLength(0);
 	});
 
 	it("订阅本身没有 → 不回调、不记", async () => {
 		const { push, seen } = setup(subWith([]));
-		await push.broadcastToFeature("nobody", "post", M1);
+		await pushMain(push, "nobody", "post", M1);
 		expect(seen).toHaveLength(0);
 	});
 
@@ -351,7 +375,570 @@ describe("推送契约:上游闸不算无目标", () => {
 			onSend: (info) => seen.push(info),
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", M1);
+		await pushMain(push, "s1", "post", M1);
 		expect(seen).toHaveLength(0);
+	});
+});
+
+/** 一个由用例决定何时兑现 / 拒绝的约定。 */
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
+/** 让已经就绪的微任务与 0ms 定时器都跑完:断言「此刻还没发」之前用。 */
+const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+
+const QUIET = new Date(2026, 8, 6, 3, 0, 0); // 03:00,落在 2-4 点的免扰里
+const AWAKE = new Date(2026, 8, 6, 15, 0, 0);
+
+function setupPush(sub: Subscription = subWith([T1, T2])) {
+	const subs = [sub];
+	const { dispatcher, calls } = makeDispatcher();
+	const seen: PushSendResult[] = [];
+	const warns: string[] = [];
+	const { base, tracked, settled } = trackedPushBase();
+	const defaults = base.defaults();
+	defaults.schedule.quietHours = [{ start: 2, end: 4 }];
+	const clock = { now: AWAKE, muted: false };
+	const router = new PushRouter({
+		...base,
+		dispatcher,
+		store: makeStore(subs),
+		logger: { ...silentLogger, warn: (message: unknown) => void warns.push(String(message)) },
+		onSend: (info) => seen.push(info),
+		muted: () => clock.muted,
+		quietHoursNow: () => clock.now,
+	});
+	router.start();
+	const sent = () => calls.map((c) => [c.targetId, textOf(c.payload)]);
+	return { router, subs, sub, defaults, clock, calls, seen, sent, warns, tracked, settled };
+}
+
+type PushSetup = ReturnType<typeof setupPush>;
+
+/** 用例期间进程里冒出来的未处理拒绝;收尾时应当一条都没有。 */
+function watchUnhandledRejections() {
+	const reasons: unknown[] = [];
+	const onUnhandled = (reason: unknown) => void reasons.push(reason);
+	process.on("unhandledRejection", onUnhandled);
+	return {
+		reasons,
+		async stop() {
+			await tick();
+			await tick();
+			process.off("unhandledRejection", onUnhandled);
+		},
+	};
+}
+
+/**
+ * 一次推送整个交进来(ADR-0021 决策 34 的 🔗,10-08):订阅在不在、总开关、全局静音、免扰时段
+ * 在 `push()` 交进来那一刻判一次,裁决管整次推送;之后各锚点不再看这四样。
+ * 按目标判的(路由复查、附加项三态表、@全体)照旧每个锚点发出时现判。
+ */
+describe("一次推送只判一次", () => {
+	/** 交进来之后才变的那四样,各一个方向。 */
+	const turnsBlocking: Array<[string, (s: PushSetup) => void, (s: PushSetup) => void]> = [
+		[
+			"免扰时段",
+			(s) => {
+				s.clock.now = QUIET;
+			},
+			(s) => {
+				s.clock.now = AWAKE;
+			},
+		],
+		[
+			"全局静音",
+			(s) => {
+				s.clock.muted = true;
+			},
+			(s) => {
+				s.clock.muted = false;
+			},
+		],
+		[
+			"总开关",
+			(s) => {
+				s.defaults.features.post = false;
+			},
+			(s) => {
+				s.defaults.features.post = true;
+			},
+		],
+	];
+
+	it.each(turnsBlocking)("交进来时放行,之后%s挡上 → 后面的锚点照发", async (_name, block) => {
+		const s = setupPush();
+		const later = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			allowAtAll: false,
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: later.promise },
+			],
+		});
+		block(s);
+		later.resolve([M2]);
+		await s.settled();
+		expect(s.sent()).toEqual([
+			[T1, "m1"],
+			[T2, "m1"],
+			[T1, "m2"],
+			[T2, "m2"],
+		]);
+	});
+
+	it.each(turnsBlocking)(
+		"交进来时被%s挡下,之后放开 → 本体与后面的锚点都不发、不回调,约定有人接着",
+		async (_name, block, unblock) => {
+			const s = setupPush();
+			const unhandled = watchUnhandledRejections();
+			const later = deferred<NotificationPayload[]>();
+			const broken = deferred<NotificationPayload[]>();
+			block(s);
+			const out = await s.router.push({
+				subscriptionId: "s1",
+				feature: "post",
+				anchors: [
+					{ role: "main", messages: [M1] },
+					{ role: "extra", messages: later.promise },
+					{ role: "extra", messages: broken.promise },
+				],
+			});
+			expect(out).toEqual([]);
+			unblock(s);
+			later.resolve([M2]);
+			broken.reject(new Error("总结没写出来"));
+			await s.settled();
+			await unhandled.stop();
+			expect(s.calls).toHaveLength(0);
+			expect(s.seen).toHaveLength(0);
+			expect(unhandled.reasons).toEqual([]);
+		},
+	);
+
+	it("交进来时订阅不在 → 之后补上了也不发,约定有人接着", async () => {
+		const s = setupPush();
+		const unhandled = watchUnhandledRejections();
+		const broken = deferred<NotificationPayload[]>();
+		s.subs.length = 0;
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: broken.promise },
+			],
+		});
+		s.subs.push(s.sub);
+		broken.reject(new Error("boom"));
+		await s.settled();
+		await unhandled.stop();
+		expect(s.calls).toHaveLength(0);
+		expect(s.seen).toHaveLength(0);
+		expect(unhandled.reasons).toEqual([]);
+	});
+
+	// 订阅没了就没有路由可查:后面的锚点静默丢掉,不发、不回调(不是「无目标」,也不落失败行)。
+	it("交进来之后订阅被删 → 后面的锚点不发、不回调", async () => {
+		const s = setupPush();
+		const later = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			allowAtAll: false,
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: later.promise },
+			],
+		});
+		const before = { calls: s.calls.length, seen: s.seen.length };
+		s.subs.length = 0;
+		later.resolve([M2]);
+		await s.settled();
+		expect(s.calls).toHaveLength(before.calls);
+		expect(s.seen).toHaveLength(before.seen);
+	});
+
+	it("交进来之后目标被移出路由 → 后面的锚点不再发给它", async () => {
+		const s = setupPush();
+		const later = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			allowAtAll: false,
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: later.promise },
+			],
+		});
+		s.sub.routing.post = [T1];
+		later.resolve([M2]);
+		await s.settled();
+		expect(s.sent()).toEqual([
+			[T1, "m1"],
+			[T2, "m1"],
+			[T1, "m2"],
+		]);
+		// 被移出的那个目标在这个锚点上连回调都没有:它不是「发失败」,是这个锚点本来就没它。
+		expect(s.seen.map(flat)).toEqual([
+			[T1, [["m1", "main", true]]],
+			[T2, [["m1", "main", true]]],
+			[T1, [["m2", "extra", true]]],
+		]);
+	});
+
+	it("各锚点的回调带同一个 pushId(推送层自己生成);另一次推送是新的", async () => {
+		const s = setupPush(subWith([T1]));
+		const once = () =>
+			s.router.push({
+				subscriptionId: "s1",
+				feature: "post",
+				allowAtAll: false,
+				anchors: [
+					{ role: "main", messages: [M1] },
+					{ role: "extra", messages: [M2] },
+					{ role: "extra", extra: "wordcloud", messages: Promise.resolve([M3]) },
+				],
+			});
+		await once();
+		await s.settled();
+		await once();
+		await s.settled();
+		const ids = s.seen.map((info) => info.pushId);
+		expect(ids).toHaveLength(6);
+		expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/);
+		expect(new Set(ids.slice(0, 3)).size).toBe(1);
+		expect(new Set(ids.slice(3)).size).toBe(1);
+		expect(ids[3]).not.toBe(ids[0]);
+	});
+});
+
+/** 锚点:内容各做各的,发送按先后;本体发完就返回,其余在后台。 */
+describe("一次推送按锚点发", () => {
+	const WORDCLOUD: NotificationPayload = { kind: "text", text: "词云" };
+	const SUMMARY: NotificationPayload = { kind: "text", text: "总结" };
+
+	function liveEndSub(): Subscription {
+		const sub = subWith([]);
+		sub.routing.liveEnd = [T1];
+		setExtraDefault(sub, "wordcloud", true);
+		setExtraDefault(sub, "liveSummary", true);
+		return sub;
+	}
+
+	it("后面的锚点先做好也得等:总结先兑现、词云后兑现 → 发出的次序仍是 本体、词云、总结", async () => {
+		const s = setupPush(liveEndSub());
+		const wordcloud = deferred<NotificationPayload[]>();
+		const summary = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: wordcloud.promise },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		summary.resolve([SUMMARY]);
+		await tick();
+		expect(s.sent()).toEqual([[T1, "m1"]]);
+		wordcloud.resolve([WORDCLOUD]);
+		await s.settled();
+		expect(s.sent()).toEqual([
+			[T1, "m1"],
+			[T1, "词云"],
+			[T1, "总结"],
+		]);
+	});
+
+	it("前一个锚点没发完,后一个不发", async () => {
+		const sub = liveEndSub();
+		const subs = [sub];
+		const sentTexts: string[] = [];
+		const firstExtra = deferred<DeliveryResult>();
+		const { base, settled } = trackedPushBase();
+		const dispatcher: FakeDispatcher = {
+			isAvailable: () => true,
+			isEnabled: () => true,
+			send: async (_targetId, payload) => {
+				sentTexts.push(textOf(payload));
+				if (textOf(payload) === "词云") return firstExtra.promise;
+				return { ok: true, latencyMs: 1 } as DeliveryResult;
+			},
+			sendPrivate: async () => ({ ok: true, latencyMs: 1 }),
+			resolve: (id) =>
+				({ id, name: id, connectionId: "a", platform: "test" }) as unknown as PushTarget,
+		};
+		const router = new PushRouter({
+			...base,
+			dispatcher,
+			store: makeStore(subs),
+			logger: silentLogger,
+		});
+		router.start();
+		await router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: [WORDCLOUD] },
+				{ role: "extra", extra: "liveSummary", messages: [SUMMARY] },
+			],
+		});
+		await tick();
+		expect(sentTexts).toEqual(["m1", "词云"]);
+		firstExtra.resolve({ ok: true, latencyMs: 1 } as DeliveryResult);
+		await settled();
+		expect(sentTexts).toEqual(["m1", "词云", "总结"]);
+	});
+
+	it("空的锚点跳过(空数组 / 约定给了 undefined),后面的照发", async () => {
+		const s = setupPush(liveEndSub());
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: [] },
+				{ role: "extra", extra: "wordcloud", messages: Promise.resolve(undefined) },
+				{ role: "extra", extra: "liveSummary", messages: Promise.resolve([SUMMARY]) },
+			],
+		});
+		await s.settled();
+		expect(s.seen.map(flat)).toEqual([
+			[T1, [["m1", "main", true]]],
+			[T1, [["总结", "extra", true]]],
+		]);
+	});
+
+	it("空的锚点连「无目标」那一行都不落(没配目标时只有有内容的锚点各回调一次)", async () => {
+		const sub = liveEndSub();
+		sub.routing.liveEnd = [];
+		const s = setupPush(sub);
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [] },
+				{ role: "extra", extra: "wordcloud", messages: Promise.resolve(undefined) },
+				{ role: "extra", extra: "liveSummary", messages: [SUMMARY] },
+			],
+		});
+		await s.settled();
+		expect(s.seen.map(flat)).toEqual([[null, [["总结", "extra", null]]]]);
+	});
+
+	it("约定被拒绝 → 记一条警告、跳过、不回调,后面的照发,没有未处理的拒绝", async () => {
+		const s = setupPush(liveEndSub());
+		const unhandled = watchUnhandledRejections();
+		const wordcloud = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: wordcloud.promise },
+				{ role: "extra", extra: "liveSummary", messages: [SUMMARY] },
+			],
+		});
+		wordcloud.reject(new Error("词云画不出来"));
+		await s.settled();
+		await unhandled.stop();
+		expect(s.seen.map(flat)).toEqual([
+			[T1, [["m1", "main", true]]],
+			[T1, [["总结", "extra", true]]],
+		]);
+		expect(s.warns).toHaveLength(1);
+		expect(s.warns[0]).toContain("词云画不出来");
+		expect(unhandled.reasons).toEqual([]);
+	});
+
+	it("本体发完就返回,此时后面的约定还没兑现;后台的发送登记进 track,发完才落定", async () => {
+		const s = setupPush(liveEndSub());
+		const summary = deferred<NotificationPayload[]>();
+		const out = await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		expect(out).toEqual([{ ok: true, latencyMs: 1 }]);
+		expect(s.tracked).toHaveLength(1);
+		let backgroundDone = false;
+		void s.tracked[0]?.then(() => {
+			backgroundDone = true;
+		});
+		await tick();
+		expect(backgroundDone).toBe(false);
+		expect(s.sent()).toEqual([[T1, "m1"]]);
+		summary.resolve([SUMMARY]);
+		await s.settled();
+		await tick();
+		expect(backgroundDone).toBe(true);
+		expect(s.sent()).toEqual([
+			[T1, "m1"],
+			[T1, "总结"],
+		]);
+	});
+
+	it("只有本体 → 没有后台活可登记", async () => {
+		const s = setupPush();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			allowAtAll: false,
+			anchors: [{ role: "main", messages: [M1] }],
+		});
+		expect(s.tracked).toHaveLength(0);
+	});
+
+	it("没有本体 → 立即回空,附加项照常发,而且没有 @全体;不给键发给全部路由目标,给了键按三态表收窄", async () => {
+		const sub = subWith([T1, T2], true);
+		setExtraDefault(sub, "wordcloud", false);
+		sub.extraTargets.wordcloud = { [T2]: true };
+		const s = setupPush(sub);
+		const gallery = deferred<NotificationPayload[]>();
+		const out = await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			anchors: [
+				{ role: "extra", messages: gallery.promise },
+				{ role: "extra", extra: "wordcloud", messages: [M2] },
+			],
+		});
+		expect(out).toEqual([]);
+		expect(s.calls).toHaveLength(0);
+		gallery.resolve([M1]);
+		await s.settled();
+		expect(s.sent()).toEqual([
+			[T1, "m1"],
+			[T2, "m1"],
+			[T2, "m2"],
+		]);
+		expect(s.seen.flatMap((info) => info.messages.map((m) => m.role))).toEqual([
+			"extra",
+			"extra",
+			"extra",
+		]);
+	});
+
+	it("每个目标各取自己的锚点:A 要词云不要总结、B 相反 → 各自的回调里只有自己的", async () => {
+		const sub = liveEndSub();
+		sub.routing.liveEnd = [T1, T2];
+		sub.extraTargets.wordcloud = { [T2]: false };
+		sub.extraTargets.liveSummary = { [T1]: false };
+		const s = setupPush(sub);
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: Promise.resolve([WORDCLOUD]) },
+				{ role: "extra", extra: "liveSummary", messages: Promise.resolve([SUMMARY]) },
+			],
+		});
+		await s.settled();
+		expect(s.seen.map(flat)).toEqual([
+			[T1, [["m1", "main", true]]],
+			[T2, [["m1", "main", true]]],
+			[T1, [["词云", "extra", true]]],
+			[T2, [["总结", "extra", true]]],
+		]);
+	});
+
+	it("本体对某个目标失败,不拦它的附加项", async () => {
+		const sub = liveEndSub();
+		const subs = [sub];
+		const { dispatcher, calls } = makeDispatcher({ failOn: (_id, nth) => nth === 1 });
+		const { base, settled } = trackedPushBase();
+		const router = new PushRouter({
+			...base,
+			dispatcher,
+			store: makeStore(subs),
+			logger: silentLogger,
+		});
+		router.start();
+		const out = await router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: [WORDCLOUD] },
+			],
+		});
+		await settled();
+		expect(out.map((r) => r.ok)).toEqual([false]);
+		expect(calls.map((c) => textOf(c.payload))).toEqual(["m1", "词云"]);
+	});
+
+	it("关停之后,还没发的锚点不发", async () => {
+		const s = setupPush(liveEndSub());
+		const summary = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		s.router.stop();
+		summary.resolve([SUMMARY]);
+		await s.settled();
+		expect(s.sent()).toEqual([[T1, "m1"]]);
+		expect(s.seen).toHaveLength(1);
+	});
+
+	it("停了又起(换了一代)之后,上一代还没发的锚点不发", async () => {
+		const s = setupPush(liveEndSub());
+		const summary = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		s.router.stop();
+		s.router.start();
+		summary.resolve([SUMMARY]);
+		await s.settled();
+		expect(s.sent()).toEqual([[T1, "m1"]]);
+	});
+
+	it.each([
+		["本体没排在第一个", ["extra", "main"]],
+		["本体有两个", ["main", "main"]],
+	] as const)("%s → 抛(调用方的 bug),约定照样有人接着", async (_name, roles) => {
+		const s = setupPush();
+		const unhandled = watchUnhandledRejections();
+		const broken = deferred<NotificationPayload[]>();
+		await expect(
+			s.router.push({
+				subscriptionId: "s1",
+				feature: "post",
+				anchors: [
+					...roles.map((role) => ({ role, messages: [M1] })),
+					{ role: "extra", messages: broken.promise },
+				],
+			}),
+		).rejects.toThrow("本体");
+		broken.reject(new Error("boom"));
+		await unhandled.stop();
+		expect(s.calls).toHaveLength(0);
+		expect(unhandled.reasons).toEqual([]);
 	});
 });

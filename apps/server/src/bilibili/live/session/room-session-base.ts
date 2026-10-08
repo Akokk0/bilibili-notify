@@ -1,10 +1,14 @@
-import { randomUUID } from "node:crypto";
 import { type CardKind, type Disposable, formatDuration } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import type { LiveRoomResponse } from "../../api/index.js";
 import { liveTimeToIso } from "../live-card-input";
 import type { LiveEvent } from "../protocol/events.js";
-import { type CustomCardStyleLike, LivePushType, type SubItemView } from "../push-like";
+import {
+	type CustomCardStyleLike,
+	type LivePushAnchor,
+	LivePushType,
+	type SubItemView,
+} from "../push-like";
 import { parseStopWords } from "../recap/stop-words";
 import { buildRoomLink } from "../template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
@@ -742,10 +746,15 @@ export abstract class RoomSessionBase {
 		const liveRoomInfo = this.liveRoomInfo;
 		const master = this.masterInfo;
 		try {
-			// 下播 = 卡片本体,词云 / 总结是它的附加项:下播关着就整个不推;开着先发卡,
-			// 附加项算好后用同一个 pushId 追加 —— 宿主的历史落同一行。
+			// 下播 = 一次推送:卡片是本体,词云 / 总结是排在它后面的锚点,一起交给推送层(历史落
+			// 同一行)。下播关着就整个不推。
+			//
+			// 串行闸只包住「出卡 + 交给推送层直到本体发完」:附加项在推送层的后台按锚点先后发,
+			// 不占着这道闸。弹幕快照在轮到这一条时取(`recapAnchors` 里同步取),此时闸还没放开,
+			// 下面 `finally` 的清空一定排在它之后。
 			if (this.ctx.isSubscribed(this.sub, "liveEnd")) {
-				const pushId = randomUUID();
+				const customLiveSummary =
+					this.sub.customLiveSummary.liveSummary || this.ctx.config.liveSummaryDefault;
 				await this.enqueuePush(() =>
 					this.ctx.sendLiveNotifyCard({
 						liveType: LiveType.StopBroadcast,
@@ -759,12 +768,8 @@ export abstract class RoomSessionBase {
 						notifyMsg: liveEndMsg,
 						messageLayout: this.sub.messageLayout,
 						roomLink,
-						pushId,
+						extras: this.recapAnchors(customLiveSummary),
 					}),
-				);
-				await this.dispatchWordCloudAndSummary(
-					this.sub.customLiveSummary.liveSummary || this.ctx.config.liveSummaryDefault,
-					pushId,
 				);
 			}
 		} finally {
@@ -774,16 +779,14 @@ export abstract class RoomSessionBase {
 	}
 
 	/**
-	 * 下播的附加项:词云与 AI 总结并行算,算出来的各自追加到 `pushId` 那次推送里
-	 * (`role: "extra"`)。两个子项都关着就整个跳过 —— 不算词云、不问 AI。
+	 * 下播的附加项,各一个锚点、按「词云 → AI 总结」排:弹幕快照在这里**同步**取,两样随即各自
+	 * 开始做(互不等待,也不等下播卡),内容是各自的约定 —— 谁先做好不要紧,推送层按锚点先后发。
+	 * 哪个子项关着就没有它的锚点,两个都关着就不取快照、不算词云、不问 AI。
 	 */
-	protected async dispatchWordCloudAndSummary(
-		customLiveSummary: string,
-		pushId: string,
-	): Promise<void> {
+	protected recapAnchors(customLiveSummary: string): LivePushAnchor[] {
 		const wantWordcloud = this.sub.extras.wordcloud;
 		const wantSummary = this.sub.extras.liveSummary;
-		if (!wantWordcloud && !wantSummary) return;
+		if (!wantWordcloud && !wantSummary) return [];
 
 		this.ctx.logger.debug(
 			`[wordcloud] 开始制作下播总结 wordcloud=${wantWordcloud} summary=${wantSummary}`,
@@ -797,52 +800,44 @@ export abstract class RoomSessionBase {
 			? snapshot.sortedWords.filter(([word]) => !extra.includes(word))
 			: snapshot.sortedWords;
 
-		const [img, summary] = await Promise.all([
-			wantWordcloud
-				? this.ctx.wordcloudGenerator.generate(
+		// 做好之后引擎已经被拆了,或者什么都没做出来:给 undefined,那个锚点就跳过。
+		const anchors: LivePushAnchor[] = [];
+		if (wantWordcloud) {
+			anchors.push({
+				role: "extra",
+				extra: "wordcloud",
+				messages: (async () => {
+					const img = await this.ctx.wordcloudGenerator.generate(
 						sortedWords,
 						this.masterInfo?.username ?? "",
 						// 主播头像:订阅资料里的图库引用,这一刻现读(直播间接口给的是远端地址,不往出图器送)。
 						this.ctx.avatarOf(this.sub.subscriptionId),
 						this.sub.cardSkin,
 						this.sub.cardSkinKnobs,
-					)
-				: Promise.resolve(undefined),
-			wantSummary
-				? this.ctx.liveSummaryRequester.generate({
+					);
+					if (!img || this.ctx.isDisposed()) return undefined;
+					return [this.ctx.contentBuilder.image(img, "image/jpeg")];
+				})(),
+			});
+		}
+		if (wantSummary) {
+			anchors.push({
+				role: "extra",
+				extra: "liveSummary",
+				messages: (async () => {
+					const summary = await this.ctx.liveSummaryRequester.generate({
 						senderRecord: snapshot.senderRecord,
 						sortedWords,
 						master: this.masterInfo,
 						customLiveSummary,
 						// per-UP persona/prompt 覆盖;adapter 未填则交由 CommentaryGenerator 用全局 config。
 						aiOverride: this.sub.aiOverride,
-					})
-				: Promise.resolve(undefined),
-		]);
-
-		if (this.ctx.isDisposed()) return;
-		const wcMsg = img ? this.ctx.contentBuilder.image(img, "image/jpeg") : undefined;
-		const summaryMsg = summary ? this.ctx.contentBuilder.text(summary) : undefined;
-		const asExtra = { pushId, role: "extra" as const };
-		if (wcMsg) {
-			await this.enqueuePush(() =>
-				this.ctx.push.broadcastToTargets(
-					this.sub.uid,
-					wcMsg,
-					LivePushType.WordCloudAndLiveSummary,
-					asExtra,
-				),
-			);
+					});
+					if (!summary || this.ctx.isDisposed()) return undefined;
+					return [this.ctx.contentBuilder.text(summary)];
+				})(),
+			});
 		}
-		if (summaryMsg) {
-			await this.enqueuePush(() =>
-				this.ctx.push.broadcastToTargets(
-					this.sub.uid,
-					summaryMsg,
-					LivePushType.LiveSummary,
-					asExtra,
-				),
-			);
-		}
+		return anchors;
 	}
 }

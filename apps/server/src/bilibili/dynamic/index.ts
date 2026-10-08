@@ -14,8 +14,8 @@ export {
 } from "./post-filter";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {
-	DynamicBroadcastOptions,
-	PostPushPart,
+	PostPush,
+	PostPushAnchor,
 	PushImageGroup,
 	PushImagePart,
 	PushLike,
@@ -26,7 +26,6 @@ export type {
 	SubscriptionOpView,
 	SubscriptionsView,
 } from "./push-like";
-export { broadcastOptionsForPostPart } from "./push-like";
 export type {
 	AllDynamicResponse,
 	Dynamic,
@@ -34,7 +33,6 @@ export type {
 	RichTextNode,
 } from "./types";
 export {
-	type BoundWorkPush,
 	type CardFailureTracker,
 	createCardFailureTracker,
 	type DeliverWorkArgs,

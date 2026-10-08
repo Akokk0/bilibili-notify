@@ -125,7 +125,7 @@ export interface BindExtensionLivePushOptions {
 	 * 关了出图、版式把卡片藏起来的直播不写。
 	 */
 	liveImages: ImageSink;
-	/** 绑到这条订阅上的直播发送(`boundLivePush(bindSubscriptionPush(push, id))`)。 */
+	/** 绑到这条订阅上的直播发送(`boundLivePush(push, id)`)。 */
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */
 	renderer(): Pick<ImageRenderer, "generateLiveCard"> | null | undefined;
@@ -339,7 +339,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 				// 出卡那一刻才把图写进图库:`pushLiveNotify` 不出卡(版式藏起卡片、关了出图)就不会调到这里。
 				// 写盘抛错 = 这一次出卡失败,装配降级成纯文字。
 				renderer: committing(opts.renderer(), images.commit),
-				send: async (groups, type, o) => {
+				send: async (groups, type) => {
 					if (!pushable(id)) {
 						log.debug(`[ext-live] 订阅 ${id} 在出卡途中停用 / 删了 / 拓展停了,这张卡不发`);
 						return;
@@ -348,7 +348,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 						log.debug(`[ext-live] 订阅 ${id} 在出卡途中换了一场,这张「正在直播」卡不发`);
 						return;
 					}
-					await send(groups, type, o);
+					await send(groups, type);
 				},
 				logger: log,
 			},

@@ -28,7 +28,6 @@ import type {
 	ConnectionCapabilities,
 	Disposable,
 	EffectiveSubscription,
-	ExtraKey,
 	FeatureKey,
 	GlobalConfig,
 	GlobalDefaults,
@@ -54,15 +53,14 @@ import {
 	resolveAIProfile,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import { type BroadcastOptions, PushRouter } from "@bilibili-notify/push";
+import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import { type Api, BiliLoginStatus } from "../bilibili/api/index.js";
 import {
-	type BoundWorkPush,
-	broadcastOptionsForPostPart,
 	createCardFailureTracker,
+	type DeliverWorkArgs,
 	DynamicEngine,
 	type DynamicEngineConfig,
 	type PushLike as DynamicPushLike,
@@ -123,7 +121,7 @@ export interface EnginesRuntime extends Disposable {
 	readonly live: LiveEngine;
 	readonly push: PushRouter;
 	/**
-	 * 全局静音。`push` 已经接了闸(订阅推送在 `broadcastToFeature` 处被挡),
+	 * 全局静音。`push` 已经接了闸(订阅推送在 `PushRouter.push` 交进来时被挡),
 	 * 这里暴露出来是给指令与面板改状态用的。
 	 */
 	readonly muteState: MuteState;
@@ -728,7 +726,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					};
 				},
 				sources: extensionSources,
-				pushFor: (id) => boundWorkPush(bindSubscriptionPush(push, id)),
+				pushFor: (id) => boundPostPush(push, id),
 				deliveryConfig: dynamicConfig,
 				deliveryDeps: () => ({
 					logger: dynamicCtx.logger,
@@ -791,7 +789,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				sources: extensionSources,
 				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
 				liveImages,
-				sendFor: (id) => boundLivePush(bindSubscriptionPush(push, id)),
+				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
 				reportProblem: (problem) => opts.extensionReportProblem?.(problem),
 			}),
@@ -1299,13 +1297,13 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
 
 /**
  * 引擎→推送层的两个适配器。**提成工厂是为了让这一跳自己有守卫** ——
- * 它们原本编在 `createEngines` 里、测试够不着，于是把
- * `liveBroadcastOpts(...)` 整个换掉也没一条测试会红（2026-09-19 剪线实测：219 个
- * 文件全绿）。而那一句里揣着三样东西，掉了都是静默的：附加项的键（掉了按目标收窄
- * 全失效）、`allowAtAll`（掉了「每条直播推送都 @全体」那个修过的 bug 直接回归）。
- * 历史记成什么不在选项里：它记的就是广播的那把特性键。
+ * 它们原本编在 `createEngines` 里、测试够不着,于是把直播那一跳的翻译整个换掉也没一条
+ * 测试会红(2026-09-19 剪线实测:219 个文件全绿)。而那一跳里揣着三样东西,掉了都是
+ * 静默的:锚点上附加项的键(掉了按目标收窄全失效)、锚点的角色(图集掉成本体就会
+ * 再 @ 一次全体)、`allowAtAll`(掉了「每条直播推送都 @全体」那个修过的 bug 直接回归)。
+ * 历史记成什么不另说:它记的就是交出去的那把特性键。
  */
-type PushForEngines = Pick<PushRouter, "broadcastToFeature" | "sendPrivateMsg" | "sendErrorMsg">;
+type PushForEngines = Pick<PushRouter, "push" | "sendPrivateMsg" | "sendErrorMsg">;
 
 /**
  * B 站 uid → 订阅 id。引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50),
@@ -1314,57 +1312,78 @@ type PushForEngines = Pick<PushRouter, "broadcastToFeature" | "sendPrivateMsg" |
 type SubscriptionIdOf = (uid: string) => string | undefined;
 
 /**
- * 绑到**一条订阅**上的发送(ADR-0019 决策 50 / 66 / 67):按订阅自己的 id 直接交推送层,没有 uid 那一跳。
- * 特性键由调用方给 —— 作品走 `post`(见 {@link boundWorkPush}),拓展的直播走 `liveStart` / `liveEnd`。
- * 开关、免扰、路由、@全体、历史都在推送层(`broadcastToFeature`)里,这里只是把订阅 id 钉上。
+ * 引擎侧的锚点 → 推送层的锚点:角色与附加项的键原样带上,内容(现成的或约定)逐条翻成载荷。
+ * 两个适配器共用这一处,内容怎么翻各给各的。
  */
-export type SubscriptionPush = (
-	feature: FeatureKey,
-	payload: NotificationPayload | NotificationPayload[],
-	opts?: BroadcastOptions,
-) => Promise<void>;
+function toPushAnchors<T>(
+	anchors: ReadonlyArray<{
+		role: PushAnchor["role"];
+		extra?: PushAnchor["extra"];
+		messages: T[] | Promise<T[] | undefined>;
+	}>,
+	toPayload: (message: T) => NotificationPayload,
+): PushAnchor[] {
+	return anchors.map(({ role, extra, messages }) => ({
+		role,
+		extra,
+		messages: Array.isArray(messages)
+			? messages.map(toPayload)
+			: messages.then((made) => made?.map(toPayload)),
+	}));
+}
 
-export function bindSubscriptionPush(
-	push: Pick<PushRouter, "broadcastToFeature">,
+/**
+ * 不往下交的那条路(uid 查不到订阅):锚点里的约定没人等了,先接住,免得做不出来的内容
+ * 变成没人处理的拒绝。
+ */
+function dropAnchors(anchors: ReadonlyArray<{ messages: unknown }>): void {
+	for (const { messages } of anchors) void Promise.resolve(messages).catch(() => {});
+}
+
+/**
+ * 作品那一路(`deliverWork` 的 `push`):绑到**一条订阅**上(ADR-0019 决策 50 / 66),装配交来的
+ * 锚点 → 推送层的一次推送,特性恒为 `post`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成
+ * 订阅 id)与拓展作品共用这一跳。开关、免扰、路由、@全体、历史都在推送层(`PushRouter.push`)里。
+ */
+export function boundPostPush(
+	push: Pick<PushRouter, "push">,
 	subscriptionId: string,
-): SubscriptionPush {
-	return async (feature, payload, opts) => {
-		await push.broadcastToFeature(subscriptionId, feature, payload, opts);
+): DeliverWorkArgs["push"] {
+	return async (anchors) => {
+		await push.push({
+			subscriptionId,
+			feature: "post",
+			anchors: toPushAnchors(anchors, pushSegmentsToPayload),
+		});
 	};
 }
 
 /**
- * 作品那一路(`deliverWork` 的 {@link BoundWorkPush}):装配交来的段 → 推送层的载荷,特性恒为
- * `post`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成订阅 id)与拓展作品共用这一跳。
+ * 一种直播推送交给推送层时的那两格:特性键({@link liveTypeToFeature}),以及只有开播许 @全体
+ * ({@link liveTypeAllowsAtAll})—— 重启补报也走 `liveStart` 那把键,不显式抑制就每条都 @。
+ * B 站直播间与拓展订阅的直播共用这一处映射。
  */
-export function boundWorkPush(send: SubscriptionPush): BoundWorkPush {
+function livePushHead(type: number): Pick<Push, "feature" | "allowAtAll"> {
 	return {
-		// part="post-images"(图集附图)是主卡片之后的附加项:同一个 pushId 追加到历史
-		// 同一行,并显式抑制 @全体 —— 否则一条 DRAW 动态会在主卡片和图集各 @ 一次。
-		broadcast: (segments, part, o) =>
-			send("post", pushSegmentsToPayload(segments), broadcastOptionsForPostPart(part, o?.pushId)),
-		// 消息版式分条:多条 payload 交给 PushRouter 的序列语义(同 target 顺序发、
-		// 某条失败中止该 target 后续条、@全体只跟首条之前)。
-		broadcastSequence: (messages, part, o) =>
-			send(
-				"post",
-				messages.map(pushSegmentsToPayload),
-				broadcastOptionsForPostPart(part, o?.pushId),
-			),
+		feature: liveTypeToFeature(type),
+		...(liveTypeAllowsAtAll(type) ? {} : { allowAtAll: false }),
 	};
 }
 
 /**
- * 直播那一路(`pushLiveNotify` 的 {@link LiveNotifySend}):装配交来的消息组 → 推送层的载荷,特性键与推送
- * 选项照 B 站的映射({@link liveTypeToFeature} / {@link liveBroadcastOpts}:只有开播 @全体、周期「正在直播」
- * 在历史里单列一类)。拓展订阅的直播用它(ADR-0019 决策 67);B 站的直播间经 {@link makeLivePushLike} 走同一
- * 套映射,段也照同一个口子翻(`segmentContentBuilder` → `segmentToPayload`)。
+ * 直播那一路(`pushLiveNotify` 的 {@link LiveNotifySend}):绑到**一条订阅**上,装配交来的消息组 →
+ * 推送层的一次推送(只有本体那一个锚点),特性键与 @全体 照 {@link livePushHead}。拓展订阅的直播用它
+ * (ADR-0019 决策 67);B 站的直播间经 {@link makeLivePushLike} 走同一套映射,段也照同一个口子翻
+ * (`segmentContentBuilder` → `segmentToPayload`)。
  *
- * 一组是一条消息:一组交一条载荷,几组交一串(推送层的序列语义,同 B 站的「分条」)。
+ * 一组是一条消息:几组就是本体那个锚点里的一串(推送层的序列语义,同 B 站的「分条」)。
  */
-export function boundLivePush(send: SubscriptionPush): LiveNotifySend {
-	return async (groups, type, o) => {
-		const payloads = groups.map((segs) =>
+export function boundLivePush(
+	push: Pick<PushRouter, "push">,
+	subscriptionId: string,
+): LiveNotifySend {
+	return async (groups, type) => {
+		const messages = groups.map((segs) =>
 			collapseSegments(
 				segmentToPayload(
 					segmentContentBuilder.message(
@@ -1377,75 +1396,53 @@ export function boundLivePush(send: SubscriptionPush): LiveNotifySend {
 				),
 			),
 		);
-		const [only] = payloads;
-		await send(
-			liveTypeToFeature(type),
-			payloads.length === 1 && only ? only : payloads,
-			liveBroadcastOpts(type, o),
-		);
+		await push.push({
+			subscriptionId,
+			...livePushHead(type),
+			anchors: [{ role: "main", messages }],
+		});
 	};
 }
 
-/** 动态引擎那侧的 PushLike:uid → 订阅 id,再走 {@link boundWorkPush}。 */
+/** 动态引擎那侧的 PushLike:uid → 订阅 id,再走 {@link boundPostPush}。 */
 export function makeDynamicPushLike(
 	push: PushForEngines,
 	subscriptionIdOf: SubscriptionIdOf,
 ): DynamicPushLike {
-	const bound = (uid: string): BoundWorkPush | undefined => {
-		const subscriptionId = subscriptionIdOf(uid);
-		return subscriptionId === undefined
-			? undefined
-			: boundWorkPush(bindSubscriptionPush(push, subscriptionId));
-	};
 	return {
-		async broadcastDynamic(uid, segments, part, o) {
-			await bound(uid)?.broadcast(segments, part, o);
-		},
-		async broadcastDynamicSequence(uid, messages, part, o) {
-			await bound(uid)?.broadcastSequence(messages, part, o);
+		async push({ uid, anchors }) {
+			const subscriptionId = subscriptionIdOf(uid);
+			if (subscriptionId === undefined) return dropAnchors(anchors);
+			await boundPostPush(push, subscriptionId)(anchors);
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 		sendErrorMsg: (text) => push.sendErrorMsg(text),
 	};
 }
 
-/** 直播引擎那侧的 PushLike。 */
+/** 直播引擎那侧的 PushLike:uid → 订阅 id,推送类型 → 特性键与 @全体,锚点逐个翻过去。 */
 export function makeLivePushLike(
 	push: PushForEngines,
 	subscriptionIdOf: SubscriptionIdOf,
 ): LivePushLike {
 	return {
-		async broadcastToTargets(uid, content, type, o) {
+		async push({ uid, type, anchors }) {
 			const subscriptionId = subscriptionIdOf(uid);
-			if (subscriptionId === undefined) return;
-			const payload = collapseSegments(segmentToPayload(content));
-			await push.broadcastToFeature(
+			if (subscriptionId === undefined) return dropAnchors(anchors);
+			await push.push({
 				subscriptionId,
-				liveTypeToFeature(type as number),
-				payload,
-				liveBroadcastOpts(type as number, o),
-			);
-		},
-		async broadcastSequenceToTargets(uid, contents, type, o) {
-			const subscriptionId = subscriptionIdOf(uid);
-			if (subscriptionId === undefined) return;
-			// 消息版式分条(目前仅开播):语义同 dynamic 端 broadcastDynamicSequence。
-			const payloads = contents.map((c) => collapseSegments(segmentToPayload(c)));
-			await push.broadcastToFeature(
-				subscriptionId,
-				liveTypeToFeature(type as number),
-				payloads,
-				liveBroadcastOpts(type as number, o),
-			);
+				...livePushHead(type as number),
+				anchors: toPushAnchors(anchors, (content) => collapseSegments(segmentToPayload(content))),
+			});
 		},
 		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
 	};
 }
 
 /**
- * LivePushType → 特性键(管开关与路由)。词云(5)/ 总结(10)是下播的附加项,跟着
- * 下播那把键走;周期「正在直播」(0)有自己的 liveStreaming(⑬d 拆键,各有开关与目标);
- * 开播(3)与重启补报(11,补的就是一次开播)走 liveStart。
+ * LivePushType → 特性键(管开关与路由)。周期「正在直播」(0)有自己的 liveStreaming(⑬d 拆键,
+ * 各有开关与目标);开播(3)与重启补报(11,补的就是一次开播)走 liveStart。下播的词云 / 总结
+ * 不是单独的一种推送:它们是下播(9)那次推送里的附加项锚点,自然跟着下播那把键走。
  */
 export function liveTypeToFeature(type: number): FeatureKey {
 	switch (type) {
@@ -1456,9 +1453,7 @@ export function liveTypeToFeature(type: number): FeatureKey {
 			return "liveStart";
 		case 4:
 			return "membership";
-		case 5:
 		case 9:
-		case 10:
 			return "liveEnd";
 		case 6:
 			return "superchat";
@@ -1469,45 +1464,6 @@ export function liveTypeToFeature(type: number): FeatureKey {
 		default:
 			return "liveStart";
 	}
-}
-
-/**
- * LivePushType → **附加项键**(管按目标收窄),ADR-0016 决策 5:紧挨着上面那张
- * 「翻成哪把特性」的表产出,推送层据它在主特性的目标列表上再筛一道。
- *
- * 只有词云(5)与 AI 总结(10)两档是附加项;下播卡本体(9)必须留 `undefined` ——
- * 它要是也带上键,整张卡就会被附加项的三态表收窄掉。@全体 不在这里:它是推送层
- * 内部那条自己的分支(单独一条消息 + 平台能力判定),不经广播选项。
- */
-export function liveTypeToExtra(type: number): ExtraKey | undefined {
-	switch (type) {
-		case 5:
-			return "wordcloud";
-		case 10:
-			return "liveSummary";
-		default:
-			return undefined;
-	}
-}
-
-/**
- * 直播端一次广播交给推送层的选项:引擎给的 pushId / role 原样带上,再补两样引擎不知道
- * 的 —— 只有开播允许 @全体(重启补报翻译成 feature "liveStart",不显式抑制就每条都 @),
- * 以及这是哪个附加项(有键推送层才按目标收窄)。
- *
- * 历史记成哪一类不用在这儿说:历史行记的就是 {@link liveTypeToFeature} 给的那把特性键 ——
- * 周期「正在直播」记 liveStreaming,重启补报走 liveStart、记成开播(0.x 里它记成正在直播,1.0 起记成开播)。
- */
-export function liveBroadcastOpts(
-	type: number,
-	o: { pushId?: string; role?: "main" | "extra" } | undefined,
-): BroadcastOptions {
-	return {
-		pushId: o?.pushId,
-		role: o?.role,
-		allowAtAll: liveTypeAllowsAtAll(type),
-		extra: liveTypeToExtra(type),
-	};
 }
 
 /**
@@ -1767,7 +1723,7 @@ export function liveWorkSettings(
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
 ): LiveWorkSettings {
 	return {
-		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在 broadcastToFeature
+		// 特性布尔 = features.X(source-side gate)。routing 由推送层 PushRouter 在每个锚点发出
 		// 时按 routing 空 = 无 dispatcher 自然兜底,这里不再 AND routing。即:features.X=true / routing.X=[] 的
 		// UP 也开 WS / build payload,加 routing 后下一次事件立即生效。
 		liveStart: eff.features.liveStart,

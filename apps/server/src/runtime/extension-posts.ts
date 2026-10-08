@@ -9,8 +9,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
 import {
-	type BoundWorkPush,
 	blockedNotice,
+	type DeliverWorkArgs,
 	deliverWork,
 	filterPost,
 	type PostFilterSettings,
@@ -73,8 +73,8 @@ export interface BindExtensionPostsOptions {
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */
 	postImages: ImageSink;
-	/** 绑到这条订阅上的作品发送(`boundWorkPush(bindSubscriptionPush(push, id))`)。 */
-	pushFor(subscriptionId: string): BoundWorkPush;
+	/** 绑到这条订阅上的作品推送口(`boundPostPush(push, id)`),交给 `deliverWork`。 */
+	pushFor(subscriptionId: string): DeliverWorkArgs["push"];
 	/** 装配的全局那几样 —— 与 B 站动态同一份(`dynamicConfig()`),现取。 */
 	deliveryConfig(): WorkDeliveryConfig;
 	/** 装配用到的服务:渲染器与 AI 会被热换,现取;出图失败的计数两条路同一份。 */
@@ -141,10 +141,14 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 			if (settings.filter.notify) {
 				// 与 B 站同一条规矩:提醒是 best-effort,发不出就算了。
 				try {
-					await push.broadcast(
-						[{ kind: "text", text: blockedNotice(authorName, filtered.reason, postNoun) }],
-						"post",
-					);
+					await push([
+						{
+							role: "main",
+							messages: [
+								[{ kind: "text", text: blockedNotice(authorName, filtered.reason, postNoun) }],
+							],
+						},
+					]);
 				} catch (e) {
 					log.warn(`[ext-post] 屏蔽提示发送失败(忽略): ${(e as Error).message}`);
 				}

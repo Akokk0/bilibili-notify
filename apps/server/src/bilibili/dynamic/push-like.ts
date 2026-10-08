@@ -10,7 +10,12 @@
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
 import type { CardSkinChoice } from "@bilibili-notify/image";
-import type { MessageKindLayout, PostImage } from "@bilibili-notify/internal";
+import type {
+	ExtraKey,
+	MessageKindLayout,
+	PostImage,
+	PushMessageRole,
+} from "@bilibili-notify/internal";
 import type { PostFilterSettings } from "./post-filter";
 
 /** dynamic-engine 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
@@ -37,68 +42,38 @@ export interface PushImageGroup {
 export type PushSegment = PushImagePart | PushTextPart | PushImageGroup;
 
 /**
- * dynamic-engine 仅需以下三类语义化推送动作。
- * 业务核心调用前已经决定好「此次推送的目标维度」（通过 uid + PostPushPart），
- * adapter 负责把它翻译为具体平台的 channel 列表 / atAll / 图片折叠等行为。
- *
- * `PostPushPart` 是作品推送的部件:正文那条(`post`)与图集那条(`post-images`)。这个值只在
- * 引擎与推送层之间传,决定图集是不是附加项;不是历史行的推送种类(历史行记的是特性键,
- * 作品一律 `post`),不落盘、不过 wire。
+ * 一次作品推送里的一个锚点 —— 推送层 `PushAnchor` 在引擎这一侧的样子:本体(主卡,可能按消息
+ * 版式分成几条),或一个附加项(图集)。锚点按先后发;附加项永不带 @全体,所以一条图文动态
+ * 不会在主卡和图集各 @ 一次。
  */
-export type PostPushPart =
-	| /** 主体作品卡片：可能携带图片 + 文本 */ "post"
-	| /** 作品附图（DYNAMIC_TYPE_DRAW 的多张原图，转发消息形式） */ "post-images";
-
-/** 一次广播的身份:主卡与图集共用同一个 pushId,宿主的历史落同一行。 */
-export interface DynamicBroadcastOptions {
-	pushId?: string;
+export interface PostPushAnchor {
+	/** 本体(`main`)还是附加项(`extra`)。 */
+	role: PushMessageRole;
+	/** 附加项的键:给了按那张三态表筛目标;不给(图集)发给路由里所有启用的目标。只对 `extra` 有意义。 */
+	extra?: ExtraKey;
+	/**
+	 * 这个锚点的消息,只收一串:一条消息就是单元素,几条是分条序列(同一目标顺序发、一条失败
+	 * 中止该目标这个锚点里的后续条)。也可以是一个「等会儿给」的约定;最后为空就跳过。
+	 */
+	messages: PushSegment[][] | Promise<PushSegment[][] | undefined>;
 }
 
 /**
- * 一次 `broadcastDynamic` 交给推送层(`PushRouter.broadcastToFeature`)的选项。
- *
- * 背景:一条 DYNAMIC_TYPE_DRAW 图文动态(开启图集推送时)会发**两次** —— 主卡片
- * (`part="post"`)与图集附图(`part="post-images"`),两者都映射到
- * `feature="post"`,而且是**同一次推送**:图集是主卡片的附加项(`role: "extra"`,
- * 历史里追加到同一行),并且显式抑制 @全体 —— 若都进 @全体 分支,接收端会被**重复
- * 艾特全体**(主卡片 @ 一次、图集又 @ 一次)。主卡片只带 pushId,维持「按 feature
- * 决定」的 @全体。没有 pushId(屏蔽提示这类独立小推送)就什么都不带,推送层自己起一个。
- *
- * 抑制 @全体 是「图集」这个身份带来的,与有没有 pushId 无关 —— 两者绑在一起时,一次不带
- * pushId 的图集广播会悄悄把 @全体 放回来,正是这个函数存在的理由。
+ * 一次作品推送,整个交给宿主:主卡加图集是同一次(历史落同一行)。特性恒为作品,所以没有
+ * 特性那一格;`uid` 由宿主换成订阅 id。
  */
-export function broadcastOptionsForPostPart(
-	part: PostPushPart,
-	pushId: string | undefined,
-): { pushId?: string; allowAtAll?: false; role?: "extra" } | undefined {
-	if (part === "post-images") return { pushId, allowAtAll: false, role: "extra" };
-	return pushId === undefined ? undefined : { pushId };
+export interface PostPush {
+	uid: string;
+	/** 按顺序排好的锚点。本体至多一个,有的话排第一个。 */
+	anchors: PostPushAnchor[];
 }
 
 export interface PushLike {
 	/**
-	 * 向某个 UP 主对应的全部订阅频道广播一段消息。
-	 * - part="post"：主卡片消息，包含 image + text 段。
-	 * - part="post-images"：DYNAMIC_TYPE_DRAW 的图集，adapter 通常以 forward message 投递。
+	 * 把一次作品推送交给推送层。开关、静音与免扰在交出去那一刻判一次;本体发完时返回,
+	 * 附加项在后台按锚点先后接着发。
 	 */
-	broadcastDynamic(
-		uid: string,
-		segments: PushSegment[],
-		part: PostPushPart,
-		opts?: DynamicBroadcastOptions,
-	): Promise<void>;
-
-	/**
-	 * 消息版式分条:一次推送拆成多条消息的序列广播。语义要求(由 PushRouter 的
-	 * payload 序列实现):同一 target 内按序发送;某条失败即中止该 target 的后续条;
-	 * @全体(若启用)只跟随序列首条之前发一次。
-	 */
-	broadcastDynamicSequence(
-		uid: string,
-		messages: PushSegment[][],
-		part: PostPushPart,
-		opts?: DynamicBroadcastOptions,
-	): Promise<void>;
+	push(push: PostPush): Promise<void>;
 
 	/** 私信发送给配置的管理员账号（master）。adapter 端校验启用状态与 bot 在线性。 */
 	sendPrivateMsg(content: string): Promise<void>;

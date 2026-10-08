@@ -6,7 +6,7 @@
  *
  * 这个文件专门钉**新行为**,与 `broadcast-to-feature.test.ts` 里那批 @全体 用例
  * 互补 —— @全体 走的是推送层内部那条自己的分支(单独一条消息 + 平台能力),
- * 词云 / 总结走的是这条通用的 `opts.extra` 收窄。
+ * 词云 / 总结走的是这条通用的收窄(附加项锚点带 `extra` 键)。
  *
  * 最要紧的一条是「收窄成空 ≠ 无目标」:本体那一行明明已经送达了,附加项只是
  * 谁都没订,落一行「无目标」等于把配置意图报成故障。
@@ -27,7 +27,14 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { PushRouter, type PushSendResult } from "../push-router";
-import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
+import {
+	type FakeDispatcher,
+	pushExtra,
+	pushMain,
+	setExtraDefault,
+	silentLogger,
+	trackedPushBase,
+} from "./helpers";
 
 function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 	const calls: string[] = [];
@@ -87,8 +94,9 @@ function subWithThreeLiveEndTargets(): Subscription {
 function makePush(sub: Subscription, seen?: PushSendResult[]) {
 	const { dispatcher, calls } = makeDispatcher();
 	const defaults = loopbackDefaults();
+	const { base, settled } = trackedPushBase();
 	const push = new PushRouter({
-		...pushBase(),
+		...base,
 		defaults: () => defaults,
 		dispatcher,
 		store: makeStore([sub]),
@@ -96,7 +104,7 @@ function makePush(sub: Subscription, seen?: PushSendResult[]) {
 		onSend: seen ? (info) => seen.push(info) : undefined,
 	});
 	push.start();
-	return { push, calls };
+	return { push, calls, settled };
 }
 
 const WORDCLOUD: NotificationPayload = { kind: "text", text: "词云" };
@@ -106,11 +114,9 @@ describe("附加项按目标收窄", () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extraTargets.wordcloud = { t1: false };
-		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			extra: "wordcloud",
-			role: "extra",
-		});
+		const { push, calls, settled } = makePush(sub);
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "wordcloud");
+		await settled();
 		expect(calls).toEqual(["t2", "t3"]);
 	});
 
@@ -118,11 +124,9 @@ describe("附加项按目标收窄", () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", false);
 		sub.extraTargets.wordcloud = { t2: true };
-		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			extra: "wordcloud",
-			role: "extra",
-		});
+		const { push, calls, settled } = makePush(sub);
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "wordcloud");
+		await settled();
 		expect(calls).toEqual(["t2"]);
 	});
 
@@ -131,15 +135,10 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", true);
 		setExtraDefault(sub, "liveSummary", true);
 		sub.extraTargets.wordcloud = { t1: false, t2: false };
-		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			extra: "wordcloud",
-			role: "extra",
-		});
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			extra: "liveSummary",
-			role: "extra",
-		});
+		const { push, calls, settled } = makePush(sub);
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "wordcloud");
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "liveSummary");
+		await settled();
 		expect(calls).toEqual(["t3", "t1", "t2", "t3"]);
 	});
 
@@ -149,11 +148,9 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extraTargets.wordcloud = { t1: false, t2: false, t3: false };
 		const seen: PushSendResult[] = [];
-		const { push, calls } = makePush(sub, seen);
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			extra: "wordcloud",
-			role: "extra",
-		});
+		const { push, calls, settled } = makePush(sub, seen);
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "wordcloud");
+		await settled();
 		expect(calls).toEqual([]);
 		expect(seen).toEqual([]);
 	});
@@ -165,32 +162,31 @@ describe("附加项按目标收窄", () => {
 		});
 		sub.routing.liveEnd = [];
 		const seen: PushSendResult[] = [];
-		const { push, calls } = makePush(sub, seen);
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			extra: "wordcloud",
-			role: "extra",
-		});
+		const { push, calls, settled } = makePush(sub, seen);
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "wordcloud");
+		await settled();
 		expect(calls).toEqual([]);
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.target).toBeNull();
 	});
 
-	it("带了 extra 没传 role → 历史里自动记成附加项(两处别各写一份)", async () => {
+	it("附加项锚点发出去的消息在历史里记成附加项", async () => {
 		const sub = subWithThreeLiveEndTargets();
 		sub.routing.liveEnd = ["t1"];
 		setExtraDefault(sub, "wordcloud", true);
 		const seen: PushSendResult[] = [];
-		const { push } = makePush(sub, seen);
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, { extra: "wordcloud" });
+		const { push, settled } = makePush(sub, seen);
+		await pushExtra(push, "s1", "liveEnd", WORDCLOUD, "wordcloud");
+		await settled();
 		expect(seen[0]?.messages.map((m) => m.role)).toEqual(["extra"]);
 	});
 
-	it("不带 opts.extra 的广播不受三态表影响(本体不会被附加项的设置收窄)", async () => {
+	it("本体不受三态表影响(本体不会被附加项的设置收窄)", async () => {
 		const sub = subWithThreeLiveEndTargets();
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extraTargets.wordcloud = { t1: false, t2: false, t3: false };
 		const { push, calls } = makePush(sub);
-		await push.broadcastToFeature("s1", "liveEnd", { kind: "text", text: "下播卡" });
+		await pushMain(push, "s1", "liveEnd", { kind: "text", text: "下播卡" });
 		expect(calls).toEqual(["t1", "t2", "t3"]);
 	});
 
@@ -203,14 +199,16 @@ describe("附加项按目标收窄", () => {
 		setExtraDefault(sub, "wordcloud", true);
 		sub.extraTargets.wordcloud = { t1: false };
 		const seen: PushSendResult[] = [];
-		const { push } = makePush(sub, seen);
-		const pushId = "p1";
-		await push.broadcastToFeature("s1", "liveEnd", { kind: "text", text: "下播卡" }, { pushId });
-		await push.broadcastToFeature("s1", "liveEnd", WORDCLOUD, {
-			pushId,
-			extra: "wordcloud",
-			role: "extra",
+		const { push, settled } = makePush(sub, seen);
+		await push.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [{ kind: "text", text: "下播卡" }] },
+				{ role: "extra", extra: "wordcloud", messages: [WORDCLOUD] },
+			],
 		});
+		await settled();
 		// 同一个 pushId 下:t1 只有本体那一条,t2 本体 + 附加项两条。
 		const byTarget = new Map<string, string[]>();
 		for (const info of seen) {
@@ -219,6 +217,6 @@ describe("附加项按目标收窄", () => {
 		}
 		expect(byTarget.get("t1")).toEqual(["main"]);
 		expect(byTarget.get("t2")).toEqual(["main", "extra"]);
-		expect(seen.every((i) => i.pushId === pushId)).toBe(true);
+		expect(new Set(seen.map((i) => i.pushId)).size).toBe(1);
 	});
 });

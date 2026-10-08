@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `PushRouter.broadcastToFeature` 多 payload 序列发送(消息版式分条)。
+ * 单元测试 — `PushRouter.push` 一个锚点里多 payload 的序列发送(消息版式分条)。
  *
  * 消息版式允许一次推送拆成多条消息。语义锁定:
  *   - 同一 target 内 payload 顺序 await 保序
@@ -27,7 +27,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { PushRouter, type PushSendResult } from "../push-router";
-import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { type FakeDispatcher, pushBase, pushMain, setExtraDefault, silentLogger } from "./helpers";
 
 interface SendCall {
 	targetId: string;
@@ -110,7 +110,7 @@ function textOf(p: NotificationPayload): string {
 	return p.kind === "text" ? p.text : p.kind;
 }
 
-describe("PushRouter.broadcastToFeature — payload 序列", () => {
+describe("PushRouter.push — 一个锚点里的 payload 序列", () => {
 	it("payload 数组 → 每个 target 顺序收到全部消息", async () => {
 		const { dispatcher, calls } = makeDispatcher();
 		const push = new PushRouter({
@@ -121,7 +121,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", [M1, M2]);
+		await pushMain(push, "s1", "post", [M1, M2]);
 		expect(calls.map((c) => [c.targetId, textOf(c.payload)])).toEqual([
 			[T1, "m1"],
 			[T1, "m2"],
@@ -140,7 +140,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
+		await pushMain(push, "s1", "post", [M1, M2, M3]);
 		expect(calls.map((c) => [c.targetId, textOf(c.payload)])).toEqual([
 			[T1, "m1"], // 失败 → m2/m3 被中止
 			[T2, "m1"],
@@ -172,7 +172,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			},
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
+		await pushMain(push, "s1", "post", [M1, M2, M3]);
 		expect(seen).toEqual([
 			[
 				T1,
@@ -201,7 +201,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", [M1, M2, M3]);
+		await pushMain(push, "s1", "post", [M1, M2, M3]);
 		expect(calls.map((c) => textOf(c.payload))).toEqual(["m1", "m2"]);
 	});
 
@@ -215,7 +215,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		const out = await push.broadcastToFeature("s1", "post", []);
+		const out = await pushMain(push, "s1", "post", []);
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 	});
@@ -230,7 +230,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		const out = await push.broadcastToFeature("s1", "post", M1);
+		const out = await pushMain(push, "s1", "post", M1);
 		expect(out).toHaveLength(2);
 		expect(calls.map((c) => [c.targetId, textOf(c.payload)])).toEqual([
 			[T1, "m1"],
@@ -248,7 +248,7 @@ describe("PushRouter.broadcastToFeature — payload 序列", () => {
 			defaults: loopbackDefaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", [M1, M2]);
+		await pushMain(push, "s1", "post", [M1, M2]);
 		// at-all 是独立 composite 一条,先于序列首条入 dispatcher
 		expect(calls).toHaveLength(3);
 		expect(calls[0]?.payload.kind).toBe("composite");

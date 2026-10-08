@@ -2,16 +2,24 @@
  * 下播 = 卡片本体,词云 / AI 总结是它的附加项(像开播的 @全体)。
  *
  * 锁住:
- *   - 下播卡先发、带一个新的 pushId;词云 / 总结算好后用**同一个 pushId**、标 `role: "extra"` 追加
+ *   - 下播是**一次推送**:卡片是本体,词云 / 总结是排在它后面的附加项锚点(各带自己的键、内容是约定),
+ *     一起交出去
  *   - 下播开关关着 → 卡、词云、总结一个都不发,子项开着也不发
- *   - 子项各自门控:只开总结就只追加总结;两个都关就只有卡,词云不算、AI 不问
- *   - `sendLiveNotifyCard` 把 pushId 透传给推送层(单条 / 分条都带)
+ *   - 子项各自门控:只开总结就只有总结那个锚点;两个都关就只有卡,词云不算、AI 不问
+ *   - 串行闸只包到本体发完:附加项还在做,下播那一步已经走完;弹幕快照取在清空收集器之前
+ *   - `sendLiveNotifyCard` 把本体与附加项作为同一次推送交给推送层(单条 / 分条 / 本体全藏)
  *   - 弹幕采集只在「下播开着且有子项开着」时进行
  */
 
 import { defaultMessageKindLayout, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { LivePushType, type SubItemView, wantsLiveEndExtras } from "../../push-like";
+import {
+	type LivePush,
+	type LivePushAnchor,
+	LivePushType,
+	type SubItemView,
+	wantsLiveEndExtras,
+} from "../../push-like";
 import { LiveType } from "../../types";
 import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
@@ -56,11 +64,11 @@ function makeCtx() {
 		track: () => {},
 	};
 	const sendLiveNotifyCard = vi.fn(
-		async (_params: { pushId?: string; liveType: LiveType; cardSkin?: string }) => {},
+		async (_params: { extras?: LivePushAnchor[]; liveType: LiveType; cardSkin?: string }) => {},
 	);
-	const broadcastToTargets = vi.fn(
-		async (_uid: string, _content: unknown, _type: LivePushType, _opts?: unknown) => {},
-	);
+	const push = vi.fn(async (_push: LivePush) => {});
+	const clear = vi.fn();
+	const snapshot = vi.fn(() => ({ sortedWords: [["精彩", 5]], senderRecord: {} }));
 	const wordcloud = vi.fn(async (..._args: unknown[]) => Buffer.from("wc"));
 	const avatarOf = vi.fn((_subscriptionId: string): string | undefined => undefined);
 	const summary = vi.fn(async () => "总结文本");
@@ -69,18 +77,14 @@ function makeCtx() {
 		logger: serviceCtx.logger,
 		isDisposed: () => false,
 		config: { customLiveMsg: { enable: false }, liveSummaryDefault: "默认总结" },
-		danmakuCollector: {
-			clear: vi.fn(),
-			registerRoom: vi.fn(),
-			snapshot: () => ({ sortedWords: [["精彩", 5]], senderRecord: {} }),
-		},
+		danmakuCollector: { clear, registerRoom: vi.fn(), snapshot },
 		templateRenderer: { renderLiveEnd: () => "下播了" },
 		contentBuilder: {
 			text: (t: string) => ({ kind: "text", text: t }),
 			image: (buf: Buffer, mime: string) => ({ kind: "image", buf, mime }),
 			message: (segs: unknown[]) => segs,
 		},
-		push: { broadcastToTargets, sendPrivateMsg: vi.fn(async () => {}) },
+		push: { push, sendPrivateMsg: vi.fn(async () => {}) },
 		isSubscribed: (sub: SubItemView, feat: keyof SubItemView) => sub[feat],
 		sendLiveNotifyCard,
 		wordcloudGenerator: { generate: wordcloud },
@@ -89,7 +93,7 @@ function makeCtx() {
 		stopMonitoring: vi.fn(),
 		emitLiveState: vi.fn(),
 	} as unknown as RoomContext;
-	return { ctx, sendLiveNotifyCard, broadcastToTargets, wordcloud, summary, avatarOf };
+	return { ctx, sendLiveNotifyCard, push, wordcloud, summary, avatarOf, clear, snapshot };
 }
 
 const ROOM = {
@@ -120,21 +124,57 @@ function liveSession(ctx: RoomContext, sub: SubItemView): AnySession {
 	return s;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** 下播卡带出去的附加项锚点:`[角色, 附加项键]`。 */
+const extrasOf = (card: { extras?: LivePushAnchor[] } | undefined) =>
+	(card?.extras ?? []).map((a) => [a.role, a.extra]);
 
-describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
-	it("卡先发、带新的 pushId;词云 / 总结用同一个 pushId、标 extra 追加", async () => {
-		const { ctx, sendLiveNotifyCard, broadcastToTargets } = makeCtx();
+describe("handleLiveEnd — 下播卡 + 附加项是同一次推送", () => {
+	it("卡是本体;词云 / 总结作为附加项锚点跟着这张卡一起交出去,各带各的键、按「词云 → 总结」排", async () => {
+		const { ctx, sendLiveNotifyCard, push } = makeCtx();
 		await liveSession(ctx, makeSub()).handleLiveEnd("ws");
 
 		expect(sendLiveNotifyCard).toHaveBeenCalledTimes(1);
 		const card = sendLiveNotifyCard.mock.calls[0]?.[0];
 		expect(card?.liveType).toBe(LiveType.StopBroadcast);
-		expect(card?.pushId).toMatch(UUID);
-		expect(broadcastToTargets.mock.calls.map((c) => [c[2], c[3]])).toEqual([
-			[LivePushType.WordCloudAndLiveSummary, { pushId: card?.pushId, role: "extra" }],
-			[LivePushType.LiveSummary, { pushId: card?.pushId, role: "extra" }],
+		expect(extrasOf(card)).toEqual([
+			["extra", "wordcloud"],
+			["extra", "liveSummary"],
 		]);
+		expect(await card?.extras?.[0]?.messages).toEqual([
+			{ kind: "image", buf: Buffer.from("wc"), mime: "image/jpeg" },
+		]);
+		expect(await card?.extras?.[1]?.messages).toEqual([{ kind: "text", text: "总结文本" }]);
+		// 附加项不另发:下播这条路自己不直接碰推送层,全经那一张卡交出去。
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	// 串行闸只包到本体发完:AI 总结可能要写很久,这期间这个房间的下一次推送(比如秒级重开的开播卡)不该被它堵住。
+	it("附加项还没做好,下播那一步已经走完(不占着串行闸)", async () => {
+		const { ctx, sendLiveNotifyCard, summary } = makeCtx();
+		let finish: (text: string) => void = () => {};
+		summary.mockImplementation(() => new Promise<string>((r) => (finish = r)));
+		await liveSession(ctx, makeSub()).handleLiveEnd("ws");
+
+		const card = sendLiveNotifyCard.mock.calls[0]?.[0];
+		let done = false;
+		void Promise.resolve(card?.extras?.[1]?.messages).then(() => {
+			done = true;
+		});
+		await new Promise((r) => setTimeout(r, 0));
+		expect(done).toBe(false);
+		finish("迟到的总结");
+		expect(await card?.extras?.[1]?.messages).toEqual([{ kind: "text", text: "迟到的总结" }]);
+	});
+
+	// 清空收集器在 `finally` 里:快照要是取晚了,词云与总结就是空的。
+	it("弹幕快照取在清空收集器之前", async () => {
+		const { ctx, snapshot, clear } = makeCtx();
+		await liveSession(ctx, makeSub()).handleLiveEnd("ws");
+		expect(snapshot).toHaveBeenCalledTimes(1);
+		expect(clear).toHaveBeenCalled();
+		expect(snapshot.mock.invocationCallOrder[0] as number).toBeLessThan(
+			clear.mock.invocationCallOrder[0] as number,
+		);
 	});
 
 	// 3a-35:词云卡的主播头像是订阅资料里的图库引用,做词云那一刻按订阅 id 现读;直播间接口给的远端地址不再往出图器送。
@@ -185,19 +225,21 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 		expect(card?.cardSkinKnobs).toEqual(cardSkinKnobs);
 	});
 
-	it("两场下播各自一个 pushId", async () => {
+	it("两场下播各交各的:各自一张卡、各自一组附加项锚点", async () => {
 		const { ctx, sendLiveNotifyCard } = makeCtx();
 		await liveSession(ctx, makeSub()).handleLiveEnd("ws");
 		await liveSession(ctx, makeSub()).handleLiveEnd("ws");
-		const ids = sendLiveNotifyCard.mock.calls.map((c) => c[0].pushId);
-		expect(ids[0]).not.toBe(ids[1]);
+		const [first, second] = sendLiveNotifyCard.mock.calls.map((c) => c[0].extras);
+		expect(first).toHaveLength(2);
+		expect(second).toHaveLength(2);
+		expect(second?.[0]).not.toBe(first?.[0]);
 	});
 
 	it("下播关着 → 卡、词云、总结一个都不发,子项开着也不发;弹幕缓冲照清", async () => {
-		const { ctx, sendLiveNotifyCard, broadcastToTargets, wordcloud, summary } = makeCtx();
+		const { ctx, sendLiveNotifyCard, push, wordcloud, summary } = makeCtx();
 		await liveSession(ctx, makeSub({ liveEnd: false })).handleLiveEnd("ws");
 		expect(sendLiveNotifyCard).not.toHaveBeenCalled();
-		expect(broadcastToTargets).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalled();
 		expect(wordcloud).not.toHaveBeenCalled();
 		expect(summary).not.toHaveBeenCalled();
 		expect(
@@ -207,7 +249,7 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 	});
 
 	it("只开总结 → 卡 + 总结,不算词云", async () => {
-		const { ctx, broadcastToTargets, wordcloud } = makeCtx();
+		const { ctx, sendLiveNotifyCard, wordcloud } = makeCtx();
 		await liveSession(
 			ctx,
 			makeSub({
@@ -215,11 +257,11 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 			}),
 		).handleLiveEnd("ws");
 		expect(wordcloud).not.toHaveBeenCalled();
-		expect(broadcastToTargets.mock.calls.map((c) => c[2])).toEqual([LivePushType.LiveSummary]);
+		expect(extrasOf(sendLiveNotifyCard.mock.calls[0]?.[0])).toEqual([["extra", "liveSummary"]]);
 	});
 
 	it("两个子项都关 → 只有卡;不算词云、不问 AI", async () => {
-		const { ctx, sendLiveNotifyCard, broadcastToTargets, wordcloud, summary } = makeCtx();
+		const { ctx, sendLiveNotifyCard, wordcloud, summary } = makeCtx();
 		await liveSession(
 			ctx,
 			makeSub({
@@ -227,20 +269,15 @@ describe("handleLiveEnd — 下播卡 + 附加项共用 pushId", () => {
 			}),
 		).handleLiveEnd("ws");
 		expect(sendLiveNotifyCard).toHaveBeenCalledTimes(1);
-		expect(broadcastToTargets).not.toHaveBeenCalled();
+		expect(sendLiveNotifyCard.mock.calls[0]?.[0].extras).toEqual([]);
 		expect(wordcloud).not.toHaveBeenCalled();
 		expect(summary).not.toHaveBeenCalled();
 	});
 });
 
-describe("sendLiveNotifyCard — pushId 透传给推送层", () => {
+describe("sendLiveNotifyCard — 本体与附加项作为同一次推送交给推送层", () => {
 	function layoutCtx() {
-		const broadcastToTargets = vi.fn(
-			async (_uid: string, _content: unknown, _type: LivePushType, _opts?: unknown) => {},
-		);
-		const broadcastSequenceToTargets = vi.fn(
-			async (_uid: string, _contents: unknown[], _type: LivePushType, _opts?: unknown) => {},
-		);
+		const push = vi.fn(async (_push: LivePush) => {});
 		const ctx = {
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 			isDisposed: () => false,
@@ -251,15 +288,25 @@ describe("sendLiveNotifyCard — pushId 透传给推送层", () => {
 				image: () => ({ kind: "image" }),
 				message: (segs: unknown[]) => ({ kind: "message", segs }),
 			},
-			push: { broadcastToTargets, broadcastSequenceToTargets },
+			push: { push },
 		} as unknown as RoomContext;
 		Object.setPrototypeOf(ctx, RoomContext.prototype);
-		return { ctx, broadcastToTargets, broadcastSequenceToTargets };
+		return { ctx, push };
 	}
-	const params = (layout: {
-		blocks: Array<{ id: string; type: string; visible: boolean }>;
-		separator: string;
-	}) => ({
+	const WORDCLOUD: LivePushAnchor = {
+		role: "extra",
+		extra: "wordcloud",
+		messages: Promise.resolve([{ kind: "image" }]),
+	};
+	const SUMMARY: LivePushAnchor = {
+		role: "extra",
+		extra: "liveSummary",
+		messages: Promise.resolve([{ kind: "text", text: "总结" }]),
+	};
+	const params = (
+		blocks: Array<{ id: string; type: string; visible: boolean }>,
+		extras?: LivePushAnchor[],
+	) => ({
 		liveType: LiveType.StopBroadcast,
 		liveData: {} as never,
 		liveRoomInfo: {
@@ -273,44 +320,99 @@ describe("sendLiveNotifyCard — pushId 透传给推送层", () => {
 		uid: "u1",
 		notifyMsg: "下播了",
 		roomLink: "https://live.bilibili.com/1",
-		messageLayout: layout,
-		pushId: "11111111-1111-4111-8111-111111111111",
+		messageLayout: { blocks, separator: "\n" },
+		extras,
 	});
+	const send = (ctx: RoomContext, p: ReturnType<typeof params>) =>
+		RoomContext.prototype.sendLiveNotifyCard.call(ctx, p as never);
 
-	it("一条 → broadcastToTargets 第四个参数带 pushId", async () => {
-		const { ctx, broadcastToTargets } = layoutCtx();
-		await RoomContext.prototype.sendLiveNotifyCard.call(
+	it("一条:只交一次,本体那个锚点里一条消息,附加项原样排在后面", async () => {
+		const { ctx, push } = layoutCtx();
+		await send(
 			ctx,
-			params({
-				blocks: [
+			params(
+				[
 					{ id: "text", type: "text", visible: true },
 					{ id: "link", type: "link", visible: true },
 				],
-				separator: "\n",
-			}) as never,
+				[WORDCLOUD, SUMMARY],
+			),
 		);
-		expect(broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveEnd);
-		expect(broadcastToTargets.mock.calls[0]?.[3]).toEqual({
-			pushId: "11111111-1111-4111-8111-111111111111",
-		});
+		expect(push).toHaveBeenCalledTimes(1);
+		const sent = push.mock.calls[0]?.[0];
+		expect(sent).toMatchObject({ uid: "u1", type: LivePushType.LiveEnd });
+		expect(sent?.anchors.map((a) => [a.role, a.extra])).toEqual([
+			["main", undefined],
+			["extra", "wordcloud"],
+			["extra", "liveSummary"],
+		]);
+		expect(sent?.anchors[0]?.messages).toHaveLength(1);
+		// 附加项的约定原样递过去(不在这里等它)。
+		expect(sent?.anchors[1]).toBe(WORDCLOUD);
+		expect(sent?.anchors[2]).toBe(SUMMARY);
 	});
 
-	it("分条 → broadcastSequenceToTargets 同样带 pushId", async () => {
-		const { ctx, broadcastSequenceToTargets } = layoutCtx();
-		await RoomContext.prototype.sendLiveNotifyCard.call(
+	it("分条:几条消息是本体那一个锚点里的一串,附加项照旧排在后面", async () => {
+		const { ctx, push } = layoutCtx();
+		await send(
 			ctx,
-			params({
-				blocks: [
+			params(
+				[
 					{ id: "text", type: "text", visible: true },
 					{ id: "split-1", type: "split", visible: true },
 					{ id: "link", type: "link", visible: true },
 				],
-				separator: "\n",
-			}) as never,
+				[SUMMARY],
+			),
 		);
-		expect(broadcastSequenceToTargets.mock.calls[0]?.[3]).toEqual({
-			pushId: "11111111-1111-4111-8111-111111111111",
-		});
+		expect(push).toHaveBeenCalledTimes(1);
+		const sent = push.mock.calls[0]?.[0];
+		expect(sent?.anchors.map((a) => a.role)).toEqual(["main", "extra"]);
+		expect(sent?.anchors[0]?.messages).toHaveLength(2);
+	});
+
+	it("没有附加项:只有本体那一个锚点", async () => {
+		const { ctx, push } = layoutCtx();
+		await send(ctx, params([{ id: "text", type: "text", visible: true }]));
+		expect(push.mock.calls[0]?.[0].anchors.map((a) => a.role)).toEqual(["main"]);
+	});
+
+	it("版式把部件全藏了(本体不发):附加项照样交出去,只有附加项的锚点", async () => {
+		const { ctx, push } = layoutCtx();
+		const hidden = [
+			{ id: "card", type: "card", visible: false },
+			{ id: "text", type: "text", visible: false },
+			{ id: "link", type: "link", visible: false },
+		];
+		await send(ctx, params(hidden, [WORDCLOUD, SUMMARY]));
+		expect(push).toHaveBeenCalledTimes(1);
+		expect(push.mock.calls[0]?.[0]).toMatchObject({ uid: "u1", type: LivePushType.LiveEnd });
+		expect(push.mock.calls[0]?.[0].anchors).toEqual([WORDCLOUD, SUMMARY]);
+
+		// 本体不发、也没有附加项:一次都不交。
+		const bare = layoutCtx();
+		await send(bare.ctx, params(hidden));
+		expect(bare.push).not.toHaveBeenCalled();
+	});
+
+	it("出卡途中引擎被拆了:不交给推送层,附加项里做不出来的约定也有人接着", async () => {
+		const { ctx, push } = layoutCtx();
+		(ctx as unknown as { isDisposed: () => boolean }).isDisposed = () => true;
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => void unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+		await send(
+			ctx,
+			params(
+				[{ id: "text", type: "text", visible: true }],
+				[{ role: "extra", extra: "liveSummary", messages: Promise.reject(new Error("没写出来")) }],
+			),
+		);
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		process.off("unhandledRejection", onUnhandled);
+		expect(push).not.toHaveBeenCalled();
+		expect(unhandled).toEqual([]);
 	});
 });
 

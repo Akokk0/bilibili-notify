@@ -1,7 +1,7 @@
 /**
  * 单元测试 — 全局静音闸。
  *
- * 静音挡的是**订阅推送**,闸和 quietHours 并排装在 `broadcastToFeature` 里,所以
+ * 静音挡的是**订阅推送**,闸和 quietHours 并排装在 `push` 里(交进来时判一次),所以
  * 动态 / 直播 / SC / 上舰 / 词云 / 总结 / 下播 一道全挡住。
  *
  * 但**不挡发给主人的私聊**。这条不是风格取舍:主人敲下 `/mute` 之后,「好的,静音到
@@ -24,7 +24,7 @@ import {
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { PushRouter } from "../push-router";
-import { type FakeDispatcher, pushBase, setExtraDefault, silentLogger } from "./helpers";
+import { type FakeDispatcher, pushBase, pushMain, setExtraDefault, silentLogger } from "./helpers";
 
 function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 	const calls: string[] = [];
@@ -85,21 +85,21 @@ const TEXT: NotificationPayload = { kind: "text", text: "x" };
 describe("全局静音闸", () => {
 	it("静音中 → 订阅推送不发,dispatcher 一次都不调", async () => {
 		const { push, calls } = setup(() => true);
-		const out = await push.broadcastToFeature("s1", "liveStart", TEXT);
+		const out = await pushMain(push, "s1", "liveStart", TEXT);
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 	});
 
 	it("没静音 → 照常发", async () => {
 		const { push, calls } = setup(() => false);
-		await push.broadcastToFeature("s1", "liveStart", TEXT);
+		await pushMain(push, "s1", "liveStart", TEXT);
 		expect(calls).toEqual(["t1"]);
 	});
 
 	// 「全局」的意思是所有 feature 一起挡,不是只挡开播。
 	it("静音挡的是全部 feature,不只是直播", async () => {
 		const { push, calls } = setup(() => true);
-		await push.broadcastToFeature("s1", "post", TEXT);
+		await pushMain(push, "s1", "post", TEXT);
 		expect(calls).toHaveLength(0);
 	});
 
@@ -107,10 +107,10 @@ describe("全局静音闸", () => {
 	it("到期后无需重建 push 实例,下一条推送就通了", async () => {
 		let muted = true;
 		const { push, calls } = setup(() => muted);
-		await push.broadcastToFeature("s1", "liveStart", TEXT);
+		await pushMain(push, "s1", "liveStart", TEXT);
 		expect(calls).toHaveLength(0);
 		muted = false;
-		await push.broadcastToFeature("s1", "liveStart", TEXT);
+		await pushMain(push, "s1", "liveStart", TEXT);
 		expect(calls).toEqual(["t1"]);
 	});
 
@@ -142,7 +142,7 @@ describe("全局静音闸", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", TEXT);
+		await pushMain(push, "s1", "liveStart", TEXT);
 		expect(calls).toEqual(["t1"]);
 	});
 });

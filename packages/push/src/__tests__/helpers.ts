@@ -1,13 +1,17 @@
 import {
+	type DeliveryResult,
 	type ExtraKey,
 	FEATURE_KEYS,
+	type FeatureKey,
 	type GlobalDefaults,
 	type Logger,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	type NotificationPayload,
 	type ServiceContext,
 	type Subscription,
 } from "@bilibili-notify/internal";
+import type { PushRouter } from "../push-router";
 
 /** 全部 noop 的 logger,各用例共用这一份。 */
 export const silentLogger: Logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -52,6 +56,58 @@ export function pushBase(): Pick<
 > {
 	const defaults = loopbackDefaults();
 	return { serviceCtx: realTimerCtx(), defaults: () => defaults, muted: () => false };
+}
+
+/**
+ * {@link pushBase} 加一本后台活的账:附加项(与 @全体 的落地回调)是 `push()` 返回之后在后台发的,
+ * 经 `serviceCtx.track` 登记;用例发完附加项先 `await settled()` 再断言。
+ */
+export function trackedPushBase(): {
+	base: ReturnType<typeof pushBase>;
+	tracked: Promise<unknown>[];
+	settled(): Promise<void>;
+} {
+	const base = pushBase();
+	const tracked: Promise<unknown>[] = [];
+	let done = 0;
+	return {
+		base: { ...base, serviceCtx: { ...base.serviceCtx, track: (task) => void tracked.push(task) } },
+		tracked,
+		settled: async () => {
+			while (done < tracked.length) await tracked[done++];
+		},
+	};
+}
+
+/** 只有本体那一个锚点的推送;一条消息就是单元素序列。 */
+export function pushMain(
+	router: PushRouter,
+	subscriptionId: string,
+	feature: FeatureKey,
+	messages: NotificationPayload | NotificationPayload[],
+	options?: { allowAtAll?: false },
+): Promise<DeliveryResult[]> {
+	return router.push({
+		subscriptionId,
+		feature,
+		...options,
+		anchors: [{ role: "main", messages: Array.isArray(messages) ? messages : [messages] }],
+	});
+}
+
+/** 只有一个附加项锚点的推送(没有本体,立即返回;发送在后台,等 `settled()`)。 */
+export function pushExtra(
+	router: PushRouter,
+	subscriptionId: string,
+	feature: FeatureKey,
+	messages: NotificationPayload | NotificationPayload[],
+	extra?: ExtraKey,
+): Promise<DeliveryResult[]> {
+	return router.push({
+		subscriptionId,
+		feature,
+		anchors: [{ role: "extra", extra, messages: Array.isArray(messages) ? messages : [messages] }],
+	});
 }
 
 /**

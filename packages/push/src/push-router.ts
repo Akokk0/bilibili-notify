@@ -70,8 +70,8 @@ export interface PushMessageResult extends PushMessage {
 
 interface PushSendBase {
 	/**
-	 * 一次推送的身份。同一次推送可以分好几次广播(下播卡先发,词云 / 总结算好了再发;
-	 * 动态主卡之后是图集),调用方传同一个 `pushId`,历史就落在同一行里追加。
+	 * 一次推送的身份,由 {@link PushRouter.push} 自己生成。一次推送有好几个锚点(下播卡之后是
+	 * 词云、总结;作品主卡之后是图集),各锚点的回调带同一个,历史就落在同一行里追加。
 	 */
 	pushId: string;
 	/**
@@ -87,13 +87,13 @@ interface PushSendBase {
 }
 
 /**
- * 一次广播对**每个目标**回调一次(`sendBatch` 收完该目标的整段序列后),带这一段的全部
+ * 一个锚点对**每个目标**回调一次(`sendBatch` 收完该目标的整段序列后),带这一段的全部
  * 消息与逐条结果 —— 历史一行 = 一次推送 × 一个目标。@全体 是 fire-and-forget,落地后
  * 以附加项的身份对同一目标再回调一次。
  *
  * 这类推送**没有任何可用目标**(没配,或配的全停用)时以 `target: null` 回调一次,消息
- * 照带、没有结果 —— 宿主据此落「无目标」那一行,面板上才看得见。上游闸(静音 / 特性关 /
- * 免扰 / 无订阅)不回调:那不是「无目标」,是本来就不该推。
+ * 照带、没有结果 —— 宿主据此落「无目标」那一行,面板上才看得见。交进来时就被挡下的推送
+ * (静音 / 特性关 / 免扰 / 无订阅)不回调:那不是「无目标」,是本来就不该推。
  *
  * TargetDispatcher 拿不到订阅 / feature(它只看 PushTarget),所以历史只能从这一层注入。
  */
@@ -101,7 +101,7 @@ export type PushSendResult =
 	| (PushSendBase & { target: PushTarget; messages: PushMessageResult[] })
 	| (PushSendBase & { target: null; messages: PushMessage[] });
 
-/** 一次广播在发送层内部带着走的上下文。 */
+/** 一个锚点在发送层内部带着走的上下文。 */
 export interface SendMeta {
 	subscriptionId: string;
 	feature: FeatureKey;
@@ -109,23 +109,48 @@ export interface SendMeta {
 	role: PushMessageRole;
 }
 
-export interface BroadcastOptions {
-	/** 见 {@link PushSendResult.pushId};不传就现生成一个(只在这一次广播里通用)。 */
-	pushId?: string;
-	/** 显式 false 抑制 @全体(周期「正在直播」等非开播的 live 推送);不传 = 按 feature 决定。 */
-	allowAtAll?: boolean;
+/**
+ * 一次推送里的一个**锚点**:本体,或一个附加项。锚点在 {@link Push.anchors} 里按先后排好,
+ * 发送就按这个先后。
+ */
+export interface PushAnchor {
+	/** 本体(`main`)还是附加项(`extra`)。 */
+	role: PushMessageRole;
 	/**
-	 * 这一段消息是本体还是附加项;缺省跟着 {@link extra} 走(带了附加项键自然是附加项)。
-	 * @全体 不由它管,恒为附加项。
-	 */
-	role?: PushMessageRole;
-	/**
-	 * 这一段消息是**哪个**附加项(ADR-0016 决策 5)。带上它,目标列表就在主特性的基础上
-	 * 再按那把键的三态表筛一道 —— 谁没订这个附加项谁就收不到,本体照旧。
-	 *
-	 * @全体 不走这里:它有自己那条分支(单独一条消息 + 平台能力判定),见下面的 `atAllKey`。
+	 * 附加项的键(ADR-0016 决策 5):给了就在路由目标上再按那把键的三态表筛一道 —— 谁没订这个
+	 * 附加项谁就收不到;不给(图集这种不归附加项表管的)就发给路由里所有启用的目标。只对 `extra` 有意义。
 	 */
 	extra?: ExtraKey;
+	/**
+	 * 这个锚点的消息:现成的,或一个「等会儿给」的约定。一串消息是分条序列(同一目标顺序发、
+	 * 一条失败中止该目标这个锚点里的后续条)。最后为空(`undefined` / 空数组)就跳过这个锚点;
+	 * 约定被拒绝 = 内容没做出来,记一条警告并跳过 —— 没做出来不是没送到,不回调、不记失败。
+	 */
+	messages: NotificationPayload[] | Promise<NotificationPayload[] | undefined>;
+}
+
+/**
+ * 一次推送(ADR-0021 决策 34 的 🔗,10-08):本体加它的附加项(图集、词云、总结)是同一次,
+ * 整个交给 {@link PushRouter.push}。@全体 的锚点不在这里:它由推送层自己插在本体前面。
+ */
+export interface Push {
+	/** 这次推送属于哪条订阅 —— 订阅自己的 id(ADR-0019 决策 50)。 */
+	subscriptionId: string;
+	/** 这次推送属于哪把特性键:管开关与路由,历史也记它。 */
+	feature: FeatureKey;
+	/**
+	 * 显式不许 @全体(重启补报这类走开播那把键、却不该 @ 的推送)。不给 = 按特性决定
+	 * (只有作品与开播有)。
+	 */
+	allowAtAll?: false;
+	/** 按顺序排好的锚点。本体至多一个,有的话必须排第一个。 */
+	anchors: PushAnchor[];
+}
+
+/** 一个锚点怎么发:哪把附加项键、许不许 @全体。 */
+interface AnchorRound {
+	extra?: ExtraKey;
+	allowAtAll: boolean;
 }
 
 /** Options for constructing a PushRouter instance. */
@@ -155,10 +180,10 @@ export interface PushRouterOptions {
 	/** 推送落地的回调,契约见 {@link PushSendResult}。独立端接到历史仓。 */
 	onSend?: (info: PushSendResult) => void;
 	/**
-	 * 全局静音 —— 「安静一会儿」。返回 true 时 {@link PushRouter.broadcastToFeature}
-	 * 整条短路,所有 feature 一起挡。
+	 * 全局静音 —— 「安静一会儿」。返回 true 时交给 {@link PushRouter.push} 的那次推送
+	 * 整次被挡,所有 feature 一起挡。
 	 *
-	 * **每条推送现问一次**,不快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
+	 * **每次推送交进来时现问一次**,不在构造时快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
 	 *
 	 * 发给主人的私聊(`sendToMaster` / `sendPrivateMsg`)**不受它管** —— 指令回复走的
 	 * 就是那条路,连同挡掉的话主人只会看到指令毫无反应。
@@ -275,73 +300,143 @@ export class PushRouter {
 	}
 
 	/**
-	 * 向某条订阅某类推送的全部目标广播。返回每条消息的投递结果(一个目标一段序列;
-	 * @全体 是 fire-and-forget,不计入返回值)。
+	 * 发一次推送(见 {@link Push})。订阅按**它自己的 id** 找(ADR-0019 决策 50):同一个 UP 配了
+	 * 两条订阅时各推各的路由,拓展订阅(没有 uid)也找得到。B 站引擎说的是 uid,翻译在宿主那条边上做。
 	 *
-	 * 订阅按**它自己的 id** 找(ADR-0019 决策 50):同一个 UP 配了两条订阅时各推各的路由,
-	 * 拓展订阅(没有 uid)也找得到。B 站引擎说的是 uid,翻译在宿主那条边上做。
+	 * **交进来那一刻判一次**:全局静音 → 无订阅 → 特性总开关 → 免扰时段(按代价排)。裁决管整次
+	 * 推送 —— 放行了,之后的锚点不再看这四样;挡下了,整次静默丢掉,不发、不回调(这些不是
+	 * 「无目标」),锚点里的约定照样有人接着,不会留下没人处理的拒绝。只挡订阅推送;发给主人的
+	 * 私聊不走这里,理由见 `muted` 的注释。
 	 *
-	 * 闸门按代价排:全局静音 → 无订阅 → 特性总开关 → 免扰时段,任一挡下都静默返回 —— 这些
-	 * 不是「无目标」。过了闸再看目标:路由里**启用的**(目标启用、所属连接启用)才是候选,
-	 * 停用的既不发也不进可达性重试;一个候选都没有就是「无目标」,回调 `onSend` 落一行。
+	 * **锚点按先后发**:内容各做各的(约定是调用方已经启动的),发送按 `anchors` 的顺序 —— 前一个
+	 * 锚点对它该发的目标都有了结果才发后一个,后面的早好了也等。空的跳过;锚点之间互不中止(本体
+	 * 对某个目标失败不拦它的附加项)。每个锚点发出时现查订阅的路由与附加项表,见 {@link sendAnchor}。
 	 *
-	 * @全体成员 修饰(仅 `feature === "post" | "liveStart"` 且 `opts.allowAtAll !== false` 进入):
+	 * **在本体发完时返回**,回本体那个锚点的投递结果(一个目标一段序列;@全体 是 fire-and-forget,
+	 * 不计入)。没有本体、或整次被挡下,立即回空。其后的锚点在后台接着发,登记进
+	 * `serviceCtx.track`,关停会等它们;生命周期翻转(stop / stop→start)时放弃还没发的。
+	 *
+	 * **唯一会抛的地方**:本体不止一个、或没排在第一个 —— 那是调用方的 bug,不静默纠正。
+	 */
+	async push(push: Push): Promise<DeliveryResult[]> {
+		const { subscriptionId, feature, anchors } = push;
+		// 先把每个约定接住:下面任何一条提前返回的路上,做不出来的内容都不会变成没人处理的拒绝。
+		const contents = anchors.map((anchor) =>
+			Promise.resolve(anchor.messages).then(
+				(payloads) => ({ payloads: payloads ?? [] }),
+				(error: unknown) => ({ error }),
+			),
+		);
+		if (anchors.some((anchor, i) => anchor.role === "main" && i > 0)) {
+			throw new Error("[push] 一次推送的本体至多一个,而且必须排在第一个锚点");
+		}
+		if (this.disposed) return [];
+		if (!this.allowsPush(subscriptionId, feature)) return [];
+
+		const myGen = this.generation;
+		const pushId = randomUUID();
+		const sendAt = async (i: number): Promise<DeliveryResult[]> => {
+			const anchor = anchors[i] as PushAnchor;
+			const content = await (contents[i] as (typeof contents)[number]);
+			if (this.disposed || this.generation !== myGen) return [];
+			if ("error" in content) {
+				const reason = content.error instanceof Error ? content.error.message : content.error;
+				this.logger.warn(
+					`[push] ${this.labelOf(subscriptionId)} feature=${feature} 有一个锚点的内容没做出来，跳过：${reason}`,
+				);
+				return [];
+			}
+			if (content.payloads.length === 0) return [];
+			const isMain = anchor.role === "main";
+			return this.sendAnchor(
+				{ subscriptionId, feature, pushId, role: anchor.role },
+				content.payloads,
+				isMain
+					? { allowAtAll: push.allowAtAll !== false }
+					: { extra: anchor.extra, allowAtAll: false },
+			);
+		};
+
+		const hasMain = anchors[0]?.role === "main";
+		const mainResults = hasMain ? await sendAt(0) : [];
+		const firstExtra = hasMain ? 1 : 0;
+		if (firstExtra < anchors.length) {
+			// 附加项在后台按先后发:这条订阅的下一次推送不等它们,关停等。
+			this.serviceCtx.track(
+				(async () => {
+					for (let i = firstExtra; i < anchors.length; i++) {
+						if (this.disposed || this.generation !== myGen) return;
+						await sendAt(i);
+					}
+				})().catch((e: unknown) => {
+					this.logger.error(`[push] 附加项发送出错: ${e instanceof Error ? e.message : e}`);
+				}),
+			);
+		}
+		return mainResults;
+	}
+
+	/** {@link push} 的裁决:这次推送整次放不放行。只在交进来时问一次。 */
+	private allowsPush(subscriptionId: string, feature: FeatureKey): boolean {
+		// 全局静音排在所有查询之前 —— 静音期间一次订阅查找都不必做。
+		if (this.muted()) {
+			this.logger.debug(`[push] sub=${subscriptionId} feature=${feature} 处于全局静音，跳过`);
+			return false;
+		}
+		const sub = this.store.findById(subscriptionId);
+		if (!sub) {
+			this.logger.debug(`[push] sub=${subscriptionId} 无订阅记录，跳过 feature=${feature}`);
+			return false;
+		}
+		const who = subscriptionLabel(sub);
+		// 「features 总开关」与「quietHours 免扰时段」:把 sub 折叠成 EffectiveSubscription 后
+		// 按此刻的 globals 判定。
+		const eff = resolve(sub, this.defaults());
+		if (!eff.features[feature]) {
+			this.logger.debug(`[push] ${who} feature=${feature} 总开关 OFF，跳过`);
+			return false;
+		}
+		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow())) {
+			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，跳过`);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 一次已放行的推送的一个锚点:现查订阅的路由与附加项表,逐目标判完再发。订阅、总开关、静音、
+	 * 免扰不在这里判 —— 那是交进来时定下的。
+	 *
+	 * 路由里**启用的**(目标启用、所属连接启用)才是候选,停用的既不发也不进可达性重试;一个候选
+	 * 都没有就是「无目标」,回调 `onSend` 落一行。交进来之后订阅被删了就没有路由可查,这个锚点静默丢掉。
+	 *
+	 * @全体 是推送层自己插在本体前面的锚点(仅本体、`feature === "post" | "liveStart"` 且没被显式
+	 * 关掉时有),它是唯一「只保证先后、不等结果」的,见 {@link sendAtAllThenCard}。该 @ 哪些目标:
 	 * - 全局 + per-UP 合并后的 `eff.features.extras.atAll<Scope>` 决定 inherit-state 的 target 是否 @
 	 * - per-target tristate Map `sub.extraTargets.atAll<Scope>[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
 	 * - Map 里没有该 key → 走上面那个默认
 	 * - 目标平台不支持 @全体(`platformSupportsAtAll`,今天只有 QQ 官方机器人)→ 一律不 @,
 	 *   默认与覆写都不看 —— 单发的那条只含 at-all 段,到适配器就成了空消息
 	 *
-	 * `feature === "liveStart"` 仅作用于开播。但 live adapter 把「开播」和周期「正在直播」
-	 * 复推都翻译成 `feature === "liveStart"`(routing/总开关共用 liveStart),仅靠 feature 无法区分。
-	 * 调用方据 `LivePushType` 判定:非开播的 live 推送必须传 `opts.allowAtAll = false`
-	 * 显式抑制 @全体,否则会每条直播推送都 @全体(修过的 bug)。
+	 * `feature === "liveStart"` 的 @全体 只该跟着真开播。重启补报也走 `liveStart` 这把键(目标与
+	 * 总开关共用),光看 feature 区分不出:调用方对非开播的那几种必须传 `allowAtAll: false`
+	 * 显式抑制,否则每条都会 @全体(修过的 bug)。
 	 */
-	async broadcastToFeature(
-		subscriptionId: string,
-		feature: FeatureKey,
-		payload: NotificationPayload | NotificationPayload[],
-		opts?: BroadcastOptions,
+	private async sendAnchor(
+		ctx: SendMeta,
+		payloads: NotificationPayload[],
+		round: AnchorRound,
 	): Promise<DeliveryResult[]> {
-		if (this.disposed) return [];
-		// 消息版式分条:一次推送可以是多条 payload 的序列。单 payload 归一成单元素序列,
-		// 后续路径统一按序列处理。
-		const payloads = Array.isArray(payload) ? payload : [payload];
-		if (payloads.length === 0) return [];
-
-		// 全局静音闸,排在所有查询之前 —— 静音期间一次订阅查找都不必做。
-		// 只挡订阅推送;发给主人的私聊不走这里,理由见 `muted` 的注释。
-		if (this.muted()) {
-			this.logger.debug(`[push] sub=${subscriptionId} feature=${feature} 处于全局静音，跳过`);
-			return [];
-		}
+		const { subscriptionId, feature } = ctx;
 
 		const sub = this.store.findById(subscriptionId);
 		if (!sub) {
-			this.logger.debug(`[push] sub=${subscriptionId} 无订阅记录，跳过 feature=${feature}`);
+			this.logger.debug(`[push] sub=${subscriptionId} 推送途中订阅没了，跳过 feature=${feature}`);
 			return [];
 		}
 		const who = subscriptionLabel(sub);
+		const eff = resolve(sub, this.defaults());
 
-		// 「features 总开关」与「quietHours 免扰时段」两道 runtime gate:把 sub 折叠成
-		// EffectiveSubscription 后按当前 globals 判定。
-		const defaults = this.defaults();
-		const eff = resolve(sub, defaults);
-		if (!eff.features[feature]) {
-			this.logger.debug(`[push] ${who} feature=${feature} 总开关 OFF，跳过`);
-			return [];
-		}
-		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow())) {
-			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，跳过`);
-			return [];
-		}
-
-		const ctx: SendMeta = {
-			subscriptionId,
-			feature,
-			pushId: opts?.pushId ?? randomUUID(),
-			role: opts?.role ?? (opts?.extra ? "extra" : "main"),
-		};
 		// 只有启用的目标才是候选:停用的目标 / 停用的连接不进重试、不落历史。
 		const routed = (sub.routing[feature] ?? []).filter((id) => this.dispatcher.isEnabled(id));
 		if (routed.length === 0) {
@@ -357,7 +452,7 @@ export class PushRouter {
 		// 附加项再按自己那张三态表筛一道(ADR-0016 决策 5):目标显式写了就听它的,没写就
 		// 跟随折叠后(全局 + per-UP)的默认 —— 与下面 @全体 那条分支同一句判定,四把键一视同仁。
 		// routing 查找全仓仍然只有上面那一处,这里只是在它的结果上再筛。
-		const extraKey = opts?.extra;
+		const extraKey = round.extra;
 		const targetIds = extraKey
 			? routed.filter((id) => sub.extraTargets[extraKey][id] ?? eff.features.extras[extraKey])
 			: routed;
@@ -368,16 +463,13 @@ export class PushRouter {
 			return [];
 		}
 
-		// 默认(opts 不传 / allowAtAll 非显式 false)= 按 feature 决定,保持旧行为。
-		// 调用方显式传 false 时强制不 @全体(周期「正在直播」等非开播的 live 推送)。
-		const atAllKey: ExtraKey | null =
-			opts?.allowAtAll === false
-				? null
-				: feature === "post"
-					? "atAllPost"
-					: feature === "liveStart"
-						? "atAllLiveStart"
-						: null;
+		const atAllKey: ExtraKey | null = !round.allowAtAll
+			? null
+			: feature === "post"
+				? "atAllPost"
+				: feature === "liveStart"
+					? "atAllLiveStart"
+					: null;
 
 		this.logger.info(`[push] ${who} feature=${feature} → ${targetIds.length} 个目标`);
 		if (!atAllKey) {

@@ -14,7 +14,7 @@ import { liveCardInputFromRoomInfo } from "../live-card-input";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "../live-notify";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
 import type { LiveEvent } from "../protocol/events.js";
-import { type LiveBroadcastOptions, LivePushType, type SubItemView } from "../push-like";
+import { type LivePushAnchor, LivePushType, type SubItemView } from "../push-like";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
 import { RoomContextBase } from "./room-context";
 
@@ -276,7 +276,7 @@ export class RoomContext extends RoomContextBase {
 
 	/** Fire-and-forget push wrapper; logs + drops any rejection. */
 	safeBroadcast(uid: string, content: unknown, type: LivePushType): void {
-		this.push.broadcastToTargets(uid, content, type).catch((e) => {
+		this.push.push({ uid, type, anchors: [{ role: "main", messages: [content] }] }).catch((e) => {
 			this.logger.error(`[push] 推送失败 uid=${uid} type=${type}：${(e as Error).message}`);
 		});
 	}
@@ -288,8 +288,11 @@ export class RoomContext extends RoomContextBase {
 	 * 为文字)。拓展订阅的直播走同一个装配,只是输入与发送换成它自己的(ADR-0019 决策 67)。
 	 *
 	 * 消息版式(`messageLayout`)覆盖开播 / 直播中 / 下播三类(调用方按各自 liveType 传参):
-	 * 卡片 / 文本(各自模板,模板里没有链接变量)/ 链接(roomLink)按块序装配,分条符切多条经
-	 * `broadcastSequenceToTargets`。SC / 上舰不经此方法。
+	 * 卡片 / 文本(各自模板,模板里没有链接变量)/ 链接(roomLink)按块序装配,分条符切出的多条是
+	 * 本体那个锚点里的一串。SC / 上舰不经此方法。
+	 *
+	 * 这张卡是这次推送的本体;`extras`(下播的词云、总结)是排在它后面的锚点,同一次交给推送层。
+	 * 版式把部件全藏了、本体不发时,附加项照样交出去。
 	 */
 	async sendLiveNotifyCard(params: {
 		liveType: LiveType;
@@ -312,10 +315,15 @@ export class RoomContext extends RoomContextBase {
 		notifyMsg: string;
 		messageLayout: MessageKindLayout;
 		roomLink?: string;
-		/** 见 {@link LiveBroadcastOptions.pushId}:下播卡传它,词云 / 总结才能追加到同一行。 */
-		pushId?: string;
+		/** 排在这张卡后面的附加项锚点(下播卡带词云、总结);内容可以是还在做的约定。 */
+		extras?: LivePushAnchor[];
 	}): Promise<void> {
 		const { liveType, liveData, liveRoomInfo, master, uid } = params;
+		const extras = params.extras ?? [];
+		// 附加项的约定先接住一次:下面出卡要好几个 await,万一没走到交给推送层那一步,
+		// 做不出来的内容也不会变成没人处理的拒绝。推送层照样看得见它被拒绝(那边记警告)。
+		for (const anchor of extras) void Promise.resolve(anchor.messages).catch(() => {});
+		const pushType = params.pushType ?? livePushTypeOf(liveType);
 		let input = liveCardInputFromRoomInfo(
 			liveRoomInfo,
 			master.username,
@@ -327,6 +335,7 @@ export class RoomContext extends RoomContextBase {
 		if (this.imageRenderer && isBlockVisible(params.messageLayout, "card")) {
 			input = await fetchLiveCover(input, { images: this.imageFetcher, logger: this.logger });
 		}
+		let mainSent = false;
 		await pushLiveNotify(
 			{
 				input,
@@ -336,20 +345,30 @@ export class RoomContext extends RoomContextBase {
 				cardStyle: params.cardStyle,
 				cardSkin: params.cardSkin,
 				cardSkinKnobs: params.cardSkinKnobs,
-				pushType: params.pushType ?? livePushTypeOf(liveType),
-				pushId: params.pushId,
+				pushType,
 				label: `uid=${uid}`,
 			},
-			{ renderer: this.imageRenderer, send: this.sendToUid(uid), logger: this.logger },
+			{
+				renderer: this.imageRenderer,
+				send: (groups, type) => {
+					mainSent = true;
+					return this.sendToUid(uid, extras)(groups, type);
+				},
+				logger: this.logger,
+			},
 		);
+		// 版式把部件全藏了、本体没发:附加项照交(开关、静音与免扰就在交出去的这一刻判)。
+		if (!mainSent && extras.length > 0 && !this.isDisposed()) {
+			await this.push.push({ uid, type: pushType, anchors: extras });
+		}
 	}
 
 	/**
-	 * 绑到这位 UP 上的发送:中立的段包成 contentBuilder 的形状,一条走 `broadcastToTargets`、
-	 * 多条走 `broadcastSequenceToTargets`。
+	 * 绑到这位 UP 上的发送:中立的段包成 contentBuilder 的形状,按版式分好的几条消息是本体那个
+	 * 锚点里的一串;`extras` 是同一次推送里排在本体后面的锚点。
 	 */
-	private sendToUid(uid: string): LiveNotifySend {
-		return async (groups, pushType, opts) => {
+	private sendToUid(uid: string, extras: LivePushAnchor[]): LiveNotifySend {
+		return async (groups, type) => {
 			// 出卡要好几秒:这期间引擎被拆了,就不再往外推。
 			if (this.isDisposed()) return;
 			const buildContent = (segs: readonly MessageLayoutSegment[]): unknown =>
@@ -360,11 +379,11 @@ export class RoomContext extends RoomContextBase {
 							: this.contentBuilder.text(s.text),
 					),
 				);
-			if (groups.length === 1) {
-				await this.push.broadcastToTargets(uid, buildContent(groups[0] ?? []), pushType, opts);
-				return;
-			}
-			await this.push.broadcastSequenceToTargets(uid, groups.map(buildContent), pushType, opts);
+			await this.push.push({
+				uid,
+				type,
+				anchors: [{ role: "main", messages: groups.map(buildContent) }, ...extras],
+			});
 		};
 	}
 }

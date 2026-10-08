@@ -1,5 +1,5 @@
 /**
- * 单元测试 — `PushRouter.broadcastToFeature` routing 决策。
+ * 单元测试 — `PushRouter.push` 的 routing 决策(只有本体那一个锚点的推送)。
  *
  * 这是 push 链路的"路由网关":sub.features → sub.routing → quietHours 三道 gate
  * 后才到 dispatcher.send。任何环节走错 = 用户看到漏推 / 推错目标 / 免扰失效。
@@ -32,6 +32,7 @@ import {
 	type FakeDispatcher,
 	makeExtensionSub,
 	pushBase,
+	pushMain,
 	setExtraDefault,
 	silentLogger,
 } from "./helpers";
@@ -91,7 +92,7 @@ function loopbackDefaults(): GlobalDefaults {
 	return g.defaults;
 }
 
-describe("PushRouter.broadcastToFeature — routing decision", () => {
+describe("PushRouter.push — routing decision", () => {
 	it("订阅 id 查不到 → 不调 dispatcher", async () => {
 		const { dispatcher, calls } = makeDispatcher();
 		const push = new PushRouter({
@@ -101,7 +102,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		const out = await push.broadcastToFeature("nope", "liveStart", { kind: "text", text: "x" });
+		const out = await pushMain(push, "nope", "liveStart", { kind: "text", text: "x" });
 		expect(out).toEqual([]);
 		expect(calls).toHaveLength(0);
 	});
@@ -119,7 +120,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "x" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 	});
 
@@ -138,7 +139,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "开播了" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播了" });
 		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t2"]);
 	});
 
@@ -159,7 +160,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			defaults: () => defaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "x" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 	});
 
@@ -180,7 +181,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			defaults: () => defaults,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "x" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 	});
 
@@ -203,11 +204,11 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			quietHoursNow: () => pretend,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "x" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "x" });
 		expect(calls).toHaveLength(0);
 
 		pretend = new Date(2026, 8, 6, 15, 0, 0); // 15:00,不在
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "y" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "y" });
 		// live 默认带 @全体,所以是两条;这里只关心「放行了」。
 		expect(calls.length).toBeGreaterThan(0);
 	});
@@ -227,7 +228,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", { kind: "text", text: "动态" });
+		await pushMain(push, "s1", "post", { kind: "text", text: "动态" });
 		expect(calls).toHaveLength(2);
 		// 第 1 条:@全体 单独一条 composite,只含 at-all 段
 		expect(calls[0].payload.kind).toBe("composite");
@@ -254,7 +255,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "开播" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播" });
 		// t1 一条原 payload;t2 先收 @全体 only,再收原 payload。共 3 条。
 		expect(calls).toHaveLength(3);
 		expect(calls[0]).toMatchObject({ targetId: "t1" });
@@ -289,7 +290,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			onSend: (info) => seen.push(info),
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "开播" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播" });
 		await new Promise((r) => setTimeout(r, 0));
 		expect(calls.map((c) => c.payload)).toEqual([{ kind: "text", text: "开播" }]);
 		// 历史那一行也不该多出一条「@全体」附加项。
@@ -297,7 +298,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		expect(seen[0]?.messages.map((m) => m.role)).toEqual(["main"]);
 	});
 
-	it("opts.allowAtAll=false → 抑制 @全体,即使 feature=liveStart 且 extras.atAllLiveStart 默认为 true(本次 bug 修复:周期「正在直播」)", async () => {
+	it("allowAtAll: false → 抑制 @全体,即使 feature=liveStart 且 extras.atAllLiveStart 默认为 true(本次 bug 修复:周期「正在直播」)", async () => {
 		const sub = makeEmptySubscription({
 			id: "s1",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
@@ -313,7 +314,8 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature(
+		await pushMain(
+			push,
 			"s1",
 			"liveStart",
 			{ kind: "text", text: "正在直播" },
@@ -323,7 +325,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		for (const c of calls) expect(c.payload.kind).toBe("text"); // 但都没 at-all 头
 	});
 
-	it("opts.allowAtAll=true(显式)或不传 → 维持按 feature 决定的旧行为(开播仍 @全体)", async () => {
+	it("不传 allowAtAll → 按 feature 决定(开播仍 @全体)", async () => {
 		const mk = () => {
 			const sub = makeEmptySubscription({
 				id: "s1",
@@ -342,37 +344,16 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			}
 			expect(calls[1].payload).toEqual({ kind: "text", text: "开播" });
 		};
-		// 显式 true
-		{
-			const { dispatcher, calls } = makeDispatcher();
-			const push = new PushRouter({
-				...pushBase(),
-				dispatcher,
-				store: makeStore([mk()]),
-				logger: silentLogger,
-			});
-			push.start();
-			await push.broadcastToFeature(
-				"s1",
-				"liveStart",
-				{ kind: "text", text: "开播" },
-				{ allowAtAll: true },
-			);
-			assertAtAllThenPayload(calls);
-		}
-		// opts 不传(向后兼容:dynamic 等既有调用点不受影响)
-		{
-			const { dispatcher, calls } = makeDispatcher();
-			const push = new PushRouter({
-				...pushBase(),
-				dispatcher,
-				store: makeStore([mk()]),
-				logger: silentLogger,
-			});
-			push.start();
-			await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "开播" });
-			assertAtAllThenPayload(calls);
-		}
+		const { dispatcher, calls } = makeDispatcher();
+		const push = new PushRouter({
+			...pushBase(),
+			dispatcher,
+			store: makeStore([mk()]),
+			logger: silentLogger,
+		});
+		push.start();
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播" });
+		assertAtAllThenPayload(calls);
 	});
 
 	it("@全体 单独一条 → composite [image,text] 原 payload 第二条(live)", async () => {
@@ -397,7 +378,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 				{ kind: "text", text: "开播啦" },
 			],
 		};
-		await push.broadcastToFeature("s1", "liveStart", payload);
+		await pushMain(push, "s1", "liveStart", payload);
 		expect(calls).toHaveLength(2);
 		// 第 1 条:@全体 only
 		expect(calls[0].payload.kind).toBe("composite");
@@ -410,7 +391,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		}
 	});
 
-	it("@全体 单独一条对 post 同样生效(共用 broadcastToFeature 分支)", async () => {
+	it("@全体 单独一条对 post 同样生效(共用同一条分支)", async () => {
 		const sub = makeEmptySubscription({
 			id: "s1",
 			identity: { sourceKey: "bilibili", externalId: "u1" },
@@ -425,7 +406,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", {
+		await pushMain(push, "s1", "post", {
 			kind: "composite",
 			segments: [
 				{ kind: "image", buffer: Buffer.from([3]), mime: "image/jpeg" },
@@ -456,7 +437,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "liveStart", {
+		await pushMain(push, "s1", "liveStart", {
 			kind: "image",
 			image: { buffer: Buffer.from([2]), mime: "image/png" },
 			caption: "字幕",
@@ -473,7 +454,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		}
 		// 纯文本无图 → 同样两条:@全体 only + text 原 payload
 		calls.length = 0;
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "无图开播" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "无图开播" });
 		expect(calls).toHaveLength(2);
 		if (calls[0].payload.kind === "composite") {
 			expect(calls[0].payload.segments).toEqual([{ kind: "at-all" }]);
@@ -497,7 +478,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", {
+		await pushMain(push, "s1", "post", {
 			kind: "image-group",
 			images: [{ url: "http://x/1.jpg" }],
 			mergeForward: true,
@@ -527,13 +508,13 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "superchat", { kind: "text", text: "SC" });
+		await pushMain(push, "s1", "superchat", { kind: "text", text: "SC" });
 		expect(calls[0].payload.kind).toBe("text"); // 没 at-all 头
 	});
 
-	it("@全体 发送卡死不阻塞卡片正文:卡片照常发出、broadcastToFeature 正常返回", async () => {
+	it("@全体 发送卡死不阻塞卡片正文:卡片照常发出、push 正常返回", async () => {
 		// 回归:无管理权限的群发 @全体 会触发协议端拒绝 + adapter 重试,旧版顺序
-		// await @全体 会把卡片正文连同 broadcastToFeature 一起拖到重试结束。现在
+		// await @全体 会把卡片正文连同 push 一起拖到重试结束。现在
 		// @全体 best-effort 即发不 await,卡片不再被它拖住。
 		const sub = makeEmptySubscription({
 			id: "s1",
@@ -572,7 +553,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		});
 		push.start();
 		// 旧版会在此处永久挂起;现在应在卡片发出后立即返回。
-		const out = await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "开播" });
+		const out = await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播" });
 		// @全体 与卡片都被发起(顺序:@全体 在前),且 @全体 同步先入 dispatcher。
 		expect(calls.map((c) => c.targetId)).toEqual(["t1", "t1"]);
 		expect(isAtAll(calls[0].payload)).toBe(true);
@@ -627,7 +608,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 		});
 		push.start();
 
-		await push.broadcastToFeature("s1", "liveStart", { kind: "text", text: "开播" });
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播" });
 
 		// 卡片那次回调已经交出去了;@全体 还在路上 —— 登记着的这件事不许落。
 		expect(sent).toHaveLength(1);
@@ -661,7 +642,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
 			onSend,
 		});
 		push.start();
-		await push.broadcastToFeature("s1", "post", { kind: "text", text: "x" });
+		await pushMain(push, "s1", "post", { kind: "text", text: "x" });
 		expect(onSend).toHaveBeenCalledTimes(2);
 		const calls = onSend.mock.calls.map((c) => c[0]);
 		expect(calls[0]).toMatchObject({ subscriptionId: "s1", feature: "post" });
@@ -675,7 +656,7 @@ describe("PushRouter.broadcastToFeature — routing decision", () => {
  * 按 uid 找的年代,同一个 uid 配了两条订阅时「先出现的那条说了算」,第二条的路由整条被
  * 无视;拓展订阅没有 uid,压根找不到。这两条钉的就是那两个洞。
  */
-describe("PushRouter.broadcastToFeature — 按订阅 id 找订阅", () => {
+describe("PushRouter.push — 按订阅 id 找订阅", () => {
 	it("两条 uid 相同、路由不同的 B 站订阅:按 B 的 id 广播只发到 B 的目标", async () => {
 		const a = makeEmptySubscription({
 			id: "sA",
@@ -695,12 +676,7 @@ describe("PushRouter.broadcastToFeature — 按订阅 id 找订阅", () => {
 			logger: silentLogger,
 		});
 		push.start();
-		await push.broadcastToFeature(
-			"sB",
-			"liveStart",
-			{ kind: "text", text: "x" },
-			{ allowAtAll: false },
-		);
+		await pushMain(push, "sB", "liveStart", { kind: "text", text: "x" }, { allowAtAll: false });
 		expect(calls.map((c) => c.targetId)).toEqual(["tB"]);
 	});
 
@@ -718,7 +694,7 @@ describe("PushRouter.broadcastToFeature — 按订阅 id 找订阅", () => {
 			onSend: (info) => seen.push(info),
 		});
 		push.start();
-		await push.broadcastToFeature("sE", "post", { kind: "text", text: "x" });
+		await pushMain(push, "sE", "post", { kind: "text", text: "x" });
 		expect(calls.map((c) => c.targetId)).toEqual(["tE"]);
 		expect(seen.map((i) => i.subscriptionId)).toEqual(["sE"]);
 	});
@@ -728,7 +704,7 @@ describe("PushRouter.broadcastToFeature — 按订阅 id 找订阅", () => {
  * 日志里认得出「是谁」(`subscriptionLabel`):B 站写 `uid=<uid>`,拓展写 `<拓展 id>:<外部 id>`。
  * 只拿来给人看,所以没有别的测试会红 —— 这里钉住写法,免得换成按身份读的时候悄悄变样。
  */
-describe("PushRouter.broadcastToFeature — 日志里的订阅标签", () => {
+describe("PushRouter.push — 日志里的订阅标签", () => {
 	async function gateLogLine(sub: Subscription): Promise<string> {
 		const defaults = loopbackDefaults();
 		defaults.features.liveStart = false;
@@ -742,7 +718,7 @@ describe("PushRouter.broadcastToFeature — 日志里的订阅标签", () => {
 			defaults: () => defaults,
 		});
 		push.start();
-		await push.broadcastToFeature(sub.id, "liveStart", { kind: "text", text: "x" });
+		await pushMain(push, sub.id, "liveStart", { kind: "text", text: "x" });
 		return lines.find((l) => l.includes("总开关 OFF")) ?? "";
 	}
 

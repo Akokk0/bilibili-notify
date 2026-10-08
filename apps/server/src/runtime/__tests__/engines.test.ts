@@ -41,6 +41,7 @@ import {
 	sameIdentity,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import type { Push } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
@@ -77,7 +78,7 @@ vi.mock("@bilibili-notify/push", () => ({
 		start = vi.fn();
 		stop = vi.fn();
 		setMaster = vi.fn();
-		broadcastToFeature = vi.fn(async () => {});
+		push = vi.fn(async () => []);
 		sendPrivateMsg = vi.fn(async () => {});
 		sendErrorMsg = vi.fn(async () => {});
 		constructor(opts: any) {
@@ -90,9 +91,8 @@ vi.mock("@bilibili-notify/push", () => ({
 vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../bilibili/dynamic/index.js")>();
 	return {
-		// 纯函数走真实实现(@全体抑制、动态卡配色解析):它们是没有副作用的规则,在这儿
+		// 纯函数走真实实现(动态卡配色解析):它们是没有副作用的规则,在这儿
 		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
-		broadcastOptionsForPostPart: actual.broadcastOptionsForPostPart,
 		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
 		// 出图失败计数(全进程一份,B 站与拓展作品共用)是个没有副作用的小对象,同理走真的。
 		createCardFailureTracker: actual.createCardFailureTracker,
@@ -214,12 +214,10 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 		expect(liveTypeToFeature(0)).toBe("liveStreaming"); // 周期「正在直播」有自己的特性键(⑬d 拆键)
 		expect(liveTypeToFeature(3)).toBe("liveStart");
 		expect(liveTypeToFeature(4)).toBe("membership");
-		expect(liveTypeToFeature(5)).toBe("liveEnd");
 		expect(liveTypeToFeature(6)).toBe("superchat");
 		expect(liveTypeToFeature(7)).toBe("specialDanmaku");
 		expect(liveTypeToFeature(8)).toBe("specialUserEnter");
 		expect(liveTypeToFeature(9)).toBe("liveEnd");
-		expect(liveTypeToFeature(10)).toBe("liveEnd");
 		expect(liveTypeToFeature(11)).toBe("liveStart"); // 重启补报走开播的路由
 		expect(liveTypeToFeature(999)).toBe("liveStart");
 	});
@@ -227,67 +225,83 @@ describe("apps/server adapter live-type map (cross-end mirror)", () => {
 	it("liveTypeAllowsAtAll:仅开播(3)允许,0/补报(11)/其它/未知一律 false", () => {
 		expect(liveTypeAllowsAtAll(3)).toBe(true);
 		expect(liveTypeAllowsAtAll(0)).toBe(false);
-		for (const t of [4, 5, 6, 7, 8, 9, 10, 11, 999]) {
+		for (const t of [4, 6, 7, 8, 9, 11, 999]) {
 			expect(liveTypeAllowsAtAll(t)).toBe(false);
 		}
 	});
 });
 
 /**
- * 拓展订阅的直播那一跳(ADR-0019 决策 67):装配交来的消息组 → 推送层,**特性键与推送选项照 B 站的映射**
- * (`liveTypeToFeature` / `liveBroadcastOpts`)。掉了哪一样都是静默的:开关与路由按错的特性走、每条
+ * 拓展订阅的直播那一跳(ADR-0019 决策 67):装配交来的消息组 → 推送层的一次推送,**特性键与 @全体 照 B 站的映射**
+ * (`liveTypeToFeature` / `liveTypeAllowsAtAll`)。掉了哪一样都是静默的:开关与路由按错的特性走、每条
  * 「正在直播」都 @全体、历史把周期推送记成开播。
  */
-describe("boundLivePush — 拓展直播的三种推送照 B 站的映射交给推送层", () => {
+describe("boundLivePush — 拓展直播的四种推送照 B 站的映射交给推送层", () => {
 	const card = { kind: "image" as const, buffer: Buffer.from("card"), mime: "image/jpeg" };
+	const spy = () => {
+		const push = vi.fn(async (_push: Push) => []);
+		return { push, router: { push } };
+	};
 
 	it("开播:特性 liveStart(历史就记它)、允许 @全体;一组 = 一条载荷,卡 + 文字合成一条", async () => {
-		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[card, { kind: "text", text: "开播啦" }]], 3, {});
-		expect(send).toHaveBeenCalledWith(
-			"liveStart",
-			{
-				kind: "composite",
-				segments: [
-					{ kind: "image", buffer: card.buffer, mime: "image/jpeg" },
-					{ kind: "text", text: "开播啦" },
-				],
-			},
-			expect.objectContaining({ allowAtAll: true, extra: undefined }),
-		);
+		const { push, router } = spy();
+		await boundLivePush(router, "sub-1")([[card, { kind: "text", text: "开播啦" }]], 3);
+		expect(push).toHaveBeenCalledTimes(1);
+		const sent = push.mock.calls[0]?.[0];
+		expect(sent).toEqual({
+			subscriptionId: "sub-1",
+			feature: "liveStart",
+			anchors: [
+				{
+					role: "main",
+					messages: [
+						{
+							kind: "composite",
+							segments: [
+								{ kind: "image", buffer: card.buffer, mime: "image/jpeg" },
+								{ kind: "text", text: "开播啦" },
+							],
+						},
+					],
+				},
+			],
+		});
 	});
 
 	it("正在直播:特性 liveStreaming(自己的开关与目标,历史就记它)、不 @全体", async () => {
-		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[{ kind: "text", text: "还在播" }]], 0, {});
-		expect(send).toHaveBeenCalledWith(
-			"liveStreaming",
-			{ kind: "text", text: "还在播" },
-			expect.objectContaining({ allowAtAll: false }),
-		);
+		const { push, router } = spy();
+		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "还在播" }]], 0);
+		expect(push.mock.calls[0]?.[0]).toEqual({
+			subscriptionId: "sub-1",
+			feature: "liveStreaming",
+			allowAtAll: false,
+			anchors: [{ role: "main", messages: [{ kind: "text", text: "还在播" }] }],
+		});
 	});
 
 	it("重启补报:特性 liveStart(走开播的路由,历史记成开播)、不 @全体", async () => {
-		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[{ kind: "text", text: "补报" }]], 11, {});
-		expect(send).toHaveBeenCalledWith(
-			"liveStart",
-			{ kind: "text", text: "补报" },
-			expect.objectContaining({ allowAtAll: false }),
-		);
+		const { push, router } = spy();
+		await boundLivePush(router, "sub-1")([[{ kind: "text", text: "补报" }]], 11);
+		expect(push.mock.calls[0]?.[0]).toMatchObject({ feature: "liveStart", allowAtAll: false });
 	});
 
-	it("下播:特性 liveEnd、不 @全体;几组 = 一串载荷,pushId 原样带上", async () => {
-		const send = vi.fn(async () => {});
-		await boundLivePush(send)([[card], [{ kind: "text", text: "下播啦" }]], 9, { pushId: "p1" });
-		expect(send).toHaveBeenCalledWith(
-			"liveEnd",
-			[
-				{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
-				{ kind: "text", text: "下播啦" },
+	it("下播:特性 liveEnd、不 @全体;几组 = 本体那一个锚点里的一串载荷", async () => {
+		const { push, router } = spy();
+		await boundLivePush(router, "sub-1")([[card], [{ kind: "text", text: "下播啦" }]], 9);
+		expect(push.mock.calls[0]?.[0]).toEqual({
+			subscriptionId: "sub-1",
+			feature: "liveEnd",
+			allowAtAll: false,
+			anchors: [
+				{
+					role: "main",
+					messages: [
+						{ kind: "image", image: { buffer: card.buffer, mime: "image/jpeg" } },
+						{ kind: "text", text: "下播啦" },
+					],
+				},
 			],
-			expect.objectContaining({ allowAtAll: false, pushId: "p1" }),
-		);
+		});
 	});
 });
 
@@ -953,7 +967,7 @@ describe("createEngines — 作品过滤接线", () => {
 		// 验红:把 engines.ts 里递给 bindExtensionPosts 的 `filter: eff.filters` 换成空规则,这条红。
 		c.bus.emit("subscription-reported", videoReport(sub));
 		c.bus.emit("subscription-reported", textReport(sub));
-		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		// 只有那条纯文字的出了卡、推了;视频那条被挡在过滤上。
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "只有字" });
@@ -963,7 +977,7 @@ describe("createEngines — 作品过滤接线", () => {
 		const { c, sub } = extSetup({ globals: globalsWith({ blockImages: true }) });
 		c.bus.emit("subscription-reported", imagesReport(sub));
 		c.bus.emit("subscription-reported", textReport(sub));
-		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "只有字" });
 	});
@@ -972,7 +986,7 @@ describe("createEngines — 作品过滤接线", () => {
 		const { c, sub } = extSetup();
 		c.bus.emit("subscription-reported", videoReport(sub));
 		c.bus.emit("subscription-reported", imagesReport(sub));
-		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(2));
 	});
 
 	it("拓展作品:这位 UP 的按 UP 覆盖盖过全局(全局拦视频,这位单独放开 → 照推)", async () => {
@@ -983,7 +997,7 @@ describe("createEngines — 作品过滤接线", () => {
 		});
 		const a = extSetup({ globals: globalsWith({ blockVideos: true }), sub: open });
 		a.c.bus.emit("subscription-reported", videoReport(a.sub));
-		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 	});
 
 	it("拓展作品:按 UP 覆盖只拦这一位 —— 全局没开,这位单独开「屏蔽视频」就挡", async () => {
@@ -995,7 +1009,7 @@ describe("createEngines — 作品过滤接线", () => {
 		const { c, sub } = extSetup({ sub: strict });
 		c.bus.emit("subscription-reported", videoReport(sub));
 		c.bus.emit("subscription-reported", textReport(sub));
-		await vi.waitFor(() => expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 	});
 });
@@ -1040,13 +1054,12 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 			},
 		});
 		await vi.waitFor(() =>
-			expect(H.push[0].broadcastToFeature).toHaveBeenCalledWith(
-				sub.id,
-				"liveStart",
-				expect.anything(),
-				expect.objectContaining({ allowAtAll: true }),
+			expect(H.push[0].push).toHaveBeenCalledWith(
+				expect.objectContaining({ subscriptionId: sub.id, feature: "liveStart" }),
 			),
 		);
+		// 真开播许 @全体:交出去的推送上没有 `allowAtAll: false`。
+		expect(H.push[0].push.mock.calls[0]?.[0]).not.toHaveProperty("allowAtAll");
 
 		// 周期推送挂在 live 子系统的定时器上,一小时一次。
 		const subsystems = c.serviceCtx.forSubsystem.mock.calls as unknown as [string][];
@@ -2222,7 +2235,7 @@ describe("createEngines — 消息版式", () => {
 		expect(dyn.messageLayout?.blocks.map((b: { type: string }) => b.type)).toContain("link");
 	});
 
-	it("dynamicPushLike.broadcastDynamicSequence → PushRouter 收到 payload 数组", async () => {
+	it("dynamicPushLike.push(分条)→ PushRouter 收到一次推送,本体那个锚点里是 payload 数组", async () => {
 		// 引擎说 uid,推送层认订阅 id —— 这个 uid 得真有一条订阅,适配器才往下交。
 		const c = setup({
 			subs: [
@@ -2230,50 +2243,57 @@ describe("createEngines — 消息版式", () => {
 			],
 		});
 		active = c;
-		const seq = H.dynamic[0].opts.push.broadcastDynamicSequence;
-		expect(seq).toBeDefined();
-		await seq(
-			"1",
-			[
-				[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
-				[{ kind: "text", text: "正文" }],
+		await H.dynamic[0].opts.push.push({
+			uid: "1",
+			anchors: [
+				{
+					role: "main",
+					messages: [
+						[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
+						[{ kind: "text", text: "正文" }],
+					],
+				},
 			],
-			"post",
-		);
-		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
-		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
-		expect(subscriptionId).toBe("s1");
-		expect(feature).toBe("post");
-		expect(Array.isArray(payloads)).toBe(true);
+		});
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		const [sent] = H.push[0].push.mock.calls[0];
+		expect(sent.subscriptionId).toBe("s1");
+		expect(sent.feature).toBe("post");
+		expect(sent.anchors).toHaveLength(1);
+		expect(sent.anchors[0].role).toBe("main");
+		const payloads = sent.anchors[0].messages;
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
 		expect(payloads[1]).toEqual({ kind: "text", text: "正文" });
-		// part="post" 不抑制 @全体(维持 feature 决定的旧行为)
-		expect(opts).toBeUndefined();
+		// 作品的本体不抑制 @全体(按特性决定)
+		expect(sent).not.toHaveProperty("allowAtAll");
 	});
 
-	it("livePushLike.broadcastSequenceToTargets → feature 映射 + allowAtAll(开播=3)", async () => {
+	it("livePushLike.push(分条)→ feature 映射 + 许 @全体(开播=3)", async () => {
 		const c = setup({
 			subs: [
 				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
 			],
 		});
 		active = c;
-		const seq = H.live[0].opts.push.broadcastSequenceToTargets;
-		expect(seq).toBeDefined();
 		const msg1 = segmentContentBuilder.message([
 			segmentContentBuilder.image(Buffer.from("img"), "image/jpeg"),
 		]);
 		const msg2 = segmentContentBuilder.message([segmentContentBuilder.text("开播文案")]);
-		await seq("1", [msg1, msg2], 3);
-		expect(H.push[0].broadcastToFeature).toHaveBeenCalledTimes(1);
-		const [subscriptionId, feature, payloads, opts] = H.push[0].broadcastToFeature.mock.calls[0];
-		expect(subscriptionId).toBe("s1");
-		expect(feature).toBe("liveStart");
+		await H.live[0].opts.push.push({
+			uid: "1",
+			type: 3,
+			anchors: [{ role: "main", messages: [msg1, msg2] }],
+		});
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		const [sent] = H.push[0].push.mock.calls[0];
+		expect(sent.subscriptionId).toBe("s1");
+		expect(sent.feature).toBe("liveStart");
+		const payloads = sent.anchors[0].messages;
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
 		expect(payloads[1]).toEqual({ kind: "text", text: "开播文案" });
-		expect(opts).toMatchObject({ allowAtAll: true });
+		expect(sent).not.toHaveProperty("allowAtAll");
 	});
 
 	it("回归镜像:只改全局 messageLayout → live.applyOps 与 dynamic.applyOps 都收到刷新", () => {

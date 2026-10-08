@@ -124,7 +124,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		livePushTimerManager: new Map<string, () => void>(),
 		logSideEffectState: () => {},
 		danmakuCollector: { clear: mocks.clear, registerRoom: mocks.registerRoom },
-		push: { sendPrivateMsg: mocks.sendPrivateMsg, broadcastToTargets: async () => {} },
+		push: { sendPrivateMsg: mocks.sendPrivateMsg, push: async () => {} },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",
 			renderLiveStreaming: () => "正在直播",

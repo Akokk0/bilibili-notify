@@ -3,7 +3,7 @@
  *
  * 版式覆盖 `LiveType.StartBroadcasting` / `LiveBroadcast` / `StopBroadcast` 三类:
  * 卡片 / 文本(各自模板) / 链接(房间链接)三部件按块序装配,分条符切
- * 多条经 `broadcastSequenceToTargets`。SC / 上舰不经 `sendLiveNotifyCard`,不受影响。
+ * 多条是本体那个锚点里的一串。SC / 上舰不经 `sendLiveNotifyCard`,不受影响。
  *
  * 策略:`RoomContext.prototype.sendLiveNotifyCard.call(fakeCtx, params)` 白盒直调
  * (与 room-session-handlers 的「plain object as RoomContext」同款),contentBuilder
@@ -13,7 +13,7 @@
 
 import type { Logger, MessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { SubItemView } from "../../push-like";
+import type { LivePush, SubItemView } from "../../push-like";
 import { LivePushType } from "../../push-like";
 import { LiveTemplateRenderer } from "../../template-renderer";
 import { LiveType } from "../../types";
@@ -25,8 +25,8 @@ type Seg = { kind: string; text?: string };
 type Msg = { kind: "message"; segs: Seg[] };
 
 function makeCtx(opts?: { renderFail?: boolean }) {
-	const broadcastToTargets = vi.fn(async (..._args: unknown[]) => {});
-	const broadcastSequenceToTargets = vi.fn(async (..._args: unknown[]) => {});
+	const pushedMessage = vi.fn(async (..._args: unknown[]) => {});
+	const pushedSequence = vi.fn(async (..._args: unknown[]) => {});
 	// 参数签名照抄 `ImageRenderer#generateLiveCard`,不写成零参 —— 零参的 mock 让
 	// `mock.calls[0][1]` 在类型上成了「长度 0 的元组」,断言第 2 个参数根本编译不过。
 	const generateLiveCard = opts?.renderFail
@@ -46,11 +46,18 @@ function makeCtx(opts?: { renderFail?: boolean }) {
 			image: (): Seg => ({ kind: "image" }),
 			message: (segs: Seg[]): Msg => ({ kind: "message", segs }),
 		},
-		push: { broadcastToTargets, broadcastSequenceToTargets },
+		// 交出去的一次推送摊开记:本体一条 → pushedMessage(uid, 内容, 推送类型),本体几条(分条)→ pushedSequence。
+		push: {
+			push: async ({ uid, type, anchors }: LivePush): Promise<void> => {
+				const messages = (await anchors.find((a) => a.role === "main")?.messages) ?? [];
+				if (messages.length === 1) await pushedMessage(uid, messages[0], type);
+				else if (messages.length > 1) await pushedSequence(uid, messages, type);
+			},
+		},
 	} as unknown as RoomContext;
 	// 白盒:挂上真实原型,让 sendLiveNotifyCard 内部调用的私有 helper 可达。
 	Object.setPrototypeOf(ctx, RoomContext.prototype);
-	return { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard, avatarOf };
+	return { ctx, pushedMessage, pushedSequence, generateLiveCard, avatarOf };
 }
 
 const LINK = "https://live.bilibili.com/123";
@@ -93,15 +100,15 @@ const send = (ctx: RoomContext, params: ReturnType<typeof baseParams>) =>
 
 describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	it("版式 [card,text,link] 一条:链接独立部件,同条内以分隔符连接", async () => {
-		const { ctx, broadcastToTargets } = makeCtx();
+		const { ctx, pushedMessage } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
 				messageLayout: layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]),
 			}),
 		);
-		expect(broadcastToTargets).toHaveBeenCalledTimes(1);
-		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		expect(pushedMessage).toHaveBeenCalledTimes(1);
+		const content = pushedMessage.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["image", "text"]);
 		expect(content.segs[1]?.text).toBe(`开播文案\n${LINK}`);
 	});
@@ -157,7 +164,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 
 	// 刻画(拆成中立装配 + 按 uid 发送之前就是这样):出卡要好几秒,这期间引擎被拆了就不再推。
 	it("出卡期间引擎被拆了 → 不推", async () => {
-		const { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard } = makeCtx();
+		const { ctx, pushedMessage, pushedSequence, generateLiveCard } = makeCtx();
 		let disposed = false;
 		(ctx as unknown as { isDisposed: () => boolean }).isDisposed = () => disposed;
 		generateLiveCard.mockImplementation(async () => {
@@ -167,12 +174,12 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 		await send(ctx, baseParams());
 		// 验红:把 room-helpers.ts 里 `sendToUid` 开头那句 `isDisposed()` 删掉,这条红。
 		expect(generateLiveCard).toHaveBeenCalledTimes(1);
-		expect(broadcastToTargets).not.toHaveBeenCalled();
-		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
+		expect(pushedMessage).not.toHaveBeenCalled();
+		expect(pushedSequence).not.toHaveBeenCalled();
 	});
 
-	it("分条符切两条 → broadcastSequenceToTargets,一次收齐、顺序正确", async () => {
-		const { ctx, broadcastToTargets, broadcastSequenceToTargets } = makeCtx();
+	it("分条符切两条 → 本体那个锚点里是两条的序列,一次收齐、顺序正确", async () => {
+		const { ctx, pushedMessage, pushedSequence } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -184,13 +191,9 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 				]),
 			}),
 		);
-		expect(broadcastToTargets).not.toHaveBeenCalled();
-		expect(broadcastSequenceToTargets).toHaveBeenCalledTimes(1);
-		const [uid, contents, type] = broadcastSequenceToTargets.mock.calls[0] as [
-			string,
-			Msg[],
-			number,
-		];
+		expect(pushedMessage).not.toHaveBeenCalled();
+		expect(pushedSequence).toHaveBeenCalledTimes(1);
+		const [uid, contents, type] = pushedSequence.mock.calls[0] as [string, Msg[], number];
 		expect(uid).toBe("u1");
 		expect(type).toBe(LivePushType.StartBroadcasting);
 		expect(contents).toHaveLength(2);
@@ -199,7 +202,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 	});
 
 	it("隐藏 card 块 → 跳过图片渲染", async () => {
-		const { ctx, broadcastToTargets, generateLiveCard } = makeCtx();
+		const { ctx, pushedMessage, generateLiveCard } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -211,25 +214,25 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 			}),
 		);
 		expect(generateLiveCard).not.toHaveBeenCalled();
-		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		const content = pushedMessage.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["text"]);
 	});
 
 	it("渲染失败 → card 部件缺席,其余部件照发", async () => {
-		const { ctx, broadcastToTargets } = makeCtx({ renderFail: true });
+		const { ctx, pushedMessage } = makeCtx({ renderFail: true });
 		await send(
 			ctx,
 			baseParams({
 				messageLayout: layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]),
 			}),
 		);
-		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		const content = pushedMessage.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["text"]);
 		expect(content.segs[0]?.text).toBe(`开播文案\n${LINK}`);
 	});
 
 	it("全部块隐藏 → 本次不推送", async () => {
-		const { ctx, broadcastToTargets, broadcastSequenceToTargets, generateLiveCard } = makeCtx();
+		const { ctx, pushedMessage, pushedSequence, generateLiveCard } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -241,13 +244,13 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 			}),
 		);
 		expect(generateLiveCard).not.toHaveBeenCalled();
-		expect(broadcastToTargets).not.toHaveBeenCalled();
-		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
+		expect(pushedMessage).not.toHaveBeenCalled();
+		expect(pushedSequence).not.toHaveBeenCalled();
 	});
 	// 刻画(ADR-0019 决策 67 把装配合成一份之前钉的现状):自定义连接符、隐藏的分条符
 	// 不切组、卡片夹在文字中间时前后两段文字各自成段。
 	it("自定义连接符连相邻文字;隐藏的分条符不切组", async () => {
-		const { ctx, broadcastToTargets, broadcastSequenceToTargets } = makeCtx();
+		const { ctx, pushedMessage, pushedSequence } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -262,28 +265,28 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 				),
 			}),
 		);
-		expect(broadcastSequenceToTargets).not.toHaveBeenCalled();
-		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		expect(pushedSequence).not.toHaveBeenCalled();
+		const content = pushedMessage.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["text", "image"]);
 		expect(content.segs[0]?.text).toBe(`${LINK} | 开播文案`);
 	});
 
 	it("卡片夹在文字中间 → 前后两段文字各自成段,不跨卡片连接", async () => {
-		const { ctx, broadcastToTargets } = makeCtx();
+		const { ctx, pushedMessage } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
 				messageLayout: layoutOf([{ type: "text" }, { type: "card" }, { type: "link" }]),
 			}),
 		);
-		const content = broadcastToTargets.mock.calls[0]?.[1] as Msg;
+		const content = pushedMessage.mock.calls[0]?.[1] as Msg;
 		expect(content.segs.map((s) => s.kind)).toEqual(["text", "image", "text"]);
 		expect(content.segs[0]?.text).toBe("开播文案");
 		expect(content.segs[2]?.text).toBe(LINK);
 	});
 
 	it("直播中推送(LiveBroadcast)传版式 → 同开播一样按块序装配,链接独立部件", async () => {
-		const { ctx, broadcastToTargets } = makeCtx();
+		const { ctx, pushedMessage } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -291,15 +294,15 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 				messageLayout: layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]),
 			}),
 		);
-		expect(broadcastToTargets).toHaveBeenCalledTimes(1);
-		const [, content, type] = broadcastToTargets.mock.calls[0] as [string, Msg, number];
+		expect(pushedMessage).toHaveBeenCalledTimes(1);
+		const [, content, type] = pushedMessage.mock.calls[0] as [string, Msg, number];
 		expect(type).toBe(LivePushType.Live);
 		expect(content.segs.map((s) => s.kind)).toEqual(["image", "text"]);
 		expect(content.segs[1]?.text).toBe(`开播文案\n${LINK}`);
 	});
 
 	it("下播推送(StopBroadcast)传版式 → 隐藏 card 后只剩文本,链接独立部件", async () => {
-		const { ctx, broadcastToTargets, generateLiveCard } = makeCtx();
+		const { ctx, pushedMessage, generateLiveCard } = makeCtx();
 		await send(
 			ctx,
 			baseParams({
@@ -312,7 +315,7 @@ describe("RoomContext.sendLiveNotifyCard — 消息版式", () => {
 			}),
 		);
 		expect(generateLiveCard).not.toHaveBeenCalled();
-		const [, content, type] = broadcastToTargets.mock.calls[0] as [string, Msg, number];
+		const [, content, type] = pushedMessage.mock.calls[0] as [string, Msg, number];
 		expect(type).toBe(LivePushType.LiveEnd);
 		expect(content.segs.map((s) => s.kind)).toEqual(["text"]);
 		expect(content.segs[0]?.text).toBe(`开播文案\n${LINK}`);

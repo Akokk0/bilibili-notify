@@ -8,7 +8,7 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
 import { defaultMessageKindLayout, type MessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { PushSegment } from "../push-like";
+import type { PostPushAnchor } from "../push-like";
 import {
 	type CardFailureTracker,
 	createCardFailureTracker,
@@ -50,8 +50,12 @@ const layoutOf = (blocks: Array<{ type: string; visible?: boolean }>): MessageKi
 
 interface Harness {
 	args: DeliverWorkArgs;
-	broadcast: ReturnType<typeof vi.fn>;
-	broadcastSequence: ReturnType<typeof vi.fn>;
+	/** 交给推送口的每一次推送(它的锚点)原样记在这儿。 */
+	push: ReturnType<typeof vi.fn>;
+	/** 摊开记:一个锚点里一条消息 → `(段, 角色)`。 */
+	pushedMessage: ReturnType<typeof vi.fn>;
+	/** 摊开记:一个锚点里几条消息(分条)→ `(段[][], 角色)`。 */
+	pushedSequence: ReturnType<typeof vi.fn>;
 	comment: ReturnType<typeof vi.fn>;
 	sendErrorMsg: ReturnType<typeof vi.fn>;
 	emitEngineError: ReturnType<typeof vi.fn>;
@@ -70,8 +74,15 @@ function harness(
 		cardFailures?: CardFailureTracker;
 	} = {},
 ): Harness {
-	const broadcast = vi.fn(async () => {});
-	const broadcastSequence = vi.fn(async () => {});
+	const pushedMessage = vi.fn(async (..._args: unknown[]) => {});
+	const pushedSequence = vi.fn(async (..._args: unknown[]) => {});
+	const push = vi.fn(async (anchors: PostPushAnchor[]) => {
+		for (const anchor of anchors) {
+			const messages = (await anchor.messages) ?? [];
+			if (messages.length === 1) await pushedMessage(messages[0], anchor.role);
+			else if (messages.length > 1) await pushedSequence(messages, anchor.role);
+		}
+	});
 	const comment = vi.fn(async () => "点评");
 	const sendErrorMsg = vi.fn(async () => {});
 	const emitEngineError = vi.fn();
@@ -83,7 +94,7 @@ function harness(
 	const args: DeliverWorkArgs = {
 		work,
 		settings: { messageLayout: defaultMessageKindLayout("post"), ...over.settings },
-		push: { broadcast, broadcastSequence },
+		push,
 		stillSubscribed: over.stillSubscribed ?? (() => true),
 		config: { imageGroup: { enabled: false, mergeForward: false }, ...over.config },
 		deps: {
@@ -99,8 +110,9 @@ function harness(
 	};
 	return {
 		args,
-		broadcast,
-		broadcastSequence,
+		push,
+		pushedMessage,
+		pushedSequence,
 		comment,
 		sendErrorMsg,
 		emitEngineError,
@@ -109,16 +121,16 @@ function harness(
 	};
 }
 
-const segsOf = (h: Harness, call = 0): Seg[] => h.broadcast.mock.calls[call]?.[0] as Seg[];
+const segsOf = (h: Harness, call = 0): Seg[] => h.pushedMessage.mock.calls[call]?.[0] as Seg[];
 
 describe("deliverWork — 按版式装配", () => {
-	it("默认版式:卡片 + 模板文字与链接同条,part=post,带 pushId", async () => {
+	it("默认版式:卡片 + 模板文字与链接同条,是这次推送的本体,只交一次", async () => {
 		const h = harness();
 		expect(await deliverWork(h.args)).toBe("delivered");
-		expect(h.broadcast).toHaveBeenCalledTimes(1);
-		const [segs, part, opts] = h.broadcast.mock.calls[0] as [Seg[], string, { pushId?: string }];
-		expect(part).toBe("post");
-		expect(opts.pushId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(h.push).toHaveBeenCalledTimes(1);
+		expect(h.pushedMessage).toHaveBeenCalledTimes(1);
+		const [segs, role] = h.pushedMessage.mock.calls[0] as [Seg[], string];
+		expect(role).toBe("main");
 		expect(segs.map((s) => s.kind)).toEqual(["image", "text"]);
 		expect(segs[0]).toMatchObject({ buffer: CARD, mime: "image/jpeg" });
 		expect(segs[1]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
@@ -131,9 +143,9 @@ describe("deliverWork — 按版式装配", () => {
 			},
 		});
 		await deliverWork(h.args);
-		expect(h.broadcast).not.toHaveBeenCalled();
-		const [messages, part] = h.broadcastSequence.mock.calls[0] as [Seg[][], string];
-		expect(part).toBe("post");
+		expect(h.pushedMessage).not.toHaveBeenCalled();
+		const [messages, role] = h.pushedSequence.mock.calls[0] as [Seg[][], string];
+		expect(role).toBe("main");
 		expect(messages.map((m) => m.map((s) => s.kind))).toEqual([["image"], ["text"]]);
 	});
 
@@ -156,8 +168,8 @@ describe("deliverWork — 按版式装配", () => {
 			},
 		});
 		expect(await deliverWork(h.args)).toBe("delivered");
-		expect(h.broadcast).not.toHaveBeenCalled();
-		expect(h.broadcastSequence).not.toHaveBeenCalled();
+		// 没有本体、也没有图集:连推送口都不调。
+		expect(h.push).not.toHaveBeenCalled();
 		expect(h.work.renderCard).not.toHaveBeenCalled();
 		expect(h.comment).not.toHaveBeenCalled();
 	});
@@ -413,8 +425,7 @@ describe("deliverWork — 还订阅着吗", () => {
 			stillSubscribed: () => subscribed,
 		});
 		expect(await deliverWork(h.args)).toBe("unsubscribed");
-		expect(h.broadcast).not.toHaveBeenCalled();
-		expect(h.broadcastSequence).not.toHaveBeenCalled();
+		expect(h.push).not.toHaveBeenCalled();
 	});
 });
 
@@ -424,40 +435,49 @@ describe("deliverWork — 发送失败与图集", () => {
 		{ url: "http://a/2.jpg", width: 800, height: 600 },
 	];
 
-	it("主卡发送失败 → 往外抛,不再附图集", async () => {
+	it("推送口抛错(本体没交出去)→ 往外抛", async () => {
 		const h = harness({
 			work: { gallery },
 			config: { imageGroup: { enabled: true, mergeForward: false } },
 		});
-		h.broadcast.mockRejectedValueOnce(new Error("bot 掉线"));
+		h.push.mockRejectedValueOnce(new Error("bot 掉线"));
 		await expect(deliverWork(h.args)).rejects.toThrow("bot 掉线");
-		expect(h.broadcast).toHaveBeenCalledTimes(1);
+		expect(h.push).toHaveBeenCalledTimes(1);
 	});
 
-	it("图集附在主卡之后,同一个 pushId,part=post-images", async () => {
+	it("图集与主卡是同一次推送:只交一次,本体在前,图集是不带键的附加项锚点", async () => {
 		const h = harness({
 			work: { gallery },
 			config: { imageGroup: { enabled: true, mergeForward: true } },
 		});
 		await deliverWork(h.args);
-		const calls = h.broadcast.mock.calls as Array<[PushSegment[], string, { pushId?: string }]>;
-		expect(calls.map((c) => c[1])).toEqual(["post", "post-images"]);
-		expect(calls[1]?.[2].pushId).toBe(calls[0]?.[2].pushId);
-		expect(calls[1]?.[0]).toEqual([{ kind: "image-group", mergeForward: true, images: gallery }]);
+		expect(h.push).toHaveBeenCalledTimes(1);
+		const [anchors] = h.push.mock.calls[0] as [PostPushAnchor[]];
+		// 图集掉成本体就会再 @ 一次全体;带上键就会被附加项的三态表收窄。
+		expect(anchors.map((a) => [a.role, a.extra])).toEqual([
+			["main", undefined],
+			["extra", undefined],
+		]);
+		expect(anchors[1]?.messages).toEqual([
+			[{ kind: "image-group", mergeForward: true, images: gallery }],
+		]);
 	});
 
-	it("图集发送失败 → 吞掉,仍算走完", async () => {
+	it("版式把主卡的部件全藏了、图集开着 → 只交图集那一个附加项锚点", async () => {
 		const h = harness({
 			work: { gallery },
 			config: { imageGroup: { enabled: true, mergeForward: false } },
+			settings: {
+				messageLayout: layoutOf([
+					{ type: "card", visible: false },
+					{ type: "text", visible: false },
+					{ type: "link", visible: false },
+				]),
+			},
 		});
-		h.broadcast.mockImplementation(async (_segs: unknown, part: string) => {
-			if (part === "post-images") throw new Error("图组通道抖动");
-		});
-		expect(await deliverWork(h.args)).toBe("delivered");
-		expect(h.logs.some((l) => l.level === "warn" && l.msg.includes("订阅=s1 图组发送失败"))).toBe(
-			true,
-		);
+		await deliverWork(h.args);
+		const [anchors] = h.push.mock.calls[0] as [PostPushAnchor[]];
+		expect(anchors.map((a) => a.role)).toEqual(["extra"]);
 	});
 
 	it("单张图不走合并转发;没有图不附;这条订阅的开关盖过全局", async () => {
@@ -470,7 +490,7 @@ describe("deliverWork — 发送失败与图集", () => {
 
 		const none = harness({ config: { imageGroup: { enabled: true, mergeForward: false } } });
 		await deliverWork(none.args);
-		expect(none.broadcast).toHaveBeenCalledTimes(1);
+		expect(none.pushedMessage).toHaveBeenCalledTimes(1);
 
 		const offForSub = harness({
 			work: { gallery },
@@ -478,7 +498,7 @@ describe("deliverWork — 发送失败与图集", () => {
 			settings: { imageGroupEnabled: false },
 		});
 		await deliverWork(offForSub.args);
-		expect(offForSub.broadcast).toHaveBeenCalledTimes(1);
+		expect(offForSub.pushedMessage).toHaveBeenCalledTimes(1);
 
 		const onForSub = harness({
 			work: { gallery },

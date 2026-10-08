@@ -845,16 +845,26 @@ export class DynamicEngine {
 						// markFail,锚点不前移 → 下轮重判重发,"已屏蔽"提示重复轰炸。
 						// 自包 try/catch:发不出就算了,绝不因此重试。
 						try {
-							await this.push.broadcastDynamic(
+							await this.push.push({
 								uid,
-								[
+								anchors: [
 									{
-										kind: "text",
-										text: blockedNotice(name, filterResult.reason as PostFilterReason, "动态"),
+										role: "main",
+										messages: [
+											[
+												{
+													kind: "text",
+													text: blockedNotice(
+														name,
+														filterResult.reason as PostFilterReason,
+														"动态",
+													),
+												},
+											],
+										],
 									},
 								],
-								"post",
-							);
+							});
 						} catch (e) {
 							this.logger.warn(
 								`[filter] 屏蔽提示发送失败(忽略,不重试以免重复轰炸): ${(e as Error).message}`,
@@ -883,12 +893,7 @@ export class DynamicEngine {
 						() => this.avatarOf(subAtCapture.subscriptionId),
 					),
 					settings: subAtCapture,
-					push: {
-						broadcast: (segments, part, opts) =>
-							this.push.broadcastDynamic(uid, segments, part, opts),
-						broadcastSequence: (messages, part, opts) =>
-							this.push.broadcastDynamicSequence(uid, messages, part, opts),
-					},
+					push: (anchors) => this.push.push({ uid, anchors }),
 					// 出卡 / 点评几个 await 期间 applyOps 可能已退订该 UID(或换成另一条订阅):
 					// 不发,这条也不 markOk。
 					stillSubscribed: () => this.stillSubscribed(uid, subAtCapture),

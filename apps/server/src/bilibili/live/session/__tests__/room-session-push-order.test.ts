@@ -94,7 +94,7 @@ function makeCtx(events: string[]) {
 			image: () => ({ kind: "image" }),
 			message: (segs: unknown[]) => segs,
 		},
-		push: { broadcastToTargets: vi.fn(async () => {}) },
+		push: { push: vi.fn(async () => {}) },
 		isSubscribed: vi.fn((_s: unknown, feat: string) => feat === "liveEnd"),
 		sendLiveNotifyCard,
 		stopMonitoring: vi.fn(),

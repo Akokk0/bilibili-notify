@@ -16,26 +16,27 @@ import type {
 	ExtraKey,
 	MembershipTemplateBundle,
 	MessageKindLayout,
+	PushMessageRole,
 } from "@bilibili-notify/internal";
 
 /**
  * Push category enum — numeric values are the historical bilibili-notify push-type codes.
  * 只在进程内流转(推送层的翻译表按它分流、日志里打出来),**不落盘、不过 wire**:历史行与订阅、
- * 设置存的都是特性键,所以加一档不用迁移。
+ * 设置存的都是特性键,所以加一档、删一档都不用迁移。
+ *
+ * 它说的是「这是哪一种推送」:定特性键、定许不许 @全体。下播的附加项(词云、AI 总结)不是单独的
+ * 一种推送,是下播那次推送里的锚点({@link LivePushAnchor}),按附加项的键认 —— 原先的 5 / 10 两档
+ * 随之删掉,编号空着不复用。
  */
 export enum LivePushType {
 	/** 周期「正在直播」(`liveStreaming`)。 */
 	Live = 0,
 	StartBroadcasting = 3,
 	LiveGuardBuy = 4,
-	/** 历史上承载词云+总结合包推送;现在仅用于词云 —— 下播的附加项,宿主映射到下播那一类。 */
-	WordCloudAndLiveSummary = 5,
 	Superchat = 6,
 	UserDanmakuMsg = 7,
 	UserActions = 8,
 	LiveEnd = 9,
-	/** AI 总结 —— 下播的另一个附加项,宿主同样映射到下播那一类。 */
-	LiveSummary = 10,
 	/**
 	 * 重启补报(`liveStart.catchUpOnBoot`):启动时发现正在播,补一张开播。卡与文字是「正在直播」那一套,
 	 * 但走开播(`liveStart`)的目标、历史记成开播、**不 @全体**。与周期那一档({@link Live})分成两档,
@@ -105,7 +106,7 @@ export function needsLiveMonitor(sub: LiveMonitorInput): boolean {
 
 /**
  * 附加项的开关(ADR-0016):挂在某把主特性下面、与本体分开发的一条消息。引擎只关心下播
- * 那两把(词云 / AI 总结)—— 卡片先发,它们算好后作为同一次推送的后续消息追加;@全体
+ * 那两把(词云 / AI 总结)—— 它们是下播那次推送里排在卡片后面的锚点;@全体
  * 那两把归推送层。发不发给谁也归推送层,引擎照渲照算。
  */
 export type PushExtrasLike = Record<ExtraKey, boolean>;
@@ -307,39 +308,41 @@ export type LiveSubscriptionOp =
 	| { kind: "update"; uid: string; changes: LiveSubChange[] };
 
 /**
- * Push-out interface required by live-engine. Mirrors the methods on
- * `@bilibili-notify/push`'s `PushRouter` we actually call.
+ * 一次直播推送里的一个锚点 —— 推送层 `PushAnchor` 在引擎这一侧的样子:本体(开播 / 下播卡、
+ * 上舰、醒目留言……),或一个附加项(下播的词云、AI 总结)。锚点按先后发。
  *
- * `content` is intentionally `unknown` — the host passes its own
- * `NotificationPayload`; the engine only forwards the value through.
+ * 内容的类型有意是 `unknown`:它是宿主 `contentBuilder` 造出来的东西,引擎只原样递回去。
  */
-/**
- * 一次广播的身份与角色。`pushId`:同一次推送可以分好几次广播(下播卡先发,词云 / 总结算好了
- * 再发),传同一个,宿主的历史就落在同一行里追加;不传 = 宿主自己起一个。`role`:这段
- * 消息是本体还是附加项,缺省本体。
- */
-export interface LiveBroadcastOptions {
-	pushId?: string;
-	role?: "main" | "extra";
+export interface LivePushAnchor {
+	/** 本体(`main`)还是附加项(`extra`)。 */
+	role: PushMessageRole;
+	/** 附加项的键:给了按那张三态表筛目标(词云、总结各一把)。只对 `extra` 有意义。 */
+	extra?: ExtraKey;
+	/**
+	 * 这个锚点的消息,只收一串:一条消息就是单元素,几条是分条序列(同一目标顺序发、一条失败
+	 * 中止该目标这个锚点里的后续条)。也可以是一个「等会儿给」的约定(词云、总结还在做);
+	 * 最后为空就跳过,做的时候出错由推送层记一条警告并跳过。
+	 */
+	messages: unknown[] | Promise<unknown[] | undefined>;
 }
 
+/**
+ * 一次直播推送,整个交给宿主:本体加它的附加项是同一次(历史落同一行)。`type` 定特性键、
+ * 定许不许 @全体(只有开播许);`uid` 由宿主换成订阅 id。
+ */
+export interface LivePush {
+	uid: string;
+	type: LivePushType;
+	/** 按顺序排好的锚点。本体至多一个,有的话排第一个。 */
+	anchors: LivePushAnchor[];
+}
+
+/** Push-out interface required by live-engine. */
 export interface PushLike {
-	broadcastToTargets(
-		uid: string,
-		content: unknown,
-		type: LivePushType,
-		opts?: LiveBroadcastOptions,
-	): Promise<void>;
 	/**
-	 * 消息版式分条:一次推送拆成多条消息的序列广播(语义同 dynamic 端 PushLike 的
-	 * broadcastDynamicSequence:同 target 顺序发、某条失败中止该 target 后续条、
-	 * @全体只跟首条)。
+	 * 把一次直播推送交给推送层。开关、静音与免扰在交出去那一刻判一次;本体发完时返回,
+	 * 附加项在后台按锚点先后接着发。
 	 */
-	broadcastSequenceToTargets(
-		uid: string,
-		contents: unknown[],
-		type: LivePushType,
-		opts?: LiveBroadcastOptions,
-	): Promise<void>;
+	push(push: LivePush): Promise<void>;
 	sendPrivateMsg(content: string): Promise<void>;
 }

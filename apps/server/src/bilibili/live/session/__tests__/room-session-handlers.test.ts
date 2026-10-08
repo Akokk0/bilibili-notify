@@ -21,7 +21,7 @@ import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { membershipEventFromLiveEvent } from "../../membership-event";
 import { GuardLevel } from "../../protocol/events.js";
-import type { SubItemView } from "../../push-like";
+import type { LivePush, SubItemView } from "../../push-like";
 import { LivePushType, wantsLiveEndExtras } from "../../push-like";
 import { superchatEventFromLiveEvent } from "../../superchat-event";
 import { LiveType } from "../../types";
@@ -84,9 +84,21 @@ function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 	} as SubItemView;
 }
 
+/**
+ * 假的 `PushLike.push`:这份用例里的推送都只有本体、一条消息,摊成 `(uid, 内容, 推送类型)` 记到 spy 上。
+ */
+function recordMain(spy: ReturnType<typeof vi.fn>) {
+	const record = spy as unknown as (uid: string, content: unknown, type: LivePushType) => unknown;
+	return async ({ uid, type, anchors }: LivePush): Promise<void> => {
+		const messages = await anchors.find((anchor) => anchor.role === "main")?.messages;
+		await record(uid, messages?.[0], type);
+	};
+}
+
 interface CtxMocks {
 	recordDanmaku: ReturnType<typeof vi.fn>;
-	broadcastToTargets: ReturnType<typeof vi.fn>;
+	/** 交出去的每一次推送,由 {@link recordMain} 摊成 `(uid, 内容, 推送类型)`。 */
+	pushedMain: ReturnType<typeof vi.fn>;
 	fetchUserInfoInLive: ReturnType<typeof vi.fn>;
 	/** 注入的抓图服务(`ctx.imageFetcher`):每个地址回一个以它命名的引用,测试数调用。 */
 	fetchImage: ReturnType<typeof vi.fn>;
@@ -134,7 +146,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 	};
 	const m: CtxMocks = {
 		recordDanmaku: vi.fn(),
-		broadcastToTargets: vi.fn(async () => {}),
+		pushedMain: vi.fn(async () => {}),
 		// 默认不给头像地址:只有专门测头像的用例才覆写,其余用例的出卡输入里观众就没有 avatar。
 		fetchUserInfoInLive: vi.fn(async () => ({ code: 0, data: { uname: "捧场人" } })),
 		fetchImage: vi.fn(async (url: string) =>
@@ -175,7 +187,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		api: { fetchUserInfoInLive: m.fetchUserInfoInLive },
 		imageFetcher: { fetchImage: m.fetchImage },
 		avatarOf: m.avatarOf,
-		push: { broadcastToTargets: m.broadcastToTargets },
+		push: { push: recordMain(m.pushedMain) },
 		imageRenderer: {
 			generateSuperchatCard: m.generateSuperchatCard,
 			generateMembershipCard: m.generateMembershipCard,
@@ -229,7 +241,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		await s.onIncomeSuperChat(scBody);
 		expect(m.recordDanmaku).not.toHaveBeenCalled();
 		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
-		expect(m.broadcastToTargets).not.toHaveBeenCalled();
+		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
 	it("仅收集弹幕(下播开着、词云开着)不推 SC → recordDanmaku 调用但不广播", async () => {
@@ -243,7 +255,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.recordDanmaku).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets).not.toHaveBeenCalled();
+		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
 	it("订阅 SC 但 price < minSuperchatAmount → 不广播", async () => {
@@ -254,10 +266,10 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			makeSub({ superchat: true, minSuperchatAmount: 30 }),
 		) as AnySession;
 		await s.onIncomeSuperChat({ ...scBody, price: 10 });
-		expect(m.broadcastToTargets).not.toHaveBeenCalled();
+		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
-	it("订阅 SC + 图片生成成功 → broadcastToTargets(Superchat)", async () => {
+	it("订阅 SC + 图片生成成功 → pushedMain(Superchat)", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "superchat");
 		const s = new RoomSession(
@@ -266,8 +278,8 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		) as AnySession;
 		await s.onIncomeSuperChat(scBody);
 		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+		expect(m.pushedMain).toHaveBeenCalledTimes(1);
+		expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 		// ㉓c:出卡前不再查发送者(名字用消息里带的)。
 		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 	});
@@ -286,8 +298,8 @@ describe("RoomSession.onIncomeSuperChat", () => {
 		await s.onIncomeSuperChat(scBody);
 		expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+		expect(m.pushedMain).toHaveBeenCalledTimes(1);
+		expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 	});
 
 	/**
@@ -443,8 +455,8 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				makeSub({ superchat: true, minSuperchatAmount: min }),
 			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price });
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
-			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+			expect(m.pushedMain).toHaveBeenCalledTimes(pass ? 1 : 0);
+			if (pass) expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
 			// 放行与否,出卡前都不查发送者(㉓c;从前只有被拦的才不白打接口)。
 			expect(m.fetchUserInfoInLive).not.toHaveBeenCalled();
 		});
@@ -467,7 +479,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				makeSub({ superchat: true, minSuperchatAmount: 30 }),
 			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price: 5 });
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
 		});
 
 		// 现状:醒目留言的正文在判门槛**之前**就记进弹幕收集,被门槛挡掉的也算进词云。
@@ -482,7 +494,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price: 50 });
 			expect(m.recordDanmaku).toHaveBeenCalledWith("r1", "加油", "粉丝");
-			expect(m.broadcastToTargets).not.toHaveBeenCalled();
+			expect(m.pushedMain).not.toHaveBeenCalled();
 		});
 	});
 
@@ -505,9 +517,9 @@ describe("RoomSession.onIncomeSuperChat", () => {
 			) as AnySession;
 			s.masterInfo = { username: "主播", userface: "", roomId: "r1", liveOpenFollowerNum: 0 };
 			await s.onIncomeSuperChat(scBody);
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
-			return { pushed: m.broadcastToTargets.mock.calls[0]?.[1], m };
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
+			expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.Superchat);
+			return { pushed: m.pushedMain.mock.calls[0]?.[1], m };
 		}
 
 		// 验红:改 room-session.ts 里 `const fallback = …` 里任一个字(含全角括号),这条与下一条红;把名字换回查回来的,
@@ -551,7 +563,7 @@ describe("RoomSession.onGuardBuy", () => {
 		m.isSubscribed.mockReturnValue(false);
 		const s = new RoomSession(ctx, makeSub()) as AnySession;
 		await s.onGuardBuy(guardBody);
-		expect(m.broadcastToTargets).not.toHaveBeenCalled();
+		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
 	it("档位 rank 低于门槛(等级不够)→ 不推", async () => {
@@ -560,7 +572,7 @@ describe("RoomSession.onGuardBuy", () => {
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(ctx, makeSub({ membership: true, minGuardRank: 3 })) as AnySession;
 		await s.onGuardBuy(guardBody);
-		expect(m.broadcastToTargets).not.toHaveBeenCalled();
+		expect(m.pushedMain).not.toHaveBeenCalled();
 	});
 
 	// ── ㉓a:钉住门槛、兜底文字与官方图 ────────────────────────────────────────
@@ -606,15 +618,15 @@ describe("RoomSession.onGuardBuy", () => {
 			[1, 3, true],
 		] as const)("门槛 rank %s × 事件 guard_level %s → 放行=%s", async (minRank, level, pass) => {
 			const m = await runWith(minRank, level);
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(pass ? 1 : 0);
-			if (pass) expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+			expect(m.pushedMain).toHaveBeenCalledTimes(pass ? 1 : 0);
+			if (pass) expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
 			// 认得出的档位不记警告。
 			expect(m.warn).not.toHaveBeenCalled();
 		});
 
 		it.each([1, 2, 3] as const)("没配门槛:第 %s 档(guard_level)全放行", async (level) => {
 			const m = await runWith(undefined, level);
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
 		});
 
 		// 会话接的是 rank 门槛函数:事件没带 rank(档位由主播自定的体系)就没有可比的,放行。B 站的翻译一定带 rank,
@@ -631,7 +643,7 @@ describe("RoomSession.onGuardBuy", () => {
 			});
 			const s = new RoomSession(ctx, makeSub({ membership: true, minGuardRank: 3 })) as AnySession;
 			await s.onGuardBuy({ ...guardBody, guardLevel: GuardLevel.Captain });
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
 		});
 
 		// 认不出的档位(guard_level 不是 1 / 2 / 3)→ 丢弃并记一条警告(㉓c;主人定的)。原来 0 放行、带着一张空图推出去,
@@ -642,7 +654,7 @@ describe("RoomSession.onGuardBuy", () => {
 			"guard_level 为 %s、门槛 rank %s → 丢弃并记一条警告,不推",
 			async (level, minRank) => {
 				const m = await runWith(minRank, level);
-				expect(m.broadcastToTargets).not.toHaveBeenCalled();
+				expect(m.pushedMain).not.toHaveBeenCalled();
 				expect(m.generateMembershipCard).not.toHaveBeenCalled();
 				expect(m.warn).toHaveBeenCalledTimes(1);
 				expect(String(m.warn.mock.calls[0]?.[0])).toContain(`guard_level=${level}`);
@@ -674,9 +686,9 @@ describe("RoomSession.onGuardBuy", () => {
 				giftName,
 				user: { name: "船员", uid: 7 },
 			});
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-			expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
-			return m.broadcastToTargets.mock.calls[0]?.[1];
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
+			expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+			return m.pushedMain.mock.calls[0]?.[1];
 		}
 
 		// 验红:改 room-session.ts 末尾兜底里「加入了大航海（」那句的任一个字(含全角括号),这一组红;
@@ -712,7 +724,7 @@ describe("RoomSession.onGuardBuy", () => {
 		});
 	});
 
-	it("自定义文案开着 → 走模板分支:推一张图 + 一句文案,broadcastToTargets(LiveGuardBuy),不出卡", async () => {
+	it("自定义文案开着 → 走模板分支:推一张图 + 一句文案,pushedMain(LiveGuardBuy),不出卡", async () => {
 		const { ctx, m } = makeCtx();
 		m.isSubscribed.mockImplementation((_s: unknown, feat: string) => feat === "membership");
 		const s = new RoomSession(
@@ -724,8 +736,8 @@ describe("RoomSession.onGuardBuy", () => {
 		) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateMembershipCard).not.toHaveBeenCalled();
-		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+		expect(m.pushedMain).toHaveBeenCalledTimes(1);
+		expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
 	});
 
 	/**
@@ -770,8 +782,8 @@ describe("RoomSession.onGuardBuy", () => {
 				giftName,
 				user: { name: "船员", uid: 7 },
 			});
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-			return m.broadcastToTargets.mock.calls[0]?.[1];
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
+			return m.pushedMain.mock.calls[0]?.[1];
 		}
 
 		it.each(cases)("per-UP 开启:上%s → 推该档的文案与图片", async (_label, level, text, img) => {
@@ -849,7 +861,7 @@ describe("RoomSession.onGuardBuy", () => {
 				makeSub({ membership: true, guardTemplate: odd }),
 			) as AnySession;
 			await s.onGuardBuy(guardBody);
-			expect(m.broadcastToTargets.mock.calls[0]?.[1]).toEqual([
+			expect(m.pushedMain.mock.calls[0]?.[1]).toEqual([
 				{ kind: "image", src: "cap.png" },
 				{ kind: "text", text: "船员||{uname}|{guard}" },
 			]);
@@ -929,7 +941,7 @@ describe("RoomSession.onGuardBuy", () => {
 				makeSub({ membership: true, guardTemplate: tiers }),
 			) as AnySession;
 			await s.onGuardBuy({ ...guardBody, guardLevel: GuardLevel.None });
-			expect(m.broadcastToTargets).not.toHaveBeenCalled();
+			expect(m.pushedMain).not.toHaveBeenCalled();
 			expect(m.warn).toHaveBeenCalledTimes(1);
 		});
 	});
@@ -940,8 +952,8 @@ describe("RoomSession.onGuardBuy", () => {
 		const s = new RoomSession(ctx, makeSub({ membership: true })) as AnySession;
 		await s.onGuardBuy(guardBody);
 		expect(m.generateMembershipCard).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-		expect(m.broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
+		expect(m.pushedMain).toHaveBeenCalledTimes(1);
+		expect(m.pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.LiveGuardBuy);
 		// ㉓c 之后名字用事件里的、不再查用户;3a-35 起只为观众头像查一次(上舰帧里没有头像地址)。
 		// 验红:把 room-session.ts 里出卡前的 `fetchGuardViewerAvatar(...)` 去掉,这条红。
 		expect(m.fetchUserInfoInLive).toHaveBeenCalledTimes(1);
@@ -1002,7 +1014,7 @@ describe("RoomSession.onGuardBuy", () => {
 			await s.onGuardBuy(guardBody);
 			const input = m.generateMembershipCard.mock.calls[0]?.[0];
 			expect(input.tier).not.toHaveProperty("icon");
-			expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+			expect(m.pushedMain).toHaveBeenCalledTimes(1);
 		});
 
 		it("总督:同一条路,换成总督那一档(rank 3、档色 #f2a053、徽章与宣告语都是总督的)", async () => {
@@ -1409,7 +1421,7 @@ describe("RoomSession.handleLiveEnd — 消息版式", () => {
 			};
 			return true;
 		});
-		s.dispatchWordCloudAndSummary = vi.fn(async () => {});
+		s.recapAnchors = vi.fn(() => []);
 	}
 
 	it("sub 带 messageLayout → renderLiveEnd 后 sendLiveNotifyCard 收到版式与房间链接", async () => {
@@ -1469,7 +1481,7 @@ describe("文案里的 {time}:按 live_time(北京时间)与当下的钟现算",
 			return true;
 		});
 		s.armPeriodicTimer = vi.fn();
-		s.dispatchWordCloudAndSummary = vi.fn(async () => {});
+		s.recapAnchors = vi.fn(() => []);
 	}
 
 	it("开播:renderLiveStart 收到「2小时4分9秒」,粉丝数过万写成「1.2万」", async () => {
@@ -1667,7 +1679,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 		} = {},
 	): {
 		ctx: RoomContext;
-		broadcastToTargets: ReturnType<typeof vi.fn>;
+		pushedMain: ReturnType<typeof vi.fn>;
 		fetchImage: ReturnType<typeof vi.fn>;
 	} {
 		const fakeServiceCtx: ServiceContext = {
@@ -1678,7 +1690,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			signal: new AbortController().signal,
 			track: () => {},
 		};
-		const broadcastToTargets = vi.fn(async () => {});
+		const pushedMain = vi.fn(async () => {});
 		const fetchImage = vi.fn(async (url: string) =>
 			ok({
 				ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef,
@@ -1689,8 +1701,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			// 其余依赖在 sendLiveNotifyCard 路径上不触达,给最小 stub。
 			api: {} as never,
 			push: {
-				broadcastToTargets,
-				broadcastSequenceToTargets: vi.fn(async () => {}),
+				push: recordMain(pushedMain),
 				sendPrivateMsg: vi.fn(async () => {}),
 			},
 			contentBuilder: {
@@ -1703,8 +1714,8 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			wordcloudGenerator: {} as never,
 			liveSummaryRequester: {} as never,
 			danmakuCollector: {} as never,
-			// imageRenderer=null → 没有 card 部件(buffer undefined),版式路径只剩文本,依旧调
-			// push.broadcastToTargets(uid, msg, pushType),pushType 即被测的映射结果。
+			// imageRenderer=null → 没有 card 部件(buffer undefined),版式路径只剩文本,依旧交出一次
+			// 推送(`type` 即被测的映射结果),由 recordMain 摊成 pushedMain(uid, msg, pushType)。
 			getImageRenderer: () => (over.renderer as never) ?? null,
 			config: {
 				guardTemplate: GUARD_TEMPLATE_OFF,
@@ -1721,7 +1732,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			avatarOf: () => undefined,
 			onRoomIdResolved: vi.fn(),
 		});
-		return { ctx, broadcastToTargets, fetchImage };
+		return { ctx, pushedMain, fetchImage };
 	}
 
 	const liveRoomInfo = {
@@ -1742,7 +1753,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 	};
 
 	async function pushTypeFor(liveType: LiveType): Promise<LivePushType> {
-		const { ctx, broadcastToTargets } = makeRoomCtx();
+		const { ctx, pushedMain } = makeRoomCtx();
 		await ctx.sendLiveNotifyCard({
 			liveType,
 			liveData: {},
@@ -1754,8 +1765,8 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			subscriptionId: "sub-1",
 			messageLayout: defaultMessageKindLayout("live"),
 		});
-		expect(broadcastToTargets).toHaveBeenCalledTimes(1);
-		return broadcastToTargets.mock.calls[0]?.[2] as LivePushType;
+		expect(pushedMain).toHaveBeenCalledTimes(1);
+		return pushedMain.mock.calls[0]?.[2] as LivePushType;
 	}
 
 	it("StartBroadcasting(真开播)→ LivePushType.StartBroadcasting(3) — 唯一 @全体-eligible", async () => {
@@ -1769,7 +1780,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 	});
 
 	it("重启补报:调用方显式给 CatchUp → 原样带到推送层(卡仍是「正在直播」那张,类型与周期那一档分开)", async () => {
-		const { ctx, broadcastToTargets } = makeRoomCtx();
+		const { ctx, pushedMain } = makeRoomCtx();
 		await ctx.sendLiveNotifyCard({
 			liveType: LiveType.LiveBroadcast,
 			pushType: LivePushType.CatchUp,
@@ -1782,7 +1793,7 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			subscriptionId: "sub-1",
 			messageLayout: defaultMessageKindLayout("live"),
 		});
-		expect(broadcastToTargets.mock.calls[0]?.[2]).toBe(LivePushType.CatchUp);
+		expect(pushedMain.mock.calls[0]?.[2]).toBe(LivePushType.CatchUp);
 		// 与周期那一档不是同一个数 —— 翻译表据此把一个翻成 liveStart、一个翻成 liveStreaming。
 		expect(LivePushType.CatchUp as number).not.toBe(LivePushType.Live as number);
 	});
@@ -2169,7 +2180,7 @@ describe("RoomSession — 醒目留言 / 上舰卡的头像", () => {
 				await s.onIncomeSuperChat(scBody);
 				expect(m.generateSuperchatCard).toHaveBeenCalledTimes(1);
 				expect(m.generateSuperchatCard.mock.calls[0]?.[0].viewer).toStrictEqual({ name: "粉丝" });
-				expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
+				expect(m.pushedMain).toHaveBeenCalledTimes(1);
 			}
 		});
 
@@ -2217,8 +2228,8 @@ describe("RoomSession — 醒目留言 / 上舰卡的头像", () => {
 				await s.onGuardBuy(guardBody);
 				expect(m.generateMembershipCard).toHaveBeenCalledTimes(1);
 				expect(m.generateMembershipCard.mock.calls[0]?.[0].viewer).toStrictEqual({ name: "船员" });
-				expect(m.broadcastToTargets).toHaveBeenCalledTimes(1);
-				const pushed = m.broadcastToTargets.mock.calls[0]?.[1];
+				expect(m.pushedMain).toHaveBeenCalledTimes(1);
+				const pushed = m.pushedMain.mock.calls[0]?.[1];
 				expect(pushed).toEqual({ kind: "image" });
 			}
 		});

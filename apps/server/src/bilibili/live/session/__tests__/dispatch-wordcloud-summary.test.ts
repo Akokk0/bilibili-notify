@@ -1,25 +1,25 @@
 /**
- * 下播的两个附加项(词云 / AI 总结)各自门控、各自一次 broadcast。
+ * 下播的两个附加项(词云 / AI 总结)各自门控、各是下播那次推送里的一个锚点。
  *
- * 历史:词云+总结曾合包成一次 broadcast(type=5),关词云开总结时总结跟着丢;拆开后
- * 词云走 WordCloudAndLiveSummary=5、总结走 LiveSummary=10。现在两者都是下播的附加项,
- * 由 `sub.extras` 那两把门控,用同一个 pushId、标 `role: "extra"` 追加。
+ * 历史:词云+总结曾合包成一次 broadcast(type=5),关词云开总结时总结跟着丢;后来拆成两种推送
+ * 类型各发一次。现在两者是下播那次推送里排在卡片后面的附加项锚点(`recapAnchors`),由 `sub.extras`
+ * 那两把门控、各带自己的附加项键,内容是各自的约定 —— 并行做,由推送层按「词云 → 总结」的先后发。
  */
 
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { LiveEvent } from "../../protocol/events.js";
-import { LivePushType, type PushExtrasLike, type SubItemView } from "../../push-like";
+import type { LivePushAnchor, PushExtrasLike, SubItemView } from "../../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSessionBase } from "../room-session-base";
 
-// RoomSessionBase 是 abstract;给一个最小子类把 protected dispatchWordCloudAndSummary
+// RoomSessionBase 是 abstract;给一个最小子类把 protected recapAnchors
 // 暴露给测试。同时给 masterInfo 塞个值,wordcloudGenerator 才会拿到 username。
 class TestSession extends RoomSessionBase {
 	protected buildEventHandler(): (ev: LiveEvent) => void {
 		return () => {};
 	}
-	async runDispatch(custom = "", pushId = "11111111-1111-4111-8111-111111111111"): Promise<void> {
+	recap(custom = ""): LivePushAnchor[] {
 		// biome-ignore lint/suspicious/noExplicitAny: protected 字段的测试 setup
 		(this as any).masterInfo = {
 			username: "U",
@@ -30,7 +30,7 @@ class TestSession extends RoomSessionBase {
 			liveFollowerChange: 0,
 			medalName: "",
 		};
-		return this.dispatchWordCloudAndSummary(custom, pushId);
+		return this.recapAnchors(custom);
 	}
 }
 
@@ -74,23 +74,27 @@ interface CtxOpts {
 	sortedWords?: Array<[string, number]>;
 }
 
-interface Call {
-	uid: string;
-	content: unknown;
-	type: LivePushType;
-	opts?: unknown;
+/** 一组锚点最后各交出什么:`[角色, 附加项键, 兑现后的消息]`。 */
+async function settled(anchors: LivePushAnchor[]) {
+	return Promise.all(anchors.map(async (a) => [a.role, a.extra, await a.messages]));
 }
 
-function makeCtx(opts: CtxOpts): { ctx: RoomContext; calls: Call[]; sub: SubItemView } {
-	const calls: Call[] = [];
+function makeCtx(opts: CtxOpts): {
+	ctx: RoomContext;
+	sub: SubItemView;
+	snapshot: ReturnType<typeof vi.fn>;
+	disposed: { value: boolean };
+} {
+	const disposed = { value: false };
+	const snapshot = vi.fn(() => ({ sortedWords: opts.sortedWords ?? [], senderRecord: {} }));
 	const sub = makeSub({ wordcloud: opts.wantWordcloud, liveSummary: opts.wantSummary });
 	const stub = {
 		logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-		isDisposed: () => false,
+		isDisposed: () => disposed.value,
 		danmakuCollector: {
 			// P2(dim7):真实 snapshot().senderRecord 是 Record<string,number>,
 			// 此前 fixture 用 new Map() 与契约不符,掩盖消费方按对象遍历的潜在 bug。
-			snapshot: () => ({ sortedWords: opts.sortedWords ?? [], senderRecord: {} }),
+			snapshot,
 		},
 		wordcloudGenerator: { generate: vi.fn(async () => opts.wcImage) },
 		// 词云的主播头像出卡那一刻按订阅 id 现读(3a-35);这组用例不关心头像。
@@ -100,69 +104,102 @@ function makeCtx(opts: CtxOpts): { ctx: RoomContext; calls: Call[]; sub: SubItem
 			image: (buf: Buffer, mime: string) => ({ kind: "image", buffer: buf, mime }),
 			text: (t: string) => ({ kind: "text", text: t }),
 		},
-		push: {
-			broadcastToTargets: async (
-				uid: string,
-				content: unknown,
-				type: LivePushType,
-				o?: unknown,
-			) => {
-				calls.push({ uid, content, type, opts: o });
-			},
-			sendPrivateMsg: async () => {},
-		},
 	};
-	return { ctx: stub as unknown as RoomContext, calls, sub };
+	return { ctx: stub as unknown as RoomContext, sub, snapshot, disposed };
 }
 
-describe("dispatchWordCloudAndSummary — 两个附加项各自门控", () => {
-	it("wordcloud=on summary=on:两次独立 broadcast,各用各的 LivePushType,同 pushId、标 extra", async () => {
-		const { ctx, calls, sub } = makeCtx({
+describe("recapAnchors — 两个附加项各自门控、各一个锚点", () => {
+	it("wordcloud=on summary=on:两个附加项锚点,按「词云 → 总结」排,各带各的键", async () => {
+		const { ctx, sub } = makeCtx({
 			wantWordcloud: true,
 			wantSummary: true,
 			wcImage: Buffer.from("img"),
 			summaryText: "总结文本",
 		});
-		const session = new TestSession(ctx, sub);
-		await session.runDispatch("", "22222222-2222-4222-8222-222222222222");
-
-		expect(calls.map((c) => [c.type, c.opts])).toEqual([
-			[
-				LivePushType.WordCloudAndLiveSummary,
-				{ pushId: "22222222-2222-4222-8222-222222222222", role: "extra" },
-			],
-			[LivePushType.LiveSummary, { pushId: "22222222-2222-4222-8222-222222222222", role: "extra" }],
+		const anchors = new TestSession(ctx, sub).recap();
+		expect(await settled(anchors)).toEqual([
+			["extra", "wordcloud", [{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }]],
+			["extra", "liveSummary", [{ kind: "text", text: "总结文本" }]],
 		]);
 	});
 
-	it("wordcloud=off summary=on:只发总结,走 LiveSummary(不会被合包到 wordcloud)", async () => {
-		const { ctx, calls, sub } = makeCtx({
+	it("wordcloud=off summary=on:只有总结的锚点(不会被合包到词云里),词云不算", async () => {
+		const { ctx, sub } = makeCtx({
 			wantWordcloud: false,
 			wantSummary: true,
 			summaryText: "只有总结",
 		});
-		const session = new TestSession(ctx, sub);
-		await session.runDispatch();
-
-		expect(calls).toHaveLength(1);
-		expect(calls[0]?.type).toBe(LivePushType.LiveSummary);
+		const anchors = new TestSession(ctx, sub).recap();
+		expect(await settled(anchors)).toEqual([
+			["extra", "liveSummary", [{ kind: "text", text: "只有总结" }]],
+		]);
+		expect(ctx.wordcloudGenerator.generate).not.toHaveBeenCalled();
 	});
 
-	it("wordcloud=on summary=off:只发词云,走 WordCloudAndLiveSummary", async () => {
-		const { ctx, calls, sub } = makeCtx({
+	it("wordcloud=on summary=off:只有词云的锚点,不问 AI", async () => {
+		const { ctx, sub } = makeCtx({
 			wantWordcloud: true,
 			wantSummary: false,
 			wcImage: Buffer.from("only-wc"),
 		});
-		const session = new TestSession(ctx, sub);
-		await session.runDispatch();
+		const anchors = new TestSession(ctx, sub).recap();
+		expect((await settled(anchors)).map((a) => a[1])).toEqual(["wordcloud"]);
+		expect(ctx.liveSummaryRequester.generate).not.toHaveBeenCalled();
+	});
 
-		expect(calls).toHaveLength(1);
-		expect(calls[0]?.type).toBe(LivePushType.WordCloudAndLiveSummary);
+	it("两个都关:没有锚点,连弹幕快照都不取", async () => {
+		const { ctx, sub, snapshot } = makeCtx({ wantWordcloud: false, wantSummary: false });
+		expect(new TestSession(ctx, sub).recap()).toEqual([]);
+		expect(snapshot).not.toHaveBeenCalled();
+	});
+
+	it("弹幕快照在调用那一刻同步取,两样随即各自开始做(不等对方)", () => {
+		const { ctx, sub, snapshot } = makeCtx({
+			wantWordcloud: true,
+			wantSummary: true,
+			wcImage: Buffer.from("img"),
+			summaryText: "总结",
+		});
+		const anchors = new TestSession(ctx, sub).recap();
+		// 还没 await 任何东西:快照已经取了,两个生成器都已经被叫到。
+		expect(snapshot).toHaveBeenCalledTimes(1);
+		expect(ctx.wordcloudGenerator.generate).toHaveBeenCalledTimes(1);
+		expect(ctx.liveSummaryRequester.generate).toHaveBeenCalledTimes(1);
+		expect(anchors.every((a) => a.messages instanceof Promise)).toBe(true);
+	});
+
+	it("什么都没做出来(生成器回空)→ 约定给 undefined,由推送层跳过那个锚点", async () => {
+		const { ctx, sub } = makeCtx({ wantWordcloud: true, wantSummary: true });
+		expect(await settled(new TestSession(ctx, sub).recap())).toEqual([
+			["extra", "wordcloud", undefined],
+			["extra", "liveSummary", undefined],
+		]);
+	});
+
+	it("做好之后引擎已经被拆了 → 约定给 undefined,不再往外交内容", async () => {
+		const { ctx, sub, disposed } = makeCtx({
+			wantWordcloud: true,
+			wantSummary: true,
+			wcImage: Buffer.from("img"),
+			summaryText: "总结",
+		});
+		const anchors = new TestSession(ctx, sub).recap();
+		disposed.value = true;
+		expect((await settled(anchors)).map((a) => a[2])).toEqual([undefined, undefined]);
+	});
+
+	it("做的时候出错 → 那个锚点的约定被拒绝(由推送层记警告并跳过),另一个不受牵连", async () => {
+		const { ctx, sub } = makeCtx({ wantWordcloud: true, wantSummary: true, summaryText: "总结" });
+		(ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("词云画不出来"),
+		);
+		const [wordcloud, summary] = new TestSession(ctx, sub).recap();
+		await expect(wordcloud?.messages).rejects.toThrow("词云画不出来");
+		expect(await summary?.messages).toEqual([{ kind: "text", text: "总结" }]);
 	});
 });
 
-describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", () => {
+describe("recapAnchors — per-UP 弹幕词云停用词过滤", () => {
 	it("过滤掉 per-UP wordcloudStopWords 命中的词后再喂词云与总结", async () => {
 		const { ctx } = makeCtx({
 			wantWordcloud: true,
@@ -178,7 +215,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		const sub = makeSub();
 		sub.wordcloudStopWords = "刷屏, 哈哈";
 		const session = new TestSession(ctx, sub);
-		await session.runDispatch();
+		await settled(session.recap());
 
 		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
 		expect(wcArg).toEqual([["精彩", 5]]);
@@ -197,7 +234,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		});
 		const sub = makeSub();
 		sub.cardSkin = "k6eee-cafed00d";
-		await new TestSession(ctx, sub).runDispatch();
+		await settled(new TestSession(ctx, sub).recap());
 		const call = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
 		expect(call?.[3]).toBe("k6eee-cafed00d");
 	});
@@ -213,7 +250,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 		const sub = makeSub();
 		const cardSkinKnobs = { "k6eee-cafed00d": { accent: "#aaaaaa" } };
 		sub.cardSkinKnobs = cardSkinKnobs;
-		await new TestSession(ctx, sub).runDispatch();
+		await settled(new TestSession(ctx, sub).recap());
 		const call = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0];
 		expect(call?.[4]).toEqual(cardSkinKnobs);
 	});
@@ -229,7 +266,7 @@ describe("dispatchWordCloudAndSummary — per-UP 弹幕词云停用词过滤", (
 			],
 		});
 		const session = new TestSession(ctx, makeSub());
-		await session.runDispatch();
+		await settled(session.recap());
 
 		const wcArg = (ctx.wordcloudGenerator.generate as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
 		expect(wcArg).toEqual([

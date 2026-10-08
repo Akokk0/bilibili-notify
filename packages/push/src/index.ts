@@ -1,5 +1,6 @@
 export type {
-	BroadcastOptions,
+	Push,
+	PushAnchor,
 	PushMessage,
 	PushMessageResult,
 	PushRouterOptions,

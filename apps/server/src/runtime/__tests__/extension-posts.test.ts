@@ -22,8 +22,8 @@ import {
 	stillPending,
 } from "../../__tests__/support/track-context.js";
 import {
-	type BoundWorkPush,
 	createCardFailureTracker,
+	type DeliverWorkArgs,
 	type PushSegment,
 } from "../../bilibili/dynamic/index.js";
 import { imageRefOf } from "../../images/image-store.js";
@@ -50,6 +50,17 @@ function post(n: number): SubscriptionReportValue<"post"> {
 	};
 }
 
+/**
+ * 假的作品推送口(`deliverWork` 的 `push`):这些用例里一次推送只看本体,把本体那个锚点里的
+ * 每条消息(它的段)依次交给 `onMessage`。
+ */
+function mainOnly(onMessage: (segments: PushSegment[]) => Promise<void>): DeliverWorkArgs["push"] {
+	return async (anchors) => {
+		const messages = (await anchors.find((anchor) => anchor.role === "main")?.messages) ?? [];
+		for (const segments of messages) await onMessage(segments);
+	};
+}
+
 describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", () => {
 	it("第一条出卡慢、第二条紧跟着到:发出去仍是先一后二", async () => {
 		const bus = createNodeMessageBus();
@@ -67,13 +78,10 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 		} as unknown as ImageRenderer;
 		/** 发出去的每条消息里的链接(卡 + 文案 + 链接合成一条,链接在文字段的末行)。 */
 		const sent: string[] = [];
-		const push: BoundWorkPush = {
-			broadcast: async (segments: PushSegment[]) => {
-				const text = segments.find((s) => s.kind === "text");
-				sent.push(text?.kind === "text" ? (text.text.split("\n").pop() ?? "") : "");
-			},
-			broadcastSequence: async () => {},
-		};
+		const push = mainOnly(async (segments: PushSegment[]) => {
+			const text = segments.find((s) => s.kind === "text");
+			sent.push(text?.kind === "text" ? (text.text.split("\n").pop() ?? "") : "");
+		});
 
 		const handle = bindExtensionPosts({
 			bus,
@@ -138,12 +146,9 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 		const render = vi.fn(async () => Buffer.from("card"));
 		const image = { generatePostCard: render } as unknown as ImageRenderer;
 		const sent: PushSegment[][] = [];
-		const push: BoundWorkPush = {
-			broadcast: async (segments: PushSegment[]) => {
-				sent.push(segments);
-			},
-			broadcastSequence: async () => {},
-		};
+		const push = mainOnly(async (segments: PushSegment[]) => {
+			sent.push(segments);
+		});
 		const handle = bindExtensionPosts({
 			bus,
 			logger,
@@ -195,16 +200,13 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
  * 推送落历史的那一笔得赶在各写道关门之前交进去。
  */
 describe("bindExtensionPosts — 登记进 track", () => {
-	function bind(overrides: { broadcast: () => Promise<void> }) {
+	function bind(overrides: { onMessage: () => Promise<void> }) {
 		const ctx = makeTrackingContext();
 		const bus = createNodeMessageBus();
 		const image = {
 			generatePostCard: vi.fn(async () => Buffer.from("card")),
 		} as unknown as ImageRenderer;
-		const push: BoundWorkPush = {
-			broadcast: overrides.broadcast,
-			broadcastSequence: async () => {},
-		};
+		const push = mainOnly(overrides.onMessage);
 		const errors: string[] = [];
 		const handle = bindExtensionPosts({
 			bus,
@@ -246,13 +248,13 @@ describe("bindExtensionPosts — 登记进 track", () => {
 
 	it("一条作品的推送登记进 track:发送落定它才落定", async () => {
 		const sending = deferred();
-		const broadcast = vi.fn(() => sending.promise);
-		const { ctx, handle, emit } = bind({ broadcast });
+		const onMessage = vi.fn(() => sending.promise);
+		const { ctx, handle, emit } = bind({ onMessage });
 
 		emit(1);
 
 		expect(ctx.tracked).toHaveLength(1);
-		await vi.waitFor(() => expect(broadcast).toHaveBeenCalledTimes(1)); // 卡出好了,发送停在半路
+		await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1)); // 卡出好了,发送停在半路
 		expect(await stillPending(ctx.settled())).toBe(true);
 		sending.resolve(undefined);
 		await ctx.settled();
@@ -260,10 +262,10 @@ describe("bindExtensionPosts — 登记进 track", () => {
 	});
 
 	it("推送途中出错:登记进去的这件事不拒,记一条 error(决策 77:不重试)", async () => {
-		const broadcast = vi.fn(async () => {
+		const onMessage = vi.fn(async () => {
 			throw new Error("boom");
 		});
-		const { ctx, handle, emit, errors } = bind({ broadcast });
+		const { ctx, handle, emit, errors } = bind({ onMessage });
 
 		emit(1);
 
@@ -284,12 +286,9 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 			generatePostCard: vi.fn(async () => Buffer.from("card")),
 		} as unknown as ImageRenderer;
 		const sent: PushSegment[][] = [];
-		const push: BoundWorkPush = {
-			broadcast: async (segments: PushSegment[]) => {
-				sent.push(segments);
-			},
-			broadcastSequence: async () => {},
-		};
+		const push = mainOnly(async (segments: PushSegment[]) => {
+			sent.push(segments);
+		});
 		const asked: string[] = [];
 		const handle = bindExtensionPosts({
 			bus,
@@ -363,12 +362,9 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 		});
 		const image = { generatePostCard: render } as unknown as ImageRenderer;
 		const sent: PushSegment[][] = [];
-		const push: BoundWorkPush = {
-			broadcast: async (segments: PushSegment[]) => {
-				sent.push(segments);
-			},
-			broadcastSequence: async () => {},
-		};
+		const push = mainOnly(async (segments: PushSegment[]) => {
+			sent.push(segments);
+		});
 		const put = vi.fn(async (bytes: Uint8Array) => {
 			events.push("put");
 			return postImages.put(bytes);

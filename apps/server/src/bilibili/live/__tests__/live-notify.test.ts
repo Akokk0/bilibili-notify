@@ -152,15 +152,13 @@ describe("pushLiveNotify — 分组与发送", () => {
 		expect(d.send.mock.calls[0]?.[0]).toEqual([[image], [text(`开播啦 | ${LINK}`)]]);
 	});
 
-	it("推送类型与 pushId 原样交给发送", async () => {
+	it("推送类型原样交给发送,除了消息组与类型不再带别的", async () => {
 		const d = deps();
-		const pushId = "11111111-1111-4111-8111-111111111111";
-		await pushLiveNotify(params({ pushType: LivePushType.LiveEnd, pushId }), d.deps);
+		await pushLiveNotify(params({ pushType: LivePushType.LiveEnd }), d.deps);
 		await pushLiveNotify(params({ pushType: LivePushType.Live }), d.deps);
 		expect(d.send.mock.calls[0]?.[1]).toBe(LivePushType.LiveEnd);
-		expect(d.send.mock.calls[0]?.[2]).toEqual({ pushId });
+		expect(d.send.mock.calls[0]).toHaveLength(2);
 		expect(d.send.mock.calls[1]?.[1]).toBe(LivePushType.Live);
-		expect(d.send.mock.calls[1]?.[2]).toEqual({ pushId: undefined });
 	});
 
 	it("所有部件都藏起来 → 不出卡、不发送", async () => {

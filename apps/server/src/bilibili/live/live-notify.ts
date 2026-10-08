@@ -18,7 +18,7 @@ import {
 	type MessageKindLayout,
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
-import type { CustomCardStyleLike, LiveBroadcastOptions, LivePushType } from "./push-like";
+import type { CustomCardStyleLike, LivePushType } from "./push-like";
 
 /** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
 export type LiveNotifyPushType =
@@ -29,13 +29,12 @@ export type LiveNotifyPushType =
 
 /**
  * 绑到这条订阅上的发送。装配只交「推什么」:按版式分好的消息组(至少一组;一组是一条消息,
- * 由中立的图片 / 文字段组成)、推送类型、这次推送的选项。推给谁、翻成哪个平台的消息、
- * 一条还是一串,都归绑定的那一方。
+ * 由中立的图片 / 文字段组成)与推送类型。推给谁、翻成哪个平台的消息、同一次推送里还带不带
+ * 附加项,都归绑定的那一方。
  */
 export type LiveNotifySend = (
 	groups: MessageLayoutSegment[][],
 	type: LiveNotifyPushType,
-	opts: LiveBroadcastOptions,
 ) => Promise<void>;
 
 export interface LiveNotifyParams {
@@ -54,8 +53,6 @@ export interface LiveNotifyParams {
 	/** 这条订阅自己那层旋钮覆盖(按皮肤 id 分,ADR-0014 决策 17 的 🔗);不给 = 全跟全局。 */
 	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
 	pushType: LiveNotifyPushType;
-	/** 见 {@link LiveBroadcastOptions.pushId}:下播卡传它,附加项才能追加到同一行。 */
-	pushId?: string;
 	/** 日志里怎么称呼这条订阅(比如 `uid=…`、`sub=…`)。 */
 	label: string;
 }
@@ -99,5 +96,5 @@ export async function pushLiveNotify(
 		deps.logger.debug(`[push] ${params.label} 消息版式所有部件隐藏/缺失,本次不推送`);
 		return;
 	}
-	await deps.send(groups, params.pushType, { pushId: params.pushId });
+	await deps.send(groups, params.pushType);
 }
