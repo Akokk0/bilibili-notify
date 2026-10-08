@@ -303,17 +303,35 @@ describe("history route — POST /:id/repush", () => {
 /**
  * **按钮该不该灰,列表里就告诉面板**(ADR-0017 决策 9)。
  *
- * 只为有得补的行问(失败 / 部分失败 / 被静音或免扰挡下)—— 每问一次是一次
- * `stat`。已送达与无目标的行不问也不带:它们本来就没有按钮。
+ * 只为有得补的行问 —— **行里还有没送到的或被挡下的消息**(决策 6,10-08 改写;看的是消息,
+ * 不是行的状态),每问一次是一次 `stat`。全都送到了的行与无目标的行不问也不带:它们本来就没有按钮。
  *
- * WS 推来的新行**刻意不带**这个字段(投影在另一层,拿不到 runner)。面板对缺省按
- * 「能补」处理,而那恰好总是对的:一条刚刚失败的推送,它的原件必然还在。
+ * 「有没有得补、补几条」是投影(`toHistoryView`)自己给的,WS 推来的新行也带 —— 那是不查盘的
+ * 一半,一律「能补」(一条刚刚失败的推送,它的原件必然还在)。这里钉的是列表多做的那一步:
+ * 问真的预检,不能补就换成带原因的那一支。
  */
 describe("history route — 列表带上「能不能补」", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
 		canRepushResult = null;
 	});
+
+	const m = (role: "main" | "extra", over: Record<string, unknown> = {}) => ({
+		payload: { kind: "text", text: "x" },
+		role,
+		...over,
+	});
+	const OK = { result: { ok: true, latencyMs: 5 } };
+	const FAIL = { result: { ok: false, code: "unknown", message: "boom" } };
+	const SILENCED = { isSilenced: true };
+	/** 每种状态的行长什么样(消息与状态对得上)。 */
+	const MESSAGES: Record<string, unknown[]> = {
+		failed: [m("main", FAIL), m("extra")],
+		partial: [m("main", OK), m("extra", FAIL)],
+		delivered: [m("main", OK), m("extra", OK)],
+		"no-targets": [m("main"), m("extra")],
+		silenced: [m("main", SILENCED), m("extra", SILENCED)],
+	};
 
 	function rows(...statuses: string[]) {
 		return statuses.map((status, i) => ({
@@ -325,7 +343,7 @@ describe("history route — 列表带上「能不能补」", () => {
 			subscriptionId: "s",
 			targetId: status === "no-targets" ? null : "t",
 			status,
-			messages: [],
+			messages: MESSAGES[status] ?? [],
 		}));
 	}
 
@@ -338,8 +356,35 @@ describe("history route — 列表带上「能不能补」", () => {
 			entries: Array<{ status: string; repush?: unknown }>;
 		};
 		expect(body.entries.map((e) => "repush" in e)).toEqual([true, true, false, false, true]);
-		expect(body.entries[0]?.repush).toEqual({ can: true, total: 0, missing: 0 });
+		expect(body.entries[0]?.repush).toEqual({ can: true, total: 2, missing: 2 });
+		expect(body.entries[1]?.repush).toEqual({ can: true, total: 2, missing: 1 });
 		expect(canRepush).toHaveBeenCalledTimes(3);
+	});
+
+	/**
+	 * 🔴 问不问看的是**消息**,不是行的状态。补发一行被挡下的行,本体补完、附加项还没轮到时,
+	 * 行按状态已是 `delivered` —— 这时不问,按钮就没了,剩下那条再也补不出来。
+	 */
+	it("🔴 状态是 delivered、可还有被挡下的消息没发 → 照问照带;每一号都送到了的不问,不管状态写的什么", async () => {
+		const app = makeApp();
+		const half = [m("main", SILENCED), m("extra", SILENCED), m("main", { ...OK, repushOf: 0 })];
+		query.mockImplementation(async () => [
+			{ ...rows("delivered")[0], id: "half", messages: half },
+			{
+				...rows("failed")[0],
+				id: "stale",
+				messages: [m("main", FAIL), m("main", { ...OK, repushOf: 0 })],
+			},
+		]);
+		const body = (await (await app.request("/")).json()) as {
+			entries: Array<{ id: string; repush?: unknown }>;
+		};
+		expect(body.entries[0]).toMatchObject({
+			id: "half",
+			repush: { can: true, total: 2, missing: 1 },
+		});
+		expect("repush" in (body.entries[1] ?? {})).toBe(false);
+		expect(canRepush).toHaveBeenCalledTimes(1);
 	});
 
 	// 被挡下的行整行没发过:本来几条就差几条,面板据此只给一颗「补发」。

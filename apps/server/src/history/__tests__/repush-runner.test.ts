@@ -38,6 +38,8 @@ import {
 	stillPending,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
+import { createHistoryRoute } from "../../routes/history.js";
+import type { RouteDeps } from "../../routes/types.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { resolveTargetScope } from "../../runtime/target-scope.js";
 import { createRepushRunner, type RepushRunner } from "../repush-runner.js";
@@ -153,6 +155,20 @@ async function seedPartial(): Promise<HistoryEntry> {
 			{ payload: text("总结"), role: "extra" },
 		],
 	});
+}
+
+/**
+ * 列表接口(`GET /api/history`)给这一行的 `repush` 那一格 —— 接的是真的历史仓与这个 runner,
+ * 钉的是「闸、列表、原件去留」三处对同一行给出同一个答案。没给按钮回 undefined。
+ */
+async function listedRepush(using: RepushRunner, entry: HistoryEntry): Promise<unknown> {
+	const app = createHistoryRoute({
+		runtime: { dataRoot: dataDir, historyStore: history, repushRunner: using },
+	} as unknown as RouteDeps);
+	const body = (await (await app.request("/")).json()) as {
+		entries: Array<{ id: string; repush?: unknown }>;
+	};
+	return body.entries.find((e) => e.id === entry.id)?.repush;
 }
 
 /** 等后台那一趟跑完(行的状态不再动)。 */
@@ -691,6 +707,88 @@ describe("补发被静音 / 免扰挡下的行", () => {
 		expect(started(await runner.start(entry.id, entry.createdAt, "missing"))).toBe(2);
 		expect((await settled(entry)).status).toBe("delivered");
 		expect(sent.map((s) => s.text)).toEqual(["词云", "总结"]);
+	});
+
+	/**
+	 * 🔴 **本体补完就被关停打断**(决策 6,10-08 改写)。这一瞬间行按状态已是 `delivered`(本体送到了,
+	 * 被挡的附加项不参与状态),可词云与总结还没发。按钮与原件的去留要是跟着状态走,这一行就停在
+	 * 「已送达、没有按钮、原件已删」,剩下两条再也补不出来 —— 判据是「行里还有没有没发的消息」。
+	 */
+	it("🔴 本体补完就被关停打断:原件还在、预检仍放行、列表仍给按钮;再补一次补齐了才删原件、不再给补", async () => {
+		const entry = await seedSilenced();
+		const parked = () => {};
+		gate = parked; // 本体卡在发送口
+		await runner.start(entry.id, entry.createdAt, "missing");
+		await vi.waitFor(() => expect(gate).not.toBe(parked));
+		ctx.abort(); // 关停
+		(gate as () => void)(); // 本体这才发出去,回 ok;词云、总结不再发
+		await ctx.settled();
+		gate = null;
+
+		const interrupted = await settled(entry);
+		expect(sent.map((s) => s.text)).toEqual(["下播卡"]);
+		expect(interrupted.status).toBe("delivered");
+		expect(await repush.has(entry.id, entry.createdAt)).toBe(true);
+		expect(await runner.canRepush(interrupted)).toBeNull();
+		expect(await listedRepush(runner, entry)).toEqual({ can: true, total: 3, missing: 2 });
+
+		// 重启之后:新的一趟,只补还没发的那两条。
+		const restartedCtx = makeTrackingContext();
+		const restarted = createRepushRunner({
+			history,
+			repush,
+			send: recordingSend,
+			routedTargets: () => routed,
+			currentSubscriptionOf: (row) => row.subscriptionId,
+			targetEnabled: () => enabled,
+			logger: log,
+			serviceCtx: restartedCtx,
+		});
+		sent = [];
+		expect(started(await restarted.start(entry.id, entry.createdAt, "missing"))).toBe(2);
+		await restartedCtx.settled();
+		const row = await history.findRow(entry.id, entry.createdAt);
+		if (!row) throw new Error("row gone");
+		expect(sent.map((s) => s.text)).toEqual(["词云", "总结"]);
+		expect(row.status).toBe("delivered");
+		expect(await repush.has(entry.id, entry.createdAt)).toBe(false);
+		expect((await restarted.canRepush(row))?.message).toContain("全都送到了");
+		expect(denied(await restarted.start(entry.id, entry.createdAt, "all"))).toContain("全都送到了");
+		expect(await listedRepush(restarted, entry)).toBeUndefined();
+	});
+
+	// 「整行重发」的本意就是整行:已经补到的本体也再发一遍。
+	it("all 用在「本体补完、附加项还没发」的行上:三条从头再发一遍(本体又发一次),补齐后删原件", async () => {
+		const entry = await seedSilenced();
+		const parked = () => {};
+		gate = parked;
+		await runner.start(entry.id, entry.createdAt, "missing");
+		await vi.waitFor(() => expect(gate).not.toBe(parked));
+		ctx.abort();
+		(gate as () => void)();
+		await ctx.settled();
+		gate = null;
+		expect((await settled(entry)).status).toBe("delivered");
+
+		const restartedCtx = makeTrackingContext();
+		const restarted = createRepushRunner({
+			history,
+			repush,
+			send: recordingSend,
+			routedTargets: () => routed,
+			currentSubscriptionOf: (row) => row.subscriptionId,
+			targetEnabled: () => enabled,
+			logger: log,
+			serviceCtx: restartedCtx,
+		});
+		sent = [];
+		expect(started(await restarted.start(entry.id, entry.createdAt, "all"))).toBe(3);
+		await restartedCtx.settled();
+		expect(sent.map((s) => s.text)).toEqual(["下播卡", "词云", "总结"]);
+		const row = await history.findRow(entry.id, entry.createdAt);
+		expect(row?.messages.slice(3).map((m) => m.repushOf)).toEqual([0, 0, 1, 2]);
+		expect(row?.status).toBe("delivered");
+		expect(await repush.has(entry.id, entry.createdAt)).toBe(false);
 	});
 
 	it("路由里把目标去掉了 / 目标停用了 → 照挡(决策 10)", async () => {

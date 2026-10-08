@@ -110,3 +110,91 @@ describe("toHistoryView — 被静音 / 免扰挡下的行", () => {
 		expect(view.messages[1]).toMatchObject({ ok: true, repushOf: 0 });
 	});
 });
+
+/**
+ * **能不能补**(ADR-0017 决策 6):有目标、且行里还有没送到的或被挡下的消息,投影就带 `repush`,
+ * 条数按身份号算。这是**不查盘**的那一半(原件在不在、路由还在不在由列表路由另问),所以 WS 推来的
+ * 行也带 —— 面板画不画按钮只看这一格。看的是消息,不是行的状态。
+ */
+describe("toHistoryView — 能不能补(不查盘的那一半)", () => {
+	const TARGET = "44444444-4444-4444-8444-444444444444";
+	const text = { kind: "text", text: "x" } as const;
+	const OK = { ok: true, latencyMs: 3 } as const;
+	const FAIL = { ok: false, code: "unknown", message: "boom" } as const;
+	const row = (over: Partial<HistoryEntry>): HistoryEntry => ({
+		...ROW,
+		targetId: TARGET,
+		...over,
+	});
+
+	it("失败行:带 repush,本来几条、还差几条", () => {
+		const view = toHistoryView(
+			row({
+				status: "failed",
+				messages: [
+					{ payload: text, role: "main", result: FAIL },
+					{ payload: text, role: "extra" },
+				],
+			}),
+		);
+		expect(view.repush).toEqual({ can: true, total: 2, missing: 2 });
+	});
+
+	it("部分失败、补过一次的行:重投不算新的一条,还差的按每一号最后一次算", () => {
+		const view = toHistoryView(
+			row({
+				status: "partial",
+				messages: [
+					{ payload: text, role: "main", result: OK },
+					{ payload: text, role: "extra", result: FAIL },
+					{ payload: text, role: "extra" },
+					{ payload: text, role: "extra", result: OK, repushOf: 1 },
+				],
+			}),
+		);
+		expect(view.repush).toEqual({ can: true, total: 3, missing: 1 });
+	});
+
+	it("被挡下的行:整行都还没发", () => {
+		const view = toHistoryView(
+			row({
+				status: "silenced",
+				messages: [
+					{ payload: text, role: "main", isSilenced: true },
+					{ payload: text, role: "extra", isSilenced: true },
+				],
+			}),
+		);
+		expect(view.repush).toEqual({ can: true, total: 2, missing: 2 });
+	});
+
+	// 🔴 补发一行被挡下的行,本体补完、附加项还没轮到:状态已是 delivered,可还有一条没发。
+	it("🔴 状态已送达、可还有被挡下的消息没发:照带", () => {
+		const view = toHistoryView(
+			row({
+				status: "delivered",
+				messages: [
+					{ payload: text, role: "main", isSilenced: true },
+					{ payload: text, role: "extra", isSilenced: true },
+					{ payload: text, role: "main", result: OK, repushOf: 0 },
+				],
+			}),
+		);
+		expect(view.repush).toEqual({ can: true, total: 2, missing: 1 });
+	});
+
+	it("全都送到了的行不带这一格,哪怕行上的状态写的是 failed", () => {
+		const messages = [
+			{ payload: text, role: "main" as const, result: FAIL },
+			{ payload: text, role: "main" as const, result: OK, repushOf: 0 },
+		];
+		expect(toHistoryView(row({ status: "delivered", messages }))).not.toHaveProperty("repush");
+		expect(toHistoryView(row({ status: "failed", messages }))).not.toHaveProperty("repush");
+	});
+
+	// 无目标行的消息全都没发,可它没有目标可补。
+	it("无目标行不带这一格", () => {
+		expect(toHistoryView(ROW)).not.toHaveProperty("repush");
+		expect(toHistoryView({ ...ROW, status: "failed" })).not.toHaveProperty("repush");
+	});
+});

@@ -1,12 +1,12 @@
 import type {
 	HistoryDailyResponse,
+	HistoryEntryView,
 	HistoryRepushResponse,
 	HistoryResponse,
 } from "@bilibili-notify/contract";
 import { type FeatureKey, FeatureKeySchema, fail, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { z } from "zod";
-import { originalCount, unsentIndices } from "../history/repush.js";
 import { readClearedThrough } from "../history/retention.js";
 import { toHistoryView } from "../history/view.js";
 import { respondFailure } from "./respond-failure.js";
@@ -81,30 +81,20 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			since,
 			feature,
 		});
-		// 只为**有得补**的行(失败 / 部分失败 / 被静音或免扰挡下)问一句「按钮该不该灰」(决策 9),
-		// 每问一次是一次 stat;别的行本来就没有按钮,不问也不带。失败的通常是个位数,
+		// 投影自己已经给了「有没有得补、补几条」(不查盘的那一半,`toHistoryView`;WS 推的也是它)。
+		// 这里只为**有得补**的行再问一句真的预检「按钮该不该灰」(决策 9:原件还在不在、路由还在不在…),
+		// 每问一次是一次 stat;别的行本来就没有按钮,不问。失败的通常是个位数,
 		// 被挡下的在静音一整晚之后可能占满一页。
 		// 图与重推原件清到哪一天:行的日子在它及以前,面板在原来画图的位置写「图已清理」。
 		const clearedThrough = await readClearedThrough(deps.runtime.dataRoot);
 		const views = await Promise.all(
-			entries.map(async (e) => {
-				// 与补发闸(`repushDenial`)放行的三种状态是同一句判断。
-				if (e.status !== "failed" && e.status !== "partial" && e.status !== "silenced") {
-					return toHistoryView(e, { clearedThrough });
-				}
+			entries.map(async (e): Promise<HistoryEntryView> => {
+				const view = toHistoryView(e, { clearedThrough });
+				if (!view.repush) return view;
 				const denial = await deps.runtime.repushRunner.canRepush(e);
-				// 条数在这儿算完交出去 —— 面板自己再算一遍就是第二份实现,而身份号那套
-				// 判定(`repushOf ?? 下标`,每号取最后一次)一改两边就漂。
-				return toHistoryView(e, {
-					clearedThrough,
-					repush: denial
-						? { can: false, code: denial.code, message: denial.message }
-						: {
-								can: true,
-								total: originalCount(e.messages),
-								missing: unsentIndices(e.messages).length,
-							},
-				});
+				return denial
+					? { ...view, repush: { can: false, code: denial.code, message: denial.message } }
+					: view;
 			}),
 		);
 		return c.json<HistoryResponse>({ entries: views });

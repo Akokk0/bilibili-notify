@@ -164,6 +164,8 @@ const ROW = {
 };
 
 const ROW_VIEW = {
+	// 部分失败的行有得补:WS 推的行自带「能补、本来几条、还差几条」(不查盘的那一半)。
+	repush: { can: true, total: 2, missing: 1 },
 	id: "h1",
 	pushId: "p1",
 	createdAt: "2026-05-16T00:00:00.000Z",
@@ -223,6 +225,32 @@ describe("attachChannelWiring — history-recorded / history-updated 投影", ()
 			messages: [{ text: "卡片", role: "main" }],
 		});
 		expect(h.last().data).not.toHaveProperty(["messages", 0, "ok"]);
+		// 没有目标可补:不带 repush,面板不画按钮。
+		expect(h.last().data).not.toHaveProperty("repush");
+	});
+
+	// 面板画不画补发按钮只看 `repush` 这一格;补发途中每追加一条都是一帧 history-updated,整行替换。
+	it("补发途中的 history-updated:还差几条跟着变,补齐那一帧不再带 repush", () => {
+		const h = wire();
+		const retried = {
+			payload: { kind: "text", text: "总结" },
+			role: "extra",
+			repushOf: 1,
+		};
+		h.bus.emit("history-updated", {
+			...ROW,
+			messages: [
+				...ROW.messages,
+				{ ...retried, result: { ok: false, code: "unknown", message: "x" } },
+			],
+		} as never);
+		expect(h.last().data).toMatchObject({ repush: { can: true, total: 2, missing: 1 } });
+		h.bus.emit("history-updated", {
+			...ROW,
+			status: "delivered",
+			messages: [...ROW.messages, { ...retried, result: { ok: true, latencyMs: 1 } }],
+		} as never);
+		expect(h.last().data).not.toHaveProperty("repush");
 	});
 });
 

@@ -260,13 +260,13 @@ function HistoryRow({
 	const count = messageCountOf(entry);
 	const expandable = hasDetails(entry);
 	const targetLabel = targetLabelOf(entry, target);
-	// 按钮长在 failed、partial 与 silenced(被静音 / 免扰挡下,整行没发过)上(ADR-0017 决策 6)。
-	// **判据是行的状态,不是 `repush` 字段在不在** —— WS 推来的新行不带那个字段,可它恰恰是最该能补的那一种。
-	const canOfferRepush =
-		entry.status === "failed" || entry.status === "partial" || entry.status === "silenced";
-	// 不能补时按钮灰掉**并写上原因**,不是藏起来(决策 9)。字段缺省按「能补」处理。
-	const repushBlocked = entry.repush && !entry.repush.can ? entry.repush.message : null;
-	const repushCounts = entry.repush?.can ? entry.repush : null;
+	// 画不画按钮**只看这一行带没带 `repush`**(ADR-0017 决策 6):服务端给「有目标、且行里还有没送到的
+	// 或被挡下的消息」的行带这一格,REST 与 WS 来的都带。不看行的状态 —— 本体补完、附加项还没发的行
+	// 状态已是「已送达」,可它还得能补;面板也不自己数消息(那是第二份实现)。
+	const repush = entry.repush;
+	// 不能补时按钮灰掉**并写上原因**,不是藏起来(决策 9)。
+	const repushBlocked = repush && !repush.can ? repush.message : null;
+	const repushCounts = repush?.can ? repush : null;
 
 	return (
 		<div className={isLast ? "" : "border-b border-bn-border-subtle"}>
@@ -316,7 +316,7 @@ function HistoryRow({
 					<Pill color={status.tone} subtle size="sm">
 						{status.label}
 					</Pill>
-					{canOfferRepush ? (
+					{repush ? (
 						<IconButton
 							size="sm"
 							icon={<Icon.refresh size={12} />}
@@ -329,7 +329,7 @@ function HistoryRow({
 					) : null}
 				</div>
 			</div>
-			{repushOpen && canOfferRepush && repushBlocked === null ? (
+			{repushOpen && repushCounts ? (
 				<RepushBar entry={entry} counts={repushCounts} onClose={() => setRepushOpen(false)} />
 			) : null}
 			{open ? <MessageList entry={entry} /> : null}
@@ -342,8 +342,10 @@ function HistoryRow({
  * 一屏十几行,每行一个弹窗太重;但也不能点一下就发,误触的代价是群里多一条撤不回
  * 的消息。
  *
- * `failed` 行只给一个选项:那一行本来就全没到,「整行重发」与「只补没到的」在这儿是
- * 同一件事。条数是服务端按身份号算好交下来的,面板不自己算(自己算就是第二份实现)。
+ * 给几个选项照决策 8 按行的状态分(画不画按钮不看状态,那是上面 `repush` 的事):`partial` 行给
+ * 「只补没到的」「整行重发」两个;别的行只给一颗、发的是 `missing` —— `failed` 行叫「重新推送」,
+ * 被挡下的行与「状态已送达、可还有没发的」行叫「补发」。条数是服务端按身份号算好交下来的,
+ * 面板不自己算(自己算就是第二份实现)。
  */
 function RepushBar({
 	entry,
@@ -351,7 +353,7 @@ function RepushBar({
 	onClose,
 }: {
 	entry: HistoryEntryView;
-	counts: { total: number; missing: number } | null;
+	counts: { total: number; missing: number };
 	onClose: () => void;
 }) {
 	const repush = useMutation<{ count: number }, Error, "all" | "missing">({
@@ -365,7 +367,7 @@ function RepushBar({
 			return { count: res.count };
 		},
 	});
-	const n = (v: number | undefined) => (v === undefined ? "" : `（${v} 条）`);
+	const n = (v: number) => `（${v} 条）`;
 	// 服务端回的是「收下了」,消息一条都还没发出去 —— 所以说「去补」不说「补好了」。
 	// 真正的结果随后经 WS 一条条回来,这一行会自己变。
 	if (repush.isSuccess) {
@@ -384,22 +386,7 @@ function RepushBar({
 		<div className="border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38">
 			<div className="flex flex-wrap items-center gap-2 text-bn-xs text-bn-text-secondary">
 				<span>{busy ? "女仆这就去～" : "要女仆补哪些呀？"}</span>
-				{entry.status === "silenced" ? (
-					// 被静音 / 免扰挡下的行整行没发过:没有「整行 / 只补没到的」之分,一颗「补发」。
-					// 发的是 `missing` —— 补到一半又失败过的行再按一次,只补还没到的。
-					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
-						补发{n(counts?.missing)}
-					</Btn>
-				) : entry.status === "failed" ? (
-					// 决策 8 只给这一行一颗钮,理由是「本来就全没到,两个选项是同一件事」——
-					// 可 `failed` 判的是**本体那一号**没 ok,不是全没到:@全体先落地且成功、
-					// 本体失败的行就是 failed,此时 total=2 而 missing=1。这颗钮发的是
-					// `missing`(把已经到了的 @全体再发一遍,群里就多 @ 一次全体,撤不回),
-					// 所以印的数也得是 missing —— 印 total 是当面说错话。
-					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
-						重新推送{n(counts?.missing)}
-					</Btn>
-				) : (
+				{entry.status === "partial" ? (
 					<>
 						<Btn
 							size="sm"
@@ -407,12 +394,21 @@ function RepushBar({
 							disabled={busy}
 							onClick={() => repush.mutate("missing")}
 						>
-							只补没到的{n(counts?.missing)}
+							只补没到的{n(counts.missing)}
 						</Btn>
 						<Btn size="sm" variant="outline" disabled={busy} onClick={() => repush.mutate("all")}>
-							整行重发{n(counts?.total)}
+							整行重发{n(counts.total)}
 						</Btn>
 					</>
+				) : (
+					// 只一颗,发的是 `missing`,印的数也是 missing。`failed` 判的是**本体那一号**没 ok,
+					// 不是全没到:@全体先落地且成功、本体失败的行就是 failed(total=2、missing=1)。给它
+					// 「整行重发」会把已经到了的 @全体再发一遍,群里多 @ 一次全体,撤不回 —— 所以不给。
+					// 被挡下的行、状态已送达可还有附加项没发的行同理:只补还没发的那几条。
+					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
+						{entry.status === "failed" ? "重新推送" : "补发"}
+						{n(counts.missing)}
+					</Btn>
 				)}
 				<Btn size="sm" variant="ghost" disabled={busy} onClick={onClose}>
 					先不用了

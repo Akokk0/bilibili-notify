@@ -138,7 +138,6 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 
 		const indices =
 			mode === "all" ? snapshot.messages.map((_, i) => i) : unsentIndices(entry.messages);
-		if (indices.length === 0) return fail("conflict", "这一行全都送到了，不用补啦");
 
 		running.add(rowId);
 		opts.serviceCtx.track(
@@ -207,8 +206,12 @@ export function createRepushRunner(opts: CreateRepushRunnerOptions): RepushRunne
 				break;
 			}
 		}
-		// 决策 5:补齐了才删原件。只补了一部分、或者又失败了的留着,按钮还得能再按。
-		if (latest?.status === "delivered") await opts.repush.drop(entry.id, createdAt);
+		// 决策 5、6:行里一条没发的都不剩了才删原件。只补了一部分、又失败了、或者补到一半被关停
+		// 打断的留着,按钮还得能再按 —— 与闸同一个判据,不看行的状态(本体补完、附加项还被挡着的
+		// 行已经是 delivered)。
+		if (latest && unsentIndices(latest.messages).length === 0) {
+			await opts.repush.drop(entry.id, createdAt);
+		}
 	}
 
 	return { start, canRepush, isRunning: (rowId) => running.has(rowId) };

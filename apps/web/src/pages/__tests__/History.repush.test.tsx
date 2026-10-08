@@ -8,23 +8,26 @@
  * 1. **两下完成,第二下即确认。** 点钮不发,行下面展开一条问「补哪些」,点选项才发 ——
  *    误触的代价是群里多一条撤不回的消息。但**不弹模态框**:一屏十几行,每行一个弹窗
  *    太重(决策 8)。
- * 2. **`partial` 行给两个选项**(整行重发 / 只补没到的)加一个取消;`failed` 行那一行
- *    本来就全没到,两个选项在这儿是同一件事,所以只给一个。
+ * 2. **`partial` 行给两个选项**(整行重发 / 只补没到的)加一个取消;别的有钮的行只给一颗、
+ *    发的是 `missing`(决策 8):`failed` 行叫「重新推送」,被挡下的行与「状态已送达、可还有没发的」
+ *    行叫「补发」。`failed` 行不给「整行重发」—— @全体 已经到了的话会再 @ 一次全体。
  * 3. **补不了的行按钮灰掉并写上原因**,不是把按钮藏掉(决策 9)—— 藏掉的话主人要么
  *    以为这行没失败过,要么以为功能坏了。
- * 4. **已送达与无目标的行根本没有这颗钮**:前者不用补,后者压根没有目标可发(决策 6)。
- * 5. **被静音 / 免扰挡下的行**(`silenced`)也有这颗钮,展开后只有一颗「补发」—— 整行没发过,
- *    没有「整行 / 只补没到的」之分。
+ * 4. **画不画这颗钮只看这一行带没带 `repush`**(决策 6,10-08 改写),不看行的状态:服务端只给
+ *    「有目标、且行里还有没送到的或被挡下的消息」的行带这一格,REST 与 WS 来的行都带。全都送到了的
+ *    行与无目标的行不带,所以没有钮;状态写着「已送达」可还有附加项没发的行带着,所以有。
+ * 5. **被静音 / 免扰挡下的行**(`silenced`)整行没发过,展开后只有一颗「补发」。
  *
  * 条数不在这儿算 —— 服务端按身份号算好了随行交下来(`repush.total` / `.missing`)。
  * 面板自己再算一遍就是第二份实现,判定规则一改两边就漂。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { HistoryEntryView } from "../../services/dashboard";
+import { handlePushEnvelope } from "../../hooks/usePushEventsChannel";
+import { type HistoryEntryView, historyQueryKey } from "../../services/dashboard";
 import History from "../History";
 
 vi.mock("../../services/api", () => ({
@@ -71,10 +74,25 @@ function mockApi(entries: HistoryEntryView[]) {
 
 function renderHistory() {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
+	render(
 		<QueryClientProvider client={qc}>
 			<History />
 		</QueryClientProvider>,
+	);
+	return qc;
+}
+
+/** 服务端经 WS 推来一行(建行或追加),走面板真的那条收帧的路。 */
+function wsRow(
+	qc: QueryClient,
+	event: "history-recorded" | "history-updated",
+	data: HistoryEntryView,
+) {
+	act(() =>
+		handlePushEnvelope({ type: "push-events", event, ts: TS, data }, qc, {
+			push: () => {},
+			replace: () => {},
+		}),
 	);
 }
 
@@ -130,6 +148,45 @@ describe("哪些行有这颗钮", () => {
 		await screen.findByText("某UP");
 		expect(screen.queryByRole("button", { name: /补/ })).toBeNull();
 	});
+
+	/**
+	 * 🔴 画不画只看 `repush`,不看状态。补发一行被挡下的行,本体补完、附加项还没轮到就被打断:
+	 * 行的标签是「已送达」,可还有两条没发 —— 没有钮的话它们再也补不出来。
+	 */
+	it("🔴 状态写着已送达、可 repush 说还差两条 → 有钮,标签照旧写已送达", async () => {
+		mockApi([
+			row({
+				status: "delivered",
+				messages: [
+					{ text: "下播了", kind: "text", role: "main", isSilenced: true },
+					{ text: "词云", kind: "text", role: "extra", isSilenced: true },
+					{ text: "总结", kind: "text", role: "extra", isSilenced: true },
+					{ text: "下播了", kind: "text", role: "main", ok: true, repushOf: 0 },
+				],
+				repush: { can: true, total: 3, missing: 2 },
+			}),
+		]);
+		renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+		expect(screen.getByText("已送达")).toBeTruthy();
+		await userEvent.click(repushButton());
+		// 只一颗「补发」,印的是还差的条数;不给「整行重发」(已经补到的本体不再发)。
+		expect(screen.queryByRole("button", { name: /整行重发/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /只补没到的/ })).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: /^补发（2 条）/ }));
+		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", {
+			createdAt: TS,
+			mode: "missing",
+		});
+	});
+
+	// 反过来:状态说失败、可这一行没带 `repush`(服务端说没得补)→ 没有钮。面板不自己按状态猜。
+	it("状态是 failed、可没带 repush → 没有钮", async () => {
+		mockApi([row({ status: "failed", repush: undefined })]);
+		renderHistory();
+		await screen.findByText("某UP");
+		expect(screen.queryByRole("button", { name: /补/ })).toBeNull();
+	});
 });
 
 describe("两下完成", () => {
@@ -166,14 +223,32 @@ describe("两下完成", () => {
 	 *
 	 * 这颗钮**发的是 `missing`**(决不能是 `all` —— 把已经到了的 @全体再发一遍,群里就多
 	 * @ 一次全体,撤不回),所以印的数也必须是 missing。印 total 就是当面说错话。
+	 * 「整行重发」这颗钮在 failed 行上**永远不出现**。
 	 */
-	it("🔴 failed 行里有已经到了的消息 → 钮上印的是「要补几条」,不是整行几条", async () => {
+	it("🔴 failed 行里有已经到了的消息 → 只有一颗钮,印的是「要补几条」、发的是 missing,没有整行重发", async () => {
 		mockApi([row({ status: "failed", repush: { can: true, total: 2, missing: 1 } })]);
 		renderHistory();
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 		await userEvent.click(repushButton());
-		expect(screen.getByRole("button", { name: /重新推送（1 条）/ })).toBeTruthy();
 		expect(screen.queryByRole("button", { name: /重新推送（2 条）/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /整行重发/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /只补没到的/ })).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: /重新推送（1 条）/ }));
+		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", {
+			createdAt: TS,
+			mode: "missing",
+		});
+	});
+
+	// 被挡下的行哪怕条数说已经有一条到了,也只一颗「补发」,印的是还差的条数。
+	it("状态是 silenced、可已经有一条到了 → 仍是一颗「补发」,数是 missing", async () => {
+		mockApi([silencedRow({ repush: { can: true, total: 3, missing: 2 } })]);
+		renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+		await userEvent.click(repushButton());
+		expect(screen.getByRole("button", { name: /^补发（2 条）/ })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /整行重发/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /只补没到的/ })).toBeNull();
 	});
 
 	it("第二下才发,带的是这一行的 id、createdAt 与选的那档", async () => {
@@ -257,16 +332,55 @@ describe("补不了的行", () => {
 		await userEvent.click(repushButton());
 		expect(screen.queryByRole("button", { name: /先不用了/ })).toBeNull();
 	});
+});
 
-	/**
-	 * WS 推来的新行不带这个字段(投影在另一层)。缺省按「能补」处理 —— 一条刚刚失败的
-	 * 推送,它的原件必然还在。藏起来或者灰掉都会让刚失败的那一行按不动。
-	 */
-	it("没带这个字段(WS 新来的行)→ 按能补处理", async () => {
-		mockApi([row({ repush: undefined })]);
-		renderHistory();
+/**
+ * **WS 推来的行**自带 `repush`(服务端投影给的、没查盘的那一半,一律「能补」)。面板收帧是按 id
+ * 整行替换,所以按钮在不在、印几条,都跟着最新那一帧走 —— 面板自己不留、也不猜。
+ */
+describe("WS 推来的行", () => {
+	it("刚失败的新行立刻有钮,而且按得动", async () => {
+		mockApi([]);
+		const qc = renderHistory();
+		// 等列表先拉完(空的),不然晚到的响应会把 WS 塞进来的那一行盖掉。
+		await waitFor(() => expect(qc.getQueryData(historyQueryKey(200))).toBeDefined());
+		wsRow(
+			qc,
+			"history-recorded",
+			row({ id: "h9", status: "failed", repush: { can: true, total: 3, missing: 3 } }),
+		);
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 		expect(repushButton().hasAttribute("disabled")).toBe(false);
+	});
+
+	it("🔴 补发途中每来一帧 history-updated:钮还在,「还差几条」跟着变;补齐那一帧钮才没", async () => {
+		const qc = renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+		await userEvent.click(repushButton());
+		expect(screen.getByRole("button", { name: /只补没到的（2 条）/ })).toBeTruthy();
+
+		const retried = { text: "词云", kind: "text", role: "extra", ok: true, repushOf: 1 } as const;
+		const base = row();
+		wsRow(
+			qc,
+			"history-updated",
+			row({ messages: [...base.messages, retried], repush: { can: true, total: 3, missing: 1 } }),
+		);
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: /只补没到的（1 条）/ })).toBeTruthy(),
+		);
+		expect(screen.getByRole("button", { name: "补一次" })).toBeTruthy();
+
+		wsRow(
+			qc,
+			"history-updated",
+			row({
+				status: "delivered",
+				messages: [...base.messages, retried, { ...retried, text: "总结", repushOf: 2 }],
+				repush: undefined,
+			}),
+		);
+		await waitFor(() => expect(screen.queryByRole("button", { name: /补/ })).toBeNull());
 	});
 });
 

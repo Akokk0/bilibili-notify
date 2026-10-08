@@ -16,6 +16,10 @@
  *
  * 顺带一条容易忘的:`no-targets` 行不给按钮(决策 6)。那不是失败是没配目标,而且
  * 压根没有目标可发。
+ *
+ * 🔴 **「有没有得补」看的是消息,不是行的状态**(决策 6,10-08 改写):行里还有没送到的或被挡下的
+ * 消息就放行。补发一行带附加项的 `silenced` 行,本体补完那一瞬间行的状态已是 `delivered`,
+ * 可附加项还没发 —— 按状态判,这一行就再也补不全了。
  */
 
 import { randomUUID } from "node:crypto";
@@ -54,6 +58,13 @@ function entry(over: Partial<HistoryEntry> = {}): HistoryEntry {
 		...over,
 	};
 }
+
+/** 被静音 / 免扰挡下的消息:没有结果,带 `isSilenced`。 */
+const SILENCED_MAIN: HistoryMessage = { ...msg("main"), isSilenced: true };
+const SILENCED_EXTRA: HistoryMessage = { ...msg("extra"), isSilenced: true };
+
+/** 一行全都送到了的。 */
+const DELIVERED = () => entry({ status: "delivered", messages: [msg("main", OK)] });
 
 /** 一切都对的那个入参 —— 每条用例只坏一样。 */
 function allow(over: Partial<Parameters<typeof repushDenial>[0]> = {}) {
@@ -127,15 +138,31 @@ describe("repushDenial — 挡什么", () => {
 	});
 
 	it("partial 行也放行(那是「有几条没到」)", () => {
-		expect(repushDenial(allow({ entry: entry({ status: "partial" }) }))).toBeNull();
+		const partial = entry({ status: "partial", messages: [msg("main", OK), msg("extra", FAIL)] });
+		expect(repushDenial(allow({ entry: partial }))).toBeNull();
+	});
+
+	// 🔴 补发一行被挡下的行,本体补完、附加项还没轮到:行按状态已是 delivered,可还有一条没发。
+	it("状态是 delivered、可还有被挡下的消息没发 → 放行", () => {
+		const half = entry({
+			status: "delivered",
+			messages: [SILENCED_MAIN, SILENCED_EXTRA, msg("main", OK, 0)],
+		});
+		expect(repushDenial(allow({ entry: half }))).toBeNull();
+		// 那一条也补上了才不给补。
+		const done = entry({ status: "delivered", messages: [...half.messages, msg("extra", OK, 1)] });
+		expect(repushDenial(allow({ entry: done }))?.message).toContain("全都送到了");
+	});
+
+	// 判据是消息:行上记的状态说什么都不算数。
+	it("每一号都送到了的行不给补,哪怕行上的状态写的是 failed", () => {
+		const stale = entry({ status: "failed", messages: [msg("main", FAIL), msg("main", OK, 0)] });
+		expect(repushDenial(allow({ entry: stale }))?.message).toContain("全都送到了");
 	});
 
 	// 被静音 / 免扰挡下的行整行没发过(ADR-0017 决策 6,10-08 加)。
 	it("silenced 行也放行", () => {
-		const silenced = entry({
-			status: "silenced",
-			messages: [{ payload: { kind: "text", text: "x" }, role: "main", isSilenced: true }],
-		});
+		const silenced = entry({ status: "silenced", messages: [SILENCED_MAIN] });
 		expect(repushDenial(allow({ entry: silenced }))).toBeNull();
 	});
 
@@ -147,16 +174,22 @@ describe("repushDenial — 挡什么", () => {
 	});
 
 	it("已送达的行不给补", () => {
-		expect(repushDenial(allow({ entry: entry({ status: "delivered" }) }))).toMatchObject({
+		expect(repushDenial(allow({ entry: DELIVERED() }))).toMatchObject({
 			ok: false,
 			code: "conflict",
+			message: expect.stringContaining("全都送到了"),
 		});
 	});
 
 	// 那不是失败是没配目标,而且压根没有目标可发(决策 6)。
 	it("无目标行不给补", () => {
-		const e = entry({ status: "no-targets", targetId: null });
-		expect(repushDenial(allow({ entry: e, routedTargets: [] }))).not.toBeNull();
+		const e = entry({ status: "no-targets", targetId: null, messages: [msg("main")] });
+		expect(repushDenial(allow({ entry: e, routedTargets: [] }))?.message).toContain(
+			"当时没有可用的目标",
+		);
+		// 目标那一格空着就是没有目标可发,不看状态,也不看它「还有没发的消息」。
+		const blank = entry({ status: "failed", targetId: null });
+		expect(repushDenial(allow({ entry: blank }))?.message).toContain("当时没有可用的目标");
 	});
 
 	it("routing 里已经没有这个目标 → 拒(用户已经取消了)", () => {
@@ -190,7 +223,7 @@ describe("repushDenial — 挡什么", () => {
 
 	it("每一档拒绝都说得出人话,不是空字符串", () => {
 		const denials = [
-			repushDenial(allow({ entry: entry({ status: "delivered" }) })),
+			repushDenial(allow({ entry: DELIVERED() })),
 			repushDenial(allow({ routedTargets: [] })),
 			repushDenial(allow({ targetEnabled: false })),
 			repushDenial(allow({ running: true })),
