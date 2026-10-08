@@ -69,6 +69,17 @@ describe("hasDetails — 只有一条时看有没有失败的原话", () => {
 	});
 });
 
+describe("hasDetails — 被过滤的行点得开", () => {
+	// 它只有一条文字、没有错误也没有图,可展开后写着具体是被哪一类规则挡的。
+	it("带 filteredBy 的行有东西可看", () => {
+		const main = { text: "摘要", kind: "text", role: "main" } as const;
+		expect(hasDetails({ ...entry([main]), status: "filtered", filteredBy: "blocked-videos" })).toBe(
+			true,
+		);
+		expect(hasDetails(entry([main]))).toBe(false);
+	});
+});
+
 describe("hasDetails — 补过的行照旧点得开", () => {
 	// 一条本体补过一次 = 行里两条,但「本来」只有一条。点开要能看见那两次尝试。
 	it("🔴 本来只有一条、但补过 → 仍然有的可看", () => {

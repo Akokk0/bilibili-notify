@@ -3,11 +3,12 @@ import type {
 	ImageRef,
 	Logger,
 	MessageBus,
+	PostFilterReason,
 	ServiceContext,
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
-import { subscriptionIdentityOf } from "@bilibili-notify/internal";
+import { postText, subscriptionIdentityOf } from "@bilibili-notify/internal";
 import {
 	blockedNotice,
 	type DeliverWorkArgs,
@@ -73,6 +74,17 @@ export interface BindExtensionPostsOptions {
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */
 	postImages: ImageSink;
+	/**
+	 * 一条作品被过滤挡下了 —— 在推送历史里留一行(只留痕,不是推送;与 B 站动态引擎的 `onPostFiltered`
+	 * 接的是同一个写历史的函数)。`text` 是整条文字(`postText` 的 plain 拼法,没截过),`url` 是上报里的作品地址。
+	 * 同步调、不等它;抛错只记日志。
+	 */
+	onPostFiltered(filtered: {
+		subscriptionId: string;
+		filteredBy: PostFilterReason;
+		text: string;
+		url: string;
+	}): void;
 	/** 绑到这条订阅上的作品推送口(`boundPostPush(push, id)`),交给 `deliverWork`。 */
 	pushFor(subscriptionId: string): DeliverWorkArgs["push"];
 	/** 装配的全局那几样 —— 与 B 站动态同一份(`dynamicConfig()`),现取。 */
@@ -138,6 +150,17 @@ export function bindExtensionPosts(opts: BindExtensionPostsOptions): Disposable 
 		const filtered = filterPost(post, settings.filter, log);
 		if (filtered.blocked && filtered.reason) {
 			log.debug(`[ext-post] 订阅 ${id} 的作品 ${report.id} 被过滤,原因:${filtered.reason}`);
+			// 先留痕(推送历史里的一行)。只交文字与地址 —— 图还没写进图库、卡也不出。best-effort。
+			try {
+				opts.onPostFiltered({
+					subscriptionId: id,
+					filteredBy: filtered.reason,
+					text: postText(post, "plain"),
+					url: report.url,
+				});
+			} catch (e) {
+				log.warn(`[ext-post] 被过滤的作品留痕失败(忽略): ${(e as Error).message}`);
+			}
 			if (settings.filter.notify) {
 				// 与 B 站同一条规矩:提醒是 best-effort,发不出就算了。
 				try {

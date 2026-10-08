@@ -1012,6 +1012,103 @@ describe("createEngines — 作品过滤接线", () => {
 		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
 	});
+
+	/**
+	 * **被过滤的作品留痕的接线**(ADR-0021 决策 34 的 🔗)。两条路(B 站动态引擎的 `onPostFiltered`、拓展作品)
+	 * 都接到历史仓的 `record`:不经推送层,不走事件总线。
+	 *
+	 * 验红:把 engines.ts 里递给 DynamicEngine 的 `onPostFiltered` 换成空函数 → 前两条红;把递给
+	 * `bindExtensionPosts` 的 `onPostFiltered: recordFilteredPost` 换成空函数 → 第三条红。
+	 */
+	describe("被过滤的作品留痕", () => {
+		const BILI_SUB = "11111111-1111-4111-8111-111111111111";
+
+		it("B 站动态引擎交来的 uid 换成订阅 id,落一行:身份、名字快照、原因、摘要与链接;不经推送层,登记进 track", async () => {
+			const sub = makeEmptySubscription({
+				id: BILI_SUB,
+				identity: { sourceKey: "bilibili", externalId: "1" },
+			});
+			const record = vi.fn(async () => {});
+			const c = setup({
+				subs: [sub],
+				overrides: {
+					historyStore: { record },
+					subRuntimeStore: { get: () => ({ cachedProfile: { name: "某UP" } }) },
+				},
+			});
+			active = c;
+			await new Promise((r) => setTimeout(r, 0));
+			const before = c.serviceCtx.tracking.tracked.length;
+
+			H.dynamic[0].opts.onPostFiltered({
+				uid: "1",
+				filteredBy: "blocked-keyword",
+				text: "含禁词",
+				url: "https://t.bilibili.com/9",
+			});
+
+			expect(record).toHaveBeenCalledTimes(1);
+			expect(record).toHaveBeenCalledWith({
+				pushId: expect.any(String),
+				feature: "post",
+				identity: { sourceKey: "bilibili", externalId: "1" },
+				subscriptionId: BILI_SUB,
+				targetId: null,
+				filteredBy: "blocked-keyword",
+				messages: [
+					{ payload: { kind: "text", text: "含禁词\nhttps://t.bilibili.com/9" }, role: "main" },
+				],
+				nameSnapshot: "某UP",
+			});
+			expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
+			expect(H.push[0].push).not.toHaveBeenCalled();
+		});
+
+		it("uid 对不上任何订阅(刚删掉)→ 不记", () => {
+			const record = vi.fn(async () => {});
+			const c = setup({ overrides: { historyStore: { record } } });
+			active = c;
+			H.dynamic[0].opts.onPostFiltered({
+				uid: "404",
+				filteredBy: "blocked-keyword",
+				text: "含禁词",
+				url: "https://t.bilibili.com/9",
+			});
+			expect(record).not.toHaveBeenCalled();
+		});
+
+		it("拓展作品被挡:同一个写历史的口落一行(拓展的身份、原因、上报里的地址);不出卡、不推", async () => {
+			const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+			const record = vi.fn(async () => {});
+			const c = setup({
+				puppeteer: true,
+				subs: [sub],
+				extensionSources: sources,
+				globals: globalsWith({ blockVideos: true }),
+				overrides: { historyStore: { record } },
+			});
+			active = c;
+			c.bus.emit("subscription-reported", videoReport(sub));
+			await vi.waitFor(() => expect(record).toHaveBeenCalledTimes(1));
+			expect(record).toHaveBeenCalledWith(
+				expect.objectContaining({
+					feature: "post",
+					identity: { sourceKey: "douyin", externalId: "sec-uid-1" },
+					subscriptionId: sub.id,
+					targetId: null,
+					filteredBy: "blocked-videos",
+					messages: [
+						{
+							payload: { kind: "text", text: "新视频\n一期\nhttps://www.douyin.com/video/p1" },
+							role: "main",
+						},
+					],
+				}),
+			);
+			expect(H.push[0].push).not.toHaveBeenCalled();
+			expect(H.image[0].generatePostCard).not.toHaveBeenCalled();
+		});
+	});
 });
 
 /**

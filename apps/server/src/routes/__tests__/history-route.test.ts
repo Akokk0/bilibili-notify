@@ -412,6 +412,29 @@ describe("history route — 列表带上「能不能补」", () => {
 		});
 	});
 
+	// 被过滤的行只是留痕:目标那一格也空着,那条消息也没有结果 —— 不问、不带 repush,原因原样过线。
+	it("被过滤的行:不问也不带 repush,状态与 filteredBy 原样过线", async () => {
+		const app = makeApp();
+		query.mockImplementation(async () => [
+			{
+				...rows("no-targets")[0],
+				status: "filtered",
+				filteredBy: "allowlist-unmatched",
+				messages: [m("main")],
+			},
+		]);
+		const body = (await (await app.request("/")).json()) as {
+			entries: Array<Record<string, unknown>>;
+		};
+		expect(body.entries[0]).toMatchObject({
+			status: "filtered",
+			filteredBy: "allowlist-unmatched",
+			targetId: null,
+		});
+		expect(body.entries[0]).not.toHaveProperty("repush");
+		expect(canRepush).not.toHaveBeenCalled();
+	});
+
 	it("不能补时带回那句原因", async () => {
 		const app = makeApp();
 		canRepushResult = fail("conflict", "这个目标（或者它所在的连接）停用了，先启用再补");

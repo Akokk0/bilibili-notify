@@ -90,6 +90,21 @@ export interface Post {
 	stats?: { shares?: number; comments?: number; likes?: number };
 }
 
+/**
+ * 作品被过滤挡下的原因(六种)。过滤本体(`filterPost`)住在服务端,词表住这儿:历史行的 `filteredBy`
+ * 记的就是它(`schema/history.ts`),面板按它写「屏蔽关键词」「未命中白名单」这些字。
+ * 前五种是屏蔽规则命中,最后一种是有白名单而没命中 —— 总称「过滤」,不叫「屏蔽」。
+ */
+export const PostFilterReason = {
+	BlockedKeyword: "blocked-keyword",
+	BlockedReposts: "blocked-reposts",
+	BlockedArticles: "blocked-articles",
+	BlockedImages: "blocked-images",
+	BlockedVideos: "blocked-videos",
+	AllowlistUnmatched: "allowlist-unmatched",
+} as const;
+export type PostFilterReason = (typeof PostFilterReason)[keyof typeof PostFilterReason];
+
 /** `plain`:各段无前缀、换行拼接(过滤用);`labeled`:带「标题：」「视频标题：」「（转发自 X：…）」(给 AI 读)。 */
 export type PostTextStyle = "plain" | "labeled";
 

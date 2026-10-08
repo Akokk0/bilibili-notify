@@ -192,6 +192,35 @@ describe("toHistoryView — 能不能补(不查盘的那一半)", () => {
 		expect(toHistoryView(row({ status: "failed", messages }))).not.toHaveProperty("repush");
 	});
 
+	/**
+	 * 🔴 被过滤的行那条消息没有结果、也没被挡 —— 按「还差哪几条」数它是「没发」。必须按状态排除,
+	 * 不能只靠「目标那一格空着」顺带挡住:这里特意给它一个目标,排除仍然成立。
+	 */
+	it("🔴 被过滤的行不带这一格(哪怕它有目标)", () => {
+		const filtered = {
+			status: "filtered" as const,
+			filteredBy: "blocked-keyword" as const,
+			messages: [{ payload: text, role: "main" as const }],
+		};
+		expect(toHistoryView({ ...ROW, ...filtered })).not.toHaveProperty("repush");
+		expect(toHistoryView(row(filtered))).not.toHaveProperty("repush");
+	});
+
+	it("被过滤的行:状态与原因带到面板;别的行没有 filteredBy 这一格", () => {
+		const view = toHistoryView({
+			...ROW,
+			status: "filtered",
+			filteredBy: "blocked-reposts",
+			messages: [{ payload: text, role: "main" }],
+		});
+		expect(view).toMatchObject({
+			status: "filtered",
+			filteredBy: "blocked-reposts",
+			targetId: null,
+		});
+		expect(toHistoryView(ROW)).not.toHaveProperty("filteredBy");
+	});
+
 	// 无目标行的消息全都没发,可它没有目标可补。
 	it("无目标行不带这一格", () => {
 		expect(toHistoryView(ROW)).not.toHaveProperty("repush");

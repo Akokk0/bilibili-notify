@@ -16,7 +16,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NotificationPayload } from "@bilibili-notify/internal";
@@ -223,5 +223,110 @@ describe("deleteRange → 原件跟着没", () => {
 		const ms = Date.parse(entry.createdAt);
 		expect(await store.deleteRange({ fromMs: ms + 60_000, toMs: ms + 120_000 })).toBe(0);
 		expect(await draftFiles(entry.createdAt)).toHaveLength(1);
+	});
+});
+
+/**
+ * **被过滤的作品留痕**(ADR-0021 决策 34 的 🔗,10-08)。一条订阅一行:目标那一格空着、状态 `filtered`、
+ * 行上 `filteredBy`、一条文字。只留痕 —— 没有重推原件、不往图库写东西、之后不再追加。
+ *
+ * 🔴 读的是**盘上 JSON 原文**:历史的 schema 不是 strict,新格漏进 schema 的话 `record` 回来的对象上
+ * 照样看得见它,只有盘上那一行会少一格。
+ */
+describe("被过滤的作品留痕", () => {
+	const filtered = (over: Partial<NewHistoryEntry> = {}) =>
+		input({
+			targetId: null,
+			filteredBy: "blocked-keyword",
+			messages: [{ payload: text("摘要\nhttps://example.com/p/1"), role: "main" }],
+			nameSnapshot: "某UP",
+			...over,
+		});
+
+	async function diskLines(ts: string): Promise<Array<Record<string, unknown>>> {
+		const raw = await readFile(join(dataDir, "history", `${ts.slice(0, 10)}.jsonl`), "utf8");
+		return raw
+			.split("\n")
+			.filter((line) => line.trim() !== "")
+			.map((line) => JSON.parse(line) as Record<string, unknown>);
+	}
+
+	async function libraryFiles(): Promise<string[]> {
+		try {
+			return (await readdir(join(dataDir, "images"))).sort();
+		} catch {
+			return [];
+		}
+	}
+
+	it("🔴 盘上那一行:status filtered、filteredBy 在、targetId 是 null,只有一条文字、没有 result / isSilenced", async () => {
+		const before = await libraryFiles();
+		const entry = await store.record(filtered());
+		expect(entry.status).toBe("filtered");
+
+		const lines = await diskLines(entry.createdAt);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toEqual({
+			id: entry.id,
+			pushId: entry.pushId,
+			createdAt: entry.createdAt,
+			feature: "post",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+			subscriptionId: SUB,
+			targetId: null,
+			status: "filtered",
+			filteredBy: "blocked-keyword",
+			messages: [
+				{ payload: { kind: "text", text: "摘要\nhttps://example.com/p/1" }, role: "main" },
+			],
+			nameSnapshot: "某UP",
+		});
+		// 只留痕:没有重推原件,图库里没有多出东西。
+		expect(await draftFiles(entry.createdAt)).toEqual([]);
+		expect(await libraryFiles()).toEqual(before);
+	});
+
+	it("读回来(列表)也是这一行,状态与原因都在", async () => {
+		const entry = await store.record(filtered({ filteredBy: "allowlist-unmatched" }));
+		const [row] = await store.query({ limit: 10 });
+		expect(row).toMatchObject({
+			id: entry.id,
+			status: "filtered",
+			filteredBy: "allowlist-unmatched",
+			targetId: null,
+		});
+	});
+
+	it("会发 history-recorded,行上带着原因", async () => {
+		const bus = createNodeMessageBus();
+		const seen: unknown[] = [];
+		bus.on("history-recorded", (e) => seen.push(e));
+		const local = createHistoryStore({
+			dataRoot: dataDir,
+			bus,
+			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+			images: historyImages,
+			repush,
+		});
+		await local.record(filtered());
+		expect(seen).toHaveLength(1);
+		expect(seen[0]).toMatchObject({ status: "filtered", filteredBy: "blocked-keyword" });
+	});
+
+	// 写一次就不再追加:同一条订阅接连两条被过滤的作品是两行,谁也不并进谁。
+	it("每条被过滤的作品各自一行,不往已有的行里追加", async () => {
+		const pushId = randomUUID();
+		const a = await store.record(filtered({ pushId }));
+		const b = await store.record(filtered({ pushId }));
+		expect(b.id).not.toBe(a.id);
+		const lines = await diskLines(a.createdAt);
+		expect(lines.map((l) => l.id)).toEqual([a.id, b.id]);
+		expect(lines.every((l) => !("rowId" in l))).toBe(true);
+	});
+
+	it("不算进按日的推送数与失败数", async () => {
+		await store.record(filtered());
+		const days = await store.aggregateDaily({ days: 1 });
+		expect(days[0]).toMatchObject({ total: 0, failures: 0 });
 	});
 });

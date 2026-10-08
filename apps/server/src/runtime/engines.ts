@@ -111,7 +111,11 @@ import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import type { ImageSink } from "./post-from-report.js";
-import { historyRecordFromSend } from "./push-history.js";
+import {
+	historyRecordFromFilteredPost,
+	historyRecordFromSend,
+	type PushHistoryLookups,
+} from "./push-history.js";
 import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
@@ -381,6 +385,36 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 	});
 
+	// 历史行要的「替谁、当时叫什么」:推送落行与被过滤的作品留痕共用这一份查法。
+	const historyLookups: PushHistoryLookups = {
+		subscriptionOf: (subscriptionId) => {
+			const subscription = opts.subscriptionStore.findById(subscriptionId);
+			if (!subscription) return undefined;
+			return {
+				subscription,
+				profile: opts.subRuntimeStore.get(subscription.id)?.cachedProfile,
+			};
+		},
+	};
+	/** 往历史仓记一行。发出去不等,但登记进 track:关停得等这行历史(含图片落盘)交进历史写道,写道才能关门。 */
+	const recordHistory = (input: Parameters<typeof opts.historyStore.record>[0]): void => {
+		opts.serviceCtx.track(
+			opts.historyStore
+				.record(input)
+				.catch((e) => log.warn(`[history] record failed: ${String(e)}`)),
+		);
+	};
+	/**
+	 * 一条被过滤挡下的作品 → 推送历史里的一行(ADR-0021 决策 34 的 🔗)。B 站动态引擎与拓展作品两条路的
+	 * `onPostFiltered` 都接到这儿;留痕不是推送,不经推送层、不走事件总线。
+	 */
+	const recordFilteredPost = (
+		filtered: Parameters<typeof historyRecordFromFilteredPost>[0],
+	): void => {
+		const input = historyRecordFromFilteredPost(filtered, historyLookups);
+		if (input) recordHistory(input);
+	};
+
 	const push = new PushRouter({
 		dispatcher,
 		store: opts.subscriptionStore,
@@ -392,23 +426,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		quietHoursNow: opts.quietHoursNow,
 		onSend: (info) => {
 			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。
-			const input = historyRecordFromSend(info, {
-				subscriptionOf: (subscriptionId) => {
-					const subscription = opts.subscriptionStore.findById(subscriptionId);
-					if (!subscription) return undefined;
-					return {
-						subscription,
-						profile: opts.subRuntimeStore.get(subscription.id)?.cachedProfile,
-					};
-				},
-			});
-			if (!input) return;
-			// 发出去不等,但登记进 track:关停得等这行历史(含图片落盘)交进历史写道,写道才能关门。
-			opts.serviceCtx.track(
-				opts.historyStore
-					.record(input)
-					.catch((e) => log.warn(`[history] record failed: ${String(e)}`)),
-			);
+			const input = historyRecordFromSend(info, historyLookups);
+			if (input) recordHistory(input);
 		},
 	});
 	push.start();
@@ -585,6 +604,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		ai: commentary ?? undefined,
 		imageFetcher: opts.imageFetcher,
 		avatarOf: profileAvatarOf,
+		// 引擎说的是 uid,历史认的是订阅 id —— 与推送那边同一种换法;换不出来(订阅刚删)就不记。
+		onPostFiltered: ({ uid, ...filtered }) => {
+			const subscriptionId = subscriptionIdOfUid(uid);
+			if (subscriptionId !== undefined) recordFilteredPost({ subscriptionId, ...filtered });
+		},
 		cardFailures,
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
@@ -727,6 +751,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				},
 				sources: extensionSources,
 				pushFor: (id) => boundPostPush(push, id),
+				onPostFiltered: recordFilteredPost,
 				deliveryConfig: dynamicConfig,
 				deliveryDeps: () => ({
 					logger: dynamicCtx.logger,

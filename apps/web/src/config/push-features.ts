@@ -107,9 +107,10 @@ export const FEATURE_DESCRIPTORS: Record<FeatureKey, FeatureDescriptor> = {
 };
 
 /**
- * 一行历史的五态怎么标。失败是红的;部分失败(本体到了、附加没到)与无目标(没推到任何
+ * 一行历史的六态怎么标。失败是红的;部分失败(本体到了、附加没到)与无目标(没推到任何
  * 地方)是警示色 —— 两者都不是「坏了」,是「有件事你该看一眼」。被静音 / 免扰挡下的不是该看一眼的事
- * (那是主人自己要的安静),用「未发送」那一支未激活的灰。
+ * (那是主人自己要的安静),用「未发送」那一支未激活的灰;被过滤的作品同理(那是主人自己定的规则挡下的,
+ * 只是留痕),同一支灰。
  */
 export const PUSH_STATUS_META: Record<PushStatus, { label: string; tone: string }> = {
 	delivered: { label: "已送达", tone: "var(--color-bn-success)" },
@@ -117,6 +118,7 @@ export const PUSH_STATUS_META: Record<PushStatus, { label: string; tone: string 
 	failed: { label: "失败", tone: "var(--color-bn-danger)" },
 	"no-targets": { label: "无目标", tone: "var(--color-bn-warning)" },
 	silenced: { label: "已静音", tone: "var(--color-bn-inactive)" },
+	filtered: { label: "已过滤", tone: "var(--color-bn-inactive)" },
 };
 
 /**

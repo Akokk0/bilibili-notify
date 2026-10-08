@@ -540,3 +540,51 @@ describe("被静音 / 免扰挡下的行", () => {
 		expect(repushButton().getAttribute("title")).toContain("原料已经不在了");
 	});
 });
+
+/**
+ * **被过滤的作品留的那一行**(ADR-0021 决策 34 的 🔗)。只是留痕:标签「已过滤」(和「已静音」同一支灰),
+ * 展开写具体是被哪一类规则挡的,没有补发钮。它的目标那一格是空的,但不是「无目标」。
+ */
+describe("被过滤的行", () => {
+	const filteredRow = (over: Partial<HistoryEntryView> = {}) =>
+		row({
+			feature: "post",
+			status: "filtered",
+			filteredBy: "blocked-keyword",
+			targetId: null,
+			repush: undefined,
+			messages: [{ text: "今天也含禁词\nhttps://t.bilibili.com/1", kind: "text", role: "main" }],
+			...over,
+		});
+
+	it("行的状态写「已过滤」,用未激活的灰;目标那一列是空态,不写「无目标」", async () => {
+		mockApi([filteredRow()]);
+		renderHistory();
+		const pill = await screen.findByText("已过滤");
+		expect(pill.getAttribute("style") ?? "").toContain("var(--color-bn-inactive)");
+		expect(screen.queryByText("无目标")).toBeNull();
+		expect(screen.getByText("→ —")).toBeTruthy();
+	});
+
+	it("没有补发钮", async () => {
+		mockApi([filteredRow()]);
+		renderHistory();
+		await screen.findByText("已过滤");
+		expect(screen.queryByRole("button", { name: /补/ })).toBeNull();
+	});
+
+	it.each([
+		["blocked-keyword", "屏蔽关键词"],
+		["blocked-reposts", "屏蔽转发"],
+		["blocked-articles", "屏蔽专栏"],
+		["blocked-images", "屏蔽图集"],
+		["blocked-videos", "屏蔽视频"],
+		["allowlist-unmatched", "未命中白名单"],
+	] as const)("展开:%s 写「%s」,那条消息不写「未发送」", async (filteredBy, label) => {
+		mockApi([filteredRow({ filteredBy })]);
+		renderHistory();
+		await userEvent.click(await screen.findByRole("button", { name: /详情/ }));
+		expect(screen.getByText(label)).toBeTruthy();
+		expect(screen.queryByText("未发送")).toBeNull();
+	});
+});

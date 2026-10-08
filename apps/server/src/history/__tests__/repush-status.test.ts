@@ -224,3 +224,17 @@ describe("computeStatus — 被静音 / 免扰挡下的消息", () => {
 		expect(computeStatus(T1, [msg("main", OK), msg("extra")])).toBe("partial");
 	});
 });
+
+/**
+ * 被过滤的行:目标那一格空着,可它不是「无目标」。算状态时要有东西告诉它 —— 行上的 `filteredBy`。
+ */
+describe("computeStatus — 被过滤的行", () => {
+	it("filteredBy 有值 → filtered,优先于「无目标」", () => {
+		expect(computeStatus(null, [msg("main")], "blocked-keyword")).toBe("filtered");
+	});
+
+	it("没给 filteredBy 的空目标行照旧是 no-targets", () => {
+		expect(computeStatus(null, [msg("main")])).toBe("no-targets");
+		expect(computeStatus(null, [msg("main")], undefined)).toBe("no-targets");
+	});
+});

@@ -25,13 +25,14 @@ export function messageCountOf(entry: HistoryEntryView): number {
 }
 
 /**
- * 这行有没有值得点开看的东西:多条、带图、或哪条带错误信息。
+ * 这行有没有值得点开看的东西:多条、带图、哪条带错误信息,或者是被过滤的行(展开写着被哪一类规则挡的)。
  *
  * 这儿数的是**行里实际有几条**(不是上面那个「本来几条」):一条本体补过一次 = 行里躺着
  * 两次尝试,「本来」只有一条,可那两次尝试正是最该点开看的东西。
  */
 export function hasDetails(entry: HistoryEntryView): boolean {
 	return (
+		entry.filteredBy !== undefined ||
 		entry.messages.length > 1 ||
 		entry.messages.some((m) => m.image || (m.ok === false && m.message))
 	);

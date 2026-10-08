@@ -13,6 +13,7 @@ import type { CardSkinChoice } from "@bilibili-notify/image";
 import type {
 	ExtraKey,
 	MessageKindLayout,
+	PostFilterReason,
 	PostImage,
 	PushMessageRole,
 } from "@bilibili-notify/internal";
@@ -66,6 +67,20 @@ export interface PostPush {
 	uid: string;
 	/** 按顺序排好的锚点。本体至多一个,有的话排第一个。 */
 	anchors: PostPushAnchor[];
+}
+
+/**
+ * 一条被过滤挡下的作品,交给宿主留痕(推送历史里的一行 `filtered`,ADR-0021 决策 34 的 🔗)。它不是推送:
+ * 不出卡、不抓图、不调 AI,所以不走 {@link PushLike},走引擎选项里的 `onPostFiltered`。`uid` 由宿主换成订阅 id。
+ */
+export interface FilteredPost {
+	uid: string;
+	/** 被哪一类规则挡下的。 */
+	filteredBy: PostFilterReason;
+	/** 这条作品的整条文字:`postText(post, "plain")`,过滤看的就是这一份。没截过,摘要由宿主截。 */
+	text: string;
+	/** 原帖地址(动态页)。 */
+	url: string;
 }
 
 export interface PushLike {

@@ -192,6 +192,20 @@ describe("repushDenial — 挡什么", () => {
 		expect(repushDenial(allow({ entry: blank }))?.message).toContain("当时没有可用的目标");
 	});
 
+	// 被过滤的行目标那一格也空着,可它不是「没配目标」:压根没推,也没存原件。各说各的。
+	it("被过滤的行不给补,说的是「被过滤」,不是「没有目标」", () => {
+		const e = entry({
+			status: "filtered",
+			filteredBy: "blocked-keyword",
+			targetId: null,
+			messages: [msg("main")],
+		});
+		const denial = repushDenial(allow({ entry: e, routedTargets: [] }));
+		expect(denial).toMatchObject({ ok: false, code: "conflict" });
+		expect(denial?.message).toContain("被过滤");
+		expect(denial?.message).not.toContain("没有可用的目标");
+	});
+
 	it("routing 里已经没有这个目标 → 拒(用户已经取消了)", () => {
 		expect(repushDenial(allow({ routedTargets: [] }))).not.toBeNull();
 		expect(repushDenial(allow({ routedTargets: [randomUUID()] }))).not.toBeNull();

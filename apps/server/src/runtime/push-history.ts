@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import {
 	BILIBILI_SOURCE_KEY,
+	type PostFilterReason,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { PushSendResult } from "@bilibili-notify/push";
 import type { NewHistoryEntry } from "../history/store.js";
+import { POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
 
 export interface PushHistoryLookups {
 	/**
@@ -42,24 +45,75 @@ export function historyRecordFromSend(
 	info: PushSendResult,
 	lookups: PushHistoryLookups,
 ): NewHistoryEntry | null {
-	const found = lookups.subscriptionOf(info.subscriptionId);
-	if (found === undefined) return null;
-	const { subscription, profile } = found;
-	const identity = subscriptionIdentityOf(subscription);
-	const fromBilibili = identity.sourceKey === BILIBILI_SOURCE_KEY;
-	const nameSnapshot = fromBilibili ? profile?.name : filled(profile?.name);
+	const row = rowIdentityOf(info.subscriptionId, lookups);
+	if (row === null) return null;
 	return {
 		pushId: info.pushId,
 		feature: info.feature,
-		identity,
+		identity: row.identity,
 		subscriptionId: info.subscriptionId,
 		targetId: info.target?.id ?? null,
 		// 推送层那条消息与历史那条消息本就是同一个形状(payload / role / 可选 result),
 		// 逐条重建只是把字段抄一遍,还多一处「加字段记得同步」的维护点。
 		messages: info.messages,
-		nameSnapshot,
+		nameSnapshot: row.nameSnapshot,
+		...(row.avatarSnapshot ? { avatarSnapshot: row.avatarSnapshot } : {}),
+	};
+}
+
+/**
+ * 一条被过滤挡下的作品 → 历史仓的一次 `record`(ADR-0021 决策 34 的 🔗「被过滤的作品也留痕」)。
+ *
+ * **一条订阅一行**:目标那一格空着(过滤是订阅的规则挡下的,按目标拆没有信息量),行上 `filteredBy` 记原因,
+ * 历史仓据此把状态算成 `filtered`。它不是推送,所以有自己的 `pushId`(只给这一行用)、特性恒为作品。
+ * 行里一条文字:摘要 + 换行 + 原帖地址;没有地址就只有摘要。「替谁」与名字 / 头像快照的取法同上面那一支,
+ * 查不到订阅同样不记。
+ *
+ * `text` 是整条文字(`postText(post, "plain")`,来源那头交来的、没截过),摘要在这儿截:B 站动态与拓展作品
+ * 两条路都经这一处,截法只有一份。
+ */
+export function historyRecordFromFilteredPost(
+	filtered: { subscriptionId: string; filteredBy: PostFilterReason; text: string; url?: string },
+	lookups: PushHistoryLookups,
+): NewHistoryEntry | null {
+	const row = rowIdentityOf(filtered.subscriptionId, lookups);
+	if (row === null) return null;
+	const summary = filled(filtered.text) ? clip(filtered.text, POST_SUMMARY_MAX_CHARS) : undefined;
+	const text = [summary, filled(filtered.url)].filter((part) => part !== undefined).join("\n");
+	return {
+		pushId: randomUUID(),
+		feature: "post",
+		identity: row.identity,
+		subscriptionId: filtered.subscriptionId,
+		targetId: null,
+		filteredBy: filtered.filteredBy,
+		messages: [{ payload: { kind: "text", text }, role: "main" }],
+		nameSnapshot: row.nameSnapshot,
+		...(row.avatarSnapshot ? { avatarSnapshot: row.avatarSnapshot } : {}),
+	};
+}
+
+/** 一行历史「替谁」那几格:订阅的身份、当时的名字与头像快照。查不到订阅回 null。两种行同一种取法。 */
+function rowIdentityOf(
+	subscriptionId: string,
+	lookups: PushHistoryLookups,
+): Pick<NewHistoryEntry, "identity" | "nameSnapshot" | "avatarSnapshot"> | null {
+	const found = lookups.subscriptionOf(subscriptionId);
+	if (found === undefined) return null;
+	const { subscription, profile } = found;
+	const identity = subscriptionIdentityOf(subscription);
+	const fromBilibili = identity.sourceKey === BILIBILI_SOURCE_KEY;
+	return {
+		identity,
+		nameSnapshot: fromBilibili ? profile?.name : filled(profile?.name),
 		...(profile?.avatar ? { avatarSnapshot: profile.avatar } : {}),
 	};
+}
+
+/** 按码点截到 `max` 个字符,不截断代理对(与统计那边作品摘要的截法一样;那一份是文件内的,没导出)。 */
+function clip(text: string, max: number): string {
+	const chars = [...text];
+	return chars.length <= max ? text : chars.slice(0, max).join("");
 }
 
 /** 有字才算有:空串、只有空白的都不算。 */

@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from "vite-plus/test";
 import { countsAsDelivery, countsAsFailure, FEATURE_KEYS, PUSH_STATUSES } from "../../constants.js";
+import { PostFilterReason } from "../../post.js";
 import { HistoryEntrySchema, HistoryMessageResultSchema } from "../history.js";
 
 const BASE = {
@@ -233,7 +234,7 @@ describe("HistoryEntrySchema — 被静音 / 免扰挡下的行", () => {
 		expect(countsAsFailure("silenced")).toBe(false);
 	});
 
-	it("两个谓词的全表:只有 no-targets 与 silenced 不算推送,只有 failed 与 partial 算失败", () => {
+	it("两个谓词的全表:no-targets、silenced 与 filtered 不算推送,只有 failed 与 partial 算失败", () => {
 		expect(
 			PUSH_STATUSES.map((status) => [status, countsAsDelivery(status), countsAsFailure(status)]),
 		).toEqual([
@@ -242,6 +243,57 @@ describe("HistoryEntrySchema — 被静音 / 免扰挡下的行", () => {
 			["failed", true, true],
 			["no-targets", false, false],
 			["silenced", false, false],
+			["filtered", false, false],
 		]);
+	});
+});
+
+/**
+ * 被过滤挡下的作品在历史里留一行(ADR-0021 决策 34 的 🔗「被过滤的作品也留痕」,10-08):状态 `filtered`,
+ * 行上一格 `filteredBy` 记原因(六种 `PostFilterReason`),目标那一格空着,只有一条文字、没有结果。
+ * 它不算推送、不算失败。新状态与新格都是加出来的:没有 `filteredBy` 的老行照旧读得进来。
+ */
+describe("HistoryEntrySchema — 被过滤的行", () => {
+	const FILTERED = {
+		...BASE,
+		targetId: null,
+		status: "filtered",
+		filteredBy: "blocked-keyword",
+		messages: [{ payload: { kind: "text", text: "摘要\nhttps://example.com/p/1" }, role: "main" }],
+	} as const;
+
+	it("状态 filtered 与 filteredBy 读得进来,原样留着", () => {
+		const parsed = HistoryEntrySchema.parse(FILTERED);
+		expect(parsed.status).toBe("filtered");
+		expect(parsed.filteredBy).toBe("blocked-keyword");
+		expect(parsed.targetId).toBeNull();
+	});
+
+	it.each(Object.values(PostFilterReason))("原因 %s 认", (filteredBy) => {
+		expect(HistoryEntrySchema.parse({ ...FILTERED, filteredBy }).filteredBy).toBe(filteredBy);
+	});
+
+	it("原因的词表是那六种,不认别的值", () => {
+		expect(Object.values(PostFilterReason).sort()).toEqual([
+			"allowlist-unmatched",
+			"blocked-articles",
+			"blocked-images",
+			"blocked-keyword",
+			"blocked-reposts",
+			"blocked-videos",
+		]);
+		expect(HistoryEntrySchema.safeParse({ ...FILTERED, filteredBy: "blocked" }).success).toBe(
+			false,
+		);
+	});
+
+	it("没有 filteredBy 的行(所有老行)照旧读得进来,读出来也没有这一格", () => {
+		expect(HistoryEntrySchema.parse(BASE)).not.toHaveProperty("filteredBy");
+	});
+
+	it("词表里有 filtered;它不算推送,也不算失败", () => {
+		expect(PUSH_STATUSES).toContain("filtered");
+		expect(countsAsDelivery("filtered")).toBe(false);
+		expect(countsAsFailure("filtered")).toBe(false);
 	});
 });

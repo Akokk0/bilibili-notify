@@ -102,6 +102,7 @@ describe("bindExtensionPosts — 同一条订阅的作品按到达顺序发", ()
 				events: () => ["post"],
 			},
 			pushFor: () => push,
+			onPostFiltered: () => {},
 			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
@@ -168,6 +169,7 @@ describe("bindExtensionPosts — 超长正文截断后照样过屏蔽", () => {
 				events: () => ["post"],
 			},
 			pushFor: () => push,
+			onPostFiltered: () => {},
 			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
@@ -227,6 +229,7 @@ describe("bindExtensionPosts — 登记进 track", () => {
 				events: () => ["post"],
 			},
 			pushFor: () => push,
+			onPostFiltered: () => {},
 			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
@@ -312,6 +315,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
 				events: () => ["post"],
 			},
 			pushFor: () => push,
+			onPostFiltered: () => {},
 			deliveryConfig: () => ({ imageGroup: { enabled: false, mergeForward: false } }),
 			deliveryDeps: () => ({
 				logger,
@@ -369,6 +373,7 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 			events.push("put");
 			return postImages.put(bytes);
 		});
+		const onPostFiltered = vi.fn();
 		const handle = bindExtensionPosts({
 			bus,
 			logger,
@@ -377,6 +382,7 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 			profileName: () => "资料名",
 			avatarRef: () => undefined,
 			postImages: { put },
+			onPostFiltered,
 			settings: () => ({
 				messageLayout: defaultMessageKindLayout("post"),
 				filter: { ...DEFAULT_CONTENT_FILTERS, ...filter },
@@ -405,7 +411,7 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 			});
 		/** 等这一条走完(推出去了,或被挡下后闸里没有后续)。 */
 		const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
-		return { handle, emit, settle, render, sent, put, events };
+		return { handle, emit, settle, render, sent, put, events, onPostFiltered };
 	}
 
 	const withImages = (): SubscriptionReportValue<"post"> => ({ ...post(1), images: [PNG] });
@@ -477,6 +483,56 @@ describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展�
 		allowed.emit(withVideo());
 		await vi.waitFor(() => expect(allowed.sent).toHaveLength(1));
 		allowed.handle.dispose();
+	});
+
+	/**
+	 * 被过滤的作品交出去留痕(ADR-0021 决策 34 的 🔗):带订阅 id、原因、整条文字(`postText` 的 plain 拼法)与
+	 * 上报里的作品地址。只是交出去 —— 不出卡、不写图、不推。
+	 */
+	it("被挡的作品交给 onPostFiltered:订阅 id、原因、文字、地址;不出卡、不写图、不推", async () => {
+		const t = bind({ blockVideos: true });
+		t.emit(withVideo());
+		await t.settle();
+		expect(t.onPostFiltered).toHaveBeenCalledTimes(1);
+		expect(t.onPostFiltered).toHaveBeenCalledWith({
+			subscriptionId: SUB.id,
+			filteredBy: "blocked-videos",
+			text: "第 2 条\n一期视频",
+			url: "https://www.douyin.com/video/p2",
+		});
+		expect(t.render).not.toHaveBeenCalled();
+		expect(t.put).not.toHaveBeenCalled();
+		expect(t.sent).toEqual([]);
+		t.handle.dispose();
+	});
+
+	it.each([
+		["blocked-keyword", { blockKeywords: ["第 1 条"] }],
+		["blocked-images", { blockImages: true }],
+		["allowlist-unmatched", { allowKeywords: ["上新"] }],
+	] as const)("原因 %s 原样带出去", async (filteredBy, filter) => {
+		const t = bind(filter as Partial<typeof DEFAULT_CONTENT_FILTERS>);
+		t.emit(withImages());
+		await t.settle();
+		expect(t.onPostFiltered).toHaveBeenCalledTimes(1);
+		expect(t.onPostFiltered.mock.calls[0]?.[0]).toMatchObject({ filteredBy });
+		t.handle.dispose();
+	});
+
+	it("没被挡的作品不交", async () => {
+		const t = bind({ blockVideos: true });
+		t.emit(post(3));
+		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
+		expect(t.onPostFiltered).not.toHaveBeenCalled();
+		t.handle.dispose();
+	});
+
+	it("「屏蔽后提醒」开着:先留痕,提醒照发", async () => {
+		const t = bind({ blockVideos: true, notify: true });
+		t.emit(withVideo());
+		await vi.waitFor(() => expect(t.sent).toHaveLength(1));
+		expect(t.onPostFiltered).toHaveBeenCalledTimes(1);
+		t.handle.dispose();
 	});
 
 	it("屏蔽提醒(notify 开着):类型开关挡下的作品也提醒,措辞中立、叫法用平台的", async () => {

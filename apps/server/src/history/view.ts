@@ -29,6 +29,7 @@ export function toHistoryView(
 		createdAt: entry.createdAt,
 		feature: entry.feature,
 		status: entry.status,
+		...(entry.filteredBy !== undefined ? { filteredBy: entry.filteredBy } : {}),
 		identity: entry.identity,
 		subscriptionId: entry.subscriptionId,
 		targetId: entry.targetId,
@@ -53,6 +54,9 @@ export function toHistoryView(
  * 不知道,所以给的一律是「能补」。刚落的行(WS)这总是对的;列表路由对每一行另问 `canRepush`。
  */
 function repushOffer(entry: HistoryEntry): HistoryRepushInfo | undefined {
+	// 被过滤的行只留痕:那条消息没有结果、也没被挡,按「还差哪几条」数它是「没发」,可它压根不是
+	// 推送、没有原件。按状态显式排除,不靠「它的目标那一格恰好也空着」。
+	if (entry.status === "filtered") return undefined;
 	// 无目标行的消息全都没发,可它没有目标可补。
 	if (entry.targetId === null) return undefined;
 	const missing = unsentIndices(entry.messages).length;

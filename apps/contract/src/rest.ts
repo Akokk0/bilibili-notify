@@ -32,6 +32,7 @@ import type {
 	ImageRef,
 	Issue,
 	OnebotConnectionConfig,
+	PostFilterReason,
 	PushMessageRole,
 	PushStatus,
 	QQOfficialConnectionConfig,
@@ -623,7 +624,10 @@ export interface HistoryEntryView {
 	/** 替谁发的:订阅的身份(来源键 + 外部 id),B 站行与拓展行同一种形状。 */
 	identity: Identity;
 	subscriptionId: string;
-	/** null = 无目标行(这类推送没配目标,或配的全停用)。 */
+	/**
+	 * null = 这一行没有目标:无目标行(这类推送没配目标,或配的全停用),或者被过滤的行(只留痕,见 `filteredBy`)。
+	 * 分哪一种看 `status`。
+	 */
 	targetId: string | null;
 	/** 首条本体是面板上显示的文案;其余展开看。 */
 	messages: HistoryMessageView[];
@@ -634,6 +638,11 @@ export interface HistoryEntryView {
 	 */
 	nameSnapshot?: string;
 	avatarSnapshot?: ImageRef;
+	/**
+	 * 这条作品被哪一类过滤规则挡下的 —— 只有被过滤的行(`status: "filtered"`)带。那种行只是留痕:
+	 * `targetId` 是 null(**不是**无目标行,分哪一种看 `status`)、只有一条文字(摘要与链接)、不能补。
+	 */
+	filteredBy?: PostFilterReason;
 	/**
 	 * 这一行能不能人工补一次(ADR-0017)。**缺省 = 没得补**:无目标,或者行里每一条都送到了;带着的行
 	 * 才有按钮(决策 6:有目标、且行里还有没送到的或被挡下的消息,看的是消息不是 `status`)。

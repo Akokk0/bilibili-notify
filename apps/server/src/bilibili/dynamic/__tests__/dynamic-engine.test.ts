@@ -256,6 +256,8 @@ interface EngineBag {
 	logs: LogRec[];
 	/** 注入给引擎的出图失败计数(`cardFailures` 选项),测试直接读它。 */
 	cardFailures: CardFailureTracker;
+	/** 注入给引擎的「作品被过滤了」出口(`onPostFiltered` 选项)。 */
+	onPostFiltered: ReturnType<typeof vi.fn>;
 }
 
 function makeEngine(
@@ -304,6 +306,7 @@ function makeEngine(
 	const comment = vi.fn();
 	const ai = { comment } as unknown as CommentaryGenerator;
 	const cardFailures = createCardFailureTracker();
+	const onPostFiltered = vi.fn();
 	const engine = new DynamicEngine({
 		serviceCtx: ctx,
 		bus,
@@ -313,6 +316,7 @@ function makeEngine(
 		ai: over.withAi ? ai : undefined,
 		imageFetcher: { fetchImage },
 		avatarOf,
+		onPostFiltered,
 		config: {
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
@@ -336,6 +340,7 @@ function makeEngine(
 		comment,
 		logs,
 		cardFailures,
+		onPostFiltered,
 	};
 }
 
@@ -1734,6 +1739,146 @@ describe("DynamicEngine.detectDynamics — 过滤 notify", () => {
 });
 
 /**
+ * **被过滤的作品交出去留痕**(ADR-0021 决策 34 的 🔗)。过滤挡下一条,引擎从 `onPostFiltered` 交出
+ * `FilteredPost`:哪个 uid、被哪一类规则挡的(`filteredBy`)、整条文字(`postText` 的 plain 拼法)、原帖地址。
+ * 只是交出去 —— 不出卡、不抓图、不调 AI;没被挡的不交。
+ */
+describe("DynamicEngine.detectDynamics — 被过滤的作品交给 onPostFiltered", () => {
+	const rules = (over: Partial<typeof DEFAULT_CONTENT_FILTERS>) => ({
+		...DEFAULT_CONTENT_FILTERS,
+		...over,
+	});
+	const forward = () => {
+		const item = makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_FORWARD", text: "转一下" });
+		item.orig = {
+			type: "DYNAMIC_TYPE_WORD",
+			modules: { module_author: { name: "原作者" }, module_dynamic: {} },
+		} as unknown as Dynamic;
+		return item;
+	};
+	const cases: [string, Partial<typeof DEFAULT_CONTENT_FILTERS>, () => Dynamic, string][] = [
+		[
+			"blocked-keyword",
+			{ blockKeywords: ["禁词"] },
+			() => makeItem({ uid: 1, pubTs: 1500, text: "含禁词" }),
+			"含禁词",
+		],
+		["blocked-reposts", { blockReposts: true }, forward, "转一下"],
+		[
+			"blocked-articles",
+			{ blockArticles: true },
+			() => makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_ARTICLE", text: "专栏" }),
+			"专栏",
+		],
+		[
+			"blocked-images",
+			{ blockImages: true },
+			() =>
+				makeItem({
+					uid: 1,
+					pubTs: 1500,
+					type: "DYNAMIC_TYPE_DRAW",
+					text: "返图",
+					drawPics: ["http://i/p1.jpg"],
+				}),
+			"返图",
+		],
+		[
+			"blocked-videos",
+			{ blockVideos: true },
+			() =>
+				makeItem({
+					uid: 1,
+					pubTs: 1500,
+					type: "DYNAMIC_TYPE_AV",
+					text: "新视频",
+					videoJumpUrl: "//www.bilibili.com/video/BV1xx411c7mD",
+				}),
+			"新视频",
+		],
+		[
+			"allowlist-unmatched",
+			{ allowKeywords: ["上新"] },
+			() => makeItem({ uid: 1, pubTs: 1500, text: "日常" }),
+			"日常",
+		],
+	];
+
+	it.each(cases)(
+		"%s:交出去一次,带对的原因、文字与原帖地址;不出卡、不抓图、不调 AI、不推",
+		async (filteredBy, filter, build, text) => {
+			const b = makeEngine({ withImage: true, withAi: true });
+			b.fetchAllDynamic.mockResolvedValue(resp([build()]));
+			seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules(filter) });
+			await detect(b.engine);
+
+			expect(b.onPostFiltered).toHaveBeenCalledTimes(1);
+			expect(b.onPostFiltered).toHaveBeenCalledWith({
+				uid: "1",
+				filteredBy,
+				text: expect.stringContaining(text),
+				url: "https://t.bilibili.com/id-1",
+			});
+			expect(b.generatePostCard).not.toHaveBeenCalled();
+			expect(b.fetchImage).not.toHaveBeenCalled();
+			expect(b.comment).not.toHaveBeenCalled();
+			expect(b.push.push).not.toHaveBeenCalled();
+			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
+		},
+	);
+
+	it("没被挡的作品不交", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "日常" })]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockKeywords: ["禁词"] }) });
+		await detect(b.engine);
+		expect(b.onPostFiltered).not.toHaveBeenCalled();
+		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+	});
+
+	// 文字是 `postText(post, "plain")` 那一份:被转发的原作品里的字也在里面,引擎不自己拼。
+	it("文字就是过滤看的那一份(含被转发的原作品里的字)", async () => {
+		const item = forward();
+		(item.orig as unknown as { modules: { module_dynamic: unknown } }).modules.module_dynamic = {
+			desc: { text: "原文", rich_text_nodes: [{ text: "原文", type: "RICH_TEXT_NODE_TYPE_TEXT" }] },
+		};
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockReposts: true }) });
+		await detect(b.engine);
+		expect(b.onPostFiltered.mock.calls[0]?.[0].text).toBe("转一下\n原文");
+	});
+
+	it("「屏蔽后提醒」开着:先留痕,提醒照发", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
+		seed(b.engine, "1", 0, {
+			uid: "1",
+			uname: "UP",
+			filter: { ...rules({ blockKeywords: ["禁词"] }), notify: true },
+		});
+		await detect(b.engine);
+		expect(b.onPostFiltered).toHaveBeenCalledTimes(1);
+		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+		expect(b.onPostFiltered.mock.invocationCallOrder[0]).toBeLessThan(
+			b.push.push.mock.invocationCallOrder[0] ?? 0,
+		);
+	});
+
+	it("出口抛错不连累这一轮:时间线照推进,记一条 warn", async () => {
+		const b = makeEngine();
+		b.onPostFiltered.mockImplementation(() => {
+			throw new Error("history down");
+		});
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
+		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockKeywords: ["禁词"] }) });
+		await detect(b.engine);
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
+		expect(b.logs.some((l) => l.level === "warn" && l.msg.includes("history down"))).toBe(true);
+	});
+});
+
+/**
  * 过滤吃翻译好的 `Post`(㉑e,ADR-0021 决策 43):引擎先 `postFromDynamic` 再过滤 —— 类型开关看的是作品「有没有」
  * 图集 / 视频 / 转发 / 专栏,不再是 B 站的外层类型码;翻译只做一次,过滤、点评、出卡共用同一份。
  * `dynamic-detected` 仍在过滤之前发、载荷里是原始类型码(这个事件 3a 才换,不动)。
@@ -2122,6 +2267,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		} as unknown as PushLike;
 		const engine = new DynamicEngine({
 			avatarOf: () => undefined,
+			onPostFiltered: () => {},
 			serviceCtx: ctx,
 			bus,
 			api,

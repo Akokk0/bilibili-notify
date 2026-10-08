@@ -90,10 +90,15 @@ describe("FEATURE_DESCRIPTORS", () => {
 		});
 	});
 
-	it("五态各有标签与色:失败红,部分失败与无目标警示色,已送达绿,被挡下的是未激活的灰", () => {
+	it("六态各有标签与色:失败红,部分失败与无目标警示色,已送达绿,被挡下的与被过滤的是未激活的灰", () => {
 		expect(Object.keys(PUSH_STATUS_META).sort()).toEqual(
-			["delivered", "partial", "failed", "no-targets", "silenced"].sort(),
+			["delivered", "partial", "failed", "no-targets", "silenced", "filtered"].sort(),
 		);
+		// 被过滤的作品只是留痕,和「已静音」同一支灰。
+		expect(PUSH_STATUS_META.filtered).toEqual({
+			label: "已过滤",
+			tone: "var(--color-bn-inactive)",
+		});
 		// 被静音 / 免扰挡下的不是「该看一眼的事」:不用警示色,用「未发送」那一支灰。
 		expect(PUSH_STATUS_META.silenced).toEqual({
 			label: "已静音",

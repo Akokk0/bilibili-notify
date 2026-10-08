@@ -14,6 +14,7 @@ export {
 } from "./post-filter";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {
+	FilteredPost,
 	PostPush,
 	PostPushAnchor,
 	PushImageGroup,

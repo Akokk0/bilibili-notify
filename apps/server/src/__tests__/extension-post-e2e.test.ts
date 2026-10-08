@@ -343,7 +343,7 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		expect(card).toContain('<span class="text-[#FF6699]">#假话题</span>');
 	});
 
-	it("历史:甲两行拓展行(带拓展 id 与外部 id、名字快照、已送达),乙一行,丙没有", async () => {
+	it("历史:甲两行拓展行(带拓展 id 与外部 id、名字快照、已送达),乙一行已送达加一行已过滤,丙没有", async () => {
 		// 历史在 BN 收到 webhook 的回复**之后**才落盘,而上一条用例等的是 webhook 收到消息 —— 负载重时
 		// 直接读会读早(全量跑偶发红),所以等它到齐。
 		await vi.waitFor(
@@ -362,7 +362,17 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 						nameSnapshot: who.a.name,
 					});
 				}
-				expect(rowsOf("b")).toHaveLength(1);
+				// 乙屏蔽了「海边」:命中的那条不推,在历史里留一行「已过滤」(没有目标、带原因);另一条照推。
+				expect(
+					rowsOf("b")
+						.map((row) => row.status)
+						.sort(),
+				).toEqual(["delivered", "filtered"]);
+				expect(rowsOf("b").find((row) => row.status === "filtered")).toMatchObject({
+					targetId: null,
+					filteredBy: "blocked-keyword",
+					identity: { sourceKey: FAKE, externalId: who.b.externalId },
+				});
 				expect(rowsOf("c")).toEqual([]);
 			},
 			{ timeout: 10_000 },

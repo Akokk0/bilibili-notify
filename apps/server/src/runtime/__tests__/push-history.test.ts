@@ -10,7 +10,8 @@ import { fail, makeEmptySubscription } from "@bilibili-notify/internal";
 import type { PushSendResult } from "@bilibili-notify/push";
 import { describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import { historyRecordFromSend } from "../push-history.js";
+import { POST_SUMMARY_MAX_CHARS } from "../../stats/post-entry-extras.js";
+import { historyRecordFromFilteredPost, historyRecordFromSend } from "../push-history.js";
 
 const SUB_ID = "11111111-1111-4111-8111-111111111111";
 const target = {
@@ -283,5 +284,87 @@ describe("historyRecordFromSend", () => {
 		expect(input).not.toHaveProperty("uid");
 		expect(input).not.toHaveProperty("extensionId");
 		expect(input).not.toHaveProperty("externalId");
+	});
+});
+
+/**
+ * **被过滤的作品 → 历史的一行**(ADR-0021 决策 34 的 🔗)。一条订阅一行:目标那一格空着、带 `filteredBy`、
+ * 一条文字(摘要 + 换行 + 原帖链接)。身份与名字 / 头像快照和推送那一支同一种取法;查不到订阅就不记。
+ */
+describe("historyRecordFromFilteredPost", () => {
+	const filtered = (over: Record<string, unknown> = {}) => ({
+		subscriptionId: SUB_ID,
+		filteredBy: "blocked-keyword" as const,
+		text: "今天也含禁词",
+		url: "https://t.bilibili.com/1",
+		...over,
+	});
+
+	/** 那一条消息的字(留痕的行恒为一条文字)。 */
+	const textOf = (over: Record<string, unknown> = {}): string | undefined => {
+		const payload = historyRecordFromFilteredPost(filtered(over), lookups)?.messages[0]?.payload;
+		return payload?.kind === "text" ? payload.text : undefined;
+	};
+
+	it("B 站订阅:身份 / 订阅 id / 名字与头像快照照推送那一支取;目标空着、特性是作品、带原因", () => {
+		const record = historyRecordFromFilteredPost(filtered(), lookups);
+		expect(record).toEqual({
+			pushId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+			feature: "post",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+			subscriptionId: SUB_ID,
+			targetId: null,
+			filteredBy: "blocked-keyword",
+			messages: [
+				{ payload: { kind: "text", text: "今天也含禁词\nhttps://t.bilibili.com/1" }, role: "main" },
+			],
+			nameSnapshot: "某UP",
+			avatarSnapshot: BILI_AVATAR,
+		});
+	});
+
+	it("拓展订阅:来源键是拓展 id,名字与头像快照是它自己的", () => {
+		const record = historyRecordFromFilteredPost(
+			filtered({ subscriptionId: EXT_ID, filteredBy: "blocked-videos" }),
+			lookups,
+		);
+		expect(record).toMatchObject({
+			identity: { sourceKey: "douyin", externalId: "u1" },
+			subscriptionId: EXT_ID,
+			filteredBy: "blocked-videos",
+			nameSnapshot: "某抖音号",
+			avatarSnapshot: EXT_AVATAR,
+		});
+	});
+
+	it("每一行有自己的 pushId(它不对应任何一次推送)", () => {
+		const a = historyRecordFromFilteredPost(filtered(), lookups);
+		const b = historyRecordFromFilteredPost(filtered(), lookups);
+		expect(a?.pushId).not.toBe(b?.pushId);
+	});
+
+	it("查不到订阅(中途被退订)→ 不记", () => {
+		expect(historyRecordFromFilteredPost(filtered({ subscriptionId: "nope" }), lookups)).toBeNull();
+	});
+
+	it("摘要截到现成的摘要上限(按字符,不截断代理对),链接不截", () => {
+		const long = `${"字".repeat(POST_SUMMARY_MAX_CHARS - 1)}😀尾巴`;
+		const [summary, link] = (textOf({ text: long }) ?? "").split("\n");
+		expect([...(summary ?? "")]).toHaveLength(POST_SUMMARY_MAX_CHARS);
+		expect(summary?.endsWith("😀")).toBe(true);
+		expect(link).toBe("https://t.bilibili.com/1");
+	});
+
+	it("没有地址就只有摘要;没有字就只有地址;都没有是空字", () => {
+		expect(textOf({ url: undefined })).toBe("今天也含禁词");
+		expect(textOf({ url: "" })).toBe("今天也含禁词");
+		expect(textOf({ text: "  " })).toBe("https://t.bilibili.com/1");
+		expect(textOf({ text: "", url: undefined })).toBe("");
+	});
+
+	it("消息没有 result、没有 isSilenced(它没发过,也不是被静音挡的)", () => {
+		const message = historyRecordFromFilteredPost(filtered(), lookups)?.messages[0];
+		expect(message).not.toHaveProperty("result");
+		expect(message).not.toHaveProperty("isSilenced");
 	});
 });

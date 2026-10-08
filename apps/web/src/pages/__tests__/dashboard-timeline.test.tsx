@@ -221,4 +221,24 @@ describe("最近推送活动 · 不列被挡下的行", () => {
 		renderPanel([silenced("s1", "静音甲")]);
 		expect(screen.getByText("还没有推送活动")).toBeTruthy();
 	});
+
+	// 被过滤的作品留的那一行同理:它压根不是推送。它的目标那一格也空着,但不当无目标行列出来。
+	it("被过滤的行也不列、不占位子", () => {
+		const filtered = (id: string, name: string) =>
+			row({
+				id,
+				status: "filtered",
+				filteredBy: "blocked-keyword",
+				targetId: null,
+				nameSnapshot: name,
+				messages: [{ text: "摘要", kind: "text", role: "main" }],
+			});
+		renderPanel([
+			...Array.from({ length: 8 }, (_, i) => filtered(`f${i}`, `过滤${i}`)),
+			row({ id: "d1", nameSnapshot: "第九条" }),
+		]);
+		expect(screen.getByText("第九条")).toBeTruthy();
+		expect(screen.queryByText("过滤0")).toBeNull();
+		expect(screen.queryByText("已过滤")).toBeNull();
+	});
 });

@@ -222,7 +222,20 @@ function HistoryTable({
 
 const HISTORY_GRID = "100px 28px 64px 1fr 200px 100px";
 
-/** 目标列:无目标行写「—」;目标事后被删写「已删除目标」。 */
+/**
+ * 被过滤的作品是被哪一类规则挡下的(行上的 `filteredBy`),展开后写在那条消息的结果位置上。
+ * 前五种是屏蔽规则命中,最后一种是设了白名单而没命中。
+ */
+const FILTER_REASON_LABEL: Record<NonNullable<HistoryEntryView["filteredBy"]>, string> = {
+	"blocked-keyword": "屏蔽关键词",
+	"blocked-reposts": "屏蔽转发",
+	"blocked-articles": "屏蔽专栏",
+	"blocked-images": "屏蔽图集",
+	"blocked-videos": "屏蔽视频",
+	"allowlist-unmatched": "未命中白名单",
+};
+
+/** 目标列:没有目标的行(无目标行、被过滤的行)写「—」;目标事后被删写「已删除目标」。 */
 function targetLabelOf(entry: HistoryEntryView, target: PushTarget | undefined): string {
 	if (entry.targetId === null) return "—";
 	return target?.name ?? "已删除目标";
@@ -448,6 +461,7 @@ function MessageList({ entry }: { entry: HistoryEntryView }) {
 						message={m}
 						superseded={entry.messages.some((o, j) => j > i && o.repushOf === no)}
 						pastRetention={entry.isPastRetention === true}
+						filteredBy={entry.filteredBy}
 					/>
 				);
 			})}
@@ -459,28 +473,33 @@ function MessageList({ entry }: { entry: HistoryEntryView }) {
  * `no` = 这条顶的是哪一号(从 0 数,印出来 +1);`superseded` = 后面还有一条补这一号的,
  * 也就是这条已经作废了 —— 压暗它,让「这条没成、下面那条是它的重投」一眼看得出来。
  * `pastRetention` = 这一行过了保留期,图已经清掉:原来画图的位置写「图已清理」,不去请求那张不在了的图。
+ * `filteredBy` = 这一行是被过滤的作品留的痕:那条消息没发、也不是「未发送」,结果位置写它被哪一类规则挡的。
  */
 function MessageItem({
 	no,
 	message,
 	superseded,
 	pastRetention,
+	filteredBy,
 }: {
 	no: number;
 	message: HistoryMessageView;
 	superseded: boolean;
 	pastRetention: boolean;
+	filteredBy: HistoryEntryView["filteredBy"];
 }) {
 	// 本来有图:是图消息,或者带着图库引用。过了保留期的老行迁移时图格被拿掉了,只剩 `kind: "image"`(composite 拿掉后看不出,
 	// 只画文字)。
 	const hadImage = message.kind === "image" || message.image !== undefined;
-	// 没有结果 = 没发出去(无目标那行的每一条都是这样),其中被静音 / 免扰挡下的那种单说;
+	// 没有结果 = 没发出去(无目标那行的每一条都是这样),其中被静音 / 免扰挡下的、被过滤的各自单说;
 	// 有结果就跟整行状态同一份词表。
 	const result =
 		message.ok === undefined
 			? message.isSilenced
 				? PUSH_STATUS_META.silenced
-				: { label: "未发送", tone: "var(--color-bn-inactive)" }
+				: filteredBy !== undefined
+					? { label: FILTER_REASON_LABEL[filteredBy], tone: PUSH_STATUS_META.filtered.tone }
+					: { label: "未发送", tone: "var(--color-bn-inactive)" }
 			: PUSH_STATUS_META[message.ok ? "delivered" : "failed"];
 	return (
 		<li className={`flex items-start gap-2.5 text-bn-xs${superseded ? " opacity-60" : ""}`}>

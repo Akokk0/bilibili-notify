@@ -73,6 +73,9 @@ export interface RepushGateInput {
 	running: boolean;
 }
 
+/** 被过滤的行:只留了痕,当时就没推、也没存原件。 */
+const FILTERED = "这一条是被过滤规则挡下的，当时就没推，没有东西可补";
+
 /** 当时没有目标的行:目标那一格是空的。 */
 const NO_TARGET = "这条推送当时没有可用的目标，补不了 —— 先去给它配一个吧";
 
@@ -84,6 +87,8 @@ const NO_TARGET = "这条推送当时没有可用的目标，补不了 —— �
  */
 export function repushDenial(input: RepushGateInput): Failure | null {
 	const { entry, routedTargets, targetEnabled, running } = input;
+	// 被过滤的行目标那一格也空着,可它不是没配目标 —— 先按状态认出它,各说各的。
+	if (entry.status === "filtered") return fail("conflict", FILTERED);
 	// 无目标行连目标都没有,补不成(它的消息全都「没发」,所以要先于下一句判)。
 	if (entry.targetId === null) return fail("conflict", NO_TARGET);
 	// 决策 6:行里还有没送到的或被挡下的消息才有得补。

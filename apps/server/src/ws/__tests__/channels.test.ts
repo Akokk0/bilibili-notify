@@ -254,6 +254,28 @@ describe("attachChannelWiring — history-recorded / history-updated 投影", ()
 	});
 });
 
+describe("attachChannelWiring — 被过滤的行", () => {
+	// 留痕的行照样发 history-recorded(面板据此实时多出一行):状态、原因过线,不带 repush。
+	it("history-recorded:状态 filtered 与 filteredBy 过线,目标是 null,不带 repush", () => {
+		const h = wire();
+		h.bus.emit("history-recorded", {
+			...ROW,
+			targetId: null,
+			status: "filtered",
+			filteredBy: "blocked-keyword",
+			messages: [{ payload: { kind: "text", text: "摘要\nhttps://example.com/p" }, role: "main" }],
+		} as never);
+		expect(h.last()).toMatchObject({ type: "push-events", event: "history-recorded" });
+		expect(h.last().data).toMatchObject({
+			status: "filtered",
+			filteredBy: "blocked-keyword",
+			targetId: null,
+			messages: [{ text: "摘要\nhttps://example.com/p", role: "main" }],
+		});
+		expect(h.last().data).not.toHaveProperty("repush");
+	});
+});
+
 describe("attachChannelWiring — 被静音 / 免扰挡下的行", () => {
 	it("状态 silenced 与消息上的 isSilenced 过线;后来补到了的那条不带", () => {
 		const h = wire();

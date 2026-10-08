@@ -15,6 +15,7 @@ import type {
 	Logger,
 	MessageBus,
 	NotificationPayload,
+	PostFilterReason,
 	PushMessageRole,
 	PushStatus,
 } from "@bilibili-notify/internal";
@@ -66,8 +67,13 @@ export interface NewHistoryEntry {
 	/** 替谁发的:订阅的身份(`subscriptionIdentityOf` 的结果),B 站行与拓展行同一种形状。 */
 	identity: Identity;
 	subscriptionId: string;
-	/** null = 这类推送没有任何可用目标,落「无目标」那一行。 */
+	/** null = 这一行没有目标:这类推送没有任何可用目标(「无目标」行),或者是一条被过滤的作品(见 `filteredBy`)。 */
 	targetId: string | null;
+	/**
+	 * 这条作品被过滤挡下了,记的是原因 —— 给了就落一行 `filtered`(ADR-0021 决策 34 的 🔗):只留痕,
+	 * 不存重推原件;写一次就完,不和任何行合并、之后也不追加。`targetId` 一律给 null。
+	 */
+	filteredBy?: PostFilterReason;
 	messages: HistoryRecordMessage[];
 	/** Snapshot of sub.cachedProfile.name at write time; survives 订阅删除。 */
 	nameSnapshot?: string;
@@ -170,7 +176,10 @@ function zeroCounts(): Record<FeatureKey, number> {
 }
 
 /**
- * 状态的算法(消息的纯函数)。本体 = 第一条 `role: "main"` 的消息:它没到就是失败;它到了、别的没到是
+ * 状态的算法(消息的纯函数,外加行上的 `filteredBy`)。**被过滤的行**(`filteredBy` 有值)一律 `filtered`,
+ * 排在最前:它的目标那一格也空着,可它不是「无目标」—— 两种空目标的行靠这一格分开。
+ *
+ * 其余的行:本体 = 第一条 `role: "main"` 的消息:它没到就是失败;它到了、别的没到是
  * 部分失败(附加项,或本体的后续分条)。只有附加项先到的行(@全体 抢在卡片前面落地)
  * 暂按失败 / 已送达算,本体一到就重算。
  *
@@ -187,7 +196,12 @@ function zeroCounts(): Record<FeatureKey, number> {
  * 老行没有 `repushOf`,每条自成一号,算出来与从前逐字节一样;盘上的老数据一条都不用迁移
  * (`status` 是写入时算好存下的,读侧不重算)。
  */
-export function computeStatus(targetId: string | null, messages: HistoryMessage[]): PushStatus {
+export function computeStatus(
+	targetId: string | null,
+	messages: HistoryMessage[],
+	filteredBy?: PostFilterReason,
+): PushStatus {
+	if (filteredBy !== undefined) return "filtered";
 	if (targetId === null) return "no-targets";
 	const latest = latestByIdentity(messages);
 	// 一号都没有的有目标行 = 什么都没发出去,不是「全到了」——`[].every` 恒真,不挡住
@@ -391,8 +405,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	 * 必须在这儿做:`reduceAll` 之后原样的那份就只剩这一处还握着了(历史行里是有损摘要)。原件按下标与历史行的
 	 * `messages` 一一对应(`reduceAll` 逐条来、不丢条),图由原件自己存进图库。
 	 *
-	 * 无目标行不留 —— 那不是失败是没配目标,按钮本来就不给它(决策 6)。被静音 / 免扰挡下的行
-	 * 有目标,照留:补发靠的就是这一份。
+	 * 没有目标的行不留 —— 无目标行不是失败是没配目标,被过滤的行只留痕、压根没推,按钮本来就不给
+	 * 它们(决策 6)。被静音 / 免扰挡下的行有目标,照留:补发靠的就是这一份。
 	 */
 	async function saveRepushSnapshot(
 		rowId: string,
@@ -453,7 +467,7 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		const messages = [...base.messages, ...added];
 		const merged = validated({
 			...base,
-			status: computeStatus(base.targetId, messages),
+			status: computeStatus(base.targetId, messages, base.filteredBy),
 			messages,
 		});
 		// 落盘的是**过了 schema 的那几条**(`merged` 的尾巴),不是调用方交来的原样:schema 不认的格
@@ -476,7 +490,9 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	async function recordSerialized(input: NewHistoryEntry): Promise<HistoryEntry> {
 		await ensureDirs();
 		const key = `${input.pushId}|${input.targetId ?? "-"}`;
-		const existing = open.get(key);
+		// 被过滤的行写一次就完:不找已有的行来并,也不进 `open`(那张表有上限,一阵被过滤的作品不该把
+		// 一行还在等词云 / 总结落地的推送挤出去)。
+		const existing = input.filteredBy === undefined ? open.get(key) : undefined;
 		if (!existing) {
 			const id = randomUUID();
 			const createdAt = new Date().toISOString();
@@ -491,13 +507,14 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 				identity: input.identity,
 				subscriptionId: input.subscriptionId,
 				targetId: input.targetId,
-				status: computeStatus(input.targetId, messages),
+				status: computeStatus(input.targetId, messages, input.filteredBy),
+				...(input.filteredBy !== undefined ? { filteredBy: input.filteredBy } : {}),
 				messages,
 				nameSnapshot: input.nameSnapshot,
 				avatarSnapshot,
 			});
 			await appendJsonl(dayFile(createdAt), [entry]);
-			open.set(key, entry);
+			if (input.filteredBy === undefined) open.set(key, entry);
 			await saveRepushSnapshot(id, createdAt, input.messages, input.targetId);
 			opts.bus.emit("history-recorded", entry);
 			return entry;

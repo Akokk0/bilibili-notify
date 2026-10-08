@@ -23,6 +23,7 @@ import {
 } from "./post-filter";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type {
+	FilteredPost,
 	PushLike,
 	SubItemView,
 	SubManagerView,
@@ -151,6 +152,11 @@ export interface DynamicEngineOptions {
 	 * 必给 —— 漏给编译不过。
 	 */
 	avatarOf: (subscriptionId: string) => ImageRef | undefined;
+	/**
+	 * 一条作品被过滤挡下了 —— 交给宿主在推送历史里留一行(只留痕,不是推送,所以不走 `push`)。
+	 * 必给 —— 漏给编译不过。同步调、不等它;它抛错只记日志,不影响这一轮。
+	 */
+	onPostFiltered: (filtered: FilteredPost) => void;
 	config: DynamicEngineConfig;
 	/**
 	 * 出图连续失败的计数(只提醒一次)。宿主想让 B 站动态与拓展作品共用一份(同一个渲染器,
@@ -279,6 +285,7 @@ export class DynamicEngine {
 	private ai?: CommentaryProvider;
 	private readonly imageFetcher: ImagesDeps["images"];
 	private readonly avatarOf: (subscriptionId: string) => ImageRef | undefined;
+	private readonly onPostFiltered: (filtered: FilteredPost) => void;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
 
@@ -341,6 +348,7 @@ export class DynamicEngine {
 		this.ai = opts.ai;
 		this.imageFetcher = opts.imageFetcher;
 		this.avatarOf = opts.avatarOf;
+		this.onPostFiltered = opts.onPostFiltered;
 		this.config = opts.config;
 		this.getSubs = opts.getSubs;
 		this.logger = opts.serviceCtx.logger;
@@ -840,6 +848,19 @@ export class DynamicEngine {
 				const filterResult = filterPost(post, effFilter, this.logger);
 				if (filterResult.blocked) {
 					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
+					// 先留痕:交给宿主在推送历史里记一行。只交文字与地址 —— 不出卡、不抓图、不调 AI。
+					// best-effort,与下面的提醒同理:记不下就算了,绝不因此让这条动态下一轮重判。
+					try {
+						this.onPostFiltered({
+							uid,
+							filteredBy: filterResult.reason as PostFilterReason,
+							text: postText(post, "plain"),
+							// 原帖 = 这条动态自己的页面(视频动态也有),不随「视频链接换成 BV 号」那个设置变。
+							url: dynamicLink(item, false, false),
+						});
+					} catch (e) {
+						this.logger.warn(`[filter] 被过滤的动态留痕失败(忽略): ${(e as Error).message}`);
+					}
 					if (effFilter.notify && this.stillSubscribed(uid, subAtCapture)) {
 						// P2:屏蔽提示是 best-effort。此前广播抛错冒泡到外层 catch→
 						// markFail,锚点不前移 → 下轮重判重发,"已屏蔽"提示重复轰炸。

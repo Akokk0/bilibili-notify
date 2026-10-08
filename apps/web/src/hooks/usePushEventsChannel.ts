@@ -133,8 +133,9 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 	if (!isWsEvent(env, "push-events", "history-recorded")) return;
 	const data = env.data;
 	if (!data || typeof data.id !== "string") return;
-	// 被静音 / 免扰挡下的行不弹小卡:那是主人自己要的安静,行在历史页里看得到。
-	if (data.status !== "silenced") toast.push(data);
+	// 被静音 / 免扰挡下的行不弹小卡:那是主人自己要的安静,行在历史页里看得到。被过滤的作品留的那一行
+	// 同理不弹(它的目标那一格也空着,但不是无目标行 —— 那张带「去配置」的小卡对它是错话)。
+	if (data.status !== "silenced" && data.status !== "filtered") toast.push(data);
 	// HI1:history 缓存现按 limit 分键 —— Dashboard ["history",{limit:100}]、
 	// History 页 ["history",{limit:200}]。显式 patch 两者(setQueryData 在键
 	// 不存在时也会 prime,setQueriesData 不会 → WS 早于页面挂载时会丢更新)。

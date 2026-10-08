@@ -1,16 +1,19 @@
 import { z } from "zod";
 import { FAILURE_CODES, type FailureCode, IMAGE_REF_PATTERN, PUSH_STATUSES } from "../constants";
+import { PostFilterReason } from "../post";
 import { FeatureKeySchema } from "./common";
 import { IdentitySchema } from "./subscriptions";
 
 /**
- * 一行历史的五态:
+ * 一行历史的六态:
  * - delivered:全部消息都到了
  * - partial:本体到了,附加项(@全体 / 图集 / 词云 / 总结)或本体的后续分条没到
  * - failed:本体没到
  * - no-targets:这类推送没有任何可用目标(没配,或配的全停用),消息照记、没发出去
  * - silenced:被全局静音或免扰时段挡下了 —— 本来会发给这个目标,一条都没发;不算推送也不算失败,
  *   可以补发(ADR-0021 决策 34 的 🔗)
+ * - filtered:这条作品被过滤挡下了(行上的 `filteredBy` 记原因)—— 不是推送,只是留痕:一条订阅一行、
+ *   目标那一格空着、只有一条文字(摘要与链接);不出卡、不存重推原件,不能补发(同一条决策的 🔗)
  */
 export const PushStatusSchema = z.enum(PUSH_STATUSES);
 export type PushStatus = z.infer<typeof PushStatusSchema>;
@@ -105,9 +108,19 @@ const HistoryEntryObjectSchema = z.object({
 	 */
 	identity: IdentitySchema,
 	subscriptionId: z.uuid(),
-	/** null = 无目标行。 */
+	/**
+	 * null = 这一行没有目标。两种行是这样:无目标行(`status: "no-targets"`,这类推送没有可用目标)与
+	 * 被过滤的行(`status: "filtered"`,压根没推)。**分哪一种看 `status`,不看这一格。**
+	 */
 	targetId: z.uuid().nullable(),
 	status: PushStatusSchema,
+	/**
+	 * 这条作品被哪一类过滤规则挡下的。只有被过滤的行(`status: "filtered"`)有;别的行、所有老行都没有这一格,
+	 * 不用迁移。
+	 */
+	filteredBy: z
+		.enum(Object.values(PostFilterReason) as [PostFilterReason, ...PostFilterReason[]])
+		.optional(),
 	messages: z.array(HistoryMessageSchema),
 	/**
 	 * 写入时从该订阅的 cachedProfile 快照下来的 UP 主名称 / 头像。cachedProfile

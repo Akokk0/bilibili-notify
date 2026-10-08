@@ -467,6 +467,49 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 	 * 被静音 / 免扰挡下的行(`silenced`):进列表(历史页照列),**不弹小卡**,不进今日推送;之后补发成功
 	 * (`history-updated` 把它翻成已送达 / 失败)才计入它建行那天 —— 与服务端按日聚合重拉出来的数一致。
 	 */
+	/**
+	 * 被过滤的作品留的那一行(`filtered`):目标那一格也是空的,可它**不是**无目标行 —— 进列表(历史页照列),
+	 * 不弹任何小卡(无目标行弹的那张带「去配置」,对它是错话),不进今日推送。
+	 */
+	describe("被过滤的行", () => {
+		const filtered = () =>
+			pushView("f1", {
+				status: "filtered",
+				filteredBy: "blocked-keyword",
+				targetId: null,
+				messages: [{ text: "摘要\nhttps://example.com/p", kind: "text", role: "main" }],
+			});
+
+		it("新落的一行:进列表,不弹小卡,日桶不动", () => {
+			const view = filtered();
+			const day = localDayKey(new Date(view.createdAt));
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
+				days: [{ d: day, counts: { ...zeroCounts(), post: 2 }, total: 3, failures: 1 }],
+			});
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: view }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.push).not.toHaveBeenCalled();
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(200))?.entries).toEqual([view]);
+			expect(
+				h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0],
+			).toMatchObject({ total: 3, failures: 1, counts: { post: 2 } });
+		});
+
+		// 对照:真的无目标行照旧弹小卡(那张卡上有「去配置」)。两种空目标的行靠状态分开。
+		it("无目标行照旧弹小卡", () => {
+			const view = pushView("n1", { status: "no-targets", targetId: null });
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: view }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.push).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	describe("被静音 / 免扰挡下的行", () => {
 		const dayOf = (view: PushEventView) => localDayKey(new Date(view.createdAt));
 		const silenced = (over: Partial<PushEventView> = {}) =>

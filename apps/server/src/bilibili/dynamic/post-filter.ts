@@ -17,8 +17,12 @@ import {
 	checkUserRegex,
 	type Logger,
 	type Post,
+	PostFilterReason,
 	postText,
 } from "@bilibili-notify/internal";
+
+// 原因的词表住 `@bilibili-notify/internal`(历史行的 `filteredBy` 也用它);这里照旧转出,过滤的调用方不用换路。
+export { PostFilterReason };
 
 /** 过滤吃的那八格:四个类型开关 + 屏蔽 / 白名单的关键词与正则。 */
 export type PostFilterRules = Pick<
@@ -38,16 +42,6 @@ export type PostFilterRules = Pick<
  * 独立端没有「屏蔽后提醒」的开关,所以生产里恒不提醒。
  */
 export type PostFilterSettings = PostFilterRules & { notify?: boolean };
-
-export const PostFilterReason = {
-	BlockedKeyword: "blocked-keyword",
-	BlockedReposts: "blocked-reposts",
-	BlockedArticles: "blocked-articles",
-	BlockedImages: "blocked-images",
-	BlockedVideos: "blocked-videos",
-	AllowlistUnmatched: "allowlist-unmatched",
-} as const;
-export type PostFilterReason = (typeof PostFilterReason)[keyof typeof PostFilterReason];
 
 export interface PostFilterResult {
 	blocked: boolean;
