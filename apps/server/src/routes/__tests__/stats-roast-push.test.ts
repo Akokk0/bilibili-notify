@@ -245,13 +245,14 @@ describe("POST /roast/push — 降级成文字", () => {
 });
 
 describe("POST /roast/push — 名称与配色由服务端 join", () => {
-	it("卡片拿到的是订阅里的名字与头像,请求体里只有订阅 id 说了算", async () => {
+	it("卡片拿到的是订阅里的名字,请求体里只有订阅 id 说了算;头像只认图库,来源地址不交给出图器", async () => {
 		const { deps, generateRoastBoardCard } = makeDeps();
 		await push(createStatsRoute(deps), boardBody());
 
 		const data = (generateRoastBoardCard.mock.calls[0] as any)[0];
 		expect(data.pigeon.name).toBe("机智的党妹");
-		expect(data.pigeon.avatar).toBe("https://i0.hdslb.com/dangmei.jpg");
+		// 这份夹具的资料里只有头像的来源地址、图库里没有图(图库那支在 roast-deliver 的测试里)。
+		expect(data.pigeon.avatar).toBeUndefined();
 		expect(data.diligent.name).toBe("老番茄");
 		expect(data.days).toBe(30);
 		// 颜色来自 upColor —— 与 dashboard 上同一位 UP 的颜色一致。

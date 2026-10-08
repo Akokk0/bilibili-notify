@@ -150,16 +150,20 @@ function mapPostEmojis(
 
 /**
  * 抓一张图:先抓缩放地址,失败且缩放地址与原地址不同再抓一次原地址。两次都失败回 `undefined`、记一条
- * warn(地址不带 query,里头可能是凭据)。
+ * warn(地址不带 query,里头可能是凭据)。抓图服务本身抛了算这一次失败,不往外抛。
  */
 async function fetchRef(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
 	const scaled = scaledImageUrl(url);
 	const candidates = scaled === url ? [url] : [scaled, url];
 	let lastMessage = "";
 	for (const candidate of candidates) {
-		const result = await deps.images.fetchImage(candidate, { headers: IMAGE_REQUEST_HEADERS });
-		if (result.ok) return result.ref;
-		lastMessage = `${result.code}: ${result.message}`;
+		try {
+			const result = await deps.images.fetchImage(candidate, { headers: IMAGE_REQUEST_HEADERS });
+			if (result.ok) return result.ref;
+			lastMessage = `${result.code}: ${result.message}`;
+		} catch (e) {
+			lastMessage = (e as Error).message;
+		}
 	}
 	deps.logger.warn(
 		`[bilibili-images] 抓图失败,这张图保持只有地址 ${urlWithoutQuery(url)}: ${lastMessage}`,
@@ -325,8 +329,7 @@ export type ProfileAvatarFields = Pick<CachedProfile, "avatar" | "avatarUrl">;
  * - 地址没变且已有 `avatar`:不抓(零网络),原样返回;
  * - 地址变了、或有地址却没有 `avatar`:抓。抓到两格一起换成新的;
  * - 抓不到、原本有 `avatar`:两格都保持原样(下一轮地址仍不同,会再试);
- * - 抓不到、原本没有 `avatar`:`avatarUrl` 记新地址、`avatar` 缺键(下一轮「有地址却没有 avatar」会再试,
- *   锐评卡之类也还有地址可退)。
+ * - 抓不到、原本没有 `avatar`:`avatarUrl` 记新地址、`avatar` 缺键(下一轮「有地址却没有 avatar」会再试)。
  * B 站没给地址(空)就什么都不动。
  */
 export async function syncProfileAvatar(

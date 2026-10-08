@@ -174,6 +174,32 @@ describe("fetchPostImages", () => {
 		expect(line).not.toContain("secret");
 	});
 
+	it("抓图服务本身抛了:和抓不到一样,这张图保持只有地址、记一条不带 query 的 warn,不抛,别的图照抓", async () => {
+		const bad = "https://i0.hdslb.com/bfs/x/bad.jpg?token=secret";
+		const good = "https://i0.hdslb.com/bfs/x/good.jpg";
+		const { deps: working } = fakeImages();
+		const deps: ImagesDeps = {
+			images: {
+				fetchImage: async (url, opts) => {
+					if (url.includes("bad.jpg")) throw new Error("socket hang up");
+					return working.images.fetchImage(url, opts);
+				},
+			},
+			logger: silentLogger(),
+		};
+
+		const result = await fetchPostImages(basePost({ images: [{ url: bad }, { url: good }] }), deps);
+
+		expect(result.images?.[0]).toEqual({ url: bad });
+		expect(result.images?.[1]?.ref).toBeDefined();
+		const warn = vi.mocked(deps.logger.warn);
+		expect(warn).toHaveBeenCalledTimes(1);
+		const line = String(warn.mock.calls[0]?.[0]);
+		expect(line).toContain("/bfs/x/bad.jpg");
+		expect(line).toContain("socket hang up");
+		expect(line).not.toContain("secret");
+	});
+
 	it("不改入参:原作品与它的图数组原样", async () => {
 		const { deps } = fakeImages();
 		const post = basePost({

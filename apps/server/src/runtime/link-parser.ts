@@ -28,6 +28,7 @@ import {
 	videoLinkKey,
 } from "@bilibili-notify/internal";
 import type { VideoRef, VideoResponse } from "../bilibili/api/index.js";
+import { fetchPostImages, type ImagesDeps } from "../bilibili/images.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
 import { videoToPost } from "./video-card.js";
@@ -78,6 +79,11 @@ export interface LinkParserOptions {
 		fetchVideoInfo(ref: VideoRef): Promise<VideoResponse>;
 		resolveShortLink(url: string): Promise<string | null>;
 	};
+	/**
+	 * 抓图服务(与推送的动态卡同一个):图片卡的视频封面在出卡前经它抓进图库,交给渲染器的是图库引用 ——
+	 * 渲染页不联网,只有地址的图画不出来。只在真要出图片卡时才抓(小程序卡、被冷却挡下的都不抓)。
+	 */
+	imageFetcher: ImagesDeps["images"];
 	/** 推送用的卡片渲染器;`null` = 没有 Chrome,整个功能静默不动。**每次现取**,别攥着。 */
 	renderer: () => {
 		generatePostCard(
@@ -216,8 +222,13 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 		// 低优先级:谁都能触发的卡,不能排在开播 / 动态卡前面。让路由渲染队列按车道做
 		// (渲染器那级与浏览器闸那级都认),不靠这里数自己发了几张。
 		const { colors, cardSkin } = opts.presentation();
+		// 封面先抓进图库再出卡;抓不到、抓图出错都不抛(那边记一条 warn),卡照出、封面那一格没有引用。
+		const post = await fetchPostImages(videoToPost(info), {
+			images: opts.imageFetcher,
+			logger: opts.logger,
+		});
 		const buffer = await renderer.generatePostCard(
-			videoToPost(info),
+			post,
 			{ ...colors, cardSkin },
 			{ priority: "low" },
 		);

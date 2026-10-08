@@ -4,7 +4,7 @@
  * 缝在 `handleMessage(msg)`:喂一条 adapter 归一化好的群消息,看它对外做了什么
  * (取了哪个视频、喂给渲染器的动态长什么样、往哪个群发了什么),不看内部。用例里仍以
  * OneBot 帧起手,经真实的 `extractGroupMessage` 归一化 —— 那正是接线层在 index.ts 里做的事。
- * 四个协作者全是假的:配置(现读)、B 站接口、渲染器、发送。
+ * 五个协作者全是假的:配置(现读)、B 站接口、抓图服务(内存替身,不联网)、渲染器、发送。
  */
 
 import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
@@ -16,9 +16,10 @@ import type {
 	NotificationPayload,
 	Post,
 } from "@bilibili-notify/internal";
-import { LINK_LIMITS, type LinkLimits } from "@bilibili-notify/internal";
+import { fail, type ImageRef, LINK_LIMITS, type LinkLimits, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { VideoRef, VideoResponse } from "../../bilibili/api/index.js";
+import type { ImagesDeps } from "../../bilibili/images.js";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
 import { createLinkParser, type LinkParser, type LinkReplyDestination } from "../link-parser.js";
 
@@ -39,6 +40,9 @@ const VIDEO: VideoResponse = {
 	owner: { mid: 12345, name: "示例UP", face: "http://i0.hdslb.com/bfs/face/face.jpg" },
 	stat: { view: 65000, danmaku: 120, reply: 30, favorite: 400, coin: 200, share: 15, like: 3000 },
 };
+
+/** 假抓图服务存进「图库」后回的那个引用。 */
+const COVER_REF: ImageRef = `${"c".repeat(64)}.webp`;
 
 /** 第一次调用的第一个参数;没被调过就让测试在这里死,别在后面报一串 undefined。 */
 function firstArg<A extends unknown[]>(calls: A[]): A[0] {
@@ -91,6 +95,9 @@ function makeParser(
 		...over,
 	};
 	const fetchVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
+	/** 抓图服务的内存替身:缺省每张都抓得到;`h.fetchImage.mockResolvedValue(fail(…))` 演抓不到。 */
+	const fetchImage = vi.fn<ImagesDeps["images"]["fetchImage"]>(async () => ok({ ref: COVER_REF }));
+	const warn = vi.fn();
 	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	const generatePostCard = vi.fn(
 		async (_post: Post, _colors?: CardColorOptions, _options?: { priority?: RenderPriority }) =>
@@ -107,7 +114,7 @@ function makeParser(
 		extra.probeCapabilities ?? (async (_dest: LinkReplyDestination) => undefined),
 	);
 	let now = 1_000_000;
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
+	const logger = { info() {}, warn, error() {}, debug() {} };
 	const readConfig = vi.fn(() => config);
 	const renderer = vi.fn((): { generatePostCard: typeof generatePostCard } | null => ({
 		generatePostCard,
@@ -116,6 +123,7 @@ function makeParser(
 		logger,
 		config: readConfig,
 		api: { fetchVideoInfo, resolveShortLink },
+		imageFetcher: { fetchImage },
 		renderer,
 		presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
 		send,
@@ -132,6 +140,8 @@ function makeParser(
 		renderer,
 		fetchVideoInfo,
 		resolveShortLink,
+		fetchImage,
+		warn,
 		generatePostCard,
 		send,
 		sent,
@@ -158,7 +168,8 @@ describe("createLinkParser", () => {
 			label: "投稿了视频",
 			text: "",
 			video: {
-				cover: { url: "http://i0.hdslb.com/bfs/archive/cover.jpg" },
+				// 封面在出卡前抓进图库:交给出图器的是图库引用(渲染页不联网,只有地址的图画不出来)。
+				cover: { url: "http://i0.hdslb.com/bfs/archive/cover.jpg", ref: COVER_REF },
 				title: "示例标题",
 				description: "示例简介",
 				durationSec: 754,
@@ -167,6 +178,13 @@ describe("createLinkParser", () => {
 			},
 			stats: { shares: 15, comments: 30, likes: 3000 },
 		});
+		// 抓的是图床的缩放版,带站内引用头 —— 与推送的动态卡同一条抓图路(`bilibili/images.ts`)。
+		expect(h.fetchImage.mock.calls).toEqual([
+			[
+				"http://i0.hdslb.com/bfs/archive/cover.jpg@1280w_80q_1s.webp",
+				{ headers: { Referer: "https://www.bilibili.com/" } },
+			],
+		]);
 		// 呈现与推送的动态卡同一份:配色不传的话主人在卡片页给「动态」调的样式只有推送卡认,
 		// 皮肤不传的话渲染器退回内置默认皮肤、主人选的那套排版就丢了。
 		expect(h.generatePostCard.mock.calls[0]?.[1]).toEqual({ ...COLORS, cardSkin: SKIN });
@@ -225,6 +243,7 @@ describe("createLinkParser", () => {
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
 				config: () => h.config,
 				api: { fetchVideoInfo: h.fetchVideoInfo, resolveShortLink: h.resolveShortLink },
+				imageFetcher: { fetchImage: h.fetchImage },
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
@@ -241,6 +260,7 @@ describe("createLinkParser", () => {
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
 				config: () => h.config,
 				api: { fetchVideoInfo: h.fetchVideoInfo, resolveShortLink: h.resolveShortLink },
+				imageFetcher: { fetchImage: h.fetchImage },
 				renderer: () => null,
 				presentation: () => ({}),
 				send: h.send,
@@ -249,6 +269,7 @@ describe("createLinkParser", () => {
 			});
 			await feed(parser, groupFrame(LINK));
 			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+			expect(h.fetchImage).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 	});
@@ -261,6 +282,8 @@ describe("createLinkParser", () => {
 			await feed(h.parser, groupFrame(LINK));
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(1);
+			// 被冷却挡下的那一条不出卡,也就不抓封面。
+			expect(h.fetchImage).toHaveBeenCalledTimes(1);
 
 			await feed(h.parser, groupFrame(LINK, { group_id: 999 }));
 			expect(h.sent).toHaveLength(2);
@@ -367,6 +390,28 @@ describe("createLinkParser", () => {
 			h.generatePostCard.mockRejectedValue(new Error("截图超时(20s)"));
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(0);
+		});
+
+		it("封面抓不到:卡照出、封面那一格没有引用,记一条 warn", async () => {
+			const h = makeParser();
+			h.fetchImage.mockResolvedValue(fail("unavailable", "连不上"));
+			await feed(h.parser, groupFrame(LINK));
+			expect(firstArg(h.generatePostCard.mock.calls).video?.cover).toEqual({
+				url: "http://i0.hdslb.com/bfs/archive/cover.jpg",
+			});
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
+			expect(h.warn).toHaveBeenCalledTimes(1);
+			// 地址不带参数、不带缩放后缀:报的是那张图本身。
+			expect(String(h.warn.mock.calls[0]?.[0])).toContain(
+				"http://i0.hdslb.com/bfs/archive/cover.jpg: unavailable",
+			);
+		});
+
+		it("抓图服务自己抛了:和抓不到一样,卡照出", async () => {
+			const h = makeParser();
+			h.fetchImage.mockRejectedValue(new Error("socket hang up"));
+			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
+			expect(h.sent).toHaveLength(1);
 		});
 
 		it("发送返回失败:不抛", async () => {
@@ -605,6 +650,8 @@ describe("createLinkParser", () => {
 			expect(h.sent.map((s) => s.payload)).toEqual([MINIAPP_CARD]);
 			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.probeCapabilities).not.toHaveBeenCalled();
+			// 不出图片卡就不抓封面。
+			expect(h.fetchImage).not.toHaveBeenCalled();
 		});
 
 		it("连接不支持 → 回落图片卡,和形式=图片卡一样", async () => {

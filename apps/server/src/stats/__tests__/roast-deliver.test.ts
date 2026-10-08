@@ -120,7 +120,7 @@ describe("deliverRoast — 停用的目标", () => {
  * 卡上的人(ADR-0020 决策 15 / 3):按订阅 id 认,两支订阅都行。
  *
  * - 拓展的头像在资料里是图库引用(`avatar`),面板用的同源地址 `/api/images/<ref>` 截图的浏览器加载不到 —— 出卡前
- *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像抓进图库后同样读图库;头像还没抓到(资料里只有来源地址 `avatarUrl`)时退回 CDN 图链,由出图器预取。
+ *   从图库读字节、转成内嵌图(同 ADR-0019 决策 68 那个坑)。B 站头像抓进图库后同样读图库;头像还没抓到(资料里只有来源地址 `avatarUrl`)就没有头像 —— 渲染页不联网,远端图链交过去也画不出来。
  * - 颜色跟着人走,与面板同一个算法(`upColor`):B 站按 uid,拓展按「拓展 id:外部 id」。
  * - 名字:B 站照旧(资料里的名字 → UID xxx),拓展走卡片那条链(资料 → 外部 id;别名已退役,ADR-0021 决策 16)。
  */
@@ -230,7 +230,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 		expect(up?.avatar).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
 	});
 
-	it("榜单两支混着:B 站头像还没进图库时退回远端图链;颜色 = upColor(按人,外部 id 与 uid 同串也不同色)", async () => {
+	it("榜单两支混着:B 站头像还没进图库时头像留空(不交远端图链);颜色 = upColor(按人,外部 id 与 uid 同串也不同色)", async () => {
 		const { deps, generateRoastBoardCard } = makeCardDeps();
 		const board: BoardLike = {
 			pushText: "x",
@@ -247,7 +247,7 @@ describe("buildRoastPayload — 卡上的人", () => {
 			string,
 			Record<string, unknown> & Array<Record<string, unknown>>
 		>;
-		expect(data.diligent?.avatar).toBe("https://i0.hdslb.com/a.jpg");
+		expect(data.diligent).toHaveProperty("avatar", undefined);
 		expect(data.diligent?.color).toBe(upColor({ uid: "12345" }));
 		expect(data.pigeon?.color).toBe(upColor({ extensionId: "douyin", externalId: "12345" }));
 		expect(data.pigeon?.color).not.toBe(data.diligent?.color);

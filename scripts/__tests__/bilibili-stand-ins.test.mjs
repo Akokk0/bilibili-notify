@@ -67,7 +67,6 @@ export const RATCHET = {
 	"apps/server/src/stats/bili-source.ts": 15,
 	"apps/server/src/stats/extension-source.ts": 3,
 	"apps/server/src/stats/recorder.ts": 5,
-	"apps/server/src/stats/roast-deliver.ts": 2,
 	"apps/server/src/stats/roast-subject.ts": 6,
 	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。
 	"apps/web/src/config/membership-programs.ts": 2,

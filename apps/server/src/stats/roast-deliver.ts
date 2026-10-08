@@ -8,7 +8,6 @@
 
 import type { RoastCardCreator } from "@bilibili-notify/image";
 import {
-	BILIBILI_SOURCE_KEY,
 	identityColor,
 	isTargetPaused,
 	type NotificationPayload,
@@ -85,15 +84,9 @@ async function cardUp(
 	const identity = subscriptionIdentityOf(sub);
 	// 颜色跟着人走:种子与面板的 `upColor` 逐字节相同(B 站是 uid,拓展是「拓展 id:外部 id」)。
 	const color = identityColor(identity);
-	const avatar = await storedAvatar(deps, sub.id);
-	if (identity.sourceKey !== BILIBILI_SOURCE_KEY) return { name, avatar, color };
-	// B 站的头像抓进图库后同样读图库;还没抓到(新订阅抓不到、或老资料等着开机冷刷补)时退回头像的来源地址
-	// `avatarUrl`,交给出图器自己预取 —— 这段时间锐评卡不丢头像。
-	return {
-		name,
-		avatar: avatar ?? deps.runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl,
-		color,
-	};
+	// 头像只认图库里那张(两支订阅一样):还没抓到(新订阅抓不到、或老资料等着开机冷刷补)就没有头像,
+	// 卡上画首字母圆牌 —— 渲染页不联网,来源地址交过去也画不出来。
+	return { name, avatar: await storedAvatar(deps, sub.id), color };
 }
 
 /**
