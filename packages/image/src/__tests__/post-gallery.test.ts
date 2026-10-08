@@ -19,9 +19,19 @@ import { createSSRApp, h } from "vue";
 import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { buildGallery } from "../templates/post-content";
 import { nodeFromPost } from "../templates/post-node";
+import { createImageRefTable, withImageRefs } from "./fixtures/image-refs";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
 const FMT = { time: () => "刚刚" };
+
+/**
+ * 夹具里的图照来源翻译那一步的产物只带地址;出图只认图库引用,所以先顶替「抓进图库」那一步(地址换成合成引用,
+ * 解析口认回原地址),图廊画出来的还是那些地址。
+ */
+function nodeOf(post: Post) {
+	const table = createImageRefTable();
+	return nodeFromPost(withImageRefs(post, table), { ...FMT, imageUrl: table.imageUrl });
+}
 
 /** 一张普通的方图。 */
 function pic(over: Partial<PostImage> = {}): PostImage {
@@ -38,7 +48,7 @@ function imagePost(images: PostImage[]): Post {
 }
 
 async function picsHtml(images: PostImage[]): Promise<string> {
-	const node = nodeFromPost(imagePost(images), FMT);
+	const node = nodeOf(imagePost(images));
 	const app = createSSRApp({
 		render: () => h("div", [node.text, buildGallery(node.images ?? [])]),
 	});
@@ -147,7 +157,7 @@ describe("图廊 — 挂点与根", () => {
 	}
 
 	it("单图:整个图廊就是那一格,`images` 与 `image` 两个挂点落在同一个元素上;根上没有跟在文字后面的间距", async () => {
-		const node = nodeFromPost(imagePost([pic()]), FMT);
+		const node = nodeOf(imagePost([pic()]));
 		const html = await renderToString(
 			createSSRApp({ render: () => buildGallery(node.images ?? []) as never }),
 		);
@@ -156,7 +166,7 @@ describe("图廊 — 挂点与根", () => {
 	});
 
 	it("多图:根挂 `images`,每一格挂 `image`", async () => {
-		const node = nodeFromPost(imagePost([pic(), pic(), pic()]), FMT);
+		const node = nodeOf(imagePost([pic(), pic(), pic()]));
 		const html = await renderToString(
 			createSSRApp({ render: () => buildGallery(node.images ?? []) as never }),
 		);
@@ -165,7 +175,7 @@ describe("图廊 — 挂点与根", () => {
 	});
 
 	it("没有图 → 图廊是 null(块收起),专栏的头图取 article.images", () => {
-		expect(buildGallery(nodeFromPost(imagePost([]), FMT).images ?? [])).toBeNull();
+		expect(buildGallery(nodeOf(imagePost([])).images ?? [])).toBeNull();
 		const article = nodeFromPost(
 			{
 				creator: { name: "某人" },
@@ -209,7 +219,7 @@ describe("图廊 — 遮罩与角标的样式真的生成了", () => {
 		const images = Array.from({ length: 14 }, (_, i) =>
 			pic({ url: `https://i0.hdslb.com/bfs/new_dyn/p${i}.gif`, isAnimated: true }),
 		);
-		const node = nodeFromPost(imagePost(images), FMT);
+		const node = nodeOf(imagePost(images));
 		const html = await renderViaDefaultSkin("post", { node }, { htmlWidth: 600 });
 		const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
 		for (const cls of ["inset-0", "bg-black/40", "text-[28px]", "bg-black/50", "text-[10px]"]) {

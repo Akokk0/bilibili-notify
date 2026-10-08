@@ -9,7 +9,7 @@
  * 4. 互动数哪一项没报就不画哪一项;
  * 5. 发布时间(渲染器按本地时区排)+ label、数字排版、配色 / 皮肤选项一路递到出卡;
  * 6. **图库引用由宿主注入的 `resolveImageRef` 事先解析**:配图 / 封面 / 头像 / 正文小图标与表情图 / 附加块文字行图标;
- *    `ref` 与 `url` 都有时认 `ref`,只有 `url` 的照旧画 `url`,解析不到(或解析口抛错)的画占位、不抛。
+ *    `ref` 与 `url` 都有时认 `ref`,只有 `url` 的、解析不到(或解析口抛错)的都画占位、不抛。
  */
 
 import type { CardSkinManifest, ImageRef, Post, ServiceContext } from "@bilibili-notify/internal";
@@ -100,9 +100,13 @@ const PROBE: CardSkinManifest = {
 	},
 } as never;
 
+/** 探针用例的图库:`ref(n)` → `img("R<n>")`。 */
+const probeImage = async (r: ImageRef) => img(`R${Number.parseInt(r.slice(0, 64), 16)}`);
+
 async function probe(p: Post): Promise<string[]> {
 	const { renderer, captured } = makeRenderer({
 		resolveCardSkin: (id) => (id === "probe" ? PROBE : undefined),
+		resolveImageRef: probeImage,
 	});
 	await renderer.generatePostCard(p, { cardSkin: "probe" });
 	return [...(captured[0] ?? "").matchAll(/探针\[([^\]]*)\]/g)].map((m) => m[1] as string);
@@ -120,10 +124,8 @@ describe("generatePostCard — 皮肤契约从作品取", () => {
 	 * 这条红。
 	 */
 	it("有没有视频 / 转发、图廊张数与首图都从作品上取", async () => {
-		const out = await probe(
-			post({ images: [{ url: img("P1") }, { url: img("P2") }, { url: img("P3") }] }),
-		);
-		expect(out).toEqual([`false|false|3|${img("P1")}|`]);
+		const out = await probe(post({ images: [{ ref: ref(1) }, { ref: ref(2) }, { ref: ref(3) }] }));
+		expect(out).toEqual([`false|false|3|${img("R1")}|`]);
 	});
 
 	/**
@@ -135,12 +137,12 @@ describe("generatePostCard — 皮肤契约从作品取", () => {
 			post({
 				repost: post({
 					creator: { name: "原作者" },
-					video: { cover: { url: img("C") }, title: "t", description: "" },
-					images: [{ url: img("INNER") }],
+					video: { cover: { ref: ref(1) }, title: "t", description: "" },
+					images: [{ ref: ref(2) }],
 				}),
 			}),
 		);
-		expect(out).toEqual(["false|true|0||", `true|false|1|${img("INNER")}|`]);
+		expect(out).toEqual(["false|true|0||", `true|false|1|${img("R2")}|`]);
 	});
 });
 
@@ -369,15 +371,15 @@ describe("generatePostCard — 图库引用由注入的解析口事先解析", (
 		expect(html).toContain(img("TWO"));
 	});
 
-	it("`ref` 与 `url` 都有时认 `ref`;只有 `url` 的照旧画 `url`", async () => {
-		// 用 data URL 当 `url`:远端网址要过渲染器的白名单预取,这里只想看认哪一个。
+	it("`ref` 与 `url` 都有时认 `ref`;只有 `url` 的画占位(地址不进卡)", async () => {
 		const html = await htmlOf(
 			post({ images: [{ ref: ref(1), url: img("OTHER") }, { url: img("PLAIN") }] }),
 			{ resolveImageRef },
 		);
 		expect(html).toContain(img("ONE"));
 		expect(html).not.toContain(img("OTHER"));
-		expect(html).toContain(img("PLAIN"));
+		expect(html).not.toContain(img("PLAIN"));
+		expect(html).toContain(BLOCKED_IMG_PLACEHOLDER);
 	});
 
 	it("解析不到(图已被清扫)的引用画占位,不退回 `url`;两样都没有也画占位;解析口抛错同样画占位", async () => {

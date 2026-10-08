@@ -6,7 +6,7 @@
  * 1. **回归守护 — P0-B:专栏(`isArticle`)路径必须全文 HTML 转义。**
  *    关键不变量:专栏片段的 `text` / `title`(以及表情的 `text`)均来自 B 站 API(攻击者可控)。它们最终进入
  *    `<div innerHTML={fullHtml}/>`,**必须**经 escapeHtml 转义 —— 注入的 <script>/<iframe>/onerror/属性
- *    breakout/@import 一律变纯文本,不得在 puppeteer 截图页内被解析执行(否则旁路 image SSRF 白名单)。
+ *    breakout/@import 一律变纯文本,不得在 puppeteer 截图页内被解析执行(渲染页的请求闸只挡得住它往外发请求,挡不住脚本在页内跑)。
  *    复发点:任何人去掉 escapeHtml、改回 `acc + node.text` 裸拼,本套立刻挂。
  *    断言落在返回 VNode 的 props.innerHTML(安全攸关字符串本身,非 SSR 产物)。
  *    表情图的地址同样要转义:地址是宿主注入的解析口给的(图库引用 → data URL),虽然不是攻击者直接写的,

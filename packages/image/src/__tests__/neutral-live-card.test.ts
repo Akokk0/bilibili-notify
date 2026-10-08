@@ -9,7 +9,7 @@
  * 2. 卡上那句时间由 ISO 开播时刻算(北京时间),读不懂当没有;数字排成「1.2万」,粉丝数变化带正负号;
  * 3. 皮肤契约的直播取值(下播时 `stats.likes` = 点赞、`stats.totalViewers` = 累计观看,
  *    `stats.followersDelta` 有就给);
- * 4. 封面:引用解析到画解析结果、解析不到当成没有、只有 `url` 原样用、两样都没有画占位;自定义直播封面盖在
+ * 4. 封面:引用解析到画解析结果,解析不到、只有 `url`、两样都没有都画占位;自定义直播封面盖在
  *    输入的封面上;契约的 `live.cover` 永远画得出来、`live.hasCover` 如实说;
  * 5. 头像:`creator.avatar` 是引用,解析到了画,没有或解析不到整块收起(B 站那条到 3a 之前不给,㉒b),
  *    契约的 `creator.avatar` 随之是地址 / 空串。
@@ -89,7 +89,7 @@ function input(over: Partial<LiveCardInput> = {}): LiveCardInput {
 		title: "一场直播",
 		category: "虚拟主播",
 		description: "纯文本简介",
-		cover: { url: COVER },
+		cover: { ref: COVER_REF },
 		startedAt: STARTED_AT,
 		currentViewers: 12_345,
 		likes: 20_133,
@@ -128,7 +128,7 @@ describe("generateLiveCard — 默认块在各状态画出的文字", () => {
 		expect(d.time).toBe("开播时间：2026-09-13 20:00:00");
 		expect(d.currentViewers).toBe("人气：1.2万");
 		expect(d.followers).toBe("当前粉丝数：8.9万");
-		expect(d.cover).toBe(COVER);
+		expect(d.cover).toBe(COVER_FROM_REF);
 	});
 
 	it("直播中:直播时长由开播时刻算", async () => {
@@ -333,8 +333,8 @@ describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", ()
 	}
 
 	/**
-	 * 规则:有 `ref` 认解析结果;解析不到当成没有封面(画「暂无封面」占位,不画透明块,也**不退回 `url`**);
-	 * 只有 `url` 原样用;两样都没有同样是没有封面。
+	 * 规则:只认 `ref` 的解析结果;解析不到当成没有封面(画「暂无封面」占位,不画透明块,也**不退回 `url`**);
+	 * 只有 `url`、两样都没有同样是没有封面(地址不进卡,渲染页不联网)。
 	 * 验红:`coverUrlOf` 里让解析不到时退回 `url`,第二条红;让 `ref` 不再解析,第一条红。
 	 */
 	it("引用解析到了:画解析出的地址", async () => {
@@ -362,8 +362,9 @@ describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", ()
 		);
 	});
 
-	it("只有 url:原样用(B 站在 3a 存进图库之前靠它)", async () => {
-		expect(await coverSrc({ url: COVER })).toBe(COVER);
+	it("只有 url:占位(来源没把图存进图库就是没有封面;data URL 也一样,出图只认引用)", async () => {
+		expect(await coverSrc({ url: "https://example.com/c.png" })).toBe(LIVE_COVER_PLACEHOLDER);
+		expect(await coverSrc({ url: COVER })).toBe(LIVE_COVER_PLACEHOLDER);
 	});
 
 	it("引用与 url 都有且引用解析到了:认引用", async () => {
@@ -399,11 +400,7 @@ describe("generateLiveCard — 封面是 PostImage:引用 / url / 都没有", ()
 
 describe("generateLiveCard — 皮肤契约的封面", () => {
 	it("有封面:live.cover 就是它,live.hasCover 为真", async () => {
-		expect(await coverContract(input())).toEqual({ src: COVER, hasCover: "true" });
-		expect(await coverContract(input({ cover: { ref: COVER_REF } }))).toEqual({
-			src: COVER_FROM_REF,
-			hasCover: "true",
-		});
+		expect(await coverContract(input())).toEqual({ src: COVER_FROM_REF, hasCover: "true" });
 	});
 
 	it("没有真封面:live.cover 给占位图(没写 showIf 的皮肤也不裂图),live.hasCover 为假", async () => {

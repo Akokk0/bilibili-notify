@@ -126,16 +126,6 @@ const FMT = {
 	imageUrl: (ref: string): string | undefined => SAMPLE_IMAGES[ref],
 };
 
-/** 示例视频本身。「视频投稿」与转发场面框里那条用的是同一个视频,只是外面那条动态不同。 */
-const SAMPLE_VIDEO: NonNullable<Post["video"]> = {
-	cover: { url: SVG_COVER },
-	title: "【示例视频】这是一条用来预览卡片的示例投稿标题",
-	description: "示例简介：这一行用来看视频小卡里的副标题。",
-	durationSec: 967,
-	views: 18_000,
-	danmaku: 129,
-};
-
 /** 内置的示例头像引用:形状合规(`<sha256>.<扩展名>`)、不会与任何真图撞名;只有示例的解析口认得它。 */
 export const SAMPLE_AVATAR_REF = `${"0".repeat(63)}1.png`;
 
@@ -145,12 +135,52 @@ export const SAMPLE_AVATAR_REF = `${"0".repeat(63)}1.png`;
  */
 const SAMPLE_FAN_AVATAR_REF = `${"0".repeat(63)}2.png`;
 const SAMPLE_NEW_MEMBER_AVATAR_REF = `${"0".repeat(63)}3.png`;
+/** 示例视频的封面、会员卡的档位徽章:同样是引用(出图只认引用,只有地址的图画占位)。 */
+const SAMPLE_COVER_REF = `${"0".repeat(63)}4.png`;
+const SAMPLE_BADGE_REF = `${"0".repeat(63)}5.png`;
 
-/** 示例里用到的内置图:引用 → 图(与 `routes/cards.ts` 的预览占位同款 SVG)。 */
+/** 图文场面一共几张图(图廊最满的样子)。 */
+const SAMPLE_PIC_COUNT = 9;
+/** 图文场面第 `n` 张图(从 1 数)的引用,排在上面那几个内置引用之后。 */
+const samplePicRef = (n: number): string => `${(5 + n).toString(16).padStart(64, "0")}.png`;
+
+/**
+ * 图文场面的占位图:编了号、两色相间,一眼看得出排列顺序。现画的内联 SVG,不带任何外部素材。
+ */
+function samplePicImage(n: number, width: number, height: number): string {
+	const fill = n % 2 === 1 ? "%23FB7299" : "%2300AEEC";
+	return `data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${width} ${height}'%3E%3Crect width='${width}' height='${height}' fill='${fill}'/%3E%3Ctext x='50%25' y='50%25' fill='white' font-size='96' text-anchor='middle' dominant-baseline='middle'%3E${n}%3C/text%3E%3C/svg%3E`;
+}
+
+/** 图文场面每张图的尺寸:第 5 张是**长图**(高超过宽的两倍),好让九宫格里那个「长图」角标也有地方露面。 */
+const samplePicSize = (n: number): { width: number; height: number } => ({
+	width: 400,
+	height: n === 5 ? 1000 : 400,
+});
+
+/** 示例里用到的内置图:引用 → 图(与 `routes/cards.ts` 的预览占位同款 SVG,外加图文场面现画的九张)。 */
 const SAMPLE_IMAGES: Readonly<Record<string, string>> = {
 	[SAMPLE_AVATAR_REF]: SVG_AVATAR_BLUE,
 	[SAMPLE_FAN_AVATAR_REF]: SVG_AVATAR_FAN,
 	[SAMPLE_NEW_MEMBER_AVATAR_REF]: SVG_AVATAR_PINK,
+	[SAMPLE_COVER_REF]: SVG_COVER,
+	[SAMPLE_BADGE_REF]: SVG_GUARD_BADGE,
+	...Object.fromEntries(
+		Array.from({ length: SAMPLE_PIC_COUNT }, (_, i) => {
+			const { width, height } = samplePicSize(i + 1);
+			return [samplePicRef(i + 1), samplePicImage(i + 1, width, height)];
+		}),
+	),
+};
+
+/** 示例视频本身。「视频投稿」与转发场面框里那条用的是同一个视频,只是外面那条动态不同。 */
+const SAMPLE_VIDEO: NonNullable<Post["video"]> = {
+	cover: { ref: SAMPLE_COVER_REF },
+	title: "【示例视频】这是一条用来预览卡片的示例投稿标题",
+	description: "示例简介：这一行用来看视频小卡里的副标题。",
+	durationSec: 967,
+	views: 18_000,
+	danmaku: 129,
 };
 
 /** 示例作者:大会员,名字走粉色那一支,皮肤里这条最容易被写死的前景色吃掉。 */
@@ -221,19 +251,9 @@ const SAMPLE_VIDEO_POST: Post = {
 	stats: { shares: 32, comments: 214, likes: 3456 },
 };
 
-/**
- * 图文场面的九张占位图:编了号、两色相间,一眼看得出排列顺序。第 5 张是**长图**(高超过
- * 宽的两倍),好让九宫格里那个「长图」角标也有地方露面 —— 皮肤作者要给它写样式。
- */
-function samplePic(n: number, long: boolean): PostImage {
-	const width = 400;
-	const height = long ? 1000 : 400;
-	const fill = n % 2 === 1 ? "%23FB7299" : "%2300AEEC";
-	return {
-		url: `data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${width} ${height}'%3E%3Crect width='${width}' height='${height}' fill='${fill}'/%3E%3Ctext x='50%25' y='50%25' fill='white' font-size='96' text-anchor='middle' dominant-baseline='middle'%3E${n}%3C/text%3E%3C/svg%3E`,
-		width,
-		height,
-	};
+/** 图文场面的第 `n` 张图:引用(图在 {@link SAMPLE_IMAGES})加宽高 —— 皮肤作者要给长图角标写样式。 */
+function samplePic(n: number): PostImage {
+	return { ref: samplePicRef(n), ...samplePicSize(n) };
 }
 
 /**
@@ -246,7 +266,7 @@ const SAMPLE_DRAW_POST: Post = {
 	publishedAt: SAMPLE_PUBLISHED_AT,
 	text: SAMPLE_PICS_TEXT,
 	richText: [{ kind: "text", text: SAMPLE_PICS_TEXT }],
-	images: Array.from({ length: 9 }, (_, i) => samplePic(i + 1, i === 4)),
+	images: Array.from({ length: SAMPLE_PIC_COUNT }, (_, i) => samplePic(i + 1)),
 	stats: { shares: 64, comments: 128, likes: 2048 },
 };
 
@@ -300,8 +320,8 @@ function scSample(): SampleProps<"superchat"> {
 // ── 上舰卡 ────────────────────────────────────────────────────────────────────
 
 function guardSample(): SampleProps<"membership"> {
-	// 档的各项取自档位表(档色与宣告语哪天调了,预览不会还停在老样子);徽章换成内联的色块 —— 真卡上那是远端图,
-	// 预览不许联网。
+	// 档的各项取自档位表(档色与宣告语哪天调了,预览不会还停在老样子);徽章换成内联的色块(引用,经示例的解析口
+	// 认成内置图)—— 真卡上那是开机抓进图库的官方图标,示例里不带任何平台的美术素材。
 	const captain = guardTierOf(3);
 	if (!captain) throw new Error("档位表里没有 guard_level 3 这一档");
 	return buildMembershipCardView(
@@ -314,7 +334,7 @@ function guardSample(): SampleProps<"membership"> {
 				color: captain.color,
 				colorEnd: captain.colorEnd,
 				announcement: captain.announcement,
-				icon: { url: SVG_GUARD_BADGE },
+				icon: { ref: SAMPLE_BADGE_REF },
 			},
 		},
 		{ imageUrl: FMT.imageUrl },

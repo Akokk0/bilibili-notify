@@ -23,6 +23,7 @@ import type { Attachment, Post } from "@bilibili-notify/internal";
 import { renderToString } from "@vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import { createSSRApp, type VNode } from "vue";
+import { BLOCKED_IMG_PLACEHOLDER } from "../skin/render-skin";
 import { nodeFromPost } from "../templates/post-node";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
@@ -41,8 +42,11 @@ function postWith(attachment: Attachment): Post {
 }
 
 /** 一份附加块画出来的 HTML(就是 `additional` 块里装的那段,即 `node.attachment`)。 */
-async function attachmentHtml(attachment: Attachment): Promise<string> {
-	const node = nodeFromPost(postWith(attachment), FMT);
+async function attachmentHtml(
+	attachment: Attachment,
+	imageUrl?: (ref: string) => string | undefined,
+): Promise<string> {
+	const node = nodeFromPost(postWith(attachment), { ...FMT, imageUrl });
 	if (!node.attachment) throw new Error("没有附加块");
 	return htmlOf(node.attachment);
 }
@@ -211,7 +215,17 @@ describe("video:封面 + 时长角标 + 标题 + subtitle;没有标题上方的�
 		expect(html).toContain("中国人能飞~✈️✈️✈️");
 		expect(html).toContain(">0:29<");
 		expect(html).toContain("2654观看 102弹幕");
-		expect(html).toContain("http://i1.hdslb.com/bfs/archive/d75b1c59.jpg");
+	});
+
+	/** 验红:让 `pictureUrl` 在没有引用时退回 `url`,这条红。 */
+	it("封面只认图库引用:有引用画解析出的地址;只有地址画占位,地址不进卡", async () => {
+		const stored = await attachmentHtml(video({ cover: { ref: "cover.png" } }), (ref) =>
+			ref === "cover.png" ? "data:image/png;base64,COVER" : undefined,
+		);
+		expect(stored).toContain('src="data:image/png;base64,COVER"');
+		const urlOnly = await attachmentHtml(video());
+		expect(urlOnly).not.toContain("http://i1.hdslb.com/bfs/archive/d75b1c59.jpg");
+		expect(urlOnly).toContain(`src="${BLOCKED_IMG_PLACEHOLDER}"`);
 	});
 
 	it.each([

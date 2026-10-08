@@ -204,16 +204,23 @@ describe("正文:标题两种画法、notice、充电专属", () => {
 		expect(await htmlOf(alone.text as VNode)).toBe("<p>无法渲染</p>");
 	});
 
-	it("locked 替掉正文:徽标图(有地址才画)、标题、说明", async () => {
+	it("locked 替掉正文:徽标图(给了才画;认图库引用,只有地址画占位)、标题、说明", async () => {
 		const withIcon = nodeFromPost(
 			post({
 				text: "不会画",
-				locked: { icon: { url: "http://x/b.png" }, title: "充电专属", hint: "为 甲 充电" },
+				locked: { icon: { ref: "badge.png" }, title: "充电专属", hint: "为 甲 充电" },
 			}),
-			FMT,
+			{ ...FMT, imageUrl: (ref) => (ref === "badge.png" ? "data:image/png;base64,B" : undefined) },
 		);
 		const html = await htmlOf(withIcon.text as VNode);
-		expect(html).toContain('src="http://x/b.png"');
+		expect(html).toContain('src="data:image/png;base64,B"');
+		const urlOnly = nodeFromPost(
+			post({ locked: { icon: { url: "http://x/b.png" }, title: "t", hint: "h" } }),
+			FMT,
+		);
+		const urlOnlyHtml = await htmlOf(urlOnly.text as VNode);
+		expect(urlOnlyHtml).not.toContain("http://x/b.png");
+		expect(urlOnlyHtml).toContain(`src="${BLOCKED_IMG_PLACEHOLDER}"`);
 		expect(html).toContain("充电专属");
 		expect(html).toContain("为 甲 充电");
 		expect(html).not.toContain("不会画");
@@ -257,7 +264,7 @@ describe("被转发的内层卡", () => {
 });
 
 describe("图集与视频", () => {
-	it("图认 ref(经解析口)与 url;`ref` 与 `url` 都有时认 `ref`;都没有、或引用解析不到画占位", () => {
+	it("图只认 ref(经解析口);`ref` 与 `url` 都有时认 `ref`;只有 url、都没有、或引用解析不到画占位", () => {
 		const node = nodeFromPost(
 			post({
 				images: [
@@ -271,21 +278,29 @@ describe("图集与视频", () => {
 			{ ...FMT, imageUrl: (ref) => (ref === "x.png" ? "data:image/png;base64,X" : undefined) },
 		);
 		expect(node.images).toEqual([
-			{ url: "a", width: undefined, height: undefined, animated: undefined },
+			{ url: BLOCKED_IMG_PLACEHOLDER, width: undefined, height: undefined, animated: undefined },
 			{ url: "data:image/png;base64,X", width: undefined, height: undefined, animated: undefined },
 			{ url: BLOCKED_IMG_PLACEHOLDER, width: undefined, height: undefined, animated: undefined },
 			{ url: BLOCKED_IMG_PLACEHOLDER, width: undefined, height: undefined, animated: undefined },
-			{ url: "b", width: 1, height: 2, animated: true },
+			// 宽高与动图标记跟着图走,和画不画得出来无关。
+			{ url: BLOCKED_IMG_PLACEHOLDER, width: 1, height: 2, animated: true },
 		]);
-		const article = nodeFromPost(post({ article: { title: "", images: [{ url: "c" }] } }), FMT);
-		expect(article.images?.map((image) => image.url)).toEqual(["c"]);
+		const article = nodeFromPost(
+			post({ article: { title: "", images: [{ ref: "x.png" }, { url: "c" }] } }),
+			{ ...FMT, imageUrl: (ref) => (ref === "x.png" ? "data:image/png;base64,X" : undefined) },
+		);
+		expect(article.images?.map((image) => image.url)).toEqual([
+			"data:image/png;base64,X",
+			BLOCKED_IMG_PLACEHOLDER,
+		]);
 	});
 
-	it("视频:播放 / 弹幕 / 时长是数字,由 internal 统一排版;缺哪一格不带哪一格", () => {
+	it("视频:播放 / 弹幕 / 时长是数字,由 internal 统一排版;缺哪一格不带哪一格;封面只认引用", () => {
+		const stored = { ...FMT, imageUrl: (ref: string) => (ref === "c.png" ? "c" : undefined) };
 		const node = nodeFromPost(
 			post({
 				video: {
-					cover: { url: "c" },
+					cover: { ref: "c.png" },
 					title: "t",
 					description: "d",
 					durationSec: 967,
@@ -293,7 +308,7 @@ describe("图集与视频", () => {
 					danmaku: 129,
 				},
 			}),
-			FMT,
+			stored,
 		);
 		expect(node.video).toEqual({
 			cover: "c",
@@ -303,11 +318,17 @@ describe("图集与视频", () => {
 			views: "1.8万",
 			danmaku: "129",
 		});
+		// 只有地址的封面画占位,地址不进卡。
 		const bare = nodeFromPost(
 			post({ video: { cover: { url: "c" }, title: "t", description: "" } }),
-			FMT,
+			stored,
 		);
-		expect(bare.video).toEqual({ cover: "c", duration: "", title: "t", description: "" });
+		expect(bare.video).toEqual({
+			cover: BLOCKED_IMG_PLACEHOLDER,
+			duration: "",
+			title: "t",
+			description: "",
+		});
 	});
 
 	it.each([

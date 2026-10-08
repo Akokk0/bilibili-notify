@@ -67,17 +67,19 @@ describe("buildMembershipCardView", () => {
 		]);
 	});
 
-	describe("徽章与头像:引用经解析口换成可画的地址,url 照用,解析不到就没有", () => {
+	describe("徽章与头像:引用经解析口换成可画的地址,解析不到、只有 url 都是没有", () => {
 		const ICON = `${"c".repeat(63)}3.png` as ImageRef;
 		const VIEWER = `${"a".repeat(63)}1.png` as ImageRef;
 		const MASTER = `${"b".repeat(63)}2.png` as ImageRef;
 		const imageUrl = (ref: ImageRef) =>
 			({ [ICON]: "data:icon", [VIEWER]: "data:viewer", [MASTER]: "data:master" })[ref];
 
-		it("徽章:带 url 照用;带 ref 走解析口;解析不到或都没有是空串", () => {
+		it("徽章:带 ref 走解析口;只有 url、解析不到或都没有是空串", () => {
 			expect(
-				buildMembershipCardView(input({ tier: { name: "x", icon: { url: "data:u" } } })).iconUrl,
-			).toBe("data:u");
+				buildMembershipCardView(input({ tier: { name: "x", icon: { url: "data:u" } } }), {
+					imageUrl,
+				}).iconUrl,
+			).toBe("");
 			expect(
 				buildMembershipCardView(input({ tier: { name: "x", icon: { ref: ICON } } }), { imageUrl })
 					.iconUrl,

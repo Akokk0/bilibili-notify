@@ -14,22 +14,11 @@
 
 import { guardTierOf, type ImageRef, type ServiceContext } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { ImageRenderer, type ImageRendererOptions } from "../image-renderer";
 import type { PuppeteerLike } from "../puppeteer";
 import type { MembershipCardInput } from "../templates/membership-card";
 import type { SuperchatCardInput } from "../templates/superchat-card";
-
-// 卡里的头像 / 徽章都是远端地址,渲染器会在 Node 这边预取。测试不许真去拉,一律 404。
-beforeEach(() => {
-	vi.stubGlobal(
-		"fetch",
-		vi.fn(async () => new Response(null, { status: 404 })),
-	);
-});
-afterEach(() => {
-	vi.unstubAllGlobals();
-});
 
 interface Harness {
 	renderer: ImageRenderer;
@@ -348,12 +337,13 @@ describe("会员卡:档色取 tier.color / colorEnd、徽章取 tier.icon", () =
 		expect(tierVariables(doc)).toEqual({ color: "#a8e6cf", colorEnd: "#a8e6cf" });
 	});
 
-	it("徽章带 url → 照画(背景图是那条地址;data URL 原样进卡,不经远端白名单)", async () => {
+	// 验红:让 `coverUrlOf` 在没有引用时退回 `url`,这条红。
+	it("徽章只有 url(没有图库引用)→ 不画徽章块:出图只认引用,地址不进卡", async () => {
 		const doc = await memberOf(
 			membership({ tier: { name: "某档", icon: { url: "data:image/png;base64,BADGE" } } }),
 		);
-		const badge = doc.querySelector<HTMLElement>('[data-block="icon"]');
-		expect(badge?.getAttribute("style") ?? "").toContain("data:image/png;base64,BADGE");
+		expect(doc.querySelector('[data-block="icon"]')).toBeNull();
+		expect(doc.documentElement.outerHTML).not.toContain("BADGE");
 	});
 
 	// 验红:去掉 `image-renderer.ts` 里把 `tier.icon.ref` 加进待解析集合的那一句,这条红。

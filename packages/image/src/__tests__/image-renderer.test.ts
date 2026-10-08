@@ -181,13 +181,17 @@ describe("generateLiveCard 自定义封面", () => {
 		return { captured, puppeteer: { page: async () => page } as unknown as PuppeteerLike };
 	}
 
-	/** 来源给的封面(B 站那条路只有 `url`)。 */
+	/** 来源给的封面:出卡前已存进图库,输入里是引用。 */
+	const COVER_REF = `${"c".repeat(64)}.png`;
+	const resolveImageRef = async (ref: string) =>
+		ref === COVER_REF ? "data:image/png;base64,API-COVER" : undefined;
+
 	const liveInput: LiveCardInput = {
 		status: "start",
 		creator: { name: "示例UP" },
 		title: "标题",
 		category: "分区",
-		cover: { url: "data:image/png;base64,API-COVER" },
+		cover: { ref: COVER_REF },
 		startedAt: "2025-12-31T16:00:00.000Z",
 		currentViewers: 1,
 	};
@@ -198,6 +202,7 @@ describe("generateLiveCard 自定义封面", () => {
 			{},
 			{
 				puppeteer,
+				resolveImageRef,
 				resolveAsset: async (id: string) => `data:image/png;base64,ASSET-${id}`,
 			},
 		);
@@ -206,9 +211,9 @@ describe("generateLiveCard 自定义封面", () => {
 		expect(captured.html).not.toContain("API-COVER");
 	});
 
-	it("未配置 liveCoverImage → 封面维持 API 来源", async () => {
+	it("未配置 liveCoverImage → 封面维持来源给的那张(图库引用解析出来的)", async () => {
 		const { captured, puppeteer } = makeCapturingPuppeteer();
-		const renderer = makeRenderer({}, { puppeteer });
+		const renderer = makeRenderer({}, { puppeteer, resolveImageRef });
 		await renderer.generateLiveCard(liveInput, {});
 		expect(captured.html).toContain("API-COVER");
 	});

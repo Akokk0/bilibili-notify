@@ -19,6 +19,7 @@ import { htmlToPlain } from "../../html-to-plain";
 import type { LiveCardView } from "../../templates/live-card";
 import { nodeFromPost } from "../../templates/post-node";
 import type { RoastBoardCardInput, RoastSoloCardInput } from "../../templates/roast-card";
+import { createImageRefTable, withImageRefs } from "./image-refs";
 import { DYNAMIC_SAMPLE_POSTS } from "./post-fixtures";
 
 // ── 夹具表的形状 ──────────────────────────────────────────────────────────────
@@ -136,15 +137,20 @@ const FMT = { time: () => "刚刚" };
 
 /**
  * 十份动态卡的输入是 **`Post` 字面量**({@link DYNAMIC_SAMPLE_POSTS}),经 `nodeFromPost` 造成块吃的节点 ——
- * 与真出卡(`ImageRenderer.generatePostCard`)同一条路。B 站原始夹具住在 `apps/server/src/bilibili/dynamic`,那边的
+ * 与真出卡(`ImageRenderer.generatePostCard`)同一条路。夹具里的图照 B 站翻译那一步的产物只带地址,而出图只认图库
+ * 引用,所以这里顶替「抓进图库」那一步:地址换成合成引用,解析口把它认回原地址(`fixtures/image-refs.ts`)——
+ * 画进 HTML 的还是原来那串字节。B 站原始夹具住在 `apps/server/src/bilibili/dynamic`,那边的
  * `post-from-dynamic.test.ts` 把它们翻成 `Post` 与这里逐项对一遍(见 `post-fixtures.ts`)。
  */
 const dynamicInput = (name: string): (() => Promise<CardRenderInput>) => {
 	return async () => {
 		const post = DYNAMIC_SAMPLE_POSTS[name];
 		if (!post) throw new Error(`post-fixtures 里没有叫「${name}」的作品`);
+		const table = createImageRefTable();
 		return {
-			props: { node: nodeFromPost(post, FMT) },
+			props: {
+				node: nodeFromPost(withImageRefs(post, table), { ...FMT, imageUrl: table.imageUrl }),
+			},
 			options: { title: "动态通知", font: FONT, htmlWidth: 600 },
 		};
 	};

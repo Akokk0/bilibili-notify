@@ -25,7 +25,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 } from "@bilibili-notify/internal";
 import { JSDOM } from "jsdom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import {
 	ImageRenderer,
 	type ImageRendererConfig,
@@ -36,18 +36,6 @@ import { CSS_CUSTOM_PROPERTY_MAX_CHARS } from "../skin/knob-assets";
 import type { LiveCardInput } from "../templates/live-card";
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────────
-
-// 渲染器在 Node 这边预取卡片里的图(头像 / 封面 / 舰长图标),夹具里写的是 B 站 CDN 的地址。
-// 测试不许真去拉(根 setup 的守卫会拦),一律回 404,渲染器照常落到占位图。
-beforeEach(() => {
-	vi.stubGlobal(
-		"fetch",
-		vi.fn(async () => new Response(null, { status: 404 })),
-	);
-});
-afterEach(() => {
-	vi.unstubAllGlobals();
-});
 
 const SERVICE_CTX: ServiceContext = {
 	logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -63,7 +51,7 @@ const BASE_CONFIG: ImageRendererConfig = {
 };
 
 /**
- * 一张开播卡的中立输入(B 站那条路翻出来的样子:主播没有头像、封面只有 `url`),默认皮肤的每个数据块都有东西可画。
+ * 一张开播卡的中立输入(主播没有头像;封面只有来源地址、没进图库,卡上画「暂无封面」占位),默认皮肤的每个数据块都有东西可画。
  * 出卡入口收成一个 `generateLiveCard` 以后(㉒c),这份测试不再经 B 站的房间数据绕一圈。
  */
 const LIVE_INPUT: LiveCardInput = {

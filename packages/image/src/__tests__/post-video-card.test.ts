@@ -14,9 +14,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { nodeFromPost } from "../templates/post-node";
 import { renderViaDefaultSkin } from "./fixtures/skin-render";
 
-const FMT = { time: () => "刚刚" };
-
 const COVER = "http://i1.hdslb.com/bfs/archive/15644012e6961428b08a947ec83365747c741d41.jpg";
+/** 封面在图库里的引用;解析口把它认成上面那个地址(真出卡时是 data URL,这里留着地址好认)。 */
+const COVER_REF = `${"c".repeat(64)}.jpg`;
+
+const FMT = {
+	time: () => "刚刚",
+	imageUrl: (ref: string) => (ref === COVER_REF ? COVER : undefined),
+};
 
 /** 真实抓包字段(取自 .interface/dynamic_video.json 的 DYNAMIC_TYPE_AV 条目)翻成的 `Post`。 */
 function makeVideoPost(over: Partial<NonNullable<Post["video"]>> = {}): Post {
@@ -26,7 +31,7 @@ function makeVideoPost(over: Partial<NonNullable<Post["video"]>> = {}): Post {
 		label: "投稿了视频",
 		text: "",
 		video: {
-			cover: { url: COVER },
+			cover: { ref: COVER_REF },
 			title: "因为揭穿了他们的秘密！我们遭到了陷害！MC恐怖地图 毒药",
 			description: "剪辑：@雲開七幺七",
 			durationSec: 967,

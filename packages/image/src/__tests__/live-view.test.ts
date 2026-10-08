@@ -38,7 +38,7 @@ function input(over: Partial<LiveCardInput> = {}): LiveCardInput {
 		title: "一场直播",
 		category: "虚拟主播",
 		description: "纯文本简介",
-		cover: { url: "data:image/png;base64,COVER" },
+		cover: { ref: COVER_REF },
 		startedAt: STARTED_AT,
 		currentViewers: 12_345,
 		likes: 20_133,
@@ -66,7 +66,7 @@ describe("buildLiveCardView — 整个视图", () => {
 			title: "一场直播",
 			category: "虚拟主播",
 			description: "纯文本简介",
-			cover: "data:image/png;base64,COVER",
+			cover: "data:image/png;base64,COVER-REF",
 			hasCover: true,
 			time: "直播时长：2小时13分5秒",
 			currentViewers: "1.2万",
@@ -137,7 +137,8 @@ describe("buildLiveCardView — 主播头像(creator.avatar 是引用)", () => {
 
 	it("没有头像:creatorAvatarUrl 是空串,解析口一次也没被问", () => {
 		const asked: string[] = [];
-		const view = buildLiveCardView(input({ creator: { name: "甲" } }), {
+		// 封面也拿掉:它是引用,同样会去问解析口。
+		const view = buildLiveCardView(input({ creator: { name: "甲" }, cover: undefined }), {
 			imageUrl: (ref) => {
 				asked.push(ref);
 				return TABLE[ref];
@@ -319,7 +320,9 @@ describe("buildLiveCardView — 粉丝数变化带正负号", () => {
 
 describe("buildLiveCardView — 封面", () => {
 	const OVERRIDE = "data:image/png;base64,OVERRIDE";
-	const GIVEN = { url: "data:image/png;base64,GIVEN" };
+	/** 输入的封面:图库引用,经解析口认成地址。 */
+	const GIVEN = { ref: COVER_REF };
+	const GIVEN_URL = "data:image/png;base64,COVER-REF";
 
 	/**
 	 * 自定义 > 输入的封面 > 占位,`hasCover` 只认前两样。自定义封面传空串时落到输入的封面(`||` 语义,不是 `??`)
@@ -336,14 +339,14 @@ describe("buildLiveCardView — 封面", () => {
 	it("没有自定义封面(没给或空串)→ 输入的封面", () => {
 		for (const coverOverride of [undefined, ""]) {
 			expect(
-				buildLiveCardView(input({ cover: GIVEN }), { coverOverride }),
+				buildLiveCardView(input({ cover: GIVEN }), { coverOverride, imageUrl }),
 				`override=${coverOverride}`,
-			).toMatchObject({ cover: GIVEN.url, hasCover: true });
+			).toMatchObject({ cover: GIVEN_URL, hasCover: true });
 		}
 	});
 
 	it("两样都没有 → 占位图,hasCover 为假(占位图不算真封面)", () => {
-		for (const cover of [undefined, {}, { url: "" }]) {
+		for (const cover of [undefined, {}, { url: "" }, { url: "https://example.com/c.png" }]) {
 			expect(
 				buildLiveCardView(input({ cover }), { coverOverride: "" }),
 				JSON.stringify(cover),
@@ -357,7 +360,7 @@ describe("buildLiveCardView — 封面", () => {
 		).toMatchObject({ cover: OVERRIDE, hasCover: true });
 	});
 
-	/** 封面是 PostImage:有 ref 认解析结果;解析不到就是没有封面(占位),**不退回 url**;只有 url 原样用。 */
+	/** 封面是 PostImage:只认 ref 的解析结果;解析不到就是没有封面(占位),**不退回 url**;只有 url 同样是没有封面。 */
 	it("引用解析到了 → 解析结果;hasCover 为真", () => {
 		expect(buildLiveCardView(input({ cover: { ref: COVER_REF } }), { imageUrl })).toMatchObject({
 			cover: "data:image/png;base64,COVER-REF",
@@ -375,13 +378,12 @@ describe("buildLiveCardView — 封面", () => {
 		}
 	});
 
-	it("只有 url → 原样用;引用与 url 都有且解析到了 → 认引用", () => {
-		expect(buildLiveCardView(input({ cover: { url: "https://example.com/c.png" } }))).toMatchObject(
-			{
-				cover: "https://example.com/c.png",
-				hasCover: true,
-			},
-		);
+	it("只有 url → 没有封面(占位;地址不进卡,渲染页不联网);引用与 url 都有且解析到了 → 认引用", () => {
+		for (const options of [{ imageUrl }, {}]) {
+			expect(
+				buildLiveCardView(input({ cover: { url: "https://example.com/c.png" } }), options),
+			).toMatchObject({ cover: LIVE_COVER_PLACEHOLDER, hasCover: false });
+		}
 		expect(
 			buildLiveCardView(input({ cover: { ref: COVER_REF, url: "https://example.com/c.png" } }), {
 				imageUrl,

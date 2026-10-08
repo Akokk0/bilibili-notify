@@ -1070,13 +1070,17 @@ describe("cards route — /preview live-by-uid fallback", () => {
 	 * 主人真机撞见的:按 UP 预览一位**没在播**的 UP,这条路恒按「直播中」出卡,取的是关键帧 ——
 	 * 没开播时 B 站给的关键帧是空串,封面那一格画成一张只剩 alt 文字的裂图。
 	 * 验红:把 `liveCardInputFromRoomInfo` 的封面改回只取关键帧 / 把 `buildLiveCardView` 的占位去掉,
-	 * 对应那条红。图一律 data URL:测试不许联网。
+	 * 对应那条红。图一律 data URL:测试不许联网。出图只认图库引用,所以「挑了哪张封面」看的是拿哪个地址去抓图。
 	 */
 	describe("真实数据预览:没在播的房间", () => {
 		const ROOM_COVER = "data:image/png;base64,ROOM-COVER";
 
-		async function coverSrcOf(room: Record<string, unknown>): Promise<string | undefined> {
+		async function coverSrcOf(
+			room: Record<string, unknown>,
+		): Promise<{ src: string | undefined; fetched: string[] }> {
 			const captured = { html: "" };
+			// 抓不到图(测试不联网):封面没有引用,卡上画占位 —— 这几条测的是挑哪张封面去抓。
+			const fetch = vi.fn(async (_url: unknown) => fail("unavailable", "测试不联网"));
 			const page = {
 				setContent: vi.fn(async (html: string) => {
 					captured.html = html;
@@ -1090,8 +1094,7 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				close: vi.fn(async () => {}),
 			};
 			const api = {
-				// 抓不到图(图库那头不收 data URL):封面保持只有地址,原样交给出图器 —— 这几条测的是挑哪张封面。
-				http: { fetch: vi.fn(async () => fail("unavailable", "测试不联网")) },
+				http: { fetch },
 				fetchLiveRoomInfo: vi.fn(async () => ({
 					code: 0,
 					data: { uid: 12345, live_status: 0, title: "没在播", ...room },
@@ -1109,15 +1112,20 @@ describe("cards route — /preview live-by-uid fallback", () => {
 				content: { roomId: "778899" },
 			});
 			expect(res.status).toBe(200);
-			return /src="([^"]*)" alt="封面"/.exec(captured.html)?.[1];
+			return {
+				src: /src="([^"]*)" alt="封面"/.exec(captured.html)?.[1],
+				fetched: fetch.mock.calls.map((call) => String(call[0])),
+			};
 		}
 
-		it("关键帧是空串 → 封面退到直播间封面", async () => {
-			expect(await coverSrcOf({ keyframe: "", user_cover: ROOM_COVER })).toBe(ROOM_COVER);
+		it("关键帧是空串 → 封面退到直播间封面(拿它去抓图;抓不到画占位,地址不进卡)", async () => {
+			const { src, fetched } = await coverSrcOf({ keyframe: "", user_cover: ROOM_COVER });
+			expect(fetched).toContain(ROOM_COVER);
+			expect(src).toMatch(/^data:image\/svg\+xml;base64,/);
 		});
 
 		it("连直播间封面也没有 → 画内嵌的占位图,不出空的 src", async () => {
-			const src = await coverSrcOf({ keyframe: "", user_cover: "" });
+			const { src } = await coverSrcOf({ keyframe: "", user_cover: "" });
 			expect(src).toMatch(/^data:image\/svg\+xml;base64,/);
 		});
 	});

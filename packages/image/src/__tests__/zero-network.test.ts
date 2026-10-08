@@ -195,3 +195,65 @@ describe("出图器零联网:交给渲染页的 HTML 里只有内嵌内容", () 
 		expect(networkAddresses(captured[0] ?? "")).toEqual([]);
 	});
 });
+
+/**
+ * 反过来:输入里**故意**带只有地址(`url`)、没有图库引用的图 —— 出图只认引用,这些地址到不了 HTML,那一格画占位
+ * 或收起。任何路径交来的远端地址都到不了渲染页。
+ *
+ * 验红:把 `templates/picture-url.ts` 的 `pictureUrl` 或 `live-view.ts` 的 `coverUrlOf` 改回「只有 url 原样用」,对应的卡红。
+ */
+describe("出图器零联网:只有地址、没有引用的图到不了 HTML", () => {
+	const remote = (name: string) => ({ url: `https://example.invalid/${name}.png` });
+
+	const URL_ONLY_CARDS: Record<string, (renderer: ImageRenderer) => Promise<unknown>> = {
+		post: (r) =>
+			r.generatePostCard({
+				creator: { name: "示例作者" },
+				publishedAt: "2023-11-14T22:13:20.000Z",
+				text: "正文",
+				images: [remote("p1"), remote("p2")],
+				attachment: { kind: "card", title: "预约", cover: remote("card") },
+				locked: { icon: remote("lock"), title: "充电专属", hint: "说明" },
+				repost: {
+					creator: { name: "原作者" },
+					publishedAt: "2023-11-14T22:13:20.000Z",
+					text: "",
+					video: { cover: remote("cover"), title: "一期视频", description: "简介" },
+					attachment: {
+						kind: "goods",
+						eyebrow: "商品",
+						items: [{ cover: remote("goods"), name: "一件", price: "1" }],
+					},
+				},
+			}),
+		"post(附加视频卡 + 专栏图)": (r) =>
+			r.generatePostCard({
+				creator: { name: "示例作者" },
+				publishedAt: "2023-11-14T22:13:20.000Z",
+				text: "正文",
+				article: { title: "专栏", images: [remote("article")] },
+				attachment: { kind: "video", cover: remote("attached"), title: "关联视频" },
+			}),
+		live: (r) =>
+			r.generateLiveCard({
+				status: "start",
+				creator: { name: "示例主播" },
+				title: "标题",
+				cover: remote("live"),
+			}),
+		membership: (r) =>
+			r.generateMembershipCard({
+				viewer: { name: "示例观众" },
+				creator: { name: "示例主播" },
+				tier: { name: "示例档", icon: remote("badge") },
+			}),
+	};
+
+	it.each(Object.keys(URL_ONLY_CARDS))("%s 卡", async (name) => {
+		const { renderer, captured } = makeHarness();
+		await URL_ONLY_CARDS[name]?.(renderer);
+		expect(captured).toHaveLength(1);
+		expect(captured[0]).not.toContain("example.invalid");
+		expect(networkAddresses(captured[0] ?? "")).toEqual([]);
+	});
+});

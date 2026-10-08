@@ -15,10 +15,10 @@
  * - `notice` 画成紧跟正文之后的一句 `<p>`,正文没有字时只剩这句 `<p>`;
  * - 互动数只有外层卡画。
  *
- * **图只认引用与地址**(㉑d):`PostImage.ref` / `Creator.avatar` / `RichText` 的 `link.icon` · `emoji.image` / 附加块
+ * **图只认引用**(㉑d;3a-37 起只有地址的不画):`PostImage.ref` / `Creator.avatar` / `RichText` 的 `link.icon` · `emoji.image` / 附加块
  * `lines[].icon` 都是图库引用,由调用方给的 {@link PostNodeFormatters.imageUrl} 解析成可画的地址(出图器不读盘、
- * 不联网)。`ref` 与 `url` 都有时认 `ref`;只有 `url` 的(B 站出卡前抓进图库,抓不到的)照旧画 `url`;两样都没有、或引用解析不到
- * (图已被清扫)画占位,不抛。没有 `Creator.avatar` 就不画头像(头像块整块收起)。
+ * 不联网)。`PostImage.url` 是来源地址,留给来源出卡前把图抓进图库用,出图器不画它:只有 `url` 的(来源没抓到)、
+ * 两样都没有、或引用解析不到(图已被清扫)都画占位,不抛。没有 `Creator.avatar` 就不画头像(头像块整块收起)。
  */
 
 import { formatClock, formatCount, type Post, type PostImage } from "@bilibili-notify/internal";
