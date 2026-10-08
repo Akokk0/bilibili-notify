@@ -85,6 +85,26 @@ describe("historyRecordFromSend", () => {
 		});
 	});
 
+	// 被静音 / 免扰挡下的那次回调:消息上的 isSilenced 原样带给历史仓(没有它,这一行会被算成 failed)。
+	it("被挡的回调:消息带 isSilenced、没有结果,原样交给历史仓", () => {
+		const info: PushSendResult = {
+			pushId: "p1",
+			subscriptionId: SUB_ID,
+			feature: "liveEnd",
+			target,
+			messages: [
+				{ payload: { kind: "text", text: "卡" }, role: "main", isSilenced: true },
+				{ payload: { kind: "text", text: "词云" }, role: "extra", isSilenced: true },
+			],
+		};
+		const input = historyRecordFromSend(info, lookups);
+		expect(input?.targetId).toBe(target.id);
+		expect(input?.messages).toEqual([
+			{ payload: { kind: "text", text: "卡" }, role: "main", isSilenced: true },
+			{ payload: { kind: "text", text: "词云" }, role: "extra", isSilenced: true },
+		]);
+	});
+
 	// B 站头像抓进了图库(3a-35):B 站行和拓展行一样,抄资料里的图库引用 `avatar`;远端网址 `avatarUrl` 不抄。
 	it("B 站行:带头像快照(资料里的图库引用);资料里只有头像网址时不带", () => {
 		const info: PushSendResult = {

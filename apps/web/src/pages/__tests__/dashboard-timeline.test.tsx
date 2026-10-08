@@ -183,3 +183,42 @@ describe("最近推送活动 · 左列时间", () => {
 		expect(left).toBe(width + 4);
 	});
 });
+
+/**
+ * 被静音 / 免扰挡下的行不算推送:首页这一栏说的是「发出去的推送」,不列它(历史页照列)。
+ */
+describe("最近推送活动 · 不列被挡下的行", () => {
+	const silenced = (id: string, name: string) =>
+		row({
+			id,
+			status: "silenced",
+			targetId: "22222222-2222-4222-8222-222222222222",
+			nameSnapshot: name,
+			messages: [{ text: "被挡的", kind: "text", role: "main", isSilenced: true }],
+		});
+
+	it("混在一起:只列发出去过的", () => {
+		renderPanel([
+			silenced("s1", "静音甲"),
+			row({ id: "d1", nameSnapshot: "发出去的" }),
+			silenced("s2", "静音乙"),
+		]);
+		expect(screen.getByText("发出去的")).toBeTruthy();
+		expect(screen.queryByText("静音甲")).toBeNull();
+		expect(screen.queryByText("静音乙")).toBeNull();
+		expect(screen.queryByText("已静音")).toBeNull();
+	});
+
+	it("被挡的行不占那六个位子:前面全是被挡的,后面发出去的照样列得出来", () => {
+		renderPanel([
+			...Array.from({ length: 8 }, (_, i) => silenced(`s${i}`, `静音${i}`)),
+			row({ id: "d1", nameSnapshot: "第九条" }),
+		]);
+		expect(screen.getByText("第九条")).toBeTruthy();
+	});
+
+	it("全是被挡的 → 空态", () => {
+		renderPanel([silenced("s1", "静音甲")]);
+		expect(screen.getByText("还没有推送活动")).toBeTruthy();
+	});
+});

@@ -66,6 +66,12 @@ export interface PushMessageResult extends PushMessage {
 	 * 与无目标行的每一条同形状(那一整行也都没有结果)。
 	 */
 	result?: DeliveryResult;
+	/**
+	 * 这条被全局静音或免扰时段挡下了(ADR-0021 决策 34 的 🔗):本来会发给这个目标,没发,所以没有
+	 * `result`(两格互斥)。只在被挡时出现;不区分是静音还是免扰。它不是失败,也不是上面那种
+	 * 「前一条失败而没发出去的」—— 宿主据此落 `silenced` 行。
+	 */
+	isSilenced?: true;
 }
 
 interface PushSendBase {
@@ -92,8 +98,11 @@ interface PushSendBase {
  * 以附加项的身份对同一目标再回调一次。
  *
  * 这类推送**没有任何可用目标**(没配,或配的全停用)时以 `target: null` 回调一次,消息
- * 照带、没有结果 —— 宿主据此落「无目标」那一行,面板上才看得见。交进来时就被挡下的推送
- * (静音 / 特性关 / 免扰 / 无订阅)不回调:那不是「无目标」,是本来就不该推。
+ * 照带、没有结果 —— 宿主据此落「无目标」那一行,面板上才看得见。特性关着、订阅不在的推送
+ * 不回调:那不是「无目标」,是本来就不该推。
+ *
+ * 被全局静音 / 免扰时段挡下的推送**照样按目标回调**,只是一条都没发:每条消息带 `isSilenced`、
+ * 没有结果,@全体 那一次没有。
  *
  * TargetDispatcher 拿不到订阅 / feature(它只看 PushTarget),所以历史只能从这一层注入。
  */
@@ -147,10 +156,11 @@ export interface Push {
 	anchors: PushAnchor[];
 }
 
-/** 一个锚点怎么发:哪把附加项键、许不许 @全体。 */
+/** 一个锚点怎么发:哪把附加项键、许不许 @全体;整次推送被静音 / 免扰挡下时只记不发。 */
 interface AnchorRound {
 	extra?: ExtraKey;
 	allowAtAll: boolean;
+	isSilenced: boolean;
 }
 
 /** Options for constructing a PushRouter instance. */
@@ -181,7 +191,7 @@ export interface PushRouterOptions {
 	onSend?: (info: PushSendResult) => void;
 	/**
 	 * 全局静音 —— 「安静一会儿」。返回 true 时交给 {@link PushRouter.push} 的那次推送
-	 * 整次被挡,所有 feature 一起挡。
+	 * 整次被挡,所有 feature 一起挡:一条都不发,但照样按目标回调(消息带 `isSilenced`)。
 	 *
 	 * **每次推送交进来时现问一次**,不在构造时快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
 	 *
@@ -303,17 +313,21 @@ export class PushRouter {
 	 * 发一次推送(见 {@link Push})。订阅按**它自己的 id** 找(ADR-0019 决策 50):同一个 UP 配了
 	 * 两条订阅时各推各的路由,拓展订阅(没有 uid)也找得到。B 站引擎说的是 uid,翻译在宿主那条边上做。
 	 *
-	 * **交进来那一刻判一次**:全局静音 → 无订阅 → 特性总开关 → 免扰时段(按代价排)。裁决管整次
-	 * 推送 —— 放行了,之后的锚点不再看这四样;挡下了,整次静默丢掉,不发、不回调(这些不是
-	 * 「无目标」),锚点里的约定照样有人接着,不会留下没人处理的拒绝。只挡订阅推送;发给主人的
-	 * 私聊不走这里,理由见 `muted` 的注释。
+	 * **交进来那一刻判一次**,裁决管整次推送,之后的锚点不再看这四样({@link judgePush}):
+	 * - 没有订阅记录、特性总开关关着 → 整次静默丢掉,不发、不回调(这些不是「无目标」);
+	 * - 全局静音、免扰时段 → 这次推送是**被挡**的:一条都不发,但每个锚点照常算它该发给哪些目标,
+	 *   对每个目标回调一次,消息带 `isSilenced`、没有结果(宿主落 `silenced` 行,之后可以补发);
+	 * - 否则放行。
+	 * 哪种裁决下锚点里的约定都有人接着,不会留下没人处理的拒绝。只管订阅推送;发给主人的私聊
+	 * 不走这里,理由见 `muted` 的注释。
 	 *
 	 * **锚点按先后发**:内容各做各的(约定是调用方已经启动的),发送按 `anchors` 的顺序 —— 前一个
 	 * 锚点对它该发的目标都有了结果才发后一个,后面的早好了也等。空的跳过;锚点之间互不中止(本体
 	 * 对某个目标失败不拦它的附加项)。每个锚点发出时现查订阅的路由与附加项表,见 {@link sendAnchor}。
+	 * 被挡的推送同样按先后、同样等约定了结,只是到了「发」那一步改成「记」。
 	 *
-	 * **在本体发完时返回**,回本体那个锚点的投递结果(一个目标一段序列;@全体 是 fire-and-forget,
-	 * 不计入)。没有本体、或整次被挡下,立即回空。其后的锚点在后台接着发,登记进
+	 * **在本体发完(被挡时:记完)时返回**,回本体那个锚点的投递结果(一个目标一段序列;@全体 是
+	 * fire-and-forget,不计入)。没有本体、整次被丢掉或被挡下,回空。其后的锚点在后台接着发,登记进
 	 * `serviceCtx.track`,关停会等它们;生命周期翻转(stop / stop→start)时放弃还没发的。
 	 *
 	 * **唯一会抛的地方**:本体不止一个、或没排在第一个 —— 那是调用方的 bug,不静默纠正。
@@ -331,7 +345,9 @@ export class PushRouter {
 			throw new Error("[push] 一次推送的本体至多一个,而且必须排在第一个锚点");
 		}
 		if (this.disposed) return [];
-		if (!this.allowsPush(subscriptionId, feature)) return [];
+		const judged = this.judgePush(subscriptionId, feature);
+		if (judged === "dropped") return [];
+		const isSilenced = judged === "silenced";
 
 		const myGen = this.generation;
 		const pushId = randomUUID();
@@ -352,8 +368,8 @@ export class PushRouter {
 				{ subscriptionId, feature, pushId, role: anchor.role },
 				content.payloads,
 				isMain
-					? { allowAtAll: push.allowAtAll !== false }
-					: { extra: anchor.extra, allowAtAll: false },
+					? { allowAtAll: push.allowAtAll !== false, isSilenced }
+					: { extra: anchor.extra, allowAtAll: false, isSilenced },
 			);
 		};
 
@@ -376,17 +392,19 @@ export class PushRouter {
 		return mainResults;
 	}
 
-	/** {@link push} 的裁决:这次推送整次放不放行。只在交进来时问一次。 */
-	private allowsPush(subscriptionId: string, feature: FeatureKey): boolean {
-		// 全局静音排在所有查询之前 —— 静音期间一次订阅查找都不必做。
-		if (this.muted()) {
-			this.logger.debug(`[push] sub=${subscriptionId} feature=${feature} 处于全局静音，跳过`);
-			return false;
-		}
+	/**
+	 * {@link push} 的裁决,只在交进来时问一次。先问「该不该有这次推送」(订阅在不在、总开关),
+	 * 不该有就丢掉、什么都不留;该有,再问时间上的挡(全局静音、免扰时段)—— 被挡的照样往下算目标,
+	 * 只是不发。
+	 */
+	private judgePush(
+		subscriptionId: string,
+		feature: FeatureKey,
+	): "allowed" | "silenced" | "dropped" {
 		const sub = this.store.findById(subscriptionId);
 		if (!sub) {
 			this.logger.debug(`[push] sub=${subscriptionId} 无订阅记录，跳过 feature=${feature}`);
-			return false;
+			return "dropped";
 		}
 		const who = subscriptionLabel(sub);
 		// 「features 总开关」与「quietHours 免扰时段」:把 sub 折叠成 EffectiveSubscription 后
@@ -394,18 +412,23 @@ export class PushRouter {
 		const eff = resolve(sub, this.defaults());
 		if (!eff.features[feature]) {
 			this.logger.debug(`[push] ${who} feature=${feature} 总开关 OFF，跳过`);
-			return false;
+			return "dropped";
+		}
+		if (this.muted()) {
+			this.logger.debug(`[push] ${who} feature=${feature} 处于全局静音，只记不发`);
+			return "silenced";
 		}
 		if (inQuietHours(eff.schedule.quietHours, this.quietHoursNow())) {
-			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，跳过`);
-			return false;
+			this.logger.debug(`[push] ${who} feature=${feature} 落在免扰时段，只记不发`);
+			return "silenced";
 		}
-		return true;
+		return "allowed";
 	}
 
 	/**
-	 * 一次已放行的推送的一个锚点:现查订阅的路由与附加项表,逐目标判完再发。订阅、总开关、静音、
-	 * 免扰不在这里判 —— 那是交进来时定下的。
+	 * 一次推送的一个锚点:现查订阅的路由与附加项表,逐目标判完再发。订阅、总开关、静音、
+	 * 免扰不在这里判 —— 那是交进来时定下的。整次被静音 / 免扰挡下的(`round.isSilenced`)走到
+	 * 「目标算完」为止:不发、不插 @全体,对每个该收的目标回调一次,消息带 `isSilenced`。
 	 *
 	 * 路由里**启用的**(目标启用、所属连接启用)才是候选,停用的既不发也不进可达性重试;一个候选
 	 * 都没有就是「无目标」,回调 `onSend` 落一行。交进来之后订阅被删了就没有路由可查,这个锚点静默丢掉。
@@ -460,6 +483,20 @@ export class PushRouter {
 			// 收窄成空**不是「无目标」**(决策 7):本体那一行已经在了、而且是「已送达」,
 			// 这个附加项只是谁都没订 —— 是配置意图不是故障,不落行、不弹卡、不记失败。
 			this.logger.debug(`[push] ${who} feature=${feature} 附加项 ${extraKey} 无人订阅，跳过`);
+			return [];
+		}
+
+		if (round.isSilenced) {
+			// 先算目标、再记被挡:无可用目标与收窄成空在上面已经各走各的了,走到这里的都是
+			// 「没有静音的话这个目标本来会收到」的。
+			this.logger.debug(`[push] ${who} feature=${feature} 被挡下,记 ${targetIds.length} 个目标`);
+			for (const id of targetIds) {
+				this.emit(
+					ctx,
+					id,
+					payloads.map((payload) => ({ payload, role: ctx.role, isSilenced: true })),
+				);
+			}
 			return [];
 		}
 

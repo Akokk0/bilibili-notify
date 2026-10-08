@@ -505,7 +505,7 @@ export const FIELD_LABELS = {
 	},
 	"schedule.quietHours": {
 		label: "免扰时段",
-		hint: "落在区间内的推送直接丢弃,不补推;粒度按「时」,半开区间 [start, end)",
+		hint: "落在区间内的推送不发出去,记在推送历史里、可以补发;粒度按「时」,半开区间 [start, end)",
 		section: "schedule",
 	},
 

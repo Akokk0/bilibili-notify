@@ -260,9 +260,10 @@ function HistoryRow({
 	const count = messageCountOf(entry);
 	const expandable = hasDetails(entry);
 	const targetLabel = targetLabelOf(entry, target);
-	// 按钮长在 failed 与 partial 上(ADR-0017 决策 6)。**判据是行的状态,不是 `repush`
-	// 字段在不在** —— WS 推来的新行不带那个字段,可它恰恰是最该能补的那一种。
-	const canOfferRepush = entry.status === "failed" || entry.status === "partial";
+	// 按钮长在 failed、partial 与 silenced(被静音 / 免扰挡下,整行没发过)上(ADR-0017 决策 6)。
+	// **判据是行的状态,不是 `repush` 字段在不在** —— WS 推来的新行不带那个字段,可它恰恰是最该能补的那一种。
+	const canOfferRepush =
+		entry.status === "failed" || entry.status === "partial" || entry.status === "silenced";
 	// 不能补时按钮灰掉**并写上原因**,不是藏起来(决策 9)。字段缺省按「能补」处理。
 	const repushBlocked = entry.repush && !entry.repush.can ? entry.repush.message : null;
 	const repushCounts = entry.repush?.can ? entry.repush : null;
@@ -383,7 +384,13 @@ function RepushBar({
 		<div className="border-t border-bn-border-subtle bg-bn-surface-muted/50 px-4 py-2 pl-38">
 			<div className="flex flex-wrap items-center gap-2 text-bn-xs text-bn-text-secondary">
 				<span>{busy ? "女仆这就去～" : "要女仆补哪些呀？"}</span>
-				{entry.status === "failed" ? (
+				{entry.status === "silenced" ? (
+					// 被静音 / 免扰挡下的行整行没发过:没有「整行 / 只补没到的」之分,一颗「补发」。
+					// 发的是 `missing` —— 补到一半又失败过的行再按一次,只补还没到的。
+					<Btn size="sm" variant="primary" disabled={busy} onClick={() => repush.mutate("missing")}>
+						补发{n(counts?.missing)}
+					</Btn>
+				) : entry.status === "failed" ? (
 					// 决策 8 只给这一行一颗钮,理由是「本来就全没到,两个选项是同一件事」——
 					// 可 `failed` 判的是**本体那一号**没 ok,不是全没到:@全体先落地且成功、
 					// 本体失败的行就是 failed,此时 total=2 而 missing=1。这颗钮发的是
@@ -471,10 +478,13 @@ function MessageItem({
 	// 本来有图:是图消息,或者带着图库引用。过了保留期的老行迁移时图格被拿掉了,只剩 `kind: "image"`(composite 拿掉后看不出,
 	// 只画文字)。
 	const hadImage = message.kind === "image" || message.image !== undefined;
-	// 没有结果 = 没发出去(无目标那行的每一条都是这样);有结果就跟整行状态同一份词表。
+	// 没有结果 = 没发出去(无目标那行的每一条都是这样),其中被静音 / 免扰挡下的那种单说;
+	// 有结果就跟整行状态同一份词表。
 	const result =
 		message.ok === undefined
-			? { label: "未发送", tone: "var(--color-bn-inactive)" }
+			? message.isSilenced
+				? PUSH_STATUS_META.silenced
+				: { label: "未发送", tone: "var(--color-bn-inactive)" }
 			: PUSH_STATUS_META[message.ok ? "delivered" : "failed"];
 	return (
 		<li className={`flex items-start gap-2.5 text-bn-xs${superseded ? " opacity-60" : ""}`}>

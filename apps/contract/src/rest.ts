@@ -573,11 +573,18 @@ interface SubscriptionRuntimeDTO {
  *
  * 结果那几格铺平在消息上,和核心的投递结果同名同义(ADR-0026):送达是 `ok: true`,没送达是
  * `ok: false` + `code` + `message`(+ 平台自己的码 `upstreamCode`)。耗时是内部字段,不过线。没有 `ok` = 这条没有结果:
- * 无目标行的每一条,或者被前一条失败中止、从没发出去的。
+ * 无目标行的每一条,被前一条失败中止、从没发出去的,或者被全局静音 / 免扰时段挡下的(那种另带 `isSilenced`)。
  */
 export type HistoryMessageView = HistoryMessageBase &
 	(
-		| { ok?: undefined }
+		| {
+				ok?: undefined;
+				/**
+				 * 这条被全局静音或免扰时段挡下了:本来会发给这个目标,没发。只在被挡时出现(值恒为 true),
+				 * 不区分静音还是免扰;面板把它标成「已静音」而不是「未发送」。
+				 */
+				isSilenced?: true;
+		  }
 		| { ok: true }
 		| { ok: false; code: FailureCode; message: string; upstreamCode?: number | string }
 	);
@@ -628,9 +635,9 @@ export interface HistoryEntryView {
 	nameSnapshot?: string;
 	avatarSnapshot?: ImageRef;
 	/**
-	 * 这一行能不能人工补一次(ADR-0017)。**缺省 = 没问过** —— 列表只为失败 / 部分失败
+	 * 这一行能不能人工补一次(ADR-0017)。**缺省 = 没问过** —— 列表只为失败 / 部分失败 / 被挡下
 	 * 的行问(每问一次是一次 stat),而 WS 推来的新行一律不带;面板对缺省按「能补」
-	 * 处理,那总是对的:一条刚刚失败的推送,它的原件必然还在。
+	 * 处理,那总是对的:一条刚刚失败或刚被挡下的推送,它的原件必然还在。
 	 */
 	repush?: HistoryRepushInfo;
 	/**

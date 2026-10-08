@@ -4,11 +4,13 @@ import { FeatureKeySchema } from "./common";
 import { IdentitySchema } from "./subscriptions";
 
 /**
- * 一行历史的四态:
+ * 一行历史的五态:
  * - delivered:全部消息都到了
  * - partial:本体到了,附加项(@全体 / 图集 / 词云 / 总结)或本体的后续分条没到
  * - failed:本体没到
  * - no-targets:这类推送没有任何可用目标(没配,或配的全停用),消息照记、没发出去
+ * - silenced:被全局静音或免扰时段挡下了 —— 本来会发给这个目标,一条都没发;不算推送也不算失败,
+ *   可以补发(ADR-0021 决策 34 的 🔗)
  */
 export const PushStatusSchema = z.enum(PUSH_STATUSES);
 export type PushStatus = z.infer<typeof PushStatusSchema>;
@@ -38,7 +40,8 @@ export type PushMessageRole = z.infer<typeof PushMessageRoleSchema>;
 
 /**
  * 一条消息对这个目标的投递结果,落盘就是结果形状(ADR-0026 决策 5):送达带耗时,没送达带标准码、原话与
- * 平台自己的码(`upstreamCode`),不带耗时。无目标行、被前一条失败中止而从没发出去的消息没有它。
+ * 平台自己的码(`upstreamCode`),不带耗时。无目标行、被前一条失败中止而从没发出去的消息、被静音 /
+ * 免扰挡下的消息没有它。
  *
  * 0.x 与开发期的老失败(`{ ok: false, latencyMs, err? }`)由迁移器改写成 `unknown` + 原话
  * (`apps/server/src/migration/history.ts`),这里只认现在的形状。
@@ -58,6 +61,14 @@ export const HistoryMessageSchema = z.object({
 	payload: HistoryPayloadSchema,
 	role: PushMessageRoleSchema,
 	result: HistoryMessageResultSchema.optional(),
+	/**
+	 * 这条被全局静音或免扰时段挡下了:本来会发给这个目标,没发,所以没有 `result`(两格互斥)。
+	 * 只在被挡时出现、只有 `true` 一个取值;不区分是静音还是免扰。行的状态照旧只从消息推 ——
+	 * 有了这一格才分得清「被挡的」和「因为前一条失败而没发出去的」(后者同样没有 `result`)。
+	 *
+	 * 老行没有这一格,读进来就是缺省,不用迁移。
+	 */
+	isSilenced: z.literal(true).optional(),
 	/**
 	 * 这条是**哪一条的重投**(ADR-0017 决策 15):值是被补的那条消息在本行 `messages`
 	 * 里的下标。人工重推追加进原行而不新开行,所以一行里会有同一条消息的好几次尝试;

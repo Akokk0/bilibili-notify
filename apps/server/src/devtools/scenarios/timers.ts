@@ -38,7 +38,7 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		group: "timer",
 		title: "免扰时钟",
 		icon: "sun",
-		desc: "推送的免扰判定当作现在是这个时刻(只这一处,不是假时钟)。设成免扰时段里再造一条开播 / 动态,看它被免扰吞掉。",
+		desc: "推送的免扰判定当作现在是这个时刻(只这一处,不是假时钟)。设成免扰时段里再造一条开播 / 动态,看它被免扰挡下、记成「已静音」。",
 		params: [{ key: "time", label: "当作现在是(HH:mm)", kind: "text", default: "03:00" }],
 		run(params) {
 			const m = /^(\d{1,2}):(\d{2})$/.exec(String(params.time ?? ""));
@@ -72,7 +72,7 @@ export function timerScenarios(deps: TimerScenarioDeps): DevScenarioDef[] {
 		group: "timer",
 		title: "静音",
 		icon: "mic",
-		desc: "走真的 /mute:静音 N 分钟(写进配置的 mutedUntil),订阅推送全挡、主人私聊照发。收摊 = 解除 —— 但只解除从这儿按出来的那次;主人自己 /mute 的不碰。",
+		desc: "走真的 /mute:静音 N 分钟(写进配置的 mutedUntil),订阅推送一条都不发(记进推送历史、可以补发)、主人私聊照发。收摊 = 解除 —— 但只解除从这儿按出来的那次;主人自己 /mute 的不碰。",
 		params: [{ key: "minutes", label: "分钟", kind: "number", default: 10, min: 1, max: 1440 }],
 		async run(params) {
 			const state = need(deps.mute(), "推送引擎");

@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { FEATURE_KEYS } from "../../constants.js";
+import { countsAsDelivery, countsAsFailure, FEATURE_KEYS, PUSH_STATUSES } from "../../constants.js";
 import { HistoryEntrySchema, HistoryMessageResultSchema } from "../history.js";
 
 const BASE = {
@@ -192,5 +192,56 @@ describe("HistoryMessageResultSchema — 结果形状", () => {
 			HistoryMessageResultSchema.safeParse({ ok: false, code: "nope", message: "x" }).success,
 		).toBe(false);
 		expect(HistoryMessageResultSchema.safeParse({ ok: true }).success).toBe(false);
+	});
+});
+
+/**
+ * 被全局静音 / 免扰时段挡下的推送照记(ADR-0021 决策 34 的 🔗,10-08):行的状态多一档 `silenced`,
+ * 被挡的每条消息带 `isSilenced: true`、没有结果。它不算推送、也不算失败。
+ */
+describe("HistoryEntrySchema — 被静音 / 免扰挡下的行", () => {
+	const SILENCED = {
+		...BASE,
+		status: "silenced",
+		messages: [
+			{ payload: { kind: "text", text: "卡片" }, role: "main", isSilenced: true },
+			{ payload: { kind: "text", text: "词云" }, role: "extra", isSilenced: true },
+		],
+	} as const;
+
+	it("状态 silenced 读得进来;消息上的 isSilenced 原样留着,没有 result", () => {
+		const parsed = HistoryEntrySchema.parse(SILENCED);
+		expect(parsed.status).toBe("silenced");
+		for (const m of parsed.messages) {
+			expect(m.isSilenced).toBe(true);
+			expect(m).not.toHaveProperty("result");
+		}
+	});
+
+	it("isSilenced 只有 true 一个取值:没被挡的消息不带这一格,写成 false 的行读不进来", () => {
+		expect(HistoryEntrySchema.parse(BASE).messages[0]).not.toHaveProperty("isSilenced");
+		const withFalse = {
+			...BASE,
+			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main", isSilenced: false }],
+		};
+		expect(HistoryEntrySchema.safeParse(withFalse).success).toBe(false);
+	});
+
+	it("词表里有 silenced;它不算推送(今日推送 / 趋势),也不算失败(今日失败)", () => {
+		expect(PUSH_STATUSES).toContain("silenced");
+		expect(countsAsDelivery("silenced")).toBe(false);
+		expect(countsAsFailure("silenced")).toBe(false);
+	});
+
+	it("两个谓词的全表:只有 no-targets 与 silenced 不算推送,只有 failed 与 partial 算失败", () => {
+		expect(
+			PUSH_STATUSES.map((status) => [status, countsAsDelivery(status), countsAsFailure(status)]),
+		).toEqual([
+			["delivered", true, false],
+			["partial", true, true],
+			["failed", true, true],
+			["no-targets", false, false],
+			["silenced", false, false],
+		]);
 	});
 });

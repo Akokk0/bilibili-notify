@@ -463,6 +463,90 @@ describe("handlePushEnvelope — push-events 子事件分发", () => {
 		});
 	});
 
+	/**
+	 * 被静音 / 免扰挡下的行(`silenced`):进列表(历史页照列),**不弹小卡**,不进今日推送;之后补发成功
+	 * (`history-updated` 把它翻成已送达 / 失败)才计入它建行那天 —— 与服务端按日聚合重拉出来的数一致。
+	 */
+	describe("被静音 / 免扰挡下的行", () => {
+		const dayOf = (view: PushEventView) => localDayKey(new Date(view.createdAt));
+		const silenced = (over: Partial<PushEventView> = {}) =>
+			pushView("h1", {
+				status: "silenced",
+				feature: "liveEnd",
+				messages: [{ text: "下播了", kind: "text", role: "main", isSilenced: true }],
+				...over,
+			});
+		const seedDaily = (view: PushEventView) =>
+			h.qc.setQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY, {
+				days: [{ d: dayOf(view), counts: { ...zeroCounts(), liveEnd: 2 }, total: 3, failures: 1 }],
+			});
+		const today = () => h.qc.getQueryData<HistoryDailyResponse>(HISTORY_DAILY_QUERY_KEY)?.days[0];
+		const update = (view: PushEventView) =>
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-updated", data: view }),
+				h.qc,
+				h.toast,
+			);
+
+		it("新落的一行:进列表,不弹小卡,日桶不动", () => {
+			const view = silenced();
+			seedDaily(view);
+			handlePushEnvelope(
+				env({ type: "push-events", event: "history-recorded", data: view }),
+				h.qc,
+				h.toast,
+			);
+			expect(h.push).not.toHaveBeenCalled();
+			expect(h.qc.getQueryData<HistoryResponse>(historyQueryKey(200))?.entries).toEqual([view]);
+			expect(today()).toMatchObject({ total: 3, failures: 1, counts: { liveEnd: 2 } });
+		});
+
+		it("追加附加项后仍是被挡的:日桶不动", () => {
+			const view = silenced();
+			seedDaily(view);
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [view] });
+			update(silenced());
+			expect(today()).toMatchObject({ total: 3, failures: 1, counts: { liveEnd: 2 } });
+		});
+
+		it("补发成功(翻成已送达)→ 今日推送与分类计数 +1,失败不动", () => {
+			const view = silenced();
+			seedDaily(view);
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [view] });
+			update(silenced({ status: "delivered" }));
+			expect(today()).toMatchObject({ total: 4, failures: 1, counts: { liveEnd: 3 } });
+		});
+
+		it("补发失败(翻成失败 / 部分失败)→ 今日推送 +1,今日失败也 +1", () => {
+			for (const status of ["failed", "partial"] as const) {
+				const view = silenced();
+				seedDaily(view);
+				h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [view] });
+				update(silenced({ status }));
+				expect(today(), status).toMatchObject({ total: 4, failures: 2, counts: { liveEnd: 3 } });
+			}
+		});
+
+		// 一趟补发会连着来好几帧:先把本体补到(已送达),再有附加项补失败(部分失败),最后补齐。
+		it("一趟补发的几帧连着来:总数只加一次,失败数跟着最终状态走", () => {
+			const view = silenced();
+			seedDaily(view);
+			h.qc.setQueryData<HistoryResponse>(historyQueryKey(100), { entries: [view] });
+			update(silenced({ status: "delivered" }));
+			update(silenced({ status: "partial" }));
+			expect(today()).toMatchObject({ total: 4, failures: 2, counts: { liveEnd: 3 } });
+			update(silenced({ status: "delivered" }));
+			expect(today()).toMatchObject({ total: 4, failures: 1, counts: { liveEnd: 3 } });
+		});
+
+		it("缓存里没有旧的那一行(不知道它原先算不算)→ 日桶不动,等下次重拉", () => {
+			const view = silenced();
+			seedDaily(view);
+			update(silenced({ status: "delivered" }));
+			expect(today()).toMatchObject({ total: 3, failures: 1 });
+		});
+	});
+
 	describe("history-recorded → 按日聚合缓存(趋势图/今日 KPI)", () => {
 		const dayOf = (view: PushEventView) => localDayKey(new Date(view.createdAt));
 

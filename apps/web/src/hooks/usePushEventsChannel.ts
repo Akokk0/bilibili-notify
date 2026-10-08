@@ -122,17 +122,19 @@ export function handlePushEnvelope(env: WsEnvelope, qc: QueryClient, toast: Push
 			});
 		}
 		toast.replace(data);
-		// 建行之后才翻的状态(@全体 落地失败把「已送达」翻成「部分失败」)也要进今日 KPI ——
-		// 服务端的按日聚合是照整行的最终状态数的,这边只加不改就会一直少一条。翻的只有
-		// 失败与否,行数不变;缓存里没有旧的那一行就不知道翻没翻,宁可不动等下次重拉。
-		if (prev) patchDailyFailureFlip(qc, prev, data);
+		// 建行之后才翻的状态也要进今日 KPI —— 服务端的按日聚合是照整行的最终状态数的,这边只加
+		// 不改就会一直对不上。两种翻法:成败翻了面(@全体 落地失败把「已送达」翻成「部分失败」,
+		// 行数不变);原先不算推送的行开始算了(被静音 / 免扰挡下的行补发成功,行数 +1)。
+		// 缓存里没有旧的那一行就不知道翻没翻,宁可不动等下次重拉。
+		if (prev) patchDailyStatusChange(qc, prev, data);
 		return;
 	}
 
 	if (!isWsEvent(env, "push-events", "history-recorded")) return;
 	const data = env.data;
 	if (!data || typeof data.id !== "string") return;
-	toast.push(data);
+	// 被静音 / 免扰挡下的行不弹小卡:那是主人自己要的安静,行在历史页里看得到。
+	if (data.status !== "silenced") toast.push(data);
 	// HI1:history 缓存现按 limit 分键 —— Dashboard ["history",{limit:100}]、
 	// History 页 ["history",{limit:200}]。显式 patch 两者(setQueryData 在键
 	// 不存在时也会 prime,setQueriesData 不会 → WS 早于页面挂载时会丢更新)。
@@ -184,10 +186,24 @@ function patchDailyBucket(
 	if (dayMissed) qc.invalidateQueries({ queryKey: HISTORY_DAILY_QUERY_KEY });
 }
 
-/** 追加消息把一行的成败翻了面 → 今日失败数跟着 ±1。行数不变,别动 total 与分类计数。 */
-function patchDailyFailureFlip(qc: QueryClient, prev: PushEventView, next: PushEventView): void {
-	// 无目标行压根不在日桶里(两头都不数),而且 target 一旦为空就不会再变。
-	if (!countsAsDelivery(prev.status) || !countsAsDelivery(next.status)) return;
+/**
+ * 追加消息把一行的状态翻了 → 今日 KPI 跟着改,口径与服务端按日聚合(照整行最终状态数)一致:
+ * - 原先不算推送、现在算了(被静音 / 免扰挡下的行补发出去了)→ 这一行进它**建行那天**的桶:
+ *   行数与分类计数 +1,补发没成的话失败数也 +1;
+ * - 一直算推送、成败翻了面 → 只动失败数,行数不变。
+ */
+function patchDailyStatusChange(qc: QueryClient, prev: PushEventView, next: PushEventView): void {
+	// 无目标行压根不在日桶里(两头都不数),而且 target 一旦为空就不会再变;还是被挡着的行同理不动。
+	if (!countsAsDelivery(next.status)) return;
+	if (!countsAsDelivery(prev.status)) {
+		patchDailyBucket(qc, next.createdAt, (day) => ({
+			...day,
+			counts: { ...day.counts, [next.feature]: (day.counts[next.feature] ?? 0) + 1 },
+			total: day.total + 1,
+			failures: day.failures + (countsAsFailure(next.status) ? 1 : 0),
+		}));
+		return;
+	}
 	const before = countsAsFailure(prev.status);
 	const after = countsAsFailure(next.status);
 	if (before === after) return;

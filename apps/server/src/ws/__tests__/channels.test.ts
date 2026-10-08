@@ -226,6 +226,42 @@ describe("attachChannelWiring — history-recorded / history-updated 投影", ()
 	});
 });
 
+describe("attachChannelWiring — 被静音 / 免扰挡下的行", () => {
+	it("状态 silenced 与消息上的 isSilenced 过线;后来补到了的那条不带", () => {
+		const h = wire();
+		h.bus.emit("history-recorded", {
+			...ROW,
+			status: "silenced",
+			messages: [{ payload: { kind: "text", text: "卡片" }, role: "main", isSilenced: true }],
+		} as never);
+		expect(h.last()).toMatchObject({ type: "push-events", event: "history-recorded" });
+		expect(h.last().data).toMatchObject({
+			status: "silenced",
+			messages: [{ text: "卡片", role: "main", isSilenced: true }],
+		});
+		expect(h.last().data).not.toHaveProperty(["messages", 0, "ok"]);
+
+		h.bus.emit("history-updated", {
+			...ROW,
+			status: "delivered",
+			messages: [
+				{ payload: { kind: "text", text: "卡片" }, role: "main", isSilenced: true },
+				{
+					payload: { kind: "text", text: "卡片" },
+					role: "main",
+					repushOf: 0,
+					result: { ok: true, latencyMs: 4 },
+				},
+			],
+		} as never);
+		expect(h.last().data).toMatchObject({
+			status: "delivered",
+			messages: [{ isSilenced: true }, { ok: true, repushOf: 0 }],
+		});
+		expect(h.last().data).not.toHaveProperty(["messages", 1, "isSilenced"]);
+	});
+});
+
 describe("attachChannelWiring — cookies-refreshed", () => {
 	/**
 	 * cookie 本身不上总线:载荷只有刷新的时刻(源头上的这一条由 `auth/__tests__/

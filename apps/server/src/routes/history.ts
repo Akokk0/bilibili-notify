@@ -81,13 +81,15 @@ export function createHistoryRoute(deps: RouteDeps): Hono {
 			since,
 			feature,
 		});
-		// 只为**失败 / 部分失败**的行问一句「按钮该不该灰」(决策 9)。一页两百行里
-		// 失败的通常是个位数,而每问一次是一次 stat;别的行本来就没有按钮,不问也不带。
+		// 只为**有得补**的行(失败 / 部分失败 / 被静音或免扰挡下)问一句「按钮该不该灰」(决策 9),
+		// 每问一次是一次 stat;别的行本来就没有按钮,不问也不带。失败的通常是个位数,
+		// 被挡下的在静音一整晚之后可能占满一页。
 		// 图与重推原件清到哪一天:行的日子在它及以前,面板在原来画图的位置写「图已清理」。
 		const clearedThrough = await readClearedThrough(deps.runtime.dataRoot);
 		const views = await Promise.all(
 			entries.map(async (e) => {
-				if (e.status !== "failed" && e.status !== "partial") {
+				// 与补发闸(`repushDenial`)放行的三种状态是同一句判断。
+				if (e.status !== "failed" && e.status !== "partial" && e.status !== "silenced") {
 					return toHistoryView(e, { clearedThrough });
 				}
 				const denial = await deps.runtime.repushRunner.canRepush(e);

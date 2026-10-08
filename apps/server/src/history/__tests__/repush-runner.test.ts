@@ -623,3 +623,83 @@ describe("关停", () => {
 		expect(local.isRunning(entry.id)).toBe(false);
 	});
 });
+
+/**
+ * 被静音 / 免扰挡下的行(ADR-0017 决策 6、11;ADR-0021 决策 34 的 🔗):整行没发过,一颗「补发」把它
+ * 全补上。补发是主人此刻按下的显式动作 —— 发送口是 `PushRouter.sendToTarget`,不经静音 / 免扰 / 总开关
+ * (这个 runner 的入参里压根没有这三样;推送层那半由 `mute-gate.test.ts` 钉)。被挡时没记 @全体,
+ * 所以补发也不会 @。
+ */
+describe("补发被静音 / 免扰挡下的行", () => {
+	async function seedSilenced(): Promise<HistoryEntry> {
+		return history.record({
+			pushId: randomUUID(),
+			feature: "liveEnd",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+			subscriptionId: SUB,
+			targetId: T1,
+			messages: [
+				{ payload: text("下播卡"), role: "main", isSilenced: true },
+				{ payload: text("词云"), role: "extra", isSilenced: true },
+				{ payload: text("总结"), role: "extra", isSilenced: true },
+			],
+		});
+	}
+
+	it("过预检:能补", async () => {
+		const entry = await seedSilenced();
+		expect(entry.status).toBe("silenced");
+		expect(await runner.canRepush(entry)).toBeNull();
+	});
+
+	it.each(["missing", "all"] as const)(
+		"%s:行里每一条都补发一次(只发原件里那几条,没有 @全体),补齐后整行 delivered、原件删掉",
+		async (mode) => {
+			const entry = await seedSilenced();
+			expect(started(await runner.start(entry.id, entry.createdAt, mode))).toBe(3);
+			const row = await settled(entry);
+			expect(sent.map((s) => s.text)).toEqual(["下播卡", "词云", "总结"]);
+			expect(sent.every((s) => s.feature === "liveEnd" && s.targetId === T1)).toBe(true);
+			expect(row.status).toBe("delivered");
+			expect(row.messages.slice(3).map((m) => [m.repushOf, m.result?.ok, m.isSilenced])).toEqual([
+				[0, true, undefined],
+				[1, true, undefined],
+				[2, true, undefined],
+			]);
+			expect(await repush.load(entry.id, entry.createdAt, 3)).toBeNull();
+		},
+	);
+
+	it("本体补失败 → 中止,整行变 failed,原件留着、还能再补", async () => {
+		const entry = await seedSilenced();
+		failOn = (n) => n === 1;
+		await runner.start(entry.id, entry.createdAt, "missing");
+		const row = await settled(entry);
+		expect(sent).toHaveLength(1);
+		expect(row.status).toBe("failed");
+		expect(await runner.canRepush(row)).toBeNull();
+	});
+
+	it("附加项补失败 → partial,再按一次只补还没到的那两条", async () => {
+		const entry = await seedSilenced();
+		failOn = (n) => n === 2;
+		await runner.start(entry.id, entry.createdAt, "missing");
+		const row = await settled(entry);
+		expect(row.status).toBe("partial");
+		failOn = () => false;
+		sent = [];
+		expect(started(await runner.start(entry.id, entry.createdAt, "missing"))).toBe(2);
+		expect((await settled(entry)).status).toBe("delivered");
+		expect(sent.map((s) => s.text)).toEqual(["词云", "总结"]);
+	});
+
+	it("路由里把目标去掉了 / 目标停用了 → 照挡(决策 10)", async () => {
+		const entry = await seedSilenced();
+		routed = [];
+		expect(denied(await runner.start(entry.id, entry.createdAt, "missing"))).toContain("路由");
+		routed = [T1];
+		enabled = false;
+		expect(denied(await runner.start(entry.id, entry.createdAt, "missing"))).toContain("停用");
+		expect(sent).toHaveLength(0);
+	});
+});

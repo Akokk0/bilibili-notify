@@ -30,7 +30,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 | 键 | 回答 | 用在 |
 |---|---|---|
 | **身份**：`identity { sourceKey, externalId }`（B 站是 `bilibili` + uid） | 这是谁 | 判重（同一个人只能有一条订阅，见下）、把拓展的上报对到订阅上、历史行找回订阅、颜色 |
-| **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`broadcastToFeature`）、历史行的 `subscriptionId`、资料缓存（头像是它里面的图库引用）、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
+| **运行期键**：订阅自己的 `id`（uuid） | 是哪一条 | 推送链（`PushRouter.push`）、历史行的 `subscriptionId`、资料缓存（头像是它里面的图库引用）、拓展在播表、女仆查订阅的视图、增删改接口、备份的合并计划 |
 
 - 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/up/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `upColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。
 - **绝不跨支**：外部 id 恰好等于某个 B 站 uid，也是另一个平台上的另一个人。

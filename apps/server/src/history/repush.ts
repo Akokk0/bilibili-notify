@@ -39,9 +39,9 @@ export function originalCount(messages: readonly HistoryMessage[]): number {
 /**
  * 「只补没到的」要补哪几条 —— 每一号的最后一次尝试没成的那些身份号,升序。
  *
- * 「没到」有两种,一视同仁:发了但失败了,和**因为前面失败而从没发出去**(决策 17 之后
- * 它们也在行里,没有 `result`)。后者恰恰是最需要补的那种 —— 第一条就失败时,后面本该
- * 发的那几条今天一次都没出过网。
+ * 「没到」有三种,一视同仁:发了但失败了,**因为前面失败而从没发出去**(决策 17 之后
+ * 它们也在行里,没有 `result`),和**被静音 / 免扰挡下**的(`isSilenced`,同样没有 `result`)。
+ * 第二种恰恰是最需要补的那种 —— 第一条就失败时,后面本该发的那几条今天一次都没出过网。
  */
 export function unsentIndices(messages: readonly HistoryMessage[]): number[] {
 	const out: number[] = [];
@@ -81,8 +81,9 @@ const NO_TARGET = "这条推送当时没有可用的目标，补不了 —— �
  */
 export function repushDenial(input: RepushGateInput): Failure | null {
 	const { entry, routedTargets, targetEnabled, running } = input;
-	// 决策 6:按钮只长在 failed 与 partial 上。no-targets 连目标都没有,补不成。
-	if (entry.status !== "failed" && entry.status !== "partial") {
+	// 决策 6:按钮只长在 failed、partial 与 silenced 上。no-targets 连目标都没有,补不成。
+	// (列表路由只为这三种行问「按钮该不该灰」,`routes/history.ts` 里是同一句判断。)
+	if (entry.status !== "failed" && entry.status !== "partial" && entry.status !== "silenced") {
 		return fail(
 			"conflict",
 			entry.status === "no-targets" ? NO_TARGET : "这一行全都送到了，不用补啦",

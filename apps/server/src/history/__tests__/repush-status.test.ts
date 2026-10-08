@@ -149,3 +149,78 @@ describe("computeStatus — 老行一个字不变", () => {
 		expect(computeStatus(T1, [])).toBe("failed");
 	});
 });
+
+/**
+ * **被静音 / 免扰挡下的消息**(ADR-0021 决策 34 的 🔗,10-08):每条带 `isSilenced: true`、没有结果。
+ * 状态仍是消息的纯函数、仍按「每一号的最后一次尝试」算:
+ *
+ * - 本体最后一次是被挡的 → `silenced`(不管附加项);
+ * - 没有本体、且全部都是被挡的 → `silenced`;
+ * - 别的情况,被挡的那几号**不参与**「是否全送到」的判断,其余照原来的算法。
+ *
+ * 被挡的行经补发后,补发的消息带 `repushOf` 追加进来,同一号的最后一次就不再是被挡的了。
+ */
+describe("computeStatus — 被静音 / 免扰挡下的消息", () => {
+	/** 被挡的一条:没有结果。 */
+	const sil = (role: HistoryMessage["role"]): HistoryMessage => ({
+		payload: { kind: "text", text: "x" },
+		role,
+		isSilenced: true,
+	});
+
+	it.each<[string, HistoryMessage[], string]>([
+		["只有本体,被挡", [sil("main")], "silenced"],
+		["本体与附加项都被挡", [sil("main"), sil("extra"), sil("extra")], "silenced"],
+		["没有本体,附加项全被挡", [sil("extra"), sil("extra")], "silenced"],
+		["本体被挡,某个附加项却送到了(本体定调)", [sil("main"), msg("extra", OK)], "silenced"],
+		["本体被挡,某个附加项失败了(本体定调)", [sil("main"), msg("extra", FAIL)], "silenced"],
+		["补发:本体补到了", [sil("main"), msg("main", OK, 0)], "delivered"],
+		[
+			"补发:本体与附加项都补到了",
+			[sil("main"), sil("extra"), msg("main", OK, 0), msg("extra", OK, 1)],
+			"delivered",
+		],
+		[
+			"补发:本体补到了,附加项还没轮到(仍是被挡的,不参与)",
+			[sil("main"), sil("extra"), msg("main", OK, 0)],
+			"delivered",
+		],
+		[
+			"补发:本体补到了,附加项补失败",
+			[sil("main"), sil("extra"), msg("main", OK, 0), msg("extra", FAIL, 1)],
+			"partial",
+		],
+		[
+			"补发:本体补到了,一个附加项补失败、另一个还是被挡的",
+			[sil("main"), sil("extra"), sil("extra"), msg("main", OK, 0), msg("extra", FAIL, 1)],
+			"partial",
+		],
+		["补发:本体补失败", [sil("main"), msg("main", FAIL, 0)], "failed"],
+		[
+			"补发:本体补失败,附加项还是被挡的",
+			[sil("main"), sil("extra"), msg("main", FAIL, 0)],
+			"failed",
+		],
+		["本体送到了,只有附加项被挡", [msg("main", OK), sil("extra")], "delivered"],
+		[
+			"本体送到了,一个附加项被挡、另一个失败",
+			[msg("main", OK), sil("extra"), msg("extra", FAIL)],
+			"partial",
+		],
+		["本体失败,附加项被挡", [msg("main", FAIL), sil("extra")], "failed"],
+		["没有本体:一个附加项被挡、另一个送到了", [sil("extra"), msg("extra", OK)], "delivered"],
+		["没有本体:一个附加项被挡、另一个失败", [sil("extra"), msg("extra", FAIL)], "failed"],
+	])("%s", (_name, messages, expected) => {
+		expect(computeStatus(T1, messages)).toBe(expected);
+	});
+
+	it("无目标行照旧是 no-targets(那一行的消息本来就不带 isSilenced)", () => {
+		expect(computeStatus(null, [msg("main")])).toBe("no-targets");
+	});
+
+	// 「没有结果」有两种,必须分得清:被挡的,和因为前一条失败而从没发出去的。
+	it("没有结果、也没被挡(前一条失败而没发出去的)照旧算没送到,不是 silenced", () => {
+		expect(computeStatus(T1, [msg("main", FAIL), msg("main")])).toBe("failed");
+		expect(computeStatus(T1, [msg("main", OK), msg("extra")])).toBe("partial");
+	});
+});

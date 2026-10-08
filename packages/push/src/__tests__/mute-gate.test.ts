@@ -2,7 +2,8 @@
  * 单元测试 — 全局静音闸。
  *
  * 静音挡的是**订阅推送**,闸和 quietHours 并排装在 `push` 里(交进来时判一次),所以
- * 动态 / 直播 / SC / 上舰 / 词云 / 总结 / 下播 一道全挡住。
+ * 动态 / 直播 / SC / 上舰 / 词云 / 总结 / 下播 一道全挡住 —— 一条都不发。挡下的照样按目标回调
+ * (消息带 `isSilenced`,宿主落 `silenced` 行),那一半在 `push-contract.test.ts` 钉着;这里只看「发没发」。
  *
  * 但**不挡发给主人的私聊**。这条不是风格取舍:主人敲下 `/mute` 之后,「好的,静音到
  * 几点」这句回复本身也走私聊路径。一起挡掉的话,他会看到指令毫无反应 —— 静音生效
@@ -119,6 +120,16 @@ describe("全局静音闸", () => {
 		const { push, calls } = setup(() => true);
 		await push.sendPrivateMsg("好的，静音到 21:00");
 		expect(calls).toEqual(["master"]);
+	});
+
+	// 人工补发(ADR-0017 决策 11)走的是 `sendToTarget`:主人此刻按下的显式动作,不经静音这道闸。
+	it("静音中,sendToTarget 照发 —— 人工补发走的就是这条路", async () => {
+		const { push, calls } = setup(() => true);
+		const result = await push.sendToTarget("t1", TEXT, {
+			routing: { subscriptionId: "s1", feature: "liveStart" },
+		});
+		expect(result.ok).toBe(true);
+		expect(calls).toEqual(["t1"]);
 	});
 
 	it("静音中,运行错误告警照发", async () => {

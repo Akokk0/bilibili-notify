@@ -341,7 +341,8 @@ export function TimelinePanel({
 	}, [targets]);
 	const platformLabelOf = (extensionId: string) =>
 		subscriptionPlatformOf({ extensionId }, extensions).label;
-	const recent = entries.slice(0, 6);
+	// 这一栏说的是发出去的推送:被静音 / 免扰挡下的行不算推送,不列(历史页照列),也不占这六个位子。
+	const recent = entries.filter((h) => h.status !== "silenced").slice(0, 6);
 	return (
 		<GlassPanel
 			title="最近推送活动"

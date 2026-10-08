@@ -8,7 +8,8 @@
  *   - 可用目标为零(没配,或配的全停用)→ 以 `target: null` 回调一次,不调 dispatcher、不重试
  *   - 停用目标不当候选:只推给启用的,停用的既不发也不记
  *   - 附加项(`role: "extra"`)与本体分开标;@全体 恒为附加项,且在本体那次回调之后
- *   - 交进来时就被挡下的(静音 / 特性关 / 免扰 / 无订阅)一律不回调 —— 那不是「无目标」
+ *   - 交进来时特性关着 / 订阅不在 → 一律不回调 —— 那不是「无目标」
+ *   - 交进来时在静音 / 免扰里 → 一条都不发,但照样按目标回调,消息带 `isSilenced`、没有结果(文末「被静音 / 免扰挡下的推送照记」)
  *   - 上面这四样只在交进来时判一次(文末「一次推送只判一次」);锚点按先后发(「一次推送按锚点发」)
  */
 
@@ -348,7 +349,7 @@ describe("推送契约:@全体 是附加项", () => {
 	});
 });
 
-describe("推送契约:交进来时被挡下不算无目标", () => {
+describe("推送契约:特性关着 / 订阅不在,不算无目标", () => {
 	it("特性关着 → 不回调、不记", async () => {
 		const sub = subWith([]);
 		sub.overrides = { features: { post: false } };
@@ -363,7 +364,8 @@ describe("推送契约:交进来时被挡下不算无目标", () => {
 		expect(seen).toHaveLength(0);
 	});
 
-	it("全局静音 → 不回调", async () => {
+	// 闸序:先算目标、再记被挡。静音期间一个可用目标都没有的推送,落的是「无目标」那一行(不是被挡)。
+	it("全局静音 + 没有可用目标 → 照落「无目标」:回调 target:null,消息不带 isSilenced", async () => {
 		const { dispatcher } = makeDispatcher();
 		const seen: PushSendResult[] = [];
 		const push = new PushRouter({
@@ -376,7 +378,8 @@ describe("推送契约:交进来时被挡下不算无目标", () => {
 		});
 		push.start();
 		await pushMain(push, "s1", "post", M1);
-		expect(seen).toHaveLength(0);
+		expect(seen.map(flat)).toEqual([[null, [["m1", "main", null]]]]);
+		expect(seen[0]?.messages[0]).not.toHaveProperty("isSilenced");
 	});
 });
 
@@ -421,6 +424,18 @@ function setupPush(sub: Subscription = subWith([T1, T2])) {
 }
 
 type PushSetup = ReturnType<typeof setupPush>;
+
+/**
+ * 一次「被挡」的回调压成 `[目标, [文案, role]...]`;顺手断言这一段每条消息都带 `isSilenced: true`、
+ * 而且没有结果 —— 被挡不是失败,也不是「没发出去的后续条」。
+ */
+function silenced(info: PushSendResult): [string | null, Array<[string, string]>] {
+	for (const m of info.messages) {
+		expect(m).toMatchObject({ isSilenced: true });
+		expect(m).not.toHaveProperty("result");
+	}
+	return [info.target?.id ?? null, info.messages.map((m) => [textOf(m.payload), m.role])];
+}
 
 /** 用例期间进程里冒出来的未处理拒绝;收尾时应当一条都没有。 */
 function watchUnhandledRejections() {
@@ -497,8 +512,10 @@ describe("一次推送只判一次", () => {
 		]);
 	});
 
-	it.each(turnsBlocking)(
-		"交进来时被%s挡下,之后放开 → 本体与后面的锚点都不发、不回调,约定有人接着",
+	// 时间上的挡(免扰、静音)管整次推送:交进来时挡下了,之后放开,后面才做好的锚点也一起算被挡 ——
+	// 一条都不发,照样按目标记下来(见文末「被静音 / 免扰挡下的推送照记」)。
+	it.each(turnsBlocking.slice(0, 2))(
+		"交进来时被%s挡下,之后放开 → 本体与后面的锚点都不发,都记成被挡;做不出来的跳过",
 		async (_name, block, unblock) => {
 			const s = setupPush();
 			const unhandled = watchUnhandledRejections();
@@ -521,10 +538,42 @@ describe("一次推送只判一次", () => {
 			await s.settled();
 			await unhandled.stop();
 			expect(s.calls).toHaveLength(0);
-			expect(s.seen).toHaveLength(0);
+			expect(s.seen.map(silenced)).toEqual([
+				[T1, [["m1", "main"]]],
+				[T2, [["m1", "main"]]],
+				[T1, [["m2", "extra"]]],
+				[T2, [["m2", "extra"]]],
+			]);
+			expect(s.warns).toHaveLength(1);
 			expect(unhandled.reasons).toEqual([]);
 		},
 	);
+
+	it("交进来时总开关关着,之后打开 → 不发、不回调(什么都不留),约定有人接着", async () => {
+		const s = setupPush();
+		const unhandled = watchUnhandledRejections();
+		const later = deferred<NotificationPayload[]>();
+		const broken = deferred<NotificationPayload[]>();
+		s.defaults.features.post = false;
+		const out = await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", messages: later.promise },
+				{ role: "extra", messages: broken.promise },
+			],
+		});
+		expect(out).toEqual([]);
+		s.defaults.features.post = true;
+		later.resolve([M2]);
+		broken.reject(new Error("总结没写出来"));
+		await s.settled();
+		await unhandled.stop();
+		expect(s.calls).toHaveLength(0);
+		expect(s.seen).toHaveLength(0);
+		expect(unhandled.reasons).toEqual([]);
+	});
 
 	it("交进来时订阅不在 → 之后补上了也不发,约定有人接着", async () => {
 		const s = setupPush();
@@ -940,5 +989,262 @@ describe("一次推送按锚点发", () => {
 		await unhandled.stop();
 		expect(s.calls).toHaveLength(0);
 		expect(unhandled.reasons).toEqual([]);
+	});
+});
+
+/**
+ * 被静音 / 免扰挡下的推送照记(ADR-0021 决策 34 的 🔗,10-08):一条都不发,但每个锚点照常算它该发给
+ * 哪些目标(路由 ∩ 启用、附加项三态表收窄),对每个目标回调一次,消息带 `isSilenced: true`、没有结果 ——
+ * 宿主据此落 `silenced` 行、存下重推原件。先算目标、再记被挡;被挡时不插 @全体。
+ */
+describe("被静音 / 免扰挡下的推送照记", () => {
+	const WORDCLOUD: NotificationPayload = { kind: "text", text: "词云" };
+	const SUMMARY: NotificationPayload = { kind: "text", text: "总结" };
+
+	function liveEndSub(targets: string[] = [T1, T2]): Subscription {
+		const sub = subWith([]);
+		sub.routing.liveEnd = [...targets];
+		setExtraDefault(sub, "wordcloud", true);
+		setExtraDefault(sub, "liveSummary", true);
+		return sub;
+	}
+
+	const blocked: Array<[string, (s: PushSetup) => void]> = [
+		[
+			"全局静音",
+			(s) => {
+				s.clock.muted = true;
+			},
+		],
+		[
+			"免扰时段",
+			(s) => {
+				s.clock.now = QUIET;
+			},
+		],
+	];
+
+	it.each(blocked)(
+		"%s:不调派发器;每个该收的目标回调一次,消息带 isSilenced、没有结果;同一次推送同一个 pushId",
+		async (_name, block) => {
+			const s = setupPush(liveEndSub());
+			block(s);
+			const out = await s.router.push({
+				subscriptionId: "s1",
+				feature: "liveEnd",
+				anchors: [
+					{ role: "main", messages: [M1, M2] },
+					{ role: "extra", extra: "wordcloud", messages: [WORDCLOUD] },
+				],
+			});
+			await s.settled();
+			expect(out).toEqual([]);
+			expect(s.calls).toHaveLength(0);
+			expect(s.seen.map(silenced)).toEqual([
+				[
+					T1,
+					[
+						["m1", "main"],
+						["m2", "main"],
+					],
+				],
+				[
+					T2,
+					[
+						["m1", "main"],
+						["m2", "main"],
+					],
+				],
+				[T1, [["词云", "extra"]]],
+				[T2, [["词云", "extra"]]],
+			]);
+			expect(new Set(s.seen.map((info) => info.pushId)).size).toBe(1);
+			expect(s.seen[0]).toMatchObject({ subscriptionId: "s1", feature: "liveEnd" });
+		},
+	);
+
+	it("附加项先按三态表收窄、再记被挡:每个目标的回调里只有它本来会收到的", async () => {
+		const sub = liveEndSub();
+		sub.extraTargets.wordcloud = { [T2]: false };
+		sub.extraTargets.liveSummary = { [T1]: false };
+		const s = setupPush(sub);
+		s.clock.muted = true;
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: Promise.resolve([WORDCLOUD]) },
+				{ role: "extra", extra: "liveSummary", messages: Promise.resolve([SUMMARY]) },
+			],
+		});
+		await s.settled();
+		expect(s.seen.map(silenced)).toEqual([
+			[T1, [["m1", "main"]]],
+			[T2, [["m1", "main"]]],
+			[T1, [["词云", "extra"]]],
+			[T2, [["总结", "extra"]]],
+		]);
+	});
+
+	it("附加项收窄成空 → 这个锚点什么都不记(不是无目标,也不是被挡)", async () => {
+		const sub = liveEndSub([T1]);
+		sub.extraTargets.wordcloud = { [T1]: false };
+		const s = setupPush(sub);
+		s.clock.muted = true;
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: [WORDCLOUD] },
+			],
+		});
+		await s.settled();
+		expect(s.seen.map(silenced)).toEqual([[T1, [["m1", "main"]]]]);
+	});
+
+	it("被挡时不插 @全体:该 @ 的目标上也只记本体,没有 @全体 那一条,也没有它的后台活", async () => {
+		const s = setupPush(subWith([T1], true));
+		s.clock.muted = true;
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "post",
+			anchors: [{ role: "main", messages: [M1] }],
+		});
+		await s.settled();
+		expect(s.calls).toHaveLength(0);
+		expect(s.seen.map(silenced)).toEqual([[T1, [["m1", "main"]]]]);
+		expect(s.tracked).toHaveLength(0);
+	});
+
+	it("没有可用目标 → 照落「无目标」:每个有内容的锚点回调一次 target:null,不带 isSilenced", async () => {
+		const s = setupPush(liveEndSub([]));
+		s.clock.now = QUIET;
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: [WORDCLOUD] },
+			],
+		});
+		await s.settled();
+		expect(s.seen.map(flat)).toEqual([
+			[null, [["m1", "main", null]]],
+			[null, [["词云", "extra", null]]],
+		]);
+		for (const info of s.seen) expect(info.messages[0]).not.toHaveProperty("isSilenced");
+	});
+
+	it("等约定了结再记,按锚点先后:总结先做好也排在词云后面;本体记完 push() 就返回,其余在后台", async () => {
+		const s = setupPush(liveEndSub([T1]));
+		s.clock.muted = true;
+		const wordcloud = deferred<NotificationPayload[]>();
+		const summary = deferred<NotificationPayload[]>();
+		const out = await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: wordcloud.promise },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		expect(out).toEqual([]);
+		expect(s.seen.map(silenced)).toEqual([[T1, [["m1", "main"]]]]);
+		expect(s.tracked).toHaveLength(1);
+		summary.resolve([SUMMARY]);
+		await tick();
+		expect(s.seen).toHaveLength(1);
+		wordcloud.resolve([WORDCLOUD]);
+		await s.settled();
+		expect(s.seen.map(silenced)).toEqual([
+			[T1, [["m1", "main"]]],
+			[T1, [["词云", "extra"]]],
+			[T1, [["总结", "extra"]]],
+		]);
+	});
+
+	it("空的锚点跳过;没有本体 → 立即回空,附加项照记", async () => {
+		const s = setupPush(liveEndSub([T1]));
+		s.clock.muted = true;
+		const out = await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "extra", extra: "wordcloud", messages: Promise.resolve(undefined) },
+				{ role: "extra", extra: "liveSummary", messages: [SUMMARY] },
+			],
+		});
+		expect(out).toEqual([]);
+		await s.settled();
+		expect(s.seen.map(silenced)).toEqual([[T1, [["总结", "extra"]]]]);
+	});
+
+	it("交进来之后目标被移出路由 / 订阅被删 → 后面的锚点不再为它记", async () => {
+		const s = setupPush(liveEndSub());
+		s.clock.muted = true;
+		const wordcloud = deferred<NotificationPayload[]>();
+		const summary = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "wordcloud", messages: wordcloud.promise },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		s.sub.routing.liveEnd = [T1];
+		wordcloud.resolve([WORDCLOUD]);
+		await tick();
+		s.subs.length = 0;
+		summary.resolve([SUMMARY]);
+		await s.settled();
+		expect(s.seen.map(silenced)).toEqual([
+			[T1, [["m1", "main"]]],
+			[T2, [["m1", "main"]]],
+			[T1, [["词云", "extra"]]],
+		]);
+	});
+
+	it("关停之后,还没记的锚点不记", async () => {
+		const s = setupPush(liveEndSub([T1]));
+		s.clock.muted = true;
+		const summary = deferred<NotificationPayload[]>();
+		await s.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [
+				{ role: "main", messages: [M1] },
+				{ role: "extra", extra: "liveSummary", messages: summary.promise },
+			],
+		});
+		s.router.stop();
+		summary.resolve([SUMMARY]);
+		await s.settled();
+		expect(s.seen).toHaveLength(1);
+	});
+
+	it("闸序:静音着、总开关也关着 / 订阅不在 → 仍然什么都不留", async () => {
+		const off = setupPush(liveEndSub());
+		off.clock.muted = true;
+		off.defaults.features.liveEnd = false;
+		await off.router.push({
+			subscriptionId: "s1",
+			feature: "liveEnd",
+			anchors: [{ role: "main", messages: [M1] }],
+		});
+		expect(off.seen).toHaveLength(0);
+
+		const gone = setupPush(liveEndSub());
+		gone.clock.muted = true;
+		await gone.router.push({
+			subscriptionId: "nobody",
+			feature: "liveEnd",
+			anchors: [{ role: "main", messages: [M1] }],
+		});
+		expect(gone.seen).toHaveLength(0);
 	});
 });

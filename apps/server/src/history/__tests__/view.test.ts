@@ -86,3 +86,27 @@ describe("toHistoryView — 图都是图库引用(⑳d)", () => {
 		expect(view.messages[0]?.image).toBeUndefined();
 	});
 });
+
+describe("toHistoryView — 被静音 / 免扰挡下的行", () => {
+	it("状态与消息上的 isSilenced 带到面板;没被挡的消息不带这一格", () => {
+		const view = toHistoryView({
+			...ROW,
+			targetId: "44444444-4444-4444-8444-444444444444",
+			status: "silenced",
+			messages: [
+				{ payload: { kind: "text", text: "卡片" }, role: "main", isSilenced: true },
+				{
+					payload: { kind: "text", text: "卡片" },
+					role: "main",
+					repushOf: 0,
+					result: { ok: true, latencyMs: 3 },
+				},
+			],
+		});
+		expect(view.status).toBe("silenced");
+		expect(view.messages[0]).toMatchObject({ isSilenced: true });
+		expect(view.messages[0]).not.toHaveProperty("ok");
+		expect(view.messages[1]).not.toHaveProperty("isSilenced");
+		expect(view.messages[1]).toMatchObject({ ok: true, repushOf: 0 });
+	});
+});

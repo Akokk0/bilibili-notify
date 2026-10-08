@@ -647,7 +647,11 @@ function TimingFields({
 					) : null}
 				</>
 			) : null}
-			<Field code="schedule.quietHours" hint="该 UP 在此区间内的推送一律丢弃(覆盖全局)" full>
+			<Field
+				code="schedule.quietHours"
+				hint="该 UP 在此区间内的推送一律不发出去,记在推送历史里、可以补发(覆盖全局)"
+				full
+			>
 				<QuietHoursEditor
 					value={schedule.quietHours ?? baseline.schedule.quietHours}
 					onChange={(v) => onSchedule({ ...schedule, quietHours: v })}

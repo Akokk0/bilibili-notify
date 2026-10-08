@@ -13,6 +13,8 @@
  * 3. **补不了的行按钮灰掉并写上原因**,不是把按钮藏掉(决策 9)—— 藏掉的话主人要么
  *    以为这行没失败过,要么以为功能坏了。
  * 4. **已送达与无目标的行根本没有这颗钮**:前者不用补,后者压根没有目标可发(决策 6)。
+ * 5. **被静音 / 免扰挡下的行**(`silenced`)也有这颗钮,展开后只有一颗「补发」—— 整行没发过,
+ *    没有「整行 / 只补没到的」之分。
  *
  * 条数不在这儿算 —— 服务端按身份号算好了随行交下来(`repush.total` / `.missing`)。
  * 面板自己再算一遍就是第二份实现,判定规则一改两边就漂。
@@ -76,6 +78,20 @@ function renderHistory() {
 	);
 }
 
+/** 一行被静音 / 免扰挡下的:三条都没发,每条带 `isSilenced`。 */
+function silencedRow(over: Partial<HistoryEntryView> = {}): HistoryEntryView {
+	return row({
+		status: "silenced",
+		messages: [
+			{ text: "下播了", kind: "text", role: "main", isSilenced: true },
+			{ text: "词云", kind: "text", role: "extra", isSilenced: true },
+			{ text: "总结", kind: "text", role: "extra", isSilenced: true },
+		],
+		repush: { can: true, total: 3, missing: 3 },
+		...over,
+	});
+}
+
 /** 那颗「补一次」的钮。 */
 function repushButton() {
 	return screen.getByRole("button", { name: /补/ });
@@ -95,6 +111,12 @@ describe("哪些行有这颗钮", () => {
 
 	it("failed 行有", async () => {
 		mockApi([row({ status: "failed", repush: { can: true, total: 3, missing: 3 } })]);
+		renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+	});
+
+	it("被静音 / 免扰挡下的行有", async () => {
+		mockApi([silencedRow()]);
 		renderHistory();
 		await waitFor(() => expect(repushButton()).toBeTruthy());
 	});
@@ -338,3 +360,69 @@ describe("补完之后,展开逐条看得出谁补了谁", () => {
 function dimOf(li: HTMLElement): boolean {
 	return /\bopacity-/.test(li.className);
 }
+
+/**
+ * 被静音 / 免扰挡下的行(ADR-0021 决策 34 的 🔗,10-08):照常列出,状态写「已静音」、用未激活的灰;
+ * 展开后每条被挡的消息也写「已静音」;按钮只有一颗「补发」。
+ */
+describe("被静音 / 免扰挡下的行", () => {
+	it("行的状态写「已静音」,用未激活的灰,不是警示色", async () => {
+		mockApi([silencedRow()]);
+		renderHistory();
+		const pill = await screen.findByText("已静音");
+		expect(pill.getAttribute("style") ?? "").toContain("var(--color-bn-inactive)");
+		expect(screen.queryByText("失败")).toBeNull();
+	});
+
+	it("展开:每条被挡的消息写「已静音」,不写「未发送」", async () => {
+		mockApi([silencedRow()]);
+		renderHistory();
+		await userEvent.click(await screen.findByRole("button", { name: /3 条/ }));
+		// 行上一枚 + 逐条三枚。
+		expect(screen.getAllByText("已静音")).toHaveLength(4);
+		expect(screen.queryByText("未发送")).toBeNull();
+	});
+
+	it("补过之后:被挡的那条仍写「已静音」,补发的那条写它自己的结果", async () => {
+		mockApi([
+			silencedRow({
+				status: "delivered",
+				repush: undefined,
+				messages: [
+					{ text: "下播了", kind: "text", role: "main", isSilenced: true },
+					{ text: "下播了", kind: "text", role: "main", ok: true, repushOf: 0 },
+				],
+			}),
+		]);
+		renderHistory();
+		await userEvent.click(await screen.findByRole("button", { name: /2 条|详情/ }));
+		expect(screen.getAllByText("已静音")).toHaveLength(1);
+		expect(screen.getAllByText("已送达").length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("只有一颗「补发」(没有「整行重发 / 只补没到的」),点了发的是没到的那几条", async () => {
+		mockApi([silencedRow()]);
+		renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+		await userEvent.click(repushButton());
+		expect(screen.getByRole("button", { name: /^补发/ })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /整行重发/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /只补没到的/ })).toBeNull();
+		expect(screen.queryByRole("button", { name: /重新推送/ })).toBeNull();
+		await userEvent.click(screen.getByRole("button", { name: /^补发/ }));
+		expect(api.post).toHaveBeenCalledWith("/api/history/h1/repush", {
+			createdAt: TS,
+			mode: "missing",
+		});
+	});
+
+	it("补不了(原料不在了):那颗钮灰掉并写上原因", async () => {
+		mockApi([
+			silencedRow({ repush: { can: false, code: "conflict", message: "这一行的原料已经不在了" } }),
+		]);
+		renderHistory();
+		await waitFor(() => expect(repushButton()).toBeTruthy());
+		expect((repushButton() as HTMLButtonElement).disabled).toBe(true);
+		expect(repushButton().getAttribute("title")).toContain("原料已经不在了");
+	});
+});

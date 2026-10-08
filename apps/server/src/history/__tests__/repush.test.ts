@@ -102,6 +102,19 @@ describe("unsentIndices — 「只补没到的」要补哪几条", () => {
 		expect(unsentIndices([...base, msg("extra", FAIL, 1)])).toEqual([1, 2]);
 	});
 
+	// 被挡的没有结果,和「没发出去的」一样算没送到 —— 补发要把它们全补上。
+	it("被静音 / 免扰挡下的消息算没送到;补到了就不再算", () => {
+		const silenced = (role: HistoryMessage["role"]): HistoryMessage => ({
+			payload: { kind: "text", text: "x" },
+			role,
+			isSilenced: true,
+		});
+		const base = [silenced("main"), silenced("extra")];
+		expect(unsentIndices(base)).toEqual([0, 1]);
+		expect(originalCount(base)).toBe(2);
+		expect(unsentIndices([...base, msg("main", OK, 0)])).toEqual([1]);
+	});
+
 	it("升序,不重复", () => {
 		const out = unsentIndices([msg("main", FAIL), msg("extra", FAIL), msg("main", FAIL, 0)]);
 		expect(out).toEqual([0, 1]);
@@ -115,6 +128,22 @@ describe("repushDenial — 挡什么", () => {
 
 	it("partial 行也放行(那是「有几条没到」)", () => {
 		expect(repushDenial(allow({ entry: entry({ status: "partial" }) }))).toBeNull();
+	});
+
+	// 被静音 / 免扰挡下的行整行没发过(ADR-0017 决策 6,10-08 加)。
+	it("silenced 行也放行", () => {
+		const silenced = entry({
+			status: "silenced",
+			messages: [{ payload: { kind: "text", text: "x" }, role: "main", isSilenced: true }],
+		});
+		expect(repushDenial(allow({ entry: silenced }))).toBeNull();
+	});
+
+	it("silenced 行照样过后面几道:路由里去掉了 / 目标停用 / 正在补 → 拒", () => {
+		const silenced = entry({ status: "silenced" });
+		expect(repushDenial(allow({ entry: silenced, routedTargets: [] }))).not.toBeNull();
+		expect(repushDenial(allow({ entry: silenced, targetEnabled: false }))).not.toBeNull();
+		expect(repushDenial(allow({ entry: silenced, running: true }))).not.toBeNull();
 	});
 
 	it("已送达的行不给补", () => {

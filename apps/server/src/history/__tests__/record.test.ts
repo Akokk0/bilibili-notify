@@ -8,6 +8,8 @@
  *   - 四态:全到 = delivered;本体到了附加没到 = partial;本体没到 = failed;`target: null` = no-targets
  *   - 无目标行消息照存、图照存进图库,只是没有结果
  *   - 按日聚合:total 数行、不计无目标;failures = failed + partial;counts 按 8 把特性键
+ *   - 被静音 / 免扰挡下的行:盘上 `status: "silenced"`、每条消息 `isSilenced: true`、没有 `result`;
+ *     追加附加项后仍是 silenced;不进按日聚合,补发成功后才计入它建行那天
  */
 
 import { randomUUID } from "node:crypto";
@@ -373,5 +375,98 @@ describe("aggregateDaily — 新口径", () => {
 				"specialUserEnter",
 			].sort(),
 		);
+	});
+});
+
+/**
+ * 被静音 / 免扰挡下的推送照记(ADR-0021 决策 34 的 🔗,10-08)。🔴 历史的 schema 不是 strict ——
+ * 认不得的格会被悄悄剥掉、照样写得进去,所以这里**读盘上 JSON 原文**断言,不看 `record` 的返回值。
+ */
+describe("record — 被静音 / 免扰挡下的行", () => {
+	const silencedMessage = (t: string, role: "main" | "extra" = "main") => ({
+		payload: text(t),
+		role,
+		isSilenced: true as const,
+	});
+
+	it("盘上原文:status 是 silenced,每条消息带 isSilenced: true、没有 result", async () => {
+		const entry = await store.record(
+			input({ messages: [silencedMessage("卡片"), silencedMessage("第二条")] }),
+		);
+		const [line] = await dayLines(entry);
+		const onDisk = JSON.parse(line as string);
+		expect(onDisk.status).toBe("silenced");
+		expect(onDisk.messages).toEqual([
+			{ payload: { kind: "text", text: "卡片" }, role: "main", isSilenced: true },
+			{ payload: { kind: "text", text: "第二条" }, role: "main", isSilenced: true },
+		]);
+		expect(recorded.map((e) => e.status)).toEqual(["silenced"]);
+	});
+
+	it("被挡的行追加附加项(词云、总结)后仍是 silenced,不被重算成 failed;补丁行原文同样带 isSilenced", async () => {
+		const pushId = randomUUID();
+		const first = await store.record(
+			input({ pushId, feature: "liveEnd", messages: [silencedMessage("下播卡")] }),
+		);
+		const merged = await store.record(
+			input({ pushId, feature: "liveEnd", messages: [silencedMessage("词云", "extra")] }),
+		);
+		expect(merged.id).toBe(first.id);
+		expect(merged.status).toBe("silenced");
+		const lines = await dayLines(first);
+		expect(lines).toHaveLength(2);
+		expect(JSON.parse(lines[1] as string)).toEqual({
+			rowId: first.id,
+			status: "silenced",
+			messages: [{ payload: { kind: "text", text: "词云" }, role: "extra", isSilenced: true }],
+		});
+		const [row] = await store.query({});
+		expect(row?.status).toBe("silenced");
+		expect(row?.messages.map((m) => m.isSilenced)).toEqual([true, true]);
+	});
+
+	it("图片类的消息照样存进图库(补发与面板都要它)", async () => {
+		const entry = await store.record(
+			input({
+				messages: [
+					{
+						payload: { kind: "image", image: { buffer: distinctPng(7), mime: "image/png" } },
+						role: "main",
+						isSilenced: true,
+					},
+				],
+			}),
+		);
+		const ref = entry.messages[0]?.payload.image;
+		expect(ref).toBeDefined();
+		expect(await readdir(join(dataDir, "images"))).toEqual([ref]);
+	});
+
+	it("不进按日聚合(今日推送 / 趋势 / 今日失败);补发成功后计入它建行那天", async () => {
+		const entry = await store.record(input({ messages: [silencedMessage("卡片")] }));
+		await store.record(input({ targetId: T2 }));
+		const before = (await store.aggregateDaily({ days: 1 })).at(-1);
+		expect(before).toMatchObject({ total: 1, failures: 0 });
+		expect(before?.counts.post).toBe(1);
+
+		const patched = await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: OK, repushOf: 0 },
+		]);
+		expect(patched?.status).toBe("delivered");
+		const after = (await store.aggregateDaily({ days: 1 })).at(-1);
+		expect(after).toMatchObject({ total: 2, failures: 0 });
+		expect(after?.counts.post).toBe(2);
+	});
+
+	it("补发失败的那一行算进失败", async () => {
+		const entry = await store.record(input({ messages: [silencedMessage("卡片")] }));
+		const patched = await store.appendToRow(entry.id, entry.createdAt, [
+			{ payload: text("卡片"), role: "main", result: FAIL, repushOf: 0 },
+		]);
+		expect(patched?.status).toBe("failed");
+		expect((await store.aggregateDaily({ days: 1 })).at(-1)).toMatchObject({
+			total: 1,
+			failures: 1,
+		});
 	});
 });

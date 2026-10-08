@@ -159,6 +159,35 @@ describe("record → 原件", () => {
 		expect(await readdir(join(dataDir, "images"))).toHaveLength(2);
 	});
 
+	// 被静音 / 免扰挡下的行有目标、一条都没发:原件必须留着,补发靠它。
+	it("被挡的行照留原件:原样 payload 都在,追加的附加项也跟着长", async () => {
+		const pushId = randomUUID();
+		const entry = await store.record(
+			input({
+				pushId,
+				messages: [
+					{
+						payload: { kind: "image", image: { buffer: distinctPng(11), mime: "image/png" } },
+						role: "main",
+						isSilenced: true,
+					},
+				],
+			}),
+		);
+		expect(entry.status).toBe("silenced");
+		await store.record(
+			input({ pushId, messages: [{ payload: text("词云"), role: "extra", isSilenced: true }] }),
+		);
+		const loaded = await repush.load(entry.id, entry.createdAt, 2);
+		expect(loaded?.messages.map((m) => [m.payload.kind, m.role])).toEqual([
+			["image", "main"],
+			["text", "extra"],
+		]);
+		const [card] = loaded?.messages ?? [];
+		if (card?.payload.kind !== "image") throw new Error("原件里那张图不见了");
+		expect(Buffer.from(card.payload.image.buffer).equals(distinctPng(11))).toBe(true);
+	});
+
 	it("无目标行不留原件 —— 按钮本来就不给它", async () => {
 		const entry = await store.record(
 			input({ targetId: null, messages: [{ payload: text("卡片"), role: "main" }] }),

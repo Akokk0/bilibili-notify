@@ -303,7 +303,7 @@ describe("history route — POST /:id/repush", () => {
 /**
  * **按钮该不该灰,列表里就告诉面板**(ADR-0017 决策 9)。
  *
- * 只为失败 / 部分失败的行问 —— 一页两百行里失败的通常是个位数,而每问一次是一次
+ * 只为有得补的行问(失败 / 部分失败 / 被静音或免扰挡下)—— 每问一次是一次
  * `stat`。已送达与无目标的行不问也不带:它们本来就没有按钮。
  *
  * WS 推来的新行**刻意不带**这个字段(投影在另一层,拿不到 runner)。面板对缺省按
@@ -329,15 +329,42 @@ describe("history route — 列表带上「能不能补」", () => {
 		}));
 	}
 
-	it("失败行带 repush(能补时是 null),别的行不带也不问", async () => {
+	it("失败 / 部分失败 / 被挡下的行带 repush(能补时是 null),别的行不带也不问", async () => {
 		const app = makeApp();
-		query.mockImplementation(async () => rows("failed", "partial", "delivered", "no-targets"));
+		query.mockImplementation(async () =>
+			rows("failed", "partial", "delivered", "no-targets", "silenced"),
+		);
 		const body = (await (await app.request("/")).json()) as {
 			entries: Array<{ status: string; repush?: unknown }>;
 		};
-		expect(body.entries.map((e) => "repush" in e)).toEqual([true, true, false, false]);
+		expect(body.entries.map((e) => "repush" in e)).toEqual([true, true, false, false, true]);
 		expect(body.entries[0]?.repush).toEqual({ can: true, total: 0, missing: 0 });
-		expect(canRepush).toHaveBeenCalledTimes(2);
+		expect(canRepush).toHaveBeenCalledTimes(3);
+	});
+
+	// 被挡下的行整行没发过:本来几条就差几条,面板据此只给一颗「补发」。
+	it("被挡下的行:total 与 missing 都是行里的条数,状态与 isSilenced 原样过线", async () => {
+		const app = makeApp();
+		query.mockImplementation(async () => [
+			{
+				...rows("silenced")[0],
+				messages: [
+					{ payload: { kind: "text", text: "下播卡" }, role: "main", isSilenced: true },
+					{ payload: { kind: "text", text: "词云" }, role: "extra", isSilenced: true },
+				],
+			},
+		]);
+		const body = (await (await app.request("/")).json()) as {
+			entries: Array<{ status: string; repush?: unknown; messages: unknown[] }>;
+		};
+		expect(body.entries[0]).toMatchObject({
+			status: "silenced",
+			repush: { can: true, total: 2, missing: 2 },
+			messages: [
+				{ text: "下播卡", role: "main", isSilenced: true },
+				{ text: "词云", role: "extra", isSilenced: true },
+			],
+		});
 	});
 
 	it("不能补时带回那句原因", async () => {

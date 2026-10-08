@@ -34,7 +34,7 @@ export function toHistoryView(
 			image: m.payload.image,
 			role: m.role,
 			...(m.repushOf !== undefined ? { repushOf: m.repushOf } : {}),
-			...(m.result ? resultView(m.result) : {}),
+			...(m.result ? resultView(m.result) : m.isSilenced ? { isSilenced: true as const } : {}),
 		})),
 		nameSnapshot: entry.nameSnapshot,
 		avatarSnapshot: entry.avatarSnapshot,

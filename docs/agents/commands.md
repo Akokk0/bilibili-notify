@@ -92,9 +92,9 @@ InboundPrivateMessage {userId, text}
 
 - **状态** = `globals.mutedUntil`(epoch ms,`0` = 没静音)。落盘换来「重启不解除」与「网页上看得见」。
 - **判定** = 读时现算 `now < mutedUntil`,**没有定时器**。到期不是一个会发生的事件,只是同一个比较的结果变了 —— 于是重启 / 时钟跳变 / dispose 时序全都不用管。
-- **闸门** = `PushRouter` 构造时注入的 `muted: () => boolean`(`engines.ts` 接的是 `muteState.isMuted()`),挡在 `broadcastToFeature` 里,和 quietHours 并排。一道闸盖住全部 feature。
+- **闸门** = `PushRouter` 构造时注入的 `muted: () => boolean`(`engines.ts` 接的是 `muteState.isMuted()`),挡在 `PushRouter.push` 里(一次推送交进来时判一次),和 quietHours 并排。一道闸盖住全部 feature;挡下的一条都不发,但照样记进推送历史(`silenced` 行),之后可以在历史页补发。
 - **不挡主人私聊** —— 指令回复(包括「静音到几点」这句本身)和运行错误告警都走那条路。一起挡掉的话,静音生效的唯一证据恰好被静音吞了。
-- **定时周报 / 锐评不受静音管**。它们走 `push.sendToTarget`,不经 `broadcastToFeature`。这一条写进了 `mute` 的 `details`,主人敲 `help mute` 看得到 —— 不写的话他静音期间收到一份周报,只会以为静音坏了。
+- **定时周报 / 锐评不受静音管**。它们走 `push.sendToTarget`,不经 `PushRouter.push`。这一条写进了 `mute` 的 `details`,主人敲 `help mute` 看得到 —— 不写的话他静音期间收到一份周报,只会以为静音坏了。
 - 回复里带**恢复时刻**,跨天时带日期。静音是个无声状态,主人过一会儿发现没推送,分不清是自己静音了还是系统挂了,而这两件事的处理方式完全相反。
 
 只做全局,没有按 UP 主分别静音 —— 那要动推送路径的判定,工作量差一截。

@@ -42,6 +42,9 @@ import type { RepushStore } from "./repush-store.js";
  * 图集 / @全体)算好发出后**追加到同一行**:盘上写一条补丁行,读时按行 id 并回去,
  * emit `history-updated`。jsonl 仍是 append-only,保留期(见 `retention.ts`)按日文件淘汰。
  *
+ * 被全局静音 / 免扰时段挡下的推送也落行(状态 `silenced`,每条消息带 `isSilenced`、没有结果),
+ * 同样留重推原件 —— 一条都没发,但之后可以补发。
+ *
  * 图片存进图库 `images/`(ADR-0022 决策 9),引用存在 `payload.image`,面板经 `/api/images/<引用>` 读。历史是图库的
  * 一家引用方(保留期内的行引用的图,见 `retention.ts` 的 `listHistoryImageRefs`),图不由历史删 —— 保留期、
  * `deleteRange` 都只动行与重推原件,图由图库的按引用清扫收走。
@@ -50,8 +53,10 @@ import type { RepushStore } from "./repush-store.js";
 export interface HistoryRecordMessage {
 	payload: NotificationPayload;
 	role: PushMessageRole;
-	/** 无目标行没有它;被前一条失败中止、从没出过网的那几条也没有。 */
+	/** 无目标行没有它;被前一条失败中止、从没出过网的那几条也没有;被挡下的也没有。 */
 	result?: DeliveryResult;
+	/** 这条被全局静音 / 免扰时段挡下了(推送层给的,见 `PushMessageResult.isSilenced`);与 `result` 互斥。 */
+	isSilenced?: true;
 }
 
 export interface NewHistoryEntry {
@@ -165,9 +170,14 @@ function zeroCounts(): Record<FeatureKey, number> {
 }
 
 /**
- * 四态的算法。本体 = 第一条 `role: "main"` 的消息:它没到就是失败;它到了、别的没到是
+ * 状态的算法(消息的纯函数)。本体 = 第一条 `role: "main"` 的消息:它没到就是失败;它到了、别的没到是
  * 部分失败(附加项,或本体的后续分条)。只有附加项先到的行(@全体 抢在卡片前面落地)
  * 暂按失败 / 已送达算,本体一到就重算。
+ *
+ * **被静音 / 免扰挡下的消息**(`isSilenced`,没有结果):本体那一号的最后一次是被挡的 → 整行
+ * `silenced`,不看附加项;没有本体、全是被挡的也是 `silenced`。别的情况下被挡的那几号**不参与**
+ * 「是否全送到」的判断(本体送到了、只有附加项被挡的行算已送达 —— 被挡不是没送到,不能算成部分失败)。
+ * 补发的消息带 `repushOf` 追加进来,同一号的最后一次就换成了补发那次的结果。
  *
  * **每条消息的身份 = `repushOf ?? 它自己的下标`,每一号只认它最后那次尝试**
  * (ADR-0017 决策 16)—— 人工重推把补发的消息追加进原行,一行里于是会有同一条消息的
@@ -186,11 +196,17 @@ export function computeStatus(targetId: string | null, messages: HistoryMessage[
 	// 判据是**每一号都有到了的结果**,不是「有结果的那些都到了」:决策 17 之后,那几条
 	// 因为前面失败而从没发出去的消息也会落进行里(没有 `result`)。只看有结果的那些,
 	// 一行「本体到了、后面两条压根没发」会被算成已送达。
-	if (latest.size > 0 && [...latest.values()].every((m) => m.result?.ok === true)) {
+	const mainIdx = messages.findIndex((m) => m.role === "main");
+	const main = mainIdx === -1 ? undefined : latest.get(mainIdx);
+	if (main?.isSilenced) return "silenced";
+	// 被挡的那几号不参与下面「是否全送到」的判断。
+	const attempted = [...latest.values()].filter((m) => !m.isSilenced);
+	// 一号都不剩:没有本体、全是被挡的。(有本体而它被挡的,上面已经回了。)
+	if (latest.size > 0 && attempted.length === 0) return "silenced";
+	if (attempted.length > 0 && attempted.every((m) => m.result?.ok === true)) {
 		return "delivered";
 	}
-	const mainIdx = messages.findIndex((m) => m.role === "main");
-	if (mainIdx === -1 || latest.get(mainIdx)?.result?.ok !== true) return "failed";
+	if (mainIdx === -1 || main?.result?.ok !== true) return "failed";
 	return "partial";
 }
 
@@ -355,7 +371,16 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 		for (const [i, msg] of messages.entries()) {
 			const payload = await reduce(msg, `${rowId}-${offset + i}`, feature);
 			// 投递结果原样交下去:盘上那一格就是结果形状,截流标记这类 schema 不认的格在写盘前的校验里剥掉。
-			out.push({ payload, role: msg.role, ...(msg.result ? { result: msg.result } : {}) });
+			// 被挡的那一格与结果互斥:有结果就不是被挡的。
+			out.push({
+				payload,
+				role: msg.role,
+				...(msg.result
+					? { result: msg.result }
+					: msg.isSilenced
+						? { isSilenced: true as const }
+						: {}),
+			});
 		}
 		return out;
 	}
@@ -366,7 +391,8 @@ export function createHistoryStore(opts: CreateHistoryStoreOptions): HistoryStor
 	 * 必须在这儿做:`reduceAll` 之后原样的那份就只剩这一处还握着了(历史行里是有损摘要)。原件按下标与历史行的
 	 * `messages` 一一对应(`reduceAll` 逐条来、不丢条),图由原件自己存进图库。
 	 *
-	 * 无目标行不留 —— 那不是失败是没配目标,按钮本来就不给它(决策 6)。
+	 * 无目标行不留 —— 那不是失败是没配目标,按钮本来就不给它(决策 6)。被静音 / 免扰挡下的行
+	 * 有目标,照留:补发靠的就是这一份。
 	 */
 	async function saveRepushSnapshot(
 		rowId: string,
