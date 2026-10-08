@@ -66,7 +66,7 @@ if (adapter.capabilities.atAll) addAtAll(msg);
 | 咽喉 | 入口咽喉 | `compose.ts` 里 `bilibili/` 的东西只能作登记的参数（按 AST 判），核心的依赖包里没有平台客户端 | 3a |
 | 咽喉 | 出口咽喉 | 适配器登记表对外只给不含 `send` 的视图；源码扫描白名单只有 `TargetDispatcher` | 3a |
 | 咽喉 | 咽喉 e2e | 逐条驱动全部发送路径，每条恰好一条截流记录、零外连 | 3a |
-| 咽喉 | 出图器零联网 | 渲染页拦截请求；`packages/image/src` 里不许出现 `fetch(`、`node:http(s)`、`undici` | 3a |
+| 咽喉 | 出图器零联网 | 渲染页拦截请求（闸在浏览器适配层，每一页都开，只放行 `data:`）；交给渲染页的 HTML 里扫不出网络地址；`packages/image/src` 里不许出现 `fetch(`、`node:http(s)`、`undici` | 3a |
 | 静态扫描 | 守卫 1 与推送守卫① | 核心不许 import `bilibili/`、`platforms/`，例外只有 `compose.ts` | 3a |
 | 静态扫描 | 守卫 12 | 核心不读 B 站的设置。只有组装处（今天 `runtime/bootstrap.ts`，3a 起 `compose.ts`）能引 `bilibili/settings.ts`；B 站接线（今天 `engines.ts`、`index.ts`）在 3a 搬进 `bilibili/` 之前按棘轮记账、3a 清零。解构与下标的写法由 B 站替身棘轮兜底。 | 1⑥ 棘轮开，3a 清零 |
 | 静态扫描 | B 站替身 | 核心、面板、contract 里正好是 `"bilibili"` / `"@bilibili"` 的字面量，以及按驼峰段与下划线段切开后有一段是 `bili` / `bilibili` 的标识符（`isBiliSubscription`、`BILI_ONLY_EXTRAS`、`fromBilibili` 都算） | 1⑥ 棘轮开，4 末清零 |
