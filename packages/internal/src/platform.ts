@@ -4,7 +4,7 @@ import type { ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
 import type { SubscriptionReportDelivery } from "./schema/subscription-report";
 import type { Subscription } from "./schema/subscriptions";
-import type { PushTarget } from "./schema/targets";
+import type { PushTarget, SessionRef } from "./schema/targets";
 
 /** 通用资源释放接口；adapter 提供，业务持有，dispose 时统一调用。 */
 export interface Disposable {
@@ -399,6 +399,16 @@ export type NotificationPayload =
 export interface TargetDispatcher {
 	send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 	sendPrivate(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
+	/**
+	 * 不经推送目标表,按**连接 + 会话坐标**直接往一个会话发(链接解析回到来源群)。
+	 * 不触发投递回调、不重试、不落历史;连接缺 `not_found`、连接停用 `not_configured`、
+	 * 没有适配器管或适配器说不可达 `unavailable`。
+	 */
+	sendToAddress(
+		connectionId: string,
+		session: SessionRef,
+		payload: NotificationPayload,
+	): Promise<DeliveryResult>;
 	/** 允许 adapter 通过 id 查目标的元数据（platform / scope / 启停状态）。 */
 	resolve(targetId: string): PushTarget | undefined;
 	/**

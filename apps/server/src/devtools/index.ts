@@ -1,11 +1,5 @@
 import { getHeapStatistics } from "node:v8";
-import type {
-	ChatIdentity,
-	Connection,
-	MessageBus,
-	PlatformAdapter,
-	PushTarget,
-} from "@bilibili-notify/internal";
+import type { ChatIdentity, Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
 import type { AuthSystem } from "../auth/index.js";
 import type { Api } from "../bilibili/api/index.js";
@@ -13,7 +7,8 @@ import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
-import type { PlatformAdapterRegistry } from "../push/registry.js";
+import { deriveAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
+import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 import type { MuteState } from "../runtime/mute-state.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";
@@ -61,7 +56,7 @@ export interface CreateDevtoolsInput {
 	 */
 	sourceRun: boolean;
 	updateService: UpdateService;
-	/** 推送出口的注册表。交回去的是包过截流闸的那份**视图**。 */
+	/** 推送出口的注册表。交回去的是包过能力注入的那份**派生表**。 */
 	adapters: PlatformAdapterRegistry;
 	/**
 	 * 拓展那三条场景要的两个目录 + 装载器本体(**现取**,拓展比 devtools 后起来)。
@@ -126,8 +121,10 @@ export interface Devtools {
 	updateService: UpdateService;
 	/** 交给 `/api/ext/marketplace*` 的那份 —— 装饰过的。 */
 	marketplace: Marketplace;
-	/** 交给引擎 / 链接回卡的那份 —— 包过截流闸的。 */
+	/** 交给引擎的那份 —— 包过能力注入的派生表。 */
 	adapters: PlatformAdapterRegistry;
+	/** 交给引擎、再递给派发器的截流闸口 —— 三条发送路(含链接回卡、指令回复)共用。 */
+	interceptSend: SendInterceptHandler;
 	/** 交给引擎的那份 —— 套了 Proxy 的。 */
 	api: Api;
 	/**
@@ -186,8 +183,6 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			return deleted;
 		},
 	};
-	/** 包好的出口按原 adapter 记一份 —— 见下面 `adapters` 那段。 */
-	const wrappedAdapters = new WeakMap<PlatformAdapter, PlatformAdapter>();
 	const registry = createDevRegistry([
 		updateStateScenario(update),
 		pushCaptureScenario(gate),
@@ -240,24 +235,12 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		route: createDevRoute({ registry, captures }),
 		updateService: update.service,
 		marketplace: market.marketplace,
-		// 两层叠着:截流闸在里、能力注入在外 —— 顺序无所谓,两者各管各的方法。
-		//
-		// 是个**视图**不是一份拷贝:注册转交给真注册表,包装在 `list()` 那一刻现做。
-		// 拷一份的话,拓展后注册进来的出口在开发版里根本不存在 —— 而那正是「生产好好的、
-		// 本地一跑就不生效」那类假绿(ADR-0012 决策 29)。
-		// 包好的按原 adapter 记一份:每次 list 都新包一个的话,同一个出口在两次调用里
-		// 会是两个对象。
-		adapters: {
-			register: (adapter) => input.adapters.register(adapter),
-			list: () =>
-				input.adapters.list().map((adapter) => {
-					const cached = wrappedAdapters.get(adapter);
-					if (cached) return cached;
-					const wrapped = caps.wrap(gate.wrap(adapter));
-					wrappedAdapters.set(adapter, wrapped);
-					return wrapped;
-				}),
-		},
+		// 是个**派生表**不是一份拷贝:注册转交给真注册表,包装在问的那一刻现做(见
+		// `deriveAdapterRegistry`)。拷一份的话,拓展后注册进来的出口在开发版里根本不存在 ——
+		// 而那正是「生产好好的、本地一跑就不生效」那类假绿(ADR-0012 决策 29)。
+		// 截流不在这里包适配器:它接在派发器调 `send` 的那一处(`interceptSend`)。
+		adapters: deriveAdapterRegistry(input.adapters, (view) => caps.wrap(view)),
+		interceptSend: gate.intercept,
 		api: api.api,
 		authSystem: auth.api,
 		quietHoursNow: () => clock.now(),

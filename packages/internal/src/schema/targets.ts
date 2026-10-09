@@ -419,6 +419,14 @@ export const PushTargetSchema = z
 export type PushTarget = z.infer<typeof PushTargetSchema>;
 
 /**
+ * 一个会话的两坐标 —— 范围 + 地址,取自会话目标自己的类型(`Pick`),不另抄一份声明。
+ *
+ * 不经推送目标表、直接往某个会话回话的口子用它(链接解析回到来源群):用哪条连接由调用方另给,
+ * 这里只说「连接上的哪个会话」。
+ */
+export type SessionRef = Pick<Extract<PushTarget, { kind: "session" }>, "scope" | "address">;
+
+/**
  * 群目标的「群地址」—— 与入站帧里的 `groupId` 是同一个值(OneBot 是群号,官机是群
  * openid)。
  *

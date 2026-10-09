@@ -39,15 +39,13 @@ const MAX_LINKS_PER_MESSAGE = 3;
 const BUDGET_WINDOW_MS = 60_000;
 
 /**
- * 回复往哪儿发。**用哪个 adapter 由 `connectionId` 决定,不是这里的 `platform`** ——
+ * 回复往哪儿发。**用哪个 adapter 由 `connectionId` 决定,不是消息里报的平台名** ——
  * 桥后面挂着 telegram 时平台报的是 `telegram`,而认领它的 adapter 声明的是 `bridge`。
  *
- * 平台这一格留着是因为它还担着两件事:逐群例外的键(`linkScopeKey`)、以及回卡时那个
- * 临时目标的平台格。`groupId` 在 OneBot 是群号、在官机是群 openid、在桥那边是桥自己
- * 报的那套编号 —— 三者都只要求「与用户在面板上填的是同一套」。
+ * `groupId` 在 OneBot 是群号、在官机是群 openid、在桥那边是桥自己报的那套编号 ——
+ * 三者都只要求「与用户在面板上填的是同一套」。
  */
 export interface LinkReplyDestination {
-	platform: string;
 	connectionId: string;
 	groupId: string;
 }
@@ -98,7 +96,7 @@ export interface LinkParserOptions {
 	 * 全局那份。各算一份的话,主人在卡片页给「动态」调的样式只有推送卡认。
 	 */
 	presentation: () => LinkCardPresentation;
-	/** 往来源群发 —— 由接线层用收到这一帧的那个 adapter 实现。 */
+	/** 往来源群发 —— 由接线层经出口咽喉(`TargetDispatcher.sendToAddress`)实现。 */
 	send: (dest: LinkReplyDestination, payload: NotificationPayload) => Promise<DeliveryResult>;
 	/**
 	 * 目的地那条连接上、那个平台的能力(探测结果的缓存);没有能力概念的平台(官机)回 undefined =
@@ -269,7 +267,6 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			const policy = opts.policyFor(scope);
 			if (!policy.parse) return;
 			const dest: LinkReplyDestination = {
-				platform: msg.platform,
 				connectionId: msg.connectionId,
 				groupId: msg.groupId,
 			};

@@ -28,7 +28,7 @@ import { fail } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
 import type { ConfigStore } from "../../config/store.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
-import { createTargetDispatcher } from "../target-dispatcher.js";
+import { createTargetDispatcher, type SendInterceptHandler } from "../target-dispatcher.js";
 
 const PAYLOAD: NotificationPayload = { kind: "text", text: "hi" };
 
@@ -448,5 +448,186 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 		expect(dispatcher.connectionCapabilities("t1")).toBeUndefined();
 		expect(dispatcher.connectionCapabilities("w1")).toBeUndefined();
 		expect(await dispatcher.probeConnectionCapabilities("w1")).toBeUndefined();
+	});
+});
+
+describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + 会话坐标发)", () => {
+	const SESSION = { scope: "group", address: "123456" } as const;
+	const connection = makeConnection({ id: "a1", platform: "feishu" });
+
+	function setup(over: { connection?: Connection; pa?: PlatformAdapter } = {}) {
+		const pa = over.pa ?? makePlatformAdapter(["feishu"]);
+		const logger = makeLogger();
+		const onDelivery = vi.fn<OnDeliveryFn>();
+		const dispatcher = createTargetDispatcher({
+			store: makeStore([over.connection ?? connection], []),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger,
+			onDelivery,
+		});
+		return { dispatcher, pa, logger, onDelivery };
+	}
+
+	it("正常:适配器收到临时会话目标,scope / address 取自会话坐标,platform 取自连接,opts 留空", async () => {
+		const { dispatcher, pa } = setup();
+
+		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+
+		expect(r).toEqual({ ok: true, latencyMs: 12 });
+		expect(pa.send).toHaveBeenCalledTimes(1);
+		expect(pa.send).toHaveBeenCalledWith(
+			connection,
+			expect.objectContaining({
+				kind: "session",
+				scope: "group",
+				address: "123456",
+				platform: "feishu",
+				connectionId: "a1",
+				enabled: true,
+				id: "session:group:123456",
+			}),
+			PAYLOAD,
+			{},
+		);
+	});
+
+	it("私聊坐标也照搬:scope 不被写死成 group", async () => {
+		const { dispatcher, pa } = setup();
+		await dispatcher.sendToAddress("a1", { scope: "private", address: "42" }, PAYLOAD);
+		expect(pa.send).toHaveBeenCalledWith(
+			connection,
+			expect.objectContaining({ scope: "private", address: "42" }),
+			PAYLOAD,
+			{},
+		);
+	});
+
+	it("连接不存在 → not_found + warn(带 connectionId),不碰适配器", async () => {
+		const { dispatcher, pa, logger } = setup();
+		const r = await dispatcher.sendToAddress("ghost", SESSION, PAYLOAD);
+		expect(r).toMatchObject({ ok: false, code: "not_found" });
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("ghost"));
+		expect(pa.send).not.toHaveBeenCalled();
+	});
+
+	it("连接被停用 → not_configured + warn(带 connectionId),不碰适配器", async () => {
+		const { dispatcher, pa, logger } = setup({
+			connection: makeConnection({ id: "a1", platform: "feishu", enabled: false }),
+		});
+		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+		expect(pa.send).not.toHaveBeenCalled();
+	});
+
+	it("没有适配器管这条连接 → unavailable + warn", async () => {
+		const { dispatcher, logger } = setup({
+			connection: makeConnection({ id: "a1", platform: "telegram" }),
+		});
+		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+		expect(r).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "no platform adapter for telegram",
+		});
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+	});
+
+	it("适配器说不可达(isAvailable 假)→ unavailable + warn,不发", async () => {
+		const pa = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
+		const { dispatcher, logger } = setup({ pa });
+		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+		expect(r).toMatchObject({ ok: false, code: "unavailable" });
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("a1"));
+		expect(pa.send).not.toHaveBeenCalled();
+	});
+
+	it("适配器抛错 → unavailable + error 日志(同 send 那一条)", async () => {
+		const pa = makePlatformAdapter(["feishu"], {
+			send: vi.fn(async () => {
+				throw new Error("adapter exploded");
+			}),
+		});
+		const { dispatcher, logger } = setup({ pa });
+		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+		expect(r).toEqual({ ok: false, code: "unavailable", message: "adapter exploded" });
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
+	});
+
+	it("不触发 onDelivery(临时目标不在表里,它会去写 testStatus):成功与失败都不", async () => {
+		const failing = makePlatformAdapter(["feishu"], {
+			send: vi.fn(async () => fail("rate_limited", "slow down")),
+		});
+		const ok = setup();
+		const bad = setup({ pa: failing });
+		await ok.dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+		await bad.dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
+		await ok.dispatcher.sendToAddress("ghost", SESSION, PAYLOAD);
+		expect(ok.onDelivery).not.toHaveBeenCalled();
+		expect(bad.onDelivery).not.toHaveBeenCalled();
+	});
+});
+
+describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,三条发送路共用)", () => {
+	const target = makeTarget({ id: "t1", connectionId: "a1" });
+	const connection = makeConnection({ id: "a1", platform: "feishu" });
+	const SYNTHETIC: DeliveryResult = { ok: true, latencyMs: 0, isSynthetic: true };
+
+	function setup(interceptSend: SendInterceptHandler) {
+		const pa = makePlatformAdapter(["feishu"]);
+		const onDelivery = vi.fn<OnDeliveryFn>();
+		const dispatcher = createTargetDispatcher({
+			store: makeStore([connection], [target]),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger: makeLogger(),
+			interceptSend,
+			onDelivery,
+		});
+		return { dispatcher, pa, onDelivery };
+	}
+
+	const paths: [string, (d: ReturnType<typeof setup>["dispatcher"]) => Promise<DeliveryResult>][] =
+		[
+			["send", (d) => d.send("t1", PAYLOAD)],
+			["sendPrivate", (d) => d.sendPrivate("t1", PAYLOAD)],
+			["sendToAddress", (d) => d.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD)],
+		];
+
+	it.each(paths)("%s:回了结果就用那个结果,不调适配器", async (_name, run) => {
+		const { dispatcher, pa } = setup(() => SYNTHETIC);
+		expect(await run(dispatcher)).toBe(SYNTHETIC);
+		expect(pa.send).not.toHaveBeenCalled();
+	});
+
+	it.each(paths)("%s:回 undefined 就照常调适配器", async (_name, run) => {
+		const { dispatcher, pa } = setup(() => undefined);
+		expect(await run(dispatcher)).toEqual({ ok: true, latencyMs: 12 });
+		expect(pa.send).toHaveBeenCalledTimes(1);
+	});
+
+	it("回调拿到的信息:连接、目标、是否私聊、是否按会话坐标发、载荷", async () => {
+		const seen: Parameters<SendInterceptHandler>[0][] = [];
+		const { dispatcher } = setup((send) => {
+			seen.push(send);
+			return undefined;
+		});
+		await dispatcher.send("t1", PAYLOAD);
+		await dispatcher.sendPrivate("t1", PAYLOAD);
+		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
+		expect(seen.map((s) => [s.private, s.isProvisional])).toEqual([
+			[false, false],
+			[true, false],
+			[false, true],
+		]);
+		expect(seen[0]).toMatchObject({ connection, target, payload: PAYLOAD });
+		expect(seen[2]?.target).toMatchObject({ kind: "session", scope: "group", address: "9" });
+	});
+
+	it("按目标发的两条路,截流时 onDelivery 行为照旧(带合成结果触发);按坐标发的不触发", async () => {
+		const { dispatcher, onDelivery } = setup(() => SYNTHETIC);
+		await dispatcher.send("t1", PAYLOAD);
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, SYNTHETIC, { private: false });
+		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
+		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
 });

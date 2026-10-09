@@ -7,7 +7,6 @@ import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
-	fail,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
@@ -60,7 +59,6 @@ import {
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
-import { adapterForConnection } from "./push/dispatch.js";
 import { createPlatformAdapterRegistry } from "./push/registry.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
@@ -91,6 +89,7 @@ import {
 	writePendingGeneration,
 } from "./runtime/generations.js";
 import { createLinkParser } from "./runtime/link-parser.js";
+import { createLinkReplySender } from "./runtime/link-reply.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
@@ -819,6 +818,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subRuntimeStore: runtime.subRuntimeStore,
 			bus: runtime.bus,
 			adapters,
+			// 开发版的推送截流接在派发器调适配器那一处;生产 `devtools` 是 null,不传。
+			interceptSend: devtools?.interceptSend,
 			puppeteer,
 			cardSkins: {
 				get: (id) => skins.get(id) ?? undefined,
@@ -1039,20 +1040,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			confirmation: roastCommands.confirmation,
 		});
 
-		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那个
-		// 那条连接直接发,群不必配成推送目标(主人定的:机器人在的所有群都算)。
-		// OneBot 的 groupId 是群号,官机的是群 openid —— 临时目标按平台各造各的。
+		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那条连接
+		// 经派发器的 `sendToAddress` 直接发(群不必配成推送目标,主人定的:机器人在的所有群都算)。
 		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
 		const runtimeEngines = engines;
-		// 回到来源群用的是收到那一帧的那条连接:配置里那条 + 认领它的那个 adapter,两者都在
-		// 才发得出。**按连接找 adapter,不按消息里报的平台名找** —— 拓展驮进来的连接后面
-		// 挂着 telegram 时平台报的是 telegram,而认领它的 adapter 按的是拓展 id。
-		const replyRoute = (connectionId: string) => {
-			const connection = runtime.configStore.getConnections().find((a) => a.id === connectionId);
-			if (!connection) return null;
-			const platformAdapter = adapterForConnection(adapters.list(), connection);
-			return platformAdapter ? { connection, platformAdapter } : null;
-		};
 		const linkParser = createLinkParser({
 			logger: log,
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
@@ -1068,22 +1059,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			capabilities: ({ connectionId }) => runtimeEngines.connectionCapabilities(connectionId),
 			probeCapabilities: ({ connectionId }) =>
 				runtimeEngines.probeConnectionCapabilities(connectionId),
-			send: async ({ platform, connectionId, groupId }, payload) => {
-				const route = replyRoute(connectionId);
-				if (!route) return fail("not_found", `connection not found: connectionId=${connectionId}`);
-				const { connection, platformAdapter } = route;
-				const common = {
-					id: `link-reply:${groupId}`,
-					name: "链接解析回复",
-					connectionId,
-					kind: "session" as const,
-					scope: "group" as const,
-					enabled: true,
-				};
-				// 地址收成一格之后这里不再按平台分岔:群目标的地址就是群号 / 群 openid。
-				// 用哪个 bot 回由连接说了算 —— 一条连接就是一个 bot,桥那一支也一样。
-				return platformAdapter.send(connection, { ...common, platform, address: groupId }, payload);
-			},
+			send: createLinkReplySender(runtimeEngines),
 		});
 
 		// adapter 们交出来的是同一个形状:私聊进指令分发,群进链接解析。「从哪儿来」全在

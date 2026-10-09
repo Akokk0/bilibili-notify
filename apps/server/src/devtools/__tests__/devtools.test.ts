@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
+import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import type { UpdateService } from "../../update/service.js";
 import { createDevtools } from "../index.js";
@@ -94,81 +95,116 @@ describe("createDevtools", () => {
 });
 
 describe("createDevtools · 截流接线", () => {
-	const ADAPTER = { id: "ad", name: "A", platform: "onebot", enabled: true } as never;
-	const TARGET = { id: "t", name: "群", connectionId: "ad", platform: "onebot" } as never;
+	const CONNECTION = {
+		id: "ad",
+		name: "A",
+		kind: "direct",
+		connector: "http",
+		platform: "onebot",
+		enabled: true,
+	} as never;
+	const TARGET = {
+		id: "t",
+		name: "群",
+		connectionId: "ad",
+		kind: "session",
+		platform: "onebot",
+		scope: "group",
+		address: "1",
+		enabled: true,
+	} as never;
+	const LOGGER = { info() {}, warn() {}, error() {}, debug() {} };
 
-	function setup() {
-		const send = vi.fn(async () => ok({ latencyMs: 1 }));
-		const inner = {
+	function onebotAdapter(send = vi.fn(async () => ok({ latencyMs: 1 }))) {
+		return {
 			platforms: ["onebot"] as const,
 			isAvailable: () => true,
 			send,
 			probe: async () => ok({ latencyMs: 1 }),
 		};
+	}
+
+	/** 真派发器接在 devtools 交回去的派生表与截流口上 —— 接线剪断哪一头这里都会红。 */
+	function setup(registry = createPlatformAdapterRegistry([onebotAdapter()])) {
 		const deleteRange = vi.fn(async () => 2);
 		const dev = createDevtools({
 			...BARE,
 			payloadVersion: "0.0.0-dev",
-			adapters: createPlatformAdapterRegistry([inner]),
+			adapters: registry,
 			historyStore: { deleteRange } as never,
 		});
 		if (dev === null) throw new Error("unreachable");
-		return { dev, send, deleteRange };
+		const dispatcher = createTargetDispatcher({
+			store: { getConnections: () => [CONNECTION], getTargets: () => [TARGET] } as never,
+			adapters: dev.adapters,
+			interceptSend: dev.interceptSend,
+			logger: LOGGER,
+		});
+		return { dev, dispatcher, deleteRange };
 	}
 
 	/**
-	 * 🔴 交回去的是**视图**不是拷贝。
+	 * 🔴 交回去的是**派生表**不是拷贝。
 	 *
 	 * 拷一份的话,拓展后注册进来的出口在开发版里根本不存在 —— 而生产是好的。那是
 	 * 「本地一跑就不生效、两边都不报错」那类假绿(ADR-0012 决策 29 拿它否掉了
 	 * 「传同一个可变数组」那个方案)。
 	 */
-	it("createDevtools 之后**才注册**的出口,照样看得见、照样是包过闸的", async () => {
-		const send = vi.fn(async () => ({ ok: true, latencyMs: 1 }));
+	it("createDevtools 之后**才注册**的出口,派发器照样发得到、照样被截流口拦住", async () => {
+		const send = vi.fn(async () => ok({ latencyMs: 1 }));
 		const registry = createPlatformAdapterRegistry();
-		const dev = createDevtools({
-			...BARE,
-			payloadVersion: "0.0.0-dev",
-			adapters: registry,
-			historyStore: { deleteRange: vi.fn(async () => 0) } as never,
-		});
-		if (dev === null) throw new Error("unreachable");
+		const { dev, dispatcher } = setup(registry);
 		expect(dev.adapters.list()).toEqual([]);
 
 		// 拓展在 activate 里注册的那一刻 —— 比 devtools 晚得多。
-		registry.register({
-			platforms: ["bridge"] as const,
-			isAvailable: () => true,
-			send,
-			probe: async () => ({ ok: true, latencyMs: 1 }),
-		} as never);
+		registry.register(onebotAdapter(send));
 
-		const [wrapped] = dev.adapters.list();
-		if (!wrapped) throw new Error("后注册的出口在 devtools 那份里不见了");
-		// 包过闸:截流开着就不真发。
+		expect(dev.adapters.list()).toHaveLength(1);
+		await dispatcher.send("t", { kind: "text", text: "0" });
+		expect(send).toHaveBeenCalledTimes(1);
 		await dev.registry.run("push.capture", {});
-		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "1" });
-		expect(send).not.toHaveBeenCalled();
+		await dispatcher.send("t", { kind: "text", text: "1" });
+		expect(send).toHaveBeenCalledTimes(1);
 	});
 
-	it("交回去的 adapters 是包过闸的:跑 push.capture 之后不再真发,收摊后又真发", async () => {
-		const { dev, send } = setup();
-		const [wrapped] = dev.adapters.list();
-		if (!wrapped) throw new Error("unreachable");
+	it("截流开着:send / sendPrivate / sendToAddress 三条路都不出网,各记恰好一条;收摊后又真发", async () => {
+		const send = vi.fn(async () => ok({ latencyMs: 1 }));
+		const { dev, dispatcher } = setup(createPlatformAdapterRegistry([onebotAdapter(send)]));
 
-		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "1" });
+		await dispatcher.send("t", { kind: "text", text: "0" });
 		expect(send).toHaveBeenCalledTimes(1);
 
 		const res = await dev.registry.run("push.capture", {});
 		expect(res.active).toEqual([{ scenarioId: "push.capture", label: "推送截流中 · 拦下 0 条" }]);
-		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "2" });
+		await dispatcher.send("t", { kind: "text", text: "a" });
+		await dispatcher.sendPrivate("t", { kind: "text", text: "b" });
+		await dispatcher.sendToAddress(
+			"ad",
+			{ scope: "group", address: "777" },
+			{ kind: "text", text: "c" },
+		);
+
 		expect(send).toHaveBeenCalledTimes(1);
-		expect(dev.captures.status()).toMatchObject({ enabled: true, entries: [{ text: "2" }] });
-		expect(dev.registry.active()[0]?.label).toBe("推送截流中 · 拦下 1 条");
+		expect(dev.captures.status().entries.map((e) => [e.text, e.private, e.targetName])).toEqual([
+			["a", false, "群"],
+			["b", true, "群"],
+			["c", false, "群 777"],
+		]);
+		expect(dev.registry.active()[0]?.label).toBe("推送截流中 · 拦下 3 条");
 
 		dev.registry.reset("push.capture");
-		await wrapped.send(ADAPTER, TARGET, { kind: "text", text: "3" });
+		await dispatcher.send("t", { kind: "text", text: "3" });
 		expect(send).toHaveBeenCalledTimes(2);
+	});
+
+	it("截流开着时结果仍是合成的 ok —— 上游凭 isSynthetic 不写 testStatus", async () => {
+		const { dev, dispatcher } = setup();
+		await dev.registry.run("push.capture", {});
+		expect(await dispatcher.send("t", { kind: "text", text: "x" })).toEqual({
+			ok: true,
+			latencyMs: 0,
+			isSynthetic: true,
+		});
 	});
 
 	it("清掉截流期间历史行:按每一段窗调 deleteRange,开着的那段截到现在,清完窗从头记", async () => {

@@ -1,9 +1,10 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
-import type { NotificationPayload, PlatformAdapter } from "@bilibili-notify/internal";
+import type { NotificationPayload } from "@bilibili-notify/internal";
 import { connectionDispatchKey, ok } from "@bilibili-notify/internal";
+import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 
 /**
- * D1 截流:推送出口(`PlatformAdapter.send`)外面套一层闸。
+ * D1 截流:推送出口(`TargetDispatcher` 调适配器 `send` 的那一处)上接一道闸。
  *
  * **默认真发**(主人拍板:默认真发 + 可截流)。闸开着时不真发、记一条摘要、回 `ok` ——
  * 历史照记 `delivered`,不打标(不为调试改 history schema);面板上这份截流列表才是对照,
@@ -35,7 +36,8 @@ export interface CaptureGate {
 	windows(): CaptureWindow[];
 	/** 清完历史之后:已封口的窗丢掉,开着的那段从现在重新起算。 */
 	resetWindows(): void;
-	wrap(inner: PlatformAdapter): PlatformAdapter;
+	/** 交给 `TargetDispatcher` 的 `interceptSend`:闸开着时记一条、回结果,否则回 `undefined` 放行。 */
+	intercept: SendInterceptHandler;
 }
 
 function clip(text: string): string {
@@ -97,32 +99,28 @@ export function createCaptureGate(): CaptureGate {
 		resetWindows() {
 			windows = on ? [{ from: Date.now(), to: null }] : [];
 		},
-		wrap(inner) {
-			// 展开而不是逐个转发:可选方法有就有、没有就没有(dispatcher 与能力探测按「方法在不在」判
-			// 「这个平台有没有这个概念」),接口多一个方法这里也不用跟。前提是 adapter 的方法不吃
-			// `this`,那条写在 PlatformAdapter 的文档上。
-			return {
-				...inner,
-				async send(connection, target, payload, opts) {
-					if (!on) return inner.send(connection, target, payload, opts);
-					seq += 1;
-					list.push({
-						id: String(seq),
-						at: Date.now(),
-						connectionId: connection.id,
-						connectionName: connection.name,
-						platform: connectionDispatchKey(connection),
-						targetId: target.id,
-						targetName: target.name,
-						private: opts?.private === true,
-						kind: payload.kind,
-						...summarize(payload),
-					});
-					if (list.length > ENTRY_CAP) list = list.slice(list.length - ENTRY_CAP);
-					// `isSynthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
-					return ok({ latencyMs: 0, isSynthetic: true as const });
-				},
-			};
+		intercept({ connection, target, private: isPrivate, isProvisional, payload }) {
+			if (!on) return undefined;
+			seq += 1;
+			list.push({
+				id: String(seq),
+				at: Date.now(),
+				connectionId: connection.id,
+				connectionName: connection.name,
+				platform: connectionDispatchKey(connection),
+				targetId: target.id,
+				// 按会话坐标发的那种没有目标名,面板上显示成「群 <地址>」/「私聊 <地址>」。
+				targetName:
+					isProvisional && target.kind === "session"
+						? `${target.scope === "group" ? "群" : "私聊"} ${target.address}`
+						: target.name,
+				private: isPrivate,
+				kind: payload.kind,
+				...summarize(payload),
+			});
+			if (list.length > ENTRY_CAP) list = list.slice(list.length - ENTRY_CAP);
+			// `isSynthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
+			return ok({ latencyMs: 0, isSynthetic: true as const });
 		},
 	};
 	return gate;

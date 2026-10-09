@@ -22,8 +22,11 @@ export interface CapabilityScenarioDeps {
 	 * **现取** —— 拓展是后加载的,拨一下开关就会来去(ADR-0012 决策 29);建表那一刻
 	 * 取一次的话,拓展带来的方言在这张表里永远不存在。
 	 */
-	dialects: () => readonly PlatformDialect[];
+	dialects: () => readonly CapabilityDialect[];
 }
+
+/** 方言里这个场景问的那几格;登记表对外给的视图(不含 `send`)也满足它。 */
+type CapabilityDialect = Pick<PlatformDialect, "platforms" | "capabilities" | "probeCapabilities">;
 
 const STATES = [
 	{ value: "supported", label: "支持小程序卡" },
@@ -40,7 +43,7 @@ type State = (typeof STATES)[number]["value"];
  * 写死一个 `new Set(["onebot"])` 的问题不是今天答错,是哪天给官机接上能力探测之后,
  * devtools 会**继续说它没有能力这回事** —— 而这种错没有任何东西会报。
  */
-function capablePlatforms(dialects: readonly PlatformDialect[]): Set<string> {
+function capablePlatforms(dialects: readonly CapabilityDialect[]): Set<string> {
 	const out = new Set<string>();
 	for (const dialect of dialects) {
 		if (!dialect.capabilities && !dialect.probeCapabilities) continue;

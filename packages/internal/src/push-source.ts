@@ -83,7 +83,7 @@ export interface PlatformDialect {
  * 重试由路由层决定。真抛了算 bug,派发器在边界接住按 `unavailable` 记。
  *
  * 方法**不依赖 `this`**:三个实现都是工厂里返回的闭包字面量,状态全在闭包里。这条是承重的 ——
- * devtools 的装饰器(截流闸、能力注入)拿展开语法叠在外面(`{ ...inner, send }`),被复制过去的
+ * 登记表的视图(摘掉 `send`)与 devtools 的能力注入装饰器拿展开语法叠在外面(`{ ...inner }`),被复制过去的
  * 方法会以装饰器对象为 `this` 被调;要是哪天有实现按 `this` 写,叠上去就悄悄丢状态。
  */
 export interface PlatformAdapter extends Connector, PlatformDialect {}

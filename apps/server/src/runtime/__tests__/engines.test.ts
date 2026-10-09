@@ -400,6 +400,8 @@ function setup(opts?: {
 	connections?: Connection[];
 	/** 平台实现(探测 / 能力都问它)。 */
 	platformAdapters?: PlatformAdapter[];
+	/** 开发版的推送截流(接线层给的);不给 = 不传。 */
+	interceptSend?: Parameters<typeof createEngines>[0]["interceptSend"];
 	/** 卡片皮肤那三口(接线层给的);不给 = 这台机器只有内置默认皮肤。 */
 	cardSkins?: Parameters<typeof createEngines>[0]["cardSkins"];
 	/** 拓展订阅的平台名(接线层给的);不给 = 女仆那份视图退拓展 id。 */
@@ -483,6 +485,7 @@ function setup(opts?: {
 		} as any,
 		bus,
 		adapters: createPlatformAdapterRegistry(opts?.platformAdapters ?? []),
+		...(opts?.interceptSend ? { interceptSend: opts.interceptSend } : {}),
 		guardIcons: opts?.guardIcons ?? {
 			ensure: async () => {},
 			iconOf: () => undefined,
@@ -2606,6 +2609,30 @@ describe("createEngines — 连接所在平台的能力", () => {
 		await tick();
 		expect(pa.probe).toHaveBeenCalled();
 		expect(probeCapabilities).not.toHaveBeenCalled();
+	});
+
+	it("sendToAddress 转给派发器:适配器收到那个会话;接线层给的截流闸也接在这条路上", async () => {
+		const { pa } = fakePlatform();
+		const send = vi.spyOn(pa, "send");
+		const open = setup({ connections: [onebot], platformAdapters: [pa] });
+		active = open;
+		const session = { scope: "group" as const, address: "123" };
+		await open.runtime.sendToAddress(ADAPTER, session, { kind: "text", text: "hi" });
+		expect(send).toHaveBeenCalledTimes(1);
+		expect(send.mock.calls[0]?.[1]).toMatchObject({ scope: "group", address: "123" });
+		await open.runtime.dispose();
+
+		send.mockClear();
+		const interceptSend = vi.fn(() => ok({ latencyMs: 0, isSynthetic: true as const }));
+		const gated = setup({ connections: [onebot], platformAdapters: [pa], interceptSend });
+		active = gated;
+		const result = await gated.runtime.sendToAddress(ADAPTER, session, {
+			kind: "text",
+			text: "hi",
+		});
+		expect(result).toEqual({ ok: true, latencyMs: 0, isSynthetic: true });
+		expect(interceptSend).toHaveBeenCalledTimes(1);
+		expect(send).not.toHaveBeenCalled();
 	});
 
 	it("没有能力概念的平台(配置里没这条连接也一样)→ undefined", () => {

@@ -194,7 +194,7 @@ describe("createLinkParser", () => {
 
 		expect(h.sent).toEqual([
 			{
-				dest: { platform: "onebot", connectionId: ADAPTER, groupId: String(GROUP) },
+				dest: { connectionId: ADAPTER, groupId: String(GROUP) },
 				payload: {
 					kind: "image",
 					image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
@@ -424,7 +424,7 @@ describe("createLinkParser", () => {
 	});
 
 	describe("官机(qq-official)入口", () => {
-		it("已解析好的群消息:同一套流程,回复目的地标明平台与群 openid", async () => {
+		it("已解析好的群消息:同一套流程,回复目的地标明连接与群 openid", async () => {
 			const h = makeParser();
 			await h.parser.handleMessage({
 				platform: "qq-official",
@@ -438,7 +438,6 @@ describe("createLinkParser", () => {
 			expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
 			expect(h.sent).toHaveLength(1);
 			expect(h.sent[0]?.dest).toEqual({
-				platform: "qq-official",
 				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 			});
@@ -675,7 +674,6 @@ describe("createLinkParser", () => {
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.probeCapabilities).toHaveBeenCalledTimes(1);
 			expect(h.probeCapabilities).toHaveBeenCalledWith({
-				platform: "onebot",
 				connectionId: ADAPTER,
 				groupId: String(GROUP),
 			});

@@ -26,6 +26,7 @@ import type {
 	CardKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
+	DeliveryResult,
 	Disposable,
 	EffectiveSubscription,
 	FeatureKey,
@@ -40,6 +41,7 @@ import type {
 	PayloadSegment,
 	ProbeResult,
 	PushTarget,
+	SessionRef,
 	Subscription,
 	SubscriptionOp,
 	TemplateBundle,
@@ -88,7 +90,7 @@ import type { ConfigStore } from "../config/store.js";
 import type { SubscriptionReportProblem } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
-import { createTargetDispatcher } from "../push/target-dispatcher.js";
+import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
@@ -179,6 +181,12 @@ export interface EnginesRuntime extends Disposable {
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 dispatcher 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
+	/** 不经目标表往某条连接上的一个会话发(链接回复),转给派发器的 `sendToAddress`。 */
+	sendToAddress(
+		connectionId: string,
+		session: SessionRef,
+		payload: NotificationPayload,
+	): Promise<DeliveryResult>;
 	/** 各引擎模块开没开,`/api/health` 的 `modules` 那一格。 */
 	getModuleState(): ModuleState;
 	/**
@@ -230,6 +238,8 @@ export interface CreateEnginesOptions {
 	subRuntimeStore: SubRuntimeStore;
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapterRegistry;
+	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
+	interceptSend?: SendInterceptHandler;
 	/**
 	 * Optional puppeteer adapter. When provided the engines spin up a shared
 	 * {@link ImageRenderer} so live / dynamic cards render to JPEG instead of
@@ -342,6 +352,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		store: opts.configStore,
 		adapters: opts.adapters,
 		logger: log,
+		interceptSend: opts.interceptSend,
 		onDelivery: (target, _payload, result) => {
 			// 没真出网的投递(devtools 截流)不是可达性证据 —— 写回去会把一个发不出去的目标
 			// 标成绿的,而且落盘、活得比截流本身还久。
@@ -1213,6 +1224,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			dispatcher.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>
 			dispatcher.probeConnectionCapabilities(connectionId),
+		sendToAddress: (connectionId, session, payload) =>
+			dispatcher.sendToAddress(connectionId, session, payload),
 		linkParsing: () => linkCard.config,
 		linkPolicyFor: (key: string) => linkPolicies.policyFor(key),
 		linkCardPresentation: () => ({
