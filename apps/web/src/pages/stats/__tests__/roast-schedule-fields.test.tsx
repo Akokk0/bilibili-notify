@@ -98,6 +98,17 @@ describe("useApprovalReachability — 主人目标得是私聊才能开审批", 
 			if (path === "/api/targets") return targets;
 			if (path === "/api/connections") return connections;
 			if (path === "/api/settings") return { master: { targetId: masterTargetId } };
+			// 能力表:这条 onebot 连接收得到主人的回复。
+			if (path === "/api/connections/capabilities") {
+				const supported = { state: "supported", checkedAt: 1 };
+				return {
+					"11111111-1111-4111-8111-111111111111": {
+						atAll: supported,
+						inbound: supported,
+						miniAppCard: { state: "unknown" },
+					},
+				};
+			}
 			throw new Error(`unexpected GET ${path}`);
 		});
 		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

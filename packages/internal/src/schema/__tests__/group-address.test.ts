@@ -16,8 +16,10 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { INBOUND_CAPABLE_PLATFORMS } from "../../constants";
 import { groupAddressOf, type PushTarget, PushTargetSchema } from "../targets";
+
+/** 有群会话的两个直连平台(能不能收回复由适配器回答,这里只要它们的名字遍历)。 */
+const GROUP_ADDRESS_PLATFORMS = ["onebot", "qq-official"] as const;
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
 const UUID_B = "22222222-2222-4222-8222-222222222222";
@@ -38,17 +40,17 @@ function groupTarget(platform: string, address: string): PushTarget {
 }
 
 describe("groupAddressOf —— 群目标的地址", () => {
-	it.each(INBOUND_CAPABLE_PLATFORMS)("%s:群目标读得回自己的地址", (platform) => {
+	it.each(GROUP_ADDRESS_PLATFORMS)("%s:群目标读得回自己的地址", (platform) => {
 		expect(groupAddressOf(groupTarget(platform, "1145141919"))).toBe("1145141919");
 	});
 
-	it.each(INBOUND_CAPABLE_PLATFORMS)("%s:地址不是恒定值,换一个也读得回来", (platform) => {
+	it.each(GROUP_ADDRESS_PLATFORMS)("%s:地址不是恒定值,换一个也读得回来", (platform) => {
 		// 只验一个固定串的话,`return "1145141919"` 这种写死也能过。
 		expect(groupAddressOf(groupTarget(platform, "9008"))).toBe("9008");
 	});
 
 	it("每个可入站的平台都必须有群地址,不许落进 default", () => {
-		for (const platform of INBOUND_CAPABLE_PLATFORMS) {
+		for (const platform of GROUP_ADDRESS_PLATFORMS) {
 			expect(
 				groupAddressOf(groupTarget(platform, "1")),
 				`${platform} 落进了 default`,

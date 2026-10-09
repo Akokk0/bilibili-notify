@@ -137,7 +137,7 @@ async function waitFor(cond: () => boolean, timeoutMs = 2000): Promise<void> {
 describe("onebot — 小程序卡能力探测", () => {
 	it("没探过 → 未探测", () => {
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		expect(capsOf(ad)).toEqual({ miniAppCard: { state: "unknown" } });
+		expect(capsOf(ad).miniAppCard).toEqual({ state: "unknown" });
 	});
 
 	it("空参数调 get_mini_app_ark;1404 = 这个实现没有这个接口 → 不支持,带原因", async () => {

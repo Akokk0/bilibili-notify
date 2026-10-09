@@ -77,6 +77,8 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 			puppeteer: deps.puppeteer,
 			targets: deps.store.getTargets(),
 			connections: deps.store.getConnections(),
+			// 引擎还没起来时取不到能力,按「还不知道」算。
+			capabilitiesOf: (id) => deps.runtime.engines?.connectionCapabilities(id),
 		});
 		if (!enableCheck.ok) return respondFailure(c, enableCheck);
 		try {
@@ -164,6 +166,10 @@ interface EnableCheckArgs {
 	puppeteer: PuppeteerAdapter | null;
 	targets: readonly import("@bilibili-notify/internal").PushTarget[];
 	connections: readonly import("@bilibili-notify/internal").Connection[];
+	/** 一条连接眼下的能力;审批开关据主人目标那条连接的 `inbound` 判。 */
+	capabilitiesOf: (
+		connectionId: string,
+	) => import("@bilibili-notify/internal").ConnectionCapabilities | undefined;
 }
 
 /**
@@ -181,6 +187,9 @@ export function checkApprovalEnable(
 	patch: Record<string, unknown>,
 	targets: readonly import("@bilibili-notify/internal").PushTarget[],
 	connections: readonly import("@bilibili-notify/internal").Connection[],
+	capabilitiesOf: (
+		connectionId: string,
+	) => import("@bilibili-notify/internal").ConnectionCapabilities | undefined,
 ): Result {
 	// 同 per-scope gating:这次 patch 没碰 roastSchedule 就别插手,
 	// 否则存别的 tab 会被一个早就存在的 approval=true 拦住。
@@ -197,6 +206,7 @@ export function checkApprovalEnable(
 		masterTargetId: current.master.targetId,
 		targets,
 		connections,
+		capabilitiesOf,
 	});
 }
 
@@ -223,6 +233,7 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 		args.patch,
 		args.targets,
 		args.connections,
+		args.capabilitiesOf,
 	);
 	if (!approvalCheck.ok) return approvalCheck;
 

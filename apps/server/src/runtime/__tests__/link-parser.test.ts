@@ -475,7 +475,11 @@ describe("createLinkParser", () => {
 			for (const form of ["image", "miniapp"] as const) {
 				const h = makeParser({}, undefined, {
 					policyFor: () => ({ parse: true, form }),
-					capabilities: () => ({ miniAppCard: { state: "supported", checkedAt: 1 } }),
+					capabilities: () => ({
+						atAll: { state: "unknown" },
+						inbound: { state: "unknown" },
+						miniAppCard: { state: "supported", checkedAt: 1 },
+					}),
 				});
 				await feed(h.parser, cardFrame());
 				expect(h.sent).toHaveLength(0);
@@ -621,6 +625,8 @@ describe("createLinkParser", () => {
 		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
 		const miniapp = () => ({ parse: true, form: "miniapp" as const });
 		const caps = (state: "supported" | "unsupported" | "unknown"): ConnectionCapabilities => ({
+			atAll: { state: "unknown" },
+			inbound: { state: "unknown" },
 			miniAppCard:
 				state === "supported"
 					? { state, checkedAt: 1 }

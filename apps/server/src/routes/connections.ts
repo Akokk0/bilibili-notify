@@ -1,6 +1,9 @@
-import type { ConnectionTestResponse, ConnectionView } from "@bilibili-notify/contract";
-import type { ConnectionCapabilities } from "@bilibili-notify/internal";
-import { fail, isDirectConnection } from "@bilibili-notify/internal";
+import type {
+	ConnectionCapabilitiesMap,
+	ConnectionTestResponse,
+	ConnectionView,
+} from "@bilibili-notify/contract";
+import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
 import { maskedCellsFailure } from "./masked-cells.js";
@@ -34,24 +37,18 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	app.get("/", (c) => c.json(viewsOf()));
 
 	/**
-	 * 平台能力快照(今天只有「能不能签小程序卡」),连接 id → 平台名 → 能力。只列有能力
-	 * 概念的平台;官机 / webhook 不在里面,面板据此写「这个平台不支持」。引擎还没起来时是
-	 * 空表 —— 面板显示成「未探测」,不算错。
-	 *
-	 * **第二级这一层是在这儿套上的**:引擎按连接寻址,而直连一条连接就是一个平台,平台名
-	 * 从连接自己身上读。接桥之后一条连接驮多个平台,那时这一层要由引擎自己给出,这里改成
-	 * 原样透传。
+	 * 连接能力快照(@全体 / 收不收得到回复 / 小程序卡三项),连接 id → 这条连接的能力。
+	 * **直连与拓展连接都列**:一条连接就是一个 bot(ADR-0012 决策 45),能力由它的适配器按连接答。
+	 * 适配器给不出能力的连接(没有适配器管、适配器没实现)不列,面板按「还不知道」算;
+	 * 引擎还没起来时是空表 —— 同样显示成「还不知道」,不算错。
 	 */
 	app.get("/capabilities", (c) => {
 		const engines = deps.runtime.engines;
-		const out: Record<string, Record<string, ConnectionCapabilities>> = {};
+		const out: ConnectionCapabilitiesMap = {};
 		if (engines) {
 			for (const connection of deps.store.getConnections()) {
-				// 第二级这一层只有直连套得上:一条直连就是一个平台。桥接入驮着哪些平台是它
-				// 握手时报的,那时这一层要由引擎自己给出,这里改成原样透传。
-				if (!isDirectConnection(connection)) continue;
 				const caps = engines.connectionCapabilities(connection.id);
-				if (caps) out[connection.id] = { [connection.platform]: caps };
+				if (caps) out[connection.id] = caps;
 			}
 		}
 		return c.json(out);

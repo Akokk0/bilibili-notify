@@ -6,11 +6,12 @@ import type {
 import {
 	type ChatIdentity,
 	type Connection,
+	type ConnectionCapabilities,
+	canReceiveReply,
 	type DirectConnection,
 	groupAddressOf,
 	isDirectConnection,
 	type PushTarget,
-	platformCanReceiveReply,
 	platformOfTarget,
 } from "@bilibili-notify/internal";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
@@ -31,6 +32,8 @@ export interface InboundScenarioDeps {
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
 	connections: () => Connection[];
+	/** 一条连接眼下的能力(适配器的回答,含 devtools 注入的假值);给不出来 = `undefined`,按「还不知道」算。 */
+	capabilities: (connection: Connection) => ConnectionCapabilities | undefined;
 	targets: () => PushTarget[];
 }
 
@@ -87,11 +90,12 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 	};
 
 	/**
-	 * 能当聊天入口的**直连**。桥接入够不着 —— 它后面挂着哪些平台是握手时才报的运行时
-	 * 知识,devtools 这张声明表在 createDevtools 那一刻就定型了。桥的入站在 `scenarios/bridge.ts` —— 那条真的连一条桥进来,平台名由它自己报。
+	 * 能当聊天入口的**直连**:它的适配器说收得到主人的回复(`inbound` 能力是「支持」)。桥接入够不着 ——
+	 * 它后面挂着哪些平台是握手时才报的运行时知识,devtools 这张声明表在 createDevtools 那一刻就定型了。
+	 * 桥的入站在 `scenarios/bridge.ts` —— 那条真的连一条桥进来,平台名由它自己报。
 	 */
 	const isDirectChat = (a: Connection): a is DirectConnection =>
-		isDirectConnection(a) && platformCanReceiveReply(a.platform);
+		isDirectConnection(a) && canReceiveReply(deps.capabilities(a)?.inbound);
 
 	const link: DevScenarioDef = {
 		id: "inbound.link",

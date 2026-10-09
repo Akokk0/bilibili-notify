@@ -466,17 +466,36 @@ export function isReachabilityEvidence(result: DeliveryResult): boolean {
 }
 
 /**
- * 一条连接上的一个平台能不能发 QQ 小程序卡。认接口不认实现名:拿空参数探 OneBot 扩展接口
- * `get_mini_app_ark`,按 OneBot 11 的 retcode 判 —— 1404「不支持的动作」= 不支持,
- * 1400「参数错」= 接口在、支持;别的(连不上、别的错)= 还没探出来,带原因。
- * 面板上就是这三态;发送失败不翻它,只有再收到 1404 才翻成不支持。
+ * 一项能力的三态 —— 支持 / 不支持 / 还不知道。**「还不知道」不是「不支持」**:前者是「试试看,可能行」,
+ * 后者是结论;读它的地方各自决定「还不知道」时怎么办(见 `ConnectionCapabilities` 各格的注释),
+ * 面板上两者也要分开显示。
+ *
+ * - `supported`:确认支持,`checkedAt` 是确认的时刻。
+ * - `unsupported`:确认不支持,`reason` 给人看的一句话,`checkedAt` 是确认的时刻。
+ * - `unknown`:还没探出来(没探过、连不上、对面没报),`reason` 可选。
  */
-export type MiniAppCardSupport =
+export type CapabilitySupport =
 	| { state: "supported"; checkedAt: number }
 	| { state: "unsupported"; reason: string; checkedAt: number }
 	| { state: "unknown"; reason?: string };
 
-/** 一个平台的能力快照。今天只有一项;将来薄插件接进来时按需加。 */
+/** 一条连接的能力快照,由这条连接的适配器回答。 */
 export interface ConnectionCapabilities {
-	miniAppCard: MiniAppCardSupport;
+	/**
+	 * 能不能单发 @全体。派发器的 `supportsAtAll` 与订阅抽屉里的 @全体 开关读它;
+	 * 「还不知道」时**照发**(发错只是多一条消息)。
+	 */
+	atAll: CapabilitySupport;
+	/**
+	 * 主人在这条连接上回一句话,女仆收不收得到。锐评审批(要靠主人回复)与 devtools 的入站场景读它;
+	 * 「还不知道」时**审批不能开**(开错了整期草稿都会等到超时作废);
+	 * 链接解析设置列不列这个群也读它,「还不知道」时**照列**(今天对拓展连接一律列)。
+	 */
+	inbound: CapabilitySupport;
+	/**
+	 * 能不能发 QQ 小程序卡。认接口不认实现名:拿空参数探 OneBot 扩展接口 `get_mini_app_ark`,
+	 * 按 OneBot 11 的 retcode 判 —— 1404「不支持的动作」= 不支持,1400「参数错」= 接口在、支持;
+	 * 别的(连不上、别的错)= 还没探出来,带原因。发送失败不翻它,只有再收到 1404 才翻成不支持。
+	 */
+	miniAppCard: CapabilitySupport;
 }

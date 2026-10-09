@@ -12,9 +12,9 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  *
  * - **UP 主配色**:服务端渲染周报图片时要用同一套色,同一位 UP 在页面上和推到群里的
  *   图片上必须是同一个颜色。调色板的取舍见那边的说明。
- * - **平台支不支持 @全体**(`platformSupportsAtAll`):推送层据它不给这种目标单发 @全体,
- *   这里据它禁用开关并提示「发送时会自动跳过」。曾经这里自己写了一份、推送层不知道,
- *   官机目标每次开播都多记一条「empty payload」失败 —— 界面上说跳过就得真的跳过。
+ * - **要不要单发 @全体**(`shouldSendAtAll`):推送层据它(喂的是目标所挂连接的 `atAll` 能力)
+ *   不给这种目标单发 @全体,这里据它禁用开关并提示「发送时会自动跳过」。曾经这里自己写了一份、
+ *   推送层不知道,官机目标每次开播都多记一条「empty payload」失败 —— 界面上说跳过就得真的跳过。
  *
  * **必须走 `/constants` 子路径**,不能从根入口拿:根入口带 zod,而这是页面里唯一
  * 一处从 internal 做**运行时**导入的地方 —— 曾经写成根入口,于是整个 zod(300+ 处
@@ -23,7 +23,7 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  */
 export {
 	colorFromUid,
-	platformSupportsAtAll,
+	shouldSendAtAll,
 	UP_COLORS,
 } from "@bilibili-notify/internal/constants";
 // displayName 真身在 utils/up-display(组件层也要用,不能反向 import 页面层),这里转口。

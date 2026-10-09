@@ -5,6 +5,10 @@
  * 因而是两段各测各的 —— 路由那头问派发器、派发器那头按连接的平台答,中间这根线没人钉过。
  * 这里一条订阅同时路由到 OneBot 连接上的目标与 QQ 官方连接上的目标,@全体 默认开:
  * OneBot 那个收到单发的 @全体 再收本体,QQ 官方那个只收到本体。
+ *
+ * 「能不能 @全体」问的是这条连接的适配器:这里的适配器是**真的 OneBot / QQ 官方适配器**(构造期不碰 I/O),
+ * 只把 `send` / `isAvailable` / `probe` 换成记录用的替身 —— `capabilities` 用的是真适配器自己的回答。
+ * 所以派发器不再问适配器、或者真适配器的 `atAll` 回答变了,这条测试都会红。
  */
 
 import {
@@ -28,6 +32,8 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import type { ConfigStore } from "../../config/store.js";
+import { createOnebotAdapter } from "../../platforms/onebot.js";
+import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platforms/qq-official.js";
 import { createTargetDispatcher } from "../target-dispatcher.js";
 
 const LOGGER: Logger = { info() {}, warn() {}, error() {}, debug() {} };
@@ -57,14 +63,27 @@ function target(id: string, connectionId: string): PushTarget {
 	} as unknown as PushTarget;
 }
 
-/** 记下每次 `send` 收到的 payload 的假适配器。 */
-function recordingAdapter(adapterKey: string): {
+/** 只用来造真适配器的上下文:构造期不碰它,`start` 也不会被调。 */
+const SERVICE_CTX = {
+	logger: LOGGER,
+	setInterval: () => ({ dispose() {} }),
+	setTimeout: () => ({ dispose() {} }),
+	onDispose: () => {},
+	signal: new AbortController().signal,
+	track: () => {},
+} as unknown as ServiceContext;
+
+/**
+ * 记下每次 `send` 收到的 payload 的适配器:骨架取自真适配器(`capabilities` 是它的真回答),
+ * 发送口换成记录用的替身。真适配器的方法不吃 `this`(见 PlatformAdapter 的文档),展开安全。
+ */
+function recordingAdapter(real: PlatformAdapter): {
 	adapter: PlatformAdapter;
 	payloads: NotificationPayload[];
 } {
 	const payloads: NotificationPayload[] = [];
 	const adapter: PlatformAdapter = {
-		adapterKey,
+		...real,
 		isAvailable: () => true,
 		send: async (_connection, _destination, payload) => {
 			payloads.push(payload);
@@ -104,8 +123,16 @@ function openDefaults(): GlobalDefaults {
 
 describe("@全体:真派发器 + 真推送路由", () => {
 	it("同一条订阅路由到 OneBot 与 QQ 官方两个目标:OneBot 先收单发 @全体再收本体,QQ 官方只收本体", async () => {
-		const onebot = recordingAdapter("onebot");
-		const qq = recordingAdapter("qq-official");
+		const onebot = recordingAdapter(
+			createOnebotAdapter({ logger: LOGGER, serviceCtx: SERVICE_CTX }),
+		);
+		const qq = recordingAdapter(
+			createQQOfficialAdapter({
+				logger: LOGGER,
+				serviceCtx: SERVICE_CTX,
+				registry: createQQSessionRegistry(),
+			}),
+		);
 		const connections = [connection("c-onebot", "onebot"), connection("c-qq", "qq-official")];
 		const targets = [target("t-onebot", "c-onebot"), target("t-qq", "c-qq")];
 		const dispatcher = createTargetDispatcher({

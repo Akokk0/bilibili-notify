@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 /**
- * 订阅抽屉里目标的平台**取自它挂着的连接**,不读目标自己那一格:
- * @全体开关置不置灰、目标的图标,都跟着连接走;连接不在(被删)= 不知道 = 置灰并说清楚;连接列表还没回来 = 不下结论,开关照已存的值显示。
+ * 订阅抽屉里目标的平台**取自它挂着的连接**,不读目标自己那一格;@全体 开关置不置灰读的是这条连接的
+ * `atAll` 能力(适配器的回答):
+ * - 不支持 → 置灰,提示用能力里的原因 + 「,发送时会自动跳过」;
+ * - 还不知道 / 能力表没回来 / 表里没这条 → 不拦,开关照已存的值显示、可点,没有提示;
+ * - 连接不在(被删)→ 不知道平台 = 置灰并说清楚;连接列表还没回来 = 不下结论,开关照已存的值显示。
  */
 
+import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
@@ -14,7 +18,8 @@ import {
 } from "../../../types/domain";
 import { UpDialog } from "../UpDialog";
 
-const UNSUPPORTED_NOTE = /QQ 官方.*不支持.*@全体/;
+const QQ_REASON = "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段";
+const UNSUPPORTED_NOTE = `${QQ_REASON}，发送时会自动跳过`;
 const MISSING_NOTE = "连接不在了,没法判断能不能 @全体";
 const CONN = "11111111-1111-4111-8111-111111111111";
 
@@ -45,12 +50,26 @@ function customSub(): Subscription {
 	return sub;
 }
 
-function renderDialog(t: PushTarget, connections: Connection[] | undefined) {
+const UNKNOWN = { state: "unknown" } as const;
+
+/** 能力表里 CONN 这条连接的 atAll 是给定的那一格。 */
+function capsWith(atAll: ConnectionCapabilitiesMap[string]["atAll"]): ConnectionCapabilitiesMap {
+	return { [CONN]: { atAll, inbound: UNKNOWN, miniAppCard: UNKNOWN } };
+}
+const QQ_CAPS = capsWith({ state: "unsupported", reason: QQ_REASON, checkedAt: 1 });
+const OB_CAPS = capsWith({ state: "supported", checkedAt: 1 });
+
+function renderDialog(
+	t: PushTarget,
+	connections: Connection[] | undefined,
+	capabilities?: ConnectionCapabilitiesMap,
+) {
 	return render(
 		<UpDialog
 			sub={customSub()}
 			targets={[t]}
 			connections={connections}
+			capabilities={capabilities}
 			onClose={noop}
 			onSave={noop}
 			onDelete={noop}
@@ -66,21 +85,21 @@ function atAllToggle(): HTMLButtonElement {
 afterEach(cleanup);
 
 describe("UpDialog · 平台取自连接", () => {
-	it("目标挂在 QQ 官方连接上 → @全体置灰", () => {
-		renderDialog(target(), [connection("qq-official")]);
+	it("连接的 atAll 能力是不支持(QQ 官方)→ @全体置灰", () => {
+		renderDialog(target(), [connection("qq-official")], QQ_CAPS);
 		expect(screen.getByText(UNSUPPORTED_NOTE)).toBeTruthy();
 		const toggle = atAllToggle();
 		expect(toggle.disabled).toBe(true);
 	});
 
-	it("目标挂在 OneBot 连接上 → 可点", () => {
-		renderDialog(target(), [connection("onebot")]);
+	it("连接的 atAll 能力是支持(OneBot)→ 可点", () => {
+		renderDialog(target(), [connection("onebot")], OB_CAPS);
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 		expect(atAllToggle().disabled).toBe(false);
 	});
 
 	it("连接不在 → @全体置灰,提示说连接不在了,不冤枉 QQ 官方", () => {
-		renderDialog(target(), []);
+		renderDialog(target(), [], QQ_CAPS);
 		expect(atAllToggle().disabled).toBe(true);
 		expect(screen.getByText(MISSING_NOTE)).toBeTruthy();
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
@@ -95,10 +114,31 @@ describe("UpDialog · 平台取自连接", () => {
 		expect(toggle.getAttribute("aria-pressed")).toBe("true");
 	});
 
-	it("平台已知且不支持 → 原句", () => {
-		renderDialog(target(), [connection("qq-official")]);
-		expect(screen.getByText("QQ 官方机器人不支持 @全体,发送时会自动跳过")).toBeTruthy();
+	it("能力不支持 → 提示是能力里的原因 + 「,发送时会自动跳过」", () => {
+		renderDialog(target(), [connection("qq-official")], QQ_CAPS);
+		expect(screen.getByText(UNSUPPORTED_NOTE)).toBeTruthy();
 		expect(screen.queryByText(MISSING_NOTE)).toBeNull();
+	});
+
+	it("能力是「还不知道」→ 不置灰、没有提示,开关照已存的值显示", () => {
+		renderDialog(
+			target(),
+			[connection("onebot")],
+			capsWith({ state: "unknown", reason: "桥没报这一项" }),
+		);
+		expect(screen.queryByText(/发送时会自动跳过/)).toBeNull();
+		const toggle = atAllToggle();
+		expect(toggle.disabled).toBe(false);
+		expect(toggle.getAttribute("aria-pressed")).toBe("true");
+	});
+
+	it("能力表还没回来 / 表里没这条连接 → 同样当「还不知道」:不置灰、没有提示", () => {
+		for (const caps of [undefined, {}] as const) {
+			const view = renderDialog(target(), [connection("qq-official")], caps);
+			expect(screen.queryByText(/发送时会自动跳过/)).toBeNull();
+			expect(atAllToggle().disabled).toBe(false);
+			view.unmount();
+		}
 	});
 
 	it("图标的平台取自连接:连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {

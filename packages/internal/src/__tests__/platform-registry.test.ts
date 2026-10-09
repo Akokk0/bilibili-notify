@@ -1,20 +1,20 @@
 /**
  * 平台注册表与它的两份**投影**。
  *
- * `WEBHOOK_PLATFORMS` 与 `INBOUND_CAPABLE_PLATFORMS` 本该直接从注册表算出来,写成
- * 手打的元组只有一个原因:`z.enum` 与 `LinkSourcePlatform` 都要求可枚举的字面量元组,
- * `.filter()` 出来的数组给不出那个类型。
+ * `WEBHOOK_PLATFORMS` 本该直接从注册表算出来,写成手打的元组只有一个原因:`z.enum` 要求
+ * 可枚举的字面量元组,`.filter()` 出来的数组给不出那个类型。
  *
- * 代价就是它们会漂 —— 注册表里加一档走 webhook 的新平台、忘了往元组里补一格,
+ * 代价就是它会漂 —— 注册表里加一档走 webhook 的新平台、忘了往元组里补一格,
  * 连接照样存得下、面板照样画得出,只有「它算不算 webhook 那一族」在两处说得不一样。
- * 这两条用例把两边钉在一起:任何一边单独动都会红。
+ * 这条用例把两边钉在一起:任何一边单独动都会红。
+ *
+ * (`atAll` / `inbound` 两列已经从注册表搬走,改由适配器回答,见服务端的 adapter-capabilities 测试。)
  */
 
 import { describe, expect, it } from "vite-plus/test";
 import {
 	CONNECTION_PLATFORMS,
 	DIRECT_CONNECTORS,
-	INBOUND_CAPABLE_PLATFORMS,
 	PLATFORM_REGISTRY,
 	WEBHOOK_PLATFORMS,
 } from "../constants";
@@ -26,12 +26,6 @@ describe("注册表的投影", () => {
 	it("WEBHOOK_PLATFORMS 就是注册表里默认走 webhook 连的那些", () => {
 		expect([...WEBHOOK_PLATFORMS].sort()).toEqual(
 			platformsWhere((p) => PLATFORM_REGISTRY[p].connectors[0] === "webhook"),
-		);
-	});
-
-	it("INBOUND_CAPABLE_PLATFORMS 就是注册表里 inbound 为真的那些", () => {
-		expect([...INBOUND_CAPABLE_PLATFORMS].sort()).toEqual(
-			platformsWhere((p) => PLATFORM_REGISTRY[p].inbound),
 		);
 	});
 });

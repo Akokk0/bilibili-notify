@@ -47,15 +47,15 @@ import type { LogLevel } from "./ws";
 
 // 失败规矩(ADR-0026)的类型也从这儿转出:web 只认 contract。
 export type {
+	CapabilitySupport,
 	Failure,
 	FailureCode,
 	Issue,
-	MiniAppCardSupport,
 	Result,
 } from "@bilibili-notify/internal";
 export type {
 	ConnectionCapabilities,
-	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 MiniAppCardSupport 那条。
+	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 CapabilitySupport 那条。
 	ExtensionProvides,
 	FansRefreshEntry,
 	PushMessageRole,
@@ -80,16 +80,12 @@ export type ErrorResponse = Omit<Failure, "ok">;
 // ---- /api/connections/capabilities ------------------------------------------
 
 /**
- * `GET /api/connections/capabilities`:平台能力快照,索引是**两级** ——
- * 连接 id → 平台名 → 能力。
+ * `GET /api/connections/capabilities`:连接能力快照,索引是**一级** —— 连接 id → 这条连接的能力。
  *
- * 一条连接只驮一个平台的今天,第二级看着是多余的一层。但能力是**平台**的属性不是连接的:
- * 桥接那档一条 koishi 连接底下可能同时挂着 QQ 与 telegram,扁平表存不下,而两边读它的地方
- * (一个推送目标 / 一条连接)本来就带着平台名。第二级的键是**开放词表**,别拿闭集去索引它。
- *
- * 只有有能力概念的平台在表里;官机 / webhook 不在,面板据此写「这个平台不支持」。
+ * 一条连接就是一个 bot(ADR-0012 决策 45),能力按连接答,不再套一层平台名。直连与拓展连接都在表里;
+ * 适配器给不出能力的连接(没有适配器管、适配器没实现、引擎还没起来)不在,读它的地方按「还不知道」算。
  */
-export type ConnectionCapabilitiesMap = Record<string, Record<string, ConnectionCapabilities>>;
+export type ConnectionCapabilitiesMap = Record<string, ConnectionCapabilities>;
 
 // ---- /api/extensions ------------------------------------------------------
 

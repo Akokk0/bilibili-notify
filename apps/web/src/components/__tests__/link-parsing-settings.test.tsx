@@ -73,13 +73,32 @@ const ADAPTERS: Connection[] = [
 	connection(A_HOOK, "飞书钩子", "feishu"),
 ];
 
-/** 两级索引:连接 id → 平台名 → 能力。第二级是开放词表,读它的一侧自己带着平台名。 */
+const UNKNOWN = { state: "unknown" } as const;
+const SUPPORTED = { state: "supported", checkedAt: 1 } as const;
+
+/** 一级索引:连接 id → 这条连接的能力(适配器的回答)。直连与拓展连接都在里面。 */
 const CAPS: ConnectionCapabilitiesMap = {
-	[A_OB]: { onebot: { miniAppCard: { state: "supported", checkedAt: 1 } } },
+	[A_OB]: { atAll: SUPPORTED, inbound: SUPPORTED, miniAppCard: SUPPORTED },
 	[A_OB2]: {
-		onebot: {
-			miniAppCard: { state: "unsupported", reason: "这个实现没有 get_mini_app_ark", checkedAt: 1 },
+		atAll: SUPPORTED,
+		inbound: SUPPORTED,
+		miniAppCard: {
+			state: "unsupported",
+			reason: "这个实现没有 get_mini_app_ark",
+			checkedAt: 1,
 		},
+	},
+	// 官机:收得到回复,发不了 @全体 / 小程序卡。
+	[A_QQ]: {
+		atAll: { state: "unsupported", reason: "要特殊权限", checkedAt: 1 },
+		inbound: SUPPORTED,
+		miniAppCard: { state: "unsupported", reason: "没实现", checkedAt: 1 },
+	},
+	// webhook:没有回程。
+	[A_HOOK]: {
+		atAll: SUPPORTED,
+		inbound: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
+		miniAppCard: { state: "unsupported", reason: "发不了", checkedAt: 1 },
 	},
 };
 
@@ -327,6 +346,51 @@ describe("LinkParsingSettings", () => {
 			expect(row("群 A").queryByText(/不支持小程序卡/)).toBeNull();
 		});
 
+		describe("列不列这个群:读连接的 inbound 能力", () => {
+			const groupOn = (connectionId: string) => [target(T_A, "某群", { connectionId } as never)];
+			const withCaps = (
+				inbound: ConnectionCapabilitiesMap[string]["inbound"],
+				connection: Connection,
+			) =>
+				renderCard(draftWith(), vi.fn(), groupOn(connection.id), {
+					connections: [connection],
+					capabilities: {
+						[connection.id]: { atAll: UNKNOWN, inbound, miniAppCard: UNKNOWN },
+					},
+				});
+
+			it("支持 → 列", () => {
+				withCaps(SUPPORTED, ADAPTERS[0] as Connection);
+				openGroups();
+				expect(screen.getByRole("group", { name: "某群" })).toBeTruthy();
+			});
+
+			it("不支持 → 不列(webhook 直连的会话目标也一样,不看平台名)", () => {
+				withCaps(
+					{ state: "unsupported", reason: "没有回程", checkedAt: 1 },
+					ADAPTERS[3] as Connection,
+				);
+				expect(screen.getByText(/还没有群类推送目标/)).toBeTruthy();
+			});
+
+			it("还不知道 → 照列", () => {
+				withCaps({ state: "unknown", reason: "桥没报这一项" }, ADAPTERS[0] as Connection);
+				openGroups();
+				expect(screen.getByRole("group", { name: "某群" })).toBeTruthy();
+			});
+
+			it("能力表里没有这条连接(引擎没起来 / 表还没回来)→ 照「还不知道」列", () => {
+				renderCard(draftWith(), vi.fn(), groupOn(A_HOOK), { capabilities: {} });
+				openGroups();
+				expect(screen.getByRole("group", { name: "某群" })).toBeTruthy();
+			});
+
+			it("目标挂的连接不在了 → 不知道它是谁,不列", () => {
+				renderCard(draftWith(), vi.fn(), groupOn("99999999-9999-4999-8999-999999999999"));
+				expect(screen.getByText(/还没有群类推送目标/)).toBeTruthy();
+			});
+		});
+
 		it("没有群类推送目标 → 空态 + 去推送目标页的链接", () => {
 			renderCard(draftWith(), vi.fn(), [TARGETS[2] as PushTarget]);
 			expect(screen.getByText(/还没有群类推送目标/)).toBeTruthy();
@@ -345,25 +409,6 @@ describe("LinkParsingSettings", () => {
 			expect(panel.getByText("不支持,回落图片卡")).toBeTruthy();
 			expect(panel.getByText(/没有 get_mini_app_ark/)).toBeTruthy();
 			expect(panel.queryByText("官机")).toBeNull();
-		});
-
-		it("一条连接底下挂着两个平台时,读的是这一行自己那个平台", () => {
-			// 能力是**平台**的属性,不是连接的。一条连接驮多个平台是桥接那档的常态
-			// (一条 koishi 连接底下同时挂着 QQ 与别的),只按连接 id 查会把隔壁平台的
-			// 答案读过来 —— 面板照样渲染、照样不报错,只是说反了。
-			renderCard(draftWith(), vi.fn(), TARGETS, {
-				capabilities: {
-					[A_OB]: {
-						"qq-official": {
-							miniAppCard: { state: "unsupported", reason: "隔壁的", checkedAt: 1 },
-						},
-						onebot: { miniAppCard: { state: "supported", checkedAt: 1 } },
-					},
-				},
-			});
-			const panel = within(screen.getByRole("region", { name: "连接支持情况" }));
-			expect(panel.getByText("支持小程序卡")).toBeTruthy();
-			expect(panel.queryByText(/隔壁的/)).toBeNull();
 		});
 
 		it("表里没有的 OneBot 连接(引擎还没探)显示「未探测」", () => {

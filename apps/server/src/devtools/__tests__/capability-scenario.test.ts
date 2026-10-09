@@ -31,6 +31,8 @@ const WH = {
 	enabled: true,
 } as unknown as Connection;
 const REAL: ConnectionCapabilities = {
+	atAll: { state: "supported", checkedAt: 1 },
+	inbound: { state: "supported", checkedAt: 1 },
 	miniAppCard: { state: "unsupported", reason: "1404", checkedAt: 1 },
 };
 
@@ -90,6 +92,16 @@ describe("connection.capability", () => {
 		]);
 	});
 
+	it("注入只换小程序卡这一格:atAll / inbound 沿用方言原本的回答", async () => {
+		const { reg, ob } = setup();
+		for (const state of ["supported", "unsupported", "unknown"]) {
+			await reg.run("connection.capability", { connection: "ad-ob", state });
+			const caps = ob.capabilities?.(OB);
+			expect(caps?.atAll).toBe(REAL.atAll);
+			expect(caps?.inbound).toBe(REAL.inbound);
+		}
+	});
+
 	it("unsupported 带理由,unknown 可以不带", async () => {
 		const { reg, ob } = setup();
 		await reg.run("connection.capability", {
@@ -138,7 +150,7 @@ describe("connection.capability", () => {
 		const injector = createCapabilityInjector();
 		const probe = vi.fn(async () => REAL);
 		const wrapped = injector.wrap({ ...onebot(), probeCapabilities: probe });
-		injector.set("ad-ob", { miniAppCard: { state: "unknown" } });
+		injector.set("ad-ob", { ...REAL, miniAppCard: { state: "unknown" } });
 		await wrapped.probeCapabilities?.(OB);
 		expect(probe).not.toHaveBeenCalled();
 	});

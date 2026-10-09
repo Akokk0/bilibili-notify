@@ -17,6 +17,7 @@
 
 import type {
 	Connection,
+	ConnectionCapabilities,
 	DeliveryResult,
 	Logger,
 	NotificationPayload,
@@ -401,7 +402,11 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
  * 能力概念(没实现 capabilities)都是 undefined —— 调用方按「什么都不支持」处理。
  */
 describe("createTargetDispatcher — connectionCapabilities / probeConnectionCapabilities", () => {
-	const CAPS = { miniAppCard: { state: "supported" as const, checkedAt: 1 } };
+	const CAPS: ConnectionCapabilities = {
+		atAll: { state: "supported", checkedAt: 1 },
+		inbound: { state: "supported", checkedAt: 1 },
+		miniAppCard: { state: "supported", checkedAt: 1 },
+	};
 
 	it("委派给平台实现的 capabilities / probeCapabilities,把 Connection 递过去", async () => {
 		const capabilities = vi.fn(() => CAPS);
@@ -716,49 +721,88 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 });
 
 /**
- * 路由只问结论「这个目标能不能 @全体」,平台怎么来的它不管:取自目标挂着的连接,
- * 不看目标自己那一格(夹具里故意写成不一样)。
+ * 路由只问结论「这个目标能不能 @全体」,答案由这条连接的适配器给:三态里「不支持」才不发,
+ * 「还不知道」(适配器答还不知道 / 没实现 capabilities / 没有适配器)一律发 —— 发错只是多一条消息。
  */
-describe("createTargetDispatcher — supportsAtAll(平台取自连接)", () => {
-	function dispatcherOf(connections: Connection[], targets: PushTarget[]) {
+describe("createTargetDispatcher — supportsAtAll(问适配器)", () => {
+	const supported = { state: "supported", checkedAt: 1 } as const;
+	const unsupported = { state: "unsupported", reason: "不行", checkedAt: 1 } as const;
+	const unknown = { state: "unknown" } as const;
+	const capsWithAtAll = (atAll: ConnectionCapabilities["atAll"]): ConnectionCapabilities => ({
+		atAll,
+		inbound: unknown,
+		miniAppCard: unknown,
+	});
+
+	function dispatcherOf(
+		connections: readonly Connection[],
+		targets: readonly PushTarget[],
+		adapters: PlatformAdapter[],
+	) {
 		return createTargetDispatcher({
-			store: makeStore(connections, targets),
-			adapters: registryOf([makePlatformAdapter("webhook")]),
+			store: makeStore([...connections], [...targets]),
+			adapters: registryOf(adapters),
 			logger: makeLogger(),
 		});
 	}
-
-	it("QQ 官方连接上的目标 → false", () => {
-		const d = dispatcherOf(
-			[makeConnection({ id: "a1", platform: "qq-official" })],
+	const oneTarget = (platform: string, kind?: string) =>
+		[
+			[makeConnection({ id: "a1", platform, ...(kind ? { kind } : {}) })],
 			[makeTarget({ id: "t1", connectionId: "a1" })],
-		);
-		expect(d.supportsAtAll("t1")).toBe(false);
+		] as const;
+
+	it("适配器答不支持 → false", () => {
+		const [c, t] = oneTarget("onebot");
+		const pa = makePlatformAdapter("onebot", { capabilities: () => capsWithAtAll(unsupported) });
+		expect(dispatcherOf(c, t, [pa]).supportsAtAll("t1")).toBe(false);
 	});
 
-	it("OneBot 连接上的目标 → true", () => {
-		const d = dispatcherOf(
-			[makeConnection({ id: "a1", platform: "onebot" })],
-			[makeTarget({ id: "t1", connectionId: "a1" })],
-		);
-		expect(d.supportsAtAll("t1")).toBe(true);
+	it("适配器答支持 → true", () => {
+		const [c, t] = oneTarget("onebot");
+		const pa = makePlatformAdapter("onebot", { capabilities: () => capsWithAtAll(supported) });
+		expect(dispatcherOf(c, t, [pa]).supportsAtAll("t1")).toBe(true);
 	});
 
-	it("拓展连接(表里没有的平台)→ true,与表对未知平台的默认一致", () => {
-		const d = dispatcherOf(
-			[makeConnection({ id: "a1", platform: "telegram", kind: "extension" })],
-			[makeTarget({ id: "t1", connectionId: "a1" })],
-		);
-		expect(d.supportsAtAll("t1")).toBe(true);
+	it("适配器答还不知道 → true(试试看)", () => {
+		const [c, t] = oneTarget("onebot");
+		const pa = makePlatformAdapter("onebot", { capabilities: () => capsWithAtAll(unknown) });
+		expect(dispatcherOf(c, t, [pa]).supportsAtAll("t1")).toBe(true);
+	});
+
+	it("适配器没实现 capabilities → true", () => {
+		const [c, t] = oneTarget("onebot");
+		expect(dispatcherOf(c, t, [makePlatformAdapter("onebot")]).supportsAtAll("t1")).toBe(true);
+	});
+
+	it("这条连接没有适配器管 → true(按还不知道算)", () => {
+		const [c, t] = oneTarget("telegram", "extension");
+		expect(dispatcherOf(c, t, [makePlatformAdapter("webhook")]).supportsAtAll("t1")).toBe(true);
+	});
+
+	it("问的是目标所挂那条连接的适配器,不看目标自己那一格", () => {
+		const connections = [
+			makeConnection({ id: "a-ob", platform: "onebot" }),
+			makeConnection({ id: "a-qq", platform: "qq-official" }),
+		];
+		const targets = [
+			makeTarget({ id: "t-ob", connectionId: "a-ob", platform: "qq-official" }),
+			makeTarget({ id: "t-qq", connectionId: "a-qq", platform: "onebot" }),
+		];
+		const d = dispatcherOf(connections, targets, [
+			makePlatformAdapter("onebot", { capabilities: () => capsWithAtAll(supported) }),
+			makePlatformAdapter("qq-official", { capabilities: () => capsWithAtAll(unsupported) }),
+		]);
+		expect(d.supportsAtAll("t-ob")).toBe(true);
+		expect(d.supportsAtAll("t-qq")).toBe(false);
 	});
 
 	it("目标不存在 → false", () => {
-		const d = dispatcherOf([makeConnection({ id: "a1", platform: "onebot" })], []);
+		const d = dispatcherOf([makeConnection({ id: "a1", platform: "onebot" })], [], []);
 		expect(d.supportsAtAll("ghost")).toBe(false);
 	});
 
 	it("连接不存在 → false", () => {
-		const d = dispatcherOf([], [makeTarget({ id: "t1", connectionId: "ghost" })]);
+		const d = dispatcherOf([], [makeTarget({ id: "t1", connectionId: "ghost" })], []);
 		expect(d.supportsAtAll("t1")).toBe(false);
 	});
 });

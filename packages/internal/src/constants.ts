@@ -204,10 +204,6 @@ export interface PlatformDescriptor {
 	scopes: readonly PushTargetScope[];
 	/** 地址那一格在这个平台叫什么(按会话种类)。缺的那档走通用称呼。 */
 	addressNouns: Partial<Record<PushTargetScope, string>>;
-	/** 主人在这个平台上回一句话,女仆**真的收得到**吗 —— 不是「协议上可行」。 */
-	inbound: boolean;
-	/** 能不能 @全体成员。 */
-	atAll: boolean;
 }
 
 /**
@@ -231,8 +227,6 @@ export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDesc
 		// OneBot 没有频道概念 —— 只给群与私聊两档。
 		scopes: ["group", "private"],
 		addressNouns: { group: "群", private: "用户" },
-		inbound: true,
-		atAll: true,
 	},
 	"qq-official": {
 		label: "QQ 官方机器人",
@@ -244,9 +238,6 @@ export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDesc
 		targetKind: "session",
 		scopes: ["group", "private", "channel"],
 		addressNouns: { group: "群 openid", private: "C2C", channel: "子频道" },
-		inbound: true,
-		// 群里 @全体要特殊权限,适配器对 at-all 段一律丢弃。
-		atAll: false,
 	},
 	feishu: {
 		label: "飞书机器人",
@@ -257,8 +248,6 @@ export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDesc
 		targetKind: "endpoint",
 		scopes: ["channel"],
 		addressNouns: {},
-		inbound: false,
-		atAll: true,
 	},
 	dingtalk: {
 		label: "钉钉机器人",
@@ -269,8 +258,6 @@ export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDesc
 		targetKind: "endpoint",
 		scopes: ["channel"],
 		addressNouns: {},
-		inbound: false,
-		atAll: true,
 	},
 	wecom: {
 		label: "企业微信机器人",
@@ -281,8 +268,6 @@ export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDesc
 		targetKind: "endpoint",
 		scopes: ["channel"],
 		addressNouns: {},
-		inbound: false,
-		atAll: true,
 	},
 	generic: {
 		label: "未指明的 HTTP 端点",
@@ -293,8 +278,6 @@ export const PLATFORM_REGISTRY: Readonly<Record<ConnectionPlatform, PlatformDesc
 		targetKind: "endpoint",
 		scopes: ["channel"],
 		addressNouns: {},
-		inbound: false,
-		atAll: true,
 	},
 };
 
@@ -1030,49 +1013,40 @@ export const DEFAULT_ROAST_SCHEDULE = {
 } as const;
 
 /**
- * 已经**实现了入站消息解析**的推送平台。
+ * 单发 @全体 要不要发给这个目标 —— 入参是它所挂那条连接的 `atAll` 能力(适配器的回答)。
  *
- * 列的是「主人在这里回一句话，我们真的收得到」，不是「协议上理论可行」。审批要靠
- * 它把 y/n 收回来 —— 一个平台如果只是协议上支持而我们没解析，配置页放行就等于让
- * 主人开了一个永远等不到回复的开关，草稿全部超时作废。宁可少列。
- *
- * webhook 天生不可能:它就是个出站 HTTP POST,没有回程。将来薄插件桥接进来的平台
- * 协议上收得到、只是还没接时 —— 说法见 {@link inboundGapReason},别写成平台的毛病。
- *
- * 与 {@link WEBHOOK_PLATFORMS} 一样是 {@link PLATFORM_REGISTRY} 的**投影**,写成字面量
- * 只因为 `LinkSourcePlatform` 要从它取联合类型;两边漂了由注册表的守卫测试报红。
+ * 不是「不支持」就发:「还不知道」(以及取不到能力的 `undefined`)照发 —— 发错只是多一条消息,
+ * 而误判成不发,真能 @全体 的群就再也收不到了。派发器的 `supportsAtAll` 与订阅抽屉里的 @全体 开关
+ * 读的是这同一份判断,界面上说跳过就得真的跳过。入参按形状收,不为一个类型把 schema 拖进这个零依赖模块。
  */
-export const INBOUND_CAPABLE_PLATFORMS = ["onebot", "qq-official"] as const;
-
-/** 这个平台收不收得到主人的回复。审批开关能不能用就看它。 */
-export function platformCanReceiveReply(platform: string): boolean {
-	return platformDescriptor(platform)?.inbound === true;
+export function shouldSendAtAll(
+	support: { state: "supported" | "unsupported" | "unknown" } | undefined,
+): boolean {
+	return support?.state !== "unsupported";
 }
 
 /**
- * 为什么这个平台上收不到主人的回复 —— 一句给人看的话。
+ * 这条连接收不收得到主人的回复 —— 入参是它的 `inbound` 能力。锐评审批(要靠主人回一句 y)的开关读它。
  *
- * **不能一律说成「这个通道只能发不能收」**:除了 webhook,别的平台协议上都收得到,
- * 只是我们还没解析(qq-official 甚至连 WS 网关和 USER_MESSAGE intent 都已经在跑了,
- * 只差把正文接出来)。把实现缺口说成平台的毛病,主人会对着一个「明明能收」的通道
- * 反复怀疑自己配错了。
+ * 只有「支持」才算:「还不知道」(以及 `undefined`)**不能开**。开错了是整期草稿都生成、都私聊,
+ * 然后一直等到超时作废,一份也发不出去,而配置页上看着一切正常;不让开只是多问主人一句。
  */
-export function inboundGapReason(platform: string): string {
-	return isWebhookPlatform(platform)
-		? "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话"
-		: `女仆还没在 ${platform} 上接入站消息，主人回的 y 送不到女仆手里`;
+export function canReceiveReply(
+	support: { state: "supported" | "unsupported" | "unknown" } | undefined,
+): boolean {
+	return support?.state === "supported";
 }
 
 /**
- * 该平台能不能 @全体成员。QQ 官方机器人在群里 @全体要特殊权限,适配器对 at-all 段一律
- * 丢弃 —— 推送层据此不给这种目标单发 @全体(否则那条到适配器就成了空消息,每次都记一条
- * 失败),UP 抽屉里这种目标的 @全体开关也据此禁用并写着「发送时会自动跳过」。两边必须是
- * 同一份判断,界面上说跳过就得真的跳过。
+ * 链接解析设置里列不列这个连接名下的群 —— 入参是它的 `inbound` 能力。
+ *
+ * 不是「不支持」就列:「还不知道」(以及 `undefined`)照列。今天对拓展连接就是一律列出,
+ * 少列了主人就没处设;多列了只是一个收不到消息的群摆在那儿,无害。
  */
-export function platformSupportsAtAll(platform: string): boolean {
-	// 入参收 string 而不是闭集:它吃的是**目标**的平台,而那是开放词表。桥驮进来的平台
-	// 默认按「能 @全体」算 —— 真不能的话,能力位会在桥探测时说,推送层据能力位跳过。
-	return platformDescriptor(platform)?.atAll ?? true;
+export function listsForLinkParsing(
+	support: { state: "supported" | "unsupported" | "unknown" } | undefined,
+): boolean {
+	return support?.state !== "unsupported";
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { QQDiscoveredEntry } from "@bilibili-notify/contract";
 import type {
 	Connection,
+	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
 	DirectConnection,
@@ -917,7 +918,7 @@ export function qqPayloadToParts(payload: NotificationPayload): QQSendPart[] {
 				else if (seg.kind === "image") parts.push({ kind: "image-buffer", buffer: seg.buffer });
 				else if (seg.kind === "link")
 					parts.push({ kind: "text", text: seg.title ? `${seg.title} ${seg.href}` : seg.href });
-				// at-all:QQ 群 @全体需特殊权限,一律丢弃。推送层据 platformSupportsAtAll 不给本平台
+				// at-all:QQ 群 @全体需特殊权限,一律丢弃。推送层据本适配器的 atAll 能力(不支持)不给本平台
 				// 单发 @全体,这里只是兜底 —— 混在别的段里时不让它阻断那条消息。
 			}
 			return attachFollowingTextToImages(parts);
@@ -1088,6 +1089,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
 	const tokenOnly = new Map<string, QQTokenManager>();
 	let disposed = false;
+	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
+	const adapterStartedAt = Date.now();
 
 	function makeTokenManager(cfg: QQOfficialConnectionConfig): QQTokenManager {
 		return createQQTokenManager({
@@ -1237,6 +1240,23 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 	return {
 		adapterKey: "qq-official",
+
+		capabilities(_connection: Connection): ConnectionCapabilities {
+			return {
+				atAll: {
+					state: "unsupported",
+					reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
+					checkedAt: adapterStartedAt,
+				},
+				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				// 没实现小程序卡的发送 = 不支持。
+				miniAppCard: {
+					state: "unsupported",
+					reason: "QQ 官方机器人适配器没有实现小程序卡",
+					checkedAt: adapterStartedAt,
+				},
+			};
+		},
 
 		isAvailable(connection: Connection, _destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留收窄类型。

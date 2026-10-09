@@ -1,4 +1,5 @@
 import type {
+	ConnectionCapabilitiesMap,
 	ExtensionLookupResponse,
 	ExtensionSubscriptionCandidate,
 } from "@bilibili-notify/contract";
@@ -688,6 +689,12 @@ export default function Subs() {
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),
 	});
+	// 连接能力表:订阅抽屉的 @全体 开关读目标所挂连接的 atAll 能力;与系统页共用同一个缓存。
+	const capabilitiesQuery = useQuery({
+		queryKey: ["connection-capabilities"],
+		queryFn: () => api.get<ConnectionCapabilitiesMap>("/api/connections/capabilities"),
+		refetchInterval: 30_000,
+	});
 	// 全局特性开关:订阅没覆盖的那几把继承它(卡片胶囊与配置弹层都按它算)。与规则页同一个 ["settings"] 缓存;
 	// 没读到时回落出厂值 —— 面板没有全局特性开关的界面,通常就是出厂值,唯独直播拆键把旧的周期推送迁成了全局开。
 	const globalsQuery = useQuery({
@@ -1126,6 +1133,7 @@ export default function Subs() {
 					sub={newDraft}
 					targets={targets}
 					connections={connectionsQuery.data}
+					capabilities={capabilitiesQuery.data}
 					platform={platformOf(newDraft)}
 					tags={tags}
 					globalFeatures={globalFeatures}
@@ -1146,6 +1154,7 @@ export default function Subs() {
 					sub={drawerSub}
 					targets={targets}
 					connections={connectionsQuery.data}
+					capabilities={capabilitiesQuery.data}
 					platform={platformOf(drawerSub)}
 					tags={tags}
 					globalFeatures={globalFeatures}

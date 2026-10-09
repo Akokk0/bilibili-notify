@@ -490,6 +490,43 @@ describe("桥 adapter", () => {
 		});
 	});
 
+	it("capabilities:atAll / inbound 也照桥报的三态映射;不支持带「桥报的」原因,还不知道写「桥没报这一项」", () => {
+		const supported = harness(
+			session({}, { atAll: "supported", inbound: "supported" }),
+		).adapter.capabilities?.(connection());
+		expect(supported).toMatchObject({
+			atAll: { state: "supported", checkedAt: 0 },
+			inbound: { state: "supported", checkedAt: 0 },
+		});
+
+		const unsupported = harness(
+			session({}, { atAll: "unsupported", inbound: "unsupported" }),
+		).adapter.capabilities?.(connection());
+		expect(unsupported).toMatchObject({
+			atAll: { state: "unsupported", reason: expect.stringMatching(/^桥报的/), checkedAt: 0 },
+			inbound: { state: "unsupported", reason: expect.stringMatching(/^桥报的/), checkedAt: 0 },
+		});
+
+		const unknown = harness(
+			session({}, { atAll: "unknown", inbound: "unknown" }),
+		).adapter.capabilities?.(connection());
+		expect(unknown).toMatchObject({
+			atAll: { state: "unknown", reason: "桥没报这一项" },
+			inbound: { state: "unknown", reason: "桥没报这一项" },
+		});
+	});
+
+	it("capabilities:没连着 → 三项都是「还不知道」并带原因", async () => {
+		const offline = harness(null);
+		const expected = {
+			atAll: { state: "unknown", reason: expect.stringMatching(/没连着/) },
+			inbound: { state: "unknown", reason: expect.stringMatching(/没连着/) },
+			miniAppCard: { state: "unknown", reason: expect.stringMatching(/没连着/) },
+		};
+		expect(offline.adapter.capabilities?.(connection())).toMatchObject(expected);
+		expect(await offline.adapter.probeCapabilities?.(connection())).toMatchObject(expected);
+	});
+
 	// ---- 吊销 --------------------------------------------------------------
 
 	it("接入被删了 → 把还连着的那条踢下线", () => {

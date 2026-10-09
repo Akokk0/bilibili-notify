@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type {
+	CapabilitySupport,
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
@@ -9,7 +10,6 @@ import type {
 	Failure,
 	InboundSinks,
 	Logger,
-	MiniAppCardSupport,
 	NotificationPayload,
 	OnebotConnectionConfig,
 	PayloadSegment,
@@ -965,14 +965,16 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	// ------------------------------------------------------------------
 
 	/** 探测结果按 adapter 缓存;reconcile 清。没探过 = unknown。 */
-	const miniAppCardSupport = new Map<string, MiniAppCardSupport>();
+	const miniAppCardSupport = new Map<string, CapabilitySupport>();
 	/** 最近一次 reconcile 看到的 adapter 表 —— 通道就绪的回调只拿得到 id,探测要配置。 */
 	const knownConnections = new Map<string, OnebotConnection>();
 	/** 每个 adapter 上次 reconcile 时的配置指纹:没变就不丢它的能力缓存。 */
 	const capabilityFingerprints = new Map<string, string>();
 	/** 上次探能力的时刻 —— 探不出来的连接不该被反复问,见 {@link CAPABILITY_REPROBE_MS}。 */
 	const lastCapabilityProbeAt = new Map<string, number>();
-	const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
+	const NOT_PROBED: CapabilitySupport = { state: "unknown" };
+	/** `atAll` / `inbound` 是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
+	const adapterStartedAt = Date.now();
 
 	function channelOf(connectionId: string, cfg: OnebotWsConfig | OnebotWsReverseConfig) {
 		return cfg.transport === "ws"
@@ -1008,7 +1010,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 空参数探测的判读。1400「参数错」正说明接口在;真成功(0)也算在 —— 有的实现对空参不挑。
 	 * 别的都是没探出来:连不上、鉴权失败、实现自己的错误码,原因带出去给面板。
 	 */
-	function interpretArkProbe(r: OneBotResponse): MiniAppCardSupport {
+	function interpretArkProbe(r: OneBotResponse): CapabilitySupport {
 		const checkedAt = Date.now();
 		if (isActionMissing(r)) {
 			return { state: "unsupported", reason: "这个 OneBot 实现没有 get_mini_app_ark", checkedAt };
@@ -1024,14 +1026,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 超时。节流住在这里而不是各个调用方那边:缓存与失效规则都在这个文件,再让链接解析、
 	 * 健康探测各维护一张时间戳表,「什么时候该重探」就会摊成三份。
 	 */
-	async function probeMiniAppCard(connection: OnebotConnection): Promise<MiniAppCardSupport> {
+	async function probeMiniAppCard(connection: OnebotConnection): Promise<CapabilitySupport> {
 		const cachedBefore = miniAppCardSupport.get(connection.id);
 		const last = lastCapabilityProbeAt.get(connection.id) ?? Number.NEGATIVE_INFINITY;
 		if (cachedBefore !== undefined && Date.now() - last < CAPABILITY_REPROBE_MS) {
 			return cachedBefore;
 		}
 		lastCapabilityProbeAt.set(connection.id, Date.now());
-		let result: MiniAppCardSupport;
+		let result: CapabilitySupport;
 		try {
 			result = interpretArkProbe(await callOnce(connection, "get_mini_app_ark", {}));
 		} catch (e) {
@@ -1423,14 +1425,23 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		},
 
 		capabilities(connection: Connection): ConnectionCapabilities {
-			return { miniAppCard: miniAppCardSupport.get(connection.id) ?? NOT_PROBED };
+			return {
+				// 静态事实:OneBot 能在群里 @全体,私聊 / 群消息的入站也已经接了。
+				atAll: { state: "supported", checkedAt: adapterStartedAt },
+				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				miniAppCard: miniAppCardSupport.get(connection.id) ?? NOT_PROBED,
+			};
 		},
 
 		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
 			// 这个方法是唯一**没有**自带那句「不是我的就退回去」的入口(契约上它不返回错,
 			// 只返回能力)。矩阵按分发键派活,派到这儿的必是 onebot 直连 —— 那句保证在这里
 			// 记一次,底下的 helper 就都收窄类型、不用一路 `as` 下去。
-			return { miniAppCard: await probeMiniAppCard(connection as OnebotConnection) };
+			return {
+				atAll: { state: "supported", checkedAt: adapterStartedAt },
+				inbound: { state: "supported", checkedAt: adapterStartedAt },
+				miniAppCard: await probeMiniAppCard(connection as OnebotConnection),
+			};
 		},
 	};
 }

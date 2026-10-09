@@ -1,4 +1,4 @@
-import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import { type ConnectionCapabilities, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { checkApprovalEnable, shouldRunAiEnableCheck } from "../settings.js";
 
@@ -167,47 +167,57 @@ describe("checkApprovalEnable", () => {
 		return g;
 	}
 	const patchOn = { roastSchedule: { approval: true } };
-	// 目标自己没有平台这一格,平台取自它挂着的连接 c1。
+	// 目标自己没有平台这一格,它挂在连接 c1 上;能不能收到回复问 c1 的 inbound 能力。
 	const target = { id: "m1", connectionId: "c1" };
-	const on = (platform: string) => [{ id: "c1", platform }] as Connections;
+	const conns = [{ id: "c1" }] as Connections;
+	const unknown = { state: "unknown" } as const;
+	const inbound = (i: ConnectionCapabilities["inbound"]) => (id: string) =>
+		id === "c1" ? { atAll: unknown, inbound: i, miniAppCard: unknown } : undefined;
+	const receives = inbound({ state: "supported", checkedAt: 1 });
+	const noReturnPath = inbound({
+		state: "unsupported",
+		reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
+		checkedAt: 1,
+	});
+	const notKnown = inbound({ state: "unknown" });
 
 	it("master 私聊走 onebot（收得到回复）→ 放行", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		expect(checkApprovalEnable(g, patchOn, [target] as Targets, on("onebot")).ok).toBe(true);
+		expect(checkApprovalEnable(g, patchOn, [target] as Targets, conns, receives).ok).toBe(true);
 	});
 
 	it("master 私聊走 webhook（收不到回复）→ 拦下并说明原因", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [target] as Targets, on("webhook"));
+		const r = checkApprovalEnable(g, patchOn, [target] as Targets, conns, noReturnPath);
 		expect(r.ok).toBe(false);
 		// 光说「不能开」没用,得让主人知道该去改什么。
 		expect(r.ok === false && r.message).toMatch(/webhook|回复|收不到/);
 	});
 
-	it("master 私聊走 qq-official（C2C 入站已接）→ 放行", () => {
+	it("master 私聊那条连接的 inbound 是支持（比如 qq-official 的 C2C 入站已接）→ 放行", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [target] as Targets, on("qq-official"));
+		const r = checkApprovalEnable(g, patchOn, [target] as Targets, conns, receives);
 		expect(r.ok).toBe(true);
 	});
 
-	it("还没接入站的平台 → 拦下，但理由是「还没接」而不是「通道收不到」", () => {
+	it("inbound 还不知道 → 拦下，但理由是「还不知道」而不是「通道收不到」", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [target] as Targets, on("someday-bridge"));
+		const r = checkApprovalEnable(g, patchOn, [target] as Targets, conns, notKnown);
 		expect(r.ok).toBe(false);
-		// 这些平台协议上都收得到,差的是我们没接。说成平台的毛病,主人会去查自己
-		// 的配置(qq-official 就是这么被主人当场抓到的)。
+		// 还不知道不是平台的毛病,说成「只能发不能收」主人会去查自己的配置
+		// (qq-official 就是这么被主人当场抓到的)。
 		expect(r.ok === false && r.message).not.toMatch(/只能发不能收/);
-		expect(r.ok === false && r.message).toMatch(/还没/);
+		expect(r.ok === false && r.message).toMatch(/还不知道/);
 	});
 
 	it("压根没配 master 私聊目标 → 拦下（没人可审）", () => {
 		const g = withApproval(false);
 		g.master.targetId = undefined;
-		expect(checkApprovalEnable(g, patchOn, [], []).ok).toBe(false);
+		expect(checkApprovalEnable(g, patchOn, [], [], receives).ok).toBe(false);
 	});
 
 	it("这次 patch 没碰 roastSchedule → 不检查（存别的 tab 不该被它拦住）", () => {
@@ -217,7 +227,8 @@ describe("checkApprovalEnable", () => {
 			g,
 			{ defaults: { cards: {} } },
 			[target] as Targets,
-			on("webhook"),
+			conns,
+			noReturnPath,
 		);
 		expect(r.ok).toBe(true);
 	});
@@ -228,7 +239,8 @@ describe("checkApprovalEnable", () => {
 			g,
 			{ roastSchedule: { cron: "0 9 * * 1" } },
 			[target] as Targets,
-			on("webhook"),
+			conns,
+			noReturnPath,
 		);
 		expect(r.ok).toBe(true);
 	});
@@ -390,20 +402,29 @@ describe("checkApprovalEnable — 拦下的一律是 not_configured", () => {
 	}
 	const patchOn = { roastSchedule: { approval: true } };
 
+	const noReturnPath = (id: string): ConnectionCapabilities | undefined =>
+		id === "c1"
+			? {
+					atAll: { state: "unknown" },
+					inbound: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
+					miniAppCard: { state: "unknown" },
+				}
+			: undefined;
+
 	it.each([
 		["没配主人私聊目标", undefined, [], []],
 		["主人私聊目标已经不存在了", "gone", [], []],
 		[
-			"主人私聊目标走 webhook(没有回程)",
+			"主人私聊目标那条连接的 inbound 不支持(没有回程)",
 			"m1",
 			[{ id: "m1", connectionId: "c1" }],
-			[{ id: "c1", platform: "webhook" }],
+			[{ id: "c1" }],
 		],
 		["主人私聊目标挂的连接已经不在了", "m1", [{ id: "m1", connectionId: "c1" }], []],
 	] as const)("%s → not_configured", (_what, masterTargetId, targets, connections) => {
 		const g = withApproval(false);
 		g.master.targetId = masterTargetId;
-		const r = checkApprovalEnable(g, patchOn, targets as never, connections as never);
+		const r = checkApprovalEnable(g, patchOn, targets as never, connections as never, noReturnPath);
 		expect(r).toMatchObject({ ok: false, code: "not_configured" });
 	});
 });

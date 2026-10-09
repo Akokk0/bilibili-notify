@@ -1,3 +1,4 @@
+import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createDevRegistry, DevParamError } from "../registry.js";
 import { inboundScenarios } from "../scenarios/inbound.js";
@@ -12,6 +13,20 @@ const ADAPTERS = [
 	{ id: "ad-ob", name: "NapCat", kind: "direct", platform: "onebot", enabled: true },
 	{ id: "ad-qq", name: "官机", kind: "direct", platform: "qq-official", enabled: false },
 ] as never[];
+
+/** 照真适配器的回答:onebot / 官机收得到,webhook 不行。 */
+const INBOUND_OF: Record<string, ConnectionCapabilities["inbound"]> = {
+	onebot: { state: "supported", checkedAt: 1 },
+	"qq-official": { state: "supported", checkedAt: 1 },
+	webhook: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
+};
+function capabilitiesOf(connection: Connection): ConnectionCapabilities | undefined {
+	const platform = connection.kind === "direct" ? connection.platform : "";
+	const inbound = INBOUND_OF[platform];
+	return inbound
+		? { atAll: { state: "unknown" }, inbound, miniAppCard: { state: "unknown" } }
+		: undefined;
+}
 
 const TARGETS = [
 	{
@@ -50,6 +65,7 @@ function setup(
 		commands?: () => { prefix: string; master?: { platform: string; address: string } };
 		targets?: never[];
 		connections?: never[];
+		capabilities?: (connection: Connection) => ConnectionCapabilities | undefined;
 	} = {},
 ) {
 	const priv = vi.fn();
@@ -62,6 +78,7 @@ function setup(
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
 			commands: over.commands ?? (() => ({ prefix: "/", master })),
 			connections: () => over.connections ?? ADAPTERS,
+			capabilities: over.capabilities ?? capabilitiesOf,
 			targets: () => over.targets ?? TARGETS,
 		}),
 	);
@@ -196,9 +213,27 @@ describe("inbound.link", () => {
 				inbound: () => ({ private: vi.fn(), group: vi.fn() }),
 				commands: () => ({ prefix: "/" }),
 				connections: () => ADAPTERS,
+				capabilities: capabilitiesOf,
 				targets: () => [],
 			}),
 		);
 		await expect(noGroups.run("inbound.link", { connection: "ad-ob" })).rejects.toThrow(/群/);
+	});
+
+	it("能力里 inbound 是「还不知道」的连接不当聊天入口(默认挑不到它,指名也拒)", async () => {
+		const unknownInbound = (c: Connection): ConnectionCapabilities | undefined =>
+			c.id === "ad-ob"
+				? {
+						atAll: { state: "unknown" },
+						inbound: { state: "unknown" },
+						miniAppCard: { state: "unknown" },
+					}
+				: capabilitiesOf(c);
+		// 第一条启用的聊天平台连接 ad-ob 不算了;官机那条停用着 → 没有可用的。
+		const { reg } = setup({ capabilities: unknownInbound });
+		await expect(reg.run("inbound.link", {})).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("inbound.link", { connection: "ad-ob" })).rejects.toBeInstanceOf(
+			DevParamError,
+		);
 	});
 });

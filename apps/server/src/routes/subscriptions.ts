@@ -420,6 +420,9 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				masterTargetId: deps.store.getGlobals().master.targetId,
 				targets: deps.store.getTargets(),
 				connections: deps.store.getConnections(),
+				// 引擎还没起来时取不到能力,按「还不知道」算。
+				capabilitiesOf: (connectionId) =>
+					deps.runtime.engines?.connectionCapabilities(connectionId),
 			});
 			if (!gate.ok) return respondFailure(c, gate);
 		}

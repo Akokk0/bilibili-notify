@@ -15,8 +15,7 @@ import {
 	connectionDispatchKey,
 	fail,
 	isTargetPaused,
-	platformOfTarget,
-	platformSupportsAtAll,
+	shouldSendAtAll,
 } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "./dispatch.js";
@@ -92,6 +91,12 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return platformAdapter ? { connection, platformAdapter } : undefined;
 	}
 
+	/** 这条连接的适配器眼下怎么回答它的能力;连接 / 适配器不在、适配器没实现 `capabilities` 都是 `undefined`。 */
+	function capabilitiesOf(connectionId: string): ConnectionCapabilities | undefined {
+		const route = routeOf(connectionId);
+		return route?.platformAdapter.capabilities?.(route.connection);
+	}
+
 	return {
 		resolve(targetId: string): PushTarget | undefined {
 			return findTarget(targetId);
@@ -117,8 +122,9 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		supportsAtAll(targetId: string): boolean {
 			const target = findTarget(targetId);
 			if (!target) return false;
-			const platform = platformOfTarget(target, opts.store.getConnections());
-			return platform !== undefined && platformSupportsAtAll(platform);
+			if (!findConnection(target.connectionId)) return false;
+			// 问这条连接的适配器;没有适配器 / 适配器没实现能力 / 答「还不知道」都照发(发错只是多一条消息)。
+			return shouldSendAtAll(capabilitiesOf(target.connectionId)?.atAll);
 		},
 
 		send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
@@ -158,8 +164,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		},
 
 		connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined {
-			const route = routeOf(connectionId);
-			return route?.platformAdapter.capabilities?.(route.connection);
+			return capabilitiesOf(connectionId);
 		},
 
 		async probeConnectionCapabilities(

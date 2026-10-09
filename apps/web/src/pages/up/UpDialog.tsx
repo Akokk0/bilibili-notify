@@ -1,3 +1,4 @@
+import type { CapabilitySupport, ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddButton,
@@ -34,9 +35,9 @@ import {
 import {
 	displayName,
 	targetsById as makeTargetsById,
-	platformSupportsAtAll,
 	profileAvatarUrl,
 	routingAlignedToFeatures,
+	shouldSendAtAll,
 	subscriptionColor,
 } from "./helpers";
 import {
@@ -159,6 +160,12 @@ export interface UpDialogProps {
 	 */
 	connections: readonly Connection[] | undefined;
 	/**
+	 * 连接能力表(`GET /api/connections/capabilities`)—— @全体 开关读目标所挂连接的 `atAll` 能力。
+	 * `undefined` = 还没回来:不下结论,开关照已存的值显示、可点。表里没这条连接也是「还不知道」,
+	 * 同样可点(服务端对「还不知道」照发)。
+	 */
+	capabilities?: ConnectionCapabilitiesMap;
+	/**
 	 * "edit"   — 现行行为:已有的 Subscription, 改 draft 后 onSave 触发 PATCH-like upsert。
 	 * "create" — 新建模式:sub 是父组件构造的草稿(还没落盘),onSave 触发 POST。
 	 *           按钮区:"移除订阅" 隐藏(还没创建);"保存配置" 即使 draft 未改也可点(因
@@ -273,6 +280,7 @@ export function UpDialog({
 	sub,
 	targets,
 	connections,
+	capabilities,
 	mode = "edit",
 	onClose,
 	onSave,
@@ -727,6 +735,7 @@ export function UpDialog({
 										target={t}
 										platform={platformOfTarget(t, connections ?? [])}
 										connectionsLoaded={connections !== undefined}
+										atAll={capabilities?.[t.connectionId]?.atAll}
 										isCustom={customSet.has(t.id)}
 										sub={draft}
 										globalFeatures={globalFeatures}
@@ -1114,8 +1123,14 @@ function ExtraPerTargetToggle({
 	);
 }
 
-/** 平台不支持 @全体 时那一句 —— tooltip 与行下说明共用,别各写一份。 */
-const UNSUPPORTED_AT_ALL_NOTE = "QQ 官方机器人不支持 @全体,发送时会自动跳过";
+/**
+ * 这条连接不能 @全体 时那一句 —— tooltip 与行下说明共用,别各写一份。判断是服务端同一份
+ * (`shouldSendAtAll`):只有适配器明确答「不支持」才拦,原因取能力里带的那句;「还不知道」不拦、没有提示。
+ */
+function atAllBlockedNote(support: CapabilitySupport | undefined): string | undefined {
+	if (shouldSendAtAll(support)) return undefined;
+	return support?.state === "unsupported" ? `${support.reason}，发送时会自动跳过` : undefined;
+}
 /** 连接列表回来了却找不到这条连接 —— 平台未知,不能把它说成 QQ 官方。 */
 const MISSING_CONNECTION_AT_ALL_NOTE = "连接不在了,没法判断能不能 @全体";
 
@@ -1125,6 +1140,7 @@ function TargetRoutingCard({
 	target,
 	platform,
 	connectionsLoaded,
+	atAll,
 	isCustom,
 	sub,
 	globalFeatures,
@@ -1142,6 +1158,8 @@ function TargetRoutingCard({
 	platform: string | undefined;
 	/** 连接列表是否已经回来 —— 没回来时平台未知不算「连接不在」,不下结论。 */
 	connectionsLoaded: boolean;
+	/** 目标所挂连接的 `atAll` 能力;能力表没回来、或表里没这条连接是 `undefined`(还不知道)。 */
+	atAll: CapabilitySupport | undefined;
 	isCustom: boolean;
 	sub: Subscription;
 	/** 全局特性开关,继承它的主开关与附加项都按它算(见 {@link UpDialogProps.globalFeatures})。 */
@@ -1228,9 +1246,7 @@ function TargetRoutingCard({
 														PUSH_EXTRAS[ek].capability !== "atAll"
 															? undefined
 															: platform !== undefined
-																? platformSupportsAtAll(platform)
-																	? undefined
-																	: UNSUPPORTED_AT_ALL_NOTE
+																? atAllBlockedNote(atAll)
 																: connectionsLoaded
 																	? MISSING_CONNECTION_AT_ALL_NOTE
 																	: undefined

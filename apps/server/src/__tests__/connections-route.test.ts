@@ -8,8 +8,8 @@ import type { RouteDeps } from "../routes/types.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 /**
- * `GET /api/connections/capabilities` —— 面板「连接支持情况」读的那张表。索引两级:
- * 连接 id → 平台名 → 能力。只列有能力概念的平台;引擎还没起来是空表,不是错。
+ * `GET /api/connections/capabilities` —— 面板「连接支持情况」读的那张表。索引一级:
+ * 连接 id → 这条连接的能力。直连与拓展连接都列;取不到能力的连接不列;引擎还没起来是空表,不是错。
  */
 function makeDeps(over: { connections?: unknown[]; engines?: unknown }): RouteDeps {
 	return {
@@ -24,24 +24,34 @@ function makeDeps(over: { connections?: unknown[]; engines?: unknown }): RouteDe
 }
 
 describe("connections route — GET /capabilities", () => {
-	it("按连接 id → 平台名两级列出;没有能力概念的(官机 / webhook)不出现", async () => {
-		const supported = { miniAppCard: { state: "supported", checkedAt: 1 } };
+	it("按连接 id 一级列出,直连与拓展连接都在;取不到能力的不出现", async () => {
+		const unknown = { state: "unknown" };
+		const direct = {
+			atAll: { state: "supported", checkedAt: 1 },
+			inbound: { state: "supported", checkedAt: 1 },
+			miniAppCard: { state: "supported", checkedAt: 1 },
+		};
+		const bridged = {
+			atAll: { state: "unsupported", reason: "桥报的:这个 bot 发不了 @全体", checkedAt: 2 },
+			inbound: unknown,
+			miniAppCard: unknown,
+		};
 		const app = createConnectionsRoute(
 			makeDeps({
 				connections: [
 					{ id: "ob", kind: "direct", platform: "onebot" },
+					{ id: "bot", kind: "extension", extensionId: "bridge", platform: "telegram" },
 					{ id: "qq", kind: "direct", platform: "qq-official" },
 				],
 				engines: {
-					connectionCapabilities: (id: string) => (id === "ob" ? supported : undefined),
+					connectionCapabilities: (id: string) =>
+						id === "ob" ? direct : id === "bot" ? bridged : undefined,
 				},
 			}),
 		);
 		const res = await app.request("/capabilities");
 		expect(res.status).toBe(200);
-		// 第二级的键取自那条连接自己的平台 —— 读它的一侧(一个目标 / 一条连接)也带着平台名,
-		// 两边对得上才查得到。
-		expect(await res.json()).toEqual({ ob: { onebot: supported } });
+		expect(await res.json()).toEqual({ ob: direct, bot: bridged });
 	});
 
 	it("引擎还没起来 → 空表,200", async () => {

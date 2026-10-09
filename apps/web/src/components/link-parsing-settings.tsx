@@ -12,11 +12,11 @@
  * 规矩:停用是暂停不是消失),运行时不解析。
  */
 
-import type { ConnectionCapabilitiesMap, MiniAppCardSupport } from "@bilibili-notify/contract";
+import type { CapabilitySupport, ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import {
 	LINK_REPLY_FORMS,
 	type LinkReplyForm,
-	platformCanReceiveReply,
+	listsForLinkParsing,
 } from "@bilibili-notify/internal/constants";
 import {
 	DisclosurePill,
@@ -57,38 +57,31 @@ export const LINK_REPLY_FORM_LABELS: Record<LinkReplyForm, string> = {
 const INHERIT = "inherit" as const;
 
 /**
- * 能列进例外表的目标:群类,且这条路上收得到入站消息(webhook 只出不进,配了也没用)。
+ * 能列进例外表的目标:群类,且这条连接收得到入站消息(webhook 只出不进,配了也没用)。
  *
- * **直连问的是 `platformCanReceiveReply`,不是自己拿词表 `includes` 一遍** —— 这里原先是
- * 那份词表的第三个消费方,而另外两个走的是这个谓词。
- *
- * 🔴 **拓展借来的连接不走那个谓词**:一条拓展连接就是一个借来的 bot(ADR-0012 决策 45),
- * 它的 `platform` 是从 bot 身上抄来的**开放字符串**(telegram / discord / 自定义…),
- * `PLATFORM_REGISTRY` 里根本没有它,于是 `inbound` 恒为 undefined、整批群被这张表漏掉 ——
- * 而运行时照样解析它们发的链接,配不上的那几群就永远调不了。判据只能是「这条连接是拓展
- * 借来的」。
+ * 问的是这条连接的 `inbound` 能力(适配器的回答),直连与拓展借来的连接同一套,判断住
+ * `listsForLinkParsing`(只有「不支持」才不列;「还不知道」与能力表还没回来都照列 ——
+ * 今天对拓展连接就是一律列出,少列了主人就没处设)。目标挂的连接不在了就不知道它是谁,不列。
  */
-function isGroupCandidate(t: PushTarget, connections: readonly Connection[]): boolean {
+function isGroupCandidate(
+	t: PushTarget,
+	connections: readonly Connection[],
+	capabilities: ConnectionCapabilitiesMap,
+): boolean {
 	if (t.kind !== "session" || t.scope !== "group") return false;
-	if (connections.find((c) => c.id === t.connectionId)?.kind === "extension") return true;
-	// 平台取自目标挂着的连接;连接不在就不知道平台,当作收不到、不列。
-	const platform = platformOfTarget(t, connections);
-	return platform !== undefined && platformCanReceiveReply(platform);
+	if (!connections.some((c) => c.id === t.connectionId)) return false;
+	return listsForLinkParsing(capabilities[t.connectionId]?.inbound);
 }
 
 /** 面板上「未探测」那一档;引擎还没起来、或表里根本没这条时都是它。 */
-const NOT_PROBED: MiniAppCardSupport = { state: "unknown" };
+const NOT_PROBED: CapabilitySupport = { state: "unknown" };
 
-/**
- * 能力表两级索引都要给全:能力是**平台**的属性,只按连接查在一条连接驮多个平台的时候
- * 会把别的平台的答案读过来。两个读它的地方(一行群目标 / 一条连接)各自带着平台名。
- */
+/** 一条连接能不能签小程序卡;表里没这条(引擎没起来、没有适配器)是 `undefined`。 */
 function miniAppSupport(
 	capabilities: ConnectionCapabilitiesMap,
 	connectionId: string,
-	platform: string,
-): MiniAppCardSupport | undefined {
-	return capabilities[connectionId]?.[platform]?.miniAppCard;
+): CapabilitySupport | undefined {
+	return capabilities[connectionId]?.miniAppCard;
 }
 
 export function LinkParsingSettings({
@@ -104,11 +97,11 @@ export function LinkParsingSettings({
 	targets: readonly PushTarget[];
 	/** 连接表(由页面取数),面板只列 OneBot 的。 */
 	connections: readonly Connection[];
-	/** `GET /api/connections/capabilities`:各连接能不能签小程序卡。 */
+	/** `GET /api/connections/capabilities`:各连接的能力(小程序卡、收不收得到回复)。 */
 	capabilities: ConnectionCapabilitiesMap;
 }) {
 	const cfg = draft.linkParsing;
-	const candidates = targets.filter((t) => isGroupCandidate(t, connections));
+	const candidates = targets.filter((t) => isGroupCandidate(t, connections, capabilities));
 	// 两格都调回「跟默认」时草稿里留下的是个空对象(删除哨兵把字段删掉,不删这一格),
 	// 它已经不是例外了 —— 数键会让卡上多出一条根本不存在的例外,直到存盘重拉才消失。
 	const overrides = Object.values(cfg.groups).filter(
@@ -215,11 +208,7 @@ export function LinkParsingSettings({
 											platform={platform}
 											cfg={cfg}
 											onPatch={onPatch}
-											support={
-												platform === undefined
-													? undefined
-													: miniAppSupport(capabilities, t.connectionId, platform)
-											}
+											support={miniAppSupport(capabilities, t.connectionId)}
 											paused={isTargetPaused(t, connections)}
 										/>
 									);
@@ -235,7 +224,7 @@ export function LinkParsingSettings({
 }
 
 /** 三态在面板上怎么说。 */
-function supportText(s: MiniAppCardSupport): { dot: "ok" | "off" | "pending"; text: string } {
+function supportText(s: CapabilitySupport): { dot: "ok" | "off" | "pending"; text: string } {
 	switch (s.state) {
 		case "supported":
 			return { dot: "ok", text: "支持小程序卡" };
@@ -272,7 +261,7 @@ function CapabilityPanel({
 					</EmptyNote>
 				) : (
 					onebots.map((a) => {
-						const support = miniAppSupport(capabilities, a.id, a.platform) ?? NOT_PROBED;
+						const support = miniAppSupport(capabilities, a.id) ?? NOT_PROBED;
 						const { dot, text } = supportText(support);
 						return (
 							<Row
@@ -324,8 +313,8 @@ function GroupRow({
 	platform: string | undefined;
 	cfg: LinkParsing;
 	onPatch: (delta: GlobalConfigPatch) => void;
-	/** 这群所在连接能不能签小程序卡;没有能力概念的平台(官机)是 undefined。 */
-	support: MiniAppCardSupport | undefined;
+	/** 这群所在连接能不能签小程序卡;表里没这条是 undefined。 */
+	support: CapabilitySupport | undefined;
 	/** 目标自己停用、或它挂的连接停用 —— 运行时都不解析,面板得说同一句话。 */
 	paused: boolean;
 }) {

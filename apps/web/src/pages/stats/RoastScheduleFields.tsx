@@ -1,9 +1,8 @@
+import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import {
+	canReceiveReply,
 	DEFAULT_ROAST_CRON,
-	inboundGapReason,
 	isPrivateTarget,
-	platformCanReceiveReply,
-	platformOfTarget,
 } from "@bilibili-notify/internal/constants";
 import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -98,8 +97,9 @@ export function RoastScheduleCard({
 /**
  * 审批能不能开,以及开不了时那句理由。
  *
- * 判据与理由都跟服务端取同一份(`platformCanReceiveReply` / `inboundGapReason`)——
- * 这里手写一句「只有 onebot」的话,哪天补了平台就会两边说得不一样。
+ * 判据跟服务端取同一份(`canReceiveReply`),看的是主人目标所挂那条连接的 `inbound` 能力;
+ * 理由用能力里带的原因 —— 这里手写一句「只有 onebot」的话,哪天补了平台就会两边说得不一样。
+ * 「不支持」与「还不知道」分开说:后者不是这条连接的毛病,别让主人去查自己的配置。
  */
 export function useApprovalReachability(): { canApprove: boolean; hint?: string } {
 	const globalsQuery = useQuery({
@@ -110,10 +110,15 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
-	// 主人目标的平台取自它挂着的连接,所以连接表也要读。
+	// 主人目标所挂的连接还在不在,看连接表;收不收得到回复,看能力表。
 	const connectionsQuery = useQuery({
 		queryKey: ["connections"],
 		queryFn: () => api.get<Connection[]>("/api/connections"),
+	});
+	const capabilitiesQuery = useQuery({
+		queryKey: ["connection-capabilities"],
+		queryFn: () => api.get<ConnectionCapabilitiesMap>("/api/connections/capabilities"),
+		refetchInterval: 30_000,
 	});
 	const masterTargetId = globalsQuery.data?.master?.targetId;
 	const masterTarget = (targetsQuery.data ?? []).find((t) => t.id === masterTargetId);
@@ -125,14 +130,17 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 			hint: "这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标",
 		};
 	}
-	// 连接表还没回来:不下结论(也不闪「连接不在了」),先当收不到、不带理由。
+	// 连接表 / 能力表还没回来:不下结论(也不闪「连接不在了」),先当收不到、不带理由。
 	if (connectionsQuery.data === undefined) return { canApprove: false };
-	const platform = platformOfTarget(masterTarget, connectionsQuery.data);
-	if (platform === undefined) {
+	if (!connectionsQuery.data.some((c) => c.id === masterTarget.connectionId)) {
 		return { canApprove: false, hint: "主人私聊目标挂的那条连接已经不在了" };
 	}
-	if (platformCanReceiveReply(platform)) return { canApprove: true };
-	return { canApprove: false, hint: inboundGapReason(platform) };
+	if (capabilitiesQuery.data === undefined) return { canApprove: false };
+	const inbound = capabilitiesQuery.data[masterTarget.connectionId]?.inbound;
+	if (canReceiveReply(inbound)) return { canApprove: true };
+	if (inbound?.state === "unsupported") return { canApprove: false, hint: inbound.reason };
+	const why = inbound?.state === "unknown" && inbound.reason ? `（${inbound.reason}）` : "";
+	return { canApprove: false, hint: `还不知道这条连接收不收得到主人的回复${why}` };
 }
 
 export function RoastScheduleFields({

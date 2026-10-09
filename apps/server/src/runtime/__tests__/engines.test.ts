@@ -25,6 +25,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
 	Connection,
+	ConnectionCapabilities,
 	GlobalConfig,
 	PlatformAdapter,
 	ProbeResult,
@@ -2559,7 +2560,9 @@ describe("createEngines — 连接所在平台的能力", () => {
 			state = answer === "supported" ? "supported" : "unknown";
 			return caps();
 		});
-		const caps = () => ({
+		const caps = (): ConnectionCapabilities => ({
+			atAll: { state: "unknown" },
+			inbound: { state: "unknown" },
 			miniAppCard: state === "supported" ? { state, checkedAt: 1 } : { state },
 		});
 		const pa: PlatformAdapter = {
@@ -2582,8 +2585,9 @@ describe("createEngines — 连接所在平台的能力", () => {
 		active = c;
 		await tick();
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
-		expect(c.runtime.connectionCapabilities(ADAPTER)).toEqual({
-			miniAppCard: { state: "supported", checkedAt: 1 },
+		expect(c.runtime.connectionCapabilities(ADAPTER)?.miniAppCard).toEqual({
+			state: "supported",
+			checkedAt: 1,
 		});
 		// 已经有答案的不重探:主人点「测试」只做健康探测。
 		await c.runtime.probeConnection(ADAPTER);
@@ -2598,9 +2602,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 		expect(probeCapabilities).toHaveBeenCalledTimes(1);
 		await c.runtime.probeConnection(ADAPTER);
 		expect(probeCapabilities).toHaveBeenCalledTimes(2);
-		expect(c.runtime.connectionCapabilities(ADAPTER)).toEqual({
-			miniAppCard: { state: "unknown" },
-		});
+		expect(c.runtime.connectionCapabilities(ADAPTER)?.miniAppCard).toEqual({ state: "unknown" });
 	});
 
 	it("连都连不上的连接不补探能力 —— 那一趟只会白等满一个超时", async () => {

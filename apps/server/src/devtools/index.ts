@@ -7,6 +7,7 @@ import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
+import { adapterForConnection } from "../push/dispatch.js";
 import { deriveAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 import type { MuteState } from "../runtime/mute-state.js";
@@ -193,6 +194,11 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			inbound: input.inbound,
 			commands: input.commands,
 			connections: input.connectionConfigs,
+			// 眼下有效的能力:真适配器的回答,套上 devtools 注入的假值(同引擎看到的那份)。
+			capabilities: (connection) => {
+				const view = adapterForConnection(input.adapters.list(), connection);
+				return view ? caps.wrap(view).capabilities?.(connection) : undefined;
+			},
 			targets: input.targets,
 		}),
 		...busEventScenarios({ bus: input.bus }),

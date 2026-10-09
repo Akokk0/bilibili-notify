@@ -1,5 +1,6 @@
 import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { connectionDispatchKey } from "@bilibili-notify/internal";
+import { adapterForConnection } from "../../push/dispatch.js";
 import type { PlatformAdapterView } from "../../push/registry.js";
 import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
@@ -54,14 +55,24 @@ function capablePlatforms(dialects: readonly CapabilityDialect[]): Set<string> {
 
 const DEFAULT_REASON = "devtools:假装 1404 不支持的动作";
 
-function build(state: State, reason: string): ConnectionCapabilities {
+/**
+ * 假的只换 `miniAppCard` 这一格:`atAll` / `inbound` 沿用方言原本的回答(`base`)。
+ * 整个对象换掉的话,注入期间 @全体 / 审批 / 链接解析设置读到的就全是「还不知道」了。
+ */
+function build(
+	state: State,
+	reason: string,
+	base: ConnectionCapabilities | undefined,
+): ConnectionCapabilities {
+	const unknown = { state: "unknown" } as const;
+	const keep = { atAll: base?.atAll ?? unknown, inbound: base?.inbound ?? unknown };
 	switch (state) {
 		case "supported":
-			return { miniAppCard: { state: "supported", checkedAt: Date.now() } };
+			return { ...keep, miniAppCard: { state: "supported", checkedAt: Date.now() } };
 		case "unsupported":
-			return { miniAppCard: { state: "unsupported", reason, checkedAt: Date.now() } };
+			return { ...keep, miniAppCard: { state: "unsupported", reason, checkedAt: Date.now() } };
 		case "unknown":
-			return { miniAppCard: { state: "unknown" } };
+			return { ...keep, miniAppCard: { state: "unknown" } };
 	}
 }
 
@@ -71,7 +82,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 		group: "state",
 		title: "连接能力",
 		icon: "sparkle",
-		desc: "换掉某个连接「能不能签小程序卡」的探测结果(支持 / 不支持 / 未知)。探一次也回假的,不出网;没有能力概念的平台选不了 —— 今天只有 OneBot 有。",
+		desc: "换掉某个连接「能不能签小程序卡」的探测结果(支持 / 不支持 / 未知)。探一次也回假的,不出网;只换小程序卡这一格,@全体 / 收回复沿用适配器自己的回答;没有能力概念的平台(没实现 capabilities 的)选不了。",
 		params: [
 			{ key: "connection", label: "连接", kind: "connection" },
 			{ key: "state", label: "状态", kind: "enum", options: STATES, default: "supported" },
@@ -98,7 +109,8 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			const state = String(params.state ?? "supported") as State;
 			const reason =
 				typeof params.reason === "string" && params.reason !== "" ? params.reason : DEFAULT_REASON;
-			deps.injector.set(connection.id, build(state, reason));
+			const base = adapterForConnection(deps.dialects(), connection)?.capabilities?.(connection);
+			deps.injector.set(connection.id, build(state, reason, base));
 			return {};
 		},
 		active() {

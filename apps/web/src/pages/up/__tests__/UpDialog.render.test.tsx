@@ -2,9 +2,10 @@
 
 /**
  * UpDialog 渲染回归:QQ 官方机器人不支持 @全体(后端 best-effort 跳过 at-all),
- * 故其 per-target「+ @全体」开关须禁用并显示不支持说明;onebot / webhook 不受影响。
+ * 故其 per-target「+ @全体」开关须禁用并显示不支持说明(能力表里 atAll 是「不支持」);onebot / webhook 不受影响。
  */
 
+import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
@@ -15,7 +16,7 @@ import {
 } from "../../../types/domain";
 import { UpDialog } from "../UpDialog";
 
-const UNSUPPORTED_NOTE = /QQ 官方.*不支持.*@全体/;
+const UNSUPPORTED_NOTE = /QQ 官方.*@全体.*发送时会自动跳过/;
 
 const noop = () => {};
 
@@ -43,6 +44,20 @@ function customSubFor(targetId: string): Subscription {
 	return sub;
 }
 
+/** 照真适配器的回答:官机 @全体 不支持,别的支持。 */
+function capabilitiesFor(platform: string): ConnectionCapabilitiesMap {
+	const unknown = { state: "unknown" } as const;
+	const atAll =
+		platform === "qq-official"
+			? ({
+					state: "unsupported",
+					reason: "QQ 官方机器人在群里 @全体 要特殊权限，适配器会丢掉 @全体 段",
+					checkedAt: 1,
+				} as const)
+			: ({ state: "supported", checkedAt: 1 } as const);
+	return { "a-1": { atAll, inbound: unknown, miniAppCard: unknown } };
+}
+
 function renderDialog(platform: string) {
 	// 平台只在连接上:目标自己不带,按 platform 造目标,再造一条同平台的连接挂着它。
 	const target = targetFor(platform);
@@ -58,6 +73,7 @@ function renderDialog(platform: string) {
 					enabled: true,
 				} as Connection,
 			]}
+			capabilities={capabilitiesFor(platform)}
 			onClose={noop}
 			onSave={noop}
 			onDelete={noop}

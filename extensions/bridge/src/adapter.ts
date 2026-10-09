@@ -11,6 +11,7 @@
  */
 
 import type {
+	CapabilitySupport,
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
@@ -29,6 +30,7 @@ import type { BridgeConnectionConfig } from "./config.js";
 import {
 	BRIDGE_CLOSE_CODES,
 	type BridgeBot,
+	type BridgeCapabilityState,
 	type BridgeMessage,
 	type BridgeSegment,
 } from "./contract.js";
@@ -214,17 +216,36 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	}
 
 	/**
-	 * 桥报的能力翻成宿主那份。今天宿主只问一项(小程序卡);三态原样对应,`checkedAt`
-	 * 取会话建立那一刻 —— 能力是握手时报的。
+	 * 桥报的一项能力翻成宿主那份三态。三态原样对应,`checkedAt` 取会话建立那一刻 ——
+	 * 能力是握手时报的;不支持时的原因写成「桥报的:这个 bot …」。
 	 */
-	function capabilitiesOf(located: Extract<Located, { ok: true }>): ConnectionCapabilities {
-		const state = located.bot.capabilities.miniAppCard;
-		const checkedAt = located.session.connectedAt;
-		if (state === "supported") return { miniAppCard: { state, checkedAt } };
+	function supportOf(
+		state: BridgeCapabilityState,
+		checkedAt: number,
+		unsupportedReason: string,
+	): CapabilitySupport {
+		if (state === "supported") return { state, checkedAt };
 		if (state === "unsupported") {
-			return { miniAppCard: { state, reason: "桥报的:这个 bot 发不了小程序卡", checkedAt } };
+			return { state, reason: `桥报的:这个 bot ${unsupportedReason}`, checkedAt };
 		}
-		return { miniAppCard: { state: "unknown", reason: "桥没报这一项" } };
+		return { state: "unknown", reason: "桥没报这一项" };
+	}
+
+	/** 桥报的能力翻成宿主那份:宿主问的三项(@全体、收不收得到回复、小程序卡)都在这儿。 */
+	function capabilitiesOf(located: Extract<Located, { ok: true }>): ConnectionCapabilities {
+		const { capabilities } = located.bot;
+		const checkedAt = located.session.connectedAt;
+		return {
+			atAll: supportOf(capabilities.atAll, checkedAt, "发不了 @全体"),
+			inbound: supportOf(capabilities.inbound, checkedAt, "收不到主人的回复"),
+			miniAppCard: supportOf(capabilities.miniAppCard, checkedAt, "发不了小程序卡"),
+		};
+	}
+
+	/** 没连着 / 没这个 bot:三项都是「还不知道」,带上原因。 */
+	function unreachableCapabilities(reason: string): ConnectionCapabilities {
+		const unknown = { state: "unknown", reason } as const;
+		return { atAll: unknown, inbound: unknown, miniAppCard: unknown };
 	}
 
 	/**
@@ -324,14 +345,14 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 		 */
 		capabilities(connection: Connection): ConnectionCapabilities {
 			const located = locate(connection);
-			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.message } };
+			if (!located.ok) return unreachableCapabilities(located.message);
 			return capabilitiesOf(located);
 		},
 
 		async probeCapabilities(connection: Connection): Promise<ConnectionCapabilities> {
 			// 不打网络:能力是桥握手时报的,再问一次也是同一份。
 			const located = locate(connection);
-			if (!located.ok) return { miniAppCard: { state: "unknown", reason: located.message } };
+			if (!located.ok) return unreachableCapabilities(located.message);
 			return capabilitiesOf(located);
 		},
 	};

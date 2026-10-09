@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import type { PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
 import {
 	type Connection,
+	type ConnectionCapabilities,
 	connectionDispatchKey,
 	type DeliveryResult,
 	type DestinationRef,
@@ -44,9 +45,27 @@ interface WebhookHttpRequest {
 export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapter {
 	const log = opts.logger;
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
+	const adapterStartedAt = Date.now();
 
 	return {
 		adapterKey: "webhook",
+		// 四个 webhook 平台共用这一个适配器,回答不看平台。
+		capabilities(_connection: Connection): ConnectionCapabilities {
+			return {
+				atAll: { state: "supported", checkedAt: adapterStartedAt },
+				inbound: {
+					state: "unsupported",
+					reason: "webhook 只是一个出站 HTTP 请求、没有回程，主人没法在上面回话",
+					checkedAt: adapterStartedAt,
+				},
+				miniAppCard: {
+					state: "unsupported",
+					reason: "webhook 发不了 QQ 小程序卡",
+					checkedAt: adapterStartedAt,
+				},
+			};
+		},
 		// 无状态:没有连接要建、没有监听要起。
 		start() {},
 		stop() {},
