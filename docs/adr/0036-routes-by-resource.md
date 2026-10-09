@@ -38,6 +38,7 @@
    | `POST /api/connections/:id/test` | `POST /api/connections/:id/probe`（1.0 原定） |
 
 5. **随别的片一起搬的**（资源还没建，到时照决策 1、2 起名）：`/api/cards` 里背景图与字体那 8 个口 → `/api/library/images`、`/api/library/fonts`（与 `:id`，删前查引用）；`/api/qq/*` → `/api/adapters`（3a）；`/api/auth/*`（B 站登录）→ `/api/sources/:sourceKey/…`（3a）；问题表 `/api/problems`（3a）；图库的同源读口（⑮）与并进图库的三个读口（⑳：历史配图、订阅头像、聊天附件）。
+    - 🔗 10-09（3a-20）：`/api/qq/*` 不单独搬地址，等对应的适配器成员落地时一起搬 —— 扫码绑定的两个口随 3a-29（`connectionAuth` 要 `AuthState`），选地址的两个口随 3a-22（`listAddressCandidates` 的形状和连接候选一起定）。仍在 3a 之内。
 
    🔗 **2026-10-03**（⑮ 开片拷问，主人拍板）：
    - 图库读口是 **`GET /api/images/<ref>`**：图库被历史、订阅、AI 共用，是顶层资源（历史配图的老读口 `GET /api/history/img/:name` 在 ⑳d 退役，面板的配图与头像快照都走这个口）。只读、只这一个口 —— 写入口留在各自业务里（聊天上传走 AI 那组、按它自己的上限查；抓图服务在服务端内部调），不开通用上传口，免得绕过各家的规矩。三道闸（nosniff、桌面令牌、登录 cookie）照旧，不开例外；按内容起名的东西永远不变，回 `Cache-Control: private, max-age=31536000, immutable`（`private`：它在登录闸后面）；mime 按扩展名给；引用不合规矩不碰盘、文件不在，都回 404。

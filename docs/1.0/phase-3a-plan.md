@@ -7,7 +7,7 @@
 | 项 | 现状 |
 | --- | --- |
 | 切片表 | 10-07 主人认了，从甲组与 3a-08 开始 |
-| 已完成 | 27 / 43（10-08 新开两片 3a-43、3a-44，总数从 41 变 43；3a-01 至 3a-06、3a-08、3a-09、3a-11 至 3a-19、3a-23 至 3a-25、3a-33 至 3a-37、3a-43、3a-44；3a-07 并进 3a-28） |
+| 已完成 | 28 / 43（10-08 新开两片 3a-43、3a-44，总数从 41 变 43；3a-01 至 3a-06、3a-08、3a-09、3a-11 至 3a-20、3a-23 至 3a-25、3a-33 至 3a-37、3a-43、3a-44；3a-07 并进 3a-28） |
 | 迁移修订号 / 备份版本 | 35 / 9（3a 开工前） |
 
 ## 出期条件（检查点）
@@ -53,9 +53,9 @@
 | 3a-17 ✅ | 出口咽喉：只有 `TargetDispatcher` 能发送；`sendToAddress`；链接回复改走它（今天唯一一条绕过派发器的真路径） | 3a-14、3a-15 | 无 |
 | 3a-18 ✅ | 主人通知：`notifyMaster` 回结果形状、三个旧口合一；主人目标只许指向私聊目标（保存拒收、发送复检、迁移清空并在首访提示里说明） | 3a-15、3a-17 | 设置、备份 |
 | 3a-19 ✅ | 指令回复改走 `sendToAddress`；咽喉 e2e（逐条驱动全部发送路径，每条恰好一条截流记录、零外连） | 3a-17、3a-18 | 无 |
-| 3a-20（进行中，20a ✅、20b ✅） | 适配器接口，切四小片：20a ✅ 发送口改窄、删派发器里的临时目标；20b ✅ 分两步：20b-1 登记键换 `adapterKey`，20b-2 登记即 `start(ctx)` / 注销即 `stop()`，三个内置适配器与桥改接口；20c 能力 `atAll` / `inbound` 改问适配器；20d `/api/qq/*` 搬到 `/api/adapters` 底下。描述、候选、`settingsSchema` 与它们的读口随 3a-22 | 3a-12、3a-15、3a-17 | 无（连接形状先不变） |
+| 3a-20 ✅ | 适配器接口：发送口改窄、删派发器里的临时目标（20a）；登记键换 `adapterKey`（20b-1）；登记即 `start(ctx)` / 注销即 `stop()`，三个内置适配器与桥改接口（20b-2）。原定的另外几样各随第一个用它的片：能力 `atAll` / `inbound`、描述、候选、`settingsSchema`、`/api/adapters` 读口随 3a-22；QQ 扫码的口随 3a-29（要 `AuthState`）；QQ 选地址的口随 3a-22（和候选一起定形状） | 3a-12、3a-15、3a-17 | 无（连接形状先不变） |
 | 3a-21 | 目标删 `platform` | 3a-20 | 目标、备份 |
-| 3a-22 | 连接新形状（`adapterKey` / `settings` / `platformSnapshot`），删 `CONNECTION_PLATFORMS` 闭集；适配器的描述、`settingsSchema`、`listConnectionCandidates` 与 `/api/adapters` 的读口（3a-20 挪来） | 3a-21 | 连接、备份 |
+| 3a-22 | 连接新形状（`adapterKey` / `settings` / `platformSnapshot`），删 `CONNECTION_PLATFORMS` 闭集；适配器的描述、`settingsSchema`、`listConnectionCandidates` 与 `/api/adapters` 的读口；能力 `atAll` / `inbound` 改问适配器（服务端三处与面板三处一起改，两边必须是同一份判断）；QQ 选地址的两个口改成 `listAddressCandidates` 并搬到 `/api/adapters` 底下（都是 3a-20 挪来） | 3a-21 | 连接、备份 |
 | **丁 B 站搬家与接入** | | | |
 | 3a-23 ✅ | 搬家前置：面板的登录态类型、`packages/ai` 都先脱开 `@bilibili-notify/api`（包不能反过来依赖服务端） | 无 | 无 |
 | 3a-24 ✅ | 纯搬：四包 → `apps/server/src/bilibili/`（`blive` 并进 `bilibili/live/`），只改 import 路径；构建配方、装配脚本、守卫里写死的路径同一个提交带上。**独占工作区**，约 150 个文件 | 3a-01、3a-06、3a-23 | 无 |
@@ -63,7 +63,7 @@
 | 3a-26 | B 站的 cookie 与浏览器身份进 `ctx`；`packages/storage` 的 `CookieStore` 退役 | 3a-10、3a-12、3a-25 | 密钥文件 |
 | 3a-27 | `PostEvent` 信封与 `post-detected` 事件取代 `dynamic-detected`；`deliverWork` → `deliverPost`、`NeutralWork` 退场；B 站作品的统计多收字段；中立部分拆进 `posts/` | 3a-08、3a-24 | 无 |
 | 3a-28 | （接线提醒：谁建了带内网守卫的请求客户端谁负责 `dispose()`，接进关停流程后剪线验一次）B 站实现 `SubscriptionSource`（搜人、取资料、名单驱动、上报作品与直播）+ `/api/sources`；档位表进来源描述符。另带问题表（全在内存）+ `ctx.reportProblem` / `resolveProblem` + `/api/problems` + 变更事件（3a-12 挪来；开工时先核这一片有没有真上报方，没有就整个随 3a-30） | 3a-12、3a-25、3a-27 | 无 |
-| 3a-29 | `bilibili/auth/` 与 `SourceAuth` 状态机、`accounts/`；顺手修两处：拿二维码失败却回 ok、搜人把风控与未登录都报成 404 | 3a-10 至 3a-12、3a-26 | 备份（账号排序） |
+| 3a-29 | `bilibili/auth/` 与 `SourceAuth` 状态机、`accounts/`；顺手修两处：拿二维码失败却回 ok、搜人把风控与未登录都报成 404；QQ 官方扫码绑定的两个口改成适配器的 `connectionAuth` 并搬到 `/api/adapters` 底下（3a-20 挪来，要同一个 `AuthState`） | 3a-10 至 3a-12、3a-26 | 备份（账号排序） |
 | 3a-30 | B 站报错按因果分层（未登录 → 风控 → 各项请求失败，只报最上面那条）；删各引擎自己私聊主人的旁路（勘察数出比计划多两处；连同 B 站引擎窄接口上的 `sendPrivateMsg` / `sendErrorMsg` 与 `engines.ts` 的 `masterTellers`，3a-18 留下的）。问题表在这一片接上真上报，私聊节流与「已恢复」随它定 | 3a-28、3a-29 | 无 |
 | 3a-31 | 「关了就不查」 | 3a-28 | 无 |
 | 3a-32 | devtools 的 B 站部分搬进 `bilibili/devtools/` | 3a-24 | 无 |
@@ -193,6 +193,9 @@
   - 20b-2 已落（10-09，`719ad6a2`）：`reconcile?` / `dispose?` 换成必备的 `start(ctx)` / `stop()`；`PlatformAdapterContext` = 集成上下文的 `logger` / `signal` / `onDispose` 加 `connections()`（归自己的连接，现读）与 `onConnectionsChanged(fn)`。登记表 `register(adapter, ctx)` 即启动、把手 `dispose()` 即停止（`stop` 失败只记 warn）；视图上不再有 `start` / `stop`。内置三个由 `push/builtin-adapters.ts` 的 `registerBuiltinAdapters` 在 `createEngines` 之前登记，各有一份集成上下文；引擎里三处 `reconcile` / `dispose` 循环删了。拓展适配器的上下文建在拓展自己的集成上下文上（`push/adapter-context.ts` 两边共用）。桥：`start` 只订变更、不立刻对账（与从前「开机对账跑在拓展装载之前」一致），接入名单（设置）变了仍由它自己那个 `reconcile()` 对账。`IntegrationContext` 这个类型搬进了 `packages/internal`（`PlatformAdapterContext` 要继承它、契约包要转给桥；工厂留在服务端，与 `ServiceContext` 的分法相同）。契约版本号没升。
   - 20b-2 照规矩直接定、主人没逐条表态的：`createPlatformAdapterContext`、`registerBuiltinAdapters` 两个名字与文件；`IntegrationContext` 搬家；桥文件里的本地类型 `BridgeAdapter`（多一个 `reconcile()`，不进契约）；`ctx.inbound` 与定时器这一片没进上下文（内置适配器的入站与定时器仍走工厂选项）。
   - 20b-2 留着的：① `registerBuiltinAdapters` 中途登记失败的回收没有测试；② `start` 抛了时它已经订下的变更订阅由集成上下文 / 拓展卸载兜底收，登记表自己不收。真机待看（没验）：开机后 OneBot 的正向长连接与反向监听照常起来、QQ 官方照常连上；面板上改一条连接（停用、改地址）后对应的长连接跟着断开 / 重连；关机不卡。
+  - 20c、20d 没做，各挪到第一个用它的片（10-09）：
+    - **20c 能力**（主人定 A）：今天「能不能 @全体 / 能不能收回复」服务端三处与面板三处读的是同一张写死的平台表，注释明写「两边必须是同一份判断」；那张表 3a-22 才删。现在只改服务端会让桥带进来的平台两边说法不一，全改又要提前定「还不知道」在面板上怎么显示。它也不是 3a-21 的前置（目标上的平台是连接那一格的拷贝，改读连接即可）。挪到 3a-22。
+    - **20d 路由**（伦伦酱照同一取向直接定，没单独问）：`/api/qq/*` 四个口要搬成适配器成员才算数，否则只是换个地址、等接口来了再搬一遍。扫码那两个口要的 `AuthState` 在 3a-29；选地址那两个口的中立形状（今天是 QQ 自己的两种返回）要和连接候选一起定，在 3a-22。各随其片；ADR-0036 决策 5 写的归期「3a」不变。
   - 留着的：① `EndpointRef` 的 `scope` 一格 —— 定案里目标的新形状端点那支没有 `scope`，而 webhook 冻结的 JSON 有，3a-21 / 3a-22 动目标形状时要给它另找来源；② OneBot 的 `isAvailable` 仍不查去向种类（端点目标挂到 OneBot 连接上要到 `send` 才失败，今天就这样）。
   - 真机待看（没验）：重启后桥、webhook、OneBot、QQ 官方各推一条照常送达（新加的那道平台检查不误拦）；停用一个目标后它不再收到推送；指令回复、链接回复照常。
 - 3a-12 开工前定的（10-09，主人定，四题）：
