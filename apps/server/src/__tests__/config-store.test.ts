@@ -223,8 +223,22 @@ describe("ConfigStore", () => {
 	it("SY1: patchGlobals 收到 null 清除可选字段;undefined 仍是“不改”", async () => {
 		// targetId 规范是 z.uuid().optional(),须用结构合法的 UUID(版本/变体
 		// nibble 正确),用 crypto.randomUUID() 生成 v4。
-		const T1 = randomUUID();
-		const T2 = randomUUID();
+		// 主人目标必须指向一个真的私聊目标(ADR-0021 决策 57):先建连接和两个私聊目标。
+		const connection = makeOnebotConnection();
+		await store.upsertConnection(connection);
+		const [T1, T2] = [randomUUID(), randomUUID()];
+		for (const id of [T1, T2]) {
+			await store.upsertTarget({
+				id,
+				name: `私聊 ${id.slice(0, 4)}`,
+				connectionId: connection.id,
+				kind: "session",
+				platform: "onebot",
+				scope: "private",
+				address: "10001",
+				enabled: true,
+			});
+		}
 		await store.patchGlobals({
 			master: { targetId: T1 },
 			app: { logLevels: { core: "debug" } },

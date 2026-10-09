@@ -148,7 +148,7 @@ export const AppConfigSchema = z.object({
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 
 export const MasterConfigSchema = z.object({
-	/** 用于错误私聊的 PushTarget.id；undefined 时不发私聊。 */
+	/** 用于错误私聊的 PushTarget.id,只许指向私聊目标(`isPrivateTarget`);undefined 时不发私聊。 */
 	targetId: z.uuid().optional(),
 });
 export type MasterConfig = z.infer<typeof MasterConfigSchema>;

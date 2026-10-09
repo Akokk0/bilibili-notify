@@ -1,6 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
 import type { NotificationPayload } from "@bilibili-notify/internal";
-import { connectionDispatchKey, ok } from "@bilibili-notify/internal";
+import { connectionDispatchKey, isPrivateTarget, ok } from "@bilibili-notify/internal";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 
 /**
@@ -99,7 +99,7 @@ export function createCaptureGate(): CaptureGate {
 		resetWindows() {
 			windows = on ? [{ from: Date.now(), to: null }] : [];
 		},
-		intercept({ connection, target, private: isPrivate, isProvisional, payload }) {
+		intercept({ connection, target, isProvisional, payload }) {
 			if (!on) return undefined;
 			seq += 1;
 			list.push({
@@ -114,7 +114,8 @@ export function createCaptureGate(): CaptureGate {
 					isProvisional && target.kind === "session"
 						? `${target.scope === "group" ? "群" : "私聊"} ${target.address}`
 						: target.name,
-				private: isPrivate,
+				// 是否私聊由目标自己的 scope 算(原来的「强制私聊」路径已删)。
+				private: isPrivateTarget(target),
 				kind: payload.kind,
 				...summarize(payload),
 			});

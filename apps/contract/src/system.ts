@@ -59,12 +59,17 @@ interface SystemNoticeBase {
  * 提示,往这个联合里加一种。主人看过就标已读(`POST /api/system/notices/:id/acknowledge`),之后不再出现。
  *
  * - `migrated` —— 这一代是从 0.x 的数据迁来的:旧数据原样留着当备份;`cardSkinsDropped` 说老卡片皮肤
- *   没迁(ADR-0022 决策 12),要重新做。
+ *   没迁(ADR-0022 决策 12),要重新做;`masterTargetCleared` 说原来的主人目标不是私聊(群,或目标已不在),
+ *   迁移替主人清空了,要到系统页重新选一个(ADR-0021 决策 57)。
  * - `generation-failed` —— 主人要求开的新代没开成,还在用原来那一代;`message` 是失败原因原话。
  * - `rolled-back` —— `version` 起不来,被启动器判死、退回了现在这一版。只报比正在跑的版本新的。
  */
 export type SystemNotice =
-	| (SystemNoticeBase & { kind: "migrated"; cardSkinsDropped: boolean })
+	| (SystemNoticeBase & {
+			kind: "migrated";
+			cardSkinsDropped: boolean;
+			masterTargetCleared: boolean;
+	  })
 	| (SystemNoticeBase & {
 			kind: "generation-failed";
 			source: GenerationSourceKind;

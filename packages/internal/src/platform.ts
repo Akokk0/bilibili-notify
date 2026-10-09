@@ -398,7 +398,6 @@ export type NotificationPayload =
  */
 export interface TargetDispatcher {
 	send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
-	sendPrivate(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
 	/**
 	 * 不经推送目标表,按**连接 + 会话坐标**直接往一个会话发(链接解析回到来源群)。
 	 * 不触发投递回调、不重试、不落历史;连接缺 `not_found`、连接停用 `not_configured`、

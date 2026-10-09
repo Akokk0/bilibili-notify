@@ -5,9 +5,9 @@
  *   - 构造期 adapter.platforms → adapter 注册表;同一 platform 被两个 adapter 声明 → warn + 后者覆盖
  *   - resolve(targetId)            → PushTarget | undefined
  *   - isAvailable                  → target 缺 / Connection 缺 / platformAdapter 缺 任一为 false;否则透传
- *   - send / sendPrivate(dispatch) → 四条分支:target 缺(早退,不触发 onDelivery)/
+ *   - send(dispatch)               → 四条分支:target 缺(早退,不触发 onDelivery)/
  *                                    Connection 缺(warn + onDelivery)/ platformAdapter 缺(warn + onDelivery)/
- *                                    happy(委派 platformAdapter.send + onDelivery,private 透传)
+ *                                    happy(委派 platformAdapter.send + onDelivery)
  *   - probeConnection                 → adapter 缺 / platformAdapter 缺 / happy 委派 platformAdapter.probe
  *   - 自己造的失败的码(ADR-0026):目标 / 连接找不到 `not_found`,没有适配器 `unavailable`;
  *                                    适配器抛错算 bug,在这里接住 → `unavailable` + error 日志
@@ -162,9 +162,8 @@ type OnDeliveryFn = (
 	target: PushTarget,
 	payload: NotificationPayload,
 	result: DeliveryResult,
-	opts: { private: boolean },
 ) => void;
-describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
+describe("createTargetDispatcher — dispatch (send)", () => {
 	let onDelivery: Mock<OnDeliveryFn>;
 	beforeEach(() => {
 		onDelivery = vi.fn<OnDeliveryFn>();
@@ -225,10 +224,7 @@ describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
 
-	it("happy:委派 platformAdapter.send(opts 留空),回传其 result,onDelivery 带 {private:false}", async () => {
-		// adapter 不传 `private: false` —— 否则 OneBot adapter 内 `?? scope` 会把
-		// scope:"private" 的 target 吃掉(回归守卫见 platforms/__tests__/adapters.test.ts)。
-		// onDelivery 仍带 `{ private: false }` 作为 metadata,与 sendPrivate 区分。
+	it("happy:委派 platformAdapter.send(只带连接、目标、载荷),回传其 result,onDelivery 带同一份 result", async () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
 		const pa = makePlatformAdapter(["feishu"]);
@@ -240,28 +236,17 @@ describe("createTargetDispatcher — dispatch (send / sendPrivate)", () => {
 		});
 		const r = await dispatcher.send("t1", PAYLOAD);
 		expect(r).toEqual({ ok: true, latencyMs: 12 });
-		expect(pa.send).toHaveBeenCalledWith(connection, target, PAYLOAD, {});
-		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r, { private: false });
+		expect(pa.send).toHaveBeenCalledWith(connection, target, PAYLOAD);
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
 	});
 
-	it("sendPrivate:private:true 透传到 platformAdapter.send 与 onDelivery", async () => {
-		const target = makeTarget({ id: "t1", connectionId: "a1" });
-		const connection = makeConnection({ id: "a1", platform: "feishu" });
-		const pa = makePlatformAdapter(["feishu"]);
+	it("没有「强制私聊」那条路了:派发器上没有 sendPrivate", () => {
 		const dispatcher = createTargetDispatcher({
-			store: makeStore([connection], [target]),
-			adapters: createPlatformAdapterRegistry([pa]),
+			store: makeStore([], []),
+			adapters: createPlatformAdapterRegistry([]),
 			logger: makeLogger(),
-			onDelivery,
 		});
-		await dispatcher.sendPrivate("t1", PAYLOAD);
-		expect(pa.send).toHaveBeenCalledWith(connection, target, PAYLOAD, { private: true });
-		expect(onDelivery).toHaveBeenCalledWith(
-			target,
-			PAYLOAD,
-			expect.objectContaining({ ok: true }),
-			{ private: true },
-		);
+		expect("sendPrivate" in dispatcher).toBe(false);
 	});
 });
 
@@ -284,7 +269,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 		const r = await dispatcher.send("t1", PAYLOAD);
 		expect(r).toEqual({ ok: false, code: "unavailable", message: "adapter exploded" });
 		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
-		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r, { private: false });
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
 	});
 
 	it("probe 抛错 → unavailable + error 日志", async () => {
@@ -468,7 +453,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		return { dispatcher, pa, logger, onDelivery };
 	}
 
-	it("正常:适配器收到临时会话目标,scope / address 取自会话坐标,platform 取自连接,opts 留空", async () => {
+	it("正常:适配器收到临时会话目标,scope / address 取自会话坐标,platform 取自连接", async () => {
 		const { dispatcher, pa } = setup();
 
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
@@ -487,7 +472,6 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 				id: "session:group:123456",
 			}),
 			PAYLOAD,
-			{},
 		);
 	});
 
@@ -498,7 +482,6 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 			connection,
 			expect.objectContaining({ scope: "private", address: "42" }),
 			PAYLOAD,
-			{},
 		);
 	});
 
@@ -568,7 +551,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 	});
 });
 
-describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,三条发送路共用)", () => {
+describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两条发送路共用)", () => {
 	const target = makeTarget({ id: "t1", connectionId: "a1" });
 	const connection = makeConnection({ id: "a1", platform: "feishu" });
 	const SYNTHETIC: DeliveryResult = { ok: true, latencyMs: 0, isSynthetic: true };
@@ -589,7 +572,6 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,三�
 	const paths: [string, (d: ReturnType<typeof setup>["dispatcher"]) => Promise<DeliveryResult>][] =
 		[
 			["send", (d) => d.send("t1", PAYLOAD)],
-			["sendPrivate", (d) => d.sendPrivate("t1", PAYLOAD)],
 			["sendToAddress", (d) => d.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD)],
 		];
 
@@ -605,28 +587,23 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,三�
 		expect(pa.send).toHaveBeenCalledTimes(1);
 	});
 
-	it("回调拿到的信息:连接、目标、是否私聊、是否按会话坐标发、载荷", async () => {
+	it("回调拿到的信息:连接、目标、是否按会话坐标发、载荷", async () => {
 		const seen: Parameters<SendInterceptHandler>[0][] = [];
 		const { dispatcher } = setup((send) => {
 			seen.push(send);
 			return undefined;
 		});
 		await dispatcher.send("t1", PAYLOAD);
-		await dispatcher.sendPrivate("t1", PAYLOAD);
 		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
-		expect(seen.map((s) => [s.private, s.isProvisional])).toEqual([
-			[false, false],
-			[true, false],
-			[false, true],
-		]);
+		expect(seen.map((s) => s.isProvisional)).toEqual([false, true]);
 		expect(seen[0]).toMatchObject({ connection, target, payload: PAYLOAD });
-		expect(seen[2]?.target).toMatchObject({ kind: "session", scope: "group", address: "9" });
+		expect(seen[1]?.target).toMatchObject({ kind: "session", scope: "group", address: "9" });
 	});
 
 	it("按目标发的两条路,截流时 onDelivery 行为照旧(带合成结果触发);按坐标发的不触发", async () => {
 		const { dispatcher, onDelivery } = setup(() => SYNTHETIC);
 		await dispatcher.send("t1", PAYLOAD);
-		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, SYNTHETIC, { private: false });
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, SYNTHETIC);
 		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});

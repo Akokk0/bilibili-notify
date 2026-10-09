@@ -50,6 +50,7 @@ import { createImageFetcher } from "./images/image-fetcher.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import {
+	MASTER_TARGET_SKIPPED_PATH,
 	MIGRATION_REVISION,
 	migrateZeroGeneration,
 	readZeroGenerationKey,
@@ -502,6 +503,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			await createSystemNoticeStore({ dir: generation.dir, runningVersion: APP_VERSION }).append({
 				kind: "migrated",
 				cardSkinsDropped: report?.skipped.some((s) => s.path === "card-skins") ?? false,
+				masterTargetCleared:
+					report?.skipped.some((s) => s.path === MASTER_TARGET_SKIPPED_PATH) ?? false,
 			});
 		}
 
@@ -924,14 +927,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 取数函数只建一个,同时交给调度器与 createApp:手动锐评、面板、定时锐评三处吃同一份 30 秒缓存。
 		const statsOverview = createStatsOverview({ runtime, store: runtime.configStore });
 		/** 私聊主人。发不出去由调用方各自兜住(调度器与指令处理器都不让它拖垮流程)。 */
-		const tellMaster = async (text: string): Promise<void> => {
-			await engines?.push.sendPrivateMsg(text);
+		const tellMasterPayload = async (payload: string | NotificationPayload): Promise<void> => {
+			const r = await engines?.push.notifyMaster(payload);
+			if (r && !r.ok) log.warn(`[master] 通知主人没送到: ${r.message}`);
 		};
-		// 审批预览要发的是渲染好的那一份(出图就发图),所以走 payload 版而不是
-		// sendPrivateMsg —— 后者只收字符串。
-		const tellMasterPayload = async (payload: NotificationPayload): Promise<void> => {
-			await engines?.push.sendToMaster(payload);
-		};
+		// 审批预览要发的是渲染好的那一份(出图就发图),所以另有 payload 版;文字版只是它的字符串入参。
+		const tellMaster = (text: string): Promise<void> => tellMasterPayload(text);
 
 		const roastScheduler = createRoastScheduler({
 			deps: { runtime, store: runtime.configStore },
@@ -1016,12 +1017,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				reply: tellMaster,
 				begin: () => authSystem?.beginLogin() ?? Promise.resolve(),
 				snapshot: () => authSystem?.status() ?? { status: 0, msg: "登录系统还没起来" },
-				// **走 sendToMaster 而不是普通推送**:它强制私聊,onebot adapter 在拿不到
-				// userId 时直接报错而不会回落到群。二维码进群等于公开征集「谁来当我的
-				// B 站账号」。这里还要把「没送到」如实带回去 —— 见 login-command.ts。
+				// **走 notifyMaster 而不是普通推送**:主人目标只许指向私聊(保存时拦、发送时
+				// 复检),不会回落到群。二维码进群等于公开征集「谁来当我的 B 站账号」。
+				// 这里还要把「没送到」如实带回去 —— 见 login-command.ts。
 				sendQr: async (buffer) => {
 					// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
-					const r = await engines?.push.sendToMaster({
+					const r = await engines?.push.notifyMaster({
 						kind: "image",
 						image: { buffer, mime: "image/png" },
 					});

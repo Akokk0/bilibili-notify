@@ -36,6 +36,7 @@ import type {
 	ImageRef,
 	LinkParsingConfig,
 	LinkParsingPolicy,
+	Logger,
 	MembershipTemplateBundle,
 	NotificationPayload,
 	PayloadSegment,
@@ -582,7 +583,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const pickExistingCardBg = makeExistingCardBgPicker(opts.dataRoot, cardBgRotator.pick);
 
 	// ---------- DynamicEngine ----------
-	const dynamicPushLike = makeDynamicPushLike(push, subscriptionIdOfUid);
+	const dynamicPushLike = makeDynamicPushLike(push, subscriptionIdOfUid, log);
 
 	const dynamicConfig = (): DynamicEngineConfig => {
 		return {
@@ -660,7 +661,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	if (opts.loginFlow.current().status === BiliLoginStatus.LOGGED_IN) runFollowSync("boot");
 
 	// ---------- LiveEngine ----------
-	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid);
+	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid, log);
 
 	const liveConfig = (): LiveEngineConfig => {
 		const g = globals();
@@ -769,7 +770,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					image: imageRenderer ?? undefined,
 					ai: commentary ?? undefined,
 					cardFailures,
-					sendErrorMsg: (text) => push.sendErrorMsg(text),
+					sendErrorMsg: masterTellers(push, log).sendErrorMsg,
 					// 单列一个来源:主人私聊的 60 秒节流按来源算,与 B 站动态引擎的告警(风控之类)
 					// 共用一个的话,一边刚报过,另一边这次出图失败的告警就被吞了。
 					emitEngineError: (message) =>
@@ -1341,7 +1342,33 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
  * 再 @ 一次全体)、`allowAtAll`(掉了「每条直播推送都 @全体」那个修过的 bug 直接回归)。
  * 历史记成什么不另说:它记的就是交出去的那把特性键。
  */
-type PushForEngines = Pick<PushRouter, "push" | "sendPrivateMsg" | "sendErrorMsg">;
+type PushForEngines = Pick<PushRouter, "push" | "notifyMaster">;
+
+/**
+ * 引擎窄接口上「告诉主人」的两个口,转调 {@link PushRouter.notifyMaster}:没送到记一条 warn、
+ * 仍回 `void`(引擎从来不看结果)。`sendErrorMsg` 先 `logger.error` 再转调 ——
+ * `notifyMaster` 自己只发、不记 error 日志,这一条是原 `PushRouter.sendErrorMsg` 多打的那条,
+ * 现在由调用方自己打。3a-30 把引擎里这些旁路整个删掉时,这个函数跟着删。
+ */
+export function masterTellers(
+	push: Pick<PushRouter, "notifyMaster">,
+	logger: Logger,
+): {
+	sendPrivateMsg: (text: string) => Promise<void>;
+	sendErrorMsg: (text: string) => Promise<void>;
+} {
+	const tell = async (text: string): Promise<void> => {
+		const r = await push.notifyMaster(text);
+		if (!r.ok) logger.warn(`[push] 通知主人没送到: ${r.message}`);
+	};
+	return {
+		sendPrivateMsg: tell,
+		sendErrorMsg: async (text) => {
+			logger.error(`[push] ${text}`);
+			await tell(text);
+		},
+	};
+}
 
 /**
  * B 站 uid → 订阅 id。引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50),
@@ -1446,6 +1473,7 @@ export function boundLivePush(
 export function makeDynamicPushLike(
 	push: PushForEngines,
 	subscriptionIdOf: SubscriptionIdOf,
+	logger: Logger,
 ): DynamicPushLike {
 	return {
 		async push({ uid, anchors }) {
@@ -1453,8 +1481,7 @@ export function makeDynamicPushLike(
 			if (subscriptionId === undefined) return dropAnchors(anchors);
 			await boundPostPush(push, subscriptionId)(anchors);
 		},
-		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
-		sendErrorMsg: (text) => push.sendErrorMsg(text),
+		...masterTellers(push, logger),
 	};
 }
 
@@ -1462,6 +1489,7 @@ export function makeDynamicPushLike(
 export function makeLivePushLike(
 	push: PushForEngines,
 	subscriptionIdOf: SubscriptionIdOf,
+	logger: Logger,
 ): LivePushLike {
 	return {
 		async push({ uid, type, anchors }) {
@@ -1473,7 +1501,7 @@ export function makeLivePushLike(
 				anchors: toPushAnchors(anchors, (content) => collapseSegments(segmentToPayload(content))),
 			});
 		},
-		sendPrivateMsg: (text) => push.sendPrivateMsg(text),
+		sendPrivateMsg: masterTellers(push, logger).sendPrivateMsg,
 	};
 }
 

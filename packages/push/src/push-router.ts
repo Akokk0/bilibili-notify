@@ -18,6 +18,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	fail,
 	inQuietHours,
+	isPrivateTarget,
 	platformSupportsAtAll,
 	resolve,
 	subscriptionIdentityOf,
@@ -166,10 +167,7 @@ interface AnchorRound {
 /** Options for constructing a PushRouter instance. */
 export interface PushRouterOptions {
 	/** Platform-neutral push dispatcher — translates targetId → platform delivery. */
-	dispatcher: Pick<
-		TargetDispatcher,
-		"send" | "sendPrivate" | "resolve" | "isEnabled" | "isAvailable"
-	>;
+	dispatcher: Pick<TargetDispatcher, "send" | "resolve" | "isEnabled" | "isAvailable">;
 	/** Subscription store — used to resolve routing per subscription id + feature. */
 	store: SubscriptionStore;
 	/** Optional master PushTarget for private error notifications. */
@@ -195,7 +193,7 @@ export interface PushRouterOptions {
 	 *
 	 * **每次推送交进来时现问一次**,不在构造时快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
 	 *
-	 * 发给主人的私聊(`sendToMaster` / `sendPrivateMsg`)**不受它管** —— 指令回复走的
+	 * 发给主人的私聊(`notifyMaster`)**不受它管** —— 指令回复走的
 	 * 就是那条路,连同挡掉的话主人只会看到指令毫无反应。
 	 */
 	muted: () => boolean;
@@ -212,7 +210,7 @@ export interface PushRouterOptions {
  * The standalone runtime's push router. Routing comes from
  * store.findById(subscriptionId)?.routing[feature] → targetId[] → dispatcher.send(targetId, payload).
  * 键是订阅自己的 id,不是 B 站 uid(ADR-0019 决策 50):B 站引擎那条边在宿主里先把 uid 翻成 id。
- * The old pushArrMap, broadcastToTargets, sendPrivateMsg/sendErrorMsg are gone.
+ * The old pushArrMap, broadcastToTargets, sendToMaster/sendPrivateMsg/sendErrorMsg are gone —— 主人通知只剩 notifyMaster。
  */
 export class PushRouter {
 	private readonly dispatcher: PushRouterOptions["dispatcher"];
@@ -258,7 +256,7 @@ export class PushRouter {
 
 	/**
 	 * 热替换 master PushTarget。adapter 在 globals/targets 变化后调用,
-	 * 后续 `sendPrivateMsg` / `sendErrorMsg` 立即用新目标。
+	 * 后续 `notifyMaster` 立即用新目标。
 	 * `null` 表示"无 master 配置",私聊路径变 no-op。
 	 */
 	setMaster(target: PushTarget | null): void {
@@ -669,7 +667,7 @@ export class PushRouter {
 	 * 若不复检,一次因目标暂时不可达(如 OneBot WS 正在重连)而进入重试的推送,
 	 * 会在用户"取消"之后、目标恢复可达时才真正发出,造成"取消了还在推"的错觉
 	 * (routing 早已改了,只是这条重试还攥着入口时那份旧 targetId 没放手)。
-	 * `sendToMaster` 等非订阅路由的调用不传 `routing`,不受影响。
+	 * `notifyMaster` 等非订阅路由的调用不传 `routing`,不受影响。
 	 *
 	 * 复检认的是**这条推送自己那条订阅**(按订阅 id,ADR-0019 决策 50):同一个 UP 配了
 	 * 两条订阅时,另一条还路由着这个目标不算数。
@@ -677,7 +675,7 @@ export class PushRouter {
 	async sendToTarget(
 		targetId: string,
 		payload: NotificationPayload,
-		opts?: { private?: boolean; routing?: { subscriptionId: string; feature: FeatureKey } },
+		opts?: { routing?: { subscriptionId: string; feature: FeatureKey } },
 	): Promise<DeliveryResult> {
 		if (this.disposed) return fail("unavailable", "disposed");
 
@@ -704,10 +702,7 @@ export class PushRouter {
 			}
 
 			try {
-				const result = opts?.private
-					? await this.dispatcher.sendPrivate(targetId, payload)
-					: await this.dispatcher.send(targetId, payload);
-				return result;
+				return await this.dispatcher.send(targetId, payload);
 			} catch (e) {
 				// 抛错只留给 bug(ADR-0026 决策 1):派发器自己不该抛,真抛了按「暂时不可用」记。
 				const message = e instanceof Error ? e.message : String(e);
@@ -733,27 +728,25 @@ export class PushRouter {
 	}
 
 	/**
-	 * Send a private message to the configured master target.
-	 * No-op if no master is configured or target is unavailable.
+	 * 告诉主人一声。字符串当纯文字消息。只发、不记 error 日志 —— 要记的由调用方自己打。
+	 *
+	 * 结果码:已销毁 `unavailable`;没配主人 `not_configured`;主人目标不是私聊 `invalid`
+	 * (保存时本来就拦了,这里是兜底:盘上读进来的旧值不拒开机);目标不可达 `unavailable`;
+	 * 其余照 {@link PushRouter.sendToTarget}。不受静音管(指令回复走的就是这条路)。
 	 */
-	async sendToMaster(payload: NotificationPayload): Promise<DeliveryResult | null> {
-		if (this.disposed || !this.master) return null;
+	async notifyMaster(payload: string | NotificationPayload): Promise<DeliveryResult> {
+		if (this.disposed) return fail("unavailable", "disposed");
+		if (!this.master) return fail("not_configured", "没有配置主人目标");
+		if (!isPrivateTarget(this.master)) {
+			return fail("invalid", `主人目标 ${this.master.id} 不是私聊目标，无法悄悄通知主人`);
+		}
 		if (!this.refreshMasterReachability()) {
 			this.logger.debug("[push] master 目标不可达，跳过本次私信通知");
-			return null;
+			return fail("unavailable", "主人目标不可达");
 		}
-		return this.sendToTarget(this.master.id, payload, { private: true });
-	}
-
-	/** Convenience: send a plain-text error message to the master. */
-	async sendPrivateMsg(text: string): Promise<void> {
-		await this.sendToMaster({ kind: "text", text });
-	}
-
-	/** Convenience: log the error and optionally notify master. */
-	async sendErrorMsg(reason: string): Promise<void> {
-		this.logger.error(`[push] ${reason}`);
-		await this.sendPrivateMsg(reason);
+		const message: NotificationPayload =
+			typeof payload === "string" ? { kind: "text", text: payload } : payload;
+		return this.sendToTarget(this.master.id, message);
 	}
 
 	private sleep(ms: number): Promise<void> {

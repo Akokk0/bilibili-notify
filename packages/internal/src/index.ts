@@ -47,6 +47,7 @@ export {
 	isDirectConnection,
 	isExtensionConnection,
 	isMirrorPrefix,
+	isPrivateTarget,
 	issuesFromZod,
 	isTargetPaused,
 	isWebhookConnection,

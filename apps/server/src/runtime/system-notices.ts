@@ -24,7 +24,12 @@ const base = { id: z.string(), createdAt: z.string(), acknowledgedAt: z.string()
 
 /** 盘上的一条:contract 的形状,外加看过的时刻。 */
 const StoredNoticeSchema = z.discriminatedUnion("kind", [
-	z.object({ ...base, kind: z.literal("migrated"), cardSkinsDropped: z.boolean() }),
+	z.object({
+		...base,
+		kind: z.literal("migrated"),
+		cardSkinsDropped: z.boolean(),
+		masterTargetCleared: z.boolean(),
+	}),
 	z.object({
 		...base,
 		kind: z.literal("generation-failed"),

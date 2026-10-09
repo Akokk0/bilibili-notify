@@ -16,6 +16,7 @@ import type {
 	Connection,
 	DirectConnection,
 	ExtensionConnection,
+	PushTarget,
 	WebhookConnection,
 } from "./schema/targets.js";
 
@@ -141,6 +142,17 @@ export type PushTargetScope = (typeof PUSH_TARGET_SCOPES)[number];
  */
 export const PUSH_TARGET_KINDS = ["session", "endpoint"] as const;
 export type PushTargetKind = (typeof PUSH_TARGET_KINDS)[number];
+
+/**
+ * 这个目标是不是一个私聊会话 —— 「主人目标只许指向私聊」(ADR-0021 决策 57)的唯一判据。
+ * 服务端的保存闸、发送时复检、迁移和面板的下拉共用这一处;目标不存在算否。
+ * 住零依赖的 constants:面板拿得到(根入口会把 zod 拽进 bundle)。
+ */
+export function isPrivateTarget(
+	target: PushTarget | undefined,
+): target is Extract<PushTarget, { kind: "session" }> {
+	return target?.kind === "session" && target.scope === "private";
+}
 
 /**
  * **连接**能连的平台。schema 本体在 schema/targets.ts(`ConnectionPlatformSchema`),

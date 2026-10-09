@@ -45,10 +45,6 @@ function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 			calls.push(targetId);
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
-		sendPrivate: async (targetId) => {
-			calls.push(targetId);
-			return { ok: true, latencyMs: 1 } as DeliveryResult;
-		},
 		resolve: (id) =>
 			({
 				id,

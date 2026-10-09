@@ -21,7 +21,6 @@ function makeUnreachableDispatcher(): FakeDispatcher {
 		isAvailable: () => false, // 永远不可达 → sendToTarget 进入 sleep retry 循环
 		isEnabled: () => true,
 		send: async (): Promise<DeliveryResult> => fail("unavailable", "unreachable"),
-		sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "unreachable"),
 		resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 	};
 }
@@ -129,7 +128,6 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send,
-			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -175,7 +173,6 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			isAvailable: () => true,
 			isEnabled: () => true,
 			send: (id) => send(id),
-			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 		const onSend = vi.fn();
@@ -240,7 +237,6 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 			send: async (): Promise<DeliveryResult> => {
 				throw new Error("dispatcher exploded");
 			},
-			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 		const push = new PushRouter({

@@ -22,7 +22,6 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import {
-	fail,
 	makeEmptySubscription,
 	sameIdentity,
 	subscriptionIdentityOf,
@@ -87,7 +86,6 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 			isAvailable: (id) => (id === "target-a" ? aAvailable : true),
 			isEnabled: () => true,
 			send: () => send(),
-			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -148,7 +146,6 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send: () => send(),
-			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 
@@ -207,7 +204,6 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 			isAvailable: () => available,
 			isEnabled: () => true,
 			send: () => send(),
-			sendPrivate: async (): Promise<DeliveryResult> => fail("unavailable", "stub"),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
 		};
 

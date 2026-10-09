@@ -6,8 +6,8 @@
  * JSON。这里把每种载荷的**完整请求体**钉成字面值:内部怎么改名,下面的期望值都不许动
  * (要改只能在适配器里映射回这些名字;3a-16 起内部已改叫 `image-group` / `mergeForward` / `kind`,适配器在映射)。
  *
- * 钉的是今天的真实输出,看着别扭也照实钉 —— 例如 `private` 今天是 `!!pushOpts.private`
- * (「强制私聊标志」),不是写死的 false。
+ * 钉的是今天的真实输出,看着别扭也照实钉 —— 例如 `private` 这一格已经没有「强制私聊」可表达,
+ * 但线上格式冻结(ADR-0024 决策 5),所以留着、恒为 false。
  *
  * 断言对象是 `JSON.parse(body)`:`undefined` 字段在线上不存在,用 toEqual 直接比内存对象
  * 会把「缺格」和「值是 undefined」混为一谈。fetch 用 stub,不打真实网络;`ts` 用假时钟。
@@ -114,13 +114,8 @@ const PAYLOADS = {
 	},
 } satisfies Record<NotificationPayload["kind"], NotificationPayload>;
 
-const send = (
-	platform: string,
-	payload: NotificationPayload,
-	pushOpts?: { private?: boolean },
-	secret?: string,
-) =>
-	createWebhookAdapter({ logger }).send(connection(platform, secret), target(), payload, pushOpts);
+const send = (platform: string, payload: NotificationPayload, secret?: string) =>
+	createWebhookAdapter({ logger }).send(connection(platform, secret), target(), payload);
 
 describe("webhook 线上格式 — generic 通用 JSON", () => {
 	const envelope = {
@@ -225,17 +220,19 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 		});
 	});
 
-	it("`private` 今天是「强制私聊标志」:传 true 才为 true,不传 / false 为 false", async () => {
-		await send("generic", PAYLOADS.text, { private: true });
-		expect(sentBody()).toMatchObject({ private: true, scope: "group" });
-		await send("generic", PAYLOADS.text, { private: false });
-		expect(sentBody()).toMatchObject({ private: false });
+	it("`private` 这一格留着、恒为 false(线上格式冻结,ADR-0024 决策 5):私聊目标也一样", async () => {
 		await send("generic", PAYLOADS.text);
-		expect(sentBody()).toMatchObject({ private: false });
+		expect(sentBody()).toMatchObject({ private: false, scope: "group" });
+		await createWebhookAdapter({ logger }).send(
+			connection("generic"),
+			target({ scope: "private" }),
+			PAYLOADS.text,
+		);
+		expect(sentBody()).toMatchObject({ private: false, scope: "private" });
 	});
 
 	it("请求头:content-type + secret 头", async () => {
-		await send("generic", PAYLOADS.text, undefined, "s3cr3t");
+		await send("generic", PAYLOADS.text, "s3cr3t");
 		const init = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
 		expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://hook.local/in");
 		expect(init.method).toBe("POST");

@@ -69,7 +69,10 @@ export class MasterNotifier {
 		if (now - last < NOTIFY_DEBOUNCE_MS) return;
 		this.lastNotifiedBySource.set(sourceKey, now);
 		try {
-			await this.opts.push.sendPrivateMsg(text);
+			const r = await this.opts.push.notifyMaster(text);
+			if (!r.ok) {
+				this.opts.logger.warn(`[master-notifier] 私信没送到 source=${sourceKey}：${r.message}`);
+			}
 		} catch (e) {
 			this.opts.logger.warn(`[master-notifier] 私信失败 source=${sourceKey}：${String(e)}`);
 		}

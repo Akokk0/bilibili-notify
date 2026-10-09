@@ -25,7 +25,7 @@ import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
  */
 /**
  * 截流闸的口子(devtools 的推送截流接在这里):在「所有检查都过了、马上要调适配器 `send`」那一处问它。
- * 回了结果就用那个结果、不调适配器;回 `undefined` 就照常发。三条发送路(`send` / `sendPrivate` /
+ * 回了结果就用那个结果、不调适配器;回 `undefined` 就照常发。两条发送路(`send` /
  * `sendToAddress`)共用这一处。
  *
  * `isProvisional`:这次是 `sendToAddress` 发的,`target` 是只活在这一次调用里的临时目标。
@@ -33,7 +33,6 @@ import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
 export type SendInterceptHandler = (send: {
 	connection: Connection;
 	target: PushTarget;
-	private: boolean;
 	isProvisional: boolean;
 	payload: NotificationPayload;
 }) => DeliveryResult | undefined;
@@ -45,12 +44,7 @@ export interface TargetDispatcherOptions {
 	/** 开发版的推送截流;生产不传。见 {@link SendInterceptHandler}。 */
 	interceptSend?: SendInterceptHandler;
 	/** Optional hook fired after every send (success or failure). Used by the history store. */
-	onDelivery?: (
-		target: PushTarget,
-		payload: NotificationPayload,
-		result: DeliveryResult,
-		opts: { private: boolean },
-	) => void;
+	onDelivery?: (target: PushTarget, payload: NotificationPayload, result: DeliveryResult) => void;
 }
 
 export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDispatcher {
@@ -99,11 +93,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		},
 
 		send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
-			return dispatch(targetId, payload, { private: false });
-		},
-
-		sendPrivate(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
-			return dispatch(targetId, payload, { private: true });
+			return dispatch(targetId, payload);
 		},
 
 		async sendToAddress(
@@ -135,7 +125,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 				return result;
 			}
 			// 不触发 onDelivery:它会去写 `target.testStatus`,临时目标不在表里。不重试、不落历史。
-			return deliver(connection, platformAdapter, target, payload, { private: false }, true);
+			return deliver(connection, platformAdapter, target, payload, true);
 		},
 
 		connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined {
@@ -175,56 +165,45 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return fail("unavailable", message);
 	}
 
-	async function dispatch(
-		targetId: string,
-		payload: NotificationPayload,
-		options: { private: boolean },
-	): Promise<DeliveryResult> {
+	async function dispatch(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
 		const target = findTarget(targetId);
 		if (!target) return fail("not_found", "target not found");
 		const connection = findConnection(target.connectionId);
 		if (!connection) {
 			const result = fail("not_found", `connection not found: connectionId=${target.connectionId}`);
 			log.warn(`[sink] ${result.message} (target=${target.id})`);
-			opts.onDelivery?.(target, payload, result, options);
+			opts.onDelivery?.(target, payload, result);
 			return result;
 		}
 		const platformAdapter = adapterFor(connection);
 		if (!platformAdapter) {
 			const result = noAdapter(connection);
 			log.warn(`[sink] ${result.message} (target=${target.id})`);
-			opts.onDelivery?.(target, payload, result, options);
+			opts.onDelivery?.(target, payload, result);
 			return result;
 		}
-		const result = await deliver(connection, platformAdapter, target, payload, options, false);
-		opts.onDelivery?.(target, payload, result, options);
+		const result = await deliver(connection, platformAdapter, target, payload, false);
+		opts.onDelivery?.(target, payload, result);
 		return result;
 	}
 
-	/** 三条发送路共用的最后一步:先问截流闸,没人截才调适配器;适配器抛错在这里接住。 */
+	/** 两条发送路共用的最后一步:先问截流闸,没人截才调适配器;适配器抛错在这里接住。 */
 	async function deliver(
 		connection: Connection,
 		platformAdapter: PlatformAdapter,
 		target: PushTarget,
 		payload: NotificationPayload,
-		options: { private: boolean },
 		isProvisional: boolean,
 	): Promise<DeliveryResult> {
 		const intercepted = opts.interceptSend?.({
 			connection,
 			target,
-			private: options.private,
 			isProvisional,
 			payload,
 		});
 		if (intercepted) return intercepted;
-		// 只在「强制私聊」路径传 private:true。普通 send 不该传 false ——
-		// 旧实现恒 spread `{ private: options.private }`,把 false 也送给 adapter,
-		// 与 OneBot adapter 内 `opts.private ?? scope` 的 ?? 配合就会让 scope==="private"
-		// 的 target 走错分支(已同步修 onebot.ts,这里双层防御)。
-		const sendOpts = options.private ? { private: true } : {};
 		try {
-			return await platformAdapter.send(connection, target, payload, sendOpts);
+			return await platformAdapter.send(connection, target, payload);
 		} catch (e) {
 			return thrown(e, `target=${target.id} send`);
 		}

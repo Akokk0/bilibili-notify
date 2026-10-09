@@ -31,12 +31,11 @@ const TARGET: PushTarget = {
 function call(
 	gate: ReturnType<typeof createCaptureGate>,
 	payload: NotificationPayload,
-	over: { private?: boolean; isProvisional?: boolean; target?: PushTarget } = {},
+	over: { isProvisional?: boolean; target?: PushTarget } = {},
 ) {
 	return gate.intercept({
 		connection: CONNECTION,
 		target: over.target ?? TARGET,
-		private: over.private ?? false,
 		isProvisional: over.isProvisional ?? false,
 		payload,
 	});
@@ -54,7 +53,7 @@ describe("createCaptureGate", () => {
 	it("默认关着:放行(回 undefined),列表为空", () => {
 		const gate = createCaptureGate();
 
-		expect(call(gate, { kind: "text", text: "hi" }, { private: true })).toBeUndefined();
+		expect(call(gate, { kind: "text", text: "hi" })).toBeUndefined();
 
 		expect(gate.enabled()).toBe(false);
 		expect(gate.entries()).toEqual([]);
@@ -92,11 +91,16 @@ describe("createCaptureGate", () => {
 		]);
 	});
 
-	it("私聊那条路记 private:true", () => {
+	it("目标是私聊会话记 private:true,群目标记 false(由目标自己的 scope 算)", () => {
 		const gate = createCaptureGate();
 		gate.enable();
-		call(gate, { kind: "text", text: "x" }, { private: true });
-		expect(gate.entries()[0]).toMatchObject({ private: true, targetName: "测试群" });
+		call(
+			gate,
+			{ kind: "text", text: "x" },
+			{ target: { ...TARGET, scope: "private" } as PushTarget },
+		);
+		call(gate, { kind: "text", text: "x" });
+		expect(gate.entries().map((e) => e.private)).toEqual([true, false]);
 	});
 
 	it("按会话坐标发的:目标名显示成「群 <地址>」/「私聊 <地址>」", () => {

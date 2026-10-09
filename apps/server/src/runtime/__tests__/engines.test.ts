@@ -79,8 +79,7 @@ vi.mock("@bilibili-notify/push", () => ({
 		stop = vi.fn();
 		setMaster = vi.fn();
 		push = vi.fn(async () => []);
-		sendPrivateMsg = vi.fn(async () => {});
-		sendErrorMsg = vi.fn(async () => {});
+		notifyMaster = vi.fn(async () => ({ ok: true as const, latencyMs: 1 }));
 		constructor(opts: any) {
 			this.opts = opts;
 			H.push.push(this);
@@ -770,7 +769,10 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 		await vi.waitFor(() => expect(bili.streak).toBe(1));
 		// 这一串已经提醒过了:B 站那头紧接着也失败的话,不会再私聊一遍。
 		await vi.waitFor(() => expect(bili.notified).toBe(true));
-		expect(H.push[0].sendErrorMsg).toHaveBeenCalledTimes(1);
+		// 告诉主人的有两路:作品投递自己的失败提醒(直接一条),和 engine-error 经 MasterNotifier 的那条
+		// (带 `[extension-post]` 前缀)。「只提醒一次」说的是前一路 —— B 站那头不会再补一条。
+		const texts = H.push[0].notifyMaster.mock.calls.map((c: unknown[]) => String(c[0]));
+		expect(texts.filter((t: string) => !t.startsWith("[extension-post]"))).toHaveLength(1);
 	});
 });
 

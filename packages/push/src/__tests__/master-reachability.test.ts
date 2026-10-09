@@ -42,10 +42,6 @@ function makeDispatcher(box: { up: boolean }): { dispatcher: FakeDispatcher; sen
 			sent.push(id);
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
-		sendPrivate: async (id) => {
-			sent.push(id);
-			return { ok: true, latencyMs: 1 } as DeliveryResult;
-		},
 		resolve: (id) => ({ id, name: id }) as unknown as PushTarget,
 	};
 	return { dispatcher, sent };
@@ -60,14 +56,19 @@ const emptyStore: SubscriptionStore = {
 	replaceAll: () => {},
 };
 
-const master = { id: "m1", name: "主人" } as unknown as PushTarget;
+const master = {
+	id: "m1",
+	name: "主人",
+	kind: "session",
+	scope: "private",
+} as unknown as PushTarget;
 const text: NotificationPayload = { kind: "text", text: "hi" };
 
 const lv = (logs: LogRec[], level: LogRec["level"], frag: string) =>
 	logs.filter((l) => l.level === level && l.msg.includes(frag));
 
 describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
-	it("持续不可达只 error 一次,后续 sendToMaster 走 debug 跳过", async () => {
+	it("持续不可达只 error 一次,后续 notifyMaster 走 debug 跳过", async () => {
 		const box = { up: false };
 		const { dispatcher } = makeDispatcher(box);
 		const { logger, logs } = makeLogger();
@@ -76,8 +77,8 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 		push.start(); // 首次未知→不可达 → error 一次
 		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
 
-		expect(await push.sendToMaster(text)).toBeNull(); // 仍不可达
-		expect(await push.sendToMaster(text)).toBeNull(); // 仍不可达
+		expect(await push.notifyMaster(text)).toMatchObject({ ok: false, code: "unavailable" }); // 仍不可达
+		expect(await push.notifyMaster(text)).toMatchObject({ ok: false, code: "unavailable" }); // 仍不可达
 		// 不再追加 error;两次调用各一条 debug 跳过
 		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
 		expect(lv(logs, "debug", "跳过本次私信通知")).toHaveLength(2);
@@ -90,15 +91,15 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 		const push = new PushRouter({ ...pushBase(), dispatcher, store: emptyStore, master, logger });
 
 		push.start(); // error 一次
-		await push.sendToMaster(text); // debug 跳过
+		await push.notifyMaster(text); // debug 跳过
 
 		box.up = true; // 恢复
-		const res = await push.sendToMaster(text);
+		const res = await push.notifyMaster(text);
 		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(1);
-		expect(res).not.toBeNull();
+		expect(res.ok).toBe(true);
 		expect(sent).toEqual(["m1"]); // 真正投递到 master
 		// 不抖动:再次可达不重复 info
-		await push.sendToMaster(text);
+		await push.notifyMaster(text);
 		expect(lv(logs, "info", "master 目标已恢复可达")).toHaveLength(1);
 	});
 
@@ -119,8 +120,13 @@ describe("PushRouter — master 可达性边沿状态机(Q5)", () => {
 		push.start(); // 可达,无 error
 
 		box.up = false;
-		push.setMaster({ id: "m2", name: "新主人" } as unknown as PushTarget); // 重置边沿
-		await push.sendToMaster(text); // 新目标不可达 → 全新 error 一次
+		push.setMaster({
+			id: "m2",
+			name: "新主人",
+			kind: "session",
+			scope: "private",
+		} as unknown as PushTarget); // 重置边沿
+		await push.notifyMaster(text); // 新目标不可达 → 全新 error 一次
 		expect(lv(logs, "error", "告警背channel已断")).toHaveLength(1);
 	});
 });

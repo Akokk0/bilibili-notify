@@ -167,7 +167,7 @@ describe("createDevtools · 截流接线", () => {
 		expect(send).toHaveBeenCalledTimes(1);
 	});
 
-	it("截流开着:send / sendPrivate / sendToAddress 三条路都不出网,各记恰好一条;收摊后又真发", async () => {
+	it("截流开着:send / sendToAddress 两条路都不出网,各记恰好一条;收摊后又真发", async () => {
 		const send = vi.fn(async () => ok({ latencyMs: 1 }));
 		const { dev, dispatcher } = setup(createPlatformAdapterRegistry([onebotAdapter(send)]));
 
@@ -177,7 +177,6 @@ describe("createDevtools · 截流接线", () => {
 		const res = await dev.registry.run("push.capture", {});
 		expect(res.active).toEqual([{ scenarioId: "push.capture", label: "推送截流中 · 拦下 0 条" }]);
 		await dispatcher.send("t", { kind: "text", text: "a" });
-		await dispatcher.sendPrivate("t", { kind: "text", text: "b" });
 		await dispatcher.sendToAddress(
 			"ad",
 			{ scope: "group", address: "777" },
@@ -187,10 +186,9 @@ describe("createDevtools · 截流接线", () => {
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(dev.captures.status().entries.map((e) => [e.text, e.private, e.targetName])).toEqual([
 			["a", false, "群"],
-			["b", true, "群"],
 			["c", false, "群 777"],
 		]);
-		expect(dev.registry.active()[0]?.label).toBe("推送截流中 · 拦下 3 条");
+		expect(dev.registry.active()[0]?.label).toBe("推送截流中 · 拦下 2 条");
 
 		dev.registry.reset("push.capture");
 		await dispatcher.send("t", { kind: "text", text: "3" });

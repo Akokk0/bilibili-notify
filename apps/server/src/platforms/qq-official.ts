@@ -1281,7 +1281,6 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
-			_opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			if (!isConnectionOn(connection, "qq-official") || target.platform !== "qq-official") {
 				return fail(

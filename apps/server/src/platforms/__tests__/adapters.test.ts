@@ -2,7 +2,7 @@
  * 单元测试 — `createOnebotAdapter` / `createWebhookAdapter`(平台投递适配器)。
  *
  * 守护契约(onebot):
- *   - scope/opts.private 决定 /send_group_msg vs /send_private_msg + group_id/user_id
+ *   - scope 决定 /send_group_msg vs /send_private_msg + group_id/user_id
  *   - baseUrl 尾斜杠裁剪;accessToken → Authorization Bearer;payload 段 → OneBot segment
  *   - retcode!=0 / HTTP 非 2xx / fetch 抛错 → 失败且 logger.warn;空 payload → "empty payload"
  *   - 失败一律是结果形状(ADR-0026):`code` 取标准码表,平台自己的码只在 `upstreamCode`
@@ -288,14 +288,12 @@ describe("onebot — send 路由", () => {
 		expect(lastBody().user_id).toBe(456);
 	});
 
-	it("opts.private 覆盖 group scope", async () => {
+	it("群还是私聊只看 target.scope:group scope 走 send_group_msg", async () => {
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
-		await ad.send(obConnection(), obTarget({ address: "789" }), TEXT, {
-			private: true,
-		});
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
-		expect(lastBody().user_id).toBe(789);
+		await ad.send(obConnection(), obTarget({ address: "789" }), TEXT);
+		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_group_msg");
+		expect(lastBody().group_id).toBe(789);
 	});
 
 	it("NapCat 掉线特征 err → 附加可操作提示", async () => {
@@ -331,19 +329,6 @@ describe("onebot — send 路由", () => {
 			message: "无权限发送消息",
 			upstreamCode: 1200,
 		});
-	});
-
-	it("opts.private=false 不应吃掉 scope:private(回归守卫)", async () => {
-		// 复发点:旧实现 `opts.private ?? scope === "private"` 用 nullish 而非 falsy,
-		// TargetDispatcher.send 路径恒传 `{ private: false }`,?? 不替换 false →
-		// scope:"private" 被忽略,走 group 分支 → "group: groupId missing"。
-		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
-		const ad = createOnebotAdapter(obOpts());
-		await ad.send(obConnection(), obTarget({ scope: "private", address: "456" }), TEXT, {
-			private: false,
-		});
-		expect(fetchMock.mock.calls[0]?.[0]).toBe("http://nb:3000/send_private_msg");
-		expect(lastBody().user_id).toBe(456);
 	});
 
 	it("private 缺 userId / group 缺 groupId → ok:false 且不发请求", async () => {

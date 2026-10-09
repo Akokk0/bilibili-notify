@@ -3,6 +3,7 @@ import {
 	CONNECTION_PLATFORMS,
 	type ConnectionPlatform,
 	DIRECT_CONNECTORS,
+	isPrivateTarget,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PUSH_TARGET_KINDS,
@@ -462,7 +463,7 @@ export interface ChatIdentity {
  * 群目标的 `address` 是群,拿它当主人身份等于把整个群当成主人。
  */
 export function chatIdentityOf(target: PushTarget | undefined): ChatIdentity | undefined {
-	if (target?.kind !== "session" || target.scope !== "private" || !target.address) return undefined;
+	if (!isPrivateTarget(target) || !target.address) return undefined;
 	return { platform: target.platform, address: target.address };
 }
 

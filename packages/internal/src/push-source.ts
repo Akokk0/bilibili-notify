@@ -59,12 +59,11 @@ export interface PlatformDialect {
 	readonly platforms: readonly string[];
 	/** Return whether this dialect can deliver to `target` over `connection` right now. */
 	isAvailable(connection: Connection, target: PushTarget): boolean;
-	/** Deliver `payload` to `target` over `connection`. `private=true` flips group → private semantics where applicable. */
+	/** Deliver `payload` to `target` over `connection`. 群还是私聊只看 `target.scope`。 */
 	send(
 		connection: Connection,
 		target: PushTarget,
 		payload: NotificationPayload,
-		opts?: { private?: boolean },
 	): Promise<DeliveryResult>;
 	/**
 	 * 平台能力快照(探测结果的缓存,同步读、不打网络)。没有能力概念的平台不实现 ——

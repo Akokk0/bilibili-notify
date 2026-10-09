@@ -121,6 +121,7 @@ const migrated: SystemNotice = {
 	createdAt: "2026-10-02T00:00:00.000Z",
 	kind: "migrated",
 	cardSkinsDropped: true,
+	masterTargetCleared: false,
 };
 const rolledBack: SystemNotice = {
 	id: "n2",

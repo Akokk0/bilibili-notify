@@ -409,27 +409,17 @@ describe("桥 adapter", () => {
 		}
 	});
 
-	// ---- 私聊覆盖 ----------------------------------------------------------
+	// ---- 群还是私聊只看目标自己的 scope -------------------------------------
 
-	/**
-	 * 调用方(`TargetDispatcher.send`)**恒传 `{ private: false }`**,所以这里只能认
-	 * `=== true`。写成 `opts.private ?? scope === "private"` 的话 `??` 不替换 false,
-	 * scope 是 private 的目标会永远走群那一支 —— onebot 上栽过一次的坑。
-	 */
-	it("private 覆盖只认 === true;scope 本来就是 private 的也走私聊", async () => {
+	it("请求里的 scope 就是目标自己的 scope:群目标走群,私聊目标走私聊", async () => {
 		const h = harness();
-		await h.adapter.send(connection(), target(), { kind: "text", text: "x" }, { private: true });
-		expect(h.lastRequest().target.scope).toBe("private");
-
-		await h.adapter.send(connection(), target(), { kind: "text", text: "x" }, { private: false });
+		await h.adapter.send(connection(), target(), { kind: "text", text: "x" });
 		expect(h.lastRequest().target.scope).toBe("group");
 
-		await h.adapter.send(
-			connection(),
-			target({ scope: "private", address: "u1" }),
-			{ kind: "text", text: "x" },
-			{ private: false },
-		);
+		await h.adapter.send(connection(), target({ scope: "private", address: "u1" }), {
+			kind: "text",
+			text: "x",
+		});
 		expect(h.lastRequest().target.scope).toBe("private");
 	});
 
@@ -585,7 +575,7 @@ describe("markdown 按能力降级", () => {
 
 	async function sendText(caps: Partial<BridgeCapabilityReport>, text = RICH) {
 		const h = harness(session({}, caps));
-		await h.adapter.send(connection(), target(), { kind: "text", text }, {});
+		await h.adapter.send(connection(), target(), { kind: "text", text });
 		return h.lastRequest().message;
 	}
 
@@ -604,30 +594,24 @@ describe("markdown 按能力降级", () => {
 
 	it("图说明也过一遍 —— 它跟正文一样是主人写的", async () => {
 		const h = harness(session({}, { markdown: "unknown" }));
-		await h.adapter.send(
-			connection(),
-			target(),
-			{ kind: "image", image: { buffer: Buffer.from("x"), mime: "image/png" }, caption: RICH },
-			{},
-		);
+		await h.adapter.send(connection(), target(), {
+			kind: "image",
+			image: { buffer: Buffer.from("x"), mime: "image/png" },
+			caption: RICH,
+		});
 		expect(h.lastRequest().message).toMatchObject({ kind: "image", caption: PLAIN });
 	});
 
 	it("composite:每一段文字都过一遍,图那一段不受影响", async () => {
 		const h = harness(session({}, { markdown: "unknown" }));
-		await h.adapter.send(
-			connection(),
-			target(),
-			{
-				kind: "composite",
-				segments: [
-					{ kind: "text", text: RICH },
-					{ kind: "image", buffer: Buffer.from("x"), mime: "image/png" },
-					{ kind: "link", href: "https://b23.tv/a", title: "**标题**" },
-				],
-			},
-			{},
-		);
+		await h.adapter.send(connection(), target(), {
+			kind: "composite",
+			segments: [
+				{ kind: "text", text: RICH },
+				{ kind: "image", buffer: Buffer.from("x"), mime: "image/png" },
+				{ kind: "link", href: "https://b23.tv/a", title: "**标题**" },
+			],
+		});
 		expect(h.lastRequest().message).toEqual({
 			kind: "composite",
 			segments: [

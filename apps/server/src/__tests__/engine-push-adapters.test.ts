@@ -21,7 +21,13 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import type { Push } from "@bilibili-notify/push";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { segmentContentBuilder } from "../runtime/content-builder";
-import { boundPostPush, makeDynamicPushLike, makeLivePushLike } from "../runtime/engines";
+import {
+	boundPostPush,
+	makeDynamicPushLike,
+	makeLivePushLike,
+	masterTellers,
+} from "../runtime/engines";
+import { silentLogger } from "./support/silent-logger";
 
 /** 只拦 `push`，把交进来的那次推送原样记下来。 */
 function makePushSpy() {
@@ -31,8 +37,10 @@ function makePushSpy() {
 			pushes.push(p);
 			return [];
 		}),
-		sendPrivateMsg: vi.fn(async () => {}),
-		sendErrorMsg: vi.fn(async () => {}),
+		notifyMaster: vi.fn(async (_payload: string | NotificationPayload) => ({
+			ok: true as const,
+			latencyMs: 1,
+		})),
 	};
 	return { push, pushes };
 }
@@ -55,7 +63,7 @@ const messagesOf = async (push: Push, i: number): Promise<NotificationPayload[] 
 describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 	it("下播(9)带词云、总结:下播特性、不 @全体;两个附加项各带自己的键,约定兑现后翻成载荷", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 9,
 			anchors: [
@@ -85,7 +93,7 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 
 	it("约定最后什么都没给(undefined)→ 原样是 undefined,由推送层跳过那个锚点", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 9,
 			anchors: [{ role: "extra", extra: "wordcloud", messages: Promise.resolve(undefined) }],
@@ -95,7 +103,7 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 
 	it("开播(3):允许 @全体(不带 allowAtAll),本体那个锚点**不带**附加项键 —— 带了整张卡会被收窄掉", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 3,
 			anchors: [{ role: "main", messages: [liveText("开播")] }],
@@ -107,7 +115,7 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 
 	it("周期「正在直播」(0):自己的特性键 liveStreaming(历史就记它)、抑制 @全体 —— @全体 是修过的 bug，别让它悄悄回来", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 0,
 			anchors: [{ role: "main", messages: [liveText("正在直播")] }],
@@ -118,7 +126,7 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 
 	it("重启补报(11):走开播的特性键 liveStart(历史记成开播)、不 @全体 —— 不能再被记成正在直播", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 11,
 			anchors: [{ role: "main", messages: [liveText("补报")] }],
@@ -130,7 +138,7 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 
 	it("分条(开播序列):几条消息是本体那一个锚点里的一串,走的是同一张表", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 3,
 			anchors: [{ role: "main", messages: [liveText("一"), liveText("二")] }],
@@ -147,7 +155,7 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 describe("动态引擎那侧的 PushLike 真的把锚点翻过去了", () => {
 	it("主卡是本体、图集是不带键的附加项,同一次推送;特性恒为 post,不抑制 @全体", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeDynamicPushLike(push, subscriptionIdOf).push({
+		await makeDynamicPushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			anchors: [
 				{ role: "main", messages: [[{ kind: "text", text: "动态" }]] },
@@ -193,12 +201,12 @@ describe("动态引擎那侧的 PushLike 真的把锚点翻过去了", () => {
 describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 	it("两个入口都把 uid 换成解析函数给的订阅 id", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 3,
 			anchors: [{ role: "main", messages: [liveText("开播")] }],
 		});
-		await makeDynamicPushLike(push, subscriptionIdOf).push({
+		await makeDynamicPushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			anchors: [{ role: "main", messages: [[{ kind: "text", text: "动态" }]] }],
 		});
@@ -210,7 +218,7 @@ describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 		const unhandled: unknown[] = [];
 		const onUnhandled = (reason: unknown) => void unhandled.push(reason);
 		process.on("unhandledRejection", onUnhandled);
-		await makeLivePushLike(push, subscriptionIdOf).push({
+		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "404",
 			type: 9,
 			anchors: [
@@ -218,7 +226,7 @@ describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 				{ role: "extra", extra: "liveSummary", messages: Promise.reject(new Error("没写出来")) },
 			],
 		});
-		await makeDynamicPushLike(push, subscriptionIdOf).push({
+		await makeDynamicPushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "404",
 			anchors: [
 				{ role: "main", messages: [[{ kind: "text", text: "动态" }]] },
@@ -230,5 +238,54 @@ describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 		process.off("unhandledRejection", onUnhandled);
 		expect(push.push).not.toHaveBeenCalled();
 		expect(unhandled).toEqual([]);
+	});
+});
+
+describe("引擎窄接口上「告诉主人」的两个口转调 notifyMaster", () => {
+	function spy(ok: boolean) {
+		const logs: string[] = [];
+		const logger = {
+			debug() {},
+			info() {},
+			warn: (m: string) => logs.push(`warn:${m}`),
+			error: (m: string) => logs.push(`error:${m}`),
+		};
+		const push = {
+			notifyMaster: vi.fn(async (_payload: string | NotificationPayload) =>
+				ok
+					? { ok: true as const, latencyMs: 1 }
+					: { ok: false as const, code: "not_configured" as const, message: "没有配置主人目标" },
+			),
+		};
+		return { push, logs, logger };
+	}
+
+	it("sendPrivateMsg:把字符串交给 notifyMaster,送到了不留日志", async () => {
+		const { push, logs, logger } = spy(true);
+		await masterTellers(push, logger).sendPrivateMsg("你好");
+		expect(push.notifyMaster).toHaveBeenCalledWith("你好");
+		expect(logs).toEqual([]);
+	});
+
+	it("没送到:记一条 warn、仍回 void(引擎从来不看结果)", async () => {
+		const { push, logs, logger } = spy(false);
+		await expect(masterTellers(push, logger).sendPrivateMsg("你好")).resolves.toBeUndefined();
+		expect(logs).toHaveLength(1);
+		expect(logs[0]).toMatch(/^warn:.*没有配置主人目标/);
+	});
+
+	it("sendErrorMsg:先 error 日志再转调(notifyMaster 自己不记 error)", async () => {
+		const { push, logs, logger } = spy(true);
+		await masterTellers(push, logger).sendErrorMsg("风控了");
+		expect(logs).toEqual(["error:[push] 风控了"]);
+		expect(push.notifyMaster).toHaveBeenCalledWith("风控了");
+	});
+
+	it("动态引擎那侧的 PushLike 带着这两个口", async () => {
+		const { push, logger } = spy(true);
+		const like = makeDynamicPushLike(push as never, subscriptionIdOf, logger);
+		await like.sendPrivateMsg("a");
+		await like.sendErrorMsg("b");
+		expect(push.notifyMaster.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
 	});
 });

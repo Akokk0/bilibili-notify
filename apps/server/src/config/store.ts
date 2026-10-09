@@ -13,6 +13,7 @@ import {
 	type GlobalConfig,
 	GlobalConfigSchema,
 	type Issue,
+	isPrivateTarget,
 	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
@@ -440,6 +441,38 @@ function assertConnectionIdentityStable(current: Connection, next: Connection): 
 		);
 	}
 }
+
+/**
+ * 主人目标只许指向私聊目标(ADR-0021 决策 57)。`targetId` 没给 = 清空,永远放行;
+ * 给了却指向不存在的目标或群 / 频道 / 端点 → 拒收。保存时拦、**开机读盘不拦**(盘上旧值靠迁移清空 +
+ * 发送时复检兜底,不能因为一个主人目标让整个服务起不来)。
+ */
+function assertMasterTarget(
+	master: GlobalConfig["master"],
+	targets: readonly PushTarget[],
+	scope: ConfigScope,
+): void {
+	const targetId = master?.targetId;
+	if (targetId === undefined) return;
+	const target = targets.find((t) => t.id === targetId);
+	if (!target) {
+		throw ConfigValidationError.invalid(
+			scope,
+			"主人目标指向的推送目标不存在，请重新选一个私聊目标",
+			[{ path: ["master", "targetId"], message: "没有这个推送目标" }],
+		);
+	}
+	if (!isPrivateTarget(target)) {
+		throw ConfigValidationError.invalid(
+			scope,
+			`主人目标必须是私聊目标，「${target.name}」不是私聊，女仆没法悄悄告诉主人`,
+			[{ path: ["master", "targetId"], message: "不是私聊目标" }],
+		);
+	}
+}
+
+/** 把当前的主人目标改成不再是私聊,会让主人通知落到群里 —— 拒收,先去系统页换掉主人目标。 */
+const MASTER_TARGET_IN_USE = "它是主人目标，先在系统页把主人目标换掉或清空";
 
 /**
  * 「这条连接不存在」在投递结果里的那一句。
@@ -1189,6 +1222,10 @@ class NodeConfigStore implements ConfigStore {
 			if (patch.core !== undefined) {
 				const parsed = GlobalConfigSchema.safeParse(deepMerge(this.globals, patch.core));
 				if (!parsed.success) throw ConfigValidationError.fromZod("globals", parsed.error);
+				// 只在这次真动了主人那一格时才查:盘上读进来的旧值(群 / 目标没了)不该让别的设置也存不进去。
+				if (patch.core.master !== undefined) {
+					assertMasterTarget(parsed.data.master, this.targets, "globals");
+				}
 				core = parsed.data;
 			}
 			const integrations = new Map(
@@ -1484,6 +1521,9 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.fromZod("targets", parsed.error);
 			}
 			assertTargetOwner(parsed.data, this.connections);
+			if (this.globals.master?.targetId === parsed.data.id && !isPrivateTarget(parsed.data)) {
+				throw ConfigValidationError.invalid("targets", MASTER_TARGET_IN_USE);
+			}
 			// endpoint 目标是连接的派生物,不接受外部凭空创建 —— 但**备份恢复送回来的那条
 			// 是它自己**:导出走 getTargets(),必然带上托管 target。所以放行的判据是 managedBy,
 			// 光看形态会把它一起挡掉,任何含 webhook 连接的备份都恢复不了(而恢复是逐条 await
@@ -1533,6 +1573,9 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.fromZod("targets", parsed.error);
 			}
 			assertTargetOwner(parsed.data, this.connections);
+			if (this.globals.master?.targetId === id && !isPrivateTarget(parsed.data)) {
+				throw ConfigValidationError.invalid("targets", MASTER_TARGET_IN_USE);
+			}
 			const next = [...this.targets];
 			next[idx] = parsed.data;
 			await atomicWriteJson(this.path("targets"), next);
@@ -1571,6 +1614,9 @@ class NodeConfigStore implements ConfigStore {
 					"targets",
 					"这个推送目标由它的连接托管，不能直接删，删它的连接就行",
 				);
+			}
+			if (this.globals.master?.targetId === id) {
+				throw ConfigValidationError.conflict("targets", `不能直接删，${MASTER_TARGET_IN_USE}`);
 			}
 			const next = this.targets.filter((_, i) => i !== idx);
 			await atomicWriteJson(this.path("targets"), next);
@@ -1648,6 +1694,7 @@ class NodeConfigStore implements ConfigStore {
 			// 只换标签表时,现有订阅上的旧 id 跟着剥;订阅也给了的,挂错标签就整份拒(下面 assertKnownTags)。
 			const effSubs = subscriptions ?? withoutUnknownTags(this.subscriptions, effTags).next;
 			for (const t of effTargets) assertTargetOwner(t, effConnections);
+			assertMasterTarget((globals ?? this.globals).master, effTargets, "globals");
 			const synced = syncManagedWebhookTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);
 			assertNoNewIdentityDuplicate(this.subscriptions, replaced.next);

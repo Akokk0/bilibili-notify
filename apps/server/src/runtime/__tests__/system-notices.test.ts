@@ -44,14 +44,22 @@ const open = (runningVersion = "1.0.0") => createSystemNoticeStore({ dir, runnin
 describe("记一条、读清单", () => {
 	it("记下的带 id 与时刻,清单里按先后给出;generation.json 别的格原样留着", async () => {
 		const store = open();
-		const migrated = await store.append({ kind: "migrated", cardSkinsDropped: true });
+		const migrated = await store.append({
+			kind: "migrated",
+			cardSkinsDropped: true,
+			masterTargetCleared: true,
+		});
 		const failed = await store.append({
 			kind: "generation-failed",
 			source: "zero",
 			message: "disk full",
 		});
 
-		expect(migrated).toMatchObject({ kind: "migrated", cardSkinsDropped: true });
+		expect(migrated).toMatchObject({
+			kind: "migrated",
+			cardSkinsDropped: true,
+			masterTargetCleared: true,
+		});
 		expect(typeof migrated.id).toBe("string");
 		expect(migrated.id).not.toBe(failed.id);
 		expect(Number.isNaN(Date.parse(migrated.createdAt))).toBe(false);
@@ -73,7 +81,7 @@ describe("记一条、读清单", () => {
 		const store = open();
 
 		expect(await store.list()).toEqual([]);
-		await store.append({ kind: "migrated", cardSkinsDropped: false });
+		await store.append({ kind: "migrated", cardSkinsDropped: false, masterTargetCleared: false });
 		expect((await readRaw()).notices[0]).toEqual(future);
 	});
 });
@@ -81,7 +89,11 @@ describe("记一条、读清单", () => {
 describe("看过了", () => {
 	it("记 acknowledgedAt,清单里不再有它;别的照旧", async () => {
 		const store = open();
-		const a = await store.append({ kind: "migrated", cardSkinsDropped: false });
+		const a = await store.append({
+			kind: "migrated",
+			cardSkinsDropped: false,
+			masterTargetCleared: false,
+		});
 		const b = await store.append({ kind: "rolled-back", version: "1.0.1" });
 
 		expect(await store.acknowledge(a.id)).toBe(true);
@@ -93,7 +105,7 @@ describe("看过了", () => {
 
 	it("没有这一条 → false,盘上不动", async () => {
 		const store = open();
-		await store.append({ kind: "migrated", cardSkinsDropped: false });
+		await store.append({ kind: "migrated", cardSkinsDropped: false, masterTargetCleared: false });
 		const before = await readFile(generationFile(), "utf8");
 
 		expect(await store.acknowledge("no-such-id")).toBe(false);
@@ -102,7 +114,11 @@ describe("看过了", () => {
 
 	it("连着标两条,两条都记上(写排队,不互相盖掉)", async () => {
 		const store = open();
-		const a = await store.append({ kind: "migrated", cardSkinsDropped: false });
+		const a = await store.append({
+			kind: "migrated",
+			cardSkinsDropped: false,
+			masterTargetCleared: false,
+		});
 		const b = await store.append({ kind: "rolled-back", version: "1.0.1" });
 
 		await Promise.all([store.acknowledge(a.id), store.acknowledge(b.id)]);

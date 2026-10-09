@@ -282,7 +282,6 @@ interface OnebotAction {
 function buildSendAction(
 	target: PushTarget,
 	payload: NotificationPayload,
-	opts: { private?: boolean },
 	botInfo: BotIdentity = FALLBACK_BOT_IDENTITY,
 ): Result<OnebotAction> {
 	// 图集合并转发分支:payload.mergeForward 由设置里的 `imageGroup.mergeForward`
@@ -300,23 +299,22 @@ function buildSendAction(
 				content: [{ type: "image", data: { file: url } }],
 			},
 		}));
-		const to = onebotNumericAddress(target, opts);
+		const to = onebotNumericAddress(target);
 		if (!to.ok) return to;
 		return to.private
 			? ok({ action: "send_private_forward_msg", params: { user_id: to.id, messages: nodes } })
 			: ok({ action: "send_group_forward_msg", params: { group_id: to.id, messages: nodes } });
 	}
-	return buildSendActionFromSegments(target, buildSegments(payload), opts);
+	return buildSendActionFromSegments(target, buildSegments(payload));
 }
 
 /** 普通消息(send_group_msg / send_private_msg)的 action + params;段已经翻好了。 */
 function buildSendActionFromSegments(
 	target: PushTarget,
 	segments: OneBotMessageSegment[],
-	opts: { private?: boolean },
 ): Result<OnebotAction> {
 	if (segments.length === 0) return fail("invalid", "empty payload");
-	const to = onebotNumericAddress(target, opts);
+	const to = onebotNumericAddress(target);
 	if (!to.ok) return to;
 	const params: Record<string, unknown> = { message: segments };
 	if (to.private) {
@@ -330,18 +328,12 @@ function buildSendActionFromSegments(
 /**
  * 目标的地址 → OneBot 要的那个数字 id,外加「这一发是不是私聊」。
  *
- * `opts.private` 是「强制私聊」覆盖标志,**仅 `=== true` 时**覆盖 `target.scope`。
- * 旧写法 `opts.private ?? scope==="private"` 的坑:caller(TargetDispatcher.send)恒传
- * `{ private: false }`,`??` 不替换 false,于是 scope==="private" 的 target 永远走
- * group 分支并返回 "group: groupId missing"。
+ * 群还是私聊只看 `target.scope`(原来的「强制私聊」覆盖已删)。
  *
  * 非数字地址 → `Number()` 得 NaN → 序列化成 null,OneBot 端静默错投。提前拒。
  */
-function onebotNumericAddress(
-	target: PushTarget,
-	opts: { private?: boolean },
-): Result<{ private: boolean; id: number }> {
-	const isPrivate = opts.private === true || target.scope === "private";
+function onebotNumericAddress(target: PushTarget): Result<{ private: boolean; id: number }> {
+	const isPrivate = target.scope === "private";
 	const what = isPrivate ? "private: userId" : "group: groupId";
 	if (target.kind !== "session") return fail("invalid", `${what} missing`);
 	if (!target.address) return fail("invalid", `${what} missing`);
@@ -1081,7 +1073,6 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		connection: OnebotConnection,
 		target: PushTarget,
 		card: Extract<NotificationPayload, { kind: "miniapp-card" }>,
-		opts: { private?: boolean },
 	): Promise<DeliveryResult> {
 		const t0 = Date.now();
 		let ark: unknown;
@@ -1116,7 +1107,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		const data = arkToSegmentData(ark);
 		if (data === null) return fail("invalid", "签小程序卡失败: 返回的不是 ark");
 		miniAppCardSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
-		const built = buildSendActionFromSegments(target, [{ type: "json", data: { data } }], opts);
+		const built = buildSendActionFromSegments(target, [{ type: "json", data: { data } }]);
 		if (!built.ok) return built;
 		return dispatch(connection, target, built, t0);
 	}
@@ -1382,7 +1373,6 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
-			opts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			if (!isConnectionOn(connection, "onebot") || target.platform !== "onebot") {
 				return fail(
@@ -1390,13 +1380,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 					`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
 				);
 			}
-			if (payload.kind === "miniapp-card")
-				return sendMiniAppCard(connection, target, payload, opts);
+			if (payload.kind === "miniapp-card") return sendMiniAppCard(connection, target, payload);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
 			// session.groupId / userId 缺失等"配错"立即失败返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
 			// 这次结果。
-			let built = buildSendAction(target, payload, opts);
+			let built = buildSendAction(target, payload);
 			if (!built.ok) return built;
 			const t0 = Date.now();
 
@@ -1406,8 +1395,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 探测是发它必经的一步。getBotIdentity 内部 lazy 缓存,大多数情况下命中走 O(1)。
 			if (payload.kind === "image-group" && payload.mergeForward) {
 				const botInfo = (await getBotIdentity(connection)) ?? undefined;
-				const rebuilt = buildSendAction(target, payload, opts, botInfo);
-				// rebuilt 与首次同 target/payload/opts;target 校验已过,此处失败分支
+				const rebuilt = buildSendAction(target, payload, botInfo);
+				// rebuilt 与首次同 target/payload;target 校验已过,此处失败分支
 				// 理论不会触达。守一手保类型收敛。
 				if (!rebuilt.ok) return rebuilt;
 				built = rebuilt;

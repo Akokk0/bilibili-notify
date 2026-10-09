@@ -168,6 +168,8 @@ export function TNum({
 interface TSelectOption<T extends string = string> {
 	value: T;
 	label: string;
+	/** 不可选的一行:当前存着的值已经失效时,拿它如实显示出来(而不是让下拉悄悄跳到别的项)。 */
+	disabled?: boolean;
 }
 
 export interface TSelectProps<T extends string = string> extends Labelled, Sized {
@@ -201,7 +203,7 @@ export function TSelect<T extends string = string>({
 			style={width === undefined ? undefined : { width }}
 		>
 			{options.map((o) => (
-				<option key={o.value} value={o.value}>
+				<option key={o.value} value={o.value} disabled={o.disabled}>
 					{o.label}
 				</option>
 			))}

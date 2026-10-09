@@ -36,10 +36,6 @@ function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 			calls.push(targetId);
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
-		sendPrivate: async (targetId) => {
-			calls.push(targetId);
-			return { ok: true, latencyMs: 1 } as DeliveryResult;
-		},
 		resolve: (id) => ({ id, name: id, connectionId: "a" }) as unknown as PushTarget,
 	};
 	return { dispatcher, calls };
@@ -57,7 +53,13 @@ function makeStore(subs: Subscription[]): SubscriptionStore {
 	};
 }
 
-const MASTER = { id: "master", name: "master", connectionId: "a" } as unknown as PushTarget;
+const MASTER = {
+	id: "master",
+	name: "master",
+	connectionId: "a",
+	kind: "session",
+	scope: "private",
+} as unknown as PushTarget;
 
 function setup(muted: () => boolean) {
 	const sub = makeEmptySubscription({
@@ -118,7 +120,7 @@ describe("全局静音闸", () => {
 	// 这条是静音功能能不能用的前提:回复被自己挡掉的话,主人只会以为指令坏了。
 	it("静音中,发给主人的私聊照发 —— 指令回复走的就是这条路", async () => {
 		const { push, calls } = setup(() => true);
-		await push.sendPrivateMsg("好的，静音到 21:00");
+		await push.notifyMaster("好的，静音到 21:00");
 		expect(calls).toEqual(["master"]);
 	});
 
@@ -134,7 +136,7 @@ describe("全局静音闸", () => {
 
 	it("静音中,运行错误告警照发", async () => {
 		const { push, calls } = setup(() => true);
-		await push.sendErrorMsg("登录态失效了");
+		await push.notifyMaster("登录态失效了");
 		expect(calls).toEqual(["master"]);
 	});
 

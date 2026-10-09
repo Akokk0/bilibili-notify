@@ -54,7 +54,12 @@ import { migrateProfileAvatars } from "./profile-avatars.js";
 import { migrateRecordingLedger } from "./recording.js";
 import { migrateRoastDraftsFile } from "./roast-drafts.js";
 import { migrateSecretBag } from "./secrets.js";
-import { migrateSettingsFiles, readMigratedRetentionDays, readZeroLiveFacts } from "./settings.js";
+import {
+	clearMasterTargetUnlessPrivate,
+	migrateSettingsFiles,
+	readMigratedRetentionDays,
+	readZeroLiveFacts,
+} from "./settings.js";
 import { migrateDashboardSkins } from "./skins.js";
 import { migrateStatsFiles } from "./stats.js";
 import {
@@ -69,7 +74,12 @@ import { migrateUptime } from "./uptime.js";
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
  */
-export const MIGRATION_REVISION = 37;
+export const MIGRATION_REVISION = 38;
+
+/** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
+export const MASTER_TARGET_SKIPPED_PATH = "master-target";
+const MASTER_TARGET_CLEARED_REASON =
+	"主人目标指向的不是私聊目标(群,或目标已经不在),已清空,请重新选一个私聊目标";
 
 /**
  * 0.x 的布局(第 0 代):宿主根上的一级项。只作迁移的输入 —— 1.0 的代码只认代的布局。
@@ -307,7 +317,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 设置 → 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、对话、密钥(不依赖别的,放最后)。
+ * 开机时做)→ 设置 → 主人目标(要两边都迁好)→ 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、对话、密钥(不依赖别的,放最后)。
  * 每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
@@ -330,6 +340,23 @@ const REWRITES: readonly {
 				bilibili: dataPath(opts.targetDir, ...integrationSettingsFile(BILIBILI_SOURCE_KEY)),
 				extension: (id) => dataPath(opts.targetDir, ...extensionSettingsFile(id)),
 			}),
+	},
+	{
+		// 要看迁好的设置与迁好的目标表,所以排在两者之后。清掉的记进「没带过来的」,首访提示据此多说一句。
+		label: "主人目标",
+		run: async (opts, report) => {
+			const core = dataPath(opts.targetDir, ...CORE_SETTINGS_FILE);
+			const cleared = await clearMasterTargetUnlessPrivate({
+				core,
+				targets: join(dataPath(opts.targetDir, ...CONFIG_DIR), "targets.json"),
+			});
+			if (!cleared) return [];
+			report.skipped.push({
+				path: MASTER_TARGET_SKIPPED_PATH,
+				reason: MASTER_TARGET_CLEARED_REASON,
+			});
+			return [core];
+		},
 	},
 	{
 		label: "订阅",

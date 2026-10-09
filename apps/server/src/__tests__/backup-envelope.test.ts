@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("合并转发的设置键改名以后导出的备份是版本 10(版本 9 是开发期的:图集设置里还叫 forward、连接里还叫 forwardMinTimeoutMs)", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(10);
+	it("主人目标只许指向私聊目标以后导出的备份是版本 11", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(11);
+	});
+
+	it("版本 10 的备份(主人目标可能指着群)→ unsupported:这一版不再认它", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 10 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 9 的备份(图集设置里还叫 forward、连接里还叫 forwardMinTimeoutMs)→ unsupported:旧键装不进新 schema,所以不放进来", () => {

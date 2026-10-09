@@ -25,6 +25,8 @@ import {
 	HISTORY_RETENTION_DAY_OPTIONS,
 	type HistoryRetentionDays,
 	HistorySettingsSchema,
+	isPrivateTarget,
+	type PushTarget,
 } from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
 import { moveGlobalCards } from "./card-moves.js";
@@ -223,4 +225,33 @@ export async function migrateSettingsFiles(paths: SettingsFilePaths): Promise<st
 		rewritten.push(corePath);
 	}
 	return rewritten;
+}
+
+/**
+ * 主人目标只许指向私聊目标(ADR-0021 决策 57):核心设置里的 `master.targetId` 指向的目标不在目标表里、
+ * 或不是私聊会话,就把那一格清空;回「清没清」。
+ *
+ * 设置与目标是两份文件,所以这一步在「连接与目标」「设置」两步之后单独做,两边都读新代里迁好的那一份。
+ * 目标表不在(0.x 没配过)按空表算;读不懂的(不是 JSON、不是数组)不动 —— 那种盘配置仓开机时会报出来。
+ * 目标按 `kind` / `scope` 两格判,条目的其余形状这里不关心。
+ */
+export async function clearMasterTargetUnlessPrivate(paths: {
+	core: string;
+	targets: string;
+}): Promise<boolean> {
+	const core = await readJsonFile(paths.core);
+	if (core.kind !== "ok" || !isPlainObject(core.value) || !isPlainObject(core.value.master)) {
+		return false;
+	}
+	const master = core.value.master;
+	if (master.targetId === undefined) return false;
+	const targets = await readJsonFile(paths.targets);
+	if (targets.kind === "unreadable") return false;
+	if (targets.kind === "ok" && !Array.isArray(targets.value)) return false;
+	const entries = targets.kind === "ok" ? (targets.value as unknown[]) : [];
+	const target = entries.find((entry) => isPlainObject(entry) && entry.id === master.targetId);
+	if (isPrivateTarget(target as PushTarget | undefined)) return false;
+	const { targetId: _cleared, ...rest } = master;
+	await rewriteJsonFile(paths.core, { ...core.value, master: rest });
+	return true;
 }

@@ -115,8 +115,8 @@ function harness(markdown: "supported" | "unknown" = "supported") {
 	});
 	return {
 		/** 发一条,返回线上会看到的那份请求(JSON 往返过一遍)。 */
-		async sent(payload: NotificationPayload, pushOpts?: { private?: boolean }) {
-			const r = await adapter.send(connection, target, payload, pushOpts);
+		async sent(payload: NotificationPayload) {
+			const r = await adapter.send(connection, target, payload);
 			expect(r.ok).toBe(true);
 			expect(send.mock.calls.at(-1)?.[0]).toBe(LINK_ID);
 			return JSON.parse(JSON.stringify(send.mock.calls.at(-1)?.[1])) as unknown;
@@ -257,17 +257,6 @@ describe("桥适配器 — 线上帧内容", () => {
 				path: "pages/video/video?bvid=BV1xx",
 				jumpUrl: "https://www.bilibili.com/video/BV1xx",
 			},
-		});
-	});
-
-	it("target.scope:`private: true` 覆盖成 private,其余照目标自己的 scope", async () => {
-		const h = harness();
-		const text: NotificationPayload = { kind: "text", text: "x" };
-		expect(await h.sent(text, { private: true })).toMatchObject({
-			target: { scope: "private", address: "-100", parentAddress: "-1" },
-		});
-		expect(await h.sent(text, { private: false })).toMatchObject({
-			target: { scope: "group" },
 		});
 	});
 

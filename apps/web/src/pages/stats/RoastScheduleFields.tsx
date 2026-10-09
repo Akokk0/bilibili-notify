@@ -1,6 +1,7 @@
 import {
 	DEFAULT_ROAST_CRON,
 	inboundGapReason,
+	isPrivateTarget,
 	platformCanReceiveReply,
 } from "@bilibili-notify/internal/constants";
 import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
@@ -113,6 +114,12 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 	const canApprove = platformCanReceiveReply(masterTarget?.platform ?? "");
 	if (!masterTargetId) return { canApprove: false, hint: "需要先在「系统」里配好主人私聊目标" };
 	if (!masterTarget) return { canApprove: false, hint: "配置里的主人私聊目标已经不存在了" };
+	if (!isPrivateTarget(masterTarget)) {
+		return {
+			canApprove: false,
+			hint: "这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标",
+		};
+	}
 	if (canApprove) return { canApprove: true };
 	return { canApprove: false, hint: inboundGapReason(masterTarget.platform) };
 }

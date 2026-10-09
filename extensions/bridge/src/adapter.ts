@@ -237,15 +237,10 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
-			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			const t0 = Date.now();
 			const resolved = resolve(connection, target);
 			if (!resolved.ok) return resolved;
-			// `private` 是**覆盖标志**,不是「这一发是不是私聊」:调用方恒传
-			// `{ private: false }`,所以只能读 `=== true`。onebot 上把它当后者读、拿
-			// `??` 兜底,结果 scope 本来就是 private 的目标永远走了群那一支。
-			const scope = pushOpts.private === true ? ("private" as const) : resolved.target.scope;
 			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
 			const blobUrl: BlobUrl = (buffer, mime) =>
 				`${resolved.session.origin}${blobPrefix}/${blobs.put(buffer, mime)}`;
@@ -256,7 +251,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 				botId: resolved.bot.botId,
 				platform: resolved.bot.platform,
 				target: {
-					scope,
+					scope: resolved.target.scope,
 					address: resolved.target.address,
 					parentAddress: resolved.target.parentAddress,
 				},

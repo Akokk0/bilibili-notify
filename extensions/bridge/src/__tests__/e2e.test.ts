@@ -368,14 +368,11 @@ describe("桥协议往返:hello → welcome → bots → send(带图)→ 真 GET
 		await handshake();
 		if (!client) throw new Error("unreachable");
 
-		const delivered = host
-			.adapter()
-			.send(
-				CONNECTION,
-				TARGET,
-				{ kind: "image", image: { buffer: PNG, mime: "image/png" }, caption: "看图" },
-				{},
-			);
+		const delivered = host.adapter().send(CONNECTION, TARGET, {
+			kind: "image",
+			image: { buffer: PNG, mime: "image/png" },
+			caption: "看图",
+		});
 
 		const frame = await client.next();
 		expect(frame).toMatchObject({

@@ -70,7 +70,6 @@ function makeDispatcher(opts: DispatcherOptions = {}) {
 			if (opts.failOn?.(targetId, nth)) return fail("unavailable", "boom");
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
-		sendPrivate: async () => ({ ok: true, latencyMs: 1 }),
 		resolve: (id) =>
 			({
 				id,
@@ -724,7 +723,6 @@ describe("一次推送按锚点发", () => {
 				if (textOf(payload) === "词云") return firstExtra.promise;
 				return { ok: true, latencyMs: 1 } as DeliveryResult;
 			},
-			sendPrivate: async () => ({ ok: true, latencyMs: 1 }),
 			resolve: (id) =>
 				({ id, name: id, connectionId: "a", platform: "test" }) as unknown as PushTarget,
 		};

@@ -62,7 +62,6 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			connection: Connection,
 			target: PushTarget,
 			payload: NotificationPayload,
-			pushOpts: { private?: boolean } = {},
 		): Promise<DeliveryResult> {
 			if (!isWebhookConnection(connection) || target.kind !== "endpoint") {
 				return fail(
@@ -77,7 +76,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			// 请求拼不出来(配置的地址不合法,签名时 `new URL` 就抛)是输入的问题,一个字节都没发出去。
 			let req: WebhookHttpRequest;
 			try {
-				req = buildWebhookRequest(provider, cfg, target, payload, pushOpts);
+				req = buildWebhookRequest(provider, cfg, target, payload);
 			} catch (e) {
 				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
 				log.warn(`[webhook] target=${target.id} send failed: ${message}`);
@@ -124,7 +123,6 @@ function buildWebhookRequest(
 	cfg: WebhookConnectionConfig,
 	target: PushTarget,
 	payload: NotificationPayload,
-	pushOpts: { private?: boolean },
 ): WebhookHttpRequest {
 	switch (provider) {
 		case "dingtalk":
@@ -134,7 +132,7 @@ function buildWebhookRequest(
 		case "wecom":
 			return buildWeComWebhookRequest(cfg, payload);
 		case "generic":
-			return buildGenericWebhookRequest(cfg, target, payload, pushOpts);
+			return buildGenericWebhookRequest(cfg, target, payload);
 	}
 }
 
@@ -149,7 +147,6 @@ function buildGenericWebhookRequest(
 	cfg: WebhookConnectionConfig,
 	target: PushTarget,
 	payload: NotificationPayload,
-	pushOpts: { private?: boolean },
 ): WebhookHttpRequest {
 	const headers = baseHeaders(cfg);
 	if (cfg.secret) headers["x-bilibili-notify-secret"] = cfg.secret;
@@ -160,7 +157,8 @@ function buildGenericWebhookRequest(
 			targetId: target.id,
 			targetName: target.name,
 			scope: target.scope,
-			private: !!pushOpts.private,
+			// 线上格式冻结(ADR-0024 决策 5):`private` 这一格留着,恒为 false。
+			private: false,
 			payload: serializePayload(payload),
 			ts: new Date().toISOString(),
 		}),

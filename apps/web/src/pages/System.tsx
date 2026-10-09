@@ -1,5 +1,8 @@
 import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
-import { HISTORY_RETENTION_DAY_OPTIONS } from "@bilibili-notify/internal/constants";
+import {
+	HISTORY_RETENTION_DAY_OPTIONS,
+	isPrivateTarget,
+} from "@bilibili-notify/internal/constants";
 import {
 	Avatar,
 	Btn,
@@ -296,7 +299,7 @@ function SystemSettingsSection({
  * 从「Core · 应用」里拆出来单独一张卡:分区导航下它归**账号**那一格(用户找它时
  * 想的是「谁收报错」,不是「后端跑什么参数」),而 app.* 归运行那一格。
  */
-function MasterSection({
+export function MasterSection({
 	draft,
 	targets,
 	onPatch,
@@ -307,11 +310,16 @@ function MasterSection({
 }) {
 	const master = draft.master;
 	const masterTarget = master.targetId ? targets.find((t) => t.id === master.targetId) : undefined;
+	// 主人目标只许指向私聊目标(ADR-0021 决策 57):下拉只列私聊的;当前存着的值要是已经不满足
+	// (指向群,或目标没了),就多显示一行不可选的「已失效」,免得下拉悄悄跳去「未配置」。
+	const isStale = master.targetId !== undefined && !isPrivateTarget(masterTarget);
 	const masterStatus = !master.targetId
 		? "未配置 · 出错时不会私聊提醒"
-		: masterTarget
-			? `→ ${masterTarget.name}`
-			: "目标已删除,请重新选择";
+		: !masterTarget
+			? "原来的目标已经不在了，请重新选一个私聊目标"
+			: !isPrivateTarget(masterTarget)
+				? "这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标"
+				: `→ ${masterTarget.name}`;
 
 	return (
 		<GlassBox
@@ -327,7 +335,12 @@ function MasterSection({
 					onChange={(v) => onPatch({ master: { targetId: v || undefined } })}
 					options={[
 						{ value: "", label: "未配置" },
-						...targets.map((t) => ({ value: t.id, label: t.name })),
+						...(isStale && master.targetId
+							? [{ value: master.targetId, label: "已失效", disabled: true }]
+							: []),
+						...targets
+							.filter((t) => isPrivateTarget(t))
+							.map((t) => ({ value: t.id, label: t.name })),
 					]}
 				/>
 			</Field>

@@ -6,10 +6,22 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	renderHook,
+	screen,
+	waitFor,
+	within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { PushTarget } from "../../../types/domain";
-import { RoastScheduleFields, type RoastScheduleValue } from "../RoastScheduleFields";
+import {
+	RoastScheduleFields,
+	type RoastScheduleValue,
+	useApprovalReachability,
+} from "../RoastScheduleFields";
 
 vi.mock("../../../services/api", () => ({
 	api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
@@ -73,5 +85,31 @@ describe("RoastScheduleFields — 发送到", () => {
 		const onChange = renderFields();
 		fireEvent.click(await screen.findByRole("button", { name: /群 A/ }));
 		expect(onChange).toHaveBeenCalledWith({ ...VALUE, targets: [] });
+	});
+});
+
+describe("useApprovalReachability — 主人目标得是私聊才能开审批", () => {
+	function reachability(masterTargetId: string, targets: PushTarget[]) {
+		vi.mocked(api.get).mockImplementation(async (path: string) => {
+			if (path === "/api/targets") return targets;
+			if (path === "/api/settings") return { master: { targetId: masterTargetId } };
+			throw new Error(`unexpected GET ${path}`);
+		});
+		const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		return renderHook(() => useApprovalReachability(), {
+			wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+		});
+	}
+
+	it("主人目标是私聊的 onebot 目标 → 能开", async () => {
+		const priv = { ...target(T_ON, "主人", true), scope: "private" } as PushTarget;
+		const { result } = reachability(T_ON, [priv]);
+		await waitFor(() => expect(result.current.canApprove).toBe(true));
+	});
+
+	it("主人目标指向群(存量遗留)→ 不能开,理由是「不是私聊」", async () => {
+		const { result } = reachability(T_ON, [target(T_ON, "群 A", true)]);
+		await waitFor(() => expect(result.current.hint).toMatch(/不是私聊/));
+		expect(result.current.canApprove).toBe(false);
 	});
 });

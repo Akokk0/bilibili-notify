@@ -55,10 +55,6 @@ function makeDispatcher(opts?: { available?: boolean; platform?: string }): {
 			calls.push({ targetId, payload });
 			return { ok: true, latencyMs: 1 } as DeliveryResult;
 		},
-		sendPrivate: async (targetId, payload) => {
-			calls.push({ targetId, payload });
-			return { ok: true, latencyMs: 1 } as DeliveryResult;
-		},
 		resolve: (id) =>
 			({
 				id,
@@ -534,7 +530,6 @@ describe("PushRouter.push — routing decision", () => {
 				if (isAtAll(payload)) return new Promise<DeliveryResult>(() => {});
 				return Promise.resolve({ ok: true, latencyMs: 1 } as DeliveryResult);
 			},
-			sendPrivate: async () => ({ ok: true, latencyMs: 1 }) as DeliveryResult,
 			resolve: (id) =>
 				({
 					id,
@@ -585,7 +580,6 @@ describe("PushRouter.push — routing decision", () => {
 				isAtAll(payload)
 					? atAllLanded
 					: Promise.resolve({ ok: true, latencyMs: 1 } as DeliveryResult),
-			sendPrivate: async () => ({ ok: true, latencyMs: 1 }) as DeliveryResult,
 			resolve: (id) =>
 				({
 					id,

@@ -61,7 +61,6 @@ describe("createLinkReplySender", () => {
 				connectionId: "conn-1",
 			}),
 			PAYLOAD,
-			{},
 		);
 	});
 

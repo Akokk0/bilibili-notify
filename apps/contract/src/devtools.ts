@@ -112,7 +112,7 @@ export interface DevCapturedDelivery {
 	platform: string;
 	targetId: string;
 	targetName: string;
-	/** 强制私聊那条路(`sendPrivate`)。 */
+	/** 目标是不是私聊会话(`target.scope === "private"`)。 */
 	private: boolean;
 	/** 载荷种类(`NotificationPayload["kind"]`)。 */
 	kind: string;
