@@ -28,6 +28,7 @@
 5. **webhook 是一个适配器，飞书 / 钉钉 / 企业微信 / 通用是它的四个模板候选**。冻结的通用 webhook JSON 里 `private` 写死 `false`（主人目标不可能是 webhook）。
     - 理由：webhook 是「怎么连」，不是一个平台；拆成四个会占掉 `feishu` 等平台键，而拓展的一个适配器本来也要能对多个平台。
 6. **`PlatformDescriptor = { platform, label, shortLabel, color, icon?, targetKind: "session" | "endpoint", scopes, addressNouns }`**：`tint` 统一改叫 `color`；`inbound`、`atAll` 从这里挪成运行期能力。
+    - 🔗 10-09（3a-22-1）：`atAll`、`inbound` 已成每条连接的运行期能力（三态，适配器回答）。「还不知道」时三处各按原来的做法（主人定）：单发 @全体照发、锐评审批不让开、链接解析设置照列；判断只有一份（`shouldSendAtAll` / `canReceiveReply` / `listsForLinkParsing`），服务端与面板共用。`GET /api/connections/capabilities` 收成一级并含拓展连接。
 7. **连接的形状 `{ id, name, enabled, adapterKey, platform, settings, platformSnapshot, probeState? }`**：`platform` 是开放字符串，只来自挑中的候选；`kind`、`connector`、`extensionId` 删掉（`extensionId` 并进 `adapterKey`）；`transport` 留作 OneBot 适配器私有的设置。`probeState` 是对象，三态取值在它的 `status` 里。
 8. **连接上存 `platformSnapshot`（`PlatformDescriptor` 去掉 `platform` 那一格）**：
     - 只有宿主写：新建时照候选抄、列候选时按平台名刷新、迁移时填、备份里带回；POST / PATCH 带来的一律忽略。
