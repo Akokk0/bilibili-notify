@@ -84,6 +84,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
 		const dispatcher: FakeDispatcher = {
 			isAvailable: (id) => (id === "target-a" ? aAvailable : true),
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: () => send(),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -144,6 +145,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => available,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: () => send(),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -202,6 +204,7 @@ describe("PushRouter — 退避重试期间的路由复检", () => {
 		const send = vi.fn(async (): Promise<DeliveryResult> => ({ ok: true, latencyMs: 1 }));
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => available,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: () => send(),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,

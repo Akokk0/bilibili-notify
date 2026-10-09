@@ -68,7 +68,7 @@ function groupFrame(text: string, over: Record<string, unknown> = {}) {
 async function feed(parser: LinkParser, frame: Record<string, unknown>): Promise<void> {
 	const msg = extractGroupMessage(frame);
 	if (!msg) return;
-	await parser.handleMessage({ platform: "onebot", connectionId: ADAPTER, ...msg });
+	await parser.handleMessage({ connectionId: ADAPTER, ...msg });
 }
 
 /** 主人在卡片页选的那套皮肤 —— 推送的动态卡吃它,链接解析出的卡也得吃它。 */
@@ -427,7 +427,6 @@ describe("createLinkParser", () => {
 		it("已解析好的群消息:同一套流程,回复目的地标明连接与群 openid", async () => {
 			const h = makeParser();
 			await h.parser.handleMessage({
-				platform: "qq-official",
 				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",
@@ -448,7 +447,6 @@ describe("createLinkParser", () => {
 			const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
 			await feed(h.parser, groupFrame(LINK));
 			await h.parser.handleMessage({
-				platform: "qq-official",
 				connectionId: "22222222-2222-4222-8222-222222222222",
 				groupId: "G_OPENID",
 				userId: "M",
@@ -565,7 +563,7 @@ describe("createLinkParser", () => {
 	// 拿着答案做没做对:说解析才出卡,说不解析什么都不碰。
 	describe("逐群答案(解不解析)", () => {
 		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
-		const THIS_GROUP = `onebot:${ADAPTER}:${GROUP}`;
+		const THIS_GROUP = `${ADAPTER}:${GROUP}`;
 		const only = (key: string) => (k: string) => ({ parse: k === key, form: "image" as const });
 
 		it("这个群的答案是解析 → 照常出卡", async () => {
@@ -575,7 +573,7 @@ describe("createLinkParser", () => {
 		});
 
 		it("这个群的答案是不解析 → 不打接口、不碰渲染器、不发", async () => {
-			const h = makeParser({}, undefined, { policyFor: only(`onebot:${ADAPTER}:999999`) });
+			const h = makeParser({}, undefined, { policyFor: only(`${ADAPTER}:999999`) });
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
 			expect(h.renderer).not.toHaveBeenCalled();
@@ -595,10 +593,9 @@ describe("createLinkParser", () => {
 
 		it("官机群按 平台:adapter:群 openid 查答案", async () => {
 			const h = makeParser({}, undefined, {
-				policyFor: only(`qq-official:${ADAPTER}:G_OPENID`),
+				policyFor: only(`${ADAPTER}:G_OPENID`),
 			});
 			await h.parser.handleMessage({
-				platform: "qq-official",
 				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",
@@ -608,7 +605,6 @@ describe("createLinkParser", () => {
 			});
 			expect(h.sent).toHaveLength(1);
 			await h.parser.handleMessage({
-				platform: "qq-official",
 				connectionId: ADAPTER,
 				groupId: "G_OTHER",
 				userId: "M_OPENID",
@@ -709,7 +705,6 @@ describe("createLinkParser", () => {
 		it("平台没有能力概念(官机)→ 形式选了小程序卡也回图片卡", async () => {
 			const h = makeParser({}, undefined, { policyFor: miniapp, capabilities: () => undefined });
 			await h.parser.handleMessage({
-				platform: "qq-official",
 				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",

@@ -50,9 +50,8 @@ export interface LinkReplyDestination {
 	groupId: string;
 }
 
-/** adapter 归一化好的一条群消息,再带上它从哪个平台、哪条连接来。 */
+/** adapter 归一化好的一条群消息,再带上它从哪条连接来。 */
 export interface InboundLinkMessage extends InboundGroupMessage {
-	platform: string;
 	connectionId: string;
 }
 
@@ -263,7 +262,7 @@ export function createLinkParser(opts: LinkParserOptions): LinkParser {
 			if (!config.enabled) return;
 			// 逐群答案在渲染器之前、记账之前:不解析的群什么都不该留下 —— 冷却也不记,
 			// 主人随后把群打开,刚才那条链接再贴一次就该出卡。
-			const scope = linkScopeKey(msg.platform, msg.connectionId, msg.groupId);
+			const scope = linkScopeKey(msg.connectionId, msg.groupId);
 			const policy = opts.policyFor(scope);
 			if (!policy.parse) return;
 			const dest: LinkReplyDestination = {

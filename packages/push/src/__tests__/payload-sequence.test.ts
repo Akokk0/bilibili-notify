@@ -43,6 +43,7 @@ function makeDispatcher(failOn?: (targetId: string, nthCallForTarget: number) =>
 	const perTarget = new Map<string, number>();
 	const dispatcher: FakeDispatcher = {
 		isAvailable: () => true,
+		supportsAtAll: () => true,
 		isEnabled: () => true,
 		send: async (targetId, payload) => {
 			const nth = (perTarget.get(targetId) ?? 0) + 1;

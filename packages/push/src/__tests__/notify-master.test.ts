@@ -55,6 +55,7 @@ function setup(
 	const sent: Array<{ id: string; payload: NotificationPayload }> = [];
 	const dispatcher: FakeDispatcher = {
 		isAvailable: () => over.isAvailable ?? true,
+		supportsAtAll: () => true,
 		isEnabled: () => true,
 		send: async (id, payload) => {
 			sent.push({ id, payload });

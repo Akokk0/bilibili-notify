@@ -40,6 +40,7 @@ function makeDispatcher(): { dispatcher: FakeDispatcher; calls: string[] } {
 	const calls: string[] = [];
 	const dispatcher: FakeDispatcher = {
 		isAvailable: () => true,
+		supportsAtAll: () => true,
 		isEnabled: () => true,
 		send: async (targetId) => {
 			calls.push(targetId);

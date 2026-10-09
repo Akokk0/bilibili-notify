@@ -19,6 +19,7 @@ import { type FakeDispatcher, pushBase, silentLogger } from "./helpers";
 function makeUnreachableDispatcher(): FakeDispatcher {
 	return {
 		isAvailable: () => false, // 永远不可达 → sendToTarget 进入 sleep retry 循环
+		supportsAtAll: () => true,
 		isEnabled: () => true,
 		send: async (): Promise<DeliveryResult> => fail("unavailable", "unreachable"),
 		resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -126,6 +127,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		);
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => available,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send,
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -171,6 +173,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		});
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: (id) => send(id),
 			resolve: (id) => ({ id, name: id, platform: "test" }) as unknown as PushTarget,
@@ -233,6 +236,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		const error = vi.fn();
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: async (): Promise<DeliveryResult> => {
 				throw new Error("dispatcher exploded");

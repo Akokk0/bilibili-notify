@@ -19,7 +19,6 @@ import {
 	fail,
 	inQuietHours,
 	isPrivateTarget,
-	platformSupportsAtAll,
 	resolve,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
@@ -167,7 +166,10 @@ interface AnchorRound {
 /** Options for constructing a PushRouter instance. */
 export interface PushRouterOptions {
 	/** Platform-neutral push dispatcher — translates targetId → platform delivery. */
-	dispatcher: Pick<TargetDispatcher, "send" | "resolve" | "isEnabled" | "isAvailable">;
+	dispatcher: Pick<
+		TargetDispatcher,
+		"send" | "resolve" | "isEnabled" | "isAvailable" | "supportsAtAll"
+	>;
 	/** Subscription store — used to resolve routing per subscription id + feature. */
 	store: SubscriptionStore;
 	/** Optional master PushTarget for private error notifications. */
@@ -436,7 +438,7 @@ export class PushRouter {
 	 * - 全局 + per-UP 合并后的 `eff.features.extras.atAll<Scope>` 决定 inherit-state 的 target 是否 @
 	 * - per-target tristate Map `sub.extraTargets.atAll<Scope>[targetId]` 显式覆写:`true` 强 ON、`false` 强 OFF
 	 * - Map 里没有该 key → 走上面那个默认
-	 * - 目标平台不支持 @全体(`platformSupportsAtAll`,今天只有 QQ 官方机器人)→ 一律不 @,
+	 * - 目标不能 @全体(问派发器的 `supportsAtAll`,今天只有 QQ 官方机器人那条连接上的)→ 一律不 @,
 	 *   默认与覆写都不看 —— 单发的那条只含 at-all 段,到适配器就成了空消息
 	 *
 	 * `feature === "liveStart"` 的 @全体 只该跟着真开播。重启补报也走 `liveStart` 这把键(目标与
@@ -518,8 +520,7 @@ export class PushRouter {
 		const plainTargets: string[] = [];
 		for (const id of targetIds) {
 			// 平台不支持 @全体的目标不进 @全体 分支:抽屉里它的开关本就显示为关。
-			const target = this.dispatcher.resolve(id);
-			const supported = target !== undefined && platformSupportsAtAll(target.platform);
+			const supported = this.dispatcher.supportsAtAll(id);
 			const explicit = overrides[id];
 			const shouldAtAll = supported && (explicit ?? defaultOn);
 			(shouldAtAll ? atAllTargets : plainTargets).push(id);

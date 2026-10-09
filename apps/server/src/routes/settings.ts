@@ -76,6 +76,7 @@ export function createSettingsRoute(deps: RouteDeps): Hono {
 			patch,
 			puppeteer: deps.puppeteer,
 			targets: deps.store.getTargets(),
+			connections: deps.store.getConnections(),
 		});
 		if (!enableCheck.ok) return respondFailure(c, enableCheck);
 		try {
@@ -162,6 +163,7 @@ interface EnableCheckArgs {
 	patch: Record<string, unknown>;
 	puppeteer: PuppeteerAdapter | null;
 	targets: readonly import("@bilibili-notify/internal").PushTarget[];
+	connections: readonly import("@bilibili-notify/internal").Connection[];
 }
 
 /**
@@ -178,6 +180,7 @@ export function checkApprovalEnable(
 	current: import("@bilibili-notify/internal").GlobalConfig,
 	patch: Record<string, unknown>,
 	targets: readonly import("@bilibili-notify/internal").PushTarget[],
+	connections: readonly import("@bilibili-notify/internal").Connection[],
 ): Result {
 	// 同 per-scope gating:这次 patch 没碰 roastSchedule 就别插手,
 	// 否则存别的 tab 会被一个早就存在的 approval=true 拦住。
@@ -193,6 +196,7 @@ export function checkApprovalEnable(
 		approvalOn: true,
 		masterTargetId: current.master.targetId,
 		targets,
+		connections,
 	});
 }
 
@@ -214,7 +218,12 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 		}
 	}
 
-	const approvalCheck = checkApprovalEnable(args.current, args.patch, args.targets);
+	const approvalCheck = checkApprovalEnable(
+		args.current,
+		args.patch,
+		args.targets,
+		args.connections,
+	);
 	if (!approvalCheck.ok) return approvalCheck;
 
 	if (shouldRunAiEnableCheck(args.current, args.patch)) {

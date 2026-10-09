@@ -2495,8 +2495,8 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				address: "123",
 			} as PushTarget,
 		]);
-		const KEY = `onebot:${ADAPTER}:123`;
-		const STRANGER = `onebot:${ADAPTER}:999`;
+		const KEY = `${ADAPTER}:123`;
+		const STRANGER = `${ADAPTER}:999`;
 		// 出厂默认行解析开:目标群与陌生群都解析。
 		expect(c.runtime.linkPolicyFor(KEY).parse).toBe(true);
 		expect(c.runtime.linkPolicyFor(STRANGER).parse).toBe(true);

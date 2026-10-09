@@ -11,6 +11,7 @@ import {
 	isDirectConnection,
 	type PushTarget,
 	platformCanReceiveReply,
+	platformOfTarget,
 } from "@bilibili-notify/internal";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
@@ -57,6 +58,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			// 私聊目标所在的连接(平台也按它走,鉴权比的是三坐标)。没有主人目标就没有可模拟的
 			// 来处 —— 明说,不拿空串糊弄过去。
 			const master = deps.commands().master;
+			const connections = deps.connections();
 			const masterTarget = master
 				? deps
 						.targets()
@@ -64,7 +66,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 							(t) =>
 								t.kind === "session" &&
 								t.scope === "private" &&
-								t.platform === master.platform &&
+								platformOfTarget(t, connections) === master.platform &&
 								t.address === master.address,
 						)
 				: undefined;

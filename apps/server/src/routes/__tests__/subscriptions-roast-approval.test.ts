@@ -13,40 +13,104 @@ import { checkApprovalReachable } from "../roast-approval-guard.js";
 import { createSubscriptionsRoute } from "../subscriptions.js";
 import type { RouteDeps } from "../types.js";
 
-const ONEBOT = [{ id: "m1", platform: "onebot" }] as never;
-const WEBHOOK = [{ id: "m1", platform: "feishu" }] as never;
+// 目标自己没有平台这一格 —— 平台取自它挂着的连接 c1。
+const TARGETS = [{ id: "m1", connectionId: "c1" }] as never;
+const ONEBOT = [{ id: "c1", platform: "onebot" }] as never;
+const WEBHOOK = [{ id: "c1", platform: "feishu" }] as never;
 
 describe("checkApprovalReachable", () => {
 	it("审批没开 → 不插手(别拿一道无关的闸拦住别的保存)", () => {
-		expect(checkApprovalReachable({ approvalOn: false, masterTargetId: "", targets: [] }).ok).toBe(
-			true,
-		);
+		expect(
+			checkApprovalReachable({
+				approvalOn: false,
+				masterTargetId: "",
+				targets: [],
+				connections: [],
+			}).ok,
+		).toBe(true);
 	});
 
 	it("主人私聊走 onebot → 放行", () => {
 		expect(
-			checkApprovalReachable({ approvalOn: true, masterTargetId: "m1", targets: ONEBOT }).ok,
+			checkApprovalReachable({
+				approvalOn: true,
+				masterTargetId: "m1",
+				targets: TARGETS,
+				connections: ONEBOT,
+			}).ok,
 		).toBe(true);
 	});
 
 	it("没配主人私聊目标 → 拦下(没人可审)", () => {
-		const r = checkApprovalReachable({ approvalOn: true, masterTargetId: undefined, targets: [] });
+		const r = checkApprovalReachable({
+			approvalOn: true,
+			masterTargetId: undefined,
+			targets: [],
+			connections: [],
+		});
 		expect(r).toMatchObject({ ok: false, code: "not_configured" });
 		expect(r.ok === false && r.message).toContain("主人私聊目标");
 	});
 
 	it("配的目标已经不存在 → 拦下并说清楚", () => {
-		const r = checkApprovalReachable({ approvalOn: true, masterTargetId: "gone", targets: ONEBOT });
+		const r = checkApprovalReachable({
+			approvalOn: true,
+			masterTargetId: "gone",
+			targets: TARGETS,
+			connections: ONEBOT,
+		});
 		expect(r.ok).toBe(false);
 		expect(r.ok === false && r.message).toContain("不存在");
 	});
 
 	it("通道收不到回复 → 拦下,理由与可选平台都从常量出", () => {
-		const r = checkApprovalReachable({ approvalOn: true, masterTargetId: "m1", targets: WEBHOOK });
+		const r = checkApprovalReachable({
+			approvalOn: true,
+			masterTargetId: "m1",
+			targets: TARGETS,
+			connections: WEBHOOK,
+		});
 		expect(r.ok).toBe(false);
 		expect(r.ok === false && r.message).toContain("回程");
 		// 「那我该换成什么」得答得上来。
 		expect(r.ok === false && r.message).toContain("onebot");
+	});
+
+	it("主人目标挂的那条连接已经不在了 → not_configured,说清是连接没了", () => {
+		const r = checkApprovalReachable({
+			approvalOn: true,
+			masterTargetId: "m1",
+			targets: TARGETS,
+			connections: [],
+		});
+		expect(r).toMatchObject({
+			ok: false,
+			code: "not_configured",
+			message: "审批打不开：主人私聊目标挂的那条连接已经不在了，请先重新指定。",
+		});
+	});
+
+	it("平台取自连接,不看目标自己那一格", () => {
+		// 目标上写 onebot、连接是 feishu:以连接为准 → 拦下。
+		const stale = [{ id: "m1", connectionId: "c1", platform: "onebot" }] as never;
+		expect(
+			checkApprovalReachable({
+				approvalOn: true,
+				masterTargetId: "m1",
+				targets: stale,
+				connections: WEBHOOK,
+			}).ok,
+		).toBe(false);
+		// 反过来:目标上写 feishu、连接是 onebot → 放行。
+		const stale2 = [{ id: "m1", connectionId: "c1", platform: "feishu" }] as never;
+		expect(
+			checkApprovalReachable({
+				approvalOn: true,
+				masterTargetId: "m1",
+				targets: stale2,
+				connections: ONEBOT,
+			}).ok,
+		).toBe(true);
 	});
 });
 
@@ -75,7 +139,8 @@ function routeWith(masterPlatform: string | null) {
 				},
 			],
 			getGlobals: () => ({ master: { targetId: masterPlatform ? "m1" : undefined } }),
-			getTargets: () => (masterPlatform ? [{ id: "m1", platform: masterPlatform }] : []),
+			getTargets: () => (masterPlatform ? [{ id: "m1", connectionId: "c1" }] : []),
+			getConnections: () => (masterPlatform ? [{ id: "c1", platform: masterPlatform }] : []),
 			patchSubscription,
 		},
 		runtime: {

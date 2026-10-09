@@ -12,12 +12,14 @@
  */
 
 import {
+	type Connection,
 	fail,
 	INBOUND_CAPABLE_PLATFORMS,
 	inboundGapReason,
 	ok,
 	type PushTarget,
 	platformCanReceiveReply,
+	platformOfTarget,
 	type Result,
 } from "@bilibili-notify/internal";
 
@@ -33,6 +35,8 @@ export function checkApprovalReachable(args: {
 	/** 全局的主人私聊目标 id。 */
 	masterTargetId: string | undefined;
 	targets: readonly PushTarget[];
+	/** 平台取自主人目标挂着的那条连接。 */
+	connections: readonly Pick<Connection, "id" | "platform">[];
 }): ApprovalReachability {
 	if (!args.approvalOn) return ok();
 
@@ -46,11 +50,15 @@ export function checkApprovalReachable(args: {
 	if (!target) {
 		return fail("not_configured", "审批打不开：配置里的主人私聊目标已经不存在了，请先重新指定。");
 	}
-	if (!platformCanReceiveReply(target.platform)) {
+	const platform = platformOfTarget(target, args.connections);
+	if (platform === undefined) {
+		return fail("not_configured", "审批打不开：主人私聊目标挂的那条连接已经不在了，请先重新指定。");
+	}
+	if (!platformCanReceiveReply(platform)) {
 		return fail(
 			"not_configured",
 			// 可选平台从常量里取,不手写 —— 手写的那份哪天补了平台就会漏。
-			`审批打不开：${inboundGapReason(target.platform)}。请把主人私聊目标换成收得到回复的通道（${INBOUND_CAPABLE_PLATFORMS.join(" / ")}），或者关掉审批直接发送。`,
+			`审批打不开：${inboundGapReason(platform)}。请把主人私聊目标换成收得到回复的通道（${INBOUND_CAPABLE_PLATFORMS.join(" / ")}），或者关掉审批直接发送。`,
 		);
 	}
 	return ok();

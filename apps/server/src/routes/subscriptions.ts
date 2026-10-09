@@ -419,6 +419,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 				approvalOn,
 				masterTargetId: deps.store.getGlobals().master.targetId,
 				targets: deps.store.getTargets(),
+				connections: deps.store.getConnections(),
 			});
 			if (!gate.ok) return respondFailure(c, gate);
 		}

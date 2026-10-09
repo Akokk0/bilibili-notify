@@ -158,6 +158,8 @@ describe("checkApprovalEnable", () => {
 	/** 这条检查只读 id / platform 两个字段,不为测试再造一遍完整的 PushTarget。 */
 	// biome-ignore lint/suspicious/noExplicitAny: 见上
 	type Targets = any;
+	// biome-ignore lint/suspicious/noExplicitAny: 同上
+	type Connections = any;
 
 	function withApproval(on: boolean) {
 		const g = makeDefaultGlobalConfig();
@@ -165,19 +167,20 @@ describe("checkApprovalEnable", () => {
 		return g;
 	}
 	const patchOn = { roastSchedule: { approval: true } };
-	const onebotTarget = { id: "m1", platform: "onebot" };
-	const webhookTarget = { id: "m1", platform: "webhook" };
+	// 目标自己没有平台这一格,平台取自它挂着的连接 c1。
+	const target = { id: "m1", connectionId: "c1" };
+	const on = (platform: string) => [{ id: "c1", platform }] as Connections;
 
 	it("master 私聊走 onebot（收得到回复）→ 放行", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		expect(checkApprovalEnable(g, patchOn, [onebotTarget] as Targets).ok).toBe(true);
+		expect(checkApprovalEnable(g, patchOn, [target] as Targets, on("onebot")).ok).toBe(true);
 	});
 
 	it("master 私聊走 webhook（收不到回复）→ 拦下并说明原因", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [webhookTarget] as Targets);
+		const r = checkApprovalEnable(g, patchOn, [target] as Targets, on("webhook"));
 		expect(r.ok).toBe(false);
 		// 光说「不能开」没用,得让主人知道该去改什么。
 		expect(r.ok === false && r.message).toMatch(/webhook|回复|收不到/);
@@ -186,16 +189,14 @@ describe("checkApprovalEnable", () => {
 	it("master 私聊走 qq-official（C2C 入站已接）→ 放行", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [{ id: "m1", platform: "qq-official" }] as Targets);
+		const r = checkApprovalEnable(g, patchOn, [target] as Targets, on("qq-official"));
 		expect(r.ok).toBe(true);
 	});
 
 	it("还没接入站的平台 → 拦下，但理由是「还没接」而不是「通道收不到」", () => {
 		const g = withApproval(false);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, patchOn, [
-			{ id: "m1", platform: "someday-bridge" },
-		] as Targets);
+		const r = checkApprovalEnable(g, patchOn, [target] as Targets, on("someday-bridge"));
 		expect(r.ok).toBe(false);
 		// 这些平台协议上都收得到,差的是我们没接。说成平台的毛病,主人会去查自己
 		// 的配置(qq-official 就是这么被主人当场抓到的)。
@@ -206,21 +207,29 @@ describe("checkApprovalEnable", () => {
 	it("压根没配 master 私聊目标 → 拦下（没人可审）", () => {
 		const g = withApproval(false);
 		g.master.targetId = undefined;
-		expect(checkApprovalEnable(g, patchOn, []).ok).toBe(false);
+		expect(checkApprovalEnable(g, patchOn, [], []).ok).toBe(false);
 	});
 
 	it("这次 patch 没碰 roastSchedule → 不检查（存别的 tab 不该被它拦住）", () => {
 		const g = withApproval(true);
 		g.master.targetId = "m1";
-		const r = checkApprovalEnable(g, { defaults: { cards: {} } }, [webhookTarget] as Targets);
+		const r = checkApprovalEnable(
+			g,
+			{ defaults: { cards: {} } },
+			[target] as Targets,
+			on("webhook"),
+		);
 		expect(r.ok).toBe(true);
 	});
 
 	it("审批保持关着 → 不检查", () => {
 		const g = withApproval(false);
-		const r = checkApprovalEnable(g, { roastSchedule: { cron: "0 9 * * 1" } }, [
-			webhookTarget,
-		] as Targets);
+		const r = checkApprovalEnable(
+			g,
+			{ roastSchedule: { cron: "0 9 * * 1" } },
+			[target] as Targets,
+			on("webhook"),
+		);
 		expect(r.ok).toBe(true);
 	});
 });
@@ -382,13 +391,19 @@ describe("checkApprovalEnable — 拦下的一律是 not_configured", () => {
 	const patchOn = { roastSchedule: { approval: true } };
 
 	it.each([
-		["没配主人私聊目标", undefined, []],
-		["主人私聊目标已经不存在了", "gone", []],
-		["主人私聊目标走 webhook(没有回程)", "m1", [{ id: "m1", platform: "webhook" }]],
-	] as const)("%s → not_configured", (_what, masterTargetId, targets) => {
+		["没配主人私聊目标", undefined, [], []],
+		["主人私聊目标已经不存在了", "gone", [], []],
+		[
+			"主人私聊目标走 webhook(没有回程)",
+			"m1",
+			[{ id: "m1", connectionId: "c1" }],
+			[{ id: "c1", platform: "webhook" }],
+		],
+		["主人私聊目标挂的连接已经不在了", "m1", [{ id: "m1", connectionId: "c1" }], []],
+	] as const)("%s → not_configured", (_what, masterTargetId, targets, connections) => {
 		const g = withApproval(false);
 		g.master.targetId = masterTargetId;
-		const r = checkApprovalEnable(g, patchOn, targets as never);
+		const r = checkApprovalEnable(g, patchOn, targets as never, connections as never);
 		expect(r).toMatchObject({ ok: false, code: "not_configured" });
 	});
 });

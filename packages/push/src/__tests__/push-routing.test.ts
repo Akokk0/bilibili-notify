@@ -42,7 +42,7 @@ interface SendCall {
 	payload: NotificationPayload;
 }
 
-function makeDispatcher(opts?: { available?: boolean; platform?: string }): {
+function makeDispatcher(opts?: { available?: boolean; atAll?: (id: string) => boolean }): {
 	dispatcher: FakeDispatcher;
 	calls: SendCall[];
 } {
@@ -50,6 +50,7 @@ function makeDispatcher(opts?: { available?: boolean; platform?: string }): {
 	const calls: SendCall[] = [];
 	const dispatcher: FakeDispatcher = {
 		isAvailable: () => available,
+		supportsAtAll: opts?.atAll ?? (() => true),
 		isEnabled: () => true,
 		send: async (targetId, payload) => {
 			calls.push({ targetId, payload });
@@ -60,7 +61,7 @@ function makeDispatcher(opts?: { available?: boolean; platform?: string }): {
 				id,
 				name: id,
 				connectionId: "a",
-				platform: opts?.platform ?? "test",
+				platform: "test",
 				scope: "group",
 				enabled: true,
 			}) as unknown as PushTarget,
@@ -276,7 +277,7 @@ describe("PushRouter.push — routing decision", () => {
 		});
 		sub.routing.liveStart = ["t1"];
 		setExtraDefault(sub, "atAllLiveStart", true);
-		const { dispatcher, calls } = makeDispatcher({ platform: "qq-official" });
+		const { dispatcher, calls } = makeDispatcher({ atAll: () => false });
 		const seen: PushSendResult[] = [];
 		const push = new PushRouter({
 			...pushBase(),
@@ -292,6 +293,28 @@ describe("PushRouter.push — routing decision", () => {
 		// 历史那一行也不该多出一条「@全体」附加项。
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.messages.map((m) => m.role)).toEqual(["main"]);
+	});
+
+	it("@全体 的分流问派发器的 supportsAtAll:回 false 的目标不进 @全体,回 true 的照进(目标对象上的 platform 不参与)", async () => {
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "u1" },
+		});
+		sub.routing.liveStart = ["t1", "t2"];
+		setExtraDefault(sub, "atAllLiveStart", true);
+		const { dispatcher, calls } = makeDispatcher({ atAll: (id) => id !== "t1" });
+		const push = new PushRouter({
+			...pushBase(),
+			dispatcher,
+			store: makeStore([sub]),
+			logger: silentLogger,
+		});
+		push.start();
+		await pushMain(push, "s1", "liveStart", { kind: "text", text: "开播" });
+		await new Promise((r) => setTimeout(r, 0));
+		const atAllCalls = calls.filter((c) => c.payload.kind === "composite");
+		expect(atAllCalls.map((c) => c.targetId)).toEqual(["t2"]);
+		expect(calls.filter((c) => c.targetId === "t1").map((c) => c.payload.kind)).toEqual(["text"]);
 	});
 
 	it("allowAtAll: false → 抑制 @全体,即使 feature=liveStart 且 extras.atAllLiveStart 默认为 true(本次 bug 修复:周期「正在直播」)", async () => {
@@ -523,6 +546,7 @@ describe("PushRouter.push — routing decision", () => {
 			p.kind === "composite" && p.segments.length === 1 && p.segments[0]?.kind === "at-all";
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			// @全体 这条永不 resolve(模拟无权限群的重试卡死);卡片正文立即成功。
 			send: (targetId, payload) => {
@@ -575,6 +599,7 @@ describe("PushRouter.push — routing decision", () => {
 		});
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: (_targetId, payload) =>
 				isAtAll(payload)

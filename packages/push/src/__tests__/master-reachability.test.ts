@@ -37,6 +37,7 @@ function makeDispatcher(box: { up: boolean }): { dispatcher: FakeDispatcher; sen
 	const sent: string[] = [];
 	const dispatcher: FakeDispatcher = {
 		isAvailable: () => box.up,
+		supportsAtAll: () => true,
 		isEnabled: () => true,
 		send: async (id) => {
 			sent.push(id);

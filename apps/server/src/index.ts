@@ -684,7 +684,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const masterIdentity = () => {
 			const id = runtime.configStore.getGlobals().master.targetId;
 			if (!id) return undefined;
-			return chatIdentityOf(runtime.configStore.getTargets().find((x) => x.id === id));
+			return chatIdentityOf(
+				runtime.configStore.getTargets().find((x) => x.id === id),
+				runtime.configStore.getConnections(),
+			);
 		};
 
 		// devtools:门是载荷版本号(开发版才给,alpha 也不给)。给的话往下传的都是装饰过的:
@@ -1096,7 +1099,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				linkParser
 					.handleMessage({
 						...msg,
-						platform: meta.platform,
 						connectionId: meta.connectionId,
 					})
 					.catch((err) => {

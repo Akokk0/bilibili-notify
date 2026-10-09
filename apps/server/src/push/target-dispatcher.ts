@@ -11,7 +11,13 @@ import type {
 	SessionRef,
 	TargetDispatcher,
 } from "@bilibili-notify/internal";
-import { connectionDispatchKey, fail, isTargetPaused } from "@bilibili-notify/internal";
+import {
+	connectionDispatchKey,
+	fail,
+	isTargetPaused,
+	platformOfTarget,
+	platformSupportsAtAll,
+} from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "./dispatch.js";
 import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
@@ -68,22 +74,12 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return opts.store.getConnections().find((a) => a.id === connectionId);
 	}
 
-	/**
-	 * 开关与平台的检查,**全仓只有这一份**(适配器不再各查一遍)。过了回 `undefined`,没过回失败结果。
-	 *
-	 * 平台那一句是「目标的 `platform` 与它那条连接对不上」—— 3a-21 删 `target.platform` 时这一句跟着删。
-	 */
+	/** 开关的检查,**全仓只有这一份**(适配器不再各查一遍)。过了回 `undefined`,没过回失败结果。 */
 	function refusal(target: PushTarget, connection: Connection): Failure | undefined {
 		if (isTargetPaused(target, opts.store.getConnections())) {
 			return target.enabled
 				? fail("not_configured", `connection disabled: connectionId=${connection.id}`)
 				: fail("not_configured", `target disabled: targetId=${target.id}`);
-		}
-		if (target.platform !== connection.platform) {
-			return fail(
-				"invalid",
-				`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
-			);
 		}
 		return undefined;
 	}
@@ -116,6 +112,13 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			if (!platformAdapter) return false;
 			if (refusal(target, connection)) return false;
 			return platformAdapter.isAvailable(connection, destinationOf(target));
+		},
+
+		supportsAtAll(targetId: string): boolean {
+			const target = findTarget(targetId);
+			if (!target) return false;
+			const platform = platformOfTarget(target, opts.store.getConnections());
+			return platform !== undefined && platformSupportsAtAll(platform);
 		},
 
 		send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {

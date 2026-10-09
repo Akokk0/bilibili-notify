@@ -473,12 +473,26 @@ export interface ChatIdentity {
 }
 
 /**
- * 主人那个私聊目标的两坐标。不是私聊会话就没有 ——
+ * 主人那个私聊目标的两坐标;平台取自它挂着的连接。不是私聊会话、连接不在了都没有 ——
  * 群目标的 `address` 是群,拿它当主人身份等于把整个群当成主人。
  */
-export function chatIdentityOf(target: PushTarget | undefined): ChatIdentity | undefined {
+export function chatIdentityOf(
+	target: PushTarget | undefined,
+	connections: readonly Pick<Connection, "id" | "platform">[],
+): ChatIdentity | undefined {
 	if (!isPrivateTarget(target) || !target.address) return undefined;
-	return { platform: target.platform, address: target.address };
+	// 平台取自它挂着的连接;连接不在了就没有身份,同「不是私聊 / 没有地址」。
+	const platform = platformOfTarget(target, connections);
+	if (platform === undefined) return undefined;
+	return { platform, address: target.address };
+}
+
+/** 一个目标是哪个平台 —— 取自它挂着的那条连接;连接不在了就是 `undefined`。 */
+export function platformOfTarget(
+	target: Pick<PushTarget, "connectionId">,
+	connections: readonly Pick<Connection, "id" | "platform">[],
+): string | undefined {
+	return connections.find((c) => c.id === target.connectionId)?.platform;
 }
 
 /**

@@ -65,10 +65,10 @@ function qqGroup(id: string, groupOpenid: string, over: Partial<PushTarget> = {}
 
 const ADAPTERS = [connection(ONEBOT_ADAPTER, "onebot"), connection(QQ_ADAPTER, "qq-official")];
 
-const K_GROUP = linkScopeKey("onebot", ONEBOT_ADAPTER, "123");
-const K_GROUP_2 = linkScopeKey("onebot", ONEBOT_ADAPTER, "456");
+const K_GROUP = linkScopeKey(ONEBOT_ADAPTER, "123");
+const K_GROUP_2 = linkScopeKey(ONEBOT_ADAPTER, "456");
 /** 机器人在、但没配成推送目标的群 —— 没有 id,只能跟默认行。 */
-const K_STRANGER = linkScopeKey("onebot", ONEBOT_ADAPTER, "789");
+const K_STRANGER = linkScopeKey(ONEBOT_ADAPTER, "789");
 
 const ALL_ON = { defaults: { parse: true, form: "image" as const }, groups: {} };
 const NONE_ON = { defaults: { parse: false, form: "image" as const }, groups: {} };
@@ -155,7 +155,7 @@ describe("resolveLinkParsingPolicies", () => {
 			targets: [qqGroup(T_QQ_GROUP, "openid-xyz")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(`qq-official:${QQ_ADAPTER}:openid-xyz`).parse).toBe(true);
+		expect(table.policyFor(`${QQ_ADAPTER}:openid-xyz`).parse).toBe(true);
 	});
 
 	it("私聊目标不进表(链接解析只在群里响应),例外里写了它也没用", () => {
@@ -164,7 +164,7 @@ describe("resolveLinkParsingPolicies", () => {
 			targets: [onebotPrivate(T_PRIVATE, "10001")],
 			connections: ADAPTERS,
 		});
-		expect(table.policyFor(linkScopeKey("onebot", ONEBOT_ADAPTER, "10001")).parse).toBe(false);
+		expect(table.policyFor(linkScopeKey(ONEBOT_ADAPTER, "10001")).parse).toBe(false);
 	});
 
 	it("例外里引用的目标已经删掉 → 静默忽略,其余照常", () => {
@@ -186,5 +186,22 @@ describe("resolveLinkParsingPolicies", () => {
 			connections: ADAPTERS,
 		});
 		expect(table.policyFor(K_GROUP)).toEqual({ parse: true, form: "miniapp" });
+	});
+});
+
+describe("linkScopeKey —— 键里没有平台,只有连接与群", () => {
+	it("键就是 连接:群", () => {
+		expect(linkScopeKey(ONEBOT_ADAPTER, "123")).toBe(`${ONEBOT_ADAPTER}:123`);
+	});
+
+	it("两条连接上同名的群各是各的键", () => {
+		expect(linkScopeKey(ONEBOT_ADAPTER, "123")).not.toBe(linkScopeKey(QQ_ADAPTER, "123"));
+		const table = resolveLinkParsingPolicies({
+			config: { ...NONE_ON, groups: { [T_GROUP]: { parse: true } } },
+			targets: [onebotGroup(T_GROUP, "123")],
+			connections: ADAPTERS,
+		});
+		expect(table.policyFor(linkScopeKey(ONEBOT_ADAPTER, "123")).parse).toBe(true);
+		expect(table.policyFor(linkScopeKey(QQ_ADAPTER, "123")).parse).toBe(false);
 	});
 });

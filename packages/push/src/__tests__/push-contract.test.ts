@@ -62,6 +62,7 @@ function makeDispatcher(opts: DispatcherOptions = {}) {
 	const isAvailable = vi.fn(() => true);
 	const dispatcher: FakeDispatcher = {
 		isAvailable,
+		supportsAtAll: () => true,
 		isEnabled: (id) => !opts.disabled?.includes(id),
 		send: async (targetId, payload) => {
 			const nth = (perTarget.get(targetId) ?? 0) + 1;
@@ -717,6 +718,7 @@ describe("一次推送按锚点发", () => {
 		const { base, settled } = trackedPushBase();
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
+			supportsAtAll: () => true,
 			isEnabled: () => true,
 			send: async (_targetId, payload) => {
 				sentTexts.push(textOf(payload));

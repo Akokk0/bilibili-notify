@@ -649,17 +649,6 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 		expect(pa.isAvailable).not.toHaveBeenCalled();
 	});
 
-	it("目标的 platform 与连接对不上:send 回 invalid、不调适配器 send、onDelivery 照调;isAvailable 为假", async () => {
-		const target = makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" });
-		const { dispatcher, pa, onDelivery } = setup([CONNECTION], [target]);
-		const r = await dispatcher.send("t1", PAYLOAD);
-		expect(r).toMatchObject({ ok: false, code: "invalid" });
-		expect(pa.send).not.toHaveBeenCalled();
-		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
-		expect(dispatcher.isAvailable("t1")).toBe(false);
-		expect(pa.isAvailable).not.toHaveBeenCalled();
-	});
-
 	it("经会话目标发送:适配器收到的是 {kind, scope, address, parentAddress?},没有 id / name / enabled / platform / connectionId", async () => {
 		const target = makeTarget({
 			id: "t1",
@@ -721,5 +710,56 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.target).toBeUndefined();
 		expect(seen[0]?.destination).toEqual({ kind: "session", scope: "group", address: "123456" });
+	});
+});
+
+/**
+ * 路由只问结论「这个目标能不能 @全体」,平台怎么来的它不管:取自目标挂着的连接,
+ * 不看目标自己那一格(夹具里故意写成不一样)。
+ */
+describe("createTargetDispatcher — supportsAtAll(平台取自连接)", () => {
+	function dispatcherOf(connections: Connection[], targets: PushTarget[]) {
+		return createTargetDispatcher({
+			store: makeStore(connections, targets),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
+			logger: makeLogger(),
+		});
+	}
+
+	it("QQ 官方连接上的目标 → false,即使目标自己那格写的是 onebot", () => {
+		const d = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "qq-official" })],
+			[makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" })],
+		);
+		expect(d.supportsAtAll("t1")).toBe(false);
+	});
+
+	it("OneBot 连接上的目标 → true,即使目标自己那格写的是 qq-official", () => {
+		const d = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "onebot" })],
+			[makeTarget({ id: "t1", connectionId: "a1", platform: "qq-official" })],
+		);
+		expect(d.supportsAtAll("t1")).toBe(true);
+	});
+
+	it("拓展连接(表里没有的平台)→ true,与表对未知平台的默认一致", () => {
+		const d = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "telegram", kind: "extension" })],
+			[makeTarget({ id: "t1", connectionId: "a1", platform: "qq-official" })],
+		);
+		expect(d.supportsAtAll("t1")).toBe(true);
+	});
+
+	it("目标不存在 → false", () => {
+		const d = dispatcherOf([makeConnection({ id: "a1", platform: "onebot" })], []);
+		expect(d.supportsAtAll("ghost")).toBe(false);
+	});
+
+	it("连接不存在 → false,即使目标自己那格写的是 onebot", () => {
+		const d = dispatcherOf(
+			[],
+			[makeTarget({ id: "t1", connectionId: "ghost", platform: "onebot" })],
+		);
+		expect(d.supportsAtAll("t1")).toBe(false);
 	});
 });

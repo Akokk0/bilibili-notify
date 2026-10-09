@@ -406,7 +406,7 @@ export type NotificationPayload =
 
 /**
  * 推送出口接口。业务核心持有此接口，按 PushTarget.id 投递。
- * Adapter 实现内部按 target.platform 分发到具体 platform adapter。
+ * 实现内部按目标所属连接的分发键找到具体的 platform adapter。
  */
 export interface TargetDispatcher {
 	send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult>;
@@ -420,7 +420,7 @@ export interface TargetDispatcher {
 		session: SessionRef,
 		payload: NotificationPayload,
 	): Promise<DeliveryResult>;
-	/** 允许 adapter 通过 id 查目标的元数据（platform / scope / 启停状态）。 */
+	/** 允许 adapter 通过 id 查目标的元数据（scope / 地址 / 启停状态）。 */
 	resolve(targetId: string): PushTarget | undefined;
 	/**
 	 * 配置层面能不能推:目标存在、目标启用、所属连接启用。停用的目标不是候选 ——
@@ -429,6 +429,10 @@ export interface TargetDispatcher {
 	isEnabled(targetId: string): boolean;
 	/** 健康检查：目标当前是否可投递（bot 在线 / endpoint 可达）。 */
 	isAvailable(targetId: string): boolean;
+	/**
+	 * 这个目标能不能 @全体。推送路由只问结论,不碰平台;目标或它的连接不在了回 `false`。
+	 */
+	supportsAtAll(targetId: string): boolean;
 	/**
 	 * 带外的连接探测入口,给 `/api/connections/:id/probe` 与引擎的周期健康探测用。
 	 */

@@ -29,6 +29,9 @@ const target = (over: Record<string, unknown>): PushTarget =>
 		...over,
 	}) as unknown as PushTarget;
 
+// 目标挂在 UUID_B 这条连接上;平台取自连接。
+const connections = [{ id: UUID_B, platform: "onebot" }];
+
 const id = (over: Partial<ChatIdentity> = {}): ChatIdentity => ({
 	platform: "onebot",
 	address: "10001",
@@ -40,6 +43,7 @@ describe("chatIdentityOf —— 从主人那条私聊目标取两坐标", () => 
 		expect(
 			chatIdentityOf(
 				target({ kind: "session", scope: "private", platform: "onebot", address: "10001" }),
+				connections,
 			),
 		).toEqual({ platform: "onebot", address: "10001" });
 	});
@@ -48,13 +52,17 @@ describe("chatIdentityOf —— 从主人那条私聊目标取两坐标", () => 
 		expect(
 			chatIdentityOf(
 				target({ kind: "session", scope: "group", platform: "onebot", address: "88888" }),
+				connections,
 			),
 		).toBeUndefined();
 	});
 
 	it("单向终点没有身份", () => {
 		expect(
-			chatIdentityOf(target({ kind: "endpoint", scope: "channel", platform: "feishu" })),
+			chatIdentityOf(
+				target({ kind: "endpoint", scope: "channel", platform: "feishu" }),
+				connections,
+			),
 		).toBeUndefined();
 	});
 
@@ -62,12 +70,13 @@ describe("chatIdentityOf —— 从主人那条私聊目标取两坐标", () => 
 		expect(
 			chatIdentityOf(
 				target({ kind: "session", scope: "private", platform: "onebot", address: "" }),
+				connections,
 			),
 		).toBeUndefined();
 	});
 
 	it("没配主人 → 没有身份", () => {
-		expect(chatIdentityOf(undefined)).toBeUndefined();
+		expect(chatIdentityOf(undefined, connections)).toBeUndefined();
 	});
 });
 
