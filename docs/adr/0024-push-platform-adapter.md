@@ -15,6 +15,7 @@
     - 理由：留内置、拓展两套，就永远有一套没被对拍到。
 2. **名字用 `PlatformAdapter` 一套**（推翻 ADR-0023 决策 2 的 `PushOutlet`）：`PlatformAdapter` / `PlatformAdapterDef` / `PlatformAdapterHandle` / `PlatformAdapterRegistry`、`registerPlatformAdapter`、`PlatformAdapterContext`、`PlatformAdapterDescriptor`；连接上的键叫 `adapterKey`。`PlatformDescriptor`、`TargetDispatcher`、清单的 `contributes.push` 不变。目录仍叫 `platforms/`，其中的登记表与分发挪到 `push/`。
     - 🔗 10-09（3a-20b-1）：`Connector` / `PlatformDialect` 两半没有单独的消费者，不改名，直接平铺进 `PlatformAdapter` 后删掉。适配器上的登记键也叫 `adapterKey`（内置三个是 `onebot` / `qq-official` / `webhook`）；连接上落这一格之前，「连接归谁管」由 `connectionDispatchKey` 现算。
+    - 🔗 10-09（3a-20b-2）：`start(ctx)` / `stop()` 已落，登记即启动、注销即停止。`PlatformAdapterContext` 这一片有的成员：集成上下文的 `logger` / `signal` / `onDispose`，加 `connections()`（归这个适配器的连接，现读）与 `onConnectionsChanged(fn)` —— 主人定的形状，与拓展推送源把手同形（被否：宿主替适配器逐条连接起停）。`inbound` 还没进上下文。3b 写拓展契约文档时要讲清：每次发送连接都会递到手上，只调 HTTP 接口的适配器不用管连接名单，维持长连接的才需要对账。
     - `PlatformAdapterDescriptor` 描述一个适配器（它的脸与设置字段），`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法）。
     - 三个内置适配器的键是 `onebot`、`qq-official`、`webhook`，和 `bilibili` 一样是保留 id（守卫 18），拓展占不了。
     - 理由：当初改名是怕 `platform` 一词两义，这个歧义已经由订阅侧的 `sourceLabel` 消掉；多家机器人框架都这么叫；改回来要动的地方最少。

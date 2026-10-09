@@ -53,7 +53,7 @@
 | 3a-17 ✅ | 出口咽喉：只有 `TargetDispatcher` 能发送；`sendToAddress`；链接回复改走它（今天唯一一条绕过派发器的真路径） | 3a-14、3a-15 | 无 |
 | 3a-18 ✅ | 主人通知：`notifyMaster` 回结果形状、三个旧口合一；主人目标只许指向私聊目标（保存拒收、发送复检、迁移清空并在首访提示里说明） | 3a-15、3a-17 | 设置、备份 |
 | 3a-19 ✅ | 指令回复改走 `sendToAddress`；咽喉 e2e（逐条驱动全部发送路径，每条恰好一条截流记录、零外连） | 3a-17、3a-18 | 无 |
-| 3a-20（进行中，20a ✅、20b-1 ✅） | 适配器接口，切四小片：20a ✅ 发送口改窄、删派发器里的临时目标；20b 分两步：20b-1 ✅ 登记键换 `adapterKey`，20b-2 登记即 `start(ctx)` / 注销即 `stop()`，三个内置适配器与桥改接口；20c 能力 `atAll` / `inbound` 改问适配器；20d `/api/qq/*` 搬到 `/api/adapters` 底下。描述、候选、`settingsSchema` 与它们的读口随 3a-22 | 3a-12、3a-15、3a-17 | 无（连接形状先不变） |
+| 3a-20（进行中，20a ✅、20b ✅） | 适配器接口，切四小片：20a ✅ 发送口改窄、删派发器里的临时目标；20b ✅ 分两步：20b-1 登记键换 `adapterKey`，20b-2 登记即 `start(ctx)` / 注销即 `stop()`，三个内置适配器与桥改接口；20c 能力 `atAll` / `inbound` 改问适配器；20d `/api/qq/*` 搬到 `/api/adapters` 底下。描述、候选、`settingsSchema` 与它们的读口随 3a-22 | 3a-12、3a-15、3a-17 | 无（连接形状先不变） |
 | 3a-21 | 目标删 `platform` | 3a-20 | 目标、备份 |
 | 3a-22 | 连接新形状（`adapterKey` / `settings` / `platformSnapshot`），删 `CONNECTION_PLATFORMS` 闭集；适配器的描述、`settingsSchema`、`listConnectionCandidates` 与 `/api/adapters` 的读口（3a-20 挪来） | 3a-21 | 连接、备份 |
 | **丁 B 站搬家与接入** | | | |
@@ -189,6 +189,9 @@
   - 照规矩直接定、主人没逐条表态的：截流回调删 `isProvisional`；新文件 `platforms/destination-label.ts` 的 `describeDestination`（日志里认去向用的短标签）；词表加 `Destination`「去向」。
   - 20b 定的（10-09）：主人定上下文怎么把「自己的连接」交给适配器 —— **现读的连接名单 + 「变了叫我」的订阅**，与拓展今天拿到的把手同形（被否：宿主替它逐条起停，OneBot 的反向监听好几条连接共用一个端口、桥一条接入驮着好几个 bot，逐条起停要另记一本账，而且要推翻已经给第三方的接口；这一小片不动连接）。**3b 写拓展契约文档时要讲清**：每次发送连接都会递到手上，只调 HTTP 接口的适配器不用管连接名单；维持长连接的才需要对账，给一段样板。伦伦酱把 20b 再拆成两步：先换键，再换启停。
   - 20b-1 已落（10-09，`809a99ad`）：登记键从 `platforms: string[]` 换成单个 `adapterKey`，内置三个是 `onebot` / `qq-official` / `webhook`，拓展的由宿主填成拓展 id；`connectionDispatchKey` 把 webhook 那一族收成 `"webhook"`（连接上落 `adapterKey` 之后，3a-22，这个函数退役）；`Connector` / `PlatformDialect` 两个半边接口平铺进 `PlatformAdapter` 后删了（没有单独的消费者），契约包不再转出这两个名字，契约版本号没升。每条连接仍找到原来那个适配器。失败原因里「adapter=…」「no platform adapter for …」对 webhook 那一族的连接现在印 `webhook` 而不是 `feishu` 等。
+  - 20b-2 已落（10-09，`719ad6a2`）：`reconcile?` / `dispose?` 换成必备的 `start(ctx)` / `stop()`；`PlatformAdapterContext` = 集成上下文的 `logger` / `signal` / `onDispose` 加 `connections()`（归自己的连接，现读）与 `onConnectionsChanged(fn)`。登记表 `register(adapter, ctx)` 即启动、把手 `dispose()` 即停止（`stop` 失败只记 warn）；视图上不再有 `start` / `stop`。内置三个由 `push/builtin-adapters.ts` 的 `registerBuiltinAdapters` 在 `createEngines` 之前登记，各有一份集成上下文；引擎里三处 `reconcile` / `dispose` 循环删了。拓展适配器的上下文建在拓展自己的集成上下文上（`push/adapter-context.ts` 两边共用）。桥：`start` 只订变更、不立刻对账（与从前「开机对账跑在拓展装载之前」一致），接入名单（设置）变了仍由它自己那个 `reconcile()` 对账。`IntegrationContext` 这个类型搬进了 `packages/internal`（`PlatformAdapterContext` 要继承它、契约包要转给桥；工厂留在服务端，与 `ServiceContext` 的分法相同）。契约版本号没升。
+  - 20b-2 照规矩直接定、主人没逐条表态的：`createPlatformAdapterContext`、`registerBuiltinAdapters` 两个名字与文件；`IntegrationContext` 搬家；桥文件里的本地类型 `BridgeAdapter`（多一个 `reconcile()`，不进契约）；`ctx.inbound` 与定时器这一片没进上下文（内置适配器的入站与定时器仍走工厂选项）。
+  - 20b-2 留着的：① `registerBuiltinAdapters` 中途登记失败的回收没有测试；② `start` 抛了时它已经订下的变更订阅由集成上下文 / 拓展卸载兜底收，登记表自己不收。真机待看（没验）：开机后 OneBot 的正向长连接与反向监听照常起来、QQ 官方照常连上；面板上改一条连接（停用、改地址）后对应的长连接跟着断开 / 重连；关机不卡。
   - 留着的：① `EndpointRef` 的 `scope` 一格 —— 定案里目标的新形状端点那支没有 `scope`，而 webhook 冻结的 JSON 有，3a-21 / 3a-22 动目标形状时要给它另找来源；② OneBot 的 `isAvailable` 仍不查去向种类（端点目标挂到 OneBot 连接上要到 `send` 才失败，今天就这样）。
   - 真机待看（没验）：重启后桥、webhook、OneBot、QQ 官方各推一条照常送达（新加的那道平台检查不误拦）；停用一个目标后它不再收到推送；指令回复、链接回复照常。
 - 3a-12 开工前定的（10-09，主人定，四题）：
@@ -197,7 +200,7 @@
   - **不拆成两个概念、不另起名**：它就叫集成上下文（`IntegrationContext`），生命周期是它自带的一面，和后缀表里 `Context` 那一行「带生命周期、日志、signal」的说法一致。被否：把机件单独立成 `IntegrationLifecycle` / `IntegrationScope`（Koishi 的 `EffectScope` 是这么做的，查过；它的插件能嵌套、状态挂在作用域上，咱们的集成是平的、运行状态在装载器里管，拆出来的对象太薄）。
   - 已落（10-09，`049761d7`）：`integrations/context.ts` 的 `createIntegrationContext` 交出 `IntegrationContext { logger, signal, onDispose }` 与宿主握着的把手（`track` / `refuse` / `disposed` / `dispose`）；收尾先后照旧：置已停 → `onStopping` → 中止 `signal` → 钩子（后登记先跑、总时限 30 秒）→ 拆名册。拓展上下文里的名册、钩子、时限全换成用它；在跑的动作与解析改成听 `signal`，两段手写的逐个叫停删掉。`DISPOSE_TIMEOUT_MS` 搬到新文件。拓展契约、日志文字、现有测试的断言都没动。
   - 照规矩直接定、主人没逐条表态的：运行状态这一片不动、不改名（内置集成没接上，没有读者）；日志的 `[ext:<id>]` 前缀不改成按来源的字段（那是改日志文字）；选项名 `stopReason` / `onStopping`。把手的类型名 `IntegrationContextHandle` 交付后问过，主人定保留（后缀表 `Handle` 那行补了一句）。
-  - 留着的：① 拓展看不见 `signal`（契约 3b 才加）；② `IntegrationContext` 的其余成员各随其片（存储 3a-10、`http` 3a-26、问题上报 3a-28）；③ `redact`、`fetchImage` / `storeImage` 绑到上下文还没有哪一片点名。
+  - 留着的：① 拓展的 `ExtensionContext` 上看不见 `signal`（契约 3b 才加；拓展提供的适配器自 3a-20b-2 起经 `PlatformAdapterContext` 看得见）；② `IntegrationContext` 的其余成员各随其片（存储 3a-10、`http` 3a-26、问题上报 3a-28）；③ `redact`、`fetchImage` / `storeImage` 绑到上下文还没有哪一片点名。
   - 真机待看（没验）：停用一个在跑的拓展（桥），面板上它停下、挂载的地址不再应答；点了动作还没回来时停用，动作被叫停。
 - 3a-09 开工前定的（10-09，主人定）：**这一片只做改名腾位**，问题表本体（内存表、`/api/problems`、变更事件、私聊节流与「已恢复」）并进 3a-12，和 `ctx.reportProblem` 同一小片落地（同一天 3a-12 定题时又挪到 3a-28 / 3a-30，见上一条）—— 今天全仓没有一处会往问题表里报，照「没有实现者的接口不造」，先例是 3a-08。**这一族的词用 `Discrepancy`（出入），不用定案原写的 `Rejection`** —— 「被拒」只对三种结果里的一种（ADR-0023 决策 14、ADR-0025 决策 10 下有 🔗）；界面上那个框叫「上报出入」。
   - 已落（10-09，`19b55e39`）：`SubscriptionReportProblem` → `ReportDiscrepancy`；容器 `ReportProblemLog` → `ReportDiscrepancyTable`（照后缀表「内存里按键查的表」）；三处回调 `onSubscriptionReportProblem` / `extensionReportProblem` / 拓展直播的 `reportProblem` 成员都叫 `onReportDiscrepancy`；ctx 里那个唯一出口 `reportProblem` → `recordDiscrepancy`；契约 `ExtensionReportProblemView` → `ReportDiscrepancyView`、字段 `reportDiscrepancies`；事件与 WS 帧 `extension-report-discrepancies-changed`；五个文件名 `report-problems` → `report-discrepancies`；这一族的局部变量、注释、界面与假来源拓展的文案一并换。纯改名，行为没变；`reportProblem` 这个名字从代码里腾空了。
