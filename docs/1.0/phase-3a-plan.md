@@ -53,7 +53,7 @@
 | 3a-17 ✅ | 出口咽喉：只有 `TargetDispatcher` 能发送；`sendToAddress`；链接回复改走它（今天唯一一条绕过派发器的真路径） | 3a-14、3a-15 | 无 |
 | 3a-18 ✅ | 主人通知：`notifyMaster` 回结果形状、三个旧口合一；主人目标只许指向私聊目标（保存拒收、发送复检、迁移清空并在首访提示里说明） | 3a-15、3a-17 | 设置、备份 |
 | 3a-19 ✅ | 指令回复改走 `sendToAddress`；咽喉 e2e（逐条驱动全部发送路径，每条恰好一条截流记录、零外连） | 3a-17、3a-18 | 无 |
-| 3a-20（进行中，20a ✅） | 适配器接口，切四小片：20a ✅ 发送口改窄、删派发器里的临时目标；20b 登记键换 `adapterKey`、登记即 `start(ctx)` / 注销即 `stop()`，三个内置适配器与桥改接口；20c 能力 `atAll` / `inbound` 改问适配器；20d `/api/qq/*` 搬到 `/api/adapters` 底下。描述、候选、`settingsSchema` 与它们的读口随 3a-22 | 3a-12、3a-15、3a-17 | 无（连接形状先不变） |
+| 3a-20（进行中，20a ✅、20b-1 ✅） | 适配器接口，切四小片：20a ✅ 发送口改窄、删派发器里的临时目标；20b 分两步：20b-1 ✅ 登记键换 `adapterKey`，20b-2 登记即 `start(ctx)` / 注销即 `stop()`，三个内置适配器与桥改接口；20c 能力 `atAll` / `inbound` 改问适配器；20d `/api/qq/*` 搬到 `/api/adapters` 底下。描述、候选、`settingsSchema` 与它们的读口随 3a-22 | 3a-12、3a-15、3a-17 | 无（连接形状先不变） |
 | 3a-21 | 目标删 `platform` | 3a-20 | 目标、备份 |
 | 3a-22 | 连接新形状（`adapterKey` / `settings` / `platformSnapshot`），删 `CONNECTION_PLATFORMS` 闭集；适配器的描述、`settingsSchema`、`listConnectionCandidates` 与 `/api/adapters` 的读口（3a-20 挪来） | 3a-21 | 连接、备份 |
 | **丁 B 站搬家与接入** | | | |
@@ -187,6 +187,8 @@
   - 20a 已落（10-09，`9a284f70`）：`send(connection, destination, payload)` / `isAvailable(connection, destination)`；类型都从 `PushTarget` 上 `Pick` 出来。派发器里一处 `refusal`：目标或连接停用回 `not_configured`，目标与连接的平台对不上回 `invalid`（这一句 3a-21 删 `target.platform` 时跟着删）；`provisionalTarget` 删了；截流回调入参改成 `{ connection, destination, target, payload }`，`target` 为 `undefined` 就是直接发到会话（原来的 `isProvisional` 删了）。webhook 发出去的请求一个字节没变。契约包多转出类型 `DestinationRef`，契约版本号没升。
   - 行为变了的：① 经目标发送时，派发器现在自己拒停用的目标与连接。三个内置适配器的 `send` 以前不查开关（只在 `isAvailable` 里查），靠调用方先过闸；现在多一道兜底，正常流程走不到。② webhook 与桥以前不查「目标的平台和连接对不对得上」，现在派发器统一查；配置仓写入时本来就强制两者一致、连接的平台也不许改，所以正常数据不受影响。③ 桥：停用现在先于「找不到 bot / 会话」判。④ 适配器日志里会话去向不再打目标 id，改打 `scope:address`；几句失败原因的文字跟着变。
   - 照规矩直接定、主人没逐条表态的：截流回调删 `isProvisional`；新文件 `platforms/destination-label.ts` 的 `describeDestination`（日志里认去向用的短标签）；词表加 `Destination`「去向」。
+  - 20b 定的（10-09）：主人定上下文怎么把「自己的连接」交给适配器 —— **现读的连接名单 + 「变了叫我」的订阅**，与拓展今天拿到的把手同形（被否：宿主替它逐条起停，OneBot 的反向监听好几条连接共用一个端口、桥一条接入驮着好几个 bot，逐条起停要另记一本账，而且要推翻已经给第三方的接口；这一小片不动连接）。**3b 写拓展契约文档时要讲清**：每次发送连接都会递到手上，只调 HTTP 接口的适配器不用管连接名单；维持长连接的才需要对账，给一段样板。伦伦酱把 20b 再拆成两步：先换键，再换启停。
+  - 20b-1 已落（10-09，`809a99ad`）：登记键从 `platforms: string[]` 换成单个 `adapterKey`，内置三个是 `onebot` / `qq-official` / `webhook`，拓展的由宿主填成拓展 id；`connectionDispatchKey` 把 webhook 那一族收成 `"webhook"`（连接上落 `adapterKey` 之后，3a-22，这个函数退役）；`Connector` / `PlatformDialect` 两个半边接口平铺进 `PlatformAdapter` 后删了（没有单独的消费者），契约包不再转出这两个名字，契约版本号没升。每条连接仍找到原来那个适配器。失败原因里「adapter=…」「no platform adapter for …」对 webhook 那一族的连接现在印 `webhook` 而不是 `feishu` 等。
   - 留着的：① `EndpointRef` 的 `scope` 一格 —— 定案里目标的新形状端点那支没有 `scope`，而 webhook 冻结的 JSON 有，3a-21 / 3a-22 动目标形状时要给它另找来源；② OneBot 的 `isAvailable` 仍不查去向种类（端点目标挂到 OneBot 连接上要到 `send` 才失败，今天就这样）。
   - 真机待看（没验）：重启后桥、webhook、OneBot、QQ 官方各推一条照常送达（新加的那道平台检查不误拦）；停用一个目标后它不再收到推送；指令回复、链接回复照常。
 - 3a-12 开工前定的（10-09，主人定，四题）：

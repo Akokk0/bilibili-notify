@@ -14,6 +14,7 @@
 1. **内置平台与拓展走同一条路**：OneBot、QQ 官方机器人、webhook 也作为普通的平台适配器登记，与拓展提供的适配器是同一个接口、同一张登记表。`CONNECTION_PLATFORMS` 这个闭集删掉；各平台的设置 schema 与平台信息表搬出 `internal`，由适配器自带，面板经描述接口拿。
     - 理由：留内置、拓展两套，就永远有一套没被对拍到。
 2. **名字用 `PlatformAdapter` 一套**（推翻 ADR-0023 决策 2 的 `PushOutlet`）：`PlatformAdapter` / `PlatformAdapterDef` / `PlatformAdapterHandle` / `PlatformAdapterRegistry`、`registerPlatformAdapter`、`PlatformAdapterContext`、`PlatformAdapterDescriptor`；连接上的键叫 `adapterKey`。`PlatformDescriptor`、`TargetDispatcher`、清单的 `contributes.push` 不变。目录仍叫 `platforms/`，其中的登记表与分发挪到 `push/`。
+    - 🔗 10-09（3a-20b-1）：`Connector` / `PlatformDialect` 两半没有单独的消费者，不改名，直接平铺进 `PlatformAdapter` 后删掉。适配器上的登记键也叫 `adapterKey`（内置三个是 `onebot` / `qq-official` / `webhook`）；连接上落这一格之前，「连接归谁管」由 `connectionDispatchKey` 现算。
     - `PlatformAdapterDescriptor` 描述一个适配器（它的脸与设置字段），`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法）。
     - 三个内置适配器的键是 `onebot`、`qq-official`、`webhook`，和 `bilibili` 一样是保留 id（守卫 18），拓展占不了。
     - 理由：当初改名是怕 `platform` 一词两义，这个歧义已经由订阅侧的 `sourceLabel` 消掉；多家机器人框架都这么叫；改回来要动的地方最少。

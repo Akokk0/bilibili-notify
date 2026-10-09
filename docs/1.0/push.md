@@ -108,7 +108,7 @@
 | `ConnectionCandidate` | 拓展的 `ExtensionBotView`（`listBots` 的元素） | 新建连接时供挑的候选 |
 
 - ⚠️ 按连接的 `adapterKey` 找适配器，**不按平台名找**（分发键 `connectionDispatchKey` 删掉）：拓展借来的 bot 平台名是开放字符串，一个适配器也能对多个平台（webhook 就是）。内置三个的键是 `onebot` / `qq-official` / `webhook`，和 `bilibili` 一样进保留 id；拓展的键就是拓展 id。
-- 适配器内部拆成的两半（原 `Connector` / `PlatformDialect`）新名施工时定。
+- 适配器内部原来拆成的两半（`Connector` / `PlatformDialect`）没有单独的消费者，3a-20b-1 已平铺进 `PlatformAdapter` 后删掉，不另起名。
 - 清单的 `contributes.push` 不改名。
 
 #### 成员
