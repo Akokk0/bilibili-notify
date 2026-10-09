@@ -9,7 +9,7 @@
 | 概念 | 用这个 | 不再用 |
 | --- | --- | --- |
 | 交给登记表、带行为的一整包 | `Def` | `Spec`、`Definition` |
-| 注册或启动后拿回的把手 | `Handle` | — |
+| 注册或启动后拿回的把手；宿主握着、用来收回一个上下文的那一面也用它（`IntegrationContextHandle`，10-09 主人定） | `Handle` | — |
 | 回调函数的类型 / 一包回调 | `Handler` / `…Handlers` | `Sink` |
 | 登记表 | `Registry` | 当登记表用的 `Table` |
 | 宿主或运行时递进来的环境（带生命周期、日志、signal） | `Context` | `Ctx`；跟着一次调用走的一包字段也不叫它 |

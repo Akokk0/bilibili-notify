@@ -135,7 +135,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 - 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。
 - `platforms/` 只放内置适配器的实现。原先放在里面的登记表与分发是中立件，3a-14 已和 `sink/` 一起挪进 `push/`（`push/registry.ts`、`push/dispatch.ts`、`push/target-dispatcher.ts`）。核心不许 import `platforms/`，只有 `compose.ts` 能（推送守卫①）。
 - `link-preview/` 由 `runtime/link-parser.ts` 与 `link-scope.ts` 改来（原定的 `link-cards/` 作废，ADR-0029）。
-- 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-12 开工时定。
+- 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-28 开工时定。
 - jieba 的 wasm 跟着 `live/` 进打包清单，改完要跑 `vp run build:update-payload`。
 - 被否的备选：适配文件散进各功能目录（B 站代码散在十几处，守卫只能靠文件名约定）；`sources/bilibili/` + `sources/extension/`（多一层，还把 BN 自己的中立逻辑挂成了「对接拓展」）。
 - `bilibili/devtools/` 被否的备选：放 `src/devtools/bilibili/`、B 站句柄从外面注入。
