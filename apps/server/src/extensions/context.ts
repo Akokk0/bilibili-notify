@@ -36,6 +36,7 @@ import {
 	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import { createIntegrationContext } from "../integrations/context.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
@@ -154,12 +155,6 @@ export interface ReportDiscrepancy {
  * 一直是旧的。
  */
 export const STATUS_CHANGED_COALESCE_MS = 250;
-
-/**
- * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
- * 装包、只重载全卡在它后面,关机也关不下去(ADR-0019 决策 45)。
- */
-export const DISPOSE_TIMEOUT_MS = 30_000;
 
 /**
  * v2 清单里推送源那一口的外观 + 连接配置项(ADR-0019 决策 17 / 41)。v1(写在代码里)或没开这一口
@@ -311,7 +306,7 @@ export interface CreateExtensionContextOptions {
 	hostApiVersion?: number;
 	/** 载荷版本号。测试里可以不给。 */
 	hostVersion?: string;
-	/** 收摊钩子一共等多久,见 {@link DISPOSE_TIMEOUT_MS}。只有测试会换。 */
+	/** 收摊钩子一共等多久,见 `DISPOSE_TIMEOUT_MS`(`../integrations/context.ts`)。只有测试会换。 */
 	disposeTimeoutMs?: number;
 }
 
@@ -334,9 +329,6 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 	);
 }
 
-/** 已经卸载了还来注册的东西,给它一个什么都不做的把手。 */
-const NOOP_DISPOSABLE: Disposable = { dispose() {} };
-
 /**
  * 给一个拓展开一面 ctx,外加宿主收回它的那个把手。
  *
@@ -345,26 +337,24 @@ const NOOP_DISPOSABLE: Disposable = { dispose() {} };
  */
 export function createExtensionContext(opts: CreateExtensionContextOptions): ExtensionRuntime {
 	const { id, host, mounts, adapters } = opts;
-	const logger = prefixed(host.logger, id);
-	const registered = new Set<Disposable>();
-	const hooks: Array<() => void | Promise<void>> = [];
-	let disposed = false;
-
-	/** 卸载之后还来注册 —— 不生效,但要留一行:那是拓展没收干净自己的异步尾巴。 */
-	function refuse(what: string): Disposable {
-		logger.warn(`已经卸载了,${what} 不再受理`);
-		return NOOP_DISPOSABLE;
-	}
-
-	function track(inner: Disposable): Disposable {
-		registered.add(inner);
-		return {
-			dispose() {
-				registered.delete(inner);
-				inner.dispose();
-			},
-		};
-	}
+	const integration = createIntegrationContext({
+		logger: prefixed(host.logger, id),
+		stopReason: `拓展 ${id} 停用了`,
+		disposeTimeoutMs: opts.disposeTimeoutMs,
+		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
+		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
+		onStopping() {
+			try {
+				opts.onDisposed?.();
+			} catch (err) {
+				integration.ctx.logger.error(`通知宿主「拓展停了」时抛了:${(err as Error).message}`);
+			}
+			// 挂着的那一发不发了:收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。
+			clearTimeout(statusTimer);
+			statusTimer = undefined;
+		},
+	});
+	const logger = integration.ctx.logger;
 
 	/** v1 `publishStatus` 交的回调 —— 任意 JSON,原样下发。 */
 	let statusOf: (() => unknown) | undefined;
@@ -491,8 +481,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		rawExternalId: unknown,
 		raw: unknown,
 	): Promise<void> {
-		if (disposed) {
-			refuse(`上报 ${kind}`);
+		if (integration.disposed) {
+			integration.refuse(`上报 ${kind}`);
 			throw new Error(`extension ${id} is already unloaded`);
 		}
 		const idCheck = checkReportedExternalId(rawExternalId);
@@ -629,7 +619,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let lastSettingsSeen = JSON.stringify(opts.settings() ?? null);
 	/** 上一次**扇出给拓展**的那份 —— 写坏了又改回原样的,拓展没见过中间那份,不再叫一遍。 */
 	let lastSettingsDelivered = lastSettingsSeen;
-	registered.add(
+	integration.track(
 		opts.onSettingsChanged(() => {
 			const raw = opts.settings();
 			const now = JSON.stringify(raw ?? null);
@@ -638,7 +628,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			const round = ++settingsRound;
 			const settle = (verdict: StoredSettingsVerdict) => {
 				// 判的已经是过时的那份(中间又落了一次盘),或者已经收摊了:作废。
-				if (round !== settingsRound || disposed) return;
+				if (round !== settingsRound || integration.disposed) return;
 				if (!verdict.ok) return settingsUnreadable(verdict.detail);
 				settingsProblem = undefined;
 				for (const [schema, value] of verdict.values) settingsValues.set(schema, value);
@@ -740,42 +730,66 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		settingsChecked.add(schema);
 	}
 
+	/**
+	 * 让一个在跑的动作 / 解析的 controller 听集成上下文的 `signal`:拓展停下时带着同一个原因叫停它,
+	 * 结束时把监听摘掉(同一拓展可以同时跑好几发解析,不摘会越挂越多)。回的是那个「摘掉」。
+	 */
+	function linkToStop(controller: AbortController): () => void {
+		const stop = integration.ctx.signal;
+		if (stop.aborted) {
+			controller.abort(stop.reason);
+			return () => {};
+		}
+		const onStop = () => controller.abort(stop.reason);
+		stop.addEventListener("abort", onStop, { once: true });
+		return () => stop.removeEventListener("abort", onStop);
+	}
+
 	const ctx: ExtensionContext = {
 		id,
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
 		hostVersion: opts.hostVersion ?? "0.0.0-dev",
 		logger,
 		setTimeout: (fn, ms) => {
-			if (disposed) return refuse("setTimeout");
+			if (integration.disposed) return integration.refuse("setTimeout");
 			// 一次性的:触发完就从名册上放掉,不然每调一次漏一个小对象,直到卸载。
 			let fired = false;
+			let tracked: Disposable | undefined;
 			const inner = host.setTimeout(() => {
 				fired = true;
-				registered.delete(inner);
+				// 只从名册上摘掉:宿主那只已经跑完,不用再叫它(`fired` 之后 `tracked.dispose()` 不动 `inner`)。
+				tracked?.dispose();
 				fn();
 			}, ms);
-			const tracked = track(inner);
+			tracked = integration.track({
+				dispose() {
+					if (!fired) inner.dispose();
+				},
+			});
 			return {
 				dispose() {
 					// 触发之后再 dispose:宿主那只已经跑完,不再去叫它。
-					if (!fired) tracked.dispose();
+					if (!fired) tracked?.dispose();
 				},
 			};
 		},
-		setInterval: (fn, ms) => (disposed ? refuse("setInterval") : track(host.setInterval(fn, ms))),
+		setInterval: (fn, ms) =>
+			integration.disposed
+				? integration.refuse("setInterval")
+				: integration.track(host.setInterval(fn, ms)),
 		mount(handler) {
 			// 卸载之后还来挂:不进表(那才是幽灵端点),但前缀照答 —— 拓展要的只是一段字符串。
-			if (disposed) {
-				refuse("mount");
+			if (integration.disposed) {
+				integration.refuse("mount");
 				return extensionMountPrefix(id);
 			}
 			const handle = mounts.mount(id, handler);
-			registered.add(handle);
+			integration.track(handle);
 			return handle.prefix;
 		},
 		registerPushSource(def) {
-			if (disposed) {
-				refuse("registerPushSource");
+			if (integration.disposed) {
+				integration.refuse("registerPushSource");
 				throw new Error(`extension ${id} is already unloaded`);
 			}
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
@@ -792,18 +806,18 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
-			registered.add(adapters.register(adapter));
+			integration.track(adapters.register(adapter));
 			return {
 				connections: () => ownConnections(def.configSchema),
 				onConnectionsChanged: (fn) => {
-					if (disposed) return refuse("onConnectionsChanged");
-					return track(opts.onConnectionsChanged(fn));
+					if (integration.disposed) return integration.refuse("onConnectionsChanged");
+					return integration.track(opts.onConnectionsChanged(fn));
 				},
 			};
 		},
 		registerSubscriptionSource(def) {
-			if (disposed) {
-				refuse("registerSubscriptionSource");
+			if (integration.disposed) {
+				integration.refuse("registerSubscriptionSource");
 				throw new Error(`extension ${id} is already unloaded`);
 			}
 			// 一个拓展就是一个平台(决策 9);要两个平台的那天再加一格子键。
@@ -814,7 +828,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			subscriptionSourceRegistered = true;
 			subscriptionSource = def;
 			// 收摊时摘掉:之后再问解析门就是「没在跑」,不会叫到一个已经停了的拓展身上。
-			registered.add({
+			integration.track({
 				dispose() {
 					subscriptionSource = undefined;
 				},
@@ -822,8 +836,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			return {
 				subscriptions: ownSubscriptions,
 				onSubscriptionsChanged: (fn) => {
-					if (disposed) return refuse("onSubscriptionsChanged");
-					return track(opts.onSubscriptionsChanged(fn));
+					if (integration.disposed) return integration.refuse("onSubscriptionsChanged");
+					return integration.track(opts.onSubscriptionsChanged(fn));
 				},
 				reportPost: reporter("post"),
 				reportLiveStart: reporter("liveStart"),
@@ -839,15 +853,15 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				feed("group", meta, (checked) => opts.inbound.onInboundGroup?.(msg, checked)),
 		},
 		onUpgrade(handler) {
-			if (disposed) {
-				refuse("onUpgrade");
+			if (integration.disposed) {
+				integration.refuse("onUpgrade");
 				return;
 			}
-			registered.add(opts.upgrades.register(id, handler));
+			integration.track(opts.upgrades.register(id, handler));
 		},
 		publishView(fn) {
-			if (disposed) {
-				refuse("publishView");
+			if (integration.disposed) {
+				integration.refuse("publishView");
 				return;
 			}
 			if (!isV2) {
@@ -857,8 +871,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			viewFn = fn;
 		},
 		publishStatus(fn) {
-			if (disposed) {
-				refuse("publishStatus");
+			if (integration.disposed) {
+				integration.refuse("publishStatus");
 				return;
 			}
 			// v2 走专口(决策 39):旧口收任意 JSON,async 回调在它那儿静默变成一份空视图。
@@ -869,8 +883,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			statusOf = fn;
 		},
 		statusChanged() {
-			if (disposed) {
-				refuse("statusChanged");
+			if (integration.disposed) {
+				integration.refuse("statusChanged");
 				return;
 			}
 			// 窗口里已经挂着一发:这一喊由它带上 —— 它在这一喊之后才发,面板重读到的是这一喊之后的样子。
@@ -883,7 +897,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
 			checkSettingsSchema(schema);
 			// 先交后判:存着的那份解不开时,这份 zod 也得留给装载器 —— 改对了没有它就判不了能不能起。
-			if (!disposed) handedSchemas.add(schema);
+			if (!integration.disposed) handedSchemas.add(schema);
 			const raw = opts.settings();
 			const verdict = judgeStoredSettingsSync([schema], settingsFields, raw);
 			if (verdict?.ok) {
@@ -899,7 +913,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				// 「之后才交」的那种 —— 判完才有 `get()` 可读,判坏了照样交给装载器收掉。
 				const round = settingsRound;
 				void judgeStoredSettings([schema], settingsFields, raw).then((late) => {
-					if (round !== settingsRound || disposed) return;
+					if (round !== settingsRound || integration.disposed) return;
 					if (!late.ok) settingsUnreadable(late.detail);
 					else if (!settingsValues.has(schema)) settingsValues.set(schema, late.values.get(schema));
 				});
@@ -907,16 +921,16 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			return {
 				get: () => readSettings(schema),
 				onChange: (fn: () => void) => {
-					if (disposed) return refuse("settings.onChange");
+					if (integration.disposed) return integration.refuse("settings.onChange");
 					// 每个订阅者只往扇出名单里加一格 —— 「内容变没变」在上面那一处判过了。
 					settingsListeners.add(fn);
-					return track({ dispose: () => settingsListeners.delete(fn) });
+					return integration.track({ dispose: () => settingsListeners.delete(fn) });
 				},
 			};
 		},
 		onAction(name, handler) {
-			if (disposed) {
-				refuse("onAction");
+			if (integration.disposed) {
+				integration.refuse("onAction");
 				return;
 			}
 			if (!declaredActions) {
@@ -932,13 +946,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 			actionHandlers.set(name, handler);
 		},
-		onDispose(fn) {
-			if (disposed) {
-				refuse("onDispose");
-				return;
-			}
-			hooks.push(fn);
-		},
+		onDispose: integration.ctx.onDispose,
 	};
 
 	/**
@@ -1019,7 +1027,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return fail("unsupported", `拓展 ${id} 的清单里没有动作 ${name}`);
 			}
 			// 收摊一开始就把在跑的都叫停了 —— 钩子还没跑完时再起一发,就没人叫停它。
-			const handler = disposed ? undefined : actionHandlers.get(name);
+			const handler = integration.disposed ? undefined : actionHandlers.get(name);
 			if (!handler) return fail("unsupported", `拓展 ${id} 声明了动作 ${name},代码却没接`);
 			const timeoutMs = runOpts.timeoutMs ?? ACTION_TIMEOUT_MS;
 			// 不排队、不并发(决策 42):两发一起跑,扫码登录就是两张码、两份轮询抢着存账号;排队的话,
@@ -1034,6 +1042,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				);
 			}
 			const controller = new AbortController();
+			const unlink = linkToStop(controller);
 			runningActions.set(name, controller);
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			const timeout = new Promise<ActionOutcome>((resolve) => {
@@ -1062,6 +1071,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 						message.trim() === "" ? `动作 ${name} 抛了,没留原话` : message,
 					);
 				} finally {
+					unlink();
 					// 收摊时整张表已经清掉了 —— 只摘自己这一格。
 					if (runningActions.get(name) === controller) runningActions.delete(name);
 				}
@@ -1074,10 +1084,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		},
 		async lookup(query, lookupOpts = {}) {
 			// 收摊一开始就把在跑的都叫停了 —— 这时再起一发就没人叫停它。
-			const source = disposed ? undefined : subscriptionSource;
+			const source = integration.disposed ? undefined : subscriptionSource;
 			if (!source) return undefined;
 			const timeoutMs = lookupOpts.timeoutMs ?? LOOKUP_TIMEOUT_MS;
 			const controller = new AbortController();
+			const unlink = linkToStop(controller);
 			runningLookups.add(controller);
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			const timeout = new Promise<LookupOutcome>((resolve) => {
@@ -1106,6 +1117,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					logger.warn(`解析门抛了:${message}`);
 					return fail("unavailable", `拓展查询出错:${message}`);
 				} finally {
+					unlink();
 					runningLookups.delete(controller);
 				}
 			})();
@@ -1116,69 +1128,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 		},
 		async dispose() {
-			if (disposed) return;
-			disposed = true;
-			// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
-			// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
-			try {
-				opts.onDisposed?.();
-			} catch (err) {
-				logger.error(`通知宿主「拓展停了」时抛了:${(err as Error).message}`);
-			}
-			// 挂着的那一发不发了:收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。
-			clearTimeout(statusTimer);
-			statusTimer = undefined;
-			// 🔴 在跑的动作先叫停,再跑收摊钩子 —— 钩子里能等它们收尾;不叫停的话,拓展都停了,它的
-			// handler 还在背后接着轮询平台。
-			for (const controller of runningActions.values()) {
-				controller.abort(new DOMException(`拓展 ${id} 停用了`, "AbortError"));
-			}
+			if (integration.disposed) return;
+			// 在跑的动作 / 解析听 `integration.ctx.signal`(见 `linkToStop`):收摊钩子开始跑时它们已经叫停了。
+			await integration.dispose();
 			runningActions.clear();
-			// 在跑的解析同一条:拓展停了,它还在背后问平台就是白挨风控。
-			for (const controller of runningLookups) {
-				controller.abort(new DOMException(`拓展 ${id} 停用了`, "AbortError"));
-			}
 			runningLookups.clear();
-			// 先跑拓展自己的收摊钩子(它可能要用还活着的定时器 / 端点收尾),再拆机件。
-			// 后注册的先跑 —— 后建起来的东西通常依赖先建起来的。
-			const pending = [...hooks].reverse();
-			hooks.length = 0;
-			let overdue = false;
-			const hooksDone = (async () => {
-				for (const fn of pending) {
-					// 过了时限就不再往下跑:机件已经拆了,后面的钩子多半要用的正是它们。
-					if (overdue) return;
-					try {
-						await fn();
-					} catch (err) {
-						// 一个钩子抛了不许打断其余的回收:收一半的拓展是最难查的那种。
-						logger.error(`收摊钩子抛了:${(err as Error).message}`);
-					}
-				}
-			})();
-			// 🔴 钩子挂住不许把收摊一起挂住:收摊排在装载器那条队里,等它就是整条队陪着等。
-			// 过了时限按已收摊处理 —— 下面拆机件那一段照走,半个拓展不留。
-			const limit = opts.disposeTimeoutMs ?? DISPOSE_TIMEOUT_MS;
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const deadline = new Promise<"overdue">((resolve) => {
-				timer = setTimeout(() => resolve("overdue"), limit);
-			});
-			try {
-				if ((await Promise.race([hooksDone, deadline])) === "overdue") {
-					overdue = true;
-					logger.warn(`收摊钩子 ${limit / 1000} 秒没跑完 —— 按已收摊处理,排在它后面的钩子不再跑`);
-				}
-			} finally {
-				clearTimeout(timer);
-			}
-			for (const entry of registered) {
-				try {
-					entry.dispose();
-				} catch (err) {
-					logger.error(`回收注册项时抛了:${(err as Error).message}`);
-				}
-			}
-			registered.clear();
 			actionHandlers.clear();
 			handedSchemas.clear();
 			statusOf = undefined;
