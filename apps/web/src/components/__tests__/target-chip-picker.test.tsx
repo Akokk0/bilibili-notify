@@ -112,4 +112,33 @@ describe("TargetChipPicker", () => {
 		expect(screen.getByText("还没有可用的推送目标")).toBeTruthy();
 		expect(screen.queryAllByRole("button")).toHaveLength(0);
 	});
+
+	it("图标的平台取自连接:目标自己写 feishu、连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {
+		const own = { ...target(T_A, "群 A"), platform: "feishu" } as PushTarget;
+		const badge = () =>
+			screen.getByRole("button", { name: /群 A/ }).querySelector("span.font-extrabold");
+		const first = render(
+			<TargetChipPicker
+				targets={[own]}
+				connections={
+					[{ id: ADAPTER, enabled: true, kind: "direct", platform: "onebot" }] as Connection[]
+				}
+				selected={[]}
+				onToggle={() => {}}
+				tone="#ff0000"
+			/>,
+		);
+		expect(badge()?.textContent).toBe("o");
+		first.unmount();
+		render(
+			<TargetChipPicker
+				targets={[own]}
+				connections={[]}
+				selected={[]}
+				onToggle={() => {}}
+				tone="#ff0000"
+			/>,
+		);
+		expect(badge()?.textContent ?? "").toBe("");
+	});
 });

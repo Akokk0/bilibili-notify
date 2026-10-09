@@ -47,16 +47,22 @@ function target(id: string, name: string, over: Partial<PushTarget> = {}): PushT
 	} as PushTarget;
 }
 
-const TARGETS: PushTarget[] = [
-	target(T_A, "群 A"),
-	target(T_B, "官机群 B", { platform: "qq-official", address: "op" } as never),
-	target(T_PRIVATE, "主人私聊", { scope: "private", address: "1" } as never),
-	target(T_WEBHOOK, "钩子", { kind: "endpoint", platform: "feishu" } as never),
-];
-
+// 目标的平台取自它挂着的连接:官机群挂官机连接、webhook 终点挂 webhook 连接。
+const A_HOOK = "44444444-4444-4444-8444-444444444444";
 const A_OB = "11111111-1111-4111-8111-111111111111";
 const A_OB2 = "22222222-2222-4222-8222-222222222222";
 const A_QQ = "33333333-3333-4333-8333-333333333333";
+
+const TARGETS: PushTarget[] = [
+	target(T_A, "群 A"),
+	target(T_B, "官机群 B", { connectionId: A_QQ, platform: "qq-official", address: "op" } as never),
+	target(T_PRIVATE, "主人私聊", { scope: "private", address: "1" } as never),
+	target(T_WEBHOOK, "钩子", {
+		connectionId: A_HOOK,
+		kind: "endpoint",
+		platform: "feishu",
+	} as never),
+];
 
 function connection(id: string, name: string, platform: DirectConnection["platform"]): Connection {
 	return { id, name, kind: "direct", platform, enabled: true, config: {} } as unknown as Connection;
@@ -66,6 +72,7 @@ const ADAPTERS: Connection[] = [
 	connection(A_OB, "NapCat 主号", "onebot"),
 	connection(A_OB2, "Lagrange 备用", "onebot"),
 	connection(A_QQ, "官机", "qq-official"),
+	connection(A_HOOK, "飞书钩子", "feishu"),
 ];
 
 /** 两级索引:连接 id → 平台名 → 能力。第二级是开放词表,读它的一侧自己带着平台名。 */

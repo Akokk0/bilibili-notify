@@ -8,7 +8,12 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { makeEmptySubscription, type PushTarget, type Subscription } from "../../../types/domain";
+import {
+	type Connection,
+	makeEmptySubscription,
+	type PushTarget,
+	type Subscription,
+} from "../../../types/domain";
 import type { SubscriptionPlatform } from "../subscription-source";
 import { UpDialog } from "../UpDialog";
 
@@ -51,6 +56,7 @@ function renderDialog(sub: Subscription, p: SubscriptionPlatform, targets: PushT
 			sub={sub}
 			platform={p}
 			targets={targets}
+			connections={[{ id: "c-1", kind: "direct", platform: "onebot", enabled: true } as Connection]}
 			onClose={noop}
 			onSave={noop}
 			onDelete={noop}

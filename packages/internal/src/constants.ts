@@ -1092,6 +1092,19 @@ export function isTargetPaused(
 }
 
 /**
+ * 一个目标是哪个平台 —— 取自它挂着的那条连接;连接不在了就是 `undefined`。
+ *
+ * 它住在这里只因为面板运行时要用,而这个文件是面板能引的零依赖子路径;出口整理那一片会把
+ * 这类小函数一起搬走。入参按形状收(与 {@link isTargetPaused} 同一套安排)。
+ */
+export function platformOfTarget(
+	target: { connectionId: string },
+	connections: readonly { id: string; platform: string }[],
+): string | undefined {
+	return connections.find((c) => c.id === target.connectionId)?.platform;
+}
+
+/**
  * 一行历史的状态(六态,释义见 `schema/history.ts` 的 `PushStatusSchema`)。词表在这儿(schema 用它
  * enum),两个谓词也在这儿 —— 服务端的按日聚合与面板上的乐观补丁吃的是同一份口径,各写一遍的话,
  * 再加一态时只会改一边:KPI 两头对不上,而门禁一点都不红。

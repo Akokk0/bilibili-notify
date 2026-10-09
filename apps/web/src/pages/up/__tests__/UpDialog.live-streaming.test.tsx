@@ -32,6 +32,7 @@ function renderDialog(sub: Subscription, extra: Partial<Parameters<typeof UpDial
 		<UpDialog
 			sub={sub}
 			targets={[]}
+			connections={[]}
 			onClose={() => {}}
 			onSave={onSave}
 			onDelete={() => {}}

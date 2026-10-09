@@ -9,7 +9,7 @@ import { useState } from "react";
 import { AI_PURPLE } from "../../config/colors";
 import { api } from "../../services/api";
 import { errorTextOf } from "../../services/error-text";
-import type { PushTarget } from "../../types/domain";
+import { type Connection, type PushTarget, platformOfTarget } from "../../types/domain";
 
 /**
  * 「可推送周报」那一块 —— 显示女仆写的推送文案,并把它真发出去。
@@ -41,10 +41,17 @@ export function RoastPushBox({
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	// 图标的平台取自目标挂着的连接。
+	const connectionsQuery = useQuery({
+		queryKey: ["connections"],
+		queryFn: () => api.get<Connection[]>("/api/connections"),
+	});
 	// 停用的目标推不出去,列出来只会让人选中之后收一条「目标不可达」。
 	const targets = (targetsQuery.data ?? []).filter((t) => t.enabled);
 	const [picked, setPicked] = useState("");
 	const targetId = picked || targets[0]?.id || "";
+	const chosen = targets.find((t) => t.id === targetId);
+	const chosenPlatform = chosen ? platformOfTarget(chosen, connectionsQuery.data ?? []) : undefined;
 
 	const push = useMutation<StatsRoastPushResponse>({
 		mutationFn: () =>
@@ -80,7 +87,7 @@ export function RoastPushBox({
 					</span>
 				) : (
 					<>
-						<PlatformIcon platform={targets.find((t) => t.id === targetId)?.platform ?? ""} />
+						<PlatformIcon platform={chosenPlatform ?? ""} />
 						<select
 							value={targetId}
 							onChange={(e) => onPick(e.target.value)}

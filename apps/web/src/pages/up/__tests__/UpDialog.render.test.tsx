@@ -7,7 +7,12 @@
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { makeEmptySubscription, type PushTarget, type Subscription } from "../../../types/domain";
+import {
+	type Connection,
+	makeEmptySubscription,
+	type PushTarget,
+	type Subscription,
+} from "../../../types/domain";
 import { UpDialog } from "../UpDialog";
 
 const UNSUPPORTED_NOTE = /QQ 官方.*不支持.*@全体/;
@@ -45,6 +50,14 @@ function renderDialog(target: PushTarget) {
 		<UpDialog
 			sub={customSubFor(target.id)}
 			targets={[target]}
+			connections={[
+				{
+					id: target.connectionId,
+					kind: "direct",
+					platform: target.platform,
+					enabled: true,
+				} as Connection,
+			]}
 			onClose={noop}
 			onSave={noop}
 			onDelete={noop}
@@ -91,6 +104,7 @@ describe("UpDialog · B 站订阅的头部", () => {
 			<UpDialog
 				sub={sub}
 				targets={[]}
+				connections={[]}
 				onClose={noop}
 				onSave={noop}
 				onDelete={noop}

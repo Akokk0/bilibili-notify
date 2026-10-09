@@ -45,6 +45,7 @@ function renderDialog(
 			<UpDialog
 				sub={sub}
 				targets={[]}
+				connections={[]}
 				tags={opts.tags}
 				onClose={onClose}
 				onSave={onSave}

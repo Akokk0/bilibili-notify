@@ -16,7 +16,7 @@ import {
 	within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { PushTarget } from "../../../types/domain";
+import type { Connection, PushTarget } from "../../../types/domain";
 import {
 	RoastScheduleFields,
 	type RoastScheduleValue,
@@ -45,6 +45,11 @@ function target(id: string, name: string, enabled: boolean): PushTarget {
 		address: "123",
 	} as PushTarget;
 }
+
+/** 目标的平台取自这条连接(目标都挂在它上面)。 */
+const connections = [
+	{ id: "11111111-1111-4111-8111-111111111111", kind: "direct", platform: "onebot", enabled: true },
+] as Connection[];
 
 const VALUE: RoastScheduleValue = {
 	enabled: true,
@@ -92,6 +97,7 @@ describe("useApprovalReachability — 主人目标得是私聊才能开审批", 
 	function reachability(masterTargetId: string, targets: PushTarget[]) {
 		vi.mocked(api.get).mockImplementation(async (path: string) => {
 			if (path === "/api/targets") return targets;
+			if (path === "/api/connections") return connections;
 			if (path === "/api/settings") return { master: { targetId: masterTargetId } };
 			throw new Error(`unexpected GET ${path}`);
 		});

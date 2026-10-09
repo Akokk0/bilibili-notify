@@ -41,6 +41,7 @@ import {
 	type DirectConnection,
 	isTargetPaused,
 	type PushTarget,
+	platformOfTarget,
 } from "../types/domain";
 import type { GlobalConfig, GlobalConfigPatch } from "../types/globals";
 import { Field } from "./forms";
@@ -70,7 +71,9 @@ const INHERIT = "inherit" as const;
 function isGroupCandidate(t: PushTarget, connections: readonly Connection[]): boolean {
 	if (t.scope !== "group") return false;
 	if (connections.find((c) => c.id === t.connectionId)?.kind === "extension") return true;
-	return platformCanReceiveReply(t.platform);
+	// 平台取自目标挂着的连接;连接不在就不知道平台,当作收不到、不列。
+	const platform = platformOfTarget(t, connections);
+	return platform !== undefined && platformCanReceiveReply(platform);
 }
 
 /** 面板上「未探测」那一档;引擎还没起来、或表里根本没这条时都是它。 */
@@ -203,16 +206,24 @@ export function LinkParsingSettings({
 							</DisclosurePill>
 						</div>
 						{groupsOpen
-							? candidates.map((t) => (
-									<GroupRow
-										key={t.id}
-										target={t}
-										cfg={cfg}
-										onPatch={onPatch}
-										support={miniAppSupport(capabilities, t.connectionId, t.platform)}
-										paused={isTargetPaused(t, connections)}
-									/>
-								))
+							? candidates.map((t) => {
+									const platform = platformOfTarget(t, connections);
+									return (
+										<GroupRow
+											key={t.id}
+											target={t}
+											platform={platform}
+											cfg={cfg}
+											onPatch={onPatch}
+											support={
+												platform === undefined
+													? undefined
+													: miniAppSupport(capabilities, t.connectionId, platform)
+											}
+											paused={isTargetPaused(t, connections)}
+										/>
+									);
+								})
 							: null}
 					</div>
 				)}
@@ -302,12 +313,15 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
  */
 function GroupRow({
 	target,
+	platform,
 	cfg,
 	onPatch,
 	support,
 	paused,
 }: {
 	target: PushTarget;
+	/** 目标的平台,取自它挂着的连接;连接不在是 `undefined`。 */
+	platform: string | undefined;
 	cfg: LinkParsing;
 	onPatch: (delta: GlobalConfigPatch) => void;
 	/** 这群所在连接能不能签小程序卡;没有能力概念的平台(官机)是 undefined。 */
@@ -329,7 +343,7 @@ function GroupRow({
 			className="m-0 flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 border-0 border-bn-border-subtle border-b p-0 py-2 last:border-b-0"
 		>
 			<div className="flex min-w-40 items-center gap-1.5 text-bn-sm text-bn-text-primary">
-				<PlatformIcon platform={target.platform} size={13} />
+				<PlatformIcon platform={platform ?? ""} size={13} />
 				<span className="font-semibold">{target.name}</span>
 				{paused ? (
 					<Pill size="sm" subtle color="var(--color-bn-inactive)">
@@ -362,7 +376,7 @@ function GroupRow({
 					]}
 				/>
 			</Cell>
-			{target.platform === "qq-official" ? (
+			{platform === "qq-official" ? (
 				<HintNote className="basis-full">QQ 官方机器人不支持小程序卡,选了也会回落图片卡</HintNote>
 			) : support?.state === "unsupported" ? (
 				<HintNote className="basis-full">该连接不支持小程序卡,选了也会回落图片卡</HintNote>

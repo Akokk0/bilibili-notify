@@ -44,6 +44,7 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PLATFORM_REGISTRY,
 	PUSH_EXTRAS,
+	platformOfTarget,
 	type SourceKey,
 	sameIdentity,
 	subscriptionIdentityOf,
@@ -61,6 +62,7 @@ export {
 	isTargetPaused,
 	isWebhookConnection,
 	PUSH_EXTRAS,
+	platformOfTarget,
 	sameIdentity,
 	subscriptionIdentityOf,
 };

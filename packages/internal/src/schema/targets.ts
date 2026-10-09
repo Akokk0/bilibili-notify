@@ -8,6 +8,7 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PUSH_TARGET_KINDS,
 	PUSH_TARGET_SCOPES,
+	platformOfTarget,
 	WEBHOOK_PLATFORMS,
 } from "../constants.js";
 import { ExtensionIdSchema } from "./extension-manifest.js";
@@ -16,6 +17,8 @@ import { markBackupOnly, markSecret } from "./secret";
 // 会话种类、目标形态、连接器这三个词表的本体都在零依赖的 constants —— 类型从那边导,
 // 别在这儿用 `z.infer` 再声明一份同义的联合(两份就会漂,而它们是同一件事)。
 export type { DirectConnector, PushTargetKind, PushTargetScope } from "../constants.js";
+// 函数本体住零依赖的 constants(面板运行时要用);这里只转出,让老的引用路径不变。
+export { platformOfTarget } from "../constants.js";
 
 /**
  * **连接**能连的平台 —— 闭集。Adapter 矩阵按它分发(server 侧 `apps/server/src/platforms/`)。
@@ -485,14 +488,6 @@ export function chatIdentityOf(
 	const platform = platformOfTarget(target, connections);
 	if (platform === undefined) return undefined;
 	return { platform, address: target.address };
-}
-
-/** 一个目标是哪个平台 —— 取自它挂着的那条连接;连接不在了就是 `undefined`。 */
-export function platformOfTarget(
-	target: Pick<PushTarget, "connectionId">,
-	connections: readonly Pick<Connection, "id" | "platform">[],
-): string | undefined {
-	return connections.find((c) => c.id === target.connectionId)?.platform;
 }
 
 /**

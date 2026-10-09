@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TInput } from "../../components/forms";
 import {
 	BILIBILI_SOURCE_KEY,
+	type Connection,
 	DEFAULT_FEATURE_FLAGS,
 	EXTRA_KEYS,
 	type ExtraKey,
@@ -25,6 +26,7 @@ import {
 	type FeatureKey,
 	PUSH_EXTRAS,
 	type PushTarget,
+	platformOfTarget,
 	type Subscription,
 	type SubscriptionTag,
 	subscriptionIdentityOf,
@@ -151,6 +153,8 @@ function extraOffHint(k: ExtraKey, labelOf: FeatureLabelOf): string {
 export interface UpDialogProps {
 	sub: Subscription | null;
 	targets: PushTarget[];
+	/** 连接表 —— 目标的平台取自它挂着的连接(目标自己不带平台)。 */
+	connections: readonly Connection[];
 	/**
 	 * "edit"   — 现行行为:已有的 Subscription, 改 draft 后 onSave 触发 PATCH-like upsert。
 	 * "create" — 新建模式:sub 是父组件构造的草稿(还没落盘),onSave 触发 POST。
@@ -265,6 +269,7 @@ export function detachTargetFromDraft(d: Subscription, targetId: string): Subscr
 export function UpDialog({
 	sub,
 	targets,
+	connections,
 	mode = "edit",
 	onClose,
 	onSave,
@@ -717,6 +722,7 @@ export function UpDialog({
 									<TargetRoutingCard
 										key={t.id}
 										target={t}
+										platform={platformOfTarget(t, connections)}
 										isCustom={customSet.has(t.id)}
 										sub={draft}
 										globalFeatures={globalFeatures}
@@ -756,7 +762,10 @@ export function UpDialog({
 													onClick={() => attachTarget(t.id)}
 												>
 													<Icon.plus size={11} />
-													<PlatformIcon platform={t.platform} size={11} />
+													<PlatformIcon
+														platform={platformOfTarget(t, connections) ?? ""}
+														size={11}
+													/>
 													<span className="max-w-35 truncate">{t.name}</span>
 												</AddButton>
 											))}
@@ -1106,6 +1115,7 @@ const UNSUPPORTED_AT_ALL_NOTE = "QQ 官方机器人不支持 @全体,发送时�
 
 function TargetRoutingCard({
 	target,
+	platform,
 	isCustom,
 	sub,
 	globalFeatures,
@@ -1119,6 +1129,8 @@ function TargetRoutingCard({
 	onDetach,
 }: {
 	target: PushTarget;
+	/** 目标的平台,取自它挂着的连接;连接不在(或还没加载回来)是 `undefined`。 */
+	platform: string | undefined;
 	isCustom: boolean;
 	sub: Subscription;
 	/** 全局特性开关,继承它的主开关与附加项都按它算(见 {@link UpDialogProps.globalFeatures})。 */
@@ -1141,7 +1153,7 @@ function TargetRoutingCard({
 		<div className="overflow-hidden rounded-lg border border-bn-border bg-bn-surface">
 			{/* Header */}
 			<div className="flex items-center gap-2.5 px-3 py-2.5">
-				<PlatformIcon platform={target.platform} size={16} />
+				<PlatformIcon platform={platform ?? ""} size={16} />
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-bn-sm font-semibold text-bn-text-primary">
 						{target.name || "（未命名）"}
@@ -1203,7 +1215,7 @@ function TargetRoutingCard({
 													// 要不要看平台能力由注册表说了算(别拿 label 判,那是文案)。
 													unsupported={
 														PUSH_EXTRAS[ek].capability === "atAll" &&
-														!platformSupportsAtAll(target.platform)
+														(platform === undefined || !platformSupportsAtAll(platform))
 													}
 													onSet={(val) => onSetExtra(ek, val)}
 												/>

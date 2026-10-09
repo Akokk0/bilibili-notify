@@ -16,7 +16,12 @@
 
 import { EmptyNote, Pill, PlatformIcon, ToneChip } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
-import { type Connection, isTargetPaused, type PushTarget } from "../types/domain";
+import {
+	type Connection,
+	isTargetPaused,
+	type PushTarget,
+	platformOfTarget,
+} from "../types/domain";
 
 export function TargetChipPicker({
 	targets,
@@ -49,7 +54,7 @@ export function TargetChipPicker({
 		<div className="flex flex-wrap gap-2">
 			{targets.map((t) => (
 				<ToneChip key={t.id} tone={tone} active={chosen.has(t.id)} onClick={() => onToggle(t.id)}>
-					<PlatformIcon platform={t.platform} size={13} />
+					<PlatformIcon platform={platformOfTarget(t, connections) ?? ""} size={13} />
 					{t.name}
 					{isTargetPaused(t, connections) ? (
 						<Pill size="sm" subtle color="var(--color-bn-inactive)">

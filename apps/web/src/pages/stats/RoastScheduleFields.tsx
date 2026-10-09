@@ -3,6 +3,7 @@ import {
 	inboundGapReason,
 	isPrivateTarget,
 	platformCanReceiveReply,
+	platformOfTarget,
 } from "@bilibili-notify/internal/constants";
 import { GlassPanel, Icon, Toggle } from "@bilibili-notify/ui";
 import { useQuery } from "@tanstack/react-query";
@@ -109,9 +110,13 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	// 主人目标的平台取自它挂着的连接,所以连接表也要读。
+	const connectionsQuery = useQuery({
+		queryKey: ["connections"],
+		queryFn: () => api.get<Connection[]>("/api/connections"),
+	});
 	const masterTargetId = globalsQuery.data?.master?.targetId;
 	const masterTarget = (targetsQuery.data ?? []).find((t) => t.id === masterTargetId);
-	const canApprove = platformCanReceiveReply(masterTarget?.platform ?? "");
 	if (!masterTargetId) return { canApprove: false, hint: "需要先在「系统」里配好主人私聊目标" };
 	if (!masterTarget) return { canApprove: false, hint: "配置里的主人私聊目标已经不存在了" };
 	if (!isPrivateTarget(masterTarget)) {
@@ -120,8 +125,14 @@ export function useApprovalReachability(): { canApprove: boolean; hint?: string 
 			hint: "这个目标不是私聊，女仆没法悄悄告诉主人。请换一个私聊目标",
 		};
 	}
-	if (canApprove) return { canApprove: true };
-	return { canApprove: false, hint: inboundGapReason(masterTarget.platform) };
+	// 连接表还没回来:不下结论(也不闪「连接不在了」),先当收不到、不带理由。
+	if (connectionsQuery.data === undefined) return { canApprove: false };
+	const platform = platformOfTarget(masterTarget, connectionsQuery.data);
+	if (platform === undefined) {
+		return { canApprove: false, hint: "主人私聊目标挂的那条连接已经不在了" };
+	}
+	if (platformCanReceiveReply(platform)) return { canApprove: true };
+	return { canApprove: false, hint: inboundGapReason(platform) };
 }
 
 export function RoastScheduleFields({

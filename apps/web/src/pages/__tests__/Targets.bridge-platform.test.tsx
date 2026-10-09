@@ -28,14 +28,14 @@ import { api } from "../../services/api";
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 
-/** 今天连接侧还是闭集,所以桥那一支借一条 onebot 连接来演 —— 要紧的是**目标**的平台。 */
+/** 今天连接侧还是闭集,所以桥那一支借一条连接来演,平台写 telegram(强转)—— 目标的平台取自它。 */
 const CONNECTION = {
 	id: CONNECTION_ID,
 	name: "桥",
 	enabled: true,
 	kind: "direct",
 	connector: "http",
-	platform: "onebot",
+	platform: "telegram",
 	config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
 } as unknown as Connection;
 

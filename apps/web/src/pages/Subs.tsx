@@ -30,6 +30,7 @@ import { useSubscriptionTags } from "../hooks/useSubscriptionTags";
 import { ApiError, api } from "../services/api";
 import {
 	BILIBILI_SOURCE_KEY,
+	type Connection,
 	type Identity,
 	makeEmptySubscription,
 	type PushTarget,
@@ -682,6 +683,11 @@ export default function Subs() {
 		queryKey: ["targets"],
 		queryFn: () => api.get<PushTarget[]>("/api/targets"),
 	});
+	// 目标的平台取自它挂着的连接(订阅抽屉里的图标与 @全体 能力都读它);与推送目标页共用同一个 ["connections"] 缓存。
+	const connectionsQuery = useQuery({
+		queryKey: ["connections"],
+		queryFn: () => api.get<Connection[]>("/api/connections"),
+	});
 	// 全局特性开关:订阅没覆盖的那几把继承它(卡片胶囊与配置弹层都按它算)。与规则页同一个 ["settings"] 缓存;
 	// 没读到时回落出厂值 —— 面板没有全局特性开关的界面,通常就是出厂值,唯独直播拆键把旧的周期推送迁成了全局开。
 	const globalsQuery = useQuery({
@@ -1119,6 +1125,7 @@ export default function Subs() {
 				<UpDialog
 					sub={newDraft}
 					targets={targets}
+					connections={connectionsQuery.data ?? []}
 					platform={platformOf(newDraft)}
 					tags={tags}
 					globalFeatures={globalFeatures}
@@ -1138,6 +1145,7 @@ export default function Subs() {
 				<UpDialog
 					sub={drawerSub}
 					targets={targets}
+					connections={connectionsQuery.data ?? []}
 					platform={platformOf(drawerSub)}
 					tags={tags}
 					globalFeatures={globalFeatures}

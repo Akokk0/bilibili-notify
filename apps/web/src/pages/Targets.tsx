@@ -63,6 +63,7 @@ import {
 	makeExtensionConnectionDraft,
 	type PushTarget,
 	type PushTargetScope,
+	platformOfTarget,
 } from "../types/domain";
 import { copyToClipboard } from "../utils/clipboard";
 import { safeImage } from "./extensions/declarative/image";
@@ -106,12 +107,12 @@ function scopesFor(platform: string): ReadonlyArray<{
  * OneBot 与官机各有一句专门的话(QQ 号 / 群号、频道 / 群 / C2C 三档寻址);别的平台
  * 拿注册表里的地址称呼拼一句 —— 认不出的平台也说得出话,而不是留一句空白。
  */
-function sessionFieldsHint(target: PushTarget): string {
-	if (target.platform === "onebot") {
+function sessionFieldsHint(target: PushTarget, platform: string | undefined): string {
+	if (platform === "onebot") {
 		return target.scope === "private" ? "私聊目标 QQ 号" : "群聊号(QQ 群号)";
 	}
-	if (target.platform === "qq-official") return "QQ 官方机器人会话寻址(频道/群/C2C)";
-	return `这个会话的${addressNounFor(target.platform, target.scope)}地址`;
+	if (platform === "qq-official") return "QQ 官方机器人会话寻址(频道/群/C2C)";
+	return `这个会话的${addressNounFor(platform ?? "", target.scope)}地址`;
 }
 
 type TestState = "pending" | "ok" | "fail";
@@ -151,13 +152,13 @@ function connectionEndpointSummary(a: Connection, platformLabel: (p: string) => 
  * 兜底 return,兜底那句写死「webhook 终点」:等桥把 telegram 驮进来,新平台会落进
  * 兜底、被标成一个它根本不是的终点,而且**没有编译错也没有测试红**。
  */
-function targetSessionSummary(target: PushTarget): string {
+function targetSessionSummary(target: PushTarget, platform: string | undefined): string {
 	if (target.kind === "endpoint") {
 		return target.managedBy === "connection" ? "→ 系统托管 webhook 终点" : "→ webhook 终点";
 	}
 	// 地址收成一格之后,这里只剩「叫它什么」这一件事 —— 取哪一格由 scope 说了算,
 	// 不再是每个平台一套 session 字段名。称呼在注册表里,认不出的平台走通用说法。
-	const noun = addressNounFor(target.platform, target.scope);
+	const noun = addressNounFor(platform ?? "", target.scope);
 	return target.address ? `→ ${noun} ${target.address}` : `→ 未指定${noun}`;
 }
 
@@ -247,7 +248,9 @@ function TargetCard({
 	readOnly,
 }: TargetCardProps) {
 	const platformTint = usePlatformTint();
-	const tint = platformTint(target.platform);
+	// 平台取自目标挂着的连接;连接缺了就是认不出(灰徽标)。
+	const platform = platformOfTarget(target, connection ? [connection] : []);
+	const tint = platformTint(platform ?? "");
 	const connectionMissing = !connection;
 	const status = targetStatusFor(target);
 	const testStatus = target.testStatus;
@@ -264,14 +267,14 @@ function TargetCard({
 					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
 					style={{ background: `color-mix(in srgb, ${tint} 10%, transparent)` }}
 				>
-					<PlatformIcon platform={target.platform} size={18} />
+					<PlatformIcon platform={platform ?? ""} size={18} />
 				</div>
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-bn-base font-bold text-bn-text-primary">
 						{target.name || "（未命名）"}
 					</div>
 					<div className="truncate font-mono text-bn-xs text-bn-text-tertiary">
-						{targetSessionSummary(target)}
+						{targetSessionSummary(target, platform)}
 					</div>
 				</div>
 				<StatusDot kind={status} />
@@ -1047,7 +1050,9 @@ function TargetEditorModal({
 	const face = useConnectionFace();
 	const connection = connections.find((a) => a.id === value.connectionId);
 	const valid = value.name.trim().length > 0 && Boolean(value.connectionId);
-	const tint = platformTint(value.platform || (connection ? face(connection) : ""));
+	// 平台取自目标挂着的连接,不读草稿自己那一格。
+	const platform = platformOfTarget(value, connections);
+	const tint = platformTint(platform || (connection ? face(connection) : ""));
 	// Webhook target 由 adapter 自动托管，不能从手动 target 弹窗创建 / 改挂。
 	const eligibleConnections = connections.filter((a) => !isWebhookConnection(a));
 	return (
@@ -1113,7 +1118,7 @@ function TargetEditorModal({
 					</Field>
 					<Field label="作用域" code="target.scope">
 						<div className="flex gap-1.5">
-							{scopesFor(value.platform).map((s) => {
+							{scopesFor(platform ?? "").map((s) => {
 								const active = value.scope === s.value;
 								return (
 									<ToneChip
@@ -1144,8 +1149,8 @@ function TargetEditorModal({
 				 * 地址栏都没有 —— 保存得下、发不出去,而且没有编译错。
 				 */}
 				{value.kind === "session" ? (
-					<SectionBox title="会话信息" subtitle={sessionFieldsHint(value)} accent={tint}>
-						<TargetSessionFields target={value} onChange={onChange} />
+					<SectionBox title="会话信息" subtitle={sessionFieldsHint(value, platform)} accent={tint}>
+						<TargetSessionFields target={value} platform={platform} onChange={onChange} />
 					</SectionBox>
 				) : null}
 			</div>
@@ -1166,15 +1171,18 @@ function TargetEditorModal({
 
 function TargetSessionFields({
 	target,
+	platform,
 	onChange,
 }: {
 	target: PushTarget;
+	/** 目标的平台,取自它挂着的连接;连接不在是 `undefined`,走通用那一支。 */
+	platform: string | undefined;
 	onChange: (next: PushTarget) => void;
 }) {
 	if (target.kind !== "session") return null;
 	const setAddress = (address: string) => onChange({ ...target, address });
 
-	if (target.platform === "onebot") {
+	if (platform === "onebot") {
 		return target.scope === "private" ? (
 			<Field label="QQ 号" code="target.address" required>
 				<TInput value={target.address} onChange={setAddress} placeholder="如:10001" mono />
@@ -1185,7 +1193,7 @@ function TargetSessionFields({
 			</Field>
 		);
 	}
-	if (target.platform === "qq-official") {
+	if (platform === "qq-official") {
 		if (target.scope === "channel") {
 			return (
 				<>
@@ -1248,7 +1256,7 @@ function TargetSessionFields({
 	}
 	// 认不出的平台(桥驮进来的)。地址收成一格之后通用的一格输入就够了 —— 叫什么由
 	// 注册表说,不认识就走通用称呼。这里以前是 `return null`:那种目标连地址栏都没有。
-	const noun = addressNounFor(target.platform, target.scope);
+	const noun = addressNounFor(platform ?? "", target.scope);
 	return (
 		<Field label={`${noun}地址`} code="target.address" required>
 			<TInput value={target.address} onChange={setAddress} placeholder={`${noun}的 id`} mono />

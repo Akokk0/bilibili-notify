@@ -9,7 +9,12 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { makeEmptySubscription, type PushTarget, type Subscription } from "../../../types/domain";
+import {
+	type Connection,
+	makeEmptySubscription,
+	type PushTarget,
+	type Subscription,
+} from "../../../types/domain";
 import { UpDialog } from "../UpDialog";
 
 afterEach(cleanup);
@@ -20,6 +25,7 @@ function renderDialog(sub: Subscription) {
 		<UpDialog
 			sub={sub}
 			targets={[]}
+			connections={[]}
 			onClose={() => {}}
 			onSave={onSave}
 			onDelete={() => {}}
@@ -100,6 +106,14 @@ function renderWithTarget(sub: Subscription, target: PushTarget) {
 		<UpDialog
 			sub={sub}
 			targets={[target]}
+			connections={[
+				{
+					id: target.connectionId,
+					kind: "direct",
+					platform: target.platform,
+					enabled: true,
+				} as Connection,
+			]}
 			onClose={() => {}}
 			onSave={onSave}
 			onDelete={() => {}}
