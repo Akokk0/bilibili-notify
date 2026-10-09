@@ -26,7 +26,7 @@ import {
 	type ExtensionRuntime,
 	type ExtensionSubscriptionRow,
 	type LookupOutcome,
-	type SubscriptionReportProblem,
+	type ReportDiscrepancy,
 } from "./context.js";
 import {
 	apiVersionMismatch,
@@ -230,15 +230,15 @@ export interface LoadExtensionsOptions {
 	 * 已经带着拓展 id。
 	 */
 	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
-	/** 「上报问题」(决策 60):丢格、整条拒。ctx 已经记过日志;这里接到拓展详情页那个框上。 */
-	onSubscriptionReportProblem?: (problem: SubscriptionReportProblem) => void;
+	/** 「上报出入」(决策 60):丢格、整条拒。ctx 已经记过日志;这里接到拓展详情页那个框上。 */
+	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
 	/** 某个拓展自己那份设置(`config/settings/extensions/<id>.json`),现读、原样。 */
 	settings: (id: string) => unknown;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
 	/**
 	 * 某个拓展喊了「面板数据变了」(`ctx.statusChanged`);宿主把它推到面板。只有拓展自己喊才叫它 ——
-	 * 上报问题(ADR-0019 决策 60)的那一声在问题记录那头发,不走这里。
+	 * 上报出入(ADR-0019 决策 60)的那一声在问题记录那头发,不走这里。
 	 */
 	onStatusChanged?: (id: string) => void;
 	/**
@@ -603,7 +603,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			subscriptions: opts.subscriptions,
 			onSubscriptionsChanged: opts.onSubscriptionsChanged,
 			onSubscriptionReport: opts.onSubscriptionReport,
-			onSubscriptionReportProblem: opts.onSubscriptionReportProblem,
+			onReportDiscrepancy: opts.onReportDiscrepancy,
 			settings: () => opts.settings(id),
 			onSettingsChanged: opts.onSettingsChanged,
 			// 跑着时设置被旁路写坏:ctx 没把那一份交给它,这里排一趟把它收掉。

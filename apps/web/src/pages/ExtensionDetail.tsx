@@ -33,7 +33,7 @@ import {
 import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
 import { LegacyFormatNote } from "./extensions/legacy-format-note";
 import { MarketplaceInstallConfirm, useMarketplaceInstall } from "./extensions/marketplace-section";
-import { ReportProblemsBox } from "./extensions/report-problems";
+import { ReportDiscrepanciesBox } from "./extensions/report-discrepancies";
 import {
 	ExtensionIcon,
 	ExtensionStateDetail,
@@ -83,15 +83,15 @@ export default function ExtensionDetail() {
 	const installer = useMarketplaceInstall();
 	/*
 	 * 卸掉之后它名下的订阅**保留**、暂停(ADR-0019 决策 10)—— 确认框得说清有几条,否则主人会以为
-	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着、或有「上报问题」
+	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着、或有「上报出入」
 	 * 要按订阅 id 印名字时才去读 —— 详情页每进一次都拉一遍整张订阅表,换来的只是框里那一句。
 	 */
-	const hasReportProblems =
-		(listed.data?.extensions.find((one) => one.id === id)?.reportProblems ?? []).length > 0;
+	const hasReportDiscrepancies =
+		(listed.data?.extensions.find((one) => one.id === id)?.reportDiscrepancies ?? []).length > 0;
 	const subsQuery = useQuery({
 		queryKey: ["subscriptions"],
 		queryFn: () => api.get<Subscription[]>("/api/subscriptions"),
-		enabled: confirming || hasReportProblems,
+		enabled: confirming || hasReportDiscrepancies,
 	});
 	// 来源键就是拓展 id:订阅的身份记在这个拓展名下的有几条(B 站来源的键是保留 id,不会等于任何拓展 id)。
 	const keptSubs = (subsQuery.data ?? []).filter(
@@ -254,7 +254,7 @@ export default function ExtensionDetail() {
 			</div>
 
 			{/* 订阅源报上来、BN 没照单全收的几条(决策 60)—— 有才出现。 */}
-			<ReportProblemsBox ext={ext} subs={subsQuery.data} />
+			<ReportDiscrepanciesBox ext={ext} subs={subsQuery.data} />
 
 			{tab && tabs.length > 1 ? (
 				<TabBar<DetailTab>

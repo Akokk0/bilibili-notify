@@ -138,10 +138,10 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		bus.on("extension-settings-changed", (change) =>
 			publish(envelope("state", "extension-settings-changed", change)),
 		),
-		// 拓展的「上报问题」新记了几条(ADR-0019 决策 60):只带拓展 id,面板让拓展表失效(那个框住在
+		// 拓展的「上报出入」新记了几条(ADR-0019 决策 60):只带拓展 id,面板让拓展表失效(那个框住在
 		// 那一行上)。不借 `extension-status-changed` —— 那一帧说的是视图变了。
-		bus.on("extension-report-problems-changed", (change) =>
-			publish(envelope("state", "extension-report-problems-changed", change)),
+		bus.on("extension-report-discrepancies-changed", (change) =>
+			publish(envelope("state", "extension-report-discrepancies-changed", change)),
 		),
 		// 拓展报的资料落进了资料缓存(ADR-0019 决策 7 / 62):面板重取订阅列表。那不是配置,不走
 		// `config-changed` —— 那一档服务端也会惊动路由、引擎与拓展。帧里只有订阅 id。

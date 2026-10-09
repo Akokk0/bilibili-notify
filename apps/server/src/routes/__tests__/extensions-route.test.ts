@@ -27,7 +27,10 @@ import {
 } from "../../extensions/loader.js";
 import type { MarketplaceInstallOutcome } from "../../extensions/marketplace.js";
 import { createExtensionMounts } from "../../extensions/mount.js";
-import { createReportProblemLog, type ReportProblemLog } from "../../extensions/report-problems.js";
+import {
+	createReportDiscrepancyTable,
+	type ReportDiscrepancyTable,
+} from "../../extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -74,8 +77,8 @@ function boot(
 		lookup?: (id: string, query: string) => Promise<LookupOutcome | undefined>;
 		/** 换掉「只重载」那一口 —— 只有要看「装载器拒绝以外的抛错」的用例给。 */
 		swap?: (id: string) => Promise<void>;
-		/** 「上报问题」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
-		reportProblems?: ReportProblemLog;
+		/** 「上报出入」的记录(ADR-0019 决策 60)。不给就是那一格没接上。 */
+		reportDiscrepancies?: ReportDiscrepancyTable;
 		/** 换成一个真的配置仓(落盘的)—— 只有要看「卸载真的把盘上的东西清了」的用例给。 */
 		store?: ConfigStore;
 	} = {},
@@ -119,7 +122,7 @@ function boot(
 		marketplace: over.marketplace as never,
 		runAction: async (id, name) => over.actions?.[`${id}/${name}`],
 		lookup: over.lookup,
-		reportProblems: over.reportProblems,
+		reportDiscrepancies: over.reportDiscrepancies,
 		...(over.swap ? { swap: over.swap } : loader ? { swap: (id: string) => loader.swap(id) } : {}),
 	});
 }
@@ -604,32 +607,46 @@ describe("GET /api/ext", () => {
 	});
 });
 
-describe("GET /api/ext:上报问题(ADR-0019 决策 60)", () => {
+describe("GET /api/ext:上报出入(ADR-0019 决策 60)", () => {
 	/**
 	 * 拓展详情页那个框照这一格画:有才有这一格(新的在前),没有的那一行干脆不带 —— 面板凭它判
 	 * 「有问题才出现」。`extensionId` 不下发:它就挂在那一行上。
 	 */
-	it("有上报问题的那一行带上(新的在前、不带 extensionId);没有的那一行没这一格", async () => {
-		const reportProblems = createReportProblemLog();
+	it("有上报出入的那一行带上(新的在前、不带 extensionId);没有的那一行没这一格", async () => {
+		const reportDiscrepancies = createReportDiscrepancyTable();
 		const base = {
 			kind: "post" as const,
 			externalId: "person",
 			subscriptionIds: ["s1"],
 			outcome: "dropped" as const,
 		};
-		reportProblems.record({ ...base, extensionId: "douyin", at: 1, reasons: ["images[0]:旧的"] });
-		reportProblems.record({ ...base, extensionId: "douyin", at: 2, reasons: ["images[1]:新的"] });
+		reportDiscrepancies.record({
+			...base,
+			extensionId: "douyin",
+			at: 1,
+			reasons: ["images[0]:旧的"],
+		});
+		reportDiscrepancies.record({
+			...base,
+			extensionId: "douyin",
+			at: 2,
+			reasons: ["images[1]:新的"],
+		});
 
 		const body = (await (
-			await boot({ entries: [running("douyin"), running("bridge")], reportProblems }).request("/")
+			await boot({ entries: [running("douyin"), running("bridge")], reportDiscrepancies }).request(
+				"/",
+			)
 		).json()) as ExtensionsResponse;
 
 		const douyin = body.extensions.find((e) => e.id === "douyin");
-		expect(douyin?.reportProblems).toEqual([
+		expect(douyin?.reportDiscrepancies).toEqual([
 			{ ...base, at: 2, reasons: ["images[1]:新的"] },
 			{ ...base, at: 1, reasons: ["images[0]:旧的"] },
 		]);
-		expect(body.extensions.find((e) => e.id === "bridge")).not.toHaveProperty("reportProblems");
+		expect(body.extensions.find((e) => e.id === "bridge")).not.toHaveProperty(
+			"reportDiscrepancies",
+		);
 	});
 });
 
@@ -1200,10 +1217,10 @@ describe("DELETE /api/ext/:id", () => {
 		expect(removeExtension).not.toHaveBeenCalled();
 	});
 
-	/** 卸掉的拓展那一段「上报问题」跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。 */
-	it("删掉 → 它那一段上报问题跟着清,别的拓展的不动", async () => {
+	/** 卸掉的拓展那一段「上报出入」跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。 */
+	it("删掉 → 它那一段上报出入跟着清,别的拓展的不动", async () => {
 		await installed();
-		const reportProblems = createReportProblemLog();
+		const reportDiscrepancies = createReportDiscrepancyTable();
 		const one = {
 			at: 1,
 			kind: "post" as const,
@@ -1212,21 +1229,21 @@ describe("DELETE /api/ext/:id", () => {
 			outcome: "rejected" as const,
 			reasons: ["坏了"],
 		};
-		reportProblems.record({ ...one, extensionId: "bridge" });
-		reportProblems.record({ ...one, extensionId: "douyin" });
+		reportDiscrepancies.record({ ...one, extensionId: "bridge" });
+		reportDiscrepancies.record({ ...one, extensionId: "douyin" });
 
-		const res = await boot({ reportProblems }).request("/bridge", { method: "DELETE" });
+		const res = await boot({ reportDiscrepancies }).request("/bridge", { method: "DELETE" });
 
 		expect(res.status).toBe(200);
-		expect(reportProblems.list("bridge")).toEqual([]);
-		expect(reportProblems.list("douyin")).toHaveLength(1);
+		expect(reportDiscrepancies.list("bridge")).toEqual([]);
+		expect(reportDiscrepancies.list("douyin")).toHaveLength(1);
 	});
 
-	/** 拦住了就什么都别动 —— 上报问题也照留。 */
-	it("被拦下的删除不清上报问题", async () => {
+	/** 拦住了就什么都别动 —— 上报出入也照留。 */
+	it("被拦下的删除不清上报出入", async () => {
 		await installed();
-		const reportProblems = createReportProblemLog();
-		reportProblems.record({
+		const reportDiscrepancies = createReportDiscrepancyTable();
+		reportDiscrepancies.record({
 			extensionId: "bridge",
 			at: 1,
 			kind: "post",
@@ -1236,12 +1253,12 @@ describe("DELETE /api/ext/:id", () => {
 			reasons: ["坏了"],
 		});
 		const app = boot({
-			reportProblems,
+			reportDiscrepancies,
 			connections: [{ id: "c1", kind: "extension", extensionId: "bridge" }],
 		});
 
 		expect((await app.request("/bridge", { method: "DELETE" })).status).toBe(409);
-		expect(reportProblems.list("bridge")).toHaveLength(1);
+		expect(reportDiscrepancies.list("bridge")).toHaveLength(1);
 	});
 
 	/** 面板上的列表可能是上一秒的。盘上早就没了也当删成功,别让人对着一个删不掉的幽灵。 */

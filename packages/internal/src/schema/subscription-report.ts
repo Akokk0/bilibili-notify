@@ -604,7 +604,7 @@ function walkCell(schema: z.ZodType, value: unknown, where: string, state: WalkS
 
 /**
  * 核一条上报(决策 59)。收下时 `dropped` 是丢掉(或截断)的每一格(哪一格、为什么),拒掉时 `reason` 点名
- * 哪儿不对 —— 两样宿主都原样记进「上报问题」(决策 60),拒掉的还原样交回拓展。
+ * 哪儿不对 —— 两样宿主都原样记进「上报出入」(决策 60),拒掉的还原样交回拓展。
  *
  * 拓展交来的对象读起来会抛(getter、Proxy)也算整条拒,原话带上 —— 这里不往外抛。
  */

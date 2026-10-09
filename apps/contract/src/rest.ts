@@ -180,15 +180,15 @@ export interface ExtensionDTO {
 	 */
 	staged?: { version: string };
 	/**
-	 * 订阅源拓展最近的「上报问题」(ADR-0019 决策 60):丢格、整条拒 —— 一条上报一条,**新的在前**,
+	 * 订阅源拓展最近的「上报出入」(ADR-0019 决策 60):丢格、整条拒 —— 一条上报一条,**新的在前**,
 	 * 最多 20 条。**有才有这一格**,详情页凭它判「有问题才出现」那个框。只在服务端内存里,重启清空、
-	 * 卸载清空;新记了时服务端发 `extension-report-problems-changed`(按拓展合并过),面板据此重取这张表。
+	 * 卸载清空;新记了时服务端发 `extension-report-discrepancies-changed`(按拓展合并过),面板据此重取这张表。
 	 */
-	reportProblems?: ExtensionReportProblemView[];
+	reportDiscrepancies?: ReportDiscrepancyView[];
 }
 
-/** 一条「上报问题」(见 {@link ExtensionDTO.reportProblems})。 */
-export interface ExtensionReportProblemView {
+/** 一条「上报出入」(见 {@link ExtensionDTO.reportDiscrepancies})。 */
+export interface ReportDiscrepancyView {
 	/** 什么时候(毫秒时间戳)。 */
 	at: number;
 	/** 报的哪一种:三种事件 + 直播状态 + 资料。 */

@@ -118,13 +118,13 @@ export interface ExtensionSubscriptionRow {
 }
 
 /**
- * 一条「上报问题」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者动了几格(丢掉或截断)。
+ * 一条「上报出入」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者动了几格(丢掉或截断)。
  *
- * 丢格与拒绝**只从一个出口出去**(ctx 里的 `reportProblem`):记一行 warn(带 `[ext:<id>]` 与原因),
- * 再交给 {@link CreateExtensionContextOptions.onSubscriptionReportProblem} —— 拓展详情页那个「上报问题」框
+ * 丢格与拒绝**只从一个出口出去**(ctx 里的 `recordDiscrepancy`):记一行 warn(带 `[ext:<id>]` 与原因),
+ * 再交给 {@link CreateExtensionContextOptions.onReportDiscrepancy} —— 拓展详情页那个「上报出入」框
  * 接的就是它。散着写的话,框里迟早缺一类。
  */
-export interface SubscriptionReportProblem {
+export interface ReportDiscrepancy {
 	extensionId: string;
 	/** 什么时候(毫秒)。 */
 	at: number;
@@ -281,8 +281,8 @@ export interface CreateExtensionContextOptions {
 	 * `subscriptionIds` 已经按开关筛过(见 `SubscriptionReportDelivery`)。不给就只是没人收。
 	 */
 	onSubscriptionReport?: (delivery: SubscriptionReportDelivery) => void;
-	/** 「上报问题」的出口(见 {@link SubscriptionReportProblem})。日志 ctx 已经记了;不给就只记日志。 */
-	onSubscriptionReportProblem?: (problem: SubscriptionReportProblem) => void;
+	/** 「上报出入」的出口(见 {@link ReportDiscrepancy})。日志 ctx 已经记了;不给就只记日志。 */
+	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
 	/** 它自己那份设置(`config/settings/extensions/<id>.json`),**现读**、原样。 */
 	settings: () => unknown;
 	/** 订阅「globals 落盘了」—— 内容变没变由 ctx 自己判,再转给拓展。 */
@@ -295,7 +295,7 @@ export interface CreateExtensionContextOptions {
 	/**
 	 * 拓展喊「面板数据变了」(`ctx.statusChanged`)时转给宿主;不给就只是没人听。**已经合并过**:一个
 	 * 窗口里的连喊只叫它一次,见 {@link STATUS_CHANGED_COALESCE_MS}。**只有拓展自己喊才叫它** —— 它说的是
-	 * 「拓展的视图变了」;上报问题(决策 60)有自己那一声,在记录那头发,不走这里。
+	 * 「拓展的视图变了」;上报出入(决策 60)有自己那一声,在记录那头发,不走这里。
 	 */
 	onStatusChanged?: () => void;
 	/**
@@ -467,17 +467,17 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	}
 
 	/**
-	 * 「上报问题」**唯一**的出口(决策 60):记一行 warn(带 `[ext:<id>]` 与原因),再交给宿主 —— 拓展
+	 * 「上报出入」**唯一**的出口(决策 60):记一行 warn(带 `[ext:<id>]` 与原因),再交给宿主 —— 拓展
 	 * 详情页那个框接的就是它。丢格、整条拒都从这里过,别散着写。
 	 */
-	function reportProblem(problem: Omit<SubscriptionReportProblem, "extensionId" | "at">): void {
-		const what = `${problem.kind}(外部 id ${problem.externalId})`;
+	function recordDiscrepancy(discrepancy: Omit<ReportDiscrepancy, "extensionId" | "at">): void {
+		const what = `${discrepancy.kind}(外部 id ${discrepancy.externalId})`;
 		logger.warn(
-			problem.outcome === "rejected"
-				? `上报 ${what} 整条拒了:${problem.reasons.join(";")}`
-				: `上报 ${what} 动了 ${problem.reasons.length} 格:${problem.reasons.join(";")}`,
+			discrepancy.outcome === "rejected"
+				? `上报 ${what} 整条拒了:${discrepancy.reasons.join(";")}`
+				: `上报 ${what} 动了 ${discrepancy.reasons.length} 格:${discrepancy.reasons.join(";")}`,
 		);
-		opts.onSubscriptionReportProblem?.({ ...problem, extensionId: id, at: Date.now() });
+		opts.onReportDiscrepancy?.({ ...discrepancy, extensionId: id, at: Date.now() });
 	}
 
 	/**
@@ -506,7 +506,13 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			: [];
 		const subscriptionIds = matched.map((row) => row.id);
 		const reject = (reason: string): never => {
-			reportProblem({ kind, externalId, subscriptionIds, outcome: "rejected", reasons: [reason] });
+			recordDiscrepancy({
+				kind,
+				externalId,
+				subscriptionIds,
+				outcome: "rejected",
+				reasons: [reason],
+			});
 			throw new Error(`BN 拒收这条 ${kind} 上报:${reason}`);
 		};
 		if (!idCheck.ok) return reject(idCheck.reason);
@@ -515,7 +521,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		const checked = checkSubscriptionReport(kind, raw);
 		if (!checked.ok) return reject(checked.reason);
 		if (checked.dropped.length > 0) {
-			reportProblem({
+			recordDiscrepancy({
 				kind,
 				externalId,
 				subscriptionIds,
@@ -551,7 +557,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	/**
 	 * 把手上的一个 `report*`。🔴 拓展不接这个 Promise 时,它的 reject 不许变成 unhandledRejection ——
-	 * 独立端装的处理器会把整个进程关掉;拒掉的原因已经从上报问题的出口记下了。拓展 `await` 它照样拿得到。
+	 * 独立端装的处理器会把整个进程关掉;拒掉的原因已经从上报出入的出口记下了。拓展 `await` 它照样拿得到。
 	 */
 	function reporter(kind: SubscriptionReportKind) {
 		return (externalId: unknown, raw: unknown): Promise<void> => {

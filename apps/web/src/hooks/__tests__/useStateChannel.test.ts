@@ -8,7 +8,7 @@
  *     与各拓展的设置(拓展的设置各在自己的文件,改了发这一档);不碰拓展表
  *   - extension-status-changed          → 那个拓展的 status 与 bots
  *   - extension-settings-changed        → 那个拓展的设置与视图(状态)
- *   - extension-report-problems-changed → 仅拓展表(上报问题框住在那一行上)
+ *   - extension-report-discrepancies-changed → 仅拓展表(上报出入框住在那一行上)
  *   - subscription-profiles-changed     → 仅 invalidate ["subscriptions"](拓展报的资料落盘了)
  *   - config-changed scope=subscriptions → invalidate ["subscriptions"] 与 ["subscription-tags"](标签表与订阅同一档)
  *   - config-changed scope=targets       → 仅 invalidate ["targets"]
@@ -123,14 +123,14 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	});
 
 	/**
-	 * 服务端给某个拓展新记了「上报问题」(ADR-0019 决策 60):那个框住在拓展表的那一行上,**只**让拓展表
+	 * 服务端给某个拓展新记了「上报出入」(ADR-0019 决策 60):那个框住在拓展表的那一行上,**只**让拓展表
 	 * 过期 —— 视图没变,不去重读它。
 	 */
-	it("extension-report-problems-changed:只失效拓展表", () => {
+	it("extension-report-discrepancies-changed:只失效拓展表", () => {
 		handleStateEnvelope(
 			env({
 				type: "state",
-				event: "extension-report-problems-changed",
+				event: "extension-report-discrepancies-changed",
 				data: { extensionId: "douyin" },
 			}),
 			sc.qc,

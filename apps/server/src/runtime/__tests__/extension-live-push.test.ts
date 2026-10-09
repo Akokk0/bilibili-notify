@@ -4,7 +4,7 @@
  * 喂一条真的总线、一张真的在播表(最新状态从它取),出卡与发送换成记账的替身,时钟走假定时器:
  * - 开播 / 下播卡只由事件触发(决策 53);
  * - 断流接续:下播先压着,等待期间再开播就两张都不发、沿用第一次的开播时刻(决策 58);
- * - 周期「正在直播」只在上次推送之后收到过新状态时推,否则跳过、记进上报问题框(决策 61);
+ * - 周期「正在直播」只在上次推送之后收到过新状态时推,否则跳过、记进上报出入框(决策 61);
  * - 重启补推只在 BN 起来后第一次见到这一场在播、且没见过它的开播事件时推一次(决策 57);
  * - 拓展停了 / 订阅停用或删了:计时器与等着的下播全部作废,不补推(决策 61);
  * - 粉丝那一格:开播记下资料里的粉丝数,下播拿最新那份相减(决策 56);
@@ -30,7 +30,7 @@ import {
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
 import { type LiveNotifySend, LivePushType } from "../../bilibili/live/index.js";
-import type { SubscriptionReportProblem } from "../../extensions/context.js";
+import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
 import type { LiveWorkSettings } from "../engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
@@ -85,7 +85,7 @@ let table: ExtensionLiveTable;
 let sessions: ExtensionLiveSessions;
 let handle: { dispose(): void };
 let sent: Sent[];
-let problems: SubscriptionReportProblem[];
+let discrepancies: ReportDiscrepancy[];
 let settings: LiveWorkSettings;
 let subs: Map<string, Subscription>;
 let running: boolean;
@@ -173,7 +173,7 @@ function start(): void {
 				sent.push({ id, type, text, input: renderedInputs.at(-1) });
 			},
 		renderer: () => (rendererOn ? renderer : null),
-		reportProblem: (problem) => problems.push(problem),
+		onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
 		serviceCtx: {
 			setInterval: (fn, ms) => {
 				periodicIntervals.push(ms);
@@ -216,7 +216,7 @@ beforeEach(() => {
 	vi.setSystemTime(T0);
 	bus = createNodeMessageBus();
 	sent = [];
-	problems = [];
+	discrepancies = [];
 	renderedInputs = [];
 	avatarRef = undefined;
 	storedImages = [];
@@ -388,7 +388,7 @@ describe("周期「正在直播」", () => {
 		settings = baseSettings({ liveStreaming: true, streamingIntervalHours: 1 });
 	});
 
-	it("到点时上次推送之后收到过新状态 → 拿在播表里最新那一份推;没有 → 这一轮跳过,记进上报问题框", async () => {
+	it("到点时上次推送之后收到过新状态 → 拿在播表里最新那一份推;没有 → 这一轮跳过,记进上报出入框", async () => {
 		start();
 		liveStart({ totalViewers: 10 });
 		await settle();
@@ -417,21 +417,21 @@ describe("周期「正在直播」", () => {
 			startedAt: isoOf(T0),
 			followers: 12_345,
 		});
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 
 		// 第二小时:拓展一声没吭。
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 0]);
-		expect(problems).toHaveLength(1);
-		expect(problems[0]).toMatchObject({
+		expect(discrepancies).toHaveLength(1);
+		expect(discrepancies[0]).toMatchObject({
 			extensionId: EXT,
 			kind: "liveStatus",
 			externalId: SUB.identity.externalId,
 			subscriptionIds: [SUB.id],
 			outcome: "skipped",
 		});
-		expect(problems[0]?.reasons[0]).toMatch(/没收到新的直播状态/);
+		expect(discrepancies[0]?.reasons[0]).toMatch(/没收到新的直播状态/);
 	});
 
 	/**
@@ -466,14 +466,14 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 
 		liveStatus({ totalViewers: 8 });
 		await vi.advanceTimersByTimeAsync(HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 0]);
 		expect(sent[1]?.input).toMatchObject({ status: "streaming", totalViewers: 8 });
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 
 	// ⑬d 直播拆键:周期「正在直播」走自己的开关、间隔与目标;关着就不挂计时器(推送类型 Live=0 = 周期那一档)。
@@ -485,7 +485,7 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 		// 计时器压根没挂(不是挂着、到点再跳过):关着的东西不留一个空转的定时器。
 		expect(periodicIntervals).toEqual([]);
 	});
@@ -525,7 +525,7 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 
 	it("热更:关着时把开关打开 → 这一场从此刻起按间隔挂上计时器", async () => {
@@ -567,7 +567,7 @@ describe("周期「正在直播」", () => {
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
 		expect(periodicIntervals).toEqual([]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 
 	it("源声明了开播与下播 → 挂;清单现取不到(undefined)时不拦:只在明确知道声明不全时才不推", async () => {
@@ -586,7 +586,7 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3, 9]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 
 	it("订阅停用 → 这一场作废,周期推送停了", async () => {
@@ -602,7 +602,7 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 
 	it("订阅删了 → 这一场作废", async () => {
@@ -614,7 +614,7 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 
 	it("拓展停了 → 周期推送作废,不再记跳过", async () => {
@@ -625,7 +625,7 @@ describe("周期「正在直播」", () => {
 		await vi.advanceTimersByTimeAsync(3 * HOUR);
 		await settle();
 		expect(sent.map((s) => s.type)).toEqual([3]);
-		expect(problems).toEqual([]);
+		expect(discrepancies).toEqual([]);
 	});
 });
 

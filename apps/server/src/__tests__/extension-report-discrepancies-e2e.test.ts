@@ -1,12 +1,12 @@
 /**
- * 🔴 **拓展报坏了的东西,在真 BN 上进了拓展详情页的「上报问题」**(ADR-0019 决策 60)。
+ * 🔴 **拓展报坏了的东西,在真 BN 上进了拓展详情页的「上报出入」**(ADR-0019 决策 60)。
  *
- * 丢格、整条拒都从 ctx 里唯一那个出口出去(`reportProblem` → `onSubscriptionReportProblem`);之后要
+ * 丢格、整条拒都从 ctx 里唯一那个出口出去(`recordDiscrepancy` → `onReportDiscrepancy`);之后要
  * `index.ts` 把它接进记录、`app.ts` 把记录递给拓展列表那一口,面板才看得见。任意一处漏接,日志里照样
  * 有那一行、类型与单元测试全绿,而主人看见「卡片少了一张图」永远不知道为什么。
  *
  * 所以装一个真的 v2 小拓展、起一台真 BN:按它的动作钮报一条丢格的、一条没声明的,读面板读的那一口。
- * bus 在这里只**旁听**(包一层真的那个,不换掉它),看面板有没有被叫去重取 —— 叫的是上报问题自己那一声,
+ * bus 在这里只**旁听**(包一层真的那个,不换掉它),看面板有没有被叫去重取 —— 叫的是上报出入自己那一声,
  * 不是「拓展的视图变了」。
  */
 
@@ -19,8 +19,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vite-
 import { type ServerHandle, startServer } from "../index.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
-/** bus 上旁听到的:「上报问题变了」与「拓展的视图变了」(都是拓展 id)。 */
-const heard = vi.hoisted(() => ({ problems: [] as string[], status: [] as string[] }));
+/** bus 上旁听到的:「上报出入变了」与「拓展的视图变了」(都是拓展 id)。 */
+const heard = vi.hoisted(() => ({ discrepancies: [] as string[], status: [] as string[] }));
 
 vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../runtime/message-bus.js")>();
@@ -28,8 +28,8 @@ vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 		...real,
 		createNodeMessageBus: () => {
 			const bus = real.createNodeMessageBus();
-			bus.on("extension-report-problems-changed", ({ extensionId }) => {
-				heard.problems.push(extensionId);
+			bus.on("extension-report-discrepancies-changed", ({ extensionId }) => {
+				heard.discrepancies.push(extensionId);
 			});
 			bus.on("extension-status-changed", ({ extensionId }) => {
 				heard.status.push(extensionId);
@@ -39,7 +39,7 @@ vi.mock("../runtime/message-bus.js", async (importOriginal) => {
 	};
 });
 
-const FIXTURE_ID = "problem-probe";
+const FIXTURE_ID = "discrepancy-probe";
 const PERSON = "douyin-person";
 const SUB = makeExtensionSubscription({
 	id: "e0000000-0000-4000-8000-00000000000a",
@@ -65,7 +65,7 @@ export function activate(ctx) {
 		}),
 	);
 	ctx.onAction("report.undeclared", async () => {
-		// 拒掉是意料之中的:动作本身不算失败,拒的原因看上报问题。
+		// 拒掉是意料之中的:动作本身不算失败,拒的原因看上报出入。
 		await handle.reportLiveEnd(PERSON, { url: "https://live.douyin.com/1" }).catch(() => {});
 	});
 }
@@ -87,7 +87,7 @@ async function findFreePort(): Promise<number> {
 	});
 }
 
-describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () => {
+describe("上报出入 e2e:丢格与整条拒进了拓展列表那一口", () => {
 	let dataDir: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
@@ -105,7 +105,7 @@ describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () =>
 	}
 
 	beforeAll(async () => {
-		dataDir = await mkdtemp(join(tmpdir(), "bn-report-problems-e2e-"));
+		dataDir = await mkdtemp(join(tmpdir(), "bn-report-discrepancies-e2e-"));
 		const extDir = join(dataDir, "extensions", FIXTURE_ID);
 		await mkdir(extDir, { recursive: true });
 		await writeFile(
@@ -162,28 +162,28 @@ describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () =>
 	});
 
 	beforeEach(() => {
-		heard.problems.length = 0;
+		heard.discrepancies.length = 0;
 		heard.status.length = 0;
 	});
 
 	it("还没报过坏东西:那一行没有这一格", async () => {
-		expect(await probeRow()).not.toHaveProperty("reportProblems");
+		expect(await probeRow()).not.toHaveProperty("reportDiscrepancies");
 	});
 
-	it("丢了一张图:记一条「丢了」,带上哪条订阅与原因;面板被叫去重取(上报问题自己那一声)", async () => {
+	it("丢了一张图:记一条「丢了」,带上哪条订阅与原因;面板被叫去重取(上报出入自己那一声)", async () => {
 		await press("report.dropped");
 
-		const problems = (await probeRow())?.reportProblems;
-		expect(problems).toHaveLength(1);
-		expect(problems?.[0]).toMatchObject({
+		const discrepancies = (await probeRow())?.reportDiscrepancies;
+		expect(discrepancies).toHaveLength(1);
+		expect(discrepancies?.[0]).toMatchObject({
 			kind: "post",
 			externalId: PERSON,
 			subscriptionIds: [SUB.id],
 			outcome: "dropped",
 		});
-		expect(problems?.[0]?.reasons).toHaveLength(1);
-		expect(problems?.[0]?.reasons[0]).toContain("images[0]");
-		await vi.waitFor(() => expect(heard.problems).toEqual([FIXTURE_ID]));
+		expect(discrepancies?.[0]?.reasons).toHaveLength(1);
+		expect(discrepancies?.[0]?.reasons[0]).toContain("images[0]");
+		await vi.waitFor(() => expect(heard.discrepancies).toEqual([FIXTURE_ID]));
 		// 「拓展的视图变了」那一声不掺和:它一响,面板就去重读视图。
 		expect(heard.status).toEqual([]);
 	});
@@ -191,11 +191,11 @@ describe("上报问题 e2e:丢格与整条拒进了拓展列表那一口", () =>
 	it("报了清单没声明的种类:记一条「拒了」,排在最前", async () => {
 		await press("report.undeclared");
 
-		const problems = (await probeRow())?.reportProblems;
-		expect(problems?.map((p) => [p.kind, p.outcome])).toEqual([
+		const discrepancies = (await probeRow())?.reportDiscrepancies;
+		expect(discrepancies?.map((p) => [p.kind, p.outcome])).toEqual([
 			["liveEnd", "rejected"],
 			["post", "dropped"],
 		]);
-		expect(problems?.[0]?.reasons[0]).toContain("没声明");
+		expect(discrepancies?.[0]?.reasons[0]).toContain("没声明");
 	});
 });

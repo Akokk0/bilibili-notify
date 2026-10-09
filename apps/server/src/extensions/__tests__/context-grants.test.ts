@@ -1064,10 +1064,10 @@ describe("statusChanged 合并", () => {
 	});
 
 	/**
-	 * 「上报问题」(ADR-0019 决策 60)**不**喊「面板数据变了」:那一声说的是拓展的视图变了,面板会去重读
-	 * 视图;上报问题有自己那一声(记录那头的 `extension-report-problems-changed`),两件事不搅在一起。
+	 * 「上报出入」(ADR-0019 决策 60)**不**喊「面板数据变了」:那一声说的是拓展的视图变了,面板会去重读
+	 * 视图;上报出入有自己那一声(记录那头的 `extension-report-discrepancies-changed`),两件事不搅在一起。
 	 */
-	it("上报问题不喊「面板数据变了」", async () => {
+	it("上报出入不喊「面板数据变了」", async () => {
 		const h = harness({
 			manifest: {
 				...V1_PUSH,
@@ -1081,11 +1081,11 @@ describe("statusChanged 合并", () => {
 			} as unknown as ExtensionManifest,
 		});
 		const source = h.ctx.registerSubscriptionSource({ lookup: () => [] });
-		// 清单没声明下播:整条拒、记一条上报问题。
+		// 清单没声明下播:整条拒、记一条上报出入。
 		await source.reportLiveEnd("person", { url: "https://live.example.com/1" }).catch(() => {});
 		vi.advanceTimersByTime(W * 10);
 		expect(h.statusChanges()).toBe(0);
-		// 上报问题照样出去了 —— 这条不是因为压根没走到那个出口才绿的。
+		// 上报出入照样出去了 —— 这条不是因为压根没走到那个出口才绿的。
 		expect(h.lines.some((line) => line.startsWith("warn") && line.includes("liveEnd"))).toBe(true);
 	});
 

@@ -184,7 +184,7 @@ export function wireReportButtons(
 		const n = ++postSeq;
 		return {
 			each: (externalId) => source.reportPost(externalId, fakePostWithBadImage(externalId, n, now)),
-			note: `第 ${n} 条 · BN 应只丢那张 SVG,去「上报问题」看`,
+			note: `第 ${n} 条 · BN 应只丢那张 SVG,去「上报出入」看`,
 		};
 	});
 
@@ -195,12 +195,12 @@ export function wireReportButtons(
 				try {
 					await source.reportPost(externalId, fakePostWithExtraField(externalId, n, now));
 				} catch {
-					// 意料之中:原因宿主已经记进「上报问题」了。
+					// 意料之中:原因宿主已经记进「上报出入」了。
 					return;
 				}
 				throw new Error("BN 收下了这条多一格的作品 —— 它本该整条拒(决策 59)");
 			},
-			note: `第 ${n} 条 · BN 应整条拒,去「上报问题」看`,
+			note: `第 ${n} 条 · BN 应整条拒,去「上报出入」看`,
 		};
 	});
 
@@ -208,7 +208,7 @@ export function wireReportButtons(
 		type: "button",
 		button: { kind: "action", label: b.label, action: b.action },
 	});
-	/** 报坏的两颗挂在一句说明上:按了该在「上报问题」里看见什么。 */
+	/** 报坏的两颗挂在一句说明上:按了该在「上报出入」里看见什么。 */
 	const explained = (b: ReportButton, text: string): ExtensionBlock => ({
 		type: "notice",
 		tone: "info",

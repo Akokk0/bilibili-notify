@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
 /**
- * 拓展详情页的「上报问题」框(ADR-0019 决策 60):订阅源拓展报上来、BN 没照单全收的那几条 —— 丢了几格
+ * 拓展详情页的「上报出入」框(ADR-0019 决策 60):订阅源拓展报上来、BN 没照单全收的那几条 —— 丢了几格
  * 或整条拒了。**有问题才出现**;每行说清什么时候、哪条订阅、报的哪一种(作品按平台叫法)、丢了还是拒了、
  * 为什么。原因只写进日志的话,主人看见「卡片少了一张图」不会想到去日志里搜。
  */
 
-import type { ExtensionDTO, ExtensionReportProblemView } from "@bilibili-notify/contract";
+import type { ExtensionDTO, ReportDiscrepancyView } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -18,7 +18,7 @@ const { FakeApiError, disk } = vi.hoisted(() => {
 	class FakeApiError extends Error {}
 	return {
 		FakeApiError,
-		disk: { subs: [] as unknown[], problems: undefined as unknown[] | undefined },
+		disk: { subs: [] as unknown[], discrepancies: undefined as unknown[] | undefined },
 	};
 });
 
@@ -42,8 +42,8 @@ vi.mock("../../services/api", () => ({
 					dir: "/data/extensions/douyin",
 					enabled: true,
 					state: "running",
-					...(disk.problems
-						? { reportProblems: disk.problems as ExtensionReportProblemView[] }
+					...(disk.discrepancies
+						? { reportDiscrepancies: disk.discrepancies as ReportDiscrepancyView[] }
 						: {}),
 				};
 				return { extensions: [douyin] };
@@ -78,17 +78,17 @@ function renderDetail() {
 	);
 }
 
-describe("拓展详情页:上报问题", () => {
+describe("拓展详情页:上报出入", () => {
 	afterEach(() => {
 		cleanup();
 		vi.clearAllMocks();
 		disk.subs = [];
-		disk.problems = undefined;
+		disk.discrepancies = undefined;
 	});
 
 	it("有问题:出一个框,每行说清哪条订阅、报的哪一种、丢了还是拒了、为什么", async () => {
 		disk.subs = [extSub("s1", "sec-1", "某位 UP")];
-		disk.problems = [
+		disk.discrepancies = [
 			{
 				at: Date.now() - 5 * 60_000,
 				kind: "liveStart",
@@ -111,7 +111,7 @@ describe("拓展详情页:上报问题", () => {
 		];
 		renderDetail();
 
-		const box = await screen.findByRole("region", { name: "上报问题" });
+		const box = await screen.findByRole("region", { name: "上报出入" });
 		const rows = within(box).getAllByRole("listitem");
 		expect(rows).toHaveLength(2);
 
@@ -134,7 +134,7 @@ describe("拓展详情页:上报问题", () => {
 
 	it("周期「正在直播」因为没有新状态跳过的那一轮也记在这儿(决策 61),标成跳过,不说丢了几格", async () => {
 		disk.subs = [extSub("s1", "sec-1", "某位 UP")];
-		disk.problems = [
+		disk.discrepancies = [
 			{
 				at: Date.now() - 60_000,
 				kind: "liveStatus",
@@ -146,7 +146,7 @@ describe("拓展详情页:上报问题", () => {
 		];
 		renderDetail();
 
-		const box = await screen.findByRole("region", { name: "上报问题" });
+		const box = await screen.findByRole("region", { name: "上报出入" });
 		const [row] = within(box).getAllByRole("listitem");
 		expect(await within(row as HTMLElement).findByText("某位 UP")).toBeTruthy();
 		expect(within(row as HTMLElement).getByText("直播状态")).toBeTruthy();
@@ -158,7 +158,7 @@ describe("拓展详情页:上报问题", () => {
 	it("没有问题:不出这个框", async () => {
 		renderDetail();
 		await screen.findByRole("button", { name: "删除拓展" });
-		expect(screen.queryByRole("region", { name: "上报问题" })).toBeNull();
-		expect(screen.queryByText("上报问题")).toBeNull();
+		expect(screen.queryByRole("region", { name: "上报出入" })).toBeNull();
+		expect(screen.queryByText("上报出入")).toBeNull();
 	});
 });

@@ -413,9 +413,9 @@ function setup(opts?: {
 	liveImages?: Parameters<typeof createEngines>[0]["liveImages"] | null;
 	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
-	/** 拓展订阅的在播表与上报问题框(接线层给的);不给 = 不接拓展订阅的直播。 */
+	/** 拓展订阅的在播表与上报出入框(接线层给的);不给 = 不接拓展订阅的直播。 */
 	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
-	extensionReportProblem?: Parameters<typeof createEngines>[0]["extensionReportProblem"];
+	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
 	/** 大航海徽章图标(接线层给的 `runtime.guardIcons`);不给 = 一个什么都没有的替身。 */
 	guardIcons?: Parameters<typeof createEngines>[0]["guardIcons"];
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
@@ -515,9 +515,7 @@ function setup(opts?: {
 					},
 				}
 			: {}),
-		...(opts?.extensionReportProblem
-			? { extensionReportProblem: opts.extensionReportProblem }
-			: {}),
+		...(opts?.onReportDiscrepancy ? { onReportDiscrepancy: opts.onReportDiscrepancy } : {}),
 	});
 	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
 }
@@ -1117,16 +1115,16 @@ describe("createEngines — 作品过滤接线", () => {
 
 /**
  * 拓展订阅的直播接进引擎(ADR-0019 决策 57 / 60 / 61):计时器挂在 live 子系统的定时器上,周期「正在直播」
- * 因为没有新状态跳过的那一轮记进接线层给的上报问题框;开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
- * 剪掉注册、上报问题框那一口没往下传,这里都会红。
+ * 因为没有新状态跳过的那一轮记进接线层给的上报出入框;开播卡照 B 站的映射交给推送层(按订阅 id、特性 live)。
+ * 剪掉注册、上报出入框那一口没往下传,这里都会红。
  */
-describe("createEngines — 拓展直播接上计时器与上报问题框", () => {
-	it("开播 → 推送层收到按订阅 id 的开播;周期推送到点没有新状态 → 记进 extensionReportProblem", async () => {
+describe("createEngines — 拓展直播接上计时器与上报出入框", () => {
+	it("开播 → 推送层收到按订阅 id 的开播;周期推送到点没有新状态 → 记进 onReportDiscrepancy", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const g = makeDefaultGlobalConfig();
 		g.defaults.features.liveStreaming = true;
 		g.defaults.liveStreaming.streamingIntervalHours = 1;
-		const problems: unknown[] = [];
+		const discrepancies: unknown[] = [];
 		const c = setup({
 			globals: g,
 			subs: [sub],
@@ -1142,7 +1140,7 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }
 						: undefined,
 			},
-			extensionReportProblem: (problem) => problems.push(problem),
+			onReportDiscrepancy: (discrepancy) => discrepancies.push(discrepancy),
 		});
 		active = c;
 		c.bus.emit("subscription-reported", {
@@ -1170,7 +1168,7 @@ describe("createEngines — 拓展直播接上计时器与上报问题框", () =
 		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
 		expect(periodic, "周期推送没挂上").toBeDefined();
 		periodic?.[0]();
-		expect(problems).toEqual([
+		expect(discrepancies).toEqual([
 			expect.objectContaining({
 				extensionId: "douyin",
 				kind: "liveStatus",

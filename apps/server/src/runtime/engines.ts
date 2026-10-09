@@ -88,7 +88,7 @@ import {
 } from "../bilibili/live/index.js";
 import { settingsOf, watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
-import type { SubscriptionReportProblem } from "../extensions/context.js";
+import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
@@ -297,10 +297,10 @@ export interface CreateEnginesOptions {
 	 */
 	imageFetcher: ImagesDeps["images"];
 	/**
-	 * 拓展详情页的「上报问题」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
+	 * 拓展详情页的「上报出入」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
 	 * 记进去。不给就只记日志。
 	 */
-	extensionReportProblem?: (problem: SubscriptionReportProblem) => void;
+	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
 	/**
 	 * 卡片皮肤(ADR-0014)的三口。由接线层从 `CardSkinStore` 接过来 —— engines 不认识
 	 * 皮肤库,店也不认识引擎,中间就这三个函数。缺省(没接)= 只有内置默认皮肤。
@@ -828,7 +828,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				liveImages,
 				sendFor: (id) => boundLivePush(push, id),
 				renderer: () => (globals().defaults.cards.enabled ? imageRenderer : null),
-				reportProblem: (problem) => opts.extensionReportProblem?.(problem),
+				onReportDiscrepancy: (discrepancy) => opts.onReportDiscrepancy?.(discrepancy),
 			}),
 		);
 	}

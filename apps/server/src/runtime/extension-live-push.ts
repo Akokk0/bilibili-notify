@@ -24,7 +24,7 @@ import {
 	renderLiveText,
 	type SerialGate,
 } from "../bilibili/live/index.js";
-import type { SubscriptionReportProblem } from "../extensions/context.js";
+import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
 import type {
@@ -65,7 +65,7 @@ import { deferImageWrites, type ImageSink } from "./post-from-report.js";
  *   的直播不能先补报一张「正在直播」、紧跟着又推开播卡。拓展停了「见过」一并作废,它重新跑起来收到的第一
  *   份状态照开机那样判 —— 它停着的时候开的播照样补报。
  * - **周期「正在直播」**:到点时上次推送之后收到过新状态才推(拿在播表里最新那一份出卡),否则这一轮跳过、
- *   记进上报问题框(决策 60 / 61)—— 不管拓展多久查一次都不误伤。在播表里没有这一行(最新状态说不在播,
+ *   记进上报出入框(决策 60 / 61)—— 不管拓展多久查一次都不误伤。在播表里没有这一行(最新状态说不在播,
  *   拓展没报下播或下播被拒收)→ 这一轮悄悄跳过,不记问题、也不替拓展判下播(决策 53);又报在播就接着推。
  * - 排着队的「正在直播」卡(补报或周期)**这一场已经不是当前那场**就不发:开始跑时认一次,出完卡发送前
  *   再认一次 —— 出卡的那几秒里开播事件到了,也不会在开播卡前面多一张。
@@ -129,8 +129,8 @@ export interface BindExtensionLivePushOptions {
 	sendFor(subscriptionId: string): LiveNotifySend;
 	/** 出卡的渲染器 —— 会被热换、关了出图时是 null,现取。 */
 	renderer(): Pick<ImageRenderer, "generateLiveCard"> | null | undefined;
-	/** 上报问题框(决策 60):周期「正在直播」因为没有新状态跳过的那一轮记进去。 */
-	reportProblem(problem: SubscriptionReportProblem): void;
+	/** 上报出入框(决策 60):周期「正在直播」因为没有新状态跳过的那一轮记进去。 */
+	onReportDiscrepancy(discrepancy: ReportDiscrepancy): void;
 	/**
 	 * 宿主的 ServiceContext。`setInterval` 管周期推送的定时器(关机时一起清);每张卡的出卡与推送是
 	 * 发出去不等的后台活，登记进 `track`,关停等它推完 —— 推送落历史的那一笔得赶在各写道关门之前交进去。
@@ -409,7 +409,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		if (!run.fresh) {
 			const reason = "上次推送之后没收到新的直播状态,这一轮周期「正在直播」没推";
 			log.info(`[ext-live] 订阅 ${id}:${reason}`);
-			opts.reportProblem({
+			opts.onReportDiscrepancy({
 				extensionId: run.session.extensionId,
 				at: now(),
 				kind: "liveStatus",

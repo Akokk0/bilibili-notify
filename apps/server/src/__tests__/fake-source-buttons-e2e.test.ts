@@ -2,9 +2,9 @@
  * 🔴 **假源页面上的上报按钮,在真 BN 上真的报到了**(ADR-0019 决策 62 的最后一条)。
  *
  * 假源造的数据是**手写**的第二份(拓展够不到宿主的上报 zod,连测试也够不到),而它存在的意义是让主人在
- * 真机上看见「报了 → 收了」:首页在播、订阅页的资料、详情页的「上报问题」。造出来的哪一格不合宿主的
+ * 真机上看见「报了 → 收了」:首页在播、订阅页的资料、详情页的「上报出入」。造出来的哪一格不合宿主的
  * 规矩(秒当成毫秒、链接不是 http(s)、图不是位图),假源自己的单元测试照样全绿,症状是主人按了按钮、
- * 该变的地方一动不动,或者「上报问题」里多出一条莫名其妙的拒绝。
+ * 该变的地方一动不动,或者「上报出入」里多出一条莫名其妙的拒绝。
  *
  * 所以这一条把**假源的构建产物**装进装载根、起一台真 BN:经解析门建订阅、照面板那样按动作钮,再读
  * 面板读的那几口。bus 在这里只**旁听**(包一层真的那个,不换掉它)。
@@ -70,7 +70,7 @@ async function findFreePort(): Promise<number> {
 	});
 }
 
-describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上报问题都跟着变", () => {
+describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上报出入都跟着变", () => {
 	let dataDir: string;
 	let handle: ServerHandle | undefined;
 	let port: number;
@@ -194,7 +194,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect(posts[0]?.stats?.likes).toEqual(expect.any(Number));
 		expect(posts[2]?.video?.cover).toBeInstanceOf(Uint8Array);
 		expect(posts[2]?.video?.title).toEqual(expect.any(String));
-		expect((await fakeRow())?.reportProblems).toBeUndefined();
+		expect((await fakeRow())?.reportDiscrepancies).toBeUndefined();
 	});
 
 	it("开播 → 首页有甲乙两行,带着标题、分区、累计观看与开播时刻", async () => {
@@ -229,7 +229,7 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect(first?.totalViewers).toBeGreaterThan(start?.totalViewers ?? Number.POSITIVE_INFINITY);
 		expect(second?.totalViewers).toBeGreaterThan(first?.totalViewers ?? Number.POSITIVE_INFINITY);
 		expect(second?.startedAt).toBe(start?.startedAt);
-		expect((await fakeRow())?.reportProblems).toBeUndefined();
+		expect((await fakeRow())?.reportDiscrepancies).toBeUndefined();
 	});
 
 	it("下播 → 首页没了", async () => {
@@ -256,35 +256,35 @@ describe("假源的上报按钮 e2e:按下去,首页在播 / 订阅资料 / 上�
 		expect(img.status).toBe(200);
 
 		expect(await profileOf(SUB_IDS.c)).toEqual(seededC);
-		expect((await fakeRow())?.reportProblems).toBeUndefined();
+		expect((await fakeRow())?.reportDiscrepancies).toBeUndefined();
 	});
 
-	it("带坏图的作品:照样送到(少了那张 SVG),「上报问题」里甲乙各一条「丢了」,点名 images[1]", async () => {
+	it("带坏图的作品:照样送到(少了那张 SVG),「上报出入」里甲乙各一条「丢了」,点名 images[1]", async () => {
 		await press("report.badImage");
 		expect(heard).toHaveLength(2);
 		for (const delivery of heard) {
 			expect(delivery.report.kind).toBe("post");
 			if (delivery.report.kind === "post") expect(delivery.report.value.images).toHaveLength(2);
 		}
-		const problems = (await fakeRow())?.reportProblems ?? [];
-		expect(problems.map((p) => [p.outcome, p.kind, p.subscriptionIds]).sort()).toEqual([
+		const discrepancies = (await fakeRow())?.reportDiscrepancies ?? [];
+		expect(discrepancies.map((p) => [p.outcome, p.kind, p.subscriptionIds]).sort()).toEqual([
 			["dropped", "post", [SUB_IDS.a]],
 			["dropped", "post", [SUB_IDS.b]],
 		]);
-		for (const problem of problems) {
-			expect(problem.reasons).toHaveLength(1);
-			expect(problem.reasons[0]).toContain("images[1]");
+		for (const discrepancy of discrepancies) {
+			expect(discrepancy.reasons).toHaveLength(1);
+			expect(discrepancy.reasons[0]).toContain("images[1]");
 		}
 	});
 
-	it("多一格的作品:整条拒 —— bus 上没有,动作照样成;「上报问题」里甲乙各一条「拒了」,点名那一格", async () => {
+	it("多一格的作品:整条拒 —— bus 上没有,动作照样成;「上报出入」里甲乙各一条「拒了」,点名那一格", async () => {
 		await press("report.extraField");
 		expect(heard).toEqual([]);
-		const rejected = ((await fakeRow())?.reportProblems ?? []).filter(
+		const rejected = ((await fakeRow())?.reportDiscrepancies ?? []).filter(
 			(p) => p.outcome === "rejected",
 		);
 		expect(rejected.map((p) => p.subscriptionIds).sort()).toEqual([[SUB_IDS.a], [SUB_IDS.b]]);
-		for (const problem of rejected) expect(problem.reasons[0]).toContain("danmaku");
+		for (const discrepancy of rejected) expect(discrepancy.reasons[0]).toContain("danmaku");
 	});
 
 	it("没有开着的订阅了:按了什么都不报,假源页面上说一句「还没有开着的订阅」", async () => {

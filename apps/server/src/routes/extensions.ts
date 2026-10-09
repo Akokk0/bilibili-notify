@@ -5,9 +5,9 @@ import type {
 	ExtensionInstallResponse,
 	ExtensionLookupResponse,
 	ExtensionPushView,
-	ExtensionReportProblemView,
 	ExtensionsResponse,
 	MarketplaceResponse,
+	ReportDiscrepancyView,
 	RestartAbility,
 } from "@bilibili-notify/contract";
 import {
@@ -38,7 +38,7 @@ import {
 } from "../extensions/install.js";
 import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
-import type { ReportProblemLog } from "../extensions/report-problems.js";
+import type { ReportDiscrepancyTable } from "../extensions/report-discrepancies.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -98,10 +98,10 @@ export interface ExtensionsRouteOptions {
 	 */
 	swap?: (id: string) => Promise<void>;
 	/**
-	 * 订阅源拓展的「上报问题」记录(ADR-0019 决策 60)。列表那一行照它带上 `reportProblems`,卸载时清掉
+	 * 订阅源拓展的「上报出入」记录(ADR-0019 决策 60)。列表那一行照它带上 `reportDiscrepancies`,卸载时清掉
 	 * 它那一段。不给就是没接上:哪一行都不带这一格。
 	 */
-	reportProblems?: Pick<ReportProblemLog, "list" | "clear">;
+	reportDiscrepancies?: Pick<ReportDiscrepancyTable, "list" | "clear">;
 	/** 现在能借来当连接的 bot(决策 45)。没跑 / 它没给就是 `undefined`(→ `not_found`,与空名单分开)。 */
 	bots: (id: string) => readonly ExtensionBotView[] | undefined;
 	/**
@@ -179,18 +179,18 @@ function pushViewOfEntry(
 	return manifestPushView(entry.manifest);
 }
 
-/** 列表那一行的「上报问题」(决策 60):没有就不带这一格;拓展 id 不下发(它就挂在那一行上)。 */
-function reportProblemsOf(
+/** 列表那一行的「上报出入」(决策 60):没有就不带这一格;拓展 id 不下发(它就挂在那一行上)。 */
+function reportDiscrepanciesOf(
 	id: string,
-	log: Pick<ReportProblemLog, "list"> | undefined,
-): { reportProblems?: ExtensionReportProblemView[] } {
-	const problems = log?.list(id) ?? [];
-	if (problems.length === 0) return {};
+	log: Pick<ReportDiscrepancyTable, "list"> | undefined,
+): { reportDiscrepancies?: ReportDiscrepancyView[] } {
+	const discrepancies = log?.list(id) ?? [];
+	if (discrepancies.length === 0) return {};
 	return {
-		reportProblems: problems.map(({ extensionId: _id, ...problem }) => ({
-			...problem,
-			subscriptionIds: [...problem.subscriptionIds],
-			reasons: [...problem.reasons],
+		reportDiscrepancies: discrepancies.map(({ extensionId: _id, ...discrepancy }) => ({
+			...discrepancy,
+			subscriptionIds: [...discrepancy.subscriptionIds],
+			reasons: [...discrepancy.reasons],
 		})),
 	};
 }
@@ -241,8 +241,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				detail: entry.detail,
 				// 盘上有一份这个进程干净地换不上的新代码 —— 详情页据此并排给「重启 BN」与「只重载」。
 				...(entry.staged === undefined ? {} : { staged: entry.staged }),
-				// 上报问题(决策 60):有才带,详情页凭它判「有问题才出现」那个框。
-				...reportProblemsOf(entry.id, opts.reportProblems),
+				// 上报出入(决策 60):有才带,详情页凭它判「有问题才出现」那个框。
+				...reportDiscrepanciesOf(entry.id, opts.reportDiscrepancies),
 			};
 		});
 		const body: ExtensionsResponse = {
@@ -341,9 +341,9 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 		// 配置已经没了而拓展还在盘上跑着 —— 界面与实际当场对不上。
 		const removed = await install.changeDisk(() => uninstallExtension({ root: install.root, id }));
 		if (!removed.ok) return respondFailure(c, removed);
-		// 它那一段上报问题跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。抹盘时它已经
+		// 它那一段上报出入跟着清(决策 60):装回来的是一个新的它,旧账不该挂在新页上。抹盘时它已经
 		// 收摊,不会再有新的一条补进来。
-		opts.reportProblems?.clear(id);
+		opts.reportDiscrepancies?.clear(id);
 
 		// 开关那一格与它的设置文件一起删(设置不住 globals 了,见 `ConfigStore.removeExtension`)。
 		await opts.store.removeExtension(id);

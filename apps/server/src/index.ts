@@ -42,7 +42,7 @@ import {
 } from "./extensions/loader.js";
 import { createMarketplace } from "./extensions/marketplace.js";
 import { createExtensionMounts } from "./extensions/mount.js";
-import { createReportProblemLog } from "./extensions/report-problems.js";
+import { createReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
@@ -758,13 +758,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const cardSkinFallbacks = createCardSkinFallbackLog({ logger: { warn: (m) => log.warn(m) } });
 		const skins = cardSkinStore;
 
-		// 拓展详情页的「上报问题」(ADR-0019 决策 60):ctx 那个出口与拓展直播的计时器(周期推送跳过的那一轮,
+		// 拓展详情页的「上报出入」(ADR-0019 决策 60):ctx 那个出口与拓展直播的计时器(周期推送跳过的那一轮,
 		// 决策 61)写进来,拓展列表那一口读出去。只在内存。记了新的 → bus → WS `state` 频道 → 面板让拓展表
 		// 失效(按拓展合并过)。建在引擎之前:引擎里的计时器也往里记。
-		const reportProblems = createReportProblemLog({
-			onChanged: (id) => runtime.bus.emit("extension-report-problems-changed", { extensionId: id }),
+		const reportDiscrepancies = createReportDiscrepancyTable({
+			onChanged: (id) =>
+				runtime.bus.emit("extension-report-discrepancies-changed", { extensionId: id }),
 		});
-		runtime.serviceCtx.onDispose(() => reportProblems.dispose(), "stop");
+		runtime.serviceCtx.onDispose(() => reportDiscrepancies.dispose(), "stop");
 
 		// B 站的作品图与直播封面(3a-34):出卡前经 B 站接口那个请求客户端(同一套 cookie 与身份)抓进图库,
 		// 引用方是 `postImages` 这一家(名单恒空,靠新图的宽限期活到卡片画完)。引擎与链接预览共用这一个。
@@ -813,7 +814,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,
-			extensionReportProblem: (problem) => reportProblems.record(problem),
+			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
 			loginFlow: authSystem.flow,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
@@ -1175,7 +1176,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// bus 上接;这一趟不等它们,拓展那头在这一下之后就 resolve。
 			onSubscriptionReport: (delivery) => runtime.bus.emit("subscription-reported", delivery),
 			// 丢格与整条拒(决策 60)。ctx 已经记过日志;叫面板重取的那一声由记录自己发。
-			onSubscriptionReportProblem: (problem) => reportProblems.record(problem),
+			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
 			// 拓展自己那份设置住它自己的文件(`config/settings/extensions/<id>.json`);是不是自己这一份动了由 ctx
 			// 比内容判 —— 改动那一档(`integration-settings`)是各集成共用的。
 			settings: (id) => runtime.configStore.getExtensionSettings(id),
@@ -1263,8 +1264,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				lookup: async (id, query) => loadedExtensions?.lookup(id, query),
 				// 跑着的那份交过的 zod —— 写设置时再过一道(ADR-0019 决策 35)。
 				settingsSchemas: (id) => loadedExtensions?.settingsSchemas(id),
-				// 列表那一行带上它的「上报问题」,卸载时清掉那一段(决策 60)。
-				reportProblems,
+				// 列表那一行带上它的「上报出入」,卸载时清掉那一段(决策 60)。
+				reportDiscrepancies,
 				// 「只重载这个拓展」(决策 47):没有新版等着换上时装载器自己拒,那句话原样回面板。
 				swap: async (id) => {
 					await loadedExtensions?.swap(id);
