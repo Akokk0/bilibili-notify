@@ -1,8 +1,8 @@
 import type { Connection, Logger, PlatformAdapter } from "@bilibili-notify/internal";
 import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import type { ConfigStore } from "../../config/store.js";
-import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createLinkReplySender } from "../link-reply.js";
 
@@ -34,10 +34,12 @@ function setup(conn: Connection = connection()) {
 		isAvailable: () => true,
 		send,
 		probe: async () => ok({ latencyMs: 1 }),
+		start() {},
+		stop() {},
 	};
 	const dispatcher = createTargetDispatcher({
 		store: { getConnections: () => [conn], getTargets: () => [] } as unknown as ConfigStore,
-		adapters: createPlatformAdapterRegistry([adapter]),
+		adapters: registryOf([adapter]),
 		logger: LOGGER,
 	});
 	return { send, sender: createLinkReplySender({ sendToAddress: dispatcher.sendToAddress }) };

@@ -7,6 +7,7 @@ import type { GenerationSourceKind } from "@bilibili-notify/contract";
 import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
+	type Disposable,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
@@ -60,6 +61,7 @@ import {
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
+import { registerBuiltinAdapters } from "./push/builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "./push/registry.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
@@ -640,7 +642,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			readSettings: () => runtime.configStore.getGlobals().update,
 			serviceCtx: runtime.serviceCtx,
 		});
-		const rawAdapters = [
+		const builtinAdapterList = [
 			createOnebotAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
@@ -656,9 +658,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			}),
 			createWebhookAdapter({ logger: log }),
 		];
-		// 出口从此住在一张**活的注册表**里:内置这几个开机就在,拓展注册进来的后到、
-		// 拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
-		const adapterRegistry = createPlatformAdapterRegistry(rawAdapters);
+		// 出口住在一张**活的注册表**里:内置这几个在 `createEngines` 之前登记(登记即 `start`,见下),
+		// 拓展注册进来的后到、拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
+		const adapterRegistry = createPlatformAdapterRegistry();
+		// 「连接配置动过了」的订阅:内置适配器与拓展装载器共用这一个。⛔ bus 不给它们:宿主替它们订,
+		// 只把「动过了」这件事转过去。
+		const onConnectionsChanged = (fn: () => void): Disposable =>
+			runtime.bus.on("config-changed", ({ scope }) => {
+				if (scope === "connections") fn();
+			});
 
 		// 主人是「谁」—— 平台 + 地址(+ 是哪个 bot 看到的)三坐标,不是一个裸字符串。
 		// onebot 的 user_id 与官机的 C2C openid 是两个命名空间,撞上就等于认错人;
@@ -773,6 +781,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			http: authSystem.api.http,
 			images: runtime.postImages,
 		});
+
+		// 内置适配器登记即启动 —— 就在 `createEngines` 之前,启动时刻与从前引擎开机对账那一刻一致。
+		// 关停钩子也登记在引擎之前:同一段里后登记的先跑,引擎先收、适配器后停。
+		const builtinAdapters = registerBuiltinAdapters({
+			registry: adapterRegistry,
+			adapters: builtinAdapterList,
+			logger: log,
+			connections: () => runtime.configStore.getConnections(),
+			onConnectionsChanged,
+		});
+		runtime.serviceCtx.onDispose(() => builtinAdapters.dispose(), "stop");
 
 		engines = createEngines({
 			serviceCtx: runtime.serviceCtx,
@@ -1150,10 +1169,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			connections: () => runtime.configStore.getConnections(),
 			connection: (connectionId) => runtime.configStore.getConnection(connectionId),
 			// ⛔ bus 不给拓展:宿主替它订,只把「动过了」这件事转过去。
-			onConnectionsChanged: (fn) =>
-				runtime.bus.on("config-changed", ({ scope }) => {
-					if (scope === "connections") fn();
-				}),
+			onConnectionsChanged,
 			// 订阅源拓展读自己名下的订阅(ADR-0019 决策 52):只递拓展那一支,归属由 ctx 按 id 筛。
 			subscriptions: () =>
 				runtime.configStore

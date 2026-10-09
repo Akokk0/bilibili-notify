@@ -1,6 +1,7 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -121,11 +122,13 @@ describe("createDevtools · 截流接线", () => {
 			isAvailable: () => true,
 			send,
 			probe: async () => ok({ latencyMs: 1 }),
+			start() {},
+			stop() {},
 		};
 	}
 
 	/** 真派发器接在 devtools 交回去的派生表与截流口上 —— 接线剪断哪一头这里都会红。 */
-	function setup(registry = createPlatformAdapterRegistry([onebotAdapter()])) {
+	function setup(registry = registryOf([onebotAdapter()])) {
 		const deleteRange = vi.fn(async () => 2);
 		const dev = createDevtools({
 			...BARE,
@@ -157,7 +160,7 @@ describe("createDevtools · 截流接线", () => {
 		expect(dev.adapters.list()).toEqual([]);
 
 		// 拓展在 activate 里注册的那一刻 —— 比 devtools 晚得多。
-		registry.register(onebotAdapter(send));
+		registry.register(onebotAdapter(send), fakeAdapterContext().ctx);
 
 		expect(dev.adapters.list()).toHaveLength(1);
 		await dispatcher.send("t", { kind: "text", text: "0" });
@@ -169,7 +172,7 @@ describe("createDevtools · 截流接线", () => {
 
 	it("截流开着:send / sendToAddress 两条路都不出网,各记恰好一条;收摊后又真发", async () => {
 		const send = vi.fn(async () => ok({ latencyMs: 1 }));
-		const { dev, dispatcher } = setup(createPlatformAdapterRegistry([onebotAdapter(send)]));
+		const { dev, dispatcher } = setup(registryOf([onebotAdapter(send)]));
 
 		await dispatcher.send("t", { kind: "text", text: "0" });
 		expect(send).toHaveBeenCalledTimes(1);

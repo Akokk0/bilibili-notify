@@ -19,6 +19,7 @@ import type {
 	NotificationPayload,
 	PayloadSegment,
 	PlatformAdapter,
+	PlatformAdapterContext,
 	ProbeResult,
 	Result,
 } from "@bilibili-notify/extension";
@@ -159,15 +160,21 @@ function toBridgeMessage(
 	}
 }
 
-export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter {
+/**
+ * 桥的 adapter:契约上的 {@link PlatformAdapter},外加一个桥自己用的 `reconcile()` ——
+ * 接入名单(设置)动了时 `index.ts` 直接叫它(宿主只在**连接**动了时才通过 `ctx` 叫一声)。
+ */
+export type BridgeAdapter = PlatformAdapter & { reconcile(): void };
+
+export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	const { server, blobs } = opts;
 	const blobPrefix = `${opts.mountPath}${BRIDGE_BLOB_SEGMENT}`;
 	/**
 	 * 上一轮对账时每条桥接入的 token。**只为了发现「token 被重新生成了」** —— 会话本身
 	 * 不带 token,而重新生成 token 却踢不掉旧连接的话,那个动作就等于没做。
 	 *
-	 * 🔴 **建 adapter 这一刻就用当前名单打底**,不能等第一次 `reconcile()`:宿主开机那趟
-	 * 对账跑在拓展装载**之前**,桥根本没机会先对一次账。空表起步的话 `before === undefined`
+	 * 🔴 **建 adapter 这一刻就用当前名单打底**,不能等第一次对账:`start` 里**不立刻对账**
+	 * (只订变更),桥登记那一刻没人替它对一次账。空表起步的话 `before === undefined`
 	 * 会把「重启之后第一次重新生成 token」当成新接入静默放过 —— 旧会话拿着已经作废的
 	 * token 继续收推送,而面板上一切正常。
 	 */
@@ -220,7 +227,43 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		return { miniAppCard: { state: "unknown", reason: "桥没报这一项" } };
 	}
 
+	/**
+	 * 配置对账。桥是自己连过来的,所以这里没有「去建连」那一半 —— 只有**该踢的踢掉**:
+	 * 接入没了、被停用了、token 被重新生成了。看的是**接入名单**(设置),不是连接 ——
+	 * 连接是一个 bot,删一条连接不该断谁;宿主按连接变更叫它时也无妨,一样对得上。
+	 *
+	 * 删了 / 停用了从**活着的会话**看起:配置里那条早就删了,能告诉我们「还有谁连着」的
+	 * 只有会话表。握手窗口里那条不归这一段管 —— hello 那道 `accepts` 复查会拦下它。
+	 */
+	function reconcile(): void {
+		const links = new Map<string, BridgeLink>();
+		for (const link of opts.links()) links.set(link.id, link);
+		for (const session of server.listSessions()) {
+			const link = links.get(session.linkId);
+			if (!link) {
+				server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.revoked);
+			} else if (!link.enabled) {
+				// 停用不是吊销:配置全留、重开即恢复,所以给的是「可以退避重连」那个码。
+				server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.disabled);
+			}
+		}
+		// 🔴 token 换了从**名单**看起,不从会话表:拿旧 token 过了 upgrade、还没发 hello 的
+		// 那条不在会话表里,而 hello 那道复查只问「接入在不在、开没开」,不问 token —— 这一轮
+		// 放过它,快照一刷,它握完手就是一条再也没人踢的正式会话。`disconnect` 本来就连握手
+		// 窗口里的一起关。停用又换了 token 的,上面已经按停用关过,这里再来一次是空操作。
+		for (const [id, link] of links) {
+			const before = lastTokens.get(id);
+			if (before !== undefined && before !== link.token) {
+				server.disconnect(id, BRIDGE_CLOSE_CODES.revoked);
+			}
+		}
+		lastTokens.clear();
+		for (const [id, link] of links) lastTokens.set(id, link.token);
+	}
+
 	return {
+		reconcile,
+
 		// 分发键由宿主按拓展 id 覆盖 —— 这里填什么都会被换掉(决策 28)。
 		adapterKey: "",
 
@@ -265,38 +308,14 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		},
 
 		/**
-		 * 配置对账。桥是自己连过来的,所以这里没有「去建连」那一半 —— 只有**该踢的踢掉**:
-		 * 接入没了、被停用了、token 被重新生成了。看的是**接入名单**(设置),不是连接 ——
-		 * 连接是一个 bot,删一条连接不该断谁;宿主按连接变更叫它时也无妨,一样对得上。
-		 *
-		 * 删了 / 停用了从**活着的会话**看起:配置里那条早就删了,能告诉我们「还有谁连着」的
-		 * 只有会话表。握手窗口里那条不归这一段管 —— hello 那道 `accepts` 复查会拦下它。
+		 * 登记即启动:只订连接变更、变了再对账(`reconcile`),**不立刻对一次**。桥是自己连过来的,
+		 * 登记那一刻还没有会话可踢;`lastTokens` 在建 adapter 时已用当前名单打底。
 		 */
-		reconcile(): void {
-			const links = new Map<string, BridgeLink>();
-			for (const link of opts.links()) links.set(link.id, link);
-			for (const session of server.listSessions()) {
-				const link = links.get(session.linkId);
-				if (!link) {
-					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.revoked);
-				} else if (!link.enabled) {
-					// 停用不是吊销:配置全留、重开即恢复,所以给的是「可以退避重连」那个码。
-					server.disconnect(session.linkId, BRIDGE_CLOSE_CODES.disabled);
-				}
-			}
-			// 🔴 token 换了从**名单**看起,不从会话表:拿旧 token 过了 upgrade、还没发 hello 的
-			// 那条不在会话表里,而 hello 那道复查只问「接入在不在、开没开」,不问 token —— 这一轮
-			// 放过它,快照一刷,它握完手就是一条再也没人踢的正式会话。`disconnect` 本来就连握手
-			// 窗口里的一起关。停用又换了 token 的,上面已经按停用关过,这里再来一次是空操作。
-			for (const [id, link] of links) {
-				const before = lastTokens.get(id);
-				if (before !== undefined && before !== link.token) {
-					server.disconnect(id, BRIDGE_CLOSE_CODES.revoked);
-				}
-			}
-			lastTokens.clear();
-			for (const [id, link] of links) lastTokens.set(id, link.token);
+		start(ctx: PlatformAdapterContext): void {
+			ctx.onConnectionsChanged(() => reconcile());
 		},
+
+		stop(): void {},
 
 		/**
 		 * 能力按 bot 答 —— 一条连接就是一个 bot(决策 45),所以答得准。这两个方法曾经刻意

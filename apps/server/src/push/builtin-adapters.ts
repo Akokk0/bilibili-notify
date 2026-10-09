@@ -1,0 +1,65 @@
+import type { Connection, Disposable, Logger, PlatformAdapter } from "@bilibili-notify/internal";
+import { createIntegrationContext } from "../integrations/context.js";
+import { createPlatformAdapterContext } from "./adapter-context.js";
+import type { PlatformAdapterRegistry } from "./registry.js";
+
+export interface RegisterBuiltinAdaptersOptions {
+	registry: PlatformAdapterRegistry;
+	/** 建好的内置适配器(工厂在装配处调,这里不认识 `platforms/` 下的任何东西)。 */
+	adapters: readonly PlatformAdapter[];
+	logger: Logger;
+	/** 全部连接,现读。 */
+	connections: () => readonly Connection[];
+	/** 连接配置变了的订阅。 */
+	onConnectionsChanged: (fn: () => void) => Disposable;
+}
+
+export interface BuiltinAdapters {
+	/** 逐个撤登记(触发 `stop`),再收各自的集成上下文;幂等。 */
+	dispose(): Promise<void>;
+}
+
+/**
+ * 内置适配器登记即启动:每个适配器各有一份集成上下文,包上「自己的连接」后交给登记表 `start`。
+ * 启动时刻就是今天「引擎开机对账」的那一刻 —— 调用方在 `createEngines` 之前调它。
+ */
+export function registerBuiltinAdapters(opts: RegisterBuiltinAdaptersOptions): BuiltinAdapters {
+	const entries: Array<{ registration: Disposable; dispose: () => Promise<void> }> = [];
+	for (const adapter of opts.adapters) {
+		const integration = createIntegrationContext({ logger: opts.logger, stopReason: "BN 关停" });
+		try {
+			const ctx = createPlatformAdapterContext({
+				integration: integration.ctx,
+				adapterKey: adapter.adapterKey,
+				connections: opts.connections,
+				// 订阅交回的把手记进这份集成上下文:适配器停下时订阅自动摘掉。
+				onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
+			});
+			entries.push({
+				registration: opts.registry.register(adapter, ctx),
+				dispose: () => integration.dispose(),
+			});
+		} catch (err) {
+			// 登记失败不留半个:已登记的先收回,再把错抛出去。
+			void integration.dispose();
+			for (const entry of entries.splice(0).reverse()) {
+				entry.registration.dispose();
+				void entry.dispose();
+			}
+			throw err;
+		}
+	}
+
+	let disposed = false;
+	return {
+		async dispose() {
+			if (disposed) return;
+			disposed = true;
+			// 与今天关停时的次序一致:按登记的先后逐个收。
+			for (const entry of entries.splice(0)) {
+				entry.registration.dispose();
+				await entry.dispose();
+			}
+		},
+	};
+}

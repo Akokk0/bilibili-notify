@@ -37,6 +37,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
 import { createIntegrationContext } from "../integrations/context.js";
+import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
@@ -806,7 +807,18 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, adapterKey: id };
-			integration.track(adapters.register(adapter));
+			// 登记即 `start`:适配器拿到的上下文与交回给拓展的把手同形(同一个「自己的连接」、同一个「变了叫我」)。
+			integration.track(
+				adapters.register(
+					adapter,
+					createPlatformAdapterContext({
+						integration: integration.ctx,
+						adapterKey: id,
+						connections: opts.connections,
+						onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
+					}),
+				),
+			);
 			return {
 				connections: () => ownConnections(def.configSchema),
 				onConnectionsChanged: (fn) => {

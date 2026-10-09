@@ -379,10 +379,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 	});
 
-	// 有状态 adapter(OneBot ws / ws-reverse)—— boot 时按当前 adapter 集合建立
-	// 正向连接 / 反向监听器。后续每次 config-changed:connections 再 reconcile(见下)。
-	for (const ad of opts.adapters.list()) ad.reconcile?.(opts.configStore.getConnections());
-
 	const masterTarget = (): PushTarget | undefined => {
 		const id = globals().master.targetId;
 		if (!id) return undefined;
@@ -966,14 +962,12 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		opts.bus.on("config-changed", ({ scope }) => {
 			if (scope === "connections") {
 				linkPolicies = linkPoliciesOf();
-				// 有状态 adapter(OneBot ws / ws-reverse)按新 adapter 集合 reconcile
-				// 连接 / 监听器。reconcile 幂等、不写 config、不调 probe → 不会 emit
-				// config-changed,无成环。
+				// 有状态 adapter(OneBot ws / ws-reverse)自己订了这一档、自己对账(登记即 `start(ctx)`,
+				// 见 `push/builtin-adapters.ts`),引擎不替它们对账。
 				//
 				// 刻意不在这里触发 probeAllConnections:probe 经 patchConnection 写回
 				// testStatus 会再 emit config-changed:connections → 死循环。adapter
 				// 连通状态由 5 分钟轮询刷新(或用户点"测试"立即刷)。
-				for (const ad of opts.adapters.list()) ad.reconcile?.(opts.configStore.getConnections());
 				return;
 			}
 			if (scope === "globals" || scope === "targets") {
@@ -1185,14 +1179,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			masterNotifier.dispose();
 		} catch (e) {
 			log.warn(`[engines] masterNotifier.dispose failed: ${String(e)}`);
-		}
-		// 有状态 adapter:关正向连接 / 反向监听器 / 定时器。best-effort 同步触发。
-		for (const ad of opts.adapters.list()) {
-			try {
-				void ad.dispose?.();
-			} catch (e) {
-				log.warn(`[engines] adapter dispose failed: ${String(e)}`);
-			}
 		}
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");

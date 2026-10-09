@@ -12,6 +12,7 @@ import type {
 	Logger,
 	NotificationPayload,
 	PlatformAdapter,
+	PlatformAdapterContext,
 	ProbeResult,
 	PushTargetScope,
 	QQOfficialConnectionConfig,
@@ -1194,6 +1195,46 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 		return qqPostJson(base, headers, messagesPath, buildQQV2Message({ content, media: up.media }));
 	}
 
+	function reconcile(connections: readonly Connection[]): void {
+		if (disposed) return;
+		const desired = new Map<string, QQOfficialConnection>();
+		for (const a of connections) {
+			if (!isConnectionOn(a, "qq-official") || !a.enabled) continue;
+			// 空密钥不建连。脱敏备份恢复回来的 adapter 就是这样(appSecret 被抹成空串),
+			// 它仍然 enabled —— 拉起来只会拿空密钥反复撞网关。等用户把密钥填回来,
+			// config 一变 reconcile 自然会把它接上。
+			if (!isConnectable(a.config)) continue;
+			desired.set(a.id, a);
+		}
+		// 删除/失效:不再期望或配置指纹变了 → 关连接、清发现表。
+		for (const [id, l] of live) {
+			const want = desired.get(id);
+			if (!want || qqConnectionFingerprint(want.config) !== l.fingerprint) {
+				l.conn.close();
+				l.tm.dispose();
+				live.delete(id);
+				registry.clear(id);
+			}
+		}
+		// 新建:期望但无 live(或刚被指纹变更删掉)。
+		for (const [id, a] of desired) {
+			if (live.has(id)) continue;
+			live.set(id, makeLive(a));
+		}
+		// logReconnects 不参与 fingerprint(纯日志偏好,不该触发断连重建)—— 每轮把
+		// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
+		for (const [id, l] of live) {
+			const want = desired.get(id);
+			if (want) l.logReconnectsBox.value = want.config.logReconnects;
+		}
+		// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
+		// desired 的连接都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
+		// 故此刻所有 tokenOnly 都是 stale。逐 id 只清 desired 会漏掉「曾被 send、后被删除/
+		// 禁用」的连接,泄漏其刷新定时器,这里整张清掉根治。
+		for (const tm of tokenOnly.values()) tm.dispose();
+		tokenOnly.clear();
+	}
+
 	return {
 		adapterKey: "qq-official",
 
@@ -1203,47 +1244,13 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			return isConnectable(connection.config);
 		},
 
-		reconcile(connections: readonly Connection[]): void {
-			if (disposed) return;
-			const desired = new Map<string, QQOfficialConnection>();
-			for (const a of connections) {
-				if (!isConnectionOn(a, "qq-official") || !a.enabled) continue;
-				// 空密钥不建连。脱敏备份恢复回来的 adapter 就是这样(appSecret 被抹成空串),
-				// 它仍然 enabled —— 拉起来只会拿空密钥反复撞网关。等用户把密钥填回来,
-				// config 一变 reconcile 自然会把它接上。
-				if (!isConnectable(a.config)) continue;
-				desired.set(a.id, a);
-			}
-			// 删除/失效:不再期望或配置指纹变了 → 关连接、清发现表。
-			for (const [id, l] of live) {
-				const want = desired.get(id);
-				if (!want || qqConnectionFingerprint(want.config) !== l.fingerprint) {
-					l.conn.close();
-					l.tm.dispose();
-					live.delete(id);
-					registry.clear(id);
-				}
-			}
-			// 新建:期望但无 live(或刚被指纹变更删掉)。
-			for (const [id, a] of desired) {
-				if (live.has(id)) continue;
-				live.set(id, makeLive(a));
-			}
-			// logReconnects 不参与 fingerprint(纯日志偏好,不该触发断连重建)—— 每轮把
-			// 期望配置的当前值同步进已存活连接的 box,做到不重连也能热更开关。
-			for (const [id, l] of live) {
-				const want = desired.get(id);
-				if (want) l.logReconnectsBox.value = want.config.logReconnects;
-			}
-			// 全清兜底 token-only:它仅在 reconcile 跑之前给 send 取 token 用。reconcile 后,
-			// desired 的连接都有 live(自带 tm),非 desired 的会被 isAvailable 挡掉不再 send ——
-			// 故此刻所有 tokenOnly 都是 stale。逐 id 只清 desired 会漏掉「曾被 send、后被删除/
-			// 禁用」的连接,泄漏其刷新定时器,这里整张清掉根治。
-			for (const tm of tokenOnly.values()) tm.dispose();
-			tokenOnly.clear();
+		start(ctx: PlatformAdapterContext): void {
+			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
+			reconcile(ctx.connections());
+			ctx.onConnectionsChanged(() => reconcile(ctx.connections()));
 		},
 
-		dispose(): void {
+		stop(): void {
 			disposeAll();
 		},
 

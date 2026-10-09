@@ -43,6 +43,7 @@ import {
 } from "@bilibili-notify/internal";
 import type { Push } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
@@ -56,7 +57,6 @@ import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.j
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
-import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -483,7 +483,7 @@ function setup(opts?: {
 			...opts?.overrides?.subRuntimeStore,
 		} as any,
 		bus,
-		adapters: createPlatformAdapterRegistry(opts?.platformAdapters ?? []),
+		adapters: registryOf(opts?.platformAdapters ?? []),
 		...(opts?.interceptSend ? { interceptSend: opts.interceptSend } : {}),
 		guardIcons: opts?.guardIcons ?? {
 			ensure: async () => {},
@@ -2570,6 +2570,8 @@ describe("createEngines — 连接所在平台的能力", () => {
 			probe: vi.fn(async () => (probeOk ? ok({ latencyMs: 1 }) : fail("unavailable", "连不上"))),
 			capabilities: () => caps(),
 			probeCapabilities,
+			start() {},
+			stop() {},
 		};
 		return { pa, probeCapabilities };
 	}
@@ -2839,6 +2841,8 @@ describe("createEngines — 后台写登记进 track", () => {
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe,
+			start() {},
+			stop() {},
 		});
 
 		it("探测结果写回连接表:登记进 track —— 写交进 config 写道,它才落定", async () => {

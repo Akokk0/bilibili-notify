@@ -47,6 +47,9 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 
 	return {
 		adapterKey: "webhook",
+		// 无状态:没有连接要建、没有监听要起。
+		start() {},
+		stop() {},
 		isAvailable(connection: Connection, destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留「我只收端点」与连接收窄。
 			if (!isWebhookConnection(connection) || destination.kind !== "endpoint") return false;

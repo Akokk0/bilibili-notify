@@ -14,6 +14,7 @@ import type {
 	OnebotConnectionConfig,
 	PayloadSegment,
 	PlatformAdapter,
+	PlatformAdapterContext,
 	ProbeResult,
 	Result,
 	ServiceContext,
@@ -39,8 +40,8 @@ import { routeInboundFrame } from "./onebot-inbound.js";
  * WS 两种方式都用 OneBot v11 的 action 帧 `{action,params,echo}` 发消息,按 `echo`
  * 收响应。本插件 push-only:入站的 message/notice/heartbeat 事件帧一律忽略。
  *
- * 有状态:`ws`/`ws-reverse` 连接由 `reconcile()` 按当前 adapter 集合 start/stop/rebind,
- * `dispose()` 在 shutdown 时全部关闭。
+ * 有状态:`ws`/`ws-reverse` 连接在 `start(ctx)` 时按当前连接名单建立,连接配置变了再 start/stop/rebind,
+ * `stop()` 在注销 / 关停时全部关闭。
  *
  * Token 鉴权:`accessToken` 在 http/ws 经 `Authorization: Bearer` 头带出;ws-reverse
  * 用它校验入站 bot 的握手头。
@@ -1240,6 +1241,92 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		return last;
 	}
 
+	function reconcile(connections: readonly Connection[]): void {
+		if (disposed) return;
+		const onebots = connections.filter(
+			(a): a is OnebotConnection => isConnectionOn(a, "onebot") && a.enabled,
+		);
+
+		// --- bot 身份缓存清理 ---
+		// reconcile 触发频率低(dashboard 改 adapter / target 配置才触发),
+		// 直接全清是最简单的"cfg 变更 stale 兜底" —— 用户改了 cfg.url /
+		// cfg.baseUrl 指向另一个 bot 实例时,旧 bot 身份不会被错用。代价是
+		// 每次 reconcile 后第一次 forward 多一次 get_login_info(15s 超时)。
+		botIdentityCache.clear();
+
+		// --- 能力缓存 ---
+		// 只在连接的配置真变了(指向另一个实现)或连接没了时丢;配置没变就留着。**不能全清**:
+		// 健康探测每五分钟写回 testStatus 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
+		// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
+		for (const id of [...knownConnections.keys()]) {
+			if (onebots.some((a) => a.id === id)) continue;
+			knownConnections.delete(id);
+			miniAppCardSupport.delete(id);
+			capabilityFingerprints.delete(id);
+			lastCapabilityProbeAt.delete(id);
+		}
+		for (const a of onebots) {
+			const fp = JSON.stringify(a.config);
+			const changed = capabilityFingerprints.get(a.id) !== fp;
+			capabilityFingerprints.set(a.id, fp);
+			knownConnections.set(a.id, a);
+			if (changed) miniAppCardSupport.delete(a.id);
+			// ws 的两种在通道就绪时探;http 没有「连上」这一刻,配置变了或还没探出来就在这儿探。
+			const cfg = a.config;
+			if (cfg.transport === "http" && !miniAppCardSupport.has(a.id)) void probeMiniAppCard(a);
+		}
+
+		// --- 正向 ws ---
+		const desiredFwd = new Map<string, OnebotWsConfig>();
+		for (const a of onebots) {
+			const cfg = a.config;
+			if (cfg.transport === "ws") desiredFwd.set(a.id, cfg);
+		}
+		for (const [id, conn] of forwardConns) {
+			if (!desiredFwd.has(id)) {
+				conn.close();
+				forwardConns.delete(id);
+			}
+		}
+		for (const [id, cfg] of desiredFwd) {
+			const fp = forwardFingerprint(cfg);
+			const existing = forwardConns.get(id);
+			if (existing && existing.fingerprint === fp) continue; // 没变,幂等 no-op
+			existing?.close();
+			forwardConns.set(
+				id,
+				new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts, () =>
+					probeOnReady(id),
+				),
+			);
+		}
+
+		// --- 反向 ws ---
+		const desiredRev = new Map<string, OnebotWsReverseConfig>();
+		for (const a of onebots) {
+			const cfg = a.config;
+			if (cfg.transport === "ws-reverse") desiredRev.set(a.id, cfg);
+		}
+		for (const [id, lis] of reverseListeners) {
+			const want = desiredRev.get(id);
+			if (!want || want.port !== lis.port) {
+				lis.close();
+				reverseListeners.delete(id);
+			}
+		}
+		for (const [id, cfg] of desiredRev) {
+			if (reverseListeners.has(id)) continue; // 端口没变,幂等 no-op
+			// 端口冲突(含与另一 ws-reverse adapter 撞 port)由监听器的 EADDRINUSE
+			// error 事件落到 bindError,经 probe 暴露给 dashboard。
+			reverseListeners.set(
+				id,
+				new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts, () =>
+					probeOnReady(id),
+				),
+			);
+		}
+	}
+
 	return {
 		adapterKey: "onebot",
 
@@ -1252,93 +1339,13 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			return true; // ws-reverse:运行期可达性由 send/probe 判断
 		},
 
-		reconcile(connections: readonly Connection[]): void {
-			if (disposed) return;
-			const onebots = connections.filter(
-				(a): a is OnebotConnection => isConnectionOn(a, "onebot") && a.enabled,
-			);
-
-			// --- bot 身份缓存清理 ---
-			// reconcile 触发频率低(dashboard 改 adapter / target 配置才触发),
-			// 直接全清是最简单的"cfg 变更 stale 兜底" —— 用户改了 cfg.url /
-			// cfg.baseUrl 指向另一个 bot 实例时,旧 bot 身份不会被错用。代价是
-			// 每次 reconcile 后第一次 forward 多一次 get_login_info(15s 超时)。
-			botIdentityCache.clear();
-
-			// --- 能力缓存 ---
-			// 只在连接的配置真变了(指向另一个实现)或连接没了时丢;配置没变就留着。**不能全清**:
-			// 健康探测每五分钟写回 testStatus 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
-			// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
-			for (const id of [...knownConnections.keys()]) {
-				if (onebots.some((a) => a.id === id)) continue;
-				knownConnections.delete(id);
-				miniAppCardSupport.delete(id);
-				capabilityFingerprints.delete(id);
-				lastCapabilityProbeAt.delete(id);
-			}
-			for (const a of onebots) {
-				const fp = JSON.stringify(a.config);
-				const changed = capabilityFingerprints.get(a.id) !== fp;
-				capabilityFingerprints.set(a.id, fp);
-				knownConnections.set(a.id, a);
-				if (changed) miniAppCardSupport.delete(a.id);
-				// ws 的两种在通道就绪时探;http 没有「连上」这一刻,配置变了或还没探出来就在这儿探。
-				const cfg = a.config;
-				if (cfg.transport === "http" && !miniAppCardSupport.has(a.id)) void probeMiniAppCard(a);
-			}
-
-			// --- 正向 ws ---
-			const desiredFwd = new Map<string, OnebotWsConfig>();
-			for (const a of onebots) {
-				const cfg = a.config;
-				if (cfg.transport === "ws") desiredFwd.set(a.id, cfg);
-			}
-			for (const [id, conn] of forwardConns) {
-				if (!desiredFwd.has(id)) {
-					conn.close();
-					forwardConns.delete(id);
-				}
-			}
-			for (const [id, cfg] of desiredFwd) {
-				const fp = forwardFingerprint(cfg);
-				const existing = forwardConns.get(id);
-				if (existing && existing.fingerprint === fp) continue; // 没变,幂等 no-op
-				existing?.close();
-				forwardConns.set(
-					id,
-					new ForwardConn(id, fp, cfg.url, forwardHeaders(cfg), serviceCtx, log, opts, () =>
-						probeOnReady(id),
-					),
-				);
-			}
-
-			// --- 反向 ws ---
-			const desiredRev = new Map<string, OnebotWsReverseConfig>();
-			for (const a of onebots) {
-				const cfg = a.config;
-				if (cfg.transport === "ws-reverse") desiredRev.set(a.id, cfg);
-			}
-			for (const [id, lis] of reverseListeners) {
-				const want = desiredRev.get(id);
-				if (!want || want.port !== lis.port) {
-					lis.close();
-					reverseListeners.delete(id);
-				}
-			}
-			for (const [id, cfg] of desiredRev) {
-				if (reverseListeners.has(id)) continue; // 端口没变,幂等 no-op
-				// 端口冲突(含与另一 ws-reverse adapter 撞 port)由监听器的 EADDRINUSE
-				// error 事件落到 bindError,经 probe 暴露给 dashboard。
-				reverseListeners.set(
-					id,
-					new ReverseListener(id, cfg.port, cfg.accessToken, serviceCtx, log, opts, () =>
-						probeOnReady(id),
-					),
-				);
-			}
+		start(ctx: PlatformAdapterContext): void {
+			// 登记即启动:先按当前名单对一次账(今天的开机对账),再订连接配置的变动。
+			reconcile(ctx.connections());
+			ctx.onConnectionsChanged(() => reconcile(ctx.connections()));
 		},
 
-		dispose(): void {
+		stop(): void {
 			disposeAll();
 		},
 

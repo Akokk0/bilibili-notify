@@ -158,9 +158,9 @@ export function activate(ctx: ExtensionContext): void {
 			});
 		},
 	});
-	// 接入动了(删 / 停用 / 换 token)→ 该踢的踢掉。宿主只在**连接**动了时叫 reconcile,而
-	// 桥的对账看的是接入名单(现读),那个参数它用不着 —— 给空表就是这个意思。
-	settings.onChange(() => adapter.reconcile?.([]));
+	// 接入动了(删 / 停用 / 换 token)→ 该踢的踢掉。宿主只在**连接**动了时才经 `ctx` 叫它对账,
+	// 而桥的对账看的是接入名单(设置,现读),所以设置动了这里直接叫。
+	settings.onChange(() => adapter.reconcile());
 
 	// 面板照着画的视图(ADR-0019 决策 20 / 39):四种样子、「对不上」、bot 表都由这里算好交出去。
 	// 走 `publishView`,回调要同步交回 —— 会话表是现成的内存,本来就不用等。

@@ -27,6 +27,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket, WebSocketServer } from "ws";
+import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createWebhookAdapter } from "../webhook.js";
 
@@ -792,7 +793,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			retryTimes: 3,
 			retryIntervalMs: 0,
 		});
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
@@ -800,7 +801,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		expect(messageOf(r)).toMatch(/超时/);
 		expect(messageOf(r)).toMatch(/结果未知/);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("WS bot 明确报失败:仍按 retryTimes 重试(重试语义保留)", async () => {
@@ -814,14 +815,14 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			retryTimes: 2,
 			retryIntervalMs: 0,
 		});
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "unknown", upstreamCode: 100 });
 		expect(messageOf(r)).toContain("风控");
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(3);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("WS 等响应期间连接断开:不重试(帧已发出,结果未知)", async () => {
@@ -832,7 +833,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			retryTimes: 3,
 			retryIntervalMs: 0,
 		});
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const pending = ad.send(connection, obTarget(), TEXT);
@@ -842,7 +843,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
 		expect(messageOf(r)).toMatch(/断开/);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("WS 合并转发:超时下限放宽,慢响应也能等到成功", async () => {
@@ -863,7 +864,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), {
@@ -873,7 +874,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		});
 		expect(r.ok).toBe(true);
 		expect(bot.received.filter((f) => f.action === "send_group_forward_msg")).toHaveLength(1);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("HTTP 请求超时(Abort):不重试,err 注明结果未知", async () => {
@@ -951,13 +952,13 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), IMAGE);
 		expect(r.ok).toBe(true);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("WS 纯文字:**不**放宽 —— bot 真挂了不该让每条文本都多等几十秒", async () => {
@@ -967,13 +968,13 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r.ok).toBe(false);
 		expect(messageOf(r)).toMatch(/超时/);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("WS 图集不走合并转发(forward=false)→ 并成普通多图消息,同样放宽", async () => {
@@ -985,7 +986,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), {
@@ -995,7 +996,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		});
 		expect(r.ok).toBe(true);
 		expect(bot.received.filter((f) => f.action === "send_group_msg")).toHaveLength(1);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("HTTP 带图:同样放宽(两种 transport 走同一条图床上传路)", async () => {
@@ -1022,7 +1023,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
 		const connection = obWsConnection(bot.port, { timeoutMs: 400, retryTimes: 0 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const t0 = Date.now();
@@ -1030,7 +1031,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		expect(r.ok).toBe(false);
 		// 等满了配置的 400ms 才超时,而不是在 60ms 的下限处就掐断。
 		expect(Date.now() - t0).toBeGreaterThanOrEqual(300);
-		ad.dispose?.();
+		ad.stop();
 	});
 });
 
@@ -1052,12 +1053,12 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 			retryTimes: 0,
 			imageMinTimeoutMs: 1000,
 		});
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), IMAGE);
 		expect(r.ok).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("cfg.imageMinTimeoutMs=0 → 关掉放宽,带图消息严格按 timeoutMs 快速失败", async () => {
@@ -1072,7 +1073,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 			retryTimes: 0,
 			imageMinTimeoutMs: 0,
 		});
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const t0 = Date.now();
@@ -1081,7 +1082,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		expect(messageOf(r)).toMatch(/超时/);
 		// 在配置的 60ms 附近就断,而不是被内建的 30s 下限拖住。
 		expect(Date.now() - t0).toBeLessThan(1000);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("cfg.mergeForwardMinTimeoutMs=0 → 合并转发的放宽同样关得掉", async () => {
@@ -1105,7 +1106,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 			retryTimes: 0,
 			mergeForwardMinTimeoutMs: 0,
 		});
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const t0 = Date.now();
@@ -1117,7 +1118,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		expect(r.ok).toBe(false);
 		expect(messageOf(r)).toMatch(/超时/);
 		expect(Date.now() - t0).toBeLessThan(1000);
-		ad.dispose?.();
+		ad.stop();
 	});
 });
 
@@ -1188,21 +1189,21 @@ describe("onebot — 正向 WS(ws)", () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(async () => (await ad.probe(connection)).ok === true);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r.ok).toBe(true);
 		const frame = bot.received.find((f) => f.action === "send_group_msg");
 		expect(frame).toBeDefined();
 		expect((frame as { params: { group_id: number } }).params.group_id).toBe(123);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("isAvailable:ws 看 url 非空", () => {
 		const ad = createOnebotAdapter(obOpts());
 		expect(ad.isAvailable(obWsConnection(3001), obTarget())).toBe(true);
 		expect(ad.isAvailable(obWsConnection(3001, { url: "" }), obTarget())).toBe(false);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("echo 乱序:并发两次 send,bot 乱序回 → 各自匹配正确响应", async () => {
@@ -1230,7 +1231,7 @@ describe("onebot — 正向 WS(ws)", () => {
 		cleanups.push(() => new Promise<void>((r) => wss.close(() => r())));
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => wss.clients.size > 0);
 		await sleep(40);
 		const [r1, r2] = await Promise.all([
@@ -1239,20 +1240,20 @@ describe("onebot — 正向 WS(ws)", () => {
 		]);
 		expect(r1.ok).toBe(true);
 		expect(r2.ok).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("响应超时:bot 不回 → ok:false 且 err 含超时", async () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, { timeoutMs: 120 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "indeterminate" });
 		expect(messageOf(r)).toMatch(/超时/);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("未 reconcile / 未连接时 send → unavailable;probe 同样", async () => {
@@ -1262,41 +1263,41 @@ describe("onebot — 正向 WS(ws)", () => {
 		expect(messageOf(r)).toMatch(/未连接/);
 		const p = await ad.probe(obWsConnection(59_998));
 		expect(p).toEqual({ ok: false, code: "unavailable", message: "正向 WS 未连接" });
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("probe:bot 不回 get_status → timeout", async () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, { timeoutMs: 120 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const p = await ad.probe(connection);
 		expect(p).toMatchObject({ ok: false, code: "timeout" });
 		expect(messageOf(p)).toMatch(/超时/);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("probe:等 get_status 期间连接断了 → unavailable", async () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, { timeoutMs: 5000 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		const pending = ad.probe(connection);
 		await waitFor(() => bot.received.some((f) => f.action === "get_status"));
 		bot.connections[0]?.terminate();
 		expect(await pending).toMatchObject({ ok: false, code: "unavailable" });
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("入站事件帧(无 echo)被忽略,不影响后续 send", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
 		// bot 推 heartbeat 元事件 + message 事件(都无 echo)
@@ -1306,33 +1307,33 @@ describe("onebot — 正向 WS(ws)", () => {
 		bot.connections[0]?.send(JSON.stringify({ post_type: "message", message: "hi" }));
 		await sleep(30);
 		expect((await ad.send(connection, obTarget(), TEXT)).ok).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("reconcile 幂等:config 未变重复 reconcile 不重连", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length === 1);
-		ad.reconcile?.([connection]);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
+		reconcileAdapter(ad, [connection]);
 		await sleep(60);
 		expect(bot.connections.length).toBe(1); // 没有新建连接
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("断线重连:bot 服务端断开后 adapter 自动重连并恢复推送", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length === 1);
 		bot.connections[0]?.close(); // 服务端主动断开
 		await waitFor(() => bot.connections.length === 2, 8000); // 退避后重连(起点 ~1s)
 		await waitFor(async () => (await ad.probe(connection)).ok === true, 4000);
 		expect((await ad.send(connection, obTarget(), TEXT)).ok).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	}, 15_000);
 });
 
@@ -1345,33 +1346,33 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obRevConnection(port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`);
 		await waitFor(async () => (await ad.probe(connection)).ok === true);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r.ok).toBe(true);
 		expect(bot.received.some((f) => f.action === "send_group_msg")).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("isAvailable:ws-reverse 恒 true(运行期可达性由 send/probe 判断)", () => {
 		const ad = createOnebotAdapter(obOpts());
 		expect(ad.isAvailable(obRevConnection(6700), obTarget())).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("反向监听还没起(没 reconcile)→ probe unavailable", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const p = await ad.probe(obRevConnection(await freePort()));
 		expect(p).toEqual({ ok: false, code: "unavailable", message: "反向 WS 监听未启动" });
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("无 bot 连入 → send ok:false,probe 提示等待 bot", async () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obRevConnection(port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await sleep(60);
 		const r = await ad.send(connection, obTarget(), TEXT);
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
@@ -1379,14 +1380,14 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		const p = await ad.probe(connection);
 		expect(p).toMatchObject({ ok: false, code: "unavailable" });
 		expect(messageOf(p)).toMatch(/等待 bot/);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("握手鉴权:token 不匹配 → 连接被拒;token 正确 → 可推送", async () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obRevConnection(port, { accessToken: "right" });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await sleep(60);
 		// 不带 token:握手后被 close(1008),不计入活跃 bot
 		await connectWithRetry(`ws://127.0.0.1:${port}`);
@@ -1396,7 +1397,7 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer right" });
 		await waitFor(async () => (await ad.probe(connection)).ok === true);
 		expect((await ad.send(connection, obTarget(), TEXT)).ok).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("端口绑定失败(EADDRINUSE)→ probe 报错", async () => {
@@ -1406,23 +1407,23 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		cleanups.push(() => new Promise<void>((r) => blocker.close(() => r())));
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obRevConnection(port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(async () => {
 			const p = await ad.probe(connection);
 			return p.ok === false && /绑定失败|EADDRINUSE/i.test(messageOf(p));
 		});
 		// 端口被占是要主人去换端口的事,等是等不好的。
 		expect(await ad.probe(connection)).toMatchObject({ ok: false, code: "not_configured" });
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("端口变更:reconcile 换 port → 旧端口释放、新端口监听", async () => {
 		const portA = await freePort();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obRevConnection(portA)]);
+		reconcileAdapter(ad, [obRevConnection(portA)]);
 		await sleep(80);
 		const portB = await freePort();
-		ad.reconcile?.([obRevConnection(portB)]); // 同 id a1,换 port
+		reconcileAdapter(ad, [obRevConnection(portB)]); // 同 id a1,换 port
 		await sleep(80);
 		// 旧端口应已释放 —— 能重新占用
 		const reuse = createServer();
@@ -1436,15 +1437,15 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		// 新端口能连入并推送
 		await connectWithRetry(`ws://127.0.0.1:${portB}`);
 		await waitFor(async () => (await ad.probe(obRevConnection(portB))).ok === true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("dispose:关闭反向监听器,端口释放", async () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obRevConnection(port)]);
+		reconcileAdapter(ad, [obRevConnection(port)]);
 		await sleep(80);
-		ad.dispose?.();
+		ad.stop();
 		await sleep(80);
 		const reuse = createServer();
 		cleanups.push(() => new Promise<void>((r) => reuse.close(() => r())));
@@ -1465,24 +1466,24 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 	it("ws → http:reconcile 后正向连接被关闭、端口释放", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obWsConnection(bot.port)]);
+		reconcileAdapter(ad, [obWsConnection(bot.port)]);
 		await waitFor(() => bot.connections.length === 1);
 		// 同 id a1 切到 http —— 不再在 desiredFwd 里,正向连接应被关闭
-		ad.reconcile?.([obConnection()]);
+		reconcileAdapter(ad, [obConnection()]);
 		await waitFor(() => bot.connections[0]?.readyState === WebSocket.CLOSED, 4000);
 		// http 形态走 fetch,不依赖 ws 连接
 		fetchMock.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		expect((await ad.send(obConnection(), obTarget(), TEXT)).ok).toBe(true);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("ws-reverse → ws:reconcile 后旧反向端口释放、新正向连接建立", async () => {
 		const revPort = await freePort();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obRevConnection(revPort)]);
+		reconcileAdapter(ad, [obRevConnection(revPort)]);
 		await sleep(80);
 		const bot = await startFakeBotServer();
-		ad.reconcile?.([obWsConnection(bot.port)]); // 同 id a1
+		reconcileAdapter(ad, [obWsConnection(bot.port)]); // 同 id a1
 		await waitFor(() => bot.connections.length === 1, 4000);
 		// 旧反向端口应已释放
 		const reuse = createServer();
@@ -1493,37 +1494,37 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 				reuse.listen(revPort, resolve);
 			}),
 		).resolves.toBeUndefined();
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("adapter 从集合移除(禁用/删除):reconcile 关掉其正向连接", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obWsConnection(bot.port)]);
+		reconcileAdapter(ad, [obWsConnection(bot.port)]);
 		await waitFor(() => bot.connections.length === 1);
 		// 空集合 —— 等价于 adapter 被禁用 / 删除
-		ad.reconcile?.([]);
+		reconcileAdapter(ad, []);
 		await waitFor(() => bot.connections[0]?.readyState === WebSocket.CLOSED, 4000);
 		// send 此时应失败(连接已关、不重连)
 		expect((await ad.send(obWsConnection(bot.port), obTarget(), TEXT)).ok).toBe(false);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("dispose 幂等:重复调用不抛错", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obWsConnection(bot.port)]);
+		reconcileAdapter(ad, [obWsConnection(bot.port)]);
 		await waitFor(() => bot.connections.length === 1);
-		ad.dispose?.();
-		expect(() => ad.dispose?.()).not.toThrow();
-		expect(() => ad.dispose?.()).not.toThrow();
+		ad.stop();
+		expect(() => ad.stop()).not.toThrow();
+		expect(() => ad.stop()).not.toThrow();
 	});
 
 	it("dispose 后 reconcile 是 no-op(disposed 守卫)", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
-		ad.dispose?.();
-		ad.reconcile?.([obWsConnection(bot.port)]); // disposed → 应被忽略
+		ad.stop();
+		reconcileAdapter(ad, [obWsConnection(bot.port)]); // disposed → 应被忽略
 		await sleep(120);
 		expect(bot.connections.length).toBe(0);
 	});
@@ -1531,9 +1532,9 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 	it("dispose 后正向连接不再重连(closed 守卫)", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
-		ad.reconcile?.([obWsConnection(bot.port)]);
+		reconcileAdapter(ad, [obWsConnection(bot.port)]);
 		await waitFor(() => bot.connections.length === 1);
-		ad.dispose?.();
+		ad.stop();
 		await waitFor(() => bot.connections[0]?.readyState === WebSocket.CLOSED, 4000);
 		// 退避窗口足够长,若 closed 守卫失效会看到第 2 条连接
 		await sleep(1500);
@@ -1545,13 +1546,13 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, { timeoutMs: 10_000 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length === 1);
 		await sleep(40);
 		const sendP = ad.send(connection, obTarget(), TEXT);
 		await sleep(40); // 确保 call() 已挂进 pending
 		const t0 = Date.now();
-		ad.dispose?.();
+		ad.stop();
 		const r = await sendP;
 		expect(r.ok).toBe(false);
 		// 远小于 10s timeout —— 证明是 rejectAll 兜的,不是等超时
@@ -1562,7 +1563,7 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, { timeoutMs: 10_000 });
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length === 1);
 		await sleep(40);
 		const sendP = ad.send(connection, obTarget(), TEXT);
@@ -1572,14 +1573,14 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 		const r = await sendP;
 		expect(r.ok).toBe(false);
 		expect(Date.now() - t0).toBeLessThan(3000);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("反向 WS:bot 断开后注销,probe 回到等待 bot", async () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obRevConnection(port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		const ws = new WebSocket(`ws://127.0.0.1:${port}`);
 		await new Promise<void>((resolve, reject) => {
 			ws.once("open", () => resolve());
@@ -1596,7 +1597,7 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 			const p = await ad.probe(connection);
 			return p.ok === false && /等待 bot/.test(messageOf(p));
 		}, 4000);
-		ad.dispose?.();
+		ad.stop();
 	});
 });
 
@@ -2101,7 +2102,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		const onInboundPrivate = vi.fn();
 		const ad = createOnebotAdapter({ ...obOpts(), onInboundGroup, onInboundPrivate });
 		const connection = obWsConnection(bot.port);
-		ad.reconcile?.([connection]);
+		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		const frame = {
 			post_type: "message",
@@ -2126,7 +2127,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 			{ connectionId: "a1", platform: "onebot" },
 		);
 		expect(onInboundPrivate).not.toHaveBeenCalled();
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("反向 WS:私聊帧 → onInboundPrivate;心跳谁都不进;消费者抛错不断连", async () => {
@@ -2135,7 +2136,7 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), onInboundPrivate });
 		const port = await freePort();
-		ad.reconcile?.([obRevConnection(port)]);
+		reconcileAdapter(ad, [obRevConnection(port)]);
 		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`);
 		bot.send(JSON.stringify({ post_type: "meta_event", meta_event_type: "heartbeat", self_id: 1 }));
 		bot.send(
@@ -2162,6 +2163,6 @@ describe("onebot 入站消息在 adapter 里归一化,并带来源 connectionId"
 		);
 		await waitFor(() => onInboundPrivate.mock.calls.length > 1);
 		expect(onInboundPrivate.mock.calls[1]?.[0]).toEqual({ userId: "456", text: "n" });
-		ad.dispose?.();
+		ad.stop();
 	});
 });

@@ -1,4 +1,8 @@
-import type { Disposable, PlatformAdapter } from "@bilibili-notify/internal";
+import type {
+	Disposable,
+	PlatformAdapter,
+	PlatformAdapterContext,
+} from "@bilibili-notify/internal";
 
 /**
  * 推送出口的**活注册表** —— adapter 矩阵的家(ADR-0012 决策 29)。
@@ -10,12 +14,14 @@ import type { Disposable, PlatformAdapter } from "@bilibili-notify/internal";
  */
 export interface PlatformAdapterRegistry {
 	/**
-	 * 注册一个出口,回一个撤下它的把手。
+	 * 注册一个出口并启动它(`adapter.start(ctx)`),回一个撤下它的把手;把手 `dispose()` 摘掉它、
+	 * 放键,再调 `adapter.stop()`(不等它;抛了 / 失败了用 `ctx.logger.warn` 记一行,不往外抛)。
+	 * `start` 抛了:键与表里那一项撤掉,错原样抛出去 —— 登记失败不留半个适配器。
 	 *
 	 * 它的适配器键得是空的,**占了就抛**:悄悄顶掉等于把别人的连接整个截走
 	 * (一个拓展要是能声明 `"onebot"`,内置那条连接的推送就全走它了),而两边都不报错。
 	 */
-	register(adapter: PlatformAdapter): Disposable;
+	register(adapter: PlatformAdapter, ctx: PlatformAdapterContext): Disposable;
 	/**
 	 * 现在有哪些出口。
 	 *
@@ -26,35 +32,54 @@ export interface PlatformAdapterRegistry {
 }
 
 /**
- * 登记表对外给的出口视图:**不含 `send`**,运行时也真的没有。
+ * 登记表对外给的出口视图:**不含 `send` / `start` / `stop`**,运行时也真的没有。
  *
- * 发送只许经 `TargetDispatcher`(出口咽喉,ADR-0024 决策 13);其余消费方(重连、销毁、
- * 能力探测)用不着它,也就拿不到它。同一个适配器每次 `list()` 回同一个视图对象。
+ * 发送只许经 `TargetDispatcher`(出口咽喉,ADR-0024 决策 13);启停只归登记表(登记即 `start`、
+ * 注销即 `stop`);其余消费方(能力探测之类)用不着它们,也就拿不到。
+ * 同一个适配器每次 `list()` 回同一个视图对象。
  */
-export type PlatformAdapterView = Omit<PlatformAdapter, "send">;
+export type PlatformAdapterView = Omit<PlatformAdapter, "send" | "start" | "stop">;
+
+/** 带 `send` 的适配器 —— 不含 `start` / `stop`(启停只归登记表,派发器用不着)。 */
+type SendableAdapter = Omit<PlatformAdapter, "start" | "stop">;
 
 /** 登记表 → 带 `send` 的完整适配器。只有 {@link sendableAdapters} 能读;视图对外,这份不外露。 */
-const fullListOf = new WeakMap<PlatformAdapterRegistry, () => readonly PlatformAdapter[]>();
+const fullListOf = new WeakMap<PlatformAdapterRegistry, () => readonly SendableAdapter[]>();
 
 /**
  * 带 `send` 的完整适配器 —— **全仓只许 `push/target-dispatcher.ts` 引它**(出口咽喉的守卫钉着)。
  * 同样在分发那一刻问,别存下来。
  */
-export function sendableAdapters(registry: PlatformAdapterRegistry): readonly PlatformAdapter[] {
+export function sendableAdapters(registry: PlatformAdapterRegistry): readonly SendableAdapter[] {
 	const full = fullListOf.get(registry);
 	if (!full) throw new Error("registry was not created by createPlatformAdapterRegistry");
 	return full();
 }
 
-/** 摘掉 `send`。展开而不是逐个转发:可选方法有就有、没有就没有(同 devtools 的装饰器)。 */
+/** 摘掉 `send` / `start` / `stop`。展开而不是逐个转发:可选方法有就有、没有就没有(同 devtools 的装饰器)。 */
 function viewOf(adapter: PlatformAdapter): PlatformAdapterView {
-	const { send: _send, ...view } = adapter;
+	const { send: _send, start: _start, stop: _stop, ...view } = adapter;
 	return view;
 }
 
-export function createPlatformAdapterRegistry(
-	initial: readonly PlatformAdapter[] = [],
-): PlatformAdapterRegistry {
+/**
+ * 调 `adapter.stop()`:不等它,抛了 / 失败了都只记一行 warn —— 收尾要往下走,不能被一个适配器拦住。
+ * (从前引擎里是 `void ad.dispose?.()` 外包 try/catch,异步的失败没人接。)
+ */
+function stopQuietly(adapter: PlatformAdapter, ctx: PlatformAdapterContext): void {
+	const warn = (err: unknown) =>
+		ctx.logger.warn(
+			`[adapter] ${adapter.adapterKey} stop 失败: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	try {
+		const result = adapter.stop();
+		if (result instanceof Promise) result.catch(warn);
+	} catch (err) {
+		warn(err);
+	}
+}
+
+export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 	const adapters: PlatformAdapter[] = [];
 	const keys = new Set<string>();
 
@@ -65,7 +90,11 @@ export function createPlatformAdapterRegistry(
 		adapters.push(adapter);
 	}
 
-	for (const adapter of initial) add(adapter);
+	function remove(adapter: PlatformAdapter): void {
+		const idx = adapters.indexOf(adapter);
+		if (idx >= 0) adapters.splice(idx, 1);
+		keys.delete(adapter.adapterKey);
+	}
 
 	// 每个适配器只做一次视图:`list()` 在热路径上被反复问,而且两次问到的得是同一个对象。
 	const views = new WeakMap<PlatformAdapter, PlatformAdapterView>();
@@ -80,16 +109,22 @@ export function createPlatformAdapterRegistry(
 
 	const registry: PlatformAdapterRegistry = {
 		list: () => adapters.map(viewFor),
-		register(adapter) {
+		register(adapter, ctx) {
 			add(adapter);
+			try {
+				adapter.start(ctx);
+			} catch (err) {
+				// 登记失败不留半个适配器:键放掉、表里摘掉,错原样抛出去。
+				remove(adapter);
+				throw err;
+			}
 			let removed = false;
 			return {
 				dispose() {
 					if (removed) return;
 					removed = true;
-					const idx = adapters.indexOf(adapter);
-					if (idx >= 0) adapters.splice(idx, 1);
-					keys.delete(adapter.adapterKey);
+					remove(adapter);
+					stopQuietly(adapter, ctx);
 				},
 			};
 		},
@@ -119,9 +154,9 @@ export function deriveAdapterRegistry(
 		}
 		return next;
 	};
-	const sendable = new WeakMap<PlatformAdapter, PlatformAdapter>();
+	const sendable = new WeakMap<SendableAdapter, SendableAdapter>();
 	const derived: PlatformAdapterRegistry = {
-		register: (adapter) => base.register(adapter),
+		register: (adapter, ctx) => base.register(adapter, ctx),
 		list: () => base.list().map(decoratedOf),
 	};
 	fullListOf.set(derived, () => {

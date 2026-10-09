@@ -7,6 +7,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
 function makeLogger(): Logger {
@@ -449,8 +450,8 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 
 	it("dispose 幂等不抛", () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		expect(() => ad.dispose?.()).not.toThrow();
-		expect(() => ad.dispose?.()).not.toThrow();
+		expect(() => ad.stop()).not.toThrow();
+		expect(() => ad.stop()).not.toThrow();
 	});
 });
 
@@ -468,11 +469,11 @@ describe("createQQOfficialAdapter — reconcile 拒绝空密钥", () => {
 	it("appSecret 为空的 enabled adapter 不建连、不换 token", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 
-		ad.reconcile?.([qqConnection({ appSecret: "" })]);
+		reconcileAdapter(ad, [qqConnection({ appSecret: "" })]);
 		await new Promise((r) => setTimeout(r, 0));
 
 		expect(tokenCalls()).toHaveLength(0);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	// 对照组:同样的等待窗口里,密钥正常的 adapter 确实会去换 token —— 证明上面的 0 次
@@ -480,9 +481,9 @@ describe("createQQOfficialAdapter — reconcile 拒绝空密钥", () => {
 	it("appSecret 正常的 enabled adapter 照常建连", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 
-		ad.reconcile?.([qqConnection()]);
+		reconcileAdapter(ad, [qqConnection()]);
 		await vi.waitFor(() => expect(tokenCalls().length).toBeGreaterThan(0));
 
-		ad.dispose?.();
+		ad.stop();
 	});
 });

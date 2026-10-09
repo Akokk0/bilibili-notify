@@ -1,19 +1,10 @@
-import type { Disposable, Logger } from "@bilibili-notify/internal";
+import type { Disposable, IntegrationContext, Logger } from "@bilibili-notify/internal";
 
 /**
  * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
  * 装包、只重载全卡在它后面,关机也关不下去(ADR-0019 决策 45)。
  */
 export const DISPOSE_TIMEOUT_MS = 30_000;
-
-/** 每个集成拿到的那一面。这一片只有三个成员,后面各片往上加。 */
-export interface IntegrationContext {
-	readonly logger: Logger;
-	/** 集成停下(停用、卸载、关停)时中止;在收尾钩子跑之前就已经中止。 */
-	readonly signal: AbortSignal;
-	/** 收尾钩子,后登记的先跑。停下之后再登记不生效,记一行。 */
-	onDispose(fn: () => void | Promise<void>): void;
-}
 
 /** 宿主握着的那一面,集成拿不到。 */
 export interface IntegrationContextHandle {

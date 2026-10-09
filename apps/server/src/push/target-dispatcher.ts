@@ -6,7 +6,6 @@ import type {
 	Failure,
 	Logger,
 	NotificationPayload,
-	PlatformAdapter,
 	ProbeResult,
 	PushTarget,
 	SessionRef,
@@ -17,11 +16,14 @@ import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
 import { adapterForConnection } from "./dispatch.js";
 import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
 
+/** 派发器从登记表拿到的出口(带 `send`,不含启停)。 */
+type SendableAdapter = ReturnType<typeof sendableAdapters>[number];
+
 /**
  * The server's {@link TargetDispatcher} implementation.
  *
  * Resolves `targetId → PushTarget → Connection` against the live ConfigStore,
- * looks up the matching {@link PlatformAdapter} by `connection.platform`, and
+ * looks up the matching `PlatformAdapter` by `connection.platform`, and
  * delegates the delivery. The dispatcher itself stays generic — adding a new platform
  * just means registering another platform adapter.
  */
@@ -55,7 +57,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	// 出口**每次现问注册表** —— 拓展是后加载的,而且拨一下开关就会来去(ADR-0012 决策 29)。
 	// 从前这里自己建了一张键 → adapter 的 Map,那是「哪个 adapter 管这条连接」的第二份
 	// 实现;现在与别处共用 `adapterForConnection` 那一份。
-	const adapterFor = (connection: Connection): PlatformAdapter | undefined =>
+	const adapterFor = (connection: Connection): SendableAdapter | undefined =>
 		adapterForConnection(sendableAdapters(opts.adapters), connection);
 
 	function findTarget(targetId: string): PushTarget | undefined {
@@ -226,7 +228,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	/** 两条发送路共用的最后一步:先问截流闸,没人截才调适配器;适配器抛错在这里接住。 */
 	async function deliver(
 		connection: Connection,
-		platformAdapter: PlatformAdapter,
+		platformAdapter: SendableAdapter,
 		destination: DestinationRef,
 		target: PushTarget | undefined,
 		payload: NotificationPayload,

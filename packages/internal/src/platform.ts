@@ -50,6 +50,18 @@ export interface ServiceContext {
 }
 
 /**
+ * 每个集成(拓展、内置适配器)拿到的那一面。这一片只有三个成员,后面各片往上加。
+ * 宿主握着的另一面(收回它的把手)住服务端,集成拿不到。
+ */
+export interface IntegrationContext {
+	readonly logger: Logger;
+	/** 集成停下(停用、卸载、关停)时中止;在收尾钩子跑之前就已经中止。 */
+	readonly signal: AbortSignal;
+	/** 收尾钩子,后登记的先跑。停下之后再登记不生效,记一行。 */
+	onDispose(fn: () => void | Promise<void>): void;
+}
+
+/**
  * 订阅变更操作。CRUD 产生的 diff 列表，随 subscription-changed 事件携带。
  *
  * `remove` 带着**被删掉的那一整条**。下游引擎（DynamicEngine / LiveEngine）按 B 站 UID

@@ -9,7 +9,13 @@
  */
 
 import type { Result } from "./constants";
-import type { ConnectionCapabilities, DeliveryResult, NotificationPayload } from "./platform";
+import type {
+	ConnectionCapabilities,
+	DeliveryResult,
+	Disposable,
+	IntegrationContext,
+	NotificationPayload,
+} from "./platform";
 import type { ChatIdentity, Connection, DestinationRef } from "./schema/targets";
 
 /**
@@ -49,15 +55,19 @@ export interface PlatformAdapter {
 	 */
 	probe(connection: Connection): Promise<ProbeResult>;
 	/**
-	 * Stateful connectors only — called once at boot and again on every
-	 * `config-changed: connections`. Reconcile live sockets / listeners against
-	 * the current connection set (start / stop / rebind). MUST be idempotent and
-	 * cheap (no-op when nothing changed) and MUST NOT write config or trigger a
-	 * probe (would loop back through `config-changed`).
+	 * 登记即启动 —— 登记表在适配器进表之后调一次(ADR-0024 决策 3)。有状态的连接器在这里
+	 * 按 `ctx.connections()` 建连 / 起监听,再用 `ctx.onConnectionsChanged` 订连接配置的变动、
+	 * 变了就对一次账。对账必须幂等、够便宜(没变就是空操作),且**不许写配置、不许触发探测**
+	 * (会经 `config-changed` 绕回来)。无状态的实现留空。
+	 *
+	 * 抛了算登记失败:登记表把键与表里那一项撤掉,再把错原样抛出去。
 	 */
-	reconcile?(connections: readonly Connection[]): void;
-	/** Stateful connectors only — close all connections / listeners / timers on shutdown. Idempotent. */
-	dispose?(): void | Promise<void>;
+	start(ctx: PlatformAdapterContext): void;
+	/**
+	 * 注销即停止 —— 登记表在把适配器摘出表之后调一次。关掉所有连接 / 监听 / 定时器,幂等。
+	 * 回 Promise 时登记表不等它,失败由登记表记一行 warn。
+	 */
+	stop(): void | Promise<void>;
 	/**
 	 * Return whether this adapter can deliver to `destination` over `connection` right now.
 	 * 连接 / 目标的启停与「目标属哪个平台」由派发器查过了,这里只答**运行期**的事:配置齐不齐、
@@ -77,6 +87,19 @@ export interface PlatformAdapter {
 	capabilities?(connection: Connection): ConnectionCapabilities;
 	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */
 	probeCapabilities?(connection: Connection): Promise<ConnectionCapabilities>;
+}
+
+/**
+ * 适配器 `start` 时拿到的上下文:集成上下文,加上「自己的连接」的两样 —— 与拓展的推送源把手同形。
+ */
+export interface PlatformAdapterContext extends IntegrationContext {
+	/**
+	 * 归这个适配器管的连接(按分发键认领),**现读**。别缓存 —— 缓存与真相会漂,症状是
+	 * 「面板上停用了它还连着」;变更通知是用来做动作的,不是用来更新缓存的。
+	 */
+	connections(): readonly Connection[];
+	/** 连接配置动过了(增删改都算),叫一声。适配器停下时自动摘掉。 */
+	onConnectionsChanged(fn: () => void): Disposable;
 }
 
 /**

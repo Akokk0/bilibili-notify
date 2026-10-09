@@ -49,6 +49,7 @@ export type {
 	 * 都是这一套,所以它的本体住 `@bilibili-notify/internal`;这里转出来给拓展用。
 	 */
 	PlatformAdapter,
+	PlatformAdapterContext,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,

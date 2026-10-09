@@ -26,8 +26,8 @@ import type {
 } from "@bilibili-notify/internal";
 import { fail } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
+import { registryOf } from "../../__tests__/support/adapter-ctx.js";
 import type { ConfigStore } from "../../config/store.js";
-import { createPlatformAdapterRegistry } from "../registry.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../target-dispatcher.js";
 
 const PAYLOAD: NotificationPayload = { kind: "text", text: "hi" };
@@ -88,6 +88,8 @@ function makePlatformAdapter(
 		isAvailable: vi.fn(() => true),
 		send: vi.fn(async () => sendResult),
 		probe: vi.fn(async () => probeResult),
+		start: vi.fn(),
+		stop: vi.fn(),
 		...over,
 	};
 }
@@ -100,7 +102,7 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 				[makeConnection({ id: "a1", platform: "onebot" })],
 				[makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" })],
 			),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.isAvailable("t1")).toBe(true);
@@ -111,7 +113,7 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 		// 而两边都不报错 —— 现在这道门挪进了注册表,而且从「提醒」变成了「拒绝」。
 		const first = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) });
 		const second = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => true) });
-		expect(() => createPlatformAdapterRegistry([first, second])).toThrow(/webhook/);
+		expect(() => registryOf([first, second])).toThrow(/webhook/);
 	});
 });
 
@@ -120,7 +122,7 @@ describe("createTargetDispatcher — resolve / isAvailable", () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.resolve("t1")).toBe(target);
@@ -135,7 +137,7 @@ describe("createTargetDispatcher — resolve / isAvailable", () => {
 				[makeConnection({ id: "a2", platform: "telegram" })],
 				[targetNoConnection, targetNoPA],
 			),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.isAvailable("missing")).toBe(false); // target 缺
@@ -150,7 +152,7 @@ describe("createTargetDispatcher — resolve / isAvailable", () => {
 				[makeConnection({ id: "a1", platform: "feishu" })],
 				[makeTarget({ id: "t1", connectionId: "a1" })],
 			),
-			adapters: createPlatformAdapterRegistry([paFalse]),
+			adapters: registryOf([paFalse]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.isAvailable("t1")).toBe(false);
@@ -172,7 +174,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 	it("target 缺:返回 target not found,不触发 onDelivery", async () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], []),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -185,7 +187,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 		const logger = makeLogger();
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], [makeTarget({ id: "t1", connectionId: "ghost" })]),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger,
 			onDelivery,
 		});
@@ -207,7 +209,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 				[makeConnection({ id: "a1", platform: "telegram" })],
 				[makeTarget({ id: "t1", connectionId: "a1", platform: "telegram" })],
 			),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger,
 			onDelivery,
 		});
@@ -230,7 +232,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 		const pa = makePlatformAdapter("webhook");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], [target]),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -247,7 +249,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 	it("没有「强制私聊」那条路了:派发器上没有 sendPrivate", () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], []),
-			adapters: createPlatformAdapterRegistry([]),
+			adapters: registryOf([]),
 			logger: makeLogger(),
 		});
 		expect("sendPrivate" in dispatcher).toBe(false);
@@ -266,7 +268,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 		});
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger,
 			onDelivery,
 		});
@@ -285,7 +287,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 		});
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], []),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger,
 		});
 		expect(await dispatcher.probeConnection("a1")).toEqual({
@@ -304,7 +306,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 				[makeConnection({ id: "a1", platform: "feishu" })],
 				[makeTarget({ id: "t1", connectionId: "a1" })],
 			),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 		});
 		expect(await dispatcher.send("t1", PAYLOAD)).toBe(failure);
@@ -315,7 +317,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 	it("连接缺:connection not found", async () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], []),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(await dispatcher.probeConnection("ghost")).toEqual({
@@ -328,7 +330,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 	it("platformAdapter 缺:no platform adapter for <platform>", async () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([makeConnection({ id: "a1", platform: "telegram" })], []),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
+			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(await dispatcher.probeConnection("a1")).toEqual({
@@ -345,7 +347,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 		const pa = makePlatformAdapter("webhook", { probe: vi.fn(async () => unsupported) });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], []),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 		});
 		const r = await dispatcher.probeConnection("a1");
@@ -358,9 +360,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 	function dispatcherWith(connections: Connection[], targets: PushTarget[]) {
 		return createTargetDispatcher({
 			store: makeStore(connections, targets),
-			adapters: createPlatformAdapterRegistry([
-				makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) }),
-			]),
+			adapters: registryOf([makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) })]),
 			logger: makeLogger(),
 		});
 	}
@@ -411,7 +411,7 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 		const connection = makeConnection({ id: "a1", platform: "onebot" });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], []),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.connectionCapabilities("a1")).toEqual(CAPS);
@@ -430,7 +430,7 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 				],
 				[],
 			),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.connectionCapabilities("nope")).toBeUndefined();
@@ -450,7 +450,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([over.connection ?? connection], []),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger,
 			onDelivery,
 		});
@@ -557,7 +557,7 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两�
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], [target]),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 			interceptSend,
 			onDelivery,
@@ -619,7 +619,7 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 		const logger = makeLogger();
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(connections, targets),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger,
 			onDelivery,
 		});
@@ -705,7 +705,7 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 		const pa = makePlatformAdapter("webhook");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([CONNECTION], []),
-			adapters: createPlatformAdapterRegistry([pa]),
+			adapters: registryOf([pa]),
 			logger: makeLogger(),
 			interceptSend: (send) => {
 				seen.push(send);

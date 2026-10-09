@@ -167,7 +167,12 @@ function harness(
 }
 
 function fakeAdapter(): PlatformAdapter {
-	return { adapterKey: "谁都不是", isAvailable: () => true } as unknown as PlatformAdapter;
+	return {
+		adapterKey: "谁都不是",
+		isAvailable: () => true,
+		start() {},
+		stop() {},
+	} as unknown as PlatformAdapter;
 }
 
 function descriptor(): ExtensionDescriptor {

@@ -127,6 +127,8 @@ interface Harness {
 	setConnections(list: View[]): void;
 	/** 设置里那份接入名单 —— 换掉它再 `reconcile()` 就是「接入动了」。 */
 	setLinks(list: BridgeLink[]): void;
+	/** 宿主叫一声「连接配置动了」—— 触发 `start(ctx)` 里经 `ctx.onConnectionsChanged` 登记的回调。 */
+	reconcile(): void;
 }
 
 /** `live: null` = 桥没连着。**别用 `undefined`** —— 显式传它会触发默认参数,那条用例就空过了。 */
@@ -161,9 +163,25 @@ function harness(live: BridgeSession | null = session()): Harness {
 			},
 		},
 	});
+	// 宿主登记它时递的上下文:桥只用得着「订连接变更」这一格,其余不碰。
+	const listeners = new Set<() => void>();
+	const noop = () => {};
+	adapter.start({
+		logger: { info: noop, warn: noop, error: noop, debug: noop },
+		signal: new AbortController().signal,
+		onDispose: noop,
+		connections: () => [],
+		onConnectionsChanged(fn) {
+			listeners.add(fn);
+			return { dispose: () => listeners.delete(fn) };
+		},
+	});
 	return {
 		ping,
 		adapter,
+		reconcile: () => {
+			for (const fn of [...listeners]) fn();
+		},
 		send,
 		disconnect,
 		published,
@@ -473,36 +491,36 @@ describe("桥 adapter", () => {
 	it("接入被删了 → 把还连着的那条踢下线", () => {
 		const h = harness();
 		h.setLinks([]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
 	it("接入被停用 → 踢下线,但用的是「可以退避重连」那个码", () => {
 		const h = harness();
 		h.setLinks([link({ enabled: false })]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4007);
 	});
 
 	it("**token 被重新生成 → 踢下线** —— 不然重新生成 token 这个动作等于没做", () => {
 		const h = harness();
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).not.toHaveBeenCalled();
 		h.setLinks([link({ token: "新的" })]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
 	/**
 	 * 🔴 **重启之后第一次换 token 也得踢**。上一轮快照是**建 adapter 那一刻**打的底,不是
-	 * 「第一次 reconcile 跑完」—— 宿主开机那趟 reconcile 跑在拓展装载**之前**,所以桥根本
-	 * 没机会先对一次账。空表打底的话 `before === undefined`,重启后第一次「重新生成 token」
+	 * 「第一次 reconcile 跑完」—— `start` 里不立刻对账(只订变更),桥登记那一刻
+	 * 没人替它对一次账。空表打底的话 `before === undefined`,重启后第一次「重新生成 token」
 	 * 静默放过,旧会话拿着作废的 token 继续收推送。
 	 */
 	it("**开机后第一次就换 token → 照样踢下线**(上一轮快照在建 adapter 时就打好底)", () => {
 		const h = harness();
 		h.setLinks([link({ token: "新的" })]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
@@ -515,29 +533,47 @@ describe("桥 adapter", () => {
 	it("**会话表里没有它也照踢** —— 握手窗口里那条只有 disconnect 够得着", () => {
 		const h = harness(null);
 		h.setLinks([link({ token: "新的" })]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
 	});
 
 	it("新建的接入不算「token 换了」—— 上一轮名单里没有它", () => {
 		const h = harness(null);
 		h.setLinks([link(), link({ id: "link-new", token: "另一条" })]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).not.toHaveBeenCalled();
 	});
 
 	it("什么都没变 → 不动它(reconcile 每次配置变更都会跑)", () => {
 		const h = harness();
-		h.adapter.reconcile?.([]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
+		h.reconcile();
 		expect(h.disconnect).not.toHaveBeenCalled();
+	});
+
+	/** 登记即启动只订变更,**不立刻对一次账** —— 名单在 start 之前就换了 token 也不在 start 那一刻踢。 */
+	it("start 不立刻对账 —— 只订连接变更,变更一声才对", () => {
+		const h = harness();
+		// harness 已经 start 过;此时名单换了 token,没有谁叫它,就不该有动静。
+		h.setLinks([link({ token: "新的" })]);
+		expect(h.disconnect).not.toHaveBeenCalled();
+		h.reconcile();
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
+	});
+
+	it("接入名单(设置)动了,桥自己叫的 reconcile() 同样对账;stop 是空操作、不抛", () => {
+		const h = harness();
+		h.setLinks([]);
+		h.adapter.reconcile();
+		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);
+		expect(() => h.adapter.stop()).not.toThrow();
 	});
 
 	/** 删一条连接不该断谁 —— 连接是一个 bot,断不断看的是接入。 */
 	it("连接删光了、接入还在 → 会话留着", () => {
 		const h = harness();
 		h.setConnections([]);
-		h.adapter.reconcile?.([]);
+		h.reconcile();
 		expect(h.disconnect).not.toHaveBeenCalled();
 	});
 });

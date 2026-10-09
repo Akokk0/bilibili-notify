@@ -20,6 +20,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { createOnebotAdapter } from "../onebot.js";
 
 function makeLogger() {
@@ -213,40 +214,40 @@ describe("onebot — 小程序卡能力探测", () => {
 	it("第一次 reconcile 对 http 连接直接探(它没有「连上」这一刻)", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		ad.reconcile?.([obConnection()]);
+		reconcileAdapter(ad, [obConnection()]);
 		await waitFor(() => capsOf(ad).miniAppCard.state === "supported");
 		expect(calledPath(0)).toBe("http://nb:3000/get_mini_app_ark");
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("配置没变的 reconcile 不动缓存、不重探 —— 健康探测每五分钟写回 testStatus 就会触发一次", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		ad.reconcile?.([obConnection()]);
+		reconcileAdapter(ad, [obConnection()]);
 		await waitFor(() => capsOf(ad).miniAppCard.state === "supported");
 
-		ad.reconcile?.([obConnection()]);
-		ad.reconcile?.([obConnection()]);
+		reconcileAdapter(ad, [obConnection()]);
+		reconcileAdapter(ad, [obConnection()]);
 		await sleep(30);
 		expect(capsOf(ad).miniAppCard.state).toBe("supported");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		ad.dispose?.();
+		ad.stop();
 	});
 
 	it("配置变了(指向别的实现)→ 丢掉旧答案重探;连接没了 → 答案一起没了", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
-		ad.reconcile?.([obConnection()]);
+		reconcileAdapter(ad, [obConnection()]);
 		await waitFor(() => capsOf(ad).miniAppCard.state === "supported");
 
 		fetchMock.mockResolvedValueOnce(failFrame(1404));
-		ad.reconcile?.([obConnection({ baseUrl: "http://other:3000" })]);
+		reconcileAdapter(ad, [obConnection({ baseUrl: "http://other:3000" })]);
 		await waitFor(() => capsOf(ad).miniAppCard.state === "unsupported");
 		expect(calledPath(1)).toBe("http://other:3000/get_mini_app_ark");
 
-		ad.reconcile?.([]);
+		reconcileAdapter(ad, []);
 		expect(capsOf(ad).miniAppCard.state).toBe("unknown");
-		ad.dispose?.();
+		ad.stop();
 	});
 });
 

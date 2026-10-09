@@ -101,6 +101,7 @@ export {
 	type InboundSinks,
 	inboundIdentity,
 	type PlatformAdapter,
+	type PlatformAdapterContext,
 	type ProbeResult,
 } from "./push-source";
 export * from "./schema";
