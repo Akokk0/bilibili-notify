@@ -159,7 +159,7 @@
 |---|---|---|
 | 主人私聊 | `sendToMaster` / `sendPrivateMsg` / `sendErrorMsg` | 强制私聊，**不受全局静音管** —— 指令回复走的就是这条，挡掉的话主人只会看到指令毫无反应 |
 | 手动发一条 | `push.sendToTarget` —— 连接自测、卡片预览发送、AI 试一句、锐评投递 | 走同一套重试与 dispatcher，但**不查 routing、不落历史**，也不过静音 / 免扰（人工补发同样走它，见 ⑥） |
-| 链接解析回卡 | `createLinkParser` 的 `send` | **根本不进 `PushRouter`**：按收到那一帧的连接直接找 adapter 回源群 |
+| 链接解析回卡 | `createLinkParser` 的 `send`（`runtime/link-reply.ts`） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到收到那一帧的连接上的源群；不过闸、不落历史、不重试，连接停用或不可达就不回 |
 
 devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md](./devtools.md)。
 
