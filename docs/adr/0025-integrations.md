@@ -61,6 +61,7 @@
     - 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportRejections` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。拓展契约从 v2 的 reject 改成这样。
     - 请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状，不抛错（码见 ADR-0026）：超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`；取图 404 回 `not_found`，超 8MB、不是图、内网地址回 `invalid`，超时回 `timeout`，网络或上游 5xx 回 `unavailable`。
     - 理由：被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；B 站的上报被拒就是 BN 的 bug，靠对拍守卫兜。
+    🔗 **2026-10-09 表名 `reportRejections` 改成 `reportDiscrepancies`**：主人指出「被拒」只说得上三种结果里的一种（整条拒），丢了几格与这一轮没推都不是；`Discrepancy`（出入）指「报上来的和 BN 实际处理的不一样」，三种都盖得住。下面取代表里 ADR-0019 决策 60 那一行同样照此读（3a-09 已落，见 [phase-3a-plan.md](../1.0/phase-3a-plan.md)）。
 11. **问题表只有一种形状，全在内存**（修订 ADR-0021 决策 16、47）：`Problem { reporter: IntegrationKey | "core", about?: { subscriptionId } | { connectionId }, code, message, since }`。
     - 一条生死规矩：报的人 `resolveProblem` 清；报的人停下，它报的全清；对象删了，关于它的全清。
     - 来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，code 表明是哪个模块（如 `renderer_unavailable`）。

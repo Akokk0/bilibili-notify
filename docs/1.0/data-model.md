@@ -142,7 +142,7 @@ interface Problem {                    // 全在内存，不存盘
 - **一条生死规矩**：报的人 `resolveProblem` 清；报的人停下，它报的全清；对象（订阅、连接）删了，关于它的全清。
 - **`about` 谁填**：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，`code` 表明是哪个模块（如 `renderer_unavailable`；`core` 段设置坏了记 `settings_invalid`）。
 - 同一个报的人、同一个对象、同一个 code 算一条；重复报只更新 `message`、不重置 `since`（照原先「按 code 做键」的规矩延伸，施工时核）。
-- 与 `reportRejections` 分开：上报被拒或被丢格记进该集成的 `reportRejections` 表，不是问题（内置集成被拒就是 BN 的 bug，只打错误日志）。
+- 与 `reportDiscrepancies` 分开：上报被拒或被丢格记进该集成的 `reportDiscrepancies` 表，不是问题（内置集成被拒就是 BN 的 bug，只打错误日志）。
 
 ## 来源描述符
 
@@ -701,7 +701,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `ctx.report("problem" / "problem-resolved")` 与 `level`；`SubscriptionState.problem` | `reportProblem` / `resolveProblem` 与 `notify?: boolean`；问题表 `Problem`，全在内存，订阅运行态不再存 |
 | `SourceAuth.secrets{ export, import, redactPatterns }` | 删掉；临时凭据用 `ctx.redact(value)` |
 | `descriptor.features` / `extras`；清单 `display{ … }` + `events` | `supportedFeatures` / `supportedExtras`；摊平成 descriptor 同名字段，删 `SUBSCRIPTION_EVENT_FEATURES` |
-| `ExtensionDTO.reportProblems` 这一族 | `InstalledExtensionView.reportRejections` / `ReportRejectionView` / `extension-report-rejections-changed`（上报被拒，每个集成一张，与问题表分开） |
+| `ExtensionDTO.reportProblems` 这一族 | `InstalledExtensionView.reportDiscrepancies` / `ReportDiscrepancyView` / `extension-report-discrepancies-changed`（上报出入：整条拒、丢了几格、这一轮没推都记在这；10-09 主人把原定的 `Rejection` 换成 `Discrepancy`，因为「被拒」只对其中一种；每个集成一张，与问题表分开） |
 | `LiveStatusResult.state`、`"ended"`、`reason` | 结果形状：成功 `ok: true` + `kind`（`"live"` / `"offline"`），失败 `ok: false` + `code` + `message` |
 | `trigger: "signal" / "status"`；`status()`；`onSubscriptionAdded(sub)`；`LiveSession.last` | `"start-signal" / "status-signal"`；`health()`（只交 `SourceHealth { summary }` 一行字）；删掉（与 `onSubscriptionsChanged` 重复）；`lastDetails` |
 | ⚠️ 面板在播列表 `LiveListenerSnapshot.viewers`（装的是累计观看的排版字符串「1.2万」） | `totalViewers: number`，**不是** `currentViewers` |

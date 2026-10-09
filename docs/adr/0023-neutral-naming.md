@@ -85,6 +85,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 14. **三路审查的机械改名整批采纳**：推送（如订阅顶层 `extras` → `extraTargets`、`retryOf` → `repushOf`、`testStatus` → `probeStatus`）、订阅（如 `reportProblems` 这一族 → `reportRejections`，把「上报被拒」和来源自报的问题分开）、配置（如全局 `roastSchedule` → `rankingReport`、`app` 拆成 `logging` / `history` / `timezone`）。逐条对照以 [docs/1.0/data-model.md](../1.0/data-model.md) 改名对照里订阅、推送、配置三张表为准。
     - ⚠️ 两个机械替换会改错的坑：面板在播列表的 `viewers` 装的是累计观看（还是排好版的字符串），要改成 `totalViewers: number`，**不是** `currentViewers`；B 站接口的数字错误码原先占着 `code`，统一错误体以后挪到 `upstreamCode`。
     🔗 **2026-09-28**：`probeStatus` 装的是对象，按后缀表改叫 `probeState`，三态取值放在里面的 `status`（决策 15）。
+    🔗 **2026-10-09 `reportRejections` 这一族改叫 `reportDiscrepancies`**：主人指出「被拒」只说得上三种结果里的一种（整条拒），丢了几格与这一轮没推都不是；`Discrepancy`（出入）指「报上来的和 BN 实际处理的不一样」，三种都盖得住。逐条对照见 data-model.md 改名对照的订阅表；词表加了 `Discrepancy` 一行（[naming.md](../agents/conventions/naming.md)）。
 
 ### 09-28 补的命名规矩
 

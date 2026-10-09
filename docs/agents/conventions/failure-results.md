@@ -51,7 +51,7 @@
 
 7. **HTTP 非 2xx 的错误体是平铺的 `{ code, message }`**，可选附加只有两格：`issues`（逐条原因，`Issue[]`；拓展设置那处多一个 `op?`）与 `upstreamCode`。不嵌套成 `{ error: { code, message } }`，不用 `err`、`error` 代替 `code` + `message`；要加别的附加字段先问主人。路由一律经服务端的 `respondFailure(c, failure, status?)` 回，状态码从 `code` 推，类型叫 `ErrorResponse`；4xx 的错误体不带 `ok`。「做一件事、回报结果」的接口（测试推送、预览）照旧回 200，体是 `Result<T>`。面板把非 2xx 解析一次成 `ApiError`，错误提示只读 `code` + `message`，逐格标红读 `issues`，分情况只按 `code` 判。
 
-8. **ctx 上「请求类」的调用回结果形状，不抛。** 例：`state` / `secrets` 的写与删、`fetchImage`、`storeImage`。超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`，取图 404 回 `not_found`，超时回 `timeout`。「上报类」调用（`reportProblem`、`resolveProblem` 等）保持 `void`，被拒记进 `reportRejections`，不把结果回给来源。
+8. **ctx 上「请求类」的调用回结果形状，不抛。** 例：`state` / `secrets` 的写与删、`fetchImage`、`storeImage`。超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`，取图 404 回 `not_found`，超时回 `timeout`。「上报类」调用（`reportProblem`、`resolveProblem` 等）保持 `void`，被拒记进 `reportDiscrepancies`，不把结果回给来源。
 
 9. **「能不能」的预检保留 `can`**，原因用 `code` + `message`。
 

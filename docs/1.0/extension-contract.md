@@ -215,13 +215,13 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 上报种类（原 `SubscriptionReportKind` 五种）收成 `post` / `live` / `profile`。
 
-**被拒不回话**：报了没声明的种类、外部 id 不合法、形状坏了，整条拒；认识的选填格值坏了只丢那一格。被拒与丢格都记进该拓展的 `reportRejections`（拓展详情页 `InstalledExtensionView` 上的那个框）并打 warn 日志，拓展自己不知道；报的人不在名单里照旧静默忽略。`reportRejections` 与拓展自报的问题是两张表。理由：被拒都是拓展自己的 bug，运行时改不了，回结果只会诱导它重报。
+**被拒不回话**：报了没声明的种类、外部 id 不合法、形状坏了，整条拒；认识的选填格值坏了只丢那一格。被拒与丢格都记进该拓展的 `reportDiscrepancies`（拓展详情页 `InstalledExtensionView` 上的那个框）并打 warn 日志，拓展自己不知道；报的人不在名单里照旧静默忽略。`reportDiscrepancies` 与拓展自报的问题是两张表。理由：被拒都是拓展自己的 bug，运行时改不了，回结果只会诱导它重报。
 
 照旧不变的规矩：
 
 - 判新、去重、限流归拓展；BN 报什么收什么。开机第一轮只记基线、别报。
 - 按外部 id 报，`sourceKey` 由宿主按 ctx 补（拓展冒充不了别家）；核心按身份查订阅，正常一条，老数据里遗留的重复各分一份，查不到或已停用就丢弃，并兜底再查一次名单。停用的订阅收不到事件与直播状态，也不刷资料：资料缓存停在停用那一刻，重新启用后下一轮刷新（09-27 拍板，改掉 v2 的「资料照样生效」）。
-- 多交一格宿主不认识的，整条拒；认识的选填格值坏了只丢那一格；丢了什么记进 `reportRejections` 与日志。
+- 多交一格宿主不认识的，整条拒；认识的选填格值坏了只丢那一格；丢了什么记进 `reportDiscrepancies` 与日志。
 - 直播 `status` 不触发推送；开播卡 / 下播卡只由事件触发。周期「正在直播」由核心计时、调 `fetchLiveStatus`（见 [subscription-sources.md](./subscription-sources.md)「直播」）。
 - 过滤（屏蔽转发 / 文章 / 图集 / 视频、关键词、正则）对拓展作品与 B 站一视同仁：看 `Post` 上有没有，不再只看文字。
 

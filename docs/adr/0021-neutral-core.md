@@ -230,6 +230,7 @@ ADR-0019 把订阅这口开给拓展时，定了「中立指结构，不改名�
 
     `linkResolver`、`commands`、`aiTools` 暂不对拓展开放：核心的接口与登记表照做，B 站照用，等写抖音拓展时再定。以后加进来，只是清单里多几个可选键，不用抬大版本。
     🔗 **2026-09-28**：ctx 改成 `IntegrationContext` 加各自特有的一层，新增 `http`、`settings`；上报类改成 `void`，被拒记进 `reportRejections`（ADR-0025 决策 1、6、10）。
+    🔗 **2026-10-09**：上一条里的 `reportRejections` 改叫 `reportDiscrepancies`（ADR-0025 决策 10 下的 🔗）。
     🔗 **2026-09-28**：`commands` 那张登记表 1.0 不造（ADR-0031 决策 1）；`linkResolver`、`aiTools` 照原句。
     🔗 **2026-09-28**：清单不收 `membershipPrograms` 与 `supportedExtras`：1.0 的拓展声明不了会员与直播互动类特性，这两格填了也用不上。
 39. **来源的运行状态由宿主托管，接口是 `ctx.state`（Q77，撤回 Q70 的 `ctx.dataDir`）**：

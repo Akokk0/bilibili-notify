@@ -125,14 +125,14 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 | 外部 id 不在名下（多半是订阅刚删） | 忽略、正常 resolve，只记 debug |
 | 名下订阅都停用了 | 事件与直播状态不往下发，也不进首页在播；资料照样生效 |
 
-- 拒 = 拓展那头 reject 一个带原因的 `Error`（拓展不接这个 Promise 也不会变成 unhandledRejection）。拒与丢格都只从 ctx 里**唯一**的出口 `reportProblem` 走：日志一行 + `onSubscriptionReportProblem` → `extensions/report-problems.ts`（每个拓展最近 20 条、只在内存、卸载清空）→ `ExtensionDTO.reportProblems` → 拓展详情页「上报问题」框（决策 60）。不私聊主人 —— 系统性的 bug 就是每条作品一条私聊。
+- 拒 = 拓展那头 reject 一个带原因的 `Error`（拓展不接这个 Promise 也不会变成 unhandledRejection）。拒与丢格都只从 ctx 里**唯一**的出口 `recordDiscrepancy` 走：日志一行 + `onReportDiscrepancy` → `extensions/report-discrepancies.ts`（每个拓展最近 20 条、只在内存、卸载清空）→ `ExtensionDTO.reportDiscrepancies` → 拓展详情页「上报出入」框（决策 60）。不私聊主人 —— 系统性的 bug 就是每条作品一条私聊。
 - 施工定下的数：时刻一律**毫秒**、不早于 2000 年（交成秒当场报出来）；图一律交 `Uint8Array`、按魔数认格式、收下的是 BN 自己拷的一份；作品图 png / jpeg / webp / gif，单张 ≤ 8 MiB、每条 ≤ 30 张、整条合计 ≤ 64 MiB；头像只收 png / jpeg / webp；作品的话题（`topics`，话题名、不带 `#`，两头的 `#` 与空白先剥掉）每个 1–64 字、最多 20 个，坏的只丢那一项，重复的去掉（决策 55 的 09-24 🔗）。
 - 🔴 **判新归拓展，BN 不兜底**（决策 53）：不判新、不按作品 id 去重、不限流，报什么收什么；开机第一轮只记基线不报是拓展自己的事（假源照这条写）。
 - 今天的消费者：
   - 作品推送（`runtime/extension-posts.ts` 的 `bindExtensionPosts`，收 `post`）：每条订阅一道串行闸 → 再核订阅在、启用、拓展在跑 → 动态总开关 → 翻成中立的 `Post`（`postFromReport`）→ `filterPost`（关键词 / 正则 / 白名单加四个类型开关，对拓展作品和 B 站一视同仁）→ `extensionPostWork`（`runtime/extension-post-work.ts`）包成中立作品 → 与 B 站动态同一份的 `deliverWork`。推出去之后落历史的拓展行、可以人工重推；途中意外抛错只记日志不重试（决策 77）。细节见 [push.md](./push.md) ①。
   - 资料落盘（`runtime/reported-profiles.ts`，收 `profile`）。
-  - 拓展在播表（`runtime/extension-live.ts`，收 `liveStart` / `liveEnd` / `liveStatus`，表变了发 `extension-live-changed`，首页经 `/api/live/listening` 合进来）。开播 / 下播 / 周期「正在直播」卡、重启补报、断流接续由 `runtime/extension-live-push.ts` 的 `bindExtensionLivePush` 推（决策 57 / 58 / 61 / 67）：每条订阅一套状态与一道串行闸，最新状态取在播表；周期推送要这条订阅开着 `liveStreaming`、且源声明了开播与下播两种事件，还只在上次推送后收到过新状态时才推，否则记一条「跳过一轮」进上报问题框；重启补报要 `liveStart.catchUpOnBoot` 且开播开着；拓展停了 / 订阅停用 / 三个直播特性（开播、正在直播、下播）都关，计时器与等待中的下播卡作废、不补推。
-- 相关事件 `subscription-reported` / `subscription-profiles-changed` / `extension-live-changed` / `extension-stopped` / `extension-report-problems-changed` 的语义见 [events.md](./events.md)。🔴 拓展的在播**不发 `live-state-changed`**，资料变了**不发 `config-changed "subscriptions"`**。
+  - 拓展在播表（`runtime/extension-live.ts`，收 `liveStart` / `liveEnd` / `liveStatus`，表变了发 `extension-live-changed`，首页经 `/api/live/listening` 合进来）。开播 / 下播 / 周期「正在直播」卡、重启补报、断流接续由 `runtime/extension-live-push.ts` 的 `bindExtensionLivePush` 推（决策 57 / 58 / 61 / 67）：每条订阅一套状态与一道串行闸，最新状态取在播表；周期推送要这条订阅开着 `liveStreaming`、且源声明了开播与下播两种事件，还只在上次推送后收到过新状态时才推，否则记一条「跳过一轮」进上报出入框；重启补报要 `liveStart.catchUpOnBoot` 且开播开着；拓展停了 / 订阅停用 / 三个直播特性（开播、正在直播、下播）都关，计时器与等待中的下播卡作废、不补推。
+- 相关事件 `subscription-reported` / `subscription-profiles-changed` / `extension-live-changed` / `extension-stopped` / `extension-report-discrepancies-changed` 的语义见 [events.md](./events.md)。🔴 拓展的在播**不发 `live-state-changed`**，资料变了**不发 `config-changed "subscriptions"`**。
 
 ## 高级规则与女仆查订阅（决策 64）
 

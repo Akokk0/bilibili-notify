@@ -135,7 +135,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 - 原 `runtime/extension-*` 那批文件按功能归 `posts/`、`live/`（中立场次引擎）、`subscriptions/`、`stats/`。
 - `platforms/` 只放内置适配器的实现。原先放在里面的登记表与分发是中立件，3a-14 已和 `sink/` 一起挪进 `push/`（`push/registry.ts`、`push/dispatch.ts`、`push/target-dispatcher.ts`）。核心不许 import `platforms/`，只有 `compose.ts` 能（推送守卫①）。
 - `link-preview/` 由 `runtime/link-parser.ts` 与 `link-scope.ts` 改来（原定的 `link-cards/` 作废，ADR-0029）。
-- 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-09 开工时定。
+- 集成宿主住 `integrations/`（10-07 主人定）：`IntegrationContext` 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 `Registry<T>`。各张具体的登记表住各自的功能目录（`subscriptions/`、`push/`、`link-preview/`、`ai/`），来源与适配器专用的那一层 ctx 也住那里；`extensions/` 只留拓展特有的（装载、市场、安装、设置页、视图）。被否的备选：留在 `extensions/`（B 站的启停会住在一个叫「拓展」的目录里）；放 `runtime/`（它最后只留总线与编排）。问题表放哪 3a-12 开工时定。
 - jieba 的 wasm 跟着 `live/` 进打包清单，改完要跑 `vp run build:update-payload`。
 - 被否的备选：适配文件散进各功能目录（B 站代码散在十几处，守卫只能靠文件名约定）；`sources/bilibili/` + `sources/extension/`（多一层，还把 BN 自己的中立逻辑挂成了「对接拓展」）。
 - `bilibili/devtools/` 被否的备选：放 `src/devtools/bilibili/`、B 站句柄从外面注入。
@@ -188,7 +188,7 @@ interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已�
 | `state` / `secrets` | 同一个 `KeyValueStore { get, set, delete }`：`get` 同步（宿主在 `start` 前读进内存），写由宿主原子落盘。`state` 明文、不进备份、不脱敏，单键 64KB、每个集成 1MB，`http.` 开头的键归宿主（浏览器身份）；`secrets` 主密钥加密、一个集成一个文件、只进完整备份、值里每段字符串按原文脱敏（很短的不遮），每个集成 256KB，`http.` 开头的键归宿主（cookie 罐） |
 | `http` | `packages/http` 的客户端，每个集成一个：cookie 由宿主自动存进该集成的 `secrets`；浏览器身份生成一次存进 `state`、重启照用，只在发版把版本区间前挪、存的低于下限时升级（只升不降）；重试、退避、限流归集成；整体不拦内网（局域网里的 RSSHub 要连得上）；1.0 对拓展整套开放 |
 | `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头）；拦内网、8MB、嗅探、超时这一层只在这条路上，每一跳重定向都查 |
-| 调用被拒或失败 | 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportRejections` 表并打 warn 日志（内置集成被拒就是 BN 的 bug，只打错误日志）；请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状、不抛错 |
+| 调用被拒或失败 | 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportDiscrepancies` 表并打 warn 日志（内置集成被拒就是 BN 的 bug，只打错误日志）；请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状、不抛错 |
 
 ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources.md)「SourceContext」与 [extension-contract.md](./extension-contract.md)。
 
