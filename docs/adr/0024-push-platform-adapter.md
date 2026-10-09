@@ -37,6 +37,7 @@
 9. **目标上删掉 `platform`**，平台一律经 `connectionId` 从连接取（它早就只是一份拷贝）。
     - 补两道守卫：改 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。
     - 连接不在了的目标只隔离那一条；作用域键去掉平台前缀。
+    - 🔗 10-09（3a-21）已落：两格都删了，迁移修订号 39、备份版本 12。推送路由不再读平台，改问派发器的 `supportsAtAll(targetId)`（主人定；3a-22 改问适配器能力时只换它里面的实现）。「改 `connectionId` 时比新旧连接的平台」在旧连接已经不在时放行（正常操作造不出悬空目标，这条路留给手动修数据）。「整节替换」那道守卫落成三种：只换连接则有目标挂着的连接平台不能变，只换目标则同 id 改挂按前一条判，两节一起换不比。`reachability`（`testStatus` 改名）这一片没做。
     - `PushTarget = { id, name, connectionId, enabled, kind: "session", scope, address, parentAddress?, reachability? } | { …, kind: "endpoint", managedBy: "connection", reachability? }`。
 10. **连接设置的校验**：保存时适配器在场就按 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。读盘时逐条校验，不过的只隔离那一条（不交给适配器、不投递；面板显示「设置不合法」与原因，进问题框；盘上原文不动），BN 照常开机。只有外壳（id / name / adapterKey / platform）坏了才挡开机。撤下的旧形状写成明确的名单。
     - 「坏条目不许被悄悄吃掉」的初衷保留：隔离是显式的，面板与问题框都看得见。
