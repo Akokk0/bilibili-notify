@@ -293,7 +293,7 @@ type PushTarget =
 | 链接预览回复 | 不进 `PushRouter`：`link-preview/` 的闸门过完（冷却键「群 + 解析器 + canonicalId」），经 `TargetDispatcher.sendToAddress` 回到消息进来的那个会话；解析经 `LinkResolver` 登记表 |
 | 指令回复 | `CommandDef.run(values, ctx: { reply(payload), signal })` 返回结果形状；`reply` 经 `sendToAddress` 回到发指令的那个会话，`login [来源]` 的二维码（取自 `AuthState`）也经它发图。返回失败时框架回「『{指令名}』没办成：{message}」；抛错回「出错了，详情在日志里」并记错误日志 |
 
-`TargetDispatcher.sendToAddress(connectionId, address, payload)` 只给后两条用：不进路由、不过闸、不落历史；但要查 `isAvailable`，结果带 code，由截流统一记，不重试。链接回复原先现造的临时目标删掉。
+`TargetDispatcher.sendToAddress(connectionId, session, payload)`（`session` 是 `SessionRef { scope, address, parentAddress? }`）只给后两条用：不进路由、不过闸、不落历史；但要查 `isAvailable`，结果带 code，由截流统一记，不重试。链接回复原先现造的临时目标删掉。
 
 ### 出口咽喉：只有 `TargetDispatcher` 能发送
 

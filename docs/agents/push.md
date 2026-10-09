@@ -85,7 +85,7 @@
 | 问法 | 判据 | 谁在问 |
 |---|---|---|
 | `isEnabled` | 目标 / 连接没被停用 | ③ 选目标时 |
-| `isAvailable` | 连接在 + 平台实现在 + adapter 说可达 | ④ 每次重试前 |
+| `isAvailable` | 目标 / 连接没被停用 + 目标与连接的平台对得上（这两样派发器自己查，适配器不再各查一遍）+ 连接在 + 平台实现在 + adapter 说可达。适配器只拿到去向 `DestinationRef`，不是整条目标 | ④ 每次重试前 |
 | `send` | `adapterForConnection` → 平台 adapter | ④ |
 
 ⚠️ **按连接找 adapter，不按消息里报的平台名找** —— 拓展驮进来的连接后面挂着 telegram 时平台报的是 telegram，而认领它的 adapter 按的是拓展 id。
