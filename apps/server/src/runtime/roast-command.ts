@@ -21,7 +21,7 @@ import {
 	type Logger,
 	sameChatIdentity,
 } from "@bilibili-notify/internal";
-import type { ConfirmationWindow } from "./command-dispatcher.js";
+import type { CommandReplyHandler, ConfirmationWindow } from "./command-dispatcher.js";
 import type { RoastDraft, RoastDraftStore } from "./roast-draft-store.js";
 
 export type RoastCommand =
@@ -53,8 +53,6 @@ export interface RoastCommandHandlerOptions {
 	masterIdentity: () => ChatIdentity | undefined;
 	/** 批准之后把这份草稿真的发出去。 */
 	deliver: (draft: RoastDraft) => Promise<void>;
-	/** 回一句话给主人(用的是既有的私聊通道)。 */
-	reply: (text: string) => Promise<void>;
 }
 
 export interface RoastCommandHandler {
@@ -75,7 +73,7 @@ export interface RoastCommandHandler {
 export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): RoastCommandHandler {
 	const { drafts, logger } = opts;
 
-	async function run(cmd: RoastCommand): Promise<void> {
+	async function run(cmd: RoastCommand, reply: CommandReplyHandler): Promise<void> {
 		if (cmd.kind === "none") return;
 
 		const pending = drafts.list();
@@ -90,7 +88,7 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		if (cmd.id) {
 			target = pending.find((d) => d.id === cmd.id);
 			if (!target) {
-				await opts.reply(`没找到编号 ${cmd.id} 的待审锐评，可能已经处理过或者超时了。`);
+				await reply(`没找到编号 ${cmd.id} 的待审锐评，可能已经处理过或者超时了。`);
 				return;
 			}
 		} else if (pending.length === 1) {
@@ -99,7 +97,7 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 			const list = pending
 				.map((d) => `${d.id}（${d.kind === "board" ? "周报" : "单人"}）`)
 				.join("、");
-			await opts.reply(
+			await reply(
 				`现在有 ${pending.length} 份待审：${list}。请带上编号，比如「y ${pending[0]?.id}」。`,
 			);
 			return;
@@ -109,13 +107,13 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		const taken = await drafts.take(target.id);
 		// take 会再判一次过期,并且是原子的 —— 两条指令同时进来只有一条拿得到。
 		if (!taken) {
-			await opts.reply(`编号 ${target.id} 刚刚已经被处理或超时了。`);
+			await reply(`编号 ${target.id} 刚刚已经被处理或超时了。`);
 			return;
 		}
 
 		if (cmd.kind === "reject") {
 			logger.info(`[roast-cmd] 主人丢弃了草稿 ${taken.id}`);
-			await opts.reply(`好的，${taken.id} 已经丢掉了～`);
+			await reply(`好的，${taken.id} 已经丢掉了～`);
 			return;
 		}
 
@@ -129,7 +127,11 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 	 * 鉴权在这里**再做一次**,虽然 dispatcher 那边已经鉴过:两条路各写一份的话,
 	 * 迟早有一边把「不是主人也放行」写漏,而这条链路的代价是把没审过的锐评发出去。
 	 */
-	async function tryHandle(msg: InboundPrivateMessage, meta: InboundMeta): Promise<boolean> {
+	async function tryHandle(
+		msg: InboundPrivateMessage,
+		meta: InboundMeta,
+		ctx: { reply: CommandReplyHandler },
+	): Promise<boolean> {
 		// 不是主人就当没看见:不回复、不报错。回一句「你没权限」等于告诉对方
 		// 这里有个接口可以试探。
 		if (!sameChatIdentity(opts.masterIdentity(), inboundIdentity(msg, meta))) return false;
@@ -139,7 +141,7 @@ export function createRoastCommandHandler(opts: RoastCommandHandlerOptions): Roa
 		if (cmd.kind === "none") return false;
 
 		try {
-			await run(cmd);
+			await run(cmd, ctx.reply);
 		} catch (err) {
 			logger.warn(`[roast-cmd] 处理指令失败: ${err instanceof Error ? err.message : String(err)}`);
 		}

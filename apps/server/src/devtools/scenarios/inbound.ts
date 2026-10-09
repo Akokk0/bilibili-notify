@@ -17,7 +17,7 @@ import { DevParamError, type DevScenarioDef } from "../registry.js";
 
 /**
  * A4:私聊指令 / 群链接 —— 直接调接线层的两个入站口,与 adapter 收到真帧之后调的是同一个
- * 函数(指令分发 / 链接解析),回复走真链路:指令回主人那条私聊,链接回到来源群。开着截流
+ * 函数(指令分发 / 链接解析),回复走真链路:指令回到发指令的那个私聊,链接回到来源群。开着截流
  * 就都拦得住。
  */
 
@@ -44,7 +44,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		group: "event",
 		title: "私聊指令",
 		icon: "feather",
-		desc: "当作一条私聊喂给指令分发器。正文留空 = 当前前缀 + help;userId 省略 = 配置里的主人(所以会被当真),给别人的号就能验「不是主人就不理」。回复走真链路。",
+		desc: "当作一条私聊喂给指令分发器。正文留空 = 当前前缀 + help;userId 省略 = 配置里的主人(所以会被当真),给别人的号就能验「不是主人就不理」。从主人目标所在的那条连接进来,回复回到那个会话。",
 		params: [
 			// 默认值不能把前缀烤进去:这张声明表在 createDevtools 那一刻就定型了,而前缀是
 			// 系统页上随时能改的。改完面板还举着旧前缀,照它跑一次分发器根本不认。
@@ -54,26 +54,32 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 		run(params) {
 			const handler = deps.inbound()?.private;
 			if (!handler) throw new DevParamError("指令分发器还没接上(引擎没起来?)");
+			// 回复经 `sendToAddress` 回到发指令的那个会话,所以 connectionId 是必需的:取主人那个
+			// 私聊目标所在的连接(平台也按它走,鉴权比的是三坐标)。没有主人目标就没有可模拟的
+			// 来处 —— 明说,不拿空串糊弄过去。
 			const master = deps.commands().master;
+			const masterTarget = master
+				? deps
+						.targets()
+						.find(
+							(t) =>
+								t.kind === "session" &&
+								t.scope === "private" &&
+								t.platform === master.platform &&
+								t.address === master.address,
+						)
+				: undefined;
+			if (!master || !masterTarget) {
+				throw new DevParamError("没有主人目标(系统页 · 主人私聊),没法模拟指令");
+			}
 			const given = typeof params.userId === "string" ? params.userId : "";
-			const userId = given !== "" ? given : master?.address;
-			if (!userId) throw new DevParamError("没配主人(系统页 · 主人私聊),得给一个发信人");
+			const userId = given !== "" ? given : master.address;
 			// 前缀现取 —— 它随时可能被改过。
 			const given2 = typeof params.text === "string" ? params.text : "";
 			const text = given2 !== "" ? given2 : `${deps.commands().prefix}help`;
-			// 指令分发用不上 connectionId(它回主人那条配置好的私聊),但**平台是要比对的**:
-			// 鉴权换成三坐标之后,平台喂错这一枪就打不中,场景也就验不出东西来。所以按
-			// 主人自己那条私聊的平台走;没配主人时(上面已经要求手填发信人)退到第一个
-			// 启用的聊天连接。
-			const source = deps
-				.connections()
-				.find(
-					(a): a is DirectConnection =>
-						a.enabled && isDirectChat(a) && (!master || a.platform === master.platform),
-				);
 			handler(
 				{ userId, text },
-				{ connectionId: source?.id ?? "", platform: master?.platform ?? source?.platform ?? "" },
+				{ connectionId: masterTarget.connectionId, platform: master.platform },
 			);
 			return { summary: `已当作 ${userId} 私聊了一句「${text}」,回复走真链路。` };
 		},

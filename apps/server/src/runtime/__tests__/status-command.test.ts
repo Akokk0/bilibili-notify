@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { recordingCtx } from "../../__tests__/support/command-ctx.js";
 import { createStatusCommand, type StatusReport } from "../status-command.js";
 
 const NOW = 1_786_500_000_000;
@@ -27,12 +28,9 @@ function setup(report: Partial<StatusReport> = {}) {
 	const replies: string[] = [];
 	const spec = createStatusCommand({
 		probe: () => ({ ...HEALTHY, ...report }),
-		reply: async (text) => {
-			replies.push(text);
-		},
 		now: () => NOW,
 	});
-	return { spec, replies, run: () => spec.run({} as never) };
+	return { spec, replies, run: () => spec.run({} as never, recordingCtx(replies)) };
 }
 
 describe("status 指令", () => {

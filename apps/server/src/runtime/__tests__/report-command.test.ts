@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
+import { recordingCtx } from "../../__tests__/support/command-ctx.js";
 import { createReportCommand, type ReportOutcome } from "../report-command.js";
 
 /** 手动控制的一轮运行:`finish` 之前一直挂着。 */
@@ -32,12 +33,14 @@ function setup(outcome: ReportOutcome = SENT) {
 	const run = vi.fn(async () => outcome);
 	const spec = createReportCommand({
 		run,
-		reply: async (text) => {
-			replies.push(text);
-		},
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 	});
-	return { spec, replies, run, fire: (days?: number) => spec.run({ days } as never) };
+	return {
+		spec,
+		replies,
+		run,
+		fire: (days?: number) => spec.run({ days } as never, recordingCtx(replies)),
+	};
 }
 
 describe("report 指令", () => {
@@ -57,14 +60,12 @@ describe("report 指令", () => {
 	it("先 ack,不等跑完", async () => {
 		const gate = deferred<ReportOutcome>();
 		const replies: string[] = [];
+		const ctx = recordingCtx(replies);
 		const spec = createReportCommand({
 			run: () => gate.promise,
-			reply: async (t) => {
-				replies.push(t);
-			},
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
-		const inflight = spec.run({} as never);
+		const inflight = spec.run({} as never, ctx);
 		await Promise.resolve();
 		expect(replies).toHaveLength(1);
 		expect(replies[0]).toContain("稍等");
@@ -79,16 +80,14 @@ describe("report 指令", () => {
 		const gate = deferred<ReportOutcome>();
 		const run = vi.fn(() => gate.promise);
 		const replies: string[] = [];
+		const ctx = recordingCtx(replies);
 		const spec = createReportCommand({
 			run,
-			reply: async (t) => {
-				replies.push(t);
-			},
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
-		const first = spec.run({} as never);
+		const first = spec.run({} as never, ctx);
 		await Promise.resolve();
-		await spec.run({} as never);
+		await spec.run({} as never, ctx);
 
 		expect(run).toHaveBeenCalledTimes(1);
 		expect(replies.at(-1)).toContain("还在跑");
@@ -107,20 +106,18 @@ describe("report 指令", () => {
 	// 一次异常把闸永久锁死的话,主人得重启服务才能再要一份周报 —— 而他绝想不到是这个。
 	it("跑炸了闸也要松开", async () => {
 		const replies: string[] = [];
+		const ctx = recordingCtx(replies);
 		const run = vi.fn(async () => {
 			throw new Error("模型超时");
 		});
 		const spec = createReportCommand({
 			run,
-			reply: async (t) => {
-				replies.push(t);
-			},
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
-		await spec.run({} as never);
+		await spec.run({} as never, ctx);
 		expect(replies.at(-1)).toContain("没成");
 
-		await spec.run({} as never);
+		await spec.run({} as never, ctx);
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
@@ -130,21 +127,24 @@ describe("report 指令", () => {
 	it("ack 回复失败,闸也要松开(不能卡死在「还在跑」)", async () => {
 		let ackShouldFail = true;
 		const replies: string[] = [];
-		const run = vi.fn(async () => ({ kind: "sent" }) as never);
-		const spec = createReportCommand({
-			run,
-			reply: async (t: string) => {
-				if (ackShouldFail && t.includes("在生成了")) {
+		const base = recordingCtx(replies);
+		const ctx = {
+			reply: async (payload: Parameters<typeof base.reply>[0]) => {
+				if (ackShouldFail && typeof payload === "string" && payload.includes("在生成了")) {
 					ackShouldFail = false;
 					throw new Error("adapter 瞬断");
 				}
-				replies.push(t);
+				return base.reply(payload);
 			},
+		};
+		const run = vi.fn(async () => ({ kind: "sent" }) as never);
+		const spec = createReportCommand({
+			run,
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
-		await spec.run({} as never).catch(() => {});
+		await spec.run({} as never, ctx).catch(() => {});
 		// 第二次必须能真的跑,而不是被卡死的闸挡回
-		await spec.run({} as never);
+		await spec.run({} as never, ctx);
 		expect(run).toHaveBeenCalled();
 	});
 

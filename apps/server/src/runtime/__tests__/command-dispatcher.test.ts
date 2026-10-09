@@ -9,6 +9,7 @@
  * 下面每条「静默」断言都在钉这件事:不只是「没执行」,而是**连 reply 都没有**。
  */
 
+import { fail, type NotificationPayload, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { extractPrivateMessage } from "../../platforms/onebot-inbound.js";
 import { createCommandDispatcher } from "../command-dispatcher.js";
@@ -31,7 +32,7 @@ function makeDispatcher(
 		name: string;
 		aliases?: string[];
 		signature?: string;
-		run: (values: Any) => Promise<void>;
+		run: (values: Any, ctx: Any) => Promise<void>;
 	}[],
 	master: string | null = MASTER,
 	prefix = "/",
@@ -40,17 +41,25 @@ function makeDispatcher(
 	// 声明出入参:回给主人的**那句话**本身也是断言对象(比如未知指令时有没有连带
 	// 给出建议),无参的替身会让 `mock.calls[0][0]` 连类型都取不到。
 	const reply = vi.fn(async (_text: string) => {});
+	// 回话经 `sendToAddress` 回到发指令的会话;文字载荷拆成 `reply` 的入参,方便按「那句话」断言,
+	// 完整的 (连接, 会话, 载荷) 在 `sendToAddress` 上。
+	const sendToAddress = vi.fn(
+		async (_connectionId: string, _session: Any, payload: NotificationPayload) => {
+			if (payload.kind === "text") await reply(payload.text);
+			return ok({ latencyMs: 0 });
+		},
+	);
 	// 配置是**现读**的:主人在面板上改完前缀 / 别名,reconcile 之后就该生效。
 	const config = { enabled: true, prefix, aliases: {} as Record<string, string[]> };
 	const dispatcher = createCommandDispatcher({
 		logger,
 		masterIdentity: () => (master === null ? undefined : { platform: PLATFORM, address: master }),
-		reply: reply as Any,
+		sendToAddress,
 		config: () => config,
 		commands,
 		confirmation,
 	});
-	return { dispatcher, reply, config };
+	return { dispatcher, reply, sendToAddress, config };
 }
 
 describe("鉴权门", () => {
@@ -101,7 +110,7 @@ describe("参数", () => {
 
 		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" }, META);
 
-		expect(run).toHaveBeenCalledWith({ 时长: 3 * 3600_000 });
+		expect(run).toHaveBeenCalledWith({ 时长: 3 * 3600_000 }, expect.anything());
 	});
 
 	it("参数不合法 → 告诉主人哪里错了,而且**不进** handler", async () => {
@@ -373,7 +382,7 @@ describe("别名", () => {
 
 		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 3h" }, META);
 
-		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 });
+		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 }, expect.anything());
 	});
 
 	it("没配别名的指令照常工作", async () => {
@@ -478,6 +487,7 @@ describe("配置", () => {
 		expect(confirmation.tryHandle).toHaveBeenCalledWith(
 			expect.objectContaining({ text: "y" }),
 			META,
+			expect.anything(),
 		);
 		expect(await confirmation.tryHandle.mock.results.at(-1)?.value).toBe(true);
 	});
@@ -580,7 +590,7 @@ describe("大小写", () => {
 
 		await dispatcher.handleMessage({ userId: MASTER, text: "/MuTe 3h" }, META);
 
-		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 });
+		expect(run).toHaveBeenCalledWith({ duration: 3 * 3600_000 }, expect.anything());
 	});
 
 	it("别名同样宽容", async () => {
@@ -590,5 +600,117 @@ describe("大小写", () => {
 		await dispatcher.handleMessage({ userId: MASTER, text: "/weekly" }, META);
 
 		expect(run).toHaveBeenCalledOnce();
+	});
+});
+
+describe("回话回到发指令的会话", () => {
+	/** 发信人与来的连接,都和「主人目标那条连接」(这里没有)无关:回话只认这条消息自己。 */
+	const FROM = { connectionId: "conn-from", platform: PLATFORM };
+
+	it("指令的 ctx.reply 经 sendToAddress 回到这条消息的连接 + 发信人(私聊)", async () => {
+		const { dispatcher, sendToAddress } = makeDispatcher([
+			{ name: "状态", run: async (_v, ctx) => void (await ctx.reply("在的")) },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, FROM);
+
+		expect(sendToAddress).toHaveBeenCalledExactlyOnceWith(
+			"conn-from",
+			{ scope: "private", address: MASTER },
+			{ kind: "text", text: "在的" },
+		);
+	});
+
+	it("分发器自己的回话(未知指令、参数写错)同样回到那里", async () => {
+		const { dispatcher, sendToAddress } = makeDispatcher([
+			{ name: "静音", signature: "<时长:duration>", run: async () => {} },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/不存在" }, FROM);
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音 一会儿" }, FROM);
+
+		expect(sendToAddress).toHaveBeenCalledTimes(2);
+		for (const call of sendToAddress.mock.calls) {
+			expect(call[0]).toBe("conn-from");
+			expect(call[1]).toEqual({ scope: "private", address: MASTER });
+		}
+	});
+
+	it("确认流拿到的 ctx.reply 也回到那里", async () => {
+		const confirmation = {
+			isWaiting: () => true,
+			tryHandle: vi.fn(async (_m: Any, _meta: Any, ctx: Any) => {
+				await ctx.reply("收到");
+				return true;
+			}),
+		};
+		const { dispatcher, sendToAddress } = makeDispatcher([], MASTER, "/", confirmation);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "y" }, FROM);
+
+		expect(sendToAddress).toHaveBeenCalledExactlyOnceWith(
+			"conn-from",
+			{ scope: "private", address: MASTER },
+			{ kind: "text", text: "收到" },
+		);
+	});
+
+	it("每条消息各造各的 reply:连接换了,回话跟着换", async () => {
+		const { dispatcher, sendToAddress } = makeDispatcher([
+			{ name: "状态", run: async (_v, ctx) => void (await ctx.reply("在的")) },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, FROM);
+		await dispatcher.handleMessage(
+			{ userId: MASTER, text: "/状态" },
+			{ connectionId: "conn-other", platform: PLATFORM },
+		);
+
+		expect(sendToAddress.mock.calls.map((c) => c[0])).toEqual(["conn-from", "conn-other"]);
+	});
+
+	it("reply 收消息体:图原样交给 sendToAddress", async () => {
+		const image: NotificationPayload = {
+			kind: "image",
+			image: { buffer: Buffer.from([1, 2, 3]), mime: "image/png" },
+		};
+		const { dispatcher, sendToAddress } = makeDispatcher([
+			{ name: "图", run: async (_v, ctx) => void (await ctx.reply(image)) },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/图" }, FROM);
+
+		expect(sendToAddress).toHaveBeenCalledExactlyOnceWith(
+			"conn-from",
+			{ scope: "private", address: MASTER },
+			image,
+		);
+	});
+
+	it("没送到:记一条带原因的 warn,不抛,结果照样回给指令", async () => {
+		const warn = vi.fn();
+		const failure = fail("unavailable", "连接断了");
+		let seen: Any;
+		const dispatcher = createCommandDispatcher({
+			logger: { ...logger, warn },
+			masterIdentity: () => ({ platform: PLATFORM, address: MASTER }),
+			sendToAddress: async () => failure,
+			config: () => ({ enabled: true, prefix: "/", aliases: {} }),
+			commands: [
+				{
+					name: "状态",
+					run: async (_v: Any, ctx: Any) => {
+						seen = await ctx.reply("在的");
+					},
+				},
+			],
+		});
+
+		await expect(
+			dispatcher.handleMessage({ userId: MASTER, text: "/状态" }, FROM),
+		).resolves.toBeUndefined();
+
+		expect(seen).toBe(failure);
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("连接断了"));
 	});
 });

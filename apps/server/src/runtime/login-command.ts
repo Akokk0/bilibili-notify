@@ -11,9 +11,9 @@
  *
  * ## 二维码只发私聊
  *
- * 发进群等于公开征集「谁来当我的 B 站账号」。这条由「主人目标只许指向私聊」保证
- * (保存时拒收、`notifyMaster` 发送时复检,**不会**落到群),指令层要保证的是
- * 另一半:**发不出去必须说出来**。不然主人就盯着手机等一个永远不来的码。
+ * 发进群等于公开征集「谁来当我的 B 站账号」。这条由分发器保证:指令只处理私聊消息,
+ * `ctx.reply` 回的就是来的那个私聊,**不会**落到群。指令层要保证的是另一半:
+ * **发不出去必须说出来**。不然主人就盯着手机等一个永远不来的码。
  *
  * 真正的风险也不是泄漏而是**污染** —— 攻击者若能触发扫码并抢先扫,系统就跑在他的
  * 账号上。触发权由分发器的鉴权门挡着,这里不重复。
@@ -21,7 +21,7 @@
 
 import { Buffer } from "node:buffer";
 import type { Logger } from "@bilibili-notify/internal";
-import { type CommandSpec, command } from "./command-dispatcher.js";
+import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** LoginFlow 快照里我们用得上的那部分。`data` 是 any,形状不由我们做主。 */
 export interface LoginSnapshotView {
@@ -35,9 +35,6 @@ export interface LoginCommandOptions {
 	begin: () => Promise<void>;
 	/** 读当前登录快照 —— 码就挂在它的 `data` 上。 */
 	snapshot: () => LoginSnapshotView;
-	/** 把码发到主人私聊。返回 false = 没送到。 */
-	sendQr: (png: Buffer) => Promise<boolean>;
-	reply: (text: string) => Promise<void>;
 	logger: Logger;
 }
 
@@ -60,13 +57,13 @@ function decodeDataUrl(data: unknown): Buffer | undefined {
 	}
 }
 
-export function createLoginCommand(opts: LoginCommandOptions): CommandSpec {
+export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 	return command({
 		name: "login",
 		aliases: ["扫码", "登录"],
 		description: "重新扫码登录 B 站",
 		details: `二维码只发这条私聊，${QR_TTL_SECONDS} 秒内有效，过期就再敲一次。`,
-		run: async () => {
+		run: async (_values, { reply }) => {
 			await opts.begin();
 			const snap = opts.snapshot();
 			const png = decodeDataUrl(snap.data);
@@ -74,15 +71,16 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandSpec {
 				// 快照那句 msg 已经是人话(「获取二维码失败，请重试」),照转即可 ——
 				// 在这儿再写一份就是第二份会跟它跑偏的文案。
 				opts.logger.warn(`[command] 扫码没拿到二维码: status=${snap.status} msg=${snap.msg}`);
-				await opts.reply(snap.msg || "没拿到二维码，稍后再试试～");
+				await reply(snap.msg || "没拿到二维码，稍后再试试～");
 				return;
 			}
-			const delivered = await opts.sendQr(png);
-			if (!delivered) {
-				await opts.reply("二维码发不出去，去控制台扫吧～");
+			// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
+			const sent = await reply({ kind: "image", image: { buffer: png, mime: "image/png" } });
+			if (!sent.ok) {
+				await reply("二维码发不出去，去控制台扫吧～");
 				return;
 			}
-			await opts.reply(`扫这张码就行，${QR_TTL_SECONDS} 秒内有效，过期了再敲一次～`);
+			await reply(`扫这张码就行，${QR_TTL_SECONDS} 秒内有效，过期了再敲一次～`);
 		},
 	});
 }

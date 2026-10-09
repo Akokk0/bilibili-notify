@@ -193,8 +193,8 @@ export interface PushRouterOptions {
 	 *
 	 * **每次推送交进来时现问一次**,不在构造时快照:静音是有到期时刻的,快照下来就得等下次重启才恢复。
 	 *
-	 * 发给主人的私聊(`notifyMaster`)**不受它管** —— 指令回复走的
-	 * 就是那条路,连同挡掉的话主人只会看到指令毫无反应。
+	 * 发给主人的私聊(`notifyMaster`)**不受它管**,指令的回话(派发器的 `sendToAddress`,
+	 * 根本不进 `push`)也不受 —— 连同挡掉的话主人只会看到指令毫无反应。
 	 */
 	muted: () => boolean;
 	/**
@@ -732,7 +732,7 @@ export class PushRouter {
 	 *
 	 * 结果码:已销毁 `unavailable`;没配主人 `not_configured`;主人目标不是私聊 `invalid`
 	 * (保存时本来就拦了,这里是兜底:盘上读进来的旧值不拒开机);目标不可达 `unavailable`;
-	 * 其余照 {@link PushRouter.sendToTarget}。不受静音管(指令回复走的就是这条路)。
+	 * 其余照 {@link PushRouter.sendToTarget}。不受静音管(服务端主动告诉主人的话:审批预览、出错告警)。
 	 */
 	async notifyMaster(payload: string | NotificationPayload): Promise<DeliveryResult> {
 		if (this.disposed) return fail("unavailable", "disposed");

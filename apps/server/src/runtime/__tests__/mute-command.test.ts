@@ -11,6 +11,7 @@
 process.env.TZ = "UTC";
 
 import { describe, expect, it } from "vite-plus/test";
+import { recordingCtx } from "../../__tests__/support/command-ctx.js";
 import { createMuteCommand } from "../mute-command.js";
 import { createMuteState } from "../mute-state.js";
 
@@ -22,6 +23,7 @@ function setup() {
 	let stored = 0;
 	let now = T0;
 	const replies: string[] = [];
+	const ctx = recordingCtx(replies);
 	const state = createMuteState({
 		read: () => stored,
 		write: async (v) => {
@@ -31,9 +33,6 @@ function setup() {
 	});
 	const spec = createMuteCommand({
 		muteState: state,
-		reply: async (text) => {
-			replies.push(text);
-		},
 		now: () => now,
 	});
 	return {
@@ -41,7 +40,7 @@ function setup() {
 		state,
 		replies,
 		travelTo: (t: number) => (now = t),
-		mute: (ms: number) => spec.run({ duration: ms } as never),
+		mute: (ms: number) => spec.run({ duration: ms } as never, ctx),
 	};
 }
 

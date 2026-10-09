@@ -10,7 +10,7 @@
  */
 
 import { formatAgo } from "@bilibili-notify/internal";
-import { type CommandSpec, command } from "./command-dispatcher.js";
+import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
 export interface StatusReport {
@@ -32,7 +32,6 @@ export interface StatusReport {
 
 export interface StatusCommandOptions {
 	probe: () => StatusReport;
-	reply: (text: string) => Promise<void>;
 	/** 可注入的时钟。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -63,14 +62,14 @@ export function renderStatus(report: StatusReport, now: number): string {
 	return lines.join("\n");
 }
 
-export function createStatusCommand(opts: StatusCommandOptions): CommandSpec {
+export function createStatusCommand(opts: StatusCommandOptions): CommandDef {
 	const now = opts.now ?? Date.now;
 	return command({
 		name: "status",
 		aliases: ["状态"],
 		description: "看看现在怎么样",
-		run: async () => {
-			await opts.reply(renderStatus(opts.probe(), now()));
+		run: async (_values, { reply }) => {
+			await reply(renderStatus(opts.probe(), now()));
 		},
 	});
 }

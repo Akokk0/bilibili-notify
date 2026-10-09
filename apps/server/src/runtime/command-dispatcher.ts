@@ -20,14 +20,27 @@
 import {
 	type ChatIdentity,
 	type CommandConfig,
+	type DeliveryResult,
 	type InboundMeta,
 	type InboundPrivateMessage,
 	inboundIdentity,
 	type Logger,
+	type NotificationPayload,
+	type SessionRef,
 	sameChatIdentity,
 } from "@bilibili-notify/internal";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
+
+/**
+ * 回给「发这条指令的那个会话」的口子。字符串当纯文字。
+ *
+ * 分发器每收到一条私聊现造一个,绑定那条消息来的连接与发信人;没送到只记 warn、不抛,
+ * 结果照样回给调用方 —— 要如实告诉主人的指令(登录二维码)靠返回值判。
+ */
+export type CommandReplyHandler = (
+	payload: string | NotificationPayload,
+) => Promise<DeliveryResult>;
 
 /**
  * 一条注册进来的指令。业务实现各归各的服务,这里只管认出来、校验、交出去。
@@ -35,7 +48,7 @@ import { suggestCommand } from "./command-suggest.js";
  * 泛型参数 `S` 是签名的**字面量**类型,`run` 的入参由它推出来 —— 用 {@link command}
  * 注册就能拿到,不必自己写。
  */
-export interface CommandSpec<S extends string = string> {
+export interface CommandDef<S extends string = string> {
 	/** 主名。**用英文** —— 中文放 {@link aliases}。 */
 	name: string;
 	/**
@@ -65,12 +78,12 @@ export interface CommandSpec<S extends string = string> {
 	 * 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里,
 	 * 而且类型是从 `signature` 推出来的:`<duration:duration|时长>` → `{ duration: number }`。
 	 */
-	run: (values: Values<S>) => Promise<void>;
+	run: (values: Values<S>, ctx: { reply: CommandReplyHandler }) => Promise<void>;
 }
 
 /**
  * 注册一条指令。存在的唯一理由是**留住签名的字面量类型** ——
- * 直接往 `CommandSpec[]` 里塞对象的话,`signature` 会被拓宽成 `string`,推导就没了。
+ * 直接往 `CommandDef[]` 里塞对象的话,`signature` 会被拓宽成 `string`,推导就没了。
  *
  * ```ts
  * command({
@@ -81,10 +94,10 @@ export interface CommandSpec<S extends string = string> {
  * })
  * ```
  */
-export function command<S extends string>(spec: CommandSpec<S>): CommandSpec {
+export function command<S extends string>(spec: CommandDef<S>): CommandDef {
 	// 这里必须断言:函数参数是逆变的,`(v: {时长: number}) => …` 不能直接当
 	// `(v: {}) => …` 用。断言只此一处、在库代码里,换来的是每个 handler 都不用断言。
-	return spec as unknown as CommandSpec;
+	return spec as unknown as CommandDef;
 }
 
 /**
@@ -97,7 +110,11 @@ export interface ConfirmationWindow {
 	/** 有待确认项吗?没有的话 `y` 只是个普通字母,压根不该进指令层。 */
 	isWaiting(): boolean;
 	/** 试着当确认回应处理。返回 true = 已消费,不再往下走。 */
-	tryHandle(msg: InboundPrivateMessage, meta: InboundMeta): Promise<boolean>;
+	tryHandle(
+		msg: InboundPrivateMessage,
+		meta: InboundMeta,
+		ctx: { reply: CommandReplyHandler },
+	): Promise<boolean>;
 }
 
 export interface CommandDispatcherOptions {
@@ -110,15 +127,22 @@ export interface CommandDispatcherOptions {
 	 * 真正兜着它的是「一条连接只驮一个平台」这个前提,而那个前提正在被拆掉。
 	 */
 	masterIdentity: () => ChatIdentity | undefined;
-	/** 回一句话给主人(用的是既有的私聊通道)。 */
-	reply: (text: string) => Promise<void>;
+	/**
+	 * 往某条连接上的某个会话发(出口咽喉的 `sendToAddress`)。每条指令的回话都经它回到
+	 * **发指令的那个私聊**:来的那条连接 + 发信人的地址。
+	 */
+	sendToAddress: (
+		connectionId: string,
+		session: SessionRef,
+		payload: NotificationPayload,
+	) => Promise<DeliveryResult>;
 	/**
 	 * 面板上那份指令配置(总开关 / 前缀 / 别名覆盖)。**现读**,不快照 ——
 	 * 主人改完保存,前缀与总开关立刻按新的算;别名进了触发词表,要 {@link
 	 * CommandDispatcher.reconcile} 重建。
 	 */
 	config: () => CommandConfig;
-	commands: readonly CommandSpec[];
+	commands: readonly CommandDef[];
 	/** 待确认队列。不传 = 这条链路上没有需要确认的东西。 */
 	confirmation?: ConfirmationWindow;
 }
@@ -154,7 +178,7 @@ export function effectiveAliases(
 	return aliases[spec.name] ?? spec.aliases ?? [];
 }
 
-type Compiled = { spec: CommandSpec; params: ParamSpec[]; triggers: string[] };
+type Compiled = { spec: CommandDef; params: ParamSpec[]; triggers: string[] };
 
 /**
  * 编译指令表:解析签名、算出每条的触发词、查重。
@@ -162,7 +186,7 @@ type Compiled = { spec: CommandSpec; params: ParamSpec[]; triggers: string[] };
  * 签名在这里就解析掉,不等主人敲指令时才解析 —— 签名是代码里写死的,写错了该在启动
  * 那一刻炸,而不是等某天他真敲了那条指令才发现。
  */
-function compile(commands: readonly CommandSpec[], aliases: Record<string, string[]>): Compiled[] {
+function compile(commands: readonly CommandDef[], aliases: Record<string, string[]>): Compiled[] {
 	const compiled: Compiled[] = commands.map((spec) => ({
 		spec,
 		params: parseSignature(spec.signature ?? ""),
@@ -204,7 +228,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 	 * 该有不同反应,前者是主人在正常说话,后者是他敲错了指令名。
 	 */
 	type MatchResult =
-		| { kind: "hit"; spec: CommandSpec; params: ParamSpec[]; rest: string }
+		| { kind: "hit"; spec: CommandDef; params: ParamSpec[]; rest: string }
 		// `typed` 是主人**当成指令名敲的那一截**(第一个词),拿去找近似建议。
 		// 整串带上参数去比的话,`/mut 3h` 离 `mute` 就有三步远,建议直接失灵。
 		| { kind: "unknown"; typed: string }
@@ -235,7 +259,21 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		return { kind: "unknown", typed: body.split(/\s+/, 1)[0] ?? "" };
 	}
 
+	/** 这条消息的回话口:回到它来的那个私聊。没送到记 warn,不抛。 */
+	function replyTo(msg: InboundPrivateMessage, meta: InboundMeta): CommandReplyHandler {
+		return async (payload) => {
+			const result = await opts.sendToAddress(
+				meta.connectionId,
+				{ scope: "private", address: msg.userId },
+				typeof payload === "string" ? { kind: "text", text: payload } : payload,
+			);
+			if (!result.ok) opts.logger.warn(`[command] 回复没送到: ${result.message}`);
+			return result;
+		};
+	}
+
 	async function handleMessage(msg: InboundPrivateMessage, meta: InboundMeta): Promise<void> {
+		const reply = replyTo(msg, meta);
 		// —— 第一道门:鉴权。必须在解析之前,理由见文件头。
 		if (!sameChatIdentity(opts.masterIdentity(), inboundIdentity(msg, meta))) return;
 
@@ -246,7 +284,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		// 草稿 TTL 有 48 小时,真要批准几乎不可能撞上超时;没待审时那个 y 就只是
 		// 个普通字母,不该进指令层。
 		if (opts.confirmation?.isWaiting()) {
-			if (await opts.confirmation.tryHandle(msg, meta)) return;
+			if (await opts.confirmation.tryHandle(msg, meta, { reply })) return;
 		}
 
 		// —— 第三道门:总开关。**排在确认流之后** —— 「关掉 = 整条链路只剩确认流」,
@@ -269,7 +307,7 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				hit.typed,
 				compiled.flatMap((c) => c.triggers),
 			);
-			await opts.reply(
+			await reply(
 				near ? `没有这条指令哦～是不是想敲 ${config.prefix}${near}？` : "没有这条指令哦～",
 			);
 			return;
@@ -278,13 +316,13 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 		// 解析与执行分离:parse 失败就报错返回,handler 拿到的永远是已校验的值。
 		const parsed = parseArgs(hit.params, hit.rest);
 		if (!parsed.ok) {
-			await opts.reply(parsed.message);
+			await reply(parsed.message);
 			return;
 		}
 
 		opts.logger.info(`[command] 主人触发了「${hit.spec.name}」`);
 		try {
-			await hit.spec.run(parsed.values);
+			await hit.spec.run(parsed.values, { reply });
 		} catch (err) {
 			// 一条指令炸了不该带塌这条入站链路 —— 它还担着审批的 y/n。
 			opts.logger.warn(

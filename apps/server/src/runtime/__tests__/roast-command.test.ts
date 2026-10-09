@@ -30,7 +30,7 @@ async function feed(
 	text: string,
 	userId = MASTER,
 ): Promise<boolean> {
-	return h.confirmation.tryHandle({ userId, text }, META);
+	return h.confirmation.tryHandle({ userId, text }, META, { reply: reply as Any });
 }
 
 let dir: string;
@@ -47,7 +47,6 @@ function makeHandler(master: string | null = MASTER) {
 		logger,
 		masterIdentity: () => (master === null ? undefined : { platform: PLATFORM, address: master }),
 		deliver: deliver as Any,
-		reply: reply as Any,
 	});
 }
 
@@ -169,7 +168,7 @@ describe("审批指令处理", () => {
 		// 各写一份鉴权迟早有一边把「不是主人也放行」写漏。
 		const d = await seedDraft();
 		const h = makeHandler();
-		await h.confirmation.tryHandle({ userId: MASTER, text: "y" }, META);
+		await h.confirmation.tryHandle({ userId: MASTER, text: "y" }, META, { reply: reply as Any });
 		expect(deliver).toHaveBeenCalledTimes(1);
 		expect(deliver.mock.calls[0]?.[0].id).toBe(d.id);
 	});
@@ -177,7 +176,7 @@ describe("审批指令处理", () => {
 	it("平台中立入口同样只认主人 —— 别人的 y 当没看见", async () => {
 		await seedDraft();
 		const h = makeHandler();
-		await h.confirmation.tryHandle({ userId: "99999", text: "y" }, META);
+		await h.confirmation.tryHandle({ userId: "99999", text: "y" }, META, { reply: reply as Any });
 		expect(deliver).not.toHaveBeenCalled();
 		expect(reply).not.toHaveBeenCalled();
 	});
@@ -203,7 +202,6 @@ describe("审批指令处理", () => {
 			logger: { ...logger, warn },
 			masterIdentity: () => ({ platform: PLATFORM, address: MASTER }),
 			deliver: deliver as Any,
-			reply: reply as Any,
 		});
 		await drafts.close();
 
@@ -226,7 +224,9 @@ describe("作为 dispatcher 的确认流窗口", () => {
 		await seedDraft();
 		const h = makeHandler();
 
-		await expect(h.confirmation.tryHandle({ userId: MASTER, text: "y" }, META)).resolves.toBe(true);
+		await expect(
+			h.confirmation.tryHandle({ userId: MASTER, text: "y" }, META, { reply: reply as Any }),
+		).resolves.toBe(true);
 
 		expect(deliver).toHaveBeenCalledOnce();
 	});
@@ -237,9 +237,9 @@ describe("作为 dispatcher 的确认流窗口", () => {
 		await seedDraft();
 		const h = makeHandler();
 
-		await expect(h.confirmation.tryHandle({ userId: MASTER, text: "/状态" }, META)).resolves.toBe(
-			false,
-		);
+		await expect(
+			h.confirmation.tryHandle({ userId: MASTER, text: "/状态" }, META, { reply: reply as Any }),
+		).resolves.toBe(false);
 	});
 
 	// dispatcher 那边已经鉴过一道了,这里再鉴一次是防御:两条路各写一份的话,
@@ -248,9 +248,9 @@ describe("作为 dispatcher 的确认流窗口", () => {
 		await seedDraft();
 		const h = makeHandler();
 
-		await expect(h.confirmation.tryHandle({ userId: "99999", text: "y" }, META)).resolves.toBe(
-			false,
-		);
+		await expect(
+			h.confirmation.tryHandle({ userId: "99999", text: "y" }, META, { reply: reply as Any }),
+		).resolves.toBe(false);
 
 		expect(deliver).not.toHaveBeenCalled();
 	});

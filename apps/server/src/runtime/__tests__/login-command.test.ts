@@ -12,6 +12,7 @@
  *    一个码」—— 他两小时后看手机拿到的是废码,反而以为系统坏了。
  */
 
+import { fail, type NotificationPayload, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createLoginCommand, type LoginSnapshotView } from "../login-command.js";
 
@@ -28,16 +29,20 @@ function setup(after: LoginSnapshotView = QR_READY, opts: { sendOk?: boolean } =
 	const spec = createLoginCommand({
 		begin,
 		snapshot: () => after,
-		sendQr: async (buf) => {
-			sent.push(buf);
-			return opts.sendOk ?? true;
-		},
-		reply: async (t) => {
-			replies.push(t);
-		},
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 	});
-	return { spec, replies, sent, begin, fire: () => spec.run({} as never) };
+	// 二维码经 `ctx.reply` 发图:图的字节进 sent,文字进 replies;sendOk=false 模拟图没送到。
+	const ctx = {
+		reply: async (payload: string | NotificationPayload) => {
+			if (typeof payload === "string") replies.push(payload);
+			else if (payload.kind === "image") {
+				sent.push(payload.image.buffer);
+				if (opts.sendOk === false) return fail("unavailable", "测试里没送到");
+			}
+			return ok({ latencyMs: 0 });
+		},
+	};
+	return { spec, replies, sent, begin, fire: () => spec.run({} as never, ctx) };
 }
 
 describe("login 指令", () => {

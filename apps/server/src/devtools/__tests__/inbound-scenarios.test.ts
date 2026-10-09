@@ -51,6 +51,8 @@ function setup(
 		master?: string;
 		inbound?: boolean;
 		commands?: () => { prefix: string; master?: { platform: string; address: string } };
+		targets?: never[];
+		connections?: never[];
 	} = {},
 ) {
 	const priv = vi.fn();
@@ -62,8 +64,8 @@ function setup(
 		inboundScenarios({
 			inbound: () => (over.inbound === false ? undefined : { private: priv, group }),
 			commands: over.commands ?? (() => ({ prefix: "/", master })),
-			connections: () => ADAPTERS,
-			targets: () => TARGETS,
+			connections: () => over.connections ?? ADAPTERS,
+			targets: () => over.targets ?? TARGETS,
 		}),
 	);
 	return { reg, priv, group };
@@ -86,7 +88,7 @@ describe("inbound.command", () => {
 	it("正文留空 → 用**现在**的前缀拼 help,不是建表那会儿的", async () => {
 		let prefix = "/";
 		const { reg, priv } = setup({
-			commands: () => ({ prefix, master: { platform: "onebot", address: "master" } }),
+			commands: () => ({ prefix, master: { platform: "onebot", address: "10001" } }),
 		});
 
 		await reg.run("inbound.command", {});
@@ -114,6 +116,45 @@ describe("inbound.command", () => {
 			{ userId: "20002", text: "/help" },
 			{ connectionId: "ad-ob", platform: "onebot" },
 		);
+	});
+
+	it("连接取主人目标所在的那条,不是随手挑的第一个启用连接", async () => {
+		// 回复经 sendToAddress 回到发指令的会话,connectionId 必须是主人目标那条。
+		const { reg, priv } = setup({
+			targets: [
+				{
+					id: "t-p2",
+					name: "主人",
+					connectionId: "ad-ob2",
+					platform: "onebot",
+					scope: "private",
+					enabled: true,
+					kind: "session",
+					address: "10001",
+				},
+			] as never[],
+			connections: [
+				...ADAPTERS,
+				{ id: "ad-ob2", name: "NapCat 2", kind: "direct", platform: "onebot", enabled: true },
+			] as never[],
+		});
+		await reg.run("inbound.command", { text: "/status" });
+		expect(priv).toHaveBeenCalledWith(
+			{ userId: "10001", text: "/status" },
+			{ connectionId: "ad-ob2", platform: "onebot" },
+		);
+	});
+
+	it("没有主人目标 → 明确报错,不传空的 connectionId", async () => {
+		// 身份在、目标表里却没有对应的私聊目标(或压根没配主人),都没有可模拟的来处。
+		const noTarget = setup({ targets: [] });
+		await expect(noTarget.reg.run("inbound.command", {})).rejects.toThrow("没有主人目标");
+		expect(noTarget.priv).not.toHaveBeenCalled();
+		const noMaster = setup({ master: undefined });
+		await expect(noMaster.reg.run("inbound.command", { userId: "20002" })).rejects.toThrow(
+			"没有主人目标",
+		);
+		expect(noMaster.priv).not.toHaveBeenCalled();
 	});
 
 	it("没配主人又没给 userId → 拒;入站口还没接上 → 拒", async () => {

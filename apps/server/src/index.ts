@@ -65,7 +65,7 @@ import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
 import {
-	type CommandSpec,
+	type CommandDef,
 	command,
 	createCommandDispatcher,
 	effectiveAliases,
@@ -926,7 +926,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 取数函数只建一个,同时交给调度器与 createApp:手动锐评、面板、定时锐评三处吃同一份 30 秒缓存。
 		const statsOverview = createStatsOverview({ runtime, store: runtime.configStore });
-		/** 私聊主人。发不出去由调用方各自兜住(调度器与指令处理器都不让它拖垮流程)。 */
+		/** 服务端主动私聊主人(定时锐评、过期提醒)。发不出去由调用方各自兜住(不让它拖垮流程)。 */
 		const tellMasterPayload = async (payload: string | NotificationPayload): Promise<void> => {
 			const r = await engines?.push.notifyMaster(payload);
 			if (r && !r.ok) log.warn(`[master] 通知主人没送到: ${r.message}`);
@@ -951,7 +951,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			logger: log,
 			masterIdentity,
 			deliver: (draft) => roastScheduler.deliverApproved(draft),
-			reply: tellMaster,
 		});
 
 		// 自引用:帮助要列出「包括它自己在内」的全部指令,所以先建表再往里塞。
@@ -959,7 +958,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// **所有 push 必须排在下面 createCommandDispatcher 之前** —— 它在构造时就把
 		// 指令表编译好(解析签名、排触发词)。之后再 push 的指令会出现在帮助里,
 		// 却永远不响应,而帮助里看得见恰恰让人不往这上面想。
-		const commands: CommandSpec[] = [];
+		const commands: CommandDef[] = [];
 		commands.push(
 			command({
 				name: "help",
@@ -969,7 +968,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				example: "mute",
 				// values.name 由签名推出来,是 string | undefined —— 不用断言、不用 typeof。
 				// 报错里显示的是「指令名」那个显示名,不是 name。
-				run: async (values) => {
+				run: async (values, { reply }) => {
 					// 前缀与别名都**现读**:主人改完前缀,帮助恰恰是他第一个会看的东西,
 					// 而列出一批已经被他改掉的别名等于教他敲没反应的词。
 					const cfg = runtime.configStore.getGlobals().commands;
@@ -977,15 +976,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						...c,
 						aliases: effectiveAliases(c, cfg.aliases),
 					}));
-					await tellMaster(renderHelp(entries, cfg.prefix, values.name));
+					await reply(renderHelp(entries, cfg.prefix, values.name));
 				},
 			}),
 		);
 		// 静音的闸装在 push 里(见 engines.ts),这里只是改状态的入口。
-		commands.push(createMuteCommand({ muteState: engines.muteState, reply: tellMaster }));
+		commands.push(createMuteCommand({ muteState: engines.muteState }));
 		commands.push(
 			createStatusCommand({
-				reply: tellMaster,
 				probe: () => ({
 					// 登录态直接用 LoginFlow 那句人话(「已登录」/「账号登录已失效…」)——
 					// 在这儿把 status 码再翻译一遍,就是第二份会跟它跑偏的文案。
@@ -1006,7 +1004,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createReportCommand({
 				logger: log,
-				reply: tellMaster,
 				// 审批开着时,草稿连同「回复 y <id>」由调度器自己私聊出去,指令层不再补一句。
 				run: (days) => roastScheduler.runBoardOnce(days),
 			}),
@@ -1014,27 +1011,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createLoginCommand({
 				logger: log,
-				reply: tellMaster,
 				begin: () => authSystem?.beginLogin() ?? Promise.resolve(),
 				snapshot: () => authSystem?.status() ?? { status: 0, msg: "登录系统还没起来" },
-				// **走 notifyMaster 而不是普通推送**:主人目标只许指向私聊(保存时拦、发送时
-				// 复检),不会回落到群。二维码进群等于公开征集「谁来当我的 B 站账号」。
-				// 这里还要把「没送到」如实带回去 —— 见 login-command.ts。
-				sendQr: async (buffer) => {
-					// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
-					const r = await engines?.push.notifyMaster({
-						kind: "image",
-						image: { buffer, mime: "image/png" },
-					});
-					return r?.ok === true;
-				},
 			}),
 		);
 
+		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
+		const runtimeEngines = engines;
 		const commandDispatcher = createCommandDispatcher({
 			logger: log,
 			masterIdentity,
-			reply: tellMaster,
+			// 指令的回话回到发指令的那个私聊(来的那条连接 + 发信人),不是主人目标那条。
+			sendToAddress: (connectionId, session, payload) =>
+				runtimeEngines.sendToAddress(connectionId, session, payload),
 			config: () => runtime.configStore.getGlobals().commands,
 			commands,
 			// 审批的 y/n 作为第二道门 —— 有待审草稿时才认,没有时它只是个普通字母。
@@ -1043,8 +1032,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 群里贴视频链接 → 回一张卡。回到来源群不走推送目标表:用收到这条消息的那条连接
 		// 经派发器的 `sendToAddress` 直接发(群不必配成推送目标,主人定的:机器人在的所有群都算)。
-		// `engines` 是个会被热重载赋值的 let,闭包里 TS 收不窄;这一刻它一定在(上面刚建的)。
-		const runtimeEngines = engines;
 		const linkParser = createLinkParser({
 			logger: log,
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。

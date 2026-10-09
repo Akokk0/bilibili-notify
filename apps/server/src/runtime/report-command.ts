@@ -19,7 +19,7 @@ import {
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
 } from "@bilibili-notify/internal";
-import { type CommandSpec, command } from "./command-dispatcher.js";
+import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** 与 `RoastRunOutcome` 同形。这里重述一遍是为了不把指令层绑死在调度器的类型上。 */
 export type ReportOutcome =
@@ -36,7 +36,6 @@ export type ReportOutcome =
 export interface ReportCommandOptions {
 	/** 跑一轮榜单周报。`days` 不传 = 用配置里的天数。 */
 	run: (days?: number) => Promise<ReportOutcome>;
-	reply: (text: string) => Promise<void>;
 	logger: Logger;
 }
 
@@ -61,7 +60,7 @@ function describeOutcome(outcome: ReportOutcome): string | null {
 	}
 }
 
-export function createReportCommand(opts: ReportCommandOptions): CommandSpec {
+export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 	// 这道闸就是「别再跑一次」本身。指令是串行喂进来的(dispatcher 一条条处理),
 	// 所以一个布尔量够用,不需要锁。
 	let running = false;
@@ -73,17 +72,17 @@ export function createReportCommand(opts: ReportCommandOptions): CommandSpec {
 		description: "现在就要一份周报",
 		example: "7",
 		details: "要跑几十秒。生成期间再敲不会重复生成，也不会重复花钱。",
-		run: async (values) => {
+		run: async (values, { reply }) => {
 			// 范围是这条指令自己的业务规则,parser 只管格式 —— 它要是替各指令管范围,
 			// 就得为每条指令在那儿开一个口子。挡在调 AI 之前,越界不该花钱。
 			const days = values.days;
 			if (days !== undefined && (days < ROAST_MIN_DAYS || days > ROAST_MAX_DAYS)) {
 				// 光说「不行」等于让主人自己去猜,把区间说出来。
-				await opts.reply(`天数要在 ${ROAST_MIN_DAYS} 到 ${ROAST_MAX_DAYS} 之间哦～`);
+				await reply(`天数要在 ${ROAST_MIN_DAYS} 到 ${ROAST_MAX_DAYS} 之间哦～`);
 				return;
 			}
 			if (running) {
-				await opts.reply("还在跑呢，稍等一下下～");
+				await reply("还在跑呢，稍等一下下～");
 				return;
 			}
 			running = true;
@@ -91,14 +90,14 @@ export function createReportCommand(opts: ReportCommandOptions): CommandSpec {
 				// ack 在跑生成之前发出去:主人先看到「收到了」,再等结果。它必须在
 				// try **里面** —— reply 本身也可能 reject(适配器瞬断),写在外面的话
 				// finally 不执行,running 卡死 true,此后每次 /report 都被挡到重启为止。
-				await opts.reply("好的，在生成了，稍等～");
+				await reply("好的，在生成了，稍等～");
 				const outcome = await opts.run(days);
 				const text = describeOutcome(outcome);
-				if (text) await opts.reply(text);
+				if (text) await reply(text);
 			} catch (err) {
 				const why = err instanceof Error ? err.message : String(err);
 				opts.logger.warn(`[command] 周报跑失败: ${why}`);
-				await opts.reply(`周报没成：${why}`);
+				await reply(`周报没成：${why}`);
 			} finally {
 				// finally 不能省 —— 见文件头那条「异常锁死」。
 				running = false;

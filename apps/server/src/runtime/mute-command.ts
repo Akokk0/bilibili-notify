@@ -9,13 +9,11 @@
  * 一条就能确认。
  */
 
-import { type CommandSpec, command } from "./command-dispatcher.js";
+import { type CommandDef, command } from "./command-dispatcher.js";
 import type { MuteState } from "./mute-state.js";
 
 export interface MuteCommandOptions {
 	muteState: MuteState;
-	/** 回一句话给主人。 */
-	reply: (text: string) => Promise<void>;
 	/** 可注入的时钟。测试用,生产不传。 */
 	now?: () => number;
 }
@@ -37,7 +35,7 @@ function describeUntil(until: number, now: number): string {
 	return sameDay ? hhmm : `${end.getMonth() + 1} 月 ${end.getDate()} 日 ${hhmm}`;
 }
 
-export function createMuteCommand(opts: MuteCommandOptions): CommandSpec {
+export function createMuteCommand(opts: MuteCommandOptions): CommandDef {
 	const now = opts.now ?? Date.now;
 	return command({
 		name: "mute",
@@ -48,15 +46,15 @@ export function createMuteCommand(opts: MuteCommandOptions): CommandSpec {
 		// 静音挡的是订阅推送。另外两条路不归它管,而这两条都会在静音期间真的响 ——
 		// 主人不知道的话,只会以为静音坏了。
 		details: "挡的是订阅推送。定时周报和锐评到点照发，出错也还是会叫你。",
-		run: async (values) => {
+		run: async (values, { reply }) => {
 			const until = await opts.muteState.muteFor(values.duration);
 			if (until === 0) {
-				await opts.reply("好啦，已经恢复推送了～");
+				await reply("好啦，已经恢复推送了～");
 				return;
 			}
 			// 顺带交代一句「出错还是会叫你」:告警走的是私聊,不归静音管。不说的话,
 			// 主人静音期间收到一条报错会以为静音坏了。
-			await opts.reply(`好的，${describeUntil(until, now())} 之前不打扰你～（出错了还是会叫你的）`);
+			await reply(`好的，${describeUntil(until, now())} 之前不打扰你～（出错了还是会叫你的）`);
 		},
 	});
 }
