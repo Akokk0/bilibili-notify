@@ -794,6 +794,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				throw new Error(`extension ${id} is already unloaded`);
 			}
 			if (pushSourceRegistered) throw new Error(`extension ${id} already registered a push source`);
+			// 第三方 JS 不受类型约束:按旧契约打的适配器没有 start / stop,登记表一调就是一句「不是函数」。
+			if (typeof def.adapter?.start !== "function" || typeof def.adapter?.stop !== "function") {
+				throw new Error(
+					`extension ${id}: 推送源的适配器要有 start(ctx) 与 stop() —— 这个拓展是按旧的契约打的,要换成配这一版 BN 的包`,
+				);
+			}
 			const view = pushViewOf(def);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
 			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。v1 只对冻结那天对的那几样。
@@ -807,7 +813,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			const adapter: PlatformAdapter = { ...def.adapter, adapterKey: id };
-			// 登记即 `start`:适配器拿到的上下文与交回给拓展的把手同形(同一个「自己的连接」、同一个「变了叫我」)。
+			// 登记即 `start`。适配器拿到的上下文与交回给拓展的把手**不同形**:这里的 `ctx.connections()` 只按
+			// 分发键筛、回的是原样的连接;把手的 `connections()` 还过了拓展交的 `configSchema`、回的是解析好的视图。
 			integration.track(
 				adapters.register(
 					adapter,
@@ -1084,7 +1091,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 					);
 				} finally {
 					unlink();
-					// 收摊时整张表已经清掉了 —— 只摘自己这一格。
+					// 收摊时「在跑」的两张表要等收尾钩子跑完才清(见 `dispose`),所以这里只摘自己这一格,
+					// 不碰别人(新一发占了这个名字的不动)。
 					if (runningActions.get(name) === controller) runningActions.delete(name);
 				}
 			})();

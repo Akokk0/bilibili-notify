@@ -124,6 +124,34 @@ describe("createIntegrationContext", () => {
 		expect(count).toBe(1);
 	});
 
+	it("收尾之后才 track:当场撤掉并记一行 warn,交回的把手再撤不会第二次撤", async () => {
+		const { handle, lines } = make();
+		await handle.dispose();
+		let count = 0;
+		const late = handle.track({
+			dispose() {
+				count += 1;
+			},
+		});
+		expect(count).toBe(1);
+		expect(lines).toContain("warn 已经卸载了,又来登记的一项当场撤掉");
+		late.dispose();
+		expect(count).toBe(1);
+	});
+
+	it("收尾之后才 track、那一项撤的时候抛了 → 记 error,不往外抛", async () => {
+		const { handle, lines } = make();
+		await handle.dispose();
+		expect(() =>
+			handle.track({
+				dispose() {
+					throw new Error("撤不掉");
+				},
+			}),
+		).not.toThrow();
+		expect(lines).toContain("error 回收注册项时抛了:撤不掉");
+	});
+
 	it("收尾时名册里没撤的注册项逐个撤掉", async () => {
 		const { handle } = make();
 		const gone: string[] = [];

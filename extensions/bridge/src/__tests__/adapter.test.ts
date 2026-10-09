@@ -129,10 +129,12 @@ interface Harness {
 	setLinks(list: BridgeLink[]): void;
 	/** 宿主叫一声「连接配置动了」—— 触发 `start(ctx)` 里经 `ctx.onConnectionsChanged` 登记的回调。 */
 	reconcile(): void;
+	/** 登记它(`adapter.start(ctx)`);`harness` 默认已经登记过,传 `{ start: false }` 的由用例自己叫。 */
+	start(): void;
 }
 
 /** `live: null` = 桥没连着。**别用 `undefined`** —— 显式传它会触发默认参数,那条用例就空过了。 */
-function harness(live: BridgeSession | null = session()): Harness {
+function harness(live: BridgeSession | null = session(), opts: { start?: boolean } = {}): Harness {
 	// 形参要写出来:mock 的 `calls` 元组是按形参推的,零形参的话 `calls[0][1]` 取不到。
 	const send = vi.fn(
 		async (_id: string, _request: BridgeSendRequest): Promise<BridgeSendResult> => ok(),
@@ -166,19 +168,22 @@ function harness(live: BridgeSession | null = session()): Harness {
 	// 宿主登记它时递的上下文:桥只用得着「订连接变更」这一格,其余不碰。
 	const listeners = new Set<() => void>();
 	const noop = () => {};
-	adapter.start({
-		logger: { info: noop, warn: noop, error: noop, debug: noop },
-		signal: new AbortController().signal,
-		onDispose: noop,
-		connections: () => [],
-		onConnectionsChanged(fn) {
-			listeners.add(fn);
-			return { dispose: () => listeners.delete(fn) };
-		},
-	});
+	const start = () =>
+		adapter.start({
+			logger: { info: noop, warn: noop, error: noop, debug: noop },
+			signal: new AbortController().signal,
+			onDispose: noop,
+			connections: () => [],
+			onConnectionsChanged(fn) {
+				listeners.add(fn);
+				return { dispose: () => listeners.delete(fn) };
+			},
+		});
+	if (opts.start !== false) start();
 	return {
 		ping,
 		adapter,
+		start,
 		reconcile: () => {
 			for (const fn of [...listeners]) fn();
 		},
@@ -553,9 +558,10 @@ describe("桥 adapter", () => {
 
 	/** 登记即启动只订变更,**不立刻对一次账** —— 名单在 start 之前就换了 token 也不在 start 那一刻踢。 */
 	it("start 不立刻对账 —— 只订连接变更,变更一声才对", () => {
-		const h = harness();
-		// harness 已经 start 过;此时名单换了 token,没有谁叫它,就不该有动静。
+		const h = harness(session(), { start: false });
+		// 建 adapter 之后、start 之前名单换了 token:start 那一刻不该踢。
 		h.setLinks([link({ token: "新的" })]);
+		h.start();
 		expect(h.disconnect).not.toHaveBeenCalled();
 		h.reconcile();
 		expect(h.disconnect).toHaveBeenCalledWith(LINK_ID, 4005);

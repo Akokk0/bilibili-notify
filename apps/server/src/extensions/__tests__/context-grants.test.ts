@@ -232,6 +232,60 @@ describe("按清单注册推送源", () => {
 	}
 	const v2Def = () => ({ adapter: fakeAdapter(), configSchema: CONFIG });
 
+	it("按旧契约打的适配器(只有 reconcile、没有 start / stop)—— 抛一句看得懂的话,不留半截状态", () => {
+		const h = harness();
+		const legacy = {
+			...def(),
+			adapter: { adapterKey: "x", isAvailable: () => true, reconcile() {} },
+		};
+		expect(() => h.ctx.registerPushSource(legacy as unknown as ReturnType<typeof def>)).toThrow(
+			/按旧的契约打的/,
+		);
+		expect(h.adapters.list()).toEqual([]);
+		expect(h.runtime.pushSource()).toBeUndefined();
+		// 没留半截状态:同一个上下文还能再登记合规的。
+		h.ctx.registerPushSource(def());
+		expect(h.adapters.list()).toHaveLength(1);
+	});
+
+	it("登记即启动:start 被调一次,ctx.connections() 只含分发键是这个拓展 id 的连接", () => {
+		const h = harness({
+			connections: [
+				connection({ id: "mine" }),
+				connection({ id: "theirs", extensionId: "matrix" }),
+				connection({ id: "direct", kind: "direct", platform: "onebot", extensionId: undefined }),
+			],
+		});
+		const start = vi.fn();
+		h.ctx.registerPushSource({ ...def(), adapter: { ...fakeAdapter(), start } as PlatformAdapter });
+		expect(start).toHaveBeenCalledTimes(1);
+		const adapterCtx = start.mock.calls[0]?.[0] as {
+			connections: () => readonly Connection[];
+		};
+		expect(adapterCtx.connections().map((c) => c.id)).toEqual(["mine"]);
+	});
+
+	it("拓展上下文 dispose 之后:stop 被调一次,宿主再发「连接变了」start 里订的回调不被叫", async () => {
+		const h = harness();
+		const changed = vi.fn();
+		const stop = vi.fn();
+		h.ctx.registerPushSource({
+			...def(),
+			adapter: {
+				...fakeAdapter(),
+				start: (c: { onConnectionsChanged: (fn: () => void) => Disposable }) =>
+					void c.onConnectionsChanged(changed),
+				stop,
+			} as unknown as PlatformAdapter,
+		});
+		h.setConnections([connection()]);
+		expect(changed).toHaveBeenCalledTimes(1);
+		await h.runtime.dispose();
+		expect(stop).toHaveBeenCalledTimes(1);
+		h.setConnections([connection()]);
+		expect(changed).toHaveBeenCalledTimes(1);
+	});
+
 	it("v2:外观与连接配置项取自清单,代码只交行为与 zod", () => {
 		const h = harness({ manifest: v2() });
 		h.ctx.registerPushSource(v2Def());

@@ -52,7 +52,7 @@ describe("createPlatformAdapterContext", () => {
 		direct("c", "feishu"),
 		direct("d", "dingtalk"),
 		direct("e", "wecom"),
-		direct("f", "webhook"),
+		direct("f", "generic"),
 		extensionConn("g", "bridge"),
 		extensionConn("h", "matrix"),
 	];

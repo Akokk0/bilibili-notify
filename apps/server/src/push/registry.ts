@@ -72,8 +72,8 @@ function stopQuietly(adapter: PlatformAdapter, ctx: PlatformAdapterContext): voi
 			`[adapter] ${adapter.adapterKey} stop 失败: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	try {
-		const result = adapter.stop();
-		if (result instanceof Promise) result.catch(warn);
+		// `Promise.resolve` 连非原生的 thenable 也认;同步抛的由外面的 try/catch 接。
+		Promise.resolve(adapter.stop()).catch(warn);
 	} catch (err) {
 		warn(err);
 	}

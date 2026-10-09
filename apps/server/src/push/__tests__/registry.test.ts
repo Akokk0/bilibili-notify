@@ -250,6 +250,27 @@ describe("adapter 注册表 · 登记即 start、注销即 stop", () => {
 		expect(String(warn.mock.calls[0]?.[0])).toContain("async-fail");
 	});
 
+	it("stop 回一个非原生 thenable(reject)→ 同样不往外抛,失败落下来时记一行 warn", async () => {
+		const registry = createPlatformAdapterRegistry();
+		const adapter = fakeAdapter("bridge");
+		vi.mocked(adapter.stop).mockImplementation(
+			() =>
+				({
+					// biome-ignore lint/suspicious/noThenProperty: 故意造一个非原生的 thenable
+					then(_resolve: (v: unknown) => void, reject: (e: unknown) => void) {
+						reject(new Error("thenable-fail"));
+					},
+				}) as unknown as Promise<void>,
+		);
+		const warn = vi.fn();
+		const { ctx } = fakeAdapterContext([], { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() });
+		const handle = registry.register(adapter, ctx);
+		expect(() => handle.dispose()).not.toThrow();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(warn).toHaveBeenCalledTimes(1);
+		expect(String(warn.mock.calls[0]?.[0])).toContain("thenable-fail");
+	});
+
 	it("视图上没有 send / start / stop —— 启停只归登记表,运行时也真的没有", () => {
 		const registry = registryWith(fakeAdapter("onebot"));
 		const [view] = registry.list();

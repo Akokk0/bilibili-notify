@@ -665,7 +665,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 只把「动过了」这件事转过去。
 		const onConnectionsChanged = (fn: () => void): Disposable =>
 			runtime.bus.on("config-changed", ({ scope }) => {
-				if (scope === "connections") fn();
+				if (scope !== "connections") return;
+				// 总线是普通的事件发射器:一个回调同步抛了,排在它后面的监听(引擎刷新链接策略那个)会被跳过。
+				try {
+					fn();
+				} catch (err) {
+					log.error(`连接变更的回调抛了: ${err instanceof Error ? err.message : String(err)}`);
+				}
 			});
 
 		// 主人是「谁」—— 平台 + 地址(+ 是哪个 bot 看到的)三坐标,不是一个裸字符串。

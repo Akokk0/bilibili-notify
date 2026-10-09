@@ -116,6 +116,38 @@ describe("registerBuiltinAdapters", () => {
 		expect(webhook.changed).not.toHaveBeenCalled();
 	});
 
+	it("dispose() 之后用 start 时存下的 ctx 再订连接变更 → 当场撤掉,订阅发一声回调不被叫", async () => {
+		const { onebot, builtin, emit, listeners } = setup();
+		await builtin.dispose();
+		const late = vi.fn();
+		onebot.ctx?.onConnectionsChanged(late);
+		expect(listeners.size).toBe(0);
+		emit();
+		expect(late).not.toHaveBeenCalled();
+	});
+
+	it("登记到一半失败(第二个与第一个键相同)→ 抛出,第一个被 stop、signal 已中止、登记表空、第三个没 start", () => {
+		const registry = createPlatformAdapterRegistry();
+		const first = fakeAdapter("onebot");
+		const dup = fakeAdapter("onebot");
+		const third = fakeAdapter("qq-official");
+		expect(() =>
+			registerBuiltinAdapters({
+				registry,
+				adapters: [first, dup, third],
+				logger,
+				connections: () => [],
+				onConnectionsChanged: () => ({ dispose() {} }),
+			}),
+		).toThrow(/already registered/);
+		expect(first.start).toHaveBeenCalledTimes(1);
+		expect(first.stop).toHaveBeenCalledTimes(1);
+		expect(first.ctx?.signal.aborted).toBe(true);
+		expect(registry.list()).toEqual([]);
+		expect(dup.start).not.toHaveBeenCalled();
+		expect(third.start).not.toHaveBeenCalled();
+	});
+
 	it("dispose() 幂等 —— 再调不重复 stop", async () => {
 		const { onebot, builtin } = setup();
 		await builtin.dispose();

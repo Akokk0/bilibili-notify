@@ -27,7 +27,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket, WebSocketServer } from "ws";
-import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
+import { fakeAdapterContext, reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createWebhookAdapter } from "../webhook.js";
 
@@ -1523,8 +1523,12 @@ describe("onebot — transport 切换 / reconcile 收敛", () => {
 	it("dispose 后 reconcile 是 no-op(disposed 守卫)", async () => {
 		const bot = await startFakeBotServer();
 		const ad = createOnebotAdapter(obOpts());
+		// 生产里的次序:先 start(ctx)、再 stop(),停下后「连接变了」那一声(订阅没被摘时)应被忽略。
+		const fake = fakeAdapterContext([]);
+		ad.start(fake.ctx);
 		ad.stop();
-		reconcileAdapter(ad, [obWsConnection(bot.port)]); // disposed → 应被忽略
+		fake.setConnections([obWsConnection(bot.port)]);
+		fake.fireChanged(); // disposed → 应被忽略
 		await sleep(120);
 		expect(bot.connections.length).toBe(0);
 	});

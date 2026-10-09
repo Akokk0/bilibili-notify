@@ -11,7 +11,11 @@ export interface IntegrationContextHandle {
 	readonly ctx: IntegrationContext;
 	/** 已经开始收尾了(`dispose()` 一进门就是 true)。 */
 	readonly disposed: boolean;
-	/** 把一样注册项记进名册;交回的把手撤掉它并从名册里摘除。 */
+	/**
+	 * 把一样注册项记进名册;交回的把手撤掉它并从名册里摘除。
+	 * 已经收尾了还来登记的:当场撤掉它、记一行 warn,交回一个什么都不做的把手 —— 名册早清空了,
+	 * 收尾不会再跑,记进去的话这一项永远撤不掉。
+	 */
 	track(inner: Disposable): Disposable;
 	/** 停下之后还来注册:记一行 warn,交回一个什么都不做的把手。 */
 	refuse(what: string): Disposable;
@@ -55,6 +59,16 @@ export function createIntegrationContext(
 	}
 
 	function track(inner: Disposable): Disposable {
+		if (disposed) {
+			// 名册早清空了、`dispose()` 幂等不会再跑:记进去就永远撤不掉,所以当场撤。
+			logger.warn("已经卸载了,又来登记的一项当场撤掉");
+			try {
+				inner.dispose();
+			} catch (err) {
+				logger.error(`回收注册项时抛了:${(err as Error).message}`);
+			}
+			return NOOP_DISPOSABLE;
+		}
 		registered.add(inner);
 		return {
 			dispose() {
