@@ -107,7 +107,10 @@ function scopesFor(platform: string): ReadonlyArray<{
  * OneBot 与官机各有一句专门的话(QQ 号 / 群号、频道 / 群 / C2C 三档寻址);别的平台
  * 拿注册表里的地址称呼拼一句 —— 认不出的平台也说得出话,而不是留一句空白。
  */
-function sessionFieldsHint(target: PushTarget, platform: string | undefined): string {
+function sessionFieldsHint(
+	target: Extract<PushTarget, { kind: "session" }>,
+	platform: string | undefined,
+): string {
 	if (platform === "onebot") {
 		return target.scope === "private" ? "私聊目标 QQ 号" : "群聊号(QQ 群号)";
 	}
@@ -290,7 +293,7 @@ function TargetCard({
 
 			<div className="flex items-center justify-between text-bn-xs text-bn-text-secondary">
 				<span className="truncate">
-					{scopeLabel(target.scope)}
+					{scopeLabel(target.kind === "session" ? target.scope : "channel")}
 					{" · "}
 					<span style={{ color: connectionMissing ? "var(--color-bn-danger-text)" : undefined }}>
 						{connectionMissing ? "连接缺失" : `连接: ${connection.name}`}
@@ -1119,7 +1122,7 @@ function TargetEditorModal({
 					<Field label="作用域" code="target.scope">
 						<div className="flex gap-1.5">
 							{scopesFor(platform ?? "").map((s) => {
-								const active = value.scope === s.value;
+								const active = (value.kind === "session" ? value.scope : "channel") === s.value;
 								return (
 									<ToneChip
 										key={s.value}

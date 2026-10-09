@@ -23,7 +23,6 @@ function target(id: string, name: string, enabled = true): PushTarget {
 		scope: "group",
 		enabled,
 		kind: "session",
-		platform: "onebot",
 		address: "123",
 	} as PushTarget;
 }
@@ -113,8 +112,8 @@ describe("TargetChipPicker", () => {
 		expect(screen.queryAllByRole("button")).toHaveLength(0);
 	});
 
-	it("图标的平台取自连接:目标自己写 feishu、连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {
-		const own = { ...target(T_A, "群 A"), platform: "feishu" } as PushTarget;
+	it("图标的平台取自连接:连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {
+		const own = target(T_A, "群 A");
 		const badge = () =>
 			screen.getByRole("button", { name: /群 A/ }).querySelector("span.font-extrabold");
 		const first = render(

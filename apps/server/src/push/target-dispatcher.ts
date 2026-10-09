@@ -246,10 +246,10 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	}
 }
 
-/** 推送目标 → 适配器发送口要的那几格。会话目标取 `scope` / `address` / `parentAddress`,端点目标取 `id` / `name` / `scope`。 */
+/** 推送目标 → 适配器发送口要的那几格。会话目标取 `scope` / `address` / `parentAddress`,端点目标取 `id` / `name`。 */
 function destinationOf(target: PushTarget): DestinationRef {
 	if (target.kind === "endpoint") {
-		return { kind: "endpoint", id: target.id, name: target.name, scope: target.scope };
+		return { kind: "endpoint", id: target.id, name: target.name };
 	}
 	return {
 		kind: "session",

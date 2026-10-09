@@ -424,6 +424,9 @@ async function fileExists(absPath: string): Promise<boolean> {
  * 平台的 bot,ADR-0012 决策 27),于是这里对它整个早退;改成「一条连接 = 一个借来的 bot」
  * (决策 45)之后它有了,而早退没跟着改 —— 症状是把一条桥连接从 QQ bot 换成 telegram bot
  * 能存下去,底下的 QQ 群目标平台原地不动,投递却跑去了 telegram。
+ *
+ * 现在目标不再自带平台(平台只在连接上):连接的平台一改,底下挂着的目标会**静默换义**
+ * (QQ 群号被当成 telegram 地址),再没有目标上那份拷贝来兜底,所以这一道要留着。
  */
 function assertConnectionIdentityStable(current: Connection, next: Connection): void {
 	if (current.kind !== next.kind) {
@@ -484,15 +487,11 @@ const MASTER_TARGET_IN_USE = "它是主人目标，先在系统页把主人目�
 export const CONNECTION_NOT_FOUND = "connection not found";
 
 /**
- * 目标与它挂着的那条连接对不对得上 —— 连接存在,且平台是同一个。
+ * 目标挂着的那条连接得存在。逐条 upsert 与整体 replaceSections 都走这一份。
  *
- * 逐条 upsert 与整体 replaceSections 都走这一份:同一条不变式抄两遍,总有一天只改了
- * 一边(而那两条路上「半新半旧的配置」代价完全一样)。
- *
- * 🔴 **拓展那一支同样比平台。** 它曾经没有 `platform`(那时一条连接是「一条驮着 N 个
- * 平台的桥接入」,ADR-0012 决策 27),于是这里对它整个早退;改成「一条连接 = 一个借来的
- * bot」(决策 45)之后它有了,面板建目标时也正是从连接上抄的这一格 —— 早退留着,就等于
- * 「目标写着 onebot、连接却是 telegram」能存下去,而错要到发第一条推送时才现形。
+ * 目标不再自带平台,所以这里不比平台;「改挂到另一个平台的连接」由
+ * {@link assertTargetRehomeKeepsPlatform} 管。**只在写入口调**:读盘不查(连接不在了的目标
+ * 照旧读进来、发送时 `not_found`,不挡开机)。
  */
 function assertTargetOwner(target: PushTarget, connections: readonly Connection[]): void {
 	const owner = connections.find((a) => a.id === target.connectionId);
@@ -503,11 +502,49 @@ function assertTargetOwner(target: PushTarget, connections: readonly Connection[
 			[{ path: ["connectionId"], message: "没有这条连接" }],
 		);
 	}
-	if (owner.platform !== target.platform) {
+}
+
+/**
+ * 目标的 `connectionId` 变了(改挂连接)时,旧、新两条连接的平台必须相同 —— 目标的地址是
+ * 平台自己那一套编号(QQ 群号不是 telegram 的 chat id),换平台等于换义。
+ *
+ * 旧连接已经不在了:没东西可比,放行(数据坏了之后手动修回来的路)。新连接不存在由
+ * {@link assertTargetOwner} 拒。
+ */
+function assertTargetRehomeKeepsPlatform(
+	before: PushTarget | undefined,
+	after: PushTarget,
+	oldConnections: readonly Connection[],
+	newConnections: readonly Connection[],
+): void {
+	if (!before || before.connectionId === after.connectionId) return;
+	const from = oldConnections.find((c) => c.id === before.connectionId);
+	const to = newConnections.find((c) => c.id === after.connectionId);
+	if (!from || !to || from.platform === to.platform) return;
+	throw ConfigValidationError.invalid(
+		"targets",
+		`推送目标不能改挂到另一个平台的连接上（${from.platform} → ${to.platform}）：两边的地址不是同一套编号，要换平台请新建一个目标`,
+		[{ path: ["connectionId"], message: "不能改挂到另一个平台的连接上" }],
+	);
+}
+
+/**
+ * 整节替换里「只换连接、目标保留」的那一种:每个保留下来的目标,它所指的连接在替换前后若都
+ * 在,平台必须没变(`assertConnectionIdentityStable` 管的是逐条写,这条路不经过它)。
+ */
+function assertRetainedTargetsKeepPlatform(
+	targets: readonly PushTarget[],
+	oldConnections: readonly Connection[],
+	newConnections: readonly Connection[],
+): void {
+	for (const target of targets) {
+		const before = oldConnections.find((c) => c.id === target.connectionId);
+		const after = newConnections.find((c) => c.id === target.connectionId);
+		if (!before || !after || before.platform === after.platform) continue;
 		throw ConfigValidationError.invalid(
-			"targets",
-			`推送目标的平台（${target.platform}）和它挂着的连接（${owner.platform}）对不上`,
-			[{ path: ["platform"], message: "要和连接的平台一致" }],
+			"connections",
+			`连接「${after.name}」的平台变了（${before.platform} → ${after.platform}），它底下还挂着推送目标；要换平台请新建一条连接`,
+			[{ path: ["platform"], message: "底下还挂着推送目标，平台不能变" }],
 		);
 	}
 }
@@ -533,9 +570,6 @@ function makeManagedWebhookTarget(
 		name: connection.name || "Webhook",
 		connectionId: connection.id,
 		kind: "endpoint",
-		// 托管目标的平台跟着连接走 —— 连接改成钉钉,这里下一次同步就跟着改。
-		platform: connection.platform,
-		scope: "channel",
 		enabled: connection.enabled,
 		managedBy: "connection",
 		testStatus: existing?.testStatus,
@@ -565,8 +599,6 @@ function syncManagedWebhookTarget(
 		existing.name !== desired.name ||
 		existing.connectionId !== desired.connectionId ||
 		existing.kind !== desired.kind ||
-		existing.platform !== desired.platform ||
-		existing.scope !== desired.scope ||
 		existing.enabled !== desired.enabled ||
 		existing.managedBy !== desired.managedBy;
 	return { next, changed, aliases };
@@ -1521,6 +1553,12 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.fromZod("targets", parsed.error);
 			}
 			assertTargetOwner(parsed.data, this.connections);
+			assertTargetRehomeKeepsPlatform(
+				this.targets.find((t) => t.id === parsed.data.id),
+				parsed.data,
+				this.connections,
+				this.connections,
+			);
 			if (this.globals.master?.targetId === parsed.data.id && !isPrivateTarget(parsed.data)) {
 				throw ConfigValidationError.invalid("targets", MASTER_TARGET_IN_USE);
 			}
@@ -1573,6 +1611,7 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.fromZod("targets", parsed.error);
 			}
 			assertTargetOwner(parsed.data, this.connections);
+			assertTargetRehomeKeepsPlatform(current, parsed.data, this.connections, this.connections);
 			if (this.globals.master?.targetId === id && !isPrivateTarget(parsed.data)) {
 				throw ConfigValidationError.invalid("targets", MASTER_TARGET_IN_USE);
 			}
@@ -1694,6 +1733,20 @@ class NodeConfigStore implements ConfigStore {
 			// 只换标签表时,现有订阅上的旧 id 跟着剥;订阅也给了的,挂错标签就整份拒(下面 assertKnownTags)。
 			const effSubs = subscriptions ?? withoutUnknownTags(this.subscriptions, effTags).next;
 			for (const t of effTargets) assertTargetOwner(t, effConnections);
+			// 目标不再自带平台,连接的平台与目标的归属得靠这里守:两节一起换是一整套恢复(不比旧的),
+			// 只换一边时,保留下来的那一边不能被另一边悄悄换义。
+			if (connections && !targets) {
+				assertRetainedTargetsKeepPlatform(this.targets, this.connections, effConnections);
+			} else if (targets && !connections) {
+				for (const t of targets) {
+					assertTargetRehomeKeepsPlatform(
+						this.targets.find((old) => old.id === t.id),
+						t,
+						this.connections,
+						effConnections,
+					);
+				}
+			}
 			assertMasterTarget((globals ?? this.globals).master, effTargets, "globals");
 			const synced = syncManagedWebhookTargets(effConnections, effTargets);
 			const replaced = replaceTargetIdsInSubscriptions(effSubs, synced.aliases);

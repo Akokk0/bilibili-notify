@@ -52,8 +52,6 @@ const MANAGED_TARGET = {
 	name: "飞书群机器人 · 投递",
 	connectionId: WEBHOOK_ID,
 	kind: "endpoint",
-	platform: "feishu",
-	scope: "group",
 	enabled: true,
 	managedBy: "connection",
 	session: {},

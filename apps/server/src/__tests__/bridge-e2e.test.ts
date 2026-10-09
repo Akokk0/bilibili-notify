@@ -219,7 +219,6 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 					name: "测试群",
 					connectionId: CONNECTION_ID,
 					kind: "session",
-					platform: "telegram",
 					scope: "group",
 					address: GROUP_ADDRESS,
 					enabled: true,

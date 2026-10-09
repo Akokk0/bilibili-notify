@@ -50,7 +50,6 @@ function target(id: string, connectionId: string, enabled = true): PushTarget {
 		scope: "group",
 		enabled,
 		kind: "session",
-		platform: "onebot",
 		address: "1",
 	} as PushTarget;
 }

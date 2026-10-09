@@ -19,18 +19,16 @@ const UNSUPPORTED_NOTE = /QQ 官方.*不支持.*@全体/;
 
 const noop = () => {};
 
-function targetFor(platform: PushTarget["platform"]): PushTarget {
+function targetFor(platform: string): PushTarget {
 	const base = {
 		id: `${platform}-1`,
 		name: `${platform} 目标`,
 		connectionId: "a-1",
 		enabled: true,
 	};
-	if (platform === "onebot")
-		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
-	if (platform === "qq-official")
-		return { ...base, kind: "session", platform: "qq-official", scope: "group", address: "" };
-	return { ...base, kind: "endpoint", platform: "feishu", scope: "channel" };
+	if (platform === "onebot") return { ...base, kind: "session", scope: "group", address: "" };
+	if (platform === "qq-official") return { ...base, kind: "session", scope: "group", address: "" };
+	return { ...base, kind: "endpoint" };
 }
 
 /**
@@ -45,7 +43,9 @@ function customSubFor(targetId: string): Subscription {
 	return sub;
 }
 
-function renderDialog(target: PushTarget) {
+function renderDialog(platform: string) {
+	// 平台只在连接上:目标自己不带,按 platform 造目标,再造一条同平台的连接挂着它。
+	const target = targetFor(platform);
 	return render(
 		<UpDialog
 			sub={customSubFor(target.id)}
@@ -54,7 +54,7 @@ function renderDialog(target: PushTarget) {
 				{
 					id: target.connectionId,
 					kind: "direct",
-					platform: target.platform,
+					platform,
 					enabled: true,
 				} as Connection,
 			]}
@@ -70,7 +70,7 @@ afterEach(cleanup);
 
 describe("UpDialog · QQ 官方 @全体 提示", () => {
 	it("QQ 官方 target 的 @全体 开关被禁用并显示不支持说明", () => {
-		renderDialog(targetFor("qq-official"));
+		renderDialog("qq-official");
 
 		const note = screen.getByText(UNSUPPORTED_NOTE);
 		expect(note).toBeTruthy();
@@ -83,12 +83,12 @@ describe("UpDialog · QQ 官方 @全体 提示", () => {
 	});
 
 	it("onebot target 不显示不支持说明", () => {
-		renderDialog(targetFor("onebot"));
+		renderDialog("onebot");
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 	});
 
 	it("webhook 那一族的 target 不显示不支持说明", () => {
-		renderDialog(targetFor("feishu"));
+		renderDialog("feishu");
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 	});
 });

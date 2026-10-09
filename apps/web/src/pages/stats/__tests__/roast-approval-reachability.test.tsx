@@ -20,8 +20,8 @@ import { api } from "../../../services/api";
 const T_MASTER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CONN = "11111111-1111-4111-8111-111111111111";
 
-/** 目标自己那格 `platform` 由调用方故意写成跟连接相反的。 */
-function master(ownPlatform: string): PushTarget {
+/** 目标自己不带平台:平台只在连接上。 */
+function master(): PushTarget {
 	return {
 		id: T_MASTER,
 		name: "主人",
@@ -29,7 +29,6 @@ function master(ownPlatform: string): PushTarget {
 		scope: "private",
 		enabled: true,
 		kind: "session",
-		platform: ownPlatform,
 		address: "123",
 	} as PushTarget;
 }
@@ -54,19 +53,19 @@ function reachability(target: PushTarget, connections: Connection[]) {
 afterEach(cleanup);
 
 describe("useApprovalReachability · 平台取自连接", () => {
-	it("主人目标挂在 OneBot 连接上 → 收得到(目标自己那格写成 feishu 也不影响)", async () => {
-		const { result } = reachability(master("feishu"), [connection("onebot")]);
+	it("主人目标挂在 OneBot 连接上 → 收得到", async () => {
+		const { result } = reachability(master(), [connection("onebot")]);
 		await waitFor(() => expect(result.current.canApprove).toBe(true));
 	});
 
-	it("主人目标挂在 webhook 那一族的连接上 → 收不到,理由是今天那句(目标自己那格写成 onebot 也不影响)", async () => {
-		const { result } = reachability(master("onebot"), [connection("feishu")]);
+	it("主人目标挂在 webhook 那一族的连接上 → 收不到,理由是今天那句", async () => {
+		const { result } = reachability(master(), [connection("feishu")]);
 		await waitFor(() => expect(result.current.hint).toMatch(/webhook 只是一个出站 HTTP 请求/));
 		expect(result.current.canApprove).toBe(false);
 	});
 
 	it("连接已加载但不在 → 收不到,理由是「…连接已经不在了」", async () => {
-		const { result } = reachability(master("onebot"), []);
+		const { result } = reachability(master(), []);
 		await waitFor(() => expect(result.current.hint).toBe("主人私聊目标挂的那条连接已经不在了"));
 		expect(result.current.canApprove).toBe(false);
 	});

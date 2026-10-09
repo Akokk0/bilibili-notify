@@ -298,7 +298,6 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 				name: "主群",
 				connectionId: connection.id,
 				kind: "session",
-				platform: "onebot",
 				scope: "group",
 				enabled: true,
 				address: "111",
@@ -367,6 +366,53 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			const targets = store.getTargets();
 			expect(targets).toHaveLength(1);
 			expect(targets.every((t) => t.kind === "endpoint")).toBe(true);
+		});
+
+		it("迁移最后一步摘 platform / 端点的 scope,且排在「认已撤下平台」之后 —— 同一份文件里撤下的丢掉、新形状的摘净", async () => {
+			const onebot = makeOnebotConnection();
+			const webhook = makeWebhookConnection();
+			const session = {
+				id: randomUUID(),
+				name: "主群",
+				connectionId: onebot.id,
+				kind: "session",
+				platform: "onebot",
+				scope: "group",
+				enabled: true,
+				address: "111",
+			};
+			const endpoint = {
+				id: randomUUID(),
+				name: "飞书",
+				connectionId: webhook.id,
+				kind: "endpoint",
+				platform: "feishu",
+				scope: "channel",
+				enabled: true,
+				managedBy: "connection",
+			};
+			// 撤下平台的存量(没有 kind、parse 不过):只有读得到原始的 platform 才认得出它该丢。
+			const retired = {
+				id: randomUUID(),
+				name: "stale",
+				adapterId: onebot.id,
+				platform: "web-dashboard",
+				scope: "group",
+				enabled: true,
+				session: {},
+			};
+			await sandbox.placeZero("state/connections.json", [onebot, webhook]);
+			await sandbox.placeZero("state/targets.json", [session, endpoint, retired]);
+
+			await sandbox.migrate();
+
+			const out = await sandbox.readConfig<Array<Record<string, unknown>>>("targets.json");
+			expect(out.map((t) => t.id)).toEqual([session.id, endpoint.id]);
+			for (const t of out) expect(t).not.toHaveProperty("platform");
+			expect(out[0]).toMatchObject({ kind: "session", scope: "group", address: "111" });
+			expect(out[1]).not.toHaveProperty("scope");
+			expect(out[1]).toMatchObject({ kind: "endpoint", managedBy: "connection" });
+			await sandbox.load(); // 不应抛错
 		});
 
 		/**
@@ -456,7 +502,9 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 
 			const store = await sandbox.migrateAndLoad();
 
-			expect(store.getTargets()).toEqual([expect.objectContaining({ platform: "telegram" })]);
+			expect(store.getTargets()).toEqual([expect.objectContaining({ id: bridged.id })]);
+			// 目标不再自带平台:它在连接上,迁移最后一步把盘上这一格摘掉了。
+			expect(store.getTargets()[0]).not.toHaveProperty("platform");
 		});
 
 		it("认得的平台上坏掉的 target 迁移器不丢、开机照旧抛错 —— 别把真损坏当存量吃掉", async () => {
@@ -475,8 +523,9 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			await sandbox.placeZero("state/targets.json", [broken]);
 
 			await sandbox.migrate();
-			// 迁移器不丢它:新代里还留着,由开机的配置仓报出来。
-			expect(await sandbox.readConfig("targets.json")).toEqual([broken]);
+			// 迁移器不丢它:新代里还留着(只是摘掉了目标不再带的 platform),由开机的配置仓报出来。
+			const { platform: _platform, ...expected } = broken;
+			expect(await sandbox.readConfig("targets.json")).toEqual([expected]);
 			await expect(sandbox.load()).rejects.toBeInstanceOf(ConfigValidationError);
 		});
 
@@ -504,7 +553,8 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			await sandbox.placeZero("state/targets.json", [broken]);
 
 			await sandbox.migrate();
-			expect(await sandbox.readConfig("targets.json")).toEqual([broken]);
+			const { platform: _platform, ...expected } = broken;
+			expect(await sandbox.readConfig("targets.json")).toEqual([expected]);
 			await expect(sandbox.load()).rejects.toBeInstanceOf(ConfigValidationError);
 		});
 	});

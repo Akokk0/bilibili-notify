@@ -41,7 +41,6 @@ function target(id: string, connectionId: string, enabled: boolean): PushTarget 
 		connectionId,
 		scope: "group",
 		enabled,
-		platform: "onebot",
 		kind: "session",
 		address: "123",
 	} as PushTarget;

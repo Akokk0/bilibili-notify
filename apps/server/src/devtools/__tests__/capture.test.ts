@@ -26,7 +26,6 @@ const TARGET: PushTarget = {
 	id: "t-1",
 	name: "测试群",
 	connectionId: "ad-1",
-	platform: "onebot",
 	kind: "session",
 	scope: "group",
 	address: "123",

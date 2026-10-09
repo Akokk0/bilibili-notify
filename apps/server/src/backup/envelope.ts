@@ -27,6 +27,8 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 12 = 推送目标不再带 `platform` 以后导出的备份(平台只在连接上;端点目标也没有 `scope`;恢复时,目标要是改挂到
+ * 另一个平台的连接、或连接换了平台而底下还挂着目标,整份拒收)。
  * 11 = 主人目标只许指向私聊目标以后导出的备份(设置 `master.targetId` 指向的推送目标必须存在、而且是私聊会话;
  * 恢复时不满足的整份拒收)。
  * 10 = 合并转发的设置键改名以后导出的备份(设置 `defaults.imageGroup` 与订阅 `overrides.imageGroup` 里,`enable` / `forward` 叫
@@ -55,7 +57,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 11 as const;
+export const BACKUP_SCHEMA_VERSION = 12 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

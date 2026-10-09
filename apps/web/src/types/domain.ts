@@ -182,7 +182,7 @@ export function makeEmptyExtensionConnection(
 
 /**
  * 刚挑了拓展、还没挑 bot 的那条草稿:平台空着,**存不了**(弹窗按它灰掉保存钮)。别在这儿
- * 编一个平台名 —— 目标的平台正要从这里抄。
+ * 编一个平台名 —— 连接的平台是从挑中的 bot 上抄的。
  */
 export function makeExtensionConnectionDraft(
 	extensionId: string,
@@ -341,16 +341,16 @@ export function makeEmptyTarget(connection: Connection, name: string): PushTarge
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
 	if (connection.kind !== "direct") {
-		// 拓展提供的连接就是一个 bot,平台跟着连接走(ADR-0012 决策 45)—— 与直连同一套逻辑,
+		// 拓展提供的连接就是一个 bot(ADR-0012 决策 45)—— 与直连同一套逻辑,
 		// 目标只填地址。曾经在这里 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
-		return { ...base, kind: "session", platform: connection.platform, scope: "group", address: "" };
+		return { ...base, kind: "session", scope: "group", address: "" };
 	}
 	if (connection.platform === "onebot") {
-		return { ...base, kind: "session", platform: "onebot", scope: "group", address: "" };
+		return { ...base, kind: "session", scope: "group", address: "" };
 	}
 	if (connection.platform === "qq-official") {
-		return { ...base, kind: "session", platform: "qq-official", scope: "group", address: "" };
+		return { ...base, kind: "session", scope: "group", address: "" };
 	}
-	// webhook 那一族:目标是连接的单向终点,平台跟着连接走,地址烧在连接的 config 里。
-	return { ...base, kind: "endpoint", platform: connection.platform, scope: "channel" };
+	// webhook 那一族:目标是连接的单向终点,地址烧在连接的 config 里。
+	return { ...base, kind: "endpoint" };
 }

@@ -98,11 +98,12 @@ describe("webhook adapter factories", () => {
 		expect(target).toMatchObject({
 			connectionId: connection.id,
 			kind: "endpoint",
-			platform: "wecom",
-			scope: "channel",
 			enabled: true,
 		});
 		expect(target.managedBy).toBeUndefined();
+		// 目标不再自带平台,端点目标也没有 scope。
+		expect(target).not.toHaveProperty("platform");
+		expect(target).not.toHaveProperty("scope");
 	});
 
 	it("webhook placeholder / secret hint 随平台切换", () => {
@@ -142,11 +143,11 @@ describe("qq-official adapter factories", () => {
 		expect(target).toMatchObject({
 			connectionId: connection.id,
 			kind: "session",
-			platform: "qq-official",
 			scope: "group",
 			enabled: true,
 			address: "",
 		});
+		expect(target).not.toHaveProperty("platform");
 	});
 });
 

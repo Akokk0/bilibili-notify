@@ -246,7 +246,6 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 						name,
 						connectionId: ID.connection,
 						kind: "session",
-						platform: "onebot",
 						scope,
 						address,
 						enabled: true,

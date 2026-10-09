@@ -151,8 +151,6 @@ function makeWebhookTarget(
 		name: "手动 Webhook",
 		connectionId: connection.id,
 		kind: "endpoint" as const,
-		platform: connection.platform,
-		scope: "channel" as const,
 		enabled: true,
 		session: {},
 		...overrides,
@@ -233,7 +231,6 @@ describe("ConfigStore", () => {
 				name: `私聊 ${id.slice(0, 4)}`,
 				connectionId: connection.id,
 				kind: "session",
-				platform: "onebot",
 				scope: "private",
 				address: "10001",
 				enabled: true,
@@ -518,7 +515,6 @@ describe("ConfigStore", () => {
 			name: "t1",
 			connectionId: connection.id,
 			kind: "session" as const,
-			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
 			address: "10001",
@@ -541,7 +537,6 @@ describe("ConfigStore", () => {
 			name: "群聊",
 			connectionId: connection.id,
 			kind: "session" as const,
-			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
 			address: "10001",
@@ -551,7 +546,6 @@ describe("ConfigStore", () => {
 			name: "私聊",
 			connectionId: connection.id,
 			kind: "session" as const,
-			platform: "onebot" as const,
 			scope: "private" as const,
 			enabled: true,
 			address: "20002",
@@ -594,12 +588,12 @@ describe("ConfigStore", () => {
 			name: connection.name,
 			connectionId: connection.id,
 			kind: "endpoint",
-			// 托管目标的平台跟着连接走。
-			platform: connection.platform,
-			scope: "channel",
 			enabled: true,
 			managedBy: "connection",
 		});
+		// 托管目标没有自己的平台与 scope:平台在连接上。
+		expect(targets[0]).not.toHaveProperty("platform");
+		expect(targets[0]).not.toHaveProperty("scope");
 		const scopes = configScopes(bus);
 		expect(scopes).toEqual(["connections", "targets"]);
 	});
@@ -673,8 +667,8 @@ describe("ConfigStore", () => {
 			name: connection.name,
 			connectionId: connection.id,
 			managedBy: "connection",
-			scope: "channel",
 		});
+		expect(managed).not.toHaveProperty("scope");
 		expect(store2.getSubscriptions()[0]?.routing.post).toEqual([target.id]);
 		await rm(dir2, { recursive: true, force: true });
 	});
@@ -736,49 +730,48 @@ describe("ConfigStore", () => {
 		expect(scopes).toEqual(["connections", "targets", "subscriptions"]);
 	});
 
-	// 目标的平台开放之后,「挂在 onebot 连接下、平台写着 telegram」这种目标**schema 收得下**
-	// —— 从前是闭集,它连 parse 都过不去。挡住它的只剩 store 里那条不变式,而那条不变式
-	// 在这两条路上各写了一份(逐条 upsert / 整体 replaceSections),原先一条测试都没有:
-	// 整个删掉,全仓 5986 个测试照样绿。
-	it("upsertTarget 拒绝平台与连接对不上的目标", async () => {
+	// 目标不再自带平台,「目标和连接对不上」只剩一种:已有的目标被改挂到另一个平台的连接上。
+	// 这道守卫在两条路上各写了一份(逐条 upsert / 整体 replaceSections),这里钉住两条路都挡。
+	it("upsertTarget 拒绝把已有的目标改挂到另一个平台的连接上", async () => {
 		const connection = makeOnebotConnection();
+		const feishu = makeWebhookConnection();
 		await store.upsertConnection(connection);
-		await expect(
-			store.upsertTarget({
-				id: randomUUID(),
-				name: "冒充的",
-				connectionId: connection.id,
-				kind: "session",
-				platform: "telegram",
-				scope: "group",
-				enabled: true,
-				address: "1",
-			}),
-		).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getTargets()).toHaveLength(0);
+		await store.upsertConnection(feishu);
+		const target = {
+			id: randomUUID(),
+			name: "冒充的",
+			connectionId: connection.id,
+			kind: "session" as const,
+			scope: "group" as const,
+			enabled: true,
+			address: "1",
+		};
+		await store.upsertTarget(target);
+		await expect(store.upsertTarget({ ...target, connectionId: feishu.id })).rejects.toBeInstanceOf(
+			ConfigValidationError,
+		);
+		expect(store.getTargets().find((t) => t.id === target.id)?.connectionId).toBe(connection.id);
 	});
 
 	it("replaceSections 也拒绝 —— 恢复备份走的是这一条,不能只挡住手工那条", async () => {
 		const connection = makeOnebotConnection();
+		const feishu = makeWebhookConnection();
 		await store.upsertConnection(connection);
+		await store.upsertConnection(feishu);
+		const target = {
+			id: randomUUID(),
+			name: "冒充的",
+			connectionId: connection.id,
+			kind: "session" as const,
+			scope: "group" as const,
+			enabled: true,
+			address: "1",
+		};
+		await store.upsertTarget(target);
 		await expect(
-			store.replaceSections({
-				connections: [connection],
-				targets: [
-					{
-						id: randomUUID(),
-						name: "冒充的",
-						connectionId: connection.id,
-						kind: "session",
-						platform: "telegram",
-						scope: "group",
-						enabled: true,
-						address: "1",
-					} as PushTarget,
-				],
-			}),
+			store.replaceSections({ targets: [{ ...target, connectionId: feishu.id } as PushTarget] }),
 		).rejects.toBeInstanceOf(ConfigValidationError);
-		expect(store.getTargets()).toHaveLength(0);
+		expect(store.getTargets().find((t) => t.id === target.id)?.connectionId).toBe(connection.id);
 	});
 
 	it("deleteConnection(onebot) 仍在被 target 引用时拒绝", async () => {
@@ -789,7 +782,6 @@ describe("ConfigStore", () => {
 			name: "群聊",
 			connectionId: connection.id,
 			kind: "session",
-			platform: "onebot",
 			scope: "group",
 			enabled: true,
 			address: "10001",
@@ -828,7 +820,7 @@ describe("ConfigStore", () => {
 		});
 	});
 
-	it("目标挂着不存在的连接 / 平台和连接对不上 → invalid,issues 点名那一格", async () => {
+	it("目标挂着不存在的连接 / 改挂到另一个平台的连接 → invalid,issues 点名那一格", async () => {
 		const connection = makeOnebotConnection();
 		await store.upsertConnection(connection);
 		const target = {
@@ -836,7 +828,6 @@ describe("ConfigStore", () => {
 			name: "群聊",
 			connectionId: connection.id,
 			kind: "session" as const,
-			platform: "onebot" as const,
 			scope: "group" as const,
 			enabled: true,
 			address: "10001",
@@ -848,11 +839,15 @@ describe("ConfigStore", () => {
 			scope: "targets",
 			issues: [{ path: ["connectionId"], message: "没有这条连接" }],
 		});
+		// 目标不再自带平台:同一个目标改挂到另一个平台的连接才是「对不上」(守卫 1)。
+		await store.upsertTarget(target as PushTarget);
+		const feishu = makeWebhookConnection();
+		await store.upsertConnection(feishu);
 		await expect(
-			store.upsertTarget({ ...target, platform: "telegram" } as PushTarget),
+			store.upsertTarget({ ...target, connectionId: feishu.id } as PushTarget),
 		).rejects.toMatchObject({
 			code: "invalid",
-			issues: [{ path: ["platform"], message: "要和连接的平台一致" }],
+			issues: [{ path: ["connectionId"], message: "不能改挂到另一个平台的连接上" }],
 		});
 	});
 
@@ -1061,20 +1056,23 @@ describe("ConfigStore", () => {
 		expect(store.getConnections()[0]?.platform).toBe("onebot");
 	});
 
-	it("拓展连接底下的目标平台必须和它一致", async () => {
+	it("拓展连接底下的目标不能改挂到另一个平台的连接上", async () => {
 		const connection = bridgeConnection("telegram");
+		const onebot = makeOnebotConnection();
 		await store.upsertConnection(connection as never);
+		await store.upsertConnection(onebot);
+		const target = {
+			id: randomUUID(),
+			name: "对不上的群",
+			connectionId: connection.id,
+			kind: "session",
+			scope: "group",
+			enabled: true,
+			address: "123",
+		};
+		await store.upsertTarget(target as never);
 		await expect(
-			store.upsertTarget({
-				id: randomUUID(),
-				name: "对不上的群",
-				connectionId: connection.id,
-				kind: "session",
-				platform: "onebot",
-				scope: "group",
-				enabled: true,
-				address: "123",
-			} as never),
+			store.upsertTarget({ ...target, connectionId: onebot.id } as never),
 		).rejects.toBeInstanceOf(ConfigValidationError);
 	});
 
@@ -1134,7 +1132,6 @@ describe("ConfigStore", () => {
 						name: "孤儿目标",
 						connectionId: randomUUID(),
 						kind: "session",
-						platform: "onebot",
 						scope: "group",
 						enabled: true,
 						address: "1",

@@ -60,7 +60,6 @@ function sessionTarget(id: string, name: string, address: string): PushTarget {
 		name,
 		connectionId: CONNECTION_ID,
 		kind: "session",
-		platform: "onebot",
 		scope: "group",
 		enabled: true,
 		address,

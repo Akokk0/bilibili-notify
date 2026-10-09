@@ -117,7 +117,6 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 			name: "主群",
 			connectionId: shared?.id,
 			kind: "session",
-			platform: "onebot",
 			scope: "group",
 			enabled: true,
 			address: "111",
@@ -150,11 +149,12 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 				id: ID.hook1,
 				name: "飞书 · hooks.example.com",
 				connectionId: hooks[0]?.id,
-				platform: "generic",
-				scope: "channel",
 				managedBy: "connection",
 			}),
 		]);
+		// 目标不再自带平台,端点目标也没有 scope。
+		expect(endpoints[0]).not.toHaveProperty("platform");
+		expect(endpoints[0]).not.toHaveProperty("scope");
 	});
 
 	it("认不得的老平台丢掉;迁出来的两份文件落在新的一代里", async () => {
@@ -170,6 +170,11 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 		).toEqual([ID.group, ID.private, ID.other, ID.hook1]);
 		expect(await readConfig<Connection[]>("connections.json")).toEqual(store.getConnections());
 		expect(await readConfig<PushTarget[]>("targets.json")).toEqual(store.getTargets());
+		// 迁出来的每条目标都不带 platform(平台在连接上),端点目标也没有 scope。
+		for (const t of await readConfig<PushTarget[]>("targets.json")) {
+			expect(t).not.toHaveProperty("platform");
+			if (t.kind === "endpoint") expect(t).not.toHaveProperty("scope");
+		}
 	});
 
 	it("订阅里引用被并掉的那条 webhook 目标的,改指托管目标,重复的去掉", async () => {

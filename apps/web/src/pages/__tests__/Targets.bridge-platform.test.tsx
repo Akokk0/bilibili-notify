@@ -44,7 +44,6 @@ const TELEGRAM_TARGET = {
 	name: "电报群",
 	connectionId: CONNECTION_ID,
 	kind: "session",
-	platform: "telegram",
 	scope: "group",
 	enabled: true,
 	address: "-1001234567890",

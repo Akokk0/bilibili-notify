@@ -73,8 +73,11 @@ import { migrateUptime } from "./uptime.js";
  * 迁移修订号(见 `runtime/generations.ts`):开发期每改一次迁移的产出(搬什么、搬到哪、怎么搬、丢下什么、
  * 格式怎么变)就加 1,开发期迁出来的那一代据此重迁。只比一样不一样。alpha.1 起冻住。
  * `__tests__/zero-generation.test.ts` 的最后一条钉着「产出变了必须抬它」。
+ *
+ * 39 = 迁出来的推送目标不再带 `platform`(平台只在连接上),端点目标也不再带 `scope`
+ * (`config/targets.json` 因此少了这两格,摘要变)。
  */
-export const MIGRATION_REVISION = 38;
+export const MIGRATION_REVISION = 39;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

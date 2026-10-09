@@ -56,8 +56,6 @@ function target(over: Record<string, unknown> = {}): PushTarget {
 		name: "团队群",
 		connectionId: "w1",
 		kind: "endpoint",
-		platform: "generic",
-		scope: "group",
 		enabled: true,
 		...over,
 	} as unknown as PushTarget;
@@ -121,7 +119,7 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 	const envelope = {
 		targetId: "wt1",
 		targetName: "团队群",
-		scope: "group",
+		scope: "channel",
 		private: false,
 		ts: "2026-10-07T08:00:00.000Z",
 	};
@@ -222,13 +220,13 @@ describe("webhook 线上格式 — generic 通用 JSON", () => {
 
 	it("`private` 这一格留着、恒为 false(线上格式冻结,ADR-0024 决策 5):私聊目标也一样", async () => {
 		await send("generic", PAYLOADS.text);
-		expect(sentBody()).toMatchObject({ private: false, scope: "group" });
+		expect(sentBody()).toMatchObject({ private: false, scope: "channel" });
 		await createWebhookAdapter({ logger }).send(
 			connection("generic"),
 			target({ scope: "private" }),
 			PAYLOADS.text,
 		);
-		expect(sentBody()).toMatchObject({ private: false, scope: "private" });
+		expect(sentBody()).toMatchObject({ private: false, scope: "channel" });
 	});
 
 	it("请求头:content-type + secret 头", async () => {

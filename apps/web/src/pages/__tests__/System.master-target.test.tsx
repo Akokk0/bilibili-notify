@@ -37,7 +37,6 @@ function target(id: string, name: string, scope: "group" | "private" | "channel"
 		name,
 		connectionId: "c1",
 		kind: "session",
-		platform: "onebot",
 		scope,
 		address: "1",
 		enabled: true,

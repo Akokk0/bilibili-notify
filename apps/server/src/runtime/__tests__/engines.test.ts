@@ -2490,7 +2490,6 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				connectionId: ADAPTER,
 				scope: "group",
 				enabled: true,
-				platform: "onebot",
 				kind: "session",
 				address: "123",
 			} as PushTarget,

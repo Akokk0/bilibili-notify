@@ -47,7 +47,7 @@ export function resolveLinkParsingPolicies({
 }: ResolveLinkParsingPoliciesInput): LinkPolicyTable {
 	const byKey = new Map<string, LinkParsingPolicy>();
 	for (const target of targets) {
-		if (target.scope !== "group") continue;
+		if (target.kind !== "session" || target.scope !== "group") continue;
 		const groupId = groupAddressOf(target);
 		if (!groupId) continue;
 		const key = linkScopeKey(target.connectionId, groupId);

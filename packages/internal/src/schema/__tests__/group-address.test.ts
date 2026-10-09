@@ -70,7 +70,6 @@ describe("groupAddressOf —— 群目标的地址", () => {
 		const priv = target({
 			kind: "session",
 			scope: "private",
-			platform: "onebot",
 			address: "10001",
 		});
 		expect(groupAddressOf(priv)).toBeUndefined();
@@ -80,7 +79,6 @@ describe("groupAddressOf —— 群目标的地址", () => {
 		const channel = target({
 			kind: "session",
 			scope: "channel",
-			platform: "qq-official",
 			address: "c1",
 			parentAddress: "g1",
 		});

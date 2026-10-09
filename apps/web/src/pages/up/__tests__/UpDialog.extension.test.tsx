@@ -25,7 +25,6 @@ const TARGET: PushTarget = {
 	connectionId: "c-1",
 	enabled: true,
 	kind: "session",
-	platform: "onebot",
 	scope: "group",
 	address: "123",
 };

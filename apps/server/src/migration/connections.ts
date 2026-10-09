@@ -385,7 +385,6 @@ export function migrateLegacyTargets(raw: readonly unknown[]): {
 				name: legacy.name,
 				connectionId: connection.id,
 				kind: "session",
-				platform: "onebot",
 				scope: legacy.scope,
 				enabled: legacy.enabled,
 				address: (legacy.scope === "private" ? cfg.userId : cfg.groupId) ?? "",
@@ -420,8 +419,6 @@ export function migrateLegacyTargets(raw: readonly unknown[]): {
 				name: legacy.name,
 				connectionId: connection.id,
 				kind: "endpoint",
-				platform: "generic",
-				scope: legacy.scope,
 				enabled: legacy.enabled,
 			});
 		}
@@ -499,6 +496,25 @@ function keepConnection(raw: unknown): boolean {
 
 function keepTarget(raw: unknown): boolean {
 	return PushTargetSchema.safeParse(raw).success || !isRetiredTargetRecord(raw);
+}
+
+/**
+ * 目标迁移的**最后一步**(1.0:目标不再自带平台,端点目标也没有 scope):摘掉 `platform`,
+ * 端点目标再摘掉 `scope`,其余格(含键序)原样。没有要摘的回同一个对象,所以迁两遍和迁一遍一样。
+ *
+ * 🔴 **必须排在 {@link keepTarget} 之后**:`isRetiredTargetRecord` 要读原始的 `platform` 才认得出
+ * 「已撤下平台」的存量;摘早了,那些存量就读不到平台、被当成普通的坏条目留下来。
+ */
+function stripRetiredTargetFields(entry: unknown): unknown {
+	if (!isRecord(entry)) return entry;
+	const dropScope = entry.kind === "endpoint" && Object.hasOwn(entry, "scope");
+	if (!Object.hasOwn(entry, "platform") && !dropScope) return entry;
+	const { platform: _platform, ...rest } = entry;
+	if (dropScope) {
+		const { scope: _scope, ...withoutScope } = rest;
+		return withoutScope;
+	}
+	return rest;
 }
 
 // ── 1.0 的改名 ────────────────────────────────────────────────────────────────
@@ -592,8 +608,13 @@ export async function migrateConnectionFiles(input: ConnectionFilesInput): Promi
 		await write(connectionsPath, connections, fromAdapters ? input.adaptersPath : connectionsPath);
 	}
 	if (targets) {
-		const kept = migrated.targets.filter(keepTarget);
-		if (migrated.changed.targets || kept.length !== migrated.targets.length) {
+		const retained = migrated.targets.filter(keepTarget);
+		const kept = retained.map(stripRetiredTargetFields);
+		if (
+			migrated.changed.targets ||
+			retained.length !== migrated.targets.length ||
+			kept.some((entry, i) => entry !== retained[i])
+		) {
 			await write(targetsPath, kept, targetsPath);
 		}
 	}

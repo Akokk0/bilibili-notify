@@ -59,7 +59,6 @@ const target = {
 	name: "电报群",
 	connectionId: CONNECTION_ID,
 	kind: "session",
-	platform: "telegram",
 	scope: "group",
 	enabled: true,
 	address: "-100",

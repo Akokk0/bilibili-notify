@@ -93,7 +93,6 @@ const TARGET: PushTarget = {
 	name: "测试群",
 	connectionId: CONNECTION_ID,
 	kind: "session",
-	platform: "telegram",
 	scope: "group",
 	address: "g-42",
 	enabled: true,

@@ -434,36 +434,56 @@ describe("PushTargetSchema (discriminated by platform)", () => {
 		expect(r.success).toBe(false);
 	});
 
-	it("目标的平台是开放词表 —— 桥驮来的平台不用先改词表就收得下", () => {
-		// 连接那一侧仍是闭集(见上面的 ConnectionSchema 用例)。这一侧开着是因为桥接的
-		// 平台清单是运行时才知道的;拦「已撤下的平台」那件事挪去了加载器,判据换成
-		// 「认不得的平台又 parse 不过」,见 config-store 那边的用例。
-		const r = PushTargetSchema.safeParse({
+	it("目标上遗留的 platform 被静默剥掉,不拒收 —— 平台只在连接上", () => {
+		// 盘上 / 请求体里的老形状还带着 platform:schema 不是 strict,parse 成功但结果里没有这一格
+		// (连空串、认不得的平台名也一样,不再有人校验它)。
+		for (const platform of ["onebot", "telegram", ""]) {
+			const r = PushTargetSchema.safeParse({
+				id: UUID_B,
+				name: "老形状",
+				connectionId: UUID_A,
+				kind: "session",
+				platform,
+				scope: "group",
+				enabled: true,
+				address: "111",
+			});
+			expect(r.success).toBe(true);
+			expect(r.success && "platform" in r.data).toBe(false);
+		}
+		const endpoint = PushTargetSchema.safeParse({
 			id: UUID_B,
-			name: "桥上的 telegram 群",
+			name: "wh",
 			connectionId: UUID_A,
-			kind: "session",
-			platform: "telegram",
-			scope: "group",
+			kind: "endpoint",
+			platform: "feishu",
+			scope: "channel",
 			enabled: true,
-			address: "-1001234567890",
-			parentAddress: "42",
 		});
-		expect(r.success).toBe(true);
+		expect(endpoint.success).toBe(true);
+		expect(endpoint.success && "platform" in endpoint.data).toBe(false);
 	});
 
-	it("平台名不许是空串 —— 开放不等于什么都收", () => {
-		const r = PushTargetSchema.safeParse({
+	it("端点目标没有 scope:带进来的被剥掉;会话目标的 scope 仍必填", () => {
+		const endpoint = PushTargetSchema.safeParse({
 			id: UUID_B,
-			name: "没平台",
+			name: "wh",
+			connectionId: UUID_A,
+			kind: "endpoint",
+			scope: "channel",
+			enabled: true,
+		});
+		expect(endpoint.success).toBe(true);
+		expect(endpoint.success && "scope" in endpoint.data).toBe(false);
+		const noScope = PushTargetSchema.safeParse({
+			id: UUID_B,
+			name: "群",
 			connectionId: UUID_A,
 			kind: "session",
-			platform: "",
-			scope: "group",
 			enabled: true,
 			address: "1",
 		});
-		expect(r.success).toBe(false);
+		expect(noScope.success).toBe(false);
 	});
 
 	it("rejects onebot target missing connectionId", () => {

@@ -94,7 +94,6 @@ function customTarget(id = "t-1"): PushTarget {
 		connectionId: "a-1",
 		enabled: true,
 		kind: "session",
-		platform: "onebot",
 		scope: "group",
 		address: "",
 	};
@@ -110,7 +109,7 @@ function renderWithTarget(sub: Subscription, target: PushTarget) {
 				{
 					id: target.connectionId,
 					kind: "direct",
-					platform: target.platform,
+					platform: "onebot",
 					enabled: true,
 				} as Connection,
 			]}

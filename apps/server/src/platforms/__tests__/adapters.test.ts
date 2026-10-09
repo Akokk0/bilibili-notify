@@ -258,7 +258,6 @@ function obTarget(over: Record<string, unknown> = {}): PushTarget {
 		name: "群",
 		connectionId: "a1",
 		kind: "session",
-		platform: "onebot",
 		scope: "group",
 		enabled: true,
 		address: "123",
@@ -1627,8 +1626,6 @@ function whTarget(over: Record<string, unknown> = {}): PushTarget {
 		name: "团队群",
 		connectionId: "w1",
 		kind: "endpoint",
-		platform: "generic",
-		scope: "group",
 		enabled: true,
 		...over,
 	} as unknown as PushTarget;
@@ -1656,7 +1653,7 @@ describe("webhook — send", () => {
 		expect(body).toMatchObject({
 			targetId: "wt1",
 			targetName: "团队群",
-			scope: "group",
+			scope: "channel",
 			private: false,
 			payload: { kind: "text", text: "hello" },
 		});

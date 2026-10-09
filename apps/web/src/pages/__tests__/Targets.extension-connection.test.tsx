@@ -96,7 +96,6 @@ describe("拓展连接上建目标", () => {
 		expect(body).toMatchObject({
 			connectionId: CONNECTION_ID,
 			kind: "session",
-			platform: "telegram",
 			scope: "group",
 			address: "-1001234567890",
 		});

@@ -41,19 +41,13 @@ const id = (over: Partial<ChatIdentity> = {}): ChatIdentity => ({
 describe("chatIdentityOf —— 从主人那条私聊目标取两坐标", () => {
 	it("私聊会话目标 → 平台 + 地址", () => {
 		expect(
-			chatIdentityOf(
-				target({ kind: "session", scope: "private", platform: "onebot", address: "10001" }),
-				connections,
-			),
+			chatIdentityOf(target({ kind: "session", scope: "private", address: "10001" }), connections),
 		).toEqual({ platform: "onebot", address: "10001" });
 	});
 
 	it("群目标没有身份 —— 群地址不是人,拿它当主人等于把整个群当主人", () => {
 		expect(
-			chatIdentityOf(
-				target({ kind: "session", scope: "group", platform: "onebot", address: "88888" }),
-				connections,
-			),
+			chatIdentityOf(target({ kind: "session", scope: "group", address: "88888" }), connections),
 		).toBeUndefined();
 	});
 
@@ -68,10 +62,7 @@ describe("chatIdentityOf —— 从主人那条私聊目标取两坐标", () => 
 
 	it("地址还没填的私聊目标没有身份 —— 空串不该跟「没给平台」撞上", () => {
 		expect(
-			chatIdentityOf(
-				target({ kind: "session", scope: "private", platform: "onebot", address: "" }),
-				connections,
-			),
+			chatIdentityOf(target({ kind: "session", scope: "private", address: "" }), connections),
 		).toBeUndefined();
 	});
 

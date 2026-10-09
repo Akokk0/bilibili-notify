@@ -68,7 +68,6 @@ function session(
 		name,
 		connectionId: CONNECTION.id,
 		kind: "session",
-		platform: "onebot",
 		scope,
 		address,
 		enabled: true,

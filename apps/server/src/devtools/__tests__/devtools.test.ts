@@ -109,7 +109,6 @@ describe("createDevtools · 截流接线", () => {
 		name: "群",
 		connectionId: "ad",
 		kind: "session",
-		platform: "onebot",
 		scope: "group",
 		address: "1",
 		enabled: true,

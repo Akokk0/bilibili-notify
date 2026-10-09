@@ -131,7 +131,10 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 					? given
 					: deps
 							.targets()
-							.filter((t) => t.connectionId === connection.id && t.scope === "group")
+							.filter(
+								(t) =>
+									t.connectionId === connection.id && t.kind === "session" && t.scope === "group",
+							)
 							.map((t) => groupAddressOf(t))
 							.find((g): g is string => typeof g === "string" && g !== "");
 			if (!groupId) throw new DevParamError(`${connection.name} 名下没有群目标,得给一个群号`);

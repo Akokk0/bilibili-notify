@@ -60,7 +60,6 @@ function obTarget(): PushTarget {
 		id: "t1",
 		name: "群",
 		connectionId: "a1",
-		platform: "onebot",
 		scope: "group",
 		enabled: true,
 		kind: "session",

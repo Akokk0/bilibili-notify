@@ -69,7 +69,7 @@ const INHERIT = "inherit" as const;
  * 借来的」。
  */
 function isGroupCandidate(t: PushTarget, connections: readonly Connection[]): boolean {
-	if (t.scope !== "group") return false;
+	if (t.kind !== "session" || t.scope !== "group") return false;
 	if (connections.find((c) => c.id === t.connectionId)?.kind === "extension") return true;
 	// 平台取自目标挂着的连接;连接不在就不知道平台,当作收不到、不列。
 	const platform = platformOfTarget(t, connections);

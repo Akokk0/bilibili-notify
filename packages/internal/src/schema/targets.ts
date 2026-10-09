@@ -35,14 +35,16 @@ export { platformOfTarget } from "../constants.js";
 export const ConnectionPlatformSchema = z.enum(CONNECTION_PLATFORMS);
 
 /**
- * **推送目标**的平台 —— 开放词表,只要求非空。
+ * 平台名 —— 开放词表,只要求非空。**现在只有拓展连接那一支用它**(推送目标上已经没有平台这一格:
+ * 平台一律经 `connectionId` 从连接取,见 {@link platformOfTarget})。名字里还带「Target」是
+ * 历史遗留,改名另算。
  *
  * 为什么这一侧是开的:桥(koishi / astrbot)把它自己接着的平台驮进来,那份清单是**运行时**
  * 才知道的(桥上装了 telegram 插件就有 telegram)。写成闭集等于「必须先改一次词表、发一版,
  * 主人才能收到 telegram 的推送」—— 而那条平台上一行我们自己的代码都不需要。
  *
- * 代价是拼错不再有人拦(`onebot` 写成 `oneboot` 照样存得下)。这个代价是认下的:目标本来就
- * 只由面板与桥两条路创建,两条都不会手打平台名;而闭集换来的那点保护,在桥接上之后会变成
+ * 代价是拼错不再有人拦(`onebot` 写成 `oneboot` 照样存得下)。这个代价是认下的:连接本来就
+ * 只由面板创建、平台名从挑中的 bot 上抄,不会手打;而闭集换来的那点保护,在桥接上之后会变成
  * 「合法的平台进不来」这种更贵的毛病。真要挡的是**能力**(能不能 @全体、收不收得到回复),
  * 那由能力位承载,不是平台名。
  */
@@ -339,8 +341,9 @@ export function isConnectionOn<P extends ConnectionPlatform>(
  * - `session` —— 一个**会话**:群、私聊、子频道。有地址,能收到入站消息,人手配。
  * - `endpoint` —— 一个**单向出站终点**:地址烧在连接的 config 里,目标本身只是个壳。
  *
- * 它眼下与 `platform` 一一对应(webhook 那族 ⇔ endpoint),看着冗余 —— 但 `target.platform`
- * 将来要开放(桥驮来的平台枚举不了),那之后按平台名比会全线恒假。判据先搬到这根轴上。
+ * 它眼下与连接的平台一一对应(webhook 那族 ⇔ endpoint),看着冗余 —— 但平台是开放词表
+ * (桥驮来的平台枚举不了),按平台名比会全线恒假。判据放在这根轴上。目标自己不带平台:要知道
+ * 平台,经 `connectionId` 问连接。
  */
 export const PushTargetKindSchema = z.enum(PUSH_TARGET_KINDS);
 
@@ -348,7 +351,6 @@ const PushTargetCommonShape = {
 	id: z.uuid(),
 	name: z.string().min(1),
 	connectionId: z.uuid(),
-	scope: PushTargetScopeSchema,
 	enabled: z.boolean(),
 	/** 生命周期由所属连接管理的系统目标；用户不直接编辑 / 删除。 */
 	managedBy: z.literal("connection").optional(),
@@ -376,6 +378,8 @@ const PushTargetCommonShape = {
  */
 const PushTargetSessionShape = {
 	kind: z.literal("session"),
+	/** 会话的种类(群 / 私聊 / 频道)。端点目标没有这一格:它只是个壳,没有会话可分。 */
+	scope: PushTargetScopeSchema,
 	address: z.string(),
 	/**
 	 * 上一级容器的地址。今天只有官机的频道用得上(`guildId`:子频道挂在频道服务器下)。
@@ -393,20 +397,20 @@ const PushTargetSessionShape = {
  * 两支目标 —— 判别子是 {@link PushTargetKindSchema} 的 `kind`,**不是 platform**。
  *
  * 曾经是按 platform 判别的:onebot / webhook / qq-official 三支,各带一份自己的 session
- * schema。地址收成一格之后两支会话目标的形状**一模一样**,而 `target.platform` 又开放了
- * —— zod 的 discriminatedUnion 要求判别键取值可枚举,继续按 platform 判别会在**第一次
- * parse 时**抛 `Invalid discriminated union option`:门禁全绿,炸在开机读配置那一刻。
+ * schema。地址收成一格之后两支会话目标的形状**一模一样**,而平台又是开放词表 —— zod 的
+ * discriminatedUnion 要求判别键取值可枚举,继续按 platform 判别会在**第一次 parse 时**抛
+ * `Invalid discriminated union option`:门禁全绿,炸在开机读配置那一刻。现在目标上根本没有
+ * 平台这一格(平台在连接上);盘上 / 请求体里遗留的 `platform` 与端点目标的 `scope` 被静默剥掉,
+ * 不拒收(这个 schema 不是 strict)。
  */
 const SessionPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	...PushTargetSessionShape,
-	platform: TargetPlatformSchema,
 });
 
 const EndpointPushTargetSchema = z.object({
 	...PushTargetCommonShape,
 	kind: z.literal("endpoint"),
-	platform: TargetPlatformSchema,
 });
 
 export const PushTargetSchema = z
@@ -434,7 +438,7 @@ export type SessionRef = Pick<
 >;
 
 /** 端点目标的「发到哪」—— webhook 写进冻结 JSON 的正是这三格。 */
-export type EndpointRef = Pick<Extract<PushTarget, { kind: "endpoint" }>, "id" | "name" | "scope">;
+export type EndpointRef = Pick<Extract<PushTarget, { kind: "endpoint" }>, "id" | "name">;
 
 /**
  * 适配器发送口收的「发到哪」—— 推送目标里**发送要用的那几格**,按 `kind` 分两支。

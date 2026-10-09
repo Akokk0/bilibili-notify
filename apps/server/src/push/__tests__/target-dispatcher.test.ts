@@ -52,7 +52,6 @@ function makeTarget(
 ): PushTarget {
 	return {
 		name: `target-${over.id}`,
-		platform: "feishu",
 		scope: "group",
 		enabled: true,
 		session: {},
@@ -100,7 +99,7 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "onebot" })],
-				[makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" })],
+				[makeTarget({ id: "t1", connectionId: "a1" })],
 			),
 			adapters: registryOf([pa]),
 			logger: makeLogger(),
@@ -207,7 +206,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "telegram" })],
-				[makeTarget({ id: "t1", connectionId: "a1", platform: "telegram" })],
+				[makeTarget({ id: "t1", connectionId: "a1" })],
 			),
 			adapters: registryOf([makePlatformAdapter("webhook")]),
 			logger,
@@ -593,7 +592,10 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两�
 		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
 		expect(seen.map((s) => s.target)).toEqual([target, undefined]);
 		expect(seen[0]).toMatchObject({ connection, target, payload: PAYLOAD });
-		expect(seen[0]?.destination).toMatchObject({ kind: "session", scope: target.scope });
+		expect(seen[0]?.destination).toMatchObject({
+			kind: "session",
+			scope: (target as Extract<PushTarget, { kind: "session" }>).scope,
+		});
 		expect(seen[1]?.destination).toEqual({ kind: "session", scope: "group", address: "9" });
 	});
 
@@ -676,17 +678,17 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 		});
 	});
 
-	it("经端点目标发送:适配器收到的是 {kind, id, name, scope},同样只有这四格", async () => {
+	it("经端点目标发送:适配器收到的是 {kind, id, name},只有这三格(端点目标没有 scope)", async () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1", kind: "endpoint", name: "钉钉群" });
 		const { dispatcher, pa } = setup([CONNECTION], [target]);
 		await dispatcher.send("t1", PAYLOAD);
 		expect(pa.send).toHaveBeenCalledWith(
 			CONNECTION,
-			{ kind: "endpoint", id: "t1", name: "钉钉群", scope: "group" },
+			{ kind: "endpoint", id: "t1", name: "钉钉群" },
 			PAYLOAD,
 		);
 		const given = vi.mocked(pa.send).mock.calls[0]?.[1] as unknown as Record<string, unknown>;
-		expect(Object.keys(given).sort()).toEqual(["id", "kind", "name", "scope"]);
+		expect(Object.keys(given).sort()).toEqual(["id", "kind", "name"]);
 	});
 
 	it("sendToAddress:适配器收到 {kind:'session', scope, address},截流回调的 target 是 undefined", async () => {
@@ -726,18 +728,18 @@ describe("createTargetDispatcher — supportsAtAll(平台取自连接)", () => {
 		});
 	}
 
-	it("QQ 官方连接上的目标 → false,即使目标自己那格写的是 onebot", () => {
+	it("QQ 官方连接上的目标 → false", () => {
 		const d = dispatcherOf(
 			[makeConnection({ id: "a1", platform: "qq-official" })],
-			[makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" })],
+			[makeTarget({ id: "t1", connectionId: "a1" })],
 		);
 		expect(d.supportsAtAll("t1")).toBe(false);
 	});
 
-	it("OneBot 连接上的目标 → true,即使目标自己那格写的是 qq-official", () => {
+	it("OneBot 连接上的目标 → true", () => {
 		const d = dispatcherOf(
 			[makeConnection({ id: "a1", platform: "onebot" })],
-			[makeTarget({ id: "t1", connectionId: "a1", platform: "qq-official" })],
+			[makeTarget({ id: "t1", connectionId: "a1" })],
 		);
 		expect(d.supportsAtAll("t1")).toBe(true);
 	});
@@ -745,7 +747,7 @@ describe("createTargetDispatcher — supportsAtAll(平台取自连接)", () => {
 	it("拓展连接(表里没有的平台)→ true,与表对未知平台的默认一致", () => {
 		const d = dispatcherOf(
 			[makeConnection({ id: "a1", platform: "telegram", kind: "extension" })],
-			[makeTarget({ id: "t1", connectionId: "a1", platform: "qq-official" })],
+			[makeTarget({ id: "t1", connectionId: "a1" })],
 		);
 		expect(d.supportsAtAll("t1")).toBe(true);
 	});
@@ -755,11 +757,8 @@ describe("createTargetDispatcher — supportsAtAll(平台取自连接)", () => {
 		expect(d.supportsAtAll("ghost")).toBe(false);
 	});
 
-	it("连接不存在 → false,即使目标自己那格写的是 onebot", () => {
-		const d = dispatcherOf(
-			[],
-			[makeTarget({ id: "t1", connectionId: "ghost", platform: "onebot" })],
-		);
+	it("连接不存在 → false", () => {
+		const d = dispatcherOf([], [makeTarget({ id: "t1", connectionId: "ghost" })]);
 		expect(d.supportsAtAll("t1")).toBe(false);
 	});
 });

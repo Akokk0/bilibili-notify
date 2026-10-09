@@ -1291,8 +1291,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 			if (!isConnectionOn(connection, "qq-official")) {
 				return fail("invalid", `wrong platform: adapter=${connectionDispatchKey(connection)}`);
 			}
-			const scope = destination.scope;
-			const address = destination.kind === "session" ? destination.address : "";
+			// 端点目标没有会话可言(也没有 scope):与它原来恒为 channel、地址为空时的话一样。
+			if (destination.kind !== "session") return fail("invalid", "channel: channelId missing");
+			const { scope, address } = destination;
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
 			if (!endpoint.ok) return endpoint;

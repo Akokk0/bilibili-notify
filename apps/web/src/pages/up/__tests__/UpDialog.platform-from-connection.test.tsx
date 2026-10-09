@@ -23,15 +23,14 @@ function connection(platform: string): Connection {
 	return { id: CONN, kind: "direct", platform, enabled: true } as Connection;
 }
 
-/** 目标自己那格 `platform` 由调用方故意写成跟连接相反的。 */
-function target(ownPlatform: string): PushTarget {
+/** 目标自己不带平台:平台只在连接上。 */
+function target(): PushTarget {
 	return {
 		id: "t-1",
 		name: "目标一",
 		connectionId: CONN,
 		enabled: true,
 		kind: "session",
-		platform: ownPlatform,
 		scope: "group",
 		address: "",
 	} as PushTarget;
@@ -66,32 +65,32 @@ function atAllToggle(): HTMLButtonElement {
 afterEach(cleanup);
 
 describe("UpDialog · 平台取自连接", () => {
-	it("目标挂在 QQ 官方连接上 → @全体置灰(目标自己那格写成 onebot 也不影响)", () => {
-		renderDialog(target("onebot"), [connection("qq-official")]);
+	it("目标挂在 QQ 官方连接上 → @全体置灰", () => {
+		renderDialog(target(), [connection("qq-official")]);
 		expect(screen.getByText(UNSUPPORTED_NOTE)).toBeTruthy();
 		const toggle = atAllToggle();
 		expect(toggle.disabled).toBe(true);
 	});
 
-	it("目标挂在 OneBot 连接上 → 可点(目标自己那格写成 qq-official 也不影响)", () => {
-		renderDialog(target("qq-official"), [connection("onebot")]);
+	it("目标挂在 OneBot 连接上 → 可点", () => {
+		renderDialog(target(), [connection("onebot")]);
 		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
 		expect(atAllToggle().disabled).toBe(false);
 	});
 
-	it("连接不在 → 当作不支持:@全体置灰(目标自己那格写成 onebot 也不影响)", () => {
-		renderDialog(target("onebot"), []);
+	it("连接不在 → 当作不支持:@全体置灰", () => {
+		renderDialog(target(), []);
 		expect(atAllToggle().disabled).toBe(true);
 	});
 
-	it("图标的平台取自连接:目标自己写 feishu、连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {
+	it("图标的平台取自连接:连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {
 		const badges = () =>
 			Array.from(document.body.querySelectorAll("span.font-extrabold")).map((e) => e.textContent);
-		const first = renderDialog(target("feishu"), [connection("onebot")]);
+		const first = renderDialog(target(), [connection("onebot")]);
 		expect(badges()).toContain("o");
 		expect(badges()).not.toContain("f");
 		first.unmount();
-		renderDialog(target("feishu"), []);
+		renderDialog(target(), []);
 		expect(badges()).not.toContain("f");
 		expect(badges()).not.toContain("o");
 	});

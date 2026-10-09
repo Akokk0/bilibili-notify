@@ -204,7 +204,6 @@ describe("connections route — 写入的失败(真 store)", () => {
 			name: "群聊",
 			connectionId: onebot.id,
 			kind: "session",
-			platform: "onebot",
 			scope: "group",
 			enabled: true,
 			address: "10001",

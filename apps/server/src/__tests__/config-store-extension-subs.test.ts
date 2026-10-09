@@ -83,7 +83,6 @@ function makeSessionTarget(connectionId: string) {
 		name: "群聊",
 		connectionId,
 		kind: "session" as const,
-		platform: "onebot" as const,
 		scope: "group" as const,
 		enabled: true,
 		address: "10001",
@@ -468,8 +467,6 @@ describe("跨分区的级联对两种来源的行都覆盖", () => {
 			name: "主",
 			connectionId: connection.id,
 			kind: "endpoint" as const,
-			platform: connection.platform,
-			scope: "channel" as const,
 			enabled: true,
 		};
 		const extra = { ...primary, id: randomUUID(), name: "多余" };

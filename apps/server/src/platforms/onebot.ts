@@ -337,9 +337,10 @@ function buildSendActionFromSegments(
 function onebotNumericAddress(
 	destination: DestinationRef,
 ): Result<{ private: boolean; id: number }> {
+	// 端点目标没有会话可言(也没有 scope):按群的说法回,与它原来恒为 channel 时的话一样。
+	if (destination.kind !== "session") return fail("invalid", "group: groupId missing");
 	const isPrivate = destination.scope === "private";
 	const what = isPrivate ? "private: userId" : "group: groupId";
-	if (destination.kind !== "session") return fail("invalid", `${what} missing`);
 	if (!destination.address) return fail("invalid", `${what} missing`);
 	const id = Number(destination.address);
 	if (!Number.isFinite(id)) return fail("invalid", `${what} 非数字 (${destination.address})`);

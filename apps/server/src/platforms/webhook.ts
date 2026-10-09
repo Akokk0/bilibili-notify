@@ -161,7 +161,8 @@ function buildGenericWebhookRequest(
 		body: JSON.stringify({
 			targetId: destination.id,
 			targetName: destination.name,
-			scope: destination.scope,
+			// 线上格式冻结(ADR-0024 决策 5):端点目标已经没有 scope,这一格写常量(今天托管的 webhook 目标恒为 channel)。
+			scope: "channel",
 			// 线上格式冻结(ADR-0024 决策 5):`private` 这一格留着,恒为 false。
 			private: false,
 			payload: serializePayload(payload),

@@ -41,7 +41,6 @@ function target(id: string, name: string, over: Partial<PushTarget> = {}): PushT
 		scope: "group",
 		enabled: true,
 		kind: "session",
-		platform: "onebot",
 		address: "123",
 		...over,
 	} as PushTarget;
@@ -60,7 +59,6 @@ const TARGETS: PushTarget[] = [
 	target(T_WEBHOOK, "钩子", {
 		connectionId: A_HOOK,
 		kind: "endpoint",
-		platform: "feishu",
 	} as never),
 ];
 
