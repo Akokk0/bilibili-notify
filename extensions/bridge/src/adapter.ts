@@ -222,7 +222,7 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 
 	return {
 		// 分发键由宿主按拓展 id 覆盖 —— 这里填什么都会被换掉(决策 28)。
-		platforms: [],
+		adapterKey: "",
 
 		isAvailable(connection: Connection, destination: DestinationRef): boolean {
 			return resolve(connection, destination).ok;

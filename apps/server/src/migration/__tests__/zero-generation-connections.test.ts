@@ -361,8 +361,8 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			expect(await sandbox.readConfig<PushTarget[]>("targets.json")).toEqual([]);
 
 			const store = await sandbox.load(); // 不应抛错
-			// 活下来的只剩那条 webhook 直连(平台即分发键)。
-			expect(store.getConnections().map((a) => connectionDispatchKey(a))).toEqual(["feishu"]);
+			// 活下来的只剩那条 webhook 直连(webhook 那一族的分发键是 "webhook")。
+			expect(store.getConnections().map((a) => connectionDispatchKey(a))).toEqual(["webhook"]);
 			// 撤下平台的 target 被丢弃;只剩 webhook 自动托管 target
 			const targets = store.getTargets();
 			expect(targets).toHaveLength(1);

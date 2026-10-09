@@ -2,7 +2,7 @@
  * 单元测试 — `createTargetDispatcher`(独立端 TargetDispatcher 的 targetId → adapter 路由核心)。
  *
  * 守护契约:
- *   - 构造期 adapter.platforms → adapter 注册表;同一 platform 被两个 adapter 声明 → warn + 后者覆盖
+ *   - 构造期 adapter.adapterKey → adapter 注册表;同一个键被两个 adapter 声明 → warn + 后者覆盖
  *   - resolve(targetId)            → PushTarget | undefined
  *   - isAvailable                  → target 缺 / Connection 缺 / platformAdapter 缺 任一为 false;否则透传
  *   - send(dispatch)               → 四条分支:target 缺(早退,不触发 onDelivery)/
@@ -78,13 +78,13 @@ function makeLogger(): Logger & { warn: Mock<LogFn>; error: Mock<LogFn> } {
 }
 
 function makePlatformAdapter(
-	platforms: string[],
+	adapterKey: string,
 	over: Partial<PlatformAdapter> = {},
 ): PlatformAdapter {
 	const sendResult: DeliveryResult = { ok: true, latencyMs: 12 };
 	const probeResult: ProbeResult = { ok: true, latencyMs: 8 };
 	return {
-		platforms,
+		adapterKey,
 		isAvailable: vi.fn(() => true),
 		send: vi.fn(async () => sendResult),
 		probe: vi.fn(async () => probeResult),
@@ -93,8 +93,8 @@ function makePlatformAdapter(
 }
 
 describe("createTargetDispatcher — adapter 注册表", () => {
-	it("一个 adapter 声明多 platform:全部进表", () => {
-		const pa = makePlatformAdapter(["onebot", "feishu"]);
+	it("adapter 声明的键进表,连接按分发键找到它", () => {
+		const pa = makePlatformAdapter("onebot");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "onebot" })],
@@ -106,12 +106,12 @@ describe("createTargetDispatcher — adapter 注册表", () => {
 		expect(dispatcher.isAvailable("t1")).toBe(true);
 	});
 
-	it("同一 platform 被两个 adapter 声明 → **注册那一步就抛**,轮不到这一层", () => {
+	it("同一个键被两个 adapter 声明 → **注册那一步就抛**,轮不到这一层", () => {
 		// 从前这里是「warn 一行 + 后者覆盖」。悄悄顶掉意味着推送全走了另一个实现,
 		// 而两边都不报错 —— 现在这道门挪进了注册表,而且从「提醒」变成了「拒绝」。
-		const first = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
-		const second = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => true) });
-		expect(() => createPlatformAdapterRegistry([first, second])).toThrow(/feishu/);
+		const first = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) });
+		const second = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => true) });
+		expect(() => createPlatformAdapterRegistry([first, second])).toThrow(/webhook/);
 	});
 });
 
@@ -120,7 +120,7 @@ describe("createTargetDispatcher — resolve / isAvailable", () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([makeConnection({ id: "a1", platform: "feishu" })], [target]),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.resolve("t1")).toBe(target);
@@ -135,7 +135,7 @@ describe("createTargetDispatcher — resolve / isAvailable", () => {
 				[makeConnection({ id: "a2", platform: "telegram" })],
 				[targetNoConnection, targetNoPA],
 			),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(dispatcher.isAvailable("missing")).toBe(false); // target 缺
@@ -144,7 +144,7 @@ describe("createTargetDispatcher — resolve / isAvailable", () => {
 	});
 
 	it("isAvailable:链路齐全时透传 platformAdapter.isAvailable", () => {
-		const paFalse = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
+		const paFalse = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "feishu" })],
@@ -172,7 +172,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 	it("target 缺:返回 target not found,不触发 onDelivery", async () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], []),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 			onDelivery,
 		});
@@ -185,7 +185,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 		const logger = makeLogger();
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], [makeTarget({ id: "t1", connectionId: "ghost" })]),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger,
 			onDelivery,
 		});
@@ -207,7 +207,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 				[makeConnection({ id: "a1", platform: "telegram" })],
 				[makeTarget({ id: "t1", connectionId: "a1", platform: "telegram" })],
 			),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger,
 			onDelivery,
 		});
@@ -227,7 +227,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 	it("happy:委派 platformAdapter.send(只带连接、去向、载荷),回传其 result,onDelivery 带同一份 result", async () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
-		const pa = makePlatformAdapter(["feishu"]);
+		const pa = makePlatformAdapter("webhook");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], [target]),
 			adapters: createPlatformAdapterRegistry([pa]),
@@ -259,7 +259,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 		const logger = makeLogger();
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
-		const pa = makePlatformAdapter(["feishu"], {
+		const pa = makePlatformAdapter("webhook", {
 			send: vi.fn(async () => {
 				throw new Error("adapter exploded");
 			}),
@@ -278,7 +278,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 
 	it("probe 抛错 → unavailable + error 日志", async () => {
 		const logger = makeLogger();
-		const pa = makePlatformAdapter(["feishu"], {
+		const pa = makePlatformAdapter("webhook", {
 			probe: vi.fn(async () => {
 				throw new Error("probe exploded");
 			}),
@@ -298,7 +298,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 
 	it("适配器回的失败原样透出(码与 upstreamCode 不动)", async () => {
 		const failure = fail("rate_limited", "慢点", { upstreamCode: 22009 });
-		const pa = makePlatformAdapter(["feishu"], { send: vi.fn(async () => failure) });
+		const pa = makePlatformAdapter("webhook", { send: vi.fn(async () => failure) });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
 				[makeConnection({ id: "a1", platform: "feishu" })],
@@ -315,7 +315,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 	it("连接缺:connection not found", async () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([], []),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(await dispatcher.probeConnection("ghost")).toEqual({
@@ -328,7 +328,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 	it("platformAdapter 缺:no platform adapter for <platform>", async () => {
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([makeConnection({ id: "a1", platform: "telegram" })], []),
-			adapters: createPlatformAdapterRegistry([makePlatformAdapter(["feishu"])]),
+			adapters: createPlatformAdapterRegistry([makePlatformAdapter("webhook")]),
 			logger: makeLogger(),
 		});
 		expect(await dispatcher.probeConnection("a1")).toEqual({
@@ -342,7 +342,7 @@ describe("createTargetDispatcher — probeConnection", () => {
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
 		// 没有探测协议的适配器回 unsupported:原样透出,由调用方决定不改连接状态。
 		const unsupported = fail("unsupported", "no probe");
-		const pa = makePlatformAdapter(["feishu"], { probe: vi.fn(async () => unsupported) });
+		const pa = makePlatformAdapter("webhook", { probe: vi.fn(async () => unsupported) });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], []),
 			adapters: createPlatformAdapterRegistry([pa]),
@@ -359,7 +359,7 @@ describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 
 		return createTargetDispatcher({
 			store: makeStore(connections, targets),
 			adapters: createPlatformAdapterRegistry([
-				makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) }),
+				makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) }),
 			]),
 			logger: makeLogger(),
 		});
@@ -407,7 +407,7 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 	it("委派给平台实现的 capabilities / probeCapabilities,把 Connection 递过去", async () => {
 		const capabilities = vi.fn(() => CAPS);
 		const probeCapabilities = vi.fn(async () => CAPS);
-		const pa = makePlatformAdapter(["onebot"], { capabilities, probeCapabilities });
+		const pa = makePlatformAdapter("onebot", { capabilities, probeCapabilities });
 		const connection = makeConnection({ id: "a1", platform: "onebot" });
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], []),
@@ -421,7 +421,7 @@ describe("createTargetDispatcher — connectionCapabilities / probeConnectionCap
 	});
 
 	it("连接缺 / 平台实现缺 / 平台没有能力概念 → undefined", async () => {
-		const pa = makePlatformAdapter(["feishu"]);
+		const pa = makePlatformAdapter("webhook");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
 				[
@@ -445,7 +445,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 	const connection = makeConnection({ id: "a1", platform: "feishu" });
 
 	function setup(over: { connection?: Connection; pa?: PlatformAdapter } = {}) {
-		const pa = over.pa ?? makePlatformAdapter(["feishu"]);
+		const pa = over.pa ?? makePlatformAdapter("webhook");
 		const logger = makeLogger();
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const dispatcher = createTargetDispatcher({
@@ -513,7 +513,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 	});
 
 	it("适配器说不可达(isAvailable 假)→ unavailable + warn,不发", async () => {
-		const pa = makePlatformAdapter(["feishu"], { isAvailable: vi.fn(() => false) });
+		const pa = makePlatformAdapter("webhook", { isAvailable: vi.fn(() => false) });
 		const { dispatcher, logger } = setup({ pa });
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
 		expect(r).toMatchObject({ ok: false, code: "unavailable" });
@@ -522,7 +522,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 	});
 
 	it("适配器抛错 → unavailable + error 日志(同 send 那一条)", async () => {
-		const pa = makePlatformAdapter(["feishu"], {
+		const pa = makePlatformAdapter("webhook", {
 			send: vi.fn(async () => {
 				throw new Error("adapter exploded");
 			}),
@@ -534,7 +534,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 	});
 
 	it("不触发 onDelivery(临时目标不在表里,它会去写 testStatus):成功与失败都不", async () => {
-		const failing = makePlatformAdapter(["feishu"], {
+		const failing = makePlatformAdapter("webhook", {
 			send: vi.fn(async () => fail("rate_limited", "slow down")),
 		});
 		const ok = setup();
@@ -553,7 +553,7 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两�
 	const SYNTHETIC: DeliveryResult = { ok: true, latencyMs: 0, isSynthetic: true };
 
 	function setup(interceptSend: SendInterceptHandler) {
-		const pa = makePlatformAdapter(["feishu"]);
+		const pa = makePlatformAdapter("webhook");
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([connection], [target]),
@@ -614,7 +614,7 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 	const CONNECTION = makeConnection({ id: "a1", platform: "feishu" });
 
 	function setup(connections: Connection[], targets: PushTarget[]) {
-		const pa = makePlatformAdapter(["feishu"]);
+		const pa = makePlatformAdapter("webhook");
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const logger = makeLogger();
 		const dispatcher = createTargetDispatcher({
@@ -702,7 +702,7 @@ describe("createTargetDispatcher — 检查收在派发器,适配器只收 Desti
 
 	it("sendToAddress:适配器收到 {kind:'session', scope, address},截流回调的 target 是 undefined", async () => {
 		const seen: Parameters<SendInterceptHandler>[0][] = [];
-		const pa = makePlatformAdapter(["feishu"]);
+		const pa = makePlatformAdapter("webhook");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore([CONNECTION], []),
 			adapters: createPlatformAdapterRegistry([pa]),

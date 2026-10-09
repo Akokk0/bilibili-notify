@@ -33,9 +33,10 @@ function bridge(): Connection {
 	} as Connection;
 }
 
-const onebot = { platforms: ["onebot"] as const };
-const bridgeAdapter = { platforms: ["bridge"] as const };
-const matrix = [onebot, bridgeAdapter];
+const onebot = { adapterKey: "onebot" };
+const bridgeAdapter = { adapterKey: "bridge" };
+const webhookAdapter = { adapterKey: "webhook" };
+const matrix = [onebot, bridgeAdapter, webhookAdapter];
 
 describe("adapterForConnection", () => {
 	it("直连认它的平台名", () => {
@@ -47,11 +48,17 @@ describe("adapterForConnection", () => {
 	});
 
 	it("没人认领就是没人认领", () => {
-		expect(adapterForConnection(matrix, direct("feishu"))).toBeUndefined();
+		expect(adapterForConnection(matrix, direct("qq-official"))).toBeUndefined();
+	});
+
+	it("webhook 那一族的四个平台都归 adapterKey 为 webhook 的那一个", () => {
+		for (const platform of ["feishu", "dingtalk", "wecom", "generic"]) {
+			expect(adapterForConnection(matrix, direct(platform)), platform).toBe(webhookAdapter);
+		}
 	});
 
 	it("认领同一个键的有多个时给第一个 —— 与矩阵的声明顺序一致", () => {
-		const shadow = { platforms: ["onebot"] as const };
+		const shadow = { adapterKey: "onebot" };
 		expect(adapterForConnection([onebot, shadow], direct("onebot"))).toBe(onebot);
 	});
 });

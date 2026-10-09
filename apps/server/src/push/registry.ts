@@ -12,7 +12,7 @@ export interface PlatformAdapterRegistry {
 	/**
 	 * 注册一个出口,回一个撤下它的把手。
 	 *
-	 * 它认领的每一个分发键都得是空的,**占了就抛**:悄悄顶掉等于把别人的连接整个截走
+	 * 它的适配器键得是空的,**占了就抛**:悄悄顶掉等于把别人的连接整个截走
 	 * (一个拓展要是能声明 `"onebot"`,内置那条连接的推送就全走它了),而两边都不报错。
 	 */
 	register(adapter: PlatformAdapter): Disposable;
@@ -59,10 +59,9 @@ export function createPlatformAdapterRegistry(
 	const keys = new Set<string>();
 
 	function add(adapter: PlatformAdapter): void {
-		for (const key of adapter.platforms) {
-			if (keys.has(key)) throw new Error(`adapter for dispatch key "${key}" is already registered`);
-		}
-		for (const key of adapter.platforms) keys.add(key);
+		const key = adapter.adapterKey;
+		if (keys.has(key)) throw new Error(`adapter for dispatch key "${key}" is already registered`);
+		keys.add(key);
 		adapters.push(adapter);
 	}
 
@@ -90,7 +89,7 @@ export function createPlatformAdapterRegistry(
 					removed = true;
 					const idx = adapters.indexOf(adapter);
 					if (idx >= 0) adapters.splice(idx, 1);
-					for (const key of adapter.platforms) keys.delete(key);
+					keys.delete(adapter.adapterKey);
 				},
 			};
 		},

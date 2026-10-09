@@ -30,7 +30,7 @@ function connection(over: Record<string, unknown> = {}): Connection {
 function setup(conn: Connection = connection()) {
 	const send = vi.fn(async () => ok({ latencyMs: 5 }));
 	const adapter: PlatformAdapter = {
-		platforms: ["onebot"],
+		adapterKey: "onebot",
 		isAvailable: () => true,
 		send,
 		probe: async () => ok({ latencyMs: 1 }),

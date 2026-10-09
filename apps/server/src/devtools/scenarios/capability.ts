@@ -1,9 +1,6 @@
-import type {
-	Connection,
-	ConnectionCapabilities,
-	PlatformDialect,
-} from "@bilibili-notify/internal";
+import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
 import { connectionDispatchKey } from "@bilibili-notify/internal";
+import type { PlatformAdapterView } from "../../push/registry.js";
 import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
@@ -26,7 +23,10 @@ export interface CapabilityScenarioDeps {
 }
 
 /** 方言里这个场景问的那几格;登记表对外给的视图(不含 `send`)也满足它。 */
-type CapabilityDialect = Pick<PlatformDialect, "platforms" | "capabilities" | "probeCapabilities">;
+type CapabilityDialect = Pick<
+	PlatformAdapterView,
+	"adapterKey" | "capabilities" | "probeCapabilities"
+>;
 
 const STATES = [
 	{ value: "supported", label: "支持小程序卡" },
@@ -47,7 +47,7 @@ function capablePlatforms(dialects: readonly CapabilityDialect[]): Set<string> {
 	const out = new Set<string>();
 	for (const dialect of dialects) {
 		if (!dialect.capabilities && !dialect.probeCapabilities) continue;
-		for (const platform of dialect.platforms) out.add(platform);
+		out.add(dialect.adapterKey);
 	}
 	return out;
 }
@@ -92,7 +92,7 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			}
 			if (!capable.has(connectionDispatchKey(connection))) {
 				throw new DevParamError(
-					`${connection.name} 是 ${connectionDispatchKey(connection)},没有能力这回事`,
+					`${connection.name} 是 ${connection.kind === "direct" ? connection.platform : connection.extensionId},没有能力这回事`,
 				);
 			}
 			const state = String(params.state ?? "supported") as State;

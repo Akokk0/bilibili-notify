@@ -179,7 +179,7 @@ export type ConnectionPlatform = (typeof CONNECTION_PLATFORMS)[number];
  * 这些事实原先散在**六处**各说各的:连接侧闭集与 webhook 那一族(本文件)、入站能力词表
  * (本文件)、面板的平台选择器(`apps/web/src/types/domain.ts` 的 `KNOWN_PLATFORMS`)、
  * 组件库里的色与短名(`packages/ui` 的 `PLATFORM_META`)、目标表单的会话种类与地址称呼
- * (`apps/web/src/pages/Targets.tsx`)、以及 server 那边每个 adapter 自报的 `platforms`。
+ * (`apps/web/src/pages/Targets.tsx`)、以及 server 那边每个 adapter 自报的 `adapterKey`。
  * 六份的代价不是重复本身,是**加一个平台要记得改六个地方**,漏掉哪一处都没有编译错 ——
  * 少了色就退灰、少了会话种类就只给通用三档,全都是「能跑但不对」。
  *
@@ -314,14 +314,18 @@ export const WEBHOOK_PLATFORMS = ["feishu", "dingtalk", "wecom", "generic"] as c
 export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
 
 /**
- * 分发键 —— 「该由哪套实现处理这条连接」。
+ * 分发键 —— 「该由哪个适配器处理这条连接」,也就是登记表里的适配器键。
  *
- * 直连就是它的平台(一条直连就是一个平台,那套协议是我们自己说的);拓展提供的连接
- * 用**拓展 id** —— 一个拓展一个推送源(ADR-0012 决策 28),后面挂着哪些平台是它运行时
+ * 直连按它的平台归:webhook 那一族({@link WEBHOOK_PLATFORMS},飞书 / 钉钉 / 企微 / 通用)
+ * 共用一个适配器,键是 `"webhook"`;`onebot` / `qq-official` 各自一个,键就是平台名。拓展提供的
+ * 连接用**拓展 id** —— 一个拓展一个推送源(ADR-0012 决策 28),后面挂着哪些平台是它运行时
  * 才知道的事,枚举不了。
  *
+ * ⚠️ 它回的是**适配器键**,不是平台名:要给人看的平台名读 `connection.platform`。
+ *
  * 它是**算出来的**,不落盘:落一格分发键就等于把「连到哪」与「谁来处理」又焊回一起,
- * 而那两件事正是这次重构拆开的。
+ * 而那两件事正是这次重构拆开的。连接上落 `adapterKey` 之后(ADR-0024 决策 7,3a-22)
+ * 这个函数退役。
  *
  * 入参按形状收(与 {@link isTargetPaused} 同一套安排),免得为了一个类型把 schema
  * 拖进这个零依赖模块 —— 前端要**运行时**用它。
@@ -329,7 +333,8 @@ export type WebhookPlatform = (typeof WEBHOOK_PLATFORMS)[number];
 export function connectionDispatchKey(
 	connection: { kind: "direct"; platform: string } | { kind: "extension"; extensionId: string },
 ): string {
-	return connection.kind === "direct" ? connection.platform : connection.extensionId;
+	if (connection.kind === "extension") return connection.extensionId;
+	return isWebhookPlatform(connection.platform) ? "webhook" : connection.platform;
 }
 
 /** 这个平台是不是靠 webhook 连的。 */

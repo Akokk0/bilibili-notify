@@ -12,7 +12,6 @@ import {
 	type NotificationPayload,
 	ok,
 	type PayloadSegment,
-	WEBHOOK_PLATFORMS,
 	type WebhookConnectionConfig,
 	type WebhookPlatform,
 } from "@bilibili-notify/internal";
@@ -47,7 +46,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
 	return {
-		platforms: [...WEBHOOK_PLATFORMS],
+		adapterKey: "webhook",
 		isAvailable(connection: Connection, destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留「我只收端点」与连接收窄。
 			if (!isWebhookConnection(connection) || destination.kind !== "endpoint") return false;

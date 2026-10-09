@@ -10,9 +10,10 @@
  * 构造期只是拼闭包,连的时候才动网络。
  */
 
-import type { PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
-import { CONNECTION_PLATFORMS } from "@bilibili-notify/internal";
+import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
+import { CONNECTION_PLATFORMS, connectionDispatchKey } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { adapterForConnection } from "../../push/dispatch.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
 import { createWebhookAdapter } from "../webhook.js";
@@ -49,28 +50,32 @@ function buildMatrix(): PlatformAdapter[] {
 	];
 }
 
+/** 造一条该平台的直连连接 —— 分发只看 `kind` 与 `platform`。 */
+function directConnection(platform: string): Connection {
+	return { kind: "direct", platform } as unknown as Connection;
+}
+
 /**
- * 矩阵是按**分发键**索引的。核心装配的这几个恰好覆盖平台词表 —— **拓展注册进来的那些
+ * 矩阵是按**适配器键**索引的。核心装配的这几个恰好覆盖平台词表 —— **拓展注册进来的那些
  * 不在这儿**:它们的键是拓展 id,由宿主填(ADR-0012 决策 28),盘上装了什么决定有几个,
  * 而这条守卫问的是「核心自己有没有漏掉一个平台」。
  */
-const DISPATCH_KEYS = [...CONNECTION_PLATFORMS];
-
-describe("adapter 矩阵覆盖分发键", () => {
-	it("每个分发键都恰好有一个 adapter 认领", () => {
-		const claimed = new Map<string, number>();
-		for (const adapter of buildMatrix()) {
-			for (const platform of adapter.platforms) {
-				claimed.set(platform, (claimed.get(platform) ?? 0) + 1);
-			}
-		}
-		for (const key of DISPATCH_KEYS) {
-			expect(claimed.get(key) ?? 0, `分发键 ${key} 的 adapter`).toBe(1);
+describe("adapter 矩阵覆盖平台词表", () => {
+	it("闭集里每个平台的直连连接,都恰好找得到一个 adapter", () => {
+		const matrix = buildMatrix();
+		for (const platform of CONNECTION_PLATFORMS) {
+			const claimers = matrix.filter(
+				(adapter) => adapterForConnection([adapter], directConnection(platform)) !== undefined,
+			);
+			expect(claimers.length, `平台 ${platform} 的 adapter`).toBe(1);
 		}
 	});
 
-	it("也没有多认领的 —— adapter 声明了一个表外的键就是拼错了", () => {
-		const declared = buildMatrix().flatMap((a) => [...a.platforms]);
-		expect([...new Set(declared)].sort()).toEqual([...DISPATCH_KEYS].sort());
+	it("也没有多出来的 —— 每个 adapter 的键都是某个平台的分发键,键不重复", () => {
+		const keys = buildMatrix().map((a) => a.adapterKey);
+		const dispatchKeys = CONNECTION_PLATFORMS.map((p) =>
+			connectionDispatchKey(directConnection(p)),
+		);
+		expect([...keys].sort()).toEqual([...new Set(dispatchKeys)].sort());
 	});
 });

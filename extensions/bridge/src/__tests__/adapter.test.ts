@@ -185,7 +185,7 @@ describe("桥 adapter", () => {
 	 * 判断,不是拓展的声明。覆盖那一步的守卫在 `extensions/__tests__/context-grants.test.ts`。
 	 */
 	it("自己**不报**分发键 —— 报了也会被宿主覆盖掉", () => {
-		expect([...harness().adapter.platforms]).toEqual([]);
+		expect(harness().adapter.adapterKey).toBe("");
 	});
 
 	// ---- 发得出去吗 --------------------------------------------------------

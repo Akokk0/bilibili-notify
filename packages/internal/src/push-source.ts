@@ -19,17 +19,29 @@ import type { ChatIdentity, Connection, DestinationRef } from "./schema/targets"
 export type ProbeResult = Result<{ latencyMs: number }>;
 
 /**
- * 「**怎么**连」—— 建连、重连退避、心跳、生命周期。与「连到**哪个**平台」正交。
+ * 一个平台实现 —— 认领哪些连接、怎么建连、报文怎么编、地址怎么解、有什么能力。
+ * 矩阵({@link TargetDispatcher})拿它按分发键(`connectionDispatchKey`)找。
  *
- * 这一半是通用的:一条 WS 长连怎么退避重连,跟对面说的是 OneBot 还是 QQ 网关无关。
- * 接桥那期的 `koishi` / `astrbot` **只实现这一半** —— 桥后面挂着哪些平台是它探出来
- * 告诉我们的,我们不为那些平台写任何编解码。
+ * 成员分两拨,但**文件刻意没拆**:「怎么连」(建连、重连退避、心跳、生命周期)是通用的,
+ * 一条 WS 长连怎么退避重连,跟对面说的是 OneBot 还是 QQ 网关无关,接桥那期的 `koishi` /
+ * `astrbot` 只会用到这一拨 —— 桥后面挂着哪些平台是它探出来告诉我们的,我们不为那些平台写
+ * 任何编解码;「说哪国话」(报文、地址、能力)只管把 {@link NotificationPayload} 译成对面
+ * 听得懂的东西,并回答「这个目标现在发得出去吗」。抽象只有一个长连接用例验证过,别的等
+ * 真有了第二个用例再动。
  *
- * ⚠️ 眼下三个实现都同时实现两半({@link PlatformAdapter} 就是那个交集),**文件也刻意
- * 没拆** —— 抽象只有一个长连接用例验证过,容易抽错。这里先把缝划清楚:哪些方法属于
- * 「怎么连」、哪些属于「说哪国话」,别的等接桥那期真有了第二个用例再动。
+ * 实现**不许抛**:失败回 `fail(code, message)`(码取标准码表,平台自己的码放 `upstreamCode`),
+ * 重试由路由层决定。真抛了算 bug,派发器在边界接住按 `unavailable` 记。
+ *
+ * 方法**不依赖 `this`**:三个实现都是工厂里返回的闭包字面量,状态全在闭包里。这条是承重的 ——
+ * 登记表的视图(摘掉 `send`)与 devtools 的能力注入装饰器拿展开语法叠在外面(`{ ...inner }`),被复制过去的
+ * 方法会以装饰器对象为 `this` 被调;要是哪天有实现按 `this` 写,叠上去就悄悄丢状态。
  */
-export interface Connector {
+export interface PlatformAdapter {
+	/**
+	 * 适配器键 —— 登记表与分发按它找。内置的是 `"onebot"` / `"qq-official"` / `"webhook"`
+	 * (webhook 那一族:飞书 / 钉钉 / 企微 / 通用共用一个),拓展的由宿主填成拓展 id。
+	 */
+	readonly adapterKey: string;
 	/**
 	 * Side-effect-free reachability probe. Used by the connection status indicator
 	 * and the auto-poller. Implementations that have no out-of-band ping should
@@ -46,19 +58,8 @@ export interface Connector {
 	reconcile?(connections: readonly Connection[]): void;
 	/** Stateful connectors only — close all connections / listeners / timers on shutdown. Idempotent. */
 	dispose?(): void | Promise<void>;
-}
-
-/**
- * 「连到**哪个**平台」—— 认领哪些平台、报文怎么编、地址怎么解、有什么能力。
- *
- * 一份方言只管把 {@link NotificationPayload} 译成对面听得懂的东西,并回答「这个目标
- * 现在发得出去吗」。它不管连接是怎么建起来的 —— 那是 {@link Connector} 的事。
- */
-export interface PlatformDialect {
-	/** Platforms this dialect speaks ("onebot" / "feishu" / …). 矩阵按它分发。 */
-	readonly platforms: readonly string[];
 	/**
-	 * Return whether this dialect can deliver to `destination` over `connection` right now.
+	 * Return whether this adapter can deliver to `destination` over `connection` right now.
 	 * 连接 / 目标的启停与「目标属哪个平台」由派发器查过了,这里只答**运行期**的事:配置齐不齐、
 	 * 这个去向的种类自己收不收。
 	 */
@@ -77,19 +78,6 @@ export interface PlatformDialect {
 	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */
 	probeCapabilities?(connection: Connection): Promise<ConnectionCapabilities>;
 }
-
-/**
- * 一个平台实现 —— 今天两半都由同一个对象扛,所以它就是那两个接口的交集。
- * 矩阵({@link TargetDispatcher})拿它按 `connection.platform` 分发。
- *
- * 实现**不许抛**:失败回 `fail(code, message)`(码取标准码表,平台自己的码放 `upstreamCode`),
- * 重试由路由层决定。真抛了算 bug,派发器在边界接住按 `unavailable` 记。
- *
- * 方法**不依赖 `this`**:三个实现都是工厂里返回的闭包字面量,状态全在闭包里。这条是承重的 ——
- * 登记表的视图(摘掉 `send`)与 devtools 的能力注入装饰器拿展开语法叠在外面(`{ ...inner }`),被复制过去的
- * 方法会以装饰器对象为 `this` 被调;要是哪天有实现按 `this` 写,叠上去就悄悄丢状态。
- */
-export interface PlatformAdapter extends Connector, PlatformDialect {}
 
 /**
  * 入站消息 —— 各平台事件帧到「谁在哪说了什么」的收口。**归一化在 adapter 里做**:

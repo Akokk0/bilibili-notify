@@ -2564,7 +2564,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 			miniAppCard: state === "supported" ? { state, checkedAt: 1 } : { state },
 		});
 		const pa: PlatformAdapter = {
-			platforms: ["onebot"],
+			adapterKey: "onebot",
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe: vi.fn(async () => (probeOk ? ok({ latencyMs: 1 }) : fail("unavailable", "连不上"))),
@@ -2835,7 +2835,7 @@ describe("createEngines — 后台写登记进 track", () => {
 				config: {},
 			}) as any;
 		const okPlatform = (probe: () => Promise<ProbeResult>): PlatformAdapter => ({
-			platforms: ["onebot"],
+			adapterKey: "onebot",
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe,

@@ -30,8 +30,8 @@ const BUILT_IN: Record<string, PlatformMeta> = Object.fromEntries(
 );
 
 /**
- * 「画谁」那张表。键是**分发键**(`connectionDispatchKey`),不是平台名 —— 拓展那一档的
- * 取值正是拓展 id。
+ * 「画谁」那张表。键是直连的**平台名**(`feishu` / `dingtalk` 各画各的脸,不是 webhook
+ * 那个适配器键)或拓展 id —— 拓展那一档的取值正是拓展 id。
  *
  * **只认有没有外观,不认在不在跑**(ADR-0019 决策 41):v2 的外观服务端照清单给、停着也有,
  * 拓展停了,它借来的连接照样画这张脸 —— 在这儿补一道「在跑才进表」,就又退回灰方章了。
@@ -56,7 +56,7 @@ export function buildPlatformTable(
  * 直连就是它的平台。拓展连接是一个 bot(ADR-0012 决策 45):它的平台认得(桥借来的 QQ /
  * telegram)就画那个平台的脸;认不得(桥驮来的 kook 这种)退回拓展自己那张脸 —— 灰方章
  * 不如「这是桥接来的」有用。⚠️ 与分发键(`connectionDispatchKey`,决定哪个 adapter 认领)
- * 是两回事:那个在拓展这一支恒是拓展 id。
+ * 是两回事:那个在拓展这一支恒是拓展 id,在 webhook 那一族恒是 `"webhook"`。
  */
 export function useConnectionFace(): (connection: Connection) => string {
 	const lookup = usePlatformMeta();

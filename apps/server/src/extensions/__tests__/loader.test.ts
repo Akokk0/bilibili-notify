@@ -363,7 +363,7 @@ describe("拓展声明的密钥字段", () => {
 			importModule: async () => ({
 				activate(ctx: ExtensionContext) {
 					ctx.registerPushSource({
-						adapter: { platforms: [], isAvailable: () => true } as never,
+						adapter: { adapterKey: "", isAvailable: () => true } as never,
 						descriptor: { label: "拓展", shortLabel: "拓", tint: "#000000" },
 						configSchema: z.object({ botKey: z.string(), note: z.string().optional() }),
 						configFields: [
@@ -441,7 +441,7 @@ describe("拓展声明的密钥字段", () => {
 					// 清单声明了设置项,就得交校验它们的 zod(ADR-0019 决策 35),不然按加载失败算。
 					ctx.settings(z.object({ cookie: z.string().optional() }));
 					ctx.registerPushSource({
-						adapter: { platforms: [], isAvailable: () => true } as never,
+						adapter: { adapterKey: "", isAvailable: () => true } as never,
 						configSchema: z.object({ token: z.string() }),
 					});
 				},

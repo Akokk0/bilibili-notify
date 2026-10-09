@@ -1241,7 +1241,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	}
 
 	return {
-		platforms: ["onebot"],
+		adapterKey: "onebot",
 
 		isAvailable(connection: Connection, _destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留收窄类型。

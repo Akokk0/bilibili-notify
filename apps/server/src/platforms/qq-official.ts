@@ -1195,7 +1195,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	}
 
 	return {
-		platforms: ["qq-official"],
+		adapterKey: "qq-official",
 
 		isAvailable(connection: Connection, _destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留收窄类型。

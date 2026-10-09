@@ -33,7 +33,6 @@
 export type {
 	Connection,
 	ConnectionCapabilities,
-	Connector,
 	DeliveryResult,
 	DestinationRef,
 	Disposable,
@@ -50,7 +49,6 @@ export type {
 	 * 都是这一套,所以它的本体住 `@bilibili-notify/internal`;这里转出来给拓展用。
 	 */
 	PlatformAdapter,
-	PlatformDialect,
 	ProbeResult,
 	PushTarget,
 	PushTargetScope,
@@ -143,7 +141,7 @@ export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
  * 会打架,宿主注册那一刻就会抛。清单里没开 `contributes.push` 的拓展注册不了推送源。
  */
 export interface PushExtensionDef<TConfig> {
-	/** 行为。⚠️ 它自报的 `platforms` **会被宿主覆盖**成这个拓展的 id。 */
+	/** 行为。⚠️ 它自报的 `adapterKey` **会被宿主覆盖**成这个拓展的 id。 */
 	adapter: PlatformAdapter;
 	/**
 	 * config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展;注册那一刻还拿它与清单里的
@@ -476,7 +474,7 @@ export interface ExtensionContext {
 	/**
 	 * 注册这个拓展的推送源 —— 一个拓展只有一个(决策 28),再注册一次会抛。
 	 *
-	 * **分发键由宿主按 id 填**,`adapter.platforms` 自报的那份会被覆盖:自报的话,一个
+	 * **分发键由宿主按 id 填**,`adapter.adapterKey` 自报的那份会被覆盖:自报的话,一个
 	 * 拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走。归属是宿主的判断。
 	 *
 	 * 清单没开推送源那一口(v2 的 `contributes.push`、v1 的 `provides`)会抛。v2 交

@@ -18,9 +18,9 @@ import {
 	sendableAdapters,
 } from "../registry.js";
 
-function fakeAdapter(...platforms: string[]): PlatformAdapter {
+function fakeAdapter(adapterKey: string): PlatformAdapter {
 	return {
-		platforms,
+		adapterKey,
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 	} as unknown as PlatformAdapter;
@@ -41,11 +41,11 @@ describe("adapter 注册表", () => {
 	it("开机那几个照旧,注册进来的也在", () => {
 		const builtin = fakeAdapter("onebot");
 		const registry = createPlatformAdapterRegistry([builtin]);
-		expect(registry.list().map((a) => a.platforms)).toEqual([["onebot"]]);
+		expect(registry.list().map((a) => a.adapterKey)).toEqual(["onebot"]);
 
 		const bridge = fakeAdapter("bridge");
 		registry.register(bridge);
-		expect(registry.list().map((a) => a.platforms)).toEqual([["onebot"], ["bridge"]]);
+		expect(registry.list().map((a) => a.adapterKey)).toEqual(["onebot", "bridge"]);
 		expect(sendableAdapters(registry)).toEqual([builtin, bridge]);
 	});
 
@@ -56,7 +56,7 @@ describe("adapter 注册表", () => {
 		expect(route(extensionConnection("bridge"))).toBeUndefined();
 
 		registry.register(fakeAdapter("bridge"));
-		expect(route(extensionConnection("bridge"))?.platforms).toEqual(["bridge"]);
+		expect(route(extensionConnection("bridge"))?.adapterKey).toBe("bridge");
 	});
 
 	it("撤下之后就找不到了 —— 卸载一个拓展 = 从表里删一行", () => {
@@ -83,13 +83,9 @@ describe("adapter 注册表", () => {
 		expect(adapterForConnection(registry.list(), extensionConnection("bridge"))).toBeDefined();
 	});
 
-	it("一个 adapter 认领好几个键(webhook 那族)—— 一起进,一起走", () => {
-		const registry = createPlatformAdapterRegistry();
-		const handle = registry.register(fakeAdapter("feishu", "dingtalk"));
-		expect(() => registry.register(fakeAdapter("dingtalk"))).toThrow(/dingtalk/);
-		handle.dispose();
-		// 撤下之后两个键都空出来了。
-		expect(() => registry.register(fakeAdapter("feishu", "dingtalk"))).not.toThrow();
+	it("webhook 键被占了 → 抛 —— 四个 webhook 平台共用这一个键", () => {
+		const registry = createPlatformAdapterRegistry([fakeAdapter("webhook")]);
+		expect(() => registry.register(fakeAdapter("webhook"))).toThrow(/webhook/);
 	});
 
 	it("dispose 是幂等的", () => {
@@ -111,7 +107,7 @@ describe("adapter 注册表 · 出口咽喉", () => {
 		const [view] = registry.list();
 		expect(view).toBeDefined();
 		expect("send" in (view as object)).toBe(false);
-		expect(view?.platforms).toEqual(["onebot"]);
+		expect(view?.adapterKey).toBe("onebot");
 	});
 
 	it("同一个适配器两次 list() 回同一个视图对象", () => {

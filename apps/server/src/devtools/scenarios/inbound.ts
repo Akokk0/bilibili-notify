@@ -6,7 +6,6 @@ import type {
 import {
 	type ChatIdentity,
 	type Connection,
-	connectionDispatchKey,
 	type DirectConnection,
 	groupAddressOf,
 	isDirectConnection,
@@ -118,8 +117,10 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 				);
 			}
 			if (!isDirectChat(connection)) {
+				// 守卫的假分支被类型收窄成只剩拓展连接,运行时还有 webhook 直连:先放宽回 Connection 再取平台名。
+				const wide = connection as Connection;
 				throw new DevParamError(
-					`${connection.name} 是 ${connectionDispatchKey(connection)},没有群这回事`,
+					`${wide.name} 是 ${wide.kind === "direct" ? wide.platform : wide.extensionId},没有群这回事`,
 				);
 			}
 			const given = typeof params.groupId === "string" ? params.groupId : "";

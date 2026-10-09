@@ -36,7 +36,7 @@ const REAL: ConnectionCapabilities = {
 
 function onebot(): PlatformAdapter {
 	return {
-		platforms: ["onebot"],
+		adapterKey: "onebot",
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => ({ ok: true, latencyMs: 1 }),
@@ -47,7 +47,7 @@ function onebot(): PlatformAdapter {
 
 function webhook(): PlatformAdapter {
 	return {
-		platforms: ["webhook"],
+		adapterKey: "webhook",
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => fail("unsupported", "no probe"),
@@ -113,7 +113,7 @@ describe("connection.capability", () => {
 		// 哪天给官机接上能力探测,devtools 就该跟着能选它 —— 而不是继续说「官机没有能力
 		// 这回事」。这里造一份实现了能力方法的官机方言,场景必须认它。
 		const injector = createCapabilityInjector();
-		const qq: PlatformAdapter = { ...onebot(), platforms: ["qq-official"] };
+		const qq: PlatformAdapter = { ...onebot(), adapterKey: "qq-official" };
 		const conn = { ...OB, id: "ad-qq", name: "官机", platform: "qq-official" } as Connection;
 		const reg = createDevRegistry([
 			capabilityScenario({ injector, connections: () => [conn], dialects: () => [qq] }),

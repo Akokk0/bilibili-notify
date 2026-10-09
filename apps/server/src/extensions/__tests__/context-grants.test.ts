@@ -167,7 +167,7 @@ function harness(
 }
 
 function fakeAdapter(): PlatformAdapter {
-	return { platforms: ["谁都不是"], isAvailable: () => true } as unknown as PlatformAdapter;
+	return { adapterKey: "谁都不是", isAvailable: () => true } as unknown as PlatformAdapter;
 }
 
 function descriptor(): ExtensionDescriptor {
@@ -791,7 +791,7 @@ describe("注册推送源", () => {
 		const h = harness();
 		h.ctx.registerPushSource(def());
 		const registered = h.adapters.list()[0];
-		expect(registered?.platforms).toEqual(["bridge"]);
+		expect(registered?.adapterKey).toBe("bridge");
 		expect(adapterForConnection(h.adapters.list(), connection())).toBe(registered);
 	});
 

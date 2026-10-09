@@ -117,7 +117,7 @@ describe("createDevtools · 截流接线", () => {
 
 	function onebotAdapter(send = vi.fn(async () => ok({ latencyMs: 1 }))) {
 		return {
-			platforms: ["onebot"] as const,
+			adapterKey: "onebot",
 			isAvailable: () => true,
 			send,
 			probe: async () => ok({ latencyMs: 1 }),

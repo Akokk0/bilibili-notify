@@ -805,7 +805,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			listBots = def.listBots;
 			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
-			const adapter: PlatformAdapter = { ...def.adapter, platforms: [id] };
+			const adapter: PlatformAdapter = { ...def.adapter, adapterKey: id };
 			integration.track(adapters.register(adapter));
 			return {
 				connections: () => ownConnections(def.configSchema),
