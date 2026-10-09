@@ -245,32 +245,11 @@ describe("桥 adapter", () => {
 			ok: false,
 			code: "unavailable",
 		});
-		// 连接或目标被主人停用:要去把开关打开。
-		const paused = harness();
-		paused.setConnections([view({ enabled: false })]);
-		expect(await paused.adapter.send(connection(), target(), text)).toEqual({
-			ok: false,
-			code: "not_configured",
-			message: "这条连接已停用",
-		});
-		paused.setConnections([view()]);
-		expect(await paused.adapter.send(connection(), target({ enabled: false }), text)).toEqual({
-			ok: false,
-			code: "not_configured",
-			message: "这个推送目标已停用",
-		});
+		// 连接 / 目标被主人停用(要去把开关打开)归宿主的派发器查,见 target-dispatcher.test.ts。
 		// 桥只发会话目标:目标的形状不对。
 		expect(
 			await harness().adapter.send(connection(), { ...target(), kind: "endpoint" } as never, text),
 		).toEqual({ ok: false, code: "invalid", message: "桥只发会话目标" });
-	});
-
-	it("连接或目标停用 → 不可发", () => {
-		const h = harness();
-		h.setConnections([view({ enabled: false })]);
-		expect(h.adapter.isAvailable(connection(), target())).toBe(false);
-		h.setConnections([view()]);
-		expect(h.adapter.isAvailable(connection(), target({ enabled: false }))).toBe(false);
 	});
 
 	it("发之前先问一遍 —— bot 不在名单就**一帧都不发**,别扔进黑洞等超时", async () => {

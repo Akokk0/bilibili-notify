@@ -3,6 +3,7 @@ import type {
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
+	DestinationRef,
 	DirectConnection,
 	Disposable,
 	Failure,
@@ -14,7 +15,6 @@ import type {
 	PayloadSegment,
 	PlatformAdapter,
 	ProbeResult,
-	PushTarget,
 	Result,
 	ServiceContext,
 } from "@bilibili-notify/internal";
@@ -24,6 +24,7 @@ import {
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
 
@@ -280,7 +281,7 @@ interface OnebotAction {
  * 走 forward 前先 await `getBotIdentity(adapter)`,拿到真实身份后传进来。
  */
 function buildSendAction(
-	target: PushTarget,
+	destination: DestinationRef,
 	payload: NotificationPayload,
 	botInfo: BotIdentity = FALLBACK_BOT_IDENTITY,
 ): Result<OnebotAction> {
@@ -299,22 +300,22 @@ function buildSendAction(
 				content: [{ type: "image", data: { file: url } }],
 			},
 		}));
-		const to = onebotNumericAddress(target);
+		const to = onebotNumericAddress(destination);
 		if (!to.ok) return to;
 		return to.private
 			? ok({ action: "send_private_forward_msg", params: { user_id: to.id, messages: nodes } })
 			: ok({ action: "send_group_forward_msg", params: { group_id: to.id, messages: nodes } });
 	}
-	return buildSendActionFromSegments(target, buildSegments(payload));
+	return buildSendActionFromSegments(destination, buildSegments(payload));
 }
 
 /** 普通消息(send_group_msg / send_private_msg)的 action + params;段已经翻好了。 */
 function buildSendActionFromSegments(
-	target: PushTarget,
+	destination: DestinationRef,
 	segments: OneBotMessageSegment[],
 ): Result<OnebotAction> {
 	if (segments.length === 0) return fail("invalid", "empty payload");
-	const to = onebotNumericAddress(target);
+	const to = onebotNumericAddress(destination);
 	if (!to.ok) return to;
 	const params: Record<string, unknown> = { message: segments };
 	if (to.private) {
@@ -328,17 +329,19 @@ function buildSendActionFromSegments(
 /**
  * 目标的地址 → OneBot 要的那个数字 id,外加「这一发是不是私聊」。
  *
- * 群还是私聊只看 `target.scope`(原来的「强制私聊」覆盖已删)。
+ * 群还是私聊只看 `destination.scope`(原来的「强制私聊」覆盖已删)。
  *
  * 非数字地址 → `Number()` 得 NaN → 序列化成 null,OneBot 端静默错投。提前拒。
  */
-function onebotNumericAddress(target: PushTarget): Result<{ private: boolean; id: number }> {
-	const isPrivate = target.scope === "private";
+function onebotNumericAddress(
+	destination: DestinationRef,
+): Result<{ private: boolean; id: number }> {
+	const isPrivate = destination.scope === "private";
 	const what = isPrivate ? "private: userId" : "group: groupId";
-	if (target.kind !== "session") return fail("invalid", `${what} missing`);
-	if (!target.address) return fail("invalid", `${what} missing`);
-	const id = Number(target.address);
-	if (!Number.isFinite(id)) return fail("invalid", `${what} 非数字 (${target.address})`);
+	if (destination.kind !== "session") return fail("invalid", `${what} missing`);
+	if (!destination.address) return fail("invalid", `${what} missing`);
+	const id = Number(destination.address);
+	if (!Number.isFinite(id)) return fail("invalid", `${what} 非数字 (${destination.address})`);
 	return ok({ private: isPrivate, id });
 }
 
@@ -1071,7 +1074,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 */
 	async function sendMiniAppCard(
 		connection: OnebotConnection,
-		target: PushTarget,
+		destination: DestinationRef,
 		card: Extract<NotificationPayload, { kind: "miniapp-card" }>,
 	): Promise<DeliveryResult> {
 		const t0 = Date.now();
@@ -1107,9 +1110,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		const data = arkToSegmentData(ark);
 		if (data === null) return fail("invalid", "签小程序卡失败: 返回的不是 ark");
 		miniAppCardSupport.set(connection.id, { state: "supported", checkedAt: Date.now() });
-		const built = buildSendActionFromSegments(target, [{ type: "json", data: { data } }]);
+		const built = buildSendActionFromSegments(destination, [{ type: "json", data: { data } }]);
 		if (!built.ok) return built;
-		return dispatch(connection, target, built, t0);
+		return dispatch(connection, destination, built, t0);
 	}
 
 	/** 签卡那一步的失败:码与 `upstreamCode` 照留,原话前面说明是哪一步。 */
@@ -1148,7 +1151,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	/** 一条已经翻好的 action 走 transport 发出去(带各自的重试与超时规则)。 */
 	async function dispatch(
 		connection: OnebotConnection,
-		target: PushTarget,
+		destination: DestinationRef,
 		built: OnebotAction,
 		t0: number,
 	): Promise<DeliveryResult> {
@@ -1165,19 +1168,28 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				});
 				const verdict = interpretResponse(result);
 				if (!verdict.ok) {
-					log.warn(`[onebot] target=${target.id} send failed: ${verdict.message}`);
+					log.warn(
+						`[onebot] target=${describeDestination(destination)} send failed: ${verdict.message}`,
+					);
 					return verdict;
 				}
 				return ok({ latencyMs: Date.now() - t0 });
 			} catch (e) {
 				const failure = thrownFailure(e, "sent");
 				log.warn(
-					`[onebot] target=${target.id} send threw: ${failure.message} (baseUrl=${cfg.baseUrl})`,
+					`[onebot] target=${describeDestination(destination)} send threw: ${failure.message} (baseUrl=${cfg.baseUrl})`,
 				);
 				return failure;
 			}
 		}
-		return sendOverWs(connection.id, cfg, built.action, built.params, target.id, t0);
+		return sendOverWs(
+			connection.id,
+			cfg,
+			built.action,
+			built.params,
+			describeDestination(destination),
+			t0,
+		);
 	}
 
 	/** WS / WS-reverse 共用的发送(echo 帧 + 重试)。 */
@@ -1231,9 +1243,9 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	return {
 		platforms: ["onebot"],
 
-		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (!isConnectionOn(connection, "onebot") || target.platform !== "onebot") return false;
-			if (!connection.enabled || !target.enabled) return false;
+		isAvailable(connection: Connection, _destination: DestinationRef): boolean {
+			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留收窄类型。
+			if (!isConnectionOn(connection, "onebot")) return false;
 			const cfg = connection.config;
 			if (cfg.transport === "http") return cfg.baseUrl.length > 0;
 			if (cfg.transport === "ws") return cfg.url.length > 0;
@@ -1371,21 +1383,18 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 		async send(
 			connection: Connection,
-			target: PushTarget,
+			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
-			if (!isConnectionOn(connection, "onebot") || target.platform !== "onebot") {
-				return fail(
-					"invalid",
-					`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
-				);
+			if (!isConnectionOn(connection, "onebot")) {
+				return fail("invalid", `wrong platform: adapter=${connectionDispatchKey(connection)}`);
 			}
-			if (payload.kind === "miniapp-card") return sendMiniAppCard(connection, target, payload);
+			if (payload.kind === "miniapp-card") return sendMiniAppCard(connection, destination, payload);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——
 			// session.groupId / userId 缺失等"配错"立即失败返回,不浪费 get_login_info
 			// 往返(可能 15s 超时)在一条注定发不出去的消息上。非 forward 路径直接复用
 			// 这次结果。
-			let built = buildSendAction(target, payload);
+			let built = buildSendAction(destination, payload);
 			if (!built.ok) return built;
 			const t0 = Date.now();
 
@@ -1395,14 +1404,14 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			// 探测是发它必经的一步。getBotIdentity 内部 lazy 缓存,大多数情况下命中走 O(1)。
 			if (payload.kind === "image-group" && payload.mergeForward) {
 				const botInfo = (await getBotIdentity(connection)) ?? undefined;
-				const rebuilt = buildSendAction(target, payload, botInfo);
+				const rebuilt = buildSendAction(destination, payload, botInfo);
 				// rebuilt 与首次同 target/payload;target 校验已过,此处失败分支
 				// 理论不会触达。守一手保类型收敛。
 				if (!rebuilt.ok) return rebuilt;
 				built = rebuilt;
 			}
 
-			return dispatch(connection, target, built, t0);
+			return dispatch(connection, destination, built, t0);
 		},
 
 		capabilities(connection: Connection): ConnectionCapabilities {

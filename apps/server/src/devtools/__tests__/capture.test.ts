@@ -1,4 +1,9 @@
-import type { Connection, NotificationPayload, PushTarget } from "@bilibili-notify/internal";
+import type {
+	Connection,
+	DestinationRef,
+	NotificationPayload,
+	PushTarget,
+} from "@bilibili-notify/internal";
 import { isReachabilityEvidence } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createCaptureGate } from "../capture.js";
@@ -31,12 +36,13 @@ const TARGET: PushTarget = {
 function call(
 	gate: ReturnType<typeof createCaptureGate>,
 	payload: NotificationPayload,
-	over: { isProvisional?: boolean; target?: PushTarget } = {},
+	over: { target?: PushTarget | undefined; destination?: DestinationRef } = {},
 ) {
 	return gate.intercept({
 		connection: CONNECTION,
-		target: over.target ?? TARGET,
-		isProvisional: over.isProvisional ?? false,
+		destination: over.destination ?? { kind: "session", scope: "group", address: "123" },
+		// 显式传 `target: undefined` = 按会话坐标发的(不经目标表)。
+		target: "target" in over ? over.target : TARGET,
 		payload,
 	});
 }
@@ -97,7 +103,10 @@ describe("createCaptureGate", () => {
 		call(
 			gate,
 			{ kind: "text", text: "x" },
-			{ target: { ...TARGET, scope: "private" } as PushTarget },
+			{
+				target: { ...TARGET, scope: "private" } as PushTarget,
+				destination: { kind: "session", scope: "private", address: "123" },
+			},
 		);
 		call(gate, { kind: "text", text: "x" });
 		expect(gate.entries().map((e) => e.private)).toEqual([true, false]);
@@ -106,18 +115,21 @@ describe("createCaptureGate", () => {
 	it("按会话坐标发的:目标名显示成「群 <地址>」/「私聊 <地址>」", () => {
 		const gate = createCaptureGate();
 		gate.enable();
-		const session = (scope: "group" | "private", address: string) =>
-			({ ...TARGET, id: `session:${scope}:${address}`, scope, address }) as PushTarget;
+		const session = (scope: "group" | "private", address: string): DestinationRef => ({
+			kind: "session",
+			scope,
+			address,
+		});
 
 		call(
 			gate,
 			{ kind: "text", text: "a" },
-			{ target: session("group", "123"), isProvisional: true },
+			{ target: undefined, destination: session("group", "123") },
 		);
 		call(
 			gate,
 			{ kind: "text", text: "b" },
-			{ target: session("private", "456"), isProvisional: true },
+			{ target: undefined, destination: session("private", "456") },
 		);
 
 		expect(gate.entries().map((e) => e.targetName)).toEqual(["群 123", "私聊 456"]);

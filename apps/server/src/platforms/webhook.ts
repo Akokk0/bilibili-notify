@@ -4,6 +4,7 @@ import {
 	type Connection,
 	connectionDispatchKey,
 	type DeliveryResult,
+	type DestinationRef,
 	type Failure,
 	fail,
 	isWebhookConnection,
@@ -11,7 +12,6 @@ import {
 	type NotificationPayload,
 	ok,
 	type PayloadSegment,
-	type PushTarget,
 	WEBHOOK_PLATFORMS,
 	type WebhookConnectionConfig,
 	type WebhookPlatform,
@@ -33,6 +33,9 @@ export interface WebhookAdapterOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/** webhook 只收端点那一支;收窄在 `send` 里做过之后往下传的就是这个形状。 */
+type EndpointDestination = Extract<DestinationRef, { kind: "endpoint" }>;
+
 interface WebhookHttpRequest {
 	url: string;
 	headers: Record<string, string>;
@@ -45,9 +48,9 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 
 	return {
 		platforms: [...WEBHOOK_PLATFORMS],
-		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (!isWebhookConnection(connection) || target.kind !== "endpoint") return false;
-			if (!connection.enabled || !target.enabled) return false;
+		isAvailable(connection: Connection, destination: DestinationRef): boolean {
+			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留「我只收端点」与连接收窄。
+			if (!isWebhookConnection(connection) || destination.kind !== "endpoint") return false;
 			const cfg = connection.config;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
 		},
@@ -60,14 +63,14 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 		},
 		async send(
 			connection: Connection,
-			target: PushTarget,
+			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
-			if (!isWebhookConnection(connection) || target.kind !== "endpoint") {
+			if (!isWebhookConnection(connection) || destination.kind !== "endpoint") {
 				return fail(
 					"invalid",
 					`wrong shape: connection=${connectionDispatchKey(connection)} ` +
-						`target=${target.platform}/${target.kind}`,
+						`destination=${destination.kind}`,
 				);
 			}
 			const cfg = connection.config;
@@ -76,10 +79,10 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			// 请求拼不出来(配置的地址不合法,签名时 `new URL` 就抛)是输入的问题,一个字节都没发出去。
 			let req: WebhookHttpRequest;
 			try {
-				req = buildWebhookRequest(provider, cfg, target, payload);
+				req = buildWebhookRequest(provider, cfg, destination, payload);
 			} catch (e) {
 				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
-				log.warn(`[webhook] target=${target.id} send failed: ${message}`);
+				log.warn(`[webhook] target=${destination.id} send failed: ${message}`);
 				return fail("invalid", message);
 			}
 			const t0 = Date.now();
@@ -102,7 +105,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 				return ok({ latencyMs });
 			} catch (e) {
 				const message = sanitizeWebhookError(e instanceof Error ? e.message : String(e), cfg);
-				log.warn(`[webhook] target=${target.id} send failed: ${message}`);
+				log.warn(`[webhook] target=${destination.id} send failed: ${message}`);
 				// 我们自己的超时掐断:请求已经发出去了,对端可能照样处理完 —— 结果不明,不是「没通」。
 				return ctrl.signal.aborted ? fail("indeterminate", message) : fail("unavailable", message);
 			} finally {
@@ -121,7 +124,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 function buildWebhookRequest(
 	provider: WebhookPlatform,
 	cfg: WebhookConnectionConfig,
-	target: PushTarget,
+	destination: EndpointDestination,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	switch (provider) {
@@ -132,7 +135,7 @@ function buildWebhookRequest(
 		case "wecom":
 			return buildWeComWebhookRequest(cfg, payload);
 		case "generic":
-			return buildGenericWebhookRequest(cfg, target, payload);
+			return buildGenericWebhookRequest(cfg, destination, payload);
 	}
 }
 
@@ -145,7 +148,7 @@ function baseHeaders(cfg: WebhookConnectionConfig): Record<string, string> {
 
 function buildGenericWebhookRequest(
 	cfg: WebhookConnectionConfig,
-	target: PushTarget,
+	destination: EndpointDestination,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const headers = baseHeaders(cfg);
@@ -154,9 +157,9 @@ function buildGenericWebhookRequest(
 		url: cfg.url,
 		headers,
 		body: JSON.stringify({
-			targetId: target.id,
-			targetName: target.name,
-			scope: target.scope,
+			targetId: destination.id,
+			targetName: destination.name,
+			scope: destination.scope,
 			// 线上格式冻结(ADR-0024 决策 5):`private` 这一格留着,恒为 false。
 			private: false,
 			payload: serializePayload(payload),

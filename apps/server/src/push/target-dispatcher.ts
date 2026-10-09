@@ -2,6 +2,8 @@ import type {
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
+	DestinationRef,
+	Failure,
 	Logger,
 	NotificationPayload,
 	PlatformAdapter,
@@ -28,12 +30,13 @@ import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
  * 回了结果就用那个结果、不调适配器;回 `undefined` 就照常发。两条发送路(`send` /
  * `sendToAddress`)共用这一处。
  *
- * `isProvisional`:这次是 `sendToAddress` 发的,`target` 是只活在这一次调用里的临时目标。
+ * `destination` 是交给适配器的去向;`target` 是经目标表发送时的那条真目标,
+ * `sendToAddress`(不经目标表)时是 `undefined`。
  */
 export type SendInterceptHandler = (send: {
 	connection: Connection;
-	target: PushTarget;
-	isProvisional: boolean;
+	destination: DestinationRef;
+	target: PushTarget | undefined;
 	payload: NotificationPayload;
 }) => DeliveryResult | undefined;
 
@@ -63,6 +66,26 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return opts.store.getConnections().find((a) => a.id === connectionId);
 	}
 
+	/**
+	 * 开关与平台的检查,**全仓只有这一份**(适配器不再各查一遍)。过了回 `undefined`,没过回失败结果。
+	 *
+	 * 平台那一句是「目标的 `platform` 与它那条连接对不上」—— 3a-21 删 `target.platform` 时这一句跟着删。
+	 */
+	function refusal(target: PushTarget, connection: Connection): Failure | undefined {
+		if (isTargetPaused(target, opts.store.getConnections())) {
+			return target.enabled
+				? fail("not_configured", `connection disabled: connectionId=${connection.id}`)
+				: fail("not_configured", `target disabled: targetId=${target.id}`);
+		}
+		if (target.platform !== connection.platform) {
+			return fail(
+				"invalid",
+				`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
+			);
+		}
+		return undefined;
+	}
+
 	/** 配置里的那条连接 + 它所属平台的实现;缺一个就没法问它任何事。 */
 	function routeOf(connectionId: string) {
 		const connection = findConnection(connectionId);
@@ -89,7 +112,8 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			if (!connection) return false;
 			const platformAdapter = adapterFor(connection);
 			if (!platformAdapter) return false;
-			return platformAdapter.isAvailable(connection, target);
+			if (refusal(target, connection)) return false;
+			return platformAdapter.isAvailable(connection, destinationOf(target));
 		},
 
 		send(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
@@ -107,8 +131,8 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 				log.warn(`[sink] ${result.message} (sendToAddress)`);
 				return result;
 			}
-			const target = provisionalTarget(connection, session);
-			if (isTargetPaused(target, opts.store.getConnections())) {
+			const destination: DestinationRef = { kind: "session", ...session };
+			if (!connection.enabled) {
 				const result = fail("not_configured", `connection disabled: connectionId=${connection.id}`);
 				log.warn(`[sink] ${result.message} (sendToAddress)`);
 				return result;
@@ -119,13 +143,13 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 				log.warn(`[sink] ${result.message} (sendToAddress, connectionId=${connection.id})`);
 				return result;
 			}
-			if (!platformAdapter.isAvailable(connection, target)) {
+			if (!platformAdapter.isAvailable(connection, destination)) {
 				const result = fail("unavailable", `connection unavailable: connectionId=${connection.id}`);
 				log.warn(`[sink] ${result.message} (sendToAddress)`);
 				return result;
 			}
-			// 不触发 onDelivery:它会去写 `target.testStatus`,临时目标不在表里。不重试、不落历史。
-			return deliver(connection, platformAdapter, target, payload, true);
+			// 不触发 onDelivery:它会去写 `target.testStatus`,这里没有目标表里的那条。不重试、不落历史。
+			return deliver(connection, platformAdapter, destination, undefined, payload);
 		},
 
 		connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined {
@@ -182,7 +206,19 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			opts.onDelivery?.(target, payload, result);
 			return result;
 		}
-		const result = await deliver(connection, platformAdapter, target, payload, false);
+		const refused = refusal(target, connection);
+		if (refused) {
+			log.warn(`[sink] ${refused.message} (target=${target.id})`);
+			opts.onDelivery?.(target, payload, refused);
+			return refused;
+		}
+		const result = await deliver(
+			connection,
+			platformAdapter,
+			destinationOf(target),
+			target,
+			payload,
+		);
 		opts.onDelivery?.(target, payload, result);
 		return result;
 	}
@@ -191,40 +227,29 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	async function deliver(
 		connection: Connection,
 		platformAdapter: PlatformAdapter,
-		target: PushTarget,
+		destination: DestinationRef,
+		target: PushTarget | undefined,
 		payload: NotificationPayload,
-		isProvisional: boolean,
 	): Promise<DeliveryResult> {
-		const intercepted = opts.interceptSend?.({
-			connection,
-			target,
-			isProvisional,
-			payload,
-		});
+		const intercepted = opts.interceptSend?.({ connection, destination, target, payload });
 		if (intercepted) return intercepted;
 		try {
-			return await platformAdapter.send(connection, target, payload);
+			return await platformAdapter.send(connection, destination, payload);
 		} catch (e) {
-			return thrown(e, `target=${target.id} send`);
+			return thrown(e, `${target ? `target=${target.id}` : "sendToAddress"} send`);
 		}
 	}
 }
 
-/**
- * 给 `sendToAddress` 拼的会话目标,只活在这一次调用里,不在目标表里。
- *
- * 适配器的 `send` 现在还吃完整的 `PushTarget`,所以得拼一个;适配器接口在 3a-20 改窄之后
- * 这个临时目标就删掉。
- */
-function provisionalTarget(connection: Connection, session: SessionRef): PushTarget {
+/** 推送目标 → 适配器发送口要的那几格。会话目标取 `scope` / `address` / `parentAddress`,端点目标取 `id` / `name` / `scope`。 */
+function destinationOf(target: PushTarget): DestinationRef {
+	if (target.kind === "endpoint") {
+		return { kind: "endpoint", id: target.id, name: target.name, scope: target.scope };
+	}
 	return {
-		id: `session:${session.scope}:${session.address}`,
-		name: `session:${session.scope}:${session.address}`,
-		connectionId: connection.id,
 		kind: "session",
-		scope: session.scope,
-		address: session.address,
-		platform: connection.platform,
-		enabled: true,
+		scope: target.scope,
+		address: target.address,
+		parentAddress: target.parentAddress,
 	};
 }

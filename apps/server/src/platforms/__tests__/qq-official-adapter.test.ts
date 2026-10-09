@@ -101,11 +101,6 @@ describe("createQQOfficialAdapter — isAvailable", () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
 		expect(ad.isAvailable(qqConnection({ appSecret: "" }), qqTarget("group", "G1"))).toBe(false);
 	});
-	it("adapter disabled → false", () => {
-		const ad = createQQOfficialAdapter(adapterOpts());
-		const disabled = { ...qqConnection(), enabled: false } as Connection;
-		expect(ad.isAvailable(disabled, qqTarget("group", "G1"))).toBe(false);
-	});
 });
 
 describe("createQQOfficialAdapter — send 文本", () => {
@@ -155,14 +150,8 @@ describe("createQQOfficialAdapter — send 文本", () => {
 		);
 	});
 
-	it("平台不对 / 空载荷 → invalid", async () => {
+	it("空载荷 → invalid(平台对不对归派发器查)", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const wrong = await ad.send(
-			qqConnection(),
-			{ ...qqTarget("group", "G1"), platform: "onebot" } as PushTarget,
-			TEXT,
-		);
-		expect(wrong).toMatchObject({ ok: false, code: "invalid" });
 		const empty = await ad.send(qqConnection(), qqTarget("group", "G1"), {
 			kind: "composite",
 			segments: [],

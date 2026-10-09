@@ -764,7 +764,7 @@ describe("onebot — 失败与重试", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
-	it("wrong platform → ok:false", async () => {
+	it("端点去向 → ok:false(平台对不对归派发器查,适配器只认会话地址)", async () => {
 		const ad = createOnebotAdapter(obOpts());
 		const r = await ad.send(
 			obConnection(),
@@ -772,7 +772,7 @@ describe("onebot — 失败与重试", () => {
 			TEXT,
 		);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
-		expect(messageOf(r)).toMatch(/wrong platform/);
+		expect(messageOf(r)).toMatch(/groupId missing/);
 	});
 });
 
@@ -1122,10 +1122,9 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 });
 
 describe("onebot — isAvailable / probe", () => {
-	it("isAvailable:平台匹配+启用+baseUrl 非空", () => {
+	it("isAvailable:直连 onebot + baseUrl 非空(启停归派发器查)", () => {
 		const ad = createOnebotAdapter(obOpts());
 		expect(ad.isAvailable(obConnection(), obTarget())).toBe(true);
-		expect(ad.isAvailable(obConnection({}), obTarget({ enabled: false }))).toBe(false);
 		expect(ad.isAvailable(obConnection({ baseUrl: "" }), obTarget())).toBe(false);
 	});
 
@@ -2075,11 +2074,10 @@ describe("webhook — send", () => {
 });
 
 describe("webhook — isAvailable / probe", () => {
-	it("isAvailable:平台匹配+启用+url 非空", () => {
+	it("isAvailable:webhook 连接 + 端点去向 + url 非空(启停归派发器查)", () => {
 		const ad = createWebhookAdapter({ logger: makeLogger() });
 		expect(ad.isAvailable(whConnection(), whTarget())).toBe(true);
 		expect(ad.isAvailable(whConnection("generic", { url: "" }), whTarget())).toBe(false);
-		expect(ad.isAvailable(whConnection(), whTarget({ enabled: false }))).toBe(false);
 	});
 
 	it("probe 恒为 unsupported(webhook 无连通探测)", async () => {

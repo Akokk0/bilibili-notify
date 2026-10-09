@@ -1,6 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
-import type { NotificationPayload } from "@bilibili-notify/internal";
-import { connectionDispatchKey, isPrivateTarget, ok } from "@bilibili-notify/internal";
+import type { DestinationRef, NotificationPayload } from "@bilibili-notify/internal";
+import { connectionDispatchKey, ok } from "@bilibili-notify/internal";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 
 /**
@@ -38,6 +38,19 @@ export interface CaptureGate {
 	resetWindows(): void;
 	/** 交给 `TargetDispatcher` 的 `interceptSend`:闸开着时记一条、回结果,否则回 `undefined` 放行。 */
 	intercept: SendInterceptHandler;
+}
+
+/** 不经目标表发送时没有目标 id,截流记录里用 `session:<scope>:<address>` 顶上。 */
+function sessionKey(destination: DestinationRef): string {
+	return destination.kind === "session"
+		? `session:${destination.scope}:${destination.address}`
+		: `endpoint:${destination.id}`;
+}
+
+function sessionLabel(destination: DestinationRef): string {
+	return destination.kind === "session"
+		? `${destination.scope === "group" ? "群" : "私聊"} ${destination.address}`
+		: destination.name;
 }
 
 function clip(text: string): string {
@@ -99,7 +112,7 @@ export function createCaptureGate(): CaptureGate {
 		resetWindows() {
 			windows = on ? [{ from: Date.now(), to: null }] : [];
 		},
-		intercept({ connection, target, isProvisional, payload }) {
+		intercept({ connection, destination, target, payload }) {
 			if (!on) return undefined;
 			seq += 1;
 			list.push({
@@ -108,14 +121,11 @@ export function createCaptureGate(): CaptureGate {
 				connectionId: connection.id,
 				connectionName: connection.name,
 				platform: connectionDispatchKey(connection),
-				targetId: target.id,
-				// 按会话坐标发的那种没有目标名,面板上显示成「群 <地址>」/「私聊 <地址>」。
-				targetName:
-					isProvisional && target.kind === "session"
-						? `${target.scope === "group" ? "群" : "私聊"} ${target.address}`
-						: target.name,
-				// 是否私聊由目标自己的 scope 算(原来的「强制私聊」路径已删)。
-				private: isPrivateTarget(target),
+				// 按会话坐标发的(没有目标表里的那条)拼一个会话标识,名字显示成「群 <地址>」/「私聊 <地址>」。
+				targetId: target?.id ?? sessionKey(destination),
+				targetName: target?.name ?? sessionLabel(destination),
+				// 是否私聊由去向自己的 scope 算(原来的「强制私聊」路径已删)。
+				private: destination.kind === "session" && destination.scope === "private",
 				kind: payload.kind,
 				...summarize(payload),
 			});

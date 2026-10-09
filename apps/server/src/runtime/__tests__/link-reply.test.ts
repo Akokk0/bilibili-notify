@@ -44,7 +44,7 @@ function setup(conn: Connection = connection()) {
 }
 
 describe("createLinkReplySender", () => {
-	it("回到来源群:适配器收到群会话目标,地址是群号,平台与连接取自那条连接", async () => {
+	it("回到来源群:适配器收到群会话去向,地址是群号,连接取自那条连接", async () => {
 		const { send, sender } = setup();
 
 		const result = await sender({ connectionId: "conn-1", groupId: "98765" }, PAYLOAD);
@@ -53,13 +53,7 @@ describe("createLinkReplySender", () => {
 		expect(send).toHaveBeenCalledTimes(1);
 		expect(send).toHaveBeenCalledWith(
 			expect.objectContaining({ id: "conn-1" }),
-			expect.objectContaining({
-				kind: "session",
-				scope: "group",
-				address: "98765",
-				platform: "onebot",
-				connectionId: "conn-1",
-			}),
+			{ kind: "session", scope: "group", address: "98765" },
 			PAYLOAD,
 		);
 	});

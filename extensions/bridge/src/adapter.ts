@@ -14,12 +14,12 @@ import type {
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
+	DestinationRef,
 	ExtensionConnectionView,
 	NotificationPayload,
 	PayloadSegment,
 	PlatformAdapter,
 	ProbeResult,
-	PushTarget,
 	Result,
 } from "@bilibili-notify/extension";
 import { fail, ok } from "@bilibili-notify/extension";
@@ -70,7 +70,7 @@ type BlobUrl = (buffer: Buffer, mime: string) => string;
  */
 type PlainText = (text: string) => string;
 
-type SessionTarget = Extract<PushTarget, { kind: "session" }>;
+type SessionDestination = Extract<DestinationRef, { kind: "session" }>;
 
 type Located = Result<{
 	connection: BridgeConnection;
@@ -79,7 +79,11 @@ type Located = Result<{
 	bot: BridgeBot;
 }>;
 
-type Resolved = Result<{ bot: BridgeBot; target: SessionTarget; session: BridgeSession }>;
+type Resolved = Result<{
+	bot: BridgeBot;
+	destination: SessionDestination;
+	session: BridgeSession;
+}>;
 
 /** 段的判别键内部叫 `kind`,帧里叫 `type`(线上的名字不随内部改),逐种写出来。 */
 function toSegment(segment: PayloadSegment, blobUrl: BlobUrl, plain: PlainText): BridgeSegment {
@@ -194,13 +198,12 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		return ok({ connection: mine, link, session, bot });
 	}
 
-	function resolve(connection: Connection, target: PushTarget): Resolved {
+	// 连接 / 目标的启停与平台对不对,宿主的派发器查过了(只有那一份);这里只认「桥只收会话」。
+	function resolve(connection: Connection, destination: DestinationRef): Resolved {
 		const located = locate(connection);
 		if (!located.ok) return located;
-		if (target.kind !== "session") return fail("invalid", "桥只发会话目标");
-		if (!located.connection.enabled) return fail("not_configured", "这条连接已停用");
-		if (!target.enabled) return fail("not_configured", "这个推送目标已停用");
-		return ok({ bot: located.bot, target, session: located.session });
+		if (destination.kind !== "session") return fail("invalid", "桥只发会话目标");
+		return ok({ bot: located.bot, destination, session: located.session });
 	}
 
 	/**
@@ -221,8 +224,8 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 		// 分发键由宿主按拓展 id 覆盖 —— 这里填什么都会被换掉(决策 28)。
 		platforms: [],
 
-		isAvailable(connection: Connection, target: PushTarget): boolean {
-			return resolve(connection, target).ok;
+		isAvailable(connection: Connection, destination: DestinationRef): boolean {
+			return resolve(connection, destination).ok;
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
@@ -235,11 +238,11 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 
 		async send(
 			connection: Connection,
-			target: PushTarget,
+			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
 			const t0 = Date.now();
-			const resolved = resolve(connection, target);
+			const resolved = resolve(connection, destination);
 			if (!resolved.ok) return resolved;
 			// 取图 URL 拿**这条桥自己连进来时用的地址**拼 —— BN 猜不出别人从哪儿找得到它。
 			const blobUrl: BlobUrl = (buffer, mime) =>
@@ -251,9 +254,9 @@ export function createBridgeAdapter(opts: BridgeAdapterOptions): PlatformAdapter
 				botId: resolved.bot.botId,
 				platform: resolved.bot.platform,
 				target: {
-					scope: resolved.target.scope,
-					address: resolved.target.address,
-					parentAddress: resolved.target.parentAddress,
+					scope: resolved.destination.scope,
+					address: resolved.destination.address,
+					parentAddress: resolved.destination.parentAddress,
 				},
 				message: toBridgeMessage(payload, blobUrl, plain),
 			};

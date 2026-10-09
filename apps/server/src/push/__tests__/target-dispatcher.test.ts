@@ -224,7 +224,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 		expect(onDelivery).toHaveBeenCalledTimes(1);
 	});
 
-	it("happy:委派 platformAdapter.send(只带连接、目标、载荷),回传其 result,onDelivery 带同一份 result", async () => {
+	it("happy:委派 platformAdapter.send(只带连接、去向、载荷),回传其 result,onDelivery 带同一份 result", async () => {
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
 		const connection = makeConnection({ id: "a1", platform: "feishu" });
 		const pa = makePlatformAdapter(["feishu"]);
@@ -236,7 +236,11 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 		});
 		const r = await dispatcher.send("t1", PAYLOAD);
 		expect(r).toEqual({ ok: true, latencyMs: 12 });
-		expect(pa.send).toHaveBeenCalledWith(connection, target, PAYLOAD);
+		expect(pa.send).toHaveBeenCalledWith(
+			connection,
+			{ kind: "session", scope: "group", address: undefined, parentAddress: undefined },
+			PAYLOAD,
+		);
 		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
 	});
 
@@ -453,7 +457,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		return { dispatcher, pa, logger, onDelivery };
 	}
 
-	it("正常:适配器收到临时会话目标,scope / address 取自会话坐标,platform 取自连接", async () => {
+	it("正常:适配器收到 {kind:'session', scope, address},scope / address 取自会话坐标", async () => {
 		const { dispatcher, pa } = setup();
 
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
@@ -462,15 +466,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		expect(pa.send).toHaveBeenCalledTimes(1);
 		expect(pa.send).toHaveBeenCalledWith(
 			connection,
-			expect.objectContaining({
-				kind: "session",
-				scope: "group",
-				address: "123456",
-				platform: "feishu",
-				connectionId: "a1",
-				enabled: true,
-				id: "session:group:123456",
-			}),
+			{ kind: "session", scope: "group", address: "123456" },
 			PAYLOAD,
 		);
 	});
@@ -480,7 +476,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		await dispatcher.sendToAddress("a1", { scope: "private", address: "42" }, PAYLOAD);
 		expect(pa.send).toHaveBeenCalledWith(
 			connection,
-			expect.objectContaining({ scope: "private", address: "42" }),
+			{ kind: "session", scope: "private", address: "42" },
 			PAYLOAD,
 		);
 	});
@@ -587,7 +583,7 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两�
 		expect(pa.send).toHaveBeenCalledTimes(1);
 	});
 
-	it("回调拿到的信息:连接、目标、是否按会话坐标发、载荷", async () => {
+	it("回调拿到的信息:连接、去向、目标(按会话坐标发的是 undefined)、载荷", async () => {
 		const seen: Parameters<SendInterceptHandler>[0][] = [];
 		const { dispatcher } = setup((send) => {
 			seen.push(send);
@@ -595,9 +591,10 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两�
 		});
 		await dispatcher.send("t1", PAYLOAD);
 		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
-		expect(seen.map((s) => s.isProvisional)).toEqual([false, true]);
+		expect(seen.map((s) => s.target)).toEqual([target, undefined]);
 		expect(seen[0]).toMatchObject({ connection, target, payload: PAYLOAD });
-		expect(seen[1]?.target).toMatchObject({ kind: "session", scope: "group", address: "9" });
+		expect(seen[0]?.destination).toMatchObject({ kind: "session", scope: target.scope });
+		expect(seen[1]?.destination).toEqual({ kind: "session", scope: "group", address: "9" });
 	});
 
 	it("按目标发的两条路,截流时 onDelivery 行为照旧(带合成结果触发);按坐标发的不触发", async () => {
@@ -606,5 +603,123 @@ describe("createTargetDispatcher — interceptSend(出口咽喉的截流口,两�
 		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, SYNTHETIC);
 		await dispatcher.sendToAddress("a1", { scope: "group", address: "9" }, PAYLOAD);
 		expect(onDelivery).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * 3a-20a:开关与平台的检查只在派发器留一份,适配器的发送口只收窄类型 `DestinationRef`。
+ * 下面用的假适配器**自己不做任何开关 / 平台检查**(`isAvailable` 恒真、`send` 记入参回成功)。
+ */
+describe("createTargetDispatcher — 检查收在派发器,适配器只收 DestinationRef", () => {
+	const CONNECTION = makeConnection({ id: "a1", platform: "feishu" });
+
+	function setup(connections: Connection[], targets: PushTarget[]) {
+		const pa = makePlatformAdapter(["feishu"]);
+		const onDelivery = vi.fn<OnDeliveryFn>();
+		const logger = makeLogger();
+		const dispatcher = createTargetDispatcher({
+			store: makeStore(connections, targets),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger,
+			onDelivery,
+		});
+		return { dispatcher, pa, onDelivery, logger };
+	}
+
+	it("目标停用:send 回 not_configured、不调适配器 send、onDelivery 照调;isAvailable 为假", async () => {
+		const target = makeTarget({ id: "t1", connectionId: "a1", enabled: false });
+		const { dispatcher, pa, onDelivery } = setup([CONNECTION], [target]);
+		const r = await dispatcher.send("t1", PAYLOAD);
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
+		expect(pa.send).not.toHaveBeenCalled();
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
+		expect(dispatcher.isAvailable("t1")).toBe(false);
+		expect(pa.isAvailable).not.toHaveBeenCalled();
+	});
+
+	it("连接停用:send 回 not_configured、不调适配器 send、onDelivery 照调;isAvailable 为假", async () => {
+		const target = makeTarget({ id: "t1", connectionId: "a1" });
+		const off = makeConnection({ id: "a1", platform: "feishu", enabled: false });
+		const { dispatcher, pa, onDelivery } = setup([off], [target]);
+		const r = await dispatcher.send("t1", PAYLOAD);
+		expect(r).toMatchObject({ ok: false, code: "not_configured" });
+		expect(pa.send).not.toHaveBeenCalled();
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
+		expect(dispatcher.isAvailable("t1")).toBe(false);
+		expect(pa.isAvailable).not.toHaveBeenCalled();
+	});
+
+	it("目标的 platform 与连接对不上:send 回 invalid、不调适配器 send、onDelivery 照调;isAvailable 为假", async () => {
+		const target = makeTarget({ id: "t1", connectionId: "a1", platform: "onebot" });
+		const { dispatcher, pa, onDelivery } = setup([CONNECTION], [target]);
+		const r = await dispatcher.send("t1", PAYLOAD);
+		expect(r).toMatchObject({ ok: false, code: "invalid" });
+		expect(pa.send).not.toHaveBeenCalled();
+		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
+		expect(dispatcher.isAvailable("t1")).toBe(false);
+		expect(pa.isAvailable).not.toHaveBeenCalled();
+	});
+
+	it("经会话目标发送:适配器收到的是 {kind, scope, address, parentAddress?},没有 id / name / enabled / platform / connectionId", async () => {
+		const target = makeTarget({
+			id: "t1",
+			connectionId: "a1",
+			kind: "session",
+			scope: "channel",
+			address: "chan-1",
+			parentAddress: "guild-9",
+		});
+		const { dispatcher, pa } = setup([CONNECTION], [target]);
+		await dispatcher.send("t1", PAYLOAD);
+		expect(pa.send).toHaveBeenCalledWith(
+			CONNECTION,
+			{ kind: "session", scope: "channel", address: "chan-1", parentAddress: "guild-9" },
+			PAYLOAD,
+		);
+		const given = vi.mocked(pa.send).mock.calls[0]?.[1] as unknown as Record<string, unknown>;
+		expect(Object.keys(given).sort()).toEqual(["address", "kind", "parentAddress", "scope"]);
+		dispatcher.isAvailable("t1");
+		expect(pa.isAvailable).toHaveBeenCalledWith(CONNECTION, {
+			kind: "session",
+			scope: "channel",
+			address: "chan-1",
+			parentAddress: "guild-9",
+		});
+	});
+
+	it("经端点目标发送:适配器收到的是 {kind, id, name, scope},同样只有这四格", async () => {
+		const target = makeTarget({ id: "t1", connectionId: "a1", kind: "endpoint", name: "钉钉群" });
+		const { dispatcher, pa } = setup([CONNECTION], [target]);
+		await dispatcher.send("t1", PAYLOAD);
+		expect(pa.send).toHaveBeenCalledWith(
+			CONNECTION,
+			{ kind: "endpoint", id: "t1", name: "钉钉群", scope: "group" },
+			PAYLOAD,
+		);
+		const given = vi.mocked(pa.send).mock.calls[0]?.[1] as unknown as Record<string, unknown>;
+		expect(Object.keys(given).sort()).toEqual(["id", "kind", "name", "scope"]);
+	});
+
+	it("sendToAddress:适配器收到 {kind:'session', scope, address},截流回调的 target 是 undefined", async () => {
+		const seen: Parameters<SendInterceptHandler>[0][] = [];
+		const pa = makePlatformAdapter(["feishu"]);
+		const dispatcher = createTargetDispatcher({
+			store: makeStore([CONNECTION], []),
+			adapters: createPlatformAdapterRegistry([pa]),
+			logger: makeLogger(),
+			interceptSend: (send) => {
+				seen.push(send);
+				return undefined;
+			},
+		});
+		await dispatcher.sendToAddress("a1", { scope: "group", address: "123456" }, PAYLOAD);
+		expect(pa.send).toHaveBeenCalledWith(
+			CONNECTION,
+			{ kind: "session", scope: "group", address: "123456" },
+			PAYLOAD,
+		);
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.target).toBeUndefined();
+		expect(seen[0]?.destination).toEqual({ kind: "session", scope: "group", address: "123456" });
 	});
 });

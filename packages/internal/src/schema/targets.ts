@@ -425,7 +425,21 @@ export type PushTarget = z.infer<typeof PushTargetSchema>;
  * 不经推送目标表、直接往某个会话回话的口子用它(链接解析回到来源群):用哪条连接由调用方另给,
  * 这里只说「连接上的哪个会话」。
  */
-export type SessionRef = Pick<Extract<PushTarget, { kind: "session" }>, "scope" | "address">;
+export type SessionRef = Pick<
+	Extract<PushTarget, { kind: "session" }>,
+	"scope" | "address" | "parentAddress"
+>;
+
+/** 端点目标的「发到哪」—— webhook 写进冻结 JSON 的正是这三格。 */
+export type EndpointRef = Pick<Extract<PushTarget, { kind: "endpoint" }>, "id" | "name" | "scope">;
+
+/**
+ * 适配器发送口收的「发到哪」—— 推送目标里**发送要用的那几格**,按 `kind` 分两支。
+ * 开关、所属连接、平台这些不在其中:那些检查只在派发器做一份(ADR-0024 决策 13)。
+ */
+export type DestinationRef =
+	| Pick<Extract<PushTarget, { kind: "session" }>, "kind" | keyof SessionRef>
+	| Pick<Extract<PushTarget, { kind: "endpoint" }>, "kind" | keyof EndpointRef>;
 
 /**
  * 群目标的「群地址」—— 与入站帧里的 `groupId` 是同一个值(OneBot 是群号,官机是群

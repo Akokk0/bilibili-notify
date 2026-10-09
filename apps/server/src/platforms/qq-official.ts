@@ -2,6 +2,7 @@ import type { QQDiscoveredEntry } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	DeliveryResult,
+	DestinationRef,
 	DirectConnection,
 	Disposable,
 	Failure,
@@ -12,7 +13,6 @@ import type {
 	NotificationPayload,
 	PlatformAdapter,
 	ProbeResult,
-	PushTarget,
 	PushTargetScope,
 	QQOfficialConnectionConfig,
 	Result,
@@ -20,6 +20,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { connectionDispatchKey, fail, isConnectionOn, ok } from "@bilibili-notify/internal";
 import { type RawData, WebSocket } from "ws";
+import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
@@ -1196,11 +1197,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	return {
 		platforms: ["qq-official"],
 
-		isAvailable(connection: Connection, target: PushTarget): boolean {
-			if (!isConnectionOn(connection, "qq-official") || target.platform !== "qq-official") {
-				return false;
-			}
-			if (!connection.enabled || !target.enabled) return false;
+		isAvailable(connection: Connection, _destination: DestinationRef): boolean {
+			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留收窄类型。
+			if (!isConnectionOn(connection, "qq-official")) return false;
 			return isConnectable(connection.config);
 		},
 
@@ -1279,17 +1278,14 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		async send(
 			connection: Connection,
-			target: PushTarget,
+			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
-			if (!isConnectionOn(connection, "qq-official") || target.platform !== "qq-official") {
-				return fail(
-					"invalid",
-					`wrong platform: adapter=${connectionDispatchKey(connection)} target=${target.platform}`,
-				);
+			if (!isConnectionOn(connection, "qq-official")) {
+				return fail("invalid", `wrong platform: adapter=${connectionDispatchKey(connection)}`);
 			}
-			const scope = target.scope;
-			const address = target.kind === "session" ? target.address : "";
+			const scope = destination.scope;
+			const address = destination.kind === "session" ? destination.address : "";
 			// 先校验地址:缺 openid/channelId 立即失败,不取 token、不发注定失败的 REST。
 			const endpoint = qqMessageEndpoint(scope, address);
 			if (!endpoint.ok) return endpoint;
@@ -1323,13 +1319,17 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 					);
 					const verdict = interpretQQSend(status, body);
 					if (!verdict.ok) {
-						logger.warn(`[qq] target=${target.id} markdown 图集发送失败: ${verdict.message}`);
+						logger.warn(
+							`[qq] target=${describeDestination(destination)} markdown 图集发送失败: ${verdict.message}`,
+						);
 						return verdict;
 					}
 					return ok({ latencyMs: Date.now() - t0 });
 				} catch (e) {
 					const message = e instanceof Error ? e.message : String(e);
-					logger.warn(`[qq] target=${target.id} markdown 图集发送异常: ${message}`);
+					logger.warn(
+						`[qq] target=${describeDestination(destination)} markdown 图集发送异常: ${message}`,
+					);
 					return fail("unavailable", message);
 				}
 			}
@@ -1358,7 +1358,9 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 				}
 			}
 			if (failure) {
-				logger.warn(`[qq] target=${target.id} send failed: ${failure.message}`);
+				logger.warn(
+					`[qq] target=${describeDestination(destination)} send failed: ${failure.message}`,
+				);
 				return failure;
 			}
 			return ok({ latencyMs: Date.now() - t0 });

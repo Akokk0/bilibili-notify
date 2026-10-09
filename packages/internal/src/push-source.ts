@@ -10,7 +10,7 @@
 
 import type { Result } from "./constants";
 import type { ConnectionCapabilities, DeliveryResult, NotificationPayload } from "./platform";
-import type { ChatIdentity, Connection, PushTarget } from "./schema/targets";
+import type { ChatIdentity, Connection, DestinationRef } from "./schema/targets";
 
 /**
  * 一次连接探测的结果(ADR-0026):通了是 `{ ok: true, latencyMs }`,没通是 `Failure`。
@@ -57,12 +57,16 @@ export interface Connector {
 export interface PlatformDialect {
 	/** Platforms this dialect speaks ("onebot" / "feishu" / …). 矩阵按它分发。 */
 	readonly platforms: readonly string[];
-	/** Return whether this dialect can deliver to `target` over `connection` right now. */
-	isAvailable(connection: Connection, target: PushTarget): boolean;
-	/** Deliver `payload` to `target` over `connection`. 群还是私聊只看 `target.scope`。 */
+	/**
+	 * Return whether this dialect can deliver to `destination` over `connection` right now.
+	 * 连接 / 目标的启停与「目标属哪个平台」由派发器查过了,这里只答**运行期**的事:配置齐不齐、
+	 * 这个去向的种类自己收不收。
+	 */
+	isAvailable(connection: Connection, destination: DestinationRef): boolean;
+	/** Deliver `payload` to `destination` over `connection`. 群还是私聊只看 `destination.scope`。 */
 	send(
 		connection: Connection,
-		target: PushTarget,
+		destination: DestinationRef,
 		payload: NotificationPayload,
 	): Promise<DeliveryResult>;
 	/**

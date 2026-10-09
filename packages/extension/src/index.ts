@@ -35,6 +35,7 @@ export type {
 	ConnectionCapabilities,
 	Connector,
 	DeliveryResult,
+	DestinationRef,
 	Disposable,
 	Failure,
 	FailureCode,
