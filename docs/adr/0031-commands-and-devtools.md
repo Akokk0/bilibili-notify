@@ -14,6 +14,7 @@
 1. **指令**：
     - 交给登记表的一整包叫 `CommandDef`（代码里的 `CommandSpec` 改名），字段不变。
     - `run(values, ctx: { reply(payload), signal })` 返回结果形状；`reply` 经 `sendToAddress` 回到发指令的那个会话。
+        - 🔗 10-09（3a-19）：改名与 `ctx.reply` 已落，`reply` 收文字或消息体、回投递结果；`signal` 还没有使用者，没加；`run` 返回结果与下一条的失败文案留在 3b。
     - 返回失败时框架回「『{指令名}』没办成：{message}」；抛错回「出错了，详情在日志里」，并记错误日志。
     - `login` 改成核心的通用指令 `login [来源]`：只装了一个带登录的来源就直接扫它，装了多个就列出来让主人挑；二维码取自 `AuthState`，经 `reply` 发图。
     - 于是 1.0 没有来源自带的指令，`CommandProvider` 登记表先不造（修订 ADR-0021 决策 8）。
