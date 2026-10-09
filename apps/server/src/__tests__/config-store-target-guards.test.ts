@@ -102,9 +102,9 @@ function sessionTarget(connectionId: string, id: string = randomUUID()): PushTar
 	} as PushTarget;
 }
 
-const REJECT_MESSAGE = "推送目标不能改挂到另一个平台的连接上";
+const REJECT_MESSAGE = "建好之后不能换连接";
 
-describe("ConfigStore:目标改挂连接的守卫", () => {
+describe("ConfigStore:目标焊死在连接上", () => {
 	let dir: string;
 	let store: ConfigStore;
 	const onebotA = onebotConnection();
@@ -124,34 +124,45 @@ describe("ConfigStore:目标改挂连接的守卫", () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("patchTarget 改挂到同平台的另一条连接 → 成功", async () => {
+	it("patchTarget 改 connectionId(同平台也算) → 被拒,path 点名 connectionId", async () => {
 		const target = sessionTarget(onebotA.id);
 		await store.upsertTarget(target);
-		const patched = await store.patchTarget(target.id, { connectionId: onebotB.id });
-		expect(patched.connectionId).toBe(onebotB.id);
-	});
-
-	it("patchTarget 改挂到不同平台的连接 → 被拒,issues 点名 connectionId", async () => {
-		const target = sessionTarget(onebotA.id);
-		await store.upsertTarget(target);
-		await expect(store.patchTarget(target.id, { connectionId: qq.id })).rejects.toMatchObject({
+		await expect(store.patchTarget(target.id, { connectionId: onebotB.id })).rejects.toMatchObject({
 			code: "invalid",
 			scope: "targets",
 			message: expect.stringContaining(REJECT_MESSAGE),
 			issues: [expect.objectContaining({ path: ["connectionId"] })],
 		});
+		await expect(store.patchTarget(target.id, { connectionId: qq.id })).rejects.toMatchObject({
+			code: "invalid",
+			issues: [expect.objectContaining({ path: ["connectionId"] })],
+		});
 		expect(store.getTargets().find((t) => t.id === target.id)?.connectionId).toBe(onebotA.id);
 	});
 
-	it("upsertTarget 同 id 改 connectionId:同平台成功,跨平台被拒", async () => {
+	it("patchTarget 不改连接、只改别的格 → 成功", async () => {
 		const target = sessionTarget(onebotA.id);
 		await store.upsertTarget(target);
-		await store.upsertTarget({ ...target, connectionId: onebotB.id });
-		await expect(store.upsertTarget({ ...target, connectionId: qq.id })).rejects.toMatchObject({
-			code: "invalid",
-			message: expect.stringContaining(REJECT_MESSAGE),
-			issues: [expect.objectContaining({ path: ["connectionId"] })],
+		const patched = await store.patchTarget(target.id, {
+			name: "改了名",
+			connectionId: onebotA.id,
 		});
+		expect(patched.name).toBe("改了名");
+		expect(patched.connectionId).toBe(onebotA.id);
+	});
+
+	it("upsertTarget 同 id 改 connectionId(同平台也算) → 被拒;不改连接只改别的格 → 成功", async () => {
+		const target = sessionTarget(onebotA.id);
+		await store.upsertTarget(target);
+		for (const connectionId of [onebotB.id, qq.id]) {
+			await expect(store.upsertTarget({ ...target, connectionId })).rejects.toMatchObject({
+				code: "invalid",
+				message: expect.stringContaining(REJECT_MESSAGE),
+				issues: [expect.objectContaining({ path: ["connectionId"] })],
+			});
+		}
+		await store.upsertTarget({ ...target, name: "改了名" });
+		expect(store.getTargets().find((t) => t.id === target.id)?.name).toBe("改了名");
 	});
 
 	it("upsertTarget 新 id 挂到任意存在的连接 → 不受守卫管", async () => {
@@ -159,36 +170,40 @@ describe("ConfigStore:目标改挂连接的守卫", () => {
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
-	it("旧连接已经不在了 → 放行(没东西可比,数据坏了之后手动修回来的路)", async () => {
+	it("连接不存在的新连接仍由「连接存在」检查拒", async () => {
+		await expect(store.upsertTarget(sessionTarget(randomUUID()))).rejects.toMatchObject({
+			issues: [{ path: ["connectionId"], message: "没有这条连接" }],
+		});
+	});
+
+	it("旧连接已经不在了,改挂也一律拒", async () => {
 		const dir2 = await mkdtemp(join(tmpdir(), "bn-target-guard-dangling-"));
 		try {
 			const state = join(dir2, ...CONFIG_DIR);
 			await mkdir(state, { recursive: true });
-			const ghost = randomUUID();
-			const dangling = sessionTarget(ghost);
+			const dangling = sessionTarget(randomUUID());
 			await writeFile(join(state, "connections.json"), JSON.stringify([qq]), "utf8");
 			await writeFile(join(state, "targets.json"), JSON.stringify([dangling]), "utf8");
 			const store2 = makeStore(dir2);
 			await store2.load();
 			expect(store2.getTargets()).toHaveLength(1);
-			const patched = await store2.patchTarget(dangling.id, { connectionId: qq.id });
-			expect(patched.connectionId).toBe(qq.id);
-			// 新连接不存在仍由「连接存在」检查拒
-			await expect(
-				store2.patchTarget(dangling.id, { connectionId: randomUUID() }),
-			).rejects.toMatchObject({ issues: [{ path: ["connectionId"], message: "没有这条连接" }] });
+			await expect(store2.patchTarget(dangling.id, { connectionId: qq.id })).rejects.toMatchObject({
+				message: expect.stringContaining(REJECT_MESSAGE),
+				issues: [expect.objectContaining({ path: ["connectionId"] })],
+			});
 		} finally {
 			await rm(dir2, { recursive: true, force: true });
 		}
 	});
 });
 
-describe("ConfigStore:replaceSections 的连接平台守卫", () => {
+describe("ConfigStore:replaceSections 的目标归属统一规矩", () => {
 	let dir: string;
 	let store: ConfigStore;
 	const onebotId = randomUUID();
 	const otherOnebotId = randomUUID();
 	const qqId = randomUUID();
+	const targetId = randomUUID();
 
 	beforeEach(async () => {
 		dir = await mkdtemp(join(tmpdir(), "bn-target-guard-replace-"));
@@ -197,14 +212,27 @@ describe("ConfigStore:replaceSections 的连接平台守卫", () => {
 		await store.upsertConnection(onebotConnection(onebotId));
 		await store.upsertConnection(onebotConnection(otherOnebotId, "NapCat 2"));
 		await store.upsertConnection(qqOfficialConnection(qqId));
-		await store.upsertTarget(sessionTarget(onebotId, randomUUID()));
+		await store.upsertTarget(sessionTarget(onebotId, targetId));
 	});
 
 	afterEach(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	it("只换连接、某条有目标挂着的连接平台变了 → 被拒,且一个字节不写", async () => {
+	it("同 id 的目标换了连接(同平台也算) → 被拒,且一个字节不写", async () => {
+		const existing = store.getTargets()[0] as PushTarget;
+		for (const connectionId of [otherOnebotId, qqId]) {
+			await expect(
+				store.replaceSections({ targets: [{ ...existing, connectionId } as PushTarget] }),
+			).rejects.toMatchObject({
+				code: "invalid",
+				message: expect.stringContaining(REJECT_MESSAGE),
+			});
+		}
+		expect(store.getTargets()[0]?.connectionId).toBe(onebotId);
+	});
+
+	it("只换连接、有保留目标挂着的连接平台变了 → 被拒,且一个字节不写", async () => {
 		const beforeConnections = store.getConnections();
 		await expect(
 			store.replaceSections({
@@ -221,6 +249,43 @@ describe("ConfigStore:replaceSections 的连接平台守卫", () => {
 		expect(store.getConnections()).toEqual(beforeConnections);
 	});
 
+	it("两节一起给也拒:连接平台变了而同 id 目标还挂着", async () => {
+		const existing = store.getTargets()[0] as PushTarget;
+		await expect(
+			store.replaceSections({
+				connections: [qqOfficialConnection(onebotId, "换成官机")],
+				targets: [existing],
+			}),
+		).rejects.toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("平台变了"),
+		});
+		expect(store.getConnections()).toHaveLength(3);
+	});
+
+	it("只是连接的种类变了(平台名相同) → 被拒,括号里写种类", async () => {
+		await expect(
+			store.replaceSections({
+				connections: [
+					{
+						id: onebotId,
+						name: "NapCat",
+						enabled: true,
+						kind: "extension",
+						extensionId: "bridge",
+						platform: "onebot",
+						config: { botId: "onebot:42" },
+					} as unknown as Connection,
+					onebotConnection(otherOnebotId, "NapCat 2"),
+					qqOfficialConnection(qqId),
+				],
+			}),
+		).rejects.toMatchObject({
+			code: "invalid",
+			message: expect.stringContaining("direct → extension"),
+		});
+	});
+
 	it("只换连接、平台没变 → 成功", async () => {
 		await store.replaceSections({
 			connections: [
@@ -232,33 +297,18 @@ describe("ConfigStore:replaceSections 的连接平台守卫", () => {
 		expect(store.getConnections().find((c) => c.id === onebotId)?.name).toBe("改了名");
 	});
 
-	it("两节一起换成另一套 → 成功(整套恢复是合法的)", async () => {
-		const target = sessionTarget(onebotId, store.getTargets()[0]?.id);
-		await store.replaceSections({
-			connections: [qqOfficialConnection(onebotId, "换成官机")],
-			targets: [{ ...target, scope: "group" } as PushTarget],
-		});
+	it("替换前没有的新目标不比:挂到平台不同的新连接也行", async () => {
+		const fresh = sessionTarget(qqId, randomUUID());
+		await store.replaceSections({ targets: [store.getTargets()[0] as PushTarget, fresh] });
+		expect(store.getTargets()).toHaveLength(2);
+	});
+
+	it("一整套 id 全新的恢复 → 成功", async () => {
+		const newConn = qqOfficialConnection(randomUUID(), "全新官机");
+		const newTarget = sessionTarget(newConn.id, randomUUID());
+		await store.replaceSections({ connections: [newConn], targets: [newTarget] });
 		expect(store.getConnections().map((c) => c.platform)).toEqual(["qq-official"]);
-		expect(store.getTargets()).toHaveLength(1);
-	});
-
-	it("只换目标、同 id 改挂到不同平台的连接 → 被拒", async () => {
-		const existing = store.getTargets()[0] as PushTarget;
-		await expect(
-			store.replaceSections({ targets: [{ ...existing, connectionId: qqId } as PushTarget] }),
-		).rejects.toMatchObject({
-			code: "invalid",
-			message: expect.stringContaining(REJECT_MESSAGE),
-		});
-		expect(store.getTargets()[0]?.connectionId).toBe(onebotId);
-	});
-
-	it("只换目标、同 id 改挂到同平台的连接 → 成功", async () => {
-		const existing = store.getTargets()[0] as PushTarget;
-		await store.replaceSections({
-			targets: [{ ...existing, connectionId: otherOnebotId } as PushTarget],
-		});
-		expect(store.getTargets()[0]?.connectionId).toBe(otherOnebotId);
+		expect(store.getTargets().map((t) => t.id)).toEqual([newTarget.id]);
 	});
 });
 

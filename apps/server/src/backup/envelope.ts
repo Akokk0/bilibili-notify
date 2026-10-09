@@ -27,8 +27,8 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
- * 12 = 推送目标不再带 `platform` 以后导出的备份(平台只在连接上;端点目标也没有 `scope`;恢复时,目标要是改挂到
- * 另一个平台的连接、或连接换了平台而底下还挂着目标,整份拒收)。
+ * 12 = 推送目标不再带 `platform` 以后导出的备份(平台只在连接上;端点目标也没有 `scope`;恢复时,本机已有的目标要是
+ * 换了连接、或它挂着的连接换了种类 / 平台,整份拒收)。
  * 11 = 主人目标只许指向私聊目标以后导出的备份(设置 `master.targetId` 指向的推送目标必须存在、而且是私聊会话;
  * 恢复时不满足的整份拒收)。
  * 10 = 合并转发的设置键改名以后导出的备份(设置 `defaults.imageGroup` 与订阅 `overrides.imageGroup` 里,`enable` / `forward` 叫

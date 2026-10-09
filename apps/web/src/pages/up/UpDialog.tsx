@@ -153,8 +153,11 @@ function extraOffHint(k: ExtraKey, labelOf: FeatureLabelOf): string {
 export interface UpDialogProps {
 	sub: Subscription | null;
 	targets: PushTarget[];
-	/** 连接表 —— 目标的平台取自它挂着的连接(目标自己不带平台)。 */
-	connections: readonly Connection[];
+	/**
+	 * 连接表 —— 目标的平台取自它挂着的连接(目标自己不带平台)。`undefined` = 连接列表还没回来:
+	 * 平台未知但不下结论(@全体 不置灰);与「回来了却找不到这条连接」是两回事。
+	 */
+	connections: readonly Connection[] | undefined;
 	/**
 	 * "edit"   — 现行行为:已有的 Subscription, 改 draft 后 onSave 触发 PATCH-like upsert。
 	 * "create" — 新建模式:sub 是父组件构造的草稿(还没落盘),onSave 触发 POST。
@@ -722,7 +725,8 @@ export function UpDialog({
 									<TargetRoutingCard
 										key={t.id}
 										target={t}
-										platform={platformOfTarget(t, connections)}
+										platform={platformOfTarget(t, connections ?? [])}
+										connectionsLoaded={connections !== undefined}
 										isCustom={customSet.has(t.id)}
 										sub={draft}
 										globalFeatures={globalFeatures}
@@ -763,7 +767,7 @@ export function UpDialog({
 												>
 													<Icon.plus size={11} />
 													<PlatformIcon
-														platform={platformOfTarget(t, connections) ?? ""}
+														platform={platformOfTarget(t, connections ?? []) ?? ""}
 														size={11}
 													/>
 													<span className="max-w-35 truncate">{t.name}</span>
@@ -1052,7 +1056,7 @@ function ExtraPerTargetToggle({
 	parentOn,
 	explicit,
 	inheritedValue,
-	unsupported,
+	unsupportedNote,
 	onSet,
 }: {
 	extraKey: ExtraKey;
@@ -1061,16 +1065,18 @@ function ExtraPerTargetToggle({
 	parentOn: boolean;
 	explicit: boolean | undefined;
 	inheritedValue: boolean;
-	unsupported: boolean;
+	/** 这个附加项在这个目标上被平台能力挡住时,给用户看的那一句;没被挡 = `undefined`。 */
+	unsupportedNote: string | undefined;
 	onSet: (explicit: boolean | undefined) => void;
 }) {
 	const label = PUSH_EXTRAS[extraKey].label;
+	const unsupported = unsupportedNote !== undefined;
 	const isExplicit = explicit !== undefined;
 	const blocked = unsupported || !parentOn;
 	const display = !unsupported && parentOn && (explicit ?? inheritedValue);
 	const follow = `跟随订阅默认 · 当前 ${inheritedValue ? "ON" : "OFF"}`;
 	const hint = unsupported
-		? UNSUPPORTED_AT_ALL_NOTE
+		? unsupportedNote
 		: !parentOn
 			? extraOffHint(extraKey, labelOf)
 			: isExplicit
@@ -1102,7 +1108,7 @@ function ExtraPerTargetToggle({
 				) : null}
 			</div>
 			{unsupported && parentOn ? (
-				<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">{UNSUPPORTED_AT_ALL_NOTE}</div>
+				<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">{unsupportedNote}</div>
 			) : null}
 		</div>
 	);
@@ -1110,12 +1116,15 @@ function ExtraPerTargetToggle({
 
 /** 平台不支持 @全体 时那一句 —— tooltip 与行下说明共用,别各写一份。 */
 const UNSUPPORTED_AT_ALL_NOTE = "QQ 官方机器人不支持 @全体,发送时会自动跳过";
+/** 连接列表回来了却找不到这条连接 —— 平台未知,不能把它说成 QQ 官方。 */
+const MISSING_CONNECTION_AT_ALL_NOTE = "连接不在了,没法判断能不能 @全体";
 
 // ── Target routing card (master switch + collapsed details) ──────────────────
 
 function TargetRoutingCard({
 	target,
 	platform,
+	connectionsLoaded,
 	isCustom,
 	sub,
 	globalFeatures,
@@ -1131,6 +1140,8 @@ function TargetRoutingCard({
 	target: PushTarget;
 	/** 目标的平台,取自它挂着的连接;连接不在(或还没加载回来)是 `undefined`。 */
 	platform: string | undefined;
+	/** 连接列表是否已经回来 —— 没回来时平台未知不算「连接不在」,不下结论。 */
+	connectionsLoaded: boolean;
 	isCustom: boolean;
 	sub: Subscription;
 	/** 全局特性开关,继承它的主开关与附加项都按它算(见 {@link UpDialogProps.globalFeatures})。 */
@@ -1213,9 +1224,16 @@ function TargetRoutingCard({
 													}
 													inheritedValue={effExtra(sub, ek, globalFeatures)}
 													// 要不要看平台能力由注册表说了算(别拿 label 判,那是文案)。
-													unsupported={
-														PUSH_EXTRAS[ek].capability === "atAll" &&
-														(platform === undefined || !platformSupportsAtAll(platform))
+													unsupportedNote={
+														PUSH_EXTRAS[ek].capability !== "atAll"
+															? undefined
+															: platform !== undefined
+																? platformSupportsAtAll(platform)
+																	? undefined
+																	: UNSUPPORTED_AT_ALL_NOTE
+																: connectionsLoaded
+																	? MISSING_CONNECTION_AT_ALL_NOTE
+																	: undefined
 													}
 													onSet={(val) => onSetExtra(ek, val)}
 												/>

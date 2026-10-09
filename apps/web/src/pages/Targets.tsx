@@ -1067,11 +1067,33 @@ function TargetEditorModal({
 			{/* data-tour:弹窗打开后导览聚光灯从「+ 新建」转移到这张表单上 */}
 			<div data-tour="target-form" className="space-y-2.5">
 				<SectionBox
-					title="选择连接"
-					subtitle="目标的平台跟随连接;baseUrl / accessToken 这些参数在连接上维护"
+					title={mode === "edit" ? "所属连接" : "选择连接"}
+					subtitle={
+						mode === "edit"
+							? "目标建好之后不能换连接；要推到别的连接上请新建一个目标"
+							: "目标的平台跟随连接;baseUrl / accessToken 这些参数在连接上维护"
+					}
 					accent={tint}
 				>
-					{eligibleConnections.length === 0 ? (
+					{mode === "edit" ? (
+						connection ? (
+							<TintOptionRow
+								as="div"
+								tint={platformTint(face(connection))}
+								active
+								icon={<PlatformIcon platform={face(connection)} size={16} />}
+								title={connection.name}
+								subtitle={
+									<>
+										{platformLabel(face(connection))} ·{" "}
+										{connectionEndpointSummary(connection, platformLabel)}
+									</>
+								}
+							/>
+						) : (
+							<EmptyNote size="sm">连接缺失</EmptyNote>
+						)
+					) : eligibleConnections.length === 0 ? (
 						<EmptyNote size="sm">
 							尚未配置任何可手动绑定的连接 · Webhook 目标由系统自动托管
 						</EmptyNote>
@@ -2244,7 +2266,7 @@ export default function Targets() {
 						confirmDelete.kind === "connection"
 							? isWebhookConnection(confirmDelete.value)
 								? "该 Webhook 的系统托管目标会一并删除，订阅路由中的引用会同步清理。"
-								: "连接若仍被推送目标引用,删除会失败。请先把这些目标改挂到其他连接或先删除它们。"
+								: "连接若仍被推送目标引用,删除会失败。请先删除这些目标。"
 							: "该目标在订阅路由中的引用将变成空引用,推送会跳过它。"
 					}
 					onCancel={() => {

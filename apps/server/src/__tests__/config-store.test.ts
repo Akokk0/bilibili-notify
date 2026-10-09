@@ -847,7 +847,7 @@ describe("ConfigStore", () => {
 			store.upsertTarget({ ...target, connectionId: feishu.id } as PushTarget),
 		).rejects.toMatchObject({
 			code: "invalid",
-			issues: [{ path: ["connectionId"], message: "不能改挂到另一个平台的连接上" }],
+			issues: [{ path: ["connectionId"], message: "建好之后不能换连接" }],
 		});
 	});
 

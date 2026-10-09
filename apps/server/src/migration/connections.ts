@@ -500,13 +500,14 @@ function keepTarget(raw: unknown): boolean {
 
 /**
  * 目标迁移的**最后一步**(1.0:目标不再自带平台,端点目标也没有 scope):摘掉 `platform`,
- * 端点目标再摘掉 `scope`,其余格(含键序)原样。没有要摘的回同一个对象,所以迁两遍和迁一遍一样。
+ * 端点目标再摘掉 `scope`,其余格(含键序)原样。只对认得的(过得了目标 schema 的)条目动手,坏条目原样留着。没有要摘的回同一个对象,所以迁两遍和迁一遍一样。
  *
  * 🔴 **必须排在 {@link keepTarget} 之后**:`isRetiredTargetRecord` 要读原始的 `platform` 才认得出
  * 「已撤下平台」的存量;摘早了,那些存量就读不到平台、被当成普通的坏条目留下来。
  */
 function stripRetiredTargetFields(entry: unknown): unknown {
-	if (!isRecord(entry)) return entry;
+	// 只摘**认得的**条目(能过目标 schema 的);坏条目认不得,原样留着、一格不动,由开机的配置仓报出来。
+	if (!isRecord(entry) || !PushTargetSchema.safeParse(entry).success) return entry;
 	const dropScope = entry.kind === "endpoint" && Object.hasOwn(entry, "scope");
 	if (!Object.hasOwn(entry, "platform") && !dropScope) return entry;
 	const { platform: _platform, ...rest } = entry;

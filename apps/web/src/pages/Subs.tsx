@@ -1125,7 +1125,7 @@ export default function Subs() {
 				<UpDialog
 					sub={newDraft}
 					targets={targets}
-					connections={connectionsQuery.data ?? []}
+					connections={connectionsQuery.data}
 					platform={platformOf(newDraft)}
 					tags={tags}
 					globalFeatures={globalFeatures}
@@ -1145,7 +1145,7 @@ export default function Subs() {
 				<UpDialog
 					sub={drawerSub}
 					targets={targets}
-					connections={connectionsQuery.data ?? []}
+					connections={connectionsQuery.data}
 					platform={platformOf(drawerSub)}
 					tags={tags}
 					globalFeatures={globalFeatures}

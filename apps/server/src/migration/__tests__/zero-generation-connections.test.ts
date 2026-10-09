@@ -523,9 +523,8 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			await sandbox.placeZero("state/targets.json", [broken]);
 
 			await sandbox.migrate();
-			// 迁移器不丢它:新代里还留着(只是摘掉了目标不再带的 platform),由开机的配置仓报出来。
-			const { platform: _platform, ...expected } = broken;
-			expect(await sandbox.readConfig("targets.json")).toEqual([expected]);
+			// 迁移器不丢它、也不动它(认不得的内容原样留着),由开机的配置仓报出来。
+			expect(await sandbox.readConfig("targets.json")).toEqual([broken]);
 			await expect(sandbox.load()).rejects.toBeInstanceOf(ConfigValidationError);
 		});
 
@@ -553,8 +552,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			await sandbox.placeZero("state/targets.json", [broken]);
 
 			await sandbox.migrate();
-			const { platform: _platform, ...expected } = broken;
-			expect(await sandbox.readConfig("targets.json")).toEqual([expected]);
+			expect(await sandbox.readConfig("targets.json")).toEqual([broken]);
 			await expect(sandbox.load()).rejects.toBeInstanceOf(ConfigValidationError);
 		});
 	});

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * 订阅抽屉里目标的平台**取自它挂着的连接**,不读目标自己那一格:
- * @全体开关置不置灰、目标的图标,都跟着连接走;连接不在(被删 / 还没加载回来)= 不知道 = 置灰。
+ * @全体开关置不置灰、目标的图标,都跟着连接走;连接不在(被删)= 不知道 = 置灰并说清楚;连接列表还没回来 = 不下结论,开关照已存的值显示。
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -15,6 +15,7 @@ import {
 import { UpDialog } from "../UpDialog";
 
 const UNSUPPORTED_NOTE = /QQ 官方.*不支持.*@全体/;
+const MISSING_NOTE = "连接不在了,没法判断能不能 @全体";
 const CONN = "11111111-1111-4111-8111-111111111111";
 
 const noop = () => {};
@@ -44,7 +45,7 @@ function customSub(): Subscription {
 	return sub;
 }
 
-function renderDialog(t: PushTarget, connections: Connection[]) {
+function renderDialog(t: PushTarget, connections: Connection[] | undefined) {
 	return render(
 		<UpDialog
 			sub={customSub()}
@@ -78,9 +79,26 @@ describe("UpDialog · 平台取自连接", () => {
 		expect(atAllToggle().disabled).toBe(false);
 	});
 
-	it("连接不在 → 当作不支持:@全体置灰", () => {
+	it("连接不在 → @全体置灰,提示说连接不在了,不冤枉 QQ 官方", () => {
 		renderDialog(target(), []);
 		expect(atAllToggle().disabled).toBe(true);
+		expect(screen.getByText(MISSING_NOTE)).toBeTruthy();
+		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
+	});
+
+	it("连接列表还没回来 → 不下结论:没有提示,开关照已存的值显示且可点", () => {
+		renderDialog(target(), undefined);
+		expect(screen.queryByText(UNSUPPORTED_NOTE)).toBeNull();
+		expect(screen.queryByText(MISSING_NOTE)).toBeNull();
+		const toggle = atAllToggle();
+		expect(toggle.disabled).toBe(false);
+		expect(toggle.getAttribute("aria-pressed")).toBe("true");
+	});
+
+	it("平台已知且不支持 → 原句", () => {
+		renderDialog(target(), [connection("qq-official")]);
+		expect(screen.getByText("QQ 官方机器人不支持 @全体,发送时会自动跳过")).toBeTruthy();
+		expect(screen.queryByText(MISSING_NOTE)).toBeNull();
 	});
 
 	it("图标的平台取自连接:连接是 onebot → 徽标首字是 o;连接不在 → 没有字", () => {
