@@ -78,10 +78,8 @@ async function makeDeps(opts: { cards?: boolean } = {}) {
 	const deps = {
 		store: {
 			getGlobals: () => ({
-				defaults: {
-					ai: { enabled: true, activeProfile: "p", providers: { p: { vision: { model: "" } } } },
-					cardSkin: DEFAULT_CARD_SKIN_ID,
-				},
+				ai: { enabled: true, activeProfile: "p", providers: { p: { vision: { model: "" } } } },
+				defaults: { cardSkin: DEFAULT_CARD_SKIN_ID },
 			}),
 			getTargets: () => [],
 		},

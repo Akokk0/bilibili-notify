@@ -171,7 +171,7 @@ vi.mock("../../../services/api", () => ({
 						],
 						problems: [],
 					}
-				: { defaults: { ai: G.ai } },
+				: { ai: G.ai },
 		),
 	},
 }));
@@ -1091,7 +1091,7 @@ describe("AiChatDock — 设置弹层不再有玻璃质感项", () => {
 describe("AiChatDock — 称呼跟人格走", () => {
 	/**
 	 * 设计稿里通篇写的是「小铃」,那只是画稿时的临时名字。真实名字在
-	 * `globals.defaults.ai.persona`,主人换预设或改名之后,界面上每一处都得跟着变 ——
+	 * `globals.ai.persona`,主人换预设或改名之后,界面上每一处都得跟着变 ——
 	 * 漏掉任何一处,表现都是「侧栏写着 A、她自己开口自称 B」。
 	 */
 	const RINKO = {

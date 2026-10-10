@@ -26,7 +26,7 @@ export function cardSkinAiReadiness(input: {
 	}
 	if (!input.globals) return { ready: false, reason: "正在读取模型配置…" };
 	// 编辑器的测试里 globals 常是个空对象;真配置里 ai 那一段也可能整个缺席。
-	const ai = input.globals.defaults?.ai;
+	const ai = input.globals.ai;
 	const profile = ai ? resolveAIProfile(ai) : undefined;
 	if (!profile?.apiKey || !profile.baseUrl) {
 		return {

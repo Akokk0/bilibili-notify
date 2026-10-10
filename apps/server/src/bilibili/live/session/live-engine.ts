@@ -44,12 +44,12 @@ export interface LiveEngineConfig {
 	imageEnabled?: boolean;
 	/**
 	 * 是否启用 AI 直播总结。`false` 时跳过 commentary 调用,直接走模板回退。
-	 * 缺省视为 true。Adapter 通常用 `globals.defaults.ai.enabled` 填充。
+	 * 缺省视为 true。Adapter 通常用 `globals.ai.enabled` 填充。
 	 */
 	aiEnabled?: boolean;
 	/**
 	 * 总结时允不允许联网搜索。缺省 false(搜索按次付费,自动路径必须主人亲手
-	 * 点亮)。Adapter 用 `globals.defaults.ai.search.engines.live` 填充。
+	 * 点亮)。Adapter 用 `globals.ai.search.engines.live` 填充。
 	 */
 	aiWebSearch?: boolean;
 	/**

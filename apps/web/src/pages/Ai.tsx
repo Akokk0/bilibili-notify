@@ -17,7 +17,7 @@
  * 总开关不属于任何一家或任何一份人格,放在头图上,不进 Tab。(曾经并排摆在底部的
  * 日志等级已整体搬去系统页那格「按模块覆盖」,与另外四个模块同住。)
  *
- * 存盘走 PATCH /api/settings { defaults: { ai: ... } }。
+ * 存盘走 PATCH /api/settings { ai: ... }。
  */
 
 import type { GlobalConfigView, SecretCellDraft } from "@bilibili-notify/contract";
@@ -206,7 +206,7 @@ export default function Ai() {
 
 	useEffect(() => {
 		if (globalsQuery.data) {
-			setDraft(globalsQuery.data.defaults.ai);
+			setDraft(globalsQuery.data.ai);
 		}
 	}, [globalsQuery.data]);
 
@@ -218,7 +218,7 @@ export default function Ai() {
 			const base = globalsQuery.data;
 			return await api.patch<GlobalConfigView>(
 				"/api/settings",
-				buildPatch({ defaults: { ai: payload.ai } }, { defaults: { ai: base?.defaults.ai } }),
+				buildPatch({ ai: payload.ai }, { ai: base?.ai }),
 			);
 		},
 		// 用 PATCH 的**响应**(后端返回的正是 redact 后的新 globals)把 draft 拉回已保存态。
@@ -230,7 +230,7 @@ export default function Ai() {
 		// 永不相等 → 灵动岛**永久 dirty**,反复点保存也消不掉,看起来就是「保存不了」。
 		// (顺手改了 model / 人格反而正常 —— 那些字段不脱敏,数据变了引用就变了。)
 		onSuccess: (next) => {
-			setDraft(next.defaults.ai);
+			setDraft(next.ai);
 			qc.invalidateQueries({ queryKey: ["settings"] });
 		},
 	});
@@ -239,7 +239,7 @@ export default function Ai() {
 	// 在缺席的那侧摆空档案,免得 walkTreeDiff 把整只桶(含明文 key)当一个叶子吐出来。
 	const providerKeys = useMemo(() => {
 		const keys = new Set<string>(Object.keys(draft?.providers ?? {}));
-		for (const k of Object.keys(globalsQuery.data?.defaults.ai.providers ?? {})) keys.add(k);
+		for (const k of Object.keys(globalsQuery.data?.ai.providers ?? {})) keys.add(k);
 		return [...keys];
 	}, [draft, globalsQuery.data]);
 	const islandDraft = useMemo(
@@ -248,7 +248,7 @@ export default function Ai() {
 	);
 	const islandBaseline = useMemo(() => {
 		if (!globalsQuery.data) return null;
-		return packIsland(globalsQuery.data.defaults.ai, providerKeys);
+		return packIsland(globalsQuery.data.ai, providerKeys);
 	}, [globalsQuery.data, providerKeys]);
 
 	useDirtyDraft({
@@ -260,7 +260,7 @@ export default function Ai() {
 			if (draft !== null) await save.mutateAsync({ ai: draft });
 		},
 		onDiscard: () => {
-			if (globalsQuery.data) setDraft(globalsQuery.data.defaults.ai);
+			if (globalsQuery.data) setDraft(globalsQuery.data.ai);
 		},
 	});
 
@@ -284,8 +284,7 @@ export default function Ai() {
 	// 没反应,只会以为是保存坏了。
 	const meta = providerMeta(profile.provider);
 	// 基线(服务端下发的)里同一份实例 —— 密钥格是遮挡才算「已存着」(`DraftSecretInput` 据此画胶囊)。
-	const savedProfile =
-		editing === null ? undefined : globalsQuery.data?.defaults.ai.providers[editing];
+	const savedProfile = editing === null ? undefined : globalsQuery.data?.ai.providers[editing];
 	// 左栏 / 删除按钮上的显示名。
 	const rail = profileRailItems(draft);
 	const editingLabel = rail.find((i) => i.id === editing)?.label ?? meta.label;
@@ -514,7 +513,7 @@ export default function Ai() {
 						>
 							<DraftSecretInput
 								value={draft.search.keys[draft.search.backend]}
-								saved={globalsQuery.data?.defaults.ai.search.keys[draft.search.backend]}
+								saved={globalsQuery.data?.ai.search.keys[draft.search.backend]}
 								onChange={(v) => setSearch({ keys: { [draft.search.backend]: v } })}
 							/>
 						</Field>

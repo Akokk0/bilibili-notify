@@ -276,7 +276,7 @@ export function ChatPage() {
 		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
 	// 模型名在当前生效的那个服务商桶里(各家一套配置)。
-	const ai = globalsQuery.data?.defaults.ai;
+	const ai = globalsQuery.data?.ai;
 	const modelName = ai ? resolveAIProfile(ai).model : undefined;
 	// 名字 / 自称 / 对主人的称呼一律跟**当前选中的那份人格**走(`activePreset` 指的
 	// 那份),界面上不写死。直读 `ai.persona` 的话主人换了人格这里也不动 —— 那个字段

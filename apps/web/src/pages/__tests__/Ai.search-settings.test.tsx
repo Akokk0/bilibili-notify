@@ -29,7 +29,7 @@ import { api } from "../../services/api";
 
 function globals() {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.enabled = true;
+	g.ai.enabled = true;
 	return JSON.parse(JSON.stringify(g));
 }
 

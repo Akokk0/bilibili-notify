@@ -7,9 +7,87 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { moveTemplateLedger, splitAppSettings } from "../core-sections.js";
+import { moveGlobalAi, moveTemplateLedger, splitAppSettings } from "../core-sections.js";
 
 type Obj = Record<string, unknown>;
+
+describe("moveGlobalAi(3a-38 提交 ④):defaults.ai → 顶层 ai", () => {
+	it("整段搬到顶层,紧跟在 defaults / templatesSeen 后面;defaults 里不再有 ai,别的格不动;里面的键一个不动", () => {
+		const ai = { enabled: true, activePreset: "gentle-maid", providers: { a: { apiKey: "k" } } };
+		const out = moveGlobalAi({
+			master: {},
+			defaults: { features: { a: 1 }, ai },
+			templatesSeen: { post: "x" },
+			roastSchedule: {},
+		}) as Obj;
+		expect(out).toEqual({
+			master: {},
+			defaults: { features: { a: 1 } },
+			templatesSeen: { post: "x" },
+			ai,
+			roastSchedule: {},
+		});
+		expect(Object.keys(out)).toEqual([
+			"master",
+			"defaults",
+			"templatesSeen",
+			"ai",
+			"roastSchedule",
+		]);
+		expect("ai" in (out.defaults as Obj)).toBe(false);
+	});
+
+	it("新老并存(手改过的盘):顶层的说了算,老键照样拿掉", () => {
+		const out = moveGlobalAi({
+			defaults: { ai: { enabled: false } },
+			ai: { enabled: true },
+		}) as Obj;
+		expect(out).toEqual({ defaults: {}, ai: { enabled: true } });
+	});
+
+	it("没有 defaults 或 defaults 里没有 ai:回传进来的那个对象", () => {
+		const noDefaults = { master: {} };
+		expect(moveGlobalAi(noDefaults)).toBe(noDefaults);
+		const noAi = { defaults: { features: {} }, ai: { enabled: true } };
+		expect(moveGlobalAi(noAi)).toBe(noAi);
+	});
+
+	it("幂等:搬过一遍再搬,回同一个对象", () => {
+		const once = moveGlobalAi({ defaults: { ai: { enabled: true } } });
+		expect(moveGlobalAi(once)).toBe(once);
+	});
+
+	it.each([
+		["不是对象", "x"],
+		["null", null],
+		["数组", []],
+		["undefined", undefined],
+	])("raw 是%s:原样回", (_name, raw) => {
+		expect(moveGlobalAi(raw)).toBe(raw);
+	});
+
+	it("`defaults` 不是普通对象:原样回同一个对象", () => {
+		const raw = { defaults: "oops" };
+		expect(moveGlobalAi(raw)).toBe(raw);
+	});
+
+	it("老 ai 不是对象(手改坏的盘):原样带到顶层,由配置仓开机时报出来", () => {
+		const out = moveGlobalAi({ defaults: { ai: 3 } }) as Obj;
+		expect(out).toEqual({ defaults: {}, ai: 3 });
+	});
+
+	it("没有 templatesSeen 时 ai 紧跟在 defaults 后面", () => {
+		const out = moveGlobalAi({ defaults: { ai: {} }, roastSchedule: {} }) as Obj;
+		expect(Object.keys(out)).toEqual(["defaults", "ai", "roastSchedule"]);
+	});
+
+	it("不改入参", () => {
+		const raw = { defaults: { ai: { enabled: true } } };
+		const snapshot = structuredClone(raw);
+		moveGlobalAi(raw);
+		expect(raw).toEqual(snapshot);
+	});
+});
 
 describe("moveTemplateLedger(3a-38 提交 ③):defaults.templateDefaultsSeen → 顶层 templatesSeen", () => {
 	it("账本搬到顶层,紧跟在 defaults 后面;defaults 里不再有老键,别的格不动", () => {

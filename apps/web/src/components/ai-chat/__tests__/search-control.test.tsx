@@ -23,7 +23,7 @@ import { api } from "../../../services/api";
 function globalsWith(bochaKey: string | { masked: string }) {
 	const g = makeDefaultGlobalConfig();
 	// GET 出来的形态:key 非空时是 `{ masked }`,不是明文;没配是空串。
-	g.defaults.ai.search.keys.bocha = bochaKey as string;
+	g.ai.search.keys.bocha = bochaKey as string;
 	return g;
 }
 

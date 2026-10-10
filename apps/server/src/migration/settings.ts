@@ -3,7 +3,7 @@
  * 最新的形状。一项一项收进来(⑥c),配置仓开机只认最新的形状。
  *
  * - `defaults.features`:附加项的两代老数据({@link migrateLegacyFeatureFlags});
- * - `defaults.ai`:扁平连接字段、「一家一桶」、手改的人格({@link migrateAiSettings});
+ * - 0.x 的 `defaults.ai`:扁平连接字段、「一家一桶」、手改的人格({@link migrateAiSettings});
  * - `defaults.templates`:历代旧默认原文({@link migrateOldTemplateDefaults});
  * - `linkParsing`:0.9.1 的「范围 + 白名单」({@link migrateLegacyLinkParsing})。
  *
@@ -33,7 +33,7 @@ import {
 } from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
 import { moveGlobalCards } from "./card-moves.js";
-import { moveTemplateLedger, splitAppSettings } from "./core-sections.js";
+import { moveGlobalAi, moveTemplateLedger, splitAppSettings } from "./core-sections.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
@@ -67,18 +67,21 @@ export function migrateGlobals(raw: unknown): unknown {
  * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 会员与醒目留言的搬家(两个直播阈值、
  * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 历史保留天数换键
  * → 拆掉 `app`(日志的格进 `logging`、粉丝轮询的 cron 成顶层 `profileRefreshCron`,3a-38,`core-sections.ts`)→ 默认文案账本
- * 上提到顶层 `templatesSeen`(同文件;排在最后,前面改写账本的几步看的还是老位置)。设置那一步
+ * 上提到顶层 `templatesSeen`(同文件;前面改写账本的几步看的还是老位置)→ AI 设置上提到顶层 `ai`(同文件;排在最后,
+ * 更早的 `migrateAiSettings` 改写的是老位置 `defaults.ai`)。设置那一步
  * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的全局值只有一个读法。
  *
  * ⚠️ 对 B 站那两格(`app.dynamicCron` / `healthCheckMinutes`)**有损**:最后一步把剩下的 `app` 整个吃掉,没先拆走的就没了。
  * 它们必须先经 {@link splitBilibiliSettings} 拆走 —— 生产路径只有 {@link migrateSettingsFiles} 一处,那里排好了次序。
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
-	return moveTemplateLedger(
-		splitAppSettings(
-			moveHistoryRetention(
-				splitGlobalLiveSettings(
-					moveGlobalCards(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+	return moveGlobalAi(
+		moveTemplateLedger(
+			splitAppSettings(
+				moveHistoryRetention(
+					splitGlobalLiveSettings(
+						moveGlobalCards(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+					),
 				),
 			),
 		),

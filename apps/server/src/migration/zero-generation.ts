@@ -84,8 +84,9 @@ import { migrateUptime } from "./uptime.js";
  * 42 = 核心设置拆掉 `app`:日志的四格进 `logging`(日志等级表里 dynamic / live 并成 bilibili)、粉丝轮询的 cron 成顶层
  * `profileRefreshCron`(`config/settings/core.json` 因此没有 `app`,摘要变)。
  * 43 = 默认文案账本从 `defaults.templateDefaultsSeen` 上提成核心设置顶层的 `templatesSeen`(`core.json` 里账本换了位置,摘要变)。
+ * 44 = AI 设置整段从 `defaults.ai` 上提成核心设置顶层的 `ai`(里面的键一个不动;`core.json` 里 AI 换了位置,摘要变)。
  */
-export const MIGRATION_REVISION = 43;
+export const MIGRATION_REVISION = 44;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

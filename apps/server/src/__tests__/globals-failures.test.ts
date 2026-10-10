@@ -135,7 +135,7 @@ describe("PATCH /api/settings 的失败", () => {
 
 	it("启用 AI 但 key 是空的 → 409 not_configured", async () => {
 		const { runtime, patch } = await boot();
-		const res = await patch({ defaults: { ai: { enabled: true } } });
+		const res = await patch({ ai: { enabled: true } });
 		expect(res.status).toBe(409);
 		expect(await res.json()).toEqual({
 			code: "not_configured",

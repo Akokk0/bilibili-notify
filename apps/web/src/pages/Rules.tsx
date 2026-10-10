@@ -246,7 +246,7 @@ export default function Rules() {
 		mutationFn: async (next: GlobalConfig) => {
 			// Only the scopes this page actually edits — filter / live thresholds /
 			// templates / imageGroup。Posting the full draft would put
-			// `defaults.cardStyle` and `defaults.ai` into the body and trigger the
+			// `defaults.cardStyle` and `ai` into the body and trigger the
 			// backend enable-check (puppeteer launch + chat.completions probe)
 			// every save, even though nothing here touches those scopes.
 			// 与基线 diff 而不是整份回传:这几片眼下全是必填字段,整份发也不会出事,
@@ -478,7 +478,7 @@ export default function Rules() {
 			? new Set(
 					sections
 						.map((s) => s.id)
-						.filter((id) => isSectionCustomized(focusedSub, id, draft?.defaults.ai.presets ?? [])),
+						.filter((id) => isSectionCustomized(focusedSub, id, draft?.ai.presets ?? [])),
 				)
 			: undefined;
 
@@ -531,7 +531,7 @@ export default function Rules() {
 								sub={focusedSub}
 								platform={focusedPlatform}
 								defaults={draft.defaults}
-								presets={draft.defaults.ai.presets}
+								presets={draft.ai.presets}
 								section={shownSection}
 							/>
 						) : section === "filter" ? (

@@ -289,12 +289,12 @@ describe("ConfigStore", () => {
 	it("换全局人格:activePreset 存得住,冷重启后不被 ai.persona 拨回去", async () => {
 		// 默认配置的 persona 就是「温柔女仆」那份,指针也指着它 —— 换成傲娇毒舌之后,
 		// persona 与指针刻意不一致,正是「按内容匹配指针」最容易判错的形状。
-		expect(store.getGlobals().defaults.ai.activePreset).toBe("gentle-maid");
+		expect(store.getGlobals().ai.activePreset).toBe("gentle-maid");
 
-		const next = await store.patchGlobals({ defaults: { ai: { activePreset: "tsundere" } } });
-		expect(next.defaults.ai.activePreset).toBe("tsundere");
+		const next = await store.patchGlobals({ ai: { activePreset: "tsundere" } });
+		expect(next.ai.activePreset).toBe("tsundere");
 		// 指针不改写 persona —— 主人手写的那份原封不动。
-		expect(next.defaults.ai.persona.name).toBe("小绫");
+		expect(next.ai.persona.name).toBe("小绫");
 
 		const bus2 = makeFakeBus();
 		const store2 = createConfigStore({
@@ -304,7 +304,7 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await store2.load();
-		expect(store2.getGlobals().defaults.ai.activePreset).toBe("tsundere");
+		expect(store2.getGlobals().ai.activePreset).toBe("tsundere");
 	});
 
 	it("setGlobals rejects malformed input with ConfigValidationError", async () => {

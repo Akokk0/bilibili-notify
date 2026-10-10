@@ -26,8 +26,8 @@ import { snapshotFor } from "./support/connection-snapshot.js";
  * 的完整配置 + cookie;错 PIN 抛错。
  */
 function withDeepseekKey(g: ReturnType<typeof makeDefaultGlobalConfig>, k: string) {
-	g.defaults.ai.activeProfile = "deepseek";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "deepseek";
+	g.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
 			apiFlavor: "chat",
@@ -127,7 +127,7 @@ describe("full backup assemble/open", () => {
 		);
 
 		const opened = openFullBackup(env, "123456");
-		expect(opened.sections.globals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-1");
+		expect(opened.sections.globals?.ai.providers.deepseek?.apiKey).toBe("sk-1");
 		expect(opened.sections.connections?.[0]?.settings).toMatchObject({ accessToken: "tok-1" });
 		expect(opened.integrationSecrets).toEqual(integrationSecrets);
 	});
@@ -215,9 +215,7 @@ describe("full backup assemble/open", () => {
 		expect(plaintext).not.toContain("ext.example.com");
 
 		const { sections } = openFullBackup(env, "123456");
-		expect(sections.globals?.defaults.ai.providers.deepseek?.baseUrl).toBe(
-			"https://api.deepseek.com",
-		);
+		expect(sections.globals?.ai.providers.deepseek?.baseUrl).toBe("https://api.deepseek.com");
 		expect(sections.globals?.marketplace.sources[0]?.url).toBe(
 			"https://ext.example.com/index.json",
 		);

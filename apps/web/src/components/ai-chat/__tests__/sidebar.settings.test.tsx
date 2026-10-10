@@ -22,8 +22,8 @@ import { api } from "../../../services/api";
 
 function mountSidebar() {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.activeProfile = "p1";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "p1";
+	g.ai.providers = {
 		p1: {
 			provider: "deepseek",
 			label: "",

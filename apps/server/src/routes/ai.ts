@@ -161,7 +161,7 @@ export function createAiRoute(
 			// 草稿里没带的 apiKey(页面从未见过真值) —— 用已存的那把补回来。
 			// 两边都要按**同一个桶**取:草稿选的是哪家,就拿那家已存的 key。
 			config: toGeneratorConfig(
-				withStoredApiKey(ai, deps.store.getGlobals().defaults.ai, (body as { ai?: unknown }).ai),
+				withStoredApiKey(ai, deps.store.getGlobals().ai, (body as { ai?: unknown }).ai),
 			),
 		});
 
@@ -329,7 +329,7 @@ export function createAiRoute(
 
 		const engines = deps.runtime.engines;
 		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
-		if (!deps.store.getGlobals().defaults.ai.enabled) {
+		if (!deps.store.getGlobals().ai.enabled) {
 			return respondFailure(c, fail("not_configured", AI_DISABLED_MESSAGE));
 		}
 		const commentary = engines.commentary;
@@ -343,7 +343,7 @@ export function createAiRoute(
 		// 女仆一本正经地聊天却对图只字不提,以为是模型笨,而真正的原因在另一个页面上。
 		const attached = parsed.data.images ?? [];
 		if (attached.length > 0) {
-			const aiCfg = deps.store.getGlobals().defaults.ai;
+			const aiCfg = deps.store.getGlobals().ai;
 			const aiProfile = resolveAIProfile(aiCfg);
 			// 「主模型直接看图」这条路还要那家**真有**视觉模型才算数:DeepSeek 官方
 			// 接口一个都没有,勾着开关也只会把图带到模型那儿才被拒 —— 白烧一次请求,
@@ -569,7 +569,7 @@ export function createAiRoute(
 						imageUrls: visible.length > 0 ? visible.map((v) => v.url) : undefined,
 						thinking: {
 							enableThinking: parsed.data.thinking ?? false,
-							thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().defaults.ai),
+							thinkingLevel: resolveChatThinkingLevel(deps.store.getGlobals().ai),
 						},
 						// 联网搜索同样会话级;不带 = 不开。执行器没配置时生成器静默不挂。
 						// 皮肤工坊里照样透传 —— 「做套某部作品风格的皮肤」得先查得到那部

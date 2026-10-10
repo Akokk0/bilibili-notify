@@ -333,7 +333,7 @@ export const AIProviderProfileSchema = z.object({
 });
 export type AIProviderProfile = z.infer<typeof AIProviderProfileSchema>;
 
-/** AI 总配置（在 GlobalConfig.defaults.ai 出现）。 */
+/** AI 总配置（在 GlobalConfig.ai 出现）。 */
 const AISettingsObjectSchema = z.object({
 	enabled: z.boolean(),
 	persona: AIPersonaSchema,

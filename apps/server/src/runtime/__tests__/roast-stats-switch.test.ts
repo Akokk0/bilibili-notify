@@ -31,8 +31,8 @@ const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 function makeGlobals(statsEnabled: boolean) {
 	const globals = makeDefaultGlobalConfig();
 	globals.stats.enabled = statsEnabled;
-	globals.defaults.ai = {
-		...globals.defaults.ai,
+	globals.ai = {
+		...globals.ai,
 		enabled: true,
 		provider: "custom",
 		providers: {

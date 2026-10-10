@@ -19,7 +19,7 @@ import { snapshotFor } from "./support/connection-snapshot.js";
 describe("redactSecretKeys", () => {
 	it("blanks secret-named leaf values anywhere in the tree, keeps non-secret siblings", () => {
 		const input = {
-			defaults: { ai: { apiKey: "sk-SECRET", model: "gpt-x" } },
+			ai: { apiKey: "sk-SECRET", model: "gpt-x" },
 			adapters: [
 				{ id: "a1", platform: "onebot", config: { url: "ws://host", accessToken: "tok-SECRET" } },
 			],
@@ -49,7 +49,7 @@ describe("redactSecretKeys", () => {
 		}
 
 		// non-secret siblings survive untouched
-		expect(out.defaults.ai.model).toBe("gpt-x");
+		expect(out.ai.model).toBe("gpt-x");
 		expect(out.adapters[0]?.platform).toBe("onebot");
 		// url 早已不算「无辜的兄弟字段」了 —— 整条抹掉,见下面那条用例
 		expect(out.adapters[0]?.config.url).toBe("ws://redacted.invalid/");
@@ -60,19 +60,17 @@ describe("redactSecretKeys", () => {
 		// 真实泄漏案:ai.search.keys 的叶子键叫 bocha/tavily(后端枚举,不是 apiKey),
 		// 按键名的白名单永远追不上新后端 —— 容器名 `keys` 本身就是「里面全是凭据」。
 		const input = {
-			defaults: {
-				ai: {
-					search: { backend: "bocha", keys: { bocha: "sk-BOCHA-SECRET", tavily: "tvly-SECRET" } },
-				},
+			ai: {
+				search: { backend: "bocha", keys: { bocha: "sk-BOCHA-SECRET", tavily: "tvly-SECRET" } },
 			},
 		};
 		const json = JSON.stringify(redactSecretKeys(input));
 		expect(json).not.toContain("sk-BOCHA-SECRET");
 		expect(json).not.toContain("tvly-SECRET");
 		// 形状保留:键还在,值抹空
-		expect(redactSecretKeys(input).defaults.ai.search.keys).toEqual({ bocha: "", tavily: "" });
+		expect(redactSecretKeys(input).ai.search.keys).toEqual({ bocha: "", tavily: "" });
 		// backend 不是凭据,不许误伤
-		expect(redactSecretKeys(input).defaults.ai.search.backend).toBe("bocha");
+		expect(redactSecretKeys(input).ai.search.backend).toBe("bocha");
 	});
 
 	it("blanks every header value —— 自定义鉴权头的键名是用户自己起的,白名单认不出", () => {

@@ -13,7 +13,7 @@
  * 夹具是当代形状:新建的桶写明 `provider`(面板的 `addProfile` 也是这么建的;从前靠 schema 的 preprocess
  * 按键名盖章,那是给 0.x 老配置的,⑥c 搬进了迁移器)。
  *
- * 密钥现在住在 `defaults.ai.providers.<provider>.apiKey` —— 各家一套配置之后
+ * 密钥现在住在 `ai.providers.<provider>.apiKey` —— 各家一套配置之后
  * 不再有全局那一把。这里固定用 deepseek 桶做样本。
  */
 
@@ -45,9 +45,7 @@ describe("globals apiKey redact — P0-3", () => {
 		await runtime.configStore.load();
 		// 先写一个真实 apiKey
 		await runtime.configStore.patchGlobals({
-			defaults: {
-				ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-secret-real-key" } } },
-			},
+			ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-secret-real-key" } } },
 		});
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -56,12 +54,16 @@ describe("globals apiKey redact — P0-3", () => {
 		const res = await app.request("/api/settings");
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			defaults: { ai: { providers: Record<string, { apiKey: unknown }> } };
+			ai: { providers: Record<string, { apiKey: unknown }> };
 		};
-		expect(body.defaults.ai.providers.deepseek?.apiKey).toEqual({ masked: "••••••••" });
+		// 正对照:真 key 确实写进了内存里的那份(下面的「不含明文」不是因为夹具被剥空)
+		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe(
+			"sk-secret-real-key",
+		);
+		expect(body.ai.providers.deepseek?.apiKey).toEqual({ masked: "••••••••" });
 		expect(JSON.stringify(body)).not.toContain("sk-secret-real-key");
 		// 内部 store 仍持真实 key
-		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe(
+		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe(
 			"sk-secret-real-key",
 		);
 
@@ -77,10 +79,10 @@ describe("globals apiKey redact — P0-3", () => {
 
 		const res = await app.request("/api/settings");
 		const body = (await res.json()) as {
-			defaults: { ai: { providers: Record<string, { apiKey?: string } | undefined> } };
+			ai: { providers: Record<string, { apiKey?: string } | undefined> };
 		};
 		// 全新配置一家都没添加,连桶都不该有 —— 更谈不上占位。
-		expect(body.defaults.ai.providers).toEqual({});
+		expect(body.ai.providers).toEqual({});
 
 		await runtime.dispose();
 	});
@@ -89,9 +91,7 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: {
-				ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-original-key" } } },
-			},
+			ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-original-key" } } },
 		});
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -104,25 +104,23 @@ describe("globals apiKey redact — P0-3", () => {
 			});
 
 		const bad = await patch({
-			defaults: {
-				ai: { providers: { deepseek: { apiKey: { masked: "••••••••" }, model: "gpt-4o-mini" } } },
-			},
+			ai: { providers: { deepseek: { apiKey: { masked: "••••••••" }, model: "gpt-4o-mini" } } },
 		});
 		expect(bad.status).toBe(400);
 		// 话里说的是「这是遮挡、不是新值」,不是 zod 的「期望字符串」—— 后者是别的原因也会有的 400。
 		expect(await bad.json()).toMatchObject({
 			code: "invalid",
 			message: expect.stringContaining("遮挡"),
-			issues: [{ path: ["defaults", "ai", "providers", "deepseek", "apiKey"] }],
+			issues: [{ path: ["ai", "providers", "deepseek", "apiKey"] }],
 		});
-		const ds = () => runtime.configStore.getGlobals().defaults.ai.providers.deepseek;
+		const ds = () => runtime.configStore.getGlobals().ai.providers.deepseek;
 		// store 内 apiKey 必须仍是原值,整发作废(model 也没落地)—— 这是 P0-3 最危险的回归点
 		expect(ds()?.apiKey).toBe("sk-original-key");
 		expect(ds()?.model).not.toBe("gpt-4o-mini");
 
 		// 不带 apiKey 这一格 = 保留已存的,同桶其他字段正常落地
 		const ok = await patch({
-			defaults: { ai: { providers: { deepseek: { model: "gpt-4o-mini" } } } },
+			ai: { providers: { deepseek: { model: "gpt-4o-mini" } } },
 		});
 		expect(ok.status).toBe(200);
 		expect(ds()?.apiKey).toBe("sk-original-key");
@@ -135,7 +133,7 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: { ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-old-key" } } } },
+			ai: { providers: { deepseek: { provider: "deepseek", apiKey: "sk-old-key" } } },
 		});
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -145,13 +143,11 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: { ai: { providers: { deepseek: { apiKey: "sk-brand-new-key" } } } },
+				ai: { providers: { deepseek: { apiKey: "sk-brand-new-key" } } },
 			}),
 		});
 		expect(patchRes.status).toBe(200);
-		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe(
-			"sk-brand-new-key",
-		);
+		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe("sk-brand-new-key");
 
 		await runtime.dispose();
 	});
@@ -159,13 +155,14 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: {
-				ai: {
-					providers: { deepseek: { provider: "deepseek", apiKey: "sk-old" } },
-					search: { keys: { bocha: "sk-bocha" } },
-				},
+			ai: {
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-old" } },
+				search: { keys: { bocha: "sk-bocha" } },
 			},
 		});
+		// 正对照:两把 key 确实写进去了,下面「清空」不是因为补丁被剥空
+		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe("sk-old");
+		expect(runtime.configStore.getGlobals().ai.search.keys.bocha).toBe("sk-bocha");
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
@@ -173,13 +170,11 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: {
-					ai: { providers: { deepseek: { apiKey: "" } }, search: { keys: { bocha: "" } } },
-				},
+				ai: { providers: { deepseek: { apiKey: "" } }, search: { keys: { bocha: "" } } },
 			}),
 		});
 		expect(res.status).toBe(200);
-		const ai = runtime.configStore.getGlobals().defaults.ai;
+		const ai = runtime.configStore.getGlobals().ai;
 		expect(ai.providers.deepseek?.apiKey).toBe("");
 		expect(ai.search.keys.bocha).toBe("");
 		await runtime.dispose();
@@ -193,16 +188,16 @@ describe("globals apiKey redact — P0-3", () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: {
-						deepseek: { provider: "deepseek", apiKey: "sk-going-away" },
-						openrouter: { provider: "openrouter", apiKey: "sk-staying" },
-					},
+			ai: {
+				activeProfile: "deepseek",
+				providers: {
+					deepseek: { provider: "deepseek", apiKey: "sk-going-away" },
+					openrouter: { provider: "openrouter", apiKey: "sk-staying" },
 				},
 			},
 		});
+		// 正对照:两家的 key 都确实写进去了
+		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe("sk-going-away");
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
@@ -211,12 +206,12 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: { ai: { activeProfile: "openrouter", providers: { deepseek: null } } },
+				ai: { activeProfile: "openrouter", providers: { deepseek: null } },
 			}),
 		});
 		expect(patchRes.status).toBe(200);
 
-		const providers = runtime.configStore.getGlobals().defaults.ai.providers;
+		const providers = runtime.configStore.getGlobals().ai.providers;
 		expect("deepseek" in providers).toBe(false);
 		// 邻居毫发无伤 —— 删一家不能顺手带走别家的 key。
 		expect(providers.openrouter?.apiKey).toBe("sk-staying");
@@ -228,17 +223,17 @@ describe("globals apiKey redact — P0-3", () => {
 			method: "PATCH",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
-				defaults: { ai: { providers: { deepseek: { provider: "deepseek", model: "ds-v4" } } } },
+				ai: { providers: { deepseek: { provider: "deepseek", model: "ds-v4" } } },
 			}),
 		});
-		expect(runtime.configStore.getGlobals().defaults.ai.providers.deepseek?.apiKey).toBe("");
+		expect(runtime.configStore.getGlobals().ai.providers.deepseek?.apiKey).toBe("");
 
 		await runtime.dispose();
 
 		// 再从盘上冷启一次:删除与邻居的 key 都得是真落了盘,而不是只活在内存里。
 		const reopened = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await reopened.configStore.load();
-		const after = reopened.configStore.getGlobals().defaults.ai.providers;
+		const after = reopened.configStore.getGlobals().ai.providers;
 		expect(after.deepseek?.apiKey).toBe("");
 		expect(after.openrouter?.apiKey).toBe("sk-staying");
 		await reopened.dispose();

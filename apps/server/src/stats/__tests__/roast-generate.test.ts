@@ -10,7 +10,7 @@
  */
 
 import type { StatsOverviewResponse } from "@bilibili-notify/contract";
-import type { GlobalDefaults } from "@bilibili-notify/internal";
+import type { GlobalConfig } from "@bilibili-notify/internal";
 import {
 	EMPTY_AI_PROVIDER_PROFILE,
 	FAILURE_CODES,
@@ -81,8 +81,8 @@ const PLATFORM_LABELS: Record<string, string> = { douyin: "抖音" };
 /** 测试替身:只填生成路径真正读到的那几个字段,其余靠一次 unknown 断言收口。 */
 function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): RoastGenDeps {
 	const globals = makeDefaultGlobalConfig();
-	globals.defaults.ai = {
-		...globals.defaults.ai,
+	globals.ai = {
+		...globals.ai,
 		enabled: aiEnabled,
 		provider: "custom",
 		// 拿空 profile 打底 —— toGeneratorConfig 会读 vision 等一整套字段,
@@ -95,7 +95,7 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 				model: "m",
 			},
 		},
-	} as GlobalDefaults["ai"];
+	} as GlobalConfig["ai"];
 	const profiles = new Map(
 		exts.flatMap((e) => (e.profileName ? [[e.id, { name: e.profileName }] as const] : [])),
 	);
@@ -338,7 +338,7 @@ describe("联网搜索 override(engines.roast)", () => {
 
 	it("engines.roast 开着 → comment 的 override 带 webSearch:true,且生成器接了搜索源", async () => {
 		const deps = makeDeps(["1", "2"]);
-		deps.store.getGlobals().defaults.ai.search.engines.roast = true;
+		deps.store.getGlobals().ai.search.engines.roast = true;
 		await generateBoardRoast(deps, {
 			days: 7,
 			tz: 0,
@@ -362,7 +362,7 @@ describe("联网搜索 override(engines.roast)", () => {
 
 	it("单人锐评同样吃 engines.roast,per-UP 覆盖不丢", async () => {
 		const deps = makeDeps(["1"]);
-		deps.store.getGlobals().defaults.ai.search.engines.roast = true;
+		deps.store.getGlobals().ai.search.engines.roast = true;
 		await generateSoloRoast(deps, {
 			subscriptionId: biliId("1"),
 			days: 7,

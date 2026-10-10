@@ -38,7 +38,7 @@ export function ThinkingLevelSetting() {
 	const save = useMutation({
 		mutationFn: (level: ThinkingLevel) =>
 			api.patch<GlobalConfig>("/api/settings", {
-				defaults: { ai: { chat: { thinkingLevel: level } } },
+				ai: { chat: { thinkingLevel: level } },
 			}),
 		// 点了立刻亮(乐观写缓存),失败退回 —— 弹层里其余几项都是即点即变,
 		// 这一格等一个网络往返才亮会显得「点不动」。
@@ -47,10 +47,7 @@ export function ThinkingLevelSetting() {
 			if (prev) {
 				qc.setQueryData<GlobalConfig>(["settings"], {
 					...prev,
-					defaults: {
-						...prev.defaults,
-						ai: { ...prev.defaults.ai, chat: { ...prev.defaults.ai.chat, thinkingLevel: level } },
-					},
+					ai: { ...prev.ai, chat: { ...prev.ai.chat, thinkingLevel: level } },
 				});
 			}
 			return { prev };
@@ -62,7 +59,7 @@ export function ThinkingLevelSetting() {
 		onSuccess: (next) => qc.setQueryData(["settings"], next),
 	});
 
-	const ai = globalsQuery.data?.defaults.ai;
+	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就整节不画 —— 一排状态未知的档位比没有档位更误导。
 	if (!ai) return null;
 

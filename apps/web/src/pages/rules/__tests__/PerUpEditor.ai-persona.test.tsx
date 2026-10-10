@@ -19,7 +19,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
-import type { GlobalDefaults } from "../../../types/globals";
+import type { GlobalConfig } from "../../../types/globals";
 import { PerUpEditor } from "../PerUpEditor";
 import { makeDefaults } from "./fixtures";
 
@@ -41,13 +41,11 @@ const PERSONA = {
 };
 
 /** 两份已有人格 —— 「挑一份」这件事至少要有两份才谈得上。 */
-function defaultsWithPresets(): GlobalDefaults {
-	const d = makeDefaults();
-	d.ai.presets = [
+function presetsOfTwo(): GlobalConfig["ai"]["presets"] {
+	return [
 		{ id: "gentle-maid", label: "温柔女仆", persona: PERSONA },
 		{ id: "tsundere", label: "傲娇毒舌", persona: { ...PERSONA, name: "阿绫" } },
 	];
-	return d;
 }
 
 function mount(overridesAi?: Subscription["overrides"]["ai"]) {
@@ -56,12 +54,7 @@ function mount(overridesAi?: Subscription["overrides"]["ai"]) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor
-				sub={sub}
-				defaults={defaultsWithPresets()}
-				presets={defaultsWithPresets().ai.presets}
-				section="ai"
-			/>
+			<PerUpEditor sub={sub} defaults={makeDefaults()} presets={presetsOfTwo()} section="ai" />
 		</QueryClientProvider>,
 	);
 }

@@ -26,8 +26,8 @@ import { api } from "../../../services/api";
 
 function globalsWith(provider: "deepseek" | "custom", flavor: "chat" | "responses" = "chat") {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.activeProfile = "p1";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "p1";
+	g.ai.providers = {
 		p1: {
 			provider,
 			label: "",

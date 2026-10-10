@@ -22,7 +22,7 @@ import type { RouteDeps } from "./types.js";
  *
  * Enable-check pre-flight (plan: 启用前验证):
  * When the resulting config would have `defaults.cards.enabled = true` or
- * `defaults.ai.enabled = true`, we actively probe before letting the patch
+ * `ai.enabled = true`, we actively probe before letting the patch
  * land. For image we require puppeteer to be wired AND able to spawn a page;
  * for AI we require apiKey/baseUrl/model + a successful OpenAI-compatible
  * chat completion. 没过的一律是带标准码的失败(ADR-0026),`message` 面板原样内联显示
@@ -241,11 +241,11 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 		// 探活要打的是**本次保存之后**生效的那份实例:activeProfile 指针本身可能
 		// 就在这个 patch 里被换掉了。拿旧指针去取连接字段,会用 A 家的 key 打 B 家的接口。
 		const id = aiActiveProfileAfterPatch(args.current, args.patch);
-		const cur = args.current.defaults.ai.providers[id];
+		const cur = args.current.ai.providers[id];
 		const at = (field: string) =>
 			mergedString(
 				cur?.[field as "apiKey" | "baseUrl" | "model" | "apiFlavor"],
-				pluck(args.patch, ["defaults", "ai", "providers", id, field]),
+				pluck(args.patch, ["ai", "providers", id, field]),
 			);
 		const r = await checkAiEnable({
 			apiKey: at("apiKey"),
@@ -265,8 +265,8 @@ export function aiActiveProfileAfterPatch(
 	current: import("@bilibili-notify/internal").GlobalConfig,
 	patch: Record<string, unknown>,
 ): string {
-	const inPatch = pluck(patch, ["defaults", "ai", "activeProfile"]);
-	return typeof inPatch === "string" ? inPatch : current.defaults.ai.activeProfile;
+	const inPatch = pluck(patch, ["ai", "activeProfile"]);
+	return typeof inPatch === "string" ? inPatch : current.ai.activeProfile;
 }
 
 /**
@@ -277,7 +277,7 @@ export function aiActiveProfileAfterPatch(
  * 改 persona / prompt 不触发探活;AI 最终为禁用态时一律不跑。
  *
  * 「值跟 current 相同也不触发」是为兼容前端整段 patch 风格 —— Ai.tsx save mutation
- * 把整段 `defaults.ai` 原样送上,只改 persona 时连接字段也跟着进 patch,
+ * 把整段 `ai` 原样送上,只改 persona 时连接字段也跟着进 patch,
  * 仅判断「字段在 patch 里」会误触探活。apiKey 面板没动时不进 patch(下发的是遮挡,
  * 带着它写回是 400),pluck 自然取不到。
  */
@@ -285,21 +285,18 @@ export function shouldRunAiEnableCheck(
 	current: import("@bilibili-notify/internal").GlobalConfig,
 	patch: Record<string, unknown>,
 ): boolean {
-	const aiEnabled = mergedFlag(
-		current.defaults.ai.enabled,
-		pluck(patch, ["defaults", "ai", "enabled"]),
-	);
+	const aiEnabled = mergedFlag(current.ai.enabled, pluck(patch, ["ai", "enabled"]));
 	if (!aiEnabled) return false;
 
 	const id = aiActiveProfileAfterPatch(current, patch);
-	const switchedProfile = id !== current.defaults.ai.activeProfile;
-	const cur = current.defaults.ai.providers[id];
+	const switchedProfile = id !== current.ai.activeProfile;
+	const cur = current.ai.providers[id];
 	const changed = (field: "apiKey" | "baseUrl" | "model") => {
-		const inPatch = pluck(patch, ["defaults", "ai", "providers", id, field]);
+		const inPatch = pluck(patch, ["ai", "providers", id, field]);
 		return inPatch !== undefined && inPatch !== cur?.[field];
 	};
 	const touchesConnection = changed("apiKey") || changed("baseUrl") || changed("model");
-	const enabling = !current.defaults.ai.enabled && aiEnabled;
+	const enabling = !current.ai.enabled && aiEnabled;
 	return switchedProfile || touchesConnection || enabling;
 }
 

@@ -11,7 +11,7 @@ import { useDraftStore } from "../../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../../types/domain";
 import type { SubscriptionPlatform } from "../../up/subscription-source";
 import { PerUpEditor } from "../PerUpEditor";
-import { makeDefaults } from "./fixtures";
+import { makeAi, makeDefaults } from "./fixtures";
 
 vi.mock("../../../services/api", () => ({
 	api: { patch: vi.fn() },
@@ -45,7 +45,7 @@ function renderEditor(sub: Subscription, platform?: SubscriptionPlatform) {
 				sub={sub}
 				platform={platform}
 				defaults={makeDefaults()}
-				presets={makeDefaults().ai.presets}
+				presets={makeAi().presets}
 				section="filter"
 			/>
 		</QueryClientProvider>,

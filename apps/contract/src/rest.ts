@@ -26,7 +26,6 @@ import type {
 	FansRefreshEntry,
 	FeatureKey,
 	GlobalConfig,
-	GlobalDefaults,
 	HistoryPayload,
 	Identity,
 	ImageRef,
@@ -293,8 +292,8 @@ export type AISettingsView<S = SecretCellView> = Omit<AISettings, "providers" | 
 };
 
 /** `GET /api/settings` 的核心那一份(各集成的设置另挂在自己的键下,与 PATCH 收的同一个形状)。 */
-export type GlobalConfigView<S = SecretCellView> = Omit<GlobalConfig, "defaults"> & {
-	defaults: Omit<GlobalDefaults, "ai"> & { ai: AISettingsView<S> };
+export type GlobalConfigView<S = SecretCellView> = Omit<GlobalConfig, "ai"> & {
+	ai: AISettingsView<S>;
 };
 
 /** `GET /api/ext/:id/settings`。 */

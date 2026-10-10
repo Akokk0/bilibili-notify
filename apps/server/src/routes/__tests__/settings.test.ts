@@ -5,10 +5,10 @@ import { checkApprovalEnable, shouldRunAiEnableCheck } from "../settings.js";
 /** 默认 globals + AI 启用 + 连接字段齐备。 */
 function enabledAiGlobals() {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.enabled = true;
+	g.ai.enabled = true;
 	// 连接字段住在服务商桶里(各家一套配置)。
-	g.defaults.ai.activeProfile = "deepseek";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "deepseek";
+	g.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
 			apiFlavor: "chat",
@@ -28,20 +28,32 @@ function enabledAiGlobals() {
 
 /** 把桶内字段包成 patch 形状。 */
 function aiPatch(bucket: Record<string, unknown>, id = "deepseek") {
-	return { defaults: { ai: { providers: { [id]: bucket } } } };
+	return { ai: { providers: { [id]: bucket } } };
 }
 
 describe("shouldRunAiEnableCheck", () => {
 	it("改 persona 不触发探活", () => {
 		const cur = enabledAiGlobals();
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { persona: { name: "恶魔兔" } } } })).toBe(
-			false,
-		);
+		expect(shouldRunAiEnableCheck(cur, { ai: { persona: { name: "恶魔兔" } } })).toBe(false);
 	});
 
 	it("改 prompt 不触发探活", () => {
 		const cur = enabledAiGlobals();
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { dynamicPrompt: "x" } } })).toBe(false);
+		expect(shouldRunAiEnableCheck(cur, { ai: { dynamicPrompt: "x" } })).toBe(false);
+	});
+
+	// 「不触发」的用例换了路径就什么都取不到、自然不触发 —— 这条是对照:同一份当前配置,
+	// 新路径上改连接字段**会**触发,老路径(`defaults.ai`)上的补丁什么都不是。
+	it("对照:新路径 { ai } 上改 key 会触发;老路径 { defaults: { ai } } 上的同一发不再触发", () => {
+		const cur = enabledAiGlobals();
+		expect(shouldRunAiEnableCheck(cur, { ai: { providers: { deepseek: { apiKey: "k2" } } } })).toBe(
+			true,
+		);
+		expect(
+			shouldRunAiEnableCheck(cur, {
+				defaults: { ai: { providers: { deepseek: { apiKey: "k2" } } } },
+			}),
+		).toBe(false);
 	});
 
 	it("改连接字段 apiKey / baseUrl / model 触发探活", () => {
@@ -53,16 +65,12 @@ describe("shouldRunAiEnableCheck", () => {
 
 	it("换实例就触发探活 —— 换实例等于换连接,新那份的 key 还没验过", () => {
 		const cur = enabledAiGlobals(); // 当前是 deepseek
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { activeProfile: "openrouter" } } })).toBe(
-			true,
-		);
+		expect(shouldRunAiEnableCheck(cur, { ai: { activeProfile: "openrouter" } })).toBe(true);
 	});
 
 	it("同一家的另一份实例也算换 —— 两个 DeepSeek 号各有各的 key", () => {
 		const cur = enabledAiGlobals();
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { activeProfile: "deepseek-2" } } })).toBe(
-			true,
-		);
+		expect(shouldRunAiEnableCheck(cur, { ai: { activeProfile: "deepseek-2" } })).toBe(true);
 	});
 
 	it("改的是**别家**桶里的连接字段 → 不触发探活(那家现在没在用)", () => {
@@ -73,37 +81,41 @@ describe("shouldRunAiEnableCheck", () => {
 
 	it("enabled 由 false→true 触发探活(即使本次没带连接字段)", () => {
 		const cur = enabledAiGlobals();
-		cur.defaults.ai.enabled = false;
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { enabled: true } } })).toBe(true);
+		cur.ai.enabled = false;
+		expect(shouldRunAiEnableCheck(cur, { ai: { enabled: true } })).toBe(true);
+	});
+
+	it("关了再开:当前已启用 → 补丁关掉不探活;当前关着 → 补丁再开触发(新路径)", () => {
+		const on = enabledAiGlobals();
+		expect(shouldRunAiEnableCheck(on, { ai: { enabled: false } })).toBe(false);
+		const off = enabledAiGlobals();
+		off.ai.enabled = false;
+		expect(shouldRunAiEnableCheck(off, { ai: { enabled: true } })).toBe(true);
 	});
 
 	it("AI 最终为禁用态:改任何字段都不探活", () => {
 		const cur = makeDefaultGlobalConfig(); // disabled
-		expect(shouldRunAiEnableCheck(cur, { defaults: { ai: { persona: { name: "x" } } } })).toBe(
-			false,
-		);
+		expect(shouldRunAiEnableCheck(cur, { ai: { persona: { name: "x" } } })).toBe(false);
 		expect(shouldRunAiEnableCheck(cur, aiPatch({ apiKey: "k2" }))).toBe(false);
 	});
 
 	it("已启用态重复保存 persona(enabled 维持 true)不触发探活", () => {
 		const cur = enabledAiGlobals();
-		expect(
-			shouldRunAiEnableCheck(cur, { defaults: { ai: { enabled: true, persona: { name: "x" } } } }),
-		).toBe(false);
+		expect(shouldRunAiEnableCheck(cur, { ai: { enabled: true, persona: { name: "x" } } })).toBe(
+			false,
+		);
 	});
 
 	it("patch 含连接字段但值跟 current 相同 → 不触发探活(前端整段 patch 兼容)", () => {
 		const cur = enabledAiGlobals();
-		// 模拟 Ai.tsx 现状:用户只改 persona,但前端把整段 defaults.ai 送上,
+		// 模拟 Ai.tsx 现状:用户只改 persona,但前端把整段 ai 送上,
 		// baseUrl/model 跟 current 完全一致(没动的 apiKey 面板不发)。
-		const p = cur.defaults.ai.providers.deepseek;
+		const p = cur.ai.providers.deepseek;
 		expect(
 			shouldRunAiEnableCheck(cur, {
-				defaults: {
-					ai: {
-						providers: { deepseek: { baseUrl: p?.baseUrl, model: p?.model } },
-						persona: { name: "恶魔兔" },
-					},
+				ai: {
+					providers: { deepseek: { baseUrl: p?.baseUrl, model: p?.model } },
+					persona: { name: "恶魔兔" },
 				},
 			}),
 		).toBe(false);
@@ -113,13 +125,11 @@ describe("shouldRunAiEnableCheck", () => {
 		const cur = enabledAiGlobals();
 		expect(
 			shouldRunAiEnableCheck(cur, {
-				defaults: {
-					ai: {
-						providers: {
-							deepseek: {
-								baseUrl: "https://api.example.com/v2", // changed
-								model: cur.defaults.ai.providers.deepseek?.model, // unchanged
-							},
+				ai: {
+					providers: {
+						deepseek: {
+							baseUrl: "https://api.example.com/v2", // changed
+							model: cur.ai.providers.deepseek?.model, // unchanged
 						},
 					},
 				},
@@ -131,13 +141,11 @@ describe("shouldRunAiEnableCheck", () => {
 		const cur = enabledAiGlobals();
 		expect(
 			shouldRunAiEnableCheck(cur, {
-				defaults: {
-					ai: {
-						providers: {
-							deepseek: {
-								baseUrl: cur.defaults.ai.providers.deepseek?.baseUrl, // unchanged
-								model: "gpt-4o", // changed
-							},
+				ai: {
+					providers: {
+						deepseek: {
+							baseUrl: cur.ai.providers.deepseek?.baseUrl, // unchanged
+							model: "gpt-4o", // changed
 						},
 					},
 				},

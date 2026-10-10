@@ -80,8 +80,8 @@ function makeDeps(opts: StubOpts = {}) {
 				{ id: "s200", identity: { sourceKey: "bilibili", externalId: "200" } },
 			],
 			getGlobals: () => ({
+				ai: { enabled: true },
 				defaults: {
-					ai: { enabled: true },
 					cards: { enabled: opts.cardsEnabled ?? true, liveCoverImageIds: [] },
 					cardSkin: opts.cardSkin ?? "default",
 				},

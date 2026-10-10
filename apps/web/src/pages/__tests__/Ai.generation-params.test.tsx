@@ -29,9 +29,9 @@ type ProviderId = "deepseek" | "siliconflow" | "custom";
 
 function globals(provider: ProviderId, enableThinking: boolean) {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.enabled = true;
-	g.defaults.ai.activeProfile = "p1";
-	g.defaults.ai.providers = {
+	g.ai.enabled = true;
+	g.ai.activeProfile = "p1";
+	g.ai.providers = {
 		p1: {
 			provider,
 			label: "",

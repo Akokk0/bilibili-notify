@@ -92,12 +92,10 @@ vi.mock("../../../services/api", () => ({
 			H.gets.push(path);
 			if (path === "/api/dashboard/skins/active") return { active: ACTIVE };
 			return {
-				defaults: {
-					ai: {
-						activeProfile: "deepseek",
-						providers: { deepseek: { model: "gpt-test" } },
-						persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
-					},
+				ai: {
+					activeProfile: "deepseek",
+					providers: { deepseek: { model: "gpt-test" } },
+					persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 				},
 			};
 		}),

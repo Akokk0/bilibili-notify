@@ -107,7 +107,7 @@ interface StubOpts {
 	aiEnabled?: boolean;
 	/** baseUrl / apiKey 没填齐时 engines.commentary 就是 null。 */
 	noCommentary?: boolean;
-	/** 追加进 `defaults.ai` 的字段(activeProfile / providers / chat …)。 */
+	/** 追加进 `ai` 的字段(activeProfile / providers / chat …)。 */
 	aiConfig?: Record<string, unknown>;
 }
 
@@ -118,7 +118,7 @@ async function makeDeps(opts: StubOpts = {}) {
 	const deps = {
 		store: {
 			getGlobals: () => ({
-				defaults: { ai: { enabled: opts.aiEnabled ?? true, ...(opts.aiConfig ?? {}) } },
+				ai: { enabled: opts.aiEnabled ?? true, ...(opts.aiConfig ?? {}) },
 			}),
 			getTargets: () => [],
 			getSubscriptions: () => [],

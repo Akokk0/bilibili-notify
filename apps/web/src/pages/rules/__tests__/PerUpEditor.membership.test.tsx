@@ -19,7 +19,7 @@ import { makeEmptySubscription, type Subscription } from "../../../types/domain"
 import type { GlobalDefaults } from "../../../types/globals";
 import { PerUpEditor } from "../PerUpEditor";
 import type { SectionId } from "../sections";
-import { makeDefaults } from "./fixtures";
+import { makeAi, makeDefaults } from "./fixtures";
 
 vi.mock("../../../services/api", () => ({
 	api: { patch: vi.fn() },
@@ -44,7 +44,7 @@ function renderEditor(sub: Subscription, section: SectionId, defaults: GlobalDef
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor sub={sub} defaults={defaults} presets={defaults.ai.presets} section={section} />
+			<PerUpEditor sub={sub} defaults={defaults} presets={makeAi().presets} section={section} />
 		</QueryClientProvider>,
 	);
 	const field = (code: string) => view.container.querySelector(`[data-code="${code}"]`);

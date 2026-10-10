@@ -551,8 +551,8 @@ function patchBilibili(c: Ctx, mutate: (b: BiliSettings) => void): void {
 function aiGlobals(): GlobalConfig {
 	const g = makeDefaultGlobalConfig();
 	// 连接字段住在服务商桶里(各家一套配置)。
-	g.defaults.ai.activeProfile = "deepseek";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "deepseek";
+	g.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
 			label: "",
@@ -971,7 +971,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
 	it("AI 点评看拓展作品只有引用的图:核心经接线层给的 readImage 读出字节,编成 data URL 交给点评", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const aiOn = aiGlobals();
-		aiOn.defaults.ai.enabled = true;
+		aiOn.ai.enabled = true;
 		const readImage = vi.fn(async (_ref: string) => ({
 			bytes: Uint8Array.from([1, 2, 3]),
 			mime: "image/png",
@@ -1106,7 +1106,7 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 	it("拓展清单里的平台叫法一路走到 AI 提示词:「发布了一条视频」", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const aiOn = aiGlobals();
-		aiOn.defaults.ai.enabled = true;
+		aiOn.ai.enabled = true;
 		const c = setup({
 			globals: aiOn,
 			subs: [ext],
@@ -1892,9 +1892,9 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(c.runtime.commentary).toBeNull();
 
 		patchGlobals(c, (g) => {
-			const ai = aiGlobals().defaults.ai;
-			g.defaults.ai.activeProfile = ai.activeProfile;
-			g.defaults.ai.providers = ai.providers;
+			const ai = aiGlobals().ai;
+			g.ai.activeProfile = ai.activeProfile;
+			g.ai.providers = ai.providers;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 
@@ -1910,7 +1910,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(c.runtime.commentary).not.toBeNull();
 
 		patchGlobals(c, (g) => {
-			g.defaults.ai.providers = {};
+			g.ai.providers = {};
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 
@@ -2000,17 +2000,41 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 	});
 
-	it("item 4 — 改 defaults.ai 不扇出重设 level / healthCheck", () => {
+	it("item 4 — 改 ai 不扇出重设 level / healthCheck", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.ai.persona.name = "恶魔兔";
+			g.ai.persona.name = "恶魔兔";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		// boot 各 1 次;改 AI 人设不应再扇出到 app section。
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 		// AI 本身仍热更。
+		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
+	});
+
+	it("3a-38 ④ — 配着 AI 时改无关设置(保留天数、资料刷新 cron)不触发「AI 配置已更新」;改人设才触发(同一份夹具对照)", () => {
+		const c = setup({ globals: aiGlobals() });
+		active = c;
+		expect(H.ai).toHaveLength(1);
+		H.ai[0].updateConfig.mockClear();
+
+		patchGlobals(c, (g) => {
+			g.logging.retentionDays = 14;
+			g.profileRefreshCron = "*/9 * * * *";
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(H.ai[0].updateConfig).not.toHaveBeenCalled();
+		expect(c.serviceCtx.logger.info).not.toHaveBeenCalledWith(
+			expect.stringContaining("commentary 配置已更新"),
+		);
+
+		// 对照:换成改顶层 ai 里的人设,同一条路就会热更(门比的是顶层 ai,不是别的什么)。
+		patchGlobals(c, (g) => {
+			g.ai.persona.name = "恶魔兔";
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
 	});
 
@@ -2022,7 +2046,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const c = setup({ globals: aiGlobals(), subs: [sub] });
 		active = c;
 		patchGlobals(c, (g) => {
-			g.defaults.ai.persona.name = "恶魔兔";
+			g.ai.persona.name = "恶魔兔";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
@@ -2262,8 +2286,8 @@ describe("createEngines — AI 热重载三态", () => {
 		expect(H.ai).toHaveLength(0);
 		patchGlobals(c, (g) => {
 			// 添加一家并选中它 —— 「配齐了」现在的意思是「当前那家的桶里连接齐备」。
-			g.defaults.ai.activeProfile = "deepseek";
-			g.defaults.ai.providers = aiGlobals().defaults.ai.providers;
+			g.ai.activeProfile = "deepseek";
+			g.ai.providers = aiGlobals().ai.providers;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai).toHaveLength(1);
@@ -2276,7 +2300,7 @@ describe("createEngines — AI 热重载三态", () => {
 		active = c;
 		expect(H.ai).toHaveLength(1);
 		patchGlobals(c, (g) => {
-			const p = g.defaults.ai.providers[g.defaults.ai.activeProfile];
+			const p = g.ai.providers[g.ai.activeProfile];
 			if (p) p.apiKey = "";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
@@ -2289,7 +2313,7 @@ describe("createEngines — AI 热重载三态", () => {
 	// 验红:把 engines.ts 里 postQueue 的 `ai: () => commentary ?? undefined` 改成按值传(开机取一次),这条红。
 	it("作品的 AI 点评每条现取:开机没配 → 补齐后下一条用新实例 → 清空密钥后不再点评", async () => {
 		const aiOn = aiGlobals();
-		aiOn.defaults.ai.enabled = true;
+		aiOn.ai.enabled = true;
 		const c = setup({ subs: [biliSubOf("1")], globals: TEMPLATE_GLOBALS("模板 {name}") });
 		active = c;
 		reportBili("1", bilibiliPost("正文"), "d1");
@@ -2298,7 +2322,7 @@ describe("createEngines — AI 热重载三态", () => {
 		expect(await mainTexts()).toEqual(["模板 阿绫\nhttps://t.bilibili.com/d1"]);
 
 		patchGlobals(c, (g) => {
-			g.defaults.ai = aiOn.defaults.ai;
+			g.ai = aiOn.ai;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai).toHaveLength(1);
@@ -2308,7 +2332,7 @@ describe("createEngines — AI 热重载三态", () => {
 		expect((await mainTexts()).at(-1)).toBe("点评\nhttps://t.bilibili.com/d2");
 
 		patchGlobals(c, (g) => {
-			g.defaults.ai.providers = {};
+			g.ai.providers = {};
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 		reportBili("1", bilibiliPost("正文"), "d3");
@@ -2321,7 +2345,7 @@ describe("createEngines — AI 热重载三态", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		patchGlobals(c, (g) => {
-			const p = g.defaults.ai.providers[g.defaults.ai.activeProfile];
+			const p = g.ai.providers[g.ai.activeProfile];
 			if (p) p.model = "gpt-4o";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });

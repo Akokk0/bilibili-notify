@@ -38,7 +38,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
-import { splitAppSettings } from "../core-sections.js";
+import { moveGlobalAi, splitAppSettings } from "../core-sections.js";
 import { renameGlobalSettingsKeys } from "../feature-renames.js";
 import { migrateLegacyLinkParsing } from "../link-parsing.js";
 import { splitGlobalLiveSettings } from "../live-split.js";
@@ -462,14 +462,16 @@ describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", (
 		expectMigratedAiShape(migrated.defaults.ai);
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 
-		// 这里只走到直播拆键:`app` 是 schema 之前的最后一步(`splitAppSettings`)才拆的,要过 schema 得补上。
+		// 这里只走到直播拆键:`app` 的拆除(`splitAppSettings`)与 AI 上提到顶层(`moveGlobalAi`)是 schema 之前的最后两步,要过 schema 得补上。
 		const r = GlobalConfigSchema.safeParse(
-			splitAppSettings(
-				splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+			moveGlobalAi(
+				splitAppSettings(
+					splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+				),
 			),
 		);
 		expect(r.success).toBe(true);
-		const ai = r.data?.defaults.ai;
+		const ai = r.data?.ai;
 		// 连接字段照旧搬进 custom 桶 —— 退役的只是 temperature 这一格。
 		expect(ai?.providers.custom).toMatchObject({ apiKey: "sk-old", model: "deepseek-v4-pro" });
 		expect(ai && "temperature" in ai).toBe(false);
@@ -687,8 +689,10 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 		expect(
 			GlobalConfigSchema.safeParse(
-				splitAppSettings(
-					splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+				moveGlobalAi(
+					splitAppSettings(
+						splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+					),
 				),
 			).success,
 		).toBe(true);

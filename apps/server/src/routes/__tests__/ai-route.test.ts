@@ -52,10 +52,10 @@ beforeEach(() => {
  * 照老样子直接改 `ai.persona` 是造不出来的形状。
  */
 function draftAi(
-	bucket: Partial<GlobalConfig["defaults"]["ai"]["providers"]["deepseek"]> = {},
-	over: Partial<GlobalConfig["defaults"]["ai"]> = {},
+	bucket: Partial<GlobalConfig["ai"]["providers"]["deepseek"]> = {},
+	over: Partial<GlobalConfig["ai"]> = {},
 ) {
-	const ai = makeDefaultGlobalConfig().defaults.ai;
+	const ai = makeDefaultGlobalConfig().ai;
 	return {
 		...ai,
 		enabled: true,
@@ -99,8 +99,8 @@ function makeDeps(opts: { sendFails?: boolean } = {}) {
 	const globals = makeDefaultGlobalConfig();
 	// store 里已存的那把 —— 必须与草稿选中的**同一个桶**,否则会拿 A 家的 key
 	// 去打 B 家的接口。
-	globals.defaults.ai.activeProfile = "deepseek";
-	globals.defaults.ai.providers = {
+	globals.ai.activeProfile = "deepseek";
+	globals.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
 			apiFlavor: "chat",

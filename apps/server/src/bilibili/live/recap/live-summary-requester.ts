@@ -34,14 +34,14 @@ export class LiveSummaryRequester {
 		commentary: CommentaryProvider | null;
 		/**
 		 * AI 总开关查询。返回 false 时跳过 commentary 调用,直接走模板回退,
-		 * 与 commentary === null 行为等价。Adapter 用 `() => globals.defaults.ai.enabled` 填充,
+		 * 与 commentary === null 行为等价。Adapter 用 `() => globals.ai.enabled` 填充,
 		 * 缺省 () => true。
 		 */
 		isAiEnabled?: () => boolean;
 		/**
 		 * 联网搜索开关查询。true 时给这一次 comment() 的 override 盖 webSearch 章;
 		 * 执行器在不在是生成器的事。Adapter 用
-		 * `() => globals.defaults.ai.search.engines.live` 填充,缺省 () => false ——
+		 * `() => globals.ai.search.engines.live` 填充,缺省 () => false ——
 		 * 搜索按次付费,方向要紧:漏接的 adapter 拿到的是不烧钱的那侧。
 		 */
 		isWebSearchEnabled?: () => boolean;

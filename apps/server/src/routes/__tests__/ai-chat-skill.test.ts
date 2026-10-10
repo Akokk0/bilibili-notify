@@ -55,9 +55,7 @@ async function makeDeps() {
 	const deps = {
 		store: {
 			getGlobals: () => ({
-				defaults: {
-					ai: { enabled: true, activeProfile: "p", providers: { p: { vision: { model: "vm" } } } },
-				},
+				ai: { enabled: true, activeProfile: "p", providers: { p: { vision: { model: "vm" } } } },
 			}),
 			getTargets: () => [],
 		},

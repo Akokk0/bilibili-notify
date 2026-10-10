@@ -65,17 +65,15 @@ function mockApi(opts: { builtin?: boolean; model?: boolean }): void {
 		if (url === "/api/settings") {
 			const filled = opts.model ?? true;
 			return Promise.resolve({
-				defaults: {
-					ai: {
-						enabled: false,
-						activeProfile: "p1",
-						providers: {
-							p1: {
-								provider: "custom",
-								apiKey: filled ? "••••" : "",
-								baseUrl: filled ? "https://api.test/v1" : "",
-								model: "m",
-							},
+				ai: {
+					enabled: false,
+					activeProfile: "p1",
+					providers: {
+						p1: {
+							provider: "custom",
+							apiKey: filled ? "••••" : "",
+							baseUrl: filled ? "https://api.test/v1" : "",
+							model: "m",
 						},
 					},
 				},

@@ -34,14 +34,14 @@ const base = { name: "n", enabled: true } as const;
 
 function sections() {
 	const globals = makeDefaultGlobalConfig();
-	globals.defaults.ai.providers.ds = AIProviderProfileSchema.parse({
+	globals.ai.providers.ds = AIProviderProfileSchema.parse({
 		provider: "deepseek",
 		apiKey: "k-main",
 		baseUrl: "https://api.example/v1",
 		vision: { apiKey: "k-vision", baseUrl: "https://v.example/v1" },
 	});
-	globals.defaults.ai.providers.other = AIProviderProfileSchema.parse({ provider: "custom" });
-	globals.defaults.ai.search.keys = { bocha: "k-bocha", tavily: "" };
+	globals.ai.providers.other = AIProviderProfileSchema.parse({ provider: "custom" });
+	globals.ai.search.keys = { bocha: "k-bocha", tavily: "" };
 	globals.bootstrap = {
 		server: { host: "0.0.0.0", port: 8787 },
 		dataDir: "data",
@@ -143,19 +143,16 @@ const EXPECTED_ERASED_PATHS = [
 	"extensionSettings.bridge.links.0.password",
 	"extensionSettings.bridge.token",
 	"globals.bootstrap.dashboardAuth.password",
-	"globals.defaults.ai.providers.ds.apiKey",
-	"globals.defaults.ai.providers.ds.baseUrl",
-	"globals.defaults.ai.providers.ds.vision.apiKey",
-	"globals.defaults.ai.providers.ds.vision.baseUrl",
+	"globals.ai.providers.ds.apiKey",
+	"globals.ai.providers.ds.baseUrl",
+	"globals.ai.providers.ds.vision.apiKey",
+	"globals.ai.providers.ds.vision.baseUrl",
 	"globals.marketplace.sources.0.url",
 	"integrations.bilibili.token",
 ].sort();
 
 // 搜索 key 里 tavily 本来就是空串(抹不抹结果一样,不进叶子清单),bocha 在。
-const EXPECTED_WITH_SEARCH = [
-	...EXPECTED_ERASED_PATHS,
-	"globals.defaults.ai.search.keys.bocha",
-].sort();
+const EXPECTED_WITH_SEARCH = [...EXPECTED_ERASED_PATHS, "globals.ai.search.keys.bocha"].sort();
 
 /**
  * 查表:内置三个适配器各回自己的真 schema;桥回 undefined(它的 schema 上没有标记,等于问不出标记)、声明的键是

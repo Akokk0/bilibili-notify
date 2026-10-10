@@ -30,9 +30,9 @@ import { api } from "../../services/api";
 /** 主模型落在 DeepSeek —— 正是「主模型没有视觉能力」那一档,副模型必然在别家。 */
 function globals() {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.enabled = true;
-	g.defaults.ai.activeProfile = "deepseek";
-	g.defaults.ai.providers = {
+	g.ai.enabled = true;
+	g.ai.activeProfile = "deepseek";
+	g.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
 			label: "",
@@ -150,21 +150,19 @@ describe("AI 页 · 图片理解", () => {
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
 			{
-				defaults: {
-					ai: {
-						providers: Record<
-							string,
-							{
-								apiKey?: string;
-								baseUrl?: string;
-								vision?: { baseUrl?: string; apiKey?: string };
-							}
-						>;
-					};
+				ai: {
+					providers: Record<
+						string,
+						{
+							apiKey?: string;
+							baseUrl?: string;
+							vision?: { baseUrl?: string; apiKey?: string };
+						}
+					>;
 				};
 			},
 		];
-		const bucket = body.defaults.ai.providers.deepseek;
+		const bucket = body.ai.providers.deepseek;
 		expect(bucket?.vision?.baseUrl).toBe("https://api.siliconflow.cn/v1");
 		expect(bucket?.vision?.apiKey).toBe("sk-vision");
 		// 写串桶的话主模型会拿副模型的地址/密钥去发主请求 —— 一律 401,而且查不出所以然。

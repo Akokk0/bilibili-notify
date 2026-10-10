@@ -10,9 +10,10 @@
  */
 
 import { DEFAULT_FEATURE_FLAGS } from "../../../types/domain";
-import type { GlobalDefaults } from "../../../types/globals";
+import type { GlobalConfig, GlobalDefaults } from "../../../types/globals";
 
-export function makeDefaults(): GlobalDefaults {
+/** AI 设置的 fixture(3a-38 ④:AI 在核心设置的顶层,不在 `defaults` 里)。 */
+export function makeAi(): GlobalConfig["ai"] {
 	const persona = {
 		name: "",
 		addressUser: "",
@@ -22,6 +23,25 @@ export function makeDefaults(): GlobalDefaults {
 		baseRole: "",
 		extraSystemPrompt: "",
 	};
+	return {
+		enabled: false,
+		persona,
+		dynamicPrompt: "",
+		liveSummaryPrompt: "",
+		// 一份实例都没添加 = 全新配置。连接与生成参数都住在实例桶里。
+		activeProfile: "",
+		providers: {},
+		chat: {},
+		search: {
+			backend: "bocha",
+			keys: { bocha: "", tavily: "" },
+			engines: { dynamic: false, live: false, roast: false },
+		},
+		presets: [],
+	};
+}
+
+export function makeDefaults(): GlobalDefaults {
 	const defaults = {
 		features: { ...DEFAULT_FEATURE_FLAGS },
 		cards: { enabled: true, liveCoverImageIds: [] },
@@ -60,22 +80,6 @@ export function makeDefaults(): GlobalDefaults {
 			membership: {
 				guard: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
 			},
-		},
-		ai: {
-			enabled: false,
-			persona,
-			dynamicPrompt: "",
-			liveSummaryPrompt: "",
-			// 一份实例都没添加 = 全新配置。连接与生成参数都住在实例桶里。
-			activeProfile: "",
-			providers: {},
-			chat: {},
-			search: {
-				backend: "bocha",
-				keys: { bocha: "", tavily: "" },
-				engines: { dynamic: false, live: false, roast: false },
-			},
-			presets: [],
 		},
 		imageGroup: { enabled: true, mergeForward: false },
 		messageLayout: {

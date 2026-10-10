@@ -96,8 +96,8 @@ function toRoastInput(
 	};
 }
 
-/** 这两个函数只读 `defaults.ai` 的这个投影,不为它们抄一遍完整类型。 */
-type RoastAiSettings = ReturnType<RoastGenDeps["store"]["getGlobals"]>["defaults"]["ai"];
+/** 这两个函数只读 `ai` 的这个投影,不为它们抄一遍完整类型。 */
+type RoastAiSettings = ReturnType<RoastGenDeps["store"]["getGlobals"]>["ai"];
 
 /**
  * 锐评的一次性生成器。engines.commentary 那台是常驻的,这里刻意自建(见调用点
@@ -138,7 +138,7 @@ export async function generateBoardRoast(
 	if (!engines) return GEN_FAILURE.notReady();
 
 	const globals = deps.store.getGlobals();
-	const aiSettings = globals.defaults.ai;
+	const aiSettings = globals.ai;
 	if (!aiSettings.enabled) return GEN_FAILURE.aiDisabled();
 	if (!globals.stats.enabled) return GEN_FAILURE.statsDisabled();
 
@@ -189,7 +189,7 @@ export async function generateSoloRoast(
 	if (!sub) return GEN_FAILURE.notSubscribed();
 
 	const globals = deps.store.getGlobals();
-	const aiSettings = globals.defaults.ai;
+	const aiSettings = globals.ai;
 	if (!aiSettings.enabled) return GEN_FAILURE.aiDisabled();
 	if (!globals.stats.enabled) return GEN_FAILURE.statsDisabled();
 

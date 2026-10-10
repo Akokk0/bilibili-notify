@@ -20,7 +20,7 @@ import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn() },
@@ -58,7 +58,7 @@ const BILI: Subscription = makeEmptySubscription({ sourceKey: "bilibili", extern
 function globals(): GlobalConfig {
 	const defaults = makeDefaults();
 	defaults.schedule.quietHours = [{ start: 23, end: 7 }];
-	return { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalConfig;
 }
 
 let subs: Subscription[];

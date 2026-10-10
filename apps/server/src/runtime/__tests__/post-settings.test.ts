@@ -37,8 +37,8 @@ describe("postSettingsOf — 订阅覆盖与全局折成一层", () => {
 		g.defaults.templates.postVideo = "全局视频 {name}";
 		g.defaults.imageGroup = { enabled: true, mergeForward: true };
 		g.defaults.cards.enabled = false;
-		g.defaults.ai.enabled = false;
-		g.defaults.ai.search.engines.dynamic = true;
+		g.ai.enabled = false;
+		g.ai.search.engines.dynamic = true;
 		for (const sub of [biliSub(), makeExtensionSubscription()]) {
 			const s = postSettingsOf(sub, g);
 			expect(s.filter).toEqual({ ...DEFAULT_CONTENT_FILTERS, ...g.defaults.filters });

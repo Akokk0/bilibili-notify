@@ -65,12 +65,10 @@ async function makeDeps(opts: { skins?: boolean } = {}) {
 		store: {
 			// 桶里的 vision.model 填着,附件才过得了「女仆看不见图」那道闸。
 			getGlobals: () => ({
-				defaults: {
-					ai: {
-						enabled: true,
-						activeProfile: "p",
-						providers: { p: { vision: { model: "vm" } } },
-					},
+				ai: {
+					enabled: true,
+					activeProfile: "p",
+					providers: { p: { vision: { model: "vm" } } },
 				},
 			}),
 			getTargets: () => [],

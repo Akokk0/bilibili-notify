@@ -22,7 +22,7 @@ export function ThinkingControl({ on, onToggle }: { on: boolean; onToggle: (v: b
 		queryKey: ["settings"],
 		queryFn: () => api.get<GlobalConfig>("/api/settings"),
 	});
-	const ai = globalsQuery.data?.defaults.ai;
+	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
 	if (!ai) return null;
 

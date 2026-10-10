@@ -46,12 +46,12 @@ export function searchSecretKey(backend: string): string {
  */
 export function collectAiSecrets(g: GlobalConfig): Record<string, string> {
 	const out: Record<string, string> = {};
-	for (const [id, p] of Object.entries(g.defaults.ai.providers)) {
+	for (const [id, p] of Object.entries(g.ai.providers)) {
 		if (!p) continue;
 		if (p.apiKey) out[aiSecretKey(id)] = p.apiKey;
 		if (p.vision.apiKey) out[aiSecretKey(id, true)] = p.vision.apiKey;
 	}
-	for (const [backend, key] of Object.entries(g.defaults.ai.search.keys)) {
+	for (const [backend, key] of Object.entries(g.ai.search.keys)) {
 		if (key) out[searchSecretKey(backend)] = key;
 	}
 	return out;
@@ -101,44 +101,41 @@ function mapAiSecrets(
 	// 恢复路径(assemble.ts 的 openFullBackup)会把老备份的 globals 原样递进来(活 schema 已不再迁 0.x
 	// 老形状,那种备份下游 parse 会拒;⑧ 起在信封那一步整份拒收)。递进来的
 	// globals 可能没有 ai.search 段(搜索上线前)、没有 providers 桶
-	// (扁平时代)、甚至没有 defaults.ai(AI 上线前)。缺哪段就原样跳过哪段 ——
+	// (扁平时代)、甚至没有 ai(AI 上线前)。缺哪段就原样跳过哪段 ——
 	// 这里只对存在的形状灌密钥,补默认是下游 GlobalConfigSchema parse 的事;
 	// 曾经无守卫地 Object.keys(undefined),升级前的所有全量备份因此不可恢复。
-	const ai = g.defaults.ai as GlobalConfig["defaults"]["ai"] | undefined;
+	const ai = g.ai as GlobalConfig["ai"] | undefined;
 	if (!ai) return g;
-	const search = ai.search as GlobalConfig["defaults"]["ai"]["search"] | undefined;
-	const providers = ai.providers as GlobalConfig["defaults"]["ai"]["providers"] | undefined;
+	const search = ai.search as GlobalConfig["ai"]["search"] | undefined;
+	const providers = ai.providers as GlobalConfig["ai"]["providers"] | undefined;
 	return {
 		...g,
-		defaults: {
-			...g.defaults,
-			ai: {
-				...ai,
-				...(providers
-					? {
-							providers: Object.fromEntries(
-								Object.entries(providers).map(([id, p]) => [
-									id,
-									p && {
-										...p,
-										apiKey: next(id, false),
-										vision: { ...p.vision, apiKey: next(id, true) },
-									},
-								]),
-							),
-						}
-					: {}),
-				...(search?.keys
-					? {
-							search: {
-								...search,
-								keys: Object.fromEntries(
-									Object.keys(search.keys).map((backend) => [backend, nextSearch(backend)]),
-								) as GlobalConfig["defaults"]["ai"]["search"]["keys"],
-							},
-						}
-					: {}),
-			},
+		ai: {
+			...ai,
+			...(providers
+				? {
+						providers: Object.fromEntries(
+							Object.entries(providers).map(([id, p]) => [
+								id,
+								p && {
+									...p,
+									apiKey: next(id, false),
+									vision: { ...p.vision, apiKey: next(id, true) },
+								},
+							]),
+						),
+					}
+				: {}),
+			...(search?.keys
+				? {
+						search: {
+							...search,
+							keys: Object.fromEntries(
+								Object.keys(search.keys).map((backend) => [backend, nextSearch(backend)]),
+							) as GlobalConfig["ai"]["search"]["keys"],
+						},
+					}
+				: {}),
 		},
 	};
 }

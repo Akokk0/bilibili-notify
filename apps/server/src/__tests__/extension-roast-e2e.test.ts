@@ -95,11 +95,11 @@ describe("拓展订阅的锐评 e2e:两条拓展订阅进同一张榜,平台列�
 		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as {
 			extensions: Record<string, unknown>;
-			defaults: { ai: Record<string, unknown> };
+			ai: Record<string, unknown>;
 		};
 		globals.extensions = { [FAKE]: { enabled: true } };
-		globals.defaults.ai = {
-			...globals.defaults.ai,
+		globals.ai = {
+			...globals.ai,
 			enabled: true,
 			activeProfile: "stub",
 			providers: {

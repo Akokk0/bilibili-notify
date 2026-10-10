@@ -18,7 +18,7 @@ import type { RouteDeps } from "../types.js";
 
 const logger = { debug() {}, info() {}, warn() {}, error: vi.fn() };
 const deps = {
-	store: { getSubscriptions: () => [], getGlobals: () => ({ defaults: { ai: {} } }) },
+	store: { getSubscriptions: () => [], getGlobals: () => ({ ai: {} }) },
 	runtime: { serviceCtx: { logger } },
 } as unknown as RouteDeps;
 

@@ -239,7 +239,7 @@ export interface CreateConfigStoreOptions {
 	/** Where the settings / subscriptions / connections / targets JSON files live. Defaults to `<dataRoot>/config`. */
 	stateDir?: string;
 	/**
-	 * Encrypted bag for secret fields (currently `defaults.ai.apiKey`). When
+	 * Encrypted bag for secret fields (currently `ai.apiKey`). When
 	 * given, the apiKey is moved out of plaintext `settings/core.json` into this store
 	 * (and a one-time lift migrates an existing plaintext key). When omitted the
 	 * legacy behaviour (apiKey stays in settings/core.json) is preserved — used by
@@ -317,7 +317,7 @@ async function copyFileAtomic(from: string, to: string): Promise<void> {
 }
 
 /**
- * Returns a deep clone of `g` with `defaults.ai.apiKey` removed — the form
+ * Returns a deep clone of `g` with `ai.apiKey` removed — the form
  * persisted to `settings/core.json` when a SecretStore owns the apiKey. The live
  * in-memory `this.globals` keeps the real value (engines read it via
  * getGlobals); only the on-disk copy is stripped.
@@ -960,7 +960,7 @@ class NodeConfigStore implements ConfigStore {
 				"[secrets] 已把明文 apiKey 从 settings/core.json 迁移进加密 secrets 文件",
 			);
 		}
-		// Hydrate in-memory (engines/routes keep reading defaults.ai.apiKey).
+		// Hydrate in-memory (engines/routes keep reading ai.apiKey).
 		//
 		// 末尾必须重新过一遍 schema —— 不是为了校验,是为了**把键序归位**。
 		// `stripApiKeyForDisk` 在盘上是 `delete` 掉 apiKey 的,所以 load() 读回的对象里
@@ -968,7 +968,7 @@ class NodeConfigStore implements ConfigStore {
 		// zod parse 的声明顺序。而 `engines.ts` 的 config-changed diff 是拿
 		// `JSON.stringify` 逐 section 比相等的(键序敏感),它依赖「globals 永远是 zod
 		// parse 的规范形态」这一不变式 —— 不归位的话,重启后第一次改**任何** globals
-		// 字段(哪怕只是 profileRefreshCron),`defaults.ai` 都会被误判成「变了」,白白热重载一次
+		// 字段(哪怕只是 profileRefreshCron),`ai` 都会被误判成「变了」,白白热重载一次
 		// AI 实例并刷两条日志。走 legacy 明文路径时键还在原位,spread 只覆盖值,所以这个
 		// 坑只在「配了 AI + 启用加密 + 重启后首次变更」三者同时满足时才现形。
 		this.globals = GlobalConfigSchema.parse(

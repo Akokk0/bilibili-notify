@@ -72,25 +72,23 @@ async function makeDeps(
 	const deps = {
 		store: {
 			getGlobals: () => ({
-				defaults: {
-					ai: {
-						enabled: true,
-						activeProfile: opts.provider ?? "custom",
-						// 看图那两条路现在也在服务商桶里 —— 它们描述的是「这家的主模型
-						// 看不看得见图」,本来就该跟着服务商走。
-						providers: {
-							[opts.provider ?? "custom"]: {
-								provider: opts.provider ?? "custom",
-								label: "",
-								apiKey: "sk-x",
-								baseUrl: "https://api.example.com/v1",
-								model: "m",
-								enableThinking: false,
-								thinkingLevel: "medium",
-								extraParams: "",
-								enableVision: opts.enableVision ?? false,
-								vision: { baseUrl: "", apiKey: "", model: opts.visionModel ?? "" },
-							},
+				ai: {
+					enabled: true,
+					activeProfile: opts.provider ?? "custom",
+					// 看图那两条路现在也在服务商桶里 —— 它们描述的是「这家的主模型
+					// 看不看得见图」,本来就该跟着服务商走。
+					providers: {
+						[opts.provider ?? "custom"]: {
+							provider: opts.provider ?? "custom",
+							label: "",
+							apiKey: "sk-x",
+							baseUrl: "https://api.example.com/v1",
+							model: "m",
+							enableThinking: false,
+							thinkingLevel: "medium",
+							extraParams: "",
+							enableVision: opts.enableVision ?? false,
+							vision: { baseUrl: "", apiKey: "", model: opts.visionModel ?? "" },
 						},
 					},
 				},

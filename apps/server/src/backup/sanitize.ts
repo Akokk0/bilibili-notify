@@ -260,7 +260,7 @@ export interface RedactedLeaf {
  *
  * 从前袋子是一份手抄清单(aiApiKeys / cookiesJson / refreshToken / connectionConfigs),
  * 而抹的那一侧是结构性的深度遍历 —— 两边必然漂,且漂了没有任何人会红:
- * `defaults.ai.providers.*.baseUrl` 与 `globals.marketplace.sources[*].url` 被抹成
+ * `ai.providers.*.baseUrl` 与 `globals.marketplace.sources[*].url` 被抹成
  * `https://redacted.invalid/`、拓展 settings 里的 `token` 被抹成 `""`,袋子里一格都没有,
  * 于是**恢复之后那些配置全是占位符**(AI 打不通、市场源连不上、桥的接入全失效),而
  * 恢复流程一句话都不会说。以后再往脱敏那边加一条规则,这里自动跟上。

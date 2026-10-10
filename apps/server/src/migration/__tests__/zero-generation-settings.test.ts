@@ -43,7 +43,9 @@ type DiskTemplates = Record<string, unknown> & {
 };
 type Obj = Record<string, unknown>;
 interface DiskGlobals {
-	defaults: { templates: DiskTemplates; ai: Record<string, unknown> };
+	defaults: { templates: DiskTemplates };
+	/** AI 设置在核心设置的顶层(3a-38 ④);`defaults` 里不再有。 */
+	ai: Record<string, unknown>;
 	linkParsing: Record<string, unknown>;
 }
 
@@ -468,7 +470,10 @@ describe("0.x 扁平 AI 连接 + 明文 apiKey → 迁移器接缝 → 加密袋
 		// 第一段:迁移器只搬形状 —— 新代里的文件是改写过的,扁平字段整份进了 custom 桶,明文原样还在桶里(抬密钥是配置仓的事)。
 		expect(report.rewritten).toContain("config/settings/core.json");
 		await expectZeroGlobalsUntouched(sandbox, original);
-		const migrated = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.ai;
+		const migratedFile = await sandbox.readConfig<DiskGlobals>("settings/core.json");
+		// AI 设置已上提到顶层,老位置 `defaults.ai` 不留空壳。
+		expect(migratedFile.defaults).not.toHaveProperty("ai");
+		const migrated = migratedFile.ai;
 		for (const key of ["apiKey", "baseUrl", "model", "provider"]) {
 			expect(migrated, `迁出来的 ai 顶层还留着老键 ${key}`).not.toHaveProperty(key);
 		}
@@ -484,10 +489,10 @@ describe("0.x 扁平 AI 连接 + 明文 apiKey → 迁移器接缝 → 加密袋
 		// 第二段:配置仓开机,把明文抬进加密袋。
 		const { store, secret } = await loadWithSecrets();
 		// 扁平配置整份进 custom 桶(迁移器),密钥注水回内存。
-		expect(store.getGlobals().defaults.ai.providers.custom?.apiKey).toBe("sk-legacy-plain");
-		expect(store.getGlobals().defaults.ai.providers.custom?.model).toBe("deepseek-v4-pro");
+		expect(store.getGlobals().ai.providers.custom?.apiKey).toBe("sk-legacy-plain");
+		expect(store.getGlobals().ai.providers.custom?.model).toBe("deepseek-v4-pro");
 		// 磁盘上那把被抠成空串 —— 不留明文,也不动键序。
-		const afterLift = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).defaults.ai;
+		const afterLift = (await sandbox.readConfig<DiskGlobals>("settings/core.json")).ai;
 		expect((afterLift.providers as Record<string, { apiKey?: string }>).custom?.apiKey).toBe("");
 		// 整个文件里都没有明文(不只是 custom 桶那一格)。
 		expect(await readFile(sandbox.configPath("settings/core.json"), "utf8")).not.toContain(
@@ -535,9 +540,10 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 		await expectZeroGlobalsUntouched(sandbox, original);
 		const onDisk = await sandbox.readConfig<DiskGlobals>("settings/core.json");
 		for (const key of ["baseUrl", "model", "provider"]) {
-			expect(onDisk.defaults.ai, `迁出来的 ai 顶层还留着老键 ${key}`).not.toHaveProperty(key);
+			expect(onDisk.ai, `迁出来的 ai 顶层还留着老键 ${key}`).not.toHaveProperty(key);
 		}
-		expect(onDisk.defaults.ai).toMatchObject({
+		expect(onDisk.defaults).not.toHaveProperty("ai");
+		expect(onDisk.ai).toMatchObject({
 			activeProfile: "custom",
 			providers: { custom: { provider: "custom", model: "deepseek-v4-pro" } },
 		});
@@ -553,8 +559,8 @@ describe("0.x 三处老形状一起走迁移器接缝", () => {
 
 		// 配置仓开机读出来的也是最新的形状。
 		const globals = (await sandbox.load()).getGlobals();
-		expect(globals.defaults.ai.activeProfile).toBe("custom");
-		expect(globals.defaults.ai.providers.custom).toMatchObject({
+		expect(globals.ai.activeProfile).toBe("custom");
+		expect(globals.ai.providers.custom).toMatchObject({
 			provider: "custom",
 			model: "deepseek-v4-pro",
 		});
@@ -579,6 +585,6 @@ describe("全新安装的人格指针", () => {
 	// (`DEFAULT_AI.activePreset`)。全新安装开机之后,「当前这份人格」必须有着落 —— 指着第一份内置预设。
 	it("空的数据根上开机:activePreset 指着第一份内置人格", async () => {
 		const store = await sandbox.load();
-		expect(store.getGlobals().defaults.ai.activePreset).toBe(BUILTIN_AI_PRESETS[0].id);
+		expect(store.getGlobals().ai.activePreset).toBe(BUILTIN_AI_PRESETS[0].id);
 	});
 });

@@ -27,8 +27,8 @@ import { api } from "../../../services/api";
 
 function globalsWith(provider: "deepseek" | "custom", flavor: "chat" | "responses" = "chat") {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.activeProfile = "p1";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "p1";
+	g.ai.providers = {
 		p1: {
 			provider,
 			label: "",
@@ -70,7 +70,7 @@ describe("ThinkingLevelSetting — 侧栏里的思考深度", () => {
 
 	it("调过就写实:chat 段的值压过实例", async () => {
 		const g = globalsWith("deepseek");
-		g.defaults.ai.chat = { thinkingLevel: "low" };
+		g.ai.chat = { thinkingLevel: "low" };
 		mount(g);
 		const low = await screen.findByRole("button", { name: "低" });
 		expect(low.getAttribute("aria-pressed")).toBe("true");
@@ -81,7 +81,7 @@ describe("ThinkingLevelSetting — 侧栏里的思考深度", () => {
 		fireEvent.click(await screen.findByRole("button", { name: "低" }));
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
 		expect(api.patch).toHaveBeenCalledWith("/api/settings", {
-			defaults: { ai: { chat: { thinkingLevel: "low" } } },
+			ai: { chat: { thinkingLevel: "low" } },
 		});
 	});
 

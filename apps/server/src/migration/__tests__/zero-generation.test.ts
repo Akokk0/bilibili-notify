@@ -125,7 +125,7 @@ const ZERO_FILES: Record<string, string> = {
 			},
 			// 直播拆键:pushTime / restartPush 拆进 liveStreaming / liveStart 两段(`live-split.test.ts` 钉细节,这里让摘要认得到这一步)
 			schedule: { pushTime: 3, restartPush: true },
-			// 最老一代的扁平 AI 连接字段、历代旧默认模板
+			// 最老一代的扁平 AI 连接字段(迁成实例桶后整段上提到顶层 `ai`,3a-38 ④;`core-sections.test.ts` 钉细节,这里让摘要认得到这一步)、历代旧默认模板
 			ai: { apiKey: "sk-old", baseUrl: "https://api.example.com", model: "m" },
 			templates: {
 				liveEnd: "{name} 下播了，直播时长 {duration}",
@@ -803,8 +803,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 43,
-			output: "0bba6da97a0a465b4cffcbb8dde6e591dedf548160d5bf35b1275b6acf292fef",
+			revision: 44,
+			output: "f2802278b3f95fa660b9f2dd39c6e6268c28819b00d3ae65f3f3780cfd0ad0f7",
 		});
 	});
 });

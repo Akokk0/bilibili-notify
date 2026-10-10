@@ -30,7 +30,7 @@ function makeDeps(opts: StubOpts = {}) {
 		store: {
 			getSubscriptions: () => [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }],
 			getGlobals: () => ({
-				defaults: { ai: { enabled: opts.aiEnabled ?? true } },
+				ai: { enabled: opts.aiEnabled ?? true },
 				stats: { enabled: opts.statsEnabled ?? true },
 			}),
 		},

@@ -31,10 +31,10 @@ const MASK = { masked: "••••••••" };
 /** 后端 GET / PATCH 都返回打码过的 globals —— 配了的 apiKey 恒为 { masked }。 */
 function redactedGlobals() {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.enabled = true;
+	g.ai.enabled = true;
 	// 连接字段住在服务商桶里(各家一套配置)。
-	g.defaults.ai.activeProfile = "deepseek";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "deepseek";
+	g.ai.providers = {
 		deepseek: {
 			provider: "deepseek",
 			label: "",
@@ -53,7 +53,7 @@ function redactedGlobals() {
 		},
 	};
 	// 联网搜索 key:配了的一把是遮挡,没配的是空串。
-	g.defaults.ai.search.keys = { bocha: MASK as unknown as string, tavily: "" };
+	g.ai.search.keys = { bocha: MASK as unknown as string, tavily: "" };
 	return JSON.parse(JSON.stringify(g));
 }
 
@@ -91,7 +91,7 @@ async function renderModelTab() {
 const apiKeyRow = () =>
 	document.querySelector('[data-code="ai.providers.deepseek.apiKey"]') as HTMLElement;
 
-type Body = { defaults: { ai: { providers: Record<string, Record<string, unknown>> } } };
+type Body = { ai: { providers: Record<string, Record<string, unknown>> } };
 const lastPatchBody = () => vi.mocked(api.patch).mock.calls.at(-1)?.[1] as Body;
 const save = () =>
 	act(async () => {
@@ -126,7 +126,7 @@ describe("AI 页 — 密钥格的保存闭环", () => {
 
 		await save();
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
-		expect(lastPatchBody().defaults.ai.providers.deepseek?.apiKey).toBe("sk-brand-new");
+		expect(lastPatchBody().ai.providers.deepseek?.apiKey).toBe("sk-brand-new");
 
 		// 保存成功 = 已入库 → 灵动岛必须不再显示未保存改动。
 		await waitFor(() => {
@@ -141,7 +141,7 @@ describe("AI 页 — 密钥格的保存闭环", () => {
 		await save();
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 
-		const bucket = lastPatchBody().defaults.ai.providers.deepseek;
+		const bucket = lastPatchBody().ai.providers.deepseek;
 		expect(bucket?.model).toBe("other-model");
 		expect(bucket).not.toHaveProperty("apiKey");
 		expect(JSON.stringify(lastPatchBody())).not.toContain("masked");
@@ -154,7 +154,7 @@ describe("AI 页 — 密钥格的保存闭环", () => {
 		await save();
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 
-		const bucket = lastPatchBody().defaults.ai.providers.deepseek;
+		const bucket = lastPatchBody().ai.providers.deepseek;
 		expect(bucket).toHaveProperty("apiKey");
 		expect(bucket?.apiKey).toBe("");
 	});
@@ -169,7 +169,7 @@ describe("AI 页 — 密钥格的保存闭环", () => {
 		const json = JSON.stringify(lastPatchBody());
 		expect(json).not.toContain("masked");
 		expect(json).not.toContain('"vision":{"baseUrl":"","apiKey"');
-		expect(lastPatchBody().defaults.ai.providers.deepseek?.vision).not.toHaveProperty("apiKey");
+		expect(lastPatchBody().ai.providers.deepseek?.vision).not.toHaveProperty("apiKey");
 
 		// 换搜索 key:全局配置 Tab 里那一格。
 		fireEvent.click(screen.getByRole("tab", { name: /全局配置/ }));
@@ -178,7 +178,7 @@ describe("AI 页 — 密钥格的保存闭环", () => {
 		fireEvent.change(row.querySelector("input") as HTMLElement, { target: { value: "bocha-new" } });
 		await save();
 		await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(2));
-		const search = (lastPatchBody().defaults.ai as unknown as { search: { keys: unknown } }).search;
+		const search = (lastPatchBody().ai as unknown as { search: { keys: unknown } }).search;
 		expect(search.keys).toMatchObject({ bocha: "bocha-new" });
 	});
 

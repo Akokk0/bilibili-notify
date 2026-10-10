@@ -40,7 +40,7 @@ function profile(over: Record<string, unknown> = {}) {
 /** 每家都配齐、两把 key 都填了。 */
 function withAllBuckets() {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.providers = Object.fromEntries(
+	g.ai.providers = Object.fromEntries(
 		AI_PROVIDER_IDS.map((id) => [
 			id,
 			profile({
@@ -63,7 +63,7 @@ describe("collectAiSecrets", () => {
 
 	it("空 key 不进袋 —— 袋里存个空串等于把「未配置」写成「配置了空的」", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
+		g.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
 		const bag = collectAiSecrets(g);
 		expect(bag).toEqual({ deepseek: "sk-x" });
 	});
@@ -82,7 +82,7 @@ describe("stripAiSecrets — 落盘前抠干净", () => {
 
 	it("抠的是密钥,不碰同桶的别的字段", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.providers = {
+		g.ai.providers = {
 			deepseek: profile({
 				apiKey: "sk-x",
 				baseUrl: "https://api.deepseek.com",
@@ -90,7 +90,7 @@ describe("stripAiSecrets — 落盘前抠干净", () => {
 				vision: { baseUrl: "https://other/v1", apiKey: "sk-v", model: "qwen-vl" },
 			}),
 		};
-		const out = stripAiSecrets(g).defaults.ai.providers.deepseek;
+		const out = stripAiSecrets(g).ai.providers.deepseek;
 		expect(out?.baseUrl).toBe("https://api.deepseek.com");
 		expect(out?.model).toBe("deepseek-v4-pro");
 		expect(out?.vision.baseUrl).toBe("https://other/v1");
@@ -100,7 +100,7 @@ describe("stripAiSecrets — 落盘前抠干净", () => {
 	it("不改动传进来的那份 —— 内存里的明文还要给引擎用", () => {
 		const g = withAllBuckets();
 		stripAiSecrets(g);
-		expect(g.defaults.ai.providers.deepseek?.apiKey).toBe("sk-main-deepseek");
+		expect(g.ai.providers.deepseek?.apiKey).toBe("sk-main-deepseek");
 	});
 });
 
@@ -110,8 +110,8 @@ describe("applyAiSecrets — 读回时灌回内存", () => {
 		const bag = collectAiSecrets(withAllBuckets());
 		const out = applyAiSecrets(stripped, bag);
 		for (const id of AI_PROVIDER_IDS) {
-			expect(out.defaults.ai.providers[id]?.apiKey).toBe(`sk-main-${id}`);
-			expect(out.defaults.ai.providers[id]?.vision.apiKey).toBe(`sk-v-${id}`);
+			expect(out.ai.providers[id]?.apiKey).toBe(`sk-main-${id}`);
+			expect(out.ai.providers[id]?.vision.apiKey).toBe(`sk-v-${id}`);
 		}
 	});
 
@@ -126,18 +126,18 @@ describe("applyAiSecrets — 读回时灌回内存", () => {
 		// 的默认形状对上,避免 globals 偏离 parse 后的规范形态(那会让引擎的
 		// config-changed diff 误判)。
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
+		g.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
 		const out = applyAiSecrets(stripAiSecrets(g), {});
-		expect(out.defaults.ai.providers.deepseek?.apiKey).toBe("");
+		expect(out.ai.providers.deepseek?.apiKey).toBe("");
 	});
 
 	it("袋里有一把属于「还没添加的家」→ 忽略,不凭空造桶", () => {
 		// 主人删掉一家但袋里还留着它的 key 时会走到这儿。造出桶来的话,
 		// 设置页左栏会凭空多一块。
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
+		g.ai.providers = { deepseek: profile({ apiKey: "sk-x" }) };
 		const out = applyAiSecrets(g, { deepseek: "sk-x", openrouter: "sk-ghost" });
-		expect(Object.keys(out.defaults.ai.providers)).toEqual(["deepseek"]);
+		expect(Object.keys(out.ai.providers)).toEqual(["deepseek"]);
 	});
 });
 
@@ -149,7 +149,7 @@ describe("联网搜索的 key 也走袋子", () => {
 	 */
 	function withSearchKeys() {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.search.keys = { bocha: "sk-bocha", tavily: "tvly-x" };
+		g.ai.search.keys = { bocha: "sk-bocha", tavily: "tvly-x" };
 		return g;
 	}
 
@@ -161,7 +161,7 @@ describe("联网搜索的 key 也走袋子", () => {
 
 	it("collect:空 key 不进袋 —— 「未配置」不该被记成「配置了个空的」", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.search.keys = { bocha: "sk-bocha", tavily: "" };
+		g.ai.search.keys = { bocha: "sk-bocha", tavily: "" };
 		const bag = collectAiSecrets(g);
 		expect(bag["search:bocha"]).toBe("sk-bocha");
 		expect("search:tavily" in bag).toBe(false);
@@ -169,18 +169,18 @@ describe("联网搜索的 key 也走袋子", () => {
 
 	it("strip:落盘前抠成空串,别的字段不动", () => {
 		const g = withSearchKeys();
-		g.defaults.ai.search.backend = "tavily";
+		g.ai.search.backend = "tavily";
 		const out = stripAiSecrets(g);
-		expect(out.defaults.ai.search.keys).toEqual({ bocha: "", tavily: "" });
-		expect(out.defaults.ai.search.backend).toBe("tavily");
+		expect(out.ai.search.keys).toEqual({ bocha: "", tavily: "" });
+		expect(out.ai.search.backend).toBe("tavily");
 		// 原对象不动 —— 内存里的明文还要给引擎用。
-		expect(g.defaults.ai.search.keys.bocha).toBe("sk-bocha");
+		expect(g.ai.search.keys.bocha).toBe("sk-bocha");
 	});
 
 	it("apply(strip(g), collect(g)) 恒等往返 —— 破了就是「重启掉配置」", () => {
 		const g = withSearchKeys();
 		const restored = applyAiSecrets(stripAiSecrets(g), collectAiSecrets(g));
-		expect(restored.defaults.ai.search.keys).toEqual({ bocha: "sk-bocha", tavily: "tvly-x" });
+		expect(restored.ai.search.keys).toEqual({ bocha: "sk-bocha", tavily: "tvly-x" });
 	});
 });
 
@@ -194,22 +194,43 @@ describe("联网搜索的 key 也走袋子", () => {
 describe("applyAiSecrets — 老备份缺段不许炸", () => {
 	it("缺 ai.search 段(搜索上线前的备份)→ 原样跳过,不抛 TypeError", () => {
 		const g = makeDefaultGlobalConfig();
-		delete (g.defaults.ai as Record<string, unknown>).search;
+		delete (g.ai as Record<string, unknown>).search;
 		const out = applyAiSecrets(g, { deepseek: "sk-x" });
-		expect((out.defaults.ai as Record<string, unknown>).search).toBeUndefined();
+		expect((out.ai as Record<string, unknown>).search).toBeUndefined();
 	});
 
 	it("缺 providers 桶(实例桶迁移前的扁平备份)→ 原样跳过,搜索段照灌", () => {
 		const g = makeDefaultGlobalConfig();
-		delete (g.defaults.ai as Record<string, unknown>).providers;
+		delete (g.ai as Record<string, unknown>).providers;
 		const out = applyAiSecrets(g, { "search:bocha": "sk-b" });
-		expect((out.defaults.ai as Record<string, unknown>).providers).toBeUndefined();
-		expect(out.defaults.ai.search.keys.bocha).toBe("sk-b");
+		expect((out.ai as Record<string, unknown>).providers).toBeUndefined();
+		expect(out.ai.search.keys.bocha).toBe("sk-b");
 	});
 
-	it("连 defaults.ai 都没有(AI 上线前的化石备份)→ 原物返回", () => {
+	it("连 ai 都没有(AI 上线前的化石备份)→ 原物返回", () => {
 		const g = makeDefaultGlobalConfig();
-		delete (g.defaults as Record<string, unknown>).ai;
+		delete (g as Record<string, unknown>).ai;
 		expect(applyAiSecrets(g, {})).toEqual(g);
+	});
+});
+
+describe("ai 在顶层(3a-38 提交 ④)", () => {
+	it("strip / apply 之后顶层键的顺序与入参一样(规范形态,热更按段比较靠它)", () => {
+		const g = withAllBuckets();
+		expect(Object.keys(stripAiSecrets(g))).toEqual(Object.keys(g));
+		expect(Object.keys(applyAiSecrets(stripAiSecrets(g), collectAiSecrets(g)))).toEqual(
+			Object.keys(g),
+		);
+	});
+
+	it("strip 不在 defaults 里留一个 ai(不把整段又写回老位置)", () => {
+		const out = stripAiSecrets(withAllBuckets());
+		expect("ai" in out.defaults).toBe(false);
+	});
+
+	it("正对照:脱敏前确实有这把 key,脱敏后整份序列化里没有", () => {
+		const g = withAllBuckets();
+		expect(JSON.stringify(g)).toContain("sk-main-");
+		expect(JSON.stringify(stripAiSecrets(g))).not.toContain("sk-main-");
 	});
 });

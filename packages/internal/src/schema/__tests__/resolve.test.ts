@@ -23,9 +23,7 @@ describe("resolve()", () => {
 		expect(eff.cards).toEqual(globals.defaults.cards);
 		// AI 不在折叠里:这条订阅生效的人格由 `resolveSubscriptionPersona` 单独给。
 		expect("ai" in eff).toBe(false);
-		expect(resolveSubscriptionPersona(globals.defaults.ai, undefined).persona).toEqual(
-			globals.defaults.ai.persona,
-		);
+		expect(resolveSubscriptionPersona(globals.ai, undefined).persona).toEqual(globals.ai.persona);
 	});
 
 	it("inherits global wordcloudStopWords when no per-UP override", () => {
@@ -123,9 +121,9 @@ describe("resolve()", () => {
 			...SUB_BASE,
 			overrides: { ai: { preset: "inherit" } },
 		};
-		const eff = resolveSubscriptionPersona(globals.defaults.ai, sub.overrides.ai);
-		expect(eff.persona).toEqual(globals.defaults.ai.persona);
-		expect(eff.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
+		const eff = resolveSubscriptionPersona(globals.ai, sub.overrides.ai);
+		expect(eff.persona).toEqual(globals.ai.persona);
+		expect(eff.dynamicPrompt).toBe(globals.ai.dynamicPrompt);
 	});
 
 	it("老的 'custom' 人格就地失效 —— per-UP 只能挑一份已有人格,写不了自己的", () => {
@@ -156,11 +154,11 @@ describe("resolve()", () => {
 				} as unknown as AIOverride,
 			},
 		};
-		const eff = resolveSubscriptionPersona(globals.defaults.ai, sub.overrides.ai);
+		const eff = resolveSubscriptionPersona(globals.ai, sub.overrides.ai);
 
-		expect(eff.persona).toEqual(globals.defaults.ai.persona);
-		expect(eff.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
-		expect(eff.liveSummaryPrompt).toBe(globals.defaults.ai.liveSummaryPrompt);
+		expect(eff.persona).toEqual(globals.ai.persona);
+		expect(eff.dynamicPrompt).toBe(globals.ai.dynamicPrompt);
+		expect(eff.liveSummaryPrompt).toBe(globals.ai.liveSummaryPrompt);
 		// temperature 也已退役(请求里一律不发),残留值同样不参与解析。
 		expect("temperature" in eff).toBe(false);
 	});
@@ -176,7 +174,7 @@ describe("resolve()", () => {
 			baseRole: "",
 			extraSystemPrompt: "",
 		};
-		globals.defaults.ai.presets = [
+		globals.ai.presets = [
 			{
 				id: "tsundere",
 				label: "傲娇",
@@ -189,7 +187,7 @@ describe("resolve()", () => {
 			...SUB_BASE,
 			overrides: { ai: { preset: "tsundere" } },
 		};
-		const eff = resolveSubscriptionPersona(globals.defaults.ai, sub.overrides.ai);
+		const eff = resolveSubscriptionPersona(globals.ai, sub.overrides.ai);
 		expect(eff.persona).toEqual(presetPersona);
 		expect(eff.dynamicPrompt).toBe("X 模板");
 
@@ -198,24 +196,24 @@ describe("resolve()", () => {
 			...SUB_BASE,
 			overrides: { ai: { preset: "non-existent-id" } },
 		};
-		const eff2 = resolveSubscriptionPersona(globals.defaults.ai, sub2.overrides.ai);
-		expect(eff2.persona).toEqual(globals.defaults.ai.persona);
-		expect(eff2.dynamicPrompt).toBe(globals.defaults.ai.dynamicPrompt);
+		const eff2 = resolveSubscriptionPersona(globals.ai, sub2.overrides.ai);
+		expect(eff2.persona).toEqual(globals.ai.persona);
+		expect(eff2.dynamicPrompt).toBe(globals.ai.dynamicPrompt);
 	});
 
 	it("订阅挑的那份人格没写的那段 prompt 回落全局 —— 缺席是「跟全局一样」,不是空串", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.dynamicPrompt = "全局动态";
-		globals.defaults.ai.liveSummaryPrompt = "全局总结";
-		globals.defaults.ai.presets = [
+		globals.ai.dynamicPrompt = "全局动态";
+		globals.ai.liveSummaryPrompt = "全局总结";
+		globals.ai.presets = [
 			{
 				id: "tsundere",
 				label: "傲娇",
-				persona: { ...globals.defaults.ai.persona, name: "傲娇" },
+				persona: { ...globals.ai.persona, name: "傲娇" },
 				liveSummaryPrompt: "傲娇总结",
 			},
 		];
-		const eff = resolveSubscriptionPersona(globals.defaults.ai, { preset: "tsundere" });
+		const eff = resolveSubscriptionPersona(globals.ai, { preset: "tsundere" });
 		expect(eff.persona.name).toBe("傲娇");
 		expect(eff.liveSummaryPrompt).toBe("傲娇总结");
 		expect(eff.dynamicPrompt).toBe("全局动态");
@@ -232,7 +230,7 @@ describe("resolve()", () => {
 			baseRole: "",
 			extraSystemPrompt: "",
 		};
-		globals.defaults.ai.presets = [
+		globals.ai.presets = [
 			{ id: "tsundere", label: "傲娇", persona: presetPersona, dynamicPrompt: "P 模板" },
 		];
 		const overridePersona = {
@@ -255,7 +253,7 @@ describe("resolve()", () => {
 				} as unknown as AIOverride,
 			},
 		};
-		const eff = resolveSubscriptionPersona(globals.defaults.ai, sub.overrides.ai);
+		const eff = resolveSubscriptionPersona(globals.ai, sub.overrides.ai);
 		// 选中的那份人格说了算。残留的 persona 曾经压过它 —— 那时「完全自定义」还在,
 		// 两者能同时存在;现在挑一份就是挑一份,不该被看不见的旧字段改写。
 		expect(eff.persona).toEqual(presetPersona);
@@ -356,79 +354,73 @@ describe("ai.activePreset —— 全局用哪一份人格", () => {
 		// (`apps/server/src/migration/ai.ts`),所以这条路只在指针被就地抹掉时走到 —— 它存在的意义是「无论如何都得有份人格」,
 		// 而不是让人靠改 ai.persona 来换全局人格(那条路已经没有界面入口了)。
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.activePreset = undefined;
-		globals.defaults.ai.persona.name = "梦梦";
-		expect(resolveSubscriptionPersona(globals.defaults.ai, undefined).persona.name).toBe("梦梦");
+		globals.ai.activePreset = undefined;
+		globals.ai.persona.name = "梦梦";
+		expect(resolveSubscriptionPersona(globals.ai, undefined).persona.name).toBe("梦梦");
 	});
 
 	it("默认配置指向第一份「温柔女仆」", () => {
 		const globals = makeDefaultGlobalConfig();
-		expect(globals.defaults.ai.activePreset).toBe("gentle-maid");
-		expect(resolveSubscriptionPersona(globals.defaults.ai, undefined).persona.name).toBe("小绫");
+		expect(globals.ai.activePreset).toBe("gentle-maid");
+		expect(resolveSubscriptionPersona(globals.ai, undefined).persona.name).toBe("小绫");
 	});
 
 	it("填了 → 全局改用那份预设的人格与它写了的 prompt", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.persona.name = "梦梦";
-		globals.defaults.ai.presets = [
+		globals.ai.persona.name = "梦梦";
+		globals.ai.presets = [
 			{ id: "tsundere", label: "傲娇", persona: TSUNDERE, dynamicPrompt: "傲娇动态" },
 		];
-		globals.defaults.ai.activePreset = "tsundere";
-		const eff = resolveSubscriptionPersona(globals.defaults.ai, undefined);
+		globals.ai.activePreset = "tsundere";
+		const eff = resolveSubscriptionPersona(globals.ai, undefined);
 		expect(eff.persona).toEqual(TSUNDERE);
 		expect(eff.dynamicPrompt).toBe("傲娇动态");
 	});
 
 	it("预设没写的那段 prompt 仍回落全局 —— undefined 的意思本就是「跟全局一样」", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.liveSummaryPrompt = "全局总结";
-		globals.defaults.ai.presets = [{ id: "tsundere", label: "傲娇", persona: TSUNDERE }];
-		globals.defaults.ai.activePreset = "tsundere";
-		expect(resolveSubscriptionPersona(globals.defaults.ai, undefined).liveSummaryPrompt).toBe(
-			"全局总结",
-		);
+		globals.ai.liveSummaryPrompt = "全局总结";
+		globals.ai.presets = [{ id: "tsundere", label: "傲娇", persona: TSUNDERE }];
+		globals.ai.activePreset = "tsundere";
+		expect(resolveSubscriptionPersona(globals.ai, undefined).liveSummaryPrompt).toBe("全局总结");
 	});
 
 	it("**不改写 ai.persona** —— 切回「默认」时主人手写的那份还在", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.persona.name = "梦梦";
-		globals.defaults.ai.presets = [{ id: "tsundere", label: "傲娇", persona: TSUNDERE }];
-		globals.defaults.ai.activePreset = "tsundere";
-		resolveSubscriptionPersona(globals.defaults.ai, undefined);
-		expect(globals.defaults.ai.persona.name).toBe("梦梦");
+		globals.ai.persona.name = "梦梦";
+		globals.ai.presets = [{ id: "tsundere", label: "傲娇", persona: TSUNDERE }];
+		globals.ai.activePreset = "tsundere";
+		resolveSubscriptionPersona(globals.ai, undefined);
+		expect(globals.ai.persona.name).toBe("梦梦");
 	});
 
 	it("指向一份已不存在的预设 → 回落 ai.persona,不炸也不留空人格", () => {
 		// 主人可能刚把那份删掉,或者备份导入换了一批预设。
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.persona.name = "梦梦";
-		globals.defaults.ai.activePreset = "gone";
-		expect(resolveSubscriptionPersona(globals.defaults.ai, undefined).persona.name).toBe("梦梦");
+		globals.ai.persona.name = "梦梦";
+		globals.ai.activePreset = "gone";
+		expect(resolveSubscriptionPersona(globals.ai, undefined).persona.name).toBe("梦梦");
 	});
 
 	it("per-UP 覆盖仍然压过全局指针 —— per-UP 的语义一点没变", () => {
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.presets = [
+		globals.ai.presets = [
 			{ id: "tsundere", label: "傲娇", persona: TSUNDERE },
 			{ id: "critic", label: "评论家", persona: { ...TSUNDERE, name: "评论家" } },
 		];
-		globals.defaults.ai.activePreset = "tsundere";
+		globals.ai.activePreset = "tsundere";
 		const sub: Subscription = { ...SUB_BASE, overrides: { ai: { preset: "critic" } } };
-		expect(resolveSubscriptionPersona(globals.defaults.ai, sub.overrides.ai).persona.name).toBe(
-			"评论家",
-		);
+		expect(resolveSubscriptionPersona(globals.ai, sub.overrides.ai).persona.name).toBe("评论家");
 	});
 
 	it("per-UP 显式 inherit → 继承的是**全局指针指的那份**,不是 ai.persona", () => {
 		// inherit 的意思是「跟全局一样」,而全局此刻用的正是那份预设。
 		const globals = makeDefaultGlobalConfig();
-		globals.defaults.ai.persona.name = "梦梦";
-		globals.defaults.ai.presets = [{ id: "tsundere", label: "傲娇", persona: TSUNDERE }];
-		globals.defaults.ai.activePreset = "tsundere";
+		globals.ai.persona.name = "梦梦";
+		globals.ai.presets = [{ id: "tsundere", label: "傲娇", persona: TSUNDERE }];
+		globals.ai.activePreset = "tsundere";
 		const sub: Subscription = { ...SUB_BASE, overrides: { ai: { preset: "inherit" } } };
-		expect(resolveSubscriptionPersona(globals.defaults.ai, sub.overrides.ai).persona.name).toBe(
-			"傲娇",
-		);
+		expect(resolveSubscriptionPersona(globals.ai, sub.overrides.ai).persona.name).toBe("傲娇");
 	});
 });
 

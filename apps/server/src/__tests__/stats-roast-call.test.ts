@@ -115,9 +115,9 @@ function makeDeps(
 	// 全局 defaults 取默认整份再覆盖 ai:resolve() 会读 features / cardStyle /
 	// presets 等一系列字段,只喂 { ai } 的话 per-UP 覆盖那条路径会当场炸。
 	const globals = makeDefaultGlobalConfig();
-	globals.defaults.ai = { ...globals.defaults.ai, ...AI_SETTINGS };
+	globals.ai = { ...globals.ai, ...AI_SETTINGS };
 	// per-UP 覆盖只认人设库里的 id,所以那一份得先在库里躺着。
-	globals.defaults.ai.presets = [...globals.defaults.ai.presets, PER_UP_PRESET];
+	globals.ai.presets = [...globals.ai.presets, PER_UP_PRESET];
 	return {
 		runtime: {
 			fansStore: { listSamplesSince: async () => [], findNearestBefore: async () => undefined },
@@ -280,7 +280,7 @@ describe("锐评生成的响应形状", () => {
 
 	it("智能女仆没开 → 409 not_configured(要主人去开;不是 400,也不是「稍后再试」)", async () => {
 		const deps = makeDeps([makeSub("s1", "1"), makeSub("s2", "2")]);
-		(deps.store.getGlobals().defaults.ai as { enabled: boolean }).enabled = false;
+		(deps.store.getGlobals().ai as { enabled: boolean }).enabled = false;
 		const single = await createStatsRoute(deps).request("/roast/s1", { method: "POST" });
 		const board = await createStatsRoute(deps).request("/roast", { method: "POST" });
 		for (const res of [single, board]) {

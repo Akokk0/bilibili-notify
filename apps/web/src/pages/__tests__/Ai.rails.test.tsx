@@ -26,7 +26,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 type Globals = ReturnType<typeof makeDefaultGlobalConfig>;
-type Bucket = NonNullable<Globals["defaults"]["ai"]["providers"]["deepseek"]>;
+type Bucket = NonNullable<Globals["ai"]["providers"]["deepseek"]>;
 
 function bucket(over: Partial<Bucket> = {}): Bucket {
 	return {
@@ -45,10 +45,10 @@ function bucket(over: Partial<Bucket> = {}): Bucket {
 	};
 }
 
-/** 造一份 globals;`mutate` 里改 `defaults.ai`。 */
+/** 造一份 globals;`mutate` 里改 `ai`。 */
 function globalsWith(mutate: (g: Globals) => void): Globals {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.enabled = true;
+	g.ai.enabled = true;
 	mutate(g);
 	return JSON.parse(JSON.stringify(g));
 }
@@ -102,7 +102,7 @@ describe("模型配置 · 服务商左栏", () => {
 	it("一家都没添加 → 出空态引导与添加面板,而不是一堆空输入框", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.providers = {};
+				g.ai.providers = {};
 			}),
 		);
 		await gotoModel();
@@ -115,8 +115,8 @@ describe("模型配置 · 服务商左栏", () => {
 	it("总开关开着却一家都没配 → 明确说清此刻不工作(而不是偷偷把开关关掉)", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.enabled = true;
-				g.defaults.ai.providers = {};
+				g.ai.enabled = true;
+				g.ai.providers = {};
 			}),
 		);
 		expect(await screen.findByText(/一家服务商都还没添加/)).toBeTruthy();
@@ -127,8 +127,8 @@ describe("模型配置 · 服务商左栏", () => {
 		// 所以 addProfile 给后续实例的默认名带序号,起过名的显示自己的名字。
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "deepseek";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
 					deepseek: bucket({ provider: "deepseek", model: "m-a" }),
 					"deepseek-2": bucket({ provider: "deepseek", label: "DeepSeek 2", model: "m-b" }),
 				};
@@ -148,8 +148,8 @@ describe("模型配置 · 服务商左栏", () => {
 	it("左栏只列已添加的那几家,没添加的一家都不露", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "deepseek";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
 					deepseek: bucket({ provider: "deepseek" }),
 					openrouter: bucket({ provider: "openrouter" }),
 				};
@@ -167,8 +167,8 @@ describe("模型配置 · 服务商左栏", () => {
 	it("点左栏另一家 → 右侧字段跟着换那家的桶", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "deepseek";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
 					deepseek: bucket({ provider: "deepseek", model: "ds-model" }),
 					openrouter: bucket({ provider: "openrouter", model: "or-model" }),
 				};
@@ -185,8 +185,8 @@ describe("模型配置 · 服务商左栏", () => {
 	it("按能力门控:DeepSeek 不摆「主模型支持看图」,OpenRouter 摆", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "deepseek";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
 					deepseek: bucket({ provider: "deepseek" }),
 					openrouter: bucket({ provider: "openrouter" }),
 				};
@@ -210,8 +210,8 @@ describe("模型配置 · 服务商左栏", () => {
 		// providerList 就是为这一刻。
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "custom";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "custom";
+				g.ai.providers = {
 					custom: bucket({ provider: "custom", apiKey: "", model: "" }),
 				};
 			}),
@@ -227,8 +227,8 @@ describe("模型配置 · 服务商左栏", () => {
 	it("删掉正在用的那家 → 指针落到剩下的一家,右侧跟着换过去", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "deepseek";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
 					deepseek: bucket({ provider: "deepseek", model: "ds-model" }),
 					openrouter: bucket({ provider: "openrouter", model: "or-model" }),
 				};
@@ -256,8 +256,8 @@ describe("模型配置 · 服务商左栏", () => {
 describe("在用哪一家 vs 在看哪一家", () => {
 	function twoProviders() {
 		return globalsWith((g) => {
-			g.defaults.ai.activeProfile = "deepseek";
-			g.defaults.ai.providers = {
+			g.ai.activeProfile = "deepseek";
+			g.ai.providers = {
 				deepseek: bucket({ provider: "deepseek", model: "ds-model" }),
 				openrouter: bucket({ provider: "openrouter", model: "or-model" }),
 			};
@@ -334,8 +334,8 @@ describe("在用哪一家 vs 在看哪一家", () => {
 		// JSON,脱敏位挂在字段级、管不到整只桶,于是密钥明文直接摊在面板上。
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.activeProfile = "deepseek";
-				g.defaults.ai.providers = {
+				g.ai.activeProfile = "deepseek";
+				g.ai.providers = {
 					deepseek: bucket({ provider: "deepseek", model: "ds-model" }),
 					openrouter: bucket({
 						provider: "openrouter",
@@ -406,11 +406,11 @@ describe("女仆性格左栏", () => {
 	it("点另一份 → 右侧换成它自己的字段", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [
-					{ id: "a", label: "甲", persona: { ...g.defaults.ai.persona, name: "甲的名" } },
-					{ id: "b", label: "乙", persona: { ...g.defaults.ai.persona, name: "乙的名" } },
+				g.ai.presets = [
+					{ id: "a", label: "甲", persona: { ...g.ai.persona, name: "甲的名" } },
+					{ id: "b", label: "乙", persona: { ...g.ai.persona, name: "乙的名" } },
 				];
-				g.defaults.ai.activePreset = "a";
+				g.ai.activePreset = "a";
 			}),
 		);
 		await gotoPersona();
@@ -424,12 +424,12 @@ describe("女仆性格左栏", () => {
 		// 旧界面里点一下预设就把它**复制进** ai.persona,主人手写的全局人格当场被覆盖。
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.persona.name = "梦梦";
-				g.defaults.ai.presets = [
+				g.ai.persona.name = "梦梦";
+				g.ai.presets = [
 					{
 						id: "tsundere",
 						label: "傲娇",
-						persona: { ...g.defaults.ai.persona, name: "傲娇娘" },
+						persona: { ...g.ai.persona, name: "傲娇娘" },
 					},
 				];
 			}),
@@ -445,16 +445,16 @@ describe("女仆性格左栏", () => {
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ defaults: { ai: { persona?: { name?: string }; presets?: unknown } } },
+			{ ai: { persona?: { name?: string }; presets?: unknown } },
 		];
 		// 预设改了、全局人格没被碰(没进 patch,或进了但名字还是梦梦)。
-		expect(body.defaults.ai.persona?.name ?? "梦梦").toBe("梦梦");
+		expect(body.ai.persona?.name ?? "梦梦").toBe("梦梦");
 	});
 
 	it("「+ 添加」建出一份新性格并当场切过去(否则看起来像没反应)", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [];
+				g.ai.presets = [];
 			}),
 		);
 		await gotoPersona();
@@ -467,11 +467,11 @@ describe("女仆性格左栏", () => {
 	it("左栏用指示器标出在用的那份,不写字", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [
-					{ id: "a", label: "甲", persona: g.defaults.ai.persona },
-					{ id: "b", label: "乙", persona: g.defaults.ai.persona },
+				g.ai.presets = [
+					{ id: "a", label: "甲", persona: g.ai.persona },
+					{ id: "b", label: "乙", persona: g.ai.persona },
 				];
-				g.defaults.ai.activePreset = "b";
+				g.ai.activePreset = "b";
 			}),
 		);
 		await gotoPersona();
@@ -481,11 +481,11 @@ describe("女仆性格左栏", () => {
 	it("正在用的那份不摆「设为默认」,别的才摆", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [
-					{ id: "a", label: "甲", persona: g.defaults.ai.persona },
-					{ id: "b", label: "乙", persona: g.defaults.ai.persona },
+				g.ai.presets = [
+					{ id: "a", label: "甲", persona: g.ai.persona },
+					{ id: "b", label: "乙", persona: g.ai.persona },
 				];
-				g.defaults.ai.activePreset = "a";
+				g.ai.activePreset = "a";
 			}),
 		);
 		await gotoPersona();
@@ -497,8 +497,8 @@ describe("女仆性格左栏", () => {
 	it("只剩一份时不摆删除按钮 —— 摆一个点了没反应的比没有还糟", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [{ id: "only", label: "唯一", persona: g.defaults.ai.persona }];
-				g.defaults.ai.activePreset = "only";
+				g.ai.presets = [{ id: "only", label: "唯一", persona: g.ai.persona }];
+				g.ai.activePreset = "only";
 			}),
 		);
 		await gotoPersona();
@@ -537,11 +537,11 @@ describe("全局配置 Tab", () => {
 	it("设了指针时选中的是那一份 —— 而不是永远停在「默认」", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [
-					{ id: "m", label: "温柔女仆", persona: g.defaults.ai.persona },
-					{ id: "t", label: "傲娇", persona: g.defaults.ai.persona },
+				g.ai.presets = [
+					{ id: "m", label: "温柔女仆", persona: g.ai.persona },
+					{ id: "t", label: "傲娇", persona: g.ai.persona },
 				];
-				g.defaults.ai.activePreset = "t";
+				g.ai.activePreset = "t";
 			}),
 		);
 		await gotoGlobal();
@@ -553,12 +553,12 @@ describe("全局配置 Tab", () => {
 		// 一下盖掉主人手写的那份且换不回来。
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.persona.name = "梦梦";
-				g.defaults.ai.presets = [
+				g.ai.persona.name = "梦梦";
+				g.ai.presets = [
 					{
 						id: "tsundere",
 						label: "傲娇",
-						persona: { ...g.defaults.ai.persona, name: "傲娇娘" },
+						persona: { ...g.ai.persona, name: "傲娇娘" },
 					},
 				];
 			}),
@@ -572,11 +572,11 @@ describe("全局配置 Tab", () => {
 		await waitFor(() => expect(api.patch).toHaveBeenCalled());
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ defaults: { ai: { activePreset?: string; persona?: { name?: string } } } },
+			{ ai: { activePreset?: string; persona?: { name?: string } } },
 		];
-		expect(body.defaults.ai.activePreset).toBe("tsundere");
+		expect(body.ai.activePreset).toBe("tsundere");
 		// 手写的那份原封不动(没进 patch,或进了名字还是梦梦)。
-		expect(body.defaults.ai.persona?.name ?? "梦梦").toBe("梦梦");
+		expect(body.ai.persona?.name ?? "梦梦").toBe("梦梦");
 	});
 
 	/**
@@ -589,12 +589,12 @@ describe("全局配置 Tab", () => {
 	it("换全局人格 → 头图那行名字跟着换,不是冻着的 ai.persona", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.persona.name = "小绫";
-				g.defaults.ai.presets = [
-					{ id: "m", label: "温柔女仆", persona: { ...g.defaults.ai.persona } },
-					{ id: "t", label: "傲娇", persona: { ...g.defaults.ai.persona, name: "凛子" } },
+				g.ai.persona.name = "小绫";
+				g.ai.presets = [
+					{ id: "m", label: "温柔女仆", persona: { ...g.ai.persona } },
+					{ id: "t", label: "傲娇", persona: { ...g.ai.persona, name: "凛子" } },
 				];
-				g.defaults.ai.activePreset = "t";
+				g.ai.activePreset = "t";
 			}),
 		);
 		await gotoGlobal();
@@ -604,7 +604,7 @@ describe("全局配置 Tab", () => {
 	it("换全局人格 → 灵动岛亮起来", async () => {
 		mount(
 			globalsWith((g) => {
-				g.defaults.ai.presets = [{ id: "t", label: "傲娇", persona: g.defaults.ai.persona }];
+				g.ai.presets = [{ id: "t", label: "傲娇", persona: g.ai.persona }];
 			}),
 		);
 		await gotoGlobal();

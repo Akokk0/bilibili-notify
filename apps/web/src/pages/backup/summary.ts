@@ -9,7 +9,7 @@ function blankedCredentials(r: ImportResult): string[] {
 	return [
 		// 连接的 appSecret / accessToken / webhook secret 全被脱敏抹成空串。
 		r.connections.upserted > 0 ? "连接密钥" : null,
-		// 全局设置里的 defaults.ai.apiKey 同理。
+		// 全局设置里的 ai.apiKey 同理。
 		r.globalsApplied ? "AI API Key" : null,
 	].filter((x): x is string => x !== null);
 }

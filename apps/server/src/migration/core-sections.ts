@@ -6,6 +6,8 @@
  *
  * - {@link moveTemplateLedger}(提交 ③):`defaults.templateDefaultsSeen` → 顶层 `templatesSeen`。
  *
+ * - {@link moveGlobalAi}(提交 ④):`defaults.ai` → 顶层 `ai`,里面的键一个不动。
+ *
  * 同 `live-split.ts` / `card-moves.ts` 的规矩:raw → raw,认不得的形状原样放过(由配置仓开机时报出来),
  * 没有要搬的东西回传进来的那个对象。接在 `migrateGlobalsToCurrent` 的末尾 —— **B 站那两格要先经
  * `splitBilibiliSettings` 拆走**(见 `settings.ts`),这里把剩下的 `app` 整个吃掉。
@@ -77,6 +79,28 @@ export function moveTemplateLedger(raw: unknown): unknown {
 		}
 		out.defaults = restOfDefaults;
 		out.templatesSeen = Object.hasOwn(raw, "templatesSeen") ? raw.templatesSeen : oldLedger;
+	}
+	return out;
+}
+
+/**
+ * AI 设置上提(提交 ④):`defaults.ai` → 顶层 `ai`(有顶层 `templatesSeen` 就紧跟在它后面,没有就紧跟 `defaults`)。
+ * 里面的键一个不动。老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `ai`(手改过的盘)就用顶层的、老键照样拿掉。
+ * 老 `ai` 不是对象也原样带上去,由配置仓开机时报出来。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
+ *
+ * 0.x 老形状的 AI 设置(扁平连接字段、「一家一桶」)由更早的 `migration/ai.ts` 在老位置上改写好,所以这一步排在流水线最后。
+ */
+export function moveGlobalAi(raw: unknown): unknown {
+	if (!isPlainObject(raw) || !isPlainObject(raw.defaults)) return raw;
+	if (!Object.hasOwn(raw.defaults, "ai")) return raw;
+	const { ai: oldAi, ...restOfDefaults } = raw.defaults;
+	const anchor = Object.hasOwn(raw, "templatesSeen") ? "templatesSeen" : "defaults";
+	const ai = Object.hasOwn(raw, "ai") ? raw.ai : oldAi;
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if (key === "ai") continue;
+		out[key] = key === "defaults" ? restOfDefaults : value;
+		if (key === anchor) out.ai = ai;
 	}
 	return out;
 }

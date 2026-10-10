@@ -19,15 +19,15 @@ import { GlobalConfigSchema, makeDefaultGlobalConfig } from "../globals";
 import { makeEmptySubscription, SubscriptionSchema } from "../subscriptions";
 
 /** 一份默认 globals 的纯 JSON 副本,拿来就地改成盘上的老形状。 */
-function rawGlobals(): { defaults: { ai: Record<string, unknown> } } {
+function rawGlobals(): { ai: Record<string, unknown> } {
 	return JSON.parse(JSON.stringify(makeDefaultGlobalConfig()));
 }
 
 describe("temperature 退役 —— 老配置照样装得进来", () => {
 	it("实例桶里带着 temperature → 解析成功,桶里没有它,其余字段原样", () => {
 		const raw = rawGlobals();
-		raw.defaults.ai.activeProfile = "deepseek";
-		raw.defaults.ai.providers = {
+		raw.ai.activeProfile = "deepseek";
+		raw.ai.providers = {
 			deepseek: {
 				provider: "deepseek",
 				apiKey: "sk-ds",
@@ -38,7 +38,7 @@ describe("temperature 退役 —— 老配置照样装得进来", () => {
 
 		const r = GlobalConfigSchema.safeParse(raw);
 		expect(r.success).toBe(true);
-		const bucket = r.data?.defaults.ai.providers.deepseek;
+		const bucket = r.data?.ai.providers.deepseek;
 		expect(bucket).toMatchObject({
 			provider: "deepseek",
 			apiKey: "sk-ds",

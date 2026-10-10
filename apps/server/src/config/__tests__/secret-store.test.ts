@@ -148,8 +148,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	const diskGlobals = async () =>
 		JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
 	/** 盘上那份里,某个桶的主 key。 */
-	const diskKey = async (id: string) =>
-		(await diskGlobals())?.defaults?.ai?.providers?.[id]?.apiKey;
+	const diskKey = async (id: string) => (await diskGlobals())?.ai?.providers?.[id]?.apiKey;
 
 	function mkStore(secretStore?: SecretStore): ConfigStore {
 		return createConfigStore({
@@ -162,12 +161,12 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 	}
 	/** 当前生效那家的主 key(测试里一律用 deepseek 桶)。 */
 	const memKey = (store: ConfigStore, id = "deepseek") =>
-		store.getGlobals().defaults.ai.providers[id as "deepseek"]?.apiKey;
+		store.getGlobals().ai.providers[id as "deepseek"]?.apiKey;
 
 	/** 主人手改盘上的 settings/core.json:给 deepseek 那家写一把明文 key。 */
 	const handEditKey = async (key: string) => {
 		const g = await diskGlobals();
-		g.defaults.ai.providers.deepseek.apiKey = key;
+		g.ai.providers.deepseek.apiKey = key;
 		await writeFile(join(dataDir, ...CORE_SETTINGS_FILE), JSON.stringify(g));
 	};
 	/** 建好 deepseek 那一家,袋里放 `key`(空串 = 袋里没有)。 */
@@ -175,11 +174,9 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(mkSecretStore());
 		await store.load();
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { provider: "deepseek", apiKey: key } },
-				},
+			ai: {
+				activeProfile: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: key } },
 			},
 		});
 	};
@@ -216,11 +213,9 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { provider: "deepseek", apiKey: "sk-new" } },
-				},
+			ai: {
+				activeProfile: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-new" } },
 			},
 		});
 		expect(memKey(store)).toBe("sk-new");
@@ -238,17 +233,15 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: {
-						deepseek: {
-							provider: "deepseek",
-							apiKey: "sk-ds",
-							vision: { apiKey: "sk-ds-vision" },
-						},
-						openrouter: { provider: "openrouter", apiKey: "sk-or" },
+			ai: {
+				activeProfile: "deepseek",
+				providers: {
+					deepseek: {
+						provider: "deepseek",
+						apiKey: "sk-ds",
+						vision: { apiKey: "sk-ds-vision" },
 					},
+					openrouter: { provider: "openrouter", apiKey: "sk-or" },
 				},
 			},
 		});
@@ -256,26 +249,24 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store2.load();
 		expect(memKey(store2, "deepseek")).toBe("sk-ds");
 		expect(memKey(store2, "openrouter")).toBe("sk-or");
-		expect(store2.getGlobals().defaults.ai.providers.deepseek?.vision.apiKey).toBe("sk-ds-vision");
+		expect(store2.getGlobals().ai.providers.deepseek?.vision.apiKey).toBe("sk-ds-vision");
 	});
 
-	it("注水后键序仍是 zod 规范形态 — 只改无关字段不该让 defaults.ai 被误判成变了", async () => {
+	it("注水后键序仍是 zod 规范形态 — 只改无关字段不该让 ai 被误判成变了", async () => {
 		// 回归守护。密钥落盘时若是 `delete` 掉那个键,load() 读回时键不存在 →
 		// 注水的 spread 把它当**新键追加到对象末尾**,键序就偏离了 zod parse 的声明
 		// 顺序。而 engines.ts 的 config-changed diff 用 JSON.stringify 逐 section
 		// 比较(键序敏感),于是重启后第一次改**任何** globals 字段(哪怕只是
-		// profileRefreshCron),defaults.ai 都会被误判成「变了」→ 白白热重载一次 AI 实例 +
+		// profileRefreshCron),ai 都会被误判成「变了」→ 白白热重载一次 AI 实例 +
 		// 刷两条日志。只有「配了 AI + 启用加密 + 重启后首次变更」三者同时满足才触发,
 		// 极难撞见,所以钉在这里。现在 stripAiSecrets 抠成空串而非删键,从源头绕开。
 		const secret = mkSecretStore();
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { provider: "deepseek", apiKey: "sk-x" } },
-				},
+			ai: {
+				activeProfile: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-x" } },
 			},
 		});
 
@@ -284,10 +275,15 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store2.load();
 
 		const prev = store2.getGlobals(); // engines 的 initialGlobals / prevGlobals 初值
+		// 正对照:注水回来的 key 确实在内存里(下面比的不是两份空 ai)
+		expect(prev.ai.providers.deepseek?.apiKey).toBe("sk-x");
 		await store2.patchGlobals({ profileRefreshCron: "*/9 * * * *" });
 		const next = store2.getGlobals();
 
-		expect(JSON.stringify(next.defaults.ai)).toBe(JSON.stringify(prev.defaults.ai));
+		expect(next.profileRefreshCron).toBe("*/9 * * * *");
+		expect(JSON.stringify(next.ai)).toBe(JSON.stringify(prev.ai));
+		// 热更那道门比的是顶层 ai:整份核心设置的键序也不许变
+		expect(Object.keys(next)).toEqual(Object.keys(prev));
 	});
 
 	it("清空某家的 apiKey → 那把从袋里消失", async () => {
@@ -295,14 +291,13 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(secret);
 		await store.load();
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { provider: "deepseek", apiKey: "sk-x" } },
-				},
+			ai: {
+				activeProfile: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-x" } },
 			},
 		});
-		await store.patchGlobals({ defaults: { ai: { providers: { deepseek: { apiKey: "" } } } } });
+		expect((await secret.load()).aiApiKeys).toEqual({ deepseek: "sk-x" });
+		await store.patchGlobals({ ai: { providers: { deepseek: { apiKey: "" } } } });
 		expect(memKey(store)).toBe("");
 		expect((await secret.load()).aiApiKeys).toEqual({});
 	});
@@ -311,11 +306,9 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		const store = mkStore(); // 不传 secretStore
 		await store.load();
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { provider: "deepseek", apiKey: "sk-legacy-mode" } },
-				},
+			ai: {
+				activeProfile: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-legacy-mode" } },
 			},
 		});
 		expect(await diskKey("deepseek")).toBe("sk-legacy-mode");
@@ -331,11 +324,9 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await store.load();
 		// 先成功落一个 apiKey:bag 里是 sk-good,settings/core.json 已写。
 		await store.patchGlobals({
-			defaults: {
-				ai: {
-					activeProfile: "deepseek",
-					providers: { deepseek: { provider: "deepseek", apiKey: "sk-good" } },
-				},
+			ai: {
+				activeProfile: "deepseek",
+				providers: { deepseek: { provider: "deepseek", apiKey: "sk-good" } },
 			},
 		});
 		expect((await secret.load()).aiApiKeys).toEqual({ deepseek: "sk-good" });
@@ -347,7 +338,7 @@ describe("ConfigStore + secretStore — apiKey 拆分", () => {
 		await mkdir(gp, { recursive: true });
 
 		await expect(
-			store.patchGlobals({ defaults: { ai: { providers: { deepseek: { apiKey: "sk-EVIL" } } } } }),
+			store.patchGlobals({ ai: { providers: { deepseek: { apiKey: "sk-EVIL" } } } }),
 		).rejects.toThrow();
 
 		// 关键:bag 已回滚为 sk-good(不是 sk-EVIL);in-memory 仍 sk-good。

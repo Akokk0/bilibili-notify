@@ -72,12 +72,10 @@ vi.mock("../../../services/aiChat", async (orig) => {
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async () => ({
-			defaults: {
-				ai: {
-					provider: "deepseek",
-					providers: { deepseek: { model: "deepseek-v4-flash" } },
-					persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
-				},
+			ai: {
+				provider: "deepseek",
+				providers: { deepseek: { model: "deepseek-v4-flash" } },
+				persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 			},
 		})),
 	},

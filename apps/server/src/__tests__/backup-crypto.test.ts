@@ -11,7 +11,7 @@ const BAG: BackupSecretBag = {
 		bilibili: { "http.cookies": '[{"name":"SESSDATA"}]', refreshToken: "rt-1" },
 	},
 	redacted: [
-		{ path: ["globals", "defaults", "ai", "providers", "deepseek", "apiKey"], value: "sk-1" },
+		{ path: ["globals", "ai", "providers", "deepseek", "apiKey"], value: "sk-1" },
 		{ path: ["connections", 0, "config", "accessToken"], value: "tok" },
 	],
 };

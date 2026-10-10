@@ -19,7 +19,7 @@ export function SearchControl({ on, onToggle }: { on: boolean; onToggle: (v: boo
 		queryKey: ["settings"],
 		queryFn: () => api.get<GlobalConfigView>("/api/settings"),
 	});
-	const ai = globalsQuery.data?.defaults.ai;
+	const ai = globalsQuery.data?.ai;
 	// 配置还没到手就先不画 —— 一颗状态未知的开关比没有开关更误导。
 	// search 段单独再兜一次:这个组件消费的是网络数据,残缺入参不炸是这一层的
 	// 通用纪律(providerMeta / resolveAIProfile 同款)。

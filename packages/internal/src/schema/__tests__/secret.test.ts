@@ -143,13 +143,13 @@ describe("真 schema 上的标记", () => {
 
 	it("AI 的两把 key 与搜索 key 是 secret,两处 baseUrl 与市场源 url 是仅备份", () => {
 		const g = makeDefaultGlobalConfig();
-		g.defaults.ai.providers.ds = AIProviderProfileSchema.parse({
+		g.ai.providers.ds = AIProviderProfileSchema.parse({
 			provider: "deepseek",
 			apiKey: "k-main",
 			baseUrl: "https://api.example/v1",
 			vision: { apiKey: "k-vision", baseUrl: "https://v.example/v1" },
 		});
-		g.defaults.ai.search.keys = { bocha: "k-bocha", tavily: "k-tavily" };
+		g.ai.search.keys = { bocha: "k-bocha", tavily: "k-tavily" };
 		g.marketplace = { sources: [{ id: "s1", url: "https://m.example/index.json" }] };
 		const got = marked(GlobalConfigSchema, g);
 		expect(got).toEqual(

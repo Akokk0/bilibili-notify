@@ -18,7 +18,7 @@ import { makeEmptySubscription, type Subscription } from "../../../types/domain"
 import type { SubscriptionPlatform } from "../../up/subscription-source";
 import { PerUpEditor } from "../PerUpEditor";
 import type { SectionId } from "../sections";
-import { makeDefaults } from "./fixtures";
+import { makeAi, makeDefaults } from "./fixtures";
 
 vi.mock("../../../services/api", () => ({
 	api: { patch: vi.fn() },
@@ -58,7 +58,7 @@ function renderEditor(sub: Subscription, section: SectionId, platform?: Subscrip
 				sub={sub}
 				platform={platform}
 				defaults={makeDefaults()}
-				presets={makeDefaults().ai.presets}
+				presets={makeAi().presets}
 				section={section}
 			/>
 		</QueryClientProvider>,

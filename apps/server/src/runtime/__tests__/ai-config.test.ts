@@ -11,8 +11,8 @@ import { toGeneratorConfig } from "../ai-config";
 
 function aiWith(flavor?: "chat" | "responses") {
 	const g = makeDefaultGlobalConfig();
-	g.defaults.ai.activeProfile = "p1";
-	g.defaults.ai.providers = {
+	g.ai.activeProfile = "p1";
+	g.ai.providers = {
 		p1: {
 			provider: "deepseek",
 			label: "",
@@ -27,7 +27,7 @@ function aiWith(flavor?: "chat" | "responses") {
 			vision: { baseUrl: "", apiKey: "", model: "" },
 		},
 	};
-	return g.defaults.ai;
+	return g.ai;
 }
 
 describe("toGeneratorConfig:接口风味", () => {

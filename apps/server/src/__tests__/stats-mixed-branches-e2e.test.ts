@@ -319,11 +319,11 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 		const globalsPath = join(gen, ...CORE_SETTINGS_FILE);
 		const globals = JSON.parse(await readFile(globalsPath, "utf8")) as {
 			extensions: Record<string, unknown>;
-			defaults: { ai: Record<string, unknown> };
+			ai: Record<string, unknown>;
 		};
 		globals.extensions = { [FAKE]: { enabled: true } };
-		globals.defaults.ai = {
-			...globals.defaults.ai,
+		globals.ai = {
+			...globals.ai,
 			enabled: true,
 			activeProfile: "stub",
 			providers: {

@@ -13,7 +13,7 @@ import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn() },
@@ -31,6 +31,7 @@ const GLOBALS = {
 	logging: {},
 	master: {},
 	defaults: makeDefaults(),
+	ai: makeAi(),
 } as unknown as GlobalConfig;
 
 function resetStore(): void {

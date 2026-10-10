@@ -88,7 +88,7 @@ export const SpecialUserSchema = z.object({
 export type SpecialUser = z.infer<typeof SpecialUserSchema>;
 
 /**
- * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalConfig.defaults.ai.presets` 里挑一份**。
+ * AI 覆盖 —— per-UP 只做一件事:**从 `GlobalConfig.ai.presets` 里挑一份**。
  *
  * `preset` 是**指针**:指向 presets 里的一份。指不着就完整继承全局 —— 老值 `'inherit'`
  * (当年那档「继承全局」)、`'custom'`(当年那档「完全自定义」)、以及指向一份已被删掉

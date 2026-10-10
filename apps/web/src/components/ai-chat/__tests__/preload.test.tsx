@@ -50,7 +50,7 @@ vi.mock("../../../services/aiChat", async (orig) => ({
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async () => ({
-			defaults: { ai: { model: "m", persona: { name: "小绫" } } },
+			ai: { model: "m", persona: { name: "小绫" } },
 		})),
 	},
 }));

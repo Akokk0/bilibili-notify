@@ -14,13 +14,11 @@ function globals(
 	enabled = true,
 ): GlobalConfigView {
 	return {
-		defaults: {
-			ai: {
-				enabled,
-				activeProfile: "p1",
-				providers: {
-					p1: { provider: "custom", apiKey: "", baseUrl: "", model: "m", ...profile },
-				},
+		ai: {
+			enabled,
+			activeProfile: "p1",
+			providers: {
+				p1: { provider: "custom", apiKey: "", baseUrl: "", model: "m", ...profile },
 			},
 		},
 	} as unknown as GlobalConfigView;
@@ -50,7 +48,7 @@ describe("cardSkinAiReadiness", () => {
 
 	it("指针指向不存在的实例、或配置里压根没 ai 那一段 → 按不动,不炸", () => {
 		const dangling = globals({ apiKey: "k", baseUrl: "u" });
-		(dangling.defaults.ai as { activeProfile: string }).activeProfile = "gone";
+		(dangling.ai as { activeProfile: string }).activeProfile = "gone";
 		expect(cardSkinAiReadiness({ globals: dangling, readOnly: false }).ready).toBe(false);
 		expect(cardSkinAiReadiness({ globals: {} as GlobalConfigView, readOnly: false }).ready).toBe(
 			false,

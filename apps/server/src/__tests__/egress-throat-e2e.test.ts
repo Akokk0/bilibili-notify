@@ -287,13 +287,13 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 
 		// —— 智能女仆:指向假模型服务(启用前的预检会真问它一句,假服务答得上)。锐评的定时配置:
 		// 审批开着、目标是测试群(审批预览那条用)。
-		const ai = makeDefaultGlobalConfig().defaults.ai;
+		const ai = makeDefaultGlobalConfig().ai;
 		await okRes(
 			await api(
 				"/api/settings",
 				json(
 					{
-						defaults: { ai: { ...aiSettings(ai), enabled: true } },
+						ai: { ...aiSettings(ai), enabled: true },
 						roastSchedule: { targets: [ID.group], approval: true },
 					},
 					"PATCH",
@@ -309,7 +309,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 	});
 
 	/** 指向假模型服务的 AI 草稿设置(同时给 `/api/ai/test` 当请求体、给设置的 PATCH 当补丁)。 */
-	function aiSettings(base: ReturnType<typeof makeDefaultGlobalConfig>["defaults"]["ai"]) {
+	function aiSettings(base: ReturnType<typeof makeDefaultGlobalConfig>["ai"]) {
 		return {
 			...base,
 			activeProfile: "fake",
@@ -402,7 +402,7 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 					json({
 						targetId: ID.group,
 						message: "在吗?",
-						ai: { ...aiSettings(makeDefaultGlobalConfig().defaults.ai), enabled: true },
+						ai: { ...aiSettings(makeDefaultGlobalConfig().ai), enabled: true },
 					}),
 				),
 			);

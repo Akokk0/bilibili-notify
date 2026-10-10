@@ -17,7 +17,7 @@ import { useDraftStore } from "../../store/draft";
 import { makeEmptySubscription, type Subscription } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn() },
@@ -40,7 +40,7 @@ function globalsWith(
 ): GlobalConfig {
 	const defaults = makeDefaults();
 	mutate(defaults);
-	return { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults, ai: makeAi() } as unknown as GlobalConfig;
 }
 
 function mount(g: GlobalConfig, subs: Subscription[] = []) {

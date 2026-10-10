@@ -488,7 +488,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 本体在 `./ai-config.ts` —— 「试一句」与统计页的锐评用的是同一份映射,人格该
 	// 从哪儿读只能有一个答案。指针指向一个还没添加的服务商时 resolveAIProfile 兜一套
 	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
-	const buildAiConfig = () => toGeneratorConfig(globals().defaults.ai);
+	const buildAiConfig = () => toGeneratorConfig(globals().ai);
 
 	const extensionLiveSource = (): ExtensionLiveSource | undefined => {
 		const table = opts.extensionLive;
@@ -499,7 +499,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	let commentary: CommentaryGenerator | null = null;
 	const buildCommentary = (): CommentaryGenerator | null => {
-		const p = resolveAIProfile(globals().defaults.ai);
+		const p = resolveAIProfile(globals().ai);
 		if (!p.apiKey || !p.baseUrl) return null;
 		try {
 			const c = new CommentaryGenerator({
@@ -520,7 +520,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
 			// 生成器那侧静默不挂 web_search。
-			c.setWebSearchSource(() => webSearchExecutorFromSettings(globals().defaults.ai.search));
+			c.setWebSearchSource(() => webSearchExecutorFromSettings(globals().ai.search));
 			c.start();
 			return c;
 		} catch (err) {
@@ -715,8 +715,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// dispatch 时过滤。
 			wordcloudStopWords: g.defaults.templates.wordcloudStopWords,
 			imageEnabled: g.defaults.cards.enabled,
-			aiEnabled: g.defaults.ai.enabled,
-			aiWebSearch: g.defaults.ai.search.engines.live,
+			aiEnabled: g.ai.enabled,
+			aiWebSearch: g.ai.search.engines.live,
 			guardTemplate: guardTemplateOf(g.defaults.templates),
 			// 直播消息模板与动态模板一致:无开关,全局模板始终下发(默认值 ==
 			// DEFAULT_LIVE_TEMPLATES,未编辑时输出不变;编辑后即生效)。renderer 走
@@ -1022,10 +1022,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// parse 的规范形态」这一不变式。该不变式由 ConfigStore 保证:写路径的
 				// `parsed.data` 天然规范,而 `hydrateSecrets()` 往内存里注水 apiKey 后会
 				// 重新 parse 一次把键序归位(它曾经不这么做,导致重启后第一次改**任何**字段
-				// 都把 defaults.ai 误判成变了 → 白白热重载 AI)。往 globals 里塞键的新代码
+				// 都把 ai 误判成变了 → 白白热重载 AI)。往 globals 里塞键的新代码
 				// 必须维持这个不变式,否则这里会静默产生假阳性。
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
-				const aiChanged = !eq(prev.defaults.ai, g.defaults.ai);
+				const aiChanged = !eq(prev.ai, g.ai);
 				const cardStyleChanged = !eq(prev.defaults.cards, g.defaults.cards);
 				const scheduleChanged = !eq(prev.defaults.schedule, g.defaults.schedule);
 				// 直播拆键(⑬d):启动补报与周期间隔从 schedule 里搬出来各成一段,热更的门一并跟着。
@@ -1069,7 +1069,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						cardSkinKnobs: g.defaults.cardSkinKnobs,
 					});
 				}
-				// liveConfig() 读 defaults.{templates,cardStyle,ai}(周期间隔与补报在每个订阅的视图里,
+				// liveConfig() 读 defaults.{templates,cardStyle} 与顶层 ai(周期间隔与补报在每个订阅的视图里,
 				// 经下面的 applyOps 推,不在引擎级的全局配置里)。
 				if (filtersChanged || templatesChanged || cardStyleChanged || aiChanged) {
 					live.updateConfig(liveConfig());
@@ -1078,9 +1078,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					// AI 实例热重载:lazy 构造 + 配置失效降级 + 已存在时增量 updateConfig。
 					// 直播引擎构造时 commentary 字段是 snapshot,新建/置空后必须通过 setCommentary
 					// 把引用同步过去,否则永远沿用启动时的 null;作品装配经 `deps.ai()` 每条现取,不用同步。
-					const a = g.defaults.ai;
+					const a = g.ai;
 					// 当前选中那份实例的连接是否配齐 —— 换实例也会走到这里(activeProfile
-					// 指针本身就在 defaults.ai 里,变了就算 aiChanged)。
+					// 指针本身就在 ai 里,变了就算 aiChanged)。
 					const ap = resolveAIProfile(a);
 					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
 					if (!needsCommentary && commentary) {
@@ -1268,7 +1268,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				dynamic: true,
 				live: liveReady,
 				image: imageRenderer !== null && g.defaults.cards.enabled,
-				ai: commentary !== null && g.defaults.ai.enabled,
+				ai: commentary !== null && g.ai.enabled,
 			};
 		},
 		enableImageRendering: (pup: PuppeteerLike): boolean => {
@@ -1679,9 +1679,9 @@ export function postSettingsOf(
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
-		aiEnabled: d.ai.enabled,
-		aiWebSearch: d.ai.search.engines.dynamic,
-		aiOverride: resolveAiOverride(sub, d.ai),
+		aiEnabled: globals.ai.enabled,
+		aiWebSearch: globals.ai.search.engines.dynamic,
+		aiOverride: resolveAiOverride(sub, globals.ai),
 		template: eff.templates.post,
 		videoTemplate: eff.templates.postVideo,
 		imageGroup: { enabled: eff.imageGroup.enabled, mergeForward: eff.imageGroup.mergeForward },
@@ -1848,7 +1848,7 @@ export function buildLiveSubViewSingle(
 		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
 		minSuperchatAmount: eff.superchat.minAmount,
 		minGuardRank: eff.membership.minRank[GUARD_PROGRAM_ID],
-		aiOverride: resolveAiOverride(sub, globals.defaults.ai),
+		aiOverride: resolveAiOverride(sub, globals.ai),
 		guardTemplate: guardTemplateOf(eff.templates),
 		customLiveSummary: {
 			enable: true,

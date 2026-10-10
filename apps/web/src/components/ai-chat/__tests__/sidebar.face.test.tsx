@@ -18,7 +18,7 @@ import type { AiConversationMetaDTO } from "../../../services/aiChat";
 import { ChatSidebar } from "../sidebar";
 
 vi.mock("../../../services/api", () => ({
-	api: { get: vi.fn(async () => ({ defaults: { ai: {} } })), patch: vi.fn(), post: vi.fn() },
+	api: { get: vi.fn(async () => ({ ai: {} })), patch: vi.fn(), post: vi.fn() },
 	ApiError: class extends Error {},
 }));
 

@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { useDraftStore } from "../../store/draft";
 import type { GlobalConfig } from "../../types/globals";
 import Rules from "../Rules";
-import { makeDefaults } from "../rules/__tests__/fixtures";
+import { makeAi, makeDefaults } from "../rules/__tests__/fixtures";
 
 vi.mock("../../services/api", () => ({
 	api: { get: vi.fn(), patch: vi.fn() },
@@ -46,6 +46,7 @@ function globalsWith(
 		logging: {},
 		master: {},
 		defaults,
+		ai: makeAi(),
 		templatesSeen: top.templatesSeen,
 	} as unknown as GlobalConfig;
 }

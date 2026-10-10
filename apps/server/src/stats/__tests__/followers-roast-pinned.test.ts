@@ -13,7 +13,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GlobalDefaults, Subscription } from "@bilibili-notify/internal";
+import type { GlobalConfig, Subscription } from "@bilibili-notify/internal";
 import { EMPTY_AI_PROVIDER_PROFILE, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
@@ -85,8 +85,8 @@ const NAMES: Record<string, string> = { "b-a": "甲", "e-b": "乙", "b-c": "丙"
 
 function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 	const globals = makeDefaultGlobalConfig();
-	globals.defaults.ai = {
-		...globals.defaults.ai,
+	globals.ai = {
+		...globals.ai,
 		enabled: true,
 		provider: "custom",
 		providers: {
@@ -97,7 +97,7 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 				model: "m",
 			},
 		},
-	} as GlobalDefaults["ai"];
+	} as GlobalConfig["ai"];
 	const runtime = {
 		engines: {
 			api: {},

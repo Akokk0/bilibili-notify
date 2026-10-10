@@ -160,7 +160,10 @@ export const MasterConfigSchema = z.object({
 });
 export type MasterConfig = z.infer<typeof MasterConfigSchema>;
 
-/** 全局默认值；resolve(sub, globals) 在 per-UP overrides 缺字段时回退到这里。 */
+/**
+ * 全局默认值；resolve(sub, globals) 在 per-UP overrides 缺字段时回退到这里。
+ * AI 设置已上提到顶层 `ai`(3a-38 提交 ④);人格预设 `defaults.ai.presetId` 这一格随 AI 子键改名那一片造。
+ */
 export const GlobalDefaultsSchema = z.object({
 	features: FeatureFlagsSchema,
 	filters: ContentFiltersSchema,
@@ -172,7 +175,6 @@ export const GlobalDefaultsSchema = z.object({
 	superchat: SuperchatSettingsSchema.default(() => structuredClone(DEFAULT_SUPERCHAT_SETTINGS)),
 	membership: MembershipSettingsSchema.default(() => structuredClone(DEFAULT_MEMBERSHIP_SETTINGS)),
 	templates: TemplateBundleSchema,
-	ai: AISettingsSchema,
 	// 卡片设置(㉔e):出图总开关与直播封面,不再按卡种分层。缺这一段的老配置补出厂值。
 	cards: CardsSettingsSchema.default(() => structuredClone(DEFAULT_CARDS)),
 	// 全局用哪套卡片皮肤(ADR-0014)。缺字段的老 globals.json 补成内置默认皮肤;版式
@@ -322,6 +324,14 @@ export const GlobalConfigSchema = z.object({
 	 */
 	templatesSeen: z.record(z.string(), z.string()).default({}),
 	/**
+	 * AI 设置(服务商、人格、聊天、联网搜索……整段)。放顶层而非 `defaults`(3a-38 提交 ④):
+	 * 它不是「per-UP overrides 缺字段时回退到这里」的值 —— 订阅只能从 `ai.presets` 里挑一份人格。
+	 * 里面的键一个没动;人格指针 `activePreset` 随整段在这里(`defaults.ai.presetId` 随 AI 子键改名那一片造)。
+	 *
+	 * 必填、不带 default:与原来的 `defaults.ai` 同一个松紧。
+	 */
+	ai: AISettingsSchema,
+	/**
 	 * 榜单周报的定时推送 —— 全局唯一一条。
 	 *
 	 * 放顶层而非 `defaults`:`defaults` 的语义是「per-UP overrides 缺字段时回退到
@@ -431,12 +441,12 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			superchat: DEFAULT_SUPERCHAT_SETTINGS,
 			membership: DEFAULT_MEMBERSHIP_SETTINGS,
 			templates: DEFAULT_TEMPLATES,
-			ai: DEFAULT_AI,
 			cards: DEFAULT_CARDS,
 			imageGroup: DEFAULT_IMAGE_GROUP,
 		},
 		// 全新安装把账本一次填满:他拿到的就是当前默认,没什么可更新的。
 		// 空着的话,他一动手改文案就会被提示「默认文案有更新」—— 更新到哪去?
 		templatesSeen: allTemplateFingerprints(DEFAULT_TEMPLATES),
+		ai: DEFAULT_AI,
 	});
 }

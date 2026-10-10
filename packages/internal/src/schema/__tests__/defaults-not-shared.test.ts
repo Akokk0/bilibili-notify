@@ -52,8 +52,8 @@ describe("出厂配置与解析结果不共用可变容器", () => {
 
 	it("只有必填段的 globals.json 解析两次(其余段全走 schema 的默认值)", () => {
 		const onlyRequired = () => {
-			const { features, filters, schedule, liveStart, liveStreaming, templates, ai, cards } =
-				makeDefaultGlobalConfig().defaults;
+			const { defaults, ai } = makeDefaultGlobalConfig();
+			const { features, filters, schedule, liveStart, liveStreaming, templates, cards } = defaults;
 			return {
 				logging: {},
 				master: {},
@@ -64,9 +64,9 @@ describe("出厂配置与解析结果不共用可变容器", () => {
 					liveStart,
 					liveStreaming,
 					templates,
-					ai,
 					cards,
 				},
+				ai,
 			};
 		};
 		const a = GlobalConfigSchema.parse(onlyRequired());
