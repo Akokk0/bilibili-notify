@@ -120,7 +120,7 @@
 | 必备 | `send`、`isAvailable`、`probe` | 真发、此刻发不发得出、探一次通断；`send` 与 `probe` 回结果形状（见「结果与失败」） |
 | 必备 | `listConnectionCandidates(signal)` | 列新建连接的候选（见「新建连接」） |
 | 可选 | `capabilities` / `probeCapabilities` | 运行期能力，新增 `atAll`、`inbound`；原先按平台名判断的（@全体 分流、审批能不能收回复）一律改问能力。能力是三态，不算失败结果 |
-| 可选 | `listAddressCandidates(connection, signal)` | 列可挑的地址（如 QQ 官方机器人的会话与频道，频道带 `parentAddress`） |
+| 可选 | `listAddressCandidates(connection, scope, signal)` | 列可挑的地址，只查 `scope` 那一种（如 QQ 官方机器人的会话与频道，频道带 `parentAddress` 与 `parentName`）；读口 `GET /api/connections/:id/addresses?scope=` |
 | 可选 | `connectionAuth` | 扫码之类的建连接流程（如 QQ 官方机器人扫码建号），与订阅侧同一个 `AuthState`，结果是一份连接草稿 |
 
 内置适配器也是集成，走同一套生命周期：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时宿主先调适配器自己的 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾；运行状态只取 `running` / `failed` / `settings-invalid`（ADR-0025 决策 5）。

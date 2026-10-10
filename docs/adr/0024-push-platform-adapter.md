@@ -24,6 +24,7 @@
     - 描述：`descriptor { label, shortLabel, color, icon, settingsFields }` 与 `settingsSchema`。
     - 必备：`start(ctx)` / `stop()`（取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到）、`send`、`isAvailable`、`probe`、`listConnectionCandidates(signal)`。
     - 可选：`capabilities` / `probeCapabilities`（新增 `atAll`、`inbound`，原先按平台名判断的改成问能力）、`listAddressCandidates(connection, signal)`、`connectionAuth`（与订阅侧同一个 `AuthState`，结果是一份连接草稿）。
+    - 🔗 10-10（3a-22-3）主人定：`listAddressCandidates` 的签名多一个参数，`(connection, scope, signal)`，只查那一种会话 —— QQ 的群 / 私聊是内存里现成的、频道要现去平台拉，不带参数就得每次全拉。返回一排平的 `{ address, name?, parentAddress?, parentName? }`，失败走结果形状；读口 `GET /api/connections/:id/addresses?scope=`。`/api/adapters`（各适配器描述的列表）归第 4 期、新建连接候选的读口归 3b，3a 里不建。
 4. **新建连接只有一条路：挑一个候选，再填字段**。`ConnectionCandidate = { name, platform: PlatformDescriptor, settings, selfId?, via?, boundConnectionId? }`。平台固定的适配器返回写死的模板候选（OneBot 一个、QQ 官方机器人一个、webhook 四个），模板可以反复用；桥返回在线的 bot。
     - 理由：一条路的面板与对拍都只写一遍。
 5. **webhook 是一个适配器，飞书 / 钉钉 / 企业微信 / 通用是它的四个模板候选**。冻结的通用 webhook JSON 里 `private` 写死 `false`（主人目标不可能是 webhook）。
