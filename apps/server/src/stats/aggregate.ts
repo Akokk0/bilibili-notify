@@ -9,8 +9,8 @@ import type { LiveSessionEntry, PostEntry, RecordingEntry, RecordingKind } from 
  * 用测试把口径钉死。
  *
  * **只认中立的东西**(ADR-0020 决策 5 / 7 的 🔗):作品带不带视频,峰值是数字(开播公告不记,直播只看场次)。
- * 平台的类型串怎么归类、「1.2万」怎么解析,由各来源在交进来之前做好(B 站那份在
- * `bili-format`),这里不认识任何平台 —— 以后再接一个平台,统计这一层一行不动。
+ * 作品有没有视频取自 `post-detected` 事件里的中立作品(`post.video`),「1.2万」只在迁移读 0.x 老行时解析
+ * (`migration/stats.ts`),这里不认识任何平台 —— 以后再接一个平台,统计这一层一行不动。
  */
 
 /**

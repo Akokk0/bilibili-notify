@@ -25,6 +25,7 @@ import type {
 	ExtensionLookupResponse,
 	ExtensionsResponse,
 	HistoryResponse,
+	StatsOverviewResponse,
 	SubscriptionDTO,
 } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
@@ -341,6 +342,24 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 		// 正文里的 `#假话题` 与 B 站富文本的话题节点同一种 span。
 		expect(card).toContain('<span class="text-[#FF6699]">#假话题</span>');
 	});
+
+	it("统计:拓展报的作品在统计里有作品行(统计只听 post-detected —— 证明拓展这条路真的发了事件)", async () => {
+		// 验红:把 `posts/post-queue.ts` 的 `bus.emit("post-detected", …)` 删掉,甲乙两行的作品数都是 0。
+		// 被屏蔽词挡下的也算 UP 的产出(乙两条都记);停用的丙收不到作品(决策 62),入口不发事件、统计无行。
+		await vi.waitFor(
+			async () => {
+				const res = await api("/api/stats/overview?days=7&tz=0");
+				await ok(res);
+				const { rows } = (await res.json()) as StatsOverviewResponse;
+				const postsOf = (key: Key) =>
+					rows.find((r) => r.identity.externalId === who[key].externalId)?.posts;
+				expect(postsOf("a")).toBe(2);
+				expect(postsOf("b")).toBe(2);
+				expect(postsOf("c") ?? 0).toBe(0);
+			},
+			{ timeout: 10_000 },
+		);
+	}, 15_000);
 
 	it("历史:甲两行拓展行(带拓展 id 与外部 id、名字快照、已送达),乙一行已送达加一行已过滤,丙没有", async () => {
 		// 历史在 BN 收到 webhook 的回复**之后**才落盘,而上一条用例等的是 webhook 收到消息 —— 负载重时

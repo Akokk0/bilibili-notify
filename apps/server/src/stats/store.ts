@@ -256,7 +256,7 @@ export function createStatsStore(opts: CreateStatsStoreOptions): StatsStore {
 	 *
 	 * append 那头已经按 id 挡过一道,读这头还要再挡一道:append 是「先读再追加」,挡不住
 	 * 两个版本各写各的 —— 0.x 里旧版的去重只认得带 `type` 的老行、看不见新行的 id,而
-	 * `dynamic-detected` 又不保证只发一次(投递失败走 markFail,下轮重发)。0.x 之间降级跑过
+	 * 0.x 的动态事件又不保证只发一次(进程崩在两轮之间、或本轮整轮抛错,下一轮重判重发)。0.x 之间降级跑过
 	 * 一阵再升级回来,同一条作品在盘上就有两行,迁移器翻完行也还是两行,不去重的话计数全部翻倍。
 	 */
 	async function readPosts(key: string): Promise<PostEntry[]> {

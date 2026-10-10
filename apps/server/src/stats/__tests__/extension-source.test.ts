@@ -5,7 +5,7 @@
  * 看的是**盘上**:作品行、直播帧、粉丝样本、「在记」小账的行。
  *
  * - 启用着就记、与推送开关无关;停用的、不认识的一样都不记(停用的资料照收也不记,决策 4);
- * - 作品:带视频 → `video`,其余 → `post`,按发布时刻(决策 5);
+ * - 作品行不在这里(3a-27):拓展作品经核心入口发 `post-detected`,统计由一个监听记(`post-detected.test.ts`);
  * - 场次跟着 `extension-live-session` 开 / 关,每种结束原因都关;峰值照抄结束帧带的本场累计观看(决策 6 / 7,
  *   怎么算的在场次那边测);BN 重启之后按开播时刻接回同一场,峰值不被后一段拽小;
  * - 粉丝:资料带粉丝数就记,不密过 B 站那边的粉丝轮询(决策 8);
@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	makeEmptySubscription,
+	type PostEvent,
 	type Subscription,
 	type SubscriptionReport,
 } from "@bilibili-notify/internal";
@@ -164,6 +165,19 @@ const post = (over: Partial<Value<"post">> = {}): SubscriptionReport => ({
 	kind: "post",
 	value: { id: "p1", url: "https://www.douyin.com/p1", publishedAt: T0 - MINUTE, ...over },
 });
+/** 核心入口发的 `post-detected`(给 `SUB`,发布时间同 {@link post});统计的作品行只听它。 */
+const detected = (over: { id?: string; video?: boolean } = {}): PostEvent => ({
+	subscriptionId: SUB.id,
+	identity: SUB.identity,
+	postId: over.id ?? "p1",
+	url: "https://www.douyin.com/p1",
+	post: {
+		creator: { name: "某人" },
+		publishedAt: iso(T0 - MINUTE),
+		text: "",
+		...(over.video ? { video: { cover: {}, title: "片", description: "" } } : {}),
+	},
+});
 const liveStart = (over: Partial<Value<"liveStart">> = {}): SubscriptionReport => ({
 	kind: "liveStart",
 	value: { url: URL, startedAt: clock, ...over },
@@ -228,112 +242,16 @@ afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true });
 });
 
-describe("作品(决策 5)", () => {
-	it("带视频的记 video、其余记 post;按订阅 id 落,时刻是发布时刻", async () => {
+// 作品行(有没有视频、发布时刻、多收的五格)不在拓展适配里了:拓展作品经核心入口发 `post-detected`,
+// 由 `recorder.ts` 的一个监听记,用例在 `post-detected.test.ts`;拓展上报 → 统计里有作品行的整条路在
+// `__tests__/extension-post-e2e.test.ts`。这里只留「同一条作品事件重放只留一行」(去重在 store)。
+describe("作品行(post-detected,去重在 store)", () => {
+	it("同一条作品的事件发两次只留一行", async () => {
 		const { bus, recorder } = boot();
-		report(bus, post({ id: "v1", publishedAt: T0 - 5 * MINUTE, video: { title: "一支视频" } }));
-		report(bus, post({ id: "t1", publishedAt: T0 - 3 * MINUTE, text: "一条图文" }));
-		await recorder.flush();
-		expect(await dynRows()).toEqual([
-			expect.objectContaining({ id: "v1", hasVideo: true, publishedAt: iso(T0 - 5 * MINUTE) }),
-			expect.objectContaining({ id: "t1", hasVideo: false, publishedAt: iso(T0 - 3 * MINUTE) }),
-		]);
-	});
-
-	it("同一条作品报两次只留一行", async () => {
-		const { bus, recorder } = boot();
-		report(bus, post({ id: "dup" }));
-		report(bus, post({ id: "dup" }));
+		bus.emit("post-detected", detected({ id: "dup" }));
+		bus.emit("post-detected", detected({ id: "dup" }));
 		await recorder.flush();
 		expect(await dynRows()).toHaveLength(1);
-	});
-});
-
-describe("作品行多收的五格(ADR-0027 决策 4 / 12,先翻成中立的 Post 再取)", () => {
-	it("带视频、话题、正文的上报:五格都对(期望值手写)", async () => {
-		const { bus, recorder } = boot();
-		report(
-			bus,
-			post({
-				id: "full",
-				url: "https://www.douyin.com/video/full",
-				publishedAt: T0 - 5 * MINUTE,
-				text: "今天去了海边 #旅行#",
-				topics: ["旅行"],
-				video: { title: "海边一日", duration: 125 },
-			}),
-		);
-		await recorder.flush();
-		expect(await dynRows()).toEqual([
-			{
-				id: "full",
-				hasVideo: true,
-				publishedAt: iso(T0 - 5 * MINUTE),
-				url: "https://www.douyin.com/video/full",
-				title: "海边一日",
-				summary: "今天去了海边 #旅行#\n视频标题：海边一日",
-				topic: "旅行",
-				videoDurationSec: 125,
-			},
-		]);
-	});
-
-	it("纯文字的上报:只有链接与摘要,其余格不写", async () => {
-		const { bus, recorder } = boot();
-		report(bus, post({ id: "plain", url: "https://www.douyin.com/plain", text: "一句话" }));
-		await recorder.flush();
-		const [row] = (await dynRows()) ?? [];
-		expect(row).toEqual({
-			id: "plain",
-			hasVideo: false,
-			publishedAt: iso(T0 - MINUTE),
-			url: "https://www.douyin.com/plain",
-			summary: "一句话",
-		});
-	});
-
-	it("超长正文:摘要正好 200 个字符", async () => {
-		const { bus, recorder } = boot();
-		report(bus, post({ id: "long", text: "字".repeat(1000) }));
-		await recorder.flush();
-		const [row] = (await dynRows()) ?? [];
-		expect([...String((row as { summary?: string }).summary)]).toHaveLength(200);
-	});
-
-	it("翻成 Post 失败:这一行还在,只是没有这五格", async () => {
-		const { bus, recorder } = boot();
-		const broken = post({ id: "broken" });
-		Object.defineProperty(broken.value, "text", {
-			get() {
-				throw new Error("翻不了");
-			},
-			enumerable: true,
-		});
-		report(bus, broken);
-		await recorder.flush();
-		expect(await dynRows()).toEqual([
-			{ id: "broken", hasVideo: false, publishedAt: iso(T0 - MINUTE) },
-		]);
-	});
-
-	it("统计不因为翻译而把图写进图库:带配图、封面的上报之后,数据根下没有图库目录", async () => {
-		const { bus, recorder } = boot();
-		const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
-		report(
-			bus,
-			post({ id: "pics", text: "有图", images: [png], video: { title: "片", cover: png } }),
-		);
-		await recorder.flush();
-		expect(await dynRows()).toHaveLength(1);
-		expect(await exists("images")).toBe(false);
-	});
-
-	it("作品开关关着:不落行(㉖f),这五格也就无从谈起", async () => {
-		switches = { posts: false, live: true };
-		const { bus, recorder } = boot();
-		report(bus, post({ id: "off", text: "不该记" }));
-		await recorder.flush();
-		expect(await dynRows()).toBeUndefined();
 	});
 });
 
@@ -343,7 +261,7 @@ describe("记谁(决策 4)", () => {
 		report(bus, post({ id: "quiet" }));
 		report(bus, profile({ fans: 42 }));
 		await recorder.flush();
-		expect(await dynRows()).toEqual([expect.objectContaining({ id: "quiet" })]);
+		expect(await recordingRows()).toContainEqual(hourRow("posts"));
 		expect(await fansRows()).toEqual([{ sampledAt: iso(T0), followers: 42 }]);
 	});
 
@@ -355,7 +273,7 @@ describe("记谁(决策 4)", () => {
 		// 对照:同一串换成启用着的就记 —— 证明监听确实在跑、不是空转。
 		report(bus, post({ id: "on-post" }));
 		await recorder.flush();
-		expect(await dynRows()).toEqual([expect.objectContaining({ id: "on-post" })]);
+		expect(await recordingRows()).toContainEqual(hourRow("posts"));
 		expect(await dynRows(OFF.id)).toBeUndefined();
 		expect(await fansRows(OFF.id)).toBeUndefined();
 		expect(await recordingRows(OFF.id)).toBeUndefined();
@@ -719,13 +637,12 @@ describe("「在记」小账(ADR-0027 决策 2 / 13)", () => {
 		).toEqual([hourRow("followers")]);
 	});
 
-	it("作品开关关着:作品不落行、也不记 posts;直播与粉丝照记", async () => {
+	it("作品开关关着:不记 posts;直播与粉丝照记(作品行不在这里,该不该记由核心入口判)", async () => {
 		switches = { posts: false, live: true };
 		const world = boot();
 		report(world.bus, post({ id: "quiet" }));
 		report(world.bus, profile({ fans: 3 }));
 		await world.recorder.flush();
-		expect(await dynRows()).toBeUndefined();
 		expect(await recordingRows()).toEqual([hourRow("live"), hourRow("followers")]);
 	});
 
@@ -759,20 +676,21 @@ describe("「在记」小账(ADR-0027 决策 2 / 13)", () => {
 		expect(await liveFrames()).toHaveLength(2);
 	});
 
-	it("B 站订阅的事件不经拓展适配落「在记」(B 站的由登录状态定时记,没登录就没有)", async () => {
+	it("B 站订阅的作品事件落作品行,但不经拓展适配落「在记」(B 站的由登录状态定时记,没登录就没有)", async () => {
 		subs = [
 			SUB,
 			makeEmptySubscription({ id: "b-7", identity: { sourceKey: "bilibili", externalId: "7" } }),
 		];
 		const world = boot();
-		world.bus.emit("dynamic-detected", {
-			uid: "7",
-			id: "d1",
-			type: "DYNAMIC_TYPE_AV",
-			ts: iso(T0),
+		world.bus.emit("post-detected", {
+			...detected({ id: "d1", video: true }),
+			subscriptionId: "b-7",
+			identity: { sourceKey: "bilibili", externalId: "7" },
 		});
 		await world.recorder.flush();
-		expect(await dynRows("b-7")).toEqual([{ id: "d1", hasVideo: true, publishedAt: iso(T0) }]);
+		expect(await dynRows("b-7")).toEqual([
+			expect.objectContaining({ id: "d1", hasVideo: true, publishedAt: iso(T0 - MINUTE) }),
+		]);
 		expect(await exists(join("stats", "recording", "b-7.jsonl"))).toBe(false);
 	});
 });
@@ -780,7 +698,7 @@ describe("「在记」小账(ADR-0027 决策 2 / 13)", () => {
 describe("删订阅 / 停用(决策 10)", () => {
 	/** 四份文件都写上:作品、粉丝、「在记」,外加一场开着的直播。 */
 	async function fillAll(world: World): Promise<void> {
-		report(world.bus, post());
+		world.bus.emit("post-detected", detected());
 		report(world.bus, profile({ fans: 9 }));
 		report(world.bus, liveStart());
 		await world.recorder.flush();

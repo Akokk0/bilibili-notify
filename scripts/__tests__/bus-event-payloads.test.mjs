@@ -40,16 +40,13 @@ export const RATCHET = {
 	"live-state-changed": ["uid:uid"],
 	"live-viewers-changed": ["uid:uid"],
 	"fans-refreshed": ["uid:entries[].uid"],
-	"dynamic-detected": ["uid:uid"],
 };
 
 /**
  * 已知的「平台原始值以裸 string 进载荷」:路径 → 装的是什么。守卫只核它们还在、还是 `string`;
  * 3b 中立化以后改成中立的值,这一格当场删掉。
  */
-export const RAW_STRINGS = {
-	"dynamic-detected.type": "B 站的动态类型码(`DYNAMIC_TYPE_*`)原样",
-};
+export const RAW_STRINGS = {};
 
 /** 起一个只含 `file` 的 TypeScript 程序,编译选项取 `tsconfig` 那一份。 */
 function createChecker(rootDir, file, tsconfig) {

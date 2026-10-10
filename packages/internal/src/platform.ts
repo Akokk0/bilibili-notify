@@ -209,24 +209,14 @@ export interface BusEvents {
 	 */
 	"fans-refreshed": { entries: FansRefreshEntry[] };
 	/**
-	 * 一条此前未见过的动态首次越过 per-uid 时间线闸门时 emit。
-	 *
-	 * **载荷是 UP 的产出记录,不是推送记录**:被过滤器屏蔽、被 per-UP 开关关掉、
-	 * 投递失败的动态一律照常 emit。数据统计要回答的是「这位 UP 发了多少」,
-	 * 「我们推了多少」看 `history-recorded`,两者口径不可混用。
-	 *
-	 * **不保证只发一次**:每条越过闸门的动态本轮结束时恰好前移一次,正常只发一回;但进程在两轮之间崩了、
-	 * 或本轮中途整轮抛错,下一轮会重判、再 emit 一次。消费方必须按 `id` 幂等 —— `StatsRecorder`
-	 * 靠 `StatsStore.appendPost` 的 id 去重挡掉,新消费方别忘了这一层。
-	 */
-	"dynamic-detected": DynamicDetectedEvent;
-	/**
 	 * 一条作品进了作品装配入口(`PostQueue.enqueue`):**入口同步发的旁路通知**,不是装配的入口 ——
 	 * 事件总线不在推送链上,装配由来源直接调入口。每条订阅一份;只发一次(没有「失败后下一轮重发」);
-	 * 在串行闸与过滤**之前**发,所以被过滤的、推送失败的作品同样算 UP 的产出(统计口径)。
+	 * 在串行闸与过滤**之前**发,所以被过滤的、推送失败的作品同样算 UP 的产出(统计口径:
+	 * 「这位 UP 发了多少」,「我们推了多少」看 `history-recorded`,两者不可混用)。
 	 * 订阅不在 / 停用 / 作品开关关着 / 来源没在跑的,不发。
 	 *
-	 * 载荷里的图已是图库引用(来源交出之前就抓好 / 写好)。眼下没有监听者,统计下一步改听它。
+	 * 载荷里的图已是图库引用(来源交出之前就抓好 / 写好)。统计是它的监听者(B 站与拓展两支共用一个);
+	 * 统计仓仍按 `id` 去重,盘上已有的行与重启后的重放靠它。
 	 */
 	"post-detected": PostEvent;
 }
@@ -280,22 +270,6 @@ export type ExtensionLiveSessionEvent =
 			/** 本场报过的最大累计观看;一次都没报过就没有这一格。 */
 			totalViewers?: number;
 	  };
-
-/** Bus 上 dynamic-detected 事件的载荷。 */
-export interface DynamicDetectedEvent {
-	uid: string;
-	/** B 站动态 id_str;消费方据此去重。 */
-	id: string;
-	/**
-	 * B 站原始动态类型字符串(DYNAMIC_TYPE_AV / _DRAW / _WORD / _LIVE_RCMD …)。
-	 * 事件层**不做语义归类** —— 哪些算投稿、哪些算普通动态、哪些是开播公告,由统计的
-	 * B 站适配在落盘之前归成中立种类(`apps/server/src/stats/bili-format.ts`:AV → `video`、
-	 * 开播那两种 → `live`、其余 → `post`,ADR-0020 决策 5 / 17),免得多个消费方各自跑偏。
-	 */
-	type: string;
-	/** 动态发布时间(ISO)。 */
-	ts: string;
-}
 
 /**
  * Bus 上 fans-refreshed 事件 / HTTP /api/stats/followers 返回的单条 entry —— 首页粉丝面板的一行,一条订阅一行

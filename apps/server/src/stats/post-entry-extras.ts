@@ -1,4 +1,4 @@
-import type { Post } from "@bilibili-notify/internal";
+import type { Post, PostEvent } from "@bilibili-notify/internal";
 import { postText } from "../posts/post-text.js";
 import type { PostEntry } from "./store.js";
 
@@ -6,8 +6,8 @@ import type { PostEntry } from "./store.js";
  * 作品行多收的五格(ADR-0027 决策 4 / 12;规矩在 `docs/agents/conventions/stats-collection.md`),从**链接 + 中立的 `Post`** 取。
  *
  * 链接不在 `Post` 上、在信封上(`docs/1.0/data-model.md`:`PostReport { postId, url, post }`、`PostEvent { …, postId, url, post }`),
- * 所以入参是 `{ url, post }`:拓展适配今天拿上报的 `url` 与翻好的 `Post` 来调,3a 之后 B 站适配拿 `PostEvent.url` 与
- * `PostEvent.post` 调同一个函数 —— 两个来源不各写一套取法。
+ * 所以入参是 `{ url, post }`:B 站与拓展两支都经 {@link postEntryFromEvent} 拿 `PostEvent.url` 与 `PostEvent.post` 来调,
+ * 两个来源不各写一套取法。
  *
  * - `summary`:唯一的取段函数 `postText` 的 AI 拼法(`"labeled"`,ADR-0028 决策 1),按字符截 {@link POST_SUMMARY_MAX_CHARS};
  * - `title`:作品自己的标题 → 文章标题 → 视频标题,截 {@link POST_TITLE_MAX_CHARS}(规矩没有长度,取个够用的上限);
@@ -33,6 +33,19 @@ export function clip(text: string, max: number): string {
 
 const filled = (text: string | undefined): text is string =>
 	text !== undefined && text.trim() !== "";
+
+/**
+ * `post-detected` → 作品行:B 站与拓展两支都吃同一份事件,判据只有作品自己 —— `hasVideo` 取 `post.video`、
+ * 发布时间取 `post.publishedAt`、多收的五格走 {@link postEntryExtras}。文件键(`subscriptionId`)由调用方取。
+ */
+export function postEntryFromEvent(event: PostEvent): PostEntry {
+	return {
+		id: event.postId,
+		hasVideo: event.post.video !== undefined,
+		publishedAt: event.post.publishedAt,
+		...postEntryExtras({ url: event.url, post: event.post }),
+	};
+}
 
 export function postEntryExtras(input: { url: string; post: Post }): PostEntryExtras {
 	const { url, post } = input;

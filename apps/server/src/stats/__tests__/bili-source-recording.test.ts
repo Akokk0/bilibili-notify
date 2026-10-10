@@ -4,7 +4,7 @@
  * - 「来源在跑」= B 站登录有效:定时(每 5 分钟)与挂上时、`auth-restored` 时各看一眼;状态每次现读,不靠事件记;
  *   登录无效不记;没绑好登录读口之前当作没在跑;
  * - 给每条「启用 ∧ 开关开着」的 B 站订阅记当前整点小时的 `posts` / `live`;
- * - 作品开关关着的订阅收到 `dynamic-detected` 不落作品行(不动引擎);
+ * - 作品行不在 B 站适配里(3a-27):B 站与拓展共用 `recorder.ts` 里的 `post-detected` 监听,该不该记由核心入口判;
  * - `fans-refreshed` 里 B 站订阅、启用着、采样就在这个小时的条目记 `followers`。
  * 假时钟、假总线;落进记录器的调用看 `recordActive`。
  */
@@ -179,20 +179,6 @@ describe("B 站适配 —— 登录读口没绑好之前当作没在跑", () => 
 });
 
 describe("B 站适配 —— 作品开关与粉丝", () => {
-	it("作品开关关着的订阅收到 dynamic-detected:不落作品行;开着的照落", () => {
-		subs = [bili("s1", "1", { recordsPosts: false }), bili("s2", "2")];
-		const { trigger, recorder } = setup();
-		for (const uid of ["1", "2"]) {
-			trigger("dynamic-detected", {
-				uid,
-				id: `d${uid}`,
-				type: "DYNAMIC_TYPE_AV",
-				ts: "2026-05-16T09:00:00.000Z",
-			});
-		}
-		expect(recorder.recordPost.mock.calls.map((c) => c[0])).toEqual(["s2"]);
-	});
-
 	it("fans-refreshed:B 站订阅、启用着、本小时采样的条目记 followers;拓展、停用、老条目不记", () => {
 		subs = [bili("s1", "1"), bili("off", "3", { enabled: false })];
 		const { trigger, recorder } = setup();

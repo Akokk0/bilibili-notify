@@ -5,16 +5,13 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { HOUR_MS } from "../followers/cutoff.js";
-import { classifyBiliDynamic } from "./bili-format.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import type { StatsRecorderCore } from "./recorder.js";
 
 /**
  * 统计的 **B 站适配**(ADR-0020 决策 17):把 B 站引擎已经在总线上的事件翻成记录器的中立调用。
  *
- * B 站的规矩只写在这里(与 `bili-format`):
- *   - `dynamic-detected` → 记成「有没有视频」的作品,开播那两种不记(不是作品,场次另从直播事件记);
- *     订阅的作品开关关着就不记(ADR-0027 决策 1,不动引擎);
+ * B 站的规矩只写在这里。作品行不在这里:B 站与拓展共用 `recorder.ts` 里的 `post-detected` 监听。
  *   - `live-viewers-changed` → 总线上就是精确数(㉒d),直接报给记录器取本场最大值(不再解析「1.2万」);
  *   - `live-state-changed` → 开一场 / 关一场,开播时刻取 B 站的真实 `live_time`;
  *   - `auth-lost` / 删订阅 → 忘掉 / 删掉 B 站这头的在飞状态与文件;
@@ -26,7 +23,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  * **uid → 订阅 id 在这里换**(ADR-0020 决策 2 的 🔗):B 站引擎与总线照旧只带 uid,统计仓按
  * 订阅 id 分文件({@link statsFileKey})。找不到订阅的 uid 一样都不记 —— 改之前按 uid 照记,
  * 退订之后引擎补发的那帧下播会把刚删的文件重新写出来。同一个 uid 两条 B 站订阅(老版本留下的;
- * 写盘那一层不让新增)两条都记,与改之前两行共读一个 uid 文件同一个结果。
+ * 写盘那一层不让新增)直播场次两条都记;作品行只记核心入口选中的那一条(事件里的订阅 id)。
  */
 export interface BiliStatsSourceOptions {
 	bus: MessageBus;
@@ -141,22 +138,6 @@ export function attachBiliStatsSource(opts: BiliStatsSourceOptions): Disposable 
 				const sampledAt = Date.parse(entry.ts);
 				if (!Number.isFinite(sampledAt) || nowMs - sampledAt >= HOUR_MS) continue;
 				recorder.recordActive(statsFileKey({ id: entry.subscriptionId }), "followers", sampledAt);
-			}
-		}),
-	);
-
-	handles.push(
-		bus.on("dynamic-detected", (event) => {
-			const post = classifyBiliDynamic(event.type);
-			// 开播公告不是作品,直播按场次另记(见 `bili-format`)。
-			if (!post) return;
-			// 作品开关关着就不记(ADR-0027 决策 1):开关取现在的有效值,所以每次现查订阅清单(作品事件很稀疏)。
-			const wanted = new Set(
-				opts.subscriptions().flatMap((sub) => (sub.recordsPosts ? [statsFileKey(sub)] : [])),
-			);
-			for (const key of keysOf(event.uid)) {
-				if (!wanted.has(key)) continue;
-				recorder.recordPost(key, { id: event.id, hasVideo: post.hasVideo, publishedAt: event.ts });
 			}
 		}),
 	);

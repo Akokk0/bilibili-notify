@@ -516,7 +516,7 @@ describe("StatsStore — 盘上已有的行", () => {
 	});
 
 	it("同 id 两行(降级期间别的版本又追加了一行)→ 读的时候只认先落盘的那条,不重复计数", async () => {
-		// `dynamic-detected` 不保证只发一次(投递失败走 markFail,下轮重发);两个版本各写各的、
+		// 0.x 的动态事件不保证只发一次(进程崩在两轮之间、或本轮整轮抛错,下一轮重判重发);两个版本各写各的、
 		// append 那头的「先读再追加」挡不住,同一条作品在盘上就有两行 —— 不按 id 去重的话计数翻倍。
 		await putRows("posts", "5", [
 			{ id: "n1", hasVideo: true, publishedAt: T(1) },

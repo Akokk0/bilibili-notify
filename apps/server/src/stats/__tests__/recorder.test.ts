@@ -2,12 +2,13 @@
  * 单元测试 — `createStatsRecorder`(mock bus + mock store)。
  *
  * Recorder = 中立的记录器 + B 站适配(ADR-0020 决策 17):B 站适配听
- * `dynamic-detected` / `live-state-changed` / `live-viewers-changed` 三条事件,
+ * `live-state-changed` / `live-viewers-changed` 两条直播事件,
  * 就地翻成中立的调用,记录器落进 StatsStore。事件带的是 uid,落盘按**订阅 id**
  * (ADR-0020 决策 2 的 🔗)—— 下面的订阅 id 故意与 uid 不同,键用错了一眼就红。
+ * 作品行由 `post-detected` 的监听记(B 站与拓展共用,事件自带订阅 id)。
  *
  * 守护契约:
- *   - dynamic-detected → B 站适配归类:AV 记成有视频,开播那两种不记,其余记成没有视频
+ *   - post-detected → 作品行按事件的订阅 id 落,有没有视频取 post.video
  *   - live-state-changed live/idle → open/closeLiveSession,时间取注入时钟
  *   - 峰值观看取本场 viewers 的最大值,且跨场不串味(新场重置)
  *   - "1.2万" 这类 B 站压缩字符串在交进记录器之前解析成数字,落盘的是数字
@@ -129,69 +130,32 @@ function setup(subs: () => readonly unknown[] = () => SUBS) {
 	return { trigger, store, handle };
 }
 
-describe("StatsRecorder — 动态事件(B 站适配就地归类)", () => {
-	it("dynamic-detected 的视频投稿 → appendPost 记成有视频,按订阅 id 落(不是 uid)", async () => {
+// 作品行(`post-detected`,B 站与拓展共用一个监听)的完整用例在 `post-detected.test.ts`(真总线,两种形状各喂一条);
+// 这里只钉:键是事件里的订阅 id,不是 uid。
+describe("StatsRecorder — 作品事件(post-detected)", () => {
+	it("视频作品 → appendPost 记成有视频,按订阅 id 落(不是 uid),发布时间取 post.publishedAt", async () => {
 		const { trigger, store } = setup();
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "abc",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
+		trigger("post-detected", {
+			subscriptionId: "id-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+			postId: "abc",
+			url: "https://www.bilibili.com/video/BVabc",
+			post: {
+				creator: { name: "某人" },
+				publishedAt: "2026-05-16T09:00:00.000Z",
+				text: "",
+				video: { cover: {}, title: "视频", description: "" },
+			},
 		});
 		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
-		expect(store.appendPost).toHaveBeenCalledWith("id-1", {
-			id: "abc",
-			hasVideo: true,
-			publishedAt: "2026-05-16T09:00:00.000Z",
-		});
-	});
-
-	it("图文 / 纯文字 / 转发 / 没见过的新类型 → 没有视频", async () => {
-		const { trigger, store } = setup();
-		const types = [
-			"DYNAMIC_TYPE_DRAW",
-			"DYNAMIC_TYPE_WORD",
-			"DYNAMIC_TYPE_FORWARD",
-			"DYNAMIC_TYPE_SOMETHING_NEW",
-		];
-		for (const [i, type] of types.entries()) {
-			trigger("dynamic-detected", { uid: "1", id: `d${i}`, type, ts: "2026-05-16T09:00:00.000Z" });
-		}
-		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(types.length));
-		expect(store.appendPost.mock.calls.map((c) => c[1].hasVideo)).toEqual([
-			false,
-			false,
-			false,
-			false,
-		]);
-	});
-
-	it("开播那两种不记任何行 —— 场次从直播事件另记,公告再记一行就是把一场直播算两次(㉖c)", async () => {
-		// 没开直播类推送的 UP 也一样不记:公告不再是「最后活动」与「那天有记录」的证据(ADR-0027)。
-		const { trigger, store } = setup();
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "l1",
-			type: "DYNAMIC_TYPE_LIVE_RCMD",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "l2",
-			type: "DYNAMIC_TYPE_LIVE",
-			ts: "2026-05-16T09:05:00.000Z",
-		});
-		// 对照:同一批事件里夹一条普通动态 —— 它记、公告不记,证明监听在跑、不是空转。
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "w1",
-			type: "DYNAMIC_TYPE_WORD",
-			ts: "2026-05-16T09:10:00.000Z",
-		});
-		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
-		expect(store.appendPost.mock.calls).toEqual([
-			["id-1", { id: "w1", hasVideo: false, publishedAt: "2026-05-16T09:10:00.000Z" }],
-		]);
+		expect(store.appendPost).toHaveBeenCalledWith(
+			"id-1",
+			expect.objectContaining({
+				id: "abc",
+				hasVideo: true,
+				publishedAt: "2026-05-16T09:00:00.000Z",
+			}),
+		);
 	});
 });
 
@@ -479,7 +443,13 @@ describe("StatsRecorder — dispose", () => {
 	it("dispose 后事件不再落盘", async () => {
 		const { trigger, store, handle } = setup();
 		handle.dispose();
-		trigger("dynamic-detected", { uid: "1", id: "a", type: "T", ts: "2026-05-16T09:00:00.000Z" });
+		trigger("post-detected", {
+			subscriptionId: "id-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+			postId: "a",
+			url: "https://t.bilibili.com/a",
+			post: { creator: { name: "某人" }, publishedAt: "2026-05-16T09:00:00.000Z", text: "" },
+		});
 		trigger("live-state-changed", { uid: "1", status: "live" });
 		await handle.flush();
 		expect(store.appendPost).not.toHaveBeenCalled();
@@ -626,49 +596,50 @@ describe("中立记录器(给各来源适配用的那一面)", () => {
 });
 
 describe("B 站适配:uid → 订阅 id 在边上换", () => {
-	it("找不到订阅的 uid → 作品 / 开播 / 观看数 / 下播一样都不记", async () => {
+	/** 一场直播的最短事件串:开播 → 观看数 → 下播。 */
+	const liveRound = (trigger: (event: string, payload?: unknown) => void, uid: string) => {
+		trigger("live-state-changed", { uid, status: "live", at: "2026-05-16T09:00:00.000Z" });
+		trigger("live-viewers-changed", { uid, viewers: 500 });
+		trigger("live-state-changed", { uid, status: "idle" });
+	};
+
+	it("找不到订阅的 uid → 开播 / 观看数 / 下播一样都不记", async () => {
 		// 改之前按 uid 照记不误:退订之后引擎补发的那帧 idle 会把刚删掉的 uid 文件重新写出来。
 		const { trigger, store } = setup();
-		trigger("dynamic-detected", {
-			uid: "404",
-			id: "x",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
 		trigger("live-state-changed", { uid: "404", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		trigger("live-viewers-changed", { uid: "404", viewers: 30_000 });
 		trigger("live-state-changed", { uid: "404", status: "idle" });
 		// 对照:同一串事件换成订阅着的 uid 就记 —— 证明监听确实在跑、不是空转。
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "y",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
-		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
-		expect(store.appendPost).toHaveBeenCalledTimes(1);
-		expect(store.appendPost).toHaveBeenCalledWith("id-1", expect.objectContaining({ id: "y" }));
-		expect(store.openLiveSession).not.toHaveBeenCalled();
-		expect(store.closeLiveSession).not.toHaveBeenCalled();
+		liveRound(trigger, "1");
+		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalled());
+		expect(store.openLiveSession).toHaveBeenCalledTimes(1);
+		expect(store.openLiveSession).toHaveBeenCalledWith("id-1", expect.any(String));
+		expect(store.closeLiveSession).toHaveBeenCalledTimes(1);
+		expect(store.closeLiveSession).toHaveBeenCalledWith("id-1", expect.any(String), 500);
 	});
 
-	it("同一个 uid 两条 B 站订阅(服务端不判重)→ 两条都记", async () => {
+	it("同一个 uid 两条 B 站订阅(服务端不判重)→ 直播场次两条都记;作品行只记事件点名的那一条", async () => {
 		const { trigger, store } = setup(() => [
 			{ id: "id-1", identity: { sourceKey: "bilibili", externalId: "1" }, ...ON },
 			{ id: "id-1b", identity: { sourceKey: "bilibili", externalId: "1" }, ...ON },
 		]);
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "y",
-			type: "DYNAMIC_TYPE_WORD",
-			ts: "2026-05-16T09:00:00.000Z",
+		// 核心入口每条作品只为一条订阅发一次事件,统计照事件记,不自己再按身份找兄弟订阅。
+		trigger("post-detected", {
+			subscriptionId: "id-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+			postId: "y",
+			url: "https://t.bilibili.com/y",
+			post: { creator: { name: "某人" }, publishedAt: "2026-05-16T09:00:00.000Z", text: "" },
 		});
-		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
-		trigger("live-viewers-changed", { uid: "1", viewers: 500 });
-		trigger("live-state-changed", { uid: "1", status: "idle" });
+		liveRound(trigger, "1");
 		await vi.waitFor(() => expect(store.closeLiveSession).toHaveBeenCalledTimes(2));
-		expect(store.appendPost.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-1b"]);
-		expect(store.closeLiveSession.mock.calls.map((c) => [c[0], c[2]])).toEqual([
+		expect(store.appendPost.mock.calls.map((c) => c[0])).toEqual(["id-1"]);
+		// 两条订阅各写各的文件,落盘先后不保证;按键排一下再比。
+		expect(
+			store.closeLiveSession.mock.calls
+				.map((c) => [c[0], c[2]])
+				.sort((a, b) => a[0].localeCompare(b[0])),
+		).toEqual([
 			["id-1", 500],
 			["id-1b", 500],
 		]);
@@ -678,56 +649,32 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 		const { trigger, store, handle } = setup(() => [
 			{ id: "ext-x", identity: { sourceKey: "douyin", externalId: "1" }, ...ON },
 		]);
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "y",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
+		liveRound(trigger, "1");
 		await handle.flush();
-		expect(store.appendPost).not.toHaveBeenCalled();
+		expect(store.openLiveSession).not.toHaveBeenCalled();
+		expect(store.closeLiveSession).not.toHaveBeenCalled();
 	});
 
 	it("新加的订阅认得出:订阅列表变了之后,那个 uid 的事件就记在新订阅名下", async () => {
 		let subs: unknown[] = [];
 		const { trigger, store } = setup(() => subs);
-		trigger("dynamic-detected", {
-			uid: "7",
-			id: "early",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
+		trigger("live-state-changed", { uid: "7", status: "live", at: "2026-05-16T08:00:00.000Z" });
 		subs = [{ id: "id-7", identity: { sourceKey: "bilibili", externalId: "7" }, ...ON }];
 		trigger("subscription-changed", { ops: [{ kind: "add", sub: subs[0] }] });
-		trigger("dynamic-detected", {
-			uid: "7",
-			id: "late",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
-		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalled());
-		expect(store.appendPost).toHaveBeenCalledTimes(1);
-		expect(store.appendPost).toHaveBeenCalledWith("id-7", expect.objectContaining({ id: "late" }));
+		trigger("live-state-changed", { uid: "7", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalled());
+		expect(store.openLiveSession).toHaveBeenCalledTimes(1);
+		expect(store.openLiveSession).toHaveBeenCalledWith("id-7", "2026-05-16T09:00:00.000Z");
 	});
 
 	it("刚加的订阅,作废通知还没到也认得出 —— 查不到时重查一次", async () => {
 		let subs: unknown[] = [SUBS[0]];
 		const { trigger, store } = setup(() => subs);
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "warm",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
+		trigger("live-state-changed", { uid: "1", status: "live", at: "2026-05-16T09:00:00.000Z" });
 		subs = [...SUBS];
-		trigger("dynamic-detected", {
-			uid: "2",
-			id: "new",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
-		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(2));
-		expect(store.appendPost.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-2"]);
+		trigger("live-state-changed", { uid: "2", status: "live", at: "2026-05-16T09:00:00.000Z" });
+		await vi.waitFor(() => expect(store.openLiveSession).toHaveBeenCalledTimes(2));
+		expect(store.openLiveSession.mock.calls.map((c) => c[0])).toEqual(["id-1", "id-2"]);
 	});
 
 	it("删掉的订阅不再记:之后同 uid 的事件不会把文件重新写出来", async () => {
@@ -738,16 +685,9 @@ describe("B 站适配:uid → 订阅 id 在边上换", () => {
 		subs = [SUBS[1]];
 		trigger("subscription-changed", { ops: [{ kind: "remove", sub: SUBS[0] }] });
 		trigger("live-state-changed", { uid: "1", status: "idle" });
-		trigger("dynamic-detected", {
-			uid: "1",
-			id: "z",
-			type: "DYNAMIC_TYPE_AV",
-			ts: "2026-05-16T09:00:00.000Z",
-		});
 		await vi.waitFor(() => expect(store.drop).toHaveBeenCalledWith("id-1"));
 		await handle.flush();
 		expect(store.closeLiveSession).not.toHaveBeenCalled();
-		expect(store.appendPost).not.toHaveBeenCalled();
 	});
 });
 

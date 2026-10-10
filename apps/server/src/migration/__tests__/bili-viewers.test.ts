@@ -3,7 +3,7 @@
  *
  * 0.x 的下播帧把本场峰值落成 B 站排好的字(「1.2万」),迁一代时翻成数字。1.0 起总线上的观看人数是精确数
  * (`live-viewers-changed.viewers`,㉒d),统计的 B 站适配不再解析它 —— 这个解析只剩迁移用,所以搬到了迁移模块
- * (原先在 `stats/bili-format.ts`,测试也从那边搬来)。
+ * (原先在统计目录下,测试也从那边搬来)。
  */
 
 import { describe, expect, it } from "vite-plus/test";

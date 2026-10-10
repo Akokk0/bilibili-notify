@@ -19,6 +19,9 @@
  * 靠公告撑着「最后活动」与计数 0,公告比场次晚几分钟的那位「最后活动」落在公告上;现在这些格子要么落到场次 / 作品
  * 上、要么整行是「无记录」null —— 其余每一格仍是改之前的数。
  *
+ * **3a-27 起(统计只听 `post-detected`)有一处有意的不同**:直播类动态(`DYNAMIC_TYPE_LIVE`)记成一条不带视频的作品
+ * (主人定的);自动开播推送(`DYNAMIC_TYPE_LIVE_RCMD`)引擎不交作品、没有事件。B 组用例据此改了 202 那一行的几格。
+ *
  * **㉖f 起又有一处有意的不同**:「近 1 日(UTC)」窗口里订阅 105 改前整行 null、现在是 0(详见该用例里的注释)。
  *
  * 要紧的几个角都在夹具里:只有开播公告、没有场次的 UP;开播公告比场次晚几分钟;接回的场次、解析不出的老峰值、
@@ -456,13 +459,26 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 			for (const h of handlers.get(ev) ?? []) h(payload);
 			await new Promise((r) => setTimeout(r, 15));
 		};
+		// 3a-27 起统计听核心入口发的 `post-detected`:有没有视频看 `post.video`,不再看 B 站的类型串;
+		// 自动开播推送(`DYNAMIC_TYPE_LIVE_RCMD`)在引擎里就跳过、不交作品,所以不会有事件。
 		const dyn = (uid: string, id: string, type: string, ts: string) =>
-			fire("dynamic-detected", { uid, id, type, ts });
+			fire("post-detected", {
+				subscriptionId: `s${uid}`,
+				identity: { sourceKey: "bilibili", externalId: uid },
+				postId: id,
+				url: `https://t.bilibili.com/${id}`,
+				post: {
+					creator: { name: `UP${uid}` },
+					publishedAt: ts,
+					text: "",
+					...(type === "DYNAMIC_TYPE_AV"
+						? { video: { cover: {}, title: "视频", description: "" } }
+						: {}),
+				},
+			});
 
-		// 201:直播推送全关,只有一条视频 + 开播公告(重放一次)。
+		// 201:直播推送全关,只有一条视频(开播公告引擎不交,没有事件)。
 		await dyn("201", "v1", "DYNAMIC_TYPE_AV", at(2, 5));
-		await dyn("201", "lr1", "DYNAMIC_TYPE_LIVE_RCMD", at(1, 3));
-		await dyn("201", "lr1", "DYNAMIC_TYPE_LIVE_RCMD", at(1, 3));
 		// 202:各种类型 + 重放。
 		for (const [id, type, ts] of [
 			["a", "DYNAMIC_TYPE_AV", at(2)],
@@ -479,7 +495,6 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 		clock = NOW - 2 * D;
 		await fire("auth-restored");
 		await fire("live-state-changed", { uid: "203", status: "live", at: at(2, 1) });
-		await dyn("203", "r1", "DYNAMIC_TYPE_LIVE_RCMD", at(2, 1, 1));
 		await fire("live-viewers-changed", { uid: "203", viewers: 8000 });
 		await fire("live-viewers-changed", { uid: "203", viewers: 12_000 });
 		await fire("live-viewers-changed", { uid: "203", viewers: 9500 });
@@ -527,15 +542,17 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [null, null, null, 0, 1, 0, 0],
 			},
 			"202": {
+				// 3a-27 起直播类动态(`f`,08:00)记成一条不带视频的作品:作品 5 → 6、最后活动 07:00 → 08:00、
+				// 当天活动数 1 → 2,其余每一格不变。
 				videoPosts: 1,
-				posts: 5,
+				posts: 6,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T07:00:00.000Z",
-				activity: [null, null, null, 0, 2, 2, 1],
+				lastActivityAt: "2026-05-16T08:00:00.000Z",
+				activity: [null, null, null, 0, 2, 2, 2],
 			},
 			"203": {
 				videoPosts: 0,
@@ -577,15 +594,16 @@ describe("B. B 站总线事件经 B 站适配落盘 → /overview 与改之前�
 				activity: [0],
 			},
 			"202": {
+				// 同上:直播类动态那一条(08:00)现在也记。
 				videoPosts: 0,
-				posts: 1,
+				posts: 2,
 				liveSessions: 0,
 				liveHours: 0,
 				liveTimedSessions: 0,
 				maxViewers: null,
 				avgViewers: null,
-				lastActivityAt: "2026-05-16T07:00:00.000Z",
-				activity: [1],
+				lastActivityAt: "2026-05-16T08:00:00.000Z",
+				activity: [2],
 			},
 			"203": {
 				videoPosts: 0,

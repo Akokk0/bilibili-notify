@@ -1,18 +1,12 @@
 import {
 	BILIBILI_SOURCE_KEY,
 	type Disposable,
-	fail,
 	type MessageBus,
-	type SubscriptionReportValue,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
-import { deferImageWrites } from "../images/image-writes.js";
-import { postFromReport } from "../posts/post-from-report.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
-import { postEntryExtras } from "./post-entry-extras.js";
 import type { StatsRecorderCore } from "./recorder.js";
-import type { PostEntry } from "./store.js";
 
 /**
  * 统计的**拓展适配**(ADR-0020 决策 17):把订阅源拓展的上报与拓展直播的场次翻成记录器的中立调用,按
@@ -20,8 +14,8 @@ import type { PostEntry } from "./store.js";
  *
  *   - **记谁**(决策 4):订阅在、启用着就记,**与推送开关无关** —— 统计记的是「UP 做了什么」。停用的不记,
  *     哪怕它的资料照样报上来(ADR-0019 决策 62:资料更新的投递含停用的订阅)。
- *   - `subscription-reported` 的作品 → 记「有没有视频」(决策 5),时刻是发布时刻;
- *     同一条作品报几次只留一行(去重在 store)。
+ *   - 作品行不在这里:拓展作品经核心入口发 `post-detected`,B 站与拓展共用 `recorder.ts` 里的那一个监听
+ *     (有没有视频、发布时刻、同一条报几次只留一行,都在那边与 store)。
  *   - `extension-live-session` → 开一场 / 关一场(决策 6):场次边界(断流接续、没报下播又开播、拓展停了、
  *     停用、关机)由 `runtime/extension-live-sessions.ts` 算、与推送共用,这里不另算。每种结束原因都是「观测
  *     到此为止」,都关;**删了的除外** —— 文件跟着订阅一起删,不再写一帧把它重新写出来。
@@ -39,11 +33,6 @@ export interface ExtensionStatsSourceOptions {
 	subscriptions: () => readonly StatsSubscription[];
 	/** B 站粉丝轮询的 cron(`globals.app.fansCron`,现取)。 */
 	fansCron: () => string;
-}
-
-/** 作品里有没有视频(决策 5):带视频的是「投稿」,其余(图文、纯文字)是「动态」。 */
-export function extensionHasVideo(post: { video?: unknown }): boolean {
-	return post.video !== undefined;
 }
 
 /** cron 读不出来时拓展粉丝的间隔 —— 与默认的 `fansCron`(`*\/10 * * * *`)同一个数。 */
@@ -77,33 +66,6 @@ export function fansSampleGapMs(cron: string): number {
 	}
 	gapCache.set(cron, gap);
 	return gap;
-}
-
-/** 毫秒 → 盘上的 ISO。 */
-const iso = (ms: number) => new Date(ms).toISOString();
-
-/**
- * 一条拓展作品上报 → 作品行。先翻成中立的 `Post`(`postFromReport`,与出卡同一份翻译),再经 `postEntryExtras`
- * 从 `{ 上报的 url, Post }` 取多收的五格,不直接读上报的原始字段(两套取法)。
- *
- * **统计不为图写盘**:翻译要一个存图的口,给它 {@link deferImageWrites} 的 `sink`、**永不 `commit()`** ——
- * 引用只是内容哈希、字节记在内存里就丢,图库一个字节也不会写。翻译失败照旧记一行不带这五格的(不丢行)。
- */
-async function postEntryOf(post: SubscriptionReportValue<"post">): Promise<PostEntry> {
-	const entry: PostEntry = {
-		id: post.id,
-		hasVideo: extensionHasVideo(post),
-		publishedAt: iso(post.publishedAt),
-	};
-	try {
-		const { sink } = deferImageWrites({
-			put: async () => fail("unavailable", "统计不写图库"),
-		});
-		const translated = await postFromReport(post, { authorName: "", images: sink });
-		return { ...entry, ...postEntryExtras({ url: post.url, post: translated }) };
-	} catch {
-		return entry;
-	}
 }
 
 export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): Disposable {
@@ -143,12 +105,8 @@ export function attachExtensionStatsSource(opts: ExtensionStatsSourceOptions): D
 				// 收到上报 = 来源这个小时在跑,按开关记。
 				if (sub.recordsPosts) recorder.recordActive(key, "posts");
 				if (sub.recordsLive) recorder.recordActive(key, "live");
+				// 作品行不在这里:拓展作品经核心入口发 `post-detected`,由 `recorder.ts` 的监听记。
 				switch (report.kind) {
-					case "post":
-						// 作品开关关着不落作品行。
-						if (!sub.recordsPosts) break;
-						recorder.recordPost(key, postEntryOf(report.value));
-						break;
 					case "profile":
 						if (report.value.fans !== undefined) {
 							// 这个小时拉资料成功过(不管粉丝样本被不被稀释掉)。

@@ -312,13 +312,11 @@ describe("数据统计:四个目录、涨粉起点、缓存", () => {
 	it("清的同时有排在队里的写(作品、粉丝样本、「在记」)和一场正在播的:清完什么都不会被写回来", async () => {
 		const w = world;
 		const key = "c0000000-0000-4000-8000-000000000001";
-		const slow = new Promise<{ id: string; hasVideo: boolean; publishedAt: string }>((resolve) =>
-			setTimeout(
-				() => resolve({ id: "p", hasVideo: false, publishedAt: "2026-10-06T11:00:00.000Z" }),
-				30,
-			),
-		);
-		w.recorder.recordPost(key, slow);
+		w.recorder.recordPost(key, {
+			id: "p",
+			hasVideo: false,
+			publishedAt: "2026-10-06T11:00:00.000Z",
+		});
 		w.recorder.recordFans(key, 10, 0);
 		w.recorder.recordActive(key, "posts");
 		w.recorder.openSession(key, "2026-10-06T09:00:00.000Z");

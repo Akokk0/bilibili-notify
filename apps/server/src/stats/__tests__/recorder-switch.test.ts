@@ -8,7 +8,7 @@
  * 每条「不写」的断言都配一条同样调用、开着时会写的对照 —— 只断言「没写」会在什么都没发生时空绿。
  */
 
-import type { MessageBus } from "@bilibili-notify/internal";
+import type { MessageBus, PostEvent } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { FollowersStore } from "../../followers/store.js";
 import { createStatsRecorder, createStatsRecorderCore } from "../recorder.js";
@@ -228,18 +228,24 @@ describe("记录器 × 总开关 — 热更新(整条采集链,下一条事件�
 				},
 			],
 		});
-		const dynamic = (id: string) => ({ uid: "1", id, type: "DYNAMIC_TYPE_WORD", ts: NOW });
+		const dynamic = (id: string): PostEvent => ({
+			subscriptionId: KEY,
+			identity: { sourceKey: "bilibili", externalId: "1" },
+			postId: id,
+			url: `https://t.bilibili.com/${id}`,
+			post: { creator: { name: "某人" }, publishedAt: new Date(NOW).toISOString(), text: "" },
+		});
 
-		trigger("dynamic-detected", dynamic("a"));
+		trigger("post-detected", dynamic("a"));
 		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(1));
 
 		enabled = false;
-		trigger("dynamic-detected", dynamic("b"));
+		trigger("post-detected", dynamic("b"));
 		await new Promise((r) => setTimeout(r, 20));
 		expect(store.appendPost).toHaveBeenCalledTimes(1);
 
 		enabled = true;
-		trigger("dynamic-detected", dynamic("c"));
+		trigger("post-detected", dynamic("c"));
 		await vi.waitFor(() => expect(store.appendPost).toHaveBeenCalledTimes(2));
 	});
 });

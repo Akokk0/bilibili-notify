@@ -6,8 +6,8 @@
  * 2. **行与目录**(决策 5 / 7 的 🔗、ADR-0027):老作品行 `{id, type, ts}`(0.x 中间版本带 `kind`)→ `{id, hasVideo, publishedAt}`,
  *    **开播公告那两种行丢掉**(统计不再记它),文件连同目录从 `stats/dyn/` 搬到 `stats/posts/`;老直播帧
  *    `{k, ts, peak}` → `{kind, occurredAt, peakTotalViewers}`,字符串峰值("1.2万")→ 数字({@link parseBiliViewers},
- *    1.0 起「1.2万」的解析只留在这里)。行一步翻到最新形状,不先写旧形状再改;作品的类型串翻译与 B 站适配共用
- *    `stats/bili-format.ts` 那一份。
+ *    1.0 起「1.2万」的解析只留在这里)。行一步翻到最新形状,不先写旧形状再改;作品的类型串翻译是本文件的
+ *    {@link classifyBiliDynamic}。
  *
  * 从前每次开机都改名,是为了接住「回退到老版本、它又写出 uid 文件、再升回来」;有了代以后回退再升级照用
  * 迁好的那一代,手动从第 0 代重迁也走这里(ADR-0022 决策 3 下 10-01 的 🔗),新代里不会冒出 uid 文件,迁一次就够。
@@ -18,7 +18,6 @@ import { join } from "node:path";
 import { syncDirectory } from "@bilibili-notify/storage";
 import { FOLLOWERS_DIR } from "../followers/store.js";
 import { type DataRootKey, dataPath } from "../runtime/roots.js";
-import { classifyBiliDynamic } from "../stats/bili-format.js";
 import { STATS_LIVE_DIR, STATS_POSTS_DIR } from "../stats/store.js";
 import {
 	isPlainObject,
@@ -30,6 +29,26 @@ import {
 import type { BiliSubscriptionKey } from "./subscriptions.js";
 
 type Dir = readonly [DataRootKey, ...string[]];
+
+/** 视频投稿 —— 老行里「投稿」一栏的唯一来源(投稿 = 发了视频,跨平台同义)。 */
+const VIDEO_TYPES = new Set(["DYNAMIC_TYPE_AV"]);
+/**
+ * 开播公告。B 站会把「某某开播了」塞进动态流,直播场次另有记录,所以 0.x 落盘的这两种行**不是作品,迁移时丢掉**
+ * (ADR-0027)。1.0 起统计里的 `DYNAMIC_TYPE_LIVE` 记成一条不带视频的作品,但那是新行的事,老行照旧丢。
+ */
+const LIVE_START_TYPES = new Set(["DYNAMIC_TYPE_LIVE_RCMD", "DYNAMIC_TYPE_LIVE"]);
+
+/**
+ * 0.x 落盘的 B 站动态类型串 → 要迁的作品有没有视频:AV → `{ hasVideo: true }`,开播那两种 → `undefined`(丢掉),
+ * 其余 → `{ hasVideo: false }`。
+ *
+ * 没见过的类型一律当没有视频的作品迁下来、而不是丢弃 —— B 站随时会加新类型,漏计比错计更难被发现。
+ * 只剩迁移在用:新作品行不看类型串,看 `post.video`(`stats/post-entry-extras.ts` 的 `postEntryFromEvent`)。
+ */
+export function classifyBiliDynamic(type: string): { hasVideo: boolean } | undefined {
+	if (LIVE_START_TYPES.has(type)) return undefined;
+	return { hasVideo: VIDEO_TYPES.has(type) };
+}
 
 /**
  * 把 B 站「X 人看过」的压缩写法("1.2万" / "3.5亿" / "9500")解析成数字;解析不出返回 `NaN`。

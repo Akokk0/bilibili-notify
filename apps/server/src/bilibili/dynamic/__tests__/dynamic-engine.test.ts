@@ -937,7 +937,7 @@ describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
 		expect(url).toBe("https://t.bilibili.com/id-1");
 	});
 
-	it("过滤不是引擎的事:含屏蔽词的动态照样交(核心入口之后再挡),也照样发 dynamic-detected", async () => {
+	it("过滤不是引擎的事:含屏蔽词的动态照样交(核心入口之后再挡)", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),
@@ -945,7 +945,6 @@ describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
-		expect(b.emits.filter((e) => e.event === "dynamic-detected")).toHaveLength(1);
 	});
 });
 
@@ -1049,7 +1048,7 @@ describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(
 	const picItem = (uid: number) =>
 		makeItem({ uid, pubTs, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] });
 
-	it("关了作品推送的订阅:不翻译、不抓图、不交;时间线照常前移,dynamic-detected 照发", async () => {
+	it("关了作品推送的订阅:不翻译、不抓图、不交;时间线照常前移", async () => {
 		const b = makeEngine();
 		startWith(b);
 		b.fetchAllDynamic.mockResolvedValue(resp([picItem(11)]));
@@ -1057,7 +1056,6 @@ describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(
 		expect(postFromDynamic).not.toHaveBeenCalled();
 		expect(b.fetchImage).not.toHaveBeenCalled();
 		expect(b.reportPost).not.toHaveBeenCalled();
-		expect(b.emits.filter((e) => e.event === "dynamic-detected")).toHaveLength(1);
 		expect(priv(b.engine).dynamicTimelineManager.get("11")).toBe(pubTs);
 	});
 
@@ -1125,16 +1123,6 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 		expect(b.fetchImage).not.toHaveBeenCalled();
 		expect(b.reportPost).not.toHaveBeenCalled();
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
-	});
-
-	it("统计照常看得见它(统计那头自己按类型忽略)", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const detected = b.emits.filter((e) => e.event === "dynamic-detected");
-		expect(detected).toHaveLength(1);
-		expect(detected[0]?.payload).toMatchObject({ type: "DYNAMIC_TYPE_LIVE_RCMD" });
 	});
 });
 
@@ -1390,41 +1378,37 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// H. dynamic-detected —— 数据统计的动态/投稿数据源
+// H. 作品只交一次、不交的就不交 —— 统计不在引擎这头记:统计听核心入口发的 `post-detected`
 // ---------------------------------------------------------------------------
 
-describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
-	const detected = (b: EngineBag) => b.emits.filter((e) => e.event === "dynamic-detected");
+describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统计事件", () => {
+	const reportedCount = (b: EngineBag) => b.reportPost.mock.calls.length;
+	const postEvents = (b: EngineBag) => b.emits.filter((e) => e.event === "post-detected");
 
-	it("新动态过闸 → emit 一次,携带 uid / id / 原始 type / ISO 发布时间", async () => {
+	it("新动态过闸 → 交一次;`post-detected` 是核心入口的事,引擎不发", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_AV" })]),
 		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(detected(b)).toHaveLength(1);
-		expect(detected(b)[0]?.payload).toEqual({
-			uid: "1",
-			id: "id-1",
-			type: "DYNAMIC_TYPE_AV",
-			ts: new Date(1000 * 1000).toISOString(),
-		});
+		expect(reportedCount(b)).toBe(1);
+		expect(postEvents(b)).toHaveLength(0);
 	});
 
-	it("timeline >= pub_ts(已处理过)→ 不重复 emit,避免统计重复计数", async () => {
+	it("timeline >= pub_ts(已处理过)→ 不重复交,避免统计重复计数", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 1000);
 		await detect(b.engine);
-		expect(detected(b)).toHaveLength(0);
+		expect(reportedCount(b)).toBe(0);
 	});
 
-	it("未订阅 uid → 不 emit", async () => {
+	it("未订阅 uid → 不交", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 99, pubTs: 1000 })]));
 		await detect(b.engine);
-		expect(detected(b)).toHaveLength(0);
+		expect(reportedCount(b)).toBe(0);
 	});
 
 	/**
@@ -1443,27 +1427,27 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
 	const laterThanSeed = () => Math.floor(Date.now() / 1000) + 60;
 
-	it("per-UP 动态推送关掉 → 仍然 emit,只是不推送", async () => {
-		// 契约(platform.ts)明写:「被过滤器屏蔽、被 per-UP 开关关掉、投递失败的动态
-		// 一律照常 emit」。此前锚点表只登记推送开着的 UP,关掉开关的在 `timeline ===
-		// undefined` 处就 continue 了 —— 而 overview 仍会为这位 UP 出一行,且粉丝轮询
-		// 让 hasCoverage 为真,于是投稿/动态给出的是**笃定的 0** 而不是「无记录」。
-		// 一位窗口内投了 40 个视频的 UP 在表里显示 0,AI 锐评还据此给他加冕鸽王。
+	it("per-UP 动态推送关掉 → 不交(这位 UP 的作品开关关着,统计也不记)", async () => {
+		// 锚点表覆盖每个订阅、推送名单只收开着的;关掉开关的 UP 照样登记锚点(`timeline ===
+		// undefined` 处不再 continue),只是不翻译、不抓图、不交。
 		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
+		const pubTs = laterThanSeed();
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs })]));
 		seedStatsOnly(b, "1");
 		await detect(b.engine);
-		expect(detected(b)).toHaveLength(1);
-		expect(b.reportPost).not.toHaveBeenCalled();
+		expect(reportedCount(b)).toBe(0);
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(pubTs);
 	});
 
-	it("推送关掉的 UP 锚点照常推进 —— 否则每轮把同一条重新 emit 一遍", async () => {
+	it("推送关掉的 UP 锚点照常推进 —— 否则每轮把同一条重新判一遍", async () => {
 		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: laterThanSeed() })]));
+		const pubTs = laterThanSeed();
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs })]));
 		seedStatsOnly(b, "1");
 		await detect(b.engine);
 		await detect(b.engine);
-		expect(detected(b)).toHaveLength(1);
+		expect(postFromDynamic).not.toHaveBeenCalled();
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(pubTs);
 	});
 
 	it("真退订则连锚点一起清掉,不留孤儿抑制再订阅后的动态", async () => {

@@ -4,7 +4,8 @@ import type { FollowersStore } from "../followers/store.js";
 import { attachBiliStatsSource } from "./bili-source.js";
 import type { RecordingCompactSummary } from "./compaction.js";
 import { attachExtensionStatsSource } from "./extension-source.js";
-import type { StatsSubscription } from "./file-key.js";
+import { type StatsSubscription, statsFileKey } from "./file-key.js";
+import { postEntryFromEvent } from "./post-entry-extras.js";
 import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
 
 /**
@@ -14,10 +15,11 @@ import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
  *   报本场累计观看、关一场;按**文件键**({@link statsFileKey})落进 {@link StatsStore}。
  *   它不认识任何平台,也不听总线。
  * - 适配把各来源的事件翻成这些调用,平台的规矩只写在适配里:
- *     · B 站(`bili-source.ts`):听 B 站引擎已经在总线上的三条事件,就地把动态记成
- *       「有没有视频」的作品(开播公告不记)、把 uid 换成订阅 id 记。引擎与总线
- *       为统计一行不改。
- *     · 拓展(`extension-source.ts`):听订阅上报与拓展直播的场次,作品记下有没有视频、资料里的粉丝数
+ *     · 作品(本文件的 `post-detected` 监听,**两支共用**):核心入口(`PostQueue`)对每条订阅发一份中立的
+ *       `PostEvent`,统计照事件记一行(`postEntryFromEvent`),不认来源、不再自己看作品开关 ——
+ *       该不该记的判据已经在入口里(订阅在、启用、作品开关开着、来源在跑)。
+ *     · B 站(`bili-source.ts`):听直播的两条事件,把 uid 换成订阅 id 记场次与观看数;登录有效 = 来源在跑。
+ *     · 拓展(`extension-source.ts`):听订阅上报与拓展直播的场次,资料里的粉丝数
  *       按 B 站粉丝轮询的间隔稀释、累计观看取本场最大;收到上报 = 来源在跑,按开关记「在记」。
  *
  * **写盘按键排队**:同一个键的写入一条接一条落(开播帧不会被紧跟着的下播帧抢到前面,删文件不会被还在路上的
@@ -26,8 +28,8 @@ import type { PostEntry, RecordingKind, StatsStore } from "./store.js";
 
 /** 各来源适配看得到的那一面。所有写入都是 fire-and-forget,失败只丢这一条统计。 */
 export interface StatsRecorderCore {
-	/** 记一条作品行(开播公告不记,见 `bili-format`)。同一个键下同 id 只留首条(去重在 store)。 */
-	recordPost(key: string, post: PostEntry | Promise<PostEntry>): void;
+	/** 记一条作品行。同一个键下同 id 只留首条(去重在 store)。 */
+	recordPost(key: string, post: PostEntry): void;
 	/** 开一场。这个键在飞的累计观看清零,从这一场重新取最大值。 */
 	openSession(key: string, startedAtIso: string): void;
 	/** 报一次本场累计观看(看过的人数)。只留最大值;不是有限数就不收。 */
@@ -205,9 +207,7 @@ export function createStatsRecorderCore(opts: StatsRecorderCoreOptions): StatsRe
 	return {
 		recordPost(key, post) {
 			if (!opts.isEnabled()) return;
-			// 行可以是还在翻译的(拓展作品先翻成中立的 `Post` 再取字段):排进这个键的队里等它翻好再写,
-			// 顺序不乱、`flush()` 也等得到。
-			enqueue(key, "appendPost", async () => opts.store.appendPost(key, await post));
+			enqueue(key, "appendPost", () => opts.store.appendPost(key, post));
 		},
 
 		openSession(key, startedAtIso) {
@@ -384,7 +384,7 @@ export interface StatsRecorderOptions {
 	fansCron: () => string;
 	logger: Logger;
 	/**
-	 * 当前全部订阅。B 站事件只带 uid,B 站适配按它找到订阅 id;拓展适配按它判「这条订阅还在、启用着」。
+	 * 当前全部订阅。B 站直播事件只带 uid,B 站适配按它找到订阅 id;拓展适配按它判「这条订阅还在、启用着」。
 	 */
 	subscriptions: () => readonly StatsSubscription[];
 	/** 注入时钟,测试用;缺省取系统时间。 */
@@ -427,8 +427,8 @@ export interface StatsRecorderHandle extends Disposable {
 /**
  * 起采集:一个记录器,挂上各来源的适配。bootstrap 只认这一个入口。
  *
- * 之所以整个采集都长在 `stats/` 而非 `bilibili/live`、`bilibili/dynamic` 里:B 站需要的
- * 三条事件本来就已经在总线上了,业务包不必为统计再开一个出口。
+ * 之所以整个采集都长在 `stats/` 而非 `bilibili/live`、`posts/` 里:需要的事件本来就已经在总线上了,
+ * 业务包不必为统计再开一个出口。
  */
 export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHandle {
 	const now = opts.now ?? (() => new Date());
@@ -449,6 +449,10 @@ export function createStatsRecorder(opts: StatsRecorderOptions): StatsRecorderHa
 	});
 	const sources: Disposable[] = [
 		biliSource,
+		// 作品行:B 站与拓展共用这一个监听,键是订阅 id。
+		opts.bus.on("post-detected", (event) =>
+			recorder.recordPost(statsFileKey({ id: event.subscriptionId }), postEntryFromEvent(event)),
+		),
 		attachExtensionStatsSource({
 			bus: opts.bus,
 			recorder,

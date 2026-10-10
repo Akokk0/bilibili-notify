@@ -30,7 +30,7 @@ const LOG_TAG = "bilibili-notify-dynamic";
  */
 const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
 
-/** B 站的开播伪动态:开播由直播引擎推,动态这边只记统计、不交作品。 */
+/** B 站的开播伪动态:开播由直播引擎推,动态这边不交作品。 */
 const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
 
 function parseUid(raw: unknown): string | undefined {
@@ -339,9 +339,8 @@ export class DynamicEngine {
 		// 两张表的口径**刻意不同**:
 		//   dynamicTimelineManager —— 「已观测」锚点,覆盖**每一个订阅**
 		//   dynamicSubManager      —— 推送订阅表,只收动态推送开着的
-		// 统计口径是「UP 发了多少」,per-UP 开关只决定产不产作品(见 platform.ts 的
-		// dynamic-detected 契约):名单外的订阅不翻译、不抓图、不交,时间线与统计照常。两者曾是同一张表,
-		// 于是关掉开关的 UP 在检测循环里 `timeline === undefined` 就被 continue 掉,统计侧给出笃定的 0。
+		// per-UP 开关只决定产不产作品:名单外的订阅不翻译、不抓图、不交,时间线照常前移。两者曾是同一张表,
+		// 于是关掉开关的 UP 在检测循环里 `timeline === undefined` 就被 continue 掉,锚点也不前移。
 		const dynamicSubManager: SubManagerView = new Map();
 		for (const sub of Object.values(subs)) {
 			// 只为新增 UID 设置初始时间戳，保留已有 UID 的时间戳避免重推旧动态
@@ -618,28 +617,15 @@ export class DynamicEngine {
 
 			if (!this.isDue(uid, postTime)) continue; // already pushed
 
-			// 统计埋点:越过闸门 == 这条动态首次被看到。刻意放在 翻译 / 交作品 之前 —— 统计口径是「UP 发了多少」,
-			// 被屏蔽或推送失败的动态同样算 UP 的产出。
-			//
-			// 每条动态本轮结束时恰好前移一次,所以通常只发一次;但进程在两轮之间崩了、或本轮中途整轮抛错,
-			// 下一轮会重判、再发一次。消费方照旧按 id 幂等。
-			this.bus.emit("dynamic-detected", {
-				uid,
-				id: item.id_str,
-				type: item.type,
-				ts: new Date(postTime * 1000).toISOString(),
-			});
-
-			// 开播伪动态:开播由直播引擎推,这里统计记上就算处理完(推进锚点)。按类型认、放在翻译之前 ——
+			// 开播伪动态:开播由直播引擎推,动态这边不交作品(推进锚点就算处理完)。按类型认、放在翻译之前 ——
 			// 翻译对它会抛。
 			if (item.type === DYNAMIC_TYPE_LIVE_RCMD) {
 				markAdvance(uid, postTime);
 				continue;
 			}
 
-			// 这位 UP 关了动态推送(不在推送名单里):统计已经记上,生产就到此为止 —— 不翻译、不抓图、不交。
-			// 锚点仍要推进 —— 不推进的话每一轮都会把同一条重新 emit 一遍(store 按 id 去重兜得住,
-			// 但每次都要整份重读 jsonl,白烧盘)。
+			// 这位 UP 关了动态推送(不在推送名单里):生产就到此为止 —— 不翻译、不抓图、不交。
+			// 锚点仍要推进 —— 不推进的话每一轮都会把同一条重新判一遍。
 			if (!this.dynamicSubManager.has(uid)) {
 				markAdvance(uid, postTime);
 				continue;
@@ -697,7 +683,7 @@ export class DynamicEngine {
 		}
 		try {
 			// 发布时间用引擎自己算的:它有 pub_time 文字兜底(「3分钟前」「昨天 12:00」),翻译里只有 pub_ts,
-			// 缺了落在纪元 —— 统计与卡上的时间都吃交出去的这一份。
+			// 缺了落在纪元 —— 统计与卡上的时间都吃交出去的这一份(统计取 `post.publishedAt`)。
 			post = { ...post, publishedAt: new Date(postTime * 1000).toISOString() };
 			// 交出之前先把图抓好:核心出卡零网络。被过滤的、关了出图的动态也抓(代价主人知情)。
 			// 转发的原作者头像与正文表情的地址只在原始动态里,与配图一起抓;外层作者的头像由核心出卡时按订阅资料补。

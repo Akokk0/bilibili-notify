@@ -62,7 +62,7 @@ const delay = <T>(ms: number, value: T) => new Promise<T>((r) => setTimeout(() =
 describe("整类清空 × 排在队里的写", () => {
 	it("对照:不清,同样的写都会落盘", async () => {
 		const { core } = setup();
-		core.recordPost(KEY, delay(20, post("p1")));
+		core.recordPost(KEY, post("p1"));
 		core.recordFans(KEY, 100, 0);
 		core.recordActive(KEY, "posts");
 		await core.flush();
@@ -73,13 +73,13 @@ describe("整类清空 × 排在队里的写", () => {
 		]);
 	});
 
-	it("在飞的作品(还在翻译)、粉丝样本、「在记」排在清空前面,清完文件不会被写回来", async () => {
+	it("在飞的作品、粉丝样本、「在记」排在清空前面,清完文件不会被写回来", async () => {
 		const { core } = setup();
-		// 慢的作品写入还没轮到落盘时清空就开始了;这个键盘上一个文件都没有(只在队里)。
-		core.recordPost(KEY, delay(30, post("p1")));
+		// 作品写入还没落盘时清空就开始了;这个键盘上一个文件都没有(只在队里)。
+		core.recordPost(KEY, post("p1"));
 		core.recordFans(KEY, 100, 0);
 		core.recordActive(KEY, "posts");
-		core.recordPost(OTHER, delay(5, post("p2")));
+		core.recordPost(OTHER, post("p2"));
 
 		await core.clear();
 		expect(await statsFiles()).toEqual([]);
