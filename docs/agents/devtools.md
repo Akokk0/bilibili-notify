@@ -79,7 +79,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 要造什么 | 装饰在哪 | 文件 |
 | --- | --- | --- |
 | 更新 9 相 8 归因 | 包 `UpdateService`,只换 `getStatus()` 的 `state`;**真动作不清注入**(面板每次打开都自动 check,清了刷新一下就没了),只在面板收摊 | `update-injection.ts` |
-| 推送截流 | 接在 `TargetDispatcher` 调适配器 `send` 的那一处(`interceptSend`,三条发送路共用):开着就不真发、记摘要、回 ok**并标 `isSynthetic`**(dispatcher 的 `onDelivery` 会拿投递结果去写 `target.testStatus` 并落盘,一条没出网的成功不能拿来说「这个目标通」——`isReachabilityEvidence` 挡在那儿);历史照记 delivered 不打标,面板列表是对照,`DELETE /api/dev/captures/history` 按截流时间窗删行(`HistoryStore.deleteRange`) | `capture.ts` |
+| 推送截流 | 接在 `TargetDispatcher` 调适配器 `send` 的那一处(`interceptSend`,三条发送路共用):开着就不真发、记摘要、回 ok**并标 `isSynthetic`**(dispatcher 的 `onDelivery` 会拿投递结果去写 `target.reachability` 并落盘,一条没出网的成功不能拿来说「这个目标通」——`isReachabilityEvidence` 挡在那儿);历史照记 delivered 不打标,面板列表是对照,`DELETE /api/dev/captures/history` 按截流时间窗删行(`HistoryStore.deleteRange`) | `capture.ts` |
 | 开播 / 下播 / 弹幕 / SC / 上舰 / 礼物 / 进场 | blive 的 `observeLiveConnections` 观察钩子拿到房间的 `emit`,与真帧同一条回调;假直播期间 `fetchLiveRoomInfo` 对那个房间打补丁(live_status=1、live_time=现在) | `live-rooms.ts`、`scenarios/live*.ts` |
 | 四类动态 | 传给引擎的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 引擎构造时存下的方法引用也吃得到覆盖),`fetchAllDynamic` 结果最前并进假动态,`DynamicEngine.detectNow()` 立刻跑一轮,跑完撤 | `scenarios/dynamic.ts` |
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |

@@ -368,6 +368,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 20 | 拓展清单的 `supportedFeatures` 超出 1.0 开放范围（`post` / `liveStart` / `liveStreaming` / `liveEnd`），或声明 `liveStreaming` 却没实现 `fetchLiveStatus`，装载时拒收并说明原因 |
 | 22 | 拓展不裸开定时器、不裸挂服务端：扫 `extensions/*/src`（不含测试），出现不经 ctx 的 `setTimeout` / `setInterval`、`createServer`、自己监听端口的 `WebSocketServer`（不带 `noServer`）就红；第三方拓展的打包产物不扫，库自己会用定时器（ADR-0012 决策 11） |
 
+- 守卫 13 的清单 3a-22-2 加了一条：连接改成 `adapterKey` / `settings` / `platformSnapshot`、`testStatus` 两处都不带过来（修订号 40）。
 - 推送侧另有两道数据守卫（ADR-0024 决策 9，3a）：改目标的 `connectionId` 时比新旧连接的平台；整节替换时校验连接身份没变。
 - 守卫 17 在 3a（`bilibili/` 在 3a 才出现），守卫 18 的三个内置适配器的键已落（`RESERVED_INTEGRATION_KEYS`）；哪一期改了盘上形状，就在同一期往迁移模块加条目、钉进守卫 13 的清单。各道守卫哪期开、哪期清零，与 [construction-plan.md](./construction-plan.md)「中立性守卫的归期」对不上时以那边为准。
 

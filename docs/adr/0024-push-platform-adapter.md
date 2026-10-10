@@ -12,6 +12,7 @@
 ## 决策
 
 1. **内置平台与拓展走同一条路**：OneBot、QQ 官方机器人、webhook 也作为普通的平台适配器登记，与拓展提供的适配器是同一个接口、同一张登记表。`CONNECTION_PLATFORMS` 这个闭集删掉；各平台的设置 schema 与平台信息表搬出 `internal`，由适配器自带，面板经描述接口拿。
+    - 🔗 10-10 主人定（3a-22-2）：「闭集删掉、设置 schema 与平台信息表搬出 `internal`」这半句**留到第 4 期面板按描述画之后**一次做。面板的手写表单靠三份规则推出的类型编译、平台选择器靠平台表，现在搬走面板只能手抄一份，与「不手抄冻结类型」相冲。在那之前：三份规则原地改名 `…ConnectionSettingsSchema`，内置适配器的 `settingsSchema` 指向它们、候选从平台表现取；平台表的 `tint` 已改 `color`，「走哪种连法」一列换成 `adapterKey`；服务端只剩两处在读平台表：内置适配器取候选、webhook 适配器认平台名。
     - 理由：留内置、拓展两套，就永远有一套没被对拍到。
 2. **名字用 `PlatformAdapter` 一套**（推翻 ADR-0023 决策 2 的 `PushOutlet`）：`PlatformAdapter` / `PlatformAdapterDef` / `PlatformAdapterHandle` / `PlatformAdapterRegistry`、`registerPlatformAdapter`、`PlatformAdapterContext`、`PlatformAdapterDescriptor`；连接上的键叫 `adapterKey`。`PlatformDescriptor`、`TargetDispatcher`、清单的 `contributes.push` 不变。目录仍叫 `platforms/`，其中的登记表与分发挪到 `push/`。
     - 🔗 10-09（3a-20b-1）：`Connector` / `PlatformDialect` 两半没有单独的消费者，不改名，直接平铺进 `PlatformAdapter` 后删掉。适配器上的登记键也叫 `adapterKey`（内置三个是 `onebot` / `qq-official` / `webhook`）；连接上落这一格之前，「连接归谁管」由 `connectionDispatchKey` 现算。
@@ -30,6 +31,7 @@
 6. **`PlatformDescriptor = { platform, label, shortLabel, color, icon?, targetKind: "session" | "endpoint", scopes, addressNouns }`**：`tint` 统一改叫 `color`；`inbound`、`atAll` 从这里挪成运行期能力。
     - 🔗 10-09（3a-22-1）：`atAll`、`inbound` 已成每条连接的运行期能力（三态，适配器回答）。「还不知道」时三处各按原来的做法（主人定）：单发 @全体照发、锐评审批不让开、链接解析设置照列；判断只有一份（`shouldSendAtAll` / `canReceiveReply` / `listsForLinkParsing`），服务端与面板共用。`GET /api/connections/capabilities` 收成一级并含拓展连接。
 7. **连接的形状 `{ id, name, enabled, adapterKey, platform, settings, platformSnapshot, probeState? }`**：`platform` 是开放字符串，只来自挑中的候选；`kind`、`connector`、`extensionId` 删掉（`extensionId` 并进 `adapterKey`）；`transport` 留作 OneBot 适配器私有的设置。`probeState` 是对象，三态取值在它的 `status` 里。
+    - 🔗 10-10（3a-22-2）已落：形状照此；迁移修订号 40、备份版本 13。迁移自带冻结的 0.x 平台表，直连连接照它填 `adapterKey` 与快照，拓展连接的 `adapterKey` 取原 `extensionId`、快照填认不出的平台用的中性占位（等 22-3 桥列候选时刷新）。
 8. **连接上存 `platformSnapshot`（`PlatformDescriptor` 去掉 `platform` 那一格）**：
     - 只有宿主写：新建时照候选抄、列候选时按平台名刷新、迁移时填、备份里带回；POST / PATCH 带来的一律忽略。
     - 谁读：面板上连接的脸与目标编辑器、托管目标同步（看 `targetKind`）、目标的 scope 校验。推送层与适配器不读它。
@@ -42,6 +44,7 @@
     - 🔗 10-09 主人改定：**目标建好之后焊死在它那条连接上**，`connectionId` 不许改 —— 上面「改 `connectionId` 时比新旧连接的平台」那道守卫因此不需要了（换机器人改连接自己的参数；面板编辑目标时能换连接是新建与编辑共用一个弹窗带出来的缺陷）。「整节替换时校验连接身份没变」落成一条统一的规矩：替换前后都在的同 id 目标，连接不许变，它那条连接的种类与平台也不许变。上一条 🔗 里讲改挂的两句作废。
     - `PushTarget = { id, name, connectionId, enabled, kind: "session", scope, address, parentAddress?, reachability? } | { …, kind: "endpoint", managedBy: "connection", reachability? }`。
 10. **连接设置的校验**：保存时适配器在场就按 `settingsSchema` 校验，不过回 400 并带原因；不在场先存下。读盘时逐条校验，不过的只隔离那一条（不交给适配器、不投递；面板显示「设置不合法」与原因，进问题框；盘上原文不动），BN 照常开机。只有外壳（id / name / adapterKey / platform）坏了才挡开机。撤下的旧形状写成明确的名单。
+    - 🔗 10-10（3a-22-2）已落，施工时定的几处：「不过的只隔离那一条」不存标记、每次用时按在场的适配器现算；PATCH 只在补丁带了 `settings` 时才验（被隔离的连接照样能改名、能停用）；恢复备份不验 `settings`，进来后不合法的照读盘隔离；新建连接要适配器在场；`platformSnapshot` / `probeState` 是宿主独写，客户端带来的一律忽略、盘上坏了不挡开机。
     - 「坏条目不许被悄悄吃掉」的初衷保留：隔离是显式的，面板与问题框都看得见。
 11. **这一版不对拓展开放**：`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
 12. **内置适配器的入站也经 `ctx.inbound`**：宿主核归属、平台取自连接，不再由适配器自报。
