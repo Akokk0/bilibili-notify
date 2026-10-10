@@ -69,6 +69,15 @@ export interface KeyValueStoreHandle {
 	 * 里面的 `http.` 键照样收 —— 恢复的是整袋。
 	 */
 	replace(entries: ReadonlyMap<string, Json>): Promise<Result>;
+	/**
+	 * 宿主那一组(`http.` 键)与集成自己那一组改动合成**同一次原子写**:一个写道任务、一次 `persist`。
+	 * 宿主那一组是个函数,**进了写道才调**(取罐子此刻的内容,不是排队之前的快照);集成那一组入队前验,
+	 * 带 `http.` 键回 `invalid`。两组各按自己那一面的规矩验,任何一组不合规整批不做。
+	 */
+	commit(
+		hostOps: () => readonly KeyValueOp[],
+		integrationOps: readonly KeyValueOp[],
+	): Promise<Result>;
 }
 
 /** 值里有不是 JSON 的东西(内部用:抛出去,最外层转成 `invalid`)。 */
@@ -235,24 +244,27 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 		}
 	}
 
+	/** 在写道里:把已校验的几步按序应用到当前这一袋的拷贝上,落盘成功才换。 */
+	function applyChecked(checked: readonly CheckedOp[]): Promise<Result> {
+		const next = new Map(current);
+		const setKeys: string[] = [];
+		for (const op of checked) {
+			if (op.kind === "set") {
+				next.set(op.key, op.value);
+				setKeys.push(op.key);
+			} else {
+				next.delete(op.key);
+			}
+		}
+		return commit(next, setKeys);
+	}
+
 	function storeOf(which: "integration" | "host"): KeyValueStore {
 		function batch(ops: readonly KeyValueOp[]): Promise<Result> {
 			if (ops.length === 0) return Promise.resolve(ok());
 			const checked = checkOps(which, ops);
 			if (typeof checked === "string") return Promise.resolve(fail("invalid", checked));
-			return enqueue(() => {
-				const next = new Map(current);
-				const setKeys: string[] = [];
-				for (const op of checked) {
-					if (op.kind === "set") {
-						next.set(op.key, op.value);
-						setKeys.push(op.key);
-					} else {
-						next.delete(op.key);
-					}
-				}
-				return commit(next, setKeys);
-			});
+			return enqueue(() => applyChecked(checked));
 		}
 		return {
 			get<T extends Json>(key: string): T | undefined {
@@ -270,6 +282,26 @@ export function createKeyValueStores(opts: CreateKeyValueStoresOptions): KeyValu
 		integration: storeOf("integration"),
 		host: storeOf("host"),
 		snapshot: () => new Map(current),
+		commit(hostOps, integrationOps) {
+			// 集成那一组在入队之前就验:带了 `http.` 键的当场回 `invalid`,什么都不排、盘上不变。
+			const integrationChecked = checkOps("integration", integrationOps);
+			if (typeof integrationChecked === "string") {
+				return Promise.resolve(fail("invalid", integrationChecked));
+			}
+			return enqueue(() => {
+				// 宿主那一组**进了写道才算**(罐子此刻的内容),再按宿主那一面的规矩验;两组合成一次写。
+				let hostChecked: CheckedOp[] | string;
+				try {
+					hostChecked = checkOps("host", hostOps());
+				} catch (err) {
+					return Promise.resolve(
+						fail("unavailable", `取宿主那一组改动时出错:${errorMessageOf(err)}`),
+					);
+				}
+				if (typeof hostChecked === "string") return Promise.resolve(fail("invalid", hostChecked));
+				return applyChecked([...hostChecked, ...integrationChecked]);
+			});
+		},
 		replace(entries) {
 			const checked = checkOps(
 				"whole",

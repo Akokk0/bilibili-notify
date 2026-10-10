@@ -5,6 +5,7 @@ import {
 	ExtensionIdSchema,
 	fail,
 	type Json,
+	type KeyValueOp,
 	type KeyValueStore,
 	type Logger,
 	ok,
@@ -66,6 +67,15 @@ export interface IntegrationStoreHandle {
 	/** 宿主自己那一面(同一袋):只许 `http.` 开头的键,别的拒 —— 宿主也不许碰集成的键。 */
 	readonly hostState: KeyValueStore;
 	readonly hostSecrets: KeyValueStore;
+	/**
+	 * **只在 `integration-store/` 与 `integrations/http.ts` 之间用**:宿主那一面的 `http.` 键(罐子)与集成自己的
+	 * `secrets` 改动合成**一次**原子写(`KeyValueStoreHandle.commit`,一个写道任务、一次落盘),绝不是先后两次。
+	 * 宿主那一组是函数,进了写道才调。
+	 */
+	commitSecrets(
+		hostOps: () => readonly KeyValueOp[],
+		integrationOps: readonly KeyValueOp[],
+	): Promise<Result>;
 	/** 密钥被 `restoreSecrets` 整袋换了之后叫;按登记的先后逐个等。 */
 	onSecretsReplaced(fn: () => void | Promise<void>): Disposable;
 	/** 集成停下时关:此后四个存储的写一律回 `unavailable`;文件留着。幂等。 */
@@ -161,6 +171,7 @@ export function createIntegrationStore(opts: CreateIntegrationStoreOptions): Int
 				secrets: secrets.integration,
 				hostState: state.host,
 				hostSecrets: secrets.host,
+				commitSecrets: secrets.commit,
 				onSecretsReplaced(fn) {
 					entry.replacedHooks.push(fn);
 					return {

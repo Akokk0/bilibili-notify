@@ -105,6 +105,7 @@ export function memoryIntegrationStore(): {
 				secrets: secrets.store,
 				hostState: state.stores.host,
 				hostSecrets: secrets.stores.host,
+				commitSecrets: secrets.stores.commit,
 				onSecretsReplaced: (): Disposable => ({ dispose() {} }),
 				close() {
 					opened.delete(key);
