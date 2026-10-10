@@ -285,6 +285,7 @@ describe("面板上传装拓展的接线", () => {
 				bots: () => undefined,
 				install: {
 					root,
+					integrationStore: runtime.integrationStore,
 					// 装载器那条队的替身:写完紧跟着重扫(`loader.changeDisk` 的形状)。
 					changeDisk: async (write) => {
 						try {

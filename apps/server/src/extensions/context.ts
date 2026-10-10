@@ -35,6 +35,7 @@ import {
 	undeclaredReportReason,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import { createIntegrationContext } from "../integrations/context.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
@@ -255,6 +256,11 @@ export interface CreateExtensionContextOptions {
 	manifest: ExtensionManifest;
 	/** 宿主的 ServiceContext —— 定时器与日志的真身。 */
 	host: ServiceContext;
+	/**
+	 * 这个拓展的两份小存储(装载器按 id 开、收摊后关)。`activate(ctx)` 与它的推送源 `start(ctx)` 拿到的是
+	 * 同一对对象。
+	 */
+	stores: Pick<IntegrationStoreHandle, "state" | "secrets">;
 	mounts: ExtensionMounts;
 	/** 出口的活注册表。拓展注册的推送源往这里进。 */
 	adapters: PlatformAdapterRegistry;
@@ -340,6 +346,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	const integration = createIntegrationContext({
 		logger: prefixed(host.logger, id),
 		stopReason: `拓展 ${id} 停用了`,
+		state: opts.stores.state,
+		secrets: opts.stores.secrets,
 		disposeTimeoutMs: opts.disposeTimeoutMs,
 		// 从这一刻起它的上报一概拒(`receiveReport` 先看 `disposed`),所以「不在跑了」在这里就说:
 		// 之后不会再有它的上报把刚作废的在播状态又填回去。宿主那头抛了不许打断收摊。
@@ -750,6 +758,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		hostApiVersion: opts.hostApiVersion ?? EXTENSION_API_RANGE.current,
 		hostVersion: opts.hostVersion ?? "0.0.0-dev",
 		logger,
+		state: integration.ctx.state,
+		secrets: integration.ctx.secrets,
 		setTimeout: (fn, ms) => {
 			if (integration.disposed) return integration.refuse("setTimeout");
 			// 一次性的:触发完就从名册上放掉,不然每调一次漏一个小对象,直到卸载。

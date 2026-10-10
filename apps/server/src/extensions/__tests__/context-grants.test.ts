@@ -26,6 +26,7 @@ import type {
 import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
+import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../push/dispatch.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -97,6 +98,7 @@ function harness(
 		id: "bridge",
 		manifest: opts.manifest ?? V1_PUSH,
 		host,
+		stores: memoryStores(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters,
 		connections: () => {
@@ -1187,6 +1189,7 @@ describe("认领 WS upgrade", () => {
 				setTimeout: () => ({ dispose() {} }),
 				onDispose() {},
 			} as unknown as ServiceContext,
+			stores: memoryStores(),
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			adapters: createPlatformAdapterRegistry(),
 			connections: () => [],

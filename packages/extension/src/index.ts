@@ -42,6 +42,9 @@ export type {
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
+	Json,
+	KeyValueOp,
+	KeyValueStore,
 	Logger,
 	NotificationPayload,
 	PayloadSegment,
@@ -98,6 +101,7 @@ import type {
 	InboundGroupMessage,
 	InboundMeta,
 	InboundPrivateMessage,
+	KeyValueStore,
 	Logger,
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
@@ -466,6 +470,13 @@ export interface ExtensionContext {
 	readonly hostVersion: string;
 	/** 每一行都自动带上 `[ext:<id>]` —— 日志里认得出是谁写的。 */
 	readonly logger: Logger;
+	/**
+	 * 程序自己记的小状态:明文,不进备份。单键 64KB、整份 1MB;`http.` 开头的键归宿主。
+	 * 与推送源 `start(ctx)` 里拿到的是同一对象。
+	 */
+	readonly state: KeyValueStore;
+	/** 凭据:主密钥加密,只进完整备份。整份 256KB;`http.` 开头的键归宿主。与 `state` 同一个接口。 */
+	readonly secrets: KeyValueStore;
 	/** 可回收定时器。卸载时宿主统一清,拓展自己漏了也不会留下幽灵。 */
 	setTimeout(fn: () => void, ms: number): Disposable;
 	setInterval(fn: () => void, ms: number): Disposable;

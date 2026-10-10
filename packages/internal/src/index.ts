@@ -82,6 +82,7 @@ export {
 	webSearchBackendMeta,
 } from "./constants";
 export * from "./format";
+export * from "./key-value-store";
 export * from "./membership";
 export * from "./platform";
 export * from "./post";

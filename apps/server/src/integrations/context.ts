@@ -1,4 +1,9 @@
-import type { Disposable, IntegrationContext, Logger } from "@bilibili-notify/internal";
+import type {
+	Disposable,
+	IntegrationContext,
+	KeyValueStore,
+	Logger,
+} from "@bilibili-notify/internal";
 
 /**
  * 收摊钩子(`ctx.onDispose`)一共最多等多久。收摊排在装载器那条队里:一个钩子挂住,之后的开关、
@@ -28,6 +33,12 @@ export interface CreateIntegrationContextOptions {
 	logger: Logger;
 	/** `signal` 中止时带的原因(`DOMException(这句话, "AbortError")`)。 */
 	stopReason: string;
+	/**
+	 * 这个集成的两份小存储,原样放进 `ctx`。`integrations/` 自己不碰盘、不认识宿主:谁开的存储谁传进来、
+	 * 谁负责在上下文收摊之后关把手。
+	 */
+	state: KeyValueStore;
+	secrets: KeyValueStore;
 	/** 收尾钩子一共最多等多久;不给就是 `DISPOSE_TIMEOUT_MS`。 */
 	disposeTimeoutMs?: number;
 	/** 开始收尾的那一刻、`signal` 中止之前叫一次;抛了记一行 error,不打断收尾。 */
@@ -88,6 +99,8 @@ export function createIntegrationContext(
 			}
 			hooks.push(fn);
 		},
+		state: opts.state,
+		secrets: opts.secrets,
 	};
 
 	return {

@@ -9,6 +9,7 @@ import type { Connection, Disposable } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../../integrations/context.js";
 import { createPlatformAdapterContext } from "../adapter-context.js";
 
@@ -48,7 +49,7 @@ function build(
 	settingsSchema: z.ZodType = z.unknown(),
 	logger = silentLogger,
 ) {
-	const handle = createIntegrationContext({ logger, stopReason: "测试" });
+	const handle = createIntegrationContext({ logger, stopReason: "测试", ...memoryStores() });
 	const ctx = createPlatformAdapterContext({
 		integration: handle.ctx,
 		adapterKey: key,
@@ -96,11 +97,13 @@ describe("createPlatformAdapterContext", () => {
 		expect(ctx.connections()).toEqual([]);
 	});
 
-	it("logger / signal / onDispose 就是 integration 上的那三个", () => {
+	it("logger / signal / onDispose / state / secrets 就是 integration 上的那五个", () => {
 		const { handle, ctx } = build("onebot", () => all);
 		expect(ctx.logger).toBe(handle.ctx.logger);
 		expect(ctx.signal).toBe(handle.ctx.signal);
 		expect(ctx.onDispose).toBe(handle.ctx.onDispose);
+		expect(ctx.state).toBe(handle.ctx.state);
+		expect(ctx.secrets).toBe(handle.ctx.secrets);
 	});
 
 	it("onConnectionsChanged 原样转交 —— 回调与交回的把手都是传进去的那一份", () => {

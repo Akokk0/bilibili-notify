@@ -25,6 +25,7 @@ import type { ExtensionEntry } from "./extensions/loader.js";
 import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import type { ReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
+import type { IntegrationStore } from "./integration-store/store.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
 import { createAiRoute } from "./routes/ai.js";
@@ -143,6 +144,7 @@ export interface CreateAppOptions {
 		 */
 		install?: {
 			root: string;
+			integrationStore: Pick<IntegrationStore, "remove">;
 			changeDisk: <T>(write: () => Promise<T>) => Promise<T>;
 			restartAbility: RestartAbility;
 		};

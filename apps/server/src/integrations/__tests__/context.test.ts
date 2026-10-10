@@ -6,6 +6,7 @@
 
 import type { Logger } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { createIntegrationContext } from "../context.js";
 
 function recordingLogger() {
@@ -21,7 +22,12 @@ function recordingLogger() {
 
 function make(extra: Partial<Parameters<typeof createIntegrationContext>[0]> = {}) {
 	const { logger, lines } = recordingLogger();
-	const handle = createIntegrationContext({ logger, stopReason: "它停用了", ...extra });
+	const handle = createIntegrationContext({
+		logger,
+		stopReason: "它停用了",
+		...memoryStores(),
+		...extra,
+	});
 	return { handle, lines };
 }
 

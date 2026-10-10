@@ -16,7 +16,13 @@ import {
 	type SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
+import {
+	disposeThenClose,
+	type IntegrationStore,
+	type IntegrationStoreHandle,
+} from "../integration-store/store.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
+import { errorMessageOf } from "../util/error-message.js";
 import { ExtensionConflictError } from "./conflict-error.js";
 import {
 	type ActionOutcome,
@@ -212,6 +218,8 @@ export interface LoadExtensionsOptions {
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
 	host: ServiceContext;
+	/** 每个拓展装载前按 id 开它的 state / secrets 存储,收摊之后关把手。 */
+	integrationStore: Pick<IntegrationStore, "open">;
 	mounts: ExtensionMounts;
 	/** 出口的活注册表。拓展注册的推送源往这里进。 */
 	adapters: PlatformAdapterRegistry;
@@ -580,6 +588,21 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			imported.set(id, seen);
 		}
 
+		// 存储由这里开与关:读盘在 `activate` 之前读完(`get` 是同步的),这份上下文收摊之后才关把手。
+		// 这一步在装载队里跑,同一个 id 不会同时开两次;上一份收摊之后才轮得到下一次。
+		//
+		// 🔴 **开在记账之前,打不开不记账**:存储打不开是环境的事(同「设置读不了」,见 `park`),不是拓展崩了。
+		// 记上一笔的话,连着几次打不开它就被自动停用,环境好了也起不来,还得换一版才解封。
+		let stores: IntegrationStoreHandle;
+		try {
+			stores = await opts.integrationStore.open(id);
+		} catch (err) {
+			const why = errorMessageOf(err);
+			slot.miss = { state: "failed", detail: `存储打不开:${why}` };
+			host.logger.warn(`[ext] ${id} v${manifest.version} 存储打不开,不跑:${why}`);
+			return;
+		}
+
 		// **先记账再加载**:反过来的话,「一 import 就把进程带走」这种循环永远累加不到上限。
 		if (!fresh) {
 			recordLoadAttempt({
@@ -591,10 +614,11 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			});
 		}
 
-		const runtime = createExtensionContext({
+		const created = createExtensionContext({
 			id,
 			manifest,
 			host,
+			stores,
 			mounts,
 			adapters: opts.adapters,
 			connections: opts.connections,
@@ -615,6 +639,12 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			hostVersion: opts.hostVersion,
 			disposeTimeoutMs: opts.disposeTimeoutMs,
 		});
+		// 每一条让这份上下文作废的路(activate 抛、超时、设置读不了、停用、换代码、关机)都走 `runtime.dispose()`:
+		// 在这里统一接上「收摊之后关把手」,不在六七处各写一遍。
+		const runtime: ExtensionRuntime = {
+			...created,
+			dispose: () => disposeThenClose(created, stores),
+		};
 		/** 走到哪一步了 —— 超时那句话要说清是卡在 import、activate 还是判设置。 */
 		const at = { step: `import ${EXTENSION_ENTRY_FILE}` };
 		/** 回的是「存着的设置读不了」的原因;起得来就是 `undefined`。真失败一律抛。 */

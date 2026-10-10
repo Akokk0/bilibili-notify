@@ -9,6 +9,7 @@
 import type { ExtensionManifest, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { describe, expect, it } from "vite-plus/test";
+import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createExtensionContext } from "../context.js";
@@ -57,6 +58,7 @@ function fakeHost() {
 /** 这个文件钉的是**生命周期**,与核心打交道那几格由 `context-grants.test.ts` 管。 */
 function coreStubs() {
 	return {
+		stores: memoryStores(),
 		manifest: {
 			id: "bridge",
 			name: "机器人框架桥接",

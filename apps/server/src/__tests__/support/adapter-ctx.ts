@@ -18,6 +18,7 @@ import {
 	createPlatformAdapterRegistry,
 	type PlatformAdapterRegistry,
 } from "../../push/registry.js";
+import { memoryStores } from "./memory-key-value-store.js";
 
 export interface FakeAdapterContext {
 	readonly ctx: PlatformAdapterContext;
@@ -45,12 +46,15 @@ export function fakeAdapterContext(
 	const listeners = new Set<() => void>();
 	const hooks: Array<() => void | Promise<void>> = [];
 	const controller = new AbortController();
+	const { state, secrets } = memoryStores();
 	const ctx: PlatformAdapterContext = {
 		logger,
 		signal: controller.signal,
 		onDispose(fn) {
 			hooks.push(fn);
 		},
+		state,
+		secrets,
 		connections: () => connections,
 		onConnectionsChanged(fn): Disposable {
 			listeners.add(fn);

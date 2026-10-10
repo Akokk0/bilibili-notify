@@ -39,6 +39,7 @@ import {
 import { type ExtensionEntry, entryIdentity } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { ReportDiscrepancyTable } from "../extensions/report-discrepancies.js";
+import type { IntegrationStore } from "../integration-store/store.js";
 import { createExtensionSettingsRoute } from "./extension-settings.js";
 import { respondFailure } from "./respond-failure.js";
 import { uploadBodyLimit } from "./upload-limit.js";
@@ -132,6 +133,8 @@ export interface ExtensionsRouteOptions {
 	install?: {
 		/** 装载根 —— `<数据根>/extensions/`。 */
 		root: string;
+		/** 卸载时连它存的 state / secrets 一起清(两个目录)。 */
+		integrationStore: Pick<IntegrationStore, "remove">;
 		/**
 		 * **在装载器那条队里改盘**(装载器的 `changeDisk()`):`write` 落盘 / 抹盘,紧跟着再扫一遍。
 		 *
@@ -348,6 +351,16 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 
 		// 开关那一格与它的设置文件一起删(设置不住 globals 了,见 `ConfigStore.removeExtension`)。
 		await opts.store.removeExtension(id);
+
+		// 它存的状态与密钥也清掉:抹盘那一步之前拓展已经收摊(把手已关),所以「还开着就拒」不会误伤。
+		// 清不掉不回滚前面几步 —— 拓展确实卸了;装回来再卸一次会重试。
+		const cleared = await install.integrationStore.remove(id);
+		if (!cleared.ok) {
+			return respondFailure(
+				c,
+				fail(cleared.code, `拓展已经卸了,但它存的状态与密钥没清掉:${cleared.message}`),
+			);
+		}
 		return c.json(ok());
 	});
 

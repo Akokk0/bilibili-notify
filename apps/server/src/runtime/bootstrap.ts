@@ -26,6 +26,7 @@ import {
 	type ImageWriter,
 	imageRefOf,
 } from "../images/image-store.js";
+import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
@@ -64,6 +65,11 @@ export interface AppRuntime {
 	 * exactly one scrypt salt is persisted.
 	 */
 	keyProvider: KeyProvider;
+	/**
+	 * 各集成(B 站、内置适配器、拓展)的 state / secrets 存储宿主。建时不碰盘,谁开谁读;`flush` 段关门。
+	 * 备份导出 / 恢复密钥、卸载拓展时清存储也走它。
+	 */
+	integrationStore: IntegrationStore;
 	/**
 	 * 自带字体的读取口,**全进程唯一一个**。给 id 返回拼好的 `@font-face` 规则,
 	 * 没选字体(空 id)返回空串。
@@ -254,6 +260,15 @@ export function createAppRuntime(
 		keyProvider,
 		logger: serviceCtx.logger,
 	});
+	// 各集成的 state / secrets 存储宿主,与 `config-secrets.enc` 用同一把主密钥。建的时候不读盘 —— 谁开
+	// (B 站、内置适配器、装载器)谁读。写道在 flush 段关门:各生产者已停,还在路上的写落完,之后的写被拒,
+	// 关停返回之后数据目录里它的文件不再变。
+	const integrationStore = createIntegrationStore({
+		dataRoot,
+		keyProvider,
+		logger: serviceCtx.logger,
+	});
+	serviceCtx.onDispose(() => integrationStore.close(), "flush");
 	// 推送出口的活登记表:没有任何依赖,先建,配置仓才能按在场适配器的规则验连接设置。
 	const adapterRegistry = createPlatformAdapterRegistry();
 	// 各集成的设置在这里登记(今天只有 B 站;3a 起挪到组装根,与集成的登记放在一起)。
@@ -491,6 +506,7 @@ export function createAppRuntime(
 		serviceCtx,
 		bus,
 		keyProvider,
+		integrationStore,
 		// 缓存里留拼好的 `@font-face` 而不是 data URL —— 规则本身就把 data URL 包在
 		// 里头,只留它就少留一整份几十兆的串。闲置到点自动放掉,见读取器内部说明。
 		loadFontFace: createFontAssetReader(dataRoot, { transform: buildFontFace }),

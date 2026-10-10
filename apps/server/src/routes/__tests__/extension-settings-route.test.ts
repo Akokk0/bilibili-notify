@@ -24,6 +24,7 @@ import type {
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
 import type { BootstrapConfig } from "../../config/schema.js";
@@ -189,6 +190,7 @@ async function boot(opts: {
 	const loader = await loadExtensions({
 		root: join(dataDir, "extensions"),
 		host: quietHost(),
+		integrationStore: memoryIntegrationStore(),
 		mounts,
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],

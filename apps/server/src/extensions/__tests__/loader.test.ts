@@ -17,6 +17,7 @@ import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { ExtensionConflictError } from "../conflict-error.js";
@@ -81,6 +82,7 @@ const HEALTHY = `export function activate(ctx) {
 /** 与核心打交道那几格在 `context-grants.test.ts` 里钉;这里只关心装载。 */
 function coreStubs() {
 	return {
+		integrationStore: memoryIntegrationStore(),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
 		onConnectionsChanged: () => ({ dispose() {} }),
@@ -347,6 +349,7 @@ describe("拓展声明的密钥字段", () => {
 		const loaded = await loadExtensions({
 			root,
 			host: fakeHost().ctx,
+			integrationStore: memoryIntegrationStore(),
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			upgrades: createExtensionUpgrades(),
 			adapters: registry,
@@ -731,6 +734,57 @@ describe("拨开关即热装卸", () => {
 		// 记账里只该有开机那一次 —— 再来两次就到上限、把一个只是暂时炸了的拓展判死。
 		expect(readLoadLedger(root).blocked).toEqual([]);
 		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+	});
+
+	/**
+	 * 存储打不开是环境的事,不是拓展崩了:不记到拓展头上、不触发自动停用(同「设置读不了不累进记账」)。
+	 * 上限给 1:只要记过一笔,下一次就会被判死 —— 连着打不开三次、blocked 仍空,才说明真没记账。
+	 */
+	it("存储打不开 → 没起来(failed + 原因进日志),不进失败记账、不会被自动停用;环境好了照样起得来", async () => {
+		await plant("bridge", HEALTHY);
+		const host = fakeHost();
+		const real = memoryIntegrationStore();
+		let broken = true;
+		let opens = 0;
+		let on = true;
+		const loaded = await loadExtensions({
+			root,
+			host: host.ctx,
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			...coreStubs(),
+			integrationStore: {
+				open: async (key) => {
+					opens += 1;
+					if (broken) throw new Error("磁盘炸了");
+					return real.open(key);
+				},
+			},
+			isEnabled: () => on,
+			maxFailures: 1,
+		});
+		expect(loaded.list().map((e) => [e.state, e.detail])).toEqual([
+			["failed", "存储打不开:磁盘炸了"],
+		]);
+		expect(host.lines.some((l) => l.startsWith("warn") && l.includes("磁盘炸了"))).toBe(true);
+
+		// 再开关两轮:每轮都真去试了(没被自动停用挡在门外),记账里始终是空的。
+		for (let i = 0; i < 2; i++) {
+			on = false;
+			await loaded.sync();
+			on = true;
+			await loaded.sync();
+		}
+		expect(opens).toBe(3);
+		expect(readLoadLedger(root).blocked).toEqual([]);
+		expect(loaded.list().map((e) => e.state)).toEqual(["failed"]);
+
+		broken = false;
+		on = false;
+		await loaded.sync();
+		on = true;
+		await loaded.sync();
+		expect(loaded.list().map((e) => e.state)).toEqual(["running"]);
+		await loaded.dispose();
 	});
 
 	it("关了又开、每次都炸 → 记账照样累加,到上限自动停用", async () => {

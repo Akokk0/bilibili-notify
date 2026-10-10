@@ -78,8 +78,11 @@ export function sumImageBytes(images: readonly ImageUsage[]): Record<ImageClass,
  */
 export const DATA_ROOT_STORAGE_COVERAGE = {
 	config: { excluded: "主人填的设置、订阅、连接、目标,不是缓存" },
-	secrets: { excluded: "主密钥、口令盐、apiKey、cookie,删了要重新登录配置" },
-	runtime: { excluded: "程序自己记的运行态(订阅运行态、草稿、轮换游标),丢了只退化,不进清理表" },
+	secrets: { excluded: "主密钥、口令盐、apiKey、cookie、各集成的 secrets,删了要重新登录配置" },
+	runtime: {
+		excluded:
+			"程序自己记的运行态(订阅运行态、草稿、轮换游标、各集成的 state),丢了只退化,不进清理表",
+	},
 	history: ["historyText", "historyImages"],
 	images: ["historyImages", "ai", "otherImages"],
 	stats: "stats",

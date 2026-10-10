@@ -1,4 +1,5 @@
 import type { PushTargetScope, Result } from "./constants";
+import type { KeyValueStore } from "./key-value-store";
 import type { PostImage } from "./post";
 import type { AddressCandidate, ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
@@ -50,7 +51,7 @@ export interface ServiceContext {
 }
 
 /**
- * 每个集成(拓展、内置适配器)拿到的那一面。这一片只有三个成员,后面各片往上加。
+ * 每个集成(拓展、内置适配器)拿到的那一面。目前五个成员,后面各片往上加。
  * 宿主握着的另一面(收回它的把手)住服务端,集成拿不到。
  */
 export interface IntegrationContext {
@@ -59,6 +60,10 @@ export interface IntegrationContext {
 	readonly signal: AbortSignal;
 	/** 收尾钩子,后登记的先跑。停下之后再登记不生效,记一行。 */
 	onDispose(fn: () => void | Promise<void>): void;
+	/** 程序自己记的小状态:明文,不进备份。单键 64KB、整份 1MB;`http.` 开头的键归宿主。 */
+	readonly state: KeyValueStore;
+	/** 凭据:主密钥加密,只进完整备份。整份 256KB;`http.` 开头的键归宿主。 */
+	readonly secrets: KeyValueStore;
 }
 
 /**

@@ -806,10 +806,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 内置适配器登记即启动 —— 就在 `createEngines` 之前,启动时刻与从前引擎开机对账那一刻一致。
 		// 关停钩子也登记在引擎之前:同一段里后登记的先跑,引擎先收、适配器后停。
-		const builtinAdapters = registerBuiltinAdapters({
+		const builtinAdapters = await registerBuiltinAdapters({
 			registry: adapterRegistry,
 			adapters: builtinAdapterList,
 			logger: log,
+			stores: runtime.integrationStore,
 			connections: () => runtime.configStore.getConnections(),
 			onConnectionsChanged,
 		});
@@ -1181,6 +1182,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
 			root: extensionsRoot,
 			host: runtime.serviceCtx,
+			// 每个拓展装载前按 id 开自己的 state / secrets 存储,收摊后关。
+			integrationStore: runtime.integrationStore,
 			mounts: extensionMounts,
 			// 现读配置:开关是主人在面板上按的,不是开机那一刻的快照。
 			isEnabled: (id) => isExtensionEnabled(runtime.configStore.getGlobals(), id),
@@ -1318,6 +1321,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				// 立刻跑起来;并发的开关 / 只重载看不见写了一半的目录)。
 				install: {
 					root: extensionsRoot,
+					// 卸载时连它存的状态与密钥一起清。
+					integrationStore: runtime.integrationStore,
 					changeDisk: (write) => (loadedExtensions ? loadedExtensions.changeDisk(write) : write()),
 					restartAbility,
 				},

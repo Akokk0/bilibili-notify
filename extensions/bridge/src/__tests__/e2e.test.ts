@@ -39,6 +39,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { BRIDGE_CLOSE_CODES } from "../contract.js";
 import { activate } from "../index.js";
+import { memoryKeyValueStore } from "./memory-key-value-store.js";
 
 const EXTENSION_ID = "bridge";
 const MOUNT_PREFIX = `/ext/${EXTENSION_ID}`;
@@ -156,6 +157,8 @@ function hostFor(
 		hostApiVersion: 1,
 		hostVersion: "9.9.9-test",
 		logger: SILENT,
+		state: memoryKeyValueStore(),
+		secrets: memoryKeyValueStore(),
 		setTimeout: (fn, ms) => track(setTimeout(fn, ms)),
 		setInterval: (fn, ms) => track(setInterval(fn, ms)),
 		mount(handler) {

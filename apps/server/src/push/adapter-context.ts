@@ -37,6 +37,8 @@ export function createPlatformAdapterContext(
 		logger: integration.logger,
 		signal: integration.signal,
 		onDispose: integration.onDispose,
+		state: integration.state,
+		secrets: integration.secrets,
 		connections: () => {
 			const mine: Connection[] = [];
 			const stillBroken = new Set<string>();

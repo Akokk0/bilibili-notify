@@ -20,6 +20,7 @@ import { join } from "node:path";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import type { ExtensionContext } from "../context.js";
@@ -160,6 +161,7 @@ async function boot(
 	const loaded: LoadedExtensions = await loadExtensions({
 		root,
 		host,
+		integrationStore: memoryIntegrationStore(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],

@@ -15,6 +15,7 @@ import type {
 	ServiceContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createExtensionContext } from "../../extensions/context.js";
@@ -56,6 +57,7 @@ function boot() {
 			setTimeout: () => ({ dispose() {} }),
 			onDispose() {},
 		} as unknown as ServiceContext,
+		stores: memoryStores(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],

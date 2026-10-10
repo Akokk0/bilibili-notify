@@ -32,6 +32,7 @@ import type {
 	BridgeSession,
 } from "../server.js";
 import type { BridgeLink } from "../settings.js";
+import { memoryKeyValueStore } from "./memory-key-value-store.js";
 
 const LINK_ID = "link-home";
 const CONNECTION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -179,6 +180,8 @@ function harness(live: BridgeSession | null = session(), opts: { start?: boolean
 			logger: { info: noop, warn: noop, error: noop, debug: noop },
 			signal: new AbortController().signal,
 			onDispose: noop,
+			state: memoryKeyValueStore(),
+			secrets: memoryKeyValueStore(),
 			connections: () => [],
 			onConnectionsChanged(fn) {
 				listeners.add(fn);

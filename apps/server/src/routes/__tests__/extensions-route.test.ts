@@ -17,6 +17,7 @@ import { fail, type GlobalConfig, ok, type ServiceContext } from "@bilibili-noti
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { type ConfigStore, createConfigStore, extensionSettingsFile } from "../../config/store.js";
 import type { ActionOutcome, LookupOutcome } from "../../extensions/context.js";
@@ -32,6 +33,7 @@ import {
 	type ReportDiscrepancyTable,
 } from "../../extensions/report-discrepancies.js";
 import { createExtensionUpgrades } from "../../extensions/upgrade.js";
+import type { IntegrationStore } from "../../integration-store/store.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createExtensionsRoute } from "../extensions.js";
@@ -81,6 +83,8 @@ function boot(
 		reportDiscrepancies?: ReportDiscrepancyTable;
 		/** 换成一个真的配置仓(落盘的)—— 只有要看「卸载真的把盘上的东西清了」的用例给。 */
 		store?: ConfigStore;
+		/** 卸载时清存储的那一口;不给就是「清掉了」。要看「清了谁 / 清不掉」的用例给。 */
+		integrationStore?: Pick<IntegrationStore, "remove">;
 	} = {},
 ) {
 	const store =
@@ -103,6 +107,7 @@ function boot(
 		settle: over.settle,
 		install: {
 			root: installRoot,
+			integrationStore: over.integrationStore ?? { remove: async () => ok() },
 			changeDisk:
 				over.changeDisk ??
 				(loader
@@ -153,6 +158,7 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 	return loadExtensions({
 		root: installRoot,
 		host: quietHost(),
+		integrationStore: memoryIntegrationStore(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),
 		connections: () => [],
@@ -1110,6 +1116,41 @@ describe("DELETE /api/ext/:id", () => {
 		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).toBeNull();
 		expect(removeExtension).toHaveBeenCalledWith("bridge");
 		expect(rescan).toHaveBeenCalled();
+	});
+
+	/** 卸载要连它存的 state / secrets 一起清:被问到的是这个拓展的 id,而且排在开关与设置文件清完之后。 */
+	it("卸载 → 清它存的状态与密钥(按这个拓展的 id)", async () => {
+		await installed();
+		const order: string[] = [];
+		removeExtension.mockImplementationOnce(async () => void order.push("config"));
+		const integrationStore = {
+			remove: vi.fn(async (key: string) => {
+				order.push(`store:${key}`);
+				return ok();
+			}),
+		};
+
+		const res = await boot({ integrationStore }).request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(200);
+		expect(order).toEqual(["config", "store:bridge"]);
+	});
+
+	/** 清存储失败:拓展确实卸了,话要说清「卸了、但存的东西没清掉」,并带宿主回的原因与码。 */
+	it("卸载 → 存储清不掉:回失败,话里说拓展已经卸了、带原因", async () => {
+		await installed();
+		const integrationStore = {
+			remove: async () => fail("unavailable", "磁盘只读"),
+		};
+
+		const res = await boot({ integrationStore }).request("/bridge", { method: "DELETE" });
+
+		expect(res.status).toBe(503);
+		const body = await failureOf(res);
+		expect(body.code).toBe("unavailable");
+		expect(body.message).toContain("拓展已经卸了");
+		expect(body.message).toContain("磁盘只读");
+		expect(await lstat(join(installRoot, "bridge")).catch(() => null)).toBeNull();
 	});
 
 	/**
