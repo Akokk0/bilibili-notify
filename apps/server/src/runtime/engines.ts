@@ -66,17 +66,12 @@ import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import { type Api, BiliLoginStatus } from "../bilibili/api/index.js";
 import {
-	createCardFailureTracker,
-	type DeliverWorkArgs,
 	DynamicEngine,
 	type DynamicEngineConfig,
 	type PushLike as DynamicPushLike,
 	type SubscriptionOpView as DynamicSubOp,
 	type SubscriptionsView as DynamicSubsView,
-	type PostFilterRules,
-	type PushSegment,
 	resolveDynamicColorOptions,
-	type WorkSubscriptionSettings,
 } from "../bilibili/dynamic/index.js";
 import type { ImagesDeps } from "../bilibili/images.js";
 import type { GuardIcons } from "../bilibili/live/guard-icons.js";
@@ -94,6 +89,15 @@ import { settingsOf, watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
+import type { ImageWriter } from "../images/image-store.js";
+import {
+	createCardFailureTracker,
+	type DeliverPostOptions,
+	type WorkSubscriptionSettings,
+} from "../posts/deliver-post.js";
+import { bindExtensionPosts } from "../posts/extension-post.js";
+import type { PostFilterRules } from "../posts/post-filter.js";
+import type { PushSegment } from "../posts/post-push.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
 import { toGeneratorConfig } from "./ai-config.js";
@@ -111,13 +115,11 @@ import {
 	type ExtensionLiveSession,
 	type ExtensionLiveSessions,
 } from "./extension-live-sessions.js";
-import { bindExtensionPosts } from "./extension-posts.js";
 import type { ExtensionSourceReader } from "./extension-push-common.js";
 import { syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
-import type { ImageSink } from "./post-from-report.js";
 import {
 	historyRecordFromFilteredPost,
 	historyRecordFromSend,
@@ -279,7 +281,7 @@ export interface CreateEnginesOptions {
 	 * 拓展作品的配图、封面、事件带来的头像往图库存的口(`AppRuntime.postImages`,ADR-0021 决策 22 下的 ㉑d):
 	 * 作品卡是 `Post`,图只收图库引用。**给了 `extensionSources` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
 	 */
-	postImages?: ImageSink;
+	postImages?: Pick<ImageWriter, "put">;
 	/**
 	 * 出图器的「图库引用 → 可画的地址」解析口(`imageRefDataUrl(runtime.imageStore)`):作品卡里的配图、封面、
 	 * 头像、正文小图标都是图库引用,出图前经它转成 data URL。不给 = 引用一律画占位(只测不画图的引擎时)。
@@ -295,7 +297,7 @@ export interface CreateEnginesOptions {
 	 * 的 🔗,㉒c):直播卡是中立输入,图只收图库引用。**给了 `extensionSources` 与 `extensionLive` 就必须给** ——
 	 * 漏给是开机直接抛,不是悄悄不出图。
 	 */
-	liveImages?: ImageSink;
+	liveImages?: Pick<ImageWriter, "put">;
 	/**
 	 * 大航海徽章图标(`AppRuntime.guardIcons`,3a-33):B 站的上舰卡按档取图库引用。必给 —— 漏给上舰卡的徽章块静默收起。
 	 * 开机时调一次 `ensure()` 抓图(不等它),直播间出卡前再补一次。
@@ -1424,14 +1426,14 @@ function dropAnchors(anchors: ReadonlyArray<{ messages: unknown }>): void {
 }
 
 /**
- * 作品那一路(`deliverWork` 的 `push`):绑到**一条订阅**上(ADR-0019 决策 50 / 66),装配交来的
+ * 作品那一路(`deliverPost` 的 `push`):绑到**一条订阅**上(ADR-0019 决策 50 / 66),装配交来的
  * 锚点 → 推送层的一次推送,特性恒为 `post`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成
  * 订阅 id)与拓展作品共用这一跳。开关、免扰、路由、@全体、历史都在推送层(`PushRouter.push`)里。
  */
 export function boundPostPush(
 	push: Pick<PushRouter, "push">,
 	subscriptionId: string,
-): DeliverWorkArgs["push"] {
+): DeliverPostOptions["push"] {
 	return async (anchors) => {
 		await push.push({
 			subscriptionId,

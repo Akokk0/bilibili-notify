@@ -18,8 +18,9 @@
 
 import type { LiveCardInput, LiveCardStatus } from "@bilibili-notify/image";
 import type { ImageRef } from "@bilibili-notify/internal";
+import type { ImageWriter } from "../images/image-store.js";
+import { storeOrSkip } from "../images/image-writes.js";
 import type { ExtensionLiveRow } from "./extension-live.js";
-import { type ImageSink, storeOrSkip } from "./post-from-report.js";
 
 /** 卡上要的直播那几格 —— 在播表那一行与事件长得一样(都是拓展交的原件:封面与头像是字节)。 */
 export type LiveCardFacts = Partial<
@@ -42,7 +43,7 @@ export interface LiveCardInputFromReportOptions {
 	/** 订阅资料里存进图库的头像引用;事件没带头像(或带的不是图库收的图)时用它。 */
 	profileAvatar?: ImageRef;
 	/** 存图的口。 */
-	images: ImageSink;
+	images: Pick<ImageWriter, "put">;
 }
 
 /** 毫秒 → ISO;不是有效时刻就是 `undefined`(卡上不写开播时间)。 */

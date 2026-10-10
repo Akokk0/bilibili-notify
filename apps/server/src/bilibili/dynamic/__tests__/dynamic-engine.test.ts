@@ -1,7 +1,7 @@
 /**
  * 单元测试 — `DynamicEngine` 编排 + 图片失败软降级状态机 + 生命周期。
  *
- * 已有 `post-filter.test.ts` 覆盖纯过滤函数;本文件覆盖把翻译/过滤/渲染/AI/推送
+ * 已有 `posts/__tests__/post-filter.test.ts` 覆盖纯过滤函数;本文件覆盖把翻译/过滤/渲染/AI/推送
  * 串起来的 `detectDynamics()` 编排,以及 `updateConfig` cron 重启 / `applyOps`
  * 增量 / `start`/`stop` 生命周期。
  *
@@ -29,12 +29,12 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { type CardFailureTracker, createCardFailureTracker } from "../../../posts/deliver-post";
 import type { Api } from "../../api/index.js";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
 import { postFromDynamic } from "../post-from-dynamic";
 import type { PostPush, PushLike, SubItemView, SubscriptionsView } from "../push-like";
 import type { AllDynamicResponse, Dynamic } from "../types";
-import { type CardFailureTracker, createCardFailureTracker } from "../work-delivery";
 
 // ---------------------------------------------------------------------------
 // cron mock — 惰性 FakeCronJob,不真正排程
@@ -1109,13 +1109,13 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710" });
 		await detect(b.engine);
-		// 验红:把 work-delivery.ts 里那句 `cardSkin: settings.cardSkin` 删掉,这条红。
+		// 验红:把 deliver-post.ts 里那句 `cardSkin: settings.cardSkin` 删掉,这条红。
 		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k5aaa-b0a710" });
 	});
 
 	// 旋钮覆盖(ADR-0014 决策 17 的 🔗)是订阅视图上的一格,引擎把整份视图当设置交给装配 ——
-	// 这条钉的是「视图上那格真走到了出卡」。验红:把 push-like.ts 的 `WorkSubscriptionSettings`
-	// 里 `cardSkinKnobs` 那一项与 work-delivery.ts 递它那一句一起删掉,这条红。
+	// 这条钉的是「视图上那格真走到了出卡」。验红:把 deliver-post.ts 的 `WorkSubscriptionSettings`
+	// 里 `cardSkinKnobs` 那一项与 deliver-post.ts 递它那一句一起删掉,这条红。
 	it("per-UP 旋钮覆盖随皮肤 id 进 colorOptions", async () => {
 		const b = makeEngine({ withImage: true });
 		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
@@ -1224,7 +1224,7 @@ describe("DynamicEngine.detectDynamics — 推送形态", () => {
 	// 图集走 forward / NapCat 长消息通道,现实里会发不出。它是主卡的附属物:主卡已送达,时间线必须推进,
 	// 否则下轮整条重判、主卡重发并再 @ 一次全体。这层保证现在来自「图集是同一次推送里的附加项锚点」——
 	// 推送层在本体发完时返回、附加项的成败不往回抛(那一半由 push 包自己的用例钉)。
-	// 验红:把 work-delivery.ts 里图集那个锚点的角色改成本体,这条红(时间线停在 0)。
+	// 验红:把 deliver-post.ts 里图集那个锚点的角色改成本体,这条红(时间线停在 0)。
 	it("图集发不出 → 主卡已发出,时间线照推进(不因附属图集失败而重发主卡)", async () => {
 		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
 		b.fetchAllDynamic.mockResolvedValue(

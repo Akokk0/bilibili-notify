@@ -18,79 +18,32 @@
  * 过一遍 `normalizePost`:片段的字拼起来必须等于 `text`,这里的切法保证对得上。
  *
  * 过滤用的字与 AI 用的字也不在这里拼:过滤吃翻好的 `Post`(`filterPost`),AI 的文字是 `postText(post, "labeled")`
- * (ADR-0021 决策 43、ADR-0028 决策 1,取段只此一份)。翻译排在过滤之前,图的写盘用 {@link deferImageWrites} 推迟到出卡。
+ * (ADR-0021 决策 43、ADR-0028 决策 1,取段只此一份)。翻译排在过滤之前,图的写盘用 `deferImageWrites`(`images/image-writes.ts`)推迟到出卡。
  */
 
 import { GALLERY_MAX_IMAGES } from "@bilibili-notify/image";
 import {
-	fail,
 	type ImageRef,
 	normalizePost,
-	ok,
 	type Post,
 	type PostImage,
-	type Result,
 	type RichText,
 	readImageSize,
 	type SubscriptionReportValue,
 	sniffImageFormat,
 } from "@bilibili-notify/internal";
-import { imageRefOf } from "../images/image-store.js";
+import type { ImageWriter } from "../images/image-store.js";
+import { storeOrSkip } from "../images/image-writes.js";
 
 type ReportedPost = SubscriptionReportValue<"post">;
-
-/** 往图库存一张图的口(`AppRuntime.postImages` / `liveImages` 的存图那一半 —— 拓展作品与拓展直播共用,所以不带 Post)。 */
-export interface ImageSink {
-	put(bytes: Uint8Array): Promise<Result<{ ref: ImageRef }>>;
-}
-
-/**
- * **图的写盘推迟到出卡那一刻**(㉑e)。过滤吃翻好的 `Post`,所以翻译得排在过滤之前;可被屏蔽的、关了出图的、版式
- * 藏起卡片的作品根本不出卡,不该为它们往图库写盘。引用是内容哈希({@link imageRefOf},与真存图起的名字是同一份规矩),
- * 翻译时不用写就知道 —— `sink.put` 只算引用、把字节记下来,`commit()` 才真的存(出卡前调,多次调只写一次)。
- *
- * 图库不收的图(格式不认、超限)`put` 当场回 `invalid`,与真存一样;`commit` 时图库说存不进(磁盘写失败回的
- * `unavailable`、或与本地判断对不上)在这里抛出去,这一次出卡失败,装配降级成纯文字。
- */
-export function deferImageWrites(writer: ImageSink): {
-	sink: ImageSink;
-	commit(): Promise<void>;
-} {
-	const pending = new Map<ImageRef, Uint8Array>();
-	let committed: Promise<void> | undefined;
-	return {
-		sink: {
-			async put(bytes) {
-				const ref = imageRefOf(bytes);
-				if (ref === undefined) {
-					return fail("invalid", "不是图库收的图(只收 png / jpg / gif / webp,单张不超过 8 MiB)");
-				}
-				pending.set(ref, bytes);
-				return ok({ ref });
-			},
-		},
-		commit() {
-			committed ??= (async () => {
-				for (const [ref, bytes] of pending) {
-					const stored = await writer.put(bytes);
-					if (!stored.ok) throw new Error(`作品配图存不进图库:${stored.message}`);
-					if (stored.ref !== ref) {
-						throw new Error(`作品配图的引用对不上:算出 ${ref},图库给 ${stored.ref}`);
-					}
-				}
-			})();
-			return committed;
-		},
-	};
-}
 
 export interface PostFromReportOptions {
 	/** 卡上的作者名(`extensionSubscriptionName` 取好的,也是模板的 `{name}`)。 */
 	authorName: string;
 	/** 订阅资料里存进图库的头像引用;事件没带头像(或带的不是图库收的图)时用它。 */
 	profileAvatar?: ImageRef;
-	/** 存图的口。 */
-	images: ImageSink;
+	/** 存图的口(`AppRuntime.postImages` / `liveImages` 的存图那一半)。 */
+	images: Pick<ImageWriter, "put">;
 }
 
 /** 字母或数字(任何文字的)—— `#名字` 后面紧跟着它,就不是这个话题。 */
@@ -157,27 +110,11 @@ function isoOfMillis(ms: number): string {
 }
 
 /**
- * 存一张图,回引用;图库不收(`invalid`:格式不认、超限)回 `undefined`,那一格缺着。别的失败(磁盘写失败回的
- * `unavailable`)抛 —— 与 {@link deferImageWrites} 的 `commit()` 同一个口径:这一次出卡失败,装配降级成纯文字,
- * 不是悄悄少一张图。生产里拿到的口是 `deferImageWrites` 的 `sink`(不碰盘,只回 ok / `invalid`),走不到抛的那一支;
- * 它防的是哪天有人把真图库的口直接传进来。拓展直播卡(`liveCardInputFromReport`)也用它。
- */
-export async function storeOrSkip(
-	images: ImageSink,
-	bytes: Uint8Array,
-): Promise<ImageRef | undefined> {
-	const stored = await images.put(bytes);
-	if (stored.ok) return stored.ref;
-	if (stored.code === "invalid") return undefined;
-	throw new Error(`图存不进图库:${stored.message}`);
-}
-
-/**
  * 一张图的字节 → 存进图库,回装了引用的 `PostImage`(带宽高与动图标记)。图库不收就没有 `ref`(出图器画占位),
- * 宽高与动图标记照样带 —— 那是字节自己的事。这里拿到的口是 {@link deferImageWrites} 的 `sink`,不碰盘;磁盘写失败
- * 在 `commit()` 那一刻才见得到,由它抛出去(这一次出卡失败,装配降级成纯文字)。
+ * 宽高与动图标记照样带 —— 那是字节自己的事。这里拿到的口是 `deferImageWrites`(`images/image-writes.ts`)的
+ * `sink`,不碰盘;磁盘写失败在 `commit()` 那一刻才见得到,由它抛出去(这一次出卡失败,装配降级成纯文字)。
  */
-async function storeImage(bytes: Uint8Array, images: ImageSink): Promise<PostImage> {
+async function storeImage(bytes: Uint8Array, images: Pick<ImageWriter, "put">): Promise<PostImage> {
 	const ref = await storeOrSkip(images, bytes);
 	return {
 		...(ref === undefined ? {} : { ref }),

@@ -1,5 +1,5 @@
 /**
- * 单元测试 — **作品装配** `deliverWork`(ADR-0019 决策 66):B 站动态与拓展作品共用的那一段。
+ * 单元测试 — **作品装配** `deliverPost`(ADR-0019 决策 66):B 站动态与拓展作品共用的那一段。
  *
  * 只经公开接口:给一份平台中立的作品 + 这条订阅折好的设置 + 假的发送 / 渲染器 / AI,看发出去了
  * 什么。B 站原始数据怎么翻成作品由 `dynamic-engine.test.ts` 钉(那边走完整的检测循环)。
@@ -8,15 +8,15 @@
 import type { ImageRenderer } from "@bilibili-notify/image";
 import { defaultMessageKindLayout, type MessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { PostPushAnchor } from "../push-like";
 import {
 	type CardFailureTracker,
 	createCardFailureTracker,
-	type DeliverWorkArgs,
-	deliverWork,
+	type DeliverPostOptions,
+	deliverPost,
 	type NeutralWork,
 	type WorkSubscriptionSettings,
-} from "../work-delivery";
+} from "../deliver-post";
+import type { PostPushAnchor } from "../post-push";
 
 type Seg = { kind: string; text?: string; buffer?: Buffer; mime?: string };
 
@@ -49,7 +49,7 @@ const layoutOf = (blocks: Array<{ type: string; visible?: boolean }>): MessageKi
 });
 
 interface Harness {
-	args: DeliverWorkArgs;
+	args: DeliverPostOptions;
 	/** 交给推送口的每一次推送(它的锚点)原样记在这儿。 */
 	push: ReturnType<typeof vi.fn>;
 	/** 摊开记:一个锚点里一条消息 → `(段, 角色)`。 */
@@ -67,7 +67,7 @@ function harness(
 	over: {
 		work?: Partial<NeutralWork>;
 		settings?: Partial<WorkSubscriptionSettings>;
-		config?: Partial<DeliverWorkArgs["config"]>;
+		config?: Partial<DeliverPostOptions["config"]>;
 		withImage?: boolean;
 		withAi?: boolean;
 		stillSubscribed?: () => boolean;
@@ -91,7 +91,7 @@ function harness(
 		logs.push({ level, msg: String(msg) });
 	};
 	const work = workOf(over.work);
-	const args: DeliverWorkArgs = {
+	const args: DeliverPostOptions = {
 		work,
 		settings: { messageLayout: defaultMessageKindLayout("post"), ...over.settings },
 		push,
@@ -123,10 +123,10 @@ function harness(
 
 const segsOf = (h: Harness, call = 0): Seg[] => h.pushedMessage.mock.calls[call]?.[0] as Seg[];
 
-describe("deliverWork — 按版式装配", () => {
+describe("deliverPost — 按版式装配", () => {
 	it("默认版式:卡片 + 模板文字与链接同条,是这次推送的本体,只交一次", async () => {
 		const h = harness();
-		expect(await deliverWork(h.args)).toBe("delivered");
+		expect(await deliverPost(h.args)).toBe("delivered");
 		expect(h.push).toHaveBeenCalledTimes(1);
 		expect(h.pushedMessage).toHaveBeenCalledTimes(1);
 		const [segs, role] = h.pushedMessage.mock.calls[0] as [Seg[], string];
@@ -142,7 +142,7 @@ describe("deliverWork — 按版式装配", () => {
 				messageLayout: layoutOf([{ type: "card" }, { type: "split" }, { type: "text" }]),
 			},
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.pushedMessage).not.toHaveBeenCalled();
 		const [messages, role] = h.pushedSequence.mock.calls[0] as [Seg[][], string];
 		expect(role).toBe("main");
@@ -151,7 +151,7 @@ describe("deliverWork — 按版式装配", () => {
 
 	it("链接为空串 → 链接部件缺席", async () => {
 		const h = harness({ withImage: false, work: { link: "" } });
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(segsOf(h)).toEqual([{ kind: "text", text: "阿绫发布了一条动态" }]);
 	});
 
@@ -167,7 +167,7 @@ describe("deliverWork — 按版式装配", () => {
 				]),
 			},
 		});
-		expect(await deliverWork(h.args)).toBe("delivered");
+		expect(await deliverPost(h.args)).toBe("delivered");
 		// 没有本体、也没有图集:连推送口都不调。
 		expect(h.push).not.toHaveBeenCalled();
 		expect(h.work.renderCard).not.toHaveBeenCalled();
@@ -175,12 +175,12 @@ describe("deliverWork — 按版式装配", () => {
 	});
 });
 
-describe("deliverWork — 出卡", () => {
+describe("deliverPost — 出卡", () => {
 	it("作品自己出卡:拿到渲染器与这条订阅的样式 + 皮肤", async () => {
 		const h = harness({
 			settings: { customCardStyle: { enable: true, font: "霞鹜文楷" }, cardSkin: "skin-1" },
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.work.renderCard).toHaveBeenCalledWith(h.args.deps.image, {
 			enable: true,
 			font: "霞鹜文楷",
@@ -190,18 +190,18 @@ describe("deliverWork — 出卡", () => {
 
 	it("样式覆盖没启用 → 只带皮肤(吃渲染器的全局样式)", async () => {
 		const h = harness({ settings: { customCardStyle: { enable: false, font: "x" } } });
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.work.renderCard.mock.calls[0]?.[1]).toEqual({ cardSkin: undefined });
 	});
 
 	// per-UP 旋钮覆盖(ADR-0014 决策 17 的 🔗)跟皮肤 id 同路,与样式启没启用无关。B 站动态与
-	// 拓展作品都经这里出卡。验红:把 work-delivery.ts 里递 `cardSkinKnobs` 那一句删掉,这条红。
+	// 拓展作品都经这里出卡。验红:把 deliver-post.ts 里递 `cardSkinKnobs` 那一句删掉,这条红。
 	it("这条订阅的旋钮覆盖随皮肤一起交给出卡(样式没启用也带着)", async () => {
 		const cardSkinKnobs = { "skin-1": { accent: "#aaaaaa" } };
 		const h = harness({
 			settings: { customCardStyle: { enable: false }, cardSkin: "skin-1", cardSkinKnobs },
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.work.renderCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "skin-1", cardSkinKnobs });
 	});
 
@@ -214,7 +214,7 @@ describe("deliverWork — 出卡", () => {
 			}),
 		];
 		for (const h of cases) {
-			await deliverWork(h.args);
+			await deliverPost(h.args);
 			expect(h.work.renderCard).not.toHaveBeenCalled();
 			expect(segsOf(h).map((s) => s.kind)).toEqual(["text"]);
 		}
@@ -224,25 +224,25 @@ describe("deliverWork — 出卡", () => {
 		const h = harness({
 			work: { renderCard: vi.fn(async () => Promise.reject(new Error("boom"))) },
 		});
-		expect(await deliverWork(h.args)).toBe("delivered");
+		expect(await deliverPost(h.args)).toBe("delivered");
 		expect(segsOf(h)).toEqual([{ kind: "text", text: `阿绫发布了一条动态\n${LINK}` }]);
 	});
 });
 
-describe("deliverWork — 出图连续失败只提醒一次", () => {
+describe("deliverPost — 出图连续失败只提醒一次", () => {
 	const failing = () => vi.fn(async () => Promise.reject(new Error("chrome crash")));
 
 	it("头一次失败:私聊一句 + 点亮告警,计数 1;同一串再失败不再提醒", async () => {
 		const tracker = createCardFailureTracker();
 		const h = harness({ cardFailures: tracker, work: { renderCard: failing() } });
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(tracker.streak).toBe(1);
 		expect(h.sendErrorMsg).toHaveBeenCalledWith(
 			"生成动态图片失败：chrome crash，已降级为纯文字推送，请检查图片插件状态",
 		);
 		expect(h.emitEngineError).toHaveBeenCalledWith("生成动态图片失败：chrome crash");
 
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(tracker.streak).toBe(2);
 		expect(h.sendErrorMsg).toHaveBeenCalledTimes(1);
 		expect(h.emitEngineError).toHaveBeenCalledTimes(1);
@@ -252,8 +252,8 @@ describe("deliverWork — 出图连续失败只提醒一次", () => {
 		const tracker = createCardFailureTracker();
 		const bili = harness({ cardFailures: tracker, work: { renderCard: failing() } });
 		const ext = harness({ cardFailures: tracker, work: { renderCard: failing() } });
-		await deliverWork(bili.args);
-		await deliverWork(ext.args);
+		await deliverPost(bili.args);
+		await deliverPost(ext.args);
 		expect(tracker.streak).toBe(2);
 		expect(bili.sendErrorMsg).toHaveBeenCalledTimes(1);
 		expect(ext.sendErrorMsg).not.toHaveBeenCalled();
@@ -263,7 +263,7 @@ describe("deliverWork — 出图连续失败只提醒一次", () => {
 		const tracker = createCardFailureTracker();
 		const a = harness({ cardFailures: tracker, work: { renderCard: failing() } });
 		const b = harness({ cardFailures: tracker, work: { renderCard: failing() } });
-		await Promise.all([deliverWork(a.args), deliverWork(b.args)]);
+		await Promise.all([deliverPost(a.args), deliverPost(b.args)]);
 		expect(tracker.streak).toBe(2);
 		expect(a.sendErrorMsg.mock.calls.length + b.sendErrorMsg.mock.calls.length).toBe(1);
 		expect(tracker.notified).toBe(true);
@@ -279,14 +279,14 @@ describe("deliverWork — 出图连续失败只提醒一次", () => {
 					release = resolve;
 				}),
 		);
-		const pending = deliverWork(bad.args);
+		const pending = deliverPost(bad.args);
 		await vi.waitFor(() => expect(bad.sendErrorMsg).toHaveBeenCalled());
-		await deliverWork(harness({ cardFailures: tracker }).args);
+		await deliverPost(harness({ cardFailures: tracker }).args);
 		release();
 		await pending;
 		expect(tracker.notified).toBe(false);
 		const badAgain = harness({ cardFailures: tracker, work: { renderCard: failing() } });
-		await deliverWork(badAgain.args);
+		await deliverPost(badAgain.args);
 		expect(badAgain.sendErrorMsg).toHaveBeenCalledTimes(1);
 	});
 
@@ -294,10 +294,10 @@ describe("deliverWork — 出图连续失败只提醒一次", () => {
 		const tracker = createCardFailureTracker();
 		const h = harness({ cardFailures: tracker, work: { renderCard: failing() } });
 		h.sendErrorMsg.mockRejectedValueOnce(new Error("push down"));
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(tracker.notified).toBe(false);
 		expect(h.emitEngineError).not.toHaveBeenCalled();
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.sendErrorMsg).toHaveBeenCalledTimes(2);
 		expect(tracker.notified).toBe(true);
 	});
@@ -305,27 +305,27 @@ describe("deliverWork — 出图连续失败只提醒一次", () => {
 	it("出卡恢复 → 复位并记一句恢复;之后再失败能再提醒", async () => {
 		const tracker = createCardFailureTracker();
 		const bad = harness({ cardFailures: tracker, work: { renderCard: failing() } });
-		await deliverWork(bad.args);
+		await deliverPost(bad.args);
 		const good = harness({ cardFailures: tracker });
-		await deliverWork(good.args);
+		await deliverPost(good.args);
 		expect(tracker.streak).toBe(0);
 		expect(tracker.notified).toBe(false);
 		expect(good.logs.some((l) => l.level === "info" && l.msg.includes("之前连续失败 1 次"))).toBe(
 			true,
 		);
 		const badAgain = harness({ cardFailures: tracker, work: { renderCard: failing() } });
-		await deliverWork(badAgain.args);
+		await deliverPost(badAgain.args);
 		expect(badAgain.sendErrorMsg).toHaveBeenCalledTimes(1);
 	});
 });
 
-describe("deliverWork — 模板", () => {
+describe("deliverPost — 模板", () => {
 	it("视频走视频模板,别的走动态模板;内建兜底", async () => {
 		const video = harness({ withImage: false, work: { isVideo: true } });
-		await deliverWork(video.args);
+		await deliverPost(video.args);
 		expect(segsOf(video)[0]?.text).toBe(`阿绫发布了新视频\n${LINK}`);
 		const post = harness({ withImage: false });
-		await deliverWork(post.args);
+		await deliverPost(post.args);
 		expect(segsOf(post)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
 	});
 
@@ -334,7 +334,7 @@ describe("deliverWork — 模板", () => {
 			withImage: false,
 			config: { dynamicTemplate: "全局 {name}", videoTemplate: "全局视频 {name}" },
 		});
-		await deliverWork(global.args);
+		await deliverPost(global.args);
 		expect(segsOf(global)[0]?.text).toBe(`全局 阿绫\n${LINK}`);
 
 		const perSub = harness({
@@ -343,12 +343,12 @@ describe("deliverWork — 模板", () => {
 			config: { videoTemplate: "全局视频 {name}" },
 			settings: { customVideoTemplate: "{name}\\n投稿啦" },
 		});
-		await deliverWork(perSub.args);
+		await deliverPost(perSub.args);
 		expect(segsOf(perSub)[0]?.text).toBe(`阿绫\n投稿啦\n${LINK}`);
 	});
 });
 
-describe("deliverWork — AI 点评", () => {
+describe("deliverPost — AI 点评", () => {
 	it("点评替换模板文字;提示词按平台叫法,图只看前 4 张,这条订阅的 AI 覆盖原样交过去", async () => {
 		const aiOverride = { dynamicPrompt: "这位 UP 专属的场景提示" };
 		const h = harness({
@@ -360,7 +360,7 @@ describe("deliverWork — AI 点评", () => {
 			},
 			settings: { aiOverride },
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.comment).toHaveBeenCalledWith(
 			"阿绫发布了一条作品，内容如下：\n正文",
 			"dynamic",
@@ -377,7 +377,7 @@ describe("deliverWork — AI 点评", () => {
 			config: { aiWebSearch: true },
 			settings: { aiOverride: { dynamicPrompt: "这位 UP 专属的场景提示" } },
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.comment.mock.calls[0]?.[3]).toEqual({
 			dynamicPrompt: "这位 UP 专属的场景提示",
 			webSearch: true,
@@ -395,7 +395,7 @@ describe("deliverWork — AI 点评", () => {
 			}),
 		];
 		for (const h of cases) {
-			await deliverWork(h.args);
+			await deliverPost(h.args);
 			expect(h.comment).not.toHaveBeenCalled();
 		}
 	});
@@ -403,12 +403,12 @@ describe("deliverWork — AI 点评", () => {
 	it("点评失败 → 回退模板文字照发", async () => {
 		const h = harness({ withImage: false, withAi: true, work: { commentText: "正文" } });
 		h.comment.mockRejectedValueOnce(new Error("额度用完"));
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(segsOf(h)[0]?.text).toBe(`阿绫发布了一条动态\n${LINK}`);
 	});
 });
 
-describe("deliverWork — 还订阅着吗", () => {
+describe("deliverPost — 还订阅着吗", () => {
 	it("出卡 / 点评之后才回问;已退订 → 不发主卡也不发图集", async () => {
 		let subscribed = true;
 		const h = harness({
@@ -424,12 +424,12 @@ describe("deliverWork — 还订阅着吗", () => {
 			config: { imageGroup: { enabled: true, mergeForward: false } },
 			stillSubscribed: () => subscribed,
 		});
-		expect(await deliverWork(h.args)).toBe("unsubscribed");
+		expect(await deliverPost(h.args)).toBe("unsubscribed");
 		expect(h.push).not.toHaveBeenCalled();
 	});
 });
 
-describe("deliverWork — 发送失败与图集", () => {
+describe("deliverPost — 发送失败与图集", () => {
 	const gallery = [
 		{ url: "http://a/1.jpg", width: 800, height: 600 },
 		{ url: "http://a/2.jpg", width: 800, height: 600 },
@@ -441,7 +441,7 @@ describe("deliverWork — 发送失败与图集", () => {
 			config: { imageGroup: { enabled: true, mergeForward: false } },
 		});
 		h.push.mockRejectedValueOnce(new Error("bot 掉线"));
-		await expect(deliverWork(h.args)).rejects.toThrow("bot 掉线");
+		await expect(deliverPost(h.args)).rejects.toThrow("bot 掉线");
 		expect(h.push).toHaveBeenCalledTimes(1);
 	});
 
@@ -450,7 +450,7 @@ describe("deliverWork — 发送失败与图集", () => {
 			work: { gallery },
 			config: { imageGroup: { enabled: true, mergeForward: true } },
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		expect(h.push).toHaveBeenCalledTimes(1);
 		const [anchors] = h.push.mock.calls[0] as [PostPushAnchor[]];
 		// 图集掉成本体就会再 @ 一次全体;带上键就会被附加项的三态表收窄。
@@ -475,7 +475,7 @@ describe("deliverWork — 发送失败与图集", () => {
 				]),
 			},
 		});
-		await deliverWork(h.args);
+		await deliverPost(h.args);
 		const [anchors] = h.push.mock.calls[0] as [PostPushAnchor[]];
 		expect(anchors.map((a) => a.role)).toEqual(["extra"]);
 	});
@@ -485,11 +485,11 @@ describe("deliverWork — 发送失败与图集", () => {
 			work: { gallery: [{ url: "http://a/1.jpg" }] },
 			config: { imageGroup: { enabled: true, mergeForward: true } },
 		});
-		await deliverWork(single.args);
+		await deliverPost(single.args);
 		expect((segsOf(single, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(false);
 
 		const none = harness({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		await deliverWork(none.args);
+		await deliverPost(none.args);
 		expect(none.pushedMessage).toHaveBeenCalledTimes(1);
 
 		const offForSub = harness({
@@ -497,7 +497,7 @@ describe("deliverWork — 发送失败与图集", () => {
 			config: { imageGroup: { enabled: true, mergeForward: false } },
 			settings: { imageGroupEnabled: false },
 		});
-		await deliverWork(offForSub.args);
+		await deliverPost(offForSub.args);
 		expect(offForSub.pushedMessage).toHaveBeenCalledTimes(1);
 
 		const onForSub = harness({
@@ -505,7 +505,7 @@ describe("deliverWork — 发送失败与图集", () => {
 			config: { imageGroup: { enabled: false, mergeForward: false } },
 			settings: { imageGroupEnabled: true, imageGroupMergeForward: true },
 		});
-		await deliverWork(onForSub.args);
+		await deliverPost(onForSub.args);
 		expect((segsOf(onForSub, 1)[0] as { mergeForward?: boolean }).mergeForward).toBe(true);
 	});
 });

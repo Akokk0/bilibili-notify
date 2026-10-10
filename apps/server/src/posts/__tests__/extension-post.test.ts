@@ -21,14 +21,11 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
-import {
-	createCardFailureTracker,
-	type DeliverWorkArgs,
-	type PushSegment,
-} from "../../bilibili/dynamic/index.js";
 import { imageRefOf } from "../../images/image-store.js";
-import { bindExtensionPosts } from "../extension-posts.js";
-import { createNodeMessageBus } from "../message-bus.js";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { createCardFailureTracker, type DeliverPostOptions } from "../deliver-post.js";
+import { bindExtensionPosts } from "../extension-post.js";
+import type { PushSegment } from "../post-push.js";
 
 const SUB = makeExtensionSubscription({ externalId: "sec-uid-1" });
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -51,10 +48,12 @@ function post(n: number): SubscriptionReportValue<"post"> {
 }
 
 /**
- * 假的作品推送口(`deliverWork` 的 `push`):这些用例里一次推送只看本体,把本体那个锚点里的
+ * 假的作品推送口(`deliverPost` 的 `push`):这些用例里一次推送只看本体,把本体那个锚点里的
  * 每条消息(它的段)依次交给 `onMessage`。
  */
-function mainOnly(onMessage: (segments: PushSegment[]) => Promise<void>): DeliverWorkArgs["push"] {
+function mainOnly(
+	onMessage: (segments: PushSegment[]) => Promise<void>,
+): DeliverPostOptions["push"] {
 	return async (anchors) => {
 		const messages = (await anchors.find((anchor) => anchor.role === "main")?.messages) ?? [];
 		for (const segments of messages) await onMessage(segments);
@@ -346,7 +345,7 @@ describe("bindExtensionPosts — 平台的作品叫法按订阅所属的拓展�
  *
  * 翻译排在过滤之前(过滤要看有没有图集 / 视频),所以图的写盘推迟到出卡那一刻(`deferImageWrites`):被屏蔽的、
  * 关了出图的作品**一张图都不往图库写**。这里走真的 `bindExtensionPosts`,经 bus 报一条作品,看卡有没有出、
- * 消息有没有发、图库的口有没有被调。验红:把 `extension-posts.ts` 里的 `filterPost(...)` 去掉,各条拦截红。
+ * 消息有没有发、图库的口有没有被调。验红:把 `extension-post.ts` 里的 `filterPost(...)` 去掉,各条拦截红。
  */
 describe("bindExtensionPosts — 过滤吃翻好的 Post,类型开关对拓展作品生效", () => {
 	const PNG = new Uint8Array([

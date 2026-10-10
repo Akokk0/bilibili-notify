@@ -1,4 +1,3 @@
-export { createSerialGate, type SerialGate } from "@bilibili-notify/internal";
 export type { LiveContentBuilder } from "./content-builder";
 // B 站房间数据 → 中立的直播卡输入(ADR-0019 决策 65 / 68)。直播引擎的推送与面板的真实拉取预览共用这一份,
 // 别再各翻一遍。

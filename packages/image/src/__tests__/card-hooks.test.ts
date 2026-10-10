@@ -85,7 +85,7 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
  *
  * 动态卡的头像块:B 站这条路造的 node 到 3a 之前不带头像地址、头像块整块收起(`PostNode.creatorAvatarUrl`),
  * 而夹具表里的动态卡全是 `Post` 字面量、经 `nodeFromPost` 造 node(`Post` 里没有头像地址可给),于是 `dynamic.avatar` 的挂点不再出现在任何夹具里。拓展作品那条
- * 路(`apps/server/src/runtime/extension-post-work.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
+ * 路(`apps/server/src/posts/extension-post.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
  *
  * 直播卡的头像块同理(㉒b):四份直播夹具是 B 站形状、`creatorAvatarUrl` 为空串,头像块整块收起,`live.avatar` 的挂点不再
  * 出现在任何夹具里。拓展直播(`extension-live-push.ts`)照旧给头像,所以补一份带头像地址的视图。

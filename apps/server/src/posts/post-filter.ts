@@ -19,7 +19,7 @@ import {
 	type Post,
 	PostFilterReason,
 } from "@bilibili-notify/internal";
-import { postText } from "../../posts/post-text";
+import { postText } from "./post-text";
 
 // 原因的词表住 `@bilibili-notify/internal`(历史行的 `filteredBy` 也用它);这里照旧转出,过滤的调用方不用换路。
 export { PostFilterReason };

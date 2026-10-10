@@ -3,7 +3,7 @@
  *
  * 拓展交的是字节:封面与事件带来的作者头像经图库的存图口翻成引用(图库不收的图当没有),订阅资料里的头像本来就是
  * 图库引用;开播时刻是毫秒、卡输入里是 ISO;人数只收精确数,没报就没有这个键。
- * 照 `postFromReport` 的样子(`post-from-report.test.ts`)。
+ * 照 `postFromReport` 的样子(`posts/__tests__/post-from-report.test.ts`)。
  *
  * 从前这里的前身是 `extensionCardAuthor`(把头像字节转 data URL,哪儿都没有就给一张透明占位):
  * 「事件带的头像优先、没带的用资料里的」「读头像抛了不拖累这张卡」这两条换了形状仍在 —— 头像是引用,

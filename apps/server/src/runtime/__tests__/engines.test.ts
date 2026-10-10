@@ -96,12 +96,6 @@ vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
 		// 纯函数走真实实现(动态卡配色解析):它们是没有副作用的规则,在这儿
 		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
 		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
-		// 出图失败计数(全进程一份,B 站与拓展作品共用)是个没有副作用的小对象,同理走真的。
-		createCardFailureTracker: actual.createCardFailureTracker,
-		// 拓展作品那条路(ADR-0019 决策 66 / 70)用的装配与过滤也走真的 —— 被测的正是它们与
-		// B 站那条路接在同一份计数上。
-		deliverWork: actual.deliverWork,
-		filterPost: actual.filterPost,
 		DynamicEngine: class {
 			opts: any;
 			start = vi.fn();
@@ -121,8 +115,6 @@ vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
 vi.mock("../../bilibili/live/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../bilibili/live/index.js")>();
 	return {
-		// 拓展作品每条订阅一道串行闸,纯函数,走真的。
-		createSerialGate: actual.createSerialGate,
 		// 拓展直播(ADR-0019 决策 67)用的直播装配、文案渲染与两处小规矩也走真的 —— 没有副作用。
 		pushLiveNotify: actual.pushLiveNotify,
 		renderLiveText: actual.renderLiveText,

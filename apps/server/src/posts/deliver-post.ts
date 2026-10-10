@@ -8,15 +8,20 @@
  * 时间线闸、统计事件、失败了怎么办,都是来源自己的事。
  */
 
-import type { CommentaryProvider } from "@bilibili-notify/ai";
-import type { CardColorOptions, ImageRenderer } from "@bilibili-notify/image";
-import type { Logger, MessagePartType, PostImage } from "@bilibili-notify/internal";
+import type { CommentaryCallOverride, CommentaryProvider } from "@bilibili-notify/ai";
+import type { CardColorOptions, CardSkinChoice, ImageRenderer } from "@bilibili-notify/image";
+import type {
+	Logger,
+	MessageKindLayout,
+	MessagePartType,
+	PostImage,
+} from "@bilibili-notify/internal";
 import { assembleMessageGroups, interpolate, isBlockVisible } from "@bilibili-notify/internal";
-import { resolveDynamicColorOptions } from "./card-style";
-import type { PostPushAnchor, PushSegment, SubItemView } from "./push-like";
+import { resolveDynamicColorOptions } from "../bilibili/dynamic/card-style.js";
+import type { PostPushAnchor, PushSegment } from "./post-push.js";
 
 /** AI 点评最多看几张图(决策 71:拓展作品与 B 站同一个数)。来源交多了,装配截前这么多张。 */
-export const WORK_COMMENT_IMAGES_MAX = 4;
+export const POST_COMMENT_IMAGES_MAX = 4;
 
 /**
  * 推送文本模板的内建兜底,仅在宿主没填全局模板时用(独立端恒从 `globals.defaults.templates`
@@ -55,7 +60,7 @@ export interface NeutralWork {
 	isVideo: boolean;
 	/** AI 点评要的正文;空串 = 没有可点评的,不调 AI。 */
 	commentText: string;
-	/** AI 点评要的图(网址或 data URL);只看前 {@link WORK_COMMENT_IMAGES_MAX} 张。 */
+	/** AI 点评要的图(网址或 data URL);只看前 {@link POST_COMMENT_IMAGES_MAX} 张。 */
 	commentImages: readonly string[];
 	/** AI 提示词里「××发布了一条{postNoun}」的叫法:B 站「动态」,拓展按平台(决策 71)。 */
 	postNoun: string;
@@ -65,20 +70,62 @@ export interface NeutralWork {
 
 /**
  * 这条订阅**折好的**设置(宿主按 per-UP 覆盖折叠)。模板与图集两格留空时由
- * {@link WorkDeliveryConfig} 兜底;B 站的 {@link SubItemView} 结构上就是它。
+ * {@link WorkDeliveryConfig} 兜底;B 站的订阅视图(`SubItemView`)继承它。
  */
-export type WorkSubscriptionSettings = Pick<
-	SubItemView,
-	| "messageLayout"
-	| "customCardStyle"
-	| "cardSkin"
-	| "cardSkinKnobs"
-	| "aiOverride"
-	| "imageGroupEnabled"
-	| "imageGroupMergeForward"
-	| "customDynamicTemplate"
-	| "customVideoTemplate"
->;
+export interface WorkSubscriptionSettings {
+	customCardStyle?: {
+		enable?: boolean;
+		// 🪦 `backgroundImage` / `backgroundImages` 2026-09-20 随整条链删掉 —— 背景图归皮肤
+		// 自己的 `image` 旋钮(`--bn-knob-wallpaper`),不再从样式覆盖里透传。
+		/**
+		 * 字体家族名;透传给 generatePostCard 的 colorOptions(缺省回退全局)。
+		 * 此前整条链都漏着,per-UP 换字体选了等于没选。
+		 */
+		font?: string;
+		/** 主人自带字体的资产 id(独立端专属);设了优先于 `font`,缺省回退全局。 */
+		fontAsset?: string;
+	};
+	/** Per-UP AI 覆盖；undefined 时使用 CommentaryGenerator 的全局 config。 */
+	aiOverride?: CommentaryCallOverride;
+	/**
+	 * Per-UP 是否推送动态图集图片;undefined 继承 engine config `imageGroup.enabled`。
+	 * Adapter 折叠 `Subscription.overrides.imageGroup.enabled` 后填入。
+	 */
+	imageGroupEnabled?: boolean;
+	/**
+	 * Per-UP 图集合并转发开关;undefined 继承 engine config `imageGroup.mergeForward`。
+	 * 单图永远不走合并转发(在 engine 内已守卫)。
+	 */
+	imageGroupMergeForward?: boolean;
+	/**
+	 * Per-UP 非视频动态文本模板;undefined 继承 engine config `dynamicTemplate`。
+	 * Adapter 折叠 `Subscription.overrides.templates.post` 后填入。
+	 */
+	customDynamicTemplate?: string;
+	/**
+	 * Per-UP 视频投稿文本模板;undefined 继承 engine config `videoTemplate`。
+	 * Adapter 折叠 `Subscription.overrides.templates.postVideo` 后填入。
+	 */
+	customVideoTemplate?: string;
+	/**
+	 * Per-UP 生效的**卡片皮肤 id**(ADR-0014)。宿主折叠 `eff.cardSkin` 后填入;
+	 * undefined = 内置默认皮肤。渲染时透传给 generatePostCard 的
+	 * colorOptions —— 版式住皮肤包里,不再逐块下发。
+	 */
+	cardSkin?: string;
+	/**
+	 * Per-UP 自己那层**皮肤旋钮覆盖**,按皮肤 id 分(`overrides.cardSkinKnobs` 原样,ADR-0014
+	 * 决策 17 的 🔗)。undefined = 一枚都没单独拧。与 `cardSkin` 一起透传给出卡的 colorOptions,
+	 * 渲染器在出图时与全局那份逐枚合并 —— 所以这里不折全局值,快照也就不会把全局冻住。
+	 */
+	cardSkinKnobs?: CardSkinChoice["cardSkinKnobs"];
+	/**
+	 * Per-UP 解析后的**消息版式**动态切片(块顺序 / 显隐 / 分条符 + 分隔符)。宿主折叠
+	 * `eff.messageLayout.post` 后填入。装配按版式装配消息:文本模板以 url='' 渲染
+	 * (模板里没有链接变量),链接独立成部件。
+	 */
+	messageLayout: MessageKindLayout;
+}
 
 /** 引擎级(全局)的那几样 —— 订阅的设置里留空时兜底。 */
 export interface WorkDeliveryConfig {
@@ -191,7 +238,7 @@ export function createCardFailureTracker(): CardFailureTracker {
 }
 
 /** 装配用到的服务。渲染器 / AI 缺失时降级(纯文字 / 不点评)。 */
-export interface WorkDeliveryDeps {
+export interface DeliverPostDeps {
 	logger: Logger;
 	image?: ImageRenderer;
 	ai?: CommentaryProvider;
@@ -203,7 +250,7 @@ export interface WorkDeliveryDeps {
 	emitEngineError(message: string): void;
 }
 
-export interface DeliverWorkArgs {
+export interface DeliverPostOptions {
 	work: NeutralWork;
 	/** 这条订阅折好的设置。 */
 	settings: WorkSubscriptionSettings;
@@ -219,7 +266,7 @@ export interface DeliverWorkArgs {
 	 */
 	stillSubscribed(): boolean;
 	config: WorkDeliveryConfig;
-	deps: WorkDeliveryDeps;
+	deps: DeliverPostDeps;
 	/** 日志里怎么称呼这条订阅(B 站 `UID=…`)。只进日志。 */
 	logLabel: string;
 }
@@ -236,7 +283,7 @@ export type WorkDeliveryOutcome = "delivered" | "unsubscribed";
  * 块隐藏的部件直接跳过其生产成本:卡片块藏起来不出卡,文字块藏起来不调 AI。出图失败降级为纯文字、
  * 连着失败只提醒一次;AI 失败回退到模板;图集是主卡的附属物,发不出就算了(见下)。
  */
-export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOutcome> {
+export async function deliverPost(args: DeliverPostOptions): Promise<WorkDeliveryOutcome> {
 	const { work, settings, push, config, deps, logLabel } = args;
 	const { logger } = deps;
 	const layout = settings.messageLayout;
@@ -269,7 +316,7 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
 	let aiComment: string | undefined;
 	if (deps.ai && config.aiEnabled !== false && wantPart("text")) {
 		if (work.commentText) {
-			const imageUrls = work.commentImages.slice(0, WORK_COMMENT_IMAGES_MAX);
+			const imageUrls = work.commentImages.slice(0, POST_COMMENT_IMAGES_MAX);
 			logger.debug(
 				`[ai] 开始生成动态点评，文本长度=${work.commentText.length}，图片数=${imageUrls.length}${settings.aiOverride ? "，命中 per-UP override" : ""}`,
 			);
@@ -335,7 +382,7 @@ export async function deliverWork(args: DeliverWorkArgs): Promise<WorkDeliveryOu
  * 提醒送达才算提醒过:发不出去的话,下一次失败再试。提醒在 await 之前领(`claimNotice`),并发的
  * 几条失败只有一条发。
  */
-async function noteCardFailure(err: Error, deps: WorkDeliveryDeps): Promise<void> {
+async function noteCardFailure(err: Error, deps: DeliverPostDeps): Promise<void> {
 	const streak = deps.cardFailures.recordFailure();
 	deps.logger.error(`[image] 生成动态图片失败 (连续 ${streak} 次): ${err.message}`);
 	const notice = deps.cardFailures.claimNotice();

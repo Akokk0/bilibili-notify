@@ -20,8 +20,8 @@ import { putImage } from "../../__tests__/support/chat-images.js";
 import { gif, png } from "../../__tests__/support/report-images.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
+import { postFromReport } from "../../posts/post-from-report.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
-import { postFromReport } from "../post-from-report.js";
 import { dataPath } from "../roots.js";
 
 let dataDir: string;

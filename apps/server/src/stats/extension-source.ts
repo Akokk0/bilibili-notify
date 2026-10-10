@@ -7,7 +7,8 @@ import {
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
-import { deferImageWrites, postFromReport } from "../runtime/post-from-report.js";
+import { deferImageWrites } from "../images/image-writes.js";
+import { postFromReport } from "../posts/post-from-report.js";
 import { type StatsSubscription, statsFileKey } from "./file-key.js";
 import { postEntryExtras } from "./post-entry-extras.js";
 import type { StatsRecorderCore } from "./recorder.js";

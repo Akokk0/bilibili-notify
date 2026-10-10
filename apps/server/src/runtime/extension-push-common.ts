@@ -10,7 +10,7 @@ import type { ImageStore } from "../images/image-store.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
- * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`extension-posts.ts`)与拓展的
+ * **拓展订阅推送的公共件**(ADR-0019 决策 54 / 62 / 68 / 77)—— 拓展的作品(`posts/extension-post.ts`)与拓展的
  * 直播共用:模板里的名字、「这条订阅现在还该推吗」、字节转 data URL。
  *
  * 绑到订阅上的发送与这条订阅折好的设置在 `engines.ts`(`boundPostPush` / `boundLivePush` /

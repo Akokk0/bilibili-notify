@@ -12,10 +12,17 @@ import {
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
+import {
+	type CardFailureTracker,
+	createCardFailureTracker,
+	deliverPost,
+	type NeutralWork,
+	type WorkDeliveryConfig,
+} from "../../posts/deliver-post";
+import { filterPost, type PostFilterReason, type PostFilterRules } from "../../posts/post-filter";
 import { postText } from "../../posts/post-text";
 import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../images";
-import { filterPost, type PostFilterReason, type PostFilterRules } from "./post-filter";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type {
 	FilteredPost,
@@ -26,13 +33,6 @@ import type {
 	SubscriptionsView,
 } from "./push-like";
 import type { AllDynamicResponse, Dynamic, DynamicTimelineManager } from "./types";
-import {
-	type CardFailureTracker,
-	createCardFailureTracker,
-	deliverWork,
-	type NeutralWork,
-	type WorkDeliveryConfig,
-} from "./work-delivery";
 
 const LOG_TAG = "bilibili-notify-dynamic";
 /**
@@ -225,7 +225,7 @@ function extractGallery(item: Dynamic): PostImage[] {
 }
 
 /**
- * B 站原始动态 + 它翻好的中立作品 → 装配吃的作品(ADR-0019 决策 66)。出卡之后那一段(`deliverWork`)与拓展
+ * B 站原始动态 + 它翻好的中立作品 → 装配吃的作品(ADR-0019 决策 66)。出卡之后那一段(`deliverPost`)与拓展
  * 共用,不再读原始数据 —— 它要的这几样在这里一次翻好。翻译(`postFromDynamic`)由调用方做一次,过滤、
  * AI 点评的文字(`postText(post, "labeled")`,取段只此一份)、出卡(`generatePostCard`)共用同一份 `Post`;
  * 只有链接、图集这些 B 站自己的东西还读原始动态。
@@ -865,7 +865,7 @@ export class DynamicEngine {
 				// (出卡 → AI 点评 → 再核还订阅着 → 套模板 → 按版式装配 → 推送 → 图集)与拓展共用。
 				// 订阅的设置用本轮捕获的那份 —— 过滤之后到这里没有 await,就是此刻表里那份。
 				// 主卡发送抛错往外冒到下面的 catch → markFail,下一轮再来。
-				const outcome = await deliverWork({
+				const outcome = await deliverPost({
 					work: workFromDynamic(
 						item,
 						post,

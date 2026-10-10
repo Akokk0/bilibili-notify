@@ -1,10 +1,10 @@
 /**
  * 拓展报的作品 → 平台中立的作品(ADR-0019 决策 55 / 66 / 69 / 71 / 72 / 77;翻成 `Post` 见 `post-from-report.test.ts`)。
  *
- * 装配(`deliverWork`)只认 `NeutralWork` 那几格。这里钉的是翻好的 `Post` 与上报原件交到手之后每一格从哪来:
+ * 装配(`deliverPost`)只认 `NeutralWork` 那几格。这里钉的是翻好的 `Post` 与上报原件交到手之后每一格从哪来:
  * 卡是出卡那一刻才把推迟的图写进图库、再把**同一份** `Post` 交给出图器的 `generatePostCard`(样式原样带过去,
  * 没出卡就不写盘)、链接 / 名字 / 叫法、AI 看的正文(`postText(post, "labeled")`,取段只此一份)与图。
- * 过滤看的字不在这里了:过滤吃 `Post`,走 `filterPost`(`apps/server/src/bilibili/dynamic`)。
+ * 过滤看的字不在这里了:过滤吃 `Post`,走 `filterPost`(`apps/server/src/posts/post-filter.ts`)。
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -14,11 +14,12 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import type { Post as NeutralPost, SubscriptionReportValue } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { png } from "../../__tests__/support/report-images.js";
-import { WORK_COMMENT_IMAGES_MAX } from "../../bilibili/dynamic/index.js";
-import { createImageStore, imageRefOf } from "../../images/image-store.js";
-import { postText } from "../../posts/post-text.js";
-import { extensionPostWork, POST_COMMENT_IMAGE_MAX_BYTES } from "../extension-post-work.js";
-import { deferImageWrites, type ImageSink, postFromReport } from "../post-from-report.js";
+import { createImageStore, type ImageWriter, imageRefOf } from "../../images/image-store.js";
+import { deferImageWrites } from "../../images/image-writes.js";
+import { POST_COMMENT_IMAGES_MAX } from "../deliver-post.js";
+import { extensionPostWork, POST_COMMENT_IMAGE_MAX_BYTES } from "../extension-post.js";
+import { postFromReport } from "../post-from-report.js";
+import { postText } from "../post-text.js";
 
 type Reported = SubscriptionReportValue<"post">;
 
@@ -50,13 +51,13 @@ function storingPut(order?: string[]) {
 }
 function sink() {
 	const put = storingPut();
-	return { images: { put } satisfies ImageSink, put };
+	return { images: { put } satisfies Pick<ImageWriter, "put">, put };
 }
 
 /** 像 `bindExtensionPosts` 那样:先推迟写盘地翻成 Post,再包成中立作品。 */
 async function workOf(
 	report: Reported,
-	over: { postNoun?: string; profileAvatar?: string; images?: ImageSink } = {},
+	over: { postNoun?: string; profileAvatar?: string; images?: Pick<ImageWriter, "put"> } = {},
 ) {
 	const deferred = deferImageWrites(over.images ?? sink().images);
 	const translated = await postFromReport(report, {
@@ -138,7 +139,7 @@ describe("卡:出卡时才把图写进图库,再把同一份 Post 交给出图�
 	});
 
 	it("写图库失败(磁盘写失败):renderCard 跟着抛,由装配降级成纯文字,出图器没被调", async () => {
-		const images: ImageSink = {
+		const images: Pick<ImageWriter, "put"> = {
 			put: async () => {
 				throw new Error("磁盘满了");
 			},
@@ -195,8 +196,8 @@ describe("装配要的那几格", () => {
 			dataUrl("image/png", cover),
 		]);
 		const many = await workOf(post({ images: Array.from({ length: 6 }, (_, i) => png(8, 8, i)) }));
-		// 张数上限就是装配(deliverWork)用的那一个数,不另抄一份。
-		expect(many.work.commentImages).toHaveLength(WORK_COMMENT_IMAGES_MAX);
+		// 张数上限就是装配(deliverPost)用的那一个数,不另抄一份。
+		expect(many.work.commentImages).toHaveLength(POST_COMMENT_IMAGES_MAX);
 	});
 
 	it("AI 的图点评真要看时才编,而且只编一次", async () => {

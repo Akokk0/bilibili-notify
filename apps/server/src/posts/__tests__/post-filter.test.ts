@@ -9,16 +9,16 @@
  * - 对所有来源生效:拓展作品不再豁免类型开关(从前的「抖音几乎全是视频」豁免随 ㉑e 删掉)。
  *
  * B 站的 `Post` 由 `postFromDynamic` 翻出来(十份原始夹具),拓展的由服务端的 `postFromReport` 翻 —— 拓展那一腿的
- * 逐开关用例在 `apps/server` 的 `extension-posts.test.ts`,这里只钉过滤自己,拓展形状的 `Post` 手工造。
+ * 逐开关用例在 `apps/server` 的 `extension-post.test.ts`,这里只钉过滤自己,拓展形状的 `Post` 手工造。
  */
 
 import { DEFAULT_CONTENT_FILTERS, type Logger, type Post } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { postText } from "../../../posts/post-text";
+import { BILI_DYNAMIC_SAMPLES } from "../../bilibili/dynamic/__tests__/fixtures/bili-dynamic-fixtures";
+import { postFromDynamic } from "../../bilibili/dynamic/post-from-dynamic";
+import type { Dynamic } from "../../bilibili/dynamic/types";
 import { filterPost, PostFilterReason, type PostFilterRules } from "../post-filter";
-import { postFromDynamic } from "../post-from-dynamic";
-import type { Dynamic } from "../types";
-import { BILI_DYNAMIC_SAMPLES } from "./fixtures/bili-dynamic-fixtures";
+import { postText } from "../post-text";
 
 /** 出厂的过滤(什么都不拦)上盖几格。 */
 const rules = (over: Partial<PostFilterRules> = {}): PostFilterRules => ({
