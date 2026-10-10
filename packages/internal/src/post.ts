@@ -1,10 +1,11 @@
 /**
  * 作品模型(ADR-0021 决策 19–25、ADR-0028 决策 1;形状全文在 `docs/1.0/data-model.md`「作品」)。
  *
- * 所有来源交上来的作品都是这一个形状,核心不认识任何平台。3a 建 `posts/` 时整个搬过去。
+ * 所有来源交上来的作品都是这一个形状,核心不认识任何平台。类型留在这里(出图器、契约、总线都要引),
+ * 只有取段函数(`postText`)住在服务端的 `posts/`。
  */
 
-import type { ImageRef } from "./constants";
+import type { Identity, ImageRef } from "./constants";
 
 /** 出卡认 `ref`;`url` 给「查看原图」;抓不到图库的图(B 站抓图失败)时出卡仍靠它画。 */
 export interface PostImage {
@@ -88,6 +89,32 @@ export interface Post {
 	/** 被转发的原作品。 */
 	repost?: Post;
 	stats?: { shares?: number; comments?: number; likes?: number };
+}
+
+/**
+ * 来源交的一条作品(`reportPost(externalId, report)` 的第二个参数):图都已是图库引用。
+ * 来源不知道订阅 id,订阅由核心(接线)按身份查出来。
+ */
+export interface PostReport {
+	/** 来源自己给这条作品的 id(统计据此去重)。 */
+	postId: string;
+	/** 作品地址;推送里的链接部件就是它。 */
+	url: string;
+	post: Post;
+}
+
+/**
+ * 作品装配入口(`PostQueue`)吃的信封:每条订阅一份。`post-detected` 的载荷也是它。
+ */
+export interface PostEvent {
+	subscriptionId: string;
+	/** 这条订阅的身份(来源键 + 外部 id);展开门与历史行要用。 */
+	identity: Identity;
+	postId: string;
+	url: string;
+	post: Post;
+	/** 平台对作品的叫法(进 AI 提示词「××发布了一条{postNoun}」);缺省叫「动态」。 */
+	postNoun?: string;
 }
 
 /**

@@ -1,73 +1,27 @@
 /**
- * 平台中立的推送出口接口与最小订阅视图。
+ * 动态引擎的宿主接口与最小订阅视图。
  *
- * dynamic-engine 不直接 import `@bilibili-notify/push`;宿主(独立端 runtime)在装配
- * DynamicEngine 时实现 PushLike,并桥接到 PushRouter 的 channel 路由。
+ * 动态引擎只负责**生产**:拉 feed、判新、翻成作品、抓图,然后经 `reportPost` 交给核心的作品入口(`posts/post-queue.ts`)。
+ * 它不直接 import `@bilibili-notify/push`,也不管怎么消费(过滤、出卡、点评、推送、图集都是核心的事);
+ * 这里的接口只剩引擎自己要用的:给主人发私信(风控 / 故障告警)与它要看的那一点订阅信息。
  *
  * 这里的接口仅声明 dynamic-engine 实际调用到的方法;任何字段/方法的扩展应该先在
  * 业务代码中显现需求,再回填到此接口,避免接口与实现脱节。
  */
 
-import type { PostFilterReason } from "@bilibili-notify/internal";
-import type { WorkSubscriptionSettings } from "../../posts/deliver-post";
-import type { PostFilterRules } from "../../posts/post-filter";
-import type { PostPushAnchor } from "../../posts/post-push";
-
-/**
- * 一次作品推送,整个交给宿主:主卡加图集是同一次(历史落同一行)。特性恒为作品,所以没有
- * 特性那一格;`uid` 由宿主换成订阅 id。
- */
-export interface PostPush {
-	uid: string;
-	/** 按顺序排好的锚点。本体至多一个,有的话排第一个。 */
-	anchors: PostPushAnchor[];
-}
-
-/**
- * 一条被过滤挡下的作品,交给宿主留痕(推送历史里的一行 `filtered`,ADR-0021 决策 34 的 🔗)。它不是推送:
- * 不出卡、不抓图、不调 AI,所以不走 {@link PushLike},走引擎选项里的 `onPostFiltered`。`uid` 由宿主换成订阅 id。
- */
-export interface FilteredPost {
-	uid: string;
-	/** 被哪一类规则挡下的。 */
-	filteredBy: PostFilterReason;
-	/** 这条作品的整条文字:`postText(post, "plain")`,过滤看的就是这一份。没截过,摘要由宿主截。 */
-	text: string;
-	/** 原帖地址(动态页)。 */
-	url: string;
-}
-
 export interface PushLike {
-	/**
-	 * 把一次作品推送交给推送层。开关、静音与免扰在交出去那一刻判一次;本体发完时返回,
-	 * 附加项在后台按锚点先后接着发。
-	 */
-	push(push: PostPush): Promise<void>;
-
 	/** 私信发送给配置的管理员账号（master）。adapter 端校验启用状态与 bot 在线性。 */
 	sendPrivateMsg(content: string): Promise<void>;
-
-	/** 与 sendPrivateMsg 等价，但 adapter 应当在内部把内容追加到 error 日志。 */
-	sendErrorMsg(reason: string): Promise<void>;
 }
 
 /**
- * 平台中立的订阅条目最小视图。宿主折叠 `Subscription.overrides` 后填入。
- *
- * `filter` / `aiOverride` 为 per-UP 覆盖(可选);缺失时 engine 回退到
- * `DynamicEngineConfig.filter` / 全局 CommentaryGenerator 配置。
+ * 引擎眼里的一条订阅:认人靠 `uid`,`post` 决定它进不进推送名单(`dynamicSubManager`)。
+ * 进了名单的才为它翻译、抓图、交作品;不在名单里的(关了作品推送的)只推进时间线锚点。
+ * 真源是宿主的 `sub.enabled && eff.features.post`(`buildDynamicSubViewSingle`)。
  */
-export interface SubItemView extends WorkSubscriptionSettings {
+export interface SubItemView {
 	uid: string;
-	uname: string;
-	/**
-	 * 这条订阅在核心里的 id(`Subscription.id`),由宿主 `buildDynamicSubViewSingle` 填。引擎认人靠 `uid`,
-	 * 出卡时按它向宿主现读资料里的头像(`avatarOf`)。
-	 */
-	subscriptionId: string;
 	post?: boolean;
-	/** Per-UP 作品过滤覆盖(折好的 `ContentFilters`);undefined 时使用 engine 的全局 filter。 */
-	filter?: PostFilterRules;
 }
 
 export type SubscriptionsView = Record<string, SubItemView>;

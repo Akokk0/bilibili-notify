@@ -28,6 +28,8 @@ import type {
 	ConnectionCapabilities,
 	GlobalConfig,
 	PlatformAdapter,
+	Post,
+	PostEvent,
 	ProbeResult,
 	PushTarget,
 	Subscription,
@@ -101,8 +103,6 @@ vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
 			start = vi.fn();
 			stop = vi.fn();
 			updateConfig = vi.fn();
-			setAi = vi.fn();
-			setImage = vi.fn();
 			applyOps = vi.fn();
 			constructor(opts: any) {
 				this.opts = opts;
@@ -157,6 +157,8 @@ vi.mock("@bilibili-notify/ai", () => ({
 		 * 失败」—— 表现是 H.ai 里有实例但 start 一次没调,不是一眼能看懂的报错。
 		 */
 		setSubscriptionsSource = vi.fn();
+		/** 作品装配的 AI 点评(经 `deps.ai()` 每条现取)。 */
+		comment = vi.fn(async (..._args: unknown[]) => "点评");
 		/** 同上:engines.ts 构造后还会接联网搜索的执行器热读口。 */
 		setWebSearchSource = vi.fn();
 		constructor(opts: any) {
@@ -193,9 +195,9 @@ const {
 	createEngines,
 	liveTypeToFeature,
 	liveTypeAllowsAtAll,
-	buildDynamicSubViewSingle,
 	buildLiveSubViewSingle,
 	boundLivePush,
+	postSettingsOf,
 } = await import("../engines.js");
 
 // Mirror of koishi/live/src/__tests__/live-type-to-feature.test.ts — the two
@@ -410,6 +412,8 @@ function setup(opts?: {
 	liveImages?: Parameters<typeof createEngines>[0]["liveImages"] | null;
 	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
+	/** AI 点评看只有图库引用的图时读字节的口(接线层给的);不给 = 一个什么都读不到的替身。 */
+	readImage?: Parameters<typeof createEngines>[0]["readImage"];
 	/** 拓展订阅的在播表与上报出入框(接线层给的);不给 = 不接拓展订阅的直播。 */
 	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
 	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
@@ -504,6 +508,7 @@ function setup(opts?: {
 				}
 			: {}),
 		...(opts?.resolveImageRef ? { resolveImageRef: opts.resolveImageRef } : {}),
+		readImage: opts?.readImage ?? (async () => undefined),
 		...(opts?.extensionLive ? { extensionLive: opts.extensionLive } : {}),
 		...(opts?.extensionSources && opts.extensionLive && opts.liveImages !== null
 			? {
@@ -555,6 +560,48 @@ function aiGlobals(): GlobalConfig {
 	};
 	return g;
 }
+
+/** 一条 B 站来的中立作品(引擎翻好、图已抓好的样子)。 */
+const bilibiliPost = (text = "正文", over: Partial<Post> = {}): Post => ({
+	creator: { name: "阿绫" },
+	publishedAt: "2026-10-10T00:00:00.000Z",
+	text,
+	...over,
+});
+/** B 站动态引擎把一条作品交给核心入口:引擎的 `reportPost` 选项就是接线层给的那一个,走真的队列与真的装配。 */
+const reportBili = (uid: string, post: Post = bilibiliPost(), postId = "d1"): void =>
+	H.dynamic[0].opts.reportPost(uid, { postId, url: `https://t.bilibili.com/${postId}`, post });
+const biliSubOf = (uid = "1", id = `sub-${uid}`): Subscription =>
+	makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } });
+/** 等登记进 `track` 的后台活全部落定(包括落定途中又登记的):凡断言「没推」都得先等它。 */
+async function settleTracked(c: Ctx): Promise<void> {
+	const { tracking } = c.serviceCtx;
+	let seen: number;
+	do {
+		seen = tracking.tracked.length;
+		await tracking.settled();
+	} while (tracking.tracked.length !== seen);
+}
+/** 推送层收到的每一次作品推送里,本体那个锚点的每条消息的文字。 */
+async function mainTexts(): Promise<string[]> {
+	const out: string[] = [];
+	for (const [sent] of H.push[0].push.mock.calls) {
+		const messages = (await sent.anchors[0]?.messages) ?? [];
+		for (const m of messages) {
+			out.push(
+				m.kind === "text"
+					? m.text
+					: (m.segments?.find((s: { kind: string }) => s.kind === "text")?.text ?? m.kind),
+			);
+		}
+	}
+	return out;
+}
+const TEMPLATE_GLOBALS = (template: string): GlobalConfig => {
+	const g = makeDefaultGlobalConfig();
+	g.defaults.templates.post = template;
+	return g;
+};
 
 let active: Ctx | null = null;
 beforeEach(() => {
@@ -660,19 +707,40 @@ describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
 });
 
 describe("createEngines — 卡上主播头像的读口接线(3a-35)", () => {
-	// 验红:把 engines.ts 里递给 DynamicEngine / LiveEngine 的 `avatarOf: profileAvatarOf` 各删一次(类型会先红,
-	// 临时用 undefined 顶替),或把读口改成开机时取一次值,对应那条红 —— 之后才补上的头像永远出不了卡。
-	it("两个引擎拿到的读口按订阅 id 现读订阅资料,资料之后换了值,下一次读到新的", () => {
+	// 验红:把 engines.ts 里递给 LiveEngine 的 `avatarOf: profileAvatarOf` 换成 undefined(类型会先红),
+	// 或把读口改成开机时取一次值,对应那条红 —— 之后才补上的头像永远出不了卡。
+	it("直播引擎拿到的读口按订阅 id 现读订阅资料,资料之后换了值,下一次读到新的", () => {
 		let profile: { avatar?: string } = {};
 		const get = vi.fn((_id: string) => ({ cachedProfile: profile }));
 		setup({ overrides: { subRuntimeStore: { get } } });
-		for (const opts of [H.dynamic[0].opts, H.live[0].opts]) {
-			expect(opts.avatarOf("sub-1")).toBeUndefined();
-			profile = { avatar: `${"c".repeat(64)}.jpg` };
-			expect(opts.avatarOf("sub-1")).toBe(profile.avatar);
-			expect(get).toHaveBeenLastCalledWith("sub-1");
-			profile = {};
-		}
+		const opts = H.live[0].opts;
+		expect(opts.avatarOf("sub-1")).toBeUndefined();
+		profile = { avatar: `${"c".repeat(64)}.jpg` };
+		expect(opts.avatarOf("sub-1")).toBe(profile.avatar);
+		expect(get).toHaveBeenLastCalledWith("sub-1");
+	});
+
+	// 作品这头:头像由核心出卡那一刻按订阅 id 现读(`deps.avatar`),引擎不再有头像读口。
+	// 验红:把 engines.ts 里 postQueue 的 `avatar: profileAvatarOf` 去掉(或改成开机取一次),这条红。
+	it("B 站作品:出卡器收到的 Post.creator.avatar 是出卡那一刻订阅资料里的头像,资料之后换了值,下一张卡用新的", async () => {
+		let profile: { avatar?: string } = {};
+		const get = vi.fn((_id: string) => ({ cachedProfile: profile }));
+		const c = setup({
+			puppeteer: true,
+			subs: [biliSubOf("1")],
+			overrides: { subRuntimeStore: { get } },
+		});
+		active = c;
+		reportBili("1", bilibiliPost("第一条"), "d1");
+		await settleTracked(c);
+		profile = { avatar: `${"b".repeat(64)}.jpg` };
+		reportBili("1", bilibiliPost("第二条"), "d2");
+		await settleTracked(c);
+		const handed = H.image[0].generatePostCard.mock.calls.map((call: unknown[]) => call[0] as Post);
+		expect(handed).toHaveLength(2);
+		expect(handed[0]?.creator.avatar).toBeUndefined();
+		expect(handed[1]?.creator.avatar).toBe(profile.avatar);
+		expect(get).toHaveBeenCalledWith("sub-1");
 	});
 });
 
@@ -730,16 +798,15 @@ describe("createEngines — 在播快照带订阅 id", () => {
 
 /**
  * 出图连续失败「只提醒一次」的计数全进程一份(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个
- * 渲染器,各记各的话同一次故障会各提醒主人一遍。计数在 createEngines 里建,一头交给
- * `new DynamicEngine({ cardFailures })`,一头交给拓展作品的装配 —— 两头哪一头换成自己建的一份
- * (或者 B 站那头压根没传、引擎自己建),类型与别的测试全绿,只有这一条红。
+ * 渲染器,各记各的话同一次故障会各提醒主人一遍。计数在 createEngines 里建一份,交给作品入口(两条路都经它装配)。
+ * 哪条路换成自己建的一份,类型与别的测试全绿,只有这一条红。
  */
 describe("createEngines — 出图失败计数 B 站与拓展作品共用一份", () => {
-	it("拓展作品出图失败之后,B 站引擎手里那份计数跟着变;只提醒主人一次", async () => {
-		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+	it("拓展作品出图失败提醒过之后,B 站作品同一串失败不再私聊;告警面板的来源是同一个 post-delivery", async () => {
+		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
 			puppeteer: true,
-			subs: [sub],
+			subs: [ext, biliSubOf("1")],
 			extensionSources: {
 				running: () => true,
 				postNoun: () => "作品",
@@ -748,26 +815,28 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 		});
 		active = c;
 		H.image[0].generatePostCard.mockRejectedValue(new Error("浏览器挂了"));
-		const bili = H.dynamic[0].opts.cardFailures;
-		expect(bili?.streak).toBe(0);
 
 		c.bus.emit("subscription-reported", {
 			extensionId: "douyin",
 			externalId: "sec-uid-1",
-			subscriptionIds: [sub.id],
+			subscriptionIds: [ext.id],
 			report: {
 				kind: "post",
 				value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
 			},
 		});
+		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
+		await settleTracked(c);
+		reportBili("1");
+		await settleTracked(c);
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(2);
 
-		await vi.waitFor(() => expect(bili.streak).toBe(1));
-		// 这一串已经提醒过了:B 站那头紧接着也失败的话,不会再私聊一遍。
-		await vi.waitFor(() => expect(bili.notified).toBe(true));
 		// 告诉主人的有两路:作品投递自己的失败提醒(直接一条),和 engine-error 经 MasterNotifier 的那条
-		// (带 `[extension-post]` 前缀)。「只提醒一次」说的是前一路 —— B 站那头不会再补一条。
-		const texts = H.push[0].notifyMaster.mock.calls.map((c: unknown[]) => String(c[0]));
-		expect(texts.filter((t: string) => !t.startsWith("[extension-post]"))).toHaveLength(1);
+		// (带 `[post-delivery]` 前缀)。「只提醒一次」说的是前一路:两条路共用一份计数,第二次失败不会再补一条。
+		const texts = H.push[0].notifyMaster.mock.calls.map((call: unknown[]) => String(call[0]));
+		expect(texts.filter((t: string) => !t.startsWith("[post-delivery]"))).toHaveLength(1);
+		// 来源统一:两条路共用一个 60 秒节流键,第二次失败的告警被节流吞掉,面板上只亮一次。
+		expect(texts.filter((t: string) => t.startsWith("[post-delivery]"))).toHaveLength(1);
 	});
 });
 
@@ -825,7 +894,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		).toThrow(/postImages/);
 	});
 
-	it("事件带来的头像与配图经 postImages 存(出卡前写盘),出图器收到的 Post 里是图库的引用", async () => {
+	it("事件带来的头像与配图经 postImages 存(交给核心之前就写盘),出图器收到的 Post 里是图库的引用", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const put = storing();
 		const c = setup({
@@ -841,8 +910,8 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		);
 		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
 		// 验红:删掉 engines.ts 里传给 bindExtensionPosts 的 `postImages,` 这一行,这条红。
-		// 头像和配图是同一份字节(同一个引用),只写一次。
-		expect(put).toHaveBeenCalledTimes(1);
+		// 头像和配图各存一次(同一份字节,同一个引用)。
+		expect(put).toHaveBeenCalledTimes(2);
 		const post = postOf(H.image[0].generatePostCard.mock.calls[0] ?? []);
 		expect(post.creator.avatar).toBe(imageRefOf(PNG_1X1));
 		expect(post.images).toEqual([expect.objectContaining({ ref: imageRefOf(PNG_1X1) })]);
@@ -875,7 +944,7 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		active = c;
 		c.bus.emit("subscription-reported", report(sub));
 		await vi.waitFor(() => expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1));
-		// 验红:删掉 engines.ts 里 `avatarRef: …cachedProfile?.avatar,` 那一行,这条红(头像退成没有)。
+		// 验红:删掉 engines.ts 里 postQueue 的 `avatar: profileAvatarOf,` 那一行,这条红(头像退成没有)。
 		expect(postOf(H.image[0].generatePostCard.mock.calls[0] ?? []).creator.avatar).toBe(AVATAR_REF);
 		expect(put).not.toHaveBeenCalled();
 	});
@@ -886,6 +955,176 @@ describe("createEngines — 拓展作品的图走图库", () => {
 		active = c;
 		// 验红:删掉 engines.ts 里 `resolveImageRef: opts.resolveImageRef,` 那一行,这条红。
 		expect(H.image[0].opts.resolveImageRef).toBe(resolveImageRef);
+	});
+
+	// AI 点评看只有图库引用的图(拓展作品)时,核心要量字节数再编成 data URL,读口由接线层给(`runtime.imageStore.read`)。
+	// 验红:把 engines.ts 里 postQueue 的 `readImage: opts.readImage,` 换成恒回 undefined,这条红(点评看不到图)。
+	it("AI 点评看拓展作品只有引用的图:核心经接线层给的 readImage 读出字节,编成 data URL 交给点评", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const aiOn = aiGlobals();
+		aiOn.defaults.ai.enabled = true;
+		const readImage = vi.fn(async (_ref: string) => ({
+			bytes: Uint8Array.from([1, 2, 3]),
+			mime: "image/png",
+		}));
+		const c = setup({
+			globals: aiOn,
+			subs: [sub],
+			extensionSources: sources,
+			readImage,
+		});
+		active = c;
+		c.bus.emit("subscription-reported", report(sub, { text: "有图的作品", images: [PNG_1X1] }));
+		await vi.waitFor(() => expect(H.ai[0].comment).toHaveBeenCalledTimes(1));
+		// 接线层的默认存图替身给的就是这个引用。
+		expect(readImage).toHaveBeenCalledWith(`${"0".repeat(63)}1.png`);
+		expect(H.ai[0].comment.mock.calls[0]?.[2]).toEqual([
+			`data:image/png;base64,${Buffer.from([1, 2, 3]).toString("base64")}`,
+		]);
+	});
+});
+
+/**
+ * **作品入口的接线**:B 站动态引擎的 `reportPost` 选项由接线层给 —— 按身份查出订阅、把引擎交的作品包成信封
+ * 入队(`createPostQueue`),入口再同步发 `post-detected`、按订阅串行跑装配、交给推送层。零件各自的单元测试证明不了
+ * 接线真接上了,所以这里走**真的队列、真的装配**(只假推送层与出卡器),断言到 `PushRouter.push` 的入参;
+ * 凡断言「没推」的先等登记进 track 的活落定,旁边有对照。
+ */
+describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推送层)", () => {
+	it("引擎交的作品:按身份查订阅、入口同步发 post-detected(订阅 id、身份、叫法「动态」),随后推送层收到订阅 id + 特性 post + 模板文字与链接", async () => {
+		const sub = biliSubOf("1");
+		const c = setup({ subs: [sub], globals: TEMPLATE_GLOBALS("{name}更新了") });
+		active = c;
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
+		const post = bilibiliPost("正文");
+
+		reportBili("1", post, "d1");
+
+		// 同步:入口里就发了,不等装配。
+		expect(detected).toEqual([
+			{
+				subscriptionId: sub.id,
+				identity: { sourceKey: "bilibili", externalId: "1" },
+				postId: "d1",
+				url: "https://t.bilibili.com/d1",
+				post,
+				postNoun: "动态",
+			},
+		]);
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		const [sent] = H.push[0].push.mock.calls[0];
+		expect(sent).toMatchObject({ subscriptionId: sub.id, feature: "post" });
+		expect(sent.anchors).toHaveLength(1);
+		expect(sent.anchors[0].role).toBe("main");
+		expect(await mainTexts()).toEqual(["阿绫更新了\nhttps://t.bilibili.com/d1"]);
+	});
+
+	// 验红:把 engines.ts 里 `reportPost` 接线里的 `subscriptionOfUid(externalId)` 换成别的 uid / 订阅,这条红。
+	it("同一个 uid 配了两条订阅(遗留的重复订阅):只交先出现的那一条(按身份展开成每条一份归 3a-28)", async () => {
+		const first = biliSubOf("1", "sub-first");
+		const second = biliSubOf("1", "sub-second");
+		const c = setup({ subs: [first, second] });
+		active = c;
+		reportBili("1");
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		expect(H.push[0].push.mock.calls[0]?.[0].subscriptionId).toBe("sub-first");
+	});
+
+	it("uid 对不上订阅、订阅停用、作品开关关着 → 不发事件也不推;对照:订阅在、启用、开着就推", async () => {
+		const live = biliSubOf("1");
+		const disabled = { ...biliSubOf("2"), enabled: false };
+		const postOff = biliSubOf("3");
+		postOff.overrides.features = { post: false };
+		const c = setup({ subs: [live, disabled, postOff] });
+		active = c;
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
+		for (const uid of ["404", "2", "3"]) reportBili(uid);
+		await settleTracked(c);
+		expect(detected).toEqual([]);
+		expect(H.push[0].push).not.toHaveBeenCalled();
+
+		reportBili("1");
+		await settleTracked(c);
+		expect(detected).toHaveLength(1);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+	});
+
+	// 「来源在跑」这个条件只管拓展订阅(B 站订阅恒在):拓展停了,等着的作品不补(决策 61)。
+	// 验红:删掉 engines.ts 里 `sourceRunning` 那个函数体里的 `extensionSources?.running(…)` 一支(改成恒真),拓展那条红;
+	// 删掉 `fromBilibili(sub) ||` 一支,B 站那条红。
+	it("来源没在跑:拓展订阅的作品不推,B 站订阅不受这个条件牵连;对照:拓展在跑就推", async () => {
+		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		let running = false;
+		const c = setup({
+			subs: [ext, biliSubOf("1")],
+			extensionSources: {
+				running: () => running,
+				postNoun: () => "作品",
+				events: () => ["post"],
+			},
+		});
+		active = c;
+		const extReport = () =>
+			c.bus.emit("subscription-reported", {
+				extensionId: "douyin",
+				externalId: "sec-uid-1",
+				subscriptionIds: [ext.id],
+				report: {
+					kind: "post" as const,
+					value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
+				},
+			});
+		extReport();
+		await settleTracked(c);
+		expect(H.push[0].push).not.toHaveBeenCalled(); // 拓展没在跑
+
+		reportBili("1"); // B 站订阅不看拓展在不在跑
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+
+		running = true;
+		extReport();
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(2);
+	});
+
+	// 验红:把 engines.ts 里 bindExtensionPosts 的 `postNoun: (extensionId) => extensionSources.postNoun(extensionId)` 换成
+	// 恒回 undefined,这条红(叫法退回「动态」)。
+	it("拓展清单里的平台叫法一路走到 AI 提示词:「发布了一条视频」", async () => {
+		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const aiOn = aiGlobals();
+		aiOn.defaults.ai.enabled = true;
+		const c = setup({
+			globals: aiOn,
+			subs: [ext],
+			extensionSources: {
+				running: () => true,
+				postNoun: (extensionId) => (extensionId === "douyin" ? "视频" : undefined),
+				events: () => ["post"],
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [ext.id],
+			report: {
+				kind: "post" as const,
+				value: {
+					id: "p1",
+					url: "https://www.douyin.com/video/p1",
+					publishedAt: Date.now(),
+					text: "今天去海边",
+					author: { name: "甲" },
+				},
+			},
+		});
+		await vi.waitFor(() => expect(H.ai[0].comment).toHaveBeenCalledTimes(1));
+		expect(H.ai[0].comment.mock.calls[0]?.[0]).toBe("甲发布了一条视频，内容如下：\n今天去海边");
 	});
 });
 
@@ -941,24 +1180,35 @@ describe("createEngines — 作品过滤接线", () => {
 		return g;
 	};
 
-	it("B 站动态引擎拿到的全局过滤就是配置里的 defaults.filters(没有再翻译一层)", () => {
-		const g = globalsWith({ blockVideos: true, blockKeywords: ["禁词"], allowRegex: ["^上新"] });
-		const c = setup({ globals: g });
+	// 验红:把 engines.ts 里 `filter: eff.filters` 换成空规则,这条红(B 站的作品也经同一份折叠)。
+	it("B 站引擎交来的作品按全局 defaults.filters 过滤:被挡的不出卡不推,没挡的照推", async () => {
+		const g = globalsWith({ blockKeywords: ["禁词"] });
+		const c = setup({ puppeteer: true, subs: [biliSubOf("1")], globals: g });
 		active = c;
-		expect(H.dynamic[0].opts.config.filter).toEqual(g.defaults.filters);
+		reportBili("1", bilibiliPost("含禁词的动态"), "d1");
+		reportBili("1", bilibiliPost("正常的动态"), "d2");
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
+		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "正常的动态" });
 	});
 
-	it("改全局过滤:热推进动态引擎,带的是新的 defaults.filters", () => {
-		const c = setup();
+	it("改全局过滤:不经引擎热更,下一条作品立即按新的过滤(引擎的 config 里没有过滤了)", async () => {
+		const c = setup({ puppeteer: true, subs: [biliSubOf("1")] });
 		active = c;
+		const video = bilibiliPost("视频", { video: { cover: {}, title: "一期", description: "" } });
+		reportBili("1", video, "d1");
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1); // 过滤还没开,推了
 		patchGlobals(c, (g) => {
-			g.defaults.filters.blockImages = true;
+			g.defaults.filters.blockVideos = true;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
-		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(cfg.filter).toEqual(c.configStore.getGlobals().defaults.filters);
-		expect(cfg.filter.blockImages).toBe(true);
+		reportBili("1", video, "d2");
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1); // 新的过滤生效,第二条被挡
+		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
+		expect(H.dynamic[0].opts.config).not.toHaveProperty("filter");
 	});
 
 	it("拓展作品:全局开着「屏蔽视频」,视频作品被挡(不出卡不推);没挡的类型照推", async () => {
@@ -1013,16 +1263,15 @@ describe("createEngines — 作品过滤接线", () => {
 	});
 
 	/**
-	 * **被过滤的作品留痕的接线**(ADR-0021 决策 34 的 🔗)。两条路(B 站动态引擎的 `onPostFiltered`、拓展作品)
+	 * **被过滤的作品留痕的接线**(ADR-0021 决策 34 的 🔗)。两条路(B 站动态引擎、拓展作品)都经核心入口的 `recordFiltered`
 	 * 都接到历史仓的 `record`:不经推送层,不走事件总线。
 	 *
-	 * 验红:把 engines.ts 里递给 DynamicEngine 的 `onPostFiltered` 换成空函数 → 前两条红;把递给
-	 * `bindExtensionPosts` 的 `onPostFiltered: recordFilteredPost` 换成空函数 → 第三条红。
+	 * 验红:把 engines.ts 里 postQueue 的 `recordFiltered: recordFilteredPost` 换成空函数 → B 站与拓展两条都红。
 	 */
 	describe("被过滤的作品留痕", () => {
 		const BILI_SUB = "11111111-1111-4111-8111-111111111111";
 
-		it("B 站动态引擎交来的 uid 换成订阅 id,落一行:身份、名字快照、原因、摘要与链接;不经推送层,登记进 track", async () => {
+		it("B 站引擎交来的作品被挡:uid 换成订阅,落一行:身份、名字快照、原因、摘要与链接;不经推送层,登记进 track", async () => {
 			const sub = makeEmptySubscription({
 				id: BILI_SUB,
 				identity: { sourceKey: "bilibili", externalId: "1" },
@@ -1030,6 +1279,7 @@ describe("createEngines — 作品过滤接线", () => {
 			const record = vi.fn(async () => {});
 			const c = setup({
 				subs: [sub],
+				globals: globalsWith({ blockKeywords: ["禁词"] }),
 				overrides: {
 					historyStore: { record },
 					subRuntimeStore: { get: () => ({ cachedProfile: { name: "某UP" } }) },
@@ -1039,13 +1289,10 @@ describe("createEngines — 作品过滤接线", () => {
 			await new Promise((r) => setTimeout(r, 0));
 			const before = c.serviceCtx.tracking.tracked.length;
 
-			H.dynamic[0].opts.onPostFiltered({
-				uid: "1",
-				filteredBy: "blocked-keyword",
-				text: "含禁词",
-				url: "https://t.bilibili.com/9",
-			});
+			reportBili("1", bilibiliPost("含禁词"), "9");
+			await settleTracked(c);
 
+			expect(c.serviceCtx.tracking.tracked.length).toBeGreaterThan(before);
 			expect(record).toHaveBeenCalledTimes(1);
 			expect(record).toHaveBeenCalledWith({
 				pushId: expect.any(String),
@@ -1059,21 +1306,23 @@ describe("createEngines — 作品过滤接线", () => {
 				],
 				nameSnapshot: "某UP",
 			});
-			expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
 			expect(H.push[0].push).not.toHaveBeenCalled();
 		});
 
-		it("uid 对不上任何订阅(刚删掉)→ 不记", () => {
+		it("uid 对不上任何订阅(刚删掉)→ 不入队:不记、不推、不发 post-detected", async () => {
 			const record = vi.fn(async () => {});
-			const c = setup({ overrides: { historyStore: { record } } });
-			active = c;
-			H.dynamic[0].opts.onPostFiltered({
-				uid: "404",
-				filteredBy: "blocked-keyword",
-				text: "含禁词",
-				url: "https://t.bilibili.com/9",
+			const c = setup({
+				globals: globalsWith({ blockKeywords: ["禁词"] }),
+				overrides: { historyStore: { record } },
 			});
+			active = c;
+			const detected: PostEvent[] = [];
+			c.bus.on("post-detected", (event) => detected.push(event));
+			reportBili("404", bilibiliPost("含禁词"), "9");
+			await settleTracked(c);
 			expect(record).not.toHaveBeenCalled();
+			expect(H.push[0].push).not.toHaveBeenCalled();
+			expect(detected).toEqual([]);
 		});
 
 		it("拓展作品被挡:同一个写历史的口落一行(拓展的身份、原因、上报里的地址);不出卡、不推", async () => {
@@ -1410,14 +1659,13 @@ describe("createEngines — boot wiring", () => {
 });
 
 describe("createEngines — enableImageRendering 运行时热启用", () => {
-	it("启动无 puppeteer,运行时注入 → 构造 renderer + setImage/setImageRenderer", () => {
+	it("启动无 puppeteer,运行时注入 → 构造 renderer + setImageRenderer", () => {
 		const c = setup({ puppeteer: false });
 		active = c;
 		expect(H.image).toHaveLength(0); // 启动时无 renderer
 		const enabled = c.runtime.enableImageRendering({} as any);
 		expect(enabled).toBe(true);
 		expect(H.image).toHaveLength(1);
-		expect(H.dynamic[0].setImage).toHaveBeenCalledWith(H.image[0]);
 		expect(H.live[0].setImageRenderer).toHaveBeenCalledWith(H.image[0]);
 	});
 
@@ -1430,13 +1678,12 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 		expect(H.image).toHaveLength(1); // 没重复构造浏览器
 	});
 
-	it("swapImageRendering:已启用时热切换 → 重建 renderer 并重新注入两个引擎", () => {
+	it("swapImageRendering:已启用时热切换 → 重建 renderer 并重新注入直播引擎", () => {
 		const c = setup({ puppeteer: true });
 		active = c;
 		expect(H.image).toHaveLength(1);
 		c.runtime.swapImageRendering({} as any);
 		expect(H.image).toHaveLength(2); // 新 renderer
-		expect(H.dynamic[0].setImage).toHaveBeenLastCalledWith(H.image[1]);
 		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[1]);
 	});
 
@@ -1446,8 +1693,32 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 		expect(H.image).toHaveLength(0);
 		c.runtime.swapImageRendering({} as any);
 		expect(H.image).toHaveLength(1);
-		expect(H.dynamic[0].setImage).toHaveBeenLastCalledWith(H.image[0]);
 		expect(H.live[0].setImageRenderer).toHaveBeenLastCalledWith(H.image[0]);
+	});
+
+	// 渲染器会被热换,核心装配只能经 `deps.image()` 这个读外层 let 的闭包拿它 —— 按值传就是
+	// 「开机时没有浏览器,之后一直没有卡片」而门禁全绿。走真的队列与真的装配,断言到出卡器与推送层。
+	// 验红:把 engines.ts 里 postQueue 的 `image: () => imageRenderer ?? undefined` 改成按值传
+	// (`const bootImage = imageRenderer ?? undefined; … image: () => bootImage`),这条红。
+	it("热换之后下一条作品用新的渲染器:开机没有 → 热启用后出卡 → 热切换后改用新的那个 → 都不回头用旧的", async () => {
+		const c = setup({ puppeteer: false, subs: [biliSubOf("1")] });
+		active = c;
+		reportBili("1", bilibiliPost("一"), "d1");
+		await settleTracked(c);
+		expect(H.image).toHaveLength(0);
+		expect(await mainTexts()).toHaveLength(1); // 没有渲染器:纯文字照推
+
+		c.runtime.enableImageRendering({} as any);
+		reportBili("1", bilibiliPost("二"), "d2");
+		await settleTracked(c);
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
+
+		c.runtime.swapImageRendering({} as any);
+		reportBili("1", bilibiliPost("三"), "d3");
+		await settleTracked(c);
+		expect(H.image[1].generatePostCard).toHaveBeenCalledTimes(1);
+		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(1);
+		expect(H.push[0].push).toHaveBeenCalledTimes(3);
 	});
 });
 
@@ -1489,21 +1760,31 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled(); // boot 不调,这次也不该调
 	});
 
-	it("改 defaults.imageGroup:热推进 dynamic(此前整个漏在门外,改了要重启才生效)", () => {
-		// dynamicConfig() 明明读 `defaults.imageGroup`,但 config-changed 的 diff 列表里
-		// 从来没有 imageGroupChanged —— 于是改「图片合并转发」时所有 *Changed 全 false,
-		// dynamic.updateConfig 根本不调,配置静静躺在 store 里直到下次重启。这是漏更新,
-		// 比多更新严重得多(用户以为保存生效了,其实没有)。
-		const c = setup();
+	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经引擎的热更门(此前 imageGroup 整个漏在门外)。
+	it("改 defaults.imageGroup:不经引擎热更,下一条带图的作品立即多一个图集的附加项锚点", async () => {
+		const closed = makeDefaultGlobalConfig();
+		closed.defaults.imageGroup = { enabled: false, mergeForward: false };
+		const c = setup({ subs: [biliSubOf("1")], globals: closed });
 		active = c;
+		const withImages = bilibiliPost("图", {
+			images: [{ url: "http://a/1.jpg" }, { url: "http://a/2.jpg" }],
+		});
+		reportBili("1", withImages, "d1");
+		await settleTracked(c);
+		expect(H.push[0].push.mock.calls[0]?.[0].anchors.map((a: { role: string }) => a.role)).toEqual([
+			"main",
+		]);
 		patchGlobals(c, (g) => {
-			g.defaults.imageGroup.enabled = !g.defaults.imageGroup.enabled;
+			g.defaults.imageGroup.enabled = true;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-
-		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
-		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(cfg.imageGroup).toEqual(c.configStore.getGlobals().defaults.imageGroup);
+		reportBili("1", withImages, "d2");
+		await settleTracked(c);
+		expect(H.push[0].push.mock.calls[1]?.[0].anchors.map((a: { role: string }) => a.role)).toEqual([
+			"main",
+			"extra",
+		]);
+		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("只改 logLevel:热推 5 个子系统的 setLevel", () => {
@@ -1538,7 +1819,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 	it("启动时没配 AI、之后补齐 → runtime.commentary 跟着变成实例", () => {
 		// 现场(桌面端 2026-08-07):启动那会儿密钥袋还没 key → commentary 为 null。
 		// 随后在设置页填上 apiKey 保存,热重载把实例建起来了(日志确有「commentary
-		// 已激活」),`dynamic`/`live` 也靠显式 setAi/setCommentary 拿到了新引用 ——
+		// 已激活」),`live` 靠 setCommentary、作品装配经 `deps.ai()` 每条现取,也都拿到了新引用 ——
 		// 唯独对外暴露的这个字段没人管。聊天路由读的正是它(routes/ai.ts),于是
 		// 「保存成功了,进聊天照样报『baseUrl / apiKey 还没填齐』,重启才好」。
 		const c = setup(); // 不配 AI
@@ -1582,21 +1863,23 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(cfg.dynamicCron).toBe("*/7 * * * *");
 	});
 
-	it("改全局 templates.post/postVideo → dynamic.updateConfig 热推新模板(templatesChanged 触发)", () => {
-		// 回归:dynamicConfig() 读 templates.post/postVideo,触发条件必须含
-		// templatesChanged,否则只改全局动态文本模板时引擎不热更、无 per-UP 覆盖的
-		// 订阅一直用旧模板。
-		const c = setup();
+	it("改全局 templates.post/postVideo → 不经引擎热更,下一条作品就用新模板(无 per-UP 覆盖的订阅不再用旧模板)", async () => {
+		// 回归:从前引擎快照里留着模板,触发条件漏了 templatesChanged 就一直用旧的;现在每条作品现折。
+		const c = setup({ subs: [biliSubOf("1")], globals: TEMPLATE_GLOBALS("旧 {name}") });
 		active = c;
+		reportBili("1", bilibiliPost("正文"), "d1");
+		await settleTracked(c);
 		patchGlobals(c, (g) => {
-			g.defaults.templates.post = "🔔 {name} {url}";
-			g.defaults.templates.postVideo = "🎬 {name} {url}";
+			g.defaults.templates.post = "🔔 {name}";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
-		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(cfg.dynamicTemplate).toBe("🔔 {name} {url}");
-		expect(cfg.videoTemplate).toBe("🎬 {name} {url}");
+		reportBili("1", bilibiliPost("正文"), "d2");
+		await settleTracked(c);
+		expect(await mainTexts()).toEqual([
+			"旧 阿绫\nhttps://t.bilibili.com/d1",
+			"🔔 阿绫\nhttps://t.bilibili.com/d2",
+		]);
+		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("回归:改全局 cards.liveCoverImageIds → live config 带 defaultLiveCoverImages(无覆盖的 UP 靠它轮换)", () => {
@@ -1682,12 +1965,12 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 	});
 
-	it("回归:只改全局 cardSkin(不碰 cardStyle/ai/schedule 等)→ live.applyOps 与 dynamic.applyOps 都收到刷新(热更 gate 漏掉它的话,换了皮肤要重启才生效)", () => {
+	it("回归:只改全局 cardSkin → live.applyOps 收到刷新;作品不经引擎,下一张卡就带新皮肤 id(引擎不再被强刷)", async () => {
 		const sub = makeEmptySubscription({
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
-		const c = setup({ subs: [sub] });
+		const c = setup({ subs: [sub], puppeteer: true });
 		active = c;
 		H.dynamic[0].applyOps.mockClear();
 		H.live[0].applyOps.mockClear();
@@ -1700,11 +1983,61 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveOps).toHaveLength(1);
 		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 		expect(liveOps[0].changes[0].cardSkin).toBe("skin-abc");
+		// 作品设置在核心里现折,引擎的名单与皮肤无关。
+		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 
+		reportBili("1");
+		await settleTracked(c);
+		expect(H.image[0].generatePostCard.mock.calls.at(-1)?.[1]).toMatchObject({
+			cardSkin: "skin-abc",
+		});
+	});
+
+	// 引擎视图只剩 `post` 一格(真源是 enabled && features.post),全局的作品开关一翻,所有没单独覆盖的订阅都要进出引擎的名单。
+	// 这件事没有自己的门,全靠这段强刷:把开门条件换成别的、或整段删掉,全局把作品推送从关改成开之后引擎一直不产。
+	// 验红:把 engines.ts 里 `if (featuresChanged) { dynamic.applyOps(…) }` 整段删掉,这条红。
+	it("改全局 features.post:动态引擎的名单被强刷,每个订阅一个 update op,带上折好的 post(关 → false,再开 → true)", () => {
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		const c = setup({ subs: [sub] });
+		active = c;
+		H.dynamic[0].applyOps.mockClear();
+		patchGlobals(c, (g) => {
+			g.defaults.features.post = false;
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
-		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(dynOps).toHaveLength(1);
-		expect(dynOps[0]).toMatchObject({ kind: "update", uid: "1" });
+		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
+			{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: false }] },
+		]);
+
+		patchGlobals(c, (g) => {
+			g.defaults.features.post = true;
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(2);
+		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
+			{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: true }] },
+		]);
+	});
+
+	it("别的全局设置变了(没动作品开关):动态引擎的名单不被强刷", () => {
+		const sub = makeEmptySubscription({
+			id: "sub-1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		const c = setup({ subs: [sub] });
+		active = c;
+		H.dynamic[0].applyOps.mockClear();
+		patchGlobals(c, (g) => {
+			g.defaults.templates.post = "改了 {name}";
+			g.defaults.cardSkin = "skin-abc";
+			g.defaults.filters.blockVideos = true;
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 	});
 
 	// 直播拆键(⑬d):周期「正在直播」的开关、间隔与启动补报各是自己的一格,从 schedule 里搬出来。
@@ -1858,7 +2191,7 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 });
 
 describe("createEngines — AI 热重载三态", () => {
-	it("启用:lazy 构造 commentary 并下发给 dynamic/live", () => {
+	it("启用:lazy 构造 commentary 并下发给直播引擎", () => {
 		const c = setup(); // 默认无 AI
 		active = c;
 		expect(H.ai).toHaveLength(0);
@@ -1870,11 +2203,10 @@ describe("createEngines — AI 热重载三态", () => {
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(H.ai).toHaveLength(1);
 		expect(H.ai[0].start).toHaveBeenCalledTimes(1);
-		expect(H.dynamic[0].setAi).toHaveBeenCalledWith(H.ai[0]);
 		expect(H.live[0].setCommentary).toHaveBeenCalledWith(H.ai[0]);
 	});
 
-	it("停用:dynamic.setAi(undefined) + live.setCommentary(null)", () => {
+	it("停用:live.setCommentary(null)", () => {
 		const c = setup({ globals: aiGlobals() });
 		active = c;
 		expect(H.ai).toHaveLength(1);
@@ -1883,10 +2215,41 @@ describe("createEngines — AI 热重载三态", () => {
 			if (p) p.apiKey = "";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].setAi).toHaveBeenCalledWith(undefined);
 		expect(H.live[0].setCommentary).toHaveBeenCalledWith(null);
 		// 不应构造新实例。
 		expect(H.ai).toHaveLength(1);
+	});
+
+	// AI 实例会被热换,核心装配只能经 `deps.ai()` 这个读外层 let 的闭包拿它。
+	// 验红:把 engines.ts 里 postQueue 的 `ai: () => commentary ?? undefined` 改成按值传(开机取一次),这条红。
+	it("作品的 AI 点评每条现取:开机没配 → 补齐后下一条用新实例 → 清空密钥后不再点评", async () => {
+		const aiOn = aiGlobals();
+		aiOn.defaults.ai.enabled = true;
+		const c = setup({ subs: [biliSubOf("1")], globals: TEMPLATE_GLOBALS("模板 {name}") });
+		active = c;
+		reportBili("1", bilibiliPost("正文"), "d1");
+		await settleTracked(c);
+		expect(H.ai).toHaveLength(0);
+		expect(await mainTexts()).toEqual(["模板 阿绫\nhttps://t.bilibili.com/d1"]);
+
+		patchGlobals(c, (g) => {
+			g.defaults.ai = aiOn.defaults.ai;
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(H.ai).toHaveLength(1);
+		reportBili("1", bilibiliPost("正文"), "d2");
+		await settleTracked(c);
+		expect(H.ai[0].comment).toHaveBeenCalledTimes(1);
+		expect((await mainTexts()).at(-1)).toBe("点评\nhttps://t.bilibili.com/d2");
+
+		patchGlobals(c, (g) => {
+			g.defaults.ai.providers = {};
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		reportBili("1", bilibiliPost("正文"), "d3");
+		await settleTracked(c);
+		expect(H.ai[0].comment).toHaveBeenCalledTimes(1); // 撤掉之后没再调
+		expect((await mainTexts()).at(-1)).toBe("模板 阿绫\nhttps://t.bilibili.com/d3");
 	});
 
 	it("仍启用但改配置:增量 updateConfig,不重建实例", () => {
@@ -1988,6 +2351,23 @@ describe("createEngines — dispose", () => {
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 		expect(dyn.updateConfig).not.toHaveBeenCalled();
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
+	});
+
+	// 验红:把 engines.ts 里 `const handles: Disposable[] = [postQueue]` 的 postQueue 拿掉,这条红。
+	it("dispose 关掉作品入口:关停之后引擎再交的作品不发 post-detected、不推;对照:关停之前交的照推", async () => {
+		const c = setup({ subs: [biliSubOf("1")] });
+		active = c;
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
+		reportBili("1", bilibiliPost("关停前"), "before");
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+
+		c.runtime.dispose();
+		reportBili("1", bilibiliPost("关停后"), "after");
+		await settleTracked(c);
+		expect(detected.map((e) => e.postId)).toEqual(["before"]);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 	});
 
 	it("P2-I:dispose 幂等 — 二次调用(index.ts 显式 + onDispose 双路径)不重复 stop", () => {
@@ -2165,43 +2545,23 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 	});
 
-	it("add op 携带 per-UP 覆盖(imageGroup / 动态模板),不再只带卡片样式", () => {
-		// 回归 add gap:此前 dynamic add op 只投影 customCardStyle,新增即带 per-UP
-		// imageGroup / filter / 模板覆盖的订阅首推会用全局,要等下次全量刷新。现走
-		// buildDynamicSubViewSingle 全量投影。
+	it("add op 只带名单要的两格:uid 与 post(作品设置不在引擎里,per-UP 覆盖由核心每条现折)", () => {
 		const sub = makeSub("600", true);
 		sub.overrides.imageGroup = { enabled: false };
-		sub.overrides.templates = { post: "🔔 {name} {url}", postVideo: "🎬 {name} {url}" };
-		const c = setup({ subs: [sub] });
-		active = c;
-		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
-
-		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(dynOps).toHaveLength(1);
-		expect(dynOps[0].kind).toBe("add");
-		const view = dynOps[0].sub;
-		expect(view.uid).toBe("600");
-		expect(view.post).toBe(true);
-		expect(view.imageGroupEnabled).toBe(false);
-		expect(view.customDynamicTemplate).toBe("🔔 {name} {url}");
-		expect(view.customVideoTemplate).toBe("🎬 {name} {url}");
-	});
-
-	it("add op 携带 per-UP cardSkin(两个引擎各拿一份)", () => {
-		const sub = makeSub("800", true);
-		// per-UP 指了自己那套皮肤(ADR-0014 决策 17:per-UP = 选皮肤 + 变量覆盖)。
+		sub.overrides.templates = { post: "🔔 {name}", postVideo: "🎬 {name}" };
 		sub.overrides.cardSkin = "k9zzz-0badf00d";
 		const c = setup({ subs: [sub] });
 		active = c;
 		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
+		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
+		expect(dynOps).toEqual([{ kind: "add", sub: { uid: "600", post: true } }]);
+		// 直播那头照旧带着折好的皮肤 id。
 		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
 		expect(liveView.cardSkin).toBe("k9zzz-0badf00d");
-		const dynView = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
-		expect(dynView.cardSkin).toBe("k9zzz-0badf00d");
 	});
 
-	it("没有 per-UP 皮肤 → 两个引擎都拿全局那套", () => {
+	it("没有 per-UP 皮肤 → 直播引擎拿全局那套", () => {
 		const sub = makeSub("801", true);
 		const c = setup({ subs: [sub] });
 		active = c;
@@ -2211,7 +2571,6 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
 	});
 
 	it("禁用订阅 add:dynamic add op 仍下发但 post:false(engine applyOps 的 !op.sub.post 拦截)", () => {
@@ -2293,19 +2652,26 @@ describe("createEngines — 消息版式", () => {
 		load: vi.fn(async () => {}),
 	} as any;
 
-	it("buildDynamicSubViewSingle / buildLiveSubViewSingle 折叠 eff.messageLayout 的对应切片", () => {
+	it("buildLiveSubViewSingle 折叠 eff.messageLayout 的直播切片", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({
 			id: "s1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
-		const dyn = buildDynamicSubViewSingle(sub, subRt, g);
-		expect(dyn.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.post);
 		const live = buildLiveSubViewSingle(sub, subRt, g);
 		expect(live.messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.live);
 	});
 
-	it("per-UP messageLayout 覆盖折叠进两端视图(整份覆盖 + normalize)", () => {
+	it("postSettingsOf 折叠 eff.messageLayout 的作品切片", () => {
+		const g = makeDefaultGlobalConfig();
+		const sub = makeEmptySubscription({
+			id: "s1",
+			identity: { sourceKey: "bilibili", externalId: "1" },
+		});
+		expect(postSettingsOf(sub, g).messageLayout).toEqual(DEFAULT_MESSAGE_LAYOUT.post);
+	});
+
+	it("per-UP messageLayout 覆盖折叠进作品设置与直播视图(整份覆盖 + normalize)", () => {
 		const g = makeDefaultGlobalConfig();
 		const sub = makeEmptySubscription({
 			id: "s1",
@@ -2321,36 +2687,34 @@ describe("createEngines — 消息版式", () => {
 				separator: " | ",
 			},
 		};
-		const dyn = buildDynamicSubViewSingle(sub, subRt, g);
-		expect(dyn.messageLayout?.blocks.slice(0, 2).map((b: { id: string }) => b.id)).toEqual([
+		const post = postSettingsOf(sub, g);
+		expect(post.messageLayout.blocks.slice(0, 2).map((b: { id: string }) => b.id)).toEqual([
 			"text",
 			"card",
 		]);
-		expect(dyn.messageLayout?.separator).toBe(" | ");
+		expect(post.messageLayout.separator).toBe(" | ");
 		// normalize 追加缺失的 link 块
-		expect(dyn.messageLayout?.blocks.map((b: { type: string }) => b.type)).toContain("link");
+		expect(post.messageLayout.blocks.map((b: { type: string }) => b.type)).toContain("link");
+		expect(buildLiveSubViewSingle(sub, subRt, g).messageLayout).toEqual(
+			DEFAULT_MESSAGE_LAYOUT.live,
+		);
 	});
 
-	it("dynamicPushLike.push(分条)→ PushRouter 收到一次推送,本体那个锚点里是 payload 数组", async () => {
-		// 引擎说 uid,推送层认订阅 id —— 这个 uid 得真有一条订阅,适配器才往下交。
-		const c = setup({
-			subs: [
-				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
-			],
-		});
+	it("作品分条(分条符切两条)→ 经真的队列与装配,PushRouter 收到一次推送,本体那个锚点里是两条 payload", async () => {
+		// 引擎说 uid,入口认订阅 —— 这个 uid 得真有一条订阅,接线才往下交。
+		const c = setup({ puppeteer: true, subs: [biliSubOf("1", "s1")] });
 		active = c;
-		await H.dynamic[0].opts.push.push({
-			uid: "1",
-			anchors: [
-				{
-					role: "main",
-					messages: [
-						[{ kind: "image", buffer: Buffer.from("img"), mime: "image/jpeg" }],
-						[{ kind: "text", text: "正文" }],
-					],
-				},
-			],
+		patchGlobals(c, (g) => {
+			const layout = g.defaults.messageLayout.post;
+			layout.blocks = [
+				{ id: "card", type: "card", visible: true },
+				{ id: "split", type: "split", visible: true },
+				{ id: "text", type: "text", visible: true },
+				{ id: "link", type: "link", visible: true },
+			];
 		});
+		reportBili("1", bilibiliPost("正文"), "d1");
+		await settleTracked(c);
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 		const [sent] = H.push[0].push.mock.calls[0];
 		expect(sent.subscriptionId).toBe("s1");
@@ -2360,7 +2724,7 @@ describe("createEngines — 消息版式", () => {
 		const payloads = sent.anchors[0].messages;
 		expect(payloads).toHaveLength(2);
 		expect(payloads[0].kind).toBe("image");
-		expect(payloads[1]).toEqual({ kind: "text", text: "正文" });
+		expect(payloads[1].kind).toBe("text");
 		// 作品的本体不抑制 @全体(按特性决定)
 		expect(sent).not.toHaveProperty("allowAtAll");
 	});
@@ -2392,15 +2756,17 @@ describe("createEngines — 消息版式", () => {
 		expect(sent).not.toHaveProperty("allowAtAll");
 	});
 
-	it("回归镜像:只改全局 messageLayout → live.applyOps 与 dynamic.applyOps 都收到刷新", () => {
+	it("回归镜像:只改全局 messageLayout → live.applyOps 收到刷新;作品下一条立即按新版式(不经引擎)", async () => {
 		const sub = makeEmptySubscription({
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
-		const c = setup({ subs: [sub] });
+		const c = setup({ subs: [sub], globals: TEMPLATE_GLOBALS("{name}更新了") });
 		active = c;
 		H.dynamic[0].applyOps.mockClear();
 		H.live[0].applyOps.mockClear();
+		reportBili("1", bilibiliPost("正文"), "d1");
+		await settleTracked(c);
 		patchGlobals(c, (g) => {
 			const block = g.defaults.messageLayout.post.blocks.find((b) => b.type === "link");
 			expect(block).toBeDefined();
@@ -2415,10 +2781,12 @@ describe("createEngines — 消息版式", () => {
 		expect(liveOps[0].changes[0].messageLayout).toEqual(
 			c.configStore.getGlobals().defaults.messageLayout.live,
 		);
+		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 
-		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
-		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(dynOps[0]).toMatchObject({ kind: "update", uid: "1" });
+		reportBili("1", bilibiliPost("正文"), "d2");
+		await settleTracked(c);
+		// 第一条带链接,第二条版式藏起了链接部件。
+		expect(await mainTexts()).toEqual(["阿绫更新了\nhttps://t.bilibili.com/d1", "阿绫更新了"]);
 	});
 });
 

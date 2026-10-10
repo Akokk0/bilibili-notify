@@ -8,15 +8,13 @@
  *   `blockVideos` ← 有 `video`。被转发的原作品里的图集与视频归 `blockReposts` 管,不另外拦;
  * - 对所有来源生效:拓展作品不再豁免类型开关(从前的「抖音几乎全是视频」豁免随 ㉑e 删掉)。
  *
- * B 站的 `Post` 由 `postFromDynamic` 翻出来(十份原始夹具),拓展的由服务端的 `postFromReport` 翻 —— 拓展那一腿的
- * 逐开关用例在 `apps/server` 的 `extension-post.test.ts`,这里只钉过滤自己,拓展形状的 `Post` 手工造。
+ * 过滤吃的本来就是中立的 `Post`,所以这里的作品一律手工造(`posts/` 的测试不依赖 `bilibili/`):B 站翻出来是什么形状
+ * (转发带 `repost`、专栏带 `article`、图文带 `images`、投稿带 `video`)由 `post-from-dynamic.test.ts` 钉,拓展那一腿的
+ * 逐开关用例在 `extension-post.test.ts`。
  */
 
 import { DEFAULT_CONTENT_FILTERS, type Logger, type Post } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { BILI_DYNAMIC_SAMPLES } from "../../bilibili/dynamic/__tests__/fixtures/bili-dynamic-fixtures";
-import { postFromDynamic } from "../../bilibili/dynamic/post-from-dynamic";
-import type { Dynamic } from "../../bilibili/dynamic/types";
 import { filterPost, PostFilterReason, type PostFilterRules } from "../post-filter";
 import { postText } from "../post-text";
 
@@ -34,13 +32,31 @@ const neutral = (over: Partial<Post> = {}): Post => ({
 	...over,
 });
 
-const bili = (name: string): Post => {
-	const source = BILI_DYNAMIC_SAMPLES[name];
-	if (!source) throw new Error(`没有这份夹具:${name}`);
-	return postFromDynamic(source);
-};
-
 const IMAGE = { ref: `${"a".repeat(63)}1.png` };
+
+/**
+ * 「B 站翻出来的形状」(照 `postFromDynamic` 的输出手工造):投稿带 `video`、转发带 `repost`、专栏带 `article`、
+ * 图文带 `images`。字都取自原来那批 B 站夹具里的原话。
+ */
+const biliAv = neutral({
+	text: "一键三连",
+	label: "投稿了视频",
+	video: { cover: IMAGE, title: "MC恐怖地图 毒药", description: "" },
+});
+const biliForward = neutral({
+	text: "这期真的建议看完",
+	repost: neutral({
+		creator: { name: "原作者" },
+		text: "原文",
+		video: { cover: IMAGE, title: "MC恐怖地图 毒药", description: "" },
+	}),
+});
+const biliArticle = neutral({
+	label: "投稿了专栏",
+	text: "专栏摘要",
+	article: { title: "年度总结", images: [IMAGE] },
+});
+const biliDraw = neutral({ text: "图文", images: [IMAGE, IMAGE] });
 
 /** 「拓展翻出来的形状」:图集是带引用的 `PostImage`,视频是 `video`,没有 repost / article(拓展的上报里没有这两样)。 */
 const extensionImages = neutral({ text: "旅行第 1 天", images: [IMAGE, IMAGE, IMAGE] });
@@ -56,10 +72,10 @@ describe("出厂的过滤什么都不拦", () => {
 	it("所有规则为空 / 关着:任何一条作品都放行", () => {
 		for (const post of [
 			neutral({ text: "含禁词 ABC" }),
-			bili("dynamic-av"),
-			bili("dynamic-forward"),
-			bili("dynamic-article"),
-			bili("dynamic-draw"),
+			biliAv,
+			biliForward,
+			biliArticle,
+			biliDraw,
 			extensionImages,
 			extensionVideo,
 		]) {
@@ -73,7 +89,7 @@ describe("出厂的过滤什么都不拦", () => {
 describe("类型开关 —— 对所有来源生效,只看最外层", () => {
 	describe("blockReposts ← 有 repost", () => {
 		it("B 站:转发动态翻出来的 Post 被拦,原因是转发", () => {
-			expect(filterPost(bili("dynamic-forward"), rules({ blockReposts: true }))).toEqual({
+			expect(filterPost(biliForward, rules({ blockReposts: true }))).toEqual({
 				blocked: true,
 				reason: PostFilterReason.BlockedReposts,
 			});
@@ -97,7 +113,7 @@ describe("类型开关 —— 对所有来源生效,只看最外层", () => {
 
 	describe("blockArticles ← 有 article", () => {
 		it("B 站:专栏翻出来的 Post 被拦,原因是专栏", () => {
-			expect(filterPost(bili("dynamic-article"), rules({ blockArticles: true }))).toEqual({
+			expect(filterPost(biliArticle, rules({ blockArticles: true }))).toEqual({
 				blocked: true,
 				reason: PostFilterReason.BlockedArticles,
 			});
@@ -117,7 +133,7 @@ describe("类型开关 —— 对所有来源生效,只看最外层", () => {
 
 	describe("blockImages ← 有图集 images", () => {
 		it("B 站:图文动态翻出来的 Post 被拦,原因是图集", () => {
-			expect(filterPost(bili("dynamic-draw"), rules({ blockImages: true }))).toEqual({
+			expect(filterPost(biliDraw, rules({ blockImages: true }))).toEqual({
 				blocked: true,
 				reason: PostFilterReason.BlockedImages,
 			});
@@ -148,7 +164,7 @@ describe("类型开关 —— 对所有来源生效,只看最外层", () => {
 
 	describe("blockVideos ← 有 video", () => {
 		it("B 站:视频投稿翻出来的 Post 被拦,原因是视频", () => {
-			expect(filterPost(bili("dynamic-av"), rules({ blockVideos: true }))).toEqual({
+			expect(filterPost(biliAv, rules({ blockVideos: true }))).toEqual({
 				blocked: true,
 				reason: PostFilterReason.BlockedVideos,
 			});
@@ -172,10 +188,10 @@ describe("类型开关 —— 对所有来源生效,只看最外层", () => {
 
 	it("四个开关互不串扰:每个只管自己那一格,别的作品不受牵连", () => {
 		const cases: [keyof PostFilterRules, Post][] = [
-			["blockReposts", bili("dynamic-forward")],
-			["blockArticles", bili("dynamic-article")],
-			["blockImages", bili("dynamic-draw")],
-			["blockVideos", bili("dynamic-av")],
+			["blockReposts", biliForward],
+			["blockArticles", biliArticle],
+			["blockImages", biliDraw],
+			["blockVideos", biliAv],
 		];
 		for (const [key, owner] of cases) {
 			for (const [, other] of cases.filter(([k]) => k !== key)) {
@@ -217,14 +233,13 @@ describe("类型开关 —— 对所有来源生效,只看最外层", () => {
 });
 
 describe("类型开关只看最外层 —— 被转发的原作品里的图集与视频归「屏蔽转发」管", () => {
-	/** 转发了一条带图集的图文动态 / 带视频的视频投稿。 */
-	const forwardOf = (origin: Dynamic): Post => {
-		const forward = BILI_DYNAMIC_SAMPLES["dynamic-forward"];
-		if (!forward) throw new Error("缺转发夹具");
-		return postFromDynamic({ ...forward, orig: origin });
-	};
-	const drawOrigin = BILI_DYNAMIC_SAMPLES["dynamic-draw"] as Dynamic;
-	const avOrigin = BILI_DYNAMIC_SAMPLES["dynamic-av"] as Dynamic;
+	/** 转发了一条带图集的图文 / 带视频的投稿(外层只有转发语)。 */
+	const forwardOf = (origin: Post): Post => neutral({ text: "转发语", repost: origin });
+	const drawOrigin = neutral({ text: "原图文", images: [IMAGE, IMAGE] });
+	const avOrigin = neutral({
+		text: "原投稿",
+		video: { cover: IMAGE, title: "原视频", description: "" },
+	});
 
 	it("夹具本身:转发的外层没有图集也没有视频,原作品里有", () => {
 		const withImages = forwardOf(drawOrigin);
@@ -252,7 +267,7 @@ describe("类型开关只看最外层 —— 被转发的原作品里的图集�
 	});
 
 	it("原作品是专栏也一样:只开 blockArticles 不拦", () => {
-		const article = BILI_DYNAMIC_SAMPLES["dynamic-article"] as Dynamic;
+		const article = neutral({ text: "原专栏", article: { title: "原专栏标题" } });
 		expect(filterPost(forwardOf(article), rules({ blockArticles: true }))).toEqual({
 			blocked: false,
 		});
@@ -352,23 +367,17 @@ describe('文字走 postText(post, "plain"):每一段都参与匹配', () => {
 		});
 	});
 
-	it("B 站翻出来的 Post:正文、视频标题、转发的原作品里的字都找得到", () => {
+	it("B 站形状的 Post(投稿 / 转发 / 专栏):正文、视频标题、转发的原作品里的字都找得到", () => {
 		// 夹具里的原话:AV 的视频标题「MC恐怖地图 毒药」,转发语「这期真的建议看完」。
-		expect(filterPost(bili("dynamic-av"), rules({ blockKeywords: ["MC恐怖地图"] })).blocked).toBe(
-			true,
-		);
-		expect(filterPost(bili("dynamic-av"), rules({ blockKeywords: ["一键三连"] })).blocked).toBe(
-			true,
-		);
-		const forward = bili("dynamic-forward");
+		expect(filterPost(biliAv, rules({ blockKeywords: ["MC恐怖地图"] })).blocked).toBe(true);
+		expect(filterPost(biliAv, rules({ blockKeywords: ["一键三连"] })).blocked).toBe(true);
+		const forward = biliForward;
 		expect(filterPost(forward, rules({ blockKeywords: ["这期真的建议看完"] })).blocked).toBe(true);
 		// 原动态(AV)的视频标题 —— 外层转发自己没有这些字。
 		expect(forward.text).not.toContain("毒药");
 		expect(filterPost(forward, rules({ blockKeywords: ["毒药"] })).blocked).toBe(true);
 		// 专栏标题。
-		expect(
-			filterPost(bili("dynamic-article"), rules({ blockKeywords: ["年度总结"] })).blocked,
-		).toBe(true);
+		expect(filterPost(biliArticle, rules({ blockKeywords: ["年度总结"] })).blocked).toBe(true);
 	});
 
 	it("取的就是 postText 的 plain 拼法:规则看到的与它逐字相同(换一种取段就会漂)", () => {

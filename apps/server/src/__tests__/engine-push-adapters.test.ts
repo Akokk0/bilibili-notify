@@ -21,12 +21,7 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import type { Push } from "@bilibili-notify/push";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { segmentContentBuilder } from "../runtime/content-builder";
-import {
-	boundPostPush,
-	makeDynamicPushLike,
-	makeLivePushLike,
-	masterTellers,
-} from "../runtime/engines";
+import { boundPostPush, makeLivePushLike, masterTellers } from "../runtime/engines";
 import { silentLogger } from "./support/silent-logger";
 
 /** 只拦 `push`，把交进来的那次推送原样记下来。 */
@@ -152,19 +147,19 @@ describe("直播引擎那侧的 PushLike 真的用上了翻译表", () => {
 	});
 });
 
-describe("动态引擎那侧的 PushLike 真的把锚点翻过去了", () => {
+describe("作品那一路(boundPostPush)真的把锚点翻过去了", () => {
 	it("主卡是本体、图集是不带键的附加项,同一次推送;特性恒为 post,不抑制 @全体", async () => {
 		const { push, pushes } = makePushSpy();
-		await makeDynamicPushLike(push, subscriptionIdOf, silentLogger).push({
-			uid: "100",
-			anchors: [
-				{ role: "main", messages: [[{ kind: "text", text: "动态" }]] },
-				{
-					role: "extra",
-					messages: [[{ kind: "image-group", mergeForward: true, images: [{ url: "u1" }] }]],
-				},
-			],
-		});
+		await boundPostPush(
+			push,
+			"sub-100",
+		)([
+			{ role: "main", messages: [[{ kind: "text", text: "动态" }]] },
+			{
+				role: "extra",
+				messages: [[{ kind: "image-group", mergeForward: true, images: [{ url: "u1" }] }]],
+			},
+		]);
 		expect(pushes).toHaveLength(1);
 		const [sent] = pushes;
 		expect(sent).toMatchObject({ subscriptionId: "sub-100", feature: "post" });
@@ -178,7 +173,7 @@ describe("动态引擎那侧的 PushLike 真的把锚点翻过去了", () => {
 		expect((await messagesOf(sent as Push, 1))?.[0]?.kind).toBe("image-group");
 	});
 
-	it("拓展作品绑到订阅 id 上的那个口(`boundPostPush`)走的是同一跳", async () => {
+	it("绑到另一条订阅 id 上(拓展作品):同一跳,订阅 id 随绑", async () => {
 		const { push, pushes } = makePushSpy();
 		await boundPostPush(
 			push,
@@ -198,19 +193,15 @@ describe("动态引擎那侧的 PushLike 真的把锚点翻过去了", () => {
  * 引擎说的是 B 站 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50)—— 翻译在这条边上做。
  * 剪掉这一跳(适配器把 uid 原样交下去),推送层按 id 一条订阅都找不到,每条推送静默丢掉。
  */
-describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
-	it("两个入口都把 uid 换成解析函数给的订阅 id", async () => {
+describe("B 站直播那条边:uid 先翻成订阅 id 再交给推送层", () => {
+	it("直播入口把 uid 换成解析函数给的订阅 id", async () => {
 		const { push, pushes } = makePushSpy();
 		await makeLivePushLike(push, subscriptionIdOf, silentLogger).push({
 			uid: "100",
 			type: 3,
 			anchors: [{ role: "main", messages: [liveText("开播")] }],
 		});
-		await makeDynamicPushLike(push, subscriptionIdOf, silentLogger).push({
-			uid: "100",
-			anchors: [{ role: "main", messages: [[{ kind: "text", text: "动态" }]] }],
-		});
-		expect(pushes.map((p) => p.subscriptionId)).toEqual(["sub-100", "sub-100"]);
+		expect(pushes.map((p) => p.subscriptionId)).toEqual(["sub-100"]);
 	});
 
 	it("解析不到(这个 uid 没有订阅)→ 一次都不交给推送层;锚点里做不出来的约定也有人接着", async () => {
@@ -224,13 +215,6 @@ describe("B 站那条边:uid 先翻成订阅 id 再交给推送层", () => {
 			anchors: [
 				{ role: "main", messages: [liveText("下播卡")] },
 				{ role: "extra", extra: "liveSummary", messages: Promise.reject(new Error("没写出来")) },
-			],
-		});
-		await makeDynamicPushLike(push, subscriptionIdOf, silentLogger).push({
-			uid: "404",
-			anchors: [
-				{ role: "main", messages: [[{ kind: "text", text: "动态" }]] },
-				{ role: "extra", messages: Promise.reject(new Error("图集没做出来")) },
 			],
 		});
 		await new Promise((r) => setTimeout(r, 0));
@@ -279,13 +263,5 @@ describe("引擎窄接口上「告诉主人」的两个口转调 notifyMaster", 
 		await masterTellers(push, logger).sendErrorMsg("风控了");
 		expect(logs).toEqual(["error:[push] 风控了"]);
 		expect(push.notifyMaster).toHaveBeenCalledWith("风控了");
-	});
-
-	it("动态引擎那侧的 PushLike 带着这两个口", async () => {
-		const { push, logger } = spy(true);
-		const like = makeDynamicPushLike(push as never, subscriptionIdOf, logger);
-		await like.sendPrivateMsg("a");
-		await like.sendErrorMsg("b");
-		expect(push.notifyMaster.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
 	});
 });

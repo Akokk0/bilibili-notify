@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import {
 	BILIBILI_SOURCE_KEY,
 	type Subscription,
@@ -6,6 +5,7 @@ import {
 	sniffImageFormat,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
+import { bytesDataUrl } from "../images/image-data-url.js";
 import type { ImageStore } from "../images/image-store.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
@@ -14,7 +14,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
  * 直播共用:模板里的名字、「这条订阅现在还该推吗」、字节转 data URL。
  *
  * 绑到订阅上的发送与这条订阅折好的设置在 `engines.ts`(`boundPostPush` / `boundLivePush` /
- * `dynamicWorkSettings`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
+ * `postSettingsOf` / `liveWorkSettings`),与 B 站那两个适配器挨着 —— B 站那条路也是它们。
  */
 
 /**
@@ -66,11 +66,7 @@ export async function readProfileAvatar(
  */
 export function imageDataUrl(bytes: Uint8Array): string | undefined {
 	const format = sniffImageFormat(bytes);
-	return format ? dataUrl(bytes, `image/${format}`) : undefined;
-}
-
-function dataUrl(bytes: Uint8Array, mime: string): string {
-	return `data:${mime};base64,${Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64")}`;
+	return format ? bytesDataUrl(`image/${format}`, bytes) : undefined;
 }
 
 /** 有字才算有:空串、只有空白的都不算。 */

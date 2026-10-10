@@ -1,6 +1,6 @@
 import type { PushTargetScope, Result } from "./constants";
 import type { KeyValueStore } from "./key-value-store";
-import type { PostImage } from "./post";
+import type { PostEvent, PostImage } from "./post";
 import type { AddressCandidate, ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
 import type { SubscriptionReportDelivery } from "./schema/subscription-report";
@@ -215,11 +215,20 @@ export interface BusEvents {
 	 * 投递失败的动态一律照常 emit。数据统计要回答的是「这位 UP 发了多少」,
 	 * 「我们推了多少」看 `history-recorded`,两者口径不可混用。
 	 *
-	 * **不是 exactly-once**:投递失败走 `markFail`,时间线锚点不前移,下一轮
-	 * 重判会把同一条再 emit 一次。消费方必须按 `id` 幂等 —— `StatsRecorder`
+	 * **不保证只发一次**:每条越过闸门的动态本轮结束时恰好前移一次,正常只发一回;但进程在两轮之间崩了、
+	 * 或本轮中途整轮抛错,下一轮会重判、再 emit 一次。消费方必须按 `id` 幂等 —— `StatsRecorder`
 	 * 靠 `StatsStore.appendPost` 的 id 去重挡掉,新消费方别忘了这一层。
 	 */
 	"dynamic-detected": DynamicDetectedEvent;
+	/**
+	 * 一条作品进了作品装配入口(`PostQueue.enqueue`):**入口同步发的旁路通知**,不是装配的入口 ——
+	 * 事件总线不在推送链上,装配由来源直接调入口。每条订阅一份;只发一次(没有「失败后下一轮重发」);
+	 * 在串行闸与过滤**之前**发,所以被过滤的、推送失败的作品同样算 UP 的产出(统计口径)。
+	 * 订阅不在 / 停用 / 作品开关关着 / 来源没在跑的,不发。
+	 *
+	 * 载荷里的图已是图库引用(来源交出之前就抓好 / 写好)。眼下没有监听者,统计下一步改听它。
+	 */
+	"post-detected": PostEvent;
 }
 
 /**

@@ -19,6 +19,7 @@ import {
 	type Post,
 	PostFilterReason,
 } from "@bilibili-notify/internal";
+import { errorMessageOf } from "../util/error-message.js";
 import { postText } from "./post-text";
 
 // 原因的词表住 `@bilibili-notify/internal`(历史行的 `filteredBy` 也用它);这里照旧转出,过滤的调用方不用换路。
@@ -67,9 +68,7 @@ function safeRegexTest(pattern: string, text: string, logger?: Logger): boolean 
 			text.length > MAX_REGEX_TEST_TEXT_LEN ? text.slice(0, MAX_REGEX_TEST_TEXT_LEN) : text;
 		return new RegExp(pattern).test(subject);
 	} catch (e) {
-		logger?.warn(
-			`[bilibili-notify-dynamic] 无效的正则表达式 "${pattern}": ${(e as Error).message}`,
-		);
+		logger?.warn(`[bilibili-notify-dynamic] 无效的正则表达式 "${pattern}": ${errorMessageOf(e)}`);
 		return false;
 	}
 }

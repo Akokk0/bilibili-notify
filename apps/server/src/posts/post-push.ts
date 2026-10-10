@@ -3,7 +3,26 @@
  * 宿主把它们交给推送层(`boundPostPush`)。
  */
 
-import type { ExtraKey, PostImage, PushMessageRole } from "@bilibili-notify/internal";
+import type {
+	ExtraKey,
+	PostFilterReason,
+	PostImage,
+	PushMessageRole,
+} from "@bilibili-notify/internal";
+
+/**
+ * 一条被过滤挡下的作品,交给宿主留痕(推送历史里的一行 `filtered`,ADR-0021 决策 34 的 🔗)。它不是推送:
+ * 不出卡、不调 AI、不往外发任何东西,所以不走推送口,走装配依赖里的 `recordFiltered`。
+ */
+export interface FilteredPost {
+	subscriptionId: string;
+	/** 被哪一类规则挡下的。 */
+	filteredBy: PostFilterReason;
+	/** 这条作品的整条文字:`postText(post, "plain")`,过滤看的就是这一份。没截过,摘要由宿主截。 */
+	text: string;
+	/** 原帖地址。 */
+	url: string;
+}
 
 /** 渲染好的图片缓冲（无 mime/扩展信息时默认 image/jpeg）。 */
 export interface PushImagePart {

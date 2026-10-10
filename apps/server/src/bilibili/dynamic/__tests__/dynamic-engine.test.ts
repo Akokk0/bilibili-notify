@@ -1,13 +1,10 @@
 /**
- * 单元测试 — `DynamicEngine` 编排 + 图片失败软降级状态机 + 生命周期。
+ * 单元测试 — `DynamicEngine`:**只管生产**。拉 feed → 判新 → 翻成作品 → 抓图 → 经 `reportPost` 交给核心的作品入口,
+ * 加错误处理 / 故障恢复 / 生命周期。
  *
- * 已有 `posts/__tests__/post-filter.test.ts` 覆盖纯过滤函数;本文件覆盖把翻译/过滤/渲染/AI/推送
- * 串起来的 `detectDynamics()` 编排,以及 `updateConfig` cron 重启 / `applyOps`
- * 增量 / `start`/`stop` 生命周期。
- *
- * 最该锁的不变量(改坏 = 用户被重复轰炸或永久静默):
- *   图片渲染失败时 → 软降级为纯文字推送 + 只在「连续失败首次」告警一次,渲染恢复
- *   后告警能力复位。
+ * 过滤、出卡、AI 点评、套模板、装配、推送、图集都是核心的事(`posts/deliver-post.ts`,测试在
+ * `posts/__tests__/deliver-post.test.ts`),引擎测试里不再有它们 —— 给引擎一个什么都不做的 `reportPost`,
+ * 「被过滤就不推」这类旧断言会全绿(引擎根本不推了),所以那些断言只在核心那头,**不留在这里原样通过**。
  *
  * 测试策略:
  *   - `detectDynamics()` 是 private,但它是编排核心。白盒直调 + 直接 seed 私有
@@ -17,23 +14,19 @@
  *     重建出的新 cronTime。
  */
 
-import type { CommentaryGenerator } from "@bilibili-notify/ai";
-import type { ImageRenderer } from "@bilibili-notify/image";
 import {
-	DEFAULT_CONTENT_FILTERS,
-	defaultMessageKindLayout,
 	type ImageRef,
 	type MessageBus,
 	ok,
 	type Post,
+	type PostReport,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type CardFailureTracker, createCardFailureTracker } from "../../../posts/deliver-post";
 import type { Api } from "../../api/index.js";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
 import { postFromDynamic } from "../post-from-dynamic";
-import type { PostPush, PushLike, SubItemView, SubscriptionsView } from "../push-like";
+import type { PushLike, SubItemView, SubscriptionsView } from "../push-like";
 import type { AllDynamicResponse, Dynamic } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -77,7 +70,7 @@ const cronMock = vi.hoisted(() => {
 
 vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 
-// 照常翻译,只是包一层好数它被调了几次(㉑e:翻译只做一次,过滤 / 点评 / 出卡共用)、好让它抛一次。
+// 照常翻译,只是包一层好数它被调了几次(翻译只做一次)、好让它抛一次。
 vi.mock("../post-from-dynamic", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../post-from-dynamic")>();
 	return { ...actual, postFromDynamic: vi.fn(actual.postFromDynamic) };
@@ -91,10 +84,6 @@ interface Priv {
 	dynamicSubManager: Map<string, SubItemView>;
 	dynamicTimelineManager: Map<string, number>;
 	detectDynamics(): Promise<void>;
-	pickDynamicColorOptions(
-		uid: string,
-		style: SubItemView["customCardStyle"],
-	): SubItemView["customCardStyle"] | undefined;
 }
 const priv = (e: DynamicEngineType): Priv => e as unknown as Priv;
 
@@ -160,14 +149,14 @@ function makeItem(opts: {
 	name?: string;
 	pubTs?: number;
 	type?: string;
-	/** 同时写进 desc.text(AI 提取读这个)与 desc.rich_text_nodes(过滤匹配读这个)。 */
+	/** 同时写进 desc.text 与 desc.rich_text_nodes。 */
 	text?: string;
 	drawPics?: string[];
-	/** opus.pics 带原始尺寸(测尺寸透传:engine 应把 width/height 带进 image-group)。 */
+	/** opus.pics 带原始尺寸。 */
 	drawPicsWithDims?: Array<{ url: string; width: number; height: number }>;
 	/** 真 DYNAMIC_TYPE_DRAW 形态:图在 major.draw.items[].src(非 opus.pics)。 */
 	drawItems?: string[];
-	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算链接部件 / BV。 */
+	/** 视频动态(DYNAMIC_TYPE_AV)的 major.archive.jump_url;引擎按此算链接 / BV。 */
 	videoJumpUrl?: string;
 }): Dynamic {
 	const text = opts.text ?? "";
@@ -220,52 +209,33 @@ function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicResponse {
 	};
 }
 
-/** 测试里写的订阅视图:除 uid / uname 外都可省,messageLayout 缺省为默认版式。 */
-type SeedView = Partial<SubItemView> & Pick<SubItemView, "uid" | "uname">;
-const viewOf = (v: SeedView): SubItemView => ({
-	subscriptionId: `sub-${v.uid}`,
-	messageLayout: defaultMessageKindLayout("post"),
-	...v,
-});
+/** 测试里写的订阅视图:引擎只认 uid 与 post。 */
+type SeedView = SubItemView;
+const viewOf = (v: SeedView): SubItemView => v;
 const viewsOf = (subs: Record<string, SeedView>): SubscriptionsView =>
 	Object.fromEntries(Object.entries(subs).map(([k, v]) => [k, viewOf(v)]));
 
 interface EngineBag {
 	engine: DynamicEngineType;
 	fetchAllDynamic: ReturnType<typeof vi.fn>;
-	/**
-	 * 假的推送出口。引擎交来的一次推送按锚点摊开记下来:一个锚点里一条消息记到 `pushedMessage`
-	 * `(uid, 段, 角色)`,几条(分条)记到 `pushedSequence` `(uid, 段[][], 角色)`;整次推送原样记在 `push` 上。
-	 */
-	push: PushLike & {
-		push: ReturnType<typeof vi.fn>;
-		pushedMessage: ReturnType<typeof vi.fn>;
-		pushedSequence: ReturnType<typeof vi.fn>;
-		sendPrivateMsg: ReturnType<typeof vi.fn>;
-		sendErrorMsg: ReturnType<typeof vi.fn>;
-	};
+	/** 假的宿主出口:引擎只剩给主人发私信这一样。 */
+	push: PushLike & { sendPrivateMsg: ReturnType<typeof vi.fn> };
 	emits: Array<{ event: string; payload: unknown }>;
 	trigger: (event: string, payload?: unknown) => void;
 	disposers: Array<() => void | Promise<void>>;
-	generatePostCard: ReturnType<typeof vi.fn>;
 	/** 注入给引擎的抓图服务(`imageFetcher` 选项):每个地址回一个以它命名的引用,测试数调用。 */
 	fetchImage: ReturnType<typeof vi.fn>;
-	/** 注入给引擎的头像读口(`avatarOf` 选项):测试改它背后的值来模拟资料里的头像补上 / 换掉。 */
-	avatarOf: ReturnType<typeof vi.fn>;
-	comment: ReturnType<typeof vi.fn>;
+	/** 注入给引擎的核心入口(`reportPost` 选项):引擎交出去的每一条作品。 */
+	reportPost: ReturnType<typeof vi.fn<(externalId: string, report: PostReport) => void>>;
 	logs: LogRec[];
-	/** 注入给引擎的出图失败计数(`cardFailures` 选项),测试直接读它。 */
-	cardFailures: CardFailureTracker;
-	/** 注入给引擎的「作品被过滤了」出口(`onPostFiltered` 选项)。 */
-	onPostFiltered: ReturnType<typeof vi.fn>;
 }
 
 function makeEngine(
 	over: {
 		config?: Partial<import("../dynamic-engine").DynamicEngineConfig>;
-		withImage?: boolean;
-		withAi?: boolean;
 		subs?: Record<string, SeedView> | null;
+		/** 引擎交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
+		reportPost?: (externalId: string, report: PostReport) => void;
 	} = {},
 ): EngineBag {
 	const { ctx, logs } = makeServiceCtx();
@@ -276,85 +246,51 @@ function makeEngine(
 	};
 	const fetchAllDynamic = vi.fn();
 	const api = { fetchAllDynamic } as unknown as Api;
-	const pushedMessage = vi.fn(async (..._args: unknown[]) => {});
-	const pushedSequence = vi.fn(async (..._args: unknown[]) => {});
-	const push = {
-		// 照推送层的约定来:本体发不出往外抛;附加项发不出只算它自己的事,不往引擎这边抛。
-		push: vi.fn(async ({ uid, anchors }: PostPush) => {
-			for (const anchor of anchors) {
-				const messages = (await anchor.messages) ?? [];
-				const sending =
-					messages.length === 1
-						? pushedMessage(uid, messages[0], anchor.role)
-						: messages.length > 1
-							? pushedSequence(uid, messages, anchor.role)
-							: undefined;
-				await (anchor.role === "main" ? sending : sending?.catch(() => {}));
-			}
-		}),
-		pushedMessage,
-		pushedSequence,
-		sendPrivateMsg: vi.fn(async () => {}),
-		sendErrorMsg: vi.fn(async () => {}),
-	};
-	const generatePostCard = vi.fn();
+	const push = { sendPrivateMsg: vi.fn(async () => {}) };
 	const fetchImage = vi.fn(async (url: string) =>
 		ok({ ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef }),
 	);
-	const avatarOf = vi.fn((_subscriptionId: string): ImageRef | undefined => undefined);
-	const image = { generatePostCard } as unknown as ImageRenderer;
-	const comment = vi.fn();
-	const ai = { comment } as unknown as CommentaryGenerator;
-	const cardFailures = createCardFailureTracker();
-	const onPostFiltered = vi.fn();
+	const reportPost = vi.fn<(externalId: string, report: PostReport) => void>(
+		over.reportPost ?? (() => {}),
+	);
 	const engine = new DynamicEngine({
 		serviceCtx: ctx,
 		bus,
 		api,
-		push: push as unknown as PushLike,
-		image: over.withImage ? image : undefined,
-		ai: over.withAi ? ai : undefined,
+		push,
 		imageFetcher: { fetchImage },
-		avatarOf,
-		onPostFiltered,
+		reportPost,
 		config: {
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: false,
-			imageGroup: { enabled: false, mergeForward: false },
-			filter: DEFAULT_CONTENT_FILTERS,
 			...over.config,
 		},
 		getSubs: () => (over.subs ? viewsOf(over.subs) : null),
-		cardFailures,
 	});
 	return {
 		engine,
 		fetchAllDynamic,
-		push: push as EngineBag["push"],
+		push,
 		emits,
 		trigger,
 		disposers,
-		generatePostCard,
 		fetchImage,
-		avatarOf,
-		comment,
+		reportPost,
 		logs,
-		cardFailures,
-		onPostFiltered,
 	};
 }
 
-/** seed 一个已订阅 uid(timeline + subManager),供 detectDynamics 白盒直调。 */
-/** 播种一个订阅视图;messageLayout 缺省为默认版式(宿主恒填,引擎不再有旧路径)。 */
+/** 播种一个订阅视图(推送名单里有它),并给它一个时间线锚点。 */
 function seed(engine: DynamicEngineType, uid: string, timeline: number, sub?: SeedView): void {
 	priv(engine).dynamicTimelineManager.set(uid, timeline);
-	priv(engine).dynamicSubManager.set(uid, viewOf(sub ?? { uid, uname: "UP" }));
+	priv(engine).dynamicSubManager.set(uid, viewOf(sub ?? { uid, post: true }));
 }
 
 const detect = (engine: DynamicEngineType): Promise<void> => priv(engine).detectDynamics();
 
 beforeEach(() => {
 	cronMock.instances.length = 0;
+	vi.mocked(postFromDynamic).mockClear();
 });
 
 // ---------------------------------------------------------------------------
@@ -362,20 +298,20 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("DynamicEngine.detectDynamics — API 错误处理", () => {
-	it("fetchAllDynamic 抛错 → 不广播,静默返回", async () => {
+	it("fetchAllDynamic 抛错 → 不交作品,静默返回", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockRejectedValue(new Error("network down"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
-	it("code=-101(未登录)→ emit engine-error「账号未登录」,不广播", async () => {
+	it("code=-101(未登录)→ emit engine-error「账号未登录」,不交作品", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 		expect(b.emits).toContainEqual(
 			expect.objectContaining({
 				event: "engine-error",
@@ -598,7 +534,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 	});
 
-	it("恢复通知发不出去不能打断本轮动态推送", async () => {
+	it("恢复通知发不出去不能打断本轮动态的交出", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
@@ -609,7 +545,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
 		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalled();
+		expect(b.reportPost).toHaveBeenCalled();
 	});
 });
 
@@ -625,7 +561,7 @@ describe("DynamicEngine — 故障恢复通知", () => {
  * 到一条听起来像新故障的报错,而后者不带任何新信息 —— 那正是同一件事的第二次通知。
  */
 describe("DynamicEngine — 登录失效时不再报第二遍", () => {
-	const oneSub = { subs: { "1": { uid: "1", uname: "UP", post: true } } } as const;
+	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
 	const authEc = (b: ReturnType<typeof makeEngine>) =>
 		b.emits.filter(
 			(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号未登录"),
@@ -690,9 +626,7 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		b.trigger("auth-lost");
 		const after = cronMock.instances.length;
 
-		b.engine.applyOps([
-			{ kind: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
-		]);
+		b.engine.applyOps([{ kind: "add", sub: { uid: "2", post: true } as SubItemView }]);
 
 		expect(cronMock.instances.length).toBe(after);
 	});
@@ -709,12 +643,12 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 });
 
 describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
-	it("timeline >= pub_ts → 已推过,跳过不广播", async () => {
+	it("timeline >= pub_ts → 已处理过,跳过不交", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		seed(b.engine, "1", 1000); // timeline == pub_ts
 		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
 	it("未订阅 uid(无 timeline 条目)→ 跳过", async () => {
@@ -722,17 +656,17 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 999, pubTs: 1000 })]));
 		seed(b.engine, "1", 0); // 订阅的是 1,动态来自 999
 		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
-	it("pub_ts 非数字 → 跳过该条,不广播", async () => {
+	it("pub_ts 非数字 → 跳过该条,不交", async () => {
 		const b = makeEngine();
 		const bad = makeItem({ uid: 1 });
 		(bad.modules.module_author as { pub_ts: unknown }).pub_ts = "oops";
 		b.fetchAllDynamic.mockResolvedValue(resp([bad]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
 	it("未订阅 uid 的无效 pub_ts → 静默跳过,不刷 warn", async () => {
@@ -742,35 +676,35 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([bad]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 		expect(b.logs.some((l) => l.level === "warn" && l.msg.includes("无法解析发布时间"))).toBe(
 			false,
 		);
 	});
 
-	it("pub_ts 为数字字符串 → 正常推送并推进 timeline", async () => {
+	it("pub_ts 为数字字符串 → 正常交出并推进 timeline", async () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1 });
 		(item.modules.module_author as { pub_ts: unknown }).pub_ts = "1234";
 		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1234);
 	});
 
-	it("pub_ts 为毫秒时间戳字符串 → 归一化为秒后推送", async () => {
+	it("pub_ts 为毫秒时间戳字符串 → 归一化为秒后交出", async () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1 });
 		(item.modules.module_author as { pub_ts: unknown }).pub_ts = "1717067523000";
 		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1717067523);
 	});
 
-	it("pub_ts 缺失但 pub_time 可解析 → 兜底推送", async () => {
+	it("pub_ts 缺失但 pub_time 可解析 → 兜底交出", async () => {
 		const b = makeEngine();
 		const item = makeItem({ uid: 1 });
 		(item.modules.module_author as { pub_ts?: unknown }).pub_ts = undefined;
@@ -778,7 +712,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBeGreaterThan(0);
 	});
 
@@ -793,14 +727,14 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 			b.fetchAllDynamic.mockResolvedValue(resp([item]));
 			seed(b.engine, "1", 0);
 			await detect(b.engine);
-			expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+			expect(b.reportPost).toHaveBeenCalledTimes(1);
 			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBeGreaterThan(0);
 		} finally {
 			vi.useRealTimers();
 		}
 	});
 
-	it("新动态推送后 timeline 推进到 pub_ts", async () => {
+	it("新动态交出后 timeline 推进到 pub_ts", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1234 })]));
 		seed(b.engine, "1", 0);
@@ -817,28 +751,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(200);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(2);
-	});
-
-	it("DY1:某 uid 推送失败 → 不 abort 其它 uid,失败 uid 锚点不前移(下轮重试)", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 100 }), makeItem({ uid: 2, pubTs: 300 })]),
-		);
-		seed(b.engine, "1", 0);
-		seed(b.engine, "2", 0);
-		// uid1 推送抛错;uid2 正常。
-		b.push.pushedMessage.mockImplementation(async (uid: string) => {
-			if (uid === "1") throw new Error("push fail");
-		});
-
-		await expect(detect(b.engine)).resolves.toBeUndefined(); // 整轮不 abort
-
-		// uid2 仍被投递且锚点前移 —— 证明单条 reject 没掀翻整轮(修复"下轮重推")。
-		expect(priv(b.engine).dynamicTimelineManager.get("2")).toBe(300);
-		// uid1 失败 → 锚点停在 0,下轮重试,绝不静默越过(不丢动态)。
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(0);
-		expect(b.push.pushedMessage).toHaveBeenCalledWith("2", expect.anything(), "main");
+		expect(b.reportPost).toHaveBeenCalledTimes(2);
 	});
 
 	it("DY1:锚点单调,绝不回退(已 push 过的更新 pub_ts 不倒退)", async () => {
@@ -848,1124 +761,80 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		await detect(b.engine);
 		// timeline(500) >= 100 → 跳过,锚点保持 500,绝不被 set 成 100。
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(500);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 });
 
-describe("DynamicEngine.detectDynamics — 推送形态", () => {
-	it("有 image 实例 + 无 AI → 本体是 [image] 段", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		const [uid, segments, role] = b.push.pushedMessage.mock.calls[0] as [
-			string,
-			Array<{ kind: string }>,
-			string,
-		];
-		expect(uid).toBe("1");
-		expect(role).toBe("main");
-		expect(segments[0]?.kind).toBe("image");
-	});
+// ---------------------------------------------------------------------------
+// 交给核心的作品:引擎只管生产
+// ---------------------------------------------------------------------------
 
-	// 引擎出卡的唯一入口是 `generatePostCard(postFromDynamic(原始动态))`:零件各自绿(翻译有翻译的测试、出卡有出卡
-	// 的测试)证明不了两头真的接上了。验红:把 dynamic-engine.ts 里那句换回只传原始动态、或不翻就交,这条红。
-	it("出卡时先把原始动态翻成 Post 再交给 generatePostCard", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
+/** 一条转发:原作者的头像地址写在原动态的作者模块里。 */
+const repostItem = (): Dynamic => {
+	const item = makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_FORWARD", text: "转发" });
+	item.orig = {
+		type: "DYNAMIC_TYPE_WORD",
+		modules: {
+			module_author: { name: "原作者", face: "https://i0.hdslb.com/bfs/face/orig.jpg" },
+			module_dynamic: { desc: { text: "原文", rich_text_nodes: [] } },
+		},
+	} as unknown as Dynamic;
+	return item;
+};
+
+/** 一条带表情的动态:表情图地址写在富文本节点的 `emoji.icon_url`。 */
+const emojiItem = (): Dynamic => {
+	const item = makeItem({ uid: 1, pubTs: 1000, text: "看[doge]" });
+	item.modules.module_dynamic.desc = {
+		text: "看[doge]",
+		rich_text_nodes: [
+			{ text: "看", type: "RICH_TEXT_NODE_TYPE_TEXT" },
+			{
+				text: "[doge]",
+				type: "RICH_TEXT_NODE_TYPE_EMOJI",
+				emoji: {
+					icon_url: "https://i0.hdslb.com/bfs/emote/doge.png",
+					size: 1,
+					text: "[doge]",
+					type: 1,
+				},
+			},
+		] as never,
+	};
+	return item;
+};
+
+/** 取引擎交出去的第 n 条:`[uid, 作品信封]`。 */
+const reported = (b: EngineBag, n = 0): [string, PostReport] => {
+	const call = b.reportPost.mock.calls[n];
+	if (!call) throw new Error(`引擎没有交出第 ${n + 1} 条作品`);
+	return call;
+};
+
+describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
+	it("每条越过时间线闸的动态交一次:(uid, { postId, url, post }),post 是翻译出来的中立作品、没有原始字段", async () => {
+		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, name: "示例UP", pubTs: 1_700_000_000, text: "你好世界" })]),
 		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.generatePostCard).toHaveBeenCalledTimes(1);
-		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		const [uid, report] = reported(b);
+		expect(uid).toBe("1");
+		expect(report.postId).toBe("id-1");
+		expect(report.url).toBe("https://t.bilibili.com/id-1");
 		// 是翻译出来的中立作品,不是原始动态:有 creator / publishedAt / text,没有 modules。
-		expect(post).toMatchObject({
+		expect(report.post).toMatchObject({
 			creator: { name: "示例UP" },
 			publishedAt: "2023-11-14T22:13:20.000Z",
 			text: "你好世界",
 		});
-		expect(post).not.toHaveProperty("modules");
+		expect(report.post).not.toHaveProperty("modules");
 	});
 
-	// 3a-34:B 站的图在出卡前自己抓进图库。零件(抓图函数、出卡器)各自绿,证明不了引擎真的接上了。
-	// 验红:把 dynamic-engine.ts `workFromDynamic` 里 renderCard 的 `await fetched` 换成直接交 `post`,这条红。
-	it("出卡时作品里只有地址的图先抓进图库,出卡器收到的 Post 带 ref", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] }),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.fetchImage).toHaveBeenCalledTimes(1);
-		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
-		expect(post.images).toHaveLength(1);
-		expect(post.images?.[0]?.ref).toBeDefined();
-		expect(post.images?.[0]?.url).toBe("https://i0.hdslb.com/bfs/new_dyn/a.jpg");
-	});
-
-	// 3a-35:外层作者的头像由引擎出卡那一刻按订阅 id 向宿主读(`avatarOf`),出卡时零网络。
-	// 验红:把 dynamic-engine.ts `workFromDynamic` 里传给 fetchPostImages 的 `avatar: readAvatar()` 去掉,这条红。
-	it("读口给了头像引用:出卡器收到的 Post.creator.avatar 就是它(按视图上的订阅 id 读),不为头像联网", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, text: "你好" })]));
-		const avatar = `${"a".repeat(64)}.jpg` as ImageRef;
-		b.avatarOf.mockReturnValue(avatar);
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", subscriptionId: "sub-xyz" });
-		await detect(b.engine);
-		expect(b.avatarOf).toHaveBeenCalledWith("sub-xyz");
-		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
-		expect(post.creator.avatar).toBe(avatar);
-		expect(b.fetchImage).not.toHaveBeenCalled();
-	});
-
-	// 现读:同一个引擎实例,资料里的头像之后才补上,下一张卡就要有。验红:把读取提前到引擎构造时 / 视图建立时,这条红。
-	it("头像每张卡现读:同一个引擎先出一张没头像的卡,读口背后换成引用,下一张就有", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic
-			.mockResolvedValueOnce(resp([makeItem({ uid: 1, pubTs: 1000, text: "第一条" })]))
-			.mockResolvedValueOnce(resp([makeItem({ uid: 1, pubTs: 2000, text: "第二条" })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const avatar = `${"b".repeat(64)}.jpg` as ImageRef;
-		b.avatarOf.mockReturnValue(avatar);
-		await detect(b.engine);
-		expect(
-			(b.generatePostCard.mock.calls[0]?.[0] as Post | undefined)?.creator.avatar,
-		).toBeUndefined();
-		expect((b.generatePostCard.mock.calls[1]?.[0] as Post | undefined)?.creator.avatar).toBe(
-			avatar,
-		);
-	});
-
-	/** 一条转发:原作者的头像地址写在原动态的作者模块里。 */
-	const repostItem = (): Dynamic => {
-		const item = makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_FORWARD", text: "转发" });
-		item.orig = {
-			type: "DYNAMIC_TYPE_WORD",
-			modules: {
-				module_author: { name: "原作者", face: "https://i0.hdslb.com/bfs/face/orig.jpg" },
-				module_dynamic: { desc: { text: "原文", rich_text_nodes: [] } },
-			},
-		} as unknown as Dynamic;
-		return item;
-	};
-
-	// 验红:把 dynamic-engine.ts `workFromDynamic` 里传给 fetchPostImages 的 `repostAvatarUrl` 去掉,这条红。
-	it("转发:原作者的头像出卡时现抓(480 宽头像档),填进 repost.creator.avatar", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([repostItem()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.fetchImage).toHaveBeenCalledTimes(1);
-		expect(b.fetchImage.mock.calls[0]?.[0]).toBe(
-			"https://i0.hdslb.com/bfs/face/orig.jpg@480w_80q_1s.webp",
-		);
-		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
-		expect(post.repost?.creator.avatar).toBeDefined();
-		expect(post.creator.avatar).toBeUndefined();
-	});
-
-	it("转发的动态被过滤掉 / 没有渲染器:原作者的头像一次都不抓", async () => {
-		const filtered = makeEngine({ withImage: true });
-		const item = repostItem();
-		item.modules.module_dynamic.desc = {
-			text: "含禁词",
-			rich_text_nodes: [{ text: "含禁词", type: "RICH_TEXT_NODE_TYPE_TEXT" } as never],
-		};
-		filtered.fetchAllDynamic.mockResolvedValue(resp([item]));
-		seed(filtered.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
-		});
-		await detect(filtered.engine);
-		expect(filtered.generatePostCard).not.toHaveBeenCalled();
-		expect(filtered.fetchImage).not.toHaveBeenCalled();
-
-		const noRenderer = makeEngine({ withImage: false });
-		noRenderer.fetchAllDynamic.mockResolvedValue(resp([repostItem()]));
-		seed(noRenderer.engine, "1", 0);
-		await detect(noRenderer.engine);
-		expect(noRenderer.fetchImage).not.toHaveBeenCalled();
-	});
-
-	/** 一条带表情的动态:表情图地址写在富文本节点的 `emoji.icon_url`。 */
-	const emojiItem = (): Dynamic => {
-		const item = makeItem({ uid: 1, pubTs: 1000, text: "看[doge]" });
-		item.modules.module_dynamic.desc = {
-			text: "看[doge]",
-			rich_text_nodes: [
-				{ text: "看", type: "RICH_TEXT_NODE_TYPE_TEXT" },
-				{
-					text: "[doge]",
-					type: "RICH_TEXT_NODE_TYPE_EMOJI",
-					emoji: {
-						icon_url: "https://i0.hdslb.com/bfs/emote/doge.png",
-						size: 1,
-						text: "[doge]",
-						type: 1,
-					},
-				},
-			] as never,
-		};
-		return item;
-	};
-
-	// 验红:把 dynamic-engine.ts `workFromDynamic` 里传给 fetchPostImages 的 `emojiUrls` 去掉,这条红。
-	it("正文里的表情出卡时抓成图(表情那一档 128 宽),出卡器收到的 Post 里表情带 image", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.fetchImage).toHaveBeenCalledTimes(1);
-		expect(b.fetchImage.mock.calls[0]?.[0]).toBe(
-			"https://i0.hdslb.com/bfs/emote/doge.png@128w_80q_1s.webp",
-		);
-		const post = b.generatePostCard.mock.calls[0]?.[0] as Post;
-		const emoji = post.richText?.find((segment) => segment.kind === "emoji");
-		expect(emoji).toMatchObject({ text: "[doge]" });
-		expect(emoji).toHaveProperty("image");
-	});
-
-	it("带表情的动态被过滤掉 / 没有渲染器 / 关了出图:表情一个都不抓", async () => {
-		const filtered = makeEngine({ withImage: true });
-		filtered.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
-		seed(filtered.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["看"] },
-		});
-		await detect(filtered.engine);
-		expect(filtered.generatePostCard).not.toHaveBeenCalled();
-		expect(filtered.fetchImage).not.toHaveBeenCalled();
-
-		for (const over of [
-			{ withImage: false },
-			{ withImage: true, config: { imageEnabled: false } },
-		]) {
-			const b = makeEngine(over);
-			b.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
-			seed(b.engine, "1", 0);
-			await detect(b.engine);
-			expect(b.fetchImage).not.toHaveBeenCalled();
-		}
-	});
-
-	it("关了出图 / 没有渲染器:不出卡也就一张图都不抓", async () => {
-		for (const over of [
-			{ withImage: false },
-			{ withImage: true, config: { imageEnabled: false } },
-		]) {
-			const b = makeEngine(over);
-			b.fetchAllDynamic.mockResolvedValue(
-				resp([
-					makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] }),
-				]),
-			);
-			seed(b.engine, "1", 0);
-			await detect(b.engine);
-			expect(b.fetchImage).not.toHaveBeenCalled();
-		}
-	});
-
-	it("被过滤掉的动态一张图都不抓", async () => {
-		const b = makeEngine({ withImage: true });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1500,
-					text: "含禁词",
-					drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
-		});
-		await detect(b.engine);
-		expect(b.generatePostCard).not.toHaveBeenCalled();
-		expect(b.fetchImage).not.toHaveBeenCalled();
-	});
-
-	// per-UP 的皮肤 id 要一路走到 generatePostCard —— 断在哪一跳都是
-	// 「选得动、存得住、就是不生效」那一族,而且全绿。
-	it("per-UP 皮肤 id 进 colorOptions;样式没启用时也只多这一个键", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710" });
-		await detect(b.engine);
-		// 验红:把 deliver-post.ts 里那句 `cardSkin: settings.cardSkin` 删掉,这条红。
-		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({ cardSkin: "k5aaa-b0a710" });
-	});
-
-	// 旋钮覆盖(ADR-0014 决策 17 的 🔗)是订阅视图上的一格,引擎把整份视图当设置交给装配 ——
-	// 这条钉的是「视图上那格真走到了出卡」。验红:把 deliver-post.ts 的 `WorkSubscriptionSettings`
-	// 里 `cardSkinKnobs` 那一项与 deliver-post.ts 递它那一句一起删掉,这条红。
-	it("per-UP 旋钮覆盖随皮肤 id 进 colorOptions", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		const cardSkinKnobs = { "k5aaa-b0a710": { accent: "#aaaaaa" } };
-		seed(b.engine, "1", 0, { uid: "1", uname: "U1", cardSkin: "k5aaa-b0a710", cardSkinKnobs });
-		await detect(b.engine);
-		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({
-			cardSkin: "k5aaa-b0a710",
-			cardSkinKnobs,
-		});
-	});
-
-	it("有 image + 有 AI → 段含 image + AI 点评文本", async () => {
-		const b = makeEngine({ withImage: true, withAi: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.comment.mockResolvedValue("这条很有意思");
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<{
-			kind: string;
-			text?: string;
-		}>;
-		expect(segments.some((s) => s.kind === "image")).toBe(true);
-		// 默认版式:AI 点评后跟链接部件,同条内以换行连接。
-		expect(
-			segments.some(
-				(s) => s.kind === "text" && s.text === `这条很有意思\nhttps://t.bilibili.com/id-1`,
-			),
-		).toBe(true);
-	});
-
-	it("无 image 实例 → 纯文字段降级", async () => {
+	it("翻译只做一次:交出去的就是那份翻译(没有图要抓时内容一致);点评、出卡都是核心拿这一份", async () => {
 		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<{ kind: string }>;
-		expect(segments).toHaveLength(1);
-		expect(segments[0]?.kind).toBe("text");
-	});
-
-	it("imageEnabled=false → 即使注入了 image 也跳过渲染,纯文字", async () => {
-		const b = makeEngine({ withImage: true, config: { imageEnabled: false } });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.generatePostCard).not.toHaveBeenCalled();
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<{ kind: string }>;
-		expect(segments[0]?.kind).toBe("text");
-	});
-
-	it("imageGroup.enable + DYNAMIC_TYPE_DRAW 带 pics → 本体之后多一个图集的附加项锚点", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(2);
-		expect(b.push.pushedMessage.mock.calls[1]?.[2]).toBe("extra");
-	});
-
-	it("主卡与图集是同一次推送:一条动态只交一次,锚点是「本体、不带键的附加项」;下一条动态另交一次", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
-				}),
-				makeItem({
-					uid: 1,
-					pubTs: 2000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/3.jpg", "http://a/4.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const pushes = b.push.push.mock.calls.map((c) => c[0] as PostPush);
-		expect(pushes).toHaveLength(2);
-		for (const push of pushes) {
-			expect(push.uid).toBe("1");
-			// 图集不带附加项的键(它不归附加项表管),也绝不是本体 —— 本体才会 @全体。
-			expect(push.anchors.map((a) => [a.role, a.extra])).toEqual([
-				["main", undefined],
-				["extra", undefined],
-			]);
-		}
-	});
-
-	// 图集走 forward / NapCat 长消息通道,现实里会发不出。它是主卡的附属物:主卡已送达,时间线必须推进,
-	// 否则下轮整条重判、主卡重发并再 @ 一次全体。这层保证现在来自「图集是同一次推送里的附加项锚点」——
-	// 推送层在本体发完时返回、附加项的成败不往回抛(那一半由 push 包自己的用例钉)。
-	// 验红:把 deliver-post.ts 里图集那个锚点的角色改成本体,这条红(时间线停在 0)。
-	it("图集发不出 → 主卡已发出,时间线照推进(不因附属图集失败而重发主卡)", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawItems: ["http://a/x1.jpg", "http://a/x2.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		// 按内容认图集(不按角色):图集要是被当成本体交出去,这个失败就会冒到引擎、时间线不动。
-		b.push.pushedMessage.mockImplementation(async (_uid: string, segs: Array<{ kind: string }>) => {
-			if (segs[0]?.kind === "image-group") throw new Error("图组通道抖动");
-		});
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(2);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
-	});
-
-	it("P2-A:DRAW 图在 major.draw.items[].src → 不再静默丢图组(此前只读 opus.pics)", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawItems: ["http://a/x1.jpg", "http://a/x2.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(2);
-		const call = b.push.pushedMessage.mock.calls[1];
-		expect(call?.[2]).toBe("extra");
-		expect(call?.[1]?.[0]).toMatchObject({
-			kind: "image-group",
-			images: [{ url: "http://a/x1.jpg" }, { url: "http://a/x2.jpg" }],
-		});
-	});
-
-	it("图集 image-group 透传 B站原始尺寸(QQ 原生 markdown 多图需 width/height)", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPicsWithDims: [{ url: "http://a/1.jpg", width: 800, height: 600 }],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const call = b.push.pushedMessage.mock.calls[1];
-		expect((call?.[1]?.[0] as { images: unknown[] } | undefined)?.images).toEqual([
-			{ url: "http://a/1.jpg", width: 800, height: 600 },
-		]);
-	});
-
-	it("imageGroupMergeForward 默认 false → image-group segment 的 mergeForward 为 false", async () => {
-		// 默认不走合并转发,避开 NapCat SsoSendLongMsg 长消息通道。
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const call = b.push.pushedMessage.mock.calls[1];
-		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(false);
-	});
-
-	it("imageGroupMergeForward=true + 多张图 → image-group segment 的 mergeForward 为 true", async () => {
-		// 主动开启 + 多张图时 segment 携带 mergeForward:true,下游 adapter 走合并转发路径。
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: true } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg", "http://a/3.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const call = b.push.pushedMessage.mock.calls[1];
-		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(true);
-	});
-
-	it("imageGroupMergeForward=true 但只有 1 张图 → mergeForward 强制 false(单图合并转发无意义)", async () => {
-		// 即使主动开启 imageGroupMergeForward,单张图也不走 forward(聊天记录卡片包 1 张图无意义)。
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: true } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/only.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const call = b.push.pushedMessage.mock.calls[1];
-		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(false);
-	});
-
-	it("per-UP imageGroupEnabled=false 覆盖全局 true → 不推图集", async () => {
-		// 全局开 imageGroup.enabled,但 sub 视图带 imageGroupEnabled:false → 不发图集广播。
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupEnabled: false });
-		await detect(b.engine);
-		// 仅主卡片,无图集广播
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		expect(b.push.pushedMessage.mock.calls[0]?.[2]).toBe("main");
-	});
-
-	it("per-UP imageGroupEnabled=true 覆盖全局 false → 推图集", async () => {
-		// 全局关 imageGroup.enabled,但 sub 视图 imageGroupEnabled:true → 发图集。
-		const b = makeEngine({ config: { imageGroup: { enabled: false, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupEnabled: true });
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(2);
-		expect(b.push.pushedMessage.mock.calls[1]?.[2]).toBe("extra");
-	});
-
-	it("per-UP imageGroupEnabled 缺省(undefined) → 继承全局 imageGroup.enabled(回归守卫 `??` 非 `||`)", async () => {
-		// 守护 dynamic-engine 用 `??` 折叠而非 `||`:undefined 走 fallback,但 false
-		// 显式 per-UP 关闭不被吃。本用例钉「缺省=继承」一向。
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
-				}),
-			]),
-		);
-		// sub view 不带 imageGroupEnabled 字段 → 应当继承全局 true → 推图集
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP" });
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(2);
-		expect(b.push.pushedMessage.mock.calls[1]?.[2]).toBe("extra");
-	});
-
-	it("per-UP imageGroupMergeForward=true 覆盖全局 false → 多图走 forward", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					type: "DYNAMIC_TYPE_DRAW",
-					drawPics: ["http://a/1.jpg", "http://a/2.jpg"],
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", imageGroupMergeForward: true });
-		await detect(b.engine);
-		const call = b.push.pushedMessage.mock.calls[1];
-		expect((call?.[1]?.[0] as { mergeForward: boolean } | undefined)?.mergeForward).toBe(true);
-	});
-});
-
-describe("DynamicEngine.detectDynamics — 动态文本模板 (Part A/B)", () => {
-	type Seg = { kind: string; text?: string };
-	const textOf = (segments: Seg[]): string | undefined =>
-		segments.find((s) => s.kind === "text")?.text;
-	const segsOf = (b: EngineBag): Seg[] => b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-
-	it("无图 + 无 AI → 默认模板文案 + 链接部件(默认版式同条换行连接)", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe(`阿绫发布了一条动态\nhttps://t.bilibili.com/id-1`);
-	});
-
-	it("版式隐藏 link 部件 → 无链接", async () => {
-		const b = makeEngine({ config: { dynamicTemplate: "{name}发布了一条动态" } });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		const noLink = defaultMessageKindLayout("post");
-		for (const blk of noLink.blocks) if (blk.type === "link") blk.visible = false;
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", messageLayout: noLink });
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe("阿绫发布了一条动态");
-	});
-
-	it("视频转 BV 但 jump_url 无 BV → url 空,link 部件缺席", async () => {
-		const b = makeEngine({
-			config: { dynamicVideoUrlToBV: true, videoTemplate: "{name}发布了新视频" },
-		});
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					name: "阿绫",
-					type: "DYNAMIC_TYPE_AV",
-					videoJumpUrl: "//www.bilibili.com/read/cv1",
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe("阿绫发布了新视频");
-	});
-
-	it("Part A:有图分支的文字段 == 无图分支的文字段(模板单源,无双前缀)", async () => {
-		const withImg = makeEngine({ withImage: true });
-		withImg.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		withImg.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]),
-		);
-		seed(withImg.engine, "1", 0);
-		await detect(withImg.engine);
-		const imgSegs = segsOf(withImg);
-		expect(imgSegs[0]?.kind).toBe("image");
-
-		const noImg = makeEngine();
-		noImg.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]),
-		);
-		seed(noImg.engine, "1", 0);
-		await detect(noImg.engine);
-		expect(textOf(imgSegs)).toBe(`阿绫发布了一条动态\nhttps://t.bilibili.com/id-1`);
-		expect(textOf(imgSegs)).toBe(textOf(segsOf(noImg)));
-	});
-
-	it("视频动态(DYNAMIC_TYPE_AV)走 videoTemplate + jump_url 链接", async () => {
-		const b = makeEngine({ config: { videoTemplate: "{name}发布了新视频" } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					name: "阿绫",
-					type: "DYNAMIC_TYPE_AV",
-					videoJumpUrl: "//www.bilibili.com/video/BV1demo",
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe("阿绫发布了新视频\nhttps://www.bilibili.com/video/BV1demo");
-	});
-
-	it("per-UP customDynamicTemplate 覆盖内建模板", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			customDynamicTemplate: "🔔 {name} 有新动态",
-		});
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe(`🔔 阿绫 有新动态\nhttps://t.bilibili.com/id-1`);
-	});
-
-	it("全局 config.dynamicTemplate 覆盖内建兜底", async () => {
-		const b = makeEngine({ config: { dynamicTemplate: "【动态】{name}" } });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe(`【动态】阿绫\nhttps://t.bilibili.com/id-1`);
-	});
-
-	it("有 AI 点评时两分支都用点评,不走模板", async () => {
-		const b = makeEngine({ withAi: true });
-		b.comment.mockResolvedValue("这条很有意思");
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", text: "原始内容" })]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(textOf(segsOf(b))).toBe(`这条很有意思\nhttps://t.bilibili.com/id-1`);
-	});
-});
-
-// 刻画(ADR-0019 决策 66 切出作品装配之前钉的现状):B 站原始数据里哪几格进了 AI 点评、
-// 视频链接换 BV、per-UP 的视频模板 / AI 覆盖 / 卡片样式、图集只认图文动态。切开之后这几样
-// 由 B 站那头先翻成作品,装配只认翻好的。㉑e 起 AI 点评的文字也走 `postText(post, "labeled")`,
-// 不再是引擎自己拼的那一份。
-describe("DynamicEngine.detectDynamics — B 站动态翻成作品(刻画)", () => {
-	type Seg = { kind: string; text?: string };
-	const textNode = (text: string) => ({ text, type: "RICH_TEXT_NODE_TYPE_TEXT" });
-	/** 一条带标题的图文,转发了一条视频投稿(接口里的字都写在富文本节点上)。 */
-	const richItem = (): Dynamic => {
-		const item = makeItem({
-			uid: 1,
-			pubTs: 1000,
-			name: "阿绫",
-			type: "DYNAMIC_TYPE_FORWARD",
-			text: "正文",
-			drawItems: ["http://i/d1.jpg", "http://i/d2.jpg", "http://i/d3.jpg"],
-		});
-		const major = item.modules.module_dynamic.major as Record<string, unknown>;
-		major.opus = {
-			title: "标题",
-			summary: { text: "摘要", rich_text_nodes: [textNode("摘要")] },
-			pics: [{ url: "http://i/p1.jpg" }],
-		};
-		major.archive = { title: "视频", jump_url: "", cover: "http://i/cover.jpg" };
-		item.orig = {
-			type: "DYNAMIC_TYPE_AV",
-			modules: {
-				module_author: { name: "原作者" },
-				module_dynamic: {
-					desc: { text: "原文", rich_text_nodes: [textNode("原文")] },
-					major: { archive: { title: "视频", jump_url: "", cover: "http://i/orig-cover.jpg" } },
-				},
-			},
-		} as unknown as Dynamic;
-		return item;
-	};
-
-	it("AI 点评:提示词带名字与正文(标题 / 摘要 / 转发原文及它的视频标题),图取前 4 张", async () => {
-		const b = makeEngine({ withAi: true });
-		b.comment.mockResolvedValue("点评");
-		b.fetchAllDynamic.mockResolvedValue(resp([richItem()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.comment).toHaveBeenCalledTimes(1);
-		const [prompt, scene, images] = b.comment.mock.calls[0] as [string, string, string[]];
-		expect(prompt).toBe(
-			// 取段只此一份(`postText(post, "labeled")`):标题排最前,正文与摘要一段,转发的原作品收进括号。
-			// 从前引擎自己拼的是「正文 / 标题：… / 摘要 / 视频标题：… / （转发自 …）」。
-			"阿绫发布了一条动态，内容如下：\n标题：标题\n正文\n摘要\n（转发自 原作者：原文 视频标题：视频）",
-		);
-		expect(scene).toBe("dynamic");
-		// draw.items → opus.pics → 视频封面,截前 4 张(封面被截掉)。
-		expect(images).toEqual([
-			"http://i/d1.jpg",
-			"http://i/d2.jpg",
-			"http://i/d3.jpg",
-			"http://i/p1.jpg",
-		]);
-	});
-
-	it("没有可点评的正文 → 不调 AI,走模板", async () => {
-		const b = makeEngine({ withAi: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫" })]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.comment).not.toHaveBeenCalled();
-		const segs = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segs[0]?.text).toBe("阿绫发布了一条动态\nhttps://t.bilibili.com/id-1");
-	});
-
-	it("AI 点评失败 → 回退到模板,照常推送", async () => {
-		const b = makeEngine({ withAi: true });
-		b.comment.mockRejectedValue(new Error("额度用完"));
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", text: "原始内容" })]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const segs = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segs[0]?.text).toBe("阿绫发布了一条动态\nhttps://t.bilibili.com/id-1");
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
-	});
-
-	it("per-UP 的 AI 覆盖原样交给这一次点评", async () => {
-		const b = makeEngine({ withAi: true });
-		b.comment.mockResolvedValue("点评");
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]),
-		);
-		const aiOverride = { dynamicPrompt: "这位 UP 专属的场景提示" };
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", aiOverride });
-		await detect(b.engine);
-		expect(b.comment.mock.calls[0]?.[3]).toEqual(aiOverride);
-	});
-
-	it("视频链接换 BV:jump_url 里有 BV 号 → 链接部件就是 BV 号", async () => {
-		const b = makeEngine({ config: { dynamicVideoUrlToBV: true } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					name: "阿绫",
-					type: "DYNAMIC_TYPE_AV",
-					videoJumpUrl: "//www.bilibili.com/video/BV1demo",
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const segs = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segs[0]?.text).toBe("阿绫发布了新视频\nBV1demo");
-	});
-
-	it("per-UP 视频模板盖过全局视频模板", async () => {
-		const b = makeEngine({ config: { videoTemplate: "全局 {name}" } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([
-				makeItem({
-					uid: 1,
-					pubTs: 1000,
-					name: "阿绫",
-					type: "DYNAMIC_TYPE_AV",
-					videoJumpUrl: "//www.bilibili.com/video/BV1demo",
-				}),
-			]),
-		);
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", customVideoTemplate: "UP 的 {name}" });
-		await detect(b.engine);
-		const segs = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segs[0]?.text).toBe("UP 的 阿绫\nhttps://www.bilibili.com/video/BV1demo");
-	});
-
-	it("per-UP 卡片样式启用 → 样式与皮肤一起进 colorOptions", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			customCardStyle: { enable: true, font: "霞鹜文楷" },
-			cardSkin: "skin-1",
-		});
-		await detect(b.engine);
-		expect(b.generatePostCard.mock.calls[0]?.[1]).toEqual({
-			enable: true,
-			font: "霞鹜文楷",
-			cardSkin: "skin-1",
-		});
-	});
-
-	it("图集只认图文动态:别的类型带图也不附图集", async () => {
-		const b = makeEngine({ config: { imageGroup: { enabled: true, mergeForward: false } } });
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, drawPics: ["http://a/1.jpg", "http://a/2.jpg"] })]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		expect(b.push.pushedMessage.mock.calls[0]?.[2]).toBe("main");
-	});
-});
-
-describe("DynamicEngine.detectDynamics — 命中过滤", () => {
-	// 被挡下的只留痕(见下面「被过滤的作品交给 onPostFiltered」),不往任何目标发东西 —— 从前有一句
-	// 「屏蔽后提醒」,10-08 删了(ADR-0021 决策 34 的 🔗)。
-	it("命中过滤 → 什么都不广播,但 timeline 仍推进", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
-		});
-		await detect(b.engine);
-		expect(b.push.push).not.toHaveBeenCalled();
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
-	});
-});
-
-/**
- * **被过滤的作品交出去留痕**(ADR-0021 决策 34 的 🔗)。过滤挡下一条,引擎从 `onPostFiltered` 交出
- * `FilteredPost`:哪个 uid、被哪一类规则挡的(`filteredBy`)、整条文字(`postText` 的 plain 拼法)、原帖地址。
- * 只是交出去 —— 不出卡、不抓图、不调 AI;没被挡的不交。
- */
-describe("DynamicEngine.detectDynamics — 被过滤的作品交给 onPostFiltered", () => {
-	const rules = (over: Partial<typeof DEFAULT_CONTENT_FILTERS>) => ({
-		...DEFAULT_CONTENT_FILTERS,
-		...over,
-	});
-	const forward = () => {
-		const item = makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_FORWARD", text: "转一下" });
-		item.orig = {
-			type: "DYNAMIC_TYPE_WORD",
-			modules: { module_author: { name: "原作者" }, module_dynamic: {} },
-		} as unknown as Dynamic;
-		return item;
-	};
-	const cases: [string, Partial<typeof DEFAULT_CONTENT_FILTERS>, () => Dynamic, string][] = [
-		[
-			"blocked-keyword",
-			{ blockKeywords: ["禁词"] },
-			() => makeItem({ uid: 1, pubTs: 1500, text: "含禁词" }),
-			"含禁词",
-		],
-		["blocked-reposts", { blockReposts: true }, forward, "转一下"],
-		[
-			"blocked-articles",
-			{ blockArticles: true },
-			() => makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_ARTICLE", text: "专栏" }),
-			"专栏",
-		],
-		[
-			"blocked-images",
-			{ blockImages: true },
-			() =>
-				makeItem({
-					uid: 1,
-					pubTs: 1500,
-					type: "DYNAMIC_TYPE_DRAW",
-					text: "返图",
-					drawPics: ["http://i/p1.jpg"],
-				}),
-			"返图",
-		],
-		[
-			"blocked-videos",
-			{ blockVideos: true },
-			() =>
-				makeItem({
-					uid: 1,
-					pubTs: 1500,
-					type: "DYNAMIC_TYPE_AV",
-					text: "新视频",
-					videoJumpUrl: "//www.bilibili.com/video/BV1xx411c7mD",
-				}),
-			"新视频",
-		],
-		[
-			"allowlist-unmatched",
-			{ allowKeywords: ["上新"] },
-			() => makeItem({ uid: 1, pubTs: 1500, text: "日常" }),
-			"日常",
-		],
-	];
-
-	it.each(cases)(
-		"%s:交出去一次,带对的原因、文字与原帖地址;不出卡、不抓图、不调 AI、不推",
-		async (filteredBy, filter, build, text) => {
-			const b = makeEngine({ withImage: true, withAi: true });
-			b.fetchAllDynamic.mockResolvedValue(resp([build()]));
-			seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules(filter) });
-			await detect(b.engine);
-
-			expect(b.onPostFiltered).toHaveBeenCalledTimes(1);
-			expect(b.onPostFiltered).toHaveBeenCalledWith({
-				uid: "1",
-				filteredBy,
-				text: expect.stringContaining(text),
-				url: "https://t.bilibili.com/id-1",
-			});
-			expect(b.generatePostCard).not.toHaveBeenCalled();
-			expect(b.fetchImage).not.toHaveBeenCalled();
-			expect(b.comment).not.toHaveBeenCalled();
-			expect(b.push.push).not.toHaveBeenCalled();
-			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
-		},
-	);
-
-	it("没被挡的作品不交", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "日常" })]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockKeywords: ["禁词"] }) });
-		await detect(b.engine);
-		expect(b.onPostFiltered).not.toHaveBeenCalled();
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-	});
-
-	// 文字是 `postText(post, "plain")` 那一份:被转发的原作品里的字也在里面,引擎不自己拼。
-	it("文字就是过滤看的那一份(含被转发的原作品里的字)", async () => {
-		const item = forward();
-		(item.orig as unknown as { modules: { module_dynamic: unknown } }).modules.module_dynamic = {
-			desc: { text: "原文", rich_text_nodes: [{ text: "原文", type: "RICH_TEXT_NODE_TYPE_TEXT" }] },
-		};
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([item]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockReposts: true }) });
-		await detect(b.engine);
-		expect(b.onPostFiltered.mock.calls[0]?.[0].text).toBe("转一下\n原文");
-	});
-
-	it("出口抛错不连累这一轮:时间线照推进,记一条 warn", async () => {
-		const b = makeEngine();
-		b.onPostFiltered.mockImplementation(() => {
-			throw new Error("history down");
-		});
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1500, text: "含禁词" })]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockKeywords: ["禁词"] }) });
-		await detect(b.engine);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
-		expect(b.logs.some((l) => l.level === "warn" && l.msg.includes("history down"))).toBe(true);
-	});
-});
-
-/**
- * 过滤吃翻译好的 `Post`(㉑e,ADR-0021 决策 43):引擎先 `postFromDynamic` 再过滤 —— 类型开关看的是作品「有没有」
- * 图集 / 视频 / 转发 / 专栏,不再是 B 站的外层类型码;翻译只做一次,过滤、点评、出卡共用同一份。
- * `dynamic-detected` 仍在过滤之前发、载荷里是原始类型码(这个事件 3a 才换,不动)。
- */
-describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
-	const rules = (over: Partial<typeof DEFAULT_CONTENT_FILTERS>) => ({
-		...DEFAULT_CONTENT_FILTERS,
-		...over,
-	});
-	const detected = (b: EngineBag) => b.emits.filter((e) => e.event === "dynamic-detected");
-
-	const videoItem = () =>
-		makeItem({
-			uid: 1,
-			pubTs: 1500,
-			name: "阿伟",
-			type: "DYNAMIC_TYPE_AV",
-			videoJumpUrl: "//www.bilibili.com/video/BV1xx411c7mD",
-		});
-	const drawItem = () =>
-		makeItem({
-			uid: 1,
-			pubTs: 1500,
-			name: "阿伟",
-			type: "DYNAMIC_TYPE_DRAW",
-			drawPics: ["http://i/p1.jpg"],
-		});
-	const forwardItem = () => {
-		const item = makeItem({ uid: 1, pubTs: 1500, name: "阿伟", type: "DYNAMIC_TYPE_FORWARD" });
-		item.orig = {
-			type: "DYNAMIC_TYPE_WORD",
-			modules: { module_author: { name: "原作者" }, module_dynamic: {} },
-		} as unknown as Dynamic;
-		return item;
-	};
-	const articleItem = () =>
-		makeItem({ uid: 1, pubTs: 1500, name: "阿伟", type: "DYNAMIC_TYPE_ARTICLE" });
-
-	/** 四个开关各接到哪一类作品 —— 单元测试证明不了引擎真的把翻好的 Post 交给了过滤。 */
-	const cases: [string, keyof typeof DEFAULT_CONTENT_FILTERS, () => Dynamic][] = [
-		["blockVideos ← 视频投稿", "blockVideos", videoItem],
-		["blockImages ← 带图的图文", "blockImages", drawItem],
-		["blockReposts ← 转发", "blockReposts", forwardItem],
-		["blockArticles ← 专栏", "blockArticles", articleItem],
-	];
-
-	for (const [name, key, build] of cases) {
-		it(`${name}:开着 → 不广播、timeline 照推进;没开 → 照常推`, async () => {
-			const blocked = makeEngine();
-			blocked.fetchAllDynamic.mockResolvedValue(resp([build()]));
-			seed(blocked.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ [key]: true }) });
-			await detect(blocked.engine);
-			expect(blocked.push.pushedMessage).not.toHaveBeenCalled();
-			expect(priv(blocked.engine).dynamicTimelineManager.get("1")).toBe(1500);
-
-			const open = makeEngine();
-			open.fetchAllDynamic.mockResolvedValue(resp([build()]));
-			seed(open.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({}) });
-			await detect(open.engine);
-			expect(open.push.pushedMessage).toHaveBeenCalledTimes(1);
-		});
-	}
-
-	it("看的是「有没有图集」不是外层类型码:没带图的图文动态,blockImages 不拦", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1500, type: "DYNAMIC_TYPE_DRAW", text: "只有字" })]),
-		);
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockImages: true }) });
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-	});
-
-	it("全局那份过滤(config.filter)同样吃 Post:per-UP 没覆盖就用它", async () => {
-		const b = makeEngine({ config: { filter: rules({ blockVideos: true }) } });
-		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-	});
-
-	it("per-UP 覆盖盖过全局:全局拦视频,这位 UP 单独放开 → 照推", async () => {
-		const b = makeEngine({ config: { filter: rules({ blockVideos: true }) } });
-		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({}) });
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-	});
-
-	it("转发里的视频不归 blockVideos 管(只看最外层):只开 blockVideos 的转发照推", async () => {
-		const item = forwardItem();
-		item.orig = {
-			type: "DYNAMIC_TYPE_AV",
-			modules: {
-				module_author: { name: "原作者" },
-				module_dynamic: { major: { archive: { title: "原视频", jump_url: "" } } },
-			},
-		} as unknown as Dynamic;
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([item]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockVideos: true }) });
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-	});
-
-	it("dynamic-detected 仍在过滤之前发,载荷里是原始类型码(3a 才换,这一片不动)", async () => {
-		const b = makeEngine();
-		b.fetchAllDynamic.mockResolvedValue(resp([videoItem()]));
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", filter: rules({ blockVideos: true }) });
-		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-		expect(detected(b)).toHaveLength(1);
-		expect(detected(b)[0]?.payload).toMatchObject({ uid: "1", type: "DYNAMIC_TYPE_AV" });
-	});
-
-	it("翻译只做一次:过滤、AI 点评、出卡共用同一份 Post", async () => {
-		const b = makeEngine({ withImage: true, withAi: true });
-		b.comment.mockResolvedValue("点评");
-		b.generatePostCard.mockResolvedValue(Buffer.from("card"));
 		b.fetchAllDynamic.mockResolvedValue(
 			resp([makeItem({ uid: 1, pubTs: 1500, name: "阿伟", text: "正文" })]),
 		);
@@ -1973,13 +842,10 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 		await detect(b.engine);
 		expect(postFromDynamic).toHaveBeenCalledTimes(1);
 		const translated = vi.mocked(postFromDynamic).mock.results[0]?.value;
-		// 出卡前抓图换出的是一份新对象(3a-34),这条作品没有图要抓,所以内容与翻译出来的那份一致。
-		expect(b.generatePostCard.mock.calls[0]?.[0]).toEqual(translated);
-		// 点评的文字取自同一份 Post(`postText(post, "labeled")`)。
-		expect(b.comment.mock.calls[0]?.[0]).toContain("正文");
+		expect(reported(b)[1].post).toEqual(translated);
 	});
 
-	it("翻译抛错(不该发生,但别卡住这位 UP):这一条记 warn 跳过、timeline 照推进,同一轮别的动态照常推", async () => {
+	it("翻译抛错(不该发生,但别卡住这位 UP):这一条记 warn 跳过、不交、不发抓图、timeline 照推进,同一轮别的动态照常交", async () => {
 		const b = makeEngine();
 		vi.mocked(postFromDynamic).mockImplementationOnce(() => {
 			throw new Error("翻不动");
@@ -1992,151 +858,277 @@ describe("DynamicEngine.detectDynamics — 过滤吃翻译好的 Post", () => {
 		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		// 第一条(翻译抛错)跳过,第二条照推;锚点推进到两条里最大的(翻译失败的算处理过,不重试、不重复推送)。
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+		// 第一条(翻译抛错)跳过,第二条照交;锚点推进到两条里最大的(翻译失败的算处理过,不重试)。
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		expect(reported(b)[1].post.text).toBe("旧的");
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
 		expect(
 			b.logs.some((l) => l.level === "warn" && l.msg.includes("翻不动") && l.msg.includes("id-1")),
 		).toBe(true);
 	});
+
+	it("链接:动态给动态页;视频给视频页;视频换 BV 取得到就是 BV 号,取不到就是空串", async () => {
+		const urlOf = async (
+			config: { dynamicVideoUrlToBV: boolean },
+			type: string,
+			videoJumpUrl?: string,
+		): Promise<string> => {
+			const b = makeEngine({ config });
+			b.fetchAllDynamic.mockResolvedValue(
+				resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", type, videoJumpUrl })]),
+			);
+			seed(b.engine, "1", 0);
+			await detect(b.engine);
+			return reported(b)[1].url;
+		};
+		const off = { dynamicVideoUrlToBV: false };
+		const on = { dynamicVideoUrlToBV: true };
+		expect(await urlOf(off, "DYNAMIC_TYPE_WORD")).toBe("https://t.bilibili.com/id-1");
+		expect(await urlOf(off, "DYNAMIC_TYPE_AV", "//www.bilibili.com/video/BV1demo")).toBe(
+			"https://www.bilibili.com/video/BV1demo",
+		);
+		expect(await urlOf(on, "DYNAMIC_TYPE_AV", "//www.bilibili.com/video/BV1demo")).toBe("BV1demo");
+		expect(await urlOf(on, "DYNAMIC_TYPE_AV", "//www.bilibili.com/read/cv1")).toBe("");
+	});
+
+	// 引擎的发布时间有一整套兜底(`pub_ts` 的秒 / 毫秒 / 数字字符串,缺了再读 `pub_time` 的文字),翻译里只有
+	// `author.pub_ts`,缺了落在纪元。统计与卡上的时间都吃交出去的那份,所以引擎交出之前要覆写。
+	// 验红:把 dynamic-engine.ts 里覆写 `publishedAt` 那一行去掉,这条红(交出去的是 1970 年)。
+	it("publishedAt 用引擎自己算的发布时间:pub_ts 缺失、靠 pub_time 兜底时,翻译落在 1970,交出去的不是", async () => {
+		const b = makeEngine();
+		const item = makeItem({ uid: 1, name: "阿绫", text: "兜底" });
+		(item.modules.module_author as { pub_ts?: unknown }).pub_ts = undefined;
+		(item.modules.module_author as { pub_time: string }).pub_time = "2026-05-30 12:12:00";
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		const translated = vi.mocked(postFromDynamic).mock.results[0]?.value as Post;
+		expect(translated.publishedAt).toBe("1970-01-01T00:00:00.000Z");
+		const expected = new Date(2026, 4, 30, 12, 12, 0);
+		expect(reported(b)[1].post.publishedAt).toBe(expected.toISOString());
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(
+			Math.floor(expected.getTime() / 1000),
+		);
+	});
+
+	it("有 pub_ts 的动态:交出去的发布时间就是 pub_ts(秒与毫秒两种写法一致)", async () => {
+		for (const raw of [1717067523, "1717067523", "1717067523000"]) {
+			const b = makeEngine();
+			const item = makeItem({ uid: 1, name: "阿绫", text: "有时间" });
+			(item.modules.module_author as { pub_ts: unknown }).pub_ts = raw;
+			b.fetchAllDynamic.mockResolvedValue(resp([item]));
+			seed(b.engine, "1", 0);
+			await detect(b.engine);
+			expect(reported(b)[1].post.publishedAt).toBe(new Date(1717067523 * 1000).toISOString());
+		}
+	});
+
+	it("直播预约动态(DYNAMIC_TYPE_LIVE)照常交,翻成一条不带视频的作品", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, name: "阿绫", type: "DYNAMIC_TYPE_LIVE" })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		const { post, url } = reported(b)[1];
+		expect(post.video).toBeUndefined();
+		expect(post.notice).toContain("直播预约");
+		expect(url).toBe("https://t.bilibili.com/id-1");
+	});
+
+	it("过滤不是引擎的事:含屏蔽词的动态照样交(核心入口之后再挡),也照样发 dynamic-detected", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		expect(b.emits.filter((e) => e.event === "dynamic-detected")).toHaveLength(1);
+	});
 });
 
-// ---------------------------------------------------------------------------
-// B. 图片失败软降级状态机(最高优先级)
-// ---------------------------------------------------------------------------
-
-describe("DynamicEngine — 图片失败软降级状态机", () => {
-	it("渲染失败一次 → streak=1,sendErrorMsg+emit 各一次,仍降级纯文字推送", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+describe("DynamicEngine.detectDynamics — 交出之前先把图抓好(决策 3)", () => {
+	// 验红:把 dynamic-engine.ts 里 `fetchPostImages` 挪到 `reportPost` 之后(或不调),这条红。
+	it("只有地址的图先抓进图库再交:交出去的作品里图已带 ref(原地址仍在),抓图发生在交出之前", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] }),
+			]),
+		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-
-		expect(b.cardFailures.streak).toBe(1);
-		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(1);
-		expect(b.emits.filter((e) => e.event === "engine-error")).toHaveLength(1);
-		// 软降级:推送照常发生,只是退化为纯文字
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<{ kind: string }>;
-		expect(segments[0]?.kind).toBe("text");
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		const { post } = reported(b)[1];
+		expect(post.images).toHaveLength(1);
+		expect(post.images?.[0]?.ref).toBeDefined();
+		expect(post.images?.[0]?.url).toBe("https://i0.hdslb.com/bfs/new_dyn/a.jpg");
+		expect(b.fetchImage.mock.invocationCallOrder[0]).toBeLessThan(
+			b.reportPost.mock.invocationCallOrder[0] as number,
+		);
 	});
 
-	it("连续失败两轮 → sendErrorMsg / engine-error 全程仅一次(notified 守卫)", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+	it("只有 draw.items 的老形状图文动态:交出去的作品里有图,带宽高", async () => {
+		const b = makeEngine();
+		const item = makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_DRAW" });
+		(item.modules.module_dynamic as { major: unknown }).major = {
+			draw: { items: [{ src: "https://i0.hdslb.com/bfs/new_dyn/d.jpg", width: 800, height: 600 }] },
+		};
+		b.fetchAllDynamic.mockResolvedValue(resp([item]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		// 第二轮:新动态(pub_ts 更大),仍失败
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
-		await detect(b.engine);
-
-		expect(b.cardFailures.streak).toBe(2);
-		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(1);
-		expect(b.emits.filter((e) => e.event === "engine-error")).toHaveLength(1);
+		const image = reported(b)[1].post.images?.[0];
+		expect(image).toMatchObject({
+			url: "https://i0.hdslb.com/bfs/new_dyn/d.jpg",
+			width: 800,
+			height: 600,
+		});
+		expect(image?.ref).toBeDefined();
 	});
 
-	it("A3:首次失败的 sendErrorMsg reject → notified 不置位,下轮失败重试通知", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockRejectedValue(new Error("chrome crash"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+	// 验红:把 `repostAvatarUrlOf(item)` 那一项从 fetchPostImages 的选项里去掉,这条红。
+	it("转发:原作者的头像一起抓(480 宽头像档),交出去的作品里已有 repost.creator.avatar;外层头像不在引擎里填", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([repostItem()]));
 		seed(b.engine, "1", 0);
-
-		// 轮1:渲染失败 + 通知本身 reject。
-		b.push.sendErrorMsg.mockRejectedValueOnce(new Error("push down"));
 		await detect(b.engine);
-		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(1);
-		// 关键不变量:通知没送达 → notified 必须仍 false(旧实现在 await 前置位
-		// → reject 后永远 true,后续失败永久静默)。
-		expect(b.cardFailures.notified).toBe(false);
-
-		// 轮2:再失败,这次通知成功 → 因 notified 仍 false,重试并送达后才置位。
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
-		await detect(b.engine);
-		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
-		expect(b.cardFailures.notified).toBe(true);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		expect(b.fetchImage.mock.calls[0]?.[0]).toBe(
+			"https://i0.hdslb.com/bfs/face/orig.jpg@480w_80q_1s.webp",
+		);
+		const { post } = reported(b)[1];
+		expect(post.repost?.creator.avatar).toBeDefined();
+		expect(post.creator.avatar).toBeUndefined();
 	});
 
-	it("失败 → 成功(复位)→ 再失败:能再次告警(sendErrorMsg 共两次)", async () => {
-		const b = makeEngine({ withImage: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+	// 验红:把 `emojiUrlsOf(item)` 那一项从 fetchPostImages 的选项里去掉,这条红。
+	it("正文里的表情一起抓成图(表情那一档 128 宽),交出去的作品里表情带 image", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([emojiItem()]));
 		seed(b.engine, "1", 0);
-
-		// 轮1:失败 → 告警#1
-		b.generatePostCard.mockRejectedValueOnce(new Error("crash"));
 		await detect(b.engine);
-		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(1);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		expect(b.fetchImage.mock.calls[0]?.[0]).toBe(
+			"https://i0.hdslb.com/bfs/emote/doge.png@128w_80q_1s.webp",
+		);
+		const emoji = reported(b)[1].post.richText?.find((segment) => segment.kind === "emoji");
+		expect(emoji).toMatchObject({ text: "[doge]" });
+		expect(emoji).toHaveProperty("image");
+	});
 
-		// 轮2:成功 → streak/notified 复位
-		b.generatePostCard.mockResolvedValueOnce(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 2000 })]));
+	it("不管出不出卡、被不被过滤:这些都是核心的事,引擎一律照抓(决策 3,出网变多的代价主人知情)", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({
+					uid: 1,
+					pubTs: 1000,
+					text: "含禁词",
+					drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"],
+				}),
+			]),
+		);
+		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.cardFailures.streak).toBe(0);
-		expect(b.cardFailures.notified).toBe(false);
-
-		// 轮3:再失败 → 告警#2(复位后恢复了告警能力)
-		b.generatePostCard.mockRejectedValueOnce(new Error("crash again"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 3000 })]));
-		await detect(b.engine);
-		expect(b.push.sendErrorMsg).toHaveBeenCalledTimes(2);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
 	});
 });
 
-// ---------------------------------------------------------------------------
-// 开播伪动态(DYNAMIC_TYPE_LIVE_RCMD)—— ADR-0019 决策 66
-//
-// 开播由直播引擎推。从前这里靠出卡时抛「直播开播动态，不做处理」、再按错误文案接住来跳过:
-// 关了出图、或版式里藏起卡片时根本不出卡,这条就被当普通动态推出去,和直播引擎的开播撞车。
-// ---------------------------------------------------------------------------
+describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(决策 6)", () => {
+	/** 建表走 `startDynamicDetector`:锚点覆盖全部订阅,推送名单只收 `post` 开着的。 */
+	const startWith = (b: EngineBag): void =>
+		b.engine.startDynamicDetector({
+			"11": { uid: "11", post: false },
+			"22": { uid: "22", post: true },
+		});
+	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
+	const pubTs = Math.floor(Date.now() / 1000) + 60;
+	const picItem = (uid: number) =>
+		makeItem({ uid, pubTs, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] });
+
+	it("关了作品推送的订阅:不翻译、不抓图、不交;时间线照常前移,dynamic-detected 照发", async () => {
+		const b = makeEngine();
+		startWith(b);
+		b.fetchAllDynamic.mockResolvedValue(resp([picItem(11)]));
+		await detect(b.engine);
+		expect(postFromDynamic).not.toHaveBeenCalled();
+		expect(b.fetchImage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
+		expect(b.emits.filter((e) => e.event === "dynamic-detected")).toHaveLength(1);
+		expect(priv(b.engine).dynamicTimelineManager.get("11")).toBe(pubTs);
+	});
+
+	it("对照:同样的铺垫,开着作品推送的订阅就翻译、抓图、交", async () => {
+		const b = makeEngine();
+		startWith(b);
+		b.fetchAllDynamic.mockResolvedValue(resp([picItem(22)]));
+		await detect(b.engine);
+		expect(postFromDynamic).toHaveBeenCalledTimes(1);
+		expect(b.fetchImage).toHaveBeenCalledTimes(1);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		expect(priv(b.engine).dynamicTimelineManager.get("22")).toBe(pubTs);
+	});
+});
+
+describe("DynamicEngine.detectDynamics — 每条越过时间线的动态恰好前移一次", () => {
+	it("reportPost 抛了:记 warn、这一条仍前移(不重试),别的订阅 / 别的动态照常交", async () => {
+		const b = makeEngine({
+			reportPost: (uid) => {
+				if (uid === "1") throw new Error("入口炸了");
+			},
+		});
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([makeItem({ uid: 1, pubTs: 100 }), makeItem({ uid: 2, pubTs: 300 })]),
+		);
+		seed(b.engine, "1", 0);
+		seed(b.engine, "2", 0);
+
+		await expect(detect(b.engine)).resolves.toBeUndefined(); // 整轮不 abort
+
+		expect(b.reportPost).toHaveBeenCalledTimes(2);
+		expect(priv(b.engine).dynamicTimelineManager.get("2")).toBe(300);
+		// 入口抛了也前移:作品只交一次、核心不替来源重放,留着不前移只会下一轮重交一遍。
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(100);
+		expect(b.logs.some((l) => l.level === "warn" && l.msg.includes("入口炸了"))).toBe(true);
+	});
+
+	it("抓图服务出错(图抓不到):那张图保持只有地址,这一条照常交、仍前移", async () => {
+		const b = makeEngine();
+		b.fetchImage.mockImplementation(async () => {
+			throw new Error("图床炸了");
+		});
+		b.fetchAllDynamic.mockResolvedValue(
+			resp([
+				makeItem({ uid: 1, pubTs: 100, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] }),
+			]),
+		);
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(100);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
+		expect(reported(b)[1].post.images?.[0]?.ref).toBeUndefined();
+	});
+});
 
 describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 	const liveRcmd = () => makeItem({ uid: 1, pubTs: 1000, type: "DYNAMIC_TYPE_LIVE_RCMD" });
-	const expectSkipped = (b: EngineBag): void => {
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-		expect(b.push.pushedSequence).not.toHaveBeenCalled();
-		// 当作已处理:锚点照常前移,下一轮不再重判。
+
+	it("不翻译、不抓图、不交;锚点照常前移,下一轮不再重判", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
+		seed(b.engine, "1", 0);
+		await detect(b.engine);
+		expect(postFromDynamic).not.toHaveBeenCalled();
+		expect(b.fetchImage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
-	};
-
-	it("关了出图 → 不推送,锚点照常前移", async () => {
-		const b = makeEngine({ withImage: true, config: { imageEnabled: false } });
-		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expectSkipped(b);
-	});
-
-	it("版式藏起卡片 → 不推送,锚点照常前移", async () => {
-		const b = makeEngine({ withImage: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
-		seed(b.engine, "1", 0, {
-			uid: "1",
-			uname: "UP",
-			messageLayout: {
-				...defaultMessageKindLayout("post"),
-				blocks: defaultMessageKindLayout("post").blocks.map((x) =>
-					x.type === "card" ? { ...x, visible: false } : x,
-				),
-			},
-		});
-		await detect(b.engine);
-		expectSkipped(b);
-	});
-
-	it("开着出图也不去出卡、不点评:不计出图失败、不告警", async () => {
-		const b = makeEngine({ withImage: true, withAi: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expectSkipped(b);
-		expect(b.generatePostCard).not.toHaveBeenCalled();
-		expect(b.comment).not.toHaveBeenCalled();
-		expect(b.push.sendErrorMsg).not.toHaveBeenCalled();
 	});
 
 	it("统计照常看得见它(统计那头自己按类型忽略)", async () => {
-		const b = makeEngine({ config: { imageEnabled: false } });
+		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([liveRcmd()]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
@@ -2146,25 +1138,106 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 	});
 });
 
-describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)", () => {
-	it("渲染 await 期间 delete 该 UID → 不推送 + 不复活时间线", async () => {
-		const b = makeEngine({ withImage: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
+describe("DynamicEngine — applyOps 在 detectDynamics 抓图的 await 期间改了订阅(A7)", () => {
+	const picItem = () =>
+		makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] });
+
+	it("抓图期间 delete 该 UID → 不交 + 不复活时间线", async () => {
+		const b = makeEngine();
+		b.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
 		seed(b.engine, "1", 0);
-		// 模拟交错:generatePostCard 解析前,adapter 收到 subscription-changed
-		// 调 applyOps 退订 uid 1(stopDynamicForUid 删两张表)。
-		b.generatePostCard.mockImplementation(async () => {
+		// 模拟交错:抓图解析前,adapter 收到 subscription-changed 调 applyOps 退订 uid 1。
+		b.fetchImage.mockImplementation(async (url: string) => {
 			b.engine.applyOps([{ kind: "delete", uid: "1" }]);
-			return undefined;
+			return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
 		});
 
 		await detect(b.engine);
 
 		expect(priv(b.engine).dynamicSubManager.has("1")).toBe(false); // 确已退订
-		// stillSubscribed 守卫:已退订 → 不得再 broadcast。
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		// 身份重校:已退订 → 不得再交。
+		expect(b.reportPost).not.toHaveBeenCalled();
 		// 时间线回写守卫:不得把已删 UID 的时间线“复活”成孤儿锚点。
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
+	});
+
+	// 引擎只交 uid,接线按身份**现查**订阅:抓图那几秒里同一个 uid 被「删了再加」的话,现查会找到新加的那条订阅,
+	// 核心的回问也过得去(新订阅好端端在),于是一条旧动态被推给新订阅。「删了」与「删了又加回来」时间线锚点都会变
+	// (没了 / 重置成现在),所以抓完图把进门时过的两道闸再过一遍:名单里还有这个 uid、锚点还在且仍早于这条动态。
+	// 验红:把 dynamic-engine.ts 抓图之后那句 `this.stillDue(...)` 的判断去掉,这条与上一条红。
+	it("抓图期间同一 uid 被「删了再加」→ 旧动态不交给新订阅;对照:订阅没变就交", async () => {
+		const swapped = makeEngine();
+		swapped.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
+		seed(swapped.engine, "1", 0);
+		swapped.fetchImage.mockImplementation(async (url: string) => {
+			swapped.engine.applyOps([
+				{ kind: "delete", uid: "1" },
+				{ kind: "add", sub: { uid: "1", post: true } },
+			]);
+			return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
+		});
+		await detect(swapped.engine);
+		expect(priv(swapped.engine).dynamicSubManager.has("1")).toBe(true); // 新订阅在
+		expect(swapped.reportPost).not.toHaveBeenCalled();
+
+		const steady = makeEngine();
+		steady.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
+		seed(steady.engine, "1", 0);
+		await detect(steady.engine);
+		expect(steady.reportPost).toHaveBeenCalledTimes(1);
+	});
+
+	// 同 uid 的 update / 名单整份重建 / 关了又开作品推送,只换名单里的对象、不动时间线锚点:这条动态是同一条订阅的,照常交、恰好一次。
+	// 验红:把抓图之后的重校改回对象身份比对(`this.dynamicSubManager.get(uid) !== subAtCapture`),这几条红(动态永久丢)。
+	describe("抓图期间订阅只是被更新(没删):照常交,恰好一次", () => {
+		const sub = { "1": { uid: "1", post: true } };
+		const withDuringFetch = async (during: (b: EngineBag) => void) => {
+			const b = makeEngine({ subs: sub });
+			b.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
+			seed(b.engine, "1", 0);
+			b.fetchImage.mockImplementation(async (url: string) => {
+				during(b);
+				return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
+			});
+			await detect(b.engine);
+			return b;
+		};
+
+		it("收到同 uid 的 update(post: true)→ 名单里换了新对象,这条动态照常交", async () => {
+			const b = await withDuringFetch((x) =>
+				x.engine.applyOps([
+					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: true }] },
+				]),
+			);
+			expect(b.reportPost).toHaveBeenCalledTimes(1);
+			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
+		});
+
+		it("整份名单被重建(startDynamicDetector,如登录恢复后重启检测)→ 照常交", async () => {
+			const b = await withDuringFetch((x) => x.engine.startDynamicDetector(viewsOf(sub)));
+			expect(b.reportPost).toHaveBeenCalledTimes(1);
+		});
+
+		it("关了作品推送又打开(update post:false 再 post:true,锚点不动)→ 照常交", async () => {
+			const b = await withDuringFetch((x) => {
+				x.engine.applyOps([
+					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: false }] },
+				]);
+				x.engine.applyOps([
+					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: true }] },
+				]);
+			});
+			expect(b.reportPost).toHaveBeenCalledTimes(1);
+		});
+
+		it("对照:抓图期间关了作品推送且没再打开 → 不交(名单里没有了)", async () => {
+			const b = await withDuringFetch((x) =>
+				x.engine.applyOps([
+					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: false }] },
+				]),
+			);
+			expect(b.reportPost).not.toHaveBeenCalled();
+		});
 	});
 });
 
@@ -2175,7 +1248,7 @@ describe("DynamicEngine — applyOps 在 detectDynamics 跨 await 时退订(A7)"
 describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 	it("-352 退避窗口内 applyOps → 不提前重启 cron(退避不被击穿)", async () => {
 		const before = cronMock.instances.length;
-		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		b.engine.start(); // cron 实例 #1
 		const afterStart = cronMock.instances.length;
 		expect(afterStart).toBe(before + 1);
@@ -2188,9 +1261,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 		// 退避窗口内 adapter 收到订阅变更 → applyOps → reconcileJob。subManager 仍非空,
 		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.isActive 会立即 startJob,提前去戳
 		// 仍在风控的端点,击穿退避。修复后应识别 detectorRestartTimer 待执行而跳过。
-		b.engine.applyOps([
-			{ kind: "add", sub: { uid: "2", uname: "UP2", post: true } as SubItemView },
-		]);
+		b.engine.applyOps([{ kind: "add", sub: { uid: "2", post: true } as SubItemView }]);
 
 		expect(cronMock.instances.length).toBe(afterStart); // 没有新建 cron
 	});
@@ -2198,7 +1269,7 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 
 describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	it("start() 有订阅快照 → 建并启动 cron;stop() → 停止", () => {
-		const subs = { "1": { uid: "1", uname: "UP", post: true } };
+		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(1);
@@ -2215,14 +1286,9 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		const { ctx } = makeServiceCtx();
 		const { bus, trigger } = makeBus();
 		const api = { fetchAllDynamic: vi.fn() } as unknown as Api;
-		const push = {
-			push: vi.fn(async () => {}),
-			sendPrivateMsg: vi.fn(async () => {}),
-			sendErrorMsg: vi.fn(async () => {}),
-		} as unknown as PushLike;
+		const push: PushLike = { sendPrivateMsg: vi.fn(async () => {}) };
 		const engine = new DynamicEngine({
-			avatarOf: () => undefined,
-			onPostFiltered: () => {},
+			reportPost: () => {},
 			serviceCtx: ctx,
 			bus,
 			api,
@@ -2231,22 +1297,20 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			config: {
 				dynamicCron: "*/2 * * * *",
 				dynamicVideoUrlToBV: false,
-				imageGroup: { enabled: false, mergeForward: false },
-				filter: DEFAULT_CONTENT_FILTERS,
 			},
 			getSubs: () => snap,
 		});
 		engine.start();
 		expect(cronMock.instances).toHaveLength(0);
 
-		snap = viewsOf({ "1": { uid: "1", uname: "UP", post: true } });
+		snap = viewsOf({ "1": { uid: "1", post: true } });
 		trigger("auth-restored");
 		expect(cronMock.instances).toHaveLength(1);
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 	});
 
 	it("updateConfig 改 dynamicCron(运行中)→ 旧 job 停,新 job 用新 cronTime", () => {
-		const subs = { "1": { uid: "1", uname: "UP", post: true } };
+		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		expect(cronMock.instances).toHaveLength(1);
@@ -2254,8 +1318,6 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		b.engine.updateConfig({
 			dynamicCron: "*/5 * * * *",
 			dynamicVideoUrlToBV: false,
-			imageGroup: { enabled: false, mergeForward: false },
-			filter: DEFAULT_CONTENT_FILTERS,
 		});
 		expect(cronMock.instances[0]?.stopCount).toBe(1);
 		expect(cronMock.instances).toHaveLength(2);
@@ -2264,20 +1326,18 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("updateConfig 同 cron → 不重建 job", () => {
-		const subs = { "1": { uid: "1", uname: "UP", post: true } };
+		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs });
 		b.engine.start();
 		b.engine.updateConfig({
 			dynamicCron: "*/2 * * * *",
 			dynamicVideoUrlToBV: true, // 改了别的字段,但 cron 不变
-			imageGroup: { enabled: false, mergeForward: false },
-			filter: DEFAULT_CONTENT_FILTERS,
 		});
 		expect(cronMock.instances).toHaveLength(1);
 	});
 
 	it("applyOps:add dynamic 订阅 → 起 job;delete 最后一个 → 停 job", () => {
-		const sub = viewOf({ uid: "1", uname: "UP", post: true });
+		const sub = viewOf({ uid: "1", post: true });
 		const b = makeEngine({ subs: { "1": sub } });
 		b.engine.start(); // 快照里 sub.post=true → 已有 running job
 		expect(cronMock.instances[0]?.isActive).toBe(true);
@@ -2292,7 +1352,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("回归:dynamicCron 无法解析(new CronJob 同步抛错)不炸穿 start(),记录 error 且不建 job(此前独立端会在启动期整进程崩溃,见 sidecar.stderr.log 的 CronError)", () => {
-		const subs = { "1": { uid: "1", uname: "UP", post: true } };
+		const subs = { "1": { uid: "1", post: true } };
 		const b = makeEngine({ subs, config: { dynamicCron: "BAD CRON" } });
 		expect(() => b.engine.start()).not.toThrow();
 		expect(cronMock.instances).toHaveLength(0);
@@ -2305,8 +1365,8 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	});
 
 	it("applyOps:per-UID 走 debug,批次收口一条 info 汇总(Q1 不刷屏)", () => {
-		const s1 = viewOf({ uid: "1", uname: "U1", post: true });
-		const s2 = viewOf({ uid: "2", uname: "U2", post: true });
+		const s1 = viewOf({ uid: "1", post: true });
+		const s2 = viewOf({ uid: "2", post: true });
 		const b = makeEngine({ subs: { "1": s1, "2": s2 } });
 		b.logs.length = 0;
 		b.engine.applyOps([
@@ -2325,330 +1385,6 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		expect(
 			b.logs.filter((l) => l.level === "debug" && l.msg.includes("开启动态订阅 UID")),
 		).toHaveLength(2);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// D. 后置注入:setAi / setImage(adapter 在 ai / image 服务上下线时调用)
-// ---------------------------------------------------------------------------
-
-describe("DynamicEngine — setAi / setImage 后置注入", () => {
-	const dyn = (): Dynamic =>
-		({
-			id_str: "d1",
-			type: "DYNAMIC_TYPE_WORD",
-			modules: {
-				module_author: { mid: 1, name: "UP", pub_ts: 1000 },
-				module_dynamic: {
-					desc: {
-						text: "新动态内容",
-						rich_text_nodes: [{ text: "新动态内容", type: "RICH_TEXT_NODE_TYPE_TEXT" }],
-					},
-					major: undefined,
-				},
-			},
-		}) as unknown as Dynamic;
-
-	it("启动时 ai 字段为 undefined → setAi 注入后 detectDynamics 调用 ai.comment", async () => {
-		const b = makeEngine({
-			withAi: false,
-			withImage: false,
-			config: { aiEnabled: true },
-		});
-		seed(b.engine, "1", 500);
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [dyn()] },
-		} as unknown as AllDynamicResponse);
-
-		await detect(b.engine);
-		// 没注入 ai → 不调 ai.comment
-		expect(b.comment).not.toHaveBeenCalled();
-
-		// 模拟 ai 服务后置 ready → setAi 注入
-		const comment = vi.fn().mockResolvedValue("点评");
-		const ai = { comment } as unknown as CommentaryGenerator;
-		b.engine.setAi(ai);
-
-		// 推下一条动态
-		const next = dyn();
-		(next as { id_str: string }).id_str = "d2";
-		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [next] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(comment).toHaveBeenCalledTimes(1);
-	});
-
-	it("setAi(undefined) → 撤销后 detectDynamics 不再调 ai.comment", async () => {
-		const comment = vi.fn().mockResolvedValue("点评");
-		const ai = { comment } as unknown as CommentaryGenerator;
-		const b = makeEngine({
-			withAi: false,
-			withImage: false,
-			config: { aiEnabled: true },
-		});
-		seed(b.engine, "1", 500);
-		b.engine.setAi(ai);
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [dyn()] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(comment).toHaveBeenCalledTimes(1);
-
-		b.engine.setAi(undefined);
-		const next = dyn();
-		(next as { id_str: string }).id_str = "d2";
-		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [next] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(comment).toHaveBeenCalledTimes(1); // 没新增调用
-	});
-
-	it("启动时 image 字段为 undefined → setImage 注入后 detectDynamics 调用 generatePostCard", async () => {
-		const b = makeEngine({
-			withImage: false,
-			withAi: false,
-		});
-		seed(b.engine, "1", 500);
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [dyn()] },
-		} as unknown as AllDynamicResponse);
-
-		await detect(b.engine);
-		expect(b.generatePostCard).not.toHaveBeenCalled();
-
-		const generatePostCard = vi.fn().mockResolvedValue(Buffer.from("png"));
-		const image = { generatePostCard } as unknown as ImageRenderer;
-		b.engine.setImage(image);
-
-		const next = dyn();
-		(next as { id_str: string }).id_str = "d2";
-		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [next] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(generatePostCard).toHaveBeenCalledTimes(1);
-	});
-
-	it("setAi 多次替换 → 下次 detect 用最新引用(reload ai plugin 场景)", async () => {
-		const oldComment = vi.fn().mockResolvedValue("旧点评");
-		const newComment = vi.fn().mockResolvedValue("新点评");
-		const oldAi = { comment: oldComment } as unknown as CommentaryGenerator;
-		const newAi = { comment: newComment } as unknown as CommentaryGenerator;
-		const b = makeEngine({
-			withAi: false,
-			withImage: false,
-			config: { aiEnabled: true },
-		});
-		seed(b.engine, "1", 500);
-		b.engine.setAi(oldAi);
-		b.engine.setAi(newAi); // 第二次替换 = ai plugin reload
-
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [dyn()] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(oldComment).not.toHaveBeenCalled();
-		expect(newComment).toHaveBeenCalledTimes(1);
-	});
-
-	it("setImage(undefined) → 撤销后 detectDynamics 不再调 generatePostCard", async () => {
-		const generatePostCard = vi.fn().mockResolvedValue(Buffer.from("png"));
-		const image = { generatePostCard } as unknown as ImageRenderer;
-		const b = makeEngine({
-			withImage: false,
-			withAi: false,
-		});
-		seed(b.engine, "1", 500);
-		b.engine.setImage(image);
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [dyn()] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(generatePostCard).toHaveBeenCalledTimes(1);
-
-		b.engine.setImage(undefined);
-		const next = dyn();
-		(next as { id_str: string }).id_str = "d2";
-		(next.modules.module_author as { pub_ts: number }).pub_ts = 2000;
-		b.fetchAllDynamic.mockResolvedValue({
-			code: 0,
-			data: { items: [next] },
-		} as unknown as AllDynamicResponse);
-		await detect(b.engine);
-		expect(generatePostCard).toHaveBeenCalledTimes(1);
-	});
-});
-
-// 从前这里有一整块「动态卡背景轮换」(`pickDynamicColorOptions` + 注入的选择器 + 全局
-// 默认图廊兜底)。整条 `cardStyle.backgroundImages` 链 2026-09-20 删掉(背景图归皮肤的
-// `image` 旋钮),剩下那道 enable 闸归 `card-style.test.ts`。
-
-// ---------------------------------------------------------------------------
-// H. 消息版式(messageLayout)— 发送侧结构自定义
-// ---------------------------------------------------------------------------
-
-describe("DynamicEngine.detectDynamics — 消息版式(messageLayout)", () => {
-	type Seg = { kind: string; text?: string };
-	const layoutOf = (
-		blocks: Array<{ type: string; visible?: boolean; id?: string }>,
-		separator = "\n",
-	): NonNullable<SubItemView["messageLayout"]> => ({
-		blocks: blocks.map((x) => ({ id: x.id ?? x.type, type: x.type, visible: x.visible ?? true })),
-		separator,
-	});
-	const seedLayout = (
-		b: EngineBag,
-		layout: SubItemView["messageLayout"],
-		extra?: Partial<SubItemView>,
-	): void => {
-		seed(b.engine, "1", 0, { uid: "1", uname: "UP", messageLayout: layout, ...extra });
-	};
-	const URL1 = "https://t.bilibili.com/id-1";
-
-	it("默认版式(card,text,link 合并一条):模板按 url='' 渲染,链接独立成段,同条内换行连接", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
-		await detect(b.engine);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.kind)).toEqual(["image", "text"]);
-		// 默认模板 "{name}发布了一条动态" → "UP发布了一条动态",链接作为独立部件在同条内以
-		// 分隔符(\n)连接。
-		expect(segments[1]?.text).toBe(`UP发布了一条动态\n${URL1}`);
-	});
-
-	it("分条符切两条 → 本体那个锚点里是两条的序列,不是单条", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(
-			b,
-			layoutOf([
-				{ type: "card" },
-				{ type: "split", id: "split-1" },
-				{ type: "text" },
-				{ type: "link" },
-			]),
-		);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-		expect(b.push.pushedSequence).toHaveBeenCalledTimes(1);
-		const [uid, messages, role] = b.push.pushedSequence.mock.calls[0] as [string, Seg[][], string];
-		expect(uid).toBe("1");
-		expect(role).toBe("main");
-		expect(messages).toHaveLength(2);
-		expect(messages[0]?.map((s) => s.kind)).toEqual(["image"]);
-		expect(messages[1]?.map((s) => s.kind)).toEqual(["text"]);
-		expect(messages[1]?.[0]?.text).toBe(`UP发布了一条动态\n${URL1}`);
-	});
-
-	it("隐藏 card 块 → 直接跳过图片渲染(不浪费渲染)", async () => {
-		const b = makeEngine({ withImage: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(b, layoutOf([{ type: "card", visible: false }, { type: "text" }, { type: "link" }]));
-		await detect(b.engine);
-		expect(b.generatePostCard).not.toHaveBeenCalled();
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.kind)).toEqual(["text"]);
-	});
-
-	it("隐藏 text 块 → 跳过 AI 调用(省 token),消息里无文本部件", async () => {
-		const b = makeEngine({ withImage: true, withAi: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, text: "有可提取文本" })]),
-		);
-		seedLayout(b, layoutOf([{ type: "card" }, { type: "text", visible: false }, { type: "link" }]));
-		await detect(b.engine);
-		expect(b.comment).not.toHaveBeenCalled();
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.kind)).toEqual(["image", "text"]);
-		expect(segments[1]?.text).toBe(URL1);
-	});
-
-	it("全部块隐藏 → 本条不推送,但锚点照常推进(下轮不重推)", async () => {
-		const b = makeEngine({ withImage: true });
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(
-			b,
-			layoutOf([
-				{ type: "card", visible: false },
-				{ type: "text", visible: false },
-				{ type: "link", visible: false },
-			]),
-		);
-		await detect(b.engine);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-		expect(b.push.pushedSequence).not.toHaveBeenCalled();
-		expect(b.generatePostCard).not.toHaveBeenCalled();
-	});
-
-	// 刻画(ADR-0019 决策 67 把装配合成一份之前钉的现状):自定义连接符、隐藏的分条符
-	// 不切组、卡片夹在文字中间时前后两段文字各自成段、卡片段带 image/jpeg。
-	it("自定义连接符连相邻文字;隐藏的分条符不切组", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockResolvedValue(Buffer.from("png"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(
-			b,
-			layoutOf(
-				[
-					{ type: "link" },
-					{ type: "split", id: "split-1", visible: false },
-					{ type: "text" },
-					{ type: "card" },
-				],
-				" | ",
-			),
-		);
-		await detect(b.engine);
-		expect(b.push.pushedSequence).not.toHaveBeenCalled();
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.kind)).toEqual(["text", "image"]);
-		expect(segments[0]?.text).toBe(`${URL1} | UP发布了一条动态`);
-	});
-
-	it("卡片夹在文字中间 → 前后两段文字各自成段,卡片段是 image/jpeg", async () => {
-		const b = makeEngine({ withImage: true });
-		const png = Buffer.from("png");
-		b.generatePostCard.mockResolvedValue(png);
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(b, layoutOf([{ type: "text" }, { type: "card" }, { type: "link" }]));
-		await detect(b.engine);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Array<
-			Seg & { buffer?: Buffer; mime?: string }
-		>;
-		expect(segments.map((s) => s.kind)).toEqual(["text", "image", "text"]);
-		expect(segments[0]?.text).toBe("UP发布了一条动态");
-		expect(segments[1]).toMatchObject({ buffer: png, mime: "image/jpeg" });
-		expect(segments[2]?.text).toBe(URL1);
-	});
-
-	it("渲染失败 → card 部件缺席,其余部件照发(软降级不变)", async () => {
-		const b = makeEngine({ withImage: true });
-		b.generatePostCard.mockRejectedValue(new Error("boom"));
-		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
-		seedLayout(b, layoutOf([{ type: "card" }, { type: "text" }, { type: "link" }]));
-		await detect(b.engine);
-		const segments = b.push.pushedMessage.mock.calls[0]?.[1] as Seg[];
-		expect(segments.map((s) => s.kind)).toEqual(["text"]);
-		expect(segments[0]?.text).toBe(`UP发布了一条动态\n${URL1}`);
 	});
 });
 
@@ -2700,8 +1436,8 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 	 */
 	const seedStatsOnly = (b: EngineBag, uid: string): void => {
 		b.engine.startDynamicDetector({
-			[uid]: { uid, uname: "UP", post: false },
-			other: { uid: "other", uname: "别人", post: true },
+			[uid]: { uid, post: false },
+			other: { uid: "other", post: true },
 		} as never);
 	};
 	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
@@ -2718,7 +1454,7 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		seedStatsOnly(b, "1");
 		await detect(b.engine);
 		expect(detected(b)).toHaveLength(1);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
 	it("推送关掉的 UP 锚点照常推进 —— 否则每轮把同一条重新 emit 一遍", async () => {
@@ -2736,21 +1472,6 @@ describe("DynamicEngine.detectDynamics — dynamic-detected 事件", () => {
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(true);
 		b.engine.applyOps([{ kind: "delete", uid: "1" }]);
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
-	});
-
-	it("被过滤器屏蔽 → 仍然 emit —— 统计的是 UP 的产出,不是推送次数", async () => {
-		const b = makeEngine({
-			config: {
-				filter: { ...DEFAULT_CONTENT_FILTERS, blockKeywords: ["禁词"] },
-			},
-		});
-		b.fetchAllDynamic.mockResolvedValue(
-			resp([makeItem({ uid: 1, pubTs: 1000, text: "含禁词的动态" })]),
-		);
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.push.pushedMessage).not.toHaveBeenCalled();
-		expect(detected(b)).toHaveLength(1);
 	});
 });
 
@@ -2804,40 +1525,6 @@ describe("DynamicEngine.lastFetchAt", () => {
 	});
 });
 
-describe("联网搜索 override(aiWebSearch)", () => {
-	/**
-	 * 引擎自己不碰搜索 —— 它只负责把 per-engine 开关翻成这一次 comment() 的
-	 * override.webSearch。执行器在不在、要不要真挂工具,是生成器的事。
-	 */
-	const oneDyn = () => {
-		return resp([makeItem({ uid: 1, pubTs: 1000, text: "原始内容" })]);
-	};
-
-	it("aiWebSearch 开着 → comment 的 override 带 webSearch:true", async () => {
-		const b = makeEngine({ withAi: true, config: { aiEnabled: true, aiWebSearch: true } });
-		b.comment.mockResolvedValue("点评");
-		b.fetchAllDynamic.mockResolvedValue(oneDyn());
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		expect(b.comment).toHaveBeenCalledWith(
-			expect.any(String),
-			"dynamic",
-			expect.anything(),
-			expect.objectContaining({ webSearch: true }),
-		);
-	});
-
-	it("没开 aiWebSearch → override 不带 webSearch(现状不变)", async () => {
-		const b = makeEngine({ withAi: true, config: { aiEnabled: true } });
-		b.comment.mockResolvedValue("点评");
-		b.fetchAllDynamic.mockResolvedValue(oneDyn());
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-		const override = b.comment.mock.calls[0]?.[3] as Record<string, unknown> | undefined;
-		expect(override?.webSearch).toBeUndefined();
-	});
-});
-
 // ---------------------------------------------------------------------------
 // K. detectNow —— devtools「现在就跑」
 // ---------------------------------------------------------------------------
@@ -2862,11 +1549,11 @@ describe("K. detectNow", () => {
 		seed(b.engine, "1", 0);
 		await b.engine.detectNow();
 		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(1);
-		expect(b.push.pushedMessage).toHaveBeenCalledTimes(1);
+		expect(b.reportPost).toHaveBeenCalledTimes(1);
 	});
 
 	it("cron tick 撞上在跑的一轮就跳过;detectNow 撞上则排在后面再跑一轮", async () => {
-		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		const first = deferred();
 		b.fetchAllDynamic.mockReturnValueOnce(first.promise).mockResolvedValue(resp([]));
 		b.engine.start();
@@ -2890,7 +1577,7 @@ describe("K. detectNow", () => {
 		// 锁挂在实例上,活得比 cron job 长。一轮要是永远不落定(渲染闸堆住之类),
 		// 旧写法的 tick 会全部静默丢弃 —— 而且是**永久**:登录恢复 / 改 cron 重建 job
 		// 也救不回来。停掉检测器时锁得跟着松开,重启才算真的重新武装。
-		const b = makeEngine({ subs: { "1": { uid: "1", uname: "UP", post: true } } });
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		const stuck = deferred();
 		b.fetchAllDynamic.mockReturnValueOnce(stuck.promise).mockResolvedValue(resp([]));
 		b.engine.start();

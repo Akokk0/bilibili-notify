@@ -852,6 +852,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			guardIcons: runtime.guardIcons,
 			imageFetcher: postImageFetcher,
 			resolveImageRef: imageRefDataUrl(runtime.imageStore),
+			// AI 点评看只有图库引用的图(拓展作品)时核心要量字节数,读口回字节与类型。
+			readImage: (ref) => runtime.imageStore.read(ref),
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,
 			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),

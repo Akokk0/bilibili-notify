@@ -13,6 +13,14 @@ import { Buffer } from "node:buffer";
 import type { ImageRef } from "@bilibili-notify/internal";
 import type { ImageStore } from "./image-store.js";
 
+/**
+ * 一张图的字节 + 类型 → data URL(`data:<mime>;base64,…`)。纯函数:作品点评看图、拓展作品卡、锐评卡与出图器的引用解析
+ * 拼的是同一种串,只此一份。
+ */
+export function bytesDataUrl(mime: string, bytes: Uint8Array): string {
+	return `data:${mime};base64,${Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64")}`;
+}
+
 export function imageRefDataUrl(
 	store: Pick<ImageStore, "read">,
 ): (ref: ImageRef) => Promise<string | undefined> {
@@ -24,6 +32,6 @@ export function imageRefDataUrl(
 			return undefined;
 		}
 		if (!found) return undefined;
-		return `data:${found.mime};base64,${Buffer.from(found.bytes).toString("base64")}`;
+		return bytesDataUrl(found.mime, found.bytes);
 	};
 }

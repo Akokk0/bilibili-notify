@@ -6,8 +6,6 @@ export {
 } from "./dynamic-engine";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 export type {
-	FilteredPost,
-	PostPush,
 	PushLike,
 	SubItemView,
 	SubManagerView,

@@ -1,31 +1,18 @@
-import type { CommentaryProvider } from "@bilibili-notify/ai";
-import type { ImageRenderer } from "@bilibili-notify/image";
-import {
-	DEFAULT_CONTENT_FILTERS,
-	type Disposable,
-	type ImageRef,
-	type Logger,
-	type MessageBus,
-	type Post,
-	type PostImage,
-	type ServiceContext,
+import type {
+	Disposable,
+	Logger,
+	MessageBus,
+	Post,
+	PostReport,
+	ServiceContext,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
-import {
-	type CardFailureTracker,
-	createCardFailureTracker,
-	deliverPost,
-	type NeutralWork,
-	type WorkDeliveryConfig,
-} from "../../posts/deliver-post";
-import { filterPost, type PostFilterReason, type PostFilterRules } from "../../posts/post-filter";
-import { postText } from "../../posts/post-text";
+import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../images";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type {
-	FilteredPost,
 	PushLike,
 	SubItemView,
 	SubManagerView,
@@ -43,7 +30,7 @@ const LOG_TAG = "bilibili-notify-dynamic";
  */
 const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
 
-/** B 站的开播伪动态:开播由直播引擎推,动态这边只记统计。 */
+/** B 站的开播伪动态:开播由直播引擎推,动态这边只记统计、不交作品。 */
 const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
 
 function parseUid(raw: unknown): string | undefined {
@@ -116,77 +103,39 @@ function getDynamicPostTime(author: Dynamic["modules"]["module_author"]): number
  * from its config store. The `logLevel` field is intentionally dropped — the host
  * sets logger level externally via {@link ServiceContext}.
  *
- * 模板 / 图集 / 出图 / AI 那几格是作品装配的引擎级设置(见 {@link WorkDeliveryConfig}),
- * 这里只多出 B 站这头自己的:轮询节奏、视频链接换 BV、过滤。
+ * 引擎只管生产:轮询节奏与视频链接怎么写是它自己的两样;模板 / 图集 / 出图 / AI / 过滤那些都是核心装配的事
+ * (`posts/deliver-post.ts` 的 `PostSettings`,每条作品现折),不再经引擎。
  */
-export interface DynamicEngineConfig extends WorkDeliveryConfig {
+export interface DynamicEngineConfig {
 	/** 轮询动态的 cron 表达式。 */
 	dynamicCron: string;
 	/** 视频动态时是否将 URL 替换为 BV 号。 */
 	dynamicVideoUrlToBV: boolean;
-	/** 内容过滤(折好的 `ContentFilters`)。 */
-	filter: PostFilterRules;
 }
 
 export interface DynamicEngineOptions {
 	serviceCtx: ServiceContext;
 	bus: MessageBus;
 	api: Api;
+	/** 宿主给的出口:引擎只剩给主人发私信(风控 / 故障告警)这一样。 */
 	push: PushLike;
-	/** 可选注入：图片渲染器；缺失时降级为纯文字推送。 */
-	image?: ImageRenderer;
-	/** 可选注入：AI 点评生成器；缺失时跳过 AI 文案生成。 */
-	ai?: CommentaryProvider;
 	/**
-	 * 抓图服务(用 B 站接口那个请求客户端建的,`runtime/engines.ts`):出卡前把作品里只有地址的图抓进图库。
-	 * 必给 —— 漏给是编译不过,不是悄悄不出图。
+	 * 抓图服务(用 B 站接口那个请求客户端建的,`runtime/engines.ts`):**交出作品之前**把作品里只有地址的图抓进图库
+	 * (被过滤的、关了出图的动态也抓,代价主人知情)。必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
 	imageFetcher: ImagesDeps["images"];
 	/**
-	 * 订阅 id → 订阅资料里的头像引用。**出卡那一刻现读**(资料里的头像之后才补上、或被换掉都要跟上),
-	 * 必给 —— 漏给编译不过。
+	 * 把一条作品交给核心的作品入口(`PostQueue`)。**没有返回值**:交完就算,不等装配、不看结果,意外抛错由核心入口自己接住;
+	 * 引擎只负责在交出后把时间线前移。签名就是订阅源上下文里 `ctx.reportPost` 的签名:来源只说「谁(外部 id)发了什么」,
+	 * 订阅由宿主按身份查。必给。
 	 */
-	avatarOf: (subscriptionId: string) => ImageRef | undefined;
-	/**
-	 * 一条作品被过滤挡下了 —— 交给宿主在推送历史里留一行(只留痕,不是推送,所以不走 `push`)。
-	 * 必给 —— 漏给编译不过。同步调、不等它;它抛错只记日志,不影响这一轮。
-	 */
-	onPostFiltered: (filtered: FilteredPost) => void;
+	reportPost: (externalId: string, report: PostReport) => void;
 	config: DynamicEngineConfig;
-	/**
-	 * 出图连续失败的计数(只提醒一次)。宿主想让 B 站动态与拓展作品共用一份(同一个渲染器,
-	 * 同一次故障只提醒一遍)就传进来;不传则引擎自己建一份。
-	 */
-	cardFailures?: CardFailureTracker;
 	/**
 	 * Adapter 提供的订阅快照访问器。返回 null 表示订阅尚未就绪
 	 * （engine 会在收到 `subscription-changed` / `auth-restored` 后再次拉取）。
 	 */
 	getSubs: () => SubscriptionsView | null;
-}
-
-/** 从动态数据中提取图片 URL，用于多模态 AI 点评(装配只看前 4 张) */
-function extractDynamicImages(item: Dynamic): string[] {
-	const mod = item.modules?.module_dynamic;
-	const urls: string[] = [];
-	// 图文动态（draw，纯图片帖）
-	// P2:这些字段经 as-cast 绕过索引类型,运行时可能是对象。`typeof===string`
-	// 运行时守卫,杜绝对象被 push 进 string[] 后当图片 URL 喂多模态 AI。
-	if (mod?.major?.draw?.items) {
-		for (const img of mod.major.draw.items as Array<{ src?: unknown }>) {
-			if (typeof img.src === "string" && img.src) urls.push(img.src);
-		}
-	}
-	// 专栏/opus 图片列表
-	if (mod?.major?.opus?.pics) {
-		for (const pic of mod.major.opus.pics) {
-			if (typeof pic.url === "string" && pic.url) urls.push(pic.url);
-		}
-	}
-	// 视频封面（archive 有 [key: string]: any）
-	const archiveCover: unknown = mod?.major?.archive?.cover;
-	if (typeof archiveCover === "string" && archiveCover) urls.push(archiveCover);
-	return urls;
 }
 
 /**
@@ -202,85 +151,18 @@ function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): st
 }
 
 /**
- * 图集的图:只有图文动态(`DYNAMIC_TYPE_DRAW`)附。原图在 major.draw.items[].src;部分 opus 包裹的
- * 图文帖图在 major.opus.pics[].url(此前只读 opus.pics → 纯 DRAW 帖的图组被静默丢弃)。两处都带
- * width/height(B 站图集元数据)—— 透传给需要原始尺寸的平台(QQ 原生 markdown 多图
- * `![#宽px #高px]`),其余平台只用 url。
- */
-function extractGallery(item: Dynamic): PostImage[] {
-	if (item.type !== "DYNAMIC_TYPE_DRAW") return [];
-	const major = item.modules?.module_dynamic?.major;
-	const images: PostImage[] = [];
-	for (const it of (major?.draw?.items ?? []) as Array<{
-		src?: string;
-		width?: number;
-		height?: number;
-	}>) {
-		if (it.src) images.push({ url: it.src, width: it.width, height: it.height });
-	}
-	for (const pic of major?.opus?.pics ?? []) {
-		if (pic.url) images.push({ url: pic.url, width: pic.width, height: pic.height });
-	}
-	return images;
-}
-
-/**
- * B 站原始动态 + 它翻好的中立作品 → 装配吃的作品(ADR-0019 决策 66)。出卡之后那一段(`deliverPost`)与拓展
- * 共用,不再读原始数据 —— 它要的这几样在这里一次翻好。翻译(`postFromDynamic`)由调用方做一次,过滤、
- * AI 点评的文字(`postText(post, "labeled")`,取段只此一份)、出卡(`generatePostCard`)共用同一份 `Post`;
- * 只有链接、图集这些 B 站自己的东西还读原始动态。
- */
-function workFromDynamic(
-	item: Dynamic,
-	post: Post,
-	name: string,
-	videoUrlToBV: boolean,
-	imagesDeps: ImagesDeps,
-	/** 外层作者的头像(订阅资料里的图库引用):出卡那一刻才调,每张卡现读;没有就是 `undefined`。 */
-	readAvatar: () => ImageRef | undefined,
-): NeutralWork {
-	const isVideo = item.type === "DYNAMIC_TYPE_AV";
-	// 图在**确定要出卡时**才抓进图库(renderCard 被调到才抓):被过滤掉的、关了出图的、没有渲染器的动态
-	// 一张都不抓。一条作品只抓一次(抓图不抛,所以缓存的是 Promise 本身,并发的几次调用共用同一趟)。
-	let fetched: Promise<Post> | undefined;
-	return {
-		// 出图器不认识任何 B 站字段,走出卡器的唯一入口。
-		renderCard: async (image, colorOptions) => {
-			// 头像:外层作者读订阅资料里的引用(出卡这一刻现读、零网络),转发的原作者按原始动态里的地址和配图一起现抓;
-			// 正文表情的图地址也从原始动态读(翻译不带),同一步抓。
-			fetched ??= fetchPostImages(post, imagesDeps, {
-				avatar: readAvatar(),
-				repostAvatarUrl: repostAvatarUrlOf(item),
-				emojiUrls: emojiUrlsOf(item),
-			});
-			return image.generatePostCard(await fetched, colorOptions);
-		},
-		link: dynamicLink(item, isVideo, videoUrlToBV),
-		name,
-		isVideo,
-		commentText: postText(post, "labeled"),
-		commentImages: extractDynamicImages(item),
-		postNoun: "动态",
-		gallery: extractGallery(item),
-	};
-}
-
-/**
- * 平台中立的动态轮询/过滤/渲染核心。
+ * 平台中立的动态轮询与生产核心。
  *
- * - 不依赖任何宿主框架;宿主(独立端 runtime)提供 ServiceContext / MessageBus / PushLike。
- * - image / ai 通过 **构造期注入**(不在 detect 循环内做服务查找),缺失时降级。
+ * - 不依赖任何宿主框架;宿主(独立端 runtime)提供 ServiceContext / MessageBus / PushLike / reportPost。
+ * - 只管生产:拉 feed、判新、翻成中立作品、抓图、交给核心入口。怎么消费(过滤、出卡、点评、推送、图集)不归它。
  */
 export class DynamicEngine {
 	private readonly serviceCtx: ServiceContext;
 	private readonly bus: MessageBus;
 	private readonly api: Api;
 	private readonly push: PushLike;
-	private image?: ImageRenderer;
-	private ai?: CommentaryProvider;
 	private readonly imageFetcher: ImagesDeps["images"];
-	private readonly avatarOf: (subscriptionId: string) => ImageRef | undefined;
-	private readonly onPostFiltered: (filtered: FilteredPost) => void;
+	private readonly reportPost: (externalId: string, report: PostReport) => void;
 	private readonly logger: Logger;
 	private readonly getSubs: () => SubscriptionsView | null;
 
@@ -322,8 +204,6 @@ export class DynamicEngine {
 	private authLost = false;
 	private dynamicSubManager: SubManagerView = new Map();
 	private dynamicTimelineManager: DynamicTimelineManager = new Map();
-	/** 出图连续失败的计数:只提醒一次、不停 cron(可能与拓展作品那条路共用一份)。 */
-	private readonly cardFailures: CardFailureTracker;
 	/**
 	 * 上次**成功**拉到动态列表的时刻。`undefined` = 起来以后一次都没成功过。
 	 *
@@ -339,15 +219,11 @@ export class DynamicEngine {
 		this.bus = opts.bus;
 		this.api = opts.api;
 		this.push = opts.push;
-		this.image = opts.image;
-		this.ai = opts.ai;
 		this.imageFetcher = opts.imageFetcher;
-		this.avatarOf = opts.avatarOf;
-		this.onPostFiltered = opts.onPostFiltered;
+		this.reportPost = opts.reportPost;
 		this.config = opts.config;
 		this.getSubs = opts.getSubs;
 		this.logger = opts.serviceCtx.logger;
-		this.cardFailures = opts.cardFailures ?? createCardFailureTracker();
 	}
 
 	/** 启动钩子。Adapter 在 ServiceContext 就绪、订阅可访问后调用。 */
@@ -437,27 +313,11 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 热替换 CommentaryProvider 实例。adapter 在用户运行时打开 / 关闭 / 更换 AI
-	 * 配置后调用,引擎随后的动态点评会立即用新实例 (或回退到纯文字) ,无需重启 server。
-	 */
-	/**
 	 * 上次成功拉到动态列表的时刻(epoch ms),`undefined` = 一次都还没成功。
 	 * 独立端的 `/status` 用它回答「还在跑吗」。
 	 */
 	lastFetchAt(): number | undefined {
 		return this.lastSuccessfulFetchAt;
-	}
-
-	setAi(ai: CommentaryProvider | undefined): void {
-		this.ai = ai;
-	}
-
-	/**
-	 * 热替换 ImageRenderer 实例。与 setAi 对称:宿主在渲染器上下线(空闲关浏览器 /
-	 * 卡片渲染开关)时调用,引擎随后的卡片渲染会立即用新实例(或回退到纯文字),无需重启。
-	 */
-	setImage(image: ImageRenderer | undefined): void {
-		this.image = image;
 	}
 
 	get isActive(): boolean {
@@ -479,9 +339,9 @@ export class DynamicEngine {
 		// 两张表的口径**刻意不同**:
 		//   dynamicTimelineManager —— 「已观测」锚点,覆盖**每一个订阅**
 		//   dynamicSubManager      —— 推送订阅表,只收动态推送开着的
-		// 统计口径是「UP 发了多少」,per-UP 开关只决定推不推(见 platform.ts 的
-		// dynamic-detected 契约)。两者曾是同一张表,于是关掉开关的 UP 在检测循环里
-		// `timeline === undefined` 就被 continue 掉,统计侧给出笃定的 0。
+		// 统计口径是「UP 发了多少」,per-UP 开关只决定产不产作品(见 platform.ts 的
+		// dynamic-detected 契约):名单外的订阅不翻译、不抓图、不交,时间线与统计照常。两者曾是同一张表,
+		// 于是关掉开关的 UP 在检测循环里 `timeline === undefined` 就被 continue 掉,统计侧给出笃定的 0。
 		const dynamicSubManager: SubManagerView = new Map();
 		for (const sub of Object.values(subs)) {
 			// 只为新增 UID 设置初始时间戳，保留已有 UID 的时间戳避免重推旧动态
@@ -530,20 +390,6 @@ export class DynamicEngine {
 		if (!this.dynamicSubManager.has(uid)) return;
 		this.dynamicSubManager.delete(uid);
 		this.logger.debug(`[ops] 移除动态订阅 UID：${uid}`);
-	}
-
-	/**
-	 * UID 是否仍订阅。detectDynamics 在 image/AI/broadcast 等多个 await 处挂起,
-	 * `applyOps`(由 adapter 在 subscription-changed 时调,**不**在 withLock 内)
-	 * 可在挂起期 stopDynamicForUid 删表。每个 dispatch / 时间线回写前用它重校,
-	 * 否则会给已退订 UID 推送、并把其时间线“复活”进而长期抑制再订阅后的动态。
-	 */
-	private stillSubscribed(uid: string, expected?: SubItemView): boolean {
-		if (!this.dynamicSubManager.has(uid)) return false;
-		// P2:仅 has(uid) 无法分辨「同 uid 被 delete + re-add」—— 跨 await 期间
-		// applyOps 删旧 sub 再加一个新 SubItemView(新对象引用/新配置),会把本轮
-		// 早先捕获的陈旧 item 当作新订阅推出。给定 expected 时按对象身份比对。
-		return expected === undefined || this.dynamicSubManager.get(uid) === expected;
 	}
 
 	/** Incrementally apply subscription ops without restarting the cron job. */
@@ -619,7 +465,7 @@ export class DynamicEngine {
 			job = new CronJob(this.config.dynamicCron, () => void this.runDetectLocked());
 		} catch (err) {
 			this.logger.error(
-				`[detector] dynamicCron="${this.config.dynamicCron}" 无法解析,动态检测未启动：${err instanceof Error ? err.message : String(err)}`,
+				`[detector] dynamicCron="${this.config.dynamicCron}" 无法解析,动态检测未启动：${errorMessageOf(err)}`,
 			);
 			return;
 		}
@@ -692,9 +538,7 @@ export class DynamicEngine {
 		if (this.detectInFlight) return this.detectInFlight;
 		const round = this.detectDynamics()
 			.catch((err: unknown) => {
-				this.logger.error(
-					`[detector] 动态检测执行异常：${err instanceof Error ? err.message : String(err)}`,
-				);
+				this.logger.error(`[detector] 动态检测执行异常：${errorMessageOf(err)}`);
 			})
 			.finally(() => {
 				this.detectInFlight = null;
@@ -721,7 +565,7 @@ export class DynamicEngine {
 			content = (await this.api.fetchAllDynamic()) as AllDynamicResponse;
 		} catch (e) {
 			// Q3:per-tick 拉取失败,cron 下一 tick 自重试、系统继续 → warn 不冒充事故。
-			this.logger.warn(`[api] 获取动态失败：${e instanceof Error ? e.message : String(e)}`);
+			this.logger.warn(`[api] 获取动态失败：${errorMessageOf(e)}`);
 			return;
 		}
 
@@ -737,21 +581,12 @@ export class DynamicEngine {
 		this.lastSuccessfulFetchAt = Date.now();
 		this.logger.debug("[detector] 成功获取动态信息，开始处理");
 
-		// DY1:per-uid 记账 —— 成功处理(含被过滤/开播伪动态/已发)的 pub_ts 进
-		// okTs,投递抛错的进 failTs。write-back 时只把锚点单调推进到「早于本 uid
-		// 最早失败项」的最大成功 pub_ts,既不因单条 reject 整轮 abort 导致已发项
-		// 下轮重推,也绝不越过失败项静默丢动态。
-		const okTs: Record<string, number[]> = {};
-		const failTs: Record<string, number[]> = {};
-		const markOk = (u: string, ts: number) => {
-			const arr = okTs[u];
-			if (arr) arr.push(ts);
-			else okTs[u] = [ts];
-		};
-		const markFail = (u: string, ts: number) => {
-			const arr = failTs[u];
-			if (arr) arr.push(ts);
-			else failTs[u] = [ts];
+		// per-uid 记账:每条越过时间线闸的动态**恰好前移一次** —— 交出去的、翻译失败的、抓图/入口出错的、
+		// 开播伪动态、名单外的,一律记它的 pub_ts。作品交出去就算(核心不替来源重放,留着不前移只会下一轮重交一遍)。
+		// 回写时每个 uid 取 max(现值, 本轮记下的最大 pub_ts),绝不回退。
+		const advanced = new Map<string, number>();
+		const markAdvance = (u: string, ts: number) => {
+			advanced.set(u, Math.max(advanced.get(u) ?? 0, ts));
 		};
 
 		for (const item of content.data.items) {
@@ -764,8 +599,7 @@ export class DynamicEngine {
 				continue;
 			}
 
-			const timeline = this.dynamicTimelineManager.get(uid);
-			if (timeline === undefined) continue; // not subscribed
+			if (!this.dynamicTimelineManager.has(uid)) continue; // not subscribed
 
 			const postTime = getDynamicPostTime(author);
 			if (postTime === undefined) {
@@ -782,14 +616,13 @@ export class DynamicEngine {
 				`[detector] 检查动态 UP=${name} UID=${uid} 发布时间=${DateTime.fromSeconds(postTime).toFormat("yyyy-MM-dd HH:mm:ss")}`,
 			);
 
-			if (timeline >= postTime) continue; // already pushed
+			if (!this.isDue(uid, postTime)) continue; // already pushed
 
-			// 统计埋点:越过闸门 == 这条动态首次被看到。刻意放在 filter / per-UP
-			// 开关 / 投递之前 —— 统计口径是「UP 发了多少」,被屏蔽或推送失败的
-			// 动态同样算 UP 的产出。
+			// 统计埋点:越过闸门 == 这条动态首次被看到。刻意放在 翻译 / 交作品 之前 —— 统计口径是「UP 发了多少」,
+			// 被屏蔽或推送失败的动态同样算 UP 的产出。
 			//
-			// 注意**不是 exactly-once**:下面投递抛错会走 markFail、锚点不前移,
-			// 下一轮重判会把同一条再 emit 一次。消费方必须按 id 幂等。
+			// 每条动态本轮结束时恰好前移一次,所以通常只发一次;但进程在两轮之间崩了、或本轮中途整轮抛错,
+			// 下一轮会重判、再发一次。消费方照旧按 id 幂等。
 			this.bus.emit("dynamic-detected", {
 				uid,
 				id: item.id_str,
@@ -797,117 +630,27 @@ export class DynamicEngine {
 				ts: new Date(postTime * 1000).toISOString(),
 			});
 
-			// 开播伪动态:开播由直播引擎推,这里统计记上就算处理完(推进锚点)。按类型认、放在
-			// 过滤与出卡之前 —— 从前靠出卡时抛错、再按错误文案接住来跳过,关了出图或版式藏起
-			// 卡片时根本不出卡,它就被当普通动态推出去、和直播引擎的开播撞车(ADR-0019 决策 66)。
+			// 开播伪动态:开播由直播引擎推,这里统计记上就算处理完(推进锚点)。按类型认、放在翻译之前 ——
+			// 翻译对它会抛。
 			if (item.type === DYNAMIC_TYPE_LIVE_RCMD) {
-				markOk(uid, postTime);
+				markAdvance(uid, postTime);
 				continue;
 			}
 
-			// 这位 UP 关了动态推送:统计已经记上,推送就到此为止。锚点仍要推进 ——
-			// 不推进的话每一轮都会把同一条重新 emit 一遍(store 按 id 去重兜得住,
+			// 这位 UP 关了动态推送(不在推送名单里):统计已经记上,生产就到此为止 —— 不翻译、不抓图、不交。
+			// 锚点仍要推进 —— 不推进的话每一轮都会把同一条重新 emit 一遍(store 按 id 去重兜得住,
 			// 但每次都要整份重读 jsonl,白烧盘)。
-			//
-			// P2:同时捕获本轮处理起点的 sub 对象引用,跨 await 后用它做身份校验,
-			// 区分「仍是同一订阅」与「同 uid 被 delete+re-add 成另一个」。
-			const subAtCapture = this.dynamicSubManager.get(uid);
-			if (!subAtCapture) {
-				markOk(uid, postTime);
+			if (!this.dynamicSubManager.has(uid)) {
+				markAdvance(uid, postTime);
 				continue;
 			}
 
-			// DY1:每条 qualifying item 必须恰好 markOk 或 markFail 一次。投递抛
-			// 错只标记本条 fail 并 continue,绝不让异常冒泡 abort 整轮(否则同轮
-			// 已成功发出的早项下轮重推)。
-			try {
-				// 翻译只做一次(ADR-0021 决策 43):原始动态先翻成中立的 `Post`,过滤、AI 点评、出卡共用这一份。
-				// 翻译是宽容的、不该抛;真抛了(接口出了没见过的残条)是这条动态本身没法判,重试也是同一个结果
-				// —— 记一笔 warn 跳过、推进锚点,别让它卡住这位 UP、也别每一轮把同批更新的动态再推一遍。
-				let post: Post;
-				try {
-					post = postFromDynamic(item);
-				} catch (e) {
-					this.logger.warn(
-						`[detector] 动态翻译失败,已跳过 UID=${uid} ID=${item.id_str ?? "?"}：${(e as Error).message}`,
-					);
-					markOk(uid, postTime);
-					continue;
-				}
-
-				// Filter — per-UP filter override (从 SubItemView 上拿) 优先于 engine 的全局 filter。
-				// adapter 已通过 resolve(sub, defaults).filters 完成 inherit / partial 折叠，这里
-				// 拿到的是完整的 ContentFilters。per-UP 覆盖里的空规则也算 override 生效，结果是「该 UP
-				// 单独关掉所有屏蔽规则」—— 与全局 filter 完全脱钩，符合用户意图。
-				const effFilter = subAtCapture.filter ?? this.config.filter ?? DEFAULT_CONTENT_FILTERS;
-				const filterResult = filterPost(post, effFilter, this.logger);
-				if (filterResult.blocked) {
-					this.logger.debug(`[filter] 动态 ID=${item.id_str} 被过滤，原因：${filterResult.reason}`);
-					// 留痕:交给宿主在推送历史里记一行。只交文字与地址 —— 不出卡、不抓图、不调 AI,也不往外发任何东西。
-					// best-effort:记不下就算了,绝不因此让这条动态下一轮重判(那会把同一条重复记进历史)。
-					try {
-						this.onPostFiltered({
-							uid,
-							filteredBy: filterResult.reason as PostFilterReason,
-							text: postText(post, "plain"),
-							// 原帖 = 这条动态自己的页面(视频动态也有),不随「视频链接换成 BV 号」那个设置变。
-							url: dynamicLink(item, false, false),
-						});
-					} catch (e) {
-						this.logger.warn(`[filter] 被过滤的动态留痕失败(忽略): ${(e as Error).message}`);
-					}
-					// 被过滤 = 已处理,推进锚点避免下轮重判。
-					markOk(uid, postTime);
-					continue;
-				}
-
-				// 作品装配(ADR-0019 决策 66):B 站这头只把原始动态翻成作品,出卡之后那一段
-				// (出卡 → AI 点评 → 再核还订阅着 → 套模板 → 按版式装配 → 推送 → 图集)与拓展共用。
-				// 订阅的设置用本轮捕获的那份 —— 过滤之后到这里没有 await,就是此刻表里那份。
-				// 主卡发送抛错往外冒到下面的 catch → markFail,下一轮再来。
-				const outcome = await deliverPost({
-					work: workFromDynamic(
-						item,
-						post,
-						name,
-						this.config.dynamicVideoUrlToBV,
-						{
-							images: this.imageFetcher,
-							logger: this.logger,
-						},
-						() => this.avatarOf(subAtCapture.subscriptionId),
-					),
-					settings: subAtCapture,
-					push: (anchors) => this.push.push({ uid, anchors }),
-					// 出卡 / 点评几个 await 期间 applyOps 可能已退订该 UID(或换成另一条订阅):
-					// 不发,这条也不 markOk。
-					stillSubscribed: () => this.stillSubscribed(uid, subAtCapture),
-					config: this.config,
-					deps: {
-						logger: this.logger,
-						image: this.image,
-						ai: this.ai,
-						cardFailures: this.cardFailures,
-						sendErrorMsg: (text) => this.push.sendErrorMsg(text),
-						emitEngineError: (message) =>
-							this.bus.emit("engine-error", { source: LOG_TAG, message }),
-					},
-					logLabel: `UID=${uid}`,
-				});
-				if (outcome === "unsubscribed") continue;
-				markOk(uid, postTime);
-			} catch (e) {
-				markFail(uid, postTime);
-				this.logger.warn(
-					`[detector] 推送失败 UID=${uid} ID=${item.id_str ?? "?"}：${(e as Error).message}`,
-				);
-			}
+			await this.produce(item, uid, postTime);
+			markAdvance(uid, postTime);
 		}
 
-		// DY1:per-uid 锚点单调推进 —— 只推进到「严格早于本 uid 最早失败项」的
-		// 最大成功 pub_ts;无失败则推进到最大成功项。max(existing,…) 绝不回退,
-		// 失败项及其后(更早)成功项下轮重试/重推,绝不静默越过失败项丢动态。
-		for (const uid of new Set([...Object.keys(okTs), ...Object.keys(failTs)])) {
+		// per-uid 锚点单调推进:取 max(现值, 本轮记下的最大 pub_ts),绝不回退。
+		for (const [uid, latest] of advanced) {
 			// applyOps 本轮退订过的 UID:锚点已被 delete 分支清掉,这里再 set 等于
 			// 复活孤儿锚点,跳过(A7)。判据用锚点本身而不是推送订阅表 —— 后者不含
 			// 「关了动态推送但仍订阅」的 UP,拿它判会让这些 UP 的锚点永不推进。
@@ -915,20 +658,71 @@ export class DynamicEngine {
 				this.logger.debug(`[timeline] UID=${uid} 已退订，跳过时间线回写（不复活）`);
 				continue;
 			}
-			const fails = failTs[uid] ?? [];
-			const minFail = fails.length ? Math.min(...fails) : Number.POSITIVE_INFINITY;
-			const safeOks = (okTs[uid] ?? []).filter((t) => t < minFail);
-			if (safeOks.length === 0) continue;
 			const existing = this.dynamicTimelineManager.get(uid) ?? 0;
-			const next = Math.max(existing, ...safeOks);
-			if (next <= existing) continue;
-			this.dynamicTimelineManager.set(uid, next);
+			if (latest <= existing) continue;
+			this.dynamicTimelineManager.set(uid, latest);
 			this.logger.debug(
-				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(next).toFormat("yyyy-MM-dd HH:mm:ss")}`,
+				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(latest).toFormat("yyyy-MM-dd HH:mm:ss")}`,
 			);
 		}
 
-		this.logger.debug(`[detector] 本次成功处理 ${Object.keys(okTs).length} 个 UP 的动态`);
+		this.logger.debug(`[detector] 本次处理了 ${advanced.size} 个 UP 的动态`);
+	}
+
+	/**
+	 * 这条动态还轮得到处理吗:时间线锚点在,而且仍早于它的发布时间。循环开头(越过时间线闸)与抓图之后的重校共用这一个判据。
+	 * 「订阅被删」锚点没了;「删了又加回来」锚点被重置成「现在」(晚于旧动态)—— 两种都不再是 true;
+	 * 而 update / 名单整份重建 / 关了又开作品推送只换名单里的对象、不动锚点,仍是 true。
+	 */
+	private isDue(uid: string, postTime: number): boolean {
+		const timeline = this.dynamicTimelineManager.get(uid);
+		return timeline !== undefined && timeline < postTime;
+	}
+
+	/**
+	 * 生产一条动态:翻成中立作品 → 覆写发布时间 → 抓图 → 重校还轮不轮得到它 → 交给核心入口。
+	 * 任何一步出错只记 warn(翻译失败的动态重试也是同一个结果;入口抛了核心不替来源重放),调用方照常前移锚点。
+	 */
+	private async produce(item: Dynamic, uid: string, postTime: number): Promise<void> {
+		// 翻译只做一次(ADR-0021 决策 43)。翻译是宽容的、不该抛;真抛了(接口出了没见过的残条)是这条动态本身没法判,
+		// 重试也是同一个结果 —— 记一笔 warn 跳过,别让它卡住这位 UP、也别每一轮把同批更新的动态再处理一遍。
+		let post: Post;
+		try {
+			post = postFromDynamic(item);
+		} catch (e) {
+			this.logger.warn(
+				`[detector] 动态翻译失败,已跳过 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
+			);
+			return;
+		}
+		try {
+			// 发布时间用引擎自己算的:它有 pub_time 文字兜底(「3分钟前」「昨天 12:00」),翻译里只有 pub_ts,
+			// 缺了落在纪元 —— 统计与卡上的时间都吃交出去的这一份。
+			post = { ...post, publishedAt: new Date(postTime * 1000).toISOString() };
+			// 交出之前先把图抓好:核心出卡零网络。被过滤的、关了出图的动态也抓(代价主人知情)。
+			// 转发的原作者头像与正文表情的地址只在原始动态里,与配图一起抓;外层作者的头像由核心出卡时按订阅资料补。
+			const withImages = await fetchPostImages(
+				post,
+				{ images: this.imageFetcher, logger: this.logger },
+				{ repostAvatarUrl: repostAvatarUrlOf(item), emojiUrls: emojiUrlsOf(item) },
+			);
+			// 抓图的 await 期间 applyOps 可能已退订该 UID,或「删了再加」成另一条订阅:引擎只交 uid,接线按身份
+			// 现查订阅 —— 不重校的话旧动态会被推给新订阅。把进门时的两道闸再过一遍(名单里还有它、锚点还在且仍早于
+			// 这条动态),不交,锚点由调用方照常前移。不用对象身份:update / 重建名单也会换对象,那样会把同一条订阅的动态丢掉。
+			if (!this.dynamicSubManager.has(uid) || !this.isDue(uid, postTime)) {
+				this.logger.debug(`[detector] UID=${uid} 在抓图途中已退订/被替换，这条动态不交`);
+				return;
+			}
+			this.reportPost(uid, {
+				postId: item.id_str,
+				url: dynamicLink(item, item.type === "DYNAMIC_TYPE_AV", this.config.dynamicVideoUrlToBV),
+				post: withImages,
+			});
+		} catch (e) {
+			this.logger.warn(
+				`[detector] 交出作品失败 UID=${uid} ID=${item.id_str ?? "?"}：${errorMessageOf(e)}`,
+			);
+		}
 	}
 
 	private async handleApiError(code: number, message: string): Promise<void> {
@@ -1006,7 +800,7 @@ export class DynamicEngine {
 		try {
 			await this.push.sendPrivateMsg(text);
 		} catch (e) {
-			this.logger.warn(`[push] 通知主人失败：${e instanceof Error ? e.message : String(e)}`);
+			this.logger.warn(`[push] 通知主人失败：${errorMessageOf(e)}`);
 		}
 	}
 

@@ -62,7 +62,9 @@ export const RATCHET = {
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
 	"apps/server/src/routes/subscriptions.ts": 9,
-	"apps/server/src/runtime/engines.ts": 17,
+	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的
+	// (B 站恒在,拓展看它的拓展在不在跑)。3a-28 有了来源登记表里中立的「来源在跑」读口,这一处就消失。
+	"apps/server/src/runtime/engines.ts": 18,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,

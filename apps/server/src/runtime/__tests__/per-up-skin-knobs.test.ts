@@ -2,16 +2,15 @@
  * **per-UP 旋钮覆盖的服务端接线**(ADR-0014 决策 17 的 🔗,2026-09-24)。
  *
  * 值住订阅的 `overrides.cardSkinKnobs`(按皮肤 id 分),出图时在渲染器里与全局那份逐枚合并。
- * 服务端要做的只有一件事:把这位 UP 那一层**原样**递到出卡那一刻 —— B 站的直播 / 动态视图、
- * 拓展订阅的直播 / 作品设置,四条路各折一次。这里钉两件事:
+ * 服务端要做的只有一件事:把这位 UP 那一层**原样**递到出卡那一刻 —— B 站的直播视图、两支订阅的作品设置
+ * (`postSettingsOf`)、拓展订阅的直播设置,各折一次。这里钉两件事:
  *
- * 1. 四条路的视图 / 设置都带上它,而且**只带 per-UP 那层、不折全局**(全局随渲染器 config
- *    热更;折进 B 站动态引擎那份快照,全局再改就改不动这位 UP 了 —— 与 `customCardStyle`
- *    「不伪装全局值」同一条,见 `sub-views.test.ts`);
+ * 1. 这几条路的视图 / 设置都带上它,而且**只带 per-UP 那层、不折全局**(全局随渲染器 config
+ *    热更;折进快照,全局再改就改不动这位 UP 了 —— 与 `customCardStyle`「不伪装全局值」同一条,见 `sub-views.test.ts`);
  * 2. 一路走到真渲染器:拓展订阅的开播卡上,这位 UP 选的**字体文件与壁纸**真读了盘、进了 HTML ——
  *    这两档「别的旋钮都生效、唯独它俩静静不动」栽过一回(2026-09-19)。
  *
- * 验红:把 `engines.ts` 里 `liveWorkSettings` / `dynamicWorkSettings` 递 `cardSkinKnobs` 那一句
+ * 验红:把 `engines.ts` 里 `liveWorkSettings` / `postSettingsOf` 递 `cardSkinKnobs` 那一句
  * 任删一句,对应的用例红;删 `extension-live-push.ts` 递它那一句,最后一条红。
  */
 
@@ -24,16 +23,10 @@ import {
 	type ServiceContext,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { LiveNotifySend } from "../../bilibili/live/index.js";
-import {
-	buildDynamicSubsView,
-	buildLiveSubViewSingle,
-	dynamicWorkSettings,
-	liveWorkSettings,
-} from "../engines.js";
+import { buildLiveSubViewSingle, liveWorkSettings, postSettingsOf } from "../engines.js";
 import { createExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";
 import { createExtensionLiveSessions } from "../extension-live-sessions.js";
@@ -66,41 +59,31 @@ const fakeRuntimeStore = (): SubRuntimeStore =>
 		// biome-ignore lint/suspicious/noExplicitAny: 测试只用 get
 	}) as any;
 
-const fakeStore = (subs: Subscription[]): SubscriptionStore =>
-	({
-		list: () => subs,
-		// biome-ignore lint/suspicious/noExplicitAny: 测试只用 list
-	}) as any;
-
 describe("订阅视图 / 设置带上这位 UP 那一层旋钮覆盖", () => {
-	it("B 站订阅:直播视图与动态视图都原样带着 overrides.cardSkinKnobs", () => {
+	it("B 站订阅:直播视图与作品设置都原样带着 overrides.cardSkinKnobs", () => {
 		const sub = biliSub({ cardSkinKnobs: PER_UP });
 		const g = globalsWith({ [DEFAULT_CARD_SKIN_ID]: { "gradient-end": "#222222" } });
 		expect(buildLiveSubViewSingle(sub, fakeRuntimeStore(), g).cardSkinKnobs).toEqual(PER_UP);
-		expect(
-			buildDynamicSubsView(fakeStore([sub]), fakeRuntimeStore(), g)["12345"]?.cardSkinKnobs,
-		).toEqual(PER_UP);
+		expect(postSettingsOf(sub, g).cardSkinKnobs).toEqual(PER_UP);
 	});
 
 	/**
-	 * 全局拧过、这位 UP 没单独拧 → 视图里**没有**这一格。折进去的话 B 站动态引擎那份快照就把
-	 * 全局值冻住了:全局再拧,这位 UP 的卡纹丝不动。验红:把 `dynamicWorkSettings` 里那一格改成
+	 * 全局拧过、这位 UP 没单独拧 → 视图 / 设置里**没有**这一格。折进去的话快照就把全局值冻住了:
+	 * 全局再拧,这位 UP 的卡纹丝不动。验红:把 `postSettingsOf` 里那一格改成
 	 * `sub.overrides.cardSkinKnobs ?? globals.defaults.cardSkinKnobs`,这条红。
 	 */
-	it("没单独拧过 → 视图里没有这一格,即便全局拧过(全局由渲染器 config 热更)", () => {
+	it("没单独拧过 → 没有这一格,即便全局拧过(全局由渲染器 config 热更)", () => {
 		const sub = biliSub();
 		const g = globalsWith({ [DEFAULT_CARD_SKIN_ID]: { "gradient-end": "#222222" } });
 		expect(buildLiveSubViewSingle(sub, fakeRuntimeStore(), g).cardSkinKnobs).toBeUndefined();
-		expect(
-			buildDynamicSubsView(fakeStore([sub]), fakeRuntimeStore(), g)["12345"]?.cardSkinKnobs,
-		).toBeUndefined();
+		expect(postSettingsOf(sub, g).cardSkinKnobs).toBeUndefined();
 	});
 
 	it("拓展订阅:直播设置与作品设置都带着", () => {
 		const sub = makeExtensionSubscription({ overrides: { cardSkinKnobs: PER_UP } });
 		const g = globalsWith();
 		expect(liveWorkSettings(sub, g).cardSkinKnobs).toEqual(PER_UP);
-		expect(dynamicWorkSettings(sub, g).cardSkinKnobs).toEqual(PER_UP);
+		expect(postSettingsOf(sub, g).cardSkinKnobs).toEqual(PER_UP);
 	});
 });
 

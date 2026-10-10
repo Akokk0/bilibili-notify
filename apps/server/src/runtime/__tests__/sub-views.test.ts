@@ -1,16 +1,12 @@
 /**
- * 覆盖 buildDynamicSubsView / buildLiveSubViewSingle 的「无 per-UP override 时
- * 不伪装全局值」语义。背景:此前两个函数从 `eff = resolve(sub, globals.defaults)`
- * 派生 customCardStyle / aiOverride 字段并硬写 `enable: true`,即便用户没设
- * per-UP override 也写满 SubItemView。dynamic 端 dynamicSubManager 是 add 时
- * 的快照(没有 refreshOps 周期同步),导致全局 cardStyle / ai 改动 hot-reload
- * 后 dynamic 推送永远沿用 add 时的旧值,bypass `imageRenderer.config` /
- * `commentary.config` 的全局兜底。
+ * 覆盖 buildDynamicSubsView / buildLiveSubViewSingle 的视图形状。
  *
- * 修复后:只有 sub.overrides.cardStyle / sub.overrides.ai / sub.overrides.filters
- * 真存在时才生成对应字段;无 override 时分别留 `{ enable: false }` / `undefined`。
- * engine 推送路径(dynamic-engine 卡片 / room-helpers 直播卡 / commentary)看到
- * undefined 自动走 this.config 兜底,跟全局 hot-reload 立即同步。
+ * 直播视图:「无 per-UP override 时不伪装全局值」—— 此前从 `eff = resolve(sub, globals.defaults)` 派生
+ * customCardStyle / aiOverride 字段并硬写 `enable: true`,即便用户没设 per-UP override 也写满视图;直播监听器是
+ * add 时的快照,全局改动 hot-reload 后永远沿用旧值。修复后只有 sub.overrides 真存在时才生成对应字段。
+ *
+ * 动态视图:引擎只管生产,视图只剩 `{ uid, post }` —— 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤 / AI)不在引擎里,
+ * 核心每条作品现折(`post-settings.test.ts`),所以动态视图里**不许再有**那些格。
  */
 import {
 	type GlobalConfig,
@@ -21,7 +17,11 @@ import {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
-import { buildDynamicSubsView, buildLiveSubViewSingle } from "../engines";
+import {
+	buildDynamicSubsView,
+	buildDynamicSubViewSingle,
+	buildLiveSubViewSingle,
+} from "../engines";
 import type { SubRuntimeStore } from "../sub-runtime-store";
 
 const fakeRuntimeStore = (): SubRuntimeStore =>
@@ -45,55 +45,43 @@ const makeSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	overrides,
 });
 
-describe("buildDynamicSubsView — 不伪装全局值", () => {
-	it("无 per-UP override → customCardStyle.enable=false,aiOverride/filter 都是 undefined", () => {
-		const sub = makeSub({});
-		const view = buildDynamicSubsView(
-			fakeStore([sub]),
-			fakeRuntimeStore(),
-			makeDefaultGlobalConfig(),
-		);
-		expect(view["12345"]).toBeDefined();
-		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
-		expect(view["12345"]?.aiOverride).toBeUndefined();
-		expect(view["12345"]?.filter).toBeUndefined();
+describe("buildDynamicSubsView — 引擎视图只剩 uid 与 post", () => {
+	it("启用着、作品开关开着的订阅:{ uid, post: true },没有别的格", () => {
+		const view = buildDynamicSubsView(fakeStore([makeSub({})]), makeDefaultGlobalConfig());
+		expect(view["12345"]).toEqual({ uid: "12345", post: true });
 	});
 
-	it("订阅设了直播封面 → 作品卡不读它:customCardStyle 仍是 enable:false,aiOverride/filter 仍 undefined", () => {
-		// 卡片设置只剩直播封面,而作品(动态)卡不出封面;样式覆盖一律「没有」,渲染器逐字段回退全局。
-		// 验红:让 dynamicWorkSettings 把 `overrides.cards` 折进样式,这条红。
-		const sub = makeSub({ cards: { liveCoverImageIds: ["up-cover.png"] } });
-		const view = buildDynamicSubsView(
-			fakeStore([sub]),
-			fakeRuntimeStore(),
-			makeDefaultGlobalConfig(),
-		);
-		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
-		expect(view["12345"]?.aiOverride).toBeUndefined();
-		expect(view["12345"]?.filter).toBeUndefined();
+	it("不带任何作品设置:样式覆盖 / AI 覆盖 / 过滤 / 模板 / 版式 / 皮肤 / 订阅 id / 名字都不在视图里", () => {
+		const sub = makeSub({
+			ai: { preset: "inherit" },
+			cardSkin: "skin-x",
+			templates: { post: "这位 {name}" },
+			imageGroup: { enabled: true },
+			filters: { blockVideos: true },
+			cards: { liveCoverImageIds: ["up-cover.png"] },
+		});
+		const view = buildDynamicSubsView(fakeStore([sub]), makeDefaultGlobalConfig());
+		expect(Object.keys(view["12345"] ?? {}).sort()).toEqual(["post", "uid"]);
 	});
 
-	it("仅设 ai override → aiOverride 有值(eff.ai 派生),customCardStyle/filter 不影响", () => {
-		const sub = makeSub({ ai: { preset: "inherit" } });
-		const view = buildDynamicSubsView(
-			fakeStore([sub]),
-			fakeRuntimeStore(),
-			makeDefaultGlobalConfig(),
-		);
-		expect(view["12345"]?.aiOverride).toBeDefined();
-		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
-		expect(view["12345"]?.filter).toBeUndefined();
+	it("作品开关关着:订阅仍在视图里(锚点覆盖全部订阅),但 post 是 false;停用的订阅不进视图", () => {
+		const g: GlobalConfig = makeDefaultGlobalConfig();
+		g.defaults.features.post = false;
+		expect(buildDynamicSubsView(fakeStore([makeSub({})]), g)["12345"]).toEqual({
+			uid: "12345",
+			post: false,
+		});
+		expect(buildDynamicSubsView(fakeStore([{ ...makeSub({}), enabled: false }]), g)).toEqual({});
 	});
 
-	it("改全局 globals.defaults.cards → 无 per-UP override 的 sub 的 customCardStyle 保持 enable:false(不会把全局值塞进去)", () => {
-		const sub = makeSub({});
-		const globals: GlobalConfig = makeDefaultGlobalConfig();
-		globals.defaults.cards.liveCoverImageIds = ["global.png"];
-		const view = buildDynamicSubsView(fakeStore([sub]), fakeRuntimeStore(), globals);
-		// 关键断言:全局值改了,但因为 sub 没 per-UP override,customCardStyle 仍是
-		// {enable:false},不带任何样式字段。下游 ImageRenderer 走 this.config
-		// 兜底,this.config 已被 hot-reload 路径(imageRenderer.updateConfig)同步。
-		expect(view["12345"]?.customCardStyle).toEqual({ enable: false });
+	it("全局的作品开关一翻、这位 UP 没单独覆盖:视图里的 post 跟着翻(真源是 enabled && features.post)", () => {
+		const on = makeDefaultGlobalConfig();
+		const off = makeDefaultGlobalConfig();
+		off.defaults.features.post = false;
+		expect(buildDynamicSubViewSingle(makeSub({}), on).post).toBe(true);
+		expect(buildDynamicSubViewSingle(makeSub({}), off).post).toBe(false);
+		// 这位 UP 单独开,压过全局关。
+		expect(buildDynamicSubViewSingle(makeSub({ features: { post: true } }), off).post).toBe(true);
 	});
 });
 
@@ -250,22 +238,16 @@ describe("buildLiveSubViewSingle — 两个直播门槛", () => {
 	});
 });
 
-describe("订阅视图不抄头像(3a-35):头像由引擎出卡时按订阅 id 现读", () => {
+describe("订阅视图不抄头像(3a-35):头像由核心出卡时按订阅 id 现读", () => {
 	const avatar = `${"b".repeat(64)}.jpg` as ImageRef;
 	const runtime = {
 		get: () => ({ cachedProfile: { name: "UP", avatar } }),
 	} as unknown as SubRuntimeStore;
 
-	// 验红:让 buildDynamicSubViewSingle 把 `subscriptionId: sub.id` 去掉,第一条红;往两份视图里抄回 avatar,第二条红。
-	it("动态视图带订阅 id(引擎凭它读头像)", () => {
-		const sub = makeSub();
-		const view = buildDynamicSubsView(fakeStore([sub]), runtime, makeDefaultGlobalConfig());
-		expect(view["12345"]?.subscriptionId).toBe(sub.id);
-	});
-
+	// 验红:往两份视图里抄回 avatar,这条红。
 	it("资料里有头像也不抄进动态 / 直播视图(抄了就是开机快照,之后补上的头像永远跟不上)", () => {
 		const sub = makeSub();
-		const dynamicView = buildDynamicSubsView(fakeStore([sub]), runtime, makeDefaultGlobalConfig());
+		const dynamicView = buildDynamicSubsView(fakeStore([sub]), makeDefaultGlobalConfig());
 		const liveView = buildLiveSubViewSingle(sub, runtime, makeDefaultGlobalConfig());
 		expect(dynamicView["12345"]).not.toHaveProperty("avatar");
 		expect(liveView).not.toHaveProperty("avatar");

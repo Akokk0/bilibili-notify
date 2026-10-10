@@ -98,7 +98,7 @@ const VISION_NOT_SET_MESSAGE =
 const CHAT_MESSAGE_MAX_CHARS = 4000;
 /** 单张聊天附件上限 5MB —— 与卡片背景图同口径。图库自己的线是 8MB,这是上传这一层更紧的规矩。 */
 const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
-/** 一条消息最多带几张图。与动态点评那条路的上限一致(`extractDynamicImages`)。 */
+/** 一条消息最多带几张图。与动态点评那条路的上限一致(`posts/deliver-post.ts` 的 `POST_COMMENT_IMAGES_MAX`)。 */
 const MAX_CHAT_IMAGES_PER_MESSAGE = 4;
 /** 认不出是图、或不是聊天附件收的格式时对主人说的话(图库还收 gif,聊天附件不收)。 */
 const CHAT_IMAGE_UNSUPPORTED_MESSAGE = "不支持的图片类型（仅 PNG / JPEG / WebP）";

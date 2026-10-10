@@ -68,7 +68,6 @@ import { type Api, BiliLoginStatus } from "../bilibili/api/index.js";
 import {
 	DynamicEngine,
 	type DynamicEngineConfig,
-	type PushLike as DynamicPushLike,
 	type SubscriptionOpView as DynamicSubOp,
 	type SubscriptionsView as DynamicSubsView,
 	resolveDynamicColorOptions,
@@ -90,14 +89,10 @@ import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { ImageWriter } from "../images/image-store.js";
-import {
-	createCardFailureTracker,
-	type DeliverPostOptions,
-	type WorkSubscriptionSettings,
-} from "../posts/deliver-post.js";
+import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
-import type { PostFilterRules } from "../posts/post-filter.js";
-import type { PushSegment } from "../posts/post-push.js";
+import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
+import { createPostQueue } from "../posts/post-queue.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
 import { toGeneratorConfig } from "./ai-config.js";
@@ -288,6 +283,11 @@ export interface CreateEnginesOptions {
 	 */
 	resolveImageRef?: (ref: ImageRef) => Promise<string | undefined>;
 	/**
+	 * 图库引用 → 字节与类型(`runtime.imageStore.read`):AI 点评看只有图库引用的图(拓展作品)时,核心要量字节数
+	 * (超 3 MiB 的跳过)再编成 data URL,所以不复用上面那个回拼好的串的 `resolveImageRef`。必给 —— 漏给是编译不过,不是悄悄不给 AI 看图。
+	 */
+	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
+	/**
 	 * 拓展订阅的在播表(`runtime.extensionLive`,ADR-0019 决策 57 / 64):拓展直播的计时器拿它当「最新状态」,
 	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
 	 */
@@ -431,8 +431,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		);
 	};
 	/**
-	 * 一条被过滤挡下的作品 → 推送历史里的一行(ADR-0021 决策 34 的 🔗)。B 站动态引擎与拓展作品两条路的
-	 * `onPostFiltered` 都接到这儿;留痕不是推送,不经推送层、不走事件总线。
+	 * 一条被过滤挡下的作品 → 推送历史里的一行(ADR-0021 决策 34 的 🔗)。B 站动态与拓展作品两条路
+	 * (都经核心入口 `PostQueue` 的装配)的 `deps.recordFiltered` 都接到这儿;留痕不是推送,不经推送层、不走事件总线。
 	 */
 	const recordFilteredPost = (
 		filtered: Parameters<typeof historyRecordFromFilteredPost>[0],
@@ -459,14 +459,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	push.start();
 
 	/**
-	 * B 站引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50)—— 两个 PushLike 适配器
-	 * 在这条边上先翻一次。同一个 uid 配了两条订阅时先出现的那条说了算(引擎本来就只按 uid 认人)。
+	 * B 站引擎说的是 uid,推送链认的是订阅自己(ADR-0019 决策 50)—— 两个适配器在这条边上先翻一次。
+	 * 同一个 uid 配了两条订阅时先出现的那条说了算(`findByIdentity`;遗留的重复订阅,按身份展开成每条一份归 3a-28)。
 	 */
-	const subscriptionIdOfUid = (uid: string): string | undefined => {
-		const id = opts.subscriptionStore.findByIdentity(biliIdentity(uid))?.id;
-		if (id === undefined) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
-		return id;
+	const subscriptionOfUid = (uid: string): Subscription | undefined => {
+		const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
+		if (sub === undefined) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
+		return sub;
 	};
+	const subscriptionIdOfUid = (uid: string): string | undefined => subscriptionOfUid(uid)?.id;
 
 	// ---------- Master notifier ----------
 	// engine-error / auth-lost → 主人 OneBot 私聊。共用一张 per-source 60s 节流表。
@@ -597,19 +598,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const pickExistingCardBg = makeExistingCardBgPicker(opts.dataRoot, cardBgRotator.pick);
 
 	// ---------- DynamicEngine ----------
-	const dynamicPushLike = makeDynamicPushLike(push, subscriptionIdOfUid, log);
-
+	// 引擎只管生产(拉 feed、判新、翻译、抓图),作品交给核心入口 `postQueue`;过滤、出卡、点评、推送、图集都在核心里。
 	const dynamicConfig = (): DynamicEngineConfig => {
 		return {
 			dynamicCron: settingsOf(opts.configStore).dynamicCron,
 			dynamicVideoUrlToBV: false,
-			imageGroup: globals().defaults.imageGroup,
-			imageEnabled: globals().defaults.cards.enabled,
-			aiEnabled: globals().defaults.ai.enabled,
-			aiWebSearch: globals().defaults.ai.search.engines.dynamic,
-			dynamicTemplate: globals().defaults.templates.post,
-			videoTemplate: globals().defaults.templates.postVideo,
-			filter: globals().defaults.filters,
 		};
 	};
 
@@ -621,23 +614,60 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const profileAvatarOf = (subscriptionId: string): ImageRef | undefined =>
 		opts.subRuntimeStore.get(subscriptionId)?.cachedProfile?.avatar;
 
+	const extensionSources = opts.extensionSources;
+	const postQueue = createPostQueue({
+		logger: dynamicCtx.logger,
+		bus: opts.bus,
+		serviceCtx: opts.serviceCtx,
+		deps: {
+			logger: dynamicCtx.logger,
+			settings: makePostSettingsReader({
+				subscription: (id) => opts.subscriptionStore.findById(id),
+				globals,
+				// 「来源还在跑吗」:B 站订阅恒在;拓展订阅看它的拓展在不在跑(决策 61:拓展停了,等着的作品不补),
+				// 没接拓展订阅(`extensionSources` 没给)就一律不推。3a-28 有了来源登记表里中立的「来源在跑」读口,
+				// 这一处就换成它。
+				sourceRunning: (sub) =>
+					fromBilibili(sub) ||
+					(extensionSources?.running(subscriptionIdentityOf(sub).sourceKey) ?? false),
+			}),
+			// 渲染器与 AI 会被热换:**必须是读外层 let 的闭包**,按值传就是「开机时没有浏览器,之后一直没有卡片」而门禁全绿。
+			image: () => imageRenderer ?? undefined,
+			ai: () => commentary ?? undefined,
+			cardFailures,
+			avatar: profileAvatarOf,
+			readImage: opts.readImage,
+			push: (subscriptionId, anchors) => boundPostPush(push, subscriptionId)(anchors),
+			recordFiltered: recordFilteredPost,
+			sendErrorMsg: masterTellers(push, log).sendErrorMsg,
+			// 单列一个来源:主人私聊的 60 秒节流按来源算,与 B 站动态引擎的告警(风控之类)共用一个的话,
+			// 一边刚报过,另一边这次出图失败的告警就被吞了。B 站与拓展两条路现在共用这一个。
+			emitEngineError: (message) =>
+				opts.bus.emit("engine-error", { source: "post-delivery", message }),
+		},
+	});
+
 	const dynamic = new DynamicEngine({
 		serviceCtx: dynamicCtx,
 		bus: opts.bus,
 		api: opts.api,
-		push: dynamicPushLike,
-		image: imageRenderer ?? undefined,
-		ai: commentary ?? undefined,
+		push: { sendPrivateMsg: masterTellers(push, log).sendPrivateMsg },
 		imageFetcher: opts.imageFetcher,
-		avatarOf: profileAvatarOf,
-		// 引擎说的是 uid,历史认的是订阅 id —— 与推送那边同一种换法;换不出来(订阅刚删)就不记。
-		onPostFiltered: ({ uid, ...filtered }) => {
-			const subscriptionId = subscriptionIdOfUid(uid);
-			if (subscriptionId !== undefined) recordFilteredPost({ subscriptionId, ...filtered });
+		// 引擎说的是 uid(外部 id),订阅由这里按身份现查;换不出来(订阅刚删)就不交。
+		reportPost: (externalId, report) => {
+			const sub = subscriptionOfUid(externalId);
+			if (sub === undefined) return;
+			postQueue.enqueue({
+				subscriptionId: sub.id,
+				identity: subscriptionIdentityOf(sub),
+				postId: report.postId,
+				url: report.url,
+				post: report.post,
+				postNoun: "动态",
+			});
 		},
-		cardFailures,
 		config: dynamicConfig(),
-		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, opts.subRuntimeStore, globals()),
+		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, globals()),
 	});
 	dynamic.start();
 
@@ -747,11 +777,10 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	}
 
 	// ---------- Bus wiring ----------
-	const handles: Disposable[] = [];
+	const handles: Disposable[] = [postQueue];
 
-	// 拓展订阅的作品(ADR-0019 决策 69–72):听上报,逐条订阅走与 B 站动态同一份的装配、同一个渲染器、
-	// 同一份出图失败计数。设置每条现折(与 B 站视图同一个折法),渲染器与 AI 每条现取(会被热换)。
-	const extensionSources = opts.extensionSources;
+	// 拓展订阅的作品(ADR-0019 决策 69–72):听上报,逐条订阅翻成中立的信封(图已写进图库)交给同一个核心入口 —— 与 B 站动态
+	// 同一份装配、同一个渲染器、同一份出图失败计数。设置每条现折(`makePostSettingsReader`),渲染器与 AI 每条现取(会被热换)。
 	if (extensionSources) {
 		const postImages = opts.postImages;
 		// 漏接线的症状是「拓展作品卡一张图都没有」而门禁全绿,所以开机就抛,不悄悄跳过。
@@ -763,33 +792,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				serviceCtx: opts.serviceCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
-				avatarRef: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.avatar,
+				postNoun: (extensionId) => extensionSources.postNoun(extensionId),
 				postImages,
-				settings: (sub) => {
-					const g = globals();
-					const eff = resolve(sub, g.defaults);
-					const work = dynamicWorkSettings(sub, g, eff);
-					return {
-						...work,
-						filter: eff.filters,
-						post: eff.features.post,
-					};
-				},
-				sources: extensionSources,
-				pushFor: (id) => boundPostPush(push, id),
-				onPostFiltered: recordFilteredPost,
-				deliveryConfig: dynamicConfig,
-				deliveryDeps: () => ({
-					logger: dynamicCtx.logger,
-					image: imageRenderer ?? undefined,
-					ai: commentary ?? undefined,
-					cardFailures,
-					sendErrorMsg: masterTellers(push, log).sendErrorMsg,
-					// 单列一个来源:主人私聊的 60 秒节流按来源算,与 B 站动态引擎的告警(风控之类)
-					// 共用一个的话,一边刚报过,另一边这次出图失败的告警就被吞了。
-					emitEngineError: (message) =>
-						opts.bus.emit("engine-error", { source: "extension-post", message }),
-				}),
+				enqueue: (event) => postQueue.enqueue(event),
 			}),
 		);
 	}
@@ -849,12 +854,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	handles.push(
 		opts.bus.on("subscription-changed", ({ ops }) => {
-			const dynOps = subscriptionOpsToDynamic(
-				ops,
-				opts.subscriptionStore,
-				opts.subRuntimeStore,
-				globals(),
-			);
+			const dynOps = subscriptionOpsToDynamic(ops, opts.subscriptionStore, globals());
 			dynamic.applyOps(dynOps);
 			const liveOps = subscriptionOpsToLive(
 				ops,
@@ -1027,7 +1027,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 必须维持这个不变式,否则这里会静默产生假阳性。
 				const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 				const aiChanged = !eq(prev.defaults.ai, g.defaults.ai);
-				const imageGroupChanged = !eq(prev.defaults.imageGroup, g.defaults.imageGroup);
 				const cardStyleChanged = !eq(prev.defaults.cards, g.defaults.cards);
 				const scheduleChanged = !eq(prev.defaults.schedule, g.defaults.schedule);
 				// 直播拆键(⑬d):启动补报与周期间隔从 schedule 里搬出来各成一段,热更的门一并跟着。
@@ -1066,21 +1065,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						cardSkinKnobs: g.defaults.cardSkinKnobs,
 					});
 				}
-				// dynamicConfig() 的完整输入集:B 站设置的 dynamicCron(下方 `watchSettings` 那道门)+
-				// defaults.{filters,imageGroup,cardStyle.enabled,ai.enabled,
-				// templates.post/postVideo}。这道门必须**逐项覆盖**该集合 ——
-				// 少一项就是漏热更(用户以为保存生效了,其实要重启;`imageGroup` 就曾经
-				// 整个漏在门外),多一项则是无谓扇出(此前用整个 `appChanged` 当门,
-				// 改 healthCheckMinutes 也会给 DynamicEngine 白换一次 config)。
-				if (
-					filtersChanged ||
-					imageGroupChanged ||
-					cardStyleChanged ||
-					aiChanged ||
-					templatesChanged
-				) {
-					dynamic.updateConfig(dynamicConfig());
-				}
 				// liveConfig() 读 defaults.{templates,cardStyle,ai}(周期间隔与补报在每个订阅的视图里,
 				// 经下面的 applyOps 推,不在引擎级的全局配置里)。
 				if (filtersChanged || templatesChanged || cardStyleChanged || aiChanged) {
@@ -1088,8 +1072,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				}
 				if (aiChanged) {
 					// AI 实例热重载:lazy 构造 + 配置失效降级 + 已存在时增量 updateConfig。
-					// 引擎构造时 ai 字段是 snapshot,新建/置空后必须通过 setAi/setCommentary
-					// 把引用同步过去,否则永远沿用启动时的 null。
+					// 直播引擎构造时 commentary 字段是 snapshot,新建/置空后必须通过 setCommentary
+					// 把引用同步过去,否则永远沿用启动时的 null;作品装配经 `deps.ai()` 每条现取,不用同步。
 					const a = g.defaults.ai;
 					// 当前选中那份实例的连接是否配齐 —— 换实例也会走到这里(activeProfile
 					// 指针本身就在 defaults.ai 里,变了就算 aiChanged)。
@@ -1097,11 +1081,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					const needsCommentary = Boolean(ap.apiKey && ap.baseUrl);
 					if (!needsCommentary && commentary) {
 						commentary = null;
-						dynamic.setAi(undefined);
 						live.setCommentary(null);
 					} else if (needsCommentary && !commentary) {
 						commentary = buildCommentary();
-						dynamic.setAi(commentary ?? undefined);
 						live.setCommentary(commentary);
 						if (commentary) log.info("[ai] commentary 已激活");
 					} else if (commentary) {
@@ -1143,16 +1125,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, g) : undefined;
 					});
 				}
-				// DynamicEngine 的 dynamicSubManager 是 per-sub 快照(见 buildDynamicSubViewSingle),
-				// 全局默认版式变化不会自动传播 —— 借道 applyOps 的 update 分支强制刷新每个已跟踪
-				// UID 的完整 SubItemView(startDynamicForUid 内部只在 UID 首次出现时初始化时间戳,
-				// 已跟踪 UID 不会被当成新订阅重推旧动态,见 dynamic-engine.ts stillSubscribed 注释)。
-				if (skinChanged || messageLayoutChanged) {
+				// DynamicEngine 的 dynamicSubManager 是推送名单(per-sub 视图只剩 `post` 一格,真源是
+				// `sub.enabled && eff.features.post`)。全局的作品开关一翻,所有没单独覆盖的订阅都要进出引擎的名单 ——
+				// 借道 applyOps 的 update 分支刷新每个已跟踪 UID(startDynamicForUid 内部只在 UID 首次出现时初始化时间戳,
+				// 已跟踪 UID 不会被当成新订阅重推旧动态)。合成的 update 带 `post: hasDyn(sub)`。
+				// 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤……)不在引擎里,核心每条作品现折,改了立即生效,不经这里。
+				if (featuresChanged) {
 					dynamic.applyOps(
 						subscriptionOpsToDynamic(
 							opts.subscriptionStore.list().map((sub) => ({ kind: "update" as const, sub })),
 							opts.subscriptionStore,
-							opts.subRuntimeStore,
 							g,
 						),
 					);
@@ -1223,8 +1205,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		subscriptionStore: opts.subscriptionStore,
 		// getter,理由同下面的 `imageRenderer` —— 这也是个会被热重载重新赋值的 let。
 		// 写成普通属性的话它就是**启动那一刻的值拷贝**:没配 AI 起的服务永远是 null,
-		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了(`dynamic`/`live` 靠
-		// setAi/setCommentary 拿到了新引用),可读这个字段的聊天路由还是拿到 null,
+		// 主人在设置页补上 apiKey 后热重载确实把实例建起来了(`live` 靠 setCommentary、
+		// 作品装配经 `deps.ai()` 每条现取,都拿到了新引用),可读这个字段的聊天路由还是拿到 null,
 		// 于是「保存成功却照样报『还没填齐』,重启才好」。反向亦然:撤掉密钥后它会
 		// 攥着已 stop 的旧实例继续答话。
 		get commentary() {
@@ -1288,7 +1270,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		enableImageRendering: (pup: PuppeteerLike): boolean => {
 			if (imageRenderer) return false; // 幂等:已启用,不重复构造浏览器
 			imageRenderer = buildImageRenderer(pup);
-			dynamic.setImage(imageRenderer);
 			live.setImageRenderer(imageRenderer);
 			return true;
 		},
@@ -1297,7 +1278,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		// 负责 —— 引擎层不持有 adapter,只消费 renderer。
 		swapImageRendering: (pup: PuppeteerLike): void => {
 			imageRenderer = buildImageRenderer(pup);
-			dynamic.setImage(imageRenderer);
 			live.setImageRenderer(imageRenderer);
 		},
 		dispose,
@@ -1426,14 +1406,13 @@ function dropAnchors(anchors: ReadonlyArray<{ messages: unknown }>): void {
 }
 
 /**
- * 作品那一路(`deliverPost` 的 `push`):绑到**一条订阅**上(ADR-0019 决策 50 / 66),装配交来的
- * 锚点 → 推送层的一次推送,特性恒为 `post`。B 站动态(经 {@link makeDynamicPushLike} 先把 uid 翻成
- * 订阅 id)与拓展作品共用这一跳。开关、免扰、路由、@全体、历史都在推送层(`PushRouter.push`)里。
+ * 作品那一路(核心装配 `deliverPost` 依赖里的 `push`):绑到**一条订阅**上(ADR-0019 决策 50 / 66),装配交来的
+ * 锚点 → 推送层的一次推送,特性恒为 `post`。B 站动态与拓展作品共用这一跳(都经核心入口 `PostQueue` 的装配)。开关、免扰、路由、@全体、历史都在推送层(`PushRouter.push`)里。
  */
 export function boundPostPush(
 	push: Pick<PushRouter, "push">,
 	subscriptionId: string,
-): DeliverPostOptions["push"] {
+): (anchors: PostPushAnchor[]) => Promise<void> {
 	return async (anchors) => {
 		await push.push({
 			subscriptionId,
@@ -1486,22 +1465,6 @@ export function boundLivePush(
 			...livePushHead(type),
 			anchors: [{ role: "main", messages }],
 		});
-	};
-}
-
-/** 动态引擎那侧的 PushLike:uid → 订阅 id,再走 {@link boundPostPush}。 */
-export function makeDynamicPushLike(
-	push: PushForEngines,
-	subscriptionIdOf: SubscriptionIdOf,
-	logger: Logger,
-): DynamicPushLike {
-	return {
-		async push({ uid, anchors }) {
-			const subscriptionId = subscriptionIdOf(uid);
-			if (subscriptionId === undefined) return dropAnchors(anchors);
-			await boundPostPush(push, subscriptionId)(anchors);
-		},
-		...masterTellers(push, logger),
 	};
 }
 
@@ -1653,92 +1616,91 @@ function fromBilibili(sub: Subscription): boolean {
 
 export function buildDynamicSubsView(
 	store: SubscriptionStore,
-	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): DynamicSubsView {
 	const view: DynamicSubsView = {};
 	// B 站引擎只看 B 站订阅(ADR-0019 决策 9):拓展订阅没有 uid,不拿别的平台的 id 去问 B 站。
 	for (const sub of store.list().filter(fromBilibili)) {
 		if (!sub.enabled) continue;
-		view[subscriptionIdentityOf(sub).externalId] = buildDynamicSubViewSingle(
-			sub,
-			subRuntimeStore,
-			globals,
-		);
+		view[subscriptionIdentityOf(sub).externalId] = buildDynamicSubViewSingle(sub, globals);
 	}
 	return view;
 }
 
 /**
- * 单条 Subscription → DynamicEngine 视图。全量构建(buildDynamicSubsView)与增量
- * add op 翻译共用同一投影,避免 add 路径只带部分字段(此前只带 customCardStyle,
- * 新增订阅若同时带 per-UP filter/imageGroup/模板覆盖会丢,要等下次全量刷新)。
- * 与直播端 buildLiveSubViewSingle 对称。
- *
- * customCardStyle / filter / aiOverride / 模板等只在**真有 per-UP override 时**才
- * 生成;无 override 时留 undefined / enable:false,engine 推送路径用 `?? this.config`
- * 兜底全局(随 dynamic.updateConfig hot-reload)。否则 eff=resolve(sub,globals) 会把
- * 全局值合进 eff 伪装成 per-UP,而 dynamicSubManager 快照不刷 → 全局改了 dynamic 端
- * 永远沿用旧值。
+ * 单条 Subscription → DynamicEngine 视图。引擎只管生产,视图只剩 `{ uid, post }`:`post` 决定这条订阅进不进推送名单
+ * (名单里的才为它翻译、抓图、交作品)。全量构建(buildDynamicSubsView)与增量 add op 翻译共用同一投影。
+ * 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤 / AI……)不在这里:核心每条作品现折({@link postSettingsOf}),
+ * 全局或订阅设置改了立即对下一条生效,不再经引擎快照与热更门。
  */
 export function buildDynamicSubViewSingle(
 	sub: Subscription,
-	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): DynamicSubsView[string] {
 	const eff = resolve(sub, globals.defaults);
-	// B 站引擎以 uid 为键:B 站订阅的外部 id 就是 uid。调用方只给 B 站订阅。
-	const uid = subscriptionIdentityOf(sub).externalId;
 	return {
-		subscriptionId: sub.id,
-		uid,
-		uname: subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
+		// B 站引擎以 uid 为键:B 站订阅的外部 id 就是 uid。调用方只给 B 站订阅。
+		uid: subscriptionIdentityOf(sub).externalId,
 		// enabled 门 + features.post:add op 可能收到 disabled sub,engine applyOps
 		// add 用 `if(!op.sub.post) break` 拦截。buildDynamicSubsView 已 continue 跳
 		// disabled,这里 `sub.enabled &&` 对它是恒真无副作用。
 		post: sub.enabled && eff.features.post,
-		...dynamicWorkSettings(sub, globals, eff),
 	};
 }
 
-/** 一条订阅折好的作品设置:装配吃的那几格 + per-UP 的过滤覆盖。 */
-export type DynamicWorkSettings = WorkSubscriptionSettings & {
-	/** Per-UP 过滤覆盖(折好的 `ContentFilters`,过滤直接吃它);没配是 undefined(用全局那份)。 */
-	filter?: PostFilterRules;
-};
-
 /**
- * 一条订阅(B 站或拓展)→ 作品装配吃的设置(ADR-0019 决策 65 / 66)。B 站动态引擎的视图
- * (`buildDynamicSubViewSingle`)与拓展作品都从这里拿,别抄第二份 —— 两份的话主人给某个抖音号
- * 换的文案模板 / 版式 / 皮肤,迟早有一格只有 B 站那头认。
+ * 一条订阅(B 站或拓展)→ 作品装配吃的设置(ADR-0019 决策 65 / 66):订阅覆盖与全局折成一层。B 站与拓展作品
+ * 都从这里拿,别抄第二份 —— 两份的话主人给某个抖音号换的文案模板 / 版式 / 皮肤,迟早有一格只有 B 站那头认。
+ * 每条作品现折一次({@link makePostSettingsReader}),没有快照问题。
  *
- * customCardStyle / filter / aiOverride / 模板等只在**真有 per-UP override 时**才生成,理由见
- * `buildDynamicSubViewSingle` 上面那段(B 站引擎的视图是快照,折进全局值就冻住了)。拓展那头每条
- * 作品现折一次,没有快照问题,留空的几格由装配用全局兜底,效果一样。
+ * 留在 engines.ts 而不进 `posts/`:`resolveAiOverride` 直播那头也在用,搬进核心会把直播的东西一起拖走。
+ * 刻意只在**真有 per-UP 覆盖**时才生成的两格:`aiOverride`(没配就 undefined,生成器走全局配置)与
+ * `cardSkinKnobs`(订阅自己那层原样给、不折全局,渲染器出图时与全局那份逐枚合并)。
  *
- * `eff` 给了就不再折一遍(B 站那头已经折过)。
+ * `eff` 给了就不再折一遍。
  */
-export function dynamicWorkSettings(
+export function postSettingsOf(
 	sub: Subscription,
 	globals: GlobalConfig,
 	eff: EffectiveSubscription = resolve(sub, globals.defaults),
-): DynamicWorkSettings {
+): PostSettings {
+	const d = globals.defaults;
 	return {
-		// 作品卡不读直播封面,样式覆盖一律「没有」:渲染器逐字段回退自己的全局配置,随全局热更。
-		customCardStyle: { enable: false },
-		filter: sub.overrides.filters ? eff.filters : undefined,
-		aiOverride: resolveAiOverride(sub, globals.defaults),
-		imageGroupEnabled: sub.overrides.imageGroup?.enabled,
-		imageGroupMergeForward: sub.overrides.imageGroup?.mergeForward,
-		customDynamicTemplate: sub.overrides.templates?.post,
-		customVideoTemplate: sub.overrides.templates?.postVideo,
-		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
-		cardSkin: eff.cardSkin,
-		// 这位 UP 自己那层旋钮覆盖,**原样**给、不折全局(ADR-0014 决策 17 的 🔗):渲染器出图时与
-		// 它 config 里的全局那份逐枚合并。折进来的话 B 站动态引擎那份快照就把全局冻住了。
-		cardSkinKnobs: sub.overrides.cardSkinKnobs,
+		filter: eff.filters,
 		// per-UP 解析后的消息版式动态切片,恒有值(默认 = 复刻现状:卡片+文本+链接合并一条)。
 		messageLayout: eff.messageLayout.post,
+		cardEnabled: d.cards.enabled,
+		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
+		cardSkin: eff.cardSkin,
+		cardSkinKnobs: sub.overrides.cardSkinKnobs,
+		aiEnabled: d.ai.enabled,
+		aiWebSearch: d.ai.search.engines.dynamic,
+		aiOverride: resolveAiOverride(sub, d),
+		template: eff.templates.post,
+		videoTemplate: eff.templates.postVideo,
+		imageGroup: { enabled: eff.imageGroup.enabled, mergeForward: eff.imageGroup.mergeForward },
+	};
+}
+
+/**
+ * 核心装配用的「这条订阅此刻的作品设置」读口(`DeliverPostDeps.settings`):不该推就回 `undefined` ——
+ * 订阅不在、停用、作品开关关着、来源没在跑。**每次现折**:入口问一次、装配开头问一次、回问再问一次。
+ * 导出它是为了让这一跳有自己的测试。
+ */
+export function makePostSettingsReader(deps: {
+	subscription: (id: string) => Subscription | undefined;
+	globals: () => GlobalConfig;
+	/** 这条订阅的来源还在跑吗(B 站恒在;拓展看它自己在不在跑)。 */
+	sourceRunning: (sub: Subscription) => boolean;
+}): (subscriptionId: string) => PostSettings | undefined {
+	return (subscriptionId) => {
+		const sub = deps.subscription(subscriptionId);
+		if (sub === undefined || !sub.enabled) return undefined;
+		const g = deps.globals();
+		const eff = resolve(sub, g.defaults);
+		if (!eff.features.post) return undefined;
+		if (!deps.sourceRunning(sub)) return undefined;
+		return postSettingsOf(sub, g, eff);
 	};
 }
 
@@ -1798,7 +1760,7 @@ export type LiveWorkSettings = Pick<
 
 /**
  * 一条订阅(B 站或拓展)→ 直播设置(ADR-0019 决策 65 / 67)。B 站直播引擎的视图(`buildLiveSubViewSingle`)
- * 与拓展订阅的直播都从这里拿,别抄第二份 —— 与 {@link dynamicWorkSettings} 同一个道理:两份的话主人给某个
+ * 与拓展订阅的直播都从这里拿,别抄第二份 —— 与 {@link postSettingsOf} 同一个道理:两份的话主人给某个
  * 抖音号换的文案 / 版式 / 推送频率,迟早有一格只有 B 站那头认。
  *
  * `eff` 给了就不再折一遍。
@@ -1839,7 +1801,7 @@ export function liveWorkSettings(
 		},
 		// per-UP 解析后的卡片皮肤 id(eff = per-UP 指了就是它,否则全局)。
 		cardSkin: eff.cardSkin,
-		// 这位 UP 自己那层旋钮覆盖,原样给、不折全局(理由同 `dynamicWorkSettings` 那一格)。
+		// 这位 UP 自己那层旋钮覆盖,原样给、不折全局(理由同 `postSettingsOf` 那一格)。
 		// 开播 / 直播中 / 下播 / SC / 上舰 / 词云都吃这一份(不分卡种)。
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		// per-UP 解析后的消息版式直播切片(覆盖开播 / 直播中 / 下播),恒有值。
@@ -1911,7 +1873,6 @@ export function buildLiveSubViewSingle(
 function subscriptionOpsToDynamic(
 	ops: SubscriptionOp[],
 	store: SubscriptionStore,
-	subRuntimeStore: SubRuntimeStore,
 	globals: GlobalConfig,
 ): DynamicSubOp[] {
 	const out: DynamicSubOp[] = [];
@@ -1928,12 +1889,10 @@ function subscriptionOpsToDynamic(
 		if (!fromBilibili(op.sub)) continue;
 		const identity = subscriptionIdentityOf(op.sub);
 		if (op.kind === "add") {
-			// 全量视图(filter/imageGroup/ai/模板 per-UP 覆盖一并带上),与
-			// buildDynamicSubsView 投影一致 —— 新增即带覆盖的订阅首推就生效,
-			// 不必等下次全量刷新。post 字段已含 enabled 门(见 buildDynamicSubViewSingle)。
+			// 与 buildDynamicSubsView 同一投影。post 字段已含 enabled 门(见 buildDynamicSubViewSingle)。
 			out.push({
 				kind: "add",
-				sub: buildDynamicSubViewSingle(op.sub, subRuntimeStore, globals),
+				sub: buildDynamicSubViewSingle(op.sub, globals),
 			});
 		} else if (op.kind === "remove") {
 			out.push({ kind: "delete", uid: identity.externalId });

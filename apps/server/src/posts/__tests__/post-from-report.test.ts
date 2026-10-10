@@ -43,8 +43,8 @@ function report(over: Partial<Reported> = {}): Reported {
 	return { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: PUBLISHED, ...over };
 }
 
-const translate = (over: Partial<Reported> = {}, opts: { profileAvatar?: string } = {}) =>
-	postFromReport(report(over), { authorName: "作者甲", images: writer, ...opts });
+const translate = (over: Partial<Reported> = {}) =>
+	postFromReport(report(over), { authorName: "作者甲", images: writer });
 
 const refOf = async (bytes: Uint8Array) => {
 	const stored = await writer.put(bytes);
@@ -293,35 +293,23 @@ describe("配图:前 9 张存进图库,宽高 BN 读文件头,图库不收的没
 	});
 });
 
-describe("作者头像:事件带的字节存进图库,否则用资料里的引用", () => {
-	it("事件带了图库收的头像:存进图库,Creator.avatar 是它的引用(资料里的不用)", async () => {
+describe("作者头像:事件带的字节存进图库,否则没有(外层头像由核心出卡时按订阅资料补)", () => {
+	it("事件带了图库收的头像:存进图库,Creator.avatar 是它的引用", async () => {
 		const avatar = png(8, 8, 77);
-		const profile = await refOf(png(8, 8, 55));
-		const post = await translate({ author: { avatar } }, { profileAvatar: profile });
+		const post = await translate({ author: { avatar } });
 		expect(post.creator.avatar).toBe(await refOf(avatar));
-		expect(post.creator.avatar).not.toBe(profile);
 	});
 
-	it("事件没带头像:用资料里的引用,不再存一遍", async () => {
-		const profile = await refOf(png(8, 8, 55));
+	it("事件带的头像图库不收(不是图 / 超限):没有头像格,不去碰订阅资料", async () => {
+		const post = await translate({ author: { avatar: new Uint8Array([9, 9, 9]) } });
+		expect(post.creator).toEqual({ name: "作者甲" });
+	});
+
+	it("事件没带头像:Creator 没有头像格(出图器的头像块收起),也不存任何头像", async () => {
 		const put = vi.spyOn(writer, "put");
-		const post = await translate({}, { profileAvatar: profile });
-		expect(post.creator.avatar).toBe(profile);
-		expect(put).not.toHaveBeenCalled();
-	});
-
-	it("事件带的头像图库不收(不是图 / 超限):退到资料里的引用", async () => {
-		const profile = await refOf(png(8, 8, 55));
-		const post = await translate(
-			{ author: { avatar: new Uint8Array([9, 9, 9]) } },
-			{ profileAvatar: profile },
-		);
-		expect(post.creator.avatar).toBe(profile);
-	});
-
-	it("都没有:Creator 没有头像格(出图器的头像块收起)", async () => {
 		const post = await translate({ author: { name: "事件里的名字" } });
 		expect(post.creator).toEqual({ name: "作者甲" });
+		expect(put).not.toHaveBeenCalled();
 	});
 });
 
@@ -401,11 +389,10 @@ describe("postFromReport — 存图口回的不是 invalid", () => {
 		).rejects.toThrow("盘满了");
 	});
 
-	it("事件带的头像存不下来(unavailable):抛,不是悄悄换成资料里那张", async () => {
+	it("事件带的头像存不下来(unavailable):抛,不是悄悄少一个头像", async () => {
 		await expect(
 			postFromReport(report({ author: { avatar: png(8, 8) } }), {
 				authorName: "甲",
-				profileAvatar: `${"a".repeat(64)}.png`,
 				images: unavailable,
 			}),
 		).rejects.toThrow("盘满了");

@@ -18,7 +18,8 @@
  * 过一遍 `normalizePost`:片段的字拼起来必须等于 `text`,这里的切法保证对得上。
  *
  * 过滤用的字与 AI 用的字也不在这里拼:过滤吃翻好的 `Post`(`filterPost`),AI 的文字是 `postText(post, "labeled")`
- * (ADR-0021 决策 43、ADR-0028 决策 1,取段只此一份)。翻译排在过滤之前,图的写盘用 `deferImageWrites`(`images/image-writes.ts`)推迟到出卡。
+ * (ADR-0021 决策 43、ADR-0028 决策 1,取段只此一份)。图在**交给核心之前**就写进图库(`bindExtensionPosts` 给的是真的存图口),
+ * 被过滤的、关了出图的作品也写(3a-27 决策 3)。
  */
 
 import { GALLERY_MAX_IMAGES } from "@bilibili-notify/image";
@@ -40,8 +41,6 @@ type ReportedPost = SubscriptionReportValue<"post">;
 export interface PostFromReportOptions {
 	/** 卡上的作者名(`extensionSubscriptionName` 取好的,也是模板的 `{name}`)。 */
 	authorName: string;
-	/** 订阅资料里存进图库的头像引用;事件没带头像(或带的不是图库收的图)时用它。 */
-	profileAvatar?: ImageRef;
 	/** 存图的口(`AppRuntime.postImages` / `liveImages` 的存图那一半)。 */
 	images: Pick<ImageWriter, "put">;
 }
@@ -111,8 +110,8 @@ function isoOfMillis(ms: number): string {
 
 /**
  * 一张图的字节 → 存进图库,回装了引用的 `PostImage`(带宽高与动图标记)。图库不收就没有 `ref`(出图器画占位),
- * 宽高与动图标记照样带 —— 那是字节自己的事。这里拿到的口是 `deferImageWrites`(`images/image-writes.ts`)的
- * `sink`,不碰盘;磁盘写失败在 `commit()` 那一刻才见得到,由它抛出去(这一次出卡失败,装配降级成纯文字)。
+ * 宽高与动图标记照样带 —— 那是字节自己的事。磁盘写失败(口回 `unavailable`)`storeOrSkip` 抛:拓展作品的绑定在
+ * 自己给的存图口里把它接成「这张图缺着」(记 warn),所以走到这里的抛错只剩口自己出了意外。
  */
 async function storeImage(bytes: Uint8Array, images: Pick<ImageWriter, "put">): Promise<PostImage> {
 	const ref = await storeOrSkip(images, bytes);
@@ -127,10 +126,10 @@ export async function postFromReport(
 	report: ReportedPost,
 	opts: PostFromReportOptions,
 ): Promise<Post> {
-	// 作者头像:事件带了字节且图库收就存、用它;否则用订阅资料里的引用;都没有就没有头像(头像块收起)。
+	// 作者头像:事件带了字节且图库收就存、用它;否则没有头像 —— 核心出卡那一刻会按订阅资料补上外层作者的头像
+	// (`deliverPost` 的 `avatar` 读口),这里不碰订阅与资料缓存。
 	let avatar: ImageRef | undefined;
 	if (report.author?.avatar) avatar = await storeOrSkip(opts.images, report.author.avatar);
-	avatar ??= opts.profileAvatar;
 
 	const text = (report.text ?? "").replace(/\r\n?/g, "\n");
 	const post: Post = {
