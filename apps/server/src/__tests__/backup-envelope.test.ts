@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("核心设置拆掉 app 以后导出的备份是版本 15", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(15);
+	it("默认文案账本上提以后导出的备份是版本 16", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(16);
+	});
+
+	it("版本 15 的备份(账本还在 defaults.templateDefaultsSeen 里)→ unsupported:整份拒收,不悄悄丢掉账本", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 15 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 14 的备份(核心设置里还是 app)→ unsupported:整份拒收,不悄悄丢掉日志与轮询设置", () => {

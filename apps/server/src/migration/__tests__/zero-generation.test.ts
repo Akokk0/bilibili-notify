@@ -803,8 +803,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 42,
-			output: "a9a878be2009640ccc6aa6a188de785fc9d5667c4e6ab84b2c62c515f3544565",
+			revision: 43,
+			output: "0bba6da97a0a465b4cffcbb8dde6e591dedf548160d5bf35b1275b6acf292fef",
 		});
 	});
 });

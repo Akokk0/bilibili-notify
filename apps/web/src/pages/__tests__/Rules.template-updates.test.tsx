@@ -26,14 +26,28 @@ vi.mock("../../services/api", () => ({
 
 import { api } from "../../services/api";
 
-/** 造一份 globals;`mutate` 里改 defaults。 */
-function globalsWith(mutate: (d: ReturnType<typeof makeDefaults>) => void): GlobalConfig {
+/**
+ * 造一份 globals;`mutate` 里改 defaults,要摆账本就写 `top.templatesSeen`(账本在核心设置顶层,不在 defaults 里)。
+ * 空账本 = 刚从老版本升上来的形态(该字段引入前写的 globals.json),拿它当基线正合适。
+ */
+function globalsWith(
+	mutate: (
+		d: ReturnType<typeof makeDefaults>,
+		top: { templatesSeen: Record<string, string> },
+	) => void,
+): GlobalConfig {
 	const defaults = makeDefaults();
 	// fixture 的模板全是空串,先摆成「值就等于当前默认」的干净基线,
 	// 这样只有测试自己动过的那条才会亮灯。
 	defaults.templates = { ...defaults.templates, ...DEFAULT_TEMPLATES };
-	mutate(defaults);
-	return { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
+	const top = { templatesSeen: {} as Record<string, string> };
+	mutate(defaults, top);
+	return {
+		logging: {},
+		master: {},
+		defaults,
+		templatesSeen: top.templatesSeen,
+	} as unknown as GlobalConfig;
 }
 
 function resetStore(): void {
@@ -106,9 +120,9 @@ describe("默认文案有更新的小标记", () => {
 	it("账本已经记过这一版 → 不亮标记,哪怕文案是主人自己写的", async () => {
 		// 手写过文案的主人,值**永远**不等于默认。若这条不成立,提示会一直挂着不灭。
 		mount(
-			globalsWith((d) => {
+			globalsWith((d, top) => {
 				d.templates.liveStart = "我自己写的";
-				d.templateDefaultsSeen = { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) };
+				top.templatesSeen = { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) };
 			}),
 		);
 		await gotoLiveMsg();
@@ -136,6 +150,54 @@ describe("默认文案有更新的小标记", () => {
 	});
 });
 
+describe("账本存盘:在核心设置顶层,不在 defaults 里", () => {
+	/** 点保存(灵动岛触发的那条路),返回下发给 `/api/settings` 的 body。 */
+	async function saveAndGetBody(): Promise<Record<string, unknown>> {
+		await waitFor(() => expect(useDraftStore.getState().current?.pageKey).toBe("rules"));
+		const onSave = useDraftStore.getState().current?.onSave as (() => Promise<void>) | undefined;
+		await onSave?.();
+		expect(api.patch).toHaveBeenCalledWith("/api/settings", expect.anything());
+		return vi.mocked(api.patch).mock.calls.at(-1)?.[1] as Record<string, unknown>;
+	}
+
+	it("点「保持我的」后存盘 → 补丁里顶层有 templatesSeen.liveStart,defaults 里没有 templateDefaultsSeen", async () => {
+		mount(globalsWith((d) => (d.templates.liveStart = "我自己写的")));
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+		fireEvent.click(screen.getByText("保持我的"));
+		await waitFor(() => expect(noticeOfLiveStart()).toBeNull());
+		const body = await saveAndGetBody();
+		expect(body.templatesSeen).toEqual({
+			liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart),
+		});
+		expect(body.defaults).not.toHaveProperty("templateDefaultsSeen");
+	});
+
+	it("「保持我的」点完保存条会亮(账本变了算脏),刷新(重读)后提示不再出现", async () => {
+		const g = globalsWith((d) => (d.templates.liveStart = "我自己写的"));
+		mount(g);
+		await gotoLiveMsg();
+		await waitFor(() => expect(noticeOfLiveStart()).not.toBeNull());
+		fireEvent.click(screen.getByText("保持我的"));
+		await waitFor(() =>
+			expect(useDraftStore.getState().current?.diff.map((x) => x.code)).toContain(
+				"templatesSeen.liveStart",
+			),
+		);
+		cleanup();
+		resetStore();
+		// 服务端回来的就是存好的账本。
+		const saved = {
+			...g,
+			templatesSeen: { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) },
+		} as GlobalConfig;
+		mount(saved);
+		await gotoLiveMsg();
+		await waitFor(() => expect(liveStartInput()).toBeTruthy());
+		expect(noticeOfLiveStart()).toBeNull();
+	});
+});
+
 /** liveStart 字段上的「恢复默认」按钮(没有就 null)。 */
 function resetBtnOfLiveStart(): Element | null {
 	// 定位锚是外层的 `data-field-reset`,点击目标是里面那个真按钮 —— 点外层的
@@ -147,10 +209,10 @@ describe("恢复默认按钮", () => {
 	it("改过的文案旁边有「恢复默认」,点了还原成当前默认", async () => {
 		// 这个按钮跟「有更新」的提示是两件事:它常驻,管的是「我改坏了想还原」。
 		mount(
-			globalsWith((d) => {
+			globalsWith((d, top) => {
 				d.templates.liveStart = "我自己写的";
 				// 记上账本,把「有更新」的提示排除掉 —— 这条只验恢复按钮。
-				d.templateDefaultsSeen = { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) };
+				top.templatesSeen = { liveStart: templateFingerprint(DEFAULT_TEMPLATES.liveStart) };
 			}),
 		);
 		await gotoLiveMsg();
@@ -172,11 +234,11 @@ describe("上舰文案的体系默认也接上「默认文案有更新」(㉓e)"
 
 	/** 打开自定义上舰提示,体系默认文案摆成 `template`。 */
 	function withGuardDefault(template: string, seen?: Record<string, string>) {
-		return globalsWith((d) => {
+		return globalsWith((d, top) => {
 			d.templates.membership = {
 				guard: { enabled: true, default: { template, imageUrl: "" }, tiers: {} },
 			};
-			if (seen) d.templateDefaultsSeen = seen;
+			if (seen) top.templatesSeen = seen;
 		});
 	}
 

@@ -158,11 +158,16 @@ function deepMerge<T>(base: T, patch: GlobalConfigPatch): T {
 export function GlobalDraftBinder({
 	defaults,
 	baseline,
+	templatesSeen,
+	baselineTemplatesSeen,
 	onSave,
 	onDiscard,
 }: {
 	defaults: GlobalDefaults;
 	baseline: GlobalDefaults;
+	/** 「默认文案看过哪一版」的账本:在核心设置顶层、不在 `defaults` 里,所以另带一格。 */
+	templatesSeen: GlobalConfig["templatesSeen"];
+	baselineTemplatesSeen: GlobalConfig["templatesSeen"];
 	onSave: () => Promise<unknown> | unknown;
 	onDiscard: () => void;
 }): null {
@@ -181,9 +186,9 @@ export function GlobalDraftBinder({
 			messageLayout: defaults.messageLayout,
 			// 账本也算脏:点「保持我的」时**只有**它变,不纳进来保存条就不亮,
 			// 主人一离开页面这个决定就丢了,下次进来还被问同一件事。
-			templateDefaultsSeen: defaults.templateDefaultsSeen,
+			templatesSeen,
 		}),
-		[defaults],
+		[defaults, templatesSeen],
 	);
 	const islandBaseline = useMemo(
 		() => ({
@@ -197,9 +202,9 @@ export function GlobalDraftBinder({
 			features: { liveStreaming: baseline.features.liveStreaming },
 			templates: baseline.templates,
 			messageLayout: baseline.messageLayout,
-			templateDefaultsSeen: baseline.templateDefaultsSeen,
+			templatesSeen: baselineTemplatesSeen,
 		}),
-		[baseline],
+		[baseline, baselineTemplatesSeen],
 	);
 	useDirtyDraft({
 		pageKey: "rules",
@@ -265,10 +270,11 @@ export default function Rules() {
 							templates: next.defaults.templates,
 							imageGroup: next.defaults.imageGroup,
 							messageLayout: next.defaults.messageLayout,
-							// 账本必须跟模板同批下发:主人点「保持我的」时**只有**账本变了,
-							// 不带上它这一下就等于什么都没保存,下次进来还问同一件事。
-							templateDefaultsSeen: next.defaults.templateDefaultsSeen,
 						},
+						// 账本必须跟模板同批下发:主人点「保持我的」时**只有**账本变了,
+						// 不带上它这一下就等于什么都没保存,下次进来还问同一件事。
+						// 它在核心设置顶层、不在 defaults 里 —— 写进 defaults 会被服务端悄悄剥掉。
+						templatesSeen: next.templatesSeen,
 					},
 					{
 						defaults: {
@@ -282,8 +288,8 @@ export default function Rules() {
 							templates: base?.defaults.templates,
 							imageGroup: base?.defaults.imageGroup,
 							messageLayout: base?.defaults.messageLayout,
-							templateDefaultsSeen: base?.defaults.templateDefaultsSeen,
 						},
+						templatesSeen: base?.templatesSeen,
 					},
 				),
 			);
@@ -320,7 +326,7 @@ export default function Rules() {
 	// 模板字段的调用点**一个都不用改**(详见 packages/ui 的 field-updates.tsx)。
 	const fieldUpdates = useMemo(() => {
 		const templates = draft?.defaults.templates;
-		const seen = draft?.defaults.templateDefaultsSeen ?? {};
+		const seen = draft?.templatesSeen ?? {};
 		const pending = new Set(
 			templates ? pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, seen) : [],
 		);
@@ -341,10 +347,10 @@ export default function Rules() {
 								templates: nestByPath(path, next) as NonNullable<
 									GlobalConfigPatch["defaults"]
 								>["templates"],
-								templateDefaultsSeen: remember,
 							},
+							templatesSeen: remember,
 						}),
-					keep: () => patchDraft({ defaults: { templateDefaultsSeen: remember } }),
+					keep: () => patchDraft({ templatesSeen: remember }),
 				};
 			},
 			// 「恢复默认」跟上面那个提示是两件事:它常驻,管的是「我改坏了想还原」,
@@ -361,8 +367,8 @@ export default function Rules() {
 							templates: nestByPath(path, def) as NonNullable<
 								GlobalConfigPatch["defaults"]
 							>["templates"],
-							templateDefaultsSeen: { [path]: templateFingerprint(def) },
 						},
+						templatesSeen: { [path]: templateFingerprint(def) },
 					});
 			},
 		};
@@ -486,6 +492,8 @@ export default function Rules() {
 				<GlobalDraftBinder
 					defaults={draft.defaults}
 					baseline={globalsQuery.data.defaults}
+					templatesSeen={draft.templatesSeen}
+					baselineTemplatesSeen={globalsQuery.data.templatesSeen}
 					onSave={() => save.mutateAsync(draft)}
 					onDiscard={() => {
 						if (globalsQuery.data) setDraft(globalsQuery.data);

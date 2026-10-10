@@ -33,7 +33,7 @@ import {
 } from "@bilibili-notify/internal";
 import { migrateAiSettings } from "./ai.js";
 import { moveGlobalCards } from "./card-moves.js";
-import { splitAppSettings } from "./core-sections.js";
+import { moveTemplateLedger, splitAppSettings } from "./core-sections.js";
 import { renameGlobalSettingsKeys } from "./feature-renames.js";
 import { migrateLegacyFeatureFlags } from "./features.js";
 import { isPlainObject, readJsonFile, rewriteJsonFile } from "./files.js";
@@ -66,17 +66,20 @@ export function migrateGlobals(raw: unknown): unknown {
 /**
  * 整份全局设置的 raw → raw:0.x 各个版本留下的形状 → 0.x 最新的形状 → 1.0 的改名 → 会员与醒目留言的搬家(两个直播阈值、
  * 上舰文案,㉓d,`membership-moves.ts`) → 卡片设置搬家与老皮肤指针回默认(㉔e,`card-moves.ts`) → 直播拆键 → 历史保留天数换键
- * → 拆掉 `app`(日志的格进 `logging`、粉丝轮询的 cron 成顶层 `profileRefreshCron`,3a-38,`core-sections.ts`)。设置那一步
+ * → 拆掉 `app`(日志的格进 `logging`、粉丝轮询的 cron 成顶层 `profileRefreshCron`,3a-38,`core-sections.ts`)→ 默认文案账本
+ * 上提到顶层 `templatesSeen`(同文件;排在最后,前面改写账本的几步看的还是老位置)。设置那一步
  * ({@link migrateSettingsFiles})和订阅那一步要的「全局值」({@link readZeroLiveFacts})都从这一条流水过,拆键前后的全局值只有一个读法。
  *
  * ⚠️ 对 B 站那两格(`app.dynamicCron` / `healthCheckMinutes`)**有损**:最后一步把剩下的 `app` 整个吃掉,没先拆走的就没了。
  * 它们必须先经 {@link splitBilibiliSettings} 拆走 —— 生产路径只有 {@link migrateSettingsFiles} 一处,那里排好了次序。
  */
 export function migrateGlobalsToCurrent(raw: unknown): unknown {
-	return splitAppSettings(
-		moveHistoryRetention(
-			splitGlobalLiveSettings(
-				moveGlobalCards(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+	return moveTemplateLedger(
+		splitAppSettings(
+			moveHistoryRetention(
+				splitGlobalLiveSettings(
+					moveGlobalCards(moveGlobalMembership(renameGlobalSettingsKeys(migrateGlobals(raw)))),
+				),
 			),
 		),
 	);

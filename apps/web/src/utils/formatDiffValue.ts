@@ -1,4 +1,4 @@
-import { getFieldLabel } from "../config/field-labels";
+import { getFieldLabel, SEEN_PREFIX } from "../config/field-labels";
 
 /**
  * 灵动岛 diff 行的值格式化结果。
@@ -15,8 +15,7 @@ const REDACTED: FormattedValue = { display: "••• 已改" };
 const UNSET: FormattedValue = { display: "(未设置)" };
 const EMPTY_LIST: FormattedValue = { display: "[]" };
 
-/** 「默认文案有更新」的账本前缀;它的值是指纹,不该按字符串原样吐出来。 */
-export const SEEN_PREFIX = "templateDefaultsSeen.";
+/** 「默认文案有更新」的账本(前缀见 `field-labels.ts`);它的值是指纹,不该按字符串原样吐出来。 */
 const SEEN_YES: FormattedValue = { display: "已确认" };
 const SEEN_NO: FormattedValue = { display: "未确认" };
 

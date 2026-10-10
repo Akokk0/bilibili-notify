@@ -34,7 +34,16 @@ afterEach(() => {
 describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 	it("mount → 以 pageKey 'rules' 注册到 draftStore", () => {
 		const d = makeDefaults();
-		render(<GlobalDraftBinder defaults={d} baseline={d} onSave={noop} onDiscard={noop} />);
+		render(
+			<GlobalDraftBinder
+				defaults={d}
+				baseline={d}
+				templatesSeen={{}}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
+		);
 		expect(useDraftStore.getState().current?.pageKey).toBe("rules");
 	});
 
@@ -43,7 +52,14 @@ describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 		const draft = makeDefaults();
 		draft.filters = { ...draft.filters, blockKeywords: ["spam"] };
 		render(
-			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+			<GlobalDraftBinder
+				defaults={draft}
+				baseline={baseline}
+				templatesSeen={{}}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
 		);
 		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
 		expect(codes).toContain("blockKeywords");
@@ -58,7 +74,14 @@ describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 			mergeForward: !baseline.imageGroup.mergeForward,
 		};
 		render(
-			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+			<GlobalDraftBinder
+				defaults={draft}
+				baseline={baseline}
+				templatesSeen={{}}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
 		);
 		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
 		expect(codes).toContain("imageGroup.enabled");
@@ -74,7 +97,14 @@ describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 		draft.liveStreaming = { streamingIntervalHours: 2 };
 		draft.liveStart = { catchUpOnBoot: true };
 		render(
-			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+			<GlobalDraftBinder
+				defaults={draft}
+				baseline={baseline}
+				templatesSeen={{}}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
 		);
 		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
 		expect(codes).toContain("features.liveStreaming");
@@ -88,16 +118,47 @@ describe("GlobalDraftBinder — 全局 island 互斥 binder", () => {
 		const draft = makeDefaults();
 		draft.features = { ...draft.features, post: false };
 		render(
-			<GlobalDraftBinder defaults={draft} baseline={baseline} onSave={noop} onDiscard={noop} />,
+			<GlobalDraftBinder
+				defaults={draft}
+				baseline={baseline}
+				templatesSeen={{}}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
 		);
 		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
 		expect(codes.filter((c) => c.startsWith("features."))).toEqual([]);
 	});
 
+	// 账本上提到核心顶层(3a-38):它不在 defaults 里,binder 要另拿一格,否则「保持我的」点完保存条不亮。
+	it("账本(顶层 templatesSeen)变了 → diff 检出 code 'templatesSeen.liveStart'", () => {
+		const d = makeDefaults();
+		render(
+			<GlobalDraftBinder
+				defaults={d}
+				baseline={d}
+				templatesSeen={{ liveStart: "abc" }}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
+		);
+		const codes = useDraftStore.getState().current?.diff.map((x) => x.code) ?? [];
+		expect(codes).toContain("templatesSeen.liveStart");
+	});
+
 	it("unmount → unregister(current 归 null),与 per-UP binder 互斥不串台", () => {
 		const d = makeDefaults();
 		const { unmount } = render(
-			<GlobalDraftBinder defaults={d} baseline={d} onSave={noop} onDiscard={noop} />,
+			<GlobalDraftBinder
+				defaults={d}
+				baseline={d}
+				templatesSeen={{}}
+				baselineTemplatesSeen={{}}
+				onSave={noop}
+				onDiscard={noop}
+			/>,
 		);
 		expect(useDraftStore.getState().current?.pageKey).toBe("rules");
 		unmount();

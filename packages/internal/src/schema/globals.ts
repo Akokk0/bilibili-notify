@@ -196,19 +196,6 @@ export const GlobalDefaultsSchema = z.object({
 	// 之前持久化的)load 时被 zod 自动补全 —— 否则 ConfigValidationError 让独立端
 	// 启动直接挂。新字段加 GlobalDefaults 时都该带 default,保留迁移友好性。
 	imageGroup: ImageGroupSettingsSchema.default(DEFAULT_IMAGE_GROUP),
-	/**
-	 * 「这一版默认文案我已经知道了」的账本:点路径 → 当时那版默认的指纹。
-	 *
-	 * 主人改了某条模板的默认,已装好的用户拿不到 —— 他们盘上写的是当初那一版。
-	 * 判定「要不要提示他更新」靠的就是这本账:**指纹对不上 = 这版默认他没见过**。
-	 * 于是不必再去猜「他到底改没改过」,那条路要维护一张历代默认表,而那张表
-	 * 没人守得住(`liveSummary` 已经漏过一次)。判定见 `../template-defaults.ts`。
-	 *
-	 * `.default({})` 是老配置兜底(同 imageGroup);全新安装由
-	 * `makeDefaultGlobalConfig` 一次填满 —— 理由见
-	 * `./__tests__/template-defaults-seen.test.ts` 里那条「改了自己的文案不该立刻被提示」。
-	 */
-	templateDefaultsSeen: z.record(z.string(), z.string()).default({}),
 });
 export type GlobalDefaults = z.infer<typeof GlobalDefaultsSchema>;
 
@@ -319,6 +306,21 @@ export const GlobalConfigSchema = z.object({
 	stats: StatsSettingsSchema.default(() => structuredClone(DEFAULT_STATS_SETTINGS)),
 	master: MasterConfigSchema,
 	defaults: GlobalDefaultsSchema,
+	/**
+	 * 「这一版默认文案我已经知道了」的账本:点路径 → 当时那版默认的指纹。
+	 *
+	 * 主人改了某条模板的默认,已装好的用户拿不到 —— 他们盘上写的是当初那一版。
+	 * 判定「要不要提示他更新」靠的就是这本账:**指纹对不上 = 这版默认他没见过**。
+	 * 于是不必再去猜「他到底改没改过」,那条路要维护一张历代默认表,而那张表
+	 * 没人守得住(`liveSummary` 已经漏过一次)。判定见 `../template-defaults.ts`。
+	 *
+	 * 放顶层而非 `defaults`(3a-38):它是面板的簿记、不是「per-UP overrides 缺字段时回退到这里」的值。
+	 *
+	 * `.default({})` 是老配置兜底(同 imageGroup);全新安装由
+	 * `makeDefaultGlobalConfig` 一次填满 —— 理由见
+	 * `./__tests__/template-defaults-seen.test.ts` 里那条「改了自己的文案不该立刻被提示」。
+	 */
+	templatesSeen: z.record(z.string(), z.string()).default({}),
 	/**
 	 * 榜单周报的定时推送 —— 全局唯一一条。
 	 *
@@ -432,9 +434,9 @@ export function makeDefaultGlobalConfig(): GlobalConfig {
 			ai: DEFAULT_AI,
 			cards: DEFAULT_CARDS,
 			imageGroup: DEFAULT_IMAGE_GROUP,
-			// 全新安装把账本一次填满:他拿到的就是当前默认,没什么可更新的。
-			// 空着的话,他一动手改文案就会被提示「默认文案有更新」—— 更新到哪去?
-			templateDefaultsSeen: allTemplateFingerprints(DEFAULT_TEMPLATES),
 		},
+		// 全新安装把账本一次填满:他拿到的就是当前默认,没什么可更新的。
+		// 空着的话,他一动手改文案就会被提示「默认文案有更新」—— 更新到哪去?
+		templatesSeen: allTemplateFingerprints(DEFAULT_TEMPLATES),
 	});
 }

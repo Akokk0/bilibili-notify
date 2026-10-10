@@ -4,6 +4,8 @@
  * - {@link splitAppSettings}(提交 ②):`app.logLevel / logLevels / logRetentionDays / memoryLog` → `logging`,
  *   `app.fansCron` → 顶层 `profileRefreshCron`;`logLevels` 里 `dynamic` 与 `live` 两个键并成 `bilibili`。
  *
+ * - {@link moveTemplateLedger}(提交 ③):`defaults.templateDefaultsSeen` → 顶层 `templatesSeen`。
+ *
  * 同 `live-split.ts` / `card-moves.ts` 的规矩:raw → raw,认不得的形状原样放过(由配置仓开机时报出来),
  * 没有要搬的东西回传进来的那个对象。接在 `migrateGlobalsToCurrent` 的末尾 —— **B 站那两格要先经
  * `splitBilibiliSettings` 拆走**(见 `settings.ts`),这里把剩下的 `app` 整个吃掉。
@@ -53,6 +55,30 @@ function mergeLogLevels(levels: unknown, globalLevel: unknown): unknown {
 	if ("bilibili" in rest) return rest;
 	const bilibili = mergeBilibiliLevel(dynamic, live, globalLevel);
 	return bilibili === undefined ? rest : { ...rest, bilibili };
+}
+
+/**
+ * 默认文案账本上提(提交 ③):`defaults.templateDefaultsSeen` → 顶层 `templatesSeen`(紧跟在 `defaults` 后面)。
+ * 老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `templatesSeen`(手改过的盘)就用顶层的、老键照样拿掉。
+ * 老账本不是对象也原样带上去,由配置仓开机时报出来。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
+ *
+ * 上游两步 —— `membership-moves.ts` 与 `feature-renames.ts` —— 改写的是老位置上的账本,所以流水线里这一步必须排在它们之后。
+ */
+export function moveTemplateLedger(raw: unknown): unknown {
+	if (!isPlainObject(raw) || !isPlainObject(raw.defaults)) return raw;
+	if (!Object.hasOwn(raw.defaults, "templateDefaultsSeen")) return raw;
+	const { templateDefaultsSeen: oldLedger, ...restOfDefaults } = raw.defaults;
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if (key === "templatesSeen") continue;
+		if (key !== "defaults") {
+			out[key] = value;
+			continue;
+		}
+		out.defaults = restOfDefaults;
+		out.templatesSeen = Object.hasOwn(raw, "templatesSeen") ? raw.templatesSeen : oldLedger;
+	}
+	return out;
 }
 
 /** `app` 里归 `logging` 的几格(缺的不写,留给 schema 补默认)。 */

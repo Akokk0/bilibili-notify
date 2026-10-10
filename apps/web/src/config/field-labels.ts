@@ -690,12 +690,12 @@ export const FIELD_LABELS = {
 /**
  * 「默认文案有更新」的账本前缀。
  *
- * 它的 code 是**动态**的 —— `templateDefaultsSeen.<任意模板路径>`,模板加一条这里
+ * 它的 code 是**动态**的 —— `templatesSeen.<任意模板路径>`,模板加一条这里
  * 就多一条,逐个登记进 FIELD_LABELS 等于把同一份清单抄两遍(而且必然有人忘)。
  * 所以走前缀 fallback,label 直接**借对应模板字段自己的名字**:模板哪天改名,
- * 账本这条跟着改,不会两边对不上。
+ * 账本这条跟着改,不会两边对不上。`formatDiffValue.ts` 也引这一份。
  */
-const SEEN_PREFIX = "templateDefaultsSeen.";
+export const SEEN_PREFIX = "templatesSeen.";
 
 /**
  * 逐实例的桶前缀 —— `ai.providers.<实例>.<字段>`。

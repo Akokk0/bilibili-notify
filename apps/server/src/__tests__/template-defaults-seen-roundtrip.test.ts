@@ -71,9 +71,9 @@ afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true });
 });
 
-describe("templateDefaultsSeen 的保存往返", () => {
+describe("templatesSeen 的保存往返", () => {
 	it("PATCH 记一笔 → 换个 store 重新读还在", async () => {
-		await store.patchGlobals({ defaults: { templateDefaultsSeen: { liveStart: "aaa" } } });
+		await store.patchGlobals({ templatesSeen: { liveStart: "aaa" } });
 		const reopened = createConfigStore({
 			bootstrap: makeBootstrap(dataDir),
 			dataRoot: dataDir,
@@ -81,15 +81,15 @@ describe("templateDefaultsSeen 的保存往返", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await reopened.load();
-		expect(reopened.getGlobals().defaults.templateDefaultsSeen.liveStart).toBe("aaa");
+		expect(reopened.getGlobals().templatesSeen.liveStart).toBe("aaa");
 	});
 
 	it("分两次记两个字段 → 两笔都在,后一笔不冲掉前一笔", async () => {
 		// 这才是这条测试存在的理由。整体替换的话 liveStart 会在第二次 PATCH 后消失,
 		// 主人看到的是「上次明明处理过的提示,怎么又冒出来了」。
-		await store.patchGlobals({ defaults: { templateDefaultsSeen: { liveStart: "aaa" } } });
-		await store.patchGlobals({ defaults: { templateDefaultsSeen: { liveEnd: "bbb" } } });
-		expect(store.getGlobals().defaults.templateDefaultsSeen).toMatchObject({
+		await store.patchGlobals({ templatesSeen: { liveStart: "aaa" } });
+		await store.patchGlobals({ templatesSeen: { liveEnd: "bbb" } });
+		expect(store.getGlobals().templatesSeen).toMatchObject({
 			liveStart: "aaa",
 			liveEnd: "bbb",
 		});
@@ -97,7 +97,7 @@ describe("templateDefaultsSeen 的保存往返", () => {
 
 	it("首次启动落盘的 globals.json 里账本是满的,不是空对象", async () => {
 		// 全新安装不该看见任何「有更新」。账本空着的话,主人一改文案就被提示。
-		const seen = store.getGlobals().defaults.templateDefaultsSeen;
+		const seen = store.getGlobals().templatesSeen;
 		expect(Object.keys(seen).length).toBeGreaterThan(0);
 		expect(seen.liveStart).toBeTruthy();
 	});

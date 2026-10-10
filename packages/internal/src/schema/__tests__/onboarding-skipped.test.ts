@@ -7,7 +7,7 @@
  * 这里守配置层的两条不变量:
  *
  * ① **老配置缺这个字段照样能读** —— 独立端启动时 `GlobalConfigSchema.parse` 失败
- *    是直接挂掉的(同 `templateDefaultsSeen` / `imageGroup` 那批)。
+ *    是直接挂掉的(同 `templatesSeen` / `imageGroup` 那批)。
  * ② **「缺失」必须原样穿透,不许被 default 补成 false** —— 缺失的意思是「还没问
  *    过用户」,询问框全靠它弹;补成 false 等于永远不问、对老用户直接开导览,
  *    正是上一版被主人打回的行为。全新安装同理:第一次开面板就该被问一次。

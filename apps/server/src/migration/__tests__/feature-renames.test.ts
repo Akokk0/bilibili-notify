@@ -369,16 +369,18 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 		});
 	});
 
-	it("文案账本 templateDefaultsSeen:post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;上舰那六条换成新路径两条(㉓d)", async () => {
+	it("文案账本(迁出来在顶层 templatesSeen):post / postVideo / liveStreaming 三个路径的键换名,指纹值原样;上舰那六条换成新路径两条(㉓d)", async () => {
 		await placeConnectionsAndTargets();
 		await sandbox.placeZero("state/globals.json", makeZeroGlobals());
 
 		await sandbox.migrate();
 
-		const core = await sandbox.readConfig<{ defaults: { templateDefaultsSeen: Obj } }>(
+		// 键换名发生在上提之前(账本还在 defaults 里),迁出来的核心设置里账本已经在顶层、defaults 里没有老键。
+		const core = await sandbox.readConfig<{ defaults: Obj; templatesSeen: Obj }>(
 			"settings/core.json",
 		);
-		expect(core.defaults.templateDefaultsSeen).toEqual({
+		expect(core.defaults).not.toHaveProperty("templateDefaultsSeen");
+		expect(core.templatesSeen).toEqual({
 			liveStart: "1nkgnb7",
 			liveStreaming: "oopixp",
 			liveEnd: "1mtqdty",
@@ -392,7 +394,7 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 			"membership.guard.default.template": "8q6guf",
 			"membership.guard.default.imageUrl": "ztntfp",
 		});
-		expect(Object.keys(core.defaults.templateDefaultsSeen).slice(3, 7)).toEqual([
+		expect(Object.keys(core.templatesSeen).slice(3, 7)).toEqual([
 			"liveSummary",
 			"post",
 			"postVideo",
@@ -412,10 +414,11 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 
 		// 面板(`Rules.tsx`)用的就是这个判定。账本里 `post` / `postVideo` 的指纹是「这版默认他见过了」;
 		// 没有换键的话账本里查不到这两条,就会被当成「这版默认他没见过」,凭空亮两个灯。
-		const { templates, templateDefaultsSeen } = store.getGlobals().defaults;
+		const { templates } = store.getGlobals().defaults;
+		const { templatesSeen } = store.getGlobals();
 		expect(templates.post).toBe("我写的动态 {name}");
 		expect(templates.postVideo).toBe("我写的视频 {name}");
-		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templateDefaultsSeen)).toEqual([]);
+		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templatesSeen)).toEqual([]);
 	});
 
 	it("messageLayout.dynamic → post:全局与逐订阅覆盖;live 那组(开播 / 正在直播 / 下播)不改名", async () => {
@@ -581,9 +584,10 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 
 		const store = await sandbox.migrateAndLoad();
 
-		const { templates, templateDefaultsSeen } = store.getGlobals().defaults;
+		const { templates } = store.getGlobals().defaults;
+		const { templatesSeen } = store.getGlobals();
 		// 升级当下:体系默认就是出厂默认,没有要更新的。
-		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templateDefaultsSeen)).toEqual([]);
+		expect(pendingTemplateUpdates(templates, DEFAULT_TEMPLATES, templatesSeen)).toEqual([]);
 		// 主人以后把体系默认改成自己的话:这一版默认他「见过了」(账本里是新默认的指纹),不提示。没有这两条账,下面这一步就会亮灯。
 		const edited = {
 			...templates,
@@ -594,16 +598,14 @@ describe("0.x 最新 → 1.0 改名 · 迁移器接缝", () => {
 				},
 			},
 		};
-		expect(pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, templateDefaultsSeen)).toEqual([]);
+		expect(pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, templatesSeen)).toEqual([]);
 		expect(
 			pendingTemplateUpdates(edited, DEFAULT_TEMPLATES, {
-				...templateDefaultsSeen,
+				...templatesSeen,
 				"membership.guard.default.template": "过期的指纹",
 			}),
 		).toEqual(["membership.guard.default.template"]);
-		expect(Object.keys(templateDefaultsSeen).filter((key) => key.startsWith("guardBuy"))).toEqual(
-			[],
-		);
+		expect(Object.keys(templatesSeen).filter((key) => key.startsWith("guardBuy"))).toEqual([]);
 	});
 
 	it("逐订阅(夹具 `zeroMembershipOverrides`):写着出厂阈值与一份改过的上舰文案 → 阈值照搬(0 也写、rank 1 也写),文案只搬改过的档", async () => {

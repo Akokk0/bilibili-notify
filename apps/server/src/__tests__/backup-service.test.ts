@@ -512,7 +512,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
-			expect(env.schemaVersion).toBe(15);
+			expect(env.schemaVersion).toBe(16);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
 			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1", "e1"]);
 			expect(sections.subscriptions?.map((s) => s.identity.sourceKey)).toEqual([

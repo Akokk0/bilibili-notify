@@ -7,9 +7,73 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { splitAppSettings } from "../core-sections.js";
+import { moveTemplateLedger, splitAppSettings } from "../core-sections.js";
 
 type Obj = Record<string, unknown>;
+
+describe("moveTemplateLedger(3a-38 提交 ③):defaults.templateDefaultsSeen → 顶层 templatesSeen", () => {
+	it("账本搬到顶层,紧跟在 defaults 后面;defaults 里不再有老键,别的格不动", () => {
+		const out = moveTemplateLedger({
+			master: {},
+			defaults: { features: { a: 1 }, templateDefaultsSeen: { post: "abc" } },
+			roastSchedule: {},
+		}) as Obj;
+		expect(out).toEqual({
+			master: {},
+			defaults: { features: { a: 1 } },
+			templatesSeen: { post: "abc" },
+			roastSchedule: {},
+		});
+		expect(Object.keys(out)).toEqual(["master", "defaults", "templatesSeen", "roastSchedule"]);
+		expect("templateDefaultsSeen" in (out.defaults as Obj)).toBe(false);
+	});
+
+	it("新老并存(手改过的盘):顶层的说了算,老键照样拿掉", () => {
+		const out = moveTemplateLedger({
+			defaults: { templateDefaultsSeen: { post: "old" } },
+			templatesSeen: { post: "new" },
+		}) as Obj;
+		expect(out).toEqual({ defaults: {}, templatesSeen: { post: "new" } });
+	});
+
+	it("没有 defaults 或 defaults 里没有账本:回传进来的那个对象", () => {
+		const noDefaults = { master: {} };
+		expect(moveTemplateLedger(noDefaults)).toBe(noDefaults);
+		const noLedger = { defaults: { features: {} }, templatesSeen: { post: "x" } };
+		expect(moveTemplateLedger(noLedger)).toBe(noLedger);
+	});
+
+	it("幂等:搬过一遍再搬,回同一个对象", () => {
+		const once = moveTemplateLedger({ defaults: { templateDefaultsSeen: { post: "a" } } });
+		expect(moveTemplateLedger(once)).toBe(once);
+	});
+
+	it.each([
+		["不是对象", "x"],
+		["null", null],
+		["数组", []],
+		["undefined", undefined],
+	])("raw 是%s:原样回", (_name, raw) => {
+		expect(moveTemplateLedger(raw)).toBe(raw);
+	});
+
+	it("`defaults` 不是普通对象:原样回同一个对象", () => {
+		const raw = { defaults: "oops" };
+		expect(moveTemplateLedger(raw)).toBe(raw);
+	});
+
+	it("老账本不是对象(手改坏的盘):原样带到顶层,由配置仓开机时报出来", () => {
+		const out = moveTemplateLedger({ defaults: { templateDefaultsSeen: 3 } }) as Obj;
+		expect(out).toEqual({ defaults: {}, templatesSeen: 3 });
+	});
+
+	it("不改入参", () => {
+		const raw = { defaults: { templateDefaultsSeen: { post: "a" } } };
+		const snapshot = structuredClone(raw);
+		moveTemplateLedger(raw);
+		expect(raw).toEqual(snapshot);
+	});
+});
 
 describe("splitAppSettings:搬法", () => {
 	it("四格 + fansCron 各搬到新位置;memoryLog 布尔变成 { enabled };app 不再有", () => {

@@ -197,7 +197,10 @@ describe("直播拆键 · 迁移器接缝", () => {
 			"liveEnd",
 			"liveSummary",
 		]);
-		const ledger = defaults.templateDefaultsSeen as Obj;
+		// 迁出来的账本在核心设置顶层(上提在换键之后),defaults 里没有老键。
+		expect(defaults).not.toHaveProperty("templateDefaultsSeen");
+		const ledger = (await sandbox.readConfig<{ templatesSeen: Obj }>("settings/core.json"))
+			.templatesSeen;
 		expect(ledger.liveStreaming).toBe("oopixp");
 		expect(ledger).not.toHaveProperty("liveOngoing");
 		expect((await subscriptionRow(SUB_ID)).overrides).toEqual({
@@ -208,9 +211,9 @@ describe("直播拆键 · 迁移器接缝", () => {
 		const store = await sandbox.load();
 		const g = store.getGlobals().defaults;
 		expect(g.templates.liveStreaming).toBe("【直播中】{name} {time}");
-		expect(pendingTemplateUpdates(g.templates, DEFAULT_TEMPLATES, g.templateDefaultsSeen)).toEqual(
-			[],
-		);
+		expect(
+			pendingTemplateUpdates(g.templates, DEFAULT_TEMPLATES, store.getGlobals().templatesSeen),
+		).toEqual([]);
 	});
 
 	// ── 订阅 ──────────────────────────────────────────────────────────────────
