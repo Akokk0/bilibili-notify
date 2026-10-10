@@ -10,9 +10,9 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { CookieJar, generateBrowserIdentity, HttpClient } from "@bilibili-notify/http";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
 import { ApiClient } from "../api-client";
 import { VIDEO_INFO_URL } from "../endpoints";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /** 真实接口 data 的形状(字段照 x/web-interface/view 抓包裁剪)。 */
 const RAW_VIDEO = {
@@ -32,11 +32,7 @@ const RAW_VIDEO = {
 };
 
 function makeApi(respond: (url: string) => unknown, redirects: Record<string, string | null> = {}) {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({
-		serviceCtx: { logger } as never,
-		callbacks: {},
-	});
+	const { api } = makeBaseApi();
 	const calls: string[] = [];
 	const redirectCalls: string[] = [];
 	(api as unknown as { client: unknown }).client = {

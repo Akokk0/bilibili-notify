@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
 import { FINGER_SPI_URL } from "../endpoints";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
  * 弹幕连接认证包需要**真** buvid3。cookie 罐里的那条是 loadCookies 填的占位假值
@@ -8,11 +8,7 @@ import { FINGER_SPI_URL } from "../endpoints";
  * 设备指纹与登录态无关,同一进程内取一次缓存即可。
  */
 function makeApi() {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({
-		serviceCtx: { logger } as never,
-		callbacks: {},
-	});
+	const { api } = makeBaseApi();
 	const calls: string[] = [];
 	(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {
 		get: async (url: string) => {

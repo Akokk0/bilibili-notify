@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
 import { LIVE_ROOM_INFO_STREAM_KEY_URL } from "../endpoints";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
  * 复现并锁住「弹幕连接预检漏 wbi 签名」回归：B 站 getDanmuInfo 现在强制要 wbi 签名，
@@ -8,11 +8,7 @@ import { LIVE_ROOM_INFO_STREAM_KEY_URL } from "../endpoints";
  * 预检每次被风控拦截、一路回退直接建连，#810 的受限房识别形同空转。
  */
 function makeApi() {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({
-		serviceCtx: { logger } as never,
-		callbacks: {},
-	});
+	const { api } = makeBaseApi();
 	const calls: string[] = [];
 	// 注入 mock client + 预置非空 wbiKeys（imgKey 非空 → getWbi 不触发 updateBiliTicket 联网）
 	// fetch 传输层的 client.get 直接返回响应体（无 axios 的 .data 包裹）

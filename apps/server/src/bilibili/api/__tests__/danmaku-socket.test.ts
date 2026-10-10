@@ -14,7 +14,8 @@ import type { IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { WebSocketServer } from "ws";
-import { Api } from "../api";
+import type { Api } from "../api";
+import { makeApi } from "./support/make-api";
 
 /** 握手里一个都不该出现的 fetch 头(B 站那层交给 HttpClient 的默认头,加上身份的 sec-ch-ua 三件)。 */
 const FETCH_ONLY = [
@@ -50,15 +51,6 @@ afterEach(async () => {
 	await new Promise<void>((resolve) => wss.close(() => resolve()));
 });
 
-function makeApi() {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	return new Api({ serviceCtx: { logger } as never, callbacks: {} });
-}
-
-/** 本实例的生成身份(私有字段;握手与 HTTP 请求的 UA 都从它来)。 */
-const identityOf = (api: Api) =>
-	(api as unknown as { browserIdentity: { userAgent: string } }).browserIdentity;
-
 /** 建一条弹幕连接,等握手走完;握手期被关会报 error,挂个空处理免得炸进程。 */
 async function connect(api: Api): Promise<IncomingMessage> {
 	const socket = api.openDanmakuSocket(url);
@@ -72,7 +64,7 @@ const namesOf = (req: IncomingMessage) => req.rawHeaders.filter((_, index) => in
 
 describe("Api.openDanmakuSocket", () => {
 	it("握手头:Cookie 在 User-Agent 之前,cookie 只带这个地址该带的,不带 fetch 那套头与 sec-ch-ua", async () => {
-		const api = makeApi();
+		const { api, identity } = makeApi();
 		await api.loadCookies({
 			cookiesJson: JSON.stringify([
 				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
@@ -84,20 +76,20 @@ describe("Api.openDanmakuSocket", () => {
 
 		expect(namesOf(req).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
 		expect(req.headers.cookie).toBe("SESSDATA=s");
-		expect(req.headers["user-agent"]).toBe(identityOf(api).userAgent);
+		expect(req.headers["user-agent"]).toBe(identity.userAgent);
 		const names = namesOf(req).map((name) => name.toLowerCase());
 		for (const forbidden of FETCH_ONLY) expect(names).not.toContain(forbidden);
 	});
 
 	it("没有登录态:不带 Cookie 头", async () => {
-		const req = await connect(makeApi());
+		const req = await connect(makeApi().api);
 
 		expect(namesOf(req)[0]).toBe("User-Agent");
 		expect(req.headers.cookie).toBeUndefined();
 	});
 
 	it("握手的 UA 是身份的那一个:每条连接都一样,头序不变", async () => {
-		const api = makeApi();
+		const { api, identity } = makeApi();
 		await api.loadCookies({
 			cookiesJson: JSON.stringify([
 				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
@@ -108,7 +100,7 @@ describe("Api.openDanmakuSocket", () => {
 		const second = await connect(api);
 
 		for (const req of [first, second]) {
-			expect(req.headers["user-agent"]).toBe(identityOf(api).userAgent);
+			expect(req.headers["user-agent"]).toBe(identity.userAgent);
 			expect(namesOf(req).slice(0, 2)).toEqual(["Cookie", "User-Agent"]);
 		}
 	});

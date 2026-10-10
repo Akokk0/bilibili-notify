@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
 import { RELATION_STAT_URL, USER_CARDS_URL } from "../endpoints";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
  * ⑥ 粉丝计数换轻接口 + 批量 name/avatar。
@@ -8,11 +8,7 @@ import { RELATION_STAT_URL, USER_CARDS_URL } from "../endpoints";
  * 空列表短路不发请求。
  */
 function makeApi() {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({
-		serviceCtx: { logger } as never,
-		callbacks: {},
-	});
+	const { api } = makeBaseApi();
 	const calls: string[] = [];
 	(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {
 		get: async (url: string) => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
+import type { Api } from "../api";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
  * 开机不碰 B 站:start() 只起 HTTP 客户端与每日 ticket 定时,不预取 ticket。
@@ -12,10 +13,8 @@ import { Api } from "../api";
  * 测试运行里连外网会被根 setup 的守卫拦下(scripts/network-guard.mjs),所以 start()
  * 一旦又去联网,第一条就会红。
  */
-const logger = { info() {}, warn() {}, error() {}, debug() {} };
-
 function makeApi() {
-	return new Api({ serviceCtx: { logger } as never, callbacks: {} });
+	return makeBaseApi().api;
 }
 
 describe("开机不碰 B 站", () => {

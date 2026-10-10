@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
 import { MYSELF_INFO_URL } from "../endpoints";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
  * getMyselfInfoCached 挂在客户端上、被直播建连 / 卡片预览共享:
@@ -8,11 +8,7 @@ import { MYSELF_INFO_URL } from "../endpoints";
  *   - 登出(clearCookies)后缓存失效,下次真调 —— 换号不会用旧账号身份。
  */
 function makeApi() {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({
-		serviceCtx: { logger } as never,
-		callbacks: {},
-	});
+	const { api } = makeBaseApi();
 	let myselfCalls = 0;
 	const mockClient = {
 		get: async (url: string) => {

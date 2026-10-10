@@ -1,5 +1,6 @@
 import type { Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { type CookieData, type KeyProvider, StorageManager } from "@bilibili-notify/storage";
+import { createBiliHttp } from "../bilibili/api/default-headers.js";
 import { Api, LoginFlow, type LoginSnapshot } from "../bilibili/api/index.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { dataPath } from "../runtime/roots.js";
@@ -81,8 +82,12 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 
 	// 2. Api. The `onAuthLost` callback closes over `flow` — built in step 4.
 	let flow: LoginFlow | undefined;
+	// 请求底座(cookie 罐、浏览器身份、套了 B 站默认头的客户端)在这里造好交给 Api。
+	const { jar, http } = createBiliHttp();
 	const api = new Api({
 		serviceCtx: opts.serviceCtx,
+		http,
+		jar,
 		callbacks: {
 			// async + await:让 api 端能 await 持久化并在 reject 时响亮记日志
 			// (旧实现 fire-and-forget + 自吞,refresh 仍判成功;现由 api 调用点

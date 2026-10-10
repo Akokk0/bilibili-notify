@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Logger, ServiceContext } from "@bilibili-notify/internal";
 import { StorageManager } from "@bilibili-notify/storage";
+import { createBiliHttp } from "../../../../api/default-headers.js";
 import { Api } from "../../../../api/index.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../../../../..", import.meta.url));
@@ -63,7 +64,8 @@ export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> 
 		);
 		process.exit(1);
 	}
-	const api = new Api({ serviceCtx });
+	const { jar, http } = createBiliHttp();
+	const api = new Api({ serviceCtx, http, jar });
 	await api.start();
 	await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
 	return api;

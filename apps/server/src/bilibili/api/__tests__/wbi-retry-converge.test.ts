@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
+import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
  * ⑤ 风控收敛:持续 -352 的 wbi 签名请求不该被外层 this.retry 快速重试放大。
@@ -11,11 +11,7 @@ import { Api } from "../api";
  * 单次 -352 的自愈(刷新后成功)必须保留,不能误伤。
  */
 function makeApi(getImpl: (url: string) => unknown) {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({
-		serviceCtx: { logger } as never,
-		callbacks: {},
-	});
+	const { api } = makeBaseApi();
 	const calls = { get: 0, post: 0 };
 	(
 		api as unknown as {

@@ -1,10 +1,4 @@
-import {
-	type Cookie,
-	CookieJar,
-	generateBrowserIdentity,
-	HttpClient,
-	type WebSocketLike,
-} from "@bilibili-notify/http";
+import type { Cookie, CookieJar, HttpClient, WebSocketLike } from "@bilibili-notify/http";
 import {
 	type Disposable,
 	type Logger,
@@ -83,6 +77,12 @@ export class RiskControlError extends Error {
 export interface ApiOptions {
 	serviceCtx: ServiceContext;
 	callbacks?: ApiHandlers;
+	/**
+	 * 现成的请求客户端与它用的 cookie 罐(建法见 `default-headers.ts` 的 `createBiliHttp`):
+	 * 浏览器身份与 B 站的默认头都在客户端里。两者必须是配对的 —— 客户端就是用这只罐子建的。
+	 */
+	http: HttpClient;
+	jar: CookieJar;
 }
 
 export class Api {
@@ -91,17 +91,10 @@ export class Api {
 	private readonly callbacks: ApiHandlers;
 
 	/**
-	 * 本实例的浏览器身份(UA + sec-ch-ua 全家,版本互相咬合)。启动时生成一次、终身不变 ——
-	 * 同一 cookie 会话在不同 UA 间跳变是机器人特征,身份漂移比版本旧更招风控。
-	 * **出站请求的 UA 只来自它**:HTTP 默认头、取 ticket、弹幕握手都读这一份,没有任何改 UA 的口子
-	 * (填了别的 UA 而 sec-ch-ua 仍是它的,拼出来是自相矛盾的指纹,ADR-0025 决策 7)。
+	 * cookie 罐与请求客户端都是**长期有效的同一个**(由外面建好交进来):换号 / 登出 / -101 只调罐子的
+	 * `load()` / `clear()` 原地换内容,不再重建罐子与客户端。
 	 */
-	private readonly browserIdentity = generateBrowserIdentity();
-	/**
-	 * cookie 罐与请求客户端都是**长期有效的同一个**:换号 / 登出 / -101 只调罐子的 `load()` /
-	 * `clear()` 原地换内容,不再重建罐子与客户端。
-	 */
-	private readonly jar = new CookieJar();
+	private readonly jar: CookieJar;
 	private readonly client: ApiClient;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
@@ -138,7 +131,14 @@ export class Api {
 		this.serviceCtx = opts.serviceCtx;
 		this.callbacks = opts.callbacks ?? {};
 		this.logger = opts.serviceCtx.logger;
-		this.client = this.createClient();
+		this.jar = opts.jar;
+		this.client = new ApiClient({
+			http: opts.http,
+			onBody: (body) => {
+				const data = body as { code?: unknown } | undefined;
+				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
+			},
+		});
 	}
 
 	/**
@@ -188,46 +188,6 @@ export class Api {
 	}
 
 	// ---- Initialization ----
-
-	/** 构造时调一次;之后整个生命周期都是这一个客户端。 */
-	private createClient(): ApiClient {
-		return new ApiClient({
-			http: new HttpClient({
-				jar: this.jar,
-				identity: this.browserIdentity,
-				// 有限超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让
-				// 该请求永不结束 —— 卡死整条刷新链 / API 调用且不进 retry。20s 覆盖
-				// 连接 + 响应,超时抛错由 this.retry 正常退避重试。
-				timeoutMs: 20_000,
-				// B 站特有的默认头;通用包不带任何平台的默认值。
-				// UA 与 sec-ch-ua 三件取自同一份生成身份,版本互相咬合(旧默认是 Firefox UA
-				// 配 Chrome sec-ch-ua 的拼接怪)。**身份的头在这里按老位置写全**:HttpClient 对
-				// 没写的才补、补在最后,写在这里线上头序与改造前逐字节一致(头序也是指纹的一部分,
-				// bilibili-wire-headers.test.ts 钉着)。UA 排在最后不是笔误:改造前开机总会调一次
-				// setUserAgent,旧 setHeader 先删再从末尾加回,生产上跑了几个月的就是这个顺序(10-03 主人定恢复)。
-				headers: {
-					// axios 时代由其默认值隐式外发,换 fetch 后需显式钉死(风控指纹对齐)。
-					Accept: "application/json, text/plain, */*",
-					Origin: "https://www.bilibili.com",
-					Referer: "https://www.bilibili.com/",
-					priority: "u=1, i",
-					"sec-ch-ua": this.browserIdentity.secChUa,
-					"sec-ch-ua-mobile": this.browserIdentity.secChUaMobile,
-					"sec-ch-ua-platform": this.browserIdentity.secChUaPlatform,
-					"sec-fetch-dest": "empty",
-					"sec-fetch-mode": "cors",
-					"sec-fetch-site": "same-site",
-					"User-Agent": this.browserIdentity.userAgent,
-					// 注:不设默认 Content-Type —— axios 对无 body 的 GET 会剥掉该头、
-					// 表单 POST 又逐请求覆盖,旧线上流量从未真正发过 application/json。
-				},
-			}),
-			onBody: (body) => {
-				const data = body as { code?: unknown } | undefined;
-				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
-			},
-		});
-	}
 
 	/**
 	 * Response-interceptor path: only `-101` (session invalid) from an arbitrary

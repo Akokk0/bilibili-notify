@@ -13,9 +13,9 @@
  */
 
 import net from "node:net";
+import { generateBrowserIdentity } from "@bilibili-notify/http";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { Api } from "../api";
-import type { ApiClient } from "../api-client";
+import { makeApi } from "./support/make-api";
 
 /** 我们自己掌控的头,按改造前线上的顺序(含大小写)。其余的是 undici 自己加的,不管。 */
 const OUR_HEADERS_BEFORE = [
@@ -72,21 +72,15 @@ const ourNamesOnWire = (head: string[]) =>
 		.map((line) => line.slice(0, line.indexOf(":")))
 		.filter((n) => OUR_NAMES.has(n.toLowerCase()));
 
-function makeClient() {
-	const logger = { info() {}, warn() {}, error() {}, debug() {} };
-	const api = new Api({ serviceCtx: { logger } as never, callbacks: {} });
-	return { api, client: (api as unknown as { client: ApiClient }).client };
-}
-
 describe("B 站线上请求头的顺序与大小写", () => {
 	it("GET:与改造前一致(Accept 打头,sec-ch-ua 三件在 priority 之后,UA 在默认头最后)", async () => {
-		const { client } = makeClient();
+		const { client } = makeApi();
 		await client.get(`${baseURL}/x`);
 		expect(ourNamesOnWire(rawHeads[0] as string[])).toEqual(OUR_HEADERS_BEFORE);
 	});
 
 	it("带 cookie 的表单 POST:Content-Type 在默认头之后、Cookie 在最后(与改造前一致)", async () => {
-		const { api, client } = makeClient();
+		const { api, client } = makeApi();
 		await api.loadCookies({
 			cookiesJson: JSON.stringify([
 				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
@@ -103,16 +97,16 @@ describe("B 站线上请求头的顺序与大小写", () => {
 	// UA 与 sec-ch-ua 永远来自同一份身份(没有自定义 UA 这个设置了,ADR-0025 决策 7):线上的 UA 行就是
 	// 身份的 UA,sec-ch-ua 行就是身份的 sec-ch-ua。
 	it("线上的 UA 与 sec-ch-ua 是同一份生成身份的", async () => {
-		const { api, client } = makeClient();
+		// 交进去一份已知身份,线上的 UA 与 sec-ch-ua 行必须就是它(不读 Api 的私有字段)。
+		const identity = generateBrowserIdentity();
+		const { client } = makeApi({ identity });
 		await client.get(`${baseURL}/x`);
-		const identity = (api as unknown as { browserIdentity: { userAgent: string; secChUa: string } })
-			.browserIdentity;
 		expect(rawHeads[0]).toContain(`User-Agent: ${identity.userAgent}`);
 		expect(rawHeads[0]).toContain(`sec-ch-ua: ${identity.secChUa}`);
 	});
 
 	it("身份的四个头没有重复:线上每个名字只有一行", async () => {
-		const { client } = makeClient();
+		const { client } = makeApi();
 		await client.get(`${baseURL}/x`);
 		const names = (rawHeads[0] as string[]).map((l) => l.slice(0, l.indexOf(":")).toLowerCase());
 		expect(new Set(names).size).toBe(names.length);
