@@ -454,7 +454,7 @@ ADR-0024 ～ 0031 里定了做什么、没定哪一期做的项。
 
 | 项 | 备注 |
 | --- | --- |
-| `PostEvent` 信封与 `post-detected` 事件（取代 `dynamic-detected`）；`deliverWork` → `deliverPost`、`NeutralWork` 退场；「正文链接」版式块；番剧、合集、课程翻成附件视频卡 | 10-05 主人定：都在 **3a**（前三件要等投递入口吃 `Post`，最后一件随 B 站翻译搬进 `bilibili/`） |
+| `PostEvent` 信封与 `post-detected` 事件（取代 `dynamic-detected`）；`deliverWork` → `deliverPost`、`NeutralWork` 退场；「正文链接」版式块；番剧、合集、课程翻成附件视频卡 | 10-05 主人定：都在 **3a**（前三件要等投递入口吃 `Post`，最后一件随 B 站翻译搬进 `bilibili/`）。**已落**：`PostEvent` / `post-detected`（`dynamic-detected` 已删）与 `deliverPost`、`NeutralWork` 退场，都在 3a-27 |
 | 全局时区设置（卡上的时间现在按机器本地时区排，ADR-0021 决策 43 要默认 `Asia/Shanghai`） | 10-05 主人定：第 4 期之前单开一小片，㉑ 不做；具体放哪排到时再问 |
 | 连接设置的校验：保存时适配器在场就按 `settingsSchema` 校验、不过回 400；读盘逐条校验，不过的只隔离那一条，只有外壳坏了才挡开机（ADR-0024 决策 10） | 最迟在第 4 期之前：面板的「设置不合法」态在第 4 期 |
 | 投递失败归核心：按目标逐个投递、只重试失败的那个（`rate_limited` / `unavailable` / `timeout` 退避，`indeterminate` 与其他码不重试）；出卡或 AI 失败降级、不整条重来；每个目标一行历史，失败带 code（ADR-0024 决策 15） | |

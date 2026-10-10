@@ -218,7 +218,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | 成员 | 规矩 |
 | --- | --- |
 | `subscriptions` / `onSubscriptionsChanged` | 名单只列启用中的订阅，条目 `{ externalId, features }`、不带订阅 id；同一人遗留的重复订阅合成一条、`features` 取并集。**开了开关才干活**：单个订阅开了作品或直播类开关，来源才去监听（没开直播就不连弹幕、没开作品就不拉也不抓图），统计也只记开着的；「开着」只看开关、不看有没有目标（ADR-0027 决策 1）。来源只上报名单里的人。B 站也用这份名单，不再拿完整的订阅对象 |
-| `reportPost` | 核心按身份展开成每条订阅一份 `PostEvent`（正常一条，老数据里的重复各一份），再发 `post-detected` 进作品装配；查不到或已停用就丢弃、记 debug 日志。判新、去重、限流归来源。来源交完就前移自己的锚点，投递失败由核心按目标重试（见 [push.md](./push.md)） |
+| `reportPost` | 核心按身份展开成每条订阅一份 `PostEvent`（正常一条，老数据里的重复各一份），再发 `post-detected`（旁路通知，给统计）并交进作品装配；查不到或已停用就丢弃、记 debug 日志。判新、去重、限流归来源。来源交完就前移自己的锚点，投递失败由核心按目标重试（见 [push.md](./push.md)） |
 | `reportLive` | 同样按身份展开，喂场次引擎 |
 | `reportProfile` | 推送式平台主动报资料；按资料刷新的间隔限密 |
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |

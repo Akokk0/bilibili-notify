@@ -18,14 +18,15 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 
 | 包 | npm 名 | 角色 |
 |---|---|---|
-| `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription —— 一种形状、带 identity,见 subscriptions.md —— / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / TargetDispatcher / NotificationPayload)+ 工具(withLock / retry / interpolate)+ 按版式装配消息组 `assembleMessageGroups`(动态与直播共用) |
+| `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription —— 一种形状、带 identity,见 subscriptions.md —— / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / TargetDispatcher / NotificationPayload)+ 工具(withLock / retry / interpolate / **串行闸 `createSerialGate`**:全仓唯一一把,`run` 按发起次序跑异步活、带低优先级车道,直播房间推送、作品入口、拓展作品与拓展直播、渲染都用它)+ 作品模型与信封(`Post` / `PostReport` / `PostEvent`;取段函数 `postText` 在服务端 `posts/`)+ 按版式装配消息组 `assembleMessageGroups`(动态与直播共用) |
 | `apps/server/src/bilibili/api` | 不是包(3a-24 搬进服务端) | `Api`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
 | `packages/storage` | `@bilibili-notify/storage` | 持久化底层与密钥:原子写 / 追加 / 隔离 / 清扫等文件原语、`KeyManager` 与 `KeyProvider`(主密钥或口令派生)、GCM 加解密。没有 `StorageManager` / `CookieStore` 了(3a-26):B 站的 cookie 与令牌住在它这个集成自己的 `secrets` 里,由服务端的 `integration-store/` 管 |
 | `packages/http` | `@bilibili-notify/http` | 集成的请求底座,通用、不带任何平台的默认值:`HttpClient`(`fetch` 回 `Result<HttpResponse>`:手动逐跳跟重定向并收 Set-Cookie、每跳之前可否决,非 2xx 不抛,网络断 / 超时 / 被中止 / 被否决回失败结果)、`CookieJar`(RFC 6265 子集,`load` / `clear` 原地换、`onChange` 通知、`epoch` 挡迟到响应)、浏览器身份(`generateBrowserIdentity` / `upgradeBrowserIdentity`)。B 站经 `bilibili/api` 里的 `ApiClient` 薄包用它,保住「非 2xx 抛错、JSON 自动解析、-101 探测」。出网点名表的白名单是它的 `http-client.ts` |
 | `packages/push` | `@bilibili-notify/push` | `PushRouter` —— 经 `PushLike` 适配器做推送路由;一次推送整个交给 `push(push)`(按顺序排好的锚点,订阅 / 总开关 / 静音 / 免扰在交进来时判一次);只把**启用的**目标当候选,每个锚点对每个目标收完一段序列回调一次 `onSend`(带 `pushId` / `feature` / 逐条结果,被静音 / 免扰挡下的消息带 `isSilenced`),一个可用目标都没有时以 `target: null` 回调一次(见 events.md「推送历史的行模型」) |
 | `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff。B 站与拓展的订阅同一份列表;`findById` 按订阅 id 找,`findByIdentity` 按身份(来源 + 外部 id)找 |
-| `apps/server/src/bilibili/dynamic` | 不是包(3a-24 搬进服务端) | `DynamicEngine` —— 动态轮询 cron + 过滤 + 渲染分发。另有**中立作品装配** `deliverWork`(出卡 → AI → 模板 → 版式 → 推送 → 图集,不认 uid;B 站动态与拓展作品共用)、出图失败计数 `createCardFailureTracker`、**作品过滤** `filterPost`(吃中立的 `Post`,B 站与拓展作品同一个;文字走 `postText`,类型开关只看最外层)。见 push.md ① |
-| `apps/server/src/bilibili/live` | 不是包(3a-24 搬进服务端) | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester)。另有**中立直播装配** `pushLiveNotify`(吃 `LiveCardInput`,不认 uid)、B 站房间数据 → `LiveCardInput` 的翻译 `liveCardInputFromRoomInfo` 与串行闸 `createSerialGate` |
+| `apps/server/src/bilibili/dynamic` | 不是包(3a-24 搬进服务端) | `DynamicEngine` —— 动态轮询 cron + 时间线闸 + 翻译(`postFromDynamic`)+ 抓图,**只生产**:作品经 `reportPost` 交给核心入口,过滤 / 出卡 / 点评 / 推送都不在这里。作品装配与过滤住 `apps/server/src/posts/`(见下)。见 push.md ① |
+| `apps/server/src/bilibili/live` | 不是包(3a-24 搬进服务端) | `LiveEngine`(拆分:ListenerManager / DanmakuCollector / WordcloudGenerator / LiveTemplateRenderer / LiveSummaryRequester)。另有**中立直播装配** `pushLiveNotify`(吃 `LiveCardInput`,不认 uid)、B 站房间数据 → `LiveCardInput` 的翻译 `liveCardInputFromRoomInfo`(串行闸 `createSerialGate` 不在这里,住 `packages/internal`) |
+| `apps/server/src/posts` | 不是包 | **作品这一段的核心**(B 站动态与拓展作品共用,不认 uid、不读平台原始数据):`post-queue.ts` 的 `PostQueue` 是来源交作品的唯一入口(`enqueue`,同步、无返回值;按订阅一道串行闸、同步发 `post-detected`)、`deliver-post.ts` 的 `deliverPost`(过滤 → 出卡 → AI 点评 → 回问 → 模板 → 版式装配 → 图集 → 推送;含 `PostSettings`、出图失败计数 `createCardFailureTracker`)、`post-filter.ts` 的 `filterPost`、`post-text.ts` 的 `postText`(作品文字唯一的取段函数)、`post-push.ts`(推送的锚点与段、`FilteredPost`)、拓展作品那一路的 `extension-post.ts`(`bindExtensionPosts`:上报翻成信封交入口)与 `post-from-report.ts`(上报 → `Post`)。见 push.md |
 | `apps/server/src/bilibili/live`(`client.ts` / `codec.ts` / `events.ts` / `parser.ts`,原 blive 包) | 不是包(3a-24 平铺并进 `live/`) | 自实现的 B 站直播信息流 WSS 客户端(协议编解码 + 命令解析 + 哑管道 `connectLiveRoom`,连接参数全注入、无内部 HTTP/重连;建连口 `createSocket` 必填、只收地址,握手头由 `packages/http` 的 `websocket()` 出,blive 不依赖 `ws`;替代 blive-message-listener / tiny-bilibili-ws)。scripts/ 下有真机录帧 / 冒烟 / 登录态探针三个工具(**只读铁律:loadCookies 绝不传 refreshToken**) |
 | `packages/image` | `@bilibili-notify/image` | `ImageRenderer` —— Vue/UnoCSS SSR + 经 `PuppeteerLike` 接口包 puppeteer。作品卡的出卡入口是 `generatePostCard(post)`(吃中立的 `Post`,B 站动态由 `bilibili/dynamic` 的 `postFromDynamic` 先翻成 `Post`;拓展作品经服务端的 `postFromReport` 翻成 `Post`、图先存进图库,出图器按引用取图(注入的 `resolveImageRef`));直播卡的出卡入口是 `generateLiveCard(input)`(吃中立的 `LiveCardInput`,图是图库引用、开播时刻是 ISO、人数只收精确数;B 站由 `bilibili/live` 的 `liveCardInputFromRoomInfo` 翻、拓展订阅由服务端的 `liveCardInputFromReport` 翻,出图器不再认 B 站原始数据) |
 | `packages/ai` | `@bilibili-notify/ai` | `CommentaryGenerator` —— OpenAI 兼容的 chat / summary / commentary |
@@ -51,19 +52,20 @@ Api        (apps/server/src/bilibili/api)
 SubscriptionStore  (@bilibili-notify/subscription;Subscription[] 的内存权威,B 站与拓展同一份)
 PushRouter       (@bilibili-notify/push;dispatcher = TargetDispatcher → 各平台 adapter,注入 defaults / muted / serviceCtx)
 
-apps/server/src/runtime/engines.ts 按顺序构造(image → ai → dynamic → live),后两者直接拿前两者的引用:
+apps/server/src/runtime/engines.ts 按顺序构造(image → ai → postQueue → dynamic → live),后面的直接拿前面的引用:
 
 image  (cards.enabled 才造)  → ImageRenderer({ puppeteer, resolveAsset, resolveFontFace, ... })
 ai     (ai.enabled 才造)         → CommentaryGenerator({ api, ... })
-dynamic(恒造)                     → DynamicEngine({ api, push, image?, ai?, cardFailures, getSubs, pickCardBackground, ... })
+postQueue(恒造)                  → createPostQueue({ deps: { settings: makePostSettingsReader(...), image: () => 外层的渲染器, ai: () => 外层的 AI,
+                                   cardFailures, avatar, readImage, push: boundPostPush(push, 订阅 id), recordFiltered, ... } })
+dynamic(恒造)                     → DynamicEngine({ api, push(只剩给主人私聊), imageFetcher, reportPost(uid → 订阅 → postQueue.enqueue), getSubs, config })
 live   (恒造)                     → LiveEngine({ api, push, contentBuilder, imageRenderer?, commentary?, emitLiveState, emitViewers, pickCardBackground, onRoomIdResolved, ... })
-拓展作品(给了 extensionSources 才接)→ bindExtensionPosts({ settings: dynamicWorkSettings, pushFor: boundWorkPush(bindSubscriptionPush(push, id)),
-                                   deliveryDeps: 同一个 image / ai / cardFailures, ... })
+拓展作品(给了 extensionSources 才接)→ bindExtensionPosts({ subscription, profileName, postNoun, postImages, enqueue: postQueue.enqueue, ... })
 ```
 
-`cardFailures`(出图连续失败只提醒一次)全进程一份,B 站动态与拓展作品共用。B 站引擎只吃 B 站订阅的视图;拓展订阅的推送不经引擎,由 `bindExtensionPosts` 听 `subscription-reported` 直接进中立装配(见 push.md、subscriptions.md)。
+`cardFailures`(出图连续失败只提醒一次)全进程一份,在 `postQueue` 的依赖里,B 站动态与拓展作品共用。动态引擎只生产(翻译、抓图),作品经 `reportPost` 交给 `postQueue`;拓展订阅的作品不经引擎,由 `bindExtensionPosts` 听 `subscription-reported`、翻成信封后交同一个 `postQueue`(见 push.md、subscriptions.md)。
 
-`config-changed` 之后 engines.ts 按 scope 热重载:cron / 模板 / 版式走 `updateConfig`,渲染器与 AI 上下线走 `setImage` / `setAi`(dynamic)与 `setImageRenderer` / `setCommentary`(live)。
+`config-changed` 之后 engines.ts 按 scope 热重载:动态的 cron 走 `updateConfig`;作品的模板 / 版式 / 皮肤 / 图集 / 过滤不在引擎里,`deliverPost` 每条作品现折,改了立即生效;渲染器与 AI 上下线只换外层变量,`deliverPost` 经 `image()` / `ai()` 每次现取(live 走 `setImageRenderer` / `setCommentary`)。
 
 ## 独立端模块图(`apps/`)
 
@@ -88,8 +90,8 @@ src/
     generations.ts        数据代:选代(格式版本 ≤ 我里序号最大的)、在 <序号>.partial 里开代再原子改名;迁移修订号对不上就重开(ADR-0022)
     service-context.ts    NodeServiceContext(pino + setInterval/setTimeout + 分段的 onDispose / track / signal,见下「关停」)
     message-bus.ts        NodeMessageBus(mitt 风格,事件表 BusEvents)
-    engines.ts            引擎热重载接线;消费 config-changed;把发送钉到订阅上(bindSubscriptionPush / boundWorkPush)
-    extension-posts.ts    拓展作品 → deliverWork(extension-post-work.ts 翻成中立作品;extension-push-common.ts 放作者 / 名字 / 还该推吗)
+    engines.ts            引擎热重载接线;消费 config-changed;建作品入口 `PostQueue` 并接上它的依赖(作品设置现折 `postSettingsOf` / `makePostSettingsReader`、B 站 `reportPost`);把发送钉到订阅上(`boundPostPush` / `boundLivePush`)
+    extension-push-common.ts 拓展作品与拓展直播共用的作者 / 名字 / 还该推吗(拓展作品那一路本体已搬进 posts/extension-post.ts)
     extension-live.ts     拓展订阅的在播表(首页「正在直播」)
     extension-live-push.ts 拓展直播的推送与周期计时器;live-card-input-from-report.ts 把在播表里的原件(封面与事件头像是字节、开播时刻是毫秒)翻成中立的 LiveCardInput(图经 `runtime.liveImages` 存进图库)
     sub-runtime-store.ts  资料缓存 <数据根>/runtime/sub-runtime.json;拓展报的资料经 reported-profiles.ts 落进来,头像存进图库、这里只放引用(资料缓存是图库的一家引用方,`listImageRefs()` 交名单)
@@ -98,6 +100,7 @@ src/
     storage-usage.ts      系统页「存储占用」:按类量大小、整类清空、手动图库清扫;/api/system/storage
     master-notifier.ts    engine-error 转 master 私聊
     puppeteer.ts          puppeteer-core 适配器(卡片预览)
+  posts/                作品这一段的核心,B 站动态与拓展作品共用:post-queue.ts(`PostQueue`,来源交作品的唯一入口)、deliver-post.ts(`deliverPost` 装配)、post-filter.ts、post-text.ts、post-push.ts、extension-post.ts(拓展作品上报 → 信封交入口)、post-from-report.ts(上报 → `Post`)
   followers/store.ts    粉丝时序(<数据根>/stats/followers/<订阅 id>.jsonl):按订阅排队追加,满 8 天的由 stats/compaction.ts 那趟压缩成每小时末值与同值段,读口把段展开回点
   stats/                统计仓(<数据根>/stats/{posts,live,recording}/<订阅 id>.jsonl,行格式中立;recording 是「在记」按小时的账)+ 记录器与各来源适配(bili-source.ts 把 uid 换成订阅 id)+ 聚合 + 锐评(ADR-0020 / 0027);enabled.ts 是统计总开关 stats.enabled 的缓存读口;compaction.ts 那趟(开机一次、每 6 小时)压粉丝样本与账;0.x 的文件与老行由迁移器一次改好(migration/stats.ts、recording.ts、followers.ts)
   uptime/               运行记录(<数据根>/uptime/hours.jsonl:每个 UTC 整点小时 BN 跑了多少分钟;不算统计、不受统计总开关管);0.x 的由 migration/uptime.ts 从粉丝样本回填
@@ -110,7 +113,7 @@ src/
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   push/                 `target-dispatcher.ts`:TargetDispatcher 分发(PushTarget.id → 平台适配器)+ `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛)+ `dispatch.ts`(按连接找适配器)
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter;推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
-  bilibili/             B 站的代码:settings.ts(B 站设置)+ context.ts(B 站的上下文 `BiliContext`:集成上下文加请求客户端与 cookie 罐的把手,3a-28 换成 `SourceContext`)+ api/(Api / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine / deliverWork / postFromDynamic / filterPost)+ live/(根上:翻译函数 membership-event / superchat-event / live-card-input、徽章图标 guard-icons、以后搬去核心的 live-notify / template-renderer / content-builder;protocol/ 弹幕连接的协议层 client / codec / events / parser,说明在它的 README.md;session/ LiveEngine / ListenerManager / RoomSession;recap/ 下播后的回顾:弹幕收集、词云、AI 总结的请求器)
+  bilibili/             B 站的代码:settings.ts(B 站设置)+ context.ts(B 站的上下文 `BiliContext`:集成上下文加请求客户端与 cookie 罐的把手,3a-28 换成 `SourceContext`)+ api/(Api / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine,只生产 / postFromDynamic)+ live/(根上:翻译函数 membership-event / superchat-event / live-card-input、徽章图标 guard-icons、以后搬去核心的 live-notify / template-renderer / content-builder;protocol/ 弹幕连接的协议层 client / codec / events / parser,说明在它的 README.md;session/ LiveEngine / ListenerManager / RoomSession;recap/ 下播后的回顾:弹幕收集、词云、AI 总结的请求器)
   integration-store/    集成的 state / secrets 存储宿主本体(`createIntegrationStore`,在 `runtime/bootstrap.ts` 建、挂在 `AppRuntime.integrationStore`,构造期不碰盘):key-value-store(内存里的一袋键值 + 校验:保留前缀、限额、值得是 JSON、`batch` 先验后写)、files(`state.json` / `secrets.enc` 的读写与路径,读盘三态)、store(按集成键开 / 关 / 删、备份的 `exportSecrets` / `restoreSecrets`、写道与关停的 `flush` 段关门)。每个集成拿到的把手有集成一面与宿主一面(宿主一面只许 `http.` 开头的键)。`IntegrationContext` 的 `state` / `secrets` 引用它
   integrations/         集成宿主(内置集成与拓展共用):http(`createIntegrationHttp`:替集成造请求客户端、cookie 罐与浏览器身份,罐子自动存、闸、`commit`;B 站是第一个调用方)、registry(通用登记表 Registry,按键认领、只撤自己那行)、context(集成上下文的工厂 createIntegrationContext:日志、停止信号、收尾钩子,外加宿主握着的名册与收尾;类型 IntegrationContext 住 packages/internal;拓展上下文与内置平台适配器的上下文都建在它上面)
   extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
