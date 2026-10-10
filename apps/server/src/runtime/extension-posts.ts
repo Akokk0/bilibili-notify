@@ -21,7 +21,7 @@ import {
 import { createSerialGate, type SerialGate } from "../bilibili/live/index.js";
 import { extensionPostWork } from "./extension-post-work.js";
 import {
-	type ExtensionSourceLookups,
+	type ExtensionSourceReader,
 	extensionSubscriptionName,
 	extensionSubscriptionPushable,
 } from "./extension-push-common.js";
@@ -68,7 +68,7 @@ export interface BindExtensionPostsOptions {
 	/** 这条订阅折好的作品设置(现折,与 B 站那头同一份,见 `dynamicWorkSettings`)。 */
 	settings(sub: Subscription): ExtensionPostSettings;
 	/** 拓展在不在跑、平台对作品的叫法、清单里声明的事件(头像不在这里:作品卡用图库引用,见 `avatarRef`)。 */
-	sources: Pick<ExtensionSourceLookups, "running" | "postNoun" | "events">;
+	sources: Pick<ExtensionSourceReader, "running" | "postNoun" | "events">;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */

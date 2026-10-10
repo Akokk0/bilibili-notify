@@ -12,10 +12,10 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BiliLookups } from "../tools";
+import type { BiliReader } from "../tools";
 import { DESCRIBE_IMAGE_TOOL, executeTool, TOOL_DEFINITIONS } from "../tools";
 
-const api = {} as BiliLookups;
+const api = {} as BiliReader;
 const noSubs = () => null;
 
 function ctx(images: string[] = ["http://img/a.jpg", "http://img/b.jpg"]) {

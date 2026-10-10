@@ -20,7 +20,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
 /**
  * 拓展订阅推送要从宿主那头**现取**的几样。装载器比引擎晚建起来,拓展的装卸也随时发生,所以都是函数。
  */
-export interface ExtensionSourceLookups {
+export interface ExtensionSourceReader {
 	/** 这个拓展此刻在跑吗(决策 61:拓展停了,等着的推送不补)。 */
 	running(extensionId: string): boolean;
 	/** 清单里平台对作品的叫法(`contributes.subscription.display.postNoun`);没写就是 `undefined`。 */

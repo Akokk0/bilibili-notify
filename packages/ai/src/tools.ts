@@ -333,7 +333,7 @@ export interface VisionToolContext {
  * ⚠️ 过渡物:后面的阶段改成「来源自己登记 AI 工具」,届时这个接口整个删掉。AI 包不依赖 api 包,
  * 是因为 B 站接口包要搬进 `apps/server`,包不能反向依赖应用。
  */
-export interface BiliLookups {
+export interface BiliReader {
 	fetchUserSpaceDynamic(uid: string): Promise<unknown>;
 	fetchUserCard(uid: string, withPhoto?: boolean): Promise<unknown>;
 	fetchLiveRoomInfoByUids(uids: string[]): Promise<unknown>;
@@ -359,7 +359,7 @@ export interface BiliLookups {
 export async function executeTool(
 	name: string,
 	args: Record<string, string>,
-	api: BiliLookups,
+	api: BiliReader,
 	getSubs: () => Subscriptions | null,
 	visionCtx?: VisionToolContext,
 ): Promise<string> {

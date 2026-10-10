@@ -15,7 +15,7 @@
 
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import type { BiliLookups } from "../tools";
+import type { BiliReader } from "../tools";
 
 /**
  * 什么都不做的 ServiceContext。
@@ -62,7 +62,7 @@ export function aiConfig(over: Partial<CommentaryGeneratorConfig> = {}): Comment
 export function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): CommentaryGenerator {
 	return new CommentaryGenerator({
 		serviceCtx: fakeServiceCtx(),
-		api: {} as BiliLookups,
+		api: {} as BiliReader,
 		config: aiConfig(over),
 	});
 }

@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { BiliLookups } from "../tools";
+import type { BiliReader } from "../tools";
 import { type ExtensionSubItemView, executeTool, type Subscriptions } from "../tools";
 
 const VIEW: Subscriptions = {
@@ -39,7 +39,7 @@ function apiStub() {
 }
 
 function run(name: string, args: Record<string, string>, api = apiStub()) {
-	return executeTool(name, args, api as unknown as BiliLookups, () => VIEW);
+	return executeTool(name, args, api as unknown as BiliReader, () => VIEW);
 }
 
 describe("list_subscriptions", () => {
@@ -70,7 +70,7 @@ describe("get_live_status", () => {
 			startedAt: STARTED,
 			totalViewers: 23_456,
 		});
-		const out = await executeTool("get_live_status", {}, api as unknown as BiliLookups, () => view);
+		const out = await executeTool("get_live_status", {}, api as unknown as BiliReader, () => view);
 		expect(api.fetchLiveRoomInfoByUids).toHaveBeenCalledWith(["1"]);
 		expect(out).toContain("晨风：直播中「晚间杂谈」");
 		const line = out.split("\n").find((l) => l.startsWith("抖音甲"));
@@ -82,11 +82,11 @@ describe("get_live_status", () => {
 	});
 
 	it("拓展报了不在播 → 未开播;没报的格不写", async () => {
-		const out = await executeTool("get_live_status", {}, apiStub() as unknown as BiliLookups, () =>
+		const out = await executeTool("get_live_status", {}, apiStub() as unknown as BiliReader, () =>
 			ext({ state: "idle" }),
 		);
 		expect(out).toContain("抖音甲：未开播");
-		const live = await executeTool("get_live_status", {}, apiStub() as unknown as BiliLookups, () =>
+		const live = await executeTool("get_live_status", {}, apiStub() as unknown as BiliReader, () =>
 			ext({ state: "live" }),
 		);
 		expect(live).toContain("抖音甲：直播中");
@@ -95,11 +95,8 @@ describe("get_live_status", () => {
 
 	it("拓展没在跑(BN 手里没有它的在播状态)→ 说查不到,不冒充一个状态", async () => {
 		for (const liveNow of [{ state: "unknown" } as const, undefined]) {
-			const out = await executeTool(
-				"get_live_status",
-				{},
-				apiStub() as unknown as BiliLookups,
-				() => ext(liveNow),
+			const out = await executeTool("get_live_status", {}, apiStub() as unknown as BiliReader, () =>
+				ext(liveNow),
 			);
 			expect(out).toContain("抖音甲：查不到");
 			expect(out).toContain("抖音");
@@ -112,7 +109,7 @@ describe("get_live_status", () => {
 		const view: Subscriptions = {
 			"sub-ext": { ...(VIEW["sub-ext"] as ExtensionSubItemView), liveNow: { state: "idle" } },
 		};
-		const out = await executeTool("get_live_status", {}, api as unknown as BiliLookups, () => view);
+		const out = await executeTool("get_live_status", {}, api as unknown as BiliReader, () => view);
 		expect(api.fetchLiveRoomInfoByUids).not.toHaveBeenCalled();
 		expect(out).toContain("抖音甲：未开播");
 	});
@@ -155,7 +152,7 @@ describe("按 UID 查的工具", () => {
 			...VIEW,
 			"sub-ext-2": { platform: "抖音", externalId: "1", uname: "抖音乙" },
 		};
-		await executeTool("get_user_info", { uid: "1" }, api as unknown as BiliLookups, () => view);
+		await executeTool("get_user_info", { uid: "1" }, api as unknown as BiliReader, () => view);
 		expect(api.fetchUserCard).toHaveBeenCalledWith("1");
 	});
 });

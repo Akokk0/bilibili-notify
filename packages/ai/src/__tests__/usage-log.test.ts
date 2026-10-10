@@ -17,7 +17,7 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import type { BiliLookups } from "../tools";
+import type { BiliReader } from "../tools";
 import { aiConfig, streamOf, textChunk } from "./harness";
 
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 	};
 	const gen = new CommentaryGenerator({
 		serviceCtx,
-		api: {} as BiliLookups,
+		api: {} as BiliReader,
 		config: aiConfig(over),
 	});
 	return { gen, info };

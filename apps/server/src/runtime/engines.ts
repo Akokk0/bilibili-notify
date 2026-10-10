@@ -109,7 +109,7 @@ import {
 	type ExtensionLiveSessions,
 } from "./extension-live-sessions.js";
 import { bindExtensionPosts } from "./extension-posts.js";
-import type { ExtensionSourceLookups } from "./extension-push-common.js";
+import type { ExtensionSourceReader } from "./extension-push-common.js";
 import { syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
@@ -118,7 +118,7 @@ import type { ImageSink } from "./post-from-report.js";
 import {
 	historyRecordFromFilteredPost,
 	historyRecordFromSend,
-	type PushHistoryLookups,
+	type PushHistoryReader,
 } from "./push-history.js";
 import { dataPath } from "./roots.js";
 import type { NodeServiceContext } from "./service-context.js";
@@ -265,7 +265,7 @@ export interface CreateEnginesOptions {
 	 *
 	 * 不给 = 不接拓展订阅的推送(只测 B 站那几条路的引擎)。独立端恒给。
 	 */
-	extensionSources?: ExtensionSourceLookups;
+	extensionSources?: ExtensionSourceReader;
 	/**
 	 * 拓展作品的配图、封面、事件带来的头像往图库存的口(`AppRuntime.postImages`,ADR-0021 决策 22 下的 ㉑d):
 	 * 作品卡是 `Post`,图只收图库引用。**给了 `extensionSources` 就必须给** —— 漏给是开机直接抛,不是悄悄不出图。
@@ -401,7 +401,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	});
 
 	// 历史行要的「替谁、当时叫什么」:推送落行与被过滤的作品留痕共用这一份查法。
-	const historyLookups: PushHistoryLookups = {
+	const historyReader: PushHistoryReader = {
 		subscriptionOf: (subscriptionId) => {
 			const subscription = opts.subscriptionStore.findById(subscriptionId);
 			if (!subscription) return undefined;
@@ -426,7 +426,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const recordFilteredPost = (
 		filtered: Parameters<typeof historyRecordFromFilteredPost>[0],
 	): void => {
-		const input = historyRecordFromFilteredPost(filtered, historyLookups);
+		const input = historyRecordFromFilteredPost(filtered, historyReader);
 		if (input) recordHistory(input);
 	};
 
@@ -441,7 +441,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		quietHoursNow: opts.quietHoursNow,
 		onSend: (info) => {
 			// 一次推送 × 一个目标 = 历史一行;无目标那次也记(面板上才看得见)。
-			const input = historyRecordFromSend(info, historyLookups);
+			const input = historyRecordFromSend(info, historyReader);
 			if (input) recordHistory(input);
 		},
 	});

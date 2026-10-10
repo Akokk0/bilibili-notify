@@ -52,7 +52,7 @@
 
 - **领域实体用本名**：`Post`、`Creator`、`Subscription`、`Problem`、`Connection`。从实体现算出来给某个读者看的投影加 `View`（`SourceSubscriptionView`）。
 - **核心接口用角色名，交进登记表的那一整包叫 `…Def`**：`PlatformAdapter` 对 `PlatformAdapterDef`，`SubscriptionSource` 对 `SubscriptionSourceDef`。
-- **核心里的 `Source` 只指订阅来源**：读数据的口子叫 `…Reader` 或 `…Lookups`。「市场源」是主人在界面上看得到的叫法，算例外。
+- **核心里的 `Source` 只指订阅来源**：读数据的口子，类型一律叫 `…Reader`（一包几个读法的也是，不加复数）；`lookup` 是「查一下」这个动作，只用在函数名上，不当类型名的后缀（`…Lookup` / `…Lookups` 都不用，主人 10-10 定）。「市场源」是主人在界面上看得到的叫法，算例外。
 - **`Summary` 只用于「一个东西的缩略版」**，并且要和 AI 的直播总结（`liveSummary`）错开。
 - **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。**别的词不缩写**：`Msg` 写 `Message`，`Sub` / `Subs` 写 `Subscription` / `Subscriptions`（10-07 主人定；后缀表里已点名的 `Opts`、`Ctx`、`Args` 同理）。
 - **不用 TS `enum`**：一组取值写成 `as const` 的常量对象，类型取它的值的联合（`type GuardLevel = (typeof GuardLevel)[keyof typeof GuardLevel]`）。`enum` 的值面板引用不了，两头就得各写一份再钉住（10-07 主人定）。

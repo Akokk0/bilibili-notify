@@ -15,7 +15,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CommentaryGenerator, type CommentaryGeneratorConfig } from "../commentary-generator";
-import type { BiliLookups } from "../tools";
+import type { BiliReader } from "../tools";
 import {
 	aiConfig,
 	fakeServiceCtx,
@@ -73,7 +73,7 @@ function makeGen(over: Partial<CommentaryGeneratorConfig> = {}): {
 } {
 	const gen = new CommentaryGenerator({
 		serviceCtx: fakeServiceCtx(),
-		api: {} as BiliLookups,
+		api: {} as BiliReader,
 		config: makeConfig(over),
 	});
 	return { gen };

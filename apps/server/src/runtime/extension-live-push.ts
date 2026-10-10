@@ -33,7 +33,7 @@ import type {
 	ExtensionLiveSessions,
 } from "./extension-live-sessions.js";
 import {
-	type ExtensionSourceLookups,
+	type ExtensionSourceReader,
 	extensionSubscriptionName,
 	extensionSubscriptionPushable,
 } from "./extension-push-common.js";
@@ -117,7 +117,7 @@ export interface BindExtensionLivePushOptions {
 	/** 这一张直播卡的生效样式(按种类 ?? 基准,再轮一张自定义封面)。每推一张调一次。 */
 	cardStyle(sub: Subscription, settings: LiveWorkSettings): CustomCardStyleLike | undefined;
 	/** 拓展在不在跑、清单里声明的事件(头像不在这里:直播卡用图库引用,见 `avatarRef`)。 */
-	sources: Pick<ExtensionSourceLookups, "running" | "events">;
+	sources: Pick<ExtensionSourceReader, "running" | "events">;
 	/** 订阅资料里存进图库的头像引用(资料缓存的 `cachedProfile.avatar`,现取);事件没带头像时卡上用它。 */
 	avatarRef(subscriptionId: string): ImageRef | undefined;
 	/**

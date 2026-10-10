@@ -9,7 +9,7 @@ import type { PushSendResult } from "@bilibili-notify/push";
 import type { NewHistoryEntry } from "../history/store.js";
 import { clip, POST_SUMMARY_MAX_CHARS } from "../stats/post-entry-extras.js";
 
-export interface PushHistoryLookups {
+export interface PushHistoryReader {
 	/**
 	 * 订阅 id → 订阅本身与当时的名字 / 头像(SubRuntimeStore 的 cachedProfile:`avatar` 是存进图库的头像引用,
 	 * `avatarUrl` 是它的来源地址)。查不到 = 推送中途被退订。一次查完:订阅表是线性扫的,两个回调就要扫两遍。
@@ -43,7 +43,7 @@ export interface PushHistoryLookups {
  */
 export function historyRecordFromSend(
 	info: PushSendResult,
-	lookups: PushHistoryLookups,
+	lookups: PushHistoryReader,
 ): NewHistoryEntry | null {
 	const row = rowIdentityOf(info.subscriptionId, lookups);
 	if (row === null) return null;
@@ -74,7 +74,7 @@ export function historyRecordFromSend(
  */
 export function historyRecordFromFilteredPost(
 	filtered: { subscriptionId: string; filteredBy: PostFilterReason; text: string; url?: string },
-	lookups: PushHistoryLookups,
+	lookups: PushHistoryReader,
 ): NewHistoryEntry | null {
 	const row = rowIdentityOf(filtered.subscriptionId, lookups);
 	if (row === null) return null;
@@ -96,7 +96,7 @@ export function historyRecordFromFilteredPost(
 /** 一行历史「替谁」那几格:订阅的身份、当时的名字与头像快照。查不到订阅回 null。两种行同一种取法。 */
 function rowIdentityOf(
 	subscriptionId: string,
-	lookups: PushHistoryLookups,
+	lookups: PushHistoryReader,
 ): Pick<NewHistoryEntry, "identity" | "nameSnapshot" | "avatarSnapshot"> | null {
 	const found = lookups.subscriptionOf(subscriptionId);
 	if (found === undefined) return null;

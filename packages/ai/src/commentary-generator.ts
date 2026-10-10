@@ -21,7 +21,7 @@ import {
 	toResponsesTools,
 } from "./responses-api";
 import {
-	type BiliLookups,
+	type BiliReader,
 	DESCRIBE_IMAGE_TOOL,
 	type ExtraTool,
 	executeTool,
@@ -402,7 +402,7 @@ export interface CommentaryProvider {
 
 export interface CommentaryGeneratorOptions {
 	serviceCtx: ServiceContext;
-	api: BiliLookups;
+	api: BiliReader;
 	config: CommentaryGeneratorConfig;
 }
 
@@ -495,11 +495,11 @@ export interface ChatStatelessOptions {
 
 /**
  * 平台中立的 AI 点评 / 多轮对话核心。
- * 不依赖任何宿主框架;宿主负责配置 logger、提供 BiliLookups 与可选的订阅管理钩子。
+ * 不依赖任何宿主框架;宿主负责配置 logger、提供 BiliReader 与可选的订阅管理钩子。
  */
 export class CommentaryGenerator implements CommentaryProvider {
 	private readonly logger: Logger;
-	private readonly api: BiliLookups;
+	private readonly api: BiliReader;
 	private config: CommentaryGeneratorConfig;
 
 	private subsAccessor: (() => Subscriptions | null) | null = null;
