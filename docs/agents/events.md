@@ -12,7 +12,7 @@
 |---|---|
 | `login-status-report` | `LoginFlow` 发出;独立端 `auth` WS channel 消费 |
 | `auth-lost` / `auth-restored` | 登录状态切换(限流通知 master) |
-| `cookies-refreshed` | `{ refreshedAt }`:登录 cookie 刷新并落了盘。**cookie 本身不上总线**(它是密钥,盘上那份由刷新回调自己写);独立端转成 `auth` WS channel 的同名帧 |
+| `cookies-refreshed` | `{ refreshedAt }`:登录 cookie 刷新并落了盘。**cookie 本身不上总线**(它是密钥,盘上那份由 `api.commitLogin` 写好,写成功之后才发这个事件);独立端转成 `auth` WS channel 的同名帧 |
 | `subscription-changed` | `{ ops }`:`SubscriptionStore` CRUD 后的 `SubscriptionOp[]` diff |
 | `config-changed` | `{ scope }`:独立端 `ConfigStore` 写入后发出;scope ∈ `globals\|subscriptions\|targets\|connections\|secrets`。引擎据此 reconcile cron / 刷新状态 / 重建连接 |
 | `engine-error` | 引擎或子系统的运行时错误 `{ source, message }`。`master-notifier`(→ master 私聊)+ `log` WS channel(→ AlertShell)消费 |

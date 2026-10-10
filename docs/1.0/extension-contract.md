@@ -86,7 +86,12 @@ interface KeyValueStore {
   get<T extends Json>(key: string): T | undefined;   // 同步：宿主在 activate 之前读进内存
   set(key: string, value: Json): Promise<{ ok: true } | { ok: false; code: string; message: string }>;   // 宿主原子落盘
   delete(key: string): Promise<{ ok: true } | { ok: false; code: string; message: string }>;
+  batch(ops: readonly KeyValueOp[]): Promise<{ ok: true } | { ok: false; code: string; message: string }>;   // 一批改动一起成或一起不成
 }
+
+type KeyValueOp =                  // batch 的一步；判别键叫 kind，取值就是方法名
+  | { kind: "set"; key: string; value: Json }
+  | { kind: "delete"; key: string };
 ```
 
 | | `state` | `secrets` |
@@ -99,7 +104,9 @@ interface KeyValueStore {
 | 保留的键 | `http.` 开头的归宿主（`ctx.http` 的浏览器身份） | `http.` 开头的归宿主（`ctx.http` 的 cookie 罐） |
 | 什么时候清 | 卸载、全新开始；跟数据代走 | 卸载、全新开始 |
 
-- `set` / `delete` 不抛错：超上限或写了保留前缀回 `invalid`，磁盘写失败回 `unavailable`（码见 ADR-0026）。
+- `set` / `delete` / `batch` 不抛错：超上限、写了保留前缀、值不是 JSON 回 `invalid`，磁盘写失败回 `unavailable`（码见 ADR-0026）。
+- `batch` 保证一起成或一起不成：先整批校验（任何一步不合规矩，整批回 `invalid`、一步都不做），再按顺序应用、一次原子写落盘；同一个键出现几次，后面的盖前面的；空批直接回成功。要同时改几个键、不想落成「只改了一半」时用它。
+- 读得到的永远是落了盘的：`await` 回来之前 `get` 还是旧值。文件在但读不了（权限、IO）时，这个集成的这一份读一律空、写一律回 `unavailable`，盘上原文件不动。
 - 代价：cookie 里不机密的值（比如登录账号的 uid）也会在日志里被遮掉。
 
 ### ctx.http
@@ -112,7 +119,7 @@ interface KeyValueStore {
 - **不拦内网**（局域网里的 RSSHub 要连得上）；拦内网只在 `fetchImage` 上。
 - **重试、退避、限流归拓展**，BN 不替它做。
 - BN 自己的请求不走集成的客户端：客户端带着集成的身份与 cookie，BN 不该冒用。
-- 施工时定：默认头怎么设。
+- 默认头：B 站（3a-26 已落）是在建上下文时按身份交一个函数、给出一张头表（头里要用身份的值，头序也归集成定）。给拓展的写法 3b 定。
 
 ### 图
 

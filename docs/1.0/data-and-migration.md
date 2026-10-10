@@ -62,12 +62,12 @@
 | `config/` | 设置（core / bilibili / extensions 三类段）、订阅（一个文件）、连接、目标 | 是（各节） | 无 | 清 | 变换：globals 分段、订阅两文件合一、连接与目标换形状 |
 | `secrets/master.key` · `kdf.salt` | 主密钥 / 口令派生盐 | 否（本机专用） | 无 | 新生成 | 逐字节拷，两代必须相同，否则彼此密文解不开 |
 | `secrets/config-secrets.enc` | AI 各家 apiKey | 仅完整备份 | 无 | 清 | 原样拷 |
-| `secrets/bilibili/secrets.enc` | B 站这个集成的 `ctx.secrets`：cookie 罐在 `http.cookies` 键（`http.` 开头的键归宿主），登录用的刷新令牌在 B 站自己的键；每个集成 256KB | 仅完整备份 | 无 | 清 | 由 `cookies.json` 转来；手动从第 0 代重新迁移时，cookie 以第 0 代那份为准（ADR-0022 决策 3 下 10-01 的 🔗） |
+| `secrets/bilibili/secrets.enc` | B 站这个集成的 `ctx.secrets`：cookie 罐（整段字符串）在 `http.cookies` 键（`http.` 开头的键归宿主），登录用的刷新令牌在 B 站自己的 `refreshToken` 键；每个集成 256KB；文件是 GCM 块里一份 `{ version: 1, entries }`，权限只许 owner 读 | 仅完整备份 | 无 | 清 | 由 `cookies.json` 转来（迁移修订号 41）；手动从第 0 代重新迁移时，cookie 以第 0 代那份为准（ADR-0022 决策 3 下 10-01 的 🔗） |
 | `secrets/extensions/<id>/secrets.enc` | 拓展的 `ctx.secrets`，一个拓展一个文件 | 仅完整备份（普通备份抹掉） | 卸载清 | 清 | 原样拷 |
 | `runtime/subscription-state.json` | 资料缓存，按订阅 id；存储叫 `SubscriptionStateStore`。问题表全在内存、不存盘（ADR-0025 决策 11） | 否 | 删订阅即删 | 清 | 变换，见迁移表 |
 | `runtime/roast-drafts.json` | 待主人审批的锐评稿 | 否 | 48 小时 | 清 | 变换（老 uid 草稿改订阅 id） |
 | `runtime/card-bg-cursors.json` | 直播封面轮换游标 | 否 | 无 | 清 | 从根目录搬进来 |
-| `runtime/bilibili/state.json` · `extensions/<id>/state.json` | 集成的 `ctx.state`（`packages/http` 生成的浏览器身份在 `http.` 开头的键里，归宿主）；单键 64KB、每个集成 1MB | 否 | 卸载清 | 清 | B 站那份由 sub-runtime 的 `roomId` / `followed` / `followError` 拆出 |
+| `runtime/bilibili/state.json` · `extensions/<id>/state.json` | 集成的 `ctx.state`（`packages/http` 生成的浏览器身份在 `http.identity` 键里，`http.` 开头的键归宿主）；文件是明文的 `{ version: 1, entries }`；单键 64KB、每个集成 1MB | 否 | 卸载清 | 清 | B 站那份由 sub-runtime 的 `roomId` / `followed` / `followError` 拆出 |
 | `history/` | 推送历史行（`HistoryEntry`）、重推原件（`RepushSnapshot`） | 否 | 文字不设上限；图按图片保留天数清（默认 30，见下面 10-02 的 🔗） | 清 | 行变换，图换成图库引用；头像快照（0.x 存的是远端地址）丢掉，只留名字 |
 | `images/` | 作品图、直播封面、头像、历史快照、聊天附件 | 否 | 按引用清扫 | 清 | 原 `history/img/`、重推原件的自存图：保留期内的行与重推原件引用着的逐张复制进来、按 sha256 改名（⑳d 已落；过了保留期的行拿掉图格、不读文件）；`assets/chat/` 里被会话引用的逐张复制进来（⑳b 已落）、`avatars/` 里被资料缓存引用的逐张复制进来（⑳c 已落），孤儿不搬 |
 | `stats/` | 作品（`PostEntry`）、直播场次（`LiveSessionEntry`）、粉丝时序（`FollowersSample`：最近 8 天原样，更早的每小时留末值、连着的同值小时合成一段）、「在记」的账（`RecordingEntry`，满 8 天的首尾相接合成一段） | 否 | 无（删订阅才删）；粉丝时序与账开机一次、每 6 小时压一遍 | 清 | 变换；追加写的文件一律复制 |
@@ -78,7 +78,7 @@
 | `extensions/` | 已装拓展包、连败记账 | 否（设置随 config） | 无 | 清 | 拷；devtools 软链重建不拷；v2 拓展列进首访页 |
 
 - 备份里订阅只有一节，备份 schema 抬版。
-- 完整备份里的凭据按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`；集成自己不导入导出。
+- 完整备份里的凭据按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，备份里有但没带回来的（集成现在没在运行，或换失败）回 `unrestoredIntegrations`（`{ key, message }`）；集成自己不导入导出。恢复是整袋换（内存与盘一起，换完叫集成登记的「密钥被换了」，B 站靠它不重启就重读登录）；备份里没有某个集成的密钥时不碰它，不会把人登出；备份版本 14（13 及更早的拒收）。
 - **1.0 之前的备份拒收**：信封改成比自己新、比自己旧的都拒，提示「这是 1.0 之前的备份：先装 0.12 恢复，再升级到 1.0 走迁移」。
 - 已知限制（这次不改）：备份只恢复「引用方」。背景图、字体、卡片皮肤不在备份里，恢复到另一台机器后会悬空、回落到默认。
 
@@ -138,7 +138,7 @@
 | 订阅两个文件 | 合成 `config/subscriptions.json`，行写成 `identity: { sourceKey, externalId }`（B 站的 uid 就是 externalId）——⑥d 已落（`migration/subscriptions.ts`，拓展那份只作迁移输入）；别名 `name` 丢弃（随 ⑥d 已落，schema 也删了这一格）；指向老卡片皮肤的指针回默认、失效 id 的旋钮删掉、指向内置皮肤的照留 |
 | 订阅的 `groups: string[]` | 标签登记表 `SubscriptionTag` + 订阅上的 `tagIds`（ADR-0034 决策 3）：每个去掉首尾空白后非空、互不相同的字符串成一个标签，订阅上的字符串换成对应 id；登记表顺序照今天订阅页筛选胶囊的排法（`zh-Hans-CN` 排序）。标签 id 由名字定（`deterministicUuid`），重迁拆出同一批 id；新代里的订阅文件写成 `{ tags, subscriptions }`（⑫ 已落，`migration/subscriptions.ts` 的 `toTaggedFile`）。名字里带中文逗号的照原样成一个标签、不拆（主人 10-02 定，见 ADR-0034 决策 3 下的 🔗） |
 | `state/sub-runtime.json` | 改名 `runtime/subscription-state.json`，只剩资料缓存；`roomId` / `followed` / `followError` 搬进 `runtime/bilibili/state.json`；`fansBaseline` 丢弃；缓存资料的 `sign` → `bio`、空串当缺键；0.x 存的远端头像地址 `cachedProfile.avatar` 丢掉、迁移不联网，开机第一轮资料刷新由集成经 `fetchImage` 重新抓成图库引用；拓展订阅存在 `avatars/<订阅 id>` 的头像文件进图库后填成引用（⑳c 已落，修订号 25：资料里的 `avatar` 是同源相对地址的、顺着订阅 id 找到文件，复制进图库、`avatar` 换成引用；是 `http(s)://` / `//` 远端网址的挪到 `avatarUrl`；空串与对不上的两格都缺；不进资料缓存引用的头像文件是孤儿，不搬。这一族按值的形状认拓展还是 B 站，不读订阅文件；改写只在有变化时写新文件）。问题表不存盘，没有要迁的（开机时关注同步与第一轮资料刷新几秒内会重报） |
-| 密钥 | `master.key` / `kdf.salt` 逐字节拷；`cookies.json` → `secrets/bilibili/secrets.enc`：cookie 罐（`cookiesJson`）进 `http.cookies` 键，`refreshToken` 进 B 站自己的一个键（键名施工时定） |
+| 密钥 | `master.key` / `kdf.salt` 逐字节拷；`cookies.json` → `secrets/bilibili/secrets.enc`：cookie 罐（`cookiesJson`）进 `http.cookies` 键，`refreshToken` 进 B 站自己的 `refreshToken` 键（3a-26 已落，`migration/bili-login.ts`，迁移修订号 41、备份版本 14）：0.x 那个文件里两格各自用第 0 代的主密钥 GCM 加密，迁移解开后写进 `secrets/bilibili/secrets.enc`；缺主密钥、读不懂、解不开、因权限等读不了的不带过来，迁移报告里那一条「没带过来」的原因改成「B 站登录没带过来(原因),需要重新扫码」，不挡迁移；转成功了，那一条换成一条 `convert` 的转换记录；写新文件失败则整次迁移失败重来。0.x 的文件形状在 `bili-login.ts` 里冻住，不引用活代码 |
 | bootstrap（`bn.config.yaml`、环境变量、命令行） | 不迁：在用户自己的文件里。`cookieEncryptionKey` / `BN_COOKIE_KEY` / `--cookie-key` 改中立名（新名施工时定），`chromeIdleSeconds` 及其 env / CLI 改 `…Sec`，旧名都永远继续认；`cookieEncryptionKey` 新旧同时设且值不同就拒绝启动；`preset.pushTargets` 读到就忽略。冻住的桌面壳放行的 5 个环境变量、镜像写死的 5 个永不改名 |
 | 连接 | 形状换成 `{ id, name, enabled, adapterKey, platform, settings, platformSnapshot, probeState? }`（ADR-0024 决策 7）。`kind`、`connector`、`extensionId` 删掉，改填 `adapterKey`：直连按平台填内置适配器的键（`onebot`、`qq-official`、`webhook`；飞书 / 钉钉 / 企业微信 / 通用四家都填 `webhook`），拓展连接填原 `extensionId`；`platform` 照搬；`config` → `settings`，OneBot 的 `transport` 保留、作 OneBot 适配器私有的设置（删掉的 `connector` 本来就和它重复），0.x 早期没写 `transport` 的 OneBot 连接迁移时写成显式的 `http`（今天靠活 schema 的 `.default("http")`，⑥c 留到这一步一起收），`retryTimes` → `maxRetries`、`forwardMinTimeoutMs` → `mergeForwardMinTimeoutMs`；迁移时填 `platformSnapshot`（`PlatformDescriptor` 去掉 `platform` 那一格）：直连照 0.x 的平台表抄，`tint` 改叫 `color`，`connectors` / `inbound` / `atAll` 不进快照；拓展借来的 bot 的平台不在那张表里，迁移又跑在引擎起来之前、问不到适配器，这一格怎么填施工时定；`testStatus` 不迁移，`probeState` 缺着，开机重探（ADR-0026 决策 5） |
 | 目标 | 删 `platform`，平台一律经 `connectionId` 从连接取（ADR-0024 决策 9）；endpoint 目标的 `scope` 丢弃；`testStatus` 改名 `reachability`（`lastCheckedAt` → `changedAt`），旧值不搬，与连接的探测状态同样处理，由下一次投递的结果写回；连接不在了的目标照搬，读盘时只隔离那一条、不挡开机 |

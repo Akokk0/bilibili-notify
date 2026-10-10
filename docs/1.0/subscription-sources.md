@@ -167,7 +167,7 @@ type AuthState =                   // 状态值用 kebab
 - 面板登录态按 `SourceKey` 分开存。登录状态变化上总线 `subscription-auth-changed`。
 - 核心账号模块住 `accounts/`；B 站原来的 AuthSystem 进 `bilibili/auth/`。
 - 拓展积木 `qrLogin` 退役（从没实现过）。
-- 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
+- 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
 - 日志落盘前按当前全部密钥的真实值脱敏：`secrets` 值里的每一段字符串都按原文遮（很短的不遮）；还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记。写死的 cookie 名正则删掉。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉。
 
 ## SourceContext
@@ -196,6 +196,7 @@ interface KeyValueStore {           // state 与 secrets 同一个接口，差�
   get<T extends Json>(key: string): T | undefined;   // 同步：宿主在 start 前读进内存
   set(key: string, value: Json): Promise<{ ok: true } | { ok: false; code: string; message: string }>;   // 宿主原子落盘
   delete(key: string): Promise<{ ok: true } | { ok: false; code: string; message: string }>;
+  batch(ops: readonly KeyValueOp[]): Promise<{ ok: true } | { ok: false; code: string; message: string }>;   // ops 的每步是 { kind: "set", key, value } 或 { kind: "delete", key }；一起成或一起不成
 }
 
 interface SourceContext extends IntegrationContext {
@@ -225,8 +226,8 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败：404 回 `not_found`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`。默认头怎么设，施工时定。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓 |
 | `storeImage` | 手里已是字节的图走它（本地生成的扫码二维码，B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库；超 8MB、不是图回 `invalid`。上报一律只收 `ImageRef` |
 | `state` | 宿主托管的小键值存储，明文、不脱敏。单键 64KB、每个集成 1MB。落 `runtime/bilibili/state.json` 或 `runtime/extensions/<id>/state.json`；跟代走、不进备份、卸载与全新开始时清。`http.` 开头的键归宿主（`ctx.http` 的浏览器身份） |
-| `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站原来的 `cookies.enc` 改名并入）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
-| `state` / `secrets` 的写与删 | 返回结果形状、不抛：超上限或写了 `http.` 前缀回 `invalid`，磁盘写失败回 `unavailable` |
+| `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站 0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
+| `state` / `secrets` 的写、删与 `batch` | 返回结果形状、不抛：超上限或写了 `http.` 前缀回 `invalid`，磁盘写失败回 `unavailable` |
 | `redact` | 临时凭据按值登记脱敏；存进 `secrets` 的值自动覆盖，不用再登记 |
 | `settings(schema)` | 和拓展同一个用法（`get` 与 `onChange`）：B 站拿 `bilibili` 段，拓展拿 `extensions.<id>` 段；校验就发生在这一步，见「设置」。交回的读取把手叫 `SettingsReader<T>`（原拓展契约的 `ExtensionSettings<T>`） |
 | `http` | 见下「请求客户端」 |

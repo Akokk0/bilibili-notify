@@ -20,7 +20,7 @@ extensions/   拓展 —— 经窄面 ctx 挂进宿主,不编在主程序里
 |---|---|---|
 | `packages/internal` | `@bilibili-notify/internal` | Zod schema(Subscription —— 一种形状、带 identity,见 subscriptions.md —— / PushTarget / GlobalConfig / HistoryEntry)+ 平台接口(ServiceContext / MessageBus / TargetDispatcher / NotificationPayload)+ 工具(withLock / retry / interpolate)+ 按版式装配消息组 `assembleMessageGroups`(动态与直播共用) |
 | `apps/server/src/bilibili/api` | 不是包(3a-24 搬进服务端) | `Api`(HTTP + WBI 签名)+ `LoginFlow`(扫码 + cookie 状态机) |
-| `packages/storage` | `@bilibili-notify/storage` | `StorageManager` —— cookie/密钥持久化 + AES 加密 |
+| `packages/storage` | `@bilibili-notify/storage` | 持久化底层与密钥:原子写 / 追加 / 隔离 / 清扫等文件原语、`KeyManager` 与 `KeyProvider`(主密钥或口令派生)、GCM 加解密。没有 `StorageManager` / `CookieStore` 了(3a-26):B 站的 cookie 与令牌住在它这个集成自己的 `secrets` 里,由服务端的 `integration-store/` 管 |
 | `packages/http` | `@bilibili-notify/http` | 集成的请求底座,通用、不带任何平台的默认值:`HttpClient`(`fetch` 回 `Result<HttpResponse>`:手动逐跳跟重定向并收 Set-Cookie、每跳之前可否决,非 2xx 不抛,网络断 / 超时 / 被中止 / 被否决回失败结果)、`CookieJar`(RFC 6265 子集,`load` / `clear` 原地换、`onChange` 通知、`epoch` 挡迟到响应)、浏览器身份(`generateBrowserIdentity` / `upgradeBrowserIdentity`)。B 站经 `bilibili/api` 里的 `ApiClient` 薄包用它,保住「非 2xx 抛错、JSON 自动解析、-101 探测」。出网点名表的白名单是它的 `http-client.ts` |
 | `packages/push` | `@bilibili-notify/push` | `PushRouter` —— 经 `PushLike` 适配器做推送路由;一次推送整个交给 `push(push)`(按顺序排好的锚点,订阅 / 总开关 / 静音 / 免扰在交进来时判一次);只把**启用的**目标当候选,每个锚点对每个目标收完一段序列回调一次 `onSend`(带 `pushId` / `feature` / 逐条结果,被静音 / 免扰挡下的消息带 `isSilenced`),一个可用目标都没有时以 `target: null` 回调一次(见 events.md「推送历史的行模型」) |
 | `packages/subscription` | `@bilibili-notify/subscription` | `SubscriptionStore` —— `Subscription[]` 内存 CRUD + `subscription-changed` diff。B 站与拓展的订阅同一份列表;`findById` 按订阅 id 找,`findByIdentity` 按身份(来源 + 外部 id)找 |
@@ -79,9 +79,9 @@ live   (恒造)                     → LiveEngine({ api, push, contentBuilder, 
 src/
   index.ts              CLI / bootstrap 入口
   app.ts                Hono app 组装 + 鉴权 + 路由挂载
-  auth/                 经 bilibili/api 的 LoginFlow 的扫码 + cookie 状态;bare-auth-policy / session / ws-ticket
+  auth/                 经 bilibili/api 的 LoginFlow 的扫码 + cookie 状态(`createAuthSystem` 先建 B 站的上下文 `bilibili/context.ts`:开它的存储、读存着的登录与浏览器身份,再建 `Api`;登录的提交只走 `api.commitLogin`);bare-auth-policy / session / ws-ticket
   config/               loader(bootstrap 配置加载)+ ConfigStore(原子写 <数据根>/config/*.json,emit config-changed)+ schema
-  migration/            0.x → 数据代的一次性迁移:第 0 代(宿主根上 0.x 的文件)只读,先按代布局搬进 <序号>.partial,再逐族把 0.x 各版本的形状改写成 0.x 最新的形状(connections.ts 连接与目标、settings.ts 设置、subscriptions.ts 订阅,history.ts 推送历史,stats.ts 统计的文件名与行,roast-drafts.ts 锐评草稿,skins.ts 界面皮肤,conversations.ts 女仆对话,secrets.ts 加密袋,features.ts / ai.ts / link-parsing.ts / templates.ts 是各组老形状的变换,files.ts 共用的读写);旧格式的知识只住这里,各个 store 只认最新形状(ADR-0022)
+  migration/            0.x → 数据代的一次性迁移:第 0 代(宿主根上 0.x 的文件)只读,先按代布局搬进 <序号>.partial,再逐族把 0.x 各版本的形状改写成 0.x 最新的形状(connections.ts 连接与目标、settings.ts 设置、subscriptions.ts 订阅,history.ts 推送历史,stats.ts 统计的文件名与行,roast-drafts.ts 锐评草稿,skins.ts 界面皮肤,conversations.ts 女仆对话,secrets.ts 加密袋,bili-login.ts B 站登录(0.x 的 secrets/cookies.json → secrets/bilibili/secrets.enc),features.ts / ai.ts / link-parsing.ts / templates.ts 是各组老形状的变换,files.ts 共用的读写);旧格式的知识只住这里,各个 store 只认最新形状(ADR-0022)
   runtime/
     bootstrap.ts          AppRuntime 容器(api/storage/push/store/engines/fansPoller/...);宿主根取配置的 dataDir,数据根由开机选代交进来(构造期不碰盘)
     roots.ts              宿主根(versions/ logs/ generations/)与数据根(一代)的目录表 + hostPath / dataPath;本文写的 <数据根>/… 就是选中的那一代 <dataDir>/generations/<序号>/
@@ -110,8 +110,9 @@ src/
   ws/                   server(ws upgrade + 按连接 channel 过滤)+ channels + log-channel
   push/                 `target-dispatcher.ts`:TargetDispatcher 分发(PushTarget.id → 平台适配器)+ `registry.ts` 的**活注册表**(拓展注册的推送源往这里进,按分发键认领,占了就抛)+ `dispatch.ts`(按连接找适配器)
   platforms/            OneBot v11(HTTP / ws / ws-reverse)+ QQ 官方机器人 + Webhook(飞书 / 钉钉 / 企微 / 未指明,同一个 adapter 的四个方言分支)三个**直连** adapter;推送源契约在 internal/push-source.ts,连接平台词表在 internal/constants.ts(`CONNECTION_PLATFORMS`,**只管直连**),schema 在 internal/schema/targets.ts
-  bilibili/             B 站的代码:settings.ts(B 站设置)+ api/(Api / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine / deliverWork / postFromDynamic / filterPost)+ live/(根上:翻译函数 membership-event / superchat-event / live-card-input、徽章图标 guard-icons、以后搬去核心的 live-notify / template-renderer / content-builder;protocol/ 弹幕连接的协议层 client / codec / events / parser,说明在它的 README.md;session/ LiveEngine / ListenerManager / RoomSession;recap/ 下播后的回顾:弹幕收集、词云、AI 总结的请求器)
-  integrations/         集成宿主(内置集成与拓展共用):registry(通用登记表 Registry,按键认领、只撤自己那行)、context(集成上下文的工厂 createIntegrationContext:日志、停止信号、收尾钩子,外加宿主握着的名册与收尾;类型 IntegrationContext 住 packages/internal;拓展上下文与内置平台适配器的上下文都建在它上面)
+  bilibili/             B 站的代码:settings.ts(B 站设置)+ context.ts(B 站的上下文 `BiliContext`:集成上下文加请求客户端与 cookie 罐的把手,3a-28 换成 `SourceContext`)+ api/(Api / LoginFlow / ApiClient / WBI)+ dynamic/(DynamicEngine / deliverWork / postFromDynamic / filterPost)+ live/(根上:翻译函数 membership-event / superchat-event / live-card-input、徽章图标 guard-icons、以后搬去核心的 live-notify / template-renderer / content-builder;protocol/ 弹幕连接的协议层 client / codec / events / parser,说明在它的 README.md;session/ LiveEngine / ListenerManager / RoomSession;recap/ 下播后的回顾:弹幕收集、词云、AI 总结的请求器)
+  integration-store/    集成的 state / secrets 存储宿主本体(`createIntegrationStore`,在 `runtime/bootstrap.ts` 建、挂在 `AppRuntime.integrationStore`,构造期不碰盘):key-value-store(内存里的一袋键值 + 校验:保留前缀、限额、值得是 JSON、`batch` 先验后写)、files(`state.json` / `secrets.enc` 的读写与路径,读盘三态)、store(按集成键开 / 关 / 删、备份的 `exportSecrets` / `restoreSecrets`、写道与关停的 `flush` 段关门)。每个集成拿到的把手有集成一面与宿主一面(宿主一面只许 `http.` 开头的键)。`IntegrationContext` 的 `state` / `secrets` 引用它
+  integrations/         集成宿主(内置集成与拓展共用):http(`createIntegrationHttp`:替集成造请求客户端、cookie 罐与浏览器身份,罐子自动存、闸、`commit`;B 站是第一个调用方)、registry(通用登记表 Registry,按键认领、只撤自己那行)、context(集成上下文的工厂 createIntegrationContext:日志、停止信号、收尾钩子,外加宿主握着的名册与收尾;类型 IntegrationContext 住 packages/internal;拓展上下文与内置平台适配器的上下文都建在它上面)
   extensions/           拓展宿主:discover(扫多根)/ loader(按开关装载 + 失败记账)/ context(窄面 ctx)/ mount(`/ext/:id/*` 活路由表)/ upgrade(WS upgrade 分发)/ config-fields(两份声明对表)
 ```
 
@@ -131,9 +132,9 @@ src/
 | 段 | 放什么 |
 | --- | --- |
 | `stop` | 生产者:来源、拓展、引擎、平台连接、定时任务、鉴权。`serviceCtx.signal` 在这段之前就中止,挂着的 ctx 定时器也清掉 |
-| `drain` | HTTP 排空,最多占预算的 30%,到点强断剩下的连接(含不回关闭帧的 WS) |
+| `drain` | HTTP 排空,最多占预算的 30%,到点强断剩下的连接(含不回关闭帧的 WS);B 站请求客户端的连接池也在这段收(`createBiliContext` 登记:`client.dispose()` 会让在途请求失败,所以不放进 B 站上下文自己的收尾,那个收尾整个在 `stop` 段跑) |
 | (段间) | 等 `track()` 登记的后台活落定 |
-| `flush` | 统计补下播帧;各写道落盘并关门,关门后再交进来的写一律 `queue_closed` 拒绝、不碰盘 |
+| `flush` | 统计补下播帧;各写道(含集成存储宿主 `integrationStore.close()`)落盘并关门,关门后再交进来的写一律 `queue_closed` 拒绝、不碰盘 |
 | `dispose` | 其余:浏览器;日志归档排最后,关停期打的日志都赶得上它 |
 
 - 新加一个存盘的仓:写道用 internal 的 `createSerialQueue`,给仓一个 `close()`,在创建它的地方登记进 `flush` 段。它若往别的仓写,它的等待要登记在下游的 close **之后**(同段后登记的先跑),资料处理链与图库 / 资料缓存仓就是这样排的,有接线测试钉着。

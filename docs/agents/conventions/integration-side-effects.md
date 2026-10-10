@@ -19,7 +19,7 @@
    - 对：`await ctx.state.set("cursor", cursor)`，再看返回的结果。
    - 错：`import { writeFile } from "node:fs/promises"`，自己把游标写进一个文件。
 
-2. **`state` 与 `secrets` 的写与删返回结果，不抛错，要看。** 超上限或写了保留前缀（`http.` 开头的键归宿主）回 `invalid`，磁盘写失败回 `unavailable`（ADR-0025 决策 10，码见 [ADR-0026](../../adr/0026-failure-results.md)）。`get` 是同步的，宿主在 `start` / `activate` 之前读进内存。限额：`state` 单键 64KB、每个集成 1MB；`secrets` 每个集成 256KB。
+2. **`state` 与 `secrets` 的写、删与 `batch` 返回结果，不抛错，要看。** 超上限或写了保留前缀（`http.` 开头的键归宿主）回 `invalid`，磁盘写失败回 `unavailable`（ADR-0025 决策 10，码见 [ADR-0026](../../adr/0026-failure-results.md)）。`get` 是同步的，宿主在 `start` / `activate` 之前读进内存。限额：`state` 单键 64KB、每个集成 1MB；`secrets` 每个集成 256KB。要同时改几个键、不想落成只改了一半，用 `batch`：整批一起成或一起不成。
 
 3. **凭据只进 `secrets`，别放 `state`。** `state` 明文、不进备份、不脱敏；`secrets` 用主密钥加密、只进完整备份、值按原文脱敏。cookie 由 `ctx.http` 自动存进 `secrets`，不用自己存（ADR-0025 决策 6、9）。
 

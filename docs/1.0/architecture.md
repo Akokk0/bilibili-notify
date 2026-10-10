@@ -60,7 +60,7 @@ B 站（信号 · 接口 · 扫码）──Source 等接口──┐
 | `push` | 一等 | `PushRouter`：按订阅 id 路由、闸、附加项 | 类名改掉；按平台名判断的（如 @全体）改成问适配器能力 |
 | `image` | 一等 | 作品卡、直播卡、榜单等中立卡种 + 皮肤；附加块按 card / video / goods 直接渲染；醒目留言按档取色、金额按币种；不联网，只内联图库引用 | 解析 B 站 JSON 的代码、B 站域名白名单、大航海等级表搬走 |
 | `ai` | 一等 | 生成器、人格、核心中立只读工具；看图（`describe_image`）与联网搜索照留核心 | 删掉对 B 站包的 import；来源专有工具经 `AiToolProvider` 登记；中立工具参数统一叫 `creator`；看图只收 `ImageRef`、字节由宿主注入的读图函数读，`packages/ai` 不碰磁盘（ADR-0030） |
-| `storage` | 一等 | 持久化底层（原子写、写道）、主密钥与加密 | `CookieStore` 退役：cookie 罐进 `http`，由宿主存进 B 站这个集成的 `secrets`（`cookies.enc` 改名并入，ADR-0025 决策 9） |
+| `storage` | 一等 | 持久化底层（原子写、写道）、主密钥与加密 | `CookieStore` / `StorageManager` 已退役（3a-26）：cookie 罐进 `http`，由宿主存进 B 站这个集成的 `secrets`（0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`，ADR-0025 决策 9） |
 | `subscription` | 一等 | 订阅仓、身份唯一的规则 | 去掉 `findByUid` |
 | `ui` | 一等 | 纯展示组件 | 新增统一的密钥输入框、素材选择器 |
 | `extension` | 2.5 的门 | 拓展契约 v3 | 见 [extension-contract.md](./extension-contract.md) |
@@ -123,8 +123,8 @@ roast/             锐评：生成、审批、定时、投递（从 stats/ 拆�
 stats/             统计仓与聚合（含粉丝时序；「在记」按特性算，热力图也读它；能回最近几条作品）
 history/ ai/ skins/ library/ maid-skills/
 process/           进程基础件：puppeteer、资源采样、宿主看护（孤儿自检与 stdin 关停、重启能力）
-integration-store/ 集成的小存储：每个集成一份 state.json 与加密的 secrets.enc、限额与保留前缀、原子写与关停时关门（IntegrationContext 上的 state / secrets 引用它）
-integrations/      集成宿主：IntegrationContext 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 Registry
+integration-store/ 集成的小存储宿主本体：每个集成一份 state.json 与加密的 secrets.enc、读盘三态（文件不在 / 内容不认 / 在但读不了）、限额与保留前缀、写道与原子写、关停时关门、备份的导出与恢复（IntegrationContext 上的 state / secrets 引用它）
+integrations/      集成宿主：IntegrationContext 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 Registry、集成的请求客户端装配（http.ts：身份、cookie 罐与它的自动存和闸）
 extensions/        拓展特有的：装载、市场、安装、设置、视图 + 收件口
 bilibili/          B 站：Source 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
 bilibili/devtools/ B 站的 DevtoolsProvider，只在开发版登记
@@ -186,7 +186,7 @@ interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已�
 | 生命周期 | 内置集成与拓展同一套：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾。收尾的先后：宿主先调来源或适配器自己的 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾（ADR-0025 决策 5）。运行状态：内置集成只取 `running` / `failed` / `settings-invalid`；拓展照 `ExtensionRunStatus` 的全部取值，外加 `settings-invalid`；系统页、健康卡、`status` 指令都读它 |
 | 设置 | 只有一个词 `settings`：`connection.config` → `settings`、`configSchema` → `settingsSchema`、`configFields` → `settingsFields`；`config` 只指存储（`config/`、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG`）。`ctx.settings(schema)` 给 `get` 与 `onChange` |
 | 设置坏了 | 只停那一处，不挡开机（ADR-0025 决策 4）：拓展段、`bilibili` 段校验不过只停那个集成（`settings-invalid`，面板显示原值与原因、进问题框，改对当场起）；`core` 段逐格校验，坏的那格在内存里用默认值、盘上原文不动、问题表记一条；只有信封坏了才挡开机。只有 `start` / `activate` 期间读设置失败可以抛错中止启动，运行中的 `get()` 不抛 |
-| `state` / `secrets` | 同一个 `KeyValueStore { get, set, delete }`：`get` 同步（宿主在 `start` 前读进内存），写由宿主原子落盘。`state` 明文、不进备份、不脱敏，单键 64KB、每个集成 1MB，`http.` 开头的键归宿主（浏览器身份）；`secrets` 主密钥加密、一个集成一个文件、只进完整备份、值里每段字符串按原文脱敏（很短的不遮），每个集成 256KB，`http.` 开头的键归宿主（cookie 罐） |
+| `state` / `secrets` | 同一个 `KeyValueStore { get, set, delete, batch }`（`batch(ops)` 一批里可以有写有删，整批一起成或一起不成）：`get` 同步（宿主在 `start` 前读进内存），写由宿主原子落盘。`state` 明文、不进备份、不脱敏，单键 64KB、每个集成 1MB，`http.` 开头的键归宿主（浏览器身份）；`secrets` 主密钥加密、一个集成一个文件、只进完整备份、值里每段字符串按原文脱敏（很短的不遮），每个集成 256KB，`http.` 开头的键归宿主（cookie 罐） |
 | `http` | `packages/http` 的客户端，每个集成一个：cookie 由宿主自动存进该集成的 `secrets`；浏览器身份生成一次存进 `state`、重启照用，只在发版把版本区间前挪、存的低于下限时升级（只升不降）；重试、退避、限流归集成；整体不拦内网（局域网里的 RSSHub 要连得上）；1.0 对拓展整套开放 |
 | `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头）；拦内网、8MB、嗅探、超时这一层只在这条路上，每一跳重定向都查 |
 | 调用被拒或失败 | 上报类（`report*`、`reportProblem`、`resolveProblem`）保持 `void`：被拒或丢格记进该集成的 `reportDiscrepancies` 表并打 warn 日志（内置集成被拒就是 BN 的 bug，只打错误日志）；请求类（`state` / `secrets` 的写与删、`fetchImage`、`storeImage`）返回结果形状、不抛错 |
@@ -233,7 +233,7 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 | 请求 | `packages/http`：每个集成一个客户端 | `ctx.http`（请求与弹幕通道的 `websocket`） | `ctx.http` 整套开放 |
 | 预览 | 卡片页预览、按订阅覆盖 | `fetchPreview` | 可选 `fetchPreview` |
 | 健康与问题 | 见下「问题表与健康」 | `health()` 交一行字；`reportProblem` / `resolveProblem` | 同左；平台适配器也能报，带 `connectionId` |
-| 备份与日志脱敏 | 备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `secrets`，只进完整备份），恢复回 `restoredIntegrations`；日志按真实密钥值脱敏 | `ctx.secrets` + `ctx.redact` | `ctx.secrets`、`ctx.redact` 与 secret 字段自动覆盖 |
+| 备份与日志脱敏 | 备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `secrets`，只进完整备份），恢复回 `restoredIntegrations`，备份里有但没带回来的（集成现在没在运行、或换失败）回 `unrestoredIntegrations`；日志按真实密钥值脱敏 | `ctx.secrets` + `ctx.redact` | `ctx.secrets`、`ctx.redact` 与 secret 字段自动覆盖 |
 | 历史与重推 | 全部；每个目标一行，失败带 code，可以手动补发 | — | — |
 
 现在服务端有 22 个非测试文件直接 import B 站的包，其中 routes/subs、routes/auth、routes/cards、routes/health、app.ts 是核心在点名 B 站——这些都要改成经登记表。另有经结构化句柄直调 B 站的：`engines.api` 喂 `routes/subs.ts` 搜人、查人，守卫 1 只看 import 抓不到，靠入口咽喉。

@@ -591,7 +591,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 - 凭据字段在 schema 上标 `secret: true`，与各集成、适配器、拓展的设置字段同一写法。面板打码与备份脱敏都读这个标记，不再按键名猜。
 - 下发给面板只有一种打码：契约里的 `MaskedSecret`，固定 8 个点，≥24 字符才露头尾各 4 位。带着打码对象写回一律 400；面板保存时没动过的密钥格不进 PATCH。AI apiKey 的哨兵字符串退役。
 - Webhook 的 `url` 算凭据（token 常在路径里）。OneBot 的 `baseUrl` / ws 地址面板照常显示，备份里照旧抹掉。
-- 密钥放哪：AI key 在 `secrets/config-secrets.enc`；集成的凭据（B 站 cookie、拓展的 token）一律走各自的 `ctx.secrets`，一个集成一个加密文件（B 站原来的 `cookies.enc` 改名并入），位置见 [data-and-migration.md](./data-and-migration.md)。
+- 密钥放哪：AI key 在 `secrets/config-secrets.enc`；集成的凭据（B 站 cookie、拓展的 token）一律走各自的 `ctx.secrets`，一个集成一个加密文件（B 站 0.x 的 `cookies.json` 由迁移转成它的 `secrets.enc`），位置见 [data-and-migration.md](./data-and-migration.md)。
 - 3a-13 已落：连接的 `accessToken`、webhook 的 `secret` 与 `url`、QQ 的 `appSecret`、AI 的各把 key 与联网搜索 key 都按 `MaskedSecret` 下发，AI 的哨兵字符串退役；拓展连接 `config` 里的密钥仍明文下发，随 3a-22。`packages/ui` 出统一的密钥输入框：显示「已配置」+「更换」，各处都换成它。**例外**：QQ 扫码创建时回传的那一次 `appSecret` 不打码。
 
 ## 数字、时间与「不知道」
