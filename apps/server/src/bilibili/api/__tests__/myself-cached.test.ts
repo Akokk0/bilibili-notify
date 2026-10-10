@@ -7,8 +7,8 @@ import { makeApi as makeBaseApi } from "./support/make-api";
  *   - 连续调用去重(命中缓存),只落一次 MYSELF_INFO_URL;
  *   - 登出(clearCookies)后缓存失效,下次真调 —— 换号不会用旧账号身份。
  */
-function makeApi() {
-	const { api } = makeBaseApi();
+async function makeApi() {
+	const { api } = await makeBaseApi();
 	let myselfCalls = 0;
 	const mockClient = {
 		get: async (url: string) => {
@@ -25,14 +25,14 @@ function makeApi() {
 
 describe("Api.getMyselfInfoCached", () => {
 	it("连续调用去重,只落一次 MYSELF_INFO_URL", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		await Promise.all([api.getMyselfInfoCached(), api.getMyselfInfoCached()]);
 		await api.getMyselfInfoCached();
 		expect(calls()).toBe(1);
 	});
 
 	it("clearCookies(登出/换号)后缓存失效,下次真调", async () => {
-		const { api, inject, calls } = makeApi();
+		const { api, inject, calls } = await makeApi();
 		await api.getMyselfInfoCached();
 		expect(calls()).toBe(1);
 		await api.clearCookies(); // 会 invalidate + 重建 client

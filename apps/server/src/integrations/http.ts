@@ -133,22 +133,15 @@ export async function createIntegrationHttp(
 				jar.clear();
 				return;
 			}
-			let parsed: unknown;
+			// 解不开、不是数组、数组里有坏元素(`jar.load` 会抛)都是同一种结局:记 error、按空罐起,不挡开机。
 			try {
-				parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+				const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
+				if (!Array.isArray(parsed)) throw new Error("不是数组");
+				jar.load(parsed as Cookie[]);
 			} catch (err) {
-				logger.error(
-					`[integrations/http] 存着的 cookie 不是合法 JSON,按空罐起:${errorMessageOf(err)}`,
-				);
+				logger.error(`[integrations/http] 存着的 cookie 读不进(${errorMessageOf(err)}),按空罐起`);
 				jar.clear();
-				return;
 			}
-			if (!Array.isArray(parsed)) {
-				logger.error("[integrations/http] 存着的 cookie 不是数组,按空罐起");
-				jar.clear();
-				return;
-			}
-			jar.load(parsed as Cookie[]);
 		} finally {
 			loading = false;
 		}

@@ -50,8 +50,8 @@ export const RATCHET = {
 	"apps/contract/src/auth.ts": 5,
 	"apps/server/src/ai/read-only-tools.ts": 2,
 	// 3a-23:把 contract 的登录状态值与 api 包的枚举两头钉住;3a-29 `SourceAuth` 状态机落地时一起走。
-	// 3a-10·26(主人 10-10 点头,新登记 2):B 站的请求客户端改由调用方建好交给 `Api`,登录这套代码因此引入并调用
-	// `createBiliHttp`。3a-29 这套代码搬进 `bilibili/auth/` 时整行消失。
+	// 3a-10·26(主人 10-10 点头,新登记 2):B 站的登录、cookie 与请求客户端住进集成的上下文,登录这套代码因此引入并调用
+	// `createBiliContext`。3a-29 这套代码搬进 `bilibili/auth/` 时整行消失。
 	"apps/server/src/auth/index.ts": 2,
 	"apps/server/src/auth/login-status-wire.ts": 6,
 	// 3a-32(主人 10-10 点头,5 → 8):B 站的开发场景搬进 `bilibili/devtools/`,入口要引入、调用它的工厂并用来源键认领,

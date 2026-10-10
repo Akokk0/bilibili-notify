@@ -8,7 +8,14 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 import type { ZodType } from "zod";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
-import { BackupPinError } from "../backup/crypto.js";
+import {
+	BackupPinError,
+	type BackupSecretBag,
+	type EncryptedSecrets,
+	openSecrets,
+	sealSecrets,
+} from "../backup/crypto.js";
+import { buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
@@ -83,7 +90,12 @@ describe("full backup assemble/open", () => {
 			{
 				globals: globalsWithApiKey("sk-SECRET"),
 				connections: [onebot("a1", "tok-SECRET")],
-				cookies: { cookiesJson: '{"SESSDATA":"cookie-SECRET"}', refreshToken: "rt-SECRET" },
+				integrationSecrets: {
+					bilibili: {
+						"http.cookies": '[{"name":"SESSDATA","value":"cookie-SECRET"}]',
+						refreshToken: "rt-SECRET",
+					},
+				},
 			},
 			"123456",
 			"2026-07-10T00:00:00.000Z",
@@ -98,22 +110,68 @@ describe("full backup assemble/open", () => {
 		}
 	});
 
-	it("open with the correct PIN reconstructs the full config + cookies", () => {
+	it("open with the correct PIN reconstructs the full config + every integration's secrets bag", () => {
+		const integrationSecrets = {
+			bilibili: { "http.cookies": "CJ", refreshToken: "RT" },
+			onebot: { token: { nested: [1, true, null] } },
+		};
 		const env = assembleFullBackup(
 			{
 				globals: globalsWithApiKey("sk-1"),
 				connections: [onebot("a1", "tok-1")],
-				cookies: { cookiesJson: "CJ", refreshToken: "RT" },
+				integrationSecrets,
 			},
 			"123456",
 			"t",
 			BUILTINS,
 		);
 
-		const { sections, cookies } = openFullBackup(env, "123456");
-		expect(sections.globals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-1");
-		expect(sections.connections?.[0]?.settings).toMatchObject({ accessToken: "tok-1" });
-		expect(cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
+		const opened = openFullBackup(env, "123456");
+		expect(opened.sections.globals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-1");
+		expect(opened.sections.connections?.[0]?.settings).toMatchObject({ accessToken: "tok-1" });
+		expect(opened.integrationSecrets).toEqual(integrationSecrets);
+	});
+
+	it("没有任何集成密钥(或全是空的)→ 袋里不放这一格,开袋得到 {}", () => {
+		for (const integrationSecrets of [undefined, {}]) {
+			const env = assembleFullBackup(
+				{ globals: globalsWithApiKey("sk-1"), integrationSecrets },
+				"123456",
+				"t",
+			);
+			const bag = openSecrets("123456", env.secrets as EncryptedSecrets);
+			expect(bag.integrationSecrets).toBeUndefined();
+			expect(openFullBackup(env, "123456").integrationSecrets).toEqual({});
+		}
+	});
+
+	describe("开袋核密钥格的形状:不对的整份拒收(invalid)", () => {
+		function envWithBag(bag: unknown) {
+			return buildBackup({
+				kind: "full",
+				createdAt: "t",
+				sections: {},
+				secrets: sealSecrets("123456", bag as BackupSecretBag),
+			});
+		}
+
+		it.each([
+			["integrationSecrets 不是对象", { integrationSecrets: "oops" }],
+			["integrationSecrets 是数组", { integrationSecrets: [] }],
+			["某个集成那一格是字符串", { integrationSecrets: { bilibili: "oops" } }],
+			["某个集成那一格是数组", { integrationSecrets: { bilibili: { a: 1 }, onebot: [] } }],
+			["某个集成那一格是 null", { integrationSecrets: { bilibili: null } }],
+		])("%s", (_name, bag) => {
+			let thrown: unknown;
+			try {
+				openFullBackup(envWithBag(bag), "123456");
+			} catch (err) {
+				thrown = err;
+			}
+			expect(thrown).toBeInstanceOf(BackupRejectedError);
+			expect(thrown).toMatchObject({ code: "invalid" });
+			expect((thrown as Error).message).toMatch(/密钥/);
+		});
 	});
 
 	it("open with the wrong PIN throws BackupPinError (invalid,中文原因)", () => {

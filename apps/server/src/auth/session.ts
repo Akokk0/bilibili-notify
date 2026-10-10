@@ -12,7 +12,7 @@ import { readCookie } from "./cookie.js";
  *
  * Token = `base64url(JSON{v,exp}) "." HMAC-SHA256`. No server-side session
  * store: the signing key is derived once via HKDF from the runtime's stable
- * key material (the same key infra StorageManager uses — `cookieEncryptionKey`
+ * key material (the same key infra the integration stores use — `cookieEncryptionKey`
  * when `BN_COOKIE_KEY` is set, else the persisted random master.key), with the
  * info label providing domain separation from cookie/secret encryption.
  *
@@ -62,7 +62,7 @@ export interface SessionCodec {
 export interface CreateSessionCodecOptions {
 	/**
 	 * Stable key material — pass `await keyProvider.getKey()`. This is the same
-	 * 32-byte key StorageManager uses (passphrase-derived from
+	 * 32-byte key the integration stores use (passphrase-derived from
 	 * `cookieEncryptionKey`, or the persisted random master.key). Stable across
 	 * restarts in both modes, so sessions survive a server restart.
 	 */

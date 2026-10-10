@@ -1,4 +1,12 @@
-import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import {
+	type Disposable,
+	fail,
+	type Logger,
+	type MessageBus,
+	ok,
+	type Result,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../api";
 import { LoginFlow } from "../login-flow";
@@ -15,6 +23,18 @@ function makeFakeApi() {
 		fetchLoginQrCode: vi.fn(),
 		fetchLoginStatus: vi.fn(),
 		getCookiesJson: vi.fn(() => '[{"key":"SESSDATA","value":"x"}]'),
+		commitLogin: vi.fn(async (): Promise<Result> => ok()),
+		/** 扫码拿的闸:每拿一次记一道,看它什么时候被放。 */
+		holds: [] as Array<{ disposed: boolean }>,
+		holdLoginSaves: vi.fn((): Disposable => {
+			const hold = { disposed: false };
+			fake.holds.push(hold);
+			return {
+				dispose() {
+					hold.disposed = true;
+				},
+			};
+		}),
 	};
 	return fake;
 }
@@ -105,22 +125,19 @@ interface Harness {
 	bus: MessageBus;
 	events: RecordedEvent[];
 	scFake: ReturnType<typeof makeFakeServiceCtx>;
-	saveCookies: ReturnType<typeof vi.fn>;
 }
 
 function makeFlow(opts: { healthCheckMs?: number } = {}): Harness {
 	const api = makeFakeApi();
 	const { bus, events } = makeFakeBus();
 	const scFake = makeFakeServiceCtx();
-	const saveCookies = vi.fn(async () => {});
 	const flow = new LoginFlow({
 		serviceCtx: scFake.sc,
 		api: api as unknown as Api,
 		bus,
 		healthCheckMs: opts.healthCheckMs ?? 0,
-		saveCookies,
 	});
-	return { flow, api, bus, events, scFake, saveCookies };
+	return { flow, api, bus, events, scFake };
 }
 
 function eventsOfKind(events: RecordedEvent[], kind: string): RecordedEvent[] {
@@ -251,7 +268,7 @@ describe("LoginFlow.beginLogin()", () => {
 		expect(h.scFake.intervals).toHaveLength(0);
 	});
 
-	it("poll code === 0: saves cookies, transitions to LOGGED_IN, calls reportAccountInfo", async () => {
+	it("poll code === 0: commits the login, transitions to LOGGED_IN, calls reportAccountInfo", async () => {
 		const h = makeFlow();
 		h.api.fetchLoginQrCode.mockResolvedValueOnce({
 			code: 0,
@@ -270,11 +287,8 @@ describe("LoginFlow.beginLogin()", () => {
 		expect(h.scFake.intervals).toHaveLength(1);
 		await h.scFake.intervals[0]?.handle.fire();
 
-		expect(h.saveCookies).toHaveBeenCalledTimes(1);
-		expect(h.saveCookies).toHaveBeenCalledWith({
-			cookiesJson: '[{"key":"SESSDATA","value":"x"}]',
-			refreshToken: "rt-xyz",
-		});
+		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
+		expect(h.api.commitLogin).toHaveBeenCalledWith("rt-xyz");
 		expect(h.api.fetchMyselfInfo).toHaveBeenCalledTimes(1);
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
 		// The interval timer must have been cleared.
@@ -309,7 +323,7 @@ describe("LoginFlow.beginLogin()", () => {
 		await h.scFake.intervals[0]?.handle.fire();
 
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGING_QR);
-		expect(h.saveCookies).not.toHaveBeenCalled();
+		expect(h.api.commitLogin).not.toHaveBeenCalled();
 		expect(h.scFake.intervals[0]?.handle.disposed).toBe(false);
 	});
 
@@ -337,7 +351,7 @@ describe("LoginFlow.beginLogin()", () => {
 });
 
 /**
- * 关停(切片 ③)。扫码成功的那一拍把 cookie 落到 secrets/cookies.json —— 轮询回调是同步签名的定时器
+ * 关停(切片 ③)。扫码成功的那一拍把 cookie 与令牌提交进集成的密钥存储 —— 轮询回调是同步签名的定时器
  * 回调,不登记进 `ctx.track()` 的话,关停对它一无所知,cookie 写道关门时它可能还没落完。
  */
 describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
@@ -357,15 +371,15 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 	it("扫码成功那一拍:cookie 落盘之后它才落定", async () => {
 		const h = makeFlow();
 		loggedInPoll(h);
-		const save = deferred<void>();
-		h.saveCookies.mockReturnValueOnce(save.promise);
+		const save = deferred<Result>();
+		h.api.commitLogin.mockReturnValueOnce(save.promise);
 		await h.flow.beginLogin(async () => "data:url");
 
 		void h.scFake.intervals[0]?.handle.fire();
 		await flush();
 
 		expect(h.scFake.tracked).toHaveLength(1);
-		expect(h.saveCookies).toHaveBeenCalledTimes(1);
+		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
 		let settled = false;
 		void h.scFake.tracked[0]?.then(() => {
 			settled = true;
@@ -373,7 +387,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 		await flush();
 		expect(settled).toBe(false); // cookie 还没落盘,登记的这件事不许落
 
-		save.resolve();
+		save.resolve(ok());
 		await h.scFake.tracked[0];
 		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
 	});
@@ -401,6 +415,148 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 		await h.scFake.intervals[0]?.handle.fire();
 		expect(h.scFake.tracked).toHaveLength(2); // polling 标志复位了,下一拍照常轮询
+	});
+});
+
+/**
+ * 扫码那道闸(登录回应的 Set-Cookie 先进罐子、令牌后到,这中间罐子不许自动存):起轮询时拿,轮询结束的每一条路放;
+ * 成功那一支在提交之后才放。放闸收在 `clearLoginTimer` 一处。
+ */
+describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
+	function qrReady(h: Harness) {
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+	}
+
+	it("起轮询时拿一道闸;还在等扫码时一直握着", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
+		await h.flow.beginLogin(async () => "data:url");
+		expect(h.api.holds).toHaveLength(1);
+		expect(h.api.holds[0]?.disposed).toBe(false);
+
+		await h.scFake.intervals[0]?.handle.fire();
+
+		expect(h.api.holds[0]?.disposed).toBe(false);
+	});
+
+	it("拿不到二维码:没起轮询,也就没拿闸", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code: -1, data: null });
+		await h.flow.beginLogin(async () => "ignored");
+		expect(h.api.holdLoginSaves).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["二维码失效(86038)", { code: 0, data: { code: 86038 } }],
+		["登录失败(外层 code 非 0)", { code: -1, data: null }],
+		["未知的 data.code", { code: 0, data: { code: 12345 } }],
+	])("%s:放闸", async (_name, reply) => {
+		const h = makeFlow();
+		qrReady(h);
+		h.api.fetchLoginStatus.mockResolvedValueOnce(reply);
+		await h.flow.beginLogin(async () => "data:url");
+		expect(h.api.holds[0]?.disposed).toBe(false);
+
+		await h.scFake.intervals[0]?.handle.fire();
+
+		expect(h.api.holds[0]?.disposed).toBe(true);
+	});
+
+	it("3 分钟过期:放闸", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		await h.flow.beginLogin(async () => "data:url");
+		expect(h.api.holds[0]?.disposed).toBe(false);
+
+		await h.scFake.timeouts[0]?.handle.fire();
+
+		expect(h.api.holds[0]?.disposed).toBe(true);
+	});
+
+	it("stop():放闸", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		await h.flow.beginLogin(async () => "data:url");
+
+		h.flow.stop();
+
+		expect(h.api.holds[0]?.disposed).toBe(true);
+	});
+
+	it("重新开始扫码:旧的闸放掉、换一道新的(同一时刻只有一道扫码闸)", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		qrReady(h);
+		await h.flow.beginLogin(async () => "data:url");
+		await h.flow.beginLogin(async () => "data:url");
+
+		expect(h.api.holds.map((hold) => hold.disposed)).toEqual([true, false]);
+	});
+
+	it("登录成功:提交还没落定时闸还握着;提交落定之后才放", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({
+			code: 0,
+			data: { code: 0, refresh_token: "rt" },
+		});
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { mid: "42" } } });
+		const commit = deferred<Result>();
+		h.api.commitLogin.mockReturnValueOnce(commit.promise);
+		await h.flow.beginLogin(async () => "data:url");
+
+		void h.scFake.intervals[0]?.handle.fire();
+		await flush();
+
+		// 轮询定时器已经收了,但闸要等提交。
+		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
+		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
+		expect(h.api.holds[0]?.disposed).toBe(false);
+
+		commit.resolve(ok());
+		await h.scFake.tracked[0];
+
+		expect(h.api.holds[0]?.disposed).toBe(true);
+	});
+
+	it("登录成功但罐子是空的:放弃保存,闸照样放", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({
+			code: 0,
+			data: { code: 0, refresh_token: "rt" },
+		});
+		h.api.getCookiesJson.mockReturnValueOnce("[]");
+		await h.flow.beginLogin(async () => "data:url");
+
+		await h.scFake.intervals[0]?.handle.fire();
+
+		expect(h.api.commitLogin).not.toHaveBeenCalled();
+		expect(h.api.holds[0]?.disposed).toBe(true);
+	});
+
+	it("提交失败:记 error,闸照样放(留闸是 commitLogin 自己的事)", async () => {
+		const h = makeFlow();
+		qrReady(h);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({
+			code: 0,
+			data: { code: 0, refresh_token: "rt" },
+		});
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { mid: "42" } } });
+		h.api.commitLogin.mockResolvedValueOnce(fail("unavailable", "disk full"));
+		await h.flow.beginLogin(async () => "data:url");
+
+		await h.scFake.intervals[0]?.handle.fire();
+
+		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("disk full"));
+		expect(h.api.holds[0]?.disposed).toBe(true);
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
 	});
 });
 

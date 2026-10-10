@@ -7,8 +7,8 @@ import { makeApi as makeBaseApi } from "./support/make-api";
  * 不带 w_rid/wts 一律返回 code=-352。fetchLiveRoomInfoStreamKey 必须走 wbiGet，否则
  * 预检每次被风控拦截、一路回退直接建连，#810 的受限房识别形同空转。
  */
-function makeApi() {
-	const { api } = makeBaseApi();
+async function makeApi() {
+	const { api } = await makeBaseApi();
 	const calls: string[] = [];
 	// 注入 mock client + 预置非空 wbiKeys（imgKey 非空 → getWbi 不触发 updateBiliTicket 联网）
 	// fetch 传输层的 client.get 直接返回响应体（无 axios 的 .data 包裹）
@@ -27,7 +27,7 @@ function makeApi() {
 
 describe("fetchLiveRoomInfoStreamKey 弹幕连接预检", () => {
 	it("请求必须带 wbi 签名（w_rid + wts），否则 B 站固定 -352", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		const res = await api.fetchLiveRoomInfoStreamKey("6154037");
 
 		expect(calls).toHaveLength(1);

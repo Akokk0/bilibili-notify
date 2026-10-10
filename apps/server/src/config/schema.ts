@@ -56,7 +56,7 @@ export const BootstrapConfigSchema = z.object({
 	 * Passphrase for the AES-256-GCM at-rest secrets path (plan §4.1). When set
 	 * (env fallback `BN_COOKIE_KEY`), `createKeyProvider` scrypt-derives the key
 	 * and never writes it to disk — cookie + AI apiKey share that one key/salt.
-	 * When unset, StorageManager falls back to the co-located random
+	 * When unset, the key provider falls back to the co-located random
 	 * `<dataDir>/secrets/master.key` (obfuscation only; boot logs a prominent warn).
 	 */
 	cookieEncryptionKey: z.string().min(1).optional(),

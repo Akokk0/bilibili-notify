@@ -15,7 +15,8 @@ const empty: ImportResult = {
 	connections: { upserted: 0, deleted: 0 },
 	targets: { upserted: 0, deleted: 0 },
 	globalsApplied: false,
-	cookiesRestored: false,
+	restoredIntegrations: [],
+	unrestoredIntegrations: [],
 };
 
 describe("summarizeImport", () => {
@@ -25,14 +26,39 @@ describe("summarizeImport", () => {
 				...empty,
 				subscriptions: { upserted: 3, deleted: 1 },
 				targets: { upserted: 2, deleted: 0 },
-				cookiesRestored: true,
+				restoredIntegrations: ["bilibili", "onebot"],
 			},
 			"full",
 		);
 
 		expect(s).toContain("订阅 3 项、删除 1 项");
 		expect(s).toContain("推送目标 2 项");
-		expect(s).toContain("B 站登录已恢复");
+		expect(s).toContain("登录与凭据已恢复（2 个集成）");
+		expect(s).not.toContain("没带回来");
+	});
+
+	it("有没带回来的集成:点名键与原因,多个用顿号隔开", () => {
+		const s = summarizeImport(
+			{
+				...empty,
+				restoredIntegrations: ["bilibili"],
+				unrestoredIntegrations: [
+					{ key: "onebot", message: "这个集成现在没在运行" },
+					{ key: "some-ext", message: "写盘失败" },
+				],
+			},
+			"full",
+		);
+
+		expect(s).toContain("登录与凭据已恢复（1 个集成）");
+		expect(s).toContain("有 2 个没带回来：onebot（这个集成现在没在运行）、some-ext（写盘失败）");
+	});
+
+	it("两个数组都空时不出恢复与没带回来那两句", () => {
+		const s = summarizeImport({ ...empty, globalsApplied: true }, "full");
+
+		expect(s).not.toContain("登录与凭据");
+		expect(s).not.toContain("没带回来");
 	});
 
 	it("无改动时说清「无改动」,不留空", () => {

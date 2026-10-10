@@ -6,7 +6,7 @@
  * (B 站的默认头、交进去的身份的 UA 与 sec-ch-ua 三件)。UA 只来自身份:没有自定义 UA 这个设置、也没有改 UA 的口子(ADR-0025 决策 7)——
  * 填了自定义 UA 而 sec-ch-ua 仍是生成的 Chrome 身份,拼出来是一个自相矛盾的指纹。
  *
- * 客户端与 cookie 罐是**长期有效的同一个**:登出再登录(loadCookies / clearCookies)原地换罐子
+ * 客户端与 cookie 罐是**长期有效的同一个**:登出再登录(恢复登录 / clearCookies)原地换罐子
  * 内容,不重建客户端 —— 在途的请求不会因为换号而拿着旧罐子继续跑。
  */
 
@@ -41,7 +41,7 @@ const major = (ua: string | undefined) => /Chrome\/(\d+)\./.exec(ua ?? "")?.[1];
 
 describe("Api — 浏览器身份接线", () => {
 	it("线上是生成身份:UA 与 sec-ch-ua 版本自洽,B 站默认头都在", async () => {
-		const { client, identity } = makeApi();
+		const { client, identity } = await makeApi();
 		await client.get(`${baseURL}/x`);
 		const ua = lastHeaders["user-agent"] as string;
 		expect(ua).toBe(identity.userAgent);
@@ -60,10 +60,10 @@ describe("Api — 浏览器身份接线", () => {
 	});
 
 	it("身份随实例稳定:换号、登出、再登录之后线上的 UA 一直是同一个", async () => {
-		const { api, client, identity } = makeApi();
+		const { api, client, identity, loadSession } = await makeApi();
 		await client.get(`${baseURL}/x`);
 		const ua = lastHeaders["user-agent"];
-		await api.loadCookies({ cookiesJson: "[]" });
+		await loadSession("[]");
 		await api.clearCookies();
 		await client.get(`${baseURL}/x`);
 		expect(lastHeaders["user-agent"]).toBe(ua);
@@ -71,8 +71,8 @@ describe("Api — 浏览器身份接线", () => {
 	});
 
 	// 自定义 UA 删了:这两个口子是它仅有的入口(设置里填的值经它们改 UA)。口子还在,谁都能再把 UA 和身份拆开。
-	it("没有改 UA 的口子:Api 上没有 setUserAgent / getUserAgent", () => {
-		const { api } = makeApi();
+	it("没有改 UA 的口子:Api 上没有 setUserAgent / getUserAgent", async () => {
+		const { api } = await makeApi();
 
 		expect("setUserAgent" in api).toBe(false);
 		expect("getUserAgent" in api).toBe(false);
@@ -84,7 +84,7 @@ describe("Api — 每一条出站请求的 UA 都是身份的那一个", () => {
 		(api as unknown as { updateBiliTicket(): Promise<void> }).updateBiliTicket();
 
 	it("取 ticket 的 POST 没有自己的 UA 特例:不带逐请求的 UA 覆盖,走客户端默认头(身份的)", async () => {
-		const { api, http } = makeApi();
+		const { api, http } = await makeApi();
 		const seen: Array<unknown> = [];
 		// ticket 的地址写死是 B 站域名,回环 server 接不到;在客户端的 `fetch` 这一层看这次请求自己带的头
 		// (默认头与身份的头是客户端装的,不在这里),并回那份响应。
@@ -114,7 +114,7 @@ describe("Api — 每一条出站请求的 UA 都是身份的那一个", () => {
 
 	// ticket 的地址是写死的 B 站域名,回环 server 接不到它 —— 在全局 fetch 这一层看真正交出去的头。
 	it("取 ticket 的 POST 与普通 GET 发出去的 UA 一模一样,都是身份的", async () => {
-		const { api, client, identity } = makeApi();
+		const { api, client, identity } = await makeApi();
 		const sent: Array<{ url: string; ua: string | null }> = [];
 		const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
 			sent.push({
@@ -154,8 +154,8 @@ describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", 
 			(c) => `${c.key}=${c.value}`,
 		);
 
-	it("loadCookies → clearCookies → loadCookies:同一个客户端实例,线上与罐里都只有新会话", async () => {
-		const { api, client, http } = makeApi();
+	it("登录 → clearCookies → 再登录:同一个客户端实例,线上与罐里都只有新会话", async () => {
+		const { api, client, http, loadSession } = await makeApi();
 		// 「同一个客户端」:Api 自己发请求走的 `api.http` 就是交进去的那个 HttpClient,
 		// 每次换号 / 登出之后发出去的请求仍然经过它的 `fetch`(数调用次数,不读 Api 的私有字段)。
 		const fetched = vi.spyOn(http, "fetch");
@@ -163,7 +163,7 @@ describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", 
 			await api.http.fetch(`${baseURL}/x`);
 		};
 
-		await api.loadCookies({ cookiesJson: session("sess_A", "jct_A") });
+		await loadSession(session("sess_A", "jct_A"));
 		await client.get(`${baseURL}/x`);
 		expect(lastHeaders.cookie).toContain("SESSDATA=sess_A");
 		await viaApi();
@@ -176,7 +176,7 @@ describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", 
 		await viaApi();
 		expect(fetched).toHaveBeenCalledTimes(4);
 
-		await api.loadCookies({ cookiesJson: session("sess_B", "jct_B") });
+		await loadSession(session("sess_B", "jct_B"));
 		await viaApi();
 		expect(fetched).toHaveBeenCalledTimes(5);
 		expect(lastHeaders.cookie).toContain("SESSDATA=sess_B");
@@ -192,9 +192,9 @@ describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", 
 	});
 
 	it("不经登出直接换号(重新扫码):上一个号的 cookie 一条都不残留", async () => {
-		const { api, client } = makeApi();
-		await api.loadCookies({ cookiesJson: session("sess_A", "jct_A") });
-		await api.loadCookies({ cookiesJson: session("sess_B", "jct_B") });
+		const { api, client, loadSession } = await makeApi();
+		await loadSession(session("sess_A", "jct_A"));
+		await loadSession(session("sess_B", "jct_B"));
 		expect(jarKeys(api).join(";")).not.toContain("_A");
 		await client.get(`${baseURL}/x`);
 		expect(lastHeaders.cookie).not.toContain("sess_A");
@@ -202,16 +202,16 @@ describe("Api — 登出再登录:客户端是同一个,罐子里是新内容", 
 	});
 
 	it("有 bili_jct 时补的 buvid3 与盘上的 cookie 同在一罐(分两次 load 会抹掉前一批)", async () => {
-		const { api } = makeApi();
-		await api.loadCookies({ cookiesJson: session("sess_A", "jct_A") });
+		const { api, loadSession } = await makeApi();
+		await loadSession(session("sess_A", "jct_A"));
 		expect(jarKeys(api)).toContain("SESSDATA=sess_A");
 		expect(jarKeys(api)).toContain("buvid3=some_non_empty_value");
 	});
 
 	it("-101 终态清理(terminateSession)清的是同一只罐子,客户端不换", async () => {
-		const { api, client, http } = makeApi();
+		const { api, client, http, loadSession } = await makeApi();
 		const fetched = vi.spyOn(http, "fetch");
-		await api.loadCookies({ cookiesJson: session("sess_A", "jct_A") });
+		await loadSession(session("sess_A", "jct_A"));
 		await (api as unknown as { terminateSession(msg: string): Promise<void> }).terminateSession(
 			"test",
 		);

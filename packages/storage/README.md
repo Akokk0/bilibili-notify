@@ -8,5 +8,3 @@
 ## 功能
 
 - `KeyManager` — 管理本地加密密钥（`master.key`）
-- `CookieStore` — 使用密钥加密/解密 Cookie，持久化至 `cookies.json`
-- `StorageManager` — 统一初始化入口

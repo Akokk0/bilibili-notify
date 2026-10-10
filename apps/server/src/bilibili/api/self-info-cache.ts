@@ -14,7 +14,7 @@ import type { MyselfResponse } from "./types";
  * `fetchMyselfInfo()` —— 它靠这次请求探 -101 会话死活,缓存会掩盖会话失效。
  *
  * **失效**:登出 / 换号 / -101 会切换账号身份,`Api` 在
- * `clearCookies` / `loadCookies` / `terminateSession` 里调 `invalidate()` 精准清缓存,
+ * `clearCookies` / `resumeStoredLogin` / `terminateSession` 里调 `invalidate()` 精准清缓存,
  * 不靠 TTL 硬扛陈旧身份。TTL 仍刻意短(默认 60s)作为兜底。
  */
 export interface MyselfCache {

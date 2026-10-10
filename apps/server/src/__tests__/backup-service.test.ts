@@ -1,8 +1,11 @@
 import {
 	type Connection,
+	fail,
+	type Json,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	OnebotConnectionSettingsSchema,
+	ok,
 	type PushTarget,
 	type Subscription,
 	type SubscriptionTag,
@@ -15,13 +18,14 @@ import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { ImportMode } from "../backup/restore.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
+import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
- * BackupService 把纯核心接到真实 ConfigStore + CookieStore:导出读四个 scope 与各集成、各拓展的设置(+cookie),
+ * BackupService 把纯核心接到真实 ConfigStore + 集成密钥存储:导出读四个 scope 与各集成、各拓展的设置(+各集成的密钥整袋),
  * 导入按 plan 逐个写回。写回经 store 的既有方法 → 自动触发 config-changed 热重载;
- * cookie 恢复后回调 onCookiesRestored(bootstrap 接活体重登)。
+ * 密钥整袋换回,内存跟上由存储那头登记的回调负责。
  */
 function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
@@ -108,20 +112,16 @@ function makeFakeStore(
 	return store;
 }
 
-function makeCookieStore(data: { cookiesJson: string; refreshToken?: string } | null) {
-	return {
-		load: vi.fn(async () => data),
-		save: vi.fn(async () => {}),
-	};
-}
-
 describe("BackupService × 订阅标签(ADR-0034)", () => {
 	const GAME = { id: "11111111-1111-4111-8111-111111111111", name: "游戏" };
 
 	it("导出:标签表跟订阅同进同出;只勾设置、不勾订阅的不带", async () => {
 		const tagged = { ...sub("1"), tagIds: [GAME.id] };
 		const store = makeFakeStore({ subscriptions: [tagged], subscriptionTags: [GAME] });
-		const svc = createBackupService({ configStore: store, cookieStore: makeCookieStore(null) });
+		const svc = createBackupService({
+			configStore: store,
+			integrationSecrets: fakeIntegrationSecrets(),
+		});
 
 		const withSubs = await svc.exportBackup({ kind: "sanitized" });
 		expect(withSubs.sections.subscriptionTags).toEqual([GAME]);
@@ -137,16 +137,17 @@ describe("BackupService × 订阅标签(ADR-0034)", () => {
 		const from = makeFakeStore({ subscriptions: [tagged], subscriptionTags: [GAME] });
 		const env = await createBackupService({
 			configStore: from,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 		}).exportBackup({ kind: "sanitized" });
 
 		const to = makeFakeStore();
-		await createBackupService({ configStore: to, cookieStore: makeCookieStore(null) }).importBackup(
-			{
-				envelope: env,
-				mode: "merge",
-			},
-		);
+		await createBackupService({
+			configStore: to,
+			integrationSecrets: fakeIntegrationSecrets(),
+		}).importBackup({
+			envelope: env,
+			mode: "merge",
+		});
 
 		expect(to.getSubscriptionTags()).toEqual([GAME]);
 		expect(to.getSubscriptions().map((s) => s.tagIds)).toEqual([[GAME.id]]);
@@ -159,10 +160,13 @@ describe("BackupService", () => {
 			subscriptions: [sub("1")],
 			connections: [onebot("a1", "tok-1")],
 		});
-		const cookieStore = makeCookieStore({ cookiesJson: "CJ", refreshToken: "RT" });
+		const bilibili = { "http.cookies": '[{"name":"SESSDATA"}]', refreshToken: "RT" };
+		const onebotBag = { accessToken: "tok-x" };
 		const svc = createBackupService({
 			configStore: store,
-			cookieStore,
+			integrationSecrets: fakeIntegrationSecrets({
+				exported: { bilibili, onebot: onebotBag },
+			}),
 			now: () => "t0",
 			connectionSecrets: secretsOf(),
 		});
@@ -172,7 +176,7 @@ describe("BackupService", () => {
 		expect(env.kind).toBe("full");
 		expect(env.createdAt).toBe("t0");
 		const opened = openFullBackup(env, "123456");
-		expect(opened.cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
+		expect(opened.integrationSecrets).toEqual({ bilibili, onebot: onebotBag });
 		expect(opened.sections.connections?.[0]?.settings).toMatchObject({ accessToken: "tok-1" });
 		// 完整档导出再导入逐格相等:连接整条(含平台快照)原样回来。
 		expect(opened.sections.connections).toEqual(store.getConnections());
@@ -197,7 +201,7 @@ describe("BackupService", () => {
 		};
 		const svc = createBackupService({
 			configStore: makeFakeStore({ connections: [extension] }),
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t0",
 			connectionSecrets: secretsOf(new Map([["bridge", ["botKey"]]])),
 		});
@@ -232,7 +236,7 @@ describe("BackupService", () => {
 		};
 		const svc = createBackupService({
 			configStore: makeFakeStore({ connections: [extension] }),
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t0",
 			// 跑着的一个都没有 —— 拓展全停用时就是这个样子。
 			connectionSecrets: secretsOf(),
@@ -249,7 +253,7 @@ describe("BackupService", () => {
 		});
 		const svc = createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t0",
 		});
 
@@ -264,27 +268,30 @@ describe("BackupService", () => {
 		expect(env.sections.connections).toBeUndefined();
 	});
 
-	it("import overwrite replaces subscriptions, restores cookies, and fires the hot-reload hook", async () => {
+	it("import overwrite replaces subscriptions and swaps each integration's secrets back", async () => {
 		const store = makeFakeStore({ subscriptions: [sub("1"), sub("2")] });
-		const cookieStore = makeCookieStore({ cookiesJson: "CJ", refreshToken: "RT" });
-		const onCookiesRestored = vi.fn(async () => {});
+		const target = fakeIntegrationSecrets({
+			open: ["bilibili", "onebot"],
+			restore: () => ok(),
+		});
 		const svc = createBackupService({
 			configStore: store,
-			cookieStore,
-			onCookiesRestored,
+			integrationSecrets: target,
 			now: () => "t",
 		});
 
-		// a full backup carrying subs {2,3} + cookies
+		// a full backup carrying subs {2,3} + two integrations' secrets
 		const source = makeFakeStore({ subscriptions: [sub("2"), sub("3")] });
+		const bilibili = { "http.cookies": "CJ2", refreshToken: "RT2" };
+		const onebotBag = { accessToken: "tok-2" };
 		const srcSvc = createBackupService({
 			configStore: source,
-			cookieStore: makeCookieStore({ cookiesJson: "CJ2", refreshToken: "RT2" }),
+			integrationSecrets: fakeIntegrationSecrets({ exported: { bilibili, onebot: onebotBag } }),
 			now: () => "t",
 		});
 		const env = await srcSvc.exportBackup({ kind: "full", pin: "123456" });
 
-		await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
+		const result = await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
 
 		// overwrite:备份里的 2、3 留下,本地独有的 1 被清掉
 		expect(
@@ -293,21 +300,127 @@ describe("BackupService", () => {
 				.map((s) => s.id)
 				.sort(),
 		).toEqual(["2", "3"]);
-		expect(cookieStore.save).toHaveBeenCalledWith({ cookiesJson: "CJ2", refreshToken: "RT2" });
-		expect(onCookiesRestored).toHaveBeenCalledTimes(1);
+		expect(target.restoreSecrets).toHaveBeenCalledTimes(2);
+		expect(target.restoreSecrets).toHaveBeenCalledWith("bilibili", bilibili);
+		expect(target.restoreSecrets).toHaveBeenCalledWith("onebot", onebotBag);
+		expect(result.restoredIntegrations.sort()).toEqual(["bilibili", "onebot"]);
+		expect(result.unrestoredIntegrations).toEqual([]);
+	});
+
+	describe("恢复密钥:在场的换回、不在场的点名、失败不抛", () => {
+		const BAGS = {
+			bilibili: { "http.cookies": "CJ", refreshToken: "RT" },
+			onebot: { accessToken: "tok" },
+			"some-ext": { token: "ext-tok" },
+		};
+
+		async function fullBackupWith(
+			exported: Record<string, Record<string, Json>>,
+			subs: Subscription[] = [],
+		) {
+			const source = makeFakeStore({ subscriptions: subs });
+			return createBackupService({
+				configStore: source,
+				integrationSecrets: fakeIntegrationSecrets({ exported }),
+				now: () => "t",
+			}).exportBackup({ kind: "full", pin: "123456" });
+		}
+
+		it("备份里有三个、现在开着两个:开着的恢复,没开的进「没带回来」并说没在运行", async () => {
+			const env = await fullBackupWith(BAGS);
+			const target = fakeIntegrationSecrets({
+				open: ["bilibili", "onebot"],
+				restore: () => ok(),
+			});
+			const svc = createBackupService({
+				configStore: makeFakeStore(),
+				integrationSecrets: target,
+			});
+
+			const result = await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
+
+			expect(result.restoredIntegrations.sort()).toEqual(["bilibili", "onebot"]);
+			expect(result.unrestoredIntegrations).toEqual([
+				{ key: "some-ext", message: "这个集成现在没在运行" },
+			]);
+			// 没开着的那一个根本没去叫恢复。
+			expect(target.restoreSecrets).not.toHaveBeenCalledWith("some-ext", expect.anything());
+		});
+
+		it("某个集成恢复失败:进「没带回来」带宿主回的话,别的照常,整个导入不抛、配置照落", async () => {
+			const env = await fullBackupWith(BAGS, [sub("9")]);
+			const store = makeFakeStore();
+			const target = fakeIntegrationSecrets({
+				open: ["bilibili", "onebot", "some-ext"],
+				restore: (key) => (key === "onebot" ? fail("unavailable", "写盘失败:磁盘满了") : ok()),
+			});
+			const svc = createBackupService({ configStore: store, integrationSecrets: target });
+
+			const result = await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
+
+			expect(result.restoredIntegrations.sort()).toEqual(["bilibili", "some-ext"]);
+			expect(result.unrestoredIntegrations).toEqual([
+				{ key: "onebot", message: "写盘失败:磁盘满了" },
+			]);
+			// 失败的那个之后的集成也被叫到了(不是遇错就停)。
+			expect(target.restoreSecrets).toHaveBeenCalledTimes(3);
+			// 配置各节已经落地。
+			expect(store.getSubscriptions().map((s) => s.id)).toEqual(["9"]);
+		});
+
+		it("配置各节落地之后才恢复密钥", async () => {
+			const env = await fullBackupWith(BAGS);
+			const store = makeFakeStore();
+			const order: string[] = [];
+			const configStore = {
+				...store,
+				replaceSections: async (next: Parameters<typeof store.replaceSections>[0]) => {
+					order.push("replaceSections");
+					return store.replaceSections(next);
+				},
+			};
+			const target = fakeIntegrationSecrets({
+				open: ["bilibili"],
+				restore: () => {
+					order.push("restoreSecrets");
+					return ok();
+				},
+			});
+			const svc = createBackupService({ configStore, integrationSecrets: target });
+
+			await svc.importBackup({ envelope: env, pin: "123456", mode: "overwrite" });
+
+			expect(order).toEqual(["replaceSections", "restoreSecrets"]);
+		});
+
+		it("脱敏档没有密钥袋:两个数组都是空,不碰存储", async () => {
+			const source = makeFakeStore({ subscriptions: [sub("1")] });
+			const env = await createBackupService({
+				configStore: source,
+				integrationSecrets: fakeIntegrationSecrets({ exported: BAGS }),
+			}).exportBackup({ kind: "sanitized" });
+			const target = fakeIntegrationSecrets({ open: ["bilibili"] });
+			const svc = createBackupService({ configStore: makeFakeStore(), integrationSecrets: target });
+
+			const result = await svc.importBackup({ envelope: env, mode: "overwrite" });
+
+			expect(result.restoredIntegrations).toEqual([]);
+			expect(result.unrestoredIntegrations).toEqual([]);
+			expect(target.restoreSecrets).not.toHaveBeenCalled();
+		});
 	});
 
 	it("import merge upserts but never deletes", async () => {
 		const store = makeFakeStore({ subscriptions: [sub("1"), sub("2")] });
 		const svc = createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 		});
 		const source = makeFakeStore({ subscriptions: [sub("2"), sub("3")] });
 		const srcSvc = createBackupService({
 			configStore: source,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 		});
 		const env = await srcSvc.exportBackup({ kind: "sanitized", sections: { subscriptions: true } });
@@ -325,14 +438,15 @@ describe("BackupService", () => {
 
 	it("a dry-run import reports the same plan but writes nothing", async () => {
 		const store = makeFakeStore({ subscriptions: [sub("1"), sub("2")] });
-		const cookieStore = makeCookieStore(null);
-		const onCookiesRestored = vi.fn(async () => {});
-		const svc = createBackupService({ configStore: store, cookieStore, onCookiesRestored });
+		const target = fakeIntegrationSecrets({ open: ["bilibili"] });
+		const svc = createBackupService({ configStore: store, integrationSecrets: target });
 
 		const source = makeFakeStore({ subscriptions: [sub("2"), sub("3")] });
 		const srcSvc = createBackupService({
 			configStore: source,
-			cookieStore: makeCookieStore({ cookiesJson: "CJ" }),
+			integrationSecrets: fakeIntegrationSecrets({
+				exported: { bilibili: { "http.cookies": "CJ" }, onebot: { accessToken: "tok" } },
+			}),
 			now: () => "t",
 		});
 		const env = await srcSvc.exportBackup({ kind: "full", pin: "123456" });
@@ -345,17 +459,22 @@ describe("BackupService", () => {
 		});
 
 		expect(planned.subscriptions).toEqual({ upserted: 2, deleted: 1 });
-		expect(planned.cookiesRestored).toBe(true);
+		// 演练只按「开着没有」分两堆:开着的会恢复、没开的会没带回来。
+		expect(planned.restoredIntegrations).toEqual(["bilibili"]);
+		expect(planned.unrestoredIntegrations).toEqual([
+			{ key: "onebot", message: "这个集成现在没在运行" },
+		]);
 		expect(store.replaceSections).not.toHaveBeenCalled();
-		expect(cookieStore.save).not.toHaveBeenCalled();
-		expect(onCookiesRestored).not.toHaveBeenCalled();
+		expect(target.restoreSecrets).not.toHaveBeenCalled();
 	});
 
 	it("importing a full backup with the wrong PIN throws", async () => {
 		const source = makeFakeStore({ subscriptions: [sub("1")] });
 		const srcSvc = createBackupService({
 			configStore: source,
-			cookieStore: makeCookieStore({ cookiesJson: "CJ" }),
+			integrationSecrets: fakeIntegrationSecrets({
+				exported: { bilibili: { "http.cookies": "CJ" } },
+			}),
 			now: () => "t",
 		});
 		const env = await srcSvc.exportBackup({ kind: "full", pin: "123456" });
@@ -363,7 +482,7 @@ describe("BackupService", () => {
 		const store = makeFakeStore();
 		const svc = createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 		});
 
@@ -383,7 +502,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 	function service(store: BackupStore) {
 		return createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 		});
 	}
@@ -393,7 +512,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
-			expect(env.schemaVersion).toBe(13);
+			expect(env.schemaVersion).toBe(14);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
 			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1", "e1"]);
 			expect(sections.subscriptions?.map((s) => s.identity.sourceKey)).toEqual([
@@ -494,7 +613,7 @@ describe("BackupService × 同一身份只能有一条订阅", () => {
 	function service(store: BackupStore) {
 		return createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 		});
 	}
@@ -565,7 +684,7 @@ describe("BackupService × 各集成的设置", () => {
 	function service(store: BackupStore) {
 		return createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 		});
 	}
@@ -721,7 +840,7 @@ describe("BackupService × 各拓展的设置", () => {
 	function service(store: BackupStore) {
 		return createBackupService({
 			configStore: store,
-			cookieStore: makeCookieStore(null),
+			integrationSecrets: fakeIntegrationSecrets(),
 			now: () => "t",
 			connectionSecrets: secretsOf(new Map([["bridge", ["botKey"]]])),
 		});

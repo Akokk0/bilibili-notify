@@ -196,6 +196,19 @@ describe("1. 开机装罐不触发存盘", () => {
 			expect(w.secrets.persists).toHaveLength(0);
 		}
 	});
+
+	it("存着的数组里有坏元素([null]):建得起来、罐子是空的、记一条 error", async () => {
+		for (const bad of ["[null]", [null] as Json]) {
+			const w = world({ secrets: { [HTTP_COOKIES_KEY]: bad } });
+			const { http, errors, clock } = await build(w);
+			expect(http.cookies.jar.serialize()).toEqual([]);
+			expect(errors).toHaveLength(1);
+			expect(errors[0]).toContain("按空罐起");
+			clock.advance(60_000);
+			await settle();
+			expect(w.secrets.persists).toHaveLength(0);
+		}
+	});
 });
 
 describe("2. 攒多久", () => {

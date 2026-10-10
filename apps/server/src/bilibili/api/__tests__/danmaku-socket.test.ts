@@ -64,13 +64,13 @@ const namesOf = (req: IncomingMessage) => req.rawHeaders.filter((_, index) => in
 
 describe("Api.openDanmakuSocket", () => {
 	it("握手头:Cookie 在 User-Agent 之前,cookie 只带这个地址该带的,不带 fetch 那套头与 sec-ch-ua", async () => {
-		const { api, identity } = makeApi();
-		await api.loadCookies({
-			cookiesJson: JSON.stringify([
+		const { api, identity, loadSession } = await makeApi();
+		await loadSession(
+			JSON.stringify([
 				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
 				{ key: "other_site", value: "x", domain: "example.test", path: "/" },
 			]),
-		});
+		);
 
 		const req = await connect(api);
 
@@ -82,19 +82,17 @@ describe("Api.openDanmakuSocket", () => {
 	});
 
 	it("没有登录态:不带 Cookie 头", async () => {
-		const req = await connect(makeApi().api);
+		const req = await connect((await makeApi()).api);
 
 		expect(namesOf(req)[0]).toBe("User-Agent");
 		expect(req.headers.cookie).toBeUndefined();
 	});
 
 	it("握手的 UA 是身份的那一个:每条连接都一样,头序不变", async () => {
-		const { api, identity } = makeApi();
-		await api.loadCookies({
-			cookiesJson: JSON.stringify([
-				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
-			]),
-		});
+		const { api, identity, loadSession } = await makeApi();
+		await loadSession(
+			JSON.stringify([{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" }]),
+		);
 
 		const first = await connect(api);
 		const second = await connect(api);

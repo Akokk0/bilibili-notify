@@ -157,7 +157,7 @@ describe("FileKeyProvider", () => {
 		const logger = makeLogger();
 		const p = createKeyProvider({ logger, keyPath, saltPath: join(dir, "x.salt") });
 		await p.getKey(); // standalone 启动预加载
-		await p.getKey(); // 后续 SecretStore.save / CookieStore.init 复用缓存
+		await p.getKey(); // 后续 SecretStore.save / 集成存储的读写复用缓存
 		expect(logger.info).toHaveBeenCalledTimes(1);
 		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("主密钥加载成功"));
 	});

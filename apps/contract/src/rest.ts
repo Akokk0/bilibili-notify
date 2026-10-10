@@ -1229,7 +1229,10 @@ export interface ImportResult {
 	connections: { upserted: number; deleted: number };
 	targets: { upserted: number; deleted: number };
 	globalsApplied: boolean;
-	cookiesRestored: boolean;
+	/** 密钥恢复了(演练时:会恢复)的集成,集成键。 */
+	restoredIntegrations: string[];
+	/** 备份里有、但没带回来的集成与原因。 */
+	unrestoredIntegrations: { key: string; message: string }[];
 }
 
 // ---- /api/live -------------------------------------------------------------

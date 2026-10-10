@@ -31,8 +31,11 @@ const RAW_VIDEO = {
 	extra_field_we_do_not_care_about: true,
 };
 
-function makeApi(respond: (url: string) => unknown, redirects: Record<string, string | null> = {}) {
-	const { api } = makeBaseApi();
+async function makeApi(
+	respond: (url: string) => unknown,
+	redirects: Record<string, string | null> = {},
+) {
+	const { api } = await makeBaseApi();
 	const calls: string[] = [];
 	const redirectCalls: string[] = [];
 	(api as unknown as { client: unknown }).client = {
@@ -50,7 +53,7 @@ function makeApi(respond: (url: string) => unknown, redirects: Record<string, st
 
 describe("fetchVideoInfo", () => {
 	it("按 bvid 打到 web-interface/view,回来的是裁剪过的视频信息", async () => {
-		const { api, calls } = makeApi(() => ({ code: 0, message: "0", data: RAW_VIDEO }));
+		const { api, calls } = await makeApi(() => ({ code: 0, message: "0", data: RAW_VIDEO }));
 		const info = await api.fetchVideoInfo({ bvid: "BV1zMtU6uEEb" });
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toContain(VIDEO_INFO_URL);
@@ -78,21 +81,21 @@ describe("fetchVideoInfo", () => {
 	});
 
 	it("按 av 号则带 aid 参数", async () => {
-		const { api, calls } = makeApi(() => ({ code: 0, message: "0", data: RAW_VIDEO }));
+		const { api, calls } = await makeApi(() => ({ code: 0, message: "0", data: RAW_VIDEO }));
 		await api.fetchVideoInfo({ aid: "170001" });
 		expect(calls[0]).toContain("aid=170001");
 		expect(calls[0]).not.toContain("bvid=");
 	});
 
 	it("接口报错(视频不存在 / 不可见)就抛,带上对方的说法", async () => {
-		const { api } = makeApi(() => ({ code: -404, message: "啥都木有", data: null }));
+		const { api } = await makeApi(() => ({ code: -404, message: "啥都木有", data: null }));
 		await expect(api.fetchVideoInfo({ bvid: "BV1zMtU6uEEb" })).rejects.toThrow(/啥都木有/);
 	});
 });
 
 describe("resolveShortLink", () => {
 	it("b23.tv 短链解成 bilibili.com 的落地地址", async () => {
-		const { api, redirectCalls } = makeApi(() => null, {
+		const { api, redirectCalls } = await makeApi(() => null, {
 			"https://b23.tv/abc123": "https://www.bilibili.com/video/BV1zMtU6uEEb?share_source=copy_web",
 		});
 		await expect(api.resolveShortLink("https://b23.tv/abc123")).resolves.toBe(
@@ -102,7 +105,7 @@ describe("resolveShortLink", () => {
 	});
 
 	it("落到别的域名不算数;没有重定向也不算数", async () => {
-		const { api } = makeApi(() => null, {
+		const { api } = await makeApi(() => null, {
 			"https://b23.tv/evil": "https://evil.example/phish",
 			"https://b23.tv/dead": null,
 		});
@@ -111,7 +114,7 @@ describe("resolveShortLink", () => {
 	});
 
 	it("不是 b23.tv 的地址根本不去连", async () => {
-		const { api, redirectCalls } = makeApi(() => null, {
+		const { api, redirectCalls } = await makeApi(() => null, {
 			"https://evil.example/x": "https://www.bilibili.com/video/BV1zMtU6uEEb",
 		});
 		await expect(api.resolveShortLink("https://evil.example/x")).resolves.toBeNull();

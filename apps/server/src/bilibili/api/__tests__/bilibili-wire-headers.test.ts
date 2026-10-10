@@ -74,18 +74,16 @@ const ourNamesOnWire = (head: string[]) =>
 
 describe("B 站线上请求头的顺序与大小写", () => {
 	it("GET:与改造前一致(Accept 打头,sec-ch-ua 三件在 priority 之后,UA 在默认头最后)", async () => {
-		const { client } = makeApi();
+		const { client } = await makeApi();
 		await client.get(`${baseURL}/x`);
 		expect(ourNamesOnWire(rawHeads[0] as string[])).toEqual(OUR_HEADERS_BEFORE);
 	});
 
 	it("带 cookie 的表单 POST:Content-Type 在默认头之后、Cookie 在最后(与改造前一致)", async () => {
-		const { api, client } = makeApi();
-		await api.loadCookies({
-			cookiesJson: JSON.stringify([
-				{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" },
-			]),
-		});
+		const { client, loadSession } = await makeApi();
+		await loadSession(
+			JSON.stringify([{ key: "SESSDATA", value: "s", domain: "127.0.0.1", path: "/" }]),
+		);
 		await client.postForm(`${baseURL}/x`, { a: 1 });
 		expect(ourNamesOnWire(rawHeads[0] as string[])).toEqual([
 			...OUR_HEADERS_BEFORE,
@@ -99,14 +97,14 @@ describe("B 站线上请求头的顺序与大小写", () => {
 	it("线上的 UA 与 sec-ch-ua 是同一份生成身份的", async () => {
 		// 交进去一份已知身份,线上的 UA 与 sec-ch-ua 行必须就是它(不读 Api 的私有字段)。
 		const identity = generateBrowserIdentity();
-		const { client } = makeApi({ identity });
+		const { client } = await makeApi({ identity });
 		await client.get(`${baseURL}/x`);
 		expect(rawHeads[0]).toContain(`User-Agent: ${identity.userAgent}`);
 		expect(rawHeads[0]).toContain(`sec-ch-ua: ${identity.secChUa}`);
 	});
 
 	it("身份的四个头没有重复:线上每个名字只有一行", async () => {
-		const { client } = makeApi();
+		const { client } = await makeApi();
 		await client.get(`${baseURL}/x`);
 		const names = (rawHeads[0] as string[]).map((l) => l.slice(0, l.indexOf(":")).toLowerCase());
 		expect(new Set(names).size).toBe(names.length);

@@ -52,6 +52,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { gcmEncrypt } from "@bilibili-notify/storage";
 import { zeroBiliRow, zeroExtensionRow } from "./zero-fixtures.js";
 
 /** 统计与粉丝的天数:一整年(两档一样)。 */
@@ -477,12 +478,20 @@ async function placeState(
 
 const EXTENSION_IDS = ["douyin", "kuaishou", "weibo", "xiaohongshu"] as const;
 
-/** `secrets/`:照 0.x 的夹具,袋子是个解不开的 `enc`(迁移器遇到解不开的原样留着)。 */
+/**
+ * `secrets/`:照 0.x 的夹具,袋子是个解不开的 `enc`(迁移器遇到解不开的原样留着);B 站登录用同一把主密钥真加密,
+ * 迁移才会转它(转成功是一条 `convert`,个数与原来复制它一样,耗时测的账不变)。
+ */
 async function placeSecrets(tree: Tree): Promise<void> {
-	await tree.put("secrets/master.key", "ab".repeat(32));
+	const masterHex = "ab".repeat(32);
+	await tree.put("secrets/master.key", masterHex);
 	await tree.put("secrets/kdf.salt", "cd".repeat(16));
 	await tree.put("secrets/config-secrets.enc", "enc");
-	await tree.put("secrets/cookies.json", "{}");
+	const key = Buffer.from(masterHex, "hex");
+	await tree.putJson("secrets/cookies.json", {
+		cookiesJson: gcmEncrypt(key, JSON.stringify([{ name: "SESSDATA", value: "sess" }])),
+		refreshToken: gcmEncrypt(key, "refresh-token-0"),
+	});
 }
 
 const HISTORY_SOURCES = [

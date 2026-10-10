@@ -14,6 +14,13 @@ function blankedCredentials(r: ImportResult): string[] {
 	].filter((x): x is string => x !== null);
 }
 
+/** 备份里有、但没带回来的集成:点名键与原因,多个用顿号隔开;没有就不出这一句。 */
+function unrestoredNote(unrestored: ImportResult["unrestoredIntegrations"]): string | null {
+	if (unrestored.length === 0) return null;
+	const named = unrestored.map((u) => `${u.key}（${u.message}）`).join("、");
+	return `有 ${unrestored.length} 个没带回来：${named}`;
+}
+
 /**
  * 把导入回执写成一句人话。
  *
@@ -31,7 +38,11 @@ export function summarizeImport(r: ImportResult, kind: BackupKind): string {
 		scope("推送目标", r.targets),
 		scope("连接", r.connections),
 		r.globalsApplied ? "全局设置已应用" : null,
-		r.cookiesRestored ? "B 站登录已恢复" : null,
+		// 句子按个数中立地说(服务端回的是集成键);3a-28 有了集成的描述之后换成名字。
+		r.restoredIntegrations.length > 0
+			? `登录与凭据已恢复（${r.restoredIntegrations.length} 个集成）`
+			: null,
+		unrestoredNote(r.unrestoredIntegrations),
 	].filter(Boolean);
 
 	const head =

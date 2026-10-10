@@ -7,8 +7,9 @@ import { type BackupSecretBag, openSecrets, sealSecrets } from "../backup/crypto
  * (同 bag+PIN 也产不同密文,防重放/关联)。
  */
 const BAG: BackupSecretBag = {
-	cookiesJson: '{"SESSDATA":"abc"}',
-	refreshToken: "rt-1",
+	integrationSecrets: {
+		bilibili: { "http.cookies": '[{"name":"SESSDATA"}]', refreshToken: "rt-1" },
+	},
 	redacted: [
 		{ path: ["globals", "defaults", "ai", "providers", "deepseek", "apiKey"], value: "sk-1" },
 		{ path: ["connections", 0, "config", "accessToken"], value: "tok" },
@@ -22,7 +23,9 @@ describe("backup secrets crypto (PIN seal/open)", () => {
 	});
 
 	it("throws on the wrong PIN (GCM auth failure)", () => {
-		const enc = sealSecrets("123456", { refreshToken: "rt-1" });
+		const enc = sealSecrets("123456", {
+			integrationSecrets: { bilibili: { refreshToken: "rt-1" } },
+		});
 		expect(() => openSecrets("0000", enc)).toThrow();
 	});
 

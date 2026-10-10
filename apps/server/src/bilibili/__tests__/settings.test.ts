@@ -15,6 +15,7 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { fakeIntegrationSecrets } from "../../__tests__/support/backup-integration-secrets.js";
 import { buildBackup } from "../../backup/envelope.js";
 import { createBackupService } from "../../backup/service.js";
 import type { BootstrapConfig } from "../../config/schema.js";
@@ -291,7 +292,7 @@ describe("B 站设置 — 经配置仓", () => {
 		await store.load();
 		const service = createBackupService({
 			configStore: store,
-			cookieStore: { load: async () => null, save: async () => {} },
+			integrationSecrets: fakeIntegrationSecrets(),
 		});
 		const envelope = buildBackup({
 			kind: "sanitized",

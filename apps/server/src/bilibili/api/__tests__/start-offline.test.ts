@@ -13,8 +13,8 @@ import { makeApi as makeBaseApi } from "./support/make-api";
  * 测试运行里连外网会被根 setup 的守卫拦下(scripts/network-guard.mjs),所以 start()
  * 一旦又去联网,第一条就会红。
  */
-function makeApi() {
-	return makeBaseApi().api;
+async function makeApi() {
+	return (await makeBaseApi()).api;
 }
 
 describe("开机不碰 B 站", () => {
@@ -22,12 +22,12 @@ describe("开机不碰 B 站", () => {
 	afterEach(() => api?.stop());
 
 	it("start() 不联网,连不上 B 站也照样起来", async () => {
-		api = makeApi();
+		api = await makeApi();
 		await expect(api.start()).resolves.toBeUndefined();
 	});
 
 	it("第一次签名请求时才现取 ticket,只取一次", async () => {
-		api = makeApi();
+		api = await makeApi();
 		await api.start();
 		const calls: string[] = [];
 		(

@@ -3,12 +3,12 @@ import { FINGER_SPI_URL } from "../endpoints";
 import { makeApi as makeBaseApi } from "./support/make-api";
 
 /**
- * 弹幕连接认证包需要**真** buvid3。cookie 罐里的那条是 loadCookies 填的占位假值
+ * 弹幕连接认证包需要**真** buvid3。cookie 罐里的那条是 resumeStoredLogin 填的占位假值
  * (`some_non_empty_value`),进认证包会露馅;真值只能问 finger/spi。
  * 设备指纹与登录态无关,同一进程内取一次缓存即可。
  */
-function makeApi() {
-	const { api } = makeBaseApi();
+async function makeApi() {
+	const { api } = await makeBaseApi();
 	const calls: string[] = [];
 	(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {
 		get: async (url: string) => {
@@ -21,14 +21,14 @@ function makeApi() {
 
 describe("getBuvid3", () => {
 	it("向 finger/spi 要真 buvid3", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 
 		await expect(api.getBuvid3()).resolves.toBe("real-buvid3-value");
 		expect(calls).toEqual([FINGER_SPI_URL]);
 	});
 
 	it("同进程缓存,第二次不再联网", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		await api.getBuvid3();
 		await api.getBuvid3();
 
@@ -38,7 +38,7 @@ describe("getBuvid3", () => {
 	it("并发调用在途合流:N 个房间同时 bootstrap 只打一次 finger/spi", async () => {
 		// 启动时 ListenerManager 对每个订阅 fire-and-forget,缓存落位前的并发
 		// 调用若各自联网,等于把 N 条相同请求同时打在风控敏感面上。
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		const results = await Promise.all([api.getBuvid3(), api.getBuvid3(), api.getBuvid3()]);
 
 		expect(results).toEqual(["real-buvid3-value", "real-buvid3-value", "real-buvid3-value"]);
@@ -46,7 +46,7 @@ describe("getBuvid3", () => {
 	});
 
 	it("接口失败时返回空串,不抛 —— 认证包缺 buvid 仍可尝试", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {
 			get: async (url: string) => {
 				calls.push(url);

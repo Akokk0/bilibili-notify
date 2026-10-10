@@ -39,7 +39,8 @@ function fakeService(over: Partial<BackupService> = {}): BackupService {
 			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 0, deleted: 0 },
 			globalsApplied: false,
-			cookiesRestored: false,
+			restoredIntegrations: [],
+			unrestoredIntegrations: [],
 		})),
 		...over,
 	};

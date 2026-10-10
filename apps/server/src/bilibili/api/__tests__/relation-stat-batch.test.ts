@@ -7,8 +7,8 @@ import { makeApi as makeBaseApi } from "./support/make-api";
  * 守护:relation/stat 的 URL 形状(vmid);批量 user/cards 的 uids 逗号拼接 +
  * 空列表短路不发请求。
  */
-function makeApi() {
-	const { api } = makeBaseApi();
+async function makeApi() {
+	const { api } = await makeBaseApi();
 	const calls: string[] = [];
 	(api as unknown as { client: { get(url: string): Promise<unknown> } }).client = {
 		get: async (url: string) => {
@@ -21,7 +21,7 @@ function makeApi() {
 
 describe("fetchRelationStat", () => {
 	it("打到 relation/stat 且带 vmid", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		await api.fetchRelationStat("332704117");
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toContain(RELATION_STAT_URL);
@@ -31,7 +31,7 @@ describe("fetchRelationStat", () => {
 
 describe("fetchUserCards", () => {
 	it("uids 以逗号拼接打到批量端点", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		await api.fetchUserCards(["1", "2", "3"]);
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toContain(USER_CARDS_URL);
@@ -40,7 +40,7 @@ describe("fetchUserCards", () => {
 	});
 
 	it("空列表短路:不发请求,回 code=0 空 data", async () => {
-		const { api, calls } = makeApi();
+		const { api, calls } = await makeApi();
 		const res = await api.fetchUserCards([]);
 		expect(calls).toHaveLength(0);
 		expect(res).toEqual({ code: 0, data: {} });

@@ -92,7 +92,8 @@ describe("BackupSection", () => {
 			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 2, deleted: 0 },
 			globalsApplied: true,
-			cookiesRestored: false,
+			restoredIntegrations: [],
+			unrestoredIntegrations: [],
 		});
 		renderSection();
 
@@ -120,7 +121,8 @@ describe("BackupSection", () => {
 			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 0, deleted: 2 },
 			globalsApplied: true,
-			cookiesRestored: true,
+			restoredIntegrations: ["bilibili"],
+			unrestoredIntegrations: [],
 		};
 		post.mockResolvedValue(plan);
 		renderSection();
@@ -158,7 +160,8 @@ describe("BackupSection", () => {
 			connections: { upserted: 0, deleted: 0 },
 			targets: { upserted: 0, deleted: 0 },
 			globalsApplied: false,
-			cookiesRestored: false,
+			restoredIntegrations: [],
+			unrestoredIntegrations: [],
 		});
 		renderSection();
 

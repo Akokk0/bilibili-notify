@@ -1,22 +1,23 @@
 /**
  * 回归守护 — 「退出登录」不许把配置密钥一起清掉。
  *
- * master.key 是 cookie 与配置密钥袋(AI key / 搜索 key)共用的一把钥匙。旧版的
+ * master.key 是登录凭据与配置密钥袋(AI key / 搜索 key)共用的一把钥匙。旧版的
  * 「重置密钥与 Cookie」会轮换它;而配置密钥袋在进程里缓存着旧钥匙,继续用旧钥匙
  * 写 `config-secrets.enc`,下次重启拿新钥匙解不开 → 按空处理、只打一条 warn,
  * 所有 AI key 被静默清空。
  *
  * 这里走真的 `createAuthSystem().logout()` + 真的 FileKeyProvider /
- * SecretStore,只把会联网的 B 站 API 与登录流换成替身。
+ * SecretStore / 集成存储宿主,只把会联网的 B 站 API 与登录流换成替身。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import { type MessageBus, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createSecretStore } from "../../config/secret-store.js";
+import { createIntegrationStore } from "../../integration-store/store.js";
 import { createAuthSystem } from "../index.js";
 
 // 替身只留 auth 层碰得到的几个口,不起真的 HTTP 客户端与登录流程。
@@ -24,10 +25,10 @@ vi.mock("../../bilibili/api/index.js", () => ({
 	Api: class {
 		start = vi.fn(async () => {});
 		stop = vi.fn();
-		loadCookies = vi.fn(async () => {});
-		markLoginInfoLoaded = vi.fn();
+		resumeStoredLogin = vi.fn(async () => {});
 		getCookiesJson = vi.fn(() => "[]");
 		clearCookies = vi.fn(async () => {});
+		commitLogin = vi.fn(async () => ok());
 	},
 	LoginFlow: class {
 		start = vi.fn(async () => {});
@@ -64,7 +65,7 @@ const secretsPath = () => join(dataDir, "secrets", "config-secrets.enc");
 
 describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 	it("退出登录之后再存配置密钥,重启后配置密钥还在", async () => {
-		// 同一个 provider 同时喂 cookie 与配置密钥袋 —— 与 runtime/bootstrap 的装配一致。
+		// 同一个 provider 同时喂登录凭据与配置密钥袋 —— 与 runtime/bootstrap 的装配一致。
 		const ctx = makeCtx();
 		const keyProvider = new FileKeyProvider(keyPath(), ctx.logger);
 		const secretStore = createSecretStore({
@@ -74,17 +75,17 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 		});
 		await secretStore.save({ aiApiKeys: { deepseek: "sk-before" } });
 
-		const auth = await createAuthSystem({
-			serviceCtx: ctx,
-			bus,
-			bootstrap: { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
+		const integrationStore = createIntegrationStore({
 			dataRoot: dataDir,
 			keyProvider,
+			logger: ctx.logger,
 		});
+		const auth = await createAuthSystem({ serviceCtx: ctx, bus, integrationStore });
 		await auth.logout();
 		// 清完之后面板上再改一次 key:secret store 用它进程里缓存的那把钥匙写盘。
 		await secretStore.save({ aiApiKeys: { deepseek: "sk-after" } });
-		auth.dispose();
+		await auth.dispose();
+		await integrationStore.close();
 
 		// 模拟重启:同一个 key 路径新建 provider 与 secret store。
 		const restartCtx = makeCtx();

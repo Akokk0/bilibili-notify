@@ -22,7 +22,6 @@ function makeFakeAuthSystem(opts: { bus?: MessageBus } = {}) {
 	const fake = {
 		// real interface fields the routes do not touch — leave undefined-typed
 		api: undefined as unknown as AuthSystem["api"],
-		storage: undefined as unknown as AuthSystem["storage"],
 		flow: undefined as unknown as AuthSystem["flow"],
 		beginLogin: vi.fn(async () => {
 			snapshot = { status: BiliLoginStatus.LOGIN_QR, msg: "", data: "data:image/png;base64,XYZ" };
@@ -32,7 +31,7 @@ function makeFakeAuthSystem(opts: { bus?: MessageBus } = {}) {
 			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
 		}),
 		status: () => snapshot,
-		dispose: vi.fn(() => {}),
+		dispose: vi.fn(async () => {}),
 		_setSnapshot: (s: LoginSnapshot) => {
 			snapshot = s;
 		},

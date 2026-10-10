@@ -1,0 +1,159 @@
+/**
+ * B 站上下文(`bilibili/context.ts`):开存储、建集成上下文、建请求客户端,与它的收尾次序。
+ *
+ * 用真的集成存储宿主(临时目录、真 FileKeyProvider)与真的 `createIntegrationHttp`;不连 B 站(请求只打回环 server)。
+ * 钉四件事:重启后浏览器身份稳定;建到一半失败不留开着的把手;收尾先跑 `ctx.onDispose` 的钩子、再关把手,连接池
+ * 放到 `drain` 段;`http.` 前缀的键 B 站自己写不进去。
+ */
+
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { FileKeyProvider } from "@bilibili-notify/storage";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { readIntegrationStateFile } from "../../integration-store/files.js";
+import { createIntegrationStore } from "../../integration-store/store.js";
+import { createIntegrationHttp } from "../../integrations/http.js";
+import { makeServiceContext } from "../api/__tests__/support/make-api.js";
+import { createBiliContext } from "../context.js";
+
+vi.mock("../../integrations/http.js", async (importOriginal) => {
+	const original = await importOriginal<typeof import("../../integrations/http.js")>();
+	return { ...original, createIntegrationHttp: vi.fn(original.createIntegrationHttp) };
+});
+
+let dataDir: string;
+let server: Server;
+let baseURL: string;
+let lastHeaders: IncomingMessage["headers"];
+
+beforeEach(async () => {
+	dataDir = await mkdtemp(join(tmpdir(), "bn-bili-context-"));
+	lastHeaders = {};
+	server = createServer((req, res) => {
+		lastHeaders = req.headers;
+		res.setHeader("Content-Type", "application/json");
+		res.end(JSON.stringify({ code: 0 }));
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+
+afterEach(async () => {
+	server.closeAllConnections();
+	await new Promise<void>((resolve) => server.close(() => resolve()));
+	await rm(dataDir, { recursive: true, force: true });
+	vi.restoreAllMocks();
+});
+
+function makeStore() {
+	const host = makeServiceContext();
+	const keyProvider = new FileKeyProvider(join(dataDir, "secrets", "master.key"), host.logger);
+	const store = createIntegrationStore({ dataRoot: dataDir, keyProvider, logger: host.logger });
+	return { host, store };
+}
+
+describe("createBiliContext", () => {
+	it("重启后身份稳定:两次建上下文线上的 UA 相同,且就是 state.json 里 http.identity 写的那一份", async () => {
+		const { host, store } = makeStore();
+		const first = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		await first.ctx.http.fetch(`${baseURL}/x`);
+		const firstUa = lastHeaders["user-agent"];
+		await first.dispose();
+		await store.close();
+
+		// 模拟重启:同一个数据根、新的宿主与上下文。
+		const again = makeStore();
+		const second = await createBiliContext({
+			stores: again.store,
+			serviceCtx: again.host.serviceCtx,
+		});
+		await second.ctx.http.fetch(`${baseURL}/x`);
+		const secondUa = lastHeaders["user-agent"];
+		await second.dispose();
+		await again.store.close();
+
+		expect(firstUa).toBeTypeOf("string");
+		expect(secondUa).toBe(firstUa);
+		const stored = await readIntegrationStateFile({
+			dataRoot: dataDir,
+			key: "bilibili",
+			logger: host.logger,
+		});
+		expect(stored.kind).toBe("ok");
+		const identity =
+			stored.kind === "ok" ? (stored.entries.get("http.identity") as Record<string, string>) : {};
+		expect(identity.userAgent).toBe(firstUa);
+	});
+
+	it("ctx 带着公共那一面、请求客户端与罐子的把手;`http.` 开头的键 B 站自己写不进去", async () => {
+		const { host, store } = makeStore();
+		const { ctx, dispose } = await createBiliContext({
+			stores: store,
+			serviceCtx: host.serviceCtx,
+		});
+
+		expect(ctx.http).toBeDefined();
+		expect(ctx.cookies.jar).toBeDefined();
+		expect(ctx.signal.aborted).toBe(false);
+		const refused = await ctx.secrets.set("http.cookies", "[]");
+		expect(refused.ok).toBe(false);
+		if (!refused.ok) expect(refused.code).toBe("invalid");
+		expect((await ctx.secrets.set("refreshToken", "T0")).ok).toBe(true);
+		expect(ctx.secrets.get("refreshToken")).toBe("T0");
+
+		await dispose();
+		await store.close();
+	});
+
+	it("建到一半失败:把手关上,下次 open 同一个键不抛「已经开着」", async () => {
+		const { host, store } = makeStore();
+		vi.mocked(createIntegrationHttp).mockRejectedValueOnce(new Error("boom"));
+
+		await expect(createBiliContext({ stores: store, serviceCtx: host.serviceCtx })).rejects.toThrow(
+			"boom",
+		);
+
+		expect(store.isOpen("bilibili")).toBe(false);
+		const reopened = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		expect(store.isOpen("bilibili")).toBe(true);
+		await reopened.dispose();
+		await store.close();
+	});
+
+	it("收尾:先跑 ctx.onDispose 的钩子(后登记的先跑),再关把手;幂等", async () => {
+		const { host, store } = makeStore();
+		const handle = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		const order: string[] = [];
+		handle.ctx.onDispose(() => {
+			order.push(`first(open=${store.isOpen("bilibili")})`);
+		});
+		handle.ctx.onDispose(() => {
+			order.push(`second(open=${store.isOpen("bilibili")})`);
+		});
+
+		await handle.dispose();
+		await handle.dispose();
+
+		expect(order).toEqual(["second(open=true)", "first(open=true)"]);
+		expect(store.isOpen("bilibili")).toBe(false);
+		await store.close();
+	});
+
+	it("连接池放在 drain 段收,不在上下文的收尾里:dispose() 不动客户端,跑 drain 钩子才收", async () => {
+		const { host, store } = makeStore();
+		const handle = await createBiliContext({ stores: store, serviceCtx: host.serviceCtx });
+		const drain = host.disposers.filter((d) => d.phase === "drain");
+		expect(drain).toHaveLength(1);
+		const clientDispose = vi.spyOn(handle.ctx.http, "dispose");
+
+		await handle.dispose();
+		expect(clientDispose).not.toHaveBeenCalled();
+
+		await drain[0]?.fn();
+		expect(clientDispose).toHaveBeenCalledTimes(1);
+		await store.close();
+	});
+});

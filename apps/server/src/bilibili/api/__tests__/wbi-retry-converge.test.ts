@@ -10,8 +10,8 @@ import { makeApi as makeBaseApi } from "./support/make-api";
  *
  * 单次 -352 的自愈(刷新后成功)必须保留,不能误伤。
  */
-function makeApi(getImpl: (url: string) => unknown) {
-	const { api } = makeBaseApi();
+async function makeApi(getImpl: (url: string) => unknown) {
+	const { api } = await makeBaseApi();
 	const calls = { get: 0, post: 0 };
 	(
 		api as unknown as {
@@ -42,7 +42,7 @@ function makeApi(getImpl: (url: string) => unknown) {
 
 describe("wbiGet 持续 -352 收敛", () => {
 	it("持续 -352 → 抛错但不被外层 retry 放大(GET 次数收敛,不是 4 轮)", async () => {
-		const { api, calls } = makeApi(() => ({ code: -352 }));
+		const { api, calls } = await makeApi(() => ({ code: -352 }));
 		await expect(api.fetchUserInfo("123")).rejects.toThrow();
 		// 一轮 wbiGet 至多 2 次 GET(首发 + 刷新后重试一次);外层不再重跑 3 轮。
 		expect(calls.get).toBeLessThanOrEqual(2);
@@ -50,7 +50,7 @@ describe("wbiGet 持续 -352 收敛", () => {
 
 	it("回归:单次 -352 刷新 wbiKeys 后成功 —— 自愈保留", async () => {
 		let n = 0;
-		const { api } = makeApi(() => {
+		const { api } = await makeApi(() => {
 			n++;
 			return n === 1 ? { code: -352 } : { code: 0, data: { ok: true } };
 		});

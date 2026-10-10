@@ -408,7 +408,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		};
 
 		// Dashboard session codec. Signing key = HKDF over the runtime's stable key
-		// material (the same key infra StorageManager uses — passphrase-derived from
+		// material (the same key infra the integration stores use — passphrase-derived from
 		// BN_COOKIE_KEY when set, else the persisted random master.key), so cookies
 		// survive a restart without a new required config knob. Built only when auth
 		// is configured; the credential fingerprint is folded into the HKDF salt so
@@ -530,21 +530,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();
 
-		// Stage 2.4: assemble the auth stack (StorageManager → Api → LoginFlow). Bus
+		// Stage 2.4: assemble the auth stack (integration stores → Api → LoginFlow). Bus
 		// emissions made by LoginFlow flow into the WS `auth` channel via stage 2.3 wiring.
 		try {
 			authSystem = await createAuthSystem({
 				serviceCtx: runtime.serviceCtx,
 				bus: runtime.bus,
-				bootstrap,
-				dataRoot: runtime.dataRoot,
-				keyProvider: runtime.keyProvider,
+				integrationStore: runtime.integrationStore,
 				// 从 B 站设置的 healthCheckMinutes 计算初始 ms;改了之后由 engines.ts 的
 				// `watchSettings` 调 flow.setHealthCheckMs 热更。
 				healthCheckMs: settingsOf(runtime.configStore).healthCheckMinutes * 60_000,
 			});
 		} catch (err) {
-			// Fatal: without StorageManager / Api the dashboard can't function.
+			// Fatal: without the integration stores / Api the dashboard can't function.
 			log.error("auth system init failed", err);
 			throw err;
 		}
@@ -1167,8 +1165,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const backupService = authSystem
 			? createBackupService({
 					configStore: runtime.configStore,
-					cookieStore: authSystem.storage.cookieStore,
-					onCookiesRestored: () => authSystem?.reloadCookiesFromStore(),
+					integrationSecrets: runtime.integrationStore,
 					connectionSecrets,
 				})
 			: undefined;

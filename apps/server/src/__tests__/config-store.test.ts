@@ -29,6 +29,7 @@ import {
 	ConfigValidationError,
 	createConfigStore,
 } from "../config/store.js";
+import { fakeIntegrationSecrets } from "./support/backup-integration-secrets.js";
 import { snapshotFor } from "./support/connection-snapshot.js";
 import { storageWriteGate } from "./support/storage-write-gate.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
@@ -992,10 +993,10 @@ describe("ConfigStore", () => {
 		expect(managedId).toBe(legacyId);
 		expect(managedId).not.toBe(managedWebhookTargetId(connection.id));
 
-		const noCookies = { load: async () => null, save: async () => {} };
+		const noSecrets = fakeIntegrationSecrets();
 		const env = await createBackupService({
 			configStore: source,
-			cookieStore: noCookies,
+			integrationSecrets: noSecrets,
 		}).exportBackup({ kind: "sanitized" });
 		// 导出必然带着托管 target —— 正是老写法恢复不回去的那一条
 		expect(env.sections.targets?.some((t) => t.managedBy === "connection")).toBe(true);
@@ -1008,7 +1009,7 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await fresh.load();
-		await createBackupService({ configStore: fresh, cookieStore: noCookies }).importBackup({
+		await createBackupService({ configStore: fresh, integrationSecrets: noSecrets }).importBackup({
 			envelope: env,
 			mode: "overwrite",
 		});

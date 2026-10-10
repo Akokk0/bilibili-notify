@@ -1,5 +1,4 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import type { CookieData } from "@bilibili-notify/storage";
 import QRCode from "qrcode";
 import type { Api } from "./api";
 import {
@@ -58,8 +57,6 @@ export interface LoginFlowOptions {
 	bus: MessageBus;
 	/** Periodic auth probe cadence in ms. 0 disables the heartbeat. */
 	healthCheckMs: number;
-	/** Persist refreshed/just-issued cookies. Called by the post-login handshake. */
-	saveCookies: (data: CookieData) => Promise<void>;
 }
 
 /** True if `data` is shaped like a UserCardInfo (vs. the base64 QR string left over from LOGIN_QR). */
@@ -99,7 +96,6 @@ export class LoginFlow {
 	private readonly api: Api;
 	private readonly bus: MessageBus;
 	private healthCheckMs: number;
-	private readonly saveCookies: (data: CookieData) => Promise<void>;
 	private readonly logger: Logger;
 
 	private snapshot: LoginSnapshot = {
@@ -109,6 +105,12 @@ export class LoginFlow {
 	private healthTimer?: Disposable;
 	private loginTimer?: Disposable;
 	private loginExpiryTimer?: Disposable;
+	/**
+	 * 扫码期间罐子不自动存的闸:登录回应的 Set-Cookie 在响应头到的那一刻就进了罐子,令牌却要等响应体,
+	 * 这中间自动存到点的话盘上就是「新会话的 cookie + 上一个会话的令牌」。随轮询一起收(`clearLoginTimer`);
+	 * 成功那一支把它摘出来、提交之后才放。
+	 */
+	private loginHold?: Disposable;
 	/**
 	 * Marks "we are unauthenticated, so something downstream may be parked waiting". On the next
 	 * successful login the flag is flipped and `auth-restored` fires. Avoids relying on the
@@ -150,7 +152,6 @@ export class LoginFlow {
 		this.api = opts.api;
 		this.bus = opts.bus;
 		this.healthCheckMs = opts.healthCheckMs;
-		this.saveCookies = opts.saveCookies;
 		this.logger = opts.serviceCtx.logger;
 	}
 
@@ -276,11 +277,12 @@ export class LoginFlow {
 		}
 
 		this.clearLoginTimer();
+		this.loginHold = this.api.holdLoginSaves();
 		let polling = true;
 		this.loginTimer = this.serviceCtx.setInterval(async () => {
 			if (!polling) return;
 			polling = false;
-			// 登记进 track:扫码成功的那一拍会把 cookie 落到 secrets/cookies.json,关停得等它落完再让各写道
+			// 登记进 track:扫码成功的那一拍会把 cookie 与令牌提交进集成的密钥存储,关停得等它落完再让各写道
 			// 关门。失败在交进去之前接住(以前这里是裸的 async 回调,抛错就是一次 unhandledRejection)。
 			const poll = this.pollOnce(qrContent.data.qrcode_key)
 				.catch((e) => {
@@ -331,26 +333,29 @@ export class LoginFlow {
 			return;
 		}
 		if (code === 0) {
+			// 扫码那道闸摘出来:收轮询定时器时不放它,提交(不论成败)之后才放。
+			const hold = this.loginHold;
+			this.loginHold = undefined;
 			this.clearLoginTimers();
-			const cookiesJson = this.api.getCookiesJson();
-			if (!cookiesJson || cookiesJson === "[]") {
-				this.logger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
-				this.reportQrFailure("noCookieAfterLogin");
-				return;
-			}
 			try {
+				const cookiesJson = this.api.getCookiesJson();
+				if (!cookiesJson || cookiesJson === "[]") {
+					this.logger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
+					this.reportQrFailure("noCookieAfterLogin");
+					return;
+				}
 				const refreshToken = (loginContent.data.refresh_token as string | undefined) ?? "";
 				if (!refreshToken) {
-					// P2:此前静默 `?? ""`,loadCookies 见空串跳过 refresh 链 →
-					// 会话到期前无任何刷新、过期才靠心跳 -101 兜出 auth-lost。
+					// P2:此前静默 `?? ""`,会话到期前无任何刷新、过期才靠心跳 -101 兜出 auth-lost。
 					// 至少响亮告警让运维知道这次登录拿不到自动续期。
 					this.logger.warn(
 						"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
 					);
 				}
-				await this.saveCookies({ cookiesJson, refreshToken });
-			} catch (e) {
-				this.logger.error(`[login] 保存 cookie 失败：${e}`);
+				const saved = await this.api.commitLogin(refreshToken || undefined);
+				if (!saved.ok) this.logger.error(`[login] 保存登录状态失败：${saved.message}`);
+			} finally {
+				hold?.dispose();
 			}
 			this.reportLoggedIn(undefined, "loginJustSucceeded");
 			await this.reportAccountInfo();
@@ -499,6 +504,8 @@ export class LoginFlow {
 	private clearLoginTimer(): void {
 		this.loginTimer?.dispose();
 		this.loginTimer = undefined;
+		this.loginHold?.dispose();
+		this.loginHold = undefined;
 	}
 
 	/**

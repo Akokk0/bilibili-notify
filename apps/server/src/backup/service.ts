@@ -2,12 +2,14 @@ import type { ImportResult } from "@bilibili-notify/contract";
 import type {
 	Connection,
 	GlobalConfig,
+	Json,
 	PushTarget,
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
 import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
 import { describeDuplicate } from "../config/store.js";
+import type { IntegrationStore } from "../integration-store/store.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
@@ -24,15 +26,16 @@ import { redactBackupSections } from "./sanitize.js";
  * BackupService — the IO seam wiring the pure backup core to the running
  * server.
  *
- * Export reads the four config scopes (and, for a full backup, the cookie
- * store) and assembles an envelope. Import runs the pure {@link planImport},
+ * Export reads the four config scopes (and, for a full backup, every
+ * integration's secrets bag) and assembles an envelope. Import runs the pure {@link planImport},
  * folds it into the end state with {@link foldPlan} and hands that to
  * `replaceSections` in **one** call — restore is a wholesale state replacement,
  * not a sequence of user edits, and pretending otherwise cost us both a guard
  * meant for humans (webhook targets cannot be hand-created) and any chance of
- * rolling back a half-applied import. Restoring cookies additionally calls
- * {@link BackupServiceDeps.onCookiesRestored} so the auth layer can re-activate
- * the login without a process restart (the one genuinely live-swapped piece).
+ * rolling back a half-applied import. Integration secrets are swapped back
+ * bag by bag afterwards (never throwing: a failed one only lands in
+ * `unrestoredIntegrations`); the store runs whatever the integration registered
+ * to pick the new values up live, so no process restart is needed.
  */
 
 /** The slice of `ConfigStore` the backup service depends on. */
@@ -55,10 +58,14 @@ export interface BackupStore {
 	}): Promise<unknown>;
 }
 
-interface BackupCookieStore {
-	load(): Promise<{ cookiesJson: string; refreshToken?: string } | null>;
-	save(data: { cookiesJson: string; refreshToken?: string }): Promise<void>;
-}
+/** 集成的密钥存储宿主里备份用得到的三样。 */
+export type BackupIntegrationSecrets = Pick<
+	IntegrationStore,
+	"exportSecrets" | "restoreSecrets" | "isOpen"
+>;
+
+/** 备份里有、但这个集成现在没开着(没在运行)时回执里的话。 */
+const NOT_RUNNING_MESSAGE = "这个集成现在没在运行";
 
 /** Which scopes to include in an export (the sanitized-档 checkboxes). */
 export interface SectionSelection {
@@ -72,9 +79,11 @@ export interface SectionSelection {
 
 export interface BackupServiceDeps {
 	configStore: BackupStore;
-	cookieStore: BackupCookieStore;
-	/** Called after cookies are restored, so the auth layer can live re-login. */
-	onCookiesRestored?: () => void | Promise<void>;
+	/**
+	 * 各集成的 `secrets`(B 站登录、内置适配器与拓展存的凭据):完整档导出带走、恢复时整袋换回。
+	 * 内存跟上由存储那一头登记的「密钥被换了」回调负责,备份服务不再叫谁。
+	 */
+	integrationSecrets: BackupIntegrationSecrets;
 	/** Injectable ISO clock (keeps exports deterministic in tests). */
 	now?: () => string;
 	/**
@@ -112,6 +121,8 @@ export interface BackupService {
 	exportBackup(opts: ExportOptions): Promise<BackupEnvelope>;
 	importBackup(opts: ImportOptions): Promise<ImportResult>;
 }
+
+type SecretsRestoreResult = Pick<ImportResult, "restoredIntegrations" | "unrestoredIntegrations">;
 
 const ALL_SECTIONS: Required<SectionSelection> = {
 	globals: true,
@@ -160,7 +171,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 
 		if (opts.kind === "full") {
 			if (!opts.pin) throw new BackupRejectedError("invalid", BACKUP_PIN_REQUIRED_MESSAGE);
-			const cookies = (await deps.cookieStore.load()) ?? undefined;
+			const integrationSecrets = await deps.integrationSecrets.exportSecrets();
 			return assembleFullBackup(
 				{
 					globals: picked.globals,
@@ -170,7 +181,7 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 					subscriptionTags: picked.subscriptionTags,
 					connections: picked.connections,
 					targets: picked.targets,
-					cookies,
+					integrationSecrets,
 				},
 				opts.pin,
 				createdAt,
@@ -186,12 +197,12 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 
 	async function importBackup(opts: ImportOptions): Promise<ImportResult> {
 		let sections: BackupSections;
-		let cookies: { cookiesJson?: string; refreshToken?: string } | undefined;
+		let integrationSecrets: Record<string, Record<string, Json>> = {};
 		if (opts.envelope.kind === "full") {
 			if (!opts.pin) throw new BackupRejectedError("invalid", BACKUP_PIN_REQUIRED_MESSAGE);
 			const opened = openFullBackup(opts.envelope, opts.pin);
 			sections = opened.sections;
-			cookies = opened.cookies;
+			integrationSecrets = opened.integrationSecrets;
 		} else {
 			sections = opts.envelope.sections;
 		}
@@ -207,28 +218,16 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 		const folded = foldPlan(current, plan);
 		assertNoDuplicateInBackup(current.subscriptions, folded.subscriptions);
 
-		let globalsApplied = false;
-		let cookiesRestored = false;
+		const globalsApplied = Boolean(
+			plan.setGlobals || plan.setIntegrations || plan.setExtensionSettings,
+		);
+		let secretsRestore: SecretsRestoreResult;
 		if (!opts.dryRun) {
 			// 一次落地:校验全过才写,任何一处不合法都不会留下半新半旧的配置。
 			await deps.configStore.replaceSections(folded);
-			globalsApplied = Boolean(
-				plan.setGlobals || plan.setIntegrations || plan.setExtensionSettings,
-			);
-
-			if (cookies?.cookiesJson) {
-				await deps.cookieStore.save({
-					cookiesJson: cookies.cookiesJson,
-					refreshToken: cookies.refreshToken,
-				});
-				await deps.onCookiesRestored?.();
-				cookiesRestored = true;
-			}
+			secretsRestore = await restoreIntegrationSecrets(integrationSecrets);
 		} else {
-			globalsApplied = Boolean(
-				plan.setGlobals || plan.setIntegrations || plan.setExtensionSettings,
-			);
-			cookiesRestored = Boolean(cookies?.cookiesJson);
+			secretsRestore = planIntegrationSecrets(integrationSecrets);
 		}
 
 		return {
@@ -242,8 +241,41 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 			},
 			targets: { upserted: plan.targets.upsert.length, deleted: plan.targets.delete.length },
 			globalsApplied,
-			cookiesRestored,
+			restoredIntegrations: secretsRestore.restoredIntegrations,
+			unrestoredIntegrations: secretsRestore.unrestoredIntegrations,
 		};
+	}
+
+	/** 演练:只按「现在开着没有」分两堆,不写。 */
+	function planIntegrationSecrets(
+		bags: Record<string, Record<string, Json>>,
+	): SecretsRestoreResult {
+		const result: SecretsRestoreResult = { restoredIntegrations: [], unrestoredIntegrations: [] };
+		for (const key of Object.keys(bags)) {
+			if (deps.integrationSecrets.isOpen(key)) result.restoredIntegrations.push(key);
+			else result.unrestoredIntegrations.push({ key, message: NOT_RUNNING_MESSAGE });
+		}
+		return result;
+	}
+
+	/**
+	 * 配置各节已经落地之后,逐个集成把密钥整袋换回。**不抛**:配置已经落了,这时抛出去面板只看到一个 500、
+	 * 不知道哪些恢复了;某个集成换不回来只进 `unrestoredIntegrations`,别的照常。
+	 */
+	async function restoreIntegrationSecrets(
+		bags: Record<string, Record<string, Json>>,
+	): Promise<SecretsRestoreResult> {
+		const result: SecretsRestoreResult = { restoredIntegrations: [], unrestoredIntegrations: [] };
+		for (const [key, entries] of Object.entries(bags)) {
+			if (!deps.integrationSecrets.isOpen(key)) {
+				result.unrestoredIntegrations.push({ key, message: NOT_RUNNING_MESSAGE });
+				continue;
+			}
+			const restored = await deps.integrationSecrets.restoreSecrets(key, entries);
+			if (restored.ok) result.restoredIntegrations.push(key);
+			else result.unrestoredIntegrations.push({ key, message: restored.message });
+		}
+		return result;
 	}
 
 	return { exportBackup, importBackup };

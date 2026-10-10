@@ -86,6 +86,6 @@ client.close();
 
 - `__tests__/fixtures/frames.json` / `payloads.json`:自录真帧(capture 脚本,只读登录态)。
 - `__tests__/fixtures/payloads-ref.json`:取自 blive-message-listener 0.5.4 `mock/`(MIT,© ddiu8081)的真实匿名化 payload,覆盖自录蹲不到的稀罕事件。
-- 真机脚本在 `scripts/__tests__/`(放在 `__tests__` 里是因为它们要读写文件、连真 B 站,算测试那一类,不算集成的正式代码;文件名不带 `.test`,测试运行器不会自动跑):`capture-frames.ts` 录帧、`smoke-live.ts` 真机 60s 冒烟、`probe-login.ts` 登录态探针;跑法(在 `apps/server` 下)`vp exec tsx src/bilibili/live/protocol/scripts/__tests__/<脚本>`。**只读铁律:任何脚本 loadCookies 绝不传 refreshToken**(会触发 cookie 轮换,短命进程不落盘 = 弄丢登录态)。
+- 真机脚本在 `scripts/__tests__/`(放在 `__tests__` 里是因为它们要读写文件、连真 B 站,算测试那一类,不算集成的正式代码;文件名不带 `.test`,测试运行器不会自动跑):`capture-frames.ts` 录帧、`smoke-live.ts` 真机 60s 冒烟、`probe-login.ts` 登录态探针;跑法(在 `apps/server` 下)`vp exec tsx src/bilibili/live/protocol/scripts/__tests__/<脚本>`。**只读铁律:脚本拿到的登录态里没有续期令牌**(`_env.ts` 只把 cookie 放进一个不落盘的内存存储;有令牌就会触发 cookie 轮换,短命进程不落盘 = 弄丢登录态)。
 - 录帧蹲守:`BLIVE_WATCH_CMDS=USER_TOAST_MSG,USER_TOAST_MSG_V2,GUARD_BUY` 逗号分隔 —— 录到匹配命令立刻终端播报完整 payload,长录蹲稀罕帧(上舰续费之类)不用盯文件;播报是旁路,不影响录制。
 - `pb-walk.ts`(同在那个目录)protobuf wire 走查器:不依赖任何 schema 直接按 wire format 走查字段号/类型/值,手裁 proto(SEND_GIFT_V2 / INTERACT_WORD_V2)怀疑漂移时拿真帧对账用。

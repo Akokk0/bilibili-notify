@@ -60,7 +60,7 @@ export interface AppRuntime {
 	bus: MessageBus;
 	/**
 	 * Shared at-rest encryption key provider. Built once from
-	 * `bootstrap.cookieEncryptionKey`; reused by the cookie StorageManager and
+	 * `bootstrap.cookieEncryptionKey`; reused by the integration stores and
 	 * the config SecretStore so one `BN_COOKIE_KEY` protects everything and
 	 * exactly one scrypt salt is persisted.
 	 */

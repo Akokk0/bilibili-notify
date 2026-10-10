@@ -3,19 +3,31 @@
  * ServiceContext、只读打开服务端落盘的登录态。以前各抄一份,2026-08-27 那次写死路径的
  * 泄漏正是三份里有一份走了样 —— 收成一份,改一处三处都对。
  *
- * 只读铁律:loadCookies 绝不传 refreshToken —— 它会 fire-and-forget 触发 cookie 刷新舞步
- * (RSA 轮换),旧 cookie 被 B 站作废而新 cookie 只在本进程内存里,脚本一退出登录态就死。
- * 2026-08-27 就这样弄丢过一次主人的扫码登录。
+ * 只读铁律:**结构上做不到**写盘与续期。登录态从在用那一代的 `secrets/bilibili/secrets.enc` 只读地解开,
+ * 放进**内存版**的存储把手里 —— 里面只有 `http.cookies`,**没有 `refreshToken`**,落盘也只是记一笔不碰盘。
+ * 读盘的两处(主密钥、`secrets.enc` 与 `state.json` 里的浏览器身份)都不写盘、不隔离改名:文件坏了就当没有。
+ * 没有令牌 `Api` 就不会触发 cookie 刷新舞步(RSA 轮换:旧 cookie 被 B 站作废而新 cookie 只在本进程内存里,
+ * 脚本一退出登录态就死;2026-08-27 就这样弄丢过一次主人的扫码登录)。从前靠「记得别传 refreshToken」,现在传不进去。
  */
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
-import { StorageManager } from "@bilibili-notify/storage";
-import { createBiliHttp } from "../../../../api/default-headers.js";
+import type { Json, Logger, ServiceContext } from "@bilibili-notify/internal";
+import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
+import { type KeyProvider, readKeyMaterial } from "@bilibili-notify/storage";
+import { memoryStoreHandle } from "../../../../../__tests__/support/memory-key-value-store.js";
+import {
+	integrationStateFile,
+	readIntegrationSecretsFile,
+} from "../../../../../integration-store/files.js";
+import { parseStoredEntries } from "../../../../../integration-store/key-value-store.js";
+import { listGenerationEntries } from "../../../../../runtime/generations.js";
+import { dataPath } from "../../../../../runtime/roots.js";
 import { Api } from "../../../../api/index.js";
+import { createBiliContext } from "../../../../context.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../../../../..", import.meta.url));
-/** 服务端的数据目录;跑别的实例用 BN_DATA_DIR 指过去。 */
+/** 服务端的数据目录(宿主根);跑别的实例用 BN_DATA_DIR 指过去。 */
 export const dataDir = process.env.BN_DATA_DIR ?? join(repoRoot, "apps", "server", "data");
 
 export const consoleLogger: Logger = {
@@ -43,30 +55,68 @@ export function makeServiceCtx(logger: Logger = consoleLogger): ServiceContext {
 	};
 }
 
+/** 在用的那一代 = 序号最大的完整一代。只读盘,不开新代。 */
+async function activeGenerationDir(): Promise<string | undefined> {
+	const entries = await listGenerationEntries(dataDir);
+	return entries.reverse().find((entry) => !entry.partial && entry.file !== undefined)?.dir;
+}
+
+/** 只读地取存着的浏览器身份:读文本 + 纯解析(`parseStoredEntries`),文件坏了也不隔离、不改名;读不出就是没有。 */
+async function readStoredIdentity(dataRoot: string): Promise<Json | undefined> {
+	try {
+		const text = await readFile(
+			dataPath(dataRoot, ...integrationStateFile(BILIBILI_SOURCE_KEY)),
+			"utf8",
+		);
+		return parseStoredEntries(JSON.parse(text))?.get("http.identity");
+	} catch {
+		return undefined;
+	}
+}
+
 /**
  * 用服务端落盘的登录态起一个**只读**的 Api。没有登录态直接退出进程 —— 三个脚本
  * 没有登录态都没法往下走。
  */
 export async function openReadonlyApi(serviceCtx: ServiceContext): Promise<Api> {
-	const storage = new StorageManager({
-		serviceCtx,
-		paths: {
-			keyPath: join(dataDir, "secrets", "master.key"),
-			cookiePath: join(dataDir, "secrets", "cookies.json"),
-			saltPath: join(dataDir, "secrets", "kdf.salt"),
-		},
-	});
-	await storage.init();
-	const cookieData = await storage.cookieStore.load();
-	if (!cookieData) {
-		console.error(
-			`没有登录态:${join(dataDir, "secrets", "cookies.json")} 为空,先在 dashboard 扫码登录`,
-		);
+	const dataRoot = await activeGenerationDir();
+	if (!dataRoot) {
+		console.error(`${dataDir} 里没有数据代,先启动一次 BN`);
 		process.exit(1);
 	}
-	const { jar, http } = createBiliHttp();
-	const api = new Api({ serviceCtx, http, jar });
+	// 只读地拿主密钥:缺了不造(`getKey()` 缺文件会当场写一把)。
+	const material = await readKeyMaterial({
+		passphrase: process.env.BN_COOKIE_KEY,
+		keyPath: dataPath(dataRoot, "secrets", "master.key"),
+		saltPath: dataPath(dataRoot, "secrets", "kdf.salt"),
+	});
+	if (material.kind !== "ok") {
+		console.error(`${dataRoot} 里找不到主密钥,没法解开登录态`);
+		process.exit(1);
+	}
+	const keyProvider: KeyProvider = {
+		getKey: async () => material.key,
+		protected: Boolean(process.env.BN_COOKIE_KEY?.trim()),
+	};
+	const read = { dataRoot, key: BILIBILI_SOURCE_KEY, logger: serviceCtx.logger };
+	const secrets = await readIntegrationSecretsFile({ ...read, keyProvider });
+	const cookies = secrets.kind === "ok" ? secrets.entries.get("http.cookies") : undefined;
+	if (typeof cookies !== "string" || cookies === "[]") {
+		console.error(`没有登录态:${dataRoot} 的 B 站 secrets 里没有 cookie,先在 dashboard 扫码登录`);
+		process.exit(1);
+	}
+	// 浏览器身份也读存着的那一份(同一个 cookie 会话在不同 UA 间跳变是机器人特征);读不到就让宿主现生成。
+	// 不能用 `readIntegrationStateFile`:文件坏了它会把线上文件隔离改名。这里只读文本、只解析,读不出就当没有。
+	const identity = await readStoredIdentity(dataRoot);
+	const { handle } = memoryStoreHandle({
+		// 只放罐子,不放令牌。
+		secrets: { "http.cookies": cookies },
+		state:
+			identity === undefined ? undefined : ({ "http.identity": identity } as Record<string, Json>),
+	});
+	const context = await createBiliContext({ stores: { open: async () => handle }, serviceCtx });
+	const api = new Api({ serviceCtx, ctx: context.ctx });
 	await api.start();
-	await api.loadCookies({ ...cookieData, refreshToken: undefined as unknown as string });
+	await api.resumeStoredLogin();
 	return api;
 }

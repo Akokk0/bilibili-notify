@@ -38,6 +38,7 @@ import { ROAST_DRAFTS_FILE } from "../runtime/roast-draft-store.js";
 import { type DataRootKey, dataPath, HOST_ROOT_LAYOUT } from "../runtime/roots.js";
 import { SUB_RUNTIME_FILE } from "../runtime/sub-runtime-store.js";
 import { DASHBOARD_SKINS_DIR } from "../skins/store.js";
+import { BILI_LOGIN_TARGET, migrateBiliLogin } from "./bili-login.js";
 import { createChatAttachmentMigrator } from "./chat-attachments.js";
 import { migrateConnectionFiles } from "./connections.js";
 import { migrateConversationFiles } from "./conversations.js";
@@ -78,8 +79,10 @@ import { migrateUptime } from "./uptime.js";
  * (`config/targets.json` 因此少了这两格,摘要变)。
  * 40 = 连接换成 `adapterKey` / `settings` / `platformSnapshot` 的新形状(`connections.json` 的形状变),
  * `testStatus` 两处(连接、目标)都不带过来。
+ * 41 = B 站登录从 secrets/cookies.json 转成 secrets/bilibili/secrets.enc(cookie 罐进 http.cookies 键、续期令牌进
+ * refreshToken 键);解不开的不带过来。
  */
-export const MIGRATION_REVISION = 40;
+export const MIGRATION_REVISION = 41;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";
@@ -162,7 +165,15 @@ const ZERO_GENERATION_MOVES = {
 				"拓展订阅:迁移读它一次、和 subscriptions.json 合成一个文件(ADR-0021 决策 15),不进新代",
 		},
 	},
-	secrets: { kind: "move", to: ["secrets"], label: "密钥" },
+	secrets: {
+		kind: "move",
+		to: ["secrets"],
+		label: "密钥",
+		inputs: (path) =>
+			path === "cookies.json"
+				? "B 站登录:迁移读它一次、转成 secrets/bilibili/secrets.enc,不进新代"
+				: undefined,
+	},
 	history: { kind: "move", to: ["history"], label: "推送历史", inputs: historyInputReason },
 	stats: { kind: "move", to: ["stats"], label: "统计" },
 	fans: { kind: "move", to: FOLLOWERS_DIR, label: "粉丝时序" },
@@ -208,7 +219,7 @@ export interface ZeroMigrationResult {
 	 * 搬过去的每个文件(相对第 0 代根 / 新代根,`/` 分隔)与搬法:`copy` 复制、
 	 * `symlink` 重建同样的一条软链。
 	 */
-	transfers: { from: string; to: string; method: "copy" | "symlink" }[];
+	transfers: { from: string; to: string; method: "copy" | "symlink" | "convert" }[];
 	/** 没带过来的,和为什么。 */
 	skipped: { path: string; reason: string }[];
 	/**
@@ -322,7 +333,7 @@ export async function migrateZeroGeneration(
 
 /**
  * 搬完位置之后逐文件改写,一族一个。**顺序有依赖**:连接与目标(托管目标会改写订阅里的目标 id,由配置仓
- * 开机时做)→ 设置 → 主人目标(要两边都迁好)→ 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、对话、密钥(不依赖别的,放最后)。
+ * 开机时做)→ 设置 → 主人目标(要两边都迁好)→ 订阅 → 推送历史 → 要订阅列表的统计与锐评草稿 → 订阅资料、皮肤、对话、密钥、B 站登录(不依赖别的,放最后)。
  * 每一项回它改写过的文件(绝对路径)。
  */
 const REWRITES: readonly {
@@ -558,6 +569,29 @@ const REWRITES: readonly {
 				dataPath(opts.targetDir, "secrets", "config-secrets.enc"),
 				await readZeroGenerationKey(opts.zeroRoot, opts.passphrase),
 			),
+	},
+	{
+		label: "B 站登录",
+		run: async (opts, report) => {
+			// `secrets` 那一项的 `inputs` 无条件记了一条「没带过来」(见上):转成功了摘掉、记一条转换;没转成只改原因。
+			const path = "secrets/cookies.json";
+			const login = await migrateBiliLogin({
+				cookiesPath: zeroPath(opts.zeroRoot, "secrets", "cookies.json"),
+				targetDir: opts.targetDir,
+				key: await readZeroGenerationKey(opts.zeroRoot, opts.passphrase),
+			});
+			if (login.kind === "written") {
+				report.skipped = report.skipped.filter((skipped) => skipped.path !== path);
+				report.transfers.push({ from: path, to: BILI_LOGIN_TARGET, method: "convert" });
+			} else if (login.kind === "dropped") {
+				report.skipped = report.skipped.map((skipped) =>
+					skipped.path === path
+						? { path, reason: `B 站登录没带过来(${login.reason}),需要重新扫码` }
+						: skipped,
+				);
+			}
+			return [];
+		},
 	},
 ];
 

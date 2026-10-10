@@ -25,6 +25,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
+import { gcmDecrypt, gcmEncrypt } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { JPEG_BYTES, PNG_BYTES, WEBP_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import {
@@ -50,6 +51,14 @@ beforeEach(async () => {
 afterEach(async () => {
 	await rm(root, { recursive: true, force: true });
 });
+
+/** 夹具里 `secrets/master.key` 的那把密钥,与 B 站登录那份固定明文(迁移转进 `secrets/bilibili/secrets.enc`)。 */
+const ZERO_MASTER_KEY = Buffer.from("ab".repeat(32), "hex");
+const ZERO_COOKIES_JSON = JSON.stringify([
+	{ name: "SESSDATA", value: "sess", domain: "bilibili.com" },
+	{ name: "bili_jct", value: "jct", domain: "bilibili.com" },
+]);
+const ZERO_REFRESH_TOKEN = "refresh-token-0";
 
 /** 0.x 的聊天附件(32 位 hex + 后缀):一张真图、一个被会话引用却不是图的、一张没人引用的(孤儿)。 */
 const CHAT_ATTACHMENT = `${"a1".repeat(16)}.png`;
@@ -246,7 +255,7 @@ const ZERO_FILES: Record<string, string> = {
 	"secrets/master.key": "ab".repeat(32),
 	"secrets/kdf.salt": "cd".repeat(16),
 	"secrets/config-secrets.enc": "enc",
-	"secrets/cookies.json": "{}",
+	// `secrets/cookies.json` 不在这里:它要用上面那把主密钥真加密(`placeZeroGeneration` 里放),才转得出内容。
 	// 坏行原样留着;0.x 的老行(一行 = 一个目标 × 一条消息)第二遍改写成现在的行。
 	"history/2026-09-30.jsonl": `{"id":1}\n${JSON.stringify({
 		id: "44444444-4444-4444-8444-444444444444",
@@ -365,7 +374,6 @@ const EXPECTED_MOVES: Record<string, string> = {
 	"secrets/master.key": "secrets/master.key",
 	"secrets/kdf.salt": "secrets/kdf.salt",
 	"secrets/config-secrets.enc": "secrets/config-secrets.enc",
-	"secrets/cookies.json": "secrets/cookies.json",
 	"history/2026-09-30.jsonl": "history/2026-09-30.jsonl",
 	"history/repush/2026-09-30/row-1.json": "history/repush/2026-09-30/row-1.json",
 	"history/repush/2026-09-30/row-2.json": "history/repush/2026-09-30/row-2.json",
@@ -427,6 +435,14 @@ async function placeZeroGeneration(): Promise<void> {
 		await mkdir(dirname(join(zero, path)), { recursive: true });
 		await writeFile(join(zero, path), content);
 	}
+	// B 站登录:用夹具的主密钥真加密一份固定明文,迁移才转得出内容(密文带随机 IV,逐次不同,所以摘要里算的是解开后的明文)。
+	await writeFile(
+		join(zero, "secrets", "cookies.json"),
+		JSON.stringify({
+			cookiesJson: gcmEncrypt(ZERO_MASTER_KEY, ZERO_COOKIES_JSON),
+			refreshToken: gcmEncrypt(ZERO_MASTER_KEY, ZERO_REFRESH_TOKEN),
+		}),
+	);
 	// 开发版 devtools 链进来的拓展:软链,新代里重建同样的一条。
 	await mkdir(join(root, "elsewhere"), { recursive: true });
 	await symlink(join(root, "elsewhere"), join(zero, "extensions", "dev-bridge"));
@@ -489,6 +505,8 @@ describe("migrateZeroGeneration", () => {
 			"stats/recording/33333333-3333-4333-8333-333333333333.jsonl",
 			// 运行记录是迁移新写的(㉗b)。
 			"uptime/hours.jsonl",
+			// B 站登录由 `secrets/cookies.json` 转成(3a-26)。
+			"secrets/bilibili/secrets.enc",
 			`images/${CHAT_REF}`,
 			`images/${AVATAR_REF}`,
 			`images/${HISTORY_REF}`,
@@ -589,7 +607,10 @@ describe("migrateZeroGeneration", () => {
 			const same = (await stat(join(target, to))).ino === (await stat(join(zero, from))).ino;
 			expect(same, `${to} 不该和第 0 代的 ${from} 是同一个文件`).toBe(false);
 		}
-		expect(new Set(report.transfers.map((t) => t.method))).toEqual(new Set(["copy", "symlink"]));
+		// `convert` 是 B 站登录:读第 0 代的 cookies.json、写成新代里的一个新文件,不是搬(没有同一个文件可共用)。
+		expect(new Set(report.transfers.map((t) => t.method))).toEqual(
+			new Set(["copy", "symlink", "convert"]),
+		);
 		// 聊天附件、拓展订阅头像进图库是复制,不是硬链接:图库靠刷新修改时间做宽限期,硬链接会改到第 0 代那份。
 		expect((await stat(join(target, "images", CHAT_REF))).ino).not.toBe(
 			(await stat(join(zero, "assets", "chat", CHAT_ATTACHMENT))).ino,
@@ -762,12 +783,22 @@ describe("migrateZeroGeneration", () => {
 		hash
 			.update("history/retention.json\n")
 			.update(await readFile(join(target, "history", "retention.json")));
+		// B 站登录转成的密钥文件也不在 `rewritten` 里(密文带随机 IV,逐次不同):把解开后的明文算进来,
+		// 转换怎么变(键名、值、格式版本)也得抬修订号。
+		hash
+			.update("secrets/bilibili/secrets.enc\n")
+			.update(
+				gcmDecrypt(
+					ZERO_MASTER_KEY,
+					JSON.parse(await readFile(join(target, "secrets", "bilibili", "secrets.enc"), "utf8")),
+				),
+			);
 
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 40,
-			output: "200cec349c26be767ef4dbc933956c0b144d1b39d15645824722e524da8737d1",
+			revision: 41,
+			output: "90bc0922e00816d285f8425ad94f9939f7882e67bad851df0442d64442b3ea5a",
 		});
 	});
 });

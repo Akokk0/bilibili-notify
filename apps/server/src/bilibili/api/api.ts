@@ -1,12 +1,14 @@
-import type { Cookie, CookieJar, HttpClient, WebSocketLike } from "@bilibili-notify/http";
+import type { CookieJar, HttpClient, WebSocketLike } from "@bilibili-notify/http";
 import {
 	type Disposable,
 	type Logger,
+	type Result,
 	retry as retryUtil,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
-import type { CookieData } from "@bilibili-notify/storage";
 import { CronJob } from "cron";
+import { errorMessageOf } from "../../util/error-message";
+import { type BiliContext, REFRESH_TOKEN_KEY } from "../context";
 import { ApiClient } from "./api-client";
 import * as EP from "./endpoints";
 import { createMyselfCache, type MyselfCache } from "./self-info-cache";
@@ -25,19 +27,12 @@ import type {
 } from "./types";
 import { buildTicketParams, encWbi, type WbiKeys } from "./wbi";
 
-interface CookiesRefreshedPayload {
-	cookiesJson: string;
-	refreshToken: string;
-}
-
 export interface ApiHandlers {
 	/**
-	 * Persist refreshed cookies. May be async — the refresh path `await`s it and
-	 * loudly logs a reject (in-memory jar is already updated; only disk lagged),
-	 * instead of the old `void`-typed fire-and-forget that let a persistence
-	 * failure pass as a successful refresh with an unhandled rejection.
+	 * 续期成功、新 cookie 与新令牌已经**落盘之后**叫一次。载荷没有:盘上那份已经由宿主写好,
+	 * 回调只剩「发总线事件」这一件事。
 	 */
-	onCookiesRefreshed?: (payload: CookiesRefreshedPayload) => Promise<void> | void;
+	onCookiesRefreshed?: () => Promise<void> | void;
 	/** Fired when the upstream returns code -101 (session invalid). Debounced 60s. */
 	onAuthLost?: () => void;
 }
@@ -78,11 +73,10 @@ export interface ApiOptions {
 	serviceCtx: ServiceContext;
 	callbacks?: ApiHandlers;
 	/**
-	 * 现成的请求客户端与它用的 cookie 罐(建法见 `default-headers.ts` 的 `createBiliHttp`):
-	 * 浏览器身份与 B 站的默认头都在客户端里。两者必须是配对的 —— 客户端就是用这只罐子建的。
+	 * B 站的集成上下文(建法见 `bilibili/context.ts`):请求客户端(浏览器身份与 B 站的默认头都在里面)、
+	 * 与它配对的 cookie 罐的把手、存令牌的 `secrets`。
 	 */
-	http: HttpClient;
-	jar: CookieJar;
+	ctx: BiliContext;
 }
 
 export class Api {
@@ -95,7 +89,14 @@ export class Api {
 	 * `load()` / `clear()` 原地换内容,不再重建罐子与客户端。
 	 */
 	private readonly jar: CookieJar;
+	private readonly ctx: BiliContext;
 	private readonly client: ApiClient;
+	/**
+	 * 「留着的闸」:登录状态改了一半、没提交成功的时候罐子不许自动存(盘上会变成「新 cookie + 旧令牌」或
+	 * 「空罐 + 旧令牌」)。同一时刻最多一道,再来一道就把旧的放掉换新的;下一次 `commitLogin` 成功、
+	 * 或 `resumeStoredLogin()` 时放。
+	 */
+	private unsavedSession?: Disposable;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
 	private refreshCookieTimer?: Disposable;
@@ -103,14 +104,14 @@ export class Api {
 	private authLostFiredAt = 0;
 	/**
 	 * Bumped on every event that supersedes the cookie state a refresh was
-	 * started against (loadCookies re-entry / clearCookies / -101 reset). An
+	 * started against (resumeStoredLogin re-entry / clearCookies / -101 reset). An
 	 * in-flight `checkIfTokenNeedRefresh` captures the value at entry and aborts
 	 * before applying side effects if it changed — otherwise a slow refresh from
-	 * a previous login lands late and `onCookiesRefreshed` overwrites the new
-	 * session's cookies with stale ones.
+	 * a previous login lands late and `commitLogin` overwrites the new
+	 * session's cookies with stale ones on disk.
 	 */
 	private refreshGeneration = 0;
-	/** Single-in-flight guard so the hourly timer + loadCookies don't run the RSA dance concurrently. */
+	/** Single-in-flight guard so the hourly timer + resumeStoredLogin don't run the RSA dance concurrently. */
 	private refreshInFlight = false;
 	/**
 	 * TicketResponse 在途去重。并发签名(或 wbiGet -352 清空 wbiKeys 后多个并行
@@ -131,9 +132,10 @@ export class Api {
 		this.serviceCtx = opts.serviceCtx;
 		this.callbacks = opts.callbacks ?? {};
 		this.logger = opts.serviceCtx.logger;
-		this.jar = opts.jar;
+		this.ctx = opts.ctx;
+		this.jar = opts.ctx.cookies.jar;
 		this.client = new ApiClient({
-			http: opts.http,
+			http: opts.ctx.http,
 			onBody: (body) => {
 				const data = body as { code?: unknown } | undefined;
 				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
@@ -164,7 +166,7 @@ export class Api {
 	}
 
 	stop(): void {
-		// 作废在途的 cookie 刷新:停下以后它不得再 onCookiesRefreshed 回写(关停返回后还落盘)。
+		// 作废在途的 cookie 刷新:停下以后它不得再 commitLogin 写盘(关停返回后还落盘)。
 		this.refreshGeneration++;
 		this.ticketJob?.stop();
 		this.refreshCookieTimer?.dispose();
@@ -230,7 +232,42 @@ export class Api {
 		this.loginInfoLoaded = false;
 		this.selfInfoCache.invalidate(); // 会话终态:账号身份不再有效,清缓存
 		this.fireAuthLost();
+		// 先拿一道闸留着再清罐:空罐不许自动存成「空罐 + 旧令牌」,盘上留着上一对(与今天一样)。
+		this.keepUnsaved(this.ctx.cookies.hold());
 		this.jar.clear();
+	}
+
+	/** 把这道闸记成「留着的」;已经有一道的,先拿新的再放旧的(中间不空档)。 */
+	private keepUnsaved(hold: Disposable): void {
+		const previous = this.unsavedSession;
+		this.unsavedSession = hold;
+		previous?.dispose();
+	}
+
+	private releaseUnsaved(): void {
+		this.unsavedSession?.dispose();
+		this.unsavedSession = undefined;
+	}
+
+	/** 扫码流程拿的闸:登录回应的 Set-Cookie 先进罐子、令牌后到,这中间不许自动存。放闸是拿的人自己的事。 */
+	holdLoginSaves(): Disposable {
+		return this.ctx.cookies.hold();
+	}
+
+	/**
+	 * 登录状态的唯一提交口:罐子此刻的内容 + 令牌(没有就删)合成**同一次原子写**。扫码成功、续期成功、登出
+	 * 都走它。成功就把留着的闸放掉;失败回结果,并留一道闸 —— 盘上还是上一对,罐子里的新状态不许被零散的自动存
+	 * 单独写出去(下一次提交成功才放)。
+	 */
+	async commitLogin(refreshToken: string | undefined): Promise<Result> {
+		const result = await this.ctx.cookies.commit([
+			refreshToken
+				? { kind: "set", key: REFRESH_TOKEN_KEY, value: refreshToken }
+				: { kind: "delete", key: REFRESH_TOKEN_KEY },
+		]);
+		if (result.ok) this.releaseUnsaved();
+		else this.keepUnsaved(this.ctx.cookies.hold());
+		return result;
 	}
 
 	// ---- Cookie management ----
@@ -255,87 +292,76 @@ export class Api {
 		return this.jar.getValue("bili_jct");
 	}
 
-	/** Load cookies from CookieData (decrypted by StorageManager) */
-	async loadCookies(data: CookieData): Promise<void> {
-		let cookies: Cookie[];
-		try {
-			const parsed = JSON.parse(data.cookiesJson);
-			if (!Array.isArray(parsed)) throw new Error("cookiesJson 不是数组");
-			cookies = parsed as Cookie[];
-		} catch (e) {
-			// 损坏的 cookiesJson 不得让整条启动链 reject 裸 SyntaxError —— 记 error
-			// 后按「未登录」继续(等用户重新扫码),不 crash 进程。
-			this.logger.error(
-				`[cookie] cookiesJson 解析失败,本次不加载(需重新登录): ${(e as Error).message}`,
-			);
-			return;
-		}
-		this.logger.debug(
-			`[cookie] 正在写入 ${cookies.length} 条 Cookie，refreshToken=${data.refreshToken ? "存在" : "缺失"}`,
-		);
+	/**
+	 * 恢复存着的登录(开机一次;恢复备份之后由宿主叫一次)。cookie 罐已经由宿主装好 / 换好,令牌在 `secrets` 里,
+	 * 这里只做剩下的:清账号身份缓存、补占位的 buvid3、标记已载入、作废在途的刷新,有令牌就触发一次续期并起每小时的定时器。
+	 */
+	async resumeStoredLogin(): Promise<void> {
+		// 换号 / 恢复:上一账号的身份缓存必须清掉。
+		this.selfInfoCache.invalidate();
+		// 罐子整个换了:上一串没提交成功的登录状态已经不存在了,留着的闸该放。
+		this.releaseUnsaved();
 
-		this.selfInfoCache.invalidate(); // 换号:上一账号的身份缓存必须清掉
-
+		const cookies = this.jar.serialize();
 		const biliJctCookie = cookies.find((c) => c.key === "bili_jct");
-
-		// 重载 / 换号:`load` 整罐换成这一批,旧 SESSDATA/bili_jct 绝不残留参与后续请求
-		// (否则换号后旧会话 cookie 仍被发出,与 clearCookies 同源)。
-		// Add a dummy buvid3 cookie if bili_jct is present (required by some APIs) —— 并进
-		// 同一批:`load` 是替换语义,分两次调第二次会把第一批全抹掉。
-		this.jar.load(
-			biliJctCookie
-				? [
-						...cookies,
-						{
-							key: "buvid3",
-							value: "some_non_empty_value",
-							expires: biliJctCookie.expires,
-							domain: biliJctCookie.domain,
-							path: biliJctCookie.path,
-							secure: biliJctCookie.secure,
-						},
-					]
-				: cookies,
-		);
+		// 罐里有 bili_jct 而没有 buvid3 时补一条占位的(有些接口要它)—— 并进同一批:`load` 是替换语义。
+		if (biliJctCookie && !cookies.some((c) => c.key === "buvid3")) {
+			this.jar.load([
+				...cookies,
+				{
+					key: "buvid3",
+					value: "some_non_empty_value",
+					expires: biliJctCookie.expires,
+					domain: biliJctCookie.domain,
+					path: biliJctCookie.path,
+					secure: biliJctCookie.secure,
+				},
+			]);
+		}
 
 		this.loginInfoLoaded = true;
-		this.logger.debug(`[cookie] Cookie 写入完成，bili_jct=${biliJctCookie ? "存在" : "缺失"}`);
+		this.logger.debug(
+			`[cookie] 载入 ${cookies.length} 条 Cookie,bili_jct=${biliJctCookie ? "存在" : "缺失"},refreshToken=${this.ctx.secrets.get(REFRESH_TOKEN_KEY) === undefined ? "缺失" : "存在"}`,
+		);
 
 		// 重入(re-login / hot-reload):作废上一轮可能仍 in-flight 的 refresh,
-		// 否则它完成时会用旧 jar 的 cookie 覆盖刚写入的新登录态。
+		// 否则它完成时会用旧 jar 的 cookie 覆盖刚换进来的登录态。
 		this.refreshGeneration++;
 
-		if (data.refreshToken) {
-			const csrf = biliJctCookie?.value ?? "";
-			this.triggerRefreshCheck(data.refreshToken, csrf);
-			this.enableRefreshCookiesInterval(data.refreshToken, csrf);
+		if (this.ctx.secrets.get<string>(REFRESH_TOKEN_KEY)) {
+			this.triggerRefreshCheck();
+			this.enableRefreshCookiesInterval();
 		}
 	}
 
 	/**
 	 * Guarded fire-and-forget entry to {@link checkIfTokenNeedRefresh} used by
-	 * the two internal triggers (loadCookies / hourly timer). Skips if a refresh
+	 * the two internal triggers (resumeStoredLogin / hourly timer). Skips if a refresh
 	 * is already running so the RSA/correspond/confirm dance never overlaps.
+	 *
+	 * 令牌**触发那一刻**现读 `ctx.secrets`,不关进闭包:续期成功之后新令牌已经提交进去,下一次触发带的是新的,
+	 * 不是开机那一刻的旧令牌(旧令牌在确认那一步已被作废)。读不到就不触发。
 	 */
-	private triggerRefreshCheck(refreshToken: string, csrf: string): void {
+	private triggerRefreshCheck(): void {
+		const refreshToken = this.ctx.secrets.get<string>(REFRESH_TOKEN_KEY);
+		if (!refreshToken) {
+			this.logger.debug("[cookie] 没有续期令牌,不触发刷新检查");
+			return;
+		}
 		if (this.refreshInFlight) {
 			this.logger.debug("[cookie] 刷新检查已在进行,跳过本次触发");
 			return;
 		}
 		this.refreshInFlight = true;
-		// 登记进 track:刷新链最后一步要把新 cookie 落到 secrets/cookies.json(`onCookiesRefreshed`),
+		// 登记进 track:刷新链最后一步要把新 cookie 与新令牌提交落盘,
 		// 关停得等它落完再让各写道关门。失败在交进去之前接住。
 		this.serviceCtx.track(
-			this.checkIfTokenNeedRefresh(refreshToken, csrf)
+			this.checkIfTokenNeedRefresh(refreshToken, this.getCSRF() ?? "")
 				.catch((e: Error) => this.logger.warn(`[cookie] Cookie 刷新检查失败: ${e.message}`))
 				.finally(() => {
 					this.refreshInFlight = false;
 				}),
 		);
-	}
-
-	markLoginInfoLoaded(): void {
-		this.loginInfoLoaded = true;
 	}
 
 	isLoginInfoLoaded(): boolean {
@@ -350,7 +376,7 @@ export class Api {
 	 * 停掉刷新定时器(登出后已无 refreshToken 可刷),标记未登录。
 	 */
 	async clearCookies(): Promise<void> {
-		// 作废任何 in-flight refresh —— 登出后它不得再 onCookiesRefreshed 回写。
+		// 作废任何 in-flight refresh —— 登出后它不得再 commitLogin 写盘。
 		this.refreshGeneration++;
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;
@@ -360,12 +386,12 @@ export class Api {
 		this.logger.info("[cookie] 内存 cookie jar 已清空");
 	}
 
-	private enableRefreshCookiesInterval(refreshToken: string, csrf: string): void {
+	private enableRefreshCookiesInterval(): void {
 		this.refreshCookieTimer?.dispose();
-		this.refreshCookieTimer = this.serviceCtx.setInterval(() => {
-			const csrf2 = this.getCSRF() ?? csrf;
-			this.triggerRefreshCheck(refreshToken, csrf2);
-		}, 3_600_000);
+		this.refreshCookieTimer = this.serviceCtx.setInterval(
+			() => this.triggerRefreshCheck(),
+			3_600_000,
+		);
 	}
 
 	// ---- Cookie refresh ----
@@ -375,163 +401,188 @@ export class Api {
 		csrf: string,
 		gen = this.refreshGeneration,
 	): Promise<void> {
-		// 入口 + 每次跨 await 后比对 gen:loadCookies/clearCookies/-101 任一发生
+		// 入口 + 每次跨 await 后比对 gen:resumeStoredLogin/clearCookies/-101 任一发生
 		// 都会 bump,本轮(及其重试链)随即作废,绝不把过期结果写回。
 		if (gen !== this.refreshGeneration) {
 			this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代,跳过本轮");
 			return;
 		}
+		// 这一串刷新进行中,罐子不许自动存中间状态。闸怎么处置**只在下面的 finally 里决定一次**:
+		// 默认放(这一串没走到会改罐子的那一步,或被取代了);走过刷新 POST 之后改成「留」,
+		// 提交成功才改回放。别在每个 return / throw 前各写一遍 —— 漏一处就是盘上悄悄变成「新 cookie + 旧令牌」。
+		const hold = this.ctx.cookies.hold();
+		let fate: "release" | "keep" = "release";
 		try {
-			// 传真实 bili_jct(优先 live jar,回退调用方传入值),不是 refreshToken。
-			const info = await this.fetchCookieInfo(this.getCSRF() ?? csrf);
-			// 跨 await 后必须重校 gen(②修不全:此前缺这一处,旧 refreshToken
-			// 在重登/登出后仍用新 jar 继续刷新)。
+			try {
+				// 传真实 bili_jct(优先 live jar,回退调用方传入值),不是 refreshToken。
+				const info = await this.fetchCookieInfo(this.getCSRF() ?? csrf);
+				// 跨 await 后必须重校 gen(②修不全:此前缺这一处,旧 refreshToken
+				// 在重登/登出后仍用新 jar 继续刷新)。
+				if (gen !== this.refreshGeneration) {
+					this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
+					return;
+				}
+				const probeCode = typeof info?.code === "number" ? info.code : 0;
+				if (probeCode === -101) {
+					// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
+					await this.terminateSession("[cookie] fetchCookieInfo 返回 -101(账号未登录),终止会话");
+					return;
+				}
+				if (classifyRefreshCode(probeCode) === "risk-control") {
+					// 风控/限流:非终态。跳过本轮,等下个 interval 自愈(可 bili cap)。
+					this.logger.warn(
+						`[cookie] fetchCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮自愈)`,
+					);
+					return;
+				}
+				if (!info?.data?.refresh) return;
+			} catch (e) {
+				// P2:此前这里还有一层 3 次 ×3s 递归重试,而内层 fetchCookieInfo 已被
+				// this.retry(4 次指数退避)包住 → 双层乘积最坏 ~16 次 HTTP,且整段
+				// 占住 refreshInFlight 阻塞 hourly timer 数分钟。内层 retry 已足够吸收
+				// 瞬时抖动;失败即放弃本轮,等下个 interval 再探(绝不 fall through
+				// 强制刷新 —— 一次抖动触发整条 RSA 轮换会放大风控)。
+				this.logger.warn(`[cookie] 刷新探测失败,跳过本轮(不强制刷新): ${(e as Error).message}`);
+				return;
+			}
+
+			// Generate correspond path via RSA-OAEP
+			const publicKey = await crypto.subtle.importKey(
+				"jwk",
+				{
+					kty: "RSA",
+					n: "y4HdjgJHBlbaBN04VERG4qNBIFHP6a3GozCl75AihQloSWCXC5HDNgyinEnhaQ_4-gaMud_GF50elYXLlCToR9se9Z8z433U3KjM-3Yx7ptKkmQNAMggQwAVKgq3zYAoidNEWuxpkY_mAitTSRLnsJW-NCTa0bqBFF6Wm1MxgfE",
+					e: "AQAB",
+				},
+				{ name: "RSA-OAEP", hash: "SHA-256" },
+				true,
+				["encrypt"],
+			);
+
+			const ts = Date.now();
+			const data = new TextEncoder().encode(`refresh_${ts}`);
+			const encrypted = new Uint8Array(
+				await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, data),
+			);
+			const correspondPath = encrypted.reduce(
+				(str, c) => str + c.toString(16).padStart(2, "0"),
+				"",
+			);
+			// 加密那两步也跨了 await。罐子只有一个、换号原地换(⑭a 起),换号之后这条旧链再发请求,带的就是新号的 cookie,
+			// 回来的 Set-Cookie 会被当成新会话的收进去 —— 每跨一次 await 都比对,换了就不再发。
 			if (gen !== this.refreshGeneration) {
-				this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
+				this.logger.debug("[cookie] 刷新在算 correspond 期间被取代,丢弃");
 				return;
 			}
-			const probeCode = typeof info?.code === "number" ? info.code : 0;
-			if (probeCode === -101) {
-				// 探测即 -101:会话已死,直接终态,不再跑 RSA 链。
-				await this.terminateSession("[cookie] fetchCookieInfo 返回 -101(账号未登录),终止会话");
+
+			const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
+			if (gen !== this.refreshGeneration) {
+				this.logger.debug("[cookie] 刷新在取 correspond 页期间被取代,丢弃");
 				return;
 			}
-			if (classifyRefreshCode(probeCode) === "risk-control") {
-				// 风控/限流:非终态。跳过本轮,等下个 interval 自愈(可 bili cap)。
-				this.logger.warn(
-					`[cookie] fetchCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮自愈)`,
+			// jsdom 时代取 getElementById("1-name").textContent;页面即
+			// `<div id="1-name">{refresh_csrf}</div>`,正则等价且免掉整棵 jsdom 依赖树。
+			const refreshCsrf =
+				typeof html === "string"
+					? (/id="1-name"[^>]*>([^<]*)</.exec(html)?.[1]?.trim() ?? null)
+					: null;
+			if (!refreshCsrf) {
+				// correspond 页面没解析出 refresh_csrf(B 站返回异常 / 结构变更):
+				// 绝不 POST 一个 null refresh_csrf(必失败且语义不明)。抛可重试错,
+				// triggerRefreshCheck 记 warn,下个 interval 再探(gen/timer 不动)。
+				throw new Error("correspond 页面未解析到 refresh_csrf,跳过本轮刷新");
+			}
+
+			const refreshData = (await this.client.postForm(EP.COOKIE_REFRESH_URL, {
+				csrf,
+				refresh_csrf: refreshCsrf,
+				source: "main_web",
+				refresh_token: refreshToken,
+			})) as { code: number; message: string; data: { refresh_token: string } };
+
+			// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
+			// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
+			if (gen !== this.refreshGeneration) {
+				this.logger.debug("[cookie] 刷新结果在网络往返期间被取代,丢弃");
+				return;
+			}
+			// 刷新 POST 走过了:罐里可能已经是新 cookie、新令牌还没存。从这里起,除非提交成功或会话终态(`terminateSession`
+			// 自己另留一道),这道闸都留着。
+			fate = "keep";
+
+			if (refreshData.code !== 0) {
+				const outcome = classifyRefreshCode(refreshData.code);
+				if (outcome === "risk-control") {
+					// ②4 判别式:-352/-403 是风控/限流,**非会话终态**。不 auth-lost、
+					// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),下个
+					// interval 自愈;误升级为终态登出正是 ②4 反质疑的过度修复。
+					this.logger.warn(
+						`[cookie] 刷新遇风控/限流 code=${refreshData.code} msg=${refreshData.message},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮)`,
+					);
+					throw new Error(`Cookie 刷新被风控: code=${refreshData.code}`);
+				}
+				// 终态(-101 / 其它非0):②3 —— B2 此前只 emit 不清理,死会话每小时
+				// 继续 RSA 轮换、isLoginInfoLoaded 误报。统一走 terminateSession 清净。
+				fate = "release";
+				await this.terminateSession(
+					`[cookie] 刷新失败(会话终态)code=${refreshData.code} msg=${refreshData.message},触发 auth-lost`,
+				);
+				throw new Error(
+					`Cookie 刷新失败: code=${refreshData.code}, message=${refreshData.message}`,
+				);
+			}
+
+			const newCsrf = this.getCSRF();
+			if (!newCsrf) throw new Error("未找到 bili_jct cookie");
+
+			const acceptData = (await this.client.postForm(EP.COOKIE_REFRESH_CONFIRM_URL, {
+				csrf: newCsrf,
+				refresh_token: refreshToken,
+			})) as { code: number };
+
+			// confirm POST 返回之后、看码之前先比代数(与刷新那一步同序):被取代的链不许走风控 / 终态分支 ——
+			// 终态会清别人的罐子、发 auth-lost、留闸;下面接着就是写盘,同样不能用过期 gen 的结果覆盖更新的登录态。
+			if (gen !== this.refreshGeneration) {
+				this.logger.debug("[cookie] 刷新确认返回时已被取代,丢弃(不看码、不回写)");
+				fate = "release";
+				return;
+			}
+
+			if (acceptData.code !== 0) {
+				if (classifyRefreshCode(acceptData.code) === "risk-control") {
+					// confirm 步遇风控:同 B2,非终态,退避等下轮(不 auth-lost/不拆 timer)。
+					this.logger.warn(
+						`[cookie] 刷新确认遇风控/限流 code=${acceptData.code},跳过本轮(可 bili cap 后等下轮)`,
+					);
+					throw new Error(`Cookie 刷新确认被风控: code=${acceptData.code}`);
+				}
+				// confirm 终态:新旧 cookie 状态不可信,清净 + auth-lost(②3 同款)。
+				fate = "release";
+				await this.terminateSession(
+					`[cookie] 刷新确认失败(会话终态)code=${acceptData.code},触发 auth-lost`,
+				);
+				throw new Error(`Cookie 刷新确认失败: code=${acceptData.code}`);
+			}
+
+			// 提交:罐子此刻的内容(新 cookie)+ 新令牌,同一次原子写。失败时内存里已是新 cookie、盘上仍是上一对,
+			// 响亮记 error;闸留着,下一次提交成功才放。
+			const committed = await this.commitLogin(refreshData.data.refresh_token);
+			if (!committed.ok) {
+				this.logger.error(
+					`[cookie] 刷新后的登录状态存盘失败(内存 cookie 已更新,盘上为旧值,下次启动将回退): ${committed.message}`,
 				);
 				return;
 			}
-			if (!info?.data?.refresh) return;
-		} catch (e) {
-			// P2:此前这里还有一层 3 次 ×3s 递归重试,而内层 fetchCookieInfo 已被
-			// this.retry(4 次指数退避)包住 → 双层乘积最坏 ~16 次 HTTP,且整段
-			// 占住 refreshInFlight 阻塞 hourly timer 数分钟。内层 retry 已足够吸收
-			// 瞬时抖动;失败即放弃本轮,等下个 interval 再探(绝不 fall through
-			// 强制刷新 —— 一次抖动触发整条 RSA 轮换会放大风控)。
-			this.logger.warn(`[cookie] 刷新探测失败,跳过本轮(不强制刷新): ${(e as Error).message}`);
-			return;
-		}
-
-		// Generate correspond path via RSA-OAEP
-		const publicKey = await crypto.subtle.importKey(
-			"jwk",
-			{
-				kty: "RSA",
-				n: "y4HdjgJHBlbaBN04VERG4qNBIFHP6a3GozCl75AihQloSWCXC5HDNgyinEnhaQ_4-gaMud_GF50elYXLlCToR9se9Z8z433U3KjM-3Yx7ptKkmQNAMggQwAVKgq3zYAoidNEWuxpkY_mAitTSRLnsJW-NCTa0bqBFF6Wm1MxgfE",
-				e: "AQAB",
-			},
-			{ name: "RSA-OAEP", hash: "SHA-256" },
-			true,
-			["encrypt"],
-		);
-
-		const ts = Date.now();
-		const data = new TextEncoder().encode(`refresh_${ts}`);
-		const encrypted = new Uint8Array(
-			await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, data),
-		);
-		const correspondPath = encrypted.reduce((str, c) => str + c.toString(16).padStart(2, "0"), "");
-		// 加密那两步也跨了 await。罐子只有一个、换号原地换(⑭a 起),换号之后这条旧链再发请求,带的就是新号的 cookie,
-		// 回来的 Set-Cookie 会被当成新会话的收进去 —— 每跨一次 await 都比对,换了就不再发。
-		if (gen !== this.refreshGeneration) {
-			this.logger.debug("[cookie] 刷新在算 correspond 期间被取代,丢弃");
-			return;
-		}
-
-		const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
-		if (gen !== this.refreshGeneration) {
-			this.logger.debug("[cookie] 刷新在取 correspond 页期间被取代,丢弃");
-			return;
-		}
-		// jsdom 时代取 getElementById("1-name").textContent;页面即
-		// `<div id="1-name">{refresh_csrf}</div>`,正则等价且免掉整棵 jsdom 依赖树。
-		const refreshCsrf =
-			typeof html === "string"
-				? (/id="1-name"[^>]*>([^<]*)</.exec(html)?.[1]?.trim() ?? null)
-				: null;
-		if (!refreshCsrf) {
-			// correspond 页面没解析出 refresh_csrf(B 站返回异常 / 结构变更):
-			// 绝不 POST 一个 null refresh_csrf(必失败且语义不明)。抛可重试错,
-			// triggerRefreshCheck 记 warn,下个 interval 再探(gen/timer 不动)。
-			throw new Error("correspond 页面未解析到 refresh_csrf,跳过本轮刷新");
-		}
-
-		const refreshData = (await this.client.postForm(EP.COOKIE_REFRESH_URL, {
-			csrf,
-			refresh_csrf: refreshCsrf,
-			source: "main_web",
-			refresh_token: refreshToken,
-		})) as { code: number; message: string; data: { refresh_token: string } };
-
-		// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
-		// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
-		if (gen !== this.refreshGeneration) {
-			this.logger.debug("[cookie] 刷新结果在网络往返期间被取代,丢弃");
-			return;
-		}
-
-		if (refreshData.code !== 0) {
-			const outcome = classifyRefreshCode(refreshData.code);
-			if (outcome === "risk-control") {
-				// ②4 判别式:-352/-403 是风控/限流,**非会话终态**。不 auth-lost、
-				// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),下个
-				// interval 自愈;误升级为终态登出正是 ②4 反质疑的过度修复。
-				this.logger.warn(
-					`[cookie] 刷新遇风控/限流 code=${refreshData.code} msg=${refreshData.message},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮)`,
-				);
-				throw new Error(`Cookie 刷新被风控: code=${refreshData.code}`);
+			fate = "release";
+			// 事件在提交成功之后才发。回调抛了不算这一轮刷新失败(盘已经写好了)。
+			try {
+				await this.callbacks.onCookiesRefreshed?.();
+			} catch (e) {
+				this.logger.error(`[cookie] onCookiesRefreshed 回调抛了: ${errorMessageOf(e)}`);
 			}
-			// 终态(-101 / 其它非0):②3 —— B2 此前只 emit 不清理,死会话每小时
-			// 继续 RSA 轮换、isLoginInfoLoaded 误报。统一走 terminateSession 清净。
-			await this.terminateSession(
-				`[cookie] 刷新失败(会话终态)code=${refreshData.code} msg=${refreshData.message},触发 auth-lost`,
-			);
-			throw new Error(`Cookie 刷新失败: code=${refreshData.code}, message=${refreshData.message}`);
-		}
-
-		const newCsrf = this.getCSRF();
-		if (!newCsrf) throw new Error("未找到 bili_jct cookie");
-
-		const acceptData = (await this.client.postForm(EP.COOKIE_REFRESH_CONFIRM_URL, {
-			csrf: newCsrf,
-			refresh_token: refreshToken,
-		})) as { code: number };
-
-		if (acceptData.code !== 0) {
-			if (classifyRefreshCode(acceptData.code) === "risk-control") {
-				// confirm 步遇风控:同 B2,非终态,退避等下轮(不 auth-lost/不拆 timer)。
-				this.logger.warn(
-					`[cookie] 刷新确认遇风控/限流 code=${acceptData.code},跳过本轮(可 bili cap 后等下轮)`,
-				);
-				throw new Error(`Cookie 刷新确认被风控: code=${acceptData.code}`);
-			}
-			// confirm 终态:新旧 cookie 状态不可信,清净 + auth-lost(②3 同款)。
-			await this.terminateSession(
-				`[cookie] 刷新确认失败(会话终态)code=${acceptData.code},触发 auth-lost`,
-			);
-			throw new Error(`Cookie 刷新确认失败: code=${acceptData.code}`);
-		}
-
-		// confirm POST 之后再校一次:此刻才会写盘,绝不能用过期 gen 的结果
-		// 覆盖一个更新的登录态。
-		if (gen !== this.refreshGeneration) {
-			this.logger.debug("[cookie] 刷新完成但已被取代,不回写持久化");
-			return;
-		}
-
-		// 通知 core 持久化新 cookie。await + try/catch:持久化失败时内存 jar
-		// 已是新 cookie、盘上仍旧值 —— 响亮记 error,不再 reject 逃逸成功判定。
-		try {
-			await this.callbacks.onCookiesRefreshed?.({
-				cookiesJson: this.getCookiesJson() ?? "[]",
-				refreshToken: refreshData.data.refresh_token,
-			});
-		} catch (e) {
-			this.logger.error(
-				`[cookie] onCookiesRefreshed 持久化失败(内存 cookie 已更新,盘上为旧值,下次启动将回退): ${(e as Error).message}`,
-			);
+		} finally {
+			if (fate === "keep") this.keepUnsaved(hold);
+			else hold.dispose();
 		}
 	}
 
@@ -749,7 +800,7 @@ export class Api {
 
 	/**
 	 * 真 buvid3(设备指纹,与登录态无关)。弹幕连接认证包要用它 —— cookie 罐里那条
-	 * 是 loadCookies 填的占位假值,不能进认证包。成功后进程内缓存;失败返回空串
+	 * 是 resumeStoredLogin 填的占位假值,不能进认证包。成功后进程内缓存;失败返回空串
 	 * 且不缓存(认证包缺 buvid 仍可尝试,下次调用重试)。
 	 */
 	async getBuvid3(): Promise<string> {

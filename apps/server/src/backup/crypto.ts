@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { Json } from "@bilibili-notify/internal";
 import {
 	deriveKeyFromPassphrase,
 	type GcmBlob,
@@ -9,12 +10,12 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 /**
  * The secret payload of a full backup — everything that must never sit in the
- * plaintext sections: the cookie store (cookiesJson/refreshToken) plus every
- * value the plaintext sections had redacted (apiKey、连接与拓展的凭据)。
+ * plaintext sections: every integration's `secrets` bag (B 站登录、各集成存的凭据)
+ * plus every value the plaintext sections had redacted (apiKey、连接与拓展的凭据)。
  */
 export interface BackupSecretBag {
-	cookiesJson?: string;
-	refreshToken?: string;
+	/** 各集成的 `secrets` 整袋,键是集成键。只装有内容的。 */
+	integrationSecrets?: Record<string, Record<string, Json>>;
 	/**
 	 * 明文段**每一处**被脱敏改掉的地方(路径 + 原值),见 `./sanitize.ts` 的
 	 * `collectRedactions`:照脱敏结果现算的全集,apiKey、连接与拓展的凭据都在这里 ——

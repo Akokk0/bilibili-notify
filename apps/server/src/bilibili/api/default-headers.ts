@@ -1,12 +1,4 @@
-import {
-	type BrowserIdentity,
-	CookieJar,
-	generateBrowserIdentity,
-	HttpClient,
-} from "@bilibili-notify/http";
-
-/** 单跳超时:无 timeout 时一个挂起连接(对端不回 / 半开 TCP)会让该请求永不结束。 */
-const REQUEST_TIMEOUT_MS = 20_000;
+import type { BrowserIdentity } from "@bilibili-notify/http";
 
 /**
  * B 站特有的默认头;通用包不带任何平台的默认值。
@@ -33,27 +25,4 @@ export function defaultHeaders(identity: BrowserIdentity): Record<string, string
 		// 注:不设默认 Content-Type —— axios 对无 body 的 GET 会剥掉该头、
 		// 表单 POST 又逐请求覆盖,旧线上流量从未真正发过 application/json。
 	};
-}
-
-/**
- * 造 B 站这一路的请求底座:cookie 罐、浏览器身份、套了默认头的 `HttpClient`,交给 `Api`。
- *
- * 身份启动时生成一次、终身不变 —— 同一 cookie 会话在不同 UA 间跳变是机器人特征,身份漂移比版本旧更招风控。
- * **出站请求的 UA 只来自它**:HTTP 默认头、取 ticket、弹幕握手都读这一份,没有任何改 UA 的口子
- * (填了别的 UA 而 sec-ch-ua 仍是它的,拼出来是自相矛盾的指纹,ADR-0025 决策 7)。
- * 罐子与客户端都是**长期有效的同一个**:换号 / 登出 / -101 只调罐子的 `load()` / `clear()` 原地换内容。
- */
-export function createBiliHttp(identity: BrowserIdentity = generateBrowserIdentity()): {
-	jar: CookieJar;
-	identity: BrowserIdentity;
-	http: HttpClient;
-} {
-	const jar = new CookieJar();
-	const http = new HttpClient({
-		jar,
-		identity,
-		timeoutMs: REQUEST_TIMEOUT_MS,
-		headers: defaultHeaders(identity),
-	});
-	return { jar, identity, http };
 }

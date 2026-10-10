@@ -81,6 +81,30 @@ export function memoryStores(): { state: KeyValueStore; secrets: KeyValueStore }
 }
 
 /**
+ * 一个集成的内存版存储把手(四个存储 + 合并提交 + 关闭),落盘只记一笔、不碰盘。`initial` 是两份存储起始的内容
+ * (含宿主那一面的 `http.` 键)。B 站的 `Api` 测试与只读真机脚本用它拼 `BiliContext`。
+ */
+export function memoryStoreHandle(
+	initial: { state?: Record<string, Json>; secrets?: Record<string, Json> } = {},
+) {
+	const state = memoryKeyValueStores("state", initial.state);
+	const secrets = memoryKeyValueStores("secrets", initial.secrets);
+	let closed = false;
+	const handle: IntegrationStoreHandle = {
+		state: state.store,
+		secrets: secrets.store,
+		hostState: state.stores.host,
+		hostSecrets: secrets.stores.host,
+		commitSecrets: secrets.stores.commit,
+		onSecretsReplaced: (): Disposable => ({ dispose() {} }),
+		close() {
+			closed = true;
+		},
+	};
+	return { handle, state, secrets, isClosed: () => closed };
+}
+
+/**
  * 内存版的存储宿主(`IntegrationStore` 里装载器与内置适配器登记用到的那一面):`open` 同一个键开着就抛、
  * `close()` 之后能再开,与生产一样。
  */
@@ -98,15 +122,9 @@ export function memoryIntegrationStore(): {
 			if (opened.has(key)) throw new Error(`集成 ${key} 的存储已经开着`);
 			opened.add(key);
 			counts.set(key, (counts.get(key) ?? 0) + 1);
-			const state = memoryKeyValueStores("state");
-			const secrets = memoryKeyValueStores("secrets");
+			const { handle } = memoryStoreHandle();
 			return {
-				state: state.store,
-				secrets: secrets.store,
-				hostState: state.stores.host,
-				hostSecrets: secrets.stores.host,
-				commitSecrets: secrets.stores.commit,
-				onSecretsReplaced: (): Disposable => ({ dispose() {} }),
+				...handle,
 				close() {
 					opened.delete(key);
 				},
