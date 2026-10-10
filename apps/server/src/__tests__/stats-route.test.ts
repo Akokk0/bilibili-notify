@@ -83,7 +83,6 @@ function makeDeps(f: Fixture): RouteDeps {
 		},
 		puppeteer: null,
 		wsTicketStore: null,
-		qqSessionRegistry: null,
 	} as unknown as RouteDeps;
 }
 

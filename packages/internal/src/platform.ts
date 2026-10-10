@@ -1,6 +1,6 @@
-import type { Result } from "./constants";
+import type { PushTargetScope, Result } from "./constants";
 import type { PostImage } from "./post";
-import type { ProbeResult } from "./push-source";
+import type { AddressCandidate, ProbeResult } from "./push-source";
 import type { HistoryEntry } from "./schema/history";
 import type { SubscriptionReportDelivery } from "./schema/subscription-report";
 import type { Subscription } from "./schema/subscriptions";
@@ -444,6 +444,16 @@ export interface TargetDispatcher {
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次能力;同上的三种缺失回 undefined。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
+	/**
+	 * 列这条连接上可挑的地址(只查 `scope` 那一种)。连接不在 `not_found`、适配器不在
+	 * `unavailable`、设置不合法 `not_configured`、适配器没有这个成员 `unsupported`;
+	 * **停用的连接照样能列**。
+	 */
+	listAddressCandidates(
+		connectionId: string,
+		scope: PushTargetScope,
+		signal: AbortSignal,
+	): Promise<Result<{ candidates: readonly AddressCandidate[] }>>;
 }
 
 /**

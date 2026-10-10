@@ -26,7 +26,6 @@ import type { Marketplace } from "./extensions/marketplace.js";
 import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount.js";
 import type { ReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
-import type { QQSessionRegistry } from "./platforms/qq-official.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAiSkillsRoute } from "./routes/ai-skills.js";
@@ -231,11 +230,6 @@ export interface CreateAppOptions {
 	/** Desktop launcher local token gate. When set, /api/* requires x-bn-desktop-token. */
 	desktopToken?: string;
 	/**
-	 * QQ 官方机器人网关发现表(群/C2C openid)。由 index.ts 与 QQ adapter 共享同一实例;
-	 * `/api/qq/sessions/:id` 读它。省略 → 路由仍挂载但返回空列表。
-	 */
-	qqSessionRegistry?: QQSessionRegistry | null;
-	/**
 	 * 私聊指令注册表。settings PATCH 用它查别名冲突,`GET /api/commands` 用它
 	 * 把「你可以在私聊里敲这些」列给面板 —— 注册表是可序列化的声明,这两件事都是
 	 * 白拿的,不必再手写一份指令清单(手写的那份必然与实现脱节)。
@@ -308,7 +302,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			options.connectionSecrets ?? createSecretCellsReader(runtime.adapterRegistry),
 		puppeteer: options.puppeteer ?? null,
 		wsTicketStore: options.wsTicketStore ?? null,
-		qqSessionRegistry: options.qqSessionRegistry ?? null,
 		commands: options.commands,
 	};
 

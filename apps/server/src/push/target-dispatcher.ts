@@ -1,4 +1,5 @@
 import type {
+	AddressCandidate,
 	Connection,
 	ConnectionCapabilities,
 	DeliveryResult,
@@ -8,6 +9,7 @@ import type {
 	NotificationPayload,
 	ProbeResult,
 	PushTarget,
+	PushTargetScope,
 	Result,
 	SessionRef,
 	TargetDispatcher,
@@ -172,6 +174,23 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 				return await route.adapter.probe(route.connection);
 			} catch (e) {
 				return thrown(e, `connection=${route.connection.id} probe`);
+			}
+		},
+
+		async listAddressCandidates(
+			connectionId: string,
+			scope: PushTargetScope,
+			signal: AbortSignal,
+		): Promise<Result<{ candidates: readonly AddressCandidate[] }>> {
+			// 不套停用闸:挑地址是在建目标,连接停着也要能挑(没传 `gate`)。
+			const route = routeOf(connectionId, CONNECTION_NOT_FOUND);
+			if (!route.ok) return route;
+			const { adapter, connection } = route;
+			if (!adapter.listAddressCandidates) return fail("unsupported", "这种连接没有可列的地址");
+			try {
+				return await adapter.listAddressCandidates(connection, scope, signal);
+			} catch (e) {
+				return thrown(e, `connection=${connection.id} listAddressCandidates`);
 			}
 		},
 	};

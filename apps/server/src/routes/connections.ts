@@ -1,4 +1,5 @@
 import type {
+	AddressCandidatesResponse,
 	ConnectionCapabilitiesMap,
 	ConnectionTestResponse,
 	ConnectionView,
@@ -8,6 +9,7 @@ import {
 	NewConnectionSchema,
 	neutralPlatformSnapshot,
 	type PlatformSnapshot,
+	PushTargetScopeSchema,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
@@ -62,6 +64,31 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 			}
 		}
 		return c.json(out);
+	});
+
+	/**
+	 * 这条连接上可挑的地址(只查 `scope` 那一种):QQ 的群 / 私聊来自内存发现表,频道现去 QQ 拉。
+	 * 停用的连接照样能列;适配器没有这个成员(OneBot 之类)回 `unsupported`。
+	 */
+	app.get("/:id/addresses", async (c) => {
+		const scope = PushTargetScopeSchema.safeParse(c.req.query("scope"));
+		if (!scope.success) {
+			return respondFailure(
+				c,
+				fail("invalid", "scope 只能是 group / private / channel", {
+					issues: [{ path: ["scope"], message: "不是 group / private / channel 之一" }],
+				}),
+			);
+		}
+		const engines = deps.runtime.engines;
+		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
+		const result = await engines.listAddressCandidates(
+			c.req.param("id"),
+			scope.data,
+			c.req.raw.signal,
+		);
+		if (!result.ok) return respondFailure(c, result);
+		return c.json<AddressCandidatesResponse>({ candidates: [...result.candidates] });
 	});
 
 	app.post("/", async (c) => {

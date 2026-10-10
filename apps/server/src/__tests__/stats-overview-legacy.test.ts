@@ -78,7 +78,6 @@ function makeDeps(dataDir: string, uids: string[], liveUids: string[]): RouteDep
 		store: { getSubscriptions: () => bilibili(uids) },
 		puppeteer: null,
 		wsTicketStore: null,
-		qqSessionRegistry: null,
 	} as unknown as RouteDeps;
 }
 

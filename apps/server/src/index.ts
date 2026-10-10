@@ -59,7 +59,7 @@ import {
 	zeroGenerationExists,
 } from "./migration/zero-generation.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
-import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
+import { createQQOfficialAdapter } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { registerBuiltinAdapters } from "./push/builtin-adapters.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
@@ -250,9 +250,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	let wsServer: ReturnType<typeof createWsServer> | undefined;
 	let resourceMonitor: ResourceMonitor | undefined;
 	let loadedExtensions: LoadedExtensions | undefined;
-	// QQ 官方机器人网关捞到的群/C2C openid 落进这张共享发现表(不落盘),既喂 adapter
-	// 也喂 /api/qq/sessions 路由的面板选择器。一个进程一份。
-	const qqSessionRegistry = createQQSessionRegistry();
 	let processHandlerCleanup: (() => void) | undefined;
 	let shutdownPromise: Promise<void> | null = null;
 	let listeningPort = bootstrap.server.port;
@@ -652,7 +649,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			createQQOfficialAdapter({
 				logger: log,
 				serviceCtx: runtime.serviceCtx,
-				registry: qqSessionRegistry,
 				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
 				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
 			}),
@@ -1281,7 +1277,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			chromeIdleTimeoutMs,
 			chromeSource,
 			wsTicketStore,
-			qqSessionRegistry,
 			extensions: {
 				mounts: extensionMounts,
 				loaded: () => loadedExtensions?.list() ?? [],

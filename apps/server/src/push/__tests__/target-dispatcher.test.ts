@@ -361,6 +361,105 @@ describe("createTargetDispatcher — probeConnection", () => {
 	});
 });
 
+describe("createTargetDispatcher — listAddressCandidates(挑地址)", () => {
+	const SIGNAL = new AbortController().signal;
+	const FOUND = { ok: true, candidates: [{ address: "G1", name: "群甲" }] } as const;
+
+	function dispatcherOf(connections: Connection[], pa: PlatformAdapter) {
+		return createTargetDispatcher({
+			store: makeStore(connections, []),
+			adapters: registryOf([pa]),
+			logger: makeLogger(),
+		});
+	}
+
+	it("连接不在:not_found", async () => {
+		const dispatcher = dispatcherOf([], makePlatformAdapter("qq-official"));
+		expect(await dispatcher.listAddressCandidates("ghost", "group", SIGNAL)).toEqual({
+			ok: false,
+			code: "not_found",
+			message: "connection not found",
+		});
+	});
+
+	it("适配器不在:unavailable", async () => {
+		const dispatcher = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "telegram" })],
+			makePlatformAdapter("qq-official"),
+		);
+		expect(await dispatcher.listAddressCandidates("a1", "group", SIGNAL)).toMatchObject({
+			ok: false,
+			code: "unavailable",
+		});
+	});
+
+	it("设置不合法:not_configured,适配器没被调到", async () => {
+		const listAddressCandidates = vi.fn(async () => FOUND);
+		const dispatcher = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "qq-official" })],
+			makePlatformAdapter("qq-official", {
+				settingsSchema: z.object({ appId: z.string() }),
+				listAddressCandidates,
+			}),
+		);
+		expect(await dispatcher.listAddressCandidates("a1", "group", SIGNAL)).toMatchObject({
+			ok: false,
+			code: "not_configured",
+		});
+		expect(listAddressCandidates).not.toHaveBeenCalled();
+	});
+
+	it("适配器没有这个成员:unsupported", async () => {
+		const dispatcher = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "onebot" })],
+			makePlatformAdapter("onebot"),
+		);
+		expect(await dispatcher.listAddressCandidates("a1", "group", SIGNAL)).toEqual({
+			ok: false,
+			code: "unsupported",
+			message: "这种连接没有可列的地址",
+		});
+	});
+
+	it("成功:原样回适配器给的候选,连接 / scope / signal 都递下去", async () => {
+		const connection = makeConnection({ id: "a1", platform: "qq-official" });
+		const listAddressCandidates = vi.fn(async () => FOUND);
+		const dispatcher = dispatcherOf(
+			[connection],
+			makePlatformAdapter("qq-official", { listAddressCandidates }),
+		);
+		const r = await dispatcher.listAddressCandidates("a1", "channel", SIGNAL);
+		expect(r).toBe(FOUND);
+		expect(listAddressCandidates).toHaveBeenCalledWith(connection, "channel", SIGNAL);
+	});
+
+	it("停用的连接照样能列", async () => {
+		const listAddressCandidates = vi.fn(async () => FOUND);
+		const dispatcher = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "qq-official", enabled: false })],
+			makePlatformAdapter("qq-official", { listAddressCandidates }),
+		);
+		expect(await dispatcher.listAddressCandidates("a1", "group", SIGNAL)).toBe(FOUND);
+		expect(listAddressCandidates).toHaveBeenCalledTimes(1);
+	});
+
+	it("适配器抛错算 bug:接住 → unavailable", async () => {
+		const dispatcher = dispatcherOf(
+			[makeConnection({ id: "a1", platform: "qq-official" })],
+			makePlatformAdapter("qq-official", {
+				listAddressCandidates: vi.fn(async () => {
+					throw new Error("boom");
+				}),
+			}),
+		);
+		expect(await dispatcher.listAddressCandidates("a1", "group", SIGNAL)).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "boom",
+		});
+	});
+});
+
 describe("isEnabled — 配置层面能不能推(与运行时健康 isAvailable 分开)", () => {
 	function dispatcherWith(connections: Connection[], targets: PushTarget[]) {
 		return createTargetDispatcher({

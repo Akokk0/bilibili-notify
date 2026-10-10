@@ -1,5 +1,5 @@
-import type { QQDiscoveredEntry } from "@bilibili-notify/contract";
 import type {
+	AddressCandidate,
 	Connection,
 	ConnectionCandidate,
 	ConnectionCapabilities,
@@ -25,6 +25,7 @@ import { type RawData, WebSocket } from "ws";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
+import { upstreamMessage } from "./upstream-message.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
 const QQ_TOKEN_ENDPOINT = "https://bots.qq.com/app/getAppAccessToken";
@@ -55,11 +56,13 @@ class QQTokenError extends Error {
 export async function fetchAppAccessToken(
 	appId: string,
 	clientSecret: string,
+	signal?: AbortSignal,
 ): Promise<QQAccessToken> {
 	const res = await fetch(QQ_TOKEN_ENDPOINT, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ appId, clientSecret }),
+		signal,
 	});
 	if (!res.ok) throw new QQTokenError(`getAppAccessToken HTTP ${res.status}`, res.status);
 	const data = (await res.json()) as { access_token?: string; expires_in?: number | string };
@@ -342,7 +345,8 @@ export function extractQQGroupMessage(
 /** 单 adapter 发现列表上限 —— 内存 ring buffer,超出丢最旧(纯便利选择器,不持久化)。 */
 const QQ_DISCOVERY_MAX_PER_CONNECTION = 50;
 
-// QQDiscoveredEntry(= QQDiscoveredSession + lastSeenMs)在 @bilibili-notify/contract(web 同源消费)。
+/** 发现表里的一条:发现到的会话 + 最近见到的时间戳(ms)。只在适配器内部用,时间不出适配器。 */
+type QQDiscoveredEntry = QQDiscoveredSession & { lastSeenMs: number };
 
 /**
  * per-adapter「最近活跃会话」发现表 —— 群/C2C 的 openid 只能从入站事件捞,做成内存
@@ -1007,17 +1011,20 @@ export interface QQGuild {
  * `GET /guilds/{id}/channels`,只保留文字子频道(type 0)。某 guild 子频道列失败则跳过
  * 不整体崩。on-demand 一次性 token(不复用网关 manager,UI 偶发调用可接受)。
  */
-export async function fetchQQGuildChannels(cfg: QQOfficialConnectionSettings): Promise<QQGuild[]> {
-	const { token } = await fetchAppAccessToken(cfg.appId, cfg.appSecret);
+export async function fetchQQGuildChannels(
+	cfg: QQOfficialConnectionSettings,
+	signal?: AbortSignal,
+): Promise<QQGuild[]> {
+	const { token } = await fetchAppAccessToken(cfg.appId, cfg.appSecret, signal);
 	const base = qqApiBase(cfg.sandbox);
 	const headers = qqRestHeaders(token, cfg.appId);
-	const guildsRes = await fetch(`${base}/users/@me/guilds`, { headers });
+	const guildsRes = await fetch(`${base}/users/@me/guilds`, { headers, signal });
 	if (!guildsRes.ok) throw new Error(`列频道服务器 HTTP ${guildsRes.status}`);
 	const guilds = (await guildsRes.json().catch(() => [])) as Array<{ id?: string; name?: string }>;
 	const out: QQGuild[] = [];
 	for (const g of guilds) {
 		if (!g.id) continue;
-		const chRes = await fetch(`${base}/guilds/${g.id}/channels`, { headers });
+		const chRes = await fetch(`${base}/guilds/${g.id}/channels`, { headers, signal });
 		if (!chRes.ok) continue; // 读不了该 guild 子频道 → 跳过,不整体失败
 		const channels = (await chRes.json().catch(() => [])) as Array<{
 			id?: string;
@@ -1038,8 +1045,11 @@ export async function fetchQQGuildChannels(cfg: QQOfficialConnectionSettings): P
 export interface QQOfficialAdapterOptions {
 	logger: Logger;
 	serviceCtx: ServiceContext;
-	/** 共享发现表 —— 网关捞到的 openid 落这,路由 qq-sessions 读它。 */
-	registry: QQSessionRegistry;
+	/**
+	 * 发现表 —— 网关捞到的 openid 落这,`listAddressCandidates` 读它。缺省适配器自己建一张
+	 * (表只归适配器用,宿主不持有);只在测试里想预先塞几条记录时传。
+	 */
+	registry?: QQSessionRegistry;
 	/**
 	 * 入站消息的两路出口(私聊 → 指令分发,群 → 链接解析),与 onebot adapter 的同名选项是
 	 * 同一个角色、同一个形状。附上收到这条消息的 adapter id —— 回到来源群要知道该用哪个
@@ -1089,7 +1099,8 @@ const isMine = (c: Connection): c is QQOfficialConnection => c.adapterKey === "q
  * 富媒体两步上传→media),A+ 投递语义(202 审核中算 ok)。
  */
 export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): PlatformAdapter {
-	const { logger, serviceCtx, registry } = opts;
+	const { logger, serviceCtx } = opts;
+	const registry = opts.registry ?? createQQSessionRegistry();
 	const live = new Map<string, QQLive>();
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
 	const tokenOnly = new Map<string, QQTokenManager>();
@@ -1249,6 +1260,48 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
 			return builtinCandidatesFor("qq-official");
+		},
+
+		async listAddressCandidates(
+			connection: Connection,
+			scope: PushTargetScope,
+			signal: AbortSignal,
+		): Promise<Result<{ candidates: readonly AddressCandidate[] }>> {
+			if (!isMine(connection)) {
+				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
+			}
+			if (scope !== "channel") {
+				// 群 / 私聊:内存发现表里现成的,不出网。表里已是「最近的在前」。
+				return ok({
+					candidates: registry
+						.list(connection.id)
+						.filter((e) => e.scope === scope)
+						.map(
+							(e): AddressCandidate => ({
+								address: e.openid,
+								...(e.displayHint ? { name: e.displayHint } : {}),
+							}),
+						),
+				});
+			}
+			try {
+				const guilds = await fetchQQGuildChannels(connection.settings, signal);
+				return ok({
+					candidates: guilds.flatMap((g) =>
+						g.channels.map(
+							(ch): AddressCandidate => ({
+								address: ch.channelId,
+								name: ch.name,
+								parentAddress: g.guildId,
+								parentName: g.name,
+							}),
+						),
+					),
+				});
+			} catch (e) {
+				logger.warn(`[qq] connection=${connection.id} 列频道失败: ${upstreamMessage(e)}`);
+				return fail("unavailable", `列出频道失败：${upstreamMessage(e)}`);
+			}
 		},
 
 		capabilities(_connection: Connection): ConnectionCapabilities {

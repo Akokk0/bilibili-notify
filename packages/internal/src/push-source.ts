@@ -22,6 +22,7 @@ import type {
 	Connection,
 	DestinationRef,
 	PlatformDescriptor,
+	PushTargetScope,
 } from "./schema/targets";
 
 /**
@@ -105,6 +106,28 @@ export interface PlatformAdapter {
 	 * 拓展的由 3b / 22-3 接,所以先是可选 —— 没有这一格的适配器,宿主新建连接时填中性快照。
 	 */
 	listConnectionCandidates?(signal: AbortSignal): Promise<readonly ConnectionCandidate[]>;
+	/**
+	 * 列这条连接上可挑的地址。只查 `scope` 那一种 —— 有的种类是内存里现成的,有的要现去平台拉,
+	 * 调用方要哪种就只付哪种的代价。不实现 = 这种连接没有可列的地址,面板让主人手填。
+	 * 不对拓展开放(ADR-0024 决策 11):拓展的 `adapter` 类型把它排除掉。
+	 */
+	listAddressCandidates?(
+		connection: Connection,
+		scope: PushTargetScope,
+		signal: AbortSignal,
+	): Promise<Result<{ candidates: readonly AddressCandidate[] }>>;
+}
+
+/** 挑地址时的一个候选(ADR-0024 决策 3 的 listAddressCandidates)。 */
+export interface AddressCandidate {
+	/** 填进目标 `address` 的那个值。 */
+	address: string;
+	/** 给人认的名字;平台给不出就没有(QQ 的群事件不带群名,只有触发者的名字可作提示)。 */
+	name?: string;
+	/** 上级地址,填进目标的 `parentAddress`(QQ 频道:子频道所属的频道服务器 id)。 */
+	parentAddress?: string;
+	/** 上级的名字,面板拿它给候选分组。 */
+	parentName?: string;
 }
 
 /**

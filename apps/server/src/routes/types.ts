@@ -1,6 +1,5 @@
 import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
-import type { QQSessionRegistry } from "../platforms/qq-official.js";
 import type { SecretCellsReader } from "../push/connection-settings.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import type { HelpEntry } from "../runtime/command-help.js";
@@ -30,11 +29,6 @@ export interface RouteDeps {
 	 * 未启用,WS 直接放行(同 REST 路径)。
 	 */
 	wsTicketStore: WsTicketStore | null;
-	/**
-	 * QQ 官方机器人网关发现表(群/C2C openid)。`/api/qq/sessions/:id` 读它。null =
-	 * 未配 QQ 连接(路由仍挂载,返回空列表)。
-	 */
-	qqSessionRegistry: QQSessionRegistry | null;
 	/**
 	 * 私聊指令注册表(主名 + 内置别名)。globals PATCH 用它做别名冲突检查,
 	 * `GET /api/commands` 用它把「你可以在私聊里敲这些」列给面板。

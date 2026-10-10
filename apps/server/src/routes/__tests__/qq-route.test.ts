@@ -1,137 +1,23 @@
 /**
- * 单元测试 — /api/qq 路由。
- * - GET /sessions/:connectionId → 读共享发现表(网关捞到的群/C2C openid),供面板选择器。
- * - GET /guilds/:connectionId   → REST 枚举频道子频道(频道 scope 选择器)。
+ * 单元测试 — /api/qq 路由只剩扫码绑定(那两个口的测试在 qq-bind-route.test.ts)。
+ * 挑群 / 频道地址的两个读口(`/sessions/:connectionId`、`/guilds/:connectionId`)已经搬到
+ * `GET /api/connections/:id/addresses`,这里钉住旧的两个不再存在。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createQQSessionRegistry } from "../../platforms/qq-official.js";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createQQRoute } from "../qq.js";
 import type { RouteDeps } from "../types.js";
 
-let fetchMock: ReturnType<typeof vi.fn>;
-function res(status: number, body: unknown): Response {
-	return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
-}
-beforeEach(() => {
-	fetchMock = vi.fn();
-	vi.stubGlobal("fetch", fetchMock);
-});
-afterEach(() => {
-	vi.unstubAllGlobals();
-});
-
-function makeDeps(opts?: {
-	registry?: ReturnType<typeof createQQSessionRegistry>;
-	connections?: unknown[];
-}): RouteDeps {
-	const connections = opts?.connections ?? [
-		{
-			id: "a1",
-			adapterKey: "qq-official",
-			platform: "qq-official",
-			enabled: true,
-			settings: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public" },
-		},
-	];
-	return {
-		qqSessionRegistry: opts?.registry ?? null,
-		store: { getConnections: () => connections },
+function makeApp() {
+	return createQQRoute({
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 		},
-	} as unknown as RouteDeps;
+	} as unknown as RouteDeps);
 }
 
-describe("GET /api/qq/sessions/:connectionId", () => {
-	it("返回该 adapter 发现表(最近优先)", async () => {
-		const registry = createQQSessionRegistry();
-		registry.record("a1", { scope: "group", openid: "G1", displayHint: "群甲" }, 1000);
-		registry.record("a1", { scope: "private", openid: "U1" }, 2000);
-		const app = createQQRoute(makeDeps({ registry }));
-		const r = await app.request("/sessions/a1");
-		expect(r.status).toBe(200);
-		const body = (await r.json()) as Array<Record<string, unknown>>;
-		expect(body.map((e) => e.openid)).toEqual(["U1", "G1"]);
-	});
-
-	it("registry 缺省 → 空数组(不崩)", async () => {
-		const app = createQQRoute(makeDeps());
-		const r = await app.request("/sessions/a1");
-		expect(r.status).toBe(200);
-		expect(await r.json()).toEqual([]);
-	});
-});
-
-describe("GET /api/qq/guilds/:connectionId", () => {
-	it("枚举频道子频道(文字)", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
-			if (url.includes("getAppAccessToken"))
-				return res(200, { access_token: "TKN", expires_in: 7200 });
-			if (url.endsWith("/users/@me/guilds")) return res(200, [{ id: "G1", name: "频道甲" }]);
-			if (url.endsWith("/guilds/G1/channels"))
-				return res(200, [{ id: "C1", name: "公告", type: 0 }]);
-			return res(404, {});
-		});
-		const app = createQQRoute(makeDeps());
-		const r = await app.request("/guilds/a1");
-		expect(r.status).toBe(200);
-		const body = (await r.json()) as Array<Record<string, unknown>>;
-		expect(body).toHaveLength(1);
-		expect(body[0]?.guildId).toBe("G1");
-	});
-
-	it("adapter 不存在 → 404 not_found", async () => {
-		const app = createQQRoute(makeDeps());
-		const r = await app.request("/guilds/nope");
-		expect(r.status).toBe(404);
-		expect(await r.json()).toEqual({ code: "not_found", message: "没有这个 QQ 官方机器人连接" });
-	});
-
-	it("非 qq-official adapter → 404", async () => {
-		const app = createQQRoute(
-			makeDeps({
-				connections: [
-					{ id: "a1", adapterKey: "onebot", platform: "onebot", enabled: true, settings: {} },
-				],
-			}),
-		);
-		const r = await app.request("/guilds/a1");
-		expect(r.status).toBe(404);
-		expect(await r.json()).toMatchObject({ code: "not_found" });
-	});
-
-	it("连接的设置不合法 → not_configured,不往外连", async () => {
-		const app = createQQRoute(
-			makeDeps({
-				connections: [
-					{
-						id: "a1",
-						adapterKey: "qq-official",
-						platform: "qq-official",
-						enabled: true,
-						settings: { appId: "", appSecret: "SECRET" },
-					},
-				],
-			}),
-		);
-		const r = await app.request("/guilds/a1");
-		expect(r.status).toBeGreaterThanOrEqual(400);
-		expect(await r.json()).toMatchObject({ code: "not_configured" });
-		expect(fetchMock).not.toHaveBeenCalled();
-	});
-
-	it("枚举抛错 → 503 unavailable,带上游的话(不是 `Error: ` 打头的 String(err))", async () => {
-		fetchMock.mockImplementation(async (url: string) => {
-			if (url.includes("getAppAccessToken"))
-				return res(200, { access_token: "T", expires_in: 7200 });
-			return res(401, {});
-		});
-		const app = createQQRoute(makeDeps());
-		const r = await app.request("/guilds/a1");
-		expect(r.status).toBe(503);
-		expect(await r.json()).toEqual({
-			code: "unavailable",
-			message: "列出频道失败：列频道服务器 HTTP 401",
-		});
+describe("/api/qq 不再有的两个读口", () => {
+	it.each(["/sessions/a1", "/guilds/a1"])("GET %s → 404(路由不存在)", async (path) => {
+		const res = await makeApp().request(path);
+		expect(res.status).toBe(404);
 	});
 });

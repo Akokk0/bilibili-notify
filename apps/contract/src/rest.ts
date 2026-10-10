@@ -12,6 +12,7 @@ import type {
 	ExtensionSubscriptionView,
 } from "@bilibili-notify/extension/wire";
 import type {
+	AddressCandidate,
 	AIProviderProfile,
 	AISettings,
 	CachedProfile,
@@ -50,6 +51,7 @@ export type {
 	Result,
 } from "@bilibili-notify/internal";
 export type {
+	AddressCandidate,
 	ConnectionCapabilities,
 	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 CapabilitySupport 那条。
 	ExtensionProvides,
@@ -82,6 +84,14 @@ export type ErrorResponse = Omit<Failure, "ok">;
  * 适配器给不出能力的连接(没有适配器管、适配器没实现、引擎还没起来)不在,读它的地方按「还不知道」算。
  */
 export type ConnectionCapabilitiesMap = Record<string, ConnectionCapabilities>;
+
+/**
+ * `GET /api/connections/:id/addresses?scope=group|private|channel` 响应 —— 这条连接上可挑的地址,
+ * 只含 `scope` 那一种。一排平的项;分组靠 `parentAddress` / `parentName`(QQ 频道:频道服务器)。
+ */
+export interface AddressCandidatesResponse {
+	candidates: AddressCandidate[];
+}
 
 // ---- /api/extensions ------------------------------------------------------
 
@@ -1184,17 +1194,6 @@ export interface EnableRenderingResponse {
 }
 
 // ---- /api/qq ----------------------------------------------------------------
-
-/** `GET /api/qq/sessions/:connectionId` 单条 —— 网关入站事件捞到的群/C2C 会话。 */
-export interface QQDiscoveredEntry {
-	scope: "group" | "private";
-	/** group_openid(群)或用户 openid(C2C)。 */
-	openid: string;
-	/** 触发者用户名等展示提示 —— 群事件不带群名,只能靠它给用户辨认。 */
-	displayHint?: string;
-	/** 最近见到时间戳(ms)。 */
-	lastSeenMs: number;
-}
 
 /** `POST /api/qq/bind/start` 响应 —— 扫码一键建 bot(借道腾讯 lite 通道)。 */
 export interface QQBindStartResponse {

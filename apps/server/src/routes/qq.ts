@@ -1,9 +1,9 @@
 import type { QQBindStartResponse } from "@bilibili-notify/contract";
-import { fail, QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
+import { fail } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import QRCode from "qrcode";
 import { createBindTask, pollBindTask } from "../platforms/qq-bind.js";
-import { fetchQQGuildChannels } from "../platforms/qq-official.js";
+import { upstreamMessage } from "../platforms/upstream-message.js";
 import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 
@@ -14,24 +14,16 @@ const BIND_TASK_TTL_MS = 10 * 60_000;
 const BIND_POLL_INTERVAL_SEC = 2;
 
 /**
- * `/api/qq` — QQ 官方机器人面板辅助数据(只读)。
+ * `/api/qq` — QQ 官方机器人的扫码绑定(挑群 / 频道地址的读口在 `GET /api/connections/:id/addresses`)。
  *
- * - `GET /sessions/:connectionId` — 网关从入站事件捞到的群/C2C 会话(openid),供建 target
- *   时的选择器(QQ 无「列我加入的群」接口,只能让机器人先被 @ 一次)。内存发现表,不落盘。
- * - `GET /guilds/:connectionId`   — REST 枚举该连接能见的频道服务器 + 文字子频道,供频道
- *   scope target 选择器。每次实时拉(一次性 token)。
  * - `POST /bind/start` / `POST /bind/poll` — 扫码一键建 bot(借道腾讯 OpenClaw lite
  *   通道,见 `platforms/qq-bind.ts`)。bindKey 只存本路由内存,不出响应、不落盘;
  *   凭据由前端回填表单草稿,保存走既有 PATCH 链路。
  *
- * 失败一律经 `respondFailure`(ADR-0026):任务不在 / 连接不在 `not_found`;腾讯或 QQ 开放平台那头
+ * 失败一律经 `respondFailure`(ADR-0026):任务不在 `not_found`;腾讯或 QQ 开放平台那头
  * 出岔子 `unavailable`,话里带上游的原话(`Error.message`,不是 `String(err)`)。
  */
 
-/** 上游抛的错取它的话;不是 Error 就没话可取。 */
-function upstreamWords(err: unknown): string {
-	return err instanceof Error && err.message ? err.message : "上游没说原因";
-}
 export function createQQRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	const log = deps.runtime.serviceCtx.logger;
@@ -61,7 +53,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 			return c.json(body);
 		} catch (err) {
 			log.warn(`POST /api/qq/bind/start failed: ${String(err)}`);
-			return respondFailure(c, fail("unavailable", `发起绑定失败：${upstreamWords(err)}`));
+			return respondFailure(c, fail("unavailable", `发起绑定失败：${upstreamMessage(err)}`));
 		}
 	});
 
@@ -79,32 +71,7 @@ export function createQQRoute(deps: RouteDeps): Hono {
 		} catch (err) {
 			// 上游故障保留任务,前端下一轮继续问。
 			log.warn(`POST /api/qq/bind/poll failed: ${String(err)}`);
-			return respondFailure(c, fail("unavailable", `查询绑定结果失败：${upstreamWords(err)}`));
-		}
-	});
-
-	app.get("/sessions/:connectionId", (c) => {
-		const id = c.req.param("connectionId");
-		return c.json(deps.qqSessionRegistry?.list(id) ?? []);
-	});
-
-	app.get("/guilds/:connectionId", async (c) => {
-		const id = c.req.param("connectionId");
-		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (connection?.adapterKey !== "qq-official") {
-			return respondFailure(c, fail("not_found", "没有这个 QQ 官方机器人连接"));
-		}
-		// 盘上存的是原文(不补默认值),用之前按规则解一遍;不合法的连接不往外连。
-		const settings = QQOfficialConnectionSettingsSchema.safeParse(connection.settings);
-		if (!settings.success) {
-			return respondFailure(c, fail("not_configured", "这条连接的设置不合法"));
-		}
-		try {
-			const guilds = await fetchQQGuildChannels(settings.data);
-			return c.json(guilds);
-		} catch (err) {
-			log.warn(`GET /api/qq/guilds/${id} failed: ${String(err)}`);
-			return respondFailure(c, fail("unavailable", `列出频道失败：${upstreamWords(err)}`));
+			return respondFailure(c, fail("unavailable", `查询绑定结果失败：${upstreamMessage(err)}`));
 		}
 	});
 

@@ -23,6 +23,7 @@ import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-no
 import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
+	AddressCandidate,
 	CardKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
@@ -42,6 +43,8 @@ import type {
 	PayloadSegment,
 	ProbeResult,
 	PushTarget,
+	PushTargetScope,
+	Result,
 	SessionRef,
 	Subscription,
 	SubscriptionOp,
@@ -183,6 +186,12 @@ export interface EnginesRuntime extends Disposable {
 	connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined;
 	/** 主动探一次平台能力(还没探出来时)。与上一条同源,都走 dispatcher 的连接寻址。 */
 	probeConnectionCapabilities(connectionId: string): Promise<ConnectionCapabilities | undefined>;
+	/** 列这条连接上可挑的地址(只查 `scope` 那一种),转给派发器的 `listAddressCandidates`。 */
+	listAddressCandidates(
+		connectionId: string,
+		scope: PushTargetScope,
+		signal: AbortSignal,
+	): Promise<Result<{ candidates: readonly AddressCandidate[] }>>;
 	/** 不经目标表往某条连接上的一个会话发(链接回复),转给派发器的 `sendToAddress`。 */
 	sendToAddress(
 		connectionId: string,
@@ -1232,6 +1241,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			dispatcher.connectionCapabilities(connectionId),
 		probeConnectionCapabilities: (connectionId: string) =>
 			dispatcher.probeConnectionCapabilities(connectionId),
+		listAddressCandidates: (connectionId, scope, signal) =>
+			dispatcher.listAddressCandidates(connectionId, scope, signal),
 		sendToAddress: (connectionId, session, payload) =>
 			dispatcher.sendToAddress(connectionId, session, payload),
 		linkParsing: () => linkCard.config,
