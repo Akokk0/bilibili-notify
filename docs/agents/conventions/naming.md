@@ -42,7 +42,7 @@
 | 把别处的形状翻成领域实体的函数 | `<实体>From<来处>`（`postFromDynamic`、`postFromReport`） | `to…`、`convert…`、`build…` |
 | 从作品取文字的唯一一处 | `postText(post, 形式)`（形式 `plain` / `labeled`）；别处不许自己拼 | 各处手拼的 `extract…Text` |
 | 种类的取值；说「是哪一种」的判别键叫 `kind`，说「处在什么状态」的判别键叫 `status`（状态对象里装取值的那一格） | `Kind` | `Type`（只留给外部协议里的原名） |
-| 发出去的改动 / schema 的全可选版 / 按订阅覆盖的那一层 / 一步操作 | `Patch` / `Partial` / `Overrides` / `Op` | — |
+| 发出去的改动 / schema 的全可选版 / 按订阅覆盖的那一层 / 一步操作 | `Patch` / `Partial` / `Overrides` / `Op`（`SubscriptionOp`、`KeyValueOp`） | `Operation` |
 | 一个过程里先后排开的一段（一段里可以有多个动作，如关停的 `DisposePhase`） | `Phase` | `Stage`（面板里是动画舞台 `CardMotionStage`）、当它用的 `Step`（`Step` 只指一个动作：引导的一步、装载卡在哪一步） |
 | 为了解耦写的第三方窄接口 | `…Like` | 自己领域里的 `…Like` |
 | 装配根交出来的一组运行中部件 | `Runtime` | 别的意思 |
@@ -55,7 +55,7 @@
 - **订阅来源就叫 `Source`，不加 `Subscription` 前缀**（主人 2026-10-10 定）：接口 `Source`、交进登记表的 `SourceDef`、上下文 `SourceContext`、键 `SourceKey`、描述 `SourceDescriptor`、登录 `SourceAuth`，一族同一个词头。拓展契约里今天还叫 `registerSubscriptionSource` / `SubscriptionSourceDef` / `SubscriptionSourceHandle` 的三个，随契约第 3 版改成 `registerSource` / `SourceDef` / `SourceHandle`。
 - **核心里的 `Source` 只指订阅来源**：读数据的口子，类型一律叫 `…Reader`（一包几个读法的也是，不加复数）；`lookup` 是「查一下」这个动作，只用在函数名上，不当类型名的后缀（`…Lookup` / `…Lookups` 都不用，主人 10-10 定）。「市场源」是主人在界面上看得到的叫法，算例外。
 - **`Summary` 只用于「一个东西的缩略版」**，并且要和 AI 的直播总结（`liveSummary`）错开。
-- **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。**别的词不缩写**：`Msg` 写 `Message`，`Sub` / `Subs` 写 `Subscription` / `Subscriptions`（10-07 主人定；后缀表里已点名的 `Opts`、`Ctx`、`Args` 同理）。
+- **缩写写成 `Ai`、`Api`**（ADR-0023 决策 4）。**别的词不缩写**：`Msg` 写 `Message`，`Sub` / `Subs` 写 `Subscription` / `Subscriptions`（10-07 主人定；后缀表里已点名的 `Opts`、`Ctx`、`Args` 同理）。**例外只有 `Op`**：「一步操作」就叫 `Op`（`SubscriptionOp`、`KeyValueOp`、`WsOp`），不写 `Operation`（10-10 主人定：全仓用法一致、没有歧义）。
 - **不用 TS `enum`**：一组取值写成 `as const` 的常量对象，类型取它的值的联合（`type GuardLevel = (typeof GuardLevel)[keyof typeof GuardLevel]`）。`enum` 的值面板引用不了，两头就得各写一份再钉住（10-07 主人定）。
 - **外部接口的回应**：外壳叫 `…Envelope<T>`（B 站的 `{ code, message, data }` 叫 `BiliEnvelope<T>`）；某个接口回的内容叫 `…Response`（`UserCardResponse`）；回应里嵌套的结构用名词、不加后缀（`DynamicItem`、`ModuleAuthor`）。`Data`、`Info` 在这里也不用；`Result` 只指我们自己操作的结果。
 - **外部协议的原字段名只留在回应上**：`mid`、`face`、`uname` 这类只准出现在描述那份数据的类型上，以及直接读它的代码里；我们自己定义的形状（事件、状态、函数参数、返回值）用下面词表里的词。
@@ -66,6 +66,7 @@
 
 | 概念 | 用这个 | 不再用 |
 | --- | --- | --- |
+| 任意一个 JSON 值的类型（集成往 `state` / `secrets` 里存的值） | `Json`（10-10 主人定，`packages/internal` 的 `key-value-store.ts`） | — |
 | 平台前缀 | 集成目录里默认不加（已经限定在那个目录下了：B 站的接口客户端就叫 `Api`，10-07 主人定）；和别处的名字撞了才加，B 站写 `Bili`（`BiliEnvelope`、`BiliLoginState`、`BiliSettings`） | `Bilibili…`、`BA…`、`BL…` |
 | 创作者 | 核心里 `creator`；B 站里 `up`（`upUid`、`upName`，开播的也是它） | `master`（只指主人）、`anchor`、`author`（只指皮肤或拓展的作者） |
 | 弹幕 | `danmaku` | `danmu`、`dm` |
