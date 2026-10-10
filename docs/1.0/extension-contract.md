@@ -30,7 +30,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | `commands` | —— | 暂不开。1.0 不造 `CommandProvider` 登记表：`login` 改成核心的通用指令后没有实现者；等第一个要自带指令的拓展，连同重名规矩一起定 |
 | `aiTools` | `aiToolProviders` | 暂不开，写抖音拓展时再定 |
 
-- 宿主启用拓展时以拓展 id 登进对应的表（`bilibili` 与三个内置平台适配器的键 `onebot`、`qq-official`、`webhook` 是保留 id，拓展不许用），撤销把手交给生命周期；停用、卸载即撤，不用重启。登记表的键类型叫 `IntegrationKey`，来源的 `SourceKey` 是它的一部分。
+- 宿主启用拓展时以拓展 id 登进对应的表（`bilibili`、三个内置平台适配器的键 `onebot`、`qq-official`、`webhook` 与 `core` 是保留 id，拓展不许用），撤销把手交给生命周期；停用、卸载即撤，不用重启。登记表的键类型叫 `IntegrationKey`，来源的 `SourceKey` 是它的一部分。
 - 注册的口必须是清单开了的口；清单是面板能按哪些钮、能画哪些口的全集。
 - 清单只装静态的描述（脸、叫法、设置字段）。推送侧能挑哪些平台不住清单，由运行期的连接候选给，所以新建连接要拓展在跑。
 - 以后开 `linkResolver` 时：清单声明网址模式，拓展只拿到匹配上的那一个链接。

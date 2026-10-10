@@ -174,7 +174,7 @@ interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已�
 }
 ```
 
-键为什么不需要前缀：不带点的拓展 id 本就只留给官方源（第三方必须写成 `<命名空间>.<名字>`），`ExtensionIdSchema` 再把 `bilibili` 与内置平台适配器的键（`onebot`、`qq-official`、`webhook`）列为保留 id，手动放进目录的拓展也撞不上内置集成。原先按订阅 `kind` 分派认不出是哪个拓展的问题，由身份摊平成 `{ sourceKey, externalId }` 解决；连接上原先的 `kind`、`connector` 删掉，`extensionId` 并进 `adapterKey`（ADR-0024 决策 7）。
+键为什么不需要前缀：不带点的拓展 id 本就只留给官方源（第三方必须写成 `<命名空间>.<名字>`），`ExtensionIdSchema` 再把 `bilibili`、内置平台适配器的键（`onebot`、`qq-official`、`webhook`）与 `core`（核心自己的名字：日志等级的键、设置文件名）列为保留 id，手动放进目录的拓展也撞不上内置集成。`core` 只在「拓展不许用的 id」那张表 `RESERVED_EXTENSION_IDS` 里，不进内置集成的键表 `RESERVED_INTEGRATION_KEYS`。原先按订阅 `kind` 分派认不出是哪个拓展的问题，由身份摊平成 `{ sourceKey, externalId }` 解决；连接上原先的 `kind`、`connector` 删掉，`extensionId` 并进 `adapterKey`（ADR-0024 决策 7）。
 
 ## 集成与 ctx
 
@@ -282,7 +282,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - `/api/health`：短版只留存活探测与应用内更新要的 `status`、`version`、`startedAt`、`uptime`（应用内更新靠 `version` 与 `startedAt` 认新进程）；B 站的格子（`login`、`dynamicCron`、moduleVersions 里的 api / dynamic / live 等）删掉。`/api/health/details`：分核心、集成两组，给健康卡。
   - `/api/history?feature=`；`?uid=` 删掉（没有调用方），以后要按人查再加 `?identity=`（ADR-0027 决策 7）。
   - `/api/targets/:id/test`（原 `/api/push/test`）、`/api/connections/:id/probe`（原 `/test`）。
-- 设置拆进 `config/settings/` 的三类文件以后，系统页的字段路径与 `PATCH /api/settings`（原 `/api/globals`，ADR-0036）跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。⑥f 先只挪 B 站那三格（`bilibili.*`），核心读法与核心那半的路径随第 2、3 期改名再加 `core.`。
+- 设置拆进 `config/settings/` 的三类文件以后，系统页的字段路径与 `PATCH /api/settings`（原 `/api/globals`，ADR-0036）跟着改（原 `app.*` 搬进 `core.*` / `bilibili.*`）。⑥f 先只挪 B 站那三格（`bilibili.*`），核心读法与核心那半的路径随第 2、3 期改名再加 `core.`。3a-38 已把 `app` 拆掉：系统页现在读写顶层 `logging.level` / `logging.levels` / `logging.memoryLog.enabled`（模块覆盖四格 `core`、`bilibili`、`image`、`ai`，`logging.levels` 的键是开放字符串），粉丝轮询的 cron 是顶层 `profileRefreshCron`；`PATCH /api/settings` 的核心路径仍不带 `core.` 前缀，随第 4 期。
 - 删掉死字段 `SubscriptionDTO.state`；订阅卡上永远不亮的「播」角标改用真实的在播数据。
 - `/api/health` 补进契约（`HealthResponse`），面板把 contract 移进 `dependencies`：④d 已落。
 - 密钥下发只用 `MaskedSecret`，见 [data-model.md](./data-model.md)「凭据字段标 secret: true」。

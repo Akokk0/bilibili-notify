@@ -109,7 +109,7 @@ interface CreatorProfile {
 }
 ```
 
-- **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，`ExtensionIdSchema` 再把 `bilibili` 与三个内置适配器的键列为保留 id，手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
+- **身份没有前缀**：`SourceKey` 就是 `"bilibili"` 或拓展 id。不带点的 id 本就只给官方源，`ExtensionIdSchema` 再把 `bilibili`、三个内置适配器的键与 `core` 列为保留 id（后者是核心自己的名字，只在 `RESERVED_EXTENSION_IDS` 里，不进内置集成的键表 `RESERVED_INTEGRATION_KEYS`），手动放进目录的拓展也撞不上。分派读 `identity.sourceKey`，不再有 `sourceKeyOf`；`SubscriptionKind` / `isBiliSubscription` / `isExtensionSubscription` 删掉。
 - 「identity」在仓里另有 ChatIdentity、inboundIdentity、ExtensionIdentity 等意思，订阅身份的函数一律带 `subscription` 限定词。
 - **订阅只有一个文件** `config/subscriptions.json`，B 站与拓展同一数组、行行带 `identity`。「缺 kind 就当 B 站」的默认值删掉。
 - **同一身份只能有一条订阅**。在真正写盘的 `writeSubscriptions`（现在是 `ConfigStore.writeSubscriptions`）把关——`packages/subscription` 的 `SubscriptionCache`（原 `SubscriptionStore`）只是写盘之后才同步的内存镜像，在那里拒收已经晚了。判据是「这次写入有没有**新增**重复」（跟当前集合比），不是整份数组有没有重复：否则盘上留着一对遗留重复时，改任何一条不相干的订阅都会被拒。新建、保存、恢复备份，所有写入都要过。开机读到遗留重复只记警告、健康页显示，事件照旧分发给每一条。恢复备份先按 id 对、再按身份并入。
@@ -475,7 +475,7 @@ interface Settings {
   core: {
     master: { targetId?: string };    // 主人目标必须是私聊目标，见下「主人通知」
     defaults: GlobalDefaults;         // 按订阅覆盖的回退层，订阅上的覆盖与它同形
-    templatesSeen: TemplatesSeen;     // 出厂文案账本（原 defaults.templateDefaultsSeen）
+    templatesSeen: TemplatesSeen;     // 出厂文案账本（原 defaults.templateDefaultsSeen，3a-38 已上提）
     ai: AiSettings;                   // profiles、activeProfileId、search.scenes、聊天、thinking{ enabled, level }、hasVision；人格与提示词只在 presets[] 里一处；writing: AiWritingSettings（AI 写正文按目标选，`{ post, liveSummary }` 各一份 `{ enabled, byTarget }`，byTarget 的键是目标 id，ADR-0032）
     rankingReport: RankingReportSettings;   // 原全局 roastSchedule（榜单周报）：targetIds、windowDays、requiresApproval
     muteEndsAt?: string;              // 原 mutedUntil；没在静音就缺键
@@ -485,10 +485,10 @@ interface Settings {
     onboarding: { isSkipped?: boolean };
     update: UpdateSettings;           // isAutoDownloadEnabled 等
     marketplace: MarketplaceSettings;
-    logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + 集成键
+    logging: { level; levels; retentionDays; memoryLog: { enabled } };   // levels 是开放键：核心模块 + 集成键（3a-38 已落，类型 LoggingSettings，levels 默认空表）
     history: HistorySettings;         // { retentionDays }：图片与重推原件保留天数（90 / 60 / 30 / 15 / 7 / 3 / 1，默认 30），文字不设上限、不在其内（ADR-0022 决策 9 的 🔗；键名 10-04 定）
     stats: StatsSettings;             // { enabled }：数据统计总开关，默认开；订阅覆盖不了，所以不在 defaults 里（ADR-0027 决策 9、16）
-    profileRefreshCron: string;       // 资料刷新，由 fansCron 原值迁来
+    profileRefreshCron: string;       // 资料刷新，由 fansCron 原值迁来（3a-38 已落）
     timezone: string;                 // 卡片时间读它，默认 Asia/Shanghai
   };
   bilibili: { dynamicCron; loginCheckIntervalMinutes };   // 由 bilibili/ 定义
@@ -506,7 +506,7 @@ interface GlobalDefaults {
   liveEnd: { grace: { enabled: boolean; waitSec: number } };
   superchat: { minAmount?: number };
   membership: { minRank?: Record<string, number> };
-  ai: { presetId?: string };          // 订阅能覆盖的只有人格预设
+  ai: { presetId?: string };          // 订阅能覆盖的只有人格预设（目标形状；3a-38 之后代码里 defaults 下还没有这一格，指针 activePreset 暂在顶层 ai 里，随 AI 子键改名那一片造）
   cards: { enabled: boolean; liveCoverImageIds: string[] };   // 不按卡种分层（㉔）；订阅覆盖只有 liveCoverImageIds
   cardSkin; cardSkinKnobs;
   imageGroup: { enabled; mergeForward; … };
@@ -650,8 +650,8 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `linkParsing`、`LinkParsingConfig`、`LinkParser`、`runtime/link-parser.ts` | `linkPreview`、`LinkPreviewSettings`、`LinkResolver`、`link-preview/` |
 | `CommandConfig` | `CommandSettings` |
 | `templates.wordcloudStopWords` | `defaults.wordcloud.stopWords` |
-| `fansCron` | `core.profileRefreshCron`（原值迁来） |
-| 日志级别键 `dynamic` / `live` | 并成 `bilibili`，键改成开放的（核心模块 + 集成键） |
+| `fansCron` | `core.profileRefreshCron`（原值迁来；✅ 3a-38 已落） |
+| 日志级别键 `dynamic` / `live` | 并成 `bilibili`，键改成开放的（核心模块 + 集成键；✅ 3a-38 已落，两个旧键并键时按生效值取更啰嗦的，取法见 [data-and-migration.md](./data-and-migration.md)） |
 | `restartPush`、`pushTime` | `liveStart.catchUpOnBoot`、`liveStreaming.streamingIntervalHours` |
 | `app.userAgent` | 删掉：身份由 `packages/http` 生成，B 站设置页加「换一个身份」；老配置里这一格由迁移丢掉，新 schema 不留 |
 | bootstrap 的 `cookieEncryptionKey` / `BN_COOKIE_KEY` / `--cookie-key`（实际是所有密钥的主密钥） | 中立名（如 `secretsPassphrase`，名字施工时定），yaml、环境变量、命令行三处同步改；旧名永远继续认，新旧同设且值不同就拒绝启动；两份 BootstrapConfigSchema 合一、按可选处理 |
@@ -738,13 +738,13 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 以前 | 现在 |
 | --- | --- |
 | 全局 `roastSchedule` 及 `targets` / `days` / `approval` | `core.rankingReport`（类型 `RankingReportSettings`）及 `targetIds` / `windowDays` / `requiresApproval` |
-| `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.timezone`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`；`core.history.retentionDays`；`core.timezone`；`bilibili.loginCheckIntervalMinutes` |
+| `app.logLevel` / `logLevels` / `logRetentionDays` / `memoryLog`；`app.historyRetentionDays`；`app.timezone`；`app.healthCheckMinutes` | `core.logging.{ level, levels, retentionDays, memoryLog.enabled }`（✅ 3a-38 已落，`app` 这个键已从核心设置里消失）；`core.history.retentionDays`（已落）；`core.timezone`；`bilibili.loginCheckIntervalMinutes` |
 | `update.autoDownload`；`onboarding.skipped` | `update.isAutoDownloadEnabled`；`onboarding.isSkipped` |
 | `schedule.quietHours`（`start` / `end`）；`schedule.liveEndGrace*`；`filters.minScPrice` / `minGuardLevel` | `defaults.quietHours`（`startHour` / `endHour`）；`defaults.liveEnd.grace{ enabled, waitSec }`；`defaults.superchat.minAmount` / `defaults.membership.minRank` |
 | `cardStyle` / `cardStyleByKind` / `liveCoverImages`；退役的 `font` / `fontAsset` / `glass*` | `defaults.cards { enabled, liveCoverImageIds }`，`cardStyleByKind.live` 的封面图并上来、按卡种那一层取消（㉔e 已落）；逐订阅同形 `overrides.cards { liveCoverImageIds? }`（空数组算「有」：这位 UP 不用自定义封面）；从 schema 删掉 |
 | `linkParsing.defaults` / `.parse` / `.form` / `.groups` | `linkPreview`（摊平，没有默认行那一层）/ `enabled` / `replyForm` / `byTarget` |
 | 小程序卡：回复形式取值 `miniapp`、`LINK_REPLY_FORMS`、`MiniApp…` 类型、面板「小程序卡」 | 原生分享：取值 `nativeShare`（随 `linkPreview` 同一趟迁移），回复形式另有 `text`；类型 `NativeShare…`；面板上是「回图片 / 回原生分享 / 回文字」，原生分享附的小字由适配器的描述给，核心与面板里不写平台名；桥帧能力名 `miniapp-card` alpha 期间不改，1.0.0 之前两步改完，改成什么名字见 [construction-plan.md](./construction-plan.md) |
-| `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen` |
+| `defaults.ai` 的 `providers` / `activeProfile`、`search.engines`、`enableThinking` + `thinkingLevel`、`enableVision`；`activePreset` 与 `overrides.ai.preset`；顶层 `persona` / 提示词；`defaults.templateDefaultsSeen` | `core.ai.profiles` / `activeProfileId`、`search.scenes`、`thinking{ enabled, level }`、`hasVision`；`defaults.ai.presetId`；只在 `presets[]` 里一处；`core.templatesSeen`。已落（3a-38）的只有位置：`defaults.ai` 整段成了顶层 `ai`、`defaults.templateDefaultsSeen` 成了顶层 `templatesSeen`，键名一个没改；`defaults.ai.presetId` 这一格没造（`activePreset` 随整段留在顶层 `ai` 里），随 AI 子键改名那一片 |
 | `messageLayout.version`；面板标签键的裸叶子键、`app.*` 前缀、`ai.persona.*` 死条目 | 退役；写全路径、按新分段换前缀、删死条目、补上缺的条目 |
 
 **类型名后缀（ADR-0023 决策 15，按 [naming.md](../agents/conventions/naming.md) 改）。** 上面几张表里已有的不重复列。
@@ -772,7 +772,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | contract 的 `BrowserProcessState`（装的是取值）与 WS 字段 `ResourceSample.browserState`；服务端 `BrowserProcessInfo`（`{ state, pid }`） | `BrowserProcessStatus` 与 `browserStatus`；`BrowserProcessState`，里面的 `state` 改 `status` |
 | `LoginSnapshot`（internal、B 站 api、面板各一份）；服务端 `LoginSnapshotView`；devtools 登录场景的 `OverridableStatus` | 中立一侧用 `AuthState`，`bilibili/` 里还要原形就叫 `BiliLoginState`；删掉（`login` 改核心通用指令、场景搬进 `bilibili/` 的 devtools，都读 `AuthState`） |
 | `AIProviderMeta` / `WebSearchBackendMeta` | `AiProviderDescriptor` / `WebSearchBackendDescriptor` |
-| `GlobalConfig` / `AppConfig` / `MasterConfig` / `OnboardingConfig`；`ScheduleConfig` / `ScheduleConfigPartial` | `Settings` 的分段（`core.*`）；拆进 `defaults.quietHours` 与 `defaults.liveEnd` |
+| `GlobalConfig` / `AppConfig` / `MasterConfig` / `OnboardingConfig`；`ScheduleConfig` / `ScheduleConfigPartial` | `Settings` 的分段（`core.*`）；拆进 `defaults.quietHours` 与 `defaults.liveEnd`。`AppConfig` 已随 `app` 删掉（3a-38，换成 `LoggingSettings`）；`GlobalConfig` 等其余名字没动 |
 | `PersonaConfig` / `CommentaryGeneratorConfig` / `ImageRendererConfig`（设置的值） | `PersonaSettings` / `CommentaryGeneratorSettings` / `ImageRendererSettings` |
 | `WebSearchExecutorConfig`、`EnableCheckArgs`（参数包） | `WebSearchExecutorOptions`、`EnableCheckOptions` |
 | devtools update 场景的本地 `Params`；HTML 清洗器的本地 `Ctx`；出图的 `AssembleCtx` | `UpdateScenarioValues`；`SanitizeState`；`AssembleState` |

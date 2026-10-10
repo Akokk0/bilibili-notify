@@ -83,6 +83,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 13. **`defaults` 只表示「按订阅覆盖时的回退层」（R5）**：订阅上能单独覆盖的设置，全局那份放 `core.defaults`（文案模板、词云停用词、免打扰时段、人格预设 `presetId`……）；订阅覆盖不了的一律挪出去（AI 实例桶、搜索、聊天进 `core.ai`，出厂文案账本进 `core.templatesSeen`）；链接卡的「默认行」改名 `linkCards.base`。形状见 [docs/1.0/data-model.md](../1.0/data-model.md) 的「配置」一节。
     - 理由：`defaults` 原先一词三义（回退层、链接卡默认行、出厂文案账本），而且挂着不少根本没有订阅覆盖版本的东西。
     🔗 **2026-09-28**：链接卡改名链接预览，配置摊平成 `linkPreview { enabled, replyForm, byTarget }`，没有 `base` 这一层（ADR-0029 决策 1）。
+    🔗 **2026-10-10**（3a-38，主人定范围）：出厂文案账本与 AI 整段已上提到核心设置顶层（`templatesSeen`、`ai`），`defaults` 里不再有这两块，键名一个没改。人格预设 `defaults.ai.presetId` 这一格这一片没造：人格指针与人格库当同一个对象读写，单拆指针要改读者的入参与 AI 页的草稿，所以指针 `activePreset` 暂随整段留在顶层 `ai`，`presetId` 随 AI 子键改名那一片造。
 14. **三路审查的机械改名整批采纳**：推送（如订阅顶层 `extras` → `extraTargets`、`retryOf` → `repushOf`、`testStatus` → `probeStatus`）、订阅（如 `reportProblems` 这一族 → `reportRejections`，把「上报被拒」和来源自报的问题分开）、配置（如全局 `roastSchedule` → `rankingReport`、`app` 拆成 `logging` / `history` / `timezone`）。逐条对照以 [docs/1.0/data-model.md](../1.0/data-model.md) 改名对照里订阅、推送、配置三张表为准。
     - ⚠️ 两个机械替换会改错的坑：面板在播列表的 `viewers` 装的是累计观看（还是排好版的字符串），要改成 `totalViewers: number`，**不是** `currentViewers`；B 站接口的数字错误码原先占着 `code`，统一错误体以后挪到 `upstreamCode`。
     🔗 **2026-09-28**：`probeStatus` 装的是对象，按后缀表改叫 `probeState`，三态取值放在里面的 `status`（决策 15）。
