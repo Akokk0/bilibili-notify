@@ -1,4 +1,9 @@
-import { type CardKind, type Disposable, formatDuration } from "@bilibili-notify/internal";
+import {
+	type CardKind,
+	createSerialGate,
+	type Disposable,
+	formatDuration,
+} from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import type { LiveRoomResponse } from "../../api/index.js";
 import { liveTimeToIso } from "../live-card-input";
@@ -18,7 +23,6 @@ import {
 	LiveRoomPreflightBlockedError,
 	type RoomContext,
 } from "./room-helpers";
-import { createSerialGate } from "./serial-gate";
 
 /**
  * Cooldown window between accepting `onLiveStart` / `onLiveEnd` events; the

@@ -9,20 +9,20 @@ import type {
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import {
+	createSerialGate,
 	featuresForEvents,
 	formatDuration,
+	type SerialGate,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import {
 	type CustomCardStyleLike,
-	createSerialGate,
 	type LiveNotifyPushType,
 	type LiveNotifySend,
 	LivePushType,
 	type LiveTextKind,
 	pushLiveNotify,
 	renderLiveText,
-	type SerialGate,
 } from "../bilibili/live/index.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { LiveWorkSettings } from "./engines.js";
