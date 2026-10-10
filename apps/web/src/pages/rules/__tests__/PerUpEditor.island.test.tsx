@@ -38,7 +38,12 @@ function renderEditor(sub: Subscription, section: SectionId) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor sub={sub} defaults={makeDefaults()} section={section} />
+			<PerUpEditor
+				sub={sub}
+				defaults={makeDefaults()}
+				presets={makeDefaults().ai.presets}
+				section={section}
+			/>
 		</QueryClientProvider>,
 	);
 }

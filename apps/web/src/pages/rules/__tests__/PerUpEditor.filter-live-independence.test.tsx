@@ -59,7 +59,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		const sub = makeSub();
 		const { container } = render(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="filter" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="filter"
+				/>
 			</QueryClientProvider>,
 		);
 		// 未开启时只有头部一个 Toggle 按钮(InheritHint 无交互控件)。
@@ -79,7 +84,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		const sub = makeSub();
 		const { container } = render(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="live" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="live"
+				/>
 			</QueryClientProvider>,
 		);
 		const headerToggle = container.querySelector("button");
@@ -100,7 +110,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		const sub = makeSub();
 		const { container, rerender } = render(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="filter" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="filter"
+				/>
 			</QueryClientProvider>,
 		);
 		fireEvent.click(container.querySelector("button") as Element);
@@ -110,7 +125,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 
 		rerender(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="live" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="live"
+				/>
 			</QueryClientProvider>,
 		);
 		const liveBox = within(container);
@@ -124,7 +144,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		const sub = makeSub();
 		const { container, rerender } = render(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="live" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="live"
+				/>
 			</QueryClientProvider>,
 		);
 		fireEvent.click(container.querySelector("button") as Element);
@@ -134,7 +159,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 
 		rerender(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="filter" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="filter"
+				/>
 			</QueryClientProvider>,
 		);
 		const filterBox = within(container);
@@ -151,7 +181,12 @@ describe("per-UP 动态过滤覆盖 与 直播阈值覆盖 相互独立", () => 
 		};
 		const { container } = render(
 			<QueryClientProvider client={qc}>
-				<PerUpEditor sub={sub} defaults={makeDefaults()} section="filter" />
+				<PerUpEditor
+					sub={sub}
+					defaults={makeDefaults()}
+					presets={makeDefaults().ai.presets}
+					section="filter"
+				/>
 			</QueryClientProvider>,
 		);
 		await waitFor(() => {

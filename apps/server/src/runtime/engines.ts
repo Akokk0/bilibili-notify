@@ -23,7 +23,9 @@ import { CommentaryGenerator, webSearchExecutorFromSettings } from "@bilibili-no
 import type { LiveListenerSnapshot, ModuleState } from "@bilibili-notify/contract";
 import { type CardColorOptions, ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
 import type {
+	ActivePersonaShape,
 	AddressCandidate,
+	AISettings,
 	CardKind,
 	CardSkinManifest,
 	ConnectionCapabilities,
@@ -32,7 +34,6 @@ import type {
 	EffectiveSubscription,
 	FeatureKey,
 	GlobalConfig,
-	GlobalDefaults,
 	Identity,
 	ImageRef,
 	LinkParsingConfig,
@@ -58,6 +59,7 @@ import {
 	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
+	resolveSubscriptionPersona,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
@@ -1546,25 +1548,27 @@ export function liveTypeAllowsAtAll(type: number): boolean {
  */
 export function resolveAiOverride(
 	sub: Subscription,
-	defaults: GlobalDefaults,
+	ai: AISettings,
 ): CommentaryCallOverride | undefined {
-	return sub.overrides.ai ? buildAiOverride(resolve(sub, defaults)) : undefined;
+	return sub.overrides.ai
+		? buildAiOverride(resolveSubscriptionPersona(ai, sub.overrides.ai))
+		: undefined;
 }
 
-function buildAiOverride(eff: ReturnType<typeof resolve>): CommentaryCallOverride {
+function buildAiOverride(active: ActivePersonaShape): CommentaryCallOverride {
 	return {
 		persona: {
 			preset: "custom" as const,
-			name: eff.ai.persona.name,
-			addressUser: eff.ai.persona.addressUser,
-			addressSelf: eff.ai.persona.addressSelf,
-			traits: eff.ai.persona.traits,
-			catchphrase: eff.ai.persona.catchphrase,
-			customBase: eff.ai.persona.baseRole,
-			extraPrompt: eff.ai.persona.extraSystemPrompt,
+			name: active.persona.name,
+			addressUser: active.persona.addressUser,
+			addressSelf: active.persona.addressSelf,
+			traits: active.persona.traits,
+			catchphrase: active.persona.catchphrase,
+			customBase: active.persona.baseRole,
+			extraPrompt: active.persona.extraSystemPrompt,
 		},
-		dynamicPrompt: eff.ai.dynamicPrompt,
-		liveSummaryPrompt: eff.ai.liveSummaryPrompt,
+		dynamicPrompt: active.dynamicPrompt,
+		liveSummaryPrompt: active.liveSummaryPrompt,
 	};
 }
 
@@ -1675,7 +1679,7 @@ export function postSettingsOf(
 		cardSkinKnobs: sub.overrides.cardSkinKnobs,
 		aiEnabled: d.ai.enabled,
 		aiWebSearch: d.ai.search.engines.dynamic,
-		aiOverride: resolveAiOverride(sub, d),
+		aiOverride: resolveAiOverride(sub, d.ai),
 		template: eff.templates.post,
 		videoTemplate: eff.templates.postVideo,
 		imageGroup: { enabled: eff.imageGroup.enabled, mergeForward: eff.imageGroup.mergeForward },
@@ -1842,7 +1846,7 @@ export function buildLiveSubViewSingle(
 		// undefined → live-summary-requester 透传 → CommentaryGenerator 走 this.config 兜底。
 		minSuperchatAmount: eff.superchat.minAmount,
 		minGuardRank: eff.membership.minRank[GUARD_PROGRAM_ID],
-		aiOverride: resolveAiOverride(sub, globals.defaults),
+		aiOverride: resolveAiOverride(sub, globals.defaults.ai),
 		guardTemplate: guardTemplateOf(eff.templates),
 		customLiveSummary: {
 			enable: true,

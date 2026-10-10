@@ -89,7 +89,7 @@ const PER_UP_PRESET = {
  * `resolve()` / `resolveAiOverride()` 都直接读 `sub.overrides`。
  *
  * per-UP 人格是**一个指向人设库的 id**,不是就地写死的一份:设置页当年那档
- * 「完全自定义」已经撤掉(见 `resolve.ts` 的 `resolveAI`),per-UP 只能从库里挑。
+ * 「完全自定义」已经撤掉(见 `resolve.ts` 的 `resolveSubscriptionPersona`),per-UP 只能从库里挑。
  */
 function makeSub(id: string, uid: string, perUpPersona?: boolean) {
 	return {
@@ -200,7 +200,7 @@ describe("锐评带谁的人格", () => {
 	it("老配置里就地写死的那套人格不再生效,落回全局", async () => {
 		// 设置页当年有一档「完全自定义」能就地写死一套人设,那一档撤掉了(人格一律
 		// 在「智能女仆」页里写),但盘上还留着当年写下的 `persona` 字段。继续读它
-		// 就成了界面上看不见、实际仍在生效的鬼配置 —— `resolveAI` 刻意不读,于是
+		// 就成了界面上看不见、实际仍在生效的鬼配置 —— `resolveSubscriptionPersona` 刻意不读,于是
 		// 老的 `'custom'`、老的 `'inherit'`、以及指向一份已被删掉的人格,三者殊途
 		// 同归都落到全局。这不是回归,是迁移决定,别再「修」回去。
 		const legacy = {

@@ -44,7 +44,7 @@ function renderEditor(sub: Subscription, section: SectionId, defaults: GlobalDef
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const view = render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor sub={sub} defaults={defaults} section={section} />
+			<PerUpEditor sub={sub} defaults={defaults} presets={defaults.ai.presets} section={section} />
 		</QueryClientProvider>,
 	);
 	const field = (code: string) => view.container.querySelector(`[data-code="${code}"]`);

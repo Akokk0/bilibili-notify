@@ -92,7 +92,7 @@ export type SpecialUser = z.infer<typeof SpecialUserSchema>;
  *
  * `preset` 是**指针**:指向 presets 里的一份。指不着就完整继承全局 —— 老值 `'inherit'`
  * (当年那档「继承全局」)、`'custom'`(当年那档「完全自定义」)、以及指向一份已被删掉
- * 的人格,三者在 `resolveAI` 里殊途同归。
+ * 的人格,三者在 `resolveSubscriptionPersona` 里殊途同归。
  *
  * 当年「完全自定义」写在这里的 `persona` / `dynamicPrompt` / `liveSummaryPrompt` 已经
  * 不在 schema 里(它们后来只为 koishi 插件那一侧留着):人格一律在「智能女仆」页里写,

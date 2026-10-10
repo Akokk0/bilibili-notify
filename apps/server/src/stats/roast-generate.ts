@@ -203,7 +203,7 @@ export async function generateSoloRoast(
 	const generator = makeRoastGenerator(deps, engines, aiSettings);
 	// per-UP 人格:与动态点评 / 下播总结同源。评的就是这一位 UP,主人给他单配的
 	// 人格没有理由不算数。
-	const aiOverride = resolveAiOverride(sub, deps.store.getGlobals().defaults);
+	const aiOverride = resolveAiOverride(sub, aiSettings);
 	let reply: string;
 	try {
 		// scene / imageUrls 留空:锐评既不属于 dynamic 也不属于 liveSummary,更没有图。

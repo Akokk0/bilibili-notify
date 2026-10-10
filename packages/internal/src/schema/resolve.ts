@@ -1,6 +1,5 @@
-import { type Identity, resolveActivePersona, resolveAIProfile } from "../constants";
+import { type ActivePersonaShape, type Identity, resolveActivePersona } from "../constants";
 import type {
-	AIPersona,
 	AISettings,
 	CardsSettings,
 	ContentFilters,
@@ -53,22 +52,11 @@ export interface EffectiveSubscription {
 	/** 会员门槛:`minRank` 按体系逐键合并(订阅只改了 `guard`,别的体系的全局门槛照旧);某体系没有键 = 那个体系全推。 */
 	membership: Required<MembershipSettings>;
 	templates: TemplateBundle;
-	ai: ResolvedAI;
 	cards: CardsSettings;
 	/** 生效的卡片皮肤 id(per-UP 指了就用它,否则全局)。 */
 	cardSkin: string;
 	messageLayout: MessageLayout;
 	imageGroup: ImageGroupSettings;
-}
-
-export interface ResolvedAI {
-	enabled: boolean;
-	baseUrl?: string;
-	apiKey?: string;
-	model: string;
-	persona: AIPersona;
-	dynamicPrompt: string;
-	liveSummaryPrompt: string;
 }
 
 /** 浅合并：override 中存在的字段覆盖 base，undefined / 缺失则保留 base。 */
@@ -115,23 +103,15 @@ function mergeTemplates(
 	};
 }
 
-function resolveAI(globals: AISettings, override: AIOverride | undefined): ResolvedAI {
-	// 连接与生成参数按家分桶存,先取出当前生效的那一套。per-UP override 覆盖的是
-	// **解析后**的值(它只挑人格),不关心图来自哪个桶。
-	const profile = resolveAIProfile(globals);
+/** 这条订阅生效的人格与两段提示词:订阅挑了一份就用它(缺的那段回落全局),没挑或挑的那份不在了就是全局此刻用的那份。 */
+export function resolveSubscriptionPersona(
+	ai: AISettings,
+	override: AIOverride | undefined,
+): ActivePersonaShape {
 	// 全局此刻用的是哪份人格 —— 读法只有一处(`resolveActivePersona`),各端共用。
 	// 这里曾经自己展开过那三行,于是别的消费方(常驻 generator、试一句、锐评、聊天窗
 	// 抬头)照着 `ai.persona` 各写各的,换了人格全都不跟着变。
-	const active = resolveActivePersona(globals);
-	const base: ResolvedAI = {
-		enabled: globals.enabled,
-		baseUrl: profile.baseUrl,
-		apiKey: profile.apiKey,
-		model: profile.model,
-		persona: active.persona,
-		dynamicPrompt: active.dynamicPrompt,
-		liveSummaryPrompt: active.liveSummaryPrompt,
-	};
+	const base = resolveActivePersona(ai);
 
 	if (!override) return base;
 
@@ -147,13 +127,13 @@ function resolveAI(globals: AISettings, override: AIOverride | undefined): Resol
 	 * 老的 `'custom'`、以及指向一份已被删掉的人格。三者的实际行为本来就都是「继承
 	 * 全局」,设置页据此把开关显示成「关」,界面与行为对得上。
 	 */
-	const namedPreset = globals.presets.find((p) => p.id === override.preset);
+	const namedPreset = ai.presets.find((p) => p.id === override.preset);
 
-	const persona = namedPreset?.persona ?? base.persona;
-	const dynamicPrompt = namedPreset?.dynamicPrompt ?? base.dynamicPrompt;
-	const liveSummaryPrompt = namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt;
-
-	return { ...base, persona, dynamicPrompt, liveSummaryPrompt };
+	return {
+		persona: namedPreset?.persona ?? base.persona,
+		dynamicPrompt: namedPreset?.dynamicPrompt ?? base.dynamicPrompt,
+		liveSummaryPrompt: namedPreset?.liveSummaryPrompt ?? base.liveSummaryPrompt,
+	};
 }
 
 /** 把 (Subscription, GlobalDefaults) 折叠为业务可直接消费的 EffectiveSubscription。 */
@@ -187,7 +167,6 @@ function resolveCommon(
 		superchat: merge(defaults.superchat, ov.superchat),
 		membership: { minRank: { ...defaults.membership.minRank, ...ov.membership?.minRank } },
 		templates: mergeTemplates(defaults.templates, ov.templates),
-		ai: resolveAI(defaults.ai, ov.ai),
 		cards: merge(defaults.cards, ov.cards),
 		// 皮肤是整份引用,没有合并可言:指了就是它。旧的 `cardLayout` 不再折进来 ——
 		// 出图只认皮肤,而那个键连同折它进来的开机迁移已一并删掉(ADR-0014 决策 17 的

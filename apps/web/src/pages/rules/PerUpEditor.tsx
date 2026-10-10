@@ -40,6 +40,7 @@ import {
 	type TemplateOverride,
 } from "../../types/domain";
 import type {
+	AISettings,
 	GlobalDefaults,
 	ImageGroupSettings,
 	MembershipTemplateBundle,
@@ -113,6 +114,8 @@ export interface PerUpEditorProps {
 	/** 拓展订阅是哪个平台、那个源报得出什么;B 站订阅不传。 */
 	platform?: SubscriptionPlatform;
 	defaults: GlobalDefaults;
+	/** 全局的人格库:「AI 人格」那一节从里面挑一份。 */
+	presets: AISettings["presets"];
 	section: SectionId;
 }
 
@@ -121,7 +124,7 @@ interface PerUpDraft {
 	specialUsers: SpecialUser[];
 }
 
-export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorProps) {
+export function PerUpEditor({ sub, platform, defaults, presets, section }: PerUpEditorProps) {
 	const qc = useQueryClient();
 	const identity = subscriptionIdentityOf(sub);
 	const isBili = identity.sourceKey === BILIBILI_SOURCE_KEY;
@@ -340,7 +343,7 @@ export function PerUpEditor({ sub, platform, defaults, section }: PerUpEditorPro
 				<AiOverrideBox
 					value={draft.overrides.ai}
 					onChange={(v) => setSlice("ai", v)}
-					baseline={defaults.ai}
+					presets={presets}
 				/>
 			) : null}
 			{section === "imageGroup" ? (
@@ -1196,29 +1199,29 @@ function pickAiOverride(presetId: string): AIOverride {
 function AiOverrideBox({
 	value,
 	onChange,
-	baseline,
+	presets,
 }: {
 	value: AIOverride | undefined;
 	onChange: (next: AIOverride | undefined) => void;
-	baseline: GlobalDefaults["ai"];
+	presets: AISettings["presets"];
 }) {
 	// 人格一律在「智能女仆」页里写,这里只负责**挑一份**。所以选项就是已有的那几份,
 	// 没有「继承全局」(关掉开关就是继承,再摆一个同义的选项纯属多此一举),也没有
 	// 「完全自定义」(想要专属人格就去那边新建一份,再回来挑它)。
-	const presetOptions = baseline.presets.map((p) => ({ value: p.id, label: p.label }));
-	const activePreset = baseline.presets.find((p) => p.id === value?.preset);
+	const presetOptions = presets.map((p) => ({ value: p.id, label: p.label }));
+	const activePreset = presets.find((p) => p.id === value?.preset);
 	/*
 	 * 覆盖到底开着没有 —— 判据是**挑中的那份人格真实存在**(判定本身住在
 	 * `section-scope`,侧栏那颗小点用的是同一个,两处口径不许各走各的)。
 	 *
-	 * 三种指不着人格的老值在 `resolveAI` 眼里都是完整继承全局 —— 与关掉开关一模
+	 * 三种指不着人格的老值在 `resolveSubscriptionPersona` 眼里都是完整继承全局 —— 与关掉开关一模
 	 * 一样,所以这里就照实显示成「关」。界面和实际行为于是永远对得上;主人哪天真去
 	 * 开它,写回去的是一个干干净净的新对象,当年残留的 persona / prompt 顺手就没了。
 	 */
-	const enabled = hasAiPersonaOverride(value, baseline.presets);
+	const enabled = hasAiPersonaOverride(value, presets);
 	// 开关打开时落到第一份。`presets` 按约定恒非空(出厂默认、迁移器补齐 0.x 的空列表、设置页删不掉
 	// 最后一份,见 `AISettingsObjectSchema` 里 presets 的注释),所以这里不必为空列表留一条走不到的分支。
-	const firstPresetId = baseline.presets[0]?.id ?? "";
+	const firstPresetId = presets[0]?.id ?? "";
 
 	return (
 		<OverrideBox

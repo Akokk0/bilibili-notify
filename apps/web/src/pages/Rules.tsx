@@ -523,6 +523,7 @@ export default function Rules() {
 								sub={focusedSub}
 								platform={focusedPlatform}
 								defaults={draft.defaults}
+								presets={draft.defaults.ai.presets}
 								section={shownSection}
 							/>
 						) : section === "filter" ? (

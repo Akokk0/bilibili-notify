@@ -84,7 +84,7 @@ export function hasLiveThresholdOverride(slices: LiveThresholdSlices & LiveTimin
  * `overrides.ai` 这个键在不在。
  *
  * 盘上有三种指不着人格的老值:当年那档「继承全局」(`'inherit'`)、当年那档
- * 「完全自定义」(`'custom'`)、以及指向一份后来被删掉的人格。它们在 `resolveAI`
+ * 「完全自定义」(`'custom'`)、以及指向一份后来被删掉的人格。它们在 `resolveSubscriptionPersona`
  * 眼里都是完整继承全局,所以设置页那一格照实显示「继承」—— 侧栏小点必须跟着同一
  * 个判据,否则就会在一个明明写着「继承」的分类旁边亮起来。
  */

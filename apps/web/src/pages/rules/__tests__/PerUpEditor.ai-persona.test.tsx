@@ -8,7 +8,7 @@
  *
  * 真正要钉的是**老配置**那一头。盘上会有三种指不着人格的值:当年那档
  * `'inherit'`、当年那档 `'custom'`(还带着一整套写死的 persona)、以及指向一份
- * 后来被删掉的人格。它们在 `resolveAI` 眼里的行为都是完整继承全局 —— 界面就得
+ * 后来被删掉的人格。它们在 `resolveSubscriptionPersona` 眼里的行为都是完整继承全局 —— 界面就得
  * 照实显示成「关」,否则就是「界面说覆盖着、实际跟着全局走」的两张皮。而主人真
  * 去开它时,写回磁盘的必须是干净的新对象:把已经失效的 persona 原样搬回去,等于
  * 让鬼配置在盘上又活一轮。
@@ -56,7 +56,12 @@ function mount(overridesAi?: Subscription["overrides"]["ai"]) {
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={qc}>
-			<PerUpEditor sub={sub} defaults={defaultsWithPresets()} section="ai" />
+			<PerUpEditor
+				sub={sub}
+				defaults={defaultsWithPresets()}
+				presets={defaultsWithPresets().ai.presets}
+				section="ai"
+			/>
 		</QueryClientProvider>,
 	);
 }
@@ -147,7 +152,7 @@ describe("per-UP AI 人格 — 只能挑已有的那几份", () => {
 });
 
 describe("per-UP AI 人格 — 指不着人格的老值一律显示成「继承」", () => {
-	// 三种老值在 resolveAI 眼里都是完整继承全局(见 schema/resolve.ts)。
+	// 三种老值在 resolveSubscriptionPersona 眼里都是完整继承全局(见 schema/resolve.ts)。
 	// 界面若显示成「覆盖中」,就是在报告一件根本没发生的事。
 	for (const [label, preset] of [
 		["当年那档「继承全局」", "inherit"],
