@@ -55,6 +55,7 @@
     - 理由：填了自定义 UA，`sec-ch-ua` 仍是生成的 Chrome 身份，拼出一个自相矛盾的指纹；风控 -352 的第一嫌疑本来就是 TLS 指纹，不是 UA。
 8. **`fetchImage` 走集成自己的客户端**（同一套 cookie、身份与默认头）：拦内网、8MB、嗅探、超时这一层只在 `fetchImage` 上，每一跳重定向都查；`ctx.http` 整体不拦内网（局域网里的 RSSHub 要连得上）。
 9. **`state` 与 `secrets` 是同一个 `KeyValueStore { get, set, delete }`**（`get` 同步，宿主在 `start` 前读进内存；写由宿主原子落盘），差别只在保管：
+    - 🔗 10-10（3a-10·26）主人定：接口多一个 `batch(ops)`，每一步是 `{ kind: "set", key, value }` 或 `{ kind: "delete", key }`，**整批一起成或一起不成**（先整批校验、再一次原子写）。起因：B 站的 cookie 罐（`http.cookies`，归宿主）与续期令牌（B 站自己的键）拆开后要同进同退。3a 里 `state` / `secrets` 就给所有集成装上（内置适配器、拓展、B 站），不等 3b；`http` 仍只给 B 站，对拓展开放连同公共后缀规则留到 3b。盘上每份文件包一层 `{ version: 1, entries }`；文件在但读不了时读一律空、写一律拒。
     - `state`：明文，不进备份，不脱敏；单键 64KB、每个集成 1MB（ADR-0021 决策 39）；`http.` 开头的键归宿主（浏览器身份）。
     - `secrets`：用主密钥加密，一个集成一个文件（B 站的 `cookies.enc` 改名并入），只进完整备份；值里的每一段字符串都按原文脱敏（很短的不遮）；每个集成 256KB；`http.` 开头的键归宿主（cookie 罐）。
 10. **ctx 上的调用被拒或失败**：

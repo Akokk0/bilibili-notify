@@ -13,7 +13,8 @@
   构建后 `scripts/check-no-devtools.mjs` 再对着产物 grep 一遍只有 devtools 才用的字符串
   (server 的 `build` / `build:bundle` 与 web 的 `build` 都接了),隔离哪天被绕过构建当场红。
   所以 devtools **只在 tsx 直跑源码时存在**;alpha、正式版、`:test` 镜像、lib 裸跑都没有。
-- **运行期的门(源码上跑时才走到)**:`devtools/index.ts` 的 `createDevtools` 两道都成立才组装:
+- **运行期的门(源码上跑时才走到)**:`devtools/index.ts` 的 `createDevtools` 两道都成立才组装(各集成的场景也是过了这两道门
+  才建:入口交一个 `provide` 回调,门里才调):
   ① 载荷版本号是开发版(`0.0.0-dev` / `dev`,`update/version-order.ts` 的 `isDevBuild`);
   ② 跑的是 TypeScript 源码(`import.meta.url` 以 `.ts` 收尾)。第一道**失败即敞开**(`0.0.0-dev`
   是仓库常驻值,版本号读不出来时兜底也是 `"dev"`),历史上公开推的 `:test` 镜像就是这么把
@@ -39,7 +40,9 @@
 params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` / `connection`(面板画
 选择器,值是 id,留空 = 服务端默认)、`number` / `enum` / `text`(自带默认值)。
 
-- 服务端那半:`apps/server/src/devtools/scenarios/*.ts`,经 `createDevRegistry` 汇总,
+- 服务端那半:核心的场景在 `apps/server/src/devtools/scenarios/*.ts`;各集成自带的场景经 `DevtoolsProvider` 登进
+  `devtoolsProviders`(B 站的在 `apps/server/src/bilibili/devtools/`),汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
+  两边一起经 `createDevRegistry` 汇总,
   `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的
   `active()`;场景做什么归各自的 `run`。
 - 前端那半:`apps/web/src/devtools/web-scenarios.ts`,同形状,`run` 在浏览器里跑(涌 toast、

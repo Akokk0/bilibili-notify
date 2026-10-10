@@ -24,6 +24,7 @@
     - 参数按提供方收窄：来源用新种类 `creator`（值是自己名单里的 `externalId`）；推送适配器只能挑自己的连接；`sub` / `target` 只给核心。
     - `run` 返回结果形状：参数不合法回 `invalid`，场景找不到回 `not_found`；原来那两个异常类删掉。
     - 场景只用自己集成的 ctx 做事（B 站「造一条新动态」就调 `ctx.reportPost`），核心的句柄不交出去。
+    - 🔗 10-10（3a-32）已落前四条里的登记方式与 id 前缀：`DevtoolsProvider`、登记表 `devtoolsProviders`（类型 `DevtoolsProviderRegistry`）、宿主加前缀；B 站的场景搬进 `bilibili/devtools/`，只在开发版的门里登记。「只用自己集成的 ctx 做事」还没做：B 站的场景仍直接用引擎与套了壳的接口句柄，句柄由入口建好交给它，等 3a-28 B 站有了上报口再改。核心自己的场景不加前缀（原文没提）。`run` 返回结果形状、`creator` 参数种类也还没做。
 
 ## 取代与修订的旧条款
 

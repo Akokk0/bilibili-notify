@@ -123,6 +123,7 @@ roast/             锐评：生成、审批、定时、投递（从 stats/ 拆�
 stats/             统计仓与聚合（含粉丝时序；「在记」按特性算，热力图也读它；能回最近几条作品）
 history/ ai/ skins/ library/ maid-skills/
 process/           进程基础件：puppeteer、资源采样、宿主看护（孤儿自检与 stdin 关停、重启能力）
+integration-store/ 集成的小存储：每个集成一份 state.json 与加密的 secrets.enc、限额与保留前缀、原子写与关停时关门（IntegrationContext 上的 state / secrets 引用它）
 integrations/      集成宿主：IntegrationContext 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 Registry
 extensions/        拓展特有的：装载、市场、安装、设置、视图 + 收件口
 bilibili/          B 站：Source 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
