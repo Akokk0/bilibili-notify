@@ -19,7 +19,7 @@
  * **老皮肤整体不迁**(0.x 的卡片皮肤包在 1.0 里格式作废,开机整目录丢弃,见 `zero-generation.ts`):所以只有指着内置 `default`
  * 的指针与它的旋钮有意义,别的指针回 `default`、别的旋钮删掉。0.x 的内置皮肤只有这一套,id 冻在 {@link ZERO_BUILTIN_CARD_SKIN_ID}。
  *
- * `cards` 写在 `cardStyle` / `cardStyleByKind` 原来的位置(键序与 1.0 schema 一致:`ai` 之后、`cardSkin` 之前);值原样搬、
+ * `cards` 写在 `cardStyle` / `cardStyleByKind` 原来的位置(键序是 AI 上提到顶层之前 `defaults` 里的老键序:`ai` 之后、`cardSkin` 之前;`moveGlobalAi` 在这一步之后才跑);值原样搬、
  * 键序不变;认不得的形状原样放过(由配置仓开机时报出来);已经是新形状的数据(`cards` 在、两个老键不在、指针与旋钮都已合规)
  * 再跑一遍回**同一个对象**,新老并存时以新键为准、老键丢掉。**不依赖运行时代码**:词表与内置皮肤 id 都是迁移自己冻住的。
  */

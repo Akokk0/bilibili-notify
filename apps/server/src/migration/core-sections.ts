@@ -59,52 +59,6 @@ function mergeLogLevels(levels: unknown, globalLevel: unknown): unknown {
 	return bilibili === undefined ? rest : { ...rest, bilibili };
 }
 
-/**
- * 默认文案账本上提(提交 ③):`defaults.templateDefaultsSeen` → 顶层 `templatesSeen`(紧跟在 `defaults` 后面)。
- * 老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `templatesSeen`(手改过的盘)就用顶层的、老键照样拿掉。
- * 老账本不是对象也原样带上去,由配置仓开机时报出来。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
- *
- * 上游两步 —— `membership-moves.ts` 与 `feature-renames.ts` —— 改写的是老位置上的账本,所以流水线里这一步必须排在它们之后。
- */
-export function moveTemplateLedger(raw: unknown): unknown {
-	if (!isPlainObject(raw) || !isPlainObject(raw.defaults)) return raw;
-	if (!Object.hasOwn(raw.defaults, "templateDefaultsSeen")) return raw;
-	const { templateDefaultsSeen: oldLedger, ...restOfDefaults } = raw.defaults;
-	const out: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(raw)) {
-		if (key === "templatesSeen") continue;
-		if (key !== "defaults") {
-			out[key] = value;
-			continue;
-		}
-		out.defaults = restOfDefaults;
-		out.templatesSeen = Object.hasOwn(raw, "templatesSeen") ? raw.templatesSeen : oldLedger;
-	}
-	return out;
-}
-
-/**
- * AI 设置上提(提交 ④):`defaults.ai` → 顶层 `ai`(有顶层 `templatesSeen` 就紧跟在它后面,没有就紧跟 `defaults`)。
- * 里面的键一个不动。老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `ai`(手改过的盘)就用顶层的、老键照样拿掉。
- * 老 `ai` 不是对象也原样带上去,由配置仓开机时报出来。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
- *
- * 0.x 老形状的 AI 设置(扁平连接字段、「一家一桶」)由更早的 `migration/ai.ts` 在老位置上改写好,所以这一步排在流水线最后。
- */
-export function moveGlobalAi(raw: unknown): unknown {
-	if (!isPlainObject(raw) || !isPlainObject(raw.defaults)) return raw;
-	if (!Object.hasOwn(raw.defaults, "ai")) return raw;
-	const { ai: oldAi, ...restOfDefaults } = raw.defaults;
-	const anchor = Object.hasOwn(raw, "templatesSeen") ? "templatesSeen" : "defaults";
-	const ai = Object.hasOwn(raw, "ai") ? raw.ai : oldAi;
-	const out: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(raw)) {
-		if (key === "ai") continue;
-		out[key] = key === "defaults" ? restOfDefaults : value;
-		if (key === anchor) out.ai = ai;
-	}
-	return out;
-}
-
 /** `app` 里归 `logging` 的几格(缺的不写,留给 schema 补默认)。 */
 function loggingFromApp(app: Record<string, unknown>): Record<string, unknown> {
 	const logging: Record<string, unknown> = {};
@@ -137,4 +91,51 @@ export function splitAppSettings(raw: unknown): unknown {
 		else if ("fansCron" in app) out.profileRefreshCron = app.fansCron;
 	}
 	return out;
+}
+
+/**
+ * 把 `defaults.<oldKey>` 上提成顶层 `<newKey>`:紧跟在 `anchors` 里(按优先级)第一个顶层真有的键后面。
+ * 老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `<newKey>`(手改过的盘)就用顶层的、老键照样拿掉。
+ * 老值不是对象也原样带上去。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
+ */
+function liftFromDefaults(
+	raw: unknown,
+	oldKey: string,
+	newKey: string,
+	anchors: readonly string[],
+): unknown {
+	if (!isPlainObject(raw) || !isPlainObject(raw.defaults)) return raw;
+	if (!Object.hasOwn(raw.defaults, oldKey)) return raw;
+	const { [oldKey]: oldValue, ...restOfDefaults } = raw.defaults;
+	const anchor = anchors.find((key) => Object.hasOwn(raw, key));
+	const lifted = Object.hasOwn(raw, newKey) ? raw[newKey] : oldValue;
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if (key === newKey) continue;
+		out[key] = key === "defaults" ? restOfDefaults : value;
+		if (key === anchor) out[newKey] = lifted;
+	}
+	return out;
+}
+
+/**
+ * 默认文案账本上提(提交 ③):`defaults.templateDefaultsSeen` → 顶层 `templatesSeen`(紧跟在 `defaults` 后面)。
+ * 老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `templatesSeen`(手改过的盘)就用顶层的、老键照样拿掉。
+ * 老账本不是对象也原样带上去,由配置仓开机时报出来。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
+ *
+ * 上游两步 —— `membership-moves.ts` 与 `feature-renames.ts` —— 改写的是老位置上的账本,所以流水线里这一步必须排在它们之后。
+ */
+export function moveTemplateLedger(raw: unknown): unknown {
+	return liftFromDefaults(raw, "templateDefaultsSeen", "templatesSeen", ["defaults"]);
+}
+
+/**
+ * AI 设置上提(提交 ④):`defaults.ai` → 顶层 `ai`(有顶层 `templatesSeen` 就紧跟在它后面,没有就紧跟 `defaults`)。
+ * 里面的键一个不动。老键从 `defaults` 里拿掉,`defaults` 里别的格不动;顶层已经有 `ai`(手改过的盘)就用顶层的、老键照样拿掉。
+ * 老 `ai` 不是对象也原样带上去,由配置仓开机时报出来。`defaults` 不是普通对象、或里面没有老键:原样回同一个对象。
+ *
+ * 0.x 老形状的 AI 设置(扁平连接字段、「一家一桶」)由更早的 `migration/ai.ts` 在老位置上改写好,所以这一步排在流水线最后。
+ */
+export function moveGlobalAi(raw: unknown): unknown {
+	return liftFromDefaults(raw, "ai", "ai", ["templatesSeen", "defaults"]);
 }

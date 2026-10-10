@@ -1102,8 +1102,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				}
 				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / customCardStyle /
 				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格,不像 DynamicEngine 每个
-				// cron tick 重读 getSubs() 自愈。resolve() 把 ai / cardStyle / schedule / liveStart /
-				// liveStreaming / superchat / membership / filters / templates / features 折进每个 sub 的 eff —— 任一变化都给所有
+				// cron tick 重读 getSubs() 自愈。resolve() 把 cards / cardSkin / schedule / liveStart /
+				// liveStreaming / superchat / membership / filters / templates / features / messageLayout / imageGroup 折进每个 sub 的 eff;
+				// AI 人格不在 eff 里,由 resolveAiOverride(经 resolveSubscriptionPersona)在构造 per-sub 视图时另算 —— 任一变化都给所有
 				// 订阅合成 update op 走 applyOps 增量路径,刷新活跃 listener 的 per-sub
 				// 状态(Object.assign,不重连 WS)。否则全局默认改了直到重启才在 live 生效。
 				if (

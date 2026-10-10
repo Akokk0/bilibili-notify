@@ -35,7 +35,7 @@ export interface ExtensionStatsSourceOptions {
 	fansCron: () => string;
 }
 
-/** cron 读不出来时拓展粉丝的间隔 —— 与默认的 `fansCron`(`*\/10 * * * *`)同一个数。 */
+/** cron 读不出来时拓展粉丝的间隔 —— 与默认的 `DEFAULT_PROFILE_REFRESH_CRON`(`*\/10 * * * *`)同一个数。 */
 export const DEFAULT_FANS_SAMPLE_GAP_MS = 10 * 60_000;
 
 /** 往后看几次触发。够跨过一个小时的边界(`*\/7` 那种在整点处只隔 4 分钟),算一次也就几毫秒。 */

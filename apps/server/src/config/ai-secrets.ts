@@ -98,12 +98,12 @@ function mapAiSecrets(
 	next: (profileId: string, vision: boolean) => string,
 	nextSearch: (backend: string) => string,
 ): GlobalConfig {
-	// 恢复路径(assemble.ts 的 openFullBackup)会把老备份的 globals 原样递进来(活 schema 已不再迁 0.x
-	// 老形状,那种备份下游 parse 会拒;⑧ 起在信封那一步整份拒收)。递进来的
-	// globals 可能没有 ai.search 段(搜索上线前)、没有 providers 桶
-	// (扁平时代)、甚至没有 ai(AI 上线前)。缺哪段就原样跳过哪段 ——
-	// 这里只对存在的形状灌密钥,补默认是下游 GlobalConfigSchema parse 的事;
-	// 曾经无守卫地 Object.keys(undefined),升级前的所有全量备份因此不可恢复。
+	// 生产里的调用方只有配置仓(store.ts):`applyAiSecrets` 在 `hydrateSecrets` 里、`stripAiSecrets` 在落盘前,
+	// 递进来的都是读盘 / 内存里已过 schema 的 globals。备份恢复(assemble.ts 的 openFullBackup)并不经过这里,
+	// 它是用备份信封里的 `redacted` 清单填回密钥。这里仍保留「缺哪段就原样跳过哪段」的守卫(没有 ai、没有
+	// providers 桶、没有 ai.search 段):补默认是下游 GlobalConfigSchema parse 的事,这里只对存在的形状灌密钥;
+	// 这道守卫的来历:恢复路径曾经把老备份的 globals 原样递进来,无守卫的 Object.keys(undefined) 让升级前的
+	// 全量备份全都恢复不了。
 	const ai = g.ai as GlobalConfig["ai"] | undefined;
 	if (!ai) return g;
 	const search = ai.search as GlobalConfig["ai"]["search"] | undefined;

@@ -66,6 +66,8 @@ export const RATCHET = {
 	// (B 站恒在,拓展看它的拓展在不在跑)。3a-28 有了来源登记表里中立的「来源在跑」读口,这一处就消失。
 	// 3a-38(主人 10-10 点头,18 → 20):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(开机取一次、热更取一次)。
 	// 3a-40 把日志等级改成按集成键统一给之后消失。
+	// ⚠️ 这个数少报了:那两处取出来的等级存在 `bootSourceLevel` / `sourceLevel` 两个局部变量里,名字不带 `bili`,
+	// 它们的 6 处读写没数进来(3a-38 的独立审查查出)。主人 10-10 定:3a-40 统一整改时一起走,现在不动。
 	"apps/server/src/runtime/engines.ts": 20,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,

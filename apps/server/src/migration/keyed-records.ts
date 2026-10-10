@@ -42,7 +42,7 @@ export type KeyedRecordRoot = "GlobalConfig" | "Subscription" | "HistoryEntry" |
 
 /**
  * 谁负责把这条记录从 0.x 迁到 1.0:
- * - `settings`:设置那一族的 1.0 步骤(`settings.ts` 的 `migrateGlobalsToCurrent`:改名 + 直播拆键);
+ * - `settings`:设置那一族的 1.0 步骤(`settings.ts` 的 `migrateGlobalsToCurrent`:改名、会员与卡片搬家、直播拆键、历史保留换键、拆 `app`、账本与 AI 上提到顶层);
  * - `subscription`:订阅那一族的 1.0 步骤(`subscriptions.ts` 的 `toCurrentRow`:改名 + 直播拆键);
  * - `history`:历史那一族的 1.0 步骤(`history.ts` 的 `migrateHistoryLine`:老 `source` → 0.x 的推送种类 → 特性键)。
  *   它登记的是一个**值**(推送种类那一格),`zeroPath` 是 0.x 里装种类名的那一格;

@@ -88,7 +88,10 @@ const AFTER_LIVE_STREAMING = [
 	"extras",
 ] as const;
 
-/** 全局 `defaults` 里排在 `liveStart` / `liveStreaming` 两段后面的键(1.0 schema 的顺序)。 */
+/**
+ * 全局 `defaults` 里排在 `liveStart` / `liveStreaming` 两段后面的键。这是 AI 上提到顶层**之前**、`ai` 还住在 `defaults`
+ * 老位置时的键序(这张表在 `moveGlobalAi` 之前跑);上提之后 `ai` 已不在 `defaults` 里。
+ */
 const AFTER_LIVE_SECTIONS = [
 	"liveEnd",
 	"templates",

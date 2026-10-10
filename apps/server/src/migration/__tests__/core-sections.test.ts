@@ -1,6 +1,9 @@
 /**
- * 核心设置拆掉 `app`(3a-38 提交 ②):`app.logLevel / logLevels / logRetentionDays / memoryLog` → `logging`,
- * `app.fansCron` → 顶层 `profileRefreshCron`;`logLevels` 的 `dynamic` 与 `live` 并成 `bilibili`。
+ * 核心设置拆成几段(3a-38,三个函数):
+ * - `splitAppSettings`(提交 ②):拆掉 `app`,`app.logLevel / logLevels / logRetentionDays / memoryLog` → `logging`,
+ *   `app.fansCron` → 顶层 `profileRefreshCron`;`logLevels` 的 `dynamic` 与 `live` 并成 `bilibili`;
+ * - `moveTemplateLedger`(提交 ③):`defaults.templateDefaultsSeen` → 顶层 `templatesSeen`;
+ * - `moveGlobalAi`(提交 ④):`defaults.ai` → 顶层 `ai`。
  *
  * 函数级:搬法、并键取值表逐行、新老并存新键说了算、认不得的形状原样放过、没有要搬的东西回同一个对象。
  * 流水线里的次序(B 站两格要先拆走)由 `zero-generation-settings.test.ts` 与 `settings.test.ts` 钉着。
