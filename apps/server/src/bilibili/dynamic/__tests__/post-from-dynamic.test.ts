@@ -372,6 +372,42 @@ describe("图集", () => {
 		expect(post.images?.[0]?.isAnimated).toBe(animated);
 	});
 
+	it("老形状图文:只有 major.draw.items(没有 opus.pics)也翻出图,宽高照带", () => {
+		const post = postFromDynamic(
+			raw("DYNAMIC_TYPE_DRAW", {
+				major: {
+					type: "MAJOR_TYPE_DRAW",
+					draw: {
+						items: [
+							{ src: "http://x.example/d1.jpg", width: 10, height: 20 },
+							{ src: "http://x.example/d2.gif", width: 30, height: 40 },
+						],
+					},
+				},
+			}),
+		);
+		expect(post.images).toEqual([
+			{ url: "http://x.example/d1.jpg", width: 10, height: 20, isAnimated: false },
+			{ url: "http://x.example/d2.gif", width: 30, height: 40, isAnimated: true },
+		]);
+	});
+
+	it("两处都有:先 draw.items 后 opus.pics(与图集同序)", () => {
+		const post = postFromDynamic(
+			raw("DYNAMIC_TYPE_DRAW", {
+				major: {
+					type: "MAJOR_TYPE_DRAW",
+					draw: { items: [{ src: "http://x.example/d.jpg", width: 1, height: 2 }] },
+					opus: { pics: [pic("http://x.example/o.jpg")] },
+				},
+			}),
+		);
+		expect(post.images?.map((image) => image.url)).toEqual([
+			"http://x.example/d.jpg",
+			"http://x.example/o.jpg",
+		]);
+	});
+
 	it("没有图就没有 images 这一格(不是空数组)", () => {
 		expect(postFromDynamic(raw("DYNAMIC_TYPE_DRAW", opus({ pics: [] }))).images).toBeUndefined();
 		expect(postFromDynamic(raw("DYNAMIC_TYPE_WORD")).images).toBeUndefined();

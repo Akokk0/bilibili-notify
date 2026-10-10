@@ -335,9 +335,16 @@ function setImages(post: Post, images: PostImage[]): void {
 	if (images.length > 0) post.images = images;
 }
 
-/** 图文 / 专栏的图。B 站的缩放后缀与动图判据都留在这里,出卡器只看 `isAnimated`。 */
+/**
+ * 图文 / 专栏的图:先读老形状的 `major.draw.items[]`(图片地址字段是 `src`),再读 `major.opus.pics[]`。
+ * B 站的缩放后缀与动图判据都留在这里,出卡器只看 `isAnimated`。
+ */
 function opusImages(mod: Loose): PostImage[] {
-	const pics: Loose[] = mod.major?.opus?.pics ?? [];
+	const drawn: Loose[] = mod.major?.draw?.items ?? [];
+	const pics: Loose[] = [
+		...drawn.filter((item) => item.src).map((item) => ({ ...item, url: item.src })),
+		...(mod.major?.opus?.pics ?? []),
+	];
 	return pics.map((pic) => ({
 		url: pic.url,
 		width: pic.width,
