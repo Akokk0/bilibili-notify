@@ -27,6 +27,8 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 15 = 核心设置拆掉 `app` 以后导出的备份(设置里日志的四格进了 `logging`:`level` / `levels` / `retentionDays` /
+ * `memoryLog.enabled`,日志等级表里 `dynamic` / `live` 并成了 `bilibili`;粉丝轮询的 cron 成了顶层 `profileRefreshCron`)。
  * 14 = 密钥袋按集成分格以后导出的备份(完整档的密钥袋里,B 站登录不再是平铺的 cookiesJson / refreshToken 两格,改成
  * integrationSecrets:集成键 → 这个集成的 secrets 整袋;恢复结果里 cookiesRestored 换成 restoredIntegrations /
  * unrestoredIntegrations)。
@@ -64,7 +66,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 14 as const;
+export const BACKUP_SCHEMA_VERSION = 15 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

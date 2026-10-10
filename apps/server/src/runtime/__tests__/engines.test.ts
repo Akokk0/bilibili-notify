@@ -523,6 +523,15 @@ function setup(opts?: {
 }
 
 /** structuredClone 当前 globals → mutate → 写回 store(模拟 ConfigStore.patch 后的快照)。 */
+/** 开机时 `forSubsystem(name, …)` 交出去的那个子上下文(按名字取)。 */
+function subsystemCtx(c: Ctx, name: string): ReturnType<typeof makeSubCtx> {
+	const calls = c.serviceCtx.forSubsystem.mock.calls as unknown as [string][];
+	const index = calls.findIndex(([n]) => n === name);
+	const found = c.serviceCtx.forSubsystem.mock.results[index]?.value;
+	if (!found) throw new Error(`没有 ${name} 子上下文`);
+	return found;
+}
+
 function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
 	const next = structuredClone(c.configStore.getGlobals());
 	mutate(next);
@@ -1552,7 +1561,7 @@ describe("createEngines — boot wiring", () => {
 		// 默认 globals 无 apiKey/baseUrl / 无 puppeteer。
 		expect(H.ai).toHaveLength(0);
 		expect(H.image).toHaveLength(0);
-		// boot 时 base logger(core 桶)立即对齐 logLevels.core ?? app.logLevel
+		// boot 时 base logger(core 桶)立即对齐 logging.levels.core ?? logging.level
 		// (默认 globals 无 core override → "info";不等首次 dashboard 保存)。
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledWith("info");
@@ -1787,15 +1796,71 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
 
-	it("只改 logLevel:热推 5 个子系统的 setLevel", () => {
+	it("只改 logging.level:热推 5 个子系统的 setLevel", () => {
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.app.logLevel = "debug";
+			g.logging.level = "debug";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2);
+		expect(c.serviceCtx.setLevel).toHaveBeenLastCalledWith("debug");
+		for (const name of ["dynamic", "live", "ai", "image"]) {
+			expect(subsystemCtx(c, name).setLevel, name).toHaveBeenCalledWith("debug");
+		}
+	});
+
+	// 日志等级的门只比 `logging.level` 与 `logging.levels` 两格。写成整段比的话,改保留天数或内存自检开关
+	// 也会白推五次 setLevel(这条钉着门的粒度;验红办法是把门改成 `eq(prev.logging, g.logging)`)。
+	it.each([
+		[
+			"保留天数",
+			(g: GlobalConfig) => {
+				g.logging.retentionDays = 30;
+			},
+		],
+		[
+			"内存自检开关",
+			(g: GlobalConfig) => {
+				g.logging.memoryLog.enabled = true;
+			},
+		],
+	])("只改 logging 里的%s:不重设日志等级(boot 那一次之外不再有)", (_name, change) => {
+		const c = setup();
+		active = c;
+		patchGlobals(c, change);
+		c.bus.emit("config-changed", { scope: "globals" });
+
+		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
+		for (const name of ["dynamic", "live", "ai", "image"]) {
+			expect(subsystemCtx(c, name).setLevel, name).not.toHaveBeenCalled();
+		}
+	});
+
+	// 日志等级表里 B 站只有一个键 `bilibili`:动态与直播两个引擎共用它,别的模块各有各的键。
+	it("logging.levels.bilibili:开机与热更都让 dynamic、live 两个上下文拿到它,core / image / ai 与基础 logger 不变", () => {
+		const debugged = makeDefaultGlobalConfig();
+		debugged.logging.levels = { bilibili: "debug" };
+		const c = setup({ globals: debugged });
+		active = c;
+
+		const booted = (c.serviceCtx.forSubsystem.mock.calls as unknown as [string, string][]).map(
+			([name, level]) => `${name}:${level}`,
+		);
+		expect(booted.sort()).toEqual(["ai:info", "dynamic:debug", "image:info", "live:debug"]);
+		expect(c.serviceCtx.setLevel).toHaveBeenCalledWith("info");
+
+		patchGlobals(c, (g) => {
+			g.logging.levels = { bilibili: "warn" };
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+
+		expect(subsystemCtx(c, "dynamic").setLevel).toHaveBeenCalledWith("warn");
+		expect(subsystemCtx(c, "live").setLevel).toHaveBeenCalledWith("warn");
+		expect(subsystemCtx(c, "image").setLevel).toHaveBeenCalledWith("info");
+		expect(subsystemCtx(c, "ai").setLevel).toHaveBeenCalledWith("info");
+		expect(c.serviceCtx.setLevel).toHaveBeenLastCalledWith("info");
 	});
 
 	it("配了 AI 时,只改 dynamicCron 不该热重载 commentary", () => {
@@ -2174,7 +2239,7 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
-			g.app.logLevel = "debug";
+			g.logging.level = "debug";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 

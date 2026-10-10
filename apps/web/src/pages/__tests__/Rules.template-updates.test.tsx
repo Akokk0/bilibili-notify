@@ -33,7 +33,7 @@ function globalsWith(mutate: (d: ReturnType<typeof makeDefaults>) => void): Glob
 	// 这样只有测试自己动过的那条才会亮灯。
 	defaults.templates = { ...defaults.templates, ...DEFAULT_TEMPLATES };
 	mutate(defaults);
-	return { app: {}, master: {}, defaults } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
 }
 
 function resetStore(): void {

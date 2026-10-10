@@ -1,7 +1,7 @@
 /**
- * ① fansCron 解耦 + ② 风控熔断。
+ * ① profileRefreshCron 解耦 + ② 风控熔断。
  *
- * ①:FansPoller 的 cron 取 `globals.app.fansCron`(不再复用 dynamicCron)。
+ * ①:FansPoller 的 cron 取 `globals.profileRefreshCron`(不再复用 dynamicCron)。
  * ②:稳态用 fetchRelationStat 取 follower;某个 UP 命中风控码(-352 等)时立即
  *    **中止本轮 sweep**(不继续刷后面的 UP)并退避,下一 tick 直接跳过 —— 对齐
  *    动态引擎「被限流就别继续敲」的机制。
@@ -36,7 +36,7 @@ const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
-	app: { fansCron: "*/10 * * * *" },
+	profileRefreshCron: "*/10 * * * *",
 } as unknown as GlobalConfig;
 
 const PROFILE = { name: "UP", avatarUrl: "a", sign: "s", fans: 100, lastRefreshedAt: "x" };
@@ -96,8 +96,8 @@ afterEach(() => {
 	handle = undefined;
 });
 
-describe("① fansCron 解耦", () => {
-	it("cron 用 app.fansCron(动态轮询那条在 B 站自己的设置里,粉丝轮询不碰)", () => {
+describe("① profileRefreshCron 解耦", () => {
+	it("cron 用 profileRefreshCron(动态轮询那条在 B 站自己的设置里,粉丝轮询不碰)", () => {
 		handle = startFansPoller(
 			baseDeps({
 				subs: [{ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" }, enabled: true }],

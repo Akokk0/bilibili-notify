@@ -8,7 +8,7 @@ import { createNodeMessageBus } from "../message-bus.js";
  * tick;上一轮还在跑就跳过(与 cron 撞上一样),回 false。
  */
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const SUB = {
 	id: "s1",
 	identity: { sourceKey: "bilibili", externalId: "1" },

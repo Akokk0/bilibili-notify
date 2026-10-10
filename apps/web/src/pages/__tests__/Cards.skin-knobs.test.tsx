@@ -58,7 +58,7 @@ const SKIN_LIST = {
 function mockApi(knobs: Record<string, Record<string, unknown>>): void {
 	const defaults = makeDefaults() as unknown as Record<string, unknown>;
 	defaults.cardSkinKnobs = knobs;
-	const globals = { app: {}, master: {}, defaults } as unknown as GlobalConfig;
+	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);

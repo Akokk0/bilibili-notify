@@ -86,7 +86,7 @@ describe("静音状态的存活", () => {
 	// 主人静音着,顺手在面板上改了个日志等级 —— 静音不该因此消失。
 	it("保存别的设置不会把静音清掉", async () => {
 		await store.patchGlobals({ mutedUntil: UNTIL });
-		await store.patchGlobals({ app: { logLevel: "debug" } });
+		await store.patchGlobals({ logging: { level: "debug" } });
 		expect(store.getGlobals().mutedUntil).toBe(UNTIL);
 	});
 

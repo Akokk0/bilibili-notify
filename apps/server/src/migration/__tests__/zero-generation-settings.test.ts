@@ -86,15 +86,71 @@ describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)
 		await expectZeroGlobalsUntouched(sandbox, original);
 		const moved = { dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 };
 		expect(await sandbox.readConfig("settings/bilibili.json")).toEqual(moved);
-		const coreApp = (
-			await sandbox.readConfig<{ app: Record<string, unknown> }>("settings/core.json")
-		).app;
+		// `app` 整个拆掉了:B 站两格进了 bilibili.json,UA 丢掉,日志等级进了 logging(别的格照样跟着走)。
+		const core = await sandbox.readConfig<Record<string, unknown>>("settings/core.json");
+		expect(core).not.toHaveProperty("app");
+		expect(core.logging).toMatchObject({ level: "info" });
 		for (const key of ["userAgent", ...Object.keys(moved)]) {
-			expect(coreApp, key).not.toHaveProperty(key);
+			expect(JSON.stringify(core), key).not.toContain(key);
 		}
-		expect(coreApp.logLevel).toBe("info"); // 别的格原样留在核心
 
 		expect(settingsOf(await sandbox.load())).toEqual(moved);
+	});
+
+	it("`app` 里五格同在(日志等级、userAgent、dynamicCron、healthCheckMinutes、fansCron)→ bilibili.json 有那两格,core.json 没有 app、有 logging 与 profileRefreshCron", async () => {
+		await sandbox.placeZeroText(
+			"state/globals.json",
+			oldGlobalsWithApp({
+				logLevel: "warn",
+				userAgent: "UA/1.0",
+				dynamicCron: "*/5 * * * *",
+				healthCheckMinutes: 45,
+				fansCron: "*/7 * * * *",
+			}),
+		);
+
+		await sandbox.migrate();
+
+		// 次序钉:先拆 B 站两格、再拆 `app`。倒过来的话 bilibili.json 不会建、开机按默认值跑,什么都不报。
+		expect(await sandbox.readConfig("settings/bilibili.json")).toEqual({
+			dynamicCron: "*/5 * * * *",
+			healthCheckMinutes: 45,
+		});
+		const core = await sandbox.readConfig<Record<string, unknown>>("settings/core.json");
+		expect(core).not.toHaveProperty("app");
+		expect(core.profileRefreshCron).toBe("*/7 * * * *");
+		expect(core.logging).toMatchObject({ level: "warn" });
+		const store = await sandbox.load();
+		expect(store.getGlobals().profileRefreshCron).toBe("*/7 * * * *");
+		expect(store.getGlobals().logging.level).toBe("warn");
+	});
+
+	it("`app` 里 logLevels 的 dynamic / live 并成 logging.levels.bilibili(取更详细的);memoryLog 布尔变成 { enabled }", async () => {
+		await sandbox.placeZeroText(
+			"state/globals.json",
+			oldGlobalsWithApp({
+				logLevels: { core: "warn", dynamic: "debug", live: "warn" },
+				memoryLog: true,
+				logRetentionDays: 14,
+			}),
+		);
+
+		await sandbox.migrate();
+
+		const core = await sandbox.readConfig<{ logging: Record<string, unknown> }>(
+			"settings/core.json",
+		);
+		expect(core.logging).toMatchObject({
+			levels: { core: "warn", bilibili: "debug" },
+			memoryLog: { enabled: true },
+			retentionDays: 14,
+		});
+		expect(core.logging.levels).not.toHaveProperty("dynamic");
+		expect(core.logging.levels).not.toHaveProperty("live");
+		expect((await sandbox.load()).getGlobals().logging.levels).toEqual({
+			core: "warn",
+			bilibili: "debug",
+		});
 	});
 
 	it("`app` 里只有 userAgent 这一格 → 核心那份照样改写(去掉它),不为它建 settings/bilibili.json", async () => {
@@ -104,10 +160,9 @@ describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)
 
 		expect(report.rewritten).toContain("config/settings/core.json");
 		expect(report.rewritten).not.toContain("config/settings/bilibili.json");
-		const coreApp = (
-			await sandbox.readConfig<{ app: Record<string, unknown> }>("settings/core.json")
-		).app;
-		expect(coreApp).not.toHaveProperty("userAgent");
+		const core = await sandbox.readConfig<Record<string, unknown>>("settings/core.json");
+		expect(core).not.toHaveProperty("app");
+		expect(JSON.stringify(core)).not.toContain("userAgent");
 		expect(settingsOf(await sandbox.load())).toEqual({
 			dynamicCron: "30 */2 * * * *",
 			healthCheckMinutes: 30,

@@ -88,45 +88,40 @@ const GUARD_TIER_LABELS: Record<string, FieldLabel> = Object.fromEntries(
 );
 
 export const FIELD_LABELS = {
-	// ── 通用 / 全局(app.*) ────────────────────────────────────────────────
+	// ── 通用 / 全局(logging.* 等) ────────────────────────────────────────────────
 	"bilibili.dynamicCron": {
 		label: "动态检查频率",
 		hint: "cron 表达式 · 默认 30 */2 * * * * (每 2 分钟的第 30 秒,错开整分高峰)",
 		section: "general",
 	},
-	"app.logLevel": {
+	"logging.level": {
 		label: "日志等级（全局）",
 		hint: "未在下方按模块覆盖时的兜底",
 		section: "logging",
 	},
-	"app.logLevels": {
+	"logging.levels": {
 		label: "按模块覆盖",
-		hint: "留「跟随全局」即用 app.logLevel；保存后会立即推到对应模块的 pino 实例,无需重启",
+		hint: "留「跟随全局」即用 logging.level；保存后会立即推到对应模块的 pino 实例,无需重启",
 		section: "logging",
 	},
-	// 以下 5 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改某一格时 walkTreeDiff
-	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="app.logLevels">)。
-	"app.logLevels.core": {
+	// 以下 4 条仅作 diff-path entry 用(System 页 SYSTEM_MODULES 改某一格时 walkTreeDiff
+	// 会输出对应 dot-path,跳转锚点回到包裹整组的 <Field code="logging.levels">)。
+	"logging.levels.core": {
 		label: "日志等级",
 		hint: "只影响 core 模块",
 		section: "logging",
 	},
-	"app.logLevels.dynamic": {
+	"logging.levels.bilibili": {
 		label: "日志等级",
-		hint: "只影响 dynamic 模块",
+		hint: "同时影响 dynamic 与 live 两个模块(B 站的动态与直播共用这一档)",
 		section: "logging",
 	},
-	"app.logLevels.live": {
-		label: "日志等级",
-		hint: "只影响 live 模块",
-		section: "logging",
-	},
-	"app.logLevels.image": {
+	"logging.levels.image": {
 		label: "日志等级",
 		hint: "只影响 image 模块",
 		section: "logging",
 	},
-	"app.logLevels.ai": {
+	"logging.levels.ai": {
 		label: "日志等级",
 		hint: "只影响 ai 模块",
 		section: "logging",
@@ -141,7 +136,7 @@ export const FIELD_LABELS = {
 		hint: "推送记录的文字一直留着;超过天数的那几天,图片和重推用的原件会清掉,那几行就不能再重推了",
 		section: "logging",
 	},
-	"app.memoryLog": {
+	"logging.memoryLog.enabled": {
 		label: "内存自检打印",
 		hint: "每 10 分钟往日志写一行 [mem](堆用量 / 上限 / RSS / 弹幕规模),给排泄漏留曲线;概览页的系统资源卡不靠它。堆逼近上限的警告始终会响",
 		section: "logging",

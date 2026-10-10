@@ -31,7 +31,7 @@ export interface ExtensionStatsSourceOptions {
 	recorder: StatsRecorderCore;
 	/** 当前全部订阅(B 站的会被跳过)。按它判「这条拓展订阅还在、启用着」;订阅一变就重查。 */
 	subscriptions: () => readonly StatsSubscription[];
-	/** B 站粉丝轮询的 cron(`globals.app.fansCron`,现取)。 */
+	/** B 站粉丝轮询的 cron(`globals.profileRefreshCron`,现取)。 */
 	fansCron: () => string;
 }
 

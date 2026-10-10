@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
 /**
- * 系统页「运行」格里那一格按模块日志等级 —— `app.logLevels` 的**唯一**编辑口。
+ * 系统页「运行」格里那一格按模块日志等级 —— `logging.levels` 的**唯一**编辑口。
  *
  * image 与 ai 从前各自躺在「图片渲染」与「智能女仆」页的底部,同一个键分三处编辑;
- * 现在五个模块同住一格。这里钉两件事:
+ * 现在四个模块同住一格(动态与直播两个引擎共用一个 B 站键)。这里钉两件事:
  *
- * ① 五格一格不少 —— 搬过来的两格要真的画出来。少一格是纯静默的:类型、构建、
+ * ① 四格一格不少 —— 搬过来的两格要真的画出来。少一格是纯静默的:类型、构建、
  *    别的测试全绿,只有真机上那一格凭空消失。
  * ② 退回「跟随全局」发的是**显式 null**。这条是踩过坑的:PATCH 走 JSON Merge
  *    Patch,键消失 = 「该字段不改」,靠「拷一份、删掉那个键、整份回传」来清除覆盖,
@@ -67,7 +67,12 @@ import { api } from "../../services/api";
  */
 function mockApi(logLevels: Record<string, string>): void {
 	const globals = {
-		app: { logLevel: "info", logLevels },
+		logging: {
+			level: "info",
+			levels: logLevels,
+			retentionDays: 7,
+			memoryLog: { enabled: false },
+		},
 		history: { retentionDays: 30 },
 		bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 		master: { targetId: undefined },
@@ -107,7 +112,7 @@ async function renderRuntimeSection() {
 	await screen.findByText("Core · 应用");
 }
 
-/** 某个模块那一行里的「跟随全局」钮 —— 五行各有一颗,按模块名定位。 */
+/** 某个模块那一行里的「跟随全局」钮 —— 四行各有一颗,按模块名定位。 */
 function inheritButtonOf(moduleLabel: string): HTMLElement {
 	const row = screen.getByText(moduleLabel).closest("div");
 	if (!row) throw new Error(`找不到模块「${moduleLabel}」那一行`);
@@ -126,17 +131,21 @@ afterEach(() => {
 });
 
 describe("系统页的按模块日志等级", () => {
-	it("五个模块都在这一格里 —— image / ai 是从各自页面搬过来的", async () => {
+	it("四个模块都在这一格里 —— image / ai 是从各自页面搬过来的,动态与直播并成一格 B 站", async () => {
 		mockApi({});
 		await renderRuntimeSection();
-		for (const label of ["core 核心", "dynamic 动态", "live 直播", "image 出图", "ai 女仆"]) {
+		for (const label of ["core 核心", "bilibili B 站", "image 出图", "ai 女仆"]) {
 			expect(screen.getByText(label), `缺了「${label}」那一格`).toBeTruthy();
 		}
+		// 并掉的两格不再各画一格。
+		expect(screen.queryByText("dynamic 动态")).toBeNull();
+		expect(screen.queryByText("live 直播")).toBeNull();
 	});
 
 	it.each([
 		["image 出图", "image"],
 		["ai 女仆", "ai"],
+		["bilibili B 站", "bilibili"],
 	])("%s:退回「跟随全局」→ PATCH 里那个键显式为 null", async (label, key) => {
 		mockApi({ [key]: "debug" });
 		await renderRuntimeSection();
@@ -153,12 +162,30 @@ describe("系统页的按模块日志等级", () => {
 
 		const [url, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ app: { logLevels: Record<string, unknown> } },
+			{ logging: { levels: Record<string, unknown> } },
 		];
 		expect(url).toBe("/api/settings");
 		// 键必须在,且为 null。少了这个键,后端 deepMerge 会原样留着旧等级。
-		expect(body.app.logLevels).toHaveProperty(key);
-		expect(body.app.logLevels[key]).toBeNull();
+		expect(body.logging.levels).toHaveProperty(key);
+		expect(body.logging.levels[key]).toBeNull();
+	});
+
+	it("内存自检开关的补丁根在 logging.memoryLog.enabled,别的格不带", async () => {
+		mockApi({ ai: "warn" });
+		await renderRuntimeSection();
+
+		fireEvent.click(screen.getByRole("button", { name: "内存自检打印" }));
+
+		await act(async () => {
+			await useDraftStore.getState().current?.onSave();
+		});
+		await waitFor(() => expect(api.patch).toHaveBeenCalled());
+
+		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
+			string,
+			{ logging: { memoryLog: { enabled: boolean } } },
+		];
+		expect(body.logging.memoryLog.enabled).toBe(true);
 	});
 
 	it("只清自己那一格 —— 同时有两个覆盖时,没动的那个原样留着", async () => {
@@ -177,9 +204,9 @@ describe("系统页的按模块日志等级", () => {
 
 		const [, body] = vi.mocked(api.patch).mock.calls.at(-1) as [
 			string,
-			{ app: { logLevels: Record<string, unknown> } },
+			{ logging: { levels: Record<string, unknown> } },
 		];
-		expect(body.app.logLevels.image).toBeNull();
-		expect(body.app.logLevels.ai).toBe("warn");
+		expect(body.logging.levels.image).toBeNull();
+		expect(body.logging.levels.ai).toBe("warn");
 	});
 });

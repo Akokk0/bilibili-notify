@@ -23,7 +23,7 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 粉丝仓用真的(tmpdir):「有没有时序」就是盘上那份文件。
  */
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 

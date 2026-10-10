@@ -40,7 +40,7 @@ function globalsWith(
 ): GlobalConfig {
 	const defaults = makeDefaults();
 	mutate(defaults);
-	return { app: {}, master: {}, defaults } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
 }
 
 function mount(g: GlobalConfig, subs: Subscription[] = []) {

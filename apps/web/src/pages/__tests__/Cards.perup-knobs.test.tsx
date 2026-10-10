@@ -64,7 +64,7 @@ const GLOBAL_KNOBS = { default: { "glass-opacity": 0.5 } };
 function mockApi(sub: Subscription): void {
 	const defaults = makeDefaults() as unknown as Record<string, unknown>;
 	defaults.cardSkinKnobs = GLOBAL_KNOBS;
-	const globals = { app: {}, master: {}, defaults } as unknown as GlobalConfig;
+	const globals = { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
 	vi.mocked(api.get).mockImplementation((url: string) => {
 		if (url.includes("/api/subscriptions")) return Promise.resolve([sub]);
 		if (url.includes("/api/targets")) return Promise.resolve([]);

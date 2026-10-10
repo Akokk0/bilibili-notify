@@ -189,7 +189,7 @@ export interface AppRuntime {
 	engines: EnginesRuntime | null;
 	attachEngines(engines: EnginesRuntime): void;
 	/**
-	 * FansPoller handle (cron 跟 globals.app.fansCron 刷新每个 enabled sub 的
+	 * FansPoller handle (cron 跟 globals.profileRefreshCron 刷新每个 enabled sub 的
 	 * B 站 fans 数并 emit `fans-refreshed`)。`null` 直到 attachEngines 完成 + 启动
 	 * 完成后由 index.ts 注入;Routes 通过 `runtime.fansPoller?.getLastEntries()` 读
 	 * 最近一轮快照。
@@ -343,7 +343,7 @@ export function createAppRuntime(
 		fans: fansStore,
 		isEnabled: statsEnabled.isEnabled,
 		// 拓展报的粉丝数不密过 B 站粉丝轮询(ADR-0020 决策 8);现取,面板改了 cron 下一条就跟着变。
-		fansCron: () => configStore.getGlobals().app.fansCron,
+		fansCron: () => configStore.getGlobals().profileRefreshCron,
 		logger: serviceCtx.logger,
 		// 按 uid 找订阅 id、判拓展订阅启用着没有、两格「在记」条件(启用着 ∧ 作品开关 / 直播类开关,取有效值)。
 		// 读的是配置仓,开机时它在引擎发出第一条事件之前就载好了。

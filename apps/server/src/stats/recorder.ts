@@ -378,7 +378,7 @@ export interface StatsRecorderOptions {
 	/** 粉丝时序 —— 拓展的粉丝数从资料上报里来,落在这里(B 站的由粉丝轮询写)。 */
 	fans: FollowersStore;
 	/**
-	 * B 站粉丝轮询的 cron(`globals.app.fansCron`,现取)。拓展报的粉丝数不密过它(ADR-0020 决策 8),
+	 * B 站粉丝轮询的 cron(`globals.profileRefreshCron`,现取)。拓展报的粉丝数不密过它(ADR-0020 决策 8),
 	 * 两边的粉丝曲线一样疏密。
 	 */
 	fansCron: () => string;

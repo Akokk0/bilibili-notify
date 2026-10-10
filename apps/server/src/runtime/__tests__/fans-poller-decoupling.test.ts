@@ -7,7 +7,7 @@
  * DynamicEngine 重订阅 + `[ops]` info-log 每 ~2min 刷屏。
  *
  * 修复后 FansPoller 每 tick 改写 subRuntimeStore.patch(独立文件、**无事件**),
- * configStore 仅被读 getGlobals().app.fansCron。本测试用 dynamic-engine.test
+ * configStore 仅被读 getGlobals().profileRefreshCron。本测试用 dynamic-engine.test
  * 同款 `vi.mock("cron")` FakeCronJob 捕获 onTick,手动驱动**恰好一次** tick,
  * 断言:
  *   1. configStore.patchSubscription 一次都没被调(Bug 1 链入口被切断);
@@ -47,7 +47,7 @@ const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
 const GLOBALS = {
-	app: { fansCron: "*/2 * * * *" },
+	profileRefreshCron: "*/2 * * * *",
 } as unknown as GlobalConfig;
 
 const SUB = {

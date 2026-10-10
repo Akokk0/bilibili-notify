@@ -128,11 +128,11 @@ describe("patchGlobals 的删除语义", () => {
 	});
 
 	it("显式 null 把模块日志等级退回跟随全局", async () => {
-		await store.patchGlobals({ app: { logLevels: { image: "debug" } } });
-		expect(store.getGlobals().app.logLevels?.image).toBe("debug");
+		await store.patchGlobals({ logging: { levels: { image: "debug" } } });
+		expect(store.getGlobals().logging.levels.image).toBe("debug");
 
-		await store.patchGlobals({ app: { logLevels: { image: null } } } as never);
-		expect(store.getGlobals().app.logLevels?.image).toBeUndefined();
+		await store.patchGlobals({ logging: { levels: { image: null } } } as never);
+		expect(store.getGlobals().logging.levels.image).toBeUndefined();
 	});
 });
 

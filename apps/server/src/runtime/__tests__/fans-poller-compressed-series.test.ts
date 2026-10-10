@@ -23,7 +23,7 @@ import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntime } from "../sub-runtime-store.js";
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;

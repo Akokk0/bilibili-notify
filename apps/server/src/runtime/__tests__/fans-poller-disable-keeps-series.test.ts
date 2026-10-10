@@ -22,7 +22,7 @@ import type { SubRuntime } from "../sub-runtime-store.js";
  * 的 🔗):下面订阅 id 是 "a" / "b",uid 是 "1" / "2"。
  */
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 
 let dataDir: string;
 let handle: FansPollerHandle | undefined;

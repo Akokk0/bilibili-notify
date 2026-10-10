@@ -98,8 +98,14 @@ const ZERO_FILES: Record<string, string> = {
 	"state/globals.json": JSON.stringify({
 		// B 站的两格搬进它自己的设置文件(ADR-0021 决策 42 下 10-01 的 🔗);自定义 UA 丢掉(ADR-0025 决策 7),
 		// 摘要里它哪儿都不在 —— 谁把它又搬进 settings/bilibili.json,摘要就变。
+		// 另外四格(日志等级表、粉丝轮询 cron、内存自检、保留天数)搬进 `logging` 与顶层 `profileRefreshCron`,
+		// dynamic / live 两个日志键并成 `bilibili`(3a-38,`core-sections.test.ts` 钉细节,这里让摘要认得到这一步)。
 		app: {
 			logLevel: "debug",
+			logLevels: { dynamic: "debug", live: "warn" },
+			fansCron: "*/7 * * * *",
+			memoryLog: true,
+			logRetentionDays: 14,
 			userAgent: "UA/1.0",
 			dynamicCron: "*/5 * * * *",
 			healthCheckMinutes: 45,
@@ -797,8 +803,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 41,
-			output: "90bc0922e00816d285f8425ad94f9939f7882e67bad851df0442d64442b3ea5a",
+			revision: 42,
+			output: "a9a878be2009640ccc6aa6a188de785fc9d5667c4e6ab84b2c62c515f3544565",
 		});
 	});
 });

@@ -24,7 +24,7 @@ function check(patch: Record<string, unknown>, currentAliases: Record<string, st
 describe("checkCommandAliases", () => {
 	// per-scope 门:存别的 tab 不该被一份早就躺在盘上的配置拦住。
 	it("这次没碰别名 → 不插手", () => {
-		expect(check({ app: { logLevel: "debug" } }).ok).toBe(true);
+		expect(check({ logging: { level: "debug" } }).ok).toBe(true);
 	});
 
 	it("互不相干的别名照常放行", () => {

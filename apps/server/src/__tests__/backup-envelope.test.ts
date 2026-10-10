@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("密钥袋按集成分格以后导出的备份是版本 14", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(14);
+	it("核心设置拆掉 app 以后导出的备份是版本 15", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(15);
+	});
+
+	it("版本 14 的备份(核心设置里还是 app)→ unsupported:整份拒收,不悄悄丢掉日志与轮询设置", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 14 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 13 的备份(密钥袋里还是平铺的 cookiesJson / refreshToken)→ unsupported:整份拒收,不悄悄丢掉登录", () => {

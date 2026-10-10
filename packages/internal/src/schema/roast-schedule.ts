@@ -34,7 +34,7 @@ export const RoastScheduleSchema = z.object({
 	enabled: z.boolean().default(false),
 	/**
 	 * 何时发。只当字符串收着,合不合法由调度器启动时校验并报日志(同 `dynamicCron`
-	 * / `fansCron`)—— 在 schema 拦下来的话,用户编辑途中改一个字就存不了盘。
+	 * / `profileRefreshCron`)——在 schema 拦下来的话,用户编辑途中改一个字就存不了盘。
 	 */
 	cron: z.string().default(DEFAULT_ROAST_CRON),
 	/** 统计窗口天数,与 `cron` 无关联 —— 用户自由组合。 */

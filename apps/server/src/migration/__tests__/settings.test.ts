@@ -38,6 +38,7 @@ import {
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { migrateAiSettings } from "../ai.js";
+import { splitAppSettings } from "../core-sections.js";
 import { renameGlobalSettingsKeys } from "../feature-renames.js";
 import { migrateLegacyLinkParsing } from "../link-parsing.js";
 import { splitGlobalLiveSettings } from "../live-split.js";
@@ -461,8 +462,11 @@ describe("AI 迁移 · temperature 退役 —— 老配置照样装得进来", (
 		expectMigratedAiShape(migrated.defaults.ai);
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 
+		// 这里只走到直播拆键:`app` 是 schema 之前的最后一步(`splitAppSettings`)才拆的,要过 schema 得补上。
 		const r = GlobalConfigSchema.safeParse(
-			splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+			splitAppSettings(
+				splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+			),
 		);
 		expect(r.success).toBe(true);
 		const ai = r.data?.defaults.ai;
@@ -683,7 +687,9 @@ describe("整份 globals 迁移(ai / linkParsing / templates)", () => {
 		expect(migrateGlobals(migrated)).toEqual(migrated);
 		expect(
 			GlobalConfigSchema.safeParse(
-				splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+				splitAppSettings(
+					splitGlobalLiveSettings(moveGlobalMembership(renameGlobalSettingsKeys(migrated))),
+				),
 			).success,
 		).toBe(true);
 	});
@@ -760,14 +766,15 @@ describe("历史保留天数 → history.retentionDays(七档)", () => {
 		expect(moveHistoryRetention(raw)).toEqual(raw);
 	});
 
-	it("整条流水走完:0.x 的设置里是 45 天 → 1.0 的设置里 history.retentionDays 是 60,`app` 里没有老键,过得了 schema", () => {
+	it("整条流水走完:0.x 的设置里是 45 天 → 1.0 的设置里 history.retentionDays 是 60,`app` 整个拆掉、`logging` 里没有老键,过得了 schema", () => {
 		const zero = makeZeroGlobals();
 		const out = migrateGlobalsToCurrent({
 			...zero,
 			app: { ...zero.app, historyRetentionDays: 45 },
-		}) as { app: Record<string, unknown>; history: unknown };
+		}) as { logging: Record<string, unknown>; history: unknown };
 		expect(out.history).toEqual({ retentionDays: 60 });
-		expect(out.app).not.toHaveProperty("historyRetentionDays");
+		expect(out).not.toHaveProperty("app");
+		expect(out.logging).not.toHaveProperty("historyRetentionDays");
 		const parsed = GlobalConfigSchema.safeParse(out);
 		expect(parsed.success).toBe(true);
 		expect(parsed.data?.history.retentionDays).toBe(60);

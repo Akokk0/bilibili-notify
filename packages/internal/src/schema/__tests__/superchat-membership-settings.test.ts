@@ -54,7 +54,7 @@ describe("defaults.superchat / defaults.membership", () => {
 
 	it("老配置缺这两段:补成空段,不让开机失败", () => {
 		const { superchat: _s, membership: _m, ...rest } = makeDefaultGlobalConfig().defaults;
-		const parsed = GlobalConfigSchema.parse({ app: {}, master: {}, defaults: rest });
+		const parsed = GlobalConfigSchema.parse({ logging: {}, master: {}, defaults: rest });
 		expect(parsed.defaults.superchat).toEqual({});
 		expect(parsed.defaults.membership).toEqual({});
 	});
@@ -74,7 +74,8 @@ describe("defaults.superchat / defaults.membership", () => {
 
 	it("缺这两段补出来的默认值不共用对象:改一份不会改到下一次解析拿到的", () => {
 		const { superchat: _s, membership: _m, ...rest } = makeDefaultGlobalConfig().defaults;
-		const parse = () => GlobalConfigSchema.parse({ app: {}, master: {}, defaults: rest }).defaults;
+		const parse = () =>
+			GlobalConfigSchema.parse({ logging: {}, master: {}, defaults: rest }).defaults;
 		const a = parse();
 		a.membership.minRank = { guard: 3 };
 		a.superchat.minAmount = 99;

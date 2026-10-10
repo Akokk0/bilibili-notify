@@ -150,15 +150,15 @@ describe("patchSettings:master.targetId", () => {
 
 	it("没动主人那一格的设置照常能存(不被盘上留着的失效值拖住)", async () => {
 		// 先在盘上造一个指向群的主人目标:开机读盘不拒。
-		await store.patchSettings({ core: { app: { memoryLog: false } } });
+		await store.patchSettings({ core: { logging: { memoryLog: { enabled: false } } } });
 		const corePath = join(dataDir, ...CORE_SETTINGS_FILE);
 		const raw = JSON.parse(await readFile(corePath, "utf8")) as Record<string, unknown>;
 		await writeFile(corePath, JSON.stringify({ ...raw, master: { targetId: group.id } }), "utf8");
 		const reopened = await open();
 		expect(reopened.getGlobals().master.targetId).toBe(group.id);
 
-		await reopened.patchSettings({ core: { app: { memoryLog: true } } });
-		expect(reopened.getGlobals().app.memoryLog).toBe(true);
+		await reopened.patchSettings({ core: { logging: { memoryLog: { enabled: true } } } });
+		expect(reopened.getGlobals().logging.memoryLog.enabled).toBe(true);
 		// 要把主人那一格改成别的群仍然拦
 		await rejection(reopened.patchSettings({ core: { master: { targetId: group.id } } }));
 	});

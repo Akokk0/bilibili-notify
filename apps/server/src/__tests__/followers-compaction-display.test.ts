@@ -210,7 +210,7 @@ describe("压缩前后:GET /api/stats/overview 的粉丝各格逐字节相同", 
 	});
 });
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 
 /** 起一个粉丝轮询器(B 站每个 uid 报 `follower[uid]`),跑一轮,回面板上每条的条目(按订阅 id 排)。 */
 async function panelEntries(root: string): Promise<FansRefreshEntry[]> {

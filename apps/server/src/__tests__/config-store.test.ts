@@ -206,9 +206,9 @@ describe("ConfigStore", () => {
 
 	it("getGlobals/getSubscriptions/getTargets return cloned snapshots", () => {
 		const a = store.getGlobals();
-		a.app.fansCron = "tampered";
+		a.profileRefreshCron = "tampered";
 		const b = store.getGlobals();
-		expect(b.app.fansCron).not.toBe("tampered");
+		expect(b.profileRefreshCron).not.toBe("tampered");
 
 		const subs = store.getSubscriptions();
 		subs.push(makeSampleSubscription());
@@ -235,22 +235,22 @@ describe("ConfigStore", () => {
 		}
 		await store.patchGlobals({
 			master: { targetId: T1 },
-			app: { logLevels: { core: "debug" } },
+			logging: { levels: { core: "debug" } },
 		});
 		expect(store.getGlobals().master.targetId).toBe(T1);
-		expect(store.getGlobals().app.logLevels?.core).toBe("debug");
+		expect(store.getGlobals().logging.levels.core).toBe("debug");
 
 		// null = 显式清除
 		await store.patchGlobals({
 			master: { targetId: null },
-			app: { logLevels: { core: null } },
+			logging: { levels: { core: null } },
 		} as never);
 		expect(store.getGlobals().master.targetId).toBeUndefined();
-		expect(store.getGlobals().app.logLevels?.core).toBeUndefined();
+		expect(store.getGlobals().logging.levels.core).toBeUndefined();
 
 		// undefined / 不带该键 ≠ 清除:重配后再发不含 master 的 patch,值保留
 		await store.patchGlobals({ master: { targetId: T2 } });
-		await store.patchGlobals({ app: { fansCron: "*/9 * * * *" } });
+		await store.patchGlobals({ profileRefreshCron: "*/9 * * * *" });
 		expect(store.getGlobals().master.targetId).toBe(T2);
 	});
 
@@ -308,34 +308,34 @@ describe("ConfigStore", () => {
 	});
 
 	it("setGlobals rejects malformed input with ConfigValidationError", async () => {
-		const bad = { ...store.getGlobals(), app: { fansCron: 123 as unknown as string } };
+		const bad = { ...store.getGlobals(), profileRefreshCron: 123 as unknown as string };
 		await expect(store.setGlobals(bad as never)).rejects.toBeInstanceOf(ConfigValidationError);
 	});
 
 	it("patchGlobals rejects malformed input with ConfigValidationError and does not mutate", async () => {
 		const before = store.getGlobals();
 		await expect(
-			store.patchGlobals({ app: { fansCron: 42 as unknown as string } }),
+			store.patchGlobals({ profileRefreshCron: 42 as unknown as string }),
 		).rejects.toBeInstanceOf(ConfigValidationError);
 		expect(store.getGlobals()).toEqual(before);
 	});
 
 	it("patchGlobals atomic write: persisted file matches getGlobals() immediately", async () => {
-		const next = await store.patchGlobals({ app: { fansCron: "*/5 * * * *" } });
-		expect(next.app.fansCron).toBe("*/5 * * * *");
-		expect(store.getGlobals().app.fansCron).toBe("*/5 * * * *");
+		const next = await store.patchGlobals({ profileRefreshCron: "*/5 * * * *" });
+		expect(next.profileRefreshCron).toBe("*/5 * * * *");
+		expect(store.getGlobals().profileRefreshCron).toBe("*/5 * * * *");
 		const onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
 		expect(onDisk).toEqual(next);
 	});
 
 	it("concurrent patchGlobals calls serialize and converge to a consistent state", async () => {
 		await Promise.all([
-			store.patchGlobals({ app: { fansCron: "*/3 * * * *" } }),
+			store.patchGlobals({ profileRefreshCron: "*/3 * * * *" }),
 			store.patchGlobals({ history: { retentionDays: 60 } }),
 			store.patchGlobals({ master: { targetId: undefined } }),
 		]);
 		const final = store.getGlobals();
-		expect(final.app.fansCron).toBe("*/3 * * * *");
+		expect(final.profileRefreshCron).toBe("*/3 * * * *");
 		expect(final.history.retentionDays).toBe(60);
 		// On-disk matches in-memory
 		const onDisk = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
@@ -494,11 +494,11 @@ describe("ConfigStore", () => {
 			captured.push(scope);
 		});
 
-		await store.patchGlobals({ app: { fansCron: "*/4 * * * *" } });
+		await store.patchGlobals({ profileRefreshCron: "*/4 * * * *" });
 		await store.upsertSubscription(makeSampleSubscription("22222"));
 
 		// Failures must NOT emit
-		await store.patchGlobals({ app: { fansCron: 9 as unknown as string } }).catch(() => {});
+		await store.patchGlobals({ profileRefreshCron: 9 as unknown as string }).catch(() => {});
 
 		expect(captured).toEqual(["globals", "subscriptions"]);
 		sub.dispose();
@@ -858,13 +858,13 @@ describe("ConfigStore", () => {
 
 	it("schema 校验不过 → invalid,逐格原因进 issues,顶上一句中文", async () => {
 		await expect(
-			store.patchGlobals({ app: { fansCron: 42 as unknown as string } }),
+			store.patchGlobals({ profileRefreshCron: 42 as unknown as string }),
 		).rejects.toMatchObject({
 			name: "ConfigValidationError",
 			code: "invalid",
 			scope: "globals",
-			message: expect.stringMatching(/^全局设置有 \d+ 格不合法：app\.fansCron：/),
-			issues: [expect.objectContaining({ path: ["app", "fansCron"] })],
+			message: expect.stringMatching(/^全局设置有 \d+ 格不合法：profileRefreshCron：/),
+			issues: [expect.objectContaining({ path: ["profileRefreshCron"] })],
 		});
 	});
 
@@ -1091,14 +1091,14 @@ describe("ConfigStore", () => {
 			subs: store.getSubscriptions(),
 			connections: store.getConnections(),
 			targets: store.getTargets(),
-			cron: store.getGlobals().app.fansCron,
+			cron: store.getGlobals().profileRefreshCron,
 		};
 
 		await expect(
 			store.replaceSections({
 				globals: {
 					...store.getGlobals(),
-					app: { ...store.getGlobals().app, fansCron: "*/9 * * * *" },
+					profileRefreshCron: "*/9 * * * *",
 				},
 				subscriptions: [],
 				connections: [connection],
@@ -1120,7 +1120,7 @@ describe("ConfigStore", () => {
 		expect(store.getSubscriptions()).toEqual(before.subs);
 		expect(store.getConnections()).toEqual(before.connections);
 		expect(store.getTargets()).toEqual(before.targets);
-		expect(store.getGlobals().app.fansCron).toBe(before.cron);
+		expect(store.getGlobals().profileRefreshCron).toBe(before.cron);
 	});
 
 	it("replaceSections:target 指向不存在的 adapter → 拒绝,且不写", async () => {
@@ -1222,7 +1222,7 @@ describe("ConfigStore", () => {
 	it("a fresh store re-loads existing JSON on disk", async () => {
 		const sub = makeSampleSubscription("33333");
 		await store.upsertSubscription(sub);
-		await store.patchGlobals({ app: { fansCron: "*/7 * * * *" } });
+		await store.patchGlobals({ profileRefreshCron: "*/7 * * * *" });
 
 		// Build a second store pointing at the same dataDir
 		const bus2 = makeFakeBus();
@@ -1233,7 +1233,7 @@ describe("ConfigStore", () => {
 			serviceCtx: makeFakeServiceCtx(),
 		});
 		await store2.load();
-		expect(store2.getGlobals().app.fansCron).toBe("*/7 * * * *");
+		expect(store2.getGlobals().profileRefreshCron).toBe("*/7 * * * *");
 		expect(store2.getSubscriptions()).toHaveLength(1);
 		expect(store2.getSubscriptions()[0]?.id).toBe(sub.id);
 	});
@@ -1306,7 +1306,7 @@ describe("ConfigStore.close", () => {
 	it("close 等得到嵌套排队的写(replaceSections 排在 globals 的写后面、关门时才轮到它去拿其余分区)", async () => {
 		const sub = makeSampleSubscription("33333");
 		storageWriteGate.hold();
-		const patching = store.patchGlobals({ app: { fansCron: "*/3 * * * *" } });
+		const patching = store.patchGlobals({ profileRefreshCron: "*/3 * * * *" });
 		await storageWriteGate.arrived();
 		// 外层任务排在 globals 的队里干等:内层四个分区的写要等它跑起来才会一层层交进来。
 		const replacing = store.replaceSections({ subscriptions: [sub] });
@@ -1333,7 +1333,7 @@ describe("ConfigStore.close", () => {
 		await expect(store.upsertConnection(makeWebhookConnection())).rejects.toMatchObject({
 			code: "queue_closed",
 		});
-		await expect(store.patchGlobals({ app: { fansCron: "*/2 * * * *" } })).rejects.toMatchObject({
+		await expect(store.patchGlobals({ profileRefreshCron: "*/2 * * * *" })).rejects.toMatchObject({
 			code: "queue_closed",
 		});
 

@@ -1,8 +1,8 @@
 /**
  * 守护 — `startLogRetention`(按日 log 归档保留清理)。镜像 history
- * retention 守护契约,改读 `globals.app.logRetentionDays` + `<dataDir>/logs`。
+ * retention 守护契约,改读 `globals.logging.retentionDays` + `<dataDir>/logs`。
  *
- *   - logRetentionDays<=0 → 整轮跳过
+ *   - retentionDays<=0 → 整轮跳过
  *   - 仅删 date < UTC cutoff 的日文件,今日文件保留
  *   - 启动即跑一次;返回值即 setInterval handle
  */
@@ -65,7 +65,7 @@ function start(days: number, intervalMs?: number) {
 	return startLogRetention({
 		serviceCtx: { setInterval: setInterval_, track: ctx.track, signal: ctx.signal } as never,
 		store: {
-			getGlobals: () => ({ app: { logRetentionDays: days } }),
+			getGlobals: () => ({ logging: { retentionDays: days } }),
 		} as never,
 		hostRoot: dataDir,
 		logger,

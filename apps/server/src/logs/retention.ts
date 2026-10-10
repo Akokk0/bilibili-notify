@@ -4,7 +4,7 @@ import { deleteLogDayFile, listLogDayFiles } from "./store.js";
 
 /**
  * Daily retention pass — drops log jsonl files older than
- * `globals.app.logRetentionDays`. Same shape as `startHistoryRetention`:
+ * `globals.logging.retentionDays`. Same shape as `startHistoryRetention`:
  * a ServiceContext interval reading the live horizon from ConfigStore each
  * tick, so a config change applies on the next pass without a restart.
  */
@@ -39,7 +39,7 @@ export function startLogRetention(opts: LogRetentionRunnerOptions): Disposable {
 }
 
 async function runOnce(opts: LogRetentionRunnerOptions): Promise<void> {
-	const days = opts.store.getGlobals().app.logRetentionDays;
+	const days = opts.store.getGlobals().logging.retentionDays;
 	if (!days || days <= 0) return;
 	const cutoff = new Date();
 	cutoff.setUTCDate(cutoff.getUTCDate() - days);

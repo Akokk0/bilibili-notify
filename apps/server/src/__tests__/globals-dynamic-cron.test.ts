@@ -113,17 +113,17 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	it("同一发里核心与 B 站的格子一起送:B 站那格被拒 → 核心那格也不落地", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
-		const fansCronBefore = runtime.configStore.getGlobals().app.fansCron;
+		const refreshCronBefore = runtime.configStore.getGlobals().profileRefreshCron;
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await patch(app, {
-			app: { fansCron: "*/20 * * * *" },
+			profileRefreshCron: "*/20 * * * *",
 			bilibili: { dynamicCron: "not a cron expr" },
 		});
 		expect(res.status).toBe(400);
-		expect(runtime.configStore.getGlobals().app.fansCron).toBe(fansCronBefore);
+		expect(runtime.configStore.getGlobals().profileRefreshCron).toBe(refreshCronBefore);
 
 		await runtime.dispose();
 	});
@@ -136,20 +136,21 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 		});
 
 		const res = await patch(app, {
-			app: { fansCron: "*/20 * * * *" },
+			profileRefreshCron: "*/20 * * * *",
 			bilibili: { healthCheckMinutes: 60 },
 		});
 		expect(res.status).toBe(200);
-		expect(runtime.configStore.getGlobals().app.fansCron).toBe("*/20 * * * *");
+		expect(runtime.configStore.getGlobals().profileRefreshCron).toBe("*/20 * * * *");
 		expect(settingsOf(runtime.configStore).healthCheckMinutes).toBe(60);
 		// 两格各回各的家:核心文件里没有 B 站的键,B 站文件里没有核心的。
 		const bilibili = JSON.parse(await readFile(bilibiliFile(), "utf8"));
 		expect(bilibili.healthCheckMinutes).toBe(60);
-		expect(bilibili).not.toHaveProperty("app");
+		expect(bilibili).not.toHaveProperty("profileRefreshCron");
 		const core = JSON.parse(await readFile(join(dataDir, ...CORE_SETTINGS_FILE), "utf8"));
-		expect(core.app.fansCron).toBe("*/20 * * * *");
+		expect(core.profileRefreshCron).toBe("*/20 * * * *");
 		expect(core).not.toHaveProperty("bilibili");
-		expect(core.app).not.toHaveProperty("healthCheckMinutes");
+		expect(core).not.toHaveProperty("app");
+		expect(core.logging).not.toHaveProperty("healthCheckMinutes");
 
 		await runtime.dispose();
 	});

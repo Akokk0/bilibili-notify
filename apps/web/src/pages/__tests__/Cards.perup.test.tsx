@@ -37,7 +37,7 @@ const CUSTOMIZED: Subscription = {
 };
 
 const GLOBALS = {
-	app: {},
+	logging: {},
 	master: {},
 	defaults: makeDefaults(),
 } as unknown as GlobalConfig;

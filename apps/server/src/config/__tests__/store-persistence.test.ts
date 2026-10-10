@@ -139,7 +139,7 @@ describe("ConfigStore 落盘:replaceSections 写到一半失败", () => {
 		await expect(
 			store.replaceSections({
 				connections: [onebotConnection("改了名")],
-				globals: { ...globals, app: { ...globals.app, fansCron: "*/9 * * * *" } },
+				globals: { ...globals, profileRefreshCron: "*/9 * * * *" },
 			}),
 		).rejects.toThrow();
 
@@ -157,7 +157,7 @@ describe("ConfigStore 落盘:写失败不留临时文件", () => {
 		await rm(globalsPath);
 		await mkdir(globalsPath);
 
-		await expect(store.patchGlobals({ app: { fansCron: "*/9 * * * *" } })).rejects.toThrow();
+		await expect(store.patchGlobals({ profileRefreshCron: "*/9 * * * *" })).rejects.toThrow();
 
 		// 临时文件落在目标旁边:设置文件在 config/settings/ 里,两个目录都得干净。
 		expect(await tempLeftovers(stateDir)).toEqual([]);

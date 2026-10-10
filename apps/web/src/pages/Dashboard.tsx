@@ -610,22 +610,24 @@ interface PluginCell {
 /**
  * 每格读哪个覆盖键。
  *
- * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logLevels.core` 走
+ * 四个基础设施件共用 **`core`** —— 服务端的基础 logger 跟着 `logging.levels.core` 走
  * (`runtime/engines.ts`),而引擎之外的每一条日志(push / sink / master 私聊 /
  * 粉丝轮询 / 路由 / 配置 / 历史 / ws)都从它出,那正好就是这四格。
  *
  * 此前这里是一份只认四个引擎键的写死名单,注释还断言「infra 四件没有槽位」。
  * 那句话在写下的当天(2026-05-13,概览页把占位的 core 格拆成 8 个真包)成立,
- * 六天后服务端把基础 logger 接到 `logLevels.core` 上就不成立了,而没有任何东西
+ * 六天后服务端把基础 logger 接到 `logging.levels.core` 上就不成立了,而没有任何东西
  * 拦下这次分歧:把 core 调成 info,服务端真按 info 打日志,卡上一点变化都没有。
+ *
+ * 动态与直播两个 B 站引擎共用日志等级表里的一个键(`BILIBILI_SOURCE_KEY`),所以这两格读同一个覆盖。
  */
-const OVERRIDE_KEY: Record<ModuleCellId, "core" | "dynamic" | "live" | "image" | "ai"> = {
+const OVERRIDE_KEY: Record<ModuleCellId, string> = {
 	api: "core",
 	storage: "core",
 	subscription: "core",
 	push: "core",
-	dynamic: "dynamic",
-	live: "live",
+	dynamic: BILIBILI_SOURCE_KEY,
+	live: BILIBILI_SOURCE_KEY,
 	image: "image",
 	ai: "ai",
 };
@@ -1030,8 +1032,8 @@ export default function Dashboard() {
 				<SystemHealthCard
 					health={health.data}
 					reachable={reachable}
-					logLevel={globalsQuery.data?.app.logLevel}
-					logLevels={globalsQuery.data?.app.logLevels}
+					logLevel={globalsQuery.data?.logging.level}
+					logLevels={globalsQuery.data?.logging.levels}
 					loggedIn={loggedIn}
 					subCount={subs.length}
 					targetCount={targets.length}

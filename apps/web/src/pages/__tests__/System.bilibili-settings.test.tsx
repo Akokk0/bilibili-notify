@@ -61,7 +61,7 @@ import { api } from "../../services/api";
 
 /** 服务端下发的那一份:核心设置的顶层块 + 并排的 `bilibili`(两格都有值)。 */
 const GLOBALS = {
-	app: { logLevel: "info", logLevels: {} },
+	logging: { level: "info", levels: {}, retentionDays: 7, memoryLog: { enabled: false } },
 	bilibili: { dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 },
 	history: { retentionDays: 30 },
 	master: { targetId: undefined },
@@ -152,19 +152,19 @@ describe("系统页里 B 站的两格", () => {
 		const body = await save();
 
 		expect(body.bilibili).toMatchObject({ [key]: sent });
-		expect(body).not.toHaveProperty("app");
+		expect(body).not.toHaveProperty("logging");
 	});
 
-	it("改核心 app 的一格(日志等级)→ PATCH 里没有 bilibili 块", async () => {
+	it("改核心 logging 的一格(日志等级)→ PATCH 里没有 bilibili 块", async () => {
 		await renderRuntimeSection();
-		// 「运行」格里 app.logLevel 那一行的「调试」档(L4)。
-		const row = document.querySelector(`[data-code="app.logLevel"]`);
-		if (!row) throw new Error("找不到字段「app.logLevel」");
+		// 「运行」格里 logging.level 那一行的「调试」档(L4)。
+		const row = document.querySelector(`[data-code="logging.level"]`);
+		if (!row) throw new Error("找不到字段「logging.level」");
 		fireEvent.click(within(row as HTMLElement).getByText("L4 · 调试"));
 
 		const body = await save();
 
-		expect(body).toMatchObject({ app: { logLevel: "debug" } });
+		expect(body).toMatchObject({ logging: { level: "debug" } });
 		expect(body).not.toHaveProperty("bilibili");
 	});
 });
@@ -212,6 +212,6 @@ describe("系统页里的保留天数", () => {
 		const body = await save();
 
 		expect(body).toMatchObject({ history: { retentionDays: 7 } });
-		expect(body).not.toHaveProperty("app");
+		expect(body).not.toHaveProperty("logging");
 	});
 });

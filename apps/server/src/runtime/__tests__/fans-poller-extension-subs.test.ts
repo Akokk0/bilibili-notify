@@ -12,7 +12,7 @@ import { createNodeMessageBus } from "../message-bus.js";
  *   B 站订阅,拓展订阅的资料缓存就被当成孤儿静默抹掉。
  */
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const BILI = {
 	id: "b1",
 	identity: { sourceKey: "bilibili", externalId: "1" },

@@ -58,7 +58,7 @@ const BILI: Subscription = makeEmptySubscription({ sourceKey: "bilibili", extern
 function globals(): GlobalConfig {
 	const defaults = makeDefaults();
 	defaults.schedule.quietHours = [{ start: 23, end: 7 }];
-	return { app: {}, master: {}, defaults } as unknown as GlobalConfig;
+	return { logging: {}, master: {}, defaults } as unknown as GlobalConfig;
 }
 
 let subs: Subscription[];

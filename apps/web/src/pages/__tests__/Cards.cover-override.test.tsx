@@ -104,7 +104,7 @@ async function openPerUp(sub: Subscription): Promise<void> {
 			});
 		}
 		return Promise.resolve({
-			app: {},
+			logging: {},
 			master: {},
 			defaults: makeDefaults(),
 		} as unknown as GlobalConfig);

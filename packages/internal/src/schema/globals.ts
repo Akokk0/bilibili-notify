@@ -37,6 +37,7 @@ import {
 	SuperchatSettingsSchema,
 	TemplateBundleSchema,
 } from "./common";
+import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { DEFAULT_LINK_PARSING, LinkParsingConfigSchema } from "./link-parsing";
 import { DEFAULT_MESSAGE_LAYOUT, MessageLayoutSchema } from "./message-layout";
 import { DEFAULT_ROAST_SCHEDULE, RoastScheduleSchema } from "./roast-schedule";
@@ -62,18 +63,20 @@ export const LogLevelSchema = z.enum(["error", "warn", "info", "debug"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
 /**
- * Per-module log-level overrides. Each key is a Subscription-engine module
- * name; a missing key falls back to `app.logLevel`.
+ * 日志等级的按键覆盖:键是核心模块(`core` / `image` / `ai`)或集成键(B 站的 `bilibili`、拓展 id);
+ * 没写的键跟 `logging.level`。
+ *
+ * 键是**开放**的字符串 —— 集成的集合不写死在 schema 里;键是 PATCH 能写进来的任意文本,所以过原型名那道检查
+ * (与 `extensions` 表、来源键同一条规矩)。写了没人读的键会留在盘上、不起作用。
  */
-export const ModuleLogLevelsSchema = z
-	.object({
-		core: LogLevelSchema.optional(),
-		dynamic: LogLevelSchema.optional(),
-		live: LogLevelSchema.optional(),
-		image: LogLevelSchema.optional(),
-		ai: LogLevelSchema.optional(),
-	})
-	.optional();
+export const ModuleLogLevelsSchema = z.record(
+	z
+		.string()
+		.min(1)
+		.max(64)
+		.refine((key) => !isPrototypeName(key), prototypeNameMessage("日志模块的键 ")),
+	LogLevelSchema,
+);
 export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 
 /**
@@ -91,11 +94,11 @@ export type ModuleLogLevels = z.infer<typeof ModuleLogLevelsSchema>;
 export const DEFAULT_DYNAMIC_CRON = "30 */2 * * * *";
 
 /**
- * 粉丝数轮询 cron 默认值(独立端 FansPoller)。粉丝曲线要不了动态那样的 2min
+ * 资料刷新(粉丝数轮询,独立端 FansPoller)cron 默认值。粉丝曲线要不了动态那样的 2min
  * 精度,独立成一档更慢的节奏 —— 每 UP 一个请求,拉长间隔直接降低风控面。
- * 对齐 `AppConfigSchema.fansCron`。
+ * 对应顶层 `profileRefreshCron`。
  */
-export const DEFAULT_FANS_CRON = "*/10 * * * *";
+export const DEFAULT_PROFILE_REFRESH_CRON = "*/10 * * * *";
 
 /** 登录健康检查间隔(分钟)默认值。B 站设置的 `healthCheckMinutes` 用它(同 {@link DEFAULT_DYNAMIC_CRON})。 */
 export const DEFAULT_HEALTH_CHECK_MINUTES = 30;
@@ -126,26 +129,30 @@ export const StatsSettingsSchema = z.object({
 export type StatsSettings = z.infer<typeof StatsSettingsSchema>;
 export const DEFAULT_STATS_SETTINGS: StatsSettings = { enabled: true };
 
-export const AppConfigSchema = z.object({
-	logLevel: LogLevelSchema.default("info"),
-	logLevels: ModuleLogLevelsSchema,
-	// B 站那两格(`dynamicCron` / `healthCheckMinutes`)在 B 站自己的设置文件里
-	// (`apps/server/src/bilibili/settings.ts`,ADR-0021 决策 42 下 10-01 的 🔗)。
-	/** 粉丝数轮询 cron(独立端 FansPoller);从动态轮询的 cron 解耦,默认更慢降风控。 */
-	fansCron: z.string().default(DEFAULT_FANS_CRON),
+/**
+ * 日志设置:全局等级、按模块覆盖、归档保留天数、内存自检开关。
+ *
+ * 顶层 `logging` 必填、不带 default —— 与拆掉之前的 `app` 同一个松紧(缺了它整份设置开不了机,而不是悄悄补默认)。
+ * B 站那两格(`dynamicCron` / `healthCheckMinutes`)在 B 站自己的设置文件里
+ * (`apps/server/src/bilibili/settings.ts`,ADR-0021 决策 42 下 10-01 的 🔗)。
+ */
+export const LoggingSettingsSchema = z.object({
+	level: LogLevelSchema.default("info"),
+	/** 按键覆盖,没写的键跟 `level`。默认空表,读者不用再多写一层 `?.`。 */
+	levels: ModuleLogLevelsSchema.default({}),
 	/**
 	 * 日志归档保留天数。`startLogRetention` 每轮按此删除更旧的 day 文件。
 	 * 默认比图片保留天数短(日志量远高于推送历史、长期价值低)。
 	 */
-	logRetentionDays: z.number().int().min(1).max(365).default(7),
+	retentionDays: z.number().int().min(1).max(365).default(7),
 	/**
 	 * 内存自检打印:开着就每 10 分钟往日志写一行 `[mem]`(堆用量 / 上限 / 占比 / RSS /
 	 * 弹幕收集器规模)。默认关 —— 概览页的「系统资源」卡已经实时在看,这行只给要留一条
 	 * 长曲线排泄漏的人。堆逼近上限的 warn 不归它管,始终在。
 	 */
-	memoryLog: z.boolean().default(false),
+	memoryLog: z.object({ enabled: z.boolean().default(false) }).default(() => ({ enabled: false })),
 });
-export type AppConfig = z.infer<typeof AppConfigSchema>;
+export type LoggingSettings = z.infer<typeof LoggingSettingsSchema>;
 
 export const MasterConfigSchema = z.object({
 	/** 用于错误私聊的 PushTarget.id,只许指向私聊目标(`isPrivateTarget`);undefined 时不发私聊。 */
@@ -301,7 +308,12 @@ export const ExtensionStateSchema = z.object({
 export type ExtensionState = z.infer<typeof ExtensionStateSchema>;
 
 export const GlobalConfigSchema = z.object({
-	app: AppConfigSchema,
+	logging: LoggingSettingsSchema,
+	/**
+	 * 资料刷新(粉丝数轮询)的 cron。从动态轮询的 cron 解耦,默认更慢降风控。
+	 * 不在 schema 里校验 cron 语法:`roast-schedule.ts` 里说的那条理由(用户编辑途中改一个字就存不了盘)同样适用。
+	 */
+	profileRefreshCron: z.string().default(DEFAULT_PROFILE_REFRESH_CRON),
 	/** 推送历史:图片与重推原件的保留天数。缺这一节的老设置补默认。 */
 	history: HistorySettingsSchema.default(() => structuredClone(DEFAULT_HISTORY_SETTINGS)),
 	stats: StatsSettingsSchema.default(() => structuredClone(DEFAULT_STATS_SETTINGS)),
@@ -406,7 +418,7 @@ export const DEFAULT_CARDS: CardsSettings = { enabled: true, liveCoverImageIds: 
 /** 工厂:创建一份完整的默认 GlobalConfig(不含 bootstrap)—— server 的出厂值与测试夹具共用。 */
 export function makeDefaultGlobalConfig(): GlobalConfig {
 	return GlobalConfigSchema.parse({
-		app: {},
+		logging: {},
 		master: {},
 		defaults: {
 			features: DEFAULT_FEATURE_FLAGS,

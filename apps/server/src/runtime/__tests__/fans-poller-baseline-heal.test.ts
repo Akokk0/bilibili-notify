@@ -42,7 +42,7 @@ vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
-const GLOBALS = { app: { fansCron: "*/2 * * * *" } } as unknown as GlobalConfig;
+const GLOBALS = { profileRefreshCron: "*/2 * * * *" } as unknown as GlobalConfig;
 const SUB = {
 	id: "sub-1",
 	identity: { sourceKey: "bilibili", externalId: "12345" },

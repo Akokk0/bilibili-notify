@@ -33,7 +33,7 @@ vi.mock("../../services/api", () => ({
 import { api } from "../../services/api";
 
 const GLOBALS = {
-	app: {},
+	logging: {},
 	master: {},
 	defaults: makeDefaults(),
 } as unknown as GlobalConfig;

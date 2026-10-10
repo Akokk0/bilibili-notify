@@ -55,7 +55,7 @@ describe("出厂配置与解析结果不共用可变容器", () => {
 			const { features, filters, schedule, liveStart, liveStreaming, templates, ai, cards } =
 				makeDefaultGlobalConfig().defaults;
 			return {
-				app: {},
+				logging: {},
 				master: {},
 				defaults: {
 					features,

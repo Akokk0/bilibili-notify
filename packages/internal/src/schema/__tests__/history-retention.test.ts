@@ -26,13 +26,13 @@ describe("history.retentionDays", () => {
 		expect(HistorySettingsSchema.safeParse({ retentionDays: days }).success).toBe(false);
 	});
 
-	it("`app` 里不再有 historyRetentionDays:写了也读不进来", () => {
+	it("`logging` 里没有 historyRetentionDays:写了也读不进来", () => {
 		const base = makeDefaultGlobalConfig();
 		const parsed = GlobalConfigSchema.parse({
 			...base,
-			app: { ...base.app, historyRetentionDays: 45 },
+			logging: { ...base.logging, historyRetentionDays: 45 },
 		});
-		expect(parsed.app).not.toHaveProperty("historyRetentionDays");
+		expect(parsed.logging).not.toHaveProperty("historyRetentionDays");
 		expect(parsed.history.retentionDays).toBe(30);
 	});
 });

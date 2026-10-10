@@ -64,7 +64,9 @@ export const RATCHET = {
 	"apps/server/src/routes/subscriptions.ts": 9,
 	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的
 	// (B 站恒在,拓展看它的拓展在不在跑)。3a-28 有了来源登记表里中立的「来源在跑」读口,这一处就消失。
-	"apps/server/src/runtime/engines.ts": 18,
+	// 3a-38(主人 10-10 点头,18 → 20):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(开机取一次、热更取一次)。
+	// 3a-40 把日志等级改成按集成键统一给之后消失。
+	"apps/server/src/runtime/engines.ts": 20,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
@@ -84,10 +86,14 @@ export const RATCHET = {
 	"apps/web/src/devtools/web-scenarios.ts": 1,
 	"apps/web/src/hooks/useAuthChannel.ts": 2,
 	"apps/web/src/pages/Cards.tsx": 2,
-	"apps/web/src/pages/Dashboard.tsx": 4,
+	// 3a-38(主人 10-10 点头,4 → 6):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(动态、直播两行都读它)。
+	// 第 4 期系统页与概览页按集成的描述画之后消失。
+	"apps/web/src/pages/Dashboard.tsx": 6,
 	"apps/web/src/pages/Rules.tsx": 6,
 	"apps/web/src/pages/Subs.tsx": 18,
-	"apps/web/src/pages/System.tsx": 27,
+	// 3a-38(主人 10-10 点头,27 → 29):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(引入常量、模块表里用一次)。
+	// 第 4 期系统页按集成的描述画之后消失。
+	"apps/web/src/pages/System.tsx": 29,
 	"apps/web/src/pages/rules/PerUpEditor.tsx": 6,
 	"apps/web/src/pages/rules/sections.tsx": 2,
 	"apps/web/src/pages/up/UpCard.tsx": 6,

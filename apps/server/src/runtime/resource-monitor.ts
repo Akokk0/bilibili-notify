@@ -126,7 +126,7 @@ export interface ResourceMonitorDeps {
 	readers?: Partial<ResourceReaders>;
 	browser?: BrowserSource;
 	/**
-	 * 「内存自检打印」开关(`globals.app.memoryLog`),每个 tick 现问 —— 系统页一拨就生效,
+	 * 「内存自检打印」开关(`globals.logging.memoryLog.enabled`),每个 tick 现问 —— 系统页一拨就生效,
 	 * 不用重启也不用另接 config-changed。缺省关。
 	 */
 	memoryLogEnabled?: () => boolean;

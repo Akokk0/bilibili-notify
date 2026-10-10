@@ -81,8 +81,10 @@ import { migrateUptime } from "./uptime.js";
  * `testStatus` 两处(连接、目标)都不带过来。
  * 41 = B 站登录从 secrets/cookies.json 转成 secrets/bilibili/secrets.enc(cookie 罐进 http.cookies 键、续期令牌进
  * refreshToken 键);解不开的不带过来。
+ * 42 = 核心设置拆掉 `app`:日志的四格进 `logging`(日志等级表里 dynamic / live 并成 bilibili)、粉丝轮询的 cron 成顶层
+ * `profileRefreshCron`(`config/settings/core.json` 因此没有 `app`,摘要变)。
  */
-export const MIGRATION_REVISION = 41;
+export const MIGRATION_REVISION = 42;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

@@ -889,7 +889,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				subtreeRss: (pid) => browserSubtreeRss(pid),
 			},
 			// 每 tick 现问,系统页拨一下开关立刻生效,不用重启也不用另接 config-changed。
-			memoryLogEnabled: () => runtime.configStore.getGlobals().app.memoryLog,
+			memoryLogEnabled: () => runtime.configStore.getGlobals().logging.memoryLog.enabled,
 			probes: [
 				() => {
 					const s = engines?.live.danmakuStats();
@@ -934,7 +934,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			logger: log,
 		});
 
-		// Daily retention pass for the log archive (globals.app.logRetentionDays).
+		// Daily retention pass for the log archive (globals.logging.retentionDays).
 		startLogRetention({
 			serviceCtx: runtime.serviceCtx,
 			store: runtime.configStore,
@@ -942,7 +942,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			logger: log,
 		});
 
-		// 启动 FansPoller — cron 跟 globals.app.fansCron,每个 enabled sub
+		// 启动 FansPoller — cron 跟 globals.profileRefreshCron,每个 enabled sub
 		// 拉一次 B 站 fans 数,写时序 jsonl + emit `fans-refreshed`。
 		const fansPoller = startFansPoller({
 			bus: runtime.bus,

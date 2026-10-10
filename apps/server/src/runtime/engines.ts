@@ -220,7 +220,7 @@ export interface CreateEnginesOptions {
 	/**
 	 * NodeServiceContext (not the platform-neutral ServiceContext) — engines.ts
 	 * uses `forSubsystem(name, level)` to give each engine its own pino instance
-	 * driven by globals.app.logLevels.{dynamic,live,image,ai}. The server
+	 * driven by globals.logging.levels.{bilibili,image,ai}. The server
 	 * runtime constructs the parent context once at boot.
 	 */
 	serviceCtx: NodeServiceContext;
@@ -331,20 +331,17 @@ export interface CreateEnginesOptions {
 
 export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const log = opts.serviceCtx.logger;
-	// Per-module sub-contexts. Subsystem level falls back to `app.logLevel`
+	// Per-module sub-contexts. Subsystem level falls back to `logging.level`
 	// when its module-specific override is absent (schema doc spells this out).
 	// Pino levels are mutable, so `config-changed: globals` later pushes new
 	// levels onto these instances without a server restart.
 	const initialGlobals = opts.configStore.getGlobals();
-	const resolveLevel = (
-		g: GlobalConfig,
-		key: "core" | "dynamic" | "live" | "image" | "ai",
-	): string => g.app.logLevels?.[key] ?? g.app.logLevel;
-	const dynamicCtx = opts.serviceCtx.forSubsystem(
-		"dynamic",
-		resolveLevel(initialGlobals, "dynamic"),
-	);
-	const liveCtx = opts.serviceCtx.forSubsystem("live", resolveLevel(initialGlobals, "live"));
+	const resolveLevel = (g: GlobalConfig, key: string): string =>
+		g.logging.levels[key] ?? g.logging.level;
+	// 动态与直播两个 B 站引擎共用日志等级表里的一个键(来源键),各自仍是自己的子上下文。
+	const bootSourceLevel = resolveLevel(initialGlobals, BILIBILI_SOURCE_KEY);
+	const dynamicCtx = opts.serviceCtx.forSubsystem("dynamic", bootSourceLevel);
+	const liveCtx = opts.serviceCtx.forSubsystem("live", bootSourceLevel);
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", resolveLevel(initialGlobals, "ai"));
 	const imageCtx = opts.serviceCtx.forSubsystem("image", resolveLevel(initialGlobals, "image"));
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
@@ -354,7 +351,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// load + bootstrap, before the core settings are applied). From engines-up onward
 	// the base logger is the "core" module bucket — every non-engine log
 	// (push / dispatcher / master-notifier / fans-poller / routes / config / history /
-	// ws) goes through it, so it follows `logLevels.core ?? app.logLevel` just
+	// ws) goes through it, so it follows `logging.levels.core ?? logging.level` just
 	// like the subsystem ctxs follow their own keys. Apply once here so it does
 	// NOT wait for the first config-changed. Mirrors the change-path apply below.
 	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
@@ -1051,12 +1048,17 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const skinKnobsChanged = !eq(prev.defaults.cardSkinKnobs, g.defaults.cardSkinKnobs);
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
-				// `app` 里只按日志等级开门:别的格(粉丝轮询 cron、保留天数……)各有各的读法,不在这里热推。
+				// `logging` 里只按日志等级(`level` 与 `levels` 两格)开门,**不要写成整段比**:保留天数、内存自检开关
+				// 各有各的读法,不在这里热推。粉丝轮询的 cron 是顶层的 `profileRefreshCron`,同样不在这里。
 				// B 站那两格(cron / 健康检查间隔)在 B 站自己的设置里,见下方 `watchSettings`。
-				if (!eq(prev.app.logLevel, g.app.logLevel) || !eq(prev.app.logLevels, g.app.logLevels)) {
+				if (
+					!eq(prev.logging.level, g.logging.level) ||
+					!eq(prev.logging.levels, g.logging.levels)
+				) {
+					const sourceLevel = resolveLevel(g, BILIBILI_SOURCE_KEY);
 					opts.serviceCtx.setLevel(resolveLevel(g, "core"));
-					dynamicCtx.setLevel(resolveLevel(g, "dynamic"));
-					liveCtx.setLevel(resolveLevel(g, "live"));
+					dynamicCtx.setLevel(sourceLevel);
+					liveCtx.setLevel(sourceLevel);
 					aiCtx.setLevel(resolveLevel(g, "ai"));
 					imageCtx.setLevel(resolveLevel(g, "image"));
 				}

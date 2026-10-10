@@ -1,8 +1,8 @@
 /**
- * 回归测试 — FansPoller 遇到无法解析的 `app.fansCron` 不炸穿启动。
+ * 回归测试 — FansPoller 遇到无法解析的 `profileRefreshCron` 不炸穿启动。
  *
  * 这条 cron 是 dashboard 的自由文本框,没有格式校验(当年还与 dynamic-engine 共用一条,
- * 后来粉丝轮询改读自己的 `fansCron`),各自 `new CronJob(...)` 一次。`cron` 包对无法解析的
+ * 后来粉丝轮询改读自己的 `profileRefreshCron`),各自 `new CronJob(...)` 一次。`cron` 包对无法解析的
  * 表达式(如漏填 minute 字段)同步抛错,此前 fans-poller.startJob() 没有
  * try/catch,未捕获的抛出会让整个独立端进程在启动期崩溃退出 —— 与
  * dynamic-engine.ts 的同款 bug 同源(见 `.bugs/sidecar.stderr.log` 复现的
@@ -42,7 +42,7 @@ vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
 const { startFansPoller } = await import("../fans-poller.js");
 const { createNodeMessageBus } = await import("../message-bus.js");
 
-const GLOBALS = { app: { fansCron: "BAD CRON" } } as unknown as GlobalConfig;
+const GLOBALS = { profileRefreshCron: "BAD CRON" } as unknown as GlobalConfig;
 const SUB = { id: "sub-1", uid: "12345", enabled: true };
 
 let handle: { dispose(): void } | undefined;
@@ -56,7 +56,7 @@ afterEach(() => {
 	handle = undefined;
 });
 
-describe("FansPoller — 无法解析的 fansCron", () => {
+describe("FansPoller — 无法解析的 profileRefreshCron", () => {
 	it("启动不抛异常,记录 error 且不建 job;dispose() 也不因 job 缺失而炸", () => {
 		const bus = createNodeMessageBus();
 		const errorLog = vi.fn();

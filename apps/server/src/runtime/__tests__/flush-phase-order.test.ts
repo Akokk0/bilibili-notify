@@ -60,7 +60,7 @@ describe("createAppRuntime 的 flush 段", () => {
 		await runtime.dispose();
 
 		await expect(
-			runtime.configStore.patchGlobals({ app: { fansCron: "*/9 * * * *" } }),
+			runtime.configStore.patchGlobals({ profileRefreshCron: "*/9 * * * *" }),
 		).rejects.toMatchObject(CLOSED);
 		// 各集成的设置(B 站的 `bilibili.json`)与核心设置同一个写道:关门时一并关。
 		await expect(

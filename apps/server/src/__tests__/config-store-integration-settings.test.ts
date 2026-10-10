@@ -264,7 +264,7 @@ describe("集成设置 — patchSettings", () => {
 		const store = await open();
 		const pokeBytes = await readFile(pokeFile(), "utf8");
 
-		await store.patchGlobals({ app: { fansCron: "*/9 * * * *" } });
+		await store.patchGlobals({ profileRefreshCron: "*/9 * * * *" });
 
 		expect(scopes).toEqual(["globals"]);
 		expect(await readFile(pokeFile(), "utf8")).toBe(pokeBytes);
@@ -346,12 +346,12 @@ describe("集成设置 — patchSettings", () => {
 			const store = await open();
 
 			await store.patchSettings({
-				core: { app: { fansCron: "*/9 * * * *" } },
+				core: { profileRefreshCron: "*/9 * * * *" },
 				integrations: { poke: { count: 6 } },
 			});
 
-			expect(store.getGlobals().app.fansCron).toBe("*/9 * * * *");
-			expect(JSON.parse(await readFile(coreFile(), "utf8")).app.fansCron).toBe("*/9 * * * *");
+			expect(store.getGlobals().profileRefreshCron).toBe("*/9 * * * *");
+			expect(JSON.parse(await readFile(coreFile(), "utf8")).profileRefreshCron).toBe("*/9 * * * *");
 			expect(JSON.parse(await readFile(pokeFile(), "utf8")).count).toBe(6);
 			expect([...scopes].sort()).toEqual(["globals", "integration-settings"]);
 		});
@@ -363,7 +363,7 @@ describe("集成设置 — patchSettings", () => {
 
 			await expect(
 				store.patchSettings({
-					core: { app: { fansCron: 42 as unknown as string } },
+					core: { profileRefreshCron: 42 as unknown as string },
 					integrations: { poke: { count: 9 } },
 				}),
 			).rejects.toMatchObject({ code: "invalid", scope: "globals" });
@@ -377,17 +377,17 @@ describe("集成设置 — patchSettings", () => {
 		it("集成校验不过 → 核心那份也不写", async () => {
 			const store = await open();
 			const coreBytes = await readFile(coreFile(), "utf8");
-			const fansCron = store.getGlobals().app.fansCron;
+			const fansCron = store.getGlobals().profileRefreshCron;
 
 			await expect(
 				store.patchSettings({
-					core: { app: { fansCron: "*/9 * * * *" } },
+					core: { profileRefreshCron: "*/9 * * * *" },
 					integrations: { poke: { label: FORBIDDEN_LABEL } },
 				}),
 			).rejects.toMatchObject({ code: "invalid", scope: "integration-settings" });
 
 			expect(await readFile(coreFile(), "utf8")).toBe(coreBytes);
-			expect(store.getGlobals().app.fansCron).toBe(fansCron);
+			expect(store.getGlobals().profileRefreshCron).toBe(fansCron);
 			expect(scopes).toEqual([]);
 		});
 
@@ -397,7 +397,7 @@ describe("集成设置 — patchSettings", () => {
 			await store.patchSettings({ integrations: { poke: { count: 1 }, other: { level: 2 } } });
 			const pokeBytes = await readFile(pokeFile(), "utf8");
 			const otherBytes = await readFile(otherFile(), "utf8");
-			const fansCron = store.getGlobals().app.fansCron;
+			const fansCron = store.getGlobals().profileRefreshCron;
 			scopes.length = 0;
 
 			// 数组/集成先写、核心最后写:把核心文件占成目录,让最后一步失败。
@@ -406,7 +406,7 @@ describe("集成设置 — patchSettings", () => {
 
 			await expect(
 				store.patchSettings({
-					core: { app: { fansCron: "*/9 * * * *" } },
+					core: { profileRefreshCron: "*/9 * * * *" },
 					integrations: { poke: { count: 2 }, other: { level: 5 } },
 				}),
 			).rejects.toThrow();
@@ -415,7 +415,7 @@ describe("集成设置 — patchSettings", () => {
 			expect(await readFile(otherFile(), "utf8")).toBe(otherBytes);
 			expect(store.getIntegrationSettings(pokeSegment).count).toBe(1);
 			expect(store.getIntegrationSettings(otherSegment).level).toBe(2);
-			expect(store.getGlobals().app.fansCron).toBe(fansCron);
+			expect(store.getGlobals().profileRefreshCron).toBe(fansCron);
 			expect(scopes).toEqual([]);
 			// 推回去不留临时文件:设置目录里就这三样(核心那个是被我们占成目录的)。
 			expect((await readdir(join(dataDir, ...CONFIG_DIR, "settings"))).sort()).toEqual([
@@ -492,18 +492,18 @@ describe("集成设置 — replaceSections", () => {
 		await rm(coreFile());
 		await mkdir(coreFile());
 		const globals = store.getGlobals();
-		const fansCron = globals.app.fansCron;
+		const fansCron = globals.profileRefreshCron;
 
 		await expect(
 			store.replaceSections({
 				integrations: { poke: { label: "B", count: 4 } },
-				globals: { ...globals, app: { ...globals.app, fansCron: "*/9 * * * *" } },
+				globals: { ...globals, profileRefreshCron: "*/9 * * * *" },
 			}),
 		).rejects.toThrow();
 
 		expect(await readFile(pokeFile(), "utf8")).toBe(pokeBytes);
 		expect(store.getIntegrationSettings(pokeSegment)).toEqual({ label: "hello", count: 0 });
-		expect(store.getGlobals().app.fansCron).toBe(fansCron);
+		expect(store.getGlobals().profileRefreshCron).toBe(fansCron);
 		expect(
 			(await readdir(join(dataDir, ...CONFIG_DIR, "settings"))).filter((n) =>
 				n.endsWith(".restore.bak"),
@@ -525,7 +525,7 @@ describe("集成设置 — 登记", () => {
 	it("键与核心设置的任何一个顶层键同名 → 构造就抛(/api/settings 把两者摆在同一层)", () => {
 		const coreKeys = Object.keys(GlobalConfigSchema.shape);
 		// 守住「核心顶层键」这张表本身没变空,免得下面的循环空转。
-		expect(coreKeys).toContain("app");
+		expect(coreKeys).toContain("logging");
 		for (const key of coreKeys) {
 			expect(() => build([{ ...otherSegment, key }]), key).toThrow(/撞名/);
 		}

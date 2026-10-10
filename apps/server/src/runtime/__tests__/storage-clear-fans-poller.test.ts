@@ -17,7 +17,7 @@ import { type FansPollerHandle, startFansPoller } from "../fans-poller.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import { createStorageUsage } from "../storage-usage.js";
 
-const GLOBALS = { app: { fansCron: "*/10 * * * *" } } as never;
+const GLOBALS = { profileRefreshCron: "*/10 * * * *" } as never;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();

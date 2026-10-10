@@ -56,18 +56,25 @@ describe("模块矩阵的日志等级", () => {
 		expect(screen.queryAllByTitle("继承全局")).toHaveLength(0);
 	});
 
-	it("某个模块被单独调过 → 只有它那一条挂徽章", () => {
-		renderCard({ logLevel: "debug", logLevels: { live: "warn" } });
+	it("B 站那一个键被调过 → 动态与直播两条都挂徽章(两个引擎共用这个键),别的不挂", () => {
+		renderCard({ logLevel: "debug", logLevels: { bilibili: "warn" } });
 		const badges = screen.getAllByTitle("按模块覆盖");
-		expect(badges).toHaveLength(1);
-		expect(badges[0]?.textContent).toContain("WARN");
-		// 挂在直播那条上,不是随便哪条。
+		expect(badges).toHaveLength(2);
+		for (const badge of badges) expect(badge.textContent).toContain("WARN");
+		// 挂在动态与直播这两条上,不是随便哪两条。
 		expect(within(row("直播 · live")).getByTitle("按模块覆盖")).toBeTruthy();
-		expect(within(row("动态 · dynamic")).queryByTitle("按模块覆盖")).toBeNull();
+		expect(within(row("动态 · dynamic")).getByTitle("按模块覆盖")).toBeTruthy();
+		expect(within(row("卡片 · image")).queryByTitle("按模块覆盖")).toBeNull();
+		expect(within(row("AI · ai")).queryByTitle("按模块覆盖")).toBeNull();
+	});
+
+	it("旧的 live / dynamic 键不再是覆盖键:写了也不挂徽章", () => {
+		renderCard({ logLevel: "debug", logLevels: { live: "warn", dynamic: "warn" } });
+		expect(screen.queryAllByTitle("按模块覆盖")).toHaveLength(0);
 	});
 
 	it("core 那一档落到四个基础设施件上 —— 服务端的基础 logger 就是它们的桶", () => {
-		// 系统页能调的是 core / dynamic / live 三档。`core` 在服务端管的是**引擎之外的
+		// 系统页能调的是 core / bilibili / image / ai 四档。`core` 在服务端管的是**引擎之外的
 		// 每一条日志**(push / sink / master 私聊 / 粉丝轮询 / 路由 / 配置 / 历史 / ws),
 		// 也就是这四格。概览页此前有一份写死的名单只认四个引擎键,于是把 core 调成 info
 		// 之后服务端真按 info 打了、卡上却一点变化都没有。
@@ -83,8 +90,9 @@ describe("模块矩阵的日志等级", () => {
 	});
 
 	it("引擎那四个各读各的键,不被 core 顶掉", () => {
-		renderCard({ logLevel: "debug", logLevels: { core: "info", live: "warn" } });
+		renderCard({ logLevel: "debug", logLevels: { core: "info", bilibili: "warn" } });
 		expect(within(row("直播 · live")).getByTitle("按模块覆盖").textContent).toContain("WARN");
+		expect(within(row("动态 · dynamic")).getByTitle("按模块覆盖").textContent).toContain("WARN");
 		expect(within(row("接口 · api")).getByTitle("按模块覆盖").textContent).toContain("INFO");
 	});
 

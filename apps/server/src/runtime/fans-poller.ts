@@ -46,7 +46,7 @@ const fromBilibili = (sub: Subscription): boolean =>
 export interface FansPollerOptions {
 	bus: MessageBus;
 	logger: Logger;
-	/** Only read for `getGlobals().app.fansCron` (cron reconcile). NOT written. */
+	/** Only read for `getGlobals().profileRefreshCron` (cron reconcile). NOT written. */
 	configStore: ConfigStore;
 	subscriptionStore: SubscriptionStore;
 	/**
@@ -108,7 +108,7 @@ export interface FansPollerHandle extends Disposable {
  *   5. 单次轮询全部完成后 emit `fans-refreshed`(entries);
  *
  * 失败处理:per-uid try/catch,单 UP 失败不阻断剩余轮询。串行 + 200ms 间隔
- * 减小被 B 站风控的概率。cron 用 globals.app.fansCron(默认每 10min 一轮),
+ * 减小被 B 站风控的概率。cron 用 globals.profileRefreshCron(默认每 10min 一轮),
  * 用户改 cron 表达式会通过 config-changed 通道触发本 poller reconcile。
  *
  * **拓展订阅**(ADR-0020 决策 8):粉丝轮询**不问**它们(那是 B 站独有的,ADR-0019 决策 64);它们的粉丝时序
@@ -134,7 +134,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		isStatsEnabled,
 	} = opts;
 
-	let currentCron = configStore.getGlobals().app.fansCron;
+	let currentCron = configStore.getGlobals().profileRefreshCron;
 	let job: CronJob | undefined;
 	let running = false;
 	let disposed = false;
@@ -490,7 +490,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 		}
 	}
 
-	// fansCron 是 dashboard 自由文本框,没有格式校验;`new CronJob` 对无法解析的
+	// profileRefreshCron 是 dashboard 自由文本框,没有格式校验;`new CronJob` 对无法解析的
 	// 表达式同步抛错,未捕获会让整个独立端进程在启动/reconcile 期崩溃(见
 	// dynamic-engine.ts startJob 同类修复的注释与 `.bugs/sidecar.stderr.log` 复现)。
 	function startJob(): void {
@@ -508,7 +508,7 @@ export function startFansPoller(opts: FansPollerOptions): FansPollerHandle {
 	}
 
 	function reconcileCron(): void {
-		const next = configStore.getGlobals().app.fansCron;
+		const next = configStore.getGlobals().profileRefreshCron;
 		if (next === currentCron) return;
 		logger.info(`[fans-poller] cron changed: '${currentCron}' → '${next}'`);
 		job?.stop();
