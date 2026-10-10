@@ -22,7 +22,7 @@ import {
 } from "../../types/domain";
 
 /** 开了订阅那一口、交了外观与事件的拓展。 */
-export type SubscriptionSourceExtension = ExtensionDTO & {
+export type SourceExtension = ExtensionDTO & {
 	subscription: NonNullable<ExtensionDTO["subscription"]>;
 };
 
@@ -39,12 +39,9 @@ const EXTENSION_FEATURES_AT_MOST = featuresForEvents(
  * 新建订阅时平台选择那一排:**只列在跑的**(决策 10)—— 解析门要拓展本人在,停着的列出来
  * 也只能问出一个 404。拓展列表没回来就一个都不列,弹窗与今天一模一样。
  */
-export function runningSubscriptionSources(
-	extensions: readonly ExtensionDTO[] | undefined,
-): SubscriptionSourceExtension[] {
+export function runningSources(extensions: readonly ExtensionDTO[] | undefined): SourceExtension[] {
 	return (extensions ?? []).filter(
-		(ext): ext is SubscriptionSourceExtension =>
-			ext.subscription !== undefined && isExtensionPresent(ext),
+		(ext): ext is SourceExtension => ext.subscription !== undefined && isExtensionPresent(ext),
 	);
 }
 

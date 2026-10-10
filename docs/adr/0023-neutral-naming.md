@@ -29,6 +29,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 
    被否的备选：推送侧叫 `PushOutbound`。
    🔗 **2026-09-28 推送侧改回 `PlatformAdapter` 一套**：`PushOutlet` 一族作废；`NotificationSink` → `TargetDispatcher` 与订阅侧那两条不变（ADR-0024 决策 2）。
+   🔗 **2026-10-10 订阅侧改回 `Source`**（主人定）：「`Source` 改名 `SubscriptionSource`」这一句作废，接口就叫 `Source`。理由：从它派生的名字（`SourceContext`、`SourceKey`、`SourceDescriptor`、`SourceAuth`、`/api/sources`、`sourceLabel`）早就都不带前缀，只有源头带；规范里也已有「核心里的 `Source` 只指订阅来源」，单说 `Source` 没有歧义。接口本身代码里还没建（3a-28），所以现在改。对拓展可见的 `registerSubscriptionSource` / `SubscriptionSourceDef` / `SubscriptionSourceHandle` 随契约第 3 版（3b）改成 `registerSource` / `SourceDef` / `SourceHandle`，免得同一个方法名中途换两次。代价：代码里别的以 `Source` 结尾的读口（规范要它们改 `…Reader`，还没改完）在那之前容易和它混；「市场源」`MarketplaceSource` 是界面叫法的例外，长期留着。本 ADR 与 ADR-0021 / 0024 / 0012 正文里写的 `SubscriptionSource` 是当时的名字，不回头改。
 3. **把平台词清出中立层**：
    - `fans` 整族改成 `followers`；
    - `dynamic` 整族改成 `post`，照 Q29 对 up 的做法，补一条「全改」的总规则；

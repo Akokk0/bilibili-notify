@@ -9,11 +9,7 @@
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
 import { describe, expect, it } from "vite-plus/test";
-import {
-	featuresForEvents,
-	runningSubscriptionSources,
-	subscriptionPlatformOf,
-} from "../subscription-source";
+import { featuresForEvents, runningSources, subscriptionPlatformOf } from "../subscription-source";
 
 function ext(over: Partial<ExtensionDTO> = {}): ExtensionDTO {
 	return {
@@ -63,11 +59,11 @@ describe("平台选择那一排", () => {
 			ext({ id: "stopped", state: "disabled" }),
 			ext({ id: "push-only", subscription: undefined, provides: ["push"] }),
 		];
-		expect(runningSubscriptionSources(list).map((e) => e.id)).toEqual(["douyin"]);
+		expect(runningSources(list).map((e) => e.id)).toEqual(["douyin"]);
 	});
 
 	it("拓展列表还没回来 → 一个都不列", () => {
-		expect(runningSubscriptionSources(undefined)).toEqual([]);
+		expect(runningSources(undefined)).toEqual([]);
 	});
 });
 

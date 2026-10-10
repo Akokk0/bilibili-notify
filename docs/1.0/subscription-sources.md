@@ -2,18 +2,18 @@
 
 > 施工参考，未定稿。施工中可能推翻或修改，以代码为准；1.0 完工后定稿并入 docs/agents/。决策与理由见 ADR-0021 ～ 0031（集成与 ctx 见 0025，失败规矩见 0026，监听、统计与面板读描述符见 0027，作品文字与模板变量见 0028，链接预览见 0029，AI 见 0030，指令与 devtools 见 0031，`sendToAddress` 见 0024）。
 
-`SubscriptionSource` 全接口、来源的自我介绍与面板怎么读它、登录与账号、核心递给来源的 ctx、问题与健康、资料与直播怎么拉、横切接口（链接预览、指令、AI 工具、devtools 场景），以及 B 站怎么实现它们。数据类型（`Post`、`LiveSignal`、`Identity`……）见 [data-model.md](./data-model.md)；登记表与装配根见 [architecture.md](./architecture.md)；拓展能用其中哪些见 [extension-contract.md](./extension-contract.md)。
+`Source` 全接口、来源的自我介绍与面板怎么读它、登录与账号、核心递给来源的 ctx、问题与健康、资料与直播怎么拉、横切接口（链接预览、指令、AI 工具、devtools 场景），以及 B 站怎么实现它们。数据类型（`Post`、`LiveSignal`、`Identity`……）见 [data-model.md](./data-model.md)；登记表与装配根见 [architecture.md](./architecture.md)；拓展能用其中哪些见 [extension-contract.md](./extension-contract.md)。
 
 ## 一句话
 
-**`SubscriptionSource` 只管「订阅一个人」。** 链接预览、AI 工具、调试场景跟订阅无关，各是一个小接口；指令 1.0 没有来源自带的（见「指令」）。B 站直接实现它们，拓展由宿主经契约转一道。B 站、每个拓展、每个内置的平台适配器各是一个**集成**，各拿一份 `IntegrationContext`；登记表的键类型叫 `IntegrationKey`，来源的 `SourceKey`（`"bilibili"` 或拓展 id，不加前缀）是它的一部分；分派一律按 `identity.sourceKey` 查登记表。**来源只认人、不认订阅**：上报只带 externalId，BN 内部的订阅 id 来源永远看不到。
+**`Source` 只管「订阅一个人」。** 链接预览、AI 工具、调试场景跟订阅无关，各是一个小接口；指令 1.0 没有来源自带的（见「指令」）。B 站直接实现它们，拓展由宿主经契约转一道。B 站、每个拓展、每个内置的平台适配器各是一个**集成**，各拿一份 `IntegrationContext`；登记表的键类型叫 `IntegrationKey`，来源的 `SourceKey`（`"bilibili"` 或拓展 id，不加前缀）是它的一部分；分派一律按 `identity.sourceKey` 查登记表。**来源只认人、不认订阅**：上报只带 externalId，BN 内部的订阅 id 来源永远看不到。
 
 **结果形状**：来源、横切接口与 ctx 的方法，一次操作的结果一律是 `{ ok: true, … } | { ok: false, code, message, upstreamCode? }`（ADR-0026）。`code` 取 `internal` 里那张标准码表（`not_found`、`invalid`、`unauthorized`、`rate_limited`、`unavailable`、`timeout`、`unsupported`、`conflict`、`indeterminate`、`unknown`）；上游平台自己的错误码放 `upstreamCode`，不占 `code`。抛错只留给 bug，宿主在边界接住、按 `unavailable` 处理并记错误日志。下文的 `Result<T>` 是本文的简写：成功那一支带着 `T`；不带 `T` 的 `Result` 就是 `{ ok: true }`。通用类型的正式名字、成功那一支装 `T` 的格名，施工时定。
 
-## SubscriptionSource
+## Source
 
 ```ts
-interface SubscriptionSource {
+interface Source {
   descriptor: SourceDescriptor;
   // 必备
   start(ctx: SourceContext): Promise<void>;
@@ -44,7 +44,7 @@ interface SourceHealth { summary: string }
 | `health` | 否 | 健康卡、`status` 指令 | 只交一行字 `{ summary }`（原 `status()`）；订阅卡的「暂停 / 不可用」不看它，见「健康与运行状态」 |
 | `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定 |
 
-`SubscriptionSource` 共 10 个成员：descriptor、必备 4 个、可选 5 个。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
+`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
 
 新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
 
@@ -283,7 +283,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 **资料**：
 
 - 核心按 `core.profileRefreshCron`（由 `fansCron` 原值迁来）定时调 `fetchProfile`，只调启用中的订阅（09-27 拍板；和名单只列启用中一致，也少打平台接口）。停用的订阅资料缓存停在停用那一刻，面板照常显示最后一次的名字与头像，重新启用后下一轮刷新。
-- 对同一来源**串行**调用；防风控的间隔由来源自己管（B 站那个 200ms 留在 `bilibili/`）。失败怎么算见「SubscriptionSource」表里的 `fetchProfile`：`not_found` 记问题，其余下一轮再来，整轮刹车归来源。
+- 对同一来源**串行**调用；防风控的间隔由来源自己管（B 站那个 200ms 留在 `bilibili/`）。失败怎么算见「Source」表里的 `fetchProfile`：`not_found` 记问题，其余下一轮再来，整轮刹车归来源。
 - 来源主动 `reportProfile` 的，按同一个间隔限密。
 - 粉丝数就在资料里，粉丝轮询并进这项必备能力，不另占能力位。涨粉的增量、时序、首页粉丝面板由核心算，上总线 `followers-refreshed`。
 - 资料另有中立的可选字段 `fanClubName`（粉丝团名，平台没有就空），模板变量 `{fanclub}`（原 `{mdn}`）取它。
@@ -419,7 +419,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 | 子目录 / 件 | 内容 |
 | --- | --- |
 | 原 `api` / `blive` / `dynamic` / `live` 四包 | 各成子目录（`blive` 并进 `live` 那个子目录，ADR-0021 决策 1 的 🔗）；B 站接口响应类型（Dynamic、RichTextNode、LiveData）只住这里。请求客户端、cookie 罐与浏览器身份抽进 `packages/http`，不留在这里 |
-| `SubscriptionSource` 实现 | 拉动态翻成 `PostReport`（见下「作品映射」）、弹幕通道翻成 `LiveSignalReport`、关注同步、资料拉取、`searchCreators`、`fetchLiveStatus`、`liveInteractions` |
+| `Source` 实现 | 拉动态翻成 `PostReport`（见下「作品映射」）、弹幕通道翻成 `LiveSignalReport`、关注同步、资料拉取、`searchCreators`、`fetchLiveStatus`、`liveInteractions` |
 | `auth/` | 扫码登录（原 AuthSystem），对外只交中立的 `AuthState`；内部若还要一个原形，叫 `BiliLoginState`。cookie 由 `ctx.http` 的 cookie 罐存进 `ctx.secrets` |
 | `LinkResolver` | B 站视频链接识别与解析；给原生分享的中立描述 |
 | `AiToolProvider` | B 站独有数据的只读工具（总播放、获赞、视频列表）与 B 站版周报技能 |

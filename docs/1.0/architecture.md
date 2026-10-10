@@ -13,11 +13,11 @@
 | 层 | 是什么 | 包括 |
 | --- | --- | --- |
 | 一等：中立核心 | 名字、类型、数据形状、文档都不带平台味；来源只往里交东西 | 订阅、推送路由与闸、投递（`TargetDispatcher`）、出卡与皮肤、AI、统计与锐评、历史与重推、粉丝、链接预览、指令框架、账号、问题表与健康、面板；醒目留言、会员、特别弹幕、特别进场、词云、直播总结 |
-| 二等：B 站 | 内置来源，住服务端 `bilibili/`，直接实现 `SubscriptionSource` 等中立接口 | B 站接口、弹幕通道、动态与直播信号、扫码登录、关注同步、B 站链接解析器；给醒目留言 / 会员 / 特别弹幕 / 特别进场 / 词云 / 总结填数据 |
+| 二等：B 站 | 内置来源，住服务端 `bilibili/`，直接实现 `Source` 等中立接口 | B 站接口、弹幕通道、动态与直播信号、扫码登录、关注同步、B 站链接解析器；给醒目留言 / 会员 / 特别弹幕 / 特别进场 / 词云 / 总结填数据 |
 | 2.5 等：拓展 | 外部来源，只从 `@bilibili-notify/extension` 这扇窄门进，由宿主转成同一组中立接口 | 订阅源拓展（如抖音）、桥、推送适配器 |
 
 ```
-B 站（信号 · 接口 · 扫码）──SubscriptionSource 等接口──┐
+B 站（信号 · 接口 · 扫码）──Source 等接口──┐
                                                     ├─→ 中立核心 ─→ 推送 · 出卡 · 历史 · 统计
 拓展 ──窄门契约──→ 宿主（extensions/）──转成同一组接口──┘            │
                                                                   │ 只经 TargetDispatcher
@@ -110,7 +110,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 
 ```
 compose.ts         组装根：登记内置集成（B 站、三个内置平台适配器）与拓展宿主（整个核心只有它能 import bilibili/ 与 platforms/）
-subscriptions/     订阅、资料刷新、身份唯一闸、SubscriptionSource 登记表与接口定义
+subscriptions/     订阅、资料刷新、身份唯一闸、Source 登记表与接口定义
 accounts/          账号：系统 → 账号、排序、汇总各来源登录态
 images/            图库：fetchImage / storeImage 的落点、按引用清扫（引用方含历史、重推原件、资料缓存、AI 会话）
 push/              路由、闸、免扰、TargetDispatcher（含 sendToAddress）、PlatformAdapterRegistry 与按连接分发、notifyMaster
@@ -125,7 +125,7 @@ history/ ai/ skins/ library/ maid-skills/
 process/           进程基础件：puppeteer、资源采样、宿主看护（孤儿自检与 stdin 关停、重启能力）
 integrations/      集成宿主：IntegrationContext 的构造、内置集成与拓展共用的生命周期与运行状态、通用登记表 Registry
 extensions/        拓展特有的：装载、市场、安装、设置、视图 + 收件口
-bilibili/          B 站：SubscriptionSource 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
+bilibili/          B 站：Source 实现、auth/（扫码登录）、LinkResolver、AiToolProvider；原四个包各成子目录
 bilibili/devtools/ B 站的 DevtoolsProvider，只在开发版登记
 runtime/           只留 service-context、message-bus、引擎编排（engines.ts 拆三份）
 routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
@@ -156,7 +156,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 
 | 接口 | 管什么 | 登记表 |
 | --- | --- | --- |
-| `SubscriptionSource` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字 | `subscriptionSources` |
+| `Source` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字 | `subscriptionSources` |
 | `LinkResolver` | 群里的链接 → `LinkPreview { post, canonicalId, nativeShare? }`；带 `label`，`resolve` 返回结果形状（ADR-0029） | `linkResolvers` |
 | `AiToolProvider` | 来源专有的只读 AI 工具与技能（B 站：总播放、获赞、视频列表与 B 站版周报） | `aiToolProviders` |
 | `DevtoolsProvider` | 开发版的造状态 / 造事件场景：`{ scenarios: DevScenarioDef[] }`；场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2） | `devtoolsProviders`（只在开发版） |
@@ -204,7 +204,7 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 | webhook（`platforms/`） | `webhook` | `platformAdapters`（飞书、钉钉、企业微信、通用四个模板候选） |
 
 - `compose.ts` 为每个内置集成登记键、脸（名字、图标等，取自它的描述）与 `settingsFields`；宿主给它建 `IntegrationContext`、调 `start(ctx)`，集成在里面读设置、经 ctx 上的登记方法把各接口的实现登进对应的表——和拓展的 `activate(ctx)` 是同一组登记方法。撤销把手交给生命周期，集成停下时撤掉它登的全部行。登记口与工厂的名字施工时定。
-- 登进表的接口再由宿主起：`SubscriptionSource.start` 拿 `SourceContext`，`PlatformAdapter` 登记即 `start`（晚登记的也收得到）、拿 `PlatformAdapterContext`。来源与适配器特有的那一层（名单、上报、入站、自己的连接）内置与拓展一样都经 `start(ctx)` 递进来，登记交回的把手只管注销（ADR-0025 决策 1）。
+- 登进表的接口再由宿主起：`Source.start` 拿 `SourceContext`，`PlatformAdapter` 登记即 `start`（晚登记的也收得到）、拿 `PlatformAdapterContext`。来源与适配器特有的那一层（名单、上报、入站、自己的连接）内置与拓展一样都经 `start(ctx)` 递进来，登记交回的把手只管注销（ADR-0025 决策 1）。
 - B 站段设置校验不过时，B 站这个集成不起（`settings-invalid`）：来源、链接解析器、AI 工具都不登记，订阅显示来源不可用；改对了当场起。`/api/sources` 的描述符不受影响：`compose.ts` 静态登记 B 站完整的 `SourceDescriptor`，设置坏了照样下发。
 - `compose.ts` 里 `bilibili/` 的东西只能作登记的参数；核心拿不到 B 站客户端（今天的 `engines.api` 删掉，见「守卫」入口咽喉）。
 
@@ -330,7 +330,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 守卫 | 判据 | 什么时候红 | 期 |
 | --- | --- | --- | --- |
 | 21a 契约层对拍 | 用仓库里的假源拓展经契约 v3 走作品与直播：带图标的链接片段、直播、资料、问题上报等 | 只有 B 站走得通、拓展走不通 | 3b |
-| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `SubscriptionSource`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。会员、醒目留言、特别弹幕、特别进场、词云、总结六项契约不开，只有这一层够得着 | 3a 检查点的验收之一 |
+| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `Source`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。会员、醒目留言、特别弹幕、特别进场、词云、总结六项契约不开，只有这一层够得着 | 3a 检查点的验收之一 |
 | 推送守卫③（假适配器对拍） | 一个假平台适配器（给假源拓展加 `contributes.push`，或另起一个假适配器拓展，施工时定）逐成员走 `PlatformAdapter`：要么走通，要么在「这版不开」名单里写明理由（ADR-0024 决策 11）。必须有的行：`atAll` 为 false 时不 @全体、`inbound`、`endpoint` 目标由连接托管、能力接口列得出拓展连接、登记即 `start`（晚登记的也收得到）、内置与拓展的入站都经宿主校验 | 只有内置适配器走得通的能力（勘察时：单向终点与托管目标、一个实现对多个平台、能力接口跳过拓展连接、晚注册的适配器收不到 `reconcile`） | 3b |
 | 模板变量可满足性 | 每个模板变量都映射到中立字段，表外的判红；`{tier}`、`{fanclub}` 进表 | 模板变量只有 B 站填得出（今天的 `{guard}`、`{mdn}`） | 3b |
 | AI 工具与技能约束 | 核心工具参数统一叫 `creator`，参数里不许有 `uid`；每把工具必须带 `label` 与参数标签；内置技能的 `allowedTools` 必须是核心中立工具的子集，否则挂到提供者的 `skills` 下；缺工具的技能自动隐藏要有测试 | 工具或技能只对 B 站成立 | 3b |

@@ -42,7 +42,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 
 1. **`IntegrationContext`**：每个集成（B 站、每个拓展、每个内置平台适配器）拿的都是这一种，下表逐个列。
 2. **拓展特有的窄面**：v2 已有的照留 —— 可回收定时器、`mount`、`onUpgrade`、`publishView`、`statusChanged`、面板动作 `onAction`，以及 `id` / `hostApiVersion` / `hostVersion`。
-3. **登记方法**：`registerSubscriptionSource`、`registerPlatformAdapter`（见各节）。
+3. **登记方法**：`registerSource`、`registerPlatformAdapter`（见各节）。
 
 订阅侧特有的（名单、`report*`）属于 `SourceContext`，推送侧特有的（`inbound`、自己的连接等）属于 `PlatformAdapterContext`，都不在 `IntegrationContext` 里。这两份特有的和内置的一样，经所登记实现的 `start(ctx)` 递进来（def 里的 `start` 拿到的就是 `SourceContext` / `PlatformAdapterContext`）；登记交回的把手只管注销，不再像 v2 那样挂上报方法（ADR-0025 决策 1）。
 
@@ -149,9 +149,9 @@ storeImage(bytes: Uint8Array, opts?: { signal?: AbortSignal })
 
 ### 拓展这一侧交什么
 
-宿主把拓展的订阅源转成一份 `SubscriptionSource`。注册口沿用 `registerSubscriptionSource(def: SubscriptionSourceDef): SubscriptionSourceHandle`，和推送侧的 `registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。
+宿主把拓展的订阅源转成一份 `Source`。注册口沿用 `registerSource(def: SourceDef): SourceHandle`，和推送侧的 `registerPlatformAdapter(def: PlatformAdapterDef): PlatformAdapterHandle` 一一对齐；下面是 def 里各成员与中立接口的对应。
 
-| `SubscriptionSource` 成员 | 拓展这一侧 | 状态 |
+| `Source` 成员 | 拓展这一侧 | 状态 |
 | --- | --- | --- |
 | `start(ctx)` / `stop()` | def 里的 `start` 拿到 `SourceContext`（名单与 `report*` 都在它上面）；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑 `onDispose` | 定了 |
 | `descriptor` | 清单 `contributes.subscription` 直接写 `SourceDescriptor` 的同名字段：`label`、`shortLabel?`、`color?`、`icon?`、`postNoun?`、`creatorNoun?`、`externalIdNoun?`、`searchAccepts?`、`featureHints?`、`supportedFeatures`（不收 `supportedExtras` 与 `membershipPrograms`，见下）；原来的 `display{ … }` 这一层与 `events` 删掉，宿主的 `SUBSCRIPTION_EVENT_FEATURES` 对照表删掉 | 定了 |

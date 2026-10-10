@@ -662,7 +662,8 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 
 | 以前 | 现在 |
 | --- | --- |
-| `Source`、暂定名 `fetchLiveStreaming` | `SubscriptionSource`、`fetchLiveStatus` |
+| 暂定名 `fetchLiveStreaming` | `fetchLiveStatus` |
+| `SubscriptionSource`（09-27 定过把 `Source` 改成它，10-10 主人改回）；拓展契约的 `registerSubscriptionSource` / `SubscriptionSourceDef` / `SubscriptionSourceHandle` | `Source`；`registerSource` / `SourceDef` / `SourceHandle`（契约这三个随第 3 版在 3b 改，在那之前代码里仍是旧名） |
 | `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（字段 `adapter`、`configSchema`）；`AdapterRegistry`；适配器的 `reconcile` / `dispose` | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`（内置与拓展同一个：适配器 + 描述 + `settingsSchema`）；`PlatformAdapterRegistry`；`start(ctx)` / `stop()`（登记即 `start`）。`PlatformAdapter` 这个名字不变，目录仍叫 `platforms/`，登记表与分发挪到 `push/`；拆出来的两半 `PlatformDialect` / `Connector` 的新名施工时定 |
 | 拓展的 `ExtensionPushView`（`display` + `connectionFields`）；v1 的 `configFields` | `PlatformAdapterDescriptor { label, shortLabel, color, icon, settingsFields }`；`settingsFields`（v1 退路删掉） |
 | `CONNECTION_PLATFORMS` / `ConnectionPlatform`、`PLATFORM_REGISTRY` | 删掉：平台信息由适配器的候选给，连接上存 `platformSnapshot` |

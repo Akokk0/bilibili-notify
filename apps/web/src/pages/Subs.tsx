@@ -45,9 +45,9 @@ import { copyToClipboard } from "../utils/clipboard";
 import { displayName } from "./up/helpers";
 import { computeMenuPosition } from "./up/menu-position";
 import {
-	runningSubscriptionSources,
+	runningSources,
+	type SourceExtension,
 	type SubscriptionPlatform,
-	type SubscriptionSourceExtension,
 	subscriptionPlatformOf,
 } from "./up/subscription-source";
 import { TagEditDialog } from "./up/TagEditDialog";
@@ -175,17 +175,14 @@ function NewSubDialog({
 	sources,
 }: {
 	onSubmit: (profile: UpProfileLookup) => void;
-	onPickCandidate: (
-		source: SubscriptionSourceExtension,
-		candidate: ExtensionSubscriptionCandidate,
-	) => void;
+	onPickCandidate: (source: SourceExtension, candidate: ExtensionSubscriptionCandidate) => void;
 	onCancel: () => void;
 	pending: boolean;
 	error: string | null;
 	/** 已经订阅了的身份。B 站的输入 / 搜索结果与拓展的候选撞上的,标「已订阅」、挑不了。 */
 	existing: ExistingIdentities;
 	/** 此刻在跑的订阅源拓展 —— 空的就不画平台选择。 */
-	sources: readonly SubscriptionSourceExtension[];
+	sources: readonly SourceExtension[];
 }) {
 	const [platformId, setPlatformId] = useState(BILI_PLATFORM);
 	// 选中的拓展中途停了(拓展列表刷新后不在里面)就退回 B 站 —— 问一个不在场的解析门只会 404。
@@ -712,7 +709,7 @@ export default function Subs() {
 	const extensionsQuery = useExtensions({ retry: false });
 	/** 没回来(还在读 / 读失败)时是 `undefined`:那时不下「拓展没在跑」的结论。 */
 	const extensions = extensionsQuery.data?.extensions;
-	const sources = useMemo(() => runningSubscriptionSources(extensions), [extensions]);
+	const sources = useMemo(() => runningSources(extensions), [extensions]);
 	const platformOf = (s: Subscription): SubscriptionPlatform | undefined => {
 		const { sourceKey } = subscriptionIdentityOf(s);
 		return sourceKey === BILIBILI_SOURCE_KEY
@@ -958,7 +955,7 @@ export default function Subs() {
 
 	/** 同 {@link handleNew},草稿的身份是 `(拓展 id, 候选 id)`,资料用候选预填。 */
 	function handleNewCandidate(
-		source: SubscriptionSourceExtension,
+		source: SourceExtension,
 		candidate: ExtensionSubscriptionCandidate,
 	): void {
 		const fresh = makeEmptySubscription({ sourceKey: source.id, externalId: candidate.id });

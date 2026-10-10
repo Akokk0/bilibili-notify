@@ -27,7 +27,7 @@
 
 **主干**（四份勘察一致）：`3a-08` 中立类型与登记表 → `3a-12` 集成宿主 → `3a-24` 纯搬 → `3a-25` 改名 → `3a-28` B 站接成来源 → `3a-40` 入口咽喉与 `compose.ts` → `3a-42` 进程内对拍（3a 检查点）。推送侧的适配器接口（`3a-20`）要等 `3a-12`；别的片大多挂在这条线的某一段上。
 
-勘察现数（搬家前）：B 站四包非测试 47 个文件、10617 行，测试 53 个、15304 行；服务端非测试有 24 个文件 import 它们。代码里还没有 `SubscriptionSource`、`IntegrationContext`、`SourceContext`、`PostEvent`、`compose.ts`、`accounts/`，`bilibili/` 下只有 `settings.ts`。
+勘察现数（搬家前）：B 站四包非测试 47 个文件、10617 行，测试 53 个、15304 行；服务端非测试有 24 个文件 import 它们。代码里还没有 `Source`、`IntegrationContext`、`SourceContext`、`PostEvent`、`compose.ts`、`accounts/`，`bilibili/` 下只有 `settings.ts`。
 
 | 片 | 做什么 | 依赖 | 动盘 |
 | --- | --- | --- | --- |
@@ -40,7 +40,7 @@
 | 3a-06 ✅ | `dynamic` 与 `live` 两份一样的 `CommentaryClient` 换成 ai 包已有的 `CommentaryProvider`。另外三个「重名」（`PushLike`、`SubItemView`、`SubscriptionsView`）其实是名字相同、形状不同的两个东西，不能合并只能改名，挪去 3a-25 | 无 | 无 |
 | 3a-07 → 并进 3a-28 | 档位表的中立取法：出图器的示例卡与卡片路由不再直接读 B 站档位表。10-07 现查：档位表住 `packages/internal`，纯搬（3a-24）不动它，所以它不是搬家的前置；要到 3a-28 档位表进来源描述符时才需要换取法，而那时才有登记表可以问。现在做只能造一层临时的注入 | — | — |
 | **乙 接口骨架（纯新增，还没有 B 站调用方）** | | | |
-| 3a-08 ✅ | 建 `integrations/` 目录，通用登记表从 `extensions/claim-table.ts` 搬来改名 `Registry` / `createRegistry`。原定「把来源接口那一整套类型先建出来」不做：照规范「没有实现者的接口不造」，各接口类型跟着第一个实现它的那一片落地（`KeyValueStore` 随 3a-10、`IntegrationContext` 随 3a-12、`SubscriptionSource` 一族随 3a-28） | 无 | 无 |
+| 3a-08 ✅ | 建 `integrations/` 目录，通用登记表从 `extensions/claim-table.ts` 搬来改名 `Registry` / `createRegistry`。原定「把来源接口那一整套类型先建出来」不做：照规范「没有实现者的接口不造」，各接口类型跟着第一个实现它的那一片落地（`KeyValueStore` 随 3a-10、`IntegrationContext` 随 3a-12、`Source` 一族随 3a-28） | 无 | 无 |
 | 3a-09 ✅ | 拓展侧「上报问题」家族改名 `reportDiscrepancies`（上报出入），腾出 `reportProblem` 这个名字。原定的问题表本体并进 3a-12（今天没有上报方） | 3a-08 | 无 |
 | 3a-10 | 集成的 `state` / `secrets` 存储宿主。排在 3a-12 之后、3a-26 之前做（第一个用户是 3a-26 的 cookie） | 3a-08、3a-12 | 备份（加两节） |
 | 3a-11 ✅ | 抓图核心服务 `ImageFetcher`（建连接时判内网、每跳都判、8MB 流式截断、嗅探、存库）；图库的 `put` 磁盘写失败改回结果。**没做来源图的引用方登记**：现在还没有生产调用方，登记随第一个调用方做（3a-33、3a-35） | 无 | 无 |
@@ -62,7 +62,7 @@
 | 3a-25 ✅ | 改名（单独一个提交）：按 naming.md 的词表；外部接口回应的起名；原字段名只留在回应上。**独占工作区** | 3a-24 | 无 |
 | 3a-26 | B 站的 cookie 与浏览器身份进 `ctx`；`packages/storage` 的 `CookieStore` 退役 | 3a-10、3a-12、3a-25 | 密钥文件 |
 | 3a-27 | `PostEvent` 信封与 `post-detected` 事件取代 `dynamic-detected`；`deliverWork` → `deliverPost`、`NeutralWork` 退场；B 站作品的统计多收字段；中立部分拆进 `posts/` | 3a-08、3a-24 | 无 |
-| 3a-28 | （接线提醒：谁建了带内网守卫的请求客户端谁负责 `dispose()`，接进关停流程后剪线验一次）B 站实现 `SubscriptionSource`（搜人、取资料、名单驱动、上报作品与直播）+ `/api/sources`；档位表进来源描述符。另带问题表（全在内存）+ `ctx.reportProblem` / `resolveProblem` + `/api/problems` + 变更事件（3a-12 挪来；开工时先核这一片有没有真上报方，没有就整个随 3a-30） | 3a-12、3a-25、3a-27 | 无 |
+| 3a-28 | （接线提醒：谁建了带内网守卫的请求客户端谁负责 `dispose()`，接进关停流程后剪线验一次）B 站实现 `Source`（搜人、取资料、名单驱动、上报作品与直播）+ `/api/sources`；档位表进来源描述符。另带问题表（全在内存）+ `ctx.reportProblem` / `resolveProblem` + `/api/problems` + 变更事件（3a-12 挪来；开工时先核这一片有没有真上报方，没有就整个随 3a-30） | 3a-12、3a-25、3a-27 | 无 |
 | 3a-29 | `bilibili/auth/` 与 `SourceAuth` 状态机、`accounts/`；顺手修两处：拿二维码失败却回 ok、搜人把风控与未登录都报成 404；QQ 官方扫码绑定的两个口改成适配器的 `connectionAuth` 并搬到 `/api/adapters` 底下（3a-20 挪来，要同一个 `AuthState`） | 3a-10 至 3a-12、3a-26 | 备份（账号排序） |
 | 3a-30 | B 站报错按因果分层（未登录 → 风控 → 各项请求失败，只报最上面那条）；删各引擎自己私聊主人的旁路（勘察数出比计划多两处；连同 B 站引擎窄接口上的 `sendPrivateMsg` / `sendErrorMsg` 与 `engines.ts` 的 `masterTellers`，3a-18 留下的）。问题表在这一片接上真上报，私聊节流与「已恢复」随它定 | 3a-28、3a-29 | 无 |
 | 3a-31 | 「关了就不查」 | 3a-28 | 无 |
@@ -206,6 +206,7 @@
   - 22-3 行为变了的：① 一个文字子频道都没有的频道服务器，以前选择器里会画出服务器名加「(无文字子频道)」，现在不画（候选是平的，服务器名只能随子频道出现）；② 对不是 QQ 官方的连接问地址，以前群 / 私聊回空数组、频道回 `not_found`，现在统一回「这种连接没有可列的地址」（`unsupported`，HTTP 400；面板不会对这类连接调）；③ 设置不合法的 QQ 连接问群 / 私聊，以前照回内存里的记录，现在回「连接设置不合法」。
   - 22-3 照规矩直接定、主人没逐条表态的：失败走结果形状不抛，上游失败的话沿用「列出频道失败：原因」；停用的连接照样能列（旧行为）；新名字 `AddressCandidate`、`AddressCandidatesResponse`、`parentName`，面板的 `fetchAddressCandidates` / `groupByGuild`，`platforms/upstream-message.ts` 的 `upstreamMessage`（原来就在路由里、叫 `upstreamWords`，不是新起的；搬出来给适配器共用，主人 10-10 改名）；选择器搬成单独的组件文件（为了能测，不在页面文件里为测试加导出）。
   - 22-3 留着的：① **第三方的两层地址面板填不了**：「上级地址」一栏与两个选择器在面板里按平台名只给 QQ 官方画，别的平台选了频道只有一个地址栏；第 4 期按描述画表单时解决，3b 写拓展契约文档时要讲清（连同「列可挑的地址」这一版不对拓展开放、地址只能手填）。② `routes/qq.ts` 还引用着 `platforms/qq-bind.js` 与 `platforms/upstream-message.js`，等 3a-29。③ 适配器的选项里留着可选的 `registry`（会话发现表），只有测试在传。
+  - **订阅来源一族去掉 `Subscription` 前缀**（10-10，主人定）：接口叫 `Source`（3a-28 建的时候直接用新名）；定案（ADR-0023 决策 2 下记了改定）、`docs/1.0` 与命名规范已改；面板自用的 `SubscriptionSourceExtension` / `runningSubscriptionSources` 改成 `SourceExtension` / `runningSources`。拓展契约对外的三个名字留到 3b 随第 3 版改。
   - **规矩改了（10-10，主人定）**：「没有实现者的接口不造」补一条「预知的使用者算数」—— 定案或计划里写明谁在哪一期要用、形状已定的，可以提前造，造出来要真能用、有测试。已落的片不回头翻；今天照旧规矩推后的几样里，只有「候选上的 `name` / `settings` 两格」按新规矩可以造了（形状 ADR-0024 决策 4 写了，3b 与第 4 期要用），下次碰到 `push-source.ts` 与三个内置适配器时顺手补。`/api/adapters` 与候选读口仍不造（路由形状写的是「施工时定」）。
   - **「从错里取一句话」的重复，3a 全部做完之后单开一片清**（主人 10-10 定 A，与核心包导出整理排在一起）：10-10 现数（不含测试）有 97 处内联的 `x instanceof Error ? x.message : String(x)`，散在 61 个文件、8 个包（服务端 41 个文件、面板 10 个、AI 包 5 个）；另有两个一字不差的本地小函数（桌面端 `errText`、面板拓展页 `reasonOf`）。它们的兜底是「整个转成字符串」（适合写日志），与 `upstreamMessage` 的「上游没说原因」（适合给人看）不是一回事，清之前要先把每一处分成这两类，再定公共函数放哪、叫什么。网络包的 `describeError` 会带上底层原因，不算重复。**在那之前新代码不许再内联这一句**（施工单里写明）。被否：现在就清（和后面十几片的文件大面积相交）；只先收适配器目录里的十来处（同一件事清两遍）。
   - 22-3 真机待看（没验）：QQ 官方连接建目标时，群 / 私聊的「最近会话」列表与以前一样、点一条能填进去；频道要点了才拉、按服务器分组、点一项两格都填上；拉失败时的提示。
