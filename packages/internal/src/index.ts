@@ -58,6 +58,7 @@ export {
 	PUSH_STATUSES,
 	platformDescriptor,
 	providerMeta,
+	RESERVED_EXTENSION_IDS,
 	RESERVED_INTEGRATION_KEYS,
 	type Result,
 	resolveActivePersona,

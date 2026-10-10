@@ -419,7 +419,7 @@
 | 读设置的写法简化（待议，10-01 主人提）：格式只声明一处（写在集成定义里，面板要的字段由打包脚本从它导出进清单，作者不写第二份），ctx 按它定好类型，读只要一行 `ctx.settings.get().x`、读处不再传 schema；不学「改了设置就整个重启」（B 站改个间隔就要断开全部直播间） | 3a（B 站）/ 3b（契约 v3），到时拷问 |
 | 核心读设置加 `core.` 前缀（⑥f 内存里核心读法暂不动）、面板 PATCH 的核心路径改 `core.*`；`/api/globals` 改名 `/api/settings`（10-03 主人定，ADR-0036，随 ㉚） | 随第 2、3 期改名；面板那半随第 4 期 |
 | 面板改账号密码（10-02 主人定，不强制改）：服务端加一个改面板账号的接口，照 `config/persist.ts` 的写法写回 `bn.config.yaml`（保留注释、原子写、0600），改完会话随之失效、重新登录。Docker 主路径（设了 `BN_CONFIG`）环境变量只在首次开机生成这份文件时用一次、之后以文件为准，面板改了就生效；只有没设 `BN_CONFIG` 的旧式部署（每次开机「文件 < 环境变量 < 命令行」合并）在环境变量里设了 `BN_DASHBOARD_USER/PASS`、或根本没有配置文件时拒绝并说明，桌面版（token）与不要求登录的部署不显示入口；开机生成种子凭据时那句日志改成「登录后可在系统页修改」。面板入口随第 4 期 | 服务端随第 4 期一起做 |
-| 日志级别的 `core` 键会和叫 `core` 的拓展撞名（`logging.levels` 是核心模块 + 集成键混放）：`core` 进保留 id 表，或把集成键分开放 | 随 `core.logging` 改名那期 |
+| 日志级别的 `core` 键会和叫 `core` 的拓展撞名（`logging.levels` 是核心模块 + 集成键混放）：`core` 进保留 id 表，或把集成键分开放 | ✅ 3a-38 已落：`core` 进「拓展不许用的 id」（`RESERVED_EXTENSION_IDS`），不进内置集成的键表（那张表被当「内置集成有哪些」读） |
 | 桥迁 v3 时必须抬 `extensions/bridge/extension.json` 的 `version`（现在 `0.0.1`，同号发出去市场永远不提示更新）；具体号发 alpha 时定 | 3b 抬号，6 定号 |
 | 渲染器运行时从 `s1.hdslb.com` 拉舰长图标（`packages/image/src/image-renderer.ts` 的 `GUARD_LEVEL_IMG`），改成本地资产：B 站在 `bilibili/` 声明 `guard` 体系时用 `ctx.storeImage` 把三档图标存成 `tier.icon`，出图器只内联引用。守卫 11 的 `hdslb` 会在这里变红 | 3a（10-02 从 3b 挪进第 2 期 ㉓，理由是不挪的话出图器零联网过不了、会员卡只能画占位；10-03 出图器零联网随抓图服务挪进 3a，它跟着回去，和 `ctx.storeImage` 一起落；三档图标的字节从哪来到时定） |
 | 补关注「-101 整批跳过、不降级」（已定未做，见 subscription-sources「B 站怎么实现」），随关注同步搬进 `bilibili/` | 3b |

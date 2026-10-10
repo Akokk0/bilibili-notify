@@ -64,7 +64,7 @@
 
 ```ts
 type SourceKey = "bilibili" | ExtensionId;   // 不加前缀；bilibili 是保留 id，拓展清单不许用
-type IntegrationKey = SourceKey | "onebot" | "qq-official" | "webhook";   // 后三个是内置平台适配器的键，同样是保留 id
+type IntegrationKey = SourceKey | "onebot" | "qq-official" | "webhook";   // 后三个是内置平台适配器的键，同样是保留 id；拓展 id 另外不许叫 core（核心自己的名字，不是集成键）
 
 interface Identity {                          // 分派、判重都只看这两格
   sourceKey: SourceKey;

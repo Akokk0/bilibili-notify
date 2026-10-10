@@ -3,7 +3,7 @@ import {
 	EXTENSION_IMAGE_DATA_URL_RE,
 	EXTENSION_IMAGE_MAX_CHARS,
 	LIST_ITEM_ID_KEY,
-	RESERVED_INTEGRATION_KEYS,
+	RESERVED_EXTENSION_IDS,
 } from "../constants";
 
 // 本体住零依赖的 constants(面板经 /constants 拿值),这里给根入口补一条路 —— 两路一值。
@@ -168,10 +168,11 @@ export const ExtensionIdSchema = z
 	)
 	// 小写那几个里正则放得过的只有 `constructor`,但 id 是 `globals.extensions` 等处的键。
 	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "))
-	// 订阅身份与登记表的键不加前缀:拓展叫 `bilibili` 就和 B 站的订阅撞成同一个人(ADR-0021 决策 14)。
+	// 订阅身份与登记表的键不加前缀:拓展叫 `bilibili` 就和 B 站的订阅撞成同一个人(ADR-0021 决策 14);
+	// `core` 是核心自己的名字(日志等级的键、设置文件名),拓展叫它就和核心撞。
 	.refine(
-		(id) => !RESERVED_INTEGRATION_KEYS.includes(id),
-		`拓展 id 不能用内置集成的保留 id(${RESERVED_INTEGRATION_KEYS.join("、")})`,
+		(id) => !RESERVED_EXTENSION_IDS.includes(id),
+		`拓展 id 不能用保留 id(${RESERVED_EXTENSION_IDS.join("、")})`,
 	);
 
 /** 命名空间那一段;没有点 = 官方源的拓展,回 `undefined`。 */
