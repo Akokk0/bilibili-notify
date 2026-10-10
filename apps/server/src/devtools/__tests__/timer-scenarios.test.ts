@@ -1,19 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createDevClock } from "../clock.js";
 import { createDevRegistry, DevParamError } from "../registry.js";
-import type { SubPick } from "../scenarios/live.js";
 import { timerScenarios } from "../scenarios/timers.js";
 
 /**
- * C1–C3:免扰时钟(单点覆盖「当作现在是 hh:mm」)、静音(真调 muteFor)、五个「现在就跑」
- * (Chrome 空闲关、复推、动态检测、粉丝轮询、登录心跳)。这些都不是假时钟:只覆盖一处判定,
- * 或者把定时器到点要做的事提前调一次。
+ * 免扰时钟(单点覆盖「当作现在是 hh:mm」)、静音(真调 muteFor)、Chrome 空闲关。这些都不是
+ * 假时钟:只覆盖一处判定,或者把定时器到点要做的事提前调一次。B 站的四个「现在就跑」在
+ * `bilibili/devtools/__tests__/timers.test.ts`。
  */
-
-const SUBS: SubPick[] = [
-	{ id: "s1", uid: "100", name: "甲", enabled: true, roomId: "5050" },
-	{ id: "s2", uid: "200", name: "乙", enabled: false, roomId: "6060" },
-];
 
 function setup(over: Partial<Parameters<typeof timerScenarios>[0]> = {}) {
 	const clock = createDevClock();
@@ -27,24 +21,15 @@ function setup(over: Partial<Parameters<typeof timerScenarios>[0]> = {}) {
 		}),
 	};
 	const closeIdleNow = vi.fn(async () => true);
-	const repushNow = vi.fn(async (uid: string) => uid === "100");
-	const detectNow = vi.fn(async () => {});
-	const pollNow = vi.fn(async () => true);
-	const healthCheckNow = vi.fn(async () => true);
 	const reg = createDevRegistry(
 		timerScenarios({
 			clock,
-			subs: () => SUBS,
 			mute: () => mute,
 			puppeteer: () => ({ closeIdleNow }),
-			live: () => ({ repushNow }),
-			dynamic: () => ({ detectNow }),
-			fans: () => ({ pollNow }),
-			loginFlow: () => ({ healthCheckNow }),
 			...over,
 		}),
 	);
-	return { reg, clock, mute, closeIdleNow, repushNow, detectNow, pollNow, healthCheckNow };
+	return { reg, clock, mute, closeIdleNow };
 }
 
 beforeEach(() => {
@@ -143,37 +128,12 @@ describe("现在就跑", () => {
 		await expect(off.reg.run("chrome.idle-now", {})).rejects.toBeInstanceOf(DevParamError);
 	});
 
-	it("live.repush-now:按订阅 uid 调 repushNow;没在播如实说", async () => {
-		const { reg, repushNow } = setup();
-		expect((await reg.run("live.repush-now", {})).summary).toMatch(/甲/);
-		expect(repushNow).toHaveBeenCalledWith("100");
-		expect((await reg.run("live.repush-now", { sub: "s2" })).summary).toMatch(/没在播|没监听/);
-	});
-
-	it("dynamic.detect-now / fans.poll-now / auth.health-now 各调各的口", async () => {
-		const { reg, detectNow, pollNow, healthCheckNow } = setup();
-		await reg.run("dynamic.detect-now", {});
-		await reg.run("fans.poll-now", {});
-		await reg.run("auth.health-now", {});
-		expect(detectNow).toHaveBeenCalledOnce();
-		expect(pollNow).toHaveBeenCalledOnce();
-		expect(healthCheckNow).toHaveBeenCalledOnce();
-	});
-
-	it("七个都在定时组", () => {
+	it("三个都在定时组", () => {
 		const { reg } = setup();
 		const timers = reg
 			.list()
 			.filter((d) => d.group === "timer")
 			.map((d) => d.id);
-		expect(timers).toEqual([
-			"push.quiet-clock",
-			"push.mute",
-			"chrome.idle-now",
-			"live.repush-now",
-			"dynamic.detect-now",
-			"fans.poll-now",
-			"auth.health-now",
-		]);
+		expect(timers).toEqual(["push.quiet-clock", "push.mute", "chrome.idle-now"]);
 	});
 });

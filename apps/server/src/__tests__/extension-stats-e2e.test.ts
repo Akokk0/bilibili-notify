@@ -165,7 +165,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		// 所以按 devtools 的「粉丝轮询现在就跑」、等它读到。
 		await vi.waitFor(
 			async () => {
-				const polled = await api("/api/dev/run/fans.poll-now", {
+				const polled = await api("/api/dev/run/bilibili.fans.poll-now", {
 					method: "POST",
 					...json({ params: {} }),
 				});

@@ -25,6 +25,7 @@ import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
 import { BiliLoginStatus } from "./bilibili/api/index.js";
+import { createBiliDevtools } from "./bilibili/devtools/index.js";
 import { settingsOf } from "./bilibili/settings.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
@@ -32,7 +33,7 @@ import type { CardSkinStore } from "./card-skins/store.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
-import { createDevtools } from "./devtools/index.js";
+import { createDevtools, overridableApi } from "./devtools/index.js";
 import { manifestSubscriptionView } from "./extensions/context.js";
 import { extensionsRootIn } from "./extensions/discover.js";
 import {
@@ -692,7 +693,47 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 真 adapter / 真 api 一行不动。
 		// `subBinding` 是个会在关停时清掉的 let,闭包里收不窄;先把 store 取出来。
 		const subStore = subBinding.store;
+		// 🚧 过渡接线(3a-28 之后场景改成只经 B 站自己的上下文做事,这段与 `bilibili/devtools/` 的
+		// 句柄入参一并删):B 站那组场景要往引擎的 `api` 与路由的登录系统上盖方法,所以这两层
+		// Proxy 在这里建,引擎与路由拿的是它们的 `.api`。生产里 `overridableApi` 是桩,原样透传。
+		const devApi = overridableApi(authSystem.api);
+		const devAuth = overridableApi(authSystem);
 		const devtools = createDevtools({
+			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
+			// 构建时 `createBiliDevtools` 另有恒空的桩。
+			provide: (devtoolsProviders) =>
+				devtoolsProviders.claim(
+					BILIBILI_SOURCE_KEY,
+					createBiliDevtools({
+						api: devApi,
+						auth: devAuth,
+						bus: runtime.bus,
+						// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
+						// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。
+						subs: () =>
+							subStore
+								.list()
+								.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
+								.map((sub) => {
+									const uid = subscriptionIdentityOf(sub).externalId;
+									return {
+										id: sub.id,
+										uid,
+										name: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
+										enabled: sub.enabled,
+										roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
+										specialUsers: sub.specialUsers.map((u) => u.uid),
+										avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl,
+									};
+								}),
+						// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
+						dynamic: () => engines?.dynamic,
+						live: () => engines?.live,
+						fans: () => runtime.fansPoller ?? undefined,
+						// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
+						loginFlow: () => authSystem?.flow,
+					}),
+				),
 			payloadVersion,
 			sourceRun,
 			updateService,
@@ -710,27 +751,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 那格常是 `0.0.0.0`(监听通配),拿它当目的地连不上。
 			address: () => (listeningPort ? `127.0.0.1:${listeningPort}` : undefined),
 			historyStore: runtime.historyStore,
-			api: authSystem.api,
-			// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
-			// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。
-			subs: () =>
-				subStore
-					.list()
-					.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
-					.map((sub) => {
-						const uid = subscriptionIdentityOf(sub).externalId;
-						return {
-							id: sub.id,
-							uid,
-							name: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
-							enabled: sub.enabled,
-							roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
-							specialUsers: sub.specialUsers.map((u) => u.uid),
-							avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl,
-						};
-					}),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
-			dynamic: () => engines?.dynamic,
 			inbound: () => ({ private: onInboundPrivate, group: onInboundGroup }),
 			commands: () => ({
 				prefix: runtime.configStore.getGlobals().commands.prefix,
@@ -740,13 +761,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			extensionSettings: (id) => runtime.configStore.getExtensionSettings(id),
 			targets: () => runtime.configStore.getTargets(),
 			bus: runtime.bus,
-			authSystem,
 			puppeteer: () => puppeteer,
-			live: () => engines?.live,
 			mute: () => engines?.muteState,
-			fansPoller: () => runtime.fansPoller ?? undefined,
-			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
-			loginFlow: () => authSystem?.flow,
 		});
 		if (devtools) log.info("devtools enabled (dev build): /api/dev is mounted");
 		const adapters = devtools?.adapters ?? adapterRegistry;
@@ -804,7 +820,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			dataRoot: runtime.dataRoot,
 			// 全进程唯一那个字体读取口 —— 预览路由经 RouteDeps.runtime 取的是同一个。
 			loadFontFace: runtime.loadFontFace,
-			api: devtools?.api ?? authSystem.api,
+			api: devApi.api,
 			quietHoursNow: devtools?.quietHoursNow,
 			// 女仆查订阅时拓展订阅的平台名(ADR-0019 决策 64):清单里订阅源的叫法 → 拓展名。装载器比
 			// 引擎晚一步建起来,所以现取;取不到就交 undefined,视图退拓展 id(同面板,决策 10)。
@@ -1255,10 +1271,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		const app = createApp(runtime, {
 			...appShell,
 			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
-			authSystem: devtools?.authSystem ?? authSystem,
+			authSystem: devAuth.api,
 			// 显式给一份:`authSystem.api` 是数据属性,取出来的是没装饰过的那个,卡片预览
 			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
-			api: devtools?.api ?? authSystem.api,
+			api: devApi.api,
 			backupService,
 			connectionSecrets,
 			cardSkins: {

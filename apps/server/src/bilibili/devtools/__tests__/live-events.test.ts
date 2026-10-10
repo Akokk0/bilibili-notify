@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { GuardLevel, type LiveEvent } from "../../bilibili/live/protocol/events.js";
+import { DevParamError } from "../../../devtools/registry.js";
+import { GuardLevel, type LiveEvent } from "../../live/protocol/events.js";
+import type { SubPick } from "../live.js";
+import { liveEventScenarios } from "../live-events.js";
 import { createLiveRooms } from "../live-rooms.js";
-import { createDevRegistry, DevParamError } from "../registry.js";
-import type { SubPick } from "../scenarios/live.js";
-import { liveEventScenarios } from "../scenarios/live-events.js";
+import { biliRegistry } from "./support/registry.js";
 
 /**
  * A2:弹幕批量 / SC / 上舰 / 礼物 / 进场 —— 都是往房间的事件漏斗塞 LiveEvent。守的是形状:
@@ -25,7 +26,7 @@ function setup() {
 		onEvent: (ev) => events.push(ev),
 		client: { closed: false, close() {} },
 	});
-	const reg = createDevRegistry(liveEventScenarios({ subs: () => SUBS, rooms }));
+	const reg = biliRegistry(liveEventScenarios({ subs: () => SUBS, rooms }));
 	return { reg, events };
 }
 
@@ -34,11 +35,11 @@ describe("直播事件场景", () => {
 		const { reg } = setup();
 		const decls = reg.list();
 		expect(decls.map((d) => d.id)).toEqual([
-			"live.danmaku",
-			"live.superchat",
-			"live.guard",
-			"live.gift",
-			"live.enter",
+			"bilibili.live.danmaku",
+			"bilibili.live.superchat",
+			"bilibili.live.guard",
+			"bilibili.live.gift",
+			"bilibili.live.enter",
 		]);
 		for (const d of decls) {
 			expect(d.group).toBe("event");
@@ -48,7 +49,7 @@ describe("直播事件场景", () => {
 
 	it("弹幕批量:条数与发言人数照参数来,内容各不相同,时间戳是现在", async () => {
 		const { reg, events } = setup();
-		const res = await reg.run("live.danmaku", { count: 60, senders: 8 });
+		const res = await reg.run("bilibili.live.danmaku", { count: 60, senders: 8 });
 
 		expect(events).toHaveLength(60);
 		const danmakus = events.filter((e) => e.kind === "danmu");
@@ -61,14 +62,14 @@ describe("直播事件场景", () => {
 
 	it("弹幕批量:给了 uid 就全由这一位发 —— 拿来试特别关注的弹幕推送", async () => {
 		const { reg, events } = setup();
-		await reg.run("live.danmaku", { count: 3, senders: 8, uid: "777" });
+		await reg.run("bilibili.live.danmaku", { count: 3, senders: 8, uid: "777" });
 		const danmakus = events.filter((e) => e.kind === "danmu");
 		expect(danmakus.map((e) => e.user.uid)).toEqual([777, 777, 777]);
 	});
 
 	it("弹幕批量默认冲门槛:60 条 / 8 人", () => {
 		const { reg } = setup();
-		const decl = reg.list().find((d) => d.id === "live.danmaku");
+		const decl = reg.list().find((d) => d.id === "bilibili.live.danmaku");
 		expect(decl?.params).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ key: "count", kind: "number", default: 60 }),
@@ -79,7 +80,7 @@ describe("直播事件场景", () => {
 
 	it("SC:价格与正文照给,发言人有 uid / name", async () => {
 		const { reg, events } = setup();
-		await reg.run("live.superchat", { price: 50, text: "主播晚上好" });
+		await reg.run("bilibili.live.superchat", { price: 50, text: "主播晚上好" });
 		expect(events).toEqual([
 			expect.objectContaining({
 				kind: "superchat",
@@ -92,19 +93,19 @@ describe("直播事件场景", () => {
 
 	it("上舰:等级按枚举转成 GuardLevel,礼物名跟着等级", async () => {
 		const { reg, events } = setup();
-		await reg.run("live.guard", { level: "admiral" });
+		await reg.run("bilibili.live.guard", { level: "admiral" });
 		expect(events[0]).toMatchObject({
 			kind: "guard-buy",
 			guardLevel: GuardLevel.Admiral,
 			giftName: "提督",
 		});
-		await reg.run("live.guard", {});
+		await reg.run("bilibili.live.guard", {});
 		expect(events[1]).toMatchObject({ guardLevel: GuardLevel.Captain, giftName: "舰长" });
 	});
 
 	it("礼物:名字 / 数量照给,金瓜子计价", async () => {
 		const { reg, events } = setup();
-		await reg.run("live.gift", { name: "小花花", num: 3 });
+		await reg.run("bilibili.live.gift", { name: "小花花", num: 3 });
 		expect(events[0]).toMatchObject({
 			kind: "gift",
 			giftName: "小花花",
@@ -116,14 +117,16 @@ describe("直播事件场景", () => {
 
 	it("进场:uid 省略时取这位 UP 的第一个特别关注;给了就用给的", async () => {
 		const { reg, events } = setup();
-		await reg.run("live.enter", {});
+		await reg.run("bilibili.live.enter", {});
 		expect(events[0]).toMatchObject({ kind: "user-action", action: "enter", user: { uid: 777 } });
-		await reg.run("live.enter", { uid: "12345" });
+		await reg.run("bilibili.live.enter", { uid: "12345" });
 		expect(events[1]).toMatchObject({ kind: "user-action", user: { uid: 12345 } });
 	});
 
 	it("房间没连上 → 参数错误", async () => {
 		const { reg } = setup();
-		await expect(reg.run("live.superchat", { sub: "s3" })).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("bilibili.live.superchat", { sub: "s3" })).rejects.toBeInstanceOf(
+			DevParamError,
+		);
 	});
 });

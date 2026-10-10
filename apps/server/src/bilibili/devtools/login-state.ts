@@ -1,7 +1,7 @@
 import type { LoginSnapshot, MessageBus } from "@bilibili-notify/internal";
-import { BiliLoginStatus } from "../../bilibili/api/index.js";
-import { fakeQrDataUrl } from "../fake-qr.js";
-import type { DevScenarioDef } from "../registry.js";
+import type { DevScenarioDef } from "../../devtools/registry.js";
+import { BiliLoginStatus } from "../api/index.js";
+import { fakeQrDataUrl } from "./fake-qr.js";
 
 /**
  * B2:扫码登录六态。面板从两处读登录快照:`GET /api/auth/status`(`authSystem.status()`)

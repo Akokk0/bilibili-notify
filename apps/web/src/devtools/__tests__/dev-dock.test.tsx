@@ -313,7 +313,7 @@ describe("DevDock", () => {
 						...STATUS,
 						scenarios: [
 							{
-								id: "live.start",
+								id: "bilibili.live.start",
 								group: "event",
 								title: "开播",
 								params: [
@@ -353,12 +353,12 @@ describe("DevDock", () => {
 		// 留空全部不带;选了才带。
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
-			expect(api.post).toHaveBeenCalledWith("/api/dev/run/live.start", { params: {} }),
+			expect(api.post).toHaveBeenCalledWith("/api/dev/run/bilibili.live.start", { params: {} }),
 		);
 		await user.selectOptions(sub, "s1");
 		await user.click(screen.getByRole("button", { name: "跑一下" }));
 		await waitFor(() =>
-			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/live.start", {
+			expect(api.post).toHaveBeenLastCalledWith("/api/dev/run/bilibili.live.start", {
 				params: { sub: "s1" },
 			}),
 		);

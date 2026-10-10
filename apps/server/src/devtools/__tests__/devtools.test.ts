@@ -42,9 +42,7 @@ const BARE = {
 	marketplace: REAL_MARKET,
 	adapters: createPlatformAdapterRegistry(),
 	historyStore: { deleteRange: async () => 0 },
-	api: {} as never,
-	subs: () => [],
-	dynamic: () => undefined,
+	provide: () => {},
 	inbound: () => undefined,
 	commands: () => ({ prefix: "/" }),
 	connectionConfigs: () => [],
@@ -53,12 +51,8 @@ const BARE = {
 	address: () => undefined,
 	targets: () => [],
 	bus: createNodeMessageBus(),
-	authSystem: { status: () => ({ status: 5, msg: "" }) } as never,
 	puppeteer: () => null,
-	live: () => undefined,
 	mute: () => undefined,
-	fansPoller: () => undefined,
-	loginFlow: () => undefined,
 	// 仓里那个目录在测试里指向一个不存在的路径 → 拓展那三条场景没有可选项,不注册。
 	// 它们自己的规矩在 `devtools-extensions.test.ts` 里钉。
 	extensions: { repoDir: "/nope/extensions", installRoot: "/nope/data", loaded: () => undefined },
@@ -93,6 +87,41 @@ describe("createDevtools", () => {
 		expect(dev.updateService.getStatus().state).toEqual({ phase: "idle" });
 		// 真服务没被动过。
 		expect(updateService.getStatus().state).toEqual({ phase: "disabled", reason: "dev-build" });
+	});
+
+	/**
+	 * 门没开(发出去的版本 / 跑的是构建产物)时登记回调一次都不调 —— B 站的场景工厂会装直播连接的
+	 * 观察钩子,这是行为:关着的 devtools 不许有副作用。门开着则恰好调一次。
+	 */
+	it.each([
+		["发出去的版本", { payloadVersion: "0.10.0", sourceRun: true }],
+		["构建产物", { payloadVersion: "0.0.0-dev", sourceRun: false }],
+	])("门没开(%s)→ provide 一次都不调;开着 → 恰好一次", (_name, gate) => {
+		const provide = vi.fn();
+		expect(createDevtools({ ...BARE, ...gate, provide })).toBeNull();
+		expect(provide).not.toHaveBeenCalled();
+
+		createDevtools({ ...BARE, payloadVersion: "0.0.0-dev", provide });
+		expect(provide).toHaveBeenCalledOnce();
+	});
+
+	/** 登记表接线:剪断 `providers.scenarios()` 那一行,这条就红(别家登记的场景进不了注册表)。 */
+	it("登记表里各家交的场景汇进注册表,id 带来源前缀", async () => {
+		const run = vi.fn(() => ({ summary: "跑了" }));
+		const dev = createDevtools({
+			...BARE,
+			payloadVersion: "0.0.0-dev",
+			provide: (providers) =>
+				providers.claim("demo", {
+					scenarios: [{ id: "hello", group: "event", title: "你好", params: [], run }],
+				}),
+		});
+		if (dev === null) throw new Error("unreachable");
+
+		const ids = dev.registry.list().map((s) => s.id);
+		expect(ids).toContain("demo.hello");
+		expect(ids).not.toContain("hello");
+		expect((await dev.registry.run("demo.hello", {})).summary).toBe("跑了");
 	});
 });
 

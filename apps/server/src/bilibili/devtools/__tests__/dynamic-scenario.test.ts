@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { overridableApi } from "../api-overrides.js";
-import { createDevRegistry, DevParamError } from "../registry.js";
-import { dynamicScenarios } from "../scenarios/dynamic.js";
-import type { SubPick } from "../scenarios/live.js";
+import { overridableApi } from "../../../devtools/api-overrides.js";
+import { DevParamError } from "../../../devtools/registry.js";
+import { dynamicScenarios } from "../dynamic.js";
+import type { SubPick } from "../live.js";
+import { biliRegistry } from "./support/registry.js";
 
 /**
  * A3:四类动态 —— 往传给 DynamicEngine 的 `api.fetchAllDynamic()` 结果里**并进**一条假动态
@@ -42,7 +43,7 @@ function setup() {
 	const detectNow = vi.fn(async () => {
 		seen = await api.api.fetchAllDynamic();
 	});
-	const reg = createDevRegistry(
+	const reg = biliRegistry(
 		dynamicScenarios({ subs: () => SUBS, api, dynamic: () => ({ detectNow }) }),
 	);
 	return {
@@ -65,11 +66,11 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe("dynamic.post", () => {
+describe("bilibili.dynamic.post", () => {
 	it("声明:事件组、快捷位、type 四选", () => {
 		const { reg } = setup();
 		const [decl] = reg.list();
-		expect(decl).toMatchObject({ id: "dynamic.post", group: "event", quick: true });
+		expect(decl).toMatchObject({ id: "bilibili.dynamic.post", group: "event", quick: true });
 		const type = decl?.params.find((p) => p.key === "type");
 		expect(type?.kind === "enum" && type.options.map((o) => o.value)).toEqual([
 			"word",
@@ -82,7 +83,7 @@ describe("dynamic.post", () => {
 
 	it("跑一下:feed 里多出一条假动态排在真的前面、作者是这位 UP、pub_ts 是现在;然后立刻跑一轮检测", async () => {
 		const { reg, detectNow, seen } = setup();
-		const res = await reg.run("dynamic.post", {
+		const res = await reg.run("bilibili.dynamic.post", {
 			sub: "s1",
 			type: "word",
 			text: "今天也要元气满满",
@@ -130,7 +131,7 @@ describe("dynamic.post", () => {
 		["article", { major: { opus: expect.objectContaining({ title: expect.any(String) }) } }],
 	] as const)("%s:major 带齐渲染器要的字段", async (type, expected) => {
 		const { reg, seen } = setup();
-		await reg.run("dynamic.post", { type });
+		await reg.run("bilibili.dynamic.post", { type });
 		const fake = seen().data.items[0] as unknown as {
 			modules: { module_dynamic: unknown };
 		};
@@ -139,7 +140,7 @@ describe("dynamic.post", () => {
 
 	it("forward:带一条 orig,orig 也是完整的一条", async () => {
 		const { reg, seen } = setup();
-		await reg.run("dynamic.post", { type: "forward" });
+		await reg.run("bilibili.dynamic.post", { type: "forward" });
 		const fake = seen().data.items[0] as unknown as {
 			type: string;
 			orig?: { type: string; modules: unknown };
@@ -153,7 +154,7 @@ describe("dynamic.post", () => {
 
 	it("跑完那一轮之后假动态从 feed 里撤掉 —— 引擎已经推进锚点,留着只是脏 feed", async () => {
 		const { reg, api } = setup();
-		await reg.run("dynamic.post", {});
+		await reg.run("bilibili.dynamic.post", {});
 		// run 里 await 了 detectNow;之后再拉 feed 就该只剩真的。
 		expect((await api.fetchAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
 	});
@@ -161,7 +162,7 @@ describe("dynamic.post", () => {
 	it("真 feed 拉不到(没登录)也照样造:用一份空底", async () => {
 		const { reg, api, raw, seen } = setup();
 		raw.real.mockRejectedValue(new Error("-101"));
-		await expect(reg.run("dynamic.post", {})).resolves.toBeTruthy();
+		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toBeTruthy();
 		expect(seen().data.items).toHaveLength(1);
 		// 撤掉之后又回到真的那条路,照样抛。
 		await expect(api.fetchAllDynamic()).rejects.toThrow("-101");
@@ -169,21 +170,21 @@ describe("dynamic.post", () => {
 
 	it("sub 省略取第一个启用的;停用的也能指定;没这个订阅就拒", async () => {
 		const { reg } = setup();
-		await expect(reg.run("dynamic.post", {})).resolves.toMatchObject({
+		await expect(reg.run("bilibili.dynamic.post", {})).resolves.toMatchObject({
 			summary: expect.stringContaining("甲"),
 		});
-		await expect(reg.run("dynamic.post", { sub: "s2" })).resolves.toMatchObject({
+		await expect(reg.run("bilibili.dynamic.post", { sub: "s2" })).resolves.toMatchObject({
 			summary: expect.stringContaining("乙"),
 		});
-		await expect(reg.run("dynamic.post", { sub: "zzz" })).rejects.toBeInstanceOf(DevParamError);
+		await expect(reg.run("bilibili.dynamic.post", { sub: "zzz" })).rejects.toBeInstanceOf(
+			DevParamError,
+		);
 	});
 
 	it("引擎还没起来 → 拒,而不是把假动态留在 feed 里等", async () => {
 		const api = overridableApi(new FakeApi());
-		const reg = createDevRegistry(
-			dynamicScenarios({ subs: () => SUBS, api, dynamic: () => undefined }),
-		);
-		await expect(reg.run("dynamic.post", {})).rejects.toBeInstanceOf(DevParamError);
+		const reg = biliRegistry(dynamicScenarios({ subs: () => SUBS, api, dynamic: () => undefined }));
+		await expect(reg.run("bilibili.dynamic.post", {})).rejects.toBeInstanceOf(DevParamError);
 		expect((await api.api.fetchAllDynamic()).data.items.map((i) => i.id_str)).toEqual(["real-1"]);
 	});
 });

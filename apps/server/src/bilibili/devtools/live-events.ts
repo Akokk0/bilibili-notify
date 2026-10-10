@@ -1,5 +1,5 @@
-import { GuardLevel, type LiveUser } from "../../bilibili/live/protocol/events.js";
-import { DevParamError, type DevScenarioDef } from "../registry.js";
+import { DevParamError, type DevScenarioDef } from "../../devtools/registry.js";
+import { GuardLevel, type LiveUser } from "../live/protocol/events.js";
 import { pickRoom, type RoomPickerDeps } from "./live.js";
 
 /**

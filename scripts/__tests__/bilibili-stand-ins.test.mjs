@@ -51,8 +51,9 @@ export const RATCHET = {
 	"apps/server/src/ai/read-only-tools.ts": 2,
 	// 3a-23:把 contract 的登录状态值与 api 包的枚举两头钉住;3a-29 `SourceAuth` 状态机落地时一起走。
 	"apps/server/src/auth/login-status-wire.ts": 6,
-	"apps/server/src/devtools/scenarios/login-state.ts": 7,
-	"apps/server/src/index.ts": 5,
+	// 3a-32(主人 10-10 点头,5 → 8):B 站的开发场景搬进 `bilibili/devtools/`,入口要引入、调用它的工厂并用来源键认领,
+	// 多 3 处;同一片让核心 devtools 少了 7 处。3a-40 建 `compose.ts` 时这几处一起搬走。
+	"apps/server/src/index.ts": 8,
 	"apps/server/src/routes/auth.ts": 3,
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,

@@ -10,7 +10,7 @@ import { mergeScenarios, type WebDevScenario } from "../registry";
 
 const server: DevScenario[] = [
 	{ id: "update.state", group: "state", title: "更新状态", params: [] },
-	{ id: "live.start", group: "event", title: "开播", params: [] },
+	{ id: "bilibili.live.start", group: "event", title: "开播", params: [] },
 ];
 
 const web: WebDevScenario[] = [

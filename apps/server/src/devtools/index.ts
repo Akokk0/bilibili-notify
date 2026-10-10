@@ -1,9 +1,6 @@
 import { getHeapStatistics } from "node:v8";
 import type { ChatIdentity, Connection, MessageBus, PushTarget } from "@bilibili-notify/internal";
 import type { Hono } from "hono";
-import type { AuthSystem } from "../auth/index.js";
-import type { Api } from "../bilibili/api/index.js";
-import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { entryIdentity, type LoadedExtensions } from "../extensions/loader.js";
 import type { Marketplace } from "../extensions/marketplace.js";
 import type { HistoryStore } from "../history/store.js";
@@ -14,30 +11,28 @@ import type { MuteState } from "../runtime/mute-state.js";
 import type { MemoryUsageSample } from "../runtime/resource-monitor.js";
 import type { UpdateService } from "../update/service.js";
 import { isDevBuild } from "../update/version-order.js";
-import { overridableApi } from "./api-overrides.js";
 import { createCapabilityInjector } from "./capability-injection.js";
 import { createCaptureGate } from "./capture.js";
 import { createDevClock } from "./clock.js";
 import { heapInjector, injectedMemoryUsage } from "./heap-injection.js";
-import { createLiveRooms } from "./live-rooms.js";
 import { injectableMarketplace } from "./marketplace-injection.js";
+import { createDevtoolsProviderRegistry, type DevtoolsProviderRegistry } from "./providers.js";
 import { createDevRegistry, type DevRegistry } from "./registry.js";
 import { createDevRoute, type DevCapturesApi } from "./route.js";
 import { bridgeScenarios } from "./scenarios/bridge.js";
 import { busEventScenarios } from "./scenarios/bus-events.js";
 import { capabilityScenario } from "./scenarios/capability.js";
 import { pushCaptureScenario } from "./scenarios/capture.js";
-import { type DynamicEngineLike, dynamicScenarios } from "./scenarios/dynamic.js";
 import { extensionScenarios } from "./scenarios/extensions.js";
 import { heapPressureScenario } from "./scenarios/heap.js";
 import { type InboundHandlers, inboundScenarios } from "./scenarios/inbound.js";
-import { liveScenarios, type SubPick } from "./scenarios/live.js";
-import { liveEventScenarios } from "./scenarios/live-events.js";
-import { loginStateScenario } from "./scenarios/login-state.js";
 import { marketplaceUpdateScenario } from "./scenarios/marketplace.js";
 import { timerScenarios } from "./scenarios/timers.js";
 import { updateStateScenario } from "./scenarios/update.js";
 import { injectableUpdateService } from "./update-injection.js";
+
+// 入口文件(`src/index.ts`)只许从这一处引 devtools —— 这一样也经这里出去,构建时整张换成桩。
+export { overridableApi } from "./api-overrides.js";
 
 /**
  * devtools 的组装点 + 那道门。
@@ -79,12 +74,11 @@ export interface CreateDevtoolsInput {
 	marketplace: Marketplace;
 	/** 「清掉截流期间历史行」要它。 */
 	historyStore: Pick<HistoryStore, "deleteRange">;
-	/** 传给引擎的 B 站 API。交回去的是套了 Proxy 的那份(假直播期间房间信息说在播)。 */
-	api: Api;
-	/** 场景挑订阅用:每次现读,订阅表会变。 */
-	subs: () => SubPick[];
-	/** 动态引擎(「发动态」之后立刻跑一轮)。引擎后建,现取。 */
-	dynamic: () => DynamicEngineLike | undefined;
+	/**
+	 * 各家集成登记自己的场景(B 站是第一个)。**过了门才调**,调的时候登记表是空的、注册表还没建:
+	 * 门没开,各家的工厂一次都不会被调用。场景 id 的来源前缀与撞名检查在登记那一处做完。
+	 */
+	provide: (providers: DevtoolsProviderRegistry) => void;
 	/** 入站口(私聊指令 / 群链接)。接线层后接,现取。 */
 	inbound: () => InboundHandlers | undefined;
 	commands: () => { prefix: string; master?: ChatIdentity };
@@ -97,16 +91,11 @@ export interface CreateDevtoolsInput {
 	 */
 	address: () => string | undefined;
 	targets: () => PushTarget[];
-	/** 引擎错误 / 登录失效 / 登录状态快照都从这条总线发。 */
+	/** 引擎错误 / 登录失效 / 登录恢复都从这条总线发。 */
 	bus: MessageBus;
-	/** 登录系统:交回去的是套了 Proxy 的那份(`status()` 可注入),给路由用。 */
-	authSystem: AuthSystem;
-	/** 定时组要碰的几个口,都是后建的,现取。 */
+	/** 定时组要碰的两个口,都是后建的,现取。 */
 	puppeteer: () => { closeIdleNow(): Promise<boolean> } | null | undefined;
-	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	mute: () => Pick<MuteState, "muteFor" | "mutedUntil" | "isMuted"> | undefined;
-	fansPoller: () => { pollNow(): Promise<boolean> } | undefined;
-	loginFlow: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
 
 export interface Devtools {
@@ -126,8 +115,6 @@ export interface Devtools {
 	adapters: PlatformAdapterRegistry;
 	/** 交给引擎、再递给派发器的截流闸口 —— 三条发送路(含链接回卡、指令回复)共用。 */
 	interceptSend: SendInterceptHandler;
-	/** 交给引擎的那份 —— 套了 Proxy 的。 */
-	api: Api;
 	/**
 	 * 交给采样器的堆读数口 —— 真 `process.memoryUsage()` 外面包了一层注入。
 	 *
@@ -135,8 +122,6 @@ export interface Devtools {
 	 * 一处引 devtools(构建期整棵树靠它换空桩),多开一个 import 就多一条漏进产物的路。
 	 */
 	memoryUsage: () => MemoryUsageSample;
-	/** 交给路由的那份 —— `status()` 可注入。 */
-	authSystem: AuthSystem;
 	/** 交给推送引擎的免扰时钟(单点覆盖)。 */
 	quietHoursNow: () => Date;
 }
@@ -147,6 +132,8 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	// 开发版。所以再要一道构建产物身上不可能成立的:跑在源码上。
 	// (更新服务共用 `isDevBuild`,但那边的后果是「关掉更新」,敞开反而是安全的一侧。)
 	if (!isDevBuild(input.payloadVersion) || !input.sourceRun) return null;
+	const providers = createDevtoolsProviderRegistry();
+	input.provide(providers);
 	const update = injectableUpdateService(input.updateService);
 	// 装着哪一版**现取**(装载器比 devtools 后起来,名单也会变),读法与市场自己那份同一把尺子。
 	const market = injectableMarketplace(
@@ -162,14 +149,9 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	);
 	const gate = createCaptureGate();
 	const caps = createCapabilityInjector();
-	const api = overridableApi(input.api);
-	const auth = overridableApi(input.authSystem);
 	const clock = createDevClock();
 	// 堆读数注入:交回去给采样器包在真 `process.memoryUsage()` 外面。
 	const heap = heapInjector();
-	// 直播间连接登记:blive 每建一条连接就报到这里。全进程只有 devtools 这一个观察者。
-	const rooms = createLiveRooms();
-	observeLiveConnections(rooms.observe);
 	const captures: DevCapturesApi = {
 		status: () => ({ enabled: gate.enabled(), entries: gate.entries() }),
 		clear: () => gate.clear(),
@@ -187,9 +169,8 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 	const registry = createDevRegistry([
 		updateStateScenario(update),
 		pushCaptureScenario(gate),
-		...liveScenarios({ subs: input.subs, rooms, api }),
-		...liveEventScenarios({ subs: input.subs, rooms }),
-		...dynamicScenarios({ subs: input.subs, api, dynamic: input.dynamic }),
+		// 各家集成自带的场景(B 站……),id 已由登记表加好来源前缀。
+		...providers.scenarios(),
 		...inboundScenarios({
 			inbound: input.inbound,
 			commands: input.commands,
@@ -209,7 +190,6 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 			address: input.address,
 			commands: input.commands,
 		}),
-		loginStateScenario({ auth, bus: input.bus }),
 		heapPressureScenario({ heap }),
 		// 方言给的是**没包装过**的那份:「哪些平台有能力这回事」是方言自己的事实,
 		// 不该经过装饰器那一层(它今天原样交回没能力的 adapter,但那是它的实现细节)。
@@ -225,16 +205,7 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		}),
 		// 不跟上面那几条一起:仓里一个拓展都没有时它们整组不出现,而这一条认的是**装着的**。
 		marketplaceUpdateScenario(market),
-		...timerScenarios({
-			clock,
-			subs: input.subs,
-			mute: input.mute,
-			puppeteer: input.puppeteer,
-			live: input.live,
-			dynamic: input.dynamic,
-			fans: input.fansPoller,
-			loginFlow: input.loginFlow,
-		}),
+		...timerScenarios({ clock, mute: input.mute, puppeteer: input.puppeteer }),
 	]);
 	return {
 		registry,
@@ -247,8 +218,6 @@ export function createDevtools(input: CreateDevtoolsInput): Devtools | null {
 		// 截流不在这里包适配器:它接在派发器调 `send` 的那一处(`interceptSend`)。
 		adapters: deriveAdapterRegistry(input.adapters, (view) => caps.wrap(view)),
 		interceptSend: gate.intercept,
-		api: api.api,
-		authSystem: auth.api,
 		quietHoursNow: () => clock.now(),
 		memoryUsage: injectedMemoryUsage(
 			() => process.memoryUsage(),

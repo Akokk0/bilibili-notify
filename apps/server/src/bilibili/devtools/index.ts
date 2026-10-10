@@ -1,0 +1,59 @@
+import type { MessageBus } from "@bilibili-notify/internal";
+import type { OverridableApi } from "../../devtools/api-overrides.js";
+import type { DevtoolsProvider } from "../../devtools/providers.js";
+import type { Api } from "../api/index.js";
+import { observeLiveConnections } from "../live/protocol/client.js";
+import { type DynamicEngineLike, dynamicScenarios } from "./dynamic.js";
+import { liveScenarios, type SubPick } from "./live.js";
+import { liveEventScenarios } from "./live-events.js";
+import { createLiveRooms } from "./live-rooms.js";
+import { loginStateScenario, type OverridableStatus } from "./login-state.js";
+import { biliTimerScenarios } from "./timers.js";
+
+/**
+ * B 站交给 devtools 的那一包场景(`DevtoolsProvider`)—— 只在开发版登记。
+ *
+ * 构建时 `apps/server/vite.config.ts` 把这个入口换成 `./stub.ts`(恒交出空的一包),
+ * 整个 `bilibili/devtools/` 随之从产物里消失。场景里写**不带前缀**的 id,`bilibili.` 前缀由
+ * 宿主汇总时统一加(`devtools/providers.ts`)。
+ *
+ * 🚧 过渡接线:场景今天仍直接用引擎、用套了 Proxy 的 `Api` / `AuthSystem`(两个 Proxy 由
+ * `src/index.ts` 建好传进来)。3a-28 之后场景改成只经 B 站自己的上下文做事,这批句柄与
+ * `src/index.ts` 里建 Proxy 的那段一并删。
+ */
+export interface BiliDevtoolsDeps {
+	/** 传给引擎的 `Api` 外面的那层 Proxy —— 引擎拿的就是它的 `.api`。 */
+	api: OverridableApi<Api>;
+	/** 传给路由的登录系统外面的那层 Proxy(`status()` 可注入)。 */
+	auth: OverridableStatus;
+	/** 登录状态快照从这条总线发。 */
+	bus: MessageBus;
+	/** 场景挑订阅用:每次现读,订阅表会变。 */
+	subs: () => SubPick[];
+	/** 下面几样都是引擎建好之后才有的,现取。 */
+	dynamic: () => DynamicEngineLike | undefined;
+	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
+	fans: () => { pollNow(): Promise<boolean> } | undefined;
+	loginFlow: () => { healthCheckNow(): Promise<boolean> } | undefined;
+}
+
+export function createBiliDevtools(deps: BiliDevtoolsDeps): DevtoolsProvider {
+	// 直播间连接登记:blive 每建一条连接就报到这里。全进程只有 devtools 这一个观察者。
+	const rooms = createLiveRooms();
+	observeLiveConnections(rooms.observe);
+	return {
+		scenarios: [
+			...liveScenarios({ subs: deps.subs, rooms, api: deps.api }),
+			...liveEventScenarios({ subs: deps.subs, rooms }),
+			...dynamicScenarios({ subs: deps.subs, api: deps.api, dynamic: deps.dynamic }),
+			loginStateScenario({ auth: deps.auth, bus: deps.bus }),
+			...biliTimerScenarios({
+				subs: deps.subs,
+				live: deps.live,
+				dynamic: deps.dynamic,
+				fans: deps.fans,
+				loginFlow: deps.loginFlow,
+			}),
+		],
+	};
+}

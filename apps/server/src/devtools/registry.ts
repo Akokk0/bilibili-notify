@@ -54,6 +54,12 @@ export class DevParamError extends Error {
 	}
 }
 
+/** 场景要用的口是后建的、现取的:还没起来就当参数错拒掉,别让一个 undefined 往下传。 */
+export function need<T>(value: T | null | undefined, what: string): T {
+	if (value === null || value === undefined) throw new DevParamError(`${what}还没起来`);
+	return value;
+}
+
 /** 把声明从 def 里剥出来 —— 函数不能过 JSON,而且面板也不该拿到。 */
 function declarationOf(def: DevScenarioDef): DevScenario {
 	const out: DevScenario = { id: def.id, group: def.group, title: def.title, params: def.params };
