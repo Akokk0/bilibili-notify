@@ -12,13 +12,9 @@
  * 逐开关用例在 `apps/server` 的 `extension-posts.test.ts`,这里只钉过滤自己,拓展形状的 `Post` 手工造。
  */
 
-import {
-	DEFAULT_CONTENT_FILTERS,
-	type Logger,
-	type Post,
-	postText,
-} from "@bilibili-notify/internal";
+import { DEFAULT_CONTENT_FILTERS, type Logger, type Post } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { postText } from "../../../posts/post-text";
 import { filterPost, PostFilterReason, type PostFilterRules } from "../post-filter";
 import { postFromDynamic } from "../post-from-dynamic";
 import type { Dynamic } from "../types";

@@ -1,5 +1,6 @@
-import { type Post, postText, type SubscriptionReportValue } from "@bilibili-notify/internal";
+import type { Post, SubscriptionReportValue } from "@bilibili-notify/internal";
 import { type NeutralWork, WORK_COMMENT_IMAGES_MAX } from "../bilibili/dynamic/index.js";
+import { postText } from "../posts/post-text.js";
 import { imageDataUrl } from "./extension-push-common.js";
 
 /**

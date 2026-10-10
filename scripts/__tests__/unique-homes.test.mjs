@@ -30,7 +30,7 @@ export const HOMES = {
 	formatClock: "packages/internal/src/format.ts",
 	formatAmount: "packages/internal/src/format.ts",
 	formatAxisTick: "apps/web/src/pages/stats/chart-utils.ts",
-	postText: "packages/internal/src/post.ts",
+	postText: "apps/server/src/posts/post-text.ts",
 	normalizePost: "packages/internal/src/post.ts",
 };
 

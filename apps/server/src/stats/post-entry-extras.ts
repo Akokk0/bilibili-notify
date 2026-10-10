@@ -1,4 +1,5 @@
-import { type Post, postText } from "@bilibili-notify/internal";
+import type { Post } from "@bilibili-notify/internal";
+import { postText } from "../posts/post-text.js";
 import type { PostEntry } from "./store.js";
 
 /**

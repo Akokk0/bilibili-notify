@@ -8,7 +8,7 @@ import type {
 	Subscription,
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
-import { postText, subscriptionIdentityOf } from "@bilibili-notify/internal";
+import { subscriptionIdentityOf } from "@bilibili-notify/internal";
 import {
 	type DeliverWorkArgs,
 	deliverWork,
@@ -19,6 +19,7 @@ import {
 	type WorkSubscriptionSettings,
 } from "../bilibili/dynamic/index.js";
 import { createSerialGate, type SerialGate } from "../bilibili/live/index.js";
+import { postText } from "../posts/post-text.js";
 import { extensionPostWork } from "./extension-post-work.js";
 import {
 	type ExtensionSourceReader,

@@ -8,11 +8,11 @@ import {
 	type MessageBus,
 	type Post,
 	type PostImage,
-	postText,
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { CronJob } from "cron";
 import { DateTime } from "luxon";
+import { postText } from "../../posts/post-text";
 import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../images";
 import { filterPost, type PostFilterReason, type PostFilterRules } from "./post-filter";
