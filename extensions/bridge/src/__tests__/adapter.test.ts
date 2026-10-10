@@ -65,10 +65,17 @@ function connection(over: Partial<Connection> = {}): Connection {
 		id: CONNECTION_ID,
 		name: "电报那个 bot",
 		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
+		adapterKey: "bridge",
 		platform: "telegram",
-		config: { link: LINK_ID, botId: "b1" },
+		settings: { link: LINK_ID, botId: "b1" },
+		platformSnapshot: {
+			label: "telegram",
+			shortLabel: "telegram",
+			color: "#94a3b8",
+			targetKind: "session",
+			scopes: ["group", "private", "channel"],
+			addressNouns: {},
+		},
 		...over,
 	} as Connection;
 }

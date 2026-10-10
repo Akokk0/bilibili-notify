@@ -451,7 +451,7 @@ export interface TargetDispatcher {
  * 耗时只在成功那一支 —— 没真发出去的失败不带一个假的 `0`。
  *
  * `isSynthetic`:这条投递**没有真的出网**(目前只有 devtools 的推送截流会这么标)。结果照样往上回,
- * 好让调用链跑完;但它不携带任何「目标通不通」的信息 —— 拿它去翻 `target.testStatus`
+ * 好让调用链跑完;但它不携带任何「目标通不通」的信息 —— 拿它去翻 `target.reachability`
  * 就是凭空把一个发不出去的目标标成绿的,而且会落盘、活得比截流本身还久。
  * 读之前先过 {@link isReachabilityEvidence}。
  */

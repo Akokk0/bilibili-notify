@@ -27,10 +27,10 @@ function makeDeps(opts?: {
 	const connections = opts?.connections ?? [
 		{
 			id: "a1",
-			kind: "direct",
+			adapterKey: "qq-official",
 			platform: "qq-official",
 			enabled: true,
-			config: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public" },
+			settings: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public" },
 		},
 	];
 	return {
@@ -90,12 +90,34 @@ describe("GET /api/qq/guilds/:connectionId", () => {
 	it("非 qq-official adapter → 404", async () => {
 		const app = createQQRoute(
 			makeDeps({
-				connections: [{ id: "a1", kind: "direct", platform: "onebot", enabled: true, config: {} }],
+				connections: [
+					{ id: "a1", adapterKey: "onebot", platform: "onebot", enabled: true, settings: {} },
+				],
 			}),
 		);
 		const r = await app.request("/guilds/a1");
 		expect(r.status).toBe(404);
 		expect(await r.json()).toMatchObject({ code: "not_found" });
+	});
+
+	it("连接的设置不合法 → not_configured,不往外连", async () => {
+		const app = createQQRoute(
+			makeDeps({
+				connections: [
+					{
+						id: "a1",
+						adapterKey: "qq-official",
+						platform: "qq-official",
+						enabled: true,
+						settings: { appId: "", appSecret: "SECRET" },
+					},
+				],
+			}),
+		);
+		const r = await app.request("/guilds/a1");
+		expect(r.status).toBeGreaterThanOrEqual(400);
+		expect(await r.json()).toMatchObject({ code: "not_configured" });
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("枚举抛错 → 503 unavailable,带上游的话(不是 `Error: ` 打头的 String(err))", async () => {

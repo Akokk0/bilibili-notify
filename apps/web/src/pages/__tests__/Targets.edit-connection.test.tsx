@@ -8,6 +8,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
 
@@ -26,10 +27,10 @@ function onebot(id: string, name: string): Connection {
 		id,
 		name,
 		enabled: true,
-		kind: "direct",
-		connector: "http",
+		adapterKey: "onebot",
 		platform: "onebot",
-		config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
+		platformSnapshot: snapshotFor("onebot"),
+		settings: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
 	} as unknown as Connection;
 }
 

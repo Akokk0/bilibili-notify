@@ -2,6 +2,7 @@ import {
 	type Connection,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	OnebotConnectionSettingsSchema,
 	type PushTarget,
 	type Subscription,
 	type SubscriptionTag,
@@ -13,6 +14,8 @@ import { type BackupSections, buildBackup } from "../backup/envelope.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
 import type { ImportMode } from "../backup/restore.js";
 import { type BackupStore, createBackupService } from "../backup/service.js";
+import type { SecretCellsReader } from "../push/connection-settings.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 
 /**
@@ -24,15 +27,25 @@ function sub(uid: string): Subscription {
 	return makeEmptySubscription({ id: uid, identity: { sourceKey: "bilibili", externalId: uid } });
 }
 
+/** 查表:OneBot 适配器在场(真 schema);`declared` 是拓展声明的密钥键,按适配器键。 */
+function secretsOf(
+	declared: ReadonlyMap<string, readonly string[]> = new Map(),
+): SecretCellsReader {
+	return {
+		settingsSchemaOf: (key) => (key === "onebot" ? OnebotConnectionSettingsSchema : undefined),
+		declaredSecretKeysOf: (key) => declared.get(key),
+	};
+}
+
 function onebot(id: string, token: string): Connection {
 	return {
 		id,
 		platform: "onebot",
 		name: "bot",
 		enabled: true,
-		kind: "direct",
-		connector: "ws",
-		config: {
+		adapterKey: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
+		settings: {
 			transport: "ws",
 			url: "ws://host",
 			headers: {},
@@ -41,7 +54,7 @@ function onebot(id: string, token: string): Connection {
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
 			mergeForwardMinTimeoutMs: 60_000,
-			retryTimes: 0,
+			maxRetries: 0,
 			retryIntervalMs: 1_000,
 		},
 	};
@@ -147,7 +160,12 @@ describe("BackupService", () => {
 			connections: [onebot("a1", "tok-1")],
 		});
 		const cookieStore = makeCookieStore({ cookiesJson: "CJ", refreshToken: "RT" });
-		const svc = createBackupService({ configStore: store, cookieStore, now: () => "t0" });
+		const svc = createBackupService({
+			configStore: store,
+			cookieStore,
+			now: () => "t0",
+			connectionSecrets: secretsOf(),
+		});
 
 		const env = await svc.exportBackup({ kind: "full", pin: "123456" });
 
@@ -155,7 +173,9 @@ describe("BackupService", () => {
 		expect(env.createdAt).toBe("t0");
 		const opened = openFullBackup(env, "123456");
 		expect(opened.cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
-		expect(opened.sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
+		expect(opened.sections.connections?.[0]?.settings).toMatchObject({ accessToken: "tok-1" });
+		// 完整档导出再导入逐格相等:连接整条(含平台快照)原样回来。
+		expect(opened.sections.connections).toEqual(store.getConnections());
 	});
 
 	/**
@@ -165,31 +185,34 @@ describe("BackupService", () => {
 	 * 名单递了进去。漏了这一环的症状是:拓展的密钥原样躺在主人发出去的备份文件里,
 	 * 而所有测试全绿。
 	 */
-	it("拓展声明成密钥的 config 键,在两种档里都被抹平", async () => {
-		const extension = {
+	it("拓展声明成密钥的 settings 键,在两种档里都被抹平", async () => {
+		const extension: Connection = {
 			id: "e1",
 			name: "桥",
 			enabled: true,
-			kind: "extension",
-			extensionId: "bridge",
-			config: { botKey: "s3cret", note: "家里那台" },
-		} as unknown as Connection;
+			adapterKey: "bridge",
+			platform: "telegram",
+			settings: { botKey: "s3cret", note: "家里那台" },
+			platformSnapshot: snapshotFor("telegram"),
+		};
 		const svc = createBackupService({
 			configStore: makeFakeStore({ connections: [extension] }),
 			cookieStore: makeCookieStore(null),
 			now: () => "t0",
-			extensionSecretCodes: () => new Map([["bridge", ["botKey"]]]),
+			connectionSecrets: secretsOf(new Map([["bridge", ["botKey"]]])),
 		});
 
 		const sanitized = await svc.exportBackup({ kind: "sanitized" });
-		expect(sanitized.sections.connections?.[0]?.config).toEqual({
+		expect(sanitized.sections.connections?.[0]?.settings).toEqual({
 			botKey: "",
 			note: "家里那台",
 		});
+		expect(JSON.stringify(sanitized.sections)).not.toContain("s3cret");
 
 		// 完整档的明文段同样不许带 —— 真值只存在于加密袋里。
 		const full = await svc.exportBackup({ kind: "full", pin: "123456" });
-		expect(full.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "家里那台" });
+		expect(full.sections.connections?.[0]?.settings).toEqual({ botKey: "", note: "家里那台" });
+		expect(JSON.stringify(full.sections)).not.toContain("s3cret");
 	});
 
 	/**
@@ -197,25 +220,26 @@ describe("BackupService", () => {
 	 * 那就等于「什么都不抹」,于是关掉一个拓展就把它连接里的密钥漏进备份文件,而备份是
 	 * 主人会发出去求助的东西。这条钉的是接线:服务真的把「它不在表里」这件事带了下去。
 	 */
-	it("拓展没跑起来 → 它那条连接的 config 整片抹平", async () => {
-		const extension = {
+	it("拓展没跑起来 → 它那条连接的 settings 整片抹平", async () => {
+		const extension: Connection = {
 			id: "e1",
 			name: "桥",
 			enabled: true,
-			kind: "extension",
-			extensionId: "bridge",
-			config: { botKey: "s3cret", note: "家里那台" },
-		} as unknown as Connection;
+			adapterKey: "bridge",
+			platform: "telegram",
+			settings: { botKey: "s3cret", note: "家里那台" },
+			platformSnapshot: snapshotFor("telegram"),
+		};
 		const svc = createBackupService({
 			configStore: makeFakeStore({ connections: [extension] }),
 			cookieStore: makeCookieStore(null),
 			now: () => "t0",
 			// 跑着的一个都没有 —— 拓展全停用时就是这个样子。
-			extensionSecretCodes: () => new Map(),
+			connectionSecrets: secretsOf(),
 		});
 
 		const sanitized = await svc.exportBackup({ kind: "sanitized" });
-		expect(sanitized.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "" });
+		expect(sanitized.sections.connections?.[0]?.settings).toEqual({ botKey: "", note: "" });
 	});
 
 	it("sanitized export respects the section selection and carries no secrets block", async () => {
@@ -369,7 +393,7 @@ describe("BackupService × 订阅一节里的两种来源", () => {
 		async (kind) => {
 			const store = makeFakeStore({ subscriptions: [sub("1"), ext("e1")] });
 			const env = await service(store).exportBackup({ kind, pin: "123456" });
-			expect(env.schemaVersion).toBe(12);
+			expect(env.schemaVersion).toBe(13);
 			const sections = kind === "full" ? openFullBackup(env, "123456").sections : env.sections;
 			expect(sections.subscriptions?.map((s) => s.id)).toEqual(["1", "e1"]);
 			expect(sections.subscriptions?.map((s) => s.identity.sourceKey)).toEqual([
@@ -699,7 +723,7 @@ describe("BackupService × 各拓展的设置", () => {
 			configStore: store,
 			cookieStore: makeCookieStore(null),
 			now: () => "t",
-			extensionSecretCodes: () => new Map([["bridge", ["botKey"]]]),
+			connectionSecrets: secretsOf(new Map([["bridge", ["botKey"]]])),
 		});
 	}
 

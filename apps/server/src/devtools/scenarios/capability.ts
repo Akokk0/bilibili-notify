@@ -1,6 +1,6 @@
 import type { Connection, ConnectionCapabilities } from "@bilibili-notify/internal";
-import { connectionDispatchKey } from "@bilibili-notify/internal";
-import { adapterForConnection } from "../../push/dispatch.js";
+import { RESERVED_INTEGRATION_KEYS } from "@bilibili-notify/internal";
+import { routeConnection } from "../../push/dispatch.js";
 import type { PlatformAdapterView } from "../../push/registry.js";
 import type { CapabilityInjector } from "../capability-injection.js";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
@@ -26,7 +26,7 @@ export interface CapabilityScenarioDeps {
 /** 方言里这个场景问的那几格;登记表对外给的视图(不含 `send`)也满足它。 */
 type CapabilityDialect = Pick<
 	PlatformAdapterView,
-	"adapterKey" | "capabilities" | "probeCapabilities"
+	"adapterKey" | "capabilities" | "probeCapabilities" | "settingsSchema"
 >;
 
 const STATES = [
@@ -94,22 +94,24 @@ export function capabilityScenario(deps: CapabilityScenarioDeps): DevScenarioDef
 			const wanted = params.connection;
 			const connection =
 				wanted === undefined
-					? connections.find((a) => capable.has(connectionDispatchKey(a)))
+					? connections.find((a) => capable.has(a.adapterKey))
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
 					wanted === undefined ? "没有有能力概念的连接" : `没有这个连接:${wanted}`,
 				);
 			}
-			if (!capable.has(connectionDispatchKey(connection))) {
+			if (!capable.has(connection.adapterKey)) {
 				throw new DevParamError(
-					`${connection.name} 是 ${connection.kind === "direct" ? connection.platform : connection.extensionId},没有能力这回事`,
+					`${connection.name} 是 ${RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有能力这回事`,
 				);
 			}
 			const state = String(params.state ?? "supported") as State;
 			const reason =
 				typeof params.reason === "string" && params.reason !== "" ? params.reason : DEFAULT_REASON;
-			const base = adapterForConnection(deps.dialects(), connection)?.capabilities?.(connection);
+			// 走 routeConnection:递给适配器的连接 settings 要是解过的;被隔离的连接没有「真」能力可沿用。
+			const route = routeConnection(deps.dialects(), connection);
+			const base = route.ok ? route.adapter.capabilities?.(route.connection) : undefined;
 			deps.injector.set(connection.id, build(state, reason, base));
 			return {};
 		},

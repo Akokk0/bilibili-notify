@@ -68,7 +68,7 @@ function renderDialog(platform: string) {
 			connections={[
 				{
 					id: target.connectionId,
-					kind: "direct",
+					adapterKey: platform,
 					platform,
 					enabled: true,
 				} as Connection,

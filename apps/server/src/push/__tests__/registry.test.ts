@@ -10,6 +10,7 @@
  */
 
 import type { Connection, PlatformAdapter } from "@bilibili-notify/internal";
+import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapterContext } from "../../__tests__/support/adapter-ctx.js";
 import { adapterForConnection } from "../dispatch.js";
@@ -46,10 +47,11 @@ function extensionConnection(extensionId: string): Connection {
 		id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 		name: "x",
 		enabled: true,
-		kind: "extension",
-		extensionId,
-		config: {},
-	} as Connection;
+		adapterKey: extensionId,
+		platform: "telegram",
+		settings: {},
+		platformSnapshot: neutralPlatformSnapshot("telegram"),
+	};
 }
 
 describe("adapter 注册表", () => {

@@ -326,7 +326,8 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 
 		const inUse = opts.store
 			.getConnections()
-			.filter((conn) => conn.kind === "extension" && conn.extensionId === id);
+			// 拓展 id 进不了保留 id(内置三个适配器的键),这一条不会误伤内置连接。
+			.filter((conn) => conn.adapterKey === id);
 		if (inUse.length > 0) {
 			return respondFailure(
 				c,

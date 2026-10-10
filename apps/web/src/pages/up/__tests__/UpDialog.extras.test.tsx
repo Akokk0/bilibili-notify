@@ -108,7 +108,7 @@ function renderWithTarget(sub: Subscription, target: PushTarget) {
 			connections={[
 				{
 					id: target.connectionId,
-					kind: "direct",
+					adapterKey: "onebot",
 					platform: "onebot",
 					enabled: true,
 				} as Connection,

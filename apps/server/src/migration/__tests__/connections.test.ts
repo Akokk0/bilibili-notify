@@ -4,7 +4,9 @@ import {
 	CONFIG_SCHEMA_VERSION,
 	detectConfigVersion,
 	migrateConfigSections,
+	reshapeConnection,
 } from "../connections.js";
+import { ZERO_PLATFORMS, zeroNeutralSnapshot } from "../zero-platforms.js";
 
 /**
  * 配置形状迁移 —— 两根轴从「一个字段兼三职」里提上来:连接的 `connector`
@@ -91,11 +93,11 @@ describe("migrateConfigSections —— connector 从 config.transport 提上来"
 		expect(out.connections[1]).toMatchObject({ connector: "ws" });
 	});
 
-	it("迁移完的连接能通过 ConnectionSchema —— 否则迁移就是把用户的配置写成了废纸", () => {
+	it("迁移完、再过最后一步 reshapeConnection 的连接能通过 ConnectionSchema —— 否则迁移就是把用户的配置写成了废纸", () => {
 		const out = migrateConfigSections({
 			connections: [onebotV1({ config: { transport: "ws-reverse", port: 6199 } })],
 		});
-		const parsed = ConnectionSchema.safeParse(out.connections[0]);
+		const parsed = ConnectionSchema.safeParse(reshapeConnection(out.connections[0]));
 		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
 	});
 
@@ -150,13 +152,13 @@ describe("migrateConfigSections —— webhook 从平台降格成连接器", () 
 		expect(out.connections[0]).toMatchObject({ platform: "generic" });
 	});
 
-	it("降格完的连接能过 ConnectionSchema", () => {
+	it("降格完、再过 reshapeConnection 的连接能过 ConnectionSchema", () => {
 		const out = migrateConfigSections({
 			connections: [
 				onebotV1({ platform: "webhook", config: { url: "https://h/x", provider: "feishu" } }),
 			],
 		});
-		const parsed = ConnectionSchema.safeParse(out.connections[0]);
+		const parsed = ConnectionSchema.safeParse(reshapeConnection(out.connections[0]));
 		expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
 	});
 
@@ -493,12 +495,157 @@ describe("migrateConfigSections —— 拓展连接原样放行", () => {
 		const out = migrateConfigSections({ connections: [bridgedBot()] });
 		expect(out.changed.connections).toBe(false);
 		expect(out.connections[0]).toEqual(bridgedBot());
-		expect(ConnectionSchema.safeParse(out.connections[0]).success).toBe(true);
+		expect(ConnectionSchema.safeParse(reshapeConnection(out.connections[0])).success).toBe(true);
 	});
 
 	it("与史前直连混在一张表里,只迁直连那条", () => {
 		const out = migrateConfigSections({ connections: [onebotV1(), bridgedBot()] });
 		expect(out.changed.connections).toBe(true);
 		expect(out.connections[1]).toEqual(bridgedBot());
+	});
+});
+
+/**
+ * `reshapeConnection`:连接迁移的最后一步,0.x 最新形状 → `{ adapterKey, platform, settings, platformSnapshot }`。
+ * 认得的改形,认不得的原样回**同一个对象**,已改形的(有 adapterKey)幂等。
+ */
+describe("reshapeConnection", () => {
+	const direct = (platform: string, connector: string, config: unknown, over = {}) => ({
+		id: "11111111-1111-4111-8111-111111111111",
+		name: "n",
+		enabled: true,
+		kind: "direct",
+		connector,
+		platform,
+		config,
+		...over,
+	});
+	const WEBHOOK_CONFIG = { url: "https://h/x", headers: {} };
+	const CASES: Array<[string, string, string, unknown]> = [
+		["onebot", "onebot", "http", { transport: "http", baseUrl: "http://h" }],
+		["qq-official", "qq-official", "ws", { appId: "1", appSecret: "s" }],
+		["feishu", "webhook", "webhook", WEBHOOK_CONFIG],
+		["dingtalk", "webhook", "webhook", WEBHOOK_CONFIG],
+		["wecom", "webhook", "webhook", WEBHOOK_CONFIG],
+		["generic", "webhook", "webhook", WEBHOOK_CONFIG],
+	];
+
+	it.each(CASES)(
+		"%s → adapterKey %s,快照抄冻结的 0.x 平台表",
+		(platform, adapterKey, connector, config) => {
+			const out = reshapeConnection(direct(platform, connector, config)) as Record<string, unknown>;
+			expect(out).toEqual({
+				id: "11111111-1111-4111-8111-111111111111",
+				name: "n",
+				enabled: true,
+				adapterKey,
+				platform,
+				settings: config,
+				platformSnapshot: ZERO_PLATFORMS[platform]?.snapshot,
+			});
+			expect(ConnectionSchema.safeParse(out).success).toBe(true);
+		},
+	);
+
+	it("拓展连接:adapterKey 取原 extensionId,快照是中性占位,config 改叫 settings", () => {
+		const out = reshapeConnection({
+			id: "33333333-3333-4333-8333-333333333333",
+			name: "家里那台",
+			enabled: true,
+			kind: "extension",
+			extensionId: "bridge",
+			platform: "onebot",
+			config: { link: "l", botId: "b" },
+		});
+		expect(out).toEqual({
+			id: "33333333-3333-4333-8333-333333333333",
+			name: "家里那台",
+			enabled: true,
+			adapterKey: "bridge",
+			platform: "onebot",
+			settings: { link: "l", botId: "b" },
+			platformSnapshot: zeroNeutralSnapshot("onebot"),
+		});
+	});
+
+	it("OneBot 早期没写 transport 的:取 connector 补成显式值,取不到落 http;写了的不动", () => {
+		const settingsOf = (connector: string | undefined, config: Record<string, unknown>) =>
+			(
+				reshapeConnection(direct("onebot", connector as string, config)) as {
+					settings: Record<string, unknown>;
+				}
+			).settings;
+		expect(settingsOf("ws", { url: "ws://h" })).toEqual({ transport: "ws", url: "ws://h" });
+		expect(settingsOf("ws-reverse", { port: 1 })).toEqual({ transport: "ws-reverse", port: 1 });
+		expect(settingsOf("http", { baseUrl: "http://h" })).toEqual({
+			transport: "http",
+			baseUrl: "http://h",
+		});
+		expect(settingsOf(undefined, { baseUrl: "http://h" })).toEqual({
+			transport: "http",
+			baseUrl: "http://h",
+		});
+		expect(settingsOf("ws", { transport: "http", baseUrl: "http://h" })).toEqual({
+			transport: "http",
+			baseUrl: "http://h",
+		});
+	});
+
+	it("testStatus 丢;kind / connector / extensionId 丢;别的未知顶层键原位留着", () => {
+		const out = reshapeConnection(
+			direct(
+				"onebot",
+				"http",
+				{ transport: "http", baseUrl: "http://h" },
+				{
+					testStatus: { ok: true, lastCheckedAt: "t" },
+					futureField: 7,
+				},
+			),
+		) as Record<string, unknown>;
+		for (const gone of ["testStatus", "kind", "connector", "extensionId", "config"]) {
+			expect(out, gone).not.toHaveProperty(gone);
+		}
+		expect(out.futureField).toBe(7);
+	});
+
+	it("幂等:已改形的回同一个对象,再走一遍不变", () => {
+		const once = reshapeConnection(
+			direct("onebot", "http", { transport: "http", baseUrl: "http://h" }),
+		);
+		expect(reshapeConnection(once)).toBe(once);
+	});
+
+	it.each([
+		["不是对象", "x"],
+		["kind 不认得", { id: "a", kind: "mystery", platform: "onebot", config: {} }],
+		[
+			"直连平台不在冻结表里",
+			{ id: "a", kind: "direct", connector: "http", platform: "telegram", config: {} },
+		],
+		["拓展缺 extensionId", { id: "a", kind: "extension", platform: "onebot", config: {} }],
+		["拓展缺 platform", { id: "a", kind: "extension", extensionId: "bridge", config: {} }],
+	])("认不得的原样回同一个对象:%s", (_name, entry) => {
+		expect(reshapeConnection(entry)).toBe(entry);
+	});
+});
+
+/** 迁移守卫的第一类漏洞:新形状的条目不能被前面几步当成史前直连补上 kind。 */
+describe("migrateConfigSections —— 已是新形状的连接放行", () => {
+	const reshaped = {
+		id: "11111111-1111-4111-8111-111111111111",
+		name: "n",
+		enabled: true,
+		adapterKey: "onebot",
+		platform: "onebot",
+		settings: { transport: "http", baseUrl: "http://h" },
+		platformSnapshot: ZERO_PLATFORMS.onebot?.snapshot,
+	};
+
+	it("没有 connector 也不补 kind / connector,不报 changed", () => {
+		const out = migrateConfigSections({ connections: [reshaped] });
+		expect(out.changed.connections).toBe(false);
+		expect(out.connections[0]).toEqual(reshaped);
+		expect(detectConfigVersion({ connections: [reshaped] })).toBe(CONFIG_SCHEMA_VERSION);
 	});
 });

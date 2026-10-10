@@ -15,6 +15,7 @@ import { PlatformMetaProvider } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { buildPlatformTable } from "../../components/platform-meta";
 import type { Connection } from "../../types/domain";
 import Targets from "../Targets";
@@ -33,10 +34,10 @@ const CONNECTION = {
 	id: CONNECTION_ID,
 	name: "小电视",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
+	adapterKey: "bridge",
 	platform: "telegram",
-	config: { link: "link-home", botId: "telegram:7777" },
+	platformSnapshot: snapshotFor("telegram"),
+	settings: { link: "link-home", botId: "telegram:7777" },
 } as unknown as Connection;
 
 function renderPage() {

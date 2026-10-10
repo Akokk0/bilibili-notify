@@ -12,20 +12,41 @@
  * 它收回去 —— 但 target 步会退回未完成,active 指回它。
  */
 
+import type { Connection, PushTarget } from "@bilibili-notify/internal";
+
 export type OnboardingStepKey = "login" | "connection" | "target" | "test" | "subs";
 export type OnboardingTailKey = "image" | "ai";
 
-interface TestStatusLike {
-	ok: boolean;
-	err?: string | undefined;
-	lastCheckedAt?: string | undefined;
+/** 连接只读探测状态、目标只读可达性 —— 判据只认这两格。 */
+type ConnectionRow = Pick<Connection, "enabled" | "probeState">;
+type TargetRow = Pick<PushTarget, "enabled" | "reachability">;
+
+/** 最近一次不通:原因,与它发生的时刻(连接取 lastCheckedAt、目标取 changedAt)。 */
+interface Outcome {
+	status: string;
+	message?: string | undefined;
+	at: string;
 }
+
+const connectionOutcome = (a: ConnectionRow): Outcome | undefined =>
+	a.probeState && {
+		status: a.probeState.status,
+		message: a.probeState.message,
+		at: a.probeState.lastCheckedAt,
+	};
+
+const targetOutcome = (t: TargetRow): Outcome | undefined =>
+	t.reachability && {
+		status: t.reachability.status,
+		message: t.reachability.message,
+		at: t.reachability.changedAt,
+	};
 
 export interface OnboardingInputs {
 	biliLoggedIn: boolean;
 	subsCount: number;
-	connections: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
-	targets: readonly { enabled: boolean; testStatus?: TestStatusLike | undefined }[];
+	connections: readonly ConnectionRow[];
+	targets: readonly TargetRow[];
 	/** `/api/health` 的 modules 快照;还没回来时 undefined → 尾巴按未完成显示。 */
 	modules: { image: boolean; ai: boolean } | undefined;
 }
@@ -53,11 +74,9 @@ export interface OnboardingView {
 	failNote: { text: string; at: string } | null;
 }
 
-function failNoteFrom(
-	rows: readonly { testStatus?: TestStatusLike | undefined }[],
-): OnboardingView["failNote"] {
-	const st = rows.find((r) => r.testStatus?.ok === false)?.testStatus;
-	return st ? { text: st.err || "测试未通过", at: st.lastCheckedAt ?? "" } : null;
+function failNoteFrom(outcomes: readonly (Outcome | undefined)[]): OnboardingView["failNote"] {
+	const st = outcomes.find((o) => o?.status === "unreachable");
+	return st ? { text: st.message || "测试未通过", at: st.at } : null;
 }
 
 export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
@@ -65,12 +84,12 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		{ key: "login", done: inputs.biliLoggedIn },
 		{
 			key: "connection",
-			done: inputs.connections.some((a) => a.enabled && a.testStatus?.ok === true),
+			done: inputs.connections.some((a) => a.enabled && a.probeState?.status === "reachable"),
 		},
 		{ key: "target", done: inputs.targets.some((t) => t.enabled) },
 		{
 			key: "test",
-			done: inputs.targets.some((t) => t.testStatus?.ok === true),
+			done: inputs.targets.some((t) => t.reachability?.status === "reachable"),
 		},
 		{ key: "subs", done: inputs.subsCount > 0 },
 	];
@@ -84,9 +103,9 @@ export function deriveOnboarding(inputs: OnboardingInputs): OnboardingView {
 		// 拿它当当前失败讲纯属误导(2026-08-31 审查)。
 		failNote:
 			activeKey === "connection"
-				? failNoteFrom(inputs.connections.filter((a) => a.enabled))
+				? failNoteFrom(inputs.connections.filter((a) => a.enabled).map(connectionOutcome))
 				: activeKey === "test"
-					? failNoteFrom(inputs.targets.filter((t) => t.enabled))
+					? failNoteFrom(inputs.targets.filter((t) => t.enabled).map(targetOutcome))
 					: null,
 		tails: [
 			{ key: "image", done: inputs.modules?.image === true },

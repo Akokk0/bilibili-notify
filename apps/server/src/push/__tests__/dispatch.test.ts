@@ -3,35 +3,34 @@
  *
  * 它看起来只是一行 `find`,但**问错问题会静默失败**:桥后面挂着 telegram 时,消息里
  * 报的平台是 `telegram`,而认领它的 adapter 声明的是 `bridge` —— 按消息里的平台名去
- * 找是找不到的,而且不报错,症状是「群里贴了链接没回卡、日志说连接不存在」。
+ * 找是找不到的,而且不报错,症状是「群里贴了链接没回卡、日志说连接不存在」。所以按连接的
+ * `adapterKey` 找。
  */
 
 import type { Connection } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { adapterForConnection } from "../dispatch.js";
+import { z } from "zod";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
+import { adapterForConnection, routeConnection } from "../dispatch.js";
 
-function direct(platform: string): Connection {
+function connectionOf(adapterKey: string, platform: string, settings: unknown = {}): Connection {
 	return {
 		id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		name: "直连",
+		name: "连接",
 		enabled: true,
-		kind: "direct",
+		adapterKey,
 		platform,
-		connector: "ws",
-		config: {},
-	} as Connection;
+		settings,
+		platformSnapshot: snapshotFor(platform),
+	};
 }
 
-function bridge(): Connection {
-	return {
-		id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-		name: "家里那台 koishi",
-		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
-		config: { token: "t0ken", bridgeKind: "koishi" },
-	} as Connection;
-}
+const direct = (platform: string) =>
+	connectionOf(
+		platform === "onebot" || platform === "qq-official" ? platform : "webhook",
+		platform,
+	);
+const bridge = () => connectionOf("bridge", "telegram");
 
 const onebot = { adapterKey: "onebot" };
 const bridgeAdapter = { adapterKey: "bridge" };
@@ -39,7 +38,7 @@ const webhookAdapter = { adapterKey: "webhook" };
 const matrix = [onebot, bridgeAdapter, webhookAdapter];
 
 describe("adapterForConnection", () => {
-	it("直连认它的平台名", () => {
+	it("按连接的 adapterKey 认", () => {
 		expect(adapterForConnection(matrix, direct("onebot"))).toBe(onebot);
 	});
 
@@ -60,5 +59,45 @@ describe("adapterForConnection", () => {
 	it("认领同一个键的有多个时给第一个 —— 与矩阵的声明顺序一致", () => {
 		const shadow = { adapterKey: "onebot" };
 		expect(adapterForConnection([onebot, shadow], direct("onebot"))).toBe(onebot);
+	});
+
+	it("平台名不参与:同一个平台名、不同的 adapterKey,认的是 adapterKey", () => {
+		// 桥借来的 bot 自报平台叫 onebot,认领它的仍是桥。
+		const borrowed = connectionOf("bridge", "onebot");
+		expect(adapterForConnection(matrix, borrowed)).toBe(bridgeAdapter);
+	});
+});
+
+describe("routeConnection", () => {
+	const schema = z.object({ url: z.string(), retries: z.number().default(3) });
+	const adapters = [
+		{ adapterKey: "webhook", settingsSchema: schema },
+		{ adapterKey: "bridge", settingsSchema: z.unknown() },
+	];
+
+	it("找到适配器且设置合法:回解过的连接(补了默认值),原连接不被改动", () => {
+		const connection = connectionOf("webhook", "generic", { url: "https://x" });
+		const route = routeConnection(adapters, connection);
+		expect(route.ok).toBe(true);
+		if (!route.ok) return;
+		expect(route.adapter).toBe(adapters[0]);
+		expect(route.connection.settings).toEqual({ url: "https://x", retries: 3 });
+		expect(connection.settings).toEqual({ url: "https://x" });
+		expect(route.connection.id).toBe(connection.id);
+	});
+
+	it("没有适配器 → unavailable,话里带 adapterKey", () => {
+		const route = routeConnection(adapters, connectionOf("matrix", "matrix"));
+		expect(route).toMatchObject({ ok: false, code: "unavailable" });
+		expect(route.ok ? "" : route.message).toBe("no platform adapter for matrix");
+	});
+
+	it("设置过不了适配器的规则 → not_configured + 逐条原因", () => {
+		const route = routeConnection(adapters, connectionOf("webhook", "generic", { url: 1 }));
+		expect(route).toMatchObject({ ok: false, code: "not_configured" });
+		if (route.ok) return;
+		expect(route.message).toContain("连接设置不合法");
+		expect(route.message).toContain("url");
+		expect(route.issues?.[0]?.path).toEqual(["url"]);
 	});
 });

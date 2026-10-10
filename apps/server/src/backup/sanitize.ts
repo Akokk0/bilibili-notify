@@ -1,20 +1,25 @@
 import {
-	ConnectionSchema,
 	GlobalConfigSchema,
 	mapMarked,
 	REDACTED_URL_HOST,
 	type SecretMark,
 } from "@bilibili-notify/internal";
-import { z } from "zod";
+import type { z } from "zod";
+import {
+	resolveSettings,
+	type SecretCellsReader,
+	secretsUnaskable,
+} from "../push/connection-settings.js";
 
 /**
  * 备份脱敏的核心:脱敏档与完整档的明文段都不许带任何凭据。
  *
- * **判据是 schema 上的标记**(`markSecret` / `markBackupOnly`,ADR-0021 决策 44):核心设置与连接这两节
- * 有 schema,拿 {@link mapMarked} 按值走,命中标记的叶子抹掉 —— 新加的字段叫什么名都一样,标了就抹。
+ * **判据是 schema 上的标记**(`markSecret` / `markBackupOnly`,ADR-0021 决策 44):核心设置有 schema,
+ * 连接的 `settings` 的 schema 在**适配器**手上(外壳里它是 `z.unknown()`,见 {@link redactConnections}),
+ * 都拿 {@link mapMarked} 按值走,命中标记的叶子抹掉 —— 新加的字段叫什么名都一样,标了就抹。
  *
  * 标记管不到的地方照旧按**键名**猜(下面那份黑名单):别的几节本来就没有凭据字段、拓展那几格
- * (`config` / 设置)的形状归拓展自己定,而 schema 里没声明的键、`z.unknown()` 的格也一样 ——
+ * (连接的 `settings` / 拓展自己的设置)的形状归拓展自己定,而 schema 里没声明的键、`z.unknown()` 的格也一样 ——
  * 宁可多抹,不留一个明文。黑名单同时是**守卫**:`backup-redaction-parity.test.ts` 钉住「键名
  * 在黑名单里的字符串叶子必须带标记」,换判据不许让被抹的叶子集合变一个。
  *
@@ -99,34 +104,39 @@ export function redactSecretKeys<T>(value: T, secrets: ReadonlySet<string> = SEC
  */
 export type ExtensionSecretCodes = ReadonlyMap<string, readonly string[]>;
 
-/** 备份分区里,拓展能插手的那两格。只写出用得上的形状。 */
+/** 备份分区里,拓展能插手的那一格。只写出用得上的形状。 */
 interface ExtensionScopedSections {
 	extensionSettings?: Record<string, unknown>;
-	connections?: Array<{ kind?: unknown; extensionId?: unknown; config?: unknown } | undefined>;
 }
 
+/** 不给查表 = 一个适配器都问不出来:连接的 `settings` 一律整片抹空(最严的那一档)。 */
+const NOTHING_KNOWN: SecretCellsReader = {
+	settingsSchemaOf: () => undefined,
+	declaredSecretKeysOf: () => undefined,
+};
+
 /**
- * 备份明文段的脱敏入口 —— 先全树走一遍键名黑名单,再按拓展各自声明的键补一遍。
+ * 备份明文段的脱敏入口 —— 先全树走一遍键名黑名单(核心设置靠 schema 标记),连接的 `settings` 按
+ * 在场适配器的 schema 与拓展声明的键抹,拓展设置按声明的键补一遍。
  *
  * 不改传进来的那份(第一步就深拷贝了)。
  */
-export function redactBackupSections<T>(
-	sections: T,
-	extensionSecrets: ExtensionSecretCodes = new Map(),
-): T {
+export function redactBackupSections<T>(sections: T, lookup: SecretCellsReader = NOTHING_KNOWN): T {
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(sections as Record<string, unknown>)) {
-		const schema = TYPED_SECTIONS[key];
-		out[key] = schema ? redactByMarks(schema, value) : redact(value);
+		if (key === "connections") out[key] = redactConnections(value, lookup);
+		else {
+			const schema = TYPED_SECTIONS[key];
+			out[key] = schema ? redactByMarks(schema, value) : redact(value);
+		}
 	}
-	redactExtensionScopes(out as ExtensionScopedSections, extensionSecrets);
+	redactExtensionScopes(out as ExtensionScopedSections, lookup);
 	return out as T;
 }
 
-/** 有 schema 的两节:凭据靠标记。别的几节没有凭据字段,继续按键名。 */
+/** 有 schema 的一节:凭据靠标记。别的几节没有凭据字段,继续按键名;连接另走 {@link redactConnections}。 */
 const TYPED_SECTIONS: Record<string, z.ZodType | undefined> = {
 	globals: GlobalConfigSchema,
-	connections: z.array(ConnectionSchema),
 };
 
 /** 命中标记的叶子抹成什么:网络地址换占位(要能恢复),其余抹成空串。 */
@@ -146,21 +156,55 @@ function redactByMarks(schema: z.ZodType, value: unknown): unknown {
 	});
 }
 
-/** 就地把拓展那两格再抹一遍。入参是 {@link redactSecretKeys} 刚克隆出来的结果。 */
-function redactExtensionScopes(
-	sections: ExtensionScopedSections,
-	extensionSecrets: ExtensionSecretCodes,
-): void {
+/**
+ * 连接这一节:**只动 `settings` 一格**(它的形状归适配器),别的格(外壳、平台快照、探测状态)里没有凭据,
+ * 原样带着 —— 快照要「备份里带回」。`settings` 按两处问得出来的东西抹:适配器 `settingsSchema` 上的标记,
+ * 与拓展声明的密钥键。
+ *
+ * - ① 两处都问不出来(适配器不在场、也没声明过)→ 整片抹空(沿用「问不出来整片当密钥」);
+ * - ② 适配器在场但 `settings` 解不过它的规则(被隔离的连接)→ 整片抹空,从严;
+ * - ②′ 拓展(非内置)的声明问不出来({@link secretsUnaskable},适配器在不在场都算)→ 整片抹空;
+ * - ③ 其余 → 按标记抹(拓展的 schema 上没有标记,所以再整片过一遍键名黑名单与声明的键)。
+ *
+ * ③ 的输入是**盘上原文**(备份带的就是它,不补默认值)。被隔离的连接照样进备份:完整档里它的原值在
+ * 加密袋里,恢复回来仍是那份不合法的原文、仍被隔离、主人看得见。
+ */
+function redactConnections(value: unknown, lookup: SecretCellsReader): unknown {
+	if (!Array.isArray(value)) return redact(value);
+	return value.map((entry) => {
+		if (!isWalkable(entry)) return redact(entry);
+		const out = structuredClone(entry);
+		if (!Object.hasOwn(out, "settings")) return out;
+		const adapterKey = typeof out.adapterKey === "string" ? out.adapterKey : "";
+		out.settings = secretsUnaskable(lookup, adapterKey)
+			? blankLeaves(out.settings)
+			: redactSettings(
+					out.settings,
+					lookup.settingsSchemaOf(adapterKey),
+					lookup.declaredSecretKeysOf(adapterKey),
+				);
+		return out;
+	});
+}
+
+function redactSettings(
+	settings: unknown,
+	schema: z.ZodType | undefined,
+	codes: readonly string[] | undefined,
+): unknown {
+	if (schema === undefined && codes === undefined) return blankLeaves(settings);
+	if (schema !== undefined && !resolveSettings(schema, settings).ok) return blankLeaves(settings);
+	const marked = schema === undefined ? settings : redactByMarks(schema, settings);
+	return redact(marked, new Set([...SECRET_KEY_SET, ...(codes ?? [])]));
+}
+
+/** 就地把拓展那一格再抹一遍。入参是刚克隆出来的结果。 */
+function redactExtensionScopes(sections: ExtensionScopedSections, lookup: SecretCellsReader): void {
 	// 开关(`globals.extensions.<id>.enabled`)不是设置,不在这一节,不会被抹。
 	const settings = sections.extensionSettings ?? {};
 	for (const [id, value] of Object.entries(settings)) {
 		if (value === undefined) continue;
-		settings[id] = redactScoped(value, extensionSecrets.get(id));
-	}
-	for (const connection of sections.connections ?? []) {
-		if (connection?.kind !== "extension") continue;
-		const id = typeof connection.extensionId === "string" ? connection.extensionId : "";
-		connection.config = redactScoped(connection.config, extensionSecrets.get(id));
+		settings[id] = redactScoped(value, lookup.declaredSecretKeysOf(id));
 	}
 }
 

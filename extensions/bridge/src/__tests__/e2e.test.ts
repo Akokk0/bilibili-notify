@@ -82,10 +82,17 @@ const CONNECTION: Connection = {
 	id: CONNECTION_ID,
 	name: "电报那个 bot",
 	enabled: true,
-	kind: "extension",
-	extensionId: EXTENSION_ID,
+	adapterKey: EXTENSION_ID,
 	platform: "telegram",
-	config: { link: LINK_ID, botId: BOT_ID },
+	settings: { link: LINK_ID, botId: BOT_ID },
+	platformSnapshot: {
+		label: "telegram",
+		shortLabel: "telegram",
+		color: "#94a3b8",
+		targetKind: "session",
+		scopes: ["group", "private", "channel"],
+		addressNouns: {},
+	},
 };
 
 const TARGET: PushTarget = {
@@ -157,7 +164,7 @@ function hostFor(
 		},
 		registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig> {
 			// 🔴 分发键由宿主按 id 填 —— 拓展自报的那份在这里被覆盖(决策 28)。
-			adapter = { ...def.adapter, adapterKey: EXTENSION_ID };
+			adapter = { ...def.adapter, adapterKey: EXTENSION_ID, settingsSchema: def.configSchema };
 			pushSource = def as PushExtensionDef<unknown>;
 			return {
 				// 宿主拿**拓展自己那份 zod** 解 config,解不出的那条根本不交给它(决策 30)。
@@ -166,7 +173,7 @@ function hostFor(
 						id: connection.id,
 						name: connection.name,
 						enabled: connection.enabled,
-						config: def.configSchema.parse(connection.config),
+						config: def.configSchema.parse(connection.settings),
 					})),
 				onConnectionsChanged: () => ({ dispose() {} }),
 			};

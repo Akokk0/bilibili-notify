@@ -127,11 +127,15 @@ export function onboardingInputsFor(step: OnboardingStepKey | "done"): Onboardin
 	];
 	const at = order.indexOf(step);
 	const done = (key: OnboardingStepKey) => order.indexOf(key) < at;
-	const ok = { ok: true, lastCheckedAt: "2026-09-06T00:00:00.000Z" };
+	const stamp = "2026-09-06T00:00:00.000Z";
+	const probeOk = { status: "reachable", lastCheckedAt: stamp } as const;
+	const reachable = { status: "reachable", changedAt: stamp } as const;
 	return {
 		biliLoggedIn: done("login"),
-		connections: done("connection") ? [{ enabled: true, testStatus: ok }] : [],
-		targets: done("target") ? [{ enabled: true, testStatus: done("test") ? ok : undefined }] : [],
+		connections: done("connection") ? [{ enabled: true, probeState: probeOk }] : [],
+		targets: done("target")
+			? [{ enabled: true, reachability: done("test") ? reachable : undefined }]
+			: [],
 		subsCount: done("subs") ? 1 : 0,
 		modules: { image: true, ai: true },
 	};

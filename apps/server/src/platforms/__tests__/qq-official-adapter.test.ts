@@ -8,6 +8,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official";
 
 function makeLogger(): Logger {
@@ -42,10 +43,11 @@ function qqConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "qq",
-		kind: "direct",
+		adapterKey: "qq-official",
 		platform: "qq-official",
+		platformSnapshot: snapshotFor("qq-official"),
 		enabled: true,
-		config: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public", ...over },
+		settings: { appId: "APPID", appSecret: "SECRET", sandbox: false, botType: "public", ...over },
 	} as unknown as Connection;
 }
 
@@ -417,7 +419,7 @@ describe("createQQOfficialAdapter — probe / 生命周期", () => {
 
 	it("probe:平台不对 → invalid;/gateway 连不上 → unavailable", async () => {
 		const ad = createQQOfficialAdapter(adapterOpts());
-		const wrong = { ...qqConnection(), platform: "onebot" } as unknown as Connection;
+		const wrong = { ...qqConnection(), adapterKey: "onebot" } as unknown as Connection;
 		expect(await ad.probe(wrong)).toMatchObject({ ok: false, code: "invalid" });
 		fetchMock.mockImplementation(async (url: string) => {
 			if (url.includes("getAppAccessToken"))

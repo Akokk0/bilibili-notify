@@ -27,6 +27,7 @@ import { EXTENSION_MOUNT_PREFIX, type ExtensionMounts } from "./extensions/mount
 import type { ReportDiscrepancyTable } from "./extensions/report-discrepancies.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import type { QQSessionRegistry } from "./platforms/qq-official.js";
+import { createSecretCellsReader } from "./push/connection-settings.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAiSkillsRoute } from "./routes/ai-skills.js";
 import { createAuthRoute } from "./routes/auth.js";
@@ -241,6 +242,11 @@ export interface CreateAppOptions {
 	 */
 	commands?: RouteDeps["commands"];
 	/**
+	 * 连接 `settings` 下发打码的查表(适配器的 schema 标记 + 拓展声明的密钥键),与备份脱敏同一份。
+	 * 省略 → 只问登记表里的适配器、拓展声明的键一个都问不出来。
+	 */
+	connectionSecrets?: RouteDeps["connectionSecrets"];
+	/**
 	 * 自主升级。由 index.ts 构建(它才知道版本目录在哪、怎么优雅地关掉自己)并注入,
 	 * 省略 → 整条 `/api/system/update` 不挂载,面板拿到 404 就当功能不存在。
 	 */
@@ -298,6 +304,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 	const deps: RouteDeps = {
 		runtime,
 		store: runtime.configStore,
+		connectionSecrets:
+			options.connectionSecrets ?? createSecretCellsReader(runtime.adapterRegistry),
 		puppeteer: options.puppeteer ?? null,
 		wsTicketStore: options.wsTicketStore ?? null,
 		qqSessionRegistry: options.qqSessionRegistry ?? null,

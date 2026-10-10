@@ -29,6 +29,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { WebSocket } from "ws";
 import { CONFIG_DIR, CORE_SETTINGS_FILE, extensionSettingsFile } from "../config/store.js";
 import { type ServerHandle, startServer } from "../index.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 import { activeGeneration } from "./support/generation.js";
 import { installBridgeInto } from "./support/install-bridge.js";
 
@@ -203,11 +204,11 @@ describe("桥拓展 e2e:真客户端 → 真推送 → 真回执", () => {
 					id: CONNECTION_ID,
 					name: "电报那个 bot",
 					enabled: true,
-					kind: "extension",
-					extensionId: "bridge",
+					adapterKey: "bridge",
 					// 桥后面挂着什么平台是**运行时**才知道的,这一格是开放词表,从挑中的 bot 上抄。
 					platform: "telegram",
-					config: { link: LINK_ID, botId: BOT_ID },
+					settings: { link: LINK_ID, botId: BOT_ID },
+					platformSnapshot: snapshotFor("telegram"),
 				},
 			]),
 		);

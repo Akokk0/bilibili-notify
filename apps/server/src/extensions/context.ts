@@ -21,7 +21,6 @@ import {
 	formatZodIssues,
 	type InboundMeta,
 	type InboundSinks,
-	isExtensionConnection,
 	isSecretField,
 	type Logger,
 	manifestProvides,
@@ -390,14 +389,14 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	/** 挂着的那一发「面板数据变了」(合并窗口,见 {@link STATUS_CHANGED_COALESCE_MS});没有就是 `undefined`。 */
 	let statusTimer: ReturnType<typeof setTimeout> | undefined;
 
-	/** 属于这个拓展、且 config 解得出来的那些。解不出的当它不存在并记一行。 */
+	/** 属于这个拓展、且 settings 解得出来的那些。解不出的当它不存在并记一行。 */
 	function ownConnections<TConfig>(
 		schema: ZodType<TConfig>,
 	): readonly ExtensionConnectionView<TConfig>[] {
 		const views: ExtensionConnectionView<TConfig>[] = [];
 		for (const connection of opts.connections()) {
-			if (!isExtensionConnection(connection, id)) continue;
-			const parsed = schema.safeParse(connection.config);
+			if (connection.adapterKey !== id) continue;
+			const parsed = schema.safeParse(connection.settings);
 			if (!parsed.success) {
 				logger.warn(`连接 ${connection.id} 的配置形状不对,这一条不交给它:${parsed.error.message}`);
 				continue;
@@ -563,7 +562,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 		const hit = opts.connection
 			? opts.connection(connectionId)
 			: opts.connections().find((connection) => connection.id === connectionId);
-		return hit && isExtensionConnection(hit, id) ? hit : undefined;
+		return hit && hit.adapterKey === id ? hit : undefined;
 	}
 
 	// ---- 自己的设置(ADR-0019 决策 36)----------------------------------------------------
@@ -812,15 +811,22 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			listBots = def.listBots;
 			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
-			const adapter: PlatformAdapter = { ...def.adapter, adapterKey: id };
-			// 登记即 `start`。适配器拿到的上下文与交回给拓展的把手**不同形**:这里的 `ctx.connections()` 只按
-			// 分发键筛、回的是原样的连接;把手的 `connections()` 还过了拓展交的 `configSchema`、回的是解析好的视图。
+			// `settingsSchema` 同样由宿主拿拓展交的 `configSchema` 填:宿主按它解 settings 再递给适配器。
+			const adapter: PlatformAdapter = {
+				...def.adapter,
+				adapterKey: id,
+				settingsSchema: def.configSchema,
+			};
+			// 登记即 `start`。适配器拿到的上下文与交回给拓展的把手**不同形**:这里的 `ctx.connections()` 按
+			// `adapterKey` 筛、`settings` 按 `configSchema` 解过、解不过的隔离;把手的 `connections()`
+			// 回的是 `{ id, name, enabled, config }` 的视图(契约的字段名不在这一片改)。
 			integration.track(
 				adapters.register(
 					adapter,
 					createPlatformAdapterContext({
 						integration: integration.ctx,
 						adapterKey: id,
+						settingsSchema: def.configSchema,
 						connections: opts.connections,
 						onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),
 					}),

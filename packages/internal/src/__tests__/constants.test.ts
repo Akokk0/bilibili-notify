@@ -10,7 +10,7 @@ import {
 	AI_PROVIDER_IDS,
 	AI_PROVIDERS,
 	CONNECTION_PLATFORMS,
-	connectionDispatchKey,
+	platformDescriptor,
 	providerMeta,
 } from "../constants";
 
@@ -69,7 +69,7 @@ describe("注册表本体", () => {
 	});
 });
 
-describe("connectionDispatchKey —— 这条连接归哪个适配器管", () => {
+describe("平台注册表的 adapterKey —— 这个平台归哪个适配器管", () => {
 	const cases: ReadonlyArray<readonly [string, string]> = [
 		["onebot", "onebot"],
 		["qq-official", "qq-official"],
@@ -79,15 +79,15 @@ describe("connectionDispatchKey —— 这条连接归哪个适配器管", () =>
 		["generic", "webhook"],
 	];
 
-	it.each(cases)("直连 %s → %s", (platform, key) => {
-		expect(connectionDispatchKey({ kind: "direct", platform })).toBe(key);
+	it.each(cases)("平台 %s → %s", (platform, key) => {
+		expect(platformDescriptor(platform)?.adapterKey).toBe(key);
 	});
 
-	it("六个直连平台一个不漏(闭集多一档这里要跟着加)", () => {
+	it("六个平台一个不漏(闭集多一档这里要跟着加)", () => {
 		expect(cases.map(([platform]) => platform).sort()).toEqual([...CONNECTION_PLATFORMS].sort());
 	});
 
-	it("拓展连接 → 拓展 id,不管它借的是哪个平台", () => {
-		expect(connectionDispatchKey({ kind: "extension", extensionId: "bridge" })).toBe("bridge");
+	it("认不出的平台没有适配器键", () => {
+		expect(platformDescriptor("telegram")).toBeUndefined();
 	});
 });

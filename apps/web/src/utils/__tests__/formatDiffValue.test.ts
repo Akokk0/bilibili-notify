@@ -56,10 +56,10 @@ describe("formatDiffValue", () => {
 		expect(formatDiffValue("ai.apiKey", "sk-xxx-yyy")).toEqual({ display: "••• 已改" });
 		expect(formatDiffValue("ai.apiKey", "")).toEqual({ display: "••• 已改" });
 		expect(formatDiffValue("ai.apiKey", undefined)).toEqual({ display: "••• 已改" });
-		expect(formatDiffValue("config.secret", "shared-secret-token")).toEqual({
+		expect(formatDiffValue("settings.secret", "shared-secret-token")).toEqual({
 			display: "••• 已改",
 		});
-		expect(formatDiffValue("config.accessToken", "tk")).toEqual({ display: "••• 已改" });
+		expect(formatDiffValue("settings.accessToken", "tk")).toEqual({ display: "••• 已改" });
 	});
 
 	it("空数组 → []", () => {

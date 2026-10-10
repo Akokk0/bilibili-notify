@@ -1,7 +1,7 @@
 /**
  * 注册表里的每个平台都得有人接。
  *
- * `CONNECTION_PLATFORMS` 是闭集,每一档说好了要配齐「一份 config schema + 一个 server
+ * `CONNECTION_PLATFORMS` 是闭集,每一档说好了要配齐「一份 settings schema + 一个 server
  * adapter + 一排面板控件」。可 adapter 那一格没人核对过 —— 往注册表里加一档、忘了给它
  * 写 adapter,构建全绿、面板照样让主人建这条连接,只有真发的时候才在投递层报一句
  * `no platform adapter`。主人看到的是「配好了但发不出去」,而不是「这平台还没做」。
@@ -11,7 +11,7 @@
  */
 
 import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
-import { CONNECTION_PLATFORMS, connectionDispatchKey } from "@bilibili-notify/internal";
+import { CONNECTION_PLATFORMS, PLATFORM_REGISTRY } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { adapterForConnection } from "../../push/dispatch.js";
 import { createOnebotAdapter } from "../onebot.js";
@@ -50,9 +50,12 @@ function buildMatrix(): PlatformAdapter[] {
 	];
 }
 
-/** 造一条该平台的直连连接 —— 分发只看 `kind` 与 `platform`。 */
-function directConnection(platform: string): Connection {
-	return { kind: "direct", platform } as unknown as Connection;
+/** 造一条该平台的连接 —— 分发只看 `adapterKey`,归属取平台注册表里那一行。 */
+function connectionOn(platform: (typeof CONNECTION_PLATFORMS)[number]): Connection {
+	return {
+		adapterKey: PLATFORM_REGISTRY[platform].adapterKey,
+		platform,
+	} as unknown as Connection;
 }
 
 /**
@@ -61,21 +64,81 @@ function directConnection(platform: string): Connection {
  * 而这条守卫问的是「核心自己有没有漏掉一个平台」。
  */
 describe("adapter 矩阵覆盖平台词表", () => {
-	it("闭集里每个平台的直连连接,都恰好找得到一个 adapter", () => {
+	it("闭集里每个平台的连接,都恰好找得到一个 adapter", () => {
 		const matrix = buildMatrix();
 		for (const platform of CONNECTION_PLATFORMS) {
 			const claimers = matrix.filter(
-				(adapter) => adapterForConnection([adapter], directConnection(platform)) !== undefined,
+				(adapter) => adapterForConnection([adapter], connectionOn(platform)) !== undefined,
 			);
 			expect(claimers.length, `平台 ${platform} 的 adapter`).toBe(1);
 		}
 	});
 
-	it("也没有多出来的 —— 每个 adapter 的键都是某个平台的分发键,键不重复", () => {
+	it("也没有多出来的 —— 每个 adapter 的键都是某个平台的 adapterKey,键不重复", () => {
 		const keys = buildMatrix().map((a) => a.adapterKey);
-		const dispatchKeys = CONNECTION_PLATFORMS.map((p) =>
-			connectionDispatchKey(directConnection(p)),
-		);
-		expect([...keys].sort()).toEqual([...new Set(dispatchKeys)].sort());
+		const registryKeys = CONNECTION_PLATFORMS.map((p) => PLATFORM_REGISTRY[p].adapterKey);
+		expect([...keys].sort()).toEqual([...new Set(registryKeys)].sort());
+	});
+});
+
+/**
+ * 内置三个适配器各自列出的连接候选(ADR-0024 决策 4):从平台注册表现取自己那几行 ——
+ * 个数、描述、平台名两两不重,都钉在这里。新建连接时宿主抄的快照就是候选里的 `platform`。
+ */
+describe("内置适配器的连接候选", () => {
+	const candidatesOf = async (adapterKey: string) => {
+		const adapter = buildMatrix().find((a) => a.adapterKey === adapterKey);
+		if (!adapter?.listConnectionCandidates) {
+			throw new Error(`${adapterKey} 没实现 listConnectionCandidates`);
+		}
+		return adapter.listConnectionCandidates(new AbortController().signal);
+	};
+
+	it.each([
+		["onebot", ["onebot"]],
+		["qq-official", ["qq-official"]],
+		["webhook", ["feishu", "dingtalk", "wecom", "generic"]],
+	] as const)("%s 的候选个数与平台名", async (adapterKey, platforms) => {
+		const candidates = await candidatesOf(adapterKey);
+		expect(candidates.map((c) => c.platform.platform).sort()).toEqual([...platforms].sort());
+	});
+
+	it("每个候选的描述逐格等于注册表那一行(去掉 adapterKey 加上 platform)", async () => {
+		for (const adapterKey of ["onebot", "qq-official", "webhook"]) {
+			for (const { platform } of await candidatesOf(adapterKey)) {
+				const { adapterKey: rowKey, ...row } =
+					PLATFORM_REGISTRY[platform.platform as keyof typeof PLATFORM_REGISTRY];
+				expect(rowKey).toBe(adapterKey);
+				expect(platform).toEqual({ platform: platform.platform, ...row });
+			}
+		}
+	});
+
+	it("OneBot 的那一份描述(字面钉一份,表被改歪了这里要红)", async () => {
+		const [only] = await candidatesOf("onebot");
+		expect(only?.platform).toEqual({
+			platform: "onebot",
+			label: "OneBot v11",
+			shortLabel: "OneBot",
+			color: "#3b82f6",
+			icon: "qq",
+			targetKind: "session",
+			scopes: ["group", "private"],
+			addressNouns: { group: "群", private: "用户" },
+		});
+	});
+
+	it("三个适配器合起来的候选平台名两两不重,且恰好覆盖闭集", async () => {
+		const all = (
+			await Promise.all(["onebot", "qq-official", "webhook"].map((key) => candidatesOf(key)))
+		).flatMap((cs) => cs.map((c) => c.platform.platform));
+		expect(new Set(all).size).toBe(all.length);
+		expect([...all].sort()).toEqual([...CONNECTION_PLATFORMS].sort());
+	});
+
+	it("每个内置适配器都带 settingsSchema", () => {
+		for (const adapter of buildMatrix()) {
+			expect(adapter.settingsSchema, adapter.adapterKey).toBeDefined();
+		}
 	});
 });

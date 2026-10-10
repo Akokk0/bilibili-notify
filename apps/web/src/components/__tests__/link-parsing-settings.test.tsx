@@ -11,7 +11,8 @@ import type { ConnectionCapabilitiesMap } from "@bilibili-notify/contract";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { Connection, DirectConnection, PushTarget } from "../../types/domain";
+import { adapterKeyFor, snapshotFor } from "../../__tests__/platform-snapshot";
+import type { Connection, PushTarget } from "../../types/domain";
 import type { GlobalConfig } from "../../types/globals";
 import { LinkParsingSettings } from "../link-parsing-settings";
 
@@ -62,8 +63,16 @@ const TARGETS: PushTarget[] = [
 	} as never),
 ];
 
-function connection(id: string, name: string, platform: DirectConnection["platform"]): Connection {
-	return { id, name, kind: "direct", platform, enabled: true, config: {} } as unknown as Connection;
+function connection(id: string, name: string, platform: string): Connection {
+	return {
+		id,
+		name,
+		adapterKey: adapterKeyFor(platform),
+		platform,
+		enabled: true,
+		settings: {},
+		platformSnapshot: snapshotFor(platform),
+	};
 }
 
 const ADAPTERS: Connection[] = [
@@ -230,12 +239,12 @@ describe("LinkParsingSettings", () => {
 						{
 							id: EXT,
 							name: "小电视",
-							kind: "extension",
-							extensionId: "bridge",
+							adapterKey: "bridge",
 							platform: "telegram",
 							enabled: true,
-							config: {},
-						} as unknown as Connection,
+							settings: {},
+							platformSnapshot: snapshotFor("telegram"),
+						} satisfies Connection,
 					],
 				},
 			);
@@ -261,12 +270,12 @@ describe("LinkParsingSettings", () => {
 						{
 							id: EXT,
 							name: "小电视",
-							kind: "extension",
-							extensionId: "bridge",
+							adapterKey: "bridge",
 							platform: "telegram",
 							enabled: true,
-							config: {},
-						} as unknown as Connection,
+							settings: {},
+							platformSnapshot: snapshotFor("telegram"),
+						} satisfies Connection,
 					],
 				},
 			);

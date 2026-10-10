@@ -71,7 +71,6 @@ export const RATCHET = {
 	"apps/server/src/zip-junk.ts": 3,
 	"apps/web/src/devtools/dock.tsx": 2,
 	"apps/web/src/devtools/ext-motion.ts": 3,
-	"apps/web/src/devtools/web-scenarios.ts": 1,
 	"apps/web/src/services/session.ts": 6,
 	"extensions/bridge/src/blob-route.ts": 1,
 	"extensions/bridge/src/protocol.ts": 5,

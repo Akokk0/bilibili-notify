@@ -55,7 +55,9 @@ function renderDialog(sub: Subscription, p: SubscriptionPlatform, targets: PushT
 			sub={sub}
 			platform={p}
 			targets={targets}
-			connections={[{ id: "c-1", kind: "direct", platform: "onebot", enabled: true } as Connection]}
+			connections={[
+				{ id: "c-1", adapterKey: "onebot", platform: "onebot", enabled: true } as Connection,
+			]}
 			onClose={noop}
 			onSave={noop}
 			onDelete={noop}

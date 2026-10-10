@@ -44,7 +44,9 @@ import {
 } from "@bilibili-notify/internal";
 import type { Push } from "@bilibili-notify/push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { makeHistoryImages } from "../../__tests__/support/history-images.js";
 import { storageWriteGate } from "../../__tests__/support/storage-write-gate.js";
@@ -362,6 +364,8 @@ function makeConfigStore(
 		getConnections: () => connections,
 		patchTarget: vi.fn(async () => {}),
 		patchConnection: vi.fn(async () => {}),
+		recordConnectionProbeState: vi.fn(async () => {}),
+		recordTargetReachability: vi.fn(async () => {}),
 		_set: (next: GlobalConfig) => {
 			g = next;
 		},
@@ -2479,9 +2483,10 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 				id: ADAPTER,
 				name: "bot",
 				enabled: true,
-				kind: "direct",
+				adapterKey: "onebot",
 				platform: "onebot",
-				config: {},
+				settings: {},
+				platformSnapshot: snapshotFor("onebot"),
 			} as any,
 		]);
 		c.configStore._setTargets([
@@ -2542,15 +2547,100 @@ describe("createEngines — 链接卡的呈现与开关", () => {
 	});
 });
 
+/** 目标可达性只在通断翻转时写:四格真值表(没记过的那格在「后台写登记进 track」里钉了)。 */
+describe("createEngines — 目标可达性不翻转就不写", () => {
+	const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+	const CONNECTION_ID = "33333333-3333-4333-8333-333333333333";
+	const connection = {
+		id: CONNECTION_ID,
+		name: "bot",
+		enabled: true,
+		adapterKey: "onebot",
+		platform: "onebot",
+		settings: {},
+		platformSnapshot: snapshotFor("onebot"),
+	} as any;
+
+	async function sendOnce(
+		prev: "reachable" | "unreachable",
+		sendOk: boolean,
+	): Promise<ReturnType<typeof vi.fn>> {
+		const recordTargetReachability = vi.fn(async () => {});
+		const pa: PlatformAdapter = {
+			adapterKey: "onebot",
+			settingsSchema: z.unknown(),
+			isAvailable: () => true,
+			send: async () => (sendOk ? { ok: true, latencyMs: 7 } : fail("unavailable", "发不出去")),
+			probe: async () => ok({ latencyMs: 1 }),
+			start() {},
+			stop() {},
+		};
+		const c = setup({
+			connections: [connection],
+			platformAdapters: [pa],
+			overrides: { configStore: { recordTargetReachability } },
+		});
+		active = c;
+		const changedAt = "2026-01-01T00:00:00.000Z";
+		c.configStore._setTargets([
+			{
+				id: TARGET_ID,
+				name: "群",
+				connectionId: CONNECTION_ID,
+				enabled: true,
+				kind: "session",
+				scope: "group",
+				address: "1",
+				reachability:
+					prev === "reachable"
+						? { status: "reachable", changedAt, latencyMs: 1 }
+						: { status: "unreachable", changedAt, message: "旧的失败" },
+			} as unknown as PushTarget,
+		]);
+		await new Promise((r) => setTimeout(r, 0));
+		await H.push[0].opts.dispatcher.send(TARGET_ID, { kind: "text", text: "hi" });
+		return recordTargetReachability;
+	}
+
+	it("已是 reachable、这次成功 → 不写", async () => {
+		expect(await sendOnce("reachable", true)).not.toHaveBeenCalled();
+	});
+
+	it("已是 reachable、这次失败 → 写成 unreachable(带原话)", async () => {
+		const record = await sendOnce("reachable", false);
+		expect(record).toHaveBeenCalledTimes(1);
+		expect(record).toHaveBeenCalledWith(TARGET_ID, {
+			status: "unreachable",
+			changedAt: expect.any(String),
+			message: "发不出去",
+		});
+	});
+
+	it("已是 unreachable、这次成功 → 写成 reachable(带耗时)", async () => {
+		const record = await sendOnce("unreachable", true);
+		expect(record).toHaveBeenCalledTimes(1);
+		expect(record).toHaveBeenCalledWith(TARGET_ID, {
+			status: "reachable",
+			changedAt: expect.any(String),
+			latencyMs: 7,
+		});
+	});
+
+	it("已是 unreachable、这次失败 → 不写", async () => {
+		expect(await sendOnce("unreachable", false)).not.toHaveBeenCalled();
+	});
+});
+
 describe("createEngines — 连接所在平台的能力", () => {
 	const ADAPTER = "11111111-1111-4111-8111-111111111111";
 	const onebot = {
 		id: ADAPTER,
 		name: "bot",
 		enabled: true,
-		kind: "direct",
+		adapterKey: "onebot",
 		platform: "onebot",
-		config: {},
+		settings: {},
+		platformSnapshot: snapshotFor("onebot"),
 	} as any;
 
 	/** 探一次就变「支持」的假平台实现;探之前是「未探测」。 */
@@ -2567,6 +2657,7 @@ describe("createEngines — 连接所在平台的能力", () => {
 		});
 		const pa: PlatformAdapter = {
 			adapterKey: "onebot",
+			settingsSchema: z.unknown(),
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe: vi.fn(async () => (probeOk ? ok({ latencyMs: 1 }) : fail("unavailable", "连不上"))),
@@ -2772,7 +2863,7 @@ describe("createEngines — 后台写登记进 track", () => {
 
 	it("投递回调回写目标可达性:登记进 track —— 写交进 config 写道,它才落定", async () => {
 		const write = deferred();
-		const recordTargetTestStatus = vi.fn(() => write.promise);
+		const recordTargetReachability = vi.fn(() => write.promise);
 		const target = {
 			id: TARGET_ID,
 			name: "群",
@@ -2781,7 +2872,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			scope: "group",
 			enabled: true,
 		} as unknown as PushTarget;
-		const c = setup({ overrides: { configStore: { recordTargetTestStatus } } });
+		const c = setup({ overrides: { configStore: { recordTargetReachability } } });
 		active = c;
 		c.configStore._setTargets([target]);
 		await new Promise((r) => setTimeout(r, 0));
@@ -2790,13 +2881,12 @@ describe("createEngines — 后台写登记进 track", () => {
 		// 连接不在 → 投递失败,dispatcher 照样回调 onDelivery。
 		await H.push[0].opts.dispatcher.send(TARGET_ID, { kind: "text", text: "hi" });
 
-		expect(recordTargetTestStatus).toHaveBeenCalledTimes(1);
-		// 盘上的 testStatus 还是老格式:失败的原话填进 `err`,码不落盘,失败没有耗时。
-		expect(recordTargetTestStatus).toHaveBeenCalledWith(TARGET_ID, {
-			ok: false,
-			lastCheckedAt: expect.any(String),
-			latencyMs: undefined,
-			err: `connection not found: connectionId=${CONNECTION_ID}`,
+		expect(recordTargetReachability).toHaveBeenCalledTimes(1);
+		// 失败的原话填进 `message`,码不落盘,失败没有耗时。
+		expect(recordTargetReachability).toHaveBeenCalledWith(TARGET_ID, {
+			status: "unreachable",
+			changedAt: expect.any(String),
+			message: `connection not found: connectionId=${CONNECTION_ID}`,
 		});
 		expect(c.serviceCtx.tracking.tracked).toHaveLength(before + 1);
 		const registered = newlyTracked(c, before);
@@ -2833,12 +2923,14 @@ describe("createEngines — 后台写登记进 track", () => {
 				id,
 				name: "bot",
 				enabled: true,
-				kind: "direct",
+				adapterKey: "onebot",
 				platform: "onebot",
-				config: {},
+				settings: {},
+				platformSnapshot: snapshotFor("onebot"),
 			}) as any;
 		const okPlatform = (probe: () => Promise<ProbeResult>): PlatformAdapter => ({
 			adapterKey: "onebot",
+			settingsSchema: z.unknown(),
 			isAvailable: () => true,
 			send: async () => ({ ok: true, latencyMs: 1 }),
 			probe,
@@ -2848,15 +2940,15 @@ describe("createEngines — 后台写登记进 track", () => {
 
 		it("探测结果写回连接表:登记进 track —— 写交进 config 写道,它才落定", async () => {
 			const write = deferred();
-			const patchConnection = vi.fn(() => write.promise);
+			const recordConnectionProbeState = vi.fn(() => write.promise);
 			const c = setup({
 				connections: [onebot(CONNECTION_ID)],
 				platformAdapters: [okPlatform(async () => ({ ok: true, latencyMs: 1 }))],
-				overrides: { configStore: { patchConnection } },
+				overrides: { configStore: { recordConnectionProbeState } },
 			});
 			active = c;
 
-			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
+			await vi.waitFor(() => expect(recordConnectionProbeState).toHaveBeenCalledTimes(1));
 			const tracked = c.serviceCtx.tracking.tracked;
 			expect(tracked.length).toBeGreaterThan(0);
 			expect(await stillPending(Promise.all(tracked))).toBe(true);
@@ -2864,57 +2956,78 @@ describe("createEngines — 后台写登记进 track", () => {
 			await Promise.all(tracked);
 		});
 
-		it("探测没通:失败的原话填进 testStatus.err,码不落盘,不带耗时", async () => {
-			const patchConnection = vi.fn(async () => {});
+		it("探测没通:失败的原话填进 probeState.message,码不落盘,不带耗时", async () => {
+			const recordConnectionProbeState = vi.fn(async () => {});
 			const c = setup({
 				connections: [onebot(CONNECTION_ID)],
 				platformAdapters: [
 					okPlatform(async () => fail("unauthorized", "token 不对", { upstreamCode: "http:401" })),
 				],
-				overrides: { configStore: { patchConnection } },
+				overrides: { configStore: { recordConnectionProbeState } },
 			});
 			active = c;
-			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
-			expect(patchConnection).toHaveBeenCalledWith(CONNECTION_ID, {
-				testStatus: {
-					ok: false,
-					lastCheckedAt: expect.any(String),
-					latencyMs: undefined,
-					err: "token 不对",
-				},
+			await vi.waitFor(() => expect(recordConnectionProbeState).toHaveBeenCalledTimes(1));
+			expect(recordConnectionProbeState).toHaveBeenCalledWith(CONNECTION_ID, {
+				status: "unreachable",
+				lastCheckedAt: expect.any(String),
+				message: "token 不对",
 			});
 		});
 
-		it("探测通了:照旧写 ok 与耗时", async () => {
-			const patchConnection = vi.fn(async () => {});
+		it("探测通了:写 reachable 与耗时", async () => {
+			const recordConnectionProbeState = vi.fn(async () => {});
 			const c = setup({
 				connections: [onebot(CONNECTION_ID)],
 				platformAdapters: [okPlatform(async () => ok({ latencyMs: 7 }))],
-				overrides: { configStore: { patchConnection } },
+				overrides: { configStore: { recordConnectionProbeState } },
 			});
 			active = c;
-			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
-			expect(patchConnection).toHaveBeenCalledWith(CONNECTION_ID, {
-				testStatus: { ok: true, lastCheckedAt: expect.any(String), latencyMs: 7, err: undefined },
+			await vi.waitFor(() => expect(recordConnectionProbeState).toHaveBeenCalledTimes(1));
+			expect(recordConnectionProbeState).toHaveBeenCalledWith(CONNECTION_ID, {
+				status: "reachable",
+				lastCheckedAt: expect.any(String),
+				latencyMs: 7,
 			});
 		});
 
-		it("适配器没有探测协议(unsupported):既不是通也不是不通,连接状态不动", async () => {
+		it("适配器没有探测协议(unsupported):既不是通也不是不通,记成 unsupported", async () => {
+			const recordConnectionProbeState = vi.fn(async () => {});
+			const probe = vi
+				.fn<() => Promise<ProbeResult>>()
+				.mockResolvedValue(fail("unsupported", "no probe"));
+			const c = setup({
+				connections: [onebot(CONNECTION_ID)],
+				platformAdapters: [okPlatform(probe)],
+				overrides: { configStore: { recordConnectionProbeState } },
+			});
+			active = c;
+			await vi.waitFor(() => expect(recordConnectionProbeState).toHaveBeenCalledTimes(1));
+			expect(recordConnectionProbeState).toHaveBeenCalledWith(CONNECTION_ID, {
+				status: "unsupported",
+				lastCheckedAt: expect.any(String),
+			});
+		});
+
+		it("已经是 unsupported 的连接周期探测不再写 —— 否则每条这样的连接每五分钟多一次写盘", async () => {
 			const other = "44444444-4444-4444-8444-444444444444";
-			const patchConnection = vi.fn(async () => {});
+			const recordConnectionProbeState = vi.fn(async () => {});
+			const known = {
+				...onebot(CONNECTION_ID),
+				probeState: { status: "unsupported", lastCheckedAt: "2026-06-06T00:00:00.000Z" },
+			};
 			const probe = vi
 				.fn<() => Promise<ProbeResult>>()
 				.mockResolvedValueOnce(fail("unsupported", "no probe"))
 				.mockResolvedValueOnce(ok({ latencyMs: 1 }));
 			const c = setup({
-				connections: [onebot(CONNECTION_ID), onebot(other)],
+				connections: [known, onebot(other)],
 				platformAdapters: [okPlatform(probe)],
-				overrides: { configStore: { patchConnection } },
+				overrides: { configStore: { recordConnectionProbeState } },
 			});
 			active = c;
-			// 第二条连接的结果写了,说明这一轮走完了;第一条(unsupported)一次都没写。
-			await vi.waitFor(() => expect(patchConnection).toHaveBeenCalledTimes(1));
-			expect(patchConnection).toHaveBeenCalledWith(other, expect.anything());
+			// 第二条连接的结果写了,说明这一轮走完了;第一条(已是 unsupported)一次都没写。
+			await vi.waitFor(() => expect(recordConnectionProbeState).toHaveBeenCalledTimes(1));
+			expect(recordConnectionProbeState).toHaveBeenCalledWith(other, expect.anything());
 		});
 
 		it("关停一开始就不再起新的探测:一轮探下来要等每条连接的超时,登记之后不能靠预算硬等", async () => {

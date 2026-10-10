@@ -10,8 +10,10 @@
  * 钉四件事:
  * - `adapters.json` 是 `connections.json` 的旧名,只作输入:没有 `connections.json` 时读它、写出新代的
  *   `connections.json`,它自己不进新代,第 0 代那份一个字节不动;两个都在时只认 `connections.json`。
- * - v1 形状(连接没有 kind / connector,目标没有 kind、还叫 adapterId / session)改写成最新的形状:写的是新代里的
- *   新文件、第 0 代那份不动;本来就是最新形状的不改写(新代里还是搬过来的那个文件)。
+ * - v1 形状(连接没有 kind / connector,目标没有 kind、还叫 adapterId / session)改写成 1.0 的形状
+ *   (连接是 `adapterKey` / `platform` / `settings` / `platformSnapshot`):写的是新代里的新文件、第 0 代那份
+ *   不动;本来就是 1.0 形状的不改写(新代里还是搬过来的那个文件)。输入夹具是 0.x 的旧形状,不许改 —— 这批测试
+ *   只改对产出的断言。
  * - 已撤下平台(astrbot / koishi-bot / web-dashboard,和没有 platform 的老拓展连接)的存量在迁移时丢掉,开机不抛。
  * - 上一条的判据只在 parse 失败之后才问:桥借来的 onebot bot、桥驮来的 telegram 目标要活下来;认得的平台上、
  *   桥驮来的平台上的真损坏,迁移器不丢,开机时配置仓照旧抛。
@@ -26,17 +28,19 @@ import { chmod, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	type Connection,
-	connectionDispatchKey,
 	deterministicUuid,
+	neutralPlatformSnapshot,
+	OnebotConnectionSettingsSchema,
 	type PushTarget,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { ConfigValidationError } from "../../config/store.js";
+import { resolveSettings } from "../../push/connection-settings.js";
 import { useZeroSandbox } from "./support.js";
 
-function makeWebhookConnection(
-	overrides: Partial<Extract<Connection, { connector: "webhook" }>> = {},
-) {
+/** 0.x 的 webhook 连接(旧形状:kind / connector / config)—— 迁移的输入,不是 1.0 的 Connection。 */
+function makeWebhookConnection(overrides: Record<string, unknown> = {}) {
 	return {
 		id: randomUUID(),
 		name: "团队 Webhook",
@@ -49,9 +53,8 @@ function makeWebhookConnection(
 	};
 }
 
-function makeOnebotConnection(
-	overrides: Partial<Extract<Connection, { platform: "onebot" }>> = {},
-) {
+/** 0.x 的 OneBot 连接(旧形状:kind / connector / config / retryTimes)—— 迁移的输入。 */
+function makeOnebotConnection(overrides: Record<string, unknown> = {}) {
 	return {
 		id: randomUUID(),
 		name: "NapCat",
@@ -131,7 +134,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			// 先证明这一趟真的走了老文件名那条路 —— 否则「老文件没被动」是空过的。
 			expect(store.getConnections().map((c) => c.id)).toEqual([legacy.id]);
 			expect(await sandbox.readConfig<unknown[]>("connections.json")).toEqual([
-				expect.objectContaining({ id: legacy.id, kind: "direct", connector: "http" }),
+				expect.objectContaining({ id: legacy.id, adapterKey: "onebot", platform: "onebot" }),
 			]);
 			expect(await readFile(join(sandbox.zero, "state", "adapters.json"), "utf8")).toBe(original);
 			expect(await adaptersUnder(sandbox.target)).toEqual([]);
@@ -171,12 +174,19 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			const store = await sandbox.migrateAndLoad();
 
 			expect(store.getConnections()).toEqual([
-				expect.objectContaining({ id: legacy.id, kind: "direct", connector: "http" }),
+				expect.objectContaining({ id: legacy.id, adapterKey: "onebot", platform: "onebot" }),
 			]);
-			// 新代里那份本身就是新形状,而不是每次开机都在内存里补一遍 —— 否则任何一次 upsert 都会把
-			// 没迁移的那份原样写回去。
-			const onDisk = await sandbox.readConfig<unknown[]>("connections.json");
-			expect(onDisk[0]).toMatchObject({ kind: "direct", connector: "http" });
+			// 新代里那份本身就是 1.0 形状,而不是每次开机都在内存里补一遍 —— 否则任何一次 upsert 都会把
+			// 没迁移的那份原样写回去。史前的连接没写 transport,迁移补成显式的 http;kind / connector / config 没有了。
+			const onDisk = await sandbox.readConfig<Array<Record<string, unknown>>>("connections.json");
+			expect(onDisk[0]).toMatchObject({
+				adapterKey: "onebot",
+				platform: "onebot",
+				settings: { transport: "http", baseUrl: "http://127.0.0.1:3000", accessToken: "tok" },
+				platformSnapshot: snapshotFor("onebot"),
+			});
+			for (const gone of ["kind", "connector", "config"])
+				expect(onDisk[0], gone).not.toHaveProperty(gone);
 			// 第 0 代那份一个字节没变(迁移写的是新代里的文件)。
 			expect(await readFile(join(sandbox.zero, "state", "connections.json"), "utf8")).toBe(
 				original,
@@ -210,14 +220,11 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			expect(onDisk[0]).toMatchObject({ kind: "session" });
 			// 第 0 代那份一个字节没变。
 			expect(await readFile(join(sandbox.zero, "state", "targets.json"), "utf8")).toBe(original);
-			// 连接那份已经是新形状 —— 别顺手也改写它:没进改写清单,新代里还是搬过来的那一份。
-			expect(report.rewritten).not.toContain("config/connections.json");
-			expect(
-				await sameBytes(
-					join(sandbox.zero, "state", "connections.json"),
-					sandbox.configPath("connections.json"),
-				),
-			).toBe(true);
+			// 连接那份是 0.x 最新形状(有 kind / connector),这一版也要改成 1.0 的形状 —— 进改写清单,不再是原样复制。
+			expect(report.rewritten).toContain("config/connections.json");
+			expect(await sandbox.readConfig("connections.json")).toEqual([
+				expect.objectContaining({ id: connection.id, adapterKey: "onebot" }),
+			]);
 		});
 
 		it("老 webhook 目标迁成 endpoint —— 托管同步认的是形态,迁错就会重造一张", async () => {
@@ -271,8 +278,8 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 
 			expect(report.rewritten).toContain("config/connections.json");
 			const [onDisk] =
-				await sandbox.readConfig<{ config: Record<string, unknown> }[]>("connections.json");
-			expect(Object.keys(onDisk?.config ?? {})).toEqual([
+				await sandbox.readConfig<{ settings: Record<string, unknown> }[]>("connections.json");
+			expect(Object.keys(onDisk?.settings ?? {})).toEqual([
 				"transport",
 				"baseUrl",
 				"protocolVersion",
@@ -280,19 +287,41 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 				"timeoutMs",
 				"imageMinTimeoutMs",
 				"mergeForwardMinTimeoutMs",
-				"retryTimes",
+				"maxRetries",
 				"retryIntervalMs",
 			]);
-			expect(onDisk?.config.mergeForwardMinTimeoutMs).toBe(90_000);
-			// 连接的 schema 是 strict 的:老键留着的话这条连接整条读不进来。
+			expect(onDisk?.settings.mergeForwardMinTimeoutMs).toBe(90_000);
+			// 重试次数也换了名(retryTimes → maxRetries),键留在原位。
+			expect(onDisk?.settings).not.toHaveProperty("retryTimes");
+			// 连接的 schema 是 strict 的:老键留着的话这条连接整条被隔离。迁出来的 settings 必须过得了 OneBot 的规则。
+			expect(resolveSettings(OnebotConnectionSettingsSchema, onDisk?.settings).ok).toBe(true);
 			const store = await sandbox.load();
 			const [loaded] = store.getConnections();
-			if (loaded?.kind !== "direct" || loaded.platform !== "onebot") throw new Error("形状");
-			expect(loaded.config.mergeForwardMinTimeoutMs).toBe(90_000);
+			expect(loaded?.adapterKey).toBe("onebot");
+			expect(loaded?.settings).toMatchObject({ mergeForwardMinTimeoutMs: 90_000 });
 		});
 
-		it("已经是新形状的连接与目标不改写 —— 新代里还是搬过来的那个文件", async () => {
-			const connection = makeOnebotConnection();
+		it("已经是 1.0 形状的连接与目标不改写 —— 新代里还是搬过来的那个文件", async () => {
+			// 夹具换成 1.0 形状(这条钉的是「新形状原样放行」,不是迁移输入)。
+			const connection: Connection = {
+				id: randomUUID(),
+				name: "NapCat",
+				platform: "onebot",
+				enabled: true,
+				adapterKey: "onebot",
+				platformSnapshot: snapshotFor("onebot"),
+				settings: {
+					transport: "http",
+					baseUrl: "http://127.0.0.1:3000",
+					protocolVersion: "v11",
+					headers: {},
+					timeoutMs: 15_000,
+					imageMinTimeoutMs: 30_000,
+					mergeForwardMinTimeoutMs: 60_000,
+					maxRetries: 0,
+					retryIntervalMs: 1_000,
+				},
+			};
 			const target: PushTarget = {
 				id: randomUUID(),
 				name: "主群",
@@ -361,7 +390,7 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 
 			const store = await sandbox.load(); // 不应抛错
 			// 活下来的只剩那条 webhook 直连(webhook 那一族的分发键是 "webhook")。
-			expect(store.getConnections().map((a) => connectionDispatchKey(a))).toEqual(["webhook"]);
+			expect(store.getConnections().map((a) => a.adapterKey)).toEqual(["webhook"]);
 			// 撤下平台的 target 被丢弃;只剩 webhook 自动托管 target
 			const targets = store.getTargets();
 			expect(targets).toHaveLength(1);
@@ -477,9 +506,118 @@ describe("0.x 连接 / 目标 → 迁移器接缝", () => {
 			const store = await sandbox.load();
 
 			expect(store.getConnections().map((c) => c.id)).toEqual([bot.id]);
-			// 没有东西要迁,新代里那份一个字都不该动(没进改写清单,还是搬过来的那个文件)。
-			expect(report.rewritten).not.toContain("config/connections.json");
-			expect(await readFile(sandbox.configPath("connections.json"), "utf8")).toBe(written);
+			// 它是拓展连接:不是史前直连 —— adapterKey 是拓展 id(不是 "onebot"),快照是中性占位,
+			// 不把它的平台名当成内置 OneBot(那张脸与会话种类属于内置连接)。
+			expect(report.rewritten).toContain("config/connections.json");
+			const [saved] = await sandbox.readConfig<Array<Record<string, unknown>>>("connections.json");
+			expect(saved).toMatchObject({
+				id: bot.id,
+				adapterKey: "bridge",
+				platform: "onebot",
+				settings: { link: "link-home", botId: "onebot:10086" },
+				platformSnapshot: neutralPlatformSnapshot("onebot"),
+			});
+			for (const gone of ["kind", "connector", "extensionId", "config"]) {
+				expect(saved, gone).not.toHaveProperty(gone);
+			}
+			// 第 0 代那份一个字节没动。
+			expect(await readFile(join(sandbox.zero, "state", "connections.json"), "utf8")).toBe(written);
+		});
+
+		/**
+		 * 迁出来的文件**开机不挡在外壳上**:认得的平台、外壳完好但 `config` 坏掉的直连连接,从前原样留着、开机抛错;
+		 * 现在被改成 1.0 形状,开机照读,`settings` 过不过得了适配器的规则要等适配器在场才知道(此刻没有适配器 ——
+		 * 它会被隔离,不挡开机)。
+		 */
+		it("认得的平台上 config 坏掉的直连连接:迁得过去、开机不抛、settings 原文留着(会被隔离)", async () => {
+			const broken = makeOnebotConnection({
+				config: { transport: "http", baseUrl: 42, accessToken: "tok-SECRET" },
+			});
+			await sandbox.placeZero("state/connections.json", [broken]);
+			await sandbox.placeZero("state/targets.json", []);
+
+			const store = await sandbox.migrateAndLoad();
+
+			const [loaded] = store.getConnections();
+			expect(loaded).toMatchObject({ id: broken.id, adapterKey: "onebot", platform: "onebot" });
+			expect(loaded?.settings).toMatchObject({ baseUrl: 42, accessToken: "tok-SECRET" });
+			// 它确实过不了 OneBot 的规则 —— 有适配器在场时会被隔离。
+			expect(resolveSettings(OnebotConnectionSettingsSchema, loaded?.settings).ok).toBe(false);
+		});
+
+		it("拓展连接没被丢:迁出来的文件开机读得进,适配器键是拓展 id", async () => {
+			const onebot = makeOnebotConnection();
+			const bot = {
+				id: randomUUID(),
+				name: "阿库娅",
+				enabled: true,
+				kind: "extension",
+				extensionId: "bridge",
+				platform: "telegram",
+				config: { link: "l", botId: "telegram:42" },
+			};
+			await sandbox.placeZero("state/connections.json", [onebot, bot]);
+			await sandbox.placeZero("state/targets.json", []);
+
+			const store = await sandbox.migrateAndLoad();
+
+			expect(store.getConnections().map((c) => [c.id, c.adapterKey])).toEqual([
+				[onebot.id, "onebot"],
+				[bot.id, "bridge"],
+			]);
+		});
+
+		it("目标与连接上 0.x 的 testStatus 都不带过来(新的 reachability / probeState 开机后重记)", async () => {
+			const connection = makeOnebotConnection({
+				testStatus: { ok: true, lastCheckedAt: "2026-06-06T00:00:00.000Z", latencyMs: 9 },
+			});
+			const target = {
+				id: randomUUID(),
+				name: "主群",
+				connectionId: connection.id,
+				kind: "session",
+				scope: "group",
+				enabled: true,
+				address: "111",
+				testStatus: { ok: false, lastCheckedAt: "2026-06-06T00:00:00.000Z", err: "连不上" },
+			};
+			await sandbox.placeZero("state/connections.json", [connection]);
+			await sandbox.placeZero("state/targets.json", [target]);
+
+			const report = await sandbox.migrate();
+
+			expect(report.rewritten).toEqual(
+				expect.arrayContaining(["config/connections.json", "config/targets.json"]),
+			);
+			const [savedConnection] =
+				await sandbox.readConfig<Array<Record<string, unknown>>>("connections.json");
+			const [savedTarget] =
+				await sandbox.readConfig<Array<Record<string, unknown>>>("targets.json");
+			expect(savedConnection).not.toHaveProperty("testStatus");
+			expect(savedConnection).not.toHaveProperty("probeState");
+			expect(savedTarget).not.toHaveProperty("testStatus");
+			expect(savedTarget).not.toHaveProperty("reachability");
+			// 开得了机
+			await sandbox.load();
+		});
+
+		it("同一份数据走两遍,第二遍没有任何文件被改写", async () => {
+			await sandbox.placeZero("state/connections.json", [
+				makeOnebotConnection(),
+				makeWebhookConnection(),
+			]);
+			await sandbox.placeZero("state/targets.json", []);
+			await sandbox.migrate();
+			const first = await readFile(sandbox.configPath("connections.json"), "utf8");
+
+			const { migrateConnectionFiles } = await import("../connections.js");
+			const rewritten = await migrateConnectionFiles({
+				configDir: join(sandbox.target, "config"),
+				adaptersPath: join(sandbox.zero, "state", "adapters.json"),
+			});
+
+			expect(rewritten).toEqual([]);
+			expect(await readFile(sandbox.configPath("connections.json"), "utf8")).toBe(first);
 		});
 
 		it("留下形状正确、平台却不认得的 target —— 桥驮来的就长这样", async () => {

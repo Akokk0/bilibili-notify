@@ -8,12 +8,13 @@
  * 「这个平台没有探测协议」(如 webhook)是失败那一支的 `unsupported`:既不是通、也不是不通,
  * 面板清掉进行中的状态、只提示一句,不打红叉。
  *
- * 只钉线上的形状。盘上存的 `testStatus.err`(连接卡上「上次测试失败 — …」那一句)不在这里。
+ * 只钉线上的形状。盘上存的 `probeState.message`(连接卡上「上次测试失败 — …」那一句)不在这里。
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
 
@@ -31,20 +32,20 @@ const ONEBOT_CONNECTION = {
 	id: ONEBOT_ID,
 	name: "家里那台 OneBot",
 	enabled: true,
-	kind: "direct",
-	connector: "http",
+	adapterKey: "onebot",
 	platform: "onebot",
-	config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
+	platformSnapshot: snapshotFor("onebot"),
+	settings: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
 } as unknown as Connection;
 
 const WEBHOOK_CONNECTION = {
 	id: WEBHOOK_ID,
 	name: "飞书群机器人",
 	enabled: true,
-	kind: "direct",
-	connector: "webhook",
+	adapterKey: "webhook",
 	platform: "feishu",
-	config: { url: "https://open.feishu.cn/hook/abcdef", provider: "feishu", headers: {} },
+	platformSnapshot: snapshotFor("feishu"),
+	settings: { url: "https://open.feishu.cn/hook/abcdef", provider: "feishu", headers: {} },
 } as unknown as Connection;
 
 const MANAGED_TARGET = {

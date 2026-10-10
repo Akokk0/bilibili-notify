@@ -9,7 +9,10 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import {
+	isBuiltinConnection,
+	isEndpointConnection,
 	KNOWN_PLATFORMS,
 	makeEmptyConnection,
 	makeEmptyTarget,
@@ -75,16 +78,18 @@ describe("newId", () => {
 });
 
 describe("webhook adapter factories", () => {
-	it("makeEmptyConnection(feishu) 走 webhook 连接器并保留 headers", () => {
+	it("makeEmptyConnection(feishu) 走 webhook 适配器并保留 headers", () => {
 		const connection = makeEmptyConnection("feishu", "团队 webhook");
 		expect(connection.platform).toBe("feishu");
-		expect(connection.connector).toBe("webhook");
-		expect(connection.config).toMatchObject({
+		expect(connection.adapterKey).toBe("webhook");
+		expect(connection.settings).toMatchObject({
 			url: "https://example.com/hook",
 			headers: {},
 		});
-		// provider 已经升格成 platform —— 别在 config 里留一份影子。
-		expect(connection.config).not.toHaveProperty("provider");
+		// provider 已经升格成 platform —— 别在 settings 里留一份影子。
+		expect(connection.settings).not.toHaveProperty("provider");
+		// 平台快照由服务端按适配器的候选填,草稿里没有。
+		expect(connection).not.toHaveProperty("platformSnapshot");
 	});
 
 	it("KNOWN_PLATFORMS 把 webhook 那四家平铺出来,不再有一个叫 webhook 的平台", () => {
@@ -93,7 +98,10 @@ describe("webhook adapter factories", () => {
 	});
 
 	it("makeEmptyTarget(webhook 那族) 生成 endpoint 形态、平台跟着连接走", () => {
-		const connection = makeEmptyConnection("wecom", "团队 webhook");
+		const connection = {
+			...makeEmptyConnection("wecom", "团队 webhook"),
+			platformSnapshot: snapshotFor("wecom"),
+		};
 		const target = makeEmptyTarget(connection, "团队 webhook");
 		expect(target).toMatchObject({
 			connectionId: connection.id,
@@ -127,8 +135,8 @@ describe("qq-official adapter factories", () => {
 	it("makeEmptyConnection(qq-official) 默认 public 域 + 非沙箱 + 空凭据", () => {
 		const connection = makeEmptyConnection("qq-official", "QQ 官方机器人");
 		expect(connection.platform).toBe("qq-official");
-		if (connection.platform !== "qq-official") return;
-		expect(connection.config).toEqual({
+		expect(connection.adapterKey).toBe("qq-official");
+		expect(connection.settings).toEqual({
 			appId: "",
 			appSecret: "",
 			sandbox: false,
@@ -138,7 +146,10 @@ describe("qq-official adapter factories", () => {
 	});
 
 	it("makeEmptyTarget(qq-official) 默认 group scope + 空地址", () => {
-		const connection = makeEmptyConnection("qq-official", "QQ");
+		const connection = {
+			...makeEmptyConnection("qq-official", "QQ"),
+			platformSnapshot: snapshotFor("qq-official"),
+		};
 		const target = makeEmptyTarget(connection, "测试群");
 		expect(target).toMatchObject({
 			connectionId: connection.id,
@@ -153,9 +164,9 @@ describe("qq-official adapter factories", () => {
 
 describe("switchOnebotTransport", () => {
 	it("换连接方式时保留共用字段 —— 超时下限不该被悄悄打回默认", () => {
-		// strict schema 逼着换 transport 要整体换 config,共用字段得一个个搬过去。
+		// strict schema 逼着换 transport 要整体换 settings,共用字段得一个个搬过去。
 		// 漏搬哪个,主人就会遇到「明明调过、换个连接方式又变回去了」。
-		const http = makeEmptyConnection("onebot", "NapCat").config as Parameters<
+		const http = makeEmptyConnection("onebot", "NapCat").settings as Parameters<
 			typeof switchOnebotTransport
 		>[0];
 		const tuned = {
@@ -163,7 +174,7 @@ describe("switchOnebotTransport", () => {
 			timeoutMs: 45_000,
 			imageMinTimeoutMs: 0,
 			mergeForwardMinTimeoutMs: 90_000,
-			retryTimes: 2,
+			maxRetries: 2,
 			retryIntervalMs: 500,
 		};
 
@@ -175,5 +186,42 @@ describe("switchOnebotTransport", () => {
 			expect(next.mergeForwardMinTimeoutMs).toBe(90_000);
 			expect(next.retryIntervalMs).toBe(500);
 		}
+	});
+});
+
+describe("isEndpointConnection —— 读的是连接上存的快照,不是平台名也不是适配器键", () => {
+	it("快照说是 endpoint 就算:哪怕适配器键是拓展 id、平台名是面板不认得的", () => {
+		const connection = {
+			id: newId(),
+			name: "拓展提供的单向终点",
+			enabled: true,
+			adapterKey: "some-extension",
+			platform: "mystery-hook",
+			settings: {},
+			platformSnapshot: { ...snapshotFor("mystery-hook"), targetKind: "endpoint" as const },
+		};
+		expect(isEndpointConnection(connection)).toBe(true);
+		// 同一条换成会话快照就不是了 —— 判据只在快照上。
+		expect(
+			isEndpointConnection({
+				platformSnapshot: { ...connection.platformSnapshot, targetKind: "session" },
+			}),
+		).toBe(false);
+	});
+
+	it("内置那几家的快照与它们该有的一致:webhook 一族是 endpoint,OneBot / 官机不是", () => {
+		for (const platform of ["feishu", "dingtalk", "wecom", "generic"]) {
+			expect(isEndpointConnection({ platformSnapshot: snapshotFor(platform) })).toBe(true);
+		}
+		for (const platform of ["onebot", "qq-official"]) {
+			expect(isEndpointConnection({ platformSnapshot: snapshotFor(platform) })).toBe(false);
+		}
+	});
+
+	it("isBuiltinConnection 认保留 id:内置三个是,拓展 id 不是", () => {
+		for (const adapterKey of ["onebot", "qq-official", "webhook"]) {
+			expect(isBuiltinConnection({ adapterKey })).toBe(true);
+		}
+		expect(isBuiltinConnection({ adapterKey: "bridge" })).toBe(false);
 	});
 });

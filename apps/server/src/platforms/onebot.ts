@@ -2,16 +2,16 @@ import type { IncomingMessage } from "node:http";
 import type {
 	CapabilitySupport,
 	Connection,
+	ConnectionCandidate,
 	ConnectionCapabilities,
 	DeliveryResult,
 	DestinationRef,
-	DirectConnection,
 	Disposable,
 	Failure,
 	InboundSinks,
 	Logger,
 	NotificationPayload,
-	OnebotConnectionConfig,
+	OnebotConnectionSettings,
 	PayloadSegment,
 	PlatformAdapter,
 	PlatformAdapterContext,
@@ -19,12 +19,13 @@ import type {
 	Result,
 	ServiceContext,
 } from "@bilibili-notify/internal";
-import { connectionDispatchKey, fail, isConnectionOn, ok } from "@bilibili-notify/internal";
+import { fail, OnebotConnectionSettingsSchema, ok } from "@bilibili-notify/internal";
 import {
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
 import { routeInboundFrame } from "./onebot-inbound.js";
@@ -32,7 +33,7 @@ import { routeInboundFrame } from "./onebot-inbound.js";
 /**
  * OneBot v11 adapter — HTTP / 正向 WS(ws)/ 反向 WS(ws-reverse)三种连接方式。
  *
- * 由 adapter config 的 `transport` 字段区分(见 `OnebotConnectionConfigSchema`):
+ * 由连接 settings 的 `transport` 字段区分(见 `OnebotConnectionSettingsSchema`):
  * - `http`:独立端 fetch POST 到 bot 的 HTTP API(无状态,沿用原实现)。
  * - `ws`:独立端作 WS 客户端主动连 bot,长连接 + 自动重连。
  * - `ws-reverse`:独立端按 adapter 各自的 `port` 监听,bot 主动连入(端口即身份)。
@@ -57,7 +58,7 @@ export interface OnebotPlatformAdapterOptions {
 	 */
 	onInboundPrivate?: InboundSinks["onInboundPrivate"];
 	onInboundGroup?: InboundSinks["onInboundGroup"];
-	/** Fallback timeout (ms) when adapter.config.timeoutMs is missing. Defaults to 15s. */
+	/** Fallback timeout (ms) when settings.timeoutMs is missing. Defaults to 15s. */
 	timeoutMs?: number;
 	/**
 	 * 合并转发动作(send_*_forward_msg)的超时下限(ms)**兜底值**,默认 60s。NapCat
@@ -98,7 +99,7 @@ const DEFAULT_IMAGE_MIN_TIMEOUT_MS = ONEBOT_IMAGE_MIN_TIMEOUT_MS;
  * 仍会继续处理并把消息发进群(9 图合并转发常要 20~60s,远超常规 15s 超时)。
  *
  * send_* 动作非幂等:对这类失败盲重试,每次重试都是又一条完整消息,群里会收到
- * retryTimes+1 份(用户实测的「图集重复推送」)。发送路径见到本错误必须立即放弃
+ * maxRetries+1 份(用户实测的「图集重复推送」)。发送路径见到本错误必须立即放弃
  * 重试、如实报失败;只有「确定没发出去」(无连接 / 发送即抛错 / bot 明确报失败)
  * 才允许走重试。
  */
@@ -170,15 +171,18 @@ function minTimeoutLimits(
 }
 
 /**
- * 这个 adapter 认的那一档连接 —— `isConnectionOn(c, "onebot")` 收窄之后的形状,`config`
- * 跟着窄成 {@link OnebotConnectionConfig}。内部那些 helper 一律收它,于是「这是条 OneBot
- * 连接」只在几个入口各判一次,底下不用再一路 `as` 下去。
+ * 这个 adapter 认的那一档连接 —— `isMine(c)` 收窄之后的形状,`settings` 跟着窄成
+ * {@link OnebotConnectionSettings}。**宿主递来的连接,`settings` 一律是按
+ * `OnebotConnectionSettingsSchema` 解过的输出**(派发器与适配器上下文保证),这里只认键、不再解。
+ * 内部那些 helper 一律收它,于是「这是条 OneBot 连接」只在几个入口各判一次,底下不用再一路 `as` 下去。
  */
-type OnebotConnection = Extract<DirectConnection, { platform: "onebot" }>;
+type OnebotConnection = Connection & { settings: OnebotConnectionSettings };
 
-type OnebotHttpConfig = Extract<OnebotConnectionConfig, { transport: "http" }>;
-type OnebotWsConfig = Extract<OnebotConnectionConfig, { transport: "ws" }>;
-type OnebotWsReverseConfig = Extract<OnebotConnectionConfig, { transport: "ws-reverse" }>;
+const isMine = (c: Connection): c is OnebotConnection => c.adapterKey === "onebot";
+
+type OnebotHttpConfig = Extract<OnebotConnectionSettings, { transport: "http" }>;
+type OnebotWsConfig = Extract<OnebotConnectionSettings, { transport: "ws" }>;
+type OnebotWsReverseConfig = Extract<OnebotConnectionSettings, { transport: "ws-reverse" }>;
 
 interface OneBotMessageSegment {
 	type: "text" | "image" | "at" | "json";
@@ -484,12 +488,12 @@ async function postOnebot(
 		nonIdempotent?: boolean;
 	},
 ): Promise<OneBotResponse> {
-	const retryTimes = cfg.retryTimes ?? 0;
+	const maxRetries = cfg.maxRetries ?? 0;
 	const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
 	const timeoutMs = Math.max(cfg.timeoutMs ?? fallbackTimeoutMs, opts?.minTimeoutMs ?? 0);
 	let lastErr: unknown;
 	let lastResponse: OneBotResponse | undefined;
-	for (let attempt = 0; attempt <= retryTimes; attempt++) {
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
 			const result = await postOnebotOnce(cfg, endpoint, body, timeoutMs);
 			if (result.status === "ok" && result.retcode === 0) return result;
@@ -499,7 +503,7 @@ async function postOnebot(
 			if (opts?.nonIdempotent && e instanceof IndeterminateActionError) throw e;
 			lastErr = e;
 		}
-		if (attempt < retryTimes && retryIntervalMs > 0) {
+		if (attempt < maxRetries && retryIntervalMs > 0) {
 			await new Promise((r) => setTimeout(r, retryIntervalMs));
 		}
 	}
@@ -915,7 +919,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 	 * 失败统一返回 null,buildSendAction 兜到 FALLBACK_BOT_IDENTITY,保推送可达。
 	 */
 	async function fetchBotIdentity(connection: OnebotConnection): Promise<BotIdentity | null> {
-		const cfg = connection.config;
+		const cfg = connection.settings;
 		try {
 			if (cfg.transport === "http") {
 				const res = await postOnebot(cfg, "/get_login_info", {}, fallbackTimeoutMs);
@@ -991,7 +995,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		action: string,
 		params: Record<string, unknown>,
 	): Promise<OneBotResponse> {
-		const cfg = connection.config;
+		const cfg = connection.settings;
 		const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
 		if (cfg.transport === "http") return postOnebotOnce(cfg, `/${action}`, params, timeoutMs);
 		const channel = channelOf(connection.id, cfg);
@@ -1159,7 +1163,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		built: OnebotAction,
 		t0: number,
 	): Promise<DeliveryResult> {
-		const cfg = connection.config;
+		const cfg = connection.settings;
 		if (cfg.transport === "http") {
 			try {
 				const result = await postOnebot(cfg, `/${built.action}`, built.params, fallbackTimeoutMs, {
@@ -1210,10 +1214,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			baseTimeoutMs,
 			minTimeoutFor(action, params, minTimeoutLimits(cfg, minTimeoutFallbacks)),
 		);
-		const retryTimes = cfg.retryTimes ?? 0;
+		const maxRetries = cfg.maxRetries ?? 0;
 		const retryIntervalMs = cfg.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
 		let last: Failure = fail("unavailable", "ws send failed");
-		for (let attempt = 0; attempt <= retryTimes; attempt++) {
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
 			const channel =
 				cfg.transport === "ws"
 					? (forwardConns.get(connectionId)?.getChannel() ?? null)
@@ -1231,12 +1235,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 				} catch (e) {
 					last = thrownFailure(e, "sent");
 					// 结果未知(超时/连接中断):帧已发出,bot 可能已把消息发进群。send_*
-					// 非幂等 —— 盲重试 = 群里收到 retryTimes+1 份(用户实测的图集重复
+					// 非幂等 —— 盲重试 = 群里收到 maxRetries+1 份(用户实测的图集重复
 					// 推送)。立即放弃,如实报失败并注明可能已送达。
 					if (last.code === "indeterminate") break;
 				}
 			}
-			if (attempt < retryTimes && retryIntervalMs > 0) {
+			if (attempt < maxRetries && retryIntervalMs > 0) {
 				await new Promise((r) => setTimeout(r, retryIntervalMs));
 			}
 		}
@@ -1246,9 +1250,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 	function reconcile(connections: readonly Connection[]): void {
 		if (disposed) return;
-		const onebots = connections.filter(
-			(a): a is OnebotConnection => isConnectionOn(a, "onebot") && a.enabled,
-		);
+		const onebots = connections.filter((a): a is OnebotConnection => isMine(a) && a.enabled);
 
 		// --- bot 身份缓存清理 ---
 		// reconcile 触发频率低(dashboard 改 adapter / target 配置才触发),
@@ -1259,7 +1261,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 		// --- 能力缓存 ---
 		// 只在连接的配置真变了(指向另一个实现)或连接没了时丢;配置没变就留着。**不能全清**:
-		// 健康探测每五分钟写回 testStatus 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
+		// 健康探测每五分钟写回 probeState 也会触发一次 reconcile,而反向 ws 的 bot 早已连着、
 		// 不会再触发「连入」重探 —— 全清的话面板永远停在「未探测」(真机踩到)。
 		for (const id of [...knownConnections.keys()]) {
 			if (onebots.some((a) => a.id === id)) continue;
@@ -1269,20 +1271,20 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			lastCapabilityProbeAt.delete(id);
 		}
 		for (const a of onebots) {
-			const fp = JSON.stringify(a.config);
+			const fp = JSON.stringify(a.settings);
 			const changed = capabilityFingerprints.get(a.id) !== fp;
 			capabilityFingerprints.set(a.id, fp);
 			knownConnections.set(a.id, a);
 			if (changed) miniAppCardSupport.delete(a.id);
 			// ws 的两种在通道就绪时探;http 没有「连上」这一刻,配置变了或还没探出来就在这儿探。
-			const cfg = a.config;
+			const cfg = a.settings;
 			if (cfg.transport === "http" && !miniAppCardSupport.has(a.id)) void probeMiniAppCard(a);
 		}
 
 		// --- 正向 ws ---
 		const desiredFwd = new Map<string, OnebotWsConfig>();
 		for (const a of onebots) {
-			const cfg = a.config;
+			const cfg = a.settings;
 			if (cfg.transport === "ws") desiredFwd.set(a.id, cfg);
 		}
 		for (const [id, conn] of forwardConns) {
@@ -1307,7 +1309,7 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		// --- 反向 ws ---
 		const desiredRev = new Map<string, OnebotWsReverseConfig>();
 		for (const a of onebots) {
-			const cfg = a.config;
+			const cfg = a.settings;
 			if (cfg.transport === "ws-reverse") desiredRev.set(a.id, cfg);
 		}
 		for (const [id, lis] of reverseListeners) {
@@ -1332,11 +1334,16 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 
 	return {
 		adapterKey: "onebot",
+		settingsSchema: OnebotConnectionSettingsSchema,
+
+		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
+			return builtinCandidatesFor("onebot");
+		},
 
 		isAvailable(connection: Connection, _destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留收窄类型。
-			if (!isConnectionOn(connection, "onebot")) return false;
-			const cfg = connection.config;
+			if (!isMine(connection)) return false;
+			const cfg = connection.settings;
 			if (cfg.transport === "http") return cfg.baseUrl.length > 0;
 			if (cfg.transport === "ws") return cfg.url.length > 0;
 			return true; // ws-reverse:运行期可达性由 send/probe 判断
@@ -1353,10 +1360,10 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 		},
 
 		async probe(connection: Connection): Promise<ProbeResult> {
-			if (!isConnectionOn(connection, "onebot")) {
-				return fail("invalid", `wrong platform: ${connectionDispatchKey(connection)}`);
+			if (!isMine(connection)) {
+				return fail("invalid", `wrong platform: ${connection.adapterKey}`);
 			}
-			const cfg = connection.config;
+			const cfg = connection.settings;
 			const t0 = Date.now();
 			const timeoutMs = cfg.timeoutMs ?? fallbackTimeoutMs;
 			/** 问一次 `get_status`。探测是幂等的:超时记 `timeout`,断连 / 连不上记 `unavailable`。 */
@@ -1396,8 +1403,8 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
-			if (!isConnectionOn(connection, "onebot")) {
-				return fail("invalid", `wrong platform: adapter=${connectionDispatchKey(connection)}`);
+			if (!isMine(connection)) {
+				return fail("invalid", `wrong platform: adapter=${connection.adapterKey}`);
 			}
 			if (payload.kind === "miniapp-card") return sendMiniAppCard(connection, destination, payload);
 			// 先用 fallback botInfo 跑一遍 buildSendAction 做 target 校验 ——

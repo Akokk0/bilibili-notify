@@ -1,7 +1,9 @@
 import type { Connection, Logger, PlatformAdapter } from "@bilibili-notify/internal";
 import { ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher } from "../../push/target-dispatcher.js";
 import { createLinkReplySender } from "../link-reply.js";
@@ -18,11 +20,11 @@ function connection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "conn-1",
 		name: "bot",
-		kind: "direct",
-		connector: "http",
+		adapterKey: "onebot",
 		platform: "onebot",
 		enabled: true,
-		config: {},
+		settings: {},
+		platformSnapshot: snapshotFor("onebot"),
 		...over,
 	} as unknown as Connection;
 }
@@ -31,6 +33,7 @@ function setup(conn: Connection = connection()) {
 	const send = vi.fn(async () => ok({ latencyMs: 5 }));
 	const adapter: PlatformAdapter = {
 		adapterKey: "onebot",
+		settingsSchema: z.unknown(),
 		isAvailable: () => true,
 		send,
 		probe: async () => ok({ latencyMs: 1 }),

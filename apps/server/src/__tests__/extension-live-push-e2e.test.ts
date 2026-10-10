@@ -181,10 +181,9 @@ describe("拓展直播 e2e:假源报开播 / 下播 → 出卡、按版式推到
 						id: SUBS[key].connection,
 						name: `本地 webhook ${key}`,
 						enabled: true,
-						kind: "direct",
-						connector: "webhook",
+						adapterKey: "webhook",
 						platform: "generic",
-						config: { url: `${hookUrl}/${key}`, headers: {} },
+						settings: { url: `${hookUrl}/${key}`, headers: {} },
 					}),
 				}),
 			);

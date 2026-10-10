@@ -3,7 +3,10 @@ import { join } from "node:path";
 import {
 	type ConfigScope,
 	type Connection,
+	type ConnectionProbeState,
+	ConnectionProbeStateSchema,
 	ConnectionSchema,
+	ConnectionShellSchema,
 	createSerialQueue,
 	DEFAULT_MESSAGE_LAYOUT,
 	type Disposable,
@@ -14,10 +17,13 @@ import {
 	GlobalConfigSchema,
 	type Issue,
 	isPrivateTarget,
-	isWebhookConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
+	NewConnectionSchema,
+	neutralPlatformSnapshot,
 	normalizeMessageLayout,
+	type PlatformSnapshot,
+	PlatformSnapshotSchema,
 	type PushTarget,
 	PushTargetSchema,
 	type ServiceContext,
@@ -25,6 +31,7 @@ import {
 	SubscriptionSchema,
 	type SubscriptionTag,
 	SubscriptionTagListSchema,
+	type TargetReachability,
 } from "@bilibili-notify/internal";
 import { atomicWriteFile, atomicWriteJson } from "@bilibili-notify/storage";
 import {
@@ -32,7 +39,7 @@ import {
 	findNewIdentityDuplicates,
 	type IdentityDuplicate,
 } from "@bilibili-notify/subscription";
-import type { z } from "zod";
+import type { ZodType, z } from "zod";
 import { dataPath } from "../runtime/roots.js";
 import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
 import type { BootstrapConfig } from "./schema.js";
@@ -189,14 +196,25 @@ export interface ConfigStore {
 	 * 新表里没有了的标签,订阅上的 id 在同一次写里一起去掉。回存下的那张表。
 	 */
 	replaceSubscriptionTags(tags: SubscriptionTag[]): Promise<SubscriptionTag[]>;
+	/** 整条写(快照取调用方给的):外壳与快照形状 + 适配器在场时验 `settings` + 身份守卫。 */
 	upsertConnection(connection: Connection): Promise<void>;
-	/** 只管新建:同 id 已存在回 `conflict`(编辑走 {@link patchConnection} —— 整条覆盖分不开「没带」与「清空」)。 */
-	createConnection(connection: Connection): Promise<void>;
+	/**
+	 * 只管新建:同 id 已存在回 `conflict`(编辑走 {@link patchConnection} —— 整条覆盖分不开「没带」与「清空」)。
+	 * `input` 按 {@link NewConnectionSchema} 收(宿主独写的 `platformSnapshot` / `probeState` 带来了也被剥掉),
+	 * 快照由调用方(路由)从适配器的候选抄来。
+	 */
+	createConnection(input: unknown, platformSnapshot: PlatformSnapshot): Promise<void>;
+	/**
+	 * 补丁里带来的 `platformSnapshot` / `probeState` 一律忽略(只有宿主写);只有补丁里带了 `settings`
+	 * 才验 `settings` —— 被隔离的连接照样能改名、能停用。
+	 */
 	patchConnection(id: string, patch: DeepPartial<Connection>): Promise<Connection>;
+	/** 只换探测状态那一格:不验 `settings`、不做托管目标同步;发 `config-changed { scope: "connections" }`。 */
+	recordConnectionProbeState(id: string, state: ConnectionProbeState): Promise<Connection>;
 	deleteConnection(id: string): Promise<boolean>;
 	upsertTarget(target: PushTarget): Promise<void>;
 	patchTarget(id: string, patch: DeepPartial<PushTarget>): Promise<PushTarget>;
-	recordTargetTestStatus(id: string, status: PushTarget["testStatus"]): Promise<PushTarget>;
+	recordTargetReachability(id: string, reachability: TargetReachability): Promise<PushTarget>;
 	deleteTarget(id: string): Promise<boolean>;
 
 	/**
@@ -230,6 +248,11 @@ export interface CreateConfigStoreOptions {
 	secretStore?: SecretStore;
 	/** 登记进来的各集成的设置(见 {@link IntegrationSettingsSegment})。键不能重复,也不能和核心设置的顶层键同名。 */
 	integrationSettings?: readonly IntegrationSettingsSegment[];
+	/**
+	 * 在场的适配器的 `settingsSchema`;不在场回 undefined。现取的闭包(适配器来去,拓展拨一下开关就变)。
+	 * 不给 = 一律当不在场:保存时不验 `settings`(测试与不关心连接的调用方)。
+	 */
+	connectionSettingsSchemaOf?: (adapterKey: string) => ZodType | undefined;
 }
 
 // 一次配置写入被拒:类在 validation-error.ts(自带标准码与中文话,路由按码回、不嗅文案)。
@@ -417,7 +440,7 @@ async function fileExists(absPath: string): Promise<boolean> {
 }
 
 /**
- * 连接的**身份轴**不许改 —— 换 `kind` 或换 `platform` 都等于换了另一条连接,而目标还
+ * 连接的**身份轴**不许改 —— 换 `adapterKey` 或换 `platform` 都等于换了另一条连接,而目标还
  * 挂在原来那个 id 上。允许改的话,「onebot 群目标」会一夜之间挂在一条飞书连接下面。
  *
  * 🔴 **两支都比 platform。** 拓展那一支曾经没有这一格(那时它是「一条桥接入」,驮着 N 个
@@ -429,11 +452,11 @@ async function fileExists(absPath: string): Promise<boolean> {
  * (QQ 群号被当成 telegram 地址),再没有目标上那份拷贝来兜底,所以这一道要留着。
  */
 function assertConnectionIdentityStable(current: Connection, next: Connection): void {
-	if (current.kind !== next.kind) {
+	if (current.adapterKey !== next.adapterKey) {
 		throw ConfigValidationError.invalid(
 			"connections",
-			`连接的类型不能改（${current.kind} → ${next.kind}），要换就删了重建`,
-			[{ path: ["kind"], message: "身份格不许改" }],
+			`连接的适配器不能改（${current.adapterKey} → ${next.adapterKey}），要换就删了重建`,
+			[{ path: ["adapterKey"], message: "身份格不许改" }],
 		);
 	}
 	if (current.platform !== next.platform) {
@@ -518,7 +541,7 @@ function assertTargetKeepsConnection(before: PushTarget | undefined, after: Push
  * 整节替换的统一规矩(不分「换了哪一节」,两节一起交的合并式备份恢复也走这里):对替换**之后**的
  * 每个目标,若替换之前有同 id 的目标 ——
  * ① 它的 `connectionId` 必须没变;
- * ② 它所指的连接若在替换前后都在,连接的 `kind` 与 `platform` 都必须没变
+ * ② 它所指的连接若在替换前后都在,连接的 `adapterKey` 与 `platform` 都必须没变
  *    (`assertConnectionIdentityStable` 管的是逐条写,这条路不经过它)。
  * 替换之前没有的新目标不比。
  */
@@ -536,16 +559,16 @@ function assertRetainedTargetsKeepOwner(
 		const after = newConnections.find((c) => c.id === target.connectionId);
 		if (!before || !after) continue;
 		const platformChanged = before.platform !== after.platform;
-		if (!platformChanged && before.kind === after.kind) continue;
+		if (!platformChanged && before.adapterKey === after.adapterKey) continue;
 		const change = platformChanged
 			? `平台变了（${before.platform} → ${after.platform}）`
-			: `种类变了（${before.kind} → ${after.kind}）`;
+			: `适配器变了（${before.adapterKey} → ${after.adapterKey}）`;
 		throw ConfigValidationError.invalid(
 			"connections",
 			`连接「${after.name}」的${change}，它底下还挂着推送目标；要换平台请新建一条连接`,
 			[
 				{
-					path: [platformChanged ? "platform" : "kind"],
+					path: [platformChanged ? "platform" : "adapterKey"],
 					message: "底下还挂着推送目标，平台不能变",
 				},
 			],
@@ -553,8 +576,11 @@ function assertRetainedTargetsKeepOwner(
 	}
 }
 
-/** 靠 webhook 连的那族连接 —— 判据是**连接器**,平台是飞书 / 钉钉 / 企微 / 未指明中的一个。 */
-type WebhookConnection = Extract<Connection, { connector: "webhook" }>;
+/**
+ * 这条连接有没有一个由它托管的目标 —— 判据是平台快照上的**目标形态**(`endpoint`:地址烧在设置里,
+ * 目标只是个壳),不是平台名也不是适配器键(PUSH:156)。
+ */
+const hasManagedTarget = (c: Connection): boolean => c.platformSnapshot.targetKind === "endpoint";
 
 /**
  * 托管目标的 id。**种子里那个 `adapter` 是冻住的**,别顺着改名一起改:它算出来的 uuid
@@ -565,10 +591,7 @@ function managedWebhookTargetId(connectionId: string): string {
 	return deterministicUuid(`push-target:webhook-adapter:${connectionId}`);
 }
 
-function makeManagedWebhookTarget(
-	connection: WebhookConnection,
-	existing?: PushTarget,
-): PushTarget {
+function makeManagedWebhookTarget(connection: Connection, existing?: PushTarget): PushTarget {
 	return {
 		id: existing?.id ?? managedWebhookTargetId(connection.id),
 		name: connection.name || "Webhook",
@@ -576,12 +599,12 @@ function makeManagedWebhookTarget(
 		kind: "endpoint",
 		enabled: connection.enabled,
 		managedBy: "connection",
-		testStatus: existing?.testStatus,
+		reachability: existing?.reachability,
 	};
 }
 
 function syncManagedWebhookTarget(
-	connection: WebhookConnection,
+	connection: Connection,
 	targets: readonly PushTarget[],
 ): { next: PushTarget[]; changed: boolean; aliases: Map<string, string> } {
 	const owned = targets.filter((t) => t.kind === "endpoint" && t.connectionId === connection.id);
@@ -616,7 +639,7 @@ function syncManagedWebhookTargets(
 	let changed = false;
 	const aliases = new Map<string, string>();
 	for (const connection of connections) {
-		if (!isWebhookConnection(connection)) continue;
+		if (!hasManagedTarget(connection)) continue;
 		const r = syncManagedWebhookTarget(connection, next);
 		next = r.next;
 		changed ||= r.changed;
@@ -775,6 +798,7 @@ class NodeConfigStore implements ConfigStore {
 	readonly bootstrap: BootstrapConfig;
 	private readonly bus: MessageBus;
 	private readonly serviceCtx: ServiceContext;
+	private readonly connectionSettingsSchemaOf: (adapterKey: string) => ZodType | undefined;
 	private readonly stateDir: string;
 	private readonly secretStore?: SecretStore;
 	private secretBag: ConfigSecrets = {};
@@ -815,6 +839,7 @@ class NodeConfigStore implements ConfigStore {
 		this.serviceCtx = opts.serviceCtx;
 		this.stateDir = opts.stateDir ?? dataPath(opts.dataRoot, ...CONFIG_DIR);
 		this.secretStore = opts.secretStore;
+		this.connectionSettingsSchemaOf = opts.connectionSettingsSchemaOf ?? (() => undefined);
 		this.segments = segmentsByKey(opts.integrationSettings ?? []);
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
@@ -1104,16 +1129,9 @@ class NodeConfigStore implements ConfigStore {
 			throw ConfigValidationError.invalid("targets", "targets.json 里的内容不是数组");
 		}
 
-		this.connections = connectionsRaw.map((raw, idx) => {
-			const r = ConnectionSchema.safeParse(raw);
-			if (!r.success) {
-				throw ConfigValidationError.fromZod("connections", r.error, {
-					subject: `connections.json 第 ${idx + 1} 行`,
-					prefix: [idx],
-				});
-			}
-			return r.data;
-		});
+		this.connections = connectionsRaw.map((raw, idx) =>
+			readConnection(raw, idx, (msg) => this.serviceCtx.logger.warn(msg)),
+		);
 		this.meta.connections.exists = true;
 
 		const targets = targetsRaw.map((raw, idx) => {
@@ -1425,7 +1443,7 @@ class NodeConfigStore implements ConfigStore {
 	 */
 	private async syncWebhookSideEffects(connection: Connection): Promise<void> {
 		let targetAliases = new Map<string, string>();
-		const targetsChanged = isWebhookConnection(connection)
+		const targetsChanged = hasManagedTarget(connection)
 			? await this.runScoped("targets", async () => {
 					const synced = syncManagedWebhookTarget(connection, this.targets);
 					targetAliases = synced.aliases;
@@ -1443,32 +1461,63 @@ class NodeConfigStore implements ConfigStore {
 	}
 
 	async upsertConnection(connection: Connection): Promise<void> {
-		await this.writeConnection(connection, "upsert");
+		await this.writeConnection({ mode: "upsert", connection });
 	}
 
-	async createConnection(connection: Connection): Promise<void> {
-		await this.writeConnection(connection, "create");
+	async createConnection(input: unknown, platformSnapshot: PlatformSnapshot): Promise<void> {
+		await this.writeConnection({ mode: "create", input, platformSnapshot });
 	}
 
-	private async writeConnection(connection: Connection, mode: "upsert" | "create"): Promise<void> {
+	/**
+	 * 适配器在场:按它的 `settingsSchema` 解,不过抛 `invalid`(原因的路径以 `settings` 打头),过了回解过的值
+	 * (补了默认值);不在场:原样(形状归适配器,此刻没人能验)。
+	 */
+	private validatedSettings(adapterKey: string, settings: unknown): unknown {
+		const schema = this.connectionSettingsSchemaOf(adapterKey);
+		if (!schema) return settings;
+		const parsed = schema.safeParse(settings);
+		if (!parsed.success) {
+			throw ConfigValidationError.fromZod("connections", parsed.error, { prefix: ["settings"] });
+		}
+		return parsed.data;
+	}
+
+	private async writeConnection(
+		job:
+			| { mode: "upsert"; connection: Connection }
+			| { mode: "create"; input: unknown; platformSnapshot: PlatformSnapshot },
+	): Promise<void> {
 		const saved = await this.runScoped("connections", async () => {
-			const parsed = ConnectionSchema.safeParse(connection);
+			let candidate: unknown;
+			if (job.mode === "create") {
+				// 宿主独写的两格(快照、探测状态)不在这份 schema 里,带来了也被剥掉。
+				const draft = NewConnectionSchema.safeParse(job.input);
+				if (!draft.success) throw ConfigValidationError.fromZod("connections", draft.error);
+				if (this.connections.some((a) => a.id === draft.data.id)) {
+					throw ConfigValidationError.conflict(
+						"connections",
+						"这条连接已经存在 —— 要改请用 PATCH /api/connections/:id,新建别复用 id",
+					);
+				}
+				candidate = { ...draft.data, platformSnapshot: job.platformSnapshot };
+			} else {
+				candidate = job.connection;
+			}
+			const parsed = ConnectionSchema.safeParse(candidate);
 			if (!parsed.success) {
 				throw ConfigValidationError.fromZod("connections", parsed.error);
 			}
-			const existing = this.connections.find((a) => a.id === parsed.data.id);
-			if (existing && mode === "create") {
-				throw ConfigValidationError.conflict(
-					"connections",
-					"这条连接已经存在 —— 要改请用 PATCH /api/connections/:id,新建别复用 id",
-				);
-			}
-			if (existing) assertConnectionIdentityStable(existing, parsed.data);
-			const next = upsertById(this.connections, parsed.data);
+			const connection: Connection = {
+				...parsed.data,
+				settings: this.validatedSettings(parsed.data.adapterKey, parsed.data.settings),
+			};
+			const existing = this.connections.find((a) => a.id === connection.id);
+			if (existing) assertConnectionIdentityStable(existing, connection);
+			const next = upsertById(this.connections, connection);
 			await atomicWriteJson(this.path("connections"), next);
 			this.connections = next;
 			this.touch("connections");
-			return parsed.data;
+			return connection;
 		});
 		await this.syncWebhookSideEffects(saved);
 	}
@@ -1480,20 +1529,47 @@ class NodeConfigStore implements ConfigStore {
 				throw ConfigValidationError.notFound("connections", `没有 id 为 ${id} 的连接`);
 			}
 			const current = this.connections[idx] as Connection;
-			const merged = deepMerge(current, { ...patch, id });
+			// 快照与探测状态只有宿主写:补丁里带来的一律忽略。
+			const { platformSnapshot: _snapshot, probeState: _probe, ...rest } = patch;
+			const merged = deepMerge(current, { ...rest, id });
 			const parsed = ConnectionSchema.safeParse(merged);
 			if (!parsed.success) {
 				throw ConfigValidationError.fromZod("connections", parsed.error);
 			}
 			assertConnectionIdentityStable(current, parsed.data);
+			// 只有补丁动到了 settings 才验(SV 规矩 2:存量里别的不合规的不连坐)—— 被隔离的连接才能改名、能停用。
+			const connection: Connection =
+				rest.settings === undefined
+					? parsed.data
+					: {
+							...parsed.data,
+							settings: this.validatedSettings(parsed.data.adapterKey, parsed.data.settings),
+						};
 			const next = [...this.connections];
-			next[idx] = parsed.data;
+			next[idx] = connection;
 			await atomicWriteJson(this.path("connections"), next);
 			this.connections = next;
 			this.touch("connections");
-			return parsed.data;
+			return connection;
 		});
 		await this.syncWebhookSideEffects(result);
+		return deepClone(result);
+	}
+
+	async recordConnectionProbeState(id: string, state: ConnectionProbeState): Promise<Connection> {
+		const result = await this.runScoped("connections", async () => {
+			const idx = this.connections.findIndex((a) => a.id === id);
+			if (idx < 0) {
+				throw ConfigValidationError.notFound("connections", `没有 id 为 ${id} 的连接`);
+			}
+			const next = [...this.connections];
+			next[idx] = { ...(this.connections[idx] as Connection), probeState: state };
+			await atomicWriteJson(this.path("connections"), next);
+			this.connections = next;
+			this.touch("connections");
+			return next[idx] as Connection;
+		});
+		this.bus.emit("config-changed", { scope: "connections" });
 		return deepClone(result);
 	}
 
@@ -1507,7 +1583,7 @@ class NodeConfigStore implements ConfigStore {
 			// 删除执行前一个 upsertTarget 引用该连接即产生孤儿 target。
 			// (互补:upsertTarget 侧 assertTargetOwner 也校验连接存在。)
 			const referencing = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
-			if (!isWebhookConnection(connection) && referencing.length > 0) {
+			if (!hasManagedTarget(connection) && referencing.length > 0) {
 				throw ConfigValidationError.conflict(
 					"connections",
 					`这条连接还被 ${referencing.length} 个推送目标用着，先解除引用再删`,
@@ -1523,7 +1599,7 @@ class NodeConfigStore implements ConfigStore {
 
 		let targetsChanged = false;
 		let subscriptionsChanged = false;
-		if (isWebhookConnection(removedConnection)) {
+		if (hasManagedTarget(removedConnection)) {
 			let removedTargetIds: string[] = [];
 			targetsChanged = await this.runScoped("targets", async () => {
 				removedTargetIds = this.targets.filter((t) => t.connectionId === id).map((t) => t.id);
@@ -1580,7 +1656,7 @@ class NodeConfigStore implements ConfigStore {
 			// 并存。由它决定谁留下、把另一个记进 aliases,订阅引用随后跟着改写 —— 与
 			// upsertConnection 完全同一条路径,别在这儿另写一套。
 			const owner = this.connections.find((a) => a.id === parsed.data.connectionId);
-			if (owner && isWebhookConnection(owner)) {
+			if (owner && hasManagedTarget(owner)) {
 				const synced = syncManagedWebhookTarget(owner, next);
 				next = synced.next;
 				targetAliases = synced.aliases;
@@ -1628,14 +1704,17 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(result);
 	}
 
-	async recordTargetTestStatus(id: string, status: PushTarget["testStatus"]): Promise<PushTarget> {
+	async recordTargetReachability(
+		id: string,
+		reachability: TargetReachability,
+	): Promise<PushTarget> {
 		const result = await this.runScoped("targets", async () => {
 			const idx = this.targets.findIndex((t) => t.id === id);
 			if (idx < 0) {
 				throw ConfigValidationError.notFound("targets", `没有 id 为 ${id} 的推送目标`);
 			}
 			const next = [...this.targets];
-			next[idx] = { ...(this.targets[idx] as PushTarget), testStatus: status };
+			next[idx] = { ...(this.targets[idx] as PushTarget), reachability };
 			await atomicWriteJson(this.path("targets"), next);
 			this.targets = next;
 			this.touch("targets");
@@ -1885,6 +1964,36 @@ function parseAll(scope: ConfigScope, items: readonly unknown[]): unknown[] {
 		}
 		return r.data;
 	});
+}
+
+/**
+ * 读盘时的一条连接:只有**外壳**(id / name / enabled / adapterKey / platform)坏了才抛、挡开机
+ * (SV 规矩 9)。`settings` 原样留着(不解、不补默认值)—— 它过不过得了适配器的规则要等适配器在场才知道
+ * (读盘那一刻一个适配器都不在场),所以「隔离」不存在配置仓里,用的时候现算。
+ * `platformSnapshot` / `probeState` 是宿主自己写的派生物,坏了在内存里退成中性快照 / 没探过,盘上不动。
+ */
+function readConnection(raw: unknown, idx: number, warn: (msg: string) => void): Connection {
+	const shell = ConnectionShellSchema.safeParse(raw);
+	if (!shell.success) {
+		throw ConfigValidationError.fromZod("connections", shell.error, {
+			subject: `connections.json 第 ${idx + 1} 行`,
+			prefix: [idx],
+		});
+	}
+	const record = raw as Record<string, unknown>;
+	const snapshot = PlatformSnapshotSchema.safeParse(record.platformSnapshot);
+	if (!snapshot.success) {
+		warn(`[config] 连接「${shell.data.name}」的 platformSnapshot 读不了,先按认不出的平台画`);
+	}
+	const probe = ConnectionProbeStateSchema.safeParse(record.probeState);
+	return {
+		...shell.data,
+		settings: record.settings,
+		platformSnapshot: snapshot.success
+			? snapshot.data
+			: neutralPlatformSnapshot(shell.data.platform),
+		...(probe.success ? { probeState: probe.data } : {}),
+	};
 }
 
 function upsertById<T extends { id: string }>(arr: readonly T[], item: T): T[] {

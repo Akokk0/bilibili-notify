@@ -7,7 +7,7 @@
  * 不计毕业。
  *
  * 钉住的边界:
- * - adapter 步要求 **enabled 且 testStatus.ok** —— 只建不测不算(定案原文
+ * - adapter 步要求 **enabled 且 probeState.status 为 reachable** —— 只建不测不算(定案原文
  *   「adapter 存在且 test 通过」);disabled 的 adapter 测过也不算,它不会参与推送。
  * - target 步要求 enabled;test 步只看「任一 target 测试成功过」不看 enabled ——
  *   测通后禁用目标,test 不回退(test=证明过整条链路通,不是当前时刻的可推送性),
@@ -53,7 +53,7 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				connections: [{ enabled: true, testStatus: undefined }],
+				connections: [{ enabled: true, probeState: undefined }],
 			}),
 		);
 		expect(stepMap(v).connection).toBe(false);
@@ -67,7 +67,9 @@ describe("deriveOnboarding 步骤判据", () => {
 
 	it("disabled 的 adapter 测过也不算 —— 它不参与推送", () => {
 		const v = deriveOnboarding(
-			inputs({ connections: [{ enabled: false, testStatus: { ok: true } }] }),
+			inputs({
+				connections: [{ enabled: false, probeState: { status: "reachable", lastCheckedAt: "t" } }],
+			}),
 		);
 		expect(stepMap(v).connection).toBe(false);
 	});
@@ -76,8 +78,8 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
-				targets: [{ enabled: true, testStatus: undefined }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
+				targets: [{ enabled: true, reachability: undefined }],
 			}),
 		);
 		expect(v.doneCount).toBe(3);
@@ -88,8 +90,8 @@ describe("deriveOnboarding 步骤判据", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
-				targets: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
+				targets: [{ enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			}),
 		);
 		expect(v.doneCount).toBe(4);
@@ -102,8 +104,8 @@ describe("deriveOnboarding 步骤判据", () => {
 			inputs({
 				biliLoggedIn: true,
 				subsCount: 1,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
-				targets: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
+				targets: [{ enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			}),
 		);
 		expect(v.allDone).toBe(true);
@@ -115,8 +117,8 @@ describe("deriveOnboarding 步骤判据", () => {
 			inputs({
 				biliLoggedIn: true,
 				subsCount: 1,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
-				targets: [{ enabled: false, testStatus: { ok: true } }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
+				targets: [{ enabled: false, reachability: { status: "reachable", changedAt: "t" } }],
 			}),
 		);
 		const m = stepMap(v);
@@ -127,7 +129,11 @@ describe("deriveOnboarding 步骤判据", () => {
 	});
 
 	it("测试失败(ok:false)→ test 步未完成", () => {
-		const v = deriveOnboarding(inputs({ targets: [{ enabled: true, testStatus: { ok: false } }] }));
+		const v = deriveOnboarding(
+			inputs({
+				targets: [{ enabled: true, reachability: { status: "unreachable", changedAt: "t" } }],
+			}),
+		);
 		expect(stepMap(v).test).toBe(false);
 	});
 });
@@ -146,8 +152,8 @@ describe("deriveOnboarding 可选尾巴", () => {
 			inputs({
 				biliLoggedIn: true,
 				subsCount: 1,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
-				targets: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
+				targets: [{ enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 				modules: { image: true, ai: false },
 			}),
 		);
@@ -172,7 +178,10 @@ describe("deriveOnboarding failNote", () => {
 			inputs({
 				biliLoggedIn: true,
 				connections: [
-					{ enabled: true, testStatus: { ok: false, err: "连接被拒绝", lastCheckedAt: "t1" } },
+					{
+						enabled: true,
+						probeState: { status: "unreachable", message: "连接被拒绝", lastCheckedAt: "t1" },
+					},
 				],
 			}),
 		);
@@ -185,8 +194,11 @@ describe("deriveOnboarding failNote", () => {
 			inputs({
 				biliLoggedIn: true,
 				connections: [
-					{ enabled: false, testStatus: { ok: false, err: "旧账", lastCheckedAt: "t0" } },
-					{ enabled: true, testStatus: { ok: false, lastCheckedAt: "t1" } },
+					{
+						enabled: false,
+						probeState: { status: "unreachable", message: "旧账", lastCheckedAt: "t0" },
+					},
+					{ enabled: true, probeState: { status: "unreachable", lastCheckedAt: "t1" } },
 				],
 			}),
 		);
@@ -197,9 +209,12 @@ describe("deriveOnboarding failNote", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [
-					{ enabled: true, testStatus: { ok: false, err: "发送超时", lastCheckedAt: "t2" } },
+					{
+						enabled: true,
+						reachability: { status: "unreachable", message: "发送超时", changedAt: "t2" },
+					},
 				],
 			}),
 		);
@@ -217,9 +232,12 @@ describe("deriveOnboarding failNote", () => {
 		const v = deriveOnboarding(
 			inputs({
 				biliLoggedIn: true,
-				connections: [{ enabled: true, testStatus: { ok: true } }],
+				connections: [{ enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } }],
 				targets: [
-					{ enabled: false, testStatus: { ok: false, err: "上周的旧账", lastCheckedAt: "t0" } },
+					{
+						enabled: false,
+						reachability: { status: "unreachable", message: "上周的旧账", changedAt: "t0" },
+					},
 					{ enabled: true },
 				],
 			}),
@@ -231,7 +249,12 @@ describe("deriveOnboarding failNote", () => {
 	it("失败不属于当前步就沉默 —— login 未完成时不翻连接的旧账", () => {
 		const v = deriveOnboarding(
 			inputs({
-				connections: [{ enabled: true, testStatus: { ok: false, err: "x", lastCheckedAt: "t" } }],
+				connections: [
+					{
+						enabled: true,
+						probeState: { status: "unreachable", message: "x", lastCheckedAt: "t" },
+					},
+				],
 			}),
 		);
 		expect(v.activeKey).toBe("login");

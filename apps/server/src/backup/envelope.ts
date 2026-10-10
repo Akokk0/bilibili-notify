@@ -27,6 +27,10 @@ import { BackupRejectedError } from "./rejected-error.js";
 
 export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
 /**
+ * 13 = 连接换成新形状以后导出的备份(连接是 `{ id, name, enabled, adapterKey, platform, settings, platformSnapshot,
+ * probeState? }`:`kind` / `connector` / `extensionId` 没有了,`config` 叫 `settings`,多了平台快照与探测状态;OneBot 的
+ * `retryTimes` 叫 `maxRetries`;连接的探测状态 `testStatus` 叫 `probeState`、目标的叫 `reachability`)。连接的 `settings`
+ * 在脱敏档与完整档的明文段里按在场适配器的规则抹,适配器不在场或设置不合法的整片抹空。
  * 12 = 推送目标不再带 `platform` 以后导出的备份(平台只在连接上;端点目标也没有 `scope`;恢复时,本机已有的目标要是
  * 换了连接、或它挂着的连接换了种类 / 平台,整份拒收)。
  * 11 = 主人目标只许指向私聊目标以后导出的备份(设置 `master.targetId` 指向的推送目标必须存在、而且是私聊会话;
@@ -57,7 +61,7 @@ export const BACKUP_FORMAT = "bilibili-notify-backup" as const;
  * 1.0 之前(0.x 导出的 1)与开发期的旧版本一律拒收(ADR-0022 决策 6):要恢复就先装 0.12 恢复,再升级到 1.0 走迁移 ——
  * 0.x 的形状只有迁移器认得。
  */
-export const BACKUP_SCHEMA_VERSION = 12 as const;
+export const BACKUP_SCHEMA_VERSION = 13 as const;
 
 /** 0.x 导出的备份的格式版本(0.12 最后一版也是它)。拒收时只有它配得上「先装 0.12 恢复再升级」那句话。 */
 const ZERO_BACKUP_SCHEMA_VERSION = 1;

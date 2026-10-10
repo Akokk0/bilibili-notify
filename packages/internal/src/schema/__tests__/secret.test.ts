@@ -11,7 +11,11 @@ import {
 	secretMarkOf,
 	stringLeavesOf,
 } from "../secret";
-import { ConnectionSchema } from "../targets";
+import {
+	OnebotConnectionSettingsSchema,
+	QQOfficialConnectionSettingsSchema,
+	WebhookConnectionSettingsSchema,
+} from "../targets";
 
 /** 标记是 zod 的 `.meta()`:包装函数只是入口。读标记的遍历器要穿得过 optional / default / 联合 / record / pipe。 */
 describe("secretMarkOf — 标记穿过各种包裹", () => {
@@ -95,8 +99,6 @@ describe("mapMarked — 按值走 schema", () => {
 });
 
 describe("真 schema 上的标记", () => {
-	const ID = "11111111-1111-4111-8111-111111111111";
-	const base = { id: ID, name: "n", enabled: true, kind: "direct" } as const;
 	const marked = (schema: z.ZodType, value: unknown) => {
 		const out: Array<{ mark: string; value: unknown }> = [];
 		mapMarked(schema, value, {
@@ -110,37 +112,33 @@ describe("真 schema 上的标记", () => {
 	};
 
 	it("OneBot ws 的 url 只算「仅备份」,webhook 的 url 算 secret(同名不同义的反例)", () => {
-		const ws = ConnectionSchema.parse({
-			...base,
-			platform: "onebot",
-			connector: "ws",
-			config: { transport: "ws", url: "ws://bot:3001", accessToken: "tok", headers: { A: "1" } },
+		const ws = OnebotConnectionSettingsSchema.parse({
+			transport: "ws",
+			url: "ws://bot:3001",
+			accessToken: "tok",
+			headers: { A: "1" },
 		});
-		expect(marked(ConnectionSchema, ws)).toEqual([
+		expect(marked(OnebotConnectionSettingsSchema, ws)).toEqual([
 			{ mark: "backupOnly", value: "ws://bot:3001" },
 			{ mark: "backupOnly", value: "1" },
 			{ mark: "secret", value: "tok" },
 		]);
-		const hook = ConnectionSchema.parse({
-			...base,
-			platform: "generic",
-			connector: "webhook",
-			config: { url: "https://h.example/x", secret: "s", headers: {} },
+		const hook = WebhookConnectionSettingsSchema.parse({
+			url: "https://h.example/x",
+			secret: "s",
+			headers: {},
 		});
-		expect(marked(ConnectionSchema, hook)).toEqual([
+		expect(marked(WebhookConnectionSettingsSchema, hook)).toEqual([
 			{ mark: "secret", value: "https://h.example/x" },
 			{ mark: "secret", value: "s" },
 		]);
 	});
 
 	it("QQ 官机的 appSecret 是 secret", () => {
-		const qq = ConnectionSchema.parse({
-			...base,
-			platform: "qq-official",
-			connector: "ws",
-			config: { appId: "1", appSecret: "sec" },
-		});
-		expect(marked(ConnectionSchema, qq)).toEqual([{ mark: "secret", value: "sec" }]);
+		const qq = QQOfficialConnectionSettingsSchema.parse({ appId: "1", appSecret: "sec" });
+		expect(marked(QQOfficialConnectionSettingsSchema, qq)).toEqual([
+			{ mark: "secret", value: "sec" },
+		]);
 	});
 
 	it("AI 的两把 key 与搜索 key 是 secret,两处 baseUrl 与市场源 url 是仅备份", () => {

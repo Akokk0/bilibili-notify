@@ -9,9 +9,9 @@ import { inboundScenarios } from "../scenarios/inbound.js";
  */
 
 const ADAPTERS = [
-	{ id: "ad-web", name: "钩子", kind: "direct", platform: "webhook", enabled: true },
-	{ id: "ad-ob", name: "NapCat", kind: "direct", platform: "onebot", enabled: true },
-	{ id: "ad-qq", name: "官机", kind: "direct", platform: "qq-official", enabled: false },
+	{ id: "ad-web", name: "钩子", adapterKey: "webhook", platform: "webhook", enabled: true },
+	{ id: "ad-ob", name: "NapCat", adapterKey: "onebot", platform: "onebot", enabled: true },
+	{ id: "ad-qq", name: "官机", adapterKey: "qq-official", platform: "qq-official", enabled: false },
 ] as never[];
 
 /** 照真适配器的回答:onebot / 官机收得到,webhook 不行。 */
@@ -21,8 +21,7 @@ const INBOUND_OF: Record<string, ConnectionCapabilities["inbound"]> = {
 	webhook: { state: "unsupported", reason: "没有回程", checkedAt: 1 },
 };
 function capabilitiesOf(connection: Connection): ConnectionCapabilities | undefined {
-	const platform = connection.kind === "direct" ? connection.platform : "";
-	const inbound = INBOUND_OF[platform];
+	const inbound = INBOUND_OF[connection.platform];
 	return inbound
 		? { atAll: { state: "unknown" }, inbound, miniAppCard: { state: "unknown" } }
 		: undefined;
@@ -148,7 +147,13 @@ describe("inbound.command", () => {
 			] as never[],
 			connections: [
 				...ADAPTERS,
-				{ id: "ad-ob2", name: "NapCat 2", kind: "direct", platform: "onebot", enabled: true },
+				{
+					id: "ad-ob2",
+					name: "NapCat 2",
+					adapterKey: "onebot",
+					platform: "onebot",
+					enabled: true,
+				},
 			] as never[],
 		});
 		await reg.run("inbound.command", { text: "/status" });

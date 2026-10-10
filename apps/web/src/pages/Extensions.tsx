@@ -56,8 +56,7 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  * 不需要认得别的字段。
  */
 interface ConnectionRow {
-	kind?: string;
-	extensionId?: string;
+	adapterKey?: string;
 }
 
 type Provides = NonNullable<ExtensionDTO["provides"]>[number];
@@ -104,8 +103,9 @@ function ConnectionCount({ count }: { count: number }) {
 function countByExtension(rows: readonly ConnectionRow[]): Map<string, number> {
 	const counts = new Map<string, number>();
 	for (const row of rows) {
-		if (row.kind !== "extension" || row.extensionId === undefined) continue;
-		counts.set(row.extensionId, (counts.get(row.extensionId) ?? 0) + 1);
+		// 内置适配器的键进不了拓展 id(保留 id),所以不必先筛掉内置的。
+		if (row.adapterKey === undefined) continue;
+		counts.set(row.adapterKey, (counts.get(row.adapterKey) ?? 0) + 1);
 	}
 	return counts;
 }

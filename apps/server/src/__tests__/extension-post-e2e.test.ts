@@ -189,10 +189,9 @@ describe("拓展作品 e2e:假源报一条作品 → 过滤、出卡、按版式
 						id: SUBS[key].connection,
 						name: `本地 webhook ${key}`,
 						enabled: true,
-						kind: "direct",
-						connector: "webhook",
+						adapterKey: "webhook",
 						platform: "generic",
-						config: { url: `${hookUrl}/${key}`, headers: {} },
+						settings: { url: `${hookUrl}/${key}`, headers: {} },
 					}),
 				}),
 			);

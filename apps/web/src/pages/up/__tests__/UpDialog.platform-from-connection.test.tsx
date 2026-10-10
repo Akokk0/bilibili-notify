@@ -26,7 +26,7 @@ const CONN = "11111111-1111-4111-8111-111111111111";
 const noop = () => {};
 
 function connection(platform: string): Connection {
-	return { id: CONN, kind: "direct", platform, enabled: true } as Connection;
+	return { id: CONN, adapterKey: platform, platform, enabled: true } as Connection;
 }
 
 /** 目标自己不带平台:平台只在连接上。 */

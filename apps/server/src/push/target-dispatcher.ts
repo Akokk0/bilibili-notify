@@ -8,17 +8,13 @@ import type {
 	NotificationPayload,
 	ProbeResult,
 	PushTarget,
+	Result,
 	SessionRef,
 	TargetDispatcher,
 } from "@bilibili-notify/internal";
-import {
-	connectionDispatchKey,
-	fail,
-	isTargetPaused,
-	shouldSendAtAll,
-} from "@bilibili-notify/internal";
+import { fail, isTargetPaused, shouldSendAtAll } from "@bilibili-notify/internal";
 import { CONNECTION_NOT_FOUND, type ConfigStore } from "../config/store.js";
-import { adapterForConnection } from "./dispatch.js";
+import { findAdapter, resolveConnection } from "./dispatch.js";
 import { type PlatformAdapterRegistry, sendableAdapters } from "./registry.js";
 
 /** 派发器从登记表拿到的出口(带 `send`,不含启停)。 */
@@ -28,8 +24,8 @@ type SendableAdapter = ReturnType<typeof sendableAdapters>[number];
  * The server's {@link TargetDispatcher} implementation.
  *
  * Resolves `targetId → PushTarget → Connection` against the live ConfigStore,
- * looks up the matching `PlatformAdapter` by `connection.platform`, and
- * delegates the delivery. The dispatcher itself stays generic — adding a new platform
+ * looks up the matching `PlatformAdapter` by `connection.adapterKey`, resolves the connection's
+ * `settings` against that adapter's `settingsSchema`, and delegates the delivery. The dispatcher itself stays generic — adding a new platform
  * just means registering another platform adapter.
  */
 /**
@@ -59,12 +55,6 @@ export interface TargetDispatcherOptions {
 
 export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDispatcher {
 	const log = opts.logger;
-	// 出口**每次现问注册表** —— 拓展是后加载的,而且拨一下开关就会来去(ADR-0012 决策 29)。
-	// 从前这里自己建了一张键 → adapter 的 Map,那是「哪个 adapter 管这条连接」的第二份
-	// 实现;现在与别处共用 `adapterForConnection` 那一份。
-	const adapterFor = (connection: Connection): SendableAdapter | undefined =>
-		adapterForConnection(sendableAdapters(opts.adapters), connection);
-
 	function findTarget(targetId: string): PushTarget | undefined {
 		return opts.store.getTargets().find((t) => t.id === targetId);
 	}
@@ -83,18 +73,31 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		return undefined;
 	}
 
-	/** 配置里的那条连接 + 它所属平台的实现;缺一个就没法问它任何事。 */
-	function routeOf(connectionId: string) {
+	/**
+	 * 配置里的那条连接 + 它所属平台的实现,**全部入口都走这一处**:出口每次现问注册表(拓展是后加载的,
+	 * 拨一下开关就会来去,ADR-0012 决策 29),回出去的连接 `settings` 已按适配器的规则解好
+	 * (适配器不再自己解,漏一处就是把盘上原文当解过的值用)。连接不在回 `not_found`,适配器不在回
+	 * `unavailable`,设置过不了规则回 `not_configured`(被隔离的连接不会走到适配器手上)。
+	 */
+	function routeOf(
+		connectionId: string,
+		notFound = `connection not found: connectionId=${connectionId}`,
+		gate?: (connection: Connection) => Failure | undefined,
+	): Result<{ adapter: SendableAdapter; connection: Connection }> {
 		const connection = findConnection(connectionId);
-		if (!connection) return undefined;
-		const platformAdapter = adapterFor(connection);
-		return platformAdapter ? { connection, platformAdapter } : undefined;
+		if (!connection) return fail("not_found", notFound);
+		const found = findAdapter(sendableAdapters(opts.adapters), connection);
+		if (!found.ok) return found;
+		// 次序:适配器不在 → 开关(`gate`) → 设置不合法。停用的连接设置合不合法无关紧要,先回停用那句。
+		const refused = gate?.(connection);
+		if (refused) return refused;
+		return resolveConnection(found.adapter, connection);
 	}
 
-	/** 这条连接的适配器眼下怎么回答它的能力;连接 / 适配器不在、适配器没实现 `capabilities` 都是 `undefined`。 */
+	/** 这条连接的适配器眼下怎么回答它的能力;连接 / 适配器不在、被隔离、适配器没实现 `capabilities` 都是 `undefined`。 */
 	function capabilitiesOf(connectionId: string): ConnectionCapabilities | undefined {
 		const route = routeOf(connectionId);
-		return route?.platformAdapter.capabilities?.(route.connection);
+		return route.ok ? route.adapter.capabilities?.(route.connection) : undefined;
 	}
 
 	return {
@@ -111,12 +114,9 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		isAvailable(targetId: string): boolean {
 			const target = findTarget(targetId);
 			if (!target) return false;
-			const connection = findConnection(target.connectionId);
-			if (!connection) return false;
-			const platformAdapter = adapterFor(connection);
-			if (!platformAdapter) return false;
-			if (refusal(target, connection)) return false;
-			return platformAdapter.isAvailable(connection, destinationOf(target));
+			const route = routeOf(target.connectionId, undefined, (c) => refusal(target, c));
+			if (!route.ok) return false;
+			return route.adapter.isAvailable(route.connection, destinationOf(target));
 		},
 
 		supportsAtAll(targetId: string): boolean {
@@ -136,31 +136,22 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			session: SessionRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
-			const connection = findConnection(connectionId);
-			if (!connection) {
-				const result = fail("not_found", `connection not found: connectionId=${connectionId}`);
-				log.warn(`[sink] ${result.message} (sendToAddress)`);
-				return result;
-			}
 			const destination: DestinationRef = { kind: "session", ...session };
-			if (!connection.enabled) {
-				const result = fail("not_configured", `connection disabled: connectionId=${connection.id}`);
-				log.warn(`[sink] ${result.message} (sendToAddress)`);
-				return result;
+			const route = routeOf(connectionId, undefined, (c) =>
+				c.enabled ? undefined : fail("not_configured", `connection disabled: connectionId=${c.id}`),
+			);
+			if (!route.ok) {
+				log.warn(`[sink] ${route.message} (sendToAddress, connectionId=${connectionId})`);
+				return route;
 			}
-			const platformAdapter = adapterFor(connection);
-			if (!platformAdapter) {
-				const result = noAdapter(connection);
-				log.warn(`[sink] ${result.message} (sendToAddress, connectionId=${connection.id})`);
-				return result;
-			}
-			if (!platformAdapter.isAvailable(connection, destination)) {
+			const connection = route.connection;
+			if (!route.adapter.isAvailable(route.connection, destination)) {
 				const result = fail("unavailable", `connection unavailable: connectionId=${connection.id}`);
 				log.warn(`[sink] ${result.message} (sendToAddress)`);
 				return result;
 			}
-			// 不触发 onDelivery:它会去写 `target.testStatus`,这里没有目标表里的那条。不重试、不落历史。
-			return deliver(connection, platformAdapter, destination, undefined, payload);
+			// 不触发 onDelivery:它会去写 `target.reachability`,这里没有目标表里的那条。不重试、不落历史。
+			return deliver(route.connection, route.adapter, destination, undefined, payload);
 		},
 
 		connectionCapabilities(connectionId: string): ConnectionCapabilities | undefined {
@@ -171,26 +162,19 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 			connectionId: string,
 		): Promise<ConnectionCapabilities | undefined> {
 			const route = routeOf(connectionId);
-			return route?.platformAdapter.probeCapabilities?.(route.connection);
+			return route.ok ? route.adapter.probeCapabilities?.(route.connection) : undefined;
 		},
 
 		async probeConnection(connectionId: string): Promise<ProbeResult> {
-			const connection = findConnection(connectionId);
-			if (!connection) return fail("not_found", CONNECTION_NOT_FOUND);
-			const platformAdapter = adapterFor(connection);
-			if (!platformAdapter) return noAdapter(connection);
+			const route = routeOf(connectionId, CONNECTION_NOT_FOUND);
+			if (!route.ok) return route;
 			try {
-				return await platformAdapter.probe(connection);
+				return await route.adapter.probe(route.connection);
 			} catch (e) {
-				return thrown(e, `connection=${connection.id} probe`);
+				return thrown(e, `connection=${route.connection.id} probe`);
 			}
 		},
 	};
-
-	/** 这条连接眼下没有适配器管。拓展是后加载、还会来去的,所以是「暂时不可用」而不是「不存在」。 */
-	function noAdapter(connection: Connection) {
-		return fail("unavailable", `no platform adapter for ${connectionDispatchKey(connection)}`);
-	}
 
 	/** 适配器不许抛(ADR-0026 决策 1):真抛了算 bug,在这道边界接住,按「暂时不可用」记并留 error 日志。 */
 	function thrown(e: unknown, where: string) {
@@ -202,29 +186,15 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	async function dispatch(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
 		const target = findTarget(targetId);
 		if (!target) return fail("not_found", "target not found");
-		const connection = findConnection(target.connectionId);
-		if (!connection) {
-			const result = fail("not_found", `connection not found: connectionId=${target.connectionId}`);
-			log.warn(`[sink] ${result.message} (target=${target.id})`);
-			opts.onDelivery?.(target, payload, result);
-			return result;
-		}
-		const platformAdapter = adapterFor(connection);
-		if (!platformAdapter) {
-			const result = noAdapter(connection);
-			log.warn(`[sink] ${result.message} (target=${target.id})`);
-			opts.onDelivery?.(target, payload, result);
-			return result;
-		}
-		const refused = refusal(target, connection);
-		if (refused) {
-			log.warn(`[sink] ${refused.message} (target=${target.id})`);
-			opts.onDelivery?.(target, payload, refused);
-			return refused;
+		const route = routeOf(target.connectionId, undefined, (c) => refusal(target, c));
+		if (!route.ok) {
+			log.warn(`[sink] ${route.message} (target=${target.id})`);
+			opts.onDelivery?.(target, payload, route);
+			return route;
 		}
 		const result = await deliver(
-			connection,
-			platformAdapter,
+			route.connection,
+			route.adapter,
 			destinationOf(target),
 			target,
 			payload,
@@ -236,7 +206,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 	/** 两条发送路共用的最后一步:先问截流闸,没人截才调适配器;适配器抛错在这里接住。 */
 	async function deliver(
 		connection: Connection,
-		platformAdapter: SendableAdapter,
+		adapter: SendableAdapter,
 		destination: DestinationRef,
 		target: PushTarget | undefined,
 		payload: NotificationPayload,
@@ -244,7 +214,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		const intercepted = opts.interceptSend?.({ connection, destination, target, payload });
 		if (intercepted) return intercepted;
 		try {
-			return await platformAdapter.send(connection, destination, payload);
+			return await adapter.send(connection, destination, payload);
 		} catch (e) {
 			return thrown(e, `${target ? `target=${target.id}` : "sendToAddress"} send`);
 		}

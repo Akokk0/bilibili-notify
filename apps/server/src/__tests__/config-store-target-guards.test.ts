@@ -13,6 +13,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { BootstrapConfig } from "../config/schema.js";
 import { CONFIG_DIR, type ConfigStore, createConfigStore } from "../config/store.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 
 // 目标不再自带平台:平台只在连接上。这份测试钉的是两道「改挂连接」的守卫(逐条写入与整节替换)
 // 和读盘的宽容 —— 全部只碰自己的临时目录。
@@ -56,9 +57,9 @@ function onebotConnection(id: string = randomUUID(), name = "NapCat"): Connectio
 		name,
 		platform: "onebot",
 		enabled: true,
-		kind: "direct",
-		connector: "http",
-		config: {
+		adapterKey: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
+		settings: {
 			transport: "http",
 			baseUrl: "http://127.0.0.1:3000",
 			protocolVersion: "v11",
@@ -66,7 +67,7 @@ function onebotConnection(id: string = randomUUID(), name = "NapCat"): Connectio
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
 			mergeForwardMinTimeoutMs: 60_000,
-			retryTimes: 0,
+			maxRetries: 0,
 			retryIntervalMs: 1_000,
 		},
 	} as Connection;
@@ -78,9 +79,9 @@ function qqOfficialConnection(id: string = randomUUID(), name = "官机"): Conne
 		name,
 		platform: "qq-official",
 		enabled: true,
-		kind: "direct",
-		connector: "ws",
-		config: {
+		adapterKey: "qq-official",
+		platformSnapshot: snapshotFor("qq-official"),
+		settings: {
 			appId: "1",
 			appSecret: "s",
 			sandbox: false,
@@ -263,7 +264,7 @@ describe("ConfigStore:replaceSections 的目标归属统一规矩", () => {
 		expect(store.getConnections()).toHaveLength(3);
 	});
 
-	it("只是连接的种类变了(平台名相同) → 被拒,括号里写种类", async () => {
+	it("只是连接的适配器变了(平台名相同) → 被拒,括号里写适配器", async () => {
 		await expect(
 			store.replaceSections({
 				connections: [
@@ -271,18 +272,18 @@ describe("ConfigStore:replaceSections 的目标归属统一规矩", () => {
 						id: onebotId,
 						name: "NapCat",
 						enabled: true,
-						kind: "extension",
-						extensionId: "bridge",
+						adapterKey: "bridge",
 						platform: "onebot",
-						config: { botId: "onebot:42" },
-					} as unknown as Connection,
+						settings: { botId: "onebot:42" },
+						platformSnapshot: snapshotFor("onebot"),
+					},
 					onebotConnection(otherOnebotId, "NapCat 2"),
 					qqOfficialConnection(qqId),
 				],
 			}),
 		).rejects.toMatchObject({
 			code: "invalid",
-			message: expect.stringContaining("direct → extension"),
+			message: expect.stringContaining("onebot → bridge"),
 		});
 	});
 

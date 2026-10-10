@@ -120,7 +120,7 @@ describe("TargetChipPicker", () => {
 			<TargetChipPicker
 				targets={[own]}
 				connections={
-					[{ id: ADAPTER, enabled: true, kind: "direct", platform: "onebot" }] as Connection[]
+					[{ id: ADAPTER, enabled: true, adapterKey: "onebot", platform: "onebot" }] as Connection[]
 				}
 				selected={[]}
 				onToggle={() => {}}

@@ -27,6 +27,7 @@ import {
 	imageRefOf,
 } from "../images/image-store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
+import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsEnabled } from "../stats/enabled.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
@@ -73,6 +74,11 @@ export interface AppRuntime {
 	 */
 	loadFontFace: (id: string) => Promise<string>;
 	configStore: ConfigStore;
+	/**
+	 * 推送出口的活登记表。**在配置仓之前建**:配置仓保存连接时要按在场适配器的 `settingsSchema` 验
+	 * `settings`,它拿的是这张表现取的闭包。适配器的登记(内置 / 拓展)在 `index.ts` 里往后做。
+	 */
+	adapterRegistry: PlatformAdapterRegistry;
 	historyStore: HistoryStore;
 	/**
 	 * 人工重推(ADR-0017)。它持有「哪些行正在补」那张表,所以**整个进程只能有一个** ——
@@ -248,6 +254,8 @@ export function createAppRuntime(
 		keyProvider,
 		logger: serviceCtx.logger,
 	});
+	// 推送出口的活登记表:没有任何依赖,先建,配置仓才能按在场适配器的规则验连接设置。
+	const adapterRegistry = createPlatformAdapterRegistry();
 	// 各集成的设置在这里登记(今天只有 B 站;3a 起挪到组装根,与集成的登记放在一起)。
 	const configStore = createConfigStore({
 		bootstrap,
@@ -256,6 +264,8 @@ export function createAppRuntime(
 		serviceCtx,
 		secretStore,
 		integrationSettings: [settingsSegment],
+		connectionSettingsSchemaOf: (adapterKey) =>
+			adapterRegistry.list().find((a) => a.adapterKey === adapterKey)?.settingsSchema,
 	});
 	// 写道在 flush 段落盘并关门:此时 HTTP 已排空、各生产者已停,还在路上的配置写(如送达回调写回的目标可达性,
 	// 那处发出去就不管)在这里等到落盘,关停返回之后 `state/` 不再变。
@@ -485,6 +495,7 @@ export function createAppRuntime(
 		// 里头,只留它就少留一整份几十兆的串。闲置到点自动放掉,见读取器内部说明。
 		loadFontFace: createFontAssetReader(dataRoot, { transform: buildFontFace }),
 		configStore,
+		adapterRegistry,
 		historyStore,
 		repushRunner,
 		fansStore,

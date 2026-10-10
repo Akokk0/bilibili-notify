@@ -8,11 +8,10 @@ import {
 	type Connection,
 	type ConnectionCapabilities,
 	canReceiveReply,
-	type DirectConnection,
 	groupAddressOf,
-	isDirectConnection,
 	type PushTarget,
 	platformOfTarget,
+	RESERVED_INTEGRATION_KEYS,
 } from "@bilibili-notify/internal";
 import { DevParamError, type DevScenarioDef } from "../registry.js";
 
@@ -94,8 +93,9 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 	 * 它后面挂着哪些平台是握手时才报的运行时知识,devtools 这张声明表在 createDevtools 那一刻就定型了。
 	 * 桥的入站在 `scenarios/bridge.ts` —— 那条真的连一条桥进来,平台名由它自己报。
 	 */
-	const isDirectChat = (a: Connection): a is DirectConnection =>
-		isDirectConnection(a) && canReceiveReply(deps.capabilities(a)?.inbound);
+	const isDirectChat = (a: Connection): boolean =>
+		RESERVED_INTEGRATION_KEYS.includes(a.adapterKey) &&
+		canReceiveReply(deps.capabilities(a)?.inbound);
 
 	const link: DevScenarioDef = {
 		id: "inbound.link",
@@ -115,7 +115,7 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 			const wanted = params.connection;
 			const connection =
 				wanted === undefined
-					? connections.find((a): a is DirectConnection => a.enabled && isDirectChat(a))
+					? connections.find((a) => a.enabled && isDirectChat(a))
 					: connections.find((a) => a.id === String(wanted));
 			if (!connection) {
 				throw new DevParamError(
@@ -123,10 +123,8 @@ export function inboundScenarios(deps: InboundScenarioDeps): DevScenarioDef[] {
 				);
 			}
 			if (!isDirectChat(connection)) {
-				// 守卫的假分支被类型收窄成只剩拓展连接,运行时还有 webhook 直连:先放宽回 Connection 再取平台名。
-				const wide = connection as Connection;
 				throw new DevParamError(
-					`${wide.name} 是 ${wide.kind === "direct" ? wide.platform : wide.extensionId},没有群这回事`,
+					`${connection.name} 是 ${RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey) ? connection.platform : connection.adapterKey},没有群这回事`,
 				);
 			}
 			const given = typeof params.groupId === "string" ? params.groupId : "";

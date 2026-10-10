@@ -1171,9 +1171,9 @@ describe("DELETE /api/ext/:id", () => {
 		await installed();
 		const app = boot({
 			connections: [
-				{ id: "c1", kind: "extension", extensionId: "bridge" },
-				{ id: "c2", kind: "extension", extensionId: "bridge" },
-				{ id: "c3", kind: "onebot" },
+				{ id: "c1", adapterKey: "bridge" },
+				{ id: "c2", adapterKey: "bridge" },
+				{ id: "c3", adapterKey: "onebot" },
 			],
 		});
 
@@ -1254,7 +1254,7 @@ describe("DELETE /api/ext/:id", () => {
 		});
 		const app = boot({
 			reportDiscrepancies,
-			connections: [{ id: "c1", kind: "extension", extensionId: "bridge" }],
+			connections: [{ id: "c1", adapterKey: "bridge" }],
 		});
 
 		expect((await app.request("/bridge", { method: "DELETE" })).status).toBe(409);

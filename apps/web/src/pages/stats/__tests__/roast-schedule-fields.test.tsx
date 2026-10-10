@@ -47,7 +47,12 @@ function target(id: string, name: string, enabled: boolean): PushTarget {
 
 /** 目标的平台取自这条连接(目标都挂在它上面)。 */
 const connections = [
-	{ id: "11111111-1111-4111-8111-111111111111", kind: "direct", platform: "onebot", enabled: true },
+	{
+		id: "11111111-1111-4111-8111-111111111111",
+		adapterKey: "onebot",
+		platform: "onebot",
+		enabled: true,
+	},
 ] as Connection[];
 
 const VALUE: RoastScheduleValue = {

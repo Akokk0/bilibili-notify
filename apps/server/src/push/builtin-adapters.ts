@@ -31,6 +31,7 @@ export function registerBuiltinAdapters(opts: RegisterBuiltinAdaptersOptions): B
 			const ctx = createPlatformAdapterContext({
 				integration: integration.ctx,
 				adapterKey: adapter.adapterKey,
+				settingsSchema: adapter.settingsSchema,
 				connections: opts.connections,
 				// 订阅交回的把手记进这份集成上下文:适配器停下时订阅自动摘掉。
 				onConnectionsChanged: (fn) => integration.track(opts.onConnectionsChanged(fn)),

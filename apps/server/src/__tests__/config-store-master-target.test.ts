@@ -22,6 +22,7 @@ import {
 	type SettingsPatch,
 } from "../config/store.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 
 function makeServiceCtx(): ServiceContext {
 	return {
@@ -43,9 +44,9 @@ const CONNECTION: Connection = {
 	name: "NapCat",
 	platform: "onebot",
 	enabled: true,
-	kind: "direct",
-	connector: "http",
-	config: {
+	adapterKey: "onebot",
+	platformSnapshot: snapshotFor("onebot"),
+	settings: {
 		transport: "http",
 		baseUrl: "http://127.0.0.1:3000",
 		protocolVersion: "v11",
@@ -53,7 +54,7 @@ const CONNECTION: Connection = {
 		timeoutMs: 15_000,
 		imageMinTimeoutMs: 30_000,
 		mergeForwardMinTimeoutMs: 60_000,
-		retryTimes: 0,
+		maxRetries: 0,
 		retryIntervalMs: 1_000,
 	},
 } as Connection;

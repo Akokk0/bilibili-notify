@@ -511,7 +511,7 @@ describe("migrateZeroGeneration", () => {
 		const read = async (name: string) =>
 			JSON.parse(await readFile(join(target, "config", name), "utf8")) as unknown[];
 		expect(await read("connections.json")).toEqual([
-			expect.objectContaining({ kind: "direct", connector: "http", platform: "onebot" }),
+			expect.objectContaining({ adapterKey: "onebot", platform: "onebot" }),
 		]);
 		expect(await read("targets.json")).toEqual([
 			expect.objectContaining({
@@ -766,8 +766,8 @@ describe("migrateZeroGeneration", () => {
 		// 迁移的产出一变,这一行就红:把 MIGRATION_REVISION 加 1,再把这里的两个值一起更新。
 		// 只改了摘要、没抬修订号的话,开发期已经迁出来的那一代不会重迁,新代码读着旧产出。
 		expect({ revision: MIGRATION_REVISION, output: hash.digest("hex") }).toEqual({
-			revision: 39,
-			output: "fa5c6f47f9d51e0f79fffc4d5035dcfdcba524e5dbfb47b964412d82f4d5fc07",
+			revision: 40,
+			output: "200cec349c26be767ef4dbc933956c0b144d1b39d15645824722e524da8737d1",
 		});
 	});
 });

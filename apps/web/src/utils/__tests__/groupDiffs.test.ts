@@ -88,7 +88,7 @@ describe("groupDiffsBySection", () => {
 			D("imageGroup.enabled"),
 			D("targetId"),
 			D("connection.platform"),
-			D("config.transport"),
+			D("settings.transport"),
 			D("session.userId"),
 			D("app.logLevel"),
 		]);

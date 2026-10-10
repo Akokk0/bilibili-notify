@@ -5,6 +5,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { fail } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import { createCapabilityInjector } from "../capability-injection.js";
 import { createDevRegistry, DevParamError } from "../registry.js";
 import { capabilityScenario } from "../scenarios/capability.js";
@@ -19,15 +20,17 @@ import { capabilityScenario } from "../scenarios/capability.js";
 const OB = {
 	id: "ad-ob",
 	name: "NapCat",
-	kind: "direct",
+	adapterKey: "onebot",
 	platform: "onebot",
+	settings: {},
 	enabled: true,
 } as unknown as Connection;
 const WH = {
 	id: "ad-wh",
 	name: "钩子",
-	kind: "direct",
+	adapterKey: "webhook",
 	platform: "webhook",
+	settings: {},
 	enabled: true,
 } as unknown as Connection;
 const REAL: ConnectionCapabilities = {
@@ -39,6 +42,7 @@ const REAL: ConnectionCapabilities = {
 function onebot(): PlatformAdapter {
 	return {
 		adapterKey: "onebot",
+		settingsSchema: z.unknown(),
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => ({ ok: true, latencyMs: 1 }),
@@ -52,6 +56,7 @@ function onebot(): PlatformAdapter {
 function webhook(): PlatformAdapter {
 	return {
 		adapterKey: "webhook",
+		settingsSchema: z.unknown(),
 		isAvailable: () => true,
 		send: async () => ({ ok: true, latencyMs: 1 }),
 		probe: async () => fail("unsupported", "no probe"),
@@ -130,7 +135,13 @@ describe("connection.capability", () => {
 		// 这回事」。这里造一份实现了能力方法的官机方言,场景必须认它。
 		const injector = createCapabilityInjector();
 		const qq: PlatformAdapter = { ...onebot(), adapterKey: "qq-official" };
-		const conn = { ...OB, id: "ad-qq", name: "官机", platform: "qq-official" } as Connection;
+		const conn = {
+			...OB,
+			id: "ad-qq",
+			name: "官机",
+			adapterKey: "qq-official",
+			platform: "qq-official",
+		} as Connection;
 		const reg = createDevRegistry([
 			capabilityScenario({ injector, connections: () => [conn], dialects: () => [qq] }),
 		]);

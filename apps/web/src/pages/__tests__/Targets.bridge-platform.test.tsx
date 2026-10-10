@@ -16,6 +16,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
 
@@ -28,16 +29,16 @@ import { api } from "../../services/api";
 
 const CONNECTION_ID = "11111111-1111-4111-8111-111111111111";
 
-/** 今天连接侧还是闭集,所以桥那一支借一条连接来演,平台写 telegram(强转)—— 目标的平台取自它。 */
-const CONNECTION = {
+/** 桥借来的一个 telegram bot:适配器键是拓展 id,平台是它报的,快照是中性占位 —— 目标的平台取自它。 */
+const CONNECTION: Connection = {
 	id: CONNECTION_ID,
 	name: "桥",
 	enabled: true,
-	kind: "direct",
-	connector: "http",
+	adapterKey: "bridge",
 	platform: "telegram",
-	config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
-} as unknown as Connection;
+	settings: {},
+	platformSnapshot: snapshotFor("telegram"),
+};
 
 const TELEGRAM_TARGET = {
 	id: "22222222-2222-4222-8222-222222222222",

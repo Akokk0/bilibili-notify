@@ -17,6 +17,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { PlatformMetaRoot } from "../../components/platform-meta";
 import type { Connection } from "../../types/domain";
 import Targets from "../Targets";
@@ -34,17 +35,19 @@ const ADAPTERS = [
 		id: "11111111-1111-4111-8111-111111111111",
 		name: "家里那台 OneBot",
 		enabled: true,
-		kind: "direct",
+		adapterKey: "onebot",
 		platform: "onebot",
-		config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
+		platformSnapshot: snapshotFor("onebot"),
+		settings: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
 	},
 	{
 		id: "22222222-2222-4222-8222-222222222222",
 		name: "QQ 官方那个",
 		enabled: true,
-		kind: "direct",
+		adapterKey: "qq-official",
 		platform: "qq-official",
-		config: { appId: "1145141", appSecret: "x", sandbox: false, botType: "public" },
+		platformSnapshot: snapshotFor("qq-official"),
+		settings: { appId: "1145141", appSecret: "x", sandbox: false, botType: "public" },
 	},
 ] as unknown as Connection[];
 

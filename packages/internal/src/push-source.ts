@@ -8,6 +8,7 @@
  * ⚠️ 这里只放**契约**,不放任何一个实现:实现要碰网络、要认平台方言,而这个包是平台中立的。
  */
 
+import type { ZodType } from "zod";
 import type { Result } from "./constants";
 import type {
 	ConnectionCapabilities,
@@ -16,7 +17,12 @@ import type {
 	IntegrationContext,
 	NotificationPayload,
 } from "./platform";
-import type { ChatIdentity, Connection, DestinationRef } from "./schema/targets";
+import type {
+	ChatIdentity,
+	Connection,
+	DestinationRef,
+	PlatformDescriptor,
+} from "./schema/targets";
 
 /**
  * 一次连接探测的结果(ADR-0026):通了是 `{ ok: true, latencyMs }`,没通是 `Failure`。
@@ -26,7 +32,7 @@ export type ProbeResult = Result<{ latencyMs: number }>;
 
 /**
  * 一个平台实现 —— 认领哪些连接、怎么建连、报文怎么编、地址怎么解、有什么能力。
- * 矩阵({@link TargetDispatcher})拿它按分发键(`connectionDispatchKey`)找。
+ * 矩阵({@link TargetDispatcher})拿它按连接的 `adapterKey` 找。
  *
  * 成员分两拨,但**文件刻意没拆**:「怎么连」(建连、重连退避、心跳、生命周期)是通用的,
  * 一条 WS 长连怎么退避重连,跟对面说的是 OneBot 还是 QQ 网关无关,接桥那期的 `koishi` /
@@ -88,6 +94,26 @@ export interface PlatformAdapter {
 	capabilities?(connection: Connection): ConnectionCapabilities;
 	/** 主动探一次能力,结果进缓存。连上时、健康探测时、用之前都可以叫;零副作用。 */
 	probeCapabilities?(connection: Connection): Promise<ConnectionCapabilities>;
+	/**
+	 * 这种连接的 `settings` 的校验。宿主拿它:保存时校验、把连接递给适配器之前先解一遍
+	 * (**递到适配器手上的连接,`settings` 一律是它解过的输出**,适配器只认键、不再自己解)、
+	 * 找密钥标记。
+	 */
+	readonly settingsSchema: ZodType;
+	/**
+	 * 列新建连接时供挑的候选(ADR-0024 决策 4)。内置三个都实现(从平台注册表现取自己那几行);
+	 * 拓展的由 3b / 22-3 接,所以先是可选 —— 没有这一格的适配器,宿主新建连接时填中性快照。
+	 */
+	listConnectionCandidates?(signal: AbortSignal): Promise<readonly ConnectionCandidate[]>;
+}
+
+/**
+ * 新建连接时供挑的一个候选。这一片只有 `platform` 一格(名字、默认设置、selfId 等要到
+ * 候选路由 22-3 才有读者)。
+ */
+export interface ConnectionCandidate {
+	/** 候选连接所在平台的描述;宿主新建连接时把它去掉 `platform` 的部分存成 `platformSnapshot`。 */
+	platform: PlatformDescriptor;
 }
 
 /**
@@ -95,7 +121,7 @@ export interface PlatformAdapter {
  */
 export interface PlatformAdapterContext extends IntegrationContext {
 	/**
-	 * 归这个适配器管的连接(按分发键认领),**现读**。别缓存 —— 缓存与真相会漂,症状是
+	 * 归这个适配器管的连接(按 `adapterKey` 认领),**现读**。别缓存 —— 缓存与真相会漂,症状是
 	 * 「面板上停用了它还连着」;变更通知是用来做动作的,不是用来更新缓存的。
 	 */
 	connections(): readonly Connection[];

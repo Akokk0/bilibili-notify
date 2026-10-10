@@ -149,10 +149,9 @@ describe("守卫 8:关停返回以后数据目录不再变化", () => {
 				id: WEBHOOK,
 				name: "本地 webhook",
 				enabled: true,
-				kind: "direct",
-				connector: "webhook",
+				adapterKey: "webhook",
 				platform: "generic",
-				config: { url: `http://127.0.0.1:${address.port}/hook`, headers: {} },
+				settings: { url: `http://127.0.0.1:${address.port}/hook`, headers: {} },
 			}),
 		});
 		if (!created.ok) throw new Error(`建连接失败:${created.status} ${await created.text()}`);

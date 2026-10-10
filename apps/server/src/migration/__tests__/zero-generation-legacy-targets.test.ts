@@ -9,6 +9,7 @@
 
 import type { Connection, PushTarget } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { useZeroSandbox } from "./support.js";
 import { zeroBiliRow, zeroEmptyRouting } from "./zero-fixtures.js";
 
@@ -93,24 +94,27 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 
 		const onebot = store.getConnections().filter((c) => c.platform === "onebot");
 		expect(onebot).toHaveLength(2);
-		const [shared, other] = onebot as Extract<Connection, { platform: "onebot" }>[];
+		const [shared, other] = onebot as Connection[];
 		expect(shared).toMatchObject({
 			name: "主群 · 127.0.0.1:5700",
 			enabled: true,
-			kind: "direct",
-			connector: "http",
-			config: {
+			adapterKey: "onebot",
+			platform: "onebot",
+			platformSnapshot: snapshotFor("onebot"),
+			settings: {
 				transport: "http",
 				baseUrl: ONEBOT.baseUrl,
 				accessToken: "tok",
 				protocolVersion: "v11",
+				maxRetries: 0,
 			},
 		});
+		expect(shared?.settings).not.toHaveProperty("retryTimes");
 		expect(other).toMatchObject({
 			name: "副号 · 10.0.0.2:3000",
-			config: { baseUrl: "http://10.0.0.2:3000" },
+			settings: { baseUrl: "http://10.0.0.2:3000" },
 		});
-		expect(other?.config.accessToken).toBeUndefined();
+		expect(other?.settings).not.toHaveProperty("accessToken");
 
 		const byId = new Map(store.getTargets().map((t) => [t.id, t]));
 		expect(byId.get(ID.group)).toMatchObject({
@@ -139,9 +143,10 @@ describe("0.x 最老的单文件 targets.json → 连接 + 目标", () => {
 		expect(hooks).toHaveLength(1);
 		expect(hooks[0]).toMatchObject({
 			name: "飞书 · hooks.example.com",
-			kind: "direct",
+			adapterKey: "webhook",
 			platform: "generic",
-			config: { url: HOOK.url, secret: "s", headers: {} },
+			platformSnapshot: snapshotFor("generic"),
+			settings: { url: HOOK.url, secret: "s", headers: {} },
 		});
 		const endpoints = store.getTargets().filter((t) => t.kind === "endpoint");
 		expect(endpoints).toEqual([

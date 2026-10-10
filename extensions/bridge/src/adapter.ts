@@ -166,7 +166,7 @@ function toBridgeMessage(
  * 桥的 adapter:契约上的 {@link PlatformAdapter},外加一个桥自己用的 `reconcile()` ——
  * 接入名单(设置)动了时 `index.ts` 直接叫它(宿主只在**连接**动了时才通过 `ctx` 叫一声)。
  */
-export type BridgeAdapter = PlatformAdapter & { reconcile(): void };
+export type BridgeAdapter = Omit<PlatformAdapter, "settingsSchema"> & { reconcile(): void };
 
 export function createBridgeAdapter(opts: BridgeAdapterOptions): BridgeAdapter {
 	const { server, blobs } = opts;

@@ -13,6 +13,7 @@ import { PlatformMetaProvider } from "@bilibili-notify/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { buildPlatformTable } from "../../components/platform-meta";
 import { handleStateEnvelope } from "../../hooks/useStateChannel";
 import Targets from "../Targets";
@@ -69,10 +70,10 @@ const EXISTING = {
 	id: EXISTING_ID,
 	name: "小电视",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
+	adapterKey: "bridge",
 	platform: "telegram",
-	config: { link: "link-home", botId: "telegram:7777" },
+	platformSnapshot: snapshotFor("telegram"),
+	settings: { link: "link-home", botId: "telegram:7777" },
 };
 
 /** `bots` 传 `null` = 拓展没跑起来,那一口 404。 */
@@ -210,7 +211,7 @@ describe("新建连接里的拓展那一档", () => {
 		expect(srcs).not.toContain(HUGE);
 	});
 
-	it("挑中一个:显示名补成它的名字,存下去的连接带它的平台、config 原样", async () => {
+	it("挑中一个:显示名补成它的名字,存下去的连接带它的平台、settings 原样", async () => {
 		const dialog = await openNewConnection();
 		fireEvent.click(await within(dialog).findByRole("button", { name: /小电视/ }));
 		expect((within(dialog).getByPlaceholderText(/NapCat/) as HTMLInputElement).value).toBe(
@@ -221,12 +222,11 @@ describe("新建连接里的拓展那一档", () => {
 		const [url, body] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
 		expect(url).toBe("/api/connections");
 		expect(body).toMatchObject({
-			kind: "extension",
-			extensionId: "bridge",
+			adapterKey: "bridge",
 			name: "小电视",
 			platform: "telegram",
 			enabled: true,
-			config: { link: "link-home", botId: "telegram:7777" },
+			settings: { link: "link-home", botId: "telegram:7777" },
 		});
 	});
 

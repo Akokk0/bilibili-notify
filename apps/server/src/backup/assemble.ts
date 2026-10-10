@@ -5,15 +5,11 @@ import type {
 	Subscription,
 	SubscriptionTag,
 } from "@bilibili-notify/internal";
+import type { SecretCellsReader } from "../push/connection-settings.js";
 import { type BackupSecretBag, openSecrets, sealSecrets } from "./crypto.js";
 import { type BackupEnvelope, type BackupSections, buildBackup } from "./envelope.js";
 import { BackupRejectedError } from "./rejected-error.js";
-import {
-	applyRedactions,
-	collectRedactions,
-	type ExtensionSecretCodes,
-	redactBackupSections,
-} from "./sanitize.js";
+import { applyRedactions, collectRedactions, redactBackupSections } from "./sanitize.js";
 
 /**
  * Full-backup assembly — ties envelope + sanitize + PIN crypto together.
@@ -45,8 +41,8 @@ export function assembleFullBackup(
 	input: FullBackupInput,
 	pin: string,
 	createdAt: string,
-	/** 拓展声明成密钥的 config 键,按拓展 id 分格 —— 明文段照它一并抹平。 */
-	extensionSecrets: ExtensionSecretCodes = new Map(),
+	/** 连接的 settings 与拓展设置里哪些格是密钥(适配器的 schema 标记 + 拓展声明的键)—— 明文段照它一并抹平。 */
+	lookup?: SecretCellsReader,
 ): BackupEnvelope {
 	const bag: BackupSecretBag = {};
 	if (input.cookies?.cookiesJson) bag.cookiesJson = input.cookies.cookiesJson;
@@ -63,7 +59,7 @@ export function assembleFullBackup(
 	};
 	// redactBackupSections deep-clones, so `input` is left intact and the plaintext
 	// sections come out credential-free.
-	const sections = redactBackupSections<BackupSections>(original, extensionSecrets);
+	const sections = redactBackupSections<BackupSections>(original, lookup);
 	// 🔴 **不变式:凡是明文段被抹掉的,袋子里都要有对应项**(见 `collectRedactions`)。照着脱敏的结果现算,
 	// 以后脱敏那边再加规则,恢复自动跟上 —— apiKey、连接与拓展的凭据都在这一格里,不另手抄。从前另抄过
 	// apiKey 与连接 config 两格,是为了旧版本也打得开新备份;1.0 的备份版本是 2,旧版本见了就拒,那两格没用了。

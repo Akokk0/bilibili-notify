@@ -16,9 +16,8 @@ import type {
 	AISettings,
 	CachedProfile,
 	CardKind,
+	Connection,
 	ConnectionCapabilities,
-	DirectConnection,
-	ExtensionConnection,
 	ExtensionProvides,
 	ExtensionRunState,
 	Failure,
@@ -31,16 +30,13 @@ import type {
 	Identity,
 	ImageRef,
 	Issue,
-	OnebotConnectionConfig,
 	PostFilterReason,
 	PushMessageRole,
 	PushStatus,
-	QQOfficialConnectionConfig,
 	Result,
 	Subscription,
 	SubscriptionReportKind,
 	SubscriptionTag,
-	WebhookConnectionConfig,
 } from "@bilibili-notify/internal";
 import type { RestartAbility } from "./system";
 import type { LogLevel } from "./ws";
@@ -260,23 +256,17 @@ type CellsAs<T, K extends PropertyKey, S> = T extends unknown
 		}
 	: never;
 
-type WithConfig<C extends { config: unknown }, Config> = Omit<C, "config"> & { config: Config };
-
-/** 一条连接下发时的样子(`GET /api/connections` 与连接写入的响应)。拓展那一支的 `config` 本片不打码。 */
-export type ConnectionView =
-	| WithConfig<
-			Extract<DirectConnection, { platform: "onebot" }>,
-			CellsAs<OnebotConnectionConfig, "accessToken", SecretCellView>
-	  >
-	| WithConfig<
-			Extract<DirectConnection, { connector: "webhook" }>,
-			CellsAs<WebhookConnectionConfig, "url" | "secret", SecretCellView>
-	  >
-	| WithConfig<
-			Extract<DirectConnection, { platform: "qq-official" }>,
-			CellsAs<QQOfficialConnectionConfig, "appSecret", SecretCellView>
-	  >
-	| ExtensionConnection;
+/**
+ * 一条连接下发时的样子(`GET /api/connections` 与连接写入的响应)。`settings` 有三种样子:
+ * - 适配器在场且合法:解过的 settings,密钥格换成 {@link MaskedSecret};
+ * - 适配器在场但过不了它的 settingsSchema:整格一个 {@link MaskedSecret},另带 `settingsIssues`;
+ * - 适配器不在场:整格一个 {@link MaskedSecret}(宿主分不出哪一格是密钥)。
+ */
+export type ConnectionView = Omit<Connection, "settings"> & {
+	settings: unknown;
+	/** 设置过不了适配器的 settingsSchema 时的逐条原因;合法或适配器不在场时没有这一格。 */
+	settingsIssues?: readonly Issue[];
+};
 
 /** 一份服务商实例下发时的样子:主模型与看图副模型两把 key。`S` 缺省是下发形状,草稿用 {@link SecretCellDraft}。 */
 export type AIProviderProfileView<S = SecretCellView> = Omit<

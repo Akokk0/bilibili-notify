@@ -68,8 +68,8 @@ export interface FieldLabel {
  *   场景如需短版,Field prop 可 hint override。
  *
  * 个别字段语义:
- * - Targets.tsx 里 `config.url` / `config.timeoutMs` / `config.headers` /
- *   `config.accessToken` 在不同 transport 类型下 label/hint 是动态的,字典只存
+ * - Targets.tsx 里 `settings.url` / `settings.timeoutMs` / `settings.headers` /
+ *   `settings.accessToken` 在不同 transport 类型下 label/hint 是动态的,字典只存
  *   一个「默认 label/hint」,实际渲染由调用处 prop 覆盖。
  */
 /**
@@ -574,70 +574,70 @@ export const FIELD_LABELS = {
 	"connection.platform": { label: "平台", section: "connection" },
 	"connection.name": { label: "显示名称", section: "connection" },
 	"connection.enabled": { label: "启用", section: "connection" },
-	"config.transport": { label: "连接方式", section: "transport" },
-	"config.baseUrl": { label: "HTTP baseUrl", section: "transport" },
-	"config.url": { label: "URL", section: "transport" },
-	"config.port": {
+	"settings.transport": { label: "连接方式", section: "transport" },
+	"settings.baseUrl": { label: "HTTP baseUrl", section: "transport" },
+	"settings.url": { label: "URL", section: "transport" },
+	"settings.port": {
 		label: "反向 WS 监听端口",
 		hint: "bot 主动连入此端口;端口即身份,与主端口 8787 独立",
 		section: "transport",
 	},
-	"config.accessToken": {
+	"settings.accessToken": {
 		label: "accessToken",
 		section: "transport",
 		secret: true,
 	},
-	"config.timeoutMs": { label: "超时", section: "transport" },
-	"config.imageMinTimeoutMs": {
+	"settings.timeoutMs": { label: "超时", section: "transport" },
+	"settings.imageMinTimeoutMs": {
 		label: "带图超时下限",
 		hint: "带图消息实际等 max(超时, 此值);0 = 不放宽",
 		section: "transport",
 	},
-	"config.mergeForwardMinTimeoutMs": {
+	"settings.mergeForwardMinTimeoutMs": {
 		label: "合并转发超时下限",
 		hint: "合并转发要逐张下载再上传,比单图更慢;0 = 不放宽",
 		section: "transport",
 	},
-	"config.retryTimes": {
+	"settings.maxRetries": {
 		label: "重试次数",
 		hint: "不含首次,失败后再尝试",
 		section: "transport",
 	},
-	"config.retryIntervalMs": { label: "重试间隔", section: "transport" },
-	"config.headers": {
+	"settings.retryIntervalMs": { label: "重试间隔", section: "transport" },
+	"settings.headers": {
 		label: "自定义请求头",
 		hint: "例如反向代理鉴权头",
 		section: "transport",
 	},
-	"config.secret": {
+	"settings.secret": {
 		label: "Secret",
 		hint: "加在 x-bilibili-notify-secret 头",
 		section: "transport",
 		secret: true,
 	},
 	// QQ 官方机器人(q.qq.com)连接凭据
-	"config.appId": {
+	"settings.appId": {
 		label: "AppID",
 		hint: "QQ 开放平台机器人的 AppID(明文存储)",
 		section: "transport",
 	},
-	"config.appSecret": {
+	"settings.appSecret": {
 		label: "AppSecret",
 		hint: "机器人密钥;用于换取 App Access Token",
 		section: "transport",
 		secret: true,
 	},
-	"config.botType": {
+	"settings.botType": {
 		label: "机器人域",
 		hint: "私域可发原生 markdown(图集合并);公域不支持原生 markdown(需报备模板)",
 		section: "transport",
 	},
-	"config.sandbox": {
+	"settings.sandbox": {
 		label: "沙箱模式",
 		hint: "开启后走 QQ 沙箱环境,仅对沙箱内成员可见",
 		section: "transport",
 	},
-	"config.logReconnects": {
+	"settings.logReconnects": {
 		label: "记录重连日志",
 		hint: "QQ 官方网关约每 30 分钟主动要求重连一次,属正常协议行为;默认关闭避免刷屏,排障时可开启",
 		section: "transport",

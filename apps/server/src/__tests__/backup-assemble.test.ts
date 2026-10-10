@@ -1,8 +1,17 @@
-import { type Connection, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
+import {
+	type Connection,
+	makeDefaultGlobalConfig,
+	OnebotConnectionSettingsSchema,
+	QQOfficialConnectionSettingsSchema,
+	WebhookConnectionSettingsSchema,
+} from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import type { ZodType } from "zod";
 import { assembleFullBackup, openFullBackup } from "../backup/assemble.js";
 import { BackupPinError } from "../backup/crypto.js";
 import { BackupRejectedError } from "../backup/rejected-error.js";
+import type { SecretCellsReader } from "../push/connection-settings.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 
 /**
  * 完整档组装:明文段走 redactSecretKeys(连完整档明文都零机密),真机密(apiKey /
@@ -34,15 +43,26 @@ function globalsWithApiKey(k: string) {
 	return withDeepseekKey(makeDefaultGlobalConfig(), k);
 }
 
+/** 内置三个适配器在场(各回自己的真 schema)、没有拓展声明 —— 即生产里一个拓展都没装时的查表。 */
+const SCHEMAS = new Map<string, ZodType>([
+	["onebot", OnebotConnectionSettingsSchema],
+	["qq-official", QQOfficialConnectionSettingsSchema],
+	["webhook", WebhookConnectionSettingsSchema],
+]);
+const BUILTINS: SecretCellsReader = {
+	settingsSchemaOf: (key) => SCHEMAS.get(key),
+	declaredSecretKeysOf: () => undefined,
+};
+
 function onebot(id: string, token: string): Connection {
 	return {
 		id,
 		platform: "onebot",
 		name: "bot",
 		enabled: true,
-		kind: "direct",
-		connector: "ws",
-		config: {
+		adapterKey: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
+		settings: {
 			transport: "ws",
 			url: "ws://host",
 			headers: {},
@@ -51,7 +71,7 @@ function onebot(id: string, token: string): Connection {
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
 			mergeForwardMinTimeoutMs: 60_000,
-			retryTimes: 0,
+			maxRetries: 0,
 			retryIntervalMs: 1_000,
 		},
 	};
@@ -67,6 +87,7 @@ describe("full backup assemble/open", () => {
 			},
 			"123456",
 			"2026-07-10T00:00:00.000Z",
+			BUILTINS,
 		);
 
 		expect(env.kind).toBe("full");
@@ -86,11 +107,12 @@ describe("full backup assemble/open", () => {
 			},
 			"123456",
 			"t",
+			BUILTINS,
 		);
 
 		const { sections, cookies } = openFullBackup(env, "123456");
 		expect(sections.globals?.defaults.ai.providers.deepseek?.apiKey).toBe("sk-1");
-		expect(sections.connections?.[0]?.config).toMatchObject({ accessToken: "tok-1" });
+		expect(sections.connections?.[0]?.settings).toMatchObject({ accessToken: "tok-1" });
 		expect(cookies).toEqual({ cookiesJson: "CJ", refreshToken: "RT" });
 	});
 
@@ -170,23 +192,91 @@ describe("full backup assemble/open", () => {
 	});
 
 	/**
-	 * 拓展没跑起来时它的 config 被整片当密钥抹掉(见 sanitize 那边的理由)——
+	 * 拓展没跑起来时它的连接 settings 被整片当密钥抹掉(见 sanitize 那边的理由)——
 	 * 完整档必须照样原样还回来,否则「关掉一个拓展再备份」就等于把那些连接毁了。
 	 */
-	it("没跑起来的拓展:整片抹掉的 config 也原样恢复", () => {
-		const extension = {
+	it("没跑起来的拓展:整片抹掉的 settings 也原样恢复", () => {
+		const extension: Connection = {
 			id: "c1",
 			name: "阿库娅",
 			enabled: true,
-			kind: "extension",
-			extensionId: "bridge",
+			adapterKey: "bridge",
 			platform: "telegram",
-			config: { botKey: "s3cret", note: "家里那台" },
-		} as unknown as Connection;
-		const env = assembleFullBackup({ connections: [extension] }, "123456", "t");
-		expect(env.sections.connections?.[0]?.config).toEqual({ botKey: "", note: "" });
+			settings: { botKey: "s3cret", note: "家里那台" },
+			platformSnapshot: snapshotFor("telegram"),
+		};
+		const env = assembleFullBackup({ connections: [extension] }, "123456", "t", BUILTINS);
+		expect(env.sections.connections?.[0]?.settings).toEqual({ botKey: "", note: "" });
 
 		const { sections } = openFullBackup(env, "123456");
-		expect(sections.connections?.[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });
+		expect(sections.connections?.[0]?.settings).toEqual({ botKey: "s3cret", note: "家里那台" });
+	});
+
+	/**
+	 * 适配器不在场(或根本没给查表)= 问不出哪一格是密钥 → 整片抹空;完整档的袋子里有原值,恢复逐格相等。
+	 */
+	it("适配器不在场:内置连接的 settings 整片抹空,完整档恢复后逐格相等", () => {
+		const conn = onebot("a1", "tok-SECRET");
+		const env = assembleFullBackup({ connections: [conn] }, "123456", "t");
+		const plain = env.sections.connections?.[0]?.settings as Record<string, unknown>;
+		expect(plain.accessToken).toBe("");
+		expect(plain.url).toBe("");
+		expect(JSON.stringify(env.sections)).not.toContain("tok-SECRET");
+
+		const { sections } = openFullBackup(env, "123456");
+		expect(sections.connections).toEqual([conn]);
+	});
+
+	/**
+	 * 被隔离的连接(适配器在场、settings 过不了它的规则)从严:明文段整片抹空,不留任何一个字面值;
+	 * 完整档袋子里有盘上原文,恢复回来仍是那份不合法的原文(仍被隔离,主人看得见)。
+	 */
+	it("被隔离的连接:整片抹空、不留明文,完整档照样原样恢复", () => {
+		const conn: Connection = {
+			...onebot("a1", "tok-SECRET"),
+			// 缺 transport:过不了 OneBot 的规则;里面任何一个字面值都不许进明文
+			settings: {
+				baseUrl: "http://127.0.0.1:3000",
+				accessToken: "tok-SECRET",
+				note: "不合法的原文",
+			},
+		};
+		const env = assembleFullBackup({ connections: [conn] }, "123456", "t", BUILTINS);
+		expect(env.sections.connections?.[0]?.settings).toEqual({
+			baseUrl: "",
+			accessToken: "",
+			note: "",
+		});
+		expect(JSON.stringify(env.sections)).not.toContain("tok-SECRET");
+
+		const { sections } = openFullBackup(env, "123456");
+		expect(sections.connections).toEqual([conn]);
+	});
+
+	/** 脱敏档与完整档的明文段 `JSON.stringify` 后不含任何一个密钥原值(含拓展声明的键)。 */
+	it("朴素兜底:明文段序列化后不含任何密钥原值", () => {
+		const lookup: SecretCellsReader = {
+			settingsSchemaOf: (key) => SCHEMAS.get(key),
+			declaredSecretKeysOf: (key) => (key === "bridge" ? ["botKey"] : undefined),
+		};
+		const extension: Connection = {
+			id: "c1",
+			name: "阿库娅",
+			enabled: true,
+			adapterKey: "bridge",
+			platform: "telegram",
+			settings: { botKey: "bot-SECRET", note: "家里那台" },
+			platformSnapshot: snapshotFor("telegram"),
+		};
+		const env = assembleFullBackup(
+			{ connections: [onebot("a1", "tok-SECRET"), extension] },
+			"123456",
+			"t",
+			lookup,
+		);
+		const plaintext = JSON.stringify(env.sections);
+		for (const leaked of ["tok-SECRET", "bot-SECRET"]) expect(plaintext).not.toContain(leaked);
+		// 声明的键以外的格照旧
+		expect(env.sections.connections?.[1]?.settings).toEqual({ botKey: "", note: "家里那台" });
 	});
 });

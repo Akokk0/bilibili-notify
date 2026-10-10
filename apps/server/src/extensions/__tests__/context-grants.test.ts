@@ -23,6 +23,7 @@ import type {
 	PlatformAdapter,
 	ServiceContext,
 } from "@bilibili-notify/internal";
+import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ZodType, z } from "zod";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
@@ -39,11 +40,11 @@ function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 		id: "c1",
 		name: "家里那台",
 		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
+		adapterKey: "bridge",
 		// 一条连接 = 一个借来的 bot,平台是它的身份轴之一(ADR-0012 决策 45)。
 		platform: "onebot",
-		config: { token: "t0ken", bridgeKind: "koishi" },
+		settings: { token: "t0ken", bridgeKind: "koishi" },
+		platformSnapshot: neutralPlatformSnapshot("onebot"),
 		...over,
 	} as Connection;
 }
@@ -248,12 +249,12 @@ describe("按清单注册推送源", () => {
 		expect(h.adapters.list()).toHaveLength(1);
 	});
 
-	it("登记即启动:start 被调一次,ctx.connections() 只含分发键是这个拓展 id 的连接", () => {
+	it("登记即启动:start 被调一次,ctx.connections() 只含 adapterKey 是这个拓展 id 的连接", () => {
 		const h = harness({
 			connections: [
 				connection({ id: "mine" }),
-				connection({ id: "theirs", extensionId: "matrix" }),
-				connection({ id: "direct", kind: "direct", platform: "onebot", extensionId: undefined }),
+				connection({ id: "theirs", adapterKey: "matrix" }),
+				connection({ id: "direct", adapterKey: "onebot", platform: "onebot" }),
 			],
 		});
 		const start = vi.fn();
@@ -926,8 +927,14 @@ describe("读到属于自己的连接", () => {
 		const h = harness({
 			connections: [
 				connection(),
-				connection({ id: "c2", extensionId: "别人家的" }),
-				{ id: "c3", name: "直连", enabled: true, kind: "direct" } as Connection,
+				connection({ id: "c2", adapterKey: "别人家的" }),
+				{
+					id: "c3",
+					name: "直连",
+					enabled: true,
+					adapterKey: "onebot",
+					platform: "onebot",
+				} as Connection,
 			],
 		});
 		const source = h.ctx.registerPushSource(def());
@@ -943,7 +950,7 @@ describe("读到属于自己的连接", () => {
 	});
 
 	it("config 形状不对的那条**根本不出现**,而且留一行", () => {
-		const h = harness({ connections: [connection({ config: { token: 42 } })] });
+		const h = harness({ connections: [connection({ settings: { token: 42 } })] });
 		const source = h.ctx.registerPushSource(def());
 		expect(source.connections()).toEqual([]);
 		expect(h.lines.some((l) => l.startsWith("warn") && l.includes("c1"))).toBe(true);

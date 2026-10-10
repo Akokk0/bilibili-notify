@@ -76,8 +76,10 @@ import { migrateUptime } from "./uptime.js";
  *
  * 39 = 迁出来的推送目标不再带 `platform`(平台只在连接上),端点目标也不再带 `scope`
  * (`config/targets.json` 因此少了这两格,摘要变)。
+ * 40 = 连接换成 `adapterKey` / `settings` / `platformSnapshot` 的新形状(`connections.json` 的形状变),
+ * `testStatus` 两处(连接、目标)都不带过来。
  */
-export const MIGRATION_REVISION = 39;
+export const MIGRATION_REVISION = 40;
 
 /** 迁移清空了主人目标时,记在「没带过来的」里的那一项(首访提示靠它认)。 */
 export const MASTER_TARGET_SKIPPED_PATH = "master-target";

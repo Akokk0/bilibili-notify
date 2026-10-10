@@ -1,6 +1,5 @@
 import type { QQBindStartResponse } from "@bilibili-notify/contract";
-import type { QQOfficialConnectionConfig } from "@bilibili-notify/internal";
-import { fail, isConnectionOn } from "@bilibili-notify/internal";
+import { fail, QQOfficialConnectionSettingsSchema } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import QRCode from "qrcode";
 import { createBindTask, pollBindTask } from "../platforms/qq-bind.js";
@@ -92,11 +91,16 @@ export function createQQRoute(deps: RouteDeps): Hono {
 	app.get("/guilds/:connectionId", async (c) => {
 		const id = c.req.param("connectionId");
 		const connection = deps.store.getConnections().find((a) => a.id === id);
-		if (!connection || !isConnectionOn(connection, "qq-official")) {
+		if (connection?.adapterKey !== "qq-official") {
 			return respondFailure(c, fail("not_found", "没有这个 QQ 官方机器人连接"));
 		}
+		// 盘上存的是原文(不补默认值),用之前按规则解一遍;不合法的连接不往外连。
+		const settings = QQOfficialConnectionSettingsSchema.safeParse(connection.settings);
+		if (!settings.success) {
+			return respondFailure(c, fail("not_configured", "这条连接的设置不合法"));
+		}
 		try {
-			const guilds = await fetchQQGuildChannels(connection.config as QQOfficialConnectionConfig);
+			const guilds = await fetchQQGuildChannels(settings.data);
 			return c.json(guilds);
 		} catch (err) {
 			log.warn(`GET /api/qq/guilds/${id} failed: ${String(err)}`);

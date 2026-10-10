@@ -62,7 +62,7 @@ import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { registerBuiltinAdapters } from "./push/builtin-adapters.js";
-import { createPlatformAdapterRegistry } from "./push/registry.js";
+import { createSecretCellsReader } from "./push/connection-settings.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
 import { type AppRuntime, createAppRuntime } from "./runtime/bootstrap.js";
@@ -660,7 +660,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		];
 		// 出口住在一张**活的注册表**里:内置这几个在 `createEngines` 之前登记(登记即 `start`,见下),
 		// 拓展注册进来的后到、拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
-		const adapterRegistry = createPlatformAdapterRegistry();
+		// 表在 `createAppRuntime` 里就建好了(配置仓保存连接时要按在场适配器的规则验 settings),这里只登记。
+		const adapterRegistry = runtime.adapterRegistry;
 		// 「连接配置动过了」的订阅:内置适配器与拓展装载器共用这一个。⛔ bus 不给它们:宿主替它们订,
 		// 只把「动过了」这件事转过去。
 		const onConnectionsChanged = (fn: () => void): Disposable =>
@@ -1023,9 +1024,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					connections: runtime.configStore
 						.getConnections()
 						.filter((a) => a.enabled)
-						// **没探测过 ≠ 断了**。webhook 这类平台压根不支持探测,testStatus
-						// 永远是 undefined;当成断线的话主人会永远看见一条假报警。
-						.map((a) => ({ name: a.name, ok: a.testStatus?.ok ?? true })),
+						// **没探测过 / 探不了 ≠ 断了**。webhook 这类平台压根不支持探测,probeState 是
+						// 没有或 `unsupported`;当成断线的话主人会永远看见一条假报警。
+						.map((a) => ({ name: a.name, ok: a.probeState?.status !== "unreachable" })),
 					mutedUntil: engines?.muteState.mutedUntil() ?? 0,
 				}),
 			}),
@@ -1144,15 +1145,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 运行时 chromePath 写回目标:仅 B 模型(显式 BN_CONFIG)有单一可写文件;
 		// legacy/disabled 返回 null → 热启用仍生效但不持久化(改配置走 env / 手编辑)。
 		const configPath = resolveConfigPath({ env });
+		// 连接 settings 里哪些格是密钥:适配器 schema 上的标记 + 拓展声明的键。下发打码与备份脱敏吃同一份。
+		// 拓展的声明**现取** —— 拓展会被拨开关加载 / 卸载,而备份服务比装载早一步建起来;表里没有 = 问不出来
+		// (一个都没跑起来时每条拓展连接的 settings 整片当密钥)。
+		const connectionSecrets = createSecretCellsReader(adapterRegistry, (adapterKey) =>
+			loadedExtensions?.secretConfigCodes().get(adapterKey),
+		);
 		const backupService = authSystem
 			? createBackupService({
 					configStore: runtime.configStore,
 					cookieStore: authSystem.storage.cookieStore,
 					onCookiesRestored: () => authSystem?.reloadCookiesFromStore(),
-					// 拓展声明成密钥的 config 键,按 id 分格。**现取** —— 拓展会被拨开关加载 /
-					// 卸载,而且备份服务比装载早一步建起来。空表 = 一个都没跑起来 = 每条拓展
-					// 连接的 config 整片当密钥(见 sanitize 的 ExtensionSecretCodes)。
-					extensionSecretCodes: () => loadedExtensions?.secretConfigCodes() ?? new Map(),
+					connectionSecrets,
 				})
 			: undefined;
 
@@ -1260,6 +1264,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
 			api: devtools?.api ?? authSystem.api,
 			backupService,
+			connectionSecrets,
 			cardSkins: {
 				store: skins,
 				fallbacks: () => cardSkinFallbacks.list(),

@@ -1,11 +1,13 @@
 /**
- * 连接与推送目标这一族:0.x 各个版本留在盘上的形状 → 0.x 最新的形状(ADR-0022 决策 4)。⑥c 从配置仓和
+ * 连接与推送目标这一族:0.x 各个版本留在盘上的形状 → 1.0 的形状(ADR-0022 决策 4)。⑥c 从配置仓和
  * internal 的 schema 里收进迁移模块 —— 旧格式的知识只住在这里,配置仓开机只认最新的形状。
  *
- * 三件事,都是 raw → raw:
+ * 四件事,都是 raw → raw:
  * - 最老的单文件 `targets.json`(连接参数和会话捆在一条目标里)拆成连接 + 目标({@link migrateLegacyTargets});
  * - 连接 / 目标 v1 → v2({@link migrateConfigSections}),判据是数据形状,幂等;
- * - 已撤下平台的存量条目丢掉({@link isRetiredConnectionRecord}、{@link isRetiredTargetRecord})。
+ * - 已撤下平台的存量条目丢掉({@link isRetiredConnectionRecord}、{@link isRetiredTargetRecord});
+ * - 连接最后一步改成 1.0 的形状({@link reshapeConnection}:`adapterKey` / `settings` / `platformSnapshot`)。
+ *   用的平台表是迁移自己的冻结副本(`zero-platforms.ts`),不挂在活的平台表上。
  *
  * 连接从新代里的 `connections.json` 读,没有就读第 0 代的 `state/adapters.json`(它的旧名,只作输入、不进
  * 新代)。
@@ -14,21 +16,21 @@
 import { join } from "node:path";
 import {
 	type Connection,
-	ConnectionPlatformSchema,
-	ConnectionSchema,
 	deterministicUuid,
 	type PushTarget,
 	PushTargetSchema,
 } from "@bilibili-notify/internal";
 import {
-	DIRECT_CONNECTORS,
-	type DirectConnector,
-	defaultConnectorFor,
-	isWebhookPlatform,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 } from "@bilibili-notify/internal/constants";
 import { readJsonFile, rewriteJsonFile } from "./files.js";
+import {
+	isZeroWebhookPlatform,
+	ZERO_CONNECTORS,
+	zeroNeutralSnapshot,
+	zeroPlatform,
+} from "./zero-platforms.js";
 
 /**
  * v1 → v2 是纯函数,吃 raw JSON 吐 raw JSON,不碰磁盘也不 parse。判据是**数据形状**,不是版本号:版本文件
@@ -67,7 +69,7 @@ export interface MigratedConfigSections {
 	from: number;
 }
 
-const CONNECTOR_SET = new Set<string>(DIRECT_CONNECTORS);
+const CONNECTOR_SET = new Set<string>(ZERO_CONNECTORS);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -83,12 +85,19 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  */
 function isMigratedConnection(entry: unknown): boolean {
 	if (!isRecord(entry)) return false;
+	// 1.0 的新形状(已经有 adapterKey)也算已迁:它没有 connector,不放行就会被当成史前直连补上 kind。
+	if (isReshapedConnection(entry)) return true;
 	if (isExtensionConnection(entry)) return true;
 	return typeof entry.connector === "string" && entry.platform !== "webhook";
 }
 
 function isExtensionConnection(entry: Record<string, unknown>): boolean {
 	return entry.kind === "extension";
+}
+
+/** 这条连接已经是 1.0 的形状(有 `adapterKey`)? */
+function isReshapedConnection(entry: Record<string, unknown>): boolean {
+	return typeof entry.adapterKey === "string";
 }
 
 /**
@@ -132,8 +141,10 @@ export function detectConfigVersion(input: RawConfigSections): number {
  */
 function connectionToV2(entry: unknown): { next: unknown; changed: boolean } {
 	if (!isRecord(entry)) return { next: entry, changed: false };
-	// 拓展连接自成一种形状,这两步都不归它 —— 见 isMigratedConnection。
-	if (isExtensionConnection(entry)) return { next: entry, changed: false };
+	// 拓展连接自成一种形状,这两步都不归它 —— 见 isMigratedConnection。已是 1.0 形状的同理。
+	if (isReshapedConnection(entry) || isExtensionConnection(entry)) {
+		return { next: entry, changed: false };
+	}
 
 	let next = entry;
 	let changed = false;
@@ -142,7 +153,7 @@ function connectionToV2(entry: unknown): { next: unknown; changed: boolean } {
 		const { provider, ...config } = isRecord(next.config) ? next.config : {};
 		next = {
 			...next,
-			platform: isWebhookPlatform(String(provider)) ? provider : "generic",
+			platform: isZeroWebhookPlatform(provider) ? provider : "generic",
 			config,
 		};
 		changed = true;
@@ -161,14 +172,12 @@ function connectionToV2(entry: unknown): { next: unknown; changed: boolean } {
 	return { next, changed };
 }
 
-function connectorOf(entry: Record<string, unknown>): DirectConnector | undefined {
+function connectorOf(entry: Record<string, unknown>): string | undefined {
 	if (entry.platform === "onebot") {
 		const transport = isRecord(entry.config) ? entry.config.transport : undefined;
-		if (typeof transport === "string" && CONNECTOR_SET.has(transport)) {
-			return transport as DirectConnector;
-		}
+		if (typeof transport === "string" && CONNECTOR_SET.has(transport)) return transport;
 	}
-	return defaultConnectorFor(String(entry.platform));
+	return zeroPlatform(entry.platform)?.connector;
 }
 
 /**
@@ -254,7 +263,7 @@ function addressOf(
 
 function targetKindOf(entry: Record<string, unknown>): "session" | "endpoint" | undefined {
 	const platform = String(entry.platform);
-	if (isWebhookPlatform(platform)) return "endpoint";
+	if (isZeroWebhookPlatform(platform)) return "endpoint";
 	switch (platform) {
 		case "onebot":
 		case "qq-official":
@@ -359,26 +368,28 @@ export function migrateLegacyTargets(raw: readonly unknown[]): {
 			const accessToken = cfg.accessToken ?? "";
 			const connection = connectionIdOf(`onebot|${baseUrl}|${accessToken}`, legacy);
 			if (connection.created) {
-				connections.push({
-					id: connection.id,
-					name: deriveConnectionName(legacy.name, baseUrl),
-					enabled: true,
-					kind: "direct",
-					connector: "http",
-					platform: "onebot",
-					config: {
-						transport: "http",
-						baseUrl,
-						accessToken: accessToken || undefined,
-						protocolVersion: cfg.protocolVersion ?? "v11",
-						headers: {},
-						timeoutMs: 15_000,
-						imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
-						mergeForwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-						retryTimes: 0,
-						retryIntervalMs: 1_000,
-					},
-				});
+				connections.push(
+					reshapeLegacy({
+						id: connection.id,
+						name: deriveConnectionName(legacy.name, baseUrl),
+						enabled: true,
+						kind: "direct",
+						connector: "http",
+						platform: "onebot",
+						config: {
+							transport: "http",
+							baseUrl,
+							accessToken: accessToken || undefined,
+							protocolVersion: cfg.protocolVersion ?? "v11",
+							headers: {},
+							timeoutMs: 15_000,
+							imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
+							mergeForwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
+							maxRetries: 0,
+							retryIntervalMs: 1_000,
+						},
+					}),
+				);
 			}
 			targets.push({
 				id: legacy.id,
@@ -398,21 +409,23 @@ export function migrateLegacyTargets(raw: readonly unknown[]): {
 			const url = cfg.url ?? "";
 			const connection = connectionIdOf(`webhook|${url}|${cfg.secret ?? ""}`, legacy);
 			if (connection.created) {
-				connections.push({
-					id: connection.id,
-					name: deriveConnectionName(legacy.name, url),
-					enabled: true,
-					kind: "direct",
-					connector: "webhook",
-					// 这条遗留路径来自「webhook 是一个平台」那一代,当时连 provider 都还没有
-					// (它是后来才加进 config 的)—— 所以一律落 generic。
-					platform: "generic",
-					config: {
-						url,
-						secret: cfg.secret || undefined,
-						headers: cfg.headers ?? {},
-					},
-				});
+				connections.push(
+					reshapeLegacy({
+						id: connection.id,
+						name: deriveConnectionName(legacy.name, url),
+						enabled: true,
+						kind: "direct",
+						connector: "webhook",
+						// 这条遗留路径来自「webhook 是一个平台」那一代,当时连 provider 都还没有
+						// (它是后来才加进 config 的)—— 所以一律落 generic。
+						platform: "generic",
+						config: {
+							url,
+							secret: cfg.secret || undefined,
+							headers: cfg.headers ?? {},
+						},
+					}),
+				);
 			}
 			targets.push({
 				id: legacy.id,
@@ -426,6 +439,14 @@ export function migrateLegacyTargets(raw: readonly unknown[]): {
 	}
 
 	return { connections, targets };
+}
+
+/**
+ * 这条路径(最老的单文件)在 {@link migrateConnectionFiles} 里直接写盘返回、不经后面几步,
+ * 所以造出 0.x 最新形状的 raw 连接之后要自己过一遍 {@link reshapeConnection},出最终形状。
+ */
+function reshapeLegacy(raw: Record<string, unknown>): Connection {
+	return reshapeConnection(raw) as Connection;
 }
 
 function deriveConnectionName(targetName: string, addr: string): string {
@@ -456,26 +477,29 @@ const RETIRED_PLATFORMS: ReadonlySet<string> = new Set(["web-dashboard", "koishi
 /**
  * 这条**连接**是不是「已撤下平台留下的存量」—— 该丢掉的那种。
  *
- * 判据是:**我们认得的平台必须能 parse;认不得的平台又 parse 不过,才是存量。** 所以它**只在 parse 失败
- * 之后**才问({@link keepConnection}),永远不跑在 parse 之前。
+ * 判据是**纯结构**的(不再靠活的 `ConnectionSchema` 去 parse —— 它已经是 1.0 的形状了):
+ * - 已经是 1.0 形状(有 `adapterKey`):留;
+ * - 拓展连接:有 `platform` 的留(桥借来的 bot,平台名是开放词表),没有的丢;
+ * - 直连:平台在 0.x 的表(冻结副本)里的留,认不得的丢。
  *
- * ⚠️ **别把它挪到 parse 之前。** 拿原始 JSON 用闭集问「这个平台认得吗」,等于「词表里没有 = 不存在」:
- * 桥接入根本没有 `platform` 那一格,拓展带来的连接平台也不在闭集里 —— 两者都会被静默丢光。
+ * ⚠️ **只靠 `kind` / `platform` 这两格的有无判,不要去读 `config` 里的内容** —— 认得的平台上 `config` 坏了的
+ * 连接不丢:它会被改成 1.0 形状,开机后只被隔离(读盘只有外壳坏了才挡开机)。
  *
- * ⚠️ **目标那一侧不用这条**(见 {@link isRetiredTargetRecord}):连接的平台是闭集、目标的是开放词表,
- * 同一条判据套过去就变成「桥驮来的平台上的真损坏一律静默吃掉」。
+ * ⚠️ **目标那一侧不用这条**(见 {@link isRetiredTargetRecord}):目标的平台是开放词表,同一条判据套过去就变成
+ * 「桥驮来的平台上的真损坏一律静默吃掉」。
  *
- * - `koishi-bot` 的老条目:词表外 + 老形状 parse 不过 → 丢弃
+ * - `koishi-bot` 的老条目:不在 0.x 的表里 → 丢弃
  * - 没有 `platform` 的拓展连接(桥接入还是连接那一版的形状,未发版):丢弃
- * - 桥借来的 telegram bot 那条连接:parse 得过 → 走不到这里
- * - onebot 的坏条目:词表内 → 留着,配置仓开机时照旧报错,不许静默吃掉真正的损坏
+ * - 桥借来的 telegram bot 那条连接:拓展连接、有 `platform` → 留
  */
 function isRetiredConnectionRecord(raw: unknown): boolean {
-	const record = raw as { kind?: unknown; platform?: unknown } | undefined;
+	const record = raw as { adapterKey?: unknown; kind?: unknown; platform?: unknown } | undefined;
+	if (typeof record?.adapterKey === "string") return false; // 已是新形状
 	// 拓展连接曾经**没有** `platform`(那时它是「一条桥接入」,ADR-0012 决策 27);连接改成「一个 bot」
 	// 之后这一格必填(决策 45)。老形状没发过版,不写迁移 —— 当作已撤下的形状丢掉,主人在拓展页重建即可。
 	if (record?.kind === "extension") return record.platform === undefined;
-	return !ConnectionPlatformSchema.safeParse(record?.platform).success;
+	// 直连:平台不在 0.x 的表里(冻结副本)。
+	return zeroPlatform(record?.platform) === undefined;
 }
 
 /**
@@ -491,7 +515,7 @@ function isRetiredTargetRecord(raw: unknown): boolean {
 }
 
 function keepConnection(raw: unknown): boolean {
-	return ConnectionSchema.safeParse(raw).success || !isRetiredConnectionRecord(raw);
+	return !isRetiredConnectionRecord(raw);
 }
 
 function keepTarget(raw: unknown): boolean {
@@ -509,8 +533,10 @@ function stripRetiredTargetFields(entry: unknown): unknown {
 	// 只摘**认得的**条目(能过目标 schema 的);坏条目认不得,原样留着、一格不动,由开机的配置仓报出来。
 	if (!isRecord(entry) || !PushTargetSchema.safeParse(entry).success) return entry;
 	const dropScope = entry.kind === "endpoint" && Object.hasOwn(entry, "scope");
-	if (!Object.hasOwn(entry, "platform") && !dropScope) return entry;
-	const { platform: _platform, ...rest } = entry;
+	const dropTestStatus = Object.hasOwn(entry, "testStatus");
+	if (!Object.hasOwn(entry, "platform") && !dropScope && !dropTestStatus) return entry;
+	// `testStatus`(0.x 的会话级通断记录)这一版不带过来:新的 `reachability` 形状不同,开机后随下一次翻转重新记。
+	const { platform: _platform, testStatus: _testStatus, ...rest } = entry;
 	if (dropScope) {
 		const { scope: _scope, ...withoutScope } = rest;
 		return withoutScope;
@@ -523,6 +549,8 @@ function stripRetiredTargetFields(entry: unknown): unknown {
 /** 连接 `config` 里 1.0 改了名的键(3a-16:合并转发的超时下限)。 */
 const CONNECTION_CONFIG_KEY_RENAMES: Readonly<Record<string, string>> = {
 	forwardMinTimeoutMs: "mergeForwardMinTimeoutMs",
+	// 3a-22-2:重试次数的名字对齐(一个概念一个词)。
+	retryTimes: "maxRetries",
 };
 
 /**
@@ -545,6 +573,67 @@ function renameConnectionConfigKeys(entry: unknown): unknown {
 		}
 	}
 	return { ...entry, config: Object.fromEntries(renamed) };
+}
+
+// ── 1.0 的连接新形状 ──────────────────────────────────────────────────────────
+
+/**
+ * 连接迁移的**最后一步**(raw → raw):0.x 最新形状 → `{ id, name, enabled, adapterKey, platform,
+ * settings, platformSnapshot }`。`kind` / `connector` / `extensionId` / `testStatus` 丢;`config` 改叫
+ * `settings`(键名在 {@link renameConnectionConfigKeys} 里已经换好);别的未知顶层键原位留着。
+ * `probeState` 不写 —— 缺着就是还没探过,开机重探。
+ *
+ * - 直连:`adapterKey` 与 `platformSnapshot` 查冻结的 0.x 平台表;
+ * - 拓展连接:`adapterKey` 取原 `extensionId`,快照填中性占位(迁移问不到适配器);
+ * - 认不得的(不是对象、`kind` 不认得、平台不在冻结表里、拓展缺 `extensionId` / `platform`)原样回同一个对象 ——
+ *   已撤下的在它之前已被 {@link keepConnection} 丢掉,剩下的留着,开机时过不了外壳、照旧指到文件与行号。
+ *
+ * 幂等:已有 `adapterKey` 的回同一个对象。
+ */
+export function reshapeConnection(entry: unknown): unknown {
+	if (!isRecord(entry) || typeof entry.adapterKey === "string") return entry;
+	const {
+		kind,
+		connector,
+		extensionId,
+		config,
+		testStatus: _testStatus,
+		platform,
+		...rest
+	} = entry;
+	if (kind === "extension") {
+		if (
+			typeof extensionId !== "string" ||
+			extensionId === "" ||
+			typeof platform !== "string" ||
+			platform === ""
+		) {
+			return entry;
+		}
+		return {
+			...rest,
+			adapterKey: extensionId,
+			platform,
+			settings: config,
+			platformSnapshot: zeroNeutralSnapshot(platform),
+		};
+	}
+	const known = kind === "direct" ? zeroPlatform(platform) : undefined;
+	if (!known) return entry;
+	return {
+		...rest,
+		adapterKey: known.adapterKey,
+		platform,
+		settings: settingsOf(known.adapterKey, config, connector),
+		platformSnapshot: known.snapshot,
+	};
+}
+
+/** OneBot:0.x 早期没写 `transport` 的写成显式值(取 `connector`,取不到落 http);其余原样。 */
+function settingsOf(adapterKey: string, config: unknown, connector: unknown): unknown {
+	if (adapterKey !== "onebot" || !isRecord(config) || config.transport !== undefined) return config;
+	const transport = connector === "ws" || connector === "ws-reverse" ? connector : "http";
+	return { transport, ...config };
 }
 
 // ── 新代里的两份文件 ──────────────────────────────────────────────────────────
@@ -599,12 +688,14 @@ export async function migrateConnectionFiles(input: ConnectionFilesInput): Promi
 		targets: targets ?? [],
 	});
 	const renamed = migrated.connections.map(renameConnectionConfigKeys);
-	const connections = renamed.filter(keepConnection);
+	const kept = renamed.filter(keepConnection);
+	const connections = kept.map(reshapeConnection);
 	if (
 		fromAdapters ||
 		migrated.changed.connections ||
 		renamed.some((entry, i) => entry !== migrated.connections[i]) ||
-		connections.length !== migrated.connections.length
+		kept.length !== migrated.connections.length ||
+		connections.some((entry, i) => entry !== kept[i])
 	) {
 		await write(connectionsPath, connections, fromAdapters ? input.adaptersPath : connectionsPath);
 	}

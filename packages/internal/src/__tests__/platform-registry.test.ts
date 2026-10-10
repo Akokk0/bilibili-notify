@@ -12,12 +12,8 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import {
-	CONNECTION_PLATFORMS,
-	DIRECT_CONNECTORS,
-	PLATFORM_REGISTRY,
-	WEBHOOK_PLATFORMS,
-} from "../constants";
+import { CONNECTION_PLATFORMS, PLATFORM_REGISTRY, WEBHOOK_PLATFORMS } from "../constants";
+import { PlatformSnapshotSchema } from "../schema/targets";
 
 const platformsWhere = (pick: (p: (typeof CONNECTION_PLATFORMS)[number]) => boolean) =>
 	CONNECTION_PLATFORMS.filter(pick).sort();
@@ -25,21 +21,23 @@ const platformsWhere = (pick: (p: (typeof CONNECTION_PLATFORMS)[number]) => bool
 describe("注册表的投影", () => {
 	it("WEBHOOK_PLATFORMS 就是注册表里默认走 webhook 连的那些", () => {
 		expect([...WEBHOOK_PLATFORMS].sort()).toEqual(
-			platformsWhere((p) => PLATFORM_REGISTRY[p].connectors[0] === "webhook"),
+			platformsWhere((p) => PLATFORM_REGISTRY[p].adapterKey === "webhook"),
 		);
 	});
 });
 
 describe("注册表自身", () => {
-	it("每个平台都至少有一个连接器,而且都是认得的连法", () => {
-		// `connectors[0]` 是「默认走哪个连接器」的答案,空数组会让 defaultConnectorFor
-		// 悄悄回 undefined —— 新建连接拿到一个没有 connector 的壳,schema 才报错。
+	it("每个平台都有适配器键,且只有三个内置键", () => {
+		// `adapterKey` 是「谁来处理这个平台的连接」的答案;空串或拼错都会让连接落不到任何适配器。
 		for (const p of CONNECTION_PLATFORMS) {
-			const connectors = PLATFORM_REGISTRY[p].connectors;
-			expect(connectors.length).toBeGreaterThan(0);
-			for (const c of connectors) {
-				expect(DIRECT_CONNECTORS).toContain(c);
-			}
+			expect(["onebot", "qq-official", "webhook"]).toContain(PLATFORM_REGISTRY[p].adapterKey);
+		}
+	});
+
+	it("每一行去掉 adapterKey 之后就是一份合法的平台快照", () => {
+		for (const p of CONNECTION_PLATFORMS) {
+			const { adapterKey: _adapterKey, ...snapshot } = PLATFORM_REGISTRY[p];
+			expect(PlatformSnapshotSchema.safeParse(snapshot).success, p).toBe(true);
 		}
 	});
 

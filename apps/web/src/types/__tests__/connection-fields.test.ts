@@ -1,7 +1,7 @@
 /**
  * 字段表与 zod schema 对表。
  *
- * 连接的 config 有哪些格子由 schema 说了算,面板上能不能填由字段表说了算 —— 两边各写
+ * 连接的 settings 有哪些格子由 schema 说了算,面板上能不能填由字段表说了算 —— 两边各写
  * 一份,谁也没核对过谁。往 schema 里加一格、忘了往表里加一栏,类型全绿、保存也全绿,
  * 只是主人**永远填不到那一格**(只能改盘上的 JSON 或者打 API)。
  *
@@ -10,17 +10,18 @@
  */
 
 import {
-	OnebotHttpConfigSchema,
-	OnebotWsConfigSchema,
-	OnebotWsReverseConfigSchema,
-	QQOfficialConnectionConfigSchema,
-	WebhookConnectionConfigSchema,
+	OnebotHttpSettingsSchema,
+	OnebotWsReverseSettingsSchema,
+	OnebotWsSettingsSchema,
+	QQOfficialConnectionSettingsSchema,
+	WebhookConnectionSettingsSchema,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { connectionFields } from "../connection-fields";
 import {
-	type Connection,
 	makeEmptyConnection,
+	type NewConnection,
+	type OnebotConnectionSettings,
 	type OnebotTransport,
 	switchOnebotTransport,
 } from "../domain";
@@ -28,18 +29,18 @@ import {
 /** 只要 `.shape` 这一格 —— web 不依赖 zod,别把它的类型拖进来。 */
 type ShapeCarrier = { shape: Record<string, unknown> };
 
-/** 刻意不给主人填的格子 —— 键是 `<用例>.<config 键>`,值是为什么。 */
+/** 刻意不给主人填的格子 —— 键是 `<用例>.<settings 键>`,值是为什么。 */
 const HIDDEN: Record<string, string> = {
 	"onebot-http.protocolVersion": "首期固定 v11,留位以便后续扩展 v12;面板不给改",
 	"onebot-ws.protocolVersion": "同 onebot-http:固定 v11,面板不给改",
 	"onebot-ws-reverse.protocolVersion": "同 onebot-http:固定 v11,面板不给改",
 };
 
-function codesOf(connection: Connection): string[] {
+function codesOf(connection: NewConnection): string[] {
 	return connectionFields(connection)
 		.map((f) => (f.kind === "qq-bind" || f.kind === "ws-reverse-address" ? "" : f.code))
 		.filter(Boolean)
-		.map((code) => code.replace(/^config\./, ""));
+		.map((code) => code.replace(/^settings\./, ""));
 }
 
 function keysOf(schema: ShapeCarrier): string[] {
@@ -47,38 +48,42 @@ function keysOf(schema: ShapeCarrier): string[] {
 }
 
 /** 一条走指定连法的 OneBot 连接 —— 初值与面板新建的那条同源。 */
-function onebotWith(transport: OnebotTransport): Connection {
+function onebotWith(transport: OnebotTransport): NewConnection {
 	const base = makeEmptyConnection("onebot", "ob");
-	if (base.platform !== "onebot") throw new Error("makeEmptyConnection('onebot') 不再回 onebot 了");
-	return { ...base, connector: transport, config: switchOnebotTransport(base.config, transport) };
+	if (base.adapterKey !== "onebot")
+		throw new Error("makeEmptyConnection('onebot') 不再回 onebot 了");
+	return {
+		...base,
+		settings: switchOnebotTransport(base.settings as OnebotConnectionSettings, transport),
+	};
 }
 
-const CASES: Array<{ name: string; connection: Connection; schema: ShapeCarrier }> = [
-	{ name: "onebot-http", connection: onebotWith("http"), schema: OnebotHttpConfigSchema },
-	{ name: "onebot-ws", connection: onebotWith("ws"), schema: OnebotWsConfigSchema },
+const CASES: Array<{ name: string; connection: NewConnection; schema: ShapeCarrier }> = [
+	{ name: "onebot-http", connection: onebotWith("http"), schema: OnebotHttpSettingsSchema },
+	{ name: "onebot-ws", connection: onebotWith("ws"), schema: OnebotWsSettingsSchema },
 	{
 		name: "onebot-ws-reverse",
 		connection: onebotWith("ws-reverse"),
-		schema: OnebotWsReverseConfigSchema,
+		schema: OnebotWsReverseSettingsSchema,
 	},
 	{
 		name: "qq-official",
 		connection: makeEmptyConnection("qq-official", "qq"),
-		schema: QQOfficialConnectionConfigSchema,
+		schema: QQOfficialConnectionSettingsSchema,
 	},
 	{
 		name: "webhook-official",
 		connection: makeEmptyConnection("feishu", "fs"),
-		schema: WebhookConnectionConfigSchema,
+		schema: WebhookConnectionSettingsSchema,
 	},
 	{
 		name: "webhook-generic",
 		connection: makeEmptyConnection("generic", "自建端点"),
-		schema: WebhookConnectionConfigSchema,
+		schema: WebhookConnectionSettingsSchema,
 	},
 ];
 
-describe("字段表覆盖 config schema", () => {
+describe("字段表覆盖 settings schema", () => {
 	it.each(CASES)("$name:每一格要么有一栏,要么写明为什么不给", ({ name, connection, schema }) => {
 		const shown = new Set(codesOf(connection));
 		const missing = keysOf(schema).filter((key) => !shown.has(key) && !HIDDEN[`${name}.${key}`]);

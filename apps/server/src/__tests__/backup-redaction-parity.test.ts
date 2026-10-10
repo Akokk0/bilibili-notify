@@ -3,7 +3,10 @@ import {
 	ConnectionSchema,
 	GlobalConfigSchema,
 	makeDefaultGlobalConfig,
+	OnebotConnectionSettingsSchema,
+	QQOfficialConnectionSettingsSchema,
 	stringLeavesOf,
+	WebhookConnectionSettingsSchema,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -12,6 +15,8 @@ import {
 	redactSecretKeys,
 	SECRET_KEYS,
 } from "../backup/sanitize.js";
+import type { SecretCellsReader } from "../push/connection-settings.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 
 /**
  * 备份脱敏的判据从「键名黑名单」换成「schema 上的标记」(ADR-0021 决策 44)。换判据不许改结果:
@@ -25,7 +30,7 @@ import {
  */
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-const base = { name: "n", enabled: true, kind: "direct" } as const;
+const base = { name: "n", enabled: true } as const;
 
 function sections() {
 	const globals = makeDefaultGlobalConfig();
@@ -49,8 +54,9 @@ function sections() {
 			...base,
 			id: ID(1),
 			platform: "onebot",
-			connector: "http",
-			config: {
+			adapterKey: "onebot",
+			platformSnapshot: snapshotFor("onebot"),
+			settings: {
 				transport: "http",
 				baseUrl: "http://bob:pw@127.0.0.1:5700/",
 				accessToken: "tok",
@@ -61,22 +67,25 @@ function sections() {
 			...base,
 			id: ID(2),
 			platform: "onebot",
-			connector: "ws",
-			config: { transport: "ws", url: "ws://bot:3001", headers: { A: "1" } },
+			adapterKey: "onebot",
+			platformSnapshot: snapshotFor("onebot"),
+			settings: { transport: "ws", url: "ws://bot:3001", headers: { A: "1" } },
 		},
 		{
 			...base,
 			id: ID(3),
 			platform: "onebot",
-			connector: "ws-reverse",
-			config: { transport: "ws-reverse", port: 6700, accessToken: "rev" },
+			adapterKey: "onebot",
+			platformSnapshot: snapshotFor("onebot"),
+			settings: { transport: "ws-reverse", port: 6700, accessToken: "rev" },
 		},
 		{
 			...base,
 			id: ID(4),
 			platform: "generic",
-			connector: "webhook",
-			config: {
+			adapterKey: "webhook",
+			platformSnapshot: snapshotFor("generic"),
+			settings: {
 				url: "https://example.com/hook?access_token=t",
 				secret: "wh",
 				headers: { "X-Token": "x" },
@@ -86,25 +95,27 @@ function sections() {
 			...base,
 			id: ID(5),
 			platform: "feishu",
-			connector: "webhook",
-			config: { url: "https://open.feishu.cn/open-apis/bot/v2/hook/abc" },
+			adapterKey: "webhook",
+			platformSnapshot: snapshotFor("feishu"),
+			settings: { url: "https://open.feishu.cn/open-apis/bot/v2/hook/abc" },
 		},
 		{
 			...base,
 			id: ID(6),
 			platform: "qq-official",
-			connector: "ws",
-			config: { appId: "102000000", appSecret: "app-secret" },
+			adapterKey: "qq-official",
+			platformSnapshot: snapshotFor("qq-official"),
+			settings: { appId: "102000000", appSecret: "app-secret" },
 		},
 	].map((c) => ConnectionSchema.parse(c));
 	const extensionConnection = {
 		id: ID(7),
 		name: "桥",
 		enabled: true,
-		kind: "extension",
-		extensionId: "bridge",
+		adapterKey: "bridge",
 		platform: "qq",
-		config: { token: "ext-token", botKey: "bk", note: "家里" },
+		settings: { token: "ext-token", botKey: "bk", note: "家里" },
+		platformSnapshot: snapshotFor("qq"),
 	};
 	return {
 		globals,
@@ -117,18 +128,18 @@ function sections() {
 }
 
 const EXPECTED_ERASED_PATHS = [
-	"connections.0.config.accessToken",
-	"connections.0.config.baseUrl",
-	"connections.0.config.headers.Authorization",
-	"connections.1.config.headers.A",
-	"connections.1.config.url",
-	"connections.2.config.accessToken",
-	"connections.3.config.headers.X-Token",
-	"connections.3.config.secret",
-	"connections.3.config.url",
-	"connections.4.config.url",
-	"connections.5.config.appSecret",
-	"connections.6.config.token",
+	"connections.0.settings.accessToken",
+	"connections.0.settings.baseUrl",
+	"connections.0.settings.headers.Authorization",
+	"connections.1.settings.headers.A",
+	"connections.1.settings.url",
+	"connections.2.settings.accessToken",
+	"connections.3.settings.headers.X-Token",
+	"connections.3.settings.secret",
+	"connections.3.settings.url",
+	"connections.4.settings.url",
+	"connections.5.settings.appSecret",
+	"connections.6.settings.token",
 	"extensionSettings.bridge.links.0.password",
 	"extensionSettings.bridge.token",
 	"globals.bootstrap.dashboardAuth.password",
@@ -146,7 +157,19 @@ const EXPECTED_WITH_SEARCH = [
 	"globals.defaults.ai.search.keys.bocha",
 ].sort();
 
-const NO_CODES = new Map([["bridge", [] as string[]]]);
+/**
+ * 查表:内置三个适配器各回自己的真 schema;桥回 undefined(它的 schema 上没有标记,等于问不出标记)、声明的键是
+ * 空表(跑着、一格都没声明)—— 即旧黑名单对拓展连接的处理。
+ */
+const SCHEMAS = new Map<string, import("zod").ZodType>([
+	["onebot", OnebotConnectionSettingsSchema],
+	["qq-official", QQOfficialConnectionSettingsSchema],
+	["webhook", WebhookConnectionSettingsSchema],
+]);
+const NO_CODES: SecretCellsReader = {
+	settingsSchemaOf: (key) => SCHEMAS.get(key),
+	declaredSecretKeysOf: (key) => (key === "bridge" ? [] : undefined),
+};
 
 describe("备份脱敏换判据:被抹的叶子逐叶子不变", () => {
 	it("被抹的叶子路径与换判据之前录下的字面清单一致", () => {
@@ -170,10 +193,20 @@ describe("备份脱敏换判据:被抹的叶子逐叶子不变", () => {
  */
 describe("守卫:键名像密钥的字符串叶子必须带标记", () => {
 	const NAMES = new Set([...SECRET_KEYS, "url", "baseUrl"]);
+	// 连接外壳里 `settings` 是 `z.unknown()`,拿外壳当样本叶子集会悄悄变空、守卫恒绿 ——
+	// 样本是三份真的设置规则(onebot 联合的三支、webhook、QQ 官方)。
 	const schemas: Array<[string, unknown]> = [
 		["GlobalConfig", GlobalConfigSchema],
-		["Connection", ConnectionSchema],
+		["OnebotConnectionSettings", OnebotConnectionSettingsSchema],
+		["WebhookConnectionSettings", WebhookConnectionSettingsSchema],
+		["QQOfficialConnectionSettings", QQOfficialConnectionSettingsSchema],
 	];
+
+	it("样本不是空的:每份设置规则都有字符串叶子", () => {
+		for (const [name, schema] of schemas) {
+			expect(stringLeavesOf(schema).length, name).toBeGreaterThan(0);
+		}
+	});
 
 	it.each(schemas)("%s", (_name, schema) => {
 		const unmarked = stringLeavesOf(schema)

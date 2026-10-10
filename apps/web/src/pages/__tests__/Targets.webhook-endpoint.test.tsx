@@ -23,6 +23,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import type { Connection, PushTarget } from "../../types/domain";
 import Targets from "../Targets";
 
@@ -40,20 +41,20 @@ const WEBHOOK_CONNECTION = {
 	id: WEBHOOK_ID,
 	name: "飞书群机器人",
 	enabled: true,
-	kind: "direct",
-	connector: "webhook",
+	adapterKey: "webhook",
 	platform: "feishu",
-	config: { url: "https://open.feishu.cn/hook/abcdef", provider: "feishu", headers: {} },
+	platformSnapshot: snapshotFor("feishu"),
+	settings: { url: "https://open.feishu.cn/hook/abcdef", provider: "feishu", headers: {} },
 } as unknown as Connection;
 
 const ONEBOT_CONNECTION = {
 	id: ONEBOT_ID,
 	name: "家里那台 OneBot",
 	enabled: true,
-	kind: "direct",
-	connector: "http",
+	adapterKey: "onebot",
 	platform: "onebot",
-	config: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
+	platformSnapshot: snapshotFor("onebot"),
+	settings: { transport: "http", baseUrl: "http://127.0.0.1:5700", accessToken: "" },
 } as unknown as Connection;
 
 /** 系统托管的那张:`managedBy: "connection"`,用户不可编辑 / 删除。 */

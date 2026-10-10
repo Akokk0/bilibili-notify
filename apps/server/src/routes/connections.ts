@@ -3,7 +3,12 @@ import type {
 	ConnectionTestResponse,
 	ConnectionView,
 } from "@bilibili-notify/contract";
-import { fail } from "@bilibili-notify/internal";
+import {
+	fail,
+	NewConnectionSchema,
+	neutralPlatformSnapshot,
+	type PlatformSnapshot,
+} from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { ConfigValidationError } from "../config/store.js";
 import { maskedCellsFailure } from "./masked-cells.js";
@@ -21,8 +26,12 @@ import type { RouteDeps } from "./types.js";
  * deleting a connection any target still points at is rejected with 409 and
  * the caller detaches first.
  *
- * 凭据下发打码(ADR-0021 决策 44):读与写的响应里 `secret` 标记的格是 `{ masked }`;写入带着遮挡回 400,
+ * 凭据下发打码(ADR-0021 决策 44):读与写的响应里 `settings` 里 `secret` 标记的格是 `{ masked }`
+ * (适配器不在场 / 设置不合法时整格是 `{ masked }`,见 `secret-view.ts`);写入带着遮挡回 400,
  * 不带 = 保留已存的,清空交空串 / null。POST 只管新建(同 id 已存在回 409),编辑走 PATCH。
+ *
+ * 平台快照(`platformSnapshot`)与探测状态(`probeState`)只有宿主写:POST 时快照从适配器的候选里抄,
+ * 体里带来的这两格一律忽略。
  *
  * 失败一律经 `respondFailure`(ADR-0026):store 拒收时抛的 `ConfigValidationError` 自带标准码,
  * 路由按码回(不合规 400、没这条 404、还被目标引用着 409),不嗅文案。
@@ -32,7 +41,8 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 	const log = deps.runtime.serviceCtx.logger;
 
 	/** 下发前密钥格打码(`secret` 标记);盘上与引擎里仍是明文。 */
-	const viewsOf = (): ConnectionView[] => deps.store.getConnections().map(connectionView);
+	const viewsOf = (): ConnectionView[] =>
+		deps.store.getConnections().map((c) => connectionView(c, deps.connectionSecrets));
 
 	app.get("/", (c) => c.json(viewsOf()));
 
@@ -59,9 +69,48 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		if (!read.ok) return respondFailure(c, read);
 		const masked = maskedCellsFailure(read.body);
 		if (masked) return respondFailure(c, masked);
+		// 外壳先过一遍(宿主独写的两格不在这份 schema 里,带来了也被剥掉)。
+		const draft = NewConnectionSchema.safeParse(read.body);
+		if (!draft.success) {
+			return respondFailure(
+				c,
+				ConfigValidationError.fromZod("connections", draft.error).toFailure(),
+			);
+		}
+		// 新建连接要适配器在跑:找不到就拒(改已有的连接不受这条管,适配器不在场先存)。
+		const adapter = deps.runtime.adapterRegistry
+			.list()
+			.find((a) => a.adapterKey === draft.data.adapterKey);
+		if (!adapter) {
+			return respondFailure(c, fail("unavailable", "这种连接的适配器没在跑，没法新建"));
+		}
+		// 平台快照:适配器列得出候选的,从挑中平台的那个候选抄;没有候选口的(拓展提供的)填中性快照。
+		let snapshot: PlatformSnapshot;
+		if (adapter.listConnectionCandidates) {
+			let candidates: Awaited<ReturnType<NonNullable<typeof adapter.listConnectionCandidates>>>;
+			try {
+				candidates = await adapter.listConnectionCandidates(c.req.raw.signal);
+			} catch (err) {
+				log.warn(`POST /api/connections: ${draft.data.adapterKey} 的候选列不出来: ${String(err)}`);
+				return respondFailure(c, fail("unavailable", "这个适配器现在列不出可选的平台，请稍后再试"));
+			}
+			const hit = candidates.find((cand) => cand.platform.platform === draft.data.platform);
+			if (!hit) {
+				return respondFailure(
+					c,
+					fail("invalid", `这个适配器没有 ${draft.data.platform} 这种候选`, {
+						issues: [{ path: ["platform"], message: "不在这个适配器的候选里" }],
+					}),
+				);
+			}
+			const { platform: _platform, ...rest } = hit.platform;
+			snapshot = rest;
+		} else {
+			snapshot = neutralPlatformSnapshot(draft.data.platform);
+		}
 		try {
 			// 只管新建 —— 整条覆盖里「没带这一格」与「清空这一格」分不开,编辑一律走 PATCH。
-			await deps.store.createConnection(read.body as never);
+			await deps.store.createConnection(draft.data, snapshot);
 			return c.json(viewsOf(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
@@ -78,7 +127,7 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		if (masked) return respondFailure(c, masked);
 		try {
 			const next = await deps.store.patchConnection(id, read.body);
-			return c.json(connectionView(next));
+			return c.json(connectionView(next, deps.connectionSecrets));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/connections/:id failed", err);
@@ -93,25 +142,23 @@ export function createConnectionsRoute(deps: RouteDeps): Hono {
 		const engines = deps.runtime.engines;
 		if (!engines) return respondFailure(c, fail("unavailable", ENGINES_NOT_READY_MESSAGE));
 		const result = await engines.probeConnection(id);
-		// Persist the probe outcome to the connection's testStatus so the dashboard's
-		// status dot reflects this click without waiting for the 5-min poller.
-		// `unsupported` (no probe protocol) deliberately doesn't write back — we
-		// want the UI to remain "pending / unsupported" rather than green or red.
-		// 🔴 `testStatus.err` 是盘上的老格式(3a-21 整个换成 `probeState`):这里把失败的原话填进去,
-		// 码不落盘。回给面板的形状在 {@link testResultOfProbe} 里另翻。
-		if (result.ok || result.code !== "unsupported") {
-			try {
-				await deps.store.patchConnection(id, {
-					testStatus: {
-						ok: result.ok,
-						lastCheckedAt: new Date().toISOString(),
-						latencyMs: result.ok ? result.latencyMs : undefined,
-						err: result.ok ? undefined : result.message,
-					},
-				});
-			} catch (err) {
-				log.warn(`POST /api/connections/${id}/probe patchConnection failed: ${String(err)}`);
-			}
+		// 探测结果写进连接的 probeState,面板的状态圆点不必等五分钟一轮的周期探测。
+		// `unsupported`(没有探测协议)也记 —— 它既不是通也不是断,面板据此知道「探不了」。
+		// 失败的原话填进 `message`,码不落盘。回给面板的形状在 {@link testResultOfProbe} 里另翻。
+		try {
+			const checkedAt = new Date().toISOString();
+			await deps.store.recordConnectionProbeState(
+				id,
+				result.ok
+					? { status: "reachable", lastCheckedAt: checkedAt, latencyMs: result.latencyMs }
+					: result.code === "unsupported"
+						? { status: "unsupported", lastCheckedAt: checkedAt }
+						: { status: "unreachable", lastCheckedAt: checkedAt, message: result.message },
+			);
+		} catch (err) {
+			log.warn(
+				`POST /api/connections/${id}/probe recordConnectionProbeState failed: ${String(err)}`,
+			);
 		}
 		return c.json<ConnectionTestResponse>(testResultOfProbe(result));
 	});

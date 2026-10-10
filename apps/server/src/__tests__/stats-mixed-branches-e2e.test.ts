@@ -299,10 +299,9 @@ describe("B 站 + 拓展同在一台 BN e2e:统计页、粉丝面板、锐评按
 					id: WEBHOOK,
 					name: "本地 webhook",
 					enabled: true,
-					kind: "direct",
-					connector: "webhook",
+					adapterKey: "webhook",
 					platform: "generic",
-					config: { url: `http://127.0.0.1:${hook.port}/hook`, headers: {} },
+					settings: { url: `http://127.0.0.1:${hook.port}/hook`, headers: {} },
 				}),
 			}),
 		);

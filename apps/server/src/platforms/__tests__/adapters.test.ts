@@ -6,7 +6,7 @@
  *   - baseUrl 尾斜杠裁剪;accessToken → Authorization Bearer;payload 段 → OneBot segment
  *   - retcode!=0 / HTTP 非 2xx / fetch 抛错 → 失败且 logger.warn;空 payload → "empty payload"
  *   - 失败一律是结果形状(ADR-0026):`code` 取标准码表,平台自己的码只在 `upstreamCode`
- *   - retryTimes 生效;wrong platform / probe(/get_status)/ isAvailable
+ *   - maxRetries 生效;wrong platform / probe(/get_status)/ isAvailable
  * 守护契约(webhook):
  *   - body 含 targetId/scope/private/payload(序列化)+ secret header;非 2xx/抛错 → ok:false
  *   - probe 恒为 unsupported(没有探测协议);wrong platform / isAvailable
@@ -28,6 +28,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { WebSocket, WebSocketServer } from "ws";
 import { fakeAdapterContext, reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createWebhookAdapter } from "../webhook.js";
 
@@ -128,10 +129,11 @@ function obConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "ob",
-		kind: "direct",
+		adapterKey: "onebot",
 		platform: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
 		enabled: true,
-		config: {
+		settings: {
 			transport: "http",
 			baseUrl: "http://nb:3000/",
 			accessToken: "tok",
@@ -146,10 +148,11 @@ function obWsConnection(port: number, over: Record<string, unknown> = {}): Conne
 	return {
 		id: "a1",
 		name: "ob-ws",
-		kind: "direct",
+		adapterKey: "onebot",
 		platform: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
 		enabled: true,
-		config: { transport: "ws", url: `ws://127.0.0.1:${port}`, retryIntervalMs: 0, ...over },
+		settings: { transport: "ws", url: `ws://127.0.0.1:${port}`, retryIntervalMs: 0, ...over },
 	} as unknown as Connection;
 }
 
@@ -158,10 +161,11 @@ function obRevConnection(port: number, over: Record<string, unknown> = {}): Conn
 	return {
 		id: "a1",
 		name: "ob-rev",
-		kind: "direct",
+		adapterKey: "onebot",
 		platform: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
 		enabled: true,
-		config: { transport: "ws-reverse", port, retryIntervalMs: 0, ...over },
+		settings: { transport: "ws-reverse", port, retryIntervalMs: 0, ...over },
 	} as unknown as Connection;
 }
 
@@ -754,12 +758,12 @@ describe("onebot — 失败与重试", () => {
 		expect(logger.warn).toHaveBeenCalledTimes(1);
 	});
 
-	it("retryTimes:首次失败后重试成功(fetch 调用 2 次)", async () => {
+	it("maxRetries:首次失败后重试成功(fetch 调用 2 次)", async () => {
 		fetchMock
 			.mockResolvedValueOnce(res({ ok: true, json: { status: "failed", retcode: 1 } }))
 			.mockResolvedValueOnce(res({ ok: true, json: { status: "ok", retcode: 0 } }));
 		const ad = createOnebotAdapter(obOpts());
-		const r = await ad.send(obConnection({ retryTimes: 1, retryIntervalMs: 0 }), obTarget(), TEXT);
+		const r = await ad.send(obConnection({ maxRetries: 1, retryIntervalMs: 0 }), obTarget(), TEXT);
 		expect(r.ok).toBe(true);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
@@ -779,17 +783,17 @@ describe("onebot — 失败与重试", () => {
 describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 	// 背景:send_* 动作非幂等。响应超时/连接中断 ≠ 消息没发出去 —— NapCat 收到
 	// action 后即使我们判超时它仍会继续处理并把消息发进群。此时盲重试 = 群里收到
-	// retryTimes+1 份(用户实测:9 图合并转发超时重试,重复推送)。契约:
+	// maxRetries+1 份(用户实测:9 图合并转发超时重试,重复推送)。契约:
 	//   - 「结果未知」类失败(超时/断连)立即放弃重试,err 注明结果未知
 	//   - bot 明确报失败(响应 status=failed)→ 消息确定没发出去,重试语义保留
 	//   - 合并转发(send_*_forward_msg)对 NapCat 是重活,超时下限放宽(可注入)
 
-	it("WS 响应超时:retryTimes>0 也只发一帧,err 注明结果未知", async () => {
+	it("WS 响应超时:maxRetries>0 也只发一帧,err 注明结果未知", async () => {
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 120,
-			retryTimes: 3,
+			maxRetries: 3,
 			retryIntervalMs: 0,
 		});
 		reconcileAdapter(ad, [connection]);
@@ -803,7 +807,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		ad.stop();
 	});
 
-	it("WS bot 明确报失败:仍按 retryTimes 重试(重试语义保留)", async () => {
+	it("WS bot 明确报失败:仍按 maxRetries 重试(重试语义保留)", async () => {
 		const bot = await startFakeBotServer({
 			onFrame: (frame, reply) =>
 				reply({ status: "failed", retcode: 100, wording: "风控", echo: frame.echo }),
@@ -811,7 +815,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 500,
-			retryTimes: 2,
+			maxRetries: 2,
 			retryIntervalMs: 0,
 		});
 		reconcileAdapter(ad, [connection]);
@@ -829,7 +833,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 2000,
-			retryTimes: 3,
+			maxRetries: 3,
 			retryIntervalMs: 0,
 		});
 		reconcileAdapter(ad, [connection]);
@@ -862,7 +866,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			},
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
-		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
@@ -881,7 +885,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 			Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
 		);
 		const r = await createOnebotAdapter(obOpts()).send(
-			obConnection({ timeoutMs: 50, retryTimes: 2, retryIntervalMs: 0 }),
+			obConnection({ timeoutMs: 50, maxRetries: 2, retryIntervalMs: 0 }),
 			obTarget(),
 			TEXT,
 		);
@@ -914,7 +918,7 @@ describe("onebot — 超时不盲重(非幂等动作防重复送达)", () => {
 		const ad = createOnebotAdapter({ ...obOpts(), mergeForwardMinTimeoutMs: 1000 });
 		// get_login_info 用 cfg.timeoutMs(50ms)会先超时 → fallback 身份;forward 本体
 		// 在放宽后的 1000ms 下限内等到 150ms 的慢成功。
-		const r = await ad.send(obConnection({ timeoutMs: 50, retryTimes: 0 }), obTarget(), {
+		const r = await ad.send(obConnection({ timeoutMs: 50, maxRetries: 0 }), obTarget(), {
 			kind: "image-group",
 			images: [{ url: "https://x/1.jpg" }, { url: "https://x/2.jpg" }],
 			mergeForward: true,
@@ -950,7 +954,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
-		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
@@ -966,7 +970,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
-		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
@@ -984,7 +988,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 				setTimeout(() => reply({ status: "ok", retcode: 0, echo: frame.echo }), 200),
 		});
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
-		const connection = obWsConnection(bot.port, { timeoutMs: 60, retryTimes: 0 });
+		const connection = obWsConnection(bot.port, { timeoutMs: 60, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
@@ -1013,7 +1017,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 				}),
 		);
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 1000 });
-		const r = await ad.send(obConnection({ timeoutMs: 50, retryTimes: 0 }), obTarget(), IMAGE);
+		const r = await ad.send(obConnection({ timeoutMs: 50, maxRetries: 0 }), obTarget(), IMAGE);
 		expect(r.ok).toBe(true);
 	});
 
@@ -1021,7 +1025,7 @@ describe("onebot — 带图消息放宽超时下限", () => {
 		// max() 而非直接取下限:主人把超时调到 120s 是有意为之,别被 30s 的下限截断。
 		const bot = await startFakeBotServer({ autoReply: false });
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
-		const connection = obWsConnection(bot.port, { timeoutMs: 400, retryTimes: 0 });
+		const connection = obWsConnection(bot.port, { timeoutMs: 400, maxRetries: 0 });
 		reconcileAdapter(ad, [connection]);
 		await waitFor(() => bot.connections.length > 0);
 		await sleep(40);
@@ -1049,7 +1053,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		const ad = createOnebotAdapter({ ...obOpts(), imageMinTimeoutMs: 60 });
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
-			retryTimes: 0,
+			maxRetries: 0,
 			imageMinTimeoutMs: 1000,
 		});
 		reconcileAdapter(ad, [connection]);
@@ -1069,7 +1073,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
-			retryTimes: 0,
+			maxRetries: 0,
 			imageMinTimeoutMs: 0,
 		});
 		reconcileAdapter(ad, [connection]);
@@ -1102,7 +1106,7 @@ describe("onebot — 超时下限可按 adapter 配置调整", () => {
 		const ad = createOnebotAdapter(obOpts());
 		const connection = obWsConnection(bot.port, {
 			timeoutMs: 60,
-			retryTimes: 0,
+			maxRetries: 0,
 			mergeForwardMinTimeoutMs: 0,
 		});
 		reconcileAdapter(ad, [connection]);
@@ -1172,7 +1176,7 @@ describe("onebot — isAvailable / probe", () => {
 
 	it("probe:wrong platform → ok:false", async () => {
 		const ad = createOnebotAdapter(obOpts());
-		const wrong = { ...obConnection(), platform: "feishu" } as unknown as Connection;
+		const wrong = { ...obConnection(), adapterKey: "webhook" } as unknown as Connection;
 		const r = await ad.probe(wrong);
 		expect(r).toMatchObject({ ok: false, code: "invalid" });
 		expect(messageOf(r)).toMatch(/wrong platform/);
@@ -1614,10 +1618,10 @@ function whConnection(platform = "generic", over: Record<string, unknown> = {}):
 		id: "w1",
 		name: "wh",
 		platform,
-		kind: "direct",
-		connector: "webhook",
+		adapterKey: "webhook",
+		platformSnapshot: snapshotFor(platform),
 		enabled: true,
-		config: { url: "http://hook.local", secret: "s3cr3t", headers: { "x-team": "ops" }, ...over },
+		settings: { url: "http://hook.local", secret: "s3cr3t", headers: { "x-team": "ops" }, ...over },
 	} as unknown as Connection;
 }
 function whTarget(over: Record<string, unknown> = {}): PushTarget {

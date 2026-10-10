@@ -25,9 +25,11 @@ import type {
 	ProbeResult,
 	PushTarget,
 } from "@bilibili-notify/internal";
-import { fail } from "@bilibili-notify/internal";
+import { fail, platformDescriptor } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vite-plus/test";
+import { z } from "zod";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../target-dispatcher.js";
 
@@ -41,9 +43,10 @@ function makeConnection(
 	return {
 		name: `adapter-${over.id}`,
 		enabled: true,
-		// 盘上的连接一定带 `kind`(迁移补的);夹具漏了它,按 kind 分岔的读点会当它不是直连。
-		kind: "direct",
-		config: { url: "https://example.com/hook", headers: {} },
+		// 认领它的适配器键:内置平台取注册表那一行,认不出的(桥借来的)就是平台名本身。
+		adapterKey: platformDescriptor(over.platform)?.adapterKey ?? over.platform,
+		platformSnapshot: snapshotFor(over.platform),
+		settings: { url: "https://example.com/hook", headers: {} },
 		...over,
 	} as unknown as Connection;
 }
@@ -85,6 +88,8 @@ function makePlatformAdapter(
 	const probeResult: ProbeResult = { ok: true, latencyMs: 8 };
 	return {
 		adapterKey,
+		// 派发器按它解 settings 再递给适配器;测试里的适配器不挑设置形状。
+		settingsSchema: z.unknown(),
 		isAvailable: vi.fn(() => true),
 		send: vi.fn(async () => sendResult),
 		probe: vi.fn(async () => probeResult),
@@ -95,7 +100,7 @@ function makePlatformAdapter(
 }
 
 describe("createTargetDispatcher — adapter 注册表", () => {
-	it("adapter 声明的键进表,连接按分发键找到它", () => {
+	it("adapter 声明的键进表,连接按 adapterKey 找到它", () => {
 		const pa = makePlatformAdapter("onebot");
 		const dispatcher = createTargetDispatcher({
 			store: makeStore(
@@ -537,7 +542,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
 	});
 
-	it("不触发 onDelivery(临时目标不在表里,它会去写 testStatus):成功与失败都不", async () => {
+	it("不触发 onDelivery(临时目标不在表里,它会去写 reachability):成功与失败都不", async () => {
 		const failing = makePlatformAdapter("webhook", {
 			send: vi.fn(async () => fail("rate_limited", "slow down")),
 		});

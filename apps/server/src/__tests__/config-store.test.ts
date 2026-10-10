@@ -10,7 +10,6 @@ import {
 	type Disposable,
 	deterministicUuid,
 	FEATURE_KEYS,
-	isDirectConnection,
 	type MessageBus,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
@@ -30,6 +29,7 @@ import {
 	ConfigValidationError,
 	createConfigStore,
 } from "../config/store.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 import { storageWriteGate } from "./support/storage-write-gate.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
@@ -102,32 +102,28 @@ function makeSampleSubscription(uid = "12345"): Subscription {
 	});
 }
 
-function makeWebhookConnection(
-	overrides: Partial<Extract<Connection, { connector: "webhook" }>> = {},
-) {
+function makeWebhookConnection(overrides: Partial<Connection> = {}): Connection {
 	return {
 		id: randomUUID(),
 		name: "团队 Webhook",
-		platform: "feishu" as const,
+		platform: "feishu",
 		enabled: true,
-		kind: "direct" as const,
-		connector: "webhook" as const,
-		config: { url: "https://example.com/hook", headers: {} },
+		adapterKey: "webhook",
+		settings: { url: "https://example.com/hook", headers: {} },
+		platformSnapshot: snapshotFor("feishu"),
 		...overrides,
 	};
 }
 
-function makeOnebotConnection(
-	overrides: Partial<Extract<Connection, { platform: "onebot" }>> = {},
-) {
+function makeOnebotConnection(overrides: Partial<Connection> = {}): Connection {
 	return {
 		id: randomUUID(),
 		name: "NapCat",
-		platform: "onebot" as const,
+		platform: "onebot",
 		enabled: true,
-		kind: "direct" as const,
-		connector: "http" as const,
-		config: {
+		adapterKey: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
+		settings: {
 			transport: "http" as const,
 			baseUrl: "http://127.0.0.1:3000",
 			protocolVersion: "v11" as const,
@@ -135,7 +131,7 @@ function makeOnebotConnection(
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
 			mergeForwardMinTimeoutMs: 60_000,
-			retryTimes: 0,
+			maxRetries: 0,
 			retryIntervalMs: 1_000,
 		},
 		...overrides,
@@ -143,7 +139,7 @@ function makeOnebotConnection(
 }
 
 function makeWebhookTarget(
-	connection: Extract<Connection, { connector: "webhook" }>,
+	connection: Connection,
 	overrides: Partial<Extract<PushTarget, { kind: "endpoint" }>> = {},
 ) {
 	return {
@@ -697,11 +693,14 @@ describe("ConfigStore", () => {
 		const onebot = makeOnebotConnection({ id: connection.id, name: connection.name });
 
 		await expect(
-			store.patchConnection(connection.id, { platform: "onebot", config: onebot.config } as never),
+			store.patchConnection(connection.id, {
+				platform: "onebot",
+				settings: onebot.settings,
+			} as never),
 		).rejects.toBeInstanceOf(ConfigValidationError);
 		await expect(store.upsertConnection(onebot)).rejects.toBeInstanceOf(ConfigValidationError);
 		const kept = store.getConnections()[0];
-		expect(kept && isDirectConnection(kept) && kept.platform).toBe(connection.platform);
+		expect(kept?.platform).toBe(connection.platform);
 		expect(store.getTargets()).toHaveLength(1);
 	});
 
@@ -815,7 +814,12 @@ describe("ConfigStore", () => {
 			scope: "targets",
 			message: expect.stringContaining("推送目标"),
 		});
-		await expect(store.recordTargetTestStatus(ghost, undefined)).rejects.toMatchObject({
+		await expect(
+			store.recordTargetReachability(ghost, {
+				status: "reachable",
+				changedAt: "2026-06-06T00:00:00.000Z",
+			}),
+		).rejects.toMatchObject({
 			code: "not_found",
 		});
 	});
@@ -934,7 +938,7 @@ describe("ConfigStore", () => {
 		expect(nextSub?.extraTargets.atAllPost).toEqual({ [managedId as string]: true });
 	});
 
-	it("patchTarget(managed) 拒绝外部修改，recordTargetTestStatus 允许内部状态写回", async () => {
+	it("patchTarget(managed) 拒绝外部修改，recordTargetReachability 允许内部状态写回", async () => {
 		const connection = makeWebhookConnection();
 		await store.upsertConnection(connection);
 		const target = store.getTargets()[0];
@@ -945,15 +949,15 @@ describe("ConfigStore", () => {
 		).rejects.toMatchObject({ name: "ConfigValidationError", code: "conflict" });
 		await expect(
 			store.patchTarget(target?.id as string, {
-				testStatus: { ok: true, lastCheckedAt: "2026-06-06T00:00:00.000Z", latencyMs: 12 },
+				reachability: { status: "reachable", changedAt: "2026-06-06T00:00:00.000Z", latencyMs: 12 },
 			}),
 		).rejects.toMatchObject({ name: "ConfigValidationError", code: "conflict" });
-		const patched = await store.recordTargetTestStatus(target?.id as string, {
-			ok: true,
-			lastCheckedAt: "2026-06-06T00:00:00.000Z",
+		const patched = await store.recordTargetReachability(target?.id as string, {
+			status: "reachable",
+			changedAt: "2026-06-06T00:00:00.000Z",
 			latencyMs: 12,
 		});
-		expect(patched.testStatus).toMatchObject({ ok: true, latencyMs: 12 });
+		expect(patched.reachability).toMatchObject({ status: "reachable", latencyMs: 12 });
 	});
 
 	it("端到端:含 webhook 连接的备份,导出后能在一台干净机器上恢复回来", async () => {
@@ -1038,10 +1042,10 @@ describe("ConfigStore", () => {
 		id: "11111111-1111-4111-8111-111111111111",
 		name: "阿库娅",
 		enabled: true,
-		kind: "extension" as const,
-		extensionId: "bridge",
+		adapterKey: "bridge",
 		platform,
-		config: { botId: `${platform}:42` },
+		settings: { botId: `${platform}:42` },
+		platformSnapshot: snapshotFor(platform),
 	});
 
 	it("拓展连接也不许换 platform —— 底下的目标还挂在原来那个平台上", async () => {
@@ -1276,9 +1280,9 @@ describe("ConfigStore.close", () => {
 		await store.upsertConnection(makeWebhookConnection());
 		const target = store.getTargets()[0] as PushTarget;
 		storageWriteGate.hold();
-		const writing = store.recordTargetTestStatus(target.id, {
-			ok: true,
-			lastCheckedAt: "2026-06-06T00:00:00.000Z",
+		const writing = store.recordTargetReachability(target.id, {
+			status: "reachable",
+			changedAt: "2026-06-06T00:00:00.000Z",
 			latencyMs: 12,
 		});
 		await storageWriteGate.arrived();
@@ -1292,8 +1296,8 @@ describe("ConfigStore.close", () => {
 		const onDisk = JSON.parse(
 			await readFile(join(stateDir, "targets.json"), "utf8"),
 		) as PushTarget[];
-		expect(onDisk.find((t) => t.id === target.id)?.testStatus).toMatchObject({
-			ok: true,
+		expect(onDisk.find((t) => t.id === target.id)?.reachability).toMatchObject({
+			status: "reachable",
 			latencyMs: 12,
 		});
 	});

@@ -6,7 +6,7 @@
  * 写它是因为这张表单此前**几乎没有覆盖**:只有平台胶囊与 OneBot 连法胶囊那两排被钉过,
  * 底下十来栏(超时三档、重试两档、握手头、官机五栏、webhook 两栏)一栏都没有。而它正要
  * 从「每个平台一段手写 JSX」改成「一张声明式字段表 + 一个通用渲染器」,重构期间没有这层
- * 网,漏掉一栏、把一栏挂到错的 config 键上、或者让某栏在不该出现的连法下冒出来,
+ * 网,漏掉一栏、把一栏挂到错的 settings 键上、或者让某栏在不该出现的连法下冒出来,
  * 都不会有任何东西报。
  *
  * 判据取 `Field` 的 `data-code` —— 它本来就是每栏全局唯一的身份(字段默认值广播、导览
@@ -52,11 +52,11 @@ async function openNewConnection(): Promise<HTMLElement> {
 	return screen.getByRole("dialog");
 }
 
-/** 弹窗里按出现顺序列出的字段 code —— 只看 `config.*` 那些,基本信息那几栏不在这次范围。 */
-function configCodes(dialog: HTMLElement): string[] {
+/** 弹窗里按出现顺序列出的字段 code —— 只看 `settings.*` 那些,基本信息那几栏不在这次范围。 */
+function settingsCodes(dialog: HTMLElement): string[] {
 	return [...dialog.querySelectorAll("[data-code]")]
 		.map((el) => el.getAttribute("data-code") ?? "")
-		.filter((code) => code.startsWith("config."));
+		.filter((code) => code.startsWith("settings."));
 }
 
 function click(dialog: HTMLElement, name: string | RegExp): void {
@@ -75,36 +75,36 @@ function control(dialog: HTMLElement, code: string): HTMLElement {
 describe("OneBot 连接", () => {
 	it("默认 HTTP:摆的是 baseUrl 那一套", async () => {
 		const dialog = await openNewConnection();
-		expect(configCodes(dialog)).toEqual([
-			"config.transport",
-			"config.baseUrl",
-			"config.accessToken",
-			"config.timeoutMs",
-			"config.imageMinTimeoutMs",
-			"config.mergeForwardMinTimeoutMs",
-			"config.retryTimes",
-			"config.retryIntervalMs",
-			"config.headers",
+		expect(settingsCodes(dialog)).toEqual([
+			"settings.transport",
+			"settings.baseUrl",
+			"settings.accessToken",
+			"settings.timeoutMs",
+			"settings.imageMinTimeoutMs",
+			"settings.mergeForwardMinTimeoutMs",
+			"settings.maxRetries",
+			"settings.retryIntervalMs",
+			"settings.headers",
 		]);
 	});
 
 	it("切正向 WS:baseUrl 换成 url,别的照旧", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "正向 WS");
-		const codes = configCodes(dialog);
-		expect(codes).toContain("config.url");
-		expect(codes).not.toContain("config.baseUrl");
-		expect(codes).toContain("config.headers");
+		const codes = settingsCodes(dialog);
+		expect(codes).toContain("settings.url");
+		expect(codes).not.toContain("settings.baseUrl");
+		expect(codes).toContain("settings.headers");
 	});
 
 	it("切反向 WS:换成监听端口,而且**没有**握手头那一栏(端口那头没有请求头可发)", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "反向 WS");
-		const codes = configCodes(dialog);
-		expect(codes).toContain("config.port");
-		expect(codes).not.toContain("config.url");
-		expect(codes).not.toContain("config.baseUrl");
-		expect(codes).not.toContain("config.headers");
+		const codes = settingsCodes(dialog);
+		expect(codes).toContain("settings.port");
+		expect(codes).not.toContain("settings.url");
+		expect(codes).not.toContain("settings.baseUrl");
+		expect(codes).not.toContain("settings.headers");
 	});
 
 	/**
@@ -117,7 +117,7 @@ describe("OneBot 连接", () => {
 		const dialog = await openNewConnection();
 		click(dialog, "反向 WS");
 
-		const row = dialog.querySelector('[data-code="config.reverseAddress"]') as HTMLElement;
+		const row = dialog.querySelector('[data-code="settings.reverseAddress"]') as HTMLElement;
 		expect(row).not.toBeNull();
 		// 主机取浏览器地址栏那一个,端口取这一栏填的那个(不是主端口)。
 		expect(row.textContent).toContain(`ws://${window.location.hostname}:9797/onebot`);
@@ -135,26 +135,26 @@ describe("OneBot 连接", () => {
 	it("反向 WS 的 accessToken 要提醒端口裸开", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "反向 WS");
-		const row = dialog.querySelector('[data-code="config.accessToken"]') as HTMLElement;
+		const row = dialog.querySelector('[data-code="settings.accessToken"]') as HTMLElement;
 		expect(row.textContent).toContain("裸开");
 	});
 
 	it("改了一栏就存进草稿 —— 键没挂错", async () => {
 		const dialog = await openNewConnection();
-		const input = control(dialog, "config.baseUrl");
+		const input = control(dialog, "settings.baseUrl");
 		fireEvent.change(input, { target: { value: "http://napcat:9999" } });
-		expect((control(dialog, "config.baseUrl") as HTMLInputElement).value).toBe(
+		expect((control(dialog, "settings.baseUrl") as HTMLInputElement).value).toBe(
 			"http://napcat:9999",
 		);
 	});
 
-	it("换连法是整份换掉 config,但共用字段留着", async () => {
+	it("换连法是整份换掉 settings,但共用字段留着", async () => {
 		const dialog = await openNewConnection();
-		fireEvent.change(control(dialog, "config.timeoutMs"), { target: { value: "20000" } });
+		fireEvent.change(control(dialog, "settings.timeoutMs"), { target: { value: "20000" } });
 		click(dialog, "正向 WS");
-		expect((control(dialog, "config.timeoutMs") as HTMLInputElement).value).toBe("20000");
+		expect((control(dialog, "settings.timeoutMs") as HTMLInputElement).value).toBe("20000");
 		// 切过去之后地址是那一档自己的初值,不是上一档留下的残字段。
-		expect((control(dialog, "config.url") as HTMLInputElement).value).toMatch(/^ws:\/\//);
+		expect((control(dialog, "settings.url") as HTMLInputElement).value).toMatch(/^ws:\/\//);
 	});
 });
 
@@ -162,12 +162,12 @@ describe("QQ 官方机器人连接", () => {
 	it("五栏齐,外加扫码建号那一行", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "QQ 官方机器人");
-		expect(configCodes(dialog)).toEqual([
-			"config.appId",
-			"config.appSecret",
-			"config.botType",
-			"config.sandbox",
-			"config.logReconnects",
+		expect(settingsCodes(dialog)).toEqual([
+			"settings.appId",
+			"settings.appSecret",
+			"settings.botType",
+			"settings.sandbox",
+			"settings.logReconnects",
 		]);
 		expect(within(dialog).getByText(/扫码在腾讯页面一键创建/)).toBeTruthy();
 	});
@@ -175,7 +175,7 @@ describe("QQ 官方机器人连接", () => {
 	it("机器人域是公域 / 私域二选一", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, "QQ 官方机器人");
-		const row = dialog.querySelector('[data-code="config.botType"]') as HTMLElement;
+		const row = dialog.querySelector('[data-code="settings.botType"]') as HTMLElement;
 		expect(row.textContent).toContain("公域");
 		expect(row.textContent).toContain("私域");
 	});
@@ -185,25 +185,25 @@ describe("webhook 那一族", () => {
 	it("URL / Secret / 自定义请求头三栏,占位符与提示按平台走", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, /飞书机器人/);
-		expect(configCodes(dialog)).toEqual(["config.url", "config.secret", "config.headers"]);
-		expect((control(dialog, "config.url") as HTMLInputElement).placeholder).toContain(
+		expect(settingsCodes(dialog)).toEqual(["settings.url", "settings.secret", "settings.headers"]);
+		expect((control(dialog, "settings.url") as HTMLInputElement).placeholder).toContain(
 			"open.feishu.cn",
 		);
-		const secretRow = dialog.querySelector('[data-code="config.secret"]') as HTMLElement;
+		const secretRow = dialog.querySelector('[data-code="settings.secret"]') as HTMLElement;
 		expect(secretRow.textContent).toContain("飞书签名密钥");
 	});
 
 	it("自建端点那档也是同样三栏 —— 四家统一,不按平台增减", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, /未指明的 HTTP 端点/);
-		expect(configCodes(dialog)).toEqual(["config.url", "config.secret", "config.headers"]);
+		expect(settingsCodes(dialog)).toEqual(["settings.url", "settings.secret", "settings.headers"]);
 	});
 
 	it("换成钉钉:同样三栏,提示换成钉钉那份", async () => {
 		const dialog = await openNewConnection();
 		click(dialog, /钉钉机器人/);
-		expect(configCodes(dialog)).toEqual(["config.url", "config.secret", "config.headers"]);
-		const secretRow = dialog.querySelector('[data-code="config.secret"]') as HTMLElement;
+		expect(settingsCodes(dialog)).toEqual(["settings.url", "settings.secret", "settings.headers"]);
+		const secretRow = dialog.querySelector('[data-code="settings.secret"]') as HTMLElement;
 		expect(secretRow.textContent).toContain("加签密钥");
 	});
 });

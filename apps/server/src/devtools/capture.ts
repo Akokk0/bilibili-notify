@@ -1,6 +1,6 @@
 import type { DevCapturedDelivery } from "@bilibili-notify/contract";
 import type { DestinationRef, NotificationPayload } from "@bilibili-notify/internal";
-import { ok } from "@bilibili-notify/internal";
+import { ok, RESERVED_INTEGRATION_KEYS } from "@bilibili-notify/internal";
 import type { SendInterceptHandler } from "../push/target-dispatcher.js";
 
 /**
@@ -120,8 +120,10 @@ export function createCaptureGate(): CaptureGate {
 				at: Date.now(),
 				connectionId: connection.id,
 				connectionName: connection.name,
-				// 平台名:直连是它的平台,拓展连接保持拓展 id。
-				platform: connection.kind === "direct" ? connection.platform : connection.extensionId,
+				// 平台名:内置的是它的平台,拓展连接保持拓展 id。
+				platform: RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey)
+					? connection.platform
+					: connection.adapterKey,
 				// 按会话坐标发的(没有目标表里的那条)拼一个会话标识,名字显示成「群 <地址>」/「私聊 <地址>」。
 				targetId: target?.id ?? sessionKey(destination),
 				targetName: target?.name ?? sessionLabel(destination),
@@ -131,7 +133,7 @@ export function createCaptureGate(): CaptureGate {
 				...summarize(payload),
 			});
 			if (list.length > ENTRY_CAP) list = list.slice(list.length - ENTRY_CAP);
-			// `isSynthetic` 是给上游看的:这条没出网,别拿它去翻 target.testStatus(那是会落盘的)。
+			// `isSynthetic` 是给上游看的:这条没出网,别拿它去翻 target.reachability(那是会落盘的)。
 			return ok({ latencyMs: 0, isSynthetic: true as const });
 		},
 	};

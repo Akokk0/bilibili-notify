@@ -21,6 +21,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { reconcileAdapter } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createOnebotAdapter } from "../onebot.js";
 
 function makeLogger() {
@@ -48,10 +49,11 @@ function obConnection(over: Record<string, unknown> = {}): Connection {
 	return {
 		id: "a1",
 		name: "ob",
-		kind: "direct",
+		adapterKey: "onebot",
 		platform: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
 		enabled: true,
-		config: { transport: "http", baseUrl: "http://nb:3000", retryIntervalMs: 0, ...over },
+		settings: { transport: "http", baseUrl: "http://nb:3000", retryIntervalMs: 0, ...over },
 	} as unknown as Connection;
 }
 
@@ -219,7 +221,7 @@ describe("onebot — 小程序卡能力探测", () => {
 		ad.stop();
 	});
 
-	it("配置没变的 reconcile 不动缓存、不重探 —— 健康探测每五分钟写回 testStatus 就会触发一次", async () => {
+	it("配置没变的 reconcile 不动缓存、不重探 —— 健康探测每五分钟写回 probeState 就会触发一次", async () => {
 		fetchMock.mockResolvedValueOnce(failFrame(1400));
 		const ad = createOnebotAdapter({ logger: makeLogger(), serviceCtx: makeServiceCtx() });
 		reconcileAdapter(ad, [obConnection()]);

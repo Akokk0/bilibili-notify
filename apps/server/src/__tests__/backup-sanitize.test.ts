@@ -1,6 +1,15 @@
-import { type Connection, ConnectionSchema } from "@bilibili-notify/internal";
+import {
+	type Connection,
+	ConnectionSchema,
+	OnebotConnectionSettingsSchema,
+	QQOfficialConnectionSettingsSchema,
+	WebhookConnectionSettingsSchema,
+} from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
+import { type ZodType, z } from "zod";
 import { redactBackupSections, redactSecretKeys, SECRET_KEYS } from "../backup/sanitize.js";
+import type { SecretCellsReader } from "../push/connection-settings.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 
 /**
  * redactSecretKeys 是脱敏档的安全核心:平台无关地按密钥名深度抹除机密值,
@@ -170,9 +179,9 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 				...base,
 				id: "00000000-0000-4000-8000-000000000001",
 				platform: "onebot",
-				kind: "direct",
-				connector: "http",
-				config: {
+				adapterKey: "onebot",
+				platformSnapshot: snapshotFor("onebot"),
+				settings: {
 					transport: "http",
 					baseUrl: "http://bob:pw@127.0.0.1:5700/",
 					accessToken: "tok",
@@ -186,9 +195,9 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 				...base,
 				id: "00000000-0000-4000-8000-000000000002",
 				platform: "generic",
-				kind: "direct",
-				connector: "webhook",
-				config: {
+				adapterKey: "webhook",
+				platformSnapshot: snapshotFor("generic"),
+				settings: {
 					url: "https://example.com/hook?access_token=t",
 					secret: "wh",
 					headers: { "X-Token": "x" },
@@ -201,9 +210,9 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
 				...base,
 				id: "00000000-0000-4000-8000-000000000005",
 				platform: "qq-official",
-				kind: "direct",
-				connector: "ws",
-				config: { appId: "102000000", appSecret: "app-secret" },
+				adapterKey: "qq-official",
+				platformSnapshot: snapshotFor("qq-official"),
+				settings: { appId: "102000000", appSecret: "app-secret" },
 			}),
 		],
 	];
@@ -226,6 +235,19 @@ describe("脱敏后的 adapter 仍能通过 ConnectionSchema", () => {
  * 所以字段表里那格 `secret: true` 同时当脱敏的依据:声明了就抹。
  */
 describe("拓展声明的密钥字段", () => {
+	// 内置适配器各回自己的真 schema(用 Map,按 id 取不会顺着原型链摸);拓展的声明由用例给。
+	const BUILTIN = new Map<string, ZodType>([
+		["onebot", OnebotConnectionSettingsSchema],
+		["qq-official", QQOfficialConnectionSettingsSchema],
+		["webhook", WebhookConnectionSettingsSchema],
+	]);
+	const lookupOf = (
+		codes: ReadonlyMap<string, readonly string[]>,
+		schemas: ReadonlyMap<string, ZodType> = BUILTIN,
+	): SecretCellsReader => ({
+		settingsSchemaOf: (key) => schemas.get(key),
+		declaredSecretKeysOf: (key) => codes.get(key),
+	});
 	const sections = () => ({
 		// 开关在核心设置里,各拓展的设置是备份里自己的一节(各在自己的文件,ADR-0021 决策 42)。
 		globals: { extensions: { bridge: { enabled: true }, other: { enabled: false } } },
@@ -237,25 +259,26 @@ describe("拓展声明的密钥字段", () => {
 			{
 				id: "c1",
 				name: "阿库娅",
-				kind: "extension",
-				extensionId: "bridge",
-				config: { botKey: "s3cret", note: "家里那台" },
+				adapterKey: "bridge",
+				platform: "qq",
+				settings: { botKey: "s3cret", note: "家里那台" },
 			},
 			{
 				id: "c2",
-				name: "NapCat",
-				kind: "direct",
-				platform: "onebot",
-				config: { botKey: "不是拓展的", note: "直连" },
+				name: "团队 Webhook",
+				adapterKey: "webhook",
+				platform: "generic",
+				// 非 strict 的 webhook 规则容得下多出来的键:拿它验「别的拓展声明的键不外溢」。
+				settings: { url: "https://example.com/hook", botKey: "不是拓展的", note: "直连" },
 			},
 		],
 		targets: [{ id: "t1", name: "测试群", connectionId: "c1" }],
 	});
 
 	it("拓展说了它是密钥 → 抹平;没说的原样留着", () => {
-		const out = redactBackupSections(sections(), new Map([["bridge", ["botKey"]]]));
-		expect(out.connections[0]?.config.botKey).toBe("");
-		expect(out.connections[0]?.config.note).toBe("家里那台");
+		const out = redactBackupSections(sections(), lookupOf(new Map([["bridge", ["botKey"]]])));
+		expect(out.connections[0]?.settings.botKey).toBe("");
+		expect(out.connections[0]?.settings.note).toBe("家里那台");
 	});
 
 	/**
@@ -266,12 +289,12 @@ describe("拓展声明的密钥字段", () => {
 	 * 弄报废」不是任何人做过的决定。
 	 */
 	it("声明的键不外溢:别的连接、目标、别的拓展都不受影响", () => {
-		const out = redactBackupSections(sections(), new Map([["bridge", ["name"]]]));
+		const out = redactBackupSections(sections(), lookupOf(new Map([["bridge", ["name"]]])));
 		// 它自己那一格照抹。
 		expect(out.extensionSettings.bridge.links[0]?.name).toBe("");
 		// 旁边这些一个都不许动。
 		expect(out.connections[0]?.name).toBe("阿库娅");
-		expect(out.connections[1]?.config.botKey).toBe("不是拓展的");
+		expect(out.connections[1]?.settings.botKey).toBe("不是拓展的");
 		expect(out.targets[0]?.name).toBe("测试群");
 	});
 
@@ -282,13 +305,43 @@ describe("拓展声明的密钥字段", () => {
 	it("设置一节按拓展各吃各的声明:bridge 声明的键不抹 other 的设置", () => {
 		const out = redactBackupSections(
 			sections(),
-			new Map([
-				["bridge", ["botKey"]],
-				["other", []],
-			]),
+			lookupOf(
+				new Map([
+					["bridge", ["botKey"]],
+					["other", []],
+				]),
+			),
 		);
 		expect(out.extensionSettings.bridge.links[0]).toEqual({ name: "家里那台", botKey: "" });
 		expect(out.extensionSettings.other).toEqual({ botKey: "别人的" });
+	});
+
+	/**
+	 * 拓展适配器在场、但「声明的密钥键」问不出来(v1 拓展启停的那一小段):拓展的 schema 上没有标记,
+	 * 按标记走等于一格都不抹 —— 从严,连接的 settings 整片抹空;问得出来(哪怕是空表)与内置的照旧。
+	 */
+	describe("拓展适配器在场但声明问不出来", () => {
+		const EXT_SCHEMA = z.object({ botKey: z.string(), note: z.string() });
+		const withExt = new Map<string, ZodType>([...BUILTIN, ["bridge", EXT_SCHEMA]]);
+		const bridgeSettings = (out: ReturnType<typeof sections>) => out.connections[0]?.settings;
+
+		it("声明回 undefined → settings 整片抹空,密钥原值不出现", () => {
+			const out = redactBackupSections(sections(), lookupOf(new Map(), withExt));
+			expect(bridgeSettings(out)).toEqual({ botKey: "", note: "" });
+			expect(JSON.stringify(out.connections[0])).not.toContain("s3cret");
+		});
+
+		it("声明回 [](问得出来、确实没声明)→ 照旧逐格:无关键原样", () => {
+			const out = redactBackupSections(sections(), lookupOf(new Map([["bridge", []]]), withExt));
+			expect(bridgeSettings(out)).toEqual({ botKey: "s3cret", note: "家里那台" });
+		});
+
+		it("内置适配器(声明恒 undefined)→ 照旧按标记,不整片抹空", () => {
+			const out = redactBackupSections(sections(), lookupOf(new Map(), withExt));
+			// 标记走的是地址换占位(要能恢复),不是抹空;note 没标记,原样。
+			expect(out.connections[1]?.settings.url).toMatch(/^https:\/\/redacted/);
+			expect(out.connections[1]?.settings.note).toBe("直连");
+		});
 	});
 
 	/**
@@ -297,7 +350,7 @@ describe("拓展声明的密钥字段", () => {
 	 */
 	it("核心设置里的拓展开关永远不被抹:问不出来的拓展(整片抹平)也一样", () => {
 		for (const codes of [new Map(), new Map([["bridge", ["botKey"]]])]) {
-			const out = redactBackupSections(sections(), codes);
+			const out = redactBackupSections(sections(), lookupOf(codes));
 			expect(out.globals.extensions).toEqual({
 				bridge: { enabled: true },
 				other: { enabled: false },
@@ -307,14 +360,14 @@ describe("拓展声明的密钥字段", () => {
 
 	it("没带设置一节(没勾设置)→ 不凭空多出一节,别的照常抹", () => {
 		const { extensionSettings: _gone, ...rest } = sections();
-		const out = redactBackupSections(rest, new Map([["bridge", ["botKey"]]]));
+		const out = redactBackupSections(rest, lookupOf(new Map([["bridge", ["botKey"]]])));
 		expect("extensionSettings" in out).toBe(false);
-		expect(out.connections[0]?.config.botKey).toBe("");
+		expect(out.connections[0]?.settings.botKey).toBe("");
 	});
 
 	it("不改传进来的那份设置一节", () => {
 		const input = sections();
-		redactBackupSections(input, new Map());
+		redactBackupSections(input, lookupOf(new Map()));
 		expect(input.extensionSettings.bridge.links[0]?.botKey).toBe("s3cret");
 		expect(input.extensionSettings.other.botKey).toBe("别人的");
 	});
@@ -324,15 +377,15 @@ describe("拓展声明的密钥字段", () => {
 	 * 交上来的、清单里没有,所以问不出来 —— 问不出来就整片当密钥。此前是「问不出来就
 	 * 什么都不抹」,于是**关掉一个拓展就把它连接里的密钥漏进备份文件**。
 	 */
-	it("拓展没跑起来 → 它的 config 与 settings 整片抹平", () => {
-		const out = redactBackupSections(sections(), new Map());
-		expect(out.connections[0]?.config).toEqual({ botKey: "", note: "" });
+	it("拓展没跑起来 → 它的连接 settings 与它的设置整片抹平", () => {
+		const out = redactBackupSections(sections(), lookupOf(new Map()));
+		expect(out.connections[0]?.settings).toEqual({ botKey: "", note: "" });
 		expect(out.extensionSettings.bridge.links[0]).toEqual({ name: "", botKey: "" });
 		expect(out.extensionSettings.other).toEqual({ botKey: "" });
 		// 开关不是设置,不许跟着抹掉。
 		expect(out.globals.extensions.bridge.enabled).toBe(true);
-		// 直连那条与拓展无关,照旧只吃基础黑名单。
-		expect(out.connections[1]?.config.note).toBe("直连");
+		// 内置适配器那条与拓展无关,照旧只吃 schema 标记与基础黑名单。
+		expect(out.connections[1]?.settings.note).toBe("直连");
 	});
 
 	/**
@@ -348,31 +401,33 @@ describe("拓展声明的密钥字段", () => {
 					{
 						id: "c1",
 						name: "阿库娅",
-						kind: "extension",
-						extensionId: "constructor",
-						config: { botKey: "s3cret" },
+						adapterKey: "constructor",
+						platform: "qq",
+						settings: { botKey: "s3cret" },
 					},
 				],
 			},
-			new Map(),
+			lookupOf(new Map()),
 		);
 		expect(out.extensionSettings.toString).toEqual({ botKey: "" });
 		expect(out.globals.extensions.toString).toEqual({ enabled: true });
-		expect(out.connections[0]?.config).toEqual({ botKey: "" });
+		expect(out.connections[0]?.settings).toEqual({ botKey: "" });
 	});
 
 	it("跑起来但一格都没声明(字段表是空表)→ 只吃基础黑名单", () => {
 		const out = redactBackupSections(
 			sections(),
-			new Map([
-				["bridge", []],
-				["other", []],
-			]),
+			lookupOf(
+				new Map([
+					["bridge", []],
+					["other", []],
+				]),
+			),
 		);
-		expect(out.connections[0]?.config).toEqual({ botKey: "s3cret", note: "家里那台" });
+		expect(out.connections[0]?.settings).toEqual({ botKey: "s3cret", note: "家里那台" });
 	});
 
 	it("**基础黑名单靠猜名字就是不行** —— 这条钉的正是为什么要声明", () => {
-		expect(redactSecretKeys(sections()).connections[0]?.config.botKey).toBe("s3cret");
+		expect(redactSecretKeys(sections()).connections[0]?.settings.botKey).toBe("s3cret");
 	});
 });

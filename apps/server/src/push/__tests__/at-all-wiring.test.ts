@@ -31,6 +31,7 @@ import { PushRouter } from "@bilibili-notify/push";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
 import { registryOf } from "../../__tests__/support/adapter-ctx.js";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createOnebotAdapter } from "../../platforms/onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../../platforms/qq-official.js";
@@ -43,11 +44,15 @@ function connection(id: string, platform: string): Connection {
 	return {
 		id,
 		name: id,
-		kind: "direct",
-		connector: platform === "onebot" ? "http" : "ws",
+		adapterKey: platform,
 		platform,
+		platformSnapshot: snapshotFor(platform),
 		enabled: true,
-		config: {},
+		// 真适配器的 settingsSchema 要过得了:只填必填项。
+		settings:
+			platform === "onebot"
+				? { transport: "http", baseUrl: "http://127.0.0.1:3000" }
+				: { appId: "1", appSecret: "s" },
 	} as unknown as Connection;
 }
 

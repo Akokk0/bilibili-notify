@@ -16,16 +16,17 @@
  */
 
 import type { ExtensionDTO } from "@bilibili-notify/contract";
-import type { Connection } from "@bilibili-notify/internal";
+import type { NewConnection } from "@bilibili-notify/internal";
 import { PLATFORM_REGISTRY } from "@bilibili-notify/internal/constants";
 import { type PlatformMeta, PlatformMetaProvider, usePlatformMeta } from "@bilibili-notify/ui";
 import { type ReactNode, useMemo } from "react";
 import { useExtensions } from "../hooks/useExtensions";
+import { isBuiltinConnection } from "../types/domain";
 
 const BUILT_IN: Record<string, PlatformMeta> = Object.fromEntries(
 	Object.entries(PLATFORM_REGISTRY).map(([platform, meta]) => [
 		platform,
-		{ tint: meta.tint, label: meta.shortLabel, icon: meta.icon },
+		{ tint: meta.color, label: meta.shortLabel, icon: meta.icon },
 	]),
 );
 
@@ -53,16 +54,18 @@ export function buildPlatformTable(
 /**
  * 一条连接**画成谁的脸**(图标 / 标识色 / 短名)。
  *
- * 直连就是它的平台。拓展连接是一个 bot(ADR-0012 决策 45):它的平台认得(桥借来的 QQ /
+ * 内置适配器的连接就是它的平台。拓展连接是一个 bot(ADR-0012 决策 45):它的平台认得(桥借来的 QQ /
  * telegram)就画那个平台的脸;认不得(桥驮来的 kook 这种)退回拓展自己那张脸 —— 灰方章
- * 不如「这是桥接来的」有用。⚠️ 与分发键(`connectionDispatchKey`,决定哪个 adapter 认领)
+ * 不如「这是桥接来的」有用。⚠️ 与适配器键(`adapterKey`,决定哪个 adapter 认领)
  * 是两回事:那个在拓展这一支恒是拓展 id,在 webhook 那一族恒是 `"webhook"`。
  */
-export function useConnectionFace(): (connection: Connection) => string {
+export function useConnectionFace(): (
+	connection: Pick<NewConnection, "adapterKey" | "platform">,
+) => string {
 	const lookup = usePlatformMeta();
 	return (connection) => {
-		if (connection.kind === "direct") return connection.platform;
-		return lookup(connection.platform) ? connection.platform : connection.extensionId;
+		if (isBuiltinConnection(connection)) return connection.platform;
+		return lookup(connection.platform) ? connection.platform : connection.adapterKey;
 	};
 }
 

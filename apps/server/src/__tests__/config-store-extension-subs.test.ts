@@ -32,6 +32,7 @@ import {
 } from "../config/store.js";
 import { zeroBiliRow } from "../migration/__tests__/zero-fixtures.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
+import { snapshotFor } from "./support/connection-snapshot.js";
 import { makeExtensionSubscription } from "./support/extension-subscription.js";
 import { subscriptionsFileText } from "./support/subscriptions-file.js";
 
@@ -61,9 +62,9 @@ function makeOnebotConnection() {
 		name: "NapCat",
 		platform: "onebot" as const,
 		enabled: true,
-		kind: "direct" as const,
-		connector: "http" as const,
-		config: {
+		adapterKey: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
+		settings: {
 			transport: "http" as const,
 			baseUrl: "http://127.0.0.1:3000",
 			protocolVersion: "v11" as const,
@@ -71,7 +72,7 @@ function makeOnebotConnection() {
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
 			mergeForwardMinTimeoutMs: 60_000,
-			retryTimes: 0,
+			maxRetries: 0,
 			retryIntervalMs: 1_000,
 		},
 	};
@@ -95,9 +96,9 @@ function makeWebhookConnection() {
 		name: "团队 Webhook",
 		platform: "feishu" as const,
 		enabled: true,
-		kind: "direct" as const,
-		connector: "webhook" as const,
-		config: { url: "https://example.com/hook", headers: {} },
+		adapterKey: "webhook",
+		platformSnapshot: snapshotFor("feishu"),
+		settings: { url: "https://example.com/hook", headers: {} },
 	};
 }
 

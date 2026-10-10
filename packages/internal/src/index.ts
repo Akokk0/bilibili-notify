@@ -22,7 +22,6 @@ export {
 	type ConnectionPlatform,
 	canReceiveReply,
 	colorFromUid,
-	connectionDispatchKey,
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_HISTORY_RETENTION_DAYS,
@@ -43,13 +42,10 @@ export {
 	type ImageRef,
 	type Issue,
 	identityColor,
-	isDirectConnection,
-	isExtensionConnection,
 	isMirrorPrefix,
 	isPrivateTarget,
 	issuesFromZod,
 	isTargetPaused,
-	isWebhookConnection,
 	isWebhookPlatform,
 	LINK_LIMITS,
 	LINK_REPLY_FORMS,
@@ -59,7 +55,6 @@ export {
 	MIRROR_PREFIX_RE,
 	ok,
 	PLATFORM_REGISTRY,
-	type PlatformDescriptor,
 	PUSH_STATUSES,
 	platformDescriptor,
 	providerMeta,
@@ -94,6 +89,7 @@ export * from "./post";
  * 推送源契约 —— 核心的三个 adapter 与拓展的桥都实现它。见 `push-source.ts` 的文件头。
  */
 export {
+	type ConnectionCandidate,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,

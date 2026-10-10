@@ -228,8 +228,12 @@ describe("TourCompanion 常驻小卡", () => {
 		it("走完五步毕业 → 自动记下 true,🎉 卡演完点「收起」才消失", async () => {
 			const s: Scenario = {
 				subs: [{ id: "s1" }],
-				connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+				connections: [
+					{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+				],
+				targets: [
+					{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } },
+				],
 				route: "/system",
 			};
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
@@ -263,8 +267,12 @@ describe("TourCompanion 常驻小卡", () => {
 		it("同一会话里毕业过、再重新开启指引:🎉 卡的「收起」照样谢幕,不是一颗死钮", async () => {
 			const s: Scenario = {
 				subs: [{ id: "s1" }],
-				connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+				connections: [
+					{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+				],
+				targets: [
+					{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } },
+				],
 				route: "/system",
 			};
 			apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
@@ -355,8 +363,10 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(anchorEl);
 		await mount({
 			subs: [{ id: "s1" }],
-			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
+			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			route: "/system",
 		});
 		await screen.findByText("扫码登录 B 站");
@@ -388,8 +398,12 @@ describe("TourCompanion 常驻小卡", () => {
 			document.body.appendChild(anchorEl);
 			await mount({
 				subs: [{ id: "s1" }],
-				connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-				targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+				connections: [
+					{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+				],
+				targets: [
+					{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } },
+				],
 				route: "/system",
 			});
 			await screen.findByText("扫码登录 B 站");
@@ -555,9 +569,15 @@ describe("TourCompanion 常驻小卡", () => {
 	describe("测试失败兜底", () => {
 		const failScenario = (at: string): Scenario => ({
 			loggedIn: true,
-			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
 			targets: [
-				{ id: "t1", enabled: true, testStatus: { ok: false, err: "发送超时", lastCheckedAt: at } },
+				{
+					id: "t1",
+					enabled: true,
+					reachability: { status: "unreachable", message: "发送超时", changedAt: at },
+				},
 			],
 			route: "/targets",
 		});
@@ -633,7 +653,7 @@ describe("TourCompanion 常驻小卡", () => {
 				{
 					id: "t1",
 					enabled: true,
-					testStatus: { ok: false, err: "发送超时", lastCheckedAt: "t2" },
+					reachability: { status: "unreachable", message: "发送超时", changedAt: "t2" },
 				},
 			];
 			await act(async () => {
@@ -852,7 +872,9 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(list);
 		await mount({
 			loggedIn: true,
-			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
 			targets: [{ id: "t1", enabled: false }],
 			route: "/targets",
 		});
@@ -878,8 +900,10 @@ describe("TourCompanion 常驻小卡", () => {
 		document.body.appendChild(addBtn);
 		await mount({
 			loggedIn: true,
-			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
+			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			route: "/subs",
 		});
 		expect(await screen.findByText("订阅第一个 UP")).toBeTruthy();
@@ -897,8 +921,10 @@ describe("TourCompanion 常驻小卡", () => {
 		// 除登录外全绿 —— 登录一完成即毕业,徽章与烟花一次验俩
 		await mount({
 			subs: [{ id: "s1" }],
-			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
+			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 			route: "/system",
 		});
 		await screen.findByText("扫码登录 B 站");
@@ -965,8 +991,10 @@ describe("TourCompanion 常驻小卡", () => {
 		const s: Scenario = {
 			loggedIn: true,
 			subs: [{ id: "s1" }],
-			connections: [{ id: "a1", enabled: true, testStatus: { ok: true } }],
-			targets: [{ id: "t1", enabled: true, testStatus: { ok: true } }],
+			connections: [
+				{ id: "a1", enabled: true, probeState: { status: "reachable", lastCheckedAt: "t" } },
+			],
+			targets: [{ id: "t1", enabled: true, reachability: { status: "reachable", changedAt: "t" } }],
 		};
 		apiPatch.mockImplementation(async (_p: string, body?: unknown) => {
 			s.skipped = (body as { onboarding: { skipped: boolean } }).onboarding.skipped;

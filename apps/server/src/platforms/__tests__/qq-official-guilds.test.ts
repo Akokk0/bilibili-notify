@@ -1,8 +1,8 @@
-import type { QQOfficialConnectionConfig } from "@bilibili-notify/internal";
+import type { QQOfficialConnectionSettings } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchQQGuildChannels } from "../qq-official";
 
-const CFG: QQOfficialConnectionConfig = {
+const CFG: QQOfficialConnectionSettings = {
 	appId: "APPID",
 	appSecret: "SECRET",
 	sandbox: false,

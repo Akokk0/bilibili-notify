@@ -13,6 +13,8 @@ import type {
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { registerBuiltinAdapters } from "../builtin-adapters.js";
 import { createPlatformAdapterRegistry } from "../registry.js";
 
@@ -23,10 +25,11 @@ function direct(id: string, platform: string): Connection {
 		id,
 		name: id,
 		enabled: true,
-		kind: "direct",
+		adapterKey: platform === "onebot" || platform === "qq-official" ? platform : "webhook",
 		platform,
-		config: {},
-	} as unknown as Connection;
+		settings: {},
+		platformSnapshot: snapshotFor(platform),
+	};
 }
 
 interface FakeAdapter extends PlatformAdapter {
@@ -38,6 +41,7 @@ interface FakeAdapter extends PlatformAdapter {
 function fakeAdapter(adapterKey: string): FakeAdapter {
 	const fake = {
 		adapterKey,
+		settingsSchema: z.unknown(),
 		seen: [] as string[][],
 		changed: vi.fn() as unknown as () => void,
 		isAvailable: () => true,

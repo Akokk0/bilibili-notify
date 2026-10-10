@@ -222,13 +222,12 @@ describe("出口咽喉 e2e:逐条驱动发送路径,每条恰好一条截流记�
 					id: ID.connection,
 					name: "本机回环 bot",
 					enabled: true,
-					kind: "direct",
-					connector: "http",
+					adapterKey: "onebot",
 					platform: "onebot",
-					config: {
+					settings: {
 						transport: "http",
 						baseUrl: `http://127.0.0.1:${await findFreePort()}`,
-						retryTimes: 0,
+						maxRetries: 0,
 						retryIntervalMs: 0,
 					},
 				}),

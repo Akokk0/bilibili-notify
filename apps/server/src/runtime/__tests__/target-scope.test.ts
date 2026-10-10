@@ -23,6 +23,7 @@ import type {
 	Subscription,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { ConfigStore } from "../../config/store.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
@@ -39,7 +40,15 @@ const T_ON_GHOST_CONN = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const T_UNKNOWN = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
 function connection(id: string, enabled: boolean): Connection {
-	return { id, name: id, enabled, kind: "direct", platform: "onebot", config: {} } as Connection;
+	return {
+		id,
+		name: id,
+		enabled,
+		adapterKey: "onebot",
+		platform: "onebot",
+		settings: {},
+		platformSnapshot: snapshotFor("onebot"),
+	};
 }
 
 function target(id: string, connectionId: string, enabled = true): PushTarget {

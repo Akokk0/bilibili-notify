@@ -106,11 +106,11 @@ const LISTED: ExtensionsResponse = {
 
 /** 从桥借来的 bot 建的两条连接,外加一条与拓展无关的直连 —— 数错了它就会混进来。 */
 const CONNECTIONS = [
-	{ id: "a", name: "家里那台", kind: "extension", extensionId: "bridge", enabled: true },
-	{ id: "b", name: "机房那台", kind: "extension", extensionId: "bridge", enabled: true },
-	{ id: "c", name: "本地 OneBot", kind: "direct", enabled: true },
-	// ⚠️ 别的拓展名下的一条。少了它,「按 extensionId 过滤」这条守卫离了保护也不会坏。
-	{ id: "d", name: "别人家的", kind: "extension", extensionId: "somewhere-else", enabled: true },
+	{ id: "a", name: "家里那台", adapterKey: "bridge", enabled: true },
+	{ id: "b", name: "机房那台", adapterKey: "bridge", enabled: true },
+	{ id: "c", name: "本地 OneBot", adapterKey: "onebot", enabled: true },
+	// ⚠️ 别的拓展名下的一条。少了它,「按 adapterKey 过滤」这条守卫离了保护也不会坏。
+	{ id: "d", name: "别人家的", adapterKey: "somewhere-else", enabled: true },
 ];
 
 /**

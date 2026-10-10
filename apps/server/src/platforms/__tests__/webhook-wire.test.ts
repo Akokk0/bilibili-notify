@@ -15,6 +15,7 @@
 
 import type { Connection, NotificationPayload, PushTarget } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createWebhookAdapter } from "../webhook.js";
 
 const FIXED_NOW = new Date("2026-10-07T08:00:00.000Z");
@@ -43,10 +44,10 @@ function connection(platform: string, secret?: string): Connection {
 		id: "w1",
 		name: "wh",
 		platform,
-		kind: "direct",
-		connector: "webhook",
+		adapterKey: "webhook",
+		platformSnapshot: snapshotFor(platform),
 		enabled: true,
-		config: { url: "http://hook.local/in", secret, headers: {} },
+		settings: { url: "http://hook.local/in", secret, headers: {} },
 	} as unknown as Connection;
 }
 

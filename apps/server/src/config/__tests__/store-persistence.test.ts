@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import type { BusEvents, Disposable, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import type { BootstrapConfig } from "../schema.js";
 import { CONFIG_DIR, CORE_SETTINGS_FILE, type ConfigStore, createConfigStore } from "../store.js";
 
@@ -67,9 +68,9 @@ function onebotConnection(name = "NapCat") {
 		name,
 		platform: "onebot" as const,
 		enabled: true,
-		kind: "direct" as const,
-		connector: "http" as const,
-		config: {
+		adapterKey: "onebot",
+		platformSnapshot: snapshotFor("onebot"),
+		settings: {
 			transport: "http" as const,
 			baseUrl: "http://127.0.0.1:3000",
 			protocolVersion: "v11" as const,
@@ -77,7 +78,7 @@ function onebotConnection(name = "NapCat") {
 			timeoutMs: 15_000,
 			imageMinTimeoutMs: 30_000,
 			mergeForwardMinTimeoutMs: 60_000,
-			retryTimes: 0,
+			maxRetries: 0,
 			retryIntervalMs: 1_000,
 		},
 	};

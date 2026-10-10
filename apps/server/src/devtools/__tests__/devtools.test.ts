@@ -1,6 +1,7 @@
 import type { UpdateStatusDTO } from "@bilibili-notify/contract";
 import { fail, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import { fakeAdapterContext, registryOf } from "../../__tests__/support/adapter-ctx.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
 import type { Marketplace } from "../../extensions/marketplace.js";
@@ -99,9 +100,9 @@ describe("createDevtools · 截流接线", () => {
 	const CONNECTION = {
 		id: "ad",
 		name: "A",
-		kind: "direct",
-		connector: "http",
+		adapterKey: "onebot",
 		platform: "onebot",
+		settings: {},
 		enabled: true,
 	} as never;
 	const TARGET = {
@@ -118,6 +119,7 @@ describe("createDevtools · 截流接线", () => {
 	function onebotAdapter(send = vi.fn(async () => ok({ latencyMs: 1 }))) {
 		return {
 			adapterKey: "onebot",
+			settingsSchema: z.unknown(),
 			isAvailable: () => true,
 			send,
 			probe: async () => ok({ latencyMs: 1 }),
@@ -197,7 +199,7 @@ describe("createDevtools · 截流接线", () => {
 		expect(send).toHaveBeenCalledTimes(2);
 	});
 
-	it("截流开着时结果仍是合成的 ok —— 上游凭 isSynthetic 不写 testStatus", async () => {
+	it("截流开着时结果仍是合成的 ok —— 上游凭 isSynthetic 不写 reachability", async () => {
 		const { dev, dispatcher } = setup();
 		await dev.registry.run("push.capture", {});
 		expect(await dispatcher.send("t", { kind: "text", text: "x" })).toEqual({

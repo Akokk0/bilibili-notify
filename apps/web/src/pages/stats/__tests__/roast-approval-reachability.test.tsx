@@ -36,7 +36,7 @@ function master(): PushTarget {
 }
 
 function connection(platform: string): Connection {
-	return { id: CONN, kind: "direct", platform, enabled: true } as Connection;
+	return { id: CONN, adapterKey: platform, platform, enabled: true } as Connection;
 }
 
 const UNKNOWN = { state: "unknown" } as const;

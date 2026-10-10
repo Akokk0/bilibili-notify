@@ -1,21 +1,22 @@
 import { createHmac } from "node:crypto";
-import type { PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
+import type { ConnectionCandidate, PlatformAdapter, ProbeResult } from "@bilibili-notify/internal";
 import {
 	type Connection,
 	type ConnectionCapabilities,
-	connectionDispatchKey,
 	type DeliveryResult,
 	type DestinationRef,
 	type Failure,
 	fail,
-	isWebhookConnection,
+	isWebhookPlatform,
 	type Logger,
 	type NotificationPayload,
 	ok,
 	type PayloadSegment,
-	type WebhookConnectionConfig,
+	type WebhookConnectionSettings,
+	WebhookConnectionSettingsSchema,
 	type WebhookPlatform,
 } from "@bilibili-notify/internal";
+import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { imageGroupUrls } from "./image-group.js";
 
 /**
@@ -32,6 +33,15 @@ export interface WebhookAdapterOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+
+/**
+ * 这个 adapter 认的那一档连接 —— `isMine(c)` 收窄之后的形状,`settings` 跟着窄。
+ * **宿主递来的连接,`settings` 一律是按 `WebhookConnectionSettingsSchema` 解过的输出**
+ * (派发器与适配器上下文保证),这里只认键、不再解。
+ */
+type WebhookConnection = Connection & { settings: WebhookConnectionSettings };
+
+const isMine = (c: Connection): c is WebhookConnection => c.adapterKey === "webhook";
 
 /** webhook 只收端点那一支;收窄在 `send` 里做过之后往下传的就是这个形状。 */
 type EndpointDestination = Extract<DestinationRef, { kind: "endpoint" }>;
@@ -50,6 +60,11 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 
 	return {
 		adapterKey: "webhook",
+		settingsSchema: WebhookConnectionSettingsSchema,
+
+		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
+			return builtinCandidatesFor("webhook");
+		},
 		// 四个 webhook 平台共用这一个适配器,回答不看平台。
 		capabilities(_connection: Connection): ConnectionCapabilities {
 			return {
@@ -71,8 +86,8 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 		stop() {},
 		isAvailable(connection: Connection, destination: DestinationRef): boolean {
 			// 连接 / 目标的启停与平台对不对,派发器查过了;这里只留「我只收端点」与连接收窄。
-			if (!isWebhookConnection(connection) || destination.kind !== "endpoint") return false;
-			const cfg = connection.config;
+			if (!isMine(connection) || destination.kind !== "endpoint") return false;
+			const cfg = connection.settings;
 			return typeof cfg.url === "string" && cfg.url.length > 0;
 		},
 		async probe(_connection: Connection): Promise<ProbeResult> {
@@ -87,16 +102,18 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
 			destination: DestinationRef,
 			payload: NotificationPayload,
 		): Promise<DeliveryResult> {
-			if (!isWebhookConnection(connection) || destination.kind !== "endpoint") {
+			if (!isMine(connection) || destination.kind !== "endpoint") {
 				return fail(
 					"invalid",
-					`wrong shape: connection=${connectionDispatchKey(connection)} ` +
-						`destination=${destination.kind}`,
+					`wrong shape: connection=${connection.adapterKey} ` + `destination=${destination.kind}`,
 				);
 			}
-			const cfg = connection.config;
+			const cfg = connection.settings;
 			// 方言由**连接的平台**说了算 —— 原先它藏在 config.provider 里。
 			const provider = connection.platform;
+			if (!isWebhookPlatform(provider)) {
+				return fail("invalid", `wrong platform: ${provider}`);
+			}
 			// 请求拼不出来(配置的地址不合法,签名时 `new URL` 就抛)是输入的问题,一个字节都没发出去。
 			let req: WebhookHttpRequest;
 			try {
@@ -144,7 +161,7 @@ export function createWebhookAdapter(opts: WebhookAdapterOptions): PlatformAdapt
  */
 function buildWebhookRequest(
 	provider: WebhookPlatform,
-	cfg: WebhookConnectionConfig,
+	cfg: WebhookConnectionSettings,
 	destination: EndpointDestination,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
@@ -160,7 +177,7 @@ function buildWebhookRequest(
 	}
 }
 
-function baseHeaders(cfg: WebhookConnectionConfig): Record<string, string> {
+function baseHeaders(cfg: WebhookConnectionSettings): Record<string, string> {
 	return {
 		"content-type": "application/json",
 		...cfg.headers,
@@ -168,7 +185,7 @@ function baseHeaders(cfg: WebhookConnectionConfig): Record<string, string> {
 }
 
 function buildGenericWebhookRequest(
-	cfg: WebhookConnectionConfig,
+	cfg: WebhookConnectionSettings,
 	destination: EndpointDestination,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
@@ -191,7 +208,7 @@ function buildGenericWebhookRequest(
 }
 
 function buildDingTalkWebhookRequest(
-	cfg: WebhookConnectionConfig,
+	cfg: WebhookConnectionSettings,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const url = cfg.secret ? signDingTalkUrl(cfg.url, cfg.secret) : cfg.url;
@@ -206,7 +223,7 @@ function buildDingTalkWebhookRequest(
 }
 
 function buildFeishuWebhookRequest(
-	cfg: WebhookConnectionConfig,
+	cfg: WebhookConnectionSettings,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	const body: Record<string, unknown> = {
@@ -222,7 +239,7 @@ function buildFeishuWebhookRequest(
 }
 
 function buildWeComWebhookRequest(
-	cfg: WebhookConnectionConfig,
+	cfg: WebhookConnectionSettings,
 	payload: NotificationPayload,
 ): WebhookHttpRequest {
 	return {
@@ -271,7 +288,7 @@ function httpFailure(status: number, message: string): Failure {
 }
 
 /** 失败的原话过一遍脱敏(地址里的密钥、签名);码与 `upstreamCode` 不动。 */
-function sanitized(failure: Failure, cfg: WebhookConnectionConfig): Failure {
+function sanitized(failure: Failure, cfg: WebhookConnectionSettings): Failure {
 	return { ...failure, message: sanitizeWebhookError(failure.message, cfg) };
 }
 
@@ -379,7 +396,7 @@ function stringValue(value: unknown): string | null {
 	return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function sanitizeWebhookError(message: string, cfg: WebhookConnectionConfig): string {
+function sanitizeWebhookError(message: string, cfg: WebhookConnectionSettings): string {
 	let out = message
 		.replace(/((?:[?&]|\b)(?:access_token|sign|token|secret|key)=)[^&\s"']+/gi, "$1***")
 		.replace(/\b(Authorization)\b(\s*[:=]\s*Bearer\s+)[^\s",;}]+/gi, "$1$2***")

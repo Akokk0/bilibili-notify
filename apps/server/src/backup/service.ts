@@ -8,6 +8,7 @@ import type {
 } from "@bilibili-notify/internal";
 import { findNewIdentityDuplicates } from "@bilibili-notify/subscription";
 import { describeDuplicate } from "../config/store.js";
+import type { SecretCellsReader } from "../push/connection-settings.js";
 import { assembleFullBackup, openFullBackup } from "./assemble.js";
 import {
 	type BackupEnvelope,
@@ -17,7 +18,7 @@ import {
 } from "./envelope.js";
 import { BACKUP_PIN_REQUIRED_MESSAGE, BackupRejectedError } from "./rejected-error.js";
 import { foldPlan, type ImportMode, planImport } from "./restore.js";
-import { type ExtensionSecretCodes, redactBackupSections } from "./sanitize.js";
+import { redactBackupSections } from "./sanitize.js";
 
 /**
  * BackupService — the IO seam wiring the pure backup core to the running
@@ -77,13 +78,13 @@ export interface BackupServiceDeps {
 	/** Injectable ISO clock (keeps exports deterministic in tests). */
 	now?: () => string;
 	/**
-	 * 拓展在字段表里声明 `secret: true` 的那些 config 键,**按拓展 id 分格**。
-	 * **现取**:拓展会被拨开关加载 / 卸载。
+	 * 连接的 `settings` 与拓展设置里哪些格是密钥:适配器 `settingsSchema` 上的标记,与拓展声明的键
+	 * (按拓展 id 分格)。**现取**:适配器与拓展会被拨开关加载 / 卸载。
 	 *
-	 * 不在表里的拓展 = 没跑起来 = 问不出来,脱敏那边把它那两格整片当密钥
-	 * (见 {@link ExtensionSecretCodes})。
+	 * 问不出来的(适配器不在场、拓展没声明)脱敏那边整片当密钥(见 `ExtensionSecretCodes`)。
+	 * 不给 = 一个都问不出来。
 	 */
-	extensionSecretCodes?: () => ExtensionSecretCodes;
+	connectionSecrets?: SecretCellsReader;
 }
 
 interface ExportOptions {
@@ -173,13 +174,13 @@ export function createBackupService(deps: BackupServiceDeps): BackupService {
 				},
 				opts.pin,
 				createdAt,
-				deps.extensionSecretCodes?.(),
+				deps.connectionSecrets,
 			);
 		}
 		return buildBackup({
 			kind: "sanitized",
 			createdAt,
-			sections: redactBackupSections(picked, deps.extensionSecretCodes?.()),
+			sections: redactBackupSections(picked, deps.connectionSecrets),
 		});
 	}
 

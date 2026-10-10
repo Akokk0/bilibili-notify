@@ -1,6 +1,7 @@
 import type { WsTicketStore } from "../auth/ws-ticket.js";
 import type { ConfigStore } from "../config/store.js";
 import type { QQSessionRegistry } from "../platforms/qq-official.js";
+import type { SecretCellsReader } from "../push/connection-settings.js";
 import type { AppRuntime } from "../runtime/bootstrap.js";
 import type { HelpEntry } from "../runtime/command-help.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
@@ -12,6 +13,11 @@ import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
 export interface RouteDeps {
 	runtime: AppRuntime;
 	store: ConfigStore;
+	/**
+	 * 连接的 `settings` 下发打码要问的「哪些格是密钥」:适配器 `settingsSchema` 上的标记 + 拓展声明的键。
+	 * 与备份脱敏吃同一份(`index.ts` 里造一份、两处共用)。
+	 */
+	connectionSecrets: SecretCellsReader;
 	/**
 	 * Puppeteer adapter shared with the engine + cards/preview routes. Null when
 	 * `BN_CHROME_PATH` / `chromePath` is unset; the globals enable-check uses

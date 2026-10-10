@@ -14,6 +14,7 @@ import type { ExtensionsResponse } from "@bilibili-notify/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/platform-snapshot";
 import { PlatformMetaRoot } from "../../components/platform-meta";
 import Targets from "../Targets";
 
@@ -44,10 +45,10 @@ const CONNECTION = {
 	id: "11111111-1111-4111-8111-111111111111",
 	name: "小电视",
 	enabled: true,
-	kind: "extension",
-	extensionId: "bridge",
+	adapterKey: "bridge",
 	platform: "telegram",
-	config: { link: "link-home", botId: "telegram:7777" },
+	platformSnapshot: snapshotFor("telegram"),
+	settings: { link: "link-home", botId: "telegram:7777" },
 };
 
 /** 桥的标识色经 jsdom 规范化之后的写法。 */

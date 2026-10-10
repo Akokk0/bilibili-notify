@@ -45,6 +45,7 @@ import type {
 	SessionRef,
 	Subscription,
 	SubscriptionOp,
+	TargetReachability,
 	TemplateBundle,
 } from "@bilibili-notify/internal";
 import {
@@ -346,7 +347,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
 
 	// ---------- Dispatcher + push ----------
-	// onDelivery 只负责 target.testStatus 同步 —— dispatcher 拿不到订阅 + feature,
+	// onDelivery 只负责 target.reachability 同步 —— dispatcher 拿不到订阅 + feature,
 	// 没法填 history 的订阅 / uid 字段。history 写入挂到 PushRouter.onSend
 	// (见下方),那里能拿到完整的发起上下文。
 	const dispatcher = createTargetDispatcher({
@@ -358,21 +359,27 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			// 没真出网的投递(devtools 截流)不是可达性证据 —— 写回去会把一个发不出去的目标
 			// 标成绿的,而且落盘、活得比截流本身还久。
 			if (!isReachabilityEvidence(result)) return;
-			const prev = target.testStatus;
-			if (!prev || prev.ok !== result.ok) {
-				// `testStatus.err` 是盘上的老格式(3a-22 换成 `reachability`):失败的原话填进去,码不落盘。
-				const nextStatus = {
-					ok: result.ok,
-					lastCheckedAt: new Date().toISOString(),
-					latencyMs: result.ok ? result.latencyMs : undefined,
-					err: result.ok ? undefined : result.message,
-				};
+			const prev = target.reachability;
+			// 只在通断翻转时写(没记过的也算一次)。
+			if (!prev || (prev.status === "reachable") !== result.ok) {
+				// 失败的原话填进 `message`,码不落盘。
+				const next: TargetReachability = result.ok
+					? {
+							status: "reachable",
+							changedAt: new Date().toISOString(),
+							latencyMs: result.latencyMs,
+						}
+					: {
+							status: "unreachable",
+							changedAt: new Date().toISOString(),
+							message: result.message,
+						};
 				// 发出去不等,但登记进 track:关停得等这笔写交进 config 写道,写道才能关门。
 				opts.serviceCtx.track(
 					opts.configStore
-						.recordTargetTestStatus(target.id, nextStatus)
+						.recordTargetReachability(target.id, next)
 						.catch((e) =>
-							log.warn(`[sink] target ${target.id} testStatus writeback failed: ${String(e)}`),
+							log.warn(`[sink] target ${target.id} reachability writeback failed: ${String(e)}`),
 						),
 				);
 			}
@@ -867,7 +874,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// ---------- Connection probe scheduler ----------
 	// Background reachability check. Plan §"系统不要主动测试" excludes message-
 	// sending probes; this one only calls platformAdapter.probe (no side
-	// effects) and writes the result back to the connection's testStatus so the
+	// effects) and writes the result back to the connection's probeState so the
 	// dashboard reflects reality without the user clicking "测试" on every one.
 	const CONNECTION_PROBE_INTERVAL_MS = 5 * 60 * 1000;
 	let probeInFlight = false;
@@ -899,17 +906,31 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				if (opts.serviceCtx.signal.aborted) break;
 				try {
 					const result = await probeConnectionAndCapabilities(connection.id);
-					// platform doesn't support probe (e.g. webhook):不是通也不是不通,状态不动。
-					if (!result.ok && result.code === "unsupported") continue;
-					// `testStatus.err` 是盘上的老格式(3a-21 换成 `probeState`):失败的原话填进去,码不落盘。
-					await opts.configStore.patchConnection(connection.id, {
-						testStatus: {
-							ok: result.ok,
+					// 探不了的连接(如 webhook):记成 `unsupported`(不是通也不是不通),但已经是它的不再写 ——
+					// 否则每条这样的连接每五分钟多一次写盘与 `config-changed`。
+					if (!result.ok && result.code === "unsupported") {
+						if (connection.probeState?.status === "unsupported") continue;
+						await opts.configStore.recordConnectionProbeState(connection.id, {
+							status: "unsupported",
 							lastCheckedAt: new Date().toISOString(),
-							latencyMs: result.ok ? result.latencyMs : undefined,
-							err: result.ok ? undefined : result.message,
-						},
-					});
+						});
+						continue;
+					}
+					// 失败的原话填进 `message`,码不落盘。
+					await opts.configStore.recordConnectionProbeState(
+						connection.id,
+						result.ok
+							? {
+									status: "reachable",
+									lastCheckedAt: new Date().toISOString(),
+									latencyMs: result.latencyMs,
+								}
+							: {
+									status: "unreachable",
+									lastCheckedAt: new Date().toISOString(),
+									message: result.message,
+								},
+					);
 				} catch (e) {
 					log.warn(`[probe] connection ${connection.id} update failed: ${String(e)}`);
 				}
@@ -922,7 +943,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// Kick off an immediate probe after engines come up, then poll on a timer.
 	// `config-changed` for the 'connections' scope triggers an extra immediate probe
 	// so the UI reflects new connections / edits without waiting up to 5 min.
-	// 探测结果经 patchConnection 写回连接表:登记进 track,关停等这笔写交进 config 写道。
+	// 探测结果经 recordConnectionProbeState 写回连接表:登记进 track,关停等这笔写交进 config 写道。
 	const trackProbe = (): void => {
 		opts.serviceCtx.track(
 			probeAllConnections().catch((e) => log.warn(`[probe] 健康探测失败: ${String(e)}`)),
@@ -965,8 +986,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 有状态 adapter(OneBot ws / ws-reverse)自己订了这一档、自己对账(登记即 `start(ctx)`,
 				// 见 `push/builtin-adapters.ts`),引擎不替它们对账。
 				//
-				// 刻意不在这里触发 probeAllConnections:probe 经 patchConnection 写回
-				// testStatus 会再 emit config-changed:connections → 死循环。adapter
+				// 刻意不在这里触发 probeAllConnections:probe 经 recordConnectionProbeState 写回
+				// probeState 会再 emit config-changed:connections → 死循环。adapter
 				// 连通状态由 5 分钟轮询刷新(或用户点"测试"立即刷)。
 				return;
 			}

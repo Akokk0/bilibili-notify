@@ -7,7 +7,9 @@
  */
 
 import type { Connection, PlatformAdapter, ServiceContext } from "@bilibili-notify/internal";
+import { platformDescriptor } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { snapshotFor } from "../../__tests__/support/connection-snapshot.js";
 import { createOnebotAdapter } from "../onebot.js";
 import { createQQOfficialAdapter, createQQSessionRegistry } from "../qq-official.js";
 import { createWebhookAdapter } from "../webhook.js";
@@ -37,10 +39,11 @@ function direct(platform: string): Connection {
 	return {
 		id: "c1",
 		name: "c1",
-		kind: "direct",
+		adapterKey: platformDescriptor(platform)?.adapterKey ?? platform,
 		platform,
+		platformSnapshot: snapshotFor(platform),
 		enabled: true,
-		config: {},
+		settings: {},
 	} as unknown as Connection;
 }
 

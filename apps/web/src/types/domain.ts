@@ -16,9 +16,8 @@ import type { ExtensionBotView, SubscriptionDTO, SubscriptionTag } from "@bilibi
 import type {
 	Connection,
 	ConnectionPlatform,
-	DirectConnection,
-	ExtensionConnection,
-	OnebotConnectionConfig,
+	NewConnection,
+	OnebotConnectionSettings,
 	OnebotTransport,
 	PushTarget,
 	WebhookPlatform,
@@ -30,7 +29,6 @@ import {
 	countsAsFailure,
 	DEFAULT_FEATURE_FLAGS,
 	DEFAULT_ROAST_SCHEDULE,
-	defaultConnectorFor,
 	EXTRA_KEYS,
 	type ExtraKey,
 	FEATURE_KEYS,
@@ -39,12 +37,12 @@ import {
 	type Identity,
 	identityColor,
 	isTargetPaused,
-	isWebhookConnection,
 	ONEBOT_FORWARD_MIN_TIMEOUT_MS,
 	ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 	PLATFORM_REGISTRY,
 	PUSH_EXTRAS,
 	platformOfTarget,
+	RESERVED_INTEGRATION_KEYS,
 	type SourceKey,
 	sameIdentity,
 	subscriptionIdentityOf,
@@ -60,7 +58,6 @@ export {
 	FEATURE_KEYS,
 	identityColor,
 	isTargetPaused,
-	isWebhookConnection,
 	PUSH_EXTRAS,
 	platformOfTarget,
 	sameIdentity,
@@ -83,8 +80,6 @@ export type {
 	Connection,
 	ConnectionPlatform,
 	ContentFiltersPartial as ContentFiltersOverride,
-	DirectConnection,
-	ExtensionConnection,
 	ImageGroupSettingsPartial as ImageGroupOverride,
 	LiveStartSettingsPartial as LiveStartOverride,
 	LiveStreamingSettingsPartial as LiveStreamingOverride,
@@ -93,18 +88,20 @@ export type {
 	MessageKindLayout as MessageKindLayoutFull,
 	// per-UP 消息版式是「整份覆盖」(fork 全局后编辑),不是 Partial。
 	MessageLayout as MessageLayoutOverride,
-	OnebotConnectionConfig,
+	NewConnection,
+	OnebotConnectionSettings,
 	OnebotTransport,
 	PushTarget,
 	PushTargetScope,
 	QQOfficialBotType,
-	QQOfficialConnectionConfig,
+	QQOfficialConnectionSettings,
 	ScheduleConfigPartial as ScheduleOverride,
 	SpecialUser,
 	SubscriptionOverrides as OverridesShape,
 	SubscriptionRouting,
 	SuperchatSettingsPartial as SuperchatOverride,
 	TemplateBundlePartial as TemplateOverride,
+	WebhookConnectionSettings,
 	WebhookPlatform,
 } from "@bilibili-notify/internal";
 
@@ -168,15 +165,14 @@ export function makeEmptyExtensionConnection(
 	extensionId: string,
 	bot: ExtensionBotView,
 	name: string,
-): ExtensionConnection {
+): NewConnection {
 	return {
 		id: newId(),
 		name: name || bot.name || "",
 		enabled: true,
-		kind: "extension",
-		extensionId,
+		adapterKey: extensionId,
 		platform: bot.platform,
-		config: bot.config,
+		settings: bot.config,
 	};
 }
 
@@ -184,19 +180,57 @@ export function makeEmptyExtensionConnection(
  * 刚挑了拓展、还没挑 bot 的那条草稿:平台空着,**存不了**(弹窗按它灰掉保存钮)。别在这儿
  * 编一个平台名 —— 连接的平台是从挑中的 bot 上抄的。
  */
-export function makeExtensionConnectionDraft(
-	extensionId: string,
-	name: string,
-): ExtensionConnection {
+export function makeExtensionConnectionDraft(extensionId: string, name: string): NewConnection {
 	return {
 		id: newId(),
 		name,
 		enabled: true,
-		kind: "extension",
-		extensionId,
+		adapterKey: extensionId,
 		platform: "",
-		config: undefined,
+		settings: undefined,
 	};
+}
+
+/**
+ * 这条连接是不是内置适配器管的(OneBot / QQ 官方 / webhook)—— 不是就是拓展借来的 bot。
+ * 判据是保留 id 表:拓展 id 进不了它(`RESERVED_INTEGRATION_KEYS`)。
+ */
+export function isBuiltinConnection(connection: Pick<NewConnection, "adapterKey">): boolean {
+	return RESERVED_INTEGRATION_KEYS.includes(connection.adapterKey);
+}
+
+/**
+ * 这条连接是不是「只有一个托管目标」的那种(webhook 一族):读的是连接上存的快照
+ * (`platformSnapshot.targetKind`)。**它是 `platformSnapshot` 在面板里的唯一读者。**
+ */
+export function isEndpointConnection(connection: Pick<Connection, "platformSnapshot">): boolean {
+	return connection.platformSnapshot.targetKind === "endpoint";
+}
+
+/** 面板画连接 / 目标的通断用的三档:没探过(或探不了)是 `pending`。 */
+export interface LinkState {
+	status: "ok" | "err" | "pending";
+	latencyMs?: number;
+	/** 失败原因(只在 `err` 时有)。 */
+	message?: string;
+}
+
+function linkStateOf(
+	state: { status: string; latencyMs?: number; message?: string } | undefined,
+): LinkState {
+	if (state?.status === "reachable") return { status: "ok", latencyMs: state.latencyMs };
+	if (state?.status === "unreachable") return { status: "err", message: state.message };
+	return { status: "pending" };
+}
+
+/** 一条连接的探测结果。`unsupported`(探不了)与没探过一样归 `pending`。 */
+export function connectionProbeOf(connection: Pick<Connection, "probeState">): LinkState {
+	return linkStateOf(connection.probeState);
+}
+
+/** 一个目标上次的可达性。 */
+export function targetReachabilityOf(target: Pick<PushTarget, "reachability">): LinkState {
+	return linkStateOf(target.reachability);
 }
 
 /**
@@ -254,21 +288,22 @@ export function makeEmptySubscription(identity: Identity): Subscription {
 }
 
 /**
- * 新建一条连接 —— 回的是**直连**那一支:面板这张表单只建直连,桥接入在拓展页建
- * (它要的是 BN 地址 + token,跟这里问的东西完全不同)。收窄返回类型让调用方
- * 直接拿得到 `platform` 与那一档的 config,不用再自己 narrow 一次。
+ * 新建一条连接的草稿 —— 面板这张表单只建内置三个适配器的连接,桥接入在拓展页建
+ * (它要的是 BN 地址 + token,跟这里问的东西完全不同)。回的是 POST 收的那一份形状:
+ * `platformSnapshot` 由服务端按适配器的候选填,草稿里没有。设置各格的默认值与 schema 一致。
  */
-export function makeEmptyConnection(platform: ConnectionPlatform, name: string): DirectConnection {
-	// connector 的初值走 internal 那份 defaultConnectorFor —— 与迁移同一个答案,
-	// 免得「新建的」和「迁移来的」从不同默认值出发。它按平台重载,所以每一支拿到的
-	// 是那一档的字面量类型,正好对得上 schema 里逐支收窄过的 `connector`。
-	const base = { id: newId(), name, enabled: true, kind: "direct" } as const;
+export function makeEmptyConnection(platform: ConnectionPlatform, name: string): NewConnection {
+	const base = {
+		id: newId(),
+		name,
+		enabled: true,
+		adapterKey: PLATFORM_REGISTRY[platform].adapterKey,
+		platform,
+	} as const;
 	if (platform === "onebot") {
 		return {
 			...base,
-			connector: defaultConnectorFor(platform),
-			platform: "onebot",
-			config: {
+			settings: {
 				transport: "http",
 				baseUrl: "http://127.0.0.1:3000",
 				protocolVersion: "v11",
@@ -276,7 +311,7 @@ export function makeEmptyConnection(platform: ConnectionPlatform, name: string):
 				timeoutMs: 15_000,
 				imageMinTimeoutMs: ONEBOT_IMAGE_MIN_TIMEOUT_MS,
 				mergeForwardMinTimeoutMs: ONEBOT_FORWARD_MIN_TIMEOUT_MS,
-				retryTimes: 0,
+				maxRetries: 0,
 				retryIntervalMs: 1_000,
 			},
 		};
@@ -284,48 +319,47 @@ export function makeEmptyConnection(platform: ConnectionPlatform, name: string):
 	if (platform === "qq-official") {
 		return {
 			...base,
-			connector: defaultConnectorFor(platform),
-			platform: "qq-official",
-			config: { appId: "", appSecret: "", sandbox: false, botType: "public", logReconnects: false },
+			settings: {
+				appId: "",
+				appSecret: "",
+				sandbox: false,
+				botType: "public",
+				logReconnects: false,
+			},
 		};
 	}
-	// 剩下的都是 webhook 那一族 —— 平台不同、连法与配置形状一模一样。
-	return {
-		...base,
-		connector: defaultConnectorFor(platform),
-		platform,
-		config: { url: "https://example.com/hook", headers: {} },
-	};
+	// 剩下的都是 webhook 那一族 —— 平台不同、连法与设置形状一模一样。
+	return { ...base, settings: { url: "https://example.com/hook", headers: {} } };
 }
 
 /** OneBot 三种连接方式(transport)共用的连接字段。 */
-type OnebotConnectionConfigCommon = Pick<
-	OnebotConnectionConfig,
+type OnebotConnectionSettingsCommon = Pick<
+	OnebotConnectionSettings,
 	| "accessToken"
 	| "protocolVersion"
 	| "timeoutMs"
 	| "imageMinTimeoutMs"
 	| "mergeForwardMinTimeoutMs"
-	| "retryTimes"
+	| "maxRetries"
 	| "retryIntervalMs"
 >;
 
 /**
- * 切换 OneBot 连接的连法 —— 整体替换 config(branch schema 是 strict,不能
+ * 切换 OneBot 连接的连法 —— 整体替换 settings(branch schema 是 strict,不能
  * 留上一个 transport 的残字段),保留 accessToken / 超时 / 重试等共用字段。切到
- * ws / ws-reverse 时,若 retryTimes 还是 0 则提到 3(bot 偶发重连不丢首条推送)。
+ * ws / ws-reverse 时,若 maxRetries 还是 0 则提到 3(bot 偶发重连不丢首条推送)。
  */
 export function switchOnebotTransport(
-	cfg: OnebotConnectionConfig,
+	cfg: OnebotConnectionSettings,
 	transport: OnebotTransport,
-): OnebotConnectionConfig {
-	const common: OnebotConnectionConfigCommon = {
+): OnebotConnectionSettings {
+	const common: OnebotConnectionSettingsCommon = {
 		accessToken: cfg.accessToken,
 		protocolVersion: cfg.protocolVersion ?? "v11",
 		timeoutMs: cfg.timeoutMs,
 		imageMinTimeoutMs: cfg.imageMinTimeoutMs,
 		mergeForwardMinTimeoutMs: cfg.mergeForwardMinTimeoutMs,
-		retryTimes: cfg.retryTimes || (transport === "http" ? 0 : 3),
+		maxRetries: cfg.maxRetries || (transport === "http" ? 0 : 3),
 		retryIntervalMs: cfg.retryIntervalMs,
 	};
 	if (transport === "http") {
@@ -340,17 +374,9 @@ export function switchOnebotTransport(
 export function makeEmptyTarget(connection: Connection, name: string): PushTarget {
 	// 地址留空:新建时还没填群号 / openid,发的时候才检查(见 schema 的 address 那段)。
 	const base = { id: newId(), name, connectionId: connection.id, enabled: true } as const;
-	if (connection.kind !== "direct") {
-		// 拓展提供的连接就是一个 bot(ADR-0012 决策 45)—— 与直连同一套逻辑,
-		// 目标只填地址。曾经在这里 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
-		return { ...base, kind: "session", scope: "group", address: "" };
-	}
-	if (connection.platform === "onebot") {
-		return { ...base, kind: "session", scope: "group", address: "" };
-	}
-	if (connection.platform === "qq-official") {
-		return { ...base, kind: "session", scope: "group", address: "" };
-	}
-	// webhook 那一族:目标是连接的单向终点,地址烧在连接的 config 里。
-	return { ...base, kind: "endpoint" };
+	// webhook 那一族:目标是连接的单向终点,地址烧在连接的 settings 里。
+	if (isEndpointConnection(connection)) return { ...base, kind: "endpoint" };
+	// 其余(OneBot / QQ 官方 / 拓展借来的 bot,ADR-0012 决策 45)都是会话目标,只填地址。
+	// 曾经在拓展那一支 `throw` —— 异常抛在点击处理器里,主人看到的是「点了没反应」。
+	return { ...base, kind: "session", scope: "group", address: "" };
 }

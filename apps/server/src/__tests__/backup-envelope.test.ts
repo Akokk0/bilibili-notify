@@ -98,8 +98,16 @@ describe("backup envelope —— 1.0 之前的备份", () => {
 		expect(err.message).toMatch(/1\.0/);
 	});
 
-	it("推送目标不再带 platform 以后导出的备份是版本 12", () => {
-		expect(BACKUP_SCHEMA_VERSION).toBe(12);
+	it("连接换成新形状以后导出的备份是版本 13", () => {
+		expect(BACKUP_SCHEMA_VERSION).toBe(13);
+	});
+
+	it("版本 12 的备份(连接还是 kind / connector / config 的老形状)→ unsupported:这一版不再认它", () => {
+		const env = buildBackup({ kind: "sanitized", createdAt: "x", sections: { subscriptions: [] } });
+		const err = thrownBy(() => parseBackup(JSON.stringify({ ...env, schemaVersion: 12 })));
+		if (!(err instanceof BackupRejectedError)) throw new Error("没有拒收");
+		expect(err.code).toBe("unsupported");
+		expect(err.message).not.toMatch(/0\.12/);
 	});
 
 	it("版本 11 的备份(目标还带着 platform)→ unsupported:这一版不再认它", () => {

@@ -99,7 +99,9 @@ describe("web.onboarding-step", () => {
 		const s = scenario("web.onboarding-step");
 		s.run({ step: "subs" }, { qc });
 		expect(useOnboardingInputsOverride.getState().inputs?.subsCount).toBe(0);
-		expect(useOnboardingInputsOverride.getState().inputs?.targets[0]?.testStatus?.ok).toBe(true);
+		expect(useOnboardingInputsOverride.getState().inputs?.targets[0]?.reachability?.status).toBe(
+			"reachable",
+		);
 		expect(s.active?.()).toMatchObject({ scenarioId: "web.onboarding-step" });
 		s.reset?.();
 		expect(useOnboardingInputsOverride.getState().inputs).toBeNull();
