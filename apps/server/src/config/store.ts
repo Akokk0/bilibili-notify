@@ -114,8 +114,8 @@ export interface ConfigSections {
 
 /**
  * 一个集成登记进来的设置(今天只有 B 站):一个集成一个文件 `config/settings/<键>.json`(ADR-0021 决策 42 下
- * 10-01 的 🔗)。仓不认得是哪个集成,只按登记的格式读写;登记在组装处做(今天 `runtime/bootstrap.ts`,3a 起
- * `compose.ts`)。
+ * 10-01 的 🔗)。仓不认得是哪个集成,只按登记的格式读写;组装处(`compose.ts`)把它们交上来,运行时
+ * 登记。
  */
 export interface IntegrationSettingsSegment<T = unknown> {
 	/** 集成的键,也是文件名。不能和核心设置的顶层键同名:`/api/settings` 把它们摆在同一层。 */
@@ -1107,26 +1107,16 @@ class NodeConfigStore implements ConfigStore {
 			this.integrationSettings.set(key, fresh);
 			return;
 		}
-		let value: unknown;
-		let unreadable: Issue | undefined;
-		try {
-			value = JSON.parse(text) as unknown;
-		} catch (err) {
-			if (!(err instanceof SyntaxError)) throw err;
-			unreadable = { message: jsonSyntaxMessage(err) };
-		}
-		if (unreadable === undefined && !isPlainObject(value)) {
-			unreadable = { message: "顶层不是一个对象" };
-		}
-		if (unreadable !== undefined || !isPlainObject(value)) {
+		const read = readJsonObject(text);
+		if ("issue" in read) {
 			this.integrationSettings.set(key, segment.schema.parse({}));
-			this.integrationUnreadable.set(key, unreadable ?? { message: "读不懂" });
+			this.integrationUnreadable.set(key, read.issue);
 			this.serviceCtx.logger.warn(
-				`[config] settings/${key}.json 读不懂,这个集成读它的那几样先停着: ${unreadable?.message ?? ""}`,
+				`[config] settings/${key}.json 读不懂,这个集成读它的那几样先停着: ${read.issue.message}`,
 			);
 			return;
 		}
-		const parsed = parseIntegrationCells(segment.schema, value);
+		const parsed = parseIntegrationCells(segment.schema, read.value);
 		this.integrationSettings.set(key, parsed.settings);
 		if (parsed.invalid.length === 0) return;
 		this.integrationInvalid.set(key, parsed.invalid);
@@ -2315,6 +2305,18 @@ async function readExtensionSettingsDir(dir: string): Promise<{
 		}
 	}
 	return { settings, unreadable };
+}
+
+/** 把设置文件的文字读成对象;读不懂(不是合法 JSON、顶层不是对象)回原因,原因里不带文件内容。 */
+function readJsonObject(text: string): { value: Record<string, unknown> } | { issue: Issue } {
+	let value: unknown;
+	try {
+		value = JSON.parse(text) as unknown;
+	} catch (err) {
+		if (!(err instanceof SyntaxError)) throw err;
+		return { issue: { message: jsonSyntaxMessage(err) } };
+	}
+	return isPlainObject(value) ? { value } : { issue: { message: "顶层不是一个对象" } };
 }
 
 /**

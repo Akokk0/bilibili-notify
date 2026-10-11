@@ -43,12 +43,56 @@ describe("settingsInvalidMessage", () => {
 	it("两格:写格数、两格都在、用代码路径", () => {
 		const text = settingsInvalidMessage([
 			entry(["history"], "A 原因"),
-			entry(["ai", "providers"], "B 原因"),
+			entry(["mutedUntil"], "B 原因"),
 		]);
 		expect(text).toContain("有 2 格女仆读不懂");
-		expect(text).toContain("history（A 原因）；ai.providers（B 原因）");
+		expect(text).toContain("history（A 原因）；mutedUntil（B 原因）");
 		expect(text).toContain("把这几格改成想要的样子");
 		expect(text).toContain("一个字没动");
+		expect(text).not.toContain("别在面板上改");
+	});
+
+	it("只有 ai 的格坏:先说改文件再重启,明说别在面板上改,不引主人去面板保存", () => {
+		const text = settingsInvalidMessage([entry(["ai", "providers"], "B 原因")]);
+		expect(text).toBe(
+			"主人，设置文件里有一格女仆读不懂，先按默认值在跑了：ai.providers（B 原因）。" +
+				"文件里原来写的女仆一个字没动。" +
+				"ai 开头的这一格请别在面板上改：面板上现在看不到原来的内容，在面板保存会把这一格里原来的东西连同存着的密钥一起换掉；" +
+				"请改好 config/settings/core.json 里对应的那一格再重启。",
+		);
+		expect(text).not.toContain("改成想要的样子");
+	});
+
+	it("ai 的几格都坏(整格与子格):用「这几格」", () => {
+		const text = settingsInvalidMessage([entry(["ai"], "A"), entry(["ai", "search"], "B")]);
+		expect(text).toContain("ai 开头的这几格请别在面板上改");
+		expect(text).not.toContain("改成想要的样子");
+	});
+
+	it("ai 的格与别的格都坏:ai 的别在面板改、其余的到面板改", () => {
+		const text = settingsInvalidMessage([
+			entry(["history"], "A 原因"),
+			entry(["ai", "providers"], "B 原因"),
+			entry(["ai", "search"], "C 原因"),
+		]);
+		expect(text).toBe(
+			"主人，设置文件里有 3 格女仆读不懂，先按默认值在跑了：history（A 原因）；ai.providers（B 原因）；ai.search（C 原因）。" +
+				"文件里原来写的女仆一个字没动。" +
+				"ai 开头的那几格请别在面板上改：面板上现在看不到原来的内容，在面板保存会把那一格里原来的东西连同存着的密钥一起换掉；" +
+				"请改好 config/settings/core.json 里对应的那一格再重启。" +
+				"其余的到面板改成想要的样子保存一下就好。",
+		);
+	});
+
+	it("超过三格摊不下时,ai 的格排在后面也照样识别", () => {
+		const entries = [
+			...["a", "b", "c", "d"].map((k) => entry([k], k)),
+			entry(["ai", "providers"], "P"),
+		];
+		const text = settingsInvalidMessage(entries);
+		expect(text).toContain("等 2 格");
+		expect(text).toContain("别在面板上改");
+		expect(text).toContain("其余的到面板");
 	});
 
 	it("最多摊三格,多的写「等 N 格」", () => {
@@ -152,12 +196,12 @@ describe("syncSettingsProblem", () => {
 
 		const ai = mkTable();
 		syncSettingsProblem(ai.table, [entry(["ai", "providers"], "R")], ai.logger);
-		expect(
-			vi
-				.mocked(ai.logger.warn)
-				.mock.calls.map((c) => String(c[0]))
-				.join("\n"),
-		).toContain("明文 key");
+		const aiLines = vi
+			.mocked(ai.logger.warn)
+			.mock.calls.map((c) => String(c[0]))
+			.join("\n");
+		expect(aiLines).toContain("明文 key");
+		expect(aiLines).toContain("别在面板里重存这一格");
 		const whole = mkTable();
 		syncSettingsProblem(whole.table, [entry(["ai"], "R")], whole.logger);
 		expect(

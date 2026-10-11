@@ -601,6 +601,55 @@ describe("密钥袋不被洗(真 SecretStore、真文件)", () => {
 		expect(onDisk.history).toBe("三十天");
 	});
 
+	it("ai.providers 被隔离、另一个好格里有手写明文:开机上提时并进旧袋,被隔离那一格名下的旧 key 还在", async () => {
+		const secret = mkSecretStore();
+		const seeded = await seedBag(secret);
+		const broken = structuredClone(seeded);
+		broken.ai.providers = { ...seeded.ai.providers, extra: { provider: "没这家" } };
+		// 好格 ai.search 里手写一把换过的明文(搜索后端的 key)。
+		broken.ai.search.keys.bocha = "sk-bocha-hand";
+		await putDisk(broken);
+
+		const store = mkStore({ secret });
+		await store.load();
+
+		expect(paths(store)).toEqual([["ai", "providers"]]);
+		expect((await secret.load()).aiApiKeys).toEqual({
+			deepseek: "sk-ds",
+			"deepseek:vision": "sk-ds-v",
+			openrouter: "sk-or",
+			"search:bocha": "sk-bocha-hand",
+			"search:tavily": "sk-tavily",
+		});
+	});
+
+	it("这是已定的行为:重存以新值为准。ai.providers 被隔离时经 patchSettings 重存这一格,袋里那一域的旧 key 没了、盘上只剩新写的;问题条目的话因此不许引主人这样做", async () => {
+		const secret = mkSecretStore();
+		const seeded = await seedBag(secret);
+		const broken = structuredClone(seeded);
+		broken.ai.providers = { ...seeded.ai.providers, extra: { provider: "没这家" } };
+		await putDisk(broken);
+
+		const store = mkStore({ secret });
+		await store.load();
+		expect(paths(store)).toEqual([["ai", "providers"]]);
+		await store.patchSettings({
+			core: {
+				ai: {
+					activeProfile: "p2",
+					providers: { p2: { provider: "openrouter", apiKey: "sk-new" } },
+				},
+			},
+		});
+
+		const bag = (await secret.load()).aiApiKeys ?? {};
+		expect(bag.deepseek).toBeUndefined();
+		expect(bag["deepseek:vision"]).toBeUndefined();
+		expect(bag.openrouter).toBeUndefined();
+		expect(bag.p2).toBe("sk-new");
+		expect(Object.keys((await readDisk()).ai.providers)).toEqual(["p2"]);
+	});
+
 	it("坏格原文里带明文 key:盘上原样、袋里没有它(钉现状,防止有人顺手上提)", async () => {
 		const secret = mkSecretStore();
 		const disk = baseDisk();

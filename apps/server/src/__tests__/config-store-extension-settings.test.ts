@@ -239,6 +239,31 @@ describe("拓展设置 — 文件读不懂(不是合法 JSON)", () => {
 		expect(await readFile(fileOf("douyin"), "utf8")).toBe(BROKEN);
 	});
 
+	it("文件开头就是密钥样的裸串(V8 会把它抄进解析报错):原因、日志里都没有那串字符", async () => {
+		const leak = "sk-LEAKCANARY";
+		// 前提:V8 的原话里真的有这串字符;没有的话这条测试什么都证明不了。
+		expect(() => JSON.parse(leak)).toThrow(leak);
+		await mkdir(extDir(), { recursive: true });
+		await writeFile(fileOf("douyin"), leak, "utf8");
+		const ctx = makeServiceCtx();
+		const store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx: ctx,
+		});
+
+		await store.load();
+
+		const issue = store.extensionSettingsIssue("douyin");
+		expect(issue?.message).toMatch(/JSON/);
+		expect(JSON.stringify(issue)).not.toContain(leak);
+		const logged = (["info", "warn", "error", "debug"] as const).flatMap((k) =>
+			vi.mocked(ctx.logger[k]).mock.calls.map((c) => String(c[0])),
+		);
+		expect(logged.join("\n")).not.toContain(leak);
+	});
+
 	it("半截 JSON 也一样(解析报错里没有文件内容的那种)", async () => {
 		await mkdir(extDir(), { recursive: true });
 		await writeFile(fileOf("douyin"), '{"cookie": "c", "list": [1,', "utf8");

@@ -200,6 +200,32 @@ describe("集成设置 — load", () => {
 		expect(mine[0]).not.toContain("abc-secret");
 	});
 
+	it("文件开头就是密钥样的裸串(V8 会把它抄进解析报错):原因、读口、日志里都没有那串字符", async () => {
+		const leak = "sk-LEAKCANARY";
+		// 前提:V8 的原话里真的有这串字符;没有的话这条测试什么都证明不了。
+		expect(() => JSON.parse(leak)).toThrow(leak);
+		await placeFile(pokeFile(), leak);
+		const ctx = makeServiceCtx();
+		const store = createConfigStore({
+			bootstrap: makeBootstrap(dataDir),
+			dataRoot: dataDir,
+			bus,
+			serviceCtx: ctx,
+			integrationSettings: [pokeSegment, otherSegment],
+		});
+
+		await store.load();
+
+		const r = store.readIntegrationSettings("poke");
+		expect(r.ok).toBe(false);
+		expect(JSON.stringify(r)).not.toContain(leak);
+		const logged = (["info", "warn", "error", "debug"] as const).flatMap((k) =>
+			vi.mocked(ctx.logger[k]).mock.calls.map((c) => String(c[0])),
+		);
+		expect(logged.some((l) => l.includes("poke.json"))).toBe(true);
+		expect(logged.join("\n")).not.toContain(leak);
+	});
+
 	it("读盘本身出错(路径是个目录)→ load 仍然抛,挡开机", async () => {
 		await mkdir(pokeFile(), { recursive: true });
 
