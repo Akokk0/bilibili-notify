@@ -174,12 +174,19 @@ async function boot(opts: {
 	state?: "running" | "disabled" | "settings-invalid";
 	/** 拓展交的 zod,缺省是 {@link DOUYIN_ZOD}。 */
 	zod?: z.ZodType;
+	/** 开机前就躺在盘上的抖音设置文件原文(可以不是合法 JSON)。 */
+	rawFile?: string;
 }) {
 	await plant(DOUYIN);
 	await plant(LEGACY_V1);
 	await plant(BARE_V2);
 	const rt = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 	runtime = rt;
+	if (opts.rawFile !== undefined) {
+		const file = join(dataDir, ...extensionSettingsFile("douyin"));
+		await mkdir(join(file, ".."), { recursive: true });
+		await writeFile(file, opts.rawFile, "utf8");
+	}
 	await rt.configStore.load();
 	if (opts.settings !== undefined) {
 		await rt.configStore.updateExtensionSettings("douyin", () => opts.settings);
@@ -198,6 +205,7 @@ async function boot(opts: {
 		subscriptions: () => [],
 		onSubscriptionsChanged: () => ({ dispose() {} }),
 		settings: (id) => rt.configStore.getExtensionSettings(id),
+		settingsIssue: (id) => rt.configStore.extensionSettingsIssue(id),
 		// 与 index.ts 同一根线:拓展设置落盘(`integration-settings` 那一档)→ 装载器与 ctx 各自判「我这一份动没动」。
 		onSettingsChanged: (fn) =>
 			rt.bus.on("config-changed", ({ scope }) => {
@@ -859,5 +867,38 @@ describe("PATCH /api/ext/:id/settings —— 存到哪", () => {
 			await readFile(join(dataDir, ...extensionSettingsFile("douyin")), "utf8"),
 		);
 		expect(onDisk).toEqual({ interval: 90 });
+	});
+});
+
+/**
+ * 设置文件不是合法 JSON:拓展停在「设置读不了」,面板照样能存;存一次 = 整份以新值为准,
+ * 配置仓清掉原因,装载器再把它叫起来。钉的是整条接线(路由 → 配置仓清表 → 装载器再起)。
+ */
+describe("PATCH /api/ext/:id/settings —— 设置文件不是合法 JSON", () => {
+	it("存一次 → 文件写好、原因清掉、拓展起来", async () => {
+		const h = await boot({
+			running: true,
+			rawFile: '{"links": [',
+			state: "settings-invalid",
+		});
+		expect(h.douyin()?.detail).toContain("不是合法的 JSON");
+		expect(h.activations()).toBe(0);
+		expect(runtime?.configStore.extensionSettingsIssue("douyin")).toBeDefined();
+
+		const res = await h.patch({
+			revision: await h.revision(),
+			ops: [{ op: "set", key: "interval", value: 90 }],
+		});
+		expect(res.status).toBe(200);
+		await h.settled();
+
+		expect(runtime?.configStore.extensionSettingsIssue("douyin")).toBeUndefined();
+		expect(
+			JSON.parse(await readFile(join(dataDir, ...extensionSettingsFile("douyin")), "utf8")),
+		).toEqual({
+			interval: 90,
+		});
+		expect(h.douyin()?.state).toBe("running");
+		expect(h.activations()).toBe(1);
 	});
 });

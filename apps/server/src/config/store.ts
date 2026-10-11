@@ -165,6 +165,11 @@ export interface ConfigStore {
 	getExtensionSettings(id: string): unknown;
 	/** 全部存着的拓展设置,按拓展 id(深拷贝)。备份用。 */
 	getAllExtensionSettings(): Record<string, unknown>;
+	/**
+	 * 一个拓展的设置文件读不懂(不是合法 JSON)时的原因;读得懂或没存过是 `undefined`。这种拓展的
+	 * `getExtensionSettings` 与没设过同形,装载器靠这一口把它停下。重存(写盘成功)才清。
+	 */
+	extensionSettingsIssue(id: string): Issue | undefined;
 	getSubscriptions(): Subscription[];
 	/** 订阅标签表(ADR-0034),按表里的顺序(深拷贝)。 */
 	getSubscriptionTags(): SubscriptionTag[];
@@ -860,6 +865,11 @@ class NodeConfigStore implements ConfigStore {
 	private readonly integrationSettings = new Map<string, unknown>();
 	/** 各拓展的设置(原样,形状归拓展自己),按拓展 id。 */
 	private readonly extensionSettings = new Map<string, unknown>();
+	/**
+	 * 文件读不懂(不是合法 JSON)的拓展设置,按拓展 id。这些 id 不进 {@link extensionSettings}:读者看到的与
+	 * 「没设过」同形,要不要停那个拓展由装载器看这张表决定。文件原样留在盘上,重存(写盘成功)才清。
+	 */
+	private readonly extensionSettingsIssues = new Map<string, Issue>();
 	/** 订阅:一份列表、一个文件(ADR-0021 决策 15)。写一律走 {@link writeSubscriptions}。 */
 	private subscriptions: Subscription[];
 	/** 订阅标签表(ADR-0034),与订阅同一个文件、同一条队。 */
@@ -1097,11 +1107,13 @@ class NodeConfigStore implements ConfigStore {
 		this.meta["integration-settings"].exists = true;
 
 		// 各拓展的设置 —— 一个拓展一个文件。仓不认得它们的形状,原样读进来(核对归拓展自己那份 zod)。
-		for (const [id, value] of await readExtensionSettingsDir(
+		// 一个拓展的文件读不懂只停它自己,不挡开机(读盘本身出错照旧挡)。
+		const extensionFiles = await readExtensionSettingsDir(
 			join(this.stateDir, ...EXTENSION_SETTINGS_IN_CONFIG),
-		)) {
-			this.extensionSettings.set(id, value);
-		}
+		);
+		for (const [id, value] of extensionFiles.settings) this.extensionSettings.set(id, value);
+		for (const [id, issue] of extensionFiles.unreadable)
+			this.extensionSettingsIssues.set(id, issue);
 
 		// subscriptions —— 一个文件(ADR-0021 决策 15)。读坏了就是开机报错:跳过坏行更糟,下次写回
 		// 那几行就永久没了。
@@ -1246,6 +1258,10 @@ class NodeConfigStore implements ConfigStore {
 
 	getAllExtensionSettings(): Record<string, unknown> {
 		return deepClone(Object.fromEntries(this.extensionSettings));
+	}
+
+	extensionSettingsIssue(id: string): Issue | undefined {
+		return this.extensionSettingsIssues.get(id);
 	}
 
 	getSubscriptionTags(): SubscriptionTag[] {
@@ -1424,6 +1440,8 @@ class NodeConfigStore implements ConfigStore {
 			const next = update(deepClone(this.extensionSettings.get(id)));
 			await atomicWriteJson(path, next);
 			this.extensionSettings.set(id, next);
+			// 重存以新值为准:原来那份读不懂的文件已经被整个盖掉了(写盘成功才算)。
+			this.extensionSettingsIssues.delete(id);
 			this.touch("integration-settings");
 			return next;
 		});
@@ -1441,10 +1459,12 @@ class NodeConfigStore implements ConfigStore {
 				await this.writeGlobals({ ...this.globals, extensions });
 				this.touch("globals");
 			}
-			const settings = this.extensionSettings.has(id);
+			// 读不懂的文件也要删,不然装回同 id 时坏文件原样回来。
+			const settings = this.extensionSettings.has(id) || this.extensionSettingsIssues.has(id);
 			if (settings) {
 				await rm(path, { force: true });
 				this.extensionSettings.delete(id);
+				this.extensionSettingsIssues.delete(id);
 				this.touch("integration-settings");
 			}
 			return { core, settings };
@@ -1970,7 +1990,10 @@ class NodeConfigStore implements ConfigStore {
 			const touched: ConfigScope[] = [];
 			if ((integrations && integrations.size > 0) || extensionSettings.length > 0) {
 				for (const [key, value] of integrations ?? []) this.integrationSettings.set(key, value);
-				for (const { id, value } of extensionSettings) this.extensionSettings.set(id, value);
+				for (const { id, value } of extensionSettings) {
+					this.extensionSettings.set(id, value);
+					this.extensionSettingsIssues.delete(id);
+				}
 				this.touch("integration-settings");
 				touched.push("integration-settings");
 			}
@@ -2145,24 +2168,46 @@ export function extensionSettingsFile(
 
 /**
  * 读各拓展的设置文件:`<拓展 id>.json` 一个一份,按文件名排。目录不在 = 一个都没存过;文件名不合拓展 id 的形状的
- * (写到一半的临时文件、手放的别的东西)不认。读坏了是开机报错,同别的配置文件。
+ * (写到一半的临时文件、手放的别的东西)不认。
+ *
+ * 读盘本身出错(没权限、路径是个目录)是开机报错,同别的配置文件;但**内容不是合法 JSON**只算那一个拓展的
+ * 事 —— 一个拓展的手改坏了不该让整台起不来。所以 `readFile` 与 `JSON.parse` 分开,只认后者抛的
+ * `SyntaxError`;文件不动,留给主人重存或卸载。
  */
-async function readExtensionSettingsDir(dir: string): Promise<Array<[string, unknown]>> {
+async function readExtensionSettingsDir(dir: string): Promise<{
+	settings: Array<[string, unknown]>;
+	unreadable: Array<[string, Issue]>;
+}> {
 	let names: string[];
 	try {
 		names = await readdir(dir);
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return { settings: [], unreadable: [] };
 		throw err;
 	}
-	const out: Array<[string, unknown]> = [];
+	const settings: Array<[string, unknown]> = [];
+	const unreadable: Array<[string, Issue]> = [];
 	for (const name of names.sort()) {
 		if (!name.endsWith(".json")) continue;
 		const id = name.slice(0, -".json".length);
 		if (!ExtensionIdSchema.safeParse(id).success) continue;
-		out.push([id, JSON.parse(await readFile(join(dir, name), "utf8")) as unknown]);
+		const text = await readFile(join(dir, name), "utf8");
+		try {
+			settings.push([id, JSON.parse(text) as unknown]);
+		} catch (err) {
+			if (!(err instanceof SyntaxError)) throw err;
+			unreadable.push([id, { message: jsonSyntaxMessage(err) }]);
+		}
 	}
-	return out;
+	return { settings, unreadable };
+}
+
+/**
+ * `JSON.parse` 的报错话。有的写法会把文件开头那一截抄进报错(`Unexpected token 'x', "…" is not valid
+ * JSON`),这里不带文件内容 —— 设置里可能有密钥,而这句话会进面板与日志。
+ */
+function jsonSyntaxMessage(err: SyntaxError): string {
+	return /is not valid JSON$/.test(err.message) ? "Unexpected token (not valid JSON)" : err.message;
 }
 
 /**

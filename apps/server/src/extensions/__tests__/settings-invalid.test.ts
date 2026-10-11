@@ -17,7 +17,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { Issue, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
@@ -128,9 +128,16 @@ async function boot(
 		maxFailures?: number;
 		manifest?: PlantedManifest;
 		activate?: (ctx: ExtensionContext, seen: Seen) => void;
+		/** 配置仓报「设置文件读不懂」的那张表:id → 原因。 */
+		issues?: Record<string, Issue>;
+		/** 同目录里另外装的拓展。 */
+		others?: PlantedManifest[];
 	} = {},
 ) {
 	await plant(opts.manifest);
+	for (const other of opts.others ?? []) await plant(other);
+	const issues = new Map(Object.entries(opts.issues ?? {}));
+	const imported: string[] = [];
 	/** 宿主那头存着的那份。⚠️ 与生产同形状:每问一次都是一份新拷贝。 */
 	let stored = opts.settings;
 	const listeners = new Set<() => void>();
@@ -177,12 +184,16 @@ async function boot(
 		upgrades: createExtensionUpgrades(),
 		isEnabled: opts.enabled ?? (() => true),
 		maxFailures: opts.maxFailures ?? 3,
-		importModule: async () => ({
-			activate(ctx: ExtensionContext) {
-				seen.activations += 1;
-				activate(ctx, seen);
-			},
-		}),
+		settingsIssue: (id) => issues.get(id),
+		importModule: async (url: string) => {
+			imported.push(url);
+			return {
+				activate(ctx: ExtensionContext) {
+					seen.activations += 1;
+					activate(ctx, seen);
+				},
+			};
+		},
 	});
 	return {
 		loaded,
@@ -190,12 +201,20 @@ async function boot(
 		lines,
 		/** 还挂着的定时器 —— 收摊收干净了就是 0。 */
 		pending: () => timers.size,
+		/** 真 import 过几次。 */
+		imports: () => imported.length,
+		/** 配置仓那头原因变了(重存清掉 / 又读不懂了)。 */
+		setIssue(id: string, issue: Issue | undefined) {
+			if (issue) issues.set(id, issue);
+			else issues.delete(id);
+		},
 		/** 旁路写了一次(恢复备份 / 关着时之外的写入):宿主只发「globals 落盘了」。 */
 		write(next: unknown) {
 			stored = next;
 			for (const fn of [...listeners]) fn();
 		},
 		entry: () => loaded.list()[0],
+		entryOf: (id: string) => loaded.list().find((e) => e.id === id),
 	};
 }
 
@@ -385,6 +404,62 @@ describe("「设置读不了」之后设置又变了", () => {
 		await h.loaded.sync();
 
 		expect(h.entry()?.state).toBe("disabled");
+		expect(h.seen.activations).toBe(1);
+		await h.loaded.dispose();
+	});
+});
+
+/**
+ * 设置文件不是合法 JSON(配置仓记下了原因,拓展拿到的设置与「没设过」同形)—— 带默认值的拓展照常起
+ * 的话会拿默认值盖掉那份坏文件,所以起之前先看这一口:有原因就不起,只停这一个。
+ */
+describe("设置文件读不懂(不是合法 JSON)", () => {
+	const BROKEN: Issue = { message: "Unexpected end of JSON input" };
+	const { settings: _declared, ...withoutSettings } = MANIFEST;
+	const OTHER: PlantedManifest = { ...withoutSettings, id: "other", name: "别的拓展" };
+
+	it("不 import、不 activate;那一行是「设置读不了」带那句话;不累进失败账;别的拓展照常起", async () => {
+		for (let i = 0; i < 3; i++) {
+			const h = await boot({
+				issues: { douyin: BROKEN },
+				others: [OTHER],
+				activate: () => {},
+				maxFailures: 2,
+			});
+			const entry = h.entryOf("douyin");
+			expect(entry?.state).toBe("settings-invalid");
+			expect(entry?.detail).toContain("不是合法的 JSON");
+			expect(entry?.detail).toContain(BROKEN.message);
+			// 只有别的拓展被 import 过。
+			expect(h.imports()).toBe(1);
+			expect(h.seen.activations).toBe(1);
+			expect(h.entryOf("other")?.state).toBe("running");
+			await h.loaded.dispose();
+		}
+		expect(readLoadLedger(root).blocked).toEqual([]);
+	});
+
+	it("设置变了、原因还在 → 不起,原因不变;原因没了 → 起", async () => {
+		const h = await boot({ issues: { douyin: BROKEN } });
+		const detail = h.entry()?.detail;
+		expect(h.entry()?.state).toBe("settings-invalid");
+		const parked = () => h.lines.filter((line) => line.includes("设置文件读不懂")).length;
+		expect(parked()).toBe(1);
+
+		h.write({ links: [GOOD] });
+		await h.loaded.sync();
+		expect(h.entry()?.state).toBe("settings-invalid");
+		expect(h.entry()?.detail).toBe(detail);
+		// 原因还在就根本不动它:不重走一遍 start(那会再停一次、再记一行)。
+		expect(parked()).toBe(1);
+		expect(h.imports()).toBe(0);
+		expect(h.seen.activations).toBe(0);
+
+		h.setIssue("douyin", undefined);
+		h.write({ links: [GOOD] });
+		await h.loaded.sync();
+		expect(h.entry()?.state).toBe("running");
+		expect(h.entry()?.detail).toBeUndefined();
 		expect(h.seen.activations).toBe(1);
 		await h.loaded.dispose();
 	});

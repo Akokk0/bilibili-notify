@@ -1205,6 +1205,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 拓展自己那份设置住它自己的文件(`config/settings/extensions/<id>.json`);是不是自己这一份动了由 ctx
 			// 比内容判 —— 改动那一档(`integration-settings`)是各集成共用的。
 			settings: (id) => runtime.configStore.getExtensionSettings(id),
+			// 设置文件不是合法 JSON 的拓展只停它自己;原因在仓里,重存才清。
+			settingsIssue: (id) => runtime.configStore.extensionSettingsIssue(id),
 			onSettingsChanged: (fn) =>
 				runtime.bus.on("config-changed", ({ scope }) => {
 					if (scope === "integration-settings") fn();

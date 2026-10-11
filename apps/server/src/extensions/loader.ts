@@ -11,6 +11,7 @@ import {
 	type ExtensionManifestField,
 	type ExtensionRunState,
 	type InboundSinks,
+	type Issue,
 	manifestSecretKeys,
 	type ServiceContext,
 	type SubscriptionReportDelivery,
@@ -242,6 +243,11 @@ export interface LoadExtensionsOptions {
 	onReportDiscrepancy?: (discrepancy: ReportDiscrepancy) => void;
 	/** 某个拓展自己那份设置(`config/settings/extensions/<id>.json`),现读、原样。 */
 	settings: (id: string) => unknown;
+	/**
+	 * 某个拓展的设置文件读不懂(不是合法 JSON)时的原因,现读;没有就是读得懂。这种拓展拿到的设置与
+	 * 「没设过」同形 —— 带默认值的照常起会拿默认值盖掉那份坏文件,所以起之前先看这一口。
+	 */
+	settingsIssue?: (id: string) => Issue | undefined;
 	/** 订阅「globals 落盘了」。内容变没变由 ctx 判。 */
 	onSettingsChanged: (fn: () => void) => Disposable;
 	/**
@@ -411,6 +417,14 @@ function unreadableDetail(manifest: ExtensionManifest, why: string): string {
 }
 
 /**
+ * 「设置文件读不懂」那一行。不能用 {@link unreadableDetail}:那句说的是「不合它自己的规矩」,而这里是文件
+ * 本身不是合法的 JSON;「改对」也不对 —— 在配置里存一次是整份覆盖。后面接解析报错的原话(不含文件内容)。
+ */
+function brokenFileDetail(why: string): string {
+	return `这个拓展的设置文件女仆读不懂(不是合法的 JSON),先没让它跑。到「配置」里重新填好保存,女仆马上把它叫起来;没有配置页的话,改好文件再重启。${why}`;
+}
+
+/**
  * 扫一遍装载目录,把该跑的跑起来,并把这批拓展的**装卸把手**交回去。
  *
  * 之后名单靠这几个把手动:拨开关走 `sync()`,装 / 卸走 `changeDisk()`(改盘 + 再扫一遍,队里
@@ -562,6 +576,20 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		if (dir.state !== "ready") return;
 		const { id, manifest } = dir;
 		slot.miss = undefined;
+
+		// 设置文件读不懂:一行代码都不跑(不 import、不 activate)、不记账 —— 这不是拓展崩了。放在这里而不
+		// 放 `admit`:开机、热装、拨开关、换版本、重载都经 `start`,关着的拓展也不会被打上状态。
+		// `schemas` 空着:它没交过 zod;`settleSettings` 靠 `settingsIssue` 还在不在判什么时候再起。
+		const broken = opts.settingsIssue?.(id);
+		if (broken !== undefined) {
+			slot.miss = {
+				state: "settings-invalid",
+				detail: brokenFileDetail(broken.message),
+				schemas: [],
+			};
+			host.logger.warn(`[ext] ${id} v${manifest.version} 设置文件读不懂,不跑:${broken.message}`);
+			return;
+		}
 
 		// 起之前再认一次盘上那份:扫盘之后被手换过的话,记下的得是真 import 的那一份。
 		const print = await fingerprintOf(dir.entry);
@@ -876,6 +904,9 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			if (miss?.state !== "settings-invalid" || disk.state !== "ready") continue;
 			// 开关现读:同一次落盘里关了开关的,别先起一下、再被 `sync()` 那一趟收掉。
 			if (!isEnabled(disk.id)) continue;
+			// 文件读不懂的没交过 zod,下面的判定对空名单恒过 —— 必须先看原因还在不在:在就不起(重存写盘
+			// 成功后原因才清,清了才轮到起)。
+			if (opts.settingsIssue?.(disk.id) !== undefined) continue;
 			let verdict: StoredSettingsVerdict;
 			try {
 				// 判的是拓展的 zod(可能带异步 refine,那是它的代码):挂住了不能让整条队陪着等。
