@@ -12,8 +12,8 @@
 import type { Logger, MessageBus } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { COOKIE_SAVE_DELAY_MS } from "../../../integrations/http";
+import { makeApi, makeServiceContext } from "../../api/__tests__/support/make-api";
 import { LoginFlow } from "../login-flow";
-import { makeApi, makeServiceContext } from "./support/make-api";
 
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
 

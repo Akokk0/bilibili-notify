@@ -1,7 +1,7 @@
 import { fail, ok } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import type { AuthSystem } from "../auth/index.js";
 import { BiliLoginStatus } from "../bilibili/api/index.js";
+import type { AuthSystem } from "../bilibili/auth/index.js";
 import { respondFailure } from "./respond-failure.js";
 import type { RouteDeps } from "./types.js";
 

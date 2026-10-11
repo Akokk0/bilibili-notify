@@ -426,7 +426,7 @@ describe("WS cookies-refreshed frame", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	// The cookie itself never rides the bus (the refresh callback in auth/index.ts emits only
+	// The cookie itself never rides the bus (the refresh callback in bilibili/auth/index.ts emits only
 	// `{ refreshedAt }`, pinned by auth/__tests__/cookies-refreshed-payload.test.ts), so the
 	// frame is exactly that one field — nothing to strip on the way to the dashboard.
 	it("puts only { refreshedAt } on the WS envelope", async () => {

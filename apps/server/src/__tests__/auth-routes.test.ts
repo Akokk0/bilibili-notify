@@ -4,8 +4,9 @@ import { join } from "node:path";
 import type { MessageBus } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
-import type { AuthSystem } from "../auth/index.js";
-import { BiliLoginStatus, type LoginSnapshot } from "../bilibili/api/index.js";
+import { BiliLoginStatus } from "../bilibili/api/index.js";
+import type { AuthSystem } from "../bilibili/auth/index.js";
+import type { LoginSnapshot } from "../bilibili/auth/login-flow.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 

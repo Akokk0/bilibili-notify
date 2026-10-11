@@ -241,7 +241,7 @@ export interface CreateEnginesOptions {
 	 * Auth subsystem 的 LoginFlow 实例。engines.ts 用它在 config-changed 时
 	 * 把 B 站设置的 `healthCheckMinutes` 热推到登录健康检查定时器(见 `watchSettings`)。
 	 */
-	loginFlow: import("../bilibili/api/index.js").LoginFlow;
+	loginFlow: import("../bilibili/auth/login-flow.js").LoginFlow;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;

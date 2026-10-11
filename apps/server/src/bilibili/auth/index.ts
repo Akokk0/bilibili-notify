@@ -1,7 +1,8 @@
 import type { IntegrationContext, MessageBus, ServiceContext } from "@bilibili-notify/internal";
-import { Api, LoginFlow, type LoginSnapshot } from "../bilibili/api/index.js";
-import { createBiliContext, REFRESH_TOKEN_KEY } from "../bilibili/context.js";
-import type { IntegrationStore } from "../integration-store/store.js";
+import type { IntegrationStore } from "../../integration-store/store.js";
+import { Api } from "../api/index.js";
+import { createBiliContext, REFRESH_TOKEN_KEY } from "../context.js";
+import { LoginFlow, type LoginSnapshot } from "./login-flow.js";
 
 /** Default health-probe cadence: 30 minutes. */
 const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;

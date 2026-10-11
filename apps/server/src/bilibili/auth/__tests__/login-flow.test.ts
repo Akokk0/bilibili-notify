@@ -8,9 +8,9 @@ import {
 	type ServiceContext,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { Api } from "../api";
+import type { Api } from "../../api/api";
+import { BiliLoginStatus } from "../../api/types";
 import { LoginFlow } from "../login-flow";
-import { BiliLoginStatus } from "../types";
 
 /**
  * Minimal stub of Api exposing only the methods LoginFlow calls.

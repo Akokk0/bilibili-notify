@@ -14,12 +14,13 @@ import type { CookieJar } from "@bilibili-notify/http";
 import type { Json, Logger, MessageBus } from "@bilibili-notify/internal";
 import { FileKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { makeServiceContext } from "../../bilibili/api/__tests__/support/make-api.js";
-import { ApiClient } from "../../bilibili/api/api-client.js";
-import { Api, LoginFlow } from "../../bilibili/api/index.js";
-import { readIntegrationSecretsFile } from "../../integration-store/files.js";
-import { createIntegrationStore } from "../../integration-store/store.js";
+import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
+import { createIntegrationStore } from "../../../integration-store/store.js";
+import { makeServiceContext } from "../../api/__tests__/support/make-api.js";
+import { ApiClient } from "../../api/api-client.js";
+import { Api } from "../../api/index.js";
 import { createAuthSystem } from "../index.js";
+import { LoginFlow } from "../login-flow.js";
 
 const C0 = JSON.stringify([
 	{ key: "SESSDATA", value: "sess0", domain: ".bilibili.com", path: "/", secure: true },

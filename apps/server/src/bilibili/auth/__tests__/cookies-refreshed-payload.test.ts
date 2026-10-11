@@ -18,9 +18,9 @@ import { join } from "node:path";
 import { type MessageBus, ok, type ServiceContext } from "@bilibili-notify/internal";
 import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { BiliContext } from "../../bilibili/context.js";
-import { readIntegrationSecretsFile } from "../../integration-store/files.js";
-import { createIntegrationStore } from "../../integration-store/store.js";
+import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
+import { createIntegrationStore } from "../../../integration-store/store.js";
+import type { BiliContext } from "../../context.js";
 import { createAuthSystem } from "../index.js";
 
 interface RefreshCallbacks {
@@ -33,7 +33,17 @@ const captured = vi.hoisted(() => ({
 	ctx: undefined as unknown,
 }));
 
-vi.mock("../../bilibili/api/index.js", () => ({
+vi.mock("../login-flow.js", () => ({
+	LoginFlow: class {
+		start = vi.fn(async () => {});
+		stop = vi.fn();
+		reportLoggedOut = vi.fn();
+		reportAccountInfo = vi.fn(async () => {});
+		current = vi.fn(() => ({ status: 0, msg: "" }));
+	},
+}));
+
+vi.mock("../../api/index.js", () => ({
 	Api: class {
 		constructor(opts: { callbacks: RefreshCallbacks; ctx: unknown }) {
 			captured.callbacks = opts.callbacks;
@@ -45,13 +55,6 @@ vi.mock("../../bilibili/api/index.js", () => ({
 		getCookiesJson = vi.fn(() => "[]");
 		clearCookies = vi.fn(async () => {});
 		commitLogin = vi.fn(async () => ok());
-	},
-	LoginFlow: class {
-		start = vi.fn(async () => {});
-		stop = vi.fn();
-		reportLoggedOut = vi.fn();
-		reportAccountInfo = vi.fn(async () => {});
-		current = vi.fn(() => ({ status: 0, msg: "" }));
 	},
 }));
 

@@ -14,7 +14,7 @@ import type { LogEntry } from "../ws/types.js";
  *
  * Defense-in-depth — most paths already redact upstream (sanitizeErr in
  * @bilibili-notify/ai; the `cookies-refreshed` bus event carries only `refreshedAt`,
- * see auth/index.ts). This is the last net so a stray `logger.info("...", cookieString)` never reaches disk.
+ * see bilibili/auth/index.ts). This is the last net so a stray `logger.info("...", cookieString)` never reaches disk.
  */
 
 type Replacer = readonly [RegExp, string];

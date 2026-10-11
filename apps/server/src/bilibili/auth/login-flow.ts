@@ -1,12 +1,12 @@
 import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
-import type { Api } from "./api";
+import type { Api } from "../api/api";
 import {
 	type BiliDataServer,
 	BiliLoginStatus,
 	type MyselfResponse,
 	type UserCardInfo,
-} from "./types";
+} from "../api/types";
 
 /** Reason keys driving the user-facing message in a snapshot transition. */
 export type LoginStatusMsgKey =
@@ -68,8 +68,6 @@ function looksLikeCardData(data: unknown): boolean {
 const QR_TIMEOUT_MS = 3 * 60 * 1000;
 /** Poll cadence while a QR is alive. */
 const QR_POLL_MS = 1000;
-/** Debounce for transient master notifications driven by `auth-lost`. */
-const AUTH_LOST_NOTIFY_DEBOUNCE_MS = 60_000;
 
 /**
  * Platform-neutral login state machine + QR session driver. Owns:
@@ -523,6 +521,3 @@ export class LoginFlow {
 		this.loginExpiryTimer = undefined;
 	}
 }
-
-/** Re-exported constant for adapter-side rate limiting; matches the legacy core debounce. */
-export const LOGIN_FLOW_AUTH_LOST_NOTIFY_DEBOUNCE_MS = AUTH_LOST_NOTIFY_DEBOUNCE_MS;
