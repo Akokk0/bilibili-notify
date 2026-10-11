@@ -45,6 +45,24 @@ describe("createSourceRegistry", () => {
 		expect(view && "stop" in view).toBe(false);
 	});
 
+	// 验红:`registry.ts` 手抄视图时漏掉 `health`,这条红(类型检查不会红,症状是 status 里那一行静默消失)。
+	it("视图带着来源的 health(调用时 this 仍是来源自己);没交的来源视图上也没有", async () => {
+		const registry = createSourceRegistry();
+		const withHealth: Source = {
+			descriptor: { label: "甲" },
+			start: async () => {},
+			stop: async () => {},
+			health() {
+				return { summary: this === withHealth ? "我" : "this 丢了" };
+			},
+		};
+		await registry.register("with", withHealth, ctxOf().ctx);
+		await registry.register("without", makeSource(), ctxOf().ctx);
+		expect(registry.get("with")?.health?.()).toEqual({ summary: "我" });
+		expect(registry.get("without")?.health).toBeUndefined();
+		expect(registry.list().map((view) => view.health?.().summary)).toEqual(["我", undefined]);
+	});
+
 	it("键被占了就抛,原主人不动、新来源没被 start", async () => {
 		const registry = createSourceRegistry();
 		const first = makeSource();
@@ -60,7 +78,7 @@ describe("createSourceRegistry", () => {
 	it("start 抛了:键放掉、错原样抛出去、能重登", async () => {
 		const registry = createSourceRegistry();
 		const broken: Source = {
-			descriptor: {},
+			descriptor: { label: "测试" },
 			start: () => Promise.reject(new Error("start-boom")),
 			stop: async () => {},
 		};
@@ -100,7 +118,7 @@ describe("createSourceRegistry", () => {
 			() => Promise.reject(new Error("async-boom")),
 		]) {
 			const { ctx, logger } = ctxOf();
-			const source: Source = { descriptor: {}, start: async () => {}, stop };
+			const source: Source = { descriptor: { label: "测试" }, start: async () => {}, stop };
 			const handle = await registry.register(SOURCE_KEY, source, ctx);
 			expect(() => handle.dispose()).not.toThrow();
 			await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledTimes(1));

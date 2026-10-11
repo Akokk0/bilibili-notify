@@ -9,16 +9,20 @@
  * 这些断言就得先起半个服务端。
  */
 
-import { describe, expect, it } from "vite-plus/test";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { recordingCtx } from "../../__tests__/support/command-ctx.js";
-import { createStatusCommand, type StatusReport } from "../status-command.js";
+import type { SourceView } from "../../subscriptions/registry.js";
+import { createStatusCommand, readSourceHealth, type StatusReport } from "../status-command.js";
 
 const NOW = 1_786_500_000_000;
 const MIN = 60_000;
 
 const HEALTHY: StatusReport = {
 	login: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
-	lastFetchAt: NOW - 2 * MIN,
+	sources: [{ label: "B 站", summary: "上次抓取 2 分钟前" }],
 	renderQueue: 0,
 	connections: [{ name: "NapCat", ok: true }],
 	mutedUntil: 0,
@@ -45,16 +49,38 @@ describe("status 指令", () => {
 		expect(spec.signature).toBeUndefined();
 	});
 
-	// 四项各占一行。连接全连着时**不点名** —— 名字只在断了的时候有用,
+	// 登录一行、每个来源各一行、推送通道、渲染排队。连接全连着时**不点名** —— 名字只在断了的时候有用,
 	// 平时列一串只是噪音(下面单独有一条验断掉时会点名)。
-	it("四项都在", async () => {
+	it("四项都在:来源那一行是「<label>：<summary>」", async () => {
 		const { replies, run } = setup();
 		await run();
 		const text = replies[0] ?? "";
 		expect(text).toContain("登录：已登录");
-		expect(text).toContain("上次抓取：2 分钟前");
+		expect(text).toContain("B 站：上次抓取 2 分钟前");
 		expect(text).toContain("推送通道：");
 		expect(text).toContain("渲染排队：");
+	});
+
+	// 验红:`renderStatus` 里把 sources 倒着排(或不按数组次序),这条红。
+	it("每个在册来源一行,次序就是数组的次序,冒号前是名字", async () => {
+		const { replies, run } = setup({
+			sources: [
+				{ label: "甲", summary: "好" },
+				{ label: "乙", summary: "也好" },
+			],
+		});
+		await run();
+		const lines = (replies[0] ?? "").split("\n");
+		expect(lines.slice(0, 3)).toEqual(["登录：已登录", "甲：好", "乙：也好"]);
+	});
+
+	it("没有任何来源交了一行 → 登录之后直接是推送通道,不留空行", async () => {
+		const { replies, run } = setup({ sources: [] });
+		await run();
+		expect((replies[0] ?? "").split("\n").slice(0, 2)).toEqual([
+			"登录：已登录",
+			"推送通道：1 个都连着",
+		]);
 	});
 
 	// 「登录：」那一行由核心按 `AuthState` 拼:每种状态各出什么字都钉死,`confirming` 没带 message 时兜底写「正在确认」。
@@ -80,28 +106,6 @@ describe("status 指令", () => {
 		const { replies, run } = setup({ login: login as StatusReport["login"] });
 		await run();
 		expect(replies[0]).toContain(`登录：${text}`);
-	});
-
-	// 手机上「14:32」还得自己算一下过了多久,「2 分钟前」不用。
-	it("上次抓取说的是相对时间", async () => {
-		const { replies, run } = setup({ lastFetchAt: NOW - 90 * MIN });
-		await run();
-		expect(replies[0]).toContain("1 小时前");
-	});
-
-	it("刚抓过 → 说「刚刚」,不说「0 分钟前」", async () => {
-		const { replies, run } = setup({ lastFetchAt: NOW - 5_000 });
-		await run();
-		expect(replies[0]).toContain("刚刚");
-	});
-
-	// 「还没抓过」和「很久没抓了」是两回事:前者是刚启动,后者是坏了。
-	it("一次都还没抓过 → 说清楚,而不是显示 1970 年", async () => {
-		const { replies, run } = setup({ lastFetchAt: undefined });
-		await run();
-		expect(replies[0]).toContain("还没");
-		expect(replies[0]).not.toContain("1970");
-		expect(replies[0]).not.toContain("NaN");
 	});
 
 	// 「怎么没动静」的第一嫌疑就是它。不说的话主人会顺着查登录、查网络,
@@ -147,5 +151,71 @@ describe("status 指令", () => {
 		const { replies, run } = setup({ renderQueue: 3 });
 		await run();
 		expect(replies[0]).toContain("3");
+	});
+});
+
+const viewOf = (label: string, health?: SourceView["health"]): SourceView => ({
+	descriptor: { label },
+	...(health ? { health } : {}),
+});
+
+describe("readSourceHealth —— 取在册来源各自交的一行", () => {
+	// 验红:把 `.filter` 那一道去掉(没有 health 的来源也占一行),这条红。
+	it("没有 health 的来源不占行;有的按给定次序、名字取描述符的 label", () => {
+		const rows = readSourceHealth(
+			[
+				viewOf("甲", () => ({ summary: "一" })),
+				viewOf("没交的"),
+				viewOf("乙", () => ({ summary: "二" })),
+			],
+			{ error: vi.fn() },
+		);
+		expect(rows).toEqual([
+			{ label: "甲", summary: "一" },
+			{ label: "乙", summary: "二" },
+		]);
+	});
+
+	// 验红:把 `try / catch` 去掉,这条红(抛出去、整条 status 没了)。
+	it("health() 抛了:那一行写「状态读不到」,别的行照常,记一行 error 带着抛出来的话", () => {
+		const error = vi.fn();
+		const rows = readSourceHealth(
+			[
+				viewOf("甲", () => {
+					throw new Error("boom");
+				}),
+				viewOf("乙", () => ({ summary: "二" })),
+			],
+			{ error },
+		);
+		expect(rows).toEqual([
+			{ label: "甲", summary: "状态读不到" },
+			{ label: "乙", summary: "二" },
+		]);
+		expect(error).toHaveBeenCalledTimes(1);
+		expect(String(error.mock.calls[0]?.[0])).toContain("boom");
+	});
+
+	it("调用时 this 是视图自己(登记表手抄视图不许丢上下文)", () => {
+		const view: SourceView & { tag: string } = {
+			tag: "我",
+			descriptor: { label: "甲" },
+			health() {
+				return { summary: (this as { tag: string }).tag };
+			},
+		};
+		expect(readSourceHealth([view], { error: vi.fn() })).toEqual([{ label: "甲", summary: "我" }]);
+	});
+});
+
+describe("index.ts 的接线", () => {
+	// 验红:把 `index.ts` 的探针改回手写读 `lastFetchAt`(或不经登记表),这条红。
+	it("status 的探针经 readSourceHealth 读来源登记表,入口里不再伸手进 B 站引擎问「上次抓取」", () => {
+		const src = readFileSync(
+			join(dirname(fileURLToPath(import.meta.url)), "../../index.ts"),
+			"utf8",
+		);
+		expect(src).toContain("readSourceHealth(runtime.sourceRegistry.list(),");
+		expect(src).not.toContain("lastFetchAt");
 	});
 });

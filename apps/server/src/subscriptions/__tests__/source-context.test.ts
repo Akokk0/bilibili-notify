@@ -27,7 +27,7 @@ const setup = (subs = [makeSub("a", "1")]) => {
 	const handle = createSourceContext({
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,
-		descriptor: { postNoun: "动态" },
+		descriptor: { label: "测试", postNoun: "动态" },
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,
 		bus: world.bus,
@@ -65,7 +65,7 @@ describe("createSourceContext", () => {
 		const handle = createSourceContext({
 			integration: makeIntegration(integrationLogger),
 			sourceKey: SOURCE_KEY,
-			descriptor: { postNoun: "动态" },
+			descriptor: { label: "测试", postNoun: "动态" },
 			subscriptions: makeWorld().store,
 			defaults: () => makeWorld().globals.defaults,
 			bus: makeWorld().bus,

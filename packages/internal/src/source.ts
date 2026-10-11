@@ -5,8 +5,10 @@ import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 
-/** 来源的自我介绍。这一片只有有读者的两格;其余(label、叫法、supportedFeatures……)随第 4 期面板改造。 */
+/** 来源的自我介绍。这一片只有有读者的三格;其余(叫法、supportedFeatures……)随第 4 期面板改造。 */
 export interface SourceDescriptor {
+	/** 平台名(「B 站」)。`status` 指令的那一行、以后的徽章与平台列都取它。 */
+	label: string;
 	/** 这个平台管作品叫什么(进 `PostEvent.postNoun`)。 */
 	postNoun?: string;
 	/** 会员体系:卡片预览按它找档、示例卡取最低一档。没有会员体系的来源不写。 */
@@ -89,8 +91,15 @@ export interface SourceAuth {
 	onChange(fn: () => void): Disposable;
 }
 
+/** 来源此刻的健康状况:给 `status` 指令(以后还有健康卡)的一行字。 */
+export interface SourceHealth {
+	summary: string;
+}
+
 export interface Source {
 	readonly descriptor: SourceDescriptor;
+	/** 此刻的健康状况,同步、不出网(与 `auth.state()` 同一种读口)。不交 = 这个来源在 `status` 里不占行。 */
+	health?(): SourceHealth;
 	start(ctx: SourceContext): Promise<void>;
 	/** 停下之后不许再上报。 */
 	stop(): Promise<void>;

@@ -506,6 +506,105 @@ describe("createBiliSource", () => {
 	});
 });
 
+describe("B 站来源 · health()(给 status 指令的那一行)", () => {
+	const MIN = 60_000;
+	/** 来源 + 一个能拨的时钟;动态引擎的 `lastFetchAt` 取真时钟,所以把假时钟拨到「抓取时刻 + 一段」。 */
+	function setup(over: Parameters<typeof makeDeps>[0] = {}) {
+		const made = makeDeps(over);
+		let now = Date.now();
+		const source = createBiliSource({ ...made.deps, now: () => now });
+		return {
+			...made,
+			source,
+			/** 把时钟拨到上次成功抓取之后 `ms` 毫秒。 */
+			advanceAfterFetch(ms: number) {
+				const at = source.dynamic()?.lastFetchAt();
+				if (at === undefined) throw new Error("还没抓过");
+				now = at + ms;
+			},
+		};
+	}
+
+	it("描述符的 label 是「B 站」", () => {
+		expect(createBiliSource(makeDeps().deps).descriptor.label).toBe("B 站");
+	});
+
+	// 验红:`health()` 里把「没抓过」那一支删掉(落到 formatAgo(undefined)),这条红。
+	it("还没成功抓过 → 「还没抓过」", async () => {
+		const { source, config } = setup();
+		await source.start(makeCtx([{ externalId: "1", post: true }], config).ctx);
+		expect(source.health?.()).toEqual({ summary: "还没抓过" });
+		await source.stop();
+	});
+
+	// 验红:`health()` 里把「抓过」那一支改成恒回「还没抓过」,这条红。
+	it("抓过 → 「上次抓取 N 分钟前」,是相对时间", async () => {
+		const { source, advanceAfterFetch } = setup();
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		await source.dynamic()?.detectNow();
+		advanceAfterFetch(2 * MIN);
+		expect(source.health?.()).toEqual({ summary: "上次抓取 2 分钟前" });
+		advanceAfterFetch(90 * MIN);
+		expect(source.health?.()).toEqual({ summary: "上次抓取 1 小时前" });
+		await source.stop();
+	});
+
+	it("刚抓过 → 「上次抓取 刚刚」,不说「0 分钟前」", async () => {
+		const { source, advanceAfterFetch } = setup();
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		await source.dynamic()?.detectNow();
+		advanceAfterFetch(5_000);
+		expect(source.health?.()?.summary).toBe("上次抓取 刚刚");
+		expect(source.health?.()?.summary).not.toContain("0 分钟");
+		await source.stop();
+	});
+
+	// 验红:把「动态停着」那一支挪到「抓过」之后判(或删掉),这条红。
+	it("动态那一格设置读不懂、动态停着 → 「动态停着，设置读不懂」，优先于「上次抓取」;改好了回来", async () => {
+		const { source, config } = setup();
+		await source.start(makeCtx([{ externalId: "1", post: true }], config).ctx);
+		await source.dynamic()?.detectNow();
+		expect(source.health?.()?.summary).toContain("上次抓取");
+
+		config.setRaw({ dynamicCron: 123, healthCheckMinutes: 30 });
+		expect(source.dynamic()).toBeUndefined();
+		expect(source.health?.()).toEqual({ summary: "动态停着，设置读不懂" });
+
+		config.setRaw({ dynamicCron: "*/5 * * * *", healthCheckMinutes: 30 });
+		expect(source.dynamic()).toBeDefined();
+		expect(source.health?.()?.summary).toBe("还没抓过");
+		await source.stop();
+	});
+
+	it("开机时动态那一格就读不懂 → 一上来就是「动态停着，设置读不懂」", async () => {
+		const made = makeDeps();
+		made.config.setRaw({ dynamicCron: 123, healthCheckMinutes: 30 });
+		const source = createBiliSource(made.deps);
+		await source.start(makeCtx([{ externalId: "1", post: true }], made.config).ctx);
+		expect(source.health?.()).toEqual({ summary: "动态停着，设置读不懂" });
+		await source.stop();
+	});
+
+	// 验红:`health()` 里读 `deps.auth.state()` 拼进半句登录,这条红。
+	it("没登录时这一行不变:不提登录,也不去读登录态(登录由 status 的「登录」一行说)", async () => {
+		const made = makeDeps();
+		const state = vi.fn(() => ({ status: "logged-out" as const }));
+		const source = createBiliSource({ ...made.deps, auth: { ...FAKE_AUTH, state } });
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		expect(source.health?.()).toEqual({ summary: "还没抓过" });
+		expect(state).not.toHaveBeenCalled();
+		await source.stop();
+	});
+
+	it("没 start / 已 stop → 还没抓过(引擎不在、也不是设置读不懂)", async () => {
+		const { source } = setup();
+		expect(source.health?.()).toEqual({ summary: "还没抓过" });
+		await source.start(makeCtx([{ externalId: "1", post: true }]).ctx);
+		await source.stop();
+		expect(source.health?.()).toEqual({ summary: "还没抓过" });
+	});
+});
+
 describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态引擎)", () => {
 	const T0 = Date.parse("2026-10-11T00:00:00Z");
 	const at = (sec: number) => Math.floor(T0 / 1000) + sec;

@@ -9,7 +9,9 @@
  * 就得先起半个服务端。
  */
 
-import { type AuthState, formatAgo } from "@bilibili-notify/internal";
+import type { AuthState, Logger } from "@bilibili-notify/internal";
+import type { SourceView } from "../subscriptions/registry.js";
+import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
@@ -17,12 +19,10 @@ export interface StatusReport {
 	/** 登录态(中立的 `AuthState`);登录系统还没起来是 `undefined`。一行人话由 {@link renderLogin} 按状态拼。 */
 	login: AuthState | undefined;
 	/**
-	 * 上次**成功**抓到动态的时刻。`undefined` = 启动以来一次都没成功过。
-	 *
-	 * 只记成功不记尝试:连着失败三小时的系统若报「1 分钟前抓过」,这一项就从
-	 * 「还在跑吗」的答案变成了骗局。
+	 * 在册来源各一行,次序就是登记先后:`label` 是平台名(描述符的 `label`),`summary` 是来源自己说的那句话
+	 * (如「上次抓取 2 分钟前」)。取数见 {@link readSourceHealth}。
 	 */
-	lastFetchAt?: number;
+	sources: { label: string; summary: string }[];
 	/** 排队等渲染的卡片数。持续不为 0 = 推送在堆积。 */
 	renderQueue: number;
 	connections: { name: string; ok: boolean }[];
@@ -67,14 +67,33 @@ export function renderLogin(state: AuthState | undefined): string {
 	}
 }
 
+/**
+ * 在册来源各交的一行:没有 `health` 的不占行;`health()` 抛了算 bug,记一行 error、那一行写「状态读不到」,
+ * 别的行照出。同步、不出网,所以不存在「很慢」。
+ */
+export function readSourceHealth(
+	sources: readonly SourceView[],
+	logger: Pick<Logger, "error">,
+): StatusReport["sources"] {
+	const rows: StatusReport["sources"] = [];
+	for (const view of sources) {
+		if (!view.health) continue;
+		const { label } = view.descriptor;
+		try {
+			rows.push({ label, summary: view.health().summary });
+		} catch (err) {
+			logger.error(`[status] 来源「${label}」的 health() 抛错: ${errorMessageOf(err)}`);
+			rows.push({ label, summary: "状态读不到" });
+		}
+	}
+	return rows;
+}
+
 export function renderStatus(report: StatusReport, now: number): string {
-	// 「多久以前」:手机上「14:32」还得自己减一次,「2 分钟前」不用。`undefined`(刚启动、一次都
-	// 没成功)与「很久以前」(坏了)必须分开说 —— 前者写「还没抓过」,后者写「N 天前」。
-	const lastFetch =
-		report.lastFetchAt === undefined ? undefined : formatAgo(report.lastFetchAt, now);
 	const lines = [
 		`登录：${renderLogin(report.login)}`,
-		`上次抓取：${lastFetch ?? "还没抓过"}`,
+		// 「多久以前」由来源自己拼(手机上「14:32」还得自己减一次,「2 分钟前」不用)。
+		...report.sources.map((s) => `${s.label}：${s.summary}`),
 		`推送通道：${renderConnections(report.connections)}`,
 		`渲染排队：${report.renderQueue}`,
 	];

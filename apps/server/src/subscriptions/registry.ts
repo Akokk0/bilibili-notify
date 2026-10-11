@@ -3,7 +3,7 @@ import { createRegistry } from "../integrations/registry.js";
 import { stopQuietly } from "../integrations/stop-quietly.js";
 import { errorMessageOf } from "../util/error-message.js";
 
-/** 登记表对外给的来源视图:不含 start / stop(启停只归登记表)。今天是 `{ descriptor, auth? }`。 */
+/** 登记表对外给的来源视图:不含 start / stop(启停只归登记表)。今天是 `{ descriptor, auth?, health? }`。 */
 export type SourceView = Omit<Source, "start" | "stop">;
 
 /**
@@ -30,7 +30,13 @@ export function createSourceRegistry(): SourceRegistry {
 		get: (sourceKey) => table.get(sourceKey),
 		list: () => Array.from(table.entries(), ([, view]) => view),
 		async register(sourceKey, source, ctx) {
-			const claim = table.claim(sourceKey, { descriptor: source.descriptor, auth: source.auth });
+			const { health } = source;
+			const claim = table.claim(sourceKey, {
+				descriptor: source.descriptor,
+				auth: source.auth,
+				// 不能直接放 `source.health`:那会丢掉 `this`。没交就不放这一格。
+				...(health ? { health: () => health.call(source) } : {}),
+			});
 			try {
 				await source.start(ctx);
 			} catch (err) {

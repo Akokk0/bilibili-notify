@@ -56,7 +56,12 @@ function authWith(account: () => { name: string; avatar?: string } | null): Sour
 async function registerSource(auth?: SourceAuth) {
 	await runtime.sourceRegistry.register(
 		"bilibili",
-		{ descriptor: {}, start: async () => {}, stop: async () => {}, ...(auth ? { auth } : {}) },
+		{
+			descriptor: { label: "测试" },
+			start: async () => {},
+			stop: async () => {},
+			...(auth ? { auth } : {}),
+		},
 		makeIntegration() as never,
 	);
 }

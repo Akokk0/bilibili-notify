@@ -12,7 +12,7 @@ import { makeIntegration, makeSource } from "./fixtures.js";
 const tier = (key: string, rank: number): MembershipTier => ({ key, name: `档-${key}`, rank });
 
 const viewOf = (...programs: MembershipProgram[]): SourceView => ({
-	descriptor: { membershipPrograms: programs },
+	descriptor: { label: "测试", membershipPrograms: programs },
 });
 
 const readerOf = (...views: SourceView[]) => createMembershipTierReader({ list: () => views });
@@ -39,7 +39,7 @@ describe("createMembershipTierReader", () => {
 	});
 
 	it("没有任何来源声明体系:byKey 与 lowest 都是 undefined", () => {
-		const reader = readerOf({ descriptor: {} }, viewOf());
+		const reader = readerOf({ descriptor: { label: "测试" } }, viewOf());
 		expect(reader.byKey("captain")).toBeUndefined();
 		expect(reader.lowest()).toBeUndefined();
 		expect(readerOf().lowest()).toBeUndefined();
@@ -69,7 +69,7 @@ describe("createMembershipTierReader", () => {
 		expect(reader.lowest()).toBeUndefined();
 		const source: Source = {
 			...makeSource(),
-			descriptor: { membershipPrograms: [BILIBILI_GUARD_PROGRAM] },
+			descriptor: { label: "测试", membershipPrograms: [BILIBILI_GUARD_PROGRAM] },
 		};
 		// biome-ignore lint/suspicious/noExplicitAny: 登记表测试只需要 logger
 		await registry.register("any", source, makeIntegration() as any);

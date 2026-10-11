@@ -3,7 +3,7 @@
  *
  * 今天它做三件事:认领 B 站那组开发场景(`provideDevtools`);造 B 站来源并登记(`registerSources`,
  * 登记即启动);造三个内置平台适配器(OneBot / QQ 官方机器人 / webhook)并登记(`registerAdapters`,
- * 登记即启动)。`bilibili.dynamic` 是 B 站来源上给入口读的那一面,只为 `status` 指令的「上次抓取」。
+ * 登记即启动)。`status` 指令的「上次抓取」不再从这里取:它读登记表里各来源自己说的那一行(`Source.health()`)。
  * 来源的上下文仍由登录那套建好递进来(`integration`),这里不另开存储;适配器各有各的存储与上下文,
  * 由 `registerBuiltinAdapters` 按适配器键开。
  *
@@ -108,11 +108,8 @@ export interface BuiltinIntegrations {
 	 * 错原样抛出去。调第二次就抛。
 	 */
 	registerAdapters(): Promise<BuiltinAdapters>;
-	/**
-	 * B 站来源上给入口读的那一面:`dynamic()` 只为 `status` 指令的「上次抓取」,登记之前是 undefined;
-	 * `problems` 是动态与直播共用的分层上报器(来源登记时接上核心)。
-	 */
-	readonly bilibili: Pick<BiliSource, "dynamic"> & { problems: ProblemLayers };
+	/** B 站来源上给入口读的那一面:`problems` 是动态与直播共用的分层上报器(来源登记时接上核心)。 */
+	readonly bilibili: { problems: ProblemLayers };
 }
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
@@ -219,6 +216,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				throw err;
 			}
 		},
-		bilibili: { dynamic, problems },
+		bilibili: { problems },
 	};
 }

@@ -96,7 +96,7 @@ describe("registerBuiltinSource", () => {
 	it("start 抛了:抛出去,键放掉,上下文收掉", async () => {
 		const seen: Array<() => void> = [];
 		const broken: Source = {
-			descriptor: {},
+			descriptor: { label: "测试" },
 			async start(ctx) {
 				ctx.onSubscriptionsChanged(() => seen.push(() => {}));
 				throw new Error("start-boom");
@@ -132,7 +132,7 @@ describe("registerBuiltinSource", () => {
 
 	it("登记失败(start 抛):start 途中报过的也清掉", async () => {
 		const broken: Source = {
-			descriptor: {},
+			descriptor: { label: "测试" },
 			async start(ctx) {
 				ctx.reportProblem({ code: "half_started", message: "还没起完" });
 				throw new Error("start-boom");

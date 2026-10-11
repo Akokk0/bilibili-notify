@@ -270,52 +270,6 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 	});
 
-	it("登记抛了:错原样抛出去,不留半个来源(bilibili.dynamic 仍是 undefined),能重来", async () => {
-		const { builtins } = compose();
-		const boom = new Error("登记炸了");
-		const engines = {
-			registerSource: vi.fn().mockRejectedValueOnce(boom),
-		} as never;
-		await expect(builtins.registerSources(engines)).rejects.toBe(boom);
-		expect(builtins.bilibili.dynamic()).toBeUndefined();
-		const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(ok.engines);
-		expect(builtins.bilibili.dynamic()).toBeDefined();
-		await ok.registered[0]?.source.stop();
-	});
-
-	// 验红:去掉 `registerSources` 里 catch 中的 `registering = false`,或把造来源那几句挪回 try 之外,这条红。
-	it("造来源那一步就同步抛了(还没到登记):标志也复位,再调一次 registerSources 能成", async () => {
-		const { builtins, deps } = compose();
-		const boom = new Error("造来源炸了");
-		// 造来源要读 `deps.imageFetcher`:让它读的时候抛
-		const original = deps.imageFetcher;
-		Object.defineProperty(deps, "imageFetcher", {
-			configurable: true,
-			get(): never {
-				throw boom;
-			},
-		});
-		const broken = { registerSource: vi.fn() } as never;
-		await expect(builtins.registerSources(broken)).rejects.toBe(boom);
-		expect(builtins.bilibili.dynamic()).toBeUndefined();
-		Object.defineProperty(deps, "imageFetcher", { configurable: true, value: original });
-		const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(ok.engines);
-		expect(builtins.bilibili.dynamic()).toBeDefined();
-		await ok.registered[0]?.source.stop();
-	});
-
-	it("bilibili.dynamic() 登记之前是 undefined,registerSources 之后拿得到引擎,来源停下后又是 undefined", async () => {
-		const { builtins } = compose();
-		expect(builtins.bilibili.dynamic()).toBeUndefined();
-		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
-		await builtins.registerSources(engines);
-		expect(builtins.bilibili.dynamic()).toBeDefined();
-		await registered[0]?.source.stop();
-		expect(builtins.bilibili.dynamic()).toBeUndefined();
-	});
-
 	// 验红:让 `compose.ts` 造两个上报器(给来源的与挂在 `bilibili.problems` 上的不是同一个),这条红。
 	it("bilibili.problems 与交给来源的是同一个上报器:来源登记前报的,登记后核心那头收到(补报)", async () => {
 		// 登录着:没有更高层压住,第三层才存得下来
@@ -399,6 +353,54 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			} finally {
 				await fake.registered[0]?.source.stop();
 			}
+		});
+
+		// 「现在就跑」要的引擎不再经 `builtins.bilibili.dynamic` 取(那一格随 `Source.health()` 一起没了),
+		// 改经场景那一头观察:报「动态引擎还没起来」= 引擎不在。
+		it("登记抛了:错原样抛出去,不留半个来源(场景仍报「动态引擎还没起来」),能重来", async () => {
+			const { builtins, fake, scenario, reportPost } = setup();
+			const boom = new Error("登记炸了");
+			const engines = { registerSource: vi.fn().mockRejectedValueOnce(boom) } as never;
+			await expect(builtins.registerSources(engines)).rejects.toBe(boom);
+			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
+			// 锚点 = 来源起来那一刻:拨回起点再登记,场景那条假动态才晚于锚点。
+			vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
+			await builtins.registerSources(fake.engines);
+			try {
+				await runScenario(scenario);
+				expect(reportPost).toHaveBeenCalledTimes(1);
+			} finally {
+				await fake.registered[0]?.source.stop();
+			}
+		});
+
+		// 验红:去掉 `registerSources` 里 catch 中的 `registering = false`,或把造来源那几句挪回 try 之外,这条红。
+		it("造来源那一步就同步抛了(还没到登记):标志也复位,再调一次 registerSources 能成", async () => {
+			const { builtins, deps, scenario } = setup();
+			const boom = new Error("造来源炸了");
+			// 造来源要读 `deps.imageFetcher`:让它读的时候抛
+			const original = deps.imageFetcher;
+			Object.defineProperty(deps, "imageFetcher", {
+				configurable: true,
+				get(): never {
+					throw boom;
+				},
+			});
+			const broken = { registerSource: vi.fn() } as never;
+			await expect(builtins.registerSources(broken)).rejects.toBe(boom);
+			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
+			Object.defineProperty(deps, "imageFetcher", { configurable: true, value: original });
+			const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+			await builtins.registerSources(ok.engines);
+			await ok.registered[0]?.source.stop();
+		});
+
+		it("来源停下后,场景又报「动态引擎还没起来」", async () => {
+			const { builtins, fake, scenario } = setup();
+			await builtins.registerSources(fake.engines);
+			await runScenario(scenario);
+			await fake.registered[0]?.source.stop();
+			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
 		});
 	});
 });

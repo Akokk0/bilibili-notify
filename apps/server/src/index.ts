@@ -101,7 +101,7 @@ import { createRoastCommandHandler } from "./runtime/roast-command.js";
 import { createRoastDraftStore } from "./runtime/roast-draft-store.js";
 import { createRoastScheduler } from "./runtime/roast-scheduler.js";
 import { dataPath, hostPath } from "./runtime/roots.js";
-import { createStatusCommand } from "./runtime/status-command.js";
+import { createStatusCommand, readSourceHealth } from "./runtime/status-command.js";
 import { createStorageUsage } from "./runtime/storage-usage.js";
 import { pruneOrphanSubRuntime } from "./runtime/sub-runtime-store.js";
 import { bindSubscriptionStore } from "./runtime/subscription-store.js";
@@ -1017,7 +1017,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				probe: () => ({
 					// 登录态交中立的 `AuthState`,一行人话由 `status` 指令按状态拼(`renderStatus`)。
 					login: authSystem?.auth.state(),
-					lastFetchAt: builtins.bilibili.dynamic()?.lastFetchAt(),
+					sources: readSourceHealth(runtime.sourceRegistry.list(), log),
 					// 没装 Chrome 就没有渲染队列。
 					renderQueue: puppeteer?.renderQueueDepth() ?? 0,
 					connections: runtime.configStore

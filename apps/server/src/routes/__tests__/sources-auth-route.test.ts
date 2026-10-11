@@ -50,7 +50,7 @@ async function appOf(sources: Record<string, Pick<Source, "auth"> | undefined>) 
 	for (const [key, partial] of Object.entries(sources)) {
 		if (!partial) continue;
 		const source: Source = {
-			descriptor: {},
+			descriptor: { label: "测试" },
 			start: async () => {},
 			stop: async () => {},
 			...partial,

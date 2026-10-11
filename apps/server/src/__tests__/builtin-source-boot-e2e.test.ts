@@ -29,7 +29,7 @@ vi.mock("../bilibili/source.js", async (importOriginal) => {
 	return {
 		...real,
 		createBiliSource: () => ({
-			descriptor: { postNoun: "动态" },
+			descriptor: { label: "测试", postNoun: "动态" },
 			async start(ctx: unknown) {
 				fake.starts.push(ctx);
 			},

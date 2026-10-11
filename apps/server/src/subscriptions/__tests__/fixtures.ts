@@ -98,12 +98,12 @@ export const makeWorld = (subs: Subscription[] = []) => {
  * 一张登了来源的真登记表。`register` 在第一个 `await` 之前就把键认领了,所以这里不必等它 ——
  * 假来源的 `start` 什么都不做。
  */
-export const sourceRegistryOf = (...descriptors: SourceDescriptor[]): SourceRegistry => {
+export const sourceRegistryOf = (...descriptors: Partial<SourceDescriptor>[]): SourceRegistry => {
 	const registry = createSourceRegistry();
 	descriptors.forEach((descriptor, index) => {
 		void registry.register(
 			`probe-${index}`,
-			{ descriptor, start: async () => {}, stop: async () => {} },
+			{ descriptor: { label: "测试", ...descriptor }, start: async () => {}, stop: async () => {} },
 			{} as SourceContext,
 		);
 	});
@@ -127,7 +127,7 @@ export interface FakeSource extends Source {
 
 export const makeSource = (): FakeSource => {
 	const source: FakeSource = {
-		descriptor: { postNoun: "动态" },
+		descriptor: { label: "测试", postNoun: "动态" },
 		started: [],
 		stops: 0,
 		start: vi.fn(async (ctx: SourceContext) => {

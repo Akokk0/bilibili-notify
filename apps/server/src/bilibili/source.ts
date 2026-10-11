@@ -2,16 +2,19 @@ import {
 	BILIBILI_GUARD_PROGRAM,
 	type Disposable,
 	type Failure,
+	formatAgo,
 	type MessageBus,
 	type ServiceContext,
 	type Source,
 	type SourceAuth,
 	type SourceContext,
 	type SourceDescriptor,
+	type SourceHealth,
 } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message.js";
 import type { Api } from "./api/index.js";
 import { DynamicEngine } from "./dynamic/index.js";
+import { HEALTH_TEXTS } from "./health-texts.js";
 import type { ImagesDeps } from "./images.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
@@ -43,10 +46,12 @@ export interface BiliSourceDeps {
 	 * 登录系统自己不认识设置;`ms <= 0` 等于不挂。
 	 */
 	loginCheck: { setHealthCheckMs(ms: number): void };
+	/** 可注入的时钟(`health()` 的相对时间用)。测试用,生产不传。 */
+	now?: () => number;
 }
 
 export interface BiliSource extends Source {
-	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」与 status 指令的「上次抓取」读它。 */
+	/** 动态引擎;没 start、已 stop、或动态那一格设置读不懂时是 undefined。开发场景的「现在就跑」读它。 */
 	dynamic(): DynamicEngine | undefined;
 }
 
@@ -75,8 +80,12 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicEngine | undefined;
 	let handles: Disposable[] = [];
 	let started = false;
+	// 动态那一格设置读不懂、动态停着(`applyDynamic` 记;`health()` 读)。
+	let dynamicStopped = false;
+	const now = deps.now ?? Date.now;
 
 	const descriptor: SourceDescriptor = {
+		label: "B 站",
 		postNoun: "动态",
 		membershipPrograms: [BILIBILI_GUARD_PROGRAM],
 	};
@@ -85,6 +94,13 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		descriptor,
 		auth: deps.auth,
 		dynamic: () => engine,
+		health(): SourceHealth {
+			// 「动态停着」优先:最需要主人动手的一条,而且这时引擎不在、「上次抓取」没有意义。不提登录(登录有自己的一行)。
+			if (dynamicStopped) return { summary: HEALTH_TEXTS.dynamicStopped };
+			const at = engine?.lastFetchAt();
+			const ago = at === undefined ? undefined : formatAgo(at, now());
+			return { summary: ago === undefined ? HEALTH_TEXTS.neverFetched : HEALTH_TEXTS.fetched(ago) };
+		},
 		async start(ctx: SourceContext) {
 			if (started) throw new Error("bilibili source is already started");
 			started = true;
@@ -125,10 +141,12 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 						throw err;
 					}
 					engine = made;
+					dynamicStopped = false;
 					ctx.resolveProblem({ code: DYNAMIC_PROBLEM, notify: false });
 					return;
 				}
 				stopEngine();
+				dynamicStopped = true;
 				const panelShowsDefault = read.issues?.[0]?.path === undefined || !dynamicCell.get().ok;
 				const message = PROBLEM_TEXTS.dynamicSettingsInvalid.text(
 					causeOf(read, DYNAMIC_CELL),
@@ -178,6 +196,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				// 登记表那头只会放键、收上下文,不会替来源停 cron、停心跳:自己收拾干净再抛。
 				for (const handle of mine) handle.dispose();
 				stopEngine();
+				dynamicStopped = false;
 				deps.loginCheck.setHealthCheckMs(0);
 				started = false;
 				throw err;
@@ -196,6 +215,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			handles = [];
 			engine?.stop();
 			engine = undefined;
+			dynamicStopped = false;
 			deps.loginCheck.setHealthCheckMs(0);
 			started = false;
 			return Promise.resolve();
