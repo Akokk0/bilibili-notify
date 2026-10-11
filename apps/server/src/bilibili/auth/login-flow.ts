@@ -93,6 +93,11 @@ export class LoginFlow {
 	 */
 	private loginHold?: Disposable;
 	/**
+	 * 「确认成功」已落地、登录正在落盘(到进入已登录为止)。这一段里进来的发起直接回 `conflict`:
+	 * 登录已成立,不能被新码盖成等待扫码;落盘成败都会放开,失败后能正常再发起。
+	 */
+	private committingLogin = false;
+	/**
 	 * Marks "we are unauthenticated, so something downstream may be parked waiting". On the next
 	 * successful login the flag is flipped and `auth-restored` fires. Avoids relying on the
 	 * previous frame's status, which would miss the path logged-out → qr (ready, waiting) → logged-in.
@@ -219,6 +224,12 @@ export class LoginFlow {
 		const account = await this.fetchAccount(personalInfo.data?.mid);
 		// 取卡片是第二次网络往返,窗口和探活那次一样宽 —— 必须再比一次。
 		if (this.supersededSince(gen)) return;
+		// 取卡片的途中主人发起了重扫(调用处:开机确认时状态是 checking,扫码成功后是 logged-in,都不会合法地是 qr):
+		// 这份成功问的是上一帧,不得把等待扫码的二维码盖成已登录,账号也不写。
+		if (this.state.status === "qr") {
+			this.logger.debug("[auth] 取账号回来时已在扫码，丢弃这份成功");
+			return;
+		}
 		this.reportLoggedIn(account);
 		this.attachHealthCheck();
 		// 头像在登录状态确定之后另起一条后台线,不等它。
@@ -325,10 +336,14 @@ export class LoginFlow {
 		this.authGeneration++;
 		// auth-lost 仍只在真的丢掉一个好会话时发:它的消费方是 teardown,
 		// 拆一个从没建起来的引擎没有意义。
-		if (wasLoggedIn) {
-			this.bus.emit("auth-lost");
+		try {
+			if (wasLoggedIn) {
+				this.bus.emit("auth-lost");
+			}
+		} finally {
+			// 边事件的监听者同步抛错也要通知订阅方;抛错本身照旧往外传。
+			this.notifyIfChanged();
 		}
-		this.notifyIfChanged();
 	}
 
 	/**
@@ -340,9 +355,17 @@ export class LoginFlow {
 	 * 4. Auto-times-out after 3 minutes.
 	 */
 	async beginLogin(renderQr: (url: string) => Promise<string> = defaultRenderQr): Promise<Result> {
+		// 登录已成立、正在落盘:不动任何东西(旧会话已在 `pollOnce` 里结束),让它落完进已登录。
+		if (this.committingLogin) {
+			return fail("conflict", "登录已经成立，正在完成，请稍候再看状态");
+		}
 		const session = this.endScanSession();
+		const startedGen = this.authGeneration;
+		// 两种作废各说各的:其间登出过(退出登录 / 登录失效)与被新的一次(或已成立的登录)取代。
 		const superseded = () =>
-			fail("conflict", "这一次扫码已被新的一次(或已成立的登录)取代，请以最新的状态为准");
+			this.authGeneration !== startedGen
+				? fail("conflict", "这一次扫码已因退出登录或登录失效而作废，请重新发起")
+				: fail("conflict", "这一次扫码已被新的一次(或已成立的登录)取代，请以最新的状态为准");
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let qrContent: any;
 		try {
@@ -442,27 +465,33 @@ export class LoginFlow {
 			const hold = this.loginHold;
 			this.loginHold = undefined;
 			this.endScanSession();
+			// 登录成立优先:从这里到进入已登录之前,新进来的发起一律不受理(见 `beginLogin`)。成败都放开。
+			this.committingLogin = true;
 			try {
-				const cookiesJson = this.api.getCookiesJson();
-				if (!cookiesJson || cookiesJson === "[]") {
-					this.logger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
-					this.reportQrFailure("noCookieAfterLogin");
-					return;
+				try {
+					const cookiesJson = this.api.getCookiesJson();
+					if (!cookiesJson || cookiesJson === "[]") {
+						this.logger.error("[login] 登录成功但未获取到任何 cookie，放弃保存");
+						this.reportQrFailure("noCookieAfterLogin");
+						return;
+					}
+					const refreshToken = (loginContent.data.refresh_token as string | undefined) ?? "";
+					if (!refreshToken) {
+						// P2:此前静默 `?? ""`,会话到期前无任何刷新、过期才靠心跳 -101 兜出 auth-lost。
+						// 至少响亮告警让运维知道这次登录拿不到自动续期。
+						this.logger.warn(
+							"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
+						);
+					}
+					const saved = await this.api.commitLogin(refreshToken || undefined);
+					if (!saved.ok) this.logger.error(`[login] 保存登录状态失败：${saved.message}`);
+				} finally {
+					hold?.dispose();
 				}
-				const refreshToken = (loginContent.data.refresh_token as string | undefined) ?? "";
-				if (!refreshToken) {
-					// P2:此前静默 `?? ""`,会话到期前无任何刷新、过期才靠心跳 -101 兜出 auth-lost。
-					// 至少响亮告警让运维知道这次登录拿不到自动续期。
-					this.logger.warn(
-						"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
-					);
-				}
-				const saved = await this.api.commitLogin(refreshToken || undefined);
-				if (!saved.ok) this.logger.error(`[login] 保存登录状态失败：${saved.message}`);
+				this.reportLoggedIn(undefined, "loginJustSucceeded");
 			} finally {
-				hold?.dispose();
+				this.committingLogin = false;
 			}
-			this.reportLoggedIn(undefined, "loginJustSucceeded");
 			await this.reportAccountInfo();
 			return;
 		}
@@ -499,11 +528,15 @@ export class LoginFlow {
 			loggedInAt: prev.status === "logged-in" ? prev.loggedInAt : new Date().toISOString(),
 			account: account ?? fallback,
 		});
-		if (!wasLoggedIn && this.needsRestore) {
-			this.needsRestore = false;
-			this.bus.emit("auth-restored");
+		try {
+			if (!wasLoggedIn && this.needsRestore) {
+				this.needsRestore = false;
+				this.bus.emit("auth-restored");
+			}
+		} finally {
+			// 边事件的监听者同步抛错也要通知订阅方;抛错本身照旧往外传。
+			this.notifyIfChanged();
 		}
-		this.notifyIfChanged();
 	}
 
 	private reportLoginCheck(code: number): void {
@@ -517,9 +550,7 @@ export class LoginFlow {
 	}
 
 	private reportTransientFailure(detail: unknown): void {
-		this.logger.warn(
-			`[auth] 瞬时失败：${detail instanceof Error ? errorMessageOf(detail) : detail}`,
-		);
+		this.logger.warn(`[auth] 瞬时失败：${errorMessageOf(detail)}`);
 		if (this.state.status !== "logged-in") return;
 		this.transition({ ...this.state, reason: "fetchAccountFailed" });
 		this.notifyIfChanged();
@@ -610,6 +641,11 @@ export class LoginFlow {
 		try {
 			const res = await this.api.fetchMyselfInfo();
 			if (this.supersededSince(gen)) return;
+			// 探活在途时主人发起了重扫:成功的结果问的是登录那一帧,不得把等待扫码的二维码盖成已登录。
+			if (res.code === 0 && this.state.status === "qr") {
+				this.logger.debug("[auth] 探活回来时已在扫码，丢弃这份成功");
+				return;
+			}
 			this.reportLoginCheck(res.code);
 			if (res.code === 0) {
 				// 已登录而账号信息缺着(取卡片失败过、或扫码失败回来时没带上)就补取一次;每次心跳至多一次,
@@ -628,6 +664,11 @@ export class LoginFlow {
 		if (s.status !== "logged-in" || s.account) return;
 		const account = await this.fetchAccount(mid);
 		if (this.supersededSince(gen) || !account) return;
+		// 补取的途中发起了重扫(状态已不是已登录):账号只补给登录着的那一帧,不得把二维码盖成已登录。
+		if (this.state.status !== "logged-in") {
+			this.logger.debug("[auth] 补取账号回来时已不在已登录，丢弃");
+			return;
+		}
 		this.reportLoggedIn(account);
 	}
 

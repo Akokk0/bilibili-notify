@@ -1423,10 +1423,101 @@ describe("LoginFlow — 心跳补取账号(S3)", () => {
 
 		h.flow.reportLoggedOut("notLogin");
 		slow.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		// 心跳定时器的回调是 `() => void this.runHealthCheck()`,`fire()` 的返回等不到补取的续延 ——
+		// 不多等几轮的话断言在续延之前就跑了(3a-29 复审 A3 的假绿)。
 		await beating;
+		await flush();
 
 		expect(rawOf(h.flow).status).toBe("logged-out");
 		expect(h.flow.account()).toBeNull();
+	});
+
+	// 代数比对单独钉:登出后又登回来(状态又是已登录、账号缺着),旧会话在途的补取结果不得落到新一段登录上。
+	// 这一条里「状态是不是已登录」那道防线挡不住,只有 `supersededSince(gen)` 能挡。
+	it("补取的途中登出又登回:旧会话的结果丢掉,账号仍缺着", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		await h.flow.reportAccountInfo();
+		const slow = deferred<unknown>();
+		h.api.fetchUserCard.mockReturnValueOnce(slow.promise);
+		const beating = h.scFake.intervals
+			.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed)
+			.at(-1)
+			?.handle.fire();
+		await flush();
+
+		h.flow.reportLoggedOut("notLogin");
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		await h.flow.reportAccountInfo(); // 登回来了,账号还缺着
+		expect(rawOf(h.flow).status).toBe("logged-in");
+		slow.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		await beating;
+		await flush();
+
+		expect(rawOf(h.flow).status).toBe("logged-in");
+		expect(h.flow.account()).toBeNull();
+	});
+
+	// 3a-29 复审 A1:补取卡片的途中主人发起了重扫,回来的结果不得把等待扫码的二维码盖成已登录。
+	it("补取的途中主人发起重扫:结果丢掉,状态停在等待扫码、二维码还在", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		await h.flow.reportAccountInfo();
+		const slow = deferred<unknown>();
+		h.api.fetchUserCard.mockReturnValueOnce(slow.promise);
+		const beating = h.scFake.intervals
+			.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed)
+			.at(-1)
+			?.handle.fire();
+		await flush();
+
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr/x", qrcode_key: "x" },
+		});
+		await h.flow.beginLogin(async () => "data:x");
+		expect(h.flow.authState()).toMatchObject({ status: "awaiting-scan" });
+		slow.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		await beating;
+		await flush();
+
+		expect(h.flow.authState()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:x" },
+		});
+		expect(h.flow.account()).toBeNull();
+	});
+
+	// 同款窗口在探活那一步:探活在途时主人发起重扫,回来的 code 0 不得盖掉二维码。
+	it("探活的途中主人发起重扫:回来的成功丢掉,不补取、状态停在等待扫码", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		await h.flow.reportAccountInfo();
+		const probe = deferred<unknown>();
+		h.api.fetchMyselfInfo.mockReturnValueOnce(probe.promise);
+		const beating = h.scFake.intervals
+			.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed)
+			.at(-1)
+			?.handle.fire();
+		await flush();
+
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr/x", qrcode_key: "x" },
+		});
+		await h.flow.beginLogin(async () => "data:x");
+		probe.resolve({ code: 0, data: { mid: 42 } });
+		await beating;
+		await flush();
+
+		expect(h.flow.authState()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:x" },
+		});
+		expect(h.api.fetchUserCard).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -1513,6 +1604,60 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		expect(h.scFake.intervals).toHaveLength(1);
 	});
 
+	// 3a-29 复审 A4:取码回来那一次会话比对(渲染之前)只有这条能钉 —— 先发的取码迟到且回非 0 码,
+	// 没有这次比对会把后发的新码盖成「出错」。
+	it("先发的取码迟到且回非 0 码、后发的已经出码:先发的作废(回 conflict),不把新码盖成出错", async () => {
+		const h = makeFlow();
+		const first = deferred<unknown>();
+		h.api.fetchLoginQrCode.mockReturnValueOnce(first.promise);
+		const firstBegin = h.flow.beginLogin(async () => "data:first");
+		await begin(h, "new");
+
+		first.resolve({ code: -352, data: null });
+		const r = await firstBegin;
+
+		expect(r).toMatchObject({ ok: false, code: "conflict" });
+		expect(h.flow.authState()).toMatchObject(NEW_QR);
+		expect(h.scFake.intervals).toHaveLength(1);
+	});
+
+	// 3a-29 复审记一笔 9:两种作废各说各的。
+	it("发起之后退出登录、取码才回来:回 conflict,话说的是退出登录,不说「被新的一次取代」", async () => {
+		const h = makeFlow();
+		const qr = deferred<unknown>();
+		h.api.fetchLoginQrCode.mockReturnValueOnce(qr.promise);
+		const beginning = h.flow.beginLogin(async () => "data:x");
+		h.flow.reportLoggedOut("notLogin");
+
+		qr.resolve({ code: 0, data: { url: "https://qr/x", qrcode_key: "x" } });
+		const r = await beginning;
+
+		expect(r).toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: expect.stringContaining("退出登录"),
+		});
+		expect((r as { message: string }).message).not.toContain("取代");
+		expect(h.flow.authState().status).toBe("logged-out");
+	});
+
+	it("被新的一次取代的那句话还是「被新的一次取代」", async () => {
+		const h = makeFlow();
+		const first = deferred<unknown>();
+		h.api.fetchLoginQrCode.mockReturnValueOnce(first.promise);
+		const firstBegin = h.flow.beginLogin(async () => "data:first");
+		await begin(h, "new");
+
+		first.resolve({ code: 0, data: { url: "https://qr/first", qrcode_key: "first" } });
+		const r = await firstBegin;
+
+		expect(r).toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: expect.stringContaining("取代"),
+		});
+	});
+
 	it("先发的渲染二维码还没完、后发的已经出码:先发的渲染完回来时同样作废", async () => {
 		const h = makeFlow();
 		h.api.fetchLoginQrCode.mockResolvedValueOnce({
@@ -1544,7 +1689,9 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
 	});
 
-	it("超时之后迟到的一拍:状态还是「出错」,不被盖成没登录,也不停在 qr", async () => {
+	// 注意这条钉的是 `reportQrPending` 里「上一帧不是 qr 就不动」那道防线,不是轮询里的会话比对
+	// (删掉会话比对它照样绿;会话比对由上面的 86090 / 86038 / 外层非 0 码三条和「发起之后退出登录」钉着)。
+	it("超时之后迟到的一拍(reportQrPending 的防线):状态还是「出错」,不被盖成没登录,也不停在 qr", async () => {
 		const h = makeFlow();
 		await begin(h, "q");
 		const { slow, tick } = tickInFlight(h);
@@ -1568,7 +1715,8 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 		expect(h.flow.authState()).toMatchObject(NEW_QR);
 	});
 
-	it("扫码进行中被判登录失效:「登录已失效」不被迟到的一拍盖掉,扫码定时器都收了", async () => {
+	// 同上:迟到的是 86090(已扫),挡住它的是 `reportQrPending` 的防线;「登出结束扫码会话」本身钉在定时器都收了这几句上。
+	it("扫码进行中被判登录失效(reportQrPending 的防线):「登录已失效」不被迟到的一拍盖掉,扫码定时器都收了", async () => {
 		const h = makeFlow();
 		await begin(h, "q");
 		const { slow, tick } = tickInFlight(h);
@@ -1614,5 +1762,185 @@ describe("LoginFlow — 扫码会话互不覆盖(S1)", () => {
 
 		expect(h.flow.authState().status).toBe("logged-in");
 		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("LoginFlow — 扫码成功后取账号的途中又发起重扫", () => {
+	it("取卡片在途时主人又发起一次:状态停在等待扫码、二维码还在、账号没写进去", async () => {
+		const h = makeFlow();
+		const begin = (tag: string) => {
+			h.api.fetchLoginQrCode.mockResolvedValueOnce({
+				code: 0,
+				data: { url: `https://qr/${tag}`, qrcode_key: tag },
+			});
+			return h.flow.beginLogin(async () => `data:${tag}`);
+		};
+		await begin("old");
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		const card = deferred<unknown>();
+		h.api.fetchUserCard.mockReturnValueOnce(card.promise);
+		const tick = h.scFake.intervals[0]?.handle.fire();
+		await flush();
+		expect(rawOf(h.flow).status).toBe("logged-in"); // 卡片还在途
+
+		await begin("new");
+		expect(h.flow.authState()).toMatchObject({ status: "awaiting-scan" });
+		card.resolve({ code: 0, data: { card: { name: "n", face: "" } } });
+		await tick;
+		await flush();
+
+		expect(h.flow.authState()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:new" },
+		});
+		expect(h.flow.account()).toBeNull();
+	});
+});
+
+/** 3a-29 复审 A2:「确认成功」落盘的那一段里进来的发起,不得把已成立的登录盖成等待扫码。 */
+describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
+	async function begin(h: Harness, tag: string): Promise<Result> {
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: `https://qr/${tag}`, qrcode_key: tag },
+		});
+		return h.flow.beginLogin(async () => `data:${tag}`);
+	}
+
+	it("落盘途中发起:回 conflict、不取新码;落盘完成后是已登录,没建新的轮询", async () => {
+		const h = makeFlow();
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { name: "n", face: "" } } });
+		await begin(h, "old");
+		const commit = deferred<Result>();
+		h.api.commitLogin.mockReturnValueOnce(commit.promise);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		const tick = h.scFake.intervals[0]?.handle.fire();
+		await flush();
+		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
+
+		const r = await begin(h, "new"); // 落盘还没回
+
+		expect(r).toMatchObject({ ok: false, code: "conflict" });
+		expect(h.api.fetchLoginQrCode).toHaveBeenCalledTimes(1); // 新码没去取
+		commit.resolve(ok());
+		await tick;
+		await Promise.all(h.scFake.tracked);
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(h.scFake.intervals).toHaveLength(1);
+	});
+
+	it("落盘抛错:放开,之后能正常再发起", async () => {
+		const h = makeFlow();
+		await begin(h, "old");
+		h.api.commitLogin.mockRejectedValueOnce(new Error("disk full"));
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		await h.scFake.intervals[0]?.handle.fire();
+		await Promise.all(h.scFake.tracked);
+
+		const r = await begin(h, "again");
+
+		expect(r).toEqual(ok());
+		expect(h.flow.authState()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:again" },
+		});
+	});
+
+	it("没拿到任何 cookie 放弃保存:放开,之后能正常再发起", async () => {
+		const h = makeFlow();
+		await begin(h, "old");
+		h.api.getCookiesJson.mockReturnValueOnce("[]");
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		await h.scFake.intervals[0]?.handle.fire();
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.authState().status).toBe("error");
+
+		const r = await begin(h, "again");
+
+		expect(r).toEqual(ok());
+		expect(h.flow.authState()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:again" },
+		});
+	});
+});
+
+/** 3a-29 复审记一笔 1 / 2:边事件在前、通知在后;边事件的监听者抛错不吞掉通知。 */
+describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
+	function makeFlowWith(bus: MessageBus): Harness {
+		const api = makeFakeApi();
+		const scFake = makeFakeServiceCtx();
+		const flow = new LoginFlow({
+			serviceCtx: scFake.sc,
+			api: api as unknown as Api,
+			bus,
+			healthCheckMs: 0,
+		});
+		return { flow, api, bus, events: [], scFake };
+	}
+
+	function orderedBus(order: string[], throwOn?: string): MessageBus {
+		return {
+			emit(event, _payload?: unknown) {
+				order.push(`emit:${String(event)}`);
+				if (event === throwOn) throw new Error("listener boom");
+			},
+			on() {
+				return { dispose: vi.fn() };
+			},
+		};
+	}
+
+	async function loggedInWithAccount(h: Harness) {
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { name: "n", face: "" } } });
+		await h.flow.reportAccountInfo();
+	}
+
+	it("先发边事件、后通知订阅方:登出(auth-lost)与登回(auth-restored)都是", async () => {
+		const order: string[] = [];
+		const h = makeFlowWith(orderedBus(order));
+		await loggedInWithAccount(h);
+		h.flow.onChange(() => order.push("notify"));
+		order.length = 0;
+
+		h.flow.reportLoggedOut("authLost");
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+		await h.flow.reportAccountInfo();
+
+		expect(order).toEqual(["emit:auth-lost", "notify", "emit:auth-restored", "notify"]);
+	});
+
+	it("auth-lost 的监听者抛错:抛错照旧往外传,订阅方照样收到状态变化", async () => {
+		const order: string[] = [];
+		const h = makeFlowWith(orderedBus(order, "auth-lost"));
+		await loggedInWithAccount(h);
+		h.flow.onChange(() => order.push("notify"));
+		order.length = 0;
+
+		expect(() => h.flow.reportLoggedOut("authLost")).toThrow("listener boom");
+
+		expect(order).toEqual(["emit:auth-lost", "notify"]);
+		expect(h.flow.authState().status).toBe("expired");
+	});
+
+	it("auth-restored 的监听者抛错:抛错照旧往外传,订阅方照样收到状态变化", async () => {
+		const order: string[] = [];
+		const h = makeFlowWith(orderedBus(order, "auth-restored"));
+		await loggedInWithAccount(h);
+		h.flow.reportLoggedOut("authLost");
+		h.flow.onChange(() => order.push("notify"));
+		order.length = 0;
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null });
+
+		await expect(h.flow.reportAccountInfo()).rejects.toThrow("listener boom");
+
+		expect(order).toEqual(["emit:auth-restored", "notify"]);
+		expect(h.flow.authState().status).toBe("logged-in");
 	});
 });

@@ -326,7 +326,8 @@ describe("恢复备份之后与登出", () => {
 		await w.store.close();
 	});
 
-	// 验红:把 `login-flow.ts` 里卡片回应的非 0 码那一支改成把 `data` 原样当账号收,这条红(账号不是 null)。
+	// 验红:把 `login-flow.ts` 的 `accountFromCardResponse` 里「非 0 码」与「缺名字」两道检查都去掉(把 `data` 原样当账号收),
+	// 这条红(账号不是 null)。只去掉其中一道不红 —— 另一道会替它挡住(见 `login-flow.test.ts` 里各道检查单独的用例)。
 	it("开机时卡片接口回了形状不对的数据:登录系统照常起来,已登录、账号是 null、不抛", async () => {
 		const w = world();
 		await w.seed({ cookies: C0, token: "T0" });
