@@ -4,7 +4,7 @@
  * 契约:`logger.<lvl>()` 能否经 fanOut 喂给 logHook(→ WS Tab + 落盘),
  * 完全等价于「该 pino 实例当前 `.level` 是否放行该 lvl」—— 即与控制台
  * 完全一致,逐实例(base 与每个 forSubsystem 子模块)各算各的。
- * `setLevel` 热改后下一条立即按新阈值生效(config-changed 语义)。
+ * `applyLogLevels` 热改后下一条立即按新阈值生效(config-changed 语义)。
  * 复发点:fanOut 又变成无条件触发 / 子模块误用 base 阈值 / 热改不生效。
  *
  * pino 约定(升序严重度):debug=20 info=30 warn=40 error=50 fatal=60。
@@ -55,11 +55,11 @@ describe("createNodeServiceContext — fanOut 按 live pino level 守卫", () =>
 		expect(levels()).toEqual(["error"]);
 	});
 
-	it("setLevel 热改:下一条立即按新阈值(config-changed 语义)", () => {
+	it("applyLogLevels 热改:下一条立即按新阈值(config-changed 语义)", () => {
 		const { ctx, seen, levels } = harness("error");
 		ctx.logger.debug("before"); // error 阈值 → 压
 		expect(seen).toHaveLength(0);
-		ctx.setLevel("debug"); // 热改
+		ctx.applyLogLevels({ level: "debug", levels: {} }); // 热改
 		ctx.logger.debug("after"); // debug 阈值 → 放行
 		expect(levels()).toEqual(["debug"]);
 		expect(seen[0]?.msg).toBe("after");
@@ -88,7 +88,8 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 			pretty: false,
 			onLog: (e) => seen.push(e),
 		});
-		const dyn = ctx.forSubsystem("dynamic", "debug"); // 子模块放到 debug
+		const dyn = ctx.forSubsystem("dynamic", "bilibili");
+		ctx.applyLogLevels({ level: "error", levels: { bilibili: "debug" } }); // 子模块放到 debug
 
 		ctx.logger.info("base-info"); // base@error → 压
 		dyn.logger.debug("dyn-debug"); // dynamic@debug → 放行
@@ -96,7 +97,7 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 		expect(seen.map((e) => [e.name, e.level, e.msg])).toEqual([["dynamic", "debug", "dyn-debug"]]);
 	});
 
-	it("子模块 setLevel 热改独立于 base", () => {
+	it("子模块的等级经 applyLogLevels 热改,独立于 base", () => {
 		const seen: LogEntry[] = [];
 		const ctx = createNodeServiceContext({
 			name: "core",
@@ -104,13 +105,103 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 			pretty: false,
 			onLog: (e) => seen.push(e),
 		});
-		const dyn = ctx.forSubsystem("dynamic", "error");
+		const dyn = ctx.forSubsystem("dynamic", "bilibili");
 		dyn.logger.debug("d1"); // dynamic@error → 压
 		expect(seen).toHaveLength(0);
-		dyn.setLevel("debug"); // 只调 dynamic
+		ctx.applyLogLevels({ level: "error", levels: { bilibili: "debug" } }); // 只调 bilibili 那一格
 		dyn.logger.debug("d2"); // 放行
 		ctx.logger.debug("base-d"); // base 仍 error → 压
 		expect(seen.map((e) => e.msg)).toEqual(["d2"]);
+	});
+
+	it("同一格的两个子上下文一起变,别的格不动", () => {
+		const seen: LogEntry[] = [];
+		const ctx = createNodeServiceContext({
+			name: "core",
+			level: "error",
+			pretty: false,
+			onLog: (e) => seen.push(e),
+		});
+		const a = ctx.forSubsystem("dynamic", "bilibili");
+		const b = ctx.forSubsystem("live", "bilibili");
+		const c = ctx.forSubsystem("live", "core");
+		ctx.applyLogLevels({ level: "error", levels: { bilibili: "debug" } });
+		a.logger.debug("a");
+		b.logger.debug("b");
+		c.logger.debug("c");
+		ctx.logger.debug("base");
+		expect(seen.map((e) => e.msg)).toEqual(["a", "b"]);
+	});
+
+	it("没写的格跟总等级;写了又清掉之后回到总等级", () => {
+		const seen: LogEntry[] = [];
+		const ctx = createNodeServiceContext({
+			name: "core",
+			level: "error",
+			pretty: false,
+			onLog: (e) => seen.push(e),
+		});
+		const sub = ctx.forSubsystem("ai", "ai");
+		ctx.applyLogLevels({ level: "info", levels: {} });
+		sub.logger.debug("d0"); // 总等级 info → 压
+		sub.logger.info("i0"); // 放行
+		ctx.applyLogLevels({ level: "info", levels: { ai: "debug" } });
+		sub.logger.debug("d1"); // 放行
+		ctx.applyLogLevels({ level: "info", levels: {} }); // 清掉
+		sub.logger.debug("d2"); // 又压
+		expect(seen.map((e) => e.msg)).toEqual(["i0", "d1"]);
+	});
+
+	it("等级表推过之后才开的子上下文,起步就是它那一格", () => {
+		const seen: LogEntry[] = [];
+		const ctx = createNodeServiceContext({
+			name: "core",
+			level: "error",
+			pretty: false,
+			onLog: (e) => seen.push(e),
+		});
+		ctx.applyLogLevels({ level: "error", levels: { late: "debug" } });
+		const late = ctx.forSubsystem("late", "late");
+		late.logger.debug("hello");
+		expect(seen.map((e) => e.msg)).toEqual(["hello"]);
+	});
+
+	it("一次都没推过时,子上下文起步跟开机等级", () => {
+		const seen: LogEntry[] = [];
+		const ctx = createNodeServiceContext({
+			name: "core",
+			level: "warn",
+			pretty: false,
+			onLog: (e) => seen.push(e),
+		});
+		const sub = ctx.forSubsystem("x", "x");
+		sub.logger.info("i");
+		sub.logger.warn("w");
+		expect(seen.map((e) => e.msg)).toEqual(["w"]);
+	});
+
+	it("同一对(标签,键)交回同一个实例;同标签不同键是两个实例、各算各的", () => {
+		const seen: LogEntry[] = [];
+		const ctx = createNodeServiceContext({
+			name: "core",
+			level: "error",
+			pretty: false,
+			onLog: (e) => seen.push(e),
+		});
+		expect(ctx.forSubsystem("live", "bilibili").logger).toBe(
+			ctx.forSubsystem("live", "bilibili").logger,
+		);
+		const bili = ctx.forSubsystem("live", "bilibili");
+		const core = ctx.forSubsystem("live", "core");
+		expect(bili.logger).not.toBe(core.logger);
+		ctx.applyLogLevels({ level: "error", levels: { bilibili: "debug" } });
+		bili.logger.debug("b");
+		core.logger.debug("c");
+		expect(seen.map((e) => e.msg)).toEqual(["b"]);
+		ctx.applyLogLevels({ level: "error", levels: { core: "debug" } });
+		bili.logger.debug("b2");
+		core.logger.debug("c2");
+		expect(seen.map((e) => e.msg)).toEqual(["b", "c2"]);
 	});
 });
 
@@ -175,7 +266,8 @@ describe("createNodeServiceContext — pretty 进程内格式化(bundler-safe)",
 			pretty: true,
 			destination: sink,
 		});
-		const dyn = ctx.forSubsystem("dynamic", "debug");
+		const dyn = ctx.forSubsystem("dynamic", "bilibili");
+		ctx.applyLogLevels({ level: "info", levels: { bilibili: "debug" } });
 		dyn.logger.debug("dyn-pretty");
 		await flushed();
 		expect(text()).toContain("dyn-pretty");

@@ -65,14 +65,13 @@ export const RATCHET = {
 	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的。
 	// 3a-28 有了来源登记表里中立的「来源在跑」读口,这一处已消失(同片 20 → 17:另两处是动态那一半的订阅视图与操作翻译)。
 	// 3a-38(主人 10-10 点头,18 → 20):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(开机取一次、热更取一次)。
-	// 3a-40 把日志等级改成按集成键统一给之后消失。
-	// ⚠️ 这个数少报了:那两处取出来的等级存在 `bootSourceLevel` / `sourceLevel` 两个局部变量里,名字不带 `bili`,
-	// 它们的 6 处读写没数进来(3a-38 的独立审查查出)。主人 10-10 定:3a-40 统一整改时一起走,现在不动。
+	// 3a-40(日志等级按键给,20 → 19):开机取等级、热更取等级那两处与躲计数的两个局部变量一起消失;
+	// 剩下的一处是直播引擎的子上下文(`forSubsystem("live", BILIBILI_SOURCE_KEY)`),3b 直播并进来源时随 `LiveEngine` 的建造一起走。
 	// 3a-31(主人 10-11 点头,17 → 18):「作品开关从关到开时补一次关注」也要先看登录了没有,第二次用到 `biliLoggedIn`
 	// (名字如实带 `bili`,不起中立名字躲)。关注同步搬进 B 站来源那一天,这几处一起消失。
 	// 3a-30(主人 10-11 点头,18 → 20):同 `index.ts` —— 直播引擎要的 B 站分层上报器经入口递进 `createEngines`,
-	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 18。
-	"apps/server/src/runtime/engines.ts": 20,
+	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 17(上面直播引擎的子上下文那一处同时消失,再减一)。
+	"apps/server/src/runtime/engines.ts": 19,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,

@@ -7,7 +7,7 @@
  * 用真实 NodeMessageBus 驱动事件,聚焦验证 engines.ts 的 wiring 与热重载分支:
  *
  *   boot:           push.start / dynamic.start 拉起;默认 globals 下 AI / image 不构造
- *   config-changed globals:  dynamic+live.updateConfig、setLevel、push.setMaster 一并热推
+ *   config-changed globals:  dynamic+live.updateConfig、push.setMaster 一并热推
  *   config-changed integration-settings: B 站自己的设置(cron / 健康检查间隔)按格各开各的门 ——
  *                            dynamic.updateConfig(新 dynamicCron 透传进 DynamicEngineConfig)、
  *                            (健康检查间隔归登录系统,见 `bilibili/auth/__tests__/auth-system-lifecycle.test.ts`);没变的格不动
@@ -288,12 +288,24 @@ function makeSubCtx() {
 	const tracking = makeTrackingContext();
 	return {
 		logger: makeLogger(),
-		setLevel: vi.fn(),
 		setInterval: vi.fn(() => ({ dispose() {} })),
 		setTimeout: vi.fn(() => ({ dispose() {} })),
 		onDispose: vi.fn(),
 		track: tracking.track,
 		signal: tracking.signal,
+	};
+}
+
+function cachedSubCtx() {
+	const made = new Map<string, ReturnType<typeof makeSubCtx>>();
+	return (name: string, levelKey: string) => {
+		const key = JSON.stringify([name, levelKey]);
+		let ctx = made.get(key);
+		if (!ctx) {
+			ctx = makeSubCtx();
+			made.set(key, ctx);
+		}
+		return ctx;
 	};
 }
 
@@ -303,11 +315,11 @@ function makeServiceCtx() {
 	const tracking = makeTrackingContext();
 	return {
 		logger: makeLogger(),
-		setLevel: vi.fn(),
 		setInterval: vi.fn(() => ({ dispose() {} })),
 		setTimeout: vi.fn(() => ({ dispose() {} })),
 		onDispose: vi.fn(),
-		forSubsystem: vi.fn(() => makeSubCtx()),
+		// 与真的一样:同一对(标签,键)交回同一个;不同对各是一个。
+		forSubsystem: vi.fn(cachedSubCtx()),
 		track: tracking.track,
 		signal: tracking.signal,
 		tracking,
@@ -368,6 +380,8 @@ interface Ctx {
 	source: ReturnType<typeof makeSource>;
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
 	sourceReady: Promise<void>;
+	/** `registerSource` 的登记项带进去的日志器(来源上下文的 `ctx.logger` 该是它)。 */
+	sourceLogger: ReturnType<typeof makeLogger>;
 	sources: SourceRegistry;
 	/** 递给 `createEngines` 的问题表(真表):来源上下文往里写、通知器听它。 */
 	problems: ProblemTable;
@@ -522,14 +536,16 @@ function setup(opts?: {
 		...(opts?.onReportDiscrepancy ? { onReportDiscrepancy: opts.onReportDiscrepancy } : {}),
 	});
 	// 登记即 start:`start` 与键的认领都在同一个同步段里发生(下面 await 的只是登记表的收尾)。
+	const sourceLogger = makeLogger();
 	const sourceReady = opts?.noSource
 		? Promise.resolve()
 		: runtime.registerSource({
 				sourceKey: "bilibili",
 				source,
-				// 来源上下文的 logger 是宿主给的 dynamic 子系统 logger,不取自这里;集成上下文的其余格在这批用例里不被碰
-				// (这里的 logger 故意是基础 logger,与 dynamic 的不同,「ctx.logger 来自哪」的用例才分得出)。
+				// 来源上下文的 logger 是登记项带进来的(组装根造的),不取自集成上下文;集成上下文的其余格在这批用例里不被碰
+				// (这里的 logger 故意是基础 logger,与登记项带的不同,「ctx.logger 来自哪」的用例才分得出)。
 				integration: { logger: serviceCtx.logger } as any,
+				logger: sourceLogger,
 			});
 	// 没人 await 它就 dispose 的用例:关停后登记作废会让它 reject,这里挂一条旁支吞掉「未处理的 rejection」,
 	// sourceReady 本身仍会 reject(await 它的用例照样看得到)。
@@ -542,6 +558,7 @@ function setup(opts?: {
 		api,
 		source,
 		sourceReady,
+		sourceLogger,
 		sources,
 		problems,
 	};
@@ -551,12 +568,12 @@ function setup(opts?: {
 let lastSetup: Ctx | null = null;
 
 /** structuredClone 当前 globals → mutate → 写回 store(模拟 ConfigStore.patch 后的快照)。 */
-/** 开机时 `forSubsystem(name, …)` 交出去的那个子上下文(按名字取)。 */
-function subsystemCtx(c: Ctx, name: string): ReturnType<typeof makeSubCtx> {
-	const calls = c.serviceCtx.forSubsystem.mock.calls as unknown as [string][];
-	const index = calls.findIndex(([n]) => n === name);
+/** 开机时 `forSubsystem(name, levelKey)` 交出去的那个子上下文(按标签与键取)。 */
+function subsystemCtx(c: Ctx, name: string, levelKey: string): ReturnType<typeof makeSubCtx> {
+	const calls = c.serviceCtx.forSubsystem.mock.calls as unknown as [string, string][];
+	const index = calls.findIndex(([n, k]) => n === name && k === levelKey);
 	const found = c.serviceCtx.forSubsystem.mock.results[index]?.value;
-	if (!found) throw new Error(`没有 ${name} 子上下文`);
+	if (!found) throw new Error(`没有 ${name}/${levelKey} 子上下文`);
 	return found;
 }
 
@@ -1540,10 +1557,11 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 		expect(H.push[0].push.mock.calls[0]?.[0]).not.toHaveProperty("allowAtAll");
 
 		// 周期推送挂在 live 子系统的定时器上,一小时一次。
-		const subsystems = c.serviceCtx.forSubsystem.mock.calls as unknown as [string][];
-		const liveIndex = subsystems.findIndex(([name]) => name === "live");
-		const liveCtx = c.serviceCtx.forSubsystem.mock.results[liveIndex]?.value;
-		const intervals = (liveCtx?.setInterval.mock.calls ?? []) as unknown as [() => void, number][];
+		// 替拓展跑的直播场次与推送是核心的代码:定时器挂在 live/core 那个上下文上,不是 B 站直播引擎的 live/来源键
+		// (验红:把 engines.ts 里 `bindExtensionLivePush` 的 `serviceCtx: extensionLiveCtx` 换成 `liveCtx`,这条红)。
+		const liveCtx = subsystemCtx(c, "live", "core");
+		expect(subsystemCtx(c, "live", "bilibili").setInterval).not.toHaveBeenCalled();
+		const intervals = (liveCtx.setInterval.mock.calls ?? []) as unknown as [() => void, number][];
 		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
 		expect(periodic, "周期推送没挂上").toBeDefined();
 		periodic?.[0]();
@@ -1711,6 +1729,7 @@ describe("createEngines — boot wiring", () => {
 			sourceKey: "bilibili",
 			source: probe,
 			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
 		});
 		expect(seen).toEqual([{ ok: true, settings: { dynamicCron: "*/7 * * * *" } }]);
 
@@ -1818,6 +1837,7 @@ describe("createEngines — boot wiring", () => {
 			sourceKey: "bilibili",
 			source: Object.assign(makeSource(), { auth }),
 			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
 		});
 		const seen: unknown[] = [];
 		c.bus.on("subscription-auth-changed", (changed) => seen.push(changed));
@@ -1833,20 +1853,13 @@ describe("createEngines — boot wiring", () => {
 	});
 
 	// 验红:把 source-context.ts 里 `ctx.logger` 改回 `integration.logger`,这条红(来源拿到的成了基础 logger)。
-	it("来源拿到的 ctx.logger 就是 dynamic 子系统那个 logger,它的等级随 logging.levels.bilibili 热更", async () => {
+	// 标签与键由 `compose` 那边钉(来源登记项带的日志器,标签 `dynamic`、键是来源键)。
+	it("来源拿到的 ctx.logger 就是登记项带进来的那一个", async () => {
 		const c = setup();
 		active = c;
 		await c.sourceReady;
-		const dynamicCtx = subsystemCtx(c, "dynamic");
-		expect(c.source.ctx?.logger).toBe(dynamicCtx.logger);
+		expect(c.source.ctx?.logger).toBe(c.sourceLogger);
 		expect(c.source.ctx?.logger).not.toBe(c.serviceCtx.logger);
-
-		patchGlobals(c, (g) => {
-			g.logging.levels = { bilibili: "warn" };
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		// 假子上下文的 logger 没有真等级可读:断言热更改的是同一个子上下文(它的 logger 就是来源拿到的那个)。
-		expect(dynamicCtx.setLevel).toHaveBeenCalledWith("warn");
 	});
 
 	// 验红:去掉 engines.ts `registerSource` 里 await 之后的 `if (disposed)` 那段,这条红(来源 stop 没被叫、也没抛)。
@@ -1862,6 +1875,7 @@ describe("createEngines — boot wiring", () => {
 			sourceKey: "bilibili",
 			source: slow,
 			integration: { logger: c.serviceCtx.logger } as any,
+			logger: c.sourceLogger,
 		});
 		const outcome = registering.then(
 			() => "ok",
@@ -1884,10 +1898,6 @@ describe("createEngines — boot wiring", () => {
 		// 默认 globals 无 apiKey/baseUrl / 无 puppeteer。
 		expect(H.ai).toHaveLength(0);
 		expect(H.image).toHaveLength(0);
-		// boot 时 base logger(core 桶)立即对齐 logging.levels.core ?? logging.level
-		// (默认 globals 无 core override → "info";不等首次 dashboard 保存)。
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledWith("info");
 	});
 
 	it("apiKey+baseUrl 齐备:启动即构造 CommentaryGenerator 并 start", () => {
@@ -2069,25 +2079,9 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(H.push[0].setMaster).not.toHaveBeenCalled();
 		// B 站设置不在 liveConfig() 的输入内 → live.updateConfig 不应触发(item 4:不扇出)。
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
-		// 日志等级这次没动 → 不该被顺手重设(boot 那 1 次之外不再有)。
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
 	});
 
-	// `app` 曾是一道粗门:只要 section 里任一字段变,门内 setLevel×5 + setHealthCheckMs 等
-	// 就无差别全做一遍。于是改个 cron 会顺手把登录健康检查的 setInterval **销毁重建**
-	// (相位被白白打乱)。下面几条按字段钉死。
 	// cron 本身要生效(引擎换节奏)在 `bilibili/__tests__/source.test.ts`。
-	it("只改 dynamicCron:不重排健康检查、不动日志等级", () => {
-		const c = setup();
-		active = c;
-		patchBilibili(c, (b) => {
-			// 必须与默认值不同 —— DEFAULT_DYNAMIC_CRON 现在就是 "30 */2 * * * *"。
-			b.dynamicCron = "*/9 * * * *";
-		});
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:181)
-	});
 
 	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经引擎的热更门(此前 imageGroup 整个漏在门外)。
 	it("改 defaults.imageGroup:不经引擎热更,下一条带图的作品立即多一个图集的附加项锚点", async () => {
@@ -2115,71 +2109,58 @@ describe("createEngines — config-changed globals 热重载", () => {
 		]);
 	});
 
-	it("只改 logging.level:热推 5 个子系统的 setLevel", () => {
+	// 日志等级不再由引擎装配推:各子上下文只交(标签,键),等级表由入口的 `bindLogLevels` 整张推
+	// (推的行为在 `log-levels.test.ts` 与 `service-context.test.ts`,接线在 `builtin-source-boot-e2e`)。
+	// 一行日志是谁的代码打的就跟谁那一格:这里钉「键」接对了没有 —— 接反了门禁全绿,只有调等级时才露馅。
+	it("子上下文的(标签,键):作品队列与拓展直播跟 core,B 站直播引擎跟来源键,AI、出图各跟自己的", () => {
 		const c = setup();
 		active = c;
-		patchGlobals(c, (g) => {
-			g.logging.level = "debug";
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2);
-		expect(c.serviceCtx.setLevel).toHaveBeenLastCalledWith("debug");
-		for (const name of ["dynamic", "live", "ai", "image"]) {
-			expect(subsystemCtx(c, name).setLevel, name).toHaveBeenCalledWith("debug");
-		}
-	});
-
-	// 日志等级的门只比 `logging.level` 与 `logging.levels` 两格。写成整段比的话,改保留天数或内存自检开关
-	// 也会白推五次 setLevel(这条钉着门的粒度;验红办法是把门改成 `eq(prev.logging, g.logging)`)。
-	it.each([
-		[
-			"保留天数",
-			(g: GlobalConfig) => {
-				g.logging.retentionDays = 30;
-			},
-		],
-		[
-			"内存自检开关",
-			(g: GlobalConfig) => {
-				g.logging.memoryLog.enabled = true;
-			},
-		],
-	])("只改 logging 里的%s:不重设日志等级(boot 那一次之外不再有)", (_name, change) => {
-		const c = setup();
-		active = c;
-		patchGlobals(c, change);
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
-		for (const name of ["dynamic", "live", "ai", "image"]) {
-			expect(subsystemCtx(c, name).setLevel, name).not.toHaveBeenCalled();
-		}
-	});
-
-	// 日志等级表里 B 站只有一个键 `bilibili`:动态与直播两个引擎共用它,别的模块各有各的键。
-	it("logging.levels.bilibili:开机与热更都让 dynamic、live 两个上下文拿到它,core / image / ai 与基础 logger 不变", () => {
-		const debugged = makeDefaultGlobalConfig();
-		debugged.logging.levels = { bilibili: "debug" };
-		const c = setup({ globals: debugged });
-		active = c;
-
 		const booted = (c.serviceCtx.forSubsystem.mock.calls as unknown as [string, string][]).map(
-			([name, level]) => `${name}:${level}`,
+			([name, key]) => `${name}/${key}`,
 		);
-		expect(booted.sort()).toEqual(["ai:info", "dynamic:debug", "image:info", "live:debug"]);
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledWith("info");
+		expect(booted.sort()).toEqual([
+			"ai/ai",
+			"image/image",
+			"live/bilibili",
+			"live/core",
+			"posts/core",
+		]);
+	});
 
-		patchGlobals(c, (g) => {
-			g.logging.levels = { bilibili: "warn" };
+	// 验红:把 engines.ts 里递给 LiveEngine 的 `serviceCtx: liveCtx` 换成 `extensionLiveCtx`(键成了 core),这条红。
+	it("B 站直播引擎拿到的是 live/来源键 那个上下文", () => {
+		const c = setup();
+		active = c;
+		expect(H.live[0].opts.serviceCtx).toBe(subsystemCtx(c, "live", "bilibili"));
+	});
+
+	// 验红:把 engines.ts 里 `bindExtensionPosts` 的 `logger: postsCtx.logger` 换成 B 站那个上下文的,这条红。
+	it("拓展作品的接入记的日志走 posts/core 那一个", async () => {
+		const gone = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const c = setup({
+			puppeteer: true,
+			subs: [],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
+			},
 		});
-		c.bus.emit("config-changed", { scope: "globals" });
-
-		expect(subsystemCtx(c, "dynamic").setLevel).toHaveBeenCalledWith("warn");
-		expect(subsystemCtx(c, "live").setLevel).toHaveBeenCalledWith("warn");
-		expect(subsystemCtx(c, "image").setLevel).toHaveBeenCalledWith("info");
-		expect(subsystemCtx(c, "ai").setLevel).toHaveBeenCalledWith("info");
-		expect(c.serviceCtx.setLevel).toHaveBeenLastCalledWith("info");
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [gone.id],
+			report: {
+				kind: "post",
+				value: { id: "p1", url: "https://www.douyin.com/video/p1", publishedAt: Date.now() },
+			},
+		});
+		await settleTracked(c);
+		const posts = subsystemCtx(c, "posts", "core").logger;
+		expect(posts.debug).toHaveBeenCalledWith(expect.stringContaining("[ext-post]"));
+		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
+		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
 	it("配了 AI 时,只改 dynamicCron 不该热重载 commentary", () => {
@@ -2313,9 +2294,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 			g.ai.persona.name = "恶魔兔";
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		// boot 各 1 次;改 AI 人设不应再扇出到 app section。
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
-		// AI 本身仍热更。
+		// AI 本身热更。
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
 	});
 
@@ -2537,7 +2516,8 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
 
-		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2); // 这一发确实被处理了(boot + 这次)
+		expect(H.push[0].setMaster).toHaveBeenCalled(); // 这一发确实被处理了
+		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 	});
 	// 「初始带 B 站设置里的 cron」「cron 变了引擎换节奏」在 `bilibili/__tests__/source.test.ts`。
 });
@@ -2703,7 +2683,7 @@ describe("createEngines — dispose", () => {
 		const detected: PostEvent[] = [];
 		c.bus.on("post-detected", (event) => detected.push(event));
 		c.runtime.dispose();
-		const errors = subsystemCtx(c, "dynamic").logger.error as ReturnType<typeof vi.fn>;
+		const errors = c.sourceLogger.error as ReturnType<typeof vi.fn>;
 		errors.mockClear();
 		reportBili("1", bilibiliPost("关停后"), "after");
 		await settleTracked(c);

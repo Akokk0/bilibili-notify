@@ -89,6 +89,7 @@ import {
 } from "./runtime/generations.js";
 import { createLinkParser } from "./runtime/link-parser.js";
 import { createLinkReplySender } from "./runtime/link-reply.js";
+import { bindLogLevels } from "./runtime/log-levels.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";
 import { resolveExpectedParent, startParentWatch } from "./runtime/parent-watch.js";
@@ -526,6 +527,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// Seeds defaults on first boot. Failure here is fatal — we don't want to start serving HTTP
 		// against a corrupt or unreadable state dir.
 		await runtime.configStore.load();
+		// 日志等级表接到上下文上(当场推一次、之后 `level` / `levels` 变了再推):放在配置读完之后,
+		// 之后造的日志器(登录系统、引擎装配)起步就是设置里那一格。
+		const logLevels = bindLogLevels({
+			serviceCtx: runtime.serviceCtx,
+			configStore: runtime.configStore,
+		});
+		runtime.serviceCtx.onDispose(() => logLevels.dispose(), "stop");
 		// Per-sub runtime data (cachedProfile / fansBaseline). Independent file,
 		// absent / malformed → empty (non-fatal: it's a regenerable display cache).
 		await runtime.subRuntimeStore.load();

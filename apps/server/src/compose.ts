@@ -44,6 +44,7 @@ import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type BuiltinAdapters, registerBuiltinAdapters } from "./push/builtin-adapters.js";
 import type { PlatformAdapterRegistry } from "./push/registry.js";
 import type { EnginesRuntime } from "./runtime/engines.js";
+import type { NodeServiceContext } from "./runtime/service-context.js";
 import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
 
 /**
@@ -83,7 +84,7 @@ export interface BuiltinIntegrationsDeps {
 	 * 适配器在 `composeBuiltinIntegrations` 里就造出来(工厂只往 `serviceCtx` 挂一个关停兜底,不连网、不开监听),
 	 * 关停钩子的登记时刻因此与从前入口里造它们那一刻一致;登记即启动的那一步仍在 `registerAdapters`。
 	 */
-	serviceCtx: ServiceContext;
+	serviceCtx: ServiceContext & Pick<NodeServiceContext, "forSubsystem">;
 	/** 入站两路出口。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。 */
 	onInboundPrivate: NonNullable<Parameters<typeof createOnebotAdapter>[0]["onInboundPrivate"]>;
 	onInboundGroup: NonNullable<Parameters<typeof createOnebotAdapter>[0]["onInboundGroup"]>;
@@ -190,6 +191,8 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					sourceKey: BILIBILI_SOURCE_KEY,
 					source: made,
 					integration: deps.integration,
+					// 来源上下文的 `ctx.logger`:标签 `dynamic`、等级跟来源键那一格(B 站的整体)。
+					logger: deps.serviceCtx.forSubsystem("dynamic", BILIBILI_SOURCE_KEY).logger,
 				});
 			} catch (err) {
 				// 开机失败(与从前造动态引擎抛了的后果一样):不留半个来源。

@@ -83,6 +83,7 @@ function makeFakeEngines(ctx: SourceContext) {
 		sourceKey: string;
 		source: { stop(): Promise<void> };
 		integration: IntegrationContext;
+		logger: Logger;
 	}> = [];
 	const engines = {
 		registerSource: vi.fn(async (entry: (typeof registered)[number] & { source: never }) => {
@@ -120,6 +121,17 @@ function compose(
 	const adapterRegistry = createPlatformAdapterRegistry();
 	// 工厂创建时只往 serviceCtx 挂关停兜底(OneBot、QQ 官方各一个);连接名单是空的,适配器 start 不开监听。
 	const onDispose = vi.fn();
+	// 与真的一样:同一对(标签,键)交回同一个上下文,日志器各不相同,好分辨「这个日志器是按哪一对要来的」。
+	const subsystems = new Map<string, { logger: Logger }>();
+	const forSubsystem = vi.fn((name: string, levelKey: string) => {
+		const key = JSON.stringify([name, levelKey]);
+		let ctx = subsystems.get(key);
+		if (!ctx) {
+			ctx = { logger: quietLogger() };
+			subsystems.set(key, ctx);
+		}
+		return ctx;
+	});
 	const integrationStore = memoryIntegrationStore();
 	const api = overridableApi(opts.api ?? ({} as Api));
 	const fetchImage = opts.fetchImage ?? vi.fn(async () => fail("unavailable", "测试不联网"));
@@ -147,7 +159,7 @@ function compose(
 		live: () => undefined,
 		fans: () => undefined,
 		healthCheck: () => undefined,
-		serviceCtx: { onDispose } as never,
+		serviceCtx: { onDispose, forSubsystem } as never,
 		onInboundPrivate: () => {},
 		onInboundGroup: () => {},
 		adapterRegistry,
@@ -163,6 +175,7 @@ function compose(
 		adapterRegistry,
 		integrationStore,
 		onDispose,
+		forSubsystem,
 	};
 }
 
@@ -233,6 +246,19 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 });
 
 describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
+	// 验红:把 `compose.ts` 里登记项的 `logger` 换成 `deps.logger`,或把 `forSubsystem("dynamic", …)` 的键换成 `"core"`,这条红。
+	it("来源登记项带的日志器:标签 dynamic、键是 B 站的来源键", async () => {
+		const { builtins, forSubsystem } = compose();
+		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(engines);
+		const index = forSubsystem.mock.calls.findIndex(
+			([name, key]) => name === "dynamic" && key === BILIBILI_SOURCE_KEY,
+		);
+		expect(index).toBeGreaterThanOrEqual(0);
+		expect(registered[0]?.logger).toBe(forSubsystem.mock.results[index]?.value.logger);
+		await registered[0]?.source.stop();
+	});
+
 	it("registerSources 按 B 站的键登记了一次,integration 就是入参那个;调第二次抛", async () => {
 		const { builtins } = compose();
 		const { engines, registered, registerSource } = makeFakeEngines(makeFakeSourceCtx([]).ctx);

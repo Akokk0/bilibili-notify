@@ -94,7 +94,7 @@ describe("createNodeServiceContext — 分段收尾", () => {
 
 	it("子系统的 ctx 与父级共用 signal、后台活登记与分段钩子", async () => {
 		const { ctx } = harness();
-		const sub = ctx.forSubsystem("live", undefined);
+		const sub = ctx.forSubsystem("live", "bilibili");
 		const order: string[] = [];
 		let release!: () => void;
 		sub.track(new Promise<void>((resolve) => (release = resolve)).then(() => order.push("task")));

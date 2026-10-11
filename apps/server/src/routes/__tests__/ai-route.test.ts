@@ -120,7 +120,7 @@ function makeDeps(opts: { sendFails?: boolean } = {}) {
 			runtime: {
 				serviceCtx: {
 					logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-					forSubsystem: () => ({
+					forSubsystem: (_name: string, _levelKey: string) => ({
 						logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 					}),
 				},

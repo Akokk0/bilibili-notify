@@ -63,11 +63,12 @@ export const LogLevelSchema = z.enum(["error", "warn", "info", "debug"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
 /**
- * 日志等级的按键覆盖:键是核心模块(`core` / `image` / `ai`)或集成键(B 站的 `bilibili`、拓展 id);
- * 没写的键跟 `logging.level`。
+ * 日志等级的按键覆盖:键是核心的三格(`core` / `image` / `ai`)或集成键(B 站的 `bilibili`、三个内置适配器的键、
+ * 拓展 id);没写的键跟 `logging.level`。一行日志是谁的代码打的就跟谁那一格(核心的作品队列与替拓展跑的直播场次跟 `core`)。
  *
  * 键是**开放**的字符串 —— 集成的集合不写死在 schema 里;键是 PATCH 能写进来的任意文本,所以过原型名那道检查
- * (与 `extensions` 表、来源键同一条规矩)。写了没人读的键会留在盘上、不起作用。
+ * (与 `extensions` 表、来源键同一条规矩)。写了没有对应集成的键(拓展卸了、还没装、拼错了)会留在盘上、不起作用,
+ * 等那个集成出现才生效。
  */
 export const ModuleLogLevelsSchema = z.record(
 	z

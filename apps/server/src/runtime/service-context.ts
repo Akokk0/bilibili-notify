@@ -38,14 +38,9 @@ export interface NodeServiceContextOptions {
  * WS layer to feed `logger.<level>(...)` calls onto the `log` channel without the
  * core `Logger` interface having to know anything about WebSockets.
  */
-interface SubsystemContext extends ServiceContext {
-	/**
-	 * Mutate the subsystem's pino level at runtime. Pino exposes `.level`
-	 * as a writeable property; this just forwards. Used by engines.ts when
-	 * `config-changed: globals` arrives so log-level changes via the dashboard
-	 * take effect without a server restart.
-	 */
-	setLevel(level: string): void;
+export interface LogLevelTable {
+	level: string;
+	levels: Readonly<Record<string, string>>;
 }
 
 export interface NodeServiceContext extends ServiceContext {
@@ -63,18 +58,14 @@ export interface NodeServiceContext extends ServiceContext {
 	 * Returns the previous hook so callers can restore it on dispose.
 	 */
 	setLogHook(fn: ((entry: LogEntry) => void) | undefined): ((entry: LogEntry) => void) | undefined;
-	/** Mutate the base pino logger's level at runtime. */
-	setLevel(level: string): void;
 	/**
-	 * Spawn a child ServiceContext for a named subsystem (engine module). The
-	 * child shares timers / onDispose / WS log hook with the parent but its
-	 * `logger` writes through a fresh pino instance whose `name` is just the bare
-	 * subsystem (e.g. `live`) and an independent `level`. Used by engines.ts to
-	 * give each business engine
-	 * (dynamic / live / image / ai) its own log pipeline so operators can crank
-	 * one to debug without flooding the others.
+	 * 开一个子上下文:日志行的标签是 `name`,等级跟等级表里 `levelKey` 那一格(没写跟总等级)。
+	 * 同一对 (name, levelKey) 交回同一个;与父上下文共用定时器、收尾钩子与日志旁路。
+	 * 交的是键不是等级值:等级表由 `applyLogLevels` 整张推。
 	 */
-	forSubsystem(name: string, level: string | undefined): SubsystemContext;
+	forSubsystem(name: string, levelKey: string): ServiceContext;
+	/** 整张等级表推一次:基础日志器跟 `core` 那一格,每个子上下文跟自己那一格。 */
+	applyLogLevels(logging: LogLevelTable): void;
 }
 
 export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeServiceContext {
@@ -149,6 +140,13 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 		},
 	});
 	const logger = wrapLogger(baseLogger, opts.name);
+
+	/** 最近一次推进来的等级表;没推过(开机早期)时子上下文跟 `opts.level`。 */
+	let table: LogLevelTable | undefined;
+	const levelOf = (key: string): string =>
+		table ? (table.levels[key] ?? table.level) : (opts.level ?? "info");
+	/** 每个 (标签, 键) 一个 pino 实例:拓展反复装卸也不会越开越多。 */
+	const subsystems = new Map<string, { pino: PinoLogger; levelKey: string; ctx: ServiceContext }>();
 
 	const intervals = new Set<NodeJS.Timeout>();
 	const timeouts = new Set<NodeJS.Timeout>();
@@ -284,28 +282,26 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 			logHook = fn;
 			return prev;
 		},
-		setLevel(level: string): void {
-			baseLogger.level = level;
+		applyLogLevels(logging) {
+			table = logging;
+			baseLogger.level = levelOf("core");
+			for (const sub of subsystems.values()) sub.pino.level = levelOf(sub.levelKey);
 		},
-		forSubsystem(name: string, level: string | undefined): SubsystemContext {
-			const subPino = pino(
-				{
-					name,
-					level: level ?? opts.level ?? "info",
-				},
-				makeDest(),
-			);
-			return {
+		forSubsystem(name: string, levelKey: string): ServiceContext {
+			const cacheKey = JSON.stringify([name, levelKey]);
+			const cached = subsystems.get(cacheKey);
+			if (cached) return cached.ctx;
+			const subPino = pino({ name, level: levelOf(levelKey) }, makeDest());
+			const ctx: ServiceContext = {
 				logger: wrapLogger(subPino, name),
 				signal: shutdown.signal,
 				setInterval: setIntervalImpl,
 				setTimeout: setTimeoutImpl,
 				onDispose: onDisposeImpl,
 				track: trackImpl,
-				setLevel(next: string): void {
-					subPino.level = next;
-				},
 			};
+			subsystems.set(cacheKey, { pino: subPino, levelKey, ctx });
+			return ctx;
 		},
 		dispose(options = {}) {
 			disposing ??= (async () => {

@@ -134,7 +134,7 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
 export interface EnginesRuntime extends Disposable {
 	/** 登记一个内置来源(建它的来源上下文、登记即 start)。关停时引擎自己先停掉登记过的来源,再关作品入口。 */
 	registerSource(
-		entry: Pick<RegisterBuiltinSourceOptions, "sourceKey" | "source" | "integration">,
+		entry: Pick<RegisterBuiltinSourceOptions, "sourceKey" | "source" | "integration" | "logger">,
 	): Promise<void>;
 	readonly live: LiveEngine;
 	readonly push: PushRouter;
@@ -227,9 +227,10 @@ export interface EnginesRuntime extends Disposable {
 export interface CreateEnginesOptions {
 	/**
 	 * NodeServiceContext (not the platform-neutral ServiceContext) — engines.ts
-	 * uses `forSubsystem(name, level)` to give each engine its own pino instance
-	 * driven by globals.logging.levels.{bilibili,image,ai}. The server
-	 * runtime constructs the parent context once at boot.
+	 * uses `forSubsystem(name, levelKey)` to give each engine its own pino instance
+	 * whose level follows the `levelKey` slot of the log-level table
+	 * (`bindLogLevels` pushes it). The server runtime constructs the parent
+	 * context once at boot.
 	 */
 	serviceCtx: NodeServiceContext;
 	/** 数据根(`AppRuntime.dataRoot`):背景图资产与轮换游标住在它底下。 */
@@ -349,30 +350,16 @@ export interface CreateEnginesOptions {
 
 export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const log = opts.serviceCtx.logger;
-	// Per-module sub-contexts. Subsystem level falls back to `logging.level`
-	// when its module-specific override is absent (schema doc spells this out).
-	// Pino levels are mutable, so `config-changed: globals` later pushes new
-	// levels onto these instances without a server restart.
+	// 各子上下文只交「标签」与「跟哪一格」,等级表由 `bindLogLevels`(入口,配置读完之后)整张推、热更也在那边。
+	// 一行日志是谁的代码打的就跟谁那一格:作品队列、拓展作品的接入、替拓展跑的直播场次与推送是核心的代码,跟 `core`;
+	// B 站自己的直播引擎跟来源键(3b 直播并进来源时这一处随 `LiveEngine` 的建造一起走)。
 	const initialGlobals = opts.configStore.getGlobals();
-	const resolveLevel = (g: GlobalConfig, key: string): string =>
-		g.logging.levels[key] ?? g.logging.level;
-	// 动态与直播两个 B 站引擎共用日志等级表里的一个键(来源键),各自仍是自己的子上下文。
-	const bootSourceLevel = resolveLevel(initialGlobals, BILIBILI_SOURCE_KEY);
-	const dynamicCtx = opts.serviceCtx.forSubsystem("dynamic", bootSourceLevel);
-	const liveCtx = opts.serviceCtx.forSubsystem("live", bootSourceLevel);
-	const aiCtx = opts.serviceCtx.forSubsystem("ai", resolveLevel(initialGlobals, "ai"));
-	const imageCtx = opts.serviceCtx.forSubsystem("image", resolveLevel(initialGlobals, "image"));
+	const postsCtx = opts.serviceCtx.forSubsystem("posts", "core");
+	const liveCtx = opts.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY);
+	const extensionLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
+	const aiCtx = opts.serviceCtx.forSubsystem("ai", "ai");
+	const imageCtx = opts.serviceCtx.forSubsystem("image", "image");
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
-
-	// Base logger boot reconcile. bootstrap.logLevel (BN_LOG_LEVEL / --log-level
-	// / bn.config logLevel) only governs the pre-engines early window (config
-	// load + bootstrap, before the core settings are applied). From engines-up onward
-	// the base logger is the "core" module bucket — every non-engine log
-	// (push / dispatcher / master-notifier / fans-poller / routes / config / history /
-	// ws) goes through it, so it follows `logging.levels.core ?? logging.level` just
-	// like the subsystem ctxs follow their own keys. Apply once here so it does
-	// NOT wait for the first config-changed. Mirrors the change-path apply below.
-	opts.serviceCtx.setLevel(resolveLevel(initialGlobals, "core"));
 
 	// ---------- Dispatcher + push ----------
 	// onDelivery 只负责 target.reachability 同步 —— dispatcher 拿不到订阅 + feature,
@@ -642,11 +629,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	const extensionSources = opts.extensionSources;
 	const postQueue = createPostQueue({
-		logger: dynamicCtx.logger,
+		logger: postsCtx.logger,
 		bus: opts.bus,
 		serviceCtx: opts.serviceCtx,
 		deps: {
-			logger: dynamicCtx.logger,
+			logger: postsCtx.logger,
 			settings: makePostSettingsReader({
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				globals,
@@ -819,7 +806,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		handles.push(
 			bindExtensionPosts({
 				bus: opts.bus,
-				logger: dynamicCtx.logger,
+				logger: postsCtx.logger,
 				serviceCtx: opts.serviceCtx,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profileName: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.name,
@@ -843,21 +830,21 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		if (!liveImages) throw new Error("createEngines: 给了 extensionLive 就必须给 liveImages");
 		const liveSessions = createExtensionLiveSessions({
 			bus: opts.bus,
-			logger: liveCtx.logger,
+			logger: extensionLiveCtx.logger,
 			table: extensionLive,
 			subscription: (id) => opts.subscriptionStore.findById(id),
 			running: (id) => extensionSources.running(id),
 			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
 			settings: (sub) => liveWorkSettings(sub, globals()),
-			timers: liveCtx,
+			timers: extensionLiveCtx,
 		});
 		handles.push(liveSessions);
 		extensionLiveSessions = liveSessions;
 		handles.push(
 			bindExtensionLivePush({
 				bus: opts.bus,
-				logger: liveCtx.logger,
-				serviceCtx: liveCtx,
+				logger: extensionLiveCtx.logger,
+				serviceCtx: extensionLiveCtx,
 				sessions: liveSessions,
 				table: extensionLive,
 				subscription: (id) => opts.subscriptionStore.findById(id),
@@ -1104,20 +1091,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				const skinKnobsChanged = !eq(prev.defaults.cardSkinKnobs, g.defaults.cardSkinKnobs);
 				const messageLayoutChanged = !eq(prev.defaults.messageLayout, g.defaults.messageLayout);
 
-				// `logging` 里只按日志等级(`level` 与 `levels` 两格)开门,**不要写成整段比**:保留天数、内存自检开关
-				// 各有各的读法,不在这里热推。粉丝轮询的 cron 是顶层的 `profileRefreshCron`,同样不在这里。
+				// 日志等级(`logging.level` / `logging.levels`)不在这里推:由入口的 `bindLogLevels` 整张推。
+				// 粉丝轮询的 cron 是顶层的 `profileRefreshCron`,同样不在这里。
 				// B 站那两格(cron / 健康检查间隔)在 B 站自己的设置里:cron 由 B 站来源自己听,健康检查间隔由登录系统(`bilibili/auth/`)自己听。
-				if (
-					!eq(prev.logging.level, g.logging.level) ||
-					!eq(prev.logging.levels, g.logging.levels)
-				) {
-					const sourceLevel = resolveLevel(g, BILIBILI_SOURCE_KEY);
-					opts.serviceCtx.setLevel(resolveLevel(g, "core"));
-					dynamicCtx.setLevel(sourceLevel);
-					liveCtx.setLevel(sourceLevel);
-					aiCtx.setLevel(resolveLevel(g, "ai"));
-					imageCtx.setLevel(resolveLevel(g, "image"));
-				}
 				// ImageRenderer 热更(仅在已构造时有意义)。配色 / 字体 / 数据区显示项都已经
 				// 退役成皮肤旋钮,这里只剩旋钮那一份要送下去。
 				if ((cardStyleChanged || skinKnobsChanged) && imageRenderer) {
@@ -1253,9 +1229,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				subscriptions: opts.subscriptionStore,
 				defaults: () => globals().defaults,
 				bus: opts.bus,
-				// 来源上下文的 `ctx.logger` 就是这一个(动态子系统 logger):来源(含它造的动态引擎)的每行日志
-				// 名字叫 `dynamic`,等级跟 `logging.levels` 里来源键那一格走(下面热更)。
-				logger: dynamicCtx.logger,
 				enqueue: (event) => postQueue.enqueue(event),
 				problems: opts.problems,
 				// 来源读自己集成的设置:键取自登记项,核心不认识任何具体集成。
