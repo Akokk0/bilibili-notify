@@ -15,6 +15,7 @@ import type {
 	AddressCandidate,
 	AIProviderProfile,
 	AISettings,
+	AuthState,
 	CachedProfile,
 	CardKind,
 	Connection,
@@ -51,6 +52,8 @@ export type {
 } from "@bilibili-notify/internal";
 export type {
 	AddressCandidate,
+	// 扫码建连接的状态:面板按它做穷尽 switch,而 web 只认 contract。
+	AuthState,
 	ConnectionCapabilities,
 	// 面板按「它开的是哪一口」分节,而 web 只认 contract —— 同 CapabilitySupport 那条。
 	ExtensionProvides,
@@ -1192,33 +1195,35 @@ export interface EnableRenderingResponse {
 	chromeEndpoint?: string;
 }
 
-// ---- /api/qq ----------------------------------------------------------------
+// ---- /api/adapters ------------------------------------------------------------
 
-/** `POST /api/qq/bind/start` 响应 —— 扫码一键建 bot(借道腾讯 lite 通道)。 */
-export interface QQBindStartResponse {
-	/** 轮询用的任务号(腾讯侧生成)。 */
+/** `POST /api/adapters/:adapterKey/auth` 响应 —— 发起一次扫码建连接。 */
+export interface ConnectionAuthBeginResponse {
+	/** 这次认证的任务号(适配器发的),后两个口的路径里带它。 */
 	taskId: string;
-	/** 二维码图片,data: URI。 */
-	qr: string;
-	/** 建议轮询间隔,秒。消费方**必须**夹一道再用,见 web 的 pollDelayMs。 */
-	interval: number;
+	/** 此刻的状态;刚发起通常是 awaiting-scan,带二维码。 */
+	state: AuthState;
+	/** 建议的问询间隔,秒。消费方**必须**夹一道再用,见 web 的 pollDelayMs。 */
+	pollIntervalSeconds: number;
 }
 
 /**
- * `POST /api/qq/bind/poll` 响应。
+ * `GET /api/adapters/:adapterKey/auth/:taskId` 响应 —— 只有状态,永远不带草稿。
  *
- * web 端按它做**穷尽** switch(default 里 `never` 兜底):这里将来多一条 status,
- * 前端会直接编译不过,而不是静静地当 pending 接着轮询。
- *
- * server 那边的 `QQBindTask` 刻意不在这份契约里 —— 它带着解 AppSecret 的
- * `bindKey`,只活在 server 内存,不出响应也不落盘。
+ * web 端按 `state.status` 做**穷尽** switch(default 里 `never` 兜底):`AuthState` 将来多一条
+ * status,前端会直接编译不过,而不是静静地当「还在等」接着问。
  */
-export type QQBindPollResult =
-	| { status: "pending" }
-	| { status: "expired" }
-	| { status: "created"; appId: string; appSecret: string }
-	/** 扫码侧完成但凭据缺失/解不开 —— 业务态错误,与上游故障(抛错)区分。 */
-	| { status: "error"; message: string };
+export interface ConnectionAuthStateResponse {
+	state: AuthState;
+}
+
+/**
+ * `POST /api/adapters/:adapterKey/auth/:taskId/draft` 响应 —— 取走这次认证拿到的那几格设置,
+ * 取走即清。⚠️ 里面可能有密钥(QQ 是 `appSecret`):只填进新建连接的表单,不进任何会被持久化或打印的状态。
+ */
+export interface ConnectionAuthDraftResponse {
+	settings: Record<string, unknown>;
+}
 
 // ---- /api/system/backup ------------------------------------------------------------
 

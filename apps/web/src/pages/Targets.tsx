@@ -825,6 +825,7 @@ function ConnectionConfigFields({
 						   此前逐字符手抄,行距一漂两种行就对不齐。 */
 						<div key="qq-bind" className={`flex flex-wrap items-center gap-3 ${FIELD_ROW_CHROME}`}>
 							<QQQrBindButton
+								adapterKey={field.adapterKey}
 								onCredentials={(creds) => {
 									onChange(field.apply(creds));
 									// 扫出来的新凭据是「换了一份」:已存着的 appSecret 不能还画成胶囊盖住它。

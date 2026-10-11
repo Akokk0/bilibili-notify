@@ -98,6 +98,8 @@ export type ConnectionField =
 	/** 官机的扫码建号行 —— 不是一栏字段,是一整行说明加一颗按钮。 */
 	| {
 			kind: "qq-bind";
+			/** 发起扫码的适配器键(`/api/adapters/:adapterKey/auth…`),取自这条连接。 */
+			adapterKey: string;
 			/** 扫出来的凭据 → 整条新连接(顺手归好域 / 沙箱、补上空着的显示名)。 */
 			apply: (creds: { appId: string; appSecret: string }) => NewConnection;
 	  };
@@ -280,6 +282,7 @@ function qqOfficialFields(connection: NewConnection): ConnectionField[] {
 	return [
 		{
 			kind: "qq-bind",
+			adapterKey: connection.adapterKey,
 			// 回填 = 「用扫出来的这个 lite bot」,顺手把域 / 沙箱归到它的正确档:lite bot 无原生
 			// markdown 特权,留在私域档会让图集推送必败。显示名称为空时补默认名 —— 扫码流程
 			// 跳过了表单上半截,名称空着会让保存钮一直灰着(唯一前端必填),用户看不出为什么存不了。

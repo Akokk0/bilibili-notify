@@ -87,6 +87,10 @@ const NEW_PATHS: Probe[] = [
 	post(`/api/connections/${ID}/probe`),
 	// 挑地址的读口(3a-22-3):不带 `scope`,处理函数动手之前就回 400。
 	get(`/api/connections/${ID}/addresses`),
+	// 适配器自带的扫码建连接(3a-29):这份 app 不登记任何适配器,三个口都在动手之前回「适配器没在跑」(503)。
+	post("/api/adapters/qq-official/auth"),
+	get("/api/adapters/qq-official/auth/nope"),
+	post("/api/adapters/qq-official/auth/nope/draft"),
 	// 决策 5 随 ⑮ 开的图库读口(没这张图,处理函数自己回 404 —— 那也是挂上了的证据)。
 	get(`/api/images/${"0".repeat(64)}.png`),
 	// 聊天附件的上传(⑳b 起存进图库):没带文件,处理函数动手之前就回 400。
@@ -124,6 +128,9 @@ const OLD_PATHS: Probe[] = [
 	// QQ 官方挑群 / 频道地址的两个读口(3a-22-3 起走 `/api/connections/:id/addresses`,这两个退役)。
 	get(`/api/qq/sessions/${ID}`),
 	get(`/api/qq/guilds/${ID}`),
+	// QQ 官方扫码绑定的两个口(3a-29 起走 `/api/adapters/:adapterKey/auth…`,整个 `/api/qq` 退役)。
+	post("/api/qq/bind/start"),
+	post("/api/qq/bind/poll"),
 	// 聊天附件的读口(⑳b 起走图库的同源读口 `/api/images/<ref>`,这个口退役)。
 	get(`/api/ai/assets/${"0".repeat(32)}.png`),
 	// 拓展订阅头像的读口(⑳c 起头像在图库里、资料里放引用,走 `/api/images/<ref>`,这个口退役)。

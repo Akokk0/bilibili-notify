@@ -96,6 +96,15 @@ describe("字段表覆盖 settings schema", () => {
 	});
 });
 
+describe("扫码行", () => {
+	it("qq-bind 一格带着这条连接的 adapterKey(扫码的路径靠它拼)", () => {
+		const connection = makeEmptyConnection("qq-official", "qq");
+		const bind = connectionFields(connection).find((f) => f.kind === "qq-bind");
+		expect(bind).toMatchObject({ kind: "qq-bind", adapterKey: connection.adapterKey });
+		expect(connection.adapterKey).toBeTruthy();
+	});
+});
+
 describe("HIDDEN 名单本身", () => {
 	it("每一条都得写理由,而且真的被用上 —— 不许留过期条目", () => {
 		for (const [entry, why] of Object.entries(HIDDEN)) {

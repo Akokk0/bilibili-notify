@@ -164,7 +164,7 @@ describe("pollBindTask", () => {
 describe("上游超时", () => {
 	/**
 	 * node 的 fetch 没有默认超时。腾讯那边接了 TCP 却不回(区域性网络干扰下很常见)
-	 * 时,`POST /api/qq/bind/poll` 就永远不返回:任务不清、handler 挂着,而浏览器
+	 * 时,`GET /api/adapters/:adapterKey/auth/:taskId` 就永远不返回:任务不清、handler 挂着,而浏览器
 	 * 每 2 秒还在发下一轮,一路叠到用户关掉弹窗为止。
 	 */
 	it("每次请求都带 AbortSignal —— 上游挂起不能把 handler 钉死", async () => {

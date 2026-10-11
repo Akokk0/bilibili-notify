@@ -28,6 +28,7 @@ import type { ReportDiscrepancyTable } from "./extensions/report-discrepancies.j
 import type { IntegrationStore } from "./integration-store/store.js";
 import { MaidSkillStore } from "./maid-skills/store.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
+import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAiSkillsRoute } from "./routes/ai-skills.js";
 import { createAuthRoute } from "./routes/auth.js";
@@ -41,7 +42,6 @@ import { createHealthRoute, healthResponseOf } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
 import { createImagesRoute } from "./routes/images.js";
 import { createLiveRoute } from "./routes/live.js";
-import { createQQRoute } from "./routes/qq.js";
 import {
 	ROUTE_NOT_FOUND_MESSAGE,
 	requestErrorHandler,
@@ -370,7 +370,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				...(options.runRoastNow ? { runRoastNow: options.runRoastNow } : {}),
 			}),
 		);
-		app.route("/api/qq", createQQRoute(deps));
+		app.route("/api/adapters", createAdaptersRoute(deps));
 		// 面板那一侧的拓展口。URL 面用短词 `ext`(ADR-0012 决策 38),代码面照旧全称。
 		app.route(
 			"/api/ext",

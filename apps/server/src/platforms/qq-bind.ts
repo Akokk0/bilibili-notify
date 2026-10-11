@@ -73,7 +73,7 @@ export interface QQBindTask {
 
 /**
  * 单次请求的上限。node 的 fetch 没有默认超时,腾讯接了 TCP 却不回(区域性网络
- * 干扰下常见)就会把 `POST /api/qq/bind/poll` 永远挂住:任务不清、handler 不返回,
+ * 干扰下常见)就会把 `GET /api/adapters/:adapterKey/auth/:taskId` 永远挂住:任务不清、handler 不返回,
  * 而浏览器每 2 秒还在发下一轮,一路叠到用户关掉弹窗。宁可这一轮报错 —— 轮询本来
  * 就允许瞬时故障,下一轮会接着问。
  */
