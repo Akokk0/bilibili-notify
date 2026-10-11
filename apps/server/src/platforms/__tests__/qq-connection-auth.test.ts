@@ -162,13 +162,13 @@ describe("createQQConnectionAuth.state", () => {
 		expect(up.pollCalls()).toHaveLength(1);
 	});
 
-	it("过期:expired,之后不再问上游", async () => {
+	it("码过期:error 带人话(不是 expired),之后不再问上游", async () => {
 		const { auth } = make();
 		const b = await begun(auth);
 		up.state.pollQueue.push(() => res(200, { retcode: 0, data: { status: 3 } }));
 		expect(await auth.state(b.taskId, signal())).toMatchObject({
 			ok: true,
-			state: { status: "expired", message: "二维码已过期" },
+			state: { status: "error", message: "二维码已过期，请重新生成" },
 		});
 		await auth.state(b.taskId, signal());
 		expect(up.pollCalls()).toHaveLength(1);

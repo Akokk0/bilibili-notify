@@ -138,10 +138,12 @@ describe("QQQrBindButton", () => {
 		expect(drafts).toBe(1);
 	});
 
-	it("scanned 接着问;logged-out 按过期处理", async () => {
+	it("confirming 接着问;logged-out 按过期处理", async () => {
 		const got = vi.fn();
 		postRoutes({ [DRAFT]: () => DRAFT_OK });
-		getMock.mockResolvedValueOnce({ state: { status: "scanned" } }).mockResolvedValue(loggedIn());
+		getMock
+			.mockResolvedValueOnce({ state: { status: "confirming" } })
+			.mockResolvedValue(loggedIn());
 		render(<QQQrBindButton adapterKey="qq-official" onCredentials={got} />);
 		openDialog();
 		await waitFor(() => expect(got).toHaveBeenCalledTimes(1), { timeout: 6000 });
@@ -156,12 +158,15 @@ describe("QQQrBindButton", () => {
 		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
 	});
 
-	it("问到 expired → 提示过期并给「重新生成」;点击再走一遍发起", async () => {
+	it("码过期(服务端报 error)→ 红色提示盒里是服务端的话,并给「重新生成」;点击再走一遍发起", async () => {
 		postRoutes();
-		getMock.mockResolvedValue({ state: { status: "expired", message: "二维码已过期" } });
+		getMock.mockResolvedValue({
+			state: { status: "error", message: "二维码已过期，请重新生成" },
+		});
 		render(<QQQrBindButton adapterKey="qq-official" onCredentials={() => {}} />);
 		openDialog();
-		await waitFor(() => expect(screen.getByText(/二维码已过期/)).toBeTruthy(), POLLED);
+		// 断言服务端那句话真的显示出来(把话改空它不能绿)。
+		await waitFor(() => expect(screen.getByText("二维码已过期，请重新生成")).toBeTruthy(), POLLED);
 
 		postMock.mockClear();
 		fireEvent.click(screen.getByRole("button", { name: /重新生成/ }));

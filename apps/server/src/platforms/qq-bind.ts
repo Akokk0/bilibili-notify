@@ -156,7 +156,7 @@ interface BindEntry {
 	upstreamTaskId: string;
 	bindKey: string;
 	createdAt: number;
-	/** 终态(logged-in / expired / error)一旦钉住就不再问上游。 */
+	/** 终态(logged-in / error)一旦钉住就不再问上游。 */
 	state: AuthState;
 	draft?: { appId: string; appSecret: string };
 }
@@ -241,7 +241,8 @@ export function createQQConnectionAuth(opts: { logger: Logger }): {
 				entry.draft = { appId: polled.appId, appSecret: polled.appSecret };
 				entry.state = { status: "logged-in", loggedInAt: new Date().toISOString() };
 			} else if (polled.status === "expired") {
-				entry.state = { status: "expired", message: "二维码已过期" };
+				// `expired` 只指「已经登着的登录失效了」;建连接没有这回事,码超时就是这一次没办成。
+				entry.state = { status: "error", message: "二维码已过期，请重新生成" };
 			} else if (polled.status === "error") {
 				entry.state = { status: "error", message: polled.message };
 			}

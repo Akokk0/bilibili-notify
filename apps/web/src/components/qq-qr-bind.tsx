@@ -147,14 +147,16 @@ export function QQQrBindButton({
 				const s = r.state;
 				switch (s.status) {
 					case "awaiting-scan":
-					case "scanned":
+					case "confirming":
+						// QQ 没有「已扫、等确认」,confirming 在这边没有产出者;真来了就接着问。
 						break;
 					case "logged-in":
 						await claimDraft();
 						return;
 					case "expired":
 					case "logged-out":
-						// logged-out:建连接的任务不该回到这个状态,当成「这次作废了」请主人重开。
+						// 码过期服务端报 error(走下面那支,带话和「重新生成」);这两个取值建连接的
+						// 任务都不该出现,当成「这次作废了」请主人重开。
 						setPhase("expired");
 						return;
 					case "error":
