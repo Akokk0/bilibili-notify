@@ -42,12 +42,19 @@ vi.mock("../../components/onboarding/reopen-section", () => ({
 	OnboardingReopenSection: () => <div data-testid="sec-onboarding" />,
 }));
 
-vi.mock("../../store/auth", () => {
-	const useAuthStore = (select: (s: unknown) => unknown) =>
-		select({ snapshot: null, cookiesRefreshedAt: null });
-	useAuthStore.getState = () => ({ clear: () => {} });
-	return { useAuthStore };
-});
+// 登录状态：这条测试不关心账号卡，按「还没取到」处理（与从前的空快照同一语境）。
+vi.mock("../../hooks/use-source-auth", () => ({
+	useSourceAuth: () => ({
+		state: undefined,
+		account: undefined,
+		raw: undefined,
+		isLoading: true,
+		isError: false,
+		error: null,
+		startLogin: { isPending: false, mutate: () => {} },
+		logout: { isPending: false, mutate: () => {} },
+	}),
+}));
 
 // 假 ApiError 进 vi.hoisted:`vi.mock` 的工厂被提到文件顶,写成模块级 const 会撞 TDZ。
 const { FakeApiError } = vi.hoisted(() => ({ FakeApiError: class extends Error {} }));

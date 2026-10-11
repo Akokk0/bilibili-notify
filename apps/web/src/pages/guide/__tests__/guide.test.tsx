@@ -16,8 +16,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { useAuthStore } from "../../../store/auth";
-import { BiliLoginStatus } from "../../../types/auth";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
 const apiPatch = vi.hoisted(() => vi.fn(async (_p: string, _b?: unknown) => ({})));
@@ -25,8 +23,10 @@ const apiPatch = vi.hoisted(() => vi.fn(async (_p: string, _b?: unknown) => ({})
 vi.mock("../../../services/api", () => ({ api: { get: apiGet, patch: apiPatch } }));
 
 async function mount(path: string) {
-	useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
 	apiGet.mockImplementation(async (p: string) => {
+		if (p === "/api/sources/bilibili/auth") {
+			return { state: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" } };
+		}
 		if (p === "/api/subscriptions") return [{ id: "s1" }];
 		if (p === "/api/connections") return [];
 		if (p === "/api/targets") return [];
@@ -53,7 +53,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
-	useAuthStore.getState().clear();
 	vi.restoreAllMocks();
 });
 

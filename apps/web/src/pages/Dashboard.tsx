@@ -37,6 +37,7 @@ import {
 	PUSH_STATUS_META,
 	PUSH_TONE,
 } from "../config/push-features";
+import { useSourceAuth } from "../hooks/use-source-auth";
 import { HEALTH_QUERY_OPTIONS, useBackendReachable } from "../hooks/useBackendReachable";
 import { useExtensions } from "../hooks/useExtensions";
 import { useResourcesChannel } from "../hooks/useResourcesChannel";
@@ -57,8 +58,6 @@ import {
 	type LiveListeningEntry,
 	localDayKey,
 } from "../services/dashboard";
-import { useAuthStore } from "../store/auth";
-import { BiliLoginStatus } from "../types/auth";
 import {
 	BILIBILI_SOURCE_KEY,
 	type FeatureFlagValues,
@@ -877,8 +876,7 @@ export function SystemHealthCard({
 }
 
 export default function Dashboard() {
-	const snapshot = useAuthStore((s) => s.snapshot);
-	const loggedIn = snapshot?.status === BiliLoginStatus.LOGGED_IN;
+	const loggedIn = useSourceAuth(BILIBILI_SOURCE_KEY).state?.status === "logged-in";
 	const reachable = useBackendReachable();
 
 	const health = useQuery(HEALTH_QUERY_OPTIONS);

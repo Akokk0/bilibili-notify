@@ -13,9 +13,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { useAuthStore } from "../../../store/auth";
+import { sourceAuthKey } from "../../../hooks/use-source-auth";
 import { useNavStore } from "../../../store/nav";
-import { BiliLoginStatus } from "../../../types/auth";
 
 const apiGet = vi.hoisted(() => vi.fn(async (_path: string) => null as unknown));
 const apiPatch = vi.hoisted(() => vi.fn(async (_p: string, _b?: unknown) => ({})));
@@ -35,14 +34,27 @@ interface Scenario {
 	globalsError?: boolean;
 }
 
-async function mount(s: Scenario) {
-	useAuthStore.setState({
-		snapshot: {
-			status: s.loggedIn ? BiliLoginStatus.LOGGED_IN : BiliLoginStatus.NOT_LOGIN,
-			msg: "",
-		},
+/** B 站登录状态（`GET /api/sources/bilibili/auth` 回的那一份）：mount 按场景定初值，`logIn()` 中途改成已登录。 */
+let authLoggedIn = false;
+let mountedQc: QueryClient | null = null;
+const loggedInAt = "2026-10-11T00:00:00.000Z";
+
+/** 中途登录上：既改服务端口子今后的回答，也把查询缓存当场换成已登录（等同 WS 帧到了）。 */
+function logIn(): void {
+	authLoggedIn = true;
+	mountedQc?.setQueryData(sourceAuthKey("bilibili"), {
+		state: { status: "logged-in", loggedInAt },
 	});
+}
+
+async function mount(s: Scenario) {
+	authLoggedIn = s.loggedIn === true;
 	apiGet.mockImplementation(async (path: string) => {
+		if (path === "/api/sources/bilibili/auth") {
+			return {
+				state: authLoggedIn ? { status: "logged-in", loggedInAt } : { status: "logged-out" },
+			};
+		}
 		if (path === "/api/subscriptions") return s.subs ?? [];
 		if (path === "/api/connections") return s.connections ?? [];
 		if (path === "/api/targets") return s.targets ?? [];
@@ -56,6 +68,7 @@ async function mount(s: Scenario) {
 	});
 	const { TourCompanion } = await import("../tour-companion");
 	const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	mountedQc = qc;
 	const utils = render(
 		<QueryClientProvider client={qc}>
 			<MemoryRouter initialEntries={[s.route ?? "/"]}>
@@ -82,7 +95,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
-	useAuthStore.getState().clear();
+	mountedQc = null;
 	for (const el of document.querySelectorAll("[data-tour]")) el.remove();
 	for (const el of document.querySelectorAll("[data-tour-nav]")) el.remove();
 	for (const el of document.querySelectorAll('[data-bn="modal"]')) el.remove();
@@ -244,7 +257,7 @@ describe("TourCompanion 常驻小卡", () => {
 			await screen.findByText("扫码登录 B 站");
 			expect(apiPatch).not.toHaveBeenCalled();
 			act(() => {
-				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+				logIn();
 			});
 			await waitFor(() =>
 				expect(apiPatch).toHaveBeenCalledWith("/api/settings", { onboarding: { skipped: true } }),
@@ -283,7 +296,7 @@ describe("TourCompanion 常驻小卡", () => {
 			await screen.findByText("扫码登录 B 站");
 			// ① 本会话内走完最后一步 → 自动写标记(ref 闸在这一拍落下),🎉 卡谢幕
 			act(() => {
-				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+				logIn();
 			});
 			await screen.findByText(/全部配置完成/);
 			fireEvent.click(screen.getByRole("button", { name: "收起" }));
@@ -371,7 +384,7 @@ describe("TourCompanion 常驻小卡", () => {
 		});
 		await screen.findByText("扫码登录 B 站");
 		act(() => {
-			useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+			logIn();
 		});
 		const badge = await screen.findByTestId("tour-done-badge");
 		const endAnimation = (el: Element) =>
@@ -408,7 +421,7 @@ describe("TourCompanion 常驻小卡", () => {
 			});
 			await screen.findByText("扫码登录 B 站");
 			act(() => {
-				useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+				logIn();
 			});
 			return screen.findByTestId("tour-done-badge");
 		}
@@ -930,7 +943,7 @@ describe("TourCompanion 常驻小卡", () => {
 		await screen.findByText("扫码登录 B 站");
 		expect(screen.queryByTestId("tour-done-badge")).toBeNull();
 		act(() => {
-			useAuthStore.setState({ snapshot: { status: BiliLoginStatus.LOGGED_IN, msg: "" } });
+			logIn();
 		});
 		expect(await screen.findByText("B 站登录完成!")).toBeTruthy();
 		await waitFor(() => expect(screen.getByTestId("tour-fireworks")).toBeTruthy());

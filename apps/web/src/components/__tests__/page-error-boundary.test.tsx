@@ -34,7 +34,6 @@ vi.mock("../toast-shell", () => ({ ToastShell: () => null }));
 vi.mock("../onboarding/tour-companion", () => ({ TourCompanion: () => null }));
 vi.mock("../../hooks/useAlertChannel", () => ({ useAlertChannel: () => {} }));
 vi.mock("../../hooks/useAuthChannel", () => ({ useAuthChannel: () => {} }));
-vi.mock("../../hooks/useAuthHydrate", () => ({ useAuthHydrate: () => {} }));
 vi.mock("../../hooks/usePushEventsChannel", () => ({ usePushEventsChannel: () => {} }));
 vi.mock("../../hooks/useStateChannel", () => ({ useStateChannel: () => {} }));
 vi.mock("../../hooks/useUpdateCheckOnOpen", () => ({ useUpdateCheckOnOpen: () => {} }));

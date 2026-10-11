@@ -58,12 +58,19 @@ vi.mock("../../components/onboarding/reopen-section", () => ({
 
 vi.mock("../../hooks/useDirtyDraft", () => ({ useDirtyDraft: () => {} }));
 
-vi.mock("../../store/auth", () => {
-	const useAuthStore = (select: (s: unknown) => unknown) =>
-		select({ snapshot: null, cookiesRefreshedAt: null });
-	useAuthStore.getState = () => ({ clear: () => {} });
-	return { useAuthStore };
-});
+// 登录状态：这条测试不关心账号卡，按「还没取到」处理（与从前的空快照同一语境）。
+vi.mock("../../hooks/use-source-auth", () => ({
+	useSourceAuth: () => ({
+		state: undefined,
+		account: undefined,
+		raw: undefined,
+		isLoading: true,
+		isError: false,
+		error: null,
+		startLogin: { isPending: false, mutate: () => {} },
+		logout: { isPending: false, mutate: () => {} },
+	}),
+}));
 
 // 夹具与假 ApiError 都进 vi.hoisted:`vi.mock` 的工厂被提到文件顶,
 // 而被测模块在 import 期就会解析它 —— 写成模块级 const 会撞 TDZ。

@@ -26,7 +26,7 @@ export interface ChatSidebarProps {
 	/** 底部显示的模型名;没配置时留空。 */
 	modelName?: string;
 	userName: string;
-	/** B 站头像 URL;取不到时回落成首字色块。 */
+	/** 账号头像的显示地址(图库的同源读口);取不到时回落成首字色块。 */
 	userFace?: string;
 	/** 女仆的名字,取自人格配置(见 {@link resolveChatPersona})。 */
 	aiName: string;
@@ -123,14 +123,12 @@ export function ChatSidebar(props: ChatSidebarProps) {
 			</div>
 
 			<div className="relative mt-1.5 flex items-center gap-2.5 px-2 pb-0.5 pt-2.5">
-				{/* 有真头像就用真头像。referrerPolicy 不能省 —— B 站图床按 Referer 防盗链,
-				    带上本站 Referer 会被回一张 403 占位图,头像位置变成一块裂图。
-				    与 header 里的账号头像同一处理。 */}
+				{/* 有真头像就用真头像:地址是本站图库的 `/api/images/…`,不再直连 B 站图床,
+				    所以不必再管 Referer 防盗链。 */}
 				{props.userFace ? (
 					<img
 						src={props.userFace}
 						alt={props.userName}
-						referrerPolicy="no-referrer"
 						data-bn="avatar"
 						className="h-[30px] w-[30px] shrink-0 rounded-full object-cover"
 					/>

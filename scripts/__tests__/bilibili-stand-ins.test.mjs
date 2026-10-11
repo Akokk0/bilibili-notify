@@ -89,22 +89,20 @@ export const RATCHET = {
 	"apps/web/src/components/scope-tabs.tsx": 3,
 	"apps/web/src/devtools/pick-select.tsx": 2,
 	"apps/web/src/devtools/web-scenarios.ts": 1,
-	"apps/web/src/hooks/useAuthChannel.ts": 2,
 	"apps/web/src/pages/Cards.tsx": 2,
 	// 3a-38(主人 10-10 点头,4 → 6):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(动态、直播两行都读它)。
 	// 第 4 期系统页与概览页按集成的描述画之后消失。
-	"apps/web/src/pages/Dashboard.tsx": 6,
+	"apps/web/src/pages/Dashboard.tsx": 5,
 	"apps/web/src/pages/Rules.tsx": 6,
 	"apps/web/src/pages/Subs.tsx": 18,
 	// 3a-38(主人 10-10 点头,27 → 29):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(引入常量、模块表里用一次)。
 	// 第 4 期系统页按集成的描述画之后消失。
-	"apps/web/src/pages/System.tsx": 29,
+	"apps/web/src/pages/System.tsx": 5,
 	"apps/web/src/pages/rules/PerUpEditor.tsx": 6,
 	"apps/web/src/pages/rules/sections.tsx": 2,
 	"apps/web/src/pages/up/UpCard.tsx": 6,
 	"apps/web/src/pages/up/UpDialog.tsx": 10,
 	"apps/web/src/pages/up/subscription-source.ts": 2,
-	"apps/web/src/types/auth.ts": 2,
 	"apps/web/src/types/domain.ts": 2,
 	"apps/web/src/utils/up-display.ts": 2,
 	"packages/ai/src/commentary-generator.ts": 3,

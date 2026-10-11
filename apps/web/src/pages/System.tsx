@@ -34,13 +34,14 @@ import { LinkParsingSettings } from "../components/link-parsing-settings";
 import { OnboardingReopenSection } from "../components/onboarding/reopen-section";
 import { UPDATE_SECTION_HASH } from "../components/update/status";
 import { UpdateSection } from "../components/update/update-section";
+import { AUTH_STATUS_ACCENT, AUTH_STATUS_LABELS, authMessageOf } from "../config/auth-status";
 import { AI_PURPLE } from "../config/colors";
 import { PUSH_TONE } from "../config/push-features";
 import { SECTION_ACCENT } from "../config/section-accents";
+import { useSourceAuth } from "../hooks/use-source-auth";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";
 import { ApiError, api } from "../services/api";
-import { useAuthStore } from "../store/auth";
-import { BiliLoginStatus, type BiliLoginStatusValue } from "../types/auth";
+import { errorTextOf } from "../services/error-text";
 import { BILIBILI_SOURCE_KEY, type Connection, type PushTarget } from "../types/domain";
 import type {
 	GlobalConfig,
@@ -50,45 +51,35 @@ import type {
 	LoggingSettings,
 	LogLevel,
 } from "../types/globals";
+import { imageUrl } from "../utils/image-url";
 import { BackupSection } from "./backup/BackupSection";
 import { SkinSection } from "./skins/SkinSection";
 import { buildSystemPatch } from "./system-save-patch";
 
-const STATUS_LABELS: Record<BiliLoginStatusValue, string> = {
-	[BiliLoginStatus.NOT_LOGIN]: "未登录",
-	[BiliLoginStatus.LOADING_LOGIN_INFO]: "正在加载登录信息",
-	[BiliLoginStatus.LOGIN_QR]: "等待扫码",
-	[BiliLoginStatus.LOGGING_QR]: "正在登录",
-	[BiliLoginStatus.LOGGED_IN]: "已登录",
-	[BiliLoginStatus.LOGIN_FAILED]: "登录失败",
-};
-
 /**
  * 单一状态表达:状态由 GlassBox 的 `accent`(随态变色)+ `badge`
- * (STATUS_LABELS 文案,GlassBox 原生渲染成 Pill)承载。删掉了原先独立的
- * 右上角 StatusPill —— 它会把 STATUS_LABELS[LOGGED_IN]「已登录」与后端
- * snapshot.msg(LoginFlow 对 LOGGED_IN 设的也是「已登录」)拼成「已登录 ·
- * 已登录」。`msg` 现在仅在与状态文案不同时(失败原因 / fetchAccountFailed)
- * 才作小字注脚。
+ * (`AUTH_STATUS_LABELS` 文案,GlassBox 原生渲染成 Pill)承载。服务端给的 `message`
+ * (失败 / 失效原因、`confirming` 要主人做什么)只在卡片正文里写一遍,不拼进标签。
+ * 状态还没取到(查询在路上)时没有 `AuthState` 可查表,用下面这组占位。
  */
-const STATUS_ACCENT: Record<BiliLoginStatusValue, string> = {
-	[BiliLoginStatus.NOT_LOGIN]: "var(--color-bn-inactive)",
-	[BiliLoginStatus.LOADING_LOGIN_INFO]: "var(--color-bn-blue)",
-	[BiliLoginStatus.LOGIN_QR]: "var(--color-bn-warning)",
-	[BiliLoginStatus.LOGGING_QR]: "var(--color-bn-warning)",
-	[BiliLoginStatus.LOGGED_IN]: "var(--color-bn-success)",
-	[BiliLoginStatus.LOGIN_FAILED]: "var(--color-bn-danger)",
-};
+const LOADING_ACCENT = "var(--color-bn-blue)";
+const LOADING_LABEL = "读取中";
 
-function QrCard({ data, msg }: { data: unknown; msg: string }) {
-	const src = typeof data === "string" && data.length > 0 ? data : null;
+function QrCard({ dataUrl }: { dataUrl: string }) {
 	return (
 		// data-tour:「带我做」导览的聚光灯锚点 —— 二维码一出现聚光灯就从登录按钮转移过来
-		<QrPanel data-tour="bili-login-qr" src={src} alt="登录二维码" loading="二维码加载中">
+		<QrPanel data-tour="bili-login-qr" src={dataUrl} alt="登录二维码" loading="二维码加载中">
 			<div className="text-bn-sm text-bn-text-secondary">使用 Bilibili 手机客户端扫码登录</div>
-			{/* 常驻一行:msg 从无到有(尚未扫码→已扫码…)不许把弹窗撑高 */}
-			<div className="text-bn-xs text-bn-text-tertiary">{msg || " "}</div>
 		</QrPanel>
+	);
+}
+
+/** 已扫码、等手机上确认时，弹窗里不画二维码，只显示服务端给的那句话。 */
+function ConfirmingCard({ message }: { message: string }) {
+	return (
+		<div data-tour="bili-login-qr" className="py-4 text-center text-bn-sm text-bn-text-secondary">
+			{message}
+		</div>
 	);
 }
 
@@ -346,8 +337,7 @@ export function MasterSection({
 }
 
 export default function System() {
-	const snapshot = useAuthStore((s) => s.snapshot);
-	const cookiesRefreshedAt = useAuthStore((s) => s.cookiesRefreshedAt);
+	const auth = useSourceAuth(BILIBILI_SOURCE_KEY);
 	const qc = useQueryClient();
 	const [actionError, setActionError] = useState<string | null>(null);
 
@@ -364,26 +354,29 @@ export default function System() {
 		if (wanted) setSection(wanted);
 	}, [location.hash, location.key]);
 
-	const status: BiliLoginStatusValue = snapshot?.status ?? BiliLoginStatus.LOADING_LOGIN_INFO;
-	const msg = snapshot?.msg ?? "";
-	const isQrPhase = status === BiliLoginStatus.LOGIN_QR || status === BiliLoginStatus.LOGGING_QR;
-	// 二维码走弹窗展示(不撑开页面布局);手动关掉后按钮变「继续扫码」可再打开,
-	// 扫码阶段结束(成功/失效)时重置。
+	const authState = auth.state;
+	const loggedIn = authState?.status === "logged-in";
+	// 与 header AccountChip 同一数据源:`GET /api/sources/:sourceKey/auth` 的 account(头像是图库引用)。
+	const accountName = loggedIn ? auth.account?.name : undefined;
+	const accountAvatar =
+		loggedIn && auth.account?.avatar ? imageUrl(auth.account.avatar) : undefined;
+
+	// 「这次扫码的弹窗开着」只能由面板自己记:`confirming` 同时表示「已扫码、等手机确认」(弹窗开着时在
+	// 弹窗里说)与「开机还没向 B 站确认」(没有弹窗,在卡片上说),服务端的状态分不出这两种,而面板
+	// 不靠比对 `message` 的文字分。见到 `awaiting-scan` 置真,见到 `confirming` 保持,其余状态置假;
+	// 刷新页面后是假。写成渲染中就地调整,不走 effect —— 否则 `confirming` 到的那一帧卡片先闪一下。
+	const [scanSeen, setScanSeen] = useState(false);
+	const scanning =
+		authState?.status === "awaiting-scan"
+			? true
+			: authState?.status === "confirming"
+				? scanSeen
+				: false;
+	if (scanning !== scanSeen) setScanSeen(scanning);
+	// 弹窗手动关掉后按钮变「继续扫码」可再打开;扫码阶段结束(成功 / 失效)时重置。
 	const [qrDismissed, setQrDismissed] = useState(false);
-	useEffect(() => {
-		if (!isQrPhase) setQrDismissed(false);
-	}, [isQrPhase]);
-	const loggedIn = status === BiliLoginStatus.LOGGED_IN;
-	// 与 header AccountChip 同一数据源:snapshot.data.card = { mid, name, face }。
-	const card = loggedIn
-		? (snapshot?.data as { card?: { mid?: string; name?: string; face?: string } } | undefined)
-				?.card
-		: undefined;
-	const accountName = card?.name;
-	const accountFace = card?.face;
-	// msg 仅在与状态文案不同、且非登录失败(失败原因已在红框里)时,作小字注脚。
-	const extraMsg =
-		msg && msg !== STATUS_LABELS[status] && status !== BiliLoginStatus.LOGIN_FAILED ? msg : "";
+	if (!scanning && qrDismissed) setQrDismissed(false);
+	const qrModalOpen = scanning && !qrDismissed;
 
 	const globalsQuery = useQuery({
 		queryKey: ["settings"],
@@ -438,35 +431,31 @@ export default function System() {
 		},
 	});
 
-	function wrap<T>(action: () => Promise<T>): () => Promise<T | undefined> {
-		return async () => {
-			setActionError(null);
-			try {
-				return await action();
-			} catch (err) {
-				setActionError(err instanceof ApiError ? err.message : String(err));
-				return undefined;
-			}
-		};
+	// 登录 / 退出的错误显示在账号卡的红框里;成功的结果由 `useSourceAuth` 写回查询缓存。
+	const startQr = auth.startLogin;
+	const logout = auth.logout;
+	function reportActionError(err: unknown): void {
+		setActionError(err instanceof ApiError ? err.message : String(err));
 	}
 
-	const startQr = useMutation({
-		mutationFn: wrap(() => api.post<{ ok: true }>("/api/auth/qr")),
-	});
-	const refresh = useMutation({
-		mutationFn: wrap(() => api.post<{ ok: true }>("/api/auth/cookies/refresh")),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-status"] }),
-	});
-	const logout = useMutation({
-		mutationFn: wrap(() => api.post<{ ok: true }>("/api/auth/logout")),
-		// logout 终结会话:必须清 zustand auth store,否则残留的 snapshot /
-		// cookiesRefreshedAt 让 UI 仍显示已登录账号(后端 jar 已清的前端镜像同类缺陷)。
-		// invalidate 只刷服务端 query,不动 zustand。
-		onSuccess: () => {
-			useAuthStore.getState().clear();
-			qc.invalidateQueries({ queryKey: ["auth-status"] });
-		},
-	});
+	const accent = authState ? AUTH_STATUS_ACCENT[authState.status] : LOADING_ACCENT;
+	const badge = authState ? AUTH_STATUS_LABELS[authState.status] : LOADING_LABEL;
+	// 等待扫码时按钮是「继续扫码」(重开弹窗,不重新发起)。
+	const resumable = authState?.status === "awaiting-scan";
+	// 卡片正文:扫码弹窗开着时整块不写(状态与进度都在弹窗里)。`expired` / `error` 的话在下面的红框里。
+	let bodyText: string | null = null;
+	if (!authState) bodyText = auth.isError ? null : "正在读取登录状态";
+	else if (authState.status === "logged-out") {
+		bodyText = "尚未登录 B 站账号，点下方「发起扫码登录」开始。";
+	} else if (authState.status === "confirming" && !qrModalOpen) {
+		bodyText = authMessageOf(authState) || "正在确认";
+	}
+	const modalBody =
+		authState?.status === "awaiting-scan" ? (
+			<QrCard dataUrl={authState.qr.dataUrl} />
+		) : authState?.status === "confirming" ? (
+			<ConfirmingCard message={authMessageOf(authState) || "正在确认"} />
+		) : null;
 
 	return (
 		// 两栏骨架一律走 `xl:grid-bn-rail`,别手写栏宽 —— 栏宽在 --bn-rail-width,皮肤能调。
@@ -498,17 +487,17 @@ export default function System() {
 						<GlassBox
 							title="账号 · auth"
 							subtitle="B 站账号登录 + Cookie / 会话 · 扫码后实时生效"
-							accent={STATUS_ACCENT[status]}
+							accent={accent}
 							icon={<Icon.user size={14} />}
-							badge={STATUS_LABELS[status]}
+							badge={badge}
 						>
 							{loggedIn ? (
 								<div className="flex items-center gap-3.5">
 									<Avatar
 										name={accountName ?? "B"}
-										color={STATUS_ACCENT[BiliLoginStatus.LOGGED_IN]}
+										color={AUTH_STATUS_ACCENT["logged-in"]}
 										size={48}
-										url={accountFace}
+										url={accountAvatar}
 									/>
 									<div className="min-w-0 flex-1">
 										<div className="truncate text-bn-md font-bold text-bn-text-primary">
@@ -517,29 +506,21 @@ export default function System() {
 										<div className="mt-0.5 text-bn-xs text-bn-text-secondary">
 											业务核心可正常拉取动态 / 直播 / WBI 签名
 										</div>
-										{cookiesRefreshedAt ? (
-											<div className="mt-0.5 text-bn-2xs text-bn-text-tertiary">
-												最近 Cookie 刷新：{new Date(cookiesRefreshedAt).toLocaleString()}
-											</div>
-										) : null}
 									</div>
 								</div>
-							) : isQrPhase ? null : (
-								// 扫码阶段整块不渲染:状态与进度都在弹窗里(badge 也还挂着),这里再写
+							) : bodyText ? (
+								// 扫码阶段(弹窗开着时)整块不渲染:状态与进度都在弹窗里(badge 也还挂着),这里再写
 								// 一遍纯属重复,还把卡片撑开一截。
-								<div className="text-bn-sm text-bn-text-secondary">
-									{status === BiliLoginStatus.NOT_LOGIN
-										? "尚未登录 B 站账号,点下方「发起扫码登录」开始。"
-										: STATUS_LABELS[status]}
-								</div>
-							)}
-
-							{extraMsg && !isQrPhase ? (
-								<div className="mt-2 text-bn-xs text-bn-warning">{extraMsg}</div>
+								<div className="text-bn-sm text-bn-text-secondary">{bodyText}</div>
 							) : null}
 
-							{status === BiliLoginStatus.LOGIN_FAILED ? (
-								<ErrorNote className="mt-2.5">{msg || "登录失败，可重试。"}</ErrorNote>
+							{authState?.status === "expired" || authState?.status === "error" ? (
+								<ErrorNote className="mt-2.5">{authState.message}</ErrorNote>
+							) : null}
+							{auth.isError ? (
+								<ErrorNote className="mt-2.5">
+									读取登录状态失败：{errorTextOf(auth.error)}
+								</ErrorNote>
 							) : null}
 							{actionError ? (
 								<ErrorNote className="mt-2.5">操作失败：{actionError}</ErrorNote>
@@ -549,32 +530,35 @@ export default function System() {
 								<Btn
 									data-tour="bili-login"
 									variant="primary"
-									disabled={startQr.isPending || loggedIn}
+									disabled={startQr.isPending || loggedIn || !authState}
 									onClick={() => {
-										if (isQrPhase) setQrDismissed(false);
-										else startQr.mutate();
+										if (resumable) setQrDismissed(false);
+										else {
+											setActionError(null);
+											startQr.mutate(undefined, { onError: reportActionError });
+										}
 									}}
 								>
-									{startQr.isPending ? "处理中…" : isQrPhase ? "继续扫码" : "发起扫码登录"}
-								</Btn>
-								<Btn
-									variant="outline"
-									disabled={refresh.isPending || !loggedIn}
-									onClick={() => refresh.mutate()}
-								>
-									{refresh.isPending ? "处理中…" : "刷新 Cookie"}
+									{startQr.isPending ? "处理中…" : resumable ? "继续扫码" : "发起扫码登录"}
 								</Btn>
 								{/* 没登录也能点:cookie 文件解不开时靠它清掉残留。 */}
-								<Btn variant="danger" disabled={logout.isPending} onClick={() => logout.mutate()}>
+								<Btn
+									variant="danger"
+									disabled={logout.isPending || !authState}
+									onClick={() => {
+										setActionError(null);
+										logout.mutate(undefined, { onError: reportActionError });
+									}}
+								>
 									{logout.isPending ? "处理中…" : "退出登录"}
 								</Btn>
 							</div>
 						</GlassBox>
 
 						{/* 二维码弹窗:不撑开页面布局;导览聚光灯经 bili-login-qr 锚点转移到这里 */}
-						{isQrPhase && !qrDismissed ? (
+						{qrModalOpen && modalBody ? (
 							<ModalShell onCancel={() => setQrDismissed(true)} width={360} title="扫码登录 B 站">
-								<QrCard data={snapshot?.data} msg={msg} />
+								{modalBody}
 							</ModalShell>
 						) : null}
 
@@ -587,7 +571,7 @@ export default function System() {
 								原始登录快照
 							</summary>
 							<pre className="mt-2 overflow-auto leading-relaxed">
-								{JSON.stringify(snapshot ?? { hint: "等待 /api/auth/status" }, null, 2)}
+								{JSON.stringify(auth.raw ?? { hint: "等待读取登录状态" }, null, 2)}
 							</pre>
 						</details>
 					</>

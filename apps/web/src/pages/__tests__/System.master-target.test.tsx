@@ -24,12 +24,19 @@ vi.mock("../../services/api", () => ({
 	ApiError: FakeApiError,
 	api: { get: vi.fn(async () => []), post: vi.fn(), patch: vi.fn() },
 }));
-vi.mock("../../store/auth", () => {
-	const useAuthStore = (select: (s: unknown) => unknown) =>
-		select({ snapshot: null, cookiesRefreshedAt: null });
-	useAuthStore.getState = () => ({ clear: () => {} });
-	return { useAuthStore };
-});
+// 登录状态：这条测试不关心账号卡，按「还没取到」处理（与从前的空快照同一语境）。
+vi.mock("../../hooks/use-source-auth", () => ({
+	useSourceAuth: () => ({
+		state: undefined,
+		account: undefined,
+		raw: undefined,
+		isLoading: true,
+		isError: false,
+		error: null,
+		startLogin: { isPending: false, mutate: () => {} },
+		logout: { isPending: false, mutate: () => {} },
+	}),
+}));
 
 function target(id: string, name: string, scope: "group" | "private" | "channel"): PushTarget {
 	return {

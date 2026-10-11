@@ -18,26 +18,19 @@ import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { AUTH_STATUS_LABELS, authMessageOf } from "../config/auth-status";
 import { canHideNav, NAV_ITEMS, type NavItem, orderedNav, resolveNav } from "../config/nav";
+import { SOURCE_AUTH_QUERY_PREFIX, useSourceAuth } from "../hooks/use-source-auth";
 import { useBackendReachable } from "../hooks/useBackendReachable";
 import { api } from "../services/api";
 import { submitLogout } from "../services/session";
-import { useAuthStore } from "../store/auth";
 import { useNavStore } from "../store/nav";
 import { useSessionStore } from "../store/session";
 import { useSkinStore, useSkinText } from "../store/skin";
 import { type ThemePreference, useThemeStore } from "../store/theme";
-import { BiliLoginStatus } from "../types/auth";
-import type { PushTarget, Subscription } from "../types/domain";
+import { BILIBILI_SOURCE_KEY, type PushTarget, type Subscription } from "../types/domain";
+import { imageUrl } from "../utils/image-url";
 import { DragHandle } from "./drag-handle";
-
-interface UserCardData {
-	card?: {
-		mid?: string;
-		name?: string;
-		face?: string;
-	};
-}
 
 /**
  * 面板里的一行 —— ⠿ 拖动排序 + 勾选显隐。
@@ -160,11 +153,10 @@ function NavEditor({ onClose }: { onClose: () => void }) {
 }
 
 function AccountChip() {
-	const snapshot = useAuthStore((s) => s.snapshot);
-	const loggedIn = snapshot?.status === BiliLoginStatus.LOGGED_IN;
-	const card = loggedIn ? (snapshot?.data as UserCardData | undefined)?.card : undefined;
-	const name = card?.name;
-	const face = card?.face;
+	const { state, account } = useSourceAuth(BILIBILI_SOURCE_KEY);
+	const loggedIn = state?.status === "logged-in";
+	const name = loggedIn ? account?.name : undefined;
+	const face = loggedIn && account?.avatar ? imageUrl(account.avatar) : undefined;
 	if (loggedIn && name) {
 		return (
 			<span>
@@ -173,7 +165,6 @@ function AccountChip() {
 					<img
 						alt={name}
 						src={face}
-						referrerPolicy="no-referrer"
 						data-bn="avatar"
 						className="ml-2 inline-block h-5 w-5 rounded-full"
 					/>
@@ -184,7 +175,9 @@ function AccountChip() {
 	return (
 		<span>
 			女仆为您打理一切～(*´∀`)~♡{" "}
-			<span className="text-bn-text-secondary">{snapshot?.msg ?? "登录态加载中"}</span>
+			<span className="text-bn-text-secondary">
+				{state ? authMessageOf(state) || AUTH_STATUS_LABELS[state.status] : "登录态加载中"}
+			</span>
 		</span>
 	);
 }
@@ -422,7 +415,7 @@ export function GlassHeader() {
 
 	function refreshAll(): void {
 		qc.invalidateQueries({ queryKey: ["health"] });
-		qc.invalidateQueries({ queryKey: ["auth-status"] });
+		qc.invalidateQueries({ queryKey: SOURCE_AUTH_QUERY_PREFIX });
 		qc.invalidateQueries({ queryKey: ["subscriptions"] });
 		qc.invalidateQueries({ queryKey: ["targets"] });
 	}

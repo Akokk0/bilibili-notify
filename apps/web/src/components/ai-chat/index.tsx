@@ -11,6 +11,7 @@ import { ErrorNote, Icon, TabBar } from "@bilibili-notify/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useSourceAuth } from "../../hooks/use-source-auth";
 import { CARD_SKINS_KEY } from "../../pages/cards/card-skins-query";
 import {
 	conversationQueryKey,
@@ -32,8 +33,7 @@ import {
 } from "../../services/maidSkill";
 import { syncActiveSkinToStore } from "../../services/skin-active";
 import { useAiChatStore } from "../../store/aiChat";
-import { useAuthStore } from "../../store/auth";
-import { BiliLoginStatus } from "../../types/auth";
+import { BILIBILI_SOURCE_KEY } from "../../types/domain";
 import { imageUrl } from "../../utils/image-url";
 import { Composer, type ComposerAttachment, MAX_ATTACHMENTS } from "./composer";
 import { MessageList, preloadChatMarkdown, type ToolChipData } from "./messages";
@@ -283,11 +283,8 @@ export function ChatPage() {
 	// 自人格指针上线就没有界面入口、永远冻在老值上,而她开口自称的是新那位。
 	const persona = resolveChatPersona(ai ? resolveActivePersona(ai).persona : undefined);
 
-	const snapshot = useAuthStore((s) => s.snapshot);
-	const card =
-		snapshot?.status === BiliLoginStatus.LOGGED_IN
-			? (snapshot?.data as { card?: { name?: string; face?: string } } | undefined)?.card
-			: undefined;
+	const { state: authState, account } = useSourceAuth(BILIBILI_SOURCE_KEY);
+	const card = authState?.status === "logged-in" ? account : undefined;
 	// 没登录 / 还没拿到账号时,用人格里那个称呼顶上 —— 傲娇预设下就是「笨蛋」,
 	// 比硬写「主人」更贴合主人自己配的那套口吻。
 	const userName = card?.name?.trim() || persona.user;
@@ -725,7 +722,7 @@ export function ChatPage() {
 					onCollapse={() => setRail(false)}
 					modelName={modelName}
 					userName={userName}
-					userFace={card?.face}
+					userFace={card?.avatar ? imageUrl(card.avatar) : undefined}
 					aiName={persona.name}
 				/>
 			) : null}

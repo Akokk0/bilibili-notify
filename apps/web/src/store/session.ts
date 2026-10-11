@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 /**
- * Dashboard session state (distinct from the *bilibili* account login in
- * `store/auth.ts`). Mirrors `GET /api/session` and drives `<AuthGate>`, the
+ * Dashboard session state (distinct from a source account's login, which
+ * lives in the query cache, see `hooks/use-source-auth.ts`). Mirrors `GET /api/session` and drives `<AuthGate>`, the
  * header logout button, and WS connect/disconnect gating.
  *
  * Single synchronous source of truth so non-React consumers (the api-client

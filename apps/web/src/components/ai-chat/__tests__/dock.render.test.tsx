@@ -151,35 +151,37 @@ const G = vi.hoisted(() => ({
 		providers: { deepseek: { model: "gpt-test" } },
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	} as Record<string, unknown>,
+	/** `GET /api/sources/bilibili/auth` 回的那一份;默认没登录。 */
+	auth: { state: { status: "logged-out" } } as Record<string, unknown>,
 }));
 
 vi.mock("../../../services/api", () => ({
 	api: {
 		get: vi.fn(async (path: string) =>
-			// 技能清单与全局配置走同一个 get,按路径分流 —— 一律回 globals 的话,
+			// 技能清单、登录状态与全局配置走同一个 get,按路径分流 —— 一律回 globals 的话,
 			// 斜杠菜单那份清单永远是空的,空态那句引导语也就永远不出现。
-			path.startsWith("/api/ai/skills")
-				? {
-						list: [
-							{
-								name: "weekly-report",
-								description: "评选本周鸽王",
-								disableModelInvocation: false,
-								body: "步骤",
-								builtin: true,
-							},
-						],
-						problems: [],
-					}
-				: { ai: G.ai },
+			path === "/api/sources/bilibili/auth"
+				? G.auth
+				: path.startsWith("/api/ai/skills")
+					? {
+							list: [
+								{
+									name: "weekly-report",
+									description: "评选本周鸽王",
+									disableModelInvocation: false,
+									body: "步骤",
+									builtin: true,
+								},
+							],
+							problems: [],
+						}
+					: { ai: G.ai },
 		),
 	},
 }));
 
 import { createConversation, retitleConversation, sendChatMessage } from "../../../services/aiChat";
 import { useAiChatStore } from "../../../store/aiChat";
-import { useAuthStore } from "../../../store/auth";
-import { BiliLoginStatus } from "../../../types/auth";
 import { AiChatDock, ChatPage } from "../index";
 
 /** ChatPage 用 useNavigate / useLocation,得裹在 Router 里;单渲染聊天页时来路无所谓。 */
@@ -229,6 +231,7 @@ beforeEach(() => {
 		providers: { deepseek: { model: "gpt-test" } },
 		persona: { name: "小绫", addressSelf: "小绫", addressUser: "主人" },
 	};
+	G.auth = { state: { status: "logged-out" } };
 	useAiChatStore.setState({ rail: true, activeId: null });
 });
 afterEach(() => {
@@ -1124,7 +1127,7 @@ describe("AiChatDock — 称呼跟人格走", () => {
 
 	it("没登录时问候语里的称呼回落到人格的 addressUser,不硬写「主人」", async () => {
 		G.ai = RINKO;
-		useAuthStore.setState({ snapshot: null } as never);
+		G.auth = { state: { status: "logged-out" } };
 		render(wrap(<ChatPage />));
 		// getAll:问候语和侧栏底部各显示一次称呼,两处都该跟着人格走。
 		await waitFor(() => expect(screen.getAllByText("笨蛋").length).toBeGreaterThanOrEqual(2));
@@ -1196,25 +1199,24 @@ describe("AiChatDock — 侧栏与主题", () => {
 		await waitFor(() => expect(screen.getByText(/还没有聊过天呢/)).toBeTruthy());
 	});
 
-	it("有真头像就显示头像,并带 no-referrer(B 站图床按 Referer 防盗链)", async () => {
-		useAuthStore.setState({
-			snapshot: {
-				status: BiliLoginStatus.LOGGED_IN,
-				data: { card: { name: "晨风UP主", face: "https://i0.hdslb.com/face.jpg" } },
-			},
-		} as never);
+	it("有真头像就显示头像,地址是本站图库的 /api/images/<引用>,不再直连 B 站图床", async () => {
+		G.auth = {
+			state: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
+			account: { name: "晨风UP主", avatar: "avatar0123456789abcdef.webp" },
+		};
 		render(wrap(<ChatPage />));
 
 		const img = await screen.findByAltText("晨风UP主");
-		expect(img.getAttribute("src")).toBe("https://i0.hdslb.com/face.jpg");
-		// 不带这条,B 站会回一张 403 占位图,头像位置变成裂图。
-		expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
+		expect(img.getAttribute("src")).toBe("/api/images/avatar0123456789abcdef.webp");
+		// 同源图库图,不是 B 站外链,所以也不再带 no-referrer。
+		expect(img.getAttribute("referrerpolicy")).toBeNull();
 	});
 
 	it("取不到头像 → 回落成首字色块,不留一个空洞", async () => {
-		useAuthStore.setState({
-			snapshot: { status: BiliLoginStatus.LOGGED_IN, data: { card: { name: "晨风UP主" } } },
-		} as never);
+		G.auth = {
+			state: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
+			account: { name: "晨风UP主" },
+		};
 		render(wrap(<ChatPage />));
 
 		await waitFor(() => expect(screen.getAllByText("晨").length).toBeGreaterThan(0));

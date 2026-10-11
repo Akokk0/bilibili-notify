@@ -13,7 +13,6 @@ import { SkinPreviewBar } from "./components/skin-preview-bar";
 import { ToastShell } from "./components/toast-shell";
 import { useAlertChannel } from "./hooks/useAlertChannel";
 import { useAuthChannel } from "./hooks/useAuthChannel";
-import { useAuthHydrate } from "./hooks/useAuthHydrate";
 import { HEALTH_QUERY_OPTIONS } from "./hooks/useBackendReachable";
 import { usePushEventsChannel } from "./hooks/usePushEventsChannel";
 import { useStateChannel } from "./hooks/useStateChannel";
@@ -61,7 +60,6 @@ export default function App() {
  * mounts this subtree, so the WS singleton is never created before login.
  */
 function AuthedApp() {
-	useAuthHydrate();
 	useAuthChannel();
 	useStateChannel();
 	usePushEventsChannel();

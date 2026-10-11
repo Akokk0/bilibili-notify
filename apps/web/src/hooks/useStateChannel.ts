@@ -2,6 +2,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { isWsEvent, type WsEnvelope } from "../services/ws";
 import { onWsEvent, subscribeChannels } from "../services/wsSingleton";
+import { SOURCE_AUTH_QUERY_PREFIX } from "./use-source-auth";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
 	EXTENSION_SETTINGS_QUERY_PREFIX,
@@ -59,6 +60,8 @@ export function handleStateEnvelope(env: WsEnvelope, qc: QueryClient): void {
 		qc.invalidateQueries({ queryKey: EXTENSION_STATUS_QUERY_PREFIX });
 		qc.invalidateQueries({ queryKey: EXTENSION_BOTS_QUERY_PREFIX });
 		qc.invalidateQueries({ queryKey: EXTENSION_SETTINGS_QUERY_PREFIX });
+		// 各来源的登录状态同理:`auth` 频道的帧也不重放,断线期间登出 / 失效 / 换号都得靠这一步补回来。
+		qc.invalidateQueries({ queryKey: SOURCE_AUTH_QUERY_PREFIX });
 		return;
 	}
 	// 拓展喊了「面板数据变了」:只失效那个拓展的 status 与 bot 名单,让页面自己重取。

@@ -1,10 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
+import { SOURCE_AUTH_QUERY_PREFIX, useSourceAuth } from "../../hooks/use-source-auth";
 import { HEALTH_QUERY_KEY, HEALTH_QUERY_OPTIONS } from "../../hooks/useBackendReachable";
 import { api } from "../../services/api";
-import { useAuthStore } from "../../store/auth";
-import { BiliLoginStatus } from "../../types/auth";
-import type { Connection, PushTarget, Subscription } from "../../types/domain";
+import {
+	BILIBILI_SOURCE_KEY,
+	type Connection,
+	type PushTarget,
+	type Subscription,
+} from "../../types/domain";
 import { deriveOnboarding, type OnboardingView } from "./derive";
 import { useOnboardingInputsOverride } from "./inputs-override";
 
@@ -19,7 +23,7 @@ const POLL_MS = 3_000;
  * key 用权威常量而不是照抄字面量,同理。
  */
 const POLLED_KEYS: readonly (readonly unknown[])[] = [
-	["auth-status"],
+	SOURCE_AUTH_QUERY_PREFIX,
 	["subscriptions"],
 	["connections"],
 	["targets"],
@@ -32,8 +36,8 @@ const POLLED_KEYS: readonly (readonly unknown[])[] = [
  * 单一权威(几处 observer 选项不一致会让可达性探测抖动,见 useBackendReachable)。
  *
  * `poll`(导览小卡传「小卡正展开着」)= **导览进行中**,每 3s invalidate 全部
- * 判据 query(见 POLLED_KEYS)+ auth-status(useAuthHydrate 的 effect 把新快照
- * 写回 authStore)——
+ * 判据 query(见 POLLED_KEYS,登录状态 `["source-auth"]` 也在里面,重取的结果直接
+ * 写回查询缓存)——
  * 「做完自动进下一步」不能指望每条更新链路都恰好有 invalidate / WS 推送:扫码
  * 登录走 WS、页面 mutation 走 invalidate、而「在 QQ 里给 bot 发消息捞 openid」
  * 这类页面外动作根本没有前端事件,轮询是唯一兜得住全部环节的底。
@@ -53,7 +57,7 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	view: OnboardingView | null;
 } {
 	const qc = useQueryClient();
-	const snapshot = useAuthStore((s) => s.snapshot);
+	const { state: authState } = useSourceAuth(BILIBILI_SOURCE_KEY);
 	const enabled = opts?.active ?? true;
 	const subsQ = useQuery({
 		queryKey: ["subscriptions"],
@@ -78,7 +82,7 @@ export function useOnboardingState(opts?: { poll?: boolean; active?: boolean }):
 	// 记住结果:react-query 的结构共享让空转 refetch 不换引用,所以这个 memo
 	// 真的守得住。不记的话每次 render 都是新对象,下游那几个吃 view 的 memo /
 	// effect(步位、完成庆祝)就跟着每 render 跑一遍,memo 形同虚设。
-	const biliLoggedIn = snapshot?.status === BiliLoginStatus.LOGGED_IN;
+	const biliLoggedIn = authState?.status === "logged-in";
 	const modules = healthQ.data?.modules;
 	// devtools 装的假输入优先:判据函数照跑,只是喂的不是真查询。
 	const override = useOnboardingInputsOverride((s) => s.inputs);

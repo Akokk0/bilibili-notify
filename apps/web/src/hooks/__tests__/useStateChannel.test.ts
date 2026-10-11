@@ -2,7 +2,7 @@
  * 单元测试 — `handleStateEnvelope` 纯函数(WS `state` 频道 hydrate + config-changed)。
  *
  * 守护契约:
- *   - hydrate → 同步 invalidate 每一张会被服务端改的表(含订阅标签表 ["subscription-tags"])
+ *   - hydrate → 同步 invalidate 每一张会被服务端改的表(含订阅标签表 ["subscription-tags"] 与各来源的登录状态 ["source-auth"])
  *   - config-changed scope=globals       → invalidate ["settings"] 与拓展表 ["extensions"](不碰各拓展的设置)
  *   - config-changed scope=integration-settings → invalidate ["settings"](各集成的设置挂在 /api/settings 下发的那一份里)
  *     与各拓展的设置(拓展的设置各在自己的文件,改了发这一档);不碰拓展表
@@ -53,7 +53,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 	});
 
 	it("非 state 频道:不 invalidate", () => {
-		handleStateEnvelope(malformed({ type: "auth", event: "login-status-report" }), sc.qc);
+		handleStateEnvelope(malformed({ type: "auth", event: "subscription-auth-changed" }), sc.qc);
 		expect(sc.invalidate).not.toHaveBeenCalled();
 	});
 
@@ -76,6 +76,7 @@ describe("handleStateEnvelope — state 频道分发", () => {
 				"extension-status",
 				"extension-bots",
 				"ext-settings",
+				"source-auth",
 			]),
 		);
 	});
