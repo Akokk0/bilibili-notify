@@ -144,6 +144,9 @@ interface Problem {                    // 全在内存，不存盘
 - **`about` 谁填**：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，`code` 表明是哪个模块（如 `renderer_unavailable`；`core` 段设置坏了记 `settings_invalid`）。
 - 同一个报的人、同一个对象、同一个 code 算一条；重复报只更新 `message`、不重置 `since`（照原先「按 code 做键」的规矩延伸，施工时核）。🔗 3a-30 已落并核过：键是 报的人 + 对象 + code，再报只换 `message`（与 `notify`、恢复说法），`since` 不动。
 - 🔗 **落成的形状（3a-30，10-11）**：`packages/internal/src/problem.ts` 的 `Problem { reporter: string; about?: { subscriptionId: string }; code: string; message: string; since: string }`。与上面的草稿相比：`reporter` 是字符串（来源键；`IntegrationKey` 类型全仓没有，`"core"` 这个值还没有人用）；**`about` 只有订阅一支**，`{ connectionId }` 那一支没造（等第一个会报连接问题的适配器）；**报的人给的 `recoveryMessage`（清掉时怎么说）与 `notify` 不在这个对外的类型上**，它们只存在问题表内部与问题通知器之间，`GET /api/problems` 的回包不带。`since` 是问题进表那一刻；B 站的分层上报器是来源 `start(ctx)` 之后才接上核心，接上时整份补报，所以重启后 `since` 是接上那一刻。表全在内存，不存盘，迁移修订号与备份版本没动。
+- 🔗 **设置读不懂的三个码（3a-39，10-11）**，都不带 `notify`（只进表、不私聊，主人定：「面板提示可以吗？私聊尽量少用」）：
+  - `settings_invalid`，报的人是 `"core"`（这个值第一次有人用；写死在 `config/settings-problems.ts`，理论上会与一个 id 叫 `core` 的来源撞键）：核心设置有格读不懂退了默认，**几格坏了合成一条**（文案里最多摊三格，用代码路径与 zod 的原话，格数变了只换文案、`since` 不动），不带盘上原文；所有格都好了就清，不补「已恢复」。由配置仓的 `onInvalidSettingsChanged` 经 `runtime/bootstrap.ts` 接到问题表（`config/settings-problems.ts`）。
+  - `dynamic_settings_invalid`、`login_check_settings_invalid`，报的人是 `bilibili`：B 站动态那格 / 登录检查那格（或整个文件）读不懂，一样一条，文案点名停的是哪一样、因为哪一格（面板上的叫法加键名）、到哪改（`bilibili/problem-texts.ts`）；由来源经 `ctx.reportProblem` 直接报，不走分层上报器，所以不被「未登录」压着。
 - 与 `reportDiscrepancies` 分开：上报被拒或被丢格记进该集成的 `reportDiscrepancies` 表，不是问题（内置集成被拒就是 BN 的 bug，只打错误日志）。
 
 ## 来源描述符
@@ -526,6 +529,11 @@ interface GlobalDefaults {
 - 只有信封坏了（整份解析不了）才挡开机。理由：BN 起不来时，桌面壳连续失败几次就把这一版判死、自愈退回 0.12，还进不去面板改设置；Docker 则反复重启。面板登录凭据在 `bn.config.yaml`，不在这些段里，退回默认值不会把门打开。
 - 生命周期闸是唯一的例外：只有 `start` / `activate` 期间读设置失败可以抛错中止启动，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。
 - 代价：`core` 某格退回默认时行为会变（过滤、静音、新手引导），靠问题框亮出来。
+- 🔗 **现状（3a-39，10-11，上面表里各段的坏法）**：
+  - `core`：就是上表那样，盘上原文在落盘时按路径放回；写口唯一（`persistGlobals`）；重存按比值（保存后那一格的值与内存里跑着的默认值不同才算）。顶层不是对象仍挡开机。
+  - `bilibili`：**逐格**，不是「停整个集成」。配置仓读盘不抛：一格坏了那一格在内存里是默认值（盘上原文留着，读它的人经 `readIntegrationSettings` 拿到带原文的那一份、拿自己那格的 zod 判），整个文件不是合法 JSON 或顶层不是对象则整段是默认值；面板读到的全量图里 `bilibili` 键一直在、值一直合法。读它的是 B 站来源：动态那格读不懂停动态，登录检查那格读不懂停定时的登录检查，整个文件读不懂两样都停，各有一条问题（见「问题表」）；来源照常在册，运行状态不会是 `settings-invalid`。读盘本身出错（没权限、路径是个目录）仍挡开机。
+  - `extensions.<id>`：文件不是合法 JSON 只停那一个拓展（`settings-invalid`，不 `activate`，拓展的状态说明写「设置文件读不懂（不是合法的 JSON）」，文案见 `extensions/loader.ts`），重存写盘成功才清；卸载时坏文件一起删；读不懂的拓展设置不进备份。
+  - 订阅文件、推送目标文件、连接外壳读坏不在这张表里，仍挡开机（规范 `settings-validation.md` 写明）。
 - **设置按集成放**：设置字段在登记集成时交，不挂在 `SourceDescriptor` 上（ADR-0025 决策 3）；声明了 `settingsFields` 的内置集成在系统页各开一个 tab（今天只有 B 站，tab 名取它的 `label`）；拓展的设置只在拓展页；「运行」tab 只留核心参数。
 - **自定义 UA 删掉**（ADR-0025 决策 7）：浏览器身份一律由 `packages/http` 生成，UA 与 `sec-ch-ua` 永远配套；B 站设置页加「换一个身份」按钮重新生成。老配置里的 `userAgent` 这一格由迁移丢掉，新 schema 不留。
 - **并发**：所有写入排在同一条队列里；拓展设置用内容哈希做版本号，对不上回 409；面板普通保存在队里深合并。

@@ -13,6 +13,7 @@
 
 1. **「归属方」统一叫「集成」**：`bilibili/` 是一个集成，每个拓展是一个集成，内置的平台适配器也是。每个集成拿一个 `IntegrationContext { logger, state, secrets, redact, settings(schema), http, fetchImage, storeImage, reportProblem, resolveProblem, signal, onDispose }`；`SourceContext`、`PlatformAdapterContext` 在它上面加各自特有的。登记表的键类型叫 `IntegrationKey`，来源的 `SourceKey` 是它的一部分；`identity.sourceKey` 不变。拓展的 `activate(ctx)` 拿到它的 `IntegrationContext` 加各登记方法；来源与平台适配器特有的那一层（名单、上报、入站、自己的连接），和内置的一样经所登记实现的 `start(ctx)` 递进来，登记交回的把手只管注销（与 ADR-0024 决策 1、3「同一个接口」一致）。
 2. **设置只有一个词 `settings`**：`connection.config` → `settings`、`configSchema` → `settingsSchema`、`configFields` → `settingsFields`；`config` 只指存储（`config/` 目录、`ConfigStore`、`config-changed`、`bn.config.yaml`、`BN_CONFIG`）。`SourceContext` 加 `settings(schema)`（`get` 与 `onChange`），和拓展同一个用法。
+    - 🔗 2026-10-11（3a-39，`get()` 的形状主人定，只造在 `SourceContext` 上是主会话照「没有实现者的接口不造」定）：**`settings(schema)` 这一片只造在 `SourceContext` 上**（`packages/internal/src/source.ts`），`IntegrationContext` 与适配器的上下文上没有（今天的使用者只有 B 站来源；升到 `IntegrationContext` 等第一个不是来源的内置使用者）。交回的 `SettingsReader<T>` 的 **`get()` 回结果形状 `Result<{ settings: T }>`、永不抛**，读不懂回 `invalid` 并带逐条原因；`onChange` 在值变了、或读得懂与读不懂之间翻了时叫。这与拓展契约里 `ExtensionSettings<T>.get(): T | undefined` 不同形（读不懂的拓展根本不会跑着，用不着表达「读不懂」；内置来源的一样东西读不懂时来源还要握着把手等改好），所以「和拓展同一个用法」今天只在 `get` / `onChange` 两个成员的名字上成立。两个形状并不并，留到 3b 契约第 3 版把拓展那个改名成 `SettingsReader` 时再定。同一个集成可以交多份 zod、各读各的格（zod 的对象默认剥掉不认识的键）。被否：`get(): T` 加 `issues()`（多一个先看 `issues()` 再 `get()` 的次序，`get()` 还留一条会抛的路）；建把手时读不懂就抛（拿异常当控制流，来源还握不到把手等改好）。
 3. **设置按集成放**：集成的设置字段在登记集成时交（不挂在来源的描述符上，一个集成可能同时提供来源与适配器）。声明了 `settingsFields` 的内置集成在系统页各开一个 tab（今天只有 B 站；tab 名取它的 `label`，面板代码里不出现 `bilibili`），用通用的设置表单与对表门；拓展的设置只在拓展页，功能页面放指过去的入口；「运行」tab 只留核心参数。
 4. **设置坏了只停那一处，不挡开机**（修订 ADR-0021 决策 42）：
     - 拓展段、`bilibili` 段校验不过：只停那一个集成，运行状态记 `settings-invalid`；面板显示原值与原因并进问题框，改对了当场起。
@@ -20,11 +21,18 @@
     - 只有信封坏了（解析不了）才挡开机。
     - 生命周期闸是唯一的例外：只有 `start` / `activate` 期间读设置失败可以抛错中止启动，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。
     - 理由：BN 起不来时，桌面壳连续失败几次就把这一版判死、自愈退回 0.12，而且进不去面板改设置；Docker 则反复重启。面板登录凭据在 `bn.config.yaml`，不在这些段里，退回默认值不会把门打开。
+    - 🔗 2026-10-11（3a-39，主人 10-11 定；落法见 [phase-3a-plan.md](../1.0/phase-3a-plan.md)「3a-39 已落」）：
+        - **挡开机的只有核心那一份设置文件整份解析不了**（解析不了或顶层不是对象）。被否：任何一份解析不了都挡开机（一个拓展的文件写坏整台起不来）。订阅文件读坏、连接外壳坏同样挡开机，那是数据不是设置（规范 `settings-validation.md` 写明）。
+        - **`bilibili` 段停得比「那一个集成」更细：哪格坏停哪样**（主人原话「为什么只停动态而不是哪坏停哪」）。动态那格读不懂只停动态，登录检查那格读不懂只停定时的登录检查（登录本身照常），整个文件不是合法 JSON 两样都停；来源照常 `start`、照常在册，停着的那一样在问题表里（`dynamic_settings_invalid`、`login_check_settings_invalid`，只进表、不私聊），改好保存当场起。被否：整份算坏、只停动态（按代码结构切的，登录检查那格坏了停的却是动态）；登录检查那格坏了退默认。所以 `bilibili` 的运行状态不会是 `settings-invalid`。
+        - **「`start` 期间读设置失败可以抛、宿主接住转成 `settings-invalid`」对内置来源没造**：`get()` 回结果、不抛，来源不因设置在 `start` 里抛，宿主那个「接住」没有生产者。
+        - **「主人在面板上重存那一格就清掉」按比值判**（主人定，被否：按补丁里有没有这个键）：面板的补丁值没变也照发，所以保存后那一格的值与内存里跑着的默认值不同才算重存；主人想要的值恰好是默认值时要存两次（先改成别的，再改回来）。
+        - **拓展段**：设置文件不是合法 JSON 只停那一个拓展，状态记 `settings-invalid`，重存（写盘成功）才清、卸载时坏文件一起删；读盘本身出错（没权限、路径是个目录）仍挡开机。
 5. **内置集成走同一套生命周期**：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；运行状态只取 `running` / `failed` / `settings-invalid`，系统页、健康卡与 `status` 指令都读它。
     - 收尾的先后：宿主先调来源或适配器自己的 `stop()`，收掉它自己的活；再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾，替它收掉经 ctx 拿到的东西（websocket、定时器）。
     - 🔗 2026-10-11（3a-28）：B 站来源已走 `start(ctx)` / `stop()`（来源登记表 `await source.start(ctx)`、撤登记即 `stop()`，`stop()` 的函数体里不许有 `await`，让「来源先停、作品入口后关」成立）。**「内置集成自己在 `start(ctx)` 里用同一组登记方法把各接口登进表」这个终点这一片没做**：B 站的集成上下文仍由登录那套代码建好递进来，`compose.ts` 直接往来源登记表登记 B 站来源（`compose.ts` 提前到 3a-28 建，见 ADR-0021 决策 2 下的 🔗）；登记集成、建集成上下文、运行状态的其余取值留给 3a-40 与 3a-39。来源另外还直接拿着事件总线、给主人私聊的口、配置仓三样（分别归 3a-29、3a-30、3a-39）；`ctx.signal` / `ctx.onDispose` 跟的是集成（登录那套）的生命周期、不是来源的。
     - 🔗 2026-10-11（3a-29 B 站半）：登录那套已搬进 `bilibili/auth/`，仍由入口 `index.ts` 造并把集成上下文递给 `compose.ts`；**登录装配进 `compose.ts` 这一片没做**，随 3a-40（量过：要进就得把 `api` 等句柄交回入口，入口的 B 站替身数不降反升，等于提前做 3a-40 的「删 `engines.api` 句柄」）。上一条里来源直接拿着的三样，事件总线那一样 3a-29 没清：`auth-lost` / `auth-restored` 不换（主人 10-11 定），私聊主人那一处随 3a-30，直播与统计随 3b；`ctx.signal` / `ctx.onDispose` 仍跟登录那套的生命周期，3a-29 没统一，归 3a-40。
     - 🔗 2026-10-11（3a-30）：上面两条里「给主人私聊的口」已删（`BiliSourceDeps.push` 与 `compose.ts` 递私聊口的那一格没了，动态引擎、直播引擎不再有任何私聊口，`MasterNotifier` 不再听 `auth-lost`），B 站的问题改走来源上下文上的 `reportProblem`；事件总线那一样仍在（引擎还听 `auth-restored` / `auth-lost`），直播与统计随 3b。
+    - 🔗 2026-10-11（3a-39，主会话照「没有实现者的接口不造」定）：**内置来源的运行状态读口这一片没造**（来源登记表上没有 `status`，没有 `failed`、没有来源级的 `settings-invalid`），因为今天没有读者：`status` 指令读的是动态引擎的「上次抓取」，`/api/sources` 不下发运行状态，健康卡没接，作品设置读口的「来源在跑吗」只问登记表里有没有；B 站设置读不懂的那两样停着，进的是问题表。`settings-invalid` 这个状态值今天只有拓展装载器在产生（它自己那张表）。再看的时机是 3a-40 的来源 `health()`。
 6. **新中立包 `packages/http`**：
     - 从 B 站的实现里抽出请求客户端、cookie 罐与浏览器身份；每个集成一个客户端，经 `ctx.http` 拿；BN 自己的请求不用它。
     - cookie 由宿主自动存进该集成的 `secrets`。

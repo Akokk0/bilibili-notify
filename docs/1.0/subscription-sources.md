@@ -35,7 +35,7 @@ interface SourceHealth { summary: string }
 | 成员 | 必备？ | 谁调、什么时候 | 要点 |
 | --- | --- | --- | --- |
 | `descriptor` | 是 | 面板、锐评、模板随时读 | 见下一节 |
-| `start` / `stop` | 是 | 开机、关停、拓展启停 | `start` 拿到 ctx；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾。`start` 期间读设置失败可以抛错中止启动（生命周期闸，唯一的例外），宿主接住记成 `settings-invalid`，见「设置」 |
+| `start` / `stop` | 是 | 开机、关停、拓展启停 | `start` 拿到 ctx；`stop` 后不许再上报。收尾时宿主先调 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾。`start` 期间读设置失败可以抛错中止启动（生命周期闸，唯一的例外），宿主接住记成 `settings-invalid`，见「设置」。🔗 3a-39：内置来源这一支没造（读设置回结果、不抛，哪样读不懂停哪样），拓展照旧 |
 | `searchCreators` | 是 | 新建订阅弹窗打字时 | 「解析门」：输入框里是链接、id 还是名字都原样交进来，来源自己认；最多回 10 个 `CreatorCandidate`。失败回结果形状、不再靠抛：风控 `rate_limited`、没登录 `unauthorized`，文案由来源给、原话到面板；面板按 `code` + `message` 读一处（今天风控和没登录都报成 404） |
 | `fetchProfile` | 是 | 核心按资料刷新 cron 定时调；按 id 取人也是它 | 头像先 `ctx.fetchImage` 再交引用。失败：`not_found` 记成关于这条订阅的 `creator_not_found` 问题；其余当暂时失败，下一轮再来；整轮要不要刹车（撞了风控，本轮剩下的不再打）由来源自己决定。`creator_not_found` 记在谁名下、什么时候清，施工时定。原先设计的 `lookupCreator` 与它重复，删掉 |
 | `auth` | 否 | 系统 → 账号、`login` 指令 | 见「登录与账号」 |
@@ -87,7 +87,7 @@ interface MembershipTier {
 面板里不再有来源分叉：事实放描述符，句子由核心拼，来源只填几个词；加一个来源不用改面板。
 
 - `GET /api/sources` 回每个来源一条 `{ key, descriptor, has, status }`：
-  - `descriptor` 由服务端备好：B 站的写在 `bilibili/` 的代码里，由 `compose.ts` 静态登记完整的 `SourceDescriptor`，B 站设置坏了（集成没起）照样下发；拓展的取清单 `contributes.subscription`；装上就有，停用、启动失败、设置不合法时照样有。
+  - `descriptor` 由服务端备好：B 站的写在 `bilibili/` 的代码里，由 `compose.ts` 静态登记完整的 `SourceDescriptor`，B 站设置坏了照样下发（3a-39 落成后来源本来就照常在册，只停读不懂的那一样）；拓展的取清单 `contributes.subscription`；装上就有，停用、启动失败、设置不合法时照样有。
   - `has { auth, liveStatus, preview }`：来源实现了 `auth` / `fetchLiveStatus` / `fetchPreview` 中的哪些，由宿主推算，不让来源自报。
   - `status`：该集成运行状态的取值（内置集成只取 `running` / `failed` / `settings-invalid`，见「健康与运行状态」）。
 - 面板进来拉一次进缓存，订阅按 `identity.sourceKey` 取；`extension-status-changed` 时缓存失效。加载中「不知道」不等于「没有」，按中性默认画。
@@ -249,7 +249,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站 0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
 | `state` / `secrets` 的写、删与 `batch` | 返回结果形状、不抛：超上限或写了 `http.` 前缀回 `invalid`，磁盘写失败回 `unavailable` |
 | `redact` | 临时凭据按值登记脱敏；存进 `secrets` 的值自动覆盖，不用再登记 |
-| `settings(schema)` | 和拓展同一个用法（`get` 与 `onChange`）：B 站拿 `bilibili` 段，拓展拿 `extensions.<id>` 段；校验就发生在这一步，见「设置」。交回的读取把手叫 `SettingsReader<T>`（原拓展契约的 `ExtensionSettings<T>`） |
+| `settings(schema)` | 和拓展同一个用法（`get` 与 `onChange`）：B 站拿 `bilibili` 段，拓展拿 `extensions.<id>` 段；校验就发生在这一步，见「设置」。交回的读取把手叫 `SettingsReader<T>`（原拓展契约的 `ExtensionSettings<T>`）。🔗 现状（3a-39，10-11）：今天**只造在 `SourceContext` 上**（`packages/internal/src/source.ts`），`SettingsReader<T>` 是 `{ get(): Result<{ settings: T }>; onChange(fn): Disposable }`：`get()` 每次现读现判、**永不抛**，读得懂回过了那份 zod 的值，读不懂回 `invalid` 并带逐条原因（整个设置文件读不懂时只有一条、不带 `path`）；`onChange` 在值变了、或读得懂与读不懂之间翻了时叫，别的集成的设置动了不叫。**可以交多份 zod**，各读各的格（zod 的对象默认剥掉不认识的键），B 站来源交了三份：动态那格（`dynamicCron`，比读盘 schema 多一道「能解析」）、登录检查那格（`healthCheckMinutes`），外加一份只为分辨「面板此刻显示的是默认值还是盘上原文」的动态那格（没有「能解析」那一道）。把手随来源上下文收掉自动摘，来源不必在 `stop()` 里记得收。拓展契约里的 `ExtensionSettings<T>.get(): T | undefined` 没动，两个形状并不并留到 3b 改名时再定 |
 | `http` | 见下「请求客户端」 |
 | `signal` / `onDispose` | 集成停下时 `signal` 中止在途调用、`onDispose` 的回调收尾；先后是宿主先调实现自己的 `stop()`，再中止 `signal`、跑 `onDispose` 登记的收尾（ADR-0025 决策 5）；内置集成与拓展走同一套生命周期 |
 | `logger` | 来源名写进日志行已有的 `name` 字段（`bilibili` 或拓展 id），不拼进正文；面板日志页可按来源筛 |
@@ -276,6 +276,10 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 设置只有一个词 `settings`；`config` 只指存储（`config/` 目录、`ConfigStore`、`bn.config.yaml`）。
 - **按集成放**：声明了 `settingsFields` 的内置集成在系统页各开一个 tab（今天只有 B 站；tab 名取它的 `label`，面板代码里不出现 `bilibili`），用通用的设置表单与对表门；拓展的设置只在拓展页，功能页面放指过去的入口；「运行」tab 只留核心参数。设置字段挂在集成的登记上，不挂在 `SourceDescriptor` 上（一个集成可能同时提供来源与适配器，ADR-0025 决策 3、ADR-0027 决策 6）：B 站的 `settingsFields` 在 `compose.ts` 登记集成时交（脸取来源的描述符），拓展的写在清单里。面板从哪个路由拿集成的设置字段，施工时定。
 - **坏了只停那一处**：`bilibili` 段、拓展段校验不过，只停那一个集成，运行状态记 `settings-invalid`；面板显示原值与原因并进问题框，改对了当场起；BN 照常开机。校验发生在 `start` 里调 `settings(schema)` 时：只有 `start` / `activate` 期间读设置失败可以抛错中止启动，宿主接住转成 `settings-invalid`；运行中的 `get()` 不抛。
+- 🔗 **现状（3a-39，10-11）**：
+  - **核心**：只有核心那份设置文件整份解析不了才挡开机；一格坏了只那一格退默认、进问题表（`settings_invalid`，几格合成一条、不私聊）。订阅文件、推送目标文件、连接外壳读坏也挡开机（数据不是设置）。
+  - **`bilibili` 设置**：不是「停整个集成、运行状态记 `settings-invalid`」，而是**哪格坏停哪样**（主人定）：动态那格读不懂停动态，登录检查那格读不懂停定时的登录检查（登录本身照常，失效仍由请求撞 `-101` 报上来），整个文件不是合法 JSON 两样都停。**来源照常 `start`、照常在册**，`start` 不因设置抛，宿主那个「接住转成 `settings-invalid`」没造；读到的是 `SettingsReader.get()` 的结果，读不懂就报 `dynamic_settings_invalid` / `login_check_settings_invalid`（只进表、不私聊），握着把手等 `onChange`，改好保存当场起（先起成功、后清问题）。盘上一条字符串但解析不了的 cron 读盘算好的、面板显示那条原文，动态读者比读盘严一道「能解析」，读不过也算动态那格坏了。
+  - **拓展**：设置文件不是合法 JSON 只停那一个拓展（`settings-invalid`）；读不懂的拓展照旧不会跑着。
 - 理由：BN 起不来时，桌面壳连续失败几次就把这一版判死、自愈退回 0.12，而且进不去面板改设置；Docker 则反复重启。
 
 ### 问题上报
@@ -291,7 +295,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - B 站也走它：比如「登录失效」以 `notify` 上报、文案自己写。B 站内部按因果分层，只报最上面那一条开着的根问题：未登录 → 风控 → 各项请求失败，下面的只记日志；根问题按状态报（开机就没登录也报），清掉后下一层照常报、停掉的监听拉起来；不同报告方互不遮挡（ADR-0025 决策 11 下 10-03 的 🔗）。关注同步失败照旧报 `follow_failed`，文案沿用现在的「未关注该 UP —— 收不到动态（原因）」（原因就是原来的 `followError`），补关注成功就 `resolveProblem` 清掉；订阅卡上的红色警告文字不变。它和别的问题一样只在内存、不再存盘，重启后由下一轮关注同步重报。
 - 来源级问题不再走 `engine-error`。
 - 🔗 **现状（3a-30，10-11）**：
-  - **只造在 `SourceContext` 上**：`reportProblem({ externalId?, code, message, notify?, recoveryMessage? })` 与 `resolveProblem({ externalId?, code, notify? })`；`IntegrationContext` 与 `PlatformAdapterContext` 上的两个还没造（3a-39 是下一个要报的）。两个都是 `void`。
+  - **只造在 `SourceContext` 上**：`reportProblem({ externalId?, code, message, notify?, recoveryMessage? })` 与 `resolveProblem({ externalId?, code, notify? })`；`IntegrationContext` 与 `PlatformAdapterContext` 上的两个还没造（3a-39 是下一个要报的）。两个都是 `void`。🔗 3a-39 报了设置读不懂的三条问题（见 data-model.md「问题表」），**仍没造这两个成员**：核心设置那条由 `runtime/bootstrap.ts` 直接写问题表，B 站那两条走 `SourceContext`；等第一个在 `start(ctx)` 之外要报的集成再造。
   - **`recoveryMessage`**（上面没有这一格）：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法接当初真发出去的那句原文。**`resolveProblem` 的 `notify`**（上面没有）：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
   - **宿主这一步**（`subscriptions/source-context.ts`）：来源已停下、`code` 不是 snake、`message` 或 `recoveryMessage` 是空白、`externalId` 是空串的一律丢弃并记一行 error（内置来源被拒就是 BN 的 bug）；带 `externalId` 的按身份展开成每一条订阅、停用着的也照记，一条订阅都没有就记 debug 不收。被拒的没有记进 `reportDiscrepancies`（这一片的上报方只有内置的 B 站，那张表是拓展那一支的展示面）。
   - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊与「已恢复」各一张 60 秒的节流表，键都是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个。
@@ -300,7 +304,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 ### 健康与运行状态
 
-- 内置集成的运行状态只取 `running` / `failed` / `settings-invalid`；内置集成与拓展走同一套生命周期（`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时先调 `stop()`，再中止 `signal`、跑 `onDispose`）。系统页、健康卡、`status` 指令与 `/api/sources` 的 `status` 都读它。
+- 内置集成的运行状态只取 `running` / `failed` / `settings-invalid`；内置集成与拓展走同一套生命周期（`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时先调 `stop()`，再中止 `signal`、跑 `onDispose`）。系统页、健康卡、`status` 指令与 `/api/sources` 的 `status` 都读它。🔗 3a-39：内置来源的运行状态读口还没造（没有读者），`failed` 没造，`settings-invalid` 今天只有拓展装载器产生；B 站设置读不懂时来源仍是在册的，停着的那一样在问题表里。再看的时机是 3a-40 的 `health()`。
 - `health?()` 交 `SourceHealth = { summary: string }`，只给健康卡与 `status` 指令一行字。
 - **订阅卡的「暂停 / 不可用」不看 `health()`**：看运行状态（「{label} 没在跑」）与问题表里关于这条订阅的条目。
 - 健康卡分两排：核心（持久化、订阅、推送、卡片、AI）与集成（每个集成一格；推送适配器有连接才占格；同时供来源与适配器的拓展也只占一格）。集成格的灯按运行状态与问题分四色（绿正常、黄有问题、红失败或设置不合法、灰停用）；小字取 `health().summary`，没实现就写运行状态，登录态由宿主从 `AuthState` 补。
