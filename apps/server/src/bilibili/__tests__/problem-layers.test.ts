@@ -176,8 +176,14 @@ describe("压与抹", () => {
 			code: "live_monitor_stopped",
 			message: "停了",
 			notify: true,
+			lasting: false,
 		});
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		sink.resolveProblem.mockClear();
 
 		set(EXPIRED);
@@ -192,14 +198,24 @@ describe("压与抹", () => {
 		const { sink, layers } = setup(EXPIRED);
 		sink.reportProblem.mockClear();
 		layers.reportRisk("dynamic");
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		expect(sink.reportProblem).not.toHaveBeenCalled();
 	});
 
 	it("未登录开着时存的东西不许等它清掉后自己冒出来:清掉再重新接上,表里只有现状(空)", () => {
 		const { sink, set, layers } = setup(EXPIRED);
 		layers.reportRisk("dynamic");
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		set(IN);
 		layers.detach();
 		sink.reportProblem.mockClear();
@@ -209,12 +225,18 @@ describe("压与抹", () => {
 
 	it("风控一开:第三层全清空并静默抹掉,再报风控(带私聊)", () => {
 		const { sink, layers } = setup(IN);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
 			message: "y",
 			notify: true,
+			lasting: false,
 		});
 		sink.reportProblem.mockClear();
 		sink.resolveProblem.mockClear();
@@ -235,7 +257,12 @@ describe("压与抹", () => {
 		const { sink, layers } = setup(IN);
 		layers.reportRisk("dynamic");
 		sink.reportProblem.mockClear();
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		expect(sink.reportProblem).not.toHaveBeenCalled();
 		layers.resolveRisk("dynamic");
 		expect(sink.reportProblem).not.toHaveBeenCalled();
@@ -266,13 +293,24 @@ describe("压与抹", () => {
 describe("第三层:各项请求失败", () => {
 	it("每次失败都报(幂等):来源级与订阅级各按 externalId + code 一条,带私聊", () => {
 		const { sink, layers } = setup(IN);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "码 -509", notify: true });
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "码 -510", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "码 -509",
+			notify: true,
+			lasting: false,
+		});
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "码 -510",
+			notify: true,
+			lasting: false,
+		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
 			message: "停了",
 			notify: true,
+			lasting: false,
 		});
 		expect(sink.reportProblem.mock.calls.map(([p]) => p)).toEqual([
 			{ code: "dynamic_fetch_failed", message: "码 -509", notify: true },
@@ -283,12 +321,18 @@ describe("第三层:各项请求失败", () => {
 
 	it("带不带私聊由调用方定:notify 原样带给核心,补报时带的是存下的那一格", () => {
 		const { sink, layers } = setup(IN);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "不私聊", notify: false });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "不私聊",
+			notify: false,
+			lasting: false,
+		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
 			message: "私聊",
 			notify: true,
+			lasting: false,
 		});
 		expect(sink.reportProblem.mock.calls.map(([p]) => p.notify)).toEqual([false, true]);
 
@@ -308,9 +352,15 @@ describe("第三层:各项请求失败", () => {
 			code: "live_monitor_stopped",
 			message: "停了",
 			notify: true,
+			lasting: true,
 			recoveryMessage: "连上啦",
 		});
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: false });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: false,
+			lasting: false,
+		});
 		expect(sink.reportProblem.mock.calls[0]?.[0]).toMatchObject({ recoveryMessage: "连上啦" });
 		expect("recoveryMessage" in (sink.reportProblem.mock.calls[1]?.[0] ?? {})).toBe(false);
 
@@ -345,12 +395,18 @@ describe("第三层:各项请求失败", () => {
 
 	it("resolveFailure:缺省是普通的清;notify: false 才静默", () => {
 		const { sink, layers } = setup(IN);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
 			message: "y",
 			notify: true,
+			lasting: false,
 		});
 		layers.resolveFailure({ code: "dynamic_fetch_failed" });
 		layers.resolveFailure({ externalId: "7", code: "live_monitor_stopped" }, { notify: false });
@@ -362,19 +418,188 @@ describe("第三层:各项请求失败", () => {
 
 	it("清掉之后同一个码再来一次:表里要有(不被「已报过」吞掉)", () => {
 		const { sink, set, layers } = setup(IN);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		set(EXPIRED);
 		set(IN);
 		sink.reportProblem.mockClear();
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		expect(sink.reportProblem).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * `lasting`:报一次就不再报、直到有人去修的(如直播间停止监听)。高层开着时存下但不报,高层清掉那一刻报上去;
+ * 高层开起来时不清空它(只把表里已有的静默抹掉);它的主人 `resolveFailure` 时照常删。
+ * `lasting: false`(会自己再报的)的行为与之前逐条一样,上面几组已经钉着。
+ */
+describe("第三层的 lasting", () => {
+	const stopped = (over: Partial<Parameters<ProblemLayers["reportFailure"]>[0]> = {}) => ({
+		externalId: "7",
+		code: "live_monitor_stopped",
+		message: "停了",
+		notify: true,
+		lasting: true,
+		recoveryMessage: "连上啦",
+		...over,
+	});
+
+	it("风控开着时报 lasting 的:表里没有它;风控清了:报上去,带它自己的 notify 与 recoveryMessage", () => {
+		const { sink, layers } = setup(IN);
+		layers.reportRisk("dynamic");
+		sink.reportProblem.mockClear();
+
+		layers.reportFailure(stopped({ notify: false }));
+		expect(sink.reportProblem).not.toHaveBeenCalled();
+
+		layers.resolveRisk("dynamic");
+		expect(sink.resolveProblem).toHaveBeenCalledWith({ code: "risk_controlled" });
+		expect(sink.reportProblem).toHaveBeenCalledTimes(1);
+		expect(sink.reportProblem).toHaveBeenCalledWith({
+			externalId: "7",
+			code: "live_monitor_stopped",
+			message: "停了",
+			notify: false,
+			recoveryMessage: "连上啦",
+		});
+	});
+
+	it("风控压着时被主人 resolveFailure:风控清了也不报,对核心也什么都没说", () => {
+		const { sink, layers } = setup(IN);
+		layers.reportRisk("dynamic");
+		layers.reportFailure(stopped());
+		sink.resolveProblem.mockClear();
+
+		layers.resolveFailure({ externalId: "7", code: "live_monitor_stopped" }, { notify: false });
+		expect(sink.resolveProblem).not.toHaveBeenCalled();
+
+		sink.reportProblem.mockClear();
+		layers.resolveRisk("dynamic");
+		expect(sink.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("未登录压着:报的 lasting 的存下不报;登录好了才报", () => {
+		const { sink, layers, set } = setup(EXPIRED);
+		sink.reportProblem.mockClear();
+		layers.reportFailure(stopped());
+		expect(sink.reportProblem).not.toHaveBeenCalled();
+
+		set(IN);
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["live_monitor_stopped"]);
+	});
+
+	it("未登录压着时被主人 resolveFailure:登录好了也不报", () => {
+		const { sink, layers, set } = setup(EXPIRED);
+		layers.reportFailure(stopped());
+		layers.resolveFailure({ externalId: "7", code: "live_monitor_stopped" }, { notify: false });
+		sink.reportProblem.mockClear();
+		set(IN);
+		expect(sink.reportProblem).not.toHaveBeenCalled();
+	});
+
+	it("未登录开起来:表里已有的 lasting 静默抹掉,但手里留着;登录好了重新报上去", () => {
+		const { sink, layers, set } = setup(IN);
+		layers.reportFailure(stopped());
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: false,
+			lasting: false,
+		});
+		sink.reportProblem.mockClear();
+		sink.resolveProblem.mockClear();
+
+		set(EXPIRED);
+		expect(sink.resolveProblem.mock.calls.map(([p]) => [p.code, p.notify])).toEqual([
+			["live_monitor_stopped", false],
+			["dynamic_fetch_failed", false],
+		]);
+
+		sink.reportProblem.mockClear();
+		set(IN);
+		// 只有 lasting 的回来了;会自己再报的那条不冒回来
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["live_monitor_stopped"]);
+	});
+
+	it("风控开起来:表里已有的 lasting 静默抹掉,手里留着;风控清了重新报上去", () => {
+		const { sink, layers } = setup(IN);
+		layers.reportFailure(stopped());
+		sink.resolveProblem.mockClear();
+
+		layers.reportRisk("dynamic");
+		expect(sink.resolveProblem).toHaveBeenCalledWith({
+			externalId: "7",
+			code: "live_monitor_stopped",
+			notify: false,
+		});
+
+		sink.reportProblem.mockClear();
+		layers.resolveRisk("dynamic");
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["live_monitor_stopped"]);
+	});
+
+	it("两层都压过:未登录清了而风控还开着,就继续压着(登录开时风控被清空,所以只有未登录一层)", () => {
+		const { sink, layers, set } = setup(IN);
+		layers.reportRisk("dynamic");
+		layers.reportFailure(stopped());
+		set(EXPIRED); // 风控被抹掉,第三层仍压着
+		sink.reportProblem.mockClear();
+		set(IN);
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["live_monitor_stopped"]);
+	});
+
+	it("压着的 lasting 在 attach 补报时不报(只报最上面一层),压着的东西清掉后才报", () => {
+		const { sink, layers } = setup(IN, false);
+		layers.reportRisk("dynamic");
+		layers.reportFailure(stopped());
+		layers.attach(sink);
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["risk_controlled"]);
+
+		sink.reportProblem.mockClear();
+		layers.resolveRisk("dynamic");
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["live_monitor_stopped"]);
+	});
+
+	it("没压着的 lasting 当场报,和别的第三层一样;同键再报只换文案", () => {
+		const { sink, layers } = setup(IN);
+		layers.reportFailure(stopped());
+		layers.reportFailure(stopped({ message: "换了原因" }));
+		expect(sink.reportProblem.mock.calls.map(([p]) => p.message)).toEqual(["停了", "换了原因"]);
+	});
+
+	it("lasting: false 与之前一样:高层开着时不存,清掉后也不冒出来", () => {
+		const { sink, layers } = setup(IN);
+		layers.reportRisk("dynamic");
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: false,
+			lasting: false,
+		});
+		sink.reportProblem.mockClear();
+		layers.resolveRisk("dynamic");
+		expect(sink.reportProblem).not.toHaveBeenCalled();
 	});
 });
 
 describe("先造、后接、补报", () => {
 	it("接上前报的:接上时整份补报,只补最上面一层(风控压住第三层)", () => {
 		const { sink, layers } = setup(IN, false);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		layers.reportRisk("dynamic");
 		expect(sink.reportProblem).not.toHaveBeenCalled();
 
@@ -384,12 +609,18 @@ describe("先造、后接、补报", () => {
 
 	it("没有更高层:第三层逐条补报", () => {
 		const { sink, layers } = setup(IN, false);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
 			message: "y",
 			notify: true,
+			lasting: false,
 		});
 		layers.attach(sink);
 		expect(sink.reportProblem.mock.calls.map(([p]) => p.code).sort()).toEqual([
@@ -407,7 +638,12 @@ describe("先造、后接、补报", () => {
 
 	it("接上之前开了又清掉的不会出现", () => {
 		const { sink, layers } = setup(IN, false);
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "x",
+			notify: true,
+			lasting: false,
+		});
 		layers.resolveFailure({ code: "dynamic_fetch_failed" });
 		layers.attach(sink);
 		expect(sink.reportProblem).not.toHaveBeenCalled();
@@ -458,7 +694,12 @@ describe("核心那头抛错不往外传", () => {
 		expect(() => {
 			layers.reportRisk("dynamic");
 			layers.resolveRisk("dynamic");
-			layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: true });
+			layers.reportFailure({
+				code: "dynamic_fetch_failed",
+				message: "x",
+				notify: true,
+				lasting: false,
+			});
 			layers.resolveFailure({ code: "dynamic_fetch_failed" });
 			fake.set(EXPIRED);
 			fake.set(IN);

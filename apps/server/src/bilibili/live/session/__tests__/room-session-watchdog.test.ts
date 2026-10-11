@@ -10,10 +10,17 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { PROBLEM_TEXTS } from "../../../problem-texts";
 import type { LiveEvent } from "../../protocol/events.js";
 import type { SubItemView } from "../../push-like";
 import { LiveRoomAccessDeniedError, type RoomContext } from "../room-helpers";
 import { LIVE_WS_STALE_MS, RoomSession } from "../room-session";
+import {
+	expectedRestrictedFailure,
+	expectedStoppedFailure,
+	liveProblemsCtx,
+	makeLiveProblems,
+} from "./support/live-problems";
 
 type EventFunnel = (ev: LiveEvent) => void | Promise<void>;
 type WatchdogTestSession = RoomSession & {
@@ -65,6 +72,7 @@ function makeMockCtx(): {
 		emitEngineError: ReturnType<typeof vi.fn>;
 		emitLiveState: ReturnType<typeof vi.fn>;
 		stopMonitoring: ReturnType<typeof vi.fn>;
+		problems: ReturnType<typeof makeLiveProblems>;
 		warn: ReturnType<typeof vi.fn>;
 		lastHandler: EventFunnel | undefined;
 		intervalDisposeCount: () => number;
@@ -129,6 +137,7 @@ function makeMockCtx(): {
 		emitEngineError: vi.fn(),
 		emitLiveState: vi.fn(),
 		stopMonitoring: vi.fn(),
+		problems: makeLiveProblems(),
 		warn,
 		get lastHandler() {
 			return lastHandler;
@@ -163,6 +172,7 @@ function makeMockCtx(): {
 		emitEngineError: m.emitEngineError,
 		emitLiveState: m.emitLiveState,
 		stopMonitoring: m.stopMonitoring,
+		...liveProblemsCtx(m.problems),
 		livePushTimerManager: new Map<string, () => void>(),
 		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
 		push: { sendPrivateMsg: async () => {}, push: async () => {} },
@@ -300,6 +310,9 @@ describe("RoomSession live WS watchdog", () => {
 		await session.bootstrap();
 
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(1); // 仅 bootstrap 建 listener
+		expect(m.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+		);
 		expect(m.closeListener).toHaveBeenCalledTimes(1);
 		expect(m.timeoutDelays()).toEqual([]); // closed 事件被 cancel 挡住,不排重连
 		expect(m.intervals).toHaveLength(0); // info 失败时 watchdog 不启动
@@ -320,6 +333,9 @@ describe("RoomSession live WS watchdog", () => {
 			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
 			"r1",
 		]);
+		expect(m.problems.reportFailure).toHaveBeenCalledWith(
+			expectedRestrictedFailure("u1", "r1", m.stopMonitoring.mock.calls[0]?.[0]),
+		);
 		expect(m.timeouts).toHaveLength(0);
 		expect(m.intervals).toHaveLength(0);
 	});
@@ -335,7 +351,12 @@ describe("RoomSession live WS watchdog", () => {
 		for (let i = 0; i < 5; i++) await m.runTimeouts();
 
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(5);
-		expect(m.emitEngineError).toHaveBeenCalledTimes(1);
+		expect(m.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(m.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+		);
+		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
+		expect(m.emitEngineError).not.toHaveBeenCalled();
 		expect(m.intervalDisposeCount()).toBe(1);
 		await m.runIntervals();
 		expect(m.startLiveRoomListener).toHaveBeenCalledTimes(5);
@@ -360,6 +381,9 @@ describe("RoomSession live WS watchdog", () => {
 			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
 			"r1",
 		]);
+		expect(m.problems.reportFailure).toHaveBeenCalledWith(
+			expectedRestrictedFailure("u1", "r1", m.stopMonitoring.mock.calls[0]?.[0]),
+		);
 		expect(m.intervalDisposeCount()).toBe(1);
 		expect(m.timeoutDelays()).toEqual([]);
 		await m.runIntervals();

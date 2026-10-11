@@ -10,6 +10,7 @@ import {
 	RiskControlError,
 } from "../../api/index.js";
 import { fetchLiveCover } from "../../images";
+import { PROBLEM_TEXTS } from "../../problem-texts";
 import { liveCardInputFromRoomInfo } from "../live-card-input";
 import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "../live-notify";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
@@ -164,14 +165,13 @@ export class RoomContext extends RoomContextBase {
 		} catch (e) {
 			const message = (e as Error).message ?? String(e);
 			this.logger.warn(`[conn] 获取个人信息异常，房间 [${roomId}]：${message}`);
-			this.emitEngineError(`[${roomId}] 获取个人信息异常：${message}`);
+			// 只记日志:后果(建连没建起来 / 重连用尽)由随后那条「停止监听」去报,单独报一条没人会清。
 			return false;
 		}
 		if (mySelfInfo.code !== 0 || !mySelfInfo.data) {
 			this.logger.warn(
 				`[conn] 获取个人信息失败 code=${mySelfInfo.code}，无法创建直播间 [${roomId}] 连接`,
 			);
-			this.emitEngineError(`[${roomId}] 获取个人信息失败 code=${mySelfInfo.code}`);
 			return false;
 		}
 		// 真 buvid3(设备指纹)进认证包;cookie 罐里那条是占位假值。失败返回空串,
@@ -223,17 +223,21 @@ export class RoomContext extends RoomContextBase {
 		return hosts;
 	}
 
-	/** Fetch live-room info; on failure, notifies admin + tears down this room. */
-	async getLiveRoomInfo(roomId: string): Promise<LiveRoomResponse["data"] | undefined> {
+	/**
+	 * Fetch live-room info; on failure, reports "这个房间不监听了" to the problem table + tears down this room.
+	 * `uid` 是这个房间的主人,问题挂在他的订阅名下。
+	 */
+	async getLiveRoomInfo(
+		roomId: string,
+		uid: string,
+	): Promise<LiveRoomResponse["data"] | undefined> {
 		try {
 			const content = await this.api.fetchLiveRoomInfo(roomId);
 			return content.data;
 		} catch (e) {
 			// Q3 carve-out:catch 内『已停止该房间监测』—— 非自愈、需最终介入,留 error。
 			this.logger.error(`[conn] 获取直播间信息失败：${(e as Error).message}`);
-			await this.push.sendPrivateMsg(
-				`获取直播间 [${roomId}] 信息失败：${(e as Error).message}，已停止该房间监测`,
-			);
+			this.reportMonitorStopped(uid, roomId, PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.stopMonitoring("获取直播间信息失败", roomId);
 			return undefined;
 		}

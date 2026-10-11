@@ -852,6 +852,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			},
 			sources: runtime.sourceRegistry,
 			problems: runtime.problems,
+			// 直播引擎由 createEngines 造、早于来源登记:B 站的分层上报器只能经入口递进去(3b 直播并进来源时撤掉)。
+			biliProblems: builtins.bilibili.problems,
 		});
 		// 内置来源(B 站)由 `compose.ts` 造并登记,登记即 start;关停时引擎自己先停它再关作品入口。
 		await builtins.registerSources(engines);

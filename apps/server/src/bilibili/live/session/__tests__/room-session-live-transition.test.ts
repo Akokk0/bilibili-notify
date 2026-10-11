@@ -18,10 +18,12 @@
 
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { PROBLEM_TEXTS } from "../../../problem-texts";
 import type { LiveEvent } from "../../protocol/events.js";
 import type { SubItemView } from "../../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import { expectedStoppedFailure, liveProblemsCtx, makeLiveProblems } from "./support/live-problems";
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private/protected
 type AnySession = any;
@@ -101,7 +103,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		registerRoom: vi.fn(),
 		closeListener: vi.fn(),
 		stopMonitoring: vi.fn(),
-		sendPrivateMsg: vi.fn(async () => {}),
+		problems: makeLiveProblems(),
 		getLiveRoomInfo: vi.fn(async () => ({ ...LIVE_ROOM })),
 		startLiveRoomListener: vi.fn(async () => true),
 		intervalDisposes: () => intervalDisposes,
@@ -124,7 +126,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		livePushTimerManager: new Map<string, () => void>(),
 		logSideEffectState: () => {},
 		danmakuCollector: { clear: mocks.clear, registerRoom: mocks.registerRoom },
-		push: { sendPrivateMsg: mocks.sendPrivateMsg, push: async () => {} },
+		push: { push: async () => {} },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",
 			renderLiveStreaming: () => "正在直播",
@@ -137,6 +139,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		sendLiveNotifyCard: mocks.sendLiveNotifyCard,
 		closeListener: mocks.closeListener,
 		stopMonitoring: mocks.stopMonitoring,
+		...liveProblemsCtx(mocks.problems),
 		getLiveRoomInfo: mocks.getLiveRoomInfo,
 		startLiveRoomListener: mocks.startLiveRoomListener,
 		...over,
@@ -332,10 +335,10 @@ describe("onLiveStart 准备期间到达的下播事件", () => {
 });
 
 describe("退避耗尽彻底放弃监听", () => {
-	it("解除周期复推定时器 —— 否则轮询兜底每小时私聊一次且永不停", async () => {
+	it("解除周期复推定时器 —— 否则轮询兜底每小时记一行 warn 且永不停", async () => {
 		// 放弃路径把 `liveStatus` 翻成 false 但没解定时器:下一次 tick 看到 live_status===0,
-		// 发一条「已下播但未收到 WS 下播事件」私聊,再调 triggerLiveEnd → handleLiveEnd
-		// 却在 `!liveStatus` 守卫处提前返回,走不到解除定时器那行。于是同一条私聊每小时
+		// 记一行「已下播但未收到 WS 下播事件」warn,再调 triggerLiveEnd → handleLiveEnd
+		// 却在 `!liveStatus` 守卫处提前返回,走不到解除定时器那行。于是同一行 warn 每小时
 		// 重复一次,直到进程重启。
 		const { ctx, mocks } = makeCtx();
 		mocks.startLiveRoomListener.mockRejectedValue(new Error("network down"));
@@ -349,7 +352,12 @@ describe("退避耗尽彻底放弃监听", () => {
 		await mocks.flushAll();
 		await giveUp;
 
-		expect(mocks.emitEngineError).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+		);
+		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
+		expect(mocks.emitEngineError).not.toHaveBeenCalled();
 		expect(session.isLive).toBe(false);
 		expect(mocks.intervalDisposes()).toBeGreaterThanOrEqual(1);
 		expect(ctx.livePushTimerManager.size).toBe(0);
@@ -401,7 +409,12 @@ describe("退避耗尽彻底放弃监听", () => {
 		await mocks.flushAll();
 		await giveUp;
 
-		expect(mocks.emitEngineError).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+		);
+		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
+		expect(mocks.emitEngineError).not.toHaveBeenCalled();
 		expect(mocks.sendLiveNotifyCard).not.toHaveBeenCalled();
 	});
 });

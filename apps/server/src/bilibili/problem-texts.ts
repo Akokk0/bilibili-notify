@@ -39,6 +39,15 @@ export const PROBLEM_TEXTS = {
 			`主人，直播间 [${roomId}] 的监听停了：${reason}。把这位 UP 的直播相关开关全部关掉再打开，或者重启一下，女仆就能重新连上。`,
 		recovery: (roomId: string) => `主人，好消息：直播间 [${roomId}] 的监听已经恢复啦。`,
 	},
+	/** 直播间停止监听时填进 `liveMonitorStopped.text` 的原因(调用点各取一条)。 */
+	liveStopReasons: {
+		/** 取直播间信息失败(含开播 / 下播 / 周期那几拍取信息失败)。 */
+		roomInfo: "取直播间信息失败",
+		/** 弹幕连接没建起来。 */
+		danmakuConnect: "弹幕连接建立失败",
+		/** 重连的秒级退避用完,放弃监听。 */
+		gaveUp: "连接持续失败，重试 5 次后放弃",
+	},
 	/** 直播间受限(加密、付费、测试房、没权限):私聊 + 进表。`reason` 是 B 站给的原因。 */
 	liveRoomRestricted: {
 		notify: true,

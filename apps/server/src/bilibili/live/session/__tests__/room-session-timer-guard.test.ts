@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SubItemView } from "../../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import { liveProblemsCtx, makeLiveProblems } from "./support/live-problems";
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private/protected
 type AnySession = any;
@@ -67,6 +68,7 @@ function makeCtx(opts?: { disposed?: boolean }) {
 		isDisposed: () => opts?.disposed ?? false,
 		livePushTimerManager,
 		logSideEffectState: vi.fn(),
+		...liveProblemsCtx(makeLiveProblems()),
 	} as unknown as RoomContext;
 	return { ctx, livePushTimerManager, intervals, intervalDispose };
 }

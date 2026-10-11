@@ -27,6 +27,7 @@ import type { LiveEvent } from "../../protocol/events.js";
 import type { SubItemView } from "../../push-like";
 import type { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import { liveProblemsCtx, makeLiveProblems } from "./support/live-problems";
 
 // biome-ignore lint/suspicious/noExplicitAny: 测试需访问 private/protected
 type AnySession = any;
@@ -111,6 +112,7 @@ function makeCtx(): { ctx: RoomContext; m: Mocks } {
 		collectsDanmaku: vi.fn(() => false),
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
 		stopMonitoring: vi.fn(),
+		...liveProblemsCtx(makeLiveProblems()),
 		emitLiveState: vi.fn(),
 		emitEngineError: vi.fn(),
 		emitViewers: m.emitViewers,

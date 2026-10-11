@@ -6,6 +6,7 @@ import {
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import type { LiveRoomResponse } from "../../api/index.js";
+import { PROBLEM_TEXTS } from "../../problem-texts";
 import { liveTimeToIso } from "../live-card-input";
 import type { LiveEvent } from "../protocol/events.js";
 import {
@@ -18,6 +19,7 @@ import { parseStopWords } from "../recap/stop-words";
 import { buildRoomLink } from "../template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
 import { liveEndGraceMinutes, rotateLiveCover } from "./live-settings";
+import { liveRiskPath, MONITOR_STOPPED_CODE, ROOM_RESTRICTED_CODE } from "./room-context";
 import {
 	LiveRoomAccessDeniedError,
 	LiveRoomPreflightBlockedError,
@@ -126,6 +128,16 @@ export abstract class RoomSessionBase {
 	constructor(ctx: RoomContext, sub: SubItemView) {
 		this.ctx = ctx;
 		this.sub = sub;
+	}
+
+	/** 这位 UP 这一路的风控清掉:这一次预检没被拦(成功、别的失败都算),或会话结束。 */
+	protected resolveRisk(): void {
+		this.ctx.problems.resolveRisk(liveRiskPath(this.sub.uid));
+	}
+
+	/** 这个房间不监听了:报一条订阅级的「停止监听」。 */
+	protected reportStopped(reason: string): void {
+		this.ctx.reportMonitorStopped(this.sub.uid, this.sub.roomId, reason);
 	}
 
 	/** 本房间对外推送的串行闸,见 {@link enqueuePush}。 */
@@ -322,6 +334,9 @@ export abstract class RoomSessionBase {
 			listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildEventHandler());
 		} catch (e) {
 			if (e instanceof LiveRoomAccessDeniedError) {
+				// 不是风控拦截:这一路的风控(如果挂着)先清,再报受限房。
+				this.resolveRisk();
+				this.ctx.reportRoomRestricted(this.sub.uid, this.sub.roomId, e.message);
 				this.onMonitoringStopped();
 				this.ctx.stopMonitoring(e.message, this.sub.roomId);
 				return;
@@ -329,22 +344,30 @@ export abstract class RoomSessionBase {
 			// 预检被 -352 风控拦截:瞬时风控不放弃房间,交给子类的长尾退避重试
 			// (每轮重新预检拿新 token)。连上后由重连成功路径补跑 bootstrapRoomState。
 			if (e instanceof LiveRoomPreflightBlockedError) {
+				this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid));
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.sub.roomId}] ${e.message},进入长尾重试,不放弃监测`,
 				);
 				this.onPreflightBlocked();
 				return;
 			}
+			this.resolveRisk();
 			throw e;
 		}
+		// 预检没被拦(连上了或没连上):这一路的风控清掉。
+		this.resolveRisk();
 		if (!listening) {
-			await this.ctx.push.sendPrivateMsg(
-				`直播间 [${this.sub.roomId}] 弹幕连接建立失败，已停止该房间监测`,
+			this.ctx.reportMonitorStopped(
+				this.sub.uid,
+				this.sub.roomId,
+				PROBLEM_TEXTS.liveStopReasons.danmakuConnect,
 			);
 			this.onMonitoringStopped();
 			this.ctx.closeListener(this.sub.roomId);
 			return;
 		}
+		// 弹幕连上了:之前报过的受限房不再成立。
+		this.ctx.problems.resolveFailure({ externalId: this.sub.uid, code: ROOM_RESTRICTED_CODE });
 
 		// WS 从上面这行起就在派发事件了,而 `liveStatus` 要等本方法末尾才翻 —— 中间隔着
 		// 刷房间/主播信息、算已播时长、渲染并推送「正在直播」卡片,可达数秒。这是全仓
@@ -360,7 +383,11 @@ export abstract class RoomSessionBase {
 		// 首跑的信息拉取失败按原语义放弃房间;重连补跑路径(room-session)对同一个
 		// false 走长尾重试 —— 放弃与否是调用方的策略,不在 bootstrapRoomState 里定。
 		if (!stateReady) {
-			await this.ctx.push.sendPrivateMsg("获取直播间信息失败，启动直播间弹幕检测失败");
+			this.ctx.reportMonitorStopped(
+				this.sub.uid,
+				this.sub.roomId,
+				PROBLEM_TEXTS.liveStopReasons.roomInfo,
+			);
 			this.onMonitoringStopped();
 			this.ctx.closeListener(this.sub.roomId);
 		}
@@ -395,6 +422,8 @@ export abstract class RoomSessionBase {
 
 		this.onListenerStarted();
 		this.bootstrapped = true;
+		// 初始房态拉到了:这个房间监听上了,之前报过的「停止监听」不再成立(普通的清,核心补「已恢复」)。
+		this.ctx.problems.resolveFailure({ externalId: this.sub.uid, code: MONITOR_STOPPED_CODE });
 		this.ctx.logger.debug(`[stat] 当前粉丝数：${this.masterInfo.liveOpenFollowerNum}`);
 
 		if (this.liveRoomInfo.live_status === 1) {
@@ -468,7 +497,7 @@ export abstract class RoomSessionBase {
 	// ── State transitions ─────────────────────────────────────────────────────
 
 	protected async useLiveRoomInfo(liveType: LiveType): Promise<boolean> {
-		const data = await this.ctx.getLiveRoomInfo(this.sub.roomId);
+		const data = await this.ctx.getLiveRoomInfo(this.sub.roomId, this.sub.uid);
 		if (!data?.uid) return false;
 		if (liveType === LiveType.StartBroadcasting || liveType === LiveType.FirstLiveBroadcast) {
 			this.liveRoomInfo = data;
@@ -549,17 +578,16 @@ export abstract class RoomSessionBase {
 	/** Periodic "正在直播" tick (callback for `setInterval`). */
 	protected async tickPushAtTime(): Promise<void> {
 		if (!(await this.useLiveRoomInfo(LiveType.LiveBroadcast)) || !this.liveRoomInfo) {
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播卡片失败", this.sub.roomId);
 			return;
 		}
 		// Fallback when the room actually closed but no onLiveEnd event arrived.
 		if (this.liveRoomInfo.live_status === 0 || this.liveRoomInfo.live_status === 2) {
+			// 只记日志:这不是故障,是提示(不再私聊主人)。
 			this.ctx.logger.warn(
 				`[live] 直播间 [${this.sub.roomId}] 检测到已下播但未收到 onLiveEnd 事件，进入下播处理`,
-			);
-			await this.ctx.push.sendPrivateMsg(
-				`直播间 [${this.sub.roomId}] 已下播但未收到 WS 下播事件，已自动进入下播处理`,
 			);
 			// 与 WS 下播同走 grace 闸门:开启断流接续时也先挂起等待,而非立即下播。
 			await this.triggerLiveEnd("polling");
@@ -721,6 +749,7 @@ export abstract class RoomSessionBase {
 			this.setLiveStatus(false, endedAt);
 			this.ctx.danmakuCollector.clear(this.sub.roomId);
 			if (this.ctx.isDisposed()) return;
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播下播卡片失败", this.sub.roomId);
 			return;

@@ -76,6 +76,7 @@ import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
+	type LiveEngineOptions,
 	type LiveNotifySend,
 	type PushLike as LivePushLike,
 	type LiveSubscriptionOp,
@@ -258,6 +259,12 @@ export interface CreateEnginesOptions {
 	sources: SourceRegistry;
 	/** 问题表(`AppRuntime.problems`):递给来源上下文当写口,问题通知器听它,订阅删了关于它的问题也在这清。 */
 	problems: ProblemTable;
+	/**
+	 * B 站分层上报器(`compose.ts` 造、与给来源的是同一个,入口经 `builtins.bilibili.problems` 递进来):
+	 * 直播引擎把房间不监听了、被拒了、预检撞风控报给它。直播由这里造、早于来源登记,所以只能经入口递;
+	 * 3b 直播并进来源后这一格连同这条递送一起消失。
+	 */
+	biliProblems: LiveEngineOptions["problems"];
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapterRegistry;
 	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
@@ -728,7 +735,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	};
 
 	// ---------- LiveEngine ----------
-	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid, log);
+	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid);
 
 	const liveConfig = (): LiveEngineConfig => {
 		const g = globals();
@@ -760,6 +767,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		serviceCtx: liveCtx,
 		api: opts.api,
 		push: livePushLike,
+		problems: opts.biliProblems,
 		contentBuilder: segmentContentBuilder,
 		guardIcons: opts.guardIcons,
 		imageFetcher: opts.imageFetcher,
@@ -1531,7 +1539,6 @@ export function boundLivePush(
 export function makeLivePushLike(
 	push: PushForEngines,
 	subscriptionIdOf: SubscriptionIdOf,
-	logger: Logger,
 ): LivePushLike {
 	return {
 		async push({ uid, type, anchors }) {
@@ -1543,7 +1550,6 @@ export function makeLivePushLike(
 				anchors: toPushAnchors(anchors, (content) => collapseSegments(segmentToPayload(content))),
 			});
 		},
-		sendPrivateMsg: masterTellers(push, logger).sendPrivateMsg,
 	};
 }
 

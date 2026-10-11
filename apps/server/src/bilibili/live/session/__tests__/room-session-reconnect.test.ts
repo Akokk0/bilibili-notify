@@ -12,6 +12,7 @@
 import type { ServiceContext } from "@bilibili-notify/internal";
 import { defaultMessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { PROBLEM_TEXTS } from "../../../problem-texts";
 import type { SubItemView } from "../../push-like";
 import {
 	LiveRoomAccessDeniedError,
@@ -19,6 +20,12 @@ import {
 	type RoomContext,
 } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import {
+	expectedRestrictedFailure,
+	expectedStoppedFailure,
+	liveProblemsCtx,
+	makeLiveProblems,
+} from "./support/live-problems";
 
 function makeSub(): SubItemView {
 	return {
@@ -58,6 +65,7 @@ interface MockBag {
 	emitEngineError: ReturnType<typeof vi.fn>;
 	emitLiveState: ReturnType<typeof vi.fn>;
 	stopMonitoring: ReturnType<typeof vi.fn>;
+	problems: ReturnType<typeof makeLiveProblems>;
 	scheduled: ScheduledItem[]; // 待跑的 sleep callback + 对应 delay
 	delays: () => number[]; // 至今 schedule 过的 delay 列表(按顺序)
 	disposeCount: () => number; // setTimeout 句柄被 dispose 的次数(L3)
@@ -98,6 +106,7 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 		emitEngineError: vi.fn(),
 		emitLiveState: vi.fn(),
 		stopMonitoring: vi.fn(),
+		problems: makeLiveProblems(),
 		scheduled,
 		delays: () => [...delayLog],
 		disposeCount: () => disposes,
@@ -128,6 +137,7 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 		emitEngineError: mocks.emitEngineError,
 		emitLiveState: mocks.emitLiveState,
 		stopMonitoring: mocks.stopMonitoring,
+		...liveProblemsCtx(mocks.problems),
 		livePushTimerManager: new Map<string, () => void>(), // cancelPeriodicTimer 需要
 		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
 		push: { sendPrivateMsg: async () => {}, push: async () => {} },
@@ -225,7 +235,7 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 		expect(backoffOnly).toEqual([1000, 2000, 4000, 8000, 16000]);
 	});
 
-	it("第 6 次失败时退避耗尽 → emitEngineError + 不再 schedule 新 backoff", async () => {
+	it("第 6 次失败时退避耗尽 → 报「停止监听」(lasting)+ 不再 schedule 新 backoff", async () => {
 		const { ctx, mocks } = makeMockCtx({ startThrows: true });
 		const session = new RoomSession(ctx, makeSub());
 
@@ -235,8 +245,12 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 
 		// 5 次 startLiveRoomListener 都失败 → reconnectLoop 跑满 5 档退避后退出 while → 放弃
 		expect(mocks.startLiveRoomListener).toHaveBeenCalledTimes(5);
-		expect(mocks.emitEngineError).toHaveBeenCalledTimes(1);
-		expect(mocks.emitEngineError.mock.calls[0]?.[0]).toMatch(/重试 5 次后放弃监听/);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+		);
+		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
+		expect(mocks.emitEngineError).not.toHaveBeenCalled();
 
 		// 耗尽路径之后不应该再 schedule 新 backoff
 		const backoffOnly = mocks.delays().filter((d) => d > 0);
@@ -258,7 +272,12 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 		void s.reconnect("watchdog");
 		await mocks.flushAll();
 
-		expect(mocks.emitEngineError).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.gaveUp),
+		);
+		// 重连用尽不再走组件告警(那一路只留给「重连流程内部异常」)
+		expect(mocks.emitEngineError).not.toHaveBeenCalled();
 		expect(s.liveStatus).toBe(false);
 		expect(mocks.emitLiveState).toHaveBeenLastCalledWith("u1", "idle", undefined);
 	});
@@ -280,6 +299,9 @@ describe("RoomSession 退避状态机 — codex review minor-4", () => {
 			"弹幕连接不可用：B 站返回 code=-400 message=room is encrypted，可能是加密/付费/测试房或当前账号无权限访问",
 			"r1",
 		]);
+		expect(mocks.problems.reportFailure).toHaveBeenCalledWith(
+			expectedRestrictedFailure("u1", "r1", mocks.stopMonitoring.mock.calls[0]?.[0]),
+		);
 		expect(mocks.emitEngineError).not.toHaveBeenCalled();
 		expect(mocks.delays().filter((d) => d > 0)).toEqual([1000]);
 	});

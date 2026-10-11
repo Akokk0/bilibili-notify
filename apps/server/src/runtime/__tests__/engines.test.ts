@@ -60,6 +60,7 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
+import { makeLiveProblems } from "../../bilibili/live/session/__tests__/support/live-problems.js";
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
@@ -415,6 +416,8 @@ function setup(opts?: {
 	loginStatus?: "logged-in" | "confirming";
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
+	/** 给直播引擎的 B 站分层上报器;不给 = 四个方法都是 spy 的假件。 */
+	biliProblems?: Parameters<typeof createEngines>[0]["biliProblems"];
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
 	dataDir?: string;
 	/** 换掉存储替身里的几个口子(登记进 track 的那组用例让写停在半路)。 */
@@ -456,9 +459,11 @@ function setup(opts?: {
 	const sources = createSourceRegistry();
 	const source = makeSource();
 	const problems = createProblemTable({ logger: serviceCtx.logger });
+	const biliProblems = opts?.biliProblems ?? makeLiveProblems();
 	const runtime = createEngines({
 		sources,
 		problems,
+		biliProblems,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
@@ -743,6 +748,23 @@ describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
 		>;
 		setup({ imageFetcher });
 		expect(H.live[0].opts.imageFetcher).toBe(imageFetcher);
+	});
+});
+
+describe("createEngines — 直播引擎的问题上报器接线", () => {
+	// 验红:把 engines.ts 里递给 LiveEngine 的 `problems: opts.biliProblems` 删掉(或换成别的对象),这条红
+	// (直播间停监、撞风控报到了空处,问题表里永远没有它们,而门禁全绿)。
+	// 入口把 `builtins.bilibili.problems` 递进 `biliProblems` 这一环,靠类型(必填格)+ 审查 + 真机:
+	// `compose.test.ts` 钉着「给来源的与挂在 `bilibili.problems` 上的是同一个」。
+	it("入口递进来的 B 站分层上报器,就是直播引擎拿到的那个", () => {
+		const biliProblems = makeLiveProblems();
+		setup({ biliProblems });
+		expect(H.live[0].opts.problems).toBe(biliProblems);
+	});
+
+	it("直播引擎的私聊口没了:递给它的 push 上只有 push", () => {
+		setup();
+		expect(Object.keys(H.live[0].opts.push)).toEqual(["push"]);
 	});
 });
 

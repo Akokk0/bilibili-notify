@@ -448,6 +448,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 			code: "dynamic_fetch_failed",
 			message: PROBLEM_TEXTS.dynamicFetchFailed.text(-509),
 			notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
+			lasting: false,
 		});
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
 		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);

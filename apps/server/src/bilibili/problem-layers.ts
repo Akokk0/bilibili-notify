@@ -13,8 +13,12 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  *    一路的清由调用方按「这一路这一次的结果不是风控拦截」来叫。
  * 3. **某项请求失败**(code 与带不带私聊都由调用方给):每次失败都叫(幂等),调用方自己的成功或不再适用时清。
  *
- * 高层一开,低层在自己手里清空、并在表里静默抹掉(`notify: false`,不补「已恢复」);高层开着时低层的上报只记日志、
- * 不存;高层清掉后低层不会自己冒回来,要等调用方下一次失败再报。
+ * 高层一开,表里已有的低层静默抹掉(`notify: false`,不补「已恢复」)。第三层按 `lasting` 分两种:
+ * - `lasting: false`(会自己再报的,如拉动态失败):高层开起来时在自己手里清空,高层开着时的上报只记日志、
+ *   不存;高层清掉后它不会自己冒回来,要等调用方下一次失败再报。
+ * - `lasting: true`(报一次就不再报、直到有人去修的,如某个直播间停止监听):高层开着时**存下但不报**,
+ *   高层开起来时也不清空;高层清掉的那一刻把存着的报上去(照各自的 `notify`)。它的主人调 `resolveFailure`
+ *   时照常删 —— 压着的时候被删了,高层清掉也不再报。
  *
  * 手里存的是「此刻该在表里的东西」,不是事件流水。核心那头(`attach` 交进来的上下文)是后接上的:接上那一刻把
  * 这份现状整份报上去,所以接上之前记着的不会丢;`detach`(来源停下)之后再报继续记在自己手里,等下一次接上。
@@ -36,6 +40,11 @@ export interface ProblemLayers {
 		code: string;
 		message: string;
 		notify: boolean;
+		/**
+		 * 必填:这件事是「报一次就不再报、直到有人去修」(`true`)还是「会自己再报」(`false`)。
+		 * 决定高层开着时存不存、高层清掉后冒不冒回来,见上面的说明。
+		 */
+		lasting: boolean;
 		/** 清掉时核心补的「恢复时怎么说」;不给用核心的通用说法。存下,补报时带上。 */
 		recoveryMessage?: string;
 	}): void;
@@ -63,6 +72,7 @@ interface Failure {
 	code: string;
 	message: string;
 	notify: boolean;
+	lasting: boolean;
 	recoveryMessage?: string;
 }
 
@@ -127,27 +137,41 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		});
 	}
 
-	/** 第三层整个静默抹掉(高层开了)。 */
-	function eraseFailures(): void {
-		for (const failure of failures.values()) {
-			toSink("抹掉请求失败", (to) =>
-				to.resolveProblem({
-					...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
-					code: failure.code,
-					notify: false,
-				}),
-			);
+	/** 第三层眼下在表里可见:没有更高层压着。 */
+	const failuresVisible = (): boolean => login === null && risk.size === 0;
+
+	/**
+	 * 高层要开了(调用时高层还没开,`wasVisible` 是调用前第三层可见不可见):表里已有的第三层静默抹掉;
+	 * 一次性的(`lasting: false`)在自己手里也丢掉,`lasting` 的留着,等高层清掉再报。
+	 */
+	function pressDownFailures(wasVisible: boolean): void {
+		for (const [key, failure] of [...failures]) {
+			if (wasVisible) {
+				toSink("抹掉请求失败", (to) =>
+					to.resolveProblem({
+						...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
+						code: failure.code,
+						notify: false,
+					}),
+				);
+			}
+			if (!failure.lasting) failures.delete(key);
 		}
-		failures.clear();
 	}
 
-	/** 风控层与第三层都静默抹掉(未登录开了)。 */
-	function eraseBelowLogin(): void {
-		if (risk.size > 0) {
-			risk.clear();
-			toSink("抹掉风控", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
-		}
-		eraseFailures();
+	/** 高层清掉了、第三层重新可见:手里存着的(只可能是 `lasting` 的)报上去。 */
+	function revealFailures(): void {
+		if (failures.size === 0) return;
+		toSink("补报压着的请求失败", (to) => {
+			for (const failure of failures.values()) reportFailureEntry(to, failure);
+		});
+	}
+
+	/** 风控层静默抹掉(未登录开了)。 */
+	function eraseRisk(): void {
+		if (risk.size === 0) return;
+		risk.clear();
+		toSink("抹掉风控", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
 	}
 
 	function applyAuth(status: ReturnType<SourceAuth["state"]>["status"]): void {
@@ -156,8 +180,12 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			case "logged-out": {
 				const next = { notify: status === "expired" };
 				const prev = login;
+				if (prev === null) {
+					const wasVisible = failuresVisible();
+					eraseRisk();
+					pressDownFailures(wasVisible);
+				}
 				login = next;
-				if (prev === null) eraseBelowLogin();
 				if (prev === null || prev.notify !== next.notify) {
 					toSink("报未登录", (to) => reportLogin(to, next));
 				}
@@ -167,6 +195,8 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				if (login === null) return;
 				login = null;
 				toSink("清未登录", (to) => to.resolveProblem({ code: LOGIN_CODE }));
+				// 风控在未登录开着时存不进来,所以这时第三层重新可见
+				revealFailures();
 				return;
 			default:
 				// awaiting-scan / confirming / error:保持上一次的结论
@@ -196,15 +226,18 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			const wasEmpty = risk.size === 0;
 			risk.add(path);
 			if (!wasEmpty) return;
-			eraseFailures();
+			pressDownFailures(true);
 			toSink("报风控", reportRiskEntry);
 		},
 		resolveRisk(path) {
 			if (!risk.delete(path)) return;
-			if (risk.size === 0) toSink("清风控", (to) => to.resolveProblem({ code: RISK_CODE }));
+			if (risk.size > 0) return;
+			toSink("清风控", (to) => to.resolveProblem({ code: RISK_CODE }));
+			revealFailures();
 		},
 		reportFailure(failure) {
-			if (login !== null || risk.size > 0) {
+			const pressed = !failuresVisible();
+			if (pressed && !failure.lasting) {
 				logger.debug(`[problem-layers] 更上一层的问题开着,${failure.code} 不另记`);
 				return;
 			}
@@ -213,15 +246,23 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				code: failure.code,
 				message: failure.message,
 				notify: failure.notify,
+				lasting: failure.lasting,
 				...(failure.recoveryMessage === undefined
 					? {}
 					: { recoveryMessage: failure.recoveryMessage }),
 			};
 			failures.set(failureKey(entry), entry);
+			// 压着的 lasting 只存不报,高层清掉那一刻再报
+			if (pressed) {
+				logger.debug(`[problem-layers] 更上一层的问题开着,${failure.code} 先记着,等它清掉再报`);
+				return;
+			}
 			toSink("报请求失败", (to) => reportFailureEntry(to, entry));
 		},
 		resolveFailure(failure, resolveOptions) {
 			if (!failures.delete(failureKey(failure))) return;
+			// 压着的那条从没报上去过,删了就不用对核心说什么
+			if (!failuresVisible()) return;
 			toSink("清请求失败", (to) =>
 				to.resolveProblem({
 					...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
@@ -232,12 +273,11 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		},
 		attach(next) {
 			sink = next;
-			// 整份现状。高层开着时低层在自己手里是空的(开的时候清空、开着时不存),所以这里报出去的
-			// 恰好就是最上面那一层。
+			// 整份现状,只报最上面一层:`lasting` 的第三层在高层压着时手里有、表里不该有。
 			toSink("补报", (to) => {
 				if (login !== null) reportLogin(to, login);
-				if (risk.size > 0) reportRiskEntry(to);
-				for (const failure of failures.values()) reportFailureEntry(to, failure);
+				else if (risk.size > 0) reportRiskEntry(to);
+				else for (const failure of failures.values()) reportFailureEntry(to, failure);
 			});
 		},
 		detach() {

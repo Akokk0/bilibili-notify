@@ -344,5 +344,4 @@ export interface PushLike {
 	 * 附加项在后台按锚点先后接着发。
 	 */
 	push(push: LivePush): Promise<void>;
-	sendPrivateMsg(content: string): Promise<void>;
 }

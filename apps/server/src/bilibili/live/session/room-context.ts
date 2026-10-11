@@ -7,6 +7,8 @@ import type {
 } from "@bilibili-notify/internal";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
+import type { ProblemLayers } from "../../problem-layers.js";
+import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import type { LiveContentBuilder } from "../content-builder";
 import type { GuardIcons } from "../guard-icons.js";
 import type { LiveClient } from "../protocol/client.js";
@@ -52,6 +54,20 @@ export interface ListenerManagerConfig {
 	defaultLiveCoverImages?: string[];
 }
 
+/** 直播这一路报给问题表的上报器:动态与直播共用同一个分层上报器,直播只用其中四个方法。 */
+export type LiveProblems = Pick<
+	ProblemLayers,
+	"reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
+>;
+
+/** 一个房间不监听了(取信息失败、弹幕连不上、重连用尽)。 */
+export const MONITOR_STOPPED_CODE = "live_monitor_stopped";
+/** 一个房间被 B 站拒了弹幕连接(加密、付费、测试房、没权限)。 */
+export const ROOM_RESTRICTED_CODE = "live_room_restricted";
+
+/** 风控按路记,直播一位 UP 一条路。 */
+export const liveRiskPath = (uid: string): string => `live:${uid}`;
+
 /**
  * Constructor options for {@link RoomContext}. Mirrors the dependency set
  * passed into `LiveEngine`; the engine builds one `RoomContext` and shares it
@@ -63,6 +79,11 @@ export interface RoomContextOptions {
 	serviceCtx: ServiceContext;
 	api: Api;
 	push: PushLike;
+	/**
+	 * 分层上报器:房间不监听了、被 B 站拒了、撞风控,都经它报给问题表(不再各自私聊主人)。
+	 * 它的方法都不往外抛。
+	 */
+	problems: LiveProblems;
 	contentBuilder: LiveContentBuilder;
 	templateRenderer: LiveTemplateRenderer;
 	wordcloudGenerator: WordcloudGenerator;
@@ -121,6 +142,7 @@ export class RoomContextBase {
 	readonly logger: Logger;
 	readonly api: Api;
 	readonly push: PushLike;
+	readonly problems: LiveProblems;
 	readonly contentBuilder: LiveContentBuilder;
 	readonly templateRenderer: LiveTemplateRenderer;
 	readonly wordcloudGenerator: WordcloudGenerator;
@@ -169,6 +191,7 @@ export class RoomContextBase {
 		this.logger = opts.serviceCtx.logger;
 		this.api = opts.api;
 		this.push = opts.push;
+		this.problems = opts.problems;
 		this.contentBuilder = opts.contentBuilder;
 		this.templateRenderer = opts.templateRenderer;
 		this.wordcloudGenerator = opts.wordcloudGenerator;
@@ -267,21 +290,56 @@ export class RoomContextBase {
 		this.logSideEffectState("timers:after-clear");
 	}
 
-	stopMonitoring(reason: string, roomId?: string): void {
-		if (roomId) {
-			this.logger.error(`[conn] [${roomId}] ${reason}，已停止该房间的监测`);
-			this.closeListener(roomId);
-			const timer = this.livePushTimerManager.get(roomId);
-			if (timer) {
-				timer();
-				this.livePushTimerManager.delete(roomId);
-			}
-			this.emitEngineError(`[${roomId}] ${reason}`);
-			return;
+	/**
+	 * 停掉一个房间的监测:关连接、拆周期定时器。**只管停**,不告诉主人 —— 各调用点自己带着 uid
+	 * 经 {@link reportMonitorStopped} / {@link reportRoomRestricted} 报给问题表。
+	 */
+	stopMonitoring(reason: string, roomId: string): void {
+		this.logger.error(`[conn] [${roomId}] ${reason}，已停止该房间的监测`);
+		this.closeListener(roomId);
+		const timer = this.livePushTimerManager.get(roomId);
+		if (timer) {
+			timer();
+			this.livePushTimerManager.delete(roomId);
 		}
-		this.logger.error(`[conn] ${reason}，直播监测已停止`);
-		this.clearListeners();
-		this.clearPushTimers();
-		this.emitEngineError(reason);
+	}
+
+	/** 这位 UP 的房间不监听了:报一条订阅级的「停止监听」(报一次、直到有人去修,故 lasting)。 */
+	reportMonitorStopped(uid: string, roomId: string, reason: string): void {
+		const text = PROBLEM_TEXTS.liveMonitorStopped;
+		this.problems.reportFailure({
+			externalId: uid,
+			code: MONITOR_STOPPED_CODE,
+			message: text.text(roomId, reason),
+			notify: text.notify,
+			lasting: true,
+			recoveryMessage: text.recovery(roomId),
+		});
+	}
+
+	/** 这位 UP 的房间被 B 站拒了弹幕连接:报一条订阅级的「房间受限」。 */
+	reportRoomRestricted(uid: string, roomId: string, reason: string): void {
+		const text = PROBLEM_TEXTS.liveRoomRestricted;
+		this.problems.reportFailure({
+			externalId: uid,
+			code: ROOM_RESTRICTED_CODE,
+			message: text.text(roomId, reason),
+			notify: text.notify,
+			lasting: true,
+			recoveryMessage: text.recovery(roomId),
+		});
+	}
+
+	/** 这位 UP 的这个房间又监听上了:两条订阅级问题都清掉,走普通的清(核心补「已恢复」)。 */
+	resolveMonitorProblems(uid: string): void {
+		this.problems.resolveFailure({ externalId: uid, code: MONITOR_STOPPED_CODE });
+		this.problems.resolveFailure({ externalId: uid, code: ROOM_RESTRICTED_CODE });
+	}
+
+	/** 这位 UP 不再需要监听(关开关、退订、引擎停下、登录失效拆会话):两条都静默清掉,不补「已恢复」。 */
+	clearMonitorProblems(uid: string): void {
+		const silent = { notify: false };
+		this.problems.resolveFailure({ externalId: uid, code: MONITOR_STOPPED_CODE }, silent);
+		this.problems.resolveFailure({ externalId: uid, code: ROOM_RESTRICTED_CODE }, silent);
 	}
 }

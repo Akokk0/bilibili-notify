@@ -86,6 +86,7 @@ export class ListenerManager {
 		// onError 会重新调 startLiveRoomListener,把 listener 装回 listenerRecord,
 		// 形成隐性重复监听(sessionRecord 已 clear,但 ctx 内 listener 实存在)。
 		for (const session of this.sessionRecord.values()) session.cancel();
+		this.clearProblemsOfAll();
 		this.ctx.setDisposed(false);
 		this.ctx.clearPushTimers();
 		this.ctx.clearListeners();
@@ -163,6 +164,8 @@ export class ListenerManager {
 		// 在 closeListener 触发 onError 之前打 cancelled,避免 onError 跑退避重连
 		// 反而把这条已主动停止的 listener 重新接上。
 		session?.cancel();
+		// 这位 UP 不再需要监听:问题表里关于他的「停止监听 / 受限」静默清掉(不补「已恢复」)。
+		this.ctx.clearMonitorProblems(uid);
 		const timer = this.ctx.livePushTimerManager.get(sub.roomId);
 		timer?.();
 		this.ctx.livePushTimerManager.delete(sub.roomId);
@@ -180,12 +183,18 @@ export class ListenerManager {
 		// session 会留一个无法清除的延迟回调到 expiry(setDisposed 只是让它醒来
 		// 后空转返回,定时器本身没被 dispose)。与 reload 路径同款做法。
 		for (const session of this.sessionRecord.values()) session.cancel();
+		this.clearProblemsOfAll();
 		this.ctx.clearPushTimers();
 		this.ctx.clearListeners();
 		this.subRecord.clear();
 		this.sessionRecord.clear();
 		this.ctx.danmakuCollector.clearAll();
 		this.ctx.logSideEffectState("stop:after-clear");
+	}
+
+	/** 全部不再监听(引擎停下、登录失效拆会话、整批重建):每位 UP 的「停止监听 / 受限」静默清掉。 */
+	private clearProblemsOfAll(): void {
+		for (const uid of this.subRecord.keys()) this.ctx.clearMonitorProblems(uid);
 	}
 
 	/** Tear down listeners + timers but keep registry / disposed flag intact. */

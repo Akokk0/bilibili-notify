@@ -683,6 +683,8 @@ export class DynamicEngine {
 					code: FETCH_FAILED_CODE,
 					message: PROBLEM_TEXTS.dynamicFetchFailed.text(code),
 					notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
+					// 每个退避周期都会再撞一次、再报一次:高层开着时不必存
+					lasting: false,
 				});
 				if (this.transientErrorCode !== code) {
 					this.transientErrorCode = code;

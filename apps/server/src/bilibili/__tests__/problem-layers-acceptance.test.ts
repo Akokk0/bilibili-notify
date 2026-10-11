@@ -128,6 +128,7 @@ describe("失效登录开机", () => {
 			code: "live_monitor_stopped",
 			message: "房间停了",
 			notify: true,
+			lasting: false,
 		});
 		await flush();
 		expect(codes(table)).toEqual(["live_monitor_stopped"]);
@@ -143,8 +144,14 @@ describe("失效登录开机", () => {
 			code: "live_monitor_stopped",
 			message: "房间停了",
 			notify: true,
+			lasting: false,
 		});
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "拉动态失败", notify: true });
+		layers.reportFailure({
+			code: "dynamic_fetch_failed",
+			message: "拉动态失败",
+			notify: true,
+			lasting: false,
+		});
 		layers.reportRisk("dynamic");
 		await flush();
 

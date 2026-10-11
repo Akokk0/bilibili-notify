@@ -303,6 +303,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			code: "live_monitor_stopped",
 			message: "停了",
 			notify: true,
+			lasting: false,
 		});
 		const { ctx } = makeFakeSourceCtx([]);
 		expect(ctx.reportProblem).not.toHaveBeenCalled();

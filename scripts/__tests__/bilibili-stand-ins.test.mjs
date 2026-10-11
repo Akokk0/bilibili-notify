@@ -53,7 +53,10 @@ export const RATCHET = {
 	// 3a-28 建 `compose.ts`(8 → 5):3a-32 为开发场景多出的 3 处(引入工厂、用来源键认领、调工厂)与按来源筛订阅那 1 处搬走;
 	// 多 1 处是 `status` 指令读「上次抓取」(来源的 `health()` 没造之前如实留着)。3a-29 B 站半:统计的登录读口改读
 	// 中立的 `auth.state()`(5 → 3),剩下的是来源键的两处与 `builtins.bilibili`。
-	"apps/server/src/index.ts": 3,
+	// 3a-30(主人 10-11 点头,3 → 5):直播引擎由 `createEngines` 造、早于来源登记,B 站的分层上报器只能经入口递进去
+	// (`biliProblems: builtins.bilibili.problems`,对象键与 `bilibili` 各一处,名字如实带 `bili`,不起中立名字躲)。
+	// 3b 直播并进来源(来源自己造直播、自己把上报器给它)那一天,这一格与这条递送一起消失,数归 3。
+	"apps/server/src/index.ts": 5,
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
@@ -66,7 +69,9 @@ export const RATCHET = {
 	// 它们的 6 处读写没数进来(3a-38 的独立审查查出)。主人 10-10 定:3a-40 统一整改时一起走,现在不动。
 	// 3a-31(主人 10-11 点头,17 → 18):「作品开关从关到开时补一次关注」也要先看登录了没有,第二次用到 `biliLoggedIn`
 	// (名字如实带 `bili`,不起中立名字躲)。关注同步搬进 B 站来源那一天,这几处一起消失。
-	"apps/server/src/runtime/engines.ts": 18,
+	// 3a-30(主人 10-11 点头,18 → 20):同 `index.ts` —— 直播引擎要的 B 站分层上报器经入口递进 `createEngines`,
+	// `CreateEnginesOptions.biliProblems` 声明一处、`opts.biliProblems` 用一处。3b 直播并进来源之后随它一起消失,数归 18。
+	"apps/server/src/runtime/engines.ts": 20,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,

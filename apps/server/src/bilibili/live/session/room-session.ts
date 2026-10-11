@@ -7,6 +7,7 @@ import {
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
 import { fetchAvatar } from "../../images";
+import { PROBLEM_TEXTS } from "../../problem-texts";
 import { membershipEventFromLiveEvent } from "../membership-event";
 import type { LiveEvent, LiveUser, UserActionKind } from "../protocol/events.js";
 import { LivePushType } from "../push-like";
@@ -15,6 +16,7 @@ import { buildRoomLink } from "../template-renderer";
 import { LiveType } from "../types";
 import { fetchGuardViewerAvatar } from "../viewer-avatar";
 import { passesMembershipMinRank, passesSuperchatMinAmount } from "./interaction-gates";
+import { liveRiskPath } from "./room-context";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 
@@ -113,6 +115,8 @@ export class RoomSession extends RoomSessionBase {
 		// 私聊每小时重复一次,直到进程重启。cancel() 语义是「这个 session 到此为止」,
 		// 留任何定时器都不对。
 		this.cancelPeriodicTimer();
+		// 会话结束:这位 UP 这一路挂着的风控也不再成立。
+		this.resolveRisk();
 	}
 
 	/** L3:dispose 退避定时器并唤醒重连循环,使其立刻重校 cancelled/disposed 后退出。 */
@@ -362,11 +366,13 @@ export class RoomSession extends RoomSessionBase {
 					this.setLiveStatus(false);
 					this.cancelPeriodicTimer();
 					this.cancel();
+					this.ctx.reportRoomRestricted(this.sub.uid, this.sub.roomId, e.message);
 					this.ctx.stopMonitoring(e.message, this.sub.roomId);
 					return;
 				}
 				if (e instanceof LiveRoomPreflightBlockedError) {
 					// 风控还没散,回长尾继续等;计数不清零,间隔继续爬到封顶。
+					this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid));
 					preflightBlocked = true;
 					continue;
 				}
@@ -374,6 +380,8 @@ export class RoomSession extends RoomSessionBase {
 					`[conn] 直播间 [${this.sub.roomId}] 重连发起异常:${(e as Error).message}`,
 				);
 			}
+			// 这一次预检没被拦(连上了、没连上、别的异常都算):这一路的风控清掉。
+			this.resolveRisk();
 			// ②6:post-await 重校。startLiveRoomListener 期间若与 stopForUid /
 			// teardown 交错(cancelled / disposed 翻转),刚建的 listener 是孤儿 ——
 			// 主动关掉再退出,绝不留永不关闭的连接(此前只判 ok 漏了这条)。
@@ -452,7 +460,7 @@ export class RoomSession extends RoomSessionBase {
 		this.reconnectAttempts = 0;
 		const msg = `直播间 [${this.sub.roomId}] ${this.describeReconnectReason(reason, detail)}后连接持续失败,重试 ${RECONNECT_BACKOFF_MS.length} 次后放弃监听`;
 		this.ctx.logger.error(`[conn] ${msg}`);
-		this.ctx.emitEngineError(msg);
+		this.reportStopped(PROBLEM_TEXTS.liveStopReasons.gaveUp);
 		// 收口在播状态。上面翻 idle 只发生在 reason === "error" 那条路径上,watchdog /
 		// close 全程没碰过它;而 `cancel()` 只管取消,不翻状态。走到这里 WS 已彻底关闭、
 		// 再不会有任何事件,留着 true 就是个永远「在播」的僵尸:listLiveRooms 一直把它
@@ -795,6 +803,7 @@ export class RoomSession extends RoomSessionBase {
 		// 收进变量后下面 `this.liveRoomInfo!` 就到处都要非空断言了。
 		if (!refreshed || !this.liveRoomInfo || !this.masterInfo) {
 			if (this.ctx.isDisposed()) return;
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.onMonitoringStopped();
 			this.ctx.stopMonitoring("获取直播间信息失败，推送直播开播卡片失败", this.sub.roomId);
 			return;

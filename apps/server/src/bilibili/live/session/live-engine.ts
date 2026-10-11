@@ -18,6 +18,7 @@ import definedStopWords, { parseStopWords } from "../recap/stop-words";
 import { WordcloudGenerator } from "../recap/wordcloud-generator";
 import { LiveTemplateRenderer } from "../template-renderer";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
+import type { LiveProblems } from "./room-context";
 
 /**
  * Top-level platform-neutral configuration for {@link LiveEngine}. The host
@@ -63,6 +64,11 @@ export interface LiveEngineOptions {
 	serviceCtx: ServiceContext;
 	api: Api;
 	push: PushLike;
+	/**
+	 * 分层上报器(动态与直播共用的那一个):房间不监听了、被 B 站拒了、预检撞风控都经它报给问题表;
+	 * 直播引擎自己不再私聊主人。
+	 */
+	problems: LiveProblems;
 	contentBuilder: LiveContentBuilder;
 	/** Optional — if absent, image-based pushes are skipped / fall back to text. */
 	imageRenderer?: ImageRenderer | null;
@@ -153,6 +159,7 @@ export class LiveEngine {
 			serviceCtx: opts.serviceCtx,
 			api: opts.api,
 			push: opts.push,
+			problems: opts.problems,
 			contentBuilder: opts.contentBuilder,
 			templateRenderer,
 			wordcloudGenerator,

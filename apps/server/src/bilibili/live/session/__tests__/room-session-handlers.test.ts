@@ -19,6 +19,7 @@ import type { ImageRef, MembershipTemplateBundle, ServiceContext } from "@bilibi
 import { defaultMessageKindLayout, fail, ok } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { PROBLEM_TEXTS } from "../../../problem-texts";
 import { membershipEventFromLiveEvent } from "../../membership-event";
 import { GuardLevel } from "../../protocol/events.js";
 import type { LivePush, SubItemView } from "../../push-like";
@@ -27,6 +28,7 @@ import { superchatEventFromLiveEvent } from "../../superchat-event";
 import { LiveType } from "../../types";
 import { RoomContext } from "../room-helpers";
 import { RoomSession } from "../room-session";
+import { expectedStoppedFailure, liveProblemsCtx, makeLiveProblems } from "./support/live-problems";
 
 // 两个翻译函数照常工作,只是包一层 —— 接线测试要看见会话把什么交给了它们(订阅 id 有没有带进去)。
 vi.mock("../../membership-event", async (importOriginal) => {
@@ -114,6 +116,7 @@ interface CtxMocks {
 	renderSpecialUserEnter: ReturnType<typeof vi.fn>;
 	sendLiveNotifyCard: ReturnType<typeof vi.fn>;
 	stopMonitoring: ReturnType<typeof vi.fn>;
+	problems: ReturnType<typeof makeLiveProblems>;
 	emitLiveState: ReturnType<typeof vi.fn>;
 	isSubscribed: ReturnType<typeof vi.fn>;
 	collectsDanmaku: ReturnType<typeof vi.fn>;
@@ -164,6 +167,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		renderSpecialUserEnter: vi.fn(() => "进房文案"),
 		sendLiveNotifyCard: vi.fn(async () => {}),
 		stopMonitoring: vi.fn(),
+		problems: makeLiveProblems(),
 		emitLiveState: vi.fn(),
 		isSubscribed: vi.fn(() => false),
 		collectsDanmaku: vi.fn((sub: SubItemView) => wantsLiveEndExtras(sub)),
@@ -210,6 +214,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 		safeBroadcast: m.safeBroadcast,
 		sendLiveNotifyCard: m.sendLiveNotifyCard,
 		stopMonitoring: m.stopMonitoring,
+		...liveProblemsCtx(m.problems),
 		emitLiveState: m.emitLiveState,
 		emitEngineError: vi.fn(),
 		emitViewers: vi.fn(),
@@ -1232,6 +1237,9 @@ describe("RoomSession.onLiveStart", () => {
 		s.useMasterInfo = vi.fn(async () => true);
 		await s.onLiveStart();
 		expect(m.stopMonitoring).toHaveBeenCalledTimes(1);
+		expect(m.problems.reportFailure).toHaveBeenCalledWith(
+			expectedStoppedFailure("u1", "r1", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+		);
 		expect(m.sendLiveNotifyCard).not.toHaveBeenCalled();
 	});
 });
@@ -1702,8 +1710,8 @@ describe("RoomContext.sendLiveNotifyCard — LiveType → LivePushType 映射", 
 			api: {} as never,
 			push: {
 				push: recordMain(pushedMain),
-				sendPrivateMsg: vi.fn(async () => {}),
 			},
+			problems: makeLiveProblems(),
 			contentBuilder: {
 				text: (t: string) => ({ kind: "text", text: t }) as never,
 				image: () => ({ kind: "image" }) as never,
