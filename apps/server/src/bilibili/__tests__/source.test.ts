@@ -19,6 +19,7 @@ import { deferred } from "../../__tests__/support/track-context.js";
 import {
 	makeIntegration,
 	makeLogger,
+	makeSettingsHost,
 	makeSub,
 	makeWorld,
 	SOURCE_KEY,
@@ -413,6 +414,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 			logger,
 			enqueue: enqueue as never,
 			problems: { report: vi.fn(), resolve: vi.fn(), clearReporter: vi.fn() },
+			settings: makeSettingsHost(),
 		});
 		const feed = (...items: unknown[]) => {
 			feedItems = items;

@@ -33,6 +33,7 @@ import type {
 	PostEvent,
 	ProbeResult,
 	PushTarget,
+	SettingsReader,
 	SourceAuth,
 	SourceContext,
 	Subscription,
@@ -329,6 +330,11 @@ function makeConfigStore(
 		getIntegrationSettings: (segment: IntegrationSettingsSegment) => {
 			if (segment.key !== "bilibili") throw new Error(`集成「${segment.key}」没有登记`);
 			return structuredClone(bilibili);
+		},
+		// 按键读(来源上下文的 `settings` 把手走这一口):同样,别的键当场抛。
+		readIntegrationSettings: (key: string) => {
+			if (key !== "bilibili") throw new Error(`集成「${key}」没有登记`);
+			return ok({ settings: structuredClone(bilibili) as unknown });
 		},
 		// 与真仓同一条路:挂在 bus 的 `config-changed` 上,只交 scope。
 		onChange: (handler: (scope: string) => void) =>
@@ -1691,6 +1697,39 @@ describe("createEngines — boot wiring", () => {
 		expect(typeof ctx?.reportProblem).toBe("function");
 		expect(typeof ctx?.resolveProblem).toBe("function");
 		expect(ctx?.subscriptions()).toEqual([]);
+	});
+
+	// 验红:把 engines.ts `registerSource` 里 `settings.read` 接成恒失败,头两句红;去掉 `onChanged`,「变了叫一次」红。
+	it("来源在 start 里 ctx.settings(schema) 读得到配置仓里那一段;经配置仓改了之后收得到变化(别的 scope 不叫)", async () => {
+		const c = setup({ noSource: true, bilibili: { dynamicCron: "*/7 * * * *" } });
+		active = c;
+		const seen: unknown[] = [];
+		const changes = vi.fn();
+		const readers: SettingsReader<{ dynamicCron: string }>[] = [];
+		const probe = makeSource();
+		probe.start.mockImplementation(async (ctx) => {
+			const reader = ctx.settings(z.object({ dynamicCron: z.string() }));
+			readers.push(reader);
+			seen.push(reader.get());
+			reader.onChange(changes);
+		});
+		await c.runtime.registerSource({
+			sourceKey: "bilibili",
+			source: probe,
+			integration: { logger: c.serviceCtx.logger } as any,
+		});
+		expect(seen).toEqual([{ ok: true, settings: { dynamicCron: "*/7 * * * *" } }]);
+
+		c.bus.emit("config-changed", { scope: "globals" });
+		expect(changes).not.toHaveBeenCalled();
+
+		c.configStore._setBilibili(BiliSettingsSchema.parse({ dynamicCron: "*/9 * * * *" }));
+		c.bus.emit("config-changed", { scope: "integration-settings" });
+		expect(changes).toHaveBeenCalledTimes(1);
+		expect(readers[0]?.get()).toEqual({
+			ok: true,
+			settings: { dynamicCron: "*/9 * * * *" },
+		});
 	});
 
 	// 验红:删掉 engines.ts `registerSource` 里递 `problems` 的那一行,这条红。

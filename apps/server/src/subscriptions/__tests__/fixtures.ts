@@ -1,10 +1,13 @@
 import {
 	BILIBILI_GUARD_PROGRAM,
+	type Disposable,
 	type IntegrationContext,
 	type Logger,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	ok,
 	type PostReport,
+	type Result,
 	type Source,
 	type SourceContext,
 	type SourceDescriptor,
@@ -41,6 +44,27 @@ export const makeIntegration = (logger: Logger = makeLogger()): IntegrationConte
 		http: { get: vi.fn() },
 		cookies: { header: vi.fn() },
 	} as unknown as IntegrationContext;
+};
+
+/**
+ * 来源上下文的 `settings` 那一格的假宿主:盘上那一份可以 `set` 换掉(换完叫一声「可能变了」),
+ * `listenerCount` 数得出挂着几个监听。不给初值就是一份空对象。
+ */
+export const makeSettingsHost = (initial: Result<{ settings: unknown }> = ok({ settings: {} })) => {
+	let current = initial;
+	const listeners = new Set<() => void>();
+	return {
+		read: (): Result<{ settings: unknown }> => current,
+		onChanged(fn: () => void): Disposable {
+			listeners.add(fn);
+			return { dispose: () => void listeners.delete(fn) };
+		},
+		set(next: Result<{ settings: unknown }>) {
+			current = next;
+			for (const fn of [...listeners]) fn();
+		},
+		listenerCount: () => listeners.size,
+	};
 };
 
 /** 问题表的写口替身:三个动作都是 spy。 */

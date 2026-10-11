@@ -198,6 +198,26 @@ describe("集成设置 — 读", () => {
 		expect(() => store.getIntegrationSettings(otherSegment)).toThrow(/没有登记/);
 	});
 
+	it("readIntegrationSettings 按键回内存里那一份(ok),也是深拷贝", async () => {
+		await placeFile(pokeFile(), JSON.stringify({ count: 7 }));
+		const store = await open();
+
+		const r = store.readIntegrationSettings("poke");
+		expect(r).toEqual({ ok: true, settings: { label: "hello", count: 7 } });
+		if (r.ok) (r.settings as Poke).label = "tampered";
+
+		expect(store.readIntegrationSettings("poke")).toEqual({
+			ok: true,
+			settings: { label: "hello", count: 7 },
+		});
+	});
+
+	it("readIntegrationSettings 没登记过的键 → 抛(组装处漏了)", async () => {
+		const store = await open([pokeSegment]);
+
+		expect(() => store.readIntegrationSettings("other")).toThrow(/没有登记/);
+	});
+
 	it("getAllIntegrationSettings 按集成的键给全部,也是深拷贝", async () => {
 		const store = await open();
 

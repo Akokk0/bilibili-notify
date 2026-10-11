@@ -22,10 +22,12 @@ import {
 	NewConnectionSchema,
 	neutralPlatformSnapshot,
 	normalizeMessageLayout,
+	ok,
 	type PlatformSnapshot,
 	PlatformSnapshotSchema,
 	type PushTarget,
 	PushTargetSchema,
+	type Result,
 	type ServiceContext,
 	type Subscription,
 	SubscriptionSchema,
@@ -156,6 +158,11 @@ export interface ConfigStore {
 	getInvalidSettings(): InvalidSettingEntry[];
 	/** 一个登记过的集成的设置(深拷贝)。没登记过就抛:那是组装处漏了,不是数据的问题。 */
 	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T;
+	/**
+	 * 按键读一个登记过的集成此刻的设置(深拷贝、不过 schema:形状归读的人自己那份 zod)。整个文件读不懂回失败。
+	 * 没登记过的键抛(组装处漏了)。
+	 */
+	readIntegrationSettings(key: string): Result<{ settings: unknown }>;
 	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/settings` 与备份用。 */
 	getAllIntegrationSettings(): Record<string, unknown>;
 	/**
@@ -1246,6 +1253,14 @@ class NodeConfigStore implements ConfigStore {
 			throw new Error(`集成「${segment.key}」的设置没有登记进配置仓(组装处漏了)`);
 		}
 		return deepClone(this.integrationSettings.get(segment.key)) as T;
+	}
+
+	readIntegrationSettings(key: string): Result<{ settings: unknown }> {
+		if (!this.segments.has(key)) {
+			throw new Error(`集成「${key}」的设置没有登记进配置仓(组装处漏了)`);
+		}
+		// 坏段现在还挡开机,所以内存里的这一份一定是读得懂的。
+		return ok({ settings: deepClone(this.integrationSettings.get(key)) });
 	}
 
 	getAllIntegrationSettings(): Record<string, unknown> {

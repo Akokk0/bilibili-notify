@@ -6,10 +6,12 @@ import type {
 	MessageBus,
 	PostEvent,
 	PostReport,
+	Result,
 	SourceContext,
 	SourceDescriptor,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import { createSettingsReader } from "../integrations/settings-reader.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
@@ -28,6 +30,14 @@ export interface CreateSourceContextOptions {
 	enqueue: (event: PostEvent) => void;
 	/** 问题表的写口:来源报的问题记在报的人(这个来源的键)名下。 */
 	problems: Pick<ProblemTable, "report" | "resolve">;
+	/**
+	 * 这个来源所属集成的设置:`read` 读此刻那一份(整个文件读不懂回失败),`onChanged` 在「设置可能变了」时叫。
+	 * 键由造上下文的人按登记项带进来,这里不认识任何具体集成。
+	 */
+	settings: {
+		read(): Result<{ settings: unknown }>;
+		onChanged(fn: () => void): Disposable;
+	};
 }
 
 /** 问题的 code:snake 风格,小写字母开头。 */
@@ -118,6 +128,19 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		onDispose: integration.onDispose,
 		state: integration.state,
 		secrets: integration.secrets,
+		settings(schema) {
+			const { reader, dispose } = createSettingsReader({
+				schema,
+				read: opts.settings.read,
+				onChanged: opts.settings.onChanged,
+				logger,
+			});
+			// 把手的监听跟着上下文一起摘:不指望来源在 `stop()` 里记得收。
+			// 上下文已收掉才来要把手:当场收掉宿主那头的监听,免得没人摘;`get()` 照常能读。
+			if (disposed) dispose();
+			else watches.push({ dispose });
+			return reader;
+		},
 		subscriptions: () =>
 			sourceSubscriptionViews(opts.subscriptions.list(), sourceKey, opts.defaults()),
 		onSubscriptionsChanged(fn) {

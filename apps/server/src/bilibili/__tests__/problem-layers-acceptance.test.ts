@@ -20,6 +20,7 @@ import { createProblemTable } from "../../problems/problem-table.js";
 import {
 	makeIntegration,
 	makeLogger,
+	makeSettingsHost,
 	makeSub,
 	makeWorld,
 	SOURCE_KEY,
@@ -113,6 +114,7 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 		logger,
 		enqueue: () => {},
 		problems: table,
+		settings: makeSettingsHost(),
 	});
 	return { table, notifyMaster, layers, registration, ...authed };
 }

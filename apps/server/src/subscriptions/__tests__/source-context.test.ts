@@ -1,10 +1,12 @@
-import type { PostEvent, PostReport } from "@bilibili-notify/internal";
+import { ok, type PostEvent, type PostReport } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import { createSourceContext } from "../source-context.js";
 import {
 	makeIntegration,
 	makeLogger,
 	makeProblems,
+	makeSettingsHost,
 	makeSub,
 	makeWorld,
 	SOURCE_KEY,
@@ -21,6 +23,7 @@ const setup = (subs = [makeSub("a", "1")]) => {
 	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
 	const problems = makeProblems();
+	const settingsHost = makeSettingsHost();
 	const handle = createSourceContext({
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,
@@ -31,12 +34,13 @@ const setup = (subs = [makeSub("a", "1")]) => {
 		logger,
 		enqueue,
 		problems,
+		settings: settingsHost,
 	});
-	return { ...world, logger, enqueue, problems, handle };
+	return { ...world, logger, enqueue, problems, handle, settingsHost };
 };
 
 describe("createSourceContext", () => {
-	it("交出去的上下文只有公共五格加来源的五个方法:没有 http 与 cookies", () => {
+	it("交出去的上下文只有公共五格加来源的六个方法:没有 http 与 cookies", () => {
 		const { handle } = setup();
 		expect(Object.keys(handle.ctx).sort()).toEqual([
 			"logger",
@@ -46,6 +50,7 @@ describe("createSourceContext", () => {
 			"reportProblem",
 			"resolveProblem",
 			"secrets",
+			"settings",
 			"signal",
 			"state",
 			"subscriptions",
@@ -67,6 +72,7 @@ describe("createSourceContext", () => {
 			logger: hostLogger,
 			enqueue: vi.fn(),
 			problems: makeProblems(),
+			settings: makeSettingsHost(),
 		});
 		expect(handle.ctx.logger).toBe(hostLogger);
 		expect(handle.ctx.logger).not.toBe(integrationLogger);
@@ -148,6 +154,59 @@ describe("createSourceContext", () => {
 		expect(logger.error).toHaveBeenCalledTimes(1);
 		// 幂等
 		expect(() => handle.dispose()).not.toThrow();
+	});
+});
+
+describe("createSourceContext · settings", () => {
+	const Schema = z.object({ cron: z.string() });
+
+	it("ctx.settings(schema) 拿到的把手读得到宿主那一份", () => {
+		const { handle, settingsHost } = setup();
+		settingsHost.set(ok({ settings: { cron: "a", extra: 1 } }));
+		expect(handle.ctx.settings(Schema).get()).toEqual({ ok: true, settings: { cron: "a" } });
+	});
+
+	it("可以交多份 zod,各读各的格", () => {
+		const { handle, settingsHost } = setup();
+		settingsHost.set(ok({ settings: { cron: "a", minutes: 3 } }));
+		const a = handle.ctx.settings(Schema).get();
+		const b = handle.ctx.settings(z.object({ minutes: z.number() })).get();
+		expect(a).toEqual({ ok: true, settings: { cron: "a" } });
+		expect(b).toEqual({ ok: true, settings: { minutes: 3 } });
+	});
+
+	it("设置变了把手回调;上下文收掉之后设置再变,把手不再回调、get() 照常能读", () => {
+		const { handle, settingsHost } = setup();
+		settingsHost.set(ok({ settings: { cron: "a" } }));
+		const reader = handle.ctx.settings(Schema);
+		const fn = vi.fn();
+		reader.onChange(fn);
+		settingsHost.set(ok({ settings: { cron: "b" } }));
+		expect(fn).toHaveBeenCalledTimes(1);
+		handle.dispose();
+		settingsHost.set(ok({ settings: { cron: "c" } }));
+		expect(fn).toHaveBeenCalledTimes(1);
+		expect(reader.get()).toEqual({ ok: true, settings: { cron: "c" } });
+	});
+
+	it("上下文收掉之后才来要把手:宿主那头不留监听,get() 照常能读", () => {
+		const { handle, settingsHost } = setup();
+		settingsHost.set(ok({ settings: { cron: "a" } }));
+		handle.dispose();
+		const reader = handle.ctx.settings(Schema);
+		expect(settingsHost.listenerCount()).toBe(0);
+		expect(reader.get()).toEqual({ ok: true, settings: { cron: "a" } });
+	});
+
+	it("连造三个把手、收掉上下文后宿主那头的监听数回到零", () => {
+		const { handle, settingsHost } = setup();
+		expect(settingsHost.listenerCount()).toBe(0);
+		handle.ctx.settings(Schema);
+		handle.ctx.settings(Schema);
+		handle.ctx.settings(Schema);
+		expect(settingsHost.listenerCount()).toBe(3);
+		handle.dispose();
+		expect(settingsHost.listenerCount()).toBe(0);
 	});
 });
 

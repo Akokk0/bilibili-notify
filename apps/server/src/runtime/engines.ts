@@ -1258,6 +1258,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				logger: dynamicCtx.logger,
 				enqueue: (event) => postQueue.enqueue(event),
 				problems: opts.problems,
+				// 来源读自己集成的设置:键取自登记项,核心不认识任何具体集成。
+				settings: {
+					read: () => opts.configStore.readIntegrationSettings(entry.sourceKey),
+					onChanged: (fn) =>
+						opts.configStore.onChange((scope) => {
+							if (scope === "integration-settings") fn();
+						}),
+				},
 			});
 			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。
 			if (disposed) {

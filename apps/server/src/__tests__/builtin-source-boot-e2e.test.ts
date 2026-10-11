@@ -73,7 +73,7 @@ describe("内置来源的登记接在开机与关停路径上", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("开机后来源的 start 恰好一次,ctx 上五个方法都在;关服务之后 stop 恰好一次", async () => {
+	it("开机后来源的 start 恰好一次,ctx 上六个方法都在;关服务之后 stop 恰好一次", async () => {
 		const port = await findFreePort();
 		handle = await startServer({
 			argv: [
@@ -95,6 +95,7 @@ describe("内置来源的登记接在开机与关停路径上", () => {
 		expect(typeof ctx.reportPost).toBe("function");
 		expect(typeof ctx.reportProblem).toBe("function");
 		expect(typeof ctx.resolveProblem).toBe("function");
+		expect(typeof ctx.settings).toBe("function");
 		expect(ctx.subscriptions()).toEqual([]);
 		expect(fake.stops).toBe(0);
 

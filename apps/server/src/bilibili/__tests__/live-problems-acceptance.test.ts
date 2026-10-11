@@ -24,6 +24,7 @@ import { createProblemTable } from "../../problems/problem-table.js";
 import {
 	makeIntegration,
 	makeLogger,
+	makeSettingsHost,
 	makeSub,
 	makeWorld,
 	SOURCE_KEY,
@@ -142,6 +143,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 		logger,
 		enqueue: () => {},
 		problems: table,
+		settings: makeSettingsHost(),
 	});
 	return { table, notifyMaster, layers, source, engineErrors, ...authed };
 }
