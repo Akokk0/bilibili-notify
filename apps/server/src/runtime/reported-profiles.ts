@@ -9,6 +9,7 @@ import {
 	type SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
+import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 import { checkSubscriptionAvatarBytes } from "./subscription-avatar.js";
 
@@ -66,6 +67,9 @@ type ProfileValue = SubscriptionReportValue<"profile">;
 /** 写道的唯一一个键:所有资料更新排一队。 */
 const WRITE_KEY = "reported-profiles";
 
+/** 「资料变了」合并窗口的唯一一个键。 */
+const CHANGED_KEY = "profiles-changed";
+
 /** 面板看得见的那几格变没变。 */
 function visiblyChanged(prev: CachedProfile | undefined, next: CachedProfile): boolean {
 	return prev?.name !== next.name || prev?.avatar !== next.avatar || prev?.fans !== next.fans;
@@ -78,17 +82,20 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 	let disposed = false;
 	/** 窗口里攒着的、变了的订阅 id。 */
 	const pending = new Set<string>();
-	let timer: ReturnType<typeof setTimeout> | undefined;
-
-	function announce(ids: readonly string[]): void {
-		for (const id of ids) pending.add(id);
-		if (timer !== undefined || pending.size === 0) return;
-		timer = setTimeout(() => {
-			timer = undefined;
+	/** 攒的是一整批订阅 id、到点一起发,所以合并器只有 {@link CHANGED_KEY} 这一个键。 */
+	const changedWindow = createKeyedCoalescer({
+		windowMs,
+		onFire: () => {
 			const changed = [...pending];
 			pending.clear();
 			opts.bus.emit("subscription-profiles-changed", { subscriptionIds: changed });
-		}, windowMs);
+		},
+	});
+
+	function announce(ids: readonly string[]): void {
+		for (const id of ids) pending.add(id);
+		if (pending.size === 0) return;
+		changedWindow.touch(CHANGED_KEY);
 	}
 
 	/** 这一轮报来的头像存进图库,回引用;不合规矩、存不下来都是 `undefined`(记一句,不让名字与粉丝跟着丢)。 */
@@ -178,8 +185,7 @@ export function bindReportedProfiles(opts: BindReportedProfilesOptions): Reporte
 		dispose() {
 			disposed = true;
 			sub.dispose();
-			clearTimeout(timer);
-			timer = undefined;
+			changedWindow.dispose();
 			pending.clear();
 		},
 	};

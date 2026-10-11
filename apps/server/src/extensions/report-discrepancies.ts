@@ -1,3 +1,4 @@
+import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import type { ReportDiscrepancy } from "./context.js";
 
 /**
@@ -48,23 +49,10 @@ export function createReportDiscrepancyTable(
 	/** 拓展 id → 它那一段,**老的在前**(挤最老的那条就是 `shift`)。 */
 	const byExtension = new Map<string, ReportDiscrepancy[]>();
 	/** 拓展 id → 挂着的那一发「变了」。 */
-	const pending = new Map<string, ReturnType<typeof setTimeout>>();
-
-	function announce(extensionId: string): void {
-		if (!opts.onChanged || pending.has(extensionId)) return;
-		pending.set(
-			extensionId,
-			setTimeout(() => {
-				pending.delete(extensionId);
-				opts.onChanged?.(extensionId);
-			}, REPORT_DISCREPANCIES_CHANGED_COALESCE_MS),
-		);
-	}
-
-	function cancel(extensionId: string): void {
-		clearTimeout(pending.get(extensionId));
-		pending.delete(extensionId);
-	}
+	const changed = createKeyedCoalescer({
+		windowMs: REPORT_DISCREPANCIES_CHANGED_COALESCE_MS,
+		onFire: (extensionId) => opts.onChanged?.(extensionId),
+	});
 
 	return {
 		record(discrepancy) {
@@ -73,17 +61,18 @@ export function createReportDiscrepancyTable(
 			if (kept.length > REPORT_DISCREPANCIES_KEPT)
 				kept.splice(0, kept.length - REPORT_DISCREPANCIES_KEPT);
 			byExtension.set(discrepancy.extensionId, kept);
-			announce(discrepancy.extensionId);
+			if (opts.onChanged) changed.touch(discrepancy.extensionId);
 		},
 		list(extensionId) {
 			return [...(byExtension.get(extensionId) ?? [])].reverse();
 		},
 		clear(extensionId) {
 			byExtension.delete(extensionId);
-			cancel(extensionId);
+			changed.cancel(extensionId);
 		},
 		dispose() {
-			for (const extensionId of [...pending.keys()]) cancel(extensionId);
+			// 只作废挂着的;关机之后再记的照旧能起算(与改用公共合并器之前一样)。
+			changed.cancelAll();
 		},
 	};
 }

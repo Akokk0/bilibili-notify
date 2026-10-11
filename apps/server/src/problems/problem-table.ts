@@ -1,5 +1,6 @@
 import type { Disposable, Logger, Problem } from "@bilibili-notify/internal";
 import { errorMessageOf } from "../util/error-message.js";
+import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 
 /**
  * 问题表:各处报上来的「主人该知道的事」,全在内存,重启清空。
@@ -75,28 +76,15 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 	const entries = new Map<string, Entry>();
 	const listeners = new Set<(change: ProblemChange) => void>();
 	/** 报的人 → 挂着的那一发「变了」。 */
-	const pending = new Map<string, ReturnType<typeof setTimeout>>();
-	let disposed = false;
-
-	function announce(reporter: string): void {
-		if (disposed || !options.onChanged || pending.has(reporter)) return;
-		pending.set(
-			reporter,
-			setTimeout(() => {
-				pending.delete(reporter);
-				try {
-					options.onChanged?.(reporter);
-				} catch (err) {
-					logger.warn(
-						`[problems] 通知「问题变了」失败 reporter=${reporter}: ${errorMessageOf(err)}`,
-					);
-				}
-			}, PROBLEMS_CHANGED_COALESCE_MS),
-		);
-	}
+	const changed = createKeyedCoalescer({
+		windowMs: PROBLEMS_CHANGED_COALESCE_MS,
+		onFire: (reporter) => options.onChanged?.(reporter),
+		onError: (reporter, err) =>
+			logger.warn(`[problems] 通知「问题变了」失败 reporter=${reporter}: ${errorMessageOf(err)}`),
+	});
 
 	function emit(change: ProblemChange): void {
-		announce(change.problem.reporter);
+		if (options.onChanged) changed.touch(change.problem.reporter);
 		for (const fn of [...listeners]) {
 			try {
 				fn(change);
@@ -170,9 +158,7 @@ export function createProblemTable(options: CreateProblemTableOptions): ProblemT
 			return { dispose: () => void listeners.delete(fn) };
 		},
 		dispose() {
-			disposed = true;
-			for (const timer of pending.values()) clearTimeout(timer);
-			pending.clear();
+			changed.dispose();
 		},
 	};
 }

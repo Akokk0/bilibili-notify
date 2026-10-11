@@ -305,13 +305,34 @@ describe("createProblemTable 的 onChanged 合并", () => {
 		expect(onChanged).not.toHaveBeenCalled();
 	});
 
+	it("dispose 之后再报的也不再叫", () => {
+		const onChanged = vi.fn();
+		const { table } = makeTable(onChanged);
+		table.dispose();
+		table.report({ reporter: "a", code: "c", message: "1" });
+		vi.advanceTimersByTime(W * 2);
+		expect(onChanged).not.toHaveBeenCalled();
+	});
+
+	it("onChanged 抛错记一行 warn(带报的人),别的报的人照发", () => {
+		const onChanged = vi.fn((reporter: string) => {
+			if (reporter === "a") throw new Error("面板那头坏了");
+		});
+		const { table, logger } = makeTable(onChanged);
+		table.report({ reporter: "a", code: "c", message: "1" });
+		table.report({ reporter: "b", code: "c", message: "1" });
+		vi.advanceTimersByTime(W);
+		expect(onChanged.mock.calls.map((c) => c[0]).sort()).toEqual(["a", "b"]);
+		const warns = vi.mocked(logger.warn).mock.calls.map((c) => String(c[0]));
+		expect(warns).toContain("[problems] 通知「问题变了」失败 reporter=a: 面板那头坏了");
+	});
+
 	it("onChanged 抛错不带倒表", () => {
 		const onChanged = vi.fn(() => {
 			throw new Error("面板那头坏了");
 		});
-		const { table, logger } = makeTable(onChanged);
+		const { table } = makeTable(onChanged);
 		table.report({ reporter: "a", code: "c", message: "1" });
 		expect(() => vi.advanceTimersByTime(W)).not.toThrow();
-		expect(logger.warn).toHaveBeenCalled();
 	});
 });

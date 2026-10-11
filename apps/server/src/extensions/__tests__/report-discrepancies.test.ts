@@ -118,6 +118,16 @@ describe("记了新的就叫面板重取", () => {
 		expect(changed.sort()).toEqual(["douyin", "kuaishou"]);
 	});
 
+	it("卸载清掉只作废那一个拓展挂着的,别的拓展照发", () => {
+		const changed: string[] = [];
+		const log = createReportDiscrepancyTable({ onChanged: (id) => changed.push(id) });
+		log.record(discrepancy("douyin", 1));
+		log.record(discrepancy("kuaishou", 1));
+		log.clear("douyin");
+		vi.advanceTimersByTime(W);
+		expect(changed).toEqual(["kuaishou"]);
+	});
+
 	it("卸载清掉时挂着的那一发不发了;收摊之后也不发", () => {
 		const changed: string[] = [];
 		const log = createReportDiscrepancyTable({ onChanged: (id) => changed.push(id) });

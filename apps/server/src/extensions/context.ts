@@ -39,6 +39,7 @@ import type { IntegrationStoreHandle } from "../integration-store/store.js";
 import { createIntegrationContext } from "../integrations/context.js";
 import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
+import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
 import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
@@ -156,6 +157,9 @@ export interface ReportDiscrepancy {
  * 一直是旧的。
  */
 export const STATUS_CHANGED_COALESCE_MS = 250;
+
+/** 单键的合并器用的那个键。 */
+const STATUS_KEY = "status";
 
 /**
  * v2 清单里推送源那一口的外观 + 连接配置项(ADR-0019 决策 17 / 41)。v1(写在代码里)或没开这一口
@@ -358,8 +362,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				integration.ctx.logger.error(`通知宿主「拓展停了」时抛了:${(err as Error).message}`);
 			}
 			// 挂着的那一发不发了:收摊之后再冒出一帧,面板会去重读一个已经停了的拓展。
-			clearTimeout(statusTimer);
-			statusTimer = undefined;
+			statusCoalescer.cancelAll();
 		},
 	});
 	const logger = integration.ctx.logger;
@@ -394,8 +397,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let subscriptionSource: SubscriptionSourceDef | undefined;
 	/** 在跑的解析 —— 收摊时逐个叫停。**不按名字挡并发**(决策 52:查询可以同时好几发)。 */
 	const runningLookups = new Set<AbortController>();
-	/** 挂着的那一发「面板数据变了」(合并窗口,见 {@link STATUS_CHANGED_COALESCE_MS});没有就是 `undefined`。 */
-	let statusTimer: ReturnType<typeof setTimeout> | undefined;
+	/** 「面板数据变了」的合并窗口(见 {@link STATUS_CHANGED_COALESCE_MS});整个拓展就这一个键。 */
+	const statusCoalescer = createKeyedCoalescer({
+		windowMs: STATUS_CHANGED_COALESCE_MS,
+		onFire: () => opts.onStatusChanged?.(),
+	});
 
 	/** 属于这个拓展、且 settings 解得出来的那些。解不出的当它不存在并记一行。 */
 	function ownConnections<TConfig>(
@@ -931,11 +937,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return;
 			}
 			// 窗口里已经挂着一发:这一喊由它带上 —— 它在这一喊之后才发,面板重读到的是这一喊之后的样子。
-			if (statusTimer !== undefined) return;
-			statusTimer = setTimeout(() => {
-				statusTimer = undefined;
-				opts.onStatusChanged?.();
-			}, STATUS_CHANGED_COALESCE_MS);
+			statusCoalescer.touch(STATUS_KEY);
 		},
 		settings<T>(schema: ZodType<T>): ExtensionSettings<T> {
 			checkSettingsSchema(schema);

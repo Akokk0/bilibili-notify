@@ -116,6 +116,24 @@ describe("bindReportedProfiles", () => {
 		expect(subRuntime.get(B)?.cachedProfile).toMatchObject({ name: "乙" });
 	});
 
+	it("窗口从第一条变了起算,后面又变的不往后推", async () => {
+		// 只假 setTimeout / clearTimeout:落盘走的是文件 I/O,不受影响;时间由测试手动拨。
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			bind({ coalesceMs: 30 });
+			bus.emit("subscription-reported", profileReport([A], { name: "甲" }));
+			await handle.idle();
+			vi.advanceTimersByTime(20);
+			bus.emit("subscription-reported", profileReport([B], { name: "乙" }));
+			await handle.idle();
+			expect(announced).toEqual([]);
+			vi.advanceTimersByTime(10);
+			expect(announced).toEqual([[A, B]]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("订阅已经不在了:不种资料、不存头像,也不叫面板", async () => {
 		bind();
 		bus.emit("subscription-reported", profileReport([GONE], { name: "丙", avatar: PNG_BYTES }));

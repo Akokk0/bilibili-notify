@@ -5,6 +5,7 @@ import type {
 	ServiceContext,
 	SubscriptionReportDelivery,
 } from "@bilibili-notify/internal";
+import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 
 /**
  * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61)—— 首页「正在直播」里拓展那几行从这里来。
@@ -33,6 +34,9 @@ import type {
  * `/api/live/listening`;一秒一发兜得住一轮,而进表 / 出表晚一秒到面板,人眼里仍是「当场变了」。
  */
 export const EXTENSION_LIVE_COALESCE_MS = 1_000;
+
+/** 整张表就一个合并窗口,单键的合并器用的那个键。 */
+const CHANGED_KEY = "live-changed";
 
 /** 表里的一行:一条拓展订阅此刻在播。 */
 export interface ExtensionLiveRow {
@@ -155,15 +159,15 @@ export function createExtensionLiveTable(
 	const { bus, timers } = opts;
 	const now = opts.now ?? Date.now;
 	const rows = new Map<string, ExtensionLiveRow>();
-	/** 窗口里挂着的那一发。 */
-	let pending: Disposable | undefined;
+	/** 窗口里挂着的那一发;整张表就这一个键。 */
+	const changed = createKeyedCoalescer({
+		windowMs: EXTENSION_LIVE_COALESCE_MS,
+		onFire: () => bus.emit("extension-live-changed"),
+		setTimer: (fn, ms) => timers.setTimeout(fn, ms),
+	});
 
 	function markChanged(): void {
-		if (pending) return;
-		pending = timers.setTimeout(() => {
-			pending = undefined;
-			bus.emit("extension-live-changed");
-		}, EXTENSION_LIVE_COALESCE_MS);
+		changed.touch(CHANGED_KEY);
 	}
 
 	/** 换掉(或删掉)一行;面板看得见的变了就记一笔。 */
@@ -234,8 +238,7 @@ export function createExtensionLiveTable(
 		get: (subscriptionId) => rows.get(subscriptionId),
 		dispose() {
 			for (const watch of watches) watch.dispose();
-			pending?.dispose();
-			pending = undefined;
+			changed.cancelAll();
 		},
 	};
 }
