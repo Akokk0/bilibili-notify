@@ -486,7 +486,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	};
 
 	// ---------- Master notifier ----------
-	// engine-error / auth-lost → 主人 OneBot 私聊。共用一张 per-source 60s 节流表。
+	// 组件告警(`engine-error`)→ 主人私聊,共用一张 per-source 60s 节流表。登录失效不在这里:
+	// 那是「主人该知道的事」,由下面的问题通知器说(带「已恢复」)。
 	// Web dashboard 上同样会通过 AlertShell 看到 engine-error;两路通道互不影响。
 	const masterNotifier = new MasterNotifier({
 		bus: opts.bus,

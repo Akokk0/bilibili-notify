@@ -130,14 +130,54 @@ export abstract class RoomSessionBase {
 		this.sub = sub;
 	}
 
-	/** 这位 UP 这一路的风控清掉:这一次预检没被拦(成功、别的失败都算),或会话结束。 */
-	protected resolveRisk(): void {
-		this.ctx.problems.resolveRisk(liveRiskPath(this.sub.uid));
+	/**
+	 * 这个会话还活着吗:没被取消、上下文没收。会话停掉之后才回来的预检 / 建连 / 取信息结果,
+	 * 不许再往问题表里报或清(问题的键是 UP 不是会话,迟到的上报会留下谁也清不掉的条目,
+	 * 迟到的清会清掉接手的新会话的条目)。**所有对问题表的上报与清都经下面这几个口**;
+	 * 唯一例外是 `cancel()` 自己收尾那一下({@link retireRisk})。
+	 */
+	protected get alive(): boolean {
+		return !this.cancelled && !this.ctx.isDisposed();
 	}
 
-	/** 这个房间不监听了:报一条订阅级的「停止监听」。 */
+	/**
+	 * 这位 UP 这一路风控清掉。`relieved`:`true` = 这一次预检真的连上了(风控解除,最后一路会补「风控已解除」);
+	 * `false` = 没连上 / 别的异常 / 受限(不是解除,不说「已解除」)。会话已停就什么都不做。
+	 */
+	protected resolveRisk(relieved: boolean): void {
+		if (!this.alive) return;
+		const path = liveRiskPath(this.sub.uid);
+		if (relieved) this.ctx.problems.resolveRisk(path);
+		else this.ctx.problems.resolveRisk(path, { notify: false });
+	}
+
+	/** 会话结束(`cancel()`):这位 UP 这一路挂着的风控不再适用,不是解除。不看还活不活着 —— 它就是收尾。 */
+	protected retireRisk(): void {
+		this.ctx.problems.resolveRisk(liveRiskPath(this.sub.uid), { notify: false });
+	}
+
+	/** 预检被 -352 拦下:报这一路的风控。会话已停就不报。 */
+	protected reportRisk(): void {
+		if (!this.alive) return;
+		this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid));
+	}
+
+	/** 这个房间不监听了:报一条订阅级的「停止监听」。会话已停就不报。 */
 	protected reportStopped(reason: string): void {
+		if (!this.alive) return;
 		this.ctx.reportMonitorStopped(this.sub.uid, this.sub.roomId, reason);
+	}
+
+	/** 这个房间被 B 站拒了弹幕连接:报一条订阅级的「房间受限」。会话已停就不报。 */
+	protected reportRestricted(reason: string): void {
+		if (!this.alive) return;
+		this.ctx.reportRoomRestricted(this.sub.uid, this.sub.roomId, reason);
+	}
+
+	/** 这个房间监听上了 / 连上了:之前报过的那条订阅级问题清掉(普通的清,核心补「已恢复」)。会话已停就不清。 */
+	protected resolveStopped(code: typeof MONITOR_STOPPED_CODE | typeof ROOM_RESTRICTED_CODE): void {
+		if (!this.alive) return;
+		this.ctx.problems.resolveFailure({ externalId: this.sub.uid, code });
 	}
 
 	/** 本房间对外推送的串行闸,见 {@link enqueuePush}。 */
@@ -334,9 +374,9 @@ export abstract class RoomSessionBase {
 			listening = await this.ctx.startLiveRoomListener(this.sub.roomId, this.buildEventHandler());
 		} catch (e) {
 			if (e instanceof LiveRoomAccessDeniedError) {
-				// 不是风控拦截:这一路的风控(如果挂着)先清,再报受限房。
-				this.resolveRisk();
-				this.ctx.reportRoomRestricted(this.sub.uid, this.sub.roomId, e.message);
+				// 不是风控拦截:这一路的风控(如果挂着)先清(受限不是解除),再报受限房。
+				this.resolveRisk(false);
+				this.reportRestricted(e.message);
 				this.onMonitoringStopped();
 				this.ctx.stopMonitoring(e.message, this.sub.roomId);
 				return;
@@ -344,30 +384,27 @@ export abstract class RoomSessionBase {
 			// 预检被 -352 风控拦截:瞬时风控不放弃房间,交给子类的长尾退避重试
 			// (每轮重新预检拿新 token)。连上后由重连成功路径补跑 bootstrapRoomState。
 			if (e instanceof LiveRoomPreflightBlockedError) {
-				this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid));
+				this.reportRisk();
 				this.ctx.logger.warn(
 					`[conn] 直播间 [${this.sub.roomId}] ${e.message},进入长尾重试,不放弃监测`,
 				);
 				this.onPreflightBlocked();
 				return;
 			}
-			this.resolveRisk();
+			// 别的异常:预检没被拦,但也不是连上了 —— 风控的清不算解除
+			this.resolveRisk(false);
 			throw e;
 		}
-		// 预检没被拦(连上了或没连上):这一路的风控清掉。
-		this.resolveRisk();
+		// 预检没被拦(连上了或没连上):这一路的风控清掉。连上了才算风控解除,没连上不算。
+		this.resolveRisk(listening);
 		if (!listening) {
-			this.ctx.reportMonitorStopped(
-				this.sub.uid,
-				this.sub.roomId,
-				PROBLEM_TEXTS.liveStopReasons.danmakuConnect,
-			);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.danmakuConnect);
 			this.onMonitoringStopped();
 			this.ctx.closeListener(this.sub.roomId);
 			return;
 		}
 		// 弹幕连上了:之前报过的受限房不再成立。
-		this.ctx.problems.resolveFailure({ externalId: this.sub.uid, code: ROOM_RESTRICTED_CODE });
+		this.resolveStopped(ROOM_RESTRICTED_CODE);
 
 		// WS 从上面这行起就在派发事件了,而 `liveStatus` 要等本方法末尾才翻 —— 中间隔着
 		// 刷房间/主播信息、算已播时长、渲染并推送「正在直播」卡片,可达数秒。这是全仓
@@ -383,11 +420,7 @@ export abstract class RoomSessionBase {
 		// 首跑的信息拉取失败按原语义放弃房间;重连补跑路径(room-session)对同一个
 		// false 走长尾重试 —— 放弃与否是调用方的策略,不在 bootstrapRoomState 里定。
 		if (!stateReady) {
-			this.ctx.reportMonitorStopped(
-				this.sub.uid,
-				this.sub.roomId,
-				PROBLEM_TEXTS.liveStopReasons.roomInfo,
-			);
+			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.onMonitoringStopped();
 			this.ctx.closeListener(this.sub.roomId);
 		}
@@ -423,7 +456,7 @@ export abstract class RoomSessionBase {
 		this.onListenerStarted();
 		this.bootstrapped = true;
 		// 初始房态拉到了:这个房间监听上了,之前报过的「停止监听」不再成立(普通的清,核心补「已恢复」)。
-		this.ctx.problems.resolveFailure({ externalId: this.sub.uid, code: MONITOR_STOPPED_CODE });
+		this.resolveStopped(MONITOR_STOPPED_CODE);
 		this.ctx.logger.debug(`[stat] 当前粉丝数：${this.masterInfo.liveOpenFollowerNum}`);
 
 		if (this.liveRoomInfo.live_status === 1) {
@@ -497,7 +530,7 @@ export abstract class RoomSessionBase {
 	// ── State transitions ─────────────────────────────────────────────────────
 
 	protected async useLiveRoomInfo(liveType: LiveType): Promise<boolean> {
-		const data = await this.ctx.getLiveRoomInfo(this.sub.roomId, this.sub.uid);
+		const data = await this.ctx.getLiveRoomInfo(this.sub.roomId, this.sub.uid, () => this.alive);
 		if (!data?.uid) return false;
 		if (liveType === LiveType.StartBroadcasting || liveType === LiveType.FirstLiveBroadcast) {
 			this.liveRoomInfo = data;

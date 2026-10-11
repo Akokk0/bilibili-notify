@@ -131,6 +131,16 @@ export class LoginFlow {
 	 * 登录流那一半。
 	 */
 	private authGeneration = 0;
+	/**
+	 * 此刻有没有一个**可丢的登录会话**:登录着;开机存着登录、还在确认(初值,`reportAccountInfo` 入口也置真);
+	 * 已登录时重扫、会话其实还在的那几种状态(`qr` / `failed`)也算有 —— 所以它不是状态的函数,
+	 * 而是「最近一次 `reportLoggedIn` / `reportLoggedOut` / 探活入口」的结论。
+	 *
+	 * 没有会话可丢时,请求客户端报来的 `-101` 只是「还没登录」的另一种说法:不得把「没登录」改写成「失效」
+	 * (对外的 `expired` 只指已经登着的登录失效了;从没登录过 / 主动退出只进问题表、不私聊),
+	 * 也不得打断进行中的扫码。
+	 */
+	private hasSession = true;
 
 	constructor(opts: LoginFlowOptions) {
 		this.serviceCtx = opts.serviceCtx;
@@ -204,6 +214,8 @@ export class LoginFlow {
 	 * Network failures keep the current status (transient) and are logged at warn.
 	 */
 	async reportAccountInfo(): Promise<void> {
+		// 来这里探活的都是手里有登录凭据的(开机存着的、恢复备份换进来的、扫码刚成功的):有会话可丢。
+		this.hasSession = true;
 		const gen = this.authGeneration;
 		let personalInfo: MyselfResponse;
 		try {
@@ -313,14 +325,22 @@ export class LoginFlow {
 		return true;
 	}
 
-	/** Mark the session as logged-out due to upstream session invalidation. */
+	/**
+	 * 请求客户端报上来一个 `-101`(任何请求、续期链都可能)。**没有会话可丢时什么都不改**
+	 * (见 `hasSession`):不改状态、不结束进行中的扫码,只记一行 debug。
+	 */
 	async handleAuthLost(): Promise<void> {
+		if (!this.hasSession) {
+			this.logger.debug("[auth] 没有可丢的登录会话，忽略请求报来的 -101");
+			return;
+		}
 		this.reportLoggedOut("authLost");
 	}
 
 	/** Mark the session as logged-out for a specific reason. */
 	reportLoggedOut(reasonKey: "notLogin" | "authLost" = "notLogin"): void {
 		const wasLoggedIn = this.state.status === "logged-in";
+		this.hasSession = false;
 		// 登出一并结束扫码会话:在途的旧码回应迟到时不得把登出的结果盖掉。
 		this.endScanSession();
 		// P2:登出后心跳无意义(runHealthCheck 对 logged-out 直接 return),
@@ -520,6 +540,7 @@ export class LoginFlow {
 	): void {
 		const prev = this.state;
 		const wasLoggedIn = prev.status === "logged-in";
+		this.hasSession = true;
 		const fallback = prev.status === "logged-in" ? prev.account : undefined;
 		this.transition({
 			status: "logged-in",
@@ -543,6 +564,11 @@ export class LoginFlow {
 		if (code === 0) {
 			this.reportLoggedIn();
 		} else if (code === -101) {
+			// 探活回 -101:登着的登录失效了。没有会话可丢(只有宿主 devtools 在「没登录」的 failed 上手动探活才走到)就还是「没登录」。
+			if (!this.hasSession) {
+				this.logger.debug("[auth] 没有可丢的登录会话，探活回 -101 不算失效");
+				return;
+			}
 			this.reportLoggedOut("authLost");
 		} else {
 			this.reportTransientFailure(`code=${code}`);

@@ -44,8 +44,21 @@ export interface CreateProblemNotifierOptions {
 	now?: () => number;
 }
 
+/**
+ * 一次在路上的发送。「谁在等它的结果」(`slot`)可以换人:发送途中问题被清、又被同一个键重新开起来时,
+ * 新开的那条认领这次发送(见 `adoptInFlight`)。
+ */
+interface Flight {
+	/** 此刻认领这次发送的那条。 */
+	slot: Slot;
+	/** 问题在表里的键(认领按它找)。 */
+	problemId: string;
+}
+
 /** 一条开着的问题在通知器这边的记账。 */
 interface Slot {
+	/** 问题在表里的键({@link problemKeyOf})。 */
+	id: string;
 	reporter: string;
 	code: string;
 	/** 最新的文案;再送发的是它。 */
@@ -60,6 +73,8 @@ interface Slot {
 	sentRecovery?: string;
 	/** 有一条正在发。 */
 	sending: boolean;
+	/** 正在发的那一次(`sending` 为真时有)。 */
+	flight?: Flight;
 	/** 已经用掉的再送次数。 */
 	retriesUsed: number;
 	retryTimer?: Disposable;
@@ -82,6 +97,12 @@ function createThrottle(now: () => number) {
 			const last = lastSentAt.get(key);
 			return last !== undefined && now() - last < NOTIFY_WINDOW_MS;
 		},
+		/** 还要多久窗口才过(正在发的按一整个窗口算:那一发落定后窗口才开始)。 */
+		remainingMs(key: string): number {
+			if (inFlight.has(key)) return NOTIFY_WINDOW_MS;
+			const last = lastSentAt.get(key);
+			return last === undefined ? 0 : Math.max(0, NOTIFY_WINDOW_MS - (now() - last));
+		},
 		begin(key: string): void {
 			inFlight.add(key);
 		},
@@ -97,6 +118,10 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 	const { logger, serviceCtx } = options;
 	const now = options.now ?? Date.now;
 	const slots = new Map<string, Slot>();
+	/** 发送还在路上时问题被清掉的那几次发送(按问题的键),等着被同键再开的认领;发完就摘。 */
+	const closedFlights = new Map<string, Flight>();
+	/** 被节流吞掉、等窗口到点补说的计时器(按节流键,每个键至多一个)。 */
+	const deferredSends = new Map<string, Disposable>();
 	const problemThrottle = createThrottle(now);
 	const recoveryThrottle = createThrottle(now);
 	let disposed = false;
@@ -113,30 +138,95 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		const key = throttleKey(slot);
 		if (problemThrottle.blocked(key)) {
 			logger.debug(`[problems] 私聊被节流吞掉 reporter=${slot.reporter} code=${slot.code}`);
+			deferUntilWindowEnds(slot, key);
 			return;
 		}
 		const text = slot.message;
 		const recovery = slot.recoveryMessage;
+		const flight: Flight = { slot, problemId: slot.id };
 		problemThrottle.begin(key);
 		slot.sending = true;
+		slot.flight = flight;
 		serviceCtx.track(
 			deliver(text).then((result) => {
 				problemThrottle.end(key, result.ok);
-				slot.sending = false;
+				// 发送途中认领人可能换了(见 adoptInFlight):结果交给此刻认领的那一条
+				const owner = flight.slot;
+				owner.sending = false;
+				owner.flight = undefined;
+				if (closedFlights.get(flight.problemId) === flight) closedFlights.delete(flight.problemId);
 				if (disposed) return;
 				if (result.ok) {
-					slot.sentText = text;
-					slot.sentRecovery = recovery;
-					if (slot.closedWhileSending?.announceRecovery) sendRecovery(slot, text, recovery);
+					owner.sentText = text;
+					owner.sentRecovery = recovery;
+					if (owner.closedWhileSending?.announceRecovery) sendRecovery(owner, text, recovery);
 					return;
 				}
-				if (slot.closedWhileSending) return;
+				if (owner.closedWhileSending) return;
 				logger.warn(
-					`[problems] 私聊没送到 reporter=${slot.reporter} code=${slot.code}: ${result.message}`,
+					`[problems] 私聊没送到 reporter=${owner.reporter} code=${owner.code}: ${result.message}`,
 				);
-				if (FAILURE_CODES[result.code].retry === "later" && slot.wantsNotify) scheduleRetry(slot);
+				if (FAILURE_CODES[result.code].retry === "later" && owner.wantsNotify) scheduleRetry(owner);
 			}),
 		);
+	}
+
+	/**
+	 * 这一条被节流吞掉时,看是不是被一句**开着**的话盖住了:同键有另一条开着、且已经说过(或正在说)的,
+	 * 十个房间同时出事就是这样 —— 盖住的不补。
+	 */
+	function coveredByOpenSlot(slot: Slot, key: string): boolean {
+		for (const other of slots.values()) {
+			if (other === slot || throttleKey(other) !== key) continue;
+			if (other.sentText !== undefined || other.sending) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 被吞、又没有开着的话盖住它(挡住它的是一条已经清掉的旧事):窗口到点时补说一次。每个键至多挂一个计时器;
+	 * 到点时同键有好几条还开着、要私聊、没说过的,只说最早开的那一条,其余由它盖住。
+	 */
+	function deferUntilWindowEnds(slot: Slot, key: string): void {
+		if (coveredByOpenSlot(slot, key) || deferredSends.has(key)) return;
+		deferredSends.set(
+			key,
+			serviceCtx.setTimeout(() => {
+				deferredSends.delete(key);
+				if (disposed) return;
+				const first = earliestUnsaid(key);
+				if (first) sendProblem(first);
+			}, problemThrottle.remainingMs(key)),
+		);
+	}
+
+	/** 同键里最早开的、还开着要私聊而没说过的那一条(Map 的插入序就是开的先后)。 */
+	function earliestUnsaid(key: string): Slot | undefined {
+		for (const slot of slots.values()) {
+			if (throttleKey(slot) !== key) continue;
+			if (slot.wantsNotify && slot.sentText === undefined && !slot.sending && !slot.retryTimer) {
+				return slot;
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * 发送途中这个问题被清了又被同一个键重新开起来:新开的认领那次在途的发送 —— 等于没清过。
+	 * 文案与恢复句用发出那一刻的;送达后算新开的这条说过了,不补「已恢复」;没送到就照新开的这条走再送。
+	 * 认领成功回 true(调用方不用再发)。
+	 */
+	function adoptInFlight(slot: Slot): boolean {
+		const flight = closedFlights.get(slot.id);
+		if (!flight) return false;
+		closedFlights.delete(slot.id);
+		const previous = flight.slot;
+		previous.sending = false;
+		previous.flight = undefined;
+		flight.slot = slot;
+		slot.sending = true;
+		slot.flight = flight;
+		return true;
 	}
 
 	function scheduleRetry(slot: Slot): void {
@@ -179,6 +269,7 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		let slot = slots.get(key);
 		if (!slot) {
 			slot = {
+				id: key,
 				reporter: change.problem.reporter,
 				code: change.problem.code,
 				message: change.problem.message,
@@ -200,8 +291,11 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			slot.retryTimer?.dispose();
 			slot.retryTimer = undefined;
 			slot.wantsNotify = false;
-			if (slot.sending) slot.closedWhileSending = { announceRecovery: change.notify };
-			else if (slot.sentText !== undefined && change.notify) {
+			if (slot.sending) {
+				slot.closedWhileSending = { announceRecovery: change.notify };
+				// 发送还在路上:同一个键再开起来的可以认领它
+				if (slot.flight) closedFlights.set(slot.id, slot.flight);
+			} else if (slot.sentText !== undefined && change.notify) {
 				sendRecovery(slot, slot.sentText, slot.sentRecovery);
 			}
 			return;
@@ -211,6 +305,7 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		slot.recoveryMessage = change.recoveryMessage;
 		slot.wantsNotify = change.notify;
 		if (!slot.wantsNotify || slot.sentText !== undefined || slot.sending || slot.retryTimer) return;
+		if (adoptInFlight(slot)) return;
 		sendProblem(slot);
 	}
 
@@ -222,6 +317,9 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			subscription.dispose();
 			for (const slot of slots.values()) slot.retryTimer?.dispose();
 			slots.clear();
+			closedFlights.clear();
+			for (const timer of deferredSends.values()) timer.dispose();
+			deferredSends.clear();
 		},
 	};
 }

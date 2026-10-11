@@ -25,6 +25,7 @@ import {
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { makeProblemPipeline } from "../../__tests__/problem-pipeline.js";
 import type { Api } from "../../api/index.js";
 import { createProblemLayers, type ProblemLayers } from "../../problem-layers";
 import { PROBLEM_TEXTS } from "../../problem-texts";
@@ -373,7 +374,8 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
 		expect(b.problems.reportRisk).not.toHaveBeenCalled();
 		expect(b.problems.reportFailure).not.toHaveBeenCalled();
-		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		// 不再适用,不是风控解除:带 notify: false
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic", { notify: false });
 		expect(b.problems.resolveFailure).toHaveBeenCalledWith(
 			{ code: "dynamic_fetch_failed" },
 			{ notify: false },
@@ -442,7 +444,8 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
 		await detect(b.engine);
-		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		// 动态其实仍在失败:清风控但不是「解除」,不对主人说「风控已解除」
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic", { notify: false });
 		expect(b.problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(b.problems.reportFailure).toHaveBeenCalledWith({
 			code: "dynamic_fetch_failed",
@@ -641,7 +644,7 @@ describe("DynamicEngine — 故障恢复", () => {
 		b.problems.resolveRisk.mockClear();
 		b.problems.resolveFailure.mockClear();
 		b.engine.stop();
-		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic", { notify: false });
 		expect(b.problems.resolveFailure).toHaveBeenCalledWith(
 			{ code: "dynamic_fetch_failed" },
 			{ notify: false },
@@ -1769,5 +1772,131 @@ describe("K. detectNow", () => {
 		await b.engine.detectNow();
 		await b.engine.detectNow();
 		expect(b.fetchAllDynamic).toHaveBeenCalledTimes(2);
+	});
+});
+
+/**
+ * 这一路不再跑了(名单空了 / 检测起不来):它报的风控与拉取失败要清掉 —— 没有「下一次结果」会去清它们,
+ * 不清的话风控条目永远挂在表里,还把之后所有直播间的停监压成无声。
+ * 清的是「不再适用」,不是风控解除:主人不会听到「风控已解除」。真引擎 + 真上报器 + 真问题表 + 真问题通知器。
+ */
+describe("DynamicEngine — 这一路不再跑了,它报的要清", () => {
+	const IN = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" } as const;
+	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
+
+	function makeWorld() {
+		const pipeline = makeProblemPipeline({ state: () => IN, onChange: () => ({ dispose() {} }) });
+		const b = makeEngine({ ...oneSub, problems: pipeline.layers });
+		seed(b.engine, "1", 0);
+		return { ...pipeline, b };
+	}
+
+	/** 让私聊的回执(异步)落定:「已恢复」要等头一句送到才补。 */
+	const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+	/** 清完之后,直播间报的停监能进表、能私聊(没有风控压着它)。 */
+	function liveStoppedGetsThrough(w: ReturnType<typeof makeWorld>): void {
+		const before = w.notifyMaster.mock.calls.length;
+		w.layers.reportFailure({
+			code: "live_monitor_stopped",
+			message: "房间停了",
+			notify: true,
+			lasting: true,
+		});
+		expect(w.table.list().map((p) => p.code)).toEqual(["live_monitor_stopped"]);
+		expect(w.notifyMaster).toHaveBeenCalledTimes(before + 1);
+		expect(w.notifyMaster).toHaveBeenLastCalledWith("房间停了");
+	}
+
+	// 验红:去掉 reconcileJob 里空名单那一支的 dropProblems,前两条里「订阅关掉」那条红;
+	//       去掉 restartDetector 里空名单返回前的 dropProblems,「退避到点」那条红;
+	//       dropProblems 里 resolveRisk 去掉 notify: false,「不说风控已解除」的断言红。
+	it("-352 后订阅关掉、名单空了:风控清掉、不说「风控已解除」,之后直播的停监照常进表并私聊", async () => {
+		const w = makeWorld();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(w.b.engine);
+		await settle();
+		expect(w.table.list().map((p) => p.code)).toEqual(["risk_controlled"]);
+		expect(w.notifyMaster).toHaveBeenCalledTimes(1);
+
+		w.b.setRoster(null);
+		w.b.engine.syncSubscriptions();
+		await settle();
+
+		expect(w.table.list()).toEqual([]);
+		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([PROBLEM_TEXTS.riskControlled.text]);
+		liveStoppedGetsThrough(w);
+	});
+
+	it("-352 后退避到点、名单已空:风控清掉、不说「风控已解除」", async () => {
+		const w = makeWorld();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(w.b.engine);
+		await settle();
+		w.b.setRoster(null); // 没有 sync:模拟名单变空发生在退避途中,到点才发现
+		expect(w.table.list().map((p) => p.code)).toEqual(["risk_controlled"]);
+
+		(w.b.engine as unknown as { restartDetector(): void }).restartDetector();
+		await settle();
+
+		expect(w.table.list()).toEqual([]);
+		expect(w.notifyMaster).toHaveBeenCalledTimes(1);
+		liveStoppedGetsThrough(w);
+	});
+
+	it("拉动态失败(非 -352)后名单空了:dynamic_fetch_failed 同样清掉", async () => {
+		const w = makeWorld();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		await detect(w.b.engine);
+		expect(w.table.list().map((p) => p.code)).toEqual(["dynamic_fetch_failed"]);
+
+		w.b.setRoster(null);
+		w.b.engine.syncSubscriptions();
+
+		expect(w.table.list()).toEqual([]);
+	});
+
+	it("-352 后 dynamicCron 被改成起不来的值、退避到点:同样是「不再跑了」,风控清掉", async () => {
+		const w = makeWorld();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(w.b.engine);
+		await settle();
+		expect(w.table.list().map((p) => p.code)).toEqual(["risk_controlled"]);
+
+		w.b.engine.updateConfig({ dynamicCron: "BAD CRON", dynamicVideoUrlToBV: false });
+		(w.b.engine as unknown as { restartDetector(): void }).restartDetector();
+		await settle();
+
+		expect(w.table.list()).toEqual([]);
+		expect(w.notifyMaster).toHaveBeenCalledTimes(1);
+	});
+
+	it("对照:名单没空、拉成功了:风控清掉并说「风控已解除」(真解除)", async () => {
+		const w = makeWorld();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(w.b.engine);
+		await settle();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([]));
+		await detect(w.b.engine);
+		await settle();
+
+		expect(w.table.list()).toEqual([]);
+		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.riskControlled.text,
+			PROBLEM_TEXTS.riskControlled.recovery,
+		]);
+	});
+
+	it("对照:-352 之后换成别的错误码:风控清掉但不说「风控已解除」(动态仍在失败)", async () => {
+		const w = makeWorld();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(w.b.engine);
+		await settle();
+		w.b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		await detect(w.b.engine);
+		await settle();
+
+		expect(w.table.list().map((p) => p.code)).toEqual(["dynamic_fetch_failed"]);
+		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([PROBLEM_TEXTS.riskControlled.text]);
 	});
 });

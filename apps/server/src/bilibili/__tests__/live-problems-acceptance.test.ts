@@ -77,7 +77,15 @@ interface LiveApiBehavior {
 	streamKey?: () => Promise<unknown>;
 	myself?: () => Promise<unknown>;
 	roomInfo?: () => Promise<unknown>;
+	/** 主播信息(不给就没有这个口:取主播信息会抛,房间进不了「监听上了」)。 */
+	master?: () => Promise<unknown>;
 }
+
+/** 一个已下播的直播间 / 一份主播信息:够 `bootstrap` 一路走到「监听上了」。 */
+const ROOM_OFFLINE = { uid: 1, live_status: 0, live_time: "2026-01-01 10:00:00" };
+const MASTER = {
+	data: { follower_num: 1, info: { uname: "U", face: "" }, room_id: "100", medal_name: "" },
+};
 
 const GOOD_STREAM_KEY = {
 	code: 0,
@@ -162,6 +170,7 @@ function makeLiveSession(
 			getMyselfInfoCached: vi.fn(api.myself ?? (async () => ({ code: 0, data: { mid: 1 } }))),
 			getBuvid3: vi.fn(async () => "buv"),
 			openDanmakuSocket: vi.fn(() => ({ binaryType: "", on() {}, send() {}, close() {} })),
+			...(api.master ? { getMasterInfo: vi.fn(api.master) } : {}),
 			fetchLiveRoomInfo: vi.fn(
 				api.roomInfo ??
 					(async () => {
@@ -238,15 +247,28 @@ describe("失效登录开机 · 直播这一侧", () => {
 		expect(b.engineErrors).toEqual([]);
 	});
 
-	it("登录好了:压在底下的房间问题(lasting)冒出来 —— 两个房间都还连不上的话,表里是它们两条", async () => {
+	// 真装配里的次序:登录一好,`auth-restored` **先**发 → 直播整批重建(`startAll` 先把每个房间的
+	// 停监静默清掉,压着的那份也在其内)→ 登录口才变成已登录。所以登录好了的那一刻表里是空的,主人只收到
+	// 「登录已经恢复啦」,没有房间那条(登录恢复时每个房间都在重连,这时说「监听停了」是错话);
+	// 新会话再失败了才重新报。「压着的冒出来」的单件逻辑在 `problem-layers.test.ts`(「第三层的 lasting」)。
+	// 验红:去掉下面的静默清(`clearMonitorProblems`),房间那条会冒出来,这条红。
+	it("登录好了(真次序:auth-restored → 重建时静默清 → 登录口变已登录):表里是空的,私聊只有「登录已经恢复啦」", async () => {
 		const b = await boot(EXPIRED);
-		await makeLiveSession(b, "u1", "100", { myself: async () => ({ code: -101 }) }).bootstrap();
+		const session = makeLiveSession(b, "u1", "100", { myself: async () => ({ code: -101 }) });
+		await session.bootstrap();
 		await flush();
 		expect(codesOf(b)).toEqual(["auth_lost"]);
 
+		// 直播整批重建(`startAll`)对每个房间做的静默清
+		(session as unknown as { ctx: RoomContext }).ctx.clearMonitorProblems("u1");
 		b.set(IN);
 		await flush();
-		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
+
+		expect(codesOf(b)).toEqual([]);
+		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.loginExpired.text,
+			PROBLEM_TEXTS.loginExpired.recovery,
+		]);
 	});
 });
 
@@ -275,7 +297,8 @@ describe("已登录被风控 · 直播这一侧", () => {
 		expect(b.engineErrors).toEqual([]);
 	});
 
-	it("风控好了:压着的房间「停止监听」冒出来,主人收到「风控已解除」和那个房间的停监", async () => {
+	/** 两路都被风控拦着的世界:动态撞 -352、u1 的预检被拦;u2 的房间取信息失败(风控压着,这条存着不报)。 */
+	async function riskWorld() {
 		const b = await boot(IN, {
 			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
 		});
@@ -288,27 +311,114 @@ describe("已登录被风控 · 直播这一侧", () => {
 			},
 		});
 		await blockedRoom.bootstrap();
-		// u2 的房间取信息失败 —— 风控压着,这条先存着不报
-		await makeLiveSession(b, "u2", "200", {}).bootstrap();
+		const failedRoom = makeLiveSession(b, "u2", "200", {});
+		await failedRoom.bootstrap();
 		await flush();
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
-
 		// 动态那一路好了:风控还挂着 live:u1 这一路,表里还是风控
-		b.table.list(); // (只读,确认表没动)
-		const ok0 = { code: 0, message: "ok", data: { items: [] } };
-		dynamicEngine.api.fetchAllDynamic = async () => ok0;
+		dynamicEngine.api.fetchAllDynamic = async () => ({
+			code: 0,
+			message: "ok",
+			data: { items: [] },
+		});
 		await dynamicEngine.detectDynamics();
 		await flush();
 		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		return { b, blockedRoom, failedRoom };
+	}
 
-		// u1 这一路的会话结束:最后一路风控清了,u2 的停监冒出来
-		blockedRoom.cancel();
+	const U2_STOPPED = PROBLEM_TEXTS.liveMonitorStopped.text(
+		"200",
+		PROBLEM_TEXTS.liveStopReasons.roomInfo,
+	);
+
+	// 验红:去掉 ProblemLayers.revealFailures 里的 quiet(冒出来恒用自己的 notify),房间停监会私聊第二遍,这条红。
+	it("先停监(已私聊)→ 风控 → 风控好了:停监冒回表里,但不说第二遍:私聊是 停监、风控、风控已解除", async () => {
+		const b = await boot(IN, {
+			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+		});
+		await makeLiveSession(b, "u2", "200", { myself: async () => ({ code: -101 }) }).bootstrap();
 		await flush();
+		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
+		// 窗口过了:要是冒出来时再说一遍,不会被节流吞掉
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		// biome-ignore lint/suspicious/noExplicitAny: 同上
+		const dynamicEngine = b.source.dynamic() as any;
+		await dynamicEngine.detectDynamics();
+		await flush();
+		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		dynamicEngine.api.fetchAllDynamic = async () => ({
+			code: 0,
+			message: "ok",
+			data: { items: [] },
+		});
+		await dynamicEngine.detectDynamics();
+		await flush();
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
+		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.danmakuConnect),
+			PROBLEM_TEXTS.riskControlled.text,
+			PROBLEM_TEXTS.riskControlled.recovery,
+		]);
+	});
+
+	// 验红:去掉 bootstrap 里 `this.resolveRisk(listening)` 对 `listening` 的传递(恒 false),这条红(收不到「风控已解除」)。
+	it("风控真的好了(这一路预检通过、连上了):压着的房间「停止监听」冒出来,主人收到「风控已解除」和那个房间的停监", async () => {
+		const { b } = await riskWorld();
+
+		// u1 这一路的预检这回过了、也连上了(房间信息与主播信息都拿得到):最后一路风控真解除了
+		await makeLiveSession(b, "u1", "100", {
+			roomInfo: async () => ({ code: 0, data: ROOM_OFFLINE }),
+			master: async () => MASTER,
+		}).bootstrap();
+		await flush();
+
 		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
 			PROBLEM_TEXTS.riskControlled.text,
 			PROBLEM_TEXTS.riskControlled.recovery,
-			PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+			U2_STOPPED,
+		]);
+	});
+
+	// 验红:cancel() 里的 retireRisk 换成 `this.resolveRisk(true)` 式的普通清,这条红(多出一句「风控已解除」)。
+	it("会话被取消(关开关 / 退订 / 引擎停下):风控清掉但不说「风控已解除」,压着的房间停监照样冒出来", async () => {
+		const { b, blockedRoom } = await riskWorld();
+
+		blockedRoom.cancel();
+		await flush();
+
+		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
+		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.riskControlled.text,
+			U2_STOPPED,
+		]);
+	});
+
+	// 验红:同上(会话取消不带 notify: false),主人依次收到 风控 → 风控已解除 → 登录失效,这条红。
+	it("掉登录时(auth-lost 先拆会话、登录口后变失效):主人只收到「登录失效」,不先收到「风控已解除」", async () => {
+		const { b, blockedRoom, failedRoom } = await riskWorld();
+
+		// `auth-lost` → teardown(`disposeAll`):先把每位 UP 的停监静默清掉,再让每个会话 cancel()
+		// (次序由 listener-manager-late-results.test.ts 里真 ListenerManager 的用例钉着)
+		const rooms = [
+			[blockedRoom, "u1"],
+			[failedRoom, "u2"],
+		] as const;
+		for (const [room, uid] of rooms) {
+			(room as unknown as { ctx: RoomContext }).ctx.clearMonitorProblems(uid);
+		}
+		for (const [room] of rooms) room.cancel();
+		b.set(EXPIRED); // 登录口随后才变成失效
+		await flush();
+
+		expect(codesOf(b)).toEqual(["auth_lost"]);
+		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.riskControlled.text,
+			PROBLEM_TEXTS.loginExpired.text,
 		]);
 	});
 });

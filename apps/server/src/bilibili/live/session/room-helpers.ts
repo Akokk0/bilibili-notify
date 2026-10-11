@@ -225,11 +225,13 @@ export class RoomContext extends RoomContextBase {
 
 	/**
 	 * Fetch live-room info; on failure, reports "这个房间不监听了" to the problem table + tears down this room.
-	 * `uid` 是这个房间的主人,问题挂在他的订阅名下。
+	 * `uid` 是这个房间的主人,问题挂在他的订阅名下。`shouldReport`:失败回来时问一声「还该不该报」
+	 * (调用它的会话已被停掉就不该报:迟到的失败会在表里留下谁也清不掉的条目);不给就照报。
 	 */
 	async getLiveRoomInfo(
 		roomId: string,
 		uid: string,
+		shouldReport?: () => boolean,
 	): Promise<LiveRoomResponse["data"] | undefined> {
 		try {
 			const content = await this.api.fetchLiveRoomInfo(roomId);
@@ -237,7 +239,9 @@ export class RoomContext extends RoomContextBase {
 		} catch (e) {
 			// Q3 carve-out:catch 内『已停止该房间监测』—— 非自愈、需最终介入,留 error。
 			this.logger.error(`[conn] 获取直播间信息失败：${(e as Error).message}`);
-			this.reportMonitorStopped(uid, roomId, PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			if (shouldReport?.() !== false) {
+				this.reportMonitorStopped(uid, roomId, PROBLEM_TEXTS.liveStopReasons.roomInfo);
+			}
 			this.stopMonitoring("获取直播间信息失败", roomId);
 			return undefined;
 		}

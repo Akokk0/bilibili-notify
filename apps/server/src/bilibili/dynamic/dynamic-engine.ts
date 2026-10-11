@@ -262,9 +262,8 @@ export class DynamicEngine {
 		// 瞬时错误边沿同理 —— 留着的话下次 start 后第一次成功拉取会报一句
 		// 上个 lifecycle 的「已恢复」。
 		this.transientErrorCode = null;
-		// 这一路不再跑了:问题表里属于它的风控与请求失败不再适用,静默清掉(不补「已恢复」)。
-		this.problems.resolveRisk(RISK_PATH);
-		this.problems.resolveFailure({ code: FETCH_FAILED_CODE }, { notify: false });
+		// 这一路不再跑了:问题表里属于它的风控与请求失败不再适用。
+		this.dropProblems();
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -333,6 +332,8 @@ export class DynamicEngine {
 
 		if (this.postAnchors.size === 0) {
 			this.logger.info("[detector] 没有需要动态检测的订阅对象");
+			// 这一路不再跑了,不会再有「下一次结果」:它报的风控与拉取失败不再适用,不清的话永远挂着
+			this.dropProblems();
 			return;
 		}
 		this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
@@ -397,6 +398,8 @@ export class DynamicEngine {
 			this.logger.error(
 				`[detector] dynamicCron="${this.config.dynamicCron}" 无法解析,动态检测未启动：${errorMessageOf(err)}`,
 			);
+			// 起不来也是「这一路不再跑了」:之前报的风控 / 拉取失败不会再有下一次结果去清它
+			this.dropProblems();
 			return;
 		}
 		this.dynamicJob = job;
@@ -432,6 +435,8 @@ export class DynamicEngine {
 				this.dynamicJob = undefined;
 				this.logger.info("[detector] 订阅清空，动态检测任务已停止");
 			}
+			// 名单空了,这一路不再跑:撞过风控 / 拉取失败而 job 已停着的(退避中)也要清,见 restartDetector
+			this.dropProblems();
 		} else if (!this.dynamicJob?.isActive && !this.detectorRestartTimer && !this.authLost) {
 			// 两个「此刻别启动」的理由,少一个都会让 syncSubscriptions 把 cron 提前拉起来:
 			//
@@ -643,10 +648,10 @@ export class DynamicEngine {
 				// 这里不再发告警。
 				this.logger.error("[api] 账号未登录，动态检测已停止（待 auth-restored 重启）");
 				this.authLost = true;
-				// -101 既不是风控拦截、也换了一种性质的失败:这一路之前报过的风控与请求失败不再适用,
-				// 静默清掉(通常登录一失效未登录层就已经把它们抹了,这里兜住「-101 到了而登录状态没跟着变」)。
-				this.problems.resolveRisk(RISK_PATH);
-				this.problems.resolveFailure({ code: FETCH_FAILED_CODE }, { notify: false });
+				// -101 既不是风控拦截、也换了一种性质的失败:这一路之前报过的风控与请求失败不再适用
+				// (不是风控解除,不对主人说「风控已解除」)。通常登录一失效未登录层就已经把它们抹了,
+				// 这里兜住「-101 到了而登录状态没跟着变」。
+				this.dropProblems();
 				// 上面只停了 job,挂着的退避重启还得作废 —— 见 suspendDetector。
 				this.suspendDetector();
 				// auth-loss 是与风控不同的独立 episode,会停 cron 待 auth-restored。
@@ -676,9 +681,10 @@ export class DynamicEngine {
 			default: {
 				// 瞬时错误(-509 限流 / 瞬时 -403 / 未知码):不可永久停 cron。
 				// 退避后自动重试,瞬时抖动自愈,无需人工重启进程 → Q3 warn 不冒充事故。
-				// 这一次的结果不是风控拦截:这一路的风控(如果挂着)清掉。每次失败都报(幂等),
+				// 这一次的结果不是风控拦截:这一路的风控(如果挂着)清掉。但动态其实仍在失败,不是解除,
+				// 不对主人说「风控已解除」(`notify: false`)。每次失败都报(幂等),
 				// 边沿去重只管日志:同一个码连续失败只记一次 warn,换了码才当新故障再记。
-				this.problems.resolveRisk(RISK_PATH);
+				this.problems.resolveRisk(RISK_PATH, { notify: false });
 				this.problems.reportFailure({
 					code: FETCH_FAILED_CODE,
 					message: PROBLEM_TEXTS.dynamicFetchFailed.text(code),
@@ -698,6 +704,15 @@ export class DynamicEngine {
 	}
 
 	/**
+	 * 这一路不再跑了(停下、名单空了、起不来、登录失效):它报的风控与拉取失败**不再适用**,不是解除 ——
+	 * 都用 `notify: false` 清,不对主人说「风控已解除」「已恢复」。
+	 */
+	private dropProblems(): void {
+		this.problems.resolveRisk(RISK_PATH, { notify: false });
+		this.problems.resolveFailure({ code: FETCH_FAILED_CODE }, { notify: false });
+	}
+
+	/**
 	 * 一次真正拉成功了:这一路的风控与请求失败清掉(问题表据此补「已恢复」),并复位两个日志边沿。
 	 *
 	 * 时机是**这一次真的拉成功了**,不是「重启了检测任务」—— 重启只是把 cron 挂回去,故障还在的话下一轮
@@ -705,6 +720,7 @@ export class DynamicEngine {
 	 * 此前真的坏过(边沿标记还在)就记一行 info。
 	 */
 	private noteFetchSucceeded(): void {
+		// 真解除:最后一路这样清掉会补「风控已解除」
 		this.problems.resolveRisk(RISK_PATH);
 		this.problems.resolveFailure({ code: FETCH_FAILED_CODE });
 		const parts: string[] = [];

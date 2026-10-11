@@ -466,6 +466,44 @@ describe("续期链:闸与提交", () => {
 		expect(await savesAfterTouch(w)).toBe(1);
 	});
 
+	// 验红:去掉 commitLogin 成功后对 authLostFiredAt 的清零,第二条红(第一条是对照,恒绿)。
+	it("-101 的 60 秒去抖:同一段登录里连着来的只报一次(对照)", async () => {
+		const w = await world();
+		const fire = () =>
+			(w.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
+
+		fire();
+		fire();
+
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
+	});
+
+	it("一次 -101 后 60 秒内重新登录成功(提交成功)、新会话又回 -101:照样报上去", async () => {
+		const w = await world();
+		const fire = () =>
+			(w.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
+		fire();
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
+
+		expect((await w.api.commitLogin("T1")).ok).toBe(true);
+		fire();
+
+		expect(w.onAuthLost).toHaveBeenCalledTimes(2);
+	});
+
+	it("提交失败不算登录成功:去抖窗口不清零", async () => {
+		const w = await world();
+		const fire = () =>
+			(w.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
+		fire();
+
+		w.secrets.failNext(1);
+		expect((await w.api.commitLogin("T1")).ok).toBe(false);
+		fire();
+
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
+	});
+
 	it("刷新那一步期间被取代(换号 / 登出):丢弃,不提交,闸放了", async () => {
 		const w = await world({
 			refresh: () => {

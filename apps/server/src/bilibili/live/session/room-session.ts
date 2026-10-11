@@ -16,7 +16,6 @@ import { buildRoomLink } from "../template-renderer";
 import { LiveType } from "../types";
 import { fetchGuardViewerAvatar } from "../viewer-avatar";
 import { passesMembershipMinRank, passesSuperchatMinAmount } from "./interaction-gates";
-import { liveRiskPath } from "./room-context";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 
@@ -115,8 +114,8 @@ export class RoomSession extends RoomSessionBase {
 		// 私聊每小时重复一次,直到进程重启。cancel() 语义是「这个 session 到此为止」,
 		// 留任何定时器都不对。
 		this.cancelPeriodicTimer();
-		// 会话结束:这位 UP 这一路挂着的风控也不再成立。
-		this.resolveRisk();
+		// 会话结束:这位 UP 这一路挂着的风控不再适用(不是解除,不对主人说「风控已解除」)。
+		this.retireRisk();
 	}
 
 	/** L3:dispose 退避定时器并唤醒重连循环,使其立刻重校 cancelled/disposed 后退出。 */
@@ -365,14 +364,16 @@ export class RoomSession extends RoomSessionBase {
 					this.reconnectAttempts = 0;
 					this.setLiveStatus(false);
 					this.cancelPeriodicTimer();
+					// 先报、再 cancel:cancel 之后会话就不「活着」了,报不上去
+					this.reportRestricted(e.message);
 					this.cancel();
-					this.ctx.reportRoomRestricted(this.sub.uid, this.sub.roomId, e.message);
 					this.ctx.stopMonitoring(e.message, this.sub.roomId);
 					return;
 				}
 				if (e instanceof LiveRoomPreflightBlockedError) {
-					// 风控还没散,回长尾继续等;计数不清零,间隔继续爬到封顶。
-					this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid));
+					// 风控还没散,回长尾继续等;计数不清零,间隔继续爬到封顶。会话在等预检时被停掉就不报:
+					// 迟到的风控留下来没人清得掉。
+					this.reportRisk();
 					preflightBlocked = true;
 					continue;
 				}
@@ -380,8 +381,8 @@ export class RoomSession extends RoomSessionBase {
 					`[conn] 直播间 [${this.sub.roomId}] 重连发起异常:${(e as Error).message}`,
 				);
 			}
-			// 这一次预检没被拦(连上了、没连上、别的异常都算):这一路的风控清掉。
-			this.resolveRisk();
+			// 这一次预检没被拦(连上了、没连上、别的异常都算):这一路的风控清掉;连上了才算风控解除。
+			this.resolveRisk(ok);
 			// ②6:post-await 重校。startLiveRoomListener 期间若与 stopForUid /
 			// teardown 交错(cancelled / disposed 翻转),刚建的 listener 是孤儿 ——
 			// 主动关掉再退出,绝不留永不关闭的连接(此前只判 ok 漏了这条)。

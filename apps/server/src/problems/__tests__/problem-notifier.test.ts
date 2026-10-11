@@ -151,6 +151,202 @@ describe("问题私聊:发不发、发几条", () => {
 	});
 });
 
+/**
+ * 被节流吞掉的那一条不能永远没人说(S1):
+ * - 同键此刻有另一条**开着且已经说过(或正在说)**的:这条算被那一句盖住了,不补(十个房间同时停监只说一条);
+ * - 同键没有这样的(挡住它的是一条已经清掉的旧事):窗口到点时,它还开着、还要私聊、还没说过,就补说**一次**;
+ *   每个键至多挂一个到点的计时器,到点时有好几条符合的只说最早开的那一条。
+ */
+describe("被节流吞掉的问题:窗口到点时补说", () => {
+	const stopped = (n: number) => ({
+		about: { subscriptionId: `s${n}` },
+		code: "stopped",
+		message: `房间 ${n}`,
+	});
+
+	// 验红:deferUntilWindowEnds 一进来就返回,第一、四条红;coveredByOpenSlot 恒假,十个房间那条与旧的节流用例红;
+	//       dispose 里不收计时器,最后一条红。
+	it("开(送到)→ 清(补已恢复)→ 60 秒内又开:窗口到点补说,主人听到的最后一句不是「好了」", async () => {
+		const { table, notify } = setup();
+		open(table, { message: "登录失效了" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		open(table, { message: "又失效了" });
+		await flush();
+		expect(notify.mock.calls.map((c) => c[0])).toEqual([
+			"登录失效了",
+			`${GENERIC_RECOVERY_PREFIX}登录失效了`,
+		]);
+
+		await advance(60_000);
+
+		expect(notify.mock.calls.map((c) => c[0])).toEqual([
+			"登录失效了",
+			`${GENERIC_RECOVERY_PREFIX}登录失效了`,
+			"又失效了",
+		]);
+		// 补说过就不再说
+		await advance(10 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(3);
+	});
+
+	it("十个房间同时停监:仍只有一条,窗口过了也不补(被那一句盖住了)", async () => {
+		const { table, notify } = setup();
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await flush();
+		expect(notify).toHaveBeenCalledTimes(1);
+
+		await advance(10 * 60_000);
+
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
+	it("到点前清掉了:不补说,也没有恢复句", async () => {
+		const { table, notify } = setup();
+		open(table, { message: "一" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		open(table, { message: "二" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		notify.mockClear();
+
+		await advance(10 * 60_000);
+
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("同键有好几条符合的:每个键只挂一个计时器,到点只说最早开的那一条,其余被它盖住", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		table.resolve({ reporter: "src", ...stopped(0) });
+		await flush();
+		notify.mockClear();
+		open(table, stopped(1));
+		open(table, stopped(2));
+		open(table, stopped(3));
+		await flush();
+		expect(notify).not.toHaveBeenCalled();
+
+		await advance(60_000);
+
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify).toHaveBeenCalledWith("房间 1");
+		await advance(10 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
+	it("通知器停下:到点的补说作废", async () => {
+		const { table, notify, notifier } = setup();
+		open(table, { message: "一" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		open(table, { message: "二" });
+		await flush();
+		notify.mockClear();
+		expect(vi.getTimerCount()).toBe(1);
+
+		notifier.dispose();
+		// 计时器本身也收了(不是只靠到点时看一眼 disposed)
+		expect(vi.getTimerCount()).toBe(0);
+		await advance(10 * 60_000);
+
+		expect(notify).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * 发送在路上时「清了又开」(S2):新开的认领这次在途的发送 —— 等于没清过(文案用发出那一刻的,
+ * 送达后算新开的这条已说过,不补恢复句);在途的没送到就照新开的这条走再送。
+ */
+describe("发送在路上时清了又开", () => {
+	// 验红:去掉 onChange 里的「认领在途发送」(adoptInFlight),第一、二条红。
+	it("清了又开:送达后不补「已恢复」,新开的这条算已说过,表里仍开着", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify } = setup(() => gate.promise);
+		open(table, { message: "风控了" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		open(table, { message: "又风控了" });
+		await flush();
+
+		gate.resolve(sent());
+		await flush();
+		await advance(10 * 60_000);
+
+		expect(notify.mock.calls.map((c) => c[0])).toEqual(["风控了"]);
+		expect(table.list()).toHaveLength(1);
+		// 新开的这条算说过了:它之后真清掉时补一句(用发出那一刻的话)
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}风控了`);
+	});
+
+	it("在途的那次没送到:照新开的这条走再送,送到即停", async () => {
+		const results: Array<Promise<DeliveryResult>> = [
+			Promise.resolve(fail("unavailable", "没连上")),
+			Promise.resolve(sent()),
+		];
+		const gate = deferred<void>();
+		const { table, notify } = setup(async () => {
+			await gate.promise;
+			return (await results.shift()) ?? sent();
+		});
+		open(table, { message: "风控了" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		open(table, { message: "又风控了" });
+		await flush();
+		gate.resolve();
+		await flush();
+
+		await advance(10_000);
+
+		expect(notify.mock.calls.map((c) => c[0])).toEqual(["风控了", "又风控了"]);
+		await advance(30 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(2);
+	});
+
+	it("清了又开又清(最后是清的):送达后补一次「已恢复」", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify } = setup(() => gate.promise);
+		open(table, { message: "风控了" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		open(table, { message: "又风控了" });
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+
+		gate.resolve(sent());
+		await flush();
+
+		expect(notify.mock.calls.map((c) => c[0])).toEqual([
+			"风控了",
+			`${GENERIC_RECOVERY_PREFIX}风控了`,
+		]);
+	});
+
+	it("宿主清了又开(来源重启):同样认领,送达后不补", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify } = setup(() => gate.promise);
+		open(table, { message: "风控了" });
+		await flush();
+		table.clearReporter("src");
+		open(table, { message: "又风控了" });
+		await flush();
+
+		gate.resolve(sent());
+		await flush();
+
+		expect(notify.mock.calls.map((c) => c[0])).toEqual(["风控了"]);
+	});
+});
+
 describe("没送到的再送", () => {
 	it("头一次没送到、10 秒后送到:恰好两次,送到即停;节流时间戳只在送到时记", async () => {
 		const results = [fail("unavailable", "连接还没上线"), sent()];

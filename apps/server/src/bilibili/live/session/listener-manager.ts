@@ -85,8 +85,10 @@ export class ListenerManager {
 		// 还在退避 sleep 里,setDisposed=false 后 cancelled=false → 醒来时
 		// onError 会重新调 startLiveRoomListener,把 listener 装回 listenerRecord,
 		// 形成隐性重复监听(sessionRecord 已 clear,但 ctx 内 listener 实存在)。
-		for (const session of this.sessionRecord.values()) session.cancel();
+		// 先静默清问题、再 cancel:cancel 会把这位 UP 的风控路清掉,最后一路清了就会让压在风控底下的别的房间的
+		// 停监冒出来并私聊 —— 而它们这就要被整批清掉了,不该让主人听到一句马上作废的话。
 		this.clearProblemsOfAll();
+		for (const session of this.sessionRecord.values()) session.cancel();
 		this.ctx.setDisposed(false);
 		this.ctx.clearPushTimers();
 		this.ctx.clearListeners();
@@ -182,8 +184,9 @@ export class ListenerManager {
 		// L3:全局 teardown 也要逐 session cancel(),否则正处于退避 sleep 的
 		// session 会留一个无法清除的延迟回调到 expiry(setDisposed 只是让它醒来
 		// 后空转返回,定时器本身没被 dispose)。与 reload 路径同款做法。
-		for (const session of this.sessionRecord.values()) session.cancel();
+		// 先静默清问题、再 cancel,理由同 `startAll`(登录失效拆会话时尤其要紧:主人只该收到「登录失效」)。
 		this.clearProblemsOfAll();
+		for (const session of this.sessionRecord.values()) session.cancel();
 		this.ctx.clearPushTimers();
 		this.ctx.clearListeners();
 		this.subRecord.clear();

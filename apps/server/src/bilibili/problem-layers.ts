@@ -10,7 +10,9 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  *    `awaiting-scan` / `confirming` / `error` 三种不动,保持上一次的结论(已登录时重扫不许误开,
  *    未登录时扫码途中不许误清)。
  * 2. **风控**(`risk_controlled`,来源级、带私聊):任一路撞了就开,所有撞着的路都清了才清。
- *    一路的清由调用方按「这一路这一次的结果不是风控拦截」来叫。
+ *    一路的清由调用方按两种说法叫:**真解除**(这一路这一次的结果不是风控拦截:拉成功了、预检通过了)
+ *    与**不再适用**(`notify: false`:这一路不再跑了、换成了别的失败、会话结束了)。
+ *    约定:最后清掉的那一下是「不再适用」,就不对主人说「风控已经解除」。
  * 3. **某项请求失败**(code 与带不带私聊都由调用方给):每次失败都叫(幂等),调用方自己的成功或不再适用时清。
  *
  * 高层一开,表里已有的低层静默抹掉(`notify: false`,不补「已恢复」)。第三层按 `lasting` 分两种:
@@ -18,7 +20,8 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  *   不存;高层清掉后它不会自己冒回来,要等调用方下一次失败再报。
  * - `lasting: true`(报一次就不再报、直到有人去修的,如某个直播间停止监听):高层开着时**存下但不报**,
  *   高层开起来时也不清空;高层清掉的那一刻把存着的报上去(照各自的 `notify`)。它的主人调 `resolveFailure`
- *   时照常删 —— 压着的时候被删了,高层清掉也不再报。
+ *   时照常删 —— 压着的时候被删了,高层清掉也不再报。**曾经报给过核心的**(主人当时已经听过一遍),被压下去
+ *   再冒出来时报回表里但不带私聊(文案、恢复句照旧);高层开着时才第一次报的(从没到过核心),冒出来时照它自己的 `notify`。
  *
  * 手里存的是「此刻该在表里的东西」,不是事件流水。核心那头(`attach` 交进来的上下文)是后接上的:接上那一刻把
  * 这份现状整份报上去,所以接上之前记着的不会丢;`detach`(来源停下)之后再报继续记在自己手里,等下一次接上。
@@ -29,8 +32,11 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
 export interface ProblemLayers {
 	/** 风控:这一路撞了(每次撞都叫,幂等)。路的键:`dynamic`、`live:<uid>`。 */
 	reportRisk(path: string): void;
-	/** 这一路好了,或这一路不再跑了。 */
-	resolveRisk(path: string): void;
+	/**
+	 * 这一路好了,或这一路不再跑了。缺省 = 真解除(最后一路这样清掉会补「风控已解除」);
+	 * `notify: false` = 不再适用,不是解除,最后一路这样清掉时不补。
+	 */
+	resolveRisk(path: string, options?: { notify?: boolean }): void;
 	/**
 	 * 第三层:某项请求失败(每次失败都叫,幂等)。`notify`(必填，调用方必须表态)= 要不要私聊主人;
 	 * 原样带给核心，补报时带的是存下的这一格。
@@ -54,7 +60,7 @@ export interface ProblemLayers {
 		options?: { notify?: boolean },
 	): void;
 	/** 接上核心:把此刻该在表里的那一份整份报上去。 */
-	attach(sink: Pick<SourceContext, "reportProblem" | "resolveProblem">): void;
+	attach(core: CoreProblems): void;
 	/** 摘下(来源停下)。之后的上报继续记在自己手里,等下一次接上。 */
 	detach(): void;
 	dispose(): void;
@@ -65,7 +71,8 @@ export interface CreateProblemLayersOptions {
 	logger: Logger;
 }
 
-type Sink = Pick<SourceContext, "reportProblem" | "resolveProblem">;
+/** 核心那头收问题的两个口(来源上下文上的那两个成员)。 */
+type CoreProblems = Pick<SourceContext, "reportProblem" | "resolveProblem">;
 
 interface Failure {
 	externalId?: string;
@@ -74,6 +81,8 @@ interface Failure {
 	notify: boolean;
 	lasting: boolean;
 	recoveryMessage?: string;
+	/** 曾经报给过核心(主人当时已经听过一遍):被压下去再冒出来时不再带私聊。 */
+	reported: boolean;
 }
 
 const LOGIN_CODE = "auth_lost";
@@ -91,20 +100,20 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	const risk = new Set<string>();
 	/** 第三层:此刻的失败。 */
 	const failures = new Map<string, Failure>();
-	let sink: Sink | null = null;
+	let core: CoreProblems | null = null;
 	let disposed = false;
 
 	/** 对核心那头做一件事;没接上就什么都不做,抛了只记 warn。 */
-	function toSink(what: string, act: (to: Sink) => void): void {
-		if (!sink) return;
+	function toCore(what: string, act: (to: CoreProblems) => void): void {
+		if (!core) return;
 		try {
-			act(sink);
+			act(core);
 		} catch (err) {
 			logger.warn(`[problem-layers] ${what}失败(已忽略): ${errorMessageOf(err)}`);
 		}
 	}
 
-	function reportLogin(to: Sink, state: { notify: boolean }): void {
+	function reportLogin(to: CoreProblems, state: { notify: boolean }): void {
 		const text = state.notify ? PROBLEM_TEXTS.loginExpired : PROBLEM_TEXTS.loginMissing;
 		to.reportProblem({
 			code: LOGIN_CODE,
@@ -115,7 +124,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		});
 	}
 
-	function reportRiskEntry(to: Sink): void {
+	function reportRiskEntry(to: CoreProblems): void {
 		const text = PROBLEM_TEXTS.riskControlled;
 		to.reportProblem({
 			code: RISK_CODE,
@@ -125,16 +134,21 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		});
 	}
 
-	function reportFailureEntry(to: Sink, failure: Failure): void {
+	/**
+	 * 把一条第三层的失败报给核心。`quiet` = 这是「被高层压下去后再冒出来」:已经报给过核心的那条不再带私聊。
+	 * 报出去就记成「报给过核心」。
+	 */
+	function reportFailureEntry(to: CoreProblems, failure: Failure, quiet: boolean): void {
 		to.reportProblem({
 			...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 			code: failure.code,
 			message: failure.message,
-			notify: failure.notify,
+			notify: quiet && failure.reported ? false : failure.notify,
 			...(failure.recoveryMessage === undefined
 				? {}
 				: { recoveryMessage: failure.recoveryMessage }),
 		});
+		failure.reported = true;
 	}
 
 	/** 第三层眼下在表里可见:没有更高层压着。 */
@@ -147,7 +161,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	function pressDownFailures(wasVisible: boolean): void {
 		for (const [key, failure] of [...failures]) {
 			if (wasVisible) {
-				toSink("抹掉请求失败", (to) =>
+				toCore("抹掉请求失败", (to) =>
 					to.resolveProblem({
 						...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 						code: failure.code,
@@ -159,11 +173,11 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		}
 	}
 
-	/** 高层清掉了、第三层重新可见:手里存着的(只可能是 `lasting` 的)报上去。 */
+	/** 高层清掉了、第三层重新可见:手里存着的(只可能是 `lasting` 的)报上去;说过的那条不再私聊。 */
 	function revealFailures(): void {
 		if (failures.size === 0) return;
-		toSink("补报压着的请求失败", (to) => {
-			for (const failure of failures.values()) reportFailureEntry(to, failure);
+		toCore("补报压着的请求失败", (to) => {
+			for (const failure of failures.values()) reportFailureEntry(to, failure, true);
 		});
 	}
 
@@ -171,7 +185,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	function eraseRisk(): void {
 		if (risk.size === 0) return;
 		risk.clear();
-		toSink("抹掉风控", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
+		toCore("抹掉风控", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
 	}
 
 	function applyAuth(status: ReturnType<SourceAuth["state"]>["status"]): void {
@@ -187,14 +201,14 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				}
 				login = next;
 				if (prev === null || prev.notify !== next.notify) {
-					toSink("报未登录", (to) => reportLogin(to, next));
+					toCore("报未登录", (to) => reportLogin(to, next));
 				}
 				return;
 			}
 			case "logged-in":
 				if (login === null) return;
 				login = null;
-				toSink("清未登录", (to) => to.resolveProblem({ code: LOGIN_CODE }));
+				toCore("清未登录", (to) => to.resolveProblem({ code: LOGIN_CODE }));
 				// 风控在未登录开着时存不进来,所以这时第三层重新可见
 				revealFailures();
 				return;
@@ -227,12 +241,17 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			risk.add(path);
 			if (!wasEmpty) return;
 			pressDownFailures(true);
-			toSink("报风控", reportRiskEntry);
+			toCore("报风控", reportRiskEntry);
 		},
-		resolveRisk(path) {
+		resolveRisk(path, resolveOptions) {
 			if (!risk.delete(path)) return;
 			if (risk.size > 0) return;
-			toSink("清风控", (to) => to.resolveProblem({ code: RISK_CODE }));
+			toCore("清风控", (to) =>
+				to.resolveProblem({
+					code: RISK_CODE,
+					...(resolveOptions?.notify === false ? { notify: false } : {}),
+				}),
+			);
 			revealFailures();
 		},
 		reportFailure(failure) {
@@ -250,6 +269,8 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				...(failure.recoveryMessage === undefined
 					? {}
 					: { recoveryMessage: failure.recoveryMessage }),
+				// 同一件事再报:「报给过核心」的记号跟着走(压着时反复报,冒出来也只算一次)
+				reported: failures.get(failureKey(failure))?.reported ?? false,
 			};
 			failures.set(failureKey(entry), entry);
 			// 压着的 lasting 只存不报,高层清掉那一刻再报
@@ -257,13 +278,13 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				logger.debug(`[problem-layers] 更上一层的问题开着,${failure.code} 先记着,等它清掉再报`);
 				return;
 			}
-			toSink("报请求失败", (to) => reportFailureEntry(to, entry));
+			toCore("报请求失败", (to) => reportFailureEntry(to, entry, false));
 		},
 		resolveFailure(failure, resolveOptions) {
 			if (!failures.delete(failureKey(failure))) return;
 			// 压着的那条从没报上去过,删了就不用对核心说什么
 			if (!failuresVisible()) return;
-			toSink("清请求失败", (to) =>
+			toCore("清请求失败", (to) =>
 				to.resolveProblem({
 					...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 					code: failure.code,
@@ -272,20 +293,20 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			);
 		},
 		attach(next) {
-			sink = next;
+			core = next;
 			// 整份现状,只报最上面一层:`lasting` 的第三层在高层压着时手里有、表里不该有。
-			toSink("补报", (to) => {
+			toCore("补报", (to) => {
 				if (login !== null) reportLogin(to, login);
 				else if (risk.size > 0) reportRiskEntry(to);
-				else for (const failure of failures.values()) reportFailureEntry(to, failure);
+				else for (const failure of failures.values()) reportFailureEntry(to, failure, false);
 			});
 		},
 		detach() {
-			sink = null;
+			core = null;
 		},
 		dispose() {
 			disposed = true;
-			sink = null;
+			core = null;
 			authWatch.dispose();
 		},
 	};

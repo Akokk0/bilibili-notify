@@ -193,7 +193,56 @@ describe("预检被风控拦:按 live:<uid> 一路报,这一路下一次结果�
 		problems.resolveRisk.mockClear();
 
 		session.cancel();
-		expect(problems.resolveRisk).toHaveBeenCalledWith("live:u1");
+		// 会话结束是「不再适用」,不是风控解除
+		expect(problems.resolveRisk).toHaveBeenCalledWith("live:u1", { notify: false });
+	});
+
+	// 验红:bootstrap 里 `this.resolveRisk(listening)` 改成恒 true,第一条红;改成恒 false,第二条红。
+	it("bootstrap 预检过了但建连回假(没连上):清风控不算解除(notify: false)", async () => {
+		const problems = makeLiveProblems();
+		const { ctx, mocks } = makeCtx(problems);
+		mocks.startLiveRoomListener.mockResolvedValue(false);
+
+		await new RoomSession(ctx, makeSub()).bootstrap();
+
+		expect(problems.resolveRisk).toHaveBeenCalledWith("live:u1", { notify: false });
+		expect(problems.resolveRisk).not.toHaveBeenCalledWith("live:u1");
+	});
+
+	it("bootstrap 连上了:清风控是真解除(不带 notify)", async () => {
+		const problems = makeLiveProblems();
+		const { ctx } = makeCtx(problems);
+
+		await new RoomSession(ctx, makeSub()).bootstrap();
+
+		expect(problems.resolveRisk.mock.calls).toEqual([["live:u1"]]);
+	});
+
+	it("bootstrap 抛了别的异常:清风控不算解除(notify: false),异常照旧往外抛", async () => {
+		const problems = makeLiveProblems();
+		const { ctx, mocks } = makeCtx(problems);
+		mocks.startLiveRoomListener.mockRejectedValue(new Error("别的异常"));
+
+		await expect(new RoomSession(ctx, makeSub()).bootstrap()).rejects.toThrow("别的异常");
+
+		expect(problems.resolveRisk).toHaveBeenCalledWith("live:u1", { notify: false });
+	});
+
+	it("重连:没连上不算解除,连上了才是真解除", async () => {
+		const problems = makeLiveProblems();
+		const { ctx, mocks } = makeCtx(problems);
+		mocks.startLiveRoomListener
+			.mockRejectedValueOnce(blocked())
+			.mockResolvedValueOnce(false)
+			.mockResolvedValue(true);
+		const session = new RoomSession(ctx, makeSub());
+		await session.bootstrap();
+
+		await mocks.step(); // 长尾到点:预检过了、建连回假
+		expect(problems.resolveRisk.mock.calls.at(-1)).toEqual(["live:u1", { notify: false }]);
+
+		await mocks.step(); // 下一轮连上了
+		expect(problems.resolveRisk.mock.calls.at(-1)).toEqual(["live:u1"]);
 	});
 
 	it("重连途中又被拦:再报一次(幂等),不当作新的一路", async () => {
@@ -216,7 +265,8 @@ describe("受限房:报 live_room_restricted,不跑退避", () => {
 
 		await new RoomSession(ctx, makeSub()).bootstrap();
 
-		expect(problems.resolveRisk).toHaveBeenCalledWith("live:u1");
+		// 受限不是风控解除
+		expect(problems.resolveRisk).toHaveBeenCalledWith("live:u1", { notify: false });
 		expect(problems.reportFailure).toHaveBeenCalledTimes(1);
 		expect(problems.reportFailure).toHaveBeenCalledWith(
 			expectedRestrictedFailure("u1", "r1", denied.message),

@@ -265,8 +265,11 @@ export class Api {
 				? { kind: "set", key: REFRESH_TOKEN_KEY, value: refreshToken }
 				: { kind: "delete", key: REFRESH_TOKEN_KEY },
 		]);
-		if (result.ok) this.releaseUnsaved();
-		else this.keepUnsaved(this.ctx.cookies.hold());
+		if (result.ok) {
+			this.releaseUnsaved();
+			// 新的登录状态落盘了(扫码成功 / 续期成功):上一段登录留下的 -101 去抖窗口不该吞掉新会话的第一次 -101。
+			this.authLostFiredAt = 0;
+		} else this.keepUnsaved(this.ctx.cookies.hold());
 		return result;
 	}
 
