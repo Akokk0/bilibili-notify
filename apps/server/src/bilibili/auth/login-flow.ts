@@ -127,22 +127,18 @@ export class LoginFlow {
 	 * 这个窗口不是理论上的:健康检查默认 30 分钟、cookie 刷新固定 60 分钟,两者
 	 * 每小时对齐一次,而刷新是四次网络往返的长链,探活很容易正卡在里面。
 	 *
-	 * `Api.refreshGeneration` 对 cookie 刷新做的是同一件事,这里补的是
+	 * `Api` 的登录代对 cookie 刷新做的是同一件事,这里补的是
 	 * 登录流那一半。
+	 *
+	 * **它不是登录代**。「罐子里装的是哪一段登录」的记号只有一份,在 `Api`(`api.loginGeneration`:一段登录成立
+	 * —— 开机恢复、恢复备份、扫码确认成功 —— 与结束时各走一步);登录检查(开机确认、心跳、补取账号)在入口把两个
+	 * 一起记下(`checkStarted`),落地前都比。不并成一个,是因为这一个只在登出时走,扫码轮询靠它认「确认成功且其间
+	 * 没登出过」(`pollOnce`);登录成立时也让它走,那个例外就认不出来了。
+	 *
+	 * 没有登录代那一半会怎样:心跳带着旧 cookie 发出去 → 主人重扫并确认(或恢复了一份备份)→ 旧心跳回 `-101` →
+	 * 刚成立的登录被判失效、心跳摘掉、引擎拆掉,而罐里的 cookie 是好的,只有重启或再扫一次能回来。
 	 */
 	private authGeneration = 0;
-	/**
-	 * 一段新登录成立(扫码确认成功、落盘之后,落盘成败都算)就递增。登录检查(开机确认、心跳、补取账号)在入口
-	 * 与登出代数一起捕获它,落地前比对 —— 不一致说明检查发出去之后换了一段登录,这份结果(成功、`-101`、抛错、
-	 * 取到的账号)问的是上一段,整份丢掉。
-	 *
-	 * 为什么不并进 `authGeneration`:那一个只在登出时走,扫码轮询靠它认「确认成功且其间没登出过」(`pollOnce`);
-	 * 登录成立时也让它走,那个例外就认不出来了。
-	 *
-	 * 没有它会怎样:心跳带着旧 cookie 发出去 → 主人重扫并确认 → 旧心跳回 `-101` → 刚成立的登录被判失效、
-	 * 心跳摘掉、引擎拆掉,而罐里的 cookie 是好的,只有重启或再扫一次能回来。
-	 */
-	private loginGeneration = 0;
 	/**
 	 * 此刻有没有一个**可丢的登录会话**:登录着;开机存着登录、还在确认(初值,`reportAccountInfo` 入口也置真);
 	 * 已登录时重扫、会话其实还在的那几种状态(`qr` / `failed`)也算有 —— 所以它不是状态的函数,
@@ -330,9 +326,12 @@ export class LoginFlow {
 		this.serviceCtx.track(task);
 	}
 
-	/** 登录检查的入口记下「这是对着哪一段登录问的」:登出代数 + 登录代数。落地前交给 `supersededSince` 比。 */
+	/**
+	 * 登录检查的入口记下「这是对着哪一段登录问的」:登出代数 + 登录代(`Api` 持有的那一份,请求客户端给每个请求
+	 * 记的也是它)。落地前交给 `supersededSince` 比。
+	 */
 	private checkStarted(): { auth: number; login: number } {
-		return { auth: this.authGeneration, login: this.loginGeneration };
+		return { auth: this.authGeneration, login: this.api.loginGeneration };
 	}
 
 	/**
@@ -345,7 +344,7 @@ export class LoginFlow {
 			this.logger.debug("[auth] 探活结果已被一次登出取代，丢弃本轮");
 			return true;
 		}
-		if (asked.login !== this.loginGeneration) {
+		if (asked.login !== this.api.loginGeneration) {
 			this.logger.debug("[auth] 探活结果问的是上一段登录，丢弃本轮");
 			return true;
 		}
@@ -530,14 +529,14 @@ export class LoginFlow {
 							"[login] 登录成功但响应未含 refresh_token —— cookie 自动刷新不可用,会话到期需手动重新登录",
 						);
 					}
-					const saved = await this.api.commitLogin(refreshToken || undefined);
+					// 一段新登录成立了(落盘成败都进已登录):`Api` 那个唯一的口在这一拍里(落盘之前)就让登录代往前走 ——
+					// 此前发出去的登录检查、请求、续期链问的都是上一段,回来一律不作数;续期也由它起。
+					// 从上面认出「确认成功」到这里不许隔 await。紧接着的 `reportAccountInfo` 在入口记下的就是新值。
+					const saved = await this.api.commitScannedLogin(refreshToken || undefined);
 					if (!saved.ok) this.logger.error(`[login] 保存登录状态失败：${saved.message}`);
 				} finally {
 					hold?.dispose();
 				}
-				// 一段新登录成立了(落盘成败都进已登录):此前发出去的登录检查问的都是上一段,回来一律不作数。
-				// 紧接着的 `reportAccountInfo` 在入口捕获的就是新值。
-				this.loginGeneration++;
 				this.reportLoggedIn(undefined, "loginJustSucceeded");
 			} finally {
 				this.committingLogin = false;

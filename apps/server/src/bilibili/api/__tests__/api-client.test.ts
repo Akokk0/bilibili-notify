@@ -83,7 +83,8 @@ function makeClient(
 	jar = new CookieJar(),
 	opts: {
 		timeoutMs?: number;
-		onBody?: (b: unknown) => void;
+		onBody?: (b: unknown, generation: number | undefined) => void;
+		generation?: () => number;
 	} = {},
 ) {
 	return new ApiClient({
@@ -94,6 +95,7 @@ function makeClient(
 			timeoutMs: opts.timeoutMs ?? 5_000,
 		}),
 		onBody: opts.onBody,
+		generation: opts.generation,
 	});
 }
 
@@ -196,6 +198,30 @@ describe("ApiClient — onBody(-101 拦截器挂点)", () => {
 		await client.get(`${baseURL}/echo`);
 		await client.get(`${baseURL}/html`);
 		expect(seen).toEqual([{ code: 0 }, '<html><div id="1-name">refresh_csrf_value</div></html>']);
+	});
+
+	// 验红:把取记号挪到请求回来之后(交给 onBody 时现取),第一条红。
+	it("记号在**发请求之前**取一次,回应的体交给 onBody 时原样带回:请求在途时记号变了,带回的还是发出去那一刻的", async () => {
+		let generation = 1;
+		const seen: unknown[] = [];
+		const client = makeClient(new CookieJar(), {
+			generation: () => generation,
+			onBody: (_body, sentIn) => seen.push(sentIn),
+		});
+
+		const inFlight = client.get(`${baseURL}/echo`);
+		generation = 2;
+		await inFlight;
+		await client.postForm(`${baseURL}/echo`, {});
+
+		expect(seen).toEqual([1, 2]);
+	});
+
+	it("没给取记号的口:onBody 带回的是 undefined", async () => {
+		const seen: unknown[] = [];
+		const client = makeClient(new CookieJar(), { onBody: (_body, sentIn) => seen.push(sentIn) });
+		await client.get(`${baseURL}/echo`);
+		expect(seen).toEqual([undefined]);
 	});
 });
 

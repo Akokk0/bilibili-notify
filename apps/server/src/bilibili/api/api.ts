@@ -2,6 +2,7 @@ import type { CookieJar, HttpClient, WebSocketLike } from "@bilibili-notify/http
 import {
 	type Disposable,
 	type Logger,
+	ok,
 	type Result,
 	retry as retryUtil,
 	type ServiceContext,
@@ -94,23 +95,33 @@ export class Api {
 	/**
 	 * 「留着的闸」:登录状态改了一半、没提交成功的时候罐子不许自动存(盘上会变成「新 cookie + 旧令牌」或
 	 * 「空罐 + 旧令牌」)。同一时刻最多一道,再来一道就把旧的放掉换新的;下一次 `commitLogin` 成功、
-	 * 或 `resumeStoredLogin()` 时放。
+	 * 或 `resumeStoredLogin()`(宿主把罐子整个换了)时放。
 	 */
 	private unsavedSession?: Disposable;
 	private wbiKeys: WbiKeys = { imgKey: "", subKey: "" };
 	private ticketJob!: CronJob;
 	private refreshCookieTimer?: Disposable;
 	private loginInfoLoaded = false;
-	private authLostFiredAt = 0;
 	/**
-	 * Bumped on every event that supersedes the cookie state a refresh was
-	 * started against (resumeStoredLogin re-entry / clearCookies / -101 reset). An
-	 * in-flight `checkIfTokenNeedRefresh` captures the value at entry and aborts
-	 * before applying side effects if it changed — otherwise a slow refresh from
-	 * a previous login lands late and `commitLogin` overwrites the new
-	 * session's cookies with stale ones on disk.
+	 * 上一次报出去的 `-101` 是哪一代报的、什么时候报的。去抖按代记:同一代里 60 秒内只报一次;代换了(重新登上、
+	 * 登录结束)就是另一段的事,不受上一段的窗口管 ——「失效 → 重登 → 又失效」报得出来,不论重登那次落盘成没成。
 	 */
-	private refreshGeneration = 0;
+	private authLostReported?: { generation: number; at: number };
+	/**
+	 * 登录代:**罐子里装的是哪一段登录**。一段登录成立(`loginEstablished`:开机恢复、恢复备份、扫码确认成功)
+	 * 与结束(`closeLoginSession`:登出、会话终态;`stop()` 也走一次)时各往前走一步。
+	 *
+	 * 凡是「发出去的时候对着某一段登录、回来的时候可能已经换了一段」的东西,都在发之前记下它、落地之前比它,
+	 * 对不上就不作数:
+	 * - 续期链(`checkIfTokenNeedRefresh`)入口记、每跨一次 await 比 —— 否则上一段的慢链迟到,会把新会话的 cookie
+	 *   覆盖成旧的、或拿自己的 `-101` 清掉别人的罐子;
+	 * - 每个请求(`ApiClient` 发之前记、`maybeFireAuthLost` 比)—— 否则带着旧 cookie 发出去的请求迟到的 `-101`
+	 *   会把刚登上的登录判成失效;
+	 * - 登录状态机的登录检查(`LoginFlow` 经 `loginGeneration` 读)。
+	 *
+	 * 全仓只有这一份:`LoginFlow` 不另持一个。它自己的 `authGeneration` 是另一件事(只在登出时走)。
+	 */
+	private generation = 0;
 	/** Single-in-flight guard so the hourly timer + resumeStoredLogin don't run the RSA dance concurrently. */
 	private refreshInFlight = false;
 	/**
@@ -136,11 +147,17 @@ export class Api {
 		this.jar = opts.ctx.cookies.jar;
 		this.client = new ApiClient({
 			http: opts.ctx.http,
-			onBody: (body) => {
+			generation: () => this.generation,
+			onBody: (body, generation) => {
 				const data = body as { code?: unknown } | undefined;
-				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code);
+				if (data && typeof data.code === "number") this.maybeFireAuthLost(data.code, generation);
 			},
 		});
+	}
+
+	/** 此刻的登录代(见 `generation` 字段)。登录状态机在发登录检查之前读它、落地之前比它。 */
+	get loginGeneration(): number {
+		return this.generation;
 	}
 
 	/**
@@ -167,7 +184,7 @@ export class Api {
 
 	stop(): void {
 		// 作废在途的 cookie 刷新:停下以后它不得再 commitLogin 写盘(关停返回后还落盘)。
-		this.refreshGeneration++;
+		this.generation++;
 		this.ticketJob?.stop();
 		this.refreshCookieTimer?.dispose();
 		this.refreshCookieTimer = undefined;
@@ -196,22 +213,32 @@ export class Api {
 	 * endpoint counts as auth-lost. `-352` etc. seen here are transient
 	 * risk-control on data endpoints, NOT session death — must not widen this
 	 * gate or every throttled data call would spuriously log the user out.
+	 *
+	 * `generation` 是这次请求发出去之前记的登录代。对不上此刻的:这份 `-101` 问的是上一段登录(带着旧 cookie
+	 * 发出去、新登录成立之后才回来),不作数 —— 也不碰去抖的记账,免得它吃掉这一段自己的第一次 `-101`。
 	 */
-	private maybeFireAuthLost(code: number): void {
+	private maybeFireAuthLost(code: number, generation = this.generation): void {
 		if (code !== -101) return;
-		this.fireAuthLost();
+		if (generation !== this.generation) {
+			this.logger.debug("[auth] 迟到的 -101 问的是上一段登录,不作数");
+			return;
+		}
+		this.fireAuthLost(generation);
 	}
 
 	/**
-	 * Debounced `onAuthLost` dispatch (60s). The caller has already decided the
+	 * Debounced `onAuthLost` dispatch (60s, per login generation). The caller has already decided the
 	 * state is terminal — either interceptor `-101`, or a failed cookie-refresh
 	 * chain (the authoritative session-liveness check; if it can't refresh, the
 	 * session is unrecoverable and the user must re-scan).
+	 *
+	 * `generation`:报的是哪一段登录。去抖只管同一段里的重复。
 	 */
-	private fireAuthLost(): void {
+	private fireAuthLost(generation: number): void {
 		const now = Date.now();
-		if (now - this.authLostFiredAt < AUTH_LOST_DEBOUNCE_MS) return;
-		this.authLostFiredAt = now;
+		const last = this.authLostReported;
+		if (last && last.generation === generation && now - last.at < AUTH_LOST_DEBOUNCE_MS) return;
+		this.authLostReported = { generation, at: now };
 		try {
 			this.callbacks.onAuthLost?.();
 		} catch (e) {
@@ -226,15 +253,26 @@ export class Api {
 	 */
 	private async terminateSession(logMsg: string): Promise<void> {
 		this.logger.warn(logMsg);
-		this.refreshGeneration++;
-		this.refreshCookieTimer?.dispose();
-		this.refreshCookieTimer = undefined;
-		this.loginInfoLoaded = false;
-		this.selfInfoCache.invalidate(); // 会话终态:账号身份不再有效,清缓存
-		this.fireAuthLost();
+		// 报的是刚结束的那一段(与拦截器在同一段里报过的那次互相去抖),所以先记下代再往前走。
+		const ended = this.generation;
+		this.closeLoginSession();
+		this.fireAuthLost(ended);
 		// 先拿一道闸留着再清罐:空罐不许自动存成「空罐 + 旧令牌」,盘上留着上一对(与今天一样)。
 		this.keepUnsaved(this.ctx.cookies.hold());
 		this.jar.clear();
+	}
+
+	/**
+	 * 一段登录结束(登出、会话终态)时请求客户端这一头该做的:代往前走(作废在途的续期链,这一段发出去的请求
+	 * 迟到的 `-101` 也不再作数)、摘掉每小时的续期定时器、标成没载入、清账号身份缓存。清不清罐子、报不报失效是
+	 * 调用方各自的事。
+	 */
+	private closeLoginSession(): void {
+		this.generation++;
+		this.refreshCookieTimer?.dispose();
+		this.refreshCookieTimer = undefined;
+		this.loginInfoLoaded = false;
+		this.selfInfoCache.invalidate();
 	}
 
 	/** 把这道闸记成「留着的」;已经有一道的,先拿新的再放旧的(中间不空档)。 */
@@ -255,9 +293,11 @@ export class Api {
 	}
 
 	/**
-	 * 登录状态的唯一提交口:罐子此刻的内容 + 令牌(没有就删)合成**同一次原子写**。扫码成功、续期成功、登出
-	 * 都走它。成功就把留着的闸放掉;失败回结果,并留一道闸 —— 盘上还是上一对,罐子里的新状态不许被零散的自动存
-	 * 单独写出去(下一次提交成功才放)。
+	 * 登录状态的唯一提交口:罐子此刻的内容 + 令牌(没有就删)合成**同一次原子写**。扫码成功(经
+	 * `commitScannedLogin`)、续期成功、登出都走它。成功就把留着的闸放掉;失败回结果,并留一道闸 —— 盘上还是上一对,
+	 * 罐子里的新状态不许被零散的自动存单独写出去(下一次提交成功才放)。
+	 *
+	 * 它只管写盘,**不代表一段登录成立**(续期是同一段、登出是结束):登录代、续期定时器、`-101` 的去抖都不在这里动。
 	 */
 	async commitLogin(refreshToken: string | undefined): Promise<Result> {
 		const result = await this.ctx.cookies.commit([
@@ -265,11 +305,8 @@ export class Api {
 				? { kind: "set", key: REFRESH_TOKEN_KEY, value: refreshToken }
 				: { kind: "delete", key: REFRESH_TOKEN_KEY },
 		]);
-		if (result.ok) {
-			this.releaseUnsaved();
-			// 新的登录状态落盘了(扫码成功 / 续期成功):上一段登录留下的 -101 去抖窗口不该吞掉新会话的第一次 -101。
-			this.authLostFiredAt = 0;
-		} else this.keepUnsaved(this.ctx.cookies.hold());
+		if (result.ok) this.releaseUnsaved();
+		else this.keepUnsaved(this.ctx.cookies.hold());
 		return result;
 	}
 
@@ -296,12 +333,64 @@ export class Api {
 	}
 
 	/**
-	 * 恢复存着的登录(开机一次;恢复备份之后由宿主叫一次)。cookie 罐已经由宿主装好 / 换好,令牌在 `secrets` 里,
-	 * 这里只做剩下的:清账号身份缓存、补占位的 buvid3、标记已载入、作废在途的刷新,有令牌就触发一次续期并起每小时的定时器。
+	 * 恢复存着的登录(开机一次;恢复备份之后由宿主叫一次)。cookie 罐已经由宿主装好 / 换好,令牌在 `secrets` 里;
+	 * 剩下的都在 `loginEstablished` 里。
 	 */
 	async resumeStoredLogin(): Promise<void> {
-		// 换号 / 恢复:上一账号的身份缓存必须清掉。
+		await this.loginEstablished({ kind: "stored" });
+	}
+
+	/**
+	 * 扫码确认成功:登录回应的 Set-Cookie 已经在罐子里,令牌刚从响应体里拿到(没有就是 `undefined`)。
+	 * 调用方必须在认出「确认成功」的**同一拍**里调它(中间不隔 await)—— 登录代在这里面第一个 await 之前就往前走。
+	 * 回的是落盘的结果;落盘失败照样是一段新登录(内存里已经登上了),只是这一段没有续期。
+	 */
+	commitScannedLogin(refreshToken: string | undefined): Promise<Result> {
+		return this.loginEstablished({ kind: "scanned", refreshToken });
+	}
+
+	/**
+	 * **一段登录成立** —— 请求客户端这一头唯一的口。开机恢复、恢复备份(`resumeStoredLogin`)、扫码确认成功
+	 * (`commitScannedLogin`)三条路都经它,该发生的事只在这里写一遍:
+	 *
+	 * 1. 清账号身份缓存(可能换了号);
+	 * 2. 登录代往前走:上一段在途的续期链、上一段发出去还没回来的请求与登录检查,从这一刻起都不作数;
+	 * 3. 摘掉上一段的续期定时器,标成已载入;
+	 * 4. 让这一段的登录状态在盘上站住 —— 存着的(`stored`)本来就在盘上,只放掉上一串留着的闸、补占位的 buvid3;
+	 *    扫出来的(`scanned`)在这里提交(罐子 + 令牌同一次原子写);
+	 * 5. 这一段有令牌就起每小时的续期。存着的 cookie 可能已经该刷了,所以立刻探一次;刚扫出来的不用探。
+	 *
+	 * 1–3 在第一个 await 之前同步做完。**登录代在哪一刻走**:登录回应的 Set-Cookie 在响应头到的那一刻就进了罐子,
+	 * 而我们要等响应体解析完、认出「确认成功」才知道登上了 —— 代就在认出的那一拍走(落盘之前,不等落盘)。
+	 * 所以新代的请求带的一定是新 cookie;漏的一格是「Set-Cookie 进罐 → 认出确认成功」之间(一个响应体的工夫)
+	 * 发出去的请求:带的是新 cookie、记的是旧代,它若回 `-101` 会被当成上一段的丢掉。偏的方向是少报一次,
+	 * 新登录真有问题时下一个请求照样报;反方向(把旧 cookie 的 `-101` 算到新登录头上)没有。
+	 */
+	private async loginEstablished(
+		from: { kind: "stored" } | { kind: "scanned"; refreshToken: string | undefined },
+	): Promise<Result> {
 		this.selfInfoCache.invalidate();
+		const generation = ++this.generation;
+		this.refreshCookieTimer?.dispose();
+		this.refreshCookieTimer = undefined;
+		this.loginInfoLoaded = true;
+
+		let saved: Result = ok();
+		if (from.kind === "stored") this.adoptStoredJar();
+		else saved = await this.commitLogin(from.refreshToken);
+
+		// 没落盘:`secrets` 里要么没有令牌、要么还是上一段的 —— 拿它配这一段的 cookie 去刷,只会把刚登上的会话刷成终态。
+		// 落盘期间又换了一段(登出、恢复备份):续期归那一段自己起。
+		if (!saved.ok || generation !== this.generation) return saved;
+		if (this.ctx.secrets.get<string>(REFRESH_TOKEN_KEY)) {
+			if (from.kind === "stored") this.triggerRefreshCheck();
+			this.enableRefreshCookiesInterval();
+		}
+		return saved;
+	}
+
+	/** 宿主把罐子整个装好 / 换好之后的收拾:放掉上一串留着的闸、补占位的 buvid3。 */
+	private adoptStoredJar(): void {
 		// 罐子整个换了:上一串没提交成功的登录状态已经不存在了,留着的闸该放。
 		this.releaseUnsaved();
 
@@ -322,19 +411,9 @@ export class Api {
 			]);
 		}
 
-		this.loginInfoLoaded = true;
 		this.logger.debug(
 			`[cookie] 载入 ${cookies.length} 条 Cookie,bili_jct=${biliJctCookie ? "存在" : "缺失"},refreshToken=${this.ctx.secrets.get(REFRESH_TOKEN_KEY) === undefined ? "缺失" : "存在"}`,
 		);
-
-		// 重入(re-login / hot-reload):作废上一轮可能仍 in-flight 的 refresh,
-		// 否则它完成时会用旧 jar 的 cookie 覆盖刚换进来的登录态。
-		this.refreshGeneration++;
-
-		if (this.ctx.secrets.get<string>(REFRESH_TOKEN_KEY)) {
-			this.triggerRefreshCheck();
-			this.enableRefreshCookiesInterval();
-		}
 	}
 
 	/**
@@ -379,13 +458,9 @@ export class Api {
 	 * 停掉刷新定时器(登出后已无 refreshToken 可刷),标记未登录。
 	 */
 	async clearCookies(): Promise<void> {
-		// 作废任何 in-flight refresh —— 登出后它不得再 commitLogin 写盘。
-		this.refreshGeneration++;
-		this.refreshCookieTimer?.dispose();
-		this.refreshCookieTimer = undefined;
+		// 这一段登录结束:作废任何 in-flight refresh(登出后它不得再 commitLogin 写盘)、停续期、清账号身份缓存。
+		this.closeLoginSession();
 		this.jar.clear();
-		this.loginInfoLoaded = false;
-		this.selfInfoCache.invalidate(); // 登出:清账号身份缓存
 		this.logger.info("[cookie] 内存 cookie jar 已清空");
 	}
 
@@ -402,11 +477,11 @@ export class Api {
 	async checkIfTokenNeedRefresh(
 		refreshToken: string,
 		csrf: string,
-		gen = this.refreshGeneration,
+		gen = this.generation,
 	): Promise<void> {
-		// 入口 + 每次跨 await 后比对 gen:resumeStoredLogin/clearCookies/-101 任一发生
-		// 都会 bump,本轮(及其重试链)随即作废,绝不把过期结果写回。
-		if (gen !== this.refreshGeneration) {
+		// 入口 + 每次跨 await 后比对 gen(登录代):一段登录成立(开机恢复 / 恢复备份 / 扫码确认成功)或结束
+		// (登出 / 会话终态 / stop)都会让它往前走,本轮(及其重试链)随即作废,绝不把过期结果写回。
+		if (gen !== this.generation) {
 			this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代,跳过本轮");
 			return;
 		}
@@ -421,7 +496,7 @@ export class Api {
 				const info = await this.fetchCookieInfo(this.getCSRF() ?? csrf);
 				// 跨 await 后必须重校 gen(②修不全:此前缺这一处,旧 refreshToken
 				// 在重登/登出后仍用新 jar 继续刷新)。
-				if (gen !== this.refreshGeneration) {
+				if (gen !== this.generation) {
 					this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
 					return;
 				}
@@ -473,13 +548,13 @@ export class Api {
 			);
 			// 加密那两步也跨了 await。罐子只有一个、换号原地换(⑭a 起),换号之后这条旧链再发请求,带的就是新号的 cookie,
 			// 回来的 Set-Cookie 会被当成新会话的收进去 —— 每跨一次 await 都比对,换了就不再发。
-			if (gen !== this.refreshGeneration) {
+			if (gen !== this.generation) {
 				this.logger.debug("[cookie] 刷新在算 correspond 期间被取代,丢弃");
 				return;
 			}
 
 			const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
-			if (gen !== this.refreshGeneration) {
+			if (gen !== this.generation) {
 				this.logger.debug("[cookie] 刷新在取 correspond 页期间被取代,丢弃");
 				return;
 			}
@@ -505,7 +580,7 @@ export class Api {
 
 			// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
 			// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
-			if (gen !== this.refreshGeneration) {
+			if (gen !== this.generation) {
 				this.logger.debug("[cookie] 刷新结果在网络往返期间被取代,丢弃");
 				return;
 			}
@@ -545,7 +620,7 @@ export class Api {
 
 			// confirm POST 返回之后、看码之前先比代数(与刷新那一步同序):被取代的链不许走风控 / 终态分支 ——
 			// 终态会清别人的罐子、发 auth-lost、留闸;下面接着就是写盘,同样不能用过期 gen 的结果覆盖更新的登录态。
-			if (gen !== this.refreshGeneration) {
+			if (gen !== this.generation) {
 				this.logger.debug("[cookie] 刷新确认返回时已被取代,丢弃(不看码、不回写)");
 				fate = "release";
 				return;

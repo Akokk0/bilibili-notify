@@ -30,7 +30,8 @@ function makeHarness() {
 		})),
 		fetchLoginStatus: vi.fn(),
 		getCookiesJson: vi.fn(() => '[{"key":"SESSDATA","value":"x"}]'),
-		commitLogin: vi.fn(async (): Promise<Result> => ok()),
+		loginGeneration: 0,
+		commitScannedLogin: vi.fn(async (): Promise<Result> => ok()),
 		holdLoginSaves: vi.fn((): Disposable => ({ dispose() {} })),
 	};
 	const intervals: Array<{ disposed: boolean }> = [];

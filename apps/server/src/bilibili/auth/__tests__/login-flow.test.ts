@@ -31,7 +31,17 @@ function makeFakeApi() {
 		fetchLoginQrCode: vi.fn(),
 		fetchLoginStatus: vi.fn(),
 		getCookiesJson: vi.fn(() => '[{"key":"SESSDATA","value":"x"}]'),
-		commitLogin: vi.fn(async (): Promise<Result> => ok()),
+		commitLogin: vi.fn(async (_refreshToken?: string): Promise<Result> => ok()),
+		/** 登录代:真 `Api` 在一段登录成立(与结束)时让它往前走;这里只有扫码确认成功那一下走,别的由用例自己加。 */
+		loginGeneration: 0,
+		/**
+		 * 扫码确认成功走的口。照真 `Api` 的次序:登录代先往前走(同步、落盘之前),再落盘 —— 落盘就是上面那个
+		 * `commitLogin`,所以用例照旧在它身上摆结果、数次数。
+		 */
+		commitScannedLogin: vi.fn((refreshToken?: string): Promise<Result> => {
+			fake.loginGeneration += 1;
+			return fake.commitLogin(refreshToken);
+		}),
 		/** 扫码拿的闸:每拿一次记一道,看它什么时候被放。 */
 		holds: [] as Array<{ disposed: boolean }>,
 		holdLoginSaves: vi.fn((): Disposable => {

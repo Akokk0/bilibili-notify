@@ -15,6 +15,7 @@ import {
  *   不会被当成功响应。消息里的 URL 去掉 query(凭据常塞在 query 里,见 {@link urlWithoutQuery})。
  * - **JSON 尝试解析、失败回退原文**:JSON API 得对象,correspond HTML 页得字符串。
  * - **`onBody` 只对 2xx 的体触发**:响应拦截器挂点(-101 auth-lost 探测),非 2xx 先抛了,轮不到它。
+ *   它带着这次请求发出去之前取的登录代(`generation`),迟到的回应由调用方按它认。
  * - **失败一律抛**:`HttpClient` 回的失败结果(超时、连不上)在这里转成 `Error`,进外层 retry。
  * - 重定向最多跟 5 跳,跟满还在跳就抛。
  *
@@ -24,8 +25,16 @@ import {
 
 export interface ApiClientOptions {
 	http: HttpClient;
-	/** 每个 2xx 响应解析后回调(响应拦截器挂点,-101 auth-lost 探测用)。 */
-	onBody?: (body: unknown) => void;
+	/**
+	 * 每个 2xx 响应解析后回调(响应拦截器挂点,-101 auth-lost 探测用)。第二个参数是这次请求**发出去之前**
+	 * 取的那个记号(没给 `generation` 就是 `undefined`)。
+	 */
+	onBody?: (body: unknown, generation: number | undefined) => void;
+	/**
+	 * 「这次请求是对着哪一段登录发的」的取法:每次请求在交给 `HttpClient` **之前**叫一次,回应的体交给 `onBody` 时
+	 * 原样带回。必须在发之前取 —— 请求在途时登录可能换了一段,回来再取就认不出这份回应问的是上一段。
+	 */
+	generation?: () => number;
 }
 
 interface RequestOptions {
@@ -44,11 +53,13 @@ function setHeaderIn(headers: Record<string, string>, name: string, value: strin
 
 export class ApiClient {
 	private readonly httpClient: HttpClient;
-	private readonly onBody?: (body: unknown) => void;
+	private readonly onBody?: (body: unknown, generation: number | undefined) => void;
+	private readonly generation?: () => number;
 
 	constructor(opts: ApiClientOptions) {
 		this.httpClient = opts.http;
 		this.onBody = opts.onBody;
+		this.generation = opts.generation;
 	}
 
 	/**
@@ -113,6 +124,8 @@ export class ApiClient {
 		}
 		if (contentType) setHeaderIn(headers, "Content-Type", contentType);
 
+		// 发之前取记号:`HttpClient` 装 Cookie 头在这之后,所以记着新一段的请求带的一定是新一段的 cookie。
+		const generation = this.generation?.();
 		const result = await this.httpClient.fetch(url, {
 			method,
 			headers,
@@ -133,7 +146,7 @@ export class ApiClient {
 			);
 		}
 		const parsed = tryParseJson(text);
-		this.onBody?.(parsed);
+		this.onBody?.(parsed, generation);
 		return parsed;
 	}
 }

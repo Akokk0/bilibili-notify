@@ -466,7 +466,8 @@ describe("续期链:闸与提交", () => {
 		expect(await savesAfterTouch(w)).toBe(1);
 	});
 
-	// 验红:去掉 commitLogin 成功后对 authLostFiredAt 的清零,第二条红(第一条是对照,恒绿)。
+	// 去抖按登录代记(`Api.authLostReported`)。验红:把 `fireAuthLost` 里比代的那一半去掉(只按时间去抖),第二条红
+	// (第一条是对照,恒绿)。
 	it("-101 的 60 秒去抖:同一段登录里连着来的只报一次(对照)", async () => {
 		const w = await world();
 		const fire = () =>
@@ -485,10 +486,23 @@ describe("续期链:闸与提交", () => {
 		fire();
 		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
 
-		expect((await w.api.commitLogin("T1")).ok).toBe(true);
+		// 重新登录 = 扫码确认成功走的那个口(一段新登录成立);光是一次提交(续期、登出也提交)不算。
+		expect((await w.api.commitScannedLogin("T1")).ok).toBe(true);
 		fire();
 
 		expect(w.onAuthLost).toHaveBeenCalledTimes(2);
+	});
+
+	it("续期成功(同一段登录里的一次提交)不开新的去抖窗口", async () => {
+		const w = await world();
+		const fire = () =>
+			(w.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
+		fire();
+
+		expect((await w.api.commitLogin("T1")).ok).toBe(true);
+		fire();
+
+		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
 	});
 
 	it("提交失败不算登录成功:去抖窗口不清零", async () => {
