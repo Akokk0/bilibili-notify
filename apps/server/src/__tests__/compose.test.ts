@@ -28,7 +28,9 @@ import { BiliSettingsSchema } from "../bilibili/settings.js";
 import { composeBuiltinIntegrations } from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
+import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
+import { memoryIntegrationStore } from "./support/memory-key-value-store.js";
 
 vi.mock("../bilibili/devtools/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../bilibili/devtools/index.js")>();
@@ -104,6 +106,10 @@ function compose(
 	opts: { subs?: Subscription[]; api?: Api; fetchImage?: ReturnType<typeof vi.fn> } = {},
 ) {
 	const subs = opts.subs ?? [];
+	const adapterRegistry = createPlatformAdapterRegistry();
+	// 工厂创建时只往 serviceCtx 挂关停兜底(OneBot、QQ 官方各一个);连接名单是空的,适配器 start 不开监听。
+	const onDispose = vi.fn();
+	const integrationStore = memoryIntegrationStore();
 	const api = overridableApi(opts.api ?? ({} as Api));
 	const fetchImage = opts.fetchImage ?? vi.fn(async () => fail("unavailable", "测试不联网"));
 	const deps = {
@@ -132,8 +138,22 @@ function compose(
 		live: () => undefined,
 		fans: () => undefined,
 		healthCheck: () => undefined,
+		serviceCtx: { onDispose } as never,
+		onInboundPrivate: () => {},
+		onInboundGroup: () => {},
+		adapterRegistry,
+		integrationStore,
+		connections: () => [],
+		onConnectionsChanged: () => ({ dispose() {} }),
 	};
-	return { builtins: composeBuiltinIntegrations(deps), deps, fetchImage };
+	return {
+		builtins: composeBuiltinIntegrations(deps),
+		deps,
+		fetchImage,
+		adapterRegistry,
+		integrationStore,
+		onDispose,
+	};
 }
 
 beforeEach(() => {
@@ -314,5 +334,67 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 				await fake.registered[0]?.source.stop();
 			}
 		});
+	});
+});
+
+describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
+	const keysOf = (registry: ReturnType<typeof createPlatformAdapterRegistry>) =>
+		registry.list().map((adapter) => adapter.adapterKey);
+
+	// 验红:从 `compose.ts` 的适配器列表里去掉任何一个、或调换 OneBot / QQ 官方机器人 / webhook 的先后,这条红。
+	it("registerAdapters 按 OneBot、QQ 官方机器人、webhook 的次序登记进登记表,各开了一份存储", async () => {
+		const { builtins, adapterRegistry, integrationStore } = compose();
+		expect(keysOf(adapterRegistry)).toEqual([]);
+		const adapters = await builtins.registerAdapters();
+		expect(keysOf(adapterRegistry)).toEqual(["onebot", "qq-official", "webhook"]);
+		expect(integrationStore.openKeys()).toEqual(["onebot", "qq-official", "webhook"]);
+		await adapters.dispose();
+	});
+
+	// 验红:`registerAdapters` 不把 `registerBuiltinAdapters` 交回的把手交出去(`return await` 改成只 `await`),
+	// 这条红(调用方拿不到能撤的 `dispose`)。
+	it("交回的 dispose 撤干净:登记表空了、存储都关了、再调一次也行", async () => {
+		const { builtins, adapterRegistry, integrationStore } = compose();
+		const adapters = await builtins.registerAdapters();
+		await adapters.dispose();
+		expect(keysOf(adapterRegistry)).toEqual([]);
+		expect(integrationStore.openKeys()).toEqual([]);
+		await expect(adapters.dispose()).resolves.toBeUndefined();
+	});
+
+	// 验红:去掉 `registerAdapters` 开头的 `if (registeringAdapters) throw …`,这条红。
+	it("调第二次就抛", async () => {
+		const { builtins } = compose();
+		const adapters = await builtins.registerAdapters();
+		await expect(builtins.registerAdapters()).rejects.toThrow("already registered");
+		await adapters.dispose();
+	});
+
+	// 验红:去掉 `registerAdapters` catch 里的 `registeringAdapters = false`,这条红(重来被「已登记」拦下)。
+	it("登记途中抛了:错原样抛出去、已登记的收回、存储关掉,占用解除后能重来", async () => {
+		const { builtins, adapterRegistry, integrationStore } = compose();
+		// 先让别人占了 webhook 的键:前两个登记上了,第三个登记抛。
+		const squatter = adapterRegistry.register(
+			{
+				adapterKey: "webhook",
+				start() {},
+				stop() {},
+			} as never,
+			{ signal: new AbortController().signal } as never,
+		);
+		await expect(builtins.registerAdapters()).rejects.toThrow();
+		expect(keysOf(adapterRegistry)).toEqual(["webhook"]);
+		await vi.waitFor(() => expect(integrationStore.openKeys()).toEqual([]));
+		squatter.dispose();
+		const adapters = await builtins.registerAdapters();
+		expect(keysOf(adapterRegistry)).toEqual(["onebot", "qq-official", "webhook"]);
+		await adapters.dispose();
+	});
+
+	// 验红:造 OneBot / QQ 官方机器人时不把 `deps.serviceCtx` 递给工厂,这条红(关停兜底没挂上)。
+	it("适配器在 compose 时就造好:OneBot 与 QQ 官方机器人各往 serviceCtx 挂了一个关停兜底", () => {
+		const { onDispose } = compose();
+		expect(onDispose).toHaveBeenCalledTimes(2);
+		expect(onDispose).toHaveBeenCalledWith(expect.any(Function), "stop");
 	});
 });

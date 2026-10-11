@@ -59,10 +59,6 @@ import {
 	type ZeroMigrationResult,
 	zeroGenerationExists,
 } from "./migration/zero-generation.js";
-import { createOnebotAdapter } from "./platforms/onebot.js";
-import { createQQOfficialAdapter } from "./platforms/qq-official.js";
-import { createWebhookAdapter } from "./platforms/webhook.js";
-import { registerBuiltinAdapters } from "./push/builtin-adapters.js";
 import { createSecretCellsReader } from "./push/connection-settings.js";
 import { APP_VERSION, STARTED_AT } from "./routes/health.js";
 import { createStatsOverview, roastOverviewFetcher } from "./routes/stats.js";
@@ -583,7 +579,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// Engine layer (Stage 4 P0). The order matters:
 		//   1. SubscriptionStore binding mirrors the file-backed config into an
 		//      in-memory store + emits subscription-changed on diffs.
-		//   2. Platform adapters are constructed from logger; they hold no state.
+		//   2. The built-in platform adapters are constructed inside `composeBuiltinIntegrations`
+		//      and registered (registration starts them) just before the engines
+		//      (`builtins.registerAdapters`).
 		//   3. createEngines() builds Dispatcher → PushRouter → LiveEngine and registers
 		//      serviceCtx.onDispose for graceful shutdown; the built-in post source is registered
 		//      right after it (`builtins.registerSources`).
@@ -640,21 +638,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			readSettings: () => runtime.configStore.getGlobals().update,
 			serviceCtx: runtime.serviceCtx,
 		});
-		const builtinAdapterList = [
-			createOnebotAdapter({
-				logger: log,
-				serviceCtx: runtime.serviceCtx,
-				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
-			}),
-			createQQOfficialAdapter({
-				logger: log,
-				serviceCtx: runtime.serviceCtx,
-				onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
-				onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
-			}),
-			createWebhookAdapter({ logger: log }),
-		];
 		// 出口住在一张**活的注册表**里:内置这几个在 `createEngines` 之前登记(登记即 `start`,见下),
 		// 拓展注册进来的后到、拨开关还会走(ADR-0012 决策 29)。消费方在分发那一刻问它要,不存快照。
 		// 表在 `createAppRuntime` 里就建好了(配置仓保存连接时要按在场适配器的规则验 settings),这里只登记。
@@ -728,6 +711,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				authSystem && {
 					healthCheckNow: () => authSystem?.healthCheckNow() ?? Promise.resolve(false),
 				},
+			// 三个内置适配器在 `compose.ts` 里造(核心只有它能 import `platforms/`)。入站出口是上面留好的
+			// 可后填引用,现转。
+			serviceCtx: runtime.serviceCtx,
+			onInboundPrivate: (msg, meta) => onInboundPrivate?.(msg, meta),
+			onInboundGroup: (msg, meta) => onInboundGroup?.(msg, meta),
+			adapterRegistry,
+			integrationStore: runtime.integrationStore,
+			connections: () => runtime.configStore.getConnections(),
+			onConnectionsChanged,
 		});
 		const devtools = createDevtools({
 			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
@@ -798,14 +790,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 
 		// 内置适配器登记即启动 —— 就在 `createEngines` 之前,启动时刻与从前引擎开机对账那一刻一致。
 		// 关停钩子也登记在引擎之前:同一段里后登记的先跑,引擎先收、适配器后停。
-		const builtinAdapters = await registerBuiltinAdapters({
-			registry: adapterRegistry,
-			adapters: builtinAdapterList,
-			logger: log,
-			stores: runtime.integrationStore,
-			connections: () => runtime.configStore.getConnections(),
-			onConnectionsChanged,
-		});
+		const builtinAdapters = await builtins.registerAdapters();
 		runtime.serviceCtx.onDispose(() => builtinAdapters.dispose(), "stop");
 
 		engines = createEngines({
