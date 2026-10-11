@@ -149,9 +149,10 @@ export type ExtensionUpgradeHandler = (upgrade: ExtensionUpgrade) => void;
 export interface PushExtensionDef<TConfig> {
 	/**
 	 * 行为。⚠️ 它自报的 `adapterKey` **会被宿主覆盖**成这个拓展的 id;`settingsSchema` 由宿主拿
-	 * `configSchema` 填,所以这里不用(也不能)自己交。
+	 * `configSchema` 填,所以这里不用(也不能)自己交。`listAddressCandidates` 与 `connectionAuth`
+	 * 不对拓展开放(ADR-0024 决策 11),类型上排除。
 	 */
-	adapter: Omit<PlatformAdapter, "settingsSchema" | "listAddressCandidates">;
+	adapter: Omit<PlatformAdapter, "settingsSchema" | "listAddressCandidates" | "connectionAuth">;
 	/**
 	 * config 的校验。宿主拿它解连接,解不出的那条根本不交给拓展;注册那一刻还拿它与清单里的
 	 * 连接配置项逐格对表(键、类型、默认值),对不上直接抛(ADR-0019 决策 17)。

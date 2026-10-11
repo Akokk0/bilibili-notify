@@ -25,6 +25,7 @@ import { type RawData, WebSocket } from "ws";
 import { builtinCandidatesFor } from "./builtin-candidates.js";
 import { describeDestination } from "./destination-label.js";
 import { imageGroupUrls } from "./image-group.js";
+import { createQQConnectionAuth } from "./qq-bind.js";
 import { upstreamMessage } from "./upstream-message.js";
 
 /** QQ 开放平台换取 App Access Token 的端点(与沙箱/正式无关,固定走 bots.qq.com)。 */
@@ -1105,6 +1106,8 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	/** reconcile 未跑时 send 仍可独立取 token 的兜底管理器(无网关连接)。 */
 	const tokenOnly = new Map<string, QQTokenManager>();
 	let disposed = false;
+	/** 扫码建连接的任务表归适配器;`stop()` 时清空(没取走的草稿不留)。 */
+	const bindAuth = createQQConnectionAuth({ logger });
 	/** 能力都是静态事实,没有「探」这回事;`checkedAt` 就取适配器创建的这一刻。 */
 	const adapterStartedAt = Date.now();
 
@@ -1167,6 +1170,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	function disposeAll(): void {
 		if (disposed) return;
 		disposed = true;
+		bindAuth.clear();
 		for (const l of live.values()) {
 			l.conn.close();
 			l.tm.dispose();
@@ -1257,6 +1261,7 @@ export function createQQOfficialAdapter(opts: QQOfficialAdapterOptions): Platfor
 	return {
 		adapterKey: "qq-official",
 		settingsSchema: QQOfficialConnectionSettingsSchema,
+		connectionAuth: bindAuth.auth,
 
 		async listConnectionCandidates(): Promise<readonly ConnectionCandidate[]> {
 			return builtinCandidatesFor("qq-official");

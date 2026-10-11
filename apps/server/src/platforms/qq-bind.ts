@@ -14,8 +14,22 @@
  * 永远是降级路径,host 留注入口以便不发版换道。
  */
 
-import { createDecipheriv, randomBytes } from "node:crypto";
-import type { QQBindPollResult } from "@bilibili-notify/contract";
+import { createDecipheriv, randomBytes, randomUUID } from "node:crypto";
+import type { AuthState, ConnectionAuth, Logger } from "@bilibili-notify/internal";
+import { fail, ok } from "@bilibili-notify/internal";
+import QRCode from "qrcode";
+import { upstreamMessage } from "./upstream-message.js";
+
+/**
+ * 轮询一次的结果。**server 内部的类型**(`created` 带着明文 AppSecret,只许在本文件的任务表里停留,
+ * 不出 wire)。
+ */
+export type QQBindPollResult =
+	| { status: "pending" }
+	| { status: "expired" }
+	| { status: "created"; appId: string; appSecret: string }
+	/** 扫码侧完成但凭据缺失/解不开 —— 业务态错误,与上游故障(抛错)区分。 */
+	| { status: "error"; message: string };
 
 /** 生成一把 base64 编码的 AES-256(32 字节)绑定密钥。 */
 export function generateBindKey(): string {
@@ -70,12 +84,14 @@ async function postLite(
 	host: string,
 	path: string,
 	payload: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
+	const timeout = AbortSignal.timeout(LITE_TIMEOUT_MS);
 	const resp = await fetch(`https://${host}${path}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "application/json" },
 		body: JSON.stringify(payload),
-		signal: AbortSignal.timeout(LITE_TIMEOUT_MS),
+		signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
 	});
 	if (!resp.ok) throw new Error(`QQ 绑定接口 HTTP ${resp.status}`);
 	const data = (await resp.json()) as Record<string, unknown>;
@@ -87,9 +103,12 @@ async function postLite(
 }
 
 /** 创建绑定任务:生成密钥预递腾讯,返回 task_id 与二维码 URL。 */
-export async function createBindTask(host: string = DEFAULT_BIND_HOST): Promise<QQBindTask> {
+export async function createBindTask(
+	host: string = DEFAULT_BIND_HOST,
+	signal?: AbortSignal,
+): Promise<QQBindTask> {
 	const bindKey = generateBindKey();
-	const data = await postLite(host, "/lite/create_bind_task", { key: bindKey });
+	const data = await postLite(host, "/lite/create_bind_task", { key: bindKey }, signal);
 	const payload = (data.data ?? {}) as Record<string, unknown>;
 	const taskId = String(payload.task_id ?? "").trim();
 	if (!taskId) throw new Error("QQ 绑定任务响应缺少 task_id");
@@ -118,4 +137,131 @@ export async function pollBindTask(
 	} catch (e) {
 		return { status: "error", message: `机器人凭据解密失败:${(e as Error).message}` };
 	}
+}
+
+// ── connectionAuth:任务表住适配器里 ──────────────────────────────────────────
+
+/** 任务时限 —— 腾讯侧二维码本身会过期,这里兜「弹层开着人走了」的泄漏,也是 `expiresAt` 的算法。 */
+const BIND_TASK_TTL_MS = 10 * 60_000;
+
+/** 建议的问询间隔(秒),对齐 AstrBot 同通道的默认值。 */
+const BIND_POLL_INTERVAL_SECONDS = 2;
+
+/**
+ * 任务表的一项。⚠️ 带着解 AppSecret 的钥匙与(成功后)明文草稿:只活在这张闭包里的表中,
+ * 不落盘、不进事件总线、不进任何会被序列化的状态、不进日志 —— 日志里不许打整项、
+ * `takeDraft` 的返回值、`state()` 的整个返回值。
+ */
+interface BindEntry {
+	upstreamTaskId: string;
+	bindKey: string;
+	createdAt: number;
+	/** 终态(logged-in / expired / error)一旦钉住就不再问上游。 */
+	state: AuthState;
+	draft?: { appId: string; appSecret: string };
+}
+
+function isTimeout(err: unknown): boolean {
+	return (
+		typeof err === "object" && err !== null && (err as { name?: unknown }).name === "TimeoutError"
+	);
+}
+
+/** 上游抛的错翻成标准码:超时单列 `timeout`,其余 `unavailable`。 */
+function upstreamFailure(err: unknown, lead: string) {
+	return fail(isTimeout(err) ? "timeout" : "unavailable", `${lead}：${upstreamMessage(err)}`);
+}
+
+/**
+ * QQ 官方机器人的 `connectionAuth`。任务号由这里发(`randomUUID`),腾讯的 `task_id` 与解密钥匙
+ * 只存在表里。惰性清扫(三个方法进门各扫一遍,不起定时器);`clear()` 给适配器 `stop()` 用。
+ *
+ * 三个方法是闭包,不用 `this`。
+ */
+export function createQQConnectionAuth(opts: { logger: Logger }): {
+	auth: ConnectionAuth;
+	clear(): void;
+} {
+	const { logger } = opts;
+	const tasks = new Map<string, BindEntry>();
+	// 逃生口:腾讯哪天收紧通道可以不发版换主机。每次调用现读。
+	const bindHost = (): string | undefined => process.env.BN_QQ_BIND_HOST || undefined;
+	const sweep = (): void => {
+		const now = Date.now();
+		for (const [id, t] of tasks) {
+			if (now - t.createdAt > BIND_TASK_TTL_MS) tasks.delete(id);
+		}
+	};
+
+	const auth: ConnectionAuth = {
+		async begin(signal) {
+			sweep();
+			try {
+				const task = await createBindTask(bindHost(), signal);
+				const dataUrl = await QRCode.toDataURL(task.qrUrl, { margin: 1, width: 320 });
+				const createdAt = Date.now();
+				const state: AuthState = {
+					status: "awaiting-scan",
+					qr: { dataUrl, expiresAt: new Date(createdAt + BIND_TASK_TTL_MS).toISOString() },
+				};
+				const taskId = randomUUID();
+				tasks.set(taskId, {
+					upstreamTaskId: task.taskId,
+					bindKey: task.bindKey,
+					createdAt,
+					state,
+				});
+				return ok({ taskId, state, pollIntervalSeconds: BIND_POLL_INTERVAL_SECONDS });
+			} catch (err) {
+				logger.warn(`[qq] 发起绑定失败: ${upstreamMessage(err)}`);
+				return upstreamFailure(err, "发起绑定失败");
+			}
+		},
+
+		// 对上游的那次问询**不跟调用方的 signal**:腾讯的成功结果可能只回一次,面板断开不该
+		// 让已经在路上的那次成功被丢掉;问到了就收进表,下一轮读到。所以参数留着、这里不用。
+		async state(taskId, _signal) {
+			sweep();
+			const entry = tasks.get(taskId);
+			if (!entry) return fail("not_found", "绑定任务不存在或已过期");
+			if (entry.state.status !== "awaiting-scan") return ok({ state: entry.state });
+			let polled: QQBindPollResult;
+			try {
+				polled = await pollBindTask(entry.upstreamTaskId, entry.bindKey, bindHost());
+			} catch (err) {
+				// 上游故障保留任务,下一轮接着问。
+				logger.warn(`[qq] 查询绑定结果失败: ${upstreamMessage(err)}`);
+				return upstreamFailure(err, "查询绑定结果失败");
+			}
+			// await 期间这一项可能被取走 / 被清扫 / 被 clear:不复活它(复活 = 把明文草稿留在没人来取的表里)。
+			if (tasks.get(taskId) !== entry) return fail("not_found", "绑定任务不存在或已过期");
+			// 并发的另一轮已经钉住终态:以先到的为准。
+			if (entry.state.status !== "awaiting-scan") return ok({ state: entry.state });
+			if (polled.status === "created") {
+				entry.draft = { appId: polled.appId, appSecret: polled.appSecret };
+				entry.state = { status: "logged-in", loggedInAt: new Date().toISOString() };
+			} else if (polled.status === "expired") {
+				entry.state = { status: "expired", message: "二维码已过期" };
+			} else if (polled.status === "error") {
+				entry.state = { status: "error", message: polled.message };
+			}
+			return ok({ state: entry.state });
+		},
+
+		async takeDraft(taskId) {
+			sweep();
+			const entry = tasks.get(taskId);
+			if (!entry) return fail("not_found", "绑定任务不存在或已过期");
+			if (entry.state.status === "awaiting-scan") {
+				return fail("conflict", "还没扫码完成，没有可取的结果");
+			}
+			if (!entry.draft) return fail("conflict", "这次扫码没有成功，没有可取的结果");
+			const { appId, appSecret } = entry.draft;
+			// 取走即清:整项删,不是只删草稿那一格。
+			tasks.delete(taskId);
+			return ok({ settings: { appId, appSecret } });
+		},
+	};
+
+	return { auth, clear: () => tasks.clear() };
 }

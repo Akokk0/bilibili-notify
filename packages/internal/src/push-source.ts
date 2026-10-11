@@ -9,6 +9,7 @@
  */
 
 import type { ZodType } from "zod";
+import type { AuthState } from "./auth-state";
 import type { Result } from "./constants";
 import type {
 	ConnectionCapabilities,
@@ -116,6 +117,31 @@ export interface PlatformAdapter {
 		scope: PushTargetScope,
 		signal: AbortSignal,
 	): Promise<Result<{ candidates: readonly AddressCandidate[] }>>;
+	/**
+	 * 扫码之类的建连接流程(ADR-0024 决策 3)。不实现 = 这种连接只能手填。
+	 * 不对拓展开放(ADR-0024 决策 11):拓展的 `adapter` 类型把它排除掉。
+	 */
+	connectionAuth?: ConnectionAuth;
+}
+
+/**
+ * 扫码建连接的三步。三个方法都不依赖 `this`(同文件头那条承重的规矩),都不许抛。
+ *
+ * 与订阅侧 `SourceAuth.state()` 同名不同形:这边异步、按任务号、回结果形状(要出网,会失败),
+ * 那边同步、无参、直接回 `AuthState`。同名是有意的(都是「读此刻的状态」),别为了对齐改成对方的样子。
+ */
+export interface ConnectionAuth {
+	/** 发起一次:开一个任务,回任务号(适配器自己发)、此刻的状态与建议的问询间隔(秒)。 */
+	begin(
+		signal: AbortSignal,
+	): Promise<Result<{ taskId: string; state: AuthState; pollIntervalSeconds: number }>>;
+	/** 读这个任务此刻的状态。可反复读;回包不带草稿、不清草稿。 */
+	state(taskId: string, signal: AbortSignal): Promise<Result<{ state: AuthState }>>;
+	/**
+	 * 取走这次认证拿到的那几格设置(键是适配器自己 `settingsSchema` 里的键)。
+	 * 只在状态到了 `logged-in` 之后成功一次,取走即清;之后这个任务号找不到。
+	 */
+	takeDraft(taskId: string): Promise<Result<{ settings: Record<string, unknown> }>>;
 }
 
 /** 挑地址时的一个候选(ADR-0024 决策 3 的 listAddressCandidates)。 */
