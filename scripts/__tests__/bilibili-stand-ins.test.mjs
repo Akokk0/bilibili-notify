@@ -62,14 +62,16 @@ export const RATCHET = {
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
-	"apps/server/src/routes/subscriptions.ts": 9,
+	"apps/server/src/routes/subscriptions.ts": 8,
 	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的。
 	// 3a-28 有了来源登记表里中立的「来源在跑」读口,这一处已消失(同片 20 → 17:另两处是动态那一半的订阅视图与操作翻译)。
 	// 3a-38(主人 10-10 点头,18 → 20):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(开机取一次、热更取一次)。
 	// 3a-40 把日志等级改成按集成键统一给之后消失。
 	// ⚠️ 这个数少报了:那两处取出来的等级存在 `bootSourceLevel` / `sourceLevel` 两个局部变量里,名字不带 `bili`,
 	// 它们的 6 处读写没数进来(3a-38 的独立审查查出)。主人 10-10 定:3a-40 统一整改时一起走,现在不动。
-	"apps/server/src/runtime/engines.ts": 17,
+	// 3a-31(主人 10-11 点头,17 → 18):「作品开关从关到开时补一次关注」也要先看登录了没有,第二次用到 `biliLoggedIn`
+	// (名字如实带 `bili`,不起中立名字躲)。关注同步搬进 B 站来源那一天,这几处一起消失。
+	"apps/server/src/runtime/engines.ts": 18,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,

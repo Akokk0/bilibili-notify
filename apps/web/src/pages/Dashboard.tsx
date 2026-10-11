@@ -61,6 +61,8 @@ import { useAuthStore } from "../store/auth";
 import { BiliLoginStatus } from "../types/auth";
 import {
 	BILIBILI_SOURCE_KEY,
+	type FeatureFlagValues,
+	type FeatureKey,
 	type PushTarget,
 	type Subscription,
 	subscriptionIdentityOf,
@@ -74,7 +76,13 @@ import {
 	isExtensionIdentity,
 } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
-import { colorFromUid, displayName, profileAvatarUrl, subscriptionColor } from "./up/helpers";
+import {
+	colorFromUid,
+	displayName,
+	profileAvatarUrl,
+	subscribedFeatures,
+	subscriptionColor,
+} from "./up/helpers";
 import { createSubscriptionLookup, type SubscriptionLookup } from "./up/subscription-lookup";
 import { subscriptionPlatformOf } from "./up/subscription-source";
 
@@ -122,10 +130,10 @@ function liveRowFace(
 	};
 }
 
-// 跟后端 `LIVE_ROOM_CREATOR_KEYS` 同集合 —— 只要任意一项的 routing 数组非空,
-// LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled 也不会出现
-// 在「正在直播」面板里(needsLiveMonitor 返回 false)。
-const LIVE_ROUTING_KEYS = [
+// 跟后端 `LIVE_ROOM_CREATOR_KEYS` 同集合 —— 只要任意一把折好的开关开着(订阅覆盖压过全局默认,
+// 不看有没有推送目标:ADR-0027 决策 1),LiveEngine 就会为该订阅开 B 站 WS 监听;反之 sub 即使 enabled
+// 也不会出现在「正在直播」面板里(needsLiveMonitor 返回 false)。
+const LIVE_SWITCH_KEYS = [
 	"liveStart",
 	"liveStreaming",
 	"liveEnd",
@@ -133,34 +141,38 @@ const LIVE_ROUTING_KEYS = [
 	"superchat",
 ] as const;
 
-function hasAnyLiveTarget(sub: Subscription): boolean {
-	return LIVE_ROUTING_KEYS.some((k) => (sub.routing[k]?.length ?? 0) > 0);
+function hasAnyLiveSwitch(sub: Subscription, globalFeatures?: FeatureFlagValues): boolean {
+	const on = new Set<FeatureKey>(subscribedFeatures(sub, globalFeatures));
+	return LIVE_SWITCH_KEYS.some((k) => on.has(k));
 }
 
 export function LiveNowPanel({
 	live,
 	subs,
 	extensions,
+	globalFeatures,
 }: {
 	live: LiveListeningEntry[];
 	subs: Subscription[];
 	/** 装着的拓展 —— 拓展订阅那几行的平台徽章照它的清单画。没回来时徽章退拓展 id。 */
 	extensions?: readonly ExtensionDTO[];
+	/** 全局特性开关(`globals.defaults.features`),订阅没覆盖的开关按它折。没回来 = 出厂值。 */
+	globalFeatures?: FeatureFlagValues;
 }) {
 	// 在播快照带着订阅自己的 id(ADR-0019 决策 50),按它对订阅 —— 同一个 UP 配了几条订阅时,
 	// 按 uid 对不出这间直播间是替哪一条开的。
 	const lookup = useMemo(() => createSubscriptionLookup(subs), [subs]);
-	// 用户订阅了但没给 live 类 feature 配 target 的数量 —— 这些订阅的直播状态
-	// 永远不会出现在面板里。empty state 里露出 hint 让用户知道该去哪配置。
+	// 启用着却一把直播类开关都没开的数量 —— 这些订阅的直播状态永远不会出现在面板里。
+	// empty state 里露出 hint 让用户知道该去哪开。「开着」只看开关,不看有没有推送目标。
 	const unmonitoredCount = useMemo(
 		() =>
 			subs.filter(
 				(s) =>
 					subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY &&
 					s.enabled &&
-					!hasAnyLiveTarget(s),
+					!hasAnyLiveSwitch(s, globalFeatures),
 			).length,
-		[subs],
+		[subs, globalFeatures],
 	);
 	return (
 		<GlassPanel
@@ -188,7 +200,7 @@ export function LiveNowPanel({
 								to="/subs"
 								className="mt-1 inline-block text-bn-xs text-bn-pink underline-offset-2 hover:underline"
 							>
-								有 {unmonitoredCount} 位订阅未配置直播推送目标,他们不会被监听 →
+								有 {unmonitoredCount} 位订阅没开直播推送,他们不会被监听 →
 							</Link>
 						</>
 					) : null}
@@ -1007,7 +1019,12 @@ export default function Dashboard() {
 
 			{/* row 2: 正在直播(宽) + 粉丝数变化(窄) */}
 			<div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1.3fr_1fr]">
-				<LiveNowPanel live={live} subs={subs} extensions={extensionsQuery.data?.extensions} />
+				<LiveNowPanel
+					live={live}
+					subs={subs}
+					extensions={extensionsQuery.data?.extensions}
+					globalFeatures={globalsQuery.data?.defaults?.features}
+				/>
 				<FansPanel subs={subs} extensions={extensionsQuery.data?.extensions} />
 			</div>
 

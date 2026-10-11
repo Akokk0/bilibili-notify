@@ -18,6 +18,7 @@ import { syncProfileAvatar } from "../bilibili/images.js";
 import { ConfigValidationError } from "../config/store.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { createImageFetcher } from "../images/image-fetcher.js";
+import { followTargetSubscriptions } from "../runtime/follow-sync.js";
 import { decodeSubscriptionAvatar } from "../runtime/subscription-avatar.js";
 import { readJsonBody, readJsonObject } from "./request-body.js";
 import { respondFailure } from "./respond-failure.js";
@@ -89,13 +90,28 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 	const log = deps.runtime.serviceCtx.logger;
 
 	/** Join the externalized runtime fields back onto a config Subscription. */
-	function toDTO(sub: Subscription): SubscriptionDTO {
+	function toDTO(sub: Subscription, needFollow: ReadonlySet<string>): SubscriptionDTO {
 		const rt = deps.runtime.subRuntimeStore.get(sub.id);
 		const runtime = { cachedProfile: rt?.cachedProfile };
-		// 关注状态只对 B 站订阅有意义(动态走 B 站的关注流);别的来源这两格缺着。
-		if (subscriptionIdentityOf(sub).sourceKey !== BILIBILI_SOURCE_KEY)
-			return { ...sub, ...runtime };
+		// 关注状态只对需要关注的 B 站订阅有意义(动态走 B 站的关注流):别的来源、停用的、没开作品的
+		// (直播用不着关注)这两格缺着 —— 运行时状态里留着的旧「未关注」不该再挂在卡片上吓人。
+		if (!needFollow.has(sub.id)) return { ...sub, ...runtime };
 		return { ...sub, ...runtime, followed: rt?.followed, followError: rt?.followError };
+	}
+
+	/** 需要关注的订阅 id:启用中、作品开关开着的 B 站订阅(见 `followTargetSubscriptions`)。 */
+	function followTargetIds(): Set<string> {
+		const targets = followTargetSubscriptions(
+			deps.store.getSubscriptions(),
+			deps.store.getGlobals().defaults,
+		);
+		return new Set(targets.map((s) => s.id));
+	}
+
+	/** 整张订阅表的 DTO(GET / POST 的回应)。 */
+	function toDTOs(): SubscriptionDTO[] {
+		const needFollow = followTargetIds();
+		return deps.store.getSubscriptions().map((sub) => toDTO(sub, needFollow));
 	}
 
 	/**
@@ -219,7 +235,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			throw err;
 		}
 		if (seed) await seedExtensionProfile(sub, seed, avatarBytes);
-		return c.json(deps.store.getSubscriptions().map(toDTO), 200);
+		return c.json(toDTOs(), 200);
 	}
 
 	/**
@@ -257,7 +273,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		}
 	}
 
-	app.get("/", (c) => c.json(deps.store.getSubscriptions().map(toDTO)));
+	app.get("/", (c) => c.json(toDTOs()));
 
 	// 标签表(ADR-0034):和 `/search`、`/lookup` 一样是这一摊底下的固定子路径。这一摊没有 `GET /:id` / `PUT /:id`,
 	// 撞不上;挂在 `/:id` 那几条前面,以后真加了也先认它。
@@ -390,10 +406,12 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 			if (created && subscriptionIdentityOf(created).sourceKey === BILIBILI_SOURCE_KEY) {
 				// 关注必须在响应前完成 —— 否则返回的 DTO 里 followed 还是 undefined,
 				// 前端拿不到「这条订阅收不收得到动态」这个关键状态。
-				await followUp(created);
+				// 只对新建、且需要关注的(启用中、作品开着)当场关注:没开作品的用不着(直播不走关注流);
+				// 整份回来改的那条(面板的启用开关)不在这里,开关翻开补关注由引擎听订阅变更去做。
+				if (!exists && followTargetIds().has(created.id)) await followUp(created);
 				await seedCachedProfile(created);
 			}
-			return c.json(deps.store.getSubscriptions().map(toDTO), 200);
+			return c.json(toDTOs(), 200);
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("POST /api/subscriptions failed", err);
@@ -428,7 +446,7 @@ export function createSubscriptionsRoute(deps: RouteDeps, opts: SubsRouteOptions
 		}
 		try {
 			const next = await deps.store.patchSubscription(id, read.body);
-			return c.json(toDTO(next));
+			return c.json(toDTO(next, followTargetIds()));
 		} catch (err) {
 			if (err instanceof ConfigValidationError) return respondFailure(c, err.toFailure());
 			log.error("PATCH /api/subscriptions/:id failed", err);

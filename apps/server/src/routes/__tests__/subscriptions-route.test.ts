@@ -8,7 +8,7 @@
  * 为 null 时跳过。GET/POST/PATCH 响应都走同一 toDTO,保证前端缓存一致。
  */
 
-import { fail, type ImageRef, ok } from "@bilibili-notify/internal";
+import { fail, type ImageRef, makeDefaultGlobalConfig, ok } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { png } from "../../__tests__/support/report-images.js";
@@ -60,13 +60,19 @@ function makeHarness(opts?: {
 	follow?: "ok" | "already" | "fail" | "throw";
 	/** 抓头像:ok=抓到一张 png;fail=对端连不上。 */
 	avatar?: "ok" | "fail";
+	/** true = 存储里原本没有这条订阅(POST 是新建);缺省 = 已经在(POST 是整份回来改)。 */
+	fresh?: boolean;
 }): Harness {
 	const subs = opts?.subs ?? [SUB];
 	const rtRecord = opts?.rtRecord ?? {};
 	const enginesMode = opts?.engines ?? "ok";
 
-	const getSubscriptions = vi.fn(() => subs);
-	const upsertSubscription = vi.fn(async () => {});
+	// 新建:存储里原本没有这条,upsert 之后才有(POST 靠这个分辨「新建」与「整份回来改」)。
+	let stored = !opts?.fresh;
+	const getSubscriptions = vi.fn(() => (stored ? subs : []));
+	const upsertSubscription = vi.fn(async () => {
+		stored = true;
+	});
 	const patchSubscription = vi.fn(async (_id: string, _patch: unknown) => SUB);
 	const rtGet = vi.fn((id: string) => rtRecord[id]);
 	const rtPatch = vi.fn(async () => {});
@@ -115,7 +121,12 @@ function makeHarness(opts?: {
 		enginesMode === "null" ? null : { api: { fetchUserCard, follow, http: { fetch: httpFetch } } };
 
 	const deps = {
-		store: { getSubscriptions, upsertSubscription, patchSubscription },
+		store: {
+			getSubscriptions,
+			upsertSubscription,
+			patchSubscription,
+			getGlobals: () => makeDefaultGlobalConfig(),
+		},
 		runtime: {
 			serviceCtx: { logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } },
 			subRuntimeStore: { get: rtGet, patch: rtPatch },
@@ -171,6 +182,35 @@ describe("/api/subscriptions GET — runtime 字段 join", () => {
 		// fansBaseline 是 FansPoller 私有,绝不进 DTO
 		expect("fansBaseline" in row).toBe(false);
 		expect(row).not.toHaveProperty("state");
+	});
+});
+
+// 「未关注」是服务端写进运行时状态、随 DTO 带给面板的(不是面板自己算的)。写下的 `followed:false`
+// 会一直留着 —— 主人后来把作品关了、或把订阅停了,这条订阅已经不需要关注,DTO 就不该再带它,
+// 否则卡片上还挂着「未关注 —— 收不到动态」,主人会以为出了问题。
+describe("/api/subscriptions GET — 不需要关注的订阅不带关注状态", () => {
+	const unfollowed = { followed: false, followError: "对方已将你拉黑" };
+
+	it("开着作品的启用订阅:照常带 followed / followError", async () => {
+		const h = makeHarness({ rtRecord: { [SUB.id]: unfollowed } });
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect(body[0]?.followed).toBe(false);
+		expect(body[0]?.followError).toBe("对方已将你拉黑");
+	});
+
+	it("只开直播(作品关着)的订阅:不带", async () => {
+		const liveOnly = { ...SUB, overrides: { features: { post: false } } };
+		const h = makeHarness({ subs: [liveOnly], rtRecord: { [SUB.id]: unfollowed } });
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect("followed" in (body[0] ?? {})).toBe(false);
+		expect("followError" in (body[0] ?? {})).toBe(false);
+	});
+
+	it("停用的订阅:不带", async () => {
+		const off = { ...SUB, enabled: false };
+		const h = makeHarness({ subs: [off], rtRecord: { [SUB.id]: unfollowed } });
+		const body = (await (await h.app.request("/")).json()) as Array<Record<string, unknown>>;
+		expect("followed" in (body[0] ?? {})).toBe(false);
 	});
 });
 
@@ -403,15 +443,47 @@ describe("/api/subscriptions POST — 自动关注该 UP", () => {
 	}
 
 	it("新增订阅 → 去 B 站关注该 UP(否则 feed/all 里根本没有他的动态)", async () => {
-		const h = makeHarness();
+		const h = makeHarness({ fresh: true });
 		const res = await post(h);
 
 		expect(res.status).toBe(200);
 		expect(h.follow).toHaveBeenCalledWith(SUB.identity.externalId);
 	});
 
+	// 「关了就不查」:关注只为拉到动态,直播用不着。关注是写接口,最招风控。
+	it("新建一条没开作品的订阅(只开直播)→ 不关注,也不写关注状态", async () => {
+		const liveOnly = { ...SUB, overrides: { features: { post: false } } };
+		const h = makeHarness({ fresh: true, subs: [liveOnly] });
+		const res = await post(h, liveOnly);
+
+		expect(res.status).toBe(200);
+		expect(h.upsertSubscription).toHaveBeenCalledTimes(1);
+		expect(h.follow).not.toHaveBeenCalled();
+		expect(h.rtPatch).not.toHaveBeenCalledWith(SUB.id, expect.objectContaining({ followed: true }));
+		expect(h.rtPatch).not.toHaveBeenCalledWith(
+			SUB.id,
+			expect.objectContaining({ followed: false }),
+		);
+	});
+
+	it("新建一条停用的订阅 → 不关注", async () => {
+		const off = { ...SUB, enabled: false };
+		const h = makeHarness({ fresh: true, subs: [off] });
+		await post(h, off);
+
+		expect(h.follow).not.toHaveBeenCalled();
+	});
+
+	it("整份 POST 回来改一条已有的订阅(面板的启用开关)→ 不在这里关注:开关翻开补关注归引擎听订阅变更去做", async () => {
+		const h = makeHarness(); // 默认:存储里已经有这条
+		const res = await post(h);
+
+		expect(res.status).toBe(200);
+		expect(h.follow).not.toHaveBeenCalled();
+	});
+
 	it("已经关注过(22014) → 视为成功,不当失败报", async () => {
-		const h = makeHarness({ follow: "already" });
+		const h = makeHarness({ fresh: true, follow: "already" });
 		const res = await post(h);
 
 		expect(res.status).toBe(200);
@@ -419,7 +491,7 @@ describe("/api/subscriptions POST — 自动关注该 UP", () => {
 	});
 
 	it("关注失败 → 订阅照建,但把「未关注」如实记下(别让用户以为好了)", async () => {
-		const h = makeHarness({ follow: "fail" });
+		const h = makeHarness({ fresh: true, follow: "fail" });
 		const res = await post(h);
 
 		// 主人拍板:仍创建。订阅记录不能凭空消失。
@@ -435,7 +507,7 @@ describe("/api/subscriptions POST — 自动关注该 UP", () => {
 	});
 
 	it("关注请求直接抛(断网)→ 同样不阻断创建", async () => {
-		const h = makeHarness({ follow: "throw" });
+		const h = makeHarness({ fresh: true, follow: "throw" });
 		const res = await post(h);
 
 		expect(res.status).toBe(200);
@@ -444,7 +516,7 @@ describe("/api/subscriptions POST — 自动关注该 UP", () => {
 	});
 
 	it("engines 未就绪(未登录/启动中)→ 不炸,订阅照建,不写关注状态", async () => {
-		const h = makeHarness({ engines: "null" });
+		const h = makeHarness({ fresh: true, engines: "null" });
 		const res = await post(h);
 
 		expect(res.status).toBe(200);

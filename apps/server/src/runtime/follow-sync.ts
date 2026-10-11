@@ -1,11 +1,13 @@
 import {
 	BILIBILI_SOURCE_KEY,
+	type GlobalConfig,
 	type Logger,
 	type Subscription,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { Api } from "../bilibili/api/index.js";
 import { ensureFollowed, FOLLOWED_ATTRIBUTES } from "../bilibili/api/index.js";
+import { subscriptionsOfFeature } from "../subscriptions/source-subscriptions.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 /**
@@ -27,6 +29,10 @@ import type { SubRuntimeStore } from "./sub-runtime-store.js";
 export interface FollowSyncDeps {
 	api: Api;
 	subs: () => Subscription[];
+	/** 全局默认,现读(折作品开关用)。 */
+	defaults: () => GlobalConfig["defaults"];
+	/** 只处理这几个 uid(开关刚从关翻到开的人)。不给就是全量。 */
+	only?: ReadonlySet<string>;
 	rt: SubRuntimeStore;
 	logger: Logger;
 	/**
@@ -117,11 +123,24 @@ async function queryFollowed(
 	}
 }
 
+/**
+ * 要关注的订阅:B 站的、启用中的、折好的作品开关开着的。「关了就不查」—— 关注只为从关注流里拉到动态,
+ * 直播用不着,所以只开直播的、停用的订阅既不查关系也不补关注。开关怎么折与来源名单是同一份算法
+ * (`subscriptionsOfFeature`:订阅覆盖压过全局默认);同一个 uid 的遗留重复订阅有一条符合,这个 uid 就要关注,
+ * 它名下的订阅都归入(关注状态是按人的)。关注是 B 站的事:拓展订阅没有 uid,不在这里(ADR-0019 决策 9)。
+ */
+export function followTargetSubscriptions(
+	subs: readonly Subscription[],
+	defaults: GlobalConfig["defaults"],
+): Subscription[] {
+	return subscriptionsOfFeature(subs, BILIBILI_SOURCE_KEY, defaults, "post");
+}
+
 export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResult> {
-	// 关注是 B 站的事:拓展订阅没有 uid,不在这里(ADR-0019 决策 9)。
-	const subs = deps
-		.subs()
-		.filter((s) => subscriptionIdentityOf(s).sourceKey === BILIBILI_SOURCE_KEY);
+	const only = deps.only;
+	const subs = followTargetSubscriptions(deps.subs(), deps.defaults()).filter(
+		(s) => only === undefined || only.has(subscriptionIdentityOf(s).externalId),
+	);
 	if (subs.length === 0) {
 		return { checked: 0, followed: 0, alreadyFollowed: 0, failed: 0, degraded: false };
 	}
@@ -164,17 +183,26 @@ export async function syncFollows(deps: FollowSyncDeps): Promise<FollowSyncResul
 	let failed = 0;
 	const followingIds = new Set(needFollow.map((s) => s.id));
 
-	for (const [i, sub] of needFollow.entries()) {
-		if (i > 0) await sleep(FOLLOW_GAP_MS, deps.signal); // 写接口连发最招风控
-		if (interrupted()) break;
-		const outcome = await ensureFollowed(deps.api, uidOf(sub));
-		if (outcome.ok) {
-			followed++;
-		} else {
-			failed++;
-			deps.logger.warn(
-				`[follow] 关注 UID ${uidOf(sub)} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
-			);
+	// 遗留的重复订阅(同一个 uid 好几条)只发一次关注,结果记给它名下的每一条。
+	const outcomes = new Map<string, Awaited<ReturnType<typeof ensureFollowed>>>();
+	let sent = 0;
+	for (const sub of needFollow) {
+		const uid = uidOf(sub);
+		let outcome = outcomes.get(uid);
+		if (!outcome) {
+			if (sent > 0) await sleep(FOLLOW_GAP_MS, deps.signal); // 写接口连发最招风控
+			if (interrupted()) break;
+			outcome = await ensureFollowed(deps.api, uid);
+			outcomes.set(uid, outcome);
+			sent++;
+			if (outcome.ok) {
+				followed++;
+			} else {
+				failed++;
+				deps.logger.warn(
+					`[follow] 关注 UID ${uid} 失败(code=${outcome.code}): ${outcome.message} —— 该订阅收不到动态`,
+				);
+			}
 		}
 		await deps.rt.patch(sub.id, {
 			followed: outcome.ok,

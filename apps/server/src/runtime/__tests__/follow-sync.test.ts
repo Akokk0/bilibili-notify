@@ -11,15 +11,34 @@
  * follow(幂等,22014=已关注),也就是 koishi 跑了很久的那条已知可用路径。
  */
 
+import {
+	type GlobalConfig,
+	makeDefaultGlobalConfig,
+	makeEmptySubscription,
+	type Subscription,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { syncFollows } from "../follow-sync.js";
+import { followTargetSubscriptions, syncFollows } from "../follow-sync.js";
 
 const UIDS = ["111", "222", "333"];
+
+/** 一条 B 站订阅:默认启用、继承全局(出厂作品开关是开的)。 */
+const biliSub = (id: string, uid: string, patch: Partial<Subscription> = {}): Subscription => ({
+	...makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } }),
+	...patch,
+});
+
+const defaultsOf = (): GlobalConfig["defaults"] => makeDefaultGlobalConfig().defaults;
+
+/** 只开直播、作品关着的覆盖。 */
+const POST_OFF: Partial<Subscription> = { overrides: { features: { post: false } } };
 
 function makeDeps(opts?: {
 	relations?: unknown;
 	relationsThrows?: boolean;
 	followFails?: string[];
+	subs?: Subscription[];
+	defaults?: GlobalConfig["defaults"];
 }) {
 	const fetchRelations = vi.fn(async (_fids: string[]) => {
 		if (opts?.relationsThrows) throw new Error("network down");
@@ -38,11 +57,8 @@ function makeDeps(opts?: {
 	return {
 		deps: {
 			api: { fetchRelations, follow } as never,
-			subs: () =>
-				UIDS.map((uid, i) => ({
-					id: `sub-${i}`,
-					identity: { sourceKey: "bilibili", externalId: uid },
-				})) as never,
+			subs: () => opts?.subs ?? UIDS.map((uid, i) => biliSub(`sub-${i}`, uid)),
+			defaults: () => opts?.defaults ?? defaultsOf(),
 			rt: { patch } as never,
 			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
 		},
@@ -157,6 +173,93 @@ describe("syncFollows — 启动时补齐关注", () => {
 		expect(fetchRelations).not.toHaveBeenCalled();
 		expect(follow).not.toHaveBeenCalled();
 		expect(r.checked).toBe(0);
+	});
+});
+
+/**
+ * 「关了就不查」:关注只为从关注流里拉到动态,直播用不着。所以只对「启用中、且折好的作品开关开着」的
+ * B 站订阅查关注关系、补关注;BN 只补关注、从不取关。
+ */
+describe("syncFollows — 只管启用中且开着作品的订阅", () => {
+	const NONE_FOLLOWED = { code: 0, data: null };
+
+	it("只开直播(作品关着)的订阅不被查、不被补关注", async () => {
+		const { deps, fetchRelations, follow, patch } = makeDeps({
+			relations: NONE_FOLLOWED,
+			subs: [biliSub("live-only", "111", POST_OFF), biliSub("post-on", "222")],
+		});
+
+		const r = await syncFollows(deps);
+
+		expect(fetchRelations).toHaveBeenCalledWith(["222"]);
+		expect(follow).toHaveBeenCalledTimes(1);
+		expect(follow).toHaveBeenCalledWith("222");
+		expect(patch).not.toHaveBeenCalledWith("live-only", expect.anything());
+		expect(r.checked).toBe(1);
+	});
+
+	it("停用的订阅不被查、不被补关注", async () => {
+		const { deps, fetchRelations, follow } = makeDeps({
+			relations: NONE_FOLLOWED,
+			subs: [biliSub("off", "111", { enabled: false })],
+		});
+
+		const r = await syncFollows(deps);
+
+		expect(fetchRelations).not.toHaveBeenCalled();
+		expect(follow).not.toHaveBeenCalled();
+		expect(r.checked).toBe(0);
+	});
+
+	it("订阅没覆盖、全局作品开关关着 → 同样不查;订阅自己把作品开着则照查", async () => {
+		const base = defaultsOf();
+		const globalPostOff = { ...base, features: { ...base.features, post: false } };
+		const { deps, follow } = makeDeps({
+			relations: NONE_FOLLOWED,
+			defaults: globalPostOff,
+			subs: [
+				biliSub("inherits", "111"),
+				biliSub("forced-on", "222", { overrides: { features: { post: true } } }),
+			],
+		});
+
+		await syncFollows(deps);
+
+		expect(follow).toHaveBeenCalledTimes(1);
+		expect(follow).toHaveBeenCalledWith("222");
+	});
+
+	it("遗留重复订阅:同一个 uid 两条开关相反,有一条符合就要关注", async () => {
+		const { deps, follow } = makeDeps({
+			relations: NONE_FOLLOWED,
+			subs: [biliSub("dup-off", "111", POST_OFF), biliSub("dup-on", "111")],
+		});
+
+		await syncFollows(deps);
+
+		expect(follow).toHaveBeenCalledTimes(1);
+		expect(follow).toHaveBeenCalledWith("111");
+	});
+
+	it("只补指定的那几位(开关刚翻开的人),别的人连查询都不带", async () => {
+		const { deps, fetchRelations, follow } = makeDeps({ relations: NONE_FOLLOWED });
+
+		const r = await syncFollows({ ...deps, only: new Set(["222"]) });
+
+		expect(fetchRelations).toHaveBeenCalledWith(["222"]);
+		expect(follow).toHaveBeenCalledTimes(1);
+		expect(follow).toHaveBeenCalledWith("222");
+		expect(r.checked).toBe(1);
+	});
+});
+
+describe("followTargetSubscriptions", () => {
+	it("拓展订阅不算(关注是 B 站的事),即便外部 id 撞上了 B 站的 uid", () => {
+		const ext = {
+			...makeEmptySubscription({ id: "ext", identity: { sourceKey: "douyin", externalId: "111" } }),
+		};
+		const targets = followTargetSubscriptions([ext, biliSub("b", "111")], defaultsOf());
+		expect(targets.map((s) => s.id)).toEqual(["b"]);
 	});
 });
 

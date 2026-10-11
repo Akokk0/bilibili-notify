@@ -11,7 +11,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { LiveListenerSnapshot, LiveListeningEntry } from "../../services/dashboard";
-import { makeEmptySubscription, type Subscription } from "../../types/domain";
+import {
+	DEFAULT_FEATURE_FLAGS,
+	type FeatureFlagValues,
+	makeEmptySubscription,
+	type Subscription,
+} from "../../types/domain";
 import { LiveNowPanel } from "../Dashboard";
 
 afterEach(cleanup);
@@ -192,41 +197,74 @@ describe("正在直播 · 拓展订阅的在播(ADR-0019 决策 12)", () => {
 });
 
 /**
- * 「未配置直播推送目标」的提示只数 B 站订阅(拓展订阅的直播不走这条监听):订阅的身份来源是 B 站、
- * 启用着、没有任何直播类路由的才算。
+ * 「没开直播推送,不会被监听」的提示只数 B 站订阅(拓展订阅的直播不走这条监听):订阅的身份来源是 B 站、
+ * 启用着、折好的直播类开关一把都没开的才算。「开着」只看开关、不看有没有推送目标(ADR-0027 决策 1)。
  */
-describe("正在直播 · 没配直播目标的提示", () => {
-	function renderEmpty(subs: Subscription[]) {
+describe("正在直播 · 没开直播推送的提示", () => {
+	function renderEmpty(subs: Subscription[], globalFeatures?: FeatureFlagValues) {
 		render(
 			<MemoryRouter initialEntries={["/"]}>
-				<LiveNowPanel live={[]} subs={subs} />
+				<LiveNowPanel live={[]} subs={subs} globalFeatures={globalFeatures} />
 			</MemoryRouter>,
 		);
 	}
 
-	it("只数启用着、没配直播目标的 B 站订阅;拓展订阅与停用的不数", () => {
+	/** 把直播类的主开关全关掉(出厂是开着开播与下播的)。 */
+	const liveOff = (sub: Subscription): Subscription => ({
+		...sub,
+		overrides: {
+			...sub.overrides,
+			features: {
+				liveStart: false,
+				liveStreaming: false,
+				liveEnd: false,
+				membership: false,
+				superchat: false,
+			},
+		},
+	});
+
+	it("只数启用着、直播类开关全关的 B 站订阅;拓展订阅与停用的不数", () => {
 		renderEmpty([
-			biliSub("s-1", "u1", "甲"),
-			biliSub("s-2", "u2", "乙"),
-			{ ...biliSub("s-off", "u3", "丙"), enabled: false },
+			liveOff(biliSub("s-1", "u1", "甲")),
+			liveOff(biliSub("s-2", "u2", "乙")),
+			{ ...liveOff(biliSub("s-off", "u3", "丙")), enabled: false },
 			extSub("s-ext", "抖音丁"),
 		]);
-		expect(screen.getByText(/有 2 位订阅未配置直播推送目标/)).toBeTruthy();
+		expect(screen.getByText(/有 2 位订阅没开直播推送/)).toBeTruthy();
 	});
 
-	it("配了直播目标的 B 站订阅不数;都配了就没有这句", () => {
-		const routed = biliSub("s-1", "u1", "甲");
+	it("继承全局出厂开关(开播 / 下播开着)的订阅不数,哪怕一个推送目标都没配", () => {
+		const sub = biliSub("s-1", "u1", "甲");
+		expect(sub.routing.liveStart).toEqual([]);
+		renderEmpty([sub, extSub("s-ext", "抖音丁")]);
+		expect(screen.queryByText(/没开直播推送/)).toBeNull();
+	});
+
+	it("开关关着的订阅照数,哪怕路由里还留着目标", () => {
+		const routed = liveOff(biliSub("s-1", "u1", "甲"));
 		routed.routing.liveStart = ["t-1"];
-		renderEmpty([routed, extSub("s-ext", "抖音丁")]);
-		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
+		renderEmpty([routed]);
+		expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
 	});
 
-	// 「监听开不开」手抄的三份清单之一(另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_CREATOR_KEYS 与服务端的 getModuleState):
-	// ⑬d 起周期「正在直播」有自己的特性与目标,只给它配了目标的订阅也会被监听,不该被算进「不会被监听」。
-	it("只给周期「正在直播」(liveStreaming)配了目标的 B 站订阅也不数", () => {
-		const routed = biliSub("s-1", "u1", "甲");
-		routed.routing.liveStreaming = ["t-1"];
-		renderEmpty([routed]);
-		expect(screen.queryByText(/未配置直播推送目标/)).toBeNull();
+	// 「监听开不开」手抄的清单之一(另两份是 apps/server/src/bilibili/live 的 LIVE_ROOM_CREATOR_KEYS 与服务端的 getModuleState):
+	// ⑬d 起周期「正在直播」有自己的特性,只开了它的订阅也会被监听,不该被算进「不会被监听」。
+	it("只开了周期「正在直播」(liveStreaming)的 B 站订阅也不数", () => {
+		const sub = liveOff(biliSub("s-1", "u1", "甲"));
+		sub.overrides = {
+			...sub.overrides,
+			features: { ...sub.overrides.features, liveStreaming: true },
+		};
+		renderEmpty([sub]);
+		expect(screen.queryByText(/没开直播推送/)).toBeNull();
+	});
+
+	it("全局把直播开关都关了:没覆盖的订阅数,自己开了的不数", () => {
+		const off = { ...DEFAULT_FEATURE_FLAGS, liveStart: false, liveEnd: false };
+		const own = liveOff(biliSub("s-own", "u2", "乙"));
+		own.overrides = { ...own.overrides, features: { liveStart: true } };
+		renderEmpty([biliSub("s-1", "u1", "甲"), own], off);
+		expect(screen.getByText(/有 1 位订阅没开直播推送/)).toBeTruthy();
 	});
 });

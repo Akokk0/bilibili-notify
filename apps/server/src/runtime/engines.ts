@@ -115,7 +115,7 @@ import {
 	type ExtensionLiveSessions,
 } from "./extension-live-sessions.js";
 import type { ExtensionSourceReader } from "./extension-push-common.js";
-import { syncFollows } from "./follow-sync.js";
+import { followTargetSubscriptions, syncFollows } from "./follow-sync.js";
 import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
@@ -659,13 +659,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	 * best-effort:失败不阻断引擎启动,状态会落进 SubRuntimeStore 让前端显示「未关注」,
 	 * 下次 auth-restored 再试。
 	 */
-	const runFollowSync = (reason: string): void => {
+	const runFollowSync = (reason: string, only?: ReadonlySet<string>): void => {
 		// 长跑(逐个订阅补关注、中间有 300ms 间隔):登记进 track 让关停等它写完状态,
 		// 同时把 signal 交给它 —— 关停一开始它就停在当前这一个,不靠预算硬等。
 		opts.serviceCtx.track(
 			syncFollows({
 				api: opts.api,
 				subs: () => opts.subscriptionStore.list(),
+				defaults: () => globals().defaults,
+				...(only ? { only } : {}),
 				rt: opts.subRuntimeStore,
 				logger: log,
 				signal: opts.serviceCtx.signal,
@@ -685,6 +687,30 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// `confirming`(开机没确认上)不算登录,与从前判「已登录」一致。
 	const biliLoggedIn = (): boolean => opts.auth.state().status === "logged-in";
 	if (biliLoggedIn()) runFollowSync("boot");
+
+	// 开关从关翻到开时补一次:「关了就不查」之后,没开作品的人没被关注;订阅被启用、它的作品开关被打开、全局作品开关被打开,
+	// 都会让一些人变成需要关注的。靠对比「需要关注的 uid 集合」前后差,而不是盯着具体哪个字段变了 —— 订阅覆盖、全局默认、
+	// 启用三条路走的是同一个判据(`followTargetSubscriptions`),差集只在真有人新变成需要关注时才非空,
+	// 无关的设置保存 / 订阅编辑算出来是空差集,一个请求都不发(补关注是写接口,最招风控)。从开到关、停用:不取关,什么都不做。
+	const followTargetUidsNow = (): Set<string> =>
+		new Set(
+			followTargetSubscriptions(opts.subscriptionStore.list(), globals().defaults).map(
+				(s) => subscriptionIdentityOf(s).externalId,
+			),
+		);
+	let followTargetUids = followTargetUidsNow();
+	const syncNewFollowTargets = (justAdded: ReadonlySet<string>): void => {
+		const next = followTargetUidsNow();
+		// 新建的那条订阅由路由当场关注(要把结果带进响应),这里再补就是对同一个人重复发写请求。
+		const flipped = new Set(
+			[...next].filter((uid) => !followTargetUids.has(uid) && !justAdded.has(uid)),
+		);
+		followTargetUids = next;
+		if (flipped.size === 0) return;
+		// 没登录就不白打 B 站(与开机那一轮同一个判据);登录恢复那一轮是全量,会把它们补上。
+		if (!biliLoggedIn()) return;
+		runFollowSync("switch-on", flipped);
+	};
 
 	// ---------- LiveEngine ----------
 	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid, log);
@@ -856,6 +882,22 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			);
 			// 登录恢复 → 之前因未登录而关注失败的订阅在这里自愈。
 			runFollowSync("auth-restored");
+		}),
+	);
+	handles.push(
+		opts.bus.on("subscription-changed", ({ ops }) =>
+			syncNewFollowTargets(
+				new Set(
+					ops
+						.filter((op) => op.kind === "add")
+						.map((op) => subscriptionIdentityOf(op.sub).externalId),
+				),
+			),
+		),
+	);
+	handles.push(
+		opts.bus.on("config-changed", ({ scope }) => {
+			if (scope === "globals") syncNewFollowTargets(new Set());
 		}),
 	);
 	handles.push(

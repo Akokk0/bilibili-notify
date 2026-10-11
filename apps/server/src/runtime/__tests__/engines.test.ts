@@ -3664,5 +3664,162 @@ describe("createEngines — 后台写登记进 track", () => {
 			expect(follow).toHaveBeenCalledTimes(1);
 			expect(follow).toHaveBeenCalledWith("1");
 		});
+
+		it("只开直播(作品关着)的订阅开机不查、不补关注", async () => {
+			const liveOnly = {
+				...biliSubOf("1"),
+				overrides: { features: { post: false } },
+			} as Subscription;
+			const follow = vi.fn(async () => ({ code: 0, message: "0" }));
+			const c = setup({
+				subs: [liveOnly, biliSubOf("2")],
+				loginStatus: "logged-in",
+				overrides: { api: { fetchRelations: noneFollowed, follow } },
+			});
+			active = c;
+			await Promise.all(c.serviceCtx.tracking.tracked);
+
+			expect(c.api.fetchRelations).toHaveBeenCalledWith(["2"]);
+			expect(follow).toHaveBeenCalledTimes(1);
+			expect(follow).toHaveBeenCalledWith("2");
+		});
+
+		/**
+		 * 开关从关到开时补一次:关了的人开机时没被关注,开关翻开以后动态才有用,得当场补上。
+		 * 只补**新变成需要关注**的那几位 —— 别的人这次连关系查询都不带;无关的变更一个请求都不发(写接口招风控)。
+		 */
+		describe("开关翻开时补一次", () => {
+			// 关系查询的替身是上面共用的一个:每条用例各数各的。
+			beforeEach(() => {
+				noneFollowed.mockClear();
+			});
+			const postOff = (sub: Subscription): Subscription => ({
+				...sub,
+				overrides: { features: { post: false } },
+			});
+			const postOn = (sub: Subscription): Subscription => ({
+				...sub,
+				overrides: { features: { post: true } },
+			});
+			const follow = () => vi.fn(async (_fid: string) => ({ code: 0, message: "0" }));
+
+			/** 开机时 1 号作品关着、2 号开着:开机那一轮只关注了 2 号。 */
+			async function booted(over?: { loggedOut?: boolean; globals?: GlobalConfig }) {
+				const send = follow();
+				const subs = [postOff(biliSubOf("1")), biliSubOf("2")];
+				const c = setup({
+					subs,
+					...(over?.globals ? { globals: over.globals } : {}),
+					// 不给 `loginStatus` = 未登录(夹具的默认)。
+					...(over?.loggedOut ? {} : { loginStatus: "logged-in" as const }),
+					overrides: { api: { fetchRelations: noneFollowed, follow: send } },
+				});
+				active = c;
+				await Promise.all(c.serviceCtx.tracking.tracked);
+				return { c, subs, send };
+			}
+
+			it("订阅自己的作品开关从关到开 → 只补它这一位", async () => {
+				const { c, subs, send } = await booted();
+				const before = noneFollowed.mock.calls.length;
+				subs[0] = postOn(biliSubOf("1"));
+
+				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[0] }] });
+				await Promise.all(c.serviceCtx.tracking.tracked);
+
+				expect(noneFollowed.mock.calls.length).toBe(before + 1);
+				expect(noneFollowed).toHaveBeenLastCalledWith(["1"]);
+				expect(send.mock.calls.map((a) => a[0])).toEqual(["2", "1"]);
+			});
+
+			it("停用的订阅被启用 → 补", async () => {
+				const send = follow();
+				const off = { ...biliSubOf("1"), enabled: false };
+				const subs = [off];
+				const c = setup({
+					subs,
+					loginStatus: "logged-in",
+					overrides: { api: { fetchRelations: noneFollowed, follow: send } },
+				});
+				active = c;
+				await Promise.all(c.serviceCtx.tracking.tracked);
+				expect(send).not.toHaveBeenCalled();
+
+				subs[0] = { ...off, enabled: true };
+				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[0] }] });
+				await Promise.all(c.serviceCtx.tracking.tracked);
+
+				expect(send).toHaveBeenCalledTimes(1);
+				expect(send).toHaveBeenCalledWith("1");
+			});
+
+			it("全局作品开关从关到开 → 补继承它的订阅,已经在关注范围里的不再动", async () => {
+				const base = makeDefaultGlobalConfig();
+				const globalPostOff: GlobalConfig = {
+					...base,
+					defaults: { ...base.defaults, features: { ...base.defaults.features, post: false } },
+				};
+				const send = follow();
+				const subs = [biliSubOf("1"), postOn(biliSubOf("2"))];
+				const c = setup({
+					subs,
+					globals: globalPostOff,
+					loginStatus: "logged-in",
+					overrides: { api: { fetchRelations: noneFollowed, follow: send } },
+				});
+				active = c;
+				await Promise.all(c.serviceCtx.tracking.tracked);
+				expect(send.mock.calls.map((a) => a[0])).toEqual(["2"]); // 开机只关注了自己开着作品的 2 号
+
+				c.configStore._set(base); // 全局作品开关翻开
+				c.bus.emit("config-changed", { scope: "globals" });
+				await Promise.all(c.serviceCtx.tracking.tracked);
+
+				expect(send.mock.calls.map((a) => a[0])).toEqual(["2", "1"]);
+			});
+
+			it("无关的变更(全局设置别的格 / 订阅别的字段 / 开关从开到关)一个请求都不发", async () => {
+				const { c, subs, send } = await booted();
+				const queries = noneFollowed.mock.calls.length;
+				const sends = send.mock.calls.length;
+
+				// 全局设置保存了一下,作品开关没动。
+				c.bus.emit("config-changed", { scope: "globals" });
+				// 订阅改了备注,开关没动。
+				subs[1] = { ...subs[1], notes: "改了备注" } as Subscription;
+				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[1] }] });
+				// 开关从开到关:不取关,也不用查。
+				subs[1] = postOff(biliSubOf("2"));
+				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[1] }] });
+				await Promise.all(c.serviceCtx.tracking.tracked);
+
+				expect(noneFollowed.mock.calls.length).toBe(queries);
+				expect(send.mock.calls.length).toBe(sends);
+			});
+
+			it("新增的订阅不在这里补(新建的那条路由当场关注,这里再补就是重复发写请求)", async () => {
+				const { c, subs, send } = await booted();
+				const sends = send.mock.calls.length;
+				const added = biliSubOf("3");
+				subs.push(added);
+
+				c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub: added }] });
+				await Promise.all(c.serviceCtx.tracking.tracked);
+
+				expect(send.mock.calls.length).toBe(sends);
+			});
+
+			it("没登录:开关翻开不查不补(等登录恢复那一轮全量补上)", async () => {
+				const { c, subs, send } = await booted({ loggedOut: true });
+				expect(noneFollowed).not.toHaveBeenCalled();
+				subs[0] = postOn(biliSubOf("1"));
+
+				c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub: subs[0] }] });
+				await Promise.all(c.serviceCtx.tracking.tracked);
+
+				expect(noneFollowed).not.toHaveBeenCalled();
+				expect(send).not.toHaveBeenCalled();
+			});
+		});
 	});
 });
