@@ -29,9 +29,10 @@ import {
 	makeTrackingContext,
 	type TrackingContext,
 } from "../../__tests__/support/track-context.js";
-import { type LiveNotifySend, LivePushType } from "../../bilibili/live/index.js";
 import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
+import type { LiveNotifySend } from "../../live/live-notify.js";
+import { LivePushType } from "../../live/live-types.js";
 import type { LiveWorkSettings } from "../engines.js";
 import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";

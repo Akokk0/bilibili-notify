@@ -13,8 +13,8 @@
 
 import type { Logger, MessageKindLayout } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { LivePushType } from "../../../../live/live-types";
 import type { LivePush, SubItemView } from "../../push-like";
-import { LivePushType } from "../../push-like";
 import { LiveTemplateRenderer } from "../../template-renderer";
 import { LiveType } from "../../types";
 import { RoomContext } from "../room-helpers";

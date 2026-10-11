@@ -10,7 +10,7 @@ import type { LiveCardInput } from "@bilibili-notify/image";
 import type { Logger, MessageKindLayout, MessageLayoutSegment } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { type LiveNotifyParams, type LiveNotifySend, pushLiveNotify } from "../live-notify";
-import { LivePushType } from "../push-like";
+import { LivePushType } from "../live-types";
 
 const CARD = Buffer.from("card-jpeg");
 const LINK = "https://example.com/live/1";

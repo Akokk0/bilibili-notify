@@ -15,18 +15,16 @@ import {
 	type SerialGate,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
-import {
-	type CustomCardStyleLike,
-	type LiveNotifyPushType,
-	type LiveNotifySend,
-	LivePushType,
-	type LiveTextKind,
-	pushLiveNotify,
-	renderLiveText,
-} from "../bilibili/live/index.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { deferImageWrites } from "../images/image-writes.js";
+import {
+	type LiveNotifyPushType,
+	type LiveNotifySend,
+	pushLiveNotify,
+} from "../live/live-notify.js";
+import { type LiveTextKind, renderLiveText } from "../live/live-text.js";
+import { type CustomCardStyleLike, LivePushType } from "../live/live-types.js";
 import type { LiveWorkSettings } from "./engines.js";
 import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
 import type {

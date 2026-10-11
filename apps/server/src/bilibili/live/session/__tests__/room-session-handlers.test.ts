@@ -19,11 +19,12 @@ import type { ImageRef, MembershipTemplateBundle, ServiceContext } from "@bilibi
 import { defaultMessageKindLayout, fail, ok } from "@bilibili-notify/internal";
 import { Settings } from "luxon";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { LivePushType } from "../../../../live/live-types";
 import { PROBLEM_TEXTS } from "../../../problem-texts";
 import { membershipEventFromLiveEvent } from "../../membership-event";
 import { GuardLevel } from "../../protocol/events.js";
 import type { LivePush, SubItemView } from "../../push-like";
-import { LivePushType, wantsLiveEndExtras } from "../../push-like";
+import { wantsLiveEndExtras } from "../../push-like";
 import { superchatEventFromLiveEvent } from "../../superchat-event";
 import { LiveType } from "../../types";
 import { RoomContext } from "../room-helpers";

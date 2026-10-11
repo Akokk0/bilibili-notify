@@ -1,17 +1,12 @@
 import type { CommentaryProvider } from "@bilibili-notify/ai";
 import type { ImageRenderer } from "@bilibili-notify/image";
 import type { ImageRef, Logger, ServiceContext } from "@bilibili-notify/internal";
+import type { LiveContentBuilder } from "../../../live/content-builder";
+import type { PickLiveCover } from "../../../live/live-types";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
-import type { LiveContentBuilder } from "../content-builder";
 import type { GuardIcons } from "../guard-icons.js";
-import type {
-	LiveSubscriptionOp,
-	PickLiveCover,
-	PushLike,
-	SubItemView,
-	SubscriptionsView,
-} from "../push-like";
+import type { LiveSubscriptionOp, PushLike, SubItemView, SubscriptionsView } from "../push-like";
 import { DanmakuCollector } from "../recap/danmaku-collector";
 import { LiveSummaryRequester } from "../recap/live-summary-requester";
 import definedStopWords, { parseStopWords } from "../recap/stop-words";

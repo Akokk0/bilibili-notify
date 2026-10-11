@@ -1,5 +1,5 @@
 import type { PayloadSegment } from "@bilibili-notify/internal";
-import type { LiveContentBuilder } from "../bilibili/live/index.js";
+import type { LiveContentBuilder } from "../live/content-builder.js";
 
 /**
  * The server's {@link LiveContentBuilder} — produces tagged plain objects that

@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { LivePushType } from "../bilibili/live/index";
+import { LivePushType } from "../live/live-types";
 import { liveTypeAllowsAtAll, liveTypeToFeature } from "../runtime/engines";
 
 describe("liveTypeToFeature", () => {

@@ -1,9 +1,9 @@
 import type { FeatureFlags } from "@bilibili-notify/internal";
-import { needsLiveMonitor } from "../bilibili/live/index.js";
+import { needsLiveMonitor } from "../live/live-monitor.js";
 
 /**
  * 统计「这一项在不在记」要看的开关(ADR-0027 决策 1 / 2):作品开关开着,与直播类开关任一开着
- * (监听直播间的那份判定,`bilibili/live` 的 {@link needsLiveMonitor},只此一份)。
+ * (监听直播间的那份判定,`live/` 的 {@link needsLiveMonitor},只此一份)。
  * 两边都已经把订阅覆盖合并进全局默认(`resolve` 之后的 `features`),这里不再合并。
  */
 export interface RecordingSwitches {

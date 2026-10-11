@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { LIVE_ROOM_CREATOR_KEYS, type LiveMonitorInput, needsLiveMonitor } from "../push-like";
+import { LIVE_ROOM_CREATOR_KEYS, type LiveMonitorInput, needsLiveMonitor } from "../live-monitor";
 
 const allOff = (): LiveMonitorInput => ({
 	liveStart: false,

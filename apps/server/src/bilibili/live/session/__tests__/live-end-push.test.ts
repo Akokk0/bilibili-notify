@@ -13,10 +13,10 @@
 
 import { defaultMessageKindLayout, type ServiceContext } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { LivePushType } from "../../../../live/live-types";
 import {
 	type LivePush,
 	type LivePushAnchor,
-	LivePushType,
 	type SubItemView,
 	wantsLiveEndExtras,
 } from "../../push-like";

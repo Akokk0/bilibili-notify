@@ -6,11 +6,11 @@ import {
 	membershipTemplateOf,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { LivePushType } from "../../../live/live-types";
 import { fetchAvatar } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { membershipEventFromLiveEvent } from "../membership-event";
 import type { LiveEvent, LiveUser, UserActionKind } from "../protocol/events.js";
-import { LivePushType } from "../push-like";
 import { superchatEventFromLiveEvent } from "../superchat-event";
 import { buildRoomLink } from "../template-renderer";
 import { LiveType } from "../types";

@@ -25,7 +25,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import type { LiveNotifySend } from "../../bilibili/live/index.js";
+import type { LiveNotifySend } from "../../live/live-notify.js";
 import { buildLiveSubViewSingle, liveWorkSettings, postSettingsOf } from "../engines.js";
 import { createExtensionLiveTable } from "../extension-live.js";
 import { bindExtensionLivePush } from "../extension-live-push.js";

@@ -69,24 +69,24 @@ import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import type { Api } from "../bilibili/api/index.js";
-import { resolveDynamicColorOptions } from "../bilibili/dynamic/index.js";
-import type { ImagesDeps } from "../bilibili/images.js";
 import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import {
 	LiveEngine,
 	type LiveEngineConfig,
 	type LiveEngineOptions,
-	type LiveNotifySend,
 	type PushLike as LivePushLike,
 	type LiveSubscriptionOp,
 	type SubscriptionsView as LiveSubsView,
 	type SubItemView as LiveSubView,
-	rotateLiveCover,
 } from "../bilibili/live/index.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
+import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
+import type { LiveNotifySend } from "../live/live-notify.js";
+import { rotateLiveCover } from "../live/live-settings.js";
+import { resolveDynamicColorOptions } from "../posts/card-style.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
 import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
@@ -327,7 +327,7 @@ export interface CreateEnginesOptions {
 	 * B 站作品图 / 直播封面的抓图服务(用 B 站接口那个请求客户端、`AppRuntime.postImages` 这一家引用方建的,接线层给):
 	 * 出卡前把图抓进图库(3a-34)。必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
-	imageFetcher: ImagesDeps["images"];
+	imageFetcher: Pick<ImageFetcher, "fetchImage">;
 	/**
 	 * 拓展详情页的「上报出入」框(ADR-0019 决策 60 / 61):拓展直播的周期推送因为没有新状态跳过的那一轮
 	 * 记进去。不给就只记日志。
@@ -1307,7 +1307,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			const g = globals();
 			// "live ready" = at least one enabled subscription has any live-related
 			// feature routed to a target. Mirrors the LIVE_ROOM_CREATOR_KEYS set
-			// inside bilibili/live's `needsLiveMonitor` plus the two
+			// inside live/'s `needsLiveMonitor` plus the two
 			// special-user features.
 			// 只数 B 站订阅:这一格说的是 LiveEngine 会不会开监听器,拓展订阅不进它(ADR-0019 决策 9)。
 			const liveReady = opts.subscriptionStore
@@ -1559,7 +1559,7 @@ export function liveTypeToFeature(type: number): FeatureKey {
  * 重启补报(`CatchUp`=11)也翻译成 `feature === "liveStart"`,光看 feature 区分不出
  * 真开播 vs 补报 —— push 层据本结果决定是否进 atAll 分支,否则每条补报都 @全体
  * (从前周期复推就这么出过 bug)。裸数字 3 = LivePushType.StartBroadcasting,与
- * apps/server/src/bilibili/live 的 LivePushType 保持一致。
+ * apps/server/src/live 的 LivePushType 保持一致。
  */
 export function liveTypeAllowsAtAll(type: number): boolean {
 	return type === 3;

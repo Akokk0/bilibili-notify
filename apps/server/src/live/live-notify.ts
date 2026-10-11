@@ -18,7 +18,7 @@ import {
 	type MessageKindLayout,
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
-import type { CustomCardStyleLike, LivePushType } from "./push-like";
+import type { CustomCardStyleLike, LivePushType } from "./live-types";
 
 /** 直播卡的四种推送:开播 / 周期「正在直播」/ 重启补报(卡与文字同「正在直播」)/ 下播。 */
 export type LiveNotifyPushType =

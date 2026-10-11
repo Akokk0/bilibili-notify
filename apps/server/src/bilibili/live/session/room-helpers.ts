@@ -4,6 +4,12 @@ import {
 	type MessageLayoutSegment,
 } from "@bilibili-notify/internal";
 import {
+	type LiveNotifyPushType,
+	type LiveNotifySend,
+	pushLiveNotify,
+} from "../../../live/live-notify";
+import { LivePushType } from "../../../live/live-types";
+import {
 	type LiveRoomResponse,
 	type MasterInfoData,
 	type MyselfResponse,
@@ -12,10 +18,9 @@ import {
 import { fetchLiveCover } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { liveCardInputFromRoomInfo } from "../live-card-input";
-import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "../live-notify";
 import { connectLiveRoom, type DanmakuHost } from "../protocol/client.js";
 import type { LiveEvent } from "../protocol/events.js";
-import { type LivePushAnchor, LivePushType, type SubItemView } from "../push-like";
+import type { LivePushAnchor, SubItemView } from "../push-like";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
 import { RoomContextBase } from "./room-context";
 

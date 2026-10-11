@@ -97,15 +97,9 @@ vi.mock("@bilibili-notify/push", () => ({
 	},
 }));
 
-vi.mock("../../bilibili/live/index.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../../bilibili/live/index.js")>();
+vi.mock("../../bilibili/live/index.js", () => {
 	return {
-		// 拓展直播(ADR-0019 决策 67)用的直播装配、文案渲染与两处小规矩也走真的 —— 没有副作用。
-		pushLiveNotify: actual.pushLiveNotify,
-		renderLiveText: actual.renderLiveText,
-		liveEndGraceMinutes: actual.liveEndGraceMinutes,
-		rotateLiveCover: actual.rotateLiveCover,
-		LivePushType: actual.LivePushType,
+		// 拓展直播(ADR-0019 决策 67)用的直播装配、文案渲染与两处小规矩住在 `live/`,不经这里,不用 mock。
 		LiveEngine: class {
 			opts: any;
 			start = vi.fn();
