@@ -24,7 +24,6 @@ import type { Api } from "../bilibili/api/index.js";
 import { fakeAuth } from "../bilibili/devtools/__tests__/support/fake-auth.js";
 import { createBiliDevtools } from "../bilibili/devtools/index.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
-import { BiliSettingsSchema } from "../bilibili/settings.js";
 import { composeBuiltinIntegrations } from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
@@ -63,6 +62,11 @@ function makeFakeSourceCtx(roster: SourceSubscriptionView[]) {
 	const reportPost = vi.fn<(externalId: string, report: PostReport) => void>();
 	const ctx = {
 		logger: quietLogger(),
+		// 设置读者:这个文件不管设置的内容,读出来恒是各格的默认值。
+		settings: (schema: { parse(input: unknown): unknown }) => ({
+			get: () => okResult({ settings: schema.parse({}) }),
+			onChange: () => ({ dispose() {} }),
+		}),
 		subscriptions: () => roster,
 		onSubscriptionsChanged: () => ({ dispose() {} }),
 		reportPost,
@@ -118,16 +122,14 @@ function compose(
 	const integrationStore = memoryIntegrationStore();
 	const api = overridableApi(opts.api ?? ({} as Api));
 	const fetchImage = opts.fetchImage ?? vi.fn(async () => fail("unavailable", "测试不联网"));
+	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	const deps = {
 		api,
 		auth: overridableApi(fakeAuth()),
 		integration,
 		sourceAuth: opts.sourceAuth ?? SOURCE_AUTH,
 		bus: createNodeMessageBus(),
-		configStore: {
-			getIntegrationSettings: () => BiliSettingsSchema.parse({}),
-			onChange: () => ({ dispose() {} }),
-		} as never,
+		setHealthCheckMs,
 		subscriptions: { list: () => subs },
 		subscriptionRuntime: {
 			get: (id: string) =>
@@ -155,6 +157,7 @@ function compose(
 	return {
 		builtins: composeBuiltinIntegrations(deps),
 		deps,
+		setHealthCheckMs,
 		fetchImage,
 		adapterRegistry,
 		integrationStore,
@@ -240,6 +243,21 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		const source = registered[0]?.source as unknown as { auth?: unknown; stop(): Promise<void> };
 		expect(source.auth).toBe(SOURCE_AUTH);
 		await source.stop();
+	});
+
+	// 验红:把 `compose.ts` 递给 `createBiliSource` 的 `loginCheck` 换成空操作(或漏掉不接依赖里的 `setHealthCheckMs`),这条红。
+	// 入口里 `setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms)` 那一跳没有零外连的办法钉(真登录系统的心跳要真探活),
+	// 靠必填依赖的类型与真机。
+	it("来源 start 之后,依赖里的 setHealthCheckMs 收到登录检查的间隔(设置里的分钟数换成毫秒);stop 之后收到 0", async () => {
+		const { builtins, setHealthCheckMs } = compose();
+		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+
+		await builtins.registerSources(engines);
+
+		expect(setHealthCheckMs).toHaveBeenCalledTimes(1);
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(30 * 60_000);
+		await registered[0]?.source.stop();
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
 	});
 
 	it("登记抛了:错原样抛出去,不留半个来源(bilibili.dynamic 仍是 undefined),能重来", async () => {

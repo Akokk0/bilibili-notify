@@ -38,7 +38,6 @@ import { RoomContext } from "../live/session/room-helpers.js";
 import { RoomSession } from "../live/session/room-session.js";
 import { createProblemLayers } from "../problem-layers.js";
 import { PROBLEM_TEXTS } from "../problem-texts.js";
-import { BiliSettingsSchema } from "../settings.js";
 import { createBiliSource } from "../source.js";
 
 const IN: AuthState = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
@@ -124,10 +123,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 		} as unknown as Api,
 		bus: world.bus,
 		imageFetcher: { fetchImage: async () => fail("unavailable", "不联网") } as never,
-		configStore: {
-			getIntegrationSettings: () => BiliSettingsSchema.parse({}),
-			onChange: () => ({ dispose() {} }),
-		} as never,
+		loginCheck: { setHealthCheckMs: () => {} },
 		setTimeout: () => ({ dispose() {} }),
 		auth: authed.auth,
 		problems: layers,

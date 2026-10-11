@@ -1,14 +1,13 @@
 /**
- * B 站设置(`config/settings/bilibili.json`):格式与读盘宽松、写入时核 cron、`watchSettings` 只在这一份
- * 真的变了时才通知(ADR-0021 决策 42 下 10-01 的 🔗)。配置仓那一半的通用机制在
- * `__tests__/config-store-integration-settings.test.ts`。
+ * B 站设置(`config/settings/bilibili.json`):格式与读盘宽松、写入时核 cron、两个读者各读自己那一格
+ * (ADR-0021 决策 42 下 10-01 的 🔗)。配置仓那一半的通用机制在 `__tests__/config-store-integration-settings.test.ts`,
+ * 把手的变了才叫在 `integrations/__tests__/settings-reader.test.ts`,来源怎么停与起在 `source-settings.test.ts`。
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	type ConfigScope,
 	DEFAULT_DYNAMIC_CRON,
 	DEFAULT_HEALTH_CHECK_MINUTES,
 	type MessageBus,
@@ -25,14 +24,18 @@ import {
 	createConfigStore,
 	integrationSettingsFile,
 } from "../../config/store.js";
+import { createSettingsReader } from "../../integrations/settings-reader.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
+	BiliDynamicSettingsSchema,
+	BiliLoginCheckSettingsSchema,
 	type BiliSettings,
 	BiliSettingsSchema,
-	settingsOf,
 	settingsSegment,
-	watchSettings,
 } from "../settings.js";
+
+/** 仓里内存那一份 B 站设置(坏格是默认值)。 */
+const bili = (store: ConfigStore) => store.getAllIntegrationSettings().bilibili as BiliSettings;
 
 // 这一份的 checkWrite 一定在;类型上它是可选的,取出来省得每处都 `!`。
 function checkWrite(next: BiliSettings, prev?: BiliSettings) {
@@ -88,6 +91,48 @@ describe("B 站设置 — 格式", () => {
 		expect(accepts(4)).toBe(false);
 		expect(accepts(181)).toBe(false);
 		expect(accepts(30.5)).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// 两个读者各读自己那一格
+// ---------------------------------------------------------------------------
+
+describe("B 站设置 — 两个读者的 schema", () => {
+	it("动态读者只看 dynamicCron:登录检查那格坏成什么样都不碍它", () => {
+		const r = BiliDynamicSettingsSchema.safeParse({
+			dynamicCron: "*/5 * * * *",
+			healthCheckMinutes: "x",
+		});
+		expect(r.success && r.data).toEqual({ dynamicCron: "*/5 * * * *" });
+	});
+
+	it("登录检查读者只看 healthCheckMinutes:动态那格坏成什么样都不碍它", () => {
+		const r = BiliLoginCheckSettingsSchema.safeParse({ dynamicCron: 123, healthCheckMinutes: 45 });
+		expect(r.success && r.data).toEqual({ healthCheckMinutes: 45 });
+	});
+
+	it("动态读者比读盘 schema 多一道「能解析」:一条字符串但解析不了的 cron 读盘算好的、动态读者读不过(路径点名那一格)", () => {
+		const cron = "not a cron expr";
+		expect(BiliSettingsSchema.safeParse({ dynamicCron: cron }).success).toBe(true);
+
+		const r = BiliDynamicSettingsSchema.safeParse({ dynamicCron: cron });
+
+		expect(r.success).toBe(false);
+		expect(r.error?.issues[0]?.path).toEqual(["dynamicCron"]);
+	});
+
+	it("动态读者缺省取默认 cron(默认值本身解析得了)", () => {
+		const r = BiliDynamicSettingsSchema.safeParse({});
+		expect(r.success && r.data).toEqual({ dynamicCron: DEFAULT_DYNAMIC_CRON });
+	});
+
+	it("登录检查读者越界 / 非整数 / 非数字都读不过,路径点名那一格", () => {
+		for (const bad of [4, 181, 30.5, "45", null]) {
+			const r = BiliLoginCheckSettingsSchema.safeParse({ healthCheckMinutes: bad });
+			expect(r.success, JSON.stringify(bad)).toBe(false);
+			expect(r.error?.issues[0]?.path).toEqual(["healthCheckMinutes"]);
+		}
 	});
 });
 
@@ -171,7 +216,7 @@ describe("B 站设置 — 经配置仓", () => {
 			dynamicCron: DEFAULT_DYNAMIC_CRON,
 			healthCheckMinutes: DEFAULT_HEALTH_CHECK_MINUTES,
 		});
-		expect(settingsOf(store)).toEqual({
+		expect(bili(store)).toEqual({
 			dynamicCron: DEFAULT_DYNAMIC_CRON,
 			healthCheckMinutes: DEFAULT_HEALTH_CHECK_MINUTES,
 		});
@@ -184,7 +229,7 @@ describe("B 站设置 — 经配置仓", () => {
 		const store = build();
 		await store.load();
 
-		expect(settingsOf(store).dynamicCron).toBe("not a cron expr");
+		expect(bili(store).dynamicCron).toBe("not a cron expr");
 	});
 
 	it("盘上留着一条解析不了的老 cron:改别的格照常存 —— 坏值不挡主人改健康检查间隔", async () => {
@@ -195,7 +240,7 @@ describe("B 站设置 — 经配置仓", () => {
 
 		await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 45 } } });
 
-		expect(settingsOf(store)).toEqual({
+		expect(bili(store)).toEqual({
 			dynamicCron: "not a cron expr",
 			healthCheckMinutes: 45,
 		});
@@ -218,7 +263,7 @@ describe("B 站设置 — 经配置仓", () => {
 		});
 
 		expect(await readFile(file(), "utf8")).toBe(before);
-		expect(settingsOf(store).dynamicCron).toBe(DEFAULT_DYNAMIC_CRON);
+		expect(bili(store).dynamicCron).toBe(DEFAULT_DYNAMIC_CRON);
 	});
 
 	it("写入合法的 cron → 落盘、settingsOf 读到新值", async () => {
@@ -227,7 +272,7 @@ describe("B 站设置 — 经配置仓", () => {
 
 		await store.patchSettings({ integrations: { bilibili: { dynamicCron: "*/5 * * * *" } } });
 
-		expect(settingsOf(store).dynamicCron).toBe("*/5 * * * *");
+		expect(bili(store).dynamicCron).toBe("*/5 * * * *");
 		expect(JSON.parse(await readFile(file(), "utf8")).dynamicCron).toBe("*/5 * * * *");
 	});
 
@@ -244,24 +289,24 @@ describe("B 站设置 — 经配置仓", () => {
 				dynamicCron: DEFAULT_DYNAMIC_CRON,
 				healthCheckMinutes: 45,
 			});
-			expect(settingsOf(store)).not.toHaveProperty("userAgent");
+			expect(bili(store)).not.toHaveProperty("userAgent");
 			expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({
 				dynamicCron: DEFAULT_DYNAMIC_CRON,
 				healthCheckMinutes: 45,
 			});
 		});
 
-		it("PATCH 只带 bilibili.userAgent:当没改 —— 盘上这份设置不变,watchSettings 不叫", async () => {
+		it("PATCH 只带 bilibili.userAgent:当没改 —— 盘上这份设置不变,读者不被叫", async () => {
 			const store = build();
 			await store.load();
-			const apply = vi.fn();
-			watchSettings(store, apply);
+			const changed = vi.fn();
+			watchOf(store, BiliSettingsSchema).reader.onChange(changed);
 			const before = await readFile(file(), "utf8");
 
 			await store.patchSettings({ integrations: { bilibili: { userAgent: "UA/2" } } });
 
 			expect(await readFile(file(), "utf8")).toBe(before);
-			expect(apply).not.toHaveBeenCalled();
+			expect(changed).not.toHaveBeenCalled();
 		});
 
 		it("盘上留着一份带 userAgent 的老 bilibili.json:开机照常、读不到这一格;下次写入时落盘的那份也没有它", async () => {
@@ -274,7 +319,7 @@ describe("B 站设置 — 经配置仓", () => {
 			const store = build();
 			await store.load();
 
-			expect(settingsOf(store)).toEqual({ dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 });
+			expect(bili(store)).toEqual({ dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 });
 
 			await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 60 } } });
 
@@ -308,7 +353,7 @@ describe("B 站设置 — 经配置仓", () => {
 
 		expect(result.globalsApplied).toBe(true);
 		const restored = { dynamicCron: "*/5 * * * *", healthCheckMinutes: 45 };
-		expect(settingsOf(store)).toEqual(restored);
+		expect(bili(store)).toEqual(restored);
 		expect(JSON.parse(await readFile(file(), "utf8"))).toEqual(restored);
 	});
 
@@ -321,124 +366,72 @@ describe("B 站设置 — 经配置仓", () => {
 		expect(await readFile(file(), "utf8")).toContain("healthCheckMinutes");
 	});
 
-	describe("watchSettings(接真仓)", () => {
-		it("设置真的变了 → apply(prev, next);值没变的写入(同值再写一遍)→ 不叫", async () => {
+	describe("读者接真仓", () => {
+		it("自己那一格真的变了才叫;另一格变了、同值再写一遍都不叫", async () => {
 			const store = build();
 			await store.load();
-			const apply = vi.fn();
-			watchSettings(store, apply);
+			const changed = vi.fn();
+			watchOf(store, BiliLoginCheckSettingsSchema).reader.onChange(changed);
 
 			await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 60 } } });
-			expect(apply).toHaveBeenCalledTimes(1);
-			expect(apply).toHaveBeenLastCalledWith(
-				{ dynamicCron: DEFAULT_DYNAMIC_CRON, healthCheckMinutes: DEFAULT_HEALTH_CHECK_MINUTES },
-				{ dynamicCron: DEFAULT_DYNAMIC_CRON, healthCheckMinutes: 60 },
+			expect(changed).toHaveBeenCalledTimes(1);
+
+			// 同一个值再写一遍:仓照常广播 integration-settings,但这一格没变。
+			await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 60 } } });
+			expect(changed).toHaveBeenCalledTimes(1);
+
+			// 另一格(动态)变了:登录检查读者不叫。
+			await store.patchSettings({ integrations: { bilibili: { dynamicCron: "*/9 * * * *" } } });
+			expect(changed).toHaveBeenCalledTimes(1);
+		});
+
+		it("动态那格是数字(写坏了):动态读者读不过、登录检查读者照常读得懂自己的那格", async () => {
+			await mkdir(join(dataDir, ...CONFIG_DIR, "settings"), { recursive: true });
+			await writeFile(file(), JSON.stringify({ dynamicCron: 123, healthCheckMinutes: 45 }), "utf8");
+			const store = build();
+			await store.load();
+
+			const dynamic = watchOf(store, BiliDynamicSettingsSchema).reader.get();
+			const loginCheck = watchOf(store, BiliLoginCheckSettingsSchema).reader.get();
+
+			expect(dynamic.ok).toBe(false);
+			if (!dynamic.ok) expect(dynamic.issues?.[0]?.path).toEqual(["dynamicCron"]);
+			expect(loginCheck).toEqual({ ok: true, settings: { healthCheckMinutes: 45 } });
+			// 面板拿到的全量图里两格都在、都合法:坏的那格是默认值,好的那格是盘上的值。
+			expect(bili(store)).toEqual({ dynamicCron: DEFAULT_DYNAMIC_CRON, healthCheckMinutes: 45 });
+		});
+
+		it("登录检查那格越界:登录检查读者读不过、动态读者照常读得懂自己的那格", async () => {
+			await mkdir(join(dataDir, ...CONFIG_DIR, "settings"), { recursive: true });
+			await writeFile(
+				file(),
+				JSON.stringify({ dynamicCron: "*/5 * * * *", healthCheckMinutes: 1 }),
+				"utf8",
 			);
+			const store = build();
+			await store.load();
 
-			// 同一个值再写一遍:仓照常广播 integration-settings,但 B 站这一份没变。
-			await store.patchSettings({ integrations: { bilibili: { healthCheckMinutes: 60 } } });
-			expect(apply).toHaveBeenCalledTimes(1);
+			const loginCheck = watchOf(store, BiliLoginCheckSettingsSchema).reader.get();
+			const dynamic = watchOf(store, BiliDynamicSettingsSchema).reader.get();
+
+			expect(loginCheck.ok).toBe(false);
+			expect(dynamic).toEqual({ ok: true, settings: { dynamicCron: "*/5 * * * *" } });
 		});
 	});
-});
 
-// ---------------------------------------------------------------------------
-// watchSettings(替身仓:只有 getIntegrationSettings 与 onChange)
-// ---------------------------------------------------------------------------
-
-describe("watchSettings", () => {
-	/** 一个手动驱动的仓:改 `state`、再 `fire(scope)` 模拟配置仓广播。 */
-	function makeFakeStore(initial: BiliSettings) {
-		const bus = createNodeMessageBus();
-		let state = initial;
-		return {
-			set(next: BiliSettings) {
-				state = next;
-			},
-			fire(scope: ConfigScope) {
-				bus.emit("config-changed", { scope });
-			},
-			store: {
-				getIntegrationSettings: (() =>
-					structuredClone(state)) as ConfigStore["getIntegrationSettings"],
-				onChange: (handler: (scope: ConfigScope) => void) =>
-					bus.on("config-changed", ({ scope }) => handler(scope)),
-			},
-		};
+	/** 照宿主的做法给这份设置造一个读者(读口、通知口都是真仓的)。 */
+	function watchOf<T>(
+		store: ConfigStore,
+		schema: Parameters<typeof createSettingsReader<T>>[0]["schema"],
+	) {
+		return createSettingsReader({
+			schema,
+			read: () => store.readIntegrationSettings("bilibili"),
+			onChanged: (fn) =>
+				store.onChange((scope) => {
+					if (scope === "integration-settings") fn();
+				}),
+			logger: makeServiceCtx().logger,
+		});
 	}
-
-	it("变了才叫 apply:带上变之前与变之后的整份", () => {
-		const f = makeFakeStore(parsed({}));
-		const apply = vi.fn();
-		watchSettings(f.store, apply);
-
-		f.set(parsed({ dynamicCron: "*/9 * * * *" }));
-		f.fire("integration-settings");
-
-		expect(apply).toHaveBeenCalledTimes(1);
-		expect(apply).toHaveBeenCalledWith(parsed({}), parsed({ dynamicCron: "*/9 * * * *" }));
-	});
-
-	it("事件来了但设置没变(比如别的集成改了)→ 不叫", () => {
-		const f = makeFakeStore(parsed({}));
-		const apply = vi.fn();
-		watchSettings(f.store, apply);
-
-		f.fire("integration-settings");
-
-		expect(apply).not.toHaveBeenCalled();
-	});
-
-	it("连着变两次:第二次的 prev 是第一次的 next", () => {
-		const f = makeFakeStore(parsed({}));
-		const apply = vi.fn();
-		watchSettings(f.store, apply);
-		const first = parsed({ healthCheckMinutes: 45 });
-		const second = parsed({ healthCheckMinutes: 90 });
-
-		f.set(first);
-		f.fire("integration-settings");
-		f.set(second);
-		f.fire("integration-settings");
-
-		expect(apply).toHaveBeenCalledTimes(2);
-		expect(apply).toHaveBeenNthCalledWith(2, first, second);
-	});
-
-	it("基线是开始监听那一刻的值,不是格式的默认值", () => {
-		// 开始监听之前设置就已经不是默认值了;之后事件来了、值没动 → 不算变。
-		const f = makeFakeStore(parsed({ healthCheckMinutes: 45 }));
-		const apply = vi.fn();
-		watchSettings(f.store, apply);
-
-		f.fire("integration-settings");
-
-		expect(apply).not.toHaveBeenCalled();
-	});
-
-	it("只认 integration-settings 这一档:别的 scope 的事件不叫,哪怕这一份已经变了", () => {
-		const f = makeFakeStore(parsed({}));
-		const apply = vi.fn();
-		watchSettings(f.store, apply);
-
-		f.set(parsed({ healthCheckMinutes: 45 }));
-		f.fire("globals");
-		f.fire("subscriptions");
-		expect(apply).not.toHaveBeenCalled();
-
-		f.fire("integration-settings");
-		expect(apply).toHaveBeenCalledTimes(1);
-	});
-
-	it("dispose 之后不再叫", () => {
-		const f = makeFakeStore(parsed({}));
-		const apply = vi.fn();
-		const handle = watchSettings(f.store, apply);
-
-		handle.dispose();
-		f.set(parsed({ healthCheckMinutes: 45 }));
-		f.fire("integration-settings");
-
-		expect(apply).not.toHaveBeenCalled();
-	});
 });

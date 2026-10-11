@@ -26,8 +26,8 @@ import {
 import { LoginFlow } from "../login-flow.js";
 import { testAuthDeps } from "./support/auth-deps.js";
 
-/** 测试里不关心配置仓与图库:统一补上替身。 */
-const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages">) =>
+/** 测试里不关心图库:统一补上替身。 */
+const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "accountImages">) =>
 	createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 const C0 = JSON.stringify([
@@ -461,43 +461,29 @@ describe("恢复备份之后与登出", () => {
 		await w.store.close();
 	});
 
-	// 验红:删掉 `createAuthSystem` 里 `watchSettings(...)` 那一订阅(或把 `setHealthCheckMs` 那行去掉),第一条红。
-	it("健康检查间隔:设置里改了就热换到心跳;别的集成改了不动;dispose 之后摘掉订阅", async () => {
+	// 登录系统不再认识设置:登录检查的间隔由 B 站来源读了设置、经这一口递进来(`bilibili/__tests__/source-settings.test.ts`)。
+	// 验红:把 `AuthSystem.setHealthCheckMs` 改成什么都不做,或不转给 `flowFinal`,这条红。
+	it("setHealthCheckMs 原样转给登录流程:建好时不动它,给正数挂上心跳定时器,给 0 摘掉", async () => {
 		const w = world();
-		let minutes = 30;
-		const listeners: Array<(scope: string) => void> = [];
-		const unsubscribed = vi.fn();
-		const configStore = {
-			getIntegrationSettings: () => ({
-				dynamicCron: "30 */2 * * * *",
-				healthCheckMinutes: minutes,
-			}),
-			onChange: (fn: (scope: string) => void) => {
-				listeners.push(fn);
-				return { dispose: unsubscribed };
-			},
-		} as unknown as CreateAuthSystemOptions["configStore"];
 		const hot = vi.spyOn(LoginFlow.prototype, "setHealthCheckMs");
-		const auth = await createAuthSystemWith({
-			...testAuthDeps(),
-			configStore,
+		const intervals = vi.spyOn(w.host.serviceCtx, "setInterval");
+		const auth = await createAuthSystem({
 			serviceCtx: w.host.serviceCtx,
 			bus,
 			integrationStore: w.store,
 		});
-		expect(hot).not.toHaveBeenCalled(); // 开机按设置里的值起,不是热换
-
-		// 事件来了但设置没变(别的集成改了)。
-		for (const fn of listeners) fn("integration-settings");
+		const MS = 45 * 60_000;
+		const beats = () => intervals.mock.calls.filter(([, ms]) => ms === MS);
 		expect(hot).not.toHaveBeenCalled();
+		expect(beats()).toHaveLength(0); // 起步停着:没有任何设置喂给它
 
-		minutes = 45;
-		for (const fn of listeners) fn("integration-settings");
-		expect(hot).toHaveBeenCalledTimes(1);
-		expect(hot).toHaveBeenCalledWith(45 * 60_000);
+		auth.setHealthCheckMs(MS);
+		expect(hot).toHaveBeenLastCalledWith(MS);
+		expect(beats()).toHaveLength(1);
 
+		auth.setHealthCheckMs(0);
+		expect(hot).toHaveBeenLastCalledWith(0);
 		await auth.dispose();
-		expect(unsubscribed).toHaveBeenCalledTimes(1);
 		await w.store.close();
 	});
 

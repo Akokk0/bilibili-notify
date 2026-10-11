@@ -7,7 +7,6 @@ import {
 	type ServiceContext,
 	type SourceAuth,
 } from "@bilibili-notify/internal";
-import type { ConfigStore } from "../../config/store.js";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
@@ -15,7 +14,6 @@ import { errorMessageOf } from "../../util/error-message.js";
 import { Api } from "../api/index.js";
 import { createBiliContext } from "../context.js";
 import { fetchAvatar } from "../images.js";
-import { settingsOf, watchSettings } from "../settings.js";
 import { LoginFlow } from "./login-flow.js";
 
 /**
@@ -49,6 +47,11 @@ export interface AuthSystem {
 	readonly auth: Required<SourceAuth>;
 	/** 把健康检查提前到现在(开发场景「登录心跳」);没登录 / 扫码中跳过、回 false。 */
 	healthCheckNow(): Promise<boolean>;
+	/**
+	 * 定时的登录检查(心跳)的间隔,毫秒;`<= 0` 是停掉、之后任何登录路径(扫码成功、恢复备份、登录恢复)都不会再把它挂起来。
+	 * 登录系统自己不读设置:B 站来源 `start` 里读了 B 站设置、经这一口挂上或停下。起步是停着的。
+	 */
+	setHealthCheckMs(ms: number): void;
 	/** Stop the flow and the api, save the cookie jar one last time, close the stores. Idempotent. */
 	dispose(): Promise<void>;
 }
@@ -58,15 +61,12 @@ export interface CreateAuthSystemOptions {
 	bus: MessageBus;
 	/** 集成存储宿主(`AppRuntime.integrationStore`):登录的 cookie 与令牌住在这个集成自己的存储里。 */
 	integrationStore: Pick<IntegrationStore, "open">;
-	/** 配置仓的读口:开机读健康检查间隔,之后的变化自己听(`watchSettings`)。 */
-	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
 	/** 账号头像往图库存图的口(`AppRuntime.accountImages`)。 */
 	accountImages: ImageWriter;
 }
 
 export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<AuthSystem> {
 	const log = opts.serviceCtx.logger;
-	const healthCheckMs = settingsOf(opts.configStore).healthCheckMinutes * 60_000;
 
 	// 1. 开存储、读两份文件、建罐子与身份 —— 都在 `new Api` 之前。
 	const context = await createBiliContext({
@@ -113,20 +113,13 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			serviceCtx: opts.serviceCtx,
 			api,
 			bus: opts.bus,
-			healthCheckMs,
+			// 心跳起步是关着的:间隔住在 B 站设置里,由来源 `start` 读了设置、经 `setHealthCheckMs` 挂上(读不懂就一直关着)。
+			healthCheckMs: 0,
 			fetchAvatar: (url) => fetchAvatar(url, { images: avatarImages, logger: log }),
 		});
 		await flow.start();
 
 		const flowFinal = flow;
-
-		// 健康检查间隔在设置里改了就热换到心跳定时器(从前由引擎装配听、转给 LoginFlow)。
-		const settingsSubscription = watchSettings(opts.configStore, (prev, next) => {
-			if (prev.healthCheckMinutes !== next.healthCheckMinutes) {
-				flowFinal.setHealthCheckMs(next.healthCheckMinutes * 60_000);
-			}
-		});
-		ctx.onDispose(() => settingsSubscription.dispose());
 
 		// Resume the stored login (the host already loaded the jar), then probe account info.
 		// Extracted (steps 5-6) so a backup restore can re-run the exact boot sequence and
@@ -188,6 +181,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			integration: ctx,
 			auth,
 			healthCheckNow: () => flowFinal.healthCheckNow(),
+			setHealthCheckMs: (ms) => flowFinal.setHealthCheckMs(ms),
 			dispose: () => context.dispose(),
 		};
 	} catch (err) {

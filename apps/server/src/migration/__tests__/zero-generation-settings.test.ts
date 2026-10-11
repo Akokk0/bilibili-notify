@@ -26,12 +26,15 @@ import { join } from "node:path";
 import { BUILTIN_AI_PRESETS } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { describe, expect, it } from "vite-plus/test";
-import { settingsOf } from "../../bilibili/settings.js";
+import type { BiliSettings } from "../../bilibili/settings.js";
 import { createSecretStore } from "../../config/secret-store.js";
-import { createConfigStore } from "../../config/store.js";
+import { type ConfigStore, createConfigStore } from "../../config/store.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { makeServiceCtx, useZeroSandbox, type ZeroSandbox } from "./support.js";
 import { makeZeroGlobals, withoutZeroBilibiliApp } from "./zero-fixtures.js";
+
+/** 仓里内存那一份 B 站设置。 */
+const bili = (store: ConfigStore) => store.getAllIntegrationSettings().bilibili as BiliSettings;
 
 const GROUP_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -96,7 +99,7 @@ describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)
 			expect(JSON.stringify(core), key).not.toContain(key);
 		}
 
-		expect(settingsOf(await sandbox.load())).toEqual(moved);
+		expect(bili(await sandbox.load())).toEqual(moved);
 	});
 
 	it("`app` 里五格同在(日志等级、userAgent、dynamicCron、healthCheckMinutes、fansCron)→ bilibili.json 有那两格,core.json 没有 app、有 logging 与 profileRefreshCron", async () => {
@@ -165,7 +168,7 @@ describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)
 		const core = await sandbox.readConfig<Record<string, unknown>>("settings/core.json");
 		expect(core).not.toHaveProperty("app");
 		expect(JSON.stringify(core)).not.toContain("userAgent");
-		expect(settingsOf(await sandbox.load())).toEqual({
+		expect(bili(await sandbox.load())).toEqual({
 			dynamicCron: "30 */2 * * * *",
 			healthCheckMinutes: 30,
 		});
@@ -176,7 +179,7 @@ describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)
 
 		await sandbox.migrate();
 
-		expect(settingsOf(await sandbox.load()).dynamicCron).toBe("坏的");
+		expect(bili(await sandbox.load()).dynamicCron).toBe("坏的");
 	});
 
 	it("0.x 一格都没写过 → 不建 settings/bilibili.json;开机时按默认值建一份", async () => {
@@ -185,7 +188,7 @@ describe("0.x 设置里 B 站的格 → settings/bilibili.json(userAgent 丢掉)
 		const report = await sandbox.migrate();
 
 		expect(report.rewritten).not.toContain("config/settings/bilibili.json");
-		const settings = settingsOf(await sandbox.load());
+		const settings = bili(await sandbox.load());
 		expect(settings).toEqual({ dynamicCron: "30 */2 * * * *", healthCheckMinutes: 30 });
 		expect(await sandbox.readConfig("settings/bilibili.json")).toEqual(settings);
 	});

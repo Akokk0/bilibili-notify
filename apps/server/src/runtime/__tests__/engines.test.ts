@@ -63,7 +63,7 @@ import {
 } from "../../__tests__/support/track-context.js";
 import { makeLiveProblems } from "../../bilibili/live/session/__tests__/support/live-problems.js";
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
-import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
+import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
@@ -325,13 +325,7 @@ function makeConfigStore(
 	let connections: Connection[] = [];
 	return {
 		getGlobals: () => g,
-		// B 站设置在配置仓里是登记进来的一份(`bilibili/settings.ts`),读它要拿登记过的那个 segment 来取:
-		// 替身与真仓一样,别的键当场抛(组装处漏了登记)。
-		getIntegrationSettings: (segment: IntegrationSettingsSegment) => {
-			if (segment.key !== "bilibili") throw new Error(`集成「${segment.key}」没有登记`);
-			return structuredClone(bilibili);
-		},
-		// 按键读(来源上下文的 `settings` 把手走这一口):同样,别的键当场抛。
+		// 按键读(来源上下文的 `settings` 把手走这一口):替身与真仓一样,没登记的键当场抛(组装处漏了登记)。
 		readIntegrationSettings: (key: string) => {
 			if (key !== "bilibili") throw new Error(`集成「${key}」没有登记`);
 			return ok({ settings: structuredClone(bilibili) as unknown });
@@ -574,7 +568,7 @@ function patchGlobals(c: Ctx, mutate: (g: GlobalConfig) => void): void {
 
 /**
  * 当前 B 站设置 → mutate → 写回替身(模拟配置仓写入之后的快照)。过一遍格式,与真仓一样永远是规范形态
- * (`watchSettings` 靠整份比字符串判变没变,键序要稳)。
+ * (设置读者的把手靠比序列化判变没变,键序要稳)。
  */
 function patchBilibili(c: Ctx, mutate: (b: BiliSettings) => void): void {
 	const next = structuredClone(c.configStore._getBilibili());

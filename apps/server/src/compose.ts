@@ -35,7 +35,6 @@ import {
 import type { ImagesDeps } from "./bilibili/images.js";
 import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-layers.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
-import type { ConfigStore } from "./config/store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter } from "./platforms/qq-official.js";
@@ -54,7 +53,11 @@ export interface BuiltinIntegrationsDeps {
 	/** 登录口(`AuthSystem.auth`,真的那一份):挂到 B 站来源的 `auth` 上,登记表与 `/api/sources/:sourceKey/auth` 读它。 */
 	sourceAuth: SourceAuth;
 	bus: BiliDevtoolsDeps["bus"];
-	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
+	/**
+	 * 定时的登录检查的开关(`AuthSystem.setHealthCheckMs`,现转:登录系统在入口里是个会清掉的 let)。来源 `start` 里读了
+	 * B 站设置、按它挂上或停下;登录系统自己不读设置。
+	 */
+	setHealthCheckMs: (ms: number) => void;
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
 	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
@@ -171,7 +174,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					bus: deps.bus,
 					problems,
 					imageFetcher: deps.imageFetcher,
-					configStore: deps.configStore,
+					loginCheck: { setHealthCheckMs: (ms) => deps.setHealthCheckMs(ms) },
 					setTimeout: deps.setTimeout,
 					auth: deps.sourceAuth,
 				});

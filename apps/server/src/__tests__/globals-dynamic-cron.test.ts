@@ -17,10 +17,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
-import { settingsOf } from "../bilibili/settings.js";
+import type { BiliSettings } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
-import { CORE_SETTINGS_FILE, integrationSettingsFile } from "../config/store.js";
+import { CORE_SETTINGS_FILE, type ConfigStore, integrationSettingsFile } from "../config/store.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
+
+/** 仓里内存那一份 B 站设置。 */
+const bili = (store: ConfigStore) => store.getAllIntegrationSettings().bilibili as BiliSettings;
 
 function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
@@ -50,7 +53,7 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	it("无法解析的 cron 表达式 → 400,store 不落地新值", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
-		const before = settingsOf(runtime.configStore).dynamicCron;
+		const before = bili(runtime.configStore).dynamicCron;
 		const fileBefore = await readFile(bilibiliFile(), "utf8");
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -66,7 +69,7 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 			{ path: ["bilibili", "dynamicCron"], message: '不是合法的 cron 表达式："not a cron expr"' },
 		]);
 		// 拒绝的值绝不能落地:内存与盘上都是原样。
-		expect(settingsOf(runtime.configStore).dynamicCron).toBe(before);
+		expect(bili(runtime.configStore).dynamicCron).toBe(before);
 		expect(await readFile(bilibiliFile(), "utf8")).toBe(fileBefore);
 
 		await runtime.dispose();
@@ -83,7 +86,7 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 		expect(res.status).toBe(200);
 		const patched = (await res.json()) as { bilibili: { dynamicCron: string } };
 		expect(patched.bilibili.dynamicCron).toBe("*/5 * * * *");
-		expect(settingsOf(runtime.configStore).dynamicCron).toBe("*/5 * * * *");
+		expect(bili(runtime.configStore).dynamicCron).toBe("*/5 * * * *");
 		expect(JSON.parse(await readFile(bilibiliFile(), "utf8")).dynamicCron).toBe("*/5 * * * *");
 
 		const got = (await (await app.request("/api/settings")).json()) as {
@@ -97,15 +100,15 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	it("补丁不动 dynamicCron → 照常放行,cron 保持原值", async () => {
 		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
 		await runtime.configStore.load();
-		const before = settingsOf(runtime.configStore).dynamicCron;
+		const before = bili(runtime.configStore).dynamicCron;
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 		});
 
 		const res = await patch(app, { bilibili: { healthCheckMinutes: 45 } });
 		expect(res.status).toBe(200);
-		expect(settingsOf(runtime.configStore).healthCheckMinutes).toBe(45);
-		expect(settingsOf(runtime.configStore).dynamicCron).toBe(before);
+		expect(bili(runtime.configStore).healthCheckMinutes).toBe(45);
+		expect(bili(runtime.configStore).dynamicCron).toBe(before);
 
 		await runtime.dispose();
 	});
@@ -141,7 +144,7 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 		});
 		expect(res.status).toBe(200);
 		expect(runtime.configStore.getGlobals().profileRefreshCron).toBe("*/20 * * * *");
-		expect(settingsOf(runtime.configStore).healthCheckMinutes).toBe(60);
+		expect(bili(runtime.configStore).healthCheckMinutes).toBe(60);
 		// 两格各回各的家:核心文件里没有 B 站的键,B 站文件里没有核心的。
 		const bilibili = JSON.parse(await readFile(bilibiliFile(), "utf8"));
 		expect(bilibili.healthCheckMinutes).toBe(60);

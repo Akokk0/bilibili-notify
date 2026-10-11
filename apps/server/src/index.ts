@@ -533,8 +533,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				serviceCtx: runtime.serviceCtx,
 				bus: runtime.bus,
 				integrationStore: runtime.integrationStore,
-				// 健康检查间隔登录系统自己从配置仓读、自己听(`bilibili/auth/`);账号头像存进图库的口在运行时里。
-				configStore: runtime.configStore,
+				// 账号头像存进图库的口在运行时里;登录检查的间隔由 B 站来源读设置、经 `setHealthCheckMs` 挂上。
 				accountImages: runtime.accountImages,
 			});
 		} catch (err) {
@@ -696,7 +695,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 统计与引擎装配读的是真对象。
 			sourceAuth: devAuth.api,
 			bus: runtime.bus,
-			configStore: runtime.configStore,
+			setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms),
 			subscriptions: subStore,
 			subscriptionRuntime: runtime.subRuntimeStore,
 			imageFetcher: postImageFetcher,

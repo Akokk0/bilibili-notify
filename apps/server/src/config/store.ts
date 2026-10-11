@@ -13,6 +13,7 @@ import {
 	deterministicUuid,
 	EXTRA_KEYS,
 	ExtensionIdSchema,
+	fail,
 	type GlobalConfig,
 	GlobalConfigSchema,
 	type Issue,
@@ -51,6 +52,7 @@ import {
 	stripAiSecrets,
 } from "./ai-secrets.js";
 import { type InvalidSettingEntry, parseCoreSettings, withRawSettings } from "./core-settings.js";
+import { parseIntegrationCells } from "./integration-settings.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
 import { ConfigValidationError } from "./validation-error.js";
@@ -118,8 +120,11 @@ export interface ConfigSections {
 export interface IntegrationSettingsSegment<T = unknown> {
 	/** 集成的键,也是文件名。不能和核心设置的顶层键同名:`/api/settings` 把它们摆在同一层。 */
 	readonly key: string;
-	/** 盘上那份的格式。读盘也按它,所以对存量要宽松:一格坏值让整个开机失败,比退回默认更糟。 */
-	readonly schema: z.ZodType<T>;
+	/**
+	 * 盘上那份的格式,必须是 `z.object`(每个顶层键一格,读盘逐格解析:一格坏了只那一格退默认)且空对象过得了
+	 * (「文件不在时建一份」与「坏格退默认」共同的前提,登记时核)。读盘也按它,所以对存量要宽松。
+	 */
+	readonly schema: z.ZodObject<Record<string, ZodType>> & z.ZodType<T>;
 	/**
 	 * 写入前多核的一道(读盘不核),回逐格原因(路径相对这一份设置),空 = 过。`prev` 是写之前那一份(没有就是
 	 * `undefined`):只核这次真改了的格子 —— 盘上留着的一格老坏值,不该挡住主人去改别的格子。
@@ -156,14 +161,17 @@ export interface ConfigStore {
 	 * 对外只说路径与原因(问题表那一条已经是这样)。
 	 */
 	getInvalidSettings(): InvalidSettingEntry[];
-	/** 一个登记过的集成的设置(深拷贝)。没登记过就抛:那是组装处漏了,不是数据的问题。 */
-	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T;
 	/**
-	 * 按键读一个登记过的集成此刻的设置(深拷贝、不过 schema:形状归读的人自己那份 zod)。整个文件读不懂回失败。
-	 * 没登记过的键抛(组装处漏了)。
+	 * 按键读一个登记过的集成此刻**盘上那一份**(深拷贝、不过 schema:形状归读的人自己那份 zod)。某一格读盘时被隔离的,
+	 * 给的是盘上原文(读的人拿自己那一格的 schema 判);整个文件读不懂(不是合法 JSON、顶层不是对象)回失败,
+	 * `issues` 里一条、不带 `path`。读盘本身出错开机就抛了,到不了这里。没登记过的键抛(组装处漏了)。
+	 * 🔴 带原文,**不许接到任何路由、日志或备份上**。
 	 */
 	readIntegrationSettings(key: string): Result<{ settings: unknown }>;
-	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/settings` 与备份用。 */
+	/**
+	 * 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/settings` 与备份用。**每个登记过的键一直在**:坏格是默认值、
+	 * 整个文件读不懂时整段是默认值 —— 键不在的话面板存这个集成的设置会被当成核心补丁、回 200 而一个字没写。
+	 */
 	getAllIntegrationSettings(): Record<string, unknown>;
 	/**
 	 * 一个拓展存着的设置(`config/settings/extensions/<id>.json`,深拷贝、原样;形状归拓展自己那份 zod);没存过是
@@ -397,6 +405,29 @@ async function readJsonOrInit<T>(
 		}
 		throw err;
 	}
+}
+
+/** 一个文件落盘前的样子(字节与权限),写失败时按它原样推回去。 */
+interface FileSnapshot {
+	bytes: Buffer;
+	mode: number;
+}
+
+/** 记下文件此刻的字节与权限;文件不在回 `undefined`(推回去 = 删掉)。其余读盘错误原样抛。 */
+async function snapshotFile(path: string): Promise<FileSnapshot | undefined> {
+	try {
+		const [bytes, info] = await Promise.all([readFile(path), stat(path)]);
+		return { bytes, mode: info.mode & 0o777 };
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		throw err;
+	}
+}
+
+/** 把 {@link snapshotFile} 记下的样子原样写回去;当时不存在就删掉。 */
+async function restoreFile(path: string, before: FileSnapshot | undefined): Promise<void> {
+	if (before === undefined) await rm(path, { force: true });
+	else await atomicWriteFile(path, before.bytes, { mode: before.mode });
 }
 
 /** 读一个 JSON 文件;不存在回 `undefined`,**不替它建**(与 {@link readJsonOrInit} 的区别)。 */
@@ -870,6 +901,13 @@ class NodeConfigStore implements ConfigStore {
 	private readonly segments: ReadonlyMap<string, IntegrationSettingsSegment>;
 	/** 各集成的设置(已按各自的格式解析过),按集成的键。 */
 	private readonly integrationSettings = new Map<string, unknown>();
+	/**
+	 * 各集成的设置里读盘时被隔离的格:内存里是默认值、盘上原文落盘时放回,按集成的键。与
+	 * {@link integrationUnreadable} 互斥。`raw` 可能带密钥,不许出仓(读口只在 {@link readIntegrationSettings})。
+	 */
+	private readonly integrationInvalid = new Map<string, InvalidSettingEntry[]>();
+	/** 整个文件读不懂(不是合法 JSON、顶层不是对象)的集成设置,按集成的键;内存里是整段默认值,文件不动。 */
+	private readonly integrationUnreadable = new Map<string, Issue>();
 	/** 各拓展的设置(原样,形状归拓展自己),按拓展 id。 */
 	private readonly extensionSettings = new Map<string, unknown>();
 	/**
@@ -1052,6 +1090,53 @@ class NodeConfigStore implements ConfigStore {
 		if (hadPlaintext) await this.persistGlobals(this.globals);
 	}
 
+	/**
+	 * 读一个集成的设置文件进内存。内存里那一份永远是过得了段 schema 的规范形态(坏格是默认值、整个文件读不懂时整段是默认值),
+	 * 不然 {@link patchSettings} 的合并底带着坏值、主人改另一格时整份过不了、永远 400。盘上原文不动。
+	 */
+	private async loadIntegrationSegment(segment: IntegrationSettingsSegment): Promise<void> {
+		const { key } = segment;
+		const path = this.integrationPath(key);
+		let text: string;
+		try {
+			text = await readFile(path, "utf8");
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+			const fresh = segment.schema.parse({});
+			await atomicWriteJson(path, fresh);
+			this.integrationSettings.set(key, fresh);
+			return;
+		}
+		let value: unknown;
+		let unreadable: Issue | undefined;
+		try {
+			value = JSON.parse(text) as unknown;
+		} catch (err) {
+			if (!(err instanceof SyntaxError)) throw err;
+			unreadable = { message: jsonSyntaxMessage(err) };
+		}
+		if (unreadable === undefined && !isPlainObject(value)) {
+			unreadable = { message: "顶层不是一个对象" };
+		}
+		if (unreadable !== undefined || !isPlainObject(value)) {
+			this.integrationSettings.set(key, segment.schema.parse({}));
+			this.integrationUnreadable.set(key, unreadable ?? { message: "读不懂" });
+			this.serviceCtx.logger.warn(
+				`[config] settings/${key}.json 读不懂,这个集成读它的那几样先停着: ${unreadable?.message ?? ""}`,
+			);
+			return;
+		}
+		const parsed = parseIntegrationCells(segment.schema, value);
+		this.integrationSettings.set(key, parsed.settings);
+		if (parsed.invalid.length === 0) return;
+		this.integrationInvalid.set(key, parsed.invalid);
+		for (const entry of parsed.invalid) {
+			this.serviceCtx.logger.warn(
+				`[config] settings/${key}.json 的「${entry.path.join(".")}」读不懂,先按默认值跑: ${entry.issues.map((i) => i.message).join("; ")}`,
+			);
+		}
+	}
+
 	// ---- lifecycle ------------------------------------------------------
 
 	async load(): Promise<void> {
@@ -1098,19 +1183,9 @@ class NodeConfigStore implements ConfigStore {
 		}
 
 		// 各集成的设置 —— 一个集成一个文件(ADR-0021 决策 42 下 10-01 的 🔗)。没有就按格式的默认值建一份;
-		// 读坏了仍是开机报错(核心那份已经逐格退默认;「坏了只停那一个集成」随 3a 的集成生命周期做)。
-		for (const segment of this.segments.values()) {
-			const { value } = await readJsonOrInit<unknown>(this.integrationPath(segment.key), () =>
-				segment.schema.parse({}),
-			);
-			const parsed = segment.schema.safeParse(value);
-			if (!parsed.success) {
-				throw ConfigValidationError.fromZod("integration-settings", parsed.error, {
-					subject: `settings/${segment.key}.json`,
-				});
-			}
-			this.integrationSettings.set(segment.key, parsed.data);
-		}
+		// 内容读不懂不挡开机:一格坏了只那一格退默认,整个文件读不懂整段退默认,盘上原文都不动(落盘时放回),
+		// 由读它的集成各读各的格、停各自那一样。读盘本身出错(没权限、路径是个目录)照旧挡开机。
+		for (const segment of this.segments.values()) await this.loadIntegrationSegment(segment);
 		this.meta["integration-settings"].exists = true;
 
 		// 各拓展的设置 —— 一个拓展一个文件。仓不认得它们的形状,原样读进来(核对归拓展自己那份 zod)。
@@ -1248,19 +1323,20 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(this.invalidSettings);
 	}
 
-	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T {
-		if (!this.segments.has(segment.key)) {
-			throw new Error(`集成「${segment.key}」的设置没有登记进配置仓(组装处漏了)`);
-		}
-		return deepClone(this.integrationSettings.get(segment.key)) as T;
-	}
-
 	readIntegrationSettings(key: string): Result<{ settings: unknown }> {
 		if (!this.segments.has(key)) {
 			throw new Error(`集成「${key}」的设置没有登记进配置仓(组装处漏了)`);
 		}
-		// 坏段现在还挡开机,所以内存里的这一份一定是读得懂的。
-		return ok({ settings: deepClone(this.integrationSettings.get(key)) });
+		const unreadable = this.integrationUnreadable.get(key);
+		if (unreadable) {
+			return fail("invalid", `设置文件读不懂：${unreadable.message}`, {
+				issues: [{ ...unreadable }],
+			});
+		}
+		// 盘上那一份:内存值(坏格是默认值)上把坏格的原文盖回去。读的人拿自己的 schema 判自己那一格。
+		const settings = deepClone(this.integrationSettings.get(key));
+		const invalid = this.integrationInvalid.get(key) ?? [];
+		return ok({ settings: invalid.length > 0 ? withRawSettings(settings, invalid) : settings });
 	}
 
 	getAllIntegrationSettings(): Record<string, unknown> {
@@ -1417,25 +1493,44 @@ class NodeConfigStore implements ConfigStore {
 			const integrations = new Map(
 				keys.map((key) => [key, this.nextIntegrationSettings(key, patch.integrations?.[key])]),
 			);
+			// 这一发里仍被隔离的格(比值,同核心那份 `writeGlobals` 的规矩):合并后的值与内存里跑着的默认值一样就是
+			// 「没动」—— 系统页保存时同一块的格子一起发,坏格显示的是默认值,按「补丁里有没有这个键」判会把没碰过的
+			// 坏格原文盖掉。整个文件读不懂的没有可放回的格,补丁带了这一段就整文件重写。
+			const retained = new Map(
+				[...integrations].map(([key, next]) => [
+					key,
+					(this.integrationInvalid.get(key) ?? []).filter(
+						(e) =>
+							JSON.stringify(valueAt(next, e.path)) ===
+							JSON.stringify(valueAt(this.integrationSettings.get(key), e.path)),
+					),
+				]),
+			);
 
 			// ---- 2) 落盘:集成的先写,核心的最后写;核心那份(连密钥袋)写失败,把写过的集成推回原样 ----
-			const written: string[] = [];
+			// 回滚按**字节**:盘上可能留着坏格原文(或整份半截 JSON),把内存值写回去会被默认值换掉。
+			const written: Array<{ path: string; before: FileSnapshot | undefined }> = [];
 			try {
 				for (const [key, next] of integrations) {
-					await atomicWriteJson(this.integrationPath(key), next);
-					written.push(key);
+					const path = this.integrationPath(key);
+					const before = await snapshotFile(path);
+					await atomicWriteJson(path, withRawSettings(next, retained.get(key) ?? []));
+					written.push({ path, before });
 				}
 				if (core) await this.writeGlobals(core);
 			} catch (e) {
-				for (const key of written) {
-					const before = this.integrationSettings.get(key);
-					await atomicWriteJson(this.integrationPath(key), before).catch(() => {});
-				}
+				for (const { path, before } of written) await restoreFile(path, before).catch(() => {});
 				throw e;
 			}
 
-			// ---- 3) 都写成了才换进内存(核心那份 writeGlobals 已经换了) ----
-			for (const [key, next] of integrations) this.integrationSettings.set(key, next);
+			// ---- 3) 都写成了才换进内存与坏格表(核心那份 writeGlobals 已经换了) ----
+			for (const [key, next] of integrations) {
+				this.integrationSettings.set(key, next);
+				const left = retained.get(key) ?? [];
+				if (left.length > 0) this.integrationInvalid.set(key, left);
+				else this.integrationInvalid.delete(key);
+				this.integrationUnreadable.delete(key);
+			}
 			if (core) this.touch("globals");
 			if (integrations.size > 0) this.touch("integration-settings");
 			return { core: this.globals, integrations: Object.fromEntries(this.integrationSettings) };
@@ -2004,7 +2099,12 @@ class NodeConfigStore implements ConfigStore {
 			// ---- 4) 双写都成了才更新内存 -----------------------------------
 			const touched: ConfigScope[] = [];
 			if ((integrations && integrations.size > 0) || extensionSettings.length > 0) {
-				for (const [key, value] of integrations ?? []) this.integrationSettings.set(key, value);
+				for (const [key, value] of integrations ?? []) {
+					this.integrationSettings.set(key, value);
+					// 恢复是「以这一份为准」:本机的坏格与读不懂的原因一起清,不比值、不放回。
+					this.integrationInvalid.delete(key);
+					this.integrationUnreadable.delete(key);
+				}
 				for (const { id, value } of extensionSettings) {
 					this.extensionSettings.set(id, value);
 					this.extensionSettingsIssues.delete(id);
@@ -2236,6 +2336,9 @@ function segmentsByKey(
 	const byKey = new Map<string, IntegrationSettingsSegment>();
 	for (const segment of segments) {
 		if (byKey.has(segment.key)) throw new Error(`集成设置「${segment.key}」登记了两次`);
+		if (!segment.schema.safeParse({}).success) {
+			throw new Error(`集成设置「${segment.key}」的格式过不了空对象(每一格都得有默认值或可选)`);
+		}
 		if (coreKeys.has(segment.key)) {
 			throw new Error(`集成设置的键「${segment.key}」和核心设置的顶层键撞名`);
 		}

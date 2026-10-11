@@ -2293,3 +2293,46 @@ describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
 		expect(liveBeats(h)).toHaveLength(1);
 	});
 });
+
+describe("LoginFlow — 心跳停着(间隔 <= 0)时,登录的各条路都不会把它挂起来", () => {
+	// B 站设置里「登录心跳间隔」读不懂时,来源经 `setHealthCheckMs(0)` 把定时的登录检查停掉;停着期间扫码成功、恢复备份
+	// (重探账号)、登录恢复走的都是 `reportAccountInfo`。钉住 `attachHealthCheck` 的「`<= 0` 不挂」这一句:
+	// 它被改掉,「登录检查先停着」就在下一次扫码时悄悄失效。
+	const MS = 30 * 60_000;
+	const logged = (h: Harness) => {
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+	};
+
+	it("起步是 0:探活成功 / 风控码 / 抛网络异常这三个出口都不挂定时器", async () => {
+		const h = makeFlow({ healthCheckMs: 0 });
+
+		logged(h);
+		await h.flow.reportAccountInfo();
+		expect(h.flow.authState().status).toBe("logged-in");
+
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -352, data: { mid: 0 } });
+		await h.flow.reportAccountInfo();
+		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("net down"));
+		await h.flow.reportAccountInfo();
+
+		expect(h.scFake.intervals).toHaveLength(0);
+	});
+
+	it("setHealthCheckMs(正数) 之后挂上;再 setHealthCheckMs(0) 摘掉,之后探活成功也挂不回来", async () => {
+		const h = makeFlow({ healthCheckMs: 0 });
+		logged(h);
+		await h.flow.reportAccountInfo();
+		expect(liveTimers(h)).toHaveLength(0);
+
+		h.flow.setHealthCheckMs(MS);
+		expect(liveTimers(h)).toHaveLength(1);
+
+		h.flow.setHealthCheckMs(0);
+		expect(liveTimers(h)).toHaveLength(0);
+
+		logged(h);
+		await h.flow.reportAccountInfo();
+		expect(liveTimers(h)).toHaveLength(0);
+	});
+});

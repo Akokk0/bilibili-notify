@@ -7,15 +7,19 @@
 
 import {
 	BILIBILI_GUARD_PROGRAM,
+	fail,
 	type IntegrationContext,
 	type Logger,
 	ok,
 	type PostReport,
+	type Result,
 	type SourceAuth,
 	type SourceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { ZodType } from "zod";
 import { deferred } from "../../__tests__/support/track-context.js";
+import { createSettingsReader } from "../../integrations/settings-reader.js";
 import {
 	makeIntegration,
 	makeLogger,
@@ -60,7 +64,11 @@ const cronMock = vi.hoisted(() => {
 	}
 	return { instances, FakeCronJob };
 });
-vi.mock("cron", () => ({ CronJob: cronMock.FakeCronJob }));
+// 只换 `CronJob`:动态读者的「能解析」那一道用的是同一个包里的 `CronTime`,要留真的。
+vi.mock("cron", async (importOriginal) => ({
+	...(await importOriginal<typeof import("cron")>()),
+	CronJob: cronMock.FakeCronJob,
+}));
 
 beforeEach(() => {
 	cronMock.instances.length = 0;
@@ -99,39 +107,35 @@ const item = (uid: number, pubTs: number, id = `id-${uid}-${pubTs}`) => ({
 	},
 });
 
-/** 配置仓替身:设置可换,换了发一次 `integration-settings`(与真仓一样只交 scope)。 */
-function makeConfigStore(initial: Partial<BiliSettings> = {}) {
+/** 来源上下文的 `settings` 那一格的假宿主:设置可换(整份),换了叫一声「可能变了」(与真仓一样只说变了、不交值)。 */
+function makeConfig(initial: Partial<BiliSettings> = {}) {
+	const host = makeSettingsHost(ok({ settings: BiliSettingsSchema.parse(initial) }));
 	let current = BiliSettingsSchema.parse(initial);
-	const handlers = new Set<(scope: string) => void>();
-	const disposed = vi.fn();
 	return {
-		store: {
-			getIntegrationSettings: () => structuredClone(current),
-			onChange: (handler: (scope: string) => void) => {
-				handlers.add(handler);
-				return {
-					dispose() {
-						disposed();
-						handlers.delete(handler);
-					},
-				};
-			},
-		} as never,
+		host,
 		set(patch: Partial<BiliSettings>) {
 			current = BiliSettingsSchema.parse({ ...current, ...patch });
-			for (const h of [...handlers]) h("integration-settings");
+			host.set(ok({ settings: current }));
 		},
-		listeners: () => handlers.size,
-		disposed,
+		/** 盘上读不懂:整个文件读不懂 / 某一格读不懂(给什么就是什么)。 */
+		setRaw(raw: unknown) {
+			host.set(ok({ settings: raw }));
+		},
+		setFailure(failure: Result<{ settings: unknown }>) {
+			host.set(failure);
+		},
+		listeners: () => host.listenerCount(),
 	};
 }
 
 function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {}) {
-	const config = makeConfigStore(over.cron ? { dynamicCron: over.cron } : {});
+	const config = makeConfig(over.cron ? { dynamicCron: over.cron } : {});
 	const fetchImage = vi.fn();
+	const setHealthCheckMs = vi.fn<(ms: number) => void>();
 	return {
 		config,
 		fetchImage,
+		setHealthCheckMs,
 		deps: {
 			problems: {
 				attach: vi.fn(),
@@ -144,7 +148,7 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 			api: { fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED) } as unknown as Api,
 			bus: makeWorld().bus,
 			imageFetcher: { fetchImage },
-			configStore: config.store,
+			loginCheck: { setHealthCheckMs },
 			setTimeout: () => ({ dispose() {} }),
 			auth: FAKE_AUTH,
 		},
@@ -159,13 +163,31 @@ const FAKE_AUTH: SourceAuth = {
 	onChange: () => ({ dispose() {} }),
 };
 
-/** 假来源上下文:名单与回调可控,`onSubscriptionsChanged` 的把手记下有没有被摘。 */
-function makeCtx(roster: Array<{ externalId: string; post: boolean }> = []) {
+/**
+ * 假来源上下文:名单与回调可控,`onSubscriptionsChanged` 的把手记下有没有被摘;`settings(schema)` 与真上下文
+ * 同一个做法(真把手 + 假宿主),把手随 `dispose()` 一起收。
+ */
+function makeCtx(
+	roster: Array<{ externalId: string; post: boolean }> = [],
+	config: ReturnType<typeof makeConfig> = makeConfig(),
+) {
 	const watchers: Array<() => void> = [];
 	const watchDisposed = vi.fn();
 	const reportPost = vi.fn<(id: string, report: PostReport) => void>();
+	const logger = makeLogger();
+	const readers: Array<{ dispose(): void }> = [];
 	const ctx = {
-		logger: makeLogger() as Logger,
+		logger: logger as Logger,
+		settings: (schema: ZodType) => {
+			const made = createSettingsReader({
+				schema,
+				read: config.host.read,
+				onChanged: config.host.onChanged,
+				logger,
+			});
+			readers.push(made);
+			return made.reader;
+		},
 		subscriptions: () =>
 			roster.map((r) => ({
 				externalId: r.externalId,
@@ -179,7 +201,17 @@ function makeCtx(roster: Array<{ externalId: string; post: boolean }> = []) {
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
 	} as unknown as SourceContext;
-	return { ctx, watchers, watchDisposed, reportPost };
+	return {
+		ctx,
+		watchers,
+		watchDisposed,
+		reportPost,
+		logger,
+		/** 收掉上下文:把手的宿主监听一起摘(登记表撤登记时真上下文做的事)。 */
+		disposeContext: () => {
+			for (const r of readers) r.dispose();
+		},
+	};
 }
 
 describe("createBiliSource", () => {
@@ -203,21 +235,34 @@ describe("createBiliSource", () => {
 		]);
 	});
 
-	it("start 后引擎在跑、dynamic() 拿得到;stop 后 dynamic() 是 undefined、两个把手都摘了", async () => {
-		const { deps, config } = makeDeps();
+	it("start 后引擎在跑、dynamic() 拿得到;stop 后 dynamic() 是 undefined、把手都摘了、登录检查停掉", async () => {
+		const { deps, config, setHealthCheckMs } = makeDeps();
 		const source = createBiliSource(deps);
-		const { ctx, watchDisposed } = makeCtx([{ externalId: "1", post: true }]);
+		const { ctx, watchDisposed, disposeContext } = makeCtx(
+			[{ externalId: "1", post: true }],
+			config,
+		);
 		expect(source.dynamic()).toBeUndefined();
 		await source.start(ctx);
 		expect(source.dynamic()?.isActive).toBe(true);
 		expect(cronMock.instances[0]?.isActive).toBe(true);
-		expect(config.listeners()).toBe(1);
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(30 * 60_000);
 
 		await source.stop();
 		expect(source.dynamic()).toBeUndefined();
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 		expect(watchDisposed).toHaveBeenCalledTimes(1);
-		expect(config.disposed).toHaveBeenCalledTimes(1);
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
+
+		// stop 之后设置再变(上下文还没收):来源自己的订阅已摘,不会造出新的引擎、也不会再动登录检查。
+		setHealthCheckMs.mockClear();
+		config.set({ dynamicCron: "*/9 * * * *", healthCheckMinutes: 45 });
+		expect(cronMock.instances).toHaveLength(1);
+		expect(setHealthCheckMs).not.toHaveBeenCalled();
+
+		// 登记表撤登记时上下文一起收掉:把手的宿主监听都摘了。
+		expect(config.listeners()).toBeGreaterThan(0);
+		disposeContext();
 		expect(config.listeners()).toBe(0);
 	});
 
@@ -238,6 +283,22 @@ describe("createBiliSource", () => {
 
 		await source.stop();
 		expect(order).toEqual(["attach", "detach(引擎还在跑)"]);
+	});
+
+	// 验红:把 `attach` 挪进 `applyDynamic` 读得懂的那一支里(或只在引擎起来时才接),这条红。
+	it("动态那格读不懂、引擎没造:上报器照样接上核心(登录失效、风控、直播间停监照常进问题表);stop 照常摘", async () => {
+		const { deps, config } = makeDeps();
+		config.setRaw({ dynamicCron: 123, healthCheckMinutes: 30 });
+		const source = createBiliSource(deps);
+		const { ctx } = makeCtx([{ externalId: "1", post: true }], config);
+
+		await source.start(ctx);
+
+		expect(source.dynamic()).toBeUndefined();
+		expect(deps.problems.attach).toHaveBeenCalledTimes(1);
+		expect(deps.problems.attach).toHaveBeenCalledWith(ctx);
+		await source.stop();
+		expect(deps.problems.detach).toHaveBeenCalledTimes(1);
 	});
 
 	// 验红:把 source.ts 递给引擎的 `problems: deps.problems` 换成别的对象,这条红。
@@ -314,7 +375,7 @@ describe("createBiliSource", () => {
 	it("初始 cron 取自 B 站设置;cron 变了引擎换节奏,别的设置变了不动", async () => {
 		const { deps, config } = makeDeps({ cron: "*/3 * * * *" });
 		const source = createBiliSource(deps);
-		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
+		const { ctx } = makeCtx([{ externalId: "1", post: true }], config);
 		await source.start(ctx);
 		expect(cronMock.instances[0]?.cronTime).toBe("*/3 * * * *");
 
@@ -328,21 +389,82 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
-	// 验红:去掉 `start` 里 catch 那段清理(`started.stop()`),这条红(cron 一直开着,而登记表不会替来源停它)。
-	it("start 半路抛了:来源自己已经把引擎停掉、摘掉已挂上的把手,dynamic() 是 undefined", async () => {
-		const { deps, config } = makeDeps();
+	// 运行中由好变坏没有真实路径(写集成段的口都先过格式),这里用假读口造出来:照同一条规矩「哪格坏停哪样」。
+	// 验红:`applyDynamic` 读不懂、引擎在的那一支什么都不做 → 动态不停;`applyLoginCheck` 不传 0 → 心跳不停。
+	it("运行中动态与登录检查那两格从读得懂变成读不懂:引擎被停、dynamic() 回 undefined、报了问题;登录检查收到 0", async () => {
+		const { deps, config, setHealthCheckMs } = makeDeps();
 		const source = createBiliSource(deps);
-		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
-		// 引擎已 start(cron 起来了),再抛:模拟挂名单回调那一步失败。
-		(ctx as { onSubscriptionsChanged: unknown }).onSubscriptionsChanged = () => {
-			throw new Error("挂回调炸了");
+		const { ctx } = makeCtx([{ externalId: "1", post: true }], config);
+		await source.start(ctx);
+		expect(source.dynamic()?.isActive).toBe(true);
+		setHealthCheckMs.mockClear();
+
+		config.setFailure(fail("invalid", "文件读不懂", { issues: [{ message: "Unexpected end" }] }));
+
+		expect(source.dynamic()).toBeUndefined();
+		expect(cronMock.instances[0]?.isActive).toBe(false);
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
+		const reported = vi.mocked(ctx.reportProblem).mock.calls.map(([p]) => p.code);
+		expect(reported).toEqual(["dynamic_settings_invalid", "login_check_settings_invalid"]);
+		await source.stop();
+	});
+
+	// 验红:把 `applyDynamic` 里的 `ctx.resolveProblem` 挪到 `made.start()` 之前,这条红(起不来也把问题清了)。
+	it("晚起时造引擎抛了别的错:没有往外抛、那一条问题还在、下一次设置变了再试", async () => {
+		const { deps, config } = makeDeps();
+		config.setRaw({ dynamicCron: 123, healthCheckMinutes: 30 });
+		const source = createBiliSource(deps);
+		const { ctx, logger } = makeCtx([{ externalId: "1", post: true }], config);
+		await source.start(ctx);
+		expect(source.dynamic()).toBeUndefined();
+		const resolved = vi.mocked(ctx.resolveProblem);
+		resolved.mockClear();
+
+		// 引擎一起来就读名单:让名单读口炸一次。
+		const roster = ctx.subscriptions;
+		(ctx as { subscriptions: unknown }).subscriptions = () => {
+			throw new Error("名单炸了");
 		};
-		await expect(source.start(ctx)).rejects.toThrow("挂回调炸了");
+		expect(() => config.set({ dynamicCron: "*/5 * * * *" })).not.toThrow();
+
+		expect(source.dynamic()).toBeUndefined();
+		expect(cronMock.instances.every((c) => !c.isActive)).toBe(true);
+		expect(resolved).not.toHaveBeenCalledWith(
+			expect.objectContaining({ code: "dynamic_settings_invalid" }),
+		);
+		expect(logger.error.mock.calls.some(([m]) => String(m).includes("按新设置重来时抛错"))).toBe(
+			true,
+		);
+
+		// 下一次变化再试:这回名单读得出来,引擎起来、问题清掉。
+		(ctx as { subscriptions: unknown }).subscriptions = roster;
+		config.set({ dynamicCron: "*/9 * * * *" });
+		expect(source.dynamic()?.isActive).toBe(true);
+		expect(resolved).toHaveBeenCalledWith({ code: "dynamic_settings_invalid", notify: false });
+		await source.stop();
+	});
+
+	// 验红:去掉 `start` 里 catch 那段清理(`stopEngine()` / `setHealthCheckMs(0)` / 摘把手 / `started = false`),这条红
+	// (cron 一直开着、心跳一直挂着、再 start 抛「already started」,而登记表不会替来源收拾)。
+	it("start 半路抛了(动态已起、登录检查那一步炸了):来源自己什么都没留下,能重来", async () => {
+		const { deps, config, setHealthCheckMs } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, watchDisposed } = makeCtx([{ externalId: "1", post: true }], config);
+		// 动态引擎已 start(cron 起来了),再抛:模拟登录检查那一步的口炸了。
+		setHealthCheckMs.mockImplementationOnce(() => {
+			throw new Error("挂心跳炸了");
+		});
+		await expect(source.start(ctx)).rejects.toThrow("挂心跳炸了");
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 		expect(source.dynamic()).toBeUndefined();
-		expect(config.listeners()).toBe(0);
+		expect(watchDisposed).toHaveBeenCalledTimes(1);
+		expect(setHealthCheckMs).toHaveBeenLastCalledWith(0);
+		expect(deps.problems.attach).not.toHaveBeenCalled();
+		// 设置再变:被摘掉的订阅不会造出新的引擎
+		config.set({ dynamicCron: "*/9 * * * *" });
+		expect(cronMock.instances).toHaveLength(1);
 		// 能重来
-		const fresh = makeCtx([{ externalId: "1", post: true }]);
+		const fresh = makeCtx([{ externalId: "1", post: true }], config);
 		await source.start(fresh.ctx);
 		expect(source.dynamic()).toBeDefined();
 		await source.stop();

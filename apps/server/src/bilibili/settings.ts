@@ -6,19 +6,18 @@
  * `loginCheckIntervalMinutes`。0.x 还有第三格 `userAgent`(自定义 UA),已删:浏览器身份一律由 `packages/http` 生成,UA 与
  * `sec-ch-ua` 永远配套(ADR-0025 决策 7);格式不是 strict,老文件 / 老备份里带着它读进来时被剥掉。
  *
- * 读法是过渡:3a 起 B 站从自己的 `ctx.settings(schema)` 拿这一份,{@link settingsOf} 与 {@link watchSettings}
- * 到时一起换掉。导出的函数名不带「B 站」:模块路径就是命名空间。
+ * 读法:来源在 `start` 里经 `ctx.settings(schema)` 各读各的格({@link BiliDynamicSettingsSchema}、
+ * {@link BiliLoginCheckSettingsSchema}),哪格读不懂停哪样。
  */
 
 import {
 	BILIBILI_SOURCE_KEY,
 	DEFAULT_DYNAMIC_CRON,
 	DEFAULT_HEALTH_CHECK_MINUTES,
-	type Disposable,
 } from "@bilibili-notify/internal";
 import { CronTime } from "cron";
 import { z } from "zod";
-import type { ConfigStore, IntegrationSettingsSegment } from "../config/store.js";
+import type { IntegrationSettingsSegment } from "../config/store.js";
 
 export const BiliSettingsSchema = z.object({
 	/**
@@ -55,27 +54,16 @@ export const settingsSegment: IntegrationSettingsSegment<BiliSettings> = {
 	},
 };
 
-/** 此刻的设置。 */
-export function settingsOf(store: Pick<ConfigStore, "getIntegrationSettings">): BiliSettings {
-	return store.getIntegrationSettings(settingsSegment);
-}
-
 /**
- * 这一份设置真的变了才叫 `apply(prev, next)`。集成的设置只有一档 `config-changed`(`integration-settings`),
- * 别的集成的设置变了也会来,这里自己比。
+ * 动态那一样读的格:只有 `dynamicCron`,且比读盘 schema 严一道「能解析」(与动态引擎实际排程用的同一个解析器)。
+ * 读盘 schema 认一条解析不了的老 cron 是好的(面板照旧显示盘上那串原文),但读它的人不能拿它去造一个不拉的引擎 ——
+ * 读不过就停动态、问题表里说清。其余格(登录检查那一格)坏没坏,这里看不见。
  */
-export function watchSettings(
-	store: Pick<ConfigStore, "getIntegrationSettings" | "onChange">,
-	apply: (prev: BiliSettings, next: BiliSettings) => void,
-): Disposable {
-	let prev = settingsOf(store);
-	return store.onChange((scope) => {
-		if (scope !== "integration-settings") return;
-		const next = settingsOf(store);
-		// 都是 schema 解析出来的规范形态,键序一致,整份比字符串就够。
-		if (JSON.stringify(next) === JSON.stringify(prev)) return;
-		const before = prev;
-		prev = next;
-		apply(before, next);
-	});
-}
+export const BiliDynamicSettingsSchema = z.object({
+	dynamicCron: BiliSettingsSchema.shape.dynamicCron.refine(isParsableCron, {
+		message: "不是合法的 cron 表达式",
+	}),
+});
+
+/** 登录检查那一样读的格:只有 `healthCheckMinutes`,与读盘 schema 同一个格 schema。 */
+export const BiliLoginCheckSettingsSchema = BiliSettingsSchema.pick({ healthCheckMinutes: true });

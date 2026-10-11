@@ -283,7 +283,10 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		async run(params) {
 			const sub = pickSub(params);
 			const engine = deps.dynamic();
-			if (!engine) throw new DevParamError("动态引擎还没起来(没登录?),这会儿造了也没人来捡");
+			if (!engine)
+				throw new DevParamError(
+					"动态引擎还没起来(没登录,或动态那一格设置读不懂),这会儿造了也没人来捡",
+				);
 			const kind = String(params.type ?? "word") as Kind;
 			seq += 1;
 			const fake = buildFake({

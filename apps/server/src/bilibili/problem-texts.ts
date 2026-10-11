@@ -8,6 +8,13 @@
  *
  * 口吻是女仆风格(主人定稿):交互与提示用女仆口吻,不加颜文字。
  */
+/**
+ * 设置读不懂那两条的末尾一句,**只在面板真的显示默认值时才加**(配置仓把那一格隔离了:类型错、越界、整个文件读不懂)。
+ * 一条解析不了的 cron 字符串读盘时被当成好的,面板显示的是盘上那串原文,不加。
+ */
+const PANEL_SHOWS_DEFAULT =
+	"面板上那一格现在显示的是默认值，不是文件里写的那个；就想用默认值的话，先改成别的保存一次再改回来。";
+
 export const PROBLEM_TEXTS = {
 	/** 登录失效(运行中掉了,或开机发现存着的登录已失效):私聊 + 进表。 */
 	loginExpired: {
@@ -50,6 +57,28 @@ export const PROBLEM_TEXTS = {
 		danmakuConnect: "弹幕连接建立失败",
 		/** 重连的秒级退避用完,放弃监听。 */
 		gaveUp: "连接持续失败，重试 5 次后放弃",
+	},
+	/**
+	 * 设置读不懂的原因那半句:自己那一格坏了 / 整个设置文件读不懂。`reason` 是 zod 或 JSON 解析的原话,
+	 * 不带文件内容;格名用面板上的叫法、括号里带键名(主人要照着这句话去系统页找那一格)。
+	 */
+	settingsCause: {
+		cell: (label: string, key: string, reason: string) =>
+			`B 站设置里「${label}」那一格（${key}）女仆读不懂：${reason}`,
+		file: (reason: string) =>
+			`B 站的设置文件（config/settings/bilibili.json）不是合法的 JSON，女仆读不懂：${reason}`,
+	},
+	/** 动态那一格读不懂(或整个文件读不懂):只进表,不私聊。`panelShowsDefault` 见 {@link PANEL_SHOWS_DEFAULT}。 */
+	dynamicSettingsInvalid: {
+		notify: false,
+		text: (cause: string, panelShowsDefault: boolean) =>
+			`主人，${cause}，所以动态先停着没在拉；登录、登录检查和直播都照常。到面板系统页把「动态检查频率」改成想要的写法保存一下，女仆马上接着拉。${panelShowsDefault ? PANEL_SHOWS_DEFAULT : ""}`,
+	},
+	/** 登录检查那一格读不懂(或整个文件读不懂):只进表,不私聊。 */
+	loginCheckSettingsInvalid: {
+		notify: false,
+		text: (cause: string, panelShowsDefault: boolean) =>
+			`主人，${cause}，所以定时的登录检查先停着；登录本身、动态和直播都照常，登录真的失效了女仆照样会发现。到面板系统页把「登录心跳间隔」改成 5 到 180 之间的分钟数保存一下就好。${panelShowsDefault ? PANEL_SHOWS_DEFAULT : ""}`,
 	},
 	/** 直播间受限(加密、付费、测试房、没权限):私聊 + 进表。`reason` 是 B 站给的原因。 */
 	liveRoomRestricted: {
