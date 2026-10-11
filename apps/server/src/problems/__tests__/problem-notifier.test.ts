@@ -1,7 +1,7 @@
 /**
  * 问题通知器:听问题表的变化,把 `notify` 为真的问题私聊给主人。
  *
- * - 节流键是 报的人 + code(不含对象),窗口 60 秒;「已恢复」另用一张表、各算各的。
+ * - 节流键是 报的人 + code(不含对象),窗口 60 秒;「已恢复」不限流:真说过的清掉时一定说一句。
  * - 「真私聊过」= `notifyMaster` 回了 ok。节流时间戳只在送到时才记,否则再送会被自己的节流吞掉。
  * - 没送到、且失败码属于「稍后可重试」的,问题还开着就按 10 秒 / 30 秒 / 60 秒 / 5 分钟 / 15 分钟再送,用完记 warn。
  * - 清掉时只有真私聊过的才补「恢复」:发这条问题自带的 `recoveryMessage`(私聊出去那一刻存下的那句),没带的用通用说法
@@ -590,7 +590,7 @@ describe("已恢复", () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
-	it("「已恢复」另用一张节流表:问题刚发过,60 秒内修好照样补;同键 60 秒内第二条恢复被吞", async () => {
+	it("「已恢复」不限流:问题刚发过,60 秒内修好照样补;同键 60 秒内第二条恢复也照发", async () => {
 		const { table, notify } = setup();
 		open(table, { about: { subscriptionId: "s1" }, code: "stopped", message: "房间 1" });
 		await flush();
@@ -610,7 +610,9 @@ describe("已恢复", () => {
 		table.resolve({ reporter: "src", about: { subscriptionId: "s2" }, code: "stopped" });
 		table.resolve({ reporter: "src", about: { subscriptionId: "s3" }, code: "stopped" });
 		await flush();
-		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(notify).toHaveBeenNthCalledWith(1, `${GENERIC_RECOVERY_PREFIX}房间 2`);
+		expect(notify).toHaveBeenNthCalledWith(2, `${GENERIC_RECOVERY_PREFIX}房间 3`);
 	});
 
 	it("「已恢复」没送到只记 warn,不再送", async () => {
@@ -1058,6 +1060,59 @@ describe("清过之后的沉淀", () => {
 		expect(texts(notify)).toEqual(["房间 0", recovered(0)]);
 		await advance(60 * 60_000);
 		expect(notify).toHaveBeenCalledTimes(2);
+	});
+
+	// 验红:把「已恢复」的 60 秒节流加回去,前两条红;「说过的才补」那一条改成「每条清掉的都补」才红。
+	it("同键三条、最早那条说过,一个一个修好(间隔 = 沉淀时间):每条被说出去的都有恢复句,最后一句不是「停了」", async () => {
+		const { table, notify } = setup();
+		for (let n = 0; n < 3; n++) open(table, stopped(n));
+		await flush();
+		await advance(60_000 - CLOSE_SETTLE_MS);
+
+		table.resolve(key(0));
+		await advance(CLOSE_SETTLE_MS);
+		table.resolve(key(1));
+		await advance(60_000);
+		table.resolve(key(2));
+		await advance(60 * 60_000);
+
+		expect(texts(notify)).toEqual([
+			"房间 0",
+			recovered(0),
+			"房间 1",
+			recovered(1),
+			"房间 2",
+			recovered(2),
+		]);
+	});
+
+	it("两条都说过的问题在 10 秒内先后清掉:两句恢复都发", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		await advance(60_000);
+		open(table, stopped(1));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", "房间 1"]);
+
+		table.resolve(key(0));
+		await advance(10_000);
+		table.resolve(key(1));
+		await flush();
+
+		expect(texts(notify)).toEqual(["房间 0", "房间 1", recovered(0), recovered(1)]);
+	});
+
+	it("十条同键问题同一拍开(只说了一条)、同一拍全部修好:恢复句只有一句,没说过的不补", async () => {
+		const { table, notify } = setup();
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0"]);
+
+		for (let n = 0; n < 10; n++) table.resolve(key(n));
+		await advance(60 * 60_000);
+
+		expect(texts(notify)).toEqual(["房间 0", recovered(0)]);
 	});
 
 	it("清一批之后没被清的那条:沉淀期过后补说一次,不提前", async () => {

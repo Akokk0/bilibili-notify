@@ -18,7 +18,8 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  *
  * - **窗口**:同一把键,上一句**送到**之后 {@link NOTIFY_WINDOW_MS} 之内不再发问题私聊;有一条在途时也不发
  *   (落定后再对账)。窗口只在送到那一刻才记:没送到就记的话,下面的再送会被自己的窗口吞掉。
- *   「已恢复」另用一张表,窗口各算各的 —— 共用的话,一分钟内修好的事就不会被告知。
+ *   「已恢复」不受窗口管、也不限流:恢复句只对真说过的问题发,而问题私聊本身同键 60 秒至多一条,
+ *   恢复句的条数天然被压着;再限流,后说出去的那条修好时恢复句被吞,主人听到的最后一句就成了「停了」。
  * - **欠着的** = 开着、要私聊、没说过、没有被盖住、也没有被记成「不再说」的问题。同键欠着好几条只说最早开的那一条。
  * - **被盖住** = 这条被窗口吞掉,而吞掉它的那一句所属的问题**还开着、且那一句真送到了**(十个房间同时停监
  *   只说一条)。盖它的那条被清掉、挡住它的其实是一条已清的旧事留下的窗口、盖它的那一句最终没送到:
@@ -51,8 +52,6 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  *   那句话说的是已经清掉的那一条,送达后照旧对它补「已恢复」。
  *
  * 已知的缺口(定了不修):
- * - 同键好几条一个一个修好:第一句「已恢复」之后轮到下一条被说出去,它随后也修好了,而它的「已恢复」落在
- *   「已恢复」那张节流表的窗口里被吞 —— 主人听到的最后一句是「停了」,其实都好了。
  * - 键停下之后只有旧的欠着、再没有新的一条,也没有说过的被清掉、没有恢复句送到:那几条一直没人说。
  * - 结果不明而被记成「不再说」的那一条,就算其实没送到、通道后来也好了,也不会补(宁可少说一句,不重复说)。
  */
@@ -144,35 +143,12 @@ function throttleKey(problem: { reporter: string; code: string }): string {
 	return JSON.stringify([problem.reporter, problem.code]);
 }
 
-/** 「已恢复」的节流表:最近一次送到的时刻 + 正在发的键。 */
-function createRecoveryThrottle(now: () => number) {
-	const lastSentAt = new Map<string, number>();
-	const inFlight = new Set<string>();
-	return {
-		/** 窗口里(含正在发)? */
-		blocked(key: string): boolean {
-			if (inFlight.has(key)) return true;
-			const last = lastSentAt.get(key);
-			return last !== undefined && now() - last < NOTIFY_WINDOW_MS;
-		},
-		begin(key: string): void {
-			inFlight.add(key);
-		},
-		/** 发完了;送到了才记时刻。 */
-		end(key: string, delivered: boolean): void {
-			inFlight.delete(key);
-			if (delivered) lastSentAt.set(key, now());
-		},
-	};
-}
-
 export function createProblemNotifier(options: CreateProblemNotifierOptions): Disposable {
 	const { logger, serviceCtx } = options;
 	const now = options.now ?? Date.now;
 	/** 开着的问题,按开的先后(`Map` 的插入序)。 */
 	const entries = new Map<string, ProblemEntry>();
 	const throttles = new Map<string, ThrottleState>();
-	const recoveryThrottle = createRecoveryThrottle(now);
 	let disposed = false;
 
 	async function deliver(text: string): Promise<DeliveryResult> {
@@ -344,16 +320,8 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		sentRecovery: string | undefined,
 	): void {
 		const key = throttleKey(problem);
-		if (recoveryThrottle.blocked(key)) {
-			logger.debug(
-				`[problems] 「已恢复」被节流吞掉 reporter=${problem.reporter} code=${problem.code}`,
-			);
-			return;
-		}
-		recoveryThrottle.begin(key);
 		serviceCtx.track(
 			deliver(sentRecovery ?? `${GENERIC_RECOVERY_PREFIX}${sentText}`).then((result) => {
-				recoveryThrottle.end(key, result.ok);
 				if (disposed) return;
 				if (!result.ok) {
 					logger.warn(
