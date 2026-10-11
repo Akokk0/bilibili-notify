@@ -1,4 +1,4 @@
-import type { MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import type { IntegrationContext, MessageBus, ServiceContext } from "@bilibili-notify/internal";
 import { Api, LoginFlow, type LoginSnapshot } from "../bilibili/api/index.js";
 import { createBiliContext, REFRESH_TOKEN_KEY } from "../bilibili/context.js";
 import type { IntegrationStore } from "../integration-store/store.js";
@@ -26,6 +26,11 @@ const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
 export interface AuthSystem {
 	readonly api: Api;
 	readonly flow: LoginFlow;
+	/**
+	 * B 站集成的上下文(登录这一套建好的那个),按公共五格的类型交出去:核心在类型上拿不到 `http` 与 `cookies`。
+	 * 入口递给 `compose.ts`,来源的上下文建在它之上。
+	 */
+	readonly integration: IntegrationContext;
 	/** Trigger a fresh QR login session. Renders the QR PNG using the `qrcode` npm dep. */
 	beginLogin(): Promise<void>;
 	/** Force a cookie refresh check against bilibili. */
@@ -153,6 +158,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		return {
 			api,
 			flow: flowFinal,
+			integration: ctx,
 			beginLogin,
 			refreshCookies,
 			logout,

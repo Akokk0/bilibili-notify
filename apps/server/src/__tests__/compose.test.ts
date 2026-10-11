@@ -1,18 +1,27 @@
 /**
  * 🔴 **组装根 `compose.ts` 的接线要有自己的守卫。**
  *
- * 零件(开发场景、登记表)各自的测试全绿,证明不了 `compose.ts` 真用对了认领键、真只挑 B 站订阅、
- * 真没在门没开时提前调工厂 —— 这些剪断了,别的测试一条都不会红。这里用真的 `createBiliDevtools`
- * (测试进程里解析到的是真入口,换桩只挂在打包配置上)外面包一层 spy,逐条钉。
+ * 零件(开发场景、登记表、B 站来源)各自的测试全绿,证明不了 `compose.ts` 真用对了认领键、真只挑 B 站订阅、
+ * 真没在门没开时提前调工厂、真把同一个壳递给了来源和场景 —— 这些剪断了,别的测试一条都不会红。
+ * 这里用真的 `createBiliDevtools`(测试进程里解析到的是真入口,换桩只挂在打包配置上)外面包一层 spy,
+ * 来源用真的 B 站来源 + 真的 `DynamicEngine`(假 `Api`,全程不外连),逐条钉。
  */
 
-import { BILIBILI_SOURCE_KEY } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	fail,
+	type IntegrationContext,
+	type Logger,
+	type PostReport,
+	type SourceContext,
+	type SourceSubscriptionView,
+} from "@bilibili-notify/internal";
 import type { Subscription } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../bilibili/api/index.js";
 import { createBiliDevtools } from "../bilibili/devtools/index.js";
-import type { DynamicEngine } from "../bilibili/dynamic/index.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
+import { BiliSettingsSchema } from "../bilibili/settings.js";
 import { composeBuiltinIntegrations } from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
@@ -36,15 +45,69 @@ function makeSub(
 	} as unknown as Subscription;
 }
 
-function compose(opts: { subs?: Subscription[]; dynamic?: () => DynamicEngine | undefined } = {}) {
+const EMPTY_FEED = {
+	code: 0,
+	message: "ok",
+	data: { has_more: false, items: [], offset: "", update_baseline: "", update_num: 0 },
+};
+
+const quietLogger = (): Logger => ({ info() {}, warn() {}, error() {}, debug() {} });
+
+/** 假来源上下文:`reportPost` 是 spy,名单列一个开着作品的人。 */
+function makeFakeSourceCtx(roster: SourceSubscriptionView[]) {
+	const reportPost = vi.fn<(externalId: string, report: PostReport) => void>();
+	const ctx = {
+		logger: quietLogger(),
+		subscriptions: () => roster,
+		onSubscriptionsChanged: () => ({ dispose() {} }),
+		reportPost,
+	} as unknown as SourceContext;
+	return { ctx, reportPost };
+}
+
+/** 假引擎:`registerSource` 里直接 `await entry.source.start(假 ctx)`,记下每次登记。 */
+function makeFakeEngines(ctx: SourceContext) {
+	const registered: Array<{
+		sourceKey: string;
+		source: { stop(): Promise<void> };
+		integration: IntegrationContext;
+	}> = [];
+	const engines = {
+		push: { notifyMaster: vi.fn(async () => ({ ok: true as const, latencyMs: 1 })) },
+		registerSource: vi.fn(async (entry: (typeof registered)[number] & { source: never }) => {
+			registered.push(entry);
+			await (entry.source as { start(ctx: SourceContext): Promise<void> }).start(ctx);
+		}),
+	};
+	return { engines: engines as never, registered, registerSource: engines.registerSource };
+}
+
+const integration = {
+	logger: quietLogger(),
+	signal: new AbortController().signal,
+	onDispose() {},
+	state: {},
+	secrets: {},
+} as unknown as IntegrationContext;
+
+function compose(
+	opts: { subs?: Subscription[]; api?: Api; fetchImage?: ReturnType<typeof vi.fn> } = {},
+) {
 	const subs = opts.subs ?? [];
-	return composeBuiltinIntegrations({
-		api: overridableApi({} as Api),
+	const api = overridableApi(opts.api ?? ({} as Api));
+	const fetchImage = opts.fetchImage ?? vi.fn(async () => fail("unavailable", "测试不联网"));
+	const deps = {
+		api,
 		auth: overridableApi({ status: () => ({ status: 0, msg: "" }) }),
+		integration,
 		bus: createNodeMessageBus(),
+		configStore: {
+			getIntegrationSettings: () => BiliSettingsSchema.parse({}),
+			onChange: () => ({ dispose() {} }),
+		} as never,
 		subscriptions: { list: () => subs },
 		subscriptionRuntime: {
-			get: (id) =>
+			get: (id: string) =>
 				id === "bilibili-100"
 					? ({
 							roomId: "5050",
@@ -52,11 +115,14 @@ function compose(opts: { subs?: Subscription[]; dynamic?: () => DynamicEngine | 
 						} as never)
 					: undefined,
 		},
-		dynamic: opts.dynamic ?? (() => undefined),
+		imageFetcher: { fetchImage } as never,
+		setTimeout: () => ({ dispose() {} }),
+		logger: quietLogger(),
 		live: () => undefined,
 		fans: () => undefined,
 		loginFlow: () => undefined,
-	});
+	};
+	return { builtins: composeBuiltinIntegrations(deps), deps, fetchImage };
 }
 
 beforeEach(() => {
@@ -66,12 +132,13 @@ beforeEach(() => {
 afterEach(() => {
 	// 工厂会装全局的直播连接观察钩子;测完摘掉,别漏给同进程里的别的测试。
 	observeLiveConnections(null);
+	vi.useRealTimers();
 });
 
 describe("composeBuiltinIntegrations · 开发场景", () => {
 	it("认领用的是 B 站的来源键:汇总出来的场景 id 全带 bilibili. 前缀", () => {
 		const providers = createDevtoolsProviderRegistry();
-		compose().provideDevtools(providers);
+		compose().builtins.provideDevtools(providers);
 		const ids = providers.scenarios().map((s) => s.id);
 		expect(ids.length).toBeGreaterThan(0);
 		expect(ids.every((id) => id.startsWith(`${BILIBILI_SOURCE_KEY}.`))).toBe(true);
@@ -85,7 +152,7 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 				makeSub("e0000000-0000-4000-8000-000000000001", "x1"),
 				makeSub("bilibili", "200", { enabled: false }),
 			],
-		}).provideDevtools(providers);
+		}).builtins.provideDevtools(providers);
 		const picked = vi.mocked(createBiliDevtools).mock.calls[0]?.[0].subs();
 		expect(picked).toEqual([
 			{
@@ -115,12 +182,97 @@ describe("composeBuiltinIntegrations · 开发场景", () => {
 	});
 });
 
-describe("composeBuiltinIntegrations · bilibili 那一面", () => {
-	it("bilibili.dynamic() 交回的就是入参 dynamic 给的那个,每次现取", () => {
-		let engine: DynamicEngine | undefined;
-		const builtins = compose({ dynamic: () => engine });
+describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
+	it("registerSources 按 B 站的键登记了一次,integration 就是入参那个;调第二次抛", async () => {
+		const { builtins } = compose();
+		const { engines, registered, registerSource } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(engines);
+		expect(registerSource).toHaveBeenCalledTimes(1);
+		expect(registered[0]?.sourceKey).toBe(BILIBILI_SOURCE_KEY);
+		expect(registered[0]?.integration).toBe(integration);
+		await expect(builtins.registerSources(engines)).rejects.toThrow("already registered");
+		await registered[0]?.source.stop();
+	});
+
+	it("登记抛了:错原样抛出去,不留半个来源(bilibili.dynamic 仍是 undefined),能重来", async () => {
+		const { builtins } = compose();
+		const boom = new Error("登记炸了");
+		const engines = {
+			push: { notifyMaster: vi.fn() },
+			registerSource: vi.fn().mockRejectedValueOnce(boom),
+		} as never;
+		await expect(builtins.registerSources(engines)).rejects.toBe(boom);
 		expect(builtins.bilibili.dynamic()).toBeUndefined();
-		engine = { lastFetchAt: () => 1 } as unknown as DynamicEngine;
-		expect(builtins.bilibili.dynamic()).toBe(engine);
+		const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(ok.engines);
+		expect(builtins.bilibili.dynamic()).toBeDefined();
+		await ok.registered[0]?.source.stop();
+	});
+
+	it("bilibili.dynamic() 登记之前是 undefined,registerSources 之后拿得到引擎,来源停下后又是 undefined", async () => {
+		const { builtins } = compose();
+		expect(builtins.bilibili.dynamic()).toBeUndefined();
+		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(engines);
+		expect(builtins.bilibili.dynamic()).toBeDefined();
+		await registered[0]?.source.stop();
+		expect(builtins.bilibili.dynamic()).toBeUndefined();
+	});
+
+	describe("场景那头与来源那头是同一个壳(造动态的场景一路走到来源的 reportPost)", () => {
+		const roster: SourceSubscriptionView[] = [{ externalId: "100", features: new Set(["post"]) }];
+		const setup = () => {
+			// 锚点 = 来源起来那一刻;场景造的假动态发布时间是「现在」,得晚于锚点至少一秒。
+			vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-11T00:00:00Z") });
+			const fetchAllDynamic = vi.fn(async () => EMPTY_FEED);
+			const fetchImage = vi.fn(async () => fail("unavailable", "测试不联网"));
+			const { builtins, deps } = compose({
+				subs: [makeSub("bilibili", "100")],
+				api: { fetchAllDynamic } as unknown as Api,
+				fetchImage,
+			});
+			const { ctx, reportPost } = makeFakeSourceCtx(roster);
+			const fake = makeFakeEngines(ctx);
+			const providers = createDevtoolsProviderRegistry();
+			builtins.provideDevtools(providers);
+			const scenario = providers.scenarios().find((s) => s.id === "bilibili.dynamic.post");
+			if (!scenario) throw new Error("没有造动态的场景");
+			return { builtins, deps, fake, scenario, reportPost, fetchImage };
+		};
+		const runScenario = async (
+			scenario: ReturnType<typeof setup>["scenario"],
+			params: Record<string, string> = { sub: "bilibili-100" },
+		) => {
+			vi.setSystemTime(new Date("2026-10-11T00:00:10Z"));
+			return scenario.run(params as never);
+		};
+
+		it("登记之前跑同一个场景 → 报「动态引擎还没起来」", async () => {
+			const { scenario } = setup();
+			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
+		});
+
+		it("登记之后跑 → 假 ctx 的 reportPost 收到那条假动态", async () => {
+			const { builtins, fake, scenario, reportPost } = setup();
+			await builtins.registerSources(fake.engines);
+			try {
+				await runScenario(scenario);
+				expect(reportPost).toHaveBeenCalledTimes(1);
+				expect(reportPost.mock.calls[0]?.[0]).toBe("100");
+			} finally {
+				await fake.registered[0]?.source.stop();
+			}
+		});
+
+		it("来源拿到的抓图服务就是入参那个(带图的动态会去抓图)", async () => {
+			const { builtins, fake, scenario, fetchImage } = setup();
+			await builtins.registerSources(fake.engines);
+			try {
+				await runScenario(scenario, { sub: "bilibili-100", type: "draw" });
+				expect(fetchImage).toHaveBeenCalled();
+			} finally {
+				await fake.registered[0]?.source.stop();
+			}
+		});
 	});
 });

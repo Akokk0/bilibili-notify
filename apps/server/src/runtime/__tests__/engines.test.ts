@@ -30,8 +30,11 @@ import type {
 	PlatformAdapter,
 	Post,
 	PostEvent,
+	PostReport,
 	ProbeResult,
 	PushTarget,
+	Source,
+	SourceContext,
 	Subscription,
 } from "@bilibili-notify/internal";
 import {
@@ -62,6 +65,7 @@ import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.j
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
+import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
 import { createNodeMessageBus } from "../message-bus.js";
@@ -71,7 +75,6 @@ import type { NodeServiceContext } from "../service-context.js";
 // ---- 引擎包 spy mocks(每次构造把实例塞进 H.<engine>,字段方法均为 vi.fn)----
 const H = vi.hoisted(() => ({
 	push: [] as any[],
-	dynamic: [] as any[],
 	live: [] as any[],
 	ai: [] as any[],
 	image: [] as any[],
@@ -91,26 +94,6 @@ vi.mock("@bilibili-notify/push", () => ({
 		}
 	},
 }));
-
-vi.mock("../../bilibili/dynamic/index.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../../bilibili/dynamic/index.js")>();
-	return {
-		// 纯函数走真实实现(动态卡配色解析):它们是没有副作用的规则,在这儿
-		// 镜像一份只会跟真实现漂移。只有引擎本体是替身。
-		resolveDynamicColorOptions: actual.resolveDynamicColorOptions,
-		DynamicEngine: class {
-			opts: any;
-			start = vi.fn();
-			stop = vi.fn();
-			updateConfig = vi.fn();
-			applyOps = vi.fn();
-			constructor(opts: any) {
-				this.opts = opts;
-				H.dynamic.push(this);
-			}
-		},
-	};
-});
 
 vi.mock("../../bilibili/live/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../../bilibili/live/index.js")>();
@@ -386,6 +369,34 @@ interface Ctx {
 		follow?: ReturnType<typeof vi.fn>;
 	};
 	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
+	/** 开机时 `registerSource` 登进去的假来源(`noSource` 时它存在但没登记)。 */
+	source: FakeSource;
+	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
+	sourceReady: Promise<void>;
+	sources: SourceRegistry;
+}
+
+/** 假来源:`start` 时记下来源上下文,`stop` 记一次。上下文上的三个方法都是真的(`createSourceContext` 建的)。 */
+interface FakeSource extends Source {
+	ctx?: SourceContext;
+	start: ReturnType<typeof vi.fn<(ctx: SourceContext) => Promise<void>>>;
+	stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
+	/** 假来源经上下文交作品。 */
+	reportPost(externalId: string, report: PostReport): void;
+}
+function makeFakeSource(): FakeSource {
+	const fake: FakeSource = {
+		descriptor: { postNoun: "动态" },
+		start: vi.fn(async (ctx: SourceContext) => {
+			fake.ctx = ctx;
+		}),
+		stop: vi.fn(async () => {}),
+		reportPost(externalId, report) {
+			if (!fake.ctx) throw new Error("假来源还没 start");
+			fake.ctx.reportPost(externalId, report);
+		},
+	};
+	return fake;
 }
 
 function setup(opts?: {
@@ -423,6 +434,8 @@ function setup(opts?: {
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
 	loginStatus?: BiliLoginStatus;
+	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
+	noSource?: boolean;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
 	dataDir?: string;
 	/** 换掉存储替身里的几个口子(登记进 track 的那组用例让写停在半路)。 */
@@ -457,7 +470,10 @@ function setup(opts?: {
 		current: () => ({ status: opts?.loginStatus ?? BiliLoginStatus.NOT_LOGIN, msg: "" }),
 	};
 	const subs = opts?.subs ?? [];
+	const sources = createSourceRegistry();
+	const source = makeFakeSource();
 	const runtime = createEngines({
+		sources,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
@@ -521,8 +537,30 @@ function setup(opts?: {
 			: {}),
 		...(opts?.onReportDiscrepancy ? { onReportDiscrepancy: opts.onReportDiscrepancy } : {}),
 	});
-	return { runtime, bus, serviceCtx, configStore, api, loginFlow };
+	// 登记即 start:`start` 与键的认领都在同一个同步段里发生(下面 await 的只是登记表的收尾)。
+	const sourceReady = opts?.noSource
+		? Promise.resolve()
+		: runtime.registerSource({
+				sourceKey: "bilibili",
+				source,
+				// 来源只用得到公共五格里的 logger;其余在这批用例里不被碰。
+				integration: { logger: serviceCtx.logger } as any,
+			});
+	lastSetup = {
+		runtime,
+		bus,
+		serviceCtx,
+		configStore,
+		api,
+		loginFlow,
+		source,
+		sourceReady,
+		sources,
+	};
+	return lastSetup;
 }
+/** 最近一次 `setup()` 的结果(`reportBili` 默认往它上面交作品)。 */
+let lastSetup: Ctx | null = null;
 
 /** structuredClone 当前 globals → mutate → 写回 store(模拟 ConfigStore.patch 后的快照)。 */
 /** 开机时 `forSubsystem(name, …)` 交出去的那个子上下文(按名字取)。 */
@@ -579,9 +617,11 @@ const bilibiliPost = (text = "正文", over: Partial<Post> = {}): Post => ({
 	text,
 	...over,
 });
-/** B 站动态引擎把一条作品交给核心入口:引擎的 `reportPost` 选项就是接线层给的那一个,走真的队列与真的装配。 */
-const reportBili = (uid: string, post: Post = bilibiliPost(), postId = "d1"): void =>
-	H.dynamic[0].opts.reportPost(uid, { postId, url: `https://t.bilibili.com/${postId}`, post });
+/** B 站来源把一条作品交给核心入口:走来源上下文的 `reportPost`(`registerSource` 建的那个),走真的队列与真的装配。 */
+const reportBili = (uid: string, post: Post = bilibiliPost(), postId = "d1"): void => {
+	if (!lastSetup) throw new Error("reportBili 要在 setup() 之后用");
+	lastSetup.source.reportPost(uid, { postId, url: `https://t.bilibili.com/${postId}`, post });
+};
 const biliSubOf = (uid = "1", id = `sub-${uid}`): Subscription =>
 	makeEmptySubscription({ id, identity: { sourceKey: "bilibili", externalId: uid } });
 /** 等登记进 `track` 的后台活全部落定(包括落定途中又登记的):凡断言「没推」都得先等它。 */
@@ -617,7 +657,6 @@ const TEMPLATE_GLOBALS = (template: string): GlobalConfig => {
 let active: Ctx | null = null;
 beforeEach(() => {
 	H.push.length = 0;
-	H.dynamic.length = 0;
 	H.live.length = 0;
 	H.ai.length = 0;
 	H.image.length = 0;
@@ -705,14 +744,15 @@ describe("createEngines — 大航海徽章图标接线", () => {
 });
 
 describe("createEngines — B 站图的抓图服务接线(3a-34)", () => {
-	// 验红:把 engines.ts 里递给 DynamicEngine / LiveEngine 的 `imageFetcher: opts.imageFetcher` 各删一次,对应那条红
-	// (动态卡 / 直播卡出卡前没人去抓图,卡上的图只剩地址,出图器只认引用 —— 一张图都没有而门禁全绿)。
-	it("同一份抓图服务分别递给 DynamicEngine 与 LiveEngine", () => {
+	// 验红:把 engines.ts 里递给 LiveEngine 的 `imageFetcher: opts.imageFetcher` 删掉,这条红
+	// (直播卡出卡前没人去抓图,封面只剩地址,出图器只认引用 —— 一张图都没有而门禁全绿)。
+	// 动态那一半:来源把 `deps.imageFetcher` 递给引擎在 `bilibili/__tests__/source.test.ts`,
+	// `compose.ts` 把入参那个递给来源在 `__tests__/compose.test.ts`。
+	it("抓图服务递给 LiveEngine", () => {
 		const imageFetcher = { fetchImage: vi.fn() } as unknown as NonNullable<
 			Parameters<typeof createEngines>[0]["imageFetcher"]
 		>;
 		setup({ imageFetcher });
-		expect(H.dynamic[0].opts.imageFetcher).toBe(imageFetcher);
 		expect(H.live[0].opts.imageFetcher).toBe(imageFetcher);
 	});
 });
@@ -1032,7 +1072,7 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 		expect(await mainTexts()).toEqual(["阿绫更新了\nhttps://t.bilibili.com/d1"]);
 	});
 
-	// 验红:把 engines.ts 里 `subscriptionsOfUid` 的 `listByIdentity` 换回 `findByIdentity` 取一条,这条红。
+	// 验红:把 `subscriptions/source-context.ts` 里 `reportPost` 的 `listByIdentity` 换回 `findByIdentity` 取一条,这条红。
 	it("同一个 uid 配了两条订阅(遗留的重复订阅):按身份展开,每条各一份 —— 两次推送、两个订阅 id、post-detected 两次", async () => {
 		const first = biliSubOf("1", "sub-first");
 		const second = biliSubOf("1", "sub-second");
@@ -1101,10 +1141,10 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 	});
 
-	// 「来源在跑」这个条件只管拓展订阅(B 站订阅恒在):拓展停了,等着的作品不补(决策 61)。
-	// 验红:删掉 engines.ts 里 `sourceRunning` 那个函数体里的 `extensionSources?.running(…)` 一支(改成恒真),拓展那条红;
-	// 删掉 `fromBilibili(sub) ||` 一支,B 站那条红。
-	it("来源没在跑:拓展订阅的作品不推,B 站订阅不受这个条件牵连;对照:拓展在跑就推", async () => {
+	// 「来源在跑」读口问的是来源登记表(内置来源)与拓展读口(拓展订阅):拓展停了,等着的作品不补(决策 61);
+	// B 站来源没登记(或撤了)也不推。
+	// 验红:把 engines.ts 里 `sourceRunning` 改成恒真,拓展那段与 B 站那段都红。
+	it("来源没在跑:拓展订阅与没登记的 B 站来源的作品都不推;对照:拓展在跑、B 站来源登了就推", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		let running = false;
 		const c = setup({
@@ -1130,9 +1170,19 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 		await settleTracked(c);
 		expect(H.push[0].push).not.toHaveBeenCalled(); // 拓展没在跑
 
-		reportBili("1"); // B 站订阅不看拓展在不在跑
+		// B 站来源在登记表里:不看拓展在不在跑。
+		reportBili("1");
 		await settleTracked(c);
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+
+		// 登记表里暂时认不出 B 站来源(用读口模拟「没登记」):同一条订阅的作品被丢。
+		await c.sourceReady;
+		const realGet = c.sources.get;
+		c.sources.get = (key) => (key === "bilibili" ? undefined : realGet(key));
+		reportBili("1", bilibiliPost("没人认领"), "d2");
+		await settleTracked(c);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		c.sources.get = realGet;
 
 		running = true;
 		extReport();
@@ -1228,8 +1278,40 @@ describe("createEngines — 作品过滤接线", () => {
 		return g;
 	};
 
+	// 验红:把 engines.ts 里 `dispose` 开头收 `sourceRegistrations` 的那一段挪到 `handles` 那一段之后,这条红
+	// (到那时作品入口那一排总线监听 `handles` 已经摘了)。
+	it("dispose 里来源的 stop() 早于作品入口那一排 handles 收尾:stop 同步段里总线上的监听还在", async () => {
+		const { c } = extSetup();
+		await c.sourceReady;
+		let liveListenerAlive = false;
+		c.source.stop.mockImplementation(async () => {
+			// `handles` 里有订阅变更 → 直播引擎的那条监听:它还在,说明 handles 还没收。
+			H.live[0].applyOps.mockClear();
+			c.bus.emit("subscription-changed", { ops: [] });
+			liveListenerAlive = H.live[0].applyOps.mock.calls.length > 0;
+		});
+		c.runtime.dispose();
+		expect(c.source.stop).toHaveBeenCalledTimes(1);
+		expect(liveListenerAlive).toBe(true);
+	});
+
+	// 验红:把 engines.ts 里 `const handles: Disposable[] = [postQueue]` 的 postQueue 拿掉,这条红。
+	it("dispose 关掉作品入口:关停之后拓展再交的作品不发 post-detected、不推;对照:关停之前交的照推", async () => {
+		const { c, sub } = extSetup();
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
+		c.bus.emit("subscription-reported", textReport(sub));
+		await vi.waitFor(() => expect(H.push[0].push).toHaveBeenCalledTimes(1));
+
+		c.runtime.dispose();
+		c.bus.emit("subscription-reported", textReport(sub));
+		await settleTracked(c);
+		expect(detected).toHaveLength(1);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+	});
+
 	// 验红:把 engines.ts 里 `filter: eff.filters` 换成空规则,这条红(B 站的作品也经同一份折叠)。
-	it("B 站引擎交来的作品按全局 defaults.filters 过滤:被挡的不出卡不推,没挡的照推", async () => {
+	it("B 站来源交来的作品按全局 defaults.filters 过滤:被挡的不出卡不推,没挡的照推", async () => {
 		const g = globalsWith({ blockKeywords: ["禁词"] });
 		const c = setup({ puppeteer: true, subs: [biliSubOf("1")], globals: g });
 		active = c;
@@ -1241,7 +1323,7 @@ describe("createEngines — 作品过滤接线", () => {
 		expect(H.image[0].generatePostCard.mock.calls[0]?.[0]).toMatchObject({ text: "正常的动态" });
 	});
 
-	it("改全局过滤:不经引擎热更,下一条作品立即按新的过滤(引擎的 config 里没有过滤了)", async () => {
+	it("改全局过滤:不经来源热更,下一条作品立即按新的过滤(过滤不在来源里)", async () => {
 		const c = setup({ puppeteer: true, subs: [biliSubOf("1")] });
 		active = c;
 		const video = bilibiliPost("视频", { video: { cover: {}, title: "一期", description: "" } });
@@ -1255,8 +1337,7 @@ describe("createEngines — 作品过滤接线", () => {
 		reportBili("1", video, "d2");
 		await settleTracked(c);
 		expect(H.push[0].push).toHaveBeenCalledTimes(1); // 新的过滤生效,第二条被挡
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
-		expect(H.dynamic[0].opts.config).not.toHaveProperty("filter");
+		expect(c.source.start).toHaveBeenCalledTimes(1); // 来源没被重启 / 重登
 	});
 
 	it("拓展作品:全局开着「屏蔽视频」,视频作品被挡(不出卡不推);没挡的类型照推", async () => {
@@ -1587,13 +1668,30 @@ describe("createEngines — getModuleState.live", () => {
 });
 
 describe("createEngines — boot wiring", () => {
-	it("默认 globals:push/dynamic 拉起,AI 与 image 不构造", () => {
+	it("createEngines 自己不起任何来源:不调 registerSource,来源的 start 一次都没被叫", () => {
+		const c = setup({ noSource: true });
+		active = c;
+		expect(c.source.start).not.toHaveBeenCalled();
+		expect(c.sources.get("bilibili")).toBeUndefined();
+	});
+
+	it("registerSource 之后:来源的 start 被叫一次,拿到的 ctx 上三个方法都在、名单现读不抛", async () => {
+		const c = setup();
+		active = c;
+		await c.sourceReady;
+		expect(c.source.start).toHaveBeenCalledTimes(1);
+		const ctx = c.source.ctx;
+		expect(typeof ctx?.subscriptions).toBe("function");
+		expect(typeof ctx?.onSubscriptionsChanged).toBe("function");
+		expect(typeof ctx?.reportPost).toBe("function");
+		expect(ctx?.subscriptions()).toEqual([]);
+	});
+
+	it("默认 globals:push 拉起,AI 与 image 不构造", () => {
 		const c = setup();
 		active = c;
 		expect(H.push).toHaveLength(1);
 		expect(H.push[0].start).toHaveBeenCalledTimes(1);
-		expect(H.dynamic).toHaveLength(1);
-		expect(H.dynamic[0].start).toHaveBeenCalledTimes(1);
 		expect(H.live).toHaveLength(1);
 		// 无订阅 → 初始 live view 为空 → live.start 不调用。
 		expect(H.live[0].start).not.toHaveBeenCalled();
@@ -1771,7 +1869,7 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 });
 
 describe("createEngines — config-changed globals 热重载", () => {
-	it("改 B 站设置(cron + 健康检查间隔):热推 health + dynamic,不碰 live.updateConfig", () => {
+	it("改 B 站设置(cron + 健康检查间隔):健康检查间隔热推到登录,不碰 live.updateConfig(cron 归 B 站来源)", () => {
 		const c = setup();
 		active = c;
 		patchBilibili(c, (b) => {
@@ -1780,7 +1878,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
-		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(45 * 60_000);
 		// B 站设置不是核心设置(scope 是 integration-settings 不是 globals)→ 不重算 master。
 		// (从前这几格住在 `app` 里,走 globals 那一档,setMaster 顺带被调一次。)
@@ -1794,6 +1891,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 	// `app` 曾是一道粗门:只要 section 里任一字段变,门内 setLevel×5 + setHealthCheckMs 等
 	// 就无差别全做一遍。于是改个 cron 会顺手把登录健康检查的 setInterval **销毁重建**
 	// (相位被白白打乱)。下面几条按字段钉死。
+	// cron 本身要生效(引擎换节奏)在 `bilibili/__tests__/source.test.ts`。
 	it("只改 dynamicCron:不重排健康检查、不动日志等级", () => {
 		const c = setup();
 		active = c;
@@ -1803,7 +1901,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
-		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 本身要生效
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:181)
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled(); // boot 不调,这次也不该调
 	});
@@ -1832,7 +1929,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 			"main",
 			"extra",
 		]);
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("只改 logging.level:热推 5 个子系统的 setLevel", () => {
@@ -1916,7 +2012,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
-		expect(H.dynamic[0].updateConfig).toHaveBeenCalledTimes(1); // cron 的改动确实被处理了
 		expect(H.ai[0].updateConfig).not.toHaveBeenCalled();
 	});
 
@@ -1956,17 +2051,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(c.runtime.commentary).toBeNull();
 	});
 
-	it("新 dynamicCron 透传进 DynamicEngineConfig", () => {
-		const c = setup();
-		active = c;
-		patchBilibili(c, (b) => {
-			b.dynamicCron = "*/7 * * * *";
-		});
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-		const cfg = H.dynamic[0].updateConfig.mock.calls.at(-1)?.[0];
-		expect(cfg.dynamicCron).toBe("*/7 * * * *");
-	});
-
 	it("改全局 templates.post/postVideo → 不经引擎热更,下一条作品就用新模板(无 per-UP 覆盖的订阅不再用旧模板)", async () => {
 		// 回归:从前引擎快照里留着模板,触发条件漏了 templatesChanged 就一直用旧的;现在每条作品现折。
 		const c = setup({ subs: [biliSubOf("1")], globals: TEMPLATE_GLOBALS("旧 {name}") });
@@ -1983,7 +2067,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 			"旧 阿绫\nhttps://t.bilibili.com/d1",
 			"🔔 阿绫\nhttps://t.bilibili.com/d2",
 		]);
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("回归:改全局 cards.liveCoverImageIds → live config 带 defaultLiveCoverImages(无覆盖的 UP 靠它轮换)", () => {
@@ -2093,14 +2176,13 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 	});
 
-	it("回归:只改全局 cardSkin → live.applyOps 收到刷新;作品不经引擎,下一张卡就带新皮肤 id(引擎不再被强刷)", async () => {
+	it("回归:只改全局 cardSkin → live.applyOps 收到刷新;作品不经来源,下一张卡就带新皮肤 id", async () => {
 		const sub = makeEmptySubscription({
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
 		const c = setup({ subs: [sub], puppeteer: true });
 		active = c;
-		H.dynamic[0].applyOps.mockClear();
 		H.live[0].applyOps.mockClear();
 		patchGlobals(c, (g) => {
 			g.defaults.cardSkin = "skin-abc";
@@ -2111,9 +2193,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(liveOps).toHaveLength(1);
 		expect(liveOps[0]).toMatchObject({ kind: "update", uid: "1" });
 		expect(liveOps[0].changes[0].cardSkin).toBe("skin-abc");
-		// 作品设置在核心里现折,引擎的名单与皮肤无关。
-		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
-
 		reportBili("1");
 		await settleTracked(c);
 		expect(H.image[0].generatePostCard.mock.calls.at(-1)?.[1]).toMatchObject({
@@ -2121,51 +2200,45 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 	});
 
-	// 引擎视图只剩 `post` 一格(真源是 enabled && features.post),全局的作品开关一翻,所有没单独覆盖的订阅都要进出引擎的名单。
-	// 这件事没有自己的门,全靠这段强刷:把开门条件换成别的、或整段删掉,全局把作品推送从关改成开之后引擎一直不产。
-	// 验红:把 engines.ts 里 `if (featuresChanged) { dynamic.applyOps(…) }` 整段删掉,这条红。
-	it("改全局 features.post:动态引擎的名单被强刷,每个订阅一个 update op,带上折好的 post(关 → false,再开 → true)", () => {
+	// 名单只列启用中的订阅、`features` 是折好的开关:全局的作品开关一翻,所有没单独覆盖的订阅在名单里的 `post` 都跟着翻。
+	// 这件事没有自己的门,全靠来源上下文听 `config-changed` 的 globals 一档并叫来源:断了这一段,
+	// 来源收不到通知、全局把作品推送从关改成开之后一直不产。
+	// 验红:把 `subscriptions/source-context.ts` 里 `config-changed` 那个监听整个删掉,这条红。
+	it("改全局 features.post:来源的名单回调被叫,此刻 ctx.subscriptions() 里那个人的 features 已不含 post(关),再开又有", async () => {
 		const sub = makeEmptySubscription({
 			id: "sub-1",
 			identity: { sourceKey: "bilibili", externalId: "1" },
 		});
+		sub.enabled = true;
 		const c = setup({ subs: [sub] });
 		active = c;
-		H.dynamic[0].applyOps.mockClear();
+		await c.sourceReady;
+		const ctx = c.source.ctx as SourceContext;
+		const seen: boolean[] = [];
+		ctx.onSubscriptionsChanged(() => {
+			seen.push(ctx.subscriptions()[0]?.features.has("post") ?? false);
+		});
 		patchGlobals(c, (g) => {
 			g.defaults.features.post = false;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: false }] },
-		]);
+		expect(seen).toEqual([false]);
 
 		patchGlobals(c, (g) => {
 			g.defaults.features.post = true;
 		});
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(2);
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: true }] },
-		]);
+		expect(seen).toEqual([false, true]);
 	});
 
-	it("别的全局设置变了(没动作品开关):动态引擎的名单不被强刷", () => {
-		const sub = makeEmptySubscription({
-			id: "sub-1",
-			identity: { sourceKey: "bilibili", externalId: "1" },
-		});
-		const c = setup({ subs: [sub] });
+	it("别的 scope 的 config-changed 不叫来源的名单回调", async () => {
+		const c = setup({ subs: [biliSubOf("1")] });
 		active = c;
-		H.dynamic[0].applyOps.mockClear();
-		patchGlobals(c, (g) => {
-			g.defaults.templates.post = "改了 {name}";
-			g.defaults.cardSkin = "skin-abc";
-			g.defaults.filters.blockVideos = true;
-		});
-		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
+		await c.sourceReady;
+		const fn = vi.fn();
+		c.source.ctx?.onSubscriptionsChanged(fn);
+		c.bus.emit("config-changed", { scope: "targets" });
+		expect(fn).not.toHaveBeenCalled();
 	});
 
 	// 直播拆键(⑬d):周期「正在直播」的开关、间隔与启动补报各是自己的一格,从 schedule 里搬出来。
@@ -2248,18 +2321,16 @@ describe("createEngines — config-changed globals 热重载", () => {
 		const c = setup();
 		active = c;
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
-		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 		expect(H.live[0].applyOps).not.toHaveBeenCalled();
 	});
 
-	it("targets scope:仅 push.setMaster,早退不触发 dynamic.updateConfig", () => {
+	it("targets scope:仅 push.setMaster,早退不触发 live.updateConfig", () => {
 		const c = setup();
 		active = c;
 		c.bus.emit("config-changed", { scope: "targets" });
 		expect(H.push[0].setMaster).toHaveBeenCalledTimes(1);
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
+		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("subscriptions / secrets scope:不 setMaster 不 updateConfig", () => {
@@ -2268,7 +2339,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "subscriptions" });
 		c.bus.emit("config-changed", { scope: "secrets" });
 		expect(H.push[0].setMaster).not.toHaveBeenCalled();
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 		expect(H.live[0].updateConfig).not.toHaveBeenCalled();
 	});
 });
@@ -2276,12 +2346,11 @@ describe("createEngines — config-changed globals 热重载", () => {
 // B 站自己的设置(`config/settings/bilibili.json`)走 `integration-settings` 这一档,与核心设置的 `globals`
 // 各管各的:这一档只认 B 站那两格,没变的格不动;核心设置变了(日志等级之类)也不波及 B 站那两样。
 describe("createEngines — config-changed integration-settings(B 站设置)", () => {
-	it("事件来了但 B 站设置没变(别的集成改了):不 updateConfig、不重排健康检查", () => {
+	it("事件来了但 B 站设置没变(别的集成改了):不重排健康检查", () => {
 		const c = setup();
 		active = c;
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 	});
 
@@ -2295,7 +2364,6 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledTimes(1);
 		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(90 * 60_000);
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 	});
 
 	it("只改核心设置的 logLevel:B 站那两样(cron / 健康检查)一个都不动", () => {
@@ -2307,15 +2375,9 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2); // 这一发确实被处理了(boot + 这次)
-		expect(H.dynamic[0].updateConfig).not.toHaveBeenCalled();
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 	});
-
-	it("启动期:DynamicEngine 的初始 config 带 B 站设置的 dynamicCron", () => {
-		const c = setup({ bilibili: { dynamicCron: "*/3 * * * *" } });
-		active = c;
-		expect(H.dynamic[0].opts.config.dynamicCron).toBe("*/3 * * * *");
-	});
+	// 「初始带 B 站设置里的 cron」「cron 变了引擎换节奏」在 `bilibili/__tests__/source.test.ts`。
 });
 
 describe("createEngines — AI 热重载三态", () => {
@@ -2431,11 +2493,14 @@ describe("createEngines — image 配色热更", () => {
 });
 
 describe("createEngines — 订阅 / 鉴权事件转译", () => {
-	it("subscription-changed:dynamic.applyOps + live.applyOps", () => {
+	it("subscription-changed:来源的名单回调被叫一次 + live.applyOps", async () => {
 		const c = setup();
 		active = c;
+		await c.sourceReady;
+		const fn = vi.fn();
+		c.source.ctx?.onSubscriptionsChanged(fn);
 		c.bus.emit("subscription-changed", { ops: [] });
-		expect(H.dynamic[0].applyOps).toHaveBeenCalledTimes(1);
+		expect(fn).toHaveBeenCalledTimes(1);
 		expect(H.live[0].applyOps).toHaveBeenCalledTimes(1);
 	});
 
@@ -2450,64 +2515,62 @@ describe("createEngines — 订阅 / 鉴权事件转译", () => {
 });
 
 describe("createEngines — dispose", () => {
-	it("dispose 停全引擎并解绑 bus(后续 config-changed 不再生效)", () => {
+	it("dispose 停全引擎与登记过的来源并解绑 bus(后续 config-changed 不再生效)", async () => {
 		const c = setup();
 		active = c;
-		const dyn = H.dynamic[0];
+		await c.sourceReady;
 		const live = H.live[0];
 		const push = H.push[0];
+		const fn = vi.fn();
+		c.source.ctx?.onSubscriptionsChanged(fn);
 		c.runtime.dispose();
 		active = null; // 避免 afterEach 二次 dispose
-		expect(dyn.stop).toHaveBeenCalledTimes(1);
+		expect(c.source.stop).toHaveBeenCalledTimes(1);
 		expect(live.stop).toHaveBeenCalledTimes(1);
 		expect(push.stop).toHaveBeenCalledTimes(1);
-		// bus handle 已解绑:dispose 后再发 config-changed 不应再 updateConfig。
+		// bus handle 已解绑:dispose 后再发 config-changed 不应再叫来源的名单回调。
 		c.bus.emit("config-changed", { scope: "globals" });
-		expect(dyn.updateConfig).not.toHaveBeenCalled();
+		expect(fn).not.toHaveBeenCalled();
+		expect(c.sources.get("bilibili")).toBeUndefined();
 	});
 
 	it("dispose 同样解绑 B 站设置的监听(后续 integration-settings 不再生效)", () => {
 		const c = setup();
 		active = c;
-		const dyn = H.dynamic[0];
 		c.runtime.dispose();
 		active = null;
 		patchBilibili(c, (b) => {
-			b.dynamicCron = "*/9 * * * *";
 			b.healthCheckMinutes = 45;
 		});
 		c.bus.emit("config-changed", { scope: "integration-settings" });
-		expect(dyn.updateConfig).not.toHaveBeenCalled();
 		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 engines.ts 里 `const handles: Disposable[] = [postQueue]` 的 postQueue 拿掉,这条红。
-	it("dispose 关掉作品入口:关停之后引擎再交的作品不发 post-detected、不推;对照:关停之前交的照推", async () => {
+	it("dispose 之后再让来源交一条:作品入口没收到,记了那行 error", async () => {
 		const c = setup({ subs: [biliSubOf("1")] });
 		active = c;
+		await c.sourceReady;
 		const detected: PostEvent[] = [];
 		c.bus.on("post-detected", (event) => detected.push(event));
-		reportBili("1", bilibiliPost("关停前"), "before");
-		await settleTracked(c);
-		expect(H.push[0].push).toHaveBeenCalledTimes(1);
-
 		c.runtime.dispose();
+		const errors = subsystemCtx(c, "dynamic").logger.error as ReturnType<typeof vi.fn>;
+		errors.mockClear();
 		reportBili("1", bilibiliPost("关停后"), "after");
 		await settleTracked(c);
-		expect(detected.map((e) => e.postId)).toEqual(["before"]);
-		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		expect(detected).toEqual([]);
+		expect(errors).toHaveBeenCalledTimes(1);
 	});
 
-	it("P2-I:dispose 幂等 — 二次调用(index.ts 显式 + onDispose 双路径)不重复 stop", () => {
+	it("P2-I:dispose 幂等 — 二次调用(index.ts 显式 + onDispose 双路径)不重复 stop", async () => {
 		const c = setup();
 		active = c;
-		const dyn = H.dynamic[0];
+		await c.sourceReady;
 		const live = H.live[0];
 		const push = H.push[0];
 		c.runtime.dispose();
 		c.runtime.dispose(); // 双调
 		active = null;
-		expect(dyn.stop).toHaveBeenCalledTimes(1);
+		expect(c.source.stop).toHaveBeenCalledTimes(1);
 		expect(live.stop).toHaveBeenCalledTimes(1);
 		expect(push.stop).toHaveBeenCalledTimes(1);
 	});
@@ -2569,10 +2632,12 @@ describe("createEngines — 背景轮换游标落盘", () => {
 	});
 });
 
-// 回归:禁用一个 UP 时,dynamic 与 live 必须同步停推。
+// 回归:禁用一个 UP 时,live 必须同步停推。
 // 此前 subscriptionOpsToLive 的 update 分支不看 sub.enabled,把禁用翻译成带
-// live:true 的 update op,LiveEngine(常驻 WS、事件驱动)listener 一直挂着照推;
-// dynamic 因有 cron getSubs() 兜底才显得「正常」。修复:op 翻译层显式 gate enabled。
+// live:true 的 update op,LiveEngine(常驻 WS、事件驱动)listener 一直挂着照推。
+// 修复:op 翻译层显式 gate enabled。动态那一半:名单只列启用中的订阅
+// (`subscriptions/__tests__/source-subscriptions.test.ts`)与引擎的 `syncSubscriptions`
+// (`bilibili/dynamic/__tests__/dynamic-engine.test.ts`)。
 describe("createEngines — 订阅禁用/启用转译", () => {
 	function makeSub(uid: string, enabled: boolean): Subscription {
 		const s = makeEmptySubscription({
@@ -2583,31 +2648,29 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		return s;
 	}
 
-	it("禁用订阅 update:live.applyOps 收到 delete、dynamic.applyOps 收到 post:false", () => {
+	it("禁用订阅 update:live.applyOps 收到 delete;来源的名单里没有这个人", async () => {
 		const sub = makeSub("100", false);
 		const c = setup({ subs: [sub] });
 		active = c;
+		await c.sourceReady;
 		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "100" }]);
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ kind: "update", uid: "100", changes: [{ scope: "dynamic", post: false }] },
-		]);
+		expect(c.source.ctx?.subscriptions()).toEqual([]);
 	});
 
-	it("启用订阅 update:live.applyOps 收到完整 update(非 delete),dynamic 为 post:true", () => {
+	it("启用订阅 update:live.applyOps 收到完整 update(非 delete);来源的名单里有这个人", async () => {
 		const sub = makeSub("200", true);
 		const c = setup({ subs: [sub] });
 		active = c;
+		await c.sourceReady;
 		c.bus.emit("subscription-changed", { ops: [{ kind: "update", sub }] });
 
 		const liveOps = H.live[0].applyOps.mock.calls.at(-1)?.[0];
 		expect(liveOps).toHaveLength(1);
 		expect(liveOps[0].kind).toBe("update");
 		expect(liveOps[0].uid).toBe("200");
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([
-			{ kind: "update", uid: "200", changes: [{ scope: "dynamic", post: true }] },
-		]);
+		expect(c.source.ctx?.subscriptions().map((v) => v.externalId)).toEqual(["200"]);
 	});
 
 	/**
@@ -2673,17 +2736,20 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
 	});
 
-	it("add op 只带名单要的两格:uid 与 post(作品设置不在引擎里,per-UP 覆盖由核心每条现折)", () => {
+	it("add op:来源的名单只带 externalId 与 features(作品设置不在来源里,per-UP 覆盖由核心每条现折);直播那头照旧带着折好的皮肤 id", async () => {
 		const sub = makeSub("600", true);
 		sub.overrides.imageGroup = { enabled: false };
 		sub.overrides.templates = { post: "🔔 {name}", postVideo: "🎬 {name}" };
 		sub.overrides.cardSkin = "k9zzz-0badf00d";
 		const c = setup({ subs: [sub] });
 		active = c;
+		await c.sourceReady;
 		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
-		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(dynOps).toEqual([{ kind: "add", sub: { uid: "600", post: true } }]);
+		const roster = c.source.ctx?.subscriptions() ?? [];
+		expect(roster.map((v) => Object.keys(v).sort())).toEqual([["externalId", "features"]]);
+		expect(roster[0]?.externalId).toBe("600");
+		expect(roster[0]?.features.has("post")).toBe(true);
 		// 直播那头照旧带着折好的皮肤 id。
 		const liveView = H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub;
 		expect(liveView.cardSkin).toBe("k9zzz-0badf00d");
@@ -2701,36 +2767,35 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0][0].sub.cardSkin).toBe("k1aaa-11111111");
 	});
 
-	it("禁用订阅 add:dynamic add op 仍下发但 post:false(engine applyOps 的 !op.sub.post 拦截)", () => {
-		// buildDynamicSubViewSingle 的 `post: sub.enabled && eff.features.post`
-		// 门必须对 disabled sub 产出 false —— 与旧 add 路径 hasDyn(disabled→false) 等价。
-		// engine 侧 applyOps add 分支 `if(!op.sub.dynamic) break` 据此不启动轮询。
+	it("禁用订阅 add:来源的名单不列它(停用的不进名单)", async () => {
 		const sub = makeSub("700", false);
 		const c = setup({ subs: [sub] });
 		active = c;
+		await c.sourceReady;
 		c.bus.emit("subscription-changed", { ops: [{ kind: "add", sub }] });
 
-		const dynOps = H.dynamic[0].applyOps.mock.calls.at(-1)?.[0];
-		expect(dynOps).toHaveLength(1);
-		expect(dynOps[0].kind).toBe("add");
-		expect(dynOps[0].sub.uid).toBe("700");
-		expect(dynOps[0].sub.post).toBe(false);
+		expect(c.source.ctx?.subscriptions()).toEqual([]);
 	});
 
-	it("remove op:live 与 dynamic 均收到 delete(无视 enabled)", () => {
+	it("订阅删了:live 收到 delete(无视 enabled);来源的名单里也没有它了", async () => {
 		const sub = makeSub("400", true);
-		const c = setup({ subs: [sub] });
+		const subs: Subscription[] = [sub];
+		const c = setup({ subs });
 		active = c;
+		await c.sourceReady;
+		expect(c.source.ctx?.subscriptions().map((v) => v.externalId)).toEqual(["400"]);
+		subs.length = 0;
 		c.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub }] });
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "400" }]);
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([{ kind: "delete", uid: "400" }]);
+		expect(c.source.ctx?.subscriptions()).toEqual([]);
 	});
 
-	it("拓展订阅的增删改不进 B 站引擎(ADR-0019 决策 9)", () => {
+	it("拓展订阅的增删改不进 B 站引擎(ADR-0019 决策 9),也不进 B 站来源的名单", async () => {
 		const ext = makeExtensionSubscription({ externalId: "400" });
 		const c = setup({ subs: [ext] });
 		active = c;
+		await c.sourceReady;
 		c.bus.emit("subscription-changed", {
 			ops: [
 				{ kind: "add", sub: ext },
@@ -2740,7 +2805,7 @@ describe("createEngines — 订阅禁用/启用转译", () => {
 		});
 
 		expect(H.live[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
-		expect(H.dynamic[0].applyOps.mock.calls.at(-1)?.[0]).toEqual([]);
+		expect(c.source.ctx?.subscriptions()).toEqual([]);
 	});
 
 	it("连续 disable→enable→disable:live 翻译在 delete / update 间正确切换", () => {
@@ -2891,7 +2956,6 @@ describe("createEngines — 消息版式", () => {
 		});
 		const c = setup({ subs: [sub], globals: TEMPLATE_GLOBALS("{name}更新了") });
 		active = c;
-		H.dynamic[0].applyOps.mockClear();
 		H.live[0].applyOps.mockClear();
 		reportBili("1", bilibiliPost("正文"), "d1");
 		await settleTracked(c);
@@ -2909,8 +2973,6 @@ describe("createEngines — 消息版式", () => {
 		expect(liveOps[0].changes[0].messageLayout).toEqual(
 			c.configStore.getGlobals().defaults.messageLayout.live,
 		);
-		expect(H.dynamic[0].applyOps).not.toHaveBeenCalled();
-
 		reportBili("1", bilibiliPost("正文"), "d2");
 		await settleTracked(c);
 		// 第一条带链接,第二条版式藏起了链接部件。

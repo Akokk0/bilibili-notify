@@ -583,8 +583,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//   1. SubscriptionStore binding mirrors the file-backed config into an
 		//      in-memory store + emits subscription-changed on diffs.
 		//   2. Platform adapters are constructed from logger; they hold no state.
-		//   3. createEngines() builds Dispatcher → PushRouter → dynamic engine + LiveEngine
-		//      and registers serviceCtx.onDispose for graceful shutdown.
+		//   3. createEngines() builds Dispatcher → PushRouter → LiveEngine and registers
+		//      serviceCtx.onDispose for graceful shutdown; the built-in post source is registered
+		//      right after it (`builtins.registerSources`).
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
 		// Boot-time orphan sweep: drop sub-runtime entries whose subscription no
@@ -697,14 +698,25 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 原样透传。B 站那组场景的认领在 `compose.ts`。
 		const devApi = overridableApi(authSystem.api);
 		const devAuth = overridableApi(authSystem);
+		// B 站的作品图与直播封面(3a-34):出卡前经 B 站接口那个请求客户端(同一套 cookie 与身份)抓进图库,
+		// 引用方是 `postImages` 这一家(名单恒空,靠新图的宽限期活到卡片画完)。引擎与链接预览共用这一个。
+		// 建在 `compose.ts` 之前:来源要用它,依赖一次给齐(构造时不做任何事)。
+		const postImageFetcher = createImageFetcher({
+			http: authSystem.api.http,
+			images: runtime.postImages,
+		});
 		const builtins = composeBuiltinIntegrations({
 			api: devApi,
 			auth: devAuth,
+			integration: authSystem.integration,
 			bus: runtime.bus,
+			configStore: runtime.configStore,
 			subscriptions: subStore,
 			subscriptionRuntime: runtime.subRuntimeStore,
+			imageFetcher: postImageFetcher,
+			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
+			logger: log,
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
-			dynamic: () => engines?.dynamic,
 			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
@@ -777,13 +789,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		});
 		runtime.serviceCtx.onDispose(() => reportDiscrepancies.dispose(), "stop");
 
-		// B 站的作品图与直播封面(3a-34):出卡前经 B 站接口那个请求客户端(同一套 cookie 与身份)抓进图库,
-		// 引用方是 `postImages` 这一家(名单恒空,靠新图的宽限期活到卡片画完)。引擎与链接预览共用这一个。
-		const postImageFetcher = createImageFetcher({
-			http: authSystem.api.http,
-			images: runtime.postImages,
-		});
-
 		// 内置适配器登记即启动 —— 就在 `createEngines` 之前,启动时刻与从前引擎开机对账那一刻一致。
 		// 关停钩子也登记在引擎之前:同一段里后登记的先跑,引擎先收、适配器后停。
 		const builtinAdapters = await registerBuiltinAdapters({
@@ -854,7 +859,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				asset: (skinId, name) => readCardSkinAssetDataUrl(skins, skinId, name),
 				onFallback: (info) => cardSkinFallbacks.record(info),
 			},
+			sources: runtime.sourceRegistry,
 		});
+		// 内置来源(B 站)由 `compose.ts` 造并登记,登记即 start;关停时引擎自己先停它再关作品入口。
+		await builtins.registerSources(engines);
 		runtime.attachEngines(engines);
 
 		// 资源采样:概览页「系统资源」卡的数据源,也是内存自检那行日志的出处。

@@ -9,9 +9,10 @@
  *   3. Construct PushRouter({ dispatcher, store, master })
  *   4. Optionally construct CommentaryGenerator (when apiKey + baseUrl set; the
  *      `enabled` flag is enforced at engine-config gating layer in step 5/6)
- *   5. Construct DynamicEngine + LiveEngine with PushLike adapters
- *   6. Wire subscription-changed → engine.applyOps; auth-restored → engine reseed
- *   7. Wire config-changed (globals scope) → DynamicEngine.updateConfig + LiveEngine.updateConfig
+ *   5. Construct LiveEngine with PushLike adapters (post sources are registered later through
+ *      `registerSource`: the source builds its own engine and gets a source context)
+ *   6. Wire subscription-changed → live.applyOps; auth-restored → engine reseed
+ *   7. Wire config-changed (globals scope) → LiveEngine.updateConfig
  *
  * Engine-stop is registered with serviceCtx.onDispose; the runtime's dispose()
  * propagates correctly.
@@ -67,13 +68,7 @@ import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
 import { type Api, BiliLoginStatus } from "../bilibili/api/index.js";
-import {
-	DynamicEngine,
-	type DynamicEngineConfig,
-	type SubscriptionOpView as DynamicSubOp,
-	type SubscriptionsView as DynamicSubsView,
-	resolveDynamicColorOptions,
-} from "../bilibili/dynamic/index.js";
+import { resolveDynamicColorOptions } from "../bilibili/dynamic/index.js";
 import type { ImagesDeps } from "../bilibili/images.js";
 import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import {
@@ -86,7 +81,7 @@ import {
 	type SubItemView as LiveSubView,
 	rotateLiveCover,
 } from "../bilibili/live/index.js";
-import { settingsOf, watchSettings } from "../bilibili/settings.js";
+import { watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
@@ -97,6 +92,13 @@ import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
 import { createPostQueue } from "../posts/post-queue.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
+import {
+	type RegisterBuiltinSourceOptions,
+	registerBuiltinSource,
+} from "../subscriptions/builtin-sources.js";
+import type { SourceRegistry } from "../subscriptions/registry.js";
+import { createSourceStatusReader } from "../subscriptions/source-status.js";
+import { errorMessageOf } from "../util/error-message.js";
 import { toGeneratorConfig } from "./ai-config.js";
 import {
 	CARD_BG_CURSORS_FILE,
@@ -127,7 +129,10 @@ import type { NodeServiceContext } from "./service-context.js";
 import type { SubRuntimeStore } from "./sub-runtime-store.js";
 
 export interface EnginesRuntime extends Disposable {
-	readonly dynamic: DynamicEngine;
+	/** 登记一个内置来源(建它的来源上下文、登记即 start)。关停时引擎自己先停掉登记过的来源,再关作品入口。 */
+	registerSource(
+		entry: Pick<RegisterBuiltinSourceOptions, "sourceKey" | "source" | "integration">,
+	): Promise<void>;
 	readonly live: LiveEngine;
 	readonly push: PushRouter;
 	/**
@@ -246,6 +251,8 @@ export interface CreateEnginesOptions {
 	 * config subs from subscriptionStore no longer carry it — read it here.
 	 */
 	subRuntimeStore: SubRuntimeStore;
+	/** 订阅来源登记表(`AppRuntime.sourceRegistry`);来源由 `registerSource` 登进去。 */
+	sources: SourceRegistry;
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapterRegistry;
 	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
@@ -458,16 +465,14 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	push.start();
 
 	/**
-	 * B 站引擎说的是 uid,推送链认的是订阅自己(ADR-0019 决策 50)—— 两个适配器在这条边上先翻一次。
-	 * 同一个 uid 配了几条订阅(老版本留下的遗留重复)就全交出去,按身份展开成每条一份(`listByIdentity`)。
-	 * 直播那几处仍只取先出现的那条(`subscriptionIdOfUid`,与 `findByIdentity` 取到的是同一条)。
+	 * B 站直播引擎说的是 uid,推送链认的是订阅自己(ADR-0019 决策 50)—— 直播适配器在这条边上先翻一次,
+	 * 遗留重复订阅只取先出现的那条(作品那一半已按身份展开,在来源上下文里,直播随 3b)。
 	 */
-	const subscriptionsOfUid = (uid: string): Subscription[] => {
-		const subs = opts.subscriptionStore.listByIdentity(biliIdentity(uid));
-		if (subs.length === 0) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
-		return subs;
+	const subscriptionIdOfUid = (uid: string): string | undefined => {
+		const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
+		if (!sub) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
+		return sub?.id;
 	};
-	const subscriptionIdOfUid = (uid: string): string | undefined => subscriptionsOfUid(uid)[0]?.id;
 
 	// ---------- Master notifier ----------
 	// engine-error / auth-lost → 主人 OneBot 私聊。共用一张 per-source 60s 节流表。
@@ -597,14 +602,13 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 那条链 2026-09-20 删掉(背景图归皮肤的 `image` 旋钮)。
 	const pickExistingCardBg = makeExistingCardBgPicker(opts.dataRoot, cardBgRotator.pick);
 
-	// ---------- DynamicEngine ----------
-	// 引擎只管生产(拉 feed、判新、翻译、抓图),作品交给核心入口 `postQueue`;过滤、出卡、点评、推送、图集都在核心里。
-	const dynamicConfig = (): DynamicEngineConfig => {
-		return {
-			dynamicCron: settingsOf(opts.configStore).dynamicCron,
-			dynamicVideoUrlToBV: false,
-		};
-	};
+	// ---------- 作品来源 ----------
+	// 来源只管生产(B 站的是动态引擎:拉 feed、判新、翻译、抓图),作品经来源上下文交给核心入口 `postQueue`;
+	// 过滤、出卡、点评、推送、图集都在核心里。来源由 `registerSource` 登记并启动(调它的是 `compose.ts`)。
+	const sourceStatus = createSourceStatusReader({
+		sources: opts.sources,
+		extensions: opts.extensionSources,
+	});
 
 	// 出图连续失败「只提醒一次」的计数(ADR-0019 决策 66):B 站动态与拓展作品用的是同一个渲染器,
 	// **全进程一份**,两条路各记各的话同一次故障会各提醒一遍。
@@ -624,12 +628,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			settings: makePostSettingsReader({
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				globals,
-				// 「来源还在跑吗」:B 站订阅恒在;拓展订阅看它的拓展在不在跑(决策 61:拓展停了,等着的作品不补),
-				// 没接拓展订阅(`extensionSources` 没给)就一律不推。3a-28 有了来源登记表里中立的「来源在跑」读口,
-				// 这一处就换成它。
-				sourceRunning: (sub) =>
-					fromBilibili(sub) ||
-					(extensionSources?.running(subscriptionIdentityOf(sub).sourceKey) ?? false),
+				// 「来源还在跑吗」:登记表里有它(内置来源),或拓展订阅的拓展在跑(决策 61:拓展停了,等着的作品不补);
+				// 没接拓展订阅(`extensionSources` 没给)的拓展键就一律不推。
+				sourceRunning: (sub) => sourceStatus.running(subscriptionIdentityOf(sub).sourceKey),
 			}),
 			// 渲染器与 AI 会被热换:**必须是读外层 let 的闭包**,按值传就是「开机时没有浏览器,之后一直没有卡片」而门禁全绿。
 			image: () => imageRenderer ?? undefined,
@@ -647,29 +648,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		},
 	});
 
-	const dynamic = new DynamicEngine({
-		serviceCtx: dynamicCtx,
-		bus: opts.bus,
-		api: opts.api,
-		push: { sendPrivateMsg: masterTellers(push, log).sendPrivateMsg },
-		imageFetcher: opts.imageFetcher,
-		// 引擎说的是 uid(外部 id),订阅由这里按身份现查、每条各交一份;换不出来(订阅刚删)就不交。
-		reportPost: (externalId, report) => {
-			for (const sub of subscriptionsOfUid(externalId)) {
-				postQueue.enqueue({
-					subscriptionId: sub.id,
-					identity: subscriptionIdentityOf(sub),
-					postId: report.postId,
-					url: report.url,
-					post: report.post,
-					postNoun: "动态",
-				});
-			}
-		},
-		config: dynamicConfig(),
-		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, globals()),
-	});
-	dynamic.start();
+	// 登记过的内置来源的撤销把手(`registerSource`);关停时先于作品入口收。
+	const sourceRegistrations: Disposable[] = [];
 
 	/**
 	 * 确保所有订阅的 UP 都已在 B 站被关注 —— 动态走 `feed/all`(关注流),没关注就一条
@@ -854,8 +834,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	handles.push(
 		opts.bus.on("subscription-changed", ({ ops }) => {
-			const dynOps = subscriptionOpsToDynamic(ops, opts.subscriptionStore, globals());
-			dynamic.applyOps(dynOps);
+			// 动态那一半:来源上下文自己听这个事件(`subscriptions/source-context.ts`)。
 			const liveOps = subscriptionOpsToLive(
 				ops,
 				opts.subscriptionStore,
@@ -1102,8 +1081,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 					}
 				}
 				// LiveEngine 是事件驱动 —— per-sub 视图(aiOverride / customCardStyle /
-				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格,不像 DynamicEngine 每个
-				// cron tick 重读 getSubs() 自愈。resolve() 把 cards / cardSkin / schedule / liveStart /
+				// 周期间隔 / 补报 / 模板…)在 start / applyOps 时定格(动态那头吃名单、现算,不吃这种快照)。resolve() 把 cards / cardSkin / schedule / liveStart /
 				// liveStreaming / superchat / membership / filters / templates / features / messageLayout / imageGroup 折进每个 sub 的 eff;
 				// AI 人格不在 eff 里,由 resolveAiOverride(经 resolveSubscriptionPersona)在构造 per-sub 视图时另算 —— 任一变化都给所有
 				// 订阅合成 update op 走 applyOps 增量路径,刷新活跃 listener 的 per-sub
@@ -1131,29 +1109,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 						return sub ? buildLiveSubViewSingle(sub, opts.subRuntimeStore, g) : undefined;
 					});
 				}
-				// DynamicEngine 的 dynamicSubManager 是推送名单(per-sub 视图只剩 `post` 一格,真源是
-				// `sub.enabled && eff.features.post`)。全局的作品开关一翻,所有没单独覆盖的订阅都要进出引擎的名单 ——
-				// 借道 applyOps 的 update 分支刷新每个已跟踪 UID(startDynamicForUid 内部只在 UID 首次出现时初始化时间戳,
-				// 已跟踪 UID 不会被当成新订阅重推旧动态)。合成的 update 带 `post: hasDyn(sub)`。
-				// 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤……)不在引擎里,核心每条作品现折,改了立即生效,不经这里。
-				if (featuresChanged) {
-					dynamic.applyOps(
-						subscriptionOpsToDynamic(
-							opts.subscriptionStore.list().map((sub) => ({ kind: "update" as const, sub })),
-							opts.subscriptionStore,
-							g,
-						),
-					);
-				}
+				// 作品来源的名单(全局作品开关一翻要重算)不在这里:来源上下文自己听 `config-changed` 的 globals 一档
+				// (`subscriptions/source-context.ts`),名单每次现算,来源自己对比。
+				// 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤……)核心每条作品现折,改了立即生效,也不经这里。
 			}
 		}),
 	);
 
-	// B 站自己的设置(cron / 登录健康检查间隔)按格各开各的门:改个 cron 不该把健康检查的 setInterval
-	// 销毁重建(相位白白打乱)。
+	// B 站登录健康检查间隔(cron 那一格归 B 站来源自己,`bilibili/source.ts`)。
 	handles.push(
 		watchSettings(opts.configStore, (prev, next) => {
-			if (prev.dynamicCron !== next.dynamicCron) dynamic.updateConfig(dynamicConfig());
 			if (prev.healthCheckMinutes !== next.healthCheckMinutes) {
 				// healthCheck → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
 				opts.loginFlow.setHealthCheckMs(next.healthCheckMinutes * 60_000);
@@ -1173,17 +1138,20 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		clearInterval(cursorFlushTimer);
 		flushCursors(); // 关停前把未落盘的游标推进写一次,重启续接
 
+		// 来源先停(后登记的先停),再关作品入口:停下之后不许再上报。来源的 `stop()` 必须在同步段里停干净。
+		for (const registration of sourceRegistrations.splice(0).reverse()) {
+			try {
+				registration.dispose();
+			} catch (e) {
+				log.warn(`[engines] source dispose failed: ${errorMessageOf(e)}`);
+			}
+		}
 		for (const h of handles.splice(0)) {
 			try {
 				h.dispose();
 			} catch {
 				// best-effort
 			}
-		}
-		try {
-			dynamic.stop();
-		} catch (e) {
-			log.warn(`[engines] dynamic.stop failed: ${String(e)}`);
 		}
 		try {
 			live.stop();
@@ -1204,7 +1172,20 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	opts.serviceCtx.onDispose(dispose, "stop");
 
 	return {
-		dynamic,
+		registerSource: async (entry) => {
+			sourceRegistrations.push(
+				await registerBuiltinSource({
+					...entry,
+					registry: opts.sources,
+					subscriptions: opts.subscriptionStore,
+					defaults: () => globals().defaults,
+					bus: opts.bus,
+					// 日志仍走动态子系统 logger:名字与等级(按来源键那一格,下面热更)一个不变。
+					logger: dynamicCtx.logger,
+					enqueue: (event) => postQueue.enqueue(event),
+				}),
+			);
+		},
 		live,
 		push,
 		muteState,
@@ -1622,40 +1603,6 @@ function fromBilibili(sub: Subscription): boolean {
 	return subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY;
 }
 
-export function buildDynamicSubsView(
-	store: SubscriptionStore,
-	globals: GlobalConfig,
-): DynamicSubsView {
-	const view: DynamicSubsView = {};
-	// B 站引擎只看 B 站订阅(ADR-0019 决策 9):拓展订阅没有 uid,不拿别的平台的 id 去问 B 站。
-	for (const sub of store.list().filter(fromBilibili)) {
-		if (!sub.enabled) continue;
-		view[subscriptionIdentityOf(sub).externalId] = buildDynamicSubViewSingle(sub, globals);
-	}
-	return view;
-}
-
-/**
- * 单条 Subscription → DynamicEngine 视图。引擎只管生产,视图只剩 `{ uid, post }`:`post` 决定这条订阅进不进推送名单
- * (名单里的才为它翻译、抓图、交作品)。全量构建(buildDynamicSubsView)与增量 add op 翻译共用同一投影。
- * 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤 / AI……)不在这里:核心每条作品现折({@link postSettingsOf}),
- * 全局或订阅设置改了立即对下一条生效,不再经引擎快照与热更门。
- */
-export function buildDynamicSubViewSingle(
-	sub: Subscription,
-	globals: GlobalConfig,
-): DynamicSubsView[string] {
-	const eff = resolve(sub, globals.defaults);
-	return {
-		// B 站引擎以 uid 为键:B 站订阅的外部 id 就是 uid。调用方只给 B 站订阅。
-		uid: subscriptionIdentityOf(sub).externalId,
-		// enabled 门 + features.post:add op 可能收到 disabled sub,engine applyOps
-		// add 用 `if(!op.sub.post) break` 拦截。buildDynamicSubsView 已 continue 跳
-		// disabled,这里 `sub.enabled &&` 对它是恒真无副作用。
-		post: sub.enabled && eff.features.post,
-	};
-}
-
 /**
  * 一条订阅(B 站或拓展)→ 作品装配吃的设置(ADR-0019 决策 65 / 66):订阅覆盖与全局折成一层。B 站与拓展作品
  * 都从这里拿,别抄第二份 —— 两份的话主人给某个抖音号换的文案模板 / 版式 / 皮肤,迟早有一格只有 B 站那头认。
@@ -1733,7 +1680,7 @@ function buildLiveSubsView(
 	globals: GlobalConfig,
 ): LiveSubsView {
 	const view: LiveSubsView = {};
-	// 同 buildDynamicSubsView:只有 B 站订阅进直播引擎。
+	// 只有 B 站订阅进直播引擎(ADR-0019 决策 9)。
 	for (const sub of store.list().filter(fromBilibili)) {
 		if (!sub.enabled) continue;
 		view[subscriptionIdentityOf(sub).externalId] = buildLiveSubViewSingle(
@@ -1785,8 +1732,7 @@ export function liveWorkSettings(
 		liveStart: eff.features.liveStart,
 		liveStreaming: eff.features.liveStreaming,
 		liveEnd: eff.features.liveEnd,
-		// customCardStyle 只在真有 per-UP override 时生成(对齐 dynamic 端 buildDynamicSubsView 同名
-		// 字段)。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
+		// customCardStyle 只在真有 per-UP override 时生成。无 override → enable:false → 推送时(`pushLiveNotify` 的 `cardStyle?.enable ? … :
 		// undefined`)自动传 undefined → ImageRenderer 走 this.config 兜底,跟全局 hot-reload 同步。
 		customCardStyle: sub.overrides.cards?.liveCoverImageIds
 			? cardStyleToColorOptions(sub.overrides.cards)
@@ -1823,7 +1769,7 @@ export function buildLiveSubViewSingle(
 	globals: GlobalConfig,
 ): LiveSubView {
 	const eff = resolve(sub, globals.defaults);
-	// 同 buildDynamicSubViewSingle:B 站引擎以 uid 为键,调用方只给 B 站订阅。
+	// B 站引擎以 uid 为键,调用方只给 B 站订阅。
 	const uid = subscriptionIdentityOf(sub).externalId;
 	const danmakuUsers = sub.specialUsers.filter((u) => u.kinds.includes("danmaku"));
 	const enterUsers = sub.specialUsers.filter((u) => u.kinds.includes("enter"));
@@ -1878,45 +1824,6 @@ export function buildLiveSubViewSingle(
 	};
 }
 
-function subscriptionOpsToDynamic(
-	ops: SubscriptionOp[],
-	store: SubscriptionStore,
-	globals: GlobalConfig,
-): DynamicSubOp[] {
-	const out: DynamicSubOp[] = [];
-	const hasDyn = (sub: Subscription): boolean => {
-		// 禁用订阅一律不纳入动态轮询。与 buildDynamicSubsView 的 `if(!sub.enabled)`
-		// gate 保持一致 —— op 翻译层也 gate 后,禁用立即经 applyOps 走 stopDynamicForUid,
-		// 不必等下一个 cron tick 重读 getSubs()。
-		if (!sub.enabled) return false;
-		const eff = resolve(sub, globals.defaults);
-		return eff.features.post;
-	};
-	for (const op of ops) {
-		// B 站动态引擎只管 B 站订阅(ADR-0019 决策 9),拓展订阅的增删改与它无关。
-		if (!fromBilibili(op.sub)) continue;
-		const identity = subscriptionIdentityOf(op.sub);
-		if (op.kind === "add") {
-			// 与 buildDynamicSubsView 同一投影。post 字段已含 enabled 门(见 buildDynamicSubViewSingle)。
-			out.push({
-				kind: "add",
-				sub: buildDynamicSubViewSingle(op.sub, globals),
-			});
-		} else if (op.kind === "remove") {
-			out.push({ kind: "delete", uid: identity.externalId });
-		} else {
-			const sub = store.findByIdentity(identity);
-			if (!sub) continue;
-			out.push({
-				kind: "update",
-				uid: identity.externalId,
-				changes: [{ scope: "dynamic", post: hasDyn(sub) }],
-			});
-		}
-	}
-	return out;
-}
-
 function subscriptionOpsToLive(
 	ops: SubscriptionOp[],
 	store: SubscriptionStore,
@@ -1937,8 +1844,7 @@ function subscriptionOpsToLive(
 		} else {
 			const sub = store.findByIdentity(identity);
 			if (!sub) continue;
-			// 禁用订阅 = 拆掉直播监听器。LiveEngine 是事件驱动(常驻 WS),不像
-			// DynamicEngine 有 cron 每轮重读 getSubs() 兜底 —— update op 必须显式翻译
+			// 禁用订阅 = 拆掉直播监听器。LiveEngine 是事件驱动(常驻 WS),没有每轮现读名单的兜底 —— update op 必须显式翻译
 			// 成 delete,否则 listener 一直挂着、直播事件照推(已修 bug)。重新启用时
 			// 走下面的 update 分支发完整 LiveScopedChange,LiveEngine.applyOps 见无
 			// 活跃 listener → lookupFullSub → startForUid 重新拉起。

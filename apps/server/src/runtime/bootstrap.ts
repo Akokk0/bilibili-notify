@@ -34,6 +34,7 @@ import { createStatsEnabled } from "../stats/enabled.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../stats/recorder.js";
 import { recordingSwitches, specialUserFlagsOf } from "../stats/recording-switches.js";
 import { createStatsStore, type StatsStore } from "../stats/store.js";
+import { createSourceRegistry, type SourceRegistry } from "../subscriptions/registry.js";
 import { createUptimeRecorder, type UptimeRecorder } from "../uptime/recorder.js";
 import { createUptimeStore, type UptimeStore } from "../uptime/store.js";
 import type { EnginesRuntime } from "./engines.js";
@@ -85,6 +86,8 @@ export interface AppRuntime {
 	 * `settings`,它拿的是这张表现取的闭包。适配器的登记(内置 / 拓展)在 `index.ts` 里往后做。
 	 */
 	adapterRegistry: PlatformAdapterRegistry;
+	/** 订阅来源的登记表:建在这里、挂在运行时上,来源由 `engines.registerSource` 登进去。 */
+	sourceRegistry: SourceRegistry;
 	historyStore: HistoryStore;
 	/**
 	 * 人工重推(ADR-0017)。它持有「哪些行正在补」那张表,所以**整个进程只能有一个** ——
@@ -271,6 +274,8 @@ export function createAppRuntime(
 	serviceCtx.onDispose(() => integrationStore.close(), "flush");
 	// 推送出口的活登记表:没有任何依赖,先建,配置仓才能按在场适配器的规则验连接设置。
 	const adapterRegistry = createPlatformAdapterRegistry();
+	// 订阅来源的登记表(内置来源由 `compose.ts` 经 `engines.registerSource` 登进去)。
+	const sourceRegistry = createSourceRegistry();
 	// 各集成的设置在这里登记(今天只有 B 站;3a 起挪到组装根,与集成的登记放在一起)。
 	const configStore = createConfigStore({
 		bootstrap,
@@ -512,6 +517,7 @@ export function createAppRuntime(
 		loadFontFace: createFontAssetReader(dataRoot, { transform: buildFontFace }),
 		configStore,
 		adapterRegistry,
+		sourceRegistry,
 		historyStore,
 		repushRunner,
 		fansStore,

@@ -103,4 +103,5 @@ export {
 	type ProbeResult,
 } from "./push-source";
 export * from "./schema";
+export * from "./source";
 export * from "./util";

@@ -15,18 +15,20 @@
  */
 
 import {
+	type FeatureKey,
 	type ImageRef,
 	type MessageBus,
 	ok,
 	type Post,
 	type PostReport,
 	type ServiceContext,
+	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../../api/index.js";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
 import { postFromDynamic } from "../post-from-dynamic";
-import type { PushLike, SubItemView, SubscriptionsView } from "../push-like";
+import type { PushLike } from "../push-like";
 import type { AllDynamicResponse, Dynamic } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -81,7 +83,7 @@ vi.mock("../post-from-dynamic", async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 interface Priv {
-	dynamicSubManager: Map<string, SubItemView>;
+	dynamicSubManager: Set<string>;
 	dynamicTimelineManager: Map<string, number>;
 	detectDynamics(): Promise<void>;
 }
@@ -209,11 +211,14 @@ function resp(items: Dynamic[], code = 0, message = "ok"): AllDynamicResponse {
 	};
 }
 
-/** 测试里写的订阅视图:引擎只认 uid 与 post。 */
-type SeedView = SubItemView;
-const viewOf = (v: SeedView): SubItemView => v;
-const viewsOf = (subs: Record<string, SeedView>): SubscriptionsView =>
-	Object.fromEntries(Object.entries(subs).map(([k, v]) => [k, viewOf(v)]));
+/** 测试里写的订阅视图:引擎只认 uid 与 post(`post` 决定名单里的 features 有没有 post)。 */
+type SeedView = { uid: string; post?: boolean };
+type Roster = Record<string, SeedView>;
+const rosterOf = (subs: Roster | null | undefined): SourceSubscriptionView[] =>
+	Object.values(subs ?? {}).map((v) => ({
+		externalId: v.uid,
+		features: new Set<FeatureKey>(v.post ? ["post"] : []),
+	}));
 
 interface EngineBag {
 	engine: DynamicEngineType;
@@ -222,7 +227,8 @@ interface EngineBag {
 	push: PushLike & { sendPrivateMsg: ReturnType<typeof vi.fn> };
 	emits: Array<{ event: string; payload: unknown }>;
 	trigger: (event: string, payload?: unknown) => void;
-	disposers: Array<() => void | Promise<void>>;
+	/** 换名单(`ctx.subscriptions()` 此后回新的);要让引擎知道,再调 `engine.syncSubscriptions()`。 */
+	setRoster: (subs: Roster | null) => void;
 	/** 注入给引擎的抓图服务(`imageFetcher` 选项):每个地址回一个以它命名的引用,测试数调用。 */
 	fetchImage: ReturnType<typeof vi.fn>;
 	/** 注入给引擎的核心入口(`reportPost` 选项):引擎交出去的每一条作品。 */
@@ -233,17 +239,14 @@ interface EngineBag {
 function makeEngine(
 	over: {
 		config?: Partial<import("../dynamic-engine").DynamicEngineConfig>;
-		subs?: Record<string, SeedView> | null;
+		subs?: Roster | null;
 		/** 引擎交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
 		reportPost?: (externalId: string, report: PostReport) => void;
 	} = {},
 ): EngineBag {
 	const { ctx, logs } = makeServiceCtx();
 	const { bus, emits, trigger } = makeBus();
-	const disposers: Array<() => void | Promise<void>> = [];
-	(ctx as { onDispose: (fn: () => void) => void }).onDispose = (fn) => {
-		disposers.push(fn);
-	};
+	let roster = rosterOf(over.subs);
 	const fetchAllDynamic = vi.fn();
 	const api = { fetchAllDynamic } as unknown as Api;
 	const push = { sendPrivateMsg: vi.fn(async () => {}) };
@@ -254,7 +257,8 @@ function makeEngine(
 		over.reportPost ?? (() => {}),
 	);
 	const engine = new DynamicEngine({
-		serviceCtx: ctx,
+		logger: ctx.logger,
+		setTimeout: ctx.setTimeout,
 		bus,
 		api,
 		push,
@@ -265,7 +269,7 @@ function makeEngine(
 			dynamicVideoUrlToBV: false,
 			...over.config,
 		},
-		getSubs: () => (over.subs ? viewsOf(over.subs) : null),
+		subscriptions: () => roster,
 	});
 	return {
 		engine,
@@ -273,7 +277,9 @@ function makeEngine(
 		push,
 		emits,
 		trigger,
-		disposers,
+		setRoster: (subs) => {
+			roster = rosterOf(subs);
+		},
 		fetchImage,
 		reportPost,
 		logs,
@@ -281,9 +287,9 @@ function makeEngine(
 }
 
 /** 播种一个订阅视图(推送名单里有它),并给它一个时间线锚点。 */
-function seed(engine: DynamicEngineType, uid: string, timeline: number, sub?: SeedView): void {
+function seed(engine: DynamicEngineType, uid: string, timeline: number): void {
 	priv(engine).dynamicTimelineManager.set(uid, timeline);
-	priv(engine).dynamicSubManager.set(uid, viewOf(sub ?? { uid, post: true }));
+	priv(engine).dynamicSubManager.add(uid);
 }
 
 const detect = (engine: DynamicEngineType): Promise<void> => priv(engine).detectDynamics();
@@ -626,7 +632,8 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		b.trigger("auth-lost");
 		const after = cronMock.instances.length;
 
-		b.engine.applyOps([{ kind: "add", sub: { uid: "2", post: true } as SubItemView }]);
+		b.setRoster({ "1": { uid: "1", post: true }, "2": { uid: "2", post: true } });
+		b.engine.syncSubscriptions();
 
 		expect(cronMock.instances.length).toBe(after);
 	});
@@ -1037,12 +1044,14 @@ describe("DynamicEngine.detectDynamics — 交出之前先把图抓好(决策 3)
 });
 
 describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(决策 6)", () => {
-	/** 建表走 `startDynamicDetector`:锚点覆盖全部订阅,推送名单只收 `post` 开着的。 */
-	const startWith = (b: EngineBag): void =>
-		b.engine.startDynamicDetector({
+	/** 建表走 `start()`(名单现读):锚点覆盖名单里每个人,推送名单只收 `post` 开着的。 */
+	const startWith = (b: EngineBag): void => {
+		b.setRoster({
 			"11": { uid: "11", post: false },
 			"22": { uid: "22", post: true },
 		});
+		b.engine.start();
+	};
 	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
 	const pubTs = Math.floor(Date.now() / 1000) + 60;
 	const picItem = (uid: number) =>
@@ -1126,7 +1135,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 	});
 });
 
-describe("DynamicEngine — applyOps 在 detectDynamics 抓图的 await 期间改了订阅(A7)", () => {
+describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变了(A7)", () => {
 	const picItem = () =>
 		makeItem({ uid: 1, pubTs: 1000, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] });
 
@@ -1134,9 +1143,10 @@ describe("DynamicEngine — applyOps 在 detectDynamics 抓图的 await 期间�
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
 		seed(b.engine, "1", 0);
-		// 模拟交错:抓图解析前,adapter 收到 subscription-changed 调 applyOps 退订 uid 1。
+		// 模拟交错:抓图解析前,来源收到「名单可能变了」,新名单里没有 uid 1(退订)。
 		b.fetchImage.mockImplementation(async (url: string) => {
-			b.engine.applyOps([{ kind: "delete", uid: "1" }]);
+			b.setRoster({});
+			b.engine.syncSubscriptions();
 			return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
 		});
 
@@ -1158,10 +1168,10 @@ describe("DynamicEngine — applyOps 在 detectDynamics 抓图的 await 期间�
 		swapped.fetchAllDynamic.mockResolvedValue(resp([picItem()]));
 		seed(swapped.engine, "1", 0);
 		swapped.fetchImage.mockImplementation(async (url: string) => {
-			swapped.engine.applyOps([
-				{ kind: "delete", uid: "1" },
-				{ kind: "add", sub: { uid: "1", post: true } },
-			]);
+			swapped.setRoster({});
+			swapped.engine.syncSubscriptions();
+			swapped.setRoster({ "1": { uid: "1", post: true } });
+			swapped.engine.syncSubscriptions();
 			return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
 		});
 		await detect(swapped.engine);
@@ -1191,39 +1201,37 @@ describe("DynamicEngine — applyOps 在 detectDynamics 抓图的 await 期间�
 			return b;
 		};
 
-		it("收到同 uid 的 update(post: true)→ 名单里换了新对象,这条动态照常交", async () => {
-			const b = await withDuringFetch((x) =>
-				x.engine.applyOps([
-					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: true }] },
-				]),
-			);
+		it("名单重算一遍、内容没变(订阅被保存了一下)→ 这条动态照常交", async () => {
+			const b = await withDuringFetch((x) => x.engine.syncSubscriptions());
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
 			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
 		});
 
-		it("整份名单被重建(startDynamicDetector,如登录恢复后重启检测)→ 照常交", async () => {
-			const b = await withDuringFetch((x) => x.engine.startDynamicDetector(viewsOf(sub)));
+		it("整份名单被重建(restartDetector,如登录恢复后重启检测)→ 照常交", async () => {
+			const b = await withDuringFetch((x) => x.trigger("auth-restored"));
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
 		});
 
-		it("关了作品推送又打开(update post:false 再 post:true,锚点不动)→ 照常交", async () => {
+		it("关了作品推送又打开(名单里先去掉 post 再加回来,锚点不动)→ 照常交", async () => {
 			const b = await withDuringFetch((x) => {
-				x.engine.applyOps([
-					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: false }] },
-				]);
-				x.engine.applyOps([
-					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: true }] },
-				]);
+				x.setRoster({ "1": { uid: "1", post: false } });
+				x.engine.syncSubscriptions();
+				x.setRoster(sub);
+				x.engine.syncSubscriptions();
 			});
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
 		});
 
 		it("对照:抓图期间关了作品推送且没再打开 → 不交(名单里没有了)", async () => {
-			const b = await withDuringFetch((x) =>
-				x.engine.applyOps([
-					{ kind: "update", uid: "1", changes: [{ scope: "dynamic", post: false }] },
-				]),
-			);
+			const b = await withDuringFetch((x) => {
+				x.setRoster({ "1": { uid: "1", post: false } });
+				x.engine.syncSubscriptions();
+			});
+			expect(b.reportPost).not.toHaveBeenCalled();
+		});
+
+		it("抓图期间引擎停下了 → 不交(停下之后不许再上报)", async () => {
+			const b = await withDuringFetch((x) => x.engine.stop());
 			expect(b.reportPost).not.toHaveBeenCalled();
 		});
 	});
@@ -1234,7 +1242,7 @@ describe("DynamicEngine — applyOps 在 detectDynamics 抓图的 await 期间�
 // ---------------------------------------------------------------------------
 
 describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
-	it("-352 退避窗口内 applyOps → 不提前重启 cron(退避不被击穿)", async () => {
+	it("-352 退避窗口内 syncSubscriptions → 不提前重启 cron(退避不被击穿)", async () => {
 		const before = cronMock.instances.length;
 		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		b.engine.start(); // cron 实例 #1
@@ -1246,10 +1254,11 @@ describe("DynamicEngine — reconcileJob 尊重风控退避", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
 
-		// 退避窗口内 adapter 收到订阅变更 → applyOps → reconcileJob。subManager 仍非空,
+		// 退避窗口内来源收到「名单可能变了」→ syncSubscriptions → reconcileJob。subManager 仍非空,
 		// dynamicJob 又是 undefined —— 若只看 dynamicJob?.isActive 会立即 startJob,提前去戳
 		// 仍在风控的端点,击穿退避。修复后应识别 detectorRestartTimer 待执行而跳过。
-		b.engine.applyOps([{ kind: "add", sub: { uid: "2", post: true } as SubItemView }]);
+		b.setRoster({ "1": { uid: "1", post: true }, "2": { uid: "2", post: true } });
+		b.engine.syncSubscriptions();
 
 		expect(cronMock.instances.length).toBe(afterStart); // 没有新建 cron
 	});
@@ -1269,32 +1278,82 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		expect(b.engine.isActive).toBe(false);
 	});
 
-	it("start() 无快照 → 不建 cron;auth-restored 后用快照重建", () => {
-		let snap: SubscriptionsView | null = null;
-		const { ctx } = makeServiceCtx();
-		const { bus, trigger } = makeBus();
-		const api = { fetchAllDynamic: vi.fn() } as unknown as Api;
-		const push: PushLike = { sendPrivateMsg: vi.fn(async () => {}) };
-		const engine = new DynamicEngine({
-			reportPost: () => {},
-			serviceCtx: ctx,
-			bus,
-			api,
-			push,
-			imageFetcher: { fetchImage: vi.fn() },
-			config: {
-				dynamicCron: "*/2 * * * *",
-				dynamicVideoUrlToBV: false,
-			},
-			getSubs: () => snap,
-		});
-		engine.start();
+	it("start() 空名单 → 不建 cron;auth-restored 后用新名单重建", () => {
+		const b = makeEngine();
+		b.engine.start();
 		expect(cronMock.instances).toHaveLength(0);
 
-		snap = viewsOf({ "1": { uid: "1", post: true } });
-		trigger("auth-restored");
+		b.setRoster({ "1": { uid: "1", post: true } });
+		b.trigger("auth-restored");
 		expect(cronMock.instances).toHaveLength(1);
 		expect(cronMock.instances[0]?.isActive).toBe(true);
+	});
+
+	it("空名单重启不留旧推送名单(今天的小毛病:先 return 后赋值)", () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		expect(priv(b.engine).dynamicSubManager.has("1")).toBe(true);
+		b.setRoster({});
+		b.trigger("auth-restored");
+		expect(priv(b.engine).dynamicSubManager.size).toBe(0);
+	});
+
+	it("syncSubscriptions 前后是同一个 cron job(名单一动不重启 cron、不打乱相位)", () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		const job = cronMock.instances[0];
+		b.setRoster({ "1": { uid: "1", post: true }, "2": { uid: "2", post: true } });
+		b.engine.syncSubscriptions();
+		expect(cronMock.instances).toHaveLength(1);
+		expect(job?.isActive).toBe(true);
+		expect(job?.stopCount).toBe(0);
+	});
+
+	it("退避到点按最新名单重启检测", () => {
+		const timers: Array<() => void> = [];
+		// 能触发的定时器:本用例只关心「到点会重启」。
+		const engine = new DynamicEngine({
+			logger: { info() {}, warn() {}, error() {}, debug() {} },
+			setTimeout: (fn) => {
+				timers.push(fn);
+				return { dispose() {} };
+			},
+			bus: makeBus().bus,
+			api: { fetchAllDynamic: vi.fn(async () => resp([], -352, "risk")) } as unknown as Api,
+			push: { sendPrivateMsg: vi.fn(async () => {}) },
+			imageFetcher: { fetchImage: vi.fn() },
+			reportPost: () => {},
+			config: { dynamicCron: "*/2 * * * *", dynamicVideoUrlToBV: false },
+			subscriptions: () => rosterOf({ "1": { uid: "1", post: true } }),
+		});
+		engine.start();
+		const before = cronMock.instances.length;
+		return detect(engine).then(() => {
+			expect(timers).toHaveLength(1);
+			timers[0]?.();
+			expect(cronMock.instances.length).toBe(before + 1);
+			expect(cronMock.instances.at(-1)?.isActive).toBe(true);
+		});
+	});
+
+	it("名单里去掉某人再加回来 → 锚点是加回来那一刻,之前发的那条不交(已定 16)", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		const midpoint = Math.floor(Date.now() / 1000) + 30;
+		b.setRoster({});
+		b.engine.syncSubscriptions();
+		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
+		// 停用期间发的动态,在「加回来」之前发出:发布时间早于加回来的那一刻。
+		vi.useFakeTimers({ toFake: ["Date"], now: (midpoint + 60) * 1000 });
+		try {
+			b.setRoster({ "1": { uid: "1", post: true } });
+			b.engine.syncSubscriptions();
+		} finally {
+			vi.useRealTimers();
+		}
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: midpoint })]));
+		await detect(b.engine);
+		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
 	it("updateConfig 改 dynamicCron(运行中)→ 旧 job 停,新 job 用新 cronTime", () => {
@@ -1324,16 +1383,18 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		expect(cronMock.instances).toHaveLength(1);
 	});
 
-	it("applyOps:add dynamic 订阅 → 起 job;delete 最后一个 → 停 job", () => {
-		const sub = viewOf({ uid: "1", post: true });
+	it("syncSubscriptions:名单里有人开了作品 → 起 job;去掉最后一个 → 停 job", () => {
+		const sub = { uid: "1", post: true };
 		const b = makeEngine({ subs: { "1": sub } });
-		b.engine.start(); // 快照里 sub.post=true → 已有 running job
+		b.engine.start(); // 名单里 post 开着 → 已有 running job
 		expect(cronMock.instances[0]?.isActive).toBe(true);
 
-		b.engine.applyOps([{ kind: "delete", uid: "1" }]);
+		b.setRoster({});
+		b.engine.syncSubscriptions();
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 
-		b.engine.applyOps([{ kind: "add", sub }]);
+		b.setRoster({ "1": sub });
+		b.engine.syncSubscriptions();
 		// 重新有订阅 → reconcile 重启(可能复用或新建 instance,断言最终处于 running)
 		const last = cronMock.instances[cronMock.instances.length - 1];
 		expect(last?.isActive).toBe(true);
@@ -1352,27 +1413,19 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		).toBe(true);
 	});
 
-	it("applyOps:per-UID 走 debug,批次收口一条 info 汇总(Q1 不刷屏)", () => {
-		const s1 = viewOf({ uid: "1", post: true });
-		const s2 = viewOf({ uid: "2", post: true });
-		const b = makeEngine({ subs: { "1": s1, "2": s2 } });
+	it("syncSubscriptions:一批进出收口一条 info 汇总(Q1 不刷屏),没有进出不记", () => {
+		const b = makeEngine();
+		b.setRoster({ "1": { uid: "1", post: true }, "2": { uid: "2", post: true } });
 		b.logs.length = 0;
-		b.engine.applyOps([
-			{ kind: "add", sub: s1 },
-			{ kind: "add", sub: s2 },
-		]);
-		const summary = b.logs.filter(
-			(l) => l.level === "info" && l.msg.includes("动态订阅变更已应用"),
-		);
-		expect(summary).toHaveLength(1); // 两条 add 仅一条汇总 info
-		expect(summary[0]?.msg).toContain("+2 开启");
-		// per-UID 行降到 debug,不再 info 刷屏
-		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("开启动态订阅 UID"))).toBe(
-			false,
-		);
-		expect(
-			b.logs.filter((l) => l.level === "debug" && l.msg.includes("开启动态订阅 UID")),
-		).toHaveLength(2);
+		b.engine.syncSubscriptions();
+		const summary = () =>
+			b.logs.filter((l) => l.level === "info" && l.msg.includes("动态订阅变更已应用"));
+		expect(summary()).toHaveLength(1); // 两个人进名单仅一条汇总 info
+		expect(summary()[0]?.msg).toContain("+2 开启");
+		// 再对一遍、没有进出:什么都不记
+		b.logs.length = 0;
+		b.engine.syncSubscriptions();
+		expect(summary()).toHaveLength(0);
 	});
 });
 
@@ -1414,15 +1467,16 @@ describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统
 	/**
 	 * 订阅还在、但这位 UP 的动态推送被关了。
 	 *
-	 * 刻意**走 startDynamicDetector 建表**而不是直接塞锚点 —— 病灶就在建表这一步:
-	 * 锚点表只登记 `sub.post` 为真的 UP。手塞锚点的话测试会空过。
+	 * 刻意**走 start() 按名单建表**而不是直接塞锚点 —— 病灶就在建表这一步:
+	 * 锚点表只登记 `post` 为真的 UP。手塞锚点的话测试会空过。
 	 * 另配一个开着开关的 UP,否则订阅表为空、检测任务根本不起。
 	 */
 	const seedStatsOnly = (b: EngineBag, uid: string): void => {
-		b.engine.startDynamicDetector({
+		b.setRoster({
 			[uid]: { uid, post: false },
 			other: { uid: "other", post: true },
-		} as never);
+		});
+		b.engine.start();
 	};
 	/** 建表之后才发布 —— 锚点初值是「此刻」,拿旧时间戳的动态一律算已看过。 */
 	const laterThanSeed = () => Math.floor(Date.now() / 1000) + 60;
@@ -1454,7 +1508,8 @@ describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统
 		const b = makeEngine();
 		seedStatsOnly(b, "1");
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(true);
-		b.engine.applyOps([{ kind: "delete", uid: "1" }]);
+		b.setRoster({ other: { uid: "other", post: true } });
+		b.engine.syncSubscriptions();
 		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
 	});
 });

@@ -33,7 +33,7 @@ export interface BiliDevtoolsDeps {
 	bus: MessageBus;
 	/** 场景挑订阅用:每次现读,订阅表会变。 */
 	subs: () => SubPick[];
-	/** 下面几样都是引擎建好之后才有的,现取。 */
+	/** 下面几样都是引擎建好之后才有的,现取(动态引擎的句柄来自 `compose.ts` 造的 B 站来源)。 */
 	dynamic: () => DynamicEngineLike | undefined;
 	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	fans: () => { pollNow(): Promise<boolean> } | undefined;

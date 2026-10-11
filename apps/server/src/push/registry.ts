@@ -3,6 +3,8 @@ import type {
 	PlatformAdapter,
 	PlatformAdapterContext,
 } from "@bilibili-notify/internal";
+import { stopQuietly } from "../integrations/stop-quietly.js";
+import { errorMessageOf } from "../util/error-message.js";
 
 /**
  * 推送出口的**活注册表** —— adapter 矩阵的家(ADR-0012 决策 29)。
@@ -62,23 +64,6 @@ function viewOf(adapter: PlatformAdapter): PlatformAdapterView {
 	return view;
 }
 
-/**
- * 调 `adapter.stop()`:不等它,抛了 / 失败了都只记一行 warn —— 收尾要往下走,不能被一个适配器拦住。
- * (从前引擎里是 `void ad.dispose?.()` 外包 try/catch,异步的失败没人接。)
- */
-function stopQuietly(adapter: PlatformAdapter, ctx: PlatformAdapterContext): void {
-	const warn = (err: unknown) =>
-		ctx.logger.warn(
-			`[adapter] ${adapter.adapterKey} stop 失败: ${err instanceof Error ? err.message : String(err)}`,
-		);
-	try {
-		// `Promise.resolve` 连非原生的 thenable 也认;同步抛的由外面的 try/catch 接。
-		Promise.resolve(adapter.stop()).catch(warn);
-	} catch (err) {
-		warn(err);
-	}
-}
-
 export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 	const adapters: PlatformAdapter[] = [];
 	const keys = new Set<string>();
@@ -124,7 +109,11 @@ export function createPlatformAdapterRegistry(): PlatformAdapterRegistry {
 					if (removed) return;
 					removed = true;
 					remove(adapter);
-					stopQuietly(adapter, ctx);
+					stopQuietly(
+						() => adapter.stop(),
+						(err) =>
+							ctx.logger.warn(`[adapter] ${adapter.adapterKey} stop 失败: ${errorMessageOf(err)}`),
+					);
 				},
 			};
 		},

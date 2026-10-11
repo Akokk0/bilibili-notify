@@ -1,9 +1,9 @@
 /**
  * 组装根:整个核心里只有这个文件登记内置集成。只放登记与开发场景的过渡接线,不长别的逻辑。
  *
- * 今天它只做一件事:认领 B 站那组开发场景(`provideDevtools`),并把 B 站动态引擎的句柄
- * 原样交回入口(`bilibili`,只为 `status` 指令的「上次抓取」)。3a-28 的下一个提交起,
- * 这里造并登记 B 站来源,`bilibili.dynamic` 改读自己造的那个来源。
+ * 今天它做两件事:认领 B 站那组开发场景(`provideDevtools`);造 B 站来源并登记(`registerSources`,
+ * 登记即启动)。`bilibili.dynamic` 是 B 站来源上给入口读的那一面,只为 `status` 指令的「上次抓取」。
+ * 来源的上下文仍由登录那套建好递进来(`integration`),这里不另开存储。
  *
  * 「挑订阅」那一段是随开发场景的过渡接线一起留着的;入口咽喉守卫(3a-40)开张前,
  * 「这个文件只放登记」没有守卫钉着,靠审查。
@@ -12,26 +12,39 @@
  * (`devtools-isolation` 钉着,注释里也别加引号写它):构建时它被换成恒空的桩。
  */
 
-import { BILIBILI_SOURCE_KEY, subscriptionIdentityOf } from "@bilibili-notify/internal";
+import {
+	BILIBILI_SOURCE_KEY,
+	type IntegrationContext,
+	type Logger,
+	subscriptionIdentityOf,
+} from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import {
 	type BiliDevtoolsDeps,
 	createBiliDevtools,
 	type DevtoolsProviderRegistry,
 } from "./bilibili/devtools/index.js";
-import type { DynamicEngine } from "./bilibili/dynamic/index.js";
+import type { ImagesDeps } from "./bilibili/images.js";
+import { type BiliSource, createBiliSource } from "./bilibili/source.js";
+import type { ConfigStore } from "./config/store.js";
+import { type EnginesRuntime, masterTellers } from "./runtime/engines.js";
 import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
 
 export interface BuiltinIntegrationsDeps {
-	/** 套了壳的 `Api` 与登录系统(壳在入口建):场景拿壳本身。 */
+	/** 套了壳的 `Api` 与登录系统(壳在入口建)。来源拿 `api.api`,场景拿壳本身:只进这一次,两头不可能接成两个对象。 */
 	api: BiliDevtoolsDeps["api"];
 	auth: BiliDevtoolsDeps["auth"];
+	/** B 站集成的上下文(`AuthSystem.integration`)。 */
+	integration: IntegrationContext;
 	bus: BiliDevtoolsDeps["bus"];
+	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
 	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
-	/** 下面几样建得比这里晚,现取,原样转给开发场景(`dynamic` 同时是 `bilibili.dynamic()` 的来源)。 */
-	dynamic: () => DynamicEngine | undefined;
+	imageFetcher: ImagesDeps["images"];
+	setTimeout: Parameters<typeof createBiliSource>[0]["setTimeout"];
+	logger: Logger;
+	/** 下面三样建得比这里晚,现取,原样转给开发场景。 */
 	live: BiliDevtoolsDeps["live"];
 	fans: BiliDevtoolsDeps["fans"];
 	loginFlow: BiliDevtoolsDeps["loginFlow"];
@@ -40,11 +53,18 @@ export interface BuiltinIntegrationsDeps {
 export interface BuiltinIntegrations {
 	/** `createDevtools` 的 `provide` 回调里调:过了开发版那两道门才会走到,把 B 站那组场景按来源键认领进去。 */
 	provideDevtools(providers: Pick<DevtoolsProviderRegistry, "claim">): void;
-	/** B 站来源上给入口读的那一面:只为 `status` 指令的「上次抓取」。 */
-	readonly bilibili: { dynamic(): DynamicEngine | undefined };
+	/** 引擎建好之后调一次:造 B 站来源并登记(登记即 start)。调第二次就抛。 */
+	registerSources(engines: Pick<EnginesRuntime, "registerSource" | "push">): Promise<void>;
+	/** B 站来源上给入口读的那一面:只为 `status` 指令的「上次抓取」。登记之前 `dynamic()` 是 undefined。 */
+	readonly bilibili: Pick<BiliSource, "dynamic">;
 }
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
+	let source: BiliSource | undefined;
+	// 登记过(含登记途中)就不许再来一次;登记抛了会复位。
+	let registering = false;
+	const dynamic = () => source?.dynamic();
+
 	return {
 		provideDevtools(providers) {
 			providers.claim(
@@ -72,13 +92,38 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 									avatar: runtime?.cachedProfile?.avatarUrl,
 								};
 							}),
-					dynamic: deps.dynamic,
+					dynamic,
 					live: deps.live,
 					fans: deps.fans,
 					loginFlow: deps.loginFlow,
 				}),
 			);
 		},
-		bilibili: { dynamic: deps.dynamic },
+		async registerSources(engines) {
+			if (registering) throw new Error("builtin sources are already registered");
+			registering = true;
+			const made = createBiliSource({
+				api: deps.api.api,
+				bus: deps.bus,
+				push: { sendPrivateMsg: masterTellers(engines.push, deps.logger).sendPrivateMsg },
+				imageFetcher: deps.imageFetcher,
+				configStore: deps.configStore,
+				setTimeout: deps.setTimeout,
+			});
+			source = made;
+			try {
+				await engines.registerSource({
+					sourceKey: BILIBILI_SOURCE_KEY,
+					source: made,
+					integration: deps.integration,
+				});
+			} catch (err) {
+				// 开机失败(与从前造动态引擎抛了的后果一样):不留半个来源。
+				source = undefined;
+				registering = false;
+				throw err;
+			}
+		},
+		bilibili: { dynamic },
 	};
 }

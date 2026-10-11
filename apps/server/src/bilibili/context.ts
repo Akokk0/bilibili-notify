@@ -20,7 +20,9 @@ const REQUEST_TIMEOUT_MS = 20_000;
 export const REFRESH_TOKEN_KEY = "refreshToken";
 
 /**
- * B 站这一片先用的上下文:公共那一面,加请求客户端与 cookie 罐的把手。3a-28 换成 `SourceContext`。
+ * B 站这一片先用的上下文:公共那一面,加请求客户端与 cookie 罐的把手。
+ * 来源上下文(`SourceContext`)建在它之上(`AuthSystem.integration` 按公共五格的类型交出去),`http` / `cookies` 仍只在这里,
+ * 3b 公共上下文开放 `http` 时才能并。
  * `http.` 前缀的键归宿主,B 站自己写不进去;罐子与令牌要「同进同退」,所以提交一律经 `cookies.commit`。
  *
  * 浏览器身份由宿主管(存着的、只升不降,没有才生成),终身不变 —— 同一 cookie 会话在不同 UA 间跳变是机器人特征。

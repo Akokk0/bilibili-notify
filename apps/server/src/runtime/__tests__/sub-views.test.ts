@@ -1,39 +1,27 @@
 /**
- * 覆盖 buildDynamicSubsView / buildLiveSubViewSingle 的视图形状。
+ * 覆盖 buildLiveSubViewSingle 的视图形状。
  *
  * 直播视图:「无 per-UP override 时不伪装全局值」—— 此前从 `eff = resolve(sub, globals.defaults)` 派生
  * customCardStyle / aiOverride 字段并硬写 `enable: true`,即便用户没设 per-UP override 也写满视图;直播监听器是
  * add 时的快照,全局改动 hot-reload 后永远沿用旧值。修复后只有 sub.overrides 真存在时才生成对应字段。
  *
- * 动态视图:引擎只管生产,视图只剩 `{ uid, post }` —— 作品设置(模板 / 版式 / 皮肤 / 图集 / 过滤 / AI)不在引擎里,
- * 核心每条作品现折(`post-settings.test.ts`),所以动态视图里**不许再有**那些格。
+ * 动态那一半的名单(启用的才列、别的来源不列、全局开关与订阅覆盖谁压谁)搬去了
+ * `subscriptions/__tests__/source-subscriptions.test.ts`。
  */
 import {
-	type GlobalConfig,
 	type ImageRef,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type Subscription,
 } from "@bilibili-notify/internal";
-import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { describe, expect, it } from "vite-plus/test";
-import {
-	buildDynamicSubsView,
-	buildDynamicSubViewSingle,
-	buildLiveSubViewSingle,
-} from "../engines";
+import { buildLiveSubViewSingle } from "../engines";
 import type { SubRuntimeStore } from "../sub-runtime-store";
 
 const fakeRuntimeStore = (): SubRuntimeStore =>
 	({
 		get: () => undefined,
 		// biome-ignore lint/suspicious/noExplicitAny: 测试只用 get,其余方法不触发
-	}) as any;
-
-const fakeStore = (subs: Subscription[]): SubscriptionStore =>
-	({
-		list: () => subs,
-		// biome-ignore lint/suspicious/noExplicitAny: 测试只用 list
 	}) as any;
 
 const makeSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
@@ -43,46 +31,6 @@ const makeSub = (overrides: Subscription["overrides"] = {}): Subscription => ({
 	}),
 	enabled: true,
 	overrides,
-});
-
-describe("buildDynamicSubsView — 引擎视图只剩 uid 与 post", () => {
-	it("启用着、作品开关开着的订阅:{ uid, post: true },没有别的格", () => {
-		const view = buildDynamicSubsView(fakeStore([makeSub({})]), makeDefaultGlobalConfig());
-		expect(view["12345"]).toEqual({ uid: "12345", post: true });
-	});
-
-	it("不带任何作品设置:样式覆盖 / AI 覆盖 / 过滤 / 模板 / 版式 / 皮肤 / 订阅 id / 名字都不在视图里", () => {
-		const sub = makeSub({
-			ai: { preset: "inherit" },
-			cardSkin: "skin-x",
-			templates: { post: "这位 {name}" },
-			imageGroup: { enabled: true },
-			filters: { blockVideos: true },
-			cards: { liveCoverImageIds: ["up-cover.png"] },
-		});
-		const view = buildDynamicSubsView(fakeStore([sub]), makeDefaultGlobalConfig());
-		expect(Object.keys(view["12345"] ?? {}).sort()).toEqual(["post", "uid"]);
-	});
-
-	it("作品开关关着:订阅仍在视图里(锚点覆盖全部订阅),但 post 是 false;停用的订阅不进视图", () => {
-		const g: GlobalConfig = makeDefaultGlobalConfig();
-		g.defaults.features.post = false;
-		expect(buildDynamicSubsView(fakeStore([makeSub({})]), g)["12345"]).toEqual({
-			uid: "12345",
-			post: false,
-		});
-		expect(buildDynamicSubsView(fakeStore([{ ...makeSub({}), enabled: false }]), g)).toEqual({});
-	});
-
-	it("全局的作品开关一翻、这位 UP 没单独覆盖:视图里的 post 跟着翻(真源是 enabled && features.post)", () => {
-		const on = makeDefaultGlobalConfig();
-		const off = makeDefaultGlobalConfig();
-		off.defaults.features.post = false;
-		expect(buildDynamicSubViewSingle(makeSub({}), on).post).toBe(true);
-		expect(buildDynamicSubViewSingle(makeSub({}), off).post).toBe(false);
-		// 这位 UP 单独开,压过全局关。
-		expect(buildDynamicSubViewSingle(makeSub({ features: { post: true } }), off).post).toBe(true);
-	});
 });
 
 describe("buildLiveSubViewSingle — 不伪装全局值", () => {
@@ -238,18 +186,15 @@ describe("buildLiveSubViewSingle — 两个直播门槛", () => {
 	});
 });
 
-describe("订阅视图不抄头像(3a-35):头像由核心出卡时按订阅 id 现读", () => {
+describe("直播订阅视图不抄头像(3a-35):头像由核心出卡时按订阅 id 现读", () => {
 	const avatar = `${"b".repeat(64)}.jpg` as ImageRef;
 	const runtime = {
 		get: () => ({ cachedProfile: { name: "UP", avatar } }),
 	} as unknown as SubRuntimeStore;
 
 	// 验红:往两份视图里抄回 avatar,这条红。
-	it("资料里有头像也不抄进动态 / 直播视图(抄了就是开机快照,之后补上的头像永远跟不上)", () => {
-		const sub = makeSub();
-		const dynamicView = buildDynamicSubsView(fakeStore([sub]), makeDefaultGlobalConfig());
-		const liveView = buildLiveSubViewSingle(sub, runtime, makeDefaultGlobalConfig());
-		expect(dynamicView["12345"]).not.toHaveProperty("avatar");
+	it("资料里有头像也不抄进直播视图(抄了就是开机快照,之后补上的头像永远跟不上)", () => {
+		const liveView = buildLiveSubViewSingle(makeSub(), runtime, makeDefaultGlobalConfig());
 		expect(liveView).not.toHaveProperty("avatar");
 	});
 });

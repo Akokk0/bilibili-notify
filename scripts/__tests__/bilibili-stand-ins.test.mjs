@@ -40,7 +40,7 @@ export const ALLOWED_DIRS = {
 /** 白名单:整个文件放行,写明理由。 */
 export const ALLOWLIST = {
 	"apps/server/src/compose.ts":
-		"组装根:整个核心只有它登记内置集成(architecture.md「compose.ts 装配」)。今天认领 B 站那组开发场景;3a-28 的下一个提交起造并登记 B 站来源。只许放登记,不许长别的逻辑 —— 这一条在入口咽喉守卫(3a-40)开张前没有守卫钉着,靠审查",
+		"组装根:整个核心只有它登记内置集成(architecture.md「compose.ts 装配」)。今天登记 B 站来源、认领 B 站那组开发场景。只许放登记,不许长别的逻辑 —— 这一条在入口咽喉守卫(3a-40)开张前没有守卫钉着,靠审查",
 };
 
 /**
@@ -66,13 +66,13 @@ export const RATCHET = {
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,
 	"apps/server/src/routes/subscriptions.ts": 9,
-	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的
-	// (B 站恒在,拓展看它的拓展在不在跑)。3a-28 有了来源登记表里中立的「来源在跑」读口,这一处就消失。
+	// 3a-27(主人 10-10 点头,17 → 18):作品的回问搬进核心后,「来源还在跑吗」要先分清这条订阅是不是 B 站的。
+	// 3a-28 有了来源登记表里中立的「来源在跑」读口,这一处已消失(同片 20 → 17:另两处是动态那一半的订阅视图与操作翻译)。
 	// 3a-38(主人 10-10 点头,18 → 20):日志等级的 `dynamic` / `live` 两个键并成 `bilibili`,读这一格的地方如实显形(开机取一次、热更取一次)。
 	// 3a-40 把日志等级改成按集成键统一给之后消失。
 	// ⚠️ 这个数少报了:那两处取出来的等级存在 `bootSourceLevel` / `sourceLevel` 两个局部变量里,名字不带 `bili`,
 	// 它们的 6 处读写没数进来(3a-38 的独立审查查出)。主人 10-10 定:3a-40 统一整改时一起走,现在不动。
-	"apps/server/src/runtime/engines.ts": 20,
+	"apps/server/src/runtime/engines.ts": 17,
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
