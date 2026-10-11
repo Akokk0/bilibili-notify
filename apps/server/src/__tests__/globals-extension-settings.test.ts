@@ -18,6 +18,7 @@ import { join } from "node:path";
 import type { ExtensionManifest } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import type { ExtensionEntry } from "../extensions/loader.js";
 import { createExtensionMounts } from "../extensions/mount.js";
@@ -70,7 +71,11 @@ describe("/api/settings —— 拓展设置不走这里了", () => {
 	 * 直接写进仓,不过任何校验)。
 	 */
 	async function boot(seed?: Record<string, { enabled: boolean; settings?: unknown }>) {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		if (seed) {
 			const switches = Object.fromEntries(

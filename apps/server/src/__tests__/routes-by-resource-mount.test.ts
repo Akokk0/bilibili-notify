@@ -23,6 +23,7 @@ import { type CreateAppOptions, createApp, createCardSkinStore } from "../app.js
 import { createSessionCodec } from "../auth/session.js";
 import { createWsTicketStore } from "../auth/ws-ticket.js";
 import type { BackupService } from "../backup/service.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import { createDevRegistry } from "../devtools/registry.js";
 import { createDevRoute } from "../devtools/route.js";
 import { ROUTE_NOT_FOUND_MESSAGE } from "../routes/respond-failure.js";
@@ -165,6 +166,7 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 	const runtime = createAppRuntime(
 		{ server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
 		{ dataRoot: dataDir },
+		{ integrationSettings: [settingsSegment] },
 	);
 	await runtime.configStore.load();
 	const wsTicketStore = createWsTicketStore();

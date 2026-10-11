@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeEmptySubscription, type PostEvent } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -34,7 +35,11 @@ describe("统计总开关 × 装配(createAppRuntime)", () => {
 	});
 
 	it("设置里的 stats.enabled 管着记录器:改设置不重启,下一条动态就按新值", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		await runtime.configStore.upsertSubscription(
 			makeEmptySubscription({
@@ -72,7 +77,11 @@ describe("统计总开关 × 装配(createAppRuntime)", () => {
 	});
 
 	it("出厂开着:没动过设置的新运行时 isStatsEnabled() 是 true", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		expect(runtime.isStatsEnabled()).toBe(true);
 		await runtime.dispose();

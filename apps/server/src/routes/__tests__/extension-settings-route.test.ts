@@ -27,6 +27,7 @@ import { z } from "zod";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import { extensionSettingsFile } from "../../config/store.js";
 import type { ExtensionContext } from "../../extensions/context.js";
@@ -180,7 +181,11 @@ async function boot(opts: {
 	await plant(DOUYIN);
 	await plant(LEGACY_V1);
 	await plant(BARE_V2);
-	const rt = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+	const rt = createAppRuntime(
+		makeBootstrap(dataDir),
+		{ dataRoot: dataDir },
+		{ integrationSettings: [settingsSegment] },
+	);
 	runtime = rt;
 	if (opts.rawFile !== undefined) {
 		const file = join(dataDir, ...extensionSettingsFile("douyin"));

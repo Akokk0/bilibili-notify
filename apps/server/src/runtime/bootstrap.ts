@@ -9,11 +9,14 @@ import {
 	GUARD_ICON_REQUEST_HEADERS,
 	type GuardIcons,
 } from "../bilibili/live/guard-icons.js";
-import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
 import { syncSettingsProblem } from "../config/settings-problems.js";
-import { type ConfigStore, createConfigStore } from "../config/store.js";
+import {
+	type ConfigStore,
+	createConfigStore,
+	type IntegrationSettingsSegment,
+} from "../config/store.js";
 import { createFollowersStore, type FollowersStore } from "../followers/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
 import { createRepushStore, listRepushImageRefs } from "../history/repush-store.js";
@@ -231,6 +234,8 @@ export interface AppRuntimeRoots {
 
 /** 装配时可换的外部依赖;不给就用真的。 */
 export interface AppRuntimeDeps {
+	/** 各集成的设置段(配置仓构造时定死):入口递内置集成那份(`compose.ts` 的 `BUILTIN_INTEGRATION_SETTINGS`)。 */
+	integrationSettings: readonly IntegrationSettingsSegment[];
 	/** 抓大航海徽章图用的请求客户端。测试换成不联网的。 */
 	guardIconHttp?: Pick<HttpClient, "fetch">;
 }
@@ -238,7 +243,7 @@ export interface AppRuntimeDeps {
 export function createAppRuntime(
 	bootstrap: BootstrapConfig,
 	roots: AppRuntimeRoots,
-	deps: AppRuntimeDeps = {},
+	deps: AppRuntimeDeps,
 ): AppRuntime {
 	const serviceCtx = createNodeServiceContext({
 		name: "core",
@@ -294,14 +299,14 @@ export function createAppRuntime(
 		onChanged: (reporter) => bus.emit("problems-changed", { reporter }),
 	});
 	serviceCtx.onDispose(() => problems.dispose(), "stop");
-	// 各集成的设置在这里登记(今天只有 B 站;3a 起挪到组装根,与集成的登记放在一起)。
+	// 各集成的设置段由组装根交进来(`compose.ts`),这里不认得是哪个集成。
 	const configStore = createConfigStore({
 		bootstrap,
 		dataRoot,
 		bus,
 		serviceCtx,
 		secretStore,
-		integrationSettings: [settingsSegment],
+		integrationSettings: deps.integrationSettings,
 		connectionSettingsSchemaOf: (adapterKey) =>
 			adapterRegistry.list().find((a) => a.adapterKey === adapterKey)?.settingsSchema,
 		// 核心设置某一格读坏退了默认:合成一条问题报给问题表(不私聊,面板的问题框提示)。

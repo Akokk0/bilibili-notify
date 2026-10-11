@@ -2,6 +2,7 @@ import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { createAppRuntime } from "../../runtime/bootstrap.js";
 import { IMAGE_REFERRERS } from "../image-referrers.js";
@@ -194,9 +195,13 @@ describe("sweep 的 removedBytes", () => {
 describe("引用方名字接线", () => {
 	it("真装配里登记的正是常量表里那六个名字(写错一个就红)", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-referrer-names-"));
-		const runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
-			dataRoot: dataDir,
-		});
+		const runtime = createAppRuntime(
+			BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
+			{
+				dataRoot: dataDir,
+			},
+			{ integrationSettings: [settingsSegment] },
+		);
 		try {
 			for (const name of Object.values(IMAGE_REFERRERS)) {
 				expect(() => runtime.imageStore.register({ name, listRefs: async () => [] })).toThrow(name);

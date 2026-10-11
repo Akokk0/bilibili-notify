@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { settingsSegment } from "../bilibili/settings.js";
 import { createSecretCellsReader } from "../push/connection-settings.js";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -118,6 +119,7 @@ describe("connections route — 凭据下发打码(真 store)", () => {
 		runtime = createAppRuntime(
 			{ server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
 			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
 		);
 		await runtime.configStore.load();
 		// 先存、后登记适配器:此刻没有任何适配器在场,存什么都不验 settings —— 这样才存得下

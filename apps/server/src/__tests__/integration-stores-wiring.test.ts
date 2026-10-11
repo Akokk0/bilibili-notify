@@ -23,6 +23,7 @@ import { createKeyProvider, gcmDecrypt } from "@bilibili-notify/storage";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import { loadExtensions } from "../extensions/loader.js";
 import { createExtensionMounts } from "../extensions/mount.js";
@@ -162,6 +163,7 @@ describe("关停:flush 段关门之后数据目录不再变", () => {
 		const runtime = createAppRuntime(
 			{ server: { host: "127.0.0.1", port: 8787 }, dataDir: dataRoot, logLevel: "silent" },
 			{ dataRoot },
+			{ integrationSettings: [settingsSegment] },
 		);
 		const handle = await runtime.integrationStore.open("onebot");
 		await handle.state.set("seed", 0);

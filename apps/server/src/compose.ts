@@ -34,7 +34,9 @@ import {
 } from "./bilibili/devtools/index.js";
 import type { ImagesDeps } from "./bilibili/images.js";
 import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-layers.js";
+import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
+import type { IntegrationSettingsSegment } from "./config/store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
 import { createOnebotAdapter } from "./platforms/onebot.js";
 import { createQQOfficialAdapter } from "./platforms/qq-official.js";
@@ -43,6 +45,14 @@ import { type BuiltinAdapters, registerBuiltinAdapters } from "./push/builtin-ad
 import type { PlatformAdapterRegistry } from "./push/registry.js";
 import type { EnginesRuntime } from "./runtime/engines.js";
 import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
+
+/**
+ * 各内置集成的设置段:建运行时(配置仓)时交进去,段在配置仓构造期定死,所以是模块级常量、不在
+ * `composeBuiltinIntegrations` 里。今天只有 B 站那一段。
+ */
+export const BUILTIN_INTEGRATION_SETTINGS: readonly IntegrationSettingsSegment[] = [
+	settingsSegment,
+];
 
 export interface BuiltinIntegrationsDeps {
 	/** 套了壳的 `Api` 与登录系统(壳在入口建)。来源拿 `api.api`,场景拿壳本身:只进这一次,两头不可能接成两个对象。 */

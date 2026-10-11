@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import type { BiliSettings } from "../bilibili/settings.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { CORE_SETTINGS_FILE, type ConfigStore, integrationSettingsFile } from "../config/store.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -51,7 +52,11 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	}
 
 	it("无法解析的 cron 表达式 → 400,store 不落地新值", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const before = bili(runtime.configStore).dynamicCron;
 		const fileBefore = await readFile(bilibiliFile(), "utf8");
@@ -76,7 +81,11 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	});
 
 	it("合法 cron 表达式 → 200,store 更新为新值,GET 读回同一格", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -98,7 +107,11 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	});
 
 	it("补丁不动 dynamicCron → 照常放行,cron 保持原值", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const before = bili(runtime.configStore).dynamicCron;
 		const app = createApp(runtime, {
@@ -114,7 +127,11 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	});
 
 	it("同一发里核心与 B 站的格子一起送:B 站那格被拒 → 核心那格也不落地", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const refreshCronBefore = runtime.configStore.getGlobals().profileRefreshCron;
 		const app = createApp(runtime, {
@@ -132,7 +149,11 @@ describe("PATCH /api/settings — bilibili.dynamicCron 校验", () => {
 	});
 
 	it("同一发里核心与 B 站的格子一起送,都合法 → 各落各的文件", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

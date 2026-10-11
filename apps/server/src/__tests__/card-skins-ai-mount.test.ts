@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import { CARD_SKIN_MANIFEST_FILE } from "../card-skins/package.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -46,7 +47,11 @@ describe("/api/cards/skins/:id/ai 的引擎接线", () => {
 			dataDir,
 			logLevel: "silent",
 		};
-		const runtime = createAppRuntime(bootstrap, { dataRoot: bootstrap.dataDir });
+		const runtime = createAppRuntime(
+			bootstrap,
+			{ dataRoot: bootstrap.dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -108,6 +113,7 @@ describe("createApp 的卡片皮肤店", () => {
 					logLevel: "silent",
 				},
 				{ dataRoot: dir },
+				{ integrationSettings: [settingsSegment] },
 			);
 			await runtime.configStore.load();
 			// 宿主手里的那一家 —— 出图那头问的就是它。

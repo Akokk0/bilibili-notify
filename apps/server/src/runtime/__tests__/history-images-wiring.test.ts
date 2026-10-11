@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { distinctPng, putImage } from "../../__tests__/support/chat-images.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
@@ -29,9 +30,13 @@ let runtime: AppRuntime;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-history-images-wiring-"));
-	runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
-		dataRoot: dataDir,
-	});
+	runtime = createAppRuntime(
+		BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
+		{
+			dataRoot: dataDir,
+		},
+		{ integrationSettings: [settingsSegment] },
+	);
 	await runtime.subRuntimeStore.load();
 });
 afterEach(async () => {

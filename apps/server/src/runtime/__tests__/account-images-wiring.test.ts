@@ -14,6 +14,7 @@ import { ok, type SourceAuth } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { PNG_BYTES } from "../../__tests__/support/avatar-fixtures.js";
 import { putImage } from "../../__tests__/support/chat-images.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
 import { makeIntegration } from "../../subscriptions/__tests__/fixtures.js";
@@ -26,9 +27,13 @@ let runtime: AppRuntime;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-account-images-wiring-"));
-	runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
-		dataRoot: dataDir,
-	});
+	runtime = createAppRuntime(
+		BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
+		{
+			dataRoot: dataDir,
+		},
+		{ integrationSettings: [settingsSegment] },
+	);
 });
 afterEach(async () => {
 	await runtime.dispose();

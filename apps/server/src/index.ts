@@ -28,7 +28,7 @@ import { type AuthSystem, createAuthSystem } from "./bilibili/auth/index.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
-import { composeBuiltinIntegrations } from "./compose.js";
+import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "./compose.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
@@ -251,7 +251,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	let shutdownPromise: Promise<void> | null = null;
 	let listeningPort = bootstrap.server.port;
 
-	runtime = createAppRuntime(bootstrap, { dataRoot: generation.dir });
+	runtime = createAppRuntime(
+		bootstrap,
+		{ dataRoot: generation.dir },
+		{ integrationSettings: BUILTIN_INTEGRATION_SETTINGS },
+	);
 	const log = runtime.serviceCtx.logger;
 	// 日志从运行时建好那一刻起就进归档与 WS 的环形缓冲:开机那一段(以后的迁移)出了事也查得到。
 	// 环形缓冲先建好,WS 起来时交给它。

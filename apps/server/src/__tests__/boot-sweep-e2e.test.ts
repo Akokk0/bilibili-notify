@@ -240,7 +240,7 @@ describe("开机清扫 e2e:上个进程被杀留下的临时文件与暂存目�
 		const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
 
 		const sweepAt = code.indexOf("await sweepBootRoots(");
-		const runtimeAt = code.indexOf("createAppRuntime(bootstrap, { dataRoot: generation.dir })");
+		const runtimeAt = code.indexOf("createAppRuntime(");
 		expect(sweepAt).toBeGreaterThan(-1);
 		expect(runtimeAt).toBeGreaterThan(-1);
 		expect(sweepAt).toBeLessThan(runtimeAt);

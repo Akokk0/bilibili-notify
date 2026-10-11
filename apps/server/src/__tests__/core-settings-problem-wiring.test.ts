@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { CORE_SETTINGS_FILE } from "../config/store.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
@@ -36,7 +37,11 @@ describe("核心设置坏格 → 问题表的接线", () => {
 		await putCore((disk) => {
 			disk.history = "三十天";
 		});
-		const runtime = createAppRuntime(bootstrap(), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			bootstrap(),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 
 		const listed = runtime.problems.list().filter((p) => p.reporter === "core");
@@ -48,7 +53,11 @@ describe("核心设置坏格 → 问题表的接线", () => {
 
 	it("没有坏格:问题表里没有这一条;面板改好保存后那一条随之清掉", async () => {
 		await putCore(() => {});
-		const clean = createAppRuntime(bootstrap(), { dataRoot: dataDir });
+		const clean = createAppRuntime(
+			bootstrap(),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await clean.configStore.load();
 		expect(clean.problems.list()).toEqual([]);
 		await clean.dispose();
@@ -56,7 +65,11 @@ describe("核心设置坏格 → 问题表的接线", () => {
 		await putCore((disk) => {
 			disk.history = "三十天";
 		});
-		const runtime = createAppRuntime(bootstrap(), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			bootstrap(),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		expect(runtime.problems.list()).toHaveLength(1);
 		await runtime.configStore.patchGlobals({ history: { retentionDays: 7 } });

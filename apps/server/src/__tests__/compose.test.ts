@@ -24,7 +24,8 @@ import type { Api } from "../bilibili/api/index.js";
 import { fakeAuth } from "../bilibili/devtools/__tests__/support/fake-auth.js";
 import { createBiliDevtools } from "../bilibili/devtools/index.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
-import { composeBuiltinIntegrations } from "../compose.js";
+import { settingsSegment } from "../bilibili/settings.js";
+import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
 import { createPlatformAdapterRegistry } from "../push/registry.js";
@@ -173,6 +174,15 @@ afterEach(() => {
 	// 工厂会装全局的直播连接观察钩子;测完摘掉,别漏给同进程里的别的测试。
 	observeLiveConnections(null);
 	vi.useRealTimers();
+});
+
+describe("BUILTIN_INTEGRATION_SETTINGS · 设置登记", () => {
+	it("设置段清单里有 B 站那一段,而且只有它", () => {
+		expect(BUILTIN_INTEGRATION_SETTINGS.map((segment) => segment.key)).toEqual([
+			BILIBILI_SOURCE_KEY,
+		]);
+		expect(BUILTIN_INTEGRATION_SETTINGS).toContain(settingsSegment);
+	});
 });
 
 describe("composeBuiltinIntegrations · 开发场景", () => {

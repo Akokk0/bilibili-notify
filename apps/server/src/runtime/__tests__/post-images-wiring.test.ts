@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { putImage } from "../../__tests__/support/chat-images.js";
 import { gif, png } from "../../__tests__/support/report-images.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
 import { postFromReport } from "../../posts/post-from-report.js";
@@ -29,9 +30,13 @@ let runtime: AppRuntime;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-post-images-wiring-"));
-	runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
-		dataRoot: dataDir,
-	});
+	runtime = createAppRuntime(
+		BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
+		{
+			dataRoot: dataDir,
+		},
+		{ integrationSettings: [settingsSegment] },
+	);
 });
 afterEach(async () => {
 	await runtime.dispose();

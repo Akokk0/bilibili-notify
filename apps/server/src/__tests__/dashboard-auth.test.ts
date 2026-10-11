@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { createSessionCodec } from "../auth/session.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -31,7 +32,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: no cookie → 401 without WWW-Authenticate", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -50,7 +55,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: valid bn_session cookie → 200", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -68,7 +77,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: Authorization: Basic is NOT accepted (cookie-only)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -88,7 +101,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth NOT configured: /api/settings is open (local dev / bare)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -101,7 +118,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("desktop token configured: /api/* requires the launcher token but /api/health stays probeable", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -140,7 +161,11 @@ describe("dashboard cookie auth", () => {
 	// 桌面版里 `<img>`、CSS `url()`、`@font-face` 带不了自定义头(ADR-0036 决策 5 下 10-03 的 🔗):
 	// 带对令牌头的那一次种下 cookie,之后只带 cookie 也能过;cookie 不对照样 401。
 	it("desktop token configured: a valid header plants a cookie that passes the gate on its own", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -178,7 +203,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("auth configured: /api/health is also gated by the cookie", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -199,7 +228,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("login → returned cookie unlocks /api/settings end-to-end", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -224,7 +257,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("exemption is exact: /api/sessionXYZ-style prefixes are NOT exempt (gated)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -242,7 +279,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("/api/ws/ticket stays gated (no cookie → 401)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 		const app = createApp(runtime, {
@@ -258,7 +299,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("sliding renewal: past-half-life cookie → 200 + fresh Set-Cookie; fresh → none", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const ttlMs = 10_000;
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS, ttlMs });
@@ -286,7 +331,11 @@ describe("dashboard cookie auth", () => {
 	});
 
 	it("createApp fail-closed: exactly one of creds/codec set → throws", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const codec = createSessionCodec({ keyMaterial: KEY, creds: CREDS });
 

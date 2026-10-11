@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createDevRegistry } from "../devtools/registry.js";
 import { createDevRoute } from "../devtools/route.js";
@@ -27,7 +28,11 @@ describe("devtools 挂载", () => {
 	});
 
 	it("没给 devtools → /api/dev 404", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -37,7 +42,11 @@ describe("devtools 挂载", () => {
 	});
 
 	it("给了 → /api/dev 列得出场景", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const registry = createDevRegistry([
 			{ id: "a", group: "event", title: "A", params: [], run: () => ({}) },

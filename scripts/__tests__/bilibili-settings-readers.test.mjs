@@ -11,7 +11,7 @@ import { importsOf, listSources, parseSource } from "../source-scan.mjs";
  * B 站的设置住它自己的文件 `config/settings/bilibili.json`,格式与读法都在 `apps/server/src/bilibili/settings.ts`
  * (ADR-0021 决策 42 下 10-01 的 🔗)。核心要拿到它只有一条路 —— import 那个模块,所以这条守卫按 import 判:
  *
- * - 白名单只有组装处:今天 `runtime/bootstrap.ts` 把它登记进配置仓,3a 起换成 `compose.ts`。
+ * - 白名单只有组装根 `compose.ts`:它把 B 站的设置段交给运行时(`createAppRuntime` 收的是设置段清单,不认得是谁的)。
  * - B 站接线(今天 `runtime/engines.ts`、`index.ts`)在 3a 搬进 `bilibili/` 之前按棘轮记账,3a 清零。
  * - 不经这个模块、拿键名去捞的写法(`const { bilibili } = …`、`settings["bilibili"]`、`BILIBILI_SOURCE_KEY`)
  *   由 B 站替身棘轮兜底,这里不重复。
@@ -32,7 +32,7 @@ const SETTINGS_MODULE = "apps/server/src/bilibili/settings";
 
 /** 白名单:整个文件放行,写明理由。只有组装处。 */
 export const ALLOWLIST = {
-	"apps/server/src/runtime/bootstrap.ts": "组装处:把 B 站的设置登记进配置仓(3a 起换成 compose.ts)",
+	"apps/server/src/compose.ts": "组装根:把 B 站的设置段交给运行时,运行时再登记进配置仓",
 };
 
 /** 棘轮表:文件 → 引用 B 站设置的上限。只许往下调,3a 随 B 站接线搬进 `bilibili/` 清零。 */

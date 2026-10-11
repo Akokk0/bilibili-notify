@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fail } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { settingsSegment } from "../bilibili/settings.js";
 import { createSecretCellsReader } from "../push/connection-settings.js";
 import { createConnectionsRoute } from "../routes/connections.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -91,6 +92,7 @@ describe("connections route — PATCH 一条不存在的", () => {
 				logLevel: "silent",
 			},
 			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
 		);
 		await runtime.configStore.load();
 		const app = createConnectionsRoute({
@@ -136,6 +138,7 @@ describe("connections route — 写入的失败(真 store)", () => {
 				logLevel: "silent",
 			},
 			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
 		);
 		await runtime.configStore.load();
 		// 内置三个适配器在场(真 schema、真候选,不连网)—— 配置仓据此验 settings,POST 据此抄快照。

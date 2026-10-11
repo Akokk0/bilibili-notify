@@ -17,6 +17,7 @@ import { BILIBILI_GUARD_PROGRAM, fail, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { putImage } from "../../__tests__/support/chat-images.js";
 import { png } from "../../__tests__/support/report-images.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { IMAGE_GRACE_MS } from "../../images/image-store.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
@@ -50,7 +51,7 @@ function start(guardIconHttp: Pick<HttpClient, "fetch">): AppRuntime {
 	runtime = createAppRuntime(
 		BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
 		{ dataRoot: dataDir },
-		{ guardIconHttp },
+		{ integrationSettings: [settingsSegment], guardIconHttp },
 	);
 	return runtime;
 }

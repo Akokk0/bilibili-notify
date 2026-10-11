@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { HTTPException } from "hono/http-exception";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -32,7 +33,11 @@ describe("全局出错处理与 notFound", () => {
 	});
 
 	async function makeApp(options: { staticDir?: string } = {}) {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

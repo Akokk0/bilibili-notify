@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
@@ -33,7 +34,11 @@ describe("/api/system 挂载", () => {
 	});
 
 	it("没给 → 404,那台机器上就当没有重启这回事", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -43,7 +48,11 @@ describe("/api/system 挂载", () => {
 	});
 
 	it("给了 → 重启这条按得动", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const restart = vi.fn(async () => {});
 		const app = createApp(runtime, {
@@ -67,7 +76,11 @@ describe("/api/system 挂载", () => {
 	});
 
 	it("旧版本数据的两个口跟着 system 一起挂:没给 404,给了列表与删除都答(㉙c)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const bare = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
@@ -101,7 +114,11 @@ describe("/api/system 挂载", () => {
 	});
 
 	it("存储占用的三个口跟着 system 一起挂:没给 404,给了列表、清理、清扫都答(㉙d)", async () => {
-		const runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+		const runtime = createAppRuntime(
+			makeBootstrap(dataDir),
+			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		const bare = createApp(runtime, {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },

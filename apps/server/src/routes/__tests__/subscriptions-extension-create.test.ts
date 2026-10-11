@@ -31,6 +31,7 @@ import {
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { createApp, createCardSkinStore } from "../../app.js";
+import { settingsSegment } from "../../bilibili/settings.js";
 import type { BootstrapConfig } from "../../config/schema.js";
 import { CONFIG_DIR } from "../../config/store.js";
 import type { ExtensionEntry } from "../../extensions/loader.js";
@@ -107,7 +108,11 @@ let entries: ExtensionEntry[];
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-subs-ext-create-"));
-	runtime = createAppRuntime(makeBootstrap(dataDir), { dataRoot: dataDir });
+	runtime = createAppRuntime(
+		makeBootstrap(dataDir),
+		{ dataRoot: dataDir },
+		{ integrationSettings: [settingsSegment] },
+	);
 	await runtime.configStore.load();
 	await runtime.subRuntimeStore.load();
 	// index.ts 同一步:订阅仓镜像配置、改动转成 subscription-changed。

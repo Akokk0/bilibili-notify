@@ -15,6 +15,7 @@ import { AI_CARD_WORKSHOP_TOOLS as T } from "@bilibili-notify/contract";
 import { DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 import type { EnginesRuntime } from "../runtime/engines.js";
@@ -49,7 +50,11 @@ describe("卡片皮肤工坊的装配接线", () => {
 			dataDir,
 			logLevel: "silent",
 		};
-		const runtime = createAppRuntime(bootstrap, { dataRoot: bootstrap.dataDir });
+		const runtime = createAppRuntime(
+			bootstrap,
+			{ dataRoot: bootstrap.dataDir },
+			{ integrationSettings: [settingsSegment] },
+		);
 		await runtime.configStore.load();
 		await runtime.configStore.patchGlobals({ ai: { enabled: true } });
 		const app = createApp(runtime, {

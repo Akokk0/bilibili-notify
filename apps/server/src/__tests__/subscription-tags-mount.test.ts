@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
+import { settingsSegment } from "../bilibili/settings.js";
 import { createAppRuntime } from "../runtime/bootstrap.js";
 
 let dataDir: string;
@@ -27,6 +28,7 @@ describe("/api/subscriptions/tags 挂载", () => {
 		const runtime = createAppRuntime(
 			{ server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" },
 			{ dataRoot: dataDir },
+			{ integrationSettings: [settingsSegment] },
 		);
 		await runtime.configStore.load();
 		const app = createApp(runtime, { cardSkins: { store: createCardSkinStore(runtime.dataRoot) } });

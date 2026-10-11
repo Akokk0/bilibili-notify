@@ -10,6 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { settingsSegment } from "../../bilibili/settings.js";
 import { BootstrapConfigSchema } from "../../config/schema.js";
 import { PROBLEMS_CHANGED_COALESCE_MS } from "../../problems/problem-table.js";
 import { type AppRuntime, createAppRuntime } from "../bootstrap.js";
@@ -19,9 +20,13 @@ let runtime: AppRuntime;
 
 beforeEach(async () => {
 	dataDir = await mkdtemp(join(tmpdir(), "bn-problems-wiring-"));
-	runtime = createAppRuntime(BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }), {
-		dataRoot: dataDir,
-	});
+	runtime = createAppRuntime(
+		BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
+		{
+			dataRoot: dataDir,
+		},
+		{ integrationSettings: [settingsSegment] },
+	);
 });
 afterEach(async () => {
 	vi.useRealTimers();
