@@ -24,6 +24,9 @@ import type { GlobalConfig } from "@bilibili-notify/internal";
 /** 视觉副模型那把 key 在袋子里的后缀。 */
 const VISION_SUFFIX = ":vision";
 
+/** 搜索后端的袋键前缀。 */
+const SEARCH_PREFIX = "search:";
+
 /** 一把 AI 密钥在袋子里的键。 */
 export function aiSecretKey(profileId: string, vision = false): string {
 	return vision ? `${profileId}${VISION_SUFFIX}` : profileId;
@@ -35,7 +38,15 @@ export function aiSecretKey(profileId: string, vision = false): string {
  * 永不带冒号,不会撞车。
  */
 export function searchSecretKey(backend: string): string {
-	return `search:${backend}`;
+	return `${SEARCH_PREFIX}${backend}`;
+}
+
+/**
+ * 一把袋键属于搜索域(`ai.search`)还是实例域(`ai.providers`)。配置仓在 `ai` 的某个子格被隔离时,要原样留下
+ * 那一域的旧袋键(那一格在内存里是默认值,收集不到它们);袋键怎么分域的规矩只住在这个文件。
+ */
+export function isSearchSecretKey(bagKey: string): boolean {
+	return bagKey.startsWith(SEARCH_PREFIX);
 }
 
 /**

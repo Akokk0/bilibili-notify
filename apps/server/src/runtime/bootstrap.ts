@@ -12,6 +12,7 @@ import {
 import { settingsSegment } from "../bilibili/settings.js";
 import type { BootstrapConfig } from "../config/schema.js";
 import { createSecretStore } from "../config/secret-store.js";
+import { syncSettingsProblem } from "../config/settings-problems.js";
 import { type ConfigStore, createConfigStore } from "../config/store.js";
 import { createFollowersStore, type FollowersStore } from "../followers/store.js";
 import { createRepushRunner, type RepushRunner } from "../history/repush-runner.js";
@@ -303,6 +304,9 @@ export function createAppRuntime(
 		integrationSettings: [settingsSegment],
 		connectionSettingsSchemaOf: (adapterKey) =>
 			adapterRegistry.list().find((a) => a.adapterKey === adapterKey)?.settingsSchema,
+		// 核心设置某一格读坏退了默认:合成一条问题报给问题表(不私聊,面板的问题框提示)。
+		onInvalidSettingsChanged: (entries) =>
+			syncSettingsProblem(problems, entries, serviceCtx.logger),
 	});
 	// 写道在 flush 段落盘并关门:此时 HTTP 已排空、各生产者已停,还在路上的配置写(如送达回调写回的目标可达性,
 	// 那处发出去就不管)在这里等到落盘,关停返回之后 `state/` 不再变。

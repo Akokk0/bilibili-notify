@@ -41,7 +41,14 @@ import {
 } from "@bilibili-notify/subscription";
 import type { ZodType, z } from "zod";
 import { dataPath } from "../runtime/roots.js";
-import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "./ai-secrets.js";
+import { errorMessageOf } from "../util/error-message.js";
+import {
+	applyAiSecrets,
+	collectAiSecrets,
+	isSearchSecretKey,
+	stripAiSecrets,
+} from "./ai-secrets.js";
+import { type InvalidSettingEntry, parseCoreSettings, withRawSettings } from "./core-settings.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
 import { ConfigValidationError } from "./validation-error.js";
@@ -141,6 +148,12 @@ export interface ConfigStore {
 
 	// --- reads ------------------------------------------------------------
 	getGlobals(): GlobalConfig;
+	/**
+	 * 核心设置里读盘时被隔离的格(深拷贝):那一格在内存里是默认值,盘上原文在落盘时原样放回。
+	 * 🔴 `raw` 是盘上原文,可能带着主人手写的明文 key —— **不许接到任何路由、日志或备份上**;
+	 * 对外只说路径与原因(问题表那一条已经是这样)。
+	 */
+	getInvalidSettings(): InvalidSettingEntry[];
 	/** 一个登记过的集成的设置(深拷贝)。没登记过就抛:那是组装处漏了,不是数据的问题。 */
 	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T;
 	/** 全部登记过的集成的设置,按集成的键(深拷贝)。`/api/settings` 与备份用。 */
@@ -253,6 +266,11 @@ export interface CreateConfigStoreOptions {
 	 * 不给 = 一律当不在场:保存时不验 `settings`(测试与不关心连接的调用方)。
 	 */
 	connectionSettingsSchemaOf?: (adapterKey: string) => ZodType | undefined;
+	/**
+	 * 核心设置的坏格表变了:`load()` 末尾有坏格时叫一次,之后每次写让表变了、出了写队列再叫一次(带着整张新表,
+	 * 空表 = 都好了)。仓不认得问题表,组装处把它接过去。回调抛了只记一行 warn,不让已经落盘的写失败。
+	 */
+	onInvalidSettingsChanged?: (entries: InvalidSettingEntry[]) => void;
 }
 
 // 一次配置写入被拒:类在 validation-error.ts(自带标准码与中文话,路由按码回、不嗅文案)。
@@ -323,6 +341,33 @@ async function copyFileAtomic(from: string, to: string): Promise<void> {
  */
 function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
 	return stripAiSecrets(deepClone(g));
+}
+
+/** 按路径取值,中途不是对象就是 `undefined`。 */
+function valueAt(root: unknown, path: readonly string[]): unknown {
+	let cur: unknown = root;
+	for (const step of path) {
+		if (!isPlainObject(cur)) return undefined;
+		cur = cur[step];
+	}
+	return cur;
+}
+
+/**
+ * 旧袋里属于仍被隔离的 `ai` 子格的那些键:`ai` 或 `ai.providers` 被隔离留实例域(不是搜索域的),`ai` 或
+ * `ai.search` 被隔离留搜索域的。袋键怎么分域见 `ai-secrets.ts#isSearchSecretKey`。
+ */
+function isolatedSecrets(
+	bag: Readonly<Record<string, string>>,
+	isolated: readonly InvalidSettingEntry[],
+): Record<string, string> {
+	const whole = isolated.some((e) => e.path[0] === "ai" && e.path.length === 1);
+	const has = (cell: string) => isolated.some((e) => e.path[0] === "ai" && e.path[1] === cell);
+	const keepInstances = whole || has("providers");
+	const keepSearch = whole || has("search");
+	return Object.fromEntries(
+		Object.entries(bag).filter(([key]) => (isSearchSecretKey(key) ? keepSearch : keepInstances)),
+	);
 }
 
 async function readJsonOrInit<T>(
@@ -794,6 +839,7 @@ class NodeConfigStore implements ConfigStore {
 	private readonly bus: MessageBus;
 	private readonly serviceCtx: ServiceContext;
 	private readonly connectionSettingsSchemaOf: (adapterKey: string) => ZodType | undefined;
+	private readonly onInvalidSettingsChanged?: (entries: InvalidSettingEntry[]) => void;
 	private readonly stateDir: string;
 	private readonly secretStore?: SecretStore;
 	private secretBag: ConfigSecrets = {};
@@ -801,6 +847,13 @@ class NodeConfigStore implements ConfigStore {
 	private plaintextApiKeyWarned = false;
 
 	private globals: GlobalConfig;
+	/**
+	 * 读盘时被隔离的核心设置格:内存里是默认值、盘上原文落盘时放回。只在 `load()` 与 {@link writeGlobals}
+	 * (落盘成功之后)里换;值里的 `raw` 可能带明文 key,读口见 {@link ConfigStore.getInvalidSettings}。
+	 */
+	private invalidSettings: InvalidSettingEntry[] = [];
+	/** 写让坏格表变了、还没通知出去(通知要出了写队列再叫,见 {@link announceInvalidSettings})。 */
+	private invalidSettingsChanged = false;
 	/** 登记进来的各集成的设置格式,按集成的键。 */
 	private readonly segments: ReadonlyMap<string, IntegrationSettingsSegment>;
 	/** 各集成的设置(已按各自的格式解析过),按集成的键。 */
@@ -835,6 +888,7 @@ class NodeConfigStore implements ConfigStore {
 		this.stateDir = opts.stateDir ?? dataPath(opts.dataRoot, ...CONFIG_DIR);
 		this.secretStore = opts.secretStore;
 		this.connectionSettingsSchemaOf = opts.connectionSettingsSchemaOf ?? (() => undefined);
+		this.onInvalidSettingsChanged = opts.onInvalidSettingsChanged;
 		this.segments = segmentsByKey(opts.integrationSettings ?? []);
 		// Initialize with safe defaults; `load()` overwrites.
 		this.globals = makeDefaultGlobalConfig();
@@ -913,8 +967,17 @@ class NodeConfigStore implements ConfigStore {
 		this.subscriptionTags = file.tags;
 	}
 
-	/** Write settings/core.json. When a SecretStore owns the apiKey, the on-disk copy is stripped. */
-	private async persistGlobals(g: GlobalConfig): Promise<void> {
+	/**
+	 * Write settings/core.json. When a SecretStore owns the apiKey, the on-disk copy is stripped.
+	 *
+	 * 核心设置唯一的落盘口:仍被隔离的格(`entries`,缺省是仓里现有的那张表)在**密钥抠除之后**盖回盘上原文
+	 * (`missing` 的删键)。放在这里而不是某个写口上,开机抹明文的那次写与 `removeExtension` 才不会漏;次序也不能
+	 * 反 —— 抠除只认合法的内存值,原文那种不合形状的会被它改成别的样子。
+	 */
+	private async persistGlobals(
+		g: GlobalConfig,
+		entries: readonly InvalidSettingEntry[] = this.invalidSettings,
+	): Promise<void> {
 		// P2:无 SecretStore 的 legacy 路径,apiKey 明文落 settings/core.json。这是
 		// 既有兼容回退(非缺陷),但此前无任何提示 —— 运维不知密钥在盘上明文。
 		// 首次遇到非空 apiKey 时高可见告警一次(建议配置 passphrase 启用加密)。
@@ -928,7 +991,8 @@ class NodeConfigStore implements ConfigStore {
 				"[secret] AI apiKey 以明文写入 settings/core.json(未配置加密密钥)。建议设置 passphrase 启用 SecretStore 加密。",
 			);
 		}
-		await atomicWriteJson(this.path("globals"), this.secretStore ? stripApiKeyForDisk(g) : g);
+		const disk = this.secretStore ? stripApiKeyForDisk(g) : g;
+		await atomicWriteJson(this.path("globals"), withRawSettings(disk, entries));
 	}
 
 	/**
@@ -983,13 +1047,11 @@ class NodeConfigStore implements ConfigStore {
 				this.path("globals"),
 				makeDefaultGlobalConfig,
 			);
-			const parsed = GlobalConfigSchema.safeParse(value);
-			if (!parsed.success) {
-				throw ConfigValidationError.fromZod("globals", parsed.error, {
-					subject: "settings/core.json",
-				});
-			}
-			this.globals = parsed.data;
+			// 逐格解析:一格坏了只那一格退默认、盘上原文留着(落盘时放回),不挡开机;只有信封坏了
+			// (解析不了、顶层不是对象)才抛。
+			const parsed = parseCoreSettings(value);
+			this.globals = parsed.settings;
+			this.invalidSettings = parsed.invalid;
 			this.meta.globals.exists = true;
 			this.meta.globals.lastUpdatedAt = existed ? null : new Date().toISOString();
 
@@ -1019,7 +1081,7 @@ class NodeConfigStore implements ConfigStore {
 		}
 
 		// 各集成的设置 —— 一个集成一个文件(ADR-0021 决策 42 下 10-01 的 🔗)。没有就按格式的默认值建一份;
-		// 读坏了是开机报错,同核心那份(「坏了只停那一个集成」随 3a 的集成生命周期做)。
+		// 读坏了仍是开机报错(核心那份已经逐格退默认;「坏了只停那一个集成」随 3a 的集成生命周期做)。
 		for (const segment of this.segments.values()) {
 			const { value } = await readJsonOrInit<unknown>(this.integrationPath(segment.key), () =>
 				segment.schema.parse({}),
@@ -1075,6 +1137,7 @@ class NodeConfigStore implements ConfigStore {
 		await this.loadConnectionsAndTargets();
 
 		this.loaded = true;
+		if (this.invalidSettings.length > 0) this.notifyInvalidSettings();
 		this.serviceCtx.logger.info(
 			`config-store loaded (stateDir=${this.stateDir} subs=${this.subscriptions.length} connections=${this.connections.length} targets=${this.targets.length})`,
 		);
@@ -1162,6 +1225,10 @@ class NodeConfigStore implements ConfigStore {
 		return deepClone(this.globals);
 	}
 
+	getInvalidSettings(): InvalidSettingEntry[] {
+		return deepClone(this.invalidSettings);
+	}
+
 	getIntegrationSettings<T>(segment: IntegrationSettingsSegment<T>): T {
 		if (!this.segments.has(segment.key)) {
 			throw new Error(`集成「${segment.key}」的设置没有登记进配置仓(组装处漏了)`);
@@ -1221,18 +1288,39 @@ class NodeConfigStore implements ConfigStore {
 	 * into the encrypted bag and scrubbed from the on-disk settings/core.json; the
 	 * in-memory copy keeps the real value so engines/routes are unaffected.
 	 */
-	private async writeGlobals(g: GlobalConfig): Promise<void> {
+	private async writeGlobals(
+		g: GlobalConfig,
+		mode: "compare" | "replace" = "compare",
+	): Promise<void> {
+		// 哪些被隔离的格这次仍算「没动」:新旧两份在那条路径上比值(两边都是 zod 的规范形态,比 JSON 就够)。
+		// 不比「补丁里有没有这个键」:面板的补丁值没变也照发(规则页每次带 `defaults` 下的整格),按键判会让主人
+		// 改个时间段就把没碰过的坏格原文盖掉。`replace` 是恢复备份:以给的这份为准,本机的坏格一起换掉、不放回。
+		const retained =
+			mode === "replace"
+				? []
+				: this.invalidSettings.filter(
+						(e) =>
+							JSON.stringify(valueAt(g, e.path)) === JSON.stringify(valueAt(this.globals, e.path)),
+					);
 		if (this.secretStore) {
 			// P2:此前 save 成功后 persistGlobals 抛错 → 密钥袋已存新 apiKey 但
 			// settings/core.json/in-memory 仍旧值 → 重启后两边分叉。失败即回滚密钥袋,
 			// 两端始终一致(全旧或全新);in-memory 仅在双写都成功后更新。
 			const prevBag = this.secretBag;
 			// 整份重算而不是并进旧袋:主人删掉一家时,那家的 key 必须跟着消失,
-			// 否则删了又加回来会拿到一把他以为已经删掉的旧密钥。
-			const nextBag = { ...this.secretBag, aiApiKey: undefined, aiApiKeys: collectAiSecrets(g) };
+			// 否则删了又加回来会拿到一把他以为已经删掉的旧密钥。唯一的例外是仍被隔离的那一格名下的旧键:
+			// 那一格在内存里是默认值,收集不到它们,重算会把它们洗空,主人把那一格改对时 key 已经没了。
+			const nextBag = {
+				...this.secretBag,
+				aiApiKey: undefined,
+				aiApiKeys: {
+					...isolatedSecrets(this.secretBag.aiApiKeys ?? {}, retained),
+					...collectAiSecrets(g),
+				},
+			};
 			await this.secretStore.save(nextBag);
 			try {
-				await this.persistGlobals(g);
+				await this.persistGlobals(g, retained);
 			} catch (e) {
 				this.secretBag = prevBag;
 				await this.secretStore.save(prevBag).catch(() => {});
@@ -1240,9 +1328,28 @@ class NodeConfigStore implements ConfigStore {
 			}
 			this.secretBag = nextBag;
 		} else {
-			await this.persistGlobals(g);
+			await this.persistGlobals(g, retained);
 		}
+		// 落盘成功之后才换内存与坏格表;失败的话上面已经抛出去,两样都原样不动。
 		this.globals = g;
+		if (retained.length !== this.invalidSettings.length) this.invalidSettingsChanged = true;
+		this.invalidSettings = retained;
+	}
+
+	/** 通知组装处坏格表现在的样子。 */
+	private notifyInvalidSettings(): void {
+		try {
+			this.onInvalidSettingsChanged?.(this.getInvalidSettings());
+		} catch (err) {
+			this.serviceCtx.logger.warn(`[config] 通知核心设置的坏格表失败: ${errorMessageOf(err)}`);
+		}
+	}
+
+	/** 写让坏格表变了就通知一次。在写队列**外**调:回调里的人可能再读配置仓。 */
+	private announceInvalidSettings(): void {
+		if (!this.invalidSettingsChanged) return;
+		this.invalidSettingsChanged = false;
+		this.notifyInvalidSettings();
 	}
 
 	async setGlobals(next: GlobalConfig): Promise<void> {
@@ -1254,6 +1361,7 @@ class NodeConfigStore implements ConfigStore {
 			await this.writeGlobals(parsed.data);
 			this.touch("globals");
 		});
+		this.announceInvalidSettings();
 		this.bus.emit("config-changed", { scope: "globals" });
 	}
 
@@ -1301,6 +1409,7 @@ class NodeConfigStore implements ConfigStore {
 			if (integrations.size > 0) this.touch("integration-settings");
 			return { core: this.globals, integrations: Object.fromEntries(this.integrationSettings) };
 		});
+		this.announceInvalidSettings();
 		if (patch.core !== undefined) this.bus.emit("config-changed", { scope: "globals" });
 		if (keys.length > 0) this.bus.emit("config-changed", { scope: "integration-settings" });
 		return deepClone(result);
@@ -1340,6 +1449,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			return { core, settings };
 		});
+		this.announceInvalidSettings();
 		if (removed.core) this.bus.emit("config-changed", { scope: "globals" });
 		if (removed.settings) this.bus.emit("config-changed", { scope: "integration-settings" });
 	}
@@ -1359,6 +1469,7 @@ class NodeConfigStore implements ConfigStore {
 			this.touch("globals");
 			return parsed.data;
 		});
+		this.announceInvalidSettings();
 		this.bus.emit("config-changed", { scope: "globals" });
 		return deepClone(result);
 	}
@@ -1845,7 +1956,8 @@ class NodeConfigStore implements ConfigStore {
 			}
 			try {
 				for (const [path, value] of writes) await atomicWriteJson(path, value);
-				if (globals) await this.writeGlobals(globals);
+				// 恢复是「以这一份为准」的整体替换:本机的坏格一起换掉、问题清掉,不比值、不放回。
+				if (globals) await this.writeGlobals(globals, "replace");
 			} catch (e) {
 				for (const [path, bak] of backups) await copyFileAtomic(bak, path).catch(() => {});
 				for (const path of created) await rm(path, { force: true }).catch(() => {});
@@ -1884,6 +1996,7 @@ class NodeConfigStore implements ConfigStore {
 			}
 			return touched;
 		});
+		this.announceInvalidSettings();
 		for (const scope of changed) this.bus.emit("config-changed", { scope });
 		return changed;
 	}
