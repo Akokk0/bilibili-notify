@@ -36,6 +36,8 @@ export interface ProblemLayers {
 		code: string;
 		message: string;
 		notify: boolean;
+		/** 清掉时核心补的「恢复时怎么说」;不给用核心的通用说法。存下,补报时带上。 */
+		recoveryMessage?: string;
 	}): void;
 	/** 第三层清掉;`notify: false` = 不是修好了,只是不再适用(停监听、停下),不补「已恢复」。 */
 	resolveFailure(
@@ -61,6 +63,7 @@ interface Failure {
 	code: string;
 	message: string;
 	notify: boolean;
+	recoveryMessage?: string;
 }
 
 const LOGIN_CODE = "auth_lost";
@@ -92,15 +95,24 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	}
 
 	function reportLogin(to: Sink, state: { notify: boolean }): void {
+		const text = state.notify ? PROBLEM_TEXTS.loginExpired : PROBLEM_TEXTS.loginMissing;
 		to.reportProblem({
 			code: LOGIN_CODE,
-			message: state.notify ? PROBLEM_TEXTS.loginExpired : PROBLEM_TEXTS.loginMissing,
-			notify: state.notify,
+			message: text.text,
+			notify: text.notify,
+			// 只进表的那一句没有「恢复时怎么说」(不会被用到)
+			...("recovery" in text ? { recoveryMessage: text.recovery } : {}),
 		});
 	}
 
 	function reportRiskEntry(to: Sink): void {
-		to.reportProblem({ code: RISK_CODE, message: PROBLEM_TEXTS.riskControlled, notify: true });
+		const text = PROBLEM_TEXTS.riskControlled;
+		to.reportProblem({
+			code: RISK_CODE,
+			message: text.text,
+			notify: text.notify,
+			recoveryMessage: text.recovery,
+		});
 	}
 
 	function reportFailureEntry(to: Sink, failure: Failure): void {
@@ -109,6 +121,9 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			code: failure.code,
 			message: failure.message,
 			notify: failure.notify,
+			...(failure.recoveryMessage === undefined
+				? {}
+				: { recoveryMessage: failure.recoveryMessage }),
 		});
 	}
 
@@ -198,6 +213,9 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				code: failure.code,
 				message: failure.message,
 				notify: failure.notify,
+				...(failure.recoveryMessage === undefined
+					? {}
+					: { recoveryMessage: failure.recoveryMessage }),
 			};
 			failures.set(failureKey(entry), entry);
 			toSink("报请求失败", (to) => reportFailureEntry(to, entry));

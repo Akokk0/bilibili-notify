@@ -268,8 +268,9 @@ describe("createBiliSource", () => {
 		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
 		expect(ctx.reportProblem).toHaveBeenCalledWith({
 			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginExpired,
+			message: PROBLEM_TEXTS.loginExpired.text,
 			notify: true,
+			recoveryMessage: PROBLEM_TEXTS.loginExpired.recovery,
 		});
 		await source.stop();
 	});

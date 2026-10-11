@@ -152,7 +152,7 @@ describe("失效登录开机", () => {
 		expect(table.list()[0]).toMatchObject({ reporter: SOURCE_KEY, code: "auth_lost" });
 		expect(table.list()[0]?.about).toBeUndefined();
 		expect(notifyMaster).toHaveBeenCalledTimes(1);
-		expect(notifyMaster).toHaveBeenCalledWith(PROBLEM_TEXTS.loginExpired);
+		expect(notifyMaster).toHaveBeenCalledWith(PROBLEM_TEXTS.loginExpired.text);
 	});
 
 	it("私聊不因开机那一下没连上而丢:头一次 unavailable,10 秒后再送,恰好送到一条;登录好了补一条「已恢复」", async () => {
@@ -173,14 +173,14 @@ describe("失效登录开机", () => {
 		await flush();
 		expect(table.list()).toEqual([]);
 		expect(notifyMaster).toHaveBeenCalledTimes(3);
-		expect(notifyMaster).toHaveBeenLastCalledWith(`已恢复：${PROBLEM_TEXTS.loginExpired}`);
+		expect(notifyMaster).toHaveBeenLastCalledWith(PROBLEM_TEXTS.loginExpired.recovery);
 	});
 
 	it("从没登录过 / 主动退出(logged-out):进表,不私聊", async () => {
 		const { table, notifyMaster } = await boot(OUT);
 		await flush();
 		expect(codes(table)).toEqual(["auth_lost"]);
-		expect(table.list()[0]?.message).toBe(PROBLEM_TEXTS.loginMissing);
+		expect(table.list()[0]?.message).toBe(PROBLEM_TEXTS.loginMissing.text);
 		expect(notifyMaster).not.toHaveBeenCalled();
 	});
 

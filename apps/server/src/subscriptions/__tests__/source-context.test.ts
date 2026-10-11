@@ -180,6 +180,28 @@ describe("createSourceContext · reportProblem / resolveProblem", () => {
 		});
 	});
 
+	it("recoveryMessage 原样带给问题表(来源级与订阅级都带);不给就没有这一格", () => {
+		const { handle, problems } = setup([makeSub("a", "1")]);
+		handle.ctx.reportProblem({ code: "auth_lost", message: "话", recoveryMessage: "好啦" });
+		handle.ctx.reportProblem({
+			externalId: "1",
+			code: "monitor_stopped",
+			message: "话",
+			recoveryMessage: "连上啦",
+		});
+		handle.ctx.reportProblem({ code: "no_recovery", message: "话" });
+		expect(problems.report.mock.calls[0]?.[0]).toMatchObject({ recoveryMessage: "好啦" });
+		expect(problems.report.mock.calls[1]?.[0]).toMatchObject({ recoveryMessage: "连上啦" });
+		expect("recoveryMessage" in (problems.report.mock.calls[2]?.[0] ?? {})).toBe(false);
+	});
+
+	it("recoveryMessage 是空白:按形状不对丢弃并记 error", () => {
+		const { handle, problems, logger } = setup();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "话", recoveryMessage: "  " });
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
 	it("带 externalId 但这个人没有订阅:不记,记 debug", () => {
 		const { handle, problems, logger } = setup();
 		handle.ctx.reportProblem({ externalId: "999", code: "monitor_stopped", message: "停了" });

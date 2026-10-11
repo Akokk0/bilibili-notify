@@ -19,10 +19,14 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  * - **再送**:没送到、且失败码是标准码表里「稍后可重试」的那几种,问题还开着就按 {@link RETRY_DELAYS_MS} 再试,
  *   用完记一行 warn 不再试;其余失败(没配主人、目标不是私聊、结果不明)再试也没用,不再送。
  *   再送发的是那一刻的 message。
- * - **已恢复**:只对真私聊过的补,引的是当初真发出去的那句话(不是后来换过的文案);报的人明说不补的、
- *   宿主在清的(来源停下、订阅删了),表里的变更都带着 `notify: false`,这里一律不补。
+ * - **已恢复**:只对真私聊过的补;报的人宿主在清的(来源停下、订阅删了)与明说不补的,表里的变更都带着
+ *   `notify: false`,这里一律不补。发的是这条问题自带的 `recoveryMessage`(**当初真私聊出去那一刻**存下的,
+ *   不是后来换过的);没带的用通用说法 {@link GENERIC_RECOVERY_PREFIX} 接当初真发出去的那句原文。
  *   「已恢复」没送到只记一行 warn,不再送。
  */
+
+/** 报的人没给「恢复时怎么说」时的通用说法:后面接当初真发出去的那句原文。 */
+export const GENERIC_RECOVERY_PREFIX = "主人，好消息，之前说的这件事已经恢复啦：";
 
 /** 节流窗口:同一 报的人 + code,上次私聊之后这么久之内的后续私聊吞掉。 */
 export const NOTIFY_WINDOW_MS = 60_000;
@@ -48,8 +52,12 @@ interface Slot {
 	message: string;
 	/** 报的人此刻要不要私聊。 */
 	wantsNotify: boolean;
-	/** 当初真发出去(回了 ok)的那句,「已恢复」引它;没有 = 没真私聊过。 */
+	/** 最新的「恢复时怎么说」(报的人给的;没给就没有)。 */
+	recoveryMessage?: string;
+	/** 当初真发出去(回了 ok)的那句,通用的「已恢复」引它;没有 = 没真私聊过。 */
 	sentText?: string;
+	/** 发出那一刻存下的「恢复时怎么说」:清掉时发它,不是后来换过的。 */
+	sentRecovery?: string;
 	/** 有一条正在发。 */
 	sending: boolean;
 	/** 已经用掉的再送次数。 */
@@ -108,6 +116,7 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			return;
 		}
 		const text = slot.message;
+		const recovery = slot.recoveryMessage;
 		problemThrottle.begin(key);
 		slot.sending = true;
 		serviceCtx.track(
@@ -117,7 +126,8 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 				if (disposed) return;
 				if (result.ok) {
 					slot.sentText = text;
-					if (slot.closedWhileSending?.announceRecovery) sendRecovery(slot, text);
+					slot.sentRecovery = recovery;
+					if (slot.closedWhileSending?.announceRecovery) sendRecovery(slot, text, recovery);
 					return;
 				}
 				if (slot.closedWhileSending) return;
@@ -145,7 +155,7 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		}, delay);
 	}
 
-	function sendRecovery(slot: Slot, sentText: string): void {
+	function sendRecovery(slot: Slot, sentText: string, sentRecovery: string | undefined): void {
 		const key = throttleKey(slot);
 		if (recoveryThrottle.blocked(key)) {
 			logger.debug(`[problems] 「已恢复」被节流吞掉 reporter=${slot.reporter} code=${slot.code}`);
@@ -153,7 +163,7 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		}
 		recoveryThrottle.begin(key);
 		serviceCtx.track(
-			deliver(`已恢复：${sentText}`).then((result) => {
+			deliver(sentRecovery ?? `${GENERIC_RECOVERY_PREFIX}${sentText}`).then((result) => {
 				recoveryThrottle.end(key, result.ok);
 				if (!result.ok && !disposed) {
 					logger.warn(
@@ -191,11 +201,14 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			slot.retryTimer = undefined;
 			slot.wantsNotify = false;
 			if (slot.sending) slot.closedWhileSending = { announceRecovery: change.notify };
-			else if (slot.sentText !== undefined && change.notify) sendRecovery(slot, slot.sentText);
+			else if (slot.sentText !== undefined && change.notify) {
+				sendRecovery(slot, slot.sentText, slot.sentRecovery);
+			}
 			return;
 		}
 		const slot = slotFor(change);
 		slot.message = change.problem.message;
+		slot.recoveryMessage = change.recoveryMessage;
 		slot.wantsNotify = change.notify;
 		if (!slot.wantsNotify || slot.sentText !== undefined || slot.sending || slot.retryTimer) return;
 		sendProblem(slot);

@@ -68,7 +68,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	 */
 	const forEachProblemObject = (
 		what: string,
-		problem: { externalId?: string; code: string; message?: string },
+		problem: { externalId?: string; code: string; message?: string; recoveryMessage?: string },
 		visit: (about: { subscriptionId: string } | undefined) => void,
 	): void => {
 		if (disposed) {
@@ -80,7 +80,8 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 		if (
 			!PROBLEM_CODE.test(problem.code) ||
 			problem.externalId === "" ||
-			(problem.message !== undefined && problem.message.trim() === "")
+			(problem.message !== undefined && problem.message.trim() === "") ||
+			(problem.recoveryMessage !== undefined && problem.recoveryMessage.trim() === "")
 		) {
 			logger.error(
 				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;内置来源的 bug): ${problem.code}`,
@@ -161,6 +162,9 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 					code: problem.code,
 					message: problem.message,
 					...(problem.notify === undefined ? {} : { notify: problem.notify }),
+					...(problem.recoveryMessage === undefined
+						? {}
+						: { recoveryMessage: problem.recoveryMessage }),
 				}),
 			);
 		},

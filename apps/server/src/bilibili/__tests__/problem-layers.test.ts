@@ -77,8 +77,9 @@ describe("未登录层:只看 AuthState.status", () => {
 		expect(sink.reportProblem).toHaveBeenCalledTimes(1);
 		expect(sink.reportProblem).toHaveBeenCalledWith({
 			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginExpired,
+			message: PROBLEM_TEXTS.loginExpired.text,
 			notify: true,
+			recoveryMessage: PROBLEM_TEXTS.loginExpired.recovery,
 		});
 	});
 
@@ -87,7 +88,7 @@ describe("未登录层:只看 AuthState.status", () => {
 		expect(sink.reportProblem).toHaveBeenCalledTimes(1);
 		expect(sink.reportProblem).toHaveBeenCalledWith({
 			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginMissing,
+			message: PROBLEM_TEXTS.loginMissing.text,
 			notify: false,
 		});
 	});
@@ -102,8 +103,9 @@ describe("未登录层:只看 AuthState.status", () => {
 		set(EXPIRED);
 		expect(sink.reportProblem).toHaveBeenCalledWith({
 			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginExpired,
+			message: PROBLEM_TEXTS.loginExpired.text,
 			notify: true,
+			recoveryMessage: PROBLEM_TEXTS.loginExpired.recovery,
 		});
 	});
 
@@ -142,7 +144,7 @@ describe("未登录层:只看 AuthState.status", () => {
 		set(OUT);
 		expect(sink.reportProblem).toHaveBeenCalledWith({
 			code: "auth_lost",
-			message: PROBLEM_TEXTS.loginMissing,
+			message: PROBLEM_TEXTS.loginMissing.text,
 			notify: false,
 		});
 		expect(sink.resolveProblem).not.toHaveBeenCalled();
@@ -223,8 +225,9 @@ describe("压与抹", () => {
 		expect(sink.resolveProblem.mock.calls.every(([p]) => p.notify === false)).toBe(true);
 		expect(sink.reportProblem).toHaveBeenCalledWith({
 			code: "risk_controlled",
-			message: PROBLEM_TEXTS.riskControlled,
+			message: PROBLEM_TEXTS.riskControlled.text,
 			notify: true,
+			recoveryMessage: PROBLEM_TEXTS.riskControlled.recovery,
 		});
 	});
 
@@ -296,6 +299,48 @@ describe("第三层:各项请求失败", () => {
 			["dynamic_fetch_failed", false],
 			["live_monitor_stopped", true],
 		]);
+	});
+
+	it("reportFailure 的 recoveryMessage 存下来原样带给核心,补报时带上;不给就没有这一格", () => {
+		const { sink, layers } = setup(IN);
+		layers.reportFailure({
+			externalId: "7",
+			code: "live_monitor_stopped",
+			message: "停了",
+			notify: true,
+			recoveryMessage: "连上啦",
+		});
+		layers.reportFailure({ code: "dynamic_fetch_failed", message: "x", notify: false });
+		expect(sink.reportProblem.mock.calls[0]?.[0]).toMatchObject({ recoveryMessage: "连上啦" });
+		expect("recoveryMessage" in (sink.reportProblem.mock.calls[1]?.[0] ?? {})).toBe(false);
+
+		layers.detach();
+		sink.reportProblem.mockClear();
+		layers.attach(sink);
+		const byCode = new Map(sink.reportProblem.mock.calls.map(([p]) => [p.code, p]));
+		expect(byCode.get("live_monitor_stopped")?.recoveryMessage).toBe("连上啦");
+		expect(byCode.get("dynamic_fetch_failed")).not.toHaveProperty("recoveryMessage");
+	});
+
+	it("未登录层与风控层报的时候带各自的 recovery;只进表的「还没登录」不带", () => {
+		const expired = setup(EXPIRED);
+		expect(expired.sink.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
+			PROBLEM_TEXTS.loginExpired.recovery,
+		);
+		const missing = setup(OUT);
+		expect(missing.sink.reportProblem.mock.calls[0]?.[0]).not.toHaveProperty("recoveryMessage");
+		const risky = setup(IN);
+		risky.layers.reportRisk("dynamic");
+		expect(risky.sink.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
+			PROBLEM_TEXTS.riskControlled.recovery,
+		);
+		// 补报也带
+		risky.layers.detach();
+		risky.sink.reportProblem.mockClear();
+		risky.layers.attach(risky.sink);
+		expect(risky.sink.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
+			PROBLEM_TEXTS.riskControlled.recovery,
+		);
 	});
 
 	it("resolveFailure:缺省是普通的清;notify: false 才静默", () => {

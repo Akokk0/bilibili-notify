@@ -29,13 +29,18 @@ export interface SourceContext extends IntegrationContext {
 	/**
 	 * 报一个问题(登录失效了、某个人不再监听了……)。不带 `externalId` 是来源自己的问题;带了由宿主换成
 	 * 这个人名下的每一条订阅。`code` 是 snake 风格,同一个对象下同一个 code 只有一条,再报只换文案。
-	 * `notify: true` 请核心私聊主人一次。没有返回值;形状不对、来源已停下的上报被丢弃。
+	 * `notify: true` 请核心私聊主人一次。没有返回值;形状不对(含空白的 `message` / `recoveryMessage`)、
+	 * 来源已停下的上报被丢弃。
+	 *
+	 * `recoveryMessage`:这件事清掉、且当初真私聊过时核心发的那一句(发的是私聊出去那一刻的那句);
+	 * 不给就用核心的通用说法(接当初私聊的原文)。
 	 */
 	reportProblem(problem: {
 		externalId?: string;
 		code: string;
 		message: string;
 		notify?: boolean;
+		recoveryMessage?: string;
 	}): void;
 	/**
 	 * 清掉一个问题(同 `reportProblem` 的对象规矩)。清掉时核心对私聊过的补一句「已恢复」;

@@ -4,7 +4,8 @@
  * - 节流键是 报的人 + code(不含对象),窗口 60 秒;「已恢复」另用一张表、各算各的。
  * - 「真私聊过」= `notifyMaster` 回了 ok。节流时间戳只在送到时才记,否则再送会被自己的节流吞掉。
  * - 没送到、且失败码属于「稍后可重试」的,问题还开着就按 10 秒 / 30 秒 / 60 秒 / 5 分钟 / 15 分钟再送,用完记 warn。
- * - 清掉时只有真私聊过的才补「已恢复：」,引的是当初真发出去的那句;宿主清(来源停下、订阅删了)不补。
+ * - 清掉时只有真私聊过的才补「恢复」:发这条问题自带的 `recoveryMessage`(私聊出去那一刻存下的那句),没带的用通用说法
+ *   接当初真发出去的那句;宿主清(来源停下、订阅删了)不补。
  *
  * 全程假时钟。推进用 `advanceTimersByTimeAsync`,别用 `waitFor`(撞上假定时器会死锁)。
  */
@@ -12,7 +13,7 @@
 import { type DeliveryResult, fail, type Logger, ok } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { deferred } from "../../__tests__/support/track-context";
-import { createProblemNotifier } from "../problem-notifier";
+import { createProblemNotifier, GENERIC_RECOVERY_PREFIX } from "../problem-notifier";
 import { createProblemTable, type ProblemTable } from "../problem-table";
 
 const sent = (): DeliveryResult => ok({ latencyMs: 1 });
@@ -253,7 +254,7 @@ describe("没送到的再送", () => {
 });
 
 describe("已恢复", () => {
-	it("真私聊过的问题被报的人清掉:补「已恢复：」+ 当初真发出去的那句(不是后来换过的文案)", async () => {
+	it("真私聊过、没带 recoveryMessage 的问题被清掉:通用说法 + 当初真发出去的那句(不是后来换过的文案)", async () => {
 		const { table, notify } = setup();
 		open(table, { message: "当初那句" });
 		await flush();
@@ -261,7 +262,72 @@ describe("已恢复", () => {
 		table.resolve({ reporter: "src", code: "auth_lost" });
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenLastCalledWith("已恢复：当初那句");
+		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}当初那句`);
+	});
+
+	it("带了 recoveryMessage:清掉时发它,原来的「已恢复：」前缀不再出现", async () => {
+		const { table, notify } = setup();
+		open(table, { message: "登录失效了", recoveryMessage: "登录好啦" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(notify).toHaveBeenLastCalledWith("登录好啦");
+		expect(notify.mock.calls.some((c) => String(c[0]).startsWith("已恢复："))).toBe(false);
+	});
+
+	it("发的是私聊出去那一刻存下的 recoveryMessage,不是后来换过的", async () => {
+		const { table, notify } = setup();
+		open(table, { message: "当初那句", recoveryMessage: "当初的恢复说法" });
+		await flush();
+		open(table, { message: "后来换的文案", recoveryMessage: "后来换的恢复说法" });
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("当初的恢复说法");
+	});
+
+	it("发送在路上时 recoveryMessage 换了:发的是发出那一刻的,不是路上换的", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify } = setup(() => gate.promise);
+		open(table, { message: "话", recoveryMessage: "发出时的恢复说法" });
+		await flush();
+		open(table, { message: "话", recoveryMessage: "路上换的恢复说法" });
+		gate.resolve(sent());
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("发出时的恢复说法");
+	});
+
+	it("再送时用的是再送那一刻的 recoveryMessage(送到的才算数)", async () => {
+		const results = [fail("unavailable", "没连上"), sent()];
+		const { table, notify } = setup(async () => results.shift() ?? sent());
+		open(table, { message: "话", recoveryMessage: "旧的恢复说法" });
+		await flush();
+		open(table, { message: "话", recoveryMessage: "新的恢复说法" });
+		await advance(10_000);
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("新的恢复说法");
+	});
+
+	it("发送还在路上时被清:送到之后发的也是发出那一刻存下的 recoveryMessage", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify } = setup(() => gate.promise);
+		open(table, { message: "在路上", recoveryMessage: "路上存下的恢复说法" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		gate.resolve(sent());
+		await flush();
+		expect(notify).toHaveBeenLastCalledWith("路上存下的恢复说法");
+	});
+
+	it("没真私聊过的(notify 假)清掉不发,哪怕带了 recoveryMessage", async () => {
+		const { table, notify } = setup();
+		open(table, { notify: false, recoveryMessage: "不会被用到" });
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await flush();
+		expect(notify).not.toHaveBeenCalled();
 	});
 
 	it("没真私聊过的(notify 假)清掉不发", async () => {
@@ -328,7 +394,7 @@ describe("已恢复", () => {
 		table.resolve({ reporter: "src", about: { subscriptionId: "s1" }, code: "stopped" });
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenLastCalledWith("已恢复：房间 1");
+		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}房间 1`);
 
 		// 窗口外,又一条问题送出去,然后在同一个恢复窗口内连着修好两条
 		await advance(60_000);
@@ -367,7 +433,7 @@ describe("已恢复", () => {
 		gate.resolve(sent());
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(2);
-		expect(notify).toHaveBeenLastCalledWith("已恢复：在路上");
+		expect(notify).toHaveBeenLastCalledWith(`${GENERIC_RECOVERY_PREFIX}在路上`);
 	});
 
 	it("发送还在路上时被宿主清掉:送到之后不补「已恢复」", async () => {

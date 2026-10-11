@@ -98,6 +98,38 @@ describe("createProblemTable 的记与清", () => {
 		expect(changes).toHaveLength(1);
 	});
 
+	it("recoveryMessage:变更里带着它;同键再报时它变了也算一次 updated;没变不算", () => {
+		const { table, changes } = makeTable();
+		table.report({ ...key, message: "话", notify: true, recoveryMessage: "好啦" });
+		expect(changes[0]).toMatchObject({ kind: "opened", recoveryMessage: "好啦" });
+
+		table.report({ ...key, message: "话", notify: true, recoveryMessage: "好啦" });
+		expect(changes).toHaveLength(1);
+
+		table.report({ ...key, message: "话", notify: true, recoveryMessage: "换个说法" });
+		expect(changes).toHaveLength(2);
+		expect(changes[1]).toMatchObject({ kind: "updated", recoveryMessage: "换个说法" });
+
+		// 不再给 = 换成没有这一格
+		table.report({ ...key, message: "话", notify: true });
+		expect(changes).toHaveLength(3);
+		expect(changes[2]?.recoveryMessage).toBeUndefined();
+		expect("recoveryMessage" in (changes[2] ?? {})).toBe(false);
+	});
+
+	it("recoveryMessage 不在对外的 Problem 上:list() 里没有它", () => {
+		const { table } = makeTable();
+		table.report({ ...key, message: "话", notify: true, recoveryMessage: "好啦" });
+		expect(table.list()[0]).not.toHaveProperty("recoveryMessage");
+	});
+
+	it("清掉的变更也带着当时的 recoveryMessage", () => {
+		const { table, changes } = makeTable();
+		table.report({ ...key, message: "话", notify: true, recoveryMessage: "好啦" });
+		table.resolve(key);
+		expect(changes.at(-1)).toMatchObject({ kind: "closed", recoveryMessage: "好啦" });
+	});
+
 	it("键由 (报的人, 关于谁, code) 三格合成:换任何一格都是另一条", () => {
 		const { table } = makeTable();
 		table.report({ reporter: "a", code: "c", message: "1" });
