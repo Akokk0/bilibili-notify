@@ -822,8 +822,16 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			// `settingsSchema` 同样由宿主拿拓展交的 `configSchema` 填:宿主按它解 settings 再递给适配器。
+			// 🔴 这一版不对拓展开放的成员(ADR-0024 决策 11)带了也不认:契约的类型已经排除它们,但第三方 JS 不受
+			// 类型约束,原样展开的话带了就是活的 —— 没开放的口子先被人用上,以后就改不动它的形状。
+			const {
+				listAddressCandidates: _listAddressCandidates,
+				connectionAuth: _connectionAuth,
+				...offered
+			} = def.adapter as typeof def.adapter &
+				Partial<Pick<PlatformAdapter, "listAddressCandidates" | "connectionAuth">>;
 			const adapter: PlatformAdapter = {
-				...def.adapter,
+				...offered,
 				adapterKey: id,
 				settingsSchema: def.configSchema,
 			};

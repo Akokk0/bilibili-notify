@@ -268,6 +268,27 @@ describe("按清单注册推送源", () => {
 		expect(adapterCtx.connections().map((c) => c.id)).toEqual(["mine"]);
 	});
 
+	// 契约的类型把这两个成员排除了,但第三方 JS 不受类型约束:带了也不认,否则「没开放」的口子先被人用上,
+	// 以后就改不动它的形状(ADR-0024 决策 11)。
+	// 验红:把 context.ts 里摘这两个成员的那一句去掉(原样展开),这条红。
+	it("这一版不对拓展开放的成员(列地址候选、连接认证)带了也不认,别的成员照收", () => {
+		const h = harness();
+		const probe = vi.fn();
+		const smuggled = {
+			...fakeAdapter(),
+			probe,
+			listAddressCandidates: vi.fn(),
+			connectionAuth: { begin: vi.fn(), state: vi.fn(), takeDraft: vi.fn() },
+		} as unknown as PlatformAdapter;
+		h.ctx.registerPushSource({ ...def(), adapter: smuggled });
+		const [registered] = h.adapters.list();
+		expect(registered?.adapterKey).toBe("bridge");
+		// 正对照:没被排除的可选成员原样在。
+		expect(registered?.probe).toBe(probe);
+		expect(registered && "listAddressCandidates" in registered).toBe(false);
+		expect(registered && "connectionAuth" in registered).toBe(false);
+	});
+
 	it("拓展上下文 dispose 之后:stop 被调一次,宿主再发「连接变了」start 里订的回调不被叫", async () => {
 		const h = harness();
 		const changed = vi.fn();
