@@ -10,6 +10,9 @@ import { createLiveRooms } from "./live-rooms.js";
 import { loginStateScenario, type OverridableStatus } from "./login-state.js";
 import { biliTimerScenarios } from "./timers.js";
 
+/** `compose.ts` 的 `provideDevtools` 形参要它;`compose.ts` 自己不许写 `"./devtools/…"` 的说明符。 */
+export type { DevtoolsProviderRegistry } from "../../devtools/providers.js";
+
 /**
  * B 站交给 devtools 的那一包场景(`DevtoolsProvider`)—— 只在开发版登记。
  *
@@ -18,8 +21,8 @@ import { biliTimerScenarios } from "./timers.js";
  * 宿主汇总时统一加(`devtools/providers.ts`)。
  *
  * 🚧 过渡接线:场景今天仍直接用引擎、用套了 Proxy 的 `Api` / `AuthSystem`(两个 Proxy 由
- * `src/index.ts` 建好传进来)。3a-28 之后场景改成只经 B 站自己的上下文做事,这批句柄与
- * `src/index.ts` 里建 Proxy 的那段一并删。
+ * `src/index.ts` 建好、经 `src/compose.ts` 传进来)。直播场景要 `LiveEngine` 的句柄(3b)、登录场景要
+ * `loginFlow`(3a-29)、造动态的场景经壳上盖方法再调 `detectNow()` 走的是真引擎,各等各的那一片再删。
  */
 export interface BiliDevtoolsDeps {
 	/** 传给引擎的 `Api` 外面的那层 Proxy —— 引擎拿的就是它的 `.api`。 */

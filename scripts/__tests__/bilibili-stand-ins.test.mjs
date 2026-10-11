@@ -20,7 +20,7 @@ import { findNodes, listSources, parseSource, ts } from "../source-scan.mjs";
  *   - 标识符按驼峰段与下划线段切开,有一段是 `bili` 或 `bilibili`(不分大小写)。`mobility` 这种碰巧含这几个
  *     字母的不算。
  *   - 注释不算。
- * - 白名单:迁移模块整个目录(0.x 的形状只住那里);`compose.ts`、`bilibili/`、设置 schema 的组合处建出来以后加。
+ * - 白名单:迁移模块整个目录(0.x 的形状只住那里);`compose.ts` 与 `bilibili/` 已加,设置 schema 的组合处建出来以后加。
  *   保留 id 表(`BILIBILI_SOURCE_KEY` 那几行)今天和别的东西同住 `packages/internal/src/constants.ts`,先记在棘轮里,
  *   清零之前拆成单独一个文件再放进白名单。
  * - 棘轮按文件记上限(对账见 `scripts/ratchet-audit.mjs`):多一处就红,上限高于实数也红。⑥d 开张,第 4 期末清零。
@@ -37,8 +37,11 @@ export const ALLOWED_DIRS = {
 		"B 站自己的代码(设计稿的白名单,architecture.md 守卫表「B 站替身」一行):今天只有它的设置",
 };
 
-/** 白名单:整个文件放行,写明理由。今天没有。 */
-export const ALLOWLIST = {};
+/** 白名单:整个文件放行,写明理由。 */
+export const ALLOWLIST = {
+	"apps/server/src/compose.ts":
+		"组装根:整个核心只有它登记内置集成(architecture.md「compose.ts 装配」)。今天认领 B 站那组开发场景;3a-28 的下一个提交起造并登记 B 站来源。只许放登记,不许长别的逻辑 —— 这一条在入口咽喉守卫(3a-40)开张前没有守卫钉着,靠审查",
+};
 
 /**
  * 棘轮表:文件 → 命中的上限(⑥d 开张时的实数:70 个文件 403 处)。只许往下调,第 4 期末清零。大头是 B 站四包与
@@ -54,9 +57,10 @@ export const RATCHET = {
 	// `createBiliContext`。3a-29 这套代码搬进 `bilibili/auth/` 时整行消失。
 	"apps/server/src/auth/index.ts": 2,
 	"apps/server/src/auth/login-status-wire.ts": 6,
-	// 3a-32(主人 10-10 点头,5 → 8):B 站的开发场景搬进 `bilibili/devtools/`,入口要引入、调用它的工厂并用来源键认领,
-	// 多 3 处;同一片让核心 devtools 少了 7 处。3a-40 建 `compose.ts` 时这几处一起搬走。
-	"apps/server/src/index.ts": 8,
+	// 3a-28 建 `compose.ts`(8 → 5):3a-32 为开发场景多出的 3 处(引入工厂、用来源键认领、调工厂)与按来源筛订阅那 1 处搬走;
+	// 多 1 处是 `status` 指令读「上次抓取」(来源的 `health()` 没造之前如实留着)。剩下的 4 处是统计的登录读口(3a-29)
+	// 与拓展名单的过滤。
+	"apps/server/src/index.ts": 5,
 	"apps/server/src/routes/auth.ts": 3,
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,

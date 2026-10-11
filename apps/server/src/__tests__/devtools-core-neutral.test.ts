@@ -2,7 +2,7 @@
  * 核心 `src/devtools/` 不认识任何一家来源:里面(非测试文件)不许有任何对 `bilibili/` 的 import ——
  * 含 `import type`、副作用 import、动态 `import()`、`export ... from`。B 站的场景在
  * `src/bilibili/devtools/` 里,经登记表 `devtoolsProviders` 汇进来(ADR-0021 决策 54)。
- * 入口文件 `src/index.ts` 引用 `bilibili/` 是允许的,不在这条的范围里。
+ * 入口文件 `src/index.ts` 与组装根 `src/compose.ts` 引用 `bilibili/` 是允许的,不在这条的范围里。
  *
  * 认的是**模块说明符**(`from "…"` / `import("…")` / `import "…"` 后面那串字),不是整行文字:
  * 注释里提一句「bilibili/」不该误报。

@@ -25,11 +25,11 @@ import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
 import { BiliLoginStatus } from "./bilibili/api/index.js";
-import { createBiliDevtools } from "./bilibili/devtools/index.js";
 import { settingsOf } from "./bilibili/settings.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
+import { composeBuiltinIntegrations } from "./compose.js";
 import { loadBootstrapConfig, resolveConfigPath } from "./config/loader.js";
 import { type ChromeSource, persistChromeSource } from "./config/persist.js";
 import { type ResolveWebDistDirInput, resolveWebDistDir } from "./config/web-dist.js";
@@ -583,7 +583,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		//   1. SubscriptionStore binding mirrors the file-backed config into an
 		//      in-memory store + emits subscription-changed on diffs.
 		//   2. Platform adapters are constructed from logger; they hold no state.
-		//   3. createEngines() builds Dispatcher → PushRouter → DynamicEngine + LiveEngine
+		//   3. createEngines() builds Dispatcher → PushRouter → dynamic engine + LiveEngine
 		//      and registers serviceCtx.onDispose for graceful shutdown.
 		subBinding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 		runtime.serviceCtx.onDispose(() => subBinding?.dispose(), "stop");
@@ -691,47 +691,29 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 真 adapter / 真 api 一行不动。
 		// `subBinding` 是个会在关停时清掉的 let,闭包里收不窄;先把 store 取出来。
 		const subStore = subBinding.store;
-		// 🚧 过渡接线(3a-28 之后场景改成只经 B 站自己的上下文做事,这段与 `bilibili/devtools/` 的
-		// 句柄入参一并删):B 站那组场景要往引擎的 `api` 与路由的登录系统上盖方法,所以这两层
-		// Proxy 在这里建,引擎与路由拿的是它们的 `.api`。生产里 `overridableApi` 是桩,原样透传。
+		// 🚧 过渡接线:壳留在入口(核心 `devtools/index.js` 按 `devtools-isolation` 只许入口引;
+		// 引擎、路由也要它们的 `.api`)。B 站那组场景要往引擎的 `api` 与路由的登录系统上盖方法,
+		// 所以这两层 Proxy 在这里建,引擎与路由拿的是它们的 `.api`;生产里 `overridableApi` 是桩,
+		// 原样透传。B 站那组场景的认领在 `compose.ts`。
 		const devApi = overridableApi(authSystem.api);
 		const devAuth = overridableApi(authSystem);
+		const builtins = composeBuiltinIntegrations({
+			api: devApi,
+			auth: devAuth,
+			bus: runtime.bus,
+			subscriptions: subStore,
+			subscriptionRuntime: runtime.subRuntimeStore,
+			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
+			dynamic: () => engines?.dynamic,
+			live: () => engines?.live,
+			fans: () => runtime.fansPoller ?? undefined,
+			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
+			loginFlow: () => authSystem?.flow,
+		});
 		const devtools = createDevtools({
 			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
 			// 构建时 `createBiliDevtools` 另有恒空的桩。
-			provide: (devtoolsProviders) =>
-				devtoolsProviders.claim(
-					BILIBILI_SOURCE_KEY,
-					createBiliDevtools({
-						api: devApi,
-						auth: devAuth,
-						bus: runtime.bus,
-						// 场景挑订阅:配置里的订阅 + 运行时解析出的房号(与 room-session 拿的是同一份)。
-						// 只挑 B 站订阅:这些场景造的是 B 站的直播 / 动态事件(ADR-0019 决策 12)。
-						subs: () =>
-							subStore
-								.list()
-								.filter((sub) => subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY)
-								.map((sub) => {
-									const uid = subscriptionIdentityOf(sub).externalId;
-									return {
-										id: sub.id,
-										uid,
-										name: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.name ?? uid,
-										enabled: sub.enabled,
-										roomId: runtime.subRuntimeStore.get(sub.id)?.roomId,
-										specialUsers: sub.specialUsers.map((u) => u.uid),
-										avatar: runtime.subRuntimeStore.get(sub.id)?.cachedProfile?.avatarUrl,
-									};
-								}),
-						// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
-						dynamic: () => engines?.dynamic,
-						live: () => engines?.live,
-						fans: () => runtime.fansPoller ?? undefined,
-						// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
-						loginFlow: () => authSystem?.flow,
-					}),
-				),
+			provide: (devtoolsProviders) => builtins.provideDevtools(devtoolsProviders),
 			payloadVersion,
 			sourceRun,
 			updateService,
@@ -1031,7 +1013,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 					// 登录态直接用 LoginFlow 那句人话(「已登录」/「账号登录已失效…」)——
 					// 在这儿把 status 码再翻译一遍,就是第二份会跟它跑偏的文案。
 					login: authSystem?.status().msg ?? "还没起来",
-					lastFetchAt: engines?.dynamic.lastFetchAt(),
+					lastFetchAt: builtins.bilibili.dynamic()?.lastFetchAt(),
 					// 没装 Chrome 就没有渲染队列。
 					renderQueue: puppeteer?.renderQueueDepth() ?? 0,
 					connections: runtime.configStore
