@@ -209,6 +209,24 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		await ok.registered[0]?.source.stop();
 	});
 
+	// 验红:去掉 `registerSources` 里 catch 中的 `registering = false`,或把造来源那几句挪回 try 之外,这条红。
+	it("造来源那一步就同步抛了(还没到登记):标志也复位,再调一次 registerSources 能成", async () => {
+		const { builtins } = compose();
+		const boom = new Error("造来源炸了");
+		const broken = {
+			get push(): never {
+				throw boom;
+			},
+			registerSource: vi.fn(),
+		} as never;
+		await expect(builtins.registerSources(broken)).rejects.toBe(boom);
+		expect(builtins.bilibili.dynamic()).toBeUndefined();
+		const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(ok.engines);
+		expect(builtins.bilibili.dynamic()).toBeDefined();
+		await ok.registered[0]?.source.stop();
+	});
+
 	it("bilibili.dynamic() 登记之前是 undefined,registerSources 之后拿得到引擎,来源停下后又是 undefined", async () => {
 		const { builtins } = compose();
 		expect(builtins.bilibili.dynamic()).toBeUndefined();

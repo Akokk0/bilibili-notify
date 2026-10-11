@@ -8,7 +8,7 @@
  *
  * 测试策略:
  *   - `detectDynamics()` 是 private,但它是编排核心。白盒直调 + 直接 seed 私有
- *     `dynamicSubManager` / `dynamicTimelineManager`,完全绕开 cron + withLock 的
+ *     `postAnchors`,完全绕开 cron + withLock 的
  *     fire-and-forget 计时纠缠(withLock 返回 `() => void` 不可 await)。
  *   - 生命周期用例 `vi.mock("cron")` 注入惰性 FakeCronJob,断言 start/stop 次数与
  *     重建出的新 cronTime。
@@ -83,8 +83,7 @@ vi.mock("../post-from-dynamic", async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 interface Priv {
-	dynamicSubManager: Set<string>;
-	dynamicTimelineManager: Map<string, number>;
+	postAnchors: Map<string, number>;
 	detectDynamics(): Promise<void>;
 }
 const priv = (e: DynamicEngineType): Priv => e as unknown as Priv;
@@ -288,8 +287,7 @@ function makeEngine(
 
 /** 播种一个订阅视图(推送名单里有它),并给它一个时间线锚点。 */
 function seed(engine: DynamicEngineType, uid: string, timeline: number): void {
-	priv(engine).dynamicTimelineManager.set(uid, timeline);
-	priv(engine).dynamicSubManager.add(uid);
+	priv(engine).postAnchors.set(uid, timeline);
 }
 
 const detect = (engine: DynamicEngineType): Promise<void> => priv(engine).detectDynamics();
@@ -697,7 +695,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1234);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(1234);
 	});
 
 	it("pub_ts 为毫秒时间戳字符串 → 归一化为秒后交出", async () => {
@@ -708,7 +706,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1717067523);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(1717067523);
 	});
 
 	it("pub_ts 缺失但 pub_time 可解析 → 兜底交出", async () => {
@@ -720,7 +718,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBeGreaterThan(0);
+		expect(priv(b.engine).postAnchors.get("1")).toBeGreaterThan(0);
 	});
 
 	it("pub_ts 缺失但 pub_time 为相对时间/昨天 → 兜底解析", async () => {
@@ -735,7 +733,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 			seed(b.engine, "1", 0);
 			await detect(b.engine);
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
-			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBeGreaterThan(0);
+			expect(priv(b.engine).postAnchors.get("1")).toBeGreaterThan(0);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -746,7 +744,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1234 })]));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1234);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(1234);
 	});
 
 	it("DY1:同 uid 多条全部成功 → 锚点推进到最大 pub_ts", async () => {
@@ -757,7 +755,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(200);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(200);
 		expect(b.reportPost).toHaveBeenCalledTimes(2);
 	});
 
@@ -767,7 +765,7 @@ describe("DynamicEngine.detectDynamics — 时间线 / 订阅过滤", () => {
 		seed(b.engine, "1", 500); // 既有锚点已高于来项
 		await detect(b.engine);
 		// timeline(500) >= 100 → 跳过,锚点保持 500,绝不被 set 成 100。
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(500);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(500);
 		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 });
@@ -868,7 +866,7 @@ describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
 		// 第一条(翻译抛错)跳过,第二条照交;锚点推进到两条里最大的(翻译失败的算处理过,不重试)。
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
 		expect(reported(b)[1].post.text).toBe("旧的");
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1500);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(1500);
 		expect(
 			b.logs.some((l) => l.level === "warn" && l.msg.includes("翻不动") && l.msg.includes("id-1")),
 		).toBe(true);
@@ -913,9 +911,7 @@ describe("DynamicEngine.detectDynamics — 把作品交给核心入口", () => {
 		expect(translated.publishedAt).toBe("1970-01-01T00:00:00.000Z");
 		const expected = new Date(2026, 4, 30, 12, 12, 0);
 		expect(reported(b)[1].post.publishedAt).toBe(expected.toISOString());
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(
-			Math.floor(expected.getTime() / 1000),
-		);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(Math.floor(expected.getTime() / 1000));
 	});
 
 	it("有 pub_ts 的动态:交出去的发布时间就是 pub_ts(秒与毫秒两种写法一致)", async () => {
@@ -1044,7 +1040,7 @@ describe("DynamicEngine.detectDynamics — 交出之前先把图抓好(决策 3)
 });
 
 describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(决策 6)", () => {
-	/** 建表走 `start()`(名单现读):锚点覆盖名单里每个人,推送名单只收 `post` 开着的。 */
+	/** 建表走 `start()`(名单现读):表里只收 `post` 开着的人,关着的没有锚点。 */
 	const startWith = (b: EngineBag): void => {
 		b.setRoster({
 			"11": { uid: "11", post: false },
@@ -1057,7 +1053,7 @@ describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(
 	const picItem = (uid: number) =>
 		makeItem({ uid, pubTs, drawPics: ["https://i0.hdslb.com/bfs/new_dyn/a.jpg"] });
 
-	it("关了作品推送的订阅:不翻译、不抓图、不交;时间线照常前移", async () => {
+	it("关了作品推送的订阅:不翻译、不抓图、不交;也没有锚点(已定 18:不在要推的人里)", async () => {
 		const b = makeEngine();
 		startWith(b);
 		b.fetchAllDynamic.mockResolvedValue(resp([picItem(11)]));
@@ -1065,7 +1061,7 @@ describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(
 		expect(postFromDynamic).not.toHaveBeenCalled();
 		expect(b.fetchImage).not.toHaveBeenCalled();
 		expect(b.reportPost).not.toHaveBeenCalled();
-		expect(priv(b.engine).dynamicTimelineManager.get("11")).toBe(pubTs);
+		expect(priv(b.engine).postAnchors.has("11")).toBe(false);
 	});
 
 	it("对照:同样的铺垫,开着作品推送的订阅就翻译、抓图、交", async () => {
@@ -1076,7 +1072,7 @@ describe("DynamicEngine.detectDynamics — 只为推送名单里的订阅生产(
 		expect(postFromDynamic).toHaveBeenCalledTimes(1);
 		expect(b.fetchImage).toHaveBeenCalledTimes(1);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
-		expect(priv(b.engine).dynamicTimelineManager.get("22")).toBe(pubTs);
+		expect(priv(b.engine).postAnchors.get("22")).toBe(pubTs);
 	});
 });
 
@@ -1096,9 +1092,9 @@ describe("DynamicEngine.detectDynamics — 每条越过时间线的动态恰好�
 		await expect(detect(b.engine)).resolves.toBeUndefined(); // 整轮不 abort
 
 		expect(b.reportPost).toHaveBeenCalledTimes(2);
-		expect(priv(b.engine).dynamicTimelineManager.get("2")).toBe(300);
+		expect(priv(b.engine).postAnchors.get("2")).toBe(300);
 		// 入口抛了也前移:作品只交一次、核心不替来源重放,留着不前移只会下一轮重交一遍。
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(100);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(100);
 		expect(b.logs.some((l) => l.level === "warn" && l.msg.includes("入口炸了"))).toBe(true);
 	});
 
@@ -1114,7 +1110,7 @@ describe("DynamicEngine.detectDynamics — 每条越过时间线的动态恰好�
 		);
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(100);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(100);
 		expect(b.reportPost).toHaveBeenCalledTimes(1);
 		expect(reported(b)[1].post.images?.[0]?.ref).toBeUndefined();
 	});
@@ -1131,7 +1127,7 @@ describe("DynamicEngine.detectDynamics — 开播伪动态", () => {
 		expect(postFromDynamic).not.toHaveBeenCalled();
 		expect(b.fetchImage).not.toHaveBeenCalled();
 		expect(b.reportPost).not.toHaveBeenCalled();
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
+		expect(priv(b.engine).postAnchors.get("1")).toBe(1000);
 	});
 });
 
@@ -1152,11 +1148,10 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 
 		await detect(b.engine);
 
-		expect(priv(b.engine).dynamicSubManager.has("1")).toBe(false); // 确已退订
 		// 身份重校:已退订 → 不得再交。
 		expect(b.reportPost).not.toHaveBeenCalled();
 		// 时间线回写守卫:不得把已删 UID 的时间线“复活”成孤儿锚点。
-		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
+		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
 	});
 
 	// 引擎只交 uid,接线按身份**现查**订阅:抓图那几秒里同一个 uid 被「删了再加」的话,现查会找到新加的那条订阅,
@@ -1175,7 +1170,7 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 			return ok({ ref: `${"c".repeat(63)}1.jpg` as ImageRef, url });
 		});
 		await detect(swapped.engine);
-		expect(priv(swapped.engine).dynamicSubManager.has("1")).toBe(true); // 新订阅在
+		expect(priv(swapped.engine).postAnchors.has("1")).toBe(true); // 新订阅在
 		expect(swapped.reportPost).not.toHaveBeenCalled();
 
 		const steady = makeEngine();
@@ -1185,8 +1180,9 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 		expect(steady.reportPost).toHaveBeenCalledTimes(1);
 	});
 
-	// 同 uid 的 update / 名单整份重建 / 关了又开作品推送,只换名单里的对象、不动时间线锚点:这条动态是同一条订阅的,照常交、恰好一次。
-	// 验红:把抓图之后的重校改回对象身份比对(`this.dynamicSubManager.get(uid) !== subAtCapture`),这几条红(动态永久丢)。
+	// 同 uid 的 update / 名单整份重建,只换名单里的对象、不动时间线锚点:这条动态是同一条订阅的,照常交、恰好一次。
+	// 关了又开作品推送不在此列:离开就删锚点,再开从「现在」起算,抓图前发的旧动态不交(已定 18)。
+	// 验红:把抓图之后的重校改回对象身份比对(`this.postAnchors.get(uid) !== subAtCapture`),这几条红(动态永久丢)。
 	describe("抓图期间订阅只是被更新(没删):照常交,恰好一次", () => {
 		const sub = { "1": { uid: "1", post: true } };
 		const withDuringFetch = async (during: (b: EngineBag) => void) => {
@@ -1204,7 +1200,7 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 		it("名单重算一遍、内容没变(订阅被保存了一下)→ 这条动态照常交", async () => {
 			const b = await withDuringFetch((x) => x.engine.syncSubscriptions());
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
-			expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(1000);
+			expect(priv(b.engine).postAnchors.get("1")).toBe(1000);
 		});
 
 		it("整份名单被重建(restartDetector,如登录恢复后重启检测)→ 照常交", async () => {
@@ -1212,14 +1208,14 @@ describe("DynamicEngine — 名单在 detectDynamics 抓图的 await 期间变�
 			expect(b.reportPost).toHaveBeenCalledTimes(1);
 		});
 
-		it("关了作品推送又打开(名单里先去掉 post 再加回来,锚点不动)→ 照常交", async () => {
+		it("关了作品推送又打开(先去掉 post 再加回来,锚点重置成现在)→ 这条旧动态不交", async () => {
 			const b = await withDuringFetch((x) => {
 				x.setRoster({ "1": { uid: "1", post: false } });
 				x.engine.syncSubscriptions();
 				x.setRoster(sub);
 				x.engine.syncSubscriptions();
 			});
-			expect(b.reportPost).toHaveBeenCalledTimes(1);
+			expect(b.reportPost).not.toHaveBeenCalled();
 		});
 
 		it("对照:抓图期间关了作品推送且没再打开 → 不交(名单里没有了)", async () => {
@@ -1292,10 +1288,10 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 	it("空名单重启不留旧推送名单(今天的小毛病:先 return 后赋值)", () => {
 		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
 		b.engine.start();
-		expect(priv(b.engine).dynamicSubManager.has("1")).toBe(true);
+		expect(priv(b.engine).postAnchors.has("1")).toBe(true);
 		b.setRoster({});
 		b.trigger("auth-restored");
-		expect(priv(b.engine).dynamicSubManager.size).toBe(0);
+		expect(priv(b.engine).postAnchors.size).toBe(0);
 	});
 
 	it("syncSubscriptions 前后是同一个 cron job(名单一动不重启 cron、不打乱相位)", () => {
@@ -1342,7 +1338,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 		const midpoint = Math.floor(Date.now() / 1000) + 30;
 		b.setRoster({});
 		b.engine.syncSubscriptions();
-		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
+		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
 		// 停用期间发的动态,在「加回来」之前发出:发布时间早于加回来的那一刻。
 		vi.useFakeTimers({ toFake: ["Date"], now: (midpoint + 60) * 1000 });
 		try {
@@ -1352,6 +1348,37 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			vi.useRealTimers();
 		}
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: midpoint })]));
+		await detect(b.engine);
+		expect(b.reportPost).not.toHaveBeenCalled();
+	});
+
+	// 验红:去掉 `applyRoster` 里「离开就删锚点」(留着旧锚点),这条红。
+	// 关着期间只轮询别人(「2」),「1」自己的动态那一轮没出现:再开之后补出来的那条是「1」关着期间发的,锚点若留着就会被交。
+	// 用例这样设计是为了与「锚点被别人的轮询推过去」分开 —— 那种情况「1」的锚点没被推过,只可能靠删了重置挡下。
+	it("名单里有别人开着作品时,某人关了再开:关着期间他发的那条不交(因为离开就删了锚点)", async () => {
+		const b = makeEngine({
+			subs: { "1": { uid: "1", post: true }, "2": { uid: "2", post: true } },
+		});
+		b.engine.start();
+		const base = Math.floor(Date.now() / 1000);
+
+		b.setRoster({ "1": { uid: "1", post: false }, "2": { uid: "2", post: true } });
+		b.engine.syncSubscriptions();
+		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
+		// 关着期间 cron 为「2」照常轮询,这一轮里只有「2」的动态。
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 2, pubTs: base + 100 })]));
+		await detect(b.engine);
+
+		vi.useFakeTimers({ toFake: ["Date"], now: (base + 200) * 1000 });
+		try {
+			b.setRoster({ "1": { uid: "1", post: true }, "2": { uid: "2", post: true } });
+			b.engine.syncSubscriptions();
+		} finally {
+			vi.useRealTimers();
+		}
+		b.reportPost.mockClear();
+		// 再开之后的下一轮,feed 里才出现「1」关着期间(base+150,早于重新打开的那一刻)发的动态。
+		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: base + 150 })]));
 		await detect(b.engine);
 		expect(b.reportPost).not.toHaveBeenCalled();
 	});
@@ -1411,6 +1438,46 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 				(l) => l.level === "error" && l.msg.includes("BAD CRON") && l.msg.includes("无法解析"),
 			),
 		).toBe(true);
+	});
+
+	it("cron 写坏起不来 → 改成好的:updateConfig 自己把 job 拉起来(不等名单变动)", () => {
+		const b = makeEngine({
+			subs: { "1": { uid: "1", post: true } },
+			config: { dynamicCron: "BAD CRON" },
+		});
+		b.engine.start();
+		expect(cronMock.instances).toHaveLength(0);
+
+		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });
+
+		expect(cronMock.instances).toHaveLength(1);
+		expect(cronMock.instances[0]?.cronTime).toBe("*/5 * * * *");
+		expect(b.engine.isActive).toBe(true);
+	});
+
+	it("对照:-352 退避窗口内改 cron → 不把 job 提前拉起来", async () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine);
+		const before = cronMock.instances.length;
+
+		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });
+
+		expect(cronMock.instances.length).toBe(before);
+		expect(b.engine.isActive).toBe(false);
+	});
+
+	it("对照:登录失效时改 cron → 不把 job 提前拉起来", () => {
+		const b = makeEngine({ subs: { "1": { uid: "1", post: true } } });
+		b.engine.start();
+		b.trigger("auth-lost");
+		const before = cronMock.instances.length;
+
+		b.engine.updateConfig({ dynamicCron: "*/5 * * * *", dynamicVideoUrlToBV: false });
+
+		expect(cronMock.instances.length).toBe(before);
+		expect(b.engine.isActive).toBe(false);
 	});
 
 	it("syncSubscriptions:一批进出收口一条 info 汇总(Q1 不刷屏),没有进出不记", () => {
@@ -1482,18 +1549,17 @@ describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统
 	const laterThanSeed = () => Math.floor(Date.now() / 1000) + 60;
 
 	it("per-UP 动态推送关掉 → 不交(这位 UP 的作品开关关着,统计也不记)", async () => {
-		// 锚点表覆盖每个订阅、推送名单只收开着的;关掉开关的 UP 照样登记锚点(`timeline ===
-		// undefined` 处不再 continue),只是不翻译、不抓图、不交。
+		// 表里只有开着作品开关的人;关掉开关的 UP 没有锚点(已定 18),检测循环直接跳过他。
 		const b = makeEngine();
 		const pubTs = laterThanSeed();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs })]));
 		seedStatsOnly(b, "1");
 		await detect(b.engine);
 		expect(reportedCount(b)).toBe(0);
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(pubTs);
+		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
 	});
 
-	it("推送关掉的 UP 锚点照常推进 —— 否则每轮把同一条重新判一遍", async () => {
+	it("推送关掉的 UP 每轮都被跳过:不翻译、也不留锚点", async () => {
 		const b = makeEngine();
 		const pubTs = laterThanSeed();
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs })]));
@@ -1501,16 +1567,17 @@ describe("DynamicEngine.detectDynamics — 过闸的才交,引擎自己不发统
 		await detect(b.engine);
 		await detect(b.engine);
 		expect(postFromDynamic).not.toHaveBeenCalled();
-		expect(priv(b.engine).dynamicTimelineManager.get("1")).toBe(pubTs);
+		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
 	});
 
 	it("真退订则连锚点一起清掉,不留孤儿抑制再订阅后的动态", async () => {
 		const b = makeEngine();
-		seedStatsOnly(b, "1");
-		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(true);
+		b.setRoster({ "1": { uid: "1", post: true }, other: { uid: "other", post: true } });
+		b.engine.start();
+		expect(priv(b.engine).postAnchors.has("1")).toBe(true);
 		b.setRoster({ other: { uid: "other", post: true } });
 		b.engine.syncSubscriptions();
-		expect(priv(b.engine).dynamicTimelineManager.has("1")).toBe(false);
+		expect(priv(b.engine).postAnchors.has("1")).toBe(false);
 	});
 });
 

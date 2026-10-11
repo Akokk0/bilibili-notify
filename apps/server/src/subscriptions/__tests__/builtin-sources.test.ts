@@ -49,7 +49,7 @@ describe("registerBuiltinSource", () => {
 		const order: string[] = [];
 		const source = makeSource();
 		const stop = source.stop.bind(source);
-		source.stop = async () => {
+		source.stop = vi.fn(async () => {
 			order.push("stop");
 			// stop 的同步段里上下文还没收:此刻上报仍能入队
 			source.started[0]?.reportPost("1", {
@@ -58,7 +58,7 @@ describe("registerBuiltinSource", () => {
 				post: { creator: { name: "UP" }, publishedAt: "2026-01-01T00:00:00.000Z", text: "x" },
 			});
 			await stop();
-		};
+		});
 		const { options, enqueue } = setup(source);
 		enqueue.mockImplementation(() => order.push("enqueue"));
 		const handle = await registerBuiltinSource(options);

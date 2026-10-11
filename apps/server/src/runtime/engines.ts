@@ -1173,18 +1173,23 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	return {
 		registerSource: async (entry) => {
-			sourceRegistrations.push(
-				await registerBuiltinSource({
-					...entry,
-					registry: opts.sources,
-					subscriptions: opts.subscriptionStore,
-					defaults: () => globals().defaults,
-					bus: opts.bus,
-					// 日志仍走动态子系统 logger:名字与等级(按来源键那一格,下面热更)一个不变。
-					logger: dynamicCtx.logger,
-					enqueue: (event) => postQueue.enqueue(event),
-				}),
-			);
+			const registration = await registerBuiltinSource({
+				...entry,
+				registry: opts.sources,
+				subscriptions: opts.subscriptionStore,
+				defaults: () => globals().defaults,
+				bus: opts.bus,
+				// 来源上下文的 `ctx.logger` 就是这一个(动态子系统 logger):来源(含它造的动态引擎)的每行日志
+				// 名字叫 `dynamic`,等级跟 `logging.levels` 里来源键那一格走(下面热更)。
+				logger: dynamicCtx.logger,
+				enqueue: (event) => postQueue.enqueue(event),
+			});
+			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。
+			if (disposed) {
+				registration.dispose();
+				throw new Error("registerSource: 引擎装配已关停,来源登记作废");
+			}
+			sourceRegistrations.push(registration);
 		},
 		live,
 		push,
@@ -1645,7 +1650,7 @@ export function postSettingsOf(
 export function makePostSettingsReader(deps: {
 	subscription: (id: string) => Subscription | undefined;
 	globals: () => GlobalConfig;
-	/** 这条订阅的来源还在跑吗(B 站恒在;拓展看它自己在不在跑)。 */
+	/** 这条订阅的来源还在跑吗(问来源登记表:内置来源登着就在;拓展看它自己在不在跑)。 */
 	sourceRunning: (sub: Subscription) => boolean;
 }): (subscriptionId: string) => PostSettings | undefined {
 	return (subscriptionId) => {

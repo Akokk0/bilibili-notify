@@ -61,7 +61,7 @@ export interface BuiltinIntegrations {
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
 	let source: BiliSource | undefined;
-	// 登记过(含登记途中)就不许再来一次;登记抛了会复位。
+	// 登记过(含登记途中)就不许再来一次;造来源或登记任一步抛了都会复位。
 	let registering = false;
 	const dynamic = () => source?.dynamic();
 
@@ -102,16 +102,16 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 		async registerSources(engines) {
 			if (registering) throw new Error("builtin sources are already registered");
 			registering = true;
-			const made = createBiliSource({
-				api: deps.api.api,
-				bus: deps.bus,
-				push: { sendPrivateMsg: masterTellers(engines.push, deps.logger).sendPrivateMsg },
-				imageFetcher: deps.imageFetcher,
-				configStore: deps.configStore,
-				setTimeout: deps.setTimeout,
-			});
-			source = made;
 			try {
+				const made = createBiliSource({
+					api: deps.api.api,
+					bus: deps.bus,
+					push: { sendPrivateMsg: masterTellers(engines.push, deps.logger).sendPrivateMsg },
+					imageFetcher: deps.imageFetcher,
+					configStore: deps.configStore,
+					setTimeout: deps.setTimeout,
+				});
+				source = made;
 				await engines.registerSource({
 					sourceKey: BILIBILI_SOURCE_KEY,
 					source: made,

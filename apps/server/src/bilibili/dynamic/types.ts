@@ -82,4 +82,5 @@ export type AllDynamicResponse = {
 	};
 };
 
-export type DynamicTimelineManager = Map<string, number>;
+/** 要推动态的人(作品开关开着的 uid)→ 「看到哪一刻为止」(秒)。 */
+export type DynamicAnchors = Map<string, number>;

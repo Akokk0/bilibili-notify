@@ -9,6 +9,6 @@ export type { PushLike } from "./push-like";
 export type {
 	AllDynamicResponse,
 	Dynamic,
-	DynamicTimelineManager,
+	DynamicAnchors,
 	RichTextNode,
 } from "./types";

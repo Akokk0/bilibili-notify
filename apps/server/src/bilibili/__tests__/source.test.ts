@@ -13,6 +13,7 @@ import {
 	type SourceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { deferred } from "../../__tests__/support/track-context.js";
 import {
 	makeIntegration,
 	makeLogger,
@@ -300,11 +301,11 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 	const at = (sec: number) => Math.floor(T0 / 1000) + sec;
 	const clock = (sec: number) => vi.setSystemTime(new Date(T0 + sec * 1000));
 
-	async function boot() {
+	async function boot(subs = [makeSub("sub-1", "1")]) {
 		vi.useFakeTimers({ toFake: ["Date"], now: new Date(T0) });
-		const world = makeWorld([makeSub("sub-1", "1")]);
+		const world = makeWorld(subs);
 		let feedItems: unknown[] = [];
-		const { deps } = makeDeps({
+		const { deps, fetchImage } = makeDeps({
 			fetchAllDynamic: async () => ({
 				...EMPTY_FEED,
 				data: { ...EMPTY_FEED.data, items: feedItems },
@@ -312,6 +313,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		});
 		const source = createBiliSource({ ...deps, bus: world.bus });
 		const enqueue = vi.fn<(event: { subscriptionId: string; postId: string }) => void>();
+		const logger = makeLogger();
 		const registry = createSourceRegistry();
 		const registration = await registerBuiltinSource({
 			registry,
@@ -321,15 +323,18 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 			subscriptions: world.store,
 			defaults: () => world.globals.defaults,
 			bus: world.bus,
-			logger: makeLogger(),
+			logger,
 			enqueue: enqueue as never,
 		});
-		const round = async (sec: number, ...items: unknown[]) => {
+		const feed = (...items: unknown[]) => {
 			feedItems = items;
+		};
+		const round = async (sec: number, ...items: unknown[]) => {
+			feed(...items);
 			clock(sec);
 			await source.dynamic()?.detectNow();
 		};
-		return { world, source, registration, enqueue, round };
+		return { world, source, registration, enqueue, round, feed, fetchImage, logger };
 	}
 
 	it("对照:启用着、作品开关开着,新动态交出去", async () => {
@@ -359,25 +364,75 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		await source.stop();
 	});
 
-	it("改全局作品开关 → 关了不交;再开又交", async () => {
-		const { world, source, enqueue, round } = await boot();
+	// 生产的形状:没人要动态时 cron 停着,关着期间没有「一轮」可跑,所以这里不手调 detectNow。
+	// 验红:去掉 `applyRoster` 里「离开就删锚点」(留着旧锚点),这条与下一条红(关着期间的动态补推出来)。
+	it("改全局作品开关 → 关了 cron 停;关着期间的动态,再开不补推,之后新发的照交", async () => {
+		const { world, source, enqueue, round, feed } = await boot();
 		world.globals.defaults.features.post = false;
 		world.bus.emit("config-changed", { scope: "globals" });
-		await round(30, item(1, at(20), "while-off"));
-		expect(enqueue).not.toHaveBeenCalled();
+		expect(cronMock.instances[0]?.isActive).toBe(false);
+		feed(item(1, at(20), "while-off"));
+		clock(50);
 
 		world.globals.defaults.features.post = true;
 		world.bus.emit("config-changed", { scope: "globals" });
-		await round(60, item(1, at(50), "after-on"));
+		await round(80, item(1, at(20), "while-off"), item(1, at(70), "after-on"));
 		expect(enqueue.mock.calls.map(([e]) => e.postId)).toEqual(["after-on"]);
 		await source.stop();
 	});
 
-	it("撤销登记之后:不再上报(停下之后不许再上报)", async () => {
-		const { source, registration, enqueue, round } = await boot();
+	it("唯一一条订阅关掉作品开关再打开:关着期间的动态不补推,之后新发的照交", async () => {
+		const { world, source, enqueue, round, feed } = await boot();
+		const sub = world.store.findById("sub-1");
+		if (!sub) throw new Error("没有订阅");
+		world.store.upsert({ ...sub, overrides: { ...sub.overrides, features: { post: false } } });
+		expect(cronMock.instances[0]?.isActive).toBe(false);
+		feed(item(1, at(20), "while-off"));
+		clock(50);
+
+		world.store.upsert({ ...sub, overrides: { ...sub.overrides, features: { post: true } } });
+		await round(80, item(1, at(20), "while-off"), item(1, at(70), "after-on"));
+		expect(enqueue.mock.calls.map(([e]) => e.postId)).toEqual(["after-on"]);
+		await source.stop();
+	});
+
+	it("遗留的重复订阅(同一个 uid 两条、作品开关相反):这个人仍在要推的人里,动态照交", async () => {
+		const { source, enqueue, round } = await boot([
+			makeSub("sub-1", "1", { overrides: { features: { post: true } } }),
+			makeSub("sub-2", "1", { overrides: { features: { post: false } } }),
+		]);
+		expect(cronMock.instances[0]?.isActive).toBe(true);
+		await round(20, item(1, at(10), "d1"));
+		expect(enqueue).toHaveBeenCalled();
+		await source.stop();
+	});
+
+	// 验红:删掉 `DynamicEngine.stop()` 里清表的那句(`this.postAnchors = new Map()`),这条红。
+	it("撤销登记时有一轮正卡在抓图:放行之后这条不交,来源上下文也没看到「停下还在上报」", async () => {
+		const { source, registration, enqueue, feed, fetchImage, logger } = await boot();
+		const gate = deferred<{ ok: false; code: string; message: string }>();
+		fetchImage.mockReturnValue(gate.promise);
+		const withPic = item(1, at(10), "in-flight");
+		feed({
+			...withPic,
+			modules: {
+				...withPic.modules,
+				module_dynamic: {
+					desc: { text: "图", rich_text_nodes: [] },
+					major: { opus: { pics: [{ url: "https://i0.hdslb.com/bfs/new_dyn/a.jpg" }] } },
+				},
+			},
+		});
+		clock(20);
+		const running = source.dynamic()?.detectNow();
+		await vi.waitFor(() => expect(fetchImage).toHaveBeenCalled());
+
 		registration.dispose();
 		expect(source.dynamic()).toBeUndefined();
-		await round(20, item(1, at(10), "late"));
+		gate.resolve({ ok: false, code: "unavailable", message: "x" });
+		await running;
+
 		expect(enqueue).not.toHaveBeenCalled();
+		expect(logger.error.mock.calls.filter(([msg]) => String(msg).includes("已停下"))).toEqual([]);
 	});
 });

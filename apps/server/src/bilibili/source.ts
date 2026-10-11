@@ -31,6 +31,12 @@ export interface BiliSource extends Source {
 	dynamic(): DynamicEngine | undefined;
 }
 
+/** 从 B 站设置算动态引擎的配置(启动与热更共用)。 */
+const dynamicConfigOf = (settings: { dynamicCron: string }) => ({
+	dynamicCron: settings.dynamicCron,
+	dynamicVideoUrlToBV: false,
+});
+
 export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicEngine | undefined;
 	let handles: Disposable[] = [];
@@ -54,10 +60,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				imageFetcher: deps.imageFetcher,
 				reportPost: (externalId, report) => ctx.reportPost(externalId, report),
 				subscriptions: () => ctx.subscriptions(),
-				config: {
-					dynamicCron: settingsOf(deps.configStore).dynamicCron,
-					dynamicVideoUrlToBV: false,
-				},
+				config: dynamicConfigOf(settingsOf(deps.configStore)),
 			});
 			const mine: Disposable[] = [];
 			try {
@@ -66,10 +69,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				mine.push(
 					watchSettings(deps.configStore, (prev, next) => {
 						if (prev.dynamicCron === next.dynamicCron) return;
-						started.updateConfig({
-							dynamicCron: next.dynamicCron,
-							dynamicVideoUrlToBV: false,
-						});
+						started.updateConfig(dynamicConfigOf(next));
 					}),
 				);
 			} catch (err) {

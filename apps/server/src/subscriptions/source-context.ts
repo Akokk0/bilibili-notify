@@ -65,7 +65,7 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 	// 🔴 逐格列出公共那五个成员,不许展开 `integration`:B 站交进来的对象运行时带着 `http` 与 `cookies`,
 	// 类型收窄挡不住展开把它们原样抄进来。
 	const ctx: SourceContext = {
-		logger: integration.logger,
+		logger,
 		signal: integration.signal,
 		onDispose: integration.onDispose,
 		state: integration.state,

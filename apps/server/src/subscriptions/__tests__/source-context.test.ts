@@ -43,6 +43,23 @@ describe("createSourceContext", () => {
 		expect("cookies" in handle.ctx).toBe(false);
 	});
 
+	it("ctx.logger 是宿主入参给的那个,不是集成上下文自带的", () => {
+		const hostLogger = makeLogger();
+		const integrationLogger = makeLogger();
+		const handle = createSourceContext({
+			integration: makeIntegration(integrationLogger),
+			sourceKey: SOURCE_KEY,
+			descriptor: { postNoun: "动态" },
+			subscriptions: makeWorld().store,
+			defaults: () => makeWorld().globals.defaults,
+			bus: makeWorld().bus,
+			logger: hostLogger,
+			enqueue: vi.fn(),
+		});
+		expect(handle.ctx.logger).toBe(hostLogger);
+		expect(handle.ctx.logger).not.toBe(integrationLogger);
+	});
+
 	it("subscriptions() 每次现读:改了仓再读不一样", () => {
 		const { handle, store } = setup();
 		expect(handle.ctx.subscriptions().map((v) => v.externalId)).toEqual(["1"]);

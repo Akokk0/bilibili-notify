@@ -30,10 +30,8 @@ import type {
 	PlatformAdapter,
 	Post,
 	PostEvent,
-	PostReport,
 	ProbeResult,
 	PushTarget,
-	Source,
 	SourceContext,
 	Subscription,
 } from "@bilibili-notify/internal";
@@ -65,6 +63,7 @@ import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.j
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
+import { makeSource } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
 import { segmentContentBuilder } from "../content-builder.js";
@@ -370,33 +369,10 @@ interface Ctx {
 	};
 	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
 	/** 开机时 `registerSource` 登进去的假来源(`noSource` 时它存在但没登记)。 */
-	source: FakeSource;
+	source: ReturnType<typeof makeSource>;
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
 	sourceReady: Promise<void>;
 	sources: SourceRegistry;
-}
-
-/** 假来源:`start` 时记下来源上下文,`stop` 记一次。上下文上的三个方法都是真的(`createSourceContext` 建的)。 */
-interface FakeSource extends Source {
-	ctx?: SourceContext;
-	start: ReturnType<typeof vi.fn<(ctx: SourceContext) => Promise<void>>>;
-	stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
-	/** 假来源经上下文交作品。 */
-	reportPost(externalId: string, report: PostReport): void;
-}
-function makeFakeSource(): FakeSource {
-	const fake: FakeSource = {
-		descriptor: { postNoun: "动态" },
-		start: vi.fn(async (ctx: SourceContext) => {
-			fake.ctx = ctx;
-		}),
-		stop: vi.fn(async () => {}),
-		reportPost(externalId, report) {
-			if (!fake.ctx) throw new Error("假来源还没 start");
-			fake.ctx.reportPost(externalId, report);
-		},
-	};
-	return fake;
 }
 
 function setup(opts?: {
@@ -471,7 +447,7 @@ function setup(opts?: {
 	};
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
-	const source = makeFakeSource();
+	const source = makeSource();
 	const runtime = createEngines({
 		sources,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
@@ -543,9 +519,13 @@ function setup(opts?: {
 		: runtime.registerSource({
 				sourceKey: "bilibili",
 				source,
-				// 来源只用得到公共五格里的 logger;其余在这批用例里不被碰。
+				// 来源上下文的 logger 是宿主给的 dynamic 子系统 logger,不取自这里;集成上下文的其余格在这批用例里不被碰
+				// (这里的 logger 故意是基础 logger,与 dynamic 的不同,「ctx.logger 来自哪」的用例才分得出)。
 				integration: { logger: serviceCtx.logger } as any,
 			});
+	// 没人 await 它就 dispose 的用例:关停后登记作废会让它 reject,这里挂一条旁支吞掉「未处理的 rejection」,
+	// sourceReady 本身仍会 reject(await 它的用例照样看得到)。
+	sourceReady.catch(() => {});
 	lastSetup = {
 		runtime,
 		bus,
@@ -1685,6 +1665,47 @@ describe("createEngines — boot wiring", () => {
 		expect(typeof ctx?.onSubscriptionsChanged).toBe("function");
 		expect(typeof ctx?.reportPost).toBe("function");
 		expect(ctx?.subscriptions()).toEqual([]);
+	});
+
+	// 验红:把 source-context.ts 里 `ctx.logger` 改回 `integration.logger`,这条红(来源拿到的成了基础 logger)。
+	it("来源拿到的 ctx.logger 就是 dynamic 子系统那个 logger,它的等级随 logging.levels.bilibili 热更", async () => {
+		const c = setup();
+		active = c;
+		await c.sourceReady;
+		const dynamicCtx = subsystemCtx(c, "dynamic");
+		expect(c.source.ctx?.logger).toBe(dynamicCtx.logger);
+		expect(c.source.ctx?.logger).not.toBe(c.serviceCtx.logger);
+
+		patchGlobals(c, (g) => {
+			g.logging.levels = { bilibili: "warn" };
+		});
+		c.bus.emit("config-changed", { scope: "globals" });
+		// 假子上下文的 logger 没有真等级可读:断言热更改的是同一个子上下文(它的 logger 就是来源拿到的那个)。
+		expect(dynamicCtx.setLevel).toHaveBeenCalledWith("warn");
+	});
+
+	// 验红:去掉 engines.ts `registerSource` 里 await 之后的 `if (disposed)` 那段,这条红(来源 stop 没被叫、也没抛)。
+	it("registerSource 途中 dispose():放行后来源被当场 stop 一次,registerSource 抛", async () => {
+		const c = setup({ noSource: true });
+		active = c;
+		const gate = deferred();
+		const slow = makeSource();
+		slow.start.mockImplementation(async () => {
+			await gate.promise;
+		});
+		const registering = c.runtime.registerSource({
+			sourceKey: "bilibili",
+			source: slow,
+			integration: { logger: c.serviceCtx.logger } as any,
+		});
+		const outcome = registering.then(
+			() => "ok",
+			(err: unknown) => String(err),
+		);
+		c.runtime.dispose();
+		gate.resolve();
+		expect(await outcome).toContain("已关停");
+		expect(slow.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("默认 globals:push 拉起,AI 与 image 不构造", () => {

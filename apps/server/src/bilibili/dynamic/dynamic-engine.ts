@@ -14,7 +14,7 @@ import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../images";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
 import type { PushLike } from "./push-like";
-import type { AllDynamicResponse, Dynamic, DynamicTimelineManager } from "./types";
+import type { AllDynamicResponse, Dynamic, DynamicAnchors } from "./types";
 
 const LOG_TAG = "bilibili-notify-dynamic";
 /**
@@ -117,7 +117,7 @@ export interface DynamicEngineOptions {
 	/** 宿主给的出口:引擎只剩给主人发私信(风控 / 故障告警)这一样。 */
 	push: PushLike;
 	/**
-	 * 抓图服务(用 B 站接口那个请求客户端建的,`runtime/engines.ts`):**交出作品之前**把作品里只有地址的图抓进图库
+	 * 抓图服务(用 B 站接口那个请求客户端建的,建在入口,经 `compose.ts` 递进来):**交出作品之前**把作品里只有地址的图抓进图库
 	 * (被过滤的、关了出图的动态也抓,代价主人知情)。必给 —— 漏给是编译不过,不是悄悄不出图。
 	 */
 	imageFetcher: ImagesDeps["images"];
@@ -197,9 +197,15 @@ export class DynamicEngine {
 	 * 没有那个事件,这条 engine-error 是唯一的通知路径。
 	 */
 	private authLost = false;
-	/** 推送名单:作品开关开着的 uid。进了名单的才为它翻译、抓图、交作品。 */
-	private dynamicSubManager = new Set<string>();
-	private dynamicTimelineManager: DynamicTimelineManager = new Map();
+	/**
+	 * 推送名单兼锚点表:作品开关开着的 uid → 「看到哪一刻为止」(秒)。**只有这一张表**:在表里才为它翻译、抓图、交作品;
+	 * 进表那一刻锚点 = 现在,离开(退订、停用、关作品开关、全局作品开关关掉)就删。
+	 *
+	 * 为什么不再另留一张「覆盖每个订阅」的锚点表(主人定,已定 18):那样关着作品开关的人锚点照常前移还是冻结,取决于
+	 * cron 停没停 —— 名单里没别人开着作品时 cron 停、锚点冻结,再打开会把关着期间的动态全补推;有别人开着时 cron 不停、
+	 * 锚点前移,再打开就不补。同一个操作两种结果,看不出规律。现在一律:关了再开不补推关着期间的动态。
+	 */
+	private postAnchors: DynamicAnchors = new Map();
 	/**
 	 * 上次**成功**拉到动态列表的时刻。`undefined` = 起来以后一次都没成功过。
 	 *
@@ -224,7 +230,7 @@ export class DynamicEngine {
 
 	/** 启动钩子。由来源的 `start` 调;名单现读,启动时就能开跑。 */
 	start(): void {
-		this.dynamicTimelineManager = new Map();
+		this.postAnchors = new Map();
 
 		this.logger.info("[start] 动态引擎启动，立即启动检测");
 		this.restartDetector();
@@ -271,9 +277,8 @@ export class DynamicEngine {
 			this.logger.info("[stop] 动态检测任务已停止");
 		}
 		this.releaseDetectLock();
-		// 两张表清空:关停那一刻还在抓图的那条动态过不了交出前的重校,不会在停下之后再上报。
-		this.dynamicSubManager = new Set();
-		this.dynamicTimelineManager = new Map();
+		// 表清空:关停那一刻还在抓图的那条动态过不了交出前的重校,不会在停下之后再上报。
+		this.postAnchors = new Map();
 		while (this.busHandles.length > 0) {
 			const h = this.busHandles.pop();
 			h?.dispose();
@@ -293,7 +298,11 @@ export class DynamicEngine {
 			this.logger.info(`[detector] dynamicCron 已更新为 "${config.dynamicCron}",重启检测任务`);
 			this.dynamicJob.stop();
 			this.dynamicJob = undefined;
-			if (this.dynamicSubManager.size > 0) this.startJob();
+			if (this.postAnchors.size > 0) this.startJob();
+		} else if (cronChanged) {
+			// 没有 job:要么没名单,要么上一个 cron 写坏了起不来。走 reconcileJob 补一次,
+			// 它自带「退避窗口内不提前起」「登录失效不起」两道门。
+			this.reconcileJob();
 		}
 	}
 
@@ -310,7 +319,7 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 重启动态检测:作废退避计时、停旧 job、按名单对一遍两张表、推送名单非空才起新 job。
+	 * 重启动态检测:作废退避计时、停旧 job、按名单对一遍锚点表、表非空才起新 job。
 	 * 只留给 `start`、登录恢复、退避到点三处 —— 名单一动走 {@link syncSubscriptions},别重启 cron(会打乱相位)。
 	 */
 	private restartDetector(): void {
@@ -326,49 +335,40 @@ export class DynamicEngine {
 
 		this.applyRoster();
 
-		if (this.dynamicSubManager.size === 0) {
+		if (this.postAnchors.size === 0) {
 			this.logger.info("[detector] 没有需要动态检测的订阅对象");
 			return;
 		}
-		this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.dynamicSubManager].join(", ")}`);
+		this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
 		this.startJob();
 	}
 
 	/**
-	 * 把两张表照名单对一遍(名单现读):
-	 *   dynamicTimelineManager —— 「已观测」锚点,覆盖名单里**每一个人**(与推送开关无关)
-	 *   dynamicSubManager      —— 推送名单,只收作品开关开着的
-	 * 开关只决定产不产作品:名单外的不翻译、不抓图、不交,时间线照常前移。名单里没有的人(退订、停用)锚点清掉 ——
-	 * 留着孤儿锚点会在重新订阅时被当成「已看到这个时刻为止」,长期压住这位 UP 的动态。
-	 * 回这次进、出推送名单的人数。
+	 * 把锚点表照名单对一遍(名单现读):名单里作品开关开着的人进表(锚点 = 此刻),不在了的(退订、停用、关作品开关、
+	 * 全局作品开关关掉)删掉。已在表里的人锚点不动。离开就删,是为了再进来时从「现在」起算 —— 留着旧锚点,
+	 * 关着期间发的动态会在重新打开时被补推出来。
+	 * 回这次进、出表的人数。
 	 */
 	private applyRoster(): { opened: number; removed: number } {
-		const roster = this.subscriptions();
 		const next = new Set<string>();
-		const present = new Set<string>();
-		for (const sub of roster) {
-			present.add(sub.externalId);
-			this.ensureTimelineAnchor(sub.externalId);
+		for (const sub of this.subscriptions()) {
 			if (sub.features.has("post")) next.add(sub.externalId);
-		}
-		for (const uid of this.dynamicTimelineManager.keys()) {
-			if (present.has(uid)) continue;
-			this.dynamicTimelineManager.delete(uid);
-			this.logger.debug(`[detector] 清理已移除 UID：${uid} 的时间戳`);
 		}
 		let opened = 0;
 		let removed = 0;
-		for (const uid of next) if (!this.dynamicSubManager.has(uid)) opened++;
-		for (const uid of this.dynamicSubManager) if (!next.has(uid)) removed++;
-		this.dynamicSubManager = next;
+		for (const uid of [...this.postAnchors.keys()]) {
+			if (next.has(uid)) continue;
+			this.postAnchors.delete(uid);
+			removed++;
+			this.logger.debug(`[detector] 清理已移除 UID：${uid} 的时间戳`);
+		}
+		for (const uid of next) {
+			if (this.postAnchors.has(uid)) continue;
+			this.postAnchors.set(uid, Math.floor(DateTime.now().toSeconds()));
+			opened++;
+			this.logger.debug(`[detector] 初始化 UID：${uid} 时间戳`);
+		}
 		return { opened, removed };
-	}
-
-	/** 建「已观测」锚点(缺则以此刻为起点)。名单里每个人都要有,与推送开关无关。 */
-	private ensureTimelineAnchor(uid: string): void {
-		if (this.dynamicTimelineManager.has(uid)) return;
-		this.dynamicTimelineManager.set(uid, Math.floor(DateTime.now().toSeconds()));
-		this.logger.debug(`[detector] 初始化 UID：${uid} 时间戳`);
 	}
 
 	/**
@@ -380,7 +380,7 @@ export class DynamicEngine {
 		if (opened === 0 && removed === 0) return;
 		// per-UID 进出不逐条记 info(批量变更不刷屏),这里收口一条汇总。
 		this.logger.info(
-			`[roster] 动态订阅变更已应用：+${opened} 开启 / -${removed} 移除（当前 ${this.dynamicSubManager.size} 个动态订阅）`,
+			`[roster] 动态订阅变更已应用：+${opened} 开启 / -${removed} 移除（当前 ${this.postAnchors.size} 个动态订阅）`,
 		);
 		this.reconcileJob();
 	}
@@ -430,7 +430,7 @@ export class DynamicEngine {
 	}
 
 	private reconcileJob(): void {
-		if (this.dynamicSubManager.size === 0) {
+		if (this.postAnchors.size === 0) {
 			if (this.dynamicJob?.isActive) {
 				this.dynamicJob.stop();
 				this.dynamicJob = undefined;
@@ -443,9 +443,7 @@ export class DynamicEngine {
 			//   会去戳仍在风控的端点,击穿退避(退避的全部意义就是不放大风控)。到点后
 			//   scheduleDetectorRestart 的回调会用最新快照重启,订阅变更不会丢。
 			// · authLost = 登录已经失效,等 auth-restored。这时候拉起来只是再撞一次 -101。
-			this.logger.debug(
-				`[detector] 动态检测 UID 列表：${[...this.dynamicSubManager.keys()].join(", ")}`,
-			);
+			this.logger.debug(`[detector] 动态检测 UID 列表：${[...this.postAnchors.keys()].join(", ")}`);
 			this.startJob();
 		}
 	}
@@ -533,7 +531,7 @@ export class DynamicEngine {
 				continue;
 			}
 
-			if (!this.dynamicTimelineManager.has(uid)) continue; // not subscribed
+			if (!this.postAnchors.has(uid)) continue; // 不在要推的人里(没订阅 / 停用 / 作品开关关着)
 
 			const postTime = getDynamicPostTime(author);
 			if (postTime === undefined) {
@@ -559,29 +557,21 @@ export class DynamicEngine {
 				continue;
 			}
 
-			// 这位 UP 关了动态推送(不在推送名单里):生产就到此为止 —— 不翻译、不抓图、不交。
-			// 锚点仍要推进 —— 不推进的话每一轮都会把同一条重新判一遍。
-			if (!this.dynamicSubManager.has(uid)) {
-				markAdvance(uid, postTime);
-				continue;
-			}
-
 			await this.produce(item, uid, postTime);
 			markAdvance(uid, postTime);
 		}
 
 		// per-uid 锚点单调推进:取 max(现值, 本轮记下的最大 pub_ts),绝不回退。
 		for (const [uid, latest] of advanced) {
-			// 名单本轮对过、已经没有的 UID(退订、停用):锚点已被清掉,这里再 set 等于
-			// 复活孤儿锚点,跳过(A7)。判据用锚点本身而不是推送订阅表 —— 后者不含
-			// 「关了动态推送但仍订阅」的 UP,拿它判会让这些 UP 的锚点永不推进。
-			if (!this.dynamicTimelineManager.has(uid)) {
+			// 本轮抓图途中名单对过、已经不在表里的 UID(退订、停用、关作品开关):锚点已被清掉,这里再 set 等于
+			// 复活孤儿锚点,跳过(A7)。
+			if (!this.postAnchors.has(uid)) {
 				this.logger.debug(`[timeline] UID=${uid} 已退订，跳过时间线回写（不复活）`);
 				continue;
 			}
-			const existing = this.dynamicTimelineManager.get(uid) ?? 0;
+			const existing = this.postAnchors.get(uid) ?? 0;
 			if (latest <= existing) continue;
-			this.dynamicTimelineManager.set(uid, latest);
+			this.postAnchors.set(uid, latest);
 			this.logger.debug(
 				`[timeline] 更新时间线 UID=${uid} 时间=${DateTime.fromSeconds(latest).toFormat("yyyy-MM-dd HH:mm:ss")}`,
 			);
@@ -591,12 +581,11 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 这条动态还轮得到处理吗:时间线锚点在,而且仍早于它的发布时间。循环开头(越过时间线闸)与抓图之后的重校共用这一个判据。
-	 * 「订阅被删、被停用」锚点没了;「删了 / 停用后又加回来」锚点被重置成「现在」(晚于旧动态)—— 两种都不再是 true;
-	 * 而关了又开**作品开关**(订阅仍启用)的人一直在名单里、锚点不动,仍是 true。
+	 * 这条动态还轮得到处理吗:这个人在表里(锚点在),而且锚点仍早于它的发布时间。循环开头(越过时间线闸)与抓图之后的重校共用这一个判据。
+	 * 退订、停用、关作品开关:锚点没了;删了 / 停用 / 关了开关后又加回来:锚点被重置成「现在」(晚于旧动态)—— 都不再是 true。
 	 */
 	private isDue(uid: string, postTime: number): boolean {
-		const timeline = this.dynamicTimelineManager.get(uid);
+		const timeline = this.postAnchors.get(uid);
 		return timeline !== undefined && timeline < postTime;
 	}
 
@@ -627,10 +616,10 @@ export class DynamicEngine {
 				{ images: this.imageFetcher, logger: this.logger },
 				{ repostAvatarUrl: repostAvatarUrlOf(item), emojiUrls: emojiUrlsOf(item) },
 			);
-			// 抓图的 await 期间名单可能已去掉该 UID(退订、停用、停下),或「删了再加」成另一条订阅:引擎只交 uid,接线按身份
-			// 现查订阅 —— 不重校的话旧动态会被推给新订阅。把进门时的两道闸再过一遍(名单里还有它、锚点还在且仍早于
-			// 这条动态),不交,锚点由调用方照常前移。不用对象身份:update / 重建名单也会换对象,那样会把同一条订阅的动态丢掉。
-			if (!this.dynamicSubManager.has(uid) || !this.isDue(uid, postTime)) {
+			// 抓图的 await 期间名单可能已去掉该 UID(退订、停用、关作品开关、停下),或「删了再加」成另一条订阅:引擎只交 uid,
+			// 接线按身份现查订阅 —— 不重校的话旧动态会被推给新订阅。把进门时的闸再过一遍(锚点还在且仍早于这条动态),
+			// 不交,锚点由调用方照常前移。不用对象身份:update / 重建名单也会换对象,那样会把同一条订阅的动态丢掉。
+			if (!this.isDue(uid, postTime)) {
 				this.logger.debug(`[detector] UID=${uid} 在抓图途中已退订/被替换，这条动态不交`);
 				return;
 			}

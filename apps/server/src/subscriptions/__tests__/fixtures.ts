@@ -4,6 +4,7 @@ import {
 	type Logger,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
+	type PostReport,
 	type Source,
 	type SourceContext,
 	type SourceDescriptor,
@@ -81,19 +82,32 @@ export const sourceRegistryOf = (...descriptors: SourceDescriptor[]): SourceRegi
 export const bilibiliLikeSources = (): SourceRegistry =>
 	sourceRegistryOf({ membershipPrograms: [BILIBILI_GUARD_PROGRAM] });
 
-export const makeSource = (): Source & {
+/** 假来源:`start` 时记下来源上下文(`started` 记全部、`ctx` 是最近一个),`stop` 记一次;`start` / `stop` 是 spy,可换实现。 */
+export interface FakeSource extends Source {
 	started: SourceContext[];
 	stops: number;
-} => {
-	const source = {
+	ctx?: SourceContext;
+	start: Mock<(ctx: SourceContext) => Promise<void>>;
+	stop: Mock<() => Promise<void>>;
+	/** 假来源经上下文交作品。 */
+	reportPost(externalId: string, report: PostReport): void;
+}
+
+export const makeSource = (): FakeSource => {
+	const source: FakeSource = {
 		descriptor: { postNoun: "动态" },
-		started: [] as SourceContext[],
+		started: [],
 		stops: 0,
-		async start(ctx: SourceContext) {
+		start: vi.fn(async (ctx: SourceContext) => {
 			source.started.push(ctx);
-		},
-		async stop() {
+			source.ctx = ctx;
+		}),
+		stop: vi.fn(async () => {
 			source.stops += 1;
+		}),
+		reportPost(externalId, report) {
+			if (!source.ctx) throw new Error("假来源还没 start");
+			source.ctx.reportPost(externalId, report);
 		},
 	};
 	return source;
