@@ -1,10 +1,7 @@
 /**
- * 端到端:独立端 `MasterNotifier` 把 bus `auth-lost` / `engine-error` 翻译成主人私聊
- * (`push.notifyMaster`),并按 per-source 60s 节流合并。
- *
- * 与 koishi 端 `koishi/src/runtime/__tests__/master-notifier.test.ts` 行为对称 ——
- * 同事件 → 同私聊路径 + 同节流粒度。此前 `engines.test.ts` 只覆盖了 auth-lost →
- * live.teardown 的事件级转译,从未断言私聊真的发出。
+ * 端到端:独立端 `MasterNotifier` 把 bus `engine-error` 翻译成主人私聊
+ * (`push.notifyMaster`),并按 per-source 60s 节流合并。登录失效不在这里说(由问题通知器说),
+ * 它不再听 `auth-lost`。
  */
 
 import type { Logger } from "@bilibili-notify/internal";
@@ -42,7 +39,8 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 		vi.useRealTimers();
 	});
 
-	it("auth-lost → push.notifyMaster('账号登录已失效，请到控制台重新扫码登录')", async () => {
+	// 登录失效改由问题表与问题通知器说(带「已恢复」);这里再听 auth-lost 会让主人同一件事收两条。
+	it("不再听 auth-lost:发一条也不私聊", async () => {
 		const bus = createNodeMessageBus();
 		const push = makePush();
 		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx }).install();
@@ -50,8 +48,7 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 		bus.emit("auth-lost");
 		await vi.runAllTimersAsync();
 
-		expect(push.notifyMaster).toHaveBeenCalledTimes(1);
-		expect(push.notifyMaster).toHaveBeenCalledWith("账号登录已失效，请到控制台重新扫码登录");
+		expect(push.notifyMaster).not.toHaveBeenCalled();
 	});
 
 	it("engine-error → push.notifyMaster + logger.warn(双通道)", async () => {
@@ -92,21 +89,21 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 		expect(logger.warn).toHaveBeenCalledTimes(3);
 	});
 
-	it("不同 source 各自独立节流(auth vs 不同 engine)", async () => {
+	it("不同 source 各自独立节流", async () => {
 		const bus = createNodeMessageBus();
 		const push = makePush();
 		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx }).install();
 
-		bus.emit("auth-lost");
 		bus.emit("engine-error", { source: "dynamic", message: "d-err" });
 		bus.emit("engine-error", { source: "live", message: "l-err" });
+		bus.emit("engine-error", { source: "image", message: "i-err" });
 		await vi.runAllTimersAsync();
 
 		expect(push.notifyMaster).toHaveBeenCalledTimes(3);
 		const calls = push.notifyMaster.mock.calls.map((c) => c[0] as string);
-		expect(calls).toContain("账号登录已失效，请到控制台重新扫码登录");
 		expect(calls).toContain("[dynamic] d-err");
 		expect(calls).toContain("[live] l-err");
+		expect(calls).toContain("[image] i-err");
 	});
 
 	it("dispose 后 bus 事件不再触发私聊", async () => {
@@ -115,13 +112,12 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 		const notifier = new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx });
 		notifier.install();
 
-		bus.emit("auth-lost");
+		bus.emit("engine-error", { source: "dynamic", message: "before-dispose" });
 		await vi.runAllTimersAsync();
 		expect(push.notifyMaster).toHaveBeenCalledTimes(1);
 
 		notifier.dispose();
 		vi.advanceTimersByTime(60_001); // 清节流避免与 dispose 行为混淆
-		bus.emit("auth-lost");
 		bus.emit("engine-error", { source: "dynamic", message: "after-dispose" });
 		await vi.runAllTimersAsync();
 
@@ -139,13 +135,17 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 		const logger = makeSilentLogger();
 		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
-		bus.emit("auth-lost");
+		bus.emit("engine-error", { source: "dynamic", message: "出错了" });
 		await vi.runAllTimersAsync();
 
-		expect(logger.warn).toHaveBeenCalledTimes(1);
-		const warnArg = (logger.warn as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-		expect(String(warnArg)).toMatch(/source=auth/);
-		expect(String(warnArg)).toMatch(/没有配置主人目标/);
+		// 一条是 engine-error 自己落的 warn,一条是私信没送到
+		const warns = (logger.warn as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) =>
+			String(c[0]),
+		);
+		expect(warns).toHaveLength(2);
+		const failed = warns.find((w) => w.includes("私信没送到"));
+		expect(failed).toMatch(/source=dynamic/);
+		expect(failed).toMatch(/没有配置主人目标/);
 	});
 
 	it("push.notifyMaster 抛出 → 走 logger.warn,不向外传播", async () => {
@@ -155,14 +155,15 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
 		const logger = makeSilentLogger();
 		new MasterNotifier({ bus, push, logger, serviceCtx }).install();
 
-		bus.emit("auth-lost");
+		bus.emit("engine-error", { source: "dynamic", message: "出错了" });
 		await vi.runAllTimersAsync();
 
-		expect(logger.warn).toHaveBeenCalledTimes(1);
 		const warnMock = logger.warn as unknown as ReturnType<typeof vi.fn>;
-		const warnArg = warnMock.mock.calls[0]?.[0];
-		expect(String(warnArg)).toMatch(/source=auth/);
-		expect(String(warnArg)).toMatch(/net down/);
+		const warns = warnMock.mock.calls.map((c) => String(c[0]));
+		expect(warns).toHaveLength(2);
+		const failed = warns.find((w) => w.includes("私信失败"));
+		expect(failed).toMatch(/source=dynamic/);
+		expect(failed).toMatch(/net down/);
 	});
 });
 
@@ -171,7 +172,7 @@ describe("MasterNotifier — auth-lost / engine-error → 私聊", () => {
  * 发送经 dispatcher 回调的目标可达性写回,得赶在各写道关门之前交进去。
  */
 describe("MasterNotifier — 登记进 track", () => {
-	it("auth-lost → 私聊发完它才落定", async () => {
+	it("engine-error → 私聊发完它才落定", async () => {
 		const bus = createNodeMessageBus();
 		const send = deferred<{ ok: true; latencyMs: number }>();
 		const push = makePush();
@@ -179,7 +180,7 @@ describe("MasterNotifier — 登记进 track", () => {
 		const ctx = makeTrackingContext();
 		new MasterNotifier({ bus, push, logger: makeSilentLogger(), serviceCtx: ctx }).install();
 
-		bus.emit("auth-lost");
+		bus.emit("engine-error", { source: "dynamic", message: "出错了" });
 
 		expect(ctx.tracked).toHaveLength(1);
 		expect(push.notifyMaster).toHaveBeenCalledTimes(1);
@@ -216,7 +217,7 @@ describe("MasterNotifier — 登记进 track", () => {
 		const ctx = makeTrackingContext();
 		new MasterNotifier({ bus, push, logger, serviceCtx: ctx }).install();
 
-		bus.emit("auth-lost");
+		bus.emit("engine-error", { source: "dynamic", message: "出错了" });
 
 		await expect(ctx.tracked[0]).resolves.toBeUndefined();
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("master unreachable"));

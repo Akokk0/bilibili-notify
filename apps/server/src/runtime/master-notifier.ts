@@ -7,7 +7,7 @@ import type { PushRouter } from "@bilibili-notify/push";
  */
 const NOTIFY_DEBOUNCE_MS = 60_000;
 
-/** master-notifier 内部用的"逻辑 source"字符串。专门用 `auth` 区分 auth-lost。 */
+/** master-notifier 内部用的"逻辑 source"字符串:`engine-error` 带来的 `source`。 */
 type SourceKey = string;
 
 export interface MasterNotifierOptions {
@@ -22,16 +22,12 @@ export interface MasterNotifierOptions {
 }
 
 /**
- * master 私聊聚合器。同时观察两个事件源：
- *   - `engine-error({ source, message })`：业务 engine 报告的运行时错误
- *   - `auth-lost()`：登录态失效（独立 sourceKey="auth"）
+ * master 私聊聚合器（组件告警）。观察 `engine-error({ source, message })`：业务 engine 报告的
+ * 运行时错误。以"逻辑 source"为 key 做 per-source 60s 防抖：同 source 60s 内重复告警合并为一条；
+ * 不同 source 各自独立放行。
  *
- * 两个事件**独立订阅**，但共用一张以"逻辑 source"为 key 的节流表。Per-source
- * 60s 防抖：同 source 60s 内重复告警合并为一条；不同 source 各自独立放行。
- *
- * 设计取舍参考 plan §"engine-error 与 auth-lost"对齐讨论 —— 事件本身保持各自
- * 纯粹语义，master-notifier 是消费端的聚合内部实现细节，sourceKey 命名空间
- * 与 BusEvents 事件名无耦合。
+ * 登录失效不走这里:那是「主人该知道的事」,由问题表与问题通知器
+ * (`problems/problem-notifier.ts`)统一说,带「已恢复」。两个通知器各有各的节流表。
  */
 export class MasterNotifier {
 	private readonly opts: MasterNotifierOptions;
@@ -50,11 +46,6 @@ export class MasterNotifier {
 				// 彻底静默。DM 仍走 notify() 的 per-source 60s 节流避免刷屏。两端对称。
 				this.opts.logger.warn(`[${source}] ${message}`);
 				this.opts.serviceCtx.track(this.notify(source, `[${source}] ${message}`));
-			}),
-		);
-		this.handles.push(
-			this.opts.bus.on("auth-lost", () => {
-				this.opts.serviceCtx.track(this.notify("auth", "账号登录已失效，请到控制台重新扫码登录"));
 			}),
 		);
 	}

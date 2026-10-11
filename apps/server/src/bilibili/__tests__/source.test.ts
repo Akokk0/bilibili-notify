@@ -26,6 +26,8 @@ import {
 import { registerBuiltinSource } from "../../subscriptions/builtin-sources.js";
 import { createSourceRegistry } from "../../subscriptions/registry.js";
 import type { Api } from "../api/index.js";
+import { createProblemLayers } from "../problem-layers.js";
+import { PROBLEM_TEXTS } from "../problem-texts.js";
 import { type BiliSettings, BiliSettingsSchema } from "../settings.js";
 import { createBiliSource } from "../source.js";
 
@@ -130,6 +132,7 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 		config,
 		fetchImage,
 		deps: {
+			problems: { attach: vi.fn(), detach: vi.fn() },
 			api: { fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED) } as unknown as Api,
 			bus: makeWorld().bus,
 			push: { sendPrivateMsg: vi.fn(async () => {}) },
@@ -209,6 +212,47 @@ describe("createBiliSource", () => {
 		expect(watchDisposed).toHaveBeenCalledTimes(1);
 		expect(config.disposed).toHaveBeenCalledTimes(1);
 		expect(config.listeners()).toBe(0);
+	});
+
+	// 验红:删掉 source.ts `start` 里的 `deps.problems.attach(ctx)`,这条红。
+	it("start 最后一步把上报器接上这个来源的上下文;stop 第一步摘下(在引擎停之前)", async () => {
+		const { deps } = makeDeps();
+		const order: string[] = [];
+		deps.problems.attach.mockImplementation(() => void order.push("attach"));
+		deps.problems.detach.mockImplementation(() => {
+			order.push(`detach(引擎${source.dynamic()?.isActive ? "还在跑" : "已停"})`);
+		});
+		const source = createBiliSource(deps);
+		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
+		await source.start(ctx);
+		expect(deps.problems.attach).toHaveBeenCalledTimes(1);
+		expect(deps.problems.attach).toHaveBeenCalledWith(ctx);
+		expect(source.dynamic()).toBeDefined();
+
+		await source.stop();
+		expect(order).toEqual(["attach", "detach(引擎还在跑)"]);
+	});
+
+	// 验红:删掉 `start` 里的 `attach`,这条红(真上报器 + 记录用的假 ctx,开机登录已失效)。
+	it("真上报器:登录是 expired 时,start 之后核心那头收到一次 reportProblem(带私聊)", async () => {
+		const { deps } = makeDeps();
+		const problems = createProblemLayers({
+			auth: {
+				state: () => ({ status: "expired", message: "失效" }),
+				onChange: () => ({ dispose() {} }),
+			},
+			logger: makeLogger(),
+		});
+		const source = createBiliSource({ ...deps, problems });
+		const { ctx } = makeCtx();
+		await source.start(ctx);
+		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
+		expect(ctx.reportProblem).toHaveBeenCalledWith({
+			code: "auth_lost",
+			message: PROBLEM_TEXTS.loginExpired,
+			notify: true,
+		});
+		await source.stop();
 	});
 
 	it("stop 的同步段里就停干净(登记表不等它)", () => {

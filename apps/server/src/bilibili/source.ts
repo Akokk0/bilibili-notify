@@ -12,6 +12,7 @@ import type { ConfigStore } from "../config/store.js";
 import type { Api } from "./api/index.js";
 import { DynamicEngine, type PushLike } from "./dynamic/index.js";
 import type { ImagesDeps } from "./images.js";
+import type { ProblemLayers } from "./problem-layers.js";
 import { settingsOf, watchSettings } from "./settings.js";
 
 export interface BiliSourceDeps {
@@ -27,6 +28,11 @@ export interface BiliSourceDeps {
 	setTimeout: ServiceContext["setTimeout"];
 	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
 	auth: SourceAuth;
+	/**
+	 * 分层上报器(`compose.ts` 造,与给开发场景、给入口的是同一个):`start` 最后一步接上这个来源的上下文,
+	 * `stop` 第一步摘下。
+	 */
+	problems: Pick<ProblemLayers, "attach" | "detach">;
 }
 
 export interface BiliSource extends Source {
@@ -84,10 +90,14 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			}
 			engine = started;
 			handles = mine;
+			// 最后一步:核心那头此刻才有。接上之前记着的问题(登录失效、风控、请求失败)在这一刻整份补报。
+			deps.problems.attach(ctx);
 		},
 		// 🔴 没有 await:登记表撤登记时调 stop 是不等它的,而引擎的 dispose 是同步函数、紧接着就关作品入口,
 		// 「来源先停、入口后关」只在 stop 的同步段里已经停干净时成立。
 		stop() {
+			// 第一步先摘:引擎收尾时的「不再适用」清除不许变成对主人说的一句「已恢复」。
+			deps.problems.detach();
 			for (const handle of handles) handle.dispose();
 			handles = [];
 			engine?.stop();

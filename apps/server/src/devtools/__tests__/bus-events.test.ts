@@ -41,5 +41,7 @@ describe("总线事件场景", () => {
 		expect(seen.map((s) => s[0])).toEqual(["auth-lost", "auth-restored"]);
 		const lost = reg.list().find((d) => d.id === "auth.lost");
 		expect(lost?.desc).toMatch(/引擎/);
+		// 它只发总线事件、不改登录状态:不会进问题表、也不会私聊 —— 说明里要如实写
+		expect(lost?.desc).toMatch(/不会进问题表/);
 	});
 });

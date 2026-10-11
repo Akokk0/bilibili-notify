@@ -33,6 +33,7 @@ import {
 	type DevtoolsProviderRegistry,
 } from "./bilibili/devtools/index.js";
 import type { ImagesDeps } from "./bilibili/images.js";
+import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-layers.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { ConfigStore } from "./config/store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
@@ -94,11 +95,17 @@ export interface BuiltinIntegrations {
 	 * 错原样抛出去。调第二次就抛。
 	 */
 	registerAdapters(): Promise<BuiltinAdapters>;
-	/** B 站来源上给入口读的那一面:只为 `status` 指令的「上次抓取」。登记之前 `dynamic()` 是 undefined。 */
-	readonly bilibili: Pick<BiliSource, "dynamic">;
+	/**
+	 * B 站来源上给入口读的那一面:`dynamic()` 只为 `status` 指令的「上次抓取」,登记之前是 undefined;
+	 * `problems` 是动态与直播共用的分层上报器(来源登记时接上核心)。
+	 */
+	readonly bilibili: Pick<BiliSource, "dynamic"> & { problems: ProblemLayers };
 }
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
+	// B 站分层上报器:先造、来源登记之后才接上核心(`BiliSource.start` 里接)。给来源与给入口读的是同一个。
+	const problems = createProblemLayers({ auth: deps.sourceAuth, logger: deps.logger });
+	deps.integration.onDispose(() => problems.dispose());
 	let source: BiliSource | undefined;
 	// 登记过(含登记途中)就不许再来一次;造来源或登记任一步抛了都会复位。
 	let registering = false;
@@ -163,6 +170,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					api: deps.api.api,
 					bus: deps.bus,
 					push: { sendPrivateMsg: masterTellers(engines.push, deps.logger).sendPrivateMsg },
+					problems,
 					imageFetcher: deps.imageFetcher,
 					configStore: deps.configStore,
 					setTimeout: deps.setTimeout,
@@ -199,6 +207,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				throw err;
 			}
 		},
-		bilibili: { dynamic },
+		bilibili: { dynamic, problems },
 	};
 }

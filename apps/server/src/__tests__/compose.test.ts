@@ -105,7 +105,12 @@ const SOURCE_AUTH = {
 } satisfies SourceAuth;
 
 function compose(
-	opts: { subs?: Subscription[]; api?: Api; fetchImage?: ReturnType<typeof vi.fn> } = {},
+	opts: {
+		subs?: Subscription[];
+		api?: Api;
+		fetchImage?: ReturnType<typeof vi.fn>;
+		sourceAuth?: SourceAuth;
+	} = {},
 ) {
 	const subs = opts.subs ?? [];
 	const adapterRegistry = createPlatformAdapterRegistry();
@@ -118,7 +123,7 @@ function compose(
 		api,
 		auth: overridableApi(fakeAuth()),
 		integration,
-		sourceAuth: SOURCE_AUTH,
+		sourceAuth: opts.sourceAuth ?? SOURCE_AUTH,
 		bus: createNodeMessageBus(),
 		configStore: {
 			getIntegrationSettings: () => BiliSettingsSchema.parse({}),
@@ -279,6 +284,33 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		expect(builtins.bilibili.dynamic()).toBeDefined();
 		await registered[0]?.source.stop();
 		expect(builtins.bilibili.dynamic()).toBeUndefined();
+	});
+
+	// 验红:让 `compose.ts` 造两个上报器(给来源的与挂在 `bilibili.problems` 上的不是同一个),这条红。
+	it("bilibili.problems 与交给来源的是同一个上报器:来源登记前报的,登记后核心那头收到(补报)", async () => {
+		// 登录着:没有更高层压住,第三层才存得下来
+		const loggedIn: SourceAuth = {
+			...SOURCE_AUTH,
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+		};
+		const { builtins } = compose({ sourceAuth: loggedIn });
+		builtins.bilibili.problems.reportFailure({
+			externalId: "100",
+			code: "live_monitor_stopped",
+			message: "停了",
+		});
+		const { ctx } = makeFakeSourceCtx([]);
+		expect(ctx.reportProblem).not.toHaveBeenCalled();
+
+		await builtins.registerSources(makeFakeEngines(ctx).engines);
+
+		expect(ctx.reportProblem).toHaveBeenCalledTimes(1);
+		expect(ctx.reportProblem).toHaveBeenCalledWith({
+			externalId: "100",
+			code: "live_monitor_stopped",
+			message: "停了",
+			notify: true,
+		});
 	});
 
 	describe("场景那头与来源那头是同一个壳(造动态的场景一路走到来源的 reportPost)", () => {
