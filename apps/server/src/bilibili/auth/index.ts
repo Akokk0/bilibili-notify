@@ -152,12 +152,21 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		const beginLogin = (): Promise<Result> => flowFinal.beginLogin();
 
 		const logout = async (): Promise<Result> => {
-			// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
-			await api.clearCookies();
-			// 罐子已空:`http.cookies` 与令牌在同一次写里一起删。失败记 error、照样报未登录,并把失败交给调用方。
-			const saved = await api.commitLogin(undefined);
-			if (!saved.ok) log.error(`[auth] 登出后清不掉存着的登录状态: ${saved.message}`);
-			flowFinal.reportLoggedOut("notLogin");
+			// 退出的第一步就报未登录:从这一刻起没有「会话可丢」。放在清罐、落盘之后的话,那两个 `await` 里回来的 `-101`
+			// (带着旧 cookie 发出去的请求、或清罐之后不带 cookie 发出去的)会被当成登录失效 —— 主人自己点的退出,
+			// 却先收到一句「登录失效了」。落盘成不成状态都是未登录(与从前一样),失败经返回值交给调用方。
+			let saved: Result;
+			try {
+				flowFinal.reportLoggedOut("notLogin");
+			} finally {
+				// 放在 finally 里:`auth-lost` 的监听者同步抛错会从上面那句传出来,清罐与落盘不能因此被跳过
+				// (状态已经说了未登录,罐里、盘上却还留着登录)。抛错照旧往外传。
+				// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
+				await api.clearCookies();
+				// 罐子已空:`http.cookies` 与令牌在同一次写里一起删。失败记 error,并把失败交给调用方。
+				saved = await api.commitLogin(undefined);
+				if (!saved.ok) log.error(`[auth] 登出后清不掉存着的登录状态: ${saved.message}`);
+			}
 			return saved.ok
 				? ok()
 				: fail(

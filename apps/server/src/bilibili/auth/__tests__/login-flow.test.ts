@@ -1944,3 +1944,342 @@ describe("LoginFlow — 边事件与通知的先后、监听者抛错", () => {
 		expect(h.flow.authState().status).toBe("logged-in");
 	});
 });
+
+/**
+ * 3a-30 复审 A1 / A2:登录检查(心跳、补取、开机确认)与扫码的交叠。
+ *
+ * 前三条钉的是**不许变**的现状(记号只在新登录成立时往前走,发起重扫不走);其余是这次修的:
+ * 检查发出去之后一段新登录成立了,它回来的结果(成功、`-101`、抛错、取到的账号)问的都是上一段,整份丢掉。
+ */
+describe("LoginFlow — 检查在途时扫码(3a-30 复审 A1 / A2)", () => {
+	const HEALTH_MS = 60_000;
+	const POLL_MS = 1000;
+	const CARD = (name: string) => ({ code: 0, data: { card: { name, face: "" } } });
+
+	const liveBeats = (h: Harness) =>
+		h.scFake.intervals.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed);
+	const livePolls = (h: Harness) =>
+		h.scFake.intervals.filter((i) => i.ms === POLL_MS && !i.handle.disposed);
+
+	async function begin(h: Harness, tag: string): Promise<Result> {
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: `https://qr/${tag}`, qrcode_key: tag },
+		});
+		return h.flow.beginLogin(async () => `data:${tag}`);
+	}
+
+	/** 摆成已登录、带账号、心跳挂着。 */
+	async function loggedIn(h: Harness, name = "old"): Promise<void> {
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD(name));
+		await h.flow.reportAccountInfo();
+		expect(rawOf(h.flow).status).toBe("logged-in");
+		expect(liveBeats(h)).toHaveLength(1);
+	}
+
+	/** 让挂着的心跳打一拍,探活停在途中。 */
+	async function beatInFlight(h: Harness) {
+		const probe = deferred<unknown>();
+		h.api.fetchMyselfInfo.mockReturnValueOnce(probe.promise);
+		const beating = liveBeats(h).at(-1)?.handle.fire();
+		await flush();
+		return { probe, beating };
+	}
+
+	/**
+	 * 当前这张码回「确认成功」并落盘、进已登录;扫码成功后那次取账号的探活停在途中。
+	 * 回那次探活的 deferred 与轮询那一拍。
+	 */
+	async function confirmScan(h: Harness) {
+		const newProbe = deferred<unknown>();
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		h.api.fetchMyselfInfo.mockReturnValueOnce(newProbe.promise);
+		const tick = livePolls(h).at(-1)?.handle.fire();
+		await flush();
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loginJustSucceeded" });
+		return { newProbe, tick };
+	}
+
+	// ---- 钉现状(动实现之前就是绿的) ----
+
+	// 验红:把 `runHealthCheck` 里「回 0 且在扫码就丢掉」的条件去掉 `res.code === 0`(扫码中一律丢),这条红。
+	it("心跳在途 → 发起重扫(没扫成)→ 回 -101:照旧失效、这次扫码被结束、不发 auth-lost", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await loggedIn(h);
+		const { probe, beating } = await beatInFlight(h);
+		await begin(h, "new");
+		expect(livePolls(h)).toHaveLength(1);
+
+		probe.resolve({ code: -101 });
+		await beating;
+		await flush();
+
+		expect(h.flow.authState().status).toBe("expired");
+		expect(livePolls(h)).toHaveLength(0);
+		expect(liveBeats(h)).toHaveLength(0);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+	});
+
+	// 验红:把 `runHealthCheck` 里那一支的条件从 `status === "qr"` 放宽到也含 `failed`,这条红。
+	it("心跳在途 → 发起重扫 → 重扫超时停在出错 → 回 0:回到已登录(旧会话其实还在)", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await loggedIn(h);
+		const { probe, beating } = await beatInFlight(h);
+		await begin(h, "new");
+		await h.scFake.timeouts.at(-1)?.handle.fire(); // 3 分钟到了
+		expect(h.flow.authState().status).toBe("error");
+
+		probe.resolve({ code: 0, data: { mid: 1 } });
+		await beating;
+		await flush();
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(liveBeats(h)).toHaveLength(1);
+	});
+
+	// 验红:把 `reportLoggedIn` 里发 `auth-restored` 的条件改成「上一帧不是 checking」(已登录时再进已登录也发),这条红。
+	it("心跳在途 → 再来一次心跳:两份都落地,状态、登录时刻、心跳、边事件都不变", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await loggedIn(h);
+		const before = rawOf(h.flow);
+		const first = await beatInFlight(h);
+		const second = await beatInFlight(h);
+
+		second.probe.resolve({ code: 0, data: { mid: 1 } });
+		first.probe.resolve({ code: 0, data: { mid: 1 } });
+		await first.beating;
+		await second.beating;
+		await flush();
+
+		expect(rawOf(h.flow)).toMatchObject({
+			status: "logged-in",
+			loggedInAt: (before as { loggedInAt: string }).loggedInAt,
+		});
+		expect(h.flow.account()).toEqual({ name: "old" });
+		expect(liveBeats(h)).toHaveLength(1);
+		expect(h.events).toHaveLength(0);
+	});
+
+	// ---- A1:检查在途时一段新登录成立了 ----
+
+	// 复审探针 L1。
+	it("心跳在途 → 重扫并扫码成功 → 旧心跳回 -101:新登录不被判失效,新会话的探活照常落地、心跳挂着", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await loggedIn(h);
+		const { probe, beating } = await beatInFlight(h);
+		await begin(h, "new");
+		const { newProbe, tick } = await confirmScan(h);
+
+		probe.resolve({ code: -101 });
+		await beating;
+		await flush();
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(h.flow.account()).toEqual({ name: "new" });
+		expect(liveBeats(h)).toHaveLength(1);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+	});
+
+	it("心跳在途 → 重扫并扫码成功 → 旧心跳回 0:同样丢掉,不拿旧会话的用户 id 去补取账号", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await loggedIn(h);
+		const { probe, beating } = await beatInFlight(h);
+		await begin(h, "new");
+		const { newProbe, tick } = await confirmScan(h);
+		expect(h.flow.account()).toBeNull(); // 新登录的账号还没取到
+		h.api.fetchUserCard.mockResolvedValue(CARD("stale"));
+
+		probe.resolve({ code: 0, data: { mid: 1 } });
+		await beating;
+		await flush();
+
+		expect(h.api.fetchUserCard).toHaveBeenCalledTimes(1); // 只有摆成已登录那一次
+		expect(h.flow.account()).toBeNull();
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loginJustSucceeded" });
+
+		h.api.fetchUserCard.mockReset();
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toEqual({ name: "new" });
+	});
+
+	it("心跳补取账号在途 → 重扫并扫码成功 → 旧的卡片才回来:不把上一段登录的账号写到新登录上", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: -352, data: null }); // 账号缺着
+		await h.flow.reportAccountInfo();
+		const staleCard = deferred<unknown>();
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
+		h.api.fetchUserCard.mockReturnValueOnce(staleCard.promise);
+		const beating = liveBeats(h).at(-1)?.handle.fire();
+		await flush();
+		expect(h.api.fetchUserCard).toHaveBeenCalledTimes(2); // 补取已发出
+
+		await begin(h, "new");
+		const { newProbe, tick } = await confirmScan(h);
+		staleCard.resolve(CARD("stale"));
+		await beating;
+		await flush();
+
+		expect(h.flow.account()).toBeNull();
+
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toEqual({ name: "new" });
+	});
+
+	it("开机确认在途 → 扫码成功 → 开机那次探活回 -101:新登录不被判失效", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		const bootProbe = deferred<unknown>();
+		h.api.fetchMyselfInfo.mockReturnValueOnce(bootProbe.promise);
+		const booting = h.flow.reportAccountInfo();
+		await flush();
+		await begin(h, "new");
+		const { newProbe, tick } = await confirmScan(h);
+
+		bootProbe.resolve({ code: -101 });
+		await booting;
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(liveBeats(h)).toHaveLength(0); // 被取代的那次不挂心跳,等新登录自己那次
+
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(liveBeats(h)).toHaveLength(1);
+	});
+
+	it("开机确认在途 → 扫码成功 → 开机那次探活抛错:不把新登录标成「取账号失败」、不替它挂心跳", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		const bootProbe = deferred<unknown>();
+		h.api.fetchMyselfInfo.mockReturnValueOnce(bootProbe.promise);
+		const booting = h.flow.reportAccountInfo();
+		await flush();
+		await begin(h, "new");
+		const { newProbe, tick } = await confirmScan(h);
+
+		bootProbe.reject(new Error("net down"));
+		await booting;
+
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loginJustSucceeded" });
+		expect(liveBeats(h)).toHaveLength(0);
+
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+		expect(liveBeats(h)).toHaveLength(1);
+	});
+
+	it("开机确认取卡片在途 → 扫码成功 → 旧卡片才回来:不把上一段登录的账号写到新登录上", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
+		const staleCard = deferred<unknown>();
+		h.api.fetchUserCard.mockReturnValueOnce(staleCard.promise);
+		const booting = h.flow.reportAccountInfo();
+		await flush();
+		await begin(h, "new");
+		const { newProbe, tick } = await confirmScan(h);
+
+		staleCard.resolve(CARD("stale"));
+		await booting;
+
+		expect(h.flow.account()).toBeNull();
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loginJustSucceeded" });
+
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toEqual({ name: "new" });
+	});
+
+	it("落盘失败照样算一段新登录:旧心跳迟到的 -101 同样丢掉", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await loggedIn(h);
+		const { probe, beating } = await beatInFlight(h);
+		await begin(h, "new");
+		h.api.commitLogin.mockResolvedValueOnce(fail("unavailable", "disk full"));
+		const { newProbe, tick } = await confirmScan(h);
+
+		probe.resolve({ code: -101 });
+		await beating;
+		await flush();
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		newProbe.resolve({ code: 0, data: { mid: 2 } });
+		await tick;
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.authState().status).toBe("logged-in");
+	});
+
+	// ---- A2:丢弃「取账号的成功」时心跳要挂着 ----
+
+	// 复审探针 L2。
+	it("没登录 → 扫码成功 → 取账号在途 → 又发起一次:那份成功丢掉但心跳挂上;新码超时后心跳把状态带回已登录", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.flow.reportLoggedOut("notLogin");
+		expect(liveBeats(h)).toHaveLength(0);
+		await begin(h, "old");
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 2 } });
+		const card = deferred<unknown>();
+		h.api.fetchUserCard.mockReturnValueOnce(card.promise);
+		const tick = livePolls(h).at(-1)?.handle.fire();
+		await flush();
+		expect(rawOf(h.flow).status).toBe("logged-in"); // 卡片还在途
+
+		await begin(h, "new");
+		card.resolve(CARD("new"));
+		await tick;
+		await Promise.all(h.scFake.tracked);
+
+		expect(h.flow.authState()).toMatchObject({
+			status: "awaiting-scan",
+			qr: { dataUrl: "data:new" },
+		});
+		expect(liveBeats(h)).toHaveLength(1);
+
+		await h.scFake.timeouts.at(-1)?.handle.fire(); // 新码 3 分钟到了
+		expect(h.flow.authState().status).toBe("error");
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 2 } });
+		h.api.fetchUserCard.mockResolvedValueOnce(CARD("new"));
+		await liveBeats(h).at(-1)?.handle.fire();
+		await flush();
+
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(h.flow.account()).toEqual({ name: "new" });
+	});
+
+	it("开机确认取卡片在途 → 发起扫码:那份成功丢掉但心跳挂上", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 1 } });
+		const card = deferred<unknown>();
+		h.api.fetchUserCard.mockReturnValueOnce(card.promise);
+		const booting = h.flow.reportAccountInfo();
+		await flush();
+
+		await begin(h, "new");
+		card.resolve(CARD("old"));
+		await booting;
+
+		expect(h.flow.authState()).toMatchObject({ status: "awaiting-scan" });
+		expect(liveBeats(h)).toHaveLength(1);
+	});
+});

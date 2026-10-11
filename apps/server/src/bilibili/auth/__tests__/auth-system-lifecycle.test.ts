@@ -326,6 +326,97 @@ describe("恢复备份之后与登出", () => {
 		await w.store.close();
 	});
 
+	// 3a-30 复审记一笔 2。验红:把 `logout` 里的 `reportLoggedOut("notLogin")` 挪回落盘之后,这两条红(状态序列里多出一帧 `expired`)。
+	it.each([
+		["落盘成功", ok()],
+		["落盘失败", fail("unavailable", "disk full")],
+	])(
+		"主动退出、清存着的登录状态(%s)的途中来了 -101:不算登录失效,对外只有「没登录」这一帧",
+		async (_name, saved) => {
+			const w = world();
+			await w.seed({ cookies: C0, token: "T0" });
+			vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
+			// 这一条要真的登录流程:开机探活回 0 进已登录,退出走真的 `reportLoggedOut`。
+			vi.mocked(LoginFlow.prototype.reportAccountInfo).mockRestore();
+			vi.mocked(LoginFlow.prototype.reportLoggedOut).mockRestore();
+			vi.spyOn(Api.prototype, "fetchMyselfInfo").mockResolvedValue({
+				code: 0,
+				data: { mid: 42, uname: "n", face: "" },
+			});
+			vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue({
+				code: 0,
+				data: { card: { name: "n", face: "" } },
+			} as never);
+			const auth = await createAuthSystem({
+				serviceCtx: w.host.serviceCtx,
+				bus,
+				integrationStore: w.store,
+			});
+			expect(auth.auth.state().status).toBe("logged-in");
+			const seen: string[] = [];
+			auth.auth.onChange(() => seen.push(auth.auth.state().status));
+			vi.mocked(bus.emit).mockClear();
+			// 落盘悬着的那一段里,一个带着旧 cookie 发出去的请求回了 -101(经 `Api` 的拦截器那个口进来)。
+			const commit = vi.spyOn(Api.prototype, "commitLogin").mockImplementation(async () => {
+				(auth.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
+				await Promise.resolve();
+				return saved;
+			});
+
+			const r = await auth.auth.logout();
+
+			expect(commit).toHaveBeenCalledTimes(1);
+			expect(r.ok).toBe(saved.ok);
+			expect(seen).toEqual(["logged-out"]);
+			expect(auth.auth.state()).toEqual({ status: "logged-out" });
+			// 丢掉一个好会话:`auth-lost` 恰好一次(退出那一下),不因为那个 -101 再来一次。
+			expect(
+				vi.mocked(bus.emit).mock.calls.filter(([event]) => event === "auth-lost"),
+			).toHaveLength(1);
+			commit.mockRestore();
+			await auth.dispose();
+			await w.store.close();
+		},
+	);
+
+	// 报未登录提到了最前面,`auth-lost` 的监听者同步抛错会从那一句传出来。
+	// 验红:把 `logout` 里的 try / finally 拆掉(报未登录之后顺着写清罐与落盘),这条红(罐子没清、没落盘)。
+	it("主动退出时 auth-lost 的监听者抛错:抛错照旧往外传,但罐子照样清、存着的登录状态照样删", async () => {
+		const w = world();
+		await w.seed({ cookies: C0, token: "T0" });
+		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
+		vi.mocked(LoginFlow.prototype.reportAccountInfo).mockRestore();
+		vi.mocked(LoginFlow.prototype.reportLoggedOut).mockRestore();
+		vi.spyOn(Api.prototype, "fetchMyselfInfo").mockResolvedValue({
+			code: 0,
+			data: { mid: 42, uname: "n", face: "" },
+		});
+		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue({
+			code: 0,
+			data: { card: { name: "n", face: "" } },
+		} as never);
+		const auth = await createAuthSystem({
+			serviceCtx: w.host.serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
+		expect(auth.auth.state().status).toBe("logged-in");
+		vi.mocked(bus.emit).mockImplementation((event: string) => {
+			if (event === "auth-lost") throw new Error("listener boom");
+		});
+
+		await expect(auth.auth.logout()).rejects.toThrow("listener boom");
+		vi.mocked(bus.emit).mockReset();
+
+		expect(auth.auth.state()).toEqual({ status: "logged-out" });
+		expect(auth.api.getCookiesJson()).toBe("[]");
+		await auth.dispose();
+		await w.store.close();
+		const disk = await w.disk();
+		expect(disk.has("http.cookies")).toBe(false);
+		expect(disk.has("refreshToken")).toBe(false);
+	});
+
 	// 验红:把 `login-flow.ts` 的 `accountFromCardResponse` 里「非 0 码」与「缺名字」两道检查都去掉(把 `data` 原样当账号收),
 	// 这条红(账号不是 null)。只去掉其中一道不红 —— 另一道会替它挡住(见 `login-flow.test.ts` 里各道检查单独的用例)。
 	it("开机时卡片接口回了形状不对的数据:登录系统照常起来,已登录、账号是 null、不抛", async () => {

@@ -132,6 +132,18 @@ export class LoginFlow {
 	 */
 	private authGeneration = 0;
 	/**
+	 * 一段新登录成立(扫码确认成功、落盘之后,落盘成败都算)就递增。登录检查(开机确认、心跳、补取账号)在入口
+	 * 与登出代数一起捕获它,落地前比对 —— 不一致说明检查发出去之后换了一段登录,这份结果(成功、`-101`、抛错、
+	 * 取到的账号)问的是上一段,整份丢掉。
+	 *
+	 * 为什么不并进 `authGeneration`:那一个只在登出时走,扫码轮询靠它认「确认成功且其间没登出过」(`pollOnce`);
+	 * 登录成立时也让它走,那个例外就认不出来了。
+	 *
+	 * 没有它会怎样:心跳带着旧 cookie 发出去 → 主人重扫并确认 → 旧心跳回 `-101` → 刚成立的登录被判失效、
+	 * 心跳摘掉、引擎拆掉,而罐里的 cookie 是好的,只有重启或再扫一次能回来。
+	 */
+	private loginGeneration = 0;
+	/**
 	 * 此刻有没有一个**可丢的登录会话**:登录着;开机存着登录、还在确认(初值,`reportAccountInfo` 入口也置真);
 	 * 已登录时重扫、会话其实还在的那几种状态(`qr` / `failed`)也算有 —— 所以它不是状态的函数,
 	 * 而是「最近一次 `reportLoggedIn` / `reportLoggedOut` / 探活入口」的结论。
@@ -216,18 +228,18 @@ export class LoginFlow {
 	async reportAccountInfo(): Promise<void> {
 		// 来这里探活的都是手里有登录凭据的(开机存着的、恢复备份换进来的、扫码刚成功的):有会话可丢。
 		this.hasSession = true;
-		const gen = this.authGeneration;
+		const asked = this.checkStarted();
 		let personalInfo: MyselfResponse;
 		try {
 			personalInfo = await this.api.fetchMyselfInfo();
 		} catch (e) {
-			if (this.supersededSince(gen)) return;
+			if (this.supersededSince(asked)) return;
 			this.logger.warn(`[account] 获取个人信息异常: ${errorMessageOf(e)}`);
 			this.reportTransientFailure(e);
 			this.attachHealthCheck();
 			return;
 		}
-		if (this.supersededSince(gen)) return;
+		if (this.supersededSince(asked)) return;
 		if (personalInfo.code !== 0) {
 			this.reportLoginCheck(personalInfo.code);
 			if (personalInfo.code !== -101) this.attachHealthCheck();
@@ -235,11 +247,14 @@ export class LoginFlow {
 		}
 		const account = await this.fetchAccount(personalInfo.data?.mid);
 		// 取卡片是第二次网络往返,窗口和探活那次一样宽 —— 必须再比一次。
-		if (this.supersededSince(gen)) return;
+		if (this.supersededSince(asked)) return;
 		// 取卡片的途中主人发起了重扫(调用处:开机确认时状态是 checking,扫码成功后是 logged-in,都不会合法地是 qr):
 		// 这份成功问的是上一帧,不得把等待扫码的二维码盖成已登录,账号也不写。
 		if (this.state.status === "qr") {
 			this.logger.debug("[auth] 取账号回来时已在扫码，丢弃这份成功");
+			// 登录其实是成立的(探活回了 0、没被登出也没被新登录取代),只是这份结果不落到状态上:心跳得挂着,
+			// 新码超时停在出错之后靠它把状态带回已登录。没登录过起步的那条路上心跳在登出时已经摘了。
+			this.attachHealthCheck();
 			return;
 		}
 		this.reportLoggedIn(account);
@@ -315,14 +330,26 @@ export class LoginFlow {
 		this.serviceCtx.track(task);
 	}
 
+	/** 登录检查的入口记下「这是对着哪一段登录问的」:登出代数 + 登录代数。落地前交给 `supersededSince` 比。 */
+	private checkStarted(): { auth: number; login: number } {
+		return { auth: this.authGeneration, login: this.loginGeneration };
+	}
+
 	/**
-	 * 本轮探活是否已被一次登出作废。`true` = 结果不作数,调用方原样返回:
-	 * 既不动状态,也**不重挂心跳**(`reportLoggedOut` 是刻意把心跳摘掉的)。
+	 * 本轮检查是否已被一次登出、或一段新成立的登录作废。`true` = 结果不作数,调用方原样返回:
+	 * 既不动状态,也**不重挂心跳** —— 登出是刻意把心跳摘掉的(`reportLoggedOut`);新登录的心跳由它自己那次
+	 * `reportAccountInfo` 挂(那一次的出口里,只要登录还成立、没被登出也没被更新的登录取代,就都挂)。
 	 */
-	private supersededSince(gen: number): boolean {
-		if (gen === this.authGeneration) return false;
-		this.logger.debug("[auth] 探活结果已被一次登出取代，丢弃本轮");
-		return true;
+	private supersededSince(asked: { auth: number; login: number }): boolean {
+		if (asked.auth !== this.authGeneration) {
+			this.logger.debug("[auth] 探活结果已被一次登出取代，丢弃本轮");
+			return true;
+		}
+		if (asked.login !== this.loginGeneration) {
+			this.logger.debug("[auth] 探活结果问的是上一段登录，丢弃本轮");
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -508,6 +535,9 @@ export class LoginFlow {
 				} finally {
 					hold?.dispose();
 				}
+				// 一段新登录成立了(落盘成败都进已登录):此前发出去的登录检查问的都是上一段,回来一律不作数。
+				// 紧接着的 `reportAccountInfo` 在入口捕获的就是新值。
+				this.loginGeneration++;
 				this.reportLoggedIn(undefined, "loginJustSucceeded");
 			} finally {
 				this.committingLogin = false;
@@ -663,10 +693,10 @@ export class LoginFlow {
 	private async runHealthCheck(): Promise<void> {
 		if (this.shouldSkipHealthCheck()) return;
 		// skip 判据取的是**发请求之前**那一帧,答复回来时状态可能早就变了。
-		const gen = this.authGeneration;
+		const asked = this.checkStarted();
 		try {
 			const res = await this.api.fetchMyselfInfo();
-			if (this.supersededSince(gen)) return;
+			if (this.supersededSince(asked)) return;
 			// 探活在途时主人发起了重扫:成功的结果问的是登录那一帧,不得把等待扫码的二维码盖成已登录。
 			if (res.code === 0 && this.state.status === "qr") {
 				this.logger.debug("[auth] 探活回来时已在扫码，丢弃这份成功");
@@ -676,7 +706,7 @@ export class LoginFlow {
 			if (res.code === 0) {
 				// 已登录而账号信息缺着(取卡片失败过、或扫码失败回来时没带上)就补取一次;每次心跳至多一次,
 				// 本来就有间隔,不另设退避。失败不影响登录状态。
-				await this.fillMissingAccount(gen, res.data?.mid);
+				await this.fillMissingAccount(asked, res.data?.mid);
 				// 头像之前没抓成的话心跳顺手补一次(不等它,心跳的判定到此为止)。
 				this.maybeFetchAvatar();
 			}
@@ -685,11 +715,14 @@ export class LoginFlow {
 		}
 	}
 
-	private async fillMissingAccount(gen: number, mid: unknown): Promise<void> {
+	private async fillMissingAccount(
+		asked: { auth: number; login: number },
+		mid: unknown,
+	): Promise<void> {
 		const s = this.state;
 		if (s.status !== "logged-in" || s.account) return;
 		const account = await this.fetchAccount(mid);
-		if (this.supersededSince(gen) || !account) return;
+		if (this.supersededSince(asked) || !account) return;
 		// 补取的途中发起了重扫(状态已不是已登录):账号只补给登录着的那一帧,不得把二维码盖成已登录。
 		if (this.state.status !== "logged-in") {
 			this.logger.debug("[auth] 补取账号回来时已不在已登录，丢弃");
