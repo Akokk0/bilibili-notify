@@ -409,7 +409,7 @@ type PostPushPart = "post" | "post-images";
 
 统计仓按订阅记作品、直播场次与粉丝时序（文件布局见 [data-and-migration.md](./data-and-migration.md)）。
 
-- **开了开关才监听、才记**（ADR-0027 决策 1）：单个订阅开了作品或直播类开关，就监听、统计就记；关了就不查也不记。「开着」只看开关、不看有没有目标；面板的「不会被监听」与直播就绪判断用同一个内部判定。
+- **开了开关才监听、才记**（ADR-0027 决策 1）：单个订阅开了作品或直播类开关，就监听、统计就记；关了就不查也不记。「开着」只看开关、不看有没有目标；面板的「不会被监听」与直播就绪判断用同一个内部判定。（今天的实情，3a-31：面板的「不会被监听」只看折好的开关、不再数目标，但用的是面板自己的一份键表，没进 internal，也没算服务端 `needsLiveMonitor` 里的「特别弹幕 / 特别进场」两项；全仓唯一的判定仍待做，记 3b。）
 - **「在记」按特性分**（ADR-0027 决策 2），核心自己算：作品（那天作品开关开着且来源在跑）、直播（直播类任一开关开着且来源在跑）、粉丝（那天拉资料成功）。每张图（热力图也是）读自己的「在记」，关着的日子显示「没在记」、不画成 0；锐评与榜单跳过没在记的日子。seen（「那天有没有联系上来源」）不再单独当判据。记成每个订阅一份按小时的小账（ADR-0027 决策 13）：某个小时某一项第一次满足条件时追加一行，读时按请求的时区切天，满 8 天的随粉丝样本那趟压缩合成区间，原来的 `seen/` 并进去。
 - **开播公告不再记**（决策 3）：B 站来源直接丢掉、不上报；旧数据照原定不搬。旧日子的「在记」按旧规则推：作品看旧数据那天有没有记录，直播用现在的直播开关近似。
 - 统计记录全部作品，另外记其中带视频的那些：`posts` 是全部作品，`videoPosts` 是其中带视频的（面板与 CSV 仍叫「投稿」「动态」，见改名对照）。
@@ -771,7 +771,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `LiveSessionRecord`；`StatsSeenRow`；`ProvenanceRecord`；`ProcRow` | `LiveSessionEntry`；（seen 行没有了，并进「在记」的账 `RecordingEntry`，ADR-0027 决策 13）；`ProvenanceEntry`；`ProcessEntry` |
 | `ModuleStatus`（装的是四个布尔的对象） | `ModuleState` |
 | contract 的 `BrowserProcessState`（装的是取值）与 WS 字段 `ResourceSample.browserState`；服务端 `BrowserProcessInfo`（`{ state, pid }`） | `BrowserProcessStatus` 与 `browserStatus`；`BrowserProcessState`，里面的 `state` 改 `status` |
-| `LoginSnapshot`（internal、B 站 api、面板各一份）；服务端 `LoginSnapshotView`；devtools 登录场景的 `OverridableStatus` | 中立一侧用 `AuthState`，`bilibili/` 里还要原形就叫 `BiliLoginState`；删掉（`login` 改核心通用指令、场景搬进 `bilibili/` 的 devtools，都读 `AuthState`） |
+| `LoginSnapshot`（internal、B 站 api、面板各一份）；服务端 `LoginSnapshotView`；devtools 登录场景的 `OverridableStatus` | 中立一侧用 `AuthState`，`bilibili/` 里还要原形就叫 `BiliLoginState`；删掉（`login` 改核心通用指令、场景搬进 `bilibili/` 的 devtools，都读 `AuthState`）。✅ 3a-29 B 站半已落：三份 `LoginSnapshot`、`LoginSnapshotView`、`OverridableStatus` 都删了，`BiliLoginState` 住 `bilibili/auth/login-state.ts`；devtools 登录场景改盖 `Source.auth` 的 `state()` / `account()`，用 `OverridableApi<Required<SourceAuth>>`。`login` 仍是现有的那条私聊指令，只改成读 `AuthState`，改核心通用 `login [来源]` 仍随 3b |
 | `AIProviderMeta` / `WebSearchBackendMeta` | `AiProviderDescriptor` / `WebSearchBackendDescriptor` |
 | `GlobalConfig` / `AppConfig` / `MasterConfig` / `OnboardingConfig`；`ScheduleConfig` / `ScheduleConfigPartial` | `Settings` 的分段（`core.*`）；拆进 `defaults.quietHours` 与 `defaults.liveEnd`。`AppConfig` 已随 `app` 删掉（3a-38，换成 `LoggingSettings`）；`GlobalConfig` 等其余名字没动 |
 | `PersonaConfig` / `CommentaryGeneratorConfig` / `ImageRendererConfig`（设置的值） | `PersonaSettings` / `CommentaryGeneratorSettings` / `ImageRendererSettings` |
@@ -798,7 +798,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `HistoryRecordInput`（要追加进历史的那一行）；备份的 `FullBackupInput`（要打包的各节数据）、`BuildBackupInput`（参数包） | `NewHistoryEntry`；`FullBackupPayload`、`BuildBackupOptions` |
 | 三态取值：ui 的 `TriState`、桥的 `BridgeCapabilityState`、`MiniAppCardSupport` 的判别字段 `state` | `TriStatus`、`BridgeCapabilityStatus`、`status`（类型名随原生分享改成 `NativeShare…`）；拓展视图的 `tristate` 列名是契约 v3 的字面量，不动 |
 | ui 的 `PlatformMeta`（怎么画一个平台：`tint`、`label`、`icon`、`svg`） | `PlatformBadgeSpec`；面板的注入口 `platform-meta` 跟着改 |
-| 面板 `SessionStatus`（`GET /api/session` 的响应，面板手写的）；面板 store 里本地的 `AuthState` | contract 里一份 `SessionResponse`；`AuthStoreState`（`AuthState` 让给来源的登录态） |
+| 面板 `SessionStatus`（`GET /api/session` 的响应，面板手写的）；面板 store 里本地的 `AuthState` | contract 里一份 `SessionResponse`；`AuthStoreState`（`AuthState` 让给来源的登录态）。🔗 3a-29 B 站半：`AuthStoreState` 这一格不再有 —— 面板的登录态仓库（`store/auth.ts`）连同 `useAuthHydrate` 与面板自己的 `types/auth.ts` 都删了，登录态改住 react-query 的查询缓存（键 `["source-auth", 来源键]`，`hooks/use-source-auth.ts`），类型直接用契约的 `SourceAuthResponse`；`SessionStatus` 改 `SessionResponse` 那半不属于这一片，没动 |
 | 当结果用的 `Check` / `Read` / `Parse`：`MarketplaceIndexCheck`、`SubscriptionReportCheck`、`SafeRegexCheck`、`ViewCheck`、`ExtensionDirRead`、storage 的 `JsonFileRead`、`ExtensionManifestRead`、桥的 `BridgeFrameParse` | `MarketplaceIndexCheckResult`、`SubscriptionReportCheckResult`（上报 schema 随契约 v3 重写，新名照这个起）、`SafeRegexCheckResult`、`ViewCheckResult`、`ExtensionDirReadResult`、`JsonFileReadResult`、`ExtensionManifestReadResult`、`BridgeFrameParseResult` |
 | 更新镜像的 `Acceptance<T, R>`（`{ ok, value } \| { ok, reason }`） | `…Result`，主干施工时定 |
 | 面板的 `PushToastSink`（一包两把回调） | `PushToastHandlers` |

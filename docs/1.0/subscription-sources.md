@@ -141,32 +141,47 @@ interface MembershipTier {
 登录是一个中立状态机，面板只写一套扫码弹窗、状态、退出登录。
 
 ```ts
+// 落成的五个成员（3a-29 B 站半，住 packages/internal/src/source.ts）；原定的 methods 与 beginLogin 的 method 参数没造，见下
 interface SourceAuth {
-  methods: ("qr" | "cookie")[];
-  beginLogin(method: "qr" | "cookie"): Promise<Result>;
-  logout(): Promise<Result>;        // 不碰主密钥
-  state(): AuthState;
-  account?(): { name: string; avatar?: ImageRef } | null;
+  beginLogin(): Promise<Result>;    // 只有扫码一种办法；已有一次在进行时重新开始、换一张新码
+  logout(): Promise<Result>;        // 不碰主密钥；没登录时也能调
+  state(): AuthState;               // 同步、不出网
+  account?(): SourceAccount | null; // 没登录或还没取到是 null
+  onChange(fn: () => void): Disposable;  // 状态或账号可能变了就叫一声；要做事自己再读 state() / account()
+}
+
+interface SourceAccount {           // 来源登录着的账号
+  name: string;
+  avatar?: ImageRef;                // 图库引用，抓进图库之后才有；不是平台的图片地址
 }
 
 type AuthState =                   // 状态值用 kebab
   | { status: "logged-out" }
   | { status: "awaiting-scan"; qr: { dataUrl: string; expiresAt: string } }   // 10-11 改：原定 image: ImageRef，见下
-  | { status: "scanned" }                  // 手机上已扫，等确认
+  | { status: "confirming"; message?: string }   // 10-11 改：原定 scanned，BN 还在等 / 还在核，此刻不算登录，见下
   | { status: "logged-in"; loggedInAt: string }
   | { status: "expired" | "error"; message: string };
 ```
 
 - 🔗 **10-11 二维码直接带图片数据，不走图库引用**（主人定，偏离原定的 `image: ImageRef`）：二维码几十秒到几分钟就作废，写进图库再清是为形状统一多出来的活；B 站登录与 QQ 绑定今天两处都是 `data:` 串，面板直接画。`qr.dataUrl` 是 `data:image/…;base64,…` 的整串，格名取契约里已有两处同义的格（卡片预览回应、皮肤截图回应）都叫的 `dataUrl`。`expiresAt` 是 ISO 字符串、必填，含义是**最晚作废时刻**：平台给得出真过期时刻就填它；给不出的平台（今天的 QQ 官方：腾讯只在轮询里回「过期」状态）取「任务创建时刻 + 清扫时限」，所以它是上界，不是平台二维码真正的过期时刻，消费方不要拿它提前判过期（浏览器与服务端的时钟可能不一致）。两半（订阅侧 `SourceAuth`、推送侧 `connectionAuth`）共用这个形状；类型住 `packages/internal/src/auth-state.ts`，3a-29 QQ 半已落地。
-- `beginLogin` / `logout` 返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的：今天拿二维码失败只打 warn、路由却回 `ok: true`。各自回哪些码，施工时定。
+- 🔗 **10-11 `scanned` 换成 `confirming`**（主人提，改定案；3a-29 B 站半已落）：原来的 `scanned` 只覆盖「手机上已扫、等确认」，而 B 站还有一种「手里有登录信息、开机还没向 B 站确认过有效」（原来的「正在加载登录信息」，探活遇到网络异常时会长期停在这里），`AuthState` 里没有地方放。这个状态 B 站与 QQ 都没有对应的原生状态，是 BN 自己推断出来的「在等、在查，还不算登录」，两种情况都用它：已扫码、等主人在手机上点确认；开机还没向平台确认过。`message` 可选，由服务端给人话，因为两种情况要主人做的事不一样（一个要去手机上点确认，一个什么都不用做、等自动重试），读的人分不出来，与 `error` / `expired` 的 `message` 同一个规矩，面板不靠比对文字做判断；没带 `message` 时读的人写「正在确认」。`confirming` **不算已登录**（`isLoggedIn` 只认 `logged-in`）。**扫码确认之后、账号信息还没取到的那一小段，对外仍是 `logged-in`**（状态机那一刻已经是已登录、引擎已恢复；主人接受）。于是取值仍是六种，不新增第七种；被否：新增第七种；把开机没确认映成 `error` 或 `logged-out`。状态值的名字 `confirming`（kebab、一个词）是施工时按规矩定的，可否决。QQ 没有「已扫、等确认」，不发它。
+- 🔗 **10-11 `expired` 只指「已经登着的登录失效了、要重新登录」**（主人选 A）：只有订阅侧会发。二维码超时、失效两边都报 `error` 并带一句话（B 站「二维码已超时（3分钟），请重新登录」，QQ「二维码已过期，请重新生成」）。`connectionAuth` 没有「已经登着的登录」，不发 `expired`，所以 QQ 半回头改了码过期那一支。被否：两边各说各的；两件事都报 `expired` 靠 `message` 分。
+- `beginLogin` / `logout` 返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的：原来拿二维码失败只打 warn、路由却回 `ok: true`。**3a-29 B 站半已落**，B 站各回：取码请求抛错回 `unavailable`、状态不动（免得一次网络抖动把一个好会话在面板上盖成出错）；B 站回非 0 码回 `unavailable`、状态进「出错」，`-352` / `-403` 回 `rate_limited`，都带 `upstreamCode`；渲染二维码失败回 `unavailable`、状态进「出错」；被新发起的一次（或已成立的登录）取代的一次回 `conflict`。`logout` 总会进未登录，存着的登录状态清不掉时回 `unavailable`，话里写着原因与「重启后可能还是登录着」。
+- 🔗 **10-11 `SourceAuth` 落成五个成员**（3a-29 B 站半，主人选范围甲档）：
+  - **`methods` 与 `beginLogin` 的 `method` 参数、`"cookie"` 不造**（偏离定案原文这一格）：今天只有扫码一种登录办法，第二种办法没有实现者，也没有哪个计划点名谁、哪一期要它（规范：没有实现者的接口不造）。等第一个有两种登录办法的来源出现，连同配套问题一起设计；已记进 construction-plan 的「以后再说」。
+  - **通知口是 `onChange(fn): Disposable`**（施工时照规矩定，可否决）：集成不拿总线（`docs/agents/conventions/integration-side-effects.md` 规矩 8），所以由宿主订阅、宿主发 `subscription-auth-changed`；形状与设置读口的 `onChange` 同一种；不放在 `SourceContext` 上，因为登录这套建得比来源早。宿主不替来源去重，由来源自己保证「状态与账号都没变就不叫」；宿主登记来源成功后才订阅、登记时不补发（面板进来走 `GET`），撤登记时先摘。
+  - **`loggedInAt`** 是这个进程里这一段登录第一次被确认的时刻，不落盘；重启后是开机探活成功的时刻。同一段登录里账号补到、探活暂时失败后又恢复，都不换它。
+  - **账号头像走图库**（主人选 A，已定）：`account().avatar` 是图库引用；图库多一家引用方「账号头像」，名单从来源登记表现读（每个在册来源 `auth.account()` 的头像），不点名哪个来源；B 站登录后、头像网址变了时，由登录系统用 B 站自己的请求客户端把头像抓进图库（登录状态确定之后另起的后台活，不拖慢登录；抓不到只是没有头像，账号照常，登录状态一个字不动）；引用只在内存，重启后重抓。面板从图库取（`/api/images/<ref>`），不再直连 B 站的图片服务器。被否：这一片头像退成首字母；先交网址（偏离定案的形状）。
+  - **没有 `refresh`**：续期是 B 站自己的事（开机一次、之后每小时），主人选 A 把「刷新 Cookie」按钮、`POST /api/auth/cookies/refresh`、「最近 Cookie 刷新」那行字、`cookies-refreshed` 事件与 `AuthSystem.refreshCookies` 整套删了。被否：给 `SourceAuth` 加可选成员留按钮；原样留 B 站专用的口。
 - ⚠️ `logout()` 不许碰主密钥：主密钥同时加密 AI key 等全部密钥，轮换它会让别的密文解不开。
 - **系统 → 账号**为每个声明了 `auth` 的来源列一行。
 - **排序**：主人拖动，存 `core.accounts.order`（进备份）。默认按登记顺序，B 站在前；新来源追加在末尾。
 - **头部**显示排第一的账号；有多个账号时加小三角下拉。AI 对话里主人的头像同头部。
 - **新手引导**的登录步由声明了 `auth` 的来源生成。
-- 私聊指令 `login [来源]` 也读 `AuthState`，把二维码发回会话，见「指令」。推送侧连接的 `connectionAuth` 用同一个 `AuthState`（ADR-0024）。
-- 面板登录态按 `SourceKey` 分开存。登录状态变化上总线 `subscription-auth-changed`。
-- 核心账号模块住 `accounts/`；B 站原来的 AuthSystem 进 `bilibili/auth/`。
+- 🔗 **10-11 以上四条（列一行、排序、多账号下拉、按来源生成引导步）3a-29 没做，推到第 4 期**（主人选范围甲档）：今天只有 B 站一个有登录的来源，读者都在第 4 期，现在造 `accounts/` 与排序键是没有读者的东西。3a-29 B 站半做的是「不退化」：头部、AI 对话、引导、概览、系统页账号卡都改读 B 站那一个来源的登录口。已记进 construction-plan 的「以后再说」。
+- 私聊指令 `login [来源]` 也读 `AuthState`，把二维码发回会话，见「指令」。推送侧连接的 `connectionAuth` 用同一个 `AuthState`（ADR-0024）。（3a-29 B 站半：今天的 `login` 仍是现有那条 B 站私聊指令，只是改成读 `AuthState`——从 `awaiting-scan` 的 `qr.dataUrl` 解出图发回；发起失败回结果里的话；`status` 指令的「登录：」一行也由核心按 `AuthState` 拼。改成通用的 `login [来源]` 随 3b。）
+- 面板登录态按 `SourceKey` 分开存。登录状态变化上总线 `subscription-auth-changed`。（落成：面板的数据面是 react-query 的查询缓存，键 `["source-auth", 来源键]`（`hooks/use-source-auth.ts`），读的地方各自点名要哪个来源；WS `auth` 频道的帧按帧里的 `sourceKey` 写那一条缓存并让它失效重取，重连后 `hydrate` 让整个前缀失效。原来的 zustand 登录仓库删了。）
+- 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 随 3a-40）。
 - 拓展积木 `qrLogin` 退役（从没实现过）。
 - 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
 - 日志落盘前按当前全部密钥的真实值脱敏：`secrets` 值里的每一段字符串都按原文遮（很短的不遮）；还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记。写死的 cookie 名正则删掉。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉。
@@ -331,7 +346,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - 断流：收到 `end` 先进 `pendingEnd` 等宽限，宽限里又开播就 `resume` 接着同一场；等满了才 `end`。
 - 场次的每次变化是一条 `LiveSessionChange`，推送、统计、总线（`live-session-changed`）吃同一份。
 - ⛔ 场次身份按开播时刻认、排在闩之前；统计 `current` 与 `isLive` 的语义不动。
-- 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：单个订阅开了直播类开关就监听，只看开关、不看有没有目标。面板的「不会被监听」与直播就绪判断都用它（今天面板只看有没有目标，还自抄一份路由键，是一句假话）。
+- 「这条订阅会不会被监听」全仓只有一处判定（在 internal），首页与服务端共用：单个订阅开了直播类开关就监听，只看开关、不看有没有目标。面板的「不会被监听」与直播就绪判断都用它（原来面板只看有没有目标，还自抄一份路由键，是一句假话；3a-31 已把面板的判定改成只看折好的开关、不再数目标，但仍是面板自己的一份键表，也没算服务端那两个特殊用户条件，进 internal 的唯一判定仍待做）。
 - **醒目留言**：`SuperchatEvent` 带可选的 `tier { rank, durationSec? }`，由来源按平台规矩算；卡按档取色（默认配色照今天六档，皮肤可按档换色），有留言时长就显示。
 - **验收**：先在旧引擎上用端到端测试钉住开播、下播、断流接续、漏收下播兜底四种行为，再换新引擎跑同一组。
 - 被否的备选：拓展自己计时上报（每个拓展都得重写一遍计时）；BN 发事件要数据、拓展再另报（对不上是哪一轮要的，拓展还能自己触发推送）。
@@ -422,7 +437,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 | --- | --- |
 | 原 `api` / `blive` / `dynamic` / `live` 四包 | 各成子目录（`blive` 并进 `live` 那个子目录，ADR-0021 决策 1 的 🔗）；B 站接口响应类型（Dynamic、RichTextNode、LiveData）只住这里。请求客户端、cookie 罐与浏览器身份抽进 `packages/http`，不留在这里 |
 | `Source` 实现 | 拉动态翻成 `PostReport`（见下「作品映射」）、弹幕通道翻成 `LiveSignalReport`、关注同步、资料拉取、`searchCreators`、`fetchLiveStatus`、`liveInteractions` |
-| `auth/` | 扫码登录（原 AuthSystem），对外只交中立的 `AuthState`；内部若还要一个原形，叫 `BiliLoginState`。cookie 由 `ctx.http` 的 cookie 罐存进 `ctx.secrets` |
+| `auth/` | 扫码登录（原 AuthSystem），对外只交中立的 `AuthState`；内部若还要一个原形，叫 `BiliLoginState`。cookie 由 `ctx.http` 的 cookie 罐存进 `ctx.secrets`。（3a-29 B 站半已落：`createAuthSystem`、`LoginFlow`、`BiliLoginState` 与 `authStateFromLoginState`（内部原形 → `AuthState` 的纯映射）都在这个目录，`auth` 挂在 `Source.auth` 上；入口仍直接造它，不经 `compose.ts`） |
 | `LinkResolver` | B 站视频链接识别与解析；给原生分享的中立描述 |
 | `AiToolProvider` | B 站独有数据的只读工具（总播放、获赞、视频列表）与 B 站版周报技能 |
 | `devtools/` | `DevtoolsProvider`，只在开发版登记；场景只经 B 站自己的 ctx 做事 |
@@ -441,6 +456,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **设置**：B 站段 `settings.bilibili`（`dynamicCron`、`loginCheckIntervalMinutes`）由 `bilibili/` 定义，核心不许读。系统页为 B 站单开一个 tab，名取它的 `label`（见「设置」）。`bilibili` 段校验不过只停 B 站这一个集成：来源、链接解析器、AI 工具都不登记，订阅卡显示「{label} 没在跑」，B 站 tab 显示原值、「设置不合法」与原因并进问题框，改对了当场起；BN 照常开机。
 - **删掉自定义 UA**：身份一律由 `packages/http` 生成，UA 与 `sec-ch-ua` 永远配套；B 站设置页加「换一个身份」按钮，重新生成一套。老配置里的 `userAgent` 这一格由迁移丢掉，新 schema 不留。理由：填了自定义 UA，`sec-ch-ua` 仍是生成的 Chrome 身份，拼出一个自相矛盾的指纹；风控 -352 的第一嫌疑本来就是 TLS 指纹，不是 UA。
 - **补关注**（BN → B 站单向）：在 `onSubscriptionsChanged` 回调、开机、重新登录后各跑一次。整份名单先批量查关系、只补缺的（稳态写请求为零）；失败按「问题上报」报 `follow_failed`。登录态失效时跳过；批量查询回 -101 按「没登录」整批跳过，订阅卡上的关注状态不动，等登录恢复再跑；其他失败码仍走降级。停用的订阅不在名单里，自然不补；从停用改回启用时名单变化，那一轮就补上。
+  - 🔗 **10-11 3a-31（主人定）**：关注只为从关注流里拉到动态，所以**只对启用中、且作品开关开着的订阅做**，只开直播的订阅不查也不补；开关从关到开（订阅被启用、订阅自己的作品开关打开、全局作品开关打开）时补一次；BN 只补关注、从不取关，从开到关、停用什么都不做；订阅卡上只开直播的订阅不再显示「未关注」。**这是今天的现状，不是上面那句设计的落成**：关注同步还没搬进 `bilibili/`，今天住 `runtime/follow-sync.ts` 与引擎装配（`runtime/engines.ts`：开机、登录恢复、开关翻开三处触发，不挂在 `onSubscriptionsChanged` 上），整个搬进 B 站来源、用来源上下文的名单自己算差集，没有单独的片认领（construction-plan 里「补关注 -101 整批跳过」「开机关注同步不发事件」两行顺带记着 3b），细节见 `docs/agents/subscriptions.md`「关注同步」一条。
 - **开机不碰 B 站**：`start()` 不预取 ticket（WBI 签名时现取）；未登录开机不补关注。开机那一刻连不上 B 站、或 ticket 接口回风控码，都不许拦住 BN 起来（第 0 期测试拦外网时查出：预取失败曾让整台 BN 起不来；分期见 [construction-plan.md](./construction-plan.md)）。ticket 请求和别的请求用同一个身份：原先固定用默认 UA 的特例删掉（建仓时从老插件原样搬来，没有留下理由）。
 - **风控码**：-412 在拉粉丝时算风控、刷 cookie 时算登出，各处不一，先验证再定。
 - **失败码**：B 站接口的数字错误码放在 `upstreamCode`，不占错误体的 `code`；`code` 取标准码表（风控 `rate_limited`、没登录 `unauthorized`……）。

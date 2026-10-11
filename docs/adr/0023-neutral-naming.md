@@ -60,6 +60,7 @@ ADR-0019 定过「中立指结构，不改名」（决策 3、65）。做完 ④
 6. **已定的新名之间撞了，这样解开**：
    - `CreatorPostEvent` 改名 `PostRecord`，和同一个文件里的 `LiveSessionRecord` 对称，也避免和 `PostEvent` 撞名；
    - 总线事件名统一成「名词-过去分词」：`subscription-auth-changed`、`live-session-changed`、`live-viewers-changed`；
+     🔗 **2026-10-11**（3a-29 B 站半）：`subscription-auth-changed` 已落，载荷 `{ sourceKey, state }`，只有宿主发；它替掉的是 B 站的 `login-status-report` 与 `cookies-refreshed`，`auth-lost` / `auth-restored` 这两个边事件**没换**（主人 10-11 定），仍在总线上，出口随 3a-30 与 3b（见 `docs/1.0/architecture.md` 事件表下的 🔗）。
    - 会员体系 `tiers: "custom"`，推送部件叫 `PostPushPart`；
    - 链接卡：配置叫 `linkCards`，接口叫 `LinkResolver`；
    - 错误体统一成 `{ code, message }`；

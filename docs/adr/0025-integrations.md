@@ -23,6 +23,7 @@
 5. **内置集成走同一套生命周期**：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；运行状态只取 `running` / `failed` / `settings-invalid`，系统页、健康卡与 `status` 指令都读它。
     - 收尾的先后：宿主先调来源或适配器自己的 `stop()`，收掉它自己的活；再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾，替它收掉经 ctx 拿到的东西（websocket、定时器）。
     - 🔗 2026-10-11（3a-28）：B 站来源已走 `start(ctx)` / `stop()`（来源登记表 `await source.start(ctx)`、撤登记即 `stop()`，`stop()` 的函数体里不许有 `await`，让「来源先停、作品入口后关」成立）。**「内置集成自己在 `start(ctx)` 里用同一组登记方法把各接口登进表」这个终点这一片没做**：B 站的集成上下文仍由登录那套代码建好递进来，`compose.ts` 直接往来源登记表登记 B 站来源（`compose.ts` 提前到 3a-28 建，见 ADR-0021 决策 2 下的 🔗）；登记集成、建集成上下文、运行状态的其余取值留给 3a-40 与 3a-39。来源另外还直接拿着事件总线、给主人私聊的口、配置仓三样（分别归 3a-29、3a-30、3a-39）；`ctx.signal` / `ctx.onDispose` 跟的是集成（登录那套）的生命周期、不是来源的。
+    - 🔗 2026-10-11（3a-29 B 站半）：登录那套已搬进 `bilibili/auth/`，仍由入口 `index.ts` 造并把集成上下文递给 `compose.ts`；**登录装配进 `compose.ts` 这一片没做**，随 3a-40（量过：要进就得把 `api` 等句柄交回入口，入口的 B 站替身数不降反升，等于提前做 3a-40 的「删 `engines.api` 句柄」）。上一条里来源直接拿着的三样，事件总线那一样 3a-29 没清：`auth-lost` / `auth-restored` 不换（主人 10-11 定），私聊主人那一处随 3a-30，直播与统计随 3b；`ctx.signal` / `ctx.onDispose` 仍跟登录那套的生命周期，3a-29 没统一，归 3a-40。
 6. **新中立包 `packages/http`**：
     - 从 B 站的实现里抽出请求客户端、cookie 罐与浏览器身份；每个集成一个客户端，经 `ctx.http` 拿；BN 自己的请求不用它。
     - cookie 由宿主自动存进该集成的 `secrets`。

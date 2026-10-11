@@ -10,9 +10,8 @@
 
 | 事件 | 说明 |
 |---|---|
-| `login-status-report` | `LoginFlow` 发出;独立端 `auth` WS channel 消费 |
-| `auth-lost` / `auth-restored` | 登录状态切换(限流通知 master) |
-| `cookies-refreshed` | `{ refreshedAt }`:登录 cookie 刷新并落了盘。**cookie 本身不上总线**(它是密钥,盘上那份由 `api.commitLogin` 写好,写成功之后才发这个事件);独立端转成 `auth` WS channel 的同名帧 |
+| `subscription-auth-changed` | `{ sourceKey, state }`:一个来源的登录状态或账号变了。**谁发**:只有宿主(`subscriptions/builtin-sources.ts`)——来源登记成功后订阅它的 `auth.onChange`,撤登记时先摘;来源不碰总线,发的口由 `engines.registerSource` 递进去;登记时不补发,面板进来走 `GET /api/sources/:sourceKey/auth`。**什么时候**:来源自己保证「对外的状态与账号都没变就不叫」(B 站:映射后的 `AuthState` 与 `account()` 的结果都没变不叫),宿主不替它去重。**载荷**:`state` 是那一刻完整的中立 `AuthState`(取值在 `status` 里;`awaiting-scan` 带二维码的 `dataUrl`,`confirming` / `error` / `expired` 带服务端给的 `message`),不带账号(名字、头像走 `GET`),cookie 与令牌永远不在里面。独立端转成 `auth` WS channel 的同名帧,`data` 就是这个对象。替掉了原来的 `login-status-report` 与 `cookies-refreshed`(3a-29 B 站半):续期落盘成功只记一行 info「登录续期已落盘」,没有读者要它上总线 |
+| `auth-lost` / `auth-restored` | 登录状态切换的两条边,**3a-29 没换**(主人 10-11 定:只换推给面板的那条线)。`LoginFlow`(`bilibili/auth/login-flow.ts`)发:`auth-lost` 只在上一帧是已登录时发(手动退出登录、会话被判失效都算),`auth-restored` 在上一帧不是已登录、且置过 `needsRestore`(进过「没登录」)时发。听的有:B 站动态引擎(停 / 起 cron)、`runtime/engines.ts`(直播:拆 / 重建监听;`auth-restored` 还补跑一轮关注同步)、`stats/bili-source.ts`、`runtime/master-notifier.ts`(限流通知 master)。**不上 WS**:面板不处理这两条,登录态只看 `subscription-auth-changed`。出口:私聊主人那一处随 3a-30,直播与统计随 3b |
 | `subscription-changed` | `{ ops }`:`SubscriptionStore` CRUD 后的 `SubscriptionOp[]` diff |
 | `config-changed` | `{ scope }`:独立端 `ConfigStore` 写入后发出;scope ∈ `globals\|subscriptions\|targets\|connections\|secrets`。引擎据此 reconcile cron / 刷新状态 / 重建连接 |
 | `engine-error` | 引擎或子系统的运行时错误 `{ source, message }`。`master-notifier`(→ master 私聊)+ `log` WS channel(→ AlertShell)消费 |
@@ -46,7 +45,7 @@
 
 | Channel | 来源 | 前端消费者 |
 |---|---|---|
-| `auth` | `login-status-report` / `auth-lost` / `auth-restored` / `cookies-refreshed` | `useAuthChannel` → 扫码 / 登录状态 |
+| `auth` | `subscription-auth-changed`(这个频道只有这一种帧;`auth-lost` / `auth-restored` 与已退役的 `login-status-report` / `cookies-refreshed` 都不在) | `useAuthChannel` → 按帧里的 `sourceKey` 把 `state` 写进 `["source-auth", sourceKey]` 那条查询缓存并让它失效重取(账号与头像只走 `GET`);重连后 `state` 频道的 `hydrate` 让整个 `["source-auth"]` 前缀失效 |
 | `push-events` | `history-recorded` / `history-updated` / `live-state-changed` / `live-viewers-changed` / `extension-live-changed` / `fans-refreshed` | `usePushEventsChannel` → tanstack-query `setQueryData` 补丁(recorded 头插 + 日桶 +1,无目标行不计;updated 按 id 换行、不插);两种在播变化让「正在直播」失效重取 |
 | `log` | `engine-error` + 每条 `logger.<level>`(在单一 fan-out 点脱敏,同时归档进 LogStore jsonl) | `useAlertChannel`(engine-error → AlertShell)+ `useLogChannel`(全量流 → Logs tab) |
 | `state` | `hydrate`(订阅 / 重连时)+ `config-changed`(只带 scope)+ `extension-status-changed` / `extension-settings-changed` / `extension-report-discrepancies-changed`(都只带 `extensionId`)+ `subscription-profiles-changed`(只带 `subscriptionIds`) | `useStateChannel` → 按 scope / 按拓展 id invalidate tanstack-query 缓存;上报出入变了失效拓展表;资料变了失效订阅列表 |

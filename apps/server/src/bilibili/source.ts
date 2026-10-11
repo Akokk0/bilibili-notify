@@ -16,7 +16,7 @@ import { settingsOf, watchSettings } from "./settings.js";
 
 export interface BiliSourceDeps {
 	api: Api;
-	/** 引擎自己还在听 auth-restored / auth-lost、发 engine-error;3a-29 / 3a-30 清。 */
+	/** 引擎自己还在听 auth-restored / auth-lost、发 engine-error:私聊主人那一处随 3a-30,其余随 3b。 */
 	bus: MessageBus;
 	/** 只剩给主人发私信(风控 / 故障告警);3a-30 删。 */
 	push: PushLike;

@@ -43,7 +43,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 
 - 服务端那半:核心的场景在 `apps/server/src/devtools/scenarios/*.ts`;各集成自带的场景经 `DevtoolsProvider` 登进
   `devtoolsProviders`(B 站的在 `apps/server/src/bilibili/devtools/`,由 `compose.ts` 的 `provideDevtools` 认领;
-  过渡接线还在:两层套了壳的句柄仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b、登录那组等 3a-29),
+  过渡接线还在:两层套了壳的句柄(`Api` 与来源的登录口 `Source.auth`)仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b;登录那组不再等 3a-29(3a-29 B 站半已把它换成盖 `state()` / `account()`、往总线发 `subscription-auth-changed`),壳留在入口随 3a-40),
   汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
   两边一起经 `createDevRegistry` 汇总,
   `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的
@@ -92,11 +92,11 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回 BN 身上(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishView` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。🔴 帧是照 `extensions/bridge/PROTOCOL.md` **手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),漂了没门禁会红 —— 所以 `src/__tests__/devtools-fake-bridge-e2e.test.ts` 把真桥装进装载根让两边真说一次话 | `fake-bridge.ts`、`scenarios/bridge.ts` |
 | 拓展有更新 | 包交给 `/api/ext/marketplace*` 的那个 `Marketplace`:列表里那个 id 的一条改成 `updatable`,版本 = **装着那版**的下一个补丁号(预发布就加最后一段);索引里没有它(断网 / 不在任何索引里)就现造一条**官方**的 —— 官方一键装,造成第三方的每按一次多弹一个确认框。装那个 id **先等「假装下载」那几秒、再假装成功**:同形状的回话,不下载、不写盘、不重扫,所以卡上印的版本号不变;装成即撤。别的 id 原样过真市场 | `marketplace-injection.ts`、`scenarios/marketplace.ts` |
 | 引擎错误 / 登录失效 / 恢复 | 直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律);auth-lost 会**真的**停引擎,看完记得 restored | `scenarios/bus-events.ts` |
-| 扫码登录六态 | 盖 `authSystem.status()` + 总线发同一份 `login-status-report`;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `scenarios/login-state.ts`、`fake-qr.ts` |
+| 登录状态(`AuthState` 的各取值) | 盖来源登录口(`Source.auth`)的 `state()` 与 `account()`,再往总线发同一份 `subscription-auth-changed`;入口把来源的登录口包成壳,登记表里挂的是壳的 `.api`,所以 `GET /api/sources/:sourceKey/auth` 与 WS 帧都读得到注入值,收摊时摘掉并把真状态再发一遍让面板对回去。选项:未登录、等待扫码、正在确认(已扫码等手机确认 / 开机还没向 B 站确认,各一项)、已登录(带账号名)、登录失效、登录失败;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `bilibili/devtools/login-state.ts`、`fake-qr.ts` |
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约 | `capability-injection.ts` |
 | 免扰 / 静音 | 免扰:`PushRouter.quietHoursNow` 单点时钟(**不是假时钟**);静音:真调 `muteFor`,并**记住自己写进去的到期时刻** —— 只认领 / 只解除这一次,主人自己 `/mute` 出来的不碰(收摊只收 devtools 造的东西) | `clock.ts`、`scenarios/timers.ts` |
 | 堆逼近上限 | 包真 `process.memoryUsage()`,按注入的占比 × 堆上限造 `heapUsed`(顺带把 `heapTotal` 抬到不低于它)。注的是**读数**不是显示值 —— 概览页那两个环的染色、近 5 分钟曲线、服务端「已逼近堆上限」那条 warn 全照真的算一遍。包好的读数由 `createDevtools` 交回去(`index.ts` 只许从 `./devtools/index.js` 引 devtools,多一个 import 就多一条漏进产物的路) | `heap-injection.ts`、`scenarios/heap.ts` |
-| 「现在就跑」 | 各引擎 / 运行时自己暴露的一个口:`closeIdleNow` / `repushNow` / `detectNow` / `pollNow` / `healthCheckNow` | 同上 |
+| 「现在就跑」 | 各引擎 / 运行时自己暴露的一个口:`closeIdleNow` / `repushNow` / `detectNow` / `pollNow` / `healthCheckNow`(登录心跳:`bilibili/auth/index.ts` 的 `AuthSystem` 交出,`compose.ts` 递给 B 站场景时叫 `healthCheck` 那一格;没登录 / 扫码中跳过) | 同上 |
 
 副作用规矩:**默认真发,可截流**。造事件之前先开截流,推送就只进列表不出网。
 
