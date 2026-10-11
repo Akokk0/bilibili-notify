@@ -864,7 +864,7 @@ describe("createEngines — 在播快照带订阅 id", () => {
  * 哪条路换成自己建的一份,类型与别的测试全绿,只有这一条红。
  */
 describe("createEngines — 出图失败计数 B 站与拓展作品共用一份", () => {
-	it("拓展作品出图失败提醒过之后,B 站作品同一串失败不再私聊;告警面板的来源是同一个 post-delivery", async () => {
+	it("拓展作品出图失败提醒过之后,B 站作品同一串失败不再提醒;告警的来源是同一个 post-delivery,主人只收到一条私聊", async () => {
 		const ext = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
 			puppeteer: true,
@@ -893,12 +893,11 @@ describe("createEngines — 出图失败计数 B 站与拓展作品共用一份"
 		await settleTracked(c);
 		expect(H.image[0].generatePostCard).toHaveBeenCalledTimes(2);
 
-		// 告诉主人的有两路:作品投递自己的失败提醒(直接一条),和 engine-error 经 MasterNotifier 的那条
-		// (带 `[post-delivery]` 前缀)。「只提醒一次」说的是前一路:两条路共用一份计数,第二次失败不会再补一条。
+		// 告诉主人的只有一路:engine-error 经 MasterNotifier 的那条(带 `[post-delivery]` 前缀)。作品投递不再
+		// 自己直发一条。两条路共用一份计数、一个来源(60 秒节流键),第二次失败不会再补一条,面板上也只亮一次。
 		const texts = H.push[0].notifyMaster.mock.calls.map((call: unknown[]) => String(call[0]));
-		expect(texts.filter((t: string) => !t.startsWith("[post-delivery]"))).toHaveLength(1);
-		// 来源统一:两条路共用一个 60 秒节流键,第二次失败的告警被节流吞掉,面板上只亮一次。
-		expect(texts.filter((t: string) => t.startsWith("[post-delivery]"))).toHaveLength(1);
+		expect(texts).toHaveLength(1);
+		expect(texts[0]).toMatch(/^\[post-delivery\] 生成动态图片失败：浏览器挂了/);
 	});
 });
 

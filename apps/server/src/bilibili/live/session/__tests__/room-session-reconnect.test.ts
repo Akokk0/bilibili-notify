@@ -140,7 +140,7 @@ function makeMockCtx(opts?: { startThrows?: boolean }): { ctx: RoomContext; mock
 		...liveProblemsCtx(mocks.problems),
 		livePushTimerManager: new Map<string, () => void>(), // cancelPeriodicTimer 需要
 		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
-		push: { sendPrivateMsg: async () => {}, push: async () => {} },
+		push: { push: async () => {} },
 		contentBuilder: {
 			text: (t: string) => ({ kind: "text", text: t }),
 			image: () => ({ kind: "image" }),

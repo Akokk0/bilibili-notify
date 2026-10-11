@@ -175,7 +175,7 @@ function makeMockCtx(): {
 		...liveProblemsCtx(m.problems),
 		livePushTimerManager: new Map<string, () => void>(),
 		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
-		push: { sendPrivateMsg: async () => {}, push: async () => {} },
+		push: { push: async () => {} },
 		contentBuilder: {
 			text: (t: string) => ({ kind: "text", text: t }),
 			image: () => ({ kind: "image" }),

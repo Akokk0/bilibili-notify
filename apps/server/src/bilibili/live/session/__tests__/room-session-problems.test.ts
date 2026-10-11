@@ -366,6 +366,6 @@ describe("周期复推那一拍", () => {
 		expect(mocks.warns.some((w) => w.includes("已下播但未收到 onLiveEnd"))).toBe(true);
 		expect(problems.reportFailure).not.toHaveBeenCalled();
 		expect(session.triggerLiveEnd).toHaveBeenCalledWith("polling");
-		// ctx.push 上没有 sendPrivateMsg:要是还去调它,上面这个调用就抛了
+		// ctx.push 上只有 push:要是还去私聊主人,上面这个调用就抛了
 	});
 });

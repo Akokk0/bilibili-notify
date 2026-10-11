@@ -330,12 +330,6 @@ export class RoomContextBase {
 		});
 	}
 
-	/** 这位 UP 的这个房间又监听上了:两条订阅级问题都清掉,走普通的清(核心补「已恢复」)。 */
-	resolveMonitorProblems(uid: string): void {
-		this.problems.resolveFailure({ externalId: uid, code: MONITOR_STOPPED_CODE });
-		this.problems.resolveFailure({ externalId: uid, code: ROOM_RESTRICTED_CODE });
-	}
-
 	/** 这位 UP 不再需要监听(关开关、退订、引擎停下、登录失效拆会话):两条都静默清掉,不补「已恢复」。 */
 	clearMonitorProblems(uid: string): void {
 		const silent = { notify: false };

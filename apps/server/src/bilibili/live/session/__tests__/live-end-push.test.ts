@@ -84,7 +84,7 @@ function makeCtx() {
 			image: (buf: Buffer, mime: string) => ({ kind: "image", buf, mime }),
 			message: (segs: unknown[]) => segs,
 		},
-		push: { push, sendPrivateMsg: vi.fn(async () => {}) },
+		push: { push },
 		isSubscribed: (sub: SubItemView, feat: keyof SubItemView) => sub[feat],
 		sendLiveNotifyCard,
 		wordcloudGenerator: { generate: wordcloud },

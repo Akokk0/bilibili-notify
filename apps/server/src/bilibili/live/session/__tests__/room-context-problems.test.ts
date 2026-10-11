@@ -4,7 +4,7 @@
  * - 取房间信息抛错:报订阅级「停止监听」(原因「取直播间信息失败」),关连接;**不私聊、不发 engine-error**;
  * - `stopMonitoring` 只管停(关连接、拆计时器),不再发 engine-error —— 后果各调用点自己带着 uid 去报;
  * - 取个人信息失败只记日志:后果由随后那条「停止监听」去报,单独报一条没人会清;
- * - 清的两种口:房间又监听上了走普通的清(补「已恢复」),这个人不再需要监听走静默清。
+ * - 这个人不再需要监听走静默清(房间又监听上了的普通清是会话里单条做的,见 room-session-problems)。
  */
 
 import type { ServiceContext } from "@bilibili-notify/internal";
@@ -32,7 +32,7 @@ function makeCtx(api: Record<string, unknown> = {}) {
 	const ctx = new RoomContext({
 		serviceCtx,
 		api,
-		// 没有 sendPrivateMsg:要是还有人去调它,下面的用例就抛了
+		// push 上什么口都没有:要是还有人去私聊主人,下面的用例就抛了
 		push: {},
 		problems,
 		contentBuilder: {},
@@ -115,16 +115,7 @@ describe("RoomContext.startLiveRoomListener · 取个人信息失败只记日志
 	);
 });
 
-describe("RoomContext 清「停止监听 / 受限」的两个口", () => {
-	it("resolveMonitorProblems(房间又监听上了):两条都走普通的清,不带 notify", () => {
-		const { ctx, problems } = makeCtx();
-		ctx.resolveMonitorProblems("u1");
-		expect(problems.resolveFailure.mock.calls).toEqual([
-			[{ externalId: "u1", code: MONITOR_STOPPED_CODE }],
-			[{ externalId: "u1", code: ROOM_RESTRICTED_CODE }],
-		]);
-	});
-
+describe("RoomContext 清「停止监听 / 受限」的口", () => {
 	it("clearMonitorProblems(这个人不再需要监听):两条都静默清(notify: false)", () => {
 		const { ctx, problems } = makeCtx();
 		ctx.clearMonitorProblems("u1");

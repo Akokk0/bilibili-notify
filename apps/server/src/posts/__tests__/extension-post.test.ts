@@ -430,7 +430,6 @@ function chain(
 			for (const segments of messages) sent.push(segments);
 		},
 		recordFiltered,
-		sendErrorMsg: async () => {},
 		emitEngineError: () => {},
 	};
 	const queue = createPostQueue({ logger, bus, serviceCtx: ctx, deps });

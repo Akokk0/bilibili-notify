@@ -54,7 +54,6 @@ export function liveProblemsCtx(problems: LiveProblems) {
 		problems,
 		reportMonitorStopped: RoomContextBase.prototype.reportMonitorStopped.bind(self),
 		reportRoomRestricted: RoomContextBase.prototype.reportRoomRestricted.bind(self),
-		resolveMonitorProblems: RoomContextBase.prototype.resolveMonitorProblems.bind(self),
 		clearMonitorProblems: RoomContextBase.prototype.clearMonitorProblems.bind(self),
 	};
 }

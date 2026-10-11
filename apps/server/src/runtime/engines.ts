@@ -39,7 +39,6 @@ import type {
 	ImageRef,
 	LinkParsingConfig,
 	LinkParsingPolicy,
-	Logger,
 	MembershipTemplateBundle,
 	NotificationPayload,
 	PayloadSegment,
@@ -662,9 +661,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			readImage: opts.readImage,
 			push: (subscriptionId, anchors) => boundPostPush(push, subscriptionId)(anchors),
 			recordFiltered: recordFilteredPost,
-			sendErrorMsg: masterTellers(push, log).sendErrorMsg,
-			// 单列一个来源:主人私聊的 60 秒节流按来源算,与 B 站动态引擎的告警(风控之类)共用一个的话,
-			// 一边刚报过,另一边这次出图失败的告警就被吞了。B 站与拓展两条路现在共用这一个。
+			// 出图失败的提醒只剩这一路组件告警(`MasterNotifier` 私聊一条 + 面板红条)。
+			// 单列一个来源:主人私聊的 60 秒节流按来源算,与别的组件告警共用一个的话,
+			// 一边刚报过,另一边这次出图失败的告警就被吞了。B 站与拓展两条路共用这一个。
 			emitEngineError: (message) =>
 				opts.bus.emit("engine-error", { source: "post-delivery", message }),
 		},
@@ -1409,33 +1408,7 @@ function collapseSegments(segments: PayloadSegment[]): NotificationPayload {
  * 再 @ 一次全体)、`allowAtAll`(掉了「每条直播推送都 @全体」那个修过的 bug 直接回归)。
  * 历史记成什么不另说:它记的就是交出去的那把特性键。
  */
-type PushForEngines = Pick<PushRouter, "push" | "notifyMaster">;
-
-/**
- * 引擎窄接口上「告诉主人」的两个口,转调 {@link PushRouter.notifyMaster}:没送到记一条 warn、
- * 仍回 `void`(引擎从来不看结果)。`sendErrorMsg` 先 `logger.error` 再转调 ——
- * `notifyMaster` 自己只发、不记 error 日志,这一条是原 `PushRouter.sendErrorMsg` 多打的那条,
- * 现在由调用方自己打。3a-30 把引擎里这些旁路整个删掉时,这个函数跟着删。
- */
-export function masterTellers(
-	push: Pick<PushRouter, "notifyMaster">,
-	logger: Logger,
-): {
-	sendPrivateMsg: (text: string) => Promise<void>;
-	sendErrorMsg: (text: string) => Promise<void>;
-} {
-	const tell = async (text: string): Promise<void> => {
-		const r = await push.notifyMaster(text);
-		if (!r.ok) logger.warn(`[push] 通知主人没送到: ${r.message}`);
-	};
-	return {
-		sendPrivateMsg: tell,
-		sendErrorMsg: async (text) => {
-			logger.error(`[push] ${text}`);
-			await tell(text);
-		},
-	};
-}
+type PushForEngines = Pick<PushRouter, "push">;
 
 /**
  * B 站 uid → 订阅 id。引擎说的是 uid,推送链认的是订阅自己的 id(ADR-0019 决策 50),

@@ -111,7 +111,6 @@ function makeQueue(
 			pushed.push({ id, label: text.split("/").pop() ?? "" });
 		},
 		recordFiltered,
-		sendErrorMsg: async () => {},
 		emitEngineError: () => {},
 	};
 	const queue = createPostQueue({ logger, bus: b.bus, serviceCtx: ctx, deps });

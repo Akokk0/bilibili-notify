@@ -93,7 +93,6 @@ interface Harness {
 	avatar: ReturnType<typeof vi.fn>;
 	readImage: ReturnType<typeof vi.fn>;
 	recordFiltered: ReturnType<typeof vi.fn>;
-	sendErrorMsg: ReturnType<typeof vi.fn>;
 	emitEngineError: ReturnType<typeof vi.fn>;
 	logs: Array<{ level: string; msg: string }>;
 }
@@ -126,7 +125,6 @@ function harness(
 	const avatar = vi.fn((_id: string): ImageRef | undefined => over.avatarRef);
 	const readImage = vi.fn(async (ref: ImageRef) => over.images?.get(ref));
 	const recordFiltered = vi.fn();
-	const sendErrorMsg = vi.fn(async (_text: string) => {});
 	const emitEngineError = vi.fn();
 	const logs: Harness["logs"] = [];
 	const rec = (level: string) => (msg: unknown) => {
@@ -149,7 +147,6 @@ function harness(
 		readImage,
 		push,
 		recordFiltered,
-		sendErrorMsg,
 		emitEngineError,
 	} as unknown as DeliverPostDeps;
 	return {
@@ -164,7 +161,6 @@ function harness(
 		avatar,
 		readImage,
 		recordFiltered,
-		sendErrorMsg,
 		emitEngineError,
 		logs,
 	};
@@ -369,20 +365,18 @@ describe("deliverPost — 外层作者的头像", () => {
 describe("deliverPost — 出图连续失败只提醒一次", () => {
 	const failing = (h: Harness) => h.generatePostCard.mockRejectedValue(new Error("chrome crash"));
 
-	it("头一次失败:私聊一句 + 点亮告警,计数 1;同一串再失败不再提醒", async () => {
+	it("头一次失败:只发一次组件告警(没有直发私聊),计数 1;同一串再失败不再提醒", async () => {
 		const tracker = createCardFailureTracker();
 		const h = harness({ cardFailures: tracker });
 		failing(h);
 		await run(h);
 		expect(tracker.streak).toBe(1);
-		expect(h.sendErrorMsg).toHaveBeenCalledWith(
+		expect(h.emitEngineError).toHaveBeenCalledWith(
 			"生成动态图片失败：chrome crash，已降级为纯文字推送，请检查图片插件状态",
 		);
-		expect(h.emitEngineError).toHaveBeenCalledWith("生成动态图片失败：chrome crash");
 
 		await run(h);
 		expect(tracker.streak).toBe(2);
-		expect(h.sendErrorMsg).toHaveBeenCalledTimes(1);
 		expect(h.emitEngineError).toHaveBeenCalledTimes(1);
 	});
 
@@ -395,11 +389,11 @@ describe("deliverPost — 出图连续失败只提醒一次", () => {
 		await run(bili);
 		await run(ext);
 		expect(tracker.streak).toBe(2);
-		expect(bili.sendErrorMsg).toHaveBeenCalledTimes(1);
-		expect(ext.sendErrorMsg).not.toHaveBeenCalled();
+		expect(bili.emitEngineError).toHaveBeenCalledTimes(1);
+		expect(ext.emitEngineError).not.toHaveBeenCalled();
 	});
 
-	it("并发的几条失败只提醒一次:提醒还在路上时,别的失败不再各发一遍", async () => {
+	it("并发的几条失败同一串只提醒一次", async () => {
 		const tracker = createCardFailureTracker();
 		const a = harness({ cardFailures: tracker });
 		const b = harness({ cardFailures: tracker });
@@ -407,43 +401,22 @@ describe("deliverPost — 出图连续失败只提醒一次", () => {
 		failing(b);
 		await Promise.all([run(a), run(b)]);
 		expect(tracker.streak).toBe(2);
-		expect(a.sendErrorMsg.mock.calls.length + b.sendErrorMsg.mock.calls.length).toBe(1);
+		expect(a.emitEngineError.mock.calls.length + b.emitEngineError.mock.calls.length).toBe(1);
 		expect(tracker.notified).toBe(true);
 	});
 
-	it("提醒还在路上时出图恢复了:晚到的送达不算到下一串头上", async () => {
-		const tracker = createCardFailureTracker();
-		const bad = harness({ cardFailures: tracker });
-		failing(bad);
-		let release!: () => void;
-		bad.sendErrorMsg.mockImplementationOnce(
-			() =>
-				new Promise<void>((resolve) => {
-					release = resolve;
-				}),
-		);
-		const pending = run(bad);
-		await vi.waitFor(() => expect(bad.sendErrorMsg).toHaveBeenCalled());
-		await run(harness({ cardFailures: tracker }));
-		release();
-		await pending;
-		expect(tracker.notified).toBe(false);
-		const badAgain = harness({ cardFailures: tracker });
-		failing(badAgain);
-		await run(badAgain);
-		expect(badAgain.sendErrorMsg).toHaveBeenCalledTimes(1);
-	});
-
-	it("提醒没送达 → 不算提醒过,下一次失败再提醒", async () => {
+	it("告警发射同步抛了 → 不算提醒过,记一条 warn,下一次失败再提醒", async () => {
 		const tracker = createCardFailureTracker();
 		const h = harness({ cardFailures: tracker });
 		failing(h);
-		h.sendErrorMsg.mockRejectedValueOnce(new Error("push down"));
+		h.emitEngineError.mockImplementationOnce(() => {
+			throw new Error("bus down");
+		});
 		await run(h);
 		expect(tracker.notified).toBe(false);
-		expect(h.emitEngineError).not.toHaveBeenCalled();
+		expect(h.logs.some((l) => l.level === "warn" && l.msg.includes("bus down"))).toBe(true);
 		await run(h);
-		expect(h.sendErrorMsg).toHaveBeenCalledTimes(2);
+		expect(h.emitEngineError).toHaveBeenCalledTimes(2);
 		expect(tracker.notified).toBe(true);
 	});
 
@@ -462,7 +435,7 @@ describe("deliverPost — 出图连续失败只提醒一次", () => {
 		const badAgain = harness({ cardFailures: tracker });
 		failing(badAgain);
 		await run(badAgain);
-		expect(badAgain.sendErrorMsg).toHaveBeenCalledTimes(1);
+		expect(badAgain.emitEngineError).toHaveBeenCalledTimes(1);
 	});
 });
 

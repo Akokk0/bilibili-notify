@@ -80,7 +80,6 @@ function makeFakeEngines(ctx: SourceContext) {
 		integration: IntegrationContext;
 	}> = [];
 	const engines = {
-		push: { notifyMaster: vi.fn(async () => ({ ok: true as const, latencyMs: 1 })) },
 		registerSource: vi.fn(async (entry: (typeof registered)[number] & { source: never }) => {
 			registered.push(entry);
 			await (entry.source as { start(ctx: SourceContext): Promise<void> }).start(ctx);
@@ -247,7 +246,6 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		const { builtins } = compose();
 		const boom = new Error("登记炸了");
 		const engines = {
-			push: { notifyMaster: vi.fn() },
 			registerSource: vi.fn().mockRejectedValueOnce(boom),
 		} as never;
 		await expect(builtins.registerSources(engines)).rejects.toBe(boom);

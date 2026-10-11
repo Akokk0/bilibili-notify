@@ -21,7 +21,7 @@ import type { NotificationPayload } from "@bilibili-notify/internal";
 import type { Push } from "@bilibili-notify/push";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { segmentContentBuilder } from "../runtime/content-builder";
-import { boundPostPush, makeLivePushLike, masterTellers } from "../runtime/engines";
+import { boundPostPush, makeLivePushLike } from "../runtime/engines";
 
 /** 只拦 `push`，把交进来的那次推送原样记下来。 */
 function makePushSpy() {
@@ -221,46 +221,5 @@ describe("B 站直播那条边:uid 先翻成订阅 id 再交给推送层", () =>
 		process.off("unhandledRejection", onUnhandled);
 		expect(push.push).not.toHaveBeenCalled();
 		expect(unhandled).toEqual([]);
-	});
-});
-
-describe("引擎窄接口上「告诉主人」的两个口转调 notifyMaster", () => {
-	function spy(ok: boolean) {
-		const logs: string[] = [];
-		const logger = {
-			debug() {},
-			info() {},
-			warn: (m: string) => logs.push(`warn:${m}`),
-			error: (m: string) => logs.push(`error:${m}`),
-		};
-		const push = {
-			notifyMaster: vi.fn(async (_payload: string | NotificationPayload) =>
-				ok
-					? { ok: true as const, latencyMs: 1 }
-					: { ok: false as const, code: "not_configured" as const, message: "没有配置主人目标" },
-			),
-		};
-		return { push, logs, logger };
-	}
-
-	it("sendPrivateMsg:把字符串交给 notifyMaster,送到了不留日志", async () => {
-		const { push, logs, logger } = spy(true);
-		await masterTellers(push, logger).sendPrivateMsg("你好");
-		expect(push.notifyMaster).toHaveBeenCalledWith("你好");
-		expect(logs).toEqual([]);
-	});
-
-	it("没送到:记一条 warn、仍回 void(引擎从来不看结果)", async () => {
-		const { push, logs, logger } = spy(false);
-		await expect(masterTellers(push, logger).sendPrivateMsg("你好")).resolves.toBeUndefined();
-		expect(logs).toHaveLength(1);
-		expect(logs[0]).toMatch(/^warn:.*没有配置主人目标/);
-	});
-
-	it("sendErrorMsg:先 error 日志再转调(notifyMaster 自己不记 error)", async () => {
-		const { push, logs, logger } = spy(true);
-		await masterTellers(push, logger).sendErrorMsg("风控了");
-		expect(logs).toEqual(["error:[push] 风控了"]);
-		expect(push.notifyMaster).toHaveBeenCalledWith("风控了");
 	});
 });
