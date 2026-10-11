@@ -59,6 +59,8 @@ function makeStore(...initial: Subscription[]): SubscriptionStore {
 		list: () => [...subs],
 		findByIdentity: (identity) =>
 			subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
+		listByIdentity: (identity) =>
+			subs.filter((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 		findById: (id) => subs.find((s) => s.id === id),
 		upsert: () => {},
 		removeById: () => undefined,

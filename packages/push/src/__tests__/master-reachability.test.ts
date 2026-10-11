@@ -51,6 +51,7 @@ function makeDispatcher(box: { up: boolean }): { dispatcher: FakeDispatcher; sen
 const emptyStore: SubscriptionStore = {
 	list: () => [],
 	findByIdentity: () => undefined,
+	listByIdentity: () => [],
 	findById: () => undefined,
 	upsert: () => {},
 	removeById: () => undefined,

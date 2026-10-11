@@ -37,9 +37,11 @@ export interface SubscriptionStore {
 	list(): Subscription[];
 	/**
 	 * 按身份找订阅(ADR-0021 决策 14):来源与外部 id 两格都相等才算。同一个身份订了几条(老版本留下的
-	 * 遗留重复,见 {@link findIdentityDuplicates})时取第一条。
+	 * 遗留重复,见 {@link findIdentityDuplicates})时取第一条;要全部的用 {@link listByIdentity}。
 	 */
 	findByIdentity(identity: Identity): Subscription | undefined;
+	/** 这个身份底下的全部订阅,按列表里的先后;没有就是空数组。正常一条,老版本留下的遗留重复是多条。 */
+	listByIdentity(identity: Identity): Subscription[];
 	/** Find a subscription by its stable id; returns undefined if not found. */
 	findById(id: string): Subscription | undefined;
 	/**
@@ -173,6 +175,9 @@ export function createSubscriptionStore(bus: MessageBus): SubscriptionStore {
 		},
 		findByIdentity(identity) {
 			return subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity));
+		},
+		listByIdentity(identity) {
+			return subs.filter((s) => sameIdentity(subscriptionIdentityOf(s), identity));
 		},
 		findById(id) {
 			return subs.find((s) => s.id === id);

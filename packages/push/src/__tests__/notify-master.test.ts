@@ -35,6 +35,7 @@ function makeLogger(): { logger: Logger; logs: LogRec[] } {
 const emptyStore: SubscriptionStore = {
 	list: () => [],
 	findByIdentity: () => undefined,
+	listByIdentity: () => [],
 	findById: () => undefined,
 	upsert: () => {},
 	removeById: () => undefined,

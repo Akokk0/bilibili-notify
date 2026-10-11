@@ -473,6 +473,8 @@ function setup(opts?: {
 			list: () => subs,
 			findByIdentity: (identity: Identity) =>
 				subs.find((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
+			listByIdentity: (identity: Identity) =>
+				subs.filter((s) => sameIdentity(subscriptionIdentityOf(s), identity)),
 			findById: (id: string) => subs.find((s) => s.id === id),
 		} as any,
 		subRuntimeStore: {
@@ -1030,14 +1032,51 @@ describe("createEngines — 作品入口接线(B 站引擎 → PostQueue → 推
 		expect(await mainTexts()).toEqual(["阿绫更新了\nhttps://t.bilibili.com/d1"]);
 	});
 
-	// 验红:把 engines.ts 里 `reportPost` 接线里的 `subscriptionOfUid(externalId)` 换成别的 uid / 订阅,这条红。
-	it("同一个 uid 配了两条订阅(遗留的重复订阅):只交先出现的那一条(按身份展开成每条一份归 3a-28)", async () => {
+	// 验红:把 engines.ts 里 `subscriptionsOfUid` 的 `listByIdentity` 换回 `findByIdentity` 取一条,这条红。
+	it("同一个 uid 配了两条订阅(遗留的重复订阅):按身份展开,每条各一份 —— 两次推送、两个订阅 id、post-detected 两次", async () => {
 		const first = biliSubOf("1", "sub-first");
 		const second = biliSubOf("1", "sub-second");
 		const c = setup({ subs: [first, second] });
 		active = c;
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
 		reportBili("1");
 		await settleTracked(c);
+		expect(detected.map((e) => e.subscriptionId)).toEqual(["sub-first", "sub-second"]);
+		expect(H.push[0].push).toHaveBeenCalledTimes(2);
+		const pushedIds = H.push[0].push.mock.calls.map(
+			([sent]: [{ subscriptionId: string }]) => sent.subscriptionId,
+		);
+		expect(pushedIds.sort()).toEqual(["sub-first", "sub-second"]);
+	});
+
+	// 验红:把 post-queue.ts 里入口按订阅查设置那道 `deps.settings(id) === undefined` 短路掉(恒不丢),这条红。
+	it("展开时各管各的:两条里后一条停用 → 只推前一条", async () => {
+		const first = biliSubOf("1", "sub-first");
+		const second = { ...biliSubOf("1", "sub-second"), enabled: false };
+		const c = setup({ subs: [first, second] });
+		active = c;
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
+		reportBili("1");
+		await settleTracked(c);
+		// 入口那一道:停用的那条一开始就不收(不发事件);对照第一条照收。
+		expect(detected.map((e) => e.subscriptionId)).toEqual(["sub-first"]);
+		expect(H.push[0].push).toHaveBeenCalledTimes(1);
+		expect(H.push[0].push.mock.calls[0]?.[0].subscriptionId).toBe("sub-first");
+	});
+
+	it("展开时各管各的:两条里后一条作品开关关着 → 只推前一条", async () => {
+		const first = biliSubOf("1", "sub-first");
+		const second = biliSubOf("1", "sub-second");
+		second.overrides.features = { post: false };
+		const c = setup({ subs: [first, second] });
+		active = c;
+		const detected: PostEvent[] = [];
+		c.bus.on("post-detected", (event) => detected.push(event));
+		reportBili("1");
+		await settleTracked(c);
+		expect(detected.map((e) => e.subscriptionId)).toEqual(["sub-first"]);
 		expect(H.push[0].push).toHaveBeenCalledTimes(1);
 		expect(H.push[0].push.mock.calls[0]?.[0].subscriptionId).toBe("sub-first");
 	});

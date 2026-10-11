@@ -459,14 +459,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 	/**
 	 * B 站引擎说的是 uid,推送链认的是订阅自己(ADR-0019 决策 50)—— 两个适配器在这条边上先翻一次。
-	 * 同一个 uid 配了两条订阅时先出现的那条说了算(`findByIdentity`;遗留的重复订阅,按身份展开成每条一份归 3a-28)。
+	 * 同一个 uid 配了几条订阅(老版本留下的遗留重复)就全交出去,按身份展开成每条一份(`listByIdentity`)。
+	 * 直播那几处仍只取先出现的那条(`subscriptionIdOfUid`,与 `findByIdentity` 取到的是同一条)。
 	 */
-	const subscriptionOfUid = (uid: string): Subscription | undefined => {
-		const sub = opts.subscriptionStore.findByIdentity(biliIdentity(uid));
-		if (sub === undefined) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
-		return sub;
+	const subscriptionsOfUid = (uid: string): Subscription[] => {
+		const subs = opts.subscriptionStore.listByIdentity(biliIdentity(uid));
+		if (subs.length === 0) log.debug(`[push] uid=${uid} 无订阅记录，跳过`);
+		return subs;
 	};
-	const subscriptionIdOfUid = (uid: string): string | undefined => subscriptionOfUid(uid)?.id;
+	const subscriptionIdOfUid = (uid: string): string | undefined => subscriptionsOfUid(uid)[0]?.id;
 
 	// ---------- Master notifier ----------
 	// engine-error / auth-lost → 主人 OneBot 私聊。共用一张 per-source 60s 节流表。
@@ -652,18 +653,18 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		api: opts.api,
 		push: { sendPrivateMsg: masterTellers(push, log).sendPrivateMsg },
 		imageFetcher: opts.imageFetcher,
-		// 引擎说的是 uid(外部 id),订阅由这里按身份现查;换不出来(订阅刚删)就不交。
+		// 引擎说的是 uid(外部 id),订阅由这里按身份现查、每条各交一份;换不出来(订阅刚删)就不交。
 		reportPost: (externalId, report) => {
-			const sub = subscriptionOfUid(externalId);
-			if (sub === undefined) return;
-			postQueue.enqueue({
-				subscriptionId: sub.id,
-				identity: subscriptionIdentityOf(sub),
-				postId: report.postId,
-				url: report.url,
-				post: report.post,
-				postNoun: "动态",
-			});
+			for (const sub of subscriptionsOfUid(externalId)) {
+				postQueue.enqueue({
+					subscriptionId: sub.id,
+					identity: subscriptionIdentityOf(sub),
+					postId: report.postId,
+					url: report.url,
+					post: report.post,
+					postNoun: "动态",
+				});
+			}
 		},
 		config: dynamicConfig(),
 		getSubs: () => buildDynamicSubsView(opts.subscriptionStore, globals()),

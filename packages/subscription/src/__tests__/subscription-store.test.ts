@@ -139,6 +139,22 @@ describe("SubscriptionStore — CRUD + diff", () => {
 		);
 	});
 
+	it("listByIdentity 回这个身份底下的全部订阅(按列表先后),没有就是空数组;来源、外部 id 两格都相等才算", () => {
+		const bus = makeFakeBus();
+		const store = createSubscriptionStore(bus);
+		const bili = { sourceKey: BILIBILI_SOURCE_KEY, externalId: "123" };
+		expect(store.listByIdentity(bili)).toEqual([]);
+		store.upsert(makeSub("123", "first"));
+		store.upsert(makeSub("124", "other"));
+		store.upsert(makeExtSub("123", "ext-same-number"));
+		store.upsert(makeSub("123", "second"));
+		expect(store.listByIdentity(bili).map((s) => s.id)).toEqual(["first", "second"]);
+		expect(
+			store.listByIdentity({ sourceKey: "douyin", externalId: "123" }).map((s) => s.id),
+		).toEqual(["ext-same-number"]);
+		expect(store.listByIdentity({ sourceKey: "kuaishou", externalId: "123" })).toEqual([]);
+	});
+
 	it("删掉拓展订阅 → remove op 带着整条,消费方按身份认来源", () => {
 		const bus = makeFakeBus();
 		const store = createSubscriptionStore(bus);
