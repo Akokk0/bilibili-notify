@@ -48,7 +48,7 @@ export interface LogEntry {
 	ts: string;
 	/**
 	 * Emitting subsystem name. Base serviceCtx → `"core"`;
-	 * `forSubsystem("dynamic")` → `"dynamic"`. Drives the Logs
+	 * `forSubsystem("dynamic", <levelKey>)` → `"dynamic"`. Drives the Logs
 	 * tab's source/subsystem filter. Optional for backward compat — entries
 	 * predating this field (or hand-built in tests) simply have no source facet.
 	 */

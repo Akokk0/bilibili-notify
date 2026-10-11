@@ -7,8 +7,9 @@
  *
  * 走真入口、真 `compose.ts`、真登记表、真来源与真动态引擎(没有订阅,不起 cron、不连网);坏文件怎么摆照
  * `extension-broken-settings-boot-e2e.test.ts`:先空启动一趟让数据代就位,再改写在用那一代里的设置文件,再起第二趟。
- * 它证明不了的:入口那一行 `setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms)` 只在这里被「间隔按盘上的值挂上」
- * 间接走到(真登录系统的心跳要真探活,没有零外连的办法直接钉),另外「没有私聊」在 `source-settings.test.ts` 钉(问题条目不带 notify)。
+ * 入口那一行 `setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms)` 也在这里钉着:用的是真登录系统,探的是
+ * `LoginFlow.prototype.setHealthCheckMs`,把入口那一行剪成空操作,「间隔按盘上的值挂上」几条都红(心跳本身不会真探活)。
+ * 它证明不了的:「没有私聊」在 `source-settings.test.ts` 钉(问题条目不带 notify)。
  */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";

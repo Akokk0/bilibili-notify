@@ -110,7 +110,7 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 		// Gate the side-channel by the SAME live pino level that gates stdout, so
 		// the Logs Tab + on-disk archive mirror the console exactly, per module.
 		// `isLevelEnabled` re-reads the instance's `.level`, so config-changed
-		// `setLevel()` hot-reloads take effect with no restart.
+		// `applyLogLevels()` hot-reloads take effect with no restart.
 		if (!target.isLevelEnabled(level)) return;
 		const hook = logHook;
 		if (!hook) return;

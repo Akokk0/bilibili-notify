@@ -155,7 +155,8 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		try {
 			return await options.notify(text);
 		} catch (err) {
-			return fail("unknown", errorMessageOf(err));
+			// 抛出来的异常不知道送没送到(`unknown` 是确知没送到的那一类),按结果不明算。
+			return fail("indeterminate", errorMessageOf(err));
 		}
 	}
 

@@ -103,7 +103,6 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 		},
 		async start(ctx: SourceContext) {
 			if (started) throw new Error("bilibili source is already started");
-			started = true;
 			const mine: Disposable[] = [];
 			const stopEngine = (): void => {
 				engine?.stop();
@@ -185,6 +184,8 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				});
 			};
 
+			// 取设置的把手都在上面,抛了(组装处漏登记)时还没占「已起」;从这里起任何一步抛了都由下面的 catch 复位。
+			started = true;
 			try {
 				// 始终挂一次,转给当下的引擎(动态停着时没有引擎,什么都不做)。
 				mine.push(ctx.onSubscriptionsChanged(() => engine?.syncSubscriptions()));

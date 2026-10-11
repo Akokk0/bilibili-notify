@@ -208,7 +208,7 @@ describe("B 站设置 — 经配置仓", () => {
 		});
 	}
 
-	it("没有文件 → 建一份默认的;settingsOf 读得到", async () => {
+	it("没有文件 → 建一份默认的;全量图里读得到", async () => {
 		const store = build();
 		await store.load();
 
@@ -266,7 +266,7 @@ describe("B 站设置 — 经配置仓", () => {
 		expect(bili(store).dynamicCron).toBe(DEFAULT_DYNAMIC_CRON);
 	});
 
-	it("写入合法的 cron → 落盘、settingsOf 读到新值", async () => {
+	it("写入合法的 cron → 落盘、全量图里读到新值", async () => {
 		const store = build();
 		await store.load();
 

@@ -1292,6 +1292,21 @@ describe("停下之后", () => {
 		expect(vi.getTimerCount()).toBe(0);
 	});
 
+	// 验红:`deliver` 的 catch 回 `unknown`(确知没送到)而不是 `indeterminate`,这条红。
+	it("notify 抛了(不知道送没送到):按结果不明算,五条同键一个一个开,每句只发一次", async () => {
+		const { table, notify } = setup(async () => {
+			throw new Error("通道炸了");
+		});
+		for (let n = 0; n < 5; n++) {
+			open(table, stopped(n));
+			await advance(1_000);
+		}
+		await advance(60 * 60_000);
+
+		expect(texts(notify)).toEqual(Array.from({ length: 5 }, (_, n) => `房间 ${n}`));
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
 	it("被放弃的那一条不算说过:清掉不补恢复句,也不盖别的", async () => {
 		const results = [fail("indeterminate", "不知道送没送到")];
 		const { table, notify } = setup(async () => results.shift() ?? sent());

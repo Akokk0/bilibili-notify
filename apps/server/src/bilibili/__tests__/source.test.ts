@@ -470,6 +470,23 @@ describe("createBiliSource", () => {
 		await source.stop();
 	});
 
+	// 验红:`started = true` 放回 `ctx.settings(...)` 之前,这条红(第二次 start 报「already started」而不是起来)。
+	it("start 里取设置的把手就抛了(组装处漏登记):原样抛出、不留「已起」的状态,能重来", async () => {
+		const { deps, config } = makeDeps();
+		const source = createBiliSource(deps);
+		const bad = makeCtx([{ externalId: "1", post: true }], config);
+		(bad.ctx as { settings: unknown }).settings = () => {
+			throw new Error("没登记这个键");
+		};
+		await expect(source.start(bad.ctx)).rejects.toThrow("没登记这个键");
+		expect(source.dynamic()).toBeUndefined();
+
+		const fresh = makeCtx([{ externalId: "1", post: true }], config);
+		await source.start(fresh.ctx);
+		expect(source.dynamic()).toBeDefined();
+		await source.stop();
+	});
+
 	it("来源把 deps.imageFetcher 递给引擎:带图的动态去抓图", async () => {
 		vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-11T00:00:00Z") });
 		const feed = {

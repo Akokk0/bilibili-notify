@@ -282,8 +282,8 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 	});
 
 	// 验红:把 `compose.ts` 递给 `createBiliSource` 的 `loginCheck` 换成空操作(或漏掉不接依赖里的 `setHealthCheckMs`),这条红。
-	// 入口里 `setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms)` 那一跳没有零外连的办法钉(真登录系统的心跳要真探活),
-	// 靠必填依赖的类型与真机。
+	// 入口里 `setHealthCheckMs: (ms) => authSystem?.setHealthCheckMs(ms)` 那一跳在这里钉不到,由
+	// `builtin-source-settings-boot-e2e.test.ts` 钉着(真入口、真登录系统,探 `LoginFlow.prototype.setHealthCheckMs`)。
 	it("来源 start 之后,依赖里的 setHealthCheckMs 收到登录检查的间隔(设置里的分钟数换成毫秒);stop 之后收到 0", async () => {
 		const { builtins, setHealthCheckMs } = compose();
 		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
