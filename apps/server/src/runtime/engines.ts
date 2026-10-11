@@ -57,6 +57,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	DEFAULT_TEMPLATES,
 	GUARD_PROGRAM_ID,
+	isLoggedIn,
 	isReachabilityEvidence,
 	resolve,
 	resolveAIProfile,
@@ -685,7 +686,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 还把每条订阅标成「未关注」。开机时登录状态已探完(createAuthSystem 等过探活);未登录时
 	// LoginFlow 记下了 needsRestore,扫码登录后发 auth-restored,由下面那条补上。
 	// `confirming`(开机没确认上)不算登录,与从前判「已登录」一致。
-	const biliLoggedIn = (): boolean => opts.auth.state().status === "logged-in";
+	const biliLoggedIn = (): boolean => isLoggedIn(opts.auth.state());
 	if (biliLoggedIn()) runFollowSync("boot");
 
 	// 开关从关翻到开时补一次:「关了就不查」之后,没开作品的人没被关注;订阅被启用、它的作品开关被打开、全局作品开关被打开,

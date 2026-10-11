@@ -8,16 +8,18 @@ import {
 	ok,
 	type Result,
 	type ServiceContext,
+	type SourceAccount,
 } from "@bilibili-notify/internal";
 import QRCode from "qrcode";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/api";
-import type { MyselfResponse, UserCardInfo } from "../api/types";
+import type { MyselfResponse } from "../api/types";
 import {
 	authStateFromLoginState,
+	type BiliAccount,
 	type BiliLoginState,
+	LOGIN_FAILURE_MESSAGES,
 	type LoginFailureKey,
-	MESSAGES,
 } from "./login-state.js";
 
 export interface LoginFlowOptions {
@@ -39,13 +41,13 @@ const QR_TIMEOUT_MS = 3 * 60 * 1000;
 const QR_POLL_MS = 1000;
 
 /**
- * Platform-neutral login state machine + QR session driver. Owns:
+ * B 站登录状态机 + 扫码会话驱动。管:
  *
- * - The single-source login state (`BiliLoginState`; the outward `AuthState` is derived from it).
- * - Periodic auth probe (`fetchMyselfInfo`) keyed on `healthCheckMs`.
- * - QR-code request → polling → cookie save handshake.
+ * - 登录状态的内部原形(`BiliLoginState`;对外的 `AuthState` 与账号都由它算出来,变了经 `onChange` 通知)。
+ * - 周期性的登录探活(`fetchMyselfInfo`),间隔 `healthCheckMs`。
+ * - 取二维码 → 轮询 → 存 cookie 的握手;每次扫码有自己的会话记号(`scanSession`),旧的一次不会盖新的一次。
  *
- * Adapter-side concerns (sending master notifications) stay outside.
+ * 给主人发私信这类适配器那头的事不在这里。
  */
 
 async function defaultRenderQr(url: string): Promise<string> {
@@ -65,7 +67,7 @@ export class LoginFlow {
 	private healthCheckMs: number;
 	private readonly logger: Logger;
 
-	/** 内部原形;对外的 `AuthState` 与旧快照都由它算出来。 */
+	/** 内部原形;对外的 `AuthState` 与账号都由它算出来。 */
 	private state: BiliLoginState = { status: "checking" };
 	private readonly fetchAvatar?: (url: string) => Promise<ImageRef | undefined>;
 	/** 抓成功的头像:`url` 是那张图的来源地址,`ref` 是图库引用。只在内存。 */
@@ -79,6 +81,12 @@ export class LoginFlow {
 	private loginTimer?: Disposable;
 	private loginExpiryTimer?: Disposable;
 	/**
+	 * 扫码会话的记号:每次发起、每次扫码会话终结(超时 / 失效 / 失败 / 成功 / 登出)都递增。轮询与超时回调
+	 * 在入口捕获自己那一次,落地前比对 —— 不是当前这一次的整份丢弃(旧码迟到的「已扫」「失效」不得盖新码)。
+	 * 唯一例外:旧码回「确认成功」且其间没登出过,登录已经成立,照样落地(登录成立优先,新发起的那次作废)。
+	 */
+	private scanSession = 0;
+	/**
 	 * 扫码期间罐子不自动存的闸:登录回应的 Set-Cookie 在响应头到的那一刻就进了罐子,令牌却要等响应体,
 	 * 这中间自动存到点的话盘上就是「新会话的 cookie + 上一个会话的令牌」。随轮询一起收(`clearLoginTimer`);
 	 * 成功那一支把它摘出来、提交之后才放。
@@ -87,14 +95,13 @@ export class LoginFlow {
 	/**
 	 * Marks "we are unauthenticated, so something downstream may be parked waiting". On the next
 	 * successful login the flag is flipped and `auth-restored` fires. Avoids relying on the
-	 * previous frame's status, which would miss the path NOT_LOGIN → LOGIN_QR → LOGGING_QR →
-	 * LOGGED_IN.
+	 * previous frame's status, which would miss the path logged-out → qr (ready, waiting) → logged-in.
 	 *
-	 * Deliberately NOT gated on having been LOGGED_IN first. Engines park themselves the moment
+	 * Deliberately NOT gated on having been logged in first. Engines park themselves the moment
 	 * they hit -101 on their own — the dynamic detector stops its cron and waits for
 	 * `auth-restored` — and that happens on a cold start with stale cookies, where this flow goes
-	 * LOADING_LOGIN_INFO → NOT_LOGIN without ever emitting `auth-lost`. Gating the flag on a prior
-	 * LOGGED_IN left those engines parked forever after the user re-scanned the QR.
+	 * checking → logged-out without ever emitting `auth-lost`. Gating the flag on a prior
+	 * logged-in left those engines parked forever after the user re-scanned the QR.
 	 *
 	 * The cost is one redundant `auth-restored` after a first-ever login. Every consumer reseeds
 	 * from the current subscription set (restart detection / rebuildFromSubs / follow-sync), so a
@@ -108,7 +115,7 @@ export class LoginFlow {
 	 * 没有它会怎样(2026-07-27 线上实况):cookie 刷新链拿到 `-101`,拦截器同步发
 	 * `auth-lost`,动态检测暂停、直播间连接全关;**33 毫秒后**,一次在会话被判死
 	 * **之前**就发出去的探活带着 `code 0` 回来,`reportLoggedIn` 只看「上一帧不是
-	 * LOGGED_IN」+「needsRestore」,于是把快照推回 LOGGED_IN 并发一条 `auth-restored`。
+	 * 已登录」+「needsRestore」,于是把状态推回已登录并发一条 `auth-restored`。
 	 * 下游照单全收:重建直播监听、重启动态检测、补关注 —— 全部再撞一遍 `-101`,
 	 * 主人的私聊被刷屏,「账号登录已失效」还连发两条。
 	 *
@@ -148,12 +155,12 @@ export class LoginFlow {
 	}
 
 	/** 登录着的账号;没登录或还没取到卡片是 null。头像抓进图库之后才有 `avatar`。 */
-	account(): { name: string; avatar?: ImageRef } | null {
+	account(): SourceAccount | null {
 		const s = this.state;
-		if (s.status !== "logged-in" || !s.card) return null;
+		if (s.status !== "logged-in" || !s.account) return null;
 		const avatar =
-			this.avatar && this.avatar.url === s.card.card.face ? this.avatar.ref : undefined;
-		return avatar === undefined ? { name: s.card.card.name } : { name: s.card.card.name, avatar };
+			this.avatar && this.avatar.url === s.account.avatarUrl ? this.avatar.ref : undefined;
+		return avatar === undefined ? { name: s.account.name } : { name: s.account.name, avatar };
 	}
 
 	/** 状态或账号可能变了就叫一声(两样都没变不叫);要做事自己再读 `authState()` / `account()`。 */
@@ -166,21 +173,29 @@ export class LoginFlow {
 		return JSON.stringify([this.authState(), this.account()]);
 	}
 
+	/**
+	 * 算对外的变化并通知订阅方。**这一步的任何抛错(算账号、订阅方的回调)都在这里接住、记 error,
+	 * 不许传回状态机**:各个 reporter 在边事件、`needsRestore`、代数、心跳的挂摘都做完之后才调它。
+	 */
 	private notifyIfChanged(): void {
-		const key = this.changeKey();
-		if (key === this.lastNotified) return;
-		this.lastNotified = key;
-		for (const fn of [...this.changeListeners]) {
-			try {
-				fn();
-			} catch (e) {
-				this.logger.warn(`[auth] 状态变化的订阅方抛错: ${errorMessageOf(e)}`);
+		try {
+			const key = this.changeKey();
+			if (key === this.lastNotified) return;
+			this.lastNotified = key;
+			for (const fn of [...this.changeListeners]) {
+				try {
+					fn();
+				} catch (e) {
+					this.logger.error(`[auth] 状态变化的订阅方抛错: ${errorMessageOf(e)}`);
+				}
 			}
+		} catch (e) {
+			this.logger.error(`[auth] 通知登录状态变化失败: ${errorMessageOf(e)}`);
 		}
 	}
 
 	/**
-	 * Probe `fetchMyselfInfo`, transition snapshot accordingly, and attach the periodic health check.
+	 * Probe `fetchMyselfInfo`, transition the state accordingly, and attach the periodic health check.
 	 * Network failures keep the current status (transient) and are logged at warn.
 	 */
 	async reportAccountInfo(): Promise<void> {
@@ -190,7 +205,7 @@ export class LoginFlow {
 			personalInfo = await this.api.fetchMyselfInfo();
 		} catch (e) {
 			if (this.supersededSince(gen)) return;
-			this.logger.warn(`[account] 获取个人信息异常: ${e}`);
+			this.logger.warn(`[account] 获取个人信息异常: ${errorMessageOf(e)}`);
 			this.reportTransientFailure(e);
 			this.attachHealthCheck();
 			return;
@@ -201,31 +216,60 @@ export class LoginFlow {
 			if (personalInfo.code !== -101) this.attachHealthCheck();
 			return;
 		}
-		let card: UserCardInfo | undefined;
-		try {
-			const cardInfo = await this.api.fetchUserCard(personalInfo.data.mid.toString(), true);
-			card = cardInfo.data;
-		} catch (e) {
-			this.logger.warn(`[account] 获取用户卡片失败: ${e}`);
-		}
+		const account = await this.fetchAccount(personalInfo.data?.mid);
 		// 取卡片是第二次网络往返,窗口和探活那次一样宽 —— 必须再比一次。
 		if (this.supersededSince(gen)) return;
-		this.reportLoggedIn(card);
+		this.reportLoggedIn(account);
 		this.attachHealthCheck();
 		// 头像在登录状态确定之后另起一条后台线,不等它。
 		this.maybeFetchAvatar();
 	}
 
 	/**
-	 * 登录着且有卡片、而头像还没抓成(或网址变了)时,另起一条后台活把头像抓进图库。
+	 * 按用户 id 取一次用户卡片,收成我们用得到的那几格。取不到(请求抛了、非 0 码、形状不对)回 `undefined`、
+	 * 记一行 warn(只带上游的码,不带整个回应),**不碰登录状态**:账号信息缺着不影响「已登录」。
+	 */
+	private async fetchAccount(mid: unknown): Promise<BiliAccount | undefined> {
+		if (typeof mid !== "number") {
+			this.logger.warn("[account] 个人信息里没有用户 id,取不了用户卡片");
+			return undefined;
+		}
+		try {
+			return this.accountFromCardResponse(await this.api.fetchUserCard(String(mid), true));
+		} catch (e) {
+			this.logger.warn(`[account] 获取用户卡片失败: ${errorMessageOf(e)}`);
+			return undefined;
+		}
+	}
+
+	/** B 站用户卡片回应 → 我们的账号。原字段名(`card.name` / `card.face`)只留在这一处。 */
+	private accountFromCardResponse(res: unknown): BiliAccount | undefined {
+		const r = res as {
+			code?: unknown;
+			data?: { card?: { name?: unknown; face?: unknown } | null } | null;
+		} | null;
+		if (r?.code !== 0) {
+			this.logger.warn(`[account] 用户卡片没取到: code=${String(r?.code)}`);
+			return undefined;
+		}
+		const card = r.data?.card;
+		if (typeof card?.name !== "string" || card.name === "") {
+			this.logger.warn("[account] 用户卡片缺名字,当作没取到");
+			return undefined;
+		}
+		return { name: card.name, avatarUrl: typeof card.face === "string" ? card.face : "" };
+	}
+
+	/**
+	 * 登录着且有账号、而头像还没抓成(或网址变了)时,另起一条后台活把头像抓进图库。
 	 * 抓不到:账号照常、头像缺着,**不碰登录状态**(这条路上没有任何一处会走到 `reportLoggedOut` /
 	 * `reportTransientFailure`)。回来时核「还是不是当初那段登录、那个头像网址」,不是就整份丢掉。
 	 */
 	private maybeFetchAvatar(): void {
 		const fetchAvatar = this.fetchAvatar;
 		const s = this.state;
-		if (!fetchAvatar || s.status !== "logged-in" || !s.card) return;
-		const url = s.card.card.face;
+		if (!fetchAvatar || s.status !== "logged-in" || !s.account) return;
+		const url = s.account.avatarUrl;
 		if (!url || this.avatar?.url === url) return;
 		const gen = this.authGeneration;
 		if (this.avatarFetching?.gen === gen && this.avatarFetching.url === url) return;
@@ -237,7 +281,7 @@ export class LoginFlow {
 				if (this.avatarFetching === mine) this.avatarFetching = undefined;
 				if (ref === undefined || gen !== this.authGeneration) return;
 				const now = this.state;
-				if (now.status !== "logged-in" || now.card?.card.face !== url) return;
+				if (now.status !== "logged-in" || now.account?.avatarUrl !== url) return;
 				this.avatar = { url, ref };
 				this.notifyIfChanged();
 			} catch (e) {
@@ -250,7 +294,7 @@ export class LoginFlow {
 
 	/**
 	 * 本轮探活是否已被一次登出作废。`true` = 结果不作数,调用方原样返回:
-	 * 既不动快照,也**不重挂心跳**(`reportLoggedOut` 是刻意把心跳摘掉的)。
+	 * 既不动状态,也**不重挂心跳**(`reportLoggedOut` 是刻意把心跳摘掉的)。
 	 */
 	private supersededSince(gen: number): boolean {
 		if (gen === this.authGeneration) return false;
@@ -266,69 +310,83 @@ export class LoginFlow {
 	/** Mark the session as logged-out for a specific reason. */
 	reportLoggedOut(reasonKey: "notLogin" | "authLost" = "notLogin"): void {
 		const wasLoggedIn = this.state.status === "logged-in";
-		// P2:登出后心跳无意义(runHealthCheck 对 NOT_LOGIN 直接 return),
+		// 登出一并结束扫码会话:在途的旧码回应迟到时不得把登出的结果盖掉。
+		this.endScanSession();
+		// P2:登出后心跳无意义(runHealthCheck 对 logged-out 直接 return),
 		// 此前不 detach,setInterval 空转到 stop()。重新登录路径会再 attach。
 		this.detachHealthCheck();
 		this.transition({ status: "logged-out", reason: reasonKey });
-		// 进了 NOT_LOGIN 就要记账,与之前是不是 LOGGED_IN 无关 —— 冷启动时 cookie
-		// 已过期的话这里是 LOADING_LOGIN_INFO → NOT_LOGIN,而引擎照样会自己撞上
+		// 进了 logged-out 就要记账,与之前是不是已登录无关 —— 冷启动时 cookie
+		// 已过期的话这里是 checking → logged-out,而引擎照样会自己撞上
 		// -101 并停下等 auth-restored。
 		this.needsRestore = true;
 		// 作废任何在途探活 —— 它们问的是刚死掉的那个会话,迟到的 code 0 不得
-		// 把快照推回 LOGGED_IN(更不得由此发出一条假的 auth-restored)。
+		// 把状态推回已登录(更不得由此发出一条假的 auth-restored)。
 		this.authGeneration++;
 		// auth-lost 仍只在真的丢掉一个好会话时发:它的消费方是 teardown,
 		// 拆一个从没建起来的引擎没有意义。
 		if (wasLoggedIn) {
 			this.bus.emit("auth-lost");
 		}
+		this.notifyIfChanged();
 	}
 
 	/**
 	 * Begin a fresh QR-login session. Internally:
+	 * 0. Ends the previous scan session (its timers and save gate) before anything else.
 	 * 1. Fetches a QR url + qrcodeKey from the API.
 	 * 2. Asks the caller to render the QR url to a base64 data URL (UI concern).
 	 * 3. Drives polling at 1Hz; on success persists cookies and probes account info.
 	 * 4. Auto-times-out after 3 minutes.
 	 */
 	async beginLogin(renderQr: (url: string) => Promise<string> = defaultRenderQr): Promise<Result> {
+		const session = this.endScanSession();
+		const superseded = () =>
+			fail("conflict", "这一次扫码已被新的一次(或已成立的登录)取代，请以最新的状态为准");
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let qrContent: any;
 		try {
 			qrContent = await this.api.fetchLoginQrCode();
 		} catch (e) {
-			// 取码请求没到 B 站:状态不动(一次网络抖动不该把一个好会话在面板上盖成出错),只让调用方知道。
 			this.logger.warn(`[login] 获取登录二维码失败：${errorMessageOf(e)}`);
-			return fail("unavailable", MESSAGES.qrFetchFailed);
+			if (session !== this.scanSession) return superseded();
+			// 取码请求没到 B 站:一次网络抖动不该把一个好会话在面板上盖成出错,状态不动;
+			// 唯独上一次的二维码已被我们作废、状态还停在扫码上时,不能留着一个没人轮询的码。
+			if (this.state.status === "qr") this.reportQrFailure("qrFetchFailed");
+			return fail("unavailable", LOGIN_FAILURE_MESSAGES.qrFetchFailed);
 		}
+		if (session !== this.scanSession) return superseded();
 		if (qrContent.code !== 0) {
 			this.reportQrFailure("qrFetchFailed");
 			const upstreamCode: number = qrContent.code;
 			// -352 / -403 是 B 站的风控:稍后再来,与「接口坏了」分开。
 			const code = upstreamCode === -352 || upstreamCode === -403 ? "rate_limited" : "unavailable";
-			return fail(code, MESSAGES.qrFetchFailed, { upstreamCode });
+			return fail(code, LOGIN_FAILURE_MESSAGES.qrFetchFailed, { upstreamCode });
 		}
 
+		let dataUrl: string;
 		try {
-			const dataUrl = await renderQr(qrContent.data.url);
-			this.reportQrReady(dataUrl);
+			dataUrl = await renderQr(qrContent.data.url);
 		} catch (e) {
 			this.logger.warn(`[login] 生成二维码失败：${errorMessageOf(e)}`);
+			if (session !== this.scanSession) return superseded();
 			this.reportQrFailure("qrRenderFailed");
-			return fail("unavailable", MESSAGES.qrRenderFailed);
+			return fail("unavailable", LOGIN_FAILURE_MESSAGES.qrRenderFailed);
 		}
+		if (session !== this.scanSession) return superseded();
+		this.reportQrReady(dataUrl);
 
-		this.clearLoginTimer();
 		this.loginHold = this.api.holdLoginSaves();
+		const gen = this.authGeneration;
 		let polling = true;
 		this.loginTimer = this.serviceCtx.setInterval(async () => {
 			if (!polling) return;
 			polling = false;
 			// 登记进 track:扫码成功的那一拍会把 cookie 与令牌提交进集成的密钥存储,关停得等它落完再让各写道
 			// 关门。失败在交进去之前接住(以前这里是裸的 async 回调,抛错就是一次 unhandledRejection)。
-			const poll = this.pollOnce(qrContent.data.qrcode_key)
+			const poll = this.pollOnce(qrContent.data.qrcode_key, session, gen)
 				.catch((e) => {
-					this.logger.warn(`[login] 二维码轮询出错：${e instanceof Error ? e.message : String(e)}`);
+					this.logger.warn(`[login] 二维码轮询出错：${errorMessageOf(e)}`);
 				})
 				.finally(() => {
 					polling = true;
@@ -339,8 +397,8 @@ export class LoginFlow {
 
 		this.clearLoginExpiryTimer();
 		this.loginExpiryTimer = this.serviceCtx.setTimeout(() => {
-			if (!this.loginTimer) return;
-			this.clearLoginTimer();
+			if (session !== this.scanSession) return;
+			this.endScanSession();
 			this.reportQrFailure("qrExpired");
 		}, QR_TIMEOUT_MS);
 		return ok();
@@ -348,19 +406,23 @@ export class LoginFlow {
 
 	/**
 	 * Run a single QR-status poll. On success, the cookie save handshake runs
-	 * and `reportAccountInfo` is invoked, transitioning to LOGGED_IN.
+	 * and `reportAccountInfo` is invoked, transitioning to logged-in.
+	 *
+	 * `session` 是这条轮询属于哪一次扫码,`gen` 是发起时的登出代数。不是当前这一次扫码的回应整份丢弃,
+	 * 只有一种例外:回「确认成功」而其间没登出过 —— 登录已经成立,不能被新发起的一次盖掉。
 	 */
-	private async pollOnce(qrcodeKey: string): Promise<void> {
+	private async pollOnce(qrcodeKey: string, session: number, gen: number): Promise<void> {
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let loginContent: any;
 		try {
 			loginContent = await this.api.fetchLoginStatus(qrcodeKey);
 		} catch (e) {
-			this.logger.warn(`[login] 获取登录状态失败：${e instanceof Error ? e.message : String(e)}`);
+			this.logger.warn(`[login] 获取登录状态失败：${errorMessageOf(e)}`);
 			return;
 		}
 
 		const code: number = loginContent?.data?.code;
+		if (session !== this.scanSession && !(code === 0 && gen === this.authGeneration)) return;
 
 		if (code === 86101) {
 			this.reportQrPending("waitScan");
@@ -371,7 +433,7 @@ export class LoginFlow {
 			return;
 		}
 		if (code === 86038) {
-			this.clearLoginTimers();
+			this.endScanSession();
 			this.reportQrFailure("qrInvalidated");
 			return;
 		}
@@ -379,7 +441,7 @@ export class LoginFlow {
 			// 扫码那道闸摘出来:收轮询定时器时不放它,提交(不论成败)之后才放。
 			const hold = this.loginHold;
 			this.loginHold = undefined;
-			this.clearLoginTimers();
+			this.endScanSession();
 			try {
 				const cookiesJson = this.api.getCookiesJson();
 				if (!cookiesJson || cookiesJson === "[]") {
@@ -405,7 +467,7 @@ export class LoginFlow {
 			return;
 		}
 		if (loginContent?.code !== 0) {
-			this.clearLoginTimers();
+			this.endScanSession();
 			this.reportQrFailure("genericLoginFail");
 			return;
 		}
@@ -415,36 +477,38 @@ export class LoginFlow {
 		// (容忍一次抖动,3min 过期兜底)。
 		if (typeof code === "number") {
 			this.logger.warn(`[login] QR 轮询返回未知 data.code=${code},判定登录失败`);
-			this.clearLoginTimers();
+			this.endScanSession();
 			this.reportQrFailure("genericLoginFail");
 		}
 	}
 
-	// ---- Internal reporters (drive snapshot transitions) ----
+	// ---- Internal reporters (drive state transitions) ----
+	// 每个 reporter 在边事件、记账都做完之后,最后一步才 `notifyIfChanged()`。
 
 	private reportLoggedIn(
-		card?: UserCardInfo,
+		account?: BiliAccount,
 		reasonKey: "loggedIn" | "loginJustSucceeded" = "loggedIn",
 	): void {
 		const prev = this.state;
 		const wasLoggedIn = prev.status === "logged-in";
-		const fallback = prev.status === "logged-in" ? prev.card : undefined;
+		const fallback = prev.status === "logged-in" ? prev.account : undefined;
 		this.transition({
 			status: "logged-in",
 			reason: reasonKey,
-			// 同一段登录里再进已登录不换时刻(卡片补到、瞬时失败后恢复都不算新登录)。
+			// 同一段登录里再进已登录不换时刻(账号补到、瞬时失败后恢复都不算新登录)。
 			loggedInAt: prev.status === "logged-in" ? prev.loggedInAt : new Date().toISOString(),
-			card: card ?? fallback,
+			account: account ?? fallback,
 		});
 		if (!wasLoggedIn && this.needsRestore) {
 			this.needsRestore = false;
 			this.bus.emit("auth-restored");
 		}
+		this.notifyIfChanged();
 	}
 
-	private reportLoginCheck(code: number, card?: UserCardInfo): void {
+	private reportLoginCheck(code: number): void {
 		if (code === 0) {
-			this.reportLoggedIn(card);
+			this.reportLoggedIn();
 		} else if (code === -101) {
 			this.reportLoggedOut("authLost");
 		} else {
@@ -453,45 +517,50 @@ export class LoginFlow {
 	}
 
 	private reportTransientFailure(detail: unknown): void {
-		this.logger.warn(`[auth] 瞬时失败：${detail}`);
+		this.logger.warn(
+			`[auth] 瞬时失败：${detail instanceof Error ? errorMessageOf(detail) : detail}`,
+		);
 		if (this.state.status !== "logged-in") return;
 		this.transition({ ...this.state, reason: "fetchAccountFailed" });
+		this.notifyIfChanged();
 	}
 
-	private reportQrReady(base64: string): void {
+	private reportQrReady(dataUrl: string): void {
 		this.transition({
 			status: "qr",
 			phase: "ready",
-			dataUrl: base64,
+			dataUrl,
 			expiresAt: new Date(Date.now() + QR_TIMEOUT_MS).toISOString(),
 		});
+		this.notifyIfChanged();
 	}
 
 	private reportQrPending(reasonKey: "waitScan" | "waitConfirm"): void {
-		// Preserve the QR image (and its expiry) across the LOGIN_QR → LOGGING_QR
-		// transition. The QR remains useful to the user until they confirm on
-		// phone — without this carry-over the dashboard shows "二维码加载中" the
-		// instant polling kicks in.
+		// Preserve the QR image (and its expiry) across the ready → waiting transition. The QR remains
+		// useful to the user until they confirm on phone — without this carry-over the dashboard shows
+		// "二维码加载中" the instant polling kicks in.
 		const prev = this.state;
+		// 扫码会话的记号保证走到这里时状态一定还是这一次的 `qr`;不是就不动(防御,不造一个没有图的 qr)。
+		if (prev.status !== "qr") return;
 		this.transition({
 			status: "qr",
 			phase: reasonKey === "waitScan" ? "waiting-scan" : "waiting-confirm",
-			dataUrl: prev.status === "qr" ? prev.dataUrl : undefined,
-			expiresAt:
-				prev.status === "qr" ? prev.expiresAt : new Date(Date.now() + QR_TIMEOUT_MS).toISOString(),
+			dataUrl: prev.dataUrl,
+			expiresAt: prev.expiresAt,
 		});
+		this.notifyIfChanged();
 	}
 
 	private reportQrFailure(reasonKey: LoginFailureKey): void {
 		this.transition({ status: "failed", reason: reasonKey });
+		this.notifyIfChanged();
 	}
 
-	/** 换原形。对外状态与账号结构相等就不叫 `onChange`(判据在 {@link notifyIfChanged})。 */
+	/** 换原形(不通知:通知是 reporter 的最后一步)。 */
 	private transition(next: BiliLoginState): void {
 		this.state = next;
 		// 离开已登录就忘掉抓到的头像:登出之后那张图不再有人引用,重新登录时要重新抓。
 		if (next.status !== "logged-in") this.avatar = undefined;
-		this.notifyIfChanged();
 	}
 
 	// ---- Health check ----
@@ -542,14 +611,34 @@ export class LoginFlow {
 			const res = await this.api.fetchMyselfInfo();
 			if (this.supersededSince(gen)) return;
 			this.reportLoginCheck(res.code);
-			// 头像之前没抓成的话心跳顺手补一次(不等它,心跳的判定到此为止)。
-			if (res.code === 0) this.maybeFetchAvatar();
+			if (res.code === 0) {
+				// 已登录而账号信息缺着(取卡片失败过、或扫码失败回来时没带上)就补取一次;每次心跳至多一次,
+				// 本来就有间隔,不另设退避。失败不影响登录状态。
+				await this.fillMissingAccount(gen, res.data?.mid);
+				// 头像之前没抓成的话心跳顺手补一次(不等它,心跳的判定到此为止)。
+				this.maybeFetchAvatar();
+			}
 		} catch (e) {
-			this.logger.warn(`[auth] 心跳异常（保持当前状态）：${e}`);
+			this.logger.warn(`[auth] 心跳异常（保持当前状态）：${errorMessageOf(e)}`);
 		}
 	}
 
+	private async fillMissingAccount(gen: number, mid: unknown): Promise<void> {
+		const s = this.state;
+		if (s.status !== "logged-in" || s.account) return;
+		const account = await this.fetchAccount(mid);
+		if (this.supersededSince(gen) || !account) return;
+		this.reportLoggedIn(account);
+	}
+
 	// ---- Timer disposal helpers ----
+
+	/** 结束当前的扫码会话:作废在途的轮询与超时回调、收定时器与存盘闸。回新的会话记号(发起时用)。 */
+	private endScanSession(): number {
+		this.scanSession++;
+		this.clearLoginTimers();
+		return this.scanSession;
+	}
 
 	private clearLoginTimer(): void {
 		this.loginTimer?.dispose();
@@ -560,8 +649,7 @@ export class LoginFlow {
 
 	/**
 	 * P2:轮询终态(86038 失效 / code 0 成功 / genericLoginFail)应同时清掉
-	 * 3min 过期 setTimeout。此前只 clearLoginTimer,过期定时器泄漏挂到 expiry
-	 * 才空跑一次 no-op(`if (!this.loginTimer) return`),其间持有闭包。
+	 * 3min 过期 setTimeout,免得它挂到 expiry 才空跑一次,其间持有闭包。
 	 */
 	private clearLoginTimers(): void {
 		this.clearLoginTimer();

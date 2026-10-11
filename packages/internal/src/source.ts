@@ -28,6 +28,12 @@ export interface SourceContext extends IntegrationContext {
 	reportPost(externalId: string, report: PostReport): void;
 }
 
+/** 来源登录着的账号:名字必有;头像抓进图库之后才有 `avatar`(图库引用,不是平台的图片地址)。 */
+export interface SourceAccount {
+	name: string;
+	avatar?: ImageRef;
+}
+
 /**
  * 要登录才用得了的来源交的登录口(ADR-0021 决策 45)。只有扫码这一种登录办法;等第一个有两种登录办法的来源
  * 再加 `methods` 与 `beginLogin` 的参数。没有「刷新」:续期是来源自己的事。
@@ -40,7 +46,7 @@ export interface SourceAuth {
 	/** 此刻的状态,同步、不出网。 */
 	state(): AuthState;
 	/** 登录着的账号;没登录或还没取到是 `null`。头像抓进图库之后才有 `avatar`。 */
-	account?(): { name: string; avatar?: ImageRef } | null;
+	account?(): SourceAccount | null;
 	/** 状态或账号可能变了就叫一声;要做事自己再读 `state()` / `account()`。 */
 	onChange(fn: () => void): Disposable;
 }

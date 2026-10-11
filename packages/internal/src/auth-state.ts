@@ -23,3 +23,11 @@ export type AuthState =
 	| { status: "confirming"; message?: string }
 	| { status: "logged-in"; loggedInAt: string }
 	| { status: "expired" | "error"; message: string };
+
+/**
+ * 这个状态算不算「已登录」。只有 `logged-in` 算:`confirming` 是「BN 还在等 / 还在核」,此刻不算登录。
+ * 统计的「在跑」、开机补关注这类只认已登录的读者都用它,免得各写一遍、哪天有人把 `confirming` 也算进去而没人发现。
+ */
+export function isLoggedIn(state: AuthState): boolean {
+	return state.status === "logged-in";
+}

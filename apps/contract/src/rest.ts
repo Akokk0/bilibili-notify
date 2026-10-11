@@ -35,6 +35,7 @@ import type {
 	PushMessageRole,
 	PushStatus,
 	Result,
+	SourceAccount,
 	Subscription,
 	SubscriptionReportKind,
 	SubscriptionTag,
@@ -1235,7 +1236,7 @@ export interface ConnectionAuthDraftResponse {
  */
 export interface SourceAuthResponse {
 	state: AuthState;
-	account?: { name: string; avatar?: ImageRef };
+	account?: SourceAccount;
 }
 
 // ---- /api/system/backup ------------------------------------------------------------

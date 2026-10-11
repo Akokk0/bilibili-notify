@@ -11,6 +11,7 @@ import type { ConfigStore } from "../../config/store.js";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
+import { errorMessageOf } from "../../util/error-message.js";
 import { Api } from "../api/index.js";
 import { createBiliContext } from "../context.js";
 import { fetchAvatar } from "../images.js";
@@ -90,7 +91,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 				// undefined 时(构造期)?. 双重短路不调用 .catch。
 				onAuthLost: () => {
 					flow?.handleAuthLost()?.catch((e) => {
-						log.error(`[auth] auth-lost 处理失败: ${(e as Error).message ?? e}`);
+						log.error(`[auth] auth-lost 处理失败: ${errorMessageOf(e)}`);
 					});
 				},
 			},

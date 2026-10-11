@@ -13,6 +13,7 @@ import {
 	type InboundMeta,
 	type InboundPrivateMessage,
 	isExtensionEnabled,
+	isLoggedIn,
 	type Logger,
 	type NotificationPayload,
 	subscriptionIdentityOf,
@@ -550,7 +551,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 到这里才开始记,ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。每次现读状态,不靠事件记。
 		// `confirming`(开机没确认、等手机确认)不算登录,与从前判「已登录」一致。
 		const loginAuth = authSystem.auth;
-		runtime.statsRecorder.bindLoginState(() => loginAuth.state().status === "logged-in");
+		runtime.statsRecorder.bindLoginState(() => isLoggedIn(loginAuth.state()));
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview

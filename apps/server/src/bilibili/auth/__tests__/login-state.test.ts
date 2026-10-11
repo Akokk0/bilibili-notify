@@ -1,9 +1,8 @@
 import type { AuthState } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import type { UserCardInfo } from "../../api/types.js";
-import { authStateFromLoginState, type BiliLoginState } from "../login-state.js";
+import { authStateFromLoginState, type BiliAccount, type BiliLoginState } from "../login-state.js";
 
-const CARD = { card: { mid: "42", name: "n", face: "https://i0.hdslb.com/a.jpg" } } as UserCardInfo;
+const ACCOUNT: BiliAccount = { name: "n", avatarUrl: "https://i0.hdslb.com/a.jpg" };
 const QR = "data:image/png;base64,AAAA";
 const EXPIRES = "2026-10-11T00:03:00.000Z";
 const SINCE = "2026-10-11T00:00:00.000Z";
@@ -51,12 +50,12 @@ describe("authStateFromLoginState — 全表", () => {
 		],
 		[
 			"logged-in(卡片取到)→ logged-in,loggedInAt 不变",
-			{ status: "logged-in", reason: "loggedIn", loggedInAt: SINCE, card: CARD },
+			{ status: "logged-in", reason: "loggedIn", loggedInAt: SINCE, account: ACCOUNT },
 			{ status: "logged-in", loggedInAt: SINCE },
 		],
 		[
 			"logged-in(账号信息暂时取不到)→ 仍是 logged-in",
-			{ status: "logged-in", reason: "fetchAccountFailed", loggedInAt: SINCE, card: CARD },
+			{ status: "logged-in", reason: "fetchAccountFailed", loggedInAt: SINCE, account: ACCOUNT },
 			{ status: "logged-in", loggedInAt: SINCE },
 		],
 		[
@@ -78,11 +77,6 @@ describe("authStateFromLoginState — 全表", () => {
 			"failed/noCookieAfterLogin → error",
 			{ status: "failed", reason: "noCookieAfterLogin" },
 			{ status: "error", message: "登录成功但未获取到 cookie，请重试" },
-		],
-		[
-			"qr 没有图(登出后迟到的一拍轮询)→ 没有东西可扫,按没登录",
-			{ status: "qr", phase: "waiting-scan", dataUrl: undefined, expiresAt: EXPIRES },
-			{ status: "logged-out" },
 		],
 	];
 

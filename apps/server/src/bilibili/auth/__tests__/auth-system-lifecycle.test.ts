@@ -326,6 +326,34 @@ describe("恢复备份之后与登出", () => {
 		await w.store.close();
 	});
 
+	// 验红:把 `login-flow.ts` 里卡片回应的非 0 码那一支改成把 `data` 原样当账号收,这条红(账号不是 null)。
+	it("开机时卡片接口回了形状不对的数据:登录系统照常起来,已登录、账号是 null、不抛", async () => {
+		const w = world();
+		await w.seed({ cookies: C0, token: "T0" });
+		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
+		// 这个文件的 beforeEach 把探活换成了空操作;这一条要真的走一遍收卡片那一段。
+		vi.mocked(LoginFlow.prototype.reportAccountInfo).mockRestore();
+		vi.spyOn(Api.prototype, "fetchMyselfInfo").mockResolvedValue({
+			code: 0,
+			data: { mid: 42, uname: "n", face: "" },
+		});
+		vi.spyOn(Api.prototype, "fetchUserCard").mockResolvedValue({
+			code: -352,
+			data: { v_voucher: "voucher_x" },
+		} as never);
+
+		const auth = await createAuthSystem({
+			serviceCtx: w.host.serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
+
+		expect(auth.auth.state().status).toBe("logged-in");
+		expect(auth.auth.account()).toBeNull();
+		await auth.dispose();
+		await w.store.close();
+	});
+
 	it("登出时提交写盘成功:回 ok", async () => {
 		const w = world();
 		await w.seed({ cookies: C0, token: "T0" });
