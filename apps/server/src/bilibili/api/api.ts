@@ -477,11 +477,11 @@ export class Api {
 	async checkIfTokenNeedRefresh(
 		refreshToken: string,
 		csrf: string,
-		gen = this.generation,
+		generation = this.generation,
 	): Promise<void> {
-		// 入口 + 每次跨 await 后比对 gen(登录代):一段登录成立(开机恢复 / 恢复备份 / 扫码确认成功)或结束
+		// 入口 + 每次跨 await 后比对 generation(登录代):一段登录成立(开机恢复 / 恢复备份 / 扫码确认成功)或结束
 		// (登出 / 会话终态 / stop)都会让它往前走,本轮(及其重试链)随即作废,绝不把过期结果写回。
-		if (gen !== this.generation) {
+		if (generation !== this.generation) {
 			this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代,跳过本轮");
 			return;
 		}
@@ -494,9 +494,9 @@ export class Api {
 			try {
 				// 传真实 bili_jct(优先 live jar,回退调用方传入值),不是 refreshToken。
 				const info = await this.fetchCookieInfo(this.getCSRF() ?? csrf);
-				// 跨 await 后必须重校 gen(②修不全:此前缺这一处,旧 refreshToken
+				// 跨 await 后必须重校 generation(②修不全:此前缺这一处,旧 refreshToken
 				// 在重登/登出后仍用新 jar 继续刷新)。
-				if (gen !== this.generation) {
+				if (generation !== this.generation) {
 					this.logger.debug("[cookie] 刷新已被更新的 cookie 状态取代(fetchCookieInfo 后),跳过本轮");
 					return;
 				}
@@ -548,13 +548,13 @@ export class Api {
 			);
 			// 加密那两步也跨了 await。罐子只有一个、换号原地换(⑭a 起),换号之后这条旧链再发请求,带的就是新号的 cookie,
 			// 回来的 Set-Cookie 会被当成新会话的收进去 —— 每跨一次 await 都比对,换了就不再发。
-			if (gen !== this.generation) {
+			if (generation !== this.generation) {
 				this.logger.debug("[cookie] 刷新在算 correspond 期间被取代,丢弃");
 				return;
 			}
 
 			const html = await this.client.get(`${EP.COOKIE_REFRESH_CORRESPOND_PATH}/${correspondPath}`);
-			if (gen !== this.generation) {
+			if (generation !== this.generation) {
 				this.logger.debug("[cookie] 刷新在取 correspond 页期间被取代,丢弃");
 				return;
 			}
@@ -567,7 +567,7 @@ export class Api {
 			if (!refreshCsrf) {
 				// correspond 页面没解析出 refresh_csrf(B 站返回异常 / 结构变更):
 				// 绝不 POST 一个 null refresh_csrf(必失败且语义不明)。抛可重试错,
-				// triggerRefreshCheck 记 warn,下个 interval 再探(gen/timer 不动)。
+				// triggerRefreshCheck 记 warn,下个 interval 再探(generation/timer 不动)。
 				throw new Error("correspond 页面未解析到 refresh_csrf,跳过本轮刷新");
 			}
 
@@ -580,7 +580,7 @@ export class Api {
 
 			// RSA/correspond/refresh 这串网络往返期间若 cookie 状态已被替换,
 			// 后面的 jar 重置 / 持久化都基于过期前提,丢弃本轮。
-			if (gen !== this.generation) {
+			if (generation !== this.generation) {
 				this.logger.debug("[cookie] 刷新结果在网络往返期间被取代,丢弃");
 				return;
 			}
@@ -619,8 +619,8 @@ export class Api {
 			})) as { code: number };
 
 			// confirm POST 返回之后、看码之前先比代数(与刷新那一步同序):被取代的链不许走风控 / 终态分支 ——
-			// 终态会清别人的罐子、发 auth-lost、留闸;下面接着就是写盘,同样不能用过期 gen 的结果覆盖更新的登录态。
-			if (gen !== this.generation) {
+			// 终态会清别人的罐子、发 auth-lost、留闸;下面接着就是写盘,同样不能用过期 generation 的结果覆盖更新的登录态。
+			if (generation !== this.generation) {
 				this.logger.debug("[cookie] 刷新确认返回时已被取代,丢弃(不看码、不回写)");
 				fate = "release";
 				return;

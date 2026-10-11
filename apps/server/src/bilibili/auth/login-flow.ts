@@ -537,6 +537,13 @@ export class LoginFlow {
 				} finally {
 					hold?.dispose();
 				}
+				// 落盘是一次 await:其间登出过(主人点了退出、或请求报来 -101),这段登录已经不在了、罐子也清了。
+				// 不进已登录、不去取账号 —— 进了的话那一问只会回 -101,把一次主动退出说成「登录失效」。
+				// 走到落盘之前 `gen` 一定等于当前的登出代数(入口那一行挡过),所以这里比的就是「落盘期间」。
+				if (gen !== this.authGeneration) {
+					this.logger.debug("[login] 登录落盘期间已登出，不进已登录");
+					return;
+				}
 				this.reportLoggedIn(undefined, "loginJustSucceeded");
 			} finally {
 				this.committingLogin = false;

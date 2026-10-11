@@ -1842,6 +1842,53 @@ describe("LoginFlow — 确认成功正在落盘时又发起一次(A2)", () => {
 		expect(h.scFake.intervals).toHaveLength(1);
 	});
 
+	// 3a-30 第二轮复审记一笔 6。验红:`pollOnce` 里落盘回来后不比登出代数(照旧 `reportLoggedIn` + 取账号),这两条红。
+	it("落盘途中主人退出了:落盘回来不进已登录、不去取账号(罐子已空,那一问只会回 -101 再判一次失效)", async () => {
+		const h = makeFlow();
+		// 罐子已被退出清空:真去问只会得到 -101
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: -101 });
+		await begin(h, "old");
+		const commit = deferred<Result>();
+		h.api.commitLogin.mockReturnValueOnce(commit.promise);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		const tick = h.scFake.intervals[0]?.handle.fire();
+		await flush();
+		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
+
+		h.flow.reportLoggedOut("notLogin"); // 退出登录:落盘还没回
+		commit.resolve(ok());
+		await tick;
+		await Promise.all(h.scFake.tracked);
+
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-out", reason: "notLogin" });
+		expect(h.api.fetchMyselfInfo).not.toHaveBeenCalled();
+		expect(h.events.map((e) => e.event)).toEqual([]);
+		// 扫码那道闸照样放了,之后能正常再发起
+		expect(h.api.holds.every((hold) => hold.disposed)).toBe(true);
+		expect(await begin(h, "again")).toEqual(ok());
+	});
+
+	it("落盘途中登录失效了(请求报来 -101):落盘回来同样不进已登录", async () => {
+		const h = makeFlow();
+		h.api.fetchMyselfInfo.mockResolvedValue({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValue({ code: 0, data: { card: { name: "n", face: "" } } });
+		await begin(h, "old");
+		const commit = deferred<Result>();
+		h.api.commitLogin.mockReturnValueOnce(commit.promise);
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ data: { code: 0, refresh_token: "rt" } });
+		const tick = h.scFake.intervals[0]?.handle.fire();
+		await flush();
+
+		h.flow.reportLoggedOut("authLost");
+		commit.resolve(ok());
+		await tick;
+		await Promise.all(h.scFake.tracked);
+
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-out", reason: "authLost" });
+		expect(h.api.fetchMyselfInfo).not.toHaveBeenCalled();
+		expect(h.events.map((e) => e.event)).not.toContain("auth-restored");
+	});
+
 	it("落盘抛错:放开,之后能正常再发起", async () => {
 		const h = makeFlow();
 		await begin(h, "old");

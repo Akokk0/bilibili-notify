@@ -19,16 +19,29 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  * - **窗口**:同一把键,上一句**送到**之后 {@link NOTIFY_WINDOW_MS} 之内不再发问题私聊;有一条在途时也不发
  *   (落定后再对账)。窗口只在送到那一刻才记:没送到就记的话,下面的再送会被自己的窗口吞掉。
  *   「已恢复」另用一张表,窗口各算各的 —— 共用的话,一分钟内修好的事就不会被告知。
- * - **欠着的** = 开着、要私聊、没说过、也没有被盖住的问题。同键欠着好几条只说最早开的那一条。
+ * - **欠着的** = 开着、要私聊、没说过、没有被盖住、也没有被记成「不再说」的问题。同键欠着好几条只说最早开的那一条。
  * - **被盖住** = 这条被窗口吞掉,而吞掉它的那一句所属的问题**还开着、且那一句真送到了**(十个房间同时停监
  *   只说一条)。盖它的那条被清掉、挡住它的其实是一条已清的旧事留下的窗口、盖它的那一句最终没送到:
  *   都不算盖住,它是欠着的,窗口一过补说一次;说出去之后同键其余欠着的改由它盖住。
- *   窗口之外新开的不看这些,当场说。
+ *   窗口之外新开的不看这些,当场说(撞上下面的沉淀期除外)。
+ * - **沉淀**:这把键上每清掉一条,此后 {@link CLOSE_SETTLE_MS} 之内不发问题私聊(与窗口尾、再送时刻取最晚的,
+ *   共用那一个计时器),到点再对账,那时还欠着的才说。问题表的清是一条一条来的(来源停下、掉登录、被风控、
+ *   整批重建),逐个取消会话时中间还可能隔着 await:不等这一批落完,就会抢着对马上被清掉的那一条补说一句,
+ *   而那种清是静默的,之后没有任何一句把它收回。沉淀期里同键**新开**的也一样等到沉淀期过 ——
+ *   「清一批」与「重建后又开一批」可能交错,分不出哪条是这一批的。「已恢复」不受沉淀影响,当场发。
  * - **「真私聊过」** = `notify` 回了 ok。
  * - **再送**:没送到、且失败码是标准码表里「稍后可重试」的那几种,按 {@link RETRY_DELAYS_MS} 再试。档位记在
  *   这把键上:到点时原来那条已经清了,就轮到同键欠着的下一条,档位接着数。五档用完、或失败不可重试(没配主人、
- *   目标不是私聊、结果不明),这把键停下 —— 同键此刻欠着的其余几条不拿去各试一遍;之后同键有新的一条要说
- *   (新开,或由「不要私聊」换成「要私聊」)才重新起头、当场再试。再送发的是那一刻的 message。
+ *   目标不是私聊、结果不明),这把键**停下** —— 同键此刻欠着的其余几条不拿去各试一遍。再送发的是那一刻的 message。
+ * - **停下之后怎么重新起头**:同键有新的一条要说(新开,或由「不要私聊」换成「要私聊」),当场再试;同键说过的
+ *   一条被清掉、或一句「已恢复」送到了(通道是通的),停下放开、再送的账归零,欠着的照沉淀的规矩补说。
+ * - **不再说**:一句以**结果不明**的失败落定(标准码表里「绝不重发」的那一种:可能已经送到了),**那一条**记成
+ *   「不再说」—— 不是「说过」:不补「已恢复」、不盖别的,只是之后对账跳过它。于是同键新开一条时试的是最早的、
+ *   还没被放弃的那条(一个一个开的时候就是新开的那条自己),不会把可能已经送到的同一句再发一遍。它重新算数只有
+ *   两种:自己被清掉又重开(那是新的一条),或报的人换了一句话再报、且仍要私聊。
+ *   别的失败都确知没送到,**不**记:不可重试的那几种(没配主人、目标不是私聊……)与五档用完只让键停下,重新
+ *   起头时试的仍是最早欠着的那条 —— 没配主人时一个一个开,每次本地试一遍同一句(不出网、不会重复送到);
+ *   配上之后新开一条,说的是欠得最久的那条,其余由它盖住。
  * - **已恢复**:只对真私聊过的补;报的人宿主在清的(来源停下、订阅删了)与明说不补的,表里的变更都带着
  *   `notify: false`,这里一律不补。发的是这条问题自带的 `recoveryMessage`(**当初真私聊出去那一刻**存下的,
  *   不是后来换过的);没带的用通用说法 {@link GENERIC_RECOVERY_PREFIX} 接当初真发出去的那句原文。
@@ -36,6 +49,12 @@ import { type ProblemChange, type ProblemTable, problemKeyOf } from "./problem-t
  * - **在途时清了又开**:发送途中这条问题被清、又被同一个键以「要私聊」重新开起来,新开的认领这次发送 ——
  *   等于没清过(送达后算它说过了,不补「已恢复」;没送到就照它走再送)。以「不要私聊」重开的不认领:
  *   那句话说的是已经清掉的那一条,送达后照旧对它补「已恢复」。
+ *
+ * 已知的缺口(定了不修):
+ * - 同键好几条一个一个修好:第一句「已恢复」之后轮到下一条被说出去,它随后也修好了,而它的「已恢复」落在
+ *   「已恢复」那张节流表的窗口里被吞 —— 主人听到的最后一句是「停了」,其实都好了。
+ * - 键停下之后只有旧的欠着、再没有新的一条,也没有说过的被清掉、没有恢复句送到:那几条一直没人说。
+ * - 结果不明而被记成「不再说」的那一条,就算其实没送到、通道后来也好了,也不会补(宁可少说一句,不重复说)。
  */
 
 /** 报的人没给「恢复时怎么说」时的通用说法:后面接当初真发出去的那句原文。 */
@@ -43,6 +62,12 @@ export const GENERIC_RECOVERY_PREFIX = "主人，好消息，之前说的这件�
 
 /** 节流窗口:同一 报的人 + code,上次私聊送到之后这么久之内不再发问题私聊。 */
 export const NOTIFY_WINDOW_MS = 60_000;
+
+/**
+ * 沉淀时间:一把键上清掉一条之后,这么久之内不发问题私聊。要盖住「一批清」落完的时长(逐个取消会话时中间
+ * 隔着的那几个 await),又不能让真该补说的那一句迟得让人察觉。
+ */
+export const CLOSE_SETTLE_MS = 5_000;
 
 /** 再送的间隔(从上一次没送到算起),五次。 */
 export const RETRY_DELAYS_MS = [10_000, 30_000, 60_000, 300_000, 900_000] as const;
@@ -75,6 +100,11 @@ interface ProblemEntry {
 	sentRecovery?: string;
 	/** 吞掉这一条的那一句所属的问题。它还开着且说过,这一条才算被盖住。 */
 	coveredBy?: ProblemEntry;
+	/**
+	 * 以结果不明的失败落定的那一句(「不再说」:它可能已经送到了):有它,对账就跳过这一条。报的人换了一句
+	 * 别的话再报、且仍要私聊时才去掉。
+	 */
+	givenUpText?: string;
 }
 
 /** 一次在路上的发送。 */
@@ -98,13 +128,15 @@ interface ThrottleState {
 	lastSaid?: ProblemEntry;
 	/** 在路上的那一发(每把键同时至多一发)。 */
 	sending?: SendState;
-	/** 「到点再对账」的计时器(每把键至多一个:窗口到点或再送到点)。 */
+	/** 「到点再对账」的计时器(每把键至多一个:窗口到点、再送到点或沉淀期过)。 */
 	timer?: Disposable;
+	/** 沉淀期到什么时候(这把键上最近一次清掉一条的时刻 + {@link CLOSE_SETTLE_MS});没清过就没有。 */
+	closeSettlesAt?: number;
 	/** 已经用掉的再送档数。 */
 	retriesUsed: number;
 	/** 再送最早什么时候(没在等再送就没有)。 */
 	retryAt?: number;
-	/** 停下了(失败不可重试,或五档用完):同键有新的一条要说之前不再试。 */
+	/** 停下了(失败不可重试,或五档用完):同键有新的一条要说、说过的一条被清掉、或一句「已恢复」送到之前不再试。 */
 	halted: boolean;
 }
 
@@ -165,12 +197,13 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		return entries.get(entry.id) === entry && entry.sentText !== undefined;
 	}
 
-	/** 这把键欠着的:开着、要私聊、没说过、没被盖住,按开的先后。 */
+	/** 这把键欠着的:开着、要私聊、没说过、没被盖住、没记成「不再说」,按开的先后。 */
 	function owedOf(key: string): ProblemEntry[] {
 		const owed: ProblemEntry[] = [];
 		for (const entry of entries.values()) {
 			if (throttleKey(entry) !== key) continue;
 			if (!entry.wantsNotify || entry.sentText !== undefined) continue;
+			if (entry.givenUpText !== undefined) continue;
 			if (entry.coveredBy && covers(entry.coveredBy)) continue;
 			owed.push(entry);
 		}
@@ -182,6 +215,14 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		state.retriesUsed = 0;
 		state.retryAt = undefined;
 		state.halted = false;
+	}
+
+	/**
+	 * 停下的键放开:同键说过的一条被清掉、或一句「已恢复」送到了(通道是通的)。没停下就不动 ——
+	 * 正在数档位的再送照旧数它的。
+	 */
+	function releaseHalt(state: ThrottleState): void {
+		if (state.halted) resetRetry(state);
 	}
 
 	/**
@@ -226,7 +267,8 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			return;
 		}
 		if (state.halted) return;
-		const waitMs = Math.max(windowEndsAt, state.retryAt ?? 0) - now();
+		// 窗口尾、再送时刻、沉淀期,取最晚的那个;到点重新对账(那时还欠着的才说)
+		const waitMs = Math.max(windowEndsAt, state.retryAt ?? 0, state.closeSettlesAt ?? 0) - now();
 		if (waitMs > 0) {
 			state.timer = serviceCtx.setTimeout(() => {
 				state.timer = undefined;
@@ -276,7 +318,11 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		logger.warn(
 			`[problems] 私聊没送到 reporter=${entry.reporter} code=${entry.code}: ${result.message}`,
 		);
-		if (FAILURE_CODES[result.code].retry !== "later") {
+		const { retry } = FAILURE_CODES[result.code];
+		if (retry !== "later") {
+			// 结果不明(码表里「绝不重发」):这一句可能已经送到了,那一条不再说。别的不可重试的失败确知没送到,只让键停下。
+			// 发送途中清掉、没人认领的那条已经不在账上,不用记。
+			if (retry === "never" && !closed) entry.givenUpText = text;
 			state.halted = true;
 			return;
 		}
@@ -308,11 +354,18 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		serviceCtx.track(
 			deliver(sentRecovery ?? `${GENERIC_RECOVERY_PREFIX}${sentText}`).then((result) => {
 				recoveryThrottle.end(key, result.ok);
-				if (!result.ok && !disposed) {
+				if (disposed) return;
+				if (!result.ok) {
 					logger.warn(
 						`[problems] 「已恢复」没送到 reporter=${problem.reporter} code=${problem.code}: ${result.message}`,
 					);
+					return;
 				}
+				// 送到了 = 通道是通的:这把键要是停下了就放开,欠着的重新对账
+				const state = throttles.get(key);
+				if (!state?.halted) return;
+				releaseHalt(state);
+				reconcile(key);
 			}),
 		);
 	}
@@ -325,12 +378,16 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 			const entry = entries.get(id);
 			if (!entry) return;
 			entries.delete(id);
+			// 这把键刚清过东西:沉淀期里不发问题私聊(同一批里的下一条清可能马上就到)
+			state.closeSettlesAt = now() + CLOSE_SETTLE_MS;
 			const sending = state.sending;
 			if (sending && !sending.closed && sending.entry === entry) {
 				// 这条的那一发还在路上:送到之后再看要不要补「已恢复」(期间同键再开的可以认领它)
 				sending.closed = { announceRecovery: change.notify };
-			} else if (entry.sentText !== undefined && change.notify) {
-				sendRecovery(entry, entry.sentText, entry.sentRecovery);
+			} else if (entry.sentText !== undefined) {
+				// 说过的一条没了:它盖着的那几条重新欠着,键要是停下了就放开
+				releaseHalt(state);
+				if (change.notify) sendRecovery(entry, entry.sentText, entry.sentRecovery);
 			}
 			reconcile(key);
 			return;
@@ -350,8 +407,18 @@ export function createProblemNotifier(options: CreateProblemNotifierOptions): Di
 		entry.message = change.problem.message;
 		entry.recoveryMessage = change.recoveryMessage;
 		entry.wantsNotify = change.notify;
-		// 同键有新的一条要说(新开,或由「不要私聊」换成「要私聊」):再送的账重新起头,当场试
-		if (change.notify && !wanted && entry.sentText === undefined) resetRetry(state);
+		// 被记成「不再说」的那一条:报的人换了一句别的话、且仍要私聊,才重新算数
+		const revived =
+			entry.givenUpText !== undefined && change.notify && entry.message !== entry.givenUpText;
+		if (revived) entry.givenUpText = undefined;
+		// 同键有新的一条要说(新开、由「不要私聊」换成「要私聊」、或上面那种重新算数):再送的账重新起头,当场试。
+		// 仍记着「不再说」的那一条翻回「要私聊」不算。
+		const newlyOwed =
+			change.notify &&
+			entry.sentText === undefined &&
+			entry.givenUpText === undefined &&
+			(!wanted || revived);
+		if (newlyOwed) resetRetry(state);
 		reconcile(key);
 	}
 

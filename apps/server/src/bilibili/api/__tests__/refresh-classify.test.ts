@@ -70,11 +70,11 @@ type Client = {
 
 /**
  * ⑭a 起 cookie 罐只有一个、换号时原地换(`load()` / `clear()`),客户端也一直是同一个。刷新链里每跨一次 await 都要
- * 比对 gen —— 漏一处,换号之后这条旧链还会接着发请求:带的是新号的 cookie,回来的 `Set-Cookie` 会被当成新会话的收进罐子
+ * 比对登录代(`generation`)—— 漏一处,换号之后这条旧链还会接着发请求:带的是新号的 cookie,回来的 `Set-Cookie` 会被当成新会话的收进罐子
  * (请求是换号之后才发的,罐子的换号计数对得上,`HttpClient` 的在途守卫挡不住)。从前每次换号都重建罐子与客户端,旧链手里
  * 握着旧罐子,这个缺口不咬人。
  */
-describe("刷新链跨 await 之后都比对 gen —— 换号以后旧链不再发请求", () => {
+describe("刷新链跨 await 之后都比对登录代 —— 换号以后旧链不再发请求", () => {
 	async function startChain() {
 		const { serviceCtx } = makeHost();
 		const { api } = await makeApi({ serviceCtx });
@@ -300,10 +300,10 @@ describe("续期链:闸与提交", () => {
 		return w.secrets.persists.length - before;
 	}
 
-	const run = (w: World, gen?: number) =>
-		gen === undefined
+	const run = (w: World, generation?: number) =>
+		generation === undefined
 			? w.api.checkIfTokenNeedRefresh("T0", "jct0")
-			: w.api.checkIfTokenNeedRefresh("T0", "jct0", gen);
+			: w.api.checkIfTokenNeedRefresh("T0", "jct0", generation);
 
 	it("成功:一次写里是新 cookie + 新令牌;事件在提交之后发;之后零散变化照常自动存", async () => {
 		const w = await world();
@@ -505,7 +505,10 @@ describe("续期链:闸与提交", () => {
 		expect(w.onAuthLost).toHaveBeenCalledTimes(1);
 	});
 
-	it("提交失败不算登录成功:去抖窗口不清零", async () => {
+	// 与上一条成对:光是一次提交,成也好败也好,都不是「一段新登录」。验红:`commitLogin` 的失败那一支里把去抖的记账
+	// 清掉(`authLostReported = undefined`),这条红。它**不**钉「落盘失败的扫码算不算新一段」—— 那个答案是「算」,
+	// 由 `login-session-boundary.test.ts` ⑤ 钉着(扫码走的是 `commitScannedLogin`,代在落盘之前就走了)。
+	it("同一段登录里的一次提交失败了(续期、登出的落盘失败):同样不开新的去抖窗口", async () => {
 		const w = await world();
 		const fire = () =>
 			(w.api as unknown as { maybeFireAuthLost(code: number): void }).maybeFireAuthLost(-101);
@@ -521,7 +524,7 @@ describe("续期链:闸与提交", () => {
 	it("刷新那一步期间被取代(换号 / 登出):丢弃,不提交,闸放了", async () => {
 		const w = await world({
 			refresh: () => {
-				// 刷新往返期间用户登出了:gen 加一,罐子归新状态。
+				// 刷新往返期间用户登出了:登录代加一,罐子归新状态。
 				void w.api.clearCookies();
 				return { code: 0, message: "0", data: { refresh_token: "T1" } };
 			},
@@ -555,7 +558,7 @@ describe("续期链:闸与提交", () => {
 	it("确认那一步期间被取代、确认回终态码:被取代的链不看码 —— 不清别人的罐子、不发 auth-lost、不留新闸", async () => {
 		const w = await world({
 			confirm: () => {
-				// 确认往返期间链被取代(这里用 stop():gen 加一,罐子不动);罐里是此刻活着的会话,不是这条链的。
+				// 确认往返期间链被取代(这里用 stop():登录代加一,罐子不动);罐里是此刻活着的会话,不是这条链的。
 				w.api.stop();
 				return { code: -101 };
 			},
