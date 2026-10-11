@@ -91,6 +91,10 @@ const NEW_PATHS: Probe[] = [
 	post("/api/adapters/qq-official/auth"),
 	get("/api/adapters/qq-official/auth/nope"),
 	post("/api/adapters/qq-official/auth/nope/draft"),
+	// 来源的登录口(3a-29 B 站半):这份 app 的登记表里没有来源,三个口都在动手之前回「这个来源没在跑」(503)。
+	get("/api/sources/bilibili/auth"),
+	post("/api/sources/bilibili/auth"),
+	{ method: "DELETE", path: "/api/sources/bilibili/auth" },
 	// 决策 5 随 ⑮ 开的图库读口(没这张图,处理函数自己回 404 —— 那也是挂上了的证据)。
 	get(`/api/images/${"0".repeat(64)}.png`),
 	// 聊天附件的上传(⑳b 起存进图库):没带文件,处理函数动手之前就回 400。

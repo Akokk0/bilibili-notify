@@ -136,6 +136,11 @@ export interface AppRuntime {
 	 */
 	profileImages: ImageWriter;
 	/**
+	 * 账号头像往图库存图的口:来源的登录系统(今天是 B 站的)登录后与头像网址变了时抓头像、存进图库。这一家引用的是
+	 * 在册来源 `auth.account().avatar`(现读来源登记表),装配时登记。
+	 */
+	accountImages: ImageWriter;
+	/**
 	 * 拓展作品往图库存图的口(ADR-0021 决策 22 下 2026-10-05 的 🔗,㉑d):收到上报、出卡前把配图与视频封面(以及随事件
 	 * 带来的作者头像)`put` 进图库,`Post` 里只放引用,出卡器按引用读图。作品是**在途数据、不落盘**,这一家没有引用可列
 	 * (`listRefs` 恒空),存进去的图靠清扫的 24 小时宽限期活到卡片画完 —— 登记它的意义是拿到存图的口,不是留图。
@@ -398,6 +403,17 @@ export function createAppRuntime(
 		name: IMAGE_REFERRERS.profiles,
 		listRefs: () => subRuntimeStore.listImageRefs(),
 	});
+	// 账号头像是图库的一家引用方:名单从来源登记表现读(每个在册来源登录着的账号的头像),不点名哪个来源 ——
+	// 以后别的来源交了 `auth.account()` 自动进名单。登录这套在登记表之外抓、存(`accountImages`),重启后重抓;
+	// 重启到重抓成功之间名单为空,靠新图 24 小时的宽限期不被清。
+	const accountImages = imageStore.register({
+		name: IMAGE_REFERRERS.accounts,
+		listRefs: async () =>
+			sourceRegistry.list().flatMap((view) => {
+				const avatar = view.auth?.account?.()?.avatar;
+				return avatar === undefined ? [] : [avatar];
+			}),
+	});
 	// 拓展报的资料更新 → 资料缓存 + 图库里的头像(ADR-0019 决策 7 / 49 / 62)。只听总线,所以在这儿就能起,
 	// 不必等订阅仓那座桥(它在 index.ts 建,晚于这里,发的是同一条总线)。
 	const reportedProfiles = bindReportedProfiles({
@@ -530,6 +546,7 @@ export function createAppRuntime(
 		imageStore,
 		chatImages,
 		profileImages,
+		accountImages,
 		postImages,
 		liveImages,
 		guardIcons,

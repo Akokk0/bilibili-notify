@@ -36,10 +36,7 @@ export const ALLOWLIST = {
 };
 
 /** 棘轮表:文件 → 引用 B 站设置的上限。只许往下调,3a 随 B 站接线搬进 `bilibili/` 清零。 */
-export const RATCHET = {
-	"apps/server/src/index.ts": 1,
-	"apps/server/src/runtime/engines.ts": 1,
-};
+export const RATCHET = {};
 
 /**
  * 一份源码里引用 B 站设置模块的地方。只认相对路径:服务端不是能被别处按包名引用的包。

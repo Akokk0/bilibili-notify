@@ -42,7 +42,7 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 			return respondFailure(c, fail("conflict", "已经有一个扫码登录在进行了，先重置再重新开始"));
 		}
 		try {
-			const begun = await deps.authSystem.beginLogin();
+			const begun = await deps.authSystem.auth.beginLogin();
 			if (!begun.ok) return respondFailure(c, begun);
 			return c.json(ok());
 		} catch (err) {
@@ -63,7 +63,7 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 
 	app.post("/logout", async (c) => {
 		try {
-			const out = await deps.authSystem.logout();
+			const out = await deps.authSystem.auth.logout();
 			if (!out.ok) return respondFailure(c, out);
 			return c.json(ok());
 		} catch (err) {

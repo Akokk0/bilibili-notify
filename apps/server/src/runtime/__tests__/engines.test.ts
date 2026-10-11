@@ -10,7 +10,7 @@
  *   config-changed globals:  dynamic+live.updateConfig、setLevel、push.setMaster 一并热推
  *   config-changed integration-settings: B 站自己的设置(cron / 健康检查间隔)按格各开各的门 ——
  *                            dynamic.updateConfig(新 dynamicCron 透传进 DynamicEngineConfig)、
- *                            loginFlow.setHealthCheckMs;没变的格不动
+ *                            (健康检查间隔归登录系统,见 `bilibili/auth/__tests__/auth-system-lifecycle.test.ts`);没变的格不动
  *   config-changed targets:  仅 push.setMaster 后早退(不触发 dynamic.updateConfig)
  *   config-changed 其它 scope:no-op
  *   AI 启 / 停 / 改:           lazy 构造 + 失效降级 + 已存在时 updateConfig
@@ -24,6 +24,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
+	AuthState,
 	Connection,
 	ConnectionCapabilities,
 	GlobalConfig,
@@ -32,6 +33,7 @@ import type {
 	PostEvent,
 	ProbeResult,
 	PushTarget,
+	SourceAuth,
 	SourceContext,
 	Subscription,
 } from "@bilibili-notify/internal";
@@ -58,7 +60,6 @@ import {
 	makeTrackingContext,
 	stillPending,
 } from "../../__tests__/support/track-context.js";
-import { BiliLoginStatus } from "../../bilibili/api/index.js";
 import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.js";
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
@@ -367,7 +368,6 @@ interface Ctx {
 		fetchRelations: ReturnType<typeof vi.fn>;
 		follow?: ReturnType<typeof vi.fn>;
 	};
-	loginFlow: { setHealthCheckMs: ReturnType<typeof vi.fn> };
 	/** 开机时 `registerSource` 登进去的假来源(`noSource` 时它存在但没登记)。 */
 	source: ReturnType<typeof makeSource>;
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
@@ -409,7 +409,7 @@ function setup(opts?: {
 	/** B 站作品图 / 直播封面的抓图服务(接线层用 B 站接口的请求客户端建的);不给 = 一个什么都抓不到的替身。 */
 	imageFetcher?: Parameters<typeof createEngines>[0]["imageFetcher"];
 	/** 开机那一刻的登录状态;不给 = 未登录。 */
-	loginStatus?: BiliLoginStatus;
+	loginStatus?: "logged-in" | "confirming";
 	/** 不给引擎登记那个假来源(测「来源没在跑」)。 */
 	noSource?: boolean;
 	/** 数据目录;不给 = 一个不存在的临时目录(不落盘的用例都用它)。 */
@@ -441,9 +441,13 @@ function setup(opts?: {
 		})),
 		...opts?.overrides?.api,
 	};
-	const loginFlow = {
-		setHealthCheckMs: vi.fn(),
-		current: () => ({ status: opts?.loginStatus ?? BiliLoginStatus.NOT_LOGIN, msg: "" }),
+	const auth = {
+		state: (): AuthState =>
+			opts?.loginStatus === "logged-in"
+				? { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }
+				: opts?.loginStatus === "confirming"
+					? { status: "confirming", message: "正在确认" }
+					: { status: "logged-out" },
 	};
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
@@ -458,7 +462,7 @@ function setup(opts?: {
 		// 这批用例不碰自带字体;真实实现由 runtime 传进来,这里给个空实现即可。
 		loadFontFace: async () => "",
 		api: api as any,
-		loginFlow: loginFlow as any,
+		auth,
 		configStore: configStore as unknown as ConfigStore,
 		historyStore: (opts?.overrides?.historyStore ?? { record: vi.fn(async () => {}) }) as any,
 		subscriptionStore: {
@@ -532,7 +536,6 @@ function setup(opts?: {
 		serviceCtx,
 		configStore,
 		api,
-		loginFlow,
 		source,
 		sourceReady,
 		sources,
@@ -1667,6 +1670,39 @@ describe("createEngines — boot wiring", () => {
 		expect(ctx?.subscriptions()).toEqual([]);
 	});
 
+	// 验红:去掉 engines.ts `registerSource` 里 `onAuthChanged: …`(或 builtin-sources.ts 里的订阅),这条红。
+	it("来源的 auth 叫了 onChange → 总线上一条 subscription-auth-changed(来源键 + 那一刻的 state());dispose 之后摘掉", async () => {
+		const c = setup({ noSource: true });
+		active = c;
+		const listeners = new Set<() => void>();
+		let state: AuthState = { status: "logged-out" };
+		const auth: SourceAuth = {
+			beginLogin: async () => ok(),
+			logout: async () => ok(),
+			state: () => state,
+			onChange: (fn) => {
+				listeners.add(fn);
+				return { dispose: () => void listeners.delete(fn) };
+			},
+		};
+		await c.runtime.registerSource({
+			sourceKey: "bilibili",
+			source: Object.assign(makeSource(), { auth }),
+			integration: { logger: c.serviceCtx.logger } as any,
+		});
+		const seen: unknown[] = [];
+		c.bus.on("subscription-auth-changed", (changed) => seen.push(changed));
+		expect(seen).toEqual([]); // 登记时不补发
+
+		state = { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" };
+		for (const fn of [...listeners]) fn();
+		expect(seen).toEqual([{ sourceKey: "bilibili", state }]);
+
+		c.runtime.dispose();
+		active = null;
+		expect(listeners.size).toBe(0);
+	});
+
 	// 验红:把 source-context.ts 里 `ctx.logger` 改回 `integration.logger`,这条红(来源拿到的成了基础 logger)。
 	it("来源拿到的 ctx.logger 就是 dynamic 子系统那个 logger,它的等级随 logging.levels.bilibili 热更", async () => {
 		const c = setup();
@@ -1890,7 +1926,7 @@ describe("createEngines — enableImageRendering 运行时热启用", () => {
 });
 
 describe("createEngines — config-changed globals 热重载", () => {
-	it("改 B 站设置(cron + 健康检查间隔):健康检查间隔热推到登录,不碰 live.updateConfig(cron 归 B 站来源)", () => {
+	it("改 B 站设置(cron + 健康检查间隔):不碰 live.updateConfig(cron 归 B 站来源,健康检查间隔归登录系统)", () => {
 		const c = setup();
 		active = c;
 		patchBilibili(c, (b) => {
@@ -1899,7 +1935,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		});
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
-		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(45 * 60_000);
 		// B 站设置不是核心设置(scope 是 integration-settings 不是 globals)→ 不重算 master。
 		// (从前这几格住在 `app` 里,走 globals 那一档,setMaster 顺带被调一次。)
 		expect(H.push[0].setMaster).not.toHaveBeenCalled();
@@ -1923,7 +1958,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "integration-settings" });
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1); // 仅 boot(engines.ts:181)
-		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled(); // boot 不调,这次也不该调
 	});
 
 	// 作品设置每条现折:改全局图集开关,下一条作品就按新的,不经引擎的热更门(此前 imageGroup 整个漏在门外)。
@@ -2152,7 +2186,6 @@ describe("createEngines — config-changed globals 热重载", () => {
 		c.bus.emit("config-changed", { scope: "globals" });
 		// boot 各 1 次;改 AI 人设不应再扇出到 app section。
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(1);
-		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 		// AI 本身仍热更。
 		expect(H.ai[0].updateConfig).toHaveBeenCalledTimes(1);
 	});
@@ -2367,27 +2400,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 // B 站自己的设置(`config/settings/bilibili.json`)走 `integration-settings` 这一档,与核心设置的 `globals`
 // 各管各的:这一档只认 B 站那两格,没变的格不动;核心设置变了(日志等级之类)也不波及 B 站那两样。
 describe("createEngines — config-changed integration-settings(B 站设置)", () => {
-	it("事件来了但 B 站设置没变(别的集成改了):不重排健康检查", () => {
-		const c = setup();
-		active = c;
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-
-		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
-	});
-
-	it("只改 healthCheckMinutes:按新间隔重排健康检查,不动 cron", () => {
-		const c = setup();
-		active = c;
-		patchBilibili(c, (b) => {
-			b.healthCheckMinutes = 90;
-		});
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-
-		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledTimes(1);
-		expect(c.loginFlow.setHealthCheckMs).toHaveBeenCalledWith(90 * 60_000);
-	});
-
-	it("只改核心设置的 logLevel:B 站那两样(cron / 健康检查)一个都不动", () => {
+	it("只改核心设置的 logLevel:B 站的 cron 不动", () => {
 		const c = setup();
 		active = c;
 		patchGlobals(c, (g) => {
@@ -2396,7 +2409,6 @@ describe("createEngines — config-changed integration-settings(B 站设置)", (
 		c.bus.emit("config-changed", { scope: "globals" });
 
 		expect(c.serviceCtx.setLevel).toHaveBeenCalledTimes(2); // 这一发确实被处理了(boot + 这次)
-		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 	});
 	// 「初始带 B 站设置里的 cron」「cron 变了引擎换节奏」在 `bilibili/__tests__/source.test.ts`。
 });
@@ -2553,18 +2565,6 @@ describe("createEngines — dispose", () => {
 		c.bus.emit("config-changed", { scope: "globals" });
 		expect(fn).not.toHaveBeenCalled();
 		expect(c.sources.get("bilibili")).toBeUndefined();
-	});
-
-	it("dispose 同样解绑 B 站设置的监听(后续 integration-settings 不再生效)", () => {
-		const c = setup();
-		active = c;
-		c.runtime.dispose();
-		active = null;
-		patchBilibili(c, (b) => {
-			b.healthCheckMinutes = 45;
-		});
-		c.bus.emit("config-changed", { scope: "integration-settings" });
-		expect(c.loginFlow.setHealthCheckMs).not.toHaveBeenCalled();
 	});
 
 	it("dispose 之后再让来源交一条:作品入口没收到,记了那行 error", async () => {
@@ -3324,12 +3324,24 @@ describe("createEngines — 开机补关注", () => {
 		expect(c.api.fetchRelations).not.toHaveBeenCalled();
 	});
 
+	it("开机还没确认上(confirming,不算登录):不查关注关系", async () => {
+		const c = setup({
+			subs: [
+				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
+			],
+			loginStatus: "confirming",
+		});
+		active = c;
+		await new Promise((r) => setTimeout(r, 0));
+		expect(c.api.fetchRelations).not.toHaveBeenCalled();
+	});
+
 	it("已登录开机:查一次关注关系", async () => {
 		const c = setup({
 			subs: [
 				makeEmptySubscription({ id: "s1", identity: { sourceKey: "bilibili", externalId: "1" } }),
 			],
-			loginStatus: BiliLoginStatus.LOGGED_IN,
+			loginStatus: "logged-in",
 		});
 		active = c;
 		await vi.waitFor(() => expect(c.api.fetchRelations).toHaveBeenCalledWith(["1"]));
@@ -3636,7 +3648,7 @@ describe("createEngines — 后台写登记进 track", () => {
 			const follow = vi.fn(() => first.promise);
 			const c = setup({
 				subs: twoSubs,
-				loginStatus: BiliLoginStatus.LOGGED_IN,
+				loginStatus: "logged-in",
 				overrides: { api: { fetchRelations: noneFollowed, follow } },
 			});
 			active = c;

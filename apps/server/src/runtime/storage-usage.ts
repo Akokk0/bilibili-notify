@@ -55,7 +55,7 @@ const HISTORY_HOLDERS: ReadonlySet<string> = new Set([
 
 /**
  * 一张图属于哪一类:引用它的**全都**属于「推送历史 / 重推原件」→ 历史图;只有「女仆对话」→ 女仆 AI;其余
- * (没人引用、被订阅资料 / 作品 / 拓展直播 / 来源声明的图引用、同时被两类引用)→ 其它图片。纯函数,引用方名字只从
+ * (没人引用、被订阅资料 / 作品 / 拓展直播 / 来源声明的图 / 账号头像引用、同时被两类引用)→ 其它图片。纯函数,引用方名字只从
  * {@link IMAGE_REFERRERS} 取。
  */
 export function classifyImage(holders: readonly string[]): ImageClass {

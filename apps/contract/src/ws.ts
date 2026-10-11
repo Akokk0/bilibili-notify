@@ -72,6 +72,8 @@ export interface WsEvents {
 		"auth-lost": null;
 		"auth-restored": null;
 		"cookies-refreshed": BusEvents["cookies-refreshed"];
+		/** 一个来源的登录状态变了;载荷只有来源键与状态,账号走 `GET /api/sources/:sourceKey/auth`。 */
+		"subscription-auth-changed": BusEvents["subscription-auth-changed"];
 	};
 	"push-events": {
 		/** 历史那一行的 wire 视图(与 `GET /api/history` 同一投影),图片留文件名。 */

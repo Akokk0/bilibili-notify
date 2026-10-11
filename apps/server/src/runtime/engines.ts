@@ -61,13 +61,14 @@ import {
 	resolve,
 	resolveAIProfile,
 	resolveSubscriptionPersona,
+	type SourceAuth,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { type Push, type PushAnchor, PushRouter } from "@bilibili-notify/push";
 import { atomicWriteJsonSync } from "@bilibili-notify/storage";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { attachReadOnlyTools, type ExtensionLiveSource } from "../ai/read-only-tools.js";
-import { type Api, BiliLoginStatus } from "../bilibili/api/index.js";
+import type { Api } from "../bilibili/api/index.js";
 import { resolveDynamicColorOptions } from "../bilibili/dynamic/index.js";
 import type { ImagesDeps } from "../bilibili/images.js";
 import type { GuardIcons } from "../bilibili/live/guard-icons.js";
@@ -81,7 +82,6 @@ import {
 	type SubItemView as LiveSubView,
 	rotateLiveCover,
 } from "../bilibili/live/index.js";
-import { watchSettings } from "../bilibili/settings.js";
 import type { ConfigStore } from "../config/store.js";
 import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
@@ -238,10 +238,10 @@ export interface CreateEnginesOptions {
 	loadFontFace: (id: string) => Promise<string>;
 	api: Api;
 	/**
-	 * Auth subsystem 的 LoginFlow 实例。engines.ts 用它在 config-changed 时
-	 * 把 B 站设置的 `healthCheckMinutes` 热推到登录健康检查定时器(见 `watchSettings`)。
+	 * B 站的登录口(`AuthSystem.auth`)的读面。开机关注同步那道门读它;不从来源登记表读,因为引擎装配建好的这一刻
+	 * 来源还没登记(登记在 `compose.ts`,晚于这里)。
 	 */
-	loginFlow: import("../bilibili/auth/login-flow.js").LoginFlow;
+	auth: Pick<SourceAuth, "state">;
 	configStore: ConfigStore;
 	historyStore: HistoryStore;
 	subscriptionStore: SubscriptionStore;
@@ -682,7 +682,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 启动时只在已登录时补一遍。未登录时关系查询回 -101、逐个补关注也全是 -101:白打 B 站,
 	// 还把每条订阅标成「未关注」。开机时登录状态已探完(createAuthSystem 等过探活);未登录时
 	// LoginFlow 记下了 needsRestore,扫码登录后发 auth-restored,由下面那条补上。
-	if (opts.loginFlow.current().status === BiliLoginStatus.LOGGED_IN) runFollowSync("boot");
+	// `confirming`(开机没确认上)不算登录,与从前判「已登录」一致。
+	const biliLoggedIn = (): boolean => opts.auth.state().status === "logged-in";
+	if (biliLoggedIn()) runFollowSync("boot");
 
 	// ---------- LiveEngine ----------
 	const livePushLike = makeLivePushLike(push, subscriptionIdOfUid, log);
@@ -1030,7 +1032,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 
 				// `logging` 里只按日志等级(`level` 与 `levels` 两格)开门,**不要写成整段比**:保留天数、内存自检开关
 				// 各有各的读法,不在这里热推。粉丝轮询的 cron 是顶层的 `profileRefreshCron`,同样不在这里。
-				// B 站那两格(cron / 健康检查间隔)在 B 站自己的设置里,见下方 `watchSettings`。
+				// B 站那两格(cron / 健康检查间隔)在 B 站自己的设置里:cron 由 B 站来源自己听,健康检查间隔由登录系统(`bilibili/auth/`)自己听。
 				if (
 					!eq(prev.logging.level, g.logging.level) ||
 					!eq(prev.logging.levels, g.logging.levels)
@@ -1116,16 +1118,6 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		}),
 	);
 
-	// B 站登录健康检查间隔(cron 那一格归 B 站来源自己,`bilibili/source.ts`)。
-	handles.push(
-		watchSettings(opts.configStore, (prev, next) => {
-			if (prev.healthCheckMinutes !== next.healthCheckMinutes) {
-				// healthCheck → LoginFlow:dispose 旧 setInterval + 按新间隔重 arm。
-				opts.loginFlow.setHealthCheckMs(next.healthCheckMinutes * 60_000);
-			}
-		}),
-	);
-
 	// ---------- Disposal ----------
 	// index.ts shutdown 既显式调 engines.dispose(),又经 runtime.dispose() 跑
 	// serviceCtx.onDispose 钩子(下方 onDispose(dispose))→ 双调。幂等守卫,
@@ -1175,6 +1167,9 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		registerSource: async (entry) => {
 			const registration = await registerBuiltinSource({
 				...entry,
+				// 来源的登录状态变了 → 总线上一条 `subscription-auth-changed`(宿主订阅、宿主发,来源拿不到总线)。
+				onAuthChanged: (state) =>
+					opts.bus.emit("subscription-auth-changed", { sourceKey: entry.sourceKey, state }),
 				registry: opts.sources,
 				subscriptions: opts.subscriptionStore,
 				defaults: () => globals().defaults,

@@ -20,21 +20,14 @@
  */
 
 import { Buffer } from "node:buffer";
-import type { Logger, Result } from "@bilibili-notify/internal";
+import type { AuthState, Logger, Result } from "@bilibili-notify/internal";
 import { type CommandDef, command } from "./command-dispatcher.js";
-
-/** LoginFlow 快照里我们用得上的那部分。`data` 是 any,形状不由我们做主。 */
-export interface LoginSnapshotView {
-	status: number;
-	msg: string;
-	data?: unknown;
-}
 
 export interface LoginCommandOptions {
 	/** 现生成一张二维码并开始轮询。 */
 	begin: () => Promise<Result>;
-	/** 读当前登录快照 —— 码就挂在它的 `data` 上。 */
-	snapshot: () => LoginSnapshotView;
+	/** 读当前登录状态 —— 发起成功后码就在 `awaiting-scan` 的 `qr.dataUrl` 里。 */
+	state: () => AuthState;
 	logger: Logger;
 }
 
@@ -71,13 +64,17 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 				await reply(begun.message);
 				return;
 			}
-			const snap = opts.snapshot();
-			const png = decodeDataUrl(snap.data);
+			const state = opts.state();
+			const png = state.status === "awaiting-scan" ? decodeDataUrl(state.qr.dataUrl) : undefined;
 			if (!png) {
-				// 快照那句 msg 已经是人话(「获取二维码失败，请重试」),照转即可 ——
+				opts.logger.warn(`[command] 扫码没拿到二维码: status=${state.status}`);
+				// 状态自带的那句话已经是人话(「获取二维码失败，请重试」),照转即可 ——
 				// 在这儿再写一份就是第二份会跟它跑偏的文案。
-				opts.logger.warn(`[command] 扫码没拿到二维码: status=${snap.status} msg=${snap.msg}`);
-				await reply(snap.msg || "没拿到二维码，稍后再试试～");
+				const hint =
+					state.status === "error" || state.status === "expired" || state.status === "confirming"
+						? state.message
+						: undefined;
+				await reply(hint || "没拿到二维码，稍后再试试～");
 				return;
 			}
 			// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。

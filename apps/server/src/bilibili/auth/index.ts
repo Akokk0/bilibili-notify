@@ -5,14 +5,17 @@ import {
 	ok,
 	type Result,
 	type ServiceContext,
+	type SourceAuth,
 } from "@bilibili-notify/internal";
+import type { ConfigStore } from "../../config/store.js";
+import { createImageFetcher } from "../../images/image-fetcher.js";
+import type { ImageWriter } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
 import { Api } from "../api/index.js";
 import { createBiliContext, REFRESH_TOKEN_KEY } from "../context.js";
+import { fetchAvatar } from "../images.js";
+import { settingsOf, watchSettings } from "../settings.js";
 import { LoginFlow, type LoginSnapshot } from "./login-flow.js";
-
-/** Default health-probe cadence: 30 minutes. */
-const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
 
 /**
  * Auth subsystem. Boot order: open the integration's stores → Api → LoginFlow → resume stored login → health probe.
@@ -33,23 +36,21 @@ const DEFAULT_HEALTH_CHECK_MS = 30 * 60 * 1000;
  */
 export interface AuthSystem {
 	readonly api: Api;
-	readonly flow: LoginFlow;
 	/**
 	 * B 站集成的上下文(登录这一套建好的那个),按公共五格的类型交出去:核心在类型上拿不到 `http` 与 `cookies`。
 	 * 入口递给 `compose.ts`,来源的上下文建在它之上。
 	 */
 	readonly integration: IntegrationContext;
-	/** Trigger a fresh QR login session. Renders the QR PNG using the `qrcode` npm dep. 拿不到码回失败结果。 */
-	beginLogin(): Promise<Result>;
+	/**
+	 * 登录口(`Source.auth`):发起扫码、退出登录(状态总会进未登录;存着的登录状态清不掉时回失败,
+	 * 话里写着原因与「重启后可能还是登录着」)、读状态与账号、订阅变化。
+	 */
+	readonly auth: SourceAuth;
 	/** Force a cookie refresh check against bilibili. */
 	refreshCookies(): Promise<void>;
-	/**
-	 * Forget the login: clear the live jar and delete the refresh token in one commit, report logged-out.
-	 * Safe when not logged in. Never touches master.key — it also encrypts the config secrets.
-	 * 状态总会进未登录;存着的登录状态清不掉时回失败(`unavailable`,话里写着原因与「重启后可能还是登录着」)。
-	 */
-	logout(): Promise<Result>;
-	/** Current snapshot — proxy to `flow.current()`. */
+	/** 把健康检查提前到现在(开发场景「登录心跳」);没登录 / 扫码中跳过、回 false。 */
+	healthCheckNow(): Promise<boolean>;
+	/** Current snapshot in the old wire shape — proxy to `flow.current()`. 临时,提交 ⑤ 随旧线上形状一起删。 */
 	status(): LoginSnapshot;
 	/** Stop the flow and the api, save the cookie jar one last time, close the stores. Idempotent. */
 	dispose(): Promise<void>;
@@ -60,13 +61,15 @@ export interface CreateAuthSystemOptions {
 	bus: MessageBus;
 	/** 集成存储宿主(`AppRuntime.integrationStore`):登录的 cookie 与令牌住在这个集成自己的存储里。 */
 	integrationStore: Pick<IntegrationStore, "open">;
-	/** Optional override for the QR poll/health check interval (ms). Tests use this. */
-	healthCheckMs?: number;
+	/** 配置仓的读口:开机读健康检查间隔,之后的变化自己听(`watchSettings`)。 */
+	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
+	/** 账号头像往图库存图的口(`AppRuntime.accountImages`)。 */
+	accountImages: ImageWriter;
 }
 
 export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<AuthSystem> {
 	const log = opts.serviceCtx.logger;
-	const healthCheckMs = opts.healthCheckMs ?? DEFAULT_HEALTH_CHECK_MS;
+	const healthCheckMs = settingsOf(opts.configStore).healthCheckMinutes * 60_000;
 
 	// 1. 开存储、读两份文件、建罐子与身份 —— 都在 `new Api` 之前。
 	const context = await createBiliContext({
@@ -107,15 +110,26 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		log.debug("[auth] Api started");
 
 		// 4. LoginFlow.
+		// 账号头像走 B 站的请求客户端抓进图库(同一套缩放档与请求头,不新增出站原语)。
+		const avatarImages = createImageFetcher({ http: api.http, images: opts.accountImages });
 		flow = new LoginFlow({
 			serviceCtx: opts.serviceCtx,
 			api,
 			bus: opts.bus,
 			healthCheckMs,
+			fetchAvatar: (url) => fetchAvatar(url, { images: avatarImages, logger: log }),
 		});
 		await flow.start();
 
 		const flowFinal = flow;
+
+		// 健康检查间隔在设置里改了就热换到心跳定时器(从前由引擎装配听、转给 LoginFlow)。
+		const settingsSubscription = watchSettings(opts.configStore, (prev, next) => {
+			if (prev.healthCheckMinutes !== next.healthCheckMinutes) {
+				flowFinal.setHealthCheckMs(next.healthCheckMinutes * 60_000);
+			}
+		});
+		ctx.onDispose(() => settingsSubscription.dispose());
 
 		// Resume the stored login (the host already loaded the jar), then probe account info.
 		// Extracted (steps 5-6) so a backup restore can re-run the exact boot sequence and
@@ -168,13 +182,20 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 
 		const status = (): LoginSnapshot => flowFinal.current();
 
+		const auth: SourceAuth = {
+			beginLogin,
+			logout,
+			state: () => flowFinal.authState(),
+			account: () => flowFinal.account(),
+			onChange: (fn) => flowFinal.onChange(fn),
+		};
+
 		return {
 			api,
-			flow: flowFinal,
 			integration: ctx,
-			beginLogin,
+			auth,
 			refreshCookies,
-			logout,
+			healthCheckNow: () => flowFinal.healthCheckNow(),
 			status,
 			dispose: () => context.dispose(),
 		};

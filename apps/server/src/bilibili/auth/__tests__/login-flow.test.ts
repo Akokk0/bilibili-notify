@@ -127,7 +127,9 @@ interface Harness {
 	scFake: ReturnType<typeof makeFakeServiceCtx>;
 }
 
-function makeFlow(opts: { healthCheckMs?: number } = {}): Harness {
+function makeFlow(
+	opts: { healthCheckMs?: number; fetchAvatar?: (url: string) => Promise<string | undefined> } = {},
+): Harness {
 	const api = makeFakeApi();
 	const { bus, events } = makeFakeBus();
 	const scFake = makeFakeServiceCtx();
@@ -136,6 +138,7 @@ function makeFlow(opts: { healthCheckMs?: number } = {}): Harness {
 		api: api as unknown as Api,
 		bus,
 		healthCheckMs: opts.healthCheckMs ?? 0,
+		fetchAvatar: opts.fetchAvatar,
 	});
 	return { flow, api, bus, events, scFake };
 }
@@ -963,5 +966,286 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 
 		h.flow.reportLoggedOut("notLogin"); // 已经是未登录:再退不再发
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+	});
+});
+
+/** 对外的状态与账号(3a-29 提交 ③):`onChange` 的去重、头像这条后台线。 */
+describe("LoginFlow — onChange(对外状态与账号)", () => {
+	const cardOf = (face: string) => ({ card: { mid: "42", name: "n", face } });
+
+	/** 此刻对外读到的(状态,账号),每次 onChange 记一份。 */
+	function watch(h: Harness) {
+		const seen: Array<{ status: string; name?: string; avatar?: string }> = [];
+		h.flow.onChange(() => {
+			const acct = h.flow.account();
+			seen.push({ status: h.flow.authState().status, name: acct?.name, avatar: acct?.avatar });
+		});
+		return seen;
+	}
+
+	async function logIn(h: Harness, face = "https://i0.hdslb.com/a.jpg") {
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: cardOf(face) });
+		await h.flow.reportAccountInfo();
+		await Promise.all(h.scFake.tracked);
+	}
+
+	it("对外状态与账号都没变就不叫:重复登出、账号信息暂时取不到都不叫", async () => {
+		const h = makeFlow();
+		await logIn(h);
+		const seen = watch(h);
+
+		// 探活抛网络异常:旧快照的话变了(「获取个人信息失败」),对外状态与账号都没变。
+		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("net down"));
+		await h.flow.reportAccountInfo();
+		expect(seen).toHaveLength(0);
+
+		h.flow.reportLoggedOut("notLogin");
+		expect(seen).toHaveLength(1);
+		h.flow.reportLoggedOut("notLogin");
+		expect(seen).toHaveLength(1);
+	});
+
+	it("扫码成功:进已登录叫一声(账号还没有),账号到了叫一声,头像到了再叫一声", async () => {
+		const h = makeFlow({ fetchAvatar: async () => "avatar-ref" });
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+		h.api.fetchLoginStatus.mockResolvedValueOnce({
+			code: 0,
+			data: { code: 0, refresh_token: "rt" },
+		});
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({
+			code: 0,
+			data: cardOf("https://i0.hdslb.com/a.jpg"),
+		});
+		await h.flow.beginLogin(async () => "data:url");
+		const seen = watch(h);
+
+		await h.scFake.intervals[0]?.handle.fire();
+		await Promise.all(h.scFake.tracked);
+
+		expect(seen).toEqual([
+			{ status: "logged-in", name: undefined, avatar: undefined },
+			{ status: "logged-in", name: "n", avatar: undefined },
+			{ status: "logged-in", name: "n", avatar: "avatar-ref" },
+		]);
+	});
+
+	it("被登出作废的迟到探活不叫", async () => {
+		const h = makeFlow();
+		await logIn(h);
+		const seen = watch(h);
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.fetchMyselfInfo.mockReturnValueOnce(probe.promise);
+
+		const pending = h.flow.reportAccountInfo();
+		h.flow.reportLoggedOut("notLogin");
+		expect(seen).toHaveLength(1);
+		probe.resolve({ code: 0, data: { mid: 42 } });
+		await pending;
+
+		expect(seen).toHaveLength(1);
+		expect(h.flow.authState().status).toBe("logged-out");
+	});
+
+	it("等待扫码 → 已扫等确认:从 pollOnce 驱动,叫一声且 message 是「已扫码」那句;还没扫的那拍不叫", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+		await h.flow.beginLogin(async () => "data:url");
+		const seen = watch(h);
+
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
+		await h.scFake.intervals[0]?.handle.fire();
+		expect(seen).toHaveLength(0); // ready → waiting-scan:对外都是 awaiting-scan
+
+		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86090 } });
+		await h.scFake.intervals[0]?.handle.fire();
+		expect(seen).toHaveLength(1);
+		expect(h.flow.authState()).toEqual({ status: "confirming", message: "已扫码，请在手机上确认" });
+	});
+
+	it("开机没确认上:对外是 confirming 且 message 是「正在向 B 站确认」那句,不是登录", () => {
+		const h = makeFlow();
+		expect(h.flow.authState()).toEqual({
+			status: "confirming",
+			message: "正在向 B 站确认登录状态，暂时连不上的话会自动重试",
+		});
+		expect(h.flow.account()).toBeNull();
+	});
+
+	it("loggedInAt 在同一段登录里不随卡片补到而变", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+		h.api.fetchLoginStatus.mockResolvedValueOnce({
+			code: 0,
+			data: { code: 0, refresh_token: "rt" },
+		});
+		const probe = deferred<{ code: number; data: { mid: number } }>();
+		h.api.fetchMyselfInfo.mockReturnValueOnce(probe.promise);
+		h.api.fetchUserCard.mockResolvedValueOnce({
+			code: 0,
+			data: cardOf("https://i0.hdslb.com/a.jpg"),
+		});
+		await h.flow.beginLogin(async () => "data:url");
+		const polling = h.scFake.intervals[0]?.handle.fire();
+		await flush();
+		const first = h.flow.authState();
+		expect(first.status).toBe("logged-in"); // 卡片还没取到的那一小段
+		await new Promise((r) => setTimeout(r, 5));
+		probe.resolve({ code: 0, data: { mid: 42 } });
+		await polling;
+		await Promise.all(h.scFake.tracked);
+
+		expect(h.flow.authState()).toEqual(first);
+		expect(h.flow.account()?.name).toBe("n");
+	});
+});
+
+describe("LoginFlow — 账号头像这条后台线", () => {
+	const HEALTH_MS = 60_000;
+	const cardOf = (face: string) => ({ card: { mid: "42", name: "n", face } });
+	const A = "https://i0.hdslb.com/a.jpg";
+	const B = "https://i0.hdslb.com/b.jpg";
+
+	async function logIn(h: Harness, face = A) {
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: cardOf(face) });
+		await h.flow.reportAccountInfo();
+	}
+
+	it("取到卡片后抓一次:account().avatar 有值;网址没变不重抓", async () => {
+		const fetchAvatar = vi.fn(async (_url: string): Promise<string | undefined> => "ref-a");
+		const h = makeFlow({ healthCheckMs: HEALTH_MS, fetchAvatar });
+
+		await logIn(h);
+		await Promise.all(h.scFake.tracked);
+		expect(fetchAvatar).toHaveBeenCalledTimes(1);
+		expect(fetchAvatar).toHaveBeenCalledWith(A);
+		expect(h.flow.account()).toEqual({ name: "n", avatar: "ref-a" });
+
+		// 同一个头像网址的第二次探活与心跳:不重抓。
+		await logIn(h);
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		await h.scFake.intervals.at(-1)?.handle.fire();
+		await flush();
+		await Promise.all(h.scFake.tracked);
+		expect(fetchAvatar).toHaveBeenCalledTimes(1);
+	});
+
+	it("抓不到(回空):账号照常、头像缺着,登录状态与事件一个字不动", async () => {
+		const h = makeFlow({ fetchAvatar: async () => undefined });
+		await logIn(h);
+		const eventsBefore = h.events.length;
+		await Promise.all(h.scFake.tracked);
+
+		expect(h.flow.account()).toEqual({ name: "n" });
+		expect(h.flow.authState().status).toBe("logged-in");
+		expect(h.events.length).toBe(eventsBefore);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+	});
+
+	it("抓头像抛了:记 warn,账号照常、状态不变,不走到登出与瞬时失败", async () => {
+		const h = makeFlow({
+			fetchAvatar: async () => {
+				throw new Error("boom");
+			},
+		});
+		await logIn(h);
+		const eventsBefore = h.events.length;
+		await Promise.all(h.scFake.tracked);
+
+		expect(h.flow.account()).toEqual({ name: "n" });
+		expect(h.flow.current().msg).toBe("已登录");
+		expect(h.events.length).toBe(eventsBefore);
+		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+	});
+
+	it("抓的途中退出登录:结果丢掉,账号没了;之后重新登录同一个头像网址会重抓", async () => {
+		const first = deferred<string | undefined>();
+		const fetchAvatar = vi
+			.fn<(url: string) => Promise<string | undefined>>()
+			.mockReturnValueOnce(first.promise)
+			.mockResolvedValue("ref-new");
+		const h = makeFlow({ fetchAvatar });
+		await logIn(h);
+		expect(fetchAvatar).toHaveBeenCalledTimes(1);
+
+		h.flow.reportLoggedOut("notLogin");
+		await logIn(h); // 同一个网址、新的一段登录
+		await Promise.all(h.scFake.tracked.slice(1));
+		expect(fetchAvatar).toHaveBeenCalledTimes(2);
+		expect(h.flow.account()).toEqual({ name: "n", avatar: "ref-new" });
+
+		first.resolve("ref-old"); // 迟到的旧结果
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toEqual({ name: "n", avatar: "ref-new" });
+	});
+
+	it("抓的途中退出登录且没有再登录:迟到的结果丢掉,账号是 null", async () => {
+		const pending = deferred<string | undefined>();
+		const h = makeFlow({ fetchAvatar: () => pending.promise });
+		await logIn(h);
+		h.flow.reportLoggedOut("notLogin");
+		pending.resolve("ref-a");
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toBeNull();
+	});
+
+	it("抓的途中头像网址变了:旧网址的结果丢掉,新网址的留着", async () => {
+		const first = deferred<string | undefined>();
+		const fetchAvatar = vi
+			.fn<(url: string) => Promise<string | undefined>>()
+			.mockReturnValueOnce(first.promise)
+			.mockResolvedValueOnce("ref-b");
+		const h = makeFlow({ fetchAvatar });
+		await logIn(h, A);
+		await logIn(h, B); // 恢复备份之类:同一段登录里账号换了头像
+		await Promise.all(h.scFake.tracked.slice(1));
+		expect(h.flow.account()).toEqual({ name: "n", avatar: "ref-b" });
+
+		first.resolve("ref-a");
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toEqual({ name: "n", avatar: "ref-b" });
+	});
+
+	it("心跳成功且头像缺着(上次没抓成):补抓一次;心跳的判定不等它", async () => {
+		const fetchAvatar = vi
+			.fn<(url: string) => Promise<string | undefined>>()
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce("ref-a");
+		const h = makeFlow({ healthCheckMs: HEALTH_MS, fetchAvatar });
+		await logIn(h);
+		await Promise.all(h.scFake.tracked);
+		expect(h.flow.account()).toEqual({ name: "n" });
+
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		await h.scFake.intervals.at(-1)?.handle.fire();
+		await flush();
+		await Promise.all(h.scFake.tracked);
+
+		expect(fetchAvatar).toHaveBeenCalledTimes(2);
+		expect(h.flow.account()).toEqual({ name: "n", avatar: "ref-a" });
+	});
+
+	it("重启后(新的实例,内存清空)取到卡片就重抓一次", async () => {
+		const fetchAvatar = vi.fn(async (_url: string): Promise<string | undefined> => "ref-a");
+		const before = makeFlow({ fetchAvatar });
+		await logIn(before);
+		await Promise.all(before.scFake.tracked);
+		const after = makeFlow({ fetchAvatar });
+		await logIn(after);
+		await Promise.all(after.scFake.tracked);
+
+		expect(fetchAvatar).toHaveBeenCalledTimes(2);
+		expect(after.flow.account()).toEqual({ name: "n", avatar: "ref-a" });
 	});
 });

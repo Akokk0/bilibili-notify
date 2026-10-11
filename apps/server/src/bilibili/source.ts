@@ -4,6 +4,7 @@ import {
 	type MessageBus,
 	type ServiceContext,
 	type Source,
+	type SourceAuth,
 	type SourceContext,
 	type SourceDescriptor,
 } from "@bilibili-notify/internal";
@@ -24,6 +25,8 @@ export interface BiliSourceDeps {
 	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
 	/** 可回收的定时器(退避重启用);公共上下文里没有定时器。 */
 	setTimeout: ServiceContext["setTimeout"];
+	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
+	auth: SourceAuth;
 }
 
 export interface BiliSource extends Source {
@@ -48,6 +51,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 
 	return {
 		descriptor,
+		auth: deps.auth,
 		dynamic: () => engine,
 		async start(ctx: SourceContext) {
 			if (engine) throw new Error("bilibili source is already started");

@@ -24,9 +24,7 @@ import { shouldRefuseBareAuth } from "./auth/bare-auth-policy.js";
 import { createSessionCodec } from "./auth/session.js";
 import { createWsTicketStore } from "./auth/ws-ticket.js";
 import { createBackupService } from "./backup/service.js";
-import { BiliLoginStatus } from "./bilibili/api/index.js";
 import { type AuthSystem, createAuthSystem } from "./bilibili/auth/index.js";
-import { settingsOf } from "./bilibili/settings.js";
 import { readCardSkinAssetDataUrl } from "./card-skins/asset-url.js";
 import { createCardSkinFallbackLog } from "./card-skins/fallbacks.js";
 import type { CardSkinStore } from "./card-skins/store.js";
@@ -538,9 +536,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				serviceCtx: runtime.serviceCtx,
 				bus: runtime.bus,
 				integrationStore: runtime.integrationStore,
-				// 从 B 站设置的 healthCheckMinutes 计算初始 ms;改了之后由 engines.ts 的
-				// `watchSettings` 调 flow.setHealthCheckMs 热更。
-				healthCheckMs: settingsOf(runtime.configStore).healthCheckMinutes * 60_000,
+				// 健康检查间隔登录系统自己从配置仓读、自己听(`bilibili/auth/`);账号头像存进图库的口在运行时里。
+				configStore: runtime.configStore,
+				accountImages: runtime.accountImages,
 			});
 		} catch (err) {
 			// Fatal: without the integration stores / Api the dashboard can't function.
@@ -550,8 +548,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		runtime.serviceCtx.onDispose(() => authSystem?.dispose(), "stop");
 		// 统计的「B 站在跑」= 登录有效:读口回填给记录器(它建在运行时里、比登录系统早;数据那一代已经就位,
 		// 到这里才开始记,ADR-0022 决策 2 —— 建运行时那会儿不许碰盘)。每次现读状态,不靠事件记。
-		const loginStatus = authSystem.status;
-		runtime.statsRecorder.bindLoginState(() => loginStatus().status === BiliLoginStatus.LOGGED_IN);
+		// `confirming`(开机没确认、等手机确认)不算登录,与从前判「已登录」一致。
+		const loginAuth = authSystem.auth;
+		runtime.statsRecorder.bindLoginState(() => loginAuth.state().status === "logged-in");
 
 		// Lazy puppeteer-core launch — only constructed when chromePath or a remote
 		// chromeEndpoint is set. Browser spawns/connects on first use (cards/preview
@@ -710,6 +709,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			api: devApi,
 			auth: devAuth,
 			integration: authSystem.integration,
+			// 真的登录口:来源挂它、登记表与 `/api/sources/:sourceKey/auth` 读它(开发场景只盖得到旧的 `auth` 壳)。
+			sourceAuth: authSystem.auth,
 			bus: runtime.bus,
 			configStore: runtime.configStore,
 			subscriptions: subStore,
@@ -721,7 +722,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
-			loginFlow: () => authSystem?.flow,
+			loginFlow: () =>
+				authSystem && {
+					healthCheckNow: () => authSystem?.healthCheckNow() ?? Promise.resolve(false),
+				},
 		});
 		const devtools = createDevtools({
 			// 过了 devtools 那道门才调:门没开,B 站的工厂一次都不会被调用(也就不会挂上直播连接的观察钩子)。
@@ -845,7 +849,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 拓展直播的最新状态与女仆查直播状态(ADR-0019 决策 57 / 64)都从在播表取。
 			extensionLive: runtime.extensionLive,
 			onReportDiscrepancy: (discrepancy) => reportDiscrepancies.record(discrepancy),
-			loginFlow: authSystem.flow,
+			auth: authSystem.auth,
 			configStore: runtime.configStore,
 			historyStore: runtime.historyStore,
 			subscriptionStore: subBinding.store,
@@ -1019,9 +1023,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createStatusCommand({
 				probe: () => ({
-					// 登录态直接用 LoginFlow 那句人话(「已登录」/「账号登录已失效…」)——
-					// 在这儿把 status 码再翻译一遍,就是第二份会跟它跑偏的文案。
-					login: authSystem?.status().msg ?? "还没起来",
+					// 登录态交中立的 `AuthState`,一行人话由 `status` 指令按状态拼(`renderStatus`)。
+					login: authSystem?.auth.state(),
 					lastFetchAt: builtins.bilibili.dynamic()?.lastFetchAt(),
 					// 没装 Chrome 就没有渲染队列。
 					renderQueue: puppeteer?.renderQueueDepth() ?? 0,
@@ -1045,8 +1048,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createLoginCommand({
 				logger: log,
-				begin: async () => authSystem?.beginLogin() ?? fail("unavailable", "登录系统还没起来"),
-				snapshot: () => authSystem?.status() ?? { status: 0, msg: "登录系统还没起来" },
+				begin: async () => authSystem?.auth.beginLogin() ?? fail("unavailable", "登录系统还没起来"),
+				state: () => authSystem?.auth.state() ?? { status: "logged-out" },
 			}),
 		);
 

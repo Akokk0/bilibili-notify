@@ -49,6 +49,7 @@ import {
 } from "./routes/respond-failure.js";
 import { createSessionRoute } from "./routes/session.js";
 import { createSettingsRoute } from "./routes/settings.js";
+import { createSourcesRoute } from "./routes/sources.js";
 import { createStatsRoute, type StatsOverviewReader } from "./routes/stats.js";
 import { createStatsFollowersRoute } from "./routes/stats-followers.js";
 import { createSubscriptionsRoute } from "./routes/subscriptions.js";
@@ -371,6 +372,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			}),
 		);
 		app.route("/api/adapters", createAdaptersRoute(deps));
+		// 来源的登录口(`Source.auth`);无条件挂,来源在不在、有没有登录口由路由现问登记表。
+		app.route("/api/sources", createSourcesRoute(deps));
 		// 面板那一侧的拓展口。URL 面用短词 `ext`(ADR-0012 决策 38),代码面照旧全称。
 		app.route(
 			"/api/ext",

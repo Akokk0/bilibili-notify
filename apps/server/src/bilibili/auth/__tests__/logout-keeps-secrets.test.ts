@@ -18,7 +18,15 @@ import { FileKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createSecretStore } from "../../../config/secret-store.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
-import { createAuthSystem } from "../index.js";
+import {
+	type CreateAuthSystemOptions,
+	createAuthSystem as createAuthSystemWith,
+} from "../index.js";
+import { testAuthDeps } from "./support/auth-deps.js";
+
+/** 测试里不关心配置仓与图库:统一补上替身。 */
+const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages">) =>
+	createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 // 替身只留 auth 层碰得到的几个口,不起真的 HTTP 客户端与登录流程。
 vi.mock("../login-flow.js", () => ({
@@ -84,7 +92,7 @@ describe("AuthSystem.logout — 退出登录不牵连配置密钥", () => {
 			logger: ctx.logger,
 		});
 		const auth = await createAuthSystem({ serviceCtx: ctx, bus, integrationStore });
-		await auth.logout();
+		await auth.auth.logout();
 		// 清完之后面板上再改一次 key:secret store 用它进程里缓存的那把钥匙写盘。
 		await secretStore.save({ aiApiKeys: { deepseek: "sk-after" } });
 		await auth.dispose();

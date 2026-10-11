@@ -19,8 +19,16 @@ import { createIntegrationStore } from "../../../integration-store/store.js";
 import { makeServiceContext } from "../../api/__tests__/support/make-api.js";
 import { ApiClient } from "../../api/api-client.js";
 import { Api } from "../../api/index.js";
-import { createAuthSystem } from "../index.js";
+import {
+	type CreateAuthSystemOptions,
+	createAuthSystem as createAuthSystemWith,
+} from "../index.js";
 import { LoginFlow } from "../login-flow.js";
+import { testAuthDeps } from "./support/auth-deps.js";
+
+/** 测试里不关心配置仓与图库:统一补上替身。 */
+const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages">) =>
+	createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 const C0 = JSON.stringify([
 	{ key: "SESSDATA", value: "sess0", domain: ".bilibili.com", path: "/", secure: true },
@@ -282,7 +290,7 @@ describe("恢复备份之后与登出", () => {
 		});
 
 		const writesBefore = w.keyFetchCount();
-		await auth.logout();
+		await auth.auth.logout();
 		// 恰好一次写(取钥匙只发生在写 secrets.enc 的时候);落在盘上的就是这一次 —— 两个键都已经没了。
 		expect(w.keyFetchCount() - writesBefore).toBe(1);
 		await auth.dispose();
@@ -307,7 +315,7 @@ describe("恢复备份之后与登出", () => {
 		vi.spyOn(Api.prototype, "commitLogin").mockResolvedValue(fail("unavailable", "disk full"));
 		vi.mocked(LoginFlow.prototype.reportLoggedOut).mockClear();
 
-		const r = await auth.logout();
+		const r = await auth.auth.logout();
 
 		expect(r).toEqual(
 			fail("unavailable", "已退出，但存着的登录状态没清掉：disk full，重启后可能还是登录着"),
@@ -328,7 +336,75 @@ describe("恢复备份之后与登出", () => {
 			integrationStore: w.store,
 		});
 
-		expect(await auth.logout()).toEqual(ok());
+		expect(await auth.auth.logout()).toEqual(ok());
+		await auth.dispose();
+		await w.store.close();
+	});
+
+	// 验红:删掉 `createAuthSystem` 里 `watchSettings(...)` 那一订阅(或把 `setHealthCheckMs` 那行去掉),第一条红。
+	it("健康检查间隔:设置里改了就热换到心跳;别的集成改了不动;dispose 之后摘掉订阅", async () => {
+		const w = world();
+		let minutes = 30;
+		const listeners: Array<(scope: string) => void> = [];
+		const unsubscribed = vi.fn();
+		const configStore = {
+			getIntegrationSettings: () => ({
+				dynamicCron: "30 */2 * * * *",
+				healthCheckMinutes: minutes,
+			}),
+			onChange: (fn: (scope: string) => void) => {
+				listeners.push(fn);
+				return { dispose: unsubscribed };
+			},
+		} as unknown as CreateAuthSystemOptions["configStore"];
+		const hot = vi.spyOn(LoginFlow.prototype, "setHealthCheckMs");
+		const auth = await createAuthSystemWith({
+			...testAuthDeps(),
+			configStore,
+			serviceCtx: w.host.serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
+		expect(hot).not.toHaveBeenCalled(); // 开机按设置里的值起,不是热换
+
+		// 事件来了但设置没变(别的集成改了)。
+		for (const fn of listeners) fn("integration-settings");
+		expect(hot).not.toHaveBeenCalled();
+
+		minutes = 45;
+		for (const fn of listeners) fn("integration-settings");
+		expect(hot).toHaveBeenCalledTimes(1);
+		expect(hot).toHaveBeenCalledWith(45 * 60_000);
+
+		await auth.dispose();
+		expect(unsubscribed).toHaveBeenCalledTimes(1);
+		await w.store.close();
+	});
+
+	it("auth 口的 state() / account() 读的就是登录流程的对外状态;onChange 的订阅者在状态变时被叫", async () => {
+		const w = world();
+		const auth = await createAuthSystem({
+			serviceCtx: w.host.serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
+		// 开机的 reportAccountInfo / reportLoggedOut 在这个文件里被换成空操作:状态还是初值(开机没确认)。
+		expect(auth.auth.state()).toEqual({
+			status: "confirming",
+			message: "正在向 B 站确认登录状态，暂时连不上的话会自动重试",
+		});
+		expect(auth.auth.account?.()).toBeNull();
+		const changed = vi.fn();
+		const sub = auth.auth.onChange(changed);
+		// 经真 `LoginFlow` 的原型方法走一遍对外变化(reportLoggedOut 在这里是空操作,换用 beginLogin 的失败路径)。
+		vi.spyOn(Api.prototype, "fetchLoginQrCode").mockResolvedValue({
+			code: -352,
+			data: null,
+		} as never);
+		await auth.auth.beginLogin();
+		expect(changed).toHaveBeenCalledTimes(1);
+		expect(auth.auth.state()).toMatchObject({ status: "error" });
+		sub.dispose();
 		await auth.dispose();
 		await w.store.close();
 	});

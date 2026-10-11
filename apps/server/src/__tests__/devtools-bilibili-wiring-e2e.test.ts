@@ -67,6 +67,22 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 		return ((await res.json()) as { status: number }).status;
 	}
 
+	// 验红:删掉 `compose.ts` 里递给 `createBiliSource` 的那一行 `auth: deps.sourceAuth`(或入口里递 `sourceAuth` 的那一行),
+	// 这条红 —— 回的是 400 unsupported,而各零件的测试一条都不红。
+	it("真入口起来之后,GET /api/sources/bilibili/auth 回 200 与一个合法的状态", async () => {
+		const res = await fetch(`${base}/api/sources/bilibili/auth`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { state: { status: string } };
+		expect([
+			"logged-out",
+			"confirming",
+			"awaiting-scan",
+			"logged-in",
+			"expired",
+			"error",
+		]).toContain(body.state.status);
+	});
+
 	it("B 站的场景在面板的表里,id 带 bilibili. 前缀,没有不带前缀的那份", async () => {
 		const res = await fetch(`${base}/api/dev`);
 		expect(res.status).toBe(200);

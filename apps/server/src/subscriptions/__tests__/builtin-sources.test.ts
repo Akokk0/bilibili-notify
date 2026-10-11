@@ -1,4 +1,10 @@
-import type { PostEvent, Source } from "@bilibili-notify/internal";
+import {
+	type AuthState,
+	ok,
+	type PostEvent,
+	type Source,
+	type SourceAuth,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { registerBuiltinSource } from "../builtin-sources.js";
 import { createSourceRegistry } from "../registry.js";
@@ -97,5 +103,99 @@ describe("registerBuiltinSource", () => {
 		expect(registry.get(SOURCE_KEY)).toBeUndefined();
 		bus.emit("config-changed", { scope: "globals" });
 		expect(seen).toHaveLength(0);
+	});
+});
+
+/** 带登录口的假来源:`onChange` 的订阅者记在 `listeners` 里,状态由测试拨。 */
+function makeAuthedSource() {
+	const listeners = new Set<() => void>();
+	const disposed = vi.fn();
+	let state: AuthState = { status: "logged-out" };
+	const auth: SourceAuth = {
+		beginLogin: async () => ok(),
+		logout: async () => ok(),
+		state: () => state,
+		onChange: (fn) => {
+			listeners.add(fn);
+			return {
+				dispose() {
+					disposed();
+					listeners.delete(fn);
+				},
+			};
+		},
+	};
+	const source = Object.assign(makeSource(), { auth });
+	return {
+		source,
+		listeners,
+		disposed,
+		setState: (next: AuthState) => {
+			state = next;
+		},
+		fire: () => {
+			for (const fn of [...listeners]) fn();
+		},
+	};
+}
+
+describe("registerBuiltinSource · 登录口(Source.auth)", () => {
+	it("登记表的视图带着来源的 auth", async () => {
+		const authed = makeAuthedSource();
+		const { options, registry } = setup(authed.source);
+		await registerBuiltinSource(options);
+		expect(registry.get(SOURCE_KEY)?.auth).toBe(authed.source.auth);
+	});
+
+	// 验红:删掉宿主里 `auth.onChange(...)` 那一订阅,这条红。
+	it("来源的 auth 叫了 onChange → onAuthChanged 收到那一刻的 state();登记时不补发", async () => {
+		const authed = makeAuthedSource();
+		const onAuthChanged = vi.fn<(state: AuthState) => void>();
+		const { options } = setup(authed.source);
+		await registerBuiltinSource({ ...options, onAuthChanged });
+		expect(onAuthChanged).not.toHaveBeenCalled();
+
+		authed.setState({ status: "confirming", message: "已扫码，请在手机上确认" });
+		authed.fire();
+
+		expect(onAuthChanged).toHaveBeenCalledTimes(1);
+		expect(onAuthChanged).toHaveBeenCalledWith({
+			status: "confirming",
+			message: "已扫码，请在手机上确认",
+		});
+	});
+
+	it("撤登记后摘掉订阅,不再发", async () => {
+		const authed = makeAuthedSource();
+		const onAuthChanged = vi.fn<(state: AuthState) => void>();
+		const { options } = setup(authed.source);
+		const handle = await registerBuiltinSource({ ...options, onAuthChanged });
+
+		handle.dispose();
+		expect(authed.disposed).toHaveBeenCalledTimes(1);
+		authed.fire();
+		expect(onAuthChanged).not.toHaveBeenCalled();
+	});
+
+	it("来源没有登录口:不订阅、不抛", async () => {
+		const onAuthChanged = vi.fn<(state: AuthState) => void>();
+		const { options } = setup(makeSource());
+		await expect(registerBuiltinSource({ ...options, onAuthChanged })).resolves.toBeDefined();
+		expect(onAuthChanged).not.toHaveBeenCalled();
+	});
+
+	it("登记失败(start 抛):不订阅", async () => {
+		const authed = makeAuthedSource();
+		const broken: Source = {
+			...authed.source,
+			start: async () => {
+				throw new Error("start-boom");
+			},
+		};
+		const { options } = setup(broken);
+		await expect(registerBuiltinSource({ ...options, onAuthChanged: vi.fn() })).rejects.toThrow(
+			"start-boom",
+		);
+		expect(authed.listeners.size).toBe(0);
 	});
 });

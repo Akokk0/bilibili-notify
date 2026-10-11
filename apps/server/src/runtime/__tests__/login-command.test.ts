@@ -12,26 +12,32 @@
  *    一个码」—— 他两小时后看手机拿到的是废码,反而以为系统坏了。
  */
 
-import { fail, type NotificationPayload, ok, type Result } from "@bilibili-notify/internal";
+import {
+	type AuthState,
+	fail,
+	type NotificationPayload,
+	ok,
+	type Result,
+} from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { createLoginCommand, type LoginSnapshotView } from "../login-command.js";
+import { createLoginCommand } from "../login-command.js";
 
 /** 一个 1×1 PNG 的 data URL,用来验「发出去的是字节不是那串文本」。 */
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const QR_DATA_URL = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
 
-const QR_READY: LoginSnapshotView = { status: 2, msg: "", data: QR_DATA_URL };
+const QR_READY: AuthState = {
+	status: "awaiting-scan",
+	qr: { dataUrl: QR_DATA_URL, expiresAt: "2026-10-11T00:03:00.000Z" },
+};
 
-function setup(
-	after: LoginSnapshotView = QR_READY,
-	opts: { sendOk?: boolean; beginResult?: Result } = {},
-) {
+function setup(after: AuthState = QR_READY, opts: { sendOk?: boolean; beginResult?: Result } = {}) {
 	const replies: string[] = [];
 	const sent: Buffer[] = [];
 	const begin = vi.fn(async (): Promise<Result> => opts.beginResult ?? ok());
 	const spec = createLoginCommand({
 		begin,
-		snapshot: () => after,
+		state: () => after,
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 	});
 	// 二维码经 `ctx.reply` 发图:图的字节进 sent,文字进 replies;sendOk=false 模拟图没送到。
@@ -90,7 +96,7 @@ describe("login 指令", () => {
 	});
 
 	it("压根没生成出码 → 把失败原因转给主人,不发图", async () => {
-		const { replies, sent, fire } = setup({ status: 7, msg: "获取二维码失败，请重试" });
+		const { replies, sent, fire } = setup({ status: "error", message: "获取二维码失败，请重试" });
 		await fire();
 		expect(sent).toHaveLength(0);
 		expect(replies.at(-1)).toContain("获取二维码失败");
@@ -99,7 +105,7 @@ describe("login 指令", () => {
 	// 取码失败时快照可能还是上一次的「已登录」之类,读它回话会骗人;失败的话以结果里的为准。
 	it("发起就失败了 → 把结果里的话转给主人,不读快照、不发图", async () => {
 		const { replies, sent, fire } = setup(
-			{ status: 5, msg: "已登录" },
+			{ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
 			{ beginResult: fail("unavailable", "获取二维码失败，请重试") },
 		);
 		await fire();
@@ -107,16 +113,29 @@ describe("login 指令", () => {
 		expect(replies).toEqual(["获取二维码失败，请重试"]);
 	});
 
-	// 快照的 data 是 any,形状变了不该把指令链路带塌 —— 它还担着审批的 y/n。
-	it("data 不是 data URL → 不发图、不抛错", async () => {
-		const { replies, sent, fire } = setup({ status: 2, msg: "", data: { unexpected: true } });
+	it("不是等待扫码状态(此刻没有码) → 不发图、不抛错,有 message 的话转给主人", async () => {
+		const { replies, sent, fire } = setup({
+			status: "confirming",
+			message: "已扫码，请在手机上确认",
+		});
+		await expect(fire()).resolves.toBeUndefined();
+		expect(sent).toHaveLength(0);
+		expect(replies.at(-1)).toBe("已扫码，请在手机上确认");
+	});
+
+	// 状态里的串形状变了不该把指令链路带塌 —— 它还担着审批的 y/n。
+	it("dataUrl 不是 data URL → 不发图、不抛错", async () => {
+		const { replies, sent, fire } = setup({
+			status: "awaiting-scan",
+			qr: { dataUrl: "not a data url", expiresAt: "t" },
+		});
 		await expect(fire()).resolves.toBeUndefined();
 		expect(sent).toHaveLength(0);
 		expect(replies.at(-1)).toBeDefined();
 	});
 
-	it("data 是空串 → 同样当没拿到码", async () => {
-		const { sent, fire } = setup({ status: 2, msg: "", data: "" });
+	it("dataUrl 是空串 → 同样当没拿到码", async () => {
+		const { sent, fire } = setup({ status: "awaiting-scan", qr: { dataUrl: "", expiresAt: "t" } });
 		await fire();
 		expect(sent).toHaveLength(0);
 	});

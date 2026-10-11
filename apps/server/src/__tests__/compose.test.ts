@@ -12,7 +12,9 @@ import {
 	fail,
 	type IntegrationContext,
 	type Logger,
+	ok as okResult,
 	type PostReport,
+	type SourceAuth,
 	type SourceContext,
 	type SourceSubscriptionView,
 } from "@bilibili-notify/internal";
@@ -90,6 +92,13 @@ const integration = {
 	secrets: {},
 } as unknown as IntegrationContext;
 
+const SOURCE_AUTH = {
+	beginLogin: async () => okResult(),
+	logout: async () => okResult(),
+	state: () => ({ status: "logged-out" as const }),
+	onChange: () => ({ dispose() {} }),
+} satisfies SourceAuth;
+
 function compose(
 	opts: { subs?: Subscription[]; api?: Api; fetchImage?: ReturnType<typeof vi.fn> } = {},
 ) {
@@ -100,6 +109,7 @@ function compose(
 		api,
 		auth: overridableApi({ status: () => ({ status: 0, msg: "" }) }),
 		integration,
+		sourceAuth: SOURCE_AUTH,
 		bus: createNodeMessageBus(),
 		configStore: {
 			getIntegrationSettings: () => BiliSettingsSchema.parse({}),
@@ -192,6 +202,17 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 		expect(registered[0]?.integration).toBe(integration);
 		await expect(builtins.registerSources(engines)).rejects.toThrow("already registered");
 		await registered[0]?.source.stop();
+	});
+
+	// 验红:删掉 `compose.ts` 里递给 `createBiliSource` 的 `auth: deps.sourceAuth`,这条红(来源上没有登录口,
+	// 登记表与 `/api/sources/:sourceKey/auth` 都读不到它,而零件测试各自全绿)。
+	it("登记的来源带着递进来的登录口(真的那一份,不是壳)", async () => {
+		const { builtins } = compose();
+		const { engines, registered } = makeFakeEngines(makeFakeSourceCtx([]).ctx);
+		await builtins.registerSources(engines);
+		const source = registered[0]?.source as unknown as { auth?: unknown; stop(): Promise<void> };
+		expect(source.auth).toBe(SOURCE_AUTH);
+		await source.stop();
 	});
 
 	it("登记抛了:错原样抛出去,不留半个来源(bilibili.dynamic 仍是 undefined),能重来", async () => {

@@ -90,6 +90,18 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		});
 	});
 
+	// 验红:删掉 `channels.ts` 里 `subscription-auth-changed` 那一条订阅,这条红(面板读新口,不转就永远看不到变化)。
+	it("subscription-auth-changed → auth 频道同名帧,data 是总线上那一个对象(来源键 + 状态,没有别的格)", () => {
+		const changed = {
+			sourceKey: "bilibili",
+			state: { status: "confirming", message: "已扫码，请在手机上确认" },
+		} as const;
+		h.bus.emit("subscription-auth-changed", changed);
+		expect(h.last()).toMatchObject({ type: "auth", event: "subscription-auth-changed" });
+		expect(h.last().data).toBe(changed);
+		expect(Object.keys(h.last().data as object).sort()).toEqual(["sourceKey", "state"]);
+	});
+
 	it("载荷是单个对象的事件:data 就是总线上那一个对象", () => {
 		const snap = { status: 5, msg: "ok" };
 		h.bus.emit("login-status-report", snap);

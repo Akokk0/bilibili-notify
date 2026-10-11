@@ -1,3 +1,4 @@
+import type { AuthState } from "./auth-state";
 import type { PushTargetScope, Result } from "./constants";
 import type { KeyValueStore } from "./key-value-store";
 import type { PostEvent, PostImage } from "./post";
@@ -96,6 +97,11 @@ export interface BusEvents {
 	"cookies-refreshed": { refreshedAt: string };
 	"subscription-changed": { ops: SubscriptionOp[] };
 	"login-status-report": LoginSnapshot;
+	/**
+	 * 一个来源的登录状态或账号变了(宿主订阅 `Source.auth.onChange` 后发)。载荷只有来源键与此刻的状态:
+	 * 账号(名字、头像)走 `GET /api/sources/:sourceKey/auth` 读,密钥与 cookie 永远不在里面。
+	 */
+	"subscription-auth-changed": { sourceKey: string; state: AuthState };
 	/**
 	 * Surface a runtime error from a business engine / subsystem.
 	 * `source` 是逻辑发射源标识(e.g. "dynamic-engine" / "live-engine" / "image" / "ai")

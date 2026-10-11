@@ -1225,6 +1225,18 @@ export interface ConnectionAuthDraftResponse {
 	settings: Record<string, unknown>;
 }
 
+// ---- /api/sources ------------------------------------------------------------
+
+/**
+ * `GET|POST|DELETE /api/sources/:sourceKey/auth` 响应 —— 这个来源此刻的登录状态与登录着的账号。
+ * `account` 没登录或还没取到时不出现;`avatar` 是图库引用(面板对着 `/api/images/<引用>` 取),抓好之前没有。
+ * 里面没有 cookie 与令牌。
+ */
+export interface SourceAuthResponse {
+	state: AuthState;
+	account?: { name: string; avatar?: ImageRef };
+}
+
 // ---- /api/system/backup ------------------------------------------------------------
 
 /** What an import did — or, under `dryRun`, what it *would* do. */

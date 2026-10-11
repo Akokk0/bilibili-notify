@@ -17,7 +17,7 @@ const NOW = 1_786_500_000_000;
 const MIN = 60_000;
 
 const HEALTHY: StatusReport = {
-	login: "已登录",
+	login: { status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
 	lastFetchAt: NOW - 2 * MIN,
 	renderQueue: 0,
 	connections: [{ name: "NapCat", ok: true }],
@@ -55,6 +55,31 @@ describe("status 指令", () => {
 		expect(text).toContain("上次抓取：2 分钟前");
 		expect(text).toContain("推送通道：");
 		expect(text).toContain("渲染排队：");
+	});
+
+	// 「登录：」那一行由核心按 `AuthState` 拼:每种状态各出什么字都钉死,`confirming` 没带 message 时兜底写「正在确认」。
+	it.each([
+		[undefined, "还没起来"],
+		[{ status: "logged-in", loggedInAt: "t" }, "已登录"],
+		[{ status: "logged-out" }, "没登录"],
+		[
+			{ status: "awaiting-scan", qr: { dataUrl: "data:image/png;base64,AA", expiresAt: "t" } },
+			"等待扫码",
+		],
+		[{ status: "confirming", message: "已扫码，请在手机上确认" }, "已扫码，请在手机上确认"],
+		[{ status: "confirming" }, "正在确认"],
+		[
+			{ status: "expired", message: "账号登录已失效，请重新扫码登录" },
+			"账号登录已失效，请重新扫码登录",
+		],
+		[
+			{ status: "error", message: "二维码已超时（3分钟），请重新登录" },
+			"二维码已超时（3分钟），请重新登录",
+		],
+	] as const)("登录一行：%j → %s", async (login, text) => {
+		const { replies, run } = setup({ login: login as StatusReport["login"] });
+		await run();
+		expect(replies[0]).toContain(`登录：${text}`);
 	});
 
 	// 手机上「14:32」还得自己算一下过了多久,「2 分钟前」不用。

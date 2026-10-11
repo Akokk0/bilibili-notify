@@ -1,4 +1,5 @@
-import type { FeatureKey } from "./constants";
+import type { AuthState } from "./auth-state";
+import type { FeatureKey, ImageRef, Result } from "./constants";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
@@ -27,9 +28,28 @@ export interface SourceContext extends IntegrationContext {
 	reportPost(externalId: string, report: PostReport): void;
 }
 
+/**
+ * 要登录才用得了的来源交的登录口(ADR-0021 决策 45)。只有扫码这一种登录办法;等第一个有两种登录办法的来源
+ * 再加 `methods` 与 `beginLogin` 的参数。没有「刷新」:续期是来源自己的事。
+ */
+export interface SourceAuth {
+	/** 发起一次扫码登录。成功后二维码在 `state()` 里;已有一次在进行时重新开始、换一张新码。 */
+	beginLogin(): Promise<Result>;
+	/** 忘掉登录。没登录时也能调。不碰主密钥。 */
+	logout(): Promise<Result>;
+	/** 此刻的状态,同步、不出网。 */
+	state(): AuthState;
+	/** 登录着的账号;没登录或还没取到是 `null`。头像抓进图库之后才有 `avatar`。 */
+	account?(): { name: string; avatar?: ImageRef } | null;
+	/** 状态或账号可能变了就叫一声;要做事自己再读 `state()` / `account()`。 */
+	onChange(fn: () => void): Disposable;
+}
+
 export interface Source {
 	readonly descriptor: SourceDescriptor;
 	start(ctx: SourceContext): Promise<void>;
 	/** 停下之后不许再上报。 */
 	stop(): Promise<void>;
+	/** 这个来源要登录才用得了的话交它。 */
+	readonly auth?: SourceAuth;
 }

@@ -20,19 +20,22 @@ function makeFakeAuthSystem(opts: { bus?: MessageBus } = {}) {
 		status: BiliLoginStatus.NOT_LOGIN,
 		msg: "未登录",
 	};
+	const beginLogin = vi.fn(async (): Promise<Result> => {
+		snapshot = { status: BiliLoginStatus.LOGIN_QR, msg: "", data: "data:image/png;base64,XYZ" };
+		return ok();
+	});
+	const logout = vi.fn(async (): Promise<Result> => {
+		snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
+		return ok();
+	});
 	const fake = {
 		// real interface fields the routes do not touch — leave undefined-typed
 		api: undefined as unknown as AuthSystem["api"],
-		flow: undefined as unknown as AuthSystem["flow"],
-		beginLogin: vi.fn(async (): Promise<Result> => {
-			snapshot = { status: BiliLoginStatus.LOGIN_QR, msg: "", data: "data:image/png;base64,XYZ" };
-			return ok();
-		}),
+		// 路由经 `authSystem.auth` 发起与退出;顶层两个别名是给用例断言调用次数用的。
+		auth: { beginLogin, logout },
+		beginLogin,
+		logout,
 		refreshCookies: vi.fn(async () => {}),
-		logout: vi.fn(async (): Promise<Result> => {
-			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
-			return ok();
-		}),
 		status: () => snapshot,
 		dispose: vi.fn(async () => {}),
 		_setSnapshot: (s: LoginSnapshot) => {

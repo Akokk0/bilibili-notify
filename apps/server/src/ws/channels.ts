@@ -81,6 +81,10 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		bus.on("cookies-refreshed", (refreshed) =>
 			publish(envelope("auth", "cookies-refreshed", refreshed)),
 		),
+		// 一个来源的登录状态变了:载荷只有来源键与状态(账号走 `GET /api/sources/:sourceKey/auth`)。
+		bus.on("subscription-auth-changed", (changed) =>
+			publish(envelope("auth", "subscription-auth-changed", changed)),
+		),
 	);
 
 	// push-events channel ---------------------------------------------------

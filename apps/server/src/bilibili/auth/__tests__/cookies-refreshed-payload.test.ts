@@ -21,7 +21,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
 import { createIntegrationStore } from "../../../integration-store/store.js";
 import type { BiliContext } from "../../context.js";
-import { createAuthSystem } from "../index.js";
+import {
+	type CreateAuthSystemOptions,
+	createAuthSystem as createAuthSystemWith,
+} from "../index.js";
+import { testAuthDeps } from "./support/auth-deps.js";
+
+/** 测试里不关心配置仓与图库:统一补上替身。 */
+const createAuthSystem = (o: Omit<CreateAuthSystemOptions, "configStore" | "accountImages">) =>
+	createAuthSystemWith({ ...testAuthDeps(), ...o });
 
 interface RefreshCallbacks {
 	onCookiesRefreshed?: () => Promise<void> | void;

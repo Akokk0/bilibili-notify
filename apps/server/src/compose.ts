@@ -16,6 +16,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type IntegrationContext,
 	type Logger,
+	type SourceAuth,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
@@ -36,6 +37,8 @@ export interface BuiltinIntegrationsDeps {
 	auth: BiliDevtoolsDeps["auth"];
 	/** B 站集成的上下文(`AuthSystem.integration`)。 */
 	integration: IntegrationContext;
+	/** 登录口(`AuthSystem.auth`,真的那一份):挂到 B 站来源的 `auth` 上,登记表与 `/api/sources/:sourceKey/auth` 读它。 */
+	sourceAuth: SourceAuth;
 	bus: BiliDevtoolsDeps["bus"];
 	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
 	/** 开发场景挑订阅用,现读。 */
@@ -110,6 +113,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					imageFetcher: deps.imageFetcher,
 					configStore: deps.configStore,
 					setTimeout: deps.setTimeout,
+					auth: deps.sourceAuth,
 				});
 				source = made;
 				await engines.registerSource({

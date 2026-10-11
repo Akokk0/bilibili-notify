@@ -9,7 +9,9 @@ import {
 	BILIBILI_GUARD_PROGRAM,
 	type IntegrationContext,
 	type Logger,
+	ok,
 	type PostReport,
+	type SourceAuth,
 	type SourceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -134,9 +136,18 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 			imageFetcher: { fetchImage },
 			configStore: config.store,
 			setTimeout: () => ({ dispose() {} }),
+			auth: FAKE_AUTH,
 		},
 	};
 }
+
+/** 假登录口:来源只是原样挂着它。 */
+const FAKE_AUTH: SourceAuth = {
+	beginLogin: async () => ok(),
+	logout: async () => ok(),
+	state: () => ({ status: "logged-out" }),
+	onChange: () => ({ dispose() {} }),
+};
 
 /** 假来源上下文:名单与回调可控,`onSubscriptionsChanged` 的把手记下有没有被摘。 */
 function makeCtx(roster: Array<{ externalId: string; post: boolean }> = []) {
@@ -160,6 +171,16 @@ function makeCtx(roster: Array<{ externalId: string; post: boolean }> = []) {
 }
 
 describe("createBiliSource", () => {
+	it("对外交登录口:挂的就是传进来的那一份,登记表的视图带着它", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		expect(source.auth).toBe(FAKE_AUTH);
+		const registry = createSourceRegistry();
+		const { ctx } = makeCtx();
+		await registry.register("bilibili", source, ctx);
+		expect(registry.get("bilibili")?.auth).toBe(FAKE_AUTH);
+	});
+
 	it("描述符的 postNoun 是「动态」", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.postNoun).toBe("动态");
 	});

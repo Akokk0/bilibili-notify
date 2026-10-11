@@ -9,13 +9,13 @@
  * 就得先起半个服务端。
  */
 
-import { formatAgo } from "@bilibili-notify/internal";
+import { type AuthState, formatAgo } from "@bilibili-notify/internal";
 import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** 一次状态快照。字段少是刻意的,见文件头。 */
 export interface StatusReport {
-	/** 登录态的人话,直接来自 LoginFlow 的快照(「已登录」/「账号登录已失效…」)。 */
-	login: string;
+	/** 登录态(中立的 `AuthState`);登录系统还没起来是 `undefined`。一行人话由 {@link renderLogin} 按状态拼。 */
+	login: AuthState | undefined;
 	/**
 	 * 上次**成功**抓到动态的时刻。`undefined` = 启动以来一次都没成功过。
 	 *
@@ -45,13 +45,35 @@ function renderConnections(connections: StatusReport["connections"]): string {
 	return `${down.map((a) => a.name).join("、")} 断了（共 ${connections.length} 个）`;
 }
 
+/** 登录态的一行人话。`confirming` 没带 `message` 时写「正在确认」。 */
+export function renderLogin(state: AuthState | undefined): string {
+	if (state === undefined) return "还没起来";
+	switch (state.status) {
+		case "logged-in":
+			return "已登录";
+		case "logged-out":
+			return "没登录";
+		case "awaiting-scan":
+			return "等待扫码";
+		case "confirming":
+			return state.message ?? "正在确认";
+		case "expired":
+		case "error":
+			return state.message;
+		default: {
+			const unreachable: never = state;
+			return unreachable;
+		}
+	}
+}
+
 export function renderStatus(report: StatusReport, now: number): string {
 	// 「多久以前」:手机上「14:32」还得自己减一次,「2 分钟前」不用。`undefined`(刚启动、一次都
 	// 没成功)与「很久以前」(坏了)必须分开说 —— 前者写「还没抓过」,后者写「N 天前」。
 	const lastFetch =
 		report.lastFetchAt === undefined ? undefined : formatAgo(report.lastFetchAt, now);
 	const lines = [
-		`登录：${report.login}`,
+		`登录：${renderLogin(report.login)}`,
 		`上次抓取：${lastFetch ?? "还没抓过"}`,
 		`推送通道：${renderConnections(report.connections)}`,
 		`渲染排队：${report.renderQueue}`,
