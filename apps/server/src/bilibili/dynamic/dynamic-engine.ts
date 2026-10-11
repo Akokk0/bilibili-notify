@@ -668,7 +668,11 @@ export class DynamicEngine {
 				// 永久静默直到重启进程。退避后自动重探,解除即自愈。
 				// Q7 边沿(只管日志):进入风控记一次 error;退避重探仍风控 → debug;成功拉取 → info 清除。
 				// 上报每次撞都叫(幂等):高层清掉后低层不会自己冒回来,要靠下一次撞见再报。
-				this.problems.reportRisk(RISK_PATH);
+				if (this.watching()) {
+					this.problems.reportRisk(RISK_PATH, {
+						notify: PROBLEM_TEXTS.riskControlled.notify.dynamic,
+					});
+				}
 				if (!this.riskControlled) {
 					this.riskControlled = true;
 					this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
@@ -685,13 +689,15 @@ export class DynamicEngine {
 				// 不对主人说「风控已解除」(`notify: false`)。每次失败都报(幂等),
 				// 边沿去重只管日志:同一个码连续失败只记一次 warn,换了码才当新故障再记。
 				this.problems.resolveRisk(RISK_PATH, { notify: false });
-				this.problems.reportFailure({
-					code: FETCH_FAILED_CODE,
-					message: PROBLEM_TEXTS.dynamicFetchFailed.text(code),
-					notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
-					// 每个退避周期都会再撞一次、再报一次:高层开着时不必存
-					lasting: false,
-				});
+				if (this.watching()) {
+					this.problems.reportFailure({
+						code: FETCH_FAILED_CODE,
+						message: PROBLEM_TEXTS.dynamicFetchFailed.text(code),
+						notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
+						// 每个退避周期都会再撞一次、再报一次:高层开着时不必存
+						lasting: false,
+					});
+				}
 				if (this.transientErrorCode !== code) {
 					this.transientErrorCode = code;
 					this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
@@ -701,6 +707,14 @@ export class DynamicEngine {
 				this.scheduleDetectorRestart(`错误码 ${code}`);
 			}
 		}
+	}
+
+	/**
+	 * 这一路还在跑吗:名单里有人要盯。名单空了(退订光了、停下了)之后才回来的那一轮(在途时名单被清空)
+	 * 带回的失败不再上报 —— 该清的已经清过,这时再报就没有「下一次结果」去清它,风控要一直挂到退避到点。
+	 */
+	private watching(): boolean {
+		return this.postAnchors.size > 0;
 	}
 
 	/**

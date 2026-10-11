@@ -332,7 +332,7 @@ describe("已登录被风控 · 直播这一侧", () => {
 		PROBLEM_TEXTS.liveStopReasons.roomInfo,
 	);
 
-	// 验红:去掉 ProblemLayers.revealFailures 里的 quiet(冒出来恒用自己的 notify),房间停监会私聊第二遍,这条红。
+	// 验红:ProblemLayers.revealFailures 里不把报给过核心的记成静默(冒出来恒用自己的 notify),房间停监会私聊第二遍,这条红。
 	it("先停监(已私聊)→ 风控 → 风控好了:停监冒回表里,但不说第二遍:私聊是 停监、风控、风控已解除", async () => {
 		const b = await boot(IN, {
 			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
@@ -419,6 +419,139 @@ describe("已登录被风控 · 直播这一侧", () => {
 		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
 			PROBLEM_TEXTS.riskControlled.text,
 			PROBLEM_TEXTS.loginExpired.text,
+		]);
+	});
+});
+
+/**
+ * 已定 26:直播预检被风控拦住只进问题表、不私聊;拉动态被风控照旧私聊。风控层记住每一路要不要私聊,
+ * 只有不要私聊的路开着时条目不带私聊;之后动态也被风控了才补那一句;恢复句只在真说过之后才有。
+ */
+describe("直播预检被风控拦住:只进问题表,不私聊", () => {
+	const BLOCKED = {
+		streamKey: async () => {
+			throw new RiskControlError("-352");
+		},
+	};
+	/** 预检过了、也连上了(房间信息与主播信息都拿得到)。 */
+	const CONNECTED = {
+		roomInfo: async () => ({ code: 0, data: ROOM_OFFLINE }),
+		master: async () => MASTER,
+	};
+	const RISKY = async () => ({ code: -352, message: "risk" });
+	const FINE = async () => ({ code: 0, message: "ok", data: { items: [] } });
+	const said = (b: Booted) => b.notifyMaster.mock.calls.map((c) => c[0]);
+
+	// 验红:直播这一路改成要私聊(`PROBLEM_TEXTS.riskControlled.notify.live` 为 true),第一、二、四条红。
+	it("只有直播被拦:表里有风控一条,私聊零次;解除后表空,仍是零次(没有「风控已解除」)", async () => {
+		const b = await boot(IN);
+		await makeLiveSession(b, "u1", "100", BLOCKED).bootstrap();
+		await flush();
+		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		await vi.advanceTimersByTimeAsync(30 * 60_000);
+		expect(b.notifyMaster).not.toHaveBeenCalled();
+
+		await makeLiveSession(b, "u1", "100", CONNECTED).bootstrap();
+		await flush();
+
+		expect(codesOf(b)).toEqual([]);
+		expect(b.notifyMaster).not.toHaveBeenCalled();
+	});
+
+	// 验红:上报器里「有一路要私聊的进来就再报一次」去掉,这条红(动态被风控了主人也听不到)。
+	it("直播先被拦、动态后被风控:这时才私聊一次;全部解除后恢复句一次", async () => {
+		const b = await boot(IN);
+		await makeLiveSession(b, "u1", "100", BLOCKED).bootstrap();
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(said(b)).toEqual([]);
+
+		// biome-ignore lint/suspicious/noExplicitAny: 白盒直调一轮检测,不等 cron
+		const dynamicEngine = b.source.dynamic() as any;
+		dynamicEngine.api.fetchAllDynamic = RISKY;
+		await dynamicEngine.detectDynamics();
+		await flush();
+		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		expect(said(b)).toEqual([PROBLEM_TEXTS.riskControlled.text]);
+
+		dynamicEngine.api.fetchAllDynamic = FINE;
+		await dynamicEngine.detectDynamics();
+		await vi.advanceTimersByTimeAsync(120_000);
+		// 动态那一路好了,直播那一路还拦着:条目照旧开着,不撤回、也还没到说「解除」的时候
+		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		expect(said(b)).toEqual([PROBLEM_TEXTS.riskControlled.text]);
+
+		await makeLiveSession(b, "u1", "100", CONNECTED).bootstrap();
+		await flush();
+		expect(codesOf(b)).toEqual([]);
+		expect(said(b)).toEqual([
+			PROBLEM_TEXTS.riskControlled.text,
+			PROBLEM_TEXTS.riskControlled.recovery,
+		]);
+	});
+
+	it("动态先被风控、直播后被拦:私聊一次,不重复", async () => {
+		const b = await boot(IN, { fetchAllDynamic: RISKY });
+		// biome-ignore lint/suspicious/noExplicitAny: 同上
+		await (b.source.dynamic() as any).detectDynamics();
+		await vi.advanceTimersByTimeAsync(120_000);
+		await makeLiveSession(b, "u1", "100", BLOCKED).bootstrap();
+		await makeLiveSession(b, "u2", "200", BLOCKED).bootstrap();
+		await vi.advanceTimersByTimeAsync(30 * 60_000);
+
+		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		expect(said(b)).toEqual([PROBLEM_TEXTS.riskControlled.text]);
+	});
+
+	it("只有直播被拦时压在底下的房间停监:风控解除后照样冒出来、照样私聊(它自己的那一句)", async () => {
+		const b = await boot(IN);
+		await makeLiveSession(b, "u1", "100", BLOCKED).bootstrap();
+		await makeLiveSession(b, "u2", "200", {}).bootstrap();
+		await flush();
+		expect(codesOf(b)).toEqual(["risk_controlled"]);
+		expect(said(b)).toEqual([]);
+
+		await makeLiveSession(b, "u1", "100", CONNECTED).bootstrap();
+		await flush();
+
+		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
+		expect(said(b)).toEqual([
+			PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.roomInfo),
+		]);
+	});
+});
+
+describe("留着的缺口(钉现状)", () => {
+	// S-3(这次不修,要给核心的问题表加「压下」的概念):说过的房间被风控压下又静默露出之后,
+	// 通知器那边是一条全新的、不带私聊的记账,真连上时就没有恢复句了。修好之后这条的期望要翻。
+	it("已知的缺口 S-3:说过的房间停监被风控压下又露出,之后真连上了,主人收不到「监听已经恢复啦」", async () => {
+		const b = await boot(IN, {
+			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+		});
+		await makeLiveSession(b, "u2", "200", { myself: async () => ({ code: -101 }) }).bootstrap();
+		await vi.advanceTimersByTimeAsync(120_000);
+		// biome-ignore lint/suspicious/noExplicitAny: 同上
+		const dynamicEngine = b.source.dynamic() as any;
+		await dynamicEngine.detectDynamics();
+		dynamicEngine.api.fetchAllDynamic = async () => ({
+			code: 0,
+			message: "ok",
+			data: { items: [] },
+		});
+		await dynamicEngine.detectDynamics();
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(codesOf(b)).toEqual(["sub:live_monitor_stopped"]);
+
+		await makeLiveSession(b, "u2", "200", {
+			roomInfo: async () => ({ code: 0, data: ROOM_OFFLINE }),
+			master: async () => MASTER,
+		}).bootstrap();
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		expect(codesOf(b)).toEqual([]);
+		expect(b.notifyMaster.mock.calls.map((c) => c[0])).toEqual([
+			PROBLEM_TEXTS.liveMonitorStopped.text("200", PROBLEM_TEXTS.liveStopReasons.danmakuConnect),
+			PROBLEM_TEXTS.riskControlled.text,
+			PROBLEM_TEXTS.riskControlled.recovery,
 		]);
 	});
 });

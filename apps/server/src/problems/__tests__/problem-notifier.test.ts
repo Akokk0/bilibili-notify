@@ -153,9 +153,10 @@ describe("问题私聊:发不发、发几条", () => {
 
 /**
  * 被节流吞掉的那一条不能永远没人说(S1):
- * - 同键此刻有另一条**开着且已经说过(或正在说)**的:这条算被那一句盖住了,不补(十个房间同时停监只说一条);
- * - 同键没有这样的(挡住它的是一条已经清掉的旧事):窗口到点时,它还开着、还要私聊、还没说过,就补说**一次**;
+ * - 吞掉它的那一句所属的问题**还开着、且那一句真送到了**:这条算被那一句盖住了,不补(十个房间同时停监只说一条);
+ * - 否则(挡住它的是一条已经清掉的旧事):窗口到点时,它还开着、还要私聊、还没说过,就补说**一次**;
  *   每个键至多挂一个到点的计时器,到点时有好几条符合的只说最早开的那一条。
+ * 盖它的那条后来清掉、盖它的那一句没送到这几种,见文件末尾「按节流键对账」。
  */
 describe("被节流吞掉的问题:窗口到点时补说", () => {
 	const stopped = (n: number) => ({
@@ -164,7 +165,7 @@ describe("被节流吞掉的问题:窗口到点时补说", () => {
 		message: `房间 ${n}`,
 	});
 
-	// 验红:deferUntilWindowEnds 一进来就返回,第一、四条红;coveredByOpenSlot 恒假,十个房间那条与旧的节流用例红;
+	// 验红:对账不看窗口(等待时间只算再送那一格),第一、四、五条红;窗口内不标「被盖住」,十个房间那条与旧的节流用例红;
 	//       dispose 里不收计时器,最后一条红。
 	it("开(送到)→ 清(补已恢复)→ 60 秒内又开:窗口到点补说,主人听到的最后一句不是「好了」", async () => {
 		const { table, notify } = setup();
@@ -265,7 +266,7 @@ describe("被节流吞掉的问题:窗口到点时补说", () => {
  * 送达后算新开的这条已说过,不补恢复句);在途的没送到就照新开的这条走再送。
  */
 describe("发送在路上时清了又开", () => {
-	// 验红:去掉 onChange 里的「认领在途发送」(adoptInFlight),第一、二条红。
+	// 验红:对账时不认领在途的发送(claimSending 不换人),第一条红;在途时被清不记账,第一、三条红。
 	it("清了又开:送达后不补「已恢复」,新开的这条算已说过,表里仍开着", async () => {
 		const gate = deferred<DeliveryResult>();
 		const { table, notify } = setup(() => gate.promise);
@@ -641,5 +642,330 @@ describe("已恢复", () => {
 		gate.resolve(sent());
 		await flush();
 		expect(notify).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * 「该不该说、什么时候说」按节流键(报的人 + code)对账:每次问题开 / 换 / 清、每次发送落定、每次计时器到点之后,
+ * 都重新算这把键欠不欠主人一句话。一条被窗口吞掉的问题算「被盖住」,**当且仅当**吞掉它的那一句所属的问题还开着、
+ * 且那一句真送到了;否则它是「欠着的」,窗口一过补说一次(同键欠着好几条只说最早开的,其余改由它盖住)。
+ */
+describe("按节流键对账", () => {
+	const stopped = (n: number) => ({
+		about: { subscriptionId: `s${n}` },
+		code: "stopped",
+		message: `房间 ${n}`,
+	});
+	const key = (n: number) => ({ reporter: "src", ...stopped(n) });
+	const recovered = (n: number) => `${GENERIC_RECOVERY_PREFIX}房间 ${n}`;
+	const texts = (notify: { mock: { calls: unknown[][] } }) => notify.mock.calls.map((c) => c[0]);
+
+	// 验红(N1 / R1):「清」之后不对账(closed 分支末尾的 reconcile 去掉),这条与下一条红。
+	it("盖它的那条清掉了(窗口已过):被盖住的那条当场补说,不会「说了好了而问题还开着」", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		open(table, stopped(1));
+		await flush();
+		await advance(30 * 60_000);
+		expect(texts(notify)).toEqual(["房间 0"]);
+
+		table.resolve(key(0));
+		await flush();
+
+		expect(texts(notify)).toEqual(["房间 0", recovered(0), "房间 1"]);
+		await advance(30 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(3);
+		expect(table.list()).toHaveLength(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("盖它的那条在窗口内就清掉了:等窗口过完再补说,不提前", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		open(table, stopped(1));
+		table.resolve(key(0));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", recovered(0)]);
+
+		await advance(59_999);
+		expect(notify).toHaveBeenCalledTimes(2);
+		await advance(1);
+
+		expect(texts(notify)).toEqual(["房间 0", recovered(0), "房间 1"]);
+	});
+
+	// 验红(N2 / S-1):窗口内「被盖住」改成认同键任何一条开着且说过的(不看是不是吞掉它的那一句),这条红。
+	it("盖它的其实是一条已经清掉的旧事留下的窗口:同键另有一条老早说过、还开着的也不算盖住,到点补说", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		await advance(2 * 60 * 60_000);
+		open(table, stopped(1));
+		await flush();
+		table.resolve(key(1));
+		await flush();
+		open(table, stopped(2));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", "房间 1", recovered(1)]);
+
+		await advance(60_000);
+
+		expect(texts(notify)).toEqual(["房间 0", "房间 1", recovered(1), "房间 2"]);
+		await advance(30 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(4);
+	});
+
+	// 验红(N3 / S-2):在途的那一发也算盖住(发送落定后不重新对账同键其余的),这条红。
+	it("十个房间里先发的那条没送到、再送之前它自己清了:轮到欠着的下一条,档位沿用这把键的", async () => {
+		const { table, notify } = setup(async () => fail("unavailable", "没连上"));
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await flush();
+		expect(notify).toHaveBeenCalledTimes(1);
+		table.resolve(key(0));
+		await flush();
+		expect(notify).toHaveBeenCalledTimes(1);
+
+		// 第一档 10 秒:到点轮到房间 1
+		await advance(10_000);
+		expect(texts(notify)).toEqual(["房间 0", "房间 1"]);
+		// 第二档 30 秒(不是从头数的 10 秒)
+		await advance(29_999);
+		expect(notify).toHaveBeenCalledTimes(2);
+		await advance(1);
+		expect(texts(notify)).toEqual(["房间 0", "房间 1", "房间 1"]);
+	});
+
+	it("同上,再送送到了:其余几条改由它盖住,不再各说一遍", async () => {
+		const results = [fail("unavailable", "没连上")];
+		const { table, notify } = setup(async () => results.shift() ?? sent());
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await flush();
+		table.resolve(key(0));
+		await flush();
+
+		await advance(60 * 60_000);
+
+		expect(texts(notify)).toEqual(["房间 0", "房间 1"]);
+		expect(table.list()).toHaveLength(9);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	// 验红:不可重试的失败不让这把键停下(照样排下一档再送),这条红。
+	it("没送到且不可重试(没配主人):同键欠着的其余几条不各试一遍;之后新开一条才再试一次,说的是欠得最久的", async () => {
+		const results = [fail("not_configured", "没配主人")];
+		const { table, notify } = setup(async () => results.shift() ?? sent());
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await flush();
+		await advance(60 * 60_000);
+		// 不可重试:同键此刻欠着的十条都不再试
+		expect(notify).toHaveBeenCalledTimes(1);
+		table.resolve(key(0));
+		await advance(60 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(1);
+
+		// 之后新开的照常试;这回送到了,其余的由它盖住
+		open(table, stopped(10));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", "房间 1"]);
+		await advance(60 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("一直没配主人:十个房间同时停监只试一次,之后每新开一条各试一次", async () => {
+		const { table, notify } = setup(async () => fail("not_configured", "没配主人"));
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await advance(60 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(1);
+		open(table, stopped(10));
+		await advance(60 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("同键欠着好几条:只说最早开的那一条,其余改由它盖住;它清掉再轮到下一条", async () => {
+		const { table, notify } = setup();
+		for (let n = 0; n < 4; n++) open(table, stopped(n));
+		await flush();
+		await advance(10 * 60_000);
+		table.resolve(key(0));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", recovered(0), "房间 1"]);
+		await advance(10 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(3);
+
+		table.resolve(key(1));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", recovered(0), "房间 1", recovered(1), "房间 2"]);
+		await advance(10 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(5);
+	});
+
+	it("没说过的那条(被盖住的)清掉:不补恢复句,盖着的关系照旧", async () => {
+		const { table, notify } = setup();
+		for (let n = 0; n < 3; n++) open(table, stopped(n));
+		await flush();
+		table.resolve(key(1));
+		await advance(10 * 60_000);
+		expect(texts(notify)).toEqual(["房间 0"]);
+	});
+
+	// 验红:窗口内不看时间直接发(reconcile 里去掉窗口判断),这条红。
+	it("同一把键,上一句送到之后 60 秒内不再有问题私聊(「已恢复」另算)", async () => {
+		const deliveredAt: number[] = [];
+		const { table } = setup(async () => sent(), {
+			onNotify: (text) => {
+				if (!text.startsWith(GENERIC_RECOVERY_PREFIX)) deliveredAt.push(Date.now());
+			},
+		});
+		// 一分钟里十几件事:开、清、再开、盖它的清掉
+		for (let round = 0; round < 6; round++) {
+			open(table, stopped(round));
+			await advance(7_000);
+			open(table, stopped(round + 100));
+			await advance(7_000);
+			table.resolve(key(round));
+			await advance(7_000);
+		}
+		// 盖着别人的那几条每 20 秒清掉一条:每清一条就欠下一句,但只能一个窗口说一句
+		for (let round = 0; round < 6; round++) {
+			table.resolve(key(round + 100));
+			await advance(20_000);
+		}
+		await advance(30 * 60_000);
+
+		expect(deliveredAt.length).toBeGreaterThan(3);
+		for (let i = 1; i < deliveredAt.length; i++) {
+			expect((deliveredAt[i] ?? 0) - (deliveredAt[i - 1] ?? 0)).toBeGreaterThanOrEqual(60_000);
+		}
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("窗口之外新开的当场说:同键有一条说过的开着也不挡", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		await advance(60_000);
+		open(table, stopped(1));
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", "房间 1"]);
+	});
+
+	it("五档再送用完:同键欠着的其余几条不再各试一遍,也不留计时器", async () => {
+		const { table, notify, logger } = setup(async () => fail("unavailable", "一直连不上"));
+		for (let n = 0; n < 10; n++) open(table, stopped(n));
+		await flush();
+
+		await advance(3 * 60 * 60_000);
+
+		expect(notify).toHaveBeenCalledTimes(6);
+		expect(logger.warn.mock.calls.filter((c) => String(c[0]).includes("放弃"))).toHaveLength(1);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("挂着再送时同键新开一条:当场再试一次(不等那一档),送到后其余的由它盖住", async () => {
+		const results = [fail("unavailable", "没连上")];
+		const { table, notify } = setup(async () => results.shift() ?? sent());
+		open(table, stopped(0));
+		await flush();
+		open(table, stopped(1));
+		await flush();
+		// 说的是最早开的那一条
+		expect(texts(notify)).toEqual(["房间 0", "房间 0"]);
+		await advance(60 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it("从「不要私聊」换成「要私聊」且没说过:当场说,清掉时补恢复句", async () => {
+		const { table, notify } = setup();
+		open(table, { code: "risk", message: "风控了", notify: false, recoveryMessage: "解除啦" });
+		await advance(5 * 60_000);
+		expect(notify).not.toHaveBeenCalled();
+
+		open(table, { code: "risk", message: "风控了", notify: true, recoveryMessage: "解除啦" });
+		await flush();
+		expect(texts(notify)).toEqual(["风控了"]);
+
+		// 再换回不要私聊:不撤回,也不再说;清掉时照补
+		open(table, { code: "risk", message: "风控了", notify: false, recoveryMessage: "解除啦" });
+		open(table, { code: "risk", message: "风控了", notify: true, recoveryMessage: "解除啦" });
+		await advance(10 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(1);
+		table.resolve({ reporter: "src", code: "risk" });
+		await flush();
+		expect(texts(notify)).toEqual(["风控了", "解除啦"]);
+	});
+
+	it("在窗口内从「不要私聊」换成「要私聊」:照窗口的规矩(盖它的那条已清,到点补说)", async () => {
+		const { table, notify } = setup();
+		open(table, stopped(0));
+		await flush();
+		open(table, { ...stopped(1), notify: false });
+		table.resolve(key(0));
+		await flush();
+		open(table, { ...stopped(1), notify: true });
+		await flush();
+		expect(texts(notify)).toEqual(["房间 0", recovered(0)]);
+		await advance(60_000);
+		expect(texts(notify)).toEqual(["房间 0", recovered(0), "房间 1"]);
+	});
+
+	// 记一笔 7(钉现状):在途时「清(补恢复)→ 以不带私聊重开」。重开的那条明说不要私聊,不认领那句说出去的话;
+	// 送达后照旧对已清的那条补恢复句 —— 与「那一发瞬间送到」时的次序(说 → 清并补恢复 → 静默重开)结果一致。
+	it("在途时清了、又以不带私聊重开:不认领,送达后照补恢复句,重开的那条没说过", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify } = setup(() => gate.promise);
+		open(table, { message: "风控了" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		open(table, { message: "又风控了", notify: false });
+		await flush();
+
+		gate.resolve(sent());
+		await flush();
+
+		expect(texts(notify)).toEqual(["风控了", `${GENERIC_RECOVERY_PREFIX}风控了`]);
+		expect(table.list()).toHaveLength(1);
+		// 重开的那条没说过:清掉不再补
+		table.resolve({ reporter: "src", code: "auth_lost" });
+		await advance(10 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(2);
+	});
+
+	// 验红:这条由三道闸合钉(落定看 disposed、对账看 disposed、dispose 清账),单去一道不红;三道同时去掉才红。
+	it("dispose 之后:没有计时器;在途的发送没送到,也不排再送", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify, notifier } = setup(() => gate.promise);
+		for (let n = 0; n < 3; n++) open(table, stopped(n));
+		await flush();
+
+		notifier.dispose();
+		expect(vi.getTimerCount()).toBe(0);
+		gate.resolve(fail("unavailable", "没连上"));
+		await flush();
+
+		expect(vi.getTimerCount()).toBe(0);
+		await advance(60 * 60_000);
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:发送落定时不看 disposed(照样记账),这条红(多出一句「已恢复」)。
+	it("dispose 之后:在途时已被清掉的那条送到了,也不补「已恢复」、不记 warn", async () => {
+		const gate = deferred<DeliveryResult>();
+		const { table, notify, notifier, logger } = setup(() => gate.promise);
+		open(table, { message: "在路上" });
+		await flush();
+		table.resolve({ reporter: "src", code: "auth_lost" });
+
+		notifier.dispose();
+		gate.resolve(sent());
+		await advance(60 * 60_000);
+
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(logger.warn).not.toHaveBeenCalled();
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });

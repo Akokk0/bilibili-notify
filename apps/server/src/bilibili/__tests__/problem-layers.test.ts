@@ -154,8 +154,8 @@ describe("未登录层:只看 AuthState.status", () => {
 describe("压与抹", () => {
 	it("未登录一开:手里的风控路在表里静默抹掉(notify: false),再报未登录", () => {
 		const { core, set, layers } = setup(IN);
-		layers.reportRisk("dynamic");
-		layers.reportRisk("live:1");
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("live:1", { notify: true });
 		core.resolveProblem.mockClear();
 		core.reportProblem.mockClear();
 
@@ -197,7 +197,7 @@ describe("压与抹", () => {
 	it("未登录开着时:风控与失败只记日志,不进表", () => {
 		const { core, layers } = setup(EXPIRED);
 		core.reportProblem.mockClear();
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
 			message: "x",
@@ -209,7 +209,7 @@ describe("压与抹", () => {
 
 	it("未登录开着时存的东西不许等它清掉后自己冒出来:清掉再重新接上,表里只有现状(空)", () => {
 		const { core, set, layers } = setup(EXPIRED);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
 			message: "x",
@@ -241,7 +241,7 @@ describe("压与抹", () => {
 		core.reportProblem.mockClear();
 		core.resolveProblem.mockClear();
 
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 
 		expect(core.resolveProblem).toHaveBeenCalledTimes(2);
 		expect(core.resolveProblem.mock.calls.every(([p]) => p.notify === false)).toBe(true);
@@ -255,7 +255,7 @@ describe("压与抹", () => {
 
 	it("风控开着时失败只记日志,不进表;风控清掉后它也不自己冒回来", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		core.reportProblem.mockClear();
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
@@ -270,9 +270,9 @@ describe("压与抹", () => {
 
 	it("两路风控各清各的,最后一路清了才清表(普通的清);同一路重复撞只报一次", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
-		layers.reportRisk("dynamic");
-		layers.reportRisk("live:1");
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("live:1", { notify: true });
 		expect(core.reportProblem).toHaveBeenCalledTimes(1);
 
 		layers.resolveRisk("dynamic");
@@ -380,7 +380,7 @@ describe("第三层:各项请求失败", () => {
 		const missing = setup(OUT);
 		expect(missing.core.reportProblem.mock.calls[0]?.[0]).not.toHaveProperty("recoveryMessage");
 		const risky = setup(IN);
-		risky.layers.reportRisk("dynamic");
+		risky.layers.reportRisk("dynamic", { notify: true });
 		expect(risky.core.reportProblem.mock.calls[0]?.[0].recoveryMessage).toBe(
 			PROBLEM_TEXTS.riskControlled.recovery,
 		);
@@ -455,7 +455,7 @@ describe("第三层的 lasting", () => {
 
 	it("风控开着时报 lasting 的:表里没有它;风控清了:报上去,带它自己的 notify 与 recoveryMessage", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		core.reportProblem.mockClear();
 
 		layers.reportFailure(stopped({ notify: false }));
@@ -475,7 +475,7 @@ describe("第三层的 lasting", () => {
 
 	it("风控压着时被主人 resolveFailure:风控清了也不报,对核心也什么都没说", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure(stopped());
 		core.resolveProblem.mockClear();
 
@@ -535,7 +535,7 @@ describe("第三层的 lasting", () => {
 		layers.reportFailure(stopped());
 		core.resolveProblem.mockClear();
 
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		expect(core.resolveProblem).toHaveBeenCalledWith({
 			externalId: "7",
 			code: "live_monitor_stopped",
@@ -549,7 +549,7 @@ describe("第三层的 lasting", () => {
 
 	it("两层都压过:未登录清了而风控还开着,就继续压着(登录开时风控被清空,所以只有未登录一层)", () => {
 		const { core, layers, set } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure(stopped());
 		set(EXPIRED); // 风控被抹掉,第三层仍压着
 		core.reportProblem.mockClear();
@@ -559,7 +559,7 @@ describe("第三层的 lasting", () => {
 
 	it("压着的 lasting 在 attach 补报时不报(只报最上面一层),压着的东西清掉后才报", () => {
 		const { core, layers } = setup(IN, false);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure(stopped());
 		layers.attach(core);
 		expect(core.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["risk_controlled"]);
@@ -578,7 +578,7 @@ describe("第三层的 lasting", () => {
 
 	it("lasting: false 与之前一样:高层开着时不存,清掉后也不冒出来", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure({
 			code: "dynamic_fetch_failed",
 			message: "x",
@@ -606,12 +606,12 @@ describe("说过的一次性故障不说第二遍", () => {
 		...over,
 	});
 
-	// 验红:revealFailures 恒用自己的 notify,除「高层开着时才第一次报」那条外都红;
+	// 验红:revealFailures 里不把报给过核心的记成静默(muted),除「高层开着时才第一次报」那条外都红;
 	//       「说过的记号」不随同键再报带走(reported 恒 false),「压着时同一件事又报了一遍」红。
 	it("报过(带私聊)→ 风控压下去 → 风控清了:冒回表里,notify 为 false,话与恢复句照旧", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure(stopped());
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		core.reportProblem.mockClear();
 
 		layers.resolveRisk("dynamic");
@@ -641,7 +641,7 @@ describe("说过的一次性故障不说第二遍", () => {
 
 	it("高层开着时才第一次报的(从没到过核心):冒出来时照它自己的 notify", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure(stopped());
 		core.reportProblem.mockClear();
 
@@ -655,7 +655,7 @@ describe("说过的一次性故障不说第二遍", () => {
 	it("压着时同一件事又报了一遍:「说过」的记号跟着走,冒出来仍不带私聊", () => {
 		const { core, layers } = setup(IN);
 		layers.reportFailure(stopped());
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure(stopped({ message: "换了原因" }));
 		core.reportProblem.mockClear();
 
@@ -668,10 +668,10 @@ describe("说过的一次性故障不说第二遍", () => {
 
 	it("冒出来之后再被压、再冒:仍然不带私聊", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.reportFailure(stopped());
 		layers.resolveRisk("dynamic"); // 第一次冒出来,带私聊
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		core.reportProblem.mockClear();
 
 		layers.resolveRisk("dynamic");
@@ -685,23 +685,23 @@ describe("风控的清:真解除与不再适用", () => {
 	// 验红:去掉 resolveRisk 里 `notify: false` 的透传,下面前两条红。
 	it("最后一路用 notify: false 清:给核心的清带 notify: false(不补「已恢复」)", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.resolveRisk("dynamic", { notify: false });
 		expect(core.resolveProblem).toHaveBeenCalledWith({ code: "risk_controlled", notify: false });
 	});
 
 	it("只看最后清掉的那一路:先是真解除、最后是不再适用 → 不补;反过来 → 补", () => {
 		const a = setup(IN);
-		a.layers.reportRisk("dynamic");
-		a.layers.reportRisk("live:1");
+		a.layers.reportRisk("dynamic", { notify: true });
+		a.layers.reportRisk("live:1", { notify: true });
 		a.layers.resolveRisk("dynamic");
 		a.layers.resolveRisk("live:1", { notify: false });
 		expect(a.core.resolveProblem).toHaveBeenCalledTimes(1);
 		expect(a.core.resolveProblem).toHaveBeenCalledWith({ code: "risk_controlled", notify: false });
 
 		const b = setup(IN);
-		b.layers.reportRisk("dynamic");
-		b.layers.reportRisk("live:1");
+		b.layers.reportRisk("dynamic", { notify: true });
+		b.layers.reportRisk("live:1", { notify: true });
 		b.layers.resolveRisk("dynamic", { notify: false });
 		b.layers.resolveRisk("live:1");
 		expect(b.core.resolveProblem).toHaveBeenCalledTimes(1);
@@ -710,7 +710,7 @@ describe("风控的清:真解除与不再适用", () => {
 
 	it("不再适用地清掉最后一路:压着的 lasting 照样冒出来", () => {
 		const { core, layers } = setup(IN);
-		layers.reportRisk("live:1");
+		layers.reportRisk("live:1", { notify: true });
 		layers.reportFailure({
 			externalId: "7",
 			code: "live_monitor_stopped",
@@ -733,7 +733,7 @@ describe("先造、后接、补报", () => {
 			notify: true,
 			lasting: false,
 		});
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		expect(core.reportProblem).not.toHaveBeenCalled();
 
 		layers.attach(core);
@@ -764,7 +764,7 @@ describe("先造、后接、补报", () => {
 
 	it("未登录最优先:只补它一条", () => {
 		const { core, layers } = setup(EXPIRED, false);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		layers.attach(core);
 		expect(core.reportProblem.mock.calls.map(([p]) => p.code)).toEqual(["auth_lost"]);
 	});
@@ -786,7 +786,7 @@ describe("先造、后接、补报", () => {
 	it("摘下后再报不调核心,记在自己手里;再接上补报现状", () => {
 		const { core, layers, set } = setup(IN);
 		layers.detach();
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		set(EXPIRED);
 		layers.resolveRisk("nope");
 		expect(core.reportProblem).not.toHaveBeenCalled();
@@ -802,7 +802,7 @@ describe("先造、后接、补报", () => {
 		expect(unsubscribed).toHaveBeenCalledTimes(1);
 		expect(listeners.size).toBe(0);
 		set(EXPIRED);
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		expect(core.reportProblem).not.toHaveBeenCalled();
 	});
 });
@@ -825,7 +825,7 @@ describe("核心那头抛错不往外传", () => {
 		const layers = createProblemLayers({ auth: fake.auth, logger });
 		layers.attach(throwingCore());
 		expect(() => {
-			layers.reportRisk("dynamic");
+			layers.reportRisk("dynamic", { notify: true });
 			layers.resolveRisk("dynamic");
 			layers.reportFailure({
 				code: "dynamic_fetch_failed",
@@ -852,11 +852,184 @@ describe("核心那头抛错不往外传", () => {
 			},
 			resolveProblem: () => {},
 		});
-		layers.reportRisk("dynamic");
-		layers.reportRisk("live:1");
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("live:1", { notify: true });
 		layers.resolveRisk("dynamic");
 		layers.resolveRisk("live:1");
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		expect(calls).toBe(2);
+	});
+});
+
+/**
+ * S-4:一条 `lasting` 的失败被高层压过、静默冒出来之后,在它被清掉之前,同一件事再报多少次都不再带私聊
+ * (重连补跑里取房间信息一直失败的房间每一轮都会再报一次停监)。
+ */
+describe("静默冒出来之后同一件事再报", () => {
+	const stopped = (over: Partial<Parameters<ProblemLayers["reportFailure"]>[0]> = {}) => ({
+		externalId: "7",
+		code: "live_monitor_stopped",
+		message: "停了",
+		notify: true,
+		lasting: true,
+		recoveryMessage: "连上啦",
+		...over,
+	});
+	const notifies = (core: ReturnType<typeof makeCore>) =>
+		core.reportProblem.mock.calls.map(([p]) => [p.code, p.message, p.notify]);
+
+	// 验红(Y1):再报时不带走「静默」的记号(muted 恒 false),前两条红。
+	it("说过 → 风控压 → 风控清(静默冒出来)→ 再报同一条:给核心的仍是 notify: false,报几次都一样", () => {
+		const { core, layers } = setup(IN);
+		layers.reportFailure(stopped());
+		layers.reportRisk("dynamic", { notify: true });
+		layers.resolveRisk("dynamic");
+		core.reportProblem.mockClear();
+
+		layers.reportFailure(stopped());
+		layers.reportFailure(stopped({ message: "换了原因" }));
+		layers.reportFailure(stopped({ message: "换了原因" }));
+
+		expect(notifies(core)).toEqual([
+			["live_monitor_stopped", "停了", false],
+			["live_monitor_stopped", "换了原因", false],
+			["live_monitor_stopped", "换了原因", false],
+		]);
+	});
+
+	it("未登录压过的也一样", () => {
+		const { core, layers, set } = setup(IN);
+		layers.reportFailure(stopped());
+		set(EXPIRED);
+		set(IN);
+		core.reportProblem.mockClear();
+
+		layers.reportFailure(stopped());
+
+		expect(notifies(core)).toEqual([["live_monitor_stopped", "停了", false]]);
+	});
+
+	it("清掉之后再报是新的一条:照它自己的 notify", () => {
+		const { core, layers } = setup(IN);
+		layers.reportFailure(stopped());
+		layers.reportRisk("dynamic", { notify: true });
+		layers.resolveRisk("dynamic");
+		layers.resolveFailure({ externalId: "7", code: "live_monitor_stopped" });
+		core.reportProblem.mockClear();
+
+		layers.reportFailure(stopped());
+
+		expect(notifies(core)).toEqual([["live_monitor_stopped", "停了", true]]);
+	});
+
+	it("对照:从没被压过的,再报照旧带它自己的 notify(头一句还在再送时,再报一次不许把它掐掉)", () => {
+		const { core, layers } = setup(IN);
+		layers.reportFailure(stopped());
+		layers.reportFailure(stopped({ message: "换了原因" }));
+		expect(notifies(core)).toEqual([
+			["live_monitor_stopped", "停了", true],
+			["live_monitor_stopped", "换了原因", true],
+		]);
+	});
+
+	it("摘下再接上(来源重启,表整份清过):是新的一条,照它自己的 notify", () => {
+		const { core, layers } = setup(IN);
+		layers.reportFailure(stopped());
+		layers.reportRisk("dynamic", { notify: true });
+		layers.resolveRisk("dynamic");
+		layers.detach();
+		core.reportProblem.mockClear();
+
+		layers.attach(core);
+		layers.reportFailure(stopped());
+
+		expect(notifies(core)).toEqual([
+			["live_monitor_stopped", "停了", true],
+			["live_monitor_stopped", "停了", true],
+		]);
+	});
+});
+
+/**
+ * 风控层记住每一路要不要私聊(已定 26):直播预检被拦只进表;拉动态被风控才私聊。
+ * 报给核心的条目带不带私聊只升不降:有一路要私聊的进来就再报一次带私聊的,那一路先走了也不撤回。
+ */
+describe("风控层:每一路要不要私聊", () => {
+	const riskCalls = (core: ReturnType<typeof makeCore>) =>
+		core.reportProblem.mock.calls
+			.filter(([p]) => p.code === "risk_controlled")
+			.map(([p]) => p.notify);
+
+	// 验红:reportRiskEntry 恒带私聊,第一、二、五条红;去掉「由假变真再报一次」,第二条红。
+	it("只有不要私聊的路:报给核心的风控条目 notify 为 false,话与恢复句照旧", () => {
+		const { core, layers } = setup(IN);
+		layers.reportRisk("live:1", { notify: false });
+		layers.reportRisk("live:2", { notify: false });
+		expect(core.reportProblem).toHaveBeenCalledTimes(1);
+		expect(core.reportProblem).toHaveBeenCalledWith({
+			code: "risk_controlled",
+			message: PROBLEM_TEXTS.riskControlled.text,
+			notify: false,
+			recoveryMessage: PROBLEM_TEXTS.riskControlled.recovery,
+		});
+	});
+
+	it("之后有一路要私聊的进来:再报一次、notify 为 true;再来别的路不再报", () => {
+		const { core, layers } = setup(IN);
+		layers.reportRisk("live:1", { notify: false });
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("live:2", { notify: false });
+		expect(riskCalls(core)).toEqual([false, true]);
+	});
+
+	it("要私聊的那一路先开:带私聊报一次;不要私聊的路后进来不再报", () => {
+		const { core, layers } = setup(IN);
+		layers.reportRisk("dynamic", { notify: true });
+		layers.reportRisk("live:1", { notify: false });
+		expect(riskCalls(core)).toEqual([true]);
+	});
+
+	it("要私聊的那一路先走了、只剩不要私聊的:不撤回(不再报),条目照旧开着;全走了才清", () => {
+		const { core, layers } = setup(IN);
+		layers.reportRisk("live:1", { notify: false });
+		layers.reportRisk("dynamic", { notify: true });
+		core.reportProblem.mockClear();
+
+		layers.resolveRisk("dynamic");
+		expect(core.reportProblem).not.toHaveBeenCalled();
+		expect(core.resolveProblem).not.toHaveBeenCalled();
+		// 摘下再接上:补报的仍是带私聊的那一份(说过的不撤回)
+		layers.detach();
+		layers.attach(core);
+		expect(riskCalls(core)).toEqual([true]);
+
+		layers.resolveRisk("live:1");
+		expect(core.resolveProblem).toHaveBeenCalledWith({ code: "risk_controlled" });
+	});
+
+	it("风控层清掉之后重新开:带不带私聊从头算", () => {
+		const { core, layers } = setup(IN);
+		layers.reportRisk("dynamic", { notify: true });
+		layers.resolveRisk("dynamic");
+		core.reportProblem.mockClear();
+		layers.reportRisk("live:1", { notify: false });
+		expect(riskCalls(core)).toEqual([false]);
+
+		// 未登录抹掉风控之后也一样
+		const b = setup(IN);
+		b.layers.reportRisk("dynamic", { notify: true });
+		b.set(EXPIRED);
+		b.set(IN);
+		b.core.reportProblem.mockClear();
+		b.layers.reportRisk("live:1", { notify: false });
+		expect(riskCalls(b.core)).toEqual([false]);
+	});
+
+	it("接上之前只有不要私聊的路:补报的风控不带私聊", () => {
+		const { core, layers } = setup(IN, false);
+		layers.reportRisk("live:1", { notify: false });
+		layers.attach(core);
+		expect(riskCalls(core)).toEqual([false]);
 	});
 });

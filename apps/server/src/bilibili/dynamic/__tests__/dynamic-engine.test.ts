@@ -389,7 +389,7 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.problems.reportRisk).toHaveBeenCalledTimes(1);
-		expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
 		expect(b.problems.reportFailure).not.toHaveBeenCalled();
 		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
@@ -1899,4 +1899,34 @@ describe("DynamicEngine — 这一路不再跑了,它报的要清", () => {
 		expect(w.table.list().map((p) => p.code)).toEqual(["dynamic_fetch_failed"]);
 		expect(w.notifyMaster.mock.calls.map((c) => c[0])).toEqual([PROBLEM_TEXTS.riskControlled.text]);
 	});
+
+	// 在途的那一轮迟到:名单已经清空(这一路不跑了、该清的清过了),它才带着失败回来。
+	// 这时再报就是一条没人清的:风控要挂到退避到点(5 分钟),期间把直播间的停监压成无声。
+	// 验红:去掉 handleApiError 里「这一路还在跑才报」的判断(`watching()`),这两条红。
+	it.each([
+		[-352, "risk"],
+		[-509, "限流"],
+	] as const)(
+		"名单清空之后在途的那一轮才回 %i:不往表里挂,直播的停监照常进表并私聊",
+		async (code, message) => {
+			const w = makeWorld();
+			let release: (value: unknown) => void = () => {};
+			w.b.fetchAllDynamic.mockReturnValueOnce(
+				new Promise((resolve) => {
+					release = resolve;
+				}),
+			);
+			const round = detect(w.b.engine);
+			w.b.setRoster(null);
+			w.b.engine.syncSubscriptions();
+
+			release(resp([], code, message));
+			await round;
+			await settle();
+
+			expect(w.table.list()).toEqual([]);
+			expect(w.notifyMaster).not.toHaveBeenCalled();
+			liveStoppedGetsThrough(w);
+		},
+	);
 });

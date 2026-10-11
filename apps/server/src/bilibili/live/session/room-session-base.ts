@@ -156,10 +156,12 @@ export abstract class RoomSessionBase {
 		this.ctx.problems.resolveRisk(liveRiskPath(this.sub.uid), { notify: false });
 	}
 
-	/** 预检被 -352 拦下:报这一路的风控。会话已停就不报。 */
+	/** 预检被 -352 拦下:报这一路的风控(直播这一路只进问题表、不私聊)。会话已停就不报。 */
 	protected reportRisk(): void {
 		if (!this.alive) return;
-		this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid));
+		this.ctx.problems.reportRisk(liveRiskPath(this.sub.uid), {
+			notify: PROBLEM_TEXTS.riskControlled.notify.live,
+		});
 	}
 
 	/** 这个房间不监听了:报一条订阅级的「停止监听」。会话已停就不报。 */

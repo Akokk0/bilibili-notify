@@ -9,7 +9,10 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  *    `expired` 开并带私聊;`logged-out`(从没登录过、主动退出)开、不私聊;`logged-in` 清;
  *    `awaiting-scan` / `confirming` / `error` 三种不动,保持上一次的结论(已登录时重扫不许误开,
  *    未登录时扫码途中不许误清)。
- * 2. **风控**(`risk_controlled`,来源级、带私聊):任一路撞了就开,所有撞着的路都清了才清。
+ * 2. **风控**(`risk_controlled`,来源级):任一路撞了就开,所有撞着的路都清了才清。带不带私聊由撞上的路说了算
+ *    (`reportRisk` 的 `notify`,取值集中在 `problem-texts.ts`):只有不要私聊的路开着时条目不带私聊;
+ *    之后有一路要私聊的进来,**再报一次、带私聊**。只升不降:要私聊的那一路先走了也不撤回,条目照旧开着,
+ *    整层清掉之后才从头算。
  *    一路的清由调用方按两种说法叫:**真解除**(这一路这一次的结果不是风控拦截:拉成功了、预检通过了)
  *    与**不再适用**(`notify: false`:这一路不再跑了、换成了别的失败、会话结束了)。
  *    约定:最后清掉的那一下是「不再适用」,就不对主人说「风控已经解除」。
@@ -21,7 +24,8 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  * - `lasting: true`(报一次就不再报、直到有人去修的,如某个直播间停止监听):高层开着时**存下但不报**,
  *   高层开起来时也不清空;高层清掉的那一刻把存着的报上去(照各自的 `notify`)。它的主人调 `resolveFailure`
  *   时照常删 —— 压着的时候被删了,高层清掉也不再报。**曾经报给过核心的**(主人当时已经听过一遍),被压下去
- *   再冒出来时报回表里但不带私聊(文案、恢复句照旧);高层开着时才第一次报的(从没到过核心),冒出来时照它自己的 `notify`。
+ *   再冒出来时报回表里但不带私聊(文案、恢复句照旧),**之后在它被清掉之前同一件事再报多少次也不带**;
+ *   高层开着时才第一次报的(从没到过核心),冒出来时照它自己的 `notify`。
  *
  * 手里存的是「此刻该在表里的东西」,不是事件流水。核心那头(`attach` 交进来的上下文)是后接上的:接上那一刻把
  * 这份现状整份报上去,所以接上之前记着的不会丢;`detach`(来源停下)之后再报继续记在自己手里,等下一次接上。
@@ -30,8 +34,11 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  * 每个方法都不许往外抛:调用点都在引擎的关键控制流上,核心那头抛了只记一行 warn。
  */
 export interface ProblemLayers {
-	/** 风控:这一路撞了(每次撞都叫,幂等)。路的键:`dynamic`、`live:<uid>`。 */
-	reportRisk(path: string): void;
+	/**
+	 * 风控:这一路撞了(每次撞都叫,幂等)。路的键:`dynamic`、`live:<uid>`。
+	 * `notify`(必填,调用方必须表态)= 这一路撞上要不要私聊主人。
+	 */
+	reportRisk(path: string, options: { notify: boolean }): void;
 	/**
 	 * 这一路好了,或这一路不再跑了。缺省 = 真解除(最后一路这样清掉会补「风控已解除」);
 	 * `notify: false` = 不再适用,不是解除,最后一路这样清掉时不补。
@@ -83,6 +90,8 @@ interface Failure {
 	recoveryMessage?: string;
 	/** 曾经报给过核心(主人当时已经听过一遍):被压下去再冒出来时不再带私聊。 */
 	reported: boolean;
+	/** 已经静默冒出来过:在被清掉之前,再报也不带私聊。 */
+	muted: boolean;
 }
 
 const LOGIN_CODE = "auth_lost";
@@ -98,6 +107,8 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	let login: { notify: boolean } | null = null;
 	/** 风控层:撞着的路。 */
 	const risk = new Set<string>();
+	/** 风控层开着时,报给核心的那一条带不带私聊。只升不降,整层清掉(`risk` 空了)时复位。 */
+	let riskNotify = false;
 	/** 第三层:此刻的失败。 */
 	const failures = new Map<string, Failure>();
 	let core: CoreProblems | null = null;
@@ -129,21 +140,18 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		to.reportProblem({
 			code: RISK_CODE,
 			message: text.text,
-			notify: text.notify,
+			notify: riskNotify,
 			recoveryMessage: text.recovery,
 		});
 	}
 
-	/**
-	 * 把一条第三层的失败报给核心。`quiet` = 这是「被高层压下去后再冒出来」:已经报给过核心的那条不再带私聊。
-	 * 报出去就记成「报给过核心」。
-	 */
-	function reportFailureEntry(to: CoreProblems, failure: Failure, quiet: boolean): void {
+	/** 把一条第三层的失败报给核心:静默冒出来过的不带私聊。报出去就记成「报给过核心」。 */
+	function reportFailureEntry(to: CoreProblems, failure: Failure): void {
 		to.reportProblem({
 			...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 			code: failure.code,
 			message: failure.message,
-			notify: quiet && failure.reported ? false : failure.notify,
+			notify: failure.muted ? false : failure.notify,
 			...(failure.recoveryMessage === undefined
 				? {}
 				: { recoveryMessage: failure.recoveryMessage }),
@@ -173,11 +181,17 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		}
 	}
 
-	/** 高层清掉了、第三层重新可见:手里存着的(只可能是 `lasting` 的)报上去;说过的那条不再私聊。 */
+	/**
+	 * 高层清掉了、第三层重新可见:手里存着的(只可能是 `lasting` 的)报上去;报给过核心的那条从此静默
+	 * (这一次与之后的再报都不带私聊,直到它被清掉)。
+	 */
 	function revealFailures(): void {
 		if (failures.size === 0) return;
+		for (const failure of failures.values()) {
+			if (failure.reported) failure.muted = true;
+		}
 		toCore("补报压着的请求失败", (to) => {
-			for (const failure of failures.values()) reportFailureEntry(to, failure, true);
+			for (const failure of failures.values()) reportFailureEntry(to, failure);
 		});
 	}
 
@@ -185,6 +199,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	function eraseRisk(): void {
 		if (risk.size === 0) return;
 		risk.clear();
+		riskNotify = false;
 		toCore("抹掉风控", (to) => to.resolveProblem({ code: RISK_CODE, notify: false }));
 	}
 
@@ -232,20 +247,23 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 	const authWatch = options.auth.onChange(readAuth);
 
 	return {
-		reportRisk(path) {
+		reportRisk(path, riskOptions) {
 			if (login !== null) {
 				logger.debug(`[problem-layers] 登录没好,风控(${path})不另记`);
 				return;
 			}
 			const wasEmpty = risk.size === 0;
 			risk.add(path);
-			if (!wasEmpty) return;
-			pressDownFailures(true);
-			toCore("报风控", reportRiskEntry);
+			// 要私聊的一路进来了而条目还不带私聊:再报一次(带私聊);反过来不撤回
+			const raised = riskOptions.notify && !riskNotify;
+			if (raised) riskNotify = true;
+			if (wasEmpty) pressDownFailures(true);
+			if (wasEmpty || raised) toCore("报风控", reportRiskEntry);
 		},
 		resolveRisk(path, resolveOptions) {
 			if (!risk.delete(path)) return;
 			if (risk.size > 0) return;
+			riskNotify = false;
 			toCore("清风控", (to) =>
 				to.resolveProblem({
 					code: RISK_CODE,
@@ -269,8 +287,10 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				...(failure.recoveryMessage === undefined
 					? {}
 					: { recoveryMessage: failure.recoveryMessage }),
-				// 同一件事再报:「报给过核心」的记号跟着走(压着时反复报,冒出来也只算一次)
+				// 同一件事再报:「报给过核心」「静默冒出来过」两个记号跟着走(压着时反复报,冒出来也只算一次;
+				// 静默冒出来之后再报,不说第二遍)
 				reported: failures.get(failureKey(failure))?.reported ?? false,
+				muted: failures.get(failureKey(failure))?.muted ?? false,
 			};
 			failures.set(failureKey(entry), entry);
 			// 压着的 lasting 只存不报,高层清掉那一刻再报
@@ -278,7 +298,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				logger.debug(`[problem-layers] 更上一层的问题开着,${failure.code} 先记着,等它清掉再报`);
 				return;
 			}
-			toCore("报请求失败", (to) => reportFailureEntry(to, entry, false));
+			toCore("报请求失败", (to) => reportFailureEntry(to, entry));
 		},
 		resolveFailure(failure, resolveOptions) {
 			if (!failures.delete(failureKey(failure))) return;
@@ -294,11 +314,13 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 		},
 		attach(next) {
 			core = next;
+			// 接上的是一张清过的表(来源停下时核心把它名下的整份清了):手里的都是新的一条,照各自的 `notify`
+			for (const failure of failures.values()) failure.muted = false;
 			// 整份现状,只报最上面一层:`lasting` 的第三层在高层压着时手里有、表里不该有。
 			toCore("补报", (to) => {
 				if (login !== null) reportLogin(to, login);
 				else if (risk.size > 0) reportRiskEntry(to);
-				else for (const failure of failures.values()) reportFailureEntry(to, failure, false);
+				else for (const failure of failures.values()) reportFailureEntry(to, failure);
 			});
 		},
 		detach() {

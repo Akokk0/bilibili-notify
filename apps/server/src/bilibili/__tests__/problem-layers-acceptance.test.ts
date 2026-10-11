@@ -152,7 +152,7 @@ describe("失效登录开机", () => {
 			notify: true,
 			lasting: false,
 		});
-		layers.reportRisk("dynamic");
+		layers.reportRisk("dynamic", { notify: true });
 		await flush();
 
 		expect(table.list()).toHaveLength(1);

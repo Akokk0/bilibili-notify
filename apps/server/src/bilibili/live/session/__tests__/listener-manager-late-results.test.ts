@@ -293,4 +293,26 @@ describe("整批停掉 / 重建时的次序:先静默清问题,再 cancel", () =
 
 		expect(w.present()).toEqual(["u2:live_room_restricted"]);
 	});
+
+	// 验红:把 stopForUid 里的 `clearMonitorProblems(uid)` 挪回 `session?.cancel()` 之后,这条红
+	// (u1 自己那条先带着私聊冒出来、随即又被静默清掉 —— 主人会为一位刚关掉的 UP 收到一句「监听停了」)。
+	it("stopForUid:这位 UP 自己压在风控底下的停监不冒出来(先静默清、再 cancel),别的房间的照样冒", async () => {
+		const w = await riskWorld();
+		// u1 的会话在长尾里:早先报过一次停监(风控开着,存着没报),这一路预检又被拦着
+		w.layers.reportFailure({
+			externalId: "u1",
+			code: "live_monitor_stopped",
+			message: "房间停了",
+			notify: true,
+			lasting: true,
+		});
+		expect(w.present()).toEqual(["risk_controlled"]);
+
+		w.manager.stopForUid("u1");
+
+		expect(w.calls.filter((c) => c.startsWith("report:"))).toEqual([
+			"report:u2:live_room_restricted",
+		]);
+		expect(w.present()).toEqual(["u2:live_room_restricted"]);
+	});
 });

@@ -143,7 +143,7 @@ describe("预检被风控拦:按 live:<uid> 一路报,这一路下一次结果�
 		const session = new RoomSession(ctx, makeSub());
 
 		await session.bootstrap();
-		expect(problems.reportRisk).toHaveBeenCalledWith("live:u1");
+		expect(problems.reportRisk).toHaveBeenCalledWith("live:u1", { notify: false });
 		expect(problems.resolveRisk).not.toHaveBeenCalled();
 
 		await mocks.flushAll();

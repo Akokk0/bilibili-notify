@@ -248,7 +248,7 @@ describe("createBiliSource", () => {
 		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
 		await source.start(ctx);
 		await source.dynamic()?.detectNow();
-		expect(deps.problems.reportRisk).toHaveBeenCalledWith("dynamic");
+		expect(deps.problems.reportRisk).toHaveBeenCalledWith("dynamic", { notify: true });
 		await source.stop();
 	});
 
