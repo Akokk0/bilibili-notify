@@ -209,12 +209,27 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 	const pending: FeedItem[] = [];
 	let seq = 0;
 
+	/** 让拉动态回错误码:还剩几次。用完置空。 */
+	let failing: { code: number; remaining: number } | null = null;
+
+	/**
+	 * `fetchAllDynamic` 只有一个盖板位:假动态与错误码共用它,各自的状态变了都来这里对一次 ——
+	 * 谁还要用就留着,都不用了才摘。错误码优先:真请求都不发(也就不打 B 站)。
+	 */
 	function syncOverride(): void {
-		if (pending.length === 0) {
+		if (pending.length === 0 && failing === null) {
 			deps.api.clear("fetchAllDynamic");
 			return;
 		}
 		deps.api.override("fetchAllDynamic", async (real) => {
+			if (failing) {
+				const { code } = failing;
+				failing.remaining -= 1;
+				if (failing.remaining <= 0) failing = null;
+				syncOverride();
+				// 真接口出错时的样子:只有 code 与 message,没有 data。引擎看到 code≠0 就不碰 data。
+				return { code, message: `devtools:模拟的错误码 ${code}`, ttl: 1 } as unknown as Feed;
+			}
 			// 真 feed 拉不到(没登录 / 风控)也照样造:用一份空底。引擎收到 code≠0 会走错误处理,
 			// 那不是这次要看的东西。
 			let feed: Feed;
@@ -290,5 +305,42 @@ export function dynamicScenarios(deps: DynamicScenarioDeps): DevScenarioDef[] {
 		},
 	};
 
-	return [post];
+	const fail: DevScenarioDef = {
+		id: "dynamic.fail",
+		group: "state",
+		title: "动态拉取报错",
+		icon: "dyn",
+		desc: "让下一轮(可选:之后连着 N 轮)拉动态的请求返回指定的错误码,看动态引擎的退避、问题表与私聊怎么反应。想立刻看到就再点「动态检测」。盖的只是拉动态这一个请求,不经请求客户端的拦截:回 -101 也不会把登录状态变成失效,只会让动态引擎停着等 auth-restored;要验登录失效得用真的失效登录。收摊即回真。",
+		params: [
+			{ key: "code", label: "错误码", kind: "number", default: -352 },
+			{ key: "rounds", label: "连着几轮", kind: "number", default: 1, min: 1, max: 50 },
+		],
+		run(params) {
+			const code = Number(params.code ?? -352);
+			if (!Number.isInteger(code) || code === 0) {
+				throw new DevParamError("错误码要是个非 0 的整数(0 是成功)");
+			}
+			const rounds = Number(params.rounds ?? 1);
+			if (!Number.isInteger(rounds) || rounds < 1) {
+				throw new DevParamError("轮数要是个不小于 1 的整数");
+			}
+			failing = { code, remaining: rounds };
+			syncOverride();
+			return { summary: `接下来 ${failing.remaining} 轮拉动态会回错误码 ${code}。` };
+		},
+		active() {
+			if (!failing) return null;
+			return {
+				scenarioId: "dynamic.fail",
+				label: `拉动态 → 错误码 ${failing.code}(还剩 ${failing.remaining} 轮)`,
+			};
+		},
+		reset() {
+			if (!failing) return;
+			failing = null;
+			syncOverride();
+		},
+	};
+
+	return [post, fail];
 }

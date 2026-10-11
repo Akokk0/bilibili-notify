@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("createBiliDevtools", () => {
-	it("交出 B 站那十三个场景,id 不带前缀(前缀由宿主加)", () => {
+	it("交出 B 站那十四个场景,id 不带前缀(前缀由宿主加)", () => {
 		const ids = createBiliDevtools(deps()).scenarios.map((s) => s.id);
 		expect(ids).toEqual([
 			"live.start",
@@ -42,6 +42,7 @@ describe("createBiliDevtools", () => {
 			"live.gift",
 			"live.enter",
 			"dynamic.post",
+			"dynamic.fail",
 			"auth.login-state",
 			"live.repush-now",
 			"dynamic.detect-now",
@@ -54,7 +55,7 @@ describe("createBiliDevtools", () => {
 		const providers = createDevtoolsProviderRegistry();
 		providers.claim("bilibili", createBiliDevtools(deps()));
 		const ids = providers.scenarios().map((s) => s.id);
-		expect(ids).toHaveLength(13);
+		expect(ids).toHaveLength(14);
 		expect(ids.every((id) => id.startsWith("bilibili."))).toBe(true);
 		expect(ids).toContain("bilibili.live.danmaku");
 	});
