@@ -18,6 +18,8 @@ export interface SourceRegistry {
 	register(sourceKey: string, source: Source, ctx: SourceContext): Promise<Disposable>;
 	/** 现在谁认领着这个键;没人 = undefined。 */
 	get(sourceKey: string): SourceView | undefined;
+	/** 全部在册的来源,按登记先后(第一个读者是会员档位读口)。 */
+	list(): readonly SourceView[];
 }
 
 export function createSourceRegistry(): SourceRegistry {
@@ -26,6 +28,7 @@ export function createSourceRegistry(): SourceRegistry {
 	);
 	return {
 		get: (sourceKey) => table.get(sourceKey),
+		list: () => Array.from(table.entries(), ([, view]) => view),
 		async register(sourceKey, source, ctx) {
 			const claim = table.claim(sourceKey, { descriptor: source.descriptor });
 			try {

@@ -1,11 +1,14 @@
 import type { FeatureKey } from "./constants";
+import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
 
-/** 来源的自我介绍。这一片只有有读者的一格;其余(label、叫法、supportedFeatures……)随第 4 期面板改造。 */
+/** 来源的自我介绍。这一片只有有读者的两格;其余(label、叫法、supportedFeatures……)随第 4 期面板改造。 */
 export interface SourceDescriptor {
 	/** 这个平台管作品叫什么(进 `PostEvent.postNoun`)。 */
 	postNoun?: string;
+	/** 会员体系:卡片预览按它找档、示例卡取最低一档。没有会员体系的来源不写。 */
+	membershipPrograms?: MembershipProgram[];
 }
 
 /** 名单里的一条:只认人、不带订阅 id。 */

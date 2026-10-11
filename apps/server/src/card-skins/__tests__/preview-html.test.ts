@@ -13,9 +13,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_CARD_SKIN } from "@bilibili-notify/internal";
+import { DEFAULT_CARD_SKIN, type MembershipTier } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { renderSkinPreviewHtml } from "../preview-html.js";
+import { membershipTierUnavailable, renderSkinPreviewHtml } from "../preview-html.js";
 import { CardSkinStore } from "../store.js";
 
 let dir: string;
@@ -74,6 +74,7 @@ async function preview(manifest: unknown, scene?: string): Promise<string> {
 		skinId: "default",
 		kind: "post",
 		manifest,
+		membershipTier: undefined,
 		...(scene ? { scene } : {}),
 	});
 	if (!out.ok) throw new Error(`预览没画出来: ${out.errors.join(" / ")}`);
@@ -116,10 +117,56 @@ describe("实时预览 — 转发场面", () => {
 			skinId: "default",
 			kind: "post",
 			manifest: skinWith("<div>x</div>"),
+			membershipTier: undefined,
 			scene: "这个场景不存在",
 		});
 		expect(out.ok).toBe(true);
 		if (!out.ok) return;
 		expect(out.scene).toBe("text");
+	});
+});
+
+describe("实时预览 — 会员卡的档来自入参", () => {
+	const tierOf = (name: string): MembershipTier => ({
+		key: "probe",
+		name,
+		rank: 1,
+		color: "#123456",
+		// 档名只经宣告语里的 `{tier}` 占位符上卡面。
+		announcement: "{viewer}驾到{tier}",
+	});
+	const membership = (membershipTier: MembershipTier | undefined) =>
+		renderSkinPreviewHtml({
+			store,
+			skinId: "default",
+			kind: "membership",
+			manifest: DEFAULT_CARD_SKIN,
+			membershipTier,
+		});
+
+	it("传哪一档就画哪一档:换一档,出来的档名跟着换", async () => {
+		const [a, b] = await Promise.all([
+			membership(tierOf("探针甲档")),
+			membership(tierOf("探针乙档")),
+		]);
+		if (!a.ok || !b.ok) throw new Error("预览没画出来");
+		expect(a.html).toContain("探针甲档");
+		expect(a.html).not.toContain("探针乙档");
+		expect(b.html).toContain("探针乙档");
+	});
+
+	it("会员卡没给档就抛(不静默回落到某个平台的档位表;这是漏传的保险,入口先过 membershipTierUnavailable)", async () => {
+		await expect(membership(undefined)).rejects.toThrow();
+	});
+
+	it("membershipTierUnavailable:只有「画会员卡且没有档」是 unavailable 失败,其余回 undefined", () => {
+		expect(membershipTierUnavailable("membership", undefined)).toEqual({
+			ok: false,
+			code: "unavailable",
+			message: "没有在跑的来源声明会员档位，画不了会员卡示例",
+		});
+		expect(membershipTierUnavailable("membership", tierOf("某档"))).toBeUndefined();
+		expect(membershipTierUnavailable("post", undefined)).toBeUndefined();
+		expect(membershipTierUnavailable("live", undefined)).toBeUndefined();
 	});
 });

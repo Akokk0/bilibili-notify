@@ -22,7 +22,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CardSkinFallback } from "@bilibili-notify/contract";
-import { DEFAULT_CARD_SKIN, DEFAULT_CARD_SKIN_ID } from "@bilibili-notify/internal";
+import {
+	DEFAULT_CARD_SKIN,
+	DEFAULT_CARD_SKIN_ID,
+	type MembershipTier,
+} from "@bilibili-notify/internal";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { CARD_SKIN_MANIFEST_FILE } from "../../card-skins/package.js";
@@ -73,6 +77,8 @@ let knobs: Record<string, Record<string, unknown>>;
 let subs: SubStub[];
 /** 出图回落的账本(真实的那一份由 index.ts 建,这里直接摆一份现成的)。 */
 let fallbacks: CardSkinFallback[];
+/** 会员卡示例用的那一档(真实的由会员档位读口给,这里直接摆一档)。 */
+let sampleTier: MembershipTier | undefined;
 
 function mount(): void {
 	patchGlobals = vi.fn(async (patch: any) => {
@@ -100,6 +106,7 @@ function mount(): void {
 		clearFallbacks: () => {
 			fallbacks = [];
 		},
+		membershipTier: () => sampleTier,
 	});
 }
 
@@ -110,6 +117,13 @@ beforeEach(async () => {
 	knobs = {};
 	subs = [];
 	fallbacks = [];
+	sampleTier = {
+		key: "probe",
+		name: "探针甲档",
+		rank: 1,
+		color: "#123456",
+		announcement: "{tier}",
+	};
 	mount();
 });
 
@@ -350,6 +364,37 @@ describe("POST /:id/preview —— 编辑器的实时预览", () => {
 		expect(json.html).toContain("color-scheme:light dark");
 	});
 
+	// 会员卡的示例档由宿主递进来的读口给(热读),路由自己不认识任何平台的档位表。
+	// 验红:把路由里 `membershipTier: deps.membershipTier()` 换成固定的档,第二条红。
+	it("会员卡预览:示例档取自宿主给的读口,每次现读", async () => {
+		const a = await preview({ kind: "membership", manifest: draft() });
+		expect(a.json.html).toContain("探针甲档");
+		sampleTier = {
+			key: "probe",
+			name: "探针乙档",
+			rank: 1,
+			color: "#654321",
+			announcement: "{tier}",
+		};
+		const b = await preview({ kind: "membership", manifest: draft() });
+		expect(b.json.html).toContain("探针乙档");
+		expect(b.json.html).not.toContain("探针甲档");
+	});
+
+	// 读口给不出档(没有来源声明会员档位)时,画会员卡是「依赖的东西现在不可用」:503 unavailable、说清原因,不是 500。
+	// 别的卡种不受影响。验红:去掉路由里 `membershipTierUnavailable` 那道判断,第一条红(500)。
+	it("会员卡预览:读口没有档 → 503 unavailable,说清原因;别的卡种照常出", async () => {
+		sampleTier = undefined;
+		const bad = await preview({ kind: "membership", manifest: draft() });
+		expect(bad.res.status).toBe(503);
+		expect(bad.json).toEqual({
+			code: "unavailable",
+			message: "没有在跑的来源声明会员档位，画不了会员卡示例",
+		});
+		const other = await preview({ kind: "live", manifest: draft() });
+		expect(other.res.status).toBe(200);
+	});
+
 	it("认不出的场景名 → 回落到第一个,并且如实报出落在了哪儿", async () => {
 		const { json } = await preview({ kind: "live", scene: "早就没有的名字", manifest: draft() });
 		expect(json.scene).toBe("streaming");
@@ -432,6 +477,7 @@ describe("DELETE /fallbacks —— 面板上那句「知道了」", () => {
 				getGlobals: () => ({ defaults: { cardSkin: DEFAULT_CARD_SKIN_ID, cardSkinKnobs: {} } }),
 				getSubscriptions: () => [],
 			} as unknown as ConfigStore,
+			membershipTier: () => sampleTier,
 		});
 		expect((await bare.request("/fallbacks", { method: "DELETE" })).status).toBe(200);
 	});

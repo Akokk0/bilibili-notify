@@ -14,7 +14,9 @@ import {
 	CARD_KINDS,
 	CARD_PREVIEW_SCENES,
 	DEFAULT_CARD_SKIN,
+	guardTierOf,
 	IMAGE_REF_PATTERN,
+	type MembershipTier,
 } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
 import { renderCardWithSkin } from "../../skin/render-skin";
@@ -29,9 +31,43 @@ const FRAME_HOOK = /data-bn="(?:[^"]*\s)?frame(?:\s[^"]*)?"/;
 async function render(kind: (typeof CARD_KINDS)[number], scene?: string): Promise<string> {
 	// `as never`:出口刻意回 unknown(示例数据不是对外契约,别让调用方照它写类型),
 	// 这里替调用方把 props 递进去。
-	const sample = await sampleCard(kind, scene);
+	const sample = await sampleCard(kind, scene, { membershipTier: guardTierOf(3) });
 	return renderCardWithSkin(kind, sample.props as never, DEFAULT_CARD_SKIN);
 }
+
+describe("示例会员卡的档由调用方给(出图器不读任何平台的档位表)", () => {
+	const tierOf = (name: string, color: string, say: string): MembershipTier => ({
+		key: name,
+		name,
+		rank: 1,
+		color,
+		colorEnd: color,
+		announcement: say,
+	});
+
+	// 验红:把 `membershipSample` 改回读 `guardTierOf(3)`,换档那条红(档名与宣告语停在舰长),不传那条也不再抛。
+	it("传不同的档,出来的档名、档色、宣告语跟着变", async () => {
+		const htmlOf = async (tier: MembershipTier): Promise<string> => {
+			const sample = await sampleCard("membership", undefined, { membershipTier: tier });
+			return renderCardWithSkin("membership", sample.props as never, DEFAULT_CARD_SKIN);
+		};
+		// 档名只经宣告语里的 `{tier}` 占位符上卡面,所以把它放进宣告语里验。
+		const first = await htmlOf(tierOf("甲档位", "#123abc", "{viewer}驾到{tier}甲甲甲"));
+		const second = await htmlOf(tierOf("乙档位", "#fedcba", "{viewer}驾到{tier}乙乙乙"));
+		expect(first).toContain("示例粉丝驾到甲档位甲甲甲");
+		expect(first).toContain("#123abc");
+		expect(first).not.toContain("乙档位");
+		expect(first).not.toContain("#fedcba");
+		expect(second).toContain("示例粉丝驾到乙档位乙乙乙");
+		expect(second).toContain("#fedcba");
+		expect(second).not.toContain("甲档位");
+		expect(second).not.toContain("#123abc");
+	});
+
+	it("不传档就抛", async () => {
+		await expect(sampleCard("membership")).rejects.toThrow("membershipTier");
+	});
+});
 
 describe("出厂示例数据 — 七种卡都画得出来", () => {
 	for (const kind of CARD_KINDS) {

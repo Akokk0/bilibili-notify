@@ -1,10 +1,11 @@
-import type {
-	Disposable,
-	MessageBus,
-	ServiceContext,
-	Source,
-	SourceContext,
-	SourceDescriptor,
+import {
+	BILIBILI_GUARD_PROGRAM,
+	type Disposable,
+	type MessageBus,
+	type ServiceContext,
+	type Source,
+	type SourceContext,
+	type SourceDescriptor,
 } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 import type { Api } from "./api/index.js";
@@ -34,7 +35,10 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 	let engine: DynamicEngine | undefined;
 	let handles: Disposable[] = [];
 
-	const descriptor: SourceDescriptor = { postNoun: "动态" };
+	const descriptor: SourceDescriptor = {
+		postNoun: "动态",
+		membershipPrograms: [BILIBILI_GUARD_PROGRAM],
+	};
 
 	return {
 		descriptor,

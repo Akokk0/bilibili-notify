@@ -68,7 +68,12 @@ beforeEach(async () => {
 		getSubscriptions: () => [],
 		patchGlobals: vi.fn(),
 	} as unknown as ConfigStore;
-	app = createCardsSkinsRoute({ store, config, commentary: () => engine });
+	app = createCardsSkinsRoute({
+		store,
+		config,
+		commentary: () => engine,
+		membershipTier: () => undefined,
+	});
 
 	const form = new FormData();
 	const zip = zipSync({ [CARD_SKIN_MANIFEST_FILE]: strToU8(JSON.stringify(manifest())) });

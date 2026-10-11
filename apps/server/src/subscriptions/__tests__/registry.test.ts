@@ -21,6 +21,21 @@ describe("createSourceRegistry", () => {
 		expect(registry.get("other")).toBeUndefined();
 	});
 
+	it("list 按登记先后列出全部在册来源;撤了的不列", async () => {
+		const registry = createSourceRegistry();
+		expect(registry.list()).toEqual([]);
+		const first = makeSource();
+		const second = makeSource();
+		await registry.register("one", first, ctxOf().ctx);
+		const secondHandle = await registry.register("two", second, ctxOf().ctx);
+		expect(registry.list().map((view) => view.descriptor)).toEqual([
+			first.descriptor,
+			second.descriptor,
+		]);
+		secondHandle.dispose();
+		expect(registry.list().map((view) => view.descriptor)).toEqual([first.descriptor]);
+	});
+
 	it("视图里没有 start / stop", async () => {
 		const registry = createSourceRegistry();
 		await registry.register(SOURCE_KEY, makeSource(), ctxOf().ctx);

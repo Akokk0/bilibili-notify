@@ -22,7 +22,7 @@ import {
 	type Attachment,
 	type CardKind,
 	formatCount,
-	guardTierOf,
+	type MembershipTier,
 	type Post,
 	type PostImage,
 	resolvePreviewScene,
@@ -319,11 +319,11 @@ function scSample(): SampleProps<"superchat"> {
 
 // ── 上舰卡 ────────────────────────────────────────────────────────────────────
 
-function guardSample(): SampleProps<"membership"> {
-	// 档的各项取自档位表(档色与宣告语哪天调了,预览不会还停在老样子);徽章换成内联的色块(引用,经示例的解析口
-	// 认成内置图)—— 真卡上那是开机抓进图库的官方图标,示例里不带任何平台的美术素材。
-	const captain = guardTierOf(3);
-	if (!captain) throw new Error("档位表里没有 guard_level 3 这一档");
+function membershipSample(captain: MembershipTier | undefined): SampleProps<"membership"> {
+	// 档的各项取自调用方递进来的那一档(档色与宣告语哪天调了,预览不会还停在老样子;出图器自己不认识任何平台的
+	// 档位表);徽章换成内联的色块(引用,经示例的解析口认成内置图)—— 真卡上那是开机抓进图库的官方图标,
+	// 示例里不带任何平台的美术素材。
+	if (!captain) throw new Error("上会员卡的示例需要调用方给一档(options.membershipTier)");
 	return buildMembershipCardView(
 		{
 			viewer: { name: "示例粉丝", avatar: SAMPLE_NEW_MEMBER_AVATAR_REF },
@@ -395,14 +395,23 @@ function wordCloudSample(): SampleProps<"wordcloud"> {
 
 // ── 出口 ──────────────────────────────────────────────────────────────────────
 
+/** 示例卡的调用方递进来的东西(出图器不认识任何平台,平台相关的数据由调用方给)。 */
+export interface SampleCardOptions {
+	/** 上会员卡示例用的那一档(取自在册来源声明的会员体系);画 `membership` 卡时必给,没给就抛。 */
+	membershipTier?: MembershipTier;
+}
+
 /** 动态那份要 await(正文由真正的构建器造),别的都是同步 —— 出口那头统一 await 一次。 */
 const SAMPLES: {
-	[K in CardKind]: (scene: string) => SampleProps<K> | Promise<SampleProps<K>>;
+	[K in CardKind]: (
+		scene: string,
+		options: SampleCardOptions,
+	) => SampleProps<K> | Promise<SampleProps<K>>;
 } = {
 	live: liveSample,
 	post: dynamicSample,
 	superchat: scSample,
-	membership: guardSample,
+	membership: (_scene, options) => membershipSample(options.membershipTier),
 	roastBoard: roastBoardSample,
 	roastSolo: roastSoloSample,
 	wordcloud: wordCloudSample,
@@ -418,8 +427,14 @@ const SAMPLES: {
  * 喂 `renderCardWithSkin(kind, props, manifest)`。契约里视频 / 图廊那两组字段、动态类型都
  * 跟着 `node` 走(ADR-0019 决策 68),不再另交原始动态。
  */
-export async function sampleCard(kind: CardKind, scene?: string): Promise<{ props: unknown }> {
+export async function sampleCard(
+	kind: CardKind,
+	scene?: string,
+	options: SampleCardOptions = {},
+): Promise<{ props: unknown }> {
 	const picked = resolvePreviewScene(kind, scene);
-	const props = await (SAMPLES[kind] as (s: string) => unknown | Promise<unknown>)(picked.id);
+	const props = await (
+		SAMPLES[kind] as (s: string, o: SampleCardOptions) => unknown | Promise<unknown>
+	)(picked.id, options);
 	return { props };
 }

@@ -32,6 +32,7 @@ import {
 	DEFAULT_CARD_SKIN_ID,
 	fail,
 	issuesFromZod,
+	type MembershipTier,
 	ok,
 	parseCardSkin,
 	subscriptionIdentityOf,
@@ -41,7 +42,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { buildCardCssAiSystem, prepareCardCssAi, runCardCssAiRound } from "../card-skins/ai-css.js";
 import { MAX_CARD_SKIN_TOTAL_BYTES } from "../card-skins/package.js";
-import { renderSkinPreviewHtml } from "../card-skins/preview-html.js";
+import { membershipTierUnavailable, renderSkinPreviewHtml } from "../card-skins/preview-html.js";
 import { CardSkinPackageError, type CardSkinStore } from "../card-skins/store.js";
 import type { ConfigStore } from "../config/store.js";
 import { FONT_EXT_TO_MIME } from "../runtime/font-mime.js";
@@ -110,6 +111,8 @@ export function createCardsSkinsRoute(deps: {
 	clearFallbacks?: () => void;
 	/** AI 引擎,**热读**:engines 是后挂的,每次现取。`null` = 没配模型。 */
 	commentary?: () => CardCssAiEngine | null;
+	/** 会员卡示例用的那一档(最低一档),**热读**:来源登记表是后挂的,每次现取。 */
+	membershipTier: () => MembershipTier | undefined;
 }): Hono {
 	const { store, config } = deps;
 	const app = new Hono();
@@ -293,12 +296,16 @@ export function createCardsSkinsRoute(deps: {
 
 		// 「清单 → HTML」那一步与「最终效果」截图共用(见 `card-skins/preview-html.ts`):
 		// 两边必须同源,否则预览能用而截图不一样,谁也说不出哪儿错了。
+		const membershipTier = deps.membershipTier();
+		const gone = membershipTierUnavailable(kind, membershipTier);
+		if (gone) return respondFailure(c, gone);
 		const out = await renderSkinPreviewHtml({
 			store,
 			skinId: id,
 			kind,
 			scene,
 			manifest: raw,
+			membershipTier,
 			// 这条回的 HTML 是塞进编辑器的 iframe 看的 —— 卡外那片默认白底不该在。
 			// 截图那条(`POST /api/cards/skins/:id/screenshot`)不开,见 `transparentPage` 的说明。
 			transparentPage: true,

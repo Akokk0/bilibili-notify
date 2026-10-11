@@ -11,10 +11,30 @@
  */
 
 import { cardOfManifest, renderCardWithSkin, sampleCard } from "@bilibili-notify/image";
-import { type CardKind, resolvePreviewScene } from "@bilibili-notify/internal";
+import {
+	type CardKind,
+	type Failure,
+	fail,
+	type MembershipTier,
+	resolvePreviewScene,
+} from "@bilibili-notify/internal";
 import { prefetchCardSkinAssets } from "./asset-url.js";
 import { checkCardSkinPackage } from "./package.js";
 import type { CardSkinStore } from "./store.js";
+
+/**
+ * 画会员卡示例要有一档可画;读口给不出档(没有在册来源声明会员档位:B 站来源没登记上、或以后设置坏了只停了它)时,
+ * 这就是一次「依赖的东西现在不可用」的失败。五个入口(预览、测试推送、盘上皮肤截图、「最终效果」、皮肤库的实时预览)
+ * 都先过这一道,原因才说得清;`sampleCard` 没给档就抛是给调用方漏传的保险,不当成这条失败路。
+ * 不是会员卡、或有档时回 `undefined`。
+ */
+export function membershipTierUnavailable(
+	kind: CardKind,
+	membershipTier: MembershipTier | undefined,
+): Failure | undefined {
+	if (kind !== "membership" || membershipTier) return undefined;
+	return fail("unavailable", "没有在跑的来源声明会员档位，画不了会员卡示例");
+}
 
 export type SkinPreviewHtml =
 	| {
@@ -34,6 +54,11 @@ export async function renderSkinPreviewHtml(args: {
 	kind: CardKind;
 	scene?: string;
 	manifest: unknown;
+	/**
+	 * 会员卡示例用哪一档(调用方从会员档位读口取,今天 = 最低一档)。必写的键:漏传编译不过。
+	 * `undefined` = 没有任何来源声明档位,画会员卡会抛(其余卡种不看它)。
+	 */
+	membershipTier: MembershipTier | undefined;
 	/**
 	 * 把这份 HTML 按**塞进 iframe 看**来收拾(编辑器的实时预览、聊天里的卡片预览):
 	 * **页面底透明**。面板量文档根的高度来定框高,量到了框与卡一样高;万一量不到,框退回
@@ -61,7 +86,7 @@ export async function renderSkinPreviewHtml(args: {
 	// 掺进去就成了「同一套皮肤在不同人眼里不一样」,作者照着调反而调歪。
 	// 契约里视频 / 图廊那两组字段与动态类型跟着 `node` 走(ADR-0019 决策 68),示例的 props
 	// 就是全部 —— 不再另递原始动态。
-	const sample = await sampleCard(kind, picked.id);
+	const sample = await sampleCard(kind, picked.id, { membershipTier: args.membershipTier });
 	const html = await renderCardWithSkin(kind, sample.props as never, manifest, {
 		title: `皮肤预览 · ${kind}`,
 		resolveAsset: (name) => assets.get(name),

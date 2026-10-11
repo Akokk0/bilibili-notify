@@ -31,6 +31,25 @@ describe("登记表", () => {
 		expect(registry.get("bridge")).toBe("第二次");
 	});
 
+	it("entries 按认领先后列出全表;撤了的不列,重登的排到最后", () => {
+		const registry = make();
+		registry.claim("a", "甲");
+		const b = registry.claim("b", "乙");
+		registry.claim("c", "丙");
+		expect([...registry.entries()]).toEqual([
+			["a", "甲"],
+			["b", "乙"],
+			["c", "丙"],
+		]);
+		b.dispose();
+		expect([...registry.entries()]).toEqual([
+			["a", "甲"],
+			["c", "丙"],
+		]);
+		registry.claim("b", "乙二");
+		expect([...registry.entries()].map(([id]) => id)).toEqual(["a", "c", "b"]);
+	});
+
 	it("撤下只撤自己那一行:重登之后再 dispose 旧把手,新主人还在", () => {
 		const registry = make();
 		const old = registry.claim("bridge", "旧的");

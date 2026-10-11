@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { CARD_SKINS_DIR, CardSkinStore } from "../../card-skins/store.js";
 import { CARD_BG_DIR } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
+import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createCardsRoute } from "../cards.js";
 import { respondFailure, UNHANDLED_ERROR_MESSAGE } from "../respond-failure.js";
 import type { RouteDeps } from "../types.js";
@@ -44,6 +45,7 @@ function makeDeps(opts: { engines?: unknown } = {}): RouteDeps {
 	const engines = "engines" in opts ? opts.engines : { push: { sendToTarget: vi.fn() } };
 	return {
 		runtime: {
+			sourceRegistry: bilibiliLikeSources(),
 			dataRoot: dataDir,
 			engines,
 			serviceCtx: {

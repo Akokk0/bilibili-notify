@@ -19,6 +19,8 @@ import type { Api } from "../../bilibili/api/index.js";
 import { CardSkinStore } from "../../card-skins/store.js";
 import { listCardBg, saveCardBg } from "../../runtime/card-assets.js";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
+import { bilibiliLikeSources, sourceRegistryOf } from "../../subscriptions/__tests__/fixtures.js";
+import type { SourceRegistry } from "../../subscriptions/registry.js";
 import { createCardsRoute, resolveRoomIdFromUid, testPushCaption } from "../cards.js";
 import type { RouteDeps } from "../types.js";
 
@@ -33,6 +35,7 @@ const EMPTY_GLOBALS = { defaults: { cardSkin: "default", cardSkinKnobs: {} } };
 function depsWithDataDir(dataDir: string): RouteDeps {
 	return {
 		runtime: {
+			sourceRegistry: bilibiliLikeSources(),
 			dataRoot: dataDir,
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -77,7 +80,10 @@ function imageHttp() {
 const SUBSCRIBED_UID = "12345";
 const SUBSCRIBED_AVATAR = `${"f".repeat(64)}.jpg`;
 
-function makeDeps(guardIcons = makeGuardIcons(), opts: { subscribed?: boolean } = {}): RouteDeps {
+function makeDeps(
+	guardIcons = makeGuardIcons(),
+	opts: { subscribed?: boolean; sourceRegistry?: SourceRegistry } = {},
+): RouteDeps {
 	const subscription = makeEmptySubscription({
 		id: "11111111-1111-1111-1111-111111111111",
 		identity: { sourceKey: BILIBILI_SOURCE_KEY, externalId: SUBSCRIBED_UID },
@@ -85,6 +91,8 @@ function makeDeps(guardIcons = makeGuardIcons(), opts: { subscribed?: boolean } 
 	return {
 		runtime: {
 			guardIcons,
+			// 会员档位读口读它:预览按档的 key 找档、示例取最低一档,路由里不认识任何平台的档位表。
+			sourceRegistry: opts.sourceRegistry ?? bilibiliLikeSources(),
 			// 订阅资料里的头像(`cachedProfile.avatar`):预览的真实拉取读它,不为头像联网。
 			subRuntimeStore: {
 				get: (id: string) =>
@@ -1240,8 +1248,8 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 		spy.mockRestore();
 	});
 
-	// ㉓e:上舰预览的请求体带的是档的 key(`tierKey`),服务端按 key 在档位表里找那一档;档的各项取自同一张表。
-	// 验红:把 cards.ts 里 `guardTierByKey(...)` 换成固定取舰长,第二行(总督)红。
+	// ㉓e:上舰预览的请求体带的是档的 key(`tierKey`),服务端按 key 在在册来源声明的会员体系里找那一档;档的各项取自同一份声明。
+	// 验红:把 cards.ts 里 `tiers.byKey(...)` 换成固定取最低一档(`tiers.lowest()`),第二行(提督)红。
 	it.each([
 		["captain", "舰长", 1, "#4ebcec"],
 		["commander", "提督", 2, "#d8a0e6"],
@@ -1362,6 +1370,84 @@ describe("cards route — /preview sc/guard 发送者取登录账号", () => {
 			spy.mockRestore();
 		},
 	);
+
+	// 报错体钉死:「认不出的 key」这件事挪了判的地方(请求体 schema → 路由工厂里按读口现判),说法与形状一个字不变。
+	it.each([
+		[
+			"/preview",
+			"预览请求体格式不对",
+			{ kind: "membership", style: STYLE, content: { tierKey: "nope" }, fallback: true },
+		],
+		[
+			"/test",
+			"测试推送请求体格式不对",
+			{
+				targetId: "22222222-2222-4222-8222-222222222222",
+				kind: "membership",
+				style: STYLE,
+				content: { tierKey: "nope" },
+				fallback: true,
+			},
+		],
+	])("guard:认不出的 tierKey 的 400 报错体(%s)", async (path, message, body) => {
+		const app = createCardsRoute({
+			deps: makeDeps(),
+			puppeteer: makeFakePuppeteer(),
+			api: loggedInApi(),
+		});
+		const res = await app.request(path, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			code: "invalid",
+			message,
+			issues: [{ message: "不是档位表里的档", path: ["content", "tierKey"] }],
+		});
+	});
+
+	// 防「路由仍偷偷读 B 站档位表」:登记一个只有自造档的来源,按它的 key 能出卡、按 B 站的 key 是 400。
+	// 验红:把 cards.ts 里 `tiers.byKey(...)` / `tiers.lowest()` 换回 `guardTierByKey(...)`,这条红。
+	it("guard:换一个只有自造档的来源 → 按它的 key 出卡,没带 key 取它最低一档,B 站的 key 是 400", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		try {
+			const sourceRegistry = sourceRegistryOf({
+				membershipPrograms: [
+					{
+						id: "vip",
+						name: "自造会员",
+						tiers: [
+							{ key: "vip-gold", name: "自造金", rank: 2, color: "#aa0000" },
+							{ key: "vip-silver", name: "自造银", rank: 1, color: "#00aa00" },
+						],
+					},
+				],
+			});
+			const app = createCardsRoute({
+				deps: makeDeps(makeGuardIcons(), { sourceRegistry }),
+				puppeteer: makeFakePuppeteer(),
+				api: loggedInApi(),
+			});
+			const post = (content: Record<string, unknown>) =>
+				postPreview(app, { kind: "membership", style: STYLE, content, fallback: true });
+
+			expect((await post({ tierKey: "vip-gold" })).status).toBe(200);
+			expect(spy.mock.calls.at(-1)?.[0]?.tier).toMatchObject({ name: "自造金", rank: 2 });
+			expect((await post({})).status).toBe(200);
+			expect(spy.mock.calls.at(-1)?.[0]?.tier).toMatchObject({ name: "自造银", rank: 1 });
+			const callsBefore = spy.mock.calls.length;
+			const captain = await post({ tierKey: "captain" });
+			expect(captain.status).toBe(400);
+			expect(await captain.json()).toMatchObject({ code: "invalid" });
+			expect(spy.mock.calls.length).toBe(callsBefore);
+		} finally {
+			spy.mockRestore();
+		}
+	});
 
 	it("sc:金额 0、负数或带小数 → 400 invalid(金额要正整数元)", async () => {
 		const app = createCardsRoute({
@@ -2547,5 +2633,132 @@ describe("cards route — per-UP 预览带草稿旋钮", () => {
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+/**
+ * 画会员卡而读口给不出档(没有在册来源声明会员档位:B 站来源没登记上、或以后设置坏了只停了它)。
+ * 五个入口里这条路由占四个:预览、测试推送、「最终效果」截图、盘上皮肤截图(`onSkinShot`)。
+ * 每个都该回「依赖的东西现在不可用」的标准失败、说清原因,**不渲染、不推送、不是 500**;
+ * 有档时照常出(正对照)。验红:去掉 `membershipTierUnavailable` 那几道判断,失败那几条红。
+ */
+describe("cards route — 画会员卡但没有来源声明会员档位", () => {
+	const NO_TIER = "没有在跑的来源声明会员档位，画不了会员卡示例";
+	const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+	const STYLE = {};
+
+	const loggedInApi = (): Api =>
+		({
+			getMyselfInfoCached: vi.fn(async () => ({ code: 0, data: { mid: 999, uname: "登录名" } })),
+		}) as unknown as Api;
+
+	const json = { "content-type": "application/json" };
+
+	function setup(sourceRegistry: SourceRegistry) {
+		const sendToTarget = vi.fn(async () => ({ ok: true, latencyMs: 3 }));
+		const deps = makeDeps(makeGuardIcons(), { sourceRegistry }) as unknown as {
+			runtime: { engines?: unknown };
+			store: { getTargets?: () => unknown };
+		};
+		deps.runtime.engines = { push: { sendToTarget } };
+		deps.store.getTargets = () => [{ id: TARGET_ID, name: "群一", enabled: true }];
+		const puppeteer = makeFakePuppeteer();
+		let shoot:
+			| ((skinId: string, kind: "membership" | "post") => Promise<string | null>)
+			| undefined;
+		const dir = join(tmpdir(), "bn-test-no-tier-no-such-dir");
+		const app = createCardsRoute({
+			deps: deps as unknown as RouteDeps,
+			puppeteer,
+			api: loggedInApi(),
+			cardSkins: new CardSkinStore({ dir: join(dir, "card-skins") }),
+			onSkinShot: (fn) => {
+				shoot = fn;
+			},
+		});
+		const page = puppeteer.page as unknown as ReturnType<typeof vi.fn>;
+		return { app, sendToTarget, page, shoot: () => shoot };
+	}
+	const post = (app: ReturnType<typeof createCardsRoute>, path: string, body: unknown) =>
+		app.request(path, { method: "POST", headers: json, body: JSON.stringify(body) });
+
+	const empty = () => sourceRegistryOf();
+
+	it("/preview:没有档 → 200 + unavailable 失败那一支,不渲染;有档照常出", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		try {
+			const body = { kind: "membership", style: STYLE, content: {}, fallback: true };
+			const bad = await post(setup(empty()).app, "/preview", body);
+			expect(bad.status).toBe(200);
+			const badJson = (await bad.json()) as { ok: boolean; code: string; message: string };
+			expect(badJson).toMatchObject({ ok: false, code: "unavailable" });
+			expect(badJson.message).toContain(NO_TIER);
+			expect(spy).not.toHaveBeenCalled();
+			const good = await post(setup(bilibiliLikeSources()).app, "/preview", body);
+			expect(await good.json()).toMatchObject({ ok: true });
+			expect(spy).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("/test:没有档 → 200 + unavailable 失败那一支,不渲染也不推;有档照常推", async () => {
+		const spy = vi
+			.spyOn(ImageRenderer.prototype, "generateMembershipCard")
+			.mockResolvedValue(Buffer.from("x"));
+		try {
+			const body = {
+				targetId: TARGET_ID,
+				kind: "membership",
+				style: STYLE,
+				content: {},
+				fallback: true,
+			};
+			const none = setup(empty());
+			const bad = await post(none.app, "/test", body);
+			expect(bad.status).toBe(200);
+			const badJson = (await bad.json()) as { ok: boolean; code: string; message: string };
+			expect(badJson).toMatchObject({ ok: false, code: "unavailable" });
+			expect(badJson.message).toContain(NO_TIER);
+			expect(spy).not.toHaveBeenCalled();
+			expect(none.sendToTarget).not.toHaveBeenCalled();
+			const some = setup(bilibiliLikeSources());
+			const good = await post(some.app, "/test", body);
+			expect(await good.json()).toMatchObject({ ok: true });
+			expect(some.sendToTarget).toHaveBeenCalledTimes(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("/skins/:id/screenshot:会员卡没有档 → 503 unavailable、不截图;别的卡种不受影响;有档照常截", async () => {
+		const shotBody = (kind: string) => ({ kind, manifest: DEFAULT_CARD_SKIN });
+		const none = setup(empty());
+		const bad = await post(none.app, "/skins/default/screenshot", shotBody("membership"));
+		expect(bad.status).toBe(503);
+		const badJson = (await bad.json()) as { code: string; message: string };
+		expect(badJson.code).toBe("unavailable");
+		expect(badJson.message).toBe(NO_TIER);
+		expect(none.page).not.toHaveBeenCalled();
+		const other = await post(none.app, "/skins/default/screenshot", shotBody("post"));
+		expect(other.status).toBe(200);
+		const good = await post(
+			setup(bilibiliLikeSources()).app,
+			"/skins/default/screenshot",
+			shotBody("membership"),
+		);
+		expect(good.status).toBe(200);
+		expect(await good.json()).toMatchObject({ ok: true });
+	});
+
+	it("盘上皮肤截图(onSkinShot):会员卡没有档 → 带着原因 reject、不截图;有档照常出 data URL", async () => {
+		const none = setup(empty());
+		await expect(none.shoot()?.(DEFAULT_CARD_SKIN_ID, "membership")).rejects.toThrow(NO_TIER);
+		expect(none.page).not.toHaveBeenCalled();
+		const some = setup(bilibiliLikeSources());
+		const url = await some.shoot()?.(DEFAULT_CARD_SKIN_ID, "membership");
+		expect(url?.startsWith("data:image/jpeg;base64,")).toBe(true);
 	});
 });

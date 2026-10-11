@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { PuppeteerAdapter } from "../../runtime/puppeteer.js";
+import { bilibiliLikeSources } from "../../subscriptions/__tests__/fixtures.js";
 import { createCardsRoute } from "../cards.js";
 import type { RouteDeps } from "../types.js";
 
@@ -39,6 +40,7 @@ function makeDeps(dataRoot: string): RouteDeps {
 	return {
 		runtime: {
 			dataRoot,
+			sourceRegistry: bilibiliLikeSources(),
 			guardIcons: { ensure: async () => {}, iconOf: () => ({ ref: BADGE_REF }), refs: () => [] },
 			serviceCtx: {
 				logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

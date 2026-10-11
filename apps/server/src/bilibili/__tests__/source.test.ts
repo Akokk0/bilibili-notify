@@ -5,11 +5,12 @@
  * 最后一组是「不用假名单」的端到端:真订阅仓 + 真来源上下文 + 真引擎,停用 / 启用 / 改全局作品开关逐个走一遍。
  */
 
-import type {
-	IntegrationContext,
-	Logger,
-	PostReport,
-	SourceContext,
+import {
+	BILIBILI_GUARD_PROGRAM,
+	type IntegrationContext,
+	type Logger,
+	type PostReport,
+	type SourceContext,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -160,6 +161,12 @@ function makeCtx(roster: Array<{ externalId: string; post: boolean }> = []) {
 describe("createBiliSource", () => {
 	it("描述符的 postNoun 是「动态」", () => {
 		expect(createBiliSource(makeDeps().deps).descriptor.postNoun).toBe("动态");
+	});
+
+	it("描述符交出大航海这一套会员体系", () => {
+		expect(createBiliSource(makeDeps().deps).descriptor.membershipPrograms).toEqual([
+			BILIBILI_GUARD_PROGRAM,
+		]);
 	});
 
 	it("start 后引擎在跑、dynamic() 拿得到;stop 后 dynamic() 是 undefined、两个把手都摘了", async () => {

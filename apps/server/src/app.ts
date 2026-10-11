@@ -64,6 +64,7 @@ import type { PuppeteerAdapter } from "./runtime/puppeteer.js";
 import type { RoastRunOutcome } from "./runtime/roast-scheduler.js";
 import { dataPath } from "./runtime/roots.js";
 import { DASHBOARD_SKINS_DIR, SkinStore } from "./skins/store.js";
+import { createMembershipTierReader } from "./subscriptions/membership-tiers.js";
 import type { UpdateService } from "./update/service.js";
 
 interface BasicAuthCredentials {
@@ -306,6 +307,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		wsTicketStore: options.wsTicketStore ?? null,
 		commands: options.commands,
 	};
+	// 会员档位读口:每次现读来源登记表。
+	const tiers = createMembershipTierReader(runtime.sourceRegistry);
 
 	return createAppShell(runtime.serviceCtx.logger, options, (app) => {
 		app.route("/api/health", createHealthRoute(deps));
@@ -431,6 +434,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				clearFallbacks: options.cardSkins.clearFallbacks,
 				// 同 dashboard 皮肤库:热读,engines 是后挂的。
 				commentary: () => runtime.engines?.commentary ?? null,
+				// 会员卡示例用的档:读口每次现读来源登记表,来源后登记也读得到。
+				membershipTier: () => tiers.lowest(),
 			}),
 		);
 		if (options.authSystem) {

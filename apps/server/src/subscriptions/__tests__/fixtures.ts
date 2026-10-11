@@ -1,15 +1,18 @@
 import {
+	BILIBILI_GUARD_PROGRAM,
 	type IntegrationContext,
 	type Logger,
 	makeDefaultGlobalConfig,
 	makeEmptySubscription,
 	type Source,
 	type SourceContext,
+	type SourceDescriptor,
 	type Subscription,
 } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { type Mock, vi } from "vite-plus/test";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import { createSourceRegistry, type SourceRegistry } from "../registry.js";
 
 export const SOURCE_KEY = "bilibili";
 
@@ -57,6 +60,26 @@ export const makeWorld = (subs: Subscription[] = []) => {
 	const globals = makeDefaultGlobalConfig();
 	return { bus, store, globals };
 };
+
+/**
+ * 一张登了来源的真登记表。`register` 在第一个 `await` 之前就把键认领了,所以这里不必等它 ——
+ * 假来源的 `start` 什么都不做。
+ */
+export const sourceRegistryOf = (...descriptors: SourceDescriptor[]): SourceRegistry => {
+	const registry = createSourceRegistry();
+	descriptors.forEach((descriptor, index) => {
+		void registry.register(
+			`probe-${index}`,
+			{ descriptor, start: async () => {}, stop: async () => {} },
+			{} as SourceContext,
+		);
+	});
+	return registry;
+};
+
+/** 登着 B 站那份描述符(大航海三档)的来源登记表。 */
+export const bilibiliLikeSources = (): SourceRegistry =>
+	sourceRegistryOf({ membershipPrograms: [BILIBILI_GUARD_PROGRAM] });
 
 export const makeSource = (): Source & {
 	started: SourceContext[];
