@@ -26,9 +26,10 @@ import {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../../api/index.js";
+import { createProblemLayers, type ProblemLayers } from "../../problem-layers";
+import { PROBLEM_TEXTS } from "../../problem-texts";
 import { DynamicEngine, type DynamicEngine as DynamicEngineType } from "../dynamic-engine";
 import { postFromDynamic } from "../post-from-dynamic";
-import type { PushLike } from "../push-like";
 import type { AllDynamicResponse, Dynamic } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -113,9 +114,58 @@ function makeServiceCtx(): {
 	return { ctx, disposers, logs };
 }
 
-/** `engine-error` 的载荷是 `{ source, message }`;这里取 message 好按文案筛。 */
-function engineErrorMessage(e: { payload: unknown }): string {
-	return String((e.payload as { message?: unknown } | undefined)?.message ?? "");
+/** 引擎要的那四个上报器方法(其余的 `attach` / `detach` 是来源的事)。 */
+type FakeProblems = Pick<
+	ProblemLayers,
+	"reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
+>;
+
+/** 四个方法都是 spy 的假上报器。 */
+function makeFakeProblems() {
+	return {
+		reportRisk: vi.fn<ProblemLayers["reportRisk"]>(),
+		resolveRisk: vi.fn<ProblemLayers["resolveRisk"]>(),
+		reportFailure: vi.fn<ProblemLayers["reportFailure"]>(),
+		resolveFailure: vi.fn<ProblemLayers["resolveFailure"]>(),
+	};
+}
+
+/** 真上报器(登录正常)+ 一个记录每次上报/清除的假核心。`present()` 回此刻表里该有的 code。 */
+function makeRecordingLayers() {
+	const table = new Map<string, string>();
+	const keyOf = (p: { externalId?: string; code: string }) => `${p.externalId ?? ""}|${p.code}`;
+	const layers = createProblemLayers({
+		auth: {
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+			onChange: () => ({ dispose() {} }),
+		},
+		logger: { info() {}, warn() {}, error() {}, debug() {} },
+	});
+	layers.attach({
+		reportProblem: (p) => void table.set(keyOf(p), p.code),
+		resolveProblem: (p) => void table.delete(keyOf(p)),
+	});
+	return { layers, present: () => [...table.values()] };
+}
+
+/** 真上报器 + 一个一碰就抛的核心:证明上报器把抛错接住,引擎的退避不受影响。 */
+function makeThrowingLayers() {
+	const layers = createProblemLayers({
+		auth: {
+			state: () => ({ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" }),
+			onChange: () => ({ dispose() {} }),
+		},
+		logger: { info() {}, warn() {}, error() {}, debug() {} },
+	});
+	layers.attach({
+		reportProblem: () => {
+			throw new Error("核心那头坏了");
+		},
+		resolveProblem: () => {
+			throw new Error("核心那头坏了");
+		},
+	});
+	return layers;
 }
 
 function makeBus(): {
@@ -222,8 +272,8 @@ const rosterOf = (subs: Roster | null | undefined): SourceSubscriptionView[] =>
 interface EngineBag {
 	engine: DynamicEngineType;
 	fetchAllDynamic: ReturnType<typeof vi.fn>;
-	/** 假的宿主出口:引擎只剩给主人发私信这一样。 */
-	push: PushLike & { sendPrivateMsg: ReturnType<typeof vi.fn> };
+	/** 假的分层上报器(四个方法都是 spy);要真件的用例经 `makeEngine({ problems })` 换。 */
+	problems: ReturnType<typeof makeFakeProblems>;
 	emits: Array<{ event: string; payload: unknown }>;
 	trigger: (event: string, payload?: unknown) => void;
 	/** 换名单(`ctx.subscriptions()` 此后回新的);要让引擎知道,再调 `engine.syncSubscriptions()`。 */
@@ -241,6 +291,8 @@ function makeEngine(
 		subs?: Roster | null;
 		/** 引擎交作品时核心入口做什么(默认什么都不做);给个会抛的就是测「入口抛了」。 */
 		reportPost?: (externalId: string, report: PostReport) => void;
+		/** 换成别的上报器(真件);不给 = 四个方法都是 spy 的假件。 */
+		problems?: FakeProblems;
 	} = {},
 ): EngineBag {
 	const { ctx, logs } = makeServiceCtx();
@@ -248,7 +300,8 @@ function makeEngine(
 	let roster = rosterOf(over.subs);
 	const fetchAllDynamic = vi.fn();
 	const api = { fetchAllDynamic } as unknown as Api;
-	const push = { sendPrivateMsg: vi.fn(async () => {}) };
+	// 换了真件的用例不碰 spy 的断言口,所以这里一律按假件的类型交出去。
+	const problems = (over.problems ?? makeFakeProblems()) as ReturnType<typeof makeFakeProblems>;
 	const fetchImage = vi.fn(async (url: string) =>
 		ok({ ref: `${Buffer.from(url).toString("hex").slice(-60).padStart(64, "0")}.jpg` as ImageRef }),
 	);
@@ -260,7 +313,7 @@ function makeEngine(
 		setTimeout: ctx.setTimeout,
 		bus,
 		api,
-		push,
+		problems,
 		imageFetcher: { fetchImage },
 		reportPost,
 		config: {
@@ -273,7 +326,7 @@ function makeEngine(
 	return {
 		engine,
 		fetchAllDynamic,
-		push,
+		problems,
 		emits,
 		trigger,
 		setRoster: (subs) => {
@@ -310,54 +363,47 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		expect(b.reportPost).not.toHaveBeenCalled();
 	});
 
-	it("code=-101(未登录)→ emit engine-error「账号未登录」,不交作品", async () => {
+	it("code=-101(未登录)→ 不发组件告警、不交作品、不报问题;这一路遗留的风控与请求失败静默清掉", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
 		expect(b.reportPost).not.toHaveBeenCalled();
-		expect(b.emits).toContainEqual(
-			expect.objectContaining({
-				event: "engine-error",
-				payload: expect.objectContaining({ message: "账号未登录" }),
-			}),
+		// 要不要告诉主人登录失效由问题表的未登录层管(看登录状态),引擎不再发 engine-error
+		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(b.problems.reportRisk).not.toHaveBeenCalled();
+		expect(b.problems.reportFailure).not.toHaveBeenCalled();
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.resolveFailure).toHaveBeenCalledWith(
+			{ code: "dynamic_fetch_failed" },
+			{ notify: false },
 		);
+		expect(b.logs.some((l) => l.level === "error" && l.msg.includes("账号未登录"))).toBe(true);
 	});
 
-	it("code=-352(风控)→ sendPrivateMsg + emit engine-error「账号被风控」", async () => {
+	it("code=-352(风控)→ 报到风控层(路名 dynamic),不发组件告警、不报请求失败、排退避重启", async () => {
 		const b = makeEngine();
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		seed(b.engine, "1", 0);
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
-		expect(b.emits).toContainEqual(
-			expect.objectContaining({
-				event: "engine-error",
-				payload: expect.objectContaining({ message: "账号被风控" }),
-			}),
-		);
+		expect(b.problems.reportRisk).toHaveBeenCalledTimes(1);
+		expect(b.problems.reportRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.reportFailure).not.toHaveBeenCalled();
+		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
 
-	it("-352 风控边沿:连续触发只告警一次,恢复后再触发重新告警(Q7)", async () => {
+	it("-352 风控:每次撞都上报(幂等),日志边沿不变 —— 只第一次记 error,之后 debug;恢复后再触发重新记 error(Q7)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		const ecCount = () =>
-			b.emits.filter(
-				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号被风控"),
-			).length;
-		// 数的是**风控告警**这一种私聊,不是私聊总数 —— 恢复时还会来一条「已恢复」
-		// (见「故障恢复通知」),拿总数计这条边沿会被那条报喜带偏。
-		const dmCount = () =>
-			b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("账号被风控")).length;
+		const riskErrors = () =>
+			b.logs.filter((l) => l.level === "error" && l.msg.includes("账号被风控")).length;
 
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine); // 进入风控
-		await detect(b.engine); // 仍风控 → 抑制
-		expect(dmCount()).toBe(1);
-		expect(ecCount()).toBe(1);
-		expect(b.logs.filter((l) => l.level === "error" && l.msg.includes("账号被风控"))).toHaveLength(
-			1,
-		);
+		await detect(b.engine); // 仍风控 → 日志抑制,上报照叫
+		expect(b.problems.reportRisk).toHaveBeenCalledTimes(2);
+		expect(riskErrors()).toBe(1);
 		expect(b.logs.some((l) => l.level === "debug" && l.msg.includes("仍处于风控态"))).toBe(true);
 
 		b.fetchAllDynamic.mockResolvedValue(resp([])); // code 0 → 恢复
@@ -365,22 +411,20 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("风控已解除"))).toBe(true);
 
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
-		await detect(b.engine); // 再次风控 → 边沿复位后重新告警
-		expect(dmCount()).toBe(2);
-		expect(ecCount()).toBe(2);
+		await detect(b.engine); // 再次风控 → 边沿复位后重新记 error
+		expect(b.problems.reportRisk).toHaveBeenCalledTimes(3);
+		expect(riskErrors()).toBe(2);
 	});
 
-	it("-352 后跨 -101(auth-loss)再 -352:复位边沿,新风控必须重新告警(审计缺口回归)", async () => {
+	it("-352 后跨 -101(auth-loss)再 -352:日志边沿复位,新风控重新记 error(审计缺口回归)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-		const riskEc = () =>
-			b.emits.filter(
-				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号被风控"),
-			).length;
+		const riskErrors = () =>
+			b.logs.filter((l) => l.level === "error" && l.msg.includes("账号被风控")).length;
 
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
-		await detect(b.engine); // 风控 episode #1 → 告警 1
-		expect(riskEc()).toBe(1);
+		await detect(b.engine); // 风控 episode #1
+		expect(riskErrors()).toBe(1);
 
 		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
 		await detect(b.engine); // auth-loss:独立 episode,复位风控边沿
@@ -389,128 +433,168 @@ describe("DynamicEngine.detectDynamics — API 错误处理", () => {
 		await detect(b.engine);
 
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
-		await detect(b.engine); // 风控 episode #2(跨过 -101)→ 必须重新告警
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
-		expect(riskEc()).toBe(2);
+		await detect(b.engine); // 风控 episode #2(跨过 -101)
+		expect(riskErrors()).toBe(2);
+	});
+
+	it("别的错误码 → 先清这一路的风控、再报请求失败(code dynamic_fetch_failed,文案带当次的码,是否私聊取自文案处)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		await detect(b.engine);
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.reportFailure).toHaveBeenCalledTimes(1);
+		expect(b.problems.reportFailure).toHaveBeenCalledWith({
+			code: "dynamic_fetch_failed",
+			message: PROBLEM_TEXTS.dynamicFetchFailed.text(-509),
+			notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
+		});
+		expect(b.problems.reportRisk).not.toHaveBeenCalled();
+		expect(b.emits.filter((e) => e.event === "engine-error")).toEqual([]);
+		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
 
 	/**
-	 * 告警私聊发不出去,不能把退避重启一起带走。
-	 *
-	 * `handleApiError` 开头就把 cron stop 了,重新起来全靠末尾那句
-	 * `scheduleDetectorRestart`。中间的私聊要是裸 `await` 并抛了出去,后面的
-	 * emit 和排程都不执行 —— 动态检测就此永久停摆,而日志上只有一条私聊失败。
+	 * 上报器的方法都不往外抛(核心那头抛了它自己接住),所以引擎里不必再包 try:
+	 * `handleApiError` 开头已经 stop 了 job,退避重启全靠末尾那句 `scheduleDetectorRestart`。
+	 * 这里用**真上报器**接一个会抛的核心,证明退避照排。
 	 */
-	it("告警私聊抛错 → 退避重启照排(不因通知失败而永久停摆)", async () => {
-		const b = makeEngine();
+	it("上报口抛错 → 退避重启照排(不因通知失败而永久停摆)", async () => {
+		const throwing = makeThrowingLayers();
+		const b = makeEngine({ problems: throwing });
 		seed(b.engine, "1", 0);
-		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
 
-	it("风控告警私聊抛错 → 退避重启同样照排", async () => {
-		const b = makeEngine();
+	it("风控上报口抛错 → 退避重启同样照排", async () => {
+		const throwing = makeThrowingLayers();
+		const b = makeEngine({ problems: throwing });
 		seed(b.engine, "1", 0);
-		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
 		expect(b.logs.some((l) => l.msg.includes("后自动重试动态检测"))).toBe(true);
 	});
+
+	/**
+	 * 风控只在「这一路这一次的结果不是风控拦截」时才清。风控之后同一路以别的方式失败(`-352` → 下一拍 `-509`),
+	 * 风控键还挂着的话会把这条请求失败压成一行日志,表里一直是过时的「风控」。要用**真上报器**才测得出压没压。
+	 */
+	it("风控之后同一路换了错误码失败:表里是请求失败(dynamic_fetch_failed),风控已清", async () => {
+		const rec = makeRecordingLayers();
+		const b = makeEngine({ problems: rec.layers });
+		seed(b.engine, "1", 0);
+
+		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
+		await detect(b.engine);
+		expect(rec.present()).toEqual(["risk_controlled"]);
+
+		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
+		await detect(b.engine);
+		expect(rec.present()).toEqual(["dynamic_fetch_failed"]);
+
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		expect(rec.present()).toEqual([]);
+	});
 });
 
 /**
- * 「到底好没好」—— 故障恢复得跟报错走同一条通道说一声。
+ * 「到底好没好」—— 拉成功了,这一路的风控与请求失败清掉(问题表据此补「已恢复」),并复位两个日志边沿。
  *
  * 瞬时错误(4101132 这类未知码)会退避 300s 后自动重启检测,日志里三条
- * 「将在 300s 后自动重试」「退避计时到,重启动态检测」「动态检测任务已启动」
- * 一应俱全 —— 但全都只进日志。主人在 IM 里只收到一条报错,之后再无下文,分不清
- * 是自己好了还是还坏着只是不再吭声。
- *
- * 报「恢复」的时机是**下一次真正拉取成功**,不是「重启了检测任务」:重启只是把
- * cron 挂回去,故障还在的话下一轮照样失败,那时候说"好了"就是骗人。
- *
- * 恢复通知只走私聊,不发 `engine-error` —— 那个事件在独立端会点亮 AlertShell 的
- * 红色告警面板,拿它报喜语义是反的。
+ * 「将在 300s 后自动重试」「退避计时到,重启动态检测」「动态检测任务已启动」一应俱全。
+ * 清的时机是**下一次真正拉取成功**,不是「重启了检测任务」:重启只是把 cron 挂回去,故障还在的话
+ * 下一轮照样失败,那时候说"好了"就是骗人。引擎不再有任何私聊口。
  */
-describe("DynamicEngine — 故障恢复通知", () => {
-	it("瞬时错误恢复后私聊说一声,并带上此前的错误码", async () => {
+describe("DynamicEngine — 故障恢复", () => {
+	it("拉成功:清这一路的风控与请求失败(请求失败是普通的清,会补「已恢复」)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
-
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
+		b.problems.resolveRisk.mockClear();
 
 		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
-		const msg = String(b.push.sendPrivateMsg.mock.calls[1]?.[0]);
-		expect(msg).toContain("恢复");
-		expect(msg).toContain("4101132");
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.resolveFailure).toHaveBeenCalledWith({ code: "dynamic_fetch_failed" });
 	});
 
-	it("从没坏过的成功拉取不发恢复通知(否则每个 cron tick 刷一条)", async () => {
-		const b = makeEngine();
-		seed(b.engine, "1", 0);
-		b.fetchAllDynamic.mockResolvedValue(resp([]));
-		await detect(b.engine);
-		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).not.toHaveBeenCalled();
-	});
-
-	it("恢复只报一次,后续成功拉取保持安静", async () => {
+	it("瞬时错误恢复后记一行 info,带上此前的错误码", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		b.fetchAllDynamic.mockResolvedValue(resp([]));
-		await detect(b.engine); // 恢复 → 报一次
-		await detect(b.engine); // 已经好了 → 不该再报
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
-	});
-
-	it("瞬时错误连续失败只告警一次(与风控边沿对称,不每 300s 打扰一次)", async () => {
-		const b = makeEngine();
-		seed(b.engine, "1", 0);
-		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
-		await detect(b.engine);
-		await detect(b.engine);
-		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
 		expect(
-			b.emits.filter(
-				(e) => e.event === "engine-error" && engineErrorMessage(e).includes("4101132"),
-			),
-		).toHaveLength(1);
+			b.logs.some((l) => l.level === "info" && l.msg.includes("4101132") && l.msg.includes("恢复")),
+		).toBe(true);
 	});
 
-	it("错误码变了 → 当作新故障重新告警", async () => {
+	it("从没坏过的成功拉取不记恢复(否则每个 cron tick 刷一行)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		await detect(b.engine);
+		expect(b.logs.some((l) => l.msg.includes("恢复正常"))).toBe(false);
+	});
+
+	it("恢复只记一次,后续成功拉取保持安静", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine); // 恢复 → 记一次
+		await detect(b.engine);
+		await detect(b.engine);
+		expect(b.logs.filter((l) => l.msg.includes("恢复正常"))).toHaveLength(1);
+	});
+
+	it("瞬时错误连续失败:每次都上报(幂等),日志只记一次 warn(与风控边沿对称)", async () => {
+		const b = makeEngine();
+		seed(b.engine, "1", 0);
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+		await detect(b.engine);
+		await detect(b.engine);
+		expect(b.problems.reportFailure).toHaveBeenCalledTimes(3);
+		expect(b.logs.filter((l) => l.level === "warn" && l.msg.includes("4101132"))).toHaveLength(1);
+		expect(b.logs.filter((l) => l.level === "debug" && l.msg.includes("仍是错误码"))).toHaveLength(
+			2,
+		);
+	});
+
+	it("错误码变了 → 当作新故障再记 warn,上报的文案带新的码", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
 		b.fetchAllDynamic.mockResolvedValue(resp([], -509, "限流"));
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
+		expect(
+			b.logs.filter((l) => l.level === "warn" && l.msg.includes("获取动态信息失败")),
+		).toHaveLength(2);
+		expect(b.problems.reportFailure).toHaveBeenLastCalledWith(
+			expect.objectContaining({ message: PROBLEM_TEXTS.dynamicFetchFailed.text(-509) }),
+		);
 	});
 
-	it("风控解除同样私聊说一声", async () => {
+	it("风控解除:拉成功时记「风控已解除」", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
-
 		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(2);
-		expect(String(b.push.sendPrivateMsg.mock.calls[1]?.[0])).toContain("风控");
+		expect(b.logs.some((l) => l.level === "info" && l.msg.includes("风控已解除"))).toBe(true);
 	});
 
-	it("风控与瞬时错误同时挂着 → 恢复报一条,两样都说到", async () => {
+	it("风控与瞬时错误同时挂着 → 恢复记一行,两样都说到", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], -352, "risk"));
@@ -520,56 +604,56 @@ describe("DynamicEngine — 故障恢复通知", () => {
 
 		b.fetchAllDynamic.mockResolvedValue(resp([]));
 		await detect(b.engine);
-		const recovery = b.push.sendPrivateMsg.mock.calls.filter((c) => String(c[0]).includes("恢复"));
+		const recovery = b.logs.filter((l) => l.msg.includes("恢复正常"));
 		expect(recovery).toHaveLength(1);
-		expect(String(recovery[0]?.[0])).toContain("风控");
-		expect(String(recovery[0]?.[0])).toContain("4101132");
+		expect(recovery[0]?.msg).toContain("风控");
+		expect(recovery[0]?.msg).toContain("4101132");
 	});
 
-	it("跨 -101 后恢复:不拿陈旧错误码报喜(登录恢复由上层 auth-restored 负责)", async () => {
-		const b = makeEngine();
-		seed(b.engine, "1", 0);
-		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
-		await detect(b.engine); // DM #1:报错
-		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
-		await detect(b.engine); // 独立 episode,-101 不发 DM
-		b.fetchAllDynamic.mockResolvedValue(resp([]));
-		await detect(b.engine); // 成功,但这是登录恢复,不该由这里报喜
-		expect(b.push.sendPrivateMsg).toHaveBeenCalledTimes(1);
-	});
-
-	it("恢复通知发不出去不能打断本轮动态的交出", async () => {
+	it("跨 -101 后恢复:不拿陈旧错误码记恢复(登录恢复由 auth-restored 负责)", async () => {
 		const b = makeEngine();
 		seed(b.engine, "1", 0);
 		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
 		await detect(b.engine);
+		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		await detect(b.engine); // 独立 episode
+		b.fetchAllDynamic.mockResolvedValue(resp([]));
+		await detect(b.engine);
+		expect(b.logs.some((l) => l.msg.includes("恢复正常"))).toBe(false);
+	});
 
-		// 私聊通道自己坏了(master 不可达 / 适配器抛错)。恢复通知是锦上添花,
-		// 绝不能因为它发不出去就把这一轮真正要推的动态吞掉。
-		b.push.sendPrivateMsg.mockRejectedValue(new Error("master unreachable"));
+	it("上报口抛错不能打断本轮动态的交出", async () => {
+		const throwing = makeThrowingLayers();
+		const b = makeEngine({ problems: throwing });
+		seed(b.engine, "1", 0);
+		b.fetchAllDynamic.mockResolvedValue(resp([], 4101132, "请求数据发生错误"));
+		await detect(b.engine);
+
 		b.fetchAllDynamic.mockResolvedValue(resp([makeItem({ uid: 1, pubTs: 1000 })]));
 		await detect(b.engine);
 		expect(b.reportPost).toHaveBeenCalled();
 	});
+
+	it("引擎 stop():这一路的风控清掉,请求失败用「不再适用」清(不补「已恢复」)", () => {
+		const b = makeEngine();
+		b.engine.start();
+		b.problems.resolveRisk.mockClear();
+		b.problems.resolveFailure.mockClear();
+		b.engine.stop();
+		expect(b.problems.resolveRisk).toHaveBeenCalledWith("dynamic");
+		expect(b.problems.resolveFailure).toHaveBeenCalledWith(
+			{ code: "dynamic_fetch_failed" },
+			{ notify: false },
+		);
+	});
 });
 
 /**
- * 登录掉了以后,谁负责告诉主人。
- *
- * `auth-lost` 是 API 层单点广播的(任何 -101 响应都会经 interceptor 触发),上层
- * master-notifier 收到后私聊「账号登录已失效,请到控制台重新扫码登录」—— 那句话
- * 带着该怎么办。直播引擎收到同一个事件直接 `teardown()`。
- *
- * 动态引擎此前两样都没做:cron 照跑,直到下一轮自己撞上 -101,再报一句
- * 「[bilibili-notify-dynamic] 账号未登录」。主人先收到一条登录失效,过一会儿又收
- * 到一条听起来像新故障的报错,而后者不带任何新信息 —— 那正是同一件事的第二次通知。
+ * 登录掉了以后,动态引擎自己的事:停 cron、不许被订阅变动拉回来、等 `auth-restored`。
+ * 告诉主人登录失效不归它 —— 问题表的未登录层看登录状态说(一条带「该怎么办」的私聊),引擎不再发 engine-error。
  */
-describe("DynamicEngine — 登录失效时不再报第二遍", () => {
+describe("DynamicEngine — 登录失效时的 cron", () => {
 	const oneSub = { subs: { "1": { uid: "1", post: true } } } as const;
-	const authEc = (b: ReturnType<typeof makeEngine>) =>
-		b.emits.filter(
-			(e) => e.event === "engine-error" && engineErrorMessage(e).includes("账号未登录"),
-		).length;
 
 	it("收到 auth-lost 立刻停 cron —— 别等下一轮再去白撞一次 -101", () => {
 		const b = makeEngine(oneSub);
@@ -580,46 +664,21 @@ describe("DynamicEngine — 登录失效时不再报第二遍", () => {
 		expect(cronMock.instances[0]?.isActive).toBe(false);
 	});
 
-	it("auth-lost 之后才落地的那一轮撞上 -101,不再报 engine-error", async () => {
-		// 事件到达时可能已经有一轮请求在飞。它照样会拿到 -101 走 handleApiError,
-		// 而主人在这之前已经收到那条更有用的「登录已失效」了。
-		const b = makeEngine(oneSub);
-		b.engine.start();
-		b.trigger("auth-lost");
+	it("-101 一律不发组件告警:不管有没有先收到 auth-lost(冷启动 cookie 过期也是)", async () => {
+		const withLost = makeEngine(oneSub);
+		withLost.engine.start();
+		withLost.trigger("auth-lost");
+		withLost.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		seed(withLost.engine, "1", 0);
+		await detect(withLost.engine);
+		expect(withLost.emits.filter((e) => e.event === "engine-error")).toEqual([]);
 
-		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-
-		expect(authEc(b)).toBe(0);
-	});
-
-	it("没收到 auth-lost 就撞上 -101 时照常报 —— 冷启动 cookie 过期走的正是这条", async () => {
-		// `auth-lost` 只在**真的丢掉一个好会话**时才发(login-flow 的 wasLoggedIn 门)。
-		// 进程起来时 cookie 就已经过期的话根本没有那个事件,这里是唯一的通知路径,
-		// 静默掉就等于让主人对着一个不推送的服务干等。
-		const b = makeEngine(oneSub);
-		b.engine.start();
-
-		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-
-		expect(authEc(b)).toBe(1);
-	});
-
-	it("auth-restored 之后重新武装 —— 抑制只对这一次登录失效有效", async () => {
-		// 标记粘住的话,重新登录再掉一次就永远静默了。
-		const b = makeEngine(oneSub);
-		b.engine.start();
-		b.trigger("auth-lost");
-		b.trigger("auth-restored");
-
-		b.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
-		seed(b.engine, "1", 0);
-		await detect(b.engine);
-
-		expect(authEc(b)).toBe(1);
+		const withoutLost = makeEngine(oneSub);
+		withoutLost.engine.start();
+		withoutLost.fetchAllDynamic.mockResolvedValue(resp([], -101, "not login"));
+		seed(withoutLost.engine, "1", 0);
+		await detect(withoutLost.engine);
+		expect(withoutLost.emits.filter((e) => e.event === "engine-error")).toEqual([]);
 	});
 
 	it("auth-lost 之后订阅变更不许把 cron 拉回来 —— 登录还没恢复,拉起来就是再撞一次", () => {
@@ -1316,7 +1375,7 @@ describe("DynamicEngine — 生命周期 / cron 重启", () => {
 			},
 			bus: makeBus().bus,
 			api: { fetchAllDynamic: vi.fn(async () => resp([], -352, "risk")) } as unknown as Api,
-			push: { sendPrivateMsg: vi.fn(async () => {}) },
+			problems: makeFakeProblems(),
 			imageFetcher: { fetchImage: vi.fn() },
 			reportPost: () => {},
 			config: { dynamicCron: "*/2 * * * *", dynamicVideoUrlToBV: false },

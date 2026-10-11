@@ -5,7 +5,6 @@ export {
 	type DynamicEngineOptions,
 } from "./dynamic-engine";
 export { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
-export type { PushLike } from "./push-like";
 export type {
 	AllDynamicResponse,
 	Dynamic,

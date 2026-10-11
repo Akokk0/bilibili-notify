@@ -10,17 +10,15 @@ import {
 } from "@bilibili-notify/internal";
 import type { ConfigStore } from "../config/store.js";
 import type { Api } from "./api/index.js";
-import { DynamicEngine, type PushLike } from "./dynamic/index.js";
+import { DynamicEngine } from "./dynamic/index.js";
 import type { ImagesDeps } from "./images.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { settingsOf, watchSettings } from "./settings.js";
 
 export interface BiliSourceDeps {
 	api: Api;
-	/** 引擎自己还在听 auth-restored / auth-lost、发 engine-error:私聊主人那一处随 3a-30,其余随 3b。 */
+	/** 引擎自己还在听 auth-restored / auth-lost(登录生命周期的事件,随 3b 直播并进来源时再收)。 */
 	bus: MessageBus;
-	/** 只剩给主人发私信(风控 / 故障告警);3a-30 删。 */
-	push: PushLike;
 	imageFetcher: ImagesDeps["images"];
 	/** B 站自己的设置从它读(`settingsOf` / `watchSettings`);`ctx.settings(schema)` 随 3a-39。 */
 	configStore: Pick<ConfigStore, "getIntegrationSettings" | "onChange">;
@@ -29,10 +27,13 @@ export interface BiliSourceDeps {
 	/** 登录口(`AuthSystem.auth`):原样挂到 `Source.auth`,登记表的视图带着它。 */
 	auth: SourceAuth;
 	/**
-	 * 分层上报器(`compose.ts` 造,与给开发场景、给入口的是同一个):`start` 最后一步接上这个来源的上下文,
-	 * `stop` 第一步摘下。
+	 * 分层上报器(`compose.ts` 造,与给入口的是同一个):`start` 最后一步接上这个来源的上下文,
+	 * `stop` 第一步摘下;动态引擎拉失败时往里报、拉成功与停下时往里清。
 	 */
-	problems: Pick<ProblemLayers, "attach" | "detach">;
+	problems: Pick<
+		ProblemLayers,
+		"attach" | "detach" | "reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure"
+	>;
 }
 
 export interface BiliSource extends Source {
@@ -66,7 +67,7 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 				setTimeout: deps.setTimeout,
 				bus: deps.bus,
 				api: deps.api,
-				push: deps.push,
+				problems: deps.problems,
 				imageFetcher: deps.imageFetcher,
 				reportPost: (externalId, report) => ctx.reportPost(externalId, report),
 				subscriptions: () => ctx.subscriptions(),

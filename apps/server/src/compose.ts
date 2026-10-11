@@ -42,7 +42,7 @@ import { createQQOfficialAdapter } from "./platforms/qq-official.js";
 import { createWebhookAdapter } from "./platforms/webhook.js";
 import { type BuiltinAdapters, registerBuiltinAdapters } from "./push/builtin-adapters.js";
 import type { PlatformAdapterRegistry } from "./push/registry.js";
-import { type EnginesRuntime, masterTellers } from "./runtime/engines.js";
+import type { EnginesRuntime } from "./runtime/engines.js";
 import type { SubRuntimeStore } from "./runtime/sub-runtime-store.js";
 
 export interface BuiltinIntegrationsDeps {
@@ -88,7 +88,7 @@ export interface BuiltinIntegrations {
 	/** `createDevtools` 的 `provide` 回调里调:过了开发版那两道门才会走到,把 B 站那组场景按来源键认领进去。 */
 	provideDevtools(providers: Pick<DevtoolsProviderRegistry, "claim">): void;
 	/** 引擎建好之后调一次:造 B 站来源并登记(登记即 start)。调第二次就抛。 */
-	registerSources(engines: Pick<EnginesRuntime, "registerSource" | "push">): Promise<void>;
+	registerSources(engines: Pick<EnginesRuntime, "registerSource">): Promise<void>;
 	/**
 	 * `createEngines` 之前调一次:依次登记 OneBot、QQ 官方机器人、webhook 三个内置适配器(登记即 `start`),
 	 * 交回的 `dispose` 由调用方挂到关停钩子上(逐个撤登记再关存储;幂等)。登记途中任一个抛了,已登记的先收回,
@@ -169,7 +169,6 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				const made = createBiliSource({
 					api: deps.api.api,
 					bus: deps.bus,
-					push: { sendPrivateMsg: masterTellers(engines.push, deps.logger).sendPrivateMsg },
 					problems,
 					imageFetcher: deps.imageFetcher,
 					configStore: deps.configStore,

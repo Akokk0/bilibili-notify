@@ -12,18 +12,23 @@ import { DateTime } from "luxon";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../images";
+import type { ProblemLayers } from "../problem-layers";
+import { PROBLEM_TEXTS } from "../problem-texts";
 import { emojiUrlsOf, postFromDynamic, repostAvatarUrlOf } from "./post-from-dynamic";
-import type { PushLike } from "./push-like";
 import type { AllDynamicResponse, Dynamic, DynamicAnchors } from "./types";
 
-const LOG_TAG = "bilibili-notify-dynamic";
 /**
  * 风控/瞬时错误停 cron 后的退避重启间隔。原实现:任何非鉴权错误(-509 限流、
  * 瞬时 -403、未知码)都永久 stop cron 且唯一重启路径 `auth-restored` 不会触发
- * → 动态轮询永久静默直到重启进程。退避后自动重探,瞬时错误/`bili cap` 解风控
+ * → 动态轮询永久静默直到重启进程。退避后自动重探,瞬时错误/风控解除
  * 后即自愈,无需人工重启进程。
  */
 const DETECTOR_RESTART_BACKOFF_MS = 5 * 60_000;
+
+/** 动态这一路在上报器里的路名(风控按路记)。 */
+const RISK_PATH = "dynamic";
+/** 拉动态撞上风控以外的错误码时报给问题表的 code。 */
+const FETCH_FAILED_CODE = "dynamic_fetch_failed";
 
 /** B 站的开播伪动态:开播由直播引擎推,动态这边不交作品。 */
 const DYNAMIC_TYPE_LIVE_RCMD = "DYNAMIC_TYPE_LIVE_RCMD";
@@ -114,8 +119,11 @@ export interface DynamicEngineOptions {
 	setTimeout: ServiceContext["setTimeout"];
 	bus: MessageBus;
 	api: Api;
-	/** 宿主给的出口:引擎只剩给主人发私信(风控 / 故障告警)这一样。 */
-	push: PushLike;
+	/**
+	 * 分层上报器(`bilibili/problem-layers.ts`):拉动态撞风控、别的错误码都经它报给问题表,拉成功与停下时清。
+	 * 它的方法都不往外抛,所以调用点不必再包 try。
+	 */
+	problems: Pick<ProblemLayers, "reportRisk" | "resolveRisk" | "reportFailure" | "resolveFailure">;
 	/**
 	 * 抓图服务(用 B 站接口那个请求客户端建的,建在入口,经 `compose.ts` 递进来):**交出作品之前**把作品里只有地址的图抓进图库
 	 * (被过滤的、关了出图的动态也抓,代价主人知情)。必给 —— 漏给是编译不过,不是悄悄不出图。
@@ -147,7 +155,7 @@ function dynamicLink(item: Dynamic, isVideo: boolean, videoUrlToBV: boolean): st
 /**
  * 平台中立的动态轮询与生产核心。
  *
- * - 不依赖任何宿主框架;宿主(B 站来源,`bilibili/source.ts`)提供 logger / setTimeout / MessageBus / PushLike /
+ * - 不依赖任何宿主框架;宿主(B 站来源,`bilibili/source.ts`)提供 logger / setTimeout / MessageBus / 分层上报器 /
  *   reportPost / 名单(`subscriptions`)。名单是引擎唯一的订阅输入:启停与「名单可能变了」都由来源调进来。
  * - 只管生产:拉 feed、判新、翻成中立作品、抓图、交给核心入口。怎么消费(过滤、出卡、点评、推送、图集)不归它。
  */
@@ -155,7 +163,7 @@ export class DynamicEngine {
 	private readonly setTimeout: ServiceContext["setTimeout"];
 	private readonly bus: MessageBus;
 	private readonly api: Api;
-	private readonly push: PushLike;
+	private readonly problems: DynamicEngineOptions["problems"];
 	private readonly imageFetcher: ImagesDeps["images"];
 	private readonly reportPost: (externalId: string, report: PostReport) => void;
 	private readonly logger: Logger;
@@ -166,35 +174,20 @@ export class DynamicEngine {
 	/** 风控/瞬时错误后的一次性退避重启句柄;非 undefined 表示已排程,不叠加。 */
 	private detectorRestartTimer?: Disposable;
 	/**
-	 * -352 风控态边沿标记。进入风控只 error+DM+engine-error 一次;退避重探仍
-	 * 风控 → debug(不重复告警);成功拉取(code 0)→ info 一次并清除。避免在
-	 * 退避重试热路径反复刷 error(Q1)。
+	 * -352 风控态边沿标记,**只管日志等级**(上报每次撞都叫,幂等)。进入风控记一次 error;退避重探仍
+	 * 风控 → debug;成功拉取(code 0)→ info 一次并清除。避免在退避重试热路径反复刷 error(Q1)。
 	 */
 	private riskControlled = false;
 	/**
-	 * 瞬时错误(-509 / 瞬时 -403 / 4101132 之类未知码)的边沿标记,存着当前故障的
-	 * 错误码。作用与 {@link riskControlled} 对称:
-	 *
-	 * 1. **不重复打扰** —— 同一个码连续失败只告警一次。退避周期是 300s,持续故障
-	 *    一小时就是十几条私聊,而每条的信息量和第一条一模一样。换了码 = 换了故障,
-	 *    重新告警。
-	 * 2. **知道该不该报喜** —— 成功拉取时靠它判断「此前真的坏过」,否则每个 cron
-	 *    tick 都会报一次"已恢复"。
+	 * 瞬时错误(-509 / 瞬时 -403 / 4101132 之类未知码)的边沿标记,存着当前故障的错误码,**只管日志等级**
+	 * (上报每次失败都叫)。作用与 {@link riskControlled} 对称:同一个码连续失败只记一次 warn,换了码当新故障
+	 * 再记;成功拉取时靠它判断「此前真的坏过」,记一行 info。
 	 */
 	private transientErrorCode: number | null = null;
 	/**
-	 * 登录已失效,等 `auth-restored`。两个作用:
-	 *
-	 * 1. **不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
-	 *    少了它,auth-lost 停掉 cron 之后随便一次订阅增删就会把它重新建起来,
-	 *    再去撞一次 -101。
-	 * 2. **不再报「账号未登录」** —— 上层收到 `auth-lost` 已经私聊过主人「账号登录
-	 *    已失效,请到控制台重新扫码登录」,那句话还带着该怎么办;这里再报一句
-	 *    `[bilibili-notify-dynamic] 账号未登录` 不带新信息,只会让人以为又坏了一处。
-	 *
-	 * 反过来,**没有** auth-lost 的 -101 必须照常报:`auth-lost` 只在真的丢掉一个好
-	 * 会话时才发(login-flow 的 wasLoggedIn 门),进程起来时 cookie 就已过期的话根本
-	 * 没有那个事件,这条 engine-error 是唯一的通知路径。
+	 * 登录已失效,等 `auth-restored`。**不许重启 cron** —— 与 `detectorRestartTimer` 并列成为 `reconcileJob` 的门。
+	 * 少了它,auth-lost 停掉 cron 之后随便一次订阅增删就会把它重新建起来,再去撞一次 -101。
+	 * (要不要告诉主人登录失效由问题表的未登录层管,看登录状态,不看这个标记。)
 	 */
 	private authLost = false;
 	/**
@@ -221,7 +214,7 @@ export class DynamicEngine {
 		this.setTimeout = opts.setTimeout;
 		this.bus = opts.bus;
 		this.api = opts.api;
-		this.push = opts.push;
+		this.problems = opts.problems;
 		this.imageFetcher = opts.imageFetcher;
 		this.reportPost = opts.reportPost;
 		this.config = opts.config;
@@ -269,6 +262,9 @@ export class DynamicEngine {
 		// 瞬时错误边沿同理 —— 留着的话下次 start 后第一次成功拉取会报一句
 		// 上个 lifecycle 的「已恢复」。
 		this.transientErrorCode = null;
+		// 这一路不再跑了:问题表里属于它的风控与请求失败不再适用,静默清掉(不补「已恢复」)。
+		this.problems.resolveRisk(RISK_PATH);
+		this.problems.resolveFailure({ code: FETCH_FAILED_CODE }, { notify: false });
 		this.detectorRestartTimer?.dispose();
 		this.detectorRestartTimer = undefined;
 		if (this.dynamicJob) {
@@ -504,11 +500,11 @@ export class DynamicEngine {
 		if (!content) return;
 
 		if (content.code !== 0) {
-			await this.handleApiError(content.code, content.message);
+			this.handleApiError(content.code, content.message);
 			return;
 		}
 
-		await this.announceRecovery();
+		this.noteFetchSucceeded();
 		// 记在这里而不是入口:上面那两个 return(网络抛错 / 接口错误码)都不算抓到。
 		this.lastSuccessfulFetchAt = Date.now();
 		this.logger.debug("[detector] 成功获取动态信息，开始处理");
@@ -635,7 +631,7 @@ export class DynamicEngine {
 		}
 	}
 
-	private async handleApiError(code: number, message: string): Promise<void> {
+	private handleApiError(code: number, message: string): void {
 		// Stop dynamic detector first
 		this.dynamicJob?.stop();
 		this.dynamicJob = undefined;
@@ -643,14 +639,14 @@ export class DynamicEngine {
 			case -101: {
 				// 真鉴权失效:停 cron,靠 auth-restored 重启(不退避盲重试 ——
 				// 对死会话每 5 分钟刷一次毫无意义且放大风控)。auth-lost 由 api
-				// interceptor 单点广播,主人通知由上层 60s 节流统一发送。
+				// interceptor 单点广播。要不要告诉主人登录失效,由问题表的未登录层看登录状态决定,
+				// 这里不再发告警。
 				this.logger.error("[api] 账号未登录，动态检测已停止（待 auth-restored 重启）");
-				// 已经收过 auth-lost 就闭嘴:上层那条「账号登录已失效,请到控制台重新
-				// 扫码登录」既先到又更有用,这里再报一句只是同一件事的第二次通知。
-				// 详见 `authLost` 字段说明 —— 没有 auth-lost 的 -101 仍必须报。
-				if (!this.authLost)
-					this.bus.emit("engine-error", { source: LOG_TAG, message: "账号未登录" });
 				this.authLost = true;
+				// -101 既不是风控拦截、也换了一种性质的失败:这一路之前报过的风控与请求失败不再适用,
+				// 静默清掉(通常登录一失效未登录层就已经把它们抹了,这里兜住「-101 到了而登录状态没跟着变」)。
+				this.problems.resolveRisk(RISK_PATH);
+				this.problems.resolveFailure({ code: FETCH_FAILED_CODE }, { notify: false });
 				// 上面只停了 job,挂着的退避重启还得作废 —— 见 suspendDetector。
 				this.suspendDetector();
 				// auth-loss 是与风控不同的独立 episode,会停 cron 待 auth-restored。
@@ -663,15 +659,14 @@ export class DynamicEngine {
 				break;
 			}
 			case -352: {
-				// 风控:**非永久**。`bili cap` 解除风控不会发任何事件,此前 cron
+				// 风控:**非永久**。解除风控不会发任何事件,此前 cron
 				// 永久静默直到重启进程。退避后自动重探,解除即自愈。
-				// Q7 边沿:进入风控只 error+DM+engine-error 一次;退避重探仍风控 →
-				// debug(不重复刷 error / 不重复打扰 master);成功拉取 → info 清除。
+				// Q7 边沿(只管日志):进入风控记一次 error;退避重探仍风控 → debug;成功拉取 → info 清除。
+				// 上报每次撞都叫(幂等):高层清掉后低层不会自己冒回来,要靠下一次撞见再报。
+				this.problems.reportRisk(RISK_PATH);
 				if (!this.riskControlled) {
 					this.riskControlled = true;
 					this.logger.error("[api] 账号被风控，动态检测暂停，将退避后自动重试");
-					await this.tellMaster("账号被风控，请使用 `bili cap` 指令解除风控");
-					this.bus.emit("engine-error", { source: LOG_TAG, message: "账号被风控" });
 				} else {
 					this.logger.debug("[api] 仍处于风控态，退避后继续重探(不重复告警)");
 				}
@@ -681,15 +676,17 @@ export class DynamicEngine {
 			default: {
 				// 瞬时错误(-509 限流 / 瞬时 -403 / 未知码):不可永久停 cron。
 				// 退避后自动重试,瞬时抖动自愈,无需人工重启进程 → Q3 warn 不冒充事故。
-				// 边沿去重同 -352:同一个码连续失败只告警一次,换了码才当新故障重报。
+				// 这一次的结果不是风控拦截:这一路的风控(如果挂着)清掉。每次失败都报(幂等),
+				// 边沿去重只管日志:同一个码连续失败只记一次 warn,换了码才当新故障再记。
+				this.problems.resolveRisk(RISK_PATH);
+				this.problems.reportFailure({
+					code: FETCH_FAILED_CODE,
+					message: PROBLEM_TEXTS.dynamicFetchFailed.text(code),
+					notify: PROBLEM_TEXTS.dynamicFetchFailed.notify,
+				});
 				if (this.transientErrorCode !== code) {
 					this.transientErrorCode = code;
 					this.logger.warn(`[api] 获取动态信息失败，错误码：${code}，${message}，将退避后自动重试`);
-					await this.tellMaster(`获取动态信息失败，错误码：${code}`);
-					this.bus.emit("engine-error", {
-						source: LOG_TAG,
-						message: `获取动态失败，错误码：${code}`,
-					});
 				} else {
 					this.logger.debug(`[api] 仍是错误码 ${code}，退避后继续重试(不重复告警)`);
 				}
@@ -699,43 +696,22 @@ export class DynamicEngine {
 	}
 
 	/**
-	 * 私聊通知主人,发不出去只记一句 warn。
+	 * 一次真正拉成功了:这一路的风控与请求失败清掉(问题表据此补「已恢复」),并复位两个日志边沿。
 	 *
-	 * 调用方全在关键控制流上:告警之后还要 `scheduleDetectorRestart` 排退避重启,
-	 * 报喜之后还要接着处理这一轮的动态。裸 `await` 的话,私聊通道自己坏掉(master
-	 * 不可达 / 适配器抛错)就会把后面的活儿一起带走 —— 尤其告警那条,`handleApiError`
-	 * 开头已经 stop 了 job,退避重启再排不上,动态检测就**再也不会自己起来**了。
+	 * 时机是**这一次真的拉成功了**,不是「重启了检测任务」—— 重启只是把 cron 挂回去,故障还在的话下一轮
+	 * 照样失败,那会儿说"好了"就是骗人。清是幂等的,从没坏过时也叫,什么都不发生。
+	 * 此前真的坏过(边沿标记还在)就记一行 info。
 	 */
-	private async tellMaster(text: string): Promise<void> {
-		try {
-			await this.push.sendPrivateMsg(text);
-		} catch (e) {
-			this.logger.warn(`[push] 通知主人失败：${errorMessageOf(e)}`);
-		}
-	}
-
-	/**
-	 * 成功拉取后的「好了」通知 —— 只在此前真的报过故障时说一次。
-	 *
-	 * 报错走私聊,恢复也得走私聊。否则主人手里只剩一条报错:退避重启、任务已启动
-	 * 这些都只进日志,IM 里再无下文,分不清是自愈了还是还坏着只是不再吭声。
-	 *
-	 * 说的时机是**这一次真的拉成功了**,不是「重启了检测任务」—— 重启只是把 cron
-	 * 挂回去,故障还在的话下一轮照样失败,那会儿报喜就是骗人。
-	 *
-	 * 只私聊、不发 `engine-error`:那个事件在独立端会点亮 AlertShell 的红色告警面板,
-	 * 拿它报喜语义是反的。
-	 */
-	private async announceRecovery(): Promise<void> {
+	private noteFetchSucceeded(): void {
+		this.problems.resolveRisk(RISK_PATH);
+		this.problems.resolveFailure({ code: FETCH_FAILED_CODE });
 		const parts: string[] = [];
 		if (this.riskControlled) parts.push("风控已解除");
 		if (this.transientErrorCode !== null) parts.push(`此前错误码：${this.transientErrorCode}`);
 		if (parts.length === 0) return;
 		this.riskControlled = false;
 		this.transientErrorCode = null;
-		const detail = parts.join("，");
-		this.logger.info(`[api] ${detail}，动态检测恢复正常`);
-		await this.tellMaster(`动态检测已恢复正常（${detail}）`);
+		this.logger.info(`[api] ${parts.join("，")}，动态检测恢复正常`);
 	}
 
 	/**

@@ -429,9 +429,9 @@ export class Api {
 					return;
 				}
 				if (classifyRefreshCode(probeCode) === "risk-control") {
-					// 风控/限流:非终态。跳过本轮,等下个 interval 自愈(可 bili cap)。
+					// 风控/限流:非终态。跳过本轮,等下个 interval 自愈。
 					this.logger.warn(
-						`[cookie] fetchCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮自愈)`,
+						`[cookie] fetchCookieInfo 风控/限流 code=${probeCode},跳过本轮(不触发 auth-lost,等下轮自愈)`,
 					);
 					return;
 				}
@@ -517,7 +517,7 @@ export class Api {
 					// 不拆 timer —— 抛可重试错(triggerRefreshCheck 记 warn),下个
 					// interval 自愈;误升级为终态登出正是 ②4 反质疑的过度修复。
 					this.logger.warn(
-						`[cookie] 刷新遇风控/限流 code=${refreshData.code} msg=${refreshData.message},跳过本轮(不触发 auth-lost,可 bili cap 后等下轮)`,
+						`[cookie] 刷新遇风控/限流 code=${refreshData.code} msg=${refreshData.message},跳过本轮(不触发 auth-lost,等下轮自愈)`,
 					);
 					throw new Error(`Cookie 刷新被风控: code=${refreshData.code}`);
 				}
@@ -552,7 +552,7 @@ export class Api {
 				if (classifyRefreshCode(acceptData.code) === "risk-control") {
 					// confirm 步遇风控:同 B2,非终态,退避等下轮(不 auth-lost/不拆 timer)。
 					this.logger.warn(
-						`[cookie] 刷新确认遇风控/限流 code=${acceptData.code},跳过本轮(可 bili cap 后等下轮)`,
+						`[cookie] 刷新确认遇风控/限流 code=${acceptData.code},跳过本轮(等下轮自愈)`,
 					);
 					throw new Error(`Cookie 刷新确认被风控: code=${acceptData.code}`);
 				}

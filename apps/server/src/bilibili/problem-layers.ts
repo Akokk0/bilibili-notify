@@ -11,7 +11,7 @@ import { PROBLEM_TEXTS } from "./problem-texts.js";
  *    未登录时扫码途中不许误清)。
  * 2. **风控**(`risk_controlled`,来源级、带私聊):任一路撞了就开,所有撞着的路都清了才清。
  *    一路的清由调用方按「这一路这一次的结果不是风控拦截」来叫。
- * 3. **某项请求失败**(code 由调用方给、带私聊):每次失败都叫(幂等),调用方自己的成功或不再适用时清。
+ * 3. **某项请求失败**(code 与带不带私聊都由调用方给):每次失败都叫(幂等),调用方自己的成功或不再适用时清。
  *
  * 高层一开,低层在自己手里清空、并在表里静默抹掉(`notify: false`,不补「已恢复」);高层开着时低层的上报只记日志、
  * 不存;高层清掉后低层不会自己冒回来,要等调用方下一次失败再报。
@@ -27,8 +27,16 @@ export interface ProblemLayers {
 	reportRisk(path: string): void;
 	/** 这一路好了,或这一路不再跑了。 */
 	resolveRisk(path: string): void;
-	/** 第三层:某项请求失败(每次失败都叫,幂等)。 */
-	reportFailure(failure: { externalId?: string; code: string; message: string }): void;
+	/**
+	 * 第三层:某项请求失败(每次失败都叫,幂等)。`notify`(必填，调用方必须表态)= 要不要私聊主人;
+	 * 原样带给核心，补报时带的是存下的这一格。
+	 */
+	reportFailure(failure: {
+		externalId?: string;
+		code: string;
+		message: string;
+		notify: boolean;
+	}): void;
 	/** 第三层清掉;`notify: false` = 不是修好了,只是不再适用(停监听、停下),不补「已恢复」。 */
 	resolveFailure(
 		failure: { externalId?: string; code: string },
@@ -52,6 +60,7 @@ interface Failure {
 	externalId?: string;
 	code: string;
 	message: string;
+	notify: boolean;
 }
 
 const LOGIN_CODE = "auth_lost";
@@ -99,7 +108,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 			...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 			code: failure.code,
 			message: failure.message,
-			notify: true,
+			notify: failure.notify,
 		});
 	}
 
@@ -188,6 +197,7 @@ export function createProblemLayers(options: CreateProblemLayersOptions): Proble
 				...(failure.externalId === undefined ? {} : { externalId: failure.externalId }),
 				code: failure.code,
 				message: failure.message,
+				notify: failure.notify,
 			};
 			failures.set(failureKey(entry), entry);
 			toSink("报请求失败", (to) => reportFailureEntry(to, entry));

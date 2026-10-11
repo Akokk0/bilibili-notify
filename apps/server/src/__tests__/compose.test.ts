@@ -260,16 +260,20 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 
 	// 验红:去掉 `registerSources` 里 catch 中的 `registering = false`,或把造来源那几句挪回 try 之外,这条红。
 	it("造来源那一步就同步抛了(还没到登记):标志也复位,再调一次 registerSources 能成", async () => {
-		const { builtins } = compose();
+		const { builtins, deps } = compose();
 		const boom = new Error("造来源炸了");
-		const broken = {
-			get push(): never {
+		// 造来源要读 `deps.imageFetcher`:让它读的时候抛
+		const original = deps.imageFetcher;
+		Object.defineProperty(deps, "imageFetcher", {
+			configurable: true,
+			get(): never {
 				throw boom;
 			},
-			registerSource: vi.fn(),
-		} as never;
+		});
+		const broken = { registerSource: vi.fn() } as never;
 		await expect(builtins.registerSources(broken)).rejects.toBe(boom);
 		expect(builtins.bilibili.dynamic()).toBeUndefined();
+		Object.defineProperty(deps, "imageFetcher", { configurable: true, value: original });
 		const ok = makeFakeEngines(makeFakeSourceCtx([]).ctx);
 		await builtins.registerSources(ok.engines);
 		expect(builtins.bilibili.dynamic()).toBeDefined();
@@ -298,6 +302,7 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			externalId: "100",
 			code: "live_monitor_stopped",
 			message: "停了",
+			notify: true,
 		});
 		const { ctx } = makeFakeSourceCtx([]);
 		expect(ctx.reportProblem).not.toHaveBeenCalled();

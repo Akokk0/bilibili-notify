@@ -132,10 +132,16 @@ function makeDeps(over: { cron?: string; fetchAllDynamic?: () => unknown } = {})
 		config,
 		fetchImage,
 		deps: {
-			problems: { attach: vi.fn(), detach: vi.fn() },
+			problems: {
+				attach: vi.fn(),
+				detach: vi.fn(),
+				reportRisk: vi.fn(),
+				resolveRisk: vi.fn(),
+				reportFailure: vi.fn(),
+				resolveFailure: vi.fn(),
+			},
 			api: { fetchAllDynamic: over.fetchAllDynamic ?? (async () => EMPTY_FEED) } as unknown as Api,
 			bus: makeWorld().bus,
-			push: { sendPrivateMsg: vi.fn(async () => {}) },
 			imageFetcher: { fetchImage },
 			configStore: config.store,
 			setTimeout: () => ({ dispose() {} }),
@@ -231,6 +237,19 @@ describe("createBiliSource", () => {
 
 		await source.stop();
 		expect(order).toEqual(["attach", "detach(引擎还在跑)"]);
+	});
+
+	// 验红:把 source.ts 递给引擎的 `problems: deps.problems` 换成别的对象,这条红。
+	it("引擎用的就是来源的那个上报器:拉动态撞 -352 报到它身上", async () => {
+		const { deps } = makeDeps({
+			fetchAllDynamic: async () => ({ code: -352, message: "risk" }),
+		});
+		const source = createBiliSource(deps);
+		const { ctx } = makeCtx([{ externalId: "1", post: true }]);
+		await source.start(ctx);
+		await source.dynamic()?.detectNow();
+		expect(deps.problems.reportRisk).toHaveBeenCalledWith("dynamic");
+		await source.stop();
 	});
 
 	// 验红:删掉 `start` 里的 `attach`,这条红(真上报器 + 记录用的假 ctx,开机登录已失效)。

@@ -93,7 +93,6 @@ async function boot(initial: AuthState, notifyImpl?: (text: string) => Promise<D
 			fetchAllDynamic: async () => ({ code: 0, message: "ok", data: { items: [] } }),
 		} as unknown as Api,
 		bus: world.bus,
-		push: { sendPrivateMsg: async () => {} },
 		imageFetcher: { fetchImage: async () => fail("unavailable", "不联网") } as never,
 		configStore: {
 			getIntegrationSettings: () => BiliSettingsSchema.parse({}),
@@ -124,7 +123,12 @@ const codes = (table: ReturnType<typeof createProblemTable>) => table.list().map
 describe("失效登录开机", () => {
 	it("对照:登录正常时,下层的问题(请求失败)确实会进表、私聊一条", async () => {
 		const { table, notifyMaster, layers } = await boot(IN);
-		layers.reportFailure({ externalId: "7", code: "live_monitor_stopped", message: "房间停了" });
+		layers.reportFailure({
+			externalId: "7",
+			code: "live_monitor_stopped",
+			message: "房间停了",
+			notify: true,
+		});
 		await flush();
 		expect(codes(table)).toEqual(["live_monitor_stopped"]);
 		expect(notifyMaster).toHaveBeenCalledTimes(1);
@@ -134,8 +138,13 @@ describe("失效登录开机", () => {
 	it("登录口是 expired:表里恰好一条 auth_lost(来源级),私聊恰好一次,下层的失败与风控压在底下", async () => {
 		const { table, notifyMaster, layers } = await boot(EXPIRED);
 		// 开机后直播与动态各自撞上的下层症状(今天会各发一条私聊)
-		layers.reportFailure({ externalId: "7", code: "live_monitor_stopped", message: "房间停了" });
-		layers.reportFailure({ code: "dynamic_fetch_failed", message: "拉动态失败" });
+		layers.reportFailure({
+			externalId: "7",
+			code: "live_monitor_stopped",
+			message: "房间停了",
+			notify: true,
+		});
+		layers.reportFailure({ code: "dynamic_fetch_failed", message: "拉动态失败", notify: true });
 		layers.reportRisk("dynamic");
 		await flush();
 
