@@ -90,13 +90,7 @@ export type SubscriptionOp =
 export interface BusEvents {
 	"auth-lost": undefined;
 	"auth-restored": undefined;
-	/**
-	 * 登录 cookie 刷新并落了盘。只带刷新的时刻:cookie 本身是密钥,不上总线 —— 盘上那份由刷新的
-	 * 回调自己写,总线上的消费方只需要知道「刷新过了」。
-	 */
-	"cookies-refreshed": { refreshedAt: string };
 	"subscription-changed": { ops: SubscriptionOp[] };
-	"login-status-report": LoginSnapshot;
 	/**
 	 * 一个来源的登录状态或账号变了(宿主订阅 `Source.auth.onChange` 后发)。载荷只有来源键与此刻的状态:
 	 * 账号(名字、头像)走 `GET /api/sources/:sourceKey/auth` 读,密钥与 cookie 永远不在里面。
@@ -320,13 +314,6 @@ export type ConfigScope =
 	| "connections"
 	| "targets"
 	| "secrets";
-
-/** 用于 'login-status-report' 事件 / Dashboard auth channel；具体 schema 在 apps/server/src/bilibili/api。 */
-export interface LoginSnapshot {
-	status: number;
-	msg: string;
-	data?: unknown;
-}
 
 /** 事件总线接口。on 返回 Disposable 用于 unsubscribe。 */
 /** 总线。载荷为 `undefined` 的事件 `emit` 时不带第二个参数。 */

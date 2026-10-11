@@ -384,10 +384,10 @@ describe("WS upgrade gate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite — Fix 5: cookies-refreshed carries no cookie material
+// Suite — Fix 5: the login frame carries no cookie material
 // ---------------------------------------------------------------------------
 
-describe("WS cookies-refreshed frame", () => {
+describe("WS subscription-auth-changed frame", () => {
 	let dataDir: string;
 	let bus: MessageBus;
 	let store: ConfigStore;
@@ -426,10 +426,10 @@ describe("WS cookies-refreshed frame", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	// The cookie itself never rides the bus (the refresh callback in bilibili/auth/index.ts emits only
-	// `{ refreshedAt }`, pinned by auth/__tests__/cookies-refreshed-payload.test.ts), so the
-	// frame is exactly that one field — nothing to strip on the way to the dashboard.
-	it("puts only { refreshedAt } on the WS envelope", async () => {
+	// The cookie itself never rides the bus: the login event carries only `{ sourceKey, state }`
+	// (the account goes through `GET /api/sources/:sourceKey/auth`), so the frame is exactly those two fields —
+	// nothing to strip on the way to the dashboard.
+	it("puts only { sourceKey, state } on the WS envelope", async () => {
 		const result = await tryConnect(`ws://127.0.0.1:${port}/ws`);
 		expect(result.outcome).toBe("open");
 		const ws = result.ws as WebSocket;
@@ -437,10 +437,13 @@ describe("WS cookies-refreshed frame", () => {
 		ws.send(JSON.stringify({ type: "subscribe", channels: ["auth"] }));
 		await c.waitFor((m) => m?.type === "subscribed");
 
-		bus.emit("cookies-refreshed", { refreshedAt: "2026-05-16T00:00:00.000Z" });
+		const changed = { sourceKey: "bilibili", state: { status: "logged-out" } } as const;
+		bus.emit("subscription-auth-changed", changed);
 
-		const evt = await c.waitFor((m) => m?.type === "auth" && m?.event === "cookies-refreshed");
-		expect(evt.data).toEqual({ refreshedAt: "2026-05-16T00:00:00.000Z" });
+		const evt = await c.waitFor(
+			(m) => m?.type === "auth" && m?.event === "subscription-auth-changed",
+		);
+		expect(evt.data).toEqual(changed);
 		const dataStr = JSON.stringify(evt.data);
 		expect(dataStr).not.toContain("cookiesJson");
 		expect(dataStr).not.toContain("refreshToken");

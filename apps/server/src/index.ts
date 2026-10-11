@@ -697,7 +697,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		// 所以这两层 Proxy 在这里建,引擎与路由拿的是它们的 `.api`;生产里 `overridableApi` 是桩,
 		// 原样透传。B 站那组场景的认领在 `compose.ts`。
 		const devApi = overridableApi(authSystem.api);
-		const devAuth = overridableApi(authSystem);
+		const devAuth = overridableApi(authSystem.auth);
 		// B 站的作品图与直播封面(3a-34):出卡前经 B 站接口那个请求客户端(同一套 cookie 与身份)抓进图库,
 		// 引用方是 `postImages` 这一家(名单恒空,靠新图的宽限期活到卡片画完)。引擎与链接预览共用这一个。
 		// 建在 `compose.ts` 之前:来源要用它,依赖一次给齐(构造时不做任何事)。
@@ -709,8 +709,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			api: devApi,
 			auth: devAuth,
 			integration: authSystem.integration,
-			// 真的登录口:来源挂它、登记表与 `/api/sources/:sourceKey/auth` 读它(开发场景只盖得到旧的 `auth` 壳)。
-			sourceAuth: authSystem.auth,
+			// 来源挂的是壳的 `.api`(登记表与 `/api/sources/:sourceKey/auth` 读到的就是它,开发场景才盖得到);
+			// 统计与引擎装配读的是真对象。
+			sourceAuth: devAuth.api,
 			bus: runtime.bus,
 			configStore: runtime.configStore,
 			subscriptions: subStore,
@@ -722,7 +723,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
 			// `authSystem` 是个会在关停时清掉的 let;这一刻它一定在(上面刚建的)。
-			loginFlow: () =>
+			healthCheck: () =>
 				authSystem && {
 					healthCheckNow: () => authSystem?.healthCheckNow() ?? Promise.resolve(false),
 				},
@@ -1266,8 +1267,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		};
 		const app = createApp(runtime, {
 			...appShell,
-			// devtools 给的话是套了 Proxy 的那份:`status()` 可注入假登录态,别的原样。
-			authSystem: devAuth.api,
 			// 显式给一份:`authSystem.api` 是数据属性,取出来的是没装饰过的那个,卡片预览
 			// 就会绕过 devtools 的 api 覆盖(假直播时预览渲染的还是真房间)。
 			api: devApi.api,

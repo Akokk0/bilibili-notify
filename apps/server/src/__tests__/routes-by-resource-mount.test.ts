@@ -23,8 +23,6 @@ import { type CreateAppOptions, createApp, createCardSkinStore } from "../app.js
 import { createSessionCodec } from "../auth/session.js";
 import { createWsTicketStore } from "../auth/ws-ticket.js";
 import type { BackupService } from "../backup/service.js";
-import { BiliLoginStatus } from "../bilibili/api/index.js";
-import type { AuthSystem } from "../bilibili/auth/index.js";
 import { createDevRegistry } from "../devtools/registry.js";
 import { createDevRoute } from "../devtools/route.js";
 import { ROUTE_NOT_FOUND_MESSAGE } from "../routes/respond-failure.js";
@@ -127,6 +125,11 @@ const OLD_PATHS: Probe[] = [
 	post(`/api/stats/roast/run-now/${ID}`),
 	post("/api/dev/captures/purge-history"),
 	post("/api/auth/ws-ticket"),
+	// `/api/auth/*`(3a-29 提交 ⑤)整个退役:登录口搬到 `/api/sources/:sourceKey/auth`,手动刷新 Cookie 的口直接删。
+	get("/api/auth/status"),
+	post("/api/auth/qr"),
+	post("/api/auth/cookies/refresh"),
+	post("/api/auth/logout"),
 	post("/api/push/test"),
 	post(`/api/connections/${ID}/test`),
 	// QQ 官方挑群 / 频道地址的两个读口(3a-22-3 起走 `/api/connections/:id/addresses`,这两个退役)。
@@ -182,10 +185,6 @@ async function makeApp(extra: Partial<CreateAppOptions> = {}) {
 	};
 	return createApp(runtime, {
 		cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
-		// 只有 `/api/ws/ticket` 的挂载条件(`authSystem` 在场)用得到它;路由不碰里面的东西。
-		authSystem: {
-			status: () => ({ status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" }),
-		} as unknown as AuthSystem,
 		wsTicketStore,
 		backupService: {} as BackupService,
 		update: {
@@ -298,9 +297,9 @@ describe("路由按资源整理(ADR-0036)的挂载", () => {
 		expect(runRoastNow).toHaveBeenCalledTimes(2);
 	});
 
-	it("票的口子跟着 authSystem 走,和从前挂在 /api/auth 里时一样", async () => {
-		const app = await makeApp({ authSystem: undefined });
-		expect(await isRouteMissing(await hit(app, post("/api/ws/ticket")))).toBe(true);
+	it("票的口子无条件挂着(从前要登录系统在场才挂,3a-29 之后不再依赖它)", async () => {
+		const app = await makeApp({});
+		expect(await isRouteMissing(await hit(app, post("/api/ws/ticket")))).toBe(false);
 	});
 });
 

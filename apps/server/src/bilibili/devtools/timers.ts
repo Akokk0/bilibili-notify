@@ -14,7 +14,7 @@ export interface BiliTimerDeps {
 	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	dynamic: () => { detectNow(): Promise<void> } | undefined;
 	fans: () => { pollNow(): Promise<boolean> } | undefined;
-	loginFlow: () => { healthCheckNow(): Promise<boolean> } | undefined;
+	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
 
 export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
@@ -79,7 +79,7 @@ export function biliTimerScenarios(deps: BiliTimerDeps): DevScenarioDef[] {
 		desc: "立刻查一次登录是否还有效(真打 getMyselfInfo),不等定时器。没登录就跳过。",
 		params: [],
 		async run() {
-			const ran = await need(deps.loginFlow(), "登录流程").healthCheckNow();
+			const ran = await need(deps.healthCheck(), "登录系统").healthCheckNow();
 			return { summary: ran ? "心跳查完一次,结果看顶栏。" : "没登录 / 扫码中,心跳不查。" };
 		},
 	};

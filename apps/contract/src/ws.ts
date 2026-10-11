@@ -68,10 +68,6 @@ export interface LogEntry {
  */
 export interface WsEvents {
 	auth: {
-		"login-status-report": BusEvents["login-status-report"];
-		"auth-lost": null;
-		"auth-restored": null;
-		"cookies-refreshed": BusEvents["cookies-refreshed"];
 		/** 一个来源的登录状态变了;载荷只有来源键与状态,账号走 `GET /api/sources/:sourceKey/auth`。 */
 		"subscription-auth-changed": BusEvents["subscription-auth-changed"];
 	};

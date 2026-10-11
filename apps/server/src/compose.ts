@@ -50,7 +50,7 @@ export interface BuiltinIntegrationsDeps {
 	/** 下面三样建得比这里晚,现取,原样转给开发场景。 */
 	live: BiliDevtoolsDeps["live"];
 	fans: BiliDevtoolsDeps["fans"];
-	loginFlow: BiliDevtoolsDeps["loginFlow"];
+	healthCheck: BiliDevtoolsDeps["healthCheck"];
 }
 
 export interface BuiltinIntegrations {
@@ -98,7 +98,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 					dynamic,
 					live: deps.live,
 					fans: deps.fans,
-					loginFlow: deps.loginFlow,
+					healthCheck: deps.healthCheck,
 				}),
 			);
 		},

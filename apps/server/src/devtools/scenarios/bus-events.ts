@@ -51,7 +51,7 @@ export function busEventScenarios(deps: BusEventDeps): DevScenarioDef[] {
 		group: "event",
 		title: "登录失效",
 		icon: "logout",
-		desc: "往总线上发 auth-lost:动态检测停摆、直播监听拆掉、主人收私聊、面板顶栏变未登录。引擎会真的停 —— 看完记得发「登录恢复」。",
+		desc: "往总线上发 auth-lost:动态检测停摆、直播监听拆掉、主人收私聊。引擎会真的停 —— 看完记得发「登录恢复」。",
 		params: [],
 		run() {
 			deps.bus.emit("auth-lost");

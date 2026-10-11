@@ -49,16 +49,11 @@ export const ALLOWLIST = {
  * 面板里认 B 站的分支归第 4 期按描述符重画。
  */
 export const RATCHET = {
-	// 3a-23:登录状态的定义从面板挪进 contract(面板不再依赖 api 包),名字没改;3a-29 换成 `SourceAuth`。
-	"apps/contract/src/auth.ts": 5,
 	"apps/server/src/ai/read-only-tools.ts": 2,
-	// 3a-23:把 contract 的登录状态值与 api 包的枚举两头钉住;3a-29 `SourceAuth` 状态机落地时一起走。
-	"apps/server/src/auth/login-status-wire.ts": 6,
 	// 3a-28 建 `compose.ts`(8 → 5):3a-32 为开发场景多出的 3 处(引入工厂、用来源键认领、调工厂)与按来源筛订阅那 1 处搬走;
 	// 多 1 处是 `status` 指令读「上次抓取」(来源的 `health()` 没造之前如实留着)。3a-29 B 站半:统计的登录读口改读
 	// 中立的 `auth.state()`(5 → 3),剩下的是来源键的两处与 `builtins.bilibili`。
 	"apps/server/src/index.ts": 3,
-	"apps/server/src/routes/auth.ts": 3,
 	"apps/server/src/routes/cards.ts": 8,
 	"apps/server/src/routes/live.ts": 2,
 	"apps/server/src/routes/stats.ts": 5,

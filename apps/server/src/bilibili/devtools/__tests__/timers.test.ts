@@ -26,7 +26,7 @@ function setup(over: Partial<Parameters<typeof biliTimerScenarios>[0]> = {}) {
 			live: () => ({ repushNow }),
 			dynamic: () => ({ detectNow }),
 			fans: () => ({ pollNow }),
-			loginFlow: () => ({ healthCheckNow }),
+			healthCheck: () => ({ healthCheckNow }),
 			...over,
 		}),
 	);

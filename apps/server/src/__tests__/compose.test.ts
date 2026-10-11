@@ -21,6 +21,7 @@ import {
 import type { Subscription } from "@bilibili-notify/subscription";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../bilibili/api/index.js";
+import { fakeAuth } from "../bilibili/devtools/__tests__/support/fake-auth.js";
 import { createBiliDevtools } from "../bilibili/devtools/index.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { BiliSettingsSchema } from "../bilibili/settings.js";
@@ -107,7 +108,7 @@ function compose(
 	const fetchImage = opts.fetchImage ?? vi.fn(async () => fail("unavailable", "测试不联网"));
 	const deps = {
 		api,
-		auth: overridableApi({ status: () => ({ status: 0, msg: "" }) }),
+		auth: overridableApi(fakeAuth()),
 		integration,
 		sourceAuth: SOURCE_AUTH,
 		bus: createNodeMessageBus(),
@@ -130,7 +131,7 @@ function compose(
 		logger: quietLogger(),
 		live: () => undefined,
 		fans: () => undefined,
-		loginFlow: () => undefined,
+		healthCheck: () => undefined,
 	};
 	return { builtins: composeBuiltinIntegrations(deps), deps, fetchImage };
 }

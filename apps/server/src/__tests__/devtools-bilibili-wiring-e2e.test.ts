@@ -2,9 +2,9 @@
  * 🔴 **B 站场景经登记表进来之后,入口接的 Proxy 仍是路由拿到的那一份。**
  *
  * 零件(登记表、B 站场景、`overridableApi`)各自的测试全绿,证明不了 `src/index.ts` 真把**同一个**
- * 套了壳的登录系统既交给 B 站那组场景去盖方法、又交给路由去读 —— 接线剪断哪一头,场景「跑成功了」
+ * 套了壳的登录口既交给 B 站那组场景去盖方法、又交给来源挂上让路由去读 —— 接线剪断哪一头,场景「跑成功了」
  * 而面板顶栏纹丝不动,没有任何别的门禁会红。所以这条起一台真 BN,从「面板按钮」一路按到
- * `GET /api/auth/status`。
+ * `GET /api/sources/bilibili/auth`,断言落在 `state.status` 上。
  */
 
 import { mkdtemp, rm } from "node:fs/promises";
@@ -13,7 +13,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DevStatusDTO } from "@bilibili-notify/contract";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { BiliLoginStatus } from "../bilibili/api/index.js";
 import { type ServerHandle, startServer } from "../index.js";
 
 async function findFreePort(): Promise<number> {
@@ -61,10 +60,10 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	async function loginStatus(): Promise<number> {
-		const res = await fetch(`${base}/api/auth/status`);
+	async function loginStatus(): Promise<string> {
+		const res = await fetch(`${base}/api/sources/bilibili/auth`);
 		expect(res.status).toBe(200);
-		return ((await res.json()) as { status: number }).status;
+		return ((await res.json()) as { state: { status: string } }).state.status;
 	}
 
 	// 验红:删掉 `compose.ts` 里递给 `createBiliSource` 的那一行 `auth: deps.sourceAuth`(或入口里递 `sourceAuth` 的那一行),
@@ -95,7 +94,7 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 
 	it("跑 bilibili.auth.login-state → 路由读到的登录状态换了;收摊回真", async () => {
 		const real = await loginStatus();
-		expect(real).not.toBe(BiliLoginStatus.LOGGED_IN);
+		expect(real).not.toBe("logged-in");
 
 		const run = await fetch(`${base}/api/dev/run/bilibili.auth.login-state`, {
 			method: "POST",
@@ -105,7 +104,7 @@ describe("devtools 的 B 站场景 → 真入口接的 Proxy", () => {
 		expect(run.status).toBe(200);
 		const body = (await run.json()) as { active: { scenarioId: string }[] };
 		expect(body.active.map((a) => a.scenarioId)).toContain("bilibili.auth.login-state");
-		expect(await loginStatus()).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(await loginStatus()).toBe("logged-in");
 
 		const reset = await fetch(`${base}/api/dev/reset/bilibili.auth.login-state`, {
 			method: "POST",

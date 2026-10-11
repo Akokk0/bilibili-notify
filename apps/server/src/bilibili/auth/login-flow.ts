@@ -12,17 +12,13 @@ import {
 import QRCode from "qrcode";
 import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/api";
-import type { BiliDataServer, MyselfResponse, UserCardInfo } from "../api/types";
+import type { MyselfResponse, UserCardInfo } from "../api/types";
 import {
 	authStateFromLoginState,
 	type BiliLoginState,
 	type LoginFailureKey,
 	MESSAGES,
-	snapshotFromLoginState,
 } from "./login-state.js";
-
-/** Snapshot of the current login state — alias of BiliDataServer for API consumers. */
-export type LoginSnapshot = BiliDataServer;
 
 export interface LoginFlowOptions {
 	serviceCtx: ServiceContext;
@@ -45,7 +41,7 @@ const QR_POLL_MS = 1000;
 /**
  * Platform-neutral login state machine + QR session driver. Owns:
  *
- * - The single-source `LoginSnapshot` (transitions emit `login-status-report` over the MessageBus).
+ * - The single-source login state (`BiliLoginState`; the outward `AuthState` is derived from it).
  * - Periodic auth probe (`fetchMyselfInfo`) keyed on `healthCheckMs`.
  * - QR-code request → polling → cookie save handshake.
  *
@@ -144,11 +140,6 @@ export class LoginFlow {
 		this.detachHealthCheck();
 		this.clearLoginTimer();
 		this.clearLoginExpiryTimer();
-	}
-
-	/** Read the current snapshot (cloned). */
-	current(): LoginSnapshot {
-		return snapshotFromLoginState(this.state);
 	}
 
 	/** 此刻对外的中立状态,同步、不出网。 */
@@ -495,20 +486,11 @@ export class LoginFlow {
 		this.transition({ status: "failed", reason: reasonKey });
 	}
 
-	/**
-	 * 旧线上形状的去重判据:旧快照的(数值状态, 话, data)三格有变才发 `login-status-report`(⑤ 随旧快照一起删)。
-	 * 新判据(对外状态与账号结构相等就不叫)在 {@link notifyIfChanged},两套各管各的。
-	 */
+	/** 换原形。对外状态与账号结构相等就不叫 `onChange`(判据在 {@link notifyIfChanged})。 */
 	private transition(next: BiliLoginState): void {
-		const before = snapshotFromLoginState(this.state);
-		const after = snapshotFromLoginState(next);
-		if (before.status === after.status && before.msg === after.msg && before.data === after.data) {
-			return;
-		}
 		this.state = next;
 		// 离开已登录就忘掉抓到的头像:登出之后那张图不再有人引用,重新登录时要重新抓。
 		if (next.status !== "logged-in") this.avatar = undefined;
-		this.bus.emit("login-status-report", after);
 		this.notifyIfChanged();
 	}
 

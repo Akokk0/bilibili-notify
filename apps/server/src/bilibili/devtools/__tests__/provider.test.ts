@@ -5,6 +5,7 @@ import { createNodeMessageBus } from "../../../runtime/message-bus.js";
 import type { Api } from "../../api/index.js";
 import { observeLiveConnections } from "../../live/protocol/client.js";
 import { type BiliDevtoolsDeps, createBiliDevtools } from "../index.js";
+import { fakeAuth } from "./support/fake-auth.js";
 
 /**
  * B 站交给 devtools 的那一包(`DevtoolsProvider`):九个场景 + 四个定时、登录状态,
@@ -14,13 +15,13 @@ import { type BiliDevtoolsDeps, createBiliDevtools } from "../index.js";
 function deps(): BiliDevtoolsDeps {
 	return {
 		api: overridableApi({} as Api),
-		auth: overridableApi({ status: () => ({ status: 0, msg: "" }) }),
+		auth: overridableApi(fakeAuth()),
 		bus: createNodeMessageBus(),
 		subs: () => [],
 		dynamic: () => undefined,
 		live: () => undefined,
 		fans: () => undefined,
-		loginFlow: () => undefined,
+		healthCheck: () => undefined,
 	};
 }
 

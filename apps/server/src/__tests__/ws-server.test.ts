@@ -39,6 +39,12 @@ async function stopHttpServer(server: HttpServer): Promise<void> {
 	await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
+/** `auth` 频道现在唯一的一种帧的载荷(原来拿 `auth-lost` 帧当「这个频道有没有转发」的探针)。 */
+const AUTH_CHANGED = {
+	sourceKey: "bilibili",
+	state: { status: "logged-out" },
+} as const;
+
 function connect(port: number): Promise<WebSocket> {
 	return new Promise((resolve, reject) => {
 		const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
@@ -225,15 +231,17 @@ describe("WS server", () => {
 		ws.close();
 	});
 
-	it("auth-lost on bus → forwarded to subscribed clients", async () => {
+	it("subscription-auth-changed on bus → forwarded to subscribed clients", async () => {
 		const ws = await connect(port);
 		const c = collect(ws);
 		send(ws, { type: "subscribe", channels: ["auth"] });
 		await c.waitFor((m) => m?.type === "subscribed");
 
-		bus.emit("auth-lost");
-		const evt = await c.waitFor((m) => m?.type === "auth" && m?.event === "auth-lost");
-		expect(evt.data).toBeNull();
+		bus.emit("subscription-auth-changed", AUTH_CHANGED);
+		const evt = await c.waitFor(
+			(m) => m?.type === "auth" && m?.event === "subscription-auth-changed",
+		);
+		expect(evt.data).toEqual(AUTH_CHANGED);
 		ws.close();
 	});
 
@@ -247,7 +255,7 @@ describe("WS server", () => {
 		await ca.waitFor((m) => m?.type === "subscribed");
 		await cb.waitFor((m) => m?.type === "subscribed");
 
-		bus.emit("auth-lost");
+		bus.emit("subscription-auth-changed", AUTH_CHANGED);
 		bus.emit("history-recorded", {
 			id: "abc-123",
 			pushId: "abc-123",
@@ -262,8 +270,10 @@ describe("WS server", () => {
 			],
 		});
 
-		const aEvt = await ca.waitFor((m) => m?.type === "auth" && m?.event === "auth-lost");
-		expect(aEvt.data).toBeNull();
+		const aEvt = await ca.waitFor(
+			(m) => m?.type === "auth" && m?.event === "subscription-auth-changed",
+		);
+		expect(aEvt.data).toEqual(AUTH_CHANGED);
 		const bEvt = await cb.waitFor(
 			(m) => m?.type === "push-events" && m?.event === "history-recorded",
 		);
@@ -286,11 +296,13 @@ describe("WS server", () => {
 		send(ws, { type: "unsubscribe", channels: ["auth"] });
 		await c.waitFor((m) => m?.type === "unsubscribed");
 
-		bus.emit("auth-lost");
+		bus.emit("subscription-auth-changed", AUTH_CHANGED);
 
 		// Wait long enough that any in-flight frame would have arrived.
 		await new Promise((r) => setTimeout(r, 50));
-		expect(c.all().some((m) => m.type === "auth" && m.event === "auth-lost")).toBe(false);
+		expect(c.all().some((m) => m.type === "auth" && m.event === "subscription-auth-changed")).toBe(
+			false,
+		);
 		ws.close();
 	});
 

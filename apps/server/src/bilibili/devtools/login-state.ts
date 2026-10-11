@@ -1,78 +1,100 @@
-import type { LoginSnapshot, MessageBus } from "@bilibili-notify/internal";
+import {
+	type AuthState,
+	BILIBILI_SOURCE_KEY,
+	type MessageBus,
+	type SourceAuth,
+} from "@bilibili-notify/internal";
+import type { OverridableApi } from "../../devtools/api-overrides.js";
 import type { DevScenarioDef } from "../../devtools/registry.js";
-import { BiliLoginStatus } from "../api/index.js";
 import { fakeQrDataUrl } from "./fake-qr.js";
 
 /**
- * B2:扫码登录六态。面板从两处读登录快照:`GET /api/auth/status`(`authSystem.status()`)
- * 与 WS auth 频道的 `login-status-report`(总线上那条事件)。注入 = 两处一起换:`status()`
- * 盖掉,再往总线上发一条同样的快照;收摊 = 摘掉,把真快照再发一遍让面板对回去。
+ * B2:登录状态的假货。面板从两处读登录态:`GET /api/sources/:sourceKey/auth`(来源的 `auth.state()` /
+ * `auth.account()`)与 WS auth 频道的 `subscription-auth-changed`(总线上那条事件)。注入 = 两处一起换:
+ * `state()` / `account()` 盖掉,再往总线上发一条同样的状态;收摊 = 摘掉,把真状态再发一遍让面板对回去。
  *
- * 只换面板看到的:登录流程本身(轮询 / 健康检查)一行不动,也不会因此发 auth-lost。
+ * 只换面板看到的:登录流程本身(轮询 / 健康检查)一行不动,也不会因此发 `auth-lost`。
+ * 选项就是 `AuthState` 的六种取值,其中 `confirming` 有两种情况(已扫等手机确认 / 开机没确认),各给一项。
  */
-/** 只要 `status()` 能盖能摘;写成最窄的形状,登录系统整个类型的 Proxy 才塞得进来。 */
-export interface OverridableStatus {
-	api: { status(): LoginSnapshot };
-	override(method: "status", impl: (real: () => LoginSnapshot) => LoginSnapshot): void;
-	clear(method: "status"): void;
-}
-
 export interface LoginStateDeps {
-	auth: OverridableStatus;
+	/** 来源的登录口外面的 Proxy:`state` 与 `account` 能盖能摘。 */
+	auth: OverridableApi<Required<SourceAuth>>;
 	bus: MessageBus;
 }
 
-type Key = "not-login" | "loading" | "qr" | "logging" | "logged-in" | "failed";
+type Key =
+	| "logged-out"
+	| "awaiting-scan"
+	| "confirming-scan"
+	| "confirming-check"
+	| "logged-in"
+	| "expired"
+	| "error";
 
 const STATUSES: ReadonlyArray<{ value: Key; label: string }> = [
-	{ value: "not-login", label: "未登录" },
-	{ value: "loading", label: "正在加载登录信息" },
-	{ value: "qr", label: "等待扫码" },
-	{ value: "logging", label: "正在登录(已扫码待确认)" },
+	{ value: "logged-out", label: "未登录" },
+	{ value: "awaiting-scan", label: "等待扫码" },
+	{ value: "confirming-scan", label: "正在确认(已扫码,等手机上点确认)" },
+	{ value: "confirming-check", label: "正在确认(开机还没向 B 站确认)" },
 	{ value: "logged-in", label: "已登录" },
-	{ value: "failed", label: "登录失败" },
+	{ value: "expired", label: "登录失效" },
+	{ value: "error", label: "登录失败" },
 ];
 
 const DEFAULT_FAIL = "devtools:二维码已过期,请重新获取";
-const FAKE_FACE = "https://i0.hdslb.com/bfs/face/member/noface.jpg";
+const DEFAULT_UNAME = "devtools 假账号";
 
-async function build(key: Key, uname: string, message: string): Promise<LoginSnapshot> {
+interface Fake {
+	state: AuthState;
+	account: { name: string } | null;
+}
+
+async function build(key: Key, uname: string, message: string): Promise<Fake> {
 	switch (key) {
-		case "not-login":
-			return { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
-		case "loading":
-			return { status: BiliLoginStatus.LOADING_LOGIN_INFO, msg: "正在加载登录信息" };
-		case "qr":
-			return { status: BiliLoginStatus.LOGIN_QR, msg: "", data: await fakeQrDataUrl() };
-		case "logging":
-			// 与真流程一致:扫了码等确认时二维码图还留着。
+		case "logged-out":
+			return { state: { status: "logged-out" }, account: null };
+		case "awaiting-scan":
 			return {
-				status: BiliLoginStatus.LOGGING_QR,
-				msg: "已扫码,请在手机上确认",
-				data: await fakeQrDataUrl(),
+				state: {
+					status: "awaiting-scan",
+					qr: {
+						dataUrl: await fakeQrDataUrl(),
+						expiresAt: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
+					},
+				},
+				account: null,
+			};
+		case "confirming-scan":
+			return {
+				state: { status: "confirming", message: "已扫码，请在手机上确认" },
+				account: null,
+			};
+		case "confirming-check":
+			return {
+				state: {
+					status: "confirming",
+					message: "正在向 B 站确认登录状态，暂时连不上的话会自动重试",
+				},
+				account: null,
 			};
 		case "logged-in":
 			return {
-				status: BiliLoginStatus.LOGGED_IN,
-				msg: "",
-				data: {
-					card: {
-						mid: "900000001",
-						name: uname,
-						face: FAKE_FACE,
-						level_info: { current_level: 6 },
-					},
-					space: {},
-					like_num: 0,
-				},
+				state: { status: "logged-in", loggedInAt: new Date().toISOString() },
+				account: { name: uname },
 			};
-		case "failed":
-			return { status: BiliLoginStatus.LOGIN_FAILED, msg: message };
+		case "expired":
+			return { state: { status: "expired", message }, account: null };
+		case "error":
+			return { state: { status: "error", message }, account: null };
 	}
 }
 
 export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
-	let fake: { key: Key; snapshot: LoginSnapshot } | null = null;
+	let fake: { key: Key } | null = null;
+
+	const publish = (state: AuthState): void => {
+		deps.bus.emit("subscription-auth-changed", { sourceKey: BILIBILI_SOURCE_KEY, state });
+	};
 
 	return {
 		id: "auth.login-state",
@@ -81,20 +103,21 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 		icon: "user",
 		desc: "换掉面板看到的 B 站登录状态(顶栏账号、系统页登录卡、扫码弹窗)。只换面板看到的,登录流程本身不动;收摊即回真。",
 		params: [
-			{ key: "status", label: "状态", kind: "enum", options: STATUSES, default: "qr" },
-			{ key: "uname", label: "账号名(已登录时)", kind: "text", default: "devtools 假账号" },
-			{ key: "message", label: "失败原因(失败时)", kind: "text", default: DEFAULT_FAIL },
+			{ key: "status", label: "状态", kind: "enum", options: STATUSES, default: "awaiting-scan" },
+			{ key: "uname", label: "账号名(已登录时)", kind: "text", default: DEFAULT_UNAME },
+			{ key: "message", label: "失败原因(失败 / 失效时)", kind: "text", default: DEFAULT_FAIL },
 		],
 		async run(params) {
-			const key = String(params.status ?? "qr") as Key;
+			const key = String(params.status ?? "awaiting-scan") as Key;
 			const uname =
-				typeof params.uname === "string" && params.uname !== "" ? params.uname : "devtools 假账号";
+				typeof params.uname === "string" && params.uname !== "" ? params.uname : DEFAULT_UNAME;
 			const message =
 				typeof params.message === "string" && params.message !== "" ? params.message : DEFAULT_FAIL;
-			const snapshot = await build(key, uname, message);
-			fake = { key, snapshot };
-			deps.auth.override("status", () => snapshot);
-			deps.bus.emit("login-status-report", snapshot);
+			const built = await build(key, uname, message);
+			fake = { key };
+			deps.auth.override("state", () => built.state);
+			deps.auth.override("account", () => built.account);
+			publish(built.state);
 			return {};
 		},
 		active() {
@@ -105,8 +128,9 @@ export function loginStateScenario(deps: LoginStateDeps): DevScenarioDef {
 		reset() {
 			if (!fake) return;
 			fake = null;
-			deps.auth.clear("status");
-			deps.bus.emit("login-status-report", deps.auth.api.status());
+			deps.auth.clear("state");
+			deps.auth.clear("account");
+			publish(deps.auth.api.state());
 		},
 	};
 }

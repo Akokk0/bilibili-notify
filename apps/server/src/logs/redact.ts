@@ -13,8 +13,8 @@ import type { LogEntry } from "../ws/types.js";
  *   - `Bearer <token>`          (Authorization header echo)
  *
  * Defense-in-depth — most paths already redact upstream (sanitizeErr in
- * @bilibili-notify/ai; the `cookies-refreshed` bus event carries only `refreshedAt`,
- * see bilibili/auth/index.ts). This is the last net so a stray `logger.info("...", cookieString)` never reaches disk.
+ * @bilibili-notify/ai; the login bus event carries only `{ sourceKey, state }`
+ * and the renewal callback only logs a fixed line, see bilibili/auth/index.ts). This is the last net so a stray `logger.info("...", cookieString)` never reaches disk.
  */
 
 type Replacer = readonly [RegExp, string];

@@ -3,7 +3,7 @@
  *
  * 守护契约:
  *   - 总线事件原样成帧:线上事件名与总线同名,`data` 就是总线的载荷(具名对象),没有载荷的是 null
- *   - `cookies-refreshed` 只有 {refreshedAt}(cookie 不上总线,源头由 auth 的测试钉着),原样成帧
+ *   - `subscription-auth-changed` 只有 {sourceKey, state}(cookie 不上总线),原样成帧;`auth` 频道只剩这一种帧
  *   - `history-recorded` / `history-updated` 投影成精简 view(非 raw HistoryEntry)
  *   - `config-changed` 按 scope 带快照;secrets scope → snapshot=null
  *   - log channel:LogChannel.push → {type:"log",event:level,ts:entry.ts,data:{msg,args}}
@@ -70,11 +70,12 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 		h = wire();
 	});
 
-	it("无载荷事件(auth-lost / auth-restored):data=null", () => {
+	// 两个边事件留在总线上给引擎 / 统计 / 主人私聊用,但不再成 WS 帧:面板读 `subscription-auth-changed`,
+	// 旧的 `auth-lost` / `auth-restored` 帧随提交 ⑤ 一起退役(`auth` 频道只剩那一种帧)。
+	it("auth-lost / auth-restored 不再成帧", () => {
 		h.bus.emit("auth-lost");
-		expect(h.last()).toMatchObject({ type: "auth", event: "auth-lost", data: null });
 		h.bus.emit("auth-restored");
-		expect(h.last()).toMatchObject({ type: "auth", event: "auth-restored", data: null });
+		expect(h.publish).not.toHaveBeenCalled();
 	});
 
 	/**
@@ -103,10 +104,10 @@ describe("attachChannelWiring — 总线载荷原样成帧", () => {
 	});
 
 	it("载荷是单个对象的事件:data 就是总线上那一个对象", () => {
-		const snap = { status: 5, msg: "ok" };
-		h.bus.emit("login-status-report", snap);
-		expect(h.last()).toMatchObject({ type: "auth", event: "login-status-report" });
-		expect(h.last().data).toBe(snap);
+		const changed = { sourceKey: "bilibili", state: { status: "logged-out" } } as const;
+		h.bus.emit("subscription-auth-changed", changed);
+		expect(h.last()).toMatchObject({ type: "auth", event: "subscription-auth-changed" });
+		expect(h.last().data).toBe(changed);
 
 		const fans = { entries: [{ uid: "u1", current: 1 }] as never };
 		h.bus.emit("fans-refreshed", fans);
@@ -321,20 +322,6 @@ describe("attachChannelWiring — 被静音 / 免扰挡下的行", () => {
 			messages: [{ isSilenced: true }, { ok: true, repushOf: 0 }],
 		});
 		expect(h.last().data).not.toHaveProperty(["messages", 1, "isSilenced"]);
-	});
-});
-
-describe("attachChannelWiring — cookies-refreshed", () => {
-	/**
-	 * cookie 本身不上总线:载荷只有刷新的时刻(源头上的这一条由 `auth/__tests__/
-	 * cookies-refreshed-payload.test.ts` 钉着)。所以这里不再有「脱敏」这一步,总线上的载荷
-	 * 原样成帧 —— 帧里就是那一格。
-	 */
-	it("总线上的 {refreshedAt} 原样成帧", () => {
-		const h = wire();
-		h.bus.emit("cookies-refreshed", { refreshedAt: "2026-05-16T00:00:00.000Z" });
-		expect(h.last()).toMatchObject({ type: "auth", event: "cookies-refreshed" });
-		expect(h.last().data).toEqual({ refreshedAt: "2026-05-16T00:00:00.000Z" });
 	});
 });
 

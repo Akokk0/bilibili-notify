@@ -12,10 +12,10 @@ import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
 import { Api } from "../api/index.js";
-import { createBiliContext, REFRESH_TOKEN_KEY } from "../context.js";
+import { createBiliContext } from "../context.js";
 import { fetchAvatar } from "../images.js";
 import { settingsOf, watchSettings } from "../settings.js";
-import { LoginFlow, type LoginSnapshot } from "./login-flow.js";
+import { LoginFlow } from "./login-flow.js";
 
 /**
  * Auth subsystem. Boot order: open the integration's stores → Api → LoginFlow → resume stored login → health probe.
@@ -24,7 +24,7 @@ import { LoginFlow, type LoginSnapshot } from "./login-flow.js";
  *   1. Integration context (opens the stores, builds the request client with the saved cookie jar and identity).
  *      Cookies + refresh token live in the integration's stores (`http.cookies` / `refreshToken`); commits go through
  *      `api.commitLogin` — the one exit that writes the jar and the token in a single atomic write.
- *   2. Api(callbacks: onCookiesRefreshed → bus event, onAuthLost → flow.handleAuthLost)
+ *   2. Api(callbacks: onCookiesRefreshed → log line, onAuthLost → flow.handleAuthLost)
  *      — `flow` is captured by reference; constructed in step 4, so the callback closes over `let flow`.
  *   3. api.start()
  *   4. LoginFlow + flow.start() (no-op today; symmetric)
@@ -45,13 +45,9 @@ export interface AuthSystem {
 	 * 登录口(`Source.auth`):发起扫码、退出登录(状态总会进未登录;存着的登录状态清不掉时回失败,
 	 * 话里写着原因与「重启后可能还是登录着」)、读状态与账号、订阅变化。
 	 */
-	readonly auth: SourceAuth;
-	/** Force a cookie refresh check against bilibili. */
-	refreshCookies(): Promise<void>;
+	readonly auth: Required<SourceAuth>;
 	/** 把健康检查提前到现在(开发场景「登录心跳」);没登录 / 扫码中跳过、回 false。 */
 	healthCheckNow(): Promise<boolean>;
-	/** Current snapshot in the old wire shape — proxy to `flow.current()`. 临时,提交 ⑤ 随旧线上形状一起删。 */
-	status(): LoginSnapshot;
 	/** Stop the flow and the api, save the cookie jar one last time, close the stores. Idempotent. */
 	dispose(): Promise<void>;
 }
@@ -85,9 +81,9 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			serviceCtx: opts.serviceCtx,
 			ctx,
 			callbacks: {
-				// 总线上只报「刷新过了」:cookie 本身是密钥,不经总线。事件在提交落盘成功之后才发。
+				// 续期提交落盘成功之后叫一声:只记一行 info(没有任何读者要这个事件了,cookie 本身是密钥,不进日志)。
 				onCookiesRefreshed: () => {
-					opts.bus.emit("cookies-refreshed", { refreshedAt: new Date().toISOString() });
+					log.info("[auth] 登录续期已落盘");
 				},
 				// handleAuthLost() 是 Promise:此前 void 丢弃 → reject 成 unhandled
 				// 且 auth-lost 状态迁移静默失败。改 .catch 经 logger;flow 仍为
@@ -154,17 +150,6 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 
 		const beginLogin = (): Promise<Result> => flowFinal.beginLogin();
 
-		const refreshCookies = async (): Promise<void> => {
-			// 手动刷新:有存着的令牌就直接走一遍续期链(探测 → 需要才换新;换成功由 `commitLogin` 把 cookie 与
-			// 新令牌同一次写盘、之后才发 `cookies-refreshed`),然后重探账号信息。没有令牌就只重探。
-			const refreshToken = ctx.secrets.get<string>(REFRESH_TOKEN_KEY);
-			if (refreshToken) {
-				const csrf = ctx.cookies.jar.getValue("bili_jct") ?? "";
-				await api.checkIfTokenNeedRefresh(refreshToken, csrf);
-			}
-			await flowFinal.reportAccountInfo();
-		};
-
 		const logout = async (): Promise<Result> => {
 			// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
 			await api.clearCookies();
@@ -180,9 +165,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 					);
 		};
 
-		const status = (): LoginSnapshot => flowFinal.current();
-
-		const auth: SourceAuth = {
+		const auth: Required<SourceAuth> = {
 			beginLogin,
 			logout,
 			state: () => flowFinal.authState(),
@@ -194,9 +177,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			api,
 			integration: ctx,
 			auth,
-			refreshCookies,
 			healthCheckNow: () => flowFinal.healthCheckNow(),
-			status,
 			dispose: () => context.dispose(),
 		};
 	} catch (err) {

@@ -1,21 +1,3 @@
-// ---- Login / Auth ----
-
-export enum BiliLoginStatus {
-	NOT_LOGIN = 0,
-	LOADING_LOGIN_INFO = 1,
-	LOGIN_QR = 2,
-	LOGGING_QR = 3,
-	LOGGED_IN = 5,
-	LOGIN_FAILED = 7,
-}
-
-export interface BiliDataServer {
-	status: BiliLoginStatus;
-	msg: string;
-	// biome-ignore lint/suspicious/noExplicitAny: dynamic data shape
-	data?: any;
-}
-
 // ---- Ticket ----
 
 export interface TicketResponse {

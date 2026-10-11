@@ -9,8 +9,16 @@ import {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Api } from "../../api/api";
-import { BiliLoginStatus } from "../../api/types";
 import { LoginFlow } from "../login-flow";
+import type { BiliLoginState } from "../login-state";
+
+/**
+ * 登录流程的内部原形(private,括号取)。3a-29 提交 ⑤ 之前这些断言比旧快照的数值状态(`current().status`),
+ * 现在一一对应地比原形的 `status`:LOGGED_IN→"logged-in"、NOT_LOGIN→"logged-out"、LOADING_LOGIN_INFO→"checking"、
+ * LOGIN_FAILED→"failed"、LOGIN_QR→"qr"/ready、LOGGING_QR→"qr"/waiting-*。
+ */
+const rawOf = (flow: LoginFlow): BiliLoginState =>
+	(flow as unknown as { state: BiliLoginState }).state;
 
 /**
  * Minimal stub of Api exposing only the methods LoginFlow calls.
@@ -153,19 +161,20 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		h = makeFlow();
 	});
 
-	it("code === 0 transitions to LOGGED_IN and emits login-status-report once", async () => {
+	it("code === 0 transitions to LOGGED_IN and notifies onChange once", async () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce({
 			code: 0,
 			data: { card: { mid: "42", name: "n" } },
 		});
+		const changes = vi.fn();
+		h.flow.onChange(changes);
 
 		await h.flow.reportAccountInfo();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
-		const reports = eventsOfKind(h.events, "login-status-report");
-		expect(reports).toHaveLength(1);
-		expect(reports[0]?.payload).toMatchObject({ status: BiliLoginStatus.LOGGED_IN });
+		expect(rawOf(h.flow).status).toBe("logged-in");
+		expect(changes).toHaveBeenCalledTimes(1);
+		expect(h.flow.authState()).toMatchObject({ status: "logged-in" });
 	});
 
 	it("code === -101 transitions to NOT_LOGIN and emits auth-lost only when previously LOGGED_IN", async () => {
@@ -174,14 +183,16 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
 		await h.flow.reportAccountInfo();
 		const baselineEvents = h.events.length;
+		const changes = vi.fn();
+		h.flow.onChange(changes);
 
 		// Then expire
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
 		await h.flow.reportAccountInfo();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 		const newEvents = h.events.slice(baselineEvents);
-		expect(eventsOfKind(newEvents, "login-status-report")).toHaveLength(1);
+		expect(changes).toHaveBeenCalledTimes(1);
 		expect(eventsOfKind(newEvents, "auth-lost")).toHaveLength(1);
 	});
 
@@ -189,7 +200,7 @@ describe("LoginFlow.reportAccountInfo()", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
 		await h.flow.reportAccountInfo();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
 	});
 
@@ -221,26 +232,29 @@ describe("LoginFlow.reportAccountInfo()", () => {
 });
 
 describe("LoginFlow.transition() dedupe", () => {
-	it("emitting the same snapshot twice fires login-status-report only once", async () => {
+	it("entering the same state twice notifies onChange only once", async () => {
 		const h = makeFlow();
+		const changes = vi.fn();
+		h.flow.onChange(changes);
 		// Cold start → NOT_LOGIN via reportLoggedOut, twice.
 		h.flow.reportLoggedOut("notLogin");
 		h.flow.reportLoggedOut("notLogin");
 
-		const reports = eventsOfKind(h.events, "login-status-report");
-		expect(reports).toHaveLength(1);
-		expect(reports[0]?.payload).toMatchObject({ status: BiliLoginStatus.NOT_LOGIN });
+		expect(changes).toHaveBeenCalledTimes(1);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 	});
 });
 
 describe("LoginFlow.beginLogin()", () => {
 	it("fetchLoginQrCode failure: no transition, no QR poll started", async () => {
 		const h = makeFlow();
+		const changes = vi.fn();
+		h.flow.onChange(changes);
 		h.api.fetchLoginQrCode.mockRejectedValueOnce(new Error("net down"));
 
 		await h.flow.beginLogin(async () => "ignored");
 
-		expect(eventsOfKind(h.events, "login-status-report")).toHaveLength(0);
+		expect(changes).not.toHaveBeenCalled();
 		expect(h.scFake.intervals).toHaveLength(0);
 		expect(h.scFake.timeouts).toHaveLength(0);
 	});
@@ -256,7 +270,7 @@ describe("LoginFlow.beginLogin()", () => {
 			throw new Error("canvas exploded");
 		});
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 		expect(h.scFake.intervals).toHaveLength(0);
 		expect(h.scFake.timeouts).toHaveLength(0);
 	});
@@ -267,7 +281,7 @@ describe("LoginFlow.beginLogin()", () => {
 
 		await h.flow.beginLogin(async () => "ignored");
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 		expect(h.scFake.intervals).toHaveLength(0);
 	});
 
@@ -293,7 +307,7 @@ describe("LoginFlow.beginLogin()", () => {
 		expect(h.api.commitLogin).toHaveBeenCalledTimes(1);
 		expect(h.api.commitLogin).toHaveBeenCalledWith("rt-xyz");
 		expect(h.api.fetchMyselfInfo).toHaveBeenCalledTimes(1);
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 		// The interval timer must have been cleared.
 		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
 	});
@@ -311,7 +325,7 @@ describe("LoginFlow.beginLogin()", () => {
 		await h.scFake.intervals[0]?.handle.fire();
 
 		expect(h.scFake.intervals[0]?.handle.disposed).toBe(true);
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 	});
 
 	it("poll code === 86101 (waitScan): keeps polling, no save, snapshot in LOGGING_QR", async () => {
@@ -325,7 +339,7 @@ describe("LoginFlow.beginLogin()", () => {
 		await h.flow.beginLogin(async () => "data:url");
 		await h.scFake.intervals[0]?.handle.fire();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGING_QR);
+		expect(rawOf(h.flow)).toMatchObject({ status: "qr", phase: "waiting-scan" });
 		expect(h.api.commitLogin).not.toHaveBeenCalled();
 		expect(h.scFake.intervals[0]?.handle.disposed).toBe(false);
 	});
@@ -342,14 +356,14 @@ describe("LoginFlow.beginLogin()", () => {
 		h.api.fetchLoginStatus.mockResolvedValueOnce({ code: 0, data: { code: 86101 } });
 
 		await h.flow.beginLogin(async () => "data:image/png;base64,QR_BASE64_PAYLOAD");
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_QR);
-		expect(h.flow.current().data).toBe("data:image/png;base64,QR_BASE64_PAYLOAD");
+		expect(rawOf(h.flow)).toMatchObject({ status: "qr", phase: "ready" });
+		expect(rawOf(h.flow)).toMatchObject({ dataUrl: "data:image/png;base64,QR_BASE64_PAYLOAD" });
 
 		await h.scFake.intervals[0]?.handle.fire();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGING_QR);
+		expect(rawOf(h.flow)).toMatchObject({ status: "qr", phase: "waiting-scan" });
 		// The QR is still useful (user hasn't confirmed on phone yet) — must not be dropped.
-		expect(h.flow.current().data).toBe("data:image/png;base64,QR_BASE64_PAYLOAD");
+		expect(rawOf(h.flow)).toMatchObject({ dataUrl: "data:image/png;base64,QR_BASE64_PAYLOAD" });
 	});
 });
 
@@ -392,7 +406,7 @@ describe("LoginFlow.beginLogin() — 轮询登记进 track", () => {
 
 		save.resolve(ok());
 		await h.scFake.tracked[0];
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 	});
 
 	it("轮询里抛了错:登记进去的这件事不拒,记一条 warn,下一拍还能轮询", async () => {
@@ -559,7 +573,7 @@ describe("LoginFlow.beginLogin() — 扫码期间的存盘闸", () => {
 
 		expect(h.scFake.logger.error).toHaveBeenCalledWith(expect.stringContaining("disk full"));
 		expect(h.api.holds[0]?.disposed).toBe(true);
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 	});
 });
 
@@ -595,7 +609,7 @@ describe("LoginFlow — 冷启动即登录过期,重新登录后必须放行 aut
 		// 冷启动探测:cookie 过期。此时快照还是 LOADING_LOGIN_INFO,不是 LOGGED_IN。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: -101, data: { mid: 0 } });
 		await h.flow.reportAccountInfo();
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 
 		// 主人扫码重新登录成功。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
@@ -653,7 +667,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
 		await h.flow.reportAccountInfo();
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 
 		// 心跳发出探活请求,此刻会话还活着,B 站也还认。
 		const probe = deferred<{ code: number; data: { mid: number } }>();
@@ -663,7 +677,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 
 		// 探活在途期间,cookie 刷新链撞上 -101 —— 拦截器同步走到这里。
 		await h.flow.handleAuthLost();
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
 
 		// 迟到的答复:它问的是那个已经死掉的会话,答案早就不作数了。
@@ -671,7 +685,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		await flush();
 
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 	});
 
 	it("取用户卡片在途时会话被判死 → 不得报回 LOGGED_IN", async () => {
@@ -692,7 +706,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		card.resolve({ code: 0, data: { card: { mid: "42" } } });
 		await pending;
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
 	});
 
@@ -713,7 +727,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		probe.resolve({ code: 0, data: { mid: 42 } });
 		await flush();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 	});
 
 	/*
@@ -776,13 +790,14 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 
 		// 主人自己点了「退出登录」。
 		h.flow.reportLoggedOut("notLogin");
-		const msgAfterLogout = h.flow.current().msg;
+		const stateAfterLogout = rawOf(h.flow);
 
 		probe.resolve({ code: -101, data: { mid: 0 } });
 		await pending;
 
 		// 面板上该显示「请点击扫码登录」,而不是吓人的「登录已失效」。
-		expect(h.flow.current().msg).toBe(msgAfterLogout);
+		expect(rawOf(h.flow)).toEqual(stateAfterLogout);
+		expect(h.flow.authState()).toEqual({ status: "logged-out" });
 	});
 
 	it("登出与探活无交叠时,一切照旧 —— 守卫不得误伤正常恢复", async () => {
@@ -799,7 +814,7 @@ describe("LoginFlow — 会话已死时,在途探活的迟到成功不得把它�
 		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
 		await h.flow.reportAccountInfo();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(1);
 	});
 });
@@ -823,7 +838,7 @@ describe("LoginFlow.healthCheckNow()", () => {
 		expect(await h.flow.healthCheckNow()).toBe(true);
 
 		expect(h.api.fetchMyselfInfo).toHaveBeenCalledTimes(1);
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
 	});
 
@@ -841,13 +856,15 @@ describe("LoginFlow.healthCheckNow()", () => {
 describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 	it("取码请求抛错:回 unavailable 与固定的话,状态不动、不发事件", async () => {
 		const h = makeFlow();
+		const changes = vi.fn();
+		h.flow.onChange(changes);
 		h.api.fetchLoginQrCode.mockRejectedValueOnce(new Error("net down"));
 
 		const r = await h.flow.beginLogin(async () => "ignored");
 
 		expect(r).toEqual(fail("unavailable", "获取二维码失败，请重试"));
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOADING_LOGIN_INFO);
-		expect(eventsOfKind(h.events, "login-status-report")).toHaveLength(0);
+		expect(rawOf(h.flow).status).toBe("checking");
+		expect(changes).not.toHaveBeenCalled();
 	});
 
 	it("B 站回非 0 码:进失败状态,回 unavailable 并带 upstreamCode", async () => {
@@ -857,7 +874,7 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 		const r = await h.flow.beginLogin(async () => "ignored");
 
 		expect(r).toEqual(fail("unavailable", "获取二维码失败，请重试", { upstreamCode: -1 }));
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 	});
 
 	it.each([-352, -403])("B 站回 %i(风控):回 rate_limited", async (code) => {
@@ -867,7 +884,7 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 		const r = await h.flow.beginLogin(async () => "ignored");
 
 		expect(r).toEqual(fail("rate_limited", "获取二维码失败，请重试", { upstreamCode: code }));
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 	});
 
 	it("渲染二维码失败:进失败状态,回 unavailable", async () => {
@@ -882,7 +899,7 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 		});
 
 		expect(r).toEqual(fail("unavailable", "生成二维码失败"));
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 	});
 
 	it("成功:回 ok,进等待扫码", async () => {
@@ -895,7 +912,7 @@ describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
 		const r = await h.flow.beginLogin(async () => "data:url");
 
 		expect(r).toEqual(ok());
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_QR);
+		expect(rawOf(h.flow)).toMatchObject({ status: "qr", phase: "ready" });
 	});
 });
 
@@ -915,7 +932,7 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
 		await h.flow.reportAccountInfo();
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 	}
 
 	it("已登录时再扫码、不扫、等超时:不发 auth-lost;心跳把快照推回已登录,不发 auth-restored", async () => {
@@ -927,16 +944,16 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		});
 
 		await h.flow.beginLogin(async () => "data:url");
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_QR);
+		expect(rawOf(h.flow)).toMatchObject({ status: "qr", phase: "ready" });
 		await h.scFake.timeouts.at(-1)?.handle.fire(); // 3 分钟到了
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+		expect(rawOf(h.flow).status).toBe("failed");
 
 		// LOGIN_FAILED 不在心跳的跳过名单里:到点照查。
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		await liveHeartbeat(h)?.handle.fire();
 		await flush();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
 	});
@@ -945,13 +962,13 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		const h = makeFlow({ healthCheckMs: HEALTH_MS });
 		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("net down"));
 		await h.flow.reportAccountInfo();
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOADING_LOGIN_INFO);
+		expect(rawOf(h.flow).status).toBe("checking");
 
 		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
 		await liveHeartbeat(h)?.handle.fire();
 		await flush();
 
-		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(rawOf(h.flow).status).toBe("logged-in");
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
 		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
 	});
@@ -961,7 +978,7 @@ describe("LoginFlow — 两个边事件今天的确切语义", () => {
 		await logIn(h);
 
 		h.flow.reportLoggedOut("notLogin");
-		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(rawOf(h.flow).status).toBe("logged-out");
 		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
 
 		h.flow.reportLoggedOut("notLogin"); // 已经是未登录:再退不再发
@@ -1164,7 +1181,7 @@ describe("LoginFlow — 账号头像这条后台线", () => {
 		await Promise.all(h.scFake.tracked);
 
 		expect(h.flow.account()).toEqual({ name: "n" });
-		expect(h.flow.current().msg).toBe("已登录");
+		expect(rawOf(h.flow)).toMatchObject({ status: "logged-in", reason: "loggedIn" });
 		expect(h.events.length).toBe(eventsBefore);
 		expect(h.scFake.logger.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
 	});

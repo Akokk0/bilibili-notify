@@ -189,7 +189,7 @@ describe("关停的次序", () => {
 		// 先停了 Api:迟到的链看见自己被取代,安静丢弃。没先停的话,它会去提交,撞上已经关掉的写道:记 error。
 		expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("被取代"));
 		expect(logger.error).not.toHaveBeenCalled();
-		expect(bus.emit).not.toHaveBeenCalledWith("cookies-refreshed", expect.anything());
+		expect(logger.info).not.toHaveBeenCalledWith("[auth] 登录续期已落盘");
 	});
 
 	it("没有在途续期、罐子里有没存的变化时关停:最后一次存盘落了", async () => {
@@ -405,24 +405,6 @@ describe("恢复备份之后与登出", () => {
 		expect(changed).toHaveBeenCalledTimes(1);
 		expect(auth.auth.state()).toMatchObject({ status: "error" });
 		sub.dispose();
-		await auth.dispose();
-		await w.store.close();
-	});
-
-	it("手动刷新读的是存着的令牌与罐子里的 bili_jct", async () => {
-		const w = world();
-		await w.seed({ cookies: C0, token: "T0" });
-		const check = vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
-		const auth = await createAuthSystem({
-			serviceCtx: w.host.serviceCtx,
-			bus,
-			integrationStore: w.store,
-		});
-		check.mockClear();
-
-		await auth.refreshCookies();
-
-		expect(check).toHaveBeenCalledWith("T0", "jct0");
 		await auth.dispose();
 		await w.store.close();
 	});

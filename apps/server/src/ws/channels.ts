@@ -72,15 +72,6 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 
 	// auth channel ----------------------------------------------------------
 	subs.push(
-		bus.on("login-status-report", (snapshot) =>
-			publish(envelope("auth", "login-status-report", snapshot)),
-		),
-		bus.on("auth-lost", () => publish(envelope("auth", "auth-lost", null))),
-		bus.on("auth-restored", () => publish(envelope("auth", "auth-restored", null))),
-		// 总线上只有刷新的时刻(cookie 是密钥,不上总线,见 `BusEvents`)。
-		bus.on("cookies-refreshed", (refreshed) =>
-			publish(envelope("auth", "cookies-refreshed", refreshed)),
-		),
 		// 一个来源的登录状态变了:载荷只有来源键与状态(账号走 `GET /api/sources/:sourceKey/auth`)。
 		bus.on("subscription-auth-changed", (changed) =>
 			publish(envelope("auth", "subscription-auth-changed", changed)),

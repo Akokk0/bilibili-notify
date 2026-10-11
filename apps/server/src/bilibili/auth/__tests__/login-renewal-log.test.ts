@@ -1,11 +1,9 @@
 /**
- * 回归守护 — cookie 刷新之后上总线的 `cookies-refreshed` 只带刷新的时刻。
+ * 回归守护 — cookie 续期落盘之后登录系统只记一行 info(3a-29 提交 ⑤:`cookies-refreshed` 事件随
+ * 「刷新 Cookie」按钮一起退役)。
  *
- * 总线上的事件会原样转给所有面板客户端(`ws/channels.ts`),cookie 与 refreshToken 是
- * 整套登录会话的密钥。从前总线载荷就是 cookie 本身,靠 WS 转发那头逐个字段脱敏;现在
- * 在源头就不放上去 —— 这里钉的是**源头**:刷新回调触发后,总线收到的载荷键集合恰好是
- * `["refreshedAt"]`。断言键集合而不是「没有 cookiesJson」:后来的人往载荷里塞任何
- * 别的字段都会让它红,而不只是塞回那两个名字。
+ * cookie 与 refreshToken 是整套登录会话的密钥:总线上不许有、日志里也不许有它们的内容。
+ * 这里钉的是**源头**:刷新回调触发后,总线一条都没发,日志只有那一行固定的话。
  *
  * 走真的 `createAuthSystem()` + 真的集成存储宿主(临时目录、真 FileKeyProvider),只把会联网的 B 站
  * API 与登录流换成替身,并把 `Api` 收到的回调与上下文截下来:回调当作 api 续期成功那一刻去调,上下文用来
@@ -87,8 +85,8 @@ afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true });
 });
 
-describe("AuthSystem — cookies-refreshed 的总线载荷", () => {
-	it("刷新回调触发后,总线上的 cookies-refreshed 载荷只有 refreshedAt 一格;盘上那份由提交写,解开后两个键都在", async () => {
+describe("AuthSystem — 续期落盘之后的回调", () => {
+	it("刷新回调触发后只记一行 info、总线与日志里没有 cookie 内容;盘上那份由提交写,解开后两个键都在", async () => {
 		const emit = vi.fn();
 		const bus: MessageBus = { emit, on: vi.fn(() => ({ dispose: vi.fn() })) };
 		const ctx = makeCtx();
@@ -112,13 +110,12 @@ describe("AuthSystem — cookies-refreshed 的总线载荷", () => {
 		expect(committed.ok).toBe(true);
 		await captured.callbacks?.onCookiesRefreshed?.();
 
-		const refreshed = emit.mock.calls.filter(([event]) => event === "cookies-refreshed");
-		expect(refreshed).toHaveLength(1);
-		const payload = refreshed[0]?.[1] as Record<string, unknown>;
-		expect(Object.keys(payload)).toEqual(["refreshedAt"]);
-		expect(Number.isNaN(Date.parse(String(payload.refreshedAt)))).toBe(false);
-		// 总线上任何一次 emit 的载荷里,都不许出现 cookie 或 refreshToken 的内容。
+		// 续期落盘只记一行 info(`cookies-refreshed` 事件已没有任何读者,随之退役);总线上一条都不发。
+		expect(ctx.logger.info).toHaveBeenCalledWith("[auth] 登录续期已落盘");
+		expect(emit).not.toHaveBeenCalled();
+		// 日志与总线上任何一次的内容里,都不许出现 cookie 或 refreshToken 的内容。
 		expect(JSON.stringify(emit.mock.calls)).not.toContain("SECRET");
+		expect(JSON.stringify(vi.mocked(ctx.logger.info).mock.calls)).not.toContain("SECRET");
 
 		// 总线上少了 cookie 不等于少存一份:提交把它们写进了 secrets/bilibili/secrets.enc。
 		await auth.dispose();

@@ -37,7 +37,6 @@ export type {
 	ExtensionView,
 	ExtensionViewSummary,
 } from "@bilibili-notify/extension/wire";
-export * from "./auth";
 export * from "./card-skin";
 export * from "./devtools";
 export * from "./extension-view";

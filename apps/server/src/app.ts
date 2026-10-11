@@ -17,7 +17,6 @@ import type { SessionCodec } from "./auth/session.js";
 import type { WsTicketStore } from "./auth/ws-ticket.js";
 import type { BackupService } from "./backup/service.js";
 import type { Api } from "./bilibili/api/index.js";
-import type { AuthSystem } from "./bilibili/auth/index.js";
 import { CARD_SKINS_DIR, CardSkinStore } from "./card-skins/store.js";
 import type { ChromeSource } from "./config/persist.js";
 import type { ActionOutcome, LookupOutcome } from "./extensions/context.js";
@@ -31,7 +30,6 @@ import { createSecretCellsReader } from "./push/connection-settings.js";
 import { createAdaptersRoute } from "./routes/adapters.js";
 import { createAiRoute } from "./routes/ai.js";
 import { createAiSkillsRoute } from "./routes/ai-skills.js";
-import { createAuthRoute } from "./routes/auth.js";
 import { createCardsRoute } from "./routes/cards.js";
 import { createCardsSkinsRoute } from "./routes/cards-skins.js";
 import { createCommandsRoute } from "./routes/commands.js";
@@ -74,12 +72,9 @@ interface BasicAuthCredentials {
 }
 
 export interface CreateAppOptions {
-	/** Optional auth subsystem; when present /api/auth/* and /api/ws/ticket are mounted. */
-	authSystem?: AuthSystem;
 	/**
-	 * 卡片预览用的 B 站 API 客户端。省略就从 `authSystem.api` 上取 —— 但那是**取值**,
-	 * 拿不到装饰过的那份(devtools 把 api 包了一层 Proxy 按方法覆盖,而 `authSystem` 上的
-	 * `api` 是个普通数据属性,Proxy 原样放行)。要让预览也吃到覆盖,就得显式传进来。
+	 * 卡片预览用的 B 站 API 客户端。要让预览也吃到 devtools 的覆盖(它把 api 包了一层 Proxy 按方法覆盖),
+	 * 就得显式传进来;省略就是没有(预览走不联网的假数据)。
 	 */
 	api?: Api | null;
 	/** Optional backup/restore service; when present /api/system/backup/* is mounted. */
@@ -295,8 +290,8 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
  *   /api/stats/followers  — 粉丝样本(只喂统计)
  *   /api/images/:ref      — 图库的同源读口(只读;历史、订阅、AI 共用的顶层资源)
  *   /api/system/*         — 日志(一直挂)、更新 / 备份 / 重启与开新代(宿主传了才挂)
- *   /api/auth/*           — status / qr / cookies refresh|reset / logout (when authSystem present)
- *   /api/ws/ticket        — 面板 WS 的一次性票(跟 /api/auth 同一个条件:authSystem 在场)
+ *   /api/sources/:sourceKey/auth — 来源的登录口(GET 读 / POST 发起扫码 / DELETE 退出)
+ *   /api/ws/ticket        — 面板 WS 的一次性票(无条件挂)
  */
 export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono {
 	const deps: RouteDeps = {
@@ -414,7 +409,7 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 			createCardsRoute({
 				deps,
 				puppeteer: options.puppeteer ?? null,
-				api: options.api ?? options.authSystem?.api ?? null,
+				api: options.api ?? null,
 				persistChromeSource: options.persistChromeSource,
 				onPuppeteerEnabled: options.onPuppeteerEnabled,
 				chromeIdleTimeoutMs: options.chromeIdleTimeoutMs,
@@ -441,13 +436,9 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				membershipTier: () => tiers.lowest(),
 			}),
 		);
-		if (options.authSystem) {
-			app.route("/api/auth", createAuthRoute({ ...deps, authSystem: options.authSystem }));
-			// 面板 WS 的一次性票。从前挂在上面那个 `/api/auth` 路由里 ——
-			// 搬出来之后存在的条件照旧(`authSystem` 在场才有)。要登录才给,所以**不能**放进
-			// `/api/session` 底下(那里免 cookie 闸,ADR-0036 决策 3)。
-			app.route("/api/ws", createWsRoute(deps));
-		}
+		// 面板 WS 的一次性票。无条件挂(它只依赖 `deps`)。要登录才给,所以**不能**放进
+		// `/api/session` 底下(那里免 cookie 闸,ADR-0036 决策 3)。
+		app.route("/api/ws", createWsRoute(deps));
 
 		// Backup/restore. Built in index.ts (needs the cookie store + a live re-login
 		// hook from the auth system) and injected, so app.ts stays decoupled from

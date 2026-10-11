@@ -1,4 +1,4 @@
-import type { MessageBus } from "@bilibili-notify/internal";
+import type { MessageBus, SourceAuth } from "@bilibili-notify/internal";
 import type { OverridableApi } from "../../devtools/api-overrides.js";
 import type { DevtoolsProvider } from "../../devtools/providers.js";
 import type { Api } from "../api/index.js";
@@ -7,7 +7,7 @@ import { type DynamicEngineLike, dynamicScenarios } from "./dynamic.js";
 import { liveScenarios, type SubPick } from "./live.js";
 import { liveEventScenarios } from "./live-events.js";
 import { createLiveRooms } from "./live-rooms.js";
-import { loginStateScenario, type OverridableStatus } from "./login-state.js";
+import { loginStateScenario } from "./login-state.js";
 import { biliTimerScenarios } from "./timers.js";
 
 /** `compose.ts` 的 `provideDevtools` 形参要它;`compose.ts` 自己不许写 `"./devtools/…"` 的说明符。 */
@@ -22,14 +22,14 @@ export type { DevtoolsProviderRegistry } from "../../devtools/providers.js";
  *
  * 🚧 过渡接线:场景今天仍直接用引擎、用套了 Proxy 的 `Api` / `AuthSystem`(两个 Proxy 由
  * `src/index.ts` 建好、经 `src/compose.ts` 传进来)。直播场景要 `LiveEngine` 的句柄(3b)、登录场景要
- * `loginFlow`(3a-29)、造动态的场景经壳上盖方法再调 `detectNow()` 走的是真引擎,各等各的那一片再删。
+ * `healthCheck`、造动态的场景经壳上盖方法再调 `detectNow()` 走的是真引擎,各等各的那一片再删。
  */
 export interface BiliDevtoolsDeps {
 	/** 传给引擎的 `Api` 外面的那层 Proxy —— 引擎拿的就是它的 `.api`。 */
 	api: OverridableApi<Api>;
-	/** 传给路由的登录系统外面的那层 Proxy(`status()` 可注入)。 */
-	auth: OverridableStatus;
-	/** 登录状态快照从这条总线发。 */
+	/** 来源的登录口外面的那层 Proxy(`state()` / `account()` 可注入);来源挂的是它的 `.api`。 */
+	auth: OverridableApi<Required<SourceAuth>>;
+	/** 假登录状态从这条总线发(`subscription-auth-changed`)。 */
 	bus: MessageBus;
 	/** 场景挑订阅用:每次现读,订阅表会变。 */
 	subs: () => SubPick[];
@@ -37,7 +37,8 @@ export interface BiliDevtoolsDeps {
 	dynamic: () => DynamicEngineLike | undefined;
 	live: () => { repushNow(uid: string): Promise<boolean> } | undefined;
 	fans: () => { pollNow(): Promise<boolean> } | undefined;
-	loginFlow: () => { healthCheckNow(): Promise<boolean> } | undefined;
+	/** 登录心跳「现在就跑」的把手(`AuthSystem.healthCheckNow`),现取。 */
+	healthCheck: () => { healthCheckNow(): Promise<boolean> } | undefined;
 }
 
 export function createBiliDevtools(deps: BiliDevtoolsDeps): DevtoolsProvider {
@@ -55,7 +56,7 @@ export function createBiliDevtools(deps: BiliDevtoolsDeps): DevtoolsProvider {
 				live: deps.live,
 				dynamic: deps.dynamic,
 				fans: deps.fans,
-				loginFlow: deps.loginFlow,
+				healthCheck: deps.healthCheck,
 			}),
 		],
 	};
