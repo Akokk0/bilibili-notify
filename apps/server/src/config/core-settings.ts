@@ -46,7 +46,7 @@ function isPlainObject(value: unknown): value is Json {
  * 不算坏、也不往拼好的对象里放,留给最后那遍整份解析去补;不能过的(必填格缺了)记一条 `missing`。
  * 返回 `undefined` 表示这一格不往拼好的对象里放键(缺了且不算坏)。
  */
-function parseCell(
+export function parseCell(
 	schema: ZodType,
 	source: Json,
 	key: string,
