@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MessageBus } from "@bilibili-notify/internal";
+import { fail, type MessageBus, ok, type Result } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createApp, createCardSkinStore } from "../app.js";
 import { BiliLoginStatus } from "../bilibili/api/index.js";
@@ -24,12 +24,14 @@ function makeFakeAuthSystem(opts: { bus?: MessageBus } = {}) {
 		// real interface fields the routes do not touch — leave undefined-typed
 		api: undefined as unknown as AuthSystem["api"],
 		flow: undefined as unknown as AuthSystem["flow"],
-		beginLogin: vi.fn(async () => {
+		beginLogin: vi.fn(async (): Promise<Result> => {
 			snapshot = { status: BiliLoginStatus.LOGIN_QR, msg: "", data: "data:image/png;base64,XYZ" };
+			return ok();
 		}),
 		refreshCookies: vi.fn(async () => {}),
-		logout: vi.fn(async () => {
+		logout: vi.fn(async (): Promise<Result> => {
 			snapshot = { status: BiliLoginStatus.NOT_LOGIN, msg: "未登录" };
+			return ok();
 		}),
 		status: () => snapshot,
 		dispose: vi.fn(async () => {}),
@@ -173,6 +175,41 @@ describe("auth routes", () => {
 
 		const after = await app.request("/api/auth/status");
 		expect(((await readJson(after)) as LoginSnapshot).status).toBe(BiliLoginStatus.NOT_LOGIN);
+
+		await runtime.dispose();
+	});
+
+	it("POST /api/auth/qr 拿不到二维码:照结果回失败,不再回成功", async () => {
+		const fake = makeFakeAuthSystem();
+		fake.beginLogin.mockResolvedValueOnce(
+			fail("rate_limited", "获取二维码失败，请重试", { upstreamCode: -352 }),
+		);
+		const { app, runtime } = await buildApp(fake);
+
+		const res = await app.request("/api/auth/qr", { method: "POST" });
+		expect(res.status).toBe(429);
+		expect(await readJson(res)).toEqual({
+			code: "rate_limited",
+			message: "获取二维码失败，请重试",
+			upstreamCode: -352,
+		});
+
+		await runtime.dispose();
+	});
+
+	it("POST /api/auth/logout 存着的登录状态清不掉:照结果回失败", async () => {
+		const fake = makeFakeAuthSystem();
+		fake.logout.mockResolvedValueOnce(
+			fail("unavailable", "已退出，但存着的登录状态没清掉：disk full，重启后可能还是登录着"),
+		);
+		const { app, runtime } = await buildApp(fake);
+
+		const res = await app.request("/api/auth/logout", { method: "POST" });
+		expect(res.status).toBe(503);
+		expect(await readJson(res)).toEqual({
+			code: "unavailable",
+			message: "已退出，但存着的登录状态没清掉：disk full，重启后可能还是登录着",
+		});
 
 		await runtime.dispose();
 	});

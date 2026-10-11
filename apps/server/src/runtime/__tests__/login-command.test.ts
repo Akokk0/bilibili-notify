@@ -12,7 +12,7 @@
  *    一个码」—— 他两小时后看手机拿到的是废码,反而以为系统坏了。
  */
 
-import { fail, type NotificationPayload, ok } from "@bilibili-notify/internal";
+import { fail, type NotificationPayload, ok, type Result } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createLoginCommand, type LoginSnapshotView } from "../login-command.js";
 
@@ -22,10 +22,13 @@ const QR_DATA_URL = `data:image/png;base64,${PNG_BYTES.toString("base64")}`;
 
 const QR_READY: LoginSnapshotView = { status: 2, msg: "", data: QR_DATA_URL };
 
-function setup(after: LoginSnapshotView = QR_READY, opts: { sendOk?: boolean } = {}) {
+function setup(
+	after: LoginSnapshotView = QR_READY,
+	opts: { sendOk?: boolean; beginResult?: Result } = {},
+) {
 	const replies: string[] = [];
 	const sent: Buffer[] = [];
-	const begin = vi.fn(async () => {});
+	const begin = vi.fn(async (): Promise<Result> => opts.beginResult ?? ok());
 	const spec = createLoginCommand({
 		begin,
 		snapshot: () => after,
@@ -91,6 +94,17 @@ describe("login 指令", () => {
 		await fire();
 		expect(sent).toHaveLength(0);
 		expect(replies.at(-1)).toContain("获取二维码失败");
+	});
+
+	// 取码失败时快照可能还是上一次的「已登录」之类,读它回话会骗人;失败的话以结果里的为准。
+	it("发起就失败了 → 把结果里的话转给主人,不读快照、不发图", async () => {
+		const { replies, sent, fire } = setup(
+			{ status: 5, msg: "已登录" },
+			{ beginResult: fail("unavailable", "获取二维码失败，请重试") },
+		);
+		await fire();
+		expect(sent).toHaveLength(0);
+		expect(replies).toEqual(["获取二维码失败，请重试"]);
 	});
 
 	// 快照的 data 是 any,形状变了不该把指令链路带塌 —— 它还担着审批的 y/n。

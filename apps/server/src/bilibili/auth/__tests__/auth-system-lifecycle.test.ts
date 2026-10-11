@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CookieJar } from "@bilibili-notify/http";
-import type { Json, Logger, MessageBus } from "@bilibili-notify/internal";
+import { fail, type Json, type Logger, type MessageBus, ok } from "@bilibili-notify/internal";
 import { FileKeyProvider, type KeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { readIntegrationSecretsFile } from "../../../integration-store/files.js";
@@ -292,6 +292,45 @@ describe("恢复备份之后与登出", () => {
 		expect(disk.has("http.cookies")).toBe(false);
 		expect(disk.has("refreshToken")).toBe(false);
 		expect(LoginFlow.prototype.reportLoggedOut).toHaveBeenCalledWith("notLogin");
+	});
+
+	it("登出时存着的登录状态清不掉:回失败带原因,但内存里的罐子已清、照样报未登录", async () => {
+		const w = world();
+		await w.seed({ cookies: C0, token: "T0" });
+		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
+		const auth = await createAuthSystem({
+			serviceCtx: w.host.serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
+		const clear = vi.spyOn(Api.prototype, "clearCookies");
+		vi.spyOn(Api.prototype, "commitLogin").mockResolvedValue(fail("unavailable", "disk full"));
+		vi.mocked(LoginFlow.prototype.reportLoggedOut).mockClear();
+
+		const r = await auth.logout();
+
+		expect(r).toEqual(
+			fail("unavailable", "已退出，但存着的登录状态没清掉：disk full，重启后可能还是登录着"),
+		);
+		expect(clear).toHaveBeenCalledTimes(1);
+		expect(LoginFlow.prototype.reportLoggedOut).toHaveBeenCalledWith("notLogin");
+		await auth.dispose();
+		await w.store.close();
+	});
+
+	it("登出时提交写盘成功:回 ok", async () => {
+		const w = world();
+		await w.seed({ cookies: C0, token: "T0" });
+		vi.spyOn(Api.prototype, "checkIfTokenNeedRefresh").mockResolvedValue();
+		const auth = await createAuthSystem({
+			serviceCtx: w.host.serviceCtx,
+			bus,
+			integrationStore: w.store,
+		});
+
+		expect(await auth.logout()).toEqual(ok());
+		await auth.dispose();
+		await w.store.close();
 	});
 
 	it("手动刷新读的是存着的令牌与罐子里的 bili_jct", async () => {

@@ -1,4 +1,11 @@
-import type { IntegrationContext, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import {
+	fail,
+	type IntegrationContext,
+	type MessageBus,
+	ok,
+	type Result,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import type { IntegrationStore } from "../../integration-store/store.js";
 import { Api } from "../api/index.js";
 import { createBiliContext, REFRESH_TOKEN_KEY } from "../context.js";
@@ -32,15 +39,16 @@ export interface AuthSystem {
 	 * 入口递给 `compose.ts`,来源的上下文建在它之上。
 	 */
 	readonly integration: IntegrationContext;
-	/** Trigger a fresh QR login session. Renders the QR PNG using the `qrcode` npm dep. */
-	beginLogin(): Promise<void>;
+	/** Trigger a fresh QR login session. Renders the QR PNG using the `qrcode` npm dep. 拿不到码回失败结果。 */
+	beginLogin(): Promise<Result>;
 	/** Force a cookie refresh check against bilibili. */
 	refreshCookies(): Promise<void>;
 	/**
 	 * Forget the login: clear the live jar and delete the refresh token in one commit, report logged-out.
 	 * Safe when not logged in. Never touches master.key — it also encrypts the config secrets.
+	 * 状态总会进未登录;存着的登录状态清不掉时回失败(`unavailable`,话里写着原因与「重启后可能还是登录着」)。
 	 */
-	logout(): Promise<void>;
+	logout(): Promise<Result>;
 	/** Current snapshot — proxy to `flow.current()`. */
 	status(): LoginSnapshot;
 	/** Stop the flow and the api, save the cookie jar one last time, close the stores. Idempotent. */
@@ -130,9 +138,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		// 5-6. Initial resume + account probe at boot.
 		await resumeLogin();
 
-		const beginLogin = async (): Promise<void> => {
-			await flowFinal.beginLogin();
-		};
+		const beginLogin = (): Promise<Result> => flowFinal.beginLogin();
 
 		const refreshCookies = async (): Promise<void> => {
 			// 手动刷新:有存着的令牌就直接走一遍续期链(探测 → 需要才换新;换成功由 `commitLogin` 把 cookie 与
@@ -145,13 +151,19 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 			await flowFinal.reportAccountInfo();
 		};
 
-		const logout = async (): Promise<void> => {
+		const logout = async (): Promise<Result> => {
 			// P0-2:不清内存 jar 则 api 仍以 stale 已认证 cookie 发请求至进程重启。
 			await api.clearCookies();
-			// 罐子已空:`http.cookies` 与令牌在同一次写里一起删。失败记 error、照样报未登录。
+			// 罐子已空:`http.cookies` 与令牌在同一次写里一起删。失败记 error、照样报未登录,并把失败交给调用方。
 			const saved = await api.commitLogin(undefined);
 			if (!saved.ok) log.error(`[auth] 登出后清不掉存着的登录状态: ${saved.message}`);
 			flowFinal.reportLoggedOut("notLogin");
+			return saved.ok
+				? ok()
+				: fail(
+						"unavailable",
+						`已退出，但存着的登录状态没清掉：${saved.message}，重启后可能还是登录着`,
+					);
 		};
 
 		const status = (): LoginSnapshot => flowFinal.current();

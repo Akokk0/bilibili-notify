@@ -20,7 +20,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import type { Logger } from "@bilibili-notify/internal";
+import type { Logger, Result } from "@bilibili-notify/internal";
 import { type CommandDef, command } from "./command-dispatcher.js";
 
 /** LoginFlow 快照里我们用得上的那部分。`data` 是 any,形状不由我们做主。 */
@@ -32,7 +32,7 @@ export interface LoginSnapshotView {
 
 export interface LoginCommandOptions {
 	/** 现生成一张二维码并开始轮询。 */
-	begin: () => Promise<void>;
+	begin: () => Promise<Result>;
 	/** 读当前登录快照 —— 码就挂在它的 `data` 上。 */
 	snapshot: () => LoginSnapshotView;
 	logger: Logger;
@@ -64,7 +64,13 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 		description: "重新扫码登录 B 站",
 		details: `二维码只发这条私聊，${QR_TTL_SECONDS} 秒内有效，过期就再敲一次。`,
 		run: async (_values, { reply }) => {
-			await opts.begin();
+			const begun = await opts.begin();
+			if (!begun.ok) {
+				// 发起就失败了:快照可能还是上一次的内容(比如「已登录」),读它回话会骗人,以结果里的话为准。
+				opts.logger.warn(`[command] 扫码发起失败: ${begun.code} ${begun.message}`);
+				await reply(begun.message);
+				return;
+			}
 			const snap = opts.snapshot();
 			const png = decodeDataUrl(snap.data);
 			if (!png) {

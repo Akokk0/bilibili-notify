@@ -1,5 +1,14 @@
-import type { Disposable, Logger, MessageBus, ServiceContext } from "@bilibili-notify/internal";
+import {
+	type Disposable,
+	fail,
+	type Logger,
+	type MessageBus,
+	ok,
+	type Result,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import QRCode from "qrcode";
+import { errorMessageOf } from "../../util/error-message.js";
 import type { Api } from "../api/api";
 import {
 	type BiliDataServer,
@@ -251,27 +260,31 @@ export class LoginFlow {
 	 * 3. Drives polling at 1Hz; on success persists cookies and probes account info.
 	 * 4. Auto-times-out after 3 minutes.
 	 */
-	async beginLogin(renderQr: (url: string) => Promise<string> = defaultRenderQr): Promise<void> {
+	async beginLogin(renderQr: (url: string) => Promise<string> = defaultRenderQr): Promise<Result> {
 		// biome-ignore lint/suspicious/noExplicitAny: API response shape
 		let qrContent: any;
 		try {
 			qrContent = await this.api.fetchLoginQrCode();
 		} catch (e) {
-			this.logger.warn(`[login] 获取登录二维码失败：${e instanceof Error ? e.message : String(e)}`);
-			return;
+			// 取码请求没到 B 站:状态不动(一次网络抖动不该把一个好会话在面板上盖成出错),只让调用方知道。
+			this.logger.warn(`[login] 获取登录二维码失败：${errorMessageOf(e)}`);
+			return fail("unavailable", MESSAGES.qrFetchFailed);
 		}
 		if (qrContent.code !== 0) {
 			this.reportQrFailure("qrFetchFailed");
-			return;
+			const upstreamCode: number = qrContent.code;
+			// -352 / -403 是 B 站的风控:稍后再来,与「接口坏了」分开。
+			const code = upstreamCode === -352 || upstreamCode === -403 ? "rate_limited" : "unavailable";
+			return fail(code, MESSAGES.qrFetchFailed, { upstreamCode });
 		}
 
 		try {
 			const dataUrl = await renderQr(qrContent.data.url);
 			this.reportQrReady(dataUrl);
 		} catch (e) {
-			this.logger.warn(`[login] 生成二维码失败：${e instanceof Error ? e.message : String(e)}`);
+			this.logger.warn(`[login] 生成二维码失败：${errorMessageOf(e)}`);
 			this.reportQrFailure("qrRenderFailed");
-			return;
+			return fail("unavailable", MESSAGES.qrRenderFailed);
 		}
 
 		this.clearLoginTimer();
@@ -299,6 +312,7 @@ export class LoginFlow {
 			this.clearLoginTimer();
 			this.reportQrFailure("qrExpired");
 		}, QR_TIMEOUT_MS);
+		return ok();
 	}
 
 	/**

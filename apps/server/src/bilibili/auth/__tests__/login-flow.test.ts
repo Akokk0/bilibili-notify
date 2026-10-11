@@ -834,3 +834,134 @@ describe("LoginFlow.healthCheckNow()", () => {
 		expect(h.api.fetchMyselfInfo).not.toHaveBeenCalled();
 	});
 });
+
+describe("LoginFlow.beginLogin() — 回结果形状(3a-29 提交 ②)", () => {
+	it("取码请求抛错:回 unavailable 与固定的话,状态不动、不发事件", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockRejectedValueOnce(new Error("net down"));
+
+		const r = await h.flow.beginLogin(async () => "ignored");
+
+		expect(r).toEqual(fail("unavailable", "获取二维码失败，请重试"));
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOADING_LOGIN_INFO);
+		expect(eventsOfKind(h.events, "login-status-report")).toHaveLength(0);
+	});
+
+	it("B 站回非 0 码:进失败状态,回 unavailable 并带 upstreamCode", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code: -1, data: null });
+
+		const r = await h.flow.beginLogin(async () => "ignored");
+
+		expect(r).toEqual(fail("unavailable", "获取二维码失败，请重试", { upstreamCode: -1 }));
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+	});
+
+	it.each([-352, -403])("B 站回 %i(风控):回 rate_limited", async (code) => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({ code, data: null });
+
+		const r = await h.flow.beginLogin(async () => "ignored");
+
+		expect(r).toEqual(fail("rate_limited", "获取二维码失败，请重试", { upstreamCode: code }));
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+	});
+
+	it("渲染二维码失败:进失败状态,回 unavailable", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+
+		const r = await h.flow.beginLogin(async () => {
+			throw new Error("canvas exploded");
+		});
+
+		expect(r).toEqual(fail("unavailable", "生成二维码失败"));
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+	});
+
+	it("成功:回 ok,进等待扫码", async () => {
+		const h = makeFlow();
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+
+		const r = await h.flow.beginLogin(async () => "data:url");
+
+		expect(r).toEqual(ok());
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_QR);
+	});
+});
+
+/**
+ * 两个边事件 `auth-lost` / `auth-restored` 的刻画测试(3a-29 提交 ②):钉的是今天的行为,
+ * 后面改状态机外壳时它们不许动。真 `LoginFlow` + 假 `Api` + 手动拨的假定时器。
+ */
+describe("LoginFlow — 两个边事件今天的确切语义", () => {
+	const HEALTH_MS = 60_000;
+
+	/** 找出还没被收掉的心跳定时器(间隔等于健康检查间隔的那一个)。 */
+	function liveHeartbeat(h: Harness) {
+		return h.scFake.intervals.filter((i) => i.ms === HEALTH_MS && !i.handle.disposed).at(-1);
+	}
+
+	async function logIn(h: Harness): Promise<void> {
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		h.api.fetchUserCard.mockResolvedValueOnce({ code: 0, data: { card: { mid: "42" } } });
+		await h.flow.reportAccountInfo();
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+	}
+
+	it("已登录时再扫码、不扫、等超时:不发 auth-lost;心跳把快照推回已登录,不发 auth-restored", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		await logIn(h);
+		h.api.fetchLoginQrCode.mockResolvedValueOnce({
+			code: 0,
+			data: { url: "https://qr", qrcode_key: "k" },
+		});
+
+		await h.flow.beginLogin(async () => "data:url");
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_QR);
+		await h.scFake.timeouts.at(-1)?.handle.fire(); // 3 分钟到了
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGIN_FAILED);
+
+		// LOGIN_FAILED 不在心跳的跳过名单里:到点照查。
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		await liveHeartbeat(h)?.handle.fire();
+		await flush();
+
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+	});
+
+	it("冷启动探活网络失败(停在 LOADING)之后心跳成功:不发 auth-restored", async () => {
+		const h = makeFlow({ healthCheckMs: HEALTH_MS });
+		h.api.fetchMyselfInfo.mockRejectedValueOnce(new Error("net down"));
+		await h.flow.reportAccountInfo();
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOADING_LOGIN_INFO);
+
+		h.api.fetchMyselfInfo.mockResolvedValueOnce({ code: 0, data: { mid: 42 } });
+		await liveHeartbeat(h)?.handle.fire();
+		await flush();
+
+		expect(h.flow.current().status).toBe(BiliLoginStatus.LOGGED_IN);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(0);
+		expect(eventsOfKind(h.events, "auth-restored")).toHaveLength(0);
+	});
+
+	it('手动退出登录(reportLoggedOut("notLogin")):上一帧是已登录就发一次 auth-lost,没登录时不发', async () => {
+		const h = makeFlow();
+		await logIn(h);
+
+		h.flow.reportLoggedOut("notLogin");
+		expect(h.flow.current().status).toBe(BiliLoginStatus.NOT_LOGIN);
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+
+		h.flow.reportLoggedOut("notLogin"); // 已经是未登录:再退不再发
+		expect(eventsOfKind(h.events, "auth-lost")).toHaveLength(1);
+	});
+});

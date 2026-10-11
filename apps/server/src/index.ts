@@ -8,6 +8,7 @@ import {
 	BILIBILI_SOURCE_KEY,
 	chatIdentityOf,
 	type Disposable,
+	fail,
 	type InboundGroupMessage,
 	type InboundMeta,
 	type InboundPrivateMessage,
@@ -1044,7 +1045,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		commands.push(
 			createLoginCommand({
 				logger: log,
-				begin: () => authSystem?.beginLogin() ?? Promise.resolve(),
+				begin: async () => authSystem?.beginLogin() ?? fail("unavailable", "登录系统还没起来"),
 				snapshot: () => authSystem?.status() ?? { status: 0, msg: "登录系统还没起来" },
 			}),
 		);

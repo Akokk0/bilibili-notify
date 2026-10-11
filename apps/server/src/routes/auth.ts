@@ -42,7 +42,8 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 			return respondFailure(c, fail("conflict", "已经有一个扫码登录在进行了，先重置再重新开始"));
 		}
 		try {
-			await deps.authSystem.beginLogin();
+			const begun = await deps.authSystem.beginLogin();
+			if (!begun.ok) return respondFailure(c, begun);
 			return c.json(ok());
 		} catch (err) {
 			log.error("POST /api/auth/qr failed", err);
@@ -62,7 +63,8 @@ export function createAuthRoute(deps: AuthRouteDeps): Hono {
 
 	app.post("/logout", async (c) => {
 		try {
-			await deps.authSystem.logout();
+			const out = await deps.authSystem.logout();
+			if (!out.ok) return respondFailure(c, out);
 			return c.json(ok());
 		} catch (err) {
 			log.error("POST /api/auth/logout failed", err);
