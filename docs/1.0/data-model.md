@@ -142,7 +142,8 @@ interface Problem {                    // 全在内存，不存盘
 - **一种形状、全在内存**：订阅运行态不再存问题。开机时关注同步与第一轮资料刷新几秒内就会重报，所以重启后的头几秒订阅卡上的红字会先消失，等报的人重报。
 - **一条生死规矩**：报的人 `resolveProblem` 清；报的人停下，它报的全清；对象（订阅、连接）删了，关于它的全清。
 - **`about` 谁填**：来源带 `externalId`，宿主换成订阅 id；平台适配器带 `connectionId`，宿主核它是不是这个适配器的；核心直接写，`code` 表明是哪个模块（如 `renderer_unavailable`；`core` 段设置坏了记 `settings_invalid`）。
-- 同一个报的人、同一个对象、同一个 code 算一条；重复报只更新 `message`、不重置 `since`（照原先「按 code 做键」的规矩延伸，施工时核）。
+- 同一个报的人、同一个对象、同一个 code 算一条；重复报只更新 `message`、不重置 `since`（照原先「按 code 做键」的规矩延伸，施工时核）。🔗 3a-30 已落并核过：键是 报的人 + 对象 + code，再报只换 `message`（与 `notify`、恢复说法），`since` 不动。
+- 🔗 **落成的形状（3a-30，10-11）**：`packages/internal/src/problem.ts` 的 `Problem { reporter: string; about?: { subscriptionId: string }; code: string; message: string; since: string }`。与上面的草稿相比：`reporter` 是字符串（来源键；`IntegrationKey` 类型全仓没有，`"core"` 这个值还没有人用）；**`about` 只有订阅一支**，`{ connectionId }` 那一支没造（等第一个会报连接问题的适配器）；**报的人给的 `recoveryMessage`（清掉时怎么说）与 `notify` 不在这个对外的类型上**，它们只存在问题表内部与问题通知器之间，`GET /api/problems` 的回包不带。`since` 是问题进表那一刻；B 站的分层上报器是来源 `start(ctx)` 之后才接上核心，接上时整份补报，所以重启后 `since` 是接上那一刻。表全在内存，不存盘，迁移修订号与备份版本没动。
 - 与 `reportDiscrepancies` 分开：上报被拒或被丢格记进该集成的 `reportDiscrepancies` 表，不是问题（内置集成被拒就是 BN 的 bug，只打错误日志）。
 
 ## 来源描述符

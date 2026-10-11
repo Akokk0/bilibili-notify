@@ -58,7 +58,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | `http` | 新增 | 集成自己的请求客户端，1.0 对拓展整套开放。见「ctx.http」 |
 | `fetchImage(url, { headers?, signal? })` | 新增 | 返回结果形状。见「图」 |
 | `storeImage(bytes, { signal? })` | 新增 | 返回结果形状。见「图」 |
-| `reportProblem` / `resolveProblem` | 新增 | 返回 `void`；这一层的签名不带对象，关于哪个人、哪条连接由特有的那一层加。见「问题上报」 |
+| `reportProblem` / `resolveProblem` | 新增 | 返回 `void`；这一层的签名不带对象，关于哪个人、哪条连接由特有的那一层加。见「问题上报」（3a-30 的现状注记在那一节末尾：今天只造在内置来源的 `SourceContext` 上，拓展还没有） |
 | `signal` | 新增 | 集成停下（停用、卸载、关停）时中止；手上的请求、轮询接着它停 |
 | `onDispose(fn)` | 照留 | 收摊钩子，后注册的先跑 |
 
@@ -257,6 +257,7 @@ ctx.resolveProblem({ connectionId?, code }): void;
     - 一条生死规矩：报的人 `resolveProblem` 按 code 清；报的人停下，它报的全清；对象删了，关于它的全清。
     - 不存盘：重启或停用再启用之后，还在的问题要拓展重报一遍（重启后的头几秒，订阅卡上的红字会先消失）。
 - code 用 snake（`login_expired`）。
+- 🔗 **现状（3a-30，10-11）：契约本身 3b 定，这里只记 3a 落成的签名与上面的出入**。问题表、`GET /api/problems`、`problems-changed` 与核心那头的通知器 3a-30 已落，但 `reportProblem` / `resolveProblem` 只造在内置来源的 `SourceContext` 上：`reportProblem({ externalId?, code, message, notify?, recoveryMessage? })`、`resolveProblem({ externalId?, code, notify? })`；上面第一层（`IntegrationContext`，不带对象）和 `connectionId` 那一支都没造，拓展的 `activate(ctx)` 今天没有这两个成员。契约稿里没有的两格：`recoveryMessage`（清掉且当初真私聊过时核心发的那一句，不给用核心的通用说法）与 `resolveProblem` 的 `notify`（`false` = 不是修好了、只是不再适用，不补「已恢复」）；拓展契约第 3 版要不要带上、怎么带，3b 对着落成的签名定。主人 10-11 确定要做多语言：问题表存的是报的人排好的整句，语言一多这一点要在契约第 3 版冻结之前重新定（见 construction-plan 的「以后再说」）。
 
 ## 推送：平台适配器
 

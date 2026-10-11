@@ -91,7 +91,8 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |
 | 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回 BN 身上(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishView` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。🔴 帧是照 `extensions/bridge/PROTOCOL.md` **手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),漂了没门禁会红 —— 所以 `src/__tests__/devtools-fake-bridge-e2e.test.ts` 把真桥装进装载根让两边真说一次话 | `fake-bridge.ts`、`scenarios/bridge.ts` |
 | 拓展有更新 | 包交给 `/api/ext/marketplace*` 的那个 `Marketplace`:列表里那个 id 的一条改成 `updatable`,版本 = **装着那版**的下一个补丁号(预发布就加最后一段);索引里没有它(断网 / 不在任何索引里)就现造一条**官方**的 —— 官方一键装,造成第三方的每按一次多弹一个确认框。装那个 id **先等「假装下载」那几秒、再假装成功**:同形状的回话,不下载、不写盘、不重扫,所以卡上印的版本号不变;装成即撤。别的 id 原样过真市场 | `marketplace-injection.ts`、`scenarios/marketplace.ts` |
-| 引擎错误 / 登录失效 / 恢复 | 直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律);auth-lost 会**真的**停引擎,看完记得 restored | `scenarios/bus-events.ts` |
+| 动态拉取报错(`bilibili.dynamic.fail`,宿主按来源键加前缀;场景里的 id 是 `dynamic.fail`) | 同一个 `fetchAllDynamic` 盖板位:让下一轮(参数 `rounds` 连着几轮,1 至 50,默认 1)拉动态的请求不发真请求、回一个只有 `code` 与 `message` 的体(参数 `code`,非 0 整数,默认 `-352`;非法值抛 `DevParamError`),用完自己摘。**只装弹、不触发检测**:想立刻看到就再点「动态检测」。**与「四类动态」共用盖板位**:场景里一个函数 `syncOverride()` 汇总,错误码优先,谁还要用就留着、都不用了才摘,收摊两边各清各的。盖的只是拉动态这一个请求、不经请求客户端对 `-101` 的拦截,所以**回 `-101` 不会让登录状态变成失效**,只会让动态引擎停 cron 等 `auth-restored`;要验未登录层只能用真的失效登录。用来看动态引擎的退避、问题表(风控 `risk_controlled`、拉动态失败 `dynamic_fetch_failed`)与风控私聊、恢复句 | `bilibili/devtools/dynamic.ts` |
+| 引擎错误 / 登录失效 / 恢复 | 直接 `bus.emit`(发射不是转发,不碰 MessageBus 铁律);auth-lost 会**真的**停引擎,看完记得 restored。**3a-30 起 `auth.lost` 只发总线事件、不改登录状态**,所以不进问题表、主人也不会收到私聊(`MasterNotifier` 不再听它);`engine.error` 仍让主人收到私聊、面板右上角出告警 | `scenarios/bus-events.ts` |
 | 登录状态(`AuthState` 的各取值) | 盖来源登录口(`Source.auth`)的 `state()` 与 `account()`,再往总线发同一份 `subscription-auth-changed`;入口把来源的登录口包成壳,登记表里挂的是壳的 `.api`,所以 `GET /api/sources/:sourceKey/auth` 与 WS 帧都读得到注入值,收摊时摘掉并把真状态再发一遍让面板对回去。选项:未登录、等待扫码、正在确认(已扫码等手机确认 / 开机还没向 B 站确认,各一项)、已登录(带账号名)、登录失效、登录失败;假二维码走 `qrcode` 包(与真登录同一条渲染路),扫出来是一句「devtools 的假货」 | `bilibili/devtools/login-state.ts`、`fake-qr.ts` |
 | 连接能力三态 | 包 `capabilities` / `probeCapabilities`(只对有能力概念的平台)。两个 adapter 包装器都是 `{ ...inner, … }` 展开叠上去的,靠的是「adapter 方法不吃 `this`」这条写在 `PlatformAdapter` 上的契约 | `capability-injection.ts` |
 | 免扰 / 静音 | 免扰:`PushRouter.quietHoursNow` 单点时钟(**不是假时钟**);静音:真调 `muteFor`,并**记住自己写进去的到期时刻** —— 只认领 / 只解除这一次,主人自己 `/mute` 出来的不碰(收摊只收 devtools 造的东西) | `clock.ts`、`scenarios/timers.ts` |
@@ -119,3 +120,5 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 回卡、假二维码弹窗、engine-error 进主人私聊、能力 supported、四个「现在就跑」、涌 toast、
 灵动岛保存中。没验过:免扰时钟(主人配置里 quietHours 为空,单测覆盖)、Chrome 空闲关
 (当时浏览器没起)、新手指引步(导览关着)、Windows。
+
+3a-30(2026-10-11)新加的 `bilibili.dynamic.fail` 与「登录状态」「引擎错误」几个场景对问题表的影响**没有真机验过**,清单见 `docs/1.0/phase-3a-plan.md` 的「3a-30 真机待看」:开发场景「登录状态」只盖 `state()` / `account()` 并往总线发 `subscription-auth-changed`、不叫真登录口的 `onChange`,而问题表的未登录层靠真登录口的 `onChange` 再读 `state()`,所以读代码判断它开不了未登录层(没实跑)。

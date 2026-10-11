@@ -223,6 +223,10 @@ interface SourceContext extends IntegrationContext {
   reportProfile(externalId: string, profile: CreatorProfileReport): void;   // 推送式平台主动报
   reportProblem(p: { externalId?: string; code: string; message: string; notify?: boolean }): void;
   resolveProblem(p: { externalId?: string; code: string }): void;
+  // 🔗 3a-30 落成的签名（packages/internal/src/source.ts）：
+  //   reportProblem(p: { externalId?; code; message; notify?; recoveryMessage? }): void
+  //   resolveProblem(p: { externalId?; code; notify? }): void
+  // 只造在 SourceContext 上，上面 IntegrationContext 里的两行还没造（见「问题上报」的现状）
 }
 
 interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscription{ id, externalId, enabled }
@@ -286,6 +290,13 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 - code 用 snake：`follow_failed`、`login_expired`、`creator_not_found`。
 - B 站也走它：比如「登录失效」以 `notify` 上报、文案自己写。B 站内部按因果分层，只报最上面那一条开着的根问题：未登录 → 风控 → 各项请求失败，下面的只记日志；根问题按状态报（开机就没登录也报），清掉后下一层照常报、停掉的监听拉起来；不同报告方互不遮挡（ADR-0025 决策 11 下 10-03 的 🔗）。关注同步失败照旧报 `follow_failed`，文案沿用现在的「未关注该 UP —— 收不到动态（原因）」（原因就是原来的 `followError`），补关注成功就 `resolveProblem` 清掉；订阅卡上的红色警告文字不变。它和别的问题一样只在内存、不再存盘，重启后由下一轮关注同步重报。
 - 来源级问题不再走 `engine-error`。
+- 🔗 **现状（3a-30，10-11）**：
+  - **只造在 `SourceContext` 上**：`reportProblem({ externalId?, code, message, notify?, recoveryMessage? })` 与 `resolveProblem({ externalId?, code, notify? })`；`IntegrationContext` 与 `PlatformAdapterContext` 上的两个还没造（3a-39 是下一个要报的）。两个都是 `void`。
+  - **`recoveryMessage`**（上面没有这一格）：这条问题清掉、且当初真私聊过时核心发的那一句，发的是私聊出去那一刻存下的；不给就用核心的通用说法接当初真发出去的那句原文。**`resolveProblem` 的 `notify`**（上面没有）：`false` = 这次不是修好了、只是不再适用，不补「已恢复」。宿主清（来源停下、订阅删了）一律不补。
+  - **宿主这一步**（`subscriptions/source-context.ts`）：来源已停下、`code` 不是 snake、`message` 或 `recoveryMessage` 是空白、`externalId` 是空串的一律丢弃并记一行 error（内置来源被拒就是 BN 的 bug）；带 `externalId` 的按身份展开成每一条订阅、停用着的也照记，一条订阅都没有就记 debug 不收。被拒的没有记进 `reportDiscrepancies`（这一片的上报方只有内置的 B 站，那张表是拓展那一支的展示面）。
+  - **私聊与「已恢复」**由 `problems/problem-notifier.ts` 统一发，细节见 architecture.md「问题表与健康」下的 🔗。问题私聊与「已恢复」各一张 60 秒的节流表，键都是 报的人 + code（不含对象），所以同一分钟内同一个 code 的几个订阅只私聊第一个。
+  - **code 例子**：B 站落成的名字是 `auth_lost`（不是上面例子里的 `login_expired`；ADR-0025 决策 11 下 10-03 的 🔗 用的就是 `auth_lost`，以 ADR 的名字为准）、`risk_controlled`、`dynamic_fetch_failed`、`live_monitor_stopped`、`live_room_restricted`；关注同步的 `follow_failed` 还没接（3b）。
+  - **B 站的分层**落在 `bilibili/problem-layers.ts`：未登录层只看 `AuthState.status`（`expired` 开并私聊、`logged-out` 开不私聊、`logged-in` 清、`awaiting-scan` / `confirming` / `error` 保持上一次的结论）；风控层按「路」记（`dynamic`、`live:<uid>`），所有撞着的路都清了才清；第三层每次失败都报（幂等），`lasting` 决定高层开着时存不存。高层一开，表里已有的低层静默清掉。先造、来源 `start(ctx)` 最后一步才 `attach` 到核心，接上那一刻把此刻该在表里的整份报上去。给主人看的话在 `bilibili/problem-texts.ts`。
 
 ### 健康与运行状态
 
