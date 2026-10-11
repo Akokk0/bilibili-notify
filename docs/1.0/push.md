@@ -121,7 +121,7 @@
 | 必备 | `listConnectionCandidates(signal)` | 列新建连接的候选（见「新建连接」） |
 | 可选 | `capabilities` / `probeCapabilities` | 运行期能力，新增 `atAll`、`inbound`；原先按平台名判断的（@全体 分流、审批能不能收回复）一律改问能力。能力是三态，不算失败结果 |
 | 可选 | `listAddressCandidates(connection, scope, signal)` | 列可挑的地址，只查 `scope` 那一种（如 QQ 官方机器人的会话与频道，频道带 `parentAddress` 与 `parentName`）；读口 `GET /api/connections/:id/addresses?scope=` |
-| 可选 | `connectionAuth` | 扫码之类的建连接流程（如 QQ 官方机器人扫码建号），与订阅侧同一个 `AuthState`，结果是一份连接草稿 |
+| 可选 | `connectionAuth` | 扫码之类的建连接流程（如 QQ 官方机器人扫码建号），与订阅侧同一个 `AuthState`，结果是一份连接草稿。三个方法：`begin(signal)` 发起（回任务号、此刻的状态、建议的问询间隔秒数）、`state(taskId, signal)` 读状态（可反复读，不带草稿、不清草稿）、`takeDraft(taskId)` 取走草稿（`settings` 里归这次认证管的那几格，状态到了 `logged-in` 之后成功一次，取走即清）。任务表归适配器、任务号由适配器发；三个方法都不依赖 `this`、都不许抛。路由是 `/api/adapters/:adapterKey/auth` 一组三个口（3a-29 QQ 半已落） |
 
 内置适配器也是集成，走同一套生命周期：`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时宿主先调适配器自己的 `stop()`，再中止 `ctx.signal`、跑经 `onDispose` 登记的收尾；运行状态只取 `running` / `failed` / `settings-invalid`（ADR-0025 决策 5）。
 
@@ -184,7 +184,7 @@ type PushTarget =
 
 #### 这一版不对拓展开放
 
-`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
+`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。（10-11：前两个成员运行时也不开放 —— 宿主登记拓展适配器时把它们摘掉，带了也不认；主人认为这两个成员对桥有用，开放留到 alpha 之后改桥协议时连同拓展契约、桥协议、仓外两个桥插件一起设计。）对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
 
 #### 入站
 

@@ -151,12 +151,13 @@ interface SourceAuth {
 
 type AuthState =                   // 状态值用 kebab
   | { status: "logged-out" }
-  | { status: "awaiting-scan"; qr: { image: ImageRef; expiresAt: string } }
+  | { status: "awaiting-scan"; qr: { dataUrl: string; expiresAt: string } }   // 10-11 改：原定 image: ImageRef，见下
   | { status: "scanned" }                  // 手机上已扫，等确认
   | { status: "logged-in"; loggedInAt: string }
   | { status: "expired" | "error"; message: string };
 ```
 
+- 🔗 **10-11 二维码直接带图片数据，不走图库引用**（主人定，偏离原定的 `image: ImageRef`）：二维码几十秒到几分钟就作废，写进图库再清是为形状统一多出来的活；B 站登录与 QQ 绑定今天两处都是 `data:` 串，面板直接画。`qr.dataUrl` 是 `data:image/…;base64,…` 的整串，格名取契约里已有两处同义的格（卡片预览回应、皮肤截图回应）都叫的 `dataUrl`。`expiresAt` 是 ISO 字符串、必填，含义是**最晚作废时刻**：平台给得出真过期时刻就填它；给不出的平台（今天的 QQ 官方：腾讯只在轮询里回「过期」状态）取「任务创建时刻 + 清扫时限」，所以它是上界，不是平台二维码真正的过期时刻，消费方不要拿它提前判过期（浏览器与服务端的时钟可能不一致）。两半（订阅侧 `SourceAuth`、推送侧 `connectionAuth`）共用这个形状；类型住 `packages/internal/src/auth-state.ts`，3a-29 QQ 半已落地。
 - `beginLogin` / `logout` 返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的：今天拿二维码失败只打 warn、路由却回 `ok: true`。各自回哪些码，施工时定。
 - ⚠️ `logout()` 不许碰主密钥：主密钥同时加密 AI key 等全部密钥，轮换它会让别的密文解不开。
 - **系统 → 账号**为每个声明了 `auth` 的来源列一行。
@@ -224,7 +225,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 | `reportProblem` / `resolveProblem` | 见下「问题上报」 |
 | 上报被拒 | 上报类（`report*`、`reportProblem`、`resolveProblem`）一律 `void`：被拒（种类没声明、id 不合法、形状坏）或被丢格，记进该集成的 `reportDiscrepancies` 表并打 warn 日志，来源不知道；报的人不在名单里照旧静默忽略。被拒都是来源自己的 bug，运行时改不了，回结果只会诱导它重报；拓展契约从 v2 的 reject 改成这样。内置集成（B 站与内置适配器）的上报被拒就是 BN 的 bug，只打错误日志、靠对拍守卫兜，不进 `reportDiscrepancies` 的展示面 |
 | `fetchImage` | 走集成自己的客户端（同一套 cookie、身份与默认头），来源带着自己要的请求头去抓；拦内网地址防 SSRF（每一跳重定向都查）、单张 8MB、按内容嗅探格式、超时，这一层只在 `fetchImage` 上；按 sha256 存进图库，交回 `ref`。失败：404 回 `not_found`；超 8MB、不是图、内网地址回 `invalid`；超时回 `timeout`；网络或上游 5xx 回 `unavailable`。默认头怎么设，施工时定。被否的备选：来源在上报里直接交字节；来源声明 `imageFetch { hosts, headers, rewrite }` 由核心代抓 |
-| `storeImage` | 手里已是字节的图走它（本地生成的扫码二维码，B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库；超 8MB、不是图回 `invalid`。上报一律只收 `ImageRef` |
+| `storeImage` | 手里已是字节的图走它（B 站也用；要来源自带客户端才抓得到的签名 / TLS 指纹 / POST 图；接口内嵌 base64）。同一套格式嗅探与单张 8MB，存进同一图库；超 8MB、不是图回 `invalid`。上报一律只收 `ImageRef` |
 | `state` | 宿主托管的小键值存储，明文、不脱敏。单键 64KB、每个集成 1MB。落 `runtime/bilibili/state.json` 或 `runtime/extensions/<id>/state.json`；跟代走、不进备份、卸载与全新开始时清。`http.` 开头的键归宿主（`ctx.http` 的浏览器身份） |
 | `secrets` | 用主密钥加密，一个集成一个文件：`secrets/bilibili/secrets.enc` 或 `secrets/extensions/<id>/secrets.enc`（B 站 0.x 的 `cookies.json` 由迁移转成 `secrets/bilibili/secrets.enc`）；每个集成 256KB；仅完整备份（普通备份抹掉）；卸载与全新开始时清掉；值里的每一段字符串按原文脱敏（很短的不遮）。`http.` 开头的键归宿主（`ctx.http` 的 cookie 罐） |
 | `state` / `secrets` 的写、删与 `batch` | 返回结果形状、不抛：超上限或写了 `http.` 前缀回 `invalid`，磁盘写失败回 `unavailable` |

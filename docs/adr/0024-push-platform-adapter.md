@@ -13,6 +13,7 @@
 
 1. **内置平台与拓展走同一条路**：OneBot、QQ 官方机器人、webhook 也作为普通的平台适配器登记，与拓展提供的适配器是同一个接口、同一张登记表。`CONNECTION_PLATFORMS` 这个闭集删掉；各平台的设置 schema 与平台信息表搬出 `internal`，由适配器自带，面板经描述接口拿。
     - 🔗 10-10 主人定（3a-22-2）：「闭集删掉、设置 schema 与平台信息表搬出 `internal`」这半句**留到第 4 期面板按描述画之后**一次做。面板的手写表单靠三份规则推出的类型编译、平台选择器靠平台表，现在搬走面板只能手抄一份，与「不手抄冻结类型」相冲。在那之前：三份规则原地改名 `…ConnectionSettingsSchema`，内置适配器的 `settingsSchema` 指向它们、候选从平台表现取；平台表的 `tint` 已改 `color`，「走哪种连法」一列换成 `adapterKey`；服务端只剩两处在读平台表：内置适配器取候选、webhook 适配器认平台名。
+    - 🔗 10-11（3a-28）：`compose.ts` 提前到 3a-28 建（见 ADR-0021 决策 2 下的 🔗），但这一片它只登记 B 站来源与 B 站的开发场景；三个内置适配器仍由入口造、经 `registerBuiltinAdapters` 登记，挪进 `compose.ts` 归 3a-40（推送守卫① 同片收口）。
     - 理由：留内置、拓展两套，就永远有一套没被对拍到。
 2. **名字用 `PlatformAdapter` 一套**（推翻 ADR-0023 决策 2 的 `PushOutlet`）：`PlatformAdapter` / `PlatformAdapterDef` / `PlatformAdapterHandle` / `PlatformAdapterRegistry`、`registerPlatformAdapter`、`PlatformAdapterContext`、`PlatformAdapterDescriptor`；连接上的键叫 `adapterKey`。`PlatformDescriptor`、`TargetDispatcher`、清单的 `contributes.push` 不变。目录仍叫 `platforms/`，其中的登记表与分发挪到 `push/`。
     - 🔗 10-09（3a-20b-1）：`Connector` / `PlatformDialect` 两半没有单独的消费者，不改名，直接平铺进 `PlatformAdapter` 后删掉。适配器上的登记键也叫 `adapterKey`（内置三个是 `onebot` / `qq-official` / `webhook`）；连接上落这一格之前，「连接归谁管」由 `connectionDispatchKey` 现算。
@@ -25,6 +26,8 @@
     - 必备：`start(ctx)` / `stop()`（取代 `reconcile` / `dispose`；登记即 `start`，晚登记的也收得到）、`send`、`isAvailable`、`probe`、`listConnectionCandidates(signal)`。
     - 可选：`capabilities` / `probeCapabilities`（新增 `atAll`、`inbound`，原先按平台名判断的改成问能力）、`listAddressCandidates(connection, signal)`、`connectionAuth`（与订阅侧同一个 `AuthState`，结果是一份连接草稿）。
     - 🔗 10-10（3a-22-3）主人定：`listAddressCandidates` 的签名多一个参数，`(connection, scope, signal)`，只查那一种会话 —— QQ 的群 / 私聊是内存里现成的、频道要现去平台拉，不带参数就得每次全拉。返回一排平的 `{ address, name?, parentAddress?, parentName? }`，失败走结果形状；读口 `GET /api/connections/:id/addresses?scope=`。`/api/adapters`（各适配器描述的列表）归第 4 期、新建连接候选的读口归 3b，3a 里不建。
+    - 🔗 10-11（3a-29，主人定）：修订上一条 🔗 里「`/api/adapters`……3a 里不建」的前半：只有各适配器描述的列表归第 4 期；`/api/adapters` 这个前缀由 `connectionAuth` 的三个口在 3a-29 先建（路径与方法见 ADR-0036 决策 5 下的 🔗）。新建连接候选的读口仍归 3b。
+    - 🔗 10-11（3a-29 QQ 半，主人定）：「结果是一份连接草稿」落成 `connectionAuth` 的三个方法 —— `begin(signal)`（发起，回任务号、此刻的状态、建议的问询间隔秒数）、`state(taskId, signal)`（读状态）、`takeDraft(taskId)`（取走草稿）。回包是「状态 + 草稿」两格，分开给：`AuthState` 的 `logged-in` 不加结果格，密钥不混进会被反复读的状态里；草稿只在取的那一下出现，取走即清（成功取走一次，之后这个任务号找不到）。草稿是适配器这次认证拿到的、归它自己 `settingsSchema` 管的那几格 `settings`（QQ 是 `appId` 与 `appSecret`），面板并进表单后由主人点保存，走现有的 `POST /api/connections`。任务表归适配器、任务号由适配器自己发，路由不持有状态。读状态的 GET 被读时由适配器去问一次上游（QQ：问到成功就把草稿收进任务表、之后不再问）；「无副作用」指对调用方反复读结果一样、不清草稿、回包不带草稿，没人开着弹窗就没有发往上游的请求。二维码在状态里直接带图片数据（`qr: { dataUrl, expiresAt }`），不走图库引用（见 `docs/1.0/subscription-sources.md`）。草稿不单起类型名，形状直接写在 `takeDraft` 的返回值与回应类型里。被否：两个都 POST；查结果用会清草稿的 GET；服务端自己定时去问上游；给 `AuthState` 的 `logged-in` 加可选的结果格。
 4. **新建连接只有一条路：挑一个候选，再填字段**。`ConnectionCandidate = { name, platform: PlatformDescriptor, settings, selfId?, via?, boundConnectionId? }`。平台固定的适配器返回写死的模板候选（OneBot 一个、QQ 官方机器人一个、webhook 四个），模板可以反复用；桥返回在线的 bot。
     - 理由：一条路的面板与对拍都只写一遍。
 5. **webhook 是一个适配器，飞书 / 钉钉 / 企业微信 / 通用是它的四个模板候选**。冻结的通用 webhook JSON 里 `private` 写死 `false`（主人目标不可能是 webhook）。
@@ -48,6 +51,7 @@
     - 🔗 10-10（3a-22-2）已落，施工时定的几处：「不过的只隔离那一条」不存标记、每次用时按在场的适配器现算；PATCH 只在补丁带了 `settings` 时才验（被隔离的连接照样能改名、能停用）；恢复备份不验 `settings`，进来后不合法的照读盘隔离；新建连接要适配器在场；`platformSnapshot` / `probeState` 是宿主独写，客户端带来的一律忽略、盘上坏了不挡开机。
     - 「坏条目不许被悄悄吃掉」的初衷保留：隔离是显式的，面板与问题框都看得见。
 11. **这一版不对拓展开放**：`listAddressCandidates`（alpha 之后桥帧改名时再考虑）、`connectionAuth`、描述里的条件显示与键值表字段。对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
+    - 🔗 10-11（3a-29，主人定）：这一版仍不对拓展开放，**运行时也照这个来**：宿主登记拓展适配器时把 `listAddressCandidates` 与 `connectionAuth` 摘掉再登记，带了也不认（有测试钉着）；此前只在类型上排除，用 JS 写的、或绕过类型的拓展带了这两个成员就是活的。主人认为这两个成员对桥有用（挑群、扫码建连接）；开放要连同拓展契约、桥协议与仓外两个桥插件一起设计，留到 alpha 之后改桥协议时一次做。被否：现在就开放（单独成片）；运行时不管、只在类型上排除。
 12. **内置适配器的入站也经 `ctx.inbound`**：宿主核归属、平台取自连接，不再由适配器自报。
 13. **只有 `TargetDispatcher` 能发送**（出口咽喉）。它另开 `sendToAddress(connectionId, address, payload)`，给链接预览的回复与指令回复用：不进路由、不过闸、不落历史，但要查 `isAvailable`、结果带 code、由截流统一记，不重试。链接回复原先现造的临时目标删掉。
     - 🔗 10-09 施工时主人定：三个适配器都要知道对方是群还是私聊，光一个地址字符串不够，所以第二个参数收成 `SessionRef { scope, address }`，签名 `sendToAddress(connectionId, session, payload)`（被否：加第四个参数；群与私聊各开一个方法）。连接停用回 `not_configured`，不可达回 `unavailable`。截流闸从包适配器改成接在派发器调适配器的那一处，这样能碰 `send` 的文件只有派发器一个。适配器的发送口这时还吃整个目标，派发器内部临时拼一个，3a-20 改窄后删。

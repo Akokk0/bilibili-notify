@@ -19,7 +19,7 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 
 ### 内存一份，盘上一个文件（ADR-0021 决策 15）
 
-- `SubscriptionStore`（`packages/subscription`）握一份列表，`subscription-changed` 的 diff 照常发。`findById` 按订阅 id 找；`findByIdentity` 按身份找，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
+- `SubscriptionStore`（`packages/subscription`）握一份列表，`subscription-changed` 的 diff 照常发。`findById` 按订阅 id 找；`listByIdentity` 按身份列出**全部**（正常一条，老数据遗留的重复是多条，没有就是空数组）、`findByIdentity` 按身份找第一条，来源与外部 id 两格都相等才算（B 站的 uid 与某个拓展的外部 id 恰好是同一串数字，也是两个人）。
 - `ConfigStore`（`apps/server/src/config/store.ts`）把整份订阅连同标签表写进 `<数据根>/config/subscriptions.json`（`{ tags, subscriptions }`，ADR-0034），一次原子写；删标签时订阅上的引用在同一次写里去掉，订阅只许挂表里有的标签。任何一行坏了整个拒、开机报错（`parseSubscriptionFile`）。不跳过坏行：跳过的话下次写回，那几行就永久没了。
 - **身份不许改**（`assertSubscriptionIdentityUnchanged`，ADR-0019 决策 50）：换了来源或外部 id 就是另一个人，而资料缓存（连同它引用的图库头像）、历史都挂在订阅 `id` 上。要换人就删了重加。
 - **备份**（`apps/server/src/backup/`）：格式版本 4（1.0 起；10-01 设置分文件时从 2 抬到 3，10-02 特性键改名时抬到 4），比当前旧的一律拒收：0.x 导出的（版本 1）提示先装 0.12 恢复再升级（ADR-0022 决策 6），开发期的 2 / 3 只说版本旧、恢复不了。订阅一节，行行带 `identity`，标签表跟它同进同出（恢复时先按 id、再按名字并）。资料缓存（连同它引用的图库头像）不进备份。
@@ -35,20 +35,33 @@ schema 在 `packages/internal/src/schema/subscriptions.ts`：**一种形状**，
 - 🔴 **身份别拼字符串当键。** 外部 id 是拓展给的不透明串，什么字符都可能有：拼就得选分隔符、做转义，当文件名、进 URL 还得再转义一次。按身份查一律**两层 map**（拓展 id → 外部 id），样板是 `runtime/target-scope.ts` 与 `apps/web/src/pages/up/subscription-lookup.ts`。拼成 `extensionId:externalId` 的只有两处、都只给人看：取色（`packages/internal` 的 `upColor` / `extensionColorSeed`，面板与服务端出图共用一份，ADR-0020 决策 15）与推送层的日志标签（`subscriptionLabel`）。
 - **绝不跨支**：外部 id 恰好等于某个 B 站 uid，也是另一个平台上的另一个人。
 - **同一个人只能有一条订阅**（守卫 9）：闸在写盘的 `ConfigStore`（规矩是 `packages/subscription` 的 `findNewIdentityDuplicates`），逐条写与整体替换都过它，新建撞了回 409 `conflict`。判据是这次写入有没有**新增**重复，所以盘上遗留的一对照样能改、能删；开机读到只记一句警告。恢复备份先按 id 对、再按身份并入（id 留本机的、内容用备份的），备份自己里面就有一对的整份拒收、点名是谁（`backup/restore.ts`、`backup/service.ts`）。
-- 老版本留下的同一个人两条订阅**各推各的路由**；按身份找「第一条」时先出现的那条说了算（B 站引擎那条边 `subscriptionIdOfUid` 同此）。
+- 老版本留下的同一个人两条订阅**各推各的路由**。**作品这一路 3a-28 起每条各一份**：来源上下文的 `reportPost` 按身份取全部订阅（`listByIdentity`）逐条交给作品入口，各推各的、`post-detected` 各发一次（统计各记各的），一条停用或关了作品开关只丢它自己那份。**直播仍只取第一条**：按身份找「第一条」时先出现的那条说了算（B 站引擎那条边 `subscriptionIdOfUid` 同此），随 3b。
 
 ### 哪些地方故意只认 B 站
 
 都按身份的来源过滤（`subscriptionIdentityOf(sub).sourceKey === BILIBILI_SOURCE_KEY`），旁边有一句为什么：
 
-- **B 站引擎的订阅视图**：`engines.ts` 的 `buildDynamicSubsView` / `buildLiveSubsView`、op 翻译 `subscriptionOpsToDynamic` / `subscriptionOpsToLive`、`getModuleState` 的「直播监听」那一格。拓展订阅的轮询是拓展自己做的。
+- **B 站引擎的订阅视图**：直播那一半在 `engines.ts` 的 `buildLiveSubsView`、op 翻译 `subscriptionOpsToLive`、`getModuleState` 的「直播监听」那一格（随 3b）。动态那一半 3a-28 起不在这里了：B 站来源吃核心给的名单（见下「来源登记表与名单」），原先的 `buildDynamicSubsView` / `subscriptionOpsToDynamic` 删了。拓展订阅的轮询是拓展自己做的。
 - **关注**：`runtime/follow-sync.ts`、新建时的关注与 B 站资料种子（`routes/subscriptions.ts` 的 `followUp` / `seedCachedProfile`）、查 UID / 搜名字（`/api/subscriptions/lookup`、`/api/subscriptions/search`）。
 - **粉丝轮询**：`runtime/fans-poller.ts` 只问 B 站订阅（B 站资料与粉丝曲线的来源）。它发的首页粉丝面板快照两种来源都有：拓展订阅那一行不问任何人，从统计写下的粉丝时序算（ADR-0020 决策 8，只列启用着、有时序的）。
 - **统计 / 锐评**：`routes/stats.ts`、`stats/roast-*.ts`、`runtime/roast-scheduler.ts`，面板的 Stats / Cards 页。⚠️ 这是**今天的现状、不是定案**：决策 63 定了统计页 / 粉丝曲线 / 锐评第一版就管拓展订阅（施工在 ④′，[ADR-0020](../adr/0020-stats-cover-extension-subscriptions.md)），卡片页的按 UP 预览放到 ⑤ 定。**采集已经两支都记**：`stats/recorder.ts` 挂着 B 站与拓展两个适配（`bili-source.ts` / `extension-source.ts`），拓展订阅的作品、场次、粉丝、「在记」都按订阅 id 落盘。**`GET /api/stats/overview` 也两支都列了**：行以订阅 id 为键、带 `uid` 或拓展 id + 外部 id，拓展行「那天有没有记录」只看它自己的「在记」（不借 B 站的粉丝采样），在播取引擎的 `extensionLiveSession`（场次模块）、当前粉丝取资料缓存（停用的退回样本末值）。**统计页也两支都画了**（S5）：行按订阅 id 选中 / 聚焦，颜色走 `upColor`、名字走 `displayName`，拓展行带平台徽章，单人页头拓展写「平台名 外部 id」；CSV 的身份列是「平台 / UID / 外部 ID」（外部 id 不塞进 UID）。**锐评也两支都管了**（S6，决策 12 / 14 / 15 / 18）：一张榜混着比（「至少 2 位」数两支加起来的人头），提示词不写死「B 站」、数据表多一列「平台」（B 站写「B 站」，拓展写引擎 `extensionPlatformLabel` 现取的清单平台名，取不到写拓展 id）；名字链在 `stats/roast-subject.ts`（B 站：资料名 → `UID xxx`；拓展：资料名 → 外部 id）。结果、单人锐评、推送请求、路由参数（`/roast/:subscriptionId`、`/roast/run/:subscriptionId`，面板编码进路径）、草稿里的 UP **一律是订阅 id**；0.x 按 uid 记的草稿由迁移器换成订阅 id（`migration/roast-drafts.ts`），对不上的丢掉。单人定时锐评按订阅 id 排、跑、发，`PATCH /api/subscriptions/:id` 的审批闸两支都拦。出卡（`stats/roast-deliver.ts` 的 `makeUpMeta`）：颜色走 `upColor`（同面板），头像（B 站与拓展）从图库读字节转 data URL（面板用的同源地址 `/api/images/<ref>` 截图加载不到，同 ADR-0019 决策 68 的坑）。
-- devtools 场景挑订阅（`index.ts` 里那段 `subs`）—— 它造的是 B 站事件。
+- devtools 场景挑订阅（`compose.ts` 的 `provideDevtools` 里那段 `subs`，3a-28 从入口搬来）—— 它造的是 B 站事件。
 - 决策 64 列的**只属于 B 站**：群里链接自动出卡、私聊指令按 uid 订阅、弹幕那一族（SC / 上舰 / 特别关注 / 词云 / 总结）。
 
 反过来，**遍历所有订阅**的地方所有来源都要处理（订阅只有一份列表，就是为了它们不静默漏掉拓展的订阅）：删推送目标时清引用、目标别名改写、开机清资料缓存（`pruneOrphanSubRuntime`；它丢掉的条目引用的头像由图库清扫收走，没有单独扫头像的一步）、删皮肤 / 卡片背景前查「还有人在用」、备份、健康页。
+
+## 来源登记表与名单（B 站这一支，3a-28 起）
+
+**B 站这一支经来源登记表走；拓展那一支仍走自己的通道**（上面「上报」一节的 `receiveReport` → `subscription-reported` → `bindExtensionPosts`），不经这张表，3b 并进来。
+
+- **类型**住 `packages/internal/src/source.ts`：`Source { descriptor, start(ctx), stop() }`、`SourceContext`（公共五格 `logger` / `signal` / `onDispose` / `state` / `secrets`，加 `subscriptions()` / `onSubscriptionsChanged(fn)` / `reportPost(externalId, report)`）、`SourceDescriptor { postNoun?, membershipPrograms? }`、`SourceSubscriptionView { externalId, features }`。宿主逐格列出公共五格、不展开集成上下文（B 站交进来的对象运行时带着 `http` 与 `cookies`，展开会原样抄进来）。
+- **登记表** `SourceRegistry`（`apps/server/src/subscriptions/registry.ts`，建在 `AppRuntime.sourceRegistry`）：一个来源键一个主人，`register` 认领键后 `await source.start(ctx)`，`start` 抛了就放键、错原样抛；回的把手撤登记时放键并调 `source.stop()`（不等它，失败只记 warn，`stopQuietly` 与适配器登记表共用）。`get` 问键，`list` 按登记先后列全部（会员档位读口用）。调登记的是 `compose.ts` → `engines.registerSource`（来源的上下文由 `createEngines` 建，因为作品入口、总线、关停次序都在那里）；`engines.dispose()` 先停登记过的来源、再关作品入口，所以 `stop()` 之后不许再上报。
+- **名单**是 `sourceSubscriptionViews`（`subscriptions/source-subscriptions.ts`）算出来的，全仓只有这一个算法，每次现算、别缓存：只取身份落在这个来源上、**启用中**的订阅；`features` 是按全局默认折好的开关（订阅覆盖压过全局），不看有没有目标；同一个人遗留的重复订阅合成一条、`features` 取并集；条目按第一次出现的先后。作品开关关着的人**也在名单里**（只是 `features` 里没有 `post`）—— 「没开就不查」是 3a-31 的事。
+- **「名单可能变了」**有两路：`subscription-changed`，与 `config-changed` 里 `globals` 那一档（全局特性开关变了要重算，不去列举哪个输入变了）。两路都无条件叫全部回调，宿主不替来源去重；每个回调单独 `try/catch`，一个抛了不影响排在后面的。来源自己对比新旧名单，没有进出就什么都不做。
+- **上报**：`ctx.reportPost(externalId, report)` 按身份 `listByIdentity` 取全部订阅，逐条交一份 `PostEvent`（`postNoun` 取描述符的）给作品入口；没有订阅就记 debug 丢掉，来源已停下还在上报则记 error 丢掉。停用的、作品开关关着的不在这里筛，入口按订阅现折设置再查一次（这就是「核心收到上报后兜底再查一次」）。
+- **「来源在跑吗」**读口 `SourceStatusReader.running(sourceKey)`（`subscriptions/source-status.ts`）：登记表里有它，或拓展装载器说这个拓展订阅源在跑。作品这一路的设置读口（`makePostSettingsReader`）用它判「来源没在跑就不推」，入口、装配开头、回问三处每次现读。只有「在不在跑」一个取值，`failed` / `settings-invalid` 随 3a-39。
+- **会员档位读口** `MembershipTierReader`（`subscriptions/membership-tiers.ts`）：卡片预览路由与皮肤预览按档的 key 找档（`byKey`）、取最低一档（`lowest`），读的是登记表里各来源描述符声明的会员体系；B 站的描述符声明的是舰长体系。
+- **B 站的动态引擎**由 B 站来源（`bilibili/source.ts`）在 `start(ctx)` 里造并起，吃 `ctx.subscriptions()`，只维护**一张表** `postAnchors`（uid → 时间线锚点，秒）：名单里 `features` 含 `post` 的人（在名单里且作品开关开着）才在表里，进表那一刻锚点是「现在」，离开（退订、停用、关作品开关、全局作品开关关掉）就删，所以关了作品开关再打开一律不补推关着期间的动态；表里的人才翻译、抓图、交作品。名单变了走 `syncSubscriptions()`（照名单对一遍、有进出才记一行 info 并 `reconcileJob`，**不重启 cron**，免得打乱轮询相位；表空则停 cron，没人要动态时不空拉）。重启检测器（`restartDetector`）只留给 `start`、登录恢复、退避到点三处。引擎的 `stop()` 清空这张表，所以关停那一刻还在抓图的那条动态过不了交出前的重校，不会在停下之后再上报。
 
 ## 资料与头像
 

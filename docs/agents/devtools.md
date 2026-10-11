@@ -8,13 +8,14 @@
 - **服务端 —— 结构上就不在构建产物里**:`apps/server/vite.config.ts` 的 `stubDevtools` 插件
   在**任何**构建(lib 与 bundle 都算)里把从 `src/devtools/` 目录外指进去的 import 解析到
   `devtools/stub.ts`(`createDevtools` 恒回 null),整棵树随之从产物里消失。前提是整套
-  devtools 只有 `src/index.ts` 一个引用点(`/api/dev` 路由也住在 `devtools/route.ts`,
-  app.ts 只收一个建好的 Hono),`apps/server/src/__tests__/devtools-isolation.test.ts` 钉着它。
+  devtools 各有一个引用点:核心的(`src/devtools/`)只有 `src/index.ts` 引(`/api/dev` 路由也住在 `devtools/route.ts`,
+  app.ts 只收一个建好的 Hono),B 站的(`src/bilibili/devtools/`)只有 `src/compose.ts` 引(3a-28 起,原先也是入口),
+  `apps/server/src/__tests__/devtools-isolation.test.ts` 两条各钉一处。
   构建后 `scripts/check-no-devtools.mjs` 再对着产物 grep 一遍只有 devtools 才用的字符串
   (server 的 `build` / `build:bundle` 与 web 的 `build` 都接了),隔离哪天被绕过构建当场红。
   所以 devtools **只在 tsx 直跑源码时存在**;alpha、正式版、`:test` 镜像、lib 裸跑都没有。
 - **运行期的门(源码上跑时才走到)**:`devtools/index.ts` 的 `createDevtools` 两道都成立才组装(各集成的场景也是过了这两道门
-  才建:入口交一个 `provide` 回调,门里才调):
+  才建:入口交一个 `provide` 回调,门里才调;回调里调的是 `compose.ts` 的 `provideDevtools`,把 B 站那组场景按来源键认领进去):
   ① 载荷版本号是开发版(`0.0.0-dev` / `dev`,`update/version-order.ts` 的 `isDevBuild`);
   ② 跑的是 TypeScript 源码(`import.meta.url` 以 `.ts` 收尾)。第一道**失败即敞开**(`0.0.0-dev`
   是仓库常驻值,版本号读不出来时兜底也是 `"dev"`),历史上公开推的 `:test` 镜像就是这么把
@@ -41,7 +42,9 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 选择器,值是 id,留空 = 服务端默认)、`number` / `enum` / `text`(自带默认值)。
 
 - 服务端那半:核心的场景在 `apps/server/src/devtools/scenarios/*.ts`;各集成自带的场景经 `DevtoolsProvider` 登进
-  `devtoolsProviders`(B 站的在 `apps/server/src/bilibili/devtools/`),汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
+  `devtoolsProviders`(B 站的在 `apps/server/src/bilibili/devtools/`,由 `compose.ts` 的 `provideDevtools` 认领;
+  过渡接线还在:两层套了壳的句柄仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b、登录那组等 3a-29),
+  汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
   两边一起经 `createDevRegistry` 汇总,
   `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的
   `active()`;场景做什么归各自的 `run`。
@@ -84,7 +87,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 | 更新 9 相 8 归因 | 包 `UpdateService`,只换 `getStatus()` 的 `state`;**真动作不清注入**(面板每次打开都自动 check,清了刷新一下就没了),只在面板收摊 | `update-injection.ts` |
 | 推送截流 | 接在 `TargetDispatcher` 调适配器 `send` 的那一处(`interceptSend`,三条发送路共用):开着就不真发、记摘要、回 ok**并标 `isSynthetic`**(dispatcher 的 `onDelivery` 会拿投递结果去写 `target.reachability` 并落盘,一条没出网的成功不能拿来说「这个目标通」——`isReachabilityEvidence` 挡在那儿);历史照记 delivered 不打标,面板列表是对照,`DELETE /api/dev/captures/history` 按截流时间窗删行(`HistoryStore.deleteRange`) | `capture.ts` |
 | 开播 / 下播 / 弹幕 / SC / 上舰 / 礼物 / 进场 | blive 的 `observeLiveConnections` 观察钩子拿到房间的 `emit`,与真帧同一条回调;假直播期间 `fetchLiveRoomInfo` 对那个房间打补丁(live_status=1、live_time=现在) | `live-rooms.ts`、`scenarios/live*.ts` |
-| 四类动态 | 传给引擎的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 引擎构造时存下的方法引用也吃得到覆盖),`fetchAllDynamic` 结果最前并进假动态,`DynamicEngine.detectNow()` 立刻跑一轮,跑完撤 | `scenarios/dynamic.ts` |
+| 四类动态 | 传给引擎的 `api` 套 Proxy(`api-overrides.ts`,按方法名盖、`this` 绑回真对象;每个方法一份**稳定**的包装,盖没盖在调用时查 —— 引擎构造时存下的方法引用也吃得到覆盖),`fetchAllDynamic` 结果最前并进假动态,`DynamicEngine.detectNow()` 立刻跑一轮,跑完撤(引擎句柄是 B 站来源的 `dynamic()`,由 `compose.ts` 读它自己造的来源;来源登记之前它是 undefined,场景报「动态引擎还没起来」) | `scenarios/dynamic.ts` |
 | 私聊指令 / 群链接 | 直接调接线层的两个入站口(与 adapter 收到真帧后调的是同一个函数) | `scenarios/inbound.ts` |
 | 一条桥接进来 | **不装饰任何东西** —— 拿那条桥接入自己的 token 连一条**真 WS** 回 BN 身上(`ws://127.0.0.1:<自己的端口>/ext/bridge`),所以 upgrade / 鉴权 / 握手 / `publishView` / 推送 adapter / 回执全是真的,假的只有「后面没有 bot」。🔴 帧是照 `extensions/bridge/PROTOCOL.md` **手写的第二份**(核心 import 不到拓展,ADR-0012 决策 42),漂了没门禁会红 —— 所以 `src/__tests__/devtools-fake-bridge-e2e.test.ts` 把真桥装进装载根让两边真说一次话 | `fake-bridge.ts`、`scenarios/bridge.ts` |
 | 拓展有更新 | 包交给 `/api/ext/marketplace*` 的那个 `Marketplace`:列表里那个 id 的一条改成 `updatable`,版本 = **装着那版**的下一个补丁号(预发布就加最后一段);索引里没有它(断网 / 不在任何索引里)就现造一条**官方**的 —— 官方一键装,造成第三方的每按一次多弹一个确认框。装那个 id **先等「假装下载」那几秒、再假装成功**:同形状的回话,不下载、不写盘、不重扫,所以卡上印的版本号不变;装成即撤。别的 id 原样过真市场 | `marketplace-injection.ts`、`scenarios/marketplace.ts` |

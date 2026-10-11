@@ -274,8 +274,8 @@ ctx.resolveProblem({ connectionId?, code }): void;
 | `probe` | 是 | 开 | |
 | `listConnectionCandidates(signal)` | 是 | 开 | 原 `listBots`，见「新建连接」 |
 | `capabilities` / `probeCapabilities` | 否 | 开 | 新增 `atAll`、`inbound`；原先按平台名判断的改成问能力 |
-| `listAddressCandidates(connection, signal)` | 否 | 不开 | alpha 之后桥帧改名时再看 |
-| `connectionAuth` | 否 | 不开 | 与订阅侧同一个 `AuthState`，结果是一份连接草稿 |
+| `listAddressCandidates(connection, scope, signal)` | 否 | 不开 | alpha 之后桥帧改名时再看；运行时也摘：宿主登记拓展适配器时把它摘掉，带了也不认（10-11） |
+| `connectionAuth` | 否 | 不开 | 与订阅侧同一个 `AuthState`，结果是一份连接草稿；运行时也摘：宿主登记拓展适配器时把它摘掉，带了也不认（10-11） |
 
 对拍逐成员核：要么走通，要么在「不开」名单里写明理由。
 
@@ -364,7 +364,7 @@ interface ConnectionCandidate {
 | 群入站的 `miniAppCardLinks` | 桥 → BN | 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），规矩是「原生分享卡里的链接不回预览」 |
 
 - 帧里改成什么名字列在 [construction-plan.md](./construction-plan.md)「alpha 之后、1.0.0 之前」。
-- `listAddressCandidates` 对拓展开不开放，随这次一起看。
+- `listAddressCandidates` 与 `connectionAuth` 对拓展开不开放，随这次一起看（10-11 主人认为这两个成员对桥有用，挑群、扫码建连接都用得上；开放要连同拓展契约、桥协议与仓外两个桥插件一起设计，留到这次一次做）。
 
 ## 边界
 

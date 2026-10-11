@@ -110,7 +110,7 @@ internal 不当杂物间。已扫出、要在 1.0 收掉的重复（🔴 = 几�
 
 ```
 compose.ts         组装根：登记内置集成（B 站、三个内置平台适配器）与拓展宿主（整个核心只有它能 import bilibili/ 与 platforms/）
-subscriptions/     订阅、资料刷新、身份唯一闸、Source 登记表与接口定义
+subscriptions/     订阅、资料刷新、身份唯一闸、Source 登记表与来源上下文宿主（`Source` 一族的类型住 `packages/internal`，3a-28 已建登记表、上下文宿主、名单算法、「来源在跑」与会员档位两个读口）
 accounts/          账号：系统 → 账号、排序、汇总各来源登录态
 images/            图库：fetchImage / storeImage 的落点、按引用清扫（引用方含历史、重推原件、资料缓存、AI 会话）
 push/              路由、闸、免扰、TargetDispatcher（含 sendToAddress）、PlatformAdapterRegistry 与按连接分发、notifyMaster
@@ -161,13 +161,13 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 | `LinkResolver` | 群里的链接 → `LinkPreview { post, canonicalId, nativeShare? }`；带 `label`，`resolve` 返回结果形状（ADR-0029） | `linkResolvers` |
 | `AiToolProvider` | 来源专有的只读 AI 工具与技能（B 站：总播放、获赞、视频列表与 B 站版周报） | `aiToolProviders` |
 | `DevtoolsProvider` | 开发版的造状态 / 造事件场景：`{ scenarios: DevScenarioDef[] }`；场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2） | `devtoolsProviders`（只在开发版） |
-| `PlatformAdapter` | 推送侧：一种连接怎么真发出去。描述 `PlatformAdapterDescriptor` 与 `settingsSchema`；必备 `start(ctx)` / `stop()`、`send`、`isAvailable`、`probe`、`listConnectionCandidates`；可选 `capabilities` / `probeCapabilities`（含 `atAll`、`inbound`）、`listAddressCandidates`、`connectionAuth`（ADR-0024 决策 3）。内置三个与拓展提供的同一个接口；`send` 只有 `TargetDispatcher` 能调 | `platformAdapters`（`PlatformAdapterRegistry`） |
+| `PlatformAdapter` | 推送侧：一种连接怎么真发出去。描述 `PlatformAdapterDescriptor` 与 `settingsSchema`；必备 `start(ctx)` / `stop()`、`send`、`isAvailable`、`probe`、`listConnectionCandidates`；可选 `capabilities` / `probeCapabilities`（含 `atAll`、`inbound`）、`listAddressCandidates`、`connectionAuth`（ADR-0024 决策 3；`connectionAuth` 三个方法 `begin` / `state` / `takeDraft`，回 `AuthState`、状态不带草稿，3a-29 QQ 半已落）。这两个可选成员对拓展不开放（决策 11），类型上排除、宿主登记拓展适配器时运行时也摘掉。内置三个与拓展提供的同一个接口；`send` 只有 `TargetDispatcher` 能调 | `platformAdapters`（`PlatformAdapterRegistry`） |
 
 - **指令没有登记表**：1.0 没有来源自带的指令，`CommandProvider` 先不造（ADR-0031 决策 1）；指令全是核心的，以 `CommandDef` 交给指令框架。来源自带指令与重名的规矩等第一个真要自带指令的拓展。
 - `PlatformAdapterDescriptor` 描述一个适配器（它的脸与设置字段）；`PlatformDescriptor` 描述一个聊天平台（名字、目标形状、地址叫法），由连接候选带来。
 
 ```ts
-interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已由 extensions/claim-table.ts 搬来改名，工厂 createRegistry）；entries() 等第一个要列全表的调用方（/api/sources）出现时再补
+interface Registry<T> {             // 住 integrations/registry.ts（3a-08 已由 extensions/claim-table.ts 搬来改名，工厂 createRegistry）；entries() 3a-28 已补，第一个读者是会员档位读口（经来源登记表的 list()），不是 /api/sources
   get(key: IntegrationKey): T | undefined;
   claim(key: IntegrationKey, value: T): { dispose(): void };   // 一个键一个主人；只撤自己那行；撤了能再登
   entries(): Iterable<[IntegrationKey, T]>;
@@ -208,6 +208,8 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 - 登进表的接口再由宿主起：`Source.start` 拿 `SourceContext`，`PlatformAdapter` 登记即 `start`（晚登记的也收得到）、拿 `PlatformAdapterContext`。来源与适配器特有的那一层（名单、上报、入站、自己的连接）内置与拓展一样都经 `start(ctx)` 递进来，登记交回的把手只管注销（ADR-0025 决策 1）。
 - B 站段设置校验不过时，B 站这个集成不起（`settings-invalid`）：来源、链接解析器、AI 工具都不登记，订阅显示来源不可用；改对了当场起。`/api/sources` 的描述符不受影响：`compose.ts` 静态登记 B 站完整的 `SourceDescriptor`，设置坏了照样下发。
 - `compose.ts` 里 `bilibili/` 的东西只能作登记的参数；核心拿不到 B 站客户端（今天的 `engines.api` 删掉，见「守卫」入口咽喉）。
+
+🔗 **现状（3a-28 起，主人 10-11 定提前建，原定 3a-40）**：文件已在，今天只做两件事 —— 造 B 站来源并登记（`registerSources`，在引擎建好之后调，经 `engines.registerSource` 建来源上下文、登记即 `start`），与认领 B 站那组开发场景（`provideDevtools`）。B 站集成的上下文仍由登录那套建好递进来（`AuthSystem.integration`），来源另外还直接拿着事件总线、给主人私聊的口、配置仓三样（各归 3a-29、3a-30、3a-39）。上面各项里这一片没做的：三个内置适配器的造与登记、B 站设置的登记、登录装配、链接解析器与 AI 工具的登记、删 `engines.api`，以及「内置集成在 `start(ctx)` 里用同一组登记方法登记」这个终点，都留给 3a-40。
 
 拓展在清单的 `contributes` 里按需声明，宿主启用时以拓展 id 登进对应的表、把撤销把手交给生命周期；停用、卸载即撤，不用重启。1.0 对拓展开放哪些键见 [extension-contract.md](./extension-contract.md)。
 
@@ -277,7 +279,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
   - `/api/subscriptions`、`/api/stats/followers`（10-03 ADR-0036 推翻原定的 `/api/followers`）、`/api/library`。整张路由的新旧对照见 ADR-0036。
   - `/api/sources`：每个来源一份 `{ key, descriptor, has, status }`，`has { auth, liveStatus, preview }` 由宿主按实现推算、不让来源自报，`status` 是运行状态的取值；拓展停用、失败、设置不合法时照样有描述符。
   - `/api/sources/:sourceKey/creators?q=`（搜人，返回结果形状）。
-  - `/api/adapters`：各平台适配器的描述，新建连接时用；连接候选、`connectionAuth`、`listAddressCandidates` 的路由形状施工时定。`routes/qq.ts` 这类按平台开的路由删掉，QQ 官方机器人的扫码建连接与会话地址改走这组通用路由。
+  - `/api/adapters`：各平台适配器的描述，新建连接时用（这个列表仍归第 4 期）；连接候选的读口归 3b；`listAddressCandidates` 的读口挂在连接底下（`GET /api/connections/:id/addresses`，3a-22 已落）。`connectionAuth` 的三个口 3a-29 已建：`POST /api/adapters/:adapterKey/auth`（发起，回任务号、状态与建议的问询间隔）、`GET /api/adapters/:adapterKey/auth/:taskId`（读状态，不带草稿、不清草稿）、`POST /api/adapters/:adapterKey/auth/:taskId/draft`（取走草稿，取走即清，响应头 `no-store`）；路由直接问适配器登记表、不持有状态。`routes/qq.ts` 已删，`/api/qq/*` 整组退役：QQ 官方机器人的扫码建连接走这三个口，会话地址走连接底下那个口。
   - `/api/problems`（问题表一次给全）。
   - `/api/health`：短版只留存活探测与应用内更新要的 `status`、`version`、`startedAt`、`uptime`（应用内更新靠 `version` 与 `startedAt` 认新进程）；B 站的格子（`login`、`dynamicCron`、moduleVersions 里的 api / dynamic / live 等）删掉。`/api/health/details`：分核心、集成两组，给健康卡。
   - `/api/history?feature=`；`?uid=` 删掉（没有调用方），以后要按人查再加 `?identity=`（ADR-0027 决策 7）。
@@ -310,8 +312,8 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 守卫 | 判据 / 范围 | 什么时候红 | 期 |
 | --- | --- | --- | --- |
 | 1 边界表 | 核心目录不许 import 服务端 `bilibili/`，例外只有 `compose.ts`；和现有两条拓展边界、推送守卫① 合成一张「谁不许 import 谁」的边界表 | 核心文件 import 了 `bilibili/` | 3a |
-| 推送守卫① | 核心不许 import `platforms/`（内置适配器的实现），例外只有 `compose.ts` | 核心文件 import 了内置适配器。勘察时真越界的是 `app.ts`、`routes/qq.ts`、`routes/types.ts`；`sink/`、`engines.ts`、拓展宿主、devtools import 的是 `registry.ts` / `dispatch.ts` 这两个放错目录的中立件，挪进 `push/` 即清 | 3a |
-| B 站替身 | 范围核心 + 面板 + contract：裸 `"bilibili"` 字面量（`@bilibili-notify/` 除外）、`Bili*` / `BILIBILI_` 标识符、`"@bilibili"` 哨兵；白名单 `compose.ts`、`bilibili/`、保留 id 表、迁移模块、设置 schema 的组合处。🔗 ⑥d 落地（`scripts/__tests__/bilibili-stand-ins.test.mjs`）：标识符按驼峰段与下划线段切开，有一段是 `bili` / `bilibili` 就算（`isBiliSubscription`、`BILI_ONLY_EXTRAS`、`fromBilibili` 都抓得到，`mobility` 不误中）；字面量正好是 `"bilibili"` / `"@bilibili"` 才算；不扫测试；B 站四包今天算核心、进基线；白名单今天有迁移模块与 `bilibili/` 两个整目录（`bilibili/` 自 ⑥f 起住着 B 站自己的设置），保留 id 表暂与 constants 同住、先记棘轮，清零前拆出来再放白名单；开张基线 70 个文件 403 处 | `isBiliSubscription` 删掉以后换个写法回来：`identity.sourceKey === "bilibili"`、`"@bilibili"`、`BILIBILI_*` 常量 | 1⑥ 棘轮开，4 末清零 |
+| 推送守卫① | 核心不许 import `platforms/`（内置适配器的实现），例外只有 `compose.ts` | 核心文件 import 了内置适配器。勘察时真越界的是 `app.ts`、`routes/qq.ts`（3a-29 QQ 半已清：路由删了，任务表搬进适配器）、`routes/types.ts`；`sink/`、`engines.ts`、拓展宿主、devtools import 的是 `registry.ts` / `dispatch.ts` 这两个放错目录的中立件，挪进 `push/` 即清 | 3a |
+| B 站替身 | 范围核心 + 面板 + contract：裸 `"bilibili"` 字面量（`@bilibili-notify/` 除外）、`Bili*` / `BILIBILI_` 标识符、`"@bilibili"` 哨兵；白名单 `compose.ts`、`bilibili/`、保留 id 表、迁移模块、设置 schema 的组合处。🔗 ⑥d 落地（`scripts/__tests__/bilibili-stand-ins.test.mjs`）：标识符按驼峰段与下划线段切开，有一段是 `bili` / `bilibili` 就算（`isBiliSubscription`、`BILI_ONLY_EXTRAS`、`fromBilibili` 都抓得到，`mobility` 不误中）；字面量正好是 `"bilibili"` / `"@bilibili"` 才算；不扫测试；B 站四包今天算核心、进基线；白名单今天有迁移模块与 `bilibili/` 两个整目录（`bilibili/` 自 ⑥f 起住着 B 站自己的设置），与 `compose.ts` 一个文件（3a-28 起；入口 `index.ts` 的现数 5、`runtime/engines.ts` 的现数 17，都只降不升），保留 id 表暂与 constants 同住、先记棘轮，清零前拆出来再放白名单；开张基线 70 个文件 403 处 | `isBiliSubscription` 删掉以后换个写法回来：`identity.sourceKey === "bilibili"`、`"@bilibili"`、`BILIBILI_*` 常量 | 1⑥ 棘轮开，4 末清零 |
 | 存储占用的目录覆盖 | 数据根目录表每个一级目录，要么归存储占用的某一类、要么列在写明理由的不进表清单里（`runtime/storage-usage.ts` 的 `DATA_ROOT_STORAGE_COVERAGE`） | 往数据根加了一级目录而没想它归哪一类（编译不过，测试也红） | 2（㉙ 已落） |
 | 11 B 站专有词（修订） | 范围 `packages/` 全部 + 服务端 `bilibili/` 以外 + contract（登录态在 contract 里只有中立的 `AuthState`，没有要进白名单的 B 站文件）；面板、测试、夹具不扫（面板归「B 站替身」与「中文叫法棘轮」）。先剥注释，按词边界匹配。词表自动生成（`bilibili/` 的导出名、B 站接口客户端的方法名、B 站类型的键）再手补：`DYNAMIC_TYPE_`、`RICH_TEXT_NODE_`、`MAJOR_TYPE_`、`ADDITIONAL_TYPE_`、`module_dynamic`、`jump_url`、`id_str`、`guard_level`、`live_time`、`live_status`、`WATCHED_CHANGE`、`roomId` / `room_id`、`bili_user`、`bvid`、`hdslb`、`bilibili.com`、`b23.tv`、风控码等；原始字段按属性访问匹配。不收 `uid`（另有 uid 棘轮）。确实要留的进白名单、附理由 | 核心里出现 B 站专有词。旧版只有英文词、按子串匹配：会误中 `get_live_status`，剥注释后 `platform.ts` 这类文件零命中，也不扫 contract（旧词表现查：中立包约 68 处、服务端约 50 处） | 3a 棘轮开，3b 末清零；这是中立化的验收线 |
 | uid 棘轮 | `bilibili/` 与迁移模块以外出现 `uid`；面板算不算进这道棘轮施工时定（面板的 UID 字样随第 4 期按描述符重画） | 中立层又拿 `uid` 当身份（中立层只有 `externalId`） | 3a 棘轮开，3b 末清零 |
