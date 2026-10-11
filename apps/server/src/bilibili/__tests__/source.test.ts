@@ -166,6 +166,8 @@ function makeCtx(roster: Array<{ externalId: string; post: boolean }> = []) {
 			return { dispose: watchDisposed };
 		},
 		reportPost,
+		reportProblem: vi.fn(),
+		resolveProblem: vi.fn(),
 	} as unknown as SourceContext;
 	return { ctx, watchers, watchDisposed, reportPost };
 }
@@ -346,6 +348,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 			bus: world.bus,
 			logger,
 			enqueue: enqueue as never,
+			problems: { report: vi.fn(), resolve: vi.fn(), clearReporter: vi.fn() },
 		});
 		const feed = (...items: unknown[]) => {
 			feedItems = items;

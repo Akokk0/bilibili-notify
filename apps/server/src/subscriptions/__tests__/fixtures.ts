@@ -12,6 +12,7 @@ import {
 } from "@bilibili-notify/internal";
 import { createSubscriptionStore } from "@bilibili-notify/subscription";
 import { type Mock, vi } from "vite-plus/test";
+import type { ProblemTable } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createSourceRegistry, type SourceRegistry } from "../registry.js";
 
@@ -41,6 +42,13 @@ export const makeIntegration = (logger: Logger = makeLogger()): IntegrationConte
 		cookies: { header: vi.fn() },
 	} as unknown as IntegrationContext;
 };
+
+/** 问题表的写口替身:三个动作都是 spy。 */
+export const makeProblems = () => ({
+	report: vi.fn<ProblemTable["report"]>(),
+	resolve: vi.fn<ProblemTable["resolve"]>(),
+	clearReporter: vi.fn<ProblemTable["clearReporter"]>(),
+});
 
 export const makeSub = (
 	id: string,

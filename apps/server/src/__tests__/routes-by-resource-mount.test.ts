@@ -93,6 +93,8 @@ const NEW_PATHS: Probe[] = [
 	get("/api/sources/bilibili/auth"),
 	post("/api/sources/bilibili/auth"),
 	{ method: "DELETE", path: "/api/sources/bilibili/auth" },
+	// 问题表的读口(3a-30):只读内存里的表,真运行时里是空表 —— 挂上了就回 200。
+	get("/api/problems"),
 	// 决策 5 随 ⑮ 开的图库读口(没这张图,处理函数自己回 404 —— 那也是挂上了的证据)。
 	get(`/api/images/${"0".repeat(64)}.png`),
 	// 聊天附件的上传(⑳b 起存进图库):没带文件,处理函数动手之前就回 400。

@@ -73,7 +73,7 @@ describe("内置来源的登记接在开机与关停路径上", () => {
 		await rm(dataDir, { recursive: true, force: true });
 	});
 
-	it("开机后来源的 start 恰好一次,ctx 上三个方法都在;关服务之后 stop 恰好一次", async () => {
+	it("开机后来源的 start 恰好一次,ctx 上五个方法都在;关服务之后 stop 恰好一次", async () => {
 		const port = await findFreePort();
 		handle = await startServer({
 			argv: [
@@ -93,11 +93,44 @@ describe("内置来源的登记接在开机与关停路径上", () => {
 		expect(typeof ctx.subscriptions).toBe("function");
 		expect(typeof ctx.onSubscriptionsChanged).toBe("function");
 		expect(typeof ctx.reportPost).toBe("function");
+		expect(typeof ctx.reportProblem).toBe("function");
+		expect(typeof ctx.resolveProblem).toBe("function");
 		expect(ctx.subscriptions()).toEqual([]);
 		expect(fake.stops).toBe(0);
 
 		await handle.close("test");
 		handle = undefined;
 		expect(fake.stops).toBe(1);
+	});
+
+	// 验红:删掉 `engines.ts` 的 `registerSource` 里递 `problems` 的那一行,或 `app.ts` 里挂 `/api/problems` 的那一行,这条红。
+	it("来源在 start 之后报的问题,经 GET /api/problems 读得到", async () => {
+		const port = await findFreePort();
+		handle = await startServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"silent",
+			],
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+		const ctx = fake.starts[0] as SourceContext;
+		const read = async () =>
+			(await (await fetch(`http://127.0.0.1:${port}/api/problems`)).json()) as {
+				problems: Array<{ reporter: string; code: string; message: string }>;
+			};
+		expect(await read()).toEqual({ problems: [] });
+
+		ctx.reportProblem({ code: "auth_lost", message: "登录失效了" });
+
+		const { problems } = await read();
+		expect(problems.map((p) => [p.reporter, p.code, p.message])).toEqual([
+			["bilibili", "auth_lost", "登录失效了"],
+		]);
 	});
 });

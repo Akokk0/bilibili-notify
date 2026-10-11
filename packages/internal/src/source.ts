@@ -26,6 +26,22 @@ export interface SourceContext extends IntegrationContext {
 	onSubscriptionsChanged(fn: () => void): Disposable;
 	/** 交一条作品。没有返回值;判新、去重、限流归来源。 */
 	reportPost(externalId: string, report: PostReport): void;
+	/**
+	 * 报一个问题(登录失效了、某个人不再监听了……)。不带 `externalId` 是来源自己的问题;带了由宿主换成
+	 * 这个人名下的每一条订阅。`code` 是 snake 风格,同一个对象下同一个 code 只有一条,再报只换文案。
+	 * `notify: true` 请核心私聊主人一次。没有返回值;形状不对、来源已停下的上报被丢弃。
+	 */
+	reportProblem(problem: {
+		externalId?: string;
+		code: string;
+		message: string;
+		notify?: boolean;
+	}): void;
+	/**
+	 * 清掉一个问题(同 `reportProblem` 的对象规矩)。清掉时核心对私聊过的补一句「已恢复」;
+	 * `notify: false` = 这次不是修好了、只是不再适用,不补。没有这一条什么都不做。
+	 */
+	resolveProblem(problem: { externalId?: string; code: string; notify?: boolean }): void;
 }
 
 /** 来源登录着的账号:名字必有;头像抓进图库之后才有 `avatar`(图库引用,不是平台的图片地址)。 */

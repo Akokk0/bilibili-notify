@@ -32,6 +32,7 @@ import type {
 	ImageRef,
 	Issue,
 	PostFilterReason,
+	Problem,
 	PushMessageRole,
 	PushStatus,
 	Result,
@@ -1237,6 +1238,14 @@ export interface ConnectionAuthDraftResponse {
 export interface SourceAuthResponse {
 	state: AuthState;
 	account?: SourceAccount;
+}
+
+/**
+ * `GET /api/problems` 响应 —— 问题表此刻的全部,按 `since` 先后。全在内存,重启清空;
+ * 变了服务端发 `problems-changed`(按报的人合并过),面板据此重取。
+ */
+export interface ProblemsResponse {
+	problems: Problem[];
 }
 
 // ---- /api/system/backup ------------------------------------------------------------

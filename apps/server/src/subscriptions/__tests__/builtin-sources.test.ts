@@ -11,6 +11,7 @@ import { createSourceRegistry } from "../registry.js";
 import {
 	makeIntegration,
 	makeLogger,
+	makeProblems,
 	makeSource,
 	makeSub,
 	makeWorld,
@@ -21,6 +22,7 @@ const setup = (source: Source = makeSource()) => {
 	const world = makeWorld([makeSub("a", "1")]);
 	const registry = createSourceRegistry();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
+	const problems = makeProblems();
 	const options = {
 		registry,
 		source,
@@ -31,8 +33,9 @@ const setup = (source: Source = makeSource()) => {
 		bus: world.bus,
 		logger: makeLogger(),
 		enqueue,
+		problems,
 	};
-	return { ...world, registry, enqueue, options };
+	return { ...world, registry, enqueue, problems, options };
 };
 
 describe("registerBuiltinSource", () => {
@@ -103,6 +106,41 @@ describe("registerBuiltinSource", () => {
 		expect(registry.get(SOURCE_KEY)).toBeUndefined();
 		bus.emit("config-changed", { scope: "globals" });
 		expect(seen).toHaveLength(0);
+	});
+
+	it("撤登记:这个来源报的问题整批清掉(clearReporter),在 stop 之后", async () => {
+		const order: string[] = [];
+		const source = makeSource();
+		const stop = source.stop.bind(source);
+		source.stop = vi.fn(async () => {
+			order.push("stop");
+			await stop();
+		});
+		const { options, problems } = setup(source);
+		problems.clearReporter.mockImplementation(() => void order.push("clear"));
+		const handle = await registerBuiltinSource(options);
+		expect(problems.clearReporter).not.toHaveBeenCalled();
+		handle.dispose();
+		expect(problems.clearReporter).toHaveBeenCalledTimes(1);
+		expect(problems.clearReporter).toHaveBeenCalledWith(SOURCE_KEY);
+		expect(order).toEqual(["stop", "clear"]);
+		// 宿主在清,不是逐条 resolve(逐条 resolve 会补「已恢复」)
+		expect(problems.resolve).not.toHaveBeenCalled();
+	});
+
+	it("登记失败(start 抛):start 途中报过的也清掉", async () => {
+		const broken: Source = {
+			descriptor: {},
+			async start(ctx) {
+				ctx.reportProblem({ code: "half_started", message: "还没起完" });
+				throw new Error("start-boom");
+			},
+			stop: async () => {},
+		};
+		const { options, problems } = setup(broken);
+		await expect(registerBuiltinSource(options)).rejects.toThrow("start-boom");
+		expect(problems.report).toHaveBeenCalledTimes(1);
+		expect(problems.clearReporter).toHaveBeenCalledWith(SOURCE_KEY);
 	});
 });
 

@@ -1,7 +1,14 @@
 import type { PostEvent, PostReport } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createSourceContext } from "../source-context.js";
-import { makeIntegration, makeLogger, makeSub, makeWorld, SOURCE_KEY } from "./fixtures.js";
+import {
+	makeIntegration,
+	makeLogger,
+	makeProblems,
+	makeSub,
+	makeWorld,
+	SOURCE_KEY,
+} from "./fixtures.js";
 
 const report = (postId = "p1"): PostReport => ({
 	postId,
@@ -13,6 +20,7 @@ const setup = (subs = [makeSub("a", "1")]) => {
 	const world = makeWorld(subs);
 	const logger = makeLogger();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
+	const problems = makeProblems();
 	const handle = createSourceContext({
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,
@@ -22,18 +30,21 @@ const setup = (subs = [makeSub("a", "1")]) => {
 		bus: world.bus,
 		logger,
 		enqueue,
+		problems,
 	});
-	return { ...world, logger, enqueue, handle };
+	return { ...world, logger, enqueue, problems, handle };
 };
 
 describe("createSourceContext", () => {
-	it("交出去的上下文只有公共五格加来源的三个方法:没有 http 与 cookies", () => {
+	it("交出去的上下文只有公共五格加来源的五个方法:没有 http 与 cookies", () => {
 		const { handle } = setup();
 		expect(Object.keys(handle.ctx).sort()).toEqual([
 			"logger",
 			"onDispose",
 			"onSubscriptionsChanged",
 			"reportPost",
+			"reportProblem",
+			"resolveProblem",
 			"secrets",
 			"signal",
 			"state",
@@ -55,6 +66,7 @@ describe("createSourceContext", () => {
 			bus: makeWorld().bus,
 			logger: hostLogger,
 			enqueue: vi.fn(),
+			problems: makeProblems(),
 		});
 		expect(handle.ctx.logger).toBe(hostLogger);
 		expect(handle.ctx.logger).not.toBe(integrationLogger);
@@ -136,5 +148,97 @@ describe("createSourceContext", () => {
 		expect(logger.error).toHaveBeenCalledTimes(1);
 		// 幂等
 		expect(() => handle.dispose()).not.toThrow();
+	});
+});
+
+/**
+ * 问题上报:不带 `externalId` 记在来源自己名下;带了按身份展开成这个人名下的每一条订阅。
+ * 上报类一律没有返回值;停下之后、形状不对的丢弃并记 error(内置来源被拒就是 BN 的 bug)。
+ */
+describe("createSourceContext · reportProblem / resolveProblem", () => {
+	it("不带 externalId:记在来源自己名下(报的人是来源键),notify 原样带上", () => {
+		const { handle, problems } = setup();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "登录失效", notify: true });
+		expect(problems.report).toHaveBeenCalledTimes(1);
+		expect(problems.report).toHaveBeenCalledWith({
+			reporter: SOURCE_KEY,
+			code: "auth_lost",
+			message: "登录失效",
+			notify: true,
+		});
+	});
+
+	it("带 externalId:按身份展开,遗留的两条重复订阅各记一条,别人的订阅不碰", () => {
+		const { handle, problems } = setup([makeSub("a", "1"), makeSub("b", "1"), makeSub("c", "2")]);
+		handle.ctx.reportProblem({ externalId: "1", code: "monitor_stopped", message: "停了" });
+		expect(problems.report.mock.calls.map(([p]) => p.about?.subscriptionId)).toEqual(["a", "b"]);
+		expect(problems.report.mock.calls[0]?.[0]).toEqual({
+			reporter: SOURCE_KEY,
+			about: { subscriptionId: "a" },
+			code: "monitor_stopped",
+			message: "停了",
+		});
+	});
+
+	it("带 externalId 但这个人没有订阅:不记,记 debug", () => {
+		const { handle, problems, logger } = setup();
+		handle.ctx.reportProblem({ externalId: "999", code: "monitor_stopped", message: "停了" });
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalled();
+	});
+
+	it("停用着的订阅照记,不在这里筛", () => {
+		const { handle, problems } = setup([makeSub("a", "1", { enabled: false })]);
+		handle.ctx.reportProblem({ externalId: "1", code: "monitor_stopped", message: "停了" });
+		expect(problems.report).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		["code 不是 snake", { code: "Auth-Lost", message: "x" }],
+		["code 是空串", { code: "", message: "x" }],
+		["message 是空白", { code: "auth_lost", message: "   " }],
+		["externalId 给了空串", { externalId: "", code: "auth_lost", message: "x" }],
+	])("形状不对(%s):丢弃并记 error", (_name, input) => {
+		const { handle, problems, logger } = setup();
+		handle.ctx.reportProblem(input);
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("resolveProblem:同样的展开,notify 缺省不带、给了就带", () => {
+		const { handle, problems } = setup([makeSub("a", "1"), makeSub("b", "1")]);
+		handle.ctx.resolveProblem({ code: "auth_lost" });
+		expect(problems.resolve).toHaveBeenLastCalledWith(
+			{ reporter: SOURCE_KEY, code: "auth_lost" },
+			undefined,
+		);
+		handle.ctx.resolveProblem({ externalId: "1", code: "monitor_stopped", notify: false });
+		expect(problems.resolve.mock.calls.slice(1)).toEqual([
+			[
+				{ reporter: SOURCE_KEY, about: { subscriptionId: "a" }, code: "monitor_stopped" },
+				{ notify: false },
+			],
+			[
+				{ reporter: SOURCE_KEY, about: { subscriptionId: "b" }, code: "monitor_stopped" },
+				{ notify: false },
+			],
+		]);
+	});
+
+	it("resolveProblem 形状不对:丢弃并记 error", () => {
+		const { handle, problems, logger } = setup();
+		handle.ctx.resolveProblem({ code: "Bad Code" });
+		expect(problems.resolve).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("来源停下之后:报与清都丢弃,各记一行 error", () => {
+		const { handle, problems, logger } = setup();
+		handle.dispose();
+		handle.ctx.reportProblem({ code: "auth_lost", message: "x" });
+		handle.ctx.resolveProblem({ code: "auth_lost" });
+		expect(problems.report).not.toHaveBeenCalled();
+		expect(problems.resolve).not.toHaveBeenCalled();
+		expect(logger.error).toHaveBeenCalledTimes(2);
 	});
 });

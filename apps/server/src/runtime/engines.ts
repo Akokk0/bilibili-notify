@@ -91,6 +91,8 @@ import { createCardFailureTracker, type PostSettings } from "../posts/deliver-po
 import { bindExtensionPosts } from "../posts/extension-post.js";
 import type { PostPushAnchor, PushSegment } from "../posts/post-push.js";
 import { createPostQueue } from "../posts/post-queue.js";
+import { createProblemNotifier } from "../problems/problem-notifier.js";
+import type { ProblemTable } from "../problems/problem-table.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createTargetDispatcher, type SendInterceptHandler } from "../push/target-dispatcher.js";
 import {
@@ -254,6 +256,8 @@ export interface CreateEnginesOptions {
 	subRuntimeStore: SubRuntimeStore;
 	/** 订阅来源登记表(`AppRuntime.sourceRegistry`);来源由 `registerSource` 登进去。 */
 	sources: SourceRegistry;
+	/** 问题表(`AppRuntime.problems`):递给来源上下文当写口,问题通知器听它,订阅删了关于它的问题也在这清。 */
+	problems: ProblemTable;
 	bus: import("@bilibili-notify/internal").MessageBus;
 	adapters: PlatformAdapterRegistry;
 	/** 开发版的推送截流,原样递给派发器(出口咽喉那一处);生产不传。 */
@@ -485,6 +489,16 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		serviceCtx: opts.serviceCtx,
 	});
 	masterNotifier.install();
+
+	// ---------- 问题通知器 ----------
+	// 问题表里 `notify` 为真的问题 → 主人私聊(只有真送到才算说过,没送到限次再送;清掉时补「已恢复」)。
+	// 与上面的 MasterNotifier 各有各的节流表:组件告警按 source,问题按 报的人 + code。
+	const problemNotifier = createProblemNotifier({
+		table: opts.problems,
+		notify: (text) => push.notifyMaster(text),
+		serviceCtx: opts.serviceCtx,
+		logger: log,
+	});
 
 	// ---------- AI (optional) ----------
 	// 构造仅依赖 apiKey / baseUrl 是否齐备 —— 与 `enabled` 解耦,后者交给引擎 config 层
@@ -876,6 +890,15 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			});
 		}),
 	);
+	// 订阅删了:关于它的问题跟着清(宿主在清,不补「已恢复」)。表是总线的消费者,不是转发器 ——
+	// `problems-changed` 不会再翻回 `subscription-changed`。
+	handles.push(
+		opts.bus.on("subscription-changed", ({ ops }) => {
+			for (const op of ops) {
+				if (op.kind === "remove") opts.problems.clearSubscription(op.sub.id);
+			}
+		}),
+	);
 	handles.push(
 		opts.bus.on("auth-restored", () => {
 			live.rebuildFromSubs(
@@ -1203,6 +1226,11 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 		} catch (e) {
 			log.warn(`[engines] masterNotifier.dispose failed: ${String(e)}`);
 		}
+		try {
+			problemNotifier.dispose();
+		} catch (e) {
+			log.warn(`[engines] problemNotifier.dispose failed: ${String(e)}`);
+		}
 	};
 	opts.serviceCtx.onDispose(dispose, "stop");
 
@@ -1221,6 +1249,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				// 名字叫 `dynamic`,等级跟 `logging.levels` 里来源键那一格走(下面热更)。
 				logger: dynamicCtx.logger,
 				enqueue: (event) => postQueue.enqueue(event),
+				problems: opts.problems,
 			});
 			// 登记途中 `dispose()` 已跑完:关停那一遍没收到这个把手,来源却已起来 —— 当场收掉,别留孤儿。
 			if (disposed) {

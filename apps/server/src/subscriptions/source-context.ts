@@ -10,6 +10,7 @@ import type {
 	SourceDescriptor,
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
+import type { ProblemTable } from "../problems/problem-table.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
 
@@ -25,7 +26,12 @@ export interface CreateSourceContextOptions {
 	logger: Logger;
 	/** 作品入口(`PostQueue.enqueue`)。 */
 	enqueue: (event: PostEvent) => void;
+	/** 问题表的写口:来源报的问题记在报的人(这个来源的键)名下。 */
+	problems: Pick<ProblemTable, "report" | "resolve">;
 }
+
+/** 问题的 code:snake 风格,小写字母开头。 */
+const PROBLEM_CODE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
 export interface SourceContextHandle {
 	readonly ctx: SourceContext;
@@ -53,6 +59,47 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 				logger.error(`[source] ${sourceKey} 的名单回调抛错(忽略): ${errorMessageOf(err)}`);
 			}
 		}
+	};
+
+	/**
+	 * 问题上报的公共一步:已停下、形状不对的丢弃并记 error(内置来源被拒就是 BN 的 bug);
+	 * 不带 `externalId` 交一个「来源自己」的对象,带了按身份展开成这个人名下的每一条订阅
+	 * (遗留的同身份重复订阅各算一条;一条都没有就什么都不做)。
+	 */
+	const forEachProblemObject = (
+		what: string,
+		problem: { externalId?: string; code: string; message?: string },
+		visit: (about: { subscriptionId: string } | undefined) => void,
+	): void => {
+		if (disposed) {
+			logger.error(
+				`[source] ${sourceKey} 已停下还在${what}问题 ${problem.code}(丢弃;内置来源的 bug)`,
+			);
+			return;
+		}
+		if (
+			!PROBLEM_CODE.test(problem.code) ||
+			problem.externalId === "" ||
+			(problem.message !== undefined && problem.message.trim() === "")
+		) {
+			logger.error(
+				`[source] ${sourceKey} ${what}问题的形状不对(丢弃;内置来源的 bug): ${problem.code}`,
+			);
+			return;
+		}
+		if (problem.externalId === undefined) {
+			visit(undefined);
+			return;
+		}
+		const subs = opts.subscriptions.listByIdentity({ sourceKey, externalId: problem.externalId });
+		if (subs.length === 0) {
+			logger.debug(
+				`[source] ${sourceKey}:${problem.externalId} 没有订阅,${what}的问题 ${problem.code} 不收`,
+			);
+			return;
+		}
+		// 停用着的订阅照记,不在这里筛。
+		for (const sub of subs) visit({ subscriptionId: sub.id });
 	};
 
 	const watches: Disposable[] = [
@@ -105,6 +152,25 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 					postNoun: descriptor.postNoun,
 				});
 			}
+		},
+		reportProblem(problem) {
+			forEachProblemObject("报", problem, (about) =>
+				opts.problems.report({
+					reporter: sourceKey,
+					...(about ? { about } : {}),
+					code: problem.code,
+					message: problem.message,
+					...(problem.notify === undefined ? {} : { notify: problem.notify }),
+				}),
+			);
+		},
+		resolveProblem(problem) {
+			forEachProblemObject("清", problem, (about) =>
+				opts.problems.resolve(
+					{ reporter: sourceKey, ...(about ? { about } : {}), code: problem.code },
+					problem.notify === undefined ? undefined : { notify: problem.notify },
+				),
+			);
 		},
 	};
 

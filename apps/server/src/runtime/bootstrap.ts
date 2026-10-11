@@ -28,6 +28,7 @@ import {
 } from "../images/image-store.js";
 import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
+import { createProblemTable, type ProblemTable } from "../problems/problem-table.js";
 import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
 import { flushSkinWrites } from "../skins/skin-store.js";
 import { createStatsEnabled } from "../stats/enabled.js";
@@ -88,6 +89,11 @@ export interface AppRuntime {
 	adapterRegistry: PlatformAdapterRegistry;
 	/** 订阅来源的登记表:建在这里、挂在运行时上,来源由 `engines.registerSource` 登进去。 */
 	sourceRegistry: SourceRegistry;
+	/**
+	 * 问题表:各集成(今天是订阅来源)报上来的「主人该知道的事」,全在内存。写口经来源上下文
+	 * (`reportProblem`),读口是 `GET /api/problems`;变了发 `problems-changed`。
+	 */
+	problems: ProblemTable;
 	historyStore: HistoryStore;
 	/**
 	 * 人工重推(ADR-0017)。它持有「哪些行正在补」那张表,所以**整个进程只能有一个** ——
@@ -281,6 +287,12 @@ export function createAppRuntime(
 	const adapterRegistry = createPlatformAdapterRegistry();
 	// 订阅来源的登记表(内置来源由 `compose.ts` 经 `engines.registerSource` 登进去)。
 	const sourceRegistry = createSourceRegistry();
+	// 问题表:变了(按报的人合并过)发 `problems-changed`。表是总线的生产者,不是转发器。
+	const problems = createProblemTable({
+		logger: serviceCtx.logger,
+		onChanged: (reporter) => bus.emit("problems-changed", { reporter }),
+	});
+	serviceCtx.onDispose(() => problems.dispose(), "stop");
 	// 各集成的设置在这里登记(今天只有 B 站;3a 起挪到组装根,与集成的登记放在一起)。
 	const configStore = createConfigStore({
 		bootstrap,
@@ -534,6 +546,7 @@ export function createAppRuntime(
 		configStore,
 		adapterRegistry,
 		sourceRegistry,
+		problems,
 		historyStore,
 		repushRunner,
 		fansStore,

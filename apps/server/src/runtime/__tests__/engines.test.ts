@@ -64,6 +64,7 @@ import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.j
 import type { ConfigStore, IntegrationSettingsSegment } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
+import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { makeSource } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
 import { CARD_BG_CURSORS_FILE, CARD_BG_DIR } from "../card-assets.js";
@@ -373,6 +374,8 @@ interface Ctx {
 	/** `registerSource` 落定:登记表里有它、关停时才收得到。需要在 dispose 前就保证登记完成的用例先 await 它。 */
 	sourceReady: Promise<void>;
 	sources: SourceRegistry;
+	/** 递给 `createEngines` 的问题表(真表):来源上下文往里写、通知器听它。 */
+	problems: ProblemTable;
 }
 
 function setup(opts?: {
@@ -452,8 +455,10 @@ function setup(opts?: {
 	const subs = opts?.subs ?? [];
 	const sources = createSourceRegistry();
 	const source = makeSource();
+	const problems = createProblemTable({ logger: serviceCtx.logger });
 	const runtime = createEngines({
 		sources,
+		problems,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,
 		// 背景轮换游标 fs 路径取自此。指向 OS 临时目录下一个**不存在**的子目录(跨平台:
 		// Windows/macOS/Linux 都解析为各自 tmp 根):load 读不到走 catch 返回 {};测试不触发
@@ -539,6 +544,7 @@ function setup(opts?: {
 		source,
 		sourceReady,
 		sources,
+		problems,
 	};
 	return lastSetup;
 }
@@ -1658,7 +1664,7 @@ describe("createEngines — boot wiring", () => {
 		expect(c.sources.get("bilibili")).toBeUndefined();
 	});
 
-	it("registerSource 之后:来源的 start 被叫一次,拿到的 ctx 上三个方法都在、名单现读不抛", async () => {
+	it("registerSource 之后:来源的 start 被叫一次,拿到的 ctx 上五个方法都在、名单现读不抛", async () => {
 		const c = setup();
 		active = c;
 		await c.sourceReady;
@@ -1667,7 +1673,82 @@ describe("createEngines — boot wiring", () => {
 		expect(typeof ctx?.subscriptions).toBe("function");
 		expect(typeof ctx?.onSubscriptionsChanged).toBe("function");
 		expect(typeof ctx?.reportPost).toBe("function");
+		expect(typeof ctx?.reportProblem).toBe("function");
+		expect(typeof ctx?.resolveProblem).toBe("function");
 		expect(ctx?.subscriptions()).toEqual([]);
+	});
+
+	// 验红:删掉 engines.ts `registerSource` 里递 `problems` 的那一行,这条红。
+	it("来源上下文的 reportProblem 写进递进去的问题表,报的人是来源键", async () => {
+		const c = setup();
+		active = c;
+		await c.sourceReady;
+		c.source.ctx?.reportProblem({ code: "auth_lost", message: "登录失效" });
+		expect(c.problems.list().map((p) => [p.reporter, p.code])).toEqual([["bilibili", "auth_lost"]]);
+	});
+
+	// 验红:删掉 builtin-sources.ts 撤登记里的 `clearReporter`,这条红。
+	it("关停引擎撤掉来源登记:它报的问题跟着清空(不补「已恢复」)", async () => {
+		const c = setup();
+		active = c;
+		await c.sourceReady;
+		c.source.ctx?.reportProblem({ code: "auth_lost", message: "登录失效", notify: true });
+		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
+		c.runtime.dispose();
+		active = null;
+		expect(c.problems.list()).toEqual([]);
+		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:删掉 engines.ts 里 `createProblemNotifier` 那一段,这条红。
+	it("问题通知器接着表与 notifyMaster:notify 为真的问题私聊一次", async () => {
+		const c = setup();
+		active = c;
+		await c.sourceReady;
+		c.problems.report({
+			reporter: "bilibili",
+			code: "auth_lost",
+			message: "登录失效了",
+			notify: true,
+		});
+		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
+		expect(H.push[0].notifyMaster).toHaveBeenCalledWith("登录失效了");
+		c.problems.report({ reporter: "bilibili", code: "quiet", message: "只进表" });
+		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:删掉 engines.ts 里听 `subscription-changed` 清 `clearSubscription` 的那段,这条红。
+	it("删订阅:表里关于它的问题没了(别的订阅与来源级的还在),且不补「已恢复」", async () => {
+		const gone = makeEmptySubscription({
+			id: "sub-gone",
+			identity: { sourceKey: "bilibili", externalId: "7" },
+		});
+		const c = setup({ subs: [gone] });
+		active = c;
+		await c.sourceReady;
+		c.problems.report({
+			reporter: "bilibili",
+			about: { subscriptionId: "sub-gone" },
+			code: "monitor_stopped",
+			message: "停了",
+			notify: true,
+		});
+		c.problems.report({
+			reporter: "bilibili",
+			about: { subscriptionId: "sub-stay" },
+			code: "monitor_stopped",
+			message: "也停了",
+		});
+		c.problems.report({ reporter: "bilibili", code: "auth_lost", message: "来源级" });
+		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
+
+		c.bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: gone }] });
+
+		expect(c.problems.list().map((p) => p.about?.subscriptionId ?? "(来源级)")).toEqual([
+			"sub-stay",
+			"(来源级)",
+		]);
+		expect(H.push[0].notifyMaster).toHaveBeenCalledTimes(1);
 	});
 
 	// 验红:去掉 engines.ts `registerSource` 里 `onAuthChanged: …`(或 builtin-sources.ts 里的订阅),这条红。

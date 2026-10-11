@@ -124,6 +124,12 @@ export interface BusEvents {
 	 */
 	"extension-report-discrepancies-changed": { extensionId: string };
 	/**
+	 * 问题表里某个报的人名下的问题变了(开了、换了文案、清了)。载荷只有报的人(集成键或 `"core"`),**按报的人
+	 * 合并过**(`PROBLEMS_CHANGED_COALESCE_MS`)。独立端转成 `state` WS channel 的同名帧;面板据此让
+	 * `GET /api/problems` 过期、自己去取,数据本身不上 bus。
+	 */
+	"problems-changed": { reporter: string };
+	/**
 	 * 订阅源拓展报上来一条、宿主核过形状、对上了它名下的订阅(ADR-0019 决策 7 / 57 / 62)。五种都走这一个
 	 * 事件,按 `report.kind` 分:三种事件(`post` / `liveStart` / `liveEnd`)与两种不触发推送的上报
 	 * (`profile` / `liveStatus`)。

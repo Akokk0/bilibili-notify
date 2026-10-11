@@ -93,6 +93,7 @@ export interface WsEvents {
 		"extension-settings-changed": BusEvents["extension-settings-changed"];
 		"extension-report-discrepancies-changed": BusEvents["extension-report-discrepancies-changed"];
 		"subscription-profiles-changed": BusEvents["subscription-profiles-changed"];
+		"problems-changed": BusEvents["problems-changed"];
 	};
 	resources: {
 		hydrate: ResourcesHydrate;

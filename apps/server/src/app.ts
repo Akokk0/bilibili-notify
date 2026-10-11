@@ -40,6 +40,7 @@ import { createHealthRoute, healthResponseOf } from "./routes/health.js";
 import { createHistoryRoute } from "./routes/history.js";
 import { createImagesRoute } from "./routes/images.js";
 import { createLiveRoute } from "./routes/live.js";
+import { createProblemsRoute } from "./routes/problems.js";
 import {
 	ROUTE_NOT_FOUND_MESSAGE,
 	requestErrorHandler,
@@ -291,6 +292,7 @@ export function createCardSkinStore(dataRoot: string): CardSkinStore {
  *   /api/images/:ref      — 图库的同源读口(只读;历史、订阅、AI 共用的顶层资源)
  *   /api/system/*         — 日志(一直挂)、更新 / 备份 / 重启与开新代(宿主传了才挂)
  *   /api/sources/:sourceKey/auth — 来源的登录口(GET 读 / POST 发起扫码 / DELETE 退出)
+ *   /api/problems         — 问题表(各集成报上来的「主人该知道的事」,GET 一次给全)
  *   /api/ws/ticket        — 面板 WS 的一次性票(无条件挂)
  */
 export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono {
@@ -369,6 +371,8 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 		app.route("/api/adapters", createAdaptersRoute(deps));
 		// 来源的登录口(`Source.auth`);无条件挂,来源在不在、有没有登录口由路由现问登记表。
 		app.route("/api/sources", createSourcesRoute(deps));
+		// 问题表的读口:各集成报上来的问题,一次给全。
+		app.route("/api/problems", createProblemsRoute(deps));
 		// 面板那一侧的拓展口。URL 面用短词 `ext`(ADR-0012 决策 38),代码面照旧全称。
 		app.route(
 			"/api/ext",

@@ -143,6 +143,8 @@ export function attachChannelWiring(deps: ChannelWiringDeps): Disposable {
 		bus.on("subscription-profiles-changed", (change) =>
 			publish(envelope("state", "subscription-profiles-changed", change)),
 		),
+		// 问题表变了:只带报的人,面板让 `GET /api/problems` 过期、自己去取。
+		bus.on("problems-changed", (change) => publish(envelope("state", "problems-changed", change))),
 	);
 
 	return {

@@ -66,6 +66,8 @@ function makeFakeSourceCtx(roster: SourceSubscriptionView[]) {
 		subscriptions: () => roster,
 		onSubscriptionsChanged: () => ({ dispose() {} }),
 		reportPost,
+		reportProblem: vi.fn(),
+		resolveProblem: vi.fn(),
 	} as unknown as SourceContext;
 	return { ctx, reportPost };
 }

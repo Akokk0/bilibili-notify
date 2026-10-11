@@ -374,6 +374,19 @@ describe("attachChannelWiring — 拓展的上报出入变了", () => {
 	});
 });
 
+describe("attachChannelWiring — 问题表变了", () => {
+	/**
+	 * 问题表(各集成报上来的「主人该知道的事」)变了,面板据此让 `GET /api/problems` 过期。
+	 * 帧里只有报的人,问题本身不上线。
+	 */
+	it("problems-changed → state 频道同名帧,只带 reporter", () => {
+		const h = wire();
+		h.bus.emit("problems-changed", { reporter: "bilibili" });
+		expect(h.last()).toMatchObject({ type: "state", event: "problems-changed" });
+		expect(h.last().data).toEqual({ reporter: "bilibili" });
+	});
+});
+
 describe("attachChannelWiring — 拓展订阅的资料变了", () => {
 	/**
 	 * 拓展报的资料更新落进了资料缓存(ADR-0019 决策 7 / 62)—— 那不是配置,不走 `config-changed`。
