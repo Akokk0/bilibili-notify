@@ -116,6 +116,15 @@ describe("addProfile", () => {
 		expect(ai.activeProfile).toBe("openrouter");
 	});
 
+	it.each(["constructor", "toString", "__proto__"])(
+		"指针是原型名 %s(表里没有这一家)→ 算没着落,头一份添加的成了在用的那份",
+		(name) => {
+			// 下标直读会从原型上摸到内置函数、当成「指针有着落」,新加的第一家就不会被用上。
+			const { ai } = addProfile(settings({ activeProfile: name }), "openrouter");
+			expect(ai.activeProfile).toBe("openrouter");
+		},
+	);
+
 	it("已经有在用的那份 → 再添加**不抢**指针", () => {
 		// 添加 ≠ 换用。换用是「全局配置」里那个选择器的事(与人格同一套语义)。
 		const base = settings({

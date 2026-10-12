@@ -1,4 +1,4 @@
-import { fail, ok, type Result } from "@bilibili-notify/internal";
+import { aiProfileAt, fail, ok, type Result } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ConfigStore, ConfigValidationError, type SettingsSnapshot } from "../config/store.js";
 import type { PuppeteerAdapter } from "../runtime/puppeteer.js";
@@ -241,7 +241,7 @@ async function runEnableCheck(args: EnableCheckArgs): Promise<Result> {
 		// 探活要打的是**本次保存之后**生效的那份实例:activeProfile 指针本身可能
 		// 就在这个 patch 里被换掉了。拿旧指针去取连接字段,会用 A 家的 key 打 B 家的接口。
 		const id = aiActiveProfileAfterPatch(args.current, args.patch);
-		const cur = args.current.ai.providers[id];
+		const cur = aiProfileAt(args.current.ai.providers, id);
 		const at = (field: string) =>
 			mergedString(
 				cur?.[field as "apiKey" | "baseUrl" | "model" | "apiFlavor"],
@@ -290,7 +290,7 @@ export function shouldRunAiEnableCheck(
 
 	const id = aiActiveProfileAfterPatch(current, patch);
 	const switchedProfile = id !== current.ai.activeProfile;
-	const cur = current.ai.providers[id];
+	const cur = aiProfileAt(current.ai.providers, id);
 	const changed = (field: "apiKey" | "baseUrl" | "model") => {
 		const inPatch = pluck(patch, ["ai", "providers", id, field]);
 		return inPatch !== undefined && inPatch !== cur?.[field];

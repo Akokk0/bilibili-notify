@@ -686,10 +686,20 @@ export function resolveAIProfile<S = string>(ai: {
 	activeProfile?: string;
 	providers?: Record<string, AIProviderProfileShape<S> | undefined>;
 }): AIProviderProfileShape<S | string> {
-	const id = ai.activeProfile ?? "";
-	// 只认表自己的键:指针写成 `constructor` 这类原型名时,下标直读会取到原型上的函数。
-	const own = ai.providers && Object.hasOwn(ai.providers, id) ? ai.providers[id] : undefined;
-	return own ?? EMPTY_AI_PROVIDER_PROFILE;
+	return aiProfileAt(ai.providers, ai.activeProfile ?? "") ?? EMPTY_AI_PROVIDER_PROFILE;
+}
+
+/**
+ * 按实例 id 取 AI 实例表里**自己的**那一家;表里没有(或表整个缺席)回 `undefined`。
+ *
+ * id 来自指针或请求体时一律经它取,别下标直读:id 写成 `constructor` 这类原型名时,直读会取到原型上的
+ * 函数,一个根本没有的实例就被当成「有」。
+ */
+export function aiProfileAt<P>(
+	providers: Record<string, P | undefined> | undefined,
+	id: string,
+): P | undefined {
+	return providers && Object.hasOwn(providers, id) ? providers[id] : undefined;
 }
 
 /**

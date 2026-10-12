@@ -33,3 +33,25 @@ describe("ai.providers 的实例 id", () => {
 		}
 	});
 });
+
+describe("ai.activeProfile —— 指着实例 id 的指针,同一道检查", () => {
+	const withPointer = (activeProfile: string): unknown => ({
+		...structuredClone(DEFAULT_AI),
+		activeProfile,
+	});
+
+	it("空着、指着表里没有的普通名字都照常通过(指针可以悬空)", () => {
+		for (const id of ["", "deepseek", "nope", "my.local"]) {
+			expect(AISettingsSchema.safeParse(withPointer(id)).success).toBe(true);
+		}
+	});
+
+	it("原型名当指针被拒,原因落在 activeProfile 上", () => {
+		for (const id of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
+			const parsed = AISettingsSchema.safeParse(withPointer(id));
+			expect(parsed.success).toBe(false);
+			if (parsed.success) continue;
+			expect(parsed.error.issues.map((i) => i.path.join("."))).toContain("activeProfile");
+		}
+	});
+});

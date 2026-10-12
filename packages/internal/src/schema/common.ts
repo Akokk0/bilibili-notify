@@ -345,7 +345,11 @@ const AISettingsObjectSchema = z.object({
 	 * 绝不按 baseUrl 猜** —— 猜错就是替主人往别家发方言参数(几乎必然 400)。
 	 * 与人格的 `activePreset` 同一套指针语义;上一代的 `provider` 字段迁移时改名至此。
 	 */
-	activeProfile: z.string().default(""),
+	activeProfile: z
+		.string()
+		// 指针指的是实例 id,过同一道原型名检查(见下面 `providers` 的键)。
+		.refine((id) => !isPrototypeName(id), prototypeNameMessage("AI 当前实例的指针 "))
+		.default(""),
 	/**
 	 * 各实例各一套配置,键是**实例 id**(同一家服务商可以有多份)。**稀疏** ——
 	 * 键存在 = 主人添加过这份,不存在 = 还没添加。设置页左栏据此只列已添加的那几块。

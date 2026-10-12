@@ -17,6 +17,7 @@ export {
 	API_FLAVOR_IDS,
 	type APIFlavorId,
 	addressNounFor,
+	aiProfileAt,
 	BILIBILI_SOURCE_KEY,
 	BUILTIN_AI_PRESETS,
 	CONNECTION_PLATFORMS,

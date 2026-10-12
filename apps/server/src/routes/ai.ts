@@ -13,6 +13,7 @@ import { AI_TOOL_LOAD_SKILL } from "@bilibili-notify/contract";
 import {
 	type AISettings,
 	AISettingsSchema,
+	aiProfileAt,
 	type CardKind,
 	fail,
 	type ImageRef,
@@ -823,9 +824,9 @@ export function withStoredApiKey(
 	rawDraft: unknown,
 ): AISettings {
 	const id = draft.activeProfile;
-	const d = draft.providers[id];
+	const d = aiProfileAt(draft.providers, id);
 	if (!d) return draft;
-	const s = stored.providers[id];
+	const s = aiProfileAt(stored.providers, id);
 	const rawBucket = asRecord(asRecord(asRecord(rawDraft).providers)[id]);
 	const sent = (bag: Record<string, unknown>) => typeof bag.apiKey === "string";
 	return {

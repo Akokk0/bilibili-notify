@@ -74,7 +74,14 @@ async function depsWithPointer(pointer: string): Promise<RoastGenDeps> {
 		serviceCtx,
 	});
 	await store.load();
-	await store.patchGlobals({ ai: { enabled: true, activeProfile: pointer } });
+	await store.patchGlobals({ ai: { enabled: true } });
+	// 指针不经配置仓的写口放进去:schema 现在拒原型名(这道门先挡一次)。这里钉的是第二道 —— 万一有哪条路
+	// 绕过了 schema,取值那头也不能从原型上摸东西。
+	const getGlobals = store.getGlobals.bind(store);
+	store.getGlobals = () => {
+		const globals = getGlobals();
+		return { ...globals, ai: { ...globals.ai, activeProfile: pointer } };
+	};
 	return {
 		runtime: {
 			engines: { api: {}, extensionPlatformLabel: () => undefined },

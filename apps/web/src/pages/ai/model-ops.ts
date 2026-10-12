@@ -8,6 +8,7 @@
 import {
 	AI_PROVIDER_IDS,
 	type AIProviderId,
+	aiProfileAt,
 	BUILTIN_AI_PRESETS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	providerMeta,
@@ -78,7 +79,7 @@ export function addProfile(
 	}
 	const sameFamily = Object.values(ai.providers).some((p) => p?.provider === provider);
 	const label = sameFamily ? `${providerMeta(provider).label} ${n}` : "";
-	const pointerLanded = ai.providers[ai.activeProfile] !== undefined;
+	const pointerLanded = aiProfileAt(ai.providers, ai.activeProfile) !== undefined;
 	return {
 		id,
 		ai: {
@@ -121,8 +122,8 @@ export function renameProfile(ai: AISettingsDraft, id: string, label: string): A
  * 配置、或删到只剩别份)→ 左栏第一项(与渲染同序);一份都没有 → null,右侧出添加面板。
  */
 export function resolveEditingProfile(ai: AISettingsDraft, id: string | null): string | null {
-	if (id !== null && ai.providers[id] !== undefined) return id;
-	if (ai.providers[ai.activeProfile] !== undefined) return ai.activeProfile;
+	if (id !== null && aiProfileAt(ai.providers, id) !== undefined) return id;
+	if (aiProfileAt(ai.providers, ai.activeProfile) !== undefined) return ai.activeProfile;
 	return railOrder(ai)[0] ?? null;
 }
 

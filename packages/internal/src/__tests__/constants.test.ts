@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	AI_PROVIDER_IDS,
 	AI_PROVIDERS,
+	aiProfileAt,
 	CONNECTION_PLATFORMS,
 	EMPTY_AI_PROVIDER_PROFILE,
 	platformDescriptor,
@@ -91,6 +92,26 @@ describe("平台注册表的 adapterKey —— 这个平台归哪个适配器管
 
 	it("认不出的平台没有适配器键", () => {
 		expect(platformDescriptor("telegram")).toBeUndefined();
+	});
+});
+
+describe("aiProfileAt —— 按 id 取表里自己的那一家", () => {
+	const mine = { ...EMPTY_AI_PROVIDER_PROFILE, model: "m" };
+
+	it("表里有就交回那一家,没有回 undefined", () => {
+		expect(aiProfileAt({ mine }, "mine")).toBe(mine);
+		expect(aiProfileAt({ mine }, "nope")).toBeUndefined();
+	});
+
+	it.each(["constructor", "toString", "__proto__"])(
+		"原型名 %s 且表里没有这一家:回 undefined,不交回原型上的东西",
+		(name) => {
+			expect(aiProfileAt({ mine }, name)).toBeUndefined();
+		},
+	);
+
+	it("表整个缺席也回 undefined", () => {
+		expect(aiProfileAt(undefined, "mine")).toBeUndefined();
 	});
 });
 
