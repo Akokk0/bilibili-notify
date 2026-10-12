@@ -11,7 +11,7 @@
 
 ## 决策
 
-1. **一次操作的结果一律是 `{ ok: true, … } | { ok: false, code, message, upstreamCode? }`，抛错只留给 bug**。宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志。上游平台自己的错误码放 `upstreamCode`，不占 `code`。
+1. **一次操作的结果一律是 `{ ok: true, … } | { ok: false, code, message, upstreamCode? }`，抛错只留给 bug**。宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志；发送除外：发送抛了按 `indeterminate` 处理，因为抛之前可能已经发出去了，回 `unavailable` 会让调用方照「稍后可重试」再发一遍。上游平台自己的错误码放 `upstreamCode`，不占 `code`。
 2. **管什么、不管什么**：
     - 管：来源、平台适配器、横切接口与 ctx 的方法，HTTP 业务失败与错误体，WS 控制帧，桥回执进门时的翻译。
     - 不管：事件原因（如下播的原因）、描述性字段、AI 产出的内容、能力三态。

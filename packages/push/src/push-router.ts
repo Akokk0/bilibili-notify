@@ -705,10 +705,11 @@ export class PushRouter {
 			try {
 				return await this.dispatcher.send(targetId, payload);
 			} catch (e) {
-				// 抛错只留给 bug(ADR-0026 决策 1):派发器自己不该抛,真抛了按「暂时不可用」记。
+				// 抛错只留给 bug(ADR-0026 决策 1):派发器自己不该抛。这是发送,抛之前可能已经发出去了,
+				// 按「结果不明」记(回「暂时不可用」会让上面的人再发一遍)。
 				const message = e instanceof Error ? e.message : String(e);
 				this.logger.error(`[push] target=${targetId} 发送失败: ${message}`);
-				return fail("unavailable", message);
+				return fail("indeterminate", message);
 			}
 		}
 		// ②7:while 退出有两因 —— disposed,或 generation 失配(stop→start)。

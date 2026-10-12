@@ -18,7 +18,7 @@
 
     造结果一律用 `internal` 的 `ok()` / `fail()`，不手写对象字面量。类型：整个结果 `Result<T>`，失败那一支 `Failure`，码 `FailureCode`，逐条原因 `Issue`（`{ path?, message }`）。
 
-2. **抛错只留给 bug。** 宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志。调用方不该靠 `catch` 判断「查无此人」还是「暂时不可用」。
+2. **抛错只留给 bug。** 宿主在边界接住抛出来的错，按 `unavailable` 处理并记错误日志；发送除外：发送抛了按 `indeterminate` 处理（抛之前可能已经发出去了，不能让人重发）。调用方不该靠 `catch` 判断「查无此人」还是「暂时不可用」。
 
 3. **`code` 只取 `internal` 里那一张标准码表**，不按模块各定一套：
 

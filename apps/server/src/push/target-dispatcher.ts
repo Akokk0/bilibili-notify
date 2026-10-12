@@ -195,11 +195,19 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		},
 	};
 
-	/** 适配器不许抛(ADR-0026 决策 1):真抛了算 bug,在这道边界接住,按「暂时不可用」记并留 error 日志。 */
-	function thrown(e: unknown, where: string) {
+	/**
+	 * 适配器不许抛(ADR-0026 决策 1):真抛了算 bug,在这道边界接住并留 error 日志。探测、列地址这类没有副作用的
+	 * 按「暂时不可用」记;`send` 抛了传 `"indeterminate"` —— 抛之前帧可能已经出去了,回「暂时不可用」会让
+	 * 上面的人照「稍后可重试」再发一遍。
+	 */
+	function thrown(
+		e: unknown,
+		where: string,
+		code: "unavailable" | "indeterminate" = "unavailable",
+	) {
 		const message = e instanceof Error ? e.message : String(e);
 		log.error(`[sink] platform adapter threw (${where}): ${message}`);
-		return fail("unavailable", message);
+		return fail(code, message);
 	}
 
 	async function dispatch(targetId: string, payload: NotificationPayload): Promise<DeliveryResult> {
@@ -235,7 +243,7 @@ export function createTargetDispatcher(opts: TargetDispatcherOptions): TargetDis
 		try {
 			return await adapter.send(connection, destination, payload);
 		} catch (e) {
-			return thrown(e, `${target ? `target=${target.id}` : "sendToAddress"} send`);
+			return thrown(e, `${target ? `target=${target.id}` : "sendToAddress"} send`, "indeterminate");
 		}
 	}
 }

@@ -232,7 +232,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 		});
 	});
 
-	it("派发器抛错算 bug:接住按 unavailable 记,并打 error 日志", async () => {
+	it("派发器抛错算 bug:接住按 indeterminate 记(可能已经发出去了),并打 error 日志", async () => {
 		const error = vi.fn();
 		const dispatcher: FakeDispatcher = {
 			isAvailable: () => true,
@@ -253,7 +253,7 @@ describe("PushRouter.stop() — P1-B 短期-a sleepWakers 唤醒", () => {
 
 		const result = await push.sendToTarget("t", { kind: "text", text: "x" });
 
-		expect(result).toEqual({ ok: false, code: "unavailable", message: "dispatcher exploded" });
+		expect(result).toEqual({ ok: false, code: "indeterminate", message: "dispatcher exploded" });
 		expect(error).toHaveBeenCalledWith(expect.stringContaining("dispatcher exploded"));
 	});
 

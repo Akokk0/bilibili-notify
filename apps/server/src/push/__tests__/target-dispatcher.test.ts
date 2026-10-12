@@ -10,7 +10,8 @@
  *                                    happy(委派 platformAdapter.send + onDelivery)
  *   - probeConnection                 → adapter 缺 / platformAdapter 缺 / happy 委派 platformAdapter.probe
  *   - 自己造的失败的码(ADR-0026):目标 / 连接找不到 `not_found`,没有适配器 `unavailable`;
- *                                    适配器抛错算 bug,在这里接住 → `unavailable` + error 日志
+ *                                    适配器抛错算 bug,在这里接住 + error 日志:`send` 抛了回 `indeterminate`
+ *                                    (可能已经发出去了),探测与列地址抛了回 `unavailable`
  *
  * 纯单元:ConfigStore / PlatformAdapter / Logger 全部用最小 fake,无任何 I/O。
  */
@@ -262,7 +263,7 @@ describe("createTargetDispatcher — dispatch (send)", () => {
 });
 
 describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", () => {
-	it("send 抛错 → unavailable + error 日志,onDelivery 照样收到这条失败", async () => {
+	it("send 抛错 → indeterminate(帧可能已经出去了,不能让人重发)+ error 日志,onDelivery 照样收到这条失败", async () => {
 		const logger = makeLogger();
 		const onDelivery = vi.fn<OnDeliveryFn>();
 		const target = makeTarget({ id: "t1", connectionId: "a1" });
@@ -278,7 +279,7 @@ describe("createTargetDispatcher — 适配器抛错算 bug,在边界接住", ()
 			onDelivery,
 		});
 		const r = await dispatcher.send("t1", PAYLOAD);
-		expect(r).toEqual({ ok: false, code: "unavailable", message: "adapter exploded" });
+		expect(r).toEqual({ ok: false, code: "indeterminate", message: "adapter exploded" });
 		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
 		expect(onDelivery).toHaveBeenCalledWith(target, PAYLOAD, r);
 	});
@@ -629,7 +630,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		expect(pa.send).not.toHaveBeenCalled();
 	});
 
-	it("适配器抛错 → unavailable + error 日志(同 send 那一条)", async () => {
+	it("适配器抛错 → indeterminate + error 日志(同 send 那一条)", async () => {
 		const pa = makePlatformAdapter("webhook", {
 			send: vi.fn(async () => {
 				throw new Error("adapter exploded");
@@ -637,7 +638,7 @@ describe("createTargetDispatcher — sendToAddress(不经目标表,按连接 + �
 		});
 		const { dispatcher, logger } = setup({ pa });
 		const r = await dispatcher.sendToAddress("a1", SESSION, PAYLOAD);
-		expect(r).toEqual({ ok: false, code: "unavailable", message: "adapter exploded" });
+		expect(r).toEqual({ ok: false, code: "indeterminate", message: "adapter exploded" });
 		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("adapter exploded"));
 	});
 
