@@ -1,7 +1,13 @@
-import { posix } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { auditRatchet } from "../ratchet-audit.mjs";
-import { importsOf, listSources, parseSource } from "../source-scan.mjs";
+import {
+	importsOf,
+	isInside,
+	listSources,
+	parseSource,
+	resolveSpecifier,
+	stripExt,
+} from "../source-scan.mjs";
 
 /**
  * 守卫:谁不许 import 谁(推送守卫①、守卫 1)。
@@ -68,17 +74,6 @@ export const BOUNDARIES = [
 			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨,3b 末清零",
 	},
 ];
-
-/** 说明符解析成仓库相对路径;非相对说明符(包名)返回 undefined。 */
-function resolveSpecifier(file, specifier) {
-	if (!specifier.startsWith(".")) return undefined;
-	return posix.normalize(posix.join(posix.dirname(file), specifier));
-}
-
-const isInside = (path, dir) => path === dir || path.startsWith(`${dir}/`);
-
-/** 去掉 `.js` / `.ts` 之类的尾巴后再比目录:`./platforms.js` 之类解析成 `…/platforms` 也算进去。 */
-const stripExt = (path) => path.replace(/\.(m|c)?[jt]sx?$/, "");
 
 /**
  * 一份源码里违反某条边界的 import。

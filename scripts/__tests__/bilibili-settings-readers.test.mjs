@@ -1,9 +1,16 @@
 import { existsSync, readdirSync } from "node:fs";
-import { dirname, join, posix, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { auditRatchet } from "../ratchet-audit.mjs";
-import { importsOf, listSources, parseSource } from "../source-scan.mjs";
+import {
+	importsOf,
+	isInside,
+	listSources,
+	parseSource,
+	resolveSpecifier,
+	stripExt,
+} from "../source-scan.mjs";
 
 /**
  * 守卫 12:核心不读 B 站的设置。
@@ -47,12 +54,10 @@ export const RATCHET = {};
  */
 export function settingsImports(source) {
 	const lines = source.text.split("\n");
-	const fromDir = posix.dirname(source.path);
 	const hits = [];
 	for (const ref of importsOf(source)) {
-		if (!ref.specifier.startsWith(".")) continue;
-		const target = posix.join(fromDir, ref.specifier).replace(/\.[cm]?[jt]sx?$/, "");
-		if (target !== SETTINGS_MODULE && !target.startsWith(`${SETTINGS_MODULE}/`)) continue;
+		const resolved = resolveSpecifier(source.path, ref.specifier);
+		if (resolved === undefined || !isInside(stripExt(resolved), SETTINGS_MODULE)) continue;
 		hits.push({ line: ref.line, text: lines[ref.line - 1].trim() });
 	}
 	return hits;

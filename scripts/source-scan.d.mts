@@ -49,5 +49,14 @@ export function parseSource(path: string, text?: string): Source;
 /** 一份源码里所有 import 类引用,按出现顺序。 */
 export function importsOf(source: Source): ImportRef[];
 
+/** 说明符对着 importer 所在目录解析成仓库相对路径(保留扩展名);非相对说明符(包名)返回 undefined。 */
+export function resolveSpecifier(file: string, specifier: string): string | undefined;
+
+/** `path` 是 `dir` 本身或在它里面(按目录边界判)。 */
+export function isInside(path: string, dir: string): boolean;
+
+/** 去掉 `.js` / `.ts` 之类的扩展名。 */
+export function stripExt(path: string): string;
+
 /** 深度优先(先父后子)找出 `match` 为真的节点,嵌套的命中都收。 */
 export function findNodes(source: Source, match: (node: ts.Node) => boolean): Hit[];

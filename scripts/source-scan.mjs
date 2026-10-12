@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { extname, isAbsolute, join } from "node:path";
+import { extname, isAbsolute, join, posix } from "node:path";
 import ts from "typescript";
 import { repoRoot } from "./vite-alias.mjs";
 
@@ -109,6 +109,18 @@ export function parseSource(path, text) {
 	}
 	return source;
 }
+
+/** 说明符对着 importer 所在目录解析成仓库相对路径(保留扩展名);非相对说明符(包名)返回 undefined。 */
+export function resolveSpecifier(file, specifier) {
+	if (!specifier.startsWith(".")) return undefined;
+	return posix.normalize(posix.join(posix.dirname(file), specifier));
+}
+
+/** `path` 是 `dir` 本身或在它里面(按目录边界判,`a/bc` 不在 `a/b` 里)。 */
+export const isInside = (path, dir) => path === dir || path.startsWith(`${dir}/`);
+
+/** 去掉 `.js` / `.ts` 之类的尾巴,方便拿解析结果去比目录。 */
+export const stripExt = (path) => path.replace(/\.(m|c)?[jt]sx?$/, "");
 
 const lineOf = (ast, node) => ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1;
 

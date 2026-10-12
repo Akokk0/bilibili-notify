@@ -3,7 +3,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { findNodes, importsOf, listSources, parseSource } from "../source-scan.mjs";
+import {
+	findNodes,
+	importsOf,
+	isInside,
+	listSources,
+	parseSource,
+	resolveSpecifier,
+	stripExt,
+} from "../source-scan.mjs";
 
 /**
  * 扫源码守卫的共用工具:遍历、解析、抠 import、按节点找。
@@ -16,6 +24,31 @@ import { findNodes, importsOf, listSources, parseSource } from "../source-scan.m
 const at = (path, text) => parseSource(path, text);
 const refs = (text, path = "a.ts") => importsOf(at(path, text));
 const specifiers = (text, path) => refs(text, path).map((r) => r.specifier);
+
+describe("路径小工具:resolveSpecifier / isInside / stripExt", () => {
+	it("resolveSpecifier:相对说明符对着 importer 的目录解析,包名给 undefined", () => {
+		expect(resolveSpecifier("apps/server/src/index.ts", "./bilibili/x.js")).toBe(
+			"apps/server/src/bilibili/x.js",
+		);
+		expect(resolveSpecifier("apps/server/src/push/deep/f.ts", "../../platforms/x.js")).toBe(
+			"apps/server/src/platforms/x.js",
+		);
+		expect(resolveSpecifier("a/b.ts", "@scope/pkg/x")).toBeUndefined();
+	});
+
+	it("isInside:目录自己与里面的算,名字只是前缀相同的不算", () => {
+		expect(isInside("a/b", "a/b")).toBe(true);
+		expect(isInside("a/b/c", "a/b")).toBe(true);
+		expect(isInside("a/bc", "a/b")).toBe(false);
+	});
+
+	it("stripExt:去掉 js / ts / mjs / tsx 之类的尾巴,别的不动", () => {
+		expect(stripExt("a/b.js")).toBe("a/b");
+		expect(stripExt("a/b.d.ts")).toBe("a/b.d");
+		expect(stripExt("a/b.mts")).toBe("a/b");
+		expect(stripExt("a/b.json")).toBe("a/b.json");
+	});
+});
 
 describe("importsOf:注释和字符串里的字样不算", () => {
 	it("注释、字符串、模板里的 import( / require( / from 都不是引用", () => {
