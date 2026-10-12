@@ -1076,3 +1076,96 @@ describe("ai.providers 一家坏只隔离那一家", () => {
 		expect(Object.keys(providers)).toEqual(["ok"]);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// 题 4 的前提:`ai` 的其余子格坏着时,到面板重存那一格不碰密钥;`ai.search` 则不然(留在「别在面板上改」)
+// ---------------------------------------------------------------------------
+
+describe("ai 的子格坏着、到面板重存(真 SecretStore、真文件)", () => {
+	const SEEDED_BAG = {
+		deepseek: "sk-ds",
+		"deepseek:vision": "sk-ds-v",
+		openrouter: "sk-or",
+		"search:bocha": "sk-bocha",
+		"search:tavily": "sk-tavily",
+	};
+
+	/** 每一格:怎么弄坏、面板重存时发的合法新值(要与内存里的默认值不同,才算「重存了那一格」)。 */
+	const OTHER_CELLS: Array<[cell: string, broken: unknown, fixed: () => unknown]> = [
+		["enabled", "开", () => !makeDefaultGlobalConfig().ai.enabled],
+		["persona", "坏的", () => ({ ...makeDefaultGlobalConfig().ai.persona, name: "新名字" })],
+		["dynamicPrompt", 5, () => "新的动态提示词"],
+		["liveSummaryPrompt", 5, () => "新的总结提示词"],
+		["activeProfile", 5, () => "openrouter"],
+		["activePreset", 5, () => "some-preset"],
+		[
+			"presets",
+			"坏的",
+			() => makeDefaultGlobalConfig().ai.presets.map((p) => ({ ...p, label: `${p.label}改` })),
+		],
+		["chat", "坏的", () => ({ thinkingLevel: "high" })],
+	];
+
+	async function seed(secret: SecretStore): Promise<Json> {
+		const store = mkStore({ secret });
+		await store.load();
+		await store.patchGlobals({
+			ai: {
+				activeProfile: "deepseek",
+				providers: {
+					deepseek: { provider: "deepseek", apiKey: "sk-ds", vision: { apiKey: "sk-ds-v" } },
+					openrouter: { provider: "openrouter", apiKey: "sk-or" },
+				},
+				search: { keys: { bocha: "sk-bocha", tavily: "sk-tavily" } },
+			},
+		});
+		expect((await secret.load()).aiApiKeys).toEqual(SEEDED_BAG);
+		return readDisk();
+	}
+
+	it.each(OTHER_CELLS)(
+		"ai.%s 坏着:面板整段 ai 重存那一格,问题清掉,袋里实例域与搜索域的键一把不少",
+		async (cell, broken, fixed) => {
+			const secret = mkSecretStore();
+			const disk = await seed(secret);
+			disk.ai[cell] = broken;
+			await putDisk(disk);
+			const store = mkStore({ secret });
+			await store.load();
+			expect(paths(store)).toEqual([["ai", cell]]);
+
+			// 面板发的是整段 ai(带着别的页的内容),把这一格换成合法新值。
+			const ai = structuredClone(store.getGlobals().ai) as Json;
+			ai[cell] = fixed();
+			await store.patchSettings({ core: { ai } as never });
+
+			expect(store.getInvalidSettings()).toEqual([]);
+			expect((await secret.load()).aiApiKeys).toEqual(SEEDED_BAG);
+			expect((await readDisk()).ai[cell]).toEqual(fixed());
+			const reopened = mkStore({ secret: mkSecretStore() });
+			await reopened.load();
+			expect(reopened.getGlobals().ai.providers.deepseek?.apiKey).toBe("sk-ds");
+			expect(reopened.getGlobals().ai.search.keys.tavily).toBe("sk-tavily");
+		},
+	);
+
+	it("ai.search 坏着:面板重存它,袋里搜索域与实例域的键还在,但盘上原文里手写的明文 key 没了(所以它仍留在「别在面板上改」)", async () => {
+		const secret = mkSecretStore();
+		const disk = await seed(secret);
+		disk.ai.search = { backend: "没这个后端", keys: { bocha: "sk-hand-bocha" } };
+		await putDisk(disk);
+		const store = mkStore({ secret });
+		await store.load();
+		expect(paths(store)).toEqual([["ai", "search"]]);
+		// 坏着时那把手写的明文在盘上、没进袋。
+		expect(await readFile(corePath, "utf8")).toContain("sk-hand-bocha");
+
+		const ai = structuredClone(store.getGlobals().ai) as Json;
+		ai.search.backend = "tavily";
+		await store.patchSettings({ core: { ai } as never });
+
+		expect(store.getInvalidSettings()).toEqual([]);
+		expect((await secret.load()).aiApiKeys).toEqual(SEEDED_BAG);
+		expect(await readFile(corePath, "utf8")).not.toContain("sk-hand-bocha");
+	});
+});
