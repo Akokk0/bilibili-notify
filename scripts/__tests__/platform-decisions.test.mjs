@@ -80,6 +80,34 @@ import {
  *   (`neutralPlatformSnapshot(conn.platform).name === "OneBot"` 不红)。
  * - 别名按名字在整个文件里认、不看作用域:一个文件里先有 `const p = conn.platform`、别处又有不相干的 `p` 会误中;
  *   反过来形参起名 `kind` 就漏(形参解构改名 `({ platform: kind })` 是认的)。`let` 之后再赋值、形参默认值都没管。
+ * - **「读出来的」身份也按名字整文件认**(平台对平台放行用它):一个文件里只要别处有 `{ platform }` 解构(React 组件的 props 解构就是),
+ *   `platform` 这个名字在这个文件里就整个算「读出来的」,「裸标识符照记」对它不生效 ——
+ *   `function d1({ platform }) {…}` 与 `function d2(conn, platform = "onebot") { return conn.platform === platform; }` 放一起,后者不红。
+ *   要真堵得做作用域分析。
+ * - **写死的默认值写在解构默认值或 `??` 右边就过**:`function f(conn, { platform: want = "onebot" } = {}) { return conn.platform === want; }`、
+ *   `const { platform: want = "onebot" } = opts`、`const p = cfg.platform ?? "onebot"; c.platform === p` 都不红
+ *   (默认值挪了位置的 `wantedPlatform = "onebot"`;键不叫 `platform` 的 `{ deltaPlatform = "onebot" } = {}` 反而红)。
+ * - **仍不红的刻意写法**(都要刻意才写得出):`const { length } = c.platform; length === 6`、`const n = c.platform.length; n === 6`、
+ *   `[c.platform].includes("x")`、`c.platform + "" === "onebot"`、`` `x${c.platform}` === "xonebot" ``、`(flag ? c.platform : o.platform) === "onebot"`、
+ *   `[c.platform, "x"].join(":") === "onebot:x"`、`c.platform.length > 6` 与 `c.platform < "p"`(只认相等比较);
+ *   读对读:`const p = cfg.platform; c.platform === p`、`c.platform === cfg.defaults.platform`。
+ * - **会误伤的**(以前放行、现在红;今天核心与面板里没有这样的代码,所以表没涨,判据打不准去问主人):
+ *   - 形参对读、两个形参互比:`function f(onePlatform, other) { return onePlatform === other.platform; }`、
+ *     `conns.some((x) => x.platform === iotaPlatform)`、`f(ninePlatform, tenPlatform) { return ninePlatform === tenPlatform; }`
+ *     (「按给定平台找连接」最容易撞上);
+ *   - 面板状态里的平台:`const [gammaPlatform] = useState(""); gammaPlatform === o.platform`(数组解构不进「读出来的」);
+ *   - 带兜底的读对读,右边兜成写死的平台名:`c.platform === (o.platform ?? "onebot")`、`=== (flag ? "onebot" : o.platform)`
+ *     (兜成空 `?? ""` / `|| undefined` 的放行);
+ *   - 显示用的方法调用:`c.platform.trim()`、`` `平台 ${c.platform.toUpperCase()}` ``,套在 `logger.*` 里也红(红的是里面那次方法调用);
+ *     `c.platform.length === 0` 红,`c.platform.length > 0` 不红;
+ *   - **名字以 `platform` 结尾、装的却是描述对象的**:「派生读再比」与「任何方法都算」对任何名字以 `platform` 结尾的东西都生效,
+ *     面板里 `platform` 多半是个描述对象(`Dashboard.tsx`、`History.tsx`、`Stats.tsx`、`PerUpEditor.tsx`),`descPlatform.label === "QQ"`、
+ *     `c.platform.label === o.label`、`hostPlatform.describe()` 都红。今天面板只读 `.label` / `.color` / `.features`、没拿去比也没调方法,所以没红;
+ *     以后写 `platform.shortLabel === platform.label` 就红。
+ *   - 平台值带兜底(`c.platform ?? ""`、`p || "onebot"`)看穿了:喂函数、比字面量、`switch`、查表都算(面板 `Targets.tsx` 因此从 12 处涨到 18 处)。
+ *
+ * 这两道守卫(`.platform` 决定与守卫 11)按写法的样子认,认不全;上面列的是已知的,不再为新试出的绕法逐个改判据,
+ * 靠审查与期末的代码审查。
  *
  * 判据写成纯函数 + 样例:一条永远判 OK 的规则跟没有一样。
  */
@@ -130,7 +158,7 @@ export const RATCHET = {
 };
 
 /**
- * 棘轮表(面板):同上,面板另记一张(开张时的现数:5 个文件 23 处)。
+ * 棘轮表(面板):同上,面板另记一张(开张时的现数:5 个文件 23 处;看穿兜底后 29 处)。
  * 面板上方案点名的 5 处误伤:`=== ""` 两处(问有没有)与全大写常量 `BILI_PLATFORM` 两处(设状态)由判据放掉,
  * 不在表里;剩下的 `Targets.tsx` 里 `value.platform === p.value` 一处是误伤(`p.value` 是候选里的平台,
  * 语法上认不出是平台对平台),如实记在 `Targets.tsx` 那一格里。
@@ -139,10 +167,12 @@ export const RATCHET_PANEL = {
 	"apps/web/src/components/link-parsing-settings.tsx": 1, // `platform === "qq-official"`
 	// `table[platform]` 查表、`lookup(connection.platform)` 喂函数:都是平台徽章的显示。
 	"apps/web/src/components/platform-meta.tsx": 2,
-	// 12 处:`platform === "onebot"` / `"qq-official"` 比字面量 6 处(`platform` 与 `value.platform` 各 3)、`platformDescriptor(platform)`、
+	// 原 12 处:`platform === "onebot"` / `"qq-official"` 比字面量 6 处(`platform` 与 `value.platform` 各 3)、`platformDescriptor(platform)`、
 	// `targetSessionSummary(target, platform)`、`sessionFieldsHint(value, platform)`、`platformTint(...)`×2 喂函数 5 处(其中 `platformTint` 两处是显示),
 	// 以及 `value.platform === p.value` 1 处:**误伤**(`p.value` 是候选里的平台,平台对平台,语法上认不出)。
-	"apps/web/src/pages/Targets.tsx": 12,
+	// 另 6 处是带兜底的平台值(判据看穿 `?? x` / `|| x` 后进表,10-12 主人点头,共 18 处):`addressNounFor(platform ?? "", …)`×3、
+	// `platformTint(platform ?? "")`、`scopesFor(platform ?? "")`、`platformTint(platform || (…))`(这条是显示)。
+	"apps/web/src/pages/Targets.tsx": 18,
 	// `isWebhookPlatform(connection.platform)`、`webhookUrlPlaceholder(platform)`、`webhookSecretHint(platform)`。
 	"apps/web/src/types/connection-fields.ts": 3,
 	// 两个 `switch (platform)`、`PLATFORM_REGISTRY[platform]` 查表、`platform === "onebot"` / `"qq-official"` 比字面量各一处。
@@ -251,10 +281,7 @@ function isDirectPlatform(node) {
 	const target = unwrap(node);
 	if (isPlatformBase(target)) return true;
 	if (ts.isIdentifier(target)) return endsWithPlatform(target.text);
-	if (isFallbackChain(target)) {
-		return isDirectPlatform(target.left) || isDirectPlatform(target.right);
-	}
-	return false;
+	return someFallbackOperand(target, isDirectPlatform);
 }
 
 /** `a ?? b` / `a || b`。 */
@@ -263,12 +290,15 @@ const isFallbackChain = (target) =>
 	(target.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
 		target.operatorToken.kind === ts.SyntaxKind.BarBarToken);
 
+/** 看穿 `a ?? b` / `a || b`:是兜底链且任一边过了 `test`(初始化式与比较里的平台值都用这一个办法)。 */
+const someFallbackOperand = (target, test) =>
+	isFallbackChain(target) && (test(target.left) || test(target.right));
+
 /** 初始化式里直接就是「读出来的」平台值:规则 1、4(`x.platform`、`platformOfTarget(…)`),`a ?? b` / `a || b` 任一边是也算。裸标识符不算。 */
 function isDirectRead(node) {
 	const target = unwrap(node);
 	if (isPlatformBase(target)) return true;
-	if (isFallbackChain(target)) return isDirectRead(target.left) || isDirectRead(target.right);
-	return false;
+	return someFallbackOperand(target, isDirectRead);
 }
 
 /** 解构元素(变量声明里的 `const { platform: p } = x`,形参里的 `({ platform: p }) => …`)取出来的名字和它读的键。 */
@@ -348,6 +378,9 @@ export function isPlatformValue(node, names) {
 	}
 	const inner = loneTemplateExpression(target);
 	if (inner !== undefined) return isPlatformValue(inner, names);
+	if (isFallbackChain(target)) {
+		return someFallbackOperand(target, (operand) => isPlatformValue(operand, names));
+	}
 	return isPlatformBase(target);
 }
 
@@ -361,6 +394,14 @@ function isPlatformRead(node, names) {
 	if (ts.isIdentifier(target)) return !names.hosts.has(target.text) && names.reads.has(target.text);
 	const inner = loneTemplateExpression(target);
 	if (inner !== undefined) return isPlatformRead(inner, names);
+	// 兜底链:左边是读出来的、右边也是读出来的或只是「没有」(`""` / `undefined` / `null`),整体还是读出来的;
+	// 右边是写死的平台名(`o.platform ?? "onebot"`)就不是,照记
+	if (isFallbackChain(target)) {
+		return (
+			isPlatformRead(target.left, names) &&
+			(isPlatformRead(target.right, names) || isAbsence(target.right))
+		);
+	}
 	return isPlatformBase(target);
 }
 
@@ -575,6 +616,21 @@ describe("`.platform` 决定的判据:算", () => {
 		}
 	});
 
+	it("平台值带兜底(`?? x` / `|| x`)还是平台值:喂函数、比字面量、switch、查表", () => {
+		expect(sample('fn(c.platform ?? "");')).toHaveLength(1);
+		expect(sample('fn(c.platform || "onebot");')).toHaveLength(1);
+		expect(
+			sample('function f(onePlatform) { return (onePlatform ?? "") === "onebot"; }'),
+		).toHaveLength(1);
+		expect(sample('const p = c.platform; if ((p ?? "") === "onebot") {}')).toHaveLength(1);
+		expect(sample('switch (twoPlatform ?? "") { case "a": break; }')).toHaveLength(1);
+		expect(sample('const d = TABLE[c.platform ?? ""];')).toHaveLength(1);
+		// 兜底在右边也一样
+		expect(sample("fn(fallback ?? c.platform);")).toHaveLength(1);
+		// 读对读时右边兜底成写死的平台名,不是平台对平台
+		expect(sample('if (c.platform === (o.platform ?? "onebot")) {}')).toHaveLength(1);
+	});
+
 	it("命中带行号与那一段源码", () => {
 		expect(sample('\nif (conn.platform === "x") {}')).toEqual([
 			{ line: 2, text: 'conn.platform === "x"' },
@@ -598,6 +654,12 @@ describe("`.platform` 决定的判据:不算", () => {
 		expect(sample("const f = ({ platform: p }) => p === b.platform;")).toEqual([]);
 		expect(sample("if (`$" + "{a.platform}` === b.platform) {}")).toEqual([]);
 		expect(sample('if (a["platform"] === b.platform) {}')).toEqual([]);
+	});
+
+	it("带兜底的读对读:两边都是读出来的(右边只兜成空)仍是平台对平台", () => {
+		expect(sample('if ((c.platform ?? "") === (o.platform ?? "")) {}')).toEqual([]);
+		expect(sample('if (c.platform === (o.platform ?? "")) {}')).toEqual([]);
+		expect(sample("if ((c.platform || undefined) === o.platform) {}")).toEqual([]);
 	});
 
 	it("比 undefined / null / 空串:问的是有没有", () => {
@@ -664,6 +726,49 @@ describe("`.platform` 决定的判据:不算", () => {
 		expect(sample("log.isOnebot(conn.platform);")).toEqual([]);
 		expect(sample("logger.child(conn.platform).decide();")).toEqual([]);
 		expect(sample('neutralPlatformSnapshot(conn.platform).name === "OneBot";')).toEqual([]);
+	});
+
+	it("抓不到的(钉住现状,写进文件头):整文件认的名字、解构默认值与 `??` 右边的写死值、刻意写法", () => {
+		// S1:别处有 `{ platform }` 解构,`platform` 整个名字都成了「读出来的」
+		expect(
+			sample(
+				'function d1({ platform }) { return { platform }; } function d2(conn, platform = "onebot") { return conn.platform === platform; }',
+			),
+		).toEqual([]);
+		// S2:写死的默认值挪到解构默认值或 `??` 右边
+		expect(
+			sample(
+				'function f(conn, { platform: want = "onebot" } = {}) { return conn.platform === want; }',
+			),
+		).toEqual([]);
+		expect(sample('const p9 = cfg.platform ?? "onebot"; if (c.platform === p9) {}')).toEqual([]);
+		// 对照:键不叫 platform 的解构默认值是红的
+		expect(
+			sample(
+				'function f(conn, { deltaPlatform = "onebot" } = {}) { return conn.platform === deltaPlatform; }',
+			),
+		).toHaveLength(1);
+		// 刻意写法
+		expect(sample("const n = c.platform.length; if (n === 6) {}")).toEqual([]);
+		expect(sample('if ([c.platform].includes("x")) {}')).toEqual([]);
+		expect(sample('if (c.platform + "" === "onebot") {}')).toEqual([]);
+		expect(sample('if ((flag ? c.platform : o.platform) === "onebot") {}')).toEqual([]);
+		expect(sample("const p = cfg.platform; if (c.platform === p) {}")).toEqual([]);
+	});
+
+	it("会误伤的(钉住现状,写进文件头):形参对读、描述对象、显示用的方法调用", () => {
+		expect(
+			sample("function f(onePlatform, other) { return onePlatform === other.platform; }"),
+		).toHaveLength(1);
+		expect(
+			sample("function f(ninePlatform, tenPlatform) { return ninePlatform === tenPlatform; }"),
+		).toHaveLength(1);
+		expect(sample('if (descPlatform.label === "QQ") {}')).toHaveLength(1);
+		expect(sample("hostPlatform.describe();")).toHaveLength(1);
+		expect(sample("const t = c.platform.trim();")).toHaveLength(1);
+		expect(
+			sample('const [gammaPlatform] = useState(""); if (gammaPlatform === o.platform) {}'),
+		).toHaveLength(1);
 	});
 
 	it("类型位置、不是平台的名字、注释", () => {

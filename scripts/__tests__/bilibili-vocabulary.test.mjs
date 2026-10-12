@@ -53,13 +53,24 @@ import {
  *   `ROOM_ID`、`bvid`、`BVID`;全小写的 `roomid` 是一整段(不是 `room` `id`),手补进了整名组。
  * - **自动词表有漏**:它只认 `bilibili/` 里写成类型声明(属性签名、枚举成员)的下划线字段。没写成类型声明、从没有类型的回应上
  *   直接读、或写在对象字面量里的原始字段不在词表里,核心用到它们时这道看不见:`module_stat`、`is_only_fans`、`head_text`、
- *   `desc_second`、`qrcode_key`、`bili_jct`、`refresh_csrf`、`grisk_id`、`jump_style`、`icon_badge`、`comment_id_str`、
- *   `pub_action_text`、`room_admin_entrance` 等(审查稿列了二十来个)。核心里今天真在读的 `live_room` / `roomid`
- *   (`routes/cards.ts`)已手补进 `WHOLE_WORDS`;别的靠审查,或再手补。**「现生成 = 快照」那条只证明两边一致,不证明没漏**:
- *   生成函数少认一种写法时快照跟着少,照样绿。生成函数不改(主人定:只手补核心里今天真在用的)。
- * - 正则字面量里的词认,但还原只做两件事:去掉标点转义的反斜杠(`bilibili\.com` → `bilibili.com`)、字母转义(`\b` `\d`)
- *   换成空格;字符类、分组拆开的词(`b23[.]tv`、`bili(?:bili)`)认不出。
- * - 字符串拼出来的词(`"room" + "_id"`)。
+ *   `desc_second`、`qrcode_key`、`refresh_csrf`、`grisk_id`、`jump_style`、`icon_badge`、`comment_id_str`、
+ *   `pub_action_text`、`room_admin_entrance` 等(审查稿列了二十来个)。核心里今天真在用的 `live_room` / `roomid`
+ *   (`routes/cards.ts`)与 `SESSDATA` / `bili_jct`(`logs/redact.ts`)已手补进 `WHOLE_WORDS`;别的靠审查,或再手补。
+ *   **「现生成 = 快照」那条只证明两边一致,不证明没漏**:生成函数少认一种写法时快照跟着少,照样绿。
+ *   生成函数不改(主人定:只手补核心里今天真在用的)。手补的词按整名认、**大小写敏感**:`SESSDATA` 只认这一种写法,`sessdata` 认不出。
+ * - **正则里的词只认到「标点转义」为止**:正则字面量把 `\.` 等标点转义的反斜杠去掉(`bilibili\.com` → `bilibili.com`)、字母转义
+ *   (`\b` `\d`)换成空格;字符串与模板里写的正则(`new RegExp("bilibili\\.com")`)只还原标点转义、不动字母转义
+ *   (`new RegExp("\\bbvid=(\\w+)")` 里的 `\b` 没换成分隔,`bbvid` 不是词边界,认不出)。认不出的还有:
+ *   - 分组与字符类拆开的词:`/bilibili\.(?:com|cn)/`、`/b23[.]tv/`、`/bilibili[.]com/`、`/bili(?:bili)?\.com/`;
+ *   - 大小写不敏感的正则(`/BILIBILI\.COM/i`:词表按写出来的样子比)、十六进制转义(`/b23\x2etv/`);
+ *   - 风控码只认数字字面量(`/code=-352/` 不认)、`BV` 号的正则(`/BV[0-9A-Za-z]{10}/`,词表里没有对应的词)。
+ * - **通用词在正则与字符串里也会红**:`created_at`、`refresh_token` 这类自动词表里的通用词,写在正则或字符串里(`/created_at|updated_at/`、
+ *   `/refresh_token=([^&]+)/`)一样算一处。出路是排除表 `GENERATED_KEY_EXCLUSIONS`,要问主人。
+ *   `redact.ts` 那一格里的 `refresh_token`×3 就是这一种。
+ * - 字符串拼出来的词(`"room" + "_id"`、`["bilibili", "com"].join("\\.")`)。
+ *
+ * 这两道守卫(守卫 11 与 `.platform` 决定)按写法的样子认,认不全;上面列的是已知的,不再为新试出的绕法逐个改判据,
+ * 靠审查与期末的代码审查。
  *
  * 判据写成纯函数 + 样例:一条永远判 OK 的规则跟没有一样。
  */
@@ -102,6 +113,11 @@ export const WHOLE_WORDS = [
 	// 而这两个是核心里手写类型直接读的;`roomid` 不带下划线(自动词表认不出)、全小写是一整段(不与按段组的 `roomId` 归一)。
 	"live_room",
 	"roomid",
+	// 核心的日志脱敏器按 B 站登录凭据的 cookie 名遮值(`logs/redact.ts`),与上面同一条规矩:核心里今天真在用、自动词表认不出的才手补。
+	// 整名、大小写敏感:只认写成 `SESSDATA` / `bili_jct` 的(脱敏正则里就是这么写的,带 `i` 标志但词在源文里是这个写法);
+	// 小写的 `sessdata` 认不出。
+	"SESSDATA",
+	"bili_jct",
 ];
 
 /** 按段组:标识符切段后含这串段;字符串里按词边界出现。 */
@@ -213,7 +229,7 @@ export const RATCHET = {
 	"apps/server/src/compose.ts": 2, // 开发场景的订阅视图里带上 `roomId`
 	"apps/server/src/devtools/scenarios/bridge.ts": 1, // 假消息里的 `bilibili.com` 链接
 	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
-	"apps/server/src/logs/redact.ts": 3, // 日志脱敏的三条正则里的 `refresh_token`:核心的脱敏器按 B 站登录凭据的字段名遮值(同一组里的 `SESSDATA`、`bili_jct` 不带小写下划线、不在词表里,守卫看不见)。认正则后才数到的
+	"apps/server/src/logs/redact.ts": 5, // 日志脱敏的五条正则:`SESSDATA`、`bili_jct`(手补进词表)与 `refresh_token`×3(自动词表里的通用词)。核心的脱敏器按 B 站登录凭据的字段名遮值。认正则后才数到的
 	"apps/server/src/routes/cards.ts": 20, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×2、`roomid`×4(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
 	"apps/server/src/runtime/engines.ts": 9, // `roomId`×9(含 `onRoomIdResolved`)
@@ -302,7 +318,22 @@ export function textWord(text, whole = wholeWords()) {
  * 选这一种而不是给文字组的词各配一个带转义的写法:词表只有一份,不会两份写法漂开。
  */
 export function regexSourceText(source) {
-	return source.replace(/\\([A-Za-z0-9])/g, " ").replace(/\\(.)/g, "$1");
+	return unescapePunctuation(source.replace(/\\([A-Za-z0-9])/g, " "));
+}
+
+/**
+ * 去掉「反斜杠加标点」的反斜杠(`bilibili\.com` → `bilibili.com`),只这一种。字符串与模板里写的正则(`new RegExp("bilibili\\.com")`)
+ * 取到的文字就是这个样子;字母转义(`\b` `\d`)不动 —— 普通字符串里的反斜杠加字母不一定是正则。
+ */
+export function unescapePunctuation(text) {
+	return text.replace(/\\([^A-Za-z0-9\s])/g, "$1");
+}
+
+/** 文字节点(字符串、模板片段、JSX 文字)命中的词:先按原文比,没中再按还原了标点转义的文字比。 */
+function textNodeWord(text, whole) {
+	const direct = textWord(text, whole);
+	if (direct !== undefined || !text.includes("\\")) return direct;
+	return textWord(unescapePunctuation(text), whole);
 }
 
 /** 这个节点命中的词:文字节点、正则字面量、标识符、带负号的风控码。 */
@@ -315,7 +346,7 @@ function wordOfNode(node, whole) {
 		ts.isTemplateTail(node) ||
 		ts.isJsxText(node)
 	) {
-		return textWord(node.text, whole);
+		return textNodeWord(node.text, whole);
 	}
 	if (ts.isRegularExpressionLiteral(node)) return textWord(regexSourceText(node.text), whole);
 	if (ts.isIdentifier(node)) return identifierWord(node.text, whole);
@@ -415,6 +446,25 @@ describe("守卫 11 的判据:算", () => {
 		expect(regexSourceText("/b23\\.tv\\/\\bx/")).toBe("/b23.tv/ x/");
 	});
 
+	it("字符串与模板里写的正则:标点转义还原后再按文字规则比", () => {
+		expect(wordsIn('const re = new RegExp("bilibili\\\\.com");')).toEqual(["bilibili.com"]);
+		expect(wordsIn('const re = new RegExp("b23\\\\.tv/(\\\\w+)");')).toEqual(["b23.tv"]);
+		expect(wordsIn("const re = new RegExp(`$" + "{H}\\\\.bilibili\\\\.com/video`);")).toEqual([
+			"bilibili.com",
+		]);
+		// 普通字符串里的 `\n` 照旧不弄坏匹配
+		expect(wordsIn('const s = "读 live_status\\n";')).toEqual(["live_status"]);
+		expect(unescapePunctuation("a\\.b\\/c\\bd")).toBe("a.b/c\\bd");
+	});
+
+	it("手补进整名组的 `SESSDATA` / `bili_jct`:整名、大小写敏感,正则里也认", () => {
+		expect(wordsIn("const k = SESSDATA; const j = bili_jct;")).toEqual(["SESSDATA", "bili_jct"]);
+		expect(wordsIn("const re = /\\b(SESSDATA)=[^;]+/gi;")).toEqual(["SESSDATA"]);
+		expect(wordsIn('const s = "bili_jct=abc";')).toEqual(["bili_jct"]);
+		// 大小写敏感(钉住现状):小写的认不出
+		expect(wordsIn("const k = sessdata;")).toEqual([]);
+	});
+
 	it("手补进整名组的 `live_room` / `roomid`:标识符、属性、类型成员、字符串", () => {
 		expect(wordsIn("const roomid = info?.data?.live_room?.roomid;")).toEqual([
 			"roomid",
@@ -502,6 +552,36 @@ describe("守卫 11 的判据:不算", () => {
 		// 碰巧含:`notbvidx` 的 `bvid` 左右都贴着字母,不是词边界;`bilibilixcom` 没有点
 		expect(wordsIn("const re = /notbvidx/;")).toEqual([]);
 		expect(wordsIn("const re = /bilibili\\Dcom/;")).toEqual([]);
+	});
+
+	it("正则里认不出的(钉住现状,写进文件头的「抓不到」)", () => {
+		for (const re of [
+			"/bilibili\\.(?:com|cn)/",
+			"/b23[.]tv/",
+			"/BILIBILI\\.COM/i",
+			"/b23\\x2etv/",
+			"/code=-352/",
+		]) {
+			expect(wordsIn(`const re = ${re};`), re).toEqual([]);
+		}
+		// 字符串里的字母转义不还原:`\b` 没换成分隔,`bbvid` 不是词边界
+		expect(wordsIn('const re = new RegExp("\\\\bbvid=(\\\\w+)");')).toEqual([]);
+	});
+
+	it("通用词出现在正则与字符串里也算(会误伤,出路是排除表,要问主人)", () => {
+		expect(wordsIn("const re = /created_at|updated_at/;")).toEqual(["created_at"]);
+		expect(
+			wordsIn("const re = /refresh_token=([^&]+)/;", wholeWords(["refresh_token"], {})),
+		).toEqual(["refresh_token"]);
+	});
+
+	it("字符串与模板里写的正则:带 `\\.` 却不含任何词的放行(真代码里的写法)", () => {
+		expect(
+			wordsIn("const T = new RegExp(`$" + "{escapeRegExp(TEMP_MARKER)}\\\\d+\\\\.[0-9a-f]+$`);"),
+		).toEqual([]);
+		expect(
+			wordsIn("const D = new RegExp(`^(\\\\d+(?:\\\\.\\\\d+)?)\\\\s*($" + "{units.join('|')})$`);"),
+		).toEqual([]);
 	});
 
 	it("注释", () => {
