@@ -2163,6 +2163,151 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
+	const extensionPostReport = (id: string, video: boolean) => ({
+		extensionId: "douyin",
+		externalId: "sec-uid-1",
+		subscriptionIds: [id],
+		report: {
+			kind: "post" as const,
+			value: {
+				id: "p1",
+				url: "https://www.douyin.com/video/p1",
+				publishedAt: Date.now(),
+				text: "新视频",
+				...(video ? { video: { title: "一期" } } : {}),
+			},
+		},
+	});
+
+	// 验红:把 engines.ts 里 `createPostQueue` 的顶层 `logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
+	it("作品队列自己记的日志走 posts/core 那一个(订阅的拓展没在跑 → 不收)", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			extensionSources: {
+				running: () => false,
+				postNoun: () => undefined,
+				events: () => ["post"],
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", extensionPostReport(sub.id, false));
+		await settleTracked(c);
+		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
+			expect.stringContaining("不收"),
+		);
+		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
+		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
+	});
+
+	// 验红:把 engines.ts 里 `createPostQueue` 的 `deps.logger: postsCtx.logger` 换成 `liveCtx.logger`,这条红。
+	it("作品装配(deliverPost)记的日志走 posts/core 那一个(被过滤)", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const g = makeDefaultGlobalConfig();
+		g.defaults.filters.blockVideos = true;
+		const c = setup({
+			puppeteer: true,
+			subs: [sub],
+			globals: g,
+			extensionSources: {
+				running: () => true,
+				postNoun: () => "作品",
+				events: () => ["post"],
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", extensionPostReport(sub.id, true));
+		await settleTracked(c);
+		expect(subsystemCtx(c, "posts", "core").logger.debug).toHaveBeenCalledWith(
+			expect.stringContaining("被过滤"),
+		);
+		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
+		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
+	});
+
+	// 验红:把 engines.ts 里 `createExtensionLiveSessions` 的 `logger: extensionLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
+	it("拓展直播场次记的日志走 live/core 那一个(拓展没在跑 → 这次开播不管)", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const c = setup({
+			subs: [sub],
+			extensionSources: {
+				running: () => false,
+				postNoun: () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
+			},
+			extensionLive: { get: () => undefined },
+		});
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "liveStart",
+				value: { url: "https://live.douyin.com/1", startedAt: Date.now() },
+			},
+		});
+		await settleTracked(c);
+		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
+			expect.stringContaining("这次开播不管"),
+		);
+		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
+		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
+	});
+
+	// 验红:把 engines.ts 里 `bindExtensionLivePush` 的 `logger: extensionLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
+	it("拓展直播推送记的日志走 live/core 那一个(周期到点时最新状态不在播)", async () => {
+		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
+		const g = makeDefaultGlobalConfig();
+		g.defaults.features.liveStreaming = true;
+		g.defaults.liveStreaming.streamingIntervalHours = 1;
+		let playing = true;
+		const c = setup({
+			globals: g,
+			subs: [sub],
+			extensionSources: {
+				running: () => true,
+				postNoun: () => undefined,
+				events: () => ["post", "liveStart", "liveEnd"],
+			},
+			extensionLive: {
+				get: (id) =>
+					playing && id === sub.id
+						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }
+						: undefined,
+			},
+		});
+		active = c;
+		c.bus.emit("subscription-reported", {
+			extensionId: "douyin",
+			externalId: "sec-uid-1",
+			subscriptionIds: [sub.id],
+			report: {
+				kind: "liveStart",
+				value: { url: "https://live.douyin.com/1", startedAt: Date.now() },
+			},
+		});
+		await vi.waitFor(() =>
+			expect(H.push[0].push).toHaveBeenCalledWith(
+				expect.objectContaining({ subscriptionId: sub.id, feature: "liveStart" }),
+			),
+		);
+		playing = false;
+		const intervals = (subsystemCtx(c, "live", "core").setInterval.mock.calls ?? []) as unknown as [
+			() => void,
+			number,
+		][];
+		const periodic = intervals.find(([, ms]) => ms === 60 * 60 * 1000);
+		expect(periodic, "周期推送没挂上").toBeDefined();
+		periodic?.[0]();
+		expect(subsystemCtx(c, "live", "core").logger.debug).toHaveBeenCalledWith(
+			expect.stringContaining("最新状态不在播"),
+		);
+		expect(subsystemCtx(c, "live", "bilibili").logger.debug).not.toHaveBeenCalled();
+		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
+	});
+
 	it("配了 AI 时,只改 dynamicCron 不该热重载 commentary", () => {
 		// 现有 setup() 不配 AI → commentary 为 null → 永远走不进 `else if (commentary)`
 		// 分支,所以「改 app 扇出到 ai」这条路此前无人守。主人的实例配了 AI 才暴露。
