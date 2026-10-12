@@ -7,7 +7,12 @@
  * 来源用真的 B 站来源 + 真的 `DynamicEngine`(假 `Api`,全程不外连),逐条钉。
  */
 
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { HttpClient } from "@bilibili-notify/http";
 import {
+	BILIBILI_GUARD_PROGRAM,
 	BILIBILI_SOURCE_KEY,
 	fail,
 	type IntegrationContext,
@@ -23,14 +28,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { Api } from "../bilibili/api/index.js";
 import { fakeAuth } from "../bilibili/devtools/__tests__/support/fake-auth.js";
 import { createBiliDevtools } from "../bilibili/devtools/index.js";
+import type { GuardIcons } from "../bilibili/live/guard-icons.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "../compose.js";
 import { overridableApi } from "../devtools/api-overrides.js";
 import { createDevtoolsProviderRegistry } from "../devtools/providers.js";
+import { createImageStore, IMAGE_GRACE_MS, type ImageStore } from "../images/image-store.js";
 import { createPlatformAdapterRegistry } from "../push/registry.js";
 import { createNodeMessageBus } from "../runtime/message-bus.js";
+import { putImage } from "./support/chat-images.js";
 import { memoryIntegrationStore } from "./support/memory-key-value-store.js";
+import { png } from "./support/report-images.js";
 
 vi.mock("../bilibili/devtools/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../bilibili/devtools/index.js")>();
@@ -115,9 +124,14 @@ function compose(
 		api?: Api;
 		fetchImage?: ReturnType<typeof vi.fn>;
 		sourceAuth?: SourceAuth;
+		/** 图库:不给就是个只记登记的假的;要看「来源声明的图」真进了图库的用例给真的。 */
+		imageStore?: Pick<ImageStore, "register">;
+		/** 抓徽章图的请求客户端:不给就是个连不上的假的(不联网)。 */
+		guardIconHttp?: Pick<HttpClient, "fetch">;
 	} = {},
 ) {
 	const subs = opts.subs ?? [];
+	const attachGuardIcons = vi.fn<(icons: GuardIcons) => void>();
 	const adapterRegistry = createPlatformAdapterRegistry();
 	// 工厂创建时只往 serviceCtx 挂关停兜底(OneBot、QQ 官方各一个);连接名单是空的,适配器 start 不开监听。
 	const onDispose = vi.fn();
@@ -156,6 +170,11 @@ function compose(
 		},
 		imageFetcher: { fetchImage } as never,
 		setTimeout: () => ({ dispose() {} }),
+		imageStore: opts.imageStore ?? { register: vi.fn(() => ({}) as never) },
+		guardIconHttp: opts.guardIconHttp ?? {
+			fetch: async () => fail("unavailable", "测试不联网"),
+		},
+		attachGuardIcons,
 		live: () => undefined,
 		fans: () => undefined,
 		healthCheck: () => undefined,
@@ -171,6 +190,7 @@ function compose(
 		builtins: composeBuiltinIntegrations(deps),
 		deps,
 		setHealthCheckMs,
+		attachGuardIcons,
 		fetchImage,
 		adapterRegistry,
 		integrationStore,
@@ -428,6 +448,79 @@ describe("composeBuiltinIntegrations · 登记 B 站来源", () => {
 			await fake.registered[0]?.source.stop();
 			await expect(runScenario(scenario)).rejects.toThrow("动态引擎还没起来");
 		});
+	});
+});
+
+describe("composeBuiltinIntegrations · 大航海徽章图", () => {
+	const TIERS = Array.isArray(BILIBILI_GUARD_PROGRAM.tiers) ? BILIBILI_GUARD_PROGRAM.tiers : [];
+	let imagesDir: string;
+	let store: ImageStore | undefined;
+	beforeEach(async () => {
+		imagesDir = await mkdtemp(join(tmpdir(), "bn-compose-guard-icons-"));
+	});
+	afterEach(async () => {
+		await store?.close();
+		store = undefined;
+		await rm(imagesDir, { recursive: true, force: true });
+	});
+
+	/** 假的请求客户端:每个徽章地址回一张互不相同的 png;`down` 时回连不上。 */
+	function fakeHttp(down = false): Pick<HttpClient, "fetch"> {
+		return {
+			fetch: async (url) => {
+				if (down) return fail("unavailable", "连不上");
+				const index = TIERS.findIndex((t) => t.icon?.url === String(url));
+				return okResult({
+					url: String(url),
+					status: 200,
+					headers: new Headers(),
+					body: png(8, 8, 10 + index),
+					isSuccess: true,
+					text: () => "",
+					json: () => fail("invalid", "不是 json"),
+				});
+			},
+		};
+	}
+
+	// 验红:删掉 `compose.ts` 里 `deps.attachGuardIcons(guardIcons)` 那一句,这条红(运行时拿不到徽章图:引擎、卡片路由读它会抛)。
+	it("造好就当场交给运行时:attachGuardIcons 收到一份,它就是抓图的那一个", async () => {
+		store = createImageStore({ dir: imagesDir });
+		const { attachGuardIcons } = compose({ imageStore: store, guardIconHttp: fakeHttp() });
+		expect(attachGuardIcons).toHaveBeenCalledTimes(1);
+		const icons = attachGuardIcons.mock.calls[0]?.[0];
+		await icons?.ensure();
+		expect(icons?.refs()).toHaveLength(3);
+		expect(icons?.iconOf("captain")).toBeDefined();
+	});
+
+	// 验红:把 `compose.ts` 里这一家的 `listRefs` 改成 `async () => []`,三张徽章过了宽限期被清扫收走,这条红。
+	it("图库里多了「来源声明的图」这一家:名单是手里抓到的那几张,清扫留着它们、照收野图", async () => {
+		store = createImageStore({ dir: imagesDir });
+		const stray = store.register({ name: "测试野图", listRefs: async () => [] });
+		const { attachGuardIcons } = compose({ imageStore: store, guardIconHttp: fakeHttp() });
+		const icons = attachGuardIcons.mock.calls[0]?.[0];
+		await icons?.ensure();
+		const refs = icons?.refs() ?? [];
+		expect(refs).toHaveLength(3);
+		const strayRef = await putImage(stray, png(4, 4, 99));
+
+		const usage = await store.usage();
+		for (const ref of refs) {
+			expect(usage.find((u) => u.ref === ref)?.holders).toEqual(["来源声明的图"]);
+		}
+		const swept = await store.sweep({ now: new Date(Date.now() + IMAGE_GRACE_MS + 3_600_000) });
+		expect(swept.removed).toEqual([strayRef]);
+		expect(await readdir(imagesDir)).toHaveLength(3);
+	});
+
+	it("抓不到:ensure() 不抛、iconOf 给 undefined、名单为空", async () => {
+		store = createImageStore({ dir: imagesDir });
+		const { attachGuardIcons } = compose({ imageStore: store, guardIconHttp: fakeHttp(true) });
+		const icons = attachGuardIcons.mock.calls[0]?.[0];
+		await expect(icons?.ensure()).resolves.toBeUndefined();
+		expect(icons?.iconOf("captain")).toBeUndefined();
+		expect(icons?.refs()).toEqual([]);
 	});
 });
 

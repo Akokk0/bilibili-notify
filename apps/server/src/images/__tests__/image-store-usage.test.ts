@@ -193,7 +193,8 @@ describe("sweep 的 removedBytes", () => {
 });
 
 describe("引用方名字接线", () => {
-	it("真装配里登记的正是常量表里那六个名字(写错一个就红)", async () => {
+	// 「来源声明的图」不在这里:它由组装根(`compose.ts`)登记,`compose.test.ts` 用真图库钉着那一家的名字。
+	it("真装配里登记的正是常量表里运行时自己那几个名字(写错一个就红);来源声明的图留给组装根", async () => {
 		const dataDir = await mkdtemp(join(tmpdir(), "bn-referrer-names-"));
 		const runtime = createAppRuntime(
 			BootstrapConfigSchema.parse({ dataDir, logLevel: "silent" }),
@@ -204,8 +205,16 @@ describe("引用方名字接线", () => {
 		);
 		try {
 			for (const name of Object.values(IMAGE_REFERRERS)) {
+				if (name === IMAGE_REFERRERS.sourceDeclared) continue;
 				expect(() => runtime.imageStore.register({ name, listRefs: async () => [] })).toThrow(name);
 			}
+			// 运行时不替组装根登记这一家:这里登记得上,说明名字还空着。
+			expect(() =>
+				runtime.imageStore.register({
+					name: IMAGE_REFERRERS.sourceDeclared,
+					listRefs: async () => [],
+				}),
+			).not.toThrow();
 			// 反面:没登记过的名字不抛,证明上面的抛是「重名」而不是别的。
 			expect(() =>
 				runtime.imageStore.register({ name: "从没登记过", listRefs: async () => [] }),

@@ -712,6 +712,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptionRuntime: runtime.subRuntimeStore,
 			imageFetcher: postImageFetcher,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
+			// 大航海徽章图在 `compose.ts` 里造:登记进图库「来源声明的图」,造好当场交回运行时(引擎与卡片路由读它)。
+			imageStore: runtime.imageStore,
+			attachGuardIcons: (icons) => runtime.attachGuardIcons(icons),
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
 			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
