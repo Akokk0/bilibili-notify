@@ -1425,6 +1425,31 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		ad.stop();
 	});
 
+	it("换 token 之后,凭旧 token 连着的那一头再发来的消息不收", async () => {
+		const port = await freePort();
+		const onInboundPrivate = vi.fn();
+		const ad = createOnebotAdapter({ ...obOpts(), onInboundPrivate });
+		reconcileAdapter(ad, [obRevConnection(port, { accessToken: "old" })]);
+		const bot = await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer old" });
+		await waitFor(async () => (await ad.probe(obRevConnection(port))).ok === true);
+		const frame = JSON.stringify({
+			post_type: "message",
+			message_type: "private",
+			user_id: 7,
+			raw_message: "y",
+		});
+		bot.send(frame);
+		await waitFor(() => onInboundPrivate.mock.calls.length === 1); // 换之前照常收
+
+		reconcileAdapter(ad, [obRevConnection(port, { accessToken: "new" })]);
+		// 同一拍里发:这一头还没收到关闭帧,帧照样写得出去。关闭握手没走完(对端不配合时最长等 30 秒)的这段
+		// 时间里,连接底下的消息监听还在,得靠通道自己不再往上交。
+		bot.send(frame);
+		await sleep(120);
+		expect(onInboundPrivate).toHaveBeenCalledTimes(1);
+		ad.stop();
+	});
+
 	it("同一份设置再对账一次:连着的 bot 不动", async () => {
 		const port = await freePort();
 		const ad = createOnebotAdapter(obOpts());

@@ -532,6 +532,8 @@ class WsChannel {
 		{ resolve: (r: OneBotResponse) => void; reject: (e: Error) => void; timer: Disposable }
 	>();
 	private seq = 0;
+	/** 作废了(见 {@link rejectAll}):之后这条连接上再来的帧一律不认。 */
+	private retired = false;
 
 	constructor(
 		private readonly ws: WebSocket,
@@ -573,6 +575,7 @@ class WsChannel {
 	}
 
 	private onMessage(raw: RawData): void {
+		if (this.retired) return;
 		let frame: OneBotResponse;
 		try {
 			frame = JSON.parse(rawToString(raw)) as OneBotResponse;
@@ -602,8 +605,13 @@ class WsChannel {
 	 * 连接断开 / dispose:未决请求全部 reject,避免一直挂到超时。
 	 * 未决 = 帧已写入 socket、还没等到响应 → 一律按「结果未知」处置
 	 * (统一包成 IndeterminateActionError,发送路径见之不重试)。
+	 *
+	 * 同时把通道作废:`ws.close()` 只是发出关闭帧,对端回关闭帧之前(不配合的对端最长 30 秒)底下的消息监听
+	 * 还在,这段时间里来的帧不能再当入站消息往上交 —— 被请出去的那一头(比如 token 换掉之后凭旧 token 连着的)
+	 * 否则还能接着往里发指令。
 	 */
 	rejectAll(err: Error): void {
+		this.retired = true;
 		for (const p of this.pending.values()) {
 			p.timer.dispose();
 			p.reject(
