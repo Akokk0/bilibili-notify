@@ -20,8 +20,10 @@ import {
  *
  * ① `compose.ts` 导出的声明,类型位置上不许出现集成的东西(从 `./bilibili/**`、`./platforms/**` import 进来的名字)。
  *    历史欠账按名字记上限(棘轮,两头钉),每处写明什么时候消。导出常量的初始化式是箭头函数 / 函数表达式时,
- *    形参与返回类型照函数声明看(函数体不看)。本地(没导出)的类型别名 / 接口若引用了集成的名字,
- *    导出声明里用到这个别名就记在**它引用的原名字**的账上(只传一层):把 `BiliDevtoolsDeps["api"]` 收成别名清不了账。
+ *    形参与返回类型照函数声明看(函数体不看)。本地(没导出)的类型别名 / 接口 / 类 / 函数(形参与返回类型)/
+ *    变量(类型标注)若引用了集成的名字,导出声明里用到这个本地名字(含 `typeof 本地函数`、`ReturnType<typeof 本地函数>`、
+ *    本地类当载体)就记在**它引用的原名字**的账上(只传一层):把 `BiliDevtoolsDeps["api"]` 收成别名清不了账。
+ *    导出的命名空间里导出的声明照导出面看,没导出的不看。
  * ② 集成的**值**在 `compose.ts` 里只能被调用、直接作调用的实参(含实参里对象 / 数组字面量的元素),
  *    或作导出常量数组的元素(设置登记)。指向集成目录的 `export … from` 一律不许;
  *    没有 `from` 的 `export { … }` / `export type { … }` 里是集成的绑定(含只作类型的)或上述本地别名也不许。上限 0。
@@ -40,11 +42,11 @@ import {
  *   拦了全是合理的例外,而它们流不出 `compose.ts`(出口由 ①、③ 管)。
  * - **`compose.ts` 里长出登记以外的逻辑**:靠审查。
  * - ① 只看**显式写出来的类型**:导出函数 / 常量不写类型标注、靠推断带出集成类型的,① 看不见;
- *   `export { x }` 这种列表式导出的**本地声明**(集成的绑定与本地别名那两种由 ② 接住)也不追;
+ *   `export { x }` 这种列表式导出的本地声明里,集成的绑定、本地别名 / 类 / 函数 / 变量(带着集成的名字的)由 ② 接住,解构导出不追;
  *   导出常量的初始化式里,除了「初始化式本身是箭头函数 / 函数表达式」(看形参与返回类型)之外都不看:
  *   `as unknown as Api`、`satisfies Partial<Api>`、对象字面量里的函数、类属性里的断言。
- *   本地别名只传一层(`type A = Api; type B = A;` 之后导出里写 `B`,抓不到);别名只认没导出的 type / interface
- *   (导出的别名在声明处已记过)。② 把 `as` / `satisfies` / 括号当透明;
+ *   本地别名只传一层(`type A = Api; type B = A;` 之后导出里写 `B`,抓不到);别名只认没导出的 type / interface / 类 / 函数 / 变量
+ *   (导出的别名在声明处已记过;本地函数只看形参与返回类型、变量只看类型标注,靠推断带出去的看不见)。② 把 `as` / `satisfies` / 括号当透明;
  *   `class X extends 工厂()` 的 `extends` 位被当类型位置放过。同名局部变量遮住集成名字,判据按名字对,会误判或漏判。
  * - ③ 只认字面量写法的 `bilibili` 成员;换成别处声明的类型引用会被点名「看不到成员」,而不是悄悄放过。
  * - 新开一个文件当「第二个组装根」:本守卫只看 `compose.ts`;别的核心文件越界 import 集成目录归 `import-boundaries`。
@@ -198,23 +200,56 @@ function functionInitializer(init) {
 }
 
 /**
- * 本地(没导出)的类型别名 / 接口里直接引用了集成的名字的:`Map<本地名字, 集成的名字[]>`。只传一层:
- * 别名的别名抓不到(文件头写明)。导出的别名不算 —— 它在声明处已经被 ① 记过,用到它的地方再记会重复。
+ * 一个声明里「类型位置上」的引用,逐个交给 `visit`:函数体(块)、`body`、变量与属性的初始化式是值,不看;
+ * 初始化式本身是箭头函数 / 函数表达式的,形参与返回类型照函数声明看。
+ */
+function walkTypePositions(root, visit) {
+	const walk = (node) => {
+		visit(node);
+		ts.forEachChild(node, (child) => {
+			if (ts.isBlock(child) || child === node.body) return;
+			if (child === node.initializer) {
+				const fn = ts.isVariableDeclaration(node) ? functionInitializer(child) : undefined;
+				if (fn) walk(fn);
+				return;
+			}
+			walk(child);
+		});
+	};
+	walk(root);
+}
+
+/**
+ * 本地(没导出)的声明里直接引用了集成的名字的:`Map<本地名字, 集成的名字[]>`。本地声明 = 类型别名、接口、类、
+ * 函数(形参与返回类型)、变量(类型标注;初始化式是函数的看形参与返回类型)。后三种是 `ReturnType<typeof 本地函数>`、
+ * 本地类当载体这类写法的出口。只传一层:别名的别名抓不到(文件头写明)。
+ * 导出的声明不算 —— 它在声明处已经被 ① 记过,用到它的地方再记会重复。
  */
 export function integrationAliases(file, source, dirs = INTEGRATION_DIRS) {
 	const bindings = integrationBindings(file, source, dirs);
 	const resolve = (name) => (bindings.has(name) ? [name] : []);
 	const aliases = new Map();
-	for (const statement of source.ast.statements) {
-		if (!ts.isTypeAliasDeclaration(statement) && !ts.isInterfaceDeclaration(statement)) continue;
-		if (isExported(statement)) continue;
+	const record = (name, root) => {
 		const names = new Set();
-		const walk = (node) => {
-			for (const name of typeRefOf(node, resolve, file, dirs)?.names ?? []) names.add(name);
-			ts.forEachChild(node, walk);
-		};
-		walk(statement);
-		if (names.size > 0) aliases.set(statement.name.text, [...names]);
+		walkTypePositions(root, (node) => {
+			for (const n of typeRefOf(node, resolve, file, dirs)?.names ?? []) names.add(n);
+		});
+		if (names.size > 0) aliases.set(name, [...names]);
+	};
+	for (const statement of source.ast.statements) {
+		if (isExported(statement)) continue;
+		if (
+			ts.isTypeAliasDeclaration(statement) ||
+			ts.isInterfaceDeclaration(statement) ||
+			ts.isClassDeclaration(statement) ||
+			ts.isFunctionDeclaration(statement)
+		) {
+			if (statement.name) record(statement.name.text, statement);
+		} else if (ts.isVariableStatement(statement)) {
+			for (const declaration of statement.declarationList.declarations) {
+				if (ts.isIdentifier(declaration.name)) record(declaration.name.text, declaration);
+			}
+		}
 	}
 	return aliases;
 }
@@ -249,7 +284,13 @@ export function exportedTypeUses(file, source, dirs = INTEGRATION_DIRS) {
 				if (fn) visit(fn);
 				return;
 			}
-			if (child === node.body) return;
+			if (child === node.body) {
+				// 导出的命名空间的体:里面导出的声明照导出面看,没导出的不看(函数体是 Block,仍不看)
+				if (ts.isModuleDeclaration(node) && child && ts.isModuleBlock(child)) {
+					for (const inner of child.statements) if (isExported(inner)) visit(inner);
+				}
+				return;
+			}
 			visit(child);
 		});
 	};
@@ -681,6 +722,69 @@ describe("① 本地的类型别名 / 接口引用了集成的名字:传一层,�
 			`export interface X { a: D["api"]; b: D["auth"] }`,
 		].join("\n");
 		expect(auditExportedTypes(COMPOSE_FILE, compose(allAliased), ledger)).toEqual([]);
+	});
+});
+
+describe("① 本地的函数 / 变量 / 类、导出的命名空间里带着集成的名字:同样传一层", () => {
+	it("`ReturnType<typeof 本地函数>` 与 `typeof 本地变量`:函数的形参与返回类型、变量的类型标注记在原名字的账上", () => {
+		expect(
+			typeNames(
+				`function clientOf(): Api { throw 1; }\nexport type BuiltinClient = ReturnType<typeof clientOf>;`,
+			),
+		).toEqual(["Api:2"]);
+		expect(
+			typeNames(`function useApi(a: Api): void {}\nexport type P = Parameters<typeof useApi>;`),
+		).toEqual(["Api:2"]);
+		expect(
+			typeNames(`const held: Api | undefined = undefined;\nexport type H = typeof held;`),
+		).toEqual(["Api:2"]);
+		expect(
+			typeNames(
+				`const make = (): BiliSource => { throw 1; };\nexport type M = ReturnType<typeof make>;`,
+			),
+		).toEqual(["BiliSource:2"]);
+	});
+
+	it("本地的类当载体:类身上写着集成的类型,导出里用到这个类就记账", () => {
+		expect(
+			typeNames(
+				[
+					`class ClientBox { constructor(readonly client: Api) {} }`,
+					`export function boxOf(box: ClientBox): ClientBox { throw 1; }`,
+				].join("\n"),
+			),
+		).toEqual(["Api:2", "Api:2"]);
+		expect(typeNames(`class Holder { api?: Api; }\nexport interface X { h: Holder }`)).toEqual([
+			"Api:2",
+		]);
+	});
+
+	it("导出的命名空间:里面导出的声明照导出面看,没导出的不看", () => {
+		expect(typeNames(`export namespace Throat { export type Client = Api; }`)).toEqual(["Api:1"]);
+		expect(
+			typeNames(
+				`export namespace Outer {\n\texport namespace Inner { export function f(a: BiliSource): void {} }\n}`,
+			),
+		).toEqual(["BiliSource:2"]);
+		expect(typeNames(`export namespace N { type Hidden = Api; export type Ok = number; }`)).toEqual(
+			[],
+		);
+	});
+
+	it("这几类的函数体、初始化式里的类型标注不算", () => {
+		expect(
+			typeNames(`function f() { let a: Api; return 1; }\nexport type T = ReturnType<typeof f>;`),
+		).toEqual([]);
+		expect(typeNames(`class K { f() { let a: Api; } }\nexport function g(k: K): void {}`)).toEqual(
+			[],
+		);
+		expect(typeNames(`export namespace N { export function f() { let a: Api; } }`)).toEqual([]);
+	});
+
+	it("没有 from 的 export { 本地函数 / 本地类 }:函数与类带着集成的名字就算(②)", () => {
+		expect(misused(`function f(a: Api): void {}\nexport { f };`)).toEqual(["f:2"]);
+		expect(misused(`class C { api?: Api }\nexport { C };`)).toEqual(["C:2"]);
+		expect(misused(`function g(): number { return 1; }\nexport { g };`)).toEqual([]);
 	});
 });
 
