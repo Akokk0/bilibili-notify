@@ -131,7 +131,7 @@ function instancesRemedy(count: number, those: string): string {
 	return (
 		`${those}先当${pron}不在，别家照常用、在面板上照常改；存着的密钥也还在，` +
 		`请改好 config/settings/core.json 里 ai.providers 下的${those}再重启，${pron}就回来了。` +
-		`面板上现在看不到${pron}，在面板上添加会占用同一个 id 的服务商会存不进去。` +
+		`面板上现在看不到${pron}；这时候在面板上新加同一家服务商，可能会存不进去，保存条上会说明原因。` +
 		`要是女仆平时用的正好是${inUse}，AI 会先停着。`
 	);
 }
