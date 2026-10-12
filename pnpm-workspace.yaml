@@ -57,8 +57,8 @@ packages:
 # those are published in the same minute. Otherwise: just wait 24h, which is the
 # entire point of the policy.
 overrides:
-  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@1.0.0"
-  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@1.0.0"
+  "@bilibili-notify/web>vite": "npm:@voidzero-dev/vite-plus-core@1.1.0"
+  "@bilibili-notify/desktop>vite": "npm:@voidzero-dev/vite-plus-core@1.1.0"
 
 # Shared dependency versions. Every package declares these as `"<dep>": "catalog:"`;
 # the version lives only here, so a bump is one edit and per-package drift (the
