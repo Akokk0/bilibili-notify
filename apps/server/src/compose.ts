@@ -74,7 +74,6 @@ export interface BuiltinIntegrationsDeps {
 	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
 	imageFetcher: ImagesDeps["images"];
 	setTimeout: Parameters<typeof createBiliSource>[0]["setTimeout"];
-	logger: Logger;
 	/** 下面三样建得比这里晚,现取,原样转给开发场景。 */
 	live: BiliDevtoolsDeps["live"];
 	fans: BiliDevtoolsDeps["fans"];
@@ -115,27 +114,34 @@ export interface BuiltinIntegrations {
 
 export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): BuiltinIntegrations {
 	// B 站分层上报器:先造、来源登记之后才接上核心(`BiliSource.start` 里接)。给来源与给入口读的是同一个。
-	const problems = createProblemLayers({ auth: deps.sourceAuth, logger: deps.logger });
+	// 上报器是 B 站的代码:日志行跟 B 站那一格(与登录系统拿到的是同一个日志器)。
+	const problems = createProblemLayers({
+		auth: deps.sourceAuth,
+		logger: deps.serviceCtx.forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY).logger,
+	});
 	deps.integration.onDispose(() => problems.dispose());
 	let source: BiliSource | undefined;
 	// 登记过(含登记途中)就不许再来一次;造来源或登记任一步抛了都会复位。
 	let registering = false;
 	const dynamic = () => source?.dynamic();
+	// 每个适配器是一个集成:日志行的标签与等级都跟它自己的适配器键(`logging.levels.<适配器键>`)。
+	// 键要等于它登进登记表的 `adapterKey`(工厂要日志器在先、适配器对象在后,只能先写下来;`compose.test.ts` 钉着对得上)。
+	const loggerOf = (key: string): Logger => deps.serviceCtx.forSubsystem(key, key).logger;
 	// 次序即登记与关停的次序:OneBot、QQ 官方机器人、webhook。
 	const adapters = [
 		createOnebotAdapter({
-			logger: deps.logger,
+			logger: loggerOf("onebot"),
 			serviceCtx: deps.serviceCtx,
 			onInboundPrivate: deps.onInboundPrivate,
 			onInboundGroup: deps.onInboundGroup,
 		}),
 		createQQOfficialAdapter({
-			logger: deps.logger,
+			logger: loggerOf("qq-official"),
 			serviceCtx: deps.serviceCtx,
 			onInboundPrivate: deps.onInboundPrivate,
 			onInboundGroup: deps.onInboundGroup,
 		}),
-		createWebhookAdapter({ logger: deps.logger }),
+		createWebhookAdapter({ logger: loggerOf("webhook") }),
 	];
 	let registeringAdapters = false;
 
@@ -208,7 +214,7 @@ export function composeBuiltinIntegrations(deps: BuiltinIntegrationsDeps): Built
 				return await registerBuiltinAdapters({
 					registry: deps.adapterRegistry,
 					adapters,
-					logger: deps.logger,
+					loggerOf,
 					stores: deps.integrationStore,
 					connections: deps.connections,
 					onConnectionsChanged: deps.onConnectionsChanged,

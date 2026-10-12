@@ -110,7 +110,7 @@ describe("内置适配器", () => {
 		return registerBuiltinAdapters({
 			registry: createPlatformAdapterRegistry(),
 			adapters,
-			logger: logger(),
+			loggerOf: () => logger(),
 			stores: store,
 			connections: (): readonly Connection[] => [],
 			onConnectionsChanged: (): Disposable => ({ dispose() {} }),
@@ -261,6 +261,7 @@ describe("拓展", () => {
 		const loaded = await loadExtensions({
 			root: extRoot(),
 			host: quietHost(),
+			loggerOf: () => logger(),
 			integrationStore: store,
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			adapters: createPlatformAdapterRegistry(),

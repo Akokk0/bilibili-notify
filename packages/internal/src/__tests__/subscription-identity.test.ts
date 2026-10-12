@@ -69,14 +69,17 @@ describe("identityColor", () => {
 });
 
 describe("保留 id", () => {
-	it("拓展 id 不许用内置集成的键,也不许叫 core", () => {
+	it("拓展 id 不许用内置集成的键,也不许叫 core、image、ai(日志等级里核心那三格的键)", () => {
 		for (const id of RESERVED_EXTENSION_IDS) {
 			expect(ExtensionIdSchema.safeParse(id).success, id).toBe(false);
 		}
 		// 内置集成的键一个不少都在里面;`core` 是核心自己的名字(日志等级的键、设置文件名),不是一个集成。
 		for (const key of RESERVED_INTEGRATION_KEYS) expect(RESERVED_EXTENSION_IDS).toContain(key);
 		expect(RESERVED_INTEGRATION_KEYS).not.toContain("core");
-		expect(ExtensionIdSchema.safeParse("core").success).toBe(false);
+		for (const id of ["core", "image", "ai"]) {
+			expect(RESERVED_EXTENSION_IDS, id).toContain(id);
+			expect(ExtensionIdSchema.safeParse(id).success, id).toBe(false);
+		}
 		expect(ExtensionIdSchema.safeParse("douyin").success).toBe(true);
 	});
 });

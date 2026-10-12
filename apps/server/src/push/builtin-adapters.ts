@@ -15,7 +15,8 @@ export interface RegisterBuiltinAdaptersOptions {
 	registry: PlatformAdapterRegistry;
 	/** 建好的内置适配器(工厂在装配处调,这里不认识 `platforms/` 下的任何东西)。 */
 	adapters: readonly PlatformAdapter[];
-	logger: Logger;
+	/** 按适配器键要它的日志器(标签与等级都跟那个键):建每个适配器的集成上下文时用 `adapter.adapterKey` 来要。 */
+	loggerOf: (adapterKey: string) => Logger;
 	/** 各适配器的 state / secrets 存储:登记前按 `adapterKey` 各开一份,停下后各关各的。 */
 	stores: Pick<IntegrationStore, "open">;
 	/** 全部连接,现读。 */
@@ -46,7 +47,7 @@ export async function registerBuiltinAdapters(
 			const stores = await opts.stores.open(adapter.adapterKey);
 			handle = stores;
 			const context = createIntegrationContext({
-				logger: opts.logger,
+				logger: opts.loggerOf(adapter.adapterKey),
 				stopReason: "BN 关停",
 				state: stores.state,
 				secrets: stores.secrets,

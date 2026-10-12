@@ -1,15 +1,16 @@
 import {
+	BILIBILI_SOURCE_KEY,
 	fail,
 	type IntegrationContext,
 	type MessageBus,
 	ok,
 	type Result,
-	type ServiceContext,
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { createImageFetcher } from "../../images/image-fetcher.js";
 import type { ImageWriter } from "../../images/image-store.js";
 import type { IntegrationStore } from "../../integration-store/store.js";
+import type { NodeServiceContext } from "../../runtime/service-context.js";
 import { errorMessageOf } from "../../util/error-message.js";
 import { Api } from "../api/index.js";
 import { createBiliContext } from "../context.js";
@@ -57,7 +58,8 @@ export interface AuthSystem {
 }
 
 export interface CreateAuthSystemOptions {
-	serviceCtx: ServiceContext;
+	/** 只用它开 B 站那一格的子上下文;往下递的(日志器、定时器、收尾钩子)都是那个子上下文的。 */
+	serviceCtx: Pick<NodeServiceContext, "forSubsystem">;
 	bus: MessageBus;
 	/** 集成存储宿主(`AppRuntime.integrationStore`):登录的 cookie 与令牌住在这个集成自己的存储里。 */
 	integrationStore: Pick<IntegrationStore, "open">;
@@ -66,12 +68,14 @@ export interface CreateAuthSystemOptions {
 }
 
 export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<AuthSystem> {
-	const log = opts.serviceCtx.logger;
+	// 登录这一套是 B 站的代码:日志行的标签与等级都跟 B 站那一格(`logging.levels.bilibili`),不跟核心。
+	const serviceCtx = opts.serviceCtx.forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY);
+	const log = serviceCtx.logger;
 
 	// 1. 开存储、读两份文件、建罐子与身份 —— 都在 `new Api` 之前。
 	const context = await createBiliContext({
 		stores: opts.integrationStore,
-		serviceCtx: opts.serviceCtx,
+		serviceCtx,
 	});
 	const { ctx } = context;
 
@@ -79,7 +83,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		// 2. Api. The `onAuthLost` callback closes over `flow` — built in step 4.
 		let flow: LoginFlow | undefined;
 		const api = new Api({
-			serviceCtx: opts.serviceCtx,
+			serviceCtx,
 			ctx,
 			callbacks: {
 				// 续期提交落盘成功之后叫一声:只记一行 info(没有任何读者要这个事件了,cookie 本身是密钥,不进日志)。
@@ -110,7 +114,7 @@ export async function createAuthSystem(opts: CreateAuthSystemOptions): Promise<A
 		// 账号头像走 B 站的请求客户端抓进图库(同一套缩放档与请求头,不新增出站原语)。
 		const avatarImages = createImageFetcher({ http: api.http, images: opts.accountImages });
 		flow = new LoginFlow({
-			serviceCtx: opts.serviceCtx,
+			serviceCtx,
 			api,
 			bus: opts.bus,
 			// 心跳起步是关着的:间隔住在 B 站设置里,由来源 `start` 读了设置、经 `setHealthCheckMs` 挂上(读不懂就一直关着)。

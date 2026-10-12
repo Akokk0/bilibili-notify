@@ -57,6 +57,7 @@ function boot() {
 			setTimeout: () => ({ dispose() {} }),
 			onDispose() {},
 		} as unknown as ServiceContext,
+		loggerOf: () => SILENT,
 		stores: memoryStores(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),

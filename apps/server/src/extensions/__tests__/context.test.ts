@@ -45,9 +45,22 @@ function fakeHost() {
 		signal: new AbortController().signal,
 		track: () => {},
 	};
+	/** 按 id 要日志器:每次要都记下是谁要的;行带上要它时的 id,好看出是哪一个日志器写的。 */
+	const asked: string[] = [];
+	const loggerOf = (id: string): Logger => {
+		asked.push(id);
+		return {
+			info: (m) => lines.push(`info ${id}: ${m}`),
+			warn: (m) => lines.push(`warn ${id}: ${m}`),
+			error: (m) => lines.push(`error ${id}: ${m}`),
+			debug: (m) => lines.push(`debug ${id}: ${m}`),
+		};
+	};
 	return {
 		ctx,
 		lines,
+		asked,
+		loggerOf,
 		tick: () => {
 			for (const fn of [...timers]) fn();
 		},
@@ -84,15 +97,23 @@ function makeRuntime(id = "bridge") {
 	const mounts = createExtensionMounts({ logger: silentLogger });
 	const app = new Hono();
 	app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
-	const runtime = createExtensionContext({ id, host: host.ctx, mounts, ...coreStubs() });
+	const runtime = createExtensionContext({
+		id,
+		host: host.ctx,
+		loggerOf: host.loggerOf,
+		mounts,
+		...coreStubs(),
+	});
 	return { host, mounts, app, runtime, ctx: runtime.ctx };
 }
 
 describe("拓展 ctx", () => {
-	it("日志认得出是谁写的 —— 拓展的每一行都带自己的 id", () => {
+	// 验红:`context.ts` 里 `logger: opts.loggerOf(id)` 改回给宿主日志器的每行正文拼 `[ext:<id>]`,这条红。
+	it("日志器是按拓展 id 向宿主要的那一个 —— 行的标签靠它,正文里不再拼 [ext:<id>]", () => {
 		const { host, ctx } = makeRuntime();
 		ctx.logger.info("连上了");
-		expect(host.lines).toEqual(["info [ext:bridge] 连上了"]);
+		expect(host.asked).toEqual(["bridge"]);
+		expect(host.lines).toEqual(["info bridge: 连上了"]);
 	});
 
 	it("宿主版本号交给拓展 —— 它自己也可能要按版本分叉", () => {
@@ -128,6 +149,7 @@ describe("拓展 ctx", () => {
 		const runtime = createExtensionContext({
 			id: "bridge",
 			host: host.ctx,
+			loggerOf: host.loggerOf,
 			mounts,
 			...coreStubs(),
 		});
@@ -213,8 +235,20 @@ describe("拓展 ctx", () => {
 		const mounts = createExtensionMounts({ logger: silentLogger });
 		const app = new Hono();
 		app.route(EXTENSION_MOUNT_PREFIX, mounts.route);
-		const a = createExtensionContext({ id: "a", host: host.ctx, mounts, ...coreStubs() });
-		const b = createExtensionContext({ id: "b", host: host.ctx, mounts, ...coreStubs() });
+		const a = createExtensionContext({
+			id: "a",
+			host: host.ctx,
+			loggerOf: host.loggerOf,
+			mounts,
+			...coreStubs(),
+		});
+		const b = createExtensionContext({
+			id: "b",
+			host: host.ctx,
+			loggerOf: host.loggerOf,
+			mounts,
+			...coreStubs(),
+		});
 		a.ctx.mount(async () => new Response("a"));
 		b.ctx.mount(async () => new Response("b"));
 		let bTicks = 0;

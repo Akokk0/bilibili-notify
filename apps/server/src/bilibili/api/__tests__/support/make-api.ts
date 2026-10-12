@@ -2,6 +2,7 @@ import type { BrowserIdentity } from "@bilibili-notify/http";
 import type { Disposable, Json, Logger, ServiceContext } from "@bilibili-notify/internal";
 import { memoryStoreHandle } from "../../../../__tests__/support/memory-key-value-store";
 import { HTTP_IDENTITY_KEY } from "../../../../integrations/http";
+import type { NodeServiceContext } from "../../../../runtime/service-context";
 import { createBiliContext, REFRESH_TOKEN_KEY } from "../../../context";
 import { Api, type ApiHandlers } from "../../api";
 import { ApiClient } from "../../api-client";
@@ -27,7 +28,9 @@ export function makeServiceContext(logger: Logger = silentLogger()) {
 			},
 		};
 	};
-	const serviceCtx: ServiceContext = {
+	const serviceCtx: ServiceContext & Pick<NodeServiceContext, "forSubsystem"> = {
+		// 假的子上下文就是它自己:日志器、定时器、收尾钩子都共用(要区分子上下文的用例自己造)。
+		forSubsystem: () => serviceCtx,
 		logger,
 		signal: new AbortController().signal,
 		setTimeout: (fn, ms) => schedule(fn, ms),

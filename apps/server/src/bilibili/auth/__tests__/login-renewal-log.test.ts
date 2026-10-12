@@ -64,8 +64,10 @@ vi.mock("../../api/index.js", () => ({
 	},
 }));
 
-function makeCtx(): ServiceContext {
-	return {
+function makeCtx() {
+	const ctx: ServiceContext & { forSubsystem: () => ServiceContext } = {
+		// 假的子上下文就是它自己。
+		forSubsystem: () => ctx,
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 		setInterval: () => ({ dispose: vi.fn() }),
 		setTimeout: () => ({ dispose: vi.fn() }),
@@ -73,6 +75,7 @@ function makeCtx(): ServiceContext {
 		signal: new AbortController().signal,
 		track: vi.fn(),
 	};
+	return ctx;
 }
 
 let dataDir: string;

@@ -81,6 +81,7 @@ function hostStubs() {
 	};
 	return {
 		host,
+		loggerOf: () => logger,
 		integrationStore: memoryIntegrationStore(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),

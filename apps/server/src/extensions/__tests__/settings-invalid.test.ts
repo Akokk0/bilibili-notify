@@ -168,6 +168,7 @@ async function boot(
 	const loaded: LoadedExtensions = await loadExtensions({
 		root,
 		host,
+		loggerOf: () => logger,
 		integrationStore: memoryIntegrationStore(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),

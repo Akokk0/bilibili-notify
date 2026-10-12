@@ -712,7 +712,6 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			subscriptionRuntime: runtime.subRuntimeStore,
 			imageFetcher: postImageFetcher,
 			setTimeout: (fn, ms) => runtime.serviceCtx.setTimeout(fn, ms),
-			logger: log,
 			// 下面几样都是引擎建好之后才有的,现取 —— devtools 建得比引擎早。
 			live: () => engines?.live,
 			fans: () => runtime.fansPoller ?? undefined,
@@ -1175,6 +1174,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 本体一个都不带。见 `extensions/discover.ts` 文件头。
 			root: extensionsRoot,
 			host: runtime.serviceCtx,
+			// 每个拓展的日志:标签是它的 id、等级跟设置里 `logging.levels.<id>` 那一格(没写跟总等级)。
+			loggerOf: (id) => runtime.serviceCtx.forSubsystem(id, id).logger,
 			// 每个拓展装载前按 id 开自己的 state / secrets 存储,收摊后关。
 			integrationStore: runtime.integrationStore,
 			mounts: extensionMounts,

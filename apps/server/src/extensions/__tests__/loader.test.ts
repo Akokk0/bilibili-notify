@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXTENSION_API_RANGE, type Logger, type ServiceContext } from "@bilibili-notify/internal";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { memoryIntegrationStore } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
@@ -52,7 +52,19 @@ function fakeHost() {
 		signal: new AbortController().signal,
 		track: () => {},
 	};
-	return { ctx, lines, pending: () => timers.size };
+	// 拓展自己的日志器(按 id 要):行进同一份 `lines`,开头带上 id —— 真宿主里标签就是 id,这里用它代替标签,好断言是谁的行。
+	const loggerOf = (id: string): Logger => ({
+		info: (m) => lines.push(`info ${id}: ${m}`),
+		warn: (m) => lines.push(`warn ${id}: ${m}`),
+		error: (m) => lines.push(`error ${id}: ${m}`),
+		debug: (m) => lines.push(`debug ${id}: ${m}`),
+	});
+	return { ctx, lines, loggerOf, pending: () => timers.size };
+}
+
+/** 装载器要的两格:宿主上下文,和按 id 要日志器。 */
+function hostOpts(host: ReturnType<typeof fakeHost>) {
+	return { host: host.ctx, loggerOf: host.loggerOf };
 }
 
 async function plant(id: string, code: string, over: Record<string, unknown> = {}): Promise<void> {
@@ -103,10 +115,13 @@ function run(opts: {
 	importModule?: (specifier: string) => Promise<unknown>;
 	activateTimeoutMs?: number;
 	disposeTimeoutMs?: number;
+	/** 不给就用 `hostOpts` 里那个(每个 id 都回假宿主的日志器)。 */
+	loggerOf?: (id: string) => Logger;
 }) {
 	return loadExtensions({
 		root,
-		host: opts.host.ctx,
+		...hostOpts(opts.host),
+		...(opts.loggerOf ? { loggerOf: opts.loggerOf } : {}),
 		mounts: opts.mounts,
 		isEnabled: opts.enabled ?? (() => true),
 		maxFailures: opts.maxFailures ?? 3,
@@ -245,7 +260,7 @@ describe("加载拓展", () => {
 		const runOnce = () =>
 			loadExtensions({
 				root,
-				host: fakeHost().ctx,
+				...hostOpts(fakeHost()),
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				isEnabled: () => true,
 				maxFailures: 2,
@@ -348,7 +363,7 @@ describe("拓展声明的密钥字段", () => {
 		const registry = createPlatformAdapterRegistry();
 		const loaded = await loadExtensions({
 			root,
-			host: fakeHost().ctx,
+			...hostOpts(fakeHost()),
 			integrationStore: memoryIntegrationStore(),
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			upgrades: createExtensionUpgrades(),
@@ -433,7 +448,7 @@ describe("拓展声明的密钥字段", () => {
 		});
 		const loaded = await loadExtensions({
 			root,
-			host: fakeHost().ctx,
+			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			...coreStubs(),
 			isEnabled: () => true,
@@ -503,7 +518,7 @@ describe("装载目录", () => {
 		await plant("boom", HEALTHY);
 		await loadExtensions({
 			root,
-			host: fakeHost().ctx,
+			...hostOpts(fakeHost()),
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			isEnabled: () => true,
 			maxFailures: 3,
@@ -701,6 +716,45 @@ describe("拨开关即热装卸", () => {
 		expect(await (await app.request("/ext/bridge/x")).text()).toBe("hi from bridge");
 	});
 
+	// 验红:`loader.ts` 里 `createExtensionContext` 不收 `loggerOf: opts.loggerOf`、改回给宿主日志器拼 `[ext:<id>]`,这条红。
+	it("每起一次都按拓展 id 向宿主要日志器,拓展的 ctx.logger 就是要来的那一个;停了再起,要到的还是同一个", async () => {
+		await plant("bridge", `export function activate(ctx) { ctx.logger.info("起来了"); }`);
+		const host = fakeHost();
+		const mounts = createExtensionMounts({ logger: silentLogger });
+		// 与真的 `forSubsystem(id, id)` 一样:同一个 id 交回同一个日志器。
+		const byId = new Map<string, Logger>();
+		const said: string[] = [];
+		const loggerOf = vi.fn((id: string): Logger => {
+			let made = byId.get(id);
+			if (!made) {
+				made = {
+					info: (m) => said.push(`info ${id}: ${m}`),
+					warn: (m) => said.push(`warn ${id}: ${m}`),
+					error: (m) => said.push(`error ${id}: ${m}`),
+					debug: (m) => said.push(`debug ${id}: ${m}`),
+				};
+				byId.set(id, made);
+			}
+			return made;
+		});
+		let on = true;
+
+		const loaded = await run({ host, mounts, enabled: () => on, loggerOf });
+		expect(loggerOf.mock.calls).toEqual([["bridge"]]);
+		expect(said).toEqual(["info bridge: 起来了"]);
+
+		on = false;
+		await loaded.sync();
+		on = true;
+		await loaded.sync();
+
+		expect(loggerOf.mock.calls).toEqual([["bridge"], ["bridge"]]);
+		expect(loggerOf.mock.results[1]?.value).toBe(loggerOf.mock.results[0]?.value);
+		expect(said).toEqual(["info bridge: 起来了", "info bridge: 起来了"]);
+		// 宿主日志器(核心的)一行都没给拓展的话:`[ext]` 开头的是装载器自己的行,不在这里。
+		expect(host.lines.filter((line) => line.includes("起来了"))).toEqual([]);
+	});
+
 	it("开关没动过 → sync 一行代码都不重新 import", async () => {
 		await plant("bridge", HEALTHY);
 		const imported: string[] = [];
@@ -749,7 +803,7 @@ describe("拨开关即热装卸", () => {
 		let on = true;
 		const loaded = await loadExtensions({
 			root,
-			host: host.ctx,
+			...hostOpts(host),
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			...coreStubs(),
 			integrationStore: {

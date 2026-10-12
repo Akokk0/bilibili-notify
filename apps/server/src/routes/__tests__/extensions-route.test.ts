@@ -158,6 +158,7 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 	return loadExtensions({
 		root: installRoot,
 		host: quietHost(),
+		loggerOf: () => quietHost().logger,
 		integrationStore: memoryIntegrationStore(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),

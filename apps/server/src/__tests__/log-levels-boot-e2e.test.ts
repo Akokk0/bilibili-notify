@@ -8,14 +8,20 @@
  * 零外连(`--log-level` 之外的开关与别的 e2e 一致;来源换成假的)。
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Logger } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { type ServerHandle, startServer } from "../index.js";
 import type { NodeServiceContext } from "../runtime/service-context.js";
 import type { LogEntry } from "../ws/types.js";
+import { openTestGeneration } from "./support/generation.js";
+
+/** 测试里装进去的拓展的 id(带命名空间,第三方的写法)与它把自己的 ctx.logger 留在全局上的那个名字。 */
+const EXTENSION_ID = "acme.logprobe";
+const PROBE_KEY = "__bnLogLevelsProbeLogger";
 
 const captured = vi.hoisted(() => ({ ctx: undefined as unknown }));
 
@@ -69,6 +75,7 @@ describe("日志等级表接在开机路径上", () => {
 	});
 
 	afterEach(async () => {
+		delete (globalThis as Record<string, unknown>)[PROBE_KEY];
 		await handle?.close("test cleanup").catch(() => {});
 		handle = undefined;
 		await rm(dataDir, { recursive: true, force: true });
@@ -122,5 +129,80 @@ describe("日志等级表接在开机路径上", () => {
 
 		await patch({ bilibili: null, onebot: null });
 		expect(emit()).toEqual(["bili-warn", "core-info", "onebot-info"]);
+	});
+
+	// 验红:`index.ts` 里递给装载器的 `loggerOf` 改成别的(比如 `() => runtime.serviceCtx.logger`),这条红
+	// (拓展拿到的是核心那一格,调它自己那一格不起作用)。
+	it("某个拓展 id 设成 debug:拓展自己的 debug 才出,核心与 B 站的 debug 仍压着;清掉之后回到总等级", async () => {
+		const generationDir = await openTestGeneration(dataDir);
+		const extensionDir = join(generationDir, "extensions", EXTENSION_ID);
+		await mkdir(extensionDir, { recursive: true });
+		await writeFile(
+			join(extensionDir, "extension.json"),
+			JSON.stringify({
+				id: EXTENSION_ID,
+				name: "日志探针",
+				description: "测试用",
+				version: "1.0.0",
+				apiVersion: 1,
+				provides: ["push"],
+			}),
+		);
+		// 把拓展拿到的 ctx.logger 留在全局上,好在测试里往里写。
+		await writeFile(
+			join(extensionDir, "index.mjs"),
+			`export function activate(ctx) { globalThis.${PROBE_KEY} = ctx.logger; }`,
+		);
+
+		const port = await findFreePort();
+		handle = await startServer({
+			argv: [
+				"--host",
+				"127.0.0.1",
+				"--port",
+				String(port),
+				"--data-dir",
+				dataDir,
+				"--log-level",
+				"info",
+			],
+			env: { BN_CONFIG_DISABLED: "1", BN_ALLOW_NO_AUTH: "1" },
+		});
+		const patch = async (body: Record<string, unknown>) => {
+			const res = await fetch(`http://127.0.0.1:${port}/api/settings`, {
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			expect(res.status).toBe(200);
+		};
+		// 拓展默认关着:开了它,装载器才会 activate。
+		await patch({ extensions: { [EXTENSION_ID]: { enabled: true } } });
+		const probe = await vi.waitFor(() => {
+			const found = (globalThis as Record<string, unknown>)[PROBE_KEY] as Logger | undefined;
+			if (!found) throw new Error("拓展还没起来");
+			return found;
+		});
+
+		const ctx = captured.ctx as NodeServiceContext;
+		const seen: LogEntry[] = [];
+		ctx.setLogHook((entry) => seen.push(entry));
+		const bili = ctx.forSubsystem("dynamic", "bilibili").logger;
+		const emit = () => {
+			seen.length = 0;
+			probe.debug("ext-debug");
+			ctx.logger.debug("core-debug");
+			bili.debug("bili-debug");
+			probe.info("ext-info");
+			return seen.map((e) => `${e.name}:${e.msg}`);
+		};
+
+		expect(emit()).toEqual([`${EXTENSION_ID}:ext-info`]);
+
+		await patch({ logging: { levels: { [EXTENSION_ID]: "debug" } } });
+		expect(emit()).toEqual([`${EXTENSION_ID}:ext-debug`, `${EXTENSION_ID}:ext-info`]);
+
+		await patch({ logging: { levels: { [EXTENSION_ID]: null } } });
+		expect(emit()).toEqual([`${EXTENSION_ID}:ext-info`]);
 	});
 });

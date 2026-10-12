@@ -73,6 +73,7 @@ async function boot(activate: (ctx: ExtensionContext) => void | Promise<void>) {
 	const loaded = await loadExtensions({
 		root,
 		host,
+		loggerOf: () => silent,
 		integrationStore: memoryIntegrationStore(),
 		mounts: createExtensionMounts({ logger: silentLogger }),
 		adapters: createPlatformAdapterRegistry(),

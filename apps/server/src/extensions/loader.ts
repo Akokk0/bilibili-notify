@@ -12,6 +12,7 @@ import {
 	type ExtensionRunState,
 	type InboundSinks,
 	type Issue,
+	type Logger,
 	manifestSecretKeys,
 	type ServiceContext,
 	type SubscriptionReportDelivery,
@@ -219,6 +220,11 @@ export interface LoadExtensionsOptions {
 	/** 装载目录 —— **只有一个**(`<数据根>/extensions/`,见 `discover.ts` 文件头)。 */
 	root: string;
 	host: ServiceContext;
+	/**
+	 * 按拓展 id 要它的日志器(标签是 id、等级跟日志等级表里那一格)。每起一个拓展都问一次;同一个 id 要到的是
+	 * 同一个日志器,所以停用再启用、换代码重起之后等级一直跟着设置走。装载器自己的行仍走 `host.logger`(核心的)。
+	 */
+	loggerOf: (id: string) => Logger;
 	/** 每个拓展装载前按 id 开它的 state / secrets 存储,收摊之后关把手。 */
 	integrationStore: Pick<IntegrationStore, "open">;
 	mounts: ExtensionMounts;
@@ -646,6 +652,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			id,
 			manifest,
 			host,
+			loggerOf: opts.loggerOf,
 			stores,
 			mounts,
 			adapters: opts.adapters,

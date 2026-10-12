@@ -229,6 +229,49 @@ describe("关停的次序", () => {
 	});
 });
 
+describe("日志跟 B 站那一格", () => {
+	// 验红:`auth/index.ts` 开头那句 `forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY)` 删掉、往下递原来的 `opts.serviceCtx`,
+	// 这条红(登录、接口、集成上下文的日志落回核心那一格)。
+	it("Api、LoginFlow、集成上下文、登录系统自己的日志器,拿到的都是 B 站那一格(标签与键都是来源键)", async () => {
+		const baseLogger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+		const biliLogger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+		const w = world(baseLogger);
+		const biliHost = makeServiceContext(biliLogger);
+		const forSubsystem = vi.fn(() => biliHost.serviceCtx);
+		const serviceCtx = { ...w.host.serviceCtx, forSubsystem };
+		// 抓住登录系统内部造的 Api 与 LoginFlow(原样放行,只记下 this)。
+		let api: Api | undefined;
+		let flow: LoginFlow | undefined;
+		const apiStart = Api.prototype.start;
+		vi.spyOn(Api.prototype, "start").mockImplementation(function (this: Api) {
+			api = this;
+			return apiStart.call(this);
+		});
+		const flowStart = LoginFlow.prototype.start;
+		vi.spyOn(LoginFlow.prototype, "start").mockImplementation(function (this: LoginFlow) {
+			flow = this;
+			return flowStart.call(this);
+		});
+
+		const auth = await createAuthSystem({ serviceCtx, bus, integrationStore: w.store });
+
+		expect(forSubsystem).toHaveBeenCalledWith("bilibili", "bilibili");
+		const held = (target: unknown) => target as { serviceCtx: unknown; logger: Logger };
+		expect(held(api).serviceCtx).toBe(biliHost.serviceCtx);
+		expect(held(api).logger).toBe(biliLogger);
+		expect(held(flow).serviceCtx).toBe(biliHost.serviceCtx);
+		expect(held(flow).logger).toBe(biliLogger);
+		expect(auth.integration.logger).toBe(biliLogger);
+		// 登录系统自己的几行也在 B 站那一格(没登录:「等待扫码登录」那一行)。
+		expect(biliLogger.info).toHaveBeenCalledWith("[auth] 账号未登录，等待扫码登录");
+		expect(baseLogger.info).not.toHaveBeenCalled();
+		expect(baseLogger.debug).not.toHaveBeenCalled();
+
+		await auth.dispose();
+		await w.store.close();
+	});
+});
+
 describe("建到一半失败", () => {
 	it("登录流启动失败:Api 停下、存储把手关上,下次 open 同一个键不抛", async () => {
 		const w = world();

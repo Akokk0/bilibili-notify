@@ -1109,10 +1109,16 @@ export const RESERVED_INTEGRATION_KEYS: readonly string[] = [
 ];
 
 /**
- * 拓展 id 不许用的名字:内置集成的键,加上 `core`。`core` 是核心自己的名字(日志等级里核心那一格的键、设置文件
- * `core.json`),**不是一个集成** —— 所以不进上面那张表(那张表被当「内置集成有哪些」读:开存储、导备份都照它数)。
+ * 拓展 id 不许用的名字:内置集成的键,加上 `core`、`image`、`ai`。这三个是核心自己的名字(日志等级里核心那三格
+ * 的键;`core` 还是设置文件 `core.json`),**不是集成** —— 所以不进上面那张表(那张表被当「内置集成有哪些」读:
+ * 开存储、导备份都照它数)。拓展叫了它们,会和核心的出图、AI、核心本体共用一格日志等级。
  */
-export const RESERVED_EXTENSION_IDS: readonly string[] = [...RESERVED_INTEGRATION_KEYS, "core"];
+export const RESERVED_EXTENSION_IDS: readonly string[] = [
+	...RESERVED_INTEGRATION_KEYS,
+	"core",
+	"image",
+	"ai",
+];
 
 /** 一条订阅订的是谁。判重看这两格是否都相等。 */
 export interface Identity {

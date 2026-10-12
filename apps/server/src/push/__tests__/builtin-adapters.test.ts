@@ -80,7 +80,7 @@ async function setup() {
 	const builtin = await registerBuiltinAdapters({
 		registry,
 		adapters: [onebot, qq, webhook],
-		logger,
+		loggerOf: () => logger,
 		stores,
 		connections: () => list,
 		onConnectionsChanged,
@@ -89,6 +89,32 @@ async function setup() {
 }
 
 describe("registerBuiltinAdapters", () => {
+	// 验红:建集成上下文时把 `opts.loggerOf(adapter.adapterKey)` 改成 `opts.loggerOf("onebot")`(或别的写死的键),这条红。
+	it("每个适配器的集成上下文拿的是按它自己的适配器键要来的日志器", async () => {
+		const loggers = new Map<string, typeof logger>();
+		const loggerOf = vi.fn((key: string) => {
+			const made = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+			loggers.set(key, made);
+			return made;
+		});
+		const onebot = fakeAdapter("onebot");
+		const qq = fakeAdapter("qq-official");
+		const webhook = fakeAdapter("webhook");
+		const builtin = await registerBuiltinAdapters({
+			registry: createPlatformAdapterRegistry(),
+			adapters: [onebot, qq, webhook],
+			loggerOf,
+			stores: memoryIntegrationStore(),
+			connections: () => [],
+			onConnectionsChanged: () => ({ dispose() {} }),
+		});
+		expect(loggerOf.mock.calls.map(([key]) => key)).toEqual(["onebot", "qq-official", "webhook"]);
+		expect(onebot.ctx?.logger).toBe(loggers.get("onebot"));
+		expect(qq.ctx?.logger).toBe(loggers.get("qq-official"));
+		expect(webhook.ctx?.logger).toBe(loggers.get("webhook"));
+		await builtin.dispose();
+	});
+
 	it("每个适配器被 start 一次,拿到只含自己连接的名单,并进了登记表", async () => {
 		const { registry, onebot, qq, webhook } = await setup();
 		expect(onebot.start).toHaveBeenCalledTimes(1);
@@ -143,7 +169,7 @@ describe("registerBuiltinAdapters", () => {
 			registerBuiltinAdapters({
 				registry,
 				adapters: [first, dup, third],
-				logger,
+				loggerOf: () => logger,
 				stores: { open: (key) => memoryIntegrationStore().open(key) },
 				connections: () => [],
 				onConnectionsChanged: () => ({ dispose() {} }),
@@ -166,7 +192,7 @@ describe("registerBuiltinAdapters", () => {
 			registerBuiltinAdapters({
 				registry,
 				adapters: [first, second],
-				logger,
+				loggerOf: () => logger,
 				stores: {
 					open: async (key) => {
 						if (key === "qq-official") throw new Error("打不开");

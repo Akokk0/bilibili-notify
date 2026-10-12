@@ -123,7 +123,7 @@ export interface ExtensionSubscriptionRow {
 /**
  * 一条「上报出入」(ADR-0019 决策 60):订阅源拓展报上来的东西,整条拒了或者动了几格(丢掉或截断)。
  *
- * 丢格与拒绝**只从一个出口出去**(ctx 里的 `recordDiscrepancy`):记一行 warn(带 `[ext:<id>]` 与原因),
+ * 丢格与拒绝**只从一个出口出去**(ctx 里的 `recordDiscrepancy`):记一行 warn(行的标签就是拓展的 id,正文带原因),
  * 再交给 {@link CreateExtensionContextOptions.onReportDiscrepancy} —— 拓展详情页那个「上报出入」框
  * 接的就是它。散着写的话,框里迟早缺一类。
  */
@@ -258,8 +258,13 @@ export interface CreateExtensionContextOptions {
 	 * (ADR-0019 决策 16)。
 	 */
 	manifest: ExtensionManifest;
-	/** 宿主的 ServiceContext —— 定时器与日志的真身。 */
+	/** 宿主的 ServiceContext —— 定时器的真身(日志器不从它拿,见 {@link loggerOf})。 */
 	host: ServiceContext;
+	/**
+	 * 按集成键(拓展 id)要日志器:行的标签是它的 id、等级跟日志等级表里它自己那一格。拓展的行正文里不再拼
+	 * `[ext:<id>]`。同一个 id 每次要到的是同一个日志器(装载器停了再起时等级不丢)。
+	 */
+	loggerOf: (id: string) => Logger;
 	/**
 	 * 这个拓展的两份小存储(装载器按 id 开、收摊后关)。`activate(ctx)` 与它的推送源 `start(ctx)` 拿到的是
 	 * 同一对对象。
@@ -320,16 +325,6 @@ export interface CreateExtensionContextOptions {
 	disposeTimeoutMs?: number;
 }
 
-function prefixed(logger: Logger, id: string): Logger {
-	const tag = `[ext:${id}]`;
-	return {
-		info: (msg, ...args) => logger.info(`${tag} ${msg}`, ...args),
-		warn: (msg, ...args) => logger.warn(`${tag} ${msg}`, ...args),
-		error: (msg, ...args) => logger.error(`${tag} ${msg}`, ...args),
-		debug: (msg, ...args) => logger.debug(`${tag} ${msg}`, ...args),
-	};
-}
-
 /** 拓展交回来的是不是一个 Promise(或别的 thenable)—— `publishView` 要的是同步交回的视图。 */
 function isThenable(value: unknown): value is PromiseLike<unknown> {
 	return (
@@ -348,7 +343,7 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 export function createExtensionContext(opts: CreateExtensionContextOptions): ExtensionRuntime {
 	const { id, host, mounts, adapters } = opts;
 	const integration = createIntegrationContext({
-		logger: prefixed(host.logger, id),
+		logger: opts.loggerOf(id),
 		stopReason: `拓展 ${id} 停用了`,
 		state: opts.stores.state,
 		secrets: opts.stores.secrets,
@@ -471,7 +466,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	}
 
 	/**
-	 * 「上报出入」**唯一**的出口(决策 60):记一行 warn(带 `[ext:<id>]` 与原因),再交给宿主 —— 拓展
+	 * 「上报出入」**唯一**的出口(决策 60):记一行 warn(行的标签就是拓展的 id,正文带原因),再交给宿主 —— 拓展
 	 * 详情页那个框接的就是它。丢格、整条拒都从这里过,别散着写。
 	 */
 	function recordDiscrepancy(discrepancy: Omit<ReportDiscrepancy, "extensionId" | "at">): void {

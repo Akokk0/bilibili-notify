@@ -202,6 +202,7 @@ async function boot(opts: {
 	const loader = await loadExtensions({
 		root: join(dataDir, "extensions"),
 		host: quietHost(),
+		loggerOf: () => quietHost().logger,
 		integrationStore: memoryIntegrationStore(),
 		mounts,
 		adapters: createPlatformAdapterRegistry(),

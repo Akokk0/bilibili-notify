@@ -169,7 +169,7 @@ export const ExtensionIdSchema = z
 	// 小写那几个里正则放得过的只有 `constructor`,但 id 是 `globals.extensions` 等处的键。
 	.refine((id) => !isPrototypeName(id), prototypeNameMessage("拓展 id "))
 	// 订阅身份与登记表的键不加前缀:拓展叫 `bilibili` 就和 B 站的订阅撞成同一个人(ADR-0021 决策 14);
-	// `core` 是核心自己的名字(日志等级的键、设置文件名),拓展叫它就和核心撞。
+	// `core`、`image`、`ai` 是核心自己的名字(日志等级里核心那三格的键;`core` 还是设置文件名),拓展叫它们就和核心撞。
 	.refine(
 		(id) => !RESERVED_EXTENSION_IDS.includes(id),
 		`拓展 id 不能用保留 id(${RESERVED_EXTENSION_IDS.join("、")})`,

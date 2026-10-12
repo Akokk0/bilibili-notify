@@ -127,7 +127,8 @@ function compose(
 		const key = JSON.stringify([name, levelKey]);
 		let ctx = subsystems.get(key);
 		if (!ctx) {
-			ctx = { logger: quietLogger() };
+			// 日志器是 spy:好看出一行日志落在了哪一对(标签,键)的日志器上。
+			ctx = { logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 			subsystems.set(key, ctx);
 		}
 		return ctx;
@@ -155,7 +156,6 @@ function compose(
 		},
 		imageFetcher: { fetchImage } as never,
 		setTimeout: () => ({ dispose() {} }),
-		logger: quietLogger(),
 		live: () => undefined,
 		fans: () => undefined,
 		healthCheck: () => undefined,
@@ -483,6 +483,46 @@ describe("composeBuiltinIntegrations · 登记三个内置适配器", () => {
 		const adapters = await builtins.registerAdapters();
 		expect(keysOf(adapterRegistry)).toEqual(["onebot", "qq-official", "webhook"]);
 		await adapters.dispose();
+	});
+
+	// 验红:把 `compose.ts` 里某个工厂的 `loggerOf("onebot")` 写成 `loggerOf("webhook")`(任何一个换成别的键),这条红
+	// (要日志器的键对不上它登进登记表的 `adapterKey`:等级会跟到别的适配器那一格上)。
+	it("三个适配器各按自己的适配器键要日志器,键等于它们登进登记表的 adapterKey", async () => {
+		const { builtins, adapterRegistry, forSubsystem } = compose();
+		const adapters = await builtins.registerAdapters();
+		const registered = adapterRegistry.list().map((adapter) => adapter.adapterKey);
+		expect(registered).toEqual(["onebot", "qq-official", "webhook"]);
+		// 适配器的日志器标签与等级键都是适配器键(造适配器与建它的集成上下文各要一次,同一对);B 站那几个(上报器)不在这里数。
+		const asked = [
+			...new Set(
+				forSubsystem.mock.calls
+					.filter(([name]) => name !== BILIBILI_SOURCE_KEY)
+					.map(([name, levelKey]) => JSON.stringify([name, levelKey])),
+			),
+		];
+		expect(asked).toEqual(registered.map((key) => JSON.stringify([key, key])));
+		await adapters.dispose();
+	});
+
+	// 验红:`compose.ts` 里建分层上报器的日志器改成别的格(比如 `forSubsystem("core", "core")`),这条红。
+	it("B 站分层上报器的日志器是 B 站那一格(标签与键都是来源键):它的 warn 落在那个日志器上", () => {
+		const { builtins, forSubsystem } = compose();
+		const biliIndex = forSubsystem.mock.calls.findIndex(
+			([name, key]) => name === BILIBILI_SOURCE_KEY && key === BILIBILI_SOURCE_KEY,
+		);
+		expect(biliIndex).toBeGreaterThanOrEqual(0);
+		const bili = forSubsystem.mock.results[biliIndex]?.value.logger as Logger;
+		// 核心那头(attach 的上下文)抛了:上报器吞下并记一行 warn,这一行该落在 B 站的日志器上。
+		builtins.bilibili.problems.attach({
+			reportProblem: () => {
+				throw new Error("核心炸了");
+			},
+			resolveProblem: () => {},
+		});
+		expect(bili.warn).toHaveBeenCalled();
+		for (const result of forSubsystem.mock.results) {
+			if (result.value.logger !== bili) expect(result.value.logger.warn).not.toHaveBeenCalled();
+		}
 	});
 
 	// 验红:造 OneBot / QQ 官方机器人时不把 `deps.serviceCtx` 递给工厂,这条红(关停兜底没挂上)。
