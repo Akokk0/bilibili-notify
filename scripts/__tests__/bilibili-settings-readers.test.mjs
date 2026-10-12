@@ -19,7 +19,7 @@ import {
  * (ADR-0021 决策 42 下 10-01 的 🔗)。核心要拿到它只有一条路 —— import 那个模块,所以这条守卫按 import 判:
  *
  * - 白名单只有组装根 `compose.ts`:它把 B 站的设置段交给运行时(`createAppRuntime` 收的是设置段清单,不认得是谁的)。
- * - B 站接线(今天 `runtime/engines.ts`、`index.ts`)在 3a 搬进 `bilibili/` 之前按棘轮记账,3a 清零。
+ * - 棘轮表是空的:核心里没有别的读者(B 站自己读设置走来源上下文的 `settings(schema)`)。
  * - 不经这个模块、拿键名去捞的写法(`const { bilibili } = …`、`settings["bilibili"]`、`BILIBILI_SOURCE_KEY`)
  *   由 B 站替身棘轮兜底,这里不重复。
  *

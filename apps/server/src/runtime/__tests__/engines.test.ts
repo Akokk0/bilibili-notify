@@ -2110,7 +2110,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 	});
 
 	// 日志等级不再由引擎装配推:各子上下文只交(标签,键),等级表由入口的 `bindLogLevels` 整张推
-	// (推的行为在 `log-levels.test.ts` 与 `service-context.test.ts`,接线在 `builtin-source-boot-e2e`)。
+	// (推的行为在 `log-levels.test.ts` 与 `service-context.test.ts`,接线在 `log-levels-boot-e2e`)。
 	// 一行日志是谁的代码打的就跟谁那一格:这里钉「键」接对了没有 —— 接反了门禁全绿,只有调等级时才露馅。
 	it("子上下文的(标签,键):作品队列与拓展直播跟 core,B 站直播引擎跟来源键,AI、出图各跟自己的", () => {
 		const c = setup();

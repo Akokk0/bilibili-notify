@@ -469,7 +469,10 @@ export interface ExtensionContext {
 	 * 这个是拿去报给对家看的(桥在 `welcome` 帧里把它告诉插件)。
 	 */
 	readonly hostVersion: string;
-	/** 每一行都自动带上 `[ext:<id>]` —— 日志里认得出是谁写的。 */
+	/**
+	 * 行的标签就是拓展的 id(面板日志页按它筛),正文里不用也不会再带 id。日志等级跟日志设置里它自己的那一格
+	 * (`logging.levels.<id>`),没写就跟总等级。
+	 */
 	readonly logger: Logger;
 	/**
 	 * 程序自己记的小状态:明文,不进备份。单键 64KB、整份 1MB;`http.` 开头的键归宿主。

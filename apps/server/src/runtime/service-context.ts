@@ -24,6 +24,12 @@ export interface NodeServiceContextOptions {
 	destination?: DestinationStream;
 }
 
+/** 设置里日志等级的那两格:总等级,与按键(核心的格或集成键)单独写的等级。 */
+export interface LogLevelTable {
+	level: string;
+	levels: Readonly<Record<string, string>>;
+}
+
 /**
  * ServiceContext:
  *  - logger: pino (real production logger, not console)
@@ -38,11 +44,6 @@ export interface NodeServiceContextOptions {
  * WS layer to feed `logger.<level>(...)` calls onto the `log` channel without the
  * core `Logger` interface having to know anything about WebSockets.
  */
-export interface LogLevelTable {
-	level: string;
-	levels: Readonly<Record<string, string>>;
-}
-
 export interface NodeServiceContext extends ServiceContext {
 	/**
 	 * 关停:中止 `signal`、清掉挂着的定时器，再按 `stop → drain →(等后台活)→ flush → dispose` 跑钩子，

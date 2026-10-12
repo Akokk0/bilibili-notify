@@ -29,7 +29,7 @@ export interface IntegrationContextHandle {
 }
 
 export interface CreateIntegrationContextOptions {
-	/** 已经带好前缀的那个 logger(拓展传 `prefixed(host.logger, id)`)。 */
+	/** 集成自己的那个 logger:按它的集成键要来的,行的标签与等级都跟这个键(拓展传 `loggerOf(id)` 要来的)。 */
 	logger: Logger;
 	/** `signal` 中止时带的原因(`DOMException(这句话, "AbortError")`)。 */
 	stopReason: string;
