@@ -17,6 +17,7 @@ import {
 	isExtensionEnabled,
 	manifestProvides,
 	ok,
+	RESERVED_EXTENSION_IDS,
 } from "@bilibili-notify/internal";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
@@ -322,6 +323,18 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	app.delete("/:id", async (c) => {
 		const install = opts.install;
 		if (!install) return respondFailure(c, fail("unsupported", "这个构建没接装载器,删不了"));
+
+		// 目录名正好是保留名字的那一种:它过不了 id 校验、装载不了,面板上是一张「读不了」的卡,也得删得掉。
+		// **只抹拓展目录下那一个文件夹**。保留名字同时是内置集成与核心自己的键:往下那几步按 id 找到的是本体的东西
+		// (内置适配器的连接、B 站存着的登录凭据),一步都不走 —— 一个从没跑起来过的拓展本来也没有那些。
+		const reserved = RESERVED_EXTENSION_IDS.find((name) => name === c.req.param("id"));
+		if (reserved !== undefined) {
+			const removed = await install.changeDisk(() =>
+				uninstallExtension({ root: install.root, id: reserved }),
+			);
+			if (!removed.ok) return respondFailure(c, removed);
+			return c.json(ok());
+		}
 
 		const parsed = ExtensionIdSchema.safeParse(c.req.param("id"));
 		if (!parsed.success) return respondFailure(c, fail("invalid", "拓展 id 不合法"));

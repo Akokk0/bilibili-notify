@@ -13,7 +13,13 @@ import type {
 	ExtensionInstallResponse,
 	ExtensionsResponse,
 } from "@bilibili-notify/contract";
-import { fail, type GlobalConfig, ok, type ServiceContext } from "@bilibili-notify/internal";
+import {
+	fail,
+	type GlobalConfig,
+	ok,
+	RESERVED_EXTENSION_IDS,
+	type ServiceContext,
+} from "@bilibili-notify/internal";
 import { strToU8, zipSync } from "fflate";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -1328,6 +1334,48 @@ describe("DELETE /api/ext/:id", () => {
 
 		expect((await app.request("/bridge", { method: "DELETE" })).status).toBe(200);
 		expect(gone).toEqual([false, true]);
+	});
+
+	/**
+	 * 目录名正好是保留名字(内置集成的键、`core`、`image`、`ai`)的拓展装载不了,面板上是一张「读不了」的卡。
+	 * 它也得删得掉 —— 但**只抹拓展目录下那一个文件夹**:保留名字同时是内置集成与核心自己的键,往下那几步
+	 * (查连接、清上报出入、删开关与设置、清状态与密钥)按 id 找到的都是本体的东西,一步都不许走。
+	 * 验红:把路由里保留名字那一支去掉(落回 id 校验),每个名字都回 400、目录还在。
+	 */
+	it.each(RESERVED_EXTENSION_IDS)(
+		"目录名是保留名字 %s → 只抹拓展目录下那一个文件夹,别的一步不走",
+		async (id) => {
+			await mkdir(join(installRoot, id), { recursive: true });
+			await writeFile(join(installRoot, id, "extension.json"), "{}");
+			const remove = vi.fn(async () => ok());
+			const reportDiscrepancies = createReportDiscrepancyTable();
+			const cleared = vi.spyOn(reportDiscrepancies, "clear");
+			const app = boot({
+				integrationStore: { remove },
+				reportDiscrepancies,
+				// 内置连接的适配器键就是这个名字:不许被当成「还有连接在用这个拓展」。
+				connections: [{ id: "c1", adapterKey: id }],
+			});
+
+			const res = await app.request(`/${id}`, { method: "DELETE" });
+
+			expect(res.status).toBe(200);
+			expect(await lstat(join(installRoot, id)).catch(() => null)).toBeNull();
+			expect(removeExtension).not.toHaveBeenCalled();
+			expect(remove).not.toHaveBeenCalled();
+			expect(cleared).not.toHaveBeenCalled();
+		},
+	);
+
+	it("目录名是保留名字、盘上没有这个文件夹 → 200,仍然什么都不动", async () => {
+		const remove = vi.fn(async () => ok());
+		const res = await boot({ integrationStore: { remove } }).request("/core", {
+			method: "DELETE",
+		});
+
+		expect(res.status).toBe(200);
+		expect(removeExtension).not.toHaveBeenCalled();
+		expect(remove).not.toHaveBeenCalled();
 	});
 
 	it("id 不合法 → 400 invalid,不碰盘", async () => {
