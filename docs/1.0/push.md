@@ -330,8 +330,8 @@ type PushTarget =
 | 出口咽喉 | 登记表对外只给不含 `send` 的视图，`send` 只经 `TargetDispatcher`；源码扫描的白名单只剩它 | 3a |
 | 咽喉 e2e | 开截流 + 守卫 2，逐条驱动全部发送路径（广播、`notifyMaster`、目标测试、卡片发送、AI 试一句、锐评投递、人工重推、链接预览回复、指令回复与登录二维码、审批预览卡），每条恰好一条截流记录、零外连 | 3a |
 | 推送守卫① | 核心不 import 适配器的实现（`platforms/`），例外只有 `compose.ts` | 3a |
-| 推送守卫② | 推送平台专有词棘轮，词表加 `\bQQ[A-Z]`、`ws-reverse`、`transport`、`get_mini_app_ark`、`c2c`，范围纳入 contract | 3a 开，3b 末清零 |
-| `.platform` 决定棘轮 | 核心读 `.platform` 只许身份构造、显示、日志 | 3a 开，3b 末清零 |
+| 推送守卫② | 推送平台专有词棘轮，词表加 `\bQQ[A-Z]`、`ws-reverse`、`transport`、`get_mini_app_ark`、`c2c`，范围纳入 contract。🔗 3a-41（10-12）已开：`scripts/__tests__/platform-vocabulary.test.mjs`，开张现数 17 个文件 147 处；`user_id` / `group_id` 连驼峰也认，`webhook` 不进词表，`compose.ts` 整文件白名单，`platforms/`、迁移模块、`bilibili/` 不扫 | 3a 开，3b 末清零 |
+| `.platform` 决定棘轮 | 核心读 `.platform` 只许身份构造、显示、日志。🔗 3a-41（10-12）已开：`scripts/__tests__/platform-decisions.test.mjs`，核心 2 个文件 4 处、面板另记一张表 5 个文件 23 处；两个平台值比相等（平台对平台）不算决定 | 3a 开，3b 末清零 |
 | 推送守卫③ | 假适配器对拍：一个假平台适配器（给假源拓展加 `contributes.push`，或另起一个假适配器拓展，施工时定）逐成员走 `PlatformAdapter`；必须有的行：`atAll` 为假、`inbound`、endpoint 托管、能力接口列拓展连接、登记即 `start`、内置与拓展入站都经宿主校验 | 3b |
 | 主人目标 | 守卫 19 加固：PATCH 改成群目标拒收，`notifyMaster` 发送时复检 | 随该项 |
 | 重推原件 | 守卫 13 纳入重推原件的载荷种类与字段 | 随该项 |

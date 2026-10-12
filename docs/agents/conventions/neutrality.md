@@ -70,10 +70,10 @@ if (adapter.capabilities.atAll) addAtAll(msg);
 | 静态扫描 | 守卫 1 与推送守卫① | 核心不许 import `bilibili/`、`platforms/`，例外只有 `compose.ts` | 3a |
 | 静态扫描 | 守卫 12 | 核心不读 B 站的设置。只有组装处 `compose.ts` 能引 `bilibili/settings.ts`（白名单只有它一个文件）；棘轮表是空的（B 站接线早已不引它）。解构与下标的写法由 B 站替身棘轮兜底。 | 1⑥ 棘轮开，3a 清零 |
 | 静态扫描 | B 站替身 | 核心、面板、contract 里正好是 `"bilibili"` / `"@bilibili"` 的字面量，以及按驼峰段与下划线段切开后有一段是 `bili` / `bilibili` 的标识符（`isBiliSubscription`、`BILI_ONLY_EXTRAS`、`fromBilibili` 都算） | 1⑥ 棘轮开，4 末清零 |
-| 静态扫描 | 守卫 11 与推送守卫② | B 站专有词、推送平台专有词，先剥注释 | 3a 棘轮开，3b 末清零 |
-| 静态扫描 | uid 棘轮 | `bilibili/` 与迁移模块以外出现 `uid` | 3a 棘轮开，3b 末清零 |
+| 静态扫描 | 守卫 11 与推送守卫② | B 站专有词、推送平台专有词，先剥注释。🔗 3a-41 已开：`scripts/__tests__/bilibili-vocabulary.test.mjs`（`platforms/` 与迁移模块以外，词表是手写词加 `bilibili/` 里 snake_case 的类型键，标识符整名或按段匹配、字符串按词边界）与 `scripts/__tests__/platform-vocabulary.test.mjs`（词按连续几段拼起来匹配；`compose.ts` 整文件白名单；`webhook` 不在词表）；实现走语法树，注释天生不是节点 | 3a 棘轮开，3b 末清零 |
+| 静态扫描 | uid 棘轮 | `bilibili/` 与迁移模块以外出现 `uid`。🔗 3a-41 已开：`scripts/__tests__/uid-ratchet.test.mjs`，标识符有一段是 `uid` / `uids`、字符串整个正好是 `uid` / `uids` 才算，不扫面板 | 3a 棘轮开，3b 末清零 |
 | 静态扫描 | 中文叫法棘轮 | 见 [nouns.md](nouns.md) | 4 棘轮开，5 末清零 |
-| 静态扫描 | `.platform` 决定棘轮 | 核心读 `.platform` 做决定 | 3a 棘轮开，3b 末清零 |
+| 静态扫描 | `.platform` 决定棘轮 | 核心读 `.platform` 做决定。🔗 3a-41 已开：`scripts/__tests__/platform-decisions.test.mjs`，平台值流到比字面量、`switch`、查表、喂函数这几种会分叉的位置才算，两个平台值比相等（平台对平台）与问有没有不算；面板另记一张表 | 3a 棘轮开，3b 末清零 |
 | 静态扫描 | 事件载荷 | 总线载荷类型递归检查：不许有 `uid` 键、`Bili*` 类型，平台原始值不许以裸 `string` 进载荷 | 1④ |
 | 对拍 | 守卫 21b | 测试 compose 里登记一个假来源与 `AiToolProvider`，断言内容 | 3a 检查点验收 |
 | 对拍 | 守卫 21a、推送守卫③ | 假源拓展经契约 v3、假适配器逐成员走一遍 | 3b |
