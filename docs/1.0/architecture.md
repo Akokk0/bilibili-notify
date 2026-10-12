@@ -157,7 +157,7 @@ routes/ ws/ config/ backup/ update/ devtools/ logs/ types/ util/
 
 | 接口 | 管什么 | 登记表 |
 | --- | --- | --- |
-| `Source` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字 | `subscriptionSources` |
+| `Source` | 订阅一个人：搜人、拉资料、直播状态、登录、预览。共 10 个成员（descriptor、必备 4 个、可选 5 个）；没有「新建 / 启用订阅」钩子，订阅变化只经 ctx 的 `onSubscriptionsChanged`；`searchCreators`、`fetchProfile` 返回结果形状（ADR-0026 决策 4）；`health()` 只交一行字。🔗 现状（3a-42，10-12）：`packages/internal/src/source.ts` 里 `Source` 今天只有 5 个成员（`descriptor`、`health?`、`start`、`stop`、`auth?`）；`searchCreators`、`fetchPreview`（第 4 期）与 `fetchProfile`、`fetchLiveStatus`、`liveInteractions`（3b）接口上还没有，各随第一个使用者落地（「没有实现者的接口不造」），逐项去处见下「第三层：对拍」21b 的「这版不开」名单 | `subscriptionSources` |
 | `LinkResolver` | 群里的链接 → `LinkPreview { post, canonicalId, nativeShare? }`；带 `label`，`resolve` 返回结果形状（ADR-0029） | `linkResolvers` |
 | `AiToolProvider` | 来源专有的只读 AI 工具与技能（B 站：总播放、获赞、视频列表与 B 站版周报） | `aiToolProviders` |
 | `DevtoolsProvider` | 开发版的造状态 / 造事件场景：`{ scenarios: DevScenarioDef[] }`；场景 id 由宿主加前缀（`bilibili.xxx`、`<拓展 id>.xxx`），参数按提供方收窄，`run` 返回结果形状（ADR-0031 决策 2） | `devtoolsProviders`（只在开发版） |
@@ -237,7 +237,7 @@ ctx 各成员的完整语义见 [subscription-sources.md](./subscription-sources
 | 搜人 | `GET /api/sources/:sourceKey/creators?q=`，去重用 identity；按 id 取人不另开路由，搜索已认 id（09-27 拍板） | `searchCreators`（UID、主页链接、名字都认；返回结果形状） | `searchCreators`（契约的 `lookup` 改名） |
 | 链接预览 | 闸门（开关、群表、冷却键「群 + 解析器 + canonicalId」、上限）；先用通用网址正则挑候选再问各解析器 `matches`；回复经 `sendToAddress` 发回原会话；原生分享卡里的链接不回预览 | `LinkResolver`；原生分享交中立描述，由 OneBot 适配器去签，签不了回图片 | 1.0 暂不开 |
 | 指令 | 框架与 `help` / `mute` / `report` / `status` / `login [来源]`；`run` 返回结果形状，`reply` 经 `sendToAddress` 回到发指令的会话；失败回「『{指令名}』没办成：{message}」，抛错回「出错了，详情在日志里」（ADR-0031 决策 1）。🔗 现状（3a-40）：`status` 里「上次抓取」换成在册来源各一行「<label>：<该来源 `health()` 说的话>」，见 [commands.md](../agents/commands.md) | 没有自带指令；`login` 从它的 `AuthState` 取二维码；`health()` 交一行 | 没有自带指令；`health()` 交一行 |
-| AI | 生成器、人格；六把中立只读工具，参数统一叫 `creator`（「来源键:外部 id」）；六个内置技能跨来源、只用中立工具；看图读图库、聊天附件存进图库；提示词里的平台叫法用 `{creatorNoun}` / `{postNoun}` / `{sources}`（ADR-0030） | `AiToolProvider`（专有只读工具与 B 站版周报技能） | 1.0 暂不开 |
+| AI | 生成器、人格；六把中立只读工具，参数统一叫 `creator`（「来源键:外部 id」）；六个内置技能跨来源、只用中立工具；看图读图库、聊天附件存进图库；提示词里的平台叫法用 `{creatorNoun}` / `{postNoun}` / `{sources}`（ADR-0030）。🔗 现状（3a-42，10-12）：核心里读来源上报的作品叫法 `postNoun` 的，今天是拼 AI 提示词那一处（作品模板还只传 `{name}`，见 21b 不开名单 N08），来源没给时缺省叫「作品」（原先代码缺省是「动态」，与定案写的缺省「作品」不一致，3a-42 改了），B 站来源自己声明「动态」 | `AiToolProvider`（专有只读工具与 B 站版周报技能） | 1.0 暂不开 |
 | 资料、头像与粉丝 | 定时调 `fetchProfile`（只调启用中的）；`not_found` 记成 `creator_not_found` 问题，其余当暂时失败；增量、时序、头像进图库、显示名链 | `fetchProfile` | `fetchProfile` 或主动 `reportProfile` |
 | 统计与锐评 | 中立统计仓与聚合；开了开关才记；「在记」按特性分、核心自己算（作品 / 直播 / 粉丝，ADR-0027 决策 2），热力图也读它、seen 不再单独当判据；关着的日子显示「没在记」、锐评与榜单跳过；多收来源已交到手的现成字段；CSV 的「UID」与「外部 ID」合成一列 | 开播公告动态直接丢掉、不上报 | — |
 | 账号 | 系统 → 账号、头部、新手引导登录步；登录态只有中立的 `AuthState`（推送侧的 `connectionAuth` 也用它）。🔗 3a-29 B 站半：`auth` 已挂到 `Source.auth`，面板各处（头部、AI 对话、引导、概览、系统页账号卡）已改读 `GET /api/sources/:sourceKey/auth`，数据面是 `["source-auth", 来源键]` 的查询缓存；`accounts/`、账号排序、多账号下拉、按来源生成的引导登录步仍在第 4 期 | `auth`（`bilibili/auth/`，3a-29 B 站半已落，仍由入口造） | 可选 `auth` + `ctx.secrets` |
@@ -352,7 +352,7 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 | 守卫 | 判据 | 什么时候红 | 期 |
 | --- | --- | --- | --- |
 | 21a 契约层对拍 | 用仓库里的假源拓展经契约 v3 走作品与直播：带图标的链接片段、直播、资料、问题上报等 | 只有 B 站走得通、拓展走不通 | 3b |
-| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `Source`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。会员、醒目留言、特别弹幕、特别进场、词云、总结六项契约不开，只有这一层够得着 | 3a 检查点的验收之一 |
+| 21b 进程内对拍 | 在测试用的 compose 里照内置集成的路登记一个假来源：直接实现完整的 `Source`（10 个成员、全部特性与附加项，含 `liveInteractions`、`auth`、`health`、`fetchPreview`）加一个 `AiToolProvider`；断言内容，不只是不报错。清单见表下。🔗 现状（3a-42，10-12，已落）：落在 `apps/server/src/__tests__/in-process-source-parity-e2e.test.ts`（夹具 `support/in-process-source.ts`，假来源键 `acme.inprocess`，经真入口与 `vi.mock` 包一层的真 `compose.ts`，与真 B 站来源并排在册；推送内容读 devtools 的截流记录，零外连）。接口上今天没有「10 个成员」（`Source` 只有 5 个，见上「接口族与登记表」），`AiToolProvider` 与 `LinkResolver` 的登记表也没有，所以今天拍的是 3a 子集 **20 行**（测试文件里 `PARITY_ROWS` 的 P01 至 P20），其余 **18 行**（N01 至 N18）列在同一张表的「这版不开」名单里、逐行写明等哪一期（第 4 期 5 行，3b 13 行），**标 3b 的行在 3b 出期时转成对拍**（见 [construction-plan.md](./construction-plan.md) 3b 的出期条件）。检查点口径是主人 10-12 定的（被否：3a 里先把这些口造出来；检查点挪到 3b）。另有成员棘轮：给 `Source`、`SourceContext`、`SourceDescriptor`、`SourceAuth` 加一个成员，测试文件类型检查就过不去，必须来补一行指向管着它的对拍行 | 语义后门：词表与 import 守卫抓不到，比如照搬 B 站的 `video \| lottery` 图标枚举，一个 B 站词都没有。会员、醒目留言、特别弹幕、特别进场、词云、总结六项契约不开，只有这一层够得着 | 3a 检查点的验收之一 |
 | 推送守卫③（假适配器对拍） | 一个假平台适配器（给假源拓展加 `contributes.push`，或另起一个假适配器拓展，施工时定）逐成员走 `PlatformAdapter`：要么走通，要么在「这版不开」名单里写明理由（ADR-0024 决策 11）。必须有的行：`atAll` 为 false 时不 @全体、`inbound`、`endpoint` 目标由连接托管、能力接口列得出拓展连接、登记即 `start`（晚登记的也收得到）、内置与拓展的入站都经宿主校验 | 只有内置适配器走得通的能力（勘察时：单向终点与托管目标、一个实现对多个平台、能力接口跳过拓展连接、晚注册的适配器收不到 `reconcile`） | 3b |
 | 模板变量可满足性 | 每个模板变量都映射到中立字段，表外的判红；`{tier}`、`{fanclub}` 进表 | 模板变量只有 B 站填得出（今天的 `{guard}`、`{mdn}`） | 3b |
 | AI 工具与技能约束 | 核心工具参数统一叫 `creator`，参数里不许有 `uid`；每把工具必须带 `label` 与参数标签；内置技能的 `allowedTools` 必须是核心中立工具的子集，否则挂到提供者的 `skills` 下；缺工具的技能自动隐藏要有测试 | 工具或技能只对 B 站成立 | 3b |
@@ -364,6 +364,8 @@ MessageBus 仍是唯一的事件通道（「绝不写转发器」那条铁律不
 - 卡片：五种片段、三种附加块、转发嵌套、文章配图、互动数缺几项；零出网；预览走 `fetchPreview`；按订阅的皮肤；会员卡 `custom` + `tier.icon` + 按档换色、非人民币醒目留言、词云与总结卡。
 - 智能女仆：点评输入与过滤用同一个取段函数；看图从图库引用；六把中立工具按 `creator` 答得出；只装假源时内置技能可见可跑、依赖 B 站工具的隐藏、工具有中文标签、提示词里没有「B 站」「UP 主」；锐评平台列用 `descriptor.label`；假 `AiToolProvider` 能登记与撤销。
 - 模板：`{postNoun}`、`{name}`、`{tier}`、`{fanclub}`、时长与粉丝变量；假源不亮「默认文案有更新」。
+
+🔗 现状（3a-42，10-12）：上面清单各项在 3a 里的去处。**规则**：四个开关，关键词、正则、白名单命中正文 / 视频标题 / 文章标题 / 被转发的原作品，被过滤的作品在历史里留一行 `filtered`，已拍（P07）；规则节按描述符露出（N09），非人民币醒目留言门槛、`custom` 会员体系、`minRank`、特别关注按 `viewer.id`（N10）不开。**卡片**：五种片段、`card` 附加块、转发嵌套、互动数缺几项、零出网已拍（P06）；带封面的 `video` / `goods` 附加块与文章配图（N12）、预览走 `fetchPreview`（N05）、会员卡 `custom` 加 `tier.icon` 加按档换色与词云、总结卡（N11）不开。**智能女仆**：提示词里的作品叫法已拍（P10，缺省叫「作品」）；锐评平台列用 `descriptor.label` 由单元测试钉着（`stats/__tests__/roast-subject.test.ts`）；六把中立工具与技能可见性、假 `AiToolProvider` 登记与撤销（N06）、订阅视图里的平台名（N18）不开。**模板**：`{postNoun}`、`{tier}`、`{fanclub}`、时长与粉丝变量、默认文案有更新（N08）不开，作品模板今天只有 `{name}`。**清单里没有点到去处的**：按订阅的皮肤、点评输入与过滤用同一个取段函数、看图从图库引用 —— 今天既不在对拍 20 行里，也不在不开名单里，待主会话定归期。
 - 事件与契约：`post-detected`、`live-session-changed`、`live-viewers-changed`（具名、带 `subscriptionId`）、`followers-refreshed`；WS 帧快照里没有 `uid`；面板不用认识假源的类型。
 - 订阅、历史、统计、概览四个页面各自的清单施工时补。
 

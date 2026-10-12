@@ -14,7 +14,7 @@
 **读取时，坏一条只隔离那一条**
 
 3. `bilibili` 段或某个拓展段校验不过：只停那一个集成，运行状态记 `settings-invalid`。面板显示原值与原因并进问题框，改对了当场起。
-4. `core` 段逐格校验，每个顶层键一格，`defaults` 与 `ai` 再细一层。坏的那格在内存里退回默认值，盘上原文不动，问题表记一条 `settings_invalid`，主人在面板上重存那一格就清掉（重存 = 存进去的值与内存里跑着的值不同；面板的补丁值没变也照发，所以不按补丁里有没有这个键判。想要的值恰好是默认值时要存两次：先改成别的，再改回来）。
+4. `core` 段逐格校验，每个顶层键一格，`defaults` 与 `ai` 再细一层，`ai.providers` 再按每一家实例细一层。坏的那格在内存里退回默认值（坏的那一家在内存里是不在，别家与各自的密钥照常；整张表不是对象才整张退默认），盘上原文不动，问题表记一条 `settings_invalid`，主人在面板上重存那一格就清掉（重存 = 存进去的值与内存里跑着的值不同；面板的补丁值没变也照发，所以不按补丁里有没有这个键判。想要的值恰好是默认值时要存两次：先改成别的，再改回来）。坏的那一家面板上看不到、也重存不了：改好文件重启才回来，在面板上新加一家 id 与它相同的会被拒收，不会把它的原文和存着的密钥换掉。
 5. 一条连接的 `settings` 过不了适配器的 `settingsSchema`：只隔离这一条，不交给适配器、不投递；面板显示「设置不合法」与原因并进问题框，盘上原文不动。
 6. 一条目标指向的连接不在了：只隔离这一条。
 7. 撤下的旧连接形状写成明确的名单，不靠猜。
@@ -64,7 +64,7 @@ if (!read.ok) throw new Error("settings broken");
 
 **有测试或守卫钉着的**：
 
-- 核心设置逐格退默认、盘上原文不动、重存按比值、密钥袋不被洗（真 `SecretStore`、真文件）、写失败时什么都不变：`config/__tests__/store-invalid-settings.test.ts`；解析与放回原文的纯函数：`config/__tests__/core-settings.test.ts`；问题表里只有一条：`config/__tests__/settings-problems.test.ts`，接线（真 `createAppRuntime`）：`__tests__/core-settings-problem-wiring.test.ts`。
+- 核心设置逐格退默认、盘上原文不动、重存按比值、密钥袋不被洗（真 `SecretStore`、真文件）、写失败时什么都不变，以及 AI 实例按每一家隔离（一家写坏只退那一家、别家与各自的密钥照常，坏家的原文在每个写口之后都一个字不变，删一家好的它的 key 跟着消失，撞坏家 id 的保存拒收，键叫 `__proto__` 的一家记成坏格而不是静默消失，`ai` 其余子格重存不碰密钥）：`config/__tests__/store-invalid-settings.test.ts`；解析与放回原文的纯函数：`config/__tests__/core-settings.test.ts`；实例 id 不许是原型名：`packages/internal/src/schema/__tests__/ai-provider-id.test.ts`；问题表里只有一条、三类格各说各的话：`config/__tests__/settings-problems.test.ts`，接线（真 `createAppRuntime`）：`__tests__/core-settings-problem-wiring.test.ts`。
 - **核心设置文件只有一个落盘口**：`scripts/__tests__/core-settings-single-writer.test.mjs` 按语法树钉死，实参是 `this.path("globals")` 的写盘调用只许出现在 `persistGlobals` 里（放回原文才不会漏口子）。
 - 集成段设置逐格、整个文件读不懂、比值、按字节回滚、恢复备份：`__tests__/config-store-integration-settings.test.ts`，纯函数在 `config/__tests__/integration-settings.test.ts`。
 - 读设置的把手不抛、变了才叫、一个订阅者抛了不影响别的：`integrations/__tests__/settings-reader.test.ts`；挂在来源上下文上、随上下文收掉：`subscriptions/__tests__/source-context.test.ts`。

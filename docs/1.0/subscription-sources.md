@@ -44,7 +44,7 @@ interface SourceHealth { summary: string }
 | `health` | 否 | 健康卡、`status` 指令 | 只交一行字 `{ summary }`（原 `status()`）；订阅卡的「暂停 / 不可用」不看它，见「健康与运行状态」 |
 | `fetchPreview` | 否 | 卡片页预览 | 没实现就用示例数据。返回结果形状是按失败规矩（ADR-0026 决策 4）推出来的；失败时回落示例数据还是报错，施工时定 |
 
-`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
+`Source` 共 10 个成员：descriptor、必备 4 个、可选 5 个。🔗 现状（3a-42，10-12）：代码里 `Source` 今天只有 5 个成员（`descriptor`、`health?`、`start`、`stop`、`auth?`），`searchCreators`、`fetchPreview`（第 4 期）与 `fetchProfile`、`fetchLiveStatus`、`liveInteractions`（3b）接口上还没有，各随第一个使用者落地；进程内对拍（守卫 21b）的「这版不开」名单逐项写着去处，见 [architecture.md](./architecture.md)「第三层：对拍」。没有单独的「新建 / 启用订阅」钩子（原 `onSubscriptionAdded`，一度改名 `onSubscriptionActivated`）：它和 ctx 的 `onSubscriptionsChanged` 重复，删掉。来源要在订阅变化时做事，一律用 `onSubscriptionsChanged` 自己对比新旧名单。
 
 新建订阅弹窗只有一套流程：选平台 → 一个输入框搜索 → 预填资料；去重用 identity（同一身份只能有一条订阅，见 [data-model.md](./data-model.md)）。搜人接口是 `GET /api/sources/:sourceKey/creators?q=`，提示文字由 contract 的叫法函数按 `descriptor.searchAccepts` 拼（B 站三种都收，拼成「UID、主页链接或名字」；没声明就是「搜索{creatorNoun}」）。B 站的实现：纯数字按 UID 精确查、主页链接先抽出 UID、其余按名字搜。候选头像也是图库引用，没被订阅用上的由图库按引用清扫。
 
@@ -78,7 +78,7 @@ interface MembershipTier {
 - B 站那一行的平台徽章，只在装了第二个订阅源时才画。
 - `icon` 的取值怎么解释（面板图标库里的名字还是一张图；拓展加不了图标库的名字），施工时定。
 - **外部 id**：身份标签写「{externalIdNoun} {externalId}」（B 站「UID 123」），没声明就写「{label} · {externalId}」，由一个函数生成（显示名链 `displayNameOf` 的最后一环）；「复制 UID」随之变成「复制 {externalIdNoun}」或「复制 ID」。
-- `postNoun` 进模板变量 `{postNoun}`（与提示词变量同名），默认文案「{name}发布了一条{postNoun}」，保留「一条」（ADR-0028 决策 3）。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。
+- `postNoun` 进模板变量 `{postNoun}`（与提示词变量同名），默认文案「{name}发布了一条{postNoun}」，保留「一条」（ADR-0028 决策 3）。B 站用户的推送文字一字不差；盘上还是老默认的，面板亮「默认文案有更新」，主人点了才换，不静默改写。视频那条「{name}发布了新视频」不变。模板名、AI 提示词、屏蔽提示、面板标签都跟着 `postNoun` 走（缺省从「动态」改成「作品」）。🔗 现状（3a-42，10-12）：模板变量 `{postNoun}` 3a 还没做（`posts/deliver-post.ts` 里套作品文案只传 `{name}`）；核心里读来源上报的 `postNoun` 的是拼 AI 提示词那一处（同一个文件），它的缺省原先在代码里还是「动态」，3a-42 对拍查出后改成「作品」，与这里一致（没声明 `postNoun` 的拓展的提示词因此变了，B 站来源自己声明「动态」不变）。面板自己的特性标签另走拓展清单的 `display.postNoun`，这一片没动。
 - 特别关注这项设置只在 `supportedFeatures` 含 `specialDanmaku` 或 `specialUserEnter` 时露出。
 - `liveStreaming` 开关只在 `has.liveStatus` 为真（来源提供了 `fetchLiveStatus`，宿主推算、随 `/api/sources` 下发），且 `supportedFeatures` 同时含 `liveStart` 与 `liveEnd` 时显示。
 
