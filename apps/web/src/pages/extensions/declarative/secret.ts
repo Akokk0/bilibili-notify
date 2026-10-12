@@ -1,11 +1,10 @@
 /**
- * 密钥在面板上的两件事:存着的那一把怎么画(见 `components/secret-cell.tsx`)、新的一把怎么生成。声明式设置项的 `secret` / `generate`
+ * 密钥在面板上的两件事:存着的那一把怎么画(见 `packages/ui` 的 `secret-cell.tsx`)、新的一把怎么生成。声明式设置项的 `secret` / `generate`
  * (ADR-0019 决策 30)在设置表单、列表卡、新建弹窗里共用这一份。
  */
 
-// `maskedOf` 搬去了 `components/secret-cell.tsx`(连接表单、智能女仆页也要用);这里转出,拓展页的
-// 老引用与它的测试不动。
-export { maskedOf } from "../../../components/secret-cell";
+// `maskedOf` 在展示件库里(连接表单、智能女仆页也要用);这里转出,拓展页的老引用与它的测试不动。
+export { maskedOf } from "@bilibili-notify/ui";
 
 /**
  * 一把新钥匙:**128 位随机、32 位小写十六进制**(格式由 BN 定,ADR-0019 决策 30)。前端现生成 ——

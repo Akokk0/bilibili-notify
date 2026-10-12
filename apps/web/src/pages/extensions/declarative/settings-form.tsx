@@ -7,12 +7,12 @@ import {
 	LoadingBlock,
 	OptionCard,
 	Picker,
+	SavedSecretControl,
 	TArea,
 	TInput,
 	Toggle,
 } from "@bilibili-notify/ui";
 import { type HTMLAttributes, type ReactNode, useState } from "react";
-import { SavedSecretControl } from "../../../components/secret-cell";
 import { reasonOf } from "../shared";
 import { safeImage } from "./image";
 import { settingsIssuesOf, settingsValuesOf, writeReasonOf } from "./list-items";

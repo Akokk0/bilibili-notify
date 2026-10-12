@@ -16,7 +16,7 @@
 import type { ConnectionView } from "@bilibili-notify/contract";
 import type { Connection, NewConnection } from "@bilibili-notify/internal";
 import { buildPatch, isMaskedCell } from "@bilibili-notify/internal/patch";
-import { maskedOf } from "../components/secret-cell";
+import { maskedOf } from "@bilibili-notify/ui";
 
 interface CredentialCell {
 	/** `settings` 里的键。 */

@@ -1,14 +1,25 @@
-import type { MaskedSecret, SecretCellDraft } from "@bilibili-notify/contract";
-import { Btn, MonoChip, TInput } from "@bilibili-notify/ui";
 import type { ReactNode } from "react";
+import { Btn, MonoChip } from "./atoms";
+import { TInput } from "./form-controls";
 
 /**
  * 一格密钥在面板上的样子 —— 拓展设置页、连接表单、智能女仆页共用这一份(ADR-0021 决策 44)。
  *
  * 存下来的密钥只有服务端算好的遮挡(`{ masked }`),浏览器手里本来就没有全文:已存着的显示「遮挡胶囊 +
  * 换一份」,点了才出输入框、可以「不换了」撤回;没存着的直接是输入框。**清空 = 点「换一份」后输入框留空
- * 再保存**,不另加清除钮。纯展示 + 一点交互,不碰 api / store;库里的 `MonoChip` 是它的底座。
+ * 再保存**,不另加清除钮。纯展示 + 一点交互,不碰 api / store;`MonoChip` 是它的底座。
  */
+
+/**
+ * 服务端下发的遮挡格的形状。**这个库不依赖 wire 契约**,所以自己写一份:与 `contract` 的 `MaskedSecret` 同形,
+ * 面板把契约那边的类型传进来,结构对得上就过;那边改了形状,面板这头编译会报。
+ */
+export interface MaskedSecretShape {
+	masked: string;
+}
+
+/** 草稿里的一格密钥:还是下发的遮挡(没动),或者字符串(换了新的;空串 = 清空)。 */
+export type SecretDraftShape = MaskedSecretShape | string;
 
 /**
  * 存着的一格密钥在屏幕上的样子 —— **服务端算好的那一串**(`{ masked }`,决策 35 / 38)。空着(没配、
@@ -90,9 +101,9 @@ export function DraftSecretInput({
 	onChange,
 	placeholder,
 }: {
-	value: SecretCellDraft;
+	value: SecretDraftShape;
 	saved: unknown;
-	onChange: (next: SecretCellDraft) => void;
+	onChange: (next: SecretDraftShape) => void;
 	placeholder?: string;
 }) {
 	const savedMask = typeof saved === "object" ? maskedOf(saved) : undefined;
@@ -101,7 +112,7 @@ export function DraftSecretInput({
 			savedMask={savedMask}
 			replacing={typeof value === "string"}
 			onReplace={() => onChange("")}
-			onCancelReplace={() => onChange(saved as MaskedSecret)}
+			onCancelReplace={() => onChange(saved as MaskedSecretShape)}
 		>
 			<TInput
 				value={typeof value === "string" ? value : ""}

@@ -35,6 +35,7 @@ import {
 import { buildPatch } from "@bilibili-notify/internal/patch";
 import {
 	Btn,
+	DraftSecretInput,
 	EmptyNote,
 	GlassBox,
 	Icon,
@@ -51,7 +52,6 @@ import { Field, Picker, TArea, TInput } from "../components/forms";
 import { HeroStrip } from "../components/hero-strip";
 import { PROVIDER_BRANDS, ProviderLogo } from "../components/provider-logos";
 import { ProviderPicker } from "../components/provider-picker";
-import { DraftSecretInput } from "../components/secret-cell";
 import { AI_PURPLE } from "../config/colors";
 import { SECTION_ACCENT } from "../config/section-accents";
 import { useDirtyDraft } from "../hooks/useDirtyDraft";

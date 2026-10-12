@@ -18,6 +18,7 @@ import {
 	LoadingBlock,
 	ModalShell,
 	PlatformIcon,
+	SavedSecretControl,
 	SectionNav,
 	StatusDot,
 	TOAST_DURATION_MS,
@@ -33,7 +34,6 @@ import { FIELD_ROW_CHROME, Field, Picker, TInput, TNum } from "../components/for
 import { useConnectionFace } from "../components/platform-meta";
 import { QQGuildPicker, QQSessionPicker } from "../components/qq-address-pickers";
 import { QQQrBindButton } from "../components/qq-qr-bind";
-import { SavedSecretControl } from "../components/secret-cell";
 import {
 	EXTENSION_BOTS_QUERY_PREFIX,
 	extensionBotsKey,
