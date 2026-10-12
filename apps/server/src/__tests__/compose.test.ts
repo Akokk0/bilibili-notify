@@ -10,7 +10,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HttpClient } from "@bilibili-notify/http";
+import { CookieJar, HttpClient } from "@bilibili-notify/http";
 import {
 	BILIBILI_GUARD_PROGRAM,
 	BILIBILI_SOURCE_KEY,
@@ -28,7 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { Api } from "../bilibili/api/index.js";
 import { fakeAuth } from "../bilibili/devtools/__tests__/support/fake-auth.js";
 import { createBiliDevtools } from "../bilibili/devtools/index.js";
-import type { GuardIcons } from "../bilibili/live/guard-icons.js";
+import { GUARD_ICON_REQUEST_HEADERS, type GuardIcons } from "../bilibili/live/guard-icons.js";
 import { observeLiveConnections } from "../bilibili/live/protocol/client.js";
 import { settingsSegment } from "../bilibili/settings.js";
 import { BUILTIN_INTEGRATION_SETTINGS, composeBuiltinIntegrations } from "../compose.js";
@@ -40,6 +40,16 @@ import { createNodeMessageBus } from "../runtime/message-bus.js";
 import { putImage } from "./support/chat-images.js";
 import { memoryIntegrationStore } from "./support/memory-key-value-store.js";
 import { png } from "./support/report-images.js";
+
+// 请求客户端换成「照真的造、记下构造参数与实例」的包一层:自建徽章请求客户端那一支要看它拿了什么请求头(不联网)。
+vi.mock("@bilibili-notify/http", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@bilibili-notify/http")>();
+	return {
+		...actual,
+		// 用子类而不是箭头函数:箭头函数不能 `new`(biome 会把写成 function 的包装自动改成箭头)。
+		HttpClient: vi.fn(class extends actual.HttpClient {}),
+	};
+});
 
 vi.mock("../bilibili/devtools/index.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../bilibili/devtools/index.js")>();
@@ -126,7 +136,7 @@ function compose(
 		sourceAuth?: SourceAuth;
 		/** 图库:不给就是个只记登记的假的;要看「来源声明的图」真进了图库的用例给真的。 */
 		imageStore?: Pick<ImageStore, "register">;
-		/** 抓徽章图的请求客户端:不给就是个连不上的假的(不联网)。 */
+		/** 抓徽章图的请求客户端:不给就是个连不上的假的(不联网);显式传 `undefined` = 真的不给(走自建那一支)。 */
 		guardIconHttp?: Pick<HttpClient, "fetch">;
 	} = {},
 ) {
@@ -137,6 +147,8 @@ function compose(
 	const onDispose = vi.fn();
 	// 与真的一样:同一对(标签,键)交回同一个上下文,日志器各不相同,好分辨「这个日志器是按哪一对要来的」。
 	const subsystems = new Map<string, { logger: Logger }>();
+	// 核心自己的日志器(`serviceCtx.logger`):也是 spy,好断言集成的行没有落到它上面。
+	const coreLogger: Logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 	const forSubsystem = vi.fn((name: string, levelKey: string) => {
 		const key = JSON.stringify([name, levelKey]);
 		let ctx = subsystems.get(key);
@@ -171,14 +183,14 @@ function compose(
 		imageFetcher: { fetchImage } as never,
 		setTimeout: () => ({ dispose() {} }),
 		imageStore: opts.imageStore ?? { register: vi.fn(() => ({}) as never) },
-		guardIconHttp: opts.guardIconHttp ?? {
-			fetch: async () => fail("unavailable", "测试不联网"),
-		},
+		guardIconHttp: Object.hasOwn(opts, "guardIconHttp")
+			? opts.guardIconHttp
+			: { fetch: async () => fail("unavailable", "测试不联网") },
 		attachGuardIcons,
 		live: () => undefined,
 		fans: () => undefined,
 		healthCheck: () => undefined,
-		serviceCtx: { onDispose, forSubsystem } as never,
+		serviceCtx: { onDispose, forSubsystem, logger: coreLogger } as never,
 		onInboundPrivate: () => {},
 		onInboundGroup: () => {},
 		adapterRegistry,
@@ -196,6 +208,8 @@ function compose(
 		integrationStore,
 		onDispose,
 		forSubsystem,
+		subsystems,
+		coreLogger,
 	};
 }
 
@@ -521,6 +535,53 @@ describe("composeBuiltinIntegrations · 大航海徽章图", () => {
 		await expect(icons?.ensure()).resolves.toBeUndefined();
 		expect(icons?.iconOf("captain")).toBeUndefined();
 		expect(icons?.refs()).toEqual([]);
+	});
+
+	// 验红:把 `compose.ts` 里自建客户端的 `headers: GUARD_ICON_REQUEST_HEADERS` 换成 `{}`,或删掉 `deps.serviceCtx.onDispose(() => http.dispose(), "drain")`,这条红。
+	it("没给 guardIconHttp:自建的请求客户端用徽章专用请求头、不带 cookie,并往 drain 段挂收连接的钩子", async () => {
+		vi.mocked(HttpClient).mockClear();
+		const { onDispose } = compose({ guardIconHttp: undefined });
+
+		expect(vi.mocked(HttpClient)).toHaveBeenCalledTimes(1);
+		const options = vi.mocked(HttpClient).mock.calls[0]?.[0];
+		expect(options?.headers).toEqual(GUARD_ICON_REQUEST_HEADERS);
+		expect(Object.keys(options?.headers ?? {}).map((name) => name.toLowerCase())).not.toContain(
+			"cookie",
+		);
+		// 新开的空罐子,不借 B 站接口那个
+		expect(options?.jar).toBeInstanceOf(CookieJar);
+
+		const drains = onDispose.mock.calls.filter(([, phase]) => phase === "drain");
+		expect(drains).toHaveLength(1);
+		const client = vi.mocked(HttpClient).mock.results[0]?.value as HttpClient;
+		const dispose = vi.spyOn(client, "dispose");
+		await drains[0]?.[0]();
+		expect(dispose).toHaveBeenCalledTimes(1);
+	});
+
+	// 验红:把 `compose.ts` 里 `if (!guardIconHttp)` 改成恒真(给了也自建),这条红。
+	it("给了 guardIconHttp:不自建请求客户端、不往 drain 段挂钩子", () => {
+		vi.mocked(HttpClient).mockClear();
+		const { onDispose } = compose({ guardIconHttp: fakeHttp() });
+		expect(vi.mocked(HttpClient)).not.toHaveBeenCalled();
+		expect(onDispose.mock.calls.filter(([, phase]) => phase === "drain")).toEqual([]);
+	});
+
+	// 验红:`compose.ts` 里 `biliLogger` 的键换成 `core`(标签不换),或整个换成核心的日志器,这条红。
+	it("徽章图的日志器是 B 站那一格(标签 bilibili、键来源键):抓不到的那行 warn 只落在它上面", async () => {
+		store = createImageStore({ dir: imagesDir });
+		const { attachGuardIcons, forSubsystem, subsystems, coreLogger } = compose({
+			imageStore: store,
+			guardIconHttp: fakeHttp(true),
+		});
+		await attachGuardIcons.mock.calls[0]?.[0]?.ensure();
+
+		const bili = forSubsystem(BILIBILI_SOURCE_KEY, BILIBILI_SOURCE_KEY).logger;
+		expect(bili.warn).toHaveBeenCalled();
+		for (const [pair, ctx] of subsystems) {
+			if (ctx.logger !== bili) expect(ctx.logger.warn, pair).not.toHaveBeenCalled();
+		}
+		expect(coreLogger.warn).not.toHaveBeenCalled();
 	});
 });
 
