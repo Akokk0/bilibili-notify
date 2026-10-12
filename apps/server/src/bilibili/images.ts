@@ -4,7 +4,7 @@
  * 单独的一步;调用方在确定要出卡时才调(被过滤的、不出卡的一张都不抓)。
  *
  * 抓图走调用方给的抓图服务(`images/image-fetcher.ts`,用 B 站接口那个请求客户端建的;以后换成 `ctx.fetchImage`)。
- * 图库里存的是 B 站图床的缩放版({@link scaledImageUrl}),抓不到再试一次原图;图上的 `url` 始终是原图地址。
+ * 图库里存的是 B 站图床的缩放版({@link scaledImageUrl}),图床不认缩放后缀时再试一次原图;图上的 `url` 始终是原图地址。
  * 抓不到不抛:那张图保持只有 `url`,记一条 warn。
  */
 
@@ -13,6 +13,7 @@ import type { LiveCardInput } from "@bilibili-notify/image";
 import {
 	BILIBILI_SOURCE_KEY,
 	type CachedProfile,
+	type FailureCode,
 	type ImageRef,
 	type Logger,
 	type Post,
@@ -149,8 +150,16 @@ function mapPostEmojis(
 }
 
 /**
- * 抓一张图:先抓缩放地址,失败且缩放地址与原地址不同再抓一次原地址。两次都失败回 `undefined`、记一条
- * warn(地址不带 query,里头可能是凭据)。抓图服务本身抛了算这一次失败,不往外抛。
+ * 缩放地址抓不到时,哪几种失败值得再抓一次原地址:图床不认这个缩放后缀(4xx、回来的不是图)或缩放版不存在。
+ * 别的(被限流、超时、连不上、没权限、被中止)换成原地址也是同一个结果 —— 再打一次只是把请求量和等的时间翻倍,
+ * 原图还更大。
+ */
+const SCALED_ONLY_FAILURES: ReadonlySet<FailureCode> = new Set(["invalid", "not_found"]);
+
+/**
+ * 抓一张图:先抓缩放地址;缩放地址与原地址不同、且失败是 {@link SCALED_ONLY_FAILURES} 里的那几种,再抓一次原地址。
+ * 抓不到回 `undefined`、记一条 warn(地址不带 query,里头可能是凭据)。抓图服务本身抛了算这一次失败(原因不明,
+ * 照旧再试原地址),不往外抛。
  */
 async function fetchRef(url: string, deps: ImagesDeps): Promise<ImageRef | undefined> {
 	const scaled = scaledImageUrl(url);
@@ -161,6 +170,7 @@ async function fetchRef(url: string, deps: ImagesDeps): Promise<ImageRef | undef
 			const result = await deps.images.fetchImage(candidate, { headers: IMAGE_REQUEST_HEADERS });
 			if (result.ok) return result.ref;
 			lastMessage = `${result.code}: ${result.message}`;
+			if (!SCALED_ONLY_FAILURES.has(result.code)) break;
 		} catch (e) {
 			lastMessage = (e as Error).message;
 		}

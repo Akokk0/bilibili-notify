@@ -1,4 +1,4 @@
-import type { ImageRef, Logger, Post } from "@bilibili-notify/internal";
+import type { FailureCode, ImageRef, Logger, Post } from "@bilibili-notify/internal";
 import { fail, makeEmptySubscription, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
@@ -18,12 +18,15 @@ function silentLogger(): Logger {
 }
 
 /** 假的抓图服务:按地址回引用(同一地址同一引用);`failing` 里的地址回失败。记下每次调用。 */
-function fakeImages(failing: (url: string) => boolean = () => false) {
+function fakeImages(
+	failing: (url: string) => boolean = () => false,
+	code: FailureCode = "unavailable",
+) {
 	const calls: { url: string; headers?: Record<string, string> }[] = [];
 	const ids = new Map<string, number>();
 	const fetchImage: ImagesDeps["images"]["fetchImage"] = async (url, opts) => {
 		calls.push({ url, headers: opts?.headers });
-		if (failing(url)) return fail("unavailable", "连不上");
+		if (failing(url)) return fail(code, "抓不到");
 		if (!ids.has(url)) ids.set(url, ids.size + 1);
 		return ok({ ref: refOf(ids.get(url) ?? 0) });
 	};
@@ -139,15 +142,32 @@ describe("fetchPostImages", () => {
 		expect(result.images).toEqual(post.images);
 	});
 
-	it("缩放地址抓不到就再抓一次原地址;存下来的是原地址那份,图上的 url 不变", async () => {
-		const original = "https://i0.hdslb.com/bfs/x/a.jpg";
-		const { calls, deps } = fakeImages((url) => url.includes("@"));
+	it.each(["not_found", "invalid"] as const)(
+		"缩放地址回 %s(图床不认这个缩放后缀)就再抓一次原地址;存下来的是原地址那份,图上的 url 不变",
+		async (code) => {
+			const original = "https://i0.hdslb.com/bfs/x/a.jpg";
+			const { calls, deps } = fakeImages((url) => url.includes("@"), code);
 
-		const result = await fetchPostImages(basePost({ images: [{ url: original }] }), deps);
+			const result = await fetchPostImages(basePost({ images: [{ url: original }] }), deps);
 
-		expect(calls.map((c) => c.url)).toEqual([`${original}@1280w_80q_1s.webp`, original]);
-		expect(result.images).toEqual([{ url: original, ref: refOf(1) }]);
-	});
+			expect(calls.map((c) => c.url)).toEqual([`${original}@1280w_80q_1s.webp`, original]);
+			expect(result.images).toEqual([{ url: original, ref: refOf(1) }]);
+		},
+	);
+
+	it.each(["rate_limited", "timeout", "unavailable", "unauthorized", "indeterminate"] as const)(
+		"缩放地址回 %s(换成原地址也是同一个结果)不再抓原地址:那张图保持只有地址",
+		async (code) => {
+			// 被限流时再打一次是火上浇油;超时再等一轮让这张图多耗一倍时间,原图还更大。
+			const original = "https://i0.hdslb.com/bfs/x/a.jpg";
+			const { calls, deps } = fakeImages((url) => url.includes("@"), code);
+
+			const result = await fetchPostImages(basePost({ images: [{ url: original }] }), deps);
+
+			expect(calls.map((c) => c.url)).toEqual([`${original}@1280w_80q_1s.webp`]);
+			expect(result.images).toEqual([{ url: original }]);
+		},
+	);
 
 	it("非 B 站图床的地址缩放地址与原地址相同,只抓一次", async () => {
 		const url = "https://example.com/a.png";
