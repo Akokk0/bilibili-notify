@@ -144,6 +144,9 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P15", title: "健康与 status", checked: true },
 	{ id: "P16", title: "登录口", checked: true },
 	{ id: "P17", title: "state / secrets", checked: true },
+	// 停后 `reportPost` 不入队这一半 e2e 里看不到(作品入口先于集成上下文收尾就已关掉,摘掉守卫也观察不到差别),
+	// 由单测钉着:`subscriptions/__tests__/source-context.test.ts` 的「dispose 之后:回调不再叫、监听摘掉、reportPost 不入队并记 error、再登记回调也不会被叫」
+	// 与 `subscriptions/__tests__/builtin-sources.test.ts` 的「撤销把手:先 stop 来源,再收上下文(收上下文之后再上报会被丢)」。
 	{ id: "P18", title: "关停次序", checked: true },
 	{ id: "P19", title: "会员体系读口", checked: true },
 	{ id: "P20", title: "日志等级与没碰 B 站", checked: true },
@@ -279,7 +282,8 @@ const PARITY_ROWS: readonly ParityRow[] = [
 /**
  * 成员棘轮(类型层):接口上每个成员都要在这里说「哪几行对拍管着它」。
  * 给 `Source` / `SourceContext` / `SourceDescriptor` / `SourceAuth` 加一个成员,下面四张表的 `satisfies Record<keyof …>`
- * 就类型检查过不去 —— 必须来补一行:要么指向对拍的行,要么先在 `PARITY_ROWS` 里加一行「不开」再指向它。
+ * 就类型检查过不去 —— 必须来补一行,而且只能指向对拍(`checked: true`)的行:指向「不开」的行,
+ * 末尾「成员棘轮」那条用例会红。新成员没有对拍管着,就先补对拍的行再加成员。
  */
 type RowId = `P${number}` | `N${number}`;
 const SOURCE_MEMBERS = {
@@ -1099,7 +1103,8 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		drove("P12");
 	});
 
-	// 验红:`engines.ts` 里 `settings.read` 的键写死成别的集成,`get()` 读到的不是盘上的值,第一段红;
+	// 验红:`engines.ts` 里 `settings.read` 的键写死成别的集成:第一段不红(两边读出来都是默认值
+	// `{ mode: "normal", threshold: 10 }`),红在第二段(存对之后 `onChange` 没被叫)与 P14;
 	// `onChanged` 摘掉,存对之后 `onChange` 不叫,第二段红。
 	it("P13 读设置:get() 是盘上的值;经 PATCH /api/settings 改一格 onChange 被叫、新值对;别的集成动了不叫", async () => {
 		const probe = currentProbe();
@@ -1416,8 +1421,9 @@ describe("进程内对拍:两趟开机", () => {
 		drove("P17");
 	});
 
-	// 验红:包装层里把上下文的收尾钩子挪到 `registerSources` 里登记(晚于引擎的关停钩子),`stop()` 看到 signal 已中止,这条红。
-	it("P18 关停次序:stop 恰好一次、被叫的那一刻 signal 还没中止;关完之后 signal 才中止,再上报的作品与问题一概不收", async () => {
+	// 验红:包装层里把上下文的收尾钩子挪到 `registerSources` 里登记(晚于引擎的关停钩子),`stop()` 看到 signal 已中止,这条红;
+	// 摘掉 `subscriptions/source-context.ts` 里问题上报停后的守卫(`forEachProblemObject` 的 `if (disposed)`),停后那一报进了问题表,这条红。
+	it("P18 关停次序:stop 恰好一次、被叫的那一刻 signal 还没中止;关完之后 signal 才中止;来源停下之后再上报的问题不进问题表", async () => {
 		const generation = await seedGeneration();
 		const base = makeExtensionSubscription({
 			id: SUB.alice,
@@ -1433,23 +1439,42 @@ describe("进程内对拍:两趟开机", () => {
 		const probe = currentProbe();
 		expect(probe.stops).toBe(0);
 		expect(probe.ctx?.signal.aborted).toBe(false);
-		// 开着的时候报一条作品,总线上有它(证明下面「关完不收」不是因为这条路本来就不通)。
-		probe.ctx?.reportPost(EXT.alice, textReport("p18-open", "小爱", "开着的时候"));
-		expect(inProcessWorld.postDetected.map((event) => event.postId)).toEqual(["p18-open"]);
+		// 问题表收到一条上报,核心的日志里会有「[problems] 开 … code」:拿它看「收没收」。
+		const serviceCtx = inProcessWorld.serviceCtx as unknown as NodeServiceContext;
+		const seen: string[] = [];
+		const previous = serviceCtx.setLogHook((entry) => seen.push(entry.msg));
+		const tableOpened = (code: string) =>
+			seen.filter((msg) => msg.startsWith("[problems] 开") && msg.includes(code));
+		// 开着的时候报一条,问题表收得到(证明下面「停后不收」不是因为这条路本来就不通)。
+		probe.ctx?.reportProblem({
+			externalId: EXT.alice,
+			code: "open_problem",
+			message: "开着的时候",
+		});
+		expect(tableOpened("open_problem")).toHaveLength(1);
 
-		await handle.close("test");
-		handle = undefined;
+		// 来源已被引擎停下、上下文已收掉而进程还活着的那一刻(引擎之后、集成上下文收尾之前)再报:
+		// 关完整个服务再报什么都看不到,断言会恒成立。
+		let lateReported = false;
+		inProcessWorld.afterSourceStopped = () => {
+			probe.ctx?.reportProblem({ externalId: EXT.alice, code: "late_problem", message: "停后" });
+			lateReported = true;
+		};
+
+		try {
+			await handle.close("test");
+			handle = undefined;
+		} finally {
+			serviceCtx.setLogHook(previous);
+		}
 		expect(probe.stops).toBe(1);
 		expect(probe.stopSawAborted).toBe(false);
 		expect(probe.ctx?.signal.aborted).toBe(true);
 
-		const detected = inProcessWorld.postDetected.length;
-		const changed = inProcessWorld.problemsChanged.length;
-		probe.ctx?.reportPost(EXT.alice, textReport("p18-late", "小爱", "关完之后"));
-		probe.ctx?.reportProblem({ code: "late_problem", message: "关完之后" });
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		expect(inProcessWorld.postDetected).toHaveLength(detected);
-		expect(inProcessWorld.problemsChanged).toHaveLength(changed);
+		expect(lateReported).toBe(true);
+		expect(tableOpened("late_problem")).toEqual([]);
+		// 作品那一半(停后 `reportPost` 不入队)在这里看不到:作品入口先于集成上下文收尾就已关掉,
+		// 守卫摘掉也观察不到差别,所以由 `source-context.test.ts` 与 `builtin-sources.test.ts` 的单测钉(见 PARITY_ROWS 的 P18)。
 		drove("P18");
 	});
 });

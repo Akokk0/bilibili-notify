@@ -224,6 +224,11 @@ export const inProcessWorld: {
 	postDetected: PostEvent[];
 	/** 总线上看到的 `problems-changed`(报的人)。 */
 	problemsChanged: string[];
+	/**
+	 * 来源已被引擎停下、来源上下文已收掉,而进程还活着(集成存储与总线都还在)的那一刻要做的事:
+	 * 关停钩子里排在引擎之后、集成上下文收尾之前。测试在这里让已停的来源再上报。
+	 */
+	afterSourceStopped: (() => void) | undefined;
 } = {
 	options: {},
 	probes: [],
@@ -231,6 +236,7 @@ export const inProcessWorld: {
 	authChanges: [],
 	postDetected: [],
 	problemsChanged: [],
+	afterSourceStopped: undefined,
 };
 
 /** 每个用例组开头清一次。 */
@@ -241,6 +247,7 @@ export function resetInProcessWorld(options: InProcessOptions = {}): void {
 	inProcessWorld.authChanges = [];
 	inProcessWorld.postDetected = [];
 	inProcessWorld.problemsChanged = [];
+	inProcessWorld.afterSourceStopped = undefined;
 }
 
 /** 当前(最近一趟开机)的探针;还没开机就抛。 */
@@ -285,6 +292,8 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 				  }
 				| undefined;
 			deps.serviceCtx.onDispose(async () => {
+				// 此刻引擎已停掉来源、收掉了来源上下文(钩子后登记的先跑),集成上下文还没收。
+				inProcessWorld.afterSourceStopped?.();
 				if (!opened) return;
 				const { integration, store } = opened;
 				opened = undefined;
