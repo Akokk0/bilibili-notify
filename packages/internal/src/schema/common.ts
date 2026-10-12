@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_TEMPLATES, extrasRecord, FEATURE_KEYS, featuresRecord } from "../constants";
 import { checkUserRegex } from "../util/regex-safety";
+import { isPrototypeName, prototypeNameMessage } from "./extension-manifest";
 import { markBackupOnly, markSecret } from "./secret";
 
 export type { ExtraKey, FeatureKey, PushExtras } from "../constants";
@@ -356,7 +357,12 @@ const AISettingsObjectSchema = z.object({
 	 * {@link activeProfile} 指向的桶**可能不存在**(比如刚被删掉),取值一律经
 	 * {@link resolveAIProfile},它会兜一套空默认值回来。
 	 */
-	providers: z.record(z.string(), AIProviderProfileSchema).default({}),
+	providers: z
+		.record(
+			z.string().refine((id) => !isPrototypeName(id), prototypeNameMessage("AI 实例的 id ")),
+			AIProviderProfileSchema,
+		)
+		.default({}),
 	/**
 	 * AI 聊天页自己的思考**等级**,独立于实例桶里的那两格 —— 那两格是引擎的
 	 * (动态点评 / 直播总结 / 锐评),聊天页曾经直接改它,于是在对话里拨一下,
