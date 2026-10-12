@@ -399,8 +399,10 @@ function isolatedSecrets(
 	const brokenIds = isolated.flatMap((e) => instanceIdOfEntry(e.path) ?? []);
 	const ofBrokenInstance = (key: string) => brokenIds.some((id) => isInstanceSecretKey(key, id));
 	return Object.fromEntries(
-		Object.entries(bag).filter(([key]) =>
-			isSearchSecretKey(key) ? keepSearch : keepInstances || ofBrokenInstance(key),
+		Object.entries(bag).filter(
+			([key]) =>
+				// 先问是不是坏家名下的(实例 id 自己可以长成 `search:…`),再按域判。
+				ofBrokenInstance(key) || (isSearchSecretKey(key) ? keepSearch : keepInstances),
 		),
 	);
 }

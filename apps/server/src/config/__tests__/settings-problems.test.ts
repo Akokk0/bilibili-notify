@@ -298,7 +298,7 @@ describe("brokenInstanceIdTakenMessage", () => {
 	it("女仆口吻的整句,id 超长同样截断", () => {
 		expect(brokenInstanceIdTakenMessage("mid")).toBe(
 			"主人，这个 id（mid）被设置文件里读不懂的那一家 AI 服务商占着，女仆这次没有保存。" +
-				"请改好 config/settings/core.json 里 ai.providers 下的这一家再重启，或者先在文件里把它删掉。",
+				"请改好 config/settings/core.json 里 ai.providers 下的这一家再重启；不想要它了，就在文件里把它删掉再重启。",
 		);
 		expect(brokenInstanceIdTakenMessage("x".repeat(40))).toContain(`${"x".repeat(32)}…`);
 	});

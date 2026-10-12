@@ -182,7 +182,7 @@ function remedyOf(entries: readonly InvalidSettingEntry[], these: string): strin
 export function brokenInstanceIdTakenMessage(id: string): string {
 	return (
 		`主人，这个 id（${shortenInstanceId(id)}）被设置文件里读不懂的那一家 AI 服务商占着，女仆这次没有保存。` +
-		"请改好 config/settings/core.json 里 ai.providers 下的这一家再重启，或者先在文件里把它删掉。"
+		"请改好 config/settings/core.json 里 ai.providers 下的这一家再重启；不想要它了，就在文件里把它删掉再重启。"
 	);
 }
 

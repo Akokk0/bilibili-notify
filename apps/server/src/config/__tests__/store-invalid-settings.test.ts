@@ -1169,3 +1169,84 @@ describe("ai 的子格坏着、到面板重存(真 SecretStore、真文件)", ()
 		expect(await readFile(corePath, "utf8")).not.toContain("sk-hand-bocha");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// 实例 id 本身以 `search:` 开头:袋键长得像搜索域,但先问是不是坏家名下的,再分域
+// ---------------------------------------------------------------------------
+
+describe("实例 id 以 search: 开头", () => {
+	const MINE_BAG = {
+		"search:mine": "sk-mine",
+		"search:mine:vision": "sk-mine-v",
+		ok: "sk-ok",
+		"search:bocha": "sk-bocha",
+	};
+
+	async function seedMine(secret: SecretStore): Promise<Json> {
+		const store = mkStore({ secret });
+		await store.load();
+		await store.patchGlobals({
+			ai: {
+				activeProfile: "ok",
+				providers: {
+					"search:mine": {
+						provider: "deepseek",
+						model: "m-mine",
+						apiKey: "sk-mine",
+						vision: { apiKey: "sk-mine-v" },
+					},
+					ok: { provider: "openrouter", model: "m-ok", apiKey: "sk-ok" },
+				},
+				search: { keys: { bocha: "sk-bocha" } },
+			},
+		});
+		expect((await secret.load()).aiApiKeys).toEqual(MINE_BAG);
+		return readDisk();
+	}
+
+	it("这一家坏着:写一次别的设置,它的主副两把 key 还在;改对重启后回来", async () => {
+		const secret = mkSecretStore();
+		const seeded = await seedMine(secret);
+		seeded.ai.providers["search:mine"].model = 7;
+		await putDisk(seeded);
+
+		const store = mkStore({ secret });
+		await store.load();
+		expect(paths(store)).toEqual([["ai", "providers", "search:mine"]]);
+		await store.patchGlobals({ mutedUntil: 5 });
+
+		expect((await secret.load()).aiApiKeys).toEqual(MINE_BAG);
+
+		const fixed = await readDisk();
+		fixed.ai.providers["search:mine"].model = "m-mine";
+		await putDisk(fixed);
+		const reopened = mkStore({ secret: mkSecretStore() });
+		await reopened.load();
+		expect(reopened.getInvalidSettings()).toEqual([]);
+		const g = reopened.getGlobals();
+		expect(g.ai.providers["search:mine"]?.apiKey).toBe("sk-mine");
+		expect(g.ai.providers["search:mine"]?.vision.apiKey).toBe("sk-mine-v");
+	});
+
+	it("没有哪一家坏着时,搜索域自己的键仍按搜索域走:只有 ai.search 坏着才留下内存里没有的搜索键", async () => {
+		const secret = mkSecretStore();
+		const seeded = await seedMine(secret);
+		await secret.save({ aiApiKeys: { ...MINE_BAG, "search:stale": "sk-stale" } });
+
+		// 没有任何坏格:内存里没有的 search:stale 写一次就洗掉了。
+		const clean = mkStore({ secret });
+		await clean.load();
+		await clean.patchGlobals({ mutedUntil: 5 });
+		expect((await secret.load()).aiApiKeys).toEqual(MINE_BAG);
+
+		// ai.search 坏着、没有哪一家坏着:搜索域整域留下,不因为有 search: 开头的实例而变。
+		await secret.save({ aiApiKeys: { ...MINE_BAG, "search:stale": "sk-stale" } });
+		seeded.ai.search = { backend: "没这个后端", keys: {} };
+		await putDisk(seeded);
+		const broken = mkStore({ secret });
+		await broken.load();
+		expect(paths(broken)).toEqual([["ai", "search"]]);
+		await broken.patchGlobals({ mutedUntil: 6 });
+		expect((await secret.load()).aiApiKeys).toEqual({ ...MINE_BAG, "search:stale": "sk-stale" });
+	});
+});
