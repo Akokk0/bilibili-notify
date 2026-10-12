@@ -10,8 +10,10 @@ import {
 	AI_PROVIDER_IDS,
 	AI_PROVIDERS,
 	CONNECTION_PLATFORMS,
+	EMPTY_AI_PROVIDER_PROFILE,
 	platformDescriptor,
 	providerMeta,
+	resolveAIProfile,
 } from "../constants";
 
 describe("能力门控 —— 决定设置页上哪些项该露面", () => {
@@ -89,5 +91,33 @@ describe("平台注册表的 adapterKey —— 这个平台归哪个适配器管
 
 	it("认不出的平台没有适配器键", () => {
 		expect(platformDescriptor("telegram")).toBeUndefined();
+	});
+});
+
+describe("resolveAIProfile —— 指针指着表里没有的名字", () => {
+	const providers = { mine: { ...EMPTY_AI_PROVIDER_PROFILE, model: "m" } };
+
+	it("普通的不存在的名字回空档案", () => {
+		expect(resolveAIProfile({ activeProfile: "nope", providers })).toEqual(
+			EMPTY_AI_PROVIDER_PROFILE,
+		);
+	});
+
+	it.each(["constructor", "toString", "__proto__"])(
+		"指针是原型名 %s 且表里没有这一家:与普通的不存在的名字一样回空档案,不交回原型上的东西",
+		(name) => {
+			const got = resolveAIProfile({ activeProfile: name, providers });
+			expect(got).toEqual(resolveAIProfile({ activeProfile: "nope", providers }));
+			expect(got).toEqual(EMPTY_AI_PROVIDER_PROFILE);
+		},
+	);
+
+	it("表里自己有这一家时照常取(哪怕名字像原型名)", () => {
+		const own = { ...EMPTY_AI_PROVIDER_PROFILE, model: "own" };
+		// 不写 `table.constructor = own`:类型上那一格是 `Object` 的 `constructor`(`Function`),赋不进去。
+		const table: Record<string, typeof own> = Object.assign(Object.create(null), {
+			constructor: own,
+		});
+		expect(resolveAIProfile({ activeProfile: "constructor", providers: table })).toBe(own);
 	});
 });

@@ -686,7 +686,10 @@ export function resolveAIProfile<S = string>(ai: {
 	activeProfile?: string;
 	providers?: Record<string, AIProviderProfileShape<S> | undefined>;
 }): AIProviderProfileShape<S | string> {
-	return ai.providers?.[ai.activeProfile ?? ""] ?? EMPTY_AI_PROVIDER_PROFILE;
+	const id = ai.activeProfile ?? "";
+	// 只认表自己的键:指针写成 `constructor` 这类原型名时,下标直读会取到原型上的函数。
+	const own = ai.providers && Object.hasOwn(ai.providers, id) ? ai.providers[id] : undefined;
+	return own ?? EMPTY_AI_PROVIDER_PROFILE;
 }
 
 /**
