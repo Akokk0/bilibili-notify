@@ -180,6 +180,28 @@ describe("createNodeServiceContext — forSubsystem 各算各的阈值", () => {
 		expect(seen.map((e) => e.msg)).toEqual(["w"]);
 	});
 
+	// 验红:把 service-context.ts 里 `levelOf` 的 `Object.hasOwn(table.levels, key)` 改回直接下标读 `table.levels[key]`,这条红。
+	it.each(["toString", "constructor", "__proto__", "hasOwnProperty"])(
+		"键是原型上有的名字(%s):不抛,等级跟总等级;推表之前开的、之后开的都一样",
+		(key) => {
+			const seen: LogEntry[] = [];
+			const ctx = createNodeServiceContext({
+				name: "core",
+				level: "info",
+				pretty: false,
+				onLog: (e) => seen.push(e),
+			});
+			const before = ctx.forSubsystem("x", key);
+			expect(() => ctx.applyLogLevels({ level: "warn", levels: {} })).not.toThrow();
+			const after = ctx.forSubsystem("y", key);
+			for (const sub of [before, after]) {
+				sub.logger.info("i");
+				sub.logger.warn("w");
+			}
+			expect(seen.map((e) => e.msg)).toEqual(["w", "w"]);
+		},
+	);
+
 	it("同一对(标签,键)交回同一个实例;同标签不同键是两个实例、各算各的", () => {
 		const seen: LogEntry[] = [];
 		const ctx = createNodeServiceContext({

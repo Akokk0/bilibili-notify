@@ -143,8 +143,11 @@ export function createNodeServiceContext(opts: NodeServiceContextOptions): NodeS
 
 	/** 最近一次推进来的等级表;没推过(开机早期)时子上下文跟 `opts.level`。 */
 	let table: LogLevelTable | undefined;
-	const levelOf = (key: string): string =>
-		table ? (table.levels[key] ?? table.level) : (opts.level ?? "info");
+	// 只认表自己的键:`toString`、`__proto__` 这类名字读到的是原型上的东西,交给 pino 当等级就抛。
+	const levelOf = (key: string): string => {
+		if (!table) return opts.level ?? "info";
+		return (Object.hasOwn(table.levels, key) ? table.levels[key] : undefined) ?? table.level;
+	};
 	/** 每个 (标签, 键) 一个 pino 实例:拓展反复装卸也不会越开越多。 */
 	const subsystems = new Map<string, { pino: PinoLogger; levelKey: string; ctx: ServiceContext }>();
 
