@@ -460,6 +460,18 @@ describe("屏蔽 / 白名单的规则语义", () => {
 		expect(result.blocked).toBe(false);
 		expect(warn).toHaveBeenCalled();
 	});
+
+	// 验红:`post-filter.ts` 里把两处日志标签改回 `[bilibili-notify-dynamic]`,这条红(中立文件里的日志说成 B 站动态)。
+	it("被拒的正则的 warn,日志标签是中立的 [post],不说 B 站", () => {
+		const warn = vi.fn();
+		const logger = { warn } as unknown as Logger;
+		// 灾难性回溯被拒一条;写不成正则的(过不了统一闸门的编译校验)也是同一句「拒绝执行」。
+		filterPost(neutral({ text: "a" }), rules({ blockRegex: ["(a+)+$"] }), logger);
+		filterPost(neutral({ text: "a" }), rules({ blockRegex: ["[invalid("] }), logger);
+		const lines = warn.mock.calls.map((call) => String(call[0]));
+		expect(lines).toHaveLength(2);
+		for (const line of lines) expect(line).toMatch(/^\[post\] 拒绝执行正则/);
+	});
 });
 
 describe("ReDoS 加固(正则走 internal 的统一闸门 + 只对前 1 万字求值)", () => {

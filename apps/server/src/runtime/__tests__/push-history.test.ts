@@ -270,6 +270,48 @@ describe("historyRecordFromSend", () => {
 			);
 			expect(input?.nameSnapshot).toBeUndefined();
 		});
+
+		// 验红:`push-history.ts` 的 `rowIdentityOf` 里把 B 站那一支改回 `profile?.name`(空白串也照存),这条红。
+		// 两支同一种取法(「有字才算有」):B 站资料名是空串或只有空白时,快照也是没有(从前这一种会把空白照存下来)。
+		it("B 站行与拓展行同一种取法:资料名是空串或空白 → 没有名字快照;有字的原样存", () => {
+			const BILI = "66666666-6666-4666-8666-666666666666";
+			const withName = (name: string | undefined) =>
+				historyRecordFromSend(
+					{ ...info, subscriptionId: BILI },
+					{
+						subscriptionOf: () => ({
+							subscription: makeEmptySubscription({
+								id: BILI,
+								identity: { sourceKey: "bilibili", externalId: "9" },
+							}),
+							profile: name === undefined ? undefined : { name },
+						}),
+					},
+				);
+			for (const blank of ["", "  ", "\t\n"]) {
+				expect(withName(blank)?.nameSnapshot, JSON.stringify(blank)).toBeUndefined();
+			}
+			expect(withName("某UP")?.nameSnapshot).toBe("某UP");
+			// 过滤留痕那一支同一种取法。
+			const filteredRow = historyRecordFromFilteredPost(
+				{
+					subscriptionId: BILI,
+					filteredBy: "blocked-keyword",
+					text: "字",
+					url: "https://t.bilibili.com/9",
+				},
+				{
+					subscriptionOf: () => ({
+						subscription: makeEmptySubscription({
+							id: BILI,
+							identity: { sourceKey: "bilibili", externalId: "9" },
+						}),
+						profile: { name: "  " },
+					}),
+				},
+			);
+			expect(filteredRow?.nameSnapshot).toBeUndefined();
+		});
 	});
 
 	it("B 站订阅的行没有散格(uid / extensionId / externalId),身份只有 identity 一格", () => {

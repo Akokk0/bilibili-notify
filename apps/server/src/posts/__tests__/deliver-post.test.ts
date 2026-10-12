@@ -463,7 +463,7 @@ describe("deliverPost — 模板", () => {
 });
 
 describe("deliverPost — AI 点评", () => {
-	it("点评替换模板文字;提示词带叫法与正文,这条订阅的 AI 覆盖原样交过去;叫法缺省「动态」", async () => {
+	it("点评替换模板文字;提示词带叫法与正文,这条订阅的 AI 覆盖原样交过去;叫法缺省「作品」", async () => {
 		const aiOverride = { dynamicPrompt: "这位 UP 专属的场景提示" };
 		const custom = harness({
 			withImage: false,
@@ -483,7 +483,7 @@ describe("deliverPost — AI 点评", () => {
 
 		const dflt = harness({ withImage: false, withAi: true, post: { text: "正文" } });
 		await run(dflt);
-		expect(dflt.comment.mock.calls[0]?.[0]).toBe("阿绫发布了一条动态，内容如下：\n正文");
+		expect(dflt.comment.mock.calls[0]?.[0]).toBe("阿绫发布了一条作品，内容如下：\n正文");
 	});
 
 	it("提示词里的正文是 postText(labeled):标题 / 视频标题 / 转发原文都在", async () => {
@@ -499,7 +499,7 @@ describe("deliverPost — AI 点评", () => {
 		});
 		await run(h);
 		expect(h.comment.mock.calls[0]?.[0]).toBe(
-			"阿绫发布了一条动态，内容如下：\n标题：专栏题\n今天发新歌\n视频标题：新歌 MV\n（转发自 原作者：原文）",
+			"阿绫发布了一条作品，内容如下：\n标题：专栏题\n今天发新歌\n视频标题：新歌 MV\n（转发自 原作者：原文）",
 		);
 	});
 

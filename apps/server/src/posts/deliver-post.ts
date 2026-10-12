@@ -298,7 +298,7 @@ export async function deliverPost(event: PostEvent, deps: DeliverPostDeps): Prom
 			);
 			try {
 				aiComment = await ai.comment(
-					`${post.creator.name}发布了一条${filled(event.postNoun) ? event.postNoun : "动态"}，内容如下：\n${commentText}`,
+					`${post.creator.name}发布了一条${filled(event.postNoun) ? event.postNoun : "作品"}，内容如下：\n${commentText}`,
 					"dynamic",
 					imageUrls,
 					// 联网搜索是全局开关,盖在 per-UP 覆盖之上(per-UP 没有这一项)。

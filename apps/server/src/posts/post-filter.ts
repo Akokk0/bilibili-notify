@@ -53,9 +53,7 @@ function safeRegexTest(pattern: string, text: string, logger?: Logger): boolean 
 	const check = checkUserRegex(pattern);
 	if (!check.ok) {
 		// logger 缺省 = silent(纯函数语义);引擎层应传入 ctx.logger 让 warn 走标准日志通道。
-		logger?.warn(
-			`[bilibili-notify-dynamic] 拒绝执行正则(${check.reason}):"${pattern.slice(0, 80)}"`,
-		);
+		logger?.warn(`[post] 拒绝执行正则(${check.reason}):"${pattern.slice(0, 80)}"`);
 		return false;
 	}
 	try {
@@ -68,7 +66,7 @@ function safeRegexTest(pattern: string, text: string, logger?: Logger): boolean 
 			text.length > MAX_REGEX_TEST_TEXT_LEN ? text.slice(0, MAX_REGEX_TEST_TEXT_LEN) : text;
 		return new RegExp(pattern).test(subject);
 	} catch (e) {
-		logger?.warn(`[bilibili-notify-dynamic] 无效的正则表达式 "${pattern}": ${errorMessageOf(e)}`);
+		logger?.warn(`[post] 无效的正则表达式 "${pattern}": ${errorMessageOf(e)}`);
 		return false;
 	}
 }

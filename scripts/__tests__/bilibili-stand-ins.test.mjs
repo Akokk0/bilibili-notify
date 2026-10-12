@@ -82,11 +82,10 @@ export const RATCHET = {
 	"apps/server/src/runtime/extension-push-common.ts": 2,
 	"apps/server/src/runtime/fans-poller.ts": 17,
 	"apps/server/src/runtime/follow-sync.ts": 2,
-	"apps/server/src/runtime/push-history.ts": 4,
 	"apps/server/src/stats/bili-source.ts": 13,
 	"apps/server/src/stats/extension-source.ts": 3,
 	"apps/server/src/stats/recorder.ts": 5,
-	"apps/server/src/stats/roast-subject.ts": 6,
+	"apps/server/src/stats/roast-subject.ts": 3,
 	// 面板读 B 站档位表的唯一入口(㉓e):3a 由 /api/sources 下发 descriptor.membershipPrograms 之前的替身。
 	"apps/web/src/config/membership-programs.ts": 2,
 	"apps/web/src/components/ai-chat/index.tsx": 2,

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-	BILIBILI_SOURCE_KEY,
 	type PostFilterReason,
 	type Subscription,
 	subscriptionIdentityOf,
@@ -102,10 +101,9 @@ function rowIdentityOf(
 	if (found === undefined) return null;
 	const { subscription, profile } = found;
 	const identity = subscriptionIdentityOf(subscription);
-	const fromBilibili = identity.sourceKey === BILIBILI_SOURCE_KEY;
 	return {
 		identity,
-		nameSnapshot: fromBilibili ? profile?.name : filled(profile?.name),
+		nameSnapshot: filled(profile?.name),
 		...(profile?.avatar ? { avatarSnapshot: profile.avatar } : {}),
 	};
 }

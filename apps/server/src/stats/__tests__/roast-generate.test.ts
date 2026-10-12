@@ -107,6 +107,10 @@ function makeDeps(uids: string[], aiEnabled = true, exts: ExtFixture[] = []): Ro
 			},
 			serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 			subRuntimeStore: { get: (id: string) => ({ cachedProfile: profiles.get(id) }) },
+			// 「平台」一列读来源登记表的 label(拓展不在表里,问装载器)。
+			sourceRegistry: {
+				get: (key: string) => (key === "bilibili" ? { descriptor: { label: "B 站" } } : undefined),
+			},
 		},
 		store: {
 			getGlobals: () => globals,

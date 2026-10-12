@@ -116,6 +116,10 @@ function makeRoastDeps(): { deps: RoastGenDeps; routeDeps: RouteDeps } {
 			listRecording: async () => [],
 		},
 		subRuntimeStore: { get: (id: string) => ({ cachedProfile: { name: NAMES[id] } }) },
+		// 「平台」一列读来源登记表的 label(拓展不在表里,问装载器)。
+		sourceRegistry: {
+			get: (key: string) => (key === "bilibili" ? { descriptor: { label: "B 站" } } : undefined),
+		},
 		serviceCtx: { logger: { debug() {}, info() {}, warn() {}, error() {} } },
 	};
 	const store = { getSubscriptions: () => SUBS, getGlobals: () => globals };

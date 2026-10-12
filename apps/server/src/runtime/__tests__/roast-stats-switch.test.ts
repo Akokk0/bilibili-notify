@@ -91,6 +91,11 @@ function makeDeps(statsEnabled: boolean) {
 				engines: { api: {}, imageRenderer: null, push: {} },
 				serviceCtx: { logger, setTimeout: () => ({ dispose() {} }), track: vi.fn() },
 				subRuntimeStore: { get: () => undefined },
+				// 「平台」一列读来源登记表的 label。
+				sourceRegistry: {
+					get: (key: string) =>
+						key === "bilibili" ? { descriptor: { label: "B 站" } } : undefined,
+				},
 			},
 			store: {
 				getGlobals: () => globals,

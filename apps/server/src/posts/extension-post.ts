@@ -46,7 +46,7 @@ export interface BindExtensionPostsOptions {
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字(资料缓存,现取)。 */
 	profileName(id: string): string | undefined;
-	/** 平台对作品的叫法(清单 `display.postNoun`,按拓展 id 现取);没写就是 `undefined`,核心叫「动态」。 */
+	/** 平台对作品的叫法(清单 `display.postNoun`,按拓展 id 现取);没写就是 `undefined`,核心叫「作品」。 */
 	postNoun(extensionId: string): string | undefined;
 	/** 往图库存作品图的口(`AppRuntime.postImages`;作品是在途数据,图靠宽限期活到卡片画完)。 */
 	postImages: Pick<ImageWriter, "put">;

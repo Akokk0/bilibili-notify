@@ -113,7 +113,7 @@ export interface PostEvent {
 	postId: string;
 	url: string;
 	post: Post;
-	/** 平台对作品的叫法(进 AI 提示词「××发布了一条{postNoun}」);缺省叫「动态」。 */
+	/** 平台对作品的叫法(进 AI 提示词「××发布了一条{postNoun}」);缺省叫「作品」(B 站来源自己声明了「动态」)。 */
 	postNoun?: string;
 }
 
