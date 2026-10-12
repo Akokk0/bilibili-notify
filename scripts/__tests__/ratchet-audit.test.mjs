@@ -46,6 +46,23 @@ describe("对照白名单与棘轮表", () => {
 		expect(auditRatchet({ "src/old.ts": [hit(1), hit(2)] }, tables)).toEqual([]);
 	});
 
+	it("传了 advice:超限与表外两种提示后面各带上这句,调低与删行的提示不带", () => {
+		const advice = "要涨先问主人";
+		const withAdvice = { ...tables, advice };
+		const over = auditRatchet({ "src/old.ts": [hit(1), hit(2), hit(3)] }, withAdvice);
+		expect(over[0]).toBe(`src/old.ts: 出站原语 3 处,超过棘轮上限 2 —— 只许少不许多。${advice}`);
+		const outside = auditRatchet(
+			{ "src/old.ts": [hit(1), hit(2)], "src/new.ts": [hit(7)] },
+			withAdvice,
+		);
+		expect(outside).toEqual([
+			`src/new.ts:7: fetch(u7) —— 出站原语,文件不在白名单也不在棘轮表里。${advice}`,
+		]);
+		expect(auditRatchet({ "src/old.ts": [hit(1)] }, withAdvice)).toEqual([
+			"src/old.ts: 实数 1,上限还写着 2 —— 把上限调低到 1",
+		]);
+	});
+
 	it("同一个文件不许既在白名单又在棘轮表:两张表打架", () => {
 		const problems = auditRatchet(
 			{},

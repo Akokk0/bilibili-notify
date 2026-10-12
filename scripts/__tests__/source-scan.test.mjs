@@ -5,11 +5,13 @@ import ts from "typescript";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
 	findNodes,
+	identifierSegments,
 	importsOf,
 	isInside,
 	listSources,
 	parseSource,
 	resolveSpecifier,
+	srcRootsUnder,
 	stripExt,
 } from "../source-scan.mjs";
 
@@ -47,6 +49,60 @@ describe("路径小工具:resolveSpecifier / isInside / stripExt", () => {
 		expect(stripExt("a/b.d.ts")).toBe("a/b.d");
 		expect(stripExt("a/b.mts")).toBe("a/b");
 		expect(stripExt("a/b.json")).toBe("a/b.json");
+	});
+});
+
+describe("identifierSegments:驼峰段与下划线段,一律小写", () => {
+	it("驼峰、小写开头、全大写下划线、连续大写、美元符", () => {
+		expect(identifierSegments("resolveRoomIdFromUid")).toEqual([
+			"resolve",
+			"room",
+			"id",
+			"from",
+			"uid",
+		]);
+		expect(identifierSegments("BiliSubs")).toEqual(["bili", "subs"]);
+		expect(identifierSegments("BILI_UID_PARAM")).toEqual(["bili", "uid", "param"]);
+		expect(identifierSegments("XMLHttpRequest")).toEqual(["xml", "http", "request"]);
+		expect(identifierSegments("live_status")).toEqual(["live", "status"]);
+		expect(identifierSegments("$uid_")).toEqual(["uid"]);
+		expect(identifierSegments("room2Id")).toEqual(["room2", "id"]);
+	});
+
+	it("没有边界的词不切开:guid / uuid 是一整段", () => {
+		expect(identifierSegments("guid")).toEqual(["guid"]);
+		expect(identifierSegments("UUID_RE")).toEqual(["uuid", "re"]);
+	});
+});
+
+describe("srcRootsUnder:列 <组>/<名>/src", () => {
+	const root = mkdtempSync(join(tmpdir(), "bn-source-scan-roots-"));
+	afterAll(() => rmSync(root, { recursive: true, force: true }));
+	for (const dir of ["apps/a/src", "apps/b/src", "packages/p/src", "packages/nosrc/lib"]) {
+		mkdirSync(join(root, dir), { recursive: true });
+	}
+	writeFileSync(join(root, "packages/file.txt"), "x");
+
+	it("只列真有 src 的子目录,排好序,跳过普通文件", () => {
+		expect(srcRootsUnder(["packages", "apps"], { root })).toEqual([
+			"apps/a/src",
+			"apps/b/src",
+			"packages/p/src",
+		]);
+	});
+
+	it("except 按完整的根排除", () => {
+		expect(srcRootsUnder(["apps", "packages"], { root, except: ["apps/b/src"] })).toEqual([
+			"apps/a/src",
+			"packages/p/src",
+		]);
+	});
+
+	it("没传 root 时对着真仓库:核心包在,拓展不在", () => {
+		const roots = srcRootsUnder(["apps", "packages"]);
+		expect(roots).toContain("apps/server/src");
+		expect(roots).toContain("packages/internal/src");
+		expect(roots.some((r) => r.startsWith("extensions/"))).toBe(false);
 	});
 });
 

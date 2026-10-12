@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -9,6 +9,7 @@ import {
 	listSources,
 	parseSource,
 	resolveSpecifier,
+	srcRootsUnder,
 	stripExt,
 } from "../source-scan.mjs";
 
@@ -148,13 +149,7 @@ describe("引用 B 站设置的判据:不算", () => {
 
 /** 范围:服务端、面板、contract 与 `packages/<包>/src`,仓库相对路径。 */
 function scopeRoots() {
-	const roots = ["apps/server/src", "apps/web/src", "apps/contract/src"];
-	for (const entry of readdirSync(join(REPO_ROOT, "packages"), { withFileTypes: true })) {
-		if (entry.isDirectory() && existsSync(join(REPO_ROOT, "packages", entry.name, "src"))) {
-			roots.push(`packages/${entry.name}/src`);
-		}
-	}
-	return roots.sort();
+	return srcRootsUnder(["apps", "packages"], { except: ["apps/desktop/src"] });
 }
 
 /** 真去扫仓库:文件 → 命中。`bilibili/` 里的与没有命中的文件不出现。 */

@@ -43,6 +43,19 @@ export interface ListSourcesOptions {
 /** 列出 roots(仓库根的相对路径)下的源码文件:仓库相对 posix 路径,排好序。根不存在就抛错。 */
 export function listSources(roots: string[], options?: ListSourcesOptions): string[];
 
+/** 标识符切成段:驼峰段与下划线(含 `$`)段,一律小写。 */
+export function identifierSegments(name: string): string[];
+
+export interface SrcRootsOptions {
+	/** 要排除的根(完整的 `<组>/<名>/src`)。 */
+	except?: string[];
+	/** 换掉仓库根,给测试在临时目录里造样例用。 */
+	root?: string;
+}
+
+/** 列出 `<组>/<名>/src`(目录真存在的才列):仓库相对路径,排好序。 */
+export function srcRootsUnder(groups: string[], options?: SrcRootsOptions): string[];
+
 /** 解析一份源码。不给 text 时读盘并按路径缓存;给了就不读盘、不进缓存(写样例用)。 */
 export function parseSource(path: string, text?: string): Source;
 

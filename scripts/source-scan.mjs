@@ -122,6 +122,40 @@ export const isInside = (path, dir) => path === dir || path.startsWith(`${dir}/`
 /** 去掉 `.js` / `.ts` 之类的尾巴,方便拿解析结果去比目录。 */
 export const stripExt = (path) => path.replace(/\.(m|c)?[jt]sx?$/, "");
 
+/**
+ * 标识符切成段:驼峰的每一段与下划线(含 `$`)分开的每一段,一律小写。
+ * `resolveRoomIdFromUid` → resolve / room / id / from / uid;`BILI_UID_PARAM` → bili / uid / param;
+ * `XMLHttp` → xml / http。
+ */
+export function identifierSegments(name) {
+	return name
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+		.split(/[\s_$]+/)
+		.filter(Boolean)
+		.map((segment) => segment.toLowerCase());
+}
+
+/**
+ * 列出 `<组>/<名>/src`(该目录真存在的才列),仓库相对路径,排好序。守卫划「扫哪些包」的共用件。
+ *
+ * @param groups 仓库根下的组目录,如 `["apps", "packages"]`
+ * @param options `except` 是要排除的根(完整的 `<组>/<名>/src`);`root` 换掉仓库根,给测试在临时目录里造样例用
+ */
+export function srcRootsUnder(groups, options = {}) {
+	const base = options.root ?? repoRoot();
+	const except = new Set(options.except ?? []);
+	const roots = [];
+	for (const group of groups) {
+		for (const entry of readdirSync(join(base, group), { withFileTypes: true })) {
+			const root = `${group}/${entry.name}/src`;
+			if (!entry.isDirectory() || except.has(root)) continue;
+			if (existsSync(join(base, root))) roots.push(root);
+		}
+	}
+	return roots.sort();
+}
+
 const lineOf = (ast, node) => ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1;
 
 /** 字面量参数(`"x"` 或不带替换的反引号串)的值;别的写法给 undefined。 */

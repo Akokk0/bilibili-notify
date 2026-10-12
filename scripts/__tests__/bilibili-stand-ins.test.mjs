@@ -1,9 +1,16 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { auditRatchet } from "../ratchet-audit.mjs";
-import { findNodes, listSources, parseSource, ts } from "../source-scan.mjs";
+import {
+	findNodes,
+	identifierSegments,
+	listSources,
+	parseSource,
+	srcRootsUnder,
+	ts,
+} from "../source-scan.mjs";
 
 /**
  * B 站替身:核心、面板、contract 里不许再长出「如果是 B 站就……」的写法(docs/1.0/architecture.md 第二层静态扫描
@@ -117,16 +124,6 @@ export const RATCHET = {
 /** 字符串字面量里算 B 站替身的那两个值。 */
 const STAND_IN_STRINGS = new Set(["bilibili", "@bilibili"]);
 
-/** 标识符切成段:驼峰的每一段与下划线分开的每一段,一律小写。 */
-function identifierSegments(name) {
-	return name
-		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-		.split(/[\s_$]+/)
-		.filter(Boolean)
-		.map((segment) => segment.toLowerCase());
-}
-
 /** 这个标识符有没有一段是 `bili` / `bilibili`。 */
 export function isStandInIdentifier(name) {
 	return identifierSegments(name).some((s) => s === "bili" || s === "bilibili");
@@ -202,13 +199,7 @@ describe("B 站替身的判据:不算", () => {
 
 /** 范围:服务端、面板、contract 与 `packages/<包>/src`,仓库相对路径。 */
 function scopeRoots() {
-	const roots = ["apps/server/src", "apps/web/src", "apps/contract/src"];
-	for (const entry of readdirSync(join(REPO_ROOT, "packages"), { withFileTypes: true })) {
-		if (entry.isDirectory() && existsSync(join(REPO_ROOT, "packages", entry.name, "src"))) {
-			roots.push(`packages/${entry.name}/src`);
-		}
-	}
-	return roots.sort();
+	return srcRootsUnder(["apps", "packages"], { except: ["apps/desktop/src"] });
 }
 
 /** 真去扫仓库:文件 → 命中。白名单目录里的与没有命中的文件不出现。 */

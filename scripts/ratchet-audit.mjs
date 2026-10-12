@@ -10,9 +10,11 @@
  *
  * @param found `{ [文件]: { line, text }[] }`,没有命中的文件可以不出现
  * @param tables.what 命中叫什么,拼进提示(如「出站原语」)
+ * @param tables.advice 可选。超限与表外两种提示后面各带上这句(怎么办);不传时输出一字不变
  * @returns 人话描述的问题清单;空数组 = 通过
  */
-export function auditRatchet(found, { allowlist, ratchet, what }) {
+export function auditRatchet(found, { allowlist, ratchet, what, advice }) {
+	const tail = advice === undefined ? "" : `。${advice}`;
 	const problems = [];
 	for (const file of Object.keys(allowlist)) {
 		if (file in ratchet) {
@@ -24,10 +26,14 @@ export function auditRatchet(found, { allowlist, ratchet, what }) {
 		const limit = ratchet[file];
 		if (limit === undefined) {
 			for (const hit of hits) {
-				problems.push(`${file}:${hit.line}: ${hit.text} —— ${what},文件不在白名单也不在棘轮表里`);
+				problems.push(
+					`${file}:${hit.line}: ${hit.text} —— ${what},文件不在白名单也不在棘轮表里${tail}`,
+				);
 			}
 		} else if (hits.length > limit) {
-			problems.push(`${file}: ${what} ${hits.length} 处,超过棘轮上限 ${limit} —— 只许少不许多`);
+			problems.push(
+				`${file}: ${what} ${hits.length} 处,超过棘轮上限 ${limit} —— 只许少不许多${tail}`,
+			);
 			for (const hit of hits) problems.push(`${file}:${hit.line}: ${hit.text}`);
 		} else if (hits.length < limit) {
 			problems.push(
