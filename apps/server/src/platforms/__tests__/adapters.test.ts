@@ -1403,6 +1403,41 @@ describe("onebot — 反向 WS(ws-reverse)", () => {
 		ad.stop();
 	});
 
+	it("换 token 不换端口:旧 token 连着的 bot 被请出去,旧 token 再连被拒,新 token 可推送", async () => {
+		const port = await freePort();
+		const ad = createOnebotAdapter(obOpts());
+		reconcileAdapter(ad, [obRevConnection(port, { accessToken: "old" })]);
+		await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer old" });
+		await waitFor(async () => (await ad.probe(obRevConnection(port))).ok === true);
+
+		const rotated = obRevConnection(port, { accessToken: "new" });
+		reconcileAdapter(ad, [rotated]); // 同 id a1、同端口,只换 token
+		// 已经连着的那个是凭旧 token 进来的:token 换了它就不该再收推送。
+		await waitFor(async () => (await ad.send(rotated, obTarget(), TEXT)).ok === false);
+		// 旧 token 再连:握手后被 close(1008),不计入活跃 bot
+		await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer old" });
+		await sleep(80);
+		expect((await ad.send(rotated, obTarget(), TEXT)).ok).toBe(false);
+		// 新 token → 注册为活跃 bot(端口没重绑,监听器还是那一个)
+		await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer new" });
+		await waitFor(async () => (await ad.probe(rotated)).ok === true);
+		expect((await ad.send(rotated, obTarget(), TEXT)).ok).toBe(true);
+		ad.stop();
+	});
+
+	it("同一份设置再对账一次:连着的 bot 不动", async () => {
+		const port = await freePort();
+		const ad = createOnebotAdapter(obOpts());
+		const connection = obRevConnection(port, { accessToken: "same" });
+		reconcileAdapter(ad, [connection]);
+		await connectWithRetry(`ws://127.0.0.1:${port}`, { authorization: "Bearer same" });
+		await waitFor(async () => (await ad.probe(connection)).ok === true);
+		reconcileAdapter(ad, [obRevConnection(port, { accessToken: "same" })]);
+		await sleep(80);
+		expect((await ad.send(connection, obTarget(), TEXT)).ok).toBe(true);
+		ad.stop();
+	});
+
 	it("端口绑定失败(EADDRINUSE)→ probe 报错", async () => {
 		const port = await freePort();
 		const blocker = createServer();

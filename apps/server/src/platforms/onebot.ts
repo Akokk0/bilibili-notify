@@ -725,7 +725,7 @@ class ReverseListener {
 	constructor(
 		readonly connectionId: string,
 		readonly port: number,
-		private readonly accessToken: string | undefined,
+		private accessToken: string | undefined,
 		private readonly serviceCtx: ServiceContext,
 		private readonly log: Logger,
 		private readonly sinks: InboundSinks,
@@ -817,16 +817,35 @@ class ReverseListener {
 		return last;
 	}
 
-	close(): void {
+	/**
+	 * 换握手要验的 token(没变就什么都不做)。端口不用重绑,监听器还是这一个;但已经连着的 bot 是凭旧 token
+	 * 进来的,一并请出去 —— 不然泄露的旧 token 换掉之后,拿着它连进来的那一头照样收得到推送。
+	 */
+	replaceAccessToken(accessToken: string | undefined): void {
+		if ((accessToken ?? "") === (this.accessToken ?? "")) return;
+		this.accessToken = accessToken;
+		if (this.bots.size > 0) {
+			this.log.info(
+				`[onebot] 反向 WS 的 token 换了 adapter=${this.connectionId},断开凭旧 token 连入的 ${this.bots.size} 个 bot`,
+			);
+		}
+		this.dropBots("token 已更换", 1008);
+	}
+
+	private dropBots(reason: string, code?: number): void {
 		for (const e of this.bots) {
-			e.channel.rejectAll(new Error("adapter 已关闭"));
+			e.channel.rejectAll(new Error(reason));
 			try {
-				e.ws.close();
+				e.ws.close(code);
 			} catch {
 				/* ignore */
 			}
 		}
 		this.bots.clear();
+	}
+
+	close(): void {
+		this.dropBots("adapter 已关闭");
 		try {
 			this.wss?.close();
 		} catch {
@@ -1320,7 +1339,12 @@ export function createOnebotAdapter(opts: OnebotPlatformAdapterOptions): Platfor
 			}
 		}
 		for (const [id, cfg] of desiredRev) {
-			if (reverseListeners.has(id)) continue; // 端口没变,幂等 no-op
+			const kept = reverseListeners.get(id);
+			if (kept) {
+				// 端口没变:监听器留着,只把要验的 token 对上(没变是 no-op)。
+				kept.replaceAccessToken(cfg.accessToken);
+				continue;
+			}
 			// 端口冲突(含与另一 ws-reverse adapter 撞 port)由监听器的 EADDRINUSE
 			// error 事件落到 bindError,经 probe 暴露给 dashboard。
 			reverseListeners.set(
