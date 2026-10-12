@@ -21,8 +21,10 @@ import {
 	BILIBILI_SOURCE_KEY,
 	type Connection,
 	type Disposable,
+	type InboundSinks,
 	type IntegrationContext,
 	type Logger,
+	type MessageBus,
 	type ServiceContext,
 	type SourceAuth,
 	subscriptionIdentityOf,
@@ -33,13 +35,12 @@ import {
 	createBiliDevtools,
 	type DevtoolsProviderRegistry,
 } from "./bilibili/devtools/index.js";
-import type { ImagesDeps } from "./bilibili/images.js";
 import { createGuardIcons, GUARD_ICON_REQUEST_HEADERS } from "./bilibili/live/guard-icons.js";
 import { createProblemLayers, type ProblemLayers } from "./bilibili/problem-layers.js";
 import { settingsSegment } from "./bilibili/settings.js";
 import { type BiliSource, createBiliSource } from "./bilibili/source.js";
 import type { IntegrationSettingsSegment } from "./config/store.js";
-import { createImageFetcher } from "./images/image-fetcher.js";
+import { createImageFetcher, type ImageFetcher } from "./images/image-fetcher.js";
 import { IMAGE_REFERRERS } from "./images/image-referrers.js";
 import type { ImageStore } from "./images/image-store.js";
 import type { IntegrationStore } from "./integration-store/store.js";
@@ -69,7 +70,7 @@ export interface BuiltinIntegrationsDeps {
 	integration: IntegrationContext;
 	/** 登录口(`AuthSystem.auth`,真的那一份):挂到 B 站来源的 `auth` 上,登记表与 `/api/sources/:sourceKey/auth` 读它。 */
 	sourceAuth: SourceAuth;
-	bus: BiliDevtoolsDeps["bus"];
+	bus: MessageBus;
 	/**
 	 * 定时的登录检查的开关(`AuthSystem.setHealthCheckMs`,现转:登录系统在入口里是个会清掉的 let)。来源 `start` 里读了
 	 * B 站设置、按它挂上或停下;登录系统自己不读设置。
@@ -78,8 +79,8 @@ export interface BuiltinIntegrationsDeps {
 	/** 开发场景挑订阅用,现读。 */
 	subscriptions: Pick<SubscriptionStore, "list">;
 	subscriptionRuntime: Pick<SubRuntimeStore, "get">;
-	imageFetcher: ImagesDeps["images"];
-	setTimeout: Parameters<typeof createBiliSource>[0]["setTimeout"];
+	imageFetcher: Pick<ImageFetcher, "fetchImage">;
+	setTimeout: ServiceContext["setTimeout"];
 	/** 图库:往里登记「来源声明的图」这一家(徽章图的名单)。 */
 	imageStore: Pick<ImageStore, "register">;
 	/** 抓大航海徽章图用的请求客户端。不给就自建一个;测试换成不联网的。 */
@@ -97,8 +98,8 @@ export interface BuiltinIntegrationsDeps {
 	 */
 	serviceCtx: ServiceContext & Pick<NodeServiceContext, "forSubsystem">;
 	/** 入站两路出口。指令处理器要等引擎与调度器建好才有,所以是入口先留好的可后填引用,现转。 */
-	onInboundPrivate: NonNullable<Parameters<typeof createOnebotAdapter>[0]["onInboundPrivate"]>;
-	onInboundGroup: NonNullable<Parameters<typeof createOnebotAdapter>[0]["onInboundGroup"]>;
+	onInboundPrivate: NonNullable<InboundSinks["onInboundPrivate"]>;
+	onInboundGroup: NonNullable<InboundSinks["onInboundGroup"]>;
 	/** 活的适配器登记表(拓展与内置共用的那一张)。 */
 	adapterRegistry: PlatformAdapterRegistry;
 	/** 各适配器的 state / secrets 存储。 */

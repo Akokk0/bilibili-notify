@@ -40,7 +40,7 @@ export const ALLOWED_DIRS = {
 /** 白名单:整个文件放行,写明理由。 */
 export const ALLOWLIST = {
 	"apps/server/src/compose.ts":
-		"组装根:整个核心只有它登记内置集成(architecture.md「compose.ts 装配」)。今天登记 B 站来源、认领 B 站那组开发场景。只许放登记,不许长别的逻辑 —— 入口咽喉守卫(architecture.md 守卫表)还没开张,这一条暂时没有守卫钉着,靠审查",
+		"组装根:整个核心只有它登记内置集成(architecture.md「compose.ts 装配」)。今天登记 B 站来源、认领 B 站那组开发场景。只许放登记:出口由入口咽喉守卫(entry-throat.test.mjs)钉着,里面长没长别的逻辑仍靠审查",
 };
 
 /**
