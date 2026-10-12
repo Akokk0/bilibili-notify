@@ -15,7 +15,7 @@ packages:
 #   2. pnpm 12 errors on unknown keys here (ERR_PNPM_UNRECOGNIZED_WORKSPACE_
 #      SETTINGS) instead of silently ignoring them, so a typo'd setting fails the
 #      install rather than quietly doing nothing. Every key in this file is valid
-#      as of 12.6.0.
+#      as of 12.11.2.
 
 # Vite+ replaces vite via npm overrides rather than coexisting. The override is
 # scoped to each React frontend sub-tree — `@bilibili-notify/web>vite` matches
