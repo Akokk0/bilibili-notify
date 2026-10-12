@@ -43,7 +43,7 @@ params / quick / icon)。参数 **schema 驱动**,六种字段:`sub` / `target` 
 
 - 服务端那半:核心的场景在 `apps/server/src/devtools/scenarios/*.ts`;各集成自带的场景经 `DevtoolsProvider` 登进
   `devtoolsProviders`(B 站的在 `apps/server/src/bilibili/devtools/`,由 `compose.ts` 的 `provideDevtools` 认领;
-  过渡接线还在:两层套了壳的句柄(`Api` 与来源的登录口 `Source.auth`)仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b;登录那组不再等 3a-29(3a-29 B 站半已把它换成盖 `state()` / `account()`、往总线发 `subscription-auth-changed`),壳留在入口随 3a-40),
+  过渡接线还在:两层套了壳的句柄(`Api` 与来源的登录口 `Source.auth`)仍由入口建好、经 `compose.ts` 递给 B 站那组场景,场景仍直接用引擎与壳,直播那组等 3b;登录那组不再等 3a-29(3a-29 B 站半已把它换成盖 `state()` / `account()`、往总线发 `subscription-auth-changed`),壳留在入口、随登录装配留到 3b(3a-40 没动它):`compose.ts` 经 `BiliDevtoolsDeps` 收 `api`、`auth`、`live`、`fans`、`healthCheck` 五个过渡句柄原样转给场景,入口咽喉守卫的记账(`scripts/__tests__/entry-throat.test.mjs`)按名字记着它们,3b 场景改成只经 B 站自己的上下文时消;动态引擎的句柄不再交回入口,`compose.ts` 自己手里的 `dynamic` 闭包只给场景「现在就跑」用),
   汇总时宿主给 id 加来源前缀(`bilibili.live.start`)。
   两边一起经 `createDevRegistry` 汇总,
   `/api/dev` 列举 / 跑 / 收摊(`apps/server/src/devtools/route.ts`)。注册表补默认值、拦越界、汇总各场景的

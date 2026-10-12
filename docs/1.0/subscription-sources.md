@@ -181,7 +181,7 @@ type AuthState =                   // 状态值用 kebab
 - 🔗 **10-11 以上四条（列一行、排序、多账号下拉、按来源生成引导步）3a-29 没做，推到第 4 期**（主人选范围甲档）：今天只有 B 站一个有登录的来源，读者都在第 4 期，现在造 `accounts/` 与排序键是没有读者的东西。3a-29 B 站半做的是「不退化」：头部、AI 对话、引导、概览、系统页账号卡都改读 B 站那一个来源的登录口。已记进 construction-plan 的「以后再说」。
 - 私聊指令 `login [来源]` 也读 `AuthState`，把二维码发回会话，见「指令」。推送侧连接的 `connectionAuth` 用同一个 `AuthState`（ADR-0024）。（3a-29 B 站半：今天的 `login` 仍是现有那条 B 站私聊指令，只是改成读 `AuthState`——从 `awaiting-scan` 的 `qr.dataUrl` 解出图发回；发起失败回结果里的话；`status` 指令的「登录：」一行也由核心按 `AuthState` 拼。改成通用的 `login [来源]` 随 3b。）
 - 面板登录态按 `SourceKey` 分开存。登录状态变化上总线 `subscription-auth-changed`。（落成：面板的数据面是 react-query 的查询缓存，键 `["source-auth", 来源键]`（`hooks/use-source-auth.ts`），读的地方各自点名要哪个来源；WS `auth` 频道的帧按帧里的 `sourceKey` 写那一条缓存并让它失效重取，重连后 `hydrate` 让整个前缀失效。原来的 zustand 登录仓库删了。）
-- 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 随 3a-40）。
+- 核心账号模块住 `accounts/`（第 4 期，见上）；B 站原来的 AuthSystem 进 `bilibili/auth/`（3a-29 B 站半已落，仍由入口造，登录装配进 `compose.ts` 原写随 3a-40；3a-40 也没做，留到 3b，主人 10-12 定）。
 - 拓展积木 `qrLogin` 退役（从没实现过）。
 - 凭据的备份与恢复全归宿主：备份信封按集成分格 `integrationSecrets`（内容就是各集成的 `ctx.secrets`），恢复回 `restoredIntegrations`，没带回来的回 `unrestoredIntegrations`。来源不再自己导入导出（原先设计的 `SourceAuth.secrets` 删掉）。
 - 日志落盘前按当前全部密钥的真实值脱敏：`secrets` 值里的每一段字符串都按原文遮（很短的不遮）；还没存进 `ctx.secrets` 的临时凭据（比如扫码刚拿到的 token）由来源用 `ctx.redact(value)` 先登记。写死的 cookie 名正则删掉。代价：cookie 里不机密的值（比如登录账号的 uid）也会被遮掉。
@@ -304,7 +304,7 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 ### 健康与运行状态
 
-- 内置集成的运行状态只取 `running` / `failed` / `settings-invalid`；内置集成与拓展走同一套生命周期（`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时先调 `stop()`，再中止 `signal`、跑 `onDispose`）。系统页、健康卡、`status` 指令与 `/api/sources` 的 `status` 都读它。🔗 3a-39：内置来源的运行状态读口还没造（没有读者），`failed` 没造，`settings-invalid` 今天只有拓展装载器产生；B 站设置读不懂时来源仍是在册的，停着的那一样在问题表里。再看的时机是 3a-40 的 `health()`。
+- 内置集成的运行状态只取 `running` / `failed` / `settings-invalid`；内置集成与拓展走同一套生命周期（`start(ctx)`、`AbortSignal` 中止、`onDispose` 收尾；收尾时先调 `stop()`，再中止 `signal`、跑 `onDispose`）。系统页、健康卡、`status` 指令与 `/api/sources` 的 `status` 都读它。🔗 3a-39：内置来源的运行状态读口还没造（没有读者），`failed` 没造，`settings-invalid` 今天只有拓展装载器产生；B 站设置读不懂时来源仍是在册的，停着的那一样在问题表里。再看的时机是 3a-40 的 `health()`。🔗 3a-40：`health()` 造出来了（同步、可选、只交一句话，今天只有 B 站来源实现、只有 `status` 指令读它），但它不是运行状态读口，运行状态读口仍没造，再看的时机待定（见 construction-plan 的「以后再说」）。
 - `health?()` 交 `SourceHealth = { summary: string }`，只给健康卡与 `status` 指令一行字。
 - **订阅卡的「暂停 / 不可用」不看 `health()`**：看运行状态（「{label} 没在跑」）与问题表里关于这条订阅的条目。
 - 健康卡分两排：核心（持久化、订阅、推送、卡片、AI）与集成（每个集成一格；推送适配器有连接才占格；同时供来源与适配器的拓展也只占一格）。集成格的灯按运行状态与问题分四色（绿正常、黄有问题、红失败或设置不合法、灰停用）；小字取 `health().summary`，没实现就写运行状态，登录态由宿主从 `AuthState` 补。
@@ -419,7 +419,7 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 
 ### 指令
 
-- **框架在核心**：入站链路、鉴权门、确认流、参数、错误反馈、近似建议；通用指令 `help`、`mute`、`report`、`status`、`login`。`status` 里每个集成那一行取运行状态与 `health()`。
+- **框架在核心**：入站链路、鉴权门、确认流、参数、错误反馈、近似建议；通用指令 `help`、`mute`、`report`、`status`、`login`。`status` 里每个集成那一行取运行状态与 `health()`。🔗 现状（3a-40）：`status` 今天只读在册来源的 `health()`、每个来源一行，没有运行状态那半（运行状态读口没造）。
 - 交给登记表的一整包叫 `CommandDef`（代码里的 `CommandSpec` 改名），字段不变。
 - `run(values, ctx: { reply(payload), signal })` 返回结果形状（成功 `{ ok: true }`）；`reply` 经 `TargetDispatcher.sendToAddress` 回到发指令的那个会话（原先回到主人目标那条连接），送没送到照返。
 - 返回失败时框架回「『{指令名}』没办成：{message}」；抛错回「出错了，详情在日志里」，并记错误日志（今天出错只打日志、不回话）。
