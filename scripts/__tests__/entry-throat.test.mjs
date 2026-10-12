@@ -19,9 +19,12 @@ import {
  * 四条判据,各写成纯函数 + 「算 / 不算」样例(判据本身也会写错:一条永远判 OK 的规则跟没有一样):
  *
  * ① `compose.ts` 导出的声明,类型位置上不许出现集成的东西(从 `./bilibili/**`、`./platforms/**` import 进来的名字)。
- *    历史欠账按名字记上限(棘轮,两头钉),每处写明什么时候消。
+ *    历史欠账按名字记上限(棘轮,两头钉),每处写明什么时候消。导出常量的初始化式是箭头函数 / 函数表达式时,
+ *    形参与返回类型照函数声明看(函数体不看)。本地(没导出)的类型别名 / 接口若引用了集成的名字,
+ *    导出声明里用到这个别名就记在**它引用的原名字**的账上(只传一层):把 `BiliDevtoolsDeps["api"]` 收成别名清不了账。
  * ② 集成的**值**在 `compose.ts` 里只能被调用、直接作调用的实参(含实参里对象 / 数组字面量的元素),
- *    或作导出常量数组的元素(设置登记)。指向集成目录的 `export … from` 一律不许。上限 0。
+ *    或作导出常量数组的元素(设置登记)。指向集成目录的 `export … from` 一律不许;
+ *    没有 `from` 的 `export { … }` / `export type { … }` 里是集成的绑定(含只作类型的)或上述本地别名也不许。上限 0。
  * ③ `BuiltinIntegrations.bilibili` 这一格的成员名集合必须正好等于名单,多了红、少了而名单没跟着改也红。
  * ④ 核心里名字正好是 `api` 的槽位按文件记数(棘轮):`engines.api` 这一片不删,守卫钉住读者名单只降。
  *
@@ -37,7 +40,11 @@ import {
  *   拦了全是合理的例外,而它们流不出 `compose.ts`(出口由 ①、③ 管)。
  * - **`compose.ts` 里长出登记以外的逻辑**:靠审查。
  * - ① 只看**显式写出来的类型**:导出函数 / 常量不写类型标注、靠推断带出集成类型的,① 看不见;
- *   `export { x }` 这种列表式导出的本地声明也不追。② 把 `as` / `satisfies` / 括号当透明;
+ *   `export { x }` 这种列表式导出的**本地声明**(集成的绑定与本地别名那两种由 ② 接住)也不追;
+ *   导出常量的初始化式里,除了「初始化式本身是箭头函数 / 函数表达式」(看形参与返回类型)之外都不看:
+ *   `as unknown as Api`、`satisfies Partial<Api>`、对象字面量里的函数、类属性里的断言。
+ *   本地别名只传一层(`type A = Api; type B = A;` 之后导出里写 `B`,抓不到);别名只认没导出的 type / interface
+ *   (导出的别名在声明处已记过)。② 把 `as` / `satisfies` / 括号当透明;
  *   `class X extends 工厂()` 的 `extends` 位被当类型位置放过。同名局部变量遮住集成名字,判据按名字对,会误判或漏判。
  * - ③ 只认字面量写法的 `bilibili` 成员;换成别处声明的类型引用会被点名「看不到成员」,而不是悄悄放过。
  * - 新开一个文件当「第二个组装根」:本守卫只看 `compose.ts`;别的核心文件越界 import 集成目录归 `import-boundaries`。
@@ -153,6 +160,65 @@ const isExported = (node) =>
 	ts.canHaveModifiers(node) &&
 	(ts.getModifiers(node) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
 
+/**
+ * 这个节点若是一处「类型位置上的引用」,给出落点与它代表的集成的名字(`resolve` 把本地名字译成集成的名字,不是集成的给空数组)。
+ * 类型引用(含 `X["k"]` 里的 X、泛型实参)、`typeof X`、接口 / 类的 `extends`、`import("…").T`。
+ *
+ * @returns `{ at, names } | undefined`
+ */
+function typeRefOf(node, resolve, file, dirs) {
+	let id;
+	if (ts.isTypeReferenceNode(node)) id = leftmost(node.typeName);
+	else if (ts.isTypeQueryNode(node)) id = leftmost(node.exprName);
+	else if (ts.isExpressionWithTypeArguments(node)) id = leftmost(node.expression);
+	else if (ts.isImportTypeNode(node)) {
+		const arg = node.argument;
+		const specifier =
+			ts.isLiteralTypeNode(arg) && ts.isStringLiteral(arg.literal) ? arg.literal.text : undefined;
+		return specifier !== undefined && pointsIntoIntegration(file, specifier, dirs)
+			? { at: node, names: [specifier] }
+			: undefined;
+	}
+	const names = id ? resolve(id.text) : [];
+	return names.length > 0 ? { at: id, names } : undefined;
+}
+
+/** 导出常量的初始化式剥掉括号 / as / satisfies / 非空断言之后,若是箭头函数或函数表达式就给出它。 */
+function functionInitializer(init) {
+	let current = init;
+	while (
+		ts.isParenthesizedExpression(current) ||
+		ts.isAsExpression(current) ||
+		ts.isSatisfiesExpression(current) ||
+		ts.isNonNullExpression(current)
+	) {
+		current = current.expression;
+	}
+	return ts.isArrowFunction(current) || ts.isFunctionExpression(current) ? current : undefined;
+}
+
+/**
+ * 本地(没导出)的类型别名 / 接口里直接引用了集成的名字的:`Map<本地名字, 集成的名字[]>`。只传一层:
+ * 别名的别名抓不到(文件头写明)。导出的别名不算 —— 它在声明处已经被 ① 记过,用到它的地方再记会重复。
+ */
+export function integrationAliases(file, source, dirs = INTEGRATION_DIRS) {
+	const bindings = integrationBindings(file, source, dirs);
+	const resolve = (name) => (bindings.has(name) ? [name] : []);
+	const aliases = new Map();
+	for (const statement of source.ast.statements) {
+		if (!ts.isTypeAliasDeclaration(statement) && !ts.isInterfaceDeclaration(statement)) continue;
+		if (isExported(statement)) continue;
+		const names = new Set();
+		const walk = (node) => {
+			for (const name of typeRefOf(node, resolve, file, dirs)?.names ?? []) names.add(name);
+			ts.forEachChild(node, walk);
+		};
+		walk(statement);
+		if (names.size > 0) aliases.set(statement.name.text, [...names]);
+	}
+	return aliases;
+}
+
 // ---------------------------------------------------------------------------
 // ① 导出声明的类型位置上不许出现集成的东西
 // ---------------------------------------------------------------------------
@@ -166,30 +232,24 @@ const isExported = (node) =>
  */
 export function exportedTypeUses(file, source, dirs = INTEGRATION_DIRS) {
 	const bindings = integrationBindings(file, source, dirs);
+	const aliases = integrationAliases(file, source, dirs);
 	const hits = [];
 	const hit = (node, name) => hits.push({ line: lineOf(source, node), text: name });
+	// 名字 → 它代表的集成的名字:集成自己的绑定就是它自己,本地别名记在它引用的原名字上
+	const resolve = (name) => (bindings.has(name) ? [name] : (aliases.get(name) ?? []));
 
 	const visit = (node) => {
-		if (ts.isTypeReferenceNode(node)) {
-			const id = leftmost(node.typeName);
-			if (id && bindings.has(id.text)) hit(id, id.text);
-		} else if (ts.isTypeQueryNode(node)) {
-			const id = leftmost(node.exprName);
-			if (id && bindings.has(id.text)) hit(id, id.text);
-		} else if (ts.isExpressionWithTypeArguments(node)) {
-			const id = leftmost(node.expression);
-			if (id && bindings.has(id.text)) hit(id, id.text);
-		} else if (ts.isImportTypeNode(node)) {
-			const arg = node.argument;
-			const specifier =
-				ts.isLiteralTypeNode(arg) && ts.isStringLiteral(arg.literal) ? arg.literal.text : undefined;
-			if (specifier !== undefined && pointsIntoIntegration(file, specifier, dirs)) {
-				hit(node, specifier);
-			}
-		}
+		const ref = typeRefOf(node, resolve, file, dirs);
+		if (ref) for (const name of ref.names) hit(ref.at, name);
 		ts.forEachChild(node, (child) => {
 			if (ts.isBlock(child)) return;
-			if (child === node.initializer || child === node.body) return;
+			if (child === node.initializer) {
+				// 导出常量的初始化式是箭头函数 / 函数表达式:形参与返回类型照函数声明看,函数体仍不看
+				const fn = ts.isVariableDeclaration(node) ? functionInitializer(child) : undefined;
+				if (fn) visit(fn);
+				return;
+			}
+			if (child === node.body) return;
 			visit(child);
 		});
 	};
@@ -337,11 +397,23 @@ function isExportedConstInitializer(node) {
  */
 export function misusedValues(file, source, dirs = INTEGRATION_DIRS) {
 	const hits = [];
-	const values = new Set(
-		[...integrationBindings(file, source, dirs)]
-			.filter(([, b]) => !b.typeOnly)
-			.map(([name]) => name),
-	);
+	const bindings = integrationBindings(file, source, dirs);
+	const aliases = integrationAliases(file, source, dirs);
+	const values = new Set([...bindings].filter(([, b]) => !b.typeOnly).map(([name]) => name));
+	// 没有 `from` 的 `export { … }` / `export type { … }`:名字是集成的绑定(含只作类型的)或本地别名就是「转出去」。
+	// 值的绑定上面按标识符已经记过一处,这里只补只作类型的与别名。
+	for (const statement of source.ast.statements) {
+		if (!ts.isExportDeclaration(statement) || statement.moduleSpecifier) continue;
+		const clause = statement.exportClause;
+		if (!clause || !ts.isNamedExports(clause)) continue;
+		for (const element of clause.elements) {
+			const local = (element.propertyName ?? element.name).text;
+			if (values.has(local)) continue;
+			if (bindings.has(local) || aliases.has(local)) {
+				hits.push({ line: lineOf(source, element), text: local });
+			}
+		}
+	}
 	if (values.size > 0) {
 		const visit = (node) => {
 			if (ts.isIdentifier(node) && values.has(node.text)) {
@@ -551,6 +623,67 @@ describe("① 导出类型里的集成类型:算", () => {
 	});
 });
 
+describe("① 导出常量的初始化式是函数:形参与返回类型照函数声明看", () => {
+	it("箭头函数、函数表达式的形参与返回类型算,函数体与表达式体不算", () => {
+		expect(typeNames(`export const f = (a: Api): string => "";`)).toEqual(["Api:1"]);
+		expect(typeNames(`export const g = function (a: Api): BiliSource { throw 1; };`)).toEqual([
+			"Api:1",
+			"BiliSource:1",
+		]);
+		expect(typeNames(`export const h = (): void => {\n\tlet s: Api;\n};`)).toEqual([]);
+		expect(typeNames(`export const k = () => ({}) as Api;`)).toEqual([]);
+		expect(typeNames(`export const m = ((a: Api): void => {}) satisfies unknown;`)).toEqual([
+			"Api:1",
+		]);
+	});
+
+	it("没导出的常量、初始化式不是函数的常量照旧不看", () => {
+		expect(typeNames(`const f = (a: Api): string => "";`)).toEqual([]);
+		expect(typeNames(`export const o = { f: (a: Api): void => {} };`)).toEqual([]);
+	});
+});
+
+describe("① 本地的类型别名 / 接口引用了集成的名字:传一层,记在原名字的账上", () => {
+	it("经别名用到集成的名字,记成原名字(别名本身不是账上的名字)", () => {
+		expect(
+			typeNames(`type DevDeps = BiliDevtoolsDeps;\nexport interface X { a: DevDeps["api"] }`),
+		).toEqual(["BiliDevtoolsDeps:2"]);
+		expect(
+			typeNames(
+				`interface L extends Pick<BiliDevtoolsDeps, "api"> {}\nexport function f(a: L): void {}`,
+			),
+		).toEqual(["BiliDevtoolsDeps:2"]);
+		expect(
+			typeNames(
+				`type Both = Pick<Api, "x"> & BiliSource;\nexport const x: Both | undefined = undefined;`,
+			),
+		).toEqual(["Api:2", "BiliSource:2"]);
+	});
+
+	it("别名声明本身不记;导出的别名只在声明处记一次、用到它的地方不重复记", () => {
+		expect(typeNames(`type D = Api;`)).toEqual([]);
+		expect(typeNames(`export type A = Api;\nexport interface X { a: A }`)).toEqual(["Api:1"]);
+	});
+
+	it("两层以上的传递抓不到(文件头写明)", () => {
+		expect(typeNames(`type A = Api;\ntype B = A;\nexport interface X { a: B }`)).toEqual([]);
+	});
+
+	it("把原来的写法全换成别名,记账不变", () => {
+		const ledger = { BiliDevtoolsDeps: { limit: 2, until: "样例" } };
+		const body = [
+			`type D = BiliDevtoolsDeps;`,
+			`export interface X { a: BiliDevtoolsDeps["api"]; b: D["api"] }`,
+		].join("\n");
+		expect(auditExportedTypes(COMPOSE_FILE, compose(body), ledger)).toEqual([]);
+		const allAliased = [
+			`type D = BiliDevtoolsDeps;`,
+			`export interface X { a: D["api"]; b: D["auth"] }`,
+		].join("\n");
+		expect(auditExportedTypes(COMPOSE_FILE, compose(allAliased), ledger)).toEqual([]);
+	});
+});
+
 describe("① 导出类型里的集成类型:不算", () => {
 	it("函数体里的局部类型标注、注释、没导出的声明", () => {
 		expect(
@@ -616,6 +749,26 @@ describe("② 集成的值只能被调用 / 直接作参数:算(红)", () => {
 			"dynamic ./platforms/onebot.js:1",
 		]);
 		expect(misused(`import "./bilibili/x.js";`)).toEqual(["side-effect ./bilibili/x.js:1"]);
+	});
+
+	it("没有 from 的 export { … } / export type { … }:里面是集成的名字(含只作类型的、改名的、本地别名)就算", () => {
+		expect(misused(`export type { Api };`)).toEqual(["Api:1"]);
+		expect(misused(`export { type Api };`)).toEqual(["Api:1"]);
+		expect(misused(`export type { Api, BiliSource as S };`)).toEqual(["Api:1", "BiliSource:1"]);
+		expect(misused(`type DevDeps = BiliDevtoolsDeps;\nexport type { DevDeps };`)).toEqual([
+			"DevDeps:2",
+		]);
+		// 值的绑定只记一处(不因为多加了一条判据变成两处)
+		expect(misused(`export { settingsSegment, type Api };`).sort()).toEqual([
+			"Api:1",
+			"settingsSegment:1",
+		]);
+	});
+
+	it("没有 from 的导出列表里是中立的名字:不算", () => {
+		expect(misused(`const x = 1;\nexport { x };\nexport type { Neutral, SourceAuth };`)).toEqual(
+			[],
+		);
 	});
 
 	it("在被调者之外的位置:赋值给对象再返回、数组不是导出常量、`.call` 绕开", () => {
