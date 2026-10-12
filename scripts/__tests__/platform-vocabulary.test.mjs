@@ -48,7 +48,11 @@ import {
  * - 自由文本里后面不跟大写字母的 `QQ` / `qq`:平台表的两个标签 `"QQ 官方机器人"`、`"QQ官方"`;`qq.com` 这类域名也在此列。
  * - `webhook` 一族:`config/store.ts` 里托管 webhook 目标那套「核心认识 webhook 这一种适配器」的逻辑(归推送守卫③)。
  * - 换了名字的同一个东西:把 `miniAppCard` 改叫 `shareCard`、把 `onebot` 存进变量再比(归 `.platform` 决定棘轮与推送守卫③)。
- * - 复数与变体:`transports`、`guilds`、`openids`;分开写的 `open id`、`user id`。
+ * - 复数与变体:`transports`、`guilds`、`openids`、`groupIds`、`userIds`;分开写的 `open id`、`user id`。
+ * - 名字后面粘数字或紧凑写法切不出段:`qqbot`、`QQbot`(标识符,切不出 `qq` 段)、`"qq-bot"`、`"qq:123"`;
+ *   `onebot11`、`OneBot11`、`"onebot11"`、`llonebot`(`onebot` 后面粘了数字或前面粘了别的字母);
+ *   正则里的 `/\bonebot\b/`(`\b` 的 `b` 粘在词前面,切成 `bonebot`)。
+ * - 误伤(宁可错杀):`hasOneBot`、`onlyOneBot`、`"at-one-bot"`(`one` + `bot` 拼起来)、`"x-user-id"` 都红。
  * - 词表以外的平台名:`telegram`、`discord`、`lark`、`kook`……;加一个词表外的新平台这道看不见
  *   (「`CONNECTION_PLATFORMS` 不加档」仍靠审查与 `platform-registry.test.ts`)。
  * - 字符串拼出来的词(`"one" + "bot"`)。
@@ -75,7 +79,7 @@ export const ALLOWLIST = {
 
 /** 报错后面带的那句:越界怎么办。 */
 export const ADVICE =
-	"这是越界(核心里不许出现推送平台专有词):走中立的适配器描述与能力,或去问主人要不要加上限,不要起别的名字躲;数降了就当场把这一格调低";
+	"若是越界(核心里不许出现推送平台专有词):走中立的适配器描述与能力,不要起别的名字躲;若确是同名不同物(`userId` / `groupId` / `transport` / `openid` 在别的语境里是别的意思,如 `pino.transport`)或这道守卫的判据打不准:去问主人,由主人定是加上限还是改判据(这道没有排除表,同名不同物只能如实记在棘轮表里),不要自己加;数降了就当场把这一格调低";
 
 /**
  * 按段拼接组:紧凑写法(去掉 `-` 与 `_`、小写)正好等于某几段连续的段。
@@ -350,6 +354,31 @@ describe("推送守卫②的判据:不算", () => {
 		]) {
 			expect(wordsInIdentifier(name), name).toEqual([]);
 		}
+	});
+
+	it("切段的边界(钉住现状,写进文件头的「抓不到」):复数、粘数字、紧凑写法、正则的 `\\b`", () => {
+		for (const name of [
+			"groupIds",
+			"userIds",
+			"qqbot",
+			"QQbot",
+			"onebot11",
+			"OneBot11",
+			"llonebot",
+		]) {
+			expect(wordsInIdentifier(name), name).toEqual([]);
+		}
+		for (const text of ["qq-bot", "qq:123", "onebot11"]) {
+			expect(wordsIn(`const s = "${text}";`), text).toEqual([]);
+		}
+		expect(wordsIn("const r = /\\bonebot\\b/;")).toEqual([]);
+	});
+
+	it("宁可错杀:`one` + `bot` 拼起来、`x-user-id` 都红(写进文件头)", () => {
+		expect(wordsInIdentifier("hasOneBot")).toEqual(["onebot"]);
+		expect(wordsInIdentifier("onlyOneBot")).toEqual(["onebot"]);
+		expect(wordsIn('const s = "at-one-bot";')).toEqual(["onebot"]);
+		expect(wordsIn('const s = "x-user-id";')).toEqual(["user_id"]);
 	});
 
 	it("`webhook` 不在词表(主人 10-12 定),`generic` 也不是", () => {

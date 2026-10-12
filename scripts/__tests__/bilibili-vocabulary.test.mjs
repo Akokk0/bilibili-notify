@@ -49,6 +49,16 @@ import {
  * - `uid`(另一道守卫)。
  * - 驼峰化的 B 站字段(`liveStatus`):故意放行,见上面「不按段」;核心自己起的驼峰名里若藏着 B 站语义,靠审查。
  * - 复数 `roomIds`、`bvids`:按段不认(今天没有这样的名字),要抓就在样例里加一条再定。
+ * - 切段的边界(都验过不红,样例钉着):`bvId`、`BvId`、`bv_id`(切成 `bv` `id`,不是 `bvid`)。算的是 `roomID`、
+ *   `ROOM_ID`、`bvid`、`BVID`;全小写的 `roomid` 是一整段(不是 `room` `id`),手补进了整名组。
+ * - **自动词表有漏**:它只认 `bilibili/` 里写成类型声明(属性签名、枚举成员)的下划线字段。没写成类型声明、从没有类型的回应上
+ *   直接读、或写在对象字面量里的原始字段不在词表里,核心用到它们时这道看不见:`module_stat`、`is_only_fans`、`head_text`、
+ *   `desc_second`、`qrcode_key`、`bili_jct`、`refresh_csrf`、`grisk_id`、`jump_style`、`icon_badge`、`comment_id_str`、
+ *   `pub_action_text`、`room_admin_entrance` 等(审查稿列了二十来个)。核心里今天真在读的 `live_room` / `roomid`
+ *   (`routes/cards.ts`)已手补进 `WHOLE_WORDS`;别的靠审查,或再手补。**「现生成 = 快照」那条只证明两边一致,不证明没漏**:
+ *   生成函数少认一种写法时快照跟着少,照样绿。生成函数不改(主人定:只手补核心里今天真在用的)。
+ * - 正则字面量里的词认,但还原只做两件事:去掉标点转义的反斜杠(`bilibili\.com` → `bilibili.com`)、字母转义(`\b` `\d`)
+ *   换成空格;字符类、分组拆开的词(`b23[.]tv`、`bili(?:bili)`)认不出。
  * - 字符串拼出来的词(`"room" + "_id"`)。
  *
  * 判据写成纯函数 + 样例:一条永远判 OK 的规则跟没有一样。
@@ -72,7 +82,7 @@ export const ALLOWLIST = {};
 
 /** 报错后面带的那句:越界怎么办。 */
 export const ADVICE =
-	"这是越界(核心里不许出现 B 站专有词):走中立的字段与来源登记表,或去问主人要不要加上限,不要起别的名字躲;数降了就当场把这一格调低";
+	"若是越界(核心里不许出现 B 站专有词):走中立的字段与来源登记表,不要起别的名字躲;若确是同名不同物(自动词表里的通用词如 `created_at`、`end_time`、`has_more`、`refresh_token`,AI 服务商的接口里也有)或这道守卫的判据打不准:去问主人,由主人定是进排除表 `GENERATED_KEY_EXCLUSIONS`、加上限还是改判据,不要自己加;数降了就当场把这一格调低";
 
 /** 前缀组:标识符以它开头;字符串里按词边界出现。 */
 export const PREFIX_WORDS = ["DYNAMIC_TYPE_", "RICH_TEXT_NODE_", "MAJOR_TYPE_", "ADDITIONAL_TYPE_"];
@@ -88,6 +98,10 @@ export const WHOLE_WORDS = [
 	"room_id",
 	"WATCHED_CHANGE",
 	"bili_user",
+	// 核心自己声明并读 B 站用户资料回应里的 `live_room.roomid`(`routes/cards.ts`)。自动词表只认类型声明里的下划线字段,
+	// 而这两个是核心里手写类型直接读的;`roomid` 不带下划线(自动词表认不出)、全小写是一整段(不与按段组的 `roomId` 归一)。
+	"live_room",
+	"roomid",
 ];
 
 /** 按段组:标识符切段后含这串段;字符串里按词边界出现。 */
@@ -191,7 +205,7 @@ export const GENERATED_KEYS = [
 export const GENERATED_KEY_EXCLUSIONS = {};
 
 /**
- * 棘轮表:文件 → 命中的上限(开张时的现数:13 个文件 62 处)。只许往下调。
+ * 棘轮表:文件 → 命中的上限(开张时的现数:13 个文件 62 处;认正则字面量、手补 `live_room` / `roomid` 之后:14 个文件 73 处)。只许往下调。
  * 行内注释只如实写这一格是什么,不写清零期。
  */
 export const RATCHET = {
@@ -199,7 +213,8 @@ export const RATCHET = {
 	"apps/server/src/compose.ts": 2, // 开发场景的订阅视图里带上 `roomId`
 	"apps/server/src/devtools/scenarios/bridge.ts": 1, // 假消息里的 `bilibili.com` 链接
 	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
-	"apps/server/src/routes/cards.ts": 14, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`
+	"apps/server/src/logs/redact.ts": 3, // 日志脱敏的三条正则里的 `refresh_token`:核心的脱敏器按 B 站登录凭据的字段名遮值(同一组里的 `SESSDATA`、`bili_jct` 不带小写下划线、不在词表里,守卫看不见)。认正则后才数到的
+	"apps/server/src/routes/cards.ts": 20, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×2、`roomid`×4(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
 	"apps/server/src/runtime/engines.ts": 9, // `roomId`×9(含 `onRoomIdResolved`)
 	"apps/server/src/runtime/fans-poller.ts": 3, // 风控码 `-352`、`-412`、`-799`
@@ -207,7 +222,7 @@ export const RATCHET = {
 	"apps/server/src/runtime/sub-runtime-store.ts": 1, // 订阅运行时里存的 B 站直播间号 `roomId`
 	"packages/ai/src/tools.ts": 7, // 工具说明里教模型读的 B 站原始字段
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`
-	"packages/internal/src/util/video-links.ts": 7, // `bvid`×6、`b23.tv`
+	"packages/internal/src/util/video-links.ts": 9, // `bvid`×6、`b23.tv`×2(模板与短链正则)、正则里的 `bilibili.com`
 };
 
 /** 全小写、带下划线的键:`live_status`、`room_id`;驼峰、带大写、不带下划线的不算。 */
@@ -281,7 +296,16 @@ export function textWord(text, whole = wholeWords()) {
 	return undefined;
 }
 
-/** 这个节点命中的词:文字节点、标识符、带负号的风控码。 */
+/**
+ * 正则字面量的源文还原成「人读的文字」再交给文字规则:`\.` `\/` 等标点转义去掉反斜杠(`bilibili\.com` → `bilibili.com`);
+ * `\b` `\d` `\w` 这类字母转义换成一个空格(当分隔符,别让 `\bbvid` 变成 `bbvid` 而丢了词边界)。
+ * 选这一种而不是给文字组的词各配一个带转义的写法:词表只有一份,不会两份写法漂开。
+ */
+export function regexSourceText(source) {
+	return source.replace(/\\([A-Za-z0-9])/g, " ").replace(/\\(.)/g, "$1");
+}
+
+/** 这个节点命中的词:文字节点、正则字面量、标识符、带负号的风控码。 */
 function wordOfNode(node, whole) {
 	if (
 		ts.isStringLiteral(node) ||
@@ -293,6 +317,7 @@ function wordOfNode(node, whole) {
 	) {
 		return textWord(node.text, whole);
 	}
+	if (ts.isRegularExpressionLiteral(node)) return textWord(regexSourceText(node.text), whole);
 	if (ts.isIdentifier(node)) return identifierWord(node.text, whole);
 	if (
 		ts.isPrefixUnaryExpression(node) &&
@@ -383,6 +408,25 @@ describe("守卫 11 的判据:算", () => {
 		).toEqual(["bilibili.com"]);
 	});
 
+	it("正则字面量:转义还原后再按文字规则比(域名、短链、`bvid=`)", () => {
+		expect(wordsIn("const re = /bilibili\\.com\\/video\\/(BV\\w+)/;")).toEqual(["bilibili.com"]);
+		expect(wordsIn("const re = /b23\\.tv\\/(\\w+)/;")).toEqual(["b23.tv"]);
+		expect(wordsIn("const re = /\\bbvid=(\\w+)/;")).toEqual(["bvid"]);
+		expect(regexSourceText("/b23\\.tv\\/\\bx/")).toBe("/b23.tv/ x/");
+	});
+
+	it("手补进整名组的 `live_room` / `roomid`:标识符、属性、类型成员、字符串", () => {
+		expect(wordsIn("const roomid = info?.data?.live_room?.roomid;")).toEqual([
+			"roomid",
+			"live_room",
+			"roomid",
+		]);
+		expect(wordsIn("interface A { live_room?: { roomid?: number } }")).toEqual([
+			"live_room",
+			"roomid",
+		]);
+	});
+
 	it("风控码:带负号的数字字面量", () => {
 		expect(wordsIn("if (code === -352) {}")).toEqual(["-352"]);
 		expect(wordsIn("switch (c) { case -412: case -799: break; }")).toEqual(["-412", "-799"]);
@@ -426,6 +470,16 @@ describe("守卫 11 的判据:不算", () => {
 		expect(wordsIn('const s = "broomId";')).toEqual([]);
 	});
 
+	it("按段组的切段边界(钉住现状,写进文件头的「抓不到」):`bvId` / `bv_id` 切成 `bv` `id`", () => {
+		for (const name of ["bvId", "BvId", "bv_id"]) {
+			expect(identifierWord(name), name).toBeUndefined();
+		}
+		// 同一类写法里算的(`roomid` 是手补进整名组的,见 `WHOLE_WORDS`)
+		for (const name of ["roomID", "ROOM_ID", "bvid", "BVID", "roomid", "live_room"]) {
+			expect(identifierWord(name), name).toBeDefined();
+		}
+	});
+
 	it("前缀组:不是前缀的放行", () => {
 		expect(identifierWord("MY_DYNAMIC_TYPE_X")).toBeUndefined();
 		expect(wordsIn('const s = "MY_DYNAMIC_TYPE_X";')).toEqual([]);
@@ -440,6 +494,14 @@ describe("守卫 11 的判据:不算", () => {
 		expect(wordsIn('import { x } from "@bilibili-notify/internal";')).toEqual([]);
 		expect(wordsIn('const k = "bilibili";')).toEqual([]);
 		expect(wordsIn('const k = "@bilibili";')).toEqual([]);
+	});
+
+	it("正则字面量:不含任何词的普通正则、只是碰巧含这几个字母的放行", () => {
+		expect(wordsIn("const re = /^\\d{4}-\\d{2}-\\d{2}$/;")).toEqual([]);
+		expect(wordsIn("const re = /https?:\\/\\/example\\.com\\/(\\w+)/;")).toEqual([]);
+		// 碰巧含:`notbvidx` 的 `bvid` 左右都贴着字母,不是词边界;`bilibilixcom` 没有点
+		expect(wordsIn("const re = /notbvidx/;")).toEqual([]);
+		expect(wordsIn("const re = /bilibili\\Dcom/;")).toEqual([]);
 	});
 
 	it("注释", () => {

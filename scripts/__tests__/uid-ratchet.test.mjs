@@ -36,7 +36,11 @@ import {
  * - 类型上是 B 站 uid、却叫 `externalId` 以外别的中立名的(对拍与事件载荷守卫的事)。
  * - 字符串拼出来的键(`"u" + "id"`)、`["ui", "d"].join("")`。
  * - 面板里的 `uid`(上面说了,不扫)。
+ * - 切段的边界(都验过不红):数字粘在后面的 `uid2`、`userUid1`(`uid2` 是一整段);大写连写切歪的 `liveUIDs`
+ *   (切成 `live` `ui` `ds`)、`uID`(切成 `u` `id`);`#uid` 这种 `#` 私有名(这道只认普通标识符,推送守卫②认 `#` 私有名,口径不一)。
+ *   算的是 `UID`、`uids`、`Uids`、`UIDS`、`upUID`、`upUid`、`uidList`。
  *
+
  * 判据写成纯函数 + 样例:一条永远判 OK 的规则跟没有一样。
  */
 
@@ -53,7 +57,7 @@ export const ALLOWLIST = {};
 
 /** 报错后面带的那句:越界怎么办。 */
 export const ADVICE =
-	"这是越界(核心里不许出现 uid):改成中立的身份(externalId / 订阅 id),或去问主人要不要加上限,不要起别的名字躲;数降了就当场把这一格调低";
+	"若是越界(核心里不许出现 uid):改成中立的身份(externalId / 订阅 id),不要起别的名字躲;若确是同名不同物、或这道守卫的判据打不准(这道没有排除表,只有整目录放行和棘轮上限):去问主人,由主人定是加上限还是改判据,不要自己加;数降了就当场把这一格调低";
 
 /**
  * 棘轮表:文件 → 命中的上限(开张时的现数:15 个文件 212 处)。只许往下调。
@@ -141,6 +145,17 @@ describe("uid 的判据:不算", () => {
 	it("碰巧含这几个字母的词(段是一整个别的词)", () => {
 		for (const name of ["guid", "uuid", "fluid", "druid", "squid", "liquidity", "UUID_RE"]) {
 			expect(isUidIdentifier(name), name).toBe(false);
+		}
+	});
+
+	it("切段的边界(钉住现状,写进文件头的「抓不到」):数字粘在后面、大写连写切歪、`#` 私有名", () => {
+		for (const name of ["uid2", "userUid1", "liveUIDs", "uID"]) {
+			expect(isUidIdentifier(name), name).toBe(false);
+		}
+		expect(sample("class C { #uid = 1 }")).toEqual([]);
+		// 同一类写法里算的
+		for (const name of ["UID", "uids", "Uids", "UIDS", "upUID", "upUid", "uidList"]) {
+			expect(isUidIdentifier(name), name).toBe(true);
 		}
 	});
 
