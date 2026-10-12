@@ -18,7 +18,24 @@
 
 import { AI_PROVIDER_IDS, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { applyAiSecrets, collectAiSecrets, stripAiSecrets } from "../ai-secrets.js";
+import {
+	aiSecretKey,
+	applyAiSecrets,
+	collectAiSecrets,
+	isInstanceSecretKey,
+	stripAiSecrets,
+} from "../ai-secrets.js";
+
+describe("isInstanceSecretKey", () => {
+	it("只认这一个实例 id 名下的主、副两把键;别的实例与搜索域的不算", () => {
+		expect(isInstanceSecretKey(aiSecretKey("mid"), "mid")).toBe(true);
+		expect(isInstanceSecretKey(aiSecretKey("mid", true), "mid")).toBe(true);
+		expect(isInstanceSecretKey("last", "mid")).toBe(false);
+		expect(isInstanceSecretKey("mid2", "mid")).toBe(false);
+		expect(isInstanceSecretKey("mid2:vision", "mid")).toBe(false);
+		expect(isInstanceSecretKey("search:bocha", "mid")).toBe(false);
+	});
+});
 
 function profile(over: Record<string, unknown> = {}) {
 	return {

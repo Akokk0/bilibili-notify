@@ -50,6 +50,14 @@ export function isSearchSecretKey(bagKey: string): boolean {
 }
 
 /**
+ * 一把袋键是不是某个实例 id 名下的(主模型那把或看图副模型那把)。配置仓在 `ai.providers` 里**一家**被隔离时,
+ * 只留这一家名下的旧袋键(它在内存里不在,收集不到),别家照「删一家,key 跟着消失」重算;袋键怎么拼的规矩只住这个文件。
+ */
+export function isInstanceSecretKey(bagKey: string, profileId: string): boolean {
+	return bagKey === aiSecretKey(profileId) || bagKey === aiSecretKey(profileId, true);
+}
+
+/**
  * 收集所有非空的 AI 密钥。
  *
  * **空值不进袋**:袋里存个空串等于把「未配置」记成「配置了一个空的」,

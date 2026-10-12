@@ -5,7 +5,7 @@
 
 import { GlobalConfigSchema, makeDefaultGlobalConfig } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { parseCoreSettings, withRawSettings } from "../core-settings.js";
+import { instanceIdOfEntry, parseCoreSettings, withRawSettings } from "../core-settings.js";
 import { ConfigValidationError } from "../validation-error.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: 夹具按路径随手改盘上 JSON,不值得为它逐层写类型
@@ -98,18 +98,136 @@ describe("parseCoreSettings", () => {
 		expect(invalid[0]?.issues.length).toBeGreaterThan(0);
 	});
 
-	it("ai.providers 里一家的 provider 不认识:providers 整格退默认,ai 下别的子格是入参里的值", () => {
+	// N1:ai.providers 里一家坏只那一家不在,别家是盘上的值,条目落在三段路径上。
+	it("ai.providers 里一家的字段类型错:只那一家不在表里,另两家是入参里的值,ai 下别的子格不动", () => {
 		const disk = goodDisk();
-		const bad = { p1: { provider: "没这家" }, p2: { provider: "openrouter" } };
-		disk.ai.providers = bad;
+		disk.ai.providers = {
+			a: { provider: "openrouter", model: "ma" },
+			b: { provider: "deepseek", model: 7 },
+			c: { provider: "deepseek", model: "mc", label: "第三家" },
+		};
+		const rawB = structuredClone(disk.ai.providers.b);
 		const { settings, invalid } = parseCoreSettings(disk);
-		expect(settings.ai.providers).toEqual({});
+		expect(Object.keys(settings.ai.providers)).toEqual(["a", "c"]);
+		const expectedA = GlobalConfigSchema.shape.ai.shape.providers.parse({
+			a: disk.ai.providers.a,
+		}).a;
+		expect(settings.ai.providers.a).toEqual(expectedA);
+		expect(settings.ai.providers.c?.label).toBe("第三家");
 		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
 		expect(settings.ai.activeProfile).toBe("p1");
 		expect(invalid).toHaveLength(1);
-		expect(invalid[0]?.path).toEqual(["ai", "providers"]);
-		expect(invalid[0]?.raw).toEqual(bad);
+		expect(invalid[0]?.path).toEqual(["ai", "providers", "b"]);
+		expect(invalid[0]?.raw).toEqual(rawB);
+		expect(invalid[0]?.missing).toBe(false);
 		expect(invalid[0]?.issues.length).toBeGreaterThan(0);
+		// 内存里的核心设置永远过得了 schema。
+		expect(GlobalConfigSchema.safeParse(settings).success).toBe(true);
+	});
+
+	// N2:各种坏法。
+	it.each([
+		["值是 null", null],
+		["值是数字", 7],
+		["值是数组", [1]],
+		["provider 不认识", { provider: "没这家" }],
+	])("ai.providers 里一家%s:只那一家记一条、不在表里,别家还在", (_name, bad) => {
+		const disk = goodDisk();
+		disk.ai.providers = { good: { provider: "openrouter" }, bad, tail: { provider: "deepseek" } };
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(Object.keys(settings.ai.providers)).toEqual(["good", "tail"]);
+		expect(invalid.map((e) => e.path)).toEqual([["ai", "providers", "bad"]]);
+		expect(invalid[0]?.raw).toEqual(bad);
+	});
+
+	it("ai.providers 里两家都坏:两条,按盘上的键序,插在 ai 子格按 schema 键序的位置上", () => {
+		const disk = goodDisk();
+		disk.ai.providers = {
+			z: { provider: "没这家" },
+			ok: { provider: "openrouter" },
+			a: { provider: "deepseek", model: 1 },
+		};
+		disk.ai.enabled = "开";
+		disk.history = "三十天";
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(Object.keys(settings.ai.providers)).toEqual(["ok"]);
+		expect(invalid.map((e) => e.path)).toEqual([
+			["history"],
+			["ai", "enabled"],
+			["ai", "providers", "z"],
+			["ai", "providers", "a"],
+		]);
+	});
+
+	it("ai.providers 表本身是数组:整格一条 [ai, providers],表退成空", () => {
+		const disk = goodDisk();
+		disk.ai.providers = [{ provider: "openrouter" }];
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(settings.ai.providers).toEqual({});
+		expect(settings.ai.dynamicPrompt).toBe("自己写的提示词");
+		expect(invalid.map((e) => e.path)).toEqual([["ai", "providers"]]);
+		expect(invalid[0]?.raw).toEqual([{ provider: "openrouter" }]);
+	});
+
+	it("ai.providers 表是字符串或 null:同样整格一条 [ai, providers]", () => {
+		for (const bad of ["坏的", null]) {
+			const disk = goodDisk();
+			disk.ai.providers = bad;
+			const { settings, invalid } = parseCoreSettings(disk);
+			expect(settings.ai.providers).toEqual({});
+			expect(invalid.map((e) => e.path)).toEqual([["ai", "providers"]]);
+		}
+	});
+
+	it("ai.providers 键不在:不记,表是空的", () => {
+		const disk = goodDisk();
+		delete disk.ai.providers;
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(settings.ai.providers).toEqual({});
+		expect(invalid).toEqual([]);
+	});
+
+	it("ai 整格是对象但 ai.providers 全好:没有条目", () => {
+		const { invalid } = parseCoreSettings(goodDisk());
+		expect(invalid).toEqual([]);
+	});
+
+	// 题 2:原型名当实例 id 是坏的那一家。键的规则取自 GlobalConfigSchema(.unwrap 得到 record,.keyType / .valueType)。
+	it("实例 id 是原型名(constructor):记成单家的坏格、原文留着,别家还在", () => {
+		const disk = goodDisk();
+		disk.ai.providers = {
+			good: { provider: "openrouter" },
+			constructor: { provider: "deepseek", model: "m" },
+		};
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(Object.keys(settings.ai.providers)).toEqual(["good"]);
+		expect(invalid.map((e) => e.path)).toEqual([["ai", "providers", "constructor"]]);
+		expect(invalid[0]?.raw).toEqual({ provider: "deepseek", model: "m" });
+		expect(invalid[0]?.issues.length).toBeGreaterThan(0);
+	});
+
+	// N12(解析这一半):盘上有一家自己的键叫 __proto__。zod 的 record 在把键交给键的规则之前就跳过它,
+	// 光靠 schema 拦不住,解析层自己记坏格;拼出来的表原型不能被换。
+	it("实例 id 是 __proto__:记一条单家的坏格,原文留着,拼出来的表原型没被换", () => {
+		const disk = goodDisk();
+		const text =
+			'{"good":{"provider":"openrouter"},"__proto__":{"provider":"deepseek","model":"evil"}}';
+		disk.ai.providers = JSON.parse(text);
+		expect(Object.hasOwn(disk.ai.providers, "__proto__")).toBe(true);
+		const { settings, invalid } = parseCoreSettings(disk);
+		expect(Object.keys(settings.ai.providers)).toEqual(["good"]);
+		expect(Object.getPrototypeOf(settings.ai.providers)).toBe(Object.prototype);
+		expect(invalid.map((e) => e.path)).toEqual([["ai", "providers", "__proto__"]]);
+		expect(invalid[0]?.raw).toEqual({ provider: "deepseek", model: "evil" });
+	});
+
+	it("单家条目的判别:恰好三段 [ai, providers, id] 才算,回那个 id", () => {
+		expect(instanceIdOfEntry(["ai", "providers", "p1"])).toBe("p1");
+		expect(instanceIdOfEntry(["ai", "providers"])).toBeUndefined();
+		expect(instanceIdOfEntry(["ai"])).toBeUndefined();
+		expect(instanceIdOfEntry(["ai", "search", "x"])).toBeUndefined();
+		expect(instanceIdOfEntry(["defaults", "providers", "x"])).toBeUndefined();
+		expect(instanceIdOfEntry(["ai", "providers", "p1", "model"])).toBeUndefined();
 	});
 
 	it("ai 整格是字符串:整格退默认,只记一条 [ai]", () => {
@@ -152,7 +270,7 @@ describe("parseCoreSettings", () => {
 		expect(invalid.map((e) => e.path)).toEqual([
 			["history"],
 			["defaults", "filters"],
-			["ai", "providers"],
+			["ai", "providers", "p1"],
 			["mutedUntil"],
 		]);
 	});
@@ -176,7 +294,7 @@ describe("parseCoreSettings", () => {
 		expect(JSON.stringify(disk)).toBe(before);
 		const [filtersRaw, providersRaw] = invalid.map((e) => e.raw as Json) as [Json, Json];
 		filtersRaw.blockKeywords.push("改");
-		providersRaw.p1.provider = "改";
+		providersRaw.provider = "改";
 		settings.defaults.imageGroup.enabled = true;
 		settings.history.retentionDays = 90;
 		expect(JSON.stringify(disk)).toBe(before);
@@ -245,10 +363,51 @@ describe("withRawSettings", () => {
 		const first = parseCoreSettings(bad);
 		expect(first.invalid.map((e) => e.path)).toEqual([
 			["defaults", "filters"],
-			["ai", "providers"],
+			["ai", "providers", "p1"],
 		]);
 		const second = parseCoreSettings(withRawSettings(first.settings, first.invalid));
 		expect(second.settings).toEqual(first.settings);
 		expect(second.invalid).toEqual(first.invalid);
+	});
+
+	// N13:坏的一家在表的中间,放回后再解析与第一次一样;再写一遍,字节一样(放回的位置是确定的)。
+	it("单家坏在表中间:放回后再解析,settings 与 invalid 同第一次;第二次放回的字节同第一次", () => {
+		const bad = goodDisk();
+		bad.ai.providers = {
+			a: { provider: "openrouter", model: "ma" },
+			mid: { provider: "deepseek", model: 7 },
+			z: { provider: "deepseek", model: "mz" },
+		};
+		const first = parseCoreSettings(bad);
+		expect(first.invalid.map((e) => e.path)).toEqual([["ai", "providers", "mid"]]);
+		const written1 = withRawSettings(first.settings, first.invalid) as Json;
+		// 原文放回了,内容一个字没动;别家是内存里的值。
+		expect(written1.ai.providers.mid).toEqual({ provider: "deepseek", model: 7 });
+		expect(written1.ai.providers.a.model).toBe("ma");
+		const second = parseCoreSettings(written1);
+		expect(second.settings).toEqual(first.settings);
+		expect(second.invalid).toEqual(first.invalid);
+		const written2 = withRawSettings(second.settings, second.invalid);
+		expect(JSON.stringify(written2)).toBe(JSON.stringify(written1));
+	});
+
+	// N12(放回这一半):自己的键叫 __proto__ 的一家,放回后仍是盘上自己的一个键、内容不变,原型没被换。
+	it("单家的键是 __proto__:放回后盘上那一家还在、内容不变,表的原型没被换", () => {
+		const bad = goodDisk();
+		bad.ai.providers = JSON.parse(
+			'{"good":{"provider":"openrouter"},"__proto__":{"provider":"deepseek","model":"evil"}}',
+		);
+		const first = parseCoreSettings(bad);
+		const out = withRawSettings(first.settings, first.invalid) as Json;
+		const providers = out.ai.providers as object;
+		expect(Object.getPrototypeOf(providers)).toBe(Object.prototype);
+		expect(Object.keys(providers)).toEqual(["good", "__proto__"]);
+		expect(Object.getOwnPropertyDescriptor(providers, "__proto__")?.value).toEqual({
+			provider: "deepseek",
+			model: "evil",
+		});
+		// 序列化一遍再读回,那一家也在(JSON.stringify 对自己的 __proto__ 键照常输出)。
+		const roundTrip = JSON.parse(JSON.stringify(out));
+		expect(Object.hasOwn(roundTrip.ai.providers, "__proto__")).toBe(true);
 	});
 });

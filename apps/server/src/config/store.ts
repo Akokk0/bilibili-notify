@@ -48,13 +48,20 @@ import { errorMessageOf } from "../util/error-message.js";
 import {
 	applyAiSecrets,
 	collectAiSecrets,
+	isInstanceSecretKey,
 	isSearchSecretKey,
 	stripAiSecrets,
 } from "./ai-secrets.js";
-import { type InvalidSettingEntry, parseCoreSettings, withRawSettings } from "./core-settings.js";
+import {
+	type InvalidSettingEntry,
+	instanceIdOfEntry,
+	parseCoreSettings,
+	withRawSettings,
+} from "./core-settings.js";
 import { parseIntegrationCells } from "./integration-settings.js";
 import type { BootstrapConfig } from "./schema.js";
 import type { ConfigSecrets, SecretStore } from "./secret-store.js";
+import { brokenInstanceIdTakenMessage } from "./settings-problems.js";
 import { ConfigValidationError } from "./validation-error.js";
 
 /**
@@ -363,30 +370,38 @@ function stripApiKeyForDisk(g: GlobalConfig): GlobalConfig {
 	return stripAiSecrets(deepClone(g));
 }
 
-/** 按路径取值,中途不是对象就是 `undefined`。 */
+/** 按路径取值,中途不是对象、或没有自己的这个键就是 `undefined`(键叫原型名时不摸到原型上的东西)。 */
 function valueAt(root: unknown, path: readonly string[]): unknown {
 	let cur: unknown = root;
 	for (const step of path) {
-		if (!isPlainObject(cur)) return undefined;
+		if (!isPlainObject(cur) || !Object.hasOwn(cur, step)) return undefined;
 		cur = cur[step];
 	}
 	return cur;
 }
 
 /**
- * 旧袋里属于仍被隔离的 `ai` 子格的那些键:`ai` 或 `ai.providers` 被隔离留实例域(不是搜索域的),`ai` 或
- * `ai.search` 被隔离留搜索域的。袋键怎么分域见 `ai-secrets.ts#isSearchSecretKey`。
+ * 旧袋里属于仍被隔离的 `ai` 子格的那些键,三档:
+ * - `ai` 整格被隔离:两域都留;
+ * - `ai.providers` 整张表被隔离(两段):实例域全留(不是搜索域的);`ai.search` 被隔离:搜索域留;
+ * - `ai.providers` 里**某一家**被隔离(三段):只留这几家名下的键,别家照「删一家,key 跟着消失」重算。
+ * 袋键怎么分域、怎么认实例见 `ai-secrets.ts`。
  */
 function isolatedSecrets(
 	bag: Readonly<Record<string, string>>,
 	isolated: readonly InvalidSettingEntry[],
 ): Record<string, string> {
-	const whole = isolated.some((e) => e.path[0] === "ai" && e.path.length === 1);
-	const has = (cell: string) => isolated.some((e) => e.path[0] === "ai" && e.path[1] === cell);
+	const whole = isolated.some((e) => e.path.length === 1 && e.path[0] === "ai");
+	const has = (cell: string) =>
+		isolated.some((e) => e.path.length === 2 && e.path[0] === "ai" && e.path[1] === cell);
 	const keepInstances = whole || has("providers");
 	const keepSearch = whole || has("search");
+	const brokenIds = isolated.flatMap((e) => instanceIdOfEntry(e.path) ?? []);
+	const ofBrokenInstance = (key: string) => brokenIds.some((id) => isInstanceSecretKey(key, id));
 	return Object.fromEntries(
-		Object.entries(bag).filter(([key]) => (isSearchSecretKey(key) ? keepSearch : keepInstances)),
+		Object.entries(bag).filter(([key]) =>
+			isSearchSecretKey(key) ? keepSearch : keepInstances || ofBrokenInstance(key),
+		),
 	);
 }
 
@@ -1392,13 +1407,21 @@ class NodeConfigStore implements ConfigStore {
 		// 哪些被隔离的格这次仍算「没动」:新旧两份在那条路径上比值(两边都是 zod 的规范形态,比 JSON 就够)。
 		// 不比「补丁里有没有这个键」:面板的补丁值没变也照发(规则页每次带 `defaults` 下的整格),按键判会让主人
 		// 改个时间段就把没碰过的坏格原文盖掉。`replace` 是恢复备份:以给的这份为准,本机的坏格一起换掉、不放回。
+		//
+		// 单家的条目(`ai.providers.<id>`)不比值:内存里那个键永远不在,「没动」只有一种样子 —— 新的这份里也没有
+		// 这个自己的键(`Object.hasOwn`,不走 `valueAt` 的路径取值)。新的这份里有了(面板新加的一家 id 撞上它)
+		// 在写任何东西之前就拒收了(见 {@link assertNoBrokenInstanceIdTaken}),所以走到这里时它实际恒为「没动」。
+		if (mode === "compare") this.assertNoBrokenInstanceIdTaken(g);
 		const retained =
 			mode === "replace"
 				? []
-				: this.invalidSettings.filter(
-						(e) =>
-							JSON.stringify(valueAt(g, e.path)) === JSON.stringify(valueAt(this.globals, e.path)),
-					);
+				: this.invalidSettings.filter((e) => {
+						const id = instanceIdOfEntry(e.path);
+						if (id !== undefined) return !Object.hasOwn(g.ai.providers, id);
+						return (
+							JSON.stringify(valueAt(g, e.path)) === JSON.stringify(valueAt(this.globals, e.path))
+						);
+					});
 		if (this.secretStore) {
 			// P2:此前 save 成功后 persistGlobals 抛错 → 密钥袋已存新 apiKey 但
 			// settings/core.json/in-memory 仍旧值 → 重启后两边分叉。失败即回滚密钥袋,
@@ -1406,7 +1429,8 @@ class NodeConfigStore implements ConfigStore {
 			const prevBag = this.secretBag;
 			// 整份重算而不是并进旧袋:主人删掉一家时,那家的 key 必须跟着消失,
 			// 否则删了又加回来会拿到一把他以为已经删掉的旧密钥。唯一的例外是仍被隔离的那一格名下的旧键:
-			// 那一格在内存里是默认值,收集不到它们,重算会把它们洗空,主人把那一格改对时 key 已经没了。
+			// 那一格在内存里是默认值(`ai.providers` 里一家坏了则是那一家不在),收集不到它们,重算会把它们洗空,
+			// 主人把那一格改对时 key 已经没了。留哪些键见 {@link isolatedSecrets} 的三档。
 			const nextBag = {
 				...this.secretBag,
 				aiApiKey: undefined,
@@ -1431,6 +1455,26 @@ class NodeConfigStore implements ConfigStore {
 		this.globals = g;
 		if (retained.length !== this.invalidSettings.length) this.invalidSettingsChanged = true;
 		this.invalidSettings = retained;
+	}
+
+	/**
+	 * 新的这份里有一家的 id 正是某一家读不懂的 AI 实例的 id(面板挑 id 时看不见坏着的那一家,会撞上):这次保存拒收,
+	 * 逐格原因的路径是 `["ai","providers","<id>"]`。**要在写任何东西之前调**(存袋之前、同一发补丁里的集成设置文件
+	 * 落盘之前):放行的话新的一家会把坏的那一家的原文与存着的密钥悄悄换掉。
+	 */
+	private assertNoBrokenInstanceIdTaken(g: GlobalConfig): void {
+		const taken = this.invalidSettings.flatMap((e) => {
+			const id = instanceIdOfEntry(e.path);
+			return id !== undefined && Object.hasOwn(g.ai.providers, id) ? [id] : [];
+		});
+		if (taken.length === 0) return;
+		throw ConfigValidationError.fromIssues(
+			"globals",
+			taken.map((id) => ({
+				path: ["ai", "providers", id],
+				message: brokenInstanceIdTakenMessage(id),
+			})),
+		);
 	}
 
 	/** 通知组装处坏格表现在的样子。 */
@@ -1474,6 +1518,8 @@ class NodeConfigStore implements ConfigStore {
 			if (patch.core !== undefined) {
 				const parsed = GlobalConfigSchema.safeParse(deepMerge(this.globals, patch.core));
 				if (!parsed.success) throw ConfigValidationError.fromZod("globals", parsed.error);
+				// 撞上坏着的那一家的 id:这一步就拒收,同一发里的集成设置文件还没动。
+				this.assertNoBrokenInstanceIdTaken(parsed.data);
 				// 只在这次真动了主人那一格时才查:盘上读进来的旧值(群 / 目标没了)不该让别的设置也存不进去。
 				if (patch.core.master !== undefined) {
 					assertMasterTarget(parsed.data.master, this.targets, "globals");

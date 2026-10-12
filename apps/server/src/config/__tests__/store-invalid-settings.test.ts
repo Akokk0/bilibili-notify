@@ -8,7 +8,7 @@
  *   - 密钥袋用真的 `SecretStore` 与真文件:被隔离的 `ai` 子格名下的旧袋键不被写入洗掉
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -21,10 +21,18 @@ import {
 } from "@bilibili-notify/internal";
 import { createKeyProvider } from "@bilibili-notify/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
 import type { InvalidSettingEntry } from "../core-settings.js";
 import type { BootstrapConfig } from "../schema.js";
 import { createSecretStore, type SecretStore } from "../secret-store.js";
-import { CORE_SETTINGS_FILE, type ConfigStore, createConfigStore } from "../store.js";
+import {
+	CORE_SETTINGS_FILE,
+	type ConfigStore,
+	createConfigStore,
+	type IntegrationSettingsSegment,
+	integrationSettingsFile,
+} from "../store.js";
+import { ConfigValidationError } from "../validation-error.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: 夹具按路径随手改盘上 JSON,不值得为它逐层写类型
 type Json = Record<string, any>;
@@ -90,6 +98,7 @@ function mkSecretStore(): SecretStore {
 interface MkOptions {
 	secret?: SecretStore;
 	onInvalid?: (entries: InvalidSettingEntry[]) => void;
+	integrations?: IntegrationSettingsSegment[];
 }
 
 function mkStore(opts: MkOptions = {}): ConfigStore {
@@ -100,8 +109,16 @@ function mkStore(opts: MkOptions = {}): ConfigStore {
 		serviceCtx: makeCtx(),
 		secretStore: opts.secret,
 		onInvalidSettingsChanged: opts.onInvalid,
+		integrationSettings: opts.integrations,
 	});
 }
+
+/** 只在这里用的一个小集成:同一发补丁里带它,用来看「拒收时它的文件没被碰」。 */
+const pokeSegment: IntegrationSettingsSegment = {
+	key: "poke",
+	schema: z.object({ label: z.string().default("hello") }),
+};
+const pokeFile = () => join(dataDir, ...integrationSettingsFile("poke"));
 
 /** 一份盘上长相的核心设置,几格故意取非默认值:断言「别的格是盘上的值」才有分量。 */
 function baseDisk(): Json {
@@ -173,10 +190,23 @@ const BAD_KINDS: Array<{
 		sibling: { path: ["defaults", "imageGroup", "enabled"], value: false },
 	},
 	{
+		// 坏的一家放在表的中间:放回的位置、别家不受牵连都藏不住。
 		name: "ai.providers 里一家的 provider 不认识",
+		path: ["ai", "providers", "p1"],
+		spoil: (d) => {
+			d.ai.providers = {
+				p0: { provider: "openrouter", model: "m0" },
+				p1: { provider: "没这家" },
+				p2: { provider: "deepseek", model: "m2" },
+			};
+		},
+		sibling: { path: ["ai", "providers", "p2", "model"], value: "m2" },
+	},
+	{
+		name: "ai.providers 表本身是数组",
 		path: ["ai", "providers"],
 		spoil: (d) => {
-			d.ai.providers = { p1: { provider: "没这家" } };
+			d.ai.providers = [{ provider: "openrouter" }];
 		},
 		sibling: { path: ["ai", "dynamicPrompt"], value: "自己写的提示词" },
 	},
@@ -469,12 +499,12 @@ describe("密钥袋不被洗(真 SecretStore、真文件)", () => {
 		return readDisk();
 	}
 
-	it("ai.providers 被隔离:保存一格无关设置后,把那一格改对再开一个仓,实例的 key 还在,搜索的也在", async () => {
+	it("ai.providers 整张表被隔离(表是数组):保存一格无关设置后,把那一格改对再开一个仓,实例的 key 还在,搜索的也在", async () => {
 		const secret = mkSecretStore();
 		const seeded = await seedBag(secret);
 
 		const broken = structuredClone(seeded);
-		broken.ai.providers = { ...seeded.ai.providers, extra: { provider: "没这家" } };
+		broken.ai.providers = [seeded.ai.providers];
 		await putDisk(broken);
 
 		const store = mkStore({ secret });
@@ -601,11 +631,12 @@ describe("密钥袋不被洗(真 SecretStore、真文件)", () => {
 		expect(onDisk.history).toBe("三十天");
 	});
 
-	it("ai.providers 被隔离、另一个好格里有手写明文:开机上提时并进旧袋,被隔离那一格名下的旧 key 还在", async () => {
+	// N5:坏的一家(有主副两把袋键)在表中间,另一个好格里手写一把明文 → 开机上提并进旧袋,不重算,坏家的键还在。
+	it("一家坏着、另一个好格里有手写明文:开机上提时并进旧袋,坏的那一家名下的两把旧 key 还在", async () => {
 		const secret = mkSecretStore();
-		const seeded = await seedBag(secret);
+		const seeded = await seedThree(secret);
 		const broken = structuredClone(seeded);
-		broken.ai.providers = { ...seeded.ai.providers, extra: { provider: "没这家" } };
+		broken.ai.providers.mid.model = 7;
 		// 好格 ai.search 里手写一把换过的明文(搜索后端的 key)。
 		broken.ai.search.keys.bocha = "sk-bocha-hand";
 		await putDisk(broken);
@@ -613,21 +644,18 @@ describe("密钥袋不被洗(真 SecretStore、真文件)", () => {
 		const store = mkStore({ secret });
 		await store.load();
 
-		expect(paths(store)).toEqual([["ai", "providers"]]);
+		expect(paths(store)).toEqual([["ai", "providers", "mid"]]);
 		expect((await secret.load()).aiApiKeys).toEqual({
-			deepseek: "sk-ds",
-			"deepseek:vision": "sk-ds-v",
-			openrouter: "sk-or",
+			...THREE_BAG,
 			"search:bocha": "sk-bocha-hand",
-			"search:tavily": "sk-tavily",
 		});
 	});
 
-	it("这是已定的行为:重存以新值为准。ai.providers 被隔离时经 patchSettings 重存这一格,袋里那一域的旧 key 没了、盘上只剩新写的;问题条目的话因此不许引主人这样做", async () => {
+	it("这是已定的行为:重存以新值为准。ai.providers 整张表被隔离时经 patchSettings 重存这一格,袋里那一域的旧 key 没了、盘上只剩新写的;问题条目的话因此不许引主人这样做", async () => {
 		const secret = mkSecretStore();
 		const seeded = await seedBag(secret);
 		const broken = structuredClone(seeded);
-		broken.ai.providers = { ...seeded.ai.providers, extra: { provider: "没这家" } };
+		broken.ai.providers = [seeded.ai.providers];
 		await putDisk(broken);
 
 		const store = mkStore({ secret });
@@ -650,17 +678,401 @@ describe("密钥袋不被洗(真 SecretStore、真文件)", () => {
 		expect(Object.keys((await readDisk()).ai.providers)).toEqual(["p2"]);
 	});
 
-	it("坏格原文里带明文 key:盘上原样、袋里没有它(钉现状,防止有人顺手上提)", async () => {
+	it("坏的那一家原文里带明文 key:盘上原样、袋里没有它(钉现状,防止有人顺手上提)", async () => {
 		const secret = mkSecretStore();
 		const disk = baseDisk();
-		disk.ai.providers = { deepseek: { provider: "deepseek", apiKey: "sk-in-bad-cell" }, x: 1 };
+		disk.ai.providers = {
+			deepseek: { provider: "deepseek", apiKey: "sk-in-bad-cell", model: 1 },
+		};
 		const before = await putDisk(disk);
 
 		const store = mkStore({ secret });
 		await store.load();
 
-		expect(paths(store)).toEqual([["ai", "providers"]]);
+		expect(paths(store)).toEqual([["ai", "providers", "deepseek"]]);
 		expect(await readFile(corePath, "utf8")).toBe(before);
 		expect((await secret.load()).aiApiKeys ?? {}).toEqual({});
+	});
+
+	it("坏的一家旁边的好的一家手写了明文:开机上提进袋、盘上那一家被抹,坏的那一家原文放回、一个字不变", async () => {
+		const secret = mkSecretStore();
+		const disk = baseDisk();
+		disk.ai.providers = {
+			good: { provider: "deepseek", apiKey: "sk-hand" },
+			bad: { provider: "没这家", apiKey: "sk-in-bad-cell" },
+		};
+		await putDisk(disk);
+
+		const store = mkStore({ secret });
+		await store.load();
+
+		expect(store.getGlobals().ai.providers.good?.apiKey).toBe("sk-hand");
+		expect((await secret.load()).aiApiKeys).toEqual({ good: "sk-hand" });
+		const onDisk = await readDisk();
+		expect(onDisk.ai.providers.good.apiKey).toBe("");
+		expect(onDisk.ai.providers.bad).toEqual({ provider: "没这家", apiKey: "sk-in-bad-cell" });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// ai.providers 按每一家隔离:一家写坏只退那一家,别家与各自的密钥照常,坏的那家原文放回
+// ---------------------------------------------------------------------------
+
+const THREE_BAG = {
+	first: "sk-first",
+	mid: "sk-mid",
+	"mid:vision": "sk-mid-v",
+	last: "sk-last",
+	"search:bocha": "sk-bocha",
+};
+
+/**
+ * 三家实例,**中间**那家(mid)带主副两把 key:先用干净的仓存进真袋,回盘上那份(key 已抠成空串)。
+ * 坏家放中间 + 坏家名下有袋键:放在表末或没有袋键时,键序与袋的毛病都藏得住(两种假绿)。
+ */
+async function seedThree(secret: SecretStore): Promise<Json> {
+	const store = mkStore({ secret });
+	await store.load();
+	await store.patchGlobals({
+		ai: {
+			activeProfile: "first",
+			providers: {
+				first: { provider: "deepseek", model: "m-first", apiKey: "sk-first" },
+				mid: {
+					provider: "openrouter",
+					model: "m-mid",
+					apiKey: "sk-mid",
+					vision: { apiKey: "sk-mid-v" },
+				},
+				last: { provider: "openrouter", model: "m-last", apiKey: "sk-last" },
+			},
+			search: { keys: { bocha: "sk-bocha" } },
+		},
+	});
+	expect((await secret.load()).aiApiKeys).toEqual(THREE_BAG);
+	const disk = await readDisk();
+	expect(Object.keys(disk.ai.providers)).toEqual(["first", "mid", "last"]);
+	return disk;
+}
+
+/** 把 mid 弄坏(`model` 是数字)并落盘,回弄坏后的盘上那份。 */
+async function breakMid(seeded: Json): Promise<Json> {
+	const broken = structuredClone(seeded);
+	broken.ai.providers.mid.model = 7;
+	broken.extensions = { douyin: { enabled: true } };
+	await putDisk(broken);
+	return broken;
+}
+
+const MID_PATH = ["ai", "providers", "mid"];
+
+/** 逐个写口:坏的 mid 在表中间,做一次写之后盘上那一家一个字不变。`changesLast` 是这次写动了 last。 */
+const WRITE_PORTS: Array<{
+	name: string;
+	changesLast: boolean;
+	act: (store: ConfigStore) => Promise<unknown>;
+}> = [
+	{
+		name: "patchGlobals 改静音",
+		changesLast: false,
+		act: (s) => s.patchGlobals({ mutedUntil: 999 }),
+	},
+	{
+		name: "patchSettings 的核心补丁",
+		changesLast: false,
+		act: (s) => s.patchSettings({ core: { mutedUntil: 5 } }),
+	},
+	{
+		name: "面板那种整段 ai 补丁(整段带着别家)",
+		changesLast: true,
+		act: (s) => {
+			const ai = structuredClone(s.getGlobals().ai) as Json;
+			ai.providers.last.model = "changed";
+			return s.patchGlobals({ ai } as never);
+		},
+	},
+	{
+		name: "updateGlobals",
+		changesLast: true,
+		act: (s) =>
+			s.updateGlobals((g) => {
+				(g as unknown as Json).ai.providers.last.model = "changed";
+				return g;
+			}),
+	},
+	{
+		name: "setGlobals",
+		changesLast: true,
+		act: (s) => {
+			const g = structuredClone(s.getGlobals());
+			(g as unknown as Json).ai.providers.last.model = "changed";
+			return s.setGlobals(g);
+		},
+	},
+	{ name: "removeExtension", changesLast: false, act: (s) => s.removeExtension("douyin") },
+];
+
+describe("ai.providers 一家坏只隔离那一家", () => {
+	// N3
+	it.each(WRITE_PORTS)(
+		"$name:坏的 mid 在表中间,盘上那一家仍是原文,别家是新值,条目仍在",
+		async ({ act, changesLast }) => {
+			const secret = mkSecretStore();
+			const broken = await breakMid(await seedThree(secret));
+			const store = mkStore({ secret });
+			await store.load();
+			expect(paths(store)).toEqual([MID_PATH]);
+
+			await act(store);
+
+			const onDisk = await readDisk();
+			expect(onDisk.ai.providers.mid).toEqual(broken.ai.providers.mid);
+			expect(onDisk.ai.providers.first.model).toBe("m-first");
+			expect(onDisk.ai.providers.last.model).toBe(changesLast ? "changed" : "m-last");
+			expect(paths(store)).toEqual([MID_PATH]);
+			expect(Object.keys(store.getGlobals().ai.providers)).toEqual(["first", "last"]);
+			// 密钥照常:明文没落盘,袋里三家都在。
+			expect(onDisk.ai.providers.first.apiKey).toBe("");
+			expect((await secret.load()).aiApiKeys).toEqual(THREE_BAG);
+		},
+	);
+
+	it("开机抹明文也经过放回:好的一家手写明文被抹,坏的 mid 原文一个字不变", async () => {
+		const secret = mkSecretStore();
+		const broken = await breakMid(await seedThree(secret));
+		broken.ai.providers.first.apiKey = "sk-first-hand";
+		await putDisk(broken);
+
+		const store = mkStore({ secret });
+		await store.load();
+
+		const onDisk = await readDisk();
+		expect(onDisk.ai.providers.first.apiKey).toBe("");
+		expect(onDisk.ai.providers.mid).toEqual(broken.ai.providers.mid);
+		expect((await secret.load()).aiApiKeys).toEqual({ ...THREE_BAG, first: "sk-first-hand" });
+	});
+
+	// N4:坏家名下的主副两把键,在各种写之后都在;改对重启回得来。
+	it("坏的 mid 名下的主副两把 key:保存别的页、保存别家之后都在,把它改对再开一个仓,两把都回来", async () => {
+		const secret = mkSecretStore();
+		const seeded = await seedThree(secret);
+		const broken = await breakMid(seeded);
+
+		const store = mkStore({ secret });
+		await store.load();
+		await store.patchGlobals({ profileRefreshCron: "*/9 * * * *" });
+		expect((await secret.load()).aiApiKeys).toEqual(THREE_BAG);
+		await store.patchGlobals({ ai: { providers: { last: { model: "again" } } } });
+		expect((await secret.load()).aiApiKeys).toEqual(THREE_BAG);
+
+		const fixed = await readDisk();
+		expect(fixed.ai.providers.mid).toEqual(broken.ai.providers.mid);
+		fixed.ai.providers.mid.model = "m-mid";
+		await putDisk(fixed);
+		const reopened = mkStore({ secret: mkSecretStore() });
+		await reopened.load();
+
+		expect(reopened.getInvalidSettings()).toEqual([]);
+		const g = reopened.getGlobals();
+		expect(g.ai.providers.mid?.apiKey).toBe("sk-mid");
+		expect(g.ai.providers.mid?.vision.apiKey).toBe("sk-mid-v");
+		expect(g.ai.providers.first?.apiKey).toBe("sk-first");
+		expect(g.ai.providers.last?.model).toBe("again");
+	});
+
+	// N6:这条是「isolatedSecrets 按路径长度分档」的守卫 —— 只改解析不改袋,别的测试照样全绿。
+	it("一家坏着,在面板删掉另一家好的:被删那家的袋键没了,坏家的还在", async () => {
+		const secret = mkSecretStore();
+		await breakMid(await seedThree(secret));
+		const store = mkStore({ secret });
+		await store.load();
+
+		await store.patchSettings({ core: { ai: { providers: { last: null } } } as never });
+
+		expect(Object.keys(store.getGlobals().ai.providers)).toEqual(["first"]);
+		const { last: _gone, ...rest } = THREE_BAG;
+		expect((await secret.load()).aiApiKeys).toEqual(rest);
+		expect(paths(store)).toEqual([MID_PATH]);
+	});
+
+	// N7
+	it("一家坏着,写别的格、保存别家:不通知,条目表不变", async () => {
+		const secret = mkSecretStore();
+		await breakMid(await seedThree(secret));
+		const onInvalid = vi.fn();
+		const store = mkStore({ secret, onInvalid });
+		await store.load();
+		onInvalid.mockClear();
+		const before = store.getInvalidSettings();
+
+		await store.patchGlobals({ mutedUntil: 1 });
+		await store.patchGlobals({ ai: { providers: { last: { model: "x" } } } });
+
+		expect(onInvalid).not.toHaveBeenCalled();
+		expect(store.getInvalidSettings()).toEqual(before);
+	});
+
+	// N8
+	it("一家坏着、core.json 写不动:盘、内存、条目表、袋都不变,通知不叫", async () => {
+		const secret = mkSecretStore();
+		const seeded = await seedThree(secret);
+		await breakMid(seeded);
+		const onInvalid = vi.fn();
+		const store = mkStore({ secret, onInvalid });
+		await store.load();
+		onInvalid.mockClear();
+		const memBefore = store.getGlobals();
+		const entriesBefore = store.getInvalidSettings();
+		const bagBefore = await secret.load();
+
+		await rm(corePath);
+		await mkdir(corePath);
+
+		await expect(
+			store.patchGlobals({ ai: { providers: { last: { model: "x" } } } }),
+		).rejects.toThrow();
+
+		expect(store.getGlobals()).toEqual(memBefore);
+		expect(store.getInvalidSettings()).toEqual(entriesBefore);
+		expect(await secret.load()).toEqual(bagBefore);
+		expect(onInvalid).not.toHaveBeenCalled();
+	});
+
+	// N10:恢复备份以给的这份为准,本机坏的那一家的原文与袋键一起没了(已定)。
+	it("一家坏着时恢复备份:条目清空、盘上是备份那份、坏家的袋键没了", async () => {
+		const secret = mkSecretStore();
+		await breakMid(await seedThree(secret));
+		const store = mkStore({ secret });
+		await store.load();
+
+		const restored = structuredClone(store.getGlobals());
+		(restored as unknown as Json).ai.providers.last.model = "from-backup";
+		await store.replaceSections({ globals: restored });
+
+		expect(store.getInvalidSettings()).toEqual([]);
+		const onDisk = await readDisk();
+		expect(Object.keys(onDisk.ai.providers)).toEqual(["first", "last"]);
+		expect(onDisk.ai.providers.last.model).toBe("from-backup");
+		const { mid: _m, "mid:vision": _mv, ...rest } = THREE_BAG;
+		expect((await secret.load()).aiApiKeys).toEqual(rest);
+	});
+
+	// N11:面板新加一家,id 撞上坏着的那一家 → 这次保存拒收,写任何东西之前。
+	describe("新加的一家 id 撞上坏着的那一家", () => {
+		async function setup() {
+			const secret = mkSecretStore();
+			await breakMid(await seedThree(secret));
+			const onInvalid = vi.fn();
+			const store = mkStore({ secret, onInvalid, integrations: [pokeSegment] });
+			await store.load();
+			onInvalid.mockClear();
+			return { secret, store, onInvalid };
+		}
+
+		it("patchSettings:抛 ConfigValidationError,路径挂在这一家上;盘、内存、袋、条目表都没变,同一发里的集成文件没被碰", async () => {
+			const { secret, store, onInvalid } = await setup();
+			const diskBefore = await readFile(corePath, "utf8");
+			const pokeBefore = await stat(pokeFile());
+			const memBefore = store.getGlobals();
+			const entriesBefore = store.getInvalidSettings();
+			const bagBefore = await secret.load();
+
+			const err = await store
+				.patchSettings({
+					core: { ai: { providers: { mid: { provider: "deepseek" } } } } as never,
+					integrations: { poke: { label: "changed" } },
+				})
+				.catch((e: unknown) => e);
+
+			expect(err).toBeInstanceOf(ConfigValidationError);
+			const e = err as ConfigValidationError;
+			expect(e.code).toBe("invalid");
+			expect(e.issues.map((i) => i.path)).toEqual([MID_PATH]);
+			expect(e.issues[0]?.message).toContain("mid");
+			expect(await readFile(corePath, "utf8")).toBe(diskBefore);
+			expect(store.getGlobals()).toEqual(memBefore);
+			expect(store.getInvalidSettings()).toEqual(entriesBefore);
+			expect(await secret.load()).toEqual(bagBefore);
+			expect(onInvalid).not.toHaveBeenCalled();
+			// 集成的文件连「写了又退回」都没有:同一个 inode、同一个修改时间。
+			const pokeAfter = await stat(pokeFile());
+			expect(pokeAfter.ino).toBe(pokeBefore.ino);
+			expect(pokeAfter.mtimeMs).toBe(pokeBefore.mtimeMs);
+			expect(JSON.parse(await readFile(pokeFile(), "utf8")).label).toBe("hello");
+		});
+
+		it("updateGlobals 与 setGlobals 同样拒收,什么都没写", async () => {
+			const { secret, store } = await setup();
+			const diskBefore = await readFile(corePath, "utf8");
+			const bagBefore = await secret.load();
+			const withMid = (g: GlobalConfig): GlobalConfig => {
+				const next = structuredClone(g) as unknown as Json;
+				next.ai.providers.mid = { provider: "deepseek" };
+				return next as unknown as GlobalConfig;
+			};
+
+			await expect(store.updateGlobals((g) => withMid(g))).rejects.toBeInstanceOf(
+				ConfigValidationError,
+			);
+			await expect(store.setGlobals(withMid(store.getGlobals()))).rejects.toBeInstanceOf(
+				ConfigValidationError,
+			);
+
+			expect(await readFile(corePath, "utf8")).toBe(diskBefore);
+			expect(await secret.load()).toEqual(bagBefore);
+			expect(paths(store)).toEqual([MID_PATH]);
+		});
+
+		it("id 不同的新一家照常存进去,坏的那一家原文仍在", async () => {
+			const { store } = await setup();
+			await store.patchGlobals({ ai: { providers: { mid2: { provider: "deepseek" } } } });
+			const onDisk = await readDisk();
+			expect(Object.keys(onDisk.ai.providers).sort()).toEqual(["first", "last", "mid", "mid2"]);
+			expect(onDisk.ai.providers.mid.model).toBe(7);
+			expect(paths(store)).toEqual([MID_PATH]);
+		});
+	});
+
+	// 题 2:保存补丁里带 __proto__ 键仍静默丢(zod 在把键交给规则之前就跳过它),这一片不做。这里钉两件事:
+	// deepMerge 遇到补丁自己的 __proto__ 键不会把表的原型换掉,盘上坏的那一家(键叫 __proto__)写别的格后仍在。
+	// N12(仓这一半)
+	it("盘上有一家键叫 __proto__:记成坏格,写别的格后盘上那一家还在、内容不变", async () => {
+		const disk = baseDisk();
+		disk.ai.providers = JSON.parse(
+			'{"good":{"provider":"deepseek","model":"mg"},"__proto__":{"provider":"deepseek","model":"evil"}}',
+		);
+		await putDisk(disk);
+		const store = mkStore();
+		await store.load();
+		expect(paths(store)).toEqual([["ai", "providers", "__proto__"]]);
+		expect(Object.keys(store.getGlobals().ai.providers)).toEqual(["good"]);
+		expect(Object.getPrototypeOf(store.getGlobals().ai.providers)).toBe(Object.prototype);
+
+		await store.patchGlobals({ mutedUntil: 77 });
+		await store.patchGlobals({ ai: { providers: { good: { model: "mg2" } } } });
+
+		const text = await readFile(corePath, "utf8");
+		const onDisk = JSON.parse(text);
+		expect(Object.hasOwn(onDisk.ai.providers, "__proto__")).toBe(true);
+		expect(Object.getOwnPropertyDescriptor(onDisk.ai.providers, "__proto__")?.value).toEqual({
+			provider: "deepseek",
+			model: "evil",
+		});
+		expect(onDisk.ai.providers.good.model).toBe("mg2");
+		expect(Object.getPrototypeOf(store.getGlobals().ai.providers)).toBe(Object.prototype);
+		expect(paths(store)).toEqual([["ai", "providers", "__proto__"]]);
+	});
+
+	it("补丁里带自己的 __proto__ 键:不换掉表的原型,也不触发拒收(那一键静默丢,这一片不处理)", async () => {
+		await putDisk(baseDisk());
+		const store = mkStore();
+		await store.load();
+		const patch = JSON.parse(
+			'{"ai":{"providers":{"__proto__":{"provider":"deepseek","model":"evil"},"ok":{"provider":"deepseek"}}}}',
+		);
+		await store.patchGlobals(patch);
+		const providers = store.getGlobals().ai.providers;
+		expect(Object.getPrototypeOf(providers)).toBe(Object.prototype);
+		expect(Object.keys(providers)).toEqual(["ok"]);
 	});
 });

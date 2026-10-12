@@ -33,6 +33,17 @@ export function settingsInvalidMessage(entries: readonly InvalidSettingEntry[]):
 	);
 }
 
+/**
+ * 面板新加的一家 AI 服务商,id 撞上设置文件里读不懂的那一家:这次保存拒收,逐格原因就是这句话(口吻留给文案那一轮统一调)。
+ * 面板挑 id 时看不见坏着的那一家,所以会撞;这句话是第 4 期之前主人在面板上唯一能看到「有一家读不懂」的地方。
+ */
+export function brokenInstanceIdTakenMessage(id: string): string {
+	return (
+		`这个 id（${id}）被设置文件里读不懂的那一家 AI 服务商占着，所以这次没有保存。` +
+		"请改好 config/settings/core.json 里 ai.providers 下的这一家再重启，或者先在文件里把它删掉。"
+	);
+}
+
 const isAiCell = (entry: InvalidSettingEntry): boolean => entry.path[0] === "ai";
 
 const EDIT_FILE = "请改好 config/settings/core.json 里对应的那一格再重启。";
