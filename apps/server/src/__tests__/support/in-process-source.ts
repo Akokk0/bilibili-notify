@@ -1,0 +1,321 @@
+/**
+ * 守卫 21b(进程内对拍)的假来源与测试用组装。
+ *
+ * 假来源只实现中立的 `Source`(键 `acme.inprocess`,**不是** `bilibili`):核心里每一处按 B 站键分岔的地方因此都走
+ * 另一支,对拍才测得出「核心是不是真的把内置来源当成一等公民」。它照内置那条路登记 —— `compose.ts` 调的是
+ * `engines.registerSource`,这里的包装层调同一个(见 {@link wrapCompose}),所以入口到登记表整条接线都是真的。
+ *
+ * 🔴 **这个文件与它的使用者不许碰 `bilibili/`**:import 只有中立的 `@bilibili-notify/internal`、`zod`、
+ * `integrations/context`,外加两个只取类型的 `compose` / `config/store`。源码里没有 B 站的键常量与那个字面量。
+ * 对拍文件里有一条用例读本文件的 import 钉着这一点。
+ */
+
+import {
+	type AuthState,
+	type Json,
+	ok,
+	type PostEvent,
+	type Result,
+	type SettingsReader,
+	type Source,
+	type SourceAuth,
+	type SourceContext,
+	type SourceDescriptor,
+	type SourceSubscriptionView,
+} from "@bilibili-notify/internal";
+import { z } from "zod";
+import type * as Compose from "../../compose.js";
+import type { IntegrationSettingsSegment } from "../../config/store.js";
+import { createIntegrationContext } from "../../integrations/context.js";
+
+/** 假来源的键:带命名空间的第三方写法,过得了拓展 id 的形状(集成存储只认保留键或合法拓展 id)。 */
+export const IN_PROCESS_KEY = "acme.inprocess";
+/** 描述符的 `label`(`status` 指令的那一行冒号前、锐评的平台列都该取它)。 */
+export const IN_PROCESS_LABEL = "对拍源";
+/** 描述符声明的会员体系里的档(key 不与 B 站撞)。 */
+export const IN_PROCESS_TIER_KEY = "acme-gold";
+
+/** 假来源的设置:两格,`threshold` 有范围,好摆「一格坏」。 */
+export const InProcessSettingsSchema = z.object({
+	mode: z.string().default("normal"),
+	threshold: z.number().int().min(1).max(100).default(10),
+});
+export type InProcessSettings = z.infer<typeof InProcessSettingsSchema>;
+
+/** 登记进配置仓的设置段(`BUILTIN_INTEGRATION_SETTINGS` 后面追加这一段)。 */
+export const inProcessSettingsSegment: IntegrationSettingsSegment<InProcessSettings> = {
+	key: IN_PROCESS_KEY,
+	schema: InProcessSettingsSchema,
+};
+
+/** 设置坏了时假来源自己报的问题 code。 */
+export const SETTINGS_PROBLEM_CODE = "settings_invalid";
+
+export interface InProcessOptions {
+	/** 描述符上的 `postNoun`;不给 = 不声明(对拍里有一行专看缺省叫什么)。 */
+	postNoun?: string;
+}
+
+/** 假来源登录口的内存状态机。 */
+export interface InProcessAuth extends SourceAuth {
+	/** 测试直接把状态摆成某个值并通知订阅者。 */
+	set(state: AuthState, account?: { name: string; avatar?: string }): void;
+}
+
+/** 测试从这里看假来源眼下的样子、驱动它。 */
+export interface InProcessProbe {
+	ctx: SourceContext | undefined;
+	/** 登记进去的那个描述符本身(来源上下文每次交作品都现读它的 `postNoun`,所以测试能就地改)。 */
+	descriptor: SourceDescriptor;
+	starts: number;
+	stops: number;
+	/** `stop()` 被叫的那一刻 `ctx.signal` 中止了没有。 */
+	stopSawAborted: boolean | undefined;
+	rosterAtStart: readonly SourceSubscriptionView[] | undefined;
+	/** 每次「名单可能变了」的回调里现读的名单。 */
+	rosterChanges: Array<readonly SourceSubscriptionView[]>;
+	settings: SettingsReader<InProcessSettings> | undefined;
+	settingsAtStart: Result<{ settings: InProcessSettings }> | undefined;
+	/** 设置的 `onChange` 每次被叫时现读的结果。 */
+	settingsChanges: Array<Result<{ settings: InProcessSettings }>>;
+	/** `start` 里读到的上一趟写下的 state / secrets(第一趟是 undefined)。 */
+	stateAtStart: Json | undefined;
+	secretAtStart: Json | undefined;
+	/** `health()` 回的那句;`health()` 要抛就置 `healthThrows`。 */
+	healthSummary: string;
+	healthThrows: boolean;
+	readonly auth: InProcessAuth;
+}
+
+function createAuth(): InProcessAuth {
+	let state: AuthState = { status: "logged-out" };
+	let account: { name: string; avatar?: string; extra?: string } | null = null;
+	const listeners = new Set<() => void>();
+	const emit = (): void => {
+		for (const fn of [...listeners]) fn();
+	};
+	return {
+		set(next, nextAccount) {
+			state = next;
+			account = nextAccount ? { ...nextAccount, extra: "不该外泄的多带的格" } : null;
+			emit();
+		},
+		async beginLogin() {
+			state = {
+				status: "awaiting-scan",
+				qr: { dataUrl: "data:image/png;base64,AAAA", expiresAt: "2099-01-01T00:00:00.000Z" },
+			};
+			emit();
+			return ok();
+		},
+		async logout() {
+			state = { status: "logged-out" };
+			account = null;
+			emit();
+			return ok();
+		},
+		state: () => state,
+		// 多带一格(`extra`),路由该逐格挑、不外泄。
+		account: () => account as { name: string } | null,
+		onChange(fn) {
+			listeners.add(fn);
+			return {
+				dispose() {
+					listeners.delete(fn);
+				},
+			};
+		},
+	};
+}
+
+/** 造一个假来源和它的探针。来源只做 `Source` 接口上有的事,别的什么都不碰。 */
+export function createInProcessSource(options: InProcessOptions = {}): {
+	source: Source;
+	probe: InProcessProbe;
+} {
+	const descriptor: SourceDescriptor = {
+		label: IN_PROCESS_LABEL,
+		...(options.postNoun === undefined ? {} : { postNoun: options.postNoun }),
+		membershipPrograms: [
+			{
+				id: "acme-club",
+				name: "俱乐部",
+				tiers: [{ key: IN_PROCESS_TIER_KEY, name: "金牌", rank: 1 }],
+			},
+		],
+	};
+	const probe: InProcessProbe = {
+		ctx: undefined,
+		descriptor,
+		starts: 0,
+		stops: 0,
+		stopSawAborted: undefined,
+		rosterAtStart: undefined,
+		rosterChanges: [],
+		settings: undefined,
+		settingsAtStart: undefined,
+		settingsChanges: [],
+		stateAtStart: undefined,
+		secretAtStart: undefined,
+		healthSummary: "一切正常",
+		healthThrows: false,
+		auth: createAuth(),
+	};
+	const source: Source = {
+		descriptor,
+		health() {
+			if (probe.healthThrows) throw new Error("健康检查炸了");
+			return { summary: probe.healthSummary };
+		},
+		auth: probe.auth,
+		async start(ctx) {
+			probe.starts += 1;
+			probe.ctx = ctx;
+			probe.rosterAtStart = ctx.subscriptions();
+			ctx.onSubscriptionsChanged(() => {
+				probe.rosterChanges.push(ctx.subscriptions());
+			});
+
+			// 设置:哪格坏就报一条问题,存对之后清掉("哪格坏停哪样"的最小版)。
+			const reader = ctx.settings(InProcessSettingsSchema);
+			probe.settings = reader;
+			const judge = (): Result<{ settings: InProcessSettings }> => {
+				const read = reader.get();
+				if (read.ok) {
+					ctx.resolveProblem({ code: SETTINGS_PROBLEM_CODE, notify: false });
+				} else {
+					ctx.reportProblem({ code: SETTINGS_PROBLEM_CODE, message: "对拍源的设置读不懂" });
+				}
+				return read;
+			};
+			probe.settingsAtStart = judge();
+			reader.onChange(() => {
+				probe.settingsChanges.push(judge());
+			});
+
+			// state / secrets:第二趟开机能读到第一趟写下的。
+			probe.stateAtStart = ctx.state.get("boots");
+			probe.secretAtStart = ctx.secrets.get("token");
+			const bootNo = typeof probe.stateAtStart === "number" ? probe.stateAtStart + 1 : 1;
+			const wroteState = await ctx.state.set("boots", bootNo);
+			const wroteSecret = await ctx.secrets.set("token", `token-${bootNo}`);
+			if (!wroteState.ok || !wroteSecret.ok) {
+				throw new Error("对拍源写不进自己的存储");
+			}
+		},
+		async stop() {
+			probe.stops += 1;
+			probe.stopSawAborted = probe.ctx?.signal.aborted;
+		},
+	};
+	return { source, probe };
+}
+
+/** 对拍的「世界」:测试在开机前摆好选项,开机后从这里取各趟的探针与宿主那一面。 */
+export const inProcessWorld: {
+	options: InProcessOptions;
+	/** 每趟开机造出来的探针,按开机先后。 */
+	probes: InProcessProbe[];
+	/** 宿主的服务上下文(从 `compose` 的入参上取的),测试用它挂日志钩子。 */
+	serviceCtx: Compose.BuiltinIntegrationsDeps["serviceCtx"] | undefined;
+	/** 总线上看到的 `subscription-auth-changed`。 */
+	authChanges: Array<{ sourceKey: string; state: AuthState }>;
+	/** 总线上看到的 `post-detected`(核心作品入口对每条订阅发的那一份)。 */
+	postDetected: PostEvent[];
+	/** 总线上看到的 `problems-changed`(报的人)。 */
+	problemsChanged: string[];
+} = {
+	options: {},
+	probes: [],
+	serviceCtx: undefined,
+	authChanges: [],
+	postDetected: [],
+	problemsChanged: [],
+};
+
+/** 每个用例组开头清一次。 */
+export function resetInProcessWorld(options: InProcessOptions = {}): void {
+	inProcessWorld.options = options;
+	inProcessWorld.probes = [];
+	inProcessWorld.serviceCtx = undefined;
+	inProcessWorld.authChanges = [];
+	inProcessWorld.postDetected = [];
+	inProcessWorld.problemsChanged = [];
+}
+
+/** 当前(最近一趟开机)的探针;还没开机就抛。 */
+export function currentProbe(): InProcessProbe {
+	const probe = inProcessWorld.probes.at(-1);
+	if (!probe) throw new Error("假来源还没登记(服务端没开机?)");
+	return probe;
+}
+
+/**
+ * 包 `compose.ts`(`vi.mock("../compose.js", …)` 的实现体):真模块照常跑(真 B 站来源并排登记),
+ * 之外加两样 —— 设置段后面追加假来源的一段;`registerSources` 里真的登记完之后,对假来源调**同一个**
+ * `engines.registerSource`。
+ *
+ * 测试用组装要自己做三件事(内置来源的那几件在 `compose.ts` / 登录装配里,这里照做):
+ * 1. 设置段(上面);
+ * 2. 集成上下文:`integrationStore.open(键)` + `createIntegrationContext`(存储是异步开的,所以在 `registerSources` 里);
+ * 3. 关停次序:上下文的收尾钩子在**这里**(早于 `createEngines`)登记 —— 关停钩子后登记的先跑,所以引擎先停来源,
+ *    钩子后收上下文;钩子登记晚了,上下文会先于来源的 `stop()` 被中止。
+ */
+export function wrapCompose(real: typeof Compose): typeof Compose {
+	return {
+		...real,
+		BUILTIN_INTEGRATION_SETTINGS: [...real.BUILTIN_INTEGRATION_SETTINGS, inProcessSettingsSegment],
+		composeBuiltinIntegrations(deps) {
+			const builtins = real.composeBuiltinIntegrations(deps);
+			inProcessWorld.serviceCtx = deps.serviceCtx;
+			deps.bus.on("subscription-auth-changed", (changed) => {
+				inProcessWorld.authChanges.push(changed);
+			});
+			deps.bus.on("post-detected", (event) => {
+				inProcessWorld.postDetected.push(event);
+			});
+			deps.bus.on("problems-changed", ({ reporter }) => {
+				inProcessWorld.problemsChanged.push(reporter);
+			});
+			const logger = deps.serviceCtx.forSubsystem(IN_PROCESS_KEY, IN_PROCESS_KEY).logger;
+			let opened:
+				| {
+						integration: ReturnType<typeof createIntegrationContext>;
+						store: { close(): void };
+				  }
+				| undefined;
+			deps.serviceCtx.onDispose(async () => {
+				if (!opened) return;
+				const { integration, store } = opened;
+				opened = undefined;
+				try {
+					await integration.dispose();
+				} finally {
+					store.close();
+				}
+			}, "stop");
+			return {
+				...builtins,
+				async registerSources(engines) {
+					await builtins.registerSources(engines);
+					const store = await deps.integrationStore.open(IN_PROCESS_KEY);
+					const integration = createIntegrationContext({
+						logger,
+						stopReason: "BN 关停",
+						state: store.state,
+						secrets: store.secrets,
+					});
+					opened = { integration, store };
+					const made = createInProcessSource(inProcessWorld.options);
+					inProcessWorld.probes.push(made.probe);
+					await engines.registerSource({
+						sourceKey: IN_PROCESS_KEY,
+						source: made.source,
+						integration: integration.ctx,
+						logger,
+					});
+				},
+			};
+		},
+	};
+}
