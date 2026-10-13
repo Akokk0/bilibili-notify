@@ -11,15 +11,12 @@
  */
 
 import type { CommentaryCallOverride } from "@bilibili-notify/ai";
-import type {
-	ExtraKey,
-	MembershipTemplateBundle,
-	PushMessageRole,
-} from "@bilibili-notify/internal";
+import type { ExtraKey, MembershipTemplateBundle } from "@bilibili-notify/internal";
 import type { LiveWorkSettings } from "../../live/live-settings";
 import type {
 	CustomSpecialDanmakuUsersLike,
 	CustomSpecialUsersEnterTheRoomLike,
+	LivePushAnchor,
 	LivePushFeature,
 	LivePushType,
 } from "../../live/live-types";
@@ -140,24 +137,8 @@ export type LiveSubscriptionOp =
 	| { kind: "delete"; uid: string }
 	| { kind: "update"; uid: string; changes: LiveSubChange[] };
 
-/**
- * 一次直播推送里的一个锚点 —— 推送层 `PushAnchor` 在引擎这一侧的样子:本体(开播 / 下播卡、
- * 上舰、醒目留言……),或一个附加项(下播的词云、AI 总结)。锚点按先后发。
- *
- * 内容的类型有意是 `unknown`:它是宿主 `contentBuilder` 造出来的东西,引擎只原样递回去。
- */
-export interface LivePushAnchor {
-	/** 本体(`main`)还是附加项(`extra`)。 */
-	role: PushMessageRole;
-	/** 附加项的键:给了按那张三态表筛目标(词云、总结各一把)。只对 `extra` 有意义。 */
-	extra?: ExtraKey;
-	/**
-	 * 这个锚点的消息,只收一串:一条消息就是单元素,几条是分条序列(同一目标顺序发、一条失败
-	 * 中止该目标这个锚点里的后续条)。也可以是一个「等会儿给」的约定(词云、总结还在做);
-	 * 最后为空就跳过,做的时候出错由推送层记一条警告并跳过。
-	 */
-	messages: unknown[] | Promise<unknown[] | undefined>;
-}
+/** 锚点的定义搬去了核心的 `live/live-types.ts`(中立的);这里转出,出口名不变。 */
+export type { LivePushAnchor };
 
 /**
  * 一次直播推送,整个交给宿主:本体加它的附加项是同一次(历史落同一行)。`type` 定特性键、

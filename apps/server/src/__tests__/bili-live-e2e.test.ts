@@ -237,7 +237,7 @@ describe("下播", () => {
 		expect(w.cards.map((card) => (card.input as { status: string }).status)).toEqual(["start"]);
 	});
 
-	// 验红:`recapAnchors` 里把 `if (wantSummary) {` 改成 `if (false) {` → 这条红。
+	// 验红:`live/recap/recap-anchors.ts` 里把 `if (extras.liveSummary) {` 改成 `if (false) {` → 这条红。
 	it("直播总结开着、没接 AI:下播那条之后再跟一条按模板写的总结(够 5 位发言人才有)", async () => {
 		const w = await boot({ features: ["liveEnd"], extras: ["liveSummary"], renderer: false });
 		await startLive(w);

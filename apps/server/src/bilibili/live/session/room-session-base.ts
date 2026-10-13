@@ -7,7 +7,7 @@ import {
 import { DateTime } from "luxon";
 import { liveEndGraceMinutes, rotateLiveCover } from "../../../live/live-settings";
 import { type CustomCardStyleLike, LivePushType } from "../../../live/live-types";
-import { parseStopWords } from "../../../live/recap/stop-words";
+import { recapAnchors } from "../../../live/recap/recap-anchors";
 import type { LiveRoomResponse } from "../../api/index.js";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { liveTimeToIso } from "../live-card-input";
@@ -848,60 +848,44 @@ export abstract class RoomSessionBase {
 	 * 哪个子项关着就没有它的锚点,两个都关着就不取快照、不算词云、不问 AI。
 	 */
 	protected recapAnchors(customLiveSummary: string): LivePushAnchor[] {
-		const wantWordcloud = this.sub.extras.wordcloud;
-		const wantSummary = this.sub.extras.liveSummary;
-		if (!wantWordcloud && !wantSummary) return [];
-
-		this.ctx.logger.debug(
-			`[wordcloud] 开始制作下播总结 wordcloud=${wantWordcloud} summary=${wantSummary}`,
+		// 头像只有词云用:没开词云就不去读。
+		const masterAvatar = this.sub.extras.wordcloud
+			? this.ctx.avatarOf(this.sub.subscriptionId)
+			: undefined;
+		const anchors = recapAnchors(
+			{
+				subscriptionId: this.sub.subscriptionId,
+				extras: {
+					wordcloud: this.sub.extras.wordcloud,
+					liveSummary: this.sub.extras.liveSummary,
+				},
+				wordcloudStopWords: this.sub.wordcloudStopWords,
+				summaryTemplate: customLiveSummary,
+				// per-UP persona/prompt 覆盖;adapter 未填则交由 CommentaryGenerator 用全局 config。
+				aiOverride: this.sub.aiOverride,
+				// 主播头像:订阅资料里的图库引用,这一刻现读(直播间接口给的是远端地址,不往出图器送)。
+				creator: {
+					name: this.masterInfo?.username ?? "",
+					...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
+				},
+				fanClubName: this.masterInfo?.medalName ?? "",
+				cardSkin: this.sub.cardSkin,
+				cardSkinKnobs: this.sub.cardSkinKnobs,
+			},
+			{
+				collector: this.ctx.danmakuCollector,
+				wordcloud: this.ctx.wordcloudGenerator,
+				summary: this.ctx.liveSummaryRequester,
+				content: this.ctx.contentBuilder,
+				logger: this.ctx.logger,
+			},
 		);
-		const snapshot = this.ctx.danmakuCollector.snapshot(this.sub.subscriptionId);
-
-		// per-UP 额外停用词:记词时按 bundled + 全局过滤,这里对该 UP 解析后的覆盖词再
-		// 过滤一遍 sortedWords,使 per-UP 停用词在该 UP 的词云 / 总结热词上额外生效。
-		const extra = parseStopWords(this.sub.wordcloudStopWords);
-		const sortedWords = extra.length
-			? snapshot.sortedWords.filter(([word]) => !extra.includes(word))
-			: snapshot.sortedWords;
-
-		// 做好之后引擎已经被拆了,或者什么都没做出来:给 undefined,那个锚点就跳过。
-		const anchors: LivePushAnchor[] = [];
-		if (wantWordcloud) {
-			anchors.push({
-				role: "extra",
-				extra: "wordcloud",
-				messages: (async () => {
-					const img = await this.ctx.wordcloudGenerator.generate(
-						sortedWords,
-						this.masterInfo?.username ?? "",
-						// 主播头像:订阅资料里的图库引用,这一刻现读(直播间接口给的是远端地址,不往出图器送)。
-						this.ctx.avatarOf(this.sub.subscriptionId),
-						this.sub.cardSkin,
-						this.sub.cardSkinKnobs,
-					);
-					if (!img || this.ctx.isDisposed()) return undefined;
-					return [this.ctx.contentBuilder.image(img, "image/jpeg")];
-				})(),
-			});
-		}
-		if (wantSummary) {
-			anchors.push({
-				role: "extra",
-				extra: "liveSummary",
-				messages: (async () => {
-					const summary = await this.ctx.liveSummaryRequester.generate({
-						senderRecord: snapshot.senderRecord,
-						sortedWords,
-						fanClubName: this.masterInfo?.medalName ?? "",
-						customLiveSummary,
-						// per-UP persona/prompt 覆盖;adapter 未填则交由 CommentaryGenerator 用全局 config。
-						aiOverride: this.sub.aiOverride,
-					});
-					if (!summary || this.ctx.isDisposed()) return undefined;
-					return [this.ctx.contentBuilder.text(summary)];
-				})(),
-			});
-		}
-		return anchors;
+		// 做好之后发现引擎已经被拆了:给 undefined,那个锚点就跳过。
+		return anchors.map((anchor) => ({
+			...anchor,
+			messages: Promise.resolve(anchor.messages).then((messages) =>
+				this.ctx.isDisposed() ? undefined : messages,
+			),
+		}));
 	}
 }

@@ -240,7 +240,7 @@ describe("recapAnchors — per-UP 弹幕词云停用词过滤", () => {
 	});
 
 	// 词云卡也吃这位 UP 那份旋钮(不分卡种,ADR-0014 决策 17 的 🔗)。
-	// 验红:把 room-session-base.ts 里递给词云生成器的第五参删掉,这条红。
+	// 验红:把 room-session-base.ts 里交给 recapAnchors 的 `cardSkinKnobs` 删掉(或 live/recap/recap-anchors.ts 里递给词云生成器的第五参),这条红。
 	it("per-UP 旋钮覆盖递给词云生成器(第五参)", async () => {
 		const { ctx } = makeCtx({
 			wantWordcloud: true,
