@@ -6,9 +6,10 @@ import {
 	membershipTemplateOf,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
-import { passesMembershipMinRank, passesSuperchatMinAmount } from "../../../live/interaction-gates";
+import { passesMembershipMinRank } from "../../../live/interaction-gates";
 import { LivePushType } from "../../../live/live-types";
 import { pushSpecialDanmaku, pushSpecialUserEnter } from "../../../live/special-users";
+import { pushSuperchat } from "../../../live/superchat";
 import { fetchAvatar } from "../../images";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { membershipEventFromLiveEvent } from "../membership-event";
@@ -561,65 +562,52 @@ export class RoomSession extends RoomSessionBase {
 		}
 		if (!pushesSC) return;
 		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);
-		// minSuperchatAmount 已由 adapter 折算好(per-UP ?? 全局)。
-		if (!passesSuperchatMinAmount(event, this.sub.minSuperchatAmount)) return;
 		const masterName = this.masterInfo?.username ?? "";
-		if (this.ctx.imageRenderer?.generateSuperchatCard) {
-			try {
-				const scStyle = this.resolvedCardStyle("superchat");
-				// 头像在**确定要出卡**之后才抓:观众的取自帧里自带的地址,主播的是订阅资料里已有的引用(零网络)。
-				const viewerAvatar = ev.user.avatarUrl
-					? await fetchAvatar(ev.user.avatarUrl, {
-							images: this.ctx.imageFetcher,
-							logger: this.ctx.logger,
-						})
-					: undefined;
-				const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
-				const buf = await this.ctx.imageRenderer.generateSuperchatCard(
-					{
-						viewer: {
-							name: event.viewer.name,
-							...(viewerAvatar === undefined ? {} : { avatar: viewerAvatar }),
-						},
-						creator: {
-							name: masterName,
-							...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
-						},
-						text: event.text,
-						amount: event.amount,
-						currency: event.currency,
-						tier: event.tier,
-					},
-					{ ...(scStyle.enable ? scStyle : undefined), ...this.skinChoice() },
-				);
-				if (this.ctx.isDisposed()) return;
-				await this.enqueuePush(() =>
-					this.ctx.push.push({
-						uid: this.sub.uid,
-						type: LivePushType.Superchat,
-						anchors: [
-							{ role: "main", messages: [this.ctx.contentBuilder.image(buf, "image/jpeg")] },
-						],
-					}),
-				);
-				return;
-			} catch (e) {
-				this.ctx.logger.error(`[sc] 生成SC图片失败：${(e as Error).message}`);
-			}
-		}
-		const fallback = `【${masterName}的直播间】${event.viewer.name}的SC:${event.text}（${event.amount}元）`;
-		if (this.ctx.isDisposed()) return;
-		await this.enqueuePush(() =>
-			this.ctx.push.push({
-				uid: this.sub.uid,
-				type: LivePushType.Superchat,
-				anchors: [
-					{
-						role: "main",
-						messages: [this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(fallback)])],
-					},
-				],
-			}),
+		const renderer = this.ctx.imageRenderer;
+		const masterAvatar = this.ctx.avatarOf(this.sub.subscriptionId);
+		// 发送绑到这条订阅上:引擎拆了不再推;图 / 文字各包成一条消息,过串行闸推出去。
+		const pushMain = async (message: unknown): Promise<void> => {
+			if (this.ctx.isDisposed()) return;
+			await this.enqueuePush(() =>
+				this.ctx.push.push({
+					uid: this.sub.uid,
+					type: LivePushType.Superchat,
+					anchors: [{ role: "main", messages: [message] }],
+				}),
+			);
+		};
+		await pushSuperchat(
+			{
+				event,
+				// minSuperchatAmount 已由 adapter 折算好(per-UP ?? 全局)。
+				minAmount: this.sub.minSuperchatAmount,
+				// 主播头像是订阅资料里已有的引用(零网络)。
+				creator: {
+					name: masterName,
+					...(masterAvatar === undefined ? {} : { avatar: masterAvatar }),
+				},
+				cardStyle: this.resolvedCardStyle("superchat"),
+				...this.skinChoice(),
+				fallbackText: `【${masterName}的直播间】${event.viewer.name}的SC:${event.text}（${event.amount}元）`,
+			},
+			{
+				renderer: renderer?.generateSuperchatCard ? renderer : null,
+				// 观众头像取自帧里自带的地址,抓不到只是没有头像。
+				fetchViewerAvatar: async () =>
+					ev.user.avatarUrl
+						? await fetchAvatar(ev.user.avatarUrl, {
+								images: this.ctx.imageFetcher,
+								logger: this.ctx.logger,
+							})
+						: undefined,
+				send: (segment) =>
+					pushMain(
+						segment.kind === "image"
+							? this.ctx.contentBuilder.image(segment.buffer, segment.mime)
+							: this.ctx.contentBuilder.message([this.ctx.contentBuilder.text(segment.text)]),
+					),
+				logger: this.ctx.logger,
+			},
 		);
 	}
 
