@@ -184,7 +184,7 @@ function makeLiveSession(
 		templateRenderer: {},
 		wordcloudGenerator: {},
 		liveSummaryRequester: {},
-		danmakuCollector: { registerRoom() {}, clear() {}, clearAll() {} },
+		danmakuCollector: { register() {}, clear() {}, clearAll() {} },
 		getImageRenderer: () => null,
 		config: {},
 		emitEngineError: (message: string) =>

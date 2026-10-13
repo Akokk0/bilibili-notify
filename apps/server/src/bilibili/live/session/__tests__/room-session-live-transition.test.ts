@@ -30,6 +30,7 @@ type AnySession = any;
 
 function makeSub(over: Partial<SubItemView> = {}): SubItemView {
 	return {
+		subscriptionId: "sub-1",
 		uid: "u1",
 		uname: "U1",
 		roomId: "r1",
@@ -100,7 +101,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		emitEngineError: vi.fn(),
 		sendLiveNotifyCard: vi.fn(async () => {}),
 		clear: vi.fn(),
-		registerRoom: vi.fn(),
+		register: vi.fn(),
 		closeListener: vi.fn(),
 		stopMonitoring: vi.fn(),
 		problems: makeLiveProblems(),
@@ -125,7 +126,7 @@ function makeCtx(over: Partial<Record<string, unknown>> = {}) {
 		config: {},
 		livePushTimerManager: new Map<string, () => void>(),
 		logSideEffectState: () => {},
-		danmakuCollector: { clear: mocks.clear, registerRoom: mocks.registerRoom },
+		danmakuCollector: { clear: mocks.clear, register: mocks.register },
 		push: { push: async () => {} },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",
@@ -204,7 +205,7 @@ describe("bootstrap() 期间到达的下播事件", () => {
 		const session = new RoomSession(ctx, makeSub()) as AnySession;
 		await session.bootstrap();
 
-		expect(mocks.clear).toHaveBeenCalledWith("r1");
+		expect(mocks.clear).toHaveBeenCalledWith("sub-1");
 	});
 
 	it("期间真开播不能被去重吞掉 —— 否则换来一个反向的永久卡死", async () => {
@@ -304,7 +305,7 @@ describe("onLiveStart 准备期间到达的下播事件", () => {
 		await dispatch(handler({ kind: "live-start" }));
 
 		expect(session.isLive).toBe(false);
-		expect(mocks.clear).toHaveBeenCalledWith("r1");
+		expect(mocks.clear).toHaveBeenCalledWith("sub-1");
 	});
 
 	it("没有 END 时照常开播并推卡", async () => {
@@ -380,7 +381,7 @@ describe("退避耗尽彻底放弃监听", () => {
 
 		expect(session.isLive).toBe(false);
 		expect(mocks.sendLiveNotifyCard).toHaveBeenCalled();
-		expect(mocks.clear).toHaveBeenCalledWith("r1");
+		expect(mocks.clear).toHaveBeenCalledWith("sub-1");
 	});
 
 	it("下播流水线自己炸了也要收口成下播 —— 这是最后一道收尾,不能再抛", async () => {

@@ -77,7 +77,7 @@ function makeCtx() {
 		logger: serviceCtx.logger,
 		isDisposed: () => false,
 		config: { customLiveMsg: { enable: false }, liveSummaryDefault: "默认总结" },
-		danmakuCollector: { clear, registerRoom: vi.fn(), snapshot },
+		danmakuCollector: { clear, register: vi.fn(), snapshot },
 		templateRenderer: { renderLiveEnd: () => "下播了" },
 		contentBuilder: {
 			text: (t: string) => ({ kind: "text", text: t }),

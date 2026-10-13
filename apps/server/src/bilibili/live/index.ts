@@ -2,6 +2,17 @@
 // 别再各翻一遍。
 
 export type { CustomLiveMsgLike } from "../../live/live-types";
+export { DanmakuCollector } from "../../live/recap/danmaku-collector";
+export {
+	LIVE_SUMMARY_MIN_SENDERS,
+	LiveSummaryRequester,
+} from "../../live/recap/live-summary-requester";
+export { default as defaultStopWords } from "../../live/recap/stop-words";
+export {
+	WORDCLOUD_MIN_WORDS,
+	WORDCLOUD_TOP_WORDS,
+	WordcloudGenerator,
+} from "../../live/recap/wordcloud-generator";
 export { type LiveRoomFields, liveCardInputFromRoomInfo } from "./live-card-input";
 // B 站上舰 / 醒目留言事件 → 中立的会员事件与醒目留言事件(㉓b)。
 export { membershipEventFromLiveEvent } from "./membership-event";
@@ -21,17 +32,6 @@ export {
 	type TargetScopedChange,
 	wantsLiveEndExtras,
 } from "./push-like";
-export { DanmakuCollector } from "./recap/danmaku-collector";
-export {
-	LIVE_SUMMARY_MIN_SENDERS,
-	LiveSummaryRequester,
-} from "./recap/live-summary-requester";
-export { default as defaultStopWords } from "./recap/stop-words";
-export {
-	WORDCLOUD_MIN_WORDS,
-	WORDCLOUD_TOP_WORDS,
-	WordcloudGenerator,
-} from "./recap/wordcloud-generator";
 export {
 	ListenerManager,
 	type ListenerManagerOptions,

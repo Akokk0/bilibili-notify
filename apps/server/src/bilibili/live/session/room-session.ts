@@ -514,7 +514,11 @@ export class RoomSession extends RoomSessionBase {
 
 	private onIncomeDanmaku(body: { content: string; user: { name: string; uid: number } }): void {
 		if (this.ctx.collectsDanmaku(this.sub)) {
-			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, body.content, body.user.name);
+			this.ctx.danmakuCollector.recordDanmaku(
+				this.sub.subscriptionId,
+				body.content,
+				body.user.name,
+			);
 		}
 		// 不按目标挡:没配目标的推送由推送层记成「无目标」,面板上才看得见。
 		pushSpecialDanmaku(
@@ -552,7 +556,7 @@ export class RoomSession extends RoomSessionBase {
 		const pushesSC = this.ctx.isSubscribed(this.sub, "superchat");
 		if (!collectsDanmaku && !pushesSC) return;
 		if (collectsDanmaku) {
-			this.ctx.danmakuCollector.recordDanmaku(this.sub.roomId, ev.content, ev.user.name);
+			this.ctx.danmakuCollector.recordDanmaku(this.sub.subscriptionId, ev.content, ev.user.name);
 		}
 		if (!pushesSC) return;
 		const event = superchatEventFromLiveEvent(ev, this.sub.subscriptionId);

@@ -3,14 +3,14 @@ import type { ImageRenderer } from "@bilibili-notify/image";
 import type { ImageRef, Logger, ServiceContext } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { PickLiveCover } from "../../../live/live-types";
+import { DanmakuCollector } from "../../../live/recap/danmaku-collector";
+import { LiveSummaryRequester } from "../../../live/recap/live-summary-requester";
+import definedStopWords, { parseStopWords } from "../../../live/recap/stop-words";
+import { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
 import type { GuardIcons } from "../guard-icons.js";
 import type { LiveSubscriptionOp, PushLike, SubItemView, SubscriptionsView } from "../push-like";
-import { DanmakuCollector } from "../recap/danmaku-collector";
-import { LiveSummaryRequester } from "../recap/live-summary-requester";
-import definedStopWords, { parseStopWords } from "../recap/stop-words";
-import { WordcloudGenerator } from "../recap/wordcloud-generator";
 import { LiveTemplateRenderer } from "../template-renderer";
 import { ListenerManager, type ListenerManagerConfig } from "./listener-manager";
 import type { LiveProblems } from "./room-context";
@@ -145,7 +145,6 @@ export class LiveEngine {
 			commentary: opts.commentary ?? null,
 			isAiEnabled: () => this.config.aiEnabled !== false,
 			isWebSearchEnabled: () => this.config.aiWebSearch === true,
-			templateRenderer,
 			logger: this.logger,
 		});
 		const liveSummaryRequester = this.liveSummaryRequester;

@@ -27,9 +27,6 @@ function makeRequester(over: { webSearch?: boolean } = {}) {
 		>[0]["commentary"],
 		isAiEnabled: () => true,
 		...(over.webSearch !== undefined ? { isWebSearchEnabled: () => over.webSearch === true } : {}),
-		templateRenderer: { render: vi.fn() } as unknown as ConstructorParameters<
-			typeof LiveSummaryRequester
-		>[0]["templateRenderer"],
 		logger: { info() {}, warn() {}, error() {}, debug() {} },
 	});
 	return { requester, comment };
@@ -38,7 +35,7 @@ function makeRequester(over: { webSearch?: boolean } = {}) {
 const PARAMS = {
 	senderRecord: SENDERS,
 	sortedWords: [["晚安", 3]] as Array<[string, number]>,
-	master: undefined,
+	fanClubName: "",
 	customLiveSummary: "",
 };
 

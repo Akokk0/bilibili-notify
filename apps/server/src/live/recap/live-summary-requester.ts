@@ -1,7 +1,7 @@
 import type { CommentaryCallOverride, CommentaryProvider } from "@bilibili-notify/ai";
 import type { Logger } from "@bilibili-notify/internal";
-import type { LiveTemplateRenderer } from "../template-renderer";
-import type { MasterInfo } from "../types";
+import { errorMessageOf } from "../../util/error-message";
+import { renderLiveSummary } from "../live-text";
 
 /**
  * Threshold below which the engine refuses to generate a live summary.
@@ -27,7 +27,6 @@ export class LiveSummaryRequester {
 	private commentary: CommentaryProvider | null;
 	private readonly isAiEnabled: () => boolean;
 	private readonly isWebSearchEnabled: () => boolean;
-	private readonly templateRenderer: LiveTemplateRenderer;
 	private readonly logger: Logger;
 
 	constructor(opts: {
@@ -45,13 +44,11 @@ export class LiveSummaryRequester {
 		 * 搜索按次付费,方向要紧:漏接的 adapter 拿到的是不烧钱的那侧。
 		 */
 		isWebSearchEnabled?: () => boolean;
-		templateRenderer: LiveTemplateRenderer;
 		logger: Logger;
 	}) {
 		this.commentary = opts.commentary;
 		this.isAiEnabled = opts.isAiEnabled ?? (() => true);
 		this.isWebSearchEnabled = opts.isWebSearchEnabled ?? (() => false);
-		this.templateRenderer = opts.templateRenderer;
 		this.logger = opts.logger;
 	}
 
@@ -63,7 +60,8 @@ export class LiveSummaryRequester {
 	async generate(params: {
 		senderRecord: Record<string, number>;
 		sortedWords: Array<[string, number]>;
-		master: MasterInfo | undefined;
+		/** 粉丝团的名字;拿不到给空串。 */
+		fanClubName: string;
 		customLiveSummary: string;
 		/**
 		 * per-UP AI 覆盖。adapter 在 SubItemView.aiOverride 上注入,room-session 在调
@@ -72,7 +70,7 @@ export class LiveSummaryRequester {
 		 */
 		aiOverride?: CommentaryCallOverride;
 	}): Promise<string | undefined> {
-		const { senderRecord, sortedWords, master, customLiveSummary, aiOverride } = params;
+		const { senderRecord, sortedWords, fanClubName, customLiveSummary, aiOverride } = params;
 		const senderCount = Object.keys(senderRecord).length;
 		if (senderCount < LIVE_SUMMARY_MIN_SENDERS) {
 			this.logger.debug(`[summary] 发言人数不足${LIVE_SUMMARY_MIN_SENDERS}位，放弃生成直播总结`);
@@ -90,7 +88,7 @@ export class LiveSummaryRequester {
 				const prompt = [
 					"请生成直播总结",
 					`弹幕发言人数：${senderCount}`,
-					`粉丝牌名：${master?.medalName ?? ""}`,
+					`粉丝牌名：${fanClubName}`,
 					`弹幕总数：${danmakuCount}`,
 					`热词TOP10：${top10Words.join("、")}`,
 					`弹幕排行TOP5：${top5Senders.map(([u, c]) => `${u}(${c}条)`).join("、")}`,
@@ -103,14 +101,14 @@ export class LiveSummaryRequester {
 				this.logger.debug(`[summary] AI 直播总结生成完毕，长度=${aiResult.length}`);
 				return aiResult;
 			} catch (e) {
-				this.logger.error(`[summary] AI 直播总结生成失败：${(e as Error).message}，回退到模板`);
+				this.logger.error(`[summary] AI 直播总结生成失败：${errorMessageOf(e)}，回退到模板`);
 			}
 		}
 
-		return this.templateRenderer.renderLiveSummary({
+		return renderLiveSummary({
 			template: customLiveSummary,
 			senderCount,
-			master,
+			fanClubName,
 			danmakuCount,
 			topSenders: top5Senders,
 		});

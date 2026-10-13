@@ -106,7 +106,7 @@ function makeCtx(problems: Problems) {
 		config: {},
 		livePushTimerManager: new Map<string, () => void>(),
 		logSideEffectState: () => {},
-		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
+		danmakuCollector: { clear: () => {}, register: () => {} },
 		push: { push: async () => {} },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",

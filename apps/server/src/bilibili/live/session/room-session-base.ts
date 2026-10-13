@@ -7,12 +7,12 @@ import {
 import { DateTime } from "luxon";
 import { liveEndGraceMinutes, rotateLiveCover } from "../../../live/live-settings";
 import { type CustomCardStyleLike, LivePushType } from "../../../live/live-types";
+import { parseStopWords } from "../../../live/recap/stop-words";
 import type { LiveRoomResponse } from "../../api/index.js";
 import { PROBLEM_TEXTS } from "../../problem-texts";
 import { liveTimeToIso } from "../live-card-input";
 import type { LiveEvent } from "../protocol/events.js";
 import type { LivePushAnchor, SubItemView } from "../push-like";
-import { parseStopWords } from "../recap/stop-words";
 import { buildRoomLink } from "../template-renderer";
 import { type LiveData, LiveType, type MasterInfo } from "../types";
 import { liveRiskPath, MONITOR_STOPPED_CODE, ROOM_RESTRICTED_CODE } from "./room-context";
@@ -295,8 +295,8 @@ export abstract class RoomSessionBase {
 		this.startingUp = false;
 		if (!this.endArrivedWhileTransitioning) return false;
 		this.endArrivedWhileTransitioning = false;
-		this.ctx.danmakuCollector.clear(this.sub.roomId);
-		this.ctx.danmakuCollector.registerRoom(this.sub.roomId);
+		this.ctx.danmakuCollector.clear(this.sub.subscriptionId);
+		this.ctx.danmakuCollector.register(this.sub.subscriptionId);
 		return true;
 	}
 
@@ -778,7 +778,7 @@ export abstract class RoomSessionBase {
 			!this.masterInfo
 		) {
 			this.setLiveStatus(false, endedAt);
-			this.ctx.danmakuCollector.clear(this.sub.roomId);
+			this.ctx.danmakuCollector.clear(this.sub.subscriptionId);
 			if (this.ctx.isDisposed()) return;
 			this.reportStopped(PROBLEM_TEXTS.liveStopReasons.roomInfo);
 			this.onMonitoringStopped();
@@ -837,8 +837,8 @@ export abstract class RoomSessionBase {
 				);
 			}
 		} finally {
-			this.ctx.danmakuCollector.clear(this.sub.roomId);
-			this.ctx.danmakuCollector.registerRoom(this.sub.roomId);
+			this.ctx.danmakuCollector.clear(this.sub.subscriptionId);
+			this.ctx.danmakuCollector.register(this.sub.subscriptionId);
 		}
 	}
 
@@ -855,7 +855,7 @@ export abstract class RoomSessionBase {
 		this.ctx.logger.debug(
 			`[wordcloud] 开始制作下播总结 wordcloud=${wantWordcloud} summary=${wantSummary}`,
 		);
-		const snapshot = this.ctx.danmakuCollector.snapshot(this.sub.roomId);
+		const snapshot = this.ctx.danmakuCollector.snapshot(this.sub.subscriptionId);
 
 		// per-UP 额外停用词:记词时按 bundled + 全局过滤,这里对该 UP 解析后的覆盖词再
 		// 过滤一遍 sortedWords,使 per-UP 停用词在该 UP 的词云 / 总结热词上额外生效。
@@ -892,7 +892,7 @@ export abstract class RoomSessionBase {
 					const summary = await this.ctx.liveSummaryRequester.generate({
 						senderRecord: snapshot.senderRecord,
 						sortedWords,
-						master: this.masterInfo,
+						fanClubName: this.masterInfo?.medalName ?? "",
 						customLiveSummary,
 						// per-UP persona/prompt 覆盖;adapter 未填则交由 CommentaryGenerator 用全局 config。
 						aiOverride: this.sub.aiOverride,

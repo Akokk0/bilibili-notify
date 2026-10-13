@@ -205,7 +205,7 @@ function makeCtx(opts?: { guardTemplate?: MembershipTemplateBundle }): {
 			renderLiveStreaming: m.renderLiveStreaming,
 			renderLiveEnd: m.renderLiveEnd,
 		},
-		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), registerRoom: vi.fn() },
+		danmakuCollector: { recordDanmaku: m.recordDanmaku, clear: vi.fn(), register: vi.fn() },
 		isSubscribed: m.isSubscribed,
 		collectsDanmaku: m.collectsDanmaku,
 		safeBroadcast: m.safeBroadcast,
@@ -495,7 +495,7 @@ describe("RoomSession.onIncomeSuperChat", () => {
 				makeSub({ superchat: true, minSuperchatAmount: 100 }),
 			) as AnySession;
 			await s.onIncomeSuperChat({ ...scBody, price: 50 });
-			expect(m.recordDanmaku).toHaveBeenCalledWith("r1", "加油", "粉丝");
+			expect(m.recordDanmaku).toHaveBeenCalledWith("sub-1", "加油", "粉丝");
 			expect(m.pushedMain).not.toHaveBeenCalled();
 		});
 	});

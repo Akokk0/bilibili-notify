@@ -71,7 +71,7 @@ function makeCtx() {
 		serviceCtx: fakeServiceCtx,
 		logger: fakeServiceCtx.logger,
 		isDisposed: () => false,
-		danmakuCollector: { clear, registerRoom: vi.fn() },
+		danmakuCollector: { clear, register: vi.fn() },
 		emitLiveState,
 		sendLiveNotifyCard,
 	} as unknown as RoomContext;

@@ -48,7 +48,7 @@ function setup() {
 		templateRenderer: {},
 		wordcloudGenerator: {},
 		liveSummaryRequester: {},
-		danmakuCollector: { registerRoom() {}, clear() {}, clearAll() {} },
+		danmakuCollector: { register() {}, clear() {}, clearAll() {} },
 		getImageRenderer: () => null,
 		config: {},
 		emitEngineError: vi.fn(),

@@ -123,7 +123,7 @@ export class ListenerManager {
 		// `subRecord` was populated synchronously in `startForUid`; if the entry has
 		// been removed during the async resolve (stop/remove), bail out.
 		if (!this.subRecord.has(mutable.uid)) return;
-		this.ctx.danmakuCollector.registerRoom(mutable.roomId);
+		this.ctx.danmakuCollector.register(mutable.subscriptionId);
 		const session = new RoomSession(this.ctx, mutable);
 		this.sessionRecord.set(mutable.uid, session);
 		session.bootstrap().catch((e) => {
@@ -174,7 +174,7 @@ export class ListenerManager {
 		timer?.();
 		this.ctx.livePushTimerManager.delete(sub.roomId);
 		this.ctx.closeListener(sub.roomId);
-		this.ctx.danmakuCollector.clear(sub.roomId);
+		this.ctx.danmakuCollector.clear(sub.subscriptionId);
 		this.subRecord.delete(uid);
 		this.sessionRecord.delete(uid);
 	}

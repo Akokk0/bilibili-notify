@@ -62,7 +62,7 @@ function makeSession(): { session: TestSession; warn: ReturnType<typeof vi.fn> }
 		serviceCtx: fakeServiceCtx,
 		logger: fakeServiceCtx.logger,
 		isDisposed: () => false,
-		danmakuCollector: { clear: () => {}, registerRoom: () => {} },
+		danmakuCollector: { clear: () => {}, register: () => {} },
 	} as unknown as RoomContext;
 	const session = new RoomSession(ctx, makeSub()) as unknown as TestSession;
 	return { session, warn };

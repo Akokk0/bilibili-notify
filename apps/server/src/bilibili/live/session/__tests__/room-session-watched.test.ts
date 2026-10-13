@@ -107,7 +107,7 @@ function makeCtx(): { ctx: RoomContext; m: Mocks } {
 			renderLiveStreaming: m.renderLiveStreaming,
 			renderLiveEnd: vi.fn(() => "下播了"),
 		},
-		danmakuCollector: { clear: vi.fn(), registerRoom: vi.fn() },
+		danmakuCollector: { clear: vi.fn(), register: vi.fn() },
 		isSubscribed: m.isSubscribed,
 		collectsDanmaku: vi.fn(() => false),
 		sendLiveNotifyCard: m.sendLiveNotifyCard,

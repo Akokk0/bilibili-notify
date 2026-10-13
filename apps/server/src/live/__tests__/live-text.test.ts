@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
 	applyTemplate,
+	renderLiveSummary,
 	renderLiveText,
 	renderSpecialDanmaku,
 	renderSpecialUserEnter,
@@ -167,5 +168,75 @@ describe("renderSpecialDanmaku / renderSpecialUserEnter — 占位符 mastername
 				creatorName: "主播A",
 			}),
 		).toBe("{mastername}|主播A");
+	});
+});
+
+/**
+ * `renderLiveSummary` 的越界守卫(P2-D):此前无条件索引 topSenders[0..4],直播弹幕发送者不足 5 人时(很常见)
+ * `undefined[0]` 直接抛 TypeError,整条直播总结推送失败。修复后缺位安全降级为空名 / 0 条。
+ * (从 `bilibili/live/__tests__/template-renderer.test.ts` 搬来。)
+ */
+const SUMMARY_TPL =
+	"发言-dmc人 弹幕-dca条 | 1:-un1=-dc1 2:-un2=-dc2 3:-un3=-dc3 4:-un4=-dc4 5:-un5=-dc5";
+
+describe("renderLiveSummary — topSenders <5 守卫", () => {
+	it("topSenders 仅 2 人 → 不抛,缺位渲染为空名/0", () => {
+		const out = renderLiveSummary({
+			template: SUMMARY_TPL,
+			senderCount: 2,
+			fanClubName: "",
+			danmakuCount: 15,
+			topSenders: [
+				["alice", 10],
+				["bob", 5],
+			],
+		});
+		expect(out).toContain("1:alice=10");
+		expect(out).toContain("2:bob=5");
+		expect(out).toContain("3:=0");
+		expect(out).toContain("5:=0");
+		expect(out).toContain("发言2人 弹幕15条");
+	});
+
+	it("topSenders 为空 → 不抛,全部空名/0", () => {
+		expect(() =>
+			renderLiveSummary({
+				template: SUMMARY_TPL,
+				senderCount: 0,
+				fanClubName: "",
+				danmakuCount: 0,
+				topSenders: [],
+			}),
+		).not.toThrow();
+	});
+
+	it("topSenders 恰 5 人 → 全部正常填充(回归)", () => {
+		const out = renderLiveSummary({
+			template: SUMMARY_TPL,
+			senderCount: 5,
+			fanClubName: "",
+			danmakuCount: 99,
+			topSenders: [
+				["u1", 9],
+				["u2", 8],
+				["u3", 7],
+				["u4", 6],
+				["u5", 5],
+			],
+		});
+		expect(out).toContain("1:u1=9");
+		expect(out).toContain("5:u5=5");
+	});
+
+	it("粉丝团名字填进 -mdn", () => {
+		expect(
+			renderLiveSummary({
+				template: "牌:-mdn",
+				senderCount: 1,
+				fanClubName: "小晨",
+				danmakuCount: 1,
+				topSenders: [],
+			}),
+		).toBe("牌:小晨");
 	});
 });

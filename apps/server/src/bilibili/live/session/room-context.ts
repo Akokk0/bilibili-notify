@@ -8,6 +8,9 @@ import {
 } from "@bilibili-notify/internal";
 import type { LiveContentBuilder } from "../../../live/content-builder";
 import type { LiveCreatorFeature, PickLiveCover } from "../../../live/live-types";
+import type { DanmakuCollector } from "../../../live/recap/danmaku-collector";
+import type { LiveSummaryRequester } from "../../../live/recap/live-summary-requester";
+import type { WordcloudGenerator } from "../../../live/recap/wordcloud-generator";
 import type { Api } from "../../api/index.js";
 import type { ImagesDeps } from "../../images.js";
 import type { ProblemLayers } from "../../problem-layers.js";
@@ -15,9 +18,6 @@ import { PROBLEM_TEXTS } from "../../problem-texts.js";
 import type { GuardIcons } from "../guard-icons.js";
 import type { LiveClient } from "../protocol/client.js";
 import { type PushLike, type SubItemView, wantsLiveEndExtras } from "../push-like";
-import type { DanmakuCollector } from "../recap/danmaku-collector";
-import type { LiveSummaryRequester } from "../recap/live-summary-requester";
-import type { WordcloudGenerator } from "../recap/wordcloud-generator";
 import type { LiveTemplateRenderer } from "../template-renderer";
 
 /**

@@ -1,24 +1,26 @@
 import { cut as jiebaCut } from "jieba-wasm";
 
 /**
- * Per-room danmaku buffer powering the wordcloud + live-summary post-processing.
+ * Per-subscription danmaku buffer powering the wordcloud + live-summary post-processing.
  *
- * - `recordDanmaku(roomId, content, username)` segments the danmaku via jieba
- *   and updates both word-frequency and per-user count maps for that room.
- * - `snapshot(roomId)` returns the sorted word list + raw sender map for
+ * 弹幕记在**订阅 id** 名下(不认房号、uid:收集器是中立的,哪个平台的订阅都能用)。
+ *
+ * - `recordDanmaku(subscriptionId, content, username)` segments the danmaku via jieba
+ *   and updates both word-frequency and per-user count maps for that subscription.
+ * - `snapshot(subscriptionId)` returns the sorted word list + raw sender map for
  *   passing to {@link WordcloudGenerator} / {@link LiveSummaryRequester}.
- * - `clear(roomId)` is invoked at live-end after the wordcloud + summary have
- *   been dispatched (or the start of a new live session for that room).
+ * - `clear(subscriptionId)` is invoked at live-end after the wordcloud + summary have
+ *   been dispatched (or the start of a new live session for that subscription).
  *
  * The collector intentionally does NOT decide whether collection is enabled —
  * the listener-manager checks the wordcloud / liveSummary master+target gates
  * before calling `recordDanmaku`. This keeps the collector zero-config.
  */
 export class DanmakuCollector {
-	/** roomId → { word: count } */
-	private readonly weightByRoom = new Map<string, Record<string, number>>();
-	/** roomId → { username: count } */
-	private readonly senderByRoom = new Map<string, Record<string, number>>();
+	/** subscriptionId → { word: count } */
+	private readonly weightBySubscription = new Map<string, Record<string, number>>();
+	/** subscriptionId → { username: count } */
+	private readonly senderBySubscription = new Map<string, Record<string, number>>();
 
 	private readonly stopwords: Set<string>;
 
@@ -32,20 +34,24 @@ export class DanmakuCollector {
 		for (const w of stopwords) this.stopwords.add(w);
 	}
 
-	/** Make sure a room is being tracked (called when listener starts). */
-	registerRoom(roomId: string): void {
-		if (!this.weightByRoom.has(roomId)) this.weightByRoom.set(roomId, {});
-		if (!this.senderByRoom.has(roomId)) this.senderByRoom.set(roomId, {});
+	/** Make sure a subscription is being tracked (called when listener starts). */
+	register(subscriptionId: string): void {
+		if (!this.weightBySubscription.has(subscriptionId)) {
+			this.weightBySubscription.set(subscriptionId, {});
+		}
+		if (!this.senderBySubscription.has(subscriptionId)) {
+			this.senderBySubscription.set(subscriptionId, {});
+		}
 	}
 
 	/**
 	 * Tokenise an incoming danmaku and update word-frequency + per-user count.
 	 * Words shorter than 2 characters or in the stop-word set are dropped.
 	 */
-	recordDanmaku(roomId: string, content: string, username: string): void {
-		this.registerRoom(roomId);
-		const wordRecord = this.weightByRoom.get(roomId);
-		const senderRecord = this.senderByRoom.get(roomId);
+	recordDanmaku(subscriptionId: string, content: string, username: string): void {
+		this.register(subscriptionId);
+		const wordRecord = this.weightBySubscription.get(subscriptionId);
+		const senderRecord = this.senderBySubscription.get(subscriptionId);
 		if (!wordRecord || !senderRecord) return;
 
 		jiebaCut(content, true)
@@ -57,21 +63,21 @@ export class DanmakuCollector {
 	}
 
 	/**
-	 * Read a sorted snapshot of the current buffer for a room.
+	 * Read a sorted snapshot of the current buffer for a subscription.
 	 *
 	 * - `sortedWords`: descending by frequency.
 	 * - `senderRecord`: raw username → count map (consumer decides ordering).
 	 * - `senderCount`: number of distinct usernames.
 	 * - `danmakuCount`: total danmaku recorded.
 	 */
-	snapshot(roomId: string): {
+	snapshot(subscriptionId: string): {
 		sortedWords: Array<[string, number]>;
 		senderRecord: Record<string, number>;
 		senderCount: number;
 		danmakuCount: number;
 	} {
-		const weights = this.weightByRoom.get(roomId) ?? {};
-		const senders = this.senderByRoom.get(roomId) ?? {};
+		const weights = this.weightBySubscription.get(subscriptionId) ?? {};
+		const senders = this.senderBySubscription.get(subscriptionId) ?? {};
 		const sortedWords = Object.entries(weights).sort((a, b) => b[1] - a[1]);
 		const senderCount = Object.keys(senders).length;
 		const danmakuCount = Object.values(senders).reduce((sum, val) => sum + val, 0);
@@ -91,25 +97,25 @@ export class DanmakuCollector {
 	 * (server 端 `runtime/memory-probe.ts`)用,把这条曲线和堆用量画在同一行,
 	 * 好回答「堆涨的时候是不是它在涨」。
 	 *
-	 * `senders` 报的是**跨房间的 key 总数**而非去重人头 —— 占内存的就是 key 本身。
+	 * `senders` 报的是**跨订阅的 key 总数**而非去重人头 —— 占内存的就是 key 本身。
 	 */
 	stats(): { rooms: number; words: number; senders: number } {
 		let words = 0;
-		for (const rec of this.weightByRoom.values()) words += Object.keys(rec).length;
+		for (const rec of this.weightBySubscription.values()) words += Object.keys(rec).length;
 		let senders = 0;
-		for (const rec of this.senderByRoom.values()) senders += Object.keys(rec).length;
-		return { rooms: this.weightByRoom.size, words, senders };
+		for (const rec of this.senderBySubscription.values()) senders += Object.keys(rec).length;
+		return { rooms: this.weightBySubscription.size, words, senders };
 	}
 
-	/** Drop all collected data for a room (called at live-end / room-stop). */
-	clear(roomId: string): void {
-		this.weightByRoom.delete(roomId);
-		this.senderByRoom.delete(roomId);
+	/** Drop all collected data for a subscription (called at live-end / room-stop). */
+	clear(subscriptionId: string): void {
+		this.weightBySubscription.delete(subscriptionId);
+		this.senderBySubscription.delete(subscriptionId);
 	}
 
 	/** Drop everything (called on engine stop / auth-lost). */
 	clearAll(): void {
-		this.weightByRoom.clear();
-		this.senderByRoom.clear();
+		this.weightBySubscription.clear();
+		this.senderBySubscription.clear();
 	}
 }

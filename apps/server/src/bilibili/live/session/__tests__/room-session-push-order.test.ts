@@ -83,7 +83,7 @@ function makeCtx(events: string[]) {
 			customLiveMsg: { enable: false },
 			guardTemplate: { enabled: false, default: { template: "", imageUrl: "" }, tiers: {} },
 		},
-		danmakuCollector: { clear: vi.fn(), registerRoom: vi.fn(), recordDanmaku: vi.fn() },
+		danmakuCollector: { clear: vi.fn(), register: vi.fn(), recordDanmaku: vi.fn() },
 		templateRenderer: {
 			renderLiveStart: () => "开播啦",
 			renderLiveStreaming: () => "直播中",
