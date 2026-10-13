@@ -23,7 +23,7 @@ export {
 	CONNECTION_PLATFORMS,
 	type ConnectionPlatform,
 	canReceiveReply,
-	colorFromUid,
+	colorFromSeed,
 	countsAsDelivery,
 	countsAsFailure,
 	DEFAULT_HISTORY_RETENTION_DAYS,

@@ -3,7 +3,7 @@ import type {
 	ExtensionLookupResponse,
 	ExtensionSubscriptionCandidate,
 } from "@bilibili-notify/contract";
-import { colorFromUid } from "@bilibili-notify/internal/constants";
+import { colorFromSeed } from "@bilibili-notify/internal/constants";
 import { formatCount } from "@bilibili-notify/internal/format";
 import {
 	AddCard,
@@ -446,7 +446,7 @@ function UpProfileSummary({
 			) : (
 				<Avatar
 					name={profile.name}
-					color={colorFromUid(profile.name)}
+					color={colorFromSeed(profile.name)}
 					size={size === "md" ? 48 : 40}
 				/>
 			)}

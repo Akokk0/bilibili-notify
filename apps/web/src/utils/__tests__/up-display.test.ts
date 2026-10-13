@@ -10,7 +10,7 @@
  *   过了保留期的行不用快照(那几天已不是图库的引用方,图会被清扫收走)。
  */
 
-import { colorFromUid } from "@bilibili-notify/internal/constants";
+import { colorFromSeed } from "@bilibili-notify/internal/constants";
 import { describe, expect, it } from "vite-plus/test";
 import { makeEmptySubscription } from "../../types/domain";
 import {
@@ -80,14 +80,14 @@ describe("historyRowColor", () => {
 	});
 
 	it("拓展行不按外部 id 取色:外部 id 恰好等于某个 B 站 uid 时,取色的种子也不是那串 uid", () => {
-		expect(historyRowColor(EXT_ROW)).toBe(colorFromUid("douyin:12345"));
+		expect(historyRowColor(EXT_ROW)).toBe(colorFromSeed("douyin:12345"));
 	});
 });
 
 /**
  * 颜色与搬家之前一字不差(ADR-0020 决策 15:拓展的配色种子搬进 internal,面板与出卡共用)。下面的
  * 色值是拿**搬之前**那份代码(git 里 up-display.ts 的 `extensionColorSeed` + internal 的
- * `colorFromUid`)现算出来写死的 —— 搬完之后订阅卡、历史行上同一个人的颜色一个都不许变。
+ * `colorFromSeed`)现算出来写死的 —— 搬完之后订阅卡、历史行上同一个人的颜色一个都不许变。
  */
 describe("颜色与搬家之前一字不差", () => {
 	const BILI: Array<[string, string]> = [

@@ -22,7 +22,7 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_KEYS } from "../../types/domain";
  * (编译后擦除),见 `types/domain.ts` 开头那段。
  */
 export {
-	colorFromUid,
+	colorFromSeed,
 	shouldSendAtAll,
 	UP_COLORS,
 } from "@bilibili-notify/internal/constants";

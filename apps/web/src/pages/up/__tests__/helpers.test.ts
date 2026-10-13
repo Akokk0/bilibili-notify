@@ -6,7 +6,7 @@ import {
 	makeEmptySubscription,
 } from "../../../types/domain";
 import {
-	colorFromUid,
+	colorFromSeed,
 	displayName,
 	routingAlignedToFeatures,
 	subscribedFeatures,
@@ -112,8 +112,8 @@ describe("subscriptionColor / displayName × 两支订阅", () => {
 	const ext = makeEmptySubscription({ sourceKey: "douyin", externalId: "12345" });
 
 	it("B 站按 uid,拓展按「拓展 id:外部 id」这一串 —— 带着冒号与拓展名,永远不等于纯数字 uid", () => {
-		expect(subscriptionColor(bili)).toBe(colorFromUid("12345"));
-		expect(subscriptionColor(ext)).toBe(colorFromUid("douyin:12345"));
+		expect(subscriptionColor(bili)).toBe(colorFromSeed("12345"));
+		expect(subscriptionColor(ext)).toBe(colorFromSeed("douyin:12345"));
 	});
 
 	it("同一个人删了再加(订阅 id 变了)→ 颜色不变", () => {

@@ -76,7 +76,7 @@ import {
 } from "../utils/up-display";
 import { DeltaTag, Sparkline } from "./stats/charts";
 import {
-	colorFromUid,
+	colorFromSeed,
 	displayName,
 	profileAvatarUrl,
 	subscribedFeatures,
@@ -114,7 +114,7 @@ function liveRowFace(
 	if (r.kind !== "extension") {
 		return {
 			name: sub ? displayName(sub) : `UID ${r.uid}`,
-			color: colorFromUid(r.uid),
+			color: colorFromSeed(r.uid),
 			avatar,
 			viewers: formatViewers(r.viewers),
 		};
@@ -122,7 +122,7 @@ function liveRowFace(
 	const platform = subscriptionPlatformOf(r, extensions);
 	return {
 		name: sub ? displayName(sub) : platform.label,
-		color: sub ? subscriptionColor(sub) : colorFromUid(r.subscriptionId),
+		color: sub ? subscriptionColor(sub) : colorFromSeed(r.subscriptionId),
 		avatar,
 		viewers: formatViewers(r.totalViewers),
 		platform: { label: platform.shortLabel ?? platform.label, color: platform.color },

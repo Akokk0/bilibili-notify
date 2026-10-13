@@ -75,8 +75,7 @@ export const RATCHET = {
 	"apps/server/src/runtime/follow-sync.ts": 13,
 	"apps/server/src/stats/bili-source.ts": 16,
 	"packages/ai/src/tools.ts": 49,
-	"packages/internal/src/constants.ts": 10, // `colorFromUid` 等
-	"packages/internal/src/index.ts": 1, // 转出 `colorFromUid`
+	"packages/internal/src/constants.ts": 4, // `upColor` 入参 `UpColorIdentity` 上的 `uid` 键(声明、解构、取用、调用处各一)
 	"packages/internal/src/platform.ts": 3, // 事件载荷里的 `uid` 键(与事件载荷表是同一批东西的两种记法)
 	"packages/internal/src/schema/subscriptions.ts": 1, // 特别关注表的 `uid` 键
 };

@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { colorFromUid, extensionColorSeed, UP_COLORS, upColor } from "../constants";
+import { colorFromSeed, extensionColorSeed, UP_COLORS, upColor } from "../constants";
 
 /** sRGB hex → CIE Lab。只为算色差与体检明度,不追求极致精度。 */
 function toLab(hex: string): [number, number, number] {
@@ -83,12 +83,12 @@ describe("UP 主配色", () => {
 	});
 
 	it("同一个 uid 恒得同一个颜色", () => {
-		expect(colorFromUid("387654321")).toBe(colorFromUid("387654321"));
+		expect(colorFromSeed("387654321")).toBe(colorFromSeed("387654321"));
 	});
 
 	it("颜色一定取自调色板", () => {
 		for (const uid of ["1", "946974", "387654321", ""]) {
-			expect(UP_COLORS).toContain(colorFromUid(uid));
+			expect(UP_COLORS).toContain(colorFromSeed(uid));
 		}
 	});
 
@@ -97,7 +97,7 @@ describe("UP 主配色", () => {
 		// 容易扎堆,那样加再多颜色也只会用到其中几个。
 		const buckets = new Map<string, number>();
 		for (let i = 0; i < 20_000; i++) {
-			const c = colorFromUid(String(1_000_000 + i * 7919));
+			const c = colorFromSeed(String(1_000_000 + i * 7919));
 			buckets.set(c, (buckets.get(c) ?? 0) + 1);
 		}
 		expect(buckets.size).toBe(UP_COLORS.length);
@@ -110,7 +110,7 @@ describe("UP 主配色", () => {
  * 按人取色(ADR-0019 决策 73 / ADR-0020 决策 15):B 站按 uid,拓展按「拓展 id:外部 id」。这份算法以前只在
  * 面板里有(`apps/web/src/utils/up-display.ts`),锐评卡在服务端出图也要同一个颜色,所以搬进这里。
  *
- * 下面的色值是拿**搬之前**那份代码(git 里面板的 `extensionColorSeed` + 这里的 `colorFromUid`)现算出来
+ * 下面的色值是拿**搬之前**那份代码(git 里面板的 `extensionColorSeed` + 这里的 `colorFromSeed`)现算出来
  * 写死的,不是拿新代码算的 —— 搬家之后订阅卡、历史行、统计页上同一个人的颜色一个都不许变。
  */
 describe("upColor — 按人取色", () => {
@@ -143,7 +143,7 @@ describe("upColor — 按人取色", () => {
 	it("拓展不按外部 id 取色:外部 id 恰好等于某个 B 站 uid,种子也不是那串 uid", () => {
 		expect(extensionColorSeed("douyin", "12345")).not.toBe("12345");
 		expect(upColor({ extensionId: "douyin", externalId: "12345" })).toBe(
-			colorFromUid("douyin:12345"),
+			colorFromSeed("douyin:12345"),
 		);
 	});
 

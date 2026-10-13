@@ -345,10 +345,10 @@ export const UP_COLORS = [
  * 十个码位里取值,多项式哈希在 24 这种模数下散得不够开(实测 2 万个随机 uid,
  * χ² 41.4 vs FNV 的 19.5)—— 那样加再多颜色也只会集中用到其中几个。
  */
-export function colorFromUid(uid: string): string {
+export function colorFromSeed(seed: string): string {
 	let h = 0x811c9dc5;
-	for (let i = 0; i < uid.length; i++) {
-		h ^= uid.charCodeAt(i);
+	for (let i = 0; i < seed.length; i++) {
+		h ^= seed.charCodeAt(i);
 		// imul 才是 32 位整数乘法;直接 `*` 会溢出成浮点,低位精度丢光。
 		h = Math.imul(h, 0x01000193);
 	}
@@ -382,9 +382,9 @@ export interface UpColorIdentity {
 export function upColor(identity: UpColorIdentity, fallbackSeed = ""): string {
 	const { uid, extensionId, externalId } = identity;
 	if (extensionId !== undefined && externalId !== undefined) {
-		return colorFromUid(extensionColorSeed(extensionId, externalId));
+		return colorFromSeed(extensionColorSeed(extensionId, externalId));
 	}
-	return colorFromUid(uid || fallbackSeed);
+	return colorFromSeed(uid || fallbackSeed);
 }
 
 // ---------------------------------------------------------------------------

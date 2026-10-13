@@ -9,7 +9,7 @@
  * 根本不在意 bundle 里有什么)。**唯一的症状是浏览器多下几十 KB**,没人会注意。
  *
  * 这不是假想:`pages/up/helpers.ts` 曾经写成
- * `export { colorFromUid, UP_COLORS } from "@bilibili-notify/internal"` —— 只为一个
+ * `export { colorFromSeed, UP_COLORS } from "@bilibili-notify/internal"` —— 只为一个
  * 调色板,整个 zod(产物里 300+ 处引用)被打进页面。修法是把那两个值搬进零依赖的
  * `constants.ts`(见那边「UP 主强调色」那一段),这条测试钉住它不再回来。
  *
@@ -70,19 +70,19 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		expect(from("type { GlobalConfig }")).toEqual([]);
 		expect(from("{ type A, type B }")).toEqual([]);
 		expect(from("type Everything")).toEqual([]);
-		expect(from("{ colorFromUid, UP_COLORS }")).toHaveLength(1);
-		expect(from("{ type A, colorFromUid }")).toHaveLength(1);
+		expect(from("{ colorFromSeed, UP_COLORS }")).toHaveLength(1);
+		expect(from("{ type A, colorFromSeed }")).toHaveLength(1);
 		expect(from("everything")).toHaveLength(1); // default 导入
 		expect(from("* as internal")).toHaveLength(1); // namespace 导入
 	});
 
 	it("护栏认得 export … from、跨行列表、副作用与动态引用;认不得的是注释、字符串和别的入口", () => {
-		expect(offendersIn(`export { colorFromUid } from "${INTERNAL_ROOT}";`)).toHaveLength(1);
+		expect(offendersIn(`export { colorFromSeed } from "${INTERNAL_ROOT}";`)).toHaveLength(1);
 		expect(offendersIn(`export * from "${INTERNAL_ROOT}";`)).toHaveLength(1);
 		expect(offendersIn(`export type { GlobalConfig } from "${INTERNAL_ROOT}";`)).toEqual([]);
 		// 跨行的具名列表:最后一项不带 type 就是值。
 		expect(
-			offendersIn(`import {\n\ttype A,\n\ttype B,\n\tcolorFromUid,\n} from "${INTERNAL_ROOT}";`),
+			offendersIn(`import {\n\ttype A,\n\ttype B,\n\tcolorFromSeed,\n} from "${INTERNAL_ROOT}";`),
 		).toHaveLength(1);
 		expect(offendersIn(`import {\n\ttype A,\n\ttype B,\n} from "${INTERNAL_ROOT}";`)).toEqual([]);
 		expect(offendersIn(`import "${INTERNAL_ROOT}";`)).toHaveLength(1);
@@ -97,7 +97,7 @@ describe("apps/web 不得从 internal 根入口拿值", () => {
 		expect(
 			offendersIn(
 				[
-					`// import { colorFromUid } from "${INTERNAL_ROOT}";`,
+					`// import { colorFromSeed } from "${INTERNAL_ROOT}";`,
 					`/* import type 与 export { x } from "${INTERNAL_ROOT}" */`,
 					`const hint = 'import { x } from "${INTERNAL_ROOT}"';`,
 				].join("\n"),

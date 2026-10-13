@@ -118,7 +118,7 @@ interface MembershipTier {
 | 健康卡 | 运行状态与 `health()` 的 `SourceHealth`，见「健康与运行状态」 |
 | 订阅卡的「暂停 / 不可用」 | 运行状态与问题表 |
 | 「未关注该 UP —— 收不到动态」 | 问题表，文案由来源给 |
-| 头像兜底色（今天的 `colorFromUid`） | 核心的中立函数按身份算 |
+| 头像兜底色（今天的 `colorFromSeed`） | 核心的中立函数按身份算 |
 | 推送目标与连接 | 推送侧的 `PlatformDescriptor` / `platformSnapshot`（见 [push.md](./push.md)） |
 | AI 工具标签 | `AiTool.label` |
 | 链接预览设置 | 核心的中性文案，加上列出各链接解析器的 `label` |
