@@ -30,7 +30,6 @@ import {
 	type ActionOutcome,
 	createExtensionContext,
 	type ExtensionContext,
-	type ExtensionPushView,
 	type ExtensionRuntime,
 	type ExtensionSubscriptionRow,
 	type LookupOutcome,
@@ -97,23 +96,17 @@ export interface LoadedExtensions {
 	 * 🔴 **分格,不合并**:合成一份全局键名集合的话,一个拓展把 `name` 声明成密钥,备份里
 	 * 每一条连接与目标的 `name` 都会被抹平,而 `name` 是 `min(1)` —— 恢复时整份被拒。
 	 *
-	 * v2 照**清单**读(ADR-0019 决策 17),跑没跑都在表里。v1 的声明是代码在
-	 * `registerPushSource` 时交的,**没跑起来的 v1 不在表里** —— 「不在表里」在脱敏那边的意思
-	 * 是**整片当密钥**,不是「什么都不抹」(见 `../backup/sanitize.ts` 的 `ExtensionSecretCodes`)。
-	 * 问不出来时宁可多抹:从前那条路的症状是「拨掉一个拓展的开关,它连接里的密钥就原样进
-	 * 备份文件」。
+	 * 照**清单**读(ADR-0019 决策 17),跑没跑都在表里。没有清单可读的(版本不合 / 清单读不了)
+	 * **不在表里** —— 「不在表里」在脱敏那边的意思是**整片当密钥**,不是「什么都不抹」(见
+	 * `../backup/sanitize.ts` 的 `ExtensionSecretCodes`)。问不出来时宁可多抹:从前的症状是
+	 * 「拨掉一个拓展的开关,它连接里的密钥就原样进备份文件」。
 	 */
 	secretConfigCodes(): ReadonlyMap<string, readonly string[]>;
 	/**
-	 * 某个拓展交上来的面板数据(v2 `ctx.publishView`、v1 `ctx.publishStatus`)。**现取** —— 拓展给的是个函数,
+	 * 某个拓展交上来的面板数据(`ctx.publishView`)。**现取** —— 拓展给的是个函数,
 	 * 每次问都重新算,面板看到的永远是此刻的真相而不是某次快照。
 	 */
 	status(id: string): unknown;
-	/**
-	 * 某个拓展推送源那一口给面板的东西:外观(短名 / 标识色)+ 连接配置项(决策 33)。
-	 * 没跑 / 没注册过推送源就是 `undefined`。**现取** —— 与 `status()` 同一条理由。
-	 */
-	pushSource(id: string): ExtensionPushView | undefined;
 	/** 某个拓展某条连接上能绑目标的 bot。没跑 / 它没给 `listBots` 就是 `undefined`。 */
 	bots(id: string): readonly ExtensionBotView[] | undefined;
 	/** 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`。 */
@@ -395,15 +388,15 @@ function entryBase(dir: ReadyDir): Pick<ExtensionEntry, "id" | "dir" | "linkedTo
 	};
 }
 
-/** 清单里声明的设置项。v1 的设置不在清单里(桥那一版是手写页)。 */
+/** 清单里声明的设置项。 */
 function declaredSettings(manifest: ExtensionManifest): readonly ExtensionManifestField[] {
-	return manifest.apiVersion === 2 ? (manifest.settings?.fields ?? []) : [];
+	return manifest.settings?.fields ?? [];
 }
 
 /**
- * 清单声明了设置项的 v2,activate 里必须把校验它们的 zod 交上来(ADR-0019 决策 35)—— 面板照清单
+ * 清单声明了设置项的拓展,activate 里必须把校验它们的 zod 交上来(ADR-0019 决策 35)—— 面板照清单
  * 放行的值,清单表达不了整数、正则、跨字段规则;写入不再过拓展自己那一道,它一读就可能整份解不开。
- * 不交按加载失败算。v1 不管:它的设置不在清单里。
+ * 不交按加载失败算。
  */
 function assertSettingsHanded(manifest: ExtensionManifest, runtime: ExtensionRuntime): void {
 	if (declaredSettings(manifest).length === 0) return;
@@ -413,13 +406,9 @@ function assertSettingsHanded(manifest: ExtensionManifest, runtime: ExtensionRun
 	);
 }
 
-/** 「设置读不了」那一行:哪一格、为什么,再加一句怎么办 —— v1 在面板上改不了设置,出路不一样。 */
-function unreadableDetail(manifest: ExtensionManifest, why: string): string {
-	const fix =
-		manifest.apiVersion === 1
-			? "老格式的拓展在面板上改不了设置 —— 去市场更新它,或者恢复一份好的备份;设置一对上它会自己起来"
-			: "在它的「配置」里改对,改对了会自己起来";
-	return `存着的设置不合它自己的规矩:${why}。${fix}`;
+/** 「设置读不了」那一行:哪一格、为什么,再加一句怎么办。 */
+function unreadableDetail(why: string): string {
+	return `存着的设置不合它自己的规矩:${why}。在它的「配置」里改对,改对了会自己起来`;
 }
 
 /**
@@ -770,7 +759,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 		// 收摊会清空 runtime 上那份名单,先抄下来。
 		const schemas = runtime.settingsSchemas();
 		await runtime.dispose();
-		slot.miss = { state: "settings-invalid", detail: unreadableDetail(manifest, why), schemas };
+		slot.miss = { state: "settings-invalid", detail: unreadableDetail(why), schemas };
 		host.logger.warn(`[ext] ${manifest.id} v${manifest.version} 设置读不了,不跑:${why}`);
 	}
 
@@ -932,7 +921,7 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 				continue;
 			}
 			if (verdict.ok) await start(slot);
-			else slot.miss = { ...miss, detail: unreadableDetail(disk.manifest, verdict.detail) };
+			else slot.miss = { ...miss, detail: unreadableDetail(verdict.detail) };
 		}
 	}
 
@@ -958,19 +947,13 @@ export async function loadExtensions(opts: LoadExtensionsOptions): Promise<Loade
 			const codes = new Map<string, readonly string[]>();
 			for (const slot of slots.values()) {
 				const entry = entryOf(slot);
-				// v2 照清单读(ADR-0019 决策 17)—— 没跑起来的也读得到,备份只抹声明的那几格。
-				const declared = entry.manifest && manifestSecretKeys(entry.manifest);
-				if (declared) codes.set(entry.id, declared);
-			}
-			// v1 的声明在代码里,只有跑着的才交得出来;问不出来的不进表(脱敏那边整片当密钥)。
-			// 已经照清单记下的不许盖:跑着的 v2 代码那份只有连接配置项,清单那份还带着设置项。
-			for (const [id, slot] of slots) {
-				if (slot.running && !codes.has(id)) codes.set(id, slot.running.runtime.secretConfigCodes());
+				// 照清单读(ADR-0019 决策 17)—— 没跑起来的也读得到,备份只抹声明的那几格。
+				// 没有清单的(版本不合 / 读不了)不进表:脱敏那边整片当密钥。
+				if (entry.manifest) codes.set(entry.id, manifestSecretKeys(entry.manifest));
 			}
 			return codes;
 		},
 		status: (id) => slots.get(id)?.running?.runtime.status(),
-		pushSource: (id) => slots.get(id)?.running?.runtime.pushSource(),
 		bots: (id) => slots.get(id)?.running?.runtime.bots(),
 		runAction: async (id, name) => slots.get(id)?.running?.runtime.runAction(name),
 		lookup: async (id, query, lookupOpts) =>

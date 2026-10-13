@@ -106,7 +106,8 @@ const DOUYIN_ZOD = z.object({
 		.default([]),
 });
 
-const LEGACY_V1 = {
+/** 第 1 版的清单(退路已删):装载时判「版本不合」,没有清单可读,也就没有能照着管的设置项。 */
+const OLD_V1 = {
 	id: "legacy",
 	name: "老格式",
 	description: "测试用",
@@ -179,7 +180,7 @@ async function boot(opts: {
 	rawFile?: string;
 }) {
 	await plant(DOUYIN);
-	await plant(LEGACY_V1);
+	await plant(OLD_V1);
 	await plant(BARE_V2);
 	const rt = createAppRuntime(
 		makeBootstrap(dataDir),
@@ -241,7 +242,6 @@ async function boot(opts: {
 			mounts,
 			loaded: () => loader.list(),
 			status: (id) => loader.status(id),
-			pushSource: (id) => loader.pushSource(id),
 			bots: (id) => loader.bots(id),
 			settingsSchemas: (id) => loader.settingsSchemas(id),
 		},
@@ -355,7 +355,7 @@ describe("GET /api/ext/:id/settings", () => {
 
 	it.each([
 		["没装这个拓展", "nope", /没有装/],
-		["v1 拓展(设置不在清单里)", "legacy", /v1|老格式/],
+		["第 1 版的拓展(版本不合,读不出清单)", "legacy", /版本不合/],
 		["清单没声明设置项", "bare", /没声明设置项/],
 	])("%s —— 404 not_found,并说清为什么", async (_label, id, reason) => {
 		const h = await boot({ running: false });

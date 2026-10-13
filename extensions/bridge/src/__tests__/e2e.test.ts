@@ -154,7 +154,7 @@ function hostFor(
 
 	const ctx: ExtensionContext = {
 		id: EXTENSION_ID,
-		hostApiVersion: 1,
+		hostApiVersion: 2,
 		hostVersion: "9.9.9-test",
 		logger: SILENT,
 		state: memoryKeyValueStore(),
@@ -194,10 +194,6 @@ function hostFor(
 		},
 		publishView(fn) {
 			statusOf = fn;
-		},
-		// v2 的桥走 `publishView`;真宿主对 v2 的旧口不受理 —— 这里直接炸,桥退回旧口就当场红。
-		publishStatus() {
-			throw new Error("v2 拓展交视图走 publishView,不该叫 publishStatus");
 		},
 		statusChanged() {
 			statusChanges += 1;

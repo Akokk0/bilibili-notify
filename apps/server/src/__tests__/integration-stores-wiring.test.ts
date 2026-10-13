@@ -200,8 +200,8 @@ describe("拓展", () => {
 				name: EXT_ID,
 				description: "测试用",
 				version: "1.0.0",
-				apiVersion: 1,
-				provides: ["push"],
+				apiVersion: 2,
+				contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 			}),
 		);
 		await writeFile(join(dir, "index.mjs"), "export function activate() {}");
@@ -254,8 +254,6 @@ describe("拓展", () => {
 					stop() {},
 				},
 				configSchema: z.object({}),
-				descriptor: { label: "测试", shortLabel: "测", tint: "#000000" },
-				configFields: [],
 			});
 		}
 		const loaded = await loadExtensions({
@@ -330,7 +328,6 @@ describe("拓展", () => {
 			store: configStore,
 			extensions: () => loaded.list(),
 			status: () => undefined,
-			pushSource: () => undefined,
 			bots: () => undefined,
 			install: {
 				root: extRoot(),

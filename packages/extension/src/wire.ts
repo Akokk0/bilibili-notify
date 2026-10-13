@@ -86,8 +86,7 @@ interface ExtensionFieldBase {
 }
 
 /**
- * 一个口在界面上的样子(ADR-0012 决策 46 那三格)。v2 写在清单的 `contributes.<口>.display`,
- * v1 由代码交(老名字 {@link ExtensionDescriptor},宿主收下时翻译过来)。
+ * 一个口在界面上的样子(ADR-0012 决策 46 那三格)。写在清单的 `contributes.<口>.display`。
  *
  * **就这三格**:作用域、地址名词、能不能 @全体这些都是**bot 所在平台**的事(一条拓展连接
  * 就是一个借来的 bot,决策 45),从 bot 报的 `platform` 查注册表,不从这儿来。
@@ -102,37 +101,11 @@ export interface ExtensionDisplay {
 }
 
 /**
- * **v1 的老形状** —— 外观与连接配置项写在代码里、`registerPushSource` 时交。只剩桥还在用,
- * 宿主收下那一刻翻译成 {@link ExtensionField} / {@link ExtensionDisplay}(宿主里只有新形状);
- * 桥迁到 v2、再抬最低档之后整段删掉。
- */
-export type ExtensionConfigField = ExtensionConfigFieldBase &
-	(
-		| {
-				kind: "text";
-				placeholder?: string;
-				mono?: boolean;
-				secret?: boolean;
-		  }
-		| { kind: "number"; min?: number; max?: number; step?: number; suffix?: string }
-		| { kind: "toggle" }
-		| { kind: "select"; options: readonly { value: string; label: string }[] }
-	);
-
-interface ExtensionConfigFieldBase {
-	/** config 里的键名。**同时是这一栏的身份** —— 值就落在 `config[code]`。 */
-	code: string;
-	label: string;
-	hint?: string;
-	required?: boolean;
-}
-
-/**
  * 一个拓展**推送源那一口**给面板的东西:推送目标页照它画新建连接那一排的名字、连接卡上
  * 那张脸、以及要主人填的那几栏(ADR-0012 决策 33 / 46)。
  *
- * 两样一起交、一起有,缺一样面板就画不全。v2 写在清单里,拓展停着也有(ADR-0019 决策 41);v1 写在
- * 代码里,只有注册了推送源的(也就是跑着的)才有。**有它不等于拓展在场** —— 要在场的看它的运行状态。
+ * 两样一起交、一起有,缺一样面板就画不全。写在清单里,拓展停着也有(ADR-0019 决策 41)。
+ * **有它不等于拓展在场** —— 要在场的看它的运行状态。
  */
 export interface ExtensionPushView {
 	display: ExtensionDisplay;
@@ -187,13 +160,6 @@ export interface ExtensionSubscriptionCandidate {
 	 */
 	avatar?: string;
 	fans?: number;
-}
-
-/** **v1 的老形状**,新名字是 {@link ExtensionDisplay}(`tint` 改叫 `color`)。见上面那条。 */
-export interface ExtensionDescriptor {
-	label: string;
-	shortLabel: string;
-	tint: string;
 }
 
 /**

@@ -10,11 +10,7 @@
 import { EventEmitter } from "node:events";
 import type { Server as HttpServer } from "node:http";
 import type { ExtensionPanelView } from "@bilibili-notify/contract";
-import type {
-	ExtensionConfigField,
-	ExtensionDescriptor,
-	ExtensionView,
-} from "@bilibili-notify/extension";
+import type { ExtensionView } from "@bilibili-notify/extension";
 import type {
 	Connection,
 	Disposable,
@@ -25,12 +21,16 @@ import type {
 } from "@bilibili-notify/internal";
 import { neutralPlatformSnapshot } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { type ZodType, z } from "zod";
+import { z } from "zod";
 import { memoryStores } from "../../__tests__/support/memory-key-value-store.js";
 import { silentLogger } from "../../__tests__/support/silent-logger.js";
 import { adapterForConnection } from "../../push/dispatch.js";
 import { createPlatformAdapterRegistry } from "../../push/registry.js";
-import { createExtensionContext, STATUS_CHANGED_COALESCE_MS } from "../context.js";
+import {
+	createExtensionContext,
+	manifestPushView,
+	STATUS_CHANGED_COALESCE_MS,
+} from "../context.js";
 import { createExtensionMounts } from "../mount.js";
 import { createExtensionUpgrades } from "../upgrade.js";
 
@@ -50,14 +50,29 @@ function connection(over: Partial<Record<string, unknown>> = {}): Connection {
 	} as Connection;
 }
 
-/** 桥今天那份:v1,只开推送源。 */
-const V1_PUSH: ExtensionManifest = {
+const DISPLAY = { label: "桥接", shortLabel: "桥", color: "#a855f7" };
+const V2_FIELDS = [
+	{ type: "string" as const, key: "token", label: "长期 token", secret: true, required: true },
+	{
+		type: "enum" as const,
+		key: "bridgeKind",
+		label: "哪一种桥",
+		required: true,
+		options: [
+			{ value: "koishi", label: "koishi" },
+			{ value: "astrbot", label: "AstrBot" },
+		],
+	},
+];
+
+/** 桥那样的清单:只开推送源,外观与连接配置项住清单。 */
+const PUSH_MANIFEST: ExtensionManifest = {
 	id: "bridge",
 	name: "机器人框架桥接",
 	description: "测试用",
 	version: "1.0.0",
-	apiVersion: 1,
-	provides: ["push"],
+	apiVersion: 2,
+	contributes: { push: { display: DISPLAY, connection: { fields: V2_FIELDS } } },
 };
 
 function harness(
@@ -96,7 +111,7 @@ function harness(
 
 	const runtime = createExtensionContext({
 		id: "bridge",
-		manifest: opts.manifest ?? V1_PUSH,
+		manifest: opts.manifest ?? PUSH_MANIFEST,
 		host,
 		loggerOf: () => logger,
 		stores: memoryStores(),
@@ -179,50 +194,17 @@ function fakeAdapter(): PlatformAdapter {
 	} as unknown as PlatformAdapter;
 }
 
-function descriptor(): ExtensionDescriptor {
-	return { label: "桥接", shortLabel: "桥", tint: "#a855f7" };
-}
-
+/** 代码那一半:行为与 zod。外观与连接配置项住清单(ADR-0019 决策 16 / 17)。 */
 function def() {
-	return {
-		adapter: fakeAdapter(),
-		descriptor: descriptor(),
-		configSchema: CONFIG,
-		configFields: [
-			{ kind: "text" as const, code: "token", label: "长期 token", secret: true },
-			{
-				kind: "select" as const,
-				code: "bridgeKind",
-				label: "哪一种桥",
-				options: [
-					{ value: "koishi", label: "koishi" },
-					{ value: "astrbot", label: "AstrBot" },
-				],
-			},
-		],
-	};
+	return { adapter: fakeAdapter(), configSchema: CONFIG };
 }
 
 /**
- * 按清单注册(ADR-0019 决策 16 / 17):v2 的外观与连接配置项**只住清单**,代码只交行为与
- * zod;v1 的留在代码里、收下时翻译。不管哪一档,**注册的口必须是清单开了的口** —— 今天
- * 「声明订阅却去注册推送」没人拦,面板按清单把它归在订阅那一栏,推送目标页却多出一档。
+ * 按清单注册(ADR-0019 决策 16 / 17):外观与连接配置项**只住清单**,代码只交行为与 zod。
+ * **注册的口必须是清单开了的口** —— 今天「声明订阅却去注册推送」没人拦,面板按清单把它归在
+ * 订阅那一栏,推送目标页却多出一档。
  */
 describe("按清单注册推送源", () => {
-	const DISPLAY = { label: "桥接", shortLabel: "桥", color: "#a855f7" };
-	const V2_FIELDS = [
-		{ type: "string" as const, key: "token", label: "长期 token", secret: true, required: true },
-		{
-			type: "enum" as const,
-			key: "bridgeKind",
-			label: "哪一种桥",
-			required: true,
-			options: [
-				{ value: "koishi", label: "koishi" },
-				{ value: "astrbot", label: "AstrBot" },
-			],
-		},
-	];
 	function v2(over: Record<string, unknown> = {}): ExtensionManifest {
 		return {
 			id: "bridge",
@@ -234,7 +216,7 @@ describe("按清单注册推送源", () => {
 			...over,
 		} as ExtensionManifest;
 	}
-	const v2Def = () => ({ adapter: fakeAdapter(), configSchema: CONFIG });
+	const v2Def = def;
 
 	it("按旧契约打的适配器(只有 reconcile、没有 start / stop)—— 抛一句看得懂的话,不留半截状态", () => {
 		const h = harness();
@@ -246,7 +228,6 @@ describe("按清单注册推送源", () => {
 			/按旧的契约打的/,
 		);
 		expect(h.adapters.list()).toEqual([]);
-		expect(h.runtime.pushSource()).toBeUndefined();
 		// 没留半截状态:同一个上下文还能再登记合规的。
 		h.ctx.registerPushSource(def());
 		expect(h.adapters.list()).toHaveLength(1);
@@ -312,29 +293,33 @@ describe("按清单注册推送源", () => {
 	});
 
 	it("v2:外观与连接配置项取自清单,代码只交行为与 zod", () => {
-		const h = harness({ manifest: v2() });
+		const manifest = v2();
+		const h = harness({ manifest });
 		h.ctx.registerPushSource(v2Def());
-		expect(h.runtime.pushSource()).toEqual({ display: DISPLAY, connectionFields: V2_FIELDS });
-		// 密钥照清单里的声明抹 —— 备份脱敏那一格。
-		expect(h.runtime.secretConfigCodes()).toEqual(["token"]);
+		// 面板拿到的外观与字段表就是清单这一份(路由下发走的同一个函数)。
+		expect(manifestPushView(manifest)).toEqual({ display: DISPLAY, connectionFields: V2_FIELDS });
 		expect(h.adapters.list()).toHaveLength(1);
 	});
 
 	it("v2 的清单没写 connection:连接是挑出来的那种,连接配置项就是空表", () => {
-		const h = harness({ manifest: v2({ contributes: { push: { display: DISPLAY } } }) });
+		const manifest = v2({ contributes: { push: { display: DISPLAY } } });
+		const h = harness({ manifest });
 		h.ctx.registerPushSource({ ...v2Def(), listBots: () => [] });
-		expect(h.runtime.pushSource()?.connectionFields).toEqual([]);
+		expect(h.adapters.list()).toHaveLength(1);
+		expect(manifestPushView(manifest)?.connectionFields).toEqual([]);
 	});
 
-	it("v2 的代码里还交外观 / 字段表 —— 抛:两份声明会打架,以清单为准", () => {
+	it("代码里还交外观 / 字段表(按第 1 版的写法)—— 抛:两份声明会打架,以清单为准", () => {
 		const h = harness({ manifest: v2() });
-		expect(() => h.ctx.registerPushSource(def())).toThrow(/contributes\.push/);
+		const old = {
+			...def(),
+			descriptor: { label: "桥接", shortLabel: "桥", tint: "#a855f7" },
+			configFields: [],
+		};
+		expect(() => h.ctx.registerPushSource(old as unknown as ReturnType<typeof def>)).toThrow(
+			/contributes\.push/,
+		);
 		expect(h.adapters.list()).toEqual([]);
-	});
-
-	it("v1 的代码里没交外观 —— 抛:老格式的外观只在代码里", () => {
-		const h = harness();
-		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/descriptor/);
 	});
 
 	it("v2 清单里的连接配置项与代码的 zod 对不上 —— 抛,点名那一格", () => {
@@ -353,97 +338,17 @@ describe("按清单注册推送源", () => {
 		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/"bridgeKind"/);
 	});
 
-	it.each<[string, ExtensionManifest, RegExp]>([
-		["v1 只声明了订阅源", { ...V1_PUSH, provides: ["subscription"] }, /provides/],
-		[
-			"v2 只开了订阅源",
-			v2({
-				contributes: {
-					subscription: { display: DISPLAY, events: ["post"] },
-				},
-			}),
-			/contributes\.push/,
-		],
-	])("%s —— 注册推送源当场抛,出口一个都不进表", (_label, manifest, message) => {
-		const h = harness({ manifest });
-		const register =
-			manifest.apiVersion === 1
-				? () => h.ctx.registerPushSource(def())
-				: () => h.ctx.registerPushSource(v2Def());
-		expect(register).toThrow(message);
+	it("清单只开了订阅源 —— 注册推送源当场抛,出口一个都不进表", () => {
+		const h = harness({
+			manifest: v2({ contributes: { subscription: { display: DISPLAY, events: ["post"] } } }),
+		});
+		expect(() => h.ctx.registerPushSource(v2Def())).toThrow(/contributes\.push/);
 		expect(h.adapters.list()).toEqual([]);
 	});
 
 	/**
-	 * 🔴 **v1 的对表停在冻结那天**(`ExtensionManifestV1Schema`:格式已冻结,已经发出去的 v1 包
-	 * 不能因为宿主升级就加载不了)。冻结时只对四样:第一层是对象、键不重复、键在 zod 里、zod
-	 * 的必填键都有栏。类型 / 选项 / 默认值、读 zod 4 的 `_zod.def` 是 v2 才加的,不往 v1 身上加。
-	 */
-	describe("v1 的连接配置项只对冻结那天的四样", () => {
-		const v1Def = (configSchema: ZodType, configFields: ExtensionConfigField[]) => ({
-			adapter: fakeAdapter(),
-			descriptor: descriptor(),
-			configSchema,
-			configFields,
-		});
-
-		it.each<[string, ZodType, ExtensionConfigField[]]>([
-			[
-				"zod 里有默认值、字段表没写",
-				z.object({ port: z.number().default(8080) }),
-				[{ kind: "number", code: "port", label: "端口" }],
-			],
-			[
-				"下拉的选项与 zod 的取值对不上",
-				z.object({ mode: z.enum(["a", "b"]) }),
-				[{ kind: "select", code: "mode", label: "模式", options: [{ value: "a", label: "A" }] }],
-			],
-			[
-				"字段表的类型与 zod 不一样",
-				z.object({ port: z.string() }),
-				[{ kind: "number", code: "port", label: "端口" }],
-			],
-			[
-				"schema 不是 zod 4 造的(没有 _zod.def)",
-				{
-					shape: { port: { safeParse: (v: unknown) => ({ success: v !== undefined }) } },
-				} as unknown as ZodType,
-				[{ kind: "text", code: "port", label: "端口" }],
-			],
-		])("%s —— 照常注册", (_label, configSchema, configFields) => {
-			const h = harness();
-			h.ctx.registerPushSource(v1Def(configSchema, configFields));
-			expect(h.adapters.list()).toHaveLength(1);
-		});
-
-		it.each<[string, ZodType, ExtensionConfigField[], RegExp]>([
-			["第一层不是对象", z.string(), [], /对象/],
-			[
-				"同一个键摆了两栏",
-				z.object({ token: z.string() }),
-				[
-					{ kind: "text", code: "token", label: "A" },
-					{ kind: "text", code: "token", label: "B" },
-				],
-				/"token" 摆了两栏/,
-			],
-			[
-				"字段表里有一格 zod 不认识",
-				z.object({ token: z.string().optional() }),
-				[{ kind: "text", code: "typoo", label: "手滑" }],
-				/"typoo" 不是 config schema 的键/,
-			],
-			["zod 的必填键没有栏", z.object({ token: z.string() }), [], /必填键 "token"/],
-		])("%s —— 照旧拒", (_label, configSchema, configFields, message) => {
-			const h = harness();
-			expect(() => h.ctx.registerPushSource(v1Def(configSchema, configFields))).toThrow(message);
-			expect(h.adapters.list()).toEqual([]);
-		});
-	});
-
-	/**
 	 * v2 的设置项也是两份声明(清单一份、`ctx.settings(schema)` 交一份 zod),一样在拿设置的
-	 * 那一刻对表。v1 没有这回事:桥的设置是手写页,清单里什么都没声明。
+	 * 那一刻对表。
 	 */
 	describe("设置项对表", () => {
 		const SETTINGS = z.object({ cookie: z.string(), interval: z.number().default(60) });
@@ -470,24 +375,18 @@ describe("按清单注册推送源", () => {
 			const h = harness({ manifest: v2() });
 			expect(() => h.ctx.settings(SETTINGS)).toThrow(/"cookie"/);
 		});
-
-		it("v1 不对表 —— 桥的设置是手写页,清单里什么都没声明", () => {
-			const h = harness({ settings: { cookie: "c" } });
-			expect(h.ctx.settings(SETTINGS).get()).toEqual({ cookie: "c", interval: 60 });
-		});
 	});
 });
 
 /**
- * v2 交的视图是一组封闭的积木(ADR-0019 决策 20),宿主**先校验再下发**,不合规矩的**按块 / 按项**
- * 降级(决策 40)—— 怎么降级见 `view-check.test.ts`;这里钉 ctx 那一层:v2 走 `publishView`、交回
- * Promise 当场报错(不静默变成空视图)、同一个错只记一行、v1 的老口原样留着。
+ * 交的视图是一组封闭的积木(ADR-0019 决策 20),宿主**先校验再下发**,不合规矩的**按块 / 按项**
+ * 降级(决策 40)—— 怎么降级见 `view-check.test.ts`;这里钉 ctx 那一层:走 `publishView`、交回
+ * Promise 当场报错(不静默变成空视图)、同一个错只记一行。
  */
 describe("交给面板的视图", () => {
 	/** 一格列表设置 —— 视图里 `items` 的键要对得上它与存着的项。 */
 	const V2: ExtensionManifest = {
-		...V1_PUSH,
-		apiVersion: 2,
+		...PUSH_MANIFEST,
 		settings: {
 			fields: [
 				{
@@ -568,7 +467,7 @@ describe("交给面板的视图", () => {
 	});
 
 	/**
-	 * 🔴 旧口 `publishStatus(() => unknown)` 对 async 回调静默给出一份空视图(决策 39)。v2 的专口当场
+	 * 🔴 交回 Promise(`async` 回调)不许静默变成一份空视图(决策 39)。当场
 	 * 报错:那一口画成一条说清原因的提示,现存的项各写「状态未知」,日志记一行 —— 同一个错不每次都记。
 	 */
 	it("回调交回 Promise —— 当场一条提示说清要同步交,不当成空视图;只记一行", () => {
@@ -609,31 +508,6 @@ describe("交给面板的视图", () => {
 		});
 		expect(JSON.stringify(h.runtime.status())).toContain("算视图时炸了");
 	});
-
-	it("v2 叫 publishStatus —— 不受理,记一行说走 publishView", () => {
-		const h = harness({ manifest: V2 });
-		h.ctx.publishStatus(() => ({ summary: { text: "x" } }));
-		expect(h.runtime.status()).toBeUndefined();
-		expect(h.lines.some((line) => line.startsWith("warn") && line.includes("publishView"))).toBe(
-			true,
-		);
-	});
-
-	it("v1 叫 publishView —— 不受理(v1 的状态走 publishStatus)", () => {
-		const h = harness();
-		h.ctx.publishView(() => ({ summary: { text: "x" } }));
-		expect(h.runtime.status()).toBeUndefined();
-		expect(h.lines.some((line) => line.startsWith("warn") && line.includes("publishStatus"))).toBe(
-			true,
-		);
-	});
-
-	it("v1 —— 任意 JSON 原样下发(v1 的页是手写的)", () => {
-		const h = harness();
-		const status = { sessions: [{ linkId: "a", connected: false }] };
-		h.ctx.publishStatus(() => status);
-		expect(h.runtime.status()).toEqual(status);
-	});
 });
 
 /**
@@ -643,8 +517,7 @@ describe("交给面板的视图", () => {
  */
 describe("动作", () => {
 	const V2: ExtensionManifest = {
-		...V1_PUSH,
-		apiVersion: 2,
+		...PUSH_MANIFEST,
 		actions: ["poll.now", "login.start"],
 		contributes: { push: { display: { label: "桥", shortLabel: "桥", color: "#a855f7" } } },
 	} as unknown as ExtensionManifest;
@@ -680,7 +553,7 @@ describe("动作", () => {
 		});
 	});
 
-	it("v1 清单没有 actions —— 注册就抛", () => {
+	it("清单没写 actions —— 注册就抛", () => {
 		expect(() => harness().ctx.onAction("poll.now", () => {})).toThrow(/actions/);
 	});
 
@@ -887,35 +760,39 @@ describe("注册推送源", () => {
 	});
 
 	it("两份 config 声明对不上 → 注册那一刻就抛,不等到面板上才发现", () => {
-		const h = harness();
-		expect(() => h.ctx.registerPushSource({ ...def(), configFields: [] })).toThrow(
-			/必填键 "token"/,
-		);
+		const h = harness({
+			manifest: {
+				...PUSH_MANIFEST,
+				contributes: { push: { display: DISPLAY, connection: { fields: [] } } },
+			},
+		});
+		expect(() => h.ctx.registerPushSource(def())).toThrow(/必填键 "token"/);
 	});
 
 	/**
-	 * 🔴 **外观(v1 交的 descriptor)交上来是为了被画出来。** 收下就扔的话,面板只能自己
+	 * 🔴 **外观(清单里的 display)收下是为了被画出来。** 收下就扔的话,面板只能自己
 	 * 手抄一份短名与标识色 —— 而手抄的副本迟早跟拓展自己报的漂开,且门禁全绿
 	 * (`platform-meta.tsx` 里就躺过这么一行,躺了整整一片)。
 	 */
-	it("交上来的外观留得住 —— 面板要拿它画那张脸", () => {
-		const h = harness();
-		h.ctx.registerPushSource(def());
-		expect(h.runtime.pushSource()?.display).toMatchObject({ shortLabel: "桥" });
+	it("清单里的外观面板读得到 —— 要拿它画那张脸", () => {
+		expect(manifestPushView(PUSH_MANIFEST)?.display).toMatchObject({ shortLabel: "桥" });
 	});
 
-	it("没注册推送源的拓展没有外观,而不是一份空壳", () => {
-		expect(harness().runtime.pushSource()).toBeUndefined();
+	it("没开推送源那一口的清单没有外观,而不是一份空壳;没注册的拓展登记表里也没有它", () => {
+		const manifest = {
+			...PUSH_MANIFEST,
+			contributes: { subscription: { display: DISPLAY, events: ["post"] } },
+		} as unknown as ExtensionManifest;
+		expect(manifestPushView(manifest)).toBeUndefined();
+		expect(harness({ manifest }).adapters.list()).toEqual([]);
 	});
 
 	/**
 	 * 🔴 **字段表交上来也是为了被画出来**(决策 33)—— 它此前只用来对表与找密钥键,面板
 	 * 从没拿到过,于是推送目标页建不出拓展连接。同一族的洞:收下就扔,门禁全绿。
 	 */
-	it("交上来的字段表留得住 —— 面板照它画新建连接的表单", () => {
-		const h = harness();
-		h.ctx.registerPushSource(def());
-		expect(h.runtime.pushSource()?.connectionFields.map((f) => f.key)).toEqual([
+	it("清单里的字段表面板读得到 —— 照它画新建连接的表单", () => {
+		expect(manifestPushView(PUSH_MANIFEST)?.connectionFields.map((f) => f.key)).toEqual([
 			"token",
 			"bridgeKind",
 		]);
@@ -1064,9 +941,9 @@ describe("给面板看的数据", () => {
 		const h = harness();
 		expect(h.runtime.status()).toBeUndefined();
 		let n = 0;
-		h.ctx.publishStatus(() => ({ n: ++n }));
-		expect(h.runtime.status()).toEqual({ n: 1 });
-		expect(h.runtime.status()).toEqual({ n: 2 });
+		h.ctx.publishView(() => ({ summary: { text: `第 ${++n} 次` } }));
+		expect(h.runtime.status()).toEqual({ summary: { text: "第 1 次" } });
+		expect(h.runtime.status()).toEqual({ summary: { text: "第 2 次" } });
 	});
 
 	it("卸载之后 statusChanged 被拒绝并留一行", async () => {
@@ -1160,8 +1037,7 @@ describe("statusChanged 合并", () => {
 	it("上报出入不喊「面板数据变了」", async () => {
 		const h = harness({
 			manifest: {
-				...V1_PUSH,
-				apiVersion: 2,
+				...PUSH_MANIFEST,
 				contributes: {
 					subscription: {
 						display: { label: "抖", shortLabel: "抖", color: "#161823" },
@@ -1204,7 +1080,7 @@ describe("认领 WS upgrade", () => {
 		};
 		const runtime = createExtensionContext({
 			id: "bridge",
-			manifest: V1_PUSH,
+			manifest: PUSH_MANIFEST,
 			host: {
 				logger,
 				setInterval: () => ({ dispose() {} }),
@@ -1242,9 +1118,26 @@ describe("认领 WS upgrade", () => {
 
 describe("读自己的设置", () => {
 	const LINKS = z.object({ links: z.array(z.object({ id: z.string(), token: z.string() })) });
+	/** 清单与 zod 一定要对得上(拿设置那一刻对表),所以这一组的清单声明了 `links`。 */
+	const MANIFEST = {
+		...PUSH_MANIFEST,
+		settings: {
+			fields: [
+				{
+					key: "links",
+					type: "list",
+					label: "links",
+					title: "token",
+					required: true,
+					fields: [{ key: "token", type: "string", label: "令牌", required: true }],
+				},
+			],
+		},
+	} as unknown as ExtensionManifest;
+	const boot = (opts: { settings: unknown }) => harness({ manifest: MANIFEST, ...opts });
 
 	it("已经过自己那份 zod;没设过就是 undefined,而不是一个空壳", () => {
-		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
+		const h = boot({ settings: { links: [{ id: "a", token: "t" }] } });
 		expect(h.ctx.settings(LINKS).get()).toEqual({ links: [{ id: "a", token: "t" }] });
 		h.setSettings(undefined);
 		expect(h.ctx.settings(LINKS).get()).toBeUndefined();
@@ -1255,7 +1148,7 @@ describe("读自己的设置", () => {
 	 * 不再重连。`ctx.settings()` 那一下当场抛,原因记在 runtime 上 —— 装载器凭它不起这个拓展。
 	 */
 	it("形状不对 → ctx.settings() 当场抛、点名那一格;原因记在 runtime 上,那份 zod 照样交了", () => {
-		const h = harness({ settings: { links: "not-a-list" } });
+		const h = boot({ settings: { links: "not-a-list" } });
 		expect(() => h.ctx.settings(LINKS)).toThrow(/「links」/);
 		expect(h.runtime.settingsProblem()).toContain("「links」");
 		// 先交后判:改对了没有,装载器要拿这份判。
@@ -1263,7 +1156,7 @@ describe("读自己的设置", () => {
 	});
 
 	it("是**现读**:面板改了下一次问就是新的", () => {
-		const h = harness({ settings: { links: [] } });
+		const h = boot({ settings: { links: [] } });
 		const settings = h.ctx.settings(LINKS);
 		expect(settings.get()?.links).toHaveLength(0);
 		h.setSettings({ links: [{ id: "a", token: "t" }] });
@@ -1278,7 +1171,7 @@ describe("读自己的设置", () => {
 	 * 变了就判、判过了才扇出)。缓存从前挂在「原始值的身份」上,键永远不同、永远不命中。
 	 */
 	it("连问好几次都不去问宿主;落了一次盘也只读那一次", () => {
-		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
+		const h = boot({ settings: { links: [{ id: "a", token: "t" }] } });
 		const settings = h.ctx.settings(LINKS);
 		const before = h.settingsReads();
 		settings.get();
@@ -1298,7 +1191,7 @@ describe("读自己的设置", () => {
 	 * 游标推到最新,轮到第二个时 `now === lastSettingsSeen`,于是**第二个订阅者永远收不到**。
 	 */
 	it("两个订阅者都要收到", () => {
-		const h = harness({ settings: { links: [] } });
+		const h = boot({ settings: { links: [] } });
 		const seen: string[] = [];
 		h.ctx.settings(LINKS).onChange(() => seen.push("a"));
 		h.ctx.settings(LINKS).onChange(() => seen.push("b"));
@@ -1307,7 +1200,7 @@ describe("读自己的设置", () => {
 	});
 
 	it("变更通知只在**内容真的变了**时叫 —— globals 别处动一下不该踢一遍所有桥;卸载后不再叫", async () => {
-		const h = harness({ settings: { links: [{ id: "a", token: "t" }] } });
+		const h = boot({ settings: { links: [{ id: "a", token: "t" }] } });
 		let calls = 0;
 		h.ctx.settings(LINKS).onChange(() => {
 			calls++;

@@ -95,12 +95,6 @@ export function createExtensionSettingsRoute(opts: ExtensionSettingsRouteOptions
 		if (!manifest) {
 			return fail("not_found", `拓展 ${id} 的清单读不出来(或版本不合),没有能照着管的设置项`);
 		}
-		if (manifest.apiVersion === 1) {
-			return fail(
-				"not_found",
-				`拓展 ${id} 是老格式(v1)清单,设置不在清单里、不走这里 —— 去市场更新之后才能在这里管理`,
-			);
-		}
 		const fields = manifest.settings?.fields ?? [];
 		if (fields.length === 0) return fail("not_found", `拓展 ${id} 的清单里没声明设置项`);
 		return ok({ id, fields });

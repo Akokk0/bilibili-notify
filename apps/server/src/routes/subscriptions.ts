@@ -482,12 +482,6 @@ function subscriptionSourceRefusal(
 			`拓展「${extensionId}」的清单读不出来(${entry.state}),认不出它是不是订阅源`,
 		);
 	}
-	if (manifest.apiVersion !== 2) {
-		return fail(
-			"unsupported",
-			`拓展「${manifest.name}」(${extensionId})是 v1 清单,v1 的契约里没有订阅源`,
-		);
-	}
 	if (!manifest.contributes.subscription) {
 		return fail(
 			"unsupported",

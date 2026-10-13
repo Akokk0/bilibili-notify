@@ -13,7 +13,7 @@
 | 项 | 1.0 |
 | --- | --- |
 | 契约版本 | v3 |
-| 宿主认的最低版本 | 3 —— v1、v2 的退路删掉（`legacy-v1.ts` 连同过时注释一起删） |
+| 宿主认的最低版本 | 3 —— v1、v2 的退路删掉（`legacy-v1.ts` 连同过时注释一起删）。🔗 现状（3b-03，10-13）：第 1 版的退路已删，第 1 版清单现在被判「版本太旧、不兼容」；最低版本眼下是 2，抬到 3 在 3b-44 |
 | v2 拓展 | 装不上：按现成机制不加载、说清楚原因（「这个拓展是给旧契约写的，请更新」），不会加载后再炸；数据迁移时照拷，列进升级后的首访页，给一键更新 |
 | 以后加口 | 清单里多一个可选键，不抬大版本 |
 
@@ -71,7 +71,7 @@ v3 与 v2 不兼容：ctx 改成 `IntegrationContext`，推送口改成平台适
 | `subscriptions()` / `onSubscriptionsChanged` | 改形状（`SourceContext` 特有） | 条目从 `{ id, externalId, enabled }` 改成 `SourceSubscriptionView { externalId, features }`：只列启用中的订阅、不带订阅 id，`features` 是这个人开着的特性；同一人遗留的重复订阅合成一条、`features` 取并集。拓展只上报名单里的人；开着哪些特性决定它干哪些活，关着的就不查 |
 | `registerPushSource` / `PushSourceHandle` / `PushExtensionDef`（`adapter`、`configSchema`、`listBots`） | 改 | `registerPlatformAdapter` / `PlatformAdapterHandle` / `PlatformAdapterDef`，成员见「推送：平台适配器」 |
 | `settings` 交回的 `ExtensionSettings<T>` | 改名 | `SettingsReader<T>` |
-| `publishStatus`（v1 老口）、`LegacyPushExtensionDef` | 删 | 随 v1 退路一起删 |
+| `publishStatus`（v1 老口）、`LegacyPushExtensionDef` | 删 | 随 v1 退路一起删。🔗 现状（3b-03，10-13）：`publishStatus` 与 `LegacyPushExtensionDef` 已随第 1 版删掉 |
 | 积木 `qrLogin` | 删 | 从没实现；登录走系统账号（`SourceAuth`） |
 | `ctx.dataDir` | 不给 | 撤回的草案；拓展没有自己的文件目录 |
 

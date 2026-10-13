@@ -10,7 +10,7 @@ import type { ZodType } from "zod";
  * 校验退化成只剩类型检查 —— 而真实 config 里有「加速前缀必须 https」这种跨字段规则。
  * 代价是「两份会漂」,这道对表就是那笔账的兜底:**同进程,宿主拿得到拓展的 zod**,所以
  * 漂了当场看得见,而不是等主人在面板上填完保存不上。对的不只是键:设置项按数据类型分、
- * 与 zod 一一对应,所以**类型与默认值一起对**(v1 除外,见 `v1` 那一格)。
+ * 与 zod 一一对应,所以**类型与默认值一起对**。
  *
  * 🔴 **判形状不用 `instanceof`。** 拓展会被打成自包含的 `index.mjs`,它那份 zod 是**另一个
  * 实例** —— `instanceof ZodObject` 当场为假,而报出来的错会把人指向完全错误的方向。对象看
@@ -28,13 +28,6 @@ export function assertConfigFieldsMatchSchema(
 		 * 一栏是人填的,所以「必填键没人填」那一半不查:那正是它的常态,不是漂了。
 		 */
 		picked?: boolean;
-		/**
-		 * v1 拓展在代码里交的连接配置项(收下时已翻译成新形状)。🔴 **v1 格式已冻结**
-		 * (`ExtensionManifestV1Schema`),对表也停在冻结那天:第一层是对象、键不重复、键在 zod
-		 * 里、zod 的必填键都有栏。类型 / 选项 / 默认值、读 zod 4 的 `_zod.def` 是 v2 才加的 ——
-		 * 加到已经发出去的 v1 包身上,宿主一升级它就加载不了。
-		 */
-		v1?: boolean;
 	} = {},
 ): void {
 	const fail = (msg: string): never => {
@@ -46,12 +39,10 @@ export function assertConfigFieldsMatchSchema(
 	if (typeof shape !== "object" || shape === null) {
 		return void fail("config 的 schema 必须是一个对象(第一层只支持键值对象)");
 	}
-	// v1 冻结在那天的规矩里,strict 不查。
-	if (opts.v1 !== true) assertNotStrict("config schema", defOf(schema), fail);
+	assertNotStrict("config schema", defOf(schema), fail);
 	checkFields("", shape as Record<string, unknown>, fields, fail, {
 		picked: opts.picked === true,
 		listItem: false,
-		keysOnly: opts.v1 === true,
 	});
 }
 
@@ -254,10 +245,10 @@ function checkFields(
 	members: Record<string, unknown>,
 	fields: readonly ExtensionField[],
 	fail: (msg: string) => never,
-	opts: { picked: boolean; listItem: boolean; keysOnly: boolean },
+	opts: { picked: boolean; listItem: boolean },
 ): void {
 	// zod 的 shape 是个普通对象:`in` 会顺着原型链把 `toString` 这类判成 schema 的键。只认它
-	// 自己的键 —— v1 的字段表不过清单校验,只剩这一道。
+	// 自己的键。
 	const memberKeys: ReadonlySet<string> = new Set(Object.keys(members));
 	// 列表项的 id 由 BN 生成、藏起来(ADR-0019 决策 29):清单里不声明它,zod 里却必须有 ——
 	// 没有的话,BN 生成的 id 会被拓展那份 zod 当场剥掉,视图就再也挂不到这一项上。
@@ -274,8 +265,7 @@ function checkFields(
 		if (!memberKeys.has(field.key)) {
 			fail(`字段表里的 "${path}" 不是 config schema 的键`);
 		}
-		// 只对键的(v1)到这里为止,这一格的类型 / 默认值不看。
-		if (!opts.keysOnly) checkField(path, field, members[field.key], fail);
+		checkField(path, field, members[field.key], fail);
 	}
 
 	if (opts.picked) return;
@@ -283,13 +273,6 @@ function checkFields(
 		// 有栏的那几格,必填已经由 checkField 对过。
 		if (seen.has(key)) continue;
 		const path = `${prefix}${key}`;
-		if (opts.keysOnly) {
-			// v1 停在冻结那天的判据:收不下 `undefined` 的就是必填(可选与带默认值的都收得下)。
-			if (!(member as ZodType).safeParse(undefined).success) {
-				fail(`config schema 的必填键 "${path}" 在字段表里没有对应那一栏`);
-			}
-			continue;
-		}
 		const { def, optional } = unwrap(member);
 		if (!def) fail(`"${path}" 的 schema 认不出类型 —— 拓展的 schema 要用 zod 4 写`);
 		if (!optional) fail(`config schema 的必填键 "${path}" 在字段表里没有对应那一栏`);
@@ -339,7 +322,6 @@ function checkField(
 		checkFields(`${path}.`, item.shape, field.fields, fail, {
 			picked: false,
 			listItem: true,
-			keysOnly: false,
 		});
 		return;
 	}

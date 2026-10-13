@@ -9,7 +9,7 @@
  * - 开机时存着的那份就坏 → `settings-invalid` + 点名到那一项那一格;🔴 **不累进失败记账**
  *   (这不是拓展崩了,不能几次之后被自动停用)
  * - 拓展自己 try/catch 吞了 `ctx.settings()` 那一抛 → 照样作数
- * - 清单声明了设置项,activate 里却一份 zod 都没交 → 按加载失败算(v1 不受这条管)
+ * - 清单声明了设置项,activate 里却一份 zod 都没交 → 按加载失败算
  * - 跑着时被旁路写坏 → 🔴 **拓展看不到那一份**:订阅者不被叫,那一行变 `settings-invalid`
  * - 设置再变:解得开就在队里起起来;还解不开只更新原因,一行拓展代码都不重跑
  */
@@ -296,22 +296,6 @@ describe("清单声明了设置项,activate 里就得交 zod(决策 35)", () => 
 	it("v2 清单里没声明设置项 → 不交也照常跑", async () => {
 		const { settings: _dropped, ...bare } = MANIFEST;
 		const h = await boot({ manifest: bare, activate: () => {} });
-		expect(h.entry()?.state).toBe("running");
-		await h.loaded.dispose();
-	});
-
-	it("v1 不受这条管 —— 它的设置不在清单里", async () => {
-		const h = await boot({
-			manifest: {
-				id: "douyin",
-				name: "老格式",
-				description: "测试用",
-				version: "1.0.0",
-				apiVersion: 1,
-				provides: ["subscription"],
-			},
-			activate: () => {},
-		});
 		expect(h.entry()?.state).toBe("running");
 		await h.loaded.dispose();
 	});

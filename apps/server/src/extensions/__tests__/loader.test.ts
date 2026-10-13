@@ -77,8 +77,8 @@ async function plant(id: string, code: string, over: Record<string, unknown> = {
 			name: id,
 			description: "测试用",
 			version: "1.0.0",
-			apiVersion: 1,
-			provides: ["push"],
+			apiVersion: 2,
+			contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 			...over,
 		}),
 	);
@@ -324,6 +324,26 @@ describe("加载拓展", () => {
 		expect(future?.detail).toContain("先升级 BN");
 	});
 
+	/** 第 1 版的退路已删:盘上还留着的第 1 版拓展不 import,原样列出来,出路是换它的新版(不是升级 BN)。 */
+	it("第 1 版的拓展 → 不 import,列出来说「太旧、换它的新版」", async () => {
+		await plant("bridge", HEALTHY, { apiVersion: 1, provides: ["push"], contributes: undefined });
+		const imported: string[] = [];
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			importModule: async (specifier) => {
+				imported.push(specifier);
+				return {};
+			},
+		});
+		const [bridge] = loaded.list();
+		expect(bridge?.state).toBe("incompatible");
+		expect(imported).toEqual([]);
+		expect(bridge?.identity?.id).toBe("bridge");
+		expect(bridge?.detail).toBe("它是给宿主契约 v1 写的,这一版 BN 只认 v2 —— 换它的新版");
+		await loaded.dispose();
+	});
+
 	/** 档位对、要的契约小号比这台 BN 的高(ADR-0019 决策 59):与档位不合同一条路。 */
 	it("要更高契约小号的拓展 → 不 import,原因写清要几号、BN 是几号、先升级 BN", async () => {
 		const wants = EXTENSION_API_RANGE.revision + 1;
@@ -358,51 +378,6 @@ describe("加载拓展", () => {
 });
 
 describe("拓展声明的密钥字段", () => {
-	it("跑起来的拓展把它的 secret 键交出来 —— 备份脱敏照这份抹", async () => {
-		await plant("bridge", "export function activate() {}");
-		const registry = createPlatformAdapterRegistry();
-		const loaded = await loadExtensions({
-			root,
-			...hostOpts(fakeHost()),
-			integrationStore: memoryIntegrationStore(),
-			mounts: createExtensionMounts({ logger: silentLogger }),
-			upgrades: createExtensionUpgrades(),
-			adapters: registry,
-			connections: () => [],
-			onConnectionsChanged: () => ({ dispose() {} }),
-			subscriptions: () => [],
-			onSubscriptionsChanged: () => ({ dispose() {} }),
-			settings: () => undefined,
-			onSettingsChanged: () => ({ dispose() {} }),
-			inbound: {},
-			isEnabled: () => true,
-			maxFailures: 3,
-			// ⚠️ 换掉 import:真拓展包会把 zod 内联进自己的产物,而这里种的是一行裸 mjs。
-			importModule: async () => ({
-				activate(ctx: ExtensionContext) {
-					ctx.registerPushSource({
-						adapter: { adapterKey: "", isAvailable: () => true, start() {}, stop() {} } as never,
-						descriptor: { label: "拓展", shortLabel: "拓", tint: "#000000" },
-						configSchema: z.object({ botKey: z.string(), note: z.string().optional() }),
-						configFields: [
-							{ kind: "text", code: "botKey", label: "密钥", secret: true },
-							{ kind: "text", code: "note", label: "备注" },
-						],
-					});
-				},
-			}),
-		});
-
-		expect(loaded.list()[0]?.state).toBe("running");
-		// 只有声明过的那一格 —— `note` 不该被抹。按 id 分格:声明的键只对它自己那两格生效。
-		expect(loaded.secretConfigCodes()).toEqual(new Map([["bridge", ["botKey"]]]));
-
-		// 收摊之后它**不在表里** —— 在脱敏那边这不是「什么都不抹」而是「整片当密钥」,
-		// 见 `../backup/sanitize.ts` 的 ExtensionSecretCodes。
-		await loaded.dispose();
-		expect(loaded.secretConfigCodes()).toEqual(new Map());
-	});
-
 	/**
 	 * v2 的密钥声明在**清单**里(ADR-0019 决策 17):没跑起来的也读得到,备份就能只抹那几格,
 	 * 而不是整片当密钥 —— 「装好还没启用、先把 cookie 填了」正是最常见的那一刻。
@@ -467,6 +442,30 @@ describe("拓展声明的密钥字段", () => {
 		});
 		expect(loaded.list()[0]?.state).toBe("running");
 		expect(loaded.secretConfigCodes()).toEqual(new Map([["douyin", ["cookie", "token"]]]));
+	});
+
+	/**
+	 * 没有清单可读的(版本不合 / 清单读不了)**不进表** —— 脱敏与下发那边把「不在表里」当「问不出来」,
+	 * 它名下连接的设置与它自己的设置整片当密钥。给它们补一个空表就成了「问得出来、确实没声明」,
+	 * 那几格从此只走键名黑名单,而门禁一片绿。
+	 */
+	it("版本不合的与清单读不了的不进表(不是空表)", async () => {
+		await plant("old", HEALTHY, { apiVersion: 1, provides: ["push"], contributes: undefined });
+		await mkdir(join(root, "junk"), { recursive: true });
+		await writeFile(join(root, "junk", "extension.json"), "{ 半个");
+		// 第三个是清单读得出、一格密钥都没声明的:它**在**表里,是空表。
+		await plant("plain", HEALTHY);
+		const loaded = await run({
+			host: fakeHost(),
+			mounts: createExtensionMounts({ logger: silentLogger }),
+			enabled: () => false,
+		});
+		expect(loaded.list().map((e) => [e.id, e.state])).toEqual([
+			["junk", "unreadable"],
+			["old", "incompatible"],
+			["plain", "disabled"],
+		]);
+		expect(loaded.secretConfigCodes()).toEqual(new Map([["plain", []]]));
 	});
 });
 
@@ -1094,8 +1093,8 @@ describe("重扫(装 / 卸不必重启)", () => {
 					name: "bridge",
 					description: "测试用",
 					version: "1.0.0",
-					apiVersion: 1,
-					provides: ["push"],
+					apiVersion: 2,
+					contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 				}),
 			);
 			halfWritten();

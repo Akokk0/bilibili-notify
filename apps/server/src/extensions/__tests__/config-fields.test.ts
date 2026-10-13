@@ -53,15 +53,12 @@ describe("字段表 × zod 对表", () => {
 
 	/**
 	 * 🔴 zod 的 shape 是个普通对象:`key in shape` 会顺着原型链把 `toString` 判成「是 schema 的键」。
-	 * v2 清单校验那头已经拒这种 key,但 v1 的字段表写在代码里、不过清单校验,只剩这一道。
+	 * 清单校验那头已经拒这种 key,这里是第二道。
 	 */
-	it("字段表里的 key 是 Object.prototype 上的名字、zod 里没有 → 拒(v1 只对键,也照拒)", () => {
+	it("字段表里的 key 是 Object.prototype 上的名字、zod 里没有 → 拒", () => {
 		const schema = z.object({ a: z.string().optional() });
 		const field: ExtensionField = { type: "string", key: "toString", label: "?" };
 		expect(() => assertConfigFieldsMatchSchema("demo", schema, [field])).toThrow(
-			/"toString" 不是 config schema 的键/,
-		);
-		expect(() => assertConfigFieldsMatchSchema("demo", schema, [field], { v1: true })).toThrow(
 			/"toString" 不是 config schema 的键/,
 		);
 	});
@@ -643,13 +640,6 @@ describe("对表:漏判 —— 漂了今天对不出来", () => {
 		])("%s —— 放行", (_label, schema) => {
 			expect(() => assertConfigFieldsMatchSchema("demo", schema, [A])).not.toThrow();
 			expect(() => list(z.object({ id: z.string(), name: z.string() }))).not.toThrow();
-		});
-
-		/** v1 格式已冻结:加规矩等于让已经发出去的 v1 包加载不了。 */
-		it("v1 不查(只对键)", () => {
-			expect(() =>
-				assertConfigFieldsMatchSchema("demo", z.strictObject({ a: z.string() }), [A], { v1: true }),
-			).not.toThrow();
 		});
 	});
 });

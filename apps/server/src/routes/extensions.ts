@@ -4,7 +4,6 @@ import type {
 	ExtensionDTO,
 	ExtensionInstallResponse,
 	ExtensionLookupResponse,
-	ExtensionPushView,
 	ExtensionsResponse,
 	MarketplaceResponse,
 	ReportDiscrepancyView,
@@ -72,17 +71,6 @@ export interface ExtensionsRouteOptions {
 	extensions: () => readonly ExtensionEntry[];
 	/** 某个拓展交上来的面板数据。没跑 / 没交过就是 `undefined`。**现取,不缓存。** */
 	status: (id: string) => unknown;
-	/**
-	 * 某个拓展推送源那一口给面板的东西:外观(短名 / 标识色)+ 连接配置项(决策 33 —— 推送
-	 * 目标页照它画「新建连接」)。没跑 / 没注册过推送源就是 `undefined`。
-	 *
-	 * **只问 v1 的**:v1 这两样写在代码里,只有跑着的交得出来;v2 的写在清单里,列表照清单给
-	 * (见 {@link pushViewOfEntry})。
-	 *
-	 * 🔴 **这是那份外观唯一的出处**:不下发的话面板只能自己手抄一份短名与颜色,而手抄
-	 * 的副本迟早跟拓展报的漂开 —— 那种漂移门禁一片绿,只有真机上眼睛能看出来。
-	 */
-	pushSource: (id: string) => ExtensionPushView | undefined;
 	/**
 	 * 跑某个拓展的一个动作(ADR-0019 决策 22)。拓展没在跑就是 `undefined`(→ `not_found`)。没接这
 	 * 一格的话那一口永远 `not_found`。
@@ -168,21 +156,6 @@ function stagedAfterInstall(entries: readonly ExtensionEntry[], id: string): boo
 	return entries.find((entry) => entry.id === id)?.staged !== undefined;
 }
 
-/**
- * 列表里那一行推送源那一口的外观 + 连接配置项(ADR-0019 决策 41)。
- *
- * v2 照清单给,**跑没跑都有** —— 拓展停了,它借来的连接在推送目标页照样画得出短名与标识色,
- * 不退成灰方章;清单搬出代码的初衷就是不跑代码也知道。v1 的写在代码里,只有跑着的交得出来,
- * 停着的问不出、不替它编。要拓展在场的(能挑的 bot、视图)不在这儿,照旧跟着「在跑」。
- */
-function pushViewOfEntry(
-	entry: ExtensionEntry,
-	running: (id: string) => ExtensionPushView | undefined,
-): ExtensionPushView | undefined {
-	if (entry.manifest?.apiVersion !== 2) return running(entry.id);
-	return manifestPushView(entry.manifest);
-}
-
 /** 列表那一行的「上报出入」(决策 60):没有就不带这一格;拓展 id 不下发(它就挂在那一行上)。 */
 function reportDiscrepanciesOf(
 	id: string,
@@ -225,15 +198,13 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 				version: identity?.version,
 				provides: entry.manifest && manifestProvides(entry.manifest),
 				apiVersion: entry.manifest?.apiVersion,
-				// v2 照清单、没在跑的也有;v1 跑起来了才有(`activate` 里注册推送源时交的那一份)。
-				push: pushViewOfEntry(entry, opts.pushSource),
-				// 订阅源那一口只有 v2 有,照清单给、没在跑的也有(决策 41):停了的拓展名下的订阅照样
-				// 画得出是哪个平台的。
+				// 推送源与订阅源那两口照清单给、没在跑的也有(ADR-0019 决策 41):拓展停了,它借来的连接
+				// 在推送目标页照样画得出短名与标识色,停了的拓展名下的订阅照样画得出是哪个平台的。
+				// 要拓展在场的(能挑的 bot、视图)不在这儿,照旧跟着「在跑」。
+				push: entry.manifest && manifestPushView(entry.manifest),
 				subscription: entry.manifest && manifestSubscriptionView(entry.manifest),
 				// 清单里声明的设置项 —— 来自清单、不来自代码,所以没在跑的也有。
-				...(entry.manifest?.apiVersion === 2 && entry.manifest.settings
-					? { settings: entry.manifest.settings }
-					: {}),
+				...(entry.manifest?.settings ? { settings: entry.manifest.settings } : {}),
 				icon: identity?.icon,
 				// 它在盘上的哪儿。软链进来的(开发版就是)再带上落点 —— 「跑的到底是哪一份」
 				// 只有那一句答得了。
@@ -536,13 +507,12 @@ export function createExtensionsRoute(opts: ExtensionsRouteOptions): Hono {
 	);
 
 	/**
-	 * 一个拓展交给面板的视图(v2 `ctx.publishView`、v1 `ctx.publishStatus`),**现取**。没跑 /
+	 * 一个拓展交给面板的视图(`ctx.publishView`),**现取**。没跑 /
 	 * 没交过就是 404,不是空对象:那两件事面板要能分开说。
 	 *
-	 * v2 交的先过宿主那一道(`extensions/view-check.ts`,ADR-0019 决策 40):**按块 / 按项降级** ——
+	 * 交的先过宿主那一道(`extensions/view-check.ts`,ADR-0019 决策 40):**按块 / 按项降级** ——
 	 * 坏块换成一条点名「哪儿、为什么」的提示,坏项那张卡写「状态未知」,摘要坏了不下发;交回
-	 * Promise 的也是一条提示。都照样 200(`ExtensionPanelView`),同一句只记一行日志。v1 原样透传
-	 * (它的页是手写的,形状归它自己)。
+	 * Promise 的也是一条提示。都照样 200(`ExtensionPanelView`),同一句只记一行日志。
 	 */
 	app.get("/:id/status", (c) => {
 		const status = opts.status(c.req.param("id"));

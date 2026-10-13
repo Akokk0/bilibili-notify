@@ -340,7 +340,7 @@ const MAX_NAMED_ISSUES = 3;
 
 /**
  * zod 路径 → 主人认得的说法:格按清单里的名字,**列表项按它的标题**(没有标题按 id,再没有才按
- * 第几项)—— 下标对主人没有意义,删掉前面一条它就挪了。清单没声明的格(v1 一律没有)路径原样念。
+ * 第几项)—— 下标对主人没有意义,删掉前面一条它就挪了。清单没声明的格路径原样念。
  */
 function whereOf(fields: readonly ExtensionManifestField[], raw: unknown, path: Path): string {
 	const [head, ...rest] = path;

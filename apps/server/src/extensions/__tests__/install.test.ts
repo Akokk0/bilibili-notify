@@ -37,8 +37,8 @@ function manifest(over: Record<string, unknown> = {}): string {
 		name: "机器人框架桥接",
 		description: "测试用",
 		version: "1.0.0",
-		apiVersion: 1,
-		provides: ["push"],
+		apiVersion: 2,
+		contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 		...over,
 	});
 }

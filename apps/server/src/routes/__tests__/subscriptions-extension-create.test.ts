@@ -81,21 +81,6 @@ const PUSH_ONLY: ExtensionEntry = {
 	},
 };
 
-/** v1 —— 哪怕它的 provides 写着 subscription,v1 的契约里也没有订阅源。 */
-const V1: ExtensionEntry = {
-	id: "oldie",
-	dir: "/data/extensions/oldie",
-	state: "running",
-	manifest: {
-		id: "oldie",
-		name: "老拓展",
-		description: "一句话说明",
-		version: "1.0.0",
-		apiVersion: 1,
-		provides: ["push", "subscription"],
-	},
-};
-
 function makeBootstrap(dataDir: string): BootstrapConfig {
 	return { server: { host: "127.0.0.1", port: 8787 }, dataDir, logLevel: "silent" };
 }
@@ -118,14 +103,13 @@ beforeEach(async () => {
 	// index.ts 同一步:订阅仓镜像配置、改动转成 subscription-changed。
 	const binding = bindSubscriptionStore({ bus: runtime.bus, configStore: runtime.configStore });
 	unbind = () => binding.dispose();
-	entries = [sourceEntry("douyin"), PUSH_ONLY, V1];
+	entries = [sourceEntry("douyin"), PUSH_ONLY];
 	app = createApp(runtime, {
 		cardSkins: { store: createCardSkinStore(dataDir) },
 		extensions: {
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			loaded: () => entries,
 			status: () => undefined,
-			pushSource: () => undefined,
 			bots: () => undefined,
 		},
 	});
@@ -245,7 +229,6 @@ describe("新建拓展订阅", () => {
 
 	it.each([
 		["没装", "nope", "not_found", 404],
-		["v1 拓展", "oldie", "unsupported", 400],
 		["只开了推送那一口", "pusher", "unsupported", 400],
 		["清单读不出来", "broken", "unsupported", 400],
 	] as const)("%s → %i,点名为什么,一样都不落", async (_label, extensionId, code, status) => {

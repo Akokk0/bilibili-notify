@@ -16,8 +16,6 @@ import type {
  * 🔴 **「坏了」的标记只有宿主加得了。** 拓展交的积木一律包在 `{ block }` / `{ view }` 里,标记是与
  * 它们并列的 `{ fault }` —— 那一层是宿主造的,拓展那份 schema 里根本没有它,拓展自己造不出一条
  * 假的「宿主报错」。
- *
- * v1 拓展的那一口仍是它自己交的任意 JSON(`publishStatus`),不是这个形状。
  */
 export interface ExtensionPanelView {
 	/** 拓展列表页那一行。坏了就没有这一格(决策 40「摘要坏了不画」)。 */

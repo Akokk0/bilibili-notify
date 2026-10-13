@@ -13,8 +13,8 @@ describe("packExtension", () => {
 				name: "机器人框架桥接",
 				description: "x",
 				version: "0.0.2",
-				apiVersion: 1,
-				provides: ["push"],
+				apiVersion: 2,
+				contributes: { push: { display: { label: "桥接", shortLabel: "桥", color: "#fb7299" } } },
 			}),
 		),
 		"index.mjs": strToU8("export default { activate() {} };"),
@@ -77,7 +77,7 @@ describe("packExtension", () => {
 	 */
 	it("同样的输入永远打出同样的字节", () => {
 		expect(packExtension(files).sha256).toBe(
-			"27e8fb908b65be4444514fe29a1f62a9c9cb880aba573d56d2358a87d2a736da",
+			"79a0094af672bbaa866ac66004f6f20db58d30b1cdda1b2cc93dc106e26e45f9",
 		);
 	});
 

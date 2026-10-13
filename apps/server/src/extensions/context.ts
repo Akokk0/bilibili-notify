@@ -21,7 +21,6 @@ import {
 	formatZodIssues,
 	type InboundMeta,
 	type InboundSinks,
-	isSecretField,
 	type Logger,
 	manifestProvides,
 	ok,
@@ -41,7 +40,6 @@ import { createPlatformAdapterContext } from "../push/adapter-context.js";
 import type { PlatformAdapterRegistry } from "../push/registry.js";
 import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 import { assertConfigFieldsMatchSchema } from "./config-fields.js";
-import { displayFromV1, fieldFromV1 } from "./legacy-v1.js";
 import { type ExtensionMounts, extensionMountPrefix } from "./mount.js";
 import {
 	judgeStoredSettings,
@@ -162,21 +160,19 @@ export const STATUS_CHANGED_COALESCE_MS = 250;
 const STATUS_KEY = "status";
 
 /**
- * v2 清单里推送源那一口的外观 + 连接配置项(ADR-0019 决策 17 / 41)。v1(写在代码里)或没开这一口
- * 就是 `undefined`。
+ * 清单里推送源那一口的外观 + 连接配置项(ADR-0019 决策 17 / 41)。没开这一口就是 `undefined`。
  *
  * 注册推送源时与拓展列表下发时**共用这一份翻译** —— 停着的拓展列表照清单给,跑着的照注册时收下的给,
  * 两处各写一遍的话,哪天清单多一格,两边就说成两种样子。
  */
 export function manifestPushView(manifest: ExtensionManifest): ExtensionPushView | undefined {
-	if (manifest.apiVersion !== 2) return undefined;
 	const push = manifest.contributes.push;
 	return push && { display: push.display, connectionFields: push.connection?.fields ?? [] };
 }
 
 /**
- * v2 清单里订阅源那一口给面板的东西:外观 + 会报哪几种事件(ADR-0019 决策 41)。v1 或没开这一口就是
- * `undefined` —— v1 的契约里没有订阅源。
+ * 清单里订阅源那一口给面板的东西:外观 + 会报哪几种事件(ADR-0019 决策 41)。没开这一口就是
+ * `undefined`。
  *
  * 只从清单来、不问代码:停用的拓展名下的订阅照样画得出是哪个平台的(决策 10 的置灰)。自带皮肤的
  * 包内路径(`cardSkin`)不给面板 —— 那是装包那头的事。
@@ -184,7 +180,6 @@ export function manifestPushView(manifest: ExtensionManifest): ExtensionPushView
 export function manifestSubscriptionView(
 	manifest: ExtensionManifest,
 ): ExtensionSubscriptionView | undefined {
-	if (manifest.apiVersion !== 2) return undefined;
 	const subscription = manifest.contributes.subscription;
 	return subscription && { display: subscription.display, events: subscription.events };
 }
@@ -195,30 +190,14 @@ export interface ExtensionRuntime {
 	/**
 	 * 拓展交上来的那份面板数据 —— 没交过就是 `undefined`。现取。
 	 *
-	 * v2 是宿主核过的视图(`ExtensionPanelView`:坏块 / 坏项换成了宿主的提示,见 `view-check.ts`);
-	 * v1 是它 `publishStatus` 交的任意 JSON,原样。
+	 * 是宿主核过的视图(`ExtensionPanelView`:坏块 / 坏项换成了宿主的提示,见 `view-check.ts`)。
 	 */
 	status(): unknown;
-	/**
-	 * 推送源那一口给面板的东西:外观 + 连接配置项。没注册过推送源就是 `undefined`。
-	 *
-	 * 🔴 **收下就得能拿出来**:面板要靠外观给拓展那一档一张脸(丢掉的话 web 只能自己手抄
-	 * 一份短名与颜色,而手抄的副本迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿);连接配置项
-	 * 交上来是为了**被画出来**(决策 33),推送目标页照它画「新建连接」的表单。
-	 */
-	pushSource(): ExtensionPushView | undefined;
 	/**
 	 * 现在能借来当连接的 bot。拓展没给 `listBots` 就是 `undefined`(与「空名单」分开:
 	 * 前者是「这种推送源没有 bot 这回事」,后者是「现在一个都没连着」)。
 	 */
 	bots(): readonly ExtensionBotView[] | undefined;
-	/**
-	 * 它在字段表里声明成密钥的那些键 —— **备份脱敏照这个抹**。
-	 *
-	 * 脱敏本来靠一份键名黑名单,而拓展的 config 形状归它自己定:叫 `botKey` 的密钥
-	 * 黑名单看不见,会原样进备份文件。密钥要声明出来,不能靠猜。
-	 */
-	secretConfigCodes(): readonly string[];
 	/**
 	 * 它经 `ctx.settings(schema)` 交过的 zod(可能不止一份,按交的次序)—— 写设置时再过一道
 	 * (ADR-0019 决策 35):清单造出来的校验表达不了整数、正则、跨字段规则,放行的值拓展一读就整份
@@ -254,7 +233,7 @@ export interface ExtensionRuntime {
 export interface CreateExtensionContextOptions {
 	id: string;
 	/**
-	 * 它的清单 —— 注册时按它核对「开没开这一口」,v2 的外观、连接配置项、设置项都从这儿读
+	 * 它的清单 —— 注册时按它核对「开没开这一口」,外观、连接配置项、设置项都从这儿读
 	 * (ADR-0019 决策 16)。
 	 */
 	manifest: ExtensionManifest;
@@ -362,22 +341,17 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	});
 	const logger = integration.ctx.logger;
 
-	/** v1 `publishStatus` 交的回调 —— 任意 JSON,原样下发。 */
-	let statusOf: (() => unknown) | undefined;
-	/** v2 `publishView` 交的回调 —— 每问一次叫一次,核过再下发。 */
+	/** `publishView` 交的回调 —— 每问一次叫一次,核过再下发。 */
 	let viewFn: (() => ExtensionView) | undefined;
-	const isV2 = opts.manifest.apiVersion === 2;
 	let pushSourceRegistered = false;
-	let pushView: ExtensionPushView | undefined;
 	/**
-	 * 清单声明过的动作名(决策 42:清单里只有名字的一串);清单里没有 `actions` 这一段(v1 一律
-	 * 没有)就是 `undefined`。建成 Set 查:名字是拓展与面板给的,拿普通对象按下标查会顺着原型链把
+	 * 清单声明过的动作名(决策 42:清单里只有名字的一串);清单里没有 `actions` 这一段就是
+	 * `undefined`。建成 Set 查:名字是拓展与面板给的,拿普通对象按下标查会顺着原型链把
 	 * `constructor` / `toString` 判成声明了。
 	 */
-	const declaredActions: ReadonlySet<string> | undefined =
-		opts.manifest.apiVersion === 2 && opts.manifest.actions
-			? new Set(opts.manifest.actions)
-			: undefined;
+	const declaredActions: ReadonlySet<string> | undefined = opts.manifest.actions
+		? new Set(opts.manifest.actions)
+		: undefined;
 	/** 代码接了的动作。卸载时清空 —— 之后面板再按,就是「声明了却没接」。 */
 	const actionHandlers = new Map<string, (signal: AbortSignal) => void | Promise<void>>();
 	/**
@@ -386,7 +360,6 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	 */
 	const runningActions = new Map<string, AbortController>();
 	let listBots: (() => readonly ExtensionBotView[]) | undefined;
-	let secretCodes: readonly string[] = [];
 	let subscriptionSourceRegistered = false;
 	/** 注册上来的订阅源(解析门在它身上);收摊时摘掉。 */
 	let subscriptionSource: SubscriptionSourceDef | undefined;
@@ -433,15 +406,9 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	/**
 	 * 订阅源那一口开没开 —— 「注册的口 ⊆ 清单开的口」(ADR-0019 决策 16),同 {@link pushViewOf}。
-	 * v1 的契约里没有订阅源:它的 `provides` 里写着 `subscription` 也注册不了。
 	 */
 	function assertSubscriptionPort(def: SubscriptionSourceDef): void {
 		const { manifest } = opts;
-		if (manifest.apiVersion !== 2) {
-			throw new Error(
-				`extension ${id}: 订阅源只有 v2 清单开得了(contributes.subscription),v1 的契约里没有这一口`,
-			);
-		}
 		if (!manifest.contributes.subscription) {
 			throw new Error(
 				`extension ${id}: 清单里没开订阅源那一口(contributes.subscription),不能注册订阅源`,
@@ -456,8 +423,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	// ---- 订阅源的上报(ADR-0019 决策 7 / 57 / 59 / 60 / 62)------------------------------------------
 
 	/** 清单声明的事件种类 —— 报上来的种类照它核(决策 5:清单就是能力声明)。 */
-	const declaredEvents =
-		opts.manifest.apiVersion === 2 ? (opts.manifest.contributes.subscription?.events ?? []) : [];
+	const declaredEvents = opts.manifest.contributes.subscription?.events ?? [];
 
 	/** 拓展报的外部 id 念给人听:不是字符串的只说类型,太长的截一段。 */
 	function externalIdPreview(raw: unknown): string {
@@ -576,9 +542,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	// ---- 自己的设置(ADR-0019 决策 36)----------------------------------------------------
 
-	/** 清单声明的设置项 —— 点名「哪一格」时拿它念名字。v1 清单里没有,路径原样念。 */
-	const settingsFields =
-		opts.manifest.apiVersion === 2 ? (opts.manifest.settings?.fields ?? []) : [];
+	/** 清单声明的设置项 —— 点名「哪一格」时拿它念名字。 */
+	const settingsFields = opts.manifest.settings?.fields ?? [];
 	/** 交过的每一份(对表过了的才算),写设置时宿主拿它们再过一道。Set 保序、同一份只记一次。 */
 	const handedSchemas = new Set<ZodType>();
 	/**
@@ -692,8 +657,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	}
 
 	/**
-	 * 推送源那一口给面板的东西从哪来 —— 先核对清单开没开这一口,再按档取:v2 只认清单,
-	 * v1 只认代码(收下时翻译成新形状)。
+	 * 推送源那一口给面板的东西从哪来 —— 先核对清单开没开这一口,再取:只认清单。
 	 *
 	 * 🔴 「注册的口 ⊆ 清单开的口」:不核的话,一个声明成订阅源的拓展照样能挂一个出口上来,
 	 * 面板按清单把它归在订阅那一栏,推送目标页却凭空多出一档。
@@ -703,24 +667,11 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	): ExtensionPushView {
 		const { manifest } = opts;
 		if (!manifestProvides(manifest).includes("push")) {
-			const where = manifest.apiVersion === 1 ? "provides" : "contributes.push";
-			throw new Error(`extension ${id}: 清单里没开推送源那一口(${where}),不能注册推送源`);
-		}
-		if (manifest.apiVersion === 1) {
-			if (!("descriptor" in def) || !("configFields" in def)) {
-				throw new Error(
-					`extension ${id}: v1 清单的外观与连接配置项写在代码里,注册推送源时要交 descriptor 与 configFields`,
-				);
-			}
-			// v1 交的是老名字,收下这一刻翻译过来 —— 宿主里只有新形状。
-			return {
-				display: displayFromV1(def.descriptor),
-				connectionFields: def.configFields.map(fieldFromV1),
-			};
+			throw new Error(`extension ${id}: 清单里没开推送源那一口(contributes.push),不能注册推送源`);
 		}
 		if ("descriptor" in def || "configFields" in def) {
 			throw new Error(
-				`extension ${id}: v2 的外观与连接配置项写在清单的 contributes.push 里,代码里别再交 —— 两份会打架`,
+				`extension ${id}: 外观与连接配置项写在清单的 contributes.push 里,代码里别再交 —— 两份会打架`,
 			);
 		}
 		// 上面核对过开了这一口,这里一定有。
@@ -729,13 +680,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	/**
 	 * 设置项的两份声明(清单一份、`ctx.settings(schema)` 交一份 zod)在拿设置的那一刻对表,
-	 * 每份 schema 对一次。v1 没有这回事:桥的设置是手写页,清单里什么都没声明。
+	 * 每份 schema 对一次。
 	 */
 	const settingsChecked = new WeakSet<ZodType>();
 	function checkSettingsSchema(schema: ZodType): void {
-		const { manifest } = opts;
-		if (manifest.apiVersion === 1 || settingsChecked.has(schema)) return;
-		assertConfigFieldsMatchSchema(id, schema, manifest.settings?.fields ?? []);
+		if (settingsChecked.has(schema)) return;
+		assertConfigFieldsMatchSchema(id, schema, settingsFields);
 		settingsChecked.add(schema);
 	}
 
@@ -812,15 +762,12 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			}
 			const view = pushViewOf(def);
 			// 两份 config 声明对不上就别加载了 —— 放过去的症状是「面板上填了保存不了」
-			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。v1 只对冻结那天对的那几样。
+			// 或者「有个必填项面板上根本没有」,两种都很难查到源头。
 			assertConfigFieldsMatchSchema(id, def.configSchema, view.connectionFields, {
 				picked: def.listBots !== undefined,
-				v1: opts.manifest.apiVersion === 1,
 			});
 			pushSourceRegistered = true;
-			pushView = view;
 			listBots = def.listBots;
-			secretCodes = view.connectionFields.filter(isSecretField).map((f) => f.key);
 			// 🔴 分发键由宿主填 —— 拓展自报的那份在这里被覆盖掉。
 			// `settingsSchema` 同样由宿主拿拓展交的 `configSchema` 填:宿主按它解 settings 再递给适配器。
 			// 🔴 这一版不对拓展开放的成员(ADR-0024 决策 11)带了也不认:契约的类型已经排除它们,但第三方 JS 不受
@@ -908,23 +855,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				integration.refuse("publishView");
 				return;
 			}
-			if (!isV2) {
-				logger.warn("v1 清单交状态走 publishStatus,publishView 不受理");
-				return;
-			}
 			viewFn = fn;
-		},
-		publishStatus(fn) {
-			if (integration.disposed) {
-				integration.refuse("publishStatus");
-				return;
-			}
-			// v2 走专口(决策 39):旧口收任意 JSON,async 回调在它那儿静默变成一份空视图。
-			if (isV2) {
-				logger.warn("v2 交视图走 ctx.publishView,publishStatus 不受理 —— 面板上这个拓展不会有视图");
-				return;
-			}
-			statusOf = fn;
 		},
 		statusChanged() {
 			if (integration.disposed) {
@@ -974,9 +905,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 				return;
 			}
 			if (!declaredActions) {
-				throw new Error(
-					`extension ${id}: 清单里没有 actions(v1 清单没有这一段),接不了动作 ${name}`,
-				);
+				throw new Error(`extension ${id}: 清单里没有 actions,接不了动作 ${name}`);
 			}
 			if (!declaredActions.has(name)) {
 				throw new Error(`extension ${id}: 清单的 actions 里没有 ${name} —— 先在清单里声明`);
@@ -996,14 +925,14 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 	let lastViewProblems: ReadonlySet<string> = new Set();
 
 	/**
-	 * v2 交的视图**先核再下发**(ADR-0019 决策 40):坏的只换掉那一块 / 那一项,每一处都点名哪儿、
+	 * 交的视图**先核再下发**(ADR-0019 决策 40):坏的只换掉那一块 / 那一项,每一处都点名哪儿、
 	 * 为什么 —— 静默吞掉的话,面板上那块就是一片空白,谁也不知道为什么。核法在 `view-check.ts`。
 	 */
 	function checkedView(fn: () => ExtensionView): ViewCheck {
 		const input = {
 			fields: settingsFields,
 			// 「调拓展」的按钮只认清单声明过的动作(决策 42)。
-			actions: opts.manifest.apiVersion === 2 ? (opts.manifest.actions ?? []) : [],
+			actions: opts.manifest.actions ?? [],
 			// 现读:`items` 的键认的是**现在**存着的项。
 			settings: opts.settings(),
 		};
@@ -1038,10 +967,8 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 
 	return {
 		ctx,
-		status: () => (isV2 ? viewNow() : statusOf?.()),
-		pushSource: () => pushView,
+		status: viewNow,
 		bots: () => listBots?.(),
-		secretConfigCodes: () => secretCodes,
 		settingsSchemas: () => [...handedSchemas],
 		settingsProblem: () => settingsProblem,
 		async verifySettings() {
@@ -1176,9 +1103,7 @@ export function createExtensionContext(opts: CreateExtensionContextOptions): Ext
 			runningLookups.clear();
 			actionHandlers.clear();
 			handedSchemas.clear();
-			statusOf = undefined;
 			viewFn = undefined;
-			secretCodes = [];
 		},
 	};
 }

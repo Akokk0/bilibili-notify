@@ -28,8 +28,8 @@ export {
  *   要过高小号的拓展就会被新 BN 错拒。
  * - **不兼容**的改动 = 抬 `min` 并删掉对应的退路。
  *
- * 现在:v1 是老格式(外观与配置项写在代码里,只剩桥在用),v2 是把静态声明搬进清单的那份;
- * v2 还没发版,里面现有的一切都算 0 号。
+ * 现在:只认 v2(把静态声明搬进清单的那份),v2 还没发版,里面现有的一切都算 0 号。第 1 版
+ * (外观与配置项写在代码里)的退路已删,它的清单走「版本太旧」那条不兼容的路。
  */
 export interface ExtensionApiRange {
 	readonly min: number;
@@ -37,13 +37,13 @@ export interface ExtensionApiRange {
 	readonly revision: number;
 }
 export const EXTENSION_API_RANGE: ExtensionApiRange = Object.freeze({
-	min: 1,
+	min: 2,
 	current: 2,
 	revision: 0,
 });
 
 /**
- * 拓展要的契约:档位 + 小号。小号**缺省 0** —— v1 清单没有这一格,v2 与市场索引里是选填。
+ * 拓展要的契约:档位 + 小号。小号**缺省 0** —— 清单与市场索引里都是选填。
  * 清单、索引条目与读清单的结论都长这样,判「装得了吗」只认这一种形状。
  */
 export interface ExtensionApiRequirement {
@@ -74,8 +74,8 @@ export const ApiRevisionSchema = z.number().int().nonnegative();
  * 这个拓展开的是哪一口。
  *
  * 只有两口(ADR-0012):**推送源**接进「推送目标」,**订阅源**接进「订阅 UP 主」。
- * 面板要在不加载代码的前提下把卡片归类,所以它得从清单里读得出来:v1 单写一格
- * `provides`,v2 由 `contributes` 的键推出来({@link manifestProvides})。
+ * 面板要在不加载代码的前提下把卡片归类,所以它得从清单里读得出来:由
+ * `contributes` 的键推出来({@link manifestProvides})。
  */
 export const EXTENSION_PROVIDES = ["push", "subscription"] as const;
 export const ExtensionProvidesSchema = z.enum(EXTENSION_PROVIDES);
@@ -229,19 +229,6 @@ const identityShape = {
 /** 不认识的档位只按这几格读 —— 其余部分可能是我们根本不认识的格式,不挑它的毛病。 */
 const ExtensionIdentitySchema = z.object(identityShape);
 export type ExtensionIdentity = z.infer<typeof ExtensionIdentitySchema>;
-
-/**
- * v1:外观与配置项写在代码里(`registerPushSource` 时交),清单只报开哪一口。
- *
- * **格式已冻结、照旧宽松**(多出来的键丢掉):已经发出去的 v1 包不能因为宿主升级就变成
- * 读不了。现在只剩桥还在用,它迁到 v2、再抬 `min` 之后整段删掉。
- */
-const ExtensionManifestV1Schema = z.object({
-	...identityShape,
-	apiVersion: z.literal(1),
-	provides: z.array(ExtensionProvidesSchema).min(1),
-});
-export type ExtensionManifestV1 = z.infer<typeof ExtensionManifestV1Schema>;
 
 // ---- v2 的积木 -----------------------------------------------------------------------
 
@@ -623,11 +610,11 @@ export const ExtensionManifestV2Schema = z.strictObject({
 });
 export type ExtensionManifestV2 = z.infer<typeof ExtensionManifestV2Schema>;
 
-export type ExtensionManifest = ExtensionManifestV1 | ExtensionManifestV2;
+/** 宿主现在读得了的清单(区间里只剩 v2 一档)。 */
+export type ExtensionManifest = ExtensionManifestV2;
 
 /** 每一档的格式。区间里有、这里没有的档位按「不认识」算。 */
 const MANIFEST_SCHEMAS: Readonly<Record<number, z.ZodType<ExtensionManifest>>> = {
-	1: ExtensionManifestV1Schema,
 	2: ExtensionManifestV2Schema,
 };
 
@@ -685,9 +672,9 @@ export function parseExtensionManifest(
 	const apiVersion = head.data.apiVersion;
 	const schema = tierAccepted(apiVersion, range) ? MANIFEST_SCHEMAS[apiVersion] : undefined;
 
-	// v1 没有小号这一格(写了也不算);认得的新档位才读 —— 坏了就是读不了,点名这一格。
+	// 认得的档位才读小号 —— 坏了就是读不了,点名这一格。
 	let requires: ExtensionApiRequirement = { apiVersion };
-	if (schema && apiVersion !== 1) {
+	if (schema) {
 		const revision = ApiRevisionOnlySchema.safeParse(raw);
 		if (!revision.success) {
 			return { ok: false, reason: "unreadable", issues: formatZodIssues(revision.error) };
@@ -710,9 +697,8 @@ export function parseExtensionManifest(
 	return { ok: true, manifest: parsed.data };
 }
 
-/** 它开的是哪几口 —— v1 照它写的,v2 由 `contributes` 的键推出来(次序固定)。 */
+/** 它开的是哪几口 —— 由 `contributes` 的键推出来(次序固定)。 */
 export function manifestProvides(manifest: ExtensionManifest): ExtensionProvides[] {
-	if (manifest.apiVersion === 1) return [...manifest.provides];
 	return EXTENSION_PROVIDES.filter((key) => manifest.contributes[key] !== undefined);
 }
 
@@ -724,12 +710,8 @@ export function manifestProvides(manifest: ExtensionManifest): ExtensionProvides
  * 也拿这一套同时抹它的设置与它的连接配置(按键名、整棵往下找)。于是某处一格叫 `botKey` 的
  * 没标 `secret`,只要别处有同名的标了,它也会被抹。方向是**多抹不是漏抹**;完整备份不受影响
  * (抹掉的真值在加密袋里,照样原样恢复)。
- *
- * v1 的密钥声明写在代码里、注册推送源时才交,清单答不出来 —— 回 `undefined`,**不是空表**:
- * 在脱敏那边空表是「一格都不用抹」,`undefined` 是「问不出来,整片当密钥」。
  */
-export function manifestSecretKeys(manifest: ExtensionManifest): string[] | undefined {
-	if (manifest.apiVersion === 1) return undefined;
+export function manifestSecretKeys(manifest: ExtensionManifest): string[] {
 	const keys = new Set<string>();
 	const collect = (fields: readonly ExtensionManifestField[]) => {
 		for (const field of fields) {

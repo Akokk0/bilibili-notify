@@ -24,7 +24,7 @@ export const EXTENSION_STATE_META: Record<
 	/*
 	 * 存着的设置过不了它自己的 zod(ADR-0019 决策 36)。**不是红的**:代码没坏,是在等主人去「配置」
 	 * 里改对,改对了它自己起来 —— 与「加载失败」同一个红,就会被当成要去翻日志的那一类。怎么改
-	 * 由服务端那句 `detail` 说(点名哪一格,v1 另有出路)。
+	 * 由服务端那句 `detail` 说(点名哪一格)。
 	 */
 	"settings-invalid": { label: "设置读不了", accent: "var(--color-bn-warning)", severity: "warn" },
 };

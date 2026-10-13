@@ -73,8 +73,6 @@ export type {
 	ExtensionBlock,
 	ExtensionBotView,
 	ExtensionButton,
-	ExtensionConfigField,
-	ExtensionDescriptor,
 	ExtensionDisplay,
 	ExtensionField,
 	ExtensionItemView,
@@ -106,13 +104,7 @@ import type {
 	PlatformAdapter,
 } from "@bilibili-notify/internal";
 import type { ZodType } from "zod";
-import type {
-	ExtensionBotView,
-	ExtensionConfigField,
-	ExtensionDescriptor,
-	ExtensionSubscriptionCandidate,
-	ExtensionView,
-} from "./wire";
+import type { ExtensionBotView, ExtensionSubscriptionCandidate, ExtensionView } from "./wire";
 
 /**
  * 拓展交给宿主的 HTTP 处理函数。
@@ -167,17 +159,6 @@ export interface PushExtensionDef<TConfig> {
 	 * 就可以是空表(config 整份由拓展交,见 {@link ExtensionBotView.config})。
 	 */
 	listBots?: () => readonly ExtensionBotView<TConfig>[];
-}
-
-/**
- * **v1 的推送源** —— 清单 `apiVersion: 1` 的拓展还把外观与连接配置项写在代码里,用的是
- * 老名字。宿主收下时翻译成新形状。只剩桥在用;桥迁到 v2、再抬最低档之后删掉。
- */
-export interface LegacyPushExtensionDef<TConfig> extends PushExtensionDef<TConfig> {
-	/** 外观(新名字:清单里的 `contributes.push.display`)。 */
-	descriptor: ExtensionDescriptor;
-	/** 连接配置项(新名字:清单里的 `contributes.push.connection.fields`)。 */
-	configFields: readonly ExtensionConfigField[];
 }
 
 /** 一条属于这个拓展的连接 —— config 已经解成它自己的形状。 */
@@ -497,12 +478,9 @@ export interface ExtensionContext {
 	 * **分发键由宿主按 id 填**,`adapter.adapterKey` 自报的那份会被覆盖:自报的话,一个
 	 * 拓展可以声明 `"onebot"` 把内置那条连接的推送整个截走。归属是宿主的判断。
 	 *
-	 * 清单没开推送源那一口(v2 的 `contributes.push`、v1 的 `provides`)会抛。v2 交
-	 * {@link PushExtensionDef},v1 交 {@link LegacyPushExtensionDef}。
+	 * 清单没开推送源那一口(`contributes.push`)会抛。
 	 */
-	registerPushSource<TConfig>(
-		def: PushExtensionDef<TConfig> | LegacyPushExtensionDef<TConfig>,
-	): PushSourceHandle<TConfig>;
+	registerPushSource<TConfig>(def: PushExtensionDef<TConfig>): PushSourceHandle<TConfig>;
 	/**
 	 * 注册这个拓展的订阅源 —— 一个拓展就是一个平台(ADR-0019 决策 9),再注册一次会抛。
 	 *
@@ -546,14 +524,7 @@ export interface ExtensionContext {
 	 */
 	publishView(fn: () => ExtensionView): void;
 	/**
-	 * **v1 的老口**:交任意 JSON,宿主原样下发(v1 的页是手写的,形状归它自己)。
-	 *
-	 * ⛔ v2 拓展叫它,宿主不受理(记一行日志)—— 它对 `async` 回调会静默交出一份空视图,v2 走
-	 * {@link publishView}。
-	 */
-	publishStatus(fn: () => unknown): void;
-	/**
-	 * 交上去的那份数据**变了**,喊一声。`publishView` / `publishStatus` 是现取的,盲点在「什么时候该再取」:
+	 * 交上去的那份数据**变了**,喊一声。`publishView` 是现取的,盲点在「什么时候该再取」:
 	 * 桥那头刚握完手,面板上那张卡还灰着,得切一下页才刷新。宿主把这一声推到面板(WS
 	 * `state` 频道),面板当场重取 `/api/ext/<id>/status` 与 bot 名单。什么算「变了」由
 	 * 拓展自己定 —— 桥:一条接入连上 / 断开。

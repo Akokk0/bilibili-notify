@@ -64,7 +64,6 @@ describe("拓展挂载点接线", () => {
 				mounts,
 				loaded: () => [],
 				status: () => undefined,
-				pushSource: () => undefined,
 				bots: () => undefined,
 			},
 		});
@@ -86,7 +85,6 @@ describe("拓展挂载点接线", () => {
 			cardSkins: { store: createCardSkinStore(runtime.dataRoot) },
 			extensions: {
 				status: () => undefined,
-				pushSource: () => undefined,
 				bots: () => undefined,
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [
@@ -142,7 +140,6 @@ describe("拓展动作的接线", () => {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
 				status: () => undefined,
-				pushSource: () => undefined,
 				bots: () => undefined,
 				runAction,
 			},
@@ -187,7 +184,6 @@ describe("解析门的接线", () => {
 			mounts: createExtensionMounts({ logger: silentLogger }),
 			loaded: () => [],
 			status: () => undefined,
-			pushSource: () => undefined,
 			bots: () => undefined,
 			lookup,
 		};
@@ -278,7 +274,6 @@ describe("只重载的接线", () => {
 					},
 				],
 				status: () => undefined,
-				pushSource: () => undefined,
 				bots: () => undefined,
 				swap,
 			},
@@ -314,7 +309,6 @@ describe("面板上传装拓展的接线", () => {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [],
 				status: () => undefined,
-				pushSource: () => undefined,
 				bots: () => undefined,
 				install: {
 					root,
@@ -339,8 +333,13 @@ describe("面板上传装拓展的接线", () => {
 					name: "抖音订阅源",
 					description: "测试用",
 					version: "0.2.0",
-					apiVersion: 1,
-					provides: ["subscription"],
+					apiVersion: 2,
+					contributes: {
+						subscription: {
+							display: { label: "测试", shortLabel: "测", color: "#000000" },
+							events: ["post"],
+						},
+					},
 				}),
 			),
 			"index.mjs": strToU8("export function activate() {}"),

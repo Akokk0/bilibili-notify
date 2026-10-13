@@ -67,7 +67,6 @@ function boot(
 		connections?: unknown[];
 		entries?: ExtensionEntry[] | (() => ExtensionEntry[]);
 		status?: Record<string, unknown>;
-		push?: Record<string, unknown>;
 		bots?: Record<string, unknown[]>;
 		settle?: () => Promise<void>;
 		canRestart?: boolean;
@@ -108,7 +107,6 @@ function boot(
 		extensions: () =>
 			loader ? loader.list() : typeof entries === "function" ? entries() : entries,
 		status: (id) => over.status?.[id],
-		pushSource: (id) => over.push?.[id] as never,
 		bots: (id) => over.bots?.[id] as never,
 		settle: over.settle,
 		install: {
@@ -181,6 +179,9 @@ function realLoader(enabled: boolean | (() => boolean) = true): Promise<LoadedEx
 	});
 }
 
+/** 推送源那一口最小的外观 —— 夹具清单共用。 */
+const PUSH_DISPLAY = { label: "测试推送", shortLabel: "测", color: "#a855f7" };
+
 /** 手放一份拓展进装载根(清单 + 入口)。`word` 进代码里,好让两份代码的指纹不一样。 */
 async function plant(id: string, word: string, version = "1.0.0"): Promise<void> {
 	await mkdir(join(installRoot, id), { recursive: true });
@@ -191,8 +192,8 @@ async function plant(id: string, word: string, version = "1.0.0"): Promise<void>
 			name: `${id} 拓展`,
 			description: "测试用",
 			version,
-			apiVersion: 1,
-			provides: ["push"],
+			apiVersion: 2,
+			contributes: { push: { display: PUSH_DISPLAY } },
 		}),
 	);
 	await writeFile(
@@ -210,8 +211,8 @@ function pack(over: Record<string, unknown> = {}): Blob {
 				name: "机器人框架桥接",
 				description: "测试用",
 				version: "1.1.0",
-				apiVersion: 1,
-				provides: ["push"],
+				apiVersion: 2,
+				contributes: { push: { display: PUSH_DISPLAY } },
 				...over,
 			}),
 		),
@@ -251,8 +252,8 @@ function running(id: string): ExtensionEntry {
 			name: `${id} 拓展`,
 			description: "一句话说明",
 			version: "1.0.0",
-			apiVersion: 1,
-			provides: ["push"],
+			apiVersion: 2,
+			contributes: { push: { display: PUSH_DISPLAY } },
 		},
 	};
 }
@@ -316,7 +317,7 @@ describe("GET /api/ext", () => {
 	 * 面板照清单画设置表单(ADR-0019 决策 17 / 30),而「装好 → 填 → 启用」要求**没在跑**的
 	 * 拓展也拿得到这份声明 —— 它来自清单,不来自代码。
 	 */
-	it("v2 拓展的设置项声明随列表下发,没在跑也有;v1 没有这一格", async () => {
+	it("拓展的设置项声明随列表下发,没在跑也有;清单里没声明的没有这一格", async () => {
 		const fields = [
 			{ key: "cookie", type: "string", label: "Cookie", required: true, secret: true },
 		];
@@ -344,9 +345,8 @@ describe("GET /api/ext", () => {
 		).json()) as ExtensionsResponse;
 		expect(body.extensions.find((e) => e.id === "douyin")?.settings).toEqual({ fields });
 		expect(body.extensions.find((e) => e.id === "bridge")?.settings).toBeUndefined();
-		// 面板靠这一格分:v2 照声明画,v1 还是桥那一页手写的。
 		expect(body.extensions.find((e) => e.id === "douyin")?.apiVersion).toBe(2);
-		expect(body.extensions.find((e) => e.id === "bridge")?.apiVersion).toBe(1);
+		expect(body.extensions.find((e) => e.id === "bridge")?.apiVersion).toBe(2);
 	});
 
 	it("版本不合的拓展照样有名字与版本 —— 格式不认识,身份那几格也读得出来", async () => {
@@ -390,35 +390,6 @@ describe("GET /api/ext", () => {
 			await boot({ entries: [linked] }).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions[0]?.linkedTo).toBe("/repo/extensions/bridge/dist");
-	});
-
-	/**
-	 * 🔴 v1 拓展在 `activate` 里报了短名与标识色,而面板此前**手抄了一份**
-	 * (`platform-meta.tsx` 里那行躺了整整一片)。字段不下发的话,那份手抄就是唯一出路,
-	 * 而它迟早跟拓展报的漂开 —— 且那种漂移门禁一片绿。
-	 */
-	it("跑着的 v1 把它在代码里报的外观一并交出去", async () => {
-		const body = (await (
-			await boot({
-				entries: [running("bridge")],
-				push: { bridge: { display: { shortLabel: "桥接", color: "#a855f7" } } },
-			}).request("/")
-		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.push?.display).toMatchObject({
-			shortLabel: "桥接",
-			color: "#a855f7",
-		});
-	});
-
-	/** 连接配置项随推送源那一口下发 —— 推送目标页照它画「新建连接」的表单(决策 33 的最后一跳)。 */
-	it("跑着的 v1 带它在代码里报的连接配置项", async () => {
-		const fields = [{ type: "string", key: "token", label: "token", secret: true }];
-		const res = await boot({
-			entries: [running("bridge")],
-			push: { bridge: { connectionFields: fields } },
-		}).request("/");
-		const body = (await res.json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.push?.connectionFields).toEqual(fields);
 	});
 
 	/**
@@ -475,7 +446,7 @@ describe("GET /api/ext", () => {
 	 * 清单里,**跑没跑都交给面板** —— 拓展停了,它名下的订阅照样画得出是哪个平台的(决策 10 的
 	 * 置灰)。自带皮肤的包内路径不下发:那是装包那头的事。
 	 */
-	it("停着的 v2 照清单交出订阅源那一口(外观 + 事件);只开推送那口的、v1 的没有", async () => {
+	it("停着的 v2 照清单交出订阅源那一口(外观 + 事件);只开推送那口的没有", async () => {
 		const display = {
 			label: "抖音",
 			shortLabel: "抖",
@@ -514,14 +485,13 @@ describe("GET /api/ext", () => {
 			},
 		};
 		const body = (await (
-			await boot({ entries: [douyin, bridge, running("legacy")] }).request("/")
+			await boot({ entries: [douyin, bridge] }).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions.find((e) => e.id === "douyin")?.subscription).toEqual({
 			display,
 			events: ["post", "liveStart"],
 		});
 		expect(body.extensions.find((e) => e.id === "bridge")?.subscription).toBeUndefined();
-		expect(body.extensions.find((e) => e.id === "legacy")?.subscription).toBeUndefined();
 	});
 
 	/** 连接是挑出来的(桥)那种清单里不写 `connection` —— 连接配置项照样是一张空表,不是缺一格。 */
@@ -545,17 +515,6 @@ describe("GET /api/ext", () => {
 			await boot({ entries: [bridge] }).request("/")
 		).json()) as ExtensionsResponse;
 		expect(body.extensions[0]?.push?.connectionFields).toEqual([]);
-	});
-
-	/** v1 的外观写在代码里,只有跑着的交得出来 —— 停着的问不出,不替它编一份。 */
-	it("停着的 v1 没有推送源那一口", async () => {
-		const body = (await (
-			await boot({
-				entries: [{ ...running("bridge"), state: "disabled" }],
-				push: {},
-			}).request("/")
-		).json()) as ExtensionsResponse;
-		expect(body.extensions[0]?.push).toBeUndefined();
 	});
 
 	it("清单读不出来的那条没有推送源那一口", async () => {
@@ -724,7 +683,6 @@ describe("GET /api/ext/:id/status", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => ({ n: ++n }),
-			pushSource: () => undefined,
 			bots: () => undefined,
 		});
 		expect(await (await app.request("/x/status")).json()).toEqual({ n: 1 });
@@ -969,7 +927,6 @@ describe("新代码等着换上 + POST /api/ext/:id/swap", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => undefined,
-			pushSource: () => undefined,
 			bots: () => undefined,
 		});
 		const body = (await (await app.request("/")).json()) as ExtensionsResponse;
@@ -1528,8 +1485,8 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 1,
-					provides: ["push"],
+					apiVersion: 2,
+					contributes: { push: { display: PUSH_DISPLAY } },
 				}),
 			),
 			"index.mjs": strToU8("export function activate() {}"),
@@ -1555,8 +1512,8 @@ describe("装完那一刻就说清有没有文档", () => {
 					name: "机器人框架桥接",
 					description: "测试用",
 					version: "1.1.0",
-					apiVersion: 1,
-					provides: ["push"],
+					apiVersion: 2,
+					contributes: { push: { display: PUSH_DISPLAY } },
 				}),
 			),
 			"index.mjs": strToU8("export function activate() {}"),
@@ -1668,7 +1625,6 @@ describe("拓展自己的文档", () => {
 			} as unknown as ConfigStore,
 			extensions: () => [],
 			status: () => undefined,
-			pushSource: () => undefined,
 			bots: () => undefined,
 		});
 

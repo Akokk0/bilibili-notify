@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EXTENSION_API_RANGE } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { discoverExtensions, readExtensionDir } from "../discover.js";
+import { apiVersionMismatch, discoverExtensions, readExtensionDir } from "../discover.js";
 
 let root: string;
 
@@ -27,8 +27,8 @@ function manifest(over: Record<string, unknown> = {}): Record<string, unknown> {
 		name: "机器人框架桥接",
 		description: "把 koishi / AstrBot 里已经配好的机器人借给 BN 用。",
 		version: "1.0.0",
-		apiVersion: 1,
-		provides: ["push"],
+		apiVersion: 2,
+		contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 		...over,
 	};
 }
@@ -182,11 +182,32 @@ describe("readExtensionDir", () => {
 
 	it("低于宿主最低档的 → 同样 incompatible(抬过最低档之后,老拓展停在门外)", async () => {
 		const r = await readExtensionDir(await plant("bridge", manifest()), {
-			hostApiRange: { min: 2, current: 3, revision: 0 },
+			hostApiRange: { min: 3, current: 3, revision: 0 },
 		});
 		expect(r.state).toBe("incompatible");
 		if (r.state !== "incompatible") throw new Error("unreachable");
+		expect(r.requires).toEqual({ apiVersion: 2 });
+	});
+
+	/** 第 1 版的退路已删:盘上还留着的第 1 版拓展落到「版本太旧」,而不是加载或读不了。 */
+	it("第 1 版的清单 → incompatible,原因说「换它的新版」", async () => {
+		const r = await readExtensionDir(
+			await plant("bridge", {
+				id: "bridge",
+				name: "机器人框架桥接",
+				description: "老格式。",
+				version: "0.0.1",
+				apiVersion: 1,
+				provides: ["push"],
+			}),
+		);
+		expect(r.state).toBe("incompatible");
+		if (r.state !== "incompatible") throw new Error("unreachable");
 		expect(r.requires).toEqual({ apiVersion: 1 });
+		expect(r.identity).toMatchObject({ id: "bridge", version: "0.0.1" });
+		expect(apiVersionMismatch(r.requires, r.range)).toBe(
+			"它是给宿主契约 v1 写的,这一版 BN 只认 v2 —— 换它的新版",
+		);
 	});
 
 	it("版本不合、清单 id 又与目录名对不上 → unreadable(两个身份比版本更要紧)", async () => {

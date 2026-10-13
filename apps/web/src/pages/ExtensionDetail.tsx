@@ -16,7 +16,6 @@ import { ExtensionViewBoundary } from "../components/error-boundary";
 import { EXTENSIONS_QUERY_KEY, useExtensions } from "../hooks/useExtensions";
 import { api } from "../services/api";
 import { type Subscription, subscriptionIdentityOf } from "../types/domain";
-import { CardMotionStage } from "./extensions/card-motion-stage";
 import {
 	DeclarativeConfig,
 	DeclarativeHead,
@@ -30,9 +29,6 @@ import {
 	extensionDocIcon,
 	useExtensionDocs,
 } from "./extensions/docs-panel";
-import { EXT_CARD_ANCHOR } from "./extensions/install-flight";
-import { LegacyFormatNote } from "./extensions/legacy-format-note";
-import { MarketplaceInstallConfirm, useMarketplaceInstall } from "./extensions/marketplace-section";
 import { ReportDiscrepanciesBox } from "./extensions/report-discrepancies";
 import {
 	ExtensionIcon,
@@ -50,9 +46,9 @@ import { EXTENSION_STATE_META } from "./extensions/state-meta";
  * 一张头卡、然后是拓展自己那一节 —— **页面级的兄弟节点**,不套在头卡肚子里。
  *
  * 头卡是**通用的**(名字 / 图标 / 说明 / 状态 / 开关,全来自清单);正文按**契约档位**分岔
- * (ADR-0019 决策 18 / 19):v2 照声明画 —— 头卡里是视图的页级积木,「配置」里是照清单画的
- * 设置;v1 没有面板,头卡里是「老格式,去市场更新之后才能在这里管理」那块提示与更新入口
- * (决策 44)。这一页**不认得任何具体拓展**:桥的那一页手写过,迁到 v2 之后退役了(决策 19)。
+ * (ADR-0019 决策 18 / 19):照声明画 —— 头卡里是视图的页级积木,「配置」里是照清单画的
+ * 设置;版本不合的没有清单、也就没有面板,头卡里只有状态那句原因(第 1 版的退路已删)。这一页
+ * **不认得任何具体拓展**:桥的那一页手写过,迁到 v2 之后退役了(决策 19)。
  *
  * 开关也摆在这儿:点进来正是为了摆弄它,只能回列表去拨的话这一页就是块只读展板。
  *
@@ -72,15 +68,6 @@ export default function ExtensionDetail() {
 	const [confirming, setConfirming] = useState(false);
 	const docs = useExtensionDocs(id);
 	const [picked, setPicked] = useState<DetailTab | null>(null);
-	/*
-	 * 老格式拓展头卡里那颗「更新」走的是市场那一份(ADR-0019 决策 44)—— 确认框、换装都挂在它上面,
-	 * 所以由页面持有:更新成了之后它变成 v2、那块提示随之卸掉,这一份不能跟着没。
-	 *
-	 * 「装完那句话」(`ExtensionInstallOutcome`)这一页**不画**:更新成了之后头卡自己就换了脸 ——
-	 * 跑着的那份多出「新版等着换上」那块(同样两条出路),关着的直接成了 v2、长出「配置」。再摆一份
-	 * 就是同一块提示、同两颗钮出两遍。
-	 */
-	const installer = useMarketplaceInstall();
 	/*
 	 * 卸掉之后它名下的订阅**保留**、暂停(ADR-0019 决策 10)—— 确认框得说清有几条,否则主人会以为
 	 * 它们跟着没了。与订阅页同一个键:那边刚改过的,这边直接用缓存。只在框开着、或有「上报出入」
@@ -151,11 +138,9 @@ export default function ExtensionDetail() {
 	const restart = listed.data?.restart;
 	// 按档位分,不按 id —— 认得某个具体拓展,就是「本体不认得拓展」那条的破口。
 	const declarative = ext.apiVersion === 2;
-	// 老格式:这一版还认、照样跑,但这一页管不了它 —— 得说清怎么办(ADR-0019 决策 44)。
-	const legacy = ext.apiVersion === 1;
 	/*
-	 * 没东西可配的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟。v1 一律没有;v2 看
-	 * 清单里有没有设置项(决策 25)。所以一个既没面板又没文档的拓展这里一档都没有,正文整块不画。
+	 * 没东西可配的拓展**不摆「配置」那一档** —— 点进去是空的,比不摆更糟。看清单里有没有设置项
+	 * (决策 25)。所以一个既没面板又没文档的拓展这里一档都没有,正文整块不画。
 	 */
 	const hasConfig = declarative && settingsFieldsOf(ext).length > 0;
 	const tabs: DetailTab[] = [...(hasConfig ? (["config"] as const) : []), ...docs.kinds];
@@ -183,75 +168,62 @@ export default function ExtensionDetail() {
 				<span className="font-bold text-bn-text-secondary">{ext.name}</span>
 			</div>
 
-			{/*
-			 * 换装的落点靠这个属性找(`install-flight.tsx`),与列表页那张卡同一个;包一层是因为
-			 * GlassBox 不透传 data-*。老格式拓展在这儿就地更新,球得落在这张头卡上。
-			 */}
-			<div {...{ [EXT_CARD_ANCHOR]: ext.id }}>
-				<GlassBox
-					title={ext.name}
-					badge={meta.label}
-					subtitle={ext.description}
-					accent={meta.accent}
-					icon={<ExtensionIcon svg={ext.icon} />}
-					right={
-						<Toggle
-							ariaLabel={ext.name}
-							value={ext.enabled}
-							onChange={(on) => toggle.mutate({ id: ext.id, enabled: on })}
-						/>
-					}
-				>
-					<div className="flex flex-col gap-2.5">
-						<ExtensionToggleError toggle={toggle} />
-						<ExtensionStateDetail ext={ext} />
-						{/* 排在正文前面:这是等着主人拿主意的事,积木是看的。 */}
-						{staged && restart ? (
-							<StagedCodeNote id={ext.id} restart={restart} {...staged} />
-						) : null}
-						{/*
-						 * 照拓展声明画的两块各包一层边界:那是拓展交来的视图,炸了只换掉那一块 —— 头卡的
-						 * 名字、开关、删除钮与页上别的部分照常(`error-boundary.tsx`)。
-						 */}
-						{declarative ? (
-							<ExtensionViewBoundary resetKey={ext.id}>
-								<DeclarativeHead ext={ext} />
-							</ExtensionViewBoundary>
-						) : legacy ? (
-							<LegacyFormatNote ext={ext} installer={installer} />
-						) : (
-							<p className={PARAGRAPH_CLS}>
-								{ext.version ? `v${ext.version} · ` : ""}
-								这个拓展没有交上来自己的面板。
-							</p>
-						)}
-					</div>
-
+			<GlassBox
+				title={ext.name}
+				badge={meta.label}
+				subtitle={ext.description}
+				accent={meta.accent}
+				icon={<ExtensionIcon svg={ext.icon} />}
+				right={
+					<Toggle
+						ariaLabel={ext.name}
+						value={ext.enabled}
+						onChange={(on) => toggle.mutate({ id: ext.id, enabled: on })}
+					/>
+				}
+			>
+				<div className="flex flex-col gap-2.5">
+					<ExtensionToggleError toggle={toggle} />
+					<ExtensionStateDetail ext={ext} />
+					{/* 排在正文前面:这是等着主人拿主意的事,积木是看的。 */}
+					{staged && restart ? <StagedCodeNote id={ext.id} restart={restart} {...staged} /> : null}
 					{/*
-					 * 危险动作单独一行、摆在最底下 —— 别和开关挤在页头,误点的代价不对等。
-					 * 上面那块正文一样都没画的时候(v2 拓展没跑 / 只有设置项、没交视图),`:empty` 的正文
-					 * 后面这一行就不再留上边距与分隔线 —— 否则头卡里是两根线夹着一条空白带。
+					 * 照拓展声明画的两块各包一层边界:那是拓展交来的视图,炸了只换掉那一块 —— 头卡的
+					 * 名字、开关、删除钮与页上别的部分照常(`error-boundary.tsx`)。
 					 */}
-					<div className="mt-3 flex items-center justify-between gap-3 border-t border-bn-border-subtle pt-3 [:empty+&]:mt-0 [:empty+&]:border-t-0 [:empty+&]:pt-0">
-						<span className="text-bn-2xs text-bn-text-tertiary">
-							{/*
-							 * v2 头卡正文让给了积木,版本号挪到这一句的开头(决策 24 的五处之一);v1 的正文
-							 * 让给了「老格式」那块提示,版本号同样挪到这儿。
-							 */}
-							{(declarative || legacy) && ext.version ? `v${ext.version} · ` : ""}
-							卸掉它:盘上那份与它自己的设置都会没,随时能再装回来。
-						</span>
-						<Btn
-							variant="danger-outline"
-							size="sm"
-							icon={<Icon.trash size={13} />}
-							onClick={() => setConfirming(true)}
-						>
-							删除拓展
-						</Btn>
-					</div>
-				</GlassBox>
-			</div>
+					{declarative ? (
+						<ExtensionViewBoundary resetKey={ext.id}>
+							<DeclarativeHead ext={ext} />
+						</ExtensionViewBoundary>
+					) : (
+						<p className={PARAGRAPH_CLS}>
+							{ext.version ? `v${ext.version} · ` : ""}
+							这个拓展没有交上来自己的面板。
+						</p>
+					)}
+				</div>
+
+				{/*
+				 * 危险动作单独一行、摆在最底下 —— 别和开关挤在页头,误点的代价不对等。
+				 * 上面那块正文一样都没画的时候(v2 拓展没跑 / 只有设置项、没交视图),`:empty` 的正文
+				 * 后面这一行就不再留上边距与分隔线 —— 否则头卡里是两根线夹着一条空白带。
+				 */}
+				<div className="mt-3 flex items-center justify-between gap-3 border-t border-bn-border-subtle pt-3 [:empty+&]:mt-0 [:empty+&]:border-t-0 [:empty+&]:pt-0">
+					<span className="text-bn-2xs text-bn-text-tertiary">
+						{/* 头卡正文让给了积木,版本号挪到这一句的开头(决策 24 的五处之一)。 */}
+						{declarative && ext.version ? `v${ext.version} · ` : ""}
+						卸掉它:盘上那份与它自己的设置都会没,随时能再装回来。
+					</span>
+					<Btn
+						variant="danger-outline"
+						size="sm"
+						icon={<Icon.trash size={13} />}
+						onClick={() => setConfirming(true)}
+					>
+						删除拓展
+					</Btn>
+				</div>
+			</GlassBox>
 
 			{/* 订阅源报上来、BN 没照单全收的几条(决策 60)—— 有才出现。 */}
 			<ReportDiscrepanciesBox ext={ext} subs={subsQuery.data} />
@@ -306,14 +278,6 @@ export default function ExtensionDetail() {
 					onCancel={() => setConfirming(false)}
 				/>
 			) : null}
-
-			{/*
-			 * 第三方来源的更新先过这道确认框。只在真有一条等着确认时才挂:这个框自己要问市场
-			 * (印源的名字),常挂着的话每进一次详情页都去拉一遍索引,v2 拓展根本用不上。
-			 */}
-			{installer.confirming ? <MarketplaceInstallConfirm installer={installer} /> : null}
-			{/* 更新的换装 —— 演完自己收摊,失败 / 减少动态时当场收摊。 */}
-			<CardMotionStage />
 		</div>
 	);
 }

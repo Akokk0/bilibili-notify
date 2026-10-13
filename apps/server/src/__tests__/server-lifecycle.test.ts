@@ -164,8 +164,8 @@ describe("server lifecycle", () => {
 				name: "示例拓展",
 				description: "接线用",
 				version: "1.0.0",
-				apiVersion: 1,
-				provides: ["push"],
+				apiVersion: 2,
+				contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 			}),
 		);
 		await writeFile(
@@ -232,8 +232,8 @@ describe("server lifecycle", () => {
 				name: "示例拓展",
 				description: "接线用",
 				version,
-				apiVersion: 1,
-				provides: ["push"],
+				apiVersion: 2,
+				contributes: { push: { display: { label: "测试", shortLabel: "测", color: "#000000" } } },
 			});
 		const says = (word: string) =>
 			`export function activate(ctx) { ctx.mount(async () => new Response(${JSON.stringify(word)})); }`;

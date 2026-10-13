@@ -94,7 +94,6 @@ describe("/api/settings —— 拓展设置不走这里了", () => {
 				mounts: createExtensionMounts({ logger: silentLogger }),
 				loaded: () => [entry(V2, "running")],
 				status: () => undefined,
-				pushSource: () => undefined,
 				bots: () => undefined,
 			},
 		});

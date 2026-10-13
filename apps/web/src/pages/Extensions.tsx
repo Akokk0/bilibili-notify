@@ -167,19 +167,6 @@ function ExtensionCard({
 						<span className="text-bn-2xs text-bn-text-tertiary">到「管理」里选怎么换</span>
 					</div>
 				) : null}
-				{/*
-				 * 老格式(v1,ADR-0019 决策 44):这一版还认、照样跑,可「管理」里什么都管不了 ——
-				 * 细说在详情页,卡上只挂一个短标记,和底下那颗「更新」连起来读。新版已经在等着换上时
-				 * 不挂:上面那句已经说了,再说「更新之后…」就是让人再去更新一遍。
-				 */}
-				{ext.apiVersion === 1 && !ext.staged ? (
-					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-						<Pill subtle size="sm" color="var(--color-bn-warning)">
-							老格式
-						</Pill>
-						<span className="text-bn-2xs text-bn-text-tertiary">更新之后才能在「管理」里管它</span>
-					</div>
-				) : null}
 				{update ? <MarketplaceUpdateOffer entry={update} installer={installer} /> : null}
 				{elsewhere ? (
 					<p className="text-bn-2xs text-bn-text-tertiary">

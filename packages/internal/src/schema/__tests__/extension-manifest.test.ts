@@ -8,9 +8,10 @@
  *
  * 所以这份 schema 校验的是**一段谁都没执行过的 JSON**,它必须自己把话说全。
  *
- * 清单有两档格式(ADR-0019 决策 16 / 18):v1 声明写在代码里、清单只报 `provides`;
- * v2 把静态声明全搬进清单(`settings` / `actions` / `contributes`)。宿主认一个区间,
- * **先单读 `apiVersion`,再按那一档的格式校验其余**。
+ * 清单的格式按档位分(ADR-0019 决策 16 / 18):v2 把静态声明全搬进清单(`settings` /
+ * `actions` / `contributes`)。宿主认一个区间,**先单读 `apiVersion`,再按那一档的格式
+ * 校验其余**。第 1 版(声明写在代码里、清单只报 `provides`)的退路已删,它的清单现在是
+ * 「版本太旧、不兼容」。
  */
 
 import { describe, expect, it } from "vite-plus/test";
@@ -96,9 +97,9 @@ function incompatible(
 	return r;
 }
 
-describe("parseExtensionManifest —— 两档格式", () => {
-	it("宿主这一版认 v1 到 v2,契约小号是 0(v2 还没发版,里面现有的一切都算 0 号)", () => {
-		expect(EXTENSION_API_RANGE).toEqual({ min: 1, current: 2, revision: 0 });
+describe("parseExtensionManifest —— 档位区间", () => {
+	it("宿主这一版只认 v2(第 1 版的退路已删),契约小号是 0(v2 还没发版,里面现有的一切都算 0 号)", () => {
+		expect(EXTENSION_API_RANGE).toEqual({ min: 2, current: 2, revision: 0 });
 	});
 
 	it("区间两头都算数 —— 读清单与市场判「装得了吗」共用这把尺子", () => {
@@ -121,16 +122,6 @@ describe("parseExtensionManifest —— 两档格式", () => {
 		expect(apiVersionAccepted({ apiVersion: 2 }, { ...range, revision: 0 })).toBe(true);
 		// 档位不合时小号再低也救不回来。
 		expect(apiVersionAccepted({ apiVersion: 3, apiRevision: 0 }, range)).toBe(false);
-	});
-
-	it("v1 最小清单 —— 光靠它就能把拓展列在面板上,不必先加载代码", () => {
-		const m = ok(v1());
-		expect(m.apiVersion).toBe(1);
-		expect(m.id).toBe("demo-ext");
-		expect(m.version).toBe("1.0.0");
-		expect(manifestProvides(m)).toEqual(["push"]);
-		// 图标是可选的 —— 没有就退回灰方章,不是拒绝加载的理由。
-		expect(m.icon).toBeUndefined();
 	});
 
 	it("v2 最小清单:开哪一口由 contributes 的键推出来,不再单写 provides", () => {
@@ -226,17 +217,24 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 	});
 
 	it("低于最低档:同样判不兼容(宿主抬过最低档之后,老拓展停在门外)", () => {
-		const r = incompatible(v1(), { min: 2, current: 3, revision: 0 });
+		const r = incompatible(v1(), { min: 3, current: 3, revision: 0 });
 		expect(r.requires).toEqual({ apiVersion: 1 });
 		expect(r.identity.id).toBe("demo-ext");
 	});
 
-	it("在区间里就按那一档校验 —— 同一份 v1 清单,区间变了照样收", () => {
-		expect(ok(v1(), { min: 1, current: 5, revision: 0 }).apiVersion).toBe(1);
+	it("第 1 版的清单:宿主自己那一档下判不兼容(退路已删),身份照样读得出", () => {
+		const r = incompatible(v1());
+		expect(r.requires).toEqual({ apiVersion: 1 });
+		expect(r.identity).toMatchObject({ id: "demo-ext", version: "1.0.0" });
+	});
+
+	it("区间放宽到包住第 1 版也收不下 —— 没有那一档的格式了,按不认识算(不是炸)", () => {
+		const r = incompatible(v1(), { min: 1, current: 5, revision: 0 });
+		expect(r.requires).toEqual({ apiVersion: 1 });
 	});
 
 	it("版本不合、身份那几格也坏了:读不了(那几格在哪一档都是坏的)", () => {
-		const issues = unreadable({ ...v1({ apiVersion: 9 }), id: "Bad Id" });
+		const issues = unreadable({ ...v2({ apiVersion: 9 }), id: "Bad Id" });
 		expect(issues.join("\n")).toContain("id");
 	});
 
@@ -246,7 +244,7 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
 		["不是数", "2"],
 		["零", 0],
 	])("apiVersion %s —— 读不了,而且点名是 apiVersion", (_label, apiVersion) => {
-		const issues = unreadable(v1({ apiVersion }));
+		const issues = unreadable(v2({ apiVersion }));
 		expect(issues.join("\n")).toContain("apiVersion");
 	});
 
@@ -261,7 +259,7 @@ describe("parseExtensionManifest —— 先单读 apiVersion", () => {
  * BN 不够就与「档位不合」走同一条路 —— 装不上、不起、市场标灰。
  */
 describe("parseExtensionManifest —— 契约小号", () => {
-	const HOST = { min: 1, current: 2, revision: 0 };
+	const HOST = { min: 2, current: 2, revision: 0 };
 
 	it("v2 不写 apiRevision 按 0 算:0 号的 BN 收下;写 0 一样", () => {
 		expect(ok(v2(), HOST).apiVersion).toBe(2);
@@ -296,23 +294,18 @@ describe("parseExtensionManifest —— 契约小号", () => {
 		const issues = unreadable(v2({ apiRevision }), HOST);
 		expect(issues.join("\n")).toContain("apiRevision");
 	});
-
-	it("v1 没有这一格:写了也按 0 算,不挡", () => {
-		expect(ok(v1({ apiRevision: 9 }), HOST).apiVersion).toBe(1);
-	});
 });
 
 /**
- * 身份那几格在两档里是同一套规矩。
+ * 身份那几格是跨档位的承诺(以后只许加可选格,不许改)。
  *
  * id 同时是**三个地方的一段**:URL(`/ext/:id/*`)、装载目录
  * (`<dataDir>/extensions/<id>/`)、失败记账的键。所以它比「非空字符串」要严得多,
  * 而且必须**在清单校验这一步**拦住 —— 放过去之后每一处都得自己防一遍。
  */
-describe.each([
-	["v1", v1],
-	["v2", v2],
-])("身份那几格(%s)", (_label, build) => {
+describe("身份那几格", () => {
+	const build = v2;
+
 	it.each(["demo-ext", "douyin-source", "x2"])("id %s —— 收下", (id) => {
 		expect(ok(build({ id })).id).toBe(id);
 	});
@@ -350,19 +343,6 @@ describe.each([
 		const small = `<svg viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>`;
 		expect(ok(build({ icon: small })).icon).toBe(small);
 		unreadable(build({ icon: "x".repeat(64_001) }));
-	});
-});
-
-describe("v1:格式已冻结,照旧宽松", () => {
-	it("多出来的字段丢掉而不是拒绝 —— 已经发出去的 v1 包不能因为宿主升级变成读不了", () => {
-		const m = ok(v1({ futureField: "?" }));
-		expect(m).not.toHaveProperty("futureField");
-	});
-
-	it("开哪一口必须写清楚,而且不能一口都不开", () => {
-		unreadable(v1({ provides: [] }));
-		expect(manifestProvides(ok(v1({ provides: ["subscription"] })))).toEqual(["subscription"]);
-		unreadable(v1({ provides: ["kitchen-sink"] }));
 	});
 });
 
@@ -849,10 +829,6 @@ describe("manifestSecretKeys", () => {
 			}),
 		);
 		expect(manifestSecretKeys(m)).toEqual(["apiKey", "token"]);
-	});
-
-	it("v1 的密钥声明在代码里,清单答不出来 —— undefined(不是空表:空表是「一格都不用抹」)", () => {
-		expect(manifestSecretKeys(ok(v1()))).toBeUndefined();
 	});
 
 	it("v2 一格密钥都没声明 —— 空表", () => {

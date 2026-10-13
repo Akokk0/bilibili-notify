@@ -180,29 +180,6 @@ describe("注册订阅源", () => {
 		expect(await loaded.lookup("bridge", "x")).toBeUndefined();
 	});
 
-	/** v1 的契约里没有订阅源这一口 —— 老格式的 `provides` 里写着 subscription 也注册不了。 */
-	it("v1 清单(provides 写着 subscription)→ 注册当场抛,说清只有 v2 开得了", async () => {
-		await plant(
-			"douyin",
-			{},
-			{
-				id: "douyin",
-				name: "抖音订阅",
-				description: "测试用",
-				version: "0.0.1",
-				apiVersion: 1,
-				provides: ["subscription"],
-			},
-		);
-		const { loaded } = await boot({
-			douyin(ctx) {
-				ctx.registerSubscriptionSource({ lookup: () => [CANDIDATE] });
-			},
-		});
-		expect(loaded.list()[0]?.state).toBe("failed");
-		expect(loaded.list()[0]?.detail).toContain("v2");
-	});
-
 	it("注册两次 → 第二次抛;解析门还是第一次那一个(一个拓展就是一个平台)", async () => {
 		await plant("douyin", { subscription: SUBSCRIPTION });
 		let second: unknown;

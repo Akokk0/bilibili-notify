@@ -109,7 +109,7 @@ schema 在 `packages/internal/src/schema/extension-manifest.ts`，只有清单 v
 
 ### 契约档位与契约小号（决策 18 / 59）
 
-- `EXTENSION_API_RANGE = { min: 1, current: 2, revision: 0 }`。清单的 `apiVersion` 是要的档位（落在 `[min, current]` 才收），`apiRevision` 是要的小号（缺省 0）；`apiVersionAccepted` 判「装得了吗」，装包（`extensions/install.ts`）、发现（`discover.ts`）、市场（`marketplace.ts`）用同一把尺子。宿主**先单读 `apiVersion`，再读小号，再按那一档的格式校验**，旧宿主说的是「版本不合」而不是「清单读不了」。
+- `EXTENSION_API_RANGE = { min: 2, current: 2, revision: 0 }`（第 1 版的退路已删，第 1 版清单判「版本太旧、不兼容」）。清单的 `apiVersion` 是要的档位（落在 `[min, current]` 才收），`apiRevision` 是要的小号（缺省 0）；`apiVersionAccepted` 判「装得了吗」，装包（`extensions/install.ts`）、发现（`discover.ts`）、市场（`marketplace.ts`）用同一把尺子。宿主**先单读 `apiVersion`，再读小号，再按那一档的格式校验**，旧宿主说的是「版本不合」而不是「清单读不了」。
 - 🔴 **拓展能用的东西变多**（事件表加一格、ctx 多一个方法、多一种积木、清单多一格）且**对应的 BN 已经发过版** → `revision` 加一。为别的原因发版不动它；**只增不归零**（抬档位也不归零）。不兼容的改动 = 抬 `min` 并删掉对应的退路。v2 还没发版，里面现有的一切都算 0 号。
 - 守卫 `packages/internal/src/schema/__tests__/extension-contract-shape.test.ts`：清单 v2、解析门候选、视图、五种上报这几份 zod 转成 JSON Schema 算摘要，与 `PINNED_REVISION` **成对**钉住，形状一动就红，报错里写着该怎么改（发过版 → 抬小号 + 更新摘要与 `PINNED_REVISION`；没发版 → 只更新摘要；新摘要照 Received 填）。以后加一份拓展交给 BN 的 schema，就往它的 `CONTRACT` 表里加一行。
 - ⚠️ 守卫**看不见的**：`refine` / `superRefine` 里的规矩、图的格式与单张字节上限（在 `z.custom` 的判定函数里）、整条上报的图总量上限（在 `checkSubscriptionReport` 里）、ctx 多一个方法（纯 TS）。放宽这些同样要抬小号，自己想。

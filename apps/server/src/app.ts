@@ -1,11 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
-import type {
-	CardSkinFallback,
-	ExtensionBotView,
-	ExtensionPushView,
-	RestartAbility,
-} from "@bilibili-notify/contract";
+import type { CardSkinFallback, ExtensionBotView, RestartAbility } from "@bilibili-notify/contract";
 import { type CardKind, fail, type Logger } from "@bilibili-notify/internal";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -107,12 +102,10 @@ export interface CreateAppOptions {
 		mounts: ExtensionMounts;
 		loaded: () => readonly ExtensionEntry[];
 		/**
-		 * 某个拓展交上来的面板数据(v2 `ctx.publishView` 核过的那份 / v1 `ctx.publishStatus`)。
+		 * 某个拓展交上来的面板数据(`ctx.publishView` 核过的那份)。
 		 * 没交过 / 没跑就是 undefined。
 		 */
 		status: (id: string) => unknown;
-		/** 某个拓展推送源那一口的外观 + 连接配置项(决策 33)。没跑 / 没注册过就是 undefined。 */
-		pushSource: (id: string) => ExtensionPushView | undefined;
 		/** 某条连接上能绑目标的 bot。没跑 / 它没给就是 undefined。 */
 		bots: (id: string) => readonly ExtensionBotView[] | undefined;
 		/** 跑某个拓展的一个动作。拓展没在跑就是 undefined。没接 → 那一口永远 404。 */
@@ -380,7 +373,6 @@ export function createApp(runtime: AppRuntime, options: CreateAppOptions): Hono 
 				store: deps.store,
 				extensions: () => options.extensions?.loaded() ?? [],
 				status: (id) => options.extensions?.status(id),
-				pushSource: (id) => options.extensions?.pushSource(id),
 				bots: (id) => options.extensions?.bots(id),
 				runAction: async (id, name) => options.extensions?.runAction?.(id, name),
 				lookup: async (id, query) => options.extensions?.lookup?.(id, query),

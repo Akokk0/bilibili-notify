@@ -137,8 +137,8 @@ describe("新建连接里的拓展那一档", () => {
 	});
 
 	/**
-	 * 停着的 v1:外观与连接配置项写在代码里,问不出(`push` 缺着)。停着的 v2 照清单交了 `push`、
-	 * 照样不出现 —— 那条在 `Targets.stopped-extension.test.tsx`。
+	 * 清单读不出来的(版本不合):问不出外观与连接配置项(`push` 缺着)。停着的、清单读得懂的照清单交了
+	 * `push`、照样不出现 —— 那条在 `Targets.stopped-extension.test.tsx`。
 	 */
 	it("没跑起来、也没交 push 的不出现", async () => {
 		vi.mocked(api.get).mockImplementation(async (url: string) => {
