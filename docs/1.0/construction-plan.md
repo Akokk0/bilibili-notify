@@ -437,7 +437,7 @@
 | 统计的 `/overview` 被定时锐评与手动锐评**在进程内当 HTTP 请求打**（`statsRoute.request("/overview")`），为此统计子路由自挂了一份出错处理（④b 第 4 组）：把取数抽成函数、两处直接调，子路由的那份出错处理随之删掉 | ✅ 已落（㉖e，10-06） |
 | knip 报的 3 个老的未使用文件（`devtools/stub.ts`、两个 shape-pin；knip 不在 CI） | 5 |
 | `constants-imports.test.ts` 按行判，多行 `export {…} from "zod"` 会漏；`UpDialog.test.tsx` 没有 JSX，应是 `.ts`；network-guard 夹具路径写了两处 | 5（守卫补齐） |
-| 设置页的 AI 连通测试从 `routes/globals.ts` 挪进 `packages/ai`（出网点名表不给路由开白名单） | 最迟 3b 末（出网点名表清零） |
+| 设置页的 AI 连通测试从 `routes/globals.ts` 挪进 `packages/ai`（出网点名表不给路由开白名单） | ✅ 3b-02 已落（10-13）：搬之前它在 `routes/settings.ts`，现在是 `packages/ai` 的 `probeAiProvider` |
 | 面板自己另有一份 `LoginSnapshot`（`status` 收窄成 `BiliLoginStatusValue`），和核心那份（`status: number`）对不上，留下 ④c 唯一一处对 WS `data` 的类型断言（`useAuthChannel`）。登录状态中立化（`subscription-auth-changed`、`AuthState`）时面板改吃核心那份，断言与面板那份类型一起删掉 | ✅ 3a-29 B 站半已落（面板的 `types/auth.ts` 删了，`useAuthChannel` 用 `isWsEvent` 按事件表定型，没有类型断言了） |
 | 桥协议的失败统一成结果形状（ADR-0026 决策 7）BN 那半：`result` 帧认 `code` + `message` + `upstreamCode?`，只带 `err` 的旧回执进门翻成 `unknown`；`error` 帧补 `code`；协议升 minor 并记进 PROTOCOL.md 的版本表；投递结果接住 `code`；假桥改发新形状（`fail()` 展开），「结果不手写」棘轮里假桥那两格随之删掉 | 3b（随桥迁 v3 与假桥搬家） |
 | ~~拓展包没有 `ok()` / `fail()`，桥拓展 28 处只能手写结果~~（10-08 随 3a-15 落地：契约包导出 `ok()` / `fail()`，桥的投递与探活结果已换；下面说的取图口与守卫两件仍在）；其中取图口的 404 回的是 `{ ok: false, err }`，不合错误体规矩，而错误体守卫只认 `apps/server/src` 造的回应，拓展造的看不见。契约 v3 要不要导出 `ok()` / `fail()`、错误体守卫要不要认拓展的调用栈，随契约 v3 定 | 3b |
