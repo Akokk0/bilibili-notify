@@ -6,6 +6,7 @@ import {
 	membershipTemplateOf,
 } from "@bilibili-notify/internal";
 import { DateTime } from "luxon";
+import { passesMembershipMinRank, passesSuperchatMinAmount } from "../../../live/interaction-gates";
 import { LivePushType } from "../../../live/live-types";
 import { pushSpecialDanmaku, pushSpecialUserEnter } from "../../../live/special-users";
 import { fetchAvatar } from "../../images";
@@ -16,7 +17,6 @@ import { superchatEventFromLiveEvent } from "../superchat-event";
 import { buildRoomLink } from "../template-renderer";
 import { LiveType } from "../types";
 import { fetchGuardViewerAvatar } from "../viewer-avatar";
-import { passesMembershipMinRank, passesSuperchatMinAmount } from "./interaction-gates";
 import { LiveRoomAccessDeniedError, LiveRoomPreflightBlockedError } from "./room-helpers";
 import { LIVE_EVENT_COOLDOWN, RoomSessionBase } from "./room-session-base";
 
