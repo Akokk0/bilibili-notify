@@ -146,7 +146,7 @@ describe("拓展订阅的统计 e2e:假源报上来的,关机之后都在盘上�
 		await press("report.liveStatus");
 
 		// 统计页读得到这两条(ADR-0020 S4):键是订阅 id、带着身份;停用的乙照样列着。甲这一场在场次模块手里 →
-		// 在播 —— 路由从引擎的 `extensionLiveSession` 读它,路由测试用的是替身,接没接上只有这里看得出来。
+		// 在播 —— 路由从引擎的 `liveSession` 读它,路由测试用的是替身,接没接上只有这里看得出来。
 		// 场次开不开是总线上同步定的(上报交到总线,按钮才 resolve),所以这一刻已经定了。
 		const res = await api("/api/stats/overview?days=7&tz=0");
 		expect(res.status).toBe(200);

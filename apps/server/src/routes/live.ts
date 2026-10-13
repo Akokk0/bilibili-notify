@@ -1,6 +1,6 @@
 import type { LiveListeningEntry } from "@bilibili-notify/contract";
 import { Hono } from "hono";
-import { extensionLiveSnapshot } from "../runtime/extension-live.js";
+import { extensionLiveSnapshot } from "../live/live-table.js";
 import type { RouteDeps } from "./types.js";
 
 /**
@@ -20,7 +20,7 @@ export function createLiveRoute(deps: RouteDeps): Hono {
 	const app = new Hono();
 	app.get("/listening", (c) => {
 		const bili = deps.runtime.engines?.listLiveRooms() ?? [];
-		const extension = deps.runtime.extensionLive.list().map(extensionLiveSnapshot);
+		const extension = deps.runtime.liveTable.list().map(extensionLiveSnapshot);
 		return c.json<LiveListeningEntry[]>([...bili, ...extension]);
 	});
 	return app;

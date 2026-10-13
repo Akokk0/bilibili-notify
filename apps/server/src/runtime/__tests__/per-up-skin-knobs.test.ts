@@ -11,7 +11,7 @@
  *    这两档「别的旋钮都生效、唯独它俩静静不动」栽过一回(2026-09-19)。
  *
  * 验红:把 `engines.ts` 里 `liveWorkSettings` / `postSettingsOf` 递 `cardSkinKnobs` 那一句
- * 任删一句,对应的用例红;删 `extension-live-push.ts` 递它那一句,最后一条红。
+ * 任删一句,对应的用例红;删 `live-push.ts` 递它那一句,最后一条红。
  */
 
 import { ImageRenderer, type PuppeteerLike } from "@bilibili-notify/image";
@@ -26,10 +26,10 @@ import {
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import type { LiveNotifySend } from "../../live/live-notify.js";
+import { bindLivePush } from "../../live/live-push.js";
+import { createLiveSessionEngine } from "../../live/live-sessions.js";
+import { createLiveTable } from "../../live/live-table.js";
 import { buildLiveSubViewSingle, liveWorkSettings, postSettingsOf } from "../engines.js";
-import { createExtensionLiveTable } from "../extension-live.js";
-import { bindExtensionLivePush } from "../extension-live-push.js";
-import { createExtensionLiveSessions } from "../extension-live-sessions.js";
 import { createNodeMessageBus } from "../message-bus.js";
 import type { SubRuntimeStore } from "../sub-runtime-store.js";
 
@@ -147,9 +147,9 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 				return { dispose: () => clearInterval(h) };
 			},
 		};
-		const table = createExtensionLiveTable({ bus, timers });
+		const table = createLiveTable({ bus, timers });
 		disposers.push(table);
-		const sessions = createExtensionLiveSessions({
+		const sessions = createLiveSessionEngine({
 			bus,
 			logger: SERVICE_CTX.logger,
 			table,
@@ -165,7 +165,7 @@ describe("拓展订阅的开播卡:per-UP 那层一路画进卡里", () => {
 			delivered = resolve;
 		});
 		disposers.push(
-			bindExtensionLivePush({
+			bindLivePush({
 				bus,
 				logger: SERVICE_CTX.logger,
 				sessions,

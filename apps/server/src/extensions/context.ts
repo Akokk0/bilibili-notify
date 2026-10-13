@@ -138,7 +138,7 @@ export interface ReportDiscrepancy {
 	/**
 	 * `rejected`:整条拒了(`reasons` 只有一句);`dropped`:收下了,丢掉或截断了这几格(每格一句);`skipped`:周期
 	 * 「正在直播」到点时上次推送之后没收到新的直播状态,这一轮没推(决策 61,`kind` 是 `liveStatus`,一句)
-	 * —— 这一种不是 ctx 记的,是拓展直播的计时器(`runtime/extension-live-push.ts`)记的。
+	 * —— 这一种不是 ctx 记的,是拓展直播的计时器(`live/live-push.ts`)记的。
 	 */
 	outcome: "rejected" | "dropped" | "skipped";
 	reasons: readonly string[];

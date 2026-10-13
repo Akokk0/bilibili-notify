@@ -32,6 +32,7 @@ import {
 } from "../images/image-store.js";
 import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
 import { createLinkResolverRegistry, type LinkResolverRegistry } from "../link-preview/registry.js";
+import { createLiveTable, type LiveTable } from "../live/live-table.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { createProblemTable, type ProblemTable } from "../problems/problem-table.js";
 import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
@@ -44,7 +45,6 @@ import { createSourceRegistry, type SourceRegistry } from "../subscriptions/regi
 import { createUptimeRecorder, type UptimeRecorder } from "../uptime/recorder.js";
 import { createUptimeStore, type UptimeStore } from "../uptime/store.js";
 import type { EnginesRuntime } from "./engines.js";
-import { createExtensionLiveTable, type ExtensionLiveTable } from "./extension-live.js";
 import type { FansPollerHandle } from "./fans-poller.js";
 import { createFontAssetReader } from "./font-assets.js";
 import { createNodeMessageBus } from "./message-bus.js";
@@ -162,7 +162,7 @@ export interface AppRuntime {
 	/**
 	 * 拓展直播往图库存图的口(ADR-0021 决策 22 / 24 下 2026-10-05 的 🔗,㉒c):出每张直播卡的那一刻把封面与事件带来的
 	 * 作者头像 `put` 进图库,卡输入里只放引用,出图器按引用读图。这一家引用的是**在播表里的封面与事件头像**
-	 * (`extensionLive.list()`):直播可以超过 24 小时、周期卡几小时后还要用它们,不能像作品那样只靠宽限期。
+	 * (`liveTable.list()`):直播可以超过 24 小时、周期卡几小时后还要用它们,不能像作品那样只靠宽限期。
 	 */
 	liveImages: ImageWriter;
 	/**
@@ -197,7 +197,7 @@ export interface AppRuntime {
 	 * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61):首页「正在直播」里拓展那几行。只听总线(上报、
 	 * 订阅增删改、拓展停了),所以与 StatsRecorder 一样在这里就起;`/api/live/listening` 读它。
 	 */
-	extensionLive: ExtensionLiveTable;
+	liveTable: LiveTable;
 	/**
 	 * Engine layer: PushRouter + DynamicEngine + LiveEngine + Dispatcher.
 	 *
@@ -481,15 +481,15 @@ export function createAppRuntime(
 	});
 	// 拓展订阅的在播表:只听总线,早起不漏拓展开机第一轮报上来的直播状态(拓展在 index.ts 里装载,
 	// 晚于这里)。合并那一发走 serviceCtx 的定时器,关机时一起清。
-	const extensionLive = createExtensionLiveTable({ bus, timers: serviceCtx });
-	serviceCtx.onDispose(() => extensionLive.dispose(), "stop");
+	const liveTable = createLiveTable({ bus, timers: serviceCtx });
+	serviceCtx.onDispose(() => liveTable.dispose(), "stop");
 	// 拓展直播是图库的一家引用方:在播表里的封面与事件带来的头像(都是字节,`imageRefOf` 算得出它们存进图库后的引用)。
 	// 在播表只在内存,所以名单是「此刻在播的那些行」;一场播过 24 小时,周期卡出卡时也会再存一遍,这份名单让清扫
 	// 在两次出卡之间也不把它们当垃圾。算不出引用(图库不收的图)的跳过。
 	const liveImages = imageStore.register({
 		name: IMAGE_REFERRERS.extensionLive,
 		listRefs: async () =>
-			extensionLive
+			liveTable
 				.list()
 				.flatMap((row) => [row.cover, row.author?.avatar])
 				.flatMap((bytes) => (bytes === undefined ? [] : [imageRefOf(bytes)]))
@@ -573,7 +573,7 @@ export function createAppRuntime(
 		historyImages,
 		conversationStore,
 		logStore,
-		extensionLive,
+		liveTable,
 		get engines() {
 			return engines;
 		},

@@ -90,7 +90,14 @@ import type { ImageWriter } from "../images/image-store.js";
 import { resolveLinkParsingPolicies } from "../link-preview/link-scope.js";
 import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
+import { bindLivePush } from "../live/live-push.js";
+import {
+	createLiveSessionEngine,
+	type LiveSession,
+	type LiveSessionEngine,
+} from "../live/live-sessions.js";
 import { type LiveWorkSettings, rotateLiveCover } from "../live/live-settings.js";
+import type { LiveTable } from "../live/live-table.js";
 import { resolveDynamicColorOptions } from "../posts/card-style.js";
 import { createCardFailureTracker, type PostSettings } from "../posts/deliver-post.js";
 import { bindExtensionPosts } from "../posts/extension-post.js";
@@ -115,13 +122,6 @@ import {
 } from "./card-assets.js";
 import { type CardBgRotator, createCardBgRotator } from "./card-bg-rotation.js";
 import { segmentContentBuilder, segmentToPayload } from "./content-builder.js";
-import type { ExtensionLiveTable } from "./extension-live.js";
-import { bindExtensionLivePush } from "./extension-live-push.js";
-import {
-	createExtensionLiveSessions,
-	type ExtensionLiveSession,
-	type ExtensionLiveSessions,
-} from "./extension-live-sessions.js";
 import type { ExtensionSourceReader } from "./extension-push-common.js";
 import { followTargetSubscriptions, syncFollows } from "./follow-sync.js";
 import { MasterNotifier } from "./master-notifier.js";
@@ -164,11 +164,11 @@ export interface EnginesRuntime extends Disposable {
 	/** Currently-broadcasting rooms; powers /api/live/listening. */
 	listLiveRooms(): LiveListenerSnapshot[];
 	/**
-	 * 拓展订阅此刻那一场(ADR-0020 决策 6,场次模块 `extension-live-sessions.ts` 手里的):没在播、或没接
+	 * 拓展订阅此刻那一场(ADR-0020 决策 6,场次模块 `live-sessions.ts` 手里的):没在播、或没接
 	 * 拓展订阅的直播(只测 B 站那几条路的引擎)是 `undefined`。统计页拿它判拓展行「此刻在播」—— 与盘上那一场
 	 * 敞着的同源(开一场、关一场的帧都是它发的),断流等待里也还算在播,同 B 站直播间在等待期里仍是在播。
 	 */
-	extensionLiveSession(subscriptionId: string): ExtensionLiveSession | undefined;
+	liveSession(subscriptionId: string): LiveSession | undefined;
 	/**
 	 * 拓展订阅的平台名(清单里订阅源的叫法 → 拓展名),每次现取 —— 与女仆查订阅那份视图同一口
 	 * ({@link CreateEnginesOptions.extensionPlatformLabel})。锐评的「平台」一列用它(ADR-0020 决策 12)。
@@ -315,13 +315,13 @@ export interface CreateEnginesOptions {
 	 */
 	readImage: (ref: ImageRef) => Promise<{ bytes: Uint8Array; mime: string } | undefined>;
 	/**
-	 * 拓展订阅的在播表(`runtime.extensionLive`,ADR-0019 决策 57 / 64):拓展直播的计时器拿它当「最新状态」,
+	 * 拓展订阅的在播表(`runtime.liveTable`,ADR-0019 决策 57 / 64):拓展直播的计时器拿它当「最新状态」,
 	 * 女仆查直播状态也从它答。与 `extensionSources` 一起给才接拓展订阅的直播。
 	 */
-	extensionLive?: Pick<ExtensionLiveTable, "get">;
+	liveTable?: Pick<LiveTable, "get">;
 	/**
 	 * 拓展直播的封面与事件带来的作者头像往图库存的口(`AppRuntime.liveImages`,ADR-0021 决策 22 / 24 下 2026-10-05
-	 * 的 🔗,㉒c):直播卡是中立输入,图只收图库引用。**给了 `extensionSources` 与 `extensionLive` 就必须给** ——
+	 * 的 🔗,㉒c):直播卡是中立输入,图只收图库引用。**给了 `extensionSources` 与 `liveTable` 就必须给** ——
 	 * 漏给是开机直接抛,不是悄悄不出图。
 	 */
 	liveImages?: Pick<ImageWriter, "put">;
@@ -362,7 +362,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	const initialGlobals = opts.configStore.getGlobals();
 	const postsCtx = opts.serviceCtx.forSubsystem("posts", "core");
 	const liveCtx = opts.serviceCtx.forSubsystem("live", BILIBILI_SOURCE_KEY);
-	const extensionLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
+	const coreLiveCtx = opts.serviceCtx.forSubsystem("live", "core");
 	const aiCtx = opts.serviceCtx.forSubsystem("ai", "ai");
 	const imageCtx = opts.serviceCtx.forSubsystem("image", "image");
 	const globals = (): GlobalConfig => opts.configStore.getGlobals();
@@ -511,8 +511,8 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 空值回来,下方 buildCommentary 的 `!p.apiKey || !p.baseUrl` 就会照既有规矩停用 AI。
 	const buildAiConfig = () => toGeneratorConfig(globals().ai);
 
-	const extensionLiveSource = (): ExtensionLiveSource | undefined => {
-		const table = opts.extensionLive;
+	const liveSource = (): ExtensionLiveSource | undefined => {
+		const table = opts.liveTable;
 		const sources = opts.extensionSources;
 		if (!table || !sources) return undefined;
 		return { row: (id) => table.get(id), running: (id) => sources.running(id) };
@@ -536,7 +536,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				subRuntimeStore: opts.subRuntimeStore,
 				platforms: { label: (id) => opts.extensionPlatformLabel?.(id) },
 				// 女仆查直播状态对拓展订阅从在播表答(决策 64 的 🔗);拓展没在跑时 BN 手里没有它的在播状态。
-				extensionLive: extensionLiveSource(),
+				extensionLive: liveSource(),
 			});
 			// 联网搜索的执行器**每次工具调用现取** —— 后端 / key 是运行期随时改的
 			// 配置,快照会让「刚填的 key 不生效,重启才行」。没填 key 时取到 null,
@@ -827,32 +827,32 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 	// 推送吃它(ADR-0020 决策 6);开播 / 下播卡由事件触发,周期「正在直播」、重启补推由推送那头的小计时器管;
 	// 推什么、怎么推与 B 站同一份(直播装配、文案渲染、按 UP 折好的设置、特性键映射)。最新状态从在播表取,
 	// 出卡的渲染器现取(热换、关了出图时不出卡)。
-	const extensionLive = opts.extensionLive;
-	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `extensionLiveSession` 读它。 */
-	let extensionLiveSessions: ExtensionLiveSessions | undefined;
-	if (extensionSources && extensionLive) {
+	const liveTable = opts.liveTable;
+	/** 拓展订阅的场次;没接拓展订阅的直播时没有。统计页经 `liveSession` 读它。 */
+	let liveSessionEngine: LiveSessionEngine | undefined;
+	if (extensionSources && liveTable) {
 		const liveImages = opts.liveImages;
 		// 同上:漏接线的症状是「拓展直播卡没有封面与头像」而门禁全绿,所以开机就抛。
-		if (!liveImages) throw new Error("createEngines: 给了 extensionLive 就必须给 liveImages");
-		const liveSessions = createExtensionLiveSessions({
+		if (!liveImages) throw new Error("createEngines: 给了 liveTable 就必须给 liveImages");
+		const liveSessions = createLiveSessionEngine({
 			bus: opts.bus,
-			logger: extensionLiveCtx.logger,
-			table: extensionLive,
+			logger: coreLiveCtx.logger,
+			table: liveTable,
 			subscription: (id) => opts.subscriptionStore.findById(id),
 			running: (id) => extensionSources.running(id),
 			fans: (id) => opts.subRuntimeStore.get(id)?.cachedProfile?.fans,
 			settings: (sub) => liveWorkSettings(sub, globals()),
-			timers: extensionLiveCtx,
+			timers: coreLiveCtx,
 		});
 		handles.push(liveSessions);
-		extensionLiveSessions = liveSessions;
+		liveSessionEngine = liveSessions;
 		handles.push(
-			bindExtensionLivePush({
+			bindLivePush({
 				bus: opts.bus,
-				logger: extensionLiveCtx.logger,
-				serviceCtx: extensionLiveCtx,
+				logger: coreLiveCtx.logger,
+				serviceCtx: coreLiveCtx,
 				sessions: liveSessions,
-				table: extensionLive,
+				table: liveTable,
 				subscription: (id) => opts.subscriptionStore.findById(id),
 				profile: (id) => opts.subRuntimeStore.get(id)?.cachedProfile,
 				settings: (sub) => liveWorkSettings(sub, globals()),
@@ -1273,7 +1273,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 			return imageRenderer;
 		},
 		listLiveRooms: () => listLiveRooms(live, opts.subscriptionStore),
-		extensionLiveSession: (subscriptionId: string) => extensionLiveSessions?.get(subscriptionId),
+		liveSession: (subscriptionId: string) => liveSessionEngine?.get(subscriptionId),
 		extensionPlatformLabel: (extensionId: string) => opts.extensionPlatformLabel?.(extensionId),
 		probeConnection: (connectionId: string) => probeConnectionAndCapabilities(connectionId),
 		connectionCapabilities: (connectionId: string) =>

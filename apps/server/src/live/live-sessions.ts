@@ -8,14 +8,14 @@ import type {
 	SubscriptionReportValue,
 } from "@bilibili-notify/internal";
 import { subscriptionIdentityOf } from "@bilibili-notify/internal";
-import type { LiveWorkSettings } from "../live/live-settings.js";
-import { liveEndGraceMinutes } from "../live/live-settings.js";
-import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
-import { extensionSubscriptionPushable } from "./extension-push-common.js";
+import { extensionSubscriptionPushable } from "../runtime/extension-push-common.js";
+import type { LiveWorkSettings } from "./live-settings.js";
+import { liveEndGraceMinutes } from "./live-settings.js";
+import type { LiveTable, LiveTableEntry } from "./live-table.js";
 
 /**
  * **拓展订阅的直播场次**(ADR-0020 决策 6;ADR-0019 决策 53 / 57 / 58 / 61):每条订阅此刻是哪一场、这一场
- * 从哪开始、到哪结束(含断流等待)。拓展直播的推送(`extension-live-push.ts`)吃这一份 —— 场次只算一遍,
+ * 从哪开始、到哪结束(含断流等待)。拓展直播的推送(`live-push.ts`)吃这一份 —— 场次只算一遍,
  * 推送与别的消费方看到的是同一场。
  *
  * - **开播**:开播事件开一场(开播时刻取事件的);正处在断流等待里 → 取消等待,**同一场接着播**,开播时刻
@@ -28,9 +28,9 @@ import { extensionSubscriptionPushable } from "./extension-push-common.js";
  * - **作废**(决策 61):拓展停了、订阅停用 / 删了、关机 → 这一场当场结束,等着的下播不再等。
  *
  * 一场的开始与结束发上总线(`extension-live-session`,ADR-0020 决策 6),统计据此记场次 —— 结束帧带着原因与
- * 本场报过的最大累计观看(决策 7,见 {@link ExtensionLiveSession.totalViewers}),拓展停了 / 关机时补的那一帧
+ * 本场报过的最大累计观看(决策 7,见 {@link LiveSession.totalViewers}),拓展停了 / 关机时补的那一帧
  * 也在里面;断流接续里的那一下不是边界,不发。推送要的比边界多(断流等待开始了、
- * 又来一份状态、手里没有这一场的下播……),经 {@link ExtensionLiveSessions.onChange} 直接听,不走总线。
+ * 又来一份状态、手里没有这一场的下播……),经 {@link LiveSessionEngine.onChange} 直接听,不走总线。
  *
  * 只记「订阅在、启用着、拓展在跑」的(与推送同一个判据,`extensionSubscriptionPushable`),**与推送开关无关**
  * (ADR-0020 决策 4):统计记的是「UP 做了什么」,推送关着这一场照样开、照样结束 —— 推送关掉只是不推。
@@ -48,7 +48,7 @@ const MINUTE = 60_000;
 const iso = (ms: number): string => new Date(ms).toISOString();
 
 /** 一条订阅正在播的这一场。只读:场次只由这里改。 */
-export interface ExtensionLiveSession {
+export interface LiveSession {
 	readonly subscriptionId: string;
 	readonly extensionId: string;
 	/**
@@ -70,71 +70,71 @@ export interface ExtensionLiveSession {
 	 * 在播表里这一场最后一份。下播事件一到那一行就出表了,下播卡没带的格(标题、累计观看……)从这里补;
 	 * 只是拿着那一行,不是另存的一份状态。
 	 */
-	readonly lastRow?: ExtensionLiveRow;
+	readonly lastRow?: LiveTableEntry;
 	/** 断流接续正在等的那次下播:下播事件到达的时刻与它带的格。 */
 	readonly pendingEnd?: { readonly endedAt: number; readonly value: LiveEnd };
 }
 
 /**
- * 场次的每一次变化,按发生的顺序、同步地交给 {@link ExtensionLiveSessions.onChange} 的监听者。
+ * 场次的每一次变化,按发生的顺序、同步地交给 {@link LiveSessionEngine.onChange} 的监听者。
  *
  * 除了一场的开始与结束,还有推送那头要的几样:断流等待里又开播了、又来一份直播状态、下播进了断流等待、
  * 下播事件来了手里却没有这一场。带着上报的原值,开播 / 下播卡要拿它出卡。
  */
-export type ExtensionLiveSessionChange =
+export type LiveSessionChange =
 	| {
-			type: "start";
+			kind: "start";
 			subscriptionId: string;
-			session: ExtensionLiveSession;
+			session: LiveSession;
 			/** 认出这一场的是哪种上报:开播事件,或 BN 开始看之后见到的在播状态。 */
 			trigger: "liveStart";
 			value: LiveStart;
 	  }
 	| {
-			type: "start";
+			kind: "start";
 			subscriptionId: string;
-			session: ExtensionLiveSession;
+			session: LiveSession;
 			trigger: "liveStatus";
 			value: LiveStatus;
 	  }
 	/** 断流等待里又开播了:同一场接着播(决策 58)。 */
-	| { type: "resume"; subscriptionId: string; session: ExtensionLiveSession; value: LiveStart }
+	| { kind: "resume"; subscriptionId: string; session: LiveSession; value: LiveStart }
 	/**
 	 * 又一份直播状态(认出一场的那一份记作 `start`,不在这里)。在播的已经记到这一场上;不在播的不动这一场
 	 * (`session` 是此刻那一场,可能没有)。
 	 */
 	| {
-			type: "status";
+			kind: "status";
 			subscriptionId: string;
 			live: boolean;
-			session: ExtensionLiveSession | undefined;
+			session: LiveSession | undefined;
 	  }
 	/** 下播事件到了,断流接续开着:进等待,这一场还没结束。 */
-	| { type: "ending"; subscriptionId: string; session: ExtensionLiveSession }
+	| { kind: "ending"; subscriptionId: string; session: LiveSession }
 	/** 这一场结束了。`at`:下播是下播事件到达的时刻,其余是结束的那一刻;`value`:下播事件带的格。 */
 	| {
-			type: "end";
+			kind: "end";
 			subscriptionId: string;
-			session: ExtensionLiveSession;
+			session: LiveSession;
 			reason: ExtensionLiveSessionEndReason;
 			at: number;
 			value?: LiveEnd;
 	  }
 	/** 下播事件到了,手里却没有这一场(BN 中途重启过、拓展没报过状态)。 */
-	| { type: "unmatched-end"; subscriptionId: string; at: number; value: LiveEnd };
+	| { kind: "unmatched-end"; subscriptionId: string; at: number; value: LiveEnd };
 
-export interface ExtensionLiveSessions extends Disposable {
+export interface LiveSessionEngine extends Disposable {
 	/** 这条订阅此刻那一场;没在播(或 BN 手里没有)就是 `undefined`。 */
-	get(subscriptionId: string): ExtensionLiveSession | undefined;
+	get(subscriptionId: string): LiveSession | undefined;
 	/** 听场次的变化。场次先改好,再按顺序同步通知。 */
-	onChange(listener: (change: ExtensionLiveSessionChange) => void): Disposable;
+	onChange(listener: (change: LiveSessionChange) => void): Disposable;
 }
 
-export interface CreateExtensionLiveSessionsOptions {
+export interface CreateLiveSessionEngineOptions {
 	bus: MessageBus;
 	logger: Logger;
 	/** 在播表 —— 这一场最后一份状态从这里取(它先于这里听到同一份上报)。 */
-	table: Pick<ExtensionLiveTable, "get">;
+	table: Pick<LiveTable, "get">;
 	/** 此刻的这条订阅(现取)。 */
 	subscription(id: string): Subscription | undefined;
 	/** 拓展此刻在不在跑(现取)。 */
@@ -159,7 +159,7 @@ interface SessionState {
 	detectedAt: number;
 	fansAtStart?: number;
 	totalViewers?: number;
-	lastRow?: ExtensionLiveRow;
+	lastRow?: LiveTableEntry;
 	pendingEnd?: { endedAt: number; value: LiveEnd; handle: Disposable };
 }
 
@@ -181,16 +181,14 @@ const REASON_TEXT: Record<ExtensionLiveSessionEndReason, string> = {
 	shutdown: "关机",
 };
 
-export function createExtensionLiveSessions(
-	opts: CreateExtensionLiveSessionsOptions,
-): ExtensionLiveSessions {
+export function createLiveSessionEngine(opts: CreateLiveSessionEngineOptions): LiveSessionEngine {
 	const log = opts.logger;
 	const now = opts.now ?? Date.now;
 	const sessions = new Map<string, SessionState>();
-	const listeners = new Set<(change: ExtensionLiveSessionChange) => void>();
+	const listeners = new Set<(change: LiveSessionChange) => void>();
 	let disposed = false;
 
-	function announce(change: ExtensionLiveSessionChange): void {
+	function announce(change: LiveSessionChange): void {
 		for (const listener of [...listeners]) listener(change);
 	}
 
@@ -246,7 +244,7 @@ export function createExtensionLiveSessions(
 		log.debug(
 			`[ext-live] 订阅 ${id} 的这一场结束(${REASON_TEXT[reason]})${waiting && reason !== "ended" ? ",等着的下播不再等" : ""}`,
 		);
-		announce({ type: "end", subscriptionId: id, session, reason, at, value });
+		announce({ kind: "end", subscriptionId: id, session, reason, at, value });
 		publishEnd(session, reason, at);
 	}
 
@@ -282,13 +280,13 @@ export function createExtensionLiveSessions(
 			current.lastRow = opts.table.get(id) ?? current.lastRow;
 			noteTotalViewers(current, value);
 			log.debug(`[ext-live] 订阅 ${id} 断流后重新开播,接续为同一场`);
-			announce({ type: "resume", subscriptionId: id, session: current, value });
+			announce({ kind: "resume", subscriptionId: id, session: current, value });
 			return;
 		}
 		// 新的一场。上一场没报下播的话,在这儿收掉。
 		end(id, "superseded");
 		const session = begin(id, sub, value);
-		announce({ type: "start", subscriptionId: id, session, trigger: "liveStart", value });
+		announce({ kind: "start", subscriptionId: id, session, trigger: "liveStart", value });
 		publishStart(session, "liveStart");
 	}
 
@@ -300,19 +298,19 @@ export function createExtensionLiveSessions(
 		if (current) noteTotalViewers(current, value);
 		// 报了不在播:BN 不拿它猜下播(决策 53),这一场等下播事件来收。
 		if (!value.live) {
-			announce({ type: "status", subscriptionId: id, live: false, session: current });
+			announce({ kind: "status", subscriptionId: id, live: false, session: current });
 			return;
 		}
 		if (current) {
 			current.lastRow = opts.table.get(id) ?? current.lastRow;
 			current.startedAt ??= value.startedAt;
-			announce({ type: "status", subscriptionId: id, live: true, session: current });
+			announce({ kind: "status", subscriptionId: id, live: true, session: current });
 			return;
 		}
 		// 没见过这一场的开播事件:BN 起来之前就开播了,或者拓展停过又跑起来了。
 		const session = begin(id, sub, value);
 		log.debug(`[ext-live] 订阅 ${id} 正在播,认出这一场`);
-		announce({ type: "start", subscriptionId: id, session, trigger: "liveStatus", value });
+		announce({ kind: "start", subscriptionId: id, session, trigger: "liveStatus", value });
 		publishStart(session, "liveStatus");
 	}
 
@@ -325,7 +323,7 @@ export function createExtensionLiveSessions(
 		const endedAt = now();
 		const session = sessions.get(id);
 		if (!session) {
-			announce({ type: "unmatched-end", subscriptionId: id, at: endedAt, value });
+			announce({ kind: "unmatched-end", subscriptionId: id, at: endedAt, value });
 			return;
 		}
 		noteTotalViewers(session, value);
@@ -353,7 +351,7 @@ export function createExtensionLiveSessions(
 			}, minutes * MINUTE),
 		};
 		log.info(`[ext-live] 订阅 ${id} 下播,进入 ${minutes} 分钟断流接续等待`);
-		announce({ type: "ending", subscriptionId: id, session });
+		announce({ kind: "ending", subscriptionId: id, session });
 	}
 
 	const watches: Disposable[] = [

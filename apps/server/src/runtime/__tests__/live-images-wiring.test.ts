@@ -75,7 +75,7 @@ describe("createAppRuntime 里的拓展直播图", () => {
 		const avatarRef = await putImage(runtime.liveImages, avatar);
 		const strayRef = await putImage(runtime.liveImages, stray);
 		reportLiveStart({ cover, author: { avatar } });
-		expect(runtime.extensionLive.list()).toHaveLength(1);
+		expect(runtime.liveTable.list()).toHaveLength(1);
 
 		// 验红:把 bootstrap.ts 里 `liveImages` 的名单改成 `[]`,封面与头像也被收走,这条红。
 		const swept = await runtime.imageStore.sweep({ now: justAfter(PAST_GRACE) });
@@ -96,7 +96,7 @@ describe("createAppRuntime 里的拓展直播图", () => {
 			subscriptionIds: ["sub-1"],
 			report: { kind: "liveEnd", value: { url: "https://live.douyin.com/1" } },
 		});
-		expect(runtime.extensionLive.list()).toHaveLength(0);
+		expect(runtime.liveTable.list()).toHaveLength(0);
 
 		const swept = await runtime.imageStore.sweep({ now: justAfter(PAST_GRACE) });
 		expect([...swept.removed].sort()).toEqual([coverRef, avatarRef].sort());

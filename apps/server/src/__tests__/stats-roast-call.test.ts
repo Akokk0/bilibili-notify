@@ -129,7 +129,7 @@ function makeDeps(
 			engines: {
 				api: {},
 				listLiveRooms: () => [],
-				extensionLiveSession: () => undefined,
+				liveSession: () => undefined,
 				extensionPlatformLabel: () => "抖音",
 			},
 			fansPoller: null,

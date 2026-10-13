@@ -196,11 +196,11 @@ export interface BusEvents {
 	 * 在播不走 `live-state-changed`** —— 统计按 uid 订着那一个记场次,而统计不含拓展(决策 12)。
 	 *
 	 * 载荷为空,面板让 `/api/live/listening` 失效、自己重取。按窗口合并过:直播状态可能每轮都报,一阵
-	 * 连着的变化只发一次(`EXTENSION_LIVE_COALESCE_MS`)。
+	 * 连着的变化只发一次(`LIVE_CHANGED_COALESCE_MS`)。
 	 */
 	"extension-live-changed": undefined;
 	/**
-	 * 拓展订阅的一场直播开始 / 结束了(ADR-0020 决策 4 / 6)—— 场次(`runtime/extension-live-sessions.ts`)
+	 * 拓展订阅的一场直播开始 / 结束了(ADR-0020 决策 4 / 6)—— 场次(`live/live-sessions.ts`)
 	 * 算出来的边界,按订阅 id。统计据此记拓展订阅的场次;拓展直播的推送吃的是同一份场次(不经总线)。
 	 *
 	 * 与推送开关无关:订阅在、启用着、拓展在跑就记。断流接续里的那一下、直播状态、下播进等待都**不是**边界,

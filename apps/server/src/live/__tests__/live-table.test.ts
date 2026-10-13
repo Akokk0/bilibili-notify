@@ -12,13 +12,13 @@ import type {
 } from "@bilibili-notify/internal";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
-	createExtensionLiveTable,
-	EXTENSION_LIVE_COALESCE_MS,
-	type ExtensionLiveTable,
+	createLiveTable,
 	extensionLiveSnapshot,
-} from "../extension-live.js";
-import { createNodeMessageBus } from "../message-bus.js";
+	LIVE_CHANGED_COALESCE_MS,
+	type LiveTable,
+} from "../live-table.js";
 
 const EXT = "douyin";
 const SUB_A = "c0000000-0000-4000-8000-000000000001";
@@ -50,7 +50,7 @@ function manualTimers() {
 let bus: ReturnType<typeof createNodeMessageBus>;
 let timers: ReturnType<typeof manualTimers>;
 let clock: number;
-let table: ExtensionLiveTable;
+let table: LiveTable;
 /** 总线上听到的每一发「在播表变了」。 */
 let changed: number;
 
@@ -62,7 +62,7 @@ beforeEach(() => {
 	bus.on("extension-live-changed", () => {
 		changed += 1;
 	});
-	table = createExtensionLiveTable({ bus, timers, now: () => clock });
+	table = createLiveTable({ bus, timers, now: () => clock });
 });
 
 function report(
@@ -233,7 +233,7 @@ describe("「在播表变了」", () => {
 		report({ kind: "liveStatus", value: { live: true, totalViewers: 3 } });
 		report({ kind: "liveStart", value: { url: LIVE_URL, startedAt: T0 } }, [SUB_B]);
 		expect(changed).toBe(0);
-		expect(timers.pending.map((job) => job.ms)).toEqual([EXTENSION_LIVE_COALESCE_MS]);
+		expect(timers.pending.map((job) => job.ms)).toEqual([LIVE_CHANGED_COALESCE_MS]);
 		timers.flush();
 		expect(changed).toBe(1);
 

@@ -1,5 +1,5 @@
 /**
- * 拓展订阅的直播推送与计时器(`bindExtensionLivePush`,ADR-0019 决策 53 / 56–58 / 61 / 67)。
+ * 拓展订阅的直播推送与计时器(`bindLivePush`,ADR-0019 决策 53 / 56–58 / 61 / 67)。
  *
  * 喂一条真的总线、一张真的在播表(最新状态从它取),出卡与发送换成记账的替身,时钟走假定时器:
  * - 开播 / 下播卡只由事件触发(决策 53);
@@ -31,16 +31,13 @@ import {
 } from "../../__tests__/support/track-context.js";
 import type { ReportDiscrepancy } from "../../extensions/context.js";
 import { imageRefOf } from "../../images/image-store.js";
-import type { LiveNotifySend } from "../../live/live-notify.js";
-import type { LiveWorkSettings } from "../../live/live-settings.js";
-import { LivePushType } from "../../live/live-types.js";
-import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
-import { bindExtensionLivePush } from "../extension-live-push.js";
-import {
-	createExtensionLiveSessions,
-	type ExtensionLiveSessions,
-} from "../extension-live-sessions.js";
-import { createNodeMessageBus } from "../message-bus.js";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
+import type { LiveNotifySend } from "../live-notify.js";
+import { bindLivePush } from "../live-push.js";
+import { createLiveSessionEngine, type LiveSessionEngine } from "../live-sessions.js";
+import type { LiveWorkSettings } from "../live-settings.js";
+import { createLiveTable, type LiveTable } from "../live-table.js";
+import { LivePushType } from "../live-types.js";
 
 const EXT = "douyin";
 const SUB = makeExtensionSubscription({ extensionId: EXT, externalId: "sec-uid-1" });
@@ -82,8 +79,8 @@ function baseSettings(over: Partial<LiveWorkSettings> = {}): LiveWorkSettings {
 }
 
 let bus: ReturnType<typeof createNodeMessageBus>;
-let table: ExtensionLiveTable;
-let sessions: ExtensionLiveSessions;
+let table: LiveTable;
+let sessions: LiveSessionEngine;
 let handle: { dispose(): void };
 let sent: Sent[];
 let discrepancies: ReportDiscrepancy[];
@@ -106,7 +103,7 @@ let slowNext: Promise<void> | undefined;
 let ctx: TrackingContext;
 /** 拓展清单声明的事件(`contributes.subscription.events`);`undefined` = 现取不到(装载器还没起来)。 */
 let declaredEvents: readonly SubscriptionEventKind[] | undefined;
-/** 推送这头(`bindExtensionLivePush`)挂过的周期计时器的间隔,按挂的先后(场次 / 在播表自己的计时器不算)。 */
+/** 推送这头(`bindLivePush`)挂过的周期计时器的间隔,按挂的先后(场次 / 在播表自己的计时器不算)。 */
 let periodicIntervals: number[];
 
 function start(): void {
@@ -120,8 +117,8 @@ function start(): void {
 			return { dispose: () => clearInterval(h) };
 		},
 	};
-	table = createExtensionLiveTable({ bus, timers });
-	sessions = createExtensionLiveSessions({
+	table = createLiveTable({ bus, timers });
+	sessions = createLiveSessionEngine({
 		bus,
 		logger,
 		table,
@@ -140,7 +137,7 @@ function start(): void {
 			return Buffer.from("card");
 		}),
 	} as unknown as ImageRenderer;
-	handle = bindExtensionLivePush({
+	handle = bindLivePush({
 		bus,
 		logger,
 		sessions,

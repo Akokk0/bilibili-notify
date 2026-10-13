@@ -10,8 +10,8 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
 /**
  * 拓展订阅的在播表(ADR-0019 决策 12 / 57 / 61)—— 首页「正在直播」里拓展那几行从这里来。
  *
- * 按**订阅自己的 id** 记「此刻在播」与直播那几格 —— 拓展直播的计时器(`extension-live-push.ts`)出「正在直播」
- * 卡、场次(`extension-live-sessions.ts`)记这一场最后一份,也都从这里取,不另存。只听总线:
+ * 按**订阅自己的 id** 记「此刻在播」与直播那几格 —— 拓展直播的计时器(`live-push.ts`)出「正在直播」
+ * 卡、场次(`live-sessions.ts`)记这一场最后一份,也都从这里取,不另存。只听总线:
  * - `subscription-reported`:开播 → 进表(整行换新,这一场从这儿算起);下播 → 出表;直播状态
  *   `live: true` → 报了的格盖上去、没报的留着(不在表里就进表 —— BN 中途重启过也接得上),
  *   `live: false` → 出表。**开播 / 下播卡与推送不在这里**,这里只管「现在在不在播」;BN 不拿状态的
@@ -19,9 +19,9 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
  * - `extension-stopped`:它名下的全部出表(决策 61)—— 拓展重新跑起来之后靠直播状态上报接上。
  * - `subscription-changed`:订阅删了、停用了 → 出表(决策 62:停用的不进首页在播)。
  *
- * 表一变就在总线上发 `extension-live-changed`,合并过(见 {@link EXTENSION_LIVE_COALESCE_MS})。
+ * 表一变就在总线上发 `extension-live-changed`,合并过(见 {@link LIVE_CHANGED_COALESCE_MS})。
  * 🔴 **不发 `live-state-changed`**:那是统计的 B 站适配按 uid 订着记场次的口;拓展订阅的场次走
- * `extension-live-session`(`extension-live-sessions.ts`)。
+ * `extension-live-session`(`live-sessions.ts`)。
  *
  * 只在内存:拓展开机第一轮查基线时也报直播状态(决策 57),BN 重启之后表自己会满回来。
  */
@@ -33,13 +33,13 @@ import { createKeyedCoalescer } from "../util/keyed-coalescer.js";
  * 为什么是 1 秒:直播状态可能每轮都报、一轮里几十条订阅挨着报,每一发都会让开着的面板整份重拉一次
  * `/api/live/listening`;一秒一发兜得住一轮,而进表 / 出表晚一秒到面板,人眼里仍是「当场变了」。
  */
-export const EXTENSION_LIVE_COALESCE_MS = 1_000;
+export const LIVE_CHANGED_COALESCE_MS = 1_000;
 
 /** 整张表就一个合并窗口,单键的合并器用的那个键。 */
 const CHANGED_KEY = "live-changed";
 
 /** 表里的一行:一条拓展订阅此刻在播。 */
-export interface ExtensionLiveRow {
+export interface LiveTableEntry {
 	subscriptionId: string;
 	/** 哪个拓展报的 —— 拓展停了,它名下的按这一格出表。 */
 	extensionId: string;
@@ -71,7 +71,7 @@ export interface ExtensionLiveRow {
 /** 直播那几格 —— 三种直播上报都能带,进表的就是这几样。 */
 type LiveDetails = Partial<
 	Pick<
-		ExtensionLiveRow,
+		LiveTableEntry,
 		| "startedAt"
 		| "title"
 		| "cover"
@@ -85,13 +85,13 @@ type LiveDetails = Partial<
 	>
 >;
 
-export interface ExtensionLiveTable extends Disposable {
+export interface LiveTable extends Disposable {
 	/** 此刻在播的,按进表的先后。 */
-	list(): readonly ExtensionLiveRow[];
-	get(subscriptionId: string): ExtensionLiveRow | undefined;
+	list(): readonly LiveTableEntry[];
+	get(subscriptionId: string): LiveTableEntry | undefined;
 }
 
-export interface CreateExtensionLiveTableOptions {
+export interface CreateLiveTableOptions {
 	bus: MessageBus;
 	/** 合并「变了」那一发用的定时器 —— 宿主的 ServiceContext(关机时一起清)。 */
 	timers: Pick<ServiceContext, "setTimeout">;
@@ -135,7 +135,7 @@ function detailsOf(value: LiveDetails): LiveDetails {
  * 封面、点赞、链接、最后更新时刻)变了不惊动面板。人数那一列是累计观看(决策 75),与 B 站那几行同一个
  * 口径;此刻在线每轮都在变,放进来就是每轮让面板白重取一次。
  */
-export function extensionLiveSnapshot(row: ExtensionLiveRow): ExtensionLiveSnapshot {
+export function extensionLiveSnapshot(row: LiveTableEntry): ExtensionLiveSnapshot {
 	return {
 		kind: "extension",
 		subscriptionId: row.subscriptionId,
@@ -149,19 +149,17 @@ export function extensionLiveSnapshot(row: ExtensionLiveRow): ExtensionLiveSnaps
 }
 
 /** 这一行在面板上长什么样,拿来比「变没变」。没有这一行是空串。 */
-function faceOf(row: ExtensionLiveRow | undefined): string {
+function faceOf(row: LiveTableEntry | undefined): string {
 	return row ? JSON.stringify(extensionLiveSnapshot(row)) : "";
 }
 
-export function createExtensionLiveTable(
-	opts: CreateExtensionLiveTableOptions,
-): ExtensionLiveTable {
+export function createLiveTable(opts: CreateLiveTableOptions): LiveTable {
 	const { bus, timers } = opts;
 	const now = opts.now ?? Date.now;
-	const rows = new Map<string, ExtensionLiveRow>();
+	const rows = new Map<string, LiveTableEntry>();
 	/** 窗口里挂着的那一发;整张表就这一个键。 */
 	const changed = createKeyedCoalescer({
-		windowMs: EXTENSION_LIVE_COALESCE_MS,
+		windowMs: LIVE_CHANGED_COALESCE_MS,
 		onFire: () => bus.emit("extension-live-changed"),
 		setTimer: (fn, ms) => timers.setTimeout(fn, ms),
 	});
@@ -171,7 +169,7 @@ export function createExtensionLiveTable(
 	}
 
 	/** 换掉(或删掉)一行;面板看得见的变了就记一笔。 */
-	function put(subscriptionId: string, next: ExtensionLiveRow | undefined): void {
+	function put(subscriptionId: string, next: LiveTableEntry | undefined): void {
 		const before = faceOf(rows.get(subscriptionId));
 		if (next) rows.set(subscriptionId, next);
 		else rows.delete(subscriptionId);

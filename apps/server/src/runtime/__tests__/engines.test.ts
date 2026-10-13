@@ -408,14 +408,14 @@ function setup(opts?: {
 	extensionSources?: Parameters<typeof createEngines>[0]["extensionSources"];
 	/** 拓展作品往图库存图的口(接线层给的 `runtime.postImages`);给了 `extensionSources` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
 	postImages?: Parameters<typeof createEngines>[0]["postImages"] | null;
-	/** 拓展直播往图库存封面与事件头像的口(接线层给的 `runtime.liveImages`);给了 `extensionSources` 与 `extensionLive` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
+	/** 拓展直播往图库存封面与事件头像的口(接线层给的 `runtime.liveImages`);给了 `extensionSources` 与 `liveTable` 而不给它,默认一个存什么都成功的替身;`null` = 真的不传。 */
 	liveImages?: Parameters<typeof createEngines>[0]["liveImages"] | null;
 	/** 出图器的「图库引用 → 地址」口(接线层给的);不给 = 不传。 */
 	resolveImageRef?: Parameters<typeof createEngines>[0]["resolveImageRef"];
 	/** AI 点评看只有图库引用的图时读字节的口(接线层给的);不给 = 一个什么都读不到的替身。 */
 	readImage?: Parameters<typeof createEngines>[0]["readImage"];
 	/** 拓展订阅的在播表与上报出入框(接线层给的);不给 = 不接拓展订阅的直播。 */
-	extensionLive?: Parameters<typeof createEngines>[0]["extensionLive"];
+	liveTable?: Parameters<typeof createEngines>[0]["liveTable"];
 	onReportDiscrepancy?: Parameters<typeof createEngines>[0]["onReportDiscrepancy"];
 	/** 大航海徽章图标(接线层给的 `runtime.guardIcons`);不给 = 一个什么都没有的替身。 */
 	guardIcons?: Parameters<typeof createEngines>[0]["guardIcons"];
@@ -527,8 +527,8 @@ function setup(opts?: {
 			: {}),
 		...(opts?.resolveImageRef ? { resolveImageRef: opts.resolveImageRef } : {}),
 		readImage: opts?.readImage ?? (async () => undefined),
-		...(opts?.extensionLive ? { extensionLive: opts.extensionLive } : {}),
-		...(opts?.extensionSources && opts.extensionLive && opts.liveImages !== null
+		...(opts?.liveTable ? { liveTable: opts.liveTable } : {}),
+		...(opts?.extensionSources && opts.liveTable && opts.liveImages !== null
 			? {
 					liveImages: opts.liveImages ?? {
 						put: async () => ({ ok: true as const, ref: `${"0".repeat(63)}2.png` }),
@@ -1532,7 +1532,7 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
 			// 在播表里有这一行(开播进表):表里没有 = 最新状态说不在播,周期那一轮会悄悄跳过、不记问题。
-			extensionLive: {
+			liveTable: {
 				get: (id) =>
 					id === sub.id
 						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }
@@ -1560,7 +1560,7 @@ describe("createEngines — 拓展直播接上计时器与上报出入框", () =
 
 		// 周期推送挂在 live 子系统的定时器上,一小时一次。
 		// 替拓展跑的直播场次与推送是核心的代码:定时器挂在 live/core 那个上下文上,不是 B 站直播引擎的 live/来源键
-		// (验红:把 engines.ts 里 `bindExtensionLivePush` 的 `serviceCtx: extensionLiveCtx` 换成 `liveCtx`,这条红)。
+		// (验红:把 engines.ts 里 `bindLivePush` 的 `serviceCtx: coreLiveCtx` 换成 `liveCtx`,这条红)。
 		const liveCtx = subsystemCtx(c, "live", "core");
 		expect(subsystemCtx(c, "live", "bilibili").setInterval).not.toHaveBeenCalled();
 		const intervals = (liveCtx.setInterval.mock.calls ?? []) as unknown as [() => void, number][];
@@ -1604,7 +1604,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 			return { ok: true as const, ref };
 		});
 
-	it("给了 extensionLive 却没给 liveImages:开机就抛,不悄悄不出图", () => {
+	it("给了 liveTable 却没给 liveImages:开机就抛,不悄悄不出图", () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		// 验红:删掉 engines.ts 里 `if (!liveImages) throw …` 那一行,这条红。
 		expect(() =>
@@ -1612,7 +1612,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 				puppeteer: true,
 				subs: [sub],
 				extensionSources: sources,
-				extensionLive: { get: () => undefined },
+				liveTable: { get: () => undefined },
 				liveImages: null,
 			}),
 		).toThrow(/liveImages/);
@@ -1625,7 +1625,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 			puppeteer: true,
 			subs: [sub],
 			extensionSources: sources,
-			extensionLive: { get: (id) => (id === sub.id ? liveRow(id) : undefined) },
+			liveTable: { get: (id) => (id === sub.id ? liveRow(id) : undefined) },
 			liveImages: { put },
 			overrides: {
 				subRuntimeStore: {
@@ -1654,7 +1654,7 @@ describe("createEngines — 拓展直播的图走图库", () => {
 			},
 		});
 		await vi.waitFor(() => expect(H.image[0].generateLiveCard).toHaveBeenCalledTimes(1));
-		// 验红:删掉 engines.ts 里传给 bindExtensionLivePush 的 `liveImages,`(整条开机就抛),或 `avatarRef` 那一行(头像没了)。
+		// 验红:删掉 engines.ts 里传给 bindLivePush 的 `liveImages,`(整条开机就抛),或 `avatarRef` 那一行(头像没了)。
 		const input = H.image[0].generateLiveCard.mock.calls[0]?.[0] as {
 			creator: { name: string; avatar?: string };
 			cover?: { ref?: string };
@@ -1991,7 +1991,7 @@ describe("createEngines — boot wiring", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			extensionLive: {
+			liveTable: {
 				get: (id) =>
 					id === ext.id
 						? { subscriptionId: ext.id, extensionId: "douyin", title: "在播", updatedAt: 0 }
@@ -2170,7 +2170,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		]);
 	});
 
-	// 验红:把 engines.ts 里递给 LiveEngine 的 `serviceCtx: liveCtx` 换成 `extensionLiveCtx`(键成了 core),这条红。
+	// 验红:把 engines.ts 里递给 LiveEngine 的 `serviceCtx: liveCtx` 换成 `coreLiveCtx`(键成了 core),这条红。
 	it("B 站直播引擎拿到的是 live/来源键 那个上下文", () => {
 		const c = setup();
 		active = c;
@@ -2269,7 +2269,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "live", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 engines.ts 里 `createExtensionLiveSessions` 的 `logger: extensionLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
+	// 验红:把 engines.ts 里 `createLiveSessionEngine` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("拓展直播场次记的日志走 live/core 那一个(拓展没在跑 → 这次开播不管)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const c = setup({
@@ -2279,7 +2279,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			extensionLive: { get: () => undefined },
+			liveTable: { get: () => undefined },
 		});
 		active = c;
 		c.bus.emit("subscription-reported", {
@@ -2299,7 +2299,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 		expect(subsystemCtx(c, "posts", "core").logger.debug).not.toHaveBeenCalled();
 	});
 
-	// 验红:把 engines.ts 里 `bindExtensionLivePush` 的 `logger: extensionLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
+	// 验红:把 engines.ts 里 `bindLivePush` 的 `logger: coreLiveCtx.logger` 换成 `liveCtx.logger`,这条红。
 	it("拓展直播推送记的日志走 live/core 那一个(周期到点时最新状态不在播)", async () => {
 		const sub = makeExtensionSubscription({ extensionId: "douyin", externalId: "sec-uid-1" });
 		const g = makeDefaultGlobalConfig();
@@ -2314,7 +2314,7 @@ describe("createEngines — config-changed globals 热重载", () => {
 				postNoun: () => undefined,
 				events: () => ["post", "liveStart", "liveEnd"],
 			},
-			extensionLive: {
+			liveTable: {
 				get: (id) =>
 					playing && id === sub.id
 						? { subscriptionId: sub.id, extensionId: "douyin", updatedAt: Date.now() }

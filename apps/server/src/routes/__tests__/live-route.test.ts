@@ -8,7 +8,7 @@
 import type { LiveListenerSnapshot, LiveListeningEntry } from "@bilibili-notify/contract";
 import type { Disposable } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import { createExtensionLiveTable } from "../../runtime/extension-live.js";
+import { createLiveTable } from "../../live/live-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createLiveRoute } from "../live.js";
 import type { RouteDeps } from "../types.js";
@@ -34,10 +34,10 @@ const NO_TIMERS = { setTimeout: (): Disposable => ({ dispose() {} }) };
 
 function setup(opts: { engines: boolean }) {
 	const bus = createNodeMessageBus();
-	const extensionLive = createExtensionLiveTable({ bus, timers: NO_TIMERS, now: () => T0 });
+	const liveTable = createLiveTable({ bus, timers: NO_TIMERS, now: () => T0 });
 	const runtime = {
 		engines: opts.engines ? { listLiveRooms: () => BILI_ROWS } : null,
-		extensionLive,
+		liveTable,
 	};
 	const app = createLiveRoute({ runtime } as unknown as RouteDeps);
 	async function listening(): Promise<LiveListeningEntry[]> {

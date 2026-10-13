@@ -88,7 +88,7 @@ type BlockHooks = { fixture: string; block: string; hooks: string[] };
  * 路(`apps/server/src/posts/extension-post.ts` 自己造 node)照旧带头像,所以这里补一个同形状的 node。
  *
  * 直播卡的头像块同理(㉒b):四份直播夹具是 B 站形状、`creatorAvatarUrl` 为空串,头像块整块收起,`live.avatar` 的挂点不再
- * 出现在任何夹具里。拓展直播(`extension-live-push.ts`)照旧给头像,所以补一份带头像地址的视图。
+ * 出现在任何夹具里。拓展直播(`live-push.ts`)照旧给头像,所以补一份带头像地址的视图。
  *
  * 醒目留言卡与会员卡的头像同理(㉓c):六份夹具是 B 站形状,观众与主播的头像格都不画,`avatar` 块与
  * 「SC to」「主播胶囊」里的小头像挂点不再出现在任何夹具里。这两种卡的输入对别的平台开放头像(图库引用,3a 起

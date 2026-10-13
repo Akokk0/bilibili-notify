@@ -26,11 +26,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
 import { createFollowersStore, FOLLOWERS_DIR } from "../../followers/store.js";
-import { createExtensionLiveTable } from "../../runtime/extension-live.js";
-import {
-	createExtensionLiveSessions,
-	type ExtensionLiveSessions,
-} from "../../runtime/extension-live-sessions.js";
+import { createLiveSessionEngine, type LiveSessionEngine } from "../../live/live-sessions.js";
+import { createLiveTable } from "../../live/live-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import { createStatsRecorder, type StatsRecorderHandle } from "../recorder.js";
 import { createStatsStore } from "../store.js";
@@ -68,7 +65,7 @@ let worlds: World[];
 interface World {
 	bus: ReturnType<typeof createNodeMessageBus>;
 	recorder: StatsRecorderHandle;
-	sessions: ExtensionLiveSessions;
+	sessions: LiveSessionEngine;
 	/** 照 index.ts 关机那一串走一遍:拓展收摊 → 引擎拆(场次在这里补关机那一帧)→ 记录器收尾。 */
 	shutdown(): Promise<void>;
 }
@@ -101,8 +98,8 @@ function boot(opts: { slowDiskMs?: number } = {}): World {
 						return real.closeLiveSession(...args);
 					},
 				};
-	const table = createExtensionLiveTable({ bus, timers, now: () => clock });
-	const sessions = createExtensionLiveSessions({
+	const table = createLiveTable({ bus, timers, now: () => clock });
+	const sessions = createLiveSessionEngine({
 		bus,
 		logger,
 		table,
@@ -402,7 +399,7 @@ describe("直播场次(决策 6)", () => {
 });
 
 describe("峰值 = 结束帧带的本场累计观看(决策 7)", () => {
-	// 取最大、断流接续接着取、新一场从头取、不拿在线顶替 —— 这些在场次那边算(extension-live-sessions.test.ts
+	// 取最大、断流接续接着取、新一场从头取、不拿在线顶替 —— 这些在场次那边算(live-sessions.test.ts
 	// 「本场累计观看」),这里只看统计把结束帧带的数照抄进盘。
 
 	it("关一场的峰值就是结束帧带的 totalViewers", async () => {

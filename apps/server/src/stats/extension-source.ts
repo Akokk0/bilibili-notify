@@ -17,7 +17,7 @@ import type { StatsRecorderCore } from "./recorder.js";
  *   - 作品行不在这里:拓展作品经核心入口发 `post-detected`,B 站与拓展共用 `recorder.ts` 里的那一个监听
  *     (有没有视频、发布时刻、同一条报几次只留一行,都在那边与 store)。
  *   - `extension-live-session` → 开一场 / 关一场(决策 6):场次边界(断流接续、没报下播又开播、拓展停了、
- *     停用、关机)由 `runtime/extension-live-sessions.ts` 算、与推送共用,这里不另算。每种结束原因都是「观测
+ *     停用、关机)由 `live/live-sessions.ts` 算、与推送共用,这里不另算。每种结束原因都是「观测
  *     到此为止」,都关;**删了的除外** —— 文件跟着订阅一起删,不再写一帧把它重新写出来。
  *   - 峰值(决策 7)照抄结束帧带的 `totalViewers`:本场报过的最大累计观看,也由场次那边算(一场报过什么只有
  *     它全看得见);没带(平台只报此刻在线)这一场就不带峰值。

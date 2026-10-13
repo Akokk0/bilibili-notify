@@ -1,5 +1,5 @@
 /**
- * 拓展订阅的直播场次(`createExtensionLiveSessions`,ADR-0020 决策 6;ADR-0019 决策 53 / 57 / 58 / 61)。
+ * 拓展订阅的直播场次(`createLiveSessionEngine`,ADR-0020 决策 6;ADR-0019 决策 53 / 57 / 58 / 61)。
  *
  * 喂一条真的总线、一张真的在播表,时钟走假定时器,看场次的每一次变化:
  * - 一场从开播事件开始,或从 BN 开始看之后见到的在播状态开始;下播只由事件结束(决策 53);
@@ -18,14 +18,14 @@ import type {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeExtensionSubscription } from "../../__tests__/support/extension-subscription.js";
-import type { LiveWorkSettings } from "../../live/live-settings.js";
-import { createExtensionLiveTable, type ExtensionLiveTable } from "../extension-live.js";
+import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
-	createExtensionLiveSessions,
-	type ExtensionLiveSessionChange,
-	type ExtensionLiveSessions,
-} from "../extension-live-sessions.js";
-import { createNodeMessageBus } from "../message-bus.js";
+	createLiveSessionEngine,
+	type LiveSessionChange,
+	type LiveSessionEngine,
+} from "../live-sessions.js";
+import type { LiveWorkSettings } from "../live-settings.js";
+import { createLiveTable, type LiveTable } from "../live-table.js";
 
 const EXT = "douyin";
 const SUB = makeExtensionSubscription({ extensionId: EXT, externalId: "sec-uid-1" });
@@ -46,9 +46,9 @@ type GraceSettings = Pick<
 >;
 
 let bus: ReturnType<typeof createNodeMessageBus>;
-let table: ExtensionLiveTable;
-let sessions: ExtensionLiveSessions;
-let changes: ExtensionLiveSessionChange[];
+let table: LiveTable;
+let sessions: LiveSessionEngine;
+let changes: LiveSessionChange[];
 /** 总线上听到的每一发 `extension-live-session`。 */
 let frames: ExtensionLiveSessionEvent[];
 let settings: GraceSettings;
@@ -64,8 +64,8 @@ const timers = {
 };
 
 function start(): void {
-	table = createExtensionLiveTable({ bus, timers });
-	sessions = createExtensionLiveSessions({
+	table = createLiveTable({ bus, timers });
+	sessions = createLiveSessionEngine({
 		bus,
 		logger,
 		table,
@@ -110,17 +110,17 @@ const liveStatus = (
 /** 变化的要点:种类 + 开始的触发 / 结束的原因与时刻 —— 断言只看这几样。 */
 function summary(): Array<Record<string, unknown>> {
 	return changes.map((c) => {
-		switch (c.type) {
+		switch (c.kind) {
 			case "start":
-				return { type: c.type, trigger: c.trigger, startedAt: c.session.startedAt };
+				return { kind: c.kind, trigger: c.trigger, startedAt: c.session.startedAt };
 			case "end":
-				return { type: c.type, reason: c.reason, at: c.at };
+				return { kind: c.kind, reason: c.reason, at: c.at };
 			case "status":
-				return { type: c.type, live: c.live };
+				return { kind: c.kind, live: c.live };
 			case "unmatched-end":
-				return { type: c.type, at: c.at };
+				return { kind: c.kind, at: c.at };
 			default:
-				return { type: c.type };
+				return { kind: c.kind };
 		}
 	});
 }
@@ -152,7 +152,7 @@ describe("一场从哪开始", () => {
 		start();
 		liveStart({ startedAt: T0 - MINUTE, totalViewers: 40 });
 
-		expect(summary()).toEqual([{ type: "start", trigger: "liveStart", startedAt: T0 - MINUTE }]);
+		expect(summary()).toEqual([{ kind: "start", trigger: "liveStart", startedAt: T0 - MINUTE }]);
 		const session = sessions.get(SUB.id);
 		expect(session).toMatchObject({
 			subscriptionId: SUB.id,
@@ -167,11 +167,11 @@ describe("一场从哪开始", () => {
 	it("BN 开始看之后见到在播:认出一场,开播时刻取状态带的;没带就空着,之后的状态带了再补上", () => {
 		start();
 		liveStatus();
-		expect(summary()).toEqual([{ type: "start", trigger: "liveStatus", startedAt: undefined }]);
+		expect(summary()).toEqual([{ kind: "start", trigger: "liveStatus", startedAt: undefined }]);
 		expect(sessions.get(SUB.id)?.detectedAt).toBe(T0);
 
 		liveStatus({ startedAt: T0 - HOUR, totalViewers: 9 });
-		expect(summary().at(-1)).toEqual({ type: "status", live: true });
+		expect(summary().at(-1)).toEqual({ kind: "status", live: true });
 		expect(sessions.get(SUB.id)).toMatchObject({
 			startedAt: T0 - HOUR,
 			lastRow: { totalViewers: 9 },
@@ -183,8 +183,8 @@ describe("一场从哪开始", () => {
 		liveStart();
 		report({ kind: "liveStatus", value: { live: false } });
 		expect(summary()).toEqual([
-			{ type: "start", trigger: "liveStart", startedAt: T0 },
-			{ type: "status", live: false },
+			{ kind: "start", trigger: "liveStart", startedAt: T0 },
+			{ kind: "status", live: false },
 		]);
 		expect(sessions.get(SUB.id)).toBeDefined();
 	});
@@ -195,9 +195,9 @@ describe("一场从哪开始", () => {
 		vi.advanceTimersByTime(HOUR);
 		liveStart({ startedAt: Date.now(), title: "第二场" });
 		expect(summary()).toEqual([
-			{ type: "start", trigger: "liveStart", startedAt: T0 },
-			{ type: "end", reason: "superseded", at: T0 + HOUR },
-			{ type: "start", trigger: "liveStart", startedAt: T0 + HOUR },
+			{ kind: "start", trigger: "liveStart", startedAt: T0 },
+			{ kind: "end", reason: "superseded", at: T0 + HOUR },
+			{ kind: "start", trigger: "liveStart", startedAt: T0 + HOUR },
 		]);
 	});
 
@@ -221,14 +221,14 @@ describe("一场到哪结束", () => {
 		liveStart();
 		vi.advanceTimersByTime(2 * HOUR);
 		liveEnd();
-		expect(summary().at(-1)).toEqual({ type: "end", reason: "ended", at: T0 + 2 * HOUR });
+		expect(summary().at(-1)).toEqual({ kind: "end", reason: "ended", at: T0 + 2 * HOUR });
 		expect(sessions.get(SUB.id)).toBeUndefined();
 	});
 
 	it("下播事件来了手里却没有这一场:照实说,不编一场出来", () => {
 		start();
 		liveEnd({ startedAt: T0 - HOUR });
-		expect(summary()).toEqual([{ type: "unmatched-end", at: T0 }]);
+		expect(summary()).toEqual([{ kind: "unmatched-end", at: T0 }]);
 		expect(sessions.get(SUB.id)).toBeUndefined();
 	});
 });
@@ -243,13 +243,13 @@ describe("断流接续(决策 58)", () => {
 		liveStart();
 		await vi.advanceTimersByTimeAsync(HOUR);
 		liveEnd();
-		expect(summary().at(-1)).toEqual({ type: "ending" });
+		expect(summary().at(-1)).toEqual({ kind: "ending" });
 		await vi.advanceTimersByTimeAsync(3 * MINUTE - 1);
-		expect(summary().map((c) => c.type)).toEqual(["start", "ending"]);
+		expect(summary().map((c) => c.kind)).toEqual(["start", "ending"]);
 		expect(sessions.get(SUB.id)?.pendingEnd?.endedAt).toBe(T0 + HOUR);
 
 		await vi.advanceTimersByTimeAsync(1);
-		expect(summary().at(-1)).toEqual({ type: "end", reason: "ended", at: T0 + HOUR });
+		expect(summary().at(-1)).toEqual({ kind: "end", reason: "ended", at: T0 + HOUR });
 		expect(sessions.get(SUB.id)).toBeUndefined();
 	});
 
@@ -263,7 +263,7 @@ describe("断流接续(决策 58)", () => {
 		liveStart({ startedAt: Date.now() });
 		await vi.advanceTimersByTimeAsync(10 * MINUTE);
 
-		expect(summary().map((c) => c.type)).toEqual(["start", "ending", "resume"]);
+		expect(summary().map((c) => c.kind)).toEqual(["start", "ending", "resume"]);
 		expect(sessions.get(SUB.id)).toBe(first);
 		expect(first?.startedAt).toBe(T0);
 		expect(first?.pendingEnd).toBeUndefined();
@@ -272,7 +272,7 @@ describe("断流接续(决策 58)", () => {
 		liveEnd();
 		const endedAt = Date.now();
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
-		expect(summary().at(-1)).toEqual({ type: "end", reason: "ended", at: endedAt });
+		expect(summary().at(-1)).toEqual({ kind: "end", reason: "ended", at: endedAt });
 	});
 
 	it("等待期间又报下播:忽略,结束时刻仍是第一次那一刻", async () => {
@@ -283,8 +283,8 @@ describe("断流接续(决策 58)", () => {
 		liveEnd();
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 		expect(summary().slice(1)).toEqual([
-			{ type: "ending" },
-			{ type: "end", reason: "ended", at: T0 },
+			{ kind: "ending" },
+			{ kind: "end", reason: "ended", at: T0 },
 		]);
 	});
 });
@@ -307,11 +307,11 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		await vi.advanceTimersByTimeAsync(3 * MINUTE);
 
 		expect(summary()).toEqual([
-			{ type: "start", trigger: "liveStart", startedAt: T0 },
-			{ type: "ending" },
-			{ type: "resume" },
-			{ type: "ending" },
-			{ type: "end", reason: "ended", at: endedAt },
+			{ kind: "start", trigger: "liveStart", startedAt: T0 },
+			{ kind: "ending" },
+			{ kind: "resume" },
+			{ kind: "ending" },
+			{ kind: "end", reason: "ended", at: endedAt },
 		]);
 		// 统计照样看得到这一场:一帧开始、一帧结束,断流那一下不算两场。
 		expect(frames.map((f) => f.phase)).toEqual(["start", "end"]);
@@ -324,7 +324,7 @@ describe("与推送开关无关(ADR-0020 决策 4)", () => {
 		bus.emit("config-changed", { scope: "globals" });
 		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: SUB }] });
 		liveStatus();
-		expect(summary().map((c) => c.type)).toEqual(["start", "status"]);
+		expect(summary().map((c) => c.kind)).toEqual(["start", "status"]);
 		expect(sessions.get(SUB.id)?.startedAt).toBe(T0);
 	});
 });
@@ -340,7 +340,7 @@ describe("作废(决策 61)", () => {
 		bus.emit("extension-stopped", { extensionId: EXT });
 		await vi.advanceTimersByTimeAsync(HOUR);
 
-		const ends = changes.filter((c) => c.type === "end");
+		const ends = changes.filter((c) => c.kind === "end");
 		expect(ends).toEqual([
 			expect.objectContaining({
 				subscriptionId: SUB.id,
@@ -359,7 +359,7 @@ describe("作废(决策 61)", () => {
 		const disabled = { ...SUB, enabled: false };
 		bus.emit("subscription-changed", { ops: [{ kind: "update", sub: disabled }] });
 		bus.emit("subscription-changed", { ops: [{ kind: "remove", sub: OTHER }] });
-		expect(changes.filter((c) => c.type === "end")).toEqual([
+		expect(changes.filter((c) => c.kind === "end")).toEqual([
 			expect.objectContaining({ subscriptionId: SUB.id, reason: "disabled" }),
 			expect.objectContaining({ subscriptionId: OTHER.id, reason: "removed" }),
 		]);
@@ -370,9 +370,9 @@ describe("作废(决策 61)", () => {
 		liveStart();
 		vi.advanceTimersByTime(HOUR);
 		sessions.dispose();
-		expect(summary().at(-1)).toEqual({ type: "end", reason: "shutdown", at: T0 + HOUR });
+		expect(summary().at(-1)).toEqual({ kind: "end", reason: "shutdown", at: T0 + HOUR });
 		liveStart();
-		expect(summary().map((c) => c.type)).toEqual(["start", "end"]);
+		expect(summary().map((c) => c.kind)).toEqual(["start", "end"]);
 	});
 });
 

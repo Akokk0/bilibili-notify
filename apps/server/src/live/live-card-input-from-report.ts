@@ -20,12 +20,12 @@ import type { LiveCardInput, LiveCardStatus } from "@bilibili-notify/image";
 import type { ImageRef } from "@bilibili-notify/internal";
 import type { ImageWriter } from "../images/image-store.js";
 import { storeOrSkip } from "../images/image-writes.js";
-import type { ExtensionLiveRow } from "./extension-live.js";
+import type { LiveTableEntry } from "./live-table.js";
 
 /** 卡上要的直播那几格 —— 在播表那一行与事件长得一样(都是拓展交的原件:封面与头像是字节)。 */
-export type LiveCardFacts = Partial<
+export type LiveCardFields = Partial<
 	Pick<
-		ExtensionLiveRow,
+		LiveTableEntry,
 		"title" | "cover" | "category" | "description" | "viewers" | "totalViewers" | "likes" | "author"
 	>
 >;
@@ -59,7 +59,7 @@ function present<T extends object>(value: T): T {
 }
 
 export async function liveCardInputFromReport(
-	facts: LiveCardFacts,
+	facts: LiveCardFields,
 	opts: LiveCardInputFromReportOptions,
 ): Promise<LiveCardInput> {
 	let avatar: ImageRef | undefined;

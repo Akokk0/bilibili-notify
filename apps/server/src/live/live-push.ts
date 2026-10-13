@@ -19,28 +19,20 @@ import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { deferImageWrites } from "../images/image-writes.js";
 import {
-	type LiveNotifyPushType,
-	type LiveNotifySend,
-	pushLiveNotify,
-} from "../live/live-notify.js";
-import type { LiveWorkSettings } from "../live/live-settings.js";
-import { type LiveTextKind, renderLiveText } from "../live/live-text.js";
-import { type CustomCardStyleLike, LivePushType } from "../live/live-types.js";
-import type { ExtensionLiveRow, ExtensionLiveTable } from "./extension-live.js";
-import type {
-	ExtensionLiveSession,
-	ExtensionLiveSessionChange,
-	ExtensionLiveSessions,
-} from "./extension-live-sessions.js";
-import {
 	type ExtensionSourceReader,
 	extensionSubscriptionName,
 	extensionSubscriptionPushable,
-} from "./extension-push-common.js";
-import { type LiveCardFacts, liveCardInputFromReport } from "./live-card-input-from-report.js";
+} from "../runtime/extension-push-common.js";
+import { type LiveCardFields, liveCardInputFromReport } from "./live-card-input-from-report.js";
+import { type LiveNotifyPushType, type LiveNotifySend, pushLiveNotify } from "./live-notify.js";
+import type { LiveSession, LiveSessionChange, LiveSessionEngine } from "./live-sessions.js";
+import type { LiveWorkSettings } from "./live-settings.js";
+import type { LiveTable, LiveTableEntry } from "./live-table.js";
+import { type LiveTextKind, renderLiveText } from "./live-text.js";
+import { type CustomCardStyleLike, LivePushType } from "./live-types.js";
 
 /**
- * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`extension-live-sessions.ts`)
+ * **拓展订阅的直播接进推送链**(ADR-0019 决策 53 / 56–58 / 61 / 67):照场次(`live-sessions.ts`)
  * 的变化逐条订阅推开播 / 正在直播 / 下播卡,外加 BN 为拓展订阅另写的那个小计时器(周期「正在直播」)。
  *
  * **三把开关各管各的**(⑬d 直播拆键):`liveStart` 管开播卡与重启补报,`liveStreaming` 管周期「正在直播」(计时器
@@ -58,7 +50,7 @@ import { type LiveCardFacts, liveCardInputFromReport } from "./live-card-input-f
  * - **开播 / 下播卡只由事件触发**(决策 53):BN 不拿直播状态的翻转自己猜开播 / 下播。
  * - **开播**:场次开了一场 → 推开播卡(开播时刻取事件的、粉丝数取这一场开播时记下的),挂上周期「正在直播」(开关开着的话)。
  *   断流等待里又开播(场次说「接着播」)→ 两张卡都不发、周期推送接着挂(决策 58)。
- * - **直播状态**:最新一份住在播表里(`extension-live.ts`),这里只记「上次推送之后收到过新状态」。BN 开始看
+ * - **直播状态**:最新一份住在播表里(`live-table.ts`),这里只记「上次推送之后收到过新状态」。BN 开始看
  *   这条订阅之后**收到的第一份状态**就是在播、又没见过这一场的开播事件 → 重启补报(`catchUpOnBoot`)与开播推送都开着就补报一张「正在直播」
  *   卡(决策 57 的 09-24 🔗),并挂上周期推送。报「不在播」也算见过:契约不规定状态与事件谁先报,一场刚开
  *   的直播不能先补报一张「正在直播」、紧跟着又推开播卡。拓展停了「见过」一并作废,它重新跑起来收到的第一
@@ -87,26 +79,26 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 /** 卡上与文案要的直播那几格(外加直播间链接)—— 事件与在播表那一行长得一样。 */
-type LiveFacts = LiveCardFacts & Partial<Pick<ExtensionLiveRow, "url">>;
+type LiveFacts = LiveCardFields & Partial<Pick<LiveTableEntry, "url">>;
 
 /**
  * 推送这头挂在一场上的那几样。开播时刻、粉丝基线、最后一份状态、断流等待都是这一场的(`session`),不在这里。
  */
 interface LiveRun {
-	session: ExtensionLiveSession;
+	session: LiveSession;
 	/** 上次推送之后收到过新的直播状态(决策 61)。推一张卡就清。 */
 	fresh: boolean;
 	/** 周期「正在直播」。 */
 	periodic?: { handle: Disposable; hours: number };
 }
 
-export interface BindExtensionLivePushOptions {
+export interface BindLivePushOptions {
 	bus: MessageBus;
 	logger: Logger;
 	/** 场次 —— 这一场从哪开始、到哪结束、断流接续等不等,都听它的。 */
-	sessions: Pick<ExtensionLiveSessions, "onChange">;
+	sessions: Pick<LiveSessionEngine, "onChange">;
 	/** 在播表 —— 「最新状态」只从这里取(拓展报的直播状态合并好的那一份)。 */
-	table: Pick<ExtensionLiveTable, "get">;
+	table: Pick<LiveTable, "get">;
 	/** 此刻的这条订阅(现取)。 */
 	subscription(id: string): Subscription | undefined;
 	/** 订阅资料里的名字与粉丝数(资料缓存,现取)。 */
@@ -199,7 +191,7 @@ function committing(
 	};
 }
 
-export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Disposable {
+export function bindLivePush(opts: BindLivePushOptions): Disposable {
 	const log = opts.logger;
 	const now = opts.now ?? Date.now;
 	/** 推送这头挂着的那一场,按订阅。与场次那边此刻那一场是同一场,或者没挂(推送都关着时)。 */
@@ -436,7 +428,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	}
 
 	/** 开播事件开了新的一场:推开播卡,挂上周期推送。 */
-	function onStart(session: ExtensionLiveSession, value: LiveStart): void {
+	function onStart(session: LiveSession, value: LiveStart): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
@@ -463,7 +455,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	}
 
 	/** 断流等待里又开播(决策 58):同一场,两张卡都不发,周期推送接着挂。 */
-	function onResume(session: ExtensionLiveSession): void {
+	function onResume(session: LiveSession): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
@@ -479,7 +471,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	}
 
 	/** 一份直播状态(认出一场的那一份也是):记「见过」、「收到过新状态」,必要时补报。 */
-	function onStatus(id: string, live: boolean, session: ExtensionLiveSession | undefined): void {
+	function onStatus(id: string, live: boolean, session: LiveSession | undefined): void {
 		const sub = pushable(id);
 		if (!sub) return;
 		const settings = opts.settings(sub);
@@ -507,7 +499,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	}
 
 	/** 下播进了断流等待:周期推送先停。 */
-	function onEnding(session: ExtensionLiveSession): void {
+	function onEnding(session: LiveSession): void {
 		const id = session.subscriptionId;
 		const ready = pushSettings(id);
 		if (!ready) return;
@@ -520,7 +512,7 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 	 */
 	function finishEnd(
 		id: string,
-		session: ExtensionLiveSession | undefined,
+		session: LiveSession | undefined,
 		endedAt: number,
 		value: LiveEnd,
 	): void {
@@ -551,8 +543,8 @@ export function bindExtensionLivePush(opts: BindExtensionLivePushOptions): Dispo
 		});
 	}
 
-	function onChange(change: ExtensionLiveSessionChange): void {
-		switch (change.type) {
+	function onChange(change: LiveSessionChange): void {
+		switch (change.kind) {
 			case "start":
 				if (change.trigger === "liveStart") onStart(change.session, change.value);
 				else onStatus(change.subscriptionId, true, change.session);
