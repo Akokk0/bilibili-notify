@@ -49,6 +49,8 @@ import { createExtensionUpgrades } from "./extensions/upgrade.js";
 import { startHistoryRetention } from "./history/retention.js";
 import { imageRefDataUrl } from "./images/image-data-url.js";
 import { createImageFetcher } from "./images/image-fetcher.js";
+import { createLinkParser } from "./link-preview/link-parser.js";
+import { createLinkReplySender } from "./link-preview/link-reply.js";
 import { startLogRetention } from "./logs/retention.js";
 import { createLogSink } from "./logs/sink.js";
 import {
@@ -88,8 +90,6 @@ import {
 	takePendingGeneration,
 	writePendingGeneration,
 } from "./runtime/generations.js";
-import { createLinkParser } from "./runtime/link-parser.js";
-import { createLinkReplySender } from "./runtime/link-reply.js";
 import { bindLogLevels } from "./runtime/log-levels.js";
 import { createLoginCommand } from "./runtime/login-command.js";
 import { createMuteCommand } from "./runtime/mute-command.js";

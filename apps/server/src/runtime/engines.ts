@@ -87,6 +87,7 @@ import type { ReportDiscrepancy } from "../extensions/context.js";
 import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
+import { resolveLinkParsingPolicies } from "../link-preview/link-scope.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { rotateLiveCover } from "../live/live-settings.js";
 import { resolveDynamicColorOptions } from "../posts/card-style.js";
@@ -122,7 +123,6 @@ import {
 } from "./extension-live-sessions.js";
 import type { ExtensionSourceReader } from "./extension-push-common.js";
 import { followTargetSubscriptions, syncFollows } from "./follow-sync.js";
-import { resolveLinkParsingPolicies } from "./link-scope.js";
 import { MasterNotifier } from "./master-notifier.js";
 import { createMuteState, type MuteState } from "./mute-state.js";
 import {
@@ -177,7 +177,7 @@ export interface EnginesRuntime extends Disposable {
 	/** 链接解析的开关与冷却 —— 随 config-changed 刷新的快照;群里每句话都会问它。 */
 	linkParsing(): LinkParsingConfig;
 	/**
-	 * 链接解析里某个群的答案:解不解析、回什么(键与表见 `link-scope.ts`)。表随 globals /
+	 * 链接解析里某个群的答案:解不解析、回什么(键与表见 `link-preview/link-scope.ts`)。表随 globals /
 	 * targets / connections 三种 config-changed 重算 —— 例外引用的是目标,目标或连接停用、
 	 * 删掉都会改变答案,只盯 globals 的话面板上开着、实际却还在按旧目标表解析。
 	 */

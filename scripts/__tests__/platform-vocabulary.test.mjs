@@ -455,11 +455,11 @@ export const RATCHET = {
 	"apps/server/src/devtools/scenarios/inbound.ts": 18, // 入站场景的参数名与变量 `userId` / `groupId`×15、提示文字里的「群 openid」「OneBot / 官机」、`miniAppCardLinks`
 	"apps/server/src/history/repush-store.ts": 3, // 重推原件的载荷种类 `"miniapp-card"`
 	"apps/server/src/history/store.ts": 1, // 同上
+	"apps/server/src/link-preview/link-parser.ts": 25, // 小程序卡 13(`miniAppCardOf`、`useMiniApp`、`"miniapp-card"`……)、群入站的 `groupId` / `userId` 12
+	"apps/server/src/link-preview/link-reply.ts": 2, // 回复目的地的 `groupId`
+	"apps/server/src/link-preview/link-scope.ts": 5, // 链接作用域键的 `groupId`
 	"apps/server/src/runtime/command-dispatcher.ts": 1, // 私聊入站的 `msg.userId`
 	"apps/server/src/runtime/engines.ts": 1, // `connectionCapabilities(…)?.miniAppCard`
-	"apps/server/src/runtime/link-parser.ts": 25, // 小程序卡 13(`miniAppCardOf`、`useMiniApp`、`"miniapp-card"`……)、群入站的 `groupId` / `userId` 12
-	"apps/server/src/runtime/link-reply.ts": 2, // 回复目的地的 `groupId`
-	"apps/server/src/runtime/link-scope.ts": 5, // 链接作用域键的 `groupId`
 	"packages/internal/src/constants.ts": 29, // 闭集与平台表 24(`CONNECTION_PLATFORMS`、`PLATFORM_REGISTRY`、`WEBHOOK_PLATFORMS`)、OneBot 超时下限 2、保留 id `"onebot"` / `"qq-official"` 2、链接回复形式 `"miniapp"` 1
 	"packages/internal/src/platform.ts": 2, // 载荷种类 `"miniapp-card"` 与能力格 `miniAppCard`
 	"packages/internal/src/post.ts": 1, // 同名不同物:作品正文「@某人」片段的 `userId`,是来源那边的用户,不是推送平台的入站地址

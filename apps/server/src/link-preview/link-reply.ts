@@ -1,5 +1,5 @@
 import type { DeliveryResult, NotificationPayload } from "@bilibili-notify/internal";
-import type { EnginesRuntime } from "./engines.js";
+import type { EnginesRuntime } from "../runtime/engines.js";
 import type { LinkReplyDestination } from "./link-parser.js";
 
 /**

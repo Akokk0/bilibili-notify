@@ -29,9 +29,9 @@ import {
 } from "@bilibili-notify/internal";
 import type { VideoRef, VideoResponse } from "../bilibili/api/index.js";
 import { fetchPostImages, type ImagesDeps } from "../bilibili/images.js";
+import { videoToPost } from "../runtime/video-card.js";
 import { RecencyTable } from "../util/recency-table.js";
 import { linkScopeKey } from "./link-scope.js";
-import { videoToPost } from "./video-card.js";
 
 /** 一条消息里最多解析几个链接 —— 再多就是刷屏了,也没人真需要。 */
 const MAX_LINKS_PER_MESSAGE = 3;
@@ -68,7 +68,7 @@ export interface LinkParserOptions {
 	config: () => LinkParsingConfig;
 	/**
 	 * 这个群的答案:解不解析、回什么,键见 {@link linkScopeKey}。默认行与逐群例外怎么对上
-	 * 入站帧里的群(引用目标、停用、悬空、陌生群)全在 `link-scope.ts`,这里只查表。
+	 * 入站帧里的群(引用目标、停用、悬空、陌生群)全在 `link-preview/link-scope.ts`,这里只查表。
 	 * 与 `config` 一样每条消息现读 —— 主人改一格立刻生效。
 	 */
 	policyFor: (key: string) => LinkParsingPolicy;

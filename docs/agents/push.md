@@ -163,7 +163,7 @@
 | 谁在调主人私聊（上一行的来路，3a-30 之后只有两家） | `problems/problem-notifier.ts`、`runtime/master-notifier.ts` | 问题通知器：问题表里 `notify` 为真的问题（B 站的登录失效、风控、直播间停止监听、直播间受限），节流键 报的人 + code、60 秒，`notifyMaster` 回 ok 才算真私聊过，稍后可重试的失败按 10 秒 / 30 秒 / 60 秒 / 5 分钟 / 15 分钟再送五次，清掉时对真私聊过的补一句恢复说法；组件告警通知器 `runtime/master-notifier.ts`：只听 `engine-error`，按 `source` 节流 60 秒，每条先落一行 warn（现在的发射者是作品投递出图失败、直播「重连流程内部异常」与开发场景）。**引擎里不再有任何自己的私聊口**：`masterTellers`、动态与直播的 `PushLike.sendPrivateMsg`、作品投递的 `sendErrorMsg` 都已删，`PushForEngines` 只剩 `push`。两家各有各的节流表，B 站的这几类报错只走问题表、不再同时发组件告警 |
 | 手动发一条 | `push.sendToTarget` —— 连接自测、卡片预览发送、AI 试一句、锐评投递 | 走同一套重试与 dispatcher，但**不查 routing、不落历史**，也不过静音 / 免扰（人工补发同样走它，见 ⑥） |
 | 指令回复 | `CommandDef.run` 收到的 `ctx.reply`（分发器按消息现造） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到发指令的那条连接上的私聊；不过闸、不落历史、不重试；登录二维码也经它发图 |
-| 链接解析回卡 | `createLinkParser` 的 `send`（`runtime/link-reply.ts`） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到收到那一帧的连接上的源群；不过闸、不落历史、不重试，连接停用或不可达就不回 |
+| 链接解析回卡 | `createLinkParser` 的 `send`（`link-preview/link-reply.ts`） | **不进 `PushRouter`**：经 `TargetDispatcher.sendToAddress` 回到收到那一帧的连接上的源群；不过闸、不落历史、不重试，连接停用或不可达就不回 |
 
 devtools 的「假状态 / 截流」注入在哪些边界上，见 [devtools.md](./devtools.md)。
 

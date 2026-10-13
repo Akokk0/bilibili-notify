@@ -3,7 +3,7 @@
  *
  * 缝在 `resolveLinkParsingPolicies`:配置 + 目标表 + 连接表进,一张「群键 → 解不解析、
  * 回什么」的表出。它是纯函数,所有决定都在这儿:哪些目标算群、停用算不算、悬空 id
- * 怎么办、不是目标的群跟谁。解析器(link-parser)只拿结果做一次查表,不再各自判一遍。
+ * 怎么办、不是目标的群跟谁。解析器(link-preview/link-parser)只拿结果做一次查表,不再各自判一遍。
  */
 
 import type { Connection, PushTarget } from "@bilibili-notify/internal";

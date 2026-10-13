@@ -61,13 +61,13 @@ export const BOUNDARIES = [
 		ratchet: {
 			"apps/server/src/app.ts": 1,
 			"apps/server/src/index.ts": 1,
+			"apps/server/src/link-preview/link-parser.ts": 2,
 			"apps/server/src/routes/cards.ts": 4,
 			"apps/server/src/routes/subscriptions.ts": 2,
 			"apps/server/src/runtime/bootstrap.ts": 1,
 			"apps/server/src/runtime/engines.ts": 3,
 			"apps/server/src/runtime/fans-poller.ts": 2,
 			"apps/server/src/runtime/follow-sync.ts": 2,
-			"apps/server/src/runtime/link-parser.ts": 2,
 			"apps/server/src/runtime/video-card.ts": 1,
 		},
 		reason:
