@@ -1,11 +1,13 @@
 import {
 	type AuthState,
+	type LinkResolver,
 	ok,
 	type PostEvent,
 	type Source,
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { registerBuiltinSource } from "../builtin-sources.js";
 import { createSourceRegistry } from "../registry.js";
 import {
@@ -19,13 +21,23 @@ import {
 	SOURCE_KEY,
 } from "./fixtures.js";
 
+const fakeLinkResolver = (): LinkResolver => ({
+	label: "假解析器",
+	matches: () => false,
+	resolve: async () => {
+		throw new Error("不该被调到");
+	},
+});
+
 const setup = (source: Source = makeSource()) => {
 	const world = makeWorld([makeSub("a", "1")]);
 	const registry = createSourceRegistry();
+	const linkResolvers = createLinkResolverRegistry();
 	const enqueue = vi.fn<(event: PostEvent) => void>();
 	const problems = makeProblems();
 	const options = {
 		registry,
+		linkResolvers,
 		source,
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,
@@ -37,7 +49,7 @@ const setup = (source: Source = makeSource()) => {
 		problems,
 		settings: makeSettingsHost(),
 	};
-	return { ...world, registry, enqueue, problems, options };
+	return { ...world, registry, linkResolvers, enqueue, problems, options };
 };
 
 describe("registerBuiltinSource", () => {
@@ -81,6 +93,44 @@ describe("registerBuiltinSource", () => {
 			post: { creator: { name: "UP" }, publishedAt: "2026-01-01T00:00:00.000Z", text: "x" },
 		});
 		expect(order).toEqual(["stop", "enqueue"]);
+	});
+
+	it("来源在 start 里登的链接解析器:表里按来源的键查得到;来源停下(撤登记)后表里没有", async () => {
+		const source = makeSource();
+		const { options, linkResolvers } = setup(source);
+		const fake = fakeLinkResolver();
+		source.start = vi.fn(async (ctx) => {
+			ctx.registerLinkResolver(fake);
+		});
+		const handle = await registerBuiltinSource(options);
+		expect(Array.from(linkResolvers.entries())).toEqual([[SOURCE_KEY, fake]]);
+		handle.dispose();
+		expect(Array.from(linkResolvers.entries())).toEqual([]);
+	});
+
+	it("来源停下之后再登链接解析器:不抛,表里仍然没有", async () => {
+		const source = makeSource();
+		const { options, linkResolvers } = setup(source);
+		const handle = await registerBuiltinSource(options);
+		handle.dispose();
+		const late = source.started[0]?.registerLinkResolver(fakeLinkResolver());
+		expect(late).toBeDefined();
+		expect(() => late?.dispose()).not.toThrow();
+		expect(Array.from(linkResolvers.entries())).toEqual([]);
+	});
+
+	it("同一个来源登第二个链接解析器会抛(一个键一个主人);自己撤了可以重登", async () => {
+		const source = makeSource();
+		const { options, linkResolvers } = setup(source);
+		await registerBuiltinSource(options);
+		const ctx = source.started[0];
+		const first = fakeLinkResolver();
+		const second = fakeLinkResolver();
+		const handle = ctx?.registerLinkResolver(first);
+		expect(() => ctx?.registerLinkResolver(second)).toThrow("already registered");
+		handle?.dispose();
+		ctx?.registerLinkResolver(second);
+		expect(Array.from(linkResolvers.entries())).toEqual([[SOURCE_KEY, second]]);
 	});
 
 	it("键被占:抛,并把这次建的上下文收掉(总线上不留监听)", async () => {

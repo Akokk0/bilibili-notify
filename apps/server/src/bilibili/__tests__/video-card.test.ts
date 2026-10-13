@@ -8,7 +8,7 @@
 
 import { normalizePost } from "@bilibili-notify/internal";
 import { describe, expect, it } from "vite-plus/test";
-import type { VideoResponse } from "../../bilibili/api/index.js";
+import type { VideoResponse } from "../api/index.js";
 import { videoToPost } from "../video-card.js";
 
 const INFO: VideoResponse = {

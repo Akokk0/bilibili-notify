@@ -128,7 +128,7 @@ const MINIAPP_CARD_APP = "com.tencent.miniapp_01";
  * 段数组里 json / xml 卡片(OneBot 的 `data.data` 是一整段 JSON / XML 文本)里的所有链接,
  * 按出现顺序。json 先 `JSON.parse` 再逐字符串找 —— 结构化消息里的 `jumpUrl` 是 `https:\/\/…`
  * 这种转义写法,对着原文找是找不到的;解析不动就退回原文找。xml 只需把 `&amp;` 还原。
- * 找出来的是「链接候选」,认不认由 {@link extractVideoLinks} 说了算。
+ * 找出来的是「链接候选」,认不认由在册的链接解析器(`matches`)说了算。
  *
  * 小程序卡里的链接单独一格(`miniAppCardLinks`):群里已经有一张能点开播放的卡,链接解析
  * 不再回卡(见 `InboundGroupMessage`)。只看 `app` 字段:能过 {@link CARD_HOST_HINT} 又是

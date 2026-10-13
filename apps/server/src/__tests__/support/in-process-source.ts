@@ -12,6 +12,7 @@
 
 import {
 	type AuthState,
+	fail,
 	type Json,
 	ok,
 	type PostEvent,
@@ -34,6 +35,12 @@ export const IN_PROCESS_KEY = "acme.inprocess";
 export const IN_PROCESS_LABEL = "对拍源";
 /** 描述符声明的会员体系里的档(key 不与 B 站撞)。 */
 export const IN_PROCESS_TIER_KEY = "acme-gold";
+
+/** 假解析器认的链接:`acme.invalid/link/<id>`(id 取字母数字,到查询串或斜杠为止)。 */
+const LINK_PATH = /acme\.invalid\/link\/([A-Za-z0-9]+)/;
+/** 假解析器交的作品正文 / 原生分享标题的前缀,后面接 id。 */
+export const LINK_TITLE_PREFIX = "LINK-TITLE-";
+export const LINK_NATIVE_PREFIX = "LINK-NATIVE-";
 
 /** 假来源的设置:两格,`threshold` 有范围,好摆「一格坏」。 */
 export const InProcessSettingsSchema = z.object({
@@ -84,6 +91,8 @@ export interface InProcessProbe {
 	/** `health()` 回的那句;`health()` 要抛就置 `healthThrows`。 */
 	healthSummary: string;
 	healthThrows: boolean;
+	/** 假解析器被问过的链接(`resolve` 的入参),按先后。 */
+	linkResolves: string[];
 	readonly auth: InProcessAuth;
 }
 
@@ -159,6 +168,7 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 		secretAtStart: undefined,
 		healthSummary: "一切正常",
 		healthThrows: false,
+		linkResolves: [],
 		auth: createAuth(),
 	};
 	const source: Source = {
@@ -193,6 +203,34 @@ export function createInProcessSource(options: InProcessOptions = {}): {
 				probe.settingsChanges.push(judge());
 			});
 
+			// 链接解析器:只认 `acme.invalid/link/<id>`,交一份带标题的作品和原生分享描述(标题里带 id,
+			// 好从出图的 HTML 与截流记录里认出是哪一条)。查得到的 id 记进探针,好看「有没有人来问」。
+			ctx.registerLinkResolver({
+				label: IN_PROCESS_LABEL,
+				matches: (url) => LINK_PATH.test(url),
+				async resolve(url) {
+					const id = LINK_PATH.exec(url)?.[1];
+					if (id === undefined) return fail("not_found", "不是对拍源的链接");
+					probe.linkResolves.push(url);
+					return ok({
+						post: {
+							creator: { name: "链接作者" },
+							publishedAt: "2026-10-01T08:00:00.000Z",
+							text: `${LINK_TITLE_PREFIX}${id}`,
+						},
+						canonicalId: id,
+						nativeShare: {
+							appId: IN_PROCESS_KEY,
+							title: `${LINK_NATIVE_PREFIX}${id}`,
+							description: "对拍源的原生分享",
+							imageUrl: "https://acme.invalid/cover.png",
+							pagePath: `pages/link?id=${id}`,
+							webUrl: `https://acme.invalid/link/${id}`,
+						},
+					});
+				},
+			});
+
 			// state / secrets:第二趟开机能读到第一趟写下的。
 			probe.stateAtStart = ctx.state.get("boots");
 			probe.secretAtStart = ctx.secrets.get("token");
@@ -218,6 +256,11 @@ export const inProcessWorld: {
 	probes: InProcessProbe[];
 	/** 宿主的服务上下文(从 `compose` 的入参上取的),测试用它挂日志钩子。 */
 	serviceCtx: Compose.BuiltinIntegrationsDeps["serviceCtx"] | undefined;
+	/**
+	 * 群消息的入站出口(同样从 `compose` 的入参上取):适配器停了、HTTP 开发场景用不了的关停途中,
+	 * 测试仍能直接往门里喂一条群消息。
+	 */
+	inboundGroup: Compose.BuiltinIntegrationsDeps["onInboundGroup"] | undefined;
 	/** 总线上看到的 `subscription-auth-changed`。 */
 	authChanges: Array<{ sourceKey: string; state: AuthState }>;
 	/** 总线上看到的 `post-detected`(核心作品入口对每条订阅发的那一份)。 */
@@ -228,11 +271,12 @@ export const inProcessWorld: {
 	 * 来源已被引擎停下、来源上下文已收掉,而进程还活着(集成存储与总线都还在)的那一刻要做的事:
 	 * 关停钩子里排在引擎之后、集成上下文收尾之前。测试在这里让已停的来源再上报。
 	 */
-	afterSourceStopped: (() => void) | undefined;
+	afterSourceStopped: (() => void | Promise<void>) | undefined;
 } = {
 	options: {},
 	probes: [],
 	serviceCtx: undefined,
+	inboundGroup: undefined,
 	authChanges: [],
 	postDetected: [],
 	problemsChanged: [],
@@ -244,6 +288,7 @@ export function resetInProcessWorld(options: InProcessOptions = {}): void {
 	inProcessWorld.options = options;
 	inProcessWorld.probes = [];
 	inProcessWorld.serviceCtx = undefined;
+	inProcessWorld.inboundGroup = undefined;
 	inProcessWorld.authChanges = [];
 	inProcessWorld.postDetected = [];
 	inProcessWorld.problemsChanged = [];
@@ -275,6 +320,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 		composeBuiltinIntegrations(deps) {
 			const builtins = real.composeBuiltinIntegrations(deps);
 			inProcessWorld.serviceCtx = deps.serviceCtx;
+			inProcessWorld.inboundGroup = deps.onInboundGroup;
 			deps.bus.on("subscription-auth-changed", (changed) => {
 				inProcessWorld.authChanges.push(changed);
 			});
@@ -293,7 +339,7 @@ export function wrapCompose(real: typeof Compose): typeof Compose {
 				| undefined;
 			deps.serviceCtx.onDispose(async () => {
 				// 此刻引擎已停掉来源、收掉了来源上下文(钩子后登记的先跑),集成上下文还没收。
-				inProcessWorld.afterSourceStopped?.();
+				await inProcessWorld.afterSourceStopped?.();
 				if (!opened) return;
 				const { integration, store } = opened;
 				opened = undefined;

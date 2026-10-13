@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import { extractVideoLinks } from "../video-links";
+import { extractVideoLinks } from "../video-links.js";
 
 describe("extractVideoLinks", () => {
 	it("认出正文里的 BV 链接,带不带尾斜杠都一样", () => {

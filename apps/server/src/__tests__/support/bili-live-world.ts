@@ -37,6 +37,7 @@ import type { Api } from "../../bilibili/api/index.js";
 import { encodePacket, WsOp } from "../../bilibili/live/protocol/codec.js";
 import { makeRecordingLayers } from "../../bilibili/live/session/__tests__/support/live-problems.js";
 import type { ConfigStore } from "../../config/store.js";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import { createEngines } from "../../runtime/engines.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
@@ -348,6 +349,7 @@ export async function bootBiliLiveWorld(
 			load: async () => {},
 		} as never,
 		sources: createSourceRegistry(),
+		linkResolvers: createLinkResolverRegistry(),
 		problems: createProblemTable({ logger: serviceCtx.logger }),
 		biliProblems: recording.layers,
 		bus,

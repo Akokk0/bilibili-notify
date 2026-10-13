@@ -96,8 +96,7 @@ export const SLOT_SKIP_DIRS = [
  */
 export const API_SLOT_RATCHET = {
 	"apps/server/src/app.ts": 3, // 卡片预览的 `api`(属性签名、`api:` 与 `options.api`);第 4 期卡片真实预览改口时消
-	"apps/server/src/index.ts": 13, // 登录装配的产物经入口递出去(套壳、引擎、createApp、粉丝轮询、抓图服务);含 `devAuth.api` 杂音;3b 登录装配进集成时消
-	"apps/server/src/link-preview/link-parser.ts": 3, // 链接解析;3b `LinkResolver`
+	"apps/server/src/index.ts": 11, // 登录装配的产物经入口递出去(套壳、引擎、createApp、粉丝轮询、抓图服务);含 `devAuth.api` 杂音;3b 登录装配进集成时消。3b-28 链接预览的门改问登记表,不再经入口拿 `api` 与抓图服务(13 → 11)
 	"apps/server/src/routes/ai.ts": 2, // 锐评生成拿 `engines.api`;3b `AiToolProvider` 时消
 	"apps/server/src/routes/cards.ts": 12, // 卡片真实预览;第 4 期消
 	"apps/server/src/routes/subscriptions.ts": 5, // 旧搜人两口;第 4 期消

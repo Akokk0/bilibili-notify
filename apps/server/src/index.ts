@@ -865,6 +865,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 				onFallback: (info) => cardSkinFallbacks.record(info),
 			},
 			sources: runtime.sourceRegistry,
+			linkResolvers: runtime.linkResolvers,
 			problems: runtime.problems,
 			// 直播引擎由 createEngines 造、早于来源登记:B 站的分层上报器只能经入口递进去(3b 直播并进来源时撤掉)。
 			biliProblems: builtins.bilibili.problems,
@@ -1079,9 +1080,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 			// 开关与呈现都从引擎拿:随 config-changed 刷新的快照,呈现规则与推送的动态卡同源。
 			config: () => runtimeEngines.linkParsing(),
 			policyFor: (key) => runtimeEngines.linkPolicyFor(key),
-			api: runtimeEngines.api,
-			// 图片卡的视频封面出卡前抓进图库(与推送的动态卡同一个抓图服务)。
-			imageFetcher: postImageFetcher,
+			// 认哪些链接、怎么查都归各集成登记的解析器(B 站的在它的来源里);封面也由解析器抓进图库。
+			linkResolvers: runtime.linkResolvers,
+			signal: runtime.serviceCtx.signal,
 			renderer: () => runtimeEngines.imageRenderer,
 			presentation: () => runtimeEngines.linkCardPresentation(),
 			// 能力走 dispatcher 那条连接寻址(健康探测与 /api/connections/capabilities 用的是同一份),

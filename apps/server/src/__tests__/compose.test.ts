@@ -92,6 +92,7 @@ function makeFakeSourceCtx(roster: SourceSubscriptionView[]) {
 		reportPost,
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
+		registerLinkResolver: vi.fn(() => ({ dispose() {} })),
 	} as unknown as SourceContext;
 	return { ctx, reportPost };
 }

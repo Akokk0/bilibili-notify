@@ -31,6 +31,7 @@ import {
 	imageRefOf,
 } from "../images/image-store.js";
 import { createIntegrationStore, type IntegrationStore } from "../integration-store/store.js";
+import { createLinkResolverRegistry, type LinkResolverRegistry } from "../link-preview/registry.js";
 import { createLogStore, type LogStore } from "../logs/store.js";
 import { createProblemTable, type ProblemTable } from "../problems/problem-table.js";
 import { createPlatformAdapterRegistry, type PlatformAdapterRegistry } from "../push/registry.js";
@@ -93,6 +94,8 @@ export interface AppRuntime {
 	adapterRegistry: PlatformAdapterRegistry;
 	/** 订阅来源的登记表:建在这里、挂在运行时上,来源由 `engines.registerSource` 登进去。 */
 	sourceRegistry: SourceRegistry;
+	/** 链接解析器的登记表:来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver` 登进去。 */
+	linkResolvers: LinkResolverRegistry;
 	/**
 	 * 问题表:各集成(今天是订阅来源)报上来的「主人该知道的事」,全在内存。写口经来源上下文
 	 * (`reportProblem`),读口是 `GET /api/problems`;变了发 `problems-changed`。
@@ -295,6 +298,7 @@ export function createAppRuntime(
 	const adapterRegistry = createPlatformAdapterRegistry();
 	// 订阅来源的登记表(内置来源由 `compose.ts` 经 `engines.registerSource` 登进去)。
 	const sourceRegistry = createSourceRegistry();
+	const linkResolvers = createLinkResolverRegistry();
 	// 问题表:变了(按报的人合并过)发 `problems-changed`。表是总线的生产者,不是转发器。
 	const problems = createProblemTable({
 		logger: serviceCtx.logger,
@@ -538,6 +542,7 @@ export function createAppRuntime(
 		configStore,
 		adapterRegistry,
 		sourceRegistry,
+		linkResolvers,
 		problems,
 		historyStore,
 		repushRunner,

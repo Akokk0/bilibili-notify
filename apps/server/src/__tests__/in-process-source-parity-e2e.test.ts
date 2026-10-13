@@ -65,6 +65,8 @@ import {
 	IN_PROCESS_LABEL,
 	IN_PROCESS_TIER_KEY,
 	inProcessWorld,
+	LINK_NATIVE_PREFIX,
+	LINK_TITLE_PREFIX,
 	resetInProcessWorld,
 	SETTINGS_PROBLEM_CODE,
 } from "./support/in-process-source.js";
@@ -123,7 +125,7 @@ type ParityRow =
 	| { id: string; title: string; checked: false; waitsFor: string; reason: string };
 
 /**
- * 对拍的行(`checked: true`,P01–P21)与「这版不开」的行(`checked: false`,N01–N16 加 N18,必须写清等哪一期、为什么)。
+ * 对拍的行(`checked: true`,P01–P22)与「这版不开」的行(`checked: false`,N01–N16 去掉 N07 加 N18,必须写清等哪一期、为什么)。
  * 末尾的用例核:条数、id 不重、不开的两格都非空、`checked` 的 id 与这份文件实际驱动过的一致。
  */
 const PARITY_ROWS: readonly ParityRow[] = [
@@ -151,6 +153,7 @@ const PARITY_ROWS: readonly ParityRow[] = [
 	{ id: "P19", title: "会员体系读口", checked: true },
 	{ id: "P20", title: "日志等级与没碰 B 站", checked: true },
 	{ id: "P21", title: "status 的「登录」行、login [来源]", checked: true },
+	{ id: "P22", title: "链接解析器的登记、认领与来源停下时自动撤", checked: true },
 	{
 		id: "N01",
 		title: "searchCreators、经接口新建订阅",
@@ -192,13 +195,6 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		checked: false,
 		waitsFor: "3b(守卫「AI 工具与技能约束」同期)",
 		reason: "AiToolProvider 的登记表没有造",
-	},
-	{
-		id: "N07",
-		title: "LinkResolver",
-		checked: false,
-		waitsFor: "3b",
-		reason: "LinkResolver 的登记表没有造",
 	},
 	{
 		id: "N08",
@@ -264,7 +260,8 @@ const PARITY_ROWS: readonly ParityRow[] = [
 		reason:
 			"「这个小时在记」只有 B 站登录着的每小时一跳与拓展的上报事件两个来路,内置的非 B 站来源没人替它记",
 	},
-	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;编号不回填,N18 照旧。
+	// N17(status 的「登录」行、login [来源])在 3b-06 落成了,转进对拍的 P21;N07(LinkResolver)在 3b-28 落成了,转进 P22;
+	// 编号不回填,N18 照旧。
 	{
 		id: "N18",
 		title: "女仆订阅视图里的平台名",
@@ -300,6 +297,7 @@ const SOURCE_CONTEXT_MEMBERS = {
 	reportPost: ["P04"],
 	reportProblem: ["P11"],
 	resolveProblem: ["P11"],
+	registerLinkResolver: ["P22"],
 } as const satisfies Record<keyof SourceContext, readonly RowId[]>;
 const SOURCE_DESCRIPTOR_MEMBERS = {
 	label: ["P15"],
@@ -1364,6 +1362,100 @@ describe("进程内对拍:假来源与 B 站并排在册,走同一条登记路",
 		}
 		drove("P20");
 	});
+
+	// 验红:`link-parser.ts` 退回直接用 B 站正则认链接(不问登记表),这条整条红(假解析器从没被问过)。
+	it("P22 链接解析器:来源在 start 里登的解析器认领自己的链接 —— 关着不回、开了回一张图、冷却里不回第二张、逐目标关掉不回、能力支持时回原生分享;来源停下后没人再认", async () => {
+		const probe = currentProbe();
+		/** 往测试群贴一句话(必须传 `text`:缺省正文是 B 站链接,会去打真接口)。 */
+		const say = async (text: string) =>
+			okRes(await api("/api/dev/run/inbound.link", json({ params: { text } })));
+		const quiet = () => new Promise((resolve) => setTimeout(resolve, 400));
+		const htmlWith = (needle: string) => renderedHtml.filter((html) => html.includes(needle));
+		await clearCaptures();
+
+		// 总开关关着(默认):不问解析器、不回。
+		await say("看 https://acme.invalid/link/a1");
+		await quiet();
+		expect(probe.linkResolves).toEqual([]);
+		expect(await captures()).toEqual([]);
+
+		// 开了:回一张图,送去出图的 HTML 里是假解析器交的正文。
+		await patchSettings({
+			linkParsing: { enabled: true, cooldownSeconds: 60, defaults: { parse: true, form: "image" } },
+		});
+		await say("看 https://acme.invalid/link/a1");
+		const first = await settledCaptures(1);
+		expect(first).toHaveLength(1);
+		expect(first[0]).toMatchObject({ kind: "image", images: 1, targetName: expect.any(String) });
+		expect(htmlWith(`${LINK_TITLE_PREFIX}a1`)).toHaveLength(1);
+		expect(probe.linkResolves).toEqual(["https://acme.invalid/link/a1"]);
+
+		// 同群同一条在冷却里:不再问、不再回。
+		await say("又看 https://acme.invalid/link/a1");
+		await quiet();
+		expect(probe.linkResolves).toHaveLength(1);
+		expect(await captures()).toHaveLength(1);
+
+		// 同一个东西换了写法重贴:问一次(链接原文不同),但认出是同一个,不回第二张。
+		await say("换个写法 https://acme.invalid/link/a1?from=share");
+		await quiet();
+		expect(probe.linkResolves).toHaveLength(2);
+		expect(await captures()).toHaveLength(1);
+
+		// 逐目标关掉:不问、不回;随后放开,冷却没被吃掉,新链接照回。
+		await patchSettings({ linkParsing: { groups: { [ID.group]: { parse: false } } } });
+		await say("https://acme.invalid/link/a2");
+		await quiet();
+		expect(probe.linkResolves).toHaveLength(2);
+		expect(await captures()).toHaveLength(1);
+		await patchSettings({ linkParsing: { groups: { [ID.group]: null } } });
+
+		// 形式选原生分享、连接能力注成支持:回原生分享,截流里是标题,不出图。
+		await okRes(
+			await api(
+				"/api/dev/run/connection.capability",
+				json({ params: { connection: ID.connection, state: "supported" } }),
+			),
+		);
+		await patchSettings({ linkParsing: { defaults: { parse: true, form: "miniapp" } } });
+		const htmlBefore = renderedHtml.length;
+		await clearCaptures();
+		await say("https://acme.invalid/link/a3");
+		const native = await settledCaptures(1);
+		expect(native).toHaveLength(1);
+		expect(native[0]).toMatchObject({
+			kind: "miniapp-card",
+			text: `${LINK_NATIVE_PREFIX}a3`,
+			images: 0,
+		});
+		expect(renderedHtml.length).toBe(htmlBefore);
+
+		// 来源停下(引擎先停来源、进程还活着的那一刻)后同一类链接再贴:没有人再认。
+		// 关停途中适配器已停、开发场景用不了,所以这一段直接往门的入站出口喂(控制组走同一条路,证明这条路是通的)。
+		const inbound = inProcessWorld.inboundGroup;
+		if (!inbound) throw new Error("入站出口没取到");
+		const feedDirect = async (text: string) => {
+			inbound(
+				{ groupId: GROUP_ADDRESS, userId: "20002", text, cardLinks: [], miniAppCardLinks: [] },
+				{ connectionId: ID.connection, platform: "onebot" },
+			);
+			await quiet();
+		};
+		await patchSettings({ linkParsing: { defaults: { parse: true, form: "image" } } });
+		await feedDirect("控制组 https://acme.invalid/link/a4");
+		const resolvedBeforeStop = probe.linkResolves.length;
+		expect(probe.linkResolves.at(-1)).toBe("https://acme.invalid/link/a4");
+		let fedAfterStop = false;
+		inProcessWorld.afterSourceStopped = async () => {
+			await feedDirect("停后 https://acme.invalid/link/a5");
+			fedAfterStop = true;
+		};
+		await handle?.close("test");
+		handle = undefined;
+		expect(fedAfterStop).toBe(true);
+		expect(probe.linkResolves).toHaveLength(resolvedBeforeStop);
+		drove("P22");
+	}, 60_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -1537,17 +1629,17 @@ describe("进程内对拍:两趟开机", () => {
 
 describe("进程内对拍:清单自己", () => {
 	// 注意:这一组必须排在上面两组之后(靠文件内顺序),它拿「实际驱动过的行」对清单。
-	it("PARITY_ROWS:对拍 21 行、不开 17 行,id 不重;不开的每行都写了等哪一期与理由", () => {
+	it("PARITY_ROWS:对拍 22 行、不开 16 行,id 不重;不开的每行都写了等哪一期与理由", () => {
 		expect(PARITY_ROWS).toHaveLength(38);
 		expect(new Set(PARITY_ROWS.map((row) => row.id)).size).toBe(PARITY_ROWS.length);
 		const checked = PARITY_ROWS.filter((row) => row.checked);
 		const closed = PARITY_ROWS.filter((row) => !row.checked);
 		expect(checked.map((row) => row.id)).toEqual(
-			Array.from({ length: 21 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
+			Array.from({ length: 22 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
 		);
-		// N17 转进了对拍(P21),编号不回填。
+		// N17 转进了对拍(P21)、N07 转进了对拍(P22),编号不回填。
 		expect(closed.map((row) => row.id)).toEqual(
-			[...Array.from({ length: 16 }, (_, i) => i + 1), 18].map(
+			[...Array.from({ length: 16 }, (_, i) => i + 1).filter((n) => n !== 7), 18].map(
 				(n) => `N${String(n).padStart(2, "0")}`,
 			),
 		);

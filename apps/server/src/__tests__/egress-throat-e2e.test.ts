@@ -53,7 +53,8 @@ const SEND_PATHS = [
 		id: "link-reply",
 		label: "链接回复",
 		driven: false,
-		reason: "要先向 B 站查视频信息才轮得到发送(图片卡还要浏览器),测试里不许调真实的 B 站接口",
+		reason:
+			"要先问链接解析器查出内容才轮得到发送(图片卡还要浏览器),这份测试里没有;由进程内对拍的 P22 驱动(假解析器 + 假浏览器)",
 	},
 	{ id: "command-reply", label: "指令回复", driven: true },
 	{

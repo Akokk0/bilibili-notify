@@ -1,6 +1,7 @@
 import type { ZodType } from "zod";
 import type { AuthState } from "./auth-state";
 import type { FeatureKey, ImageRef, Result } from "./constants";
+import type { LinkResolver } from "./link-preview";
 import type { MembershipProgram } from "./membership";
 import type { Disposable, IntegrationContext } from "./platform";
 import type { PostReport } from "./post";
@@ -66,6 +67,13 @@ export interface SourceContext extends IntegrationContext {
 	 * `notify: false` = 这次不是修好了、只是不再适用,不补。没有这一条什么都不做。
 	 */
 	resolveProblem(problem: { externalId?: string; code: string; notify?: boolean }): void;
+	/**
+	 * 登记这个来源的链接解析器(群里贴链接时核心问它认不认)。在自己的 `start(ctx)` 里登;键就是这个来源
+	 * 的键,不用来源自己给。来源停下时宿主自动撤掉,不必在 `stop()` 里记得摘。来源已停下之后再登不生效
+	 * (交回一个什么都不做的把手,与「来源已停下的上报被丢弃」同一个待遇)。同一个来源登第二个会抛
+	 * (一个键一个主人);自己撤了之后可以重登。
+	 */
+	registerLinkResolver(resolver: LinkResolver): Disposable;
 }
 
 /** 来源登录着的账号:名字必有;头像抓进图库之后才有 `avatar`(图库引用,不是平台的图片地址)。 */

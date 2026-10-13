@@ -19,6 +19,7 @@ import {
 	type SourceAuth,
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemNotifier } from "../../problems/problem-notifier.js";
 import { createProblemTable } from "../../problems/problem-table.js";
 import {
@@ -130,6 +131,7 @@ async function boot(initial: AuthState, over: { fetchAllDynamic?: () => Promise<
 	});
 	await registerBuiltinSource({
 		registry: createSourceRegistry(),
+		linkResolvers: createLinkResolverRegistry(),
 		source,
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,

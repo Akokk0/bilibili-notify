@@ -12,6 +12,7 @@ import type {
 } from "@bilibili-notify/internal";
 import type { SubscriptionStore } from "@bilibili-notify/subscription";
 import { createSettingsReader } from "../integrations/settings-reader.js";
+import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import type { ProblemTable } from "../problems/problem-table.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { sourceSubscriptionViews } from "./source-subscriptions.js";
@@ -30,6 +31,8 @@ export interface CreateSourceContextOptions {
 	enqueue: (event: PostEvent) => void;
 	/** 问题表的写口:来源报的问题记在报的人(这个来源的键)名下。 */
 	problems: Pick<ProblemTable, "report" | "resolve">;
+	/** 链接解析器的登记表:来源经 `ctx.registerLinkResolver` 登,键用这个来源的键;停下时随上下文撤掉。 */
+	linkResolvers: Pick<LinkResolverRegistry, "register">;
 	/**
 	 * 这个来源所属集成的设置:`read` 读此刻那一份(整个文件读不懂回失败),`onChanged` 在「设置可能变了」时叫。
 	 * 键由造上下文的人按登记项带进来,这里不认识任何具体集成。
@@ -198,6 +201,17 @@ export function createSourceContext(opts: CreateSourceContextOptions): SourceCon
 					problem.notify === undefined ? undefined : { notify: problem.notify },
 				),
 			);
+		},
+		registerLinkResolver(resolver) {
+			if (disposed) {
+				logger.error(`[source] ${sourceKey} 已停下还在登记链接解析器(丢弃;内置来源的 bug)`);
+				return { dispose() {} };
+			}
+			// 键被占(含这个来源自己已经登过一个)时由登记表抛,原样出去。
+			const claim = opts.linkResolvers.register(sourceKey, resolver);
+			// 跟着上下文一起摘:不指望来源在 `stop()` 里记得收。把手自己撤过的再摘是空操作。
+			watches.push(claim);
+			return claim;
 		},
 	};
 

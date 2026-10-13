@@ -66,6 +66,7 @@ import { type BiliSettings, BiliSettingsSchema } from "../../bilibili/settings.j
 import type { ConfigStore } from "../../config/store.js";
 import { createHistoryStore } from "../../history/store.js";
 import { imageRefOf } from "../../images/image-store.js";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemTable, type ProblemTable } from "../../problems/problem-table.js";
 import { makeSource } from "../../subscriptions/__tests__/fixtures.js";
 import { createSourceRegistry, type SourceRegistry } from "../../subscriptions/registry.js";
@@ -470,6 +471,7 @@ function setup(opts?: {
 	const biliProblems = opts?.biliProblems ?? makeLiveProblems();
 	const runtime = createEngines({
 		sources,
+		linkResolvers: createLinkResolverRegistry(),
 		problems,
 		biliProblems,
 		serviceCtx: serviceCtx as unknown as NodeServiceContext,

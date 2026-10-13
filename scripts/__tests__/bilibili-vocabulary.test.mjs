@@ -229,7 +229,6 @@ export const RATCHET = {
 	"apps/server/src/compose.ts": 2, // 开发场景的订阅视图里带上 `roomId`
 	"apps/server/src/devtools/scenarios/bridge.ts": 1, // 假消息里的 `bilibili.com` 链接
 	"apps/server/src/devtools/scenarios/inbound.ts": 1, // 同上
-	"apps/server/src/link-preview/link-parser.ts": 13, // `bvid`×12、`bilibili.com`
 	"apps/server/src/logs/redact.ts": 5, // 日志脱敏的五条正则:`SESSDATA`、`bili_jct`(手补进词表)与 `refresh_token`×3(自动词表里的通用词)。核心的脱敏器按 B 站登录凭据的字段名遮值。认正则后才数到的
 	"apps/server/src/routes/cards.ts": 20, // `roomId`×10、`live_status`、`room_id`、`short_id`、`module_author`,再加手补的 `live_room`×2、`roomid`×4(`live_room.roomid` 的读取)
 	"apps/server/src/routes/subscriptions.ts": 1, // 文字里的 `bili_user`
@@ -238,7 +237,6 @@ export const RATCHET = {
 	"apps/server/src/runtime/sub-runtime-store.ts": 1, // 订阅运行时里存的 B 站直播间号 `roomId`
 	"packages/ai/src/tools.ts": 7, // 工具说明里教模型读的 B 站原始字段
 	"packages/internal/src/bilibili-guard.ts": 1, // 文字里的 `hdslb`
-	"packages/internal/src/util/video-links.ts": 9, // `bvid`×6、`b23.tv`×2(模板与短链正则)、正则里的 `bilibili.com`
 };
 
 /** 全小写、带下划线的键:`live_status`、`room_id`;驼峰、带大写、不带下划线的不算。 */

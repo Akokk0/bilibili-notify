@@ -17,6 +17,7 @@ import {
 } from "@bilibili-notify/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createConfigStore, integrationSettingsFile } from "../../config/store.js";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createProblemTable, type ProblemChange } from "../../problems/problem-table.js";
 import { createNodeMessageBus } from "../../runtime/message-bus.js";
 import {
@@ -135,6 +136,7 @@ async function boot() {
 	});
 	const registration = await registerBuiltinSource({
 		registry: createSourceRegistry(),
+		linkResolvers: createLinkResolverRegistry(),
 		source,
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,

@@ -16,6 +16,7 @@ import type { Api } from "./api/index.js";
 import { DynamicEngine } from "./dynamic/index.js";
 import { HEALTH_TEXTS } from "./health-texts.js";
 import type { ImagesDeps } from "./images.js";
+import { createBiliLinkResolver } from "./link-resolver.js";
 import type { ProblemLayers } from "./problem-layers.js";
 import { PROBLEM_TEXTS } from "./problem-texts.js";
 import {
@@ -189,6 +190,17 @@ export function createBiliSource(deps: BiliSourceDeps): BiliSource {
 			try {
 				// 始终挂一次,转给当下的引擎(动态停着时没有引擎,什么都不做)。
 				mine.push(ctx.onSubscriptionsChanged(() => engine?.syncSubscriptions()));
+				// 群里贴的 B 站视频链接归这个来源认;宿主在来源停下时也会撤,这里记着是为了启动失败时自己收拾。
+				mine.push(
+					ctx.registerLinkResolver(
+						createBiliLinkResolver({
+							label: descriptor.label,
+							api: deps.api,
+							imageFetcher: deps.imageFetcher,
+							logger: ctx.logger,
+						}),
+					),
+				);
 				applyDynamic();
 				mine.push(dynamicSettings.onChange(guarded(ctx, "动态", applyDynamic)));
 				applyLoginCheck();

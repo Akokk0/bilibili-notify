@@ -1,10 +1,11 @@
 /**
- * 链接解析处理器 —— 群里有人贴 B 站视频链接,机器人回一张视频卡片。
+ * 链接解析的门 —— 群里有人贴链接,门问在册的解析器认不认,认了就查、出卡、回。
  *
  * 缝在 `handleMessage(msg)`:喂一条 adapter 归一化好的群消息,看它对外做了什么
- * (取了哪个视频、喂给渲染器的动态长什么样、往哪个群发了什么),不看内部。用例里仍以
+ * (问了哪个解析器、喂给渲染器的作品长什么样、往哪个群发了什么),不看内部。用例里仍以
  * OneBot 帧起手,经真实的 `extractGroupMessage` 归一化 —— 那正是接线层在 index.ts 里做的事。
- * 五个协作者全是假的:配置(现读)、B 站接口、抓图服务(内存替身,不联网)、渲染器、发送。
+ * 协作者全是假的:配置(现读)、解析器(登记表里的假解析器,只认 `acme.invalid`)、渲染器、发送。
+ * B 站自己的链接怎么认、怎么查由 `bilibili/__tests__/link-resolver.test.ts` 钉。
  */
 
 import type { CardColorOptions, RenderPriority } from "@bilibili-notify/image";
@@ -13,36 +14,26 @@ import type {
 	DeliveryResult,
 	LinkParsingConfig,
 	LinkParsingPolicy,
+	LinkPreview,
+	LinkResolver,
 	NotificationPayload,
 	Post,
 } from "@bilibili-notify/internal";
-import { fail, type ImageRef, LINK_LIMITS, type LinkLimits, ok } from "@bilibili-notify/internal";
+import { fail, LINK_LIMITS, type LinkLimits, ok } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { VideoRef, VideoResponse } from "../../bilibili/api/index.js";
-import type { ImagesDeps } from "../../bilibili/images.js";
 import { extractGroupMessage } from "../../platforms/onebot-inbound.js";
 import { createLinkParser, type LinkParser, type LinkReplyDestination } from "../link-parser.js";
+import { createLinkResolverRegistry } from "../registry.js";
 
 const ADAPTER = "11111111-1111-4111-8111-111111111111";
 const GROUP = 123456;
 const BOT = 10000;
 const SOMEONE = 20002;
+const RESOLVER_KEY = "acme.inprocess";
 
-const VIDEO: VideoResponse = {
-	bvid: "BV1zMtU6uEEb",
-	aid: 114514,
-	title: "示例标题",
-	pic: "http://i0.hdslb.com/bfs/archive/cover.jpg",
-	desc: "示例简介",
-	duration: 754,
-	pubdate: 1756800000,
-	tname: "日常",
-	owner: { mid: 12345, name: "示例UP", face: "http://i0.hdslb.com/bfs/face/face.jpg" },
-	stat: { view: 65000, danmaku: 120, reply: 30, favorite: 400, coin: 200, share: 15, like: 3000 },
-};
-
-/** 假抓图服务存进「图库」后回的那个引用。 */
-const COVER_REF: ImageRef = `${"c".repeat(64)}.webp`;
+/** 假解析器认的链接:`https://acme.invalid/link/<id>`。 */
+const link = (id: string) => `https://acme.invalid/link/${id}`;
+const LINK = link("a1");
 
 /** 第一次调用的第一个参数;没被调过就让测试在这里死,别在后面报一串 undefined。 */
 function firstArg<A extends unknown[]>(calls: A[]): A[0] {
@@ -76,6 +67,30 @@ const SKIN = "skin-from-panel";
 /** 卡片页里给「动态」这一类调的配色 —— 同样两种卡都得吃。 */
 const COLORS: CardColorOptions = { font: "Comic Sans MS" };
 
+/** 假解析器交的预览:作品正文带 id,原生分享描述五格都能一一认出。 */
+function previewOf(id: string, withNativeShare = true): LinkPreview {
+	return {
+		post: {
+			creator: { name: "链接作者" },
+			publishedAt: "2026-10-01T08:00:00.000Z",
+			text: `正文-${id}`,
+		},
+		canonicalId: id,
+		...(withNativeShare
+			? {
+					nativeShare: {
+						appId: "acme-app",
+						title: `标题-${id}`,
+						description: `描述-${id}`,
+						imageUrl: `https://acme.invalid/${id}.png`,
+						pagePath: `pages/link?id=${id}`,
+						webUrl: link(id),
+					},
+				}
+			: {}),
+	};
+}
+
 function makeParser(
 	over: Partial<LinkParsingConfig> = {},
 	limits?: Partial<LinkLimits>,
@@ -85,6 +100,8 @@ function makeParser(
 		probeCapabilities?: (dest: LinkReplyDestination) => Promise<ConnectionCapabilities | undefined>;
 		/** 每条 payload 的投递结果;缺省全部成功。 */
 		sendResult?: (payload: NotificationPayload) => DeliveryResult;
+		/** 假解析器怎么回(缺省按链接尾巴的 id 交预览)。 */
+		resolve?: LinkResolver["resolve"];
 	} = {},
 ) {
 	const config: LinkParsingConfig = {
@@ -94,11 +111,18 @@ function makeParser(
 		groups: {},
 		...over,
 	};
-	const fetchVideoInfo = vi.fn(async (_ref: VideoRef) => VIDEO);
-	/** 抓图服务的内存替身:缺省每张都抓得到;`h.fetchImage.mockResolvedValue(fail(…))` 演抓不到。 */
-	const fetchImage = vi.fn<ImagesDeps["images"]["fetchImage"]>(async () => ok({ ref: COVER_REF }));
+	const resolve = vi.fn<LinkResolver["resolve"]>(
+		extra.resolve ??
+			(async (url) => {
+				const id = /\/link\/([A-Za-z0-9]+)/.exec(url)?.[1] ?? "x";
+				return ok(previewOf(id));
+			}),
+	);
+	const matches = vi.fn((url: string) => url.includes("acme.invalid/link/"));
+	const resolver: LinkResolver = { label: "对拍源", matches, resolve };
+	const linkResolvers = createLinkResolverRegistry();
+	linkResolvers.register(RESOLVER_KEY, resolver);
 	const warn = vi.fn();
-	const resolveShortLink = vi.fn(async (_url: string): Promise<string | null> => null);
 	const generatePostCard = vi.fn(
 		async (_post: Post, _colors?: CardColorOptions, _options?: { priority?: RenderPriority }) =>
 			Buffer.from("png-bytes"),
@@ -119,28 +143,33 @@ function makeParser(
 	const renderer = vi.fn((): { generatePostCard: typeof generatePostCard } | null => ({
 		generatePostCard,
 	}));
-	const parser = createLinkParser({
-		logger,
-		config: readConfig,
-		api: { fetchVideoInfo, resolveShortLink },
-		imageFetcher: { fetchImage },
-		renderer,
-		presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
-		send,
-		now: () => now,
-		policyFor: extra.policyFor ?? (() => ({ parse: true, form: "image" })),
-		capabilities: extra.capabilities ?? (() => undefined),
-		probeCapabilities,
-		...(limits ? { limits } : {}),
-	});
+	const signal = new AbortController().signal;
+	const build = (rendererOverride?: () => ReturnType<typeof renderer>) =>
+		createLinkParser({
+			logger,
+			config: readConfig,
+			linkResolvers,
+			signal,
+			renderer: rendererOverride ?? renderer,
+			presentation: () => ({ colors: COLORS, cardSkin: SKIN }),
+			send,
+			now: () => now,
+			policyFor: extra.policyFor ?? (() => ({ parse: true, form: "image" })),
+			capabilities: extra.capabilities ?? (() => undefined),
+			probeCapabilities,
+			...(limits ? { limits } : {}),
+		});
 	return {
-		parser,
+		parser: build(),
+		build,
 		config,
 		readConfig,
 		renderer,
-		fetchVideoInfo,
-		resolveShortLink,
-		fetchImage,
+		resolve,
+		matches,
+		resolver,
+		linkResolvers,
+		signal,
 		warn,
 		generatePostCard,
 		send,
@@ -153,38 +182,16 @@ function makeParser(
 }
 
 describe("createLinkParser", () => {
-	it("群里一条 BV 链接:取那个视频,渲染成「投稿了视频」形态的动态卡,发回来源群", async () => {
+	it("群里一条被认领的链接:问解析器,把它交的作品渲染成图片卡,发回来源群", async () => {
 		const h = makeParser();
-		await feed(h.parser, groupFrame("看这个 https://www.bilibili.com/video/BV1zMtU6uEEb/ 好看"));
+		await feed(h.parser, groupFrame(`看这个 ${LINK} 好看`));
 
-		expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+		// 问的是解析器认的那条链接原文,带着关停信号。
+		expect(h.resolve).toHaveBeenCalledWith(LINK, h.signal);
 
 		expect(h.generatePostCard).toHaveBeenCalledTimes(1);
-		const post = firstArg(h.generatePostCard.mock.calls);
-		// 直接造的作品,不是伪造的 B 站原始动态:「投稿了视频」是明说的 label,不靠 archive.badge 的隐含耦合。
-		expect(post).toEqual({
-			creator: { name: "示例UP" },
-			publishedAt: "2025-09-02T08:00:00.000Z",
-			label: "投稿了视频",
-			text: "",
-			video: {
-				// 封面在出卡前抓进图库:交给出图器的是图库引用(渲染页不联网,只有地址的图画不出来)。
-				cover: { url: "http://i0.hdslb.com/bfs/archive/cover.jpg", ref: COVER_REF },
-				title: "示例标题",
-				description: "示例简介",
-				durationSec: 754,
-				views: 65000,
-				danmaku: 120,
-			},
-			stats: { shares: 15, comments: 30, likes: 3000 },
-		});
-		// 抓的是图床的缩放版,带站内引用头 —— 与推送的动态卡同一条抓图路(`bilibili/images.ts`)。
-		expect(h.fetchImage.mock.calls).toEqual([
-			[
-				"http://i0.hdslb.com/bfs/archive/cover.jpg@1280w_80q_1s.webp",
-				{ headers: { Referer: "https://www.bilibili.com/" } },
-			],
-		]);
+		// 交给出图器的就是解析器交的作品,原样。
+		expect(firstArg(h.generatePostCard.mock.calls)).toEqual(previewOf("a1").post);
 		// 呈现与推送的动态卡同一份:配色不传的话主人在卡片页给「动态」调的样式只有推送卡认,
 		// 皮肤不传的话渲染器退回内置默认皮肤、主人选的那套排版就丢了。
 		expect(h.generatePostCard.mock.calls[0]?.[1]).toEqual({ ...COLORS, cardSkin: SKIN });
@@ -201,89 +208,104 @@ describe("createLinkParser", () => {
 				},
 			},
 		]);
-		expect(h.sent[0]?.payload).toEqual({
-			kind: "image",
-			image: { buffer: Buffer.from("png-bytes"), mime: "image/jpeg" },
-		});
 	});
 
 	describe("什么都不做的几种情况", () => {
-		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
-
-		it("功能关着:不打接口、不发", async () => {
+		it("功能关着:不问解析器、不发", async () => {
 			const h = makeParser({ enabled: false });
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+			expect(h.resolve).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
 		it("私聊里贴链接不算(这版只做群)", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame(LINK, { message_type: "private", group_id: undefined }));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+			expect(h.resolve).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 
 		it("机器人自己发的消息不解析", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame(LINK, { user_id: BOT }));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+			expect(h.resolve).not.toHaveBeenCalled();
 		});
 
-		it("正文里没有链接就不打接口 —— 连配置都不读:群里每句话都进这儿,读配置要整份深拷贝", async () => {
+		it("正文里没有链接就不问解析器 —— 连配置都不读:群里每句话都进这儿,读配置要整份深拷贝", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame("今天天气不错"));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+			expect(h.resolve).not.toHaveBeenCalled();
 			expect(h.readConfig).not.toHaveBeenCalled();
 		});
 
-		it("没有 Chrome:短链也不跟那一跳 —— 连接口都不打的承诺对短链同样成立", async () => {
+		it("有网址但没有解析器认领:同样连配置都不读、不发", async () => {
 			const h = makeParser();
-			const parser = createLinkParser({
-				logger: { info() {}, warn() {}, error() {}, debug() {} },
-				config: () => h.config,
-				api: { fetchVideoInfo: h.fetchVideoInfo, resolveShortLink: h.resolveShortLink },
-				imageFetcher: { fetchImage: h.fetchImage },
-				renderer: () => null,
-				presentation: () => ({}),
-				send: h.send,
-				policyFor: () => ({ parse: true, form: "image" }),
-				capabilities: () => undefined,
-			});
-			await feed(parser, groupFrame("https://b23.tv/abc123"));
-			expect(h.resolveShortLink).not.toHaveBeenCalled();
+			await feed(h.parser, groupFrame("看 https://example.com/page 和 foo.bar/baz"));
+			expect(h.matches).toHaveBeenCalled();
+			expect(h.resolve).not.toHaveBeenCalled();
+			expect(h.readConfig).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
 		});
 
-		it("没有 Chrome(渲染器为空)连接口都不打", async () => {
+		it("登记表是空的(没有集成登记解析器):什么都不做", async () => {
 			const h = makeParser();
 			const parser = createLinkParser({
 				logger: { info() {}, warn() {}, error() {}, debug() {} },
-				config: () => h.config,
-				api: { fetchVideoInfo: h.fetchVideoInfo, resolveShortLink: h.resolveShortLink },
-				imageFetcher: { fetchImage: h.fetchImage },
-				renderer: () => null,
+				config: h.readConfig,
+				linkResolvers: createLinkResolverRegistry(),
+				signal: h.signal,
+				renderer: h.renderer,
 				presentation: () => ({}),
 				send: h.send,
 				policyFor: () => ({ parse: true, form: "image" }),
 				capabilities: () => undefined,
 			});
 			await feed(parser, groupFrame(LINK));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
-			expect(h.fetchImage).not.toHaveBeenCalled();
+			expect(h.readConfig).not.toHaveBeenCalled();
+			expect(h.sent).toHaveLength(0);
+		});
+
+		it("来源停下后(解析器被撤)同一条链接没人认", async () => {
+			const h = makeParser();
+			// 门每条消息现读登记表:解析器的把手一撤(来源停下时宿主就是这么撤的),下一条就没人认。
+			const other = createLinkResolverRegistry();
+			const handle = other.register(RESOLVER_KEY, h.resolver);
+			const parser = createLinkParser({
+				logger: { info() {}, warn() {}, error() {}, debug() {} },
+				config: h.readConfig,
+				linkResolvers: other,
+				signal: h.signal,
+				renderer: h.renderer,
+				presentation: () => ({}),
+				send: h.send,
+				policyFor: () => ({ parse: true, form: "image" }),
+				capabilities: () => undefined,
+			});
+			await feed(parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(1);
+			handle.dispose();
+			h.advance(61_000);
+			await feed(parser, groupFrame(LINK));
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("没有 Chrome(渲染器为空)连解析器都不问", async () => {
+			const h = makeParser();
+			const parser = h.build(vi.fn(() => null));
+			await feed(parser, groupFrame(LINK));
+			expect(h.resolve).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
 	});
 
 	describe("冷却", () => {
-		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
-
-		it("同一个群同一个视频 60 秒内只出一次图,过了冷却再出;别的群不受影响", async () => {
+		it("同一个群同一条链接 60 秒内只出一次图,过了冷却再出;别的群不受影响", async () => {
 			const h = makeParser();
 			await feed(h.parser, groupFrame(LINK));
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(1);
-			// 被冷却挡下的那一条不出卡,也就不抓封面。
-			expect(h.fetchImage).toHaveBeenCalledTimes(1);
+			// 被冷却挡下的那一条连解析器都不问。
+			expect(h.resolve).toHaveBeenCalledTimes(1);
 
 			await feed(h.parser, groupFrame(LINK, { group_id: 999 }));
 			expect(h.sent).toHaveLength(2);
@@ -301,34 +323,69 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(2);
 		});
 
-		it("链接坏了也吃冷却:同一条坏链接反复贴,接口只被打一次", async () => {
-			const h = makeParser();
-			h.fetchVideoInfo.mockRejectedValue(new Error("获取视频信息失败(-404): 啥都木有"));
+		it("链接坏了也吃冷却:同一条坏链接反复贴,解析器只被问一次", async () => {
+			const h = makeParser({}, undefined, {
+				resolve: async () => fail("unavailable", "获取视频信息失败(-404): 啥都木有"),
+			});
 			await feed(h.parser, groupFrame(LINK));
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.fetchVideoInfo).toHaveBeenCalledTimes(1);
+			expect(h.resolve).toHaveBeenCalledTimes(1);
 			expect(h.sent).toHaveLength(0);
+		});
+
+		it("同一个东西换了写法重贴:每种写法各问一次解析器,但只出一张", async () => {
+			const h = makeParser();
+			await feed(h.parser, groupFrame(link("a1")));
+			await feed(h.parser, groupFrame(`${link("a1")}?from=share`));
+			expect(h.resolve).toHaveBeenCalledTimes(2);
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("同一条消息里先后贴同一个东西的两种写法,也只出一张", async () => {
+			const h = makeParser();
+			await feed(h.parser, groupFrame(`${link("a1")} ${link("a1")}?from=share`));
+			expect(h.resolve).toHaveBeenCalledTimes(2);
+			expect(h.sent).toHaveLength(1);
+		});
+
+		it("冷却设 0 时,同一条消息里指着同一个东西的两种写法也只出一张;不同的东西各出一张", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			await feed(h.parser, groupFrame(`${link("a1")} ${link("a1")}?from=share`));
+			expect(h.sent).toHaveLength(1);
+			await feed(h.parser, groupFrame(`${link("a2")} ${link("a3")}`));
+			expect(h.sent).toHaveLength(3);
+		});
+
+		it("冷却键里有解析器:不同集成的两个解析器碰巧交出同一个规范 id,互不冷却", async () => {
+			const h = makeParser();
+			const second: LinkResolver = {
+				label: "第二家",
+				matches: (url) => url.includes("other.invalid/"),
+				resolve: async () => ok(previewOf("a1")),
+			};
+			h.linkResolvers.register("other.inprocess", second);
+			await feed(h.parser, groupFrame(`${link("a1")} https://other.invalid/x`));
+			expect(h.sent).toHaveLength(2);
 		});
 	});
 
-	describe("限流 —— 冷却只防同一个视频反复贴,这几条防换着视频刷", () => {
-		const link = (id: string) => `https://www.bilibili.com/video/${id}`;
-		/** 互不相同的 BV 号,数量随要。 */
+	describe("限流 —— 冷却只防同一条反复贴,这几条防换着链接刷", () => {
+		/** 互不相同的 id,数量随要。 */
 		const ids = (n: number) =>
-			Array.from({ length: n }, (_, i) => `BV1${String(i).padStart(9, "x")}`);
+			Array.from({ length: n }, (_, i) => `x${String(i).padStart(4, "0")}`);
 
-		it("同一个群一分钟内换着视频刷,最多出 groupPerMinute 张;别的群不受影响;过一分钟再放行", async () => {
+		it("同一个群一分钟内换着链接刷,最多出 groupPerMinute 张;别的群不受影响;过一分钟再放行", async () => {
 			const h = makeParser({ cooldownSeconds: 0 });
 			for (const id of ids(LINK_LIMITS.groupPerMinute + 2)) {
 				await feed(h.parser, groupFrame(link(id)));
 			}
 			expect(h.sent).toHaveLength(LINK_LIMITS.groupPerMinute);
 
-			await feed(h.parser, groupFrame(link("BV1zzzzzzzzz"), { group_id: 999 }));
+			await feed(h.parser, groupFrame(link("zzzz"), { group_id: 999 }));
 			expect(h.sent).toHaveLength(LINK_LIMITS.groupPerMinute + 1);
 
 			h.advance(61_000);
-			await feed(h.parser, groupFrame(link("BV1yyyyyyyyy")));
+			await feed(h.parser, groupFrame(link("yyyy")));
 			expect(h.sent).toHaveLength(LINK_LIMITS.groupPerMinute + 2);
 		});
 
@@ -347,20 +404,21 @@ describe("createLinkParser", () => {
 			for (let i = 0; i < 50 && release.length < LINK_LIMITS.maxInflight; i++) {
 				await new Promise((r) => setTimeout(r, 1));
 			}
-			// 第 maxInflight+1 条连接口都没打 —— 不是排队,是直接放弃。
-			expect(h.fetchVideoInfo).toHaveBeenCalledTimes(LINK_LIMITS.maxInflight);
+			// 第 maxInflight+1 条连解析器都没问 —— 不是排队,是直接放弃。
+			expect(h.resolve).toHaveBeenCalledTimes(LINK_LIMITS.maxInflight);
 			for (const r of release) r();
 			await Promise.all(runs);
 			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight);
 
 			// 卡着的放行之后,新来的照常。
 			h.generatePostCard.mockResolvedValue(Buffer.from("png-bytes"));
-			await feed(h.parser, groupFrame(link("BV1yyyyyyyyy")));
+			await feed(h.parser, groupFrame(link("yyyy")));
 			expect(h.sent).toHaveLength(LINK_LIMITS.maxInflight + 1);
 		});
 
 		it("冷却表有容量上限:满了先忘最久没碰的 —— 表不会越涨越慢", async () => {
-			const h = makeParser({}, { tableCap: 2 });
+			// 每条链接在表里占两格(链接原文一把、规范 id 一把),所以容量 4 = 最近两条链接。
+			const h = makeParser({}, { tableCap: 4 });
 			const [a, b, c] = ids(3) as [string, string, string];
 			for (const id of [a, b, c]) {
 				await feed(h.parser, groupFrame(link(id)));
@@ -375,14 +433,28 @@ describe("createLinkParser", () => {
 	});
 
 	describe("失败不回话、不抛", () => {
-		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
-
-		it("接口失败:不发任何东西,handle 正常返回", async () => {
-			const h = makeParser();
-			h.fetchVideoInfo.mockRejectedValue(new Error("boom"));
+		it("解析器回失败:不发任何东西,handle 正常返回,失败原话进日志", async () => {
+			const h = makeParser({}, undefined, {
+				resolve: async () => fail("unavailable", "boom"),
+			});
 			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
 			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
+			expect(h.warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+		});
+
+		it("解析器自己抛了(它的 bug):同样不发、不抛,并且不影响同一条消息里的下一个", async () => {
+			const h = makeParser({ cooldownSeconds: 0 }, undefined, {
+				resolve: async (url) => {
+					if (url.endsWith("bad")) throw new Error("解析器炸了");
+					return ok(previewOf("good"));
+				},
+			});
+			await expect(
+				feed(h.parser, groupFrame(`${link("bad")} ${link("good")}`)),
+			).resolves.toBeUndefined();
+			expect(h.sent).toHaveLength(1);
+			expect(h.warn).toHaveBeenCalledWith(expect.stringContaining("解析器炸了"));
 		});
 
 		it("渲染失败:不发任何东西", async () => {
@@ -390,28 +462,6 @@ describe("createLinkParser", () => {
 			h.generatePostCard.mockRejectedValue(new Error("截图超时(20s)"));
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(0);
-		});
-
-		it("封面抓不到:卡照出、封面那一格没有引用,记一条 warn", async () => {
-			const h = makeParser();
-			h.fetchImage.mockResolvedValue(fail("unavailable", "连不上"));
-			await feed(h.parser, groupFrame(LINK));
-			expect(firstArg(h.generatePostCard.mock.calls).video?.cover).toEqual({
-				url: "http://i0.hdslb.com/bfs/archive/cover.jpg",
-			});
-			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
-			expect(h.warn).toHaveBeenCalledTimes(1);
-			// 地址不带参数、不带缩放后缀:报的是那张图本身。
-			expect(String(h.warn.mock.calls[0]?.[0])).toContain(
-				"http://i0.hdslb.com/bfs/archive/cover.jpg: unavailable",
-			);
-		});
-
-		it("抓图服务自己抛了:和抓不到一样,卡照出", async () => {
-			const h = makeParser();
-			h.fetchImage.mockRejectedValue(new Error("socket hang up"));
-			await expect(feed(h.parser, groupFrame(LINK))).resolves.toBeUndefined();
-			expect(h.sent).toHaveLength(1);
 		});
 
 		it("发送返回失败:不抛", async () => {
@@ -430,11 +480,11 @@ describe("createLinkParser", () => {
 				connectionId: ADAPTER,
 				groupId: "G_OPENID",
 				userId: "M_OPENID",
-				text: " https://www.bilibili.com/video/BV1zMtU6uEEb/",
+				text: ` ${LINK}/`,
 				cardLinks: [],
 				miniAppCardLinks: [],
 			});
-			expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
+			expect(h.resolve).toHaveBeenCalledTimes(1);
 			expect(h.sent).toHaveLength(1);
 			expect(h.sent[0]?.dest).toEqual({
 				connectionId: ADAPTER,
@@ -442,9 +492,8 @@ describe("createLinkParser", () => {
 			});
 		});
 
-		it("冷却按平台 + adapter + 群 + 视频算:官机群与 OneBot 群互不影响", async () => {
+		it("冷却按 连接 + 群 + 链接算:官机群与 OneBot 群互不影响", async () => {
 			const h = makeParser();
-			const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
 			await feed(h.parser, groupFrame(LINK));
 			await h.parser.handleMessage({
 				connectionId: "22222222-2222-4222-8222-222222222222",
@@ -458,20 +507,19 @@ describe("createLinkParser", () => {
 		});
 	});
 
-	describe("进来的本身就是 B 站小程序卡", () => {
-		/** B 站 App「分享到 QQ」发出的那张卡,链接在 meta.detail_1.qqdocurl。 */
-		const MINIAPP_CARD = JSON.stringify({
-			app: "com.tencent.miniapp_01",
-			prompt: "[QQ小程序]哔哩哔哩",
-			meta: { detail_1: { appid: "1109937557", qqdocurl: "https://b23.tv/AbCdEf" } },
-		});
-		const cardFrame = () =>
-			groupFrame("", {
-				message: [{ type: "json", data: { data: MINIAPP_CARD } }],
-				raw_message: "[CQ:json,data=…]",
+	describe("进来的本身就是原生分享卡", () => {
+		/** 进来的是一张小程序卡:它的链接在 `miniAppCardLinks` 里,正文与普通卡链接两格都空。 */
+		const feedNativeCard = (h: ReturnType<typeof makeParser>) =>
+			h.parser.handleMessage({
+				connectionId: ADAPTER,
+				groupId: String(GROUP),
+				userId: String(SOMEONE),
+				text: "",
+				cardLinks: [],
+				miniAppCardLinks: [LINK],
 			});
 
-		it("群里已经有那张卡了 → 一律不回,不管这个群选的是哪种形式;也不打接口", async () => {
+		it("群里已经有那张卡了 → 一律不回,不管这个群选的是哪种形式;也不问解析器", async () => {
 			for (const form of ["image", "miniapp"] as const) {
 				const h = makeParser({}, undefined, {
 					policyFor: () => ({ parse: true, form }),
@@ -481,92 +529,82 @@ describe("createLinkParser", () => {
 						miniAppCard: { state: "supported", checkedAt: 1 },
 					}),
 				});
-				await feed(h.parser, cardFrame());
+				await feedNativeCard(h);
 				expect(h.sent).toHaveLength(0);
-				expect(h.resolveShortLink).not.toHaveBeenCalled();
-				expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+				expect(h.resolve).not.toHaveBeenCalled();
 			}
 		});
 
 		it("跳过不留痕:随后有人把同一条链接以文字贴出来,照常出卡", async () => {
 			const h = makeParser();
-			h.resolveShortLink.mockResolvedValue("https://www.bilibili.com/video/BV1zMtU6uEEb");
-			await feed(h.parser, cardFrame());
-			await feed(h.parser, groupFrame("https://b23.tv/AbCdEf"));
+			await feedNativeCard(h);
+			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent).toHaveLength(1);
 		});
 
-		it("其它分享卡(灰色链接卡之类)不算,照常出卡", async () => {
+		it("普通分享卡(灰色链接卡之类)里的链接算,照常出卡", async () => {
 			const h = makeParser();
-			h.resolveShortLink.mockResolvedValue("https://www.bilibili.com/video/BV1zMtU6uEEb");
-			const card =
-				'{"app":"com.tencent.structmsg","meta":{"news":{"jumpUrl":"https://b23.tv/AbCdEf"}}}';
-			await feed(
-				h.parser,
-				groupFrame("", {
-					message: [{ type: "json", data: { data: card } }],
-					raw_message: "[CQ:json]",
-				}),
-			);
+			await h.parser.handleMessage({
+				connectionId: ADAPTER,
+				groupId: String(GROUP),
+				userId: String(SOMEONE),
+				text: "",
+				cardLinks: [LINK],
+				miniAppCardLinks: [],
+			});
 			expect(h.sent).toHaveLength(1);
 		});
 	});
 
-	describe("短链与多链接", () => {
-		it("b23.tv 短链先解成落地地址再取视频", async () => {
-			const h = makeParser();
-			h.resolveShortLink.mockResolvedValue(
-				"https://www.bilibili.com/video/BV1zMtU6uEEb?share_source=copy_web",
-			);
-			await feed(h.parser, groupFrame("分享 https://b23.tv/abc123"));
-			expect(h.resolveShortLink).toHaveBeenCalledWith("https://b23.tv/abc123");
-			expect(h.fetchVideoInfo).toHaveBeenCalledWith({ bvid: "BV1zMtU6uEEb" });
-			expect(h.sent).toHaveLength(1);
-		});
-
-		it("短链解不出来(不是视频 / 落到别处)就当没看见", async () => {
-			const h = makeParser();
-			h.resolveShortLink.mockResolvedValue(null);
-			await feed(h.parser, groupFrame("https://b23.tv/notvideo"));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
-			expect(h.sent).toHaveLength(0);
-		});
-
-		it("短链本身也吃冷却:同一条短链反复贴,那一跳只跟一次 —— 哪怕它解不出视频", async () => {
-			const h = makeParser();
-			h.resolveShortLink.mockResolvedValue(null);
-			await feed(h.parser, groupFrame("https://b23.tv/notvideo"));
-			await feed(h.parser, groupFrame("https://b23.tv/notvideo"));
-			expect(h.resolveShortLink).toHaveBeenCalledTimes(1);
-		});
-
-		it("短链解出来的视频与直链共用冷却:先贴短链再贴直链,只出一张", async () => {
-			const h = makeParser();
-			h.resolveShortLink.mockResolvedValue("https://www.bilibili.com/video/BV1zMtU6uEEb");
-			await feed(h.parser, groupFrame("https://b23.tv/abc123"));
-			await feed(h.parser, groupFrame("https://www.bilibili.com/video/BV1zMtU6uEEb"));
-			expect(h.sent).toHaveLength(1);
-		});
-
-		it("一条消息里最多解析三个链接", async () => {
+	describe("多链接", () => {
+		it("一条消息里最多解析三个被认领的链接", async () => {
 			const h = makeParser({ cooldownSeconds: 0 });
-			const text = ["BV1aaaaaaaaa", "BV1bbbbbbbbb", "BV1ccccccccc", "BV1dddddddddd".slice(0, 12)]
-				.map((id) => `https://www.bilibili.com/video/${id}`)
-				.join(" ");
+			const text = ["a1", "a2", "a3", "a4"].map(link).join(" ");
 			await feed(h.parser, groupFrame(text));
-			expect(h.fetchVideoInfo).toHaveBeenCalledTimes(3);
-			expect(h.fetchVideoInfo.mock.calls.map(([ref]) => ref)).toEqual([
-				{ bvid: "BV1aaaaaaaaa" },
-				{ bvid: "BV1bbbbbbbbb" },
-				{ bvid: "BV1ccccccccc" },
+			expect(h.resolve).toHaveBeenCalledTimes(3);
+			expect(h.resolve.mock.calls.map(([url]) => url)).toEqual([
+				link("a1"),
+				link("a2"),
+				link("a3"),
 			]);
+		});
+
+		it("没人认的链接不占那三个名额", async () => {
+			const h = makeParser({ cooldownSeconds: 0 });
+			const text = [
+				"https://example.com/1",
+				"https://example.com/2",
+				"https://example.com/3",
+				link("a1"),
+			].join(" ");
+			await feed(h.parser, groupFrame(text));
+			expect(h.resolve.mock.calls.map(([url]) => url)).toEqual([link("a1")]);
+		});
+
+		it("两个解析器都认同一条链接时先登记的答", async () => {
+			const h = makeParser();
+			const late = vi.fn<LinkResolver["resolve"]>(async () => ok(previewOf("late")));
+			h.linkResolvers.register("later.inprocess", {
+				label: "后来的",
+				matches: () => true,
+				resolve: late,
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.resolve).toHaveBeenCalledTimes(1);
+			expect(late).not.toHaveBeenCalled();
+		});
+
+		it("没有 https:// 的裸写法照样挑得出来、交给解析器时是原文", async () => {
+			const h = makeParser();
+			await feed(h.parser, groupFrame("acme.invalid/link/a1 看看"));
+			expect(h.resolve).toHaveBeenCalledWith("acme.invalid/link/a1", h.signal);
+			expect(h.sent).toHaveLength(1);
 		});
 	});
 
 	// 逐群答案本身(哪些目标算、停用算不算、陌生群跟谁)由 link-scope 算成表,这里只看解析器
 	// 拿着答案做没做对:说解析才出卡,说不解析什么都不碰。
 	describe("逐群答案(解不解析)", () => {
-		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
 		const THIS_GROUP = `${ADAPTER}:${GROUP}`;
 		const only = (key: string) => (k: string) => ({ parse: k === key, form: "image" as const });
 
@@ -576,10 +614,10 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(1);
 		});
 
-		it("这个群的答案是不解析 → 不打接口、不碰渲染器、不发", async () => {
+		it("这个群的答案是不解析 → 不问解析器、不碰渲染器、不发", async () => {
 			const h = makeParser({}, undefined, { policyFor: only(`${ADAPTER}:999999`) });
 			await feed(h.parser, groupFrame(LINK));
-			expect(h.fetchVideoInfo).not.toHaveBeenCalled();
+			expect(h.resolve).not.toHaveBeenCalled();
 			expect(h.renderer).not.toHaveBeenCalled();
 			expect(h.sent).toHaveLength(0);
 		});
@@ -595,7 +633,7 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(1);
 		});
 
-		it("官机群按 平台:adapter:群 openid 查答案", async () => {
+		it("官机群按 连接:群 openid 查答案", async () => {
 			const h = makeParser({}, undefined, {
 				policyFor: only(`${ADAPTER}:G_OPENID`),
 			});
@@ -619,10 +657,10 @@ describe("createLinkParser", () => {
 			expect(h.sent).toHaveLength(1);
 		});
 	});
+
 	// 形式(图片卡 / 小程序卡)× 连接能力 → 发什么、失败怎么回落。能力本身怎么探在
 	// onebot 适配器那边守,这里只看解析器拿着答案做没做对。
-	describe("回复形式(图片卡 / 小程序卡)", () => {
-		const LINK = "https://www.bilibili.com/video/BV1zMtU6uEEb";
+	describe("回复形式(图片卡 / 原生分享)", () => {
 		const miniapp = () => ({ parse: true, form: "miniapp" as const });
 		const caps = (state: "supported" | "unsupported" | "unknown"): ConnectionCapabilities => ({
 			atAll: { state: "unknown" },
@@ -634,17 +672,17 @@ describe("createLinkParser", () => {
 						? { state, reason: "没有接口", checkedAt: 1 }
 						: { state },
 		});
+		/** 今天的小程序卡载荷:解析器交的中立描述五格一一对应。 */
 		const MINIAPP_CARD: NotificationPayload = {
 			kind: "miniapp-card",
-			title: "示例标题",
-			desc: "示例简介",
-			picUrl: "http://i0.hdslb.com/bfs/archive/cover.jpg",
-			// B 站小程序的视频页;真卡的路径是 GetAppInfoByLink 解出来的,只带 bvid 就能开。
-			path: "pages/video/video?bvid=BV1zMtU6uEEb",
-			jumpUrl: "https://www.bilibili.com/video/BV1zMtU6uEEb",
+			title: "标题-a1",
+			desc: "描述-a1",
+			picUrl: "https://acme.invalid/a1.png",
+			path: "pages/link?id=a1",
+			jumpUrl: "https://acme.invalid/link/a1",
 		};
 
-		it("形式=小程序卡、连接支持 → 发小程序卡,字段来自视频信息;不碰渲染器", async () => {
+		it("形式=小程序卡、连接支持 → 发小程序卡,字段来自解析器交的描述;不碰渲染器", async () => {
 			const h = makeParser({}, undefined, {
 				policyFor: miniapp,
 				capabilities: () => caps("supported"),
@@ -653,8 +691,6 @@ describe("createLinkParser", () => {
 			expect(h.sent.map((s) => s.payload)).toEqual([MINIAPP_CARD]);
 			expect(h.generatePostCard).not.toHaveBeenCalled();
 			expect(h.probeCapabilities).not.toHaveBeenCalled();
-			// 不出图片卡就不抓封面。
-			expect(h.fetchImage).not.toHaveBeenCalled();
 		});
 
 		it("连接不支持 → 回落图片卡,和形式=图片卡一样", async () => {
@@ -665,6 +701,16 @@ describe("createLinkParser", () => {
 			await feed(h.parser, groupFrame(LINK));
 			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
 			expect(h.generatePostCard).toHaveBeenCalledTimes(1);
+		});
+
+		it("解析器没交原生分享描述 → 形式选了小程序卡、连接也支持,仍回图片卡", async () => {
+			const h = makeParser({}, undefined, {
+				policyFor: miniapp,
+				capabilities: () => caps("supported"),
+				resolve: async () => ok(previewOf("a1", false)),
+			});
+			await feed(h.parser, groupFrame(LINK));
+			expect(h.sent.map((s) => s.payload.kind)).toEqual(["image"]);
 		});
 
 		it("还没探出来 → 先探一次再决定:探出支持就发小程序卡", async () => {
@@ -737,6 +783,7 @@ describe("createLinkParser", () => {
 			none.renderer.mockReturnValue(null);
 			await feed(none.parser, groupFrame(LINK));
 			expect(none.sent).toHaveLength(0);
+			expect(none.resolve).not.toHaveBeenCalled();
 		});
 
 		it("一张也发不出来时不吃冷却:连接一恢复,同一条链接立刻出卡", async () => {

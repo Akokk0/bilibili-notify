@@ -1,6 +1,7 @@
 import { ok, type PostEvent, type PostReport } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import { createSourceContext } from "../source-context.js";
 import {
 	makeIntegration,
@@ -28,6 +29,7 @@ const setup = (subs = [makeSub("a", "1")]) => {
 		integration: makeIntegration(),
 		sourceKey: SOURCE_KEY,
 		descriptor: { label: "测试", postNoun: "动态" },
+		linkResolvers: createLinkResolverRegistry(),
 		subscriptions: world.store,
 		defaults: () => world.globals.defaults,
 		bus: world.bus,
@@ -40,12 +42,13 @@ const setup = (subs = [makeSub("a", "1")]) => {
 };
 
 describe("createSourceContext", () => {
-	it("交出去的上下文只有公共五格加来源的六个方法:没有 http 与 cookies", () => {
+	it("交出去的上下文只有公共五格加来源的七个方法:没有 http 与 cookies", () => {
 		const { handle } = setup();
 		expect(Object.keys(handle.ctx).sort()).toEqual([
 			"logger",
 			"onDispose",
 			"onSubscriptionsChanged",
+			"registerLinkResolver",
 			"reportPost",
 			"reportProblem",
 			"resolveProblem",
@@ -66,6 +69,7 @@ describe("createSourceContext", () => {
 			integration: makeIntegration(integrationLogger),
 			sourceKey: SOURCE_KEY,
 			descriptor: { label: "测试", postNoun: "动态" },
+			linkResolvers: createLinkResolverRegistry(),
 			subscriptions: makeWorld().store,
 			defaults: () => makeWorld().globals.defaults,
 			bus: makeWorld().bus,

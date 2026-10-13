@@ -239,7 +239,7 @@ const SAMPLE_TEXT_POST: Post = {
 
 /**
  * 「视频投稿」场面 —— 真机上 UP 发视频推过来的那张:B 站给的这类动态通常**没有**动态正文、
- * 话题与附加内容(视频的简介在视频卡里),只有作者、视频卡、互动数。与 `runtime/video-card.ts`
+ * 话题与附加内容(视频的简介在视频卡里),只有作者、视频卡、互动数。与 `apps/server/src/bilibili/video-card.ts`
  * 为链接解析造出来的那条同一个形状。
  */
 const SAMPLE_VIDEO_POST: Post = {

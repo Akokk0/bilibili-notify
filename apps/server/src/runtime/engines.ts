@@ -88,6 +88,7 @@ import type { HistoryStore } from "../history/store.js";
 import type { ImageFetcher } from "../images/image-fetcher.js";
 import type { ImageWriter } from "../images/image-store.js";
 import { resolveLinkParsingPolicies } from "../link-preview/link-scope.js";
+import type { LinkResolverRegistry } from "../link-preview/registry.js";
 import type { LiveNotifySend } from "../live/live-notify.js";
 import { type LiveWorkSettings, rotateLiveCover } from "../live/live-settings.js";
 import { resolveDynamicColorOptions } from "../posts/card-style.js";
@@ -260,6 +261,8 @@ export interface CreateEnginesOptions {
 	subRuntimeStore: SubRuntimeStore;
 	/** 订阅来源登记表(`AppRuntime.sourceRegistry`);来源由 `registerSource` 登进去。 */
 	sources: SourceRegistry;
+	/** 链接解析器登记表(`AppRuntime.linkResolvers`);来源经上下文登进去。 */
+	linkResolvers: LinkResolverRegistry;
 	/** 问题表(`AppRuntime.problems`):递给来源上下文当写口,问题通知器听它,订阅删了关于它的问题也在这清。 */
 	problems: ProblemTable;
 	/**
@@ -1229,6 +1232,7 @@ export function createEngines(opts: CreateEnginesOptions): EnginesRuntime {
 				onAuthChanged: (state) =>
 					opts.bus.emit("subscription-auth-changed", { sourceKey: entry.sourceKey, state }),
 				registry: opts.sources,
+				linkResolvers: opts.linkResolvers,
 				subscriptions: opts.subscriptionStore,
 				defaults: () => globals().defaults,
 				bus: opts.bus,

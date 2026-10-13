@@ -61,14 +61,12 @@ export const BOUNDARIES = [
 		ratchet: {
 			"apps/server/src/app.ts": 1,
 			"apps/server/src/index.ts": 1,
-			"apps/server/src/link-preview/link-parser.ts": 2,
 			"apps/server/src/routes/cards.ts": 4,
 			"apps/server/src/routes/subscriptions.ts": 2,
 			"apps/server/src/runtime/bootstrap.ts": 1,
 			"apps/server/src/runtime/engines.ts": 3,
 			"apps/server/src/runtime/fans-poller.ts": 2,
 			"apps/server/src/runtime/follow-sync.ts": 2,
-			"apps/server/src/runtime/video-card.ts": 1,
 		},
 		reason:
 			"B 站只是登记表背后的一个来源,核心(推送、引擎、路由、入口)只认中立接口;只有组装根 compose.ts 能把 B 站的东西作登记的参数。历史欠账按文件记上限,只降不涨,3b 末清零",

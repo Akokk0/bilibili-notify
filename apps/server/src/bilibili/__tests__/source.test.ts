@@ -9,6 +9,7 @@ import {
 	BILIBILI_GUARD_PROGRAM,
 	fail,
 	type IntegrationContext,
+	type LinkResolver,
 	type Logger,
 	ok,
 	type PostReport,
@@ -20,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { ZodType } from "zod";
 import { deferred } from "../../__tests__/support/track-context.js";
 import { createSettingsReader } from "../../integrations/settings-reader.js";
+import { createLinkResolverRegistry } from "../../link-preview/registry.js";
 import {
 	makeIntegration,
 	makeLogger,
@@ -176,6 +178,10 @@ function makeCtx(
 	const reportPost = vi.fn<(id: string, report: PostReport) => void>();
 	const logger = makeLogger();
 	const readers: Array<{ dispose(): void }> = [];
+	const linkResolverDisposed = vi.fn();
+	const registerLinkResolver = vi.fn((_resolver: LinkResolver) => ({
+		dispose: linkResolverDisposed,
+	}));
 	const ctx = {
 		logger: logger as Logger,
 		settings: (schema: ZodType) => {
@@ -200,9 +206,12 @@ function makeCtx(
 		reportPost,
 		reportProblem: vi.fn(),
 		resolveProblem: vi.fn(),
+		registerLinkResolver,
 	} as unknown as SourceContext;
 	return {
 		ctx,
+		registerLinkResolver,
+		linkResolverDisposed,
 		watchers,
 		watchDisposed,
 		reportPost,
@@ -223,6 +232,22 @@ describe("createBiliSource", () => {
 		const { ctx } = makeCtx();
 		await registry.register("bilibili", source, ctx);
 		expect(registry.get("bilibili")?.auth).toBe(FAKE_AUTH);
+	});
+
+	// 验红:删掉 `start` 里的 `ctx.registerLinkResolver(…)`,这条红(群里贴 B 站链接再没人认)。
+	it("start 里登记 B 站的链接解析器:认 B 站视频链接、不认别家;stop 时把手被摘", async () => {
+		const { deps } = makeDeps();
+		const source = createBiliSource(deps);
+		const { ctx, registerLinkResolver, linkResolverDisposed } = makeCtx();
+		await source.start(ctx);
+		expect(registerLinkResolver).toHaveBeenCalledTimes(1);
+		const resolver = registerLinkResolver.mock.calls[0]?.[0];
+		expect(resolver?.label).toBe("B 站");
+		expect(resolver?.matches("https://www.bilibili.com/video/BV1zMtU6uEEb")).toBe(true);
+		expect(resolver?.matches("https://example.com/video/BV1zMtU6uEEb")).toBe(false);
+		expect(linkResolverDisposed).not.toHaveBeenCalled();
+		await source.stop();
+		expect(linkResolverDisposed).toHaveBeenCalledTimes(1);
 	});
 
 	it("描述符的 postNoun 是「动态」", () => {
@@ -643,6 +668,7 @@ describe("B 站来源 · 端到端(真订阅仓 + 真来源上下文 + 真动态
 		const registry = createSourceRegistry();
 		const registration = await registerBuiltinSource({
 			registry,
+			linkResolvers: createLinkResolverRegistry(),
 			source,
 			integration: makeIntegration() as IntegrationContext,
 			sourceKey: SOURCE_KEY,

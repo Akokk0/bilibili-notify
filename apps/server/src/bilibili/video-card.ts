@@ -9,7 +9,7 @@
  */
 
 import type { Post } from "@bilibili-notify/internal";
-import type { VideoResponse } from "../bilibili/api/index.js";
+import type { VideoResponse } from "./api/index.js";
 
 /** unix 秒 → ISO;不是有效数就落在纪元(别让一个坏时间把整张卡弄抛)。 */
 function isoOfSeconds(seconds: number): string {
