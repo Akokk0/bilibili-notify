@@ -91,15 +91,16 @@ describe("login 指令", () => {
 	// 二维码发不出去 = 主人盯着手机等一个永远不来的码。必须换条路告诉他。
 	it("图发不出去 → 明确说出来", async () => {
 		const { replies, fire } = setup(QR_READY, { sendOk: false });
-		await fire();
-		expect(replies.at(-1)).toContain("发不出去");
+		// 失败改成返回结果,由分发器统一说(整句见 command-failure-texts.test.ts)。
+		expect(await fire()).toMatchObject({ ok: false, message: "二维码发不出去，去控制台扫吧～" });
+		expect(replies).toEqual([]);
 	});
 
 	it("压根没生成出码 → 把失败原因转给主人,不发图", async () => {
 		const { replies, sent, fire } = setup({ status: "error", message: "获取二维码失败，请重试" });
-		await fire();
+		expect(await fire()).toMatchObject({ ok: false, message: "获取二维码失败，请重试" });
 		expect(sent).toHaveLength(0);
-		expect(replies.at(-1)).toContain("获取二维码失败");
+		expect(replies).toEqual([]);
 	});
 
 	// 取码失败时快照可能还是上一次的「已登录」之类,读它回话会骗人;失败的话以结果里的为准。
@@ -108,9 +109,13 @@ describe("login 指令", () => {
 			{ status: "logged-in", loggedInAt: "2026-10-11T00:00:00.000Z" },
 			{ beginResult: fail("unavailable", "获取二维码失败，请重试") },
 		);
-		await fire();
+		expect(await fire()).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: "获取二维码失败，请重试",
+		});
 		expect(sent).toHaveLength(0);
-		expect(replies).toEqual(["获取二维码失败，请重试"]);
+		expect(replies).toEqual([]);
 	});
 
 	it("不是等待扫码状态(此刻没有码) → 不发图、不抛错,有 message 的话转给主人", async () => {
@@ -118,20 +123,23 @@ describe("login 指令", () => {
 			status: "confirming",
 			message: "已扫码，请在手机上确认",
 		});
-		await expect(fire()).resolves.toBeUndefined();
+		// 已扫码、等确认不是失败,是正常的状态回答:自己回话、返回 ok。
+		await expect(fire()).resolves.toMatchObject({ ok: true });
 		expect(sent).toHaveLength(0);
 		expect(replies.at(-1)).toBe("已扫码，请在手机上确认");
 	});
 
 	// 状态里的串形状变了不该把指令链路带塌 —— 它还担着审批的 y/n。
 	it("dataUrl 不是 data URL → 不发图、不抛错", async () => {
-		const { replies, sent, fire } = setup({
+		const { sent, fire } = setup({
 			status: "awaiting-scan",
 			qr: { dataUrl: "not a data url", expiresAt: "t" },
 		});
-		await expect(fire()).resolves.toBeUndefined();
+		await expect(fire()).resolves.toMatchObject({
+			ok: false,
+			message: "没拿到二维码，稍后再试试～",
+		});
 		expect(sent).toHaveLength(0);
-		expect(replies.at(-1)).toBeDefined();
 	});
 
 	it("dataUrl 是空串 → 同样当没拿到码", async () => {

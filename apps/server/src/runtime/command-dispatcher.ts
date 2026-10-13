@@ -26,11 +26,14 @@ import {
 	inboundIdentity,
 	type Logger,
 	type NotificationPayload,
+	type Result,
 	type SessionRef,
 	sameChatIdentity,
 } from "@bilibili-notify/internal";
+import { errorMessageOf } from "../util/error-message.js";
 import { type ParamSpec, parseArgs, parseSignature, type Values } from "./command-params.js";
 import { suggestCommand } from "./command-suggest.js";
+import { COMMAND_TEXTS } from "./command-texts.js";
 
 /**
  * 回给「发这条指令的那个会话」的口子。字符串当纯文字。
@@ -77,8 +80,12 @@ export interface CommandDef<S extends string = string> {
 	/**
 	 * 拿到的永远是**已校验**的值 —— 解析失败根本不会走到这里,
 	 * 而且类型是从 `signature` 推出来的:`<duration:duration|时长>` → `{ duration: number }`。
+	 *
+	 * 返回结果形状:办成了自己 `reply` 内容再回 `ok()`;**办不成回 `fail(码, 话)`,不要自己 `reply`
+	 * 一句失败** —— 分发器统一回「『{主人敲的词}』没办成：{话}」,「话」只写实质(为什么、该怎么办)。
+	 * 抛错只留给 bug,分发器回「出错了，详情在日志里」并记 error 日志。
 	 */
-	run: (values: Values<S>, ctx: { reply: CommandReplyHandler }) => Promise<void>;
+	run: (values: Values<S>, ctx: { reply: CommandReplyHandler }) => Promise<Result>;
 }
 
 /**
@@ -228,7 +235,8 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 	 * 该有不同反应,前者是主人在正常说话,后者是他敲错了指令名。
 	 */
 	type MatchResult =
-		| { kind: "hit"; spec: CommandDef; params: ParamSpec[]; rest: string }
+		// `word` 是主人**实际敲的**那个触发词(别名就是别名,保留他敲的大小写),失败回话用它。
+		| { kind: "hit"; spec: CommandDef; params: ParamSpec[]; rest: string; word: string }
 		// `typed` 是主人**当成指令名敲的那一截**(第一个词),拿去找近似建议。
 		// 整串带上参数去比的话,`/mut 3h` 离 `mute` 就有三步远,建议直接失灵。
 		| { kind: "unknown"; typed: string }
@@ -253,7 +261,13 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 				// 触发词后面必须是边界:到头,或者空白 + 参数。不做前缀模糊匹配 ——
 				// 「静」不该命中「静音」,否则主人随口一个字就触发了动作。
 				if (rest.length > 0 && !/^\s/.test(rest)) continue;
-				return { kind: "hit", spec, params, rest: rest.trim() };
+				return {
+					kind: "hit",
+					spec,
+					params,
+					rest: rest.trim(),
+					word: body.slice(0, trigger.length),
+				};
 			}
 		}
 		return { kind: "unknown", typed: body.split(/\s+/, 1)[0] ?? "" };
@@ -322,12 +336,17 @@ export function createCommandDispatcher(opts: CommandDispatcherOptions): Command
 
 		opts.logger.info(`[command] 主人触发了「${hit.spec.name}」`);
 		try {
-			await hit.spec.run(parsed.values, { reply });
+			const result = await hit.spec.run(parsed.values, { reply });
+			// 办不成统一在这儿说;回话没送到由 reply 自己记 warn,不再套一层。
+			if (!result.ok) await reply(COMMAND_TEXTS.framework.failed(hit.word, result.message));
 		} catch (err) {
-			// 一条指令炸了不该带塌这条入站链路 —— 它还担着审批的 y/n。
-			opts.logger.warn(
-				`[command] 「${hit.spec.name}」执行失败: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			// 一条指令炸了不该带塌这条入站链路 —— 它还担着审批的 y/n。抛错是 bug:原因只进日志,
+			// 主人只被告知「出错了」,不然他对着一个没回音的指令干等。
+			opts.logger.error(`[command] 「${hit.spec.name}」抛错了: ${errorMessageOf(err)}`);
+			// reply 正常不拒绝(没送到它自己记 warn、回结果);真拒绝了也不能带塌入站链路,但要留一行。
+			await reply(COMMAND_TEXTS.framework.crashed).catch((replyErr: unknown) => {
+				opts.logger.warn(`[command] 「出错了」那句也没回出去: ${errorMessageOf(replyErr)}`);
+			});
 		}
 	}
 

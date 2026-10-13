@@ -20,8 +20,9 @@
  */
 
 import { Buffer } from "node:buffer";
-import type { AuthState, Logger, Result } from "@bilibili-notify/internal";
+import { type AuthState, fail, type Logger, ok, type Result } from "@bilibili-notify/internal";
 import { type CommandDef, command } from "./command-dispatcher.js";
+import { COMMAND_TEXTS } from "./command-texts.js";
 
 export interface LoginCommandOptions {
 	/** 现生成一张二维码并开始轮询。 */
@@ -61,8 +62,7 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 			if (!begun.ok) {
 				// 发起就失败了:快照可能还是上一次的内容(比如「已登录」),读它回话会骗人,以结果里的话为准。
 				opts.logger.warn(`[command] 扫码发起失败: ${begun.code} ${begun.message}`);
-				await reply(begun.message);
-				return;
+				return fail(begun.code, begun.message);
 			}
 			const state = opts.state();
 			const png = state.status === "awaiting-scan" ? decodeDataUrl(state.qr.dataUrl) : undefined;
@@ -74,16 +74,18 @@ export function createLoginCommand(opts: LoginCommandOptions): CommandDef {
 					state.status === "error" || state.status === "expired" || state.status === "confirming"
 						? state.message
 						: undefined;
-				await reply(hint || "没拿到二维码，稍后再试试～");
-				return;
+				// 「已扫码,请在手机上确认」不是没办成,是正常的状态回答:自己回话。
+				if (state.status === "confirming" && hint) {
+					await reply(hint);
+					return ok();
+				}
+				return fail("unavailable", hint || COMMAND_TEXTS.login.noQr);
 			}
 			// LoginFlow 的 renderQr 走 qrcode 包的 toDataURL,产物恒为 PNG。
 			const sent = await reply({ kind: "image", image: { buffer: png, mime: "image/png" } });
-			if (!sent.ok) {
-				await reply("二维码发不出去，去控制台扫吧～");
-				return;
-			}
+			if (!sent.ok) return fail("unavailable", COMMAND_TEXTS.login.qrNotSent);
 			await reply(`扫这张码就行，${QR_TTL_SECONDS} 秒内有效，过期了再敲一次～`);
+			return ok();
 		},
 	});
 }

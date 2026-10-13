@@ -87,10 +87,14 @@ describe("report 指令", () => {
 		});
 		const first = spec.run({} as never, ctx);
 		await Promise.resolve();
-		await spec.run({} as never, ctx);
+		// 第二次被挡回:失败交给分发器说(整句见 command-failure-texts.test.ts)。
+		expect(await spec.run({} as never, ctx)).toMatchObject({
+			ok: false,
+			code: "conflict",
+			message: "还在跑呢，稍等一下下～",
+		});
 
 		expect(run).toHaveBeenCalledTimes(1);
-		expect(replies.at(-1)).toContain("还在跑");
 
 		gate.resolve(SENT);
 		await first;
@@ -114,8 +118,11 @@ describe("report 指令", () => {
 			run,
 			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
-		await spec.run({} as never, ctx);
-		expect(replies.at(-1)).toContain("没成");
+		expect(await spec.run({} as never, ctx)).toMatchObject({
+			ok: false,
+			code: "unavailable",
+			message: "模型超时",
+		});
 
 		await spec.run({} as never, ctx);
 		expect(run).toHaveBeenCalledTimes(2);
@@ -163,11 +170,14 @@ describe("report 指令", () => {
 	// parser 只管格式(「是不是个整数」),范围是每条指令自己的业务规则 ——
 	// 放进 parser 就得为每条指令在那儿开一个口子。
 	it.each([0, -1, 91])("天数越界(%d)→ 挡下来,不去调 AI", async (days) => {
-		const { run, replies, fire } = setup();
-		await fire(days);
-		expect(run).not.toHaveBeenCalled();
+		const { run, fire } = setup();
 		// 光说「不行」等于让主人去猜,把区间说出来。
-		expect(replies.at(-1)).toContain("90");
+		expect(await fire(days)).toMatchObject({
+			ok: false,
+			code: "invalid",
+			message: "天数要在 1 到 90 之间哦～",
+		});
+		expect(run).not.toHaveBeenCalled();
 	});
 
 	it("边界值 1 和 90 是合法的", async () => {
@@ -180,19 +190,26 @@ describe("report 指令", () => {
 	});
 
 	it("没配推送目标 → 说清楚,别只回一句失败", async () => {
-		const { replies, fire } = setup({ kind: "no-targets" });
-		await fire();
-		expect(replies.at(-1)).toContain("推送目标");
+		const { fire } = setup({ kind: "no-targets" });
+		expect(await fire()).toMatchObject({
+			ok: false,
+			code: "not_configured",
+			message: "还没配推送目标呢，周报没地方发～",
+		});
 	});
 
 	it("生成失败 → 带上原因", async () => {
-		const { replies, fire } = setup({
+		const { fire } = setup({
 			kind: "gen-failed",
 			code: "not_configured",
 			message: "AI 还没配好",
 		});
-		await fire();
-		expect(replies.at(-1)).toContain("AI 还没配好");
+		// 码沿用生成失败自己的码;「周报没生成出来：」那个前缀改由分发器统一加。
+		expect(await fire()).toMatchObject({
+			ok: false,
+			code: "not_configured",
+			message: "AI 还没配好",
+		});
 	});
 
 	// 审批开着时,调度器自己已经把草稿连同「回复 y <id>」私聊过去了。

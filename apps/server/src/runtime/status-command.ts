@@ -9,7 +9,7 @@
  * 就得先起半个服务端。
  */
 
-import type { AuthState, Logger } from "@bilibili-notify/internal";
+import { type AuthState, type Logger, ok } from "@bilibili-notify/internal";
 import type { SourceView } from "../subscriptions/registry.js";
 import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
@@ -111,6 +111,7 @@ export function createStatusCommand(opts: StatusCommandOptions): CommandDef {
 		description: "看看现在怎么样",
 		run: async (_values, { reply }) => {
 			await reply(renderStatus(opts.probe(), now()));
+			return ok();
 		},
 	});
 }

@@ -15,11 +15,15 @@
 
 import {
 	type FailureCode,
+	fail,
 	type Logger,
+	ok,
 	ROAST_MAX_DAYS,
 	ROAST_MIN_DAYS,
 } from "@bilibili-notify/internal";
+import { errorMessageOf } from "../util/error-message.js";
 import { type CommandDef, command } from "./command-dispatcher.js";
+import { COMMAND_TEXTS } from "./command-texts.js";
 
 /** 与 `RoastRunOutcome` 同形。这里重述一遍是为了不把指令层绑死在调度器的类型上。 */
 export type ReportOutcome =
@@ -40,17 +44,14 @@ export interface ReportCommandOptions {
 }
 
 /**
- * 把结果说成人话。`null` = 什么都别说。
+ * 把结果说成人话。`null` = 什么都别说。只管办成了的两种:办不成(没目标、生成失败)
+ * 在 `run` 里直接转成 `fail()`,由分发器统一说。
  *
  * `pending-approval` 返回 null 是刻意的:调度器已经把草稿连同「回复 y <id>」私聊过去
  * 了,这里再补一句就是同一件事说两遍,而两份措辞迟早跑偏。
  */
-function describeOutcome(outcome: ReportOutcome): string | null {
+function describeSent(outcome: Extract<ReportOutcome, { kind: "pending-approval" | "sent" }>) {
 	switch (outcome.kind) {
-		case "no-targets":
-			return "还没配推送目标呢，周报没地方发～";
-		case "gen-failed":
-			return `周报没生成出来：${outcome.message}`;
 		case "pending-approval":
 			return null;
 		case "sent":
@@ -78,13 +79,9 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 			const days = values.days;
 			if (days !== undefined && (days < ROAST_MIN_DAYS || days > ROAST_MAX_DAYS)) {
 				// 光说「不行」等于让主人自己去猜,把区间说出来。
-				await reply(`天数要在 ${ROAST_MIN_DAYS} 到 ${ROAST_MAX_DAYS} 之间哦～`);
-				return;
+				return fail("invalid", COMMAND_TEXTS.report.daysOutOfRange(ROAST_MIN_DAYS, ROAST_MAX_DAYS));
 			}
-			if (running) {
-				await reply("还在跑呢，稍等一下下～");
-				return;
-			}
+			if (running) return fail("conflict", COMMAND_TEXTS.report.busy);
 			running = true;
 			try {
 				// ack 在跑生成之前发出去:主人先看到「收到了」,再等结果。它必须在
@@ -92,12 +89,19 @@ export function createReportCommand(opts: ReportCommandOptions): CommandDef {
 				// finally 不执行,running 卡死 true,此后每次 /report 都被挡到重启为止。
 				await reply("好的，在生成了，稍等～");
 				const outcome = await opts.run(days);
-				const text = describeOutcome(outcome);
+				if (outcome.kind === "no-targets") {
+					return fail("not_configured", COMMAND_TEXTS.report.noTargets);
+				}
+				if (outcome.kind === "gen-failed") return fail(outcome.code, outcome.message);
+				const text = describeSent(outcome);
 				if (text) await reply(text);
+				return ok();
 			} catch (err) {
-				const why = err instanceof Error ? err.message : String(err);
+				// 这里接住而不是往外抛:要把原因交给主人(抛出去只剩「出错了,详情在日志里」),
+				// 闸也靠下面的 finally 松开。
+				const why = errorMessageOf(err);
 				opts.logger.warn(`[command] 周报跑失败: ${why}`);
-				await reply(`周报没成：${why}`);
+				return fail("unavailable", why);
 			} finally {
 				// finally 不能省 —— 见文件头那条「异常锁死」。
 				running = false;

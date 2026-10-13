@@ -9,7 +9,7 @@
  * 下面每条「静默」断言都在钉这件事:不只是「没执行」,而是**连 reply 都没有**。
  */
 
-import { fail, type NotificationPayload, ok } from "@bilibili-notify/internal";
+import { fail, type NotificationPayload, ok, type Result } from "@bilibili-notify/internal";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { extractPrivateMessage } from "../../platforms/onebot-inbound.js";
 import { createCommandDispatcher } from "../command-dispatcher.js";
@@ -32,11 +32,14 @@ function makeDispatcher(
 		name: string;
 		aliases?: string[];
 		signature?: string;
-		run: (values: Any, ctx: Any) => Promise<void>;
+		// 老用例的 run 不返回东西:当成 ok()。要测失败 / 抛错的用例自己返回 fail() 或抛。
+		// biome-ignore lint/suspicious/noConfusingVoidType: `async () => {}` 推出来的就是 Promise<void>
+		run: (values: Any, ctx: Any) => Promise<Result | void>;
 	}[],
 	master: string | null = MASTER,
 	prefix = "/",
 	confirmation?: Any,
+	log: Any = logger,
 ) {
 	// 声明出入参:回给主人的**那句话**本身也是断言对象(比如未知指令时有没有连带
 	// 给出建议),无参的替身会让 `mock.calls[0][0]` 连类型都取不到。
@@ -52,11 +55,14 @@ function makeDispatcher(
 	// 配置是**现读**的:主人在面板上改完前缀 / 别名,reconcile 之后就该生效。
 	const config = { enabled: true, prefix, aliases: {} as Record<string, string[]> };
 	const dispatcher = createCommandDispatcher({
-		logger,
+		logger: log,
 		masterIdentity: () => (master === null ? undefined : { platform: PLATFORM, address: master }),
 		sendToAddress,
 		config: () => config,
-		commands,
+		commands: commands.map((c) => ({
+			...c,
+			run: async (values: Any, ctx: Any) => (await c.run(values, ctx)) ?? ok(),
+		})),
 		confirmation,
 	});
 	return { dispatcher, reply, sendToAddress, config };
@@ -603,6 +609,119 @@ describe("大小写", () => {
 	});
 });
 
+describe("run 的结果:失败由框架统一回话", () => {
+	it("返回失败(敲的是本名)→ 会话里收到「『本名』没办成：原话」", async () => {
+		const { dispatcher, reply } = makeDispatcher([
+			{ name: "mute", aliases: ["静音"], run: async () => fail("invalid", "时长太长了") },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/mute" }, META);
+
+		expect(reply.mock.calls).toEqual([["『mute』没办成：时长太长了"]]);
+	});
+
+	it("返回失败(敲的是别名)→ 填别名,不填内部的本名", async () => {
+		const { dispatcher, reply } = makeDispatcher([
+			{ name: "mute", aliases: ["静音"], run: async () => fail("invalid", "时长太长了") },
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/静音" }, META);
+
+		expect(reply.mock.calls).toEqual([["『静音』没办成：时长太长了"]]);
+	});
+
+	it("抛错 → 会话里收到「出错了，详情在日志里」,并记 error 级日志(带指令名与抛的内容)", async () => {
+		const error = vi.fn();
+		const { dispatcher, reply } = makeDispatcher(
+			[
+				{
+					name: "status",
+					run: async () => {
+						throw new Error("boom");
+					},
+				},
+			],
+			MASTER,
+			"/",
+			undefined,
+			{ ...logger, error },
+		);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META);
+
+		expect(reply.mock.calls).toEqual([["出错了，详情在日志里"]]);
+		expect(error).toHaveBeenCalledOnce();
+		expect(error.mock.calls[0]?.[0]).toContain("status");
+		expect(error.mock.calls[0]?.[0]).toContain("boom");
+	});
+
+	it("办成了 → 框架不多说一个字(只有指令自己的回话)", async () => {
+		const { dispatcher, reply } = makeDispatcher([
+			{
+				name: "status",
+				run: async (_v, ctx) => {
+					await ctx.reply("在的");
+					return ok();
+				},
+			},
+		]);
+
+		await dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META);
+
+		expect(reply.mock.calls).toEqual([["在的"]]);
+	});
+
+	it("失败那句话没送到:照「回话没送到」记 warn,不再套一层", async () => {
+		const warn = vi.fn();
+		const error = vi.fn();
+		const dispatcher = createCommandDispatcher({
+			logger: { ...logger, warn, error },
+			masterIdentity: () => ({ platform: PLATFORM, address: MASTER }),
+			sendToAddress: async () => fail("unavailable", "连接断了"),
+			config: () => ({ enabled: true, prefix: "/", aliases: {} }),
+			commands: [{ name: "status", run: async () => fail("unavailable", "x") }],
+		});
+
+		await expect(
+			dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META),
+		).resolves.toBeUndefined();
+
+		expect(warn).toHaveBeenCalledOnce();
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("连接断了"));
+		expect(error).not.toHaveBeenCalled();
+	});
+
+	it("指令抛错、连「出错了」那句也回不出去(发送口自己拒绝):入站链路不塌,两头的原因各留一行", async () => {
+		const warn = vi.fn();
+		const error = vi.fn();
+		const dispatcher = createCommandDispatcher({
+			logger: { ...logger, warn, error },
+			masterIdentity: () => ({ platform: PLATFORM, address: MASTER }),
+			sendToAddress: async () => {
+				throw new Error("派发器炸了");
+			},
+			config: () => ({ enabled: true, prefix: "/", aliases: {} }),
+			commands: [
+				{
+					name: "status",
+					run: async () => {
+						throw new Error("boom");
+					},
+				},
+			],
+		});
+
+		await expect(
+			dispatcher.handleMessage({ userId: MASTER, text: "/status" }, META),
+		).resolves.toBeUndefined();
+
+		expect(error).toHaveBeenCalledOnce();
+		expect(error).toHaveBeenCalledWith(expect.stringContaining("boom"));
+		expect(warn).toHaveBeenCalledOnce();
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("派发器炸了"));
+	});
+});
+
 describe("回话回到发指令的会话", () => {
 	/** 发信人与来的连接,都和「主人目标那条连接」(这里没有)无关:回话只认这条消息自己。 */
 	const FROM = { connectionId: "conn-from", platform: PLATFORM };
@@ -701,6 +820,7 @@ describe("回话回到发指令的会话", () => {
 					name: "状态",
 					run: async (_v: Any, ctx: Any) => {
 						seen = await ctx.reply("在的");
+						return ok();
 					},
 				},
 			],

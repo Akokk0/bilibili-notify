@@ -9,6 +9,7 @@
  * 一条就能确认。
  */
 
+import { ok } from "@bilibili-notify/internal";
 import { type CommandDef, command } from "./command-dispatcher.js";
 import type { MuteState } from "./mute-state.js";
 
@@ -50,11 +51,12 @@ export function createMuteCommand(opts: MuteCommandOptions): CommandDef {
 			const until = await opts.muteState.muteFor(values.duration);
 			if (until === 0) {
 				await reply("好啦，已经恢复推送了～");
-				return;
+				return ok();
 			}
 			// 顺带交代一句「出错还是会叫你」:告警走的是私聊,不归静音管。不说的话,
 			// 主人静音期间收到一条报错会以为静音坏了。
 			await reply(`好的，${describeUntil(until, now())} 之前不打扰你～（出错了还是会叫你的）`);
+			return ok();
 		},
 	});
 }

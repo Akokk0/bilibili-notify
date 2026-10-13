@@ -15,6 +15,7 @@ import {
 	isExtensionEnabled,
 	type Logger,
 	type NotificationPayload,
+	ok,
 	subscriptionIdentityOf,
 } from "@bilibili-notify/internal";
 import { createKeyProvider, type SweepReport, sweepTempFiles } from "@bilibili-notify/storage";
@@ -1017,6 +1018,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 						aliases: effectiveAliases(c, cfg.aliases),
 					}));
 					await reply(renderHelp(entries, cfg.prefix, values.name));
+					// 查不到的指令名也是正常的回答(`renderHelp` 指路),不算办不成。
+					return ok();
 				},
 			}),
 		);
