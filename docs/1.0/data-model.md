@@ -258,6 +258,7 @@ interface LinkPreview {                 // LinkResolver.resolve 成功时交的
 - `LinkResolver`（链接解析器）补 `label`，`resolve` 返回结果形状。
 - 回复形式 `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。
 - 入站链接带来源标记（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。标记那一格的名字施工时定。
+- 🔗 10-13（3b-27 链接半、3b-28）已落：`LinkResolver` / `LinkPreview` 两个类型住 `packages/internal/src/link-preview.ts`（形状同上）；登记表是 `apps/server/src/link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记、停下时自动撤；门（`link-preview/link-parser.ts`，文件名暂时没改）用 `link-preview/url-candidates.ts` 的通用网址正则挑候选，按登记先后问解析器认不认，冷却分联网前（链接原文）与解析成功后（规范 id）两把键；B 站的解析器是 `bilibili/link-resolver.ts`，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷。本节其余（`replyForm`、入站来源标记取代 `miniAppCardLinks`、设置改叫 `core.linkPreview`）还没动。
 
 ## 直播
 
@@ -680,7 +681,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | `NotificationSink`、多路分发 `MultiplexSink` | `TargetDispatcher` |
 | `BilibiliPush` / `bilibili-push.ts` / `BilibiliPushOptions` | `PushRouter` / `push-router.ts` / `PushRouterOptions` |
 | `BiliEvents`；事件 `source-auth-changed` / `live-session` / `live-viewers` | `BusEvents`；`subscription-auth-changed` / `live-session-changed` / `live-viewers-changed` |
-| `ExtensionLiveSession`、`fansAtStart`、场次上的 `totalViewers` | `LiveSession`、`followersAtStart`、`peakTotalViewers` |
+| `ExtensionLiveSession`、`fansAtStart`、场次上的 `totalViewers` | `LiveSession`、`followersAtStart`、`peakTotalViewers`（🔗 10-13（3b-20）已落的只有第一个：`ExtensionLiveSession` → `LiveSession`，随场次引擎 `ExtensionLiveSessions` → `LiveSessionEngine` 搬进 `live/live-sessions.ts`、变化类型 `LiveSessionChange` 的判别键 `type` → `kind`；`fansAtStart` 与 `totalViewers` 两格仍是旧名） |
 | `SubRuntimeStore` / `SubRuntime`、`SubAvatarStore`、`subId` 系、`/api/subs` | `SubscriptionStateStore` / `SubscriptionState`（与 `subscription-state.json` 同一个词）、头像库删掉并进图库（`SubAvatarStore` 与它的读口 ⑳c 已退役，资料缓存的 `avatar` 装图库引用、B 站的远端网址叫 `avatarUrl`）、`subscriptionId` 系、`/api/subscriptions` |
 | `identityOf`（草案名） | `subscriptionIdentityOf` |
 | 会员 `tiers: "dynamic"`（草案名）；`packages/dynamic` 的 `PushKind`（命名批中途叫过 `DynamicPushPart`） | `tiers: "custom"`；`PostPushPart`（`post` / `post-images`） |
@@ -812,7 +813,7 @@ interface ConnectionCandidate {         // listConnectionCandidates(signal) 交�
 | 更新镜像的 `Acceptance<T, R>`（`{ ok, value } \| { ok, reason }`） | `…Result`，主干施工时定 |
 | 面板的 `PushToastSink`（一包两把回调） | `PushToastHandlers` |
 | 太虚的 `Data`：storage 的 `CookieData`；出图的 `CardData`（皮肤字段取值表）、`RoastBoardData` / `RoastSoloData`（`…CardInput` 的别名；㉔f 起三个 `…CardProps` 改叫 `…CardInput`） | `CookieData` 随 `CookieStore` 退役消失（cookie 罐进 `packages/http`）；其余按装的东西起名，施工时定 |
-| `Row`：拓展在播表的 `ExtensionLiveRow`、拓展宿主递给 ctx 的 `ExtensionSubscriptionRow` | 随 1.0 消失：在播表合成一个 `LiveListeningEntry`；来源拿到的名单是 `SourceSubscriptionView` |
+| `Row`：拓展在播表的 `ExtensionLiveRow`、拓展宿主递给 ctx 的 `ExtensionSubscriptionRow` | 随 1.0 消失：在播表合成一个 `LiveListeningEntry`；来源拿到的名单是 `SourceSubscriptionView`（🔗 10-13（3b-20）：`ExtensionLiveRow` 这一片先改名为 `LiveTableEntry`，随在播表 `LiveTable` 搬进 `live/live-table.ts`；合成 `LiveListeningEntry` 留给后面） |
 | 种类取值叫 `…Type`：指令参数 `ParamType`、版式块 `MessagePartType`、皮肤字段 `CardSkinFieldType`、QQ 官方机器人的 `QQOfficialBotType`（公域 / 私域）、blive 的 `UserActionType` | `ParamKind`、`MessagePartKind`、`CardSkinFieldKind`、`QQOfficialBotKind`（随适配器搬出 `internal`）、`UserActionKind`（随 blive 搬进 `bilibili/`） |
 | 当读口子用的 `Source`：AI 只读工具的 `PlatformLabelSource` / `ExtensionLiveSource`、资源采样的 `BrowserSource`、WS 的 `ResourceMonitorSource`、拓展推送的 `ExtensionNameSources` / `ExtensionCardAuthorSources`、桥的 `BridgeInboundSource`、面板的 `PersonaSource`；统计适配器的 `BiliStatsSourceOptions` / `ExtensionStatsSourceOptions` | 读口子改 `…Reader`（10-10 主人定：类型不用 `…Lookup` / `…Lookups`，`lookup` 只当函数名），各自新名施工时定；`ExtensionNameSources` / `ExtensionCardAuthorSources` 随显示名链 `displayNameOf` 与头像进图库消失，`PlatformLabelSource` / `ExtensionLiveSource` 随描述符与在播表合一多半消失；统计那两个并成 `BindStatsRecorderOptions`。市场源 `MarketplaceSource` / `MarketplaceOfficialSource` 是主人看得见的叫法，不改 |
 

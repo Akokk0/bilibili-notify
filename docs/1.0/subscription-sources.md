@@ -338,7 +338,9 @@ interface SourceSubscriptionView {  // 原拓展契约的 ExtensionOwnSubscripti
 
 两套场次引擎合成一套：原先拓展那套（本就中立）去掉 `Extension` 前缀升格为核心 `live/`，B 站的 `room-session-base` 删掉。
 
-删 B 站的 `room-session*` 之前，先把醒目留言、会员、特别弹幕、特别进场的装配从 `room-session.ts` 抽进 `live/`（它们是核心中立特性的装配，不跟着 B 站引擎走）。
+🔗 10-13（3b-20）已落的是拓展那一半：场次引擎 `ExtensionLiveSessions` → `LiveSessionEngine`（`live/live-sessions.ts`）、在播表 `ExtensionLiveTable` → `LiveTable`（`live/live-table.ts`）、推送 `bindExtensionLivePush` → `bindLivePush`（`live/live-push.ts`），出卡输入翻译 `live-card-input-from-report.ts` 一并搬进 `live/`；总线事件 `extension-live-changed` / `extension-live-session` 与契约里的 `ExtensionLiveSnapshot` 没改名。B 站的 `room-session-base` 还在，两套场次合成一套留给后面。
+
+删 B 站的 `room-session*` 之前，先把醒目留言、会员、特别弹幕、特别进场的装配从 `room-session.ts` 抽进 `live/`（它们是核心中立特性的装配，不跟着 B 站引擎走）。🔗 10-13 四块都已抽完：特别弹幕与特别进场 3b-15（`live/special-users.ts`）、醒目留言 3b-17（`live/superchat.ts`）、会员 3b-18（`live/membership.ts`，B 站会话的 `onGuardBuy` 只剩翻事件、查档位表、挑文案包、拼兜底句、绑取徽章 / 取头像与发送）。
 
 来源只有两种输入：
 
@@ -416,6 +418,8 @@ interface DevtoolsProvider { scenarios: DevScenarioDef[] }   // 只在开发版�
 - **入站链接带来源标记**（正文 / 普通卡 / 原生分享卡），取代 `miniAppCardLinks`；规矩是「原生分享卡里的链接不回预览」。桥帧里那一格进 alpha 之后两步改名的清单；它是插件发给 BN 的入站字段，两步反过来走：BN 先同时认新旧两种写法，插件再改发新的。
 - **回复形式** `replyForm` 取 `image` / `nativeShare` / `text`，面板上是「回图片 / 回原生分享 / 回文字」。原生分享由 OneBot 适配器拿中立描述去签，签不了就回图片（签不了原生分享的出口会一直回图片）。施工先查签名接口收不收通用参数，不收就在适配器内部放一张 appId → 预设的对照表。
 - **回复**经 `TargetDispatcher.sendToAddress` 发回原会话：不进路由、不过闸、不落历史，但要查 `isAvailable`、结果带 code、由截流统一记，不重试。原先现造的临时目标删掉。
+
+🔗 10-13（3b-27 链接半、3b-28）已落：核心的 `LinkResolver` / `LinkPreview` 类型（`packages/internal/src/link-preview.ts`）；登记表 `link-preview/registry.ts`，来源在自己的 `start(ctx)` 里经 `ctx.registerLinkResolver(…)` 登记（键取来源的键，停下时自动撤）；门（`link-preview/link-parser.ts`，名字暂时没改）用 `link-preview/url-candidates.ts` 的通用网址正则挑候选、按登记先后问解析器认不认、取前三个被认领的，冷却分两把键（联网前按链接原文、解析成功后按 `canonicalId`），同一条消息里指着同一个东西的几种写法只出一张；B 站的解析器是 `bilibili/link-resolver.ts`（视频链接的认法 `bilibili/video-links.ts`、视频翻成作品 `bilibili/video-card.ts`，都是从别处搬来的），封面在解析器里抓，原生分享由解析器交中立描述、门翻成今天的小程序卡载荷；对拍 N07 因此转成了 P22。「入站链接带来源标记」「回复形式 `replyForm`」「设置改叫 `linkPreview`」三条还没动。
 
 ### 指令
 
